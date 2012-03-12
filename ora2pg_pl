@@ -1,0 +1,167 @@
+#!/usr/bin/perl
+#------------------------------------------------------------------------------
+# Project  : Oracle to Postgresql converter
+# Name     : ora2pg
+# Author   : Gilles Darold, gilles _AT_ darold _DOT_ net
+# Copyright: Copyright (c) 2000-2011 : Gilles Darold - All rights reserved -
+# Function : Script used to convert Oracle Database to PostgreSQL
+# Usage    : ora2pg configuration_file
+#------------------------------------------------------------------------------
+#
+#        This program is free software: you can redistribute it and/or modify
+#        it under the terms of the GNU General Public License as published by
+#        the Free Software Foundation, either version 3 of the License, or
+#        any later version.
+# 
+#        This program is distributed in the hope that it will be useful,
+#        but WITHOUT ANY WARRANTY; without even the implied warranty of
+#        MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#        GNU General Public License for more details.
+# 
+#        You should have received a copy of the GNU General Public License
+#        along with this program. If not, see < http://www.gnu.org/licenses/ >.
+# 
+#------------------------------------------------------------------------------
+use strict qw/vars/;
+
+use Ora2Pg;
+use Getopt::Long;
+
+my $VERSION = '8.10';
+
+my $CONFIG_FILE = "/etc/ora2pg/ora2pg.conf";
+my $DEBUG = 0;
+my $HELP = 0;
+my $LOGFILE = '';
+my $EXPORT_TYPE = '';
+my $OUTFILE = '';
+my $OUTDIR = '';
+my $SHOW_VER = 0;
+my $PLSQL = 0;
+my $DSN = '';
+my $DBUSER = '';
+my $DBPWD = '';
+my $SCHEMA = '';
+my $TABLEONLY = '';
+my $FORCEOWNER = '';
+my $ORA_ENCODING = '';
+my $PG_ENCODING = '';
+my $INPUT_FILE = '';
+
+my @CAPABILITIES = qw(
+	TABLE PACKAGE DATA COPY VIEW GRANT SEQUENCE TRIGGER
+	FUNCTION PROCEDURE TABLESPACE PARTITION TYPE
+	SHOW_SCHEMA SHOW_TABLE SHOW_COLUMN SHOW_ENCODING
+);
+
+# Collect command line arguments
+GetOptions (
+        'conf|c=s' => \$CONFIG_FILE,
+        'debug|d' => \$DEBUG,
+        'help|h' => \$HELP,
+        'log|l=s' => \$LOGFILE,
+        'type|t=s' => \$EXPORT_TYPE,
+        'out|o=s' => \$OUTFILE,
+        'basedir|b=s' => \$OUTDIR,
+	'version|v' => \$SHOW_VER,
+	'plsql|p' => \$PLSQL,
+	'source|s=s' => \$DSN,
+	'user|u=s' => \$DBUSER,
+	'password|w=s' => \$DBPWD,
+	'namespace|n=s' => \$SCHEMA,
+	'xtable|x=s' => \$TABLEONLY,
+	'forceowner=s' => \$FORCEOWNER,
+	'nls_lang=s' => \$ORA_ENCODING,
+	'client_encoding=s' => \$PG_ENCODING,
+	'input_file|i=s' => \$INPUT_FILE,
+);
+
+# Check command line parameters
+if ($SHOW_VER) {
+	print "Ora2Pg v$VERSION\n";
+	exit 0;
+}
+if ($HELP) {
+	&usage();
+}
+if (! -e $CONFIG_FILE) {
+	print "FATAL: can't find configuration file $CONFIG_FILE\n";
+	&usage();
+}
+
+$EXPORT_TYPE = uc($EXPORT_TYPE);
+if ($EXPORT_TYPE && !grep(/^$EXPORT_TYPE$/, @CAPABILITIES)) {
+	print "FATAL: Unknow export type: $EXPORT_TYPE.\n";
+	&usage();
+}
+
+# Create an instance of the Ora2Pg perl module
+my $schema = new Ora2Pg (
+	config => $CONFIG_FILE,
+	type   => $EXPORT_TYPE,
+	debug  => $DEBUG,
+	logfile=> $LOGFILE,
+	output => $OUTFILE,
+	output_dir => $OUTDIR,
+	plsql_pgsql => $PLSQL,
+	datasource => $DSN,
+	user => $DBUSER,
+	password => $DBPWD,
+	schema => $SCHEMA,
+	xtable => $TABLEONLY,
+	force_owner => $FORCEOWNER,
+        nls_lang => $ORA_ENCODING,
+        client_encoding => $PG_ENCODING,
+        input_file => $INPUT_FILE,
+);
+
+
+# Proceed to Oracle DB extraction following
+# configuration file definitions.
+if ( ($EXPORT_TYPE !~ /^SHOW_/i) && !$INPUT_FILE ) {
+	$schema->export_schema();
+}
+
+exit(0);
+
+sub usage
+{
+	print qq{
+Usage: ora2pg [-dhpv] [--option value]
+
+    -d | --debug      : Enable verbose output.
+    -h | --help       : Print this short help.
+    -v | --version    : Show Ora2Pg Version and exit.
+    -c | --conf file  : Used to set an alternate configuration file than the
+			default /etc/ora2pg/ora2pg.conf.
+    -l | --log file   : Used to set a log file. Default is stdout.
+    -o | --out file   : Used to set the path to the output file where SQL will
+			be written. Default: output.sql in running directory.
+    -t | --type export: Used to set the export type. It will override the one
+			given in the configuration file (TYPE).
+    -p | --plsql      : Enable PLSQL to PLPSQL code conversion.
+    -s | --source     : Allow to set the Oracle DBI datasource.
+    -u | --user       : Used to set the Oracle database connection user.
+    -w | --password   : Used to set the password of the Oracle database user.
+    -n | --namespace schema : Used to set the Oracle schema to extract from.
+    -b | --basedir dir: Used to set the default output directory, where files
+			resulting from exports will be stored.
+    -x | --xtable relname: Used to display columns names of the given table,
+		 	could be used with SHOW_COLUMN type only.
+    --forceowner : if set to 1 force ora2pg to set tables and sequences owner
+		like in Oracle database. If the value is set to a username this
+		one will be used as the objects owner. By default it's the user
+		used to connect to the Pg database that will be the owner.
+    --nls_lang code: use this to set the Oracle NLS_LANG client encoding.
+    --client_encoding code: Use this to set the PostgreSQL client encoding.
+    -i | --input_file file: File containing Oracle PL/SQL code to convert with
+		no Oracle database connection initiated.
+
+See full documentation at http://ora2pg.darold.net/ for more help or see
+manpage with 'man ora2pg'.
+
+};
+	exit 0;
+
+}
+

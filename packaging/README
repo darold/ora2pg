@@ -1,0 +1,50 @@
+RPM/
+	Holds ora2pg.spec need to build an RPM package for RH/Fedora.
+	It may also be usable for other RPM based distribution.
+
+	Copy the ora2pg source tarball here:
+
+		~/rpmbuild/SOURCES/ or /usr/src/redhat/SOURCES/
+
+	Then create the RPM binary package as follow:
+
+		rpmbuild -bb ora2pg.spec
+
+	The binary package may be found here:
+
+		~/rpmbuild/RPMS/noarch/ora2pg-8.10-1.noarch.rpm
+	or
+		/usr/src/redhat/RPMS/i386/ora2pg-8.10-1.noarch.rpm
+
+	To install run:
+
+		rpm -i ~/rpmbuild/RPMS/noarch/ora2pg-8.10-1.noarch.rpm
+
+
+slackbuild/
+	Holds all files necessary to build a Slackware package.
+	Copy the source tarball into the slackbuild directory and run
+
+		sh Ora2Pg.SlackBuild
+
+	then take a look at /tmp/build/ to find the Slackware package.
+	To install run the following command:
+
+		installpkg /tmp/build/ora2pg-8.10-i486-1gda.tgz
+
+
+debian/
+	Holds all files to build debian package.
+	First you need to execute script 'sh create-deb-tree.sh' in the debian
+	directory to create the package tree. After that just run the following
+	command to generate the debian package:
+
+		dpkg -b ora2pg ora2pg.deb
+
+	To install the package, run:
+
+		dpkg -i ora2pg.deb
+
+
+Feel free to send me other.
+

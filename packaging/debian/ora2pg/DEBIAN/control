@@ -1,0 +1,15 @@
+Package: ora2pg
+Version: 8.10
+Priority: optional
+Architecture: all
+Essential: no
+Depends: libcompress-zlib-perl, libdbd-oracle-perl, libdbi-perl
+Pre-Depends: perl
+Recommends: postgresql-client
+Installed-Size: 1024
+Maintainer: Gilles Darold <gilles@darold.net>
+Provide: ora2pg
+Description: Ora2Pg (Oracle to PostgreSQL database schema converter)
+    This package contains a Perl module and a companion script to convert an
+    Oracle database schema to PostgreSQL and to migrate the data from an
+    Oracle database to a PostgreSQL database.

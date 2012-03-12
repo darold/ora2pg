@@ -1,0 +1,21 @@
+Ora2Pg is a tool used to migrate an Oracle database to a PostgreSQL compatible
+schema. It connects your Oracle database, scan it automaticaly and extracts its
+structure or data, it then generates SQL scripts that you can load into your
+PostgreSQL database. 
+
+Ora2Pg can be used from reverse engineering Oracle database to huge enterprise
+database migration or simply to replicate some Oracle data into a PostgreSQL
+database. It is really easy to used and doesn't need any Oracle database
+knowledge than providing the parameters needed to connect to the Oracle
+database. 
+
+You need a modern Perl distribution (perl 5.6 or more), the DBI and DBD::Oracle
+Perl modules to be installed. These are used to connect to the Oracle database.
+To install DBD::Oracle and have it working you need to have the Oracle client
+libraries installed and the ORACLE_HOME environment variable must be defined.
+
+Note that the Oracle and the PostgreSQL databases doesn't need to be on the
+host running Ora2Pg but this host must have at least the Oracle client libraries
+installed and the PostgreSQL client if you want to use psql or DBD::Pg to import
+data.
+

@@ -1,0 +1,12 @@
+        |-----handy-ruler------------------------------------------------------|
+Ora2Pg: Ora2Pg (Oracle to PostgreSQL database schema converter)
+Ora2Pg:
+Ora2Pg: This package contains Perl modules and a companion script to convert an
+Ora2Pg: Oracle database schema to PostgreSQL and to migrate the data from an
+Ora2Pg: Oracle database to a PostgreSQL database.
+Ora2Pg:
+Ora2Pg: Ora2Pg can be used from reverse engineering Oracle database to huge
+Ora2Pg: enterprise database migration or simply to replicate some Oracle data
+Ora2Pg: into a PostgreSQL database.
+Ora2Pg:
+Ora2Pg:

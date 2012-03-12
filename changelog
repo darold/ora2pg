@@ -1,0 +1,992 @@
+2012 03 11 - 8.10
+
+	- Add two configuration directives to control the BLOB export.
+	  LONGREADLEN to set the database handle's 'LongReadLen' attribute
+	  to a value that will be the larger than the expected size of the
+	  LOB. LONGTRUNKOK to bypass the 'ORA-24345: A Truncation' error.
+	  Thanks to Dirk Treger for the report.
+	- Fix install problem on non-threaded Perl and the threads package.
+	  Replace use() by require() call. Thanks to Ian Sillitoe for the patch.
+	- Fix strange Oracle behaviour where binary_double infinity is exported
+	  from Oracle as '~'. Replaced by 'inf'. Thanks to Daniel Lyons for the
+	  report.
+
+UPGRADE: only Ora2Pg.pm have changed so you can just override it. See documentation
+for the new configuration directives: LONGREADLEN and LONGTRUNKOK.
+	
+2011 11 07 - 8.9
+
+	- Fix double quote into file name of package function export when case
+	  sensitivity is preserved.
+	- Add support to XMLType data extraction. Thanks to Aaron Culich for
+	  the report. Before this release, xml data was exported as a Perl
+	  array reference.
+	- Fix bug during foreign key export when foreign keys have different
+	  owners. Thanks to Krasi Zlatev for the patch.
+	- Add support to plpgsql conversion during index extraction as many
+	  index use some Oracle function on their declaration. Thanks to
+	  Sriram Chandrasekaran fot the feature request.
+	- PLSQL: Add replacement of Oracle subtr() by PostgreSQL substring().
+	  Thanks to Sriram Chandrasekaran fot the feature request.
+	- PLSQL: Add replacement of Oracle decode() by PostgreSQL CASE/THEN/ELSE.
+	  Thanks to Sriram Chandrasekaran fot the feature request.
+	  Note that this two replacement was not implemented because they could
+	  break the code if there's complex subqueries inside their declaration.
+	  This is why you can enable it by setting ALLOW_CODE_BREAK to 1 (new).
+	  In later release this directive will be enable by default.
+	- Add output ordering on some object name so that results between two
+	  runs can be compared. Thanks to Henk Enting for the patch.
+	- Fix misshandling of all cases of RAISE_APPLICATION_ERROR rewrite into
+	  RAISE EXCEPTION concatenations. Thanks to Krasi Zlatev for the report.
+
+UPGRADE: only Ora2Pg.pm and Ora2Pg/PSQL.pm have changed so you can just override them
+if you dont want to reinstall all.
+
+2011 10 13 - 8.8
+
+	- Before that release when you upgraded Ora2Pg using Makefile, the old
+	  ora2pg.conf was renamed as ora2pg.old. This can lead to lost previous
+	  configuration, the old ora2pg.conf is now untouched and the new one is
+	  installed as ora2pg.conf.new.
+	- Renamed ora2pg.pl into ora2pg_pl in the package before installation
+	  to avoid the copy of the perl script into the site Perl install dir.
+	  It is still installed as ora2pg in /usr/local/bin by default.
+	- Fix errors that appeared to be due to no quoting on the field names
+	  when ORA_SENSITIVE is enabled. Thank to Sam Nelson for the patch.
+	- Limit case sensitivity on check constraints to column names only,
+	  before that if there was a value between double quote into the check
+	  constraint, it was wrongly changed to lower case.
+	- Fix broken case sensitivity at data export when disabling/enabling
+	  triggers and truncating tables with copy or insert statement.
+	- Change Ora2Pg version in packaging files that was still in 8.5.
+
+UPGRADE: only Ora2Pg.pm have changed so you can just override it.
+
+2011 09 07 - 8.7
+
+	- The escape_bytea() function has been rewritten using a prebuild array
+	  to gain twice of performances. Thanks to Marc Cousin from Dalibo for
+	  the patch.
+	- Improve speed of bulkload data by disabling autocommit by issuing a
+	  BEGIN at the start and COMMIT at the end.
+	- Add multi-threading support. It is only used to do the escaping to
+	  convert LOBs to byteas, as it is very cpu hungry. There's a lot of
+	  CPU-waste here. The threads number is controlled by a new configuration
+	  directive: THREAD_COUNT. Putting 6 threads will only triple your
+	  throughput, if your machine has enough cores. If zero (default value),
+	  do not use threads, do not waste CPU, but be slower with bytea.
+	  Performance seems to peak at 5 threads, if you have enough cores, and
+	  triples throughput on tables having LOB. Another important thing:
+	  because of the way threading works in perl, threads consume a lot of
+	  memory. Put a low (5000 for instance) DATA_LIMIT if you activate
+	  threading. Many thanks to Marc Cousin for this great patch.
+	- Fix standard_conforming_string usage on export as INSERT statement.
+	- Fix an issue with importing Oracle NULL character (\0 or char(0)) with
+	  bytea and character data with UTF8 encoding. Now whatever is the data
+	  type or the encoding, this character is simply removed to prevent the
+	  well known 'ERROR: invalid byte sequence for encoding "UTF8": 0x00.'
+	  Thanks to Jean-Paul Argudo from Dalibo for the report.
+	- Fix an incorrect syntax for "for each statement" triggers.
+	  Thanks to Henk Enting for the report.
+	- Add comment at end of line to signal on which cursor the replacement
+	  on " EXIT WHEN (...)%NOTFOUND " is done. This will return something 
+	  like "IF NOT FOUND THEN EXIT; END IF; -- apply on $1". Thanks to
+	  jehan Guillaume De Rorthais from Dalibo for the report this help a lot
+	  during Pl/Pgsql code review.
+	- Fix table/column name replacement on constraint creation and dropping
+	  when REPLACE_TABLES/REPLACE_COLS is set during DATA/COPY export.
+	- Fix table/column name replacement on indexes creation and dropping
+	  when REPLACE_TABLES/REPLACE_COLS is set during DATA/COPY export.
+	- Remove unused table name parameter in _drop_indexes() function.
+	- Add support to REPLACE_TABLES/REPLACE_COLS during schema export.
+	  Before this release those replacements were only applied to DATA or
+	  COPY export. You can now use it in schema export, it will replace
+	  table and/or column names in the TABLE/INDEX/CONSTRAINT schema export.
+	  MODIFY_STRUCT is still limited to DATA or COPY export as it have no
+	  sense outside this export. Unfortunately those replacements can not be
+	  done easilly in other export type like TRIGGER, FUNCTION, etc. so you
+	  must still edit this code by hand.
+	- Use the bundled Perl Config module to detect if Perl is compiled with
+	  useithread. This mean that the old local defined %Config hash has been
+	  replaced by %AConfig.
+	- SKIP indices is now obsolete and must be replaced with SKIP indexes.
+	  backward compatibility is preserved.
+	- The file generated when FILE_PER_INDEX is activated has been renamed
+	  into INDEXES_... instead of INDICES_...
+	- Add a warning on tablespace export when Oracle user is not a dba.
+	- Fix fatal error when dumping to one file per function with double
+	  directory output.
+	- Fix double print of FATAL messages and dirty database disconnect on
+	  fatal errors.
+	- Add setting of client_encoding into each export type as defined in
+	  the configuration file.
+	- Update web site documentation.
+
+UPGRADE: Ora2Pg.pm, Ora2Pg/PGSQL.pm and ora2pg have changed so they must be
+overwritten.  There's also changes in the configuration file and documentation
+has changed as well. Backward compatibility is fully preserved.
+
+
+2011 07 07 - 8.6
+
+	- Remove "use strict" from head of Ora2Pg.pm that breaks view export.
+	  This is usually removed before public release, but not this time.
+	  Thanks to Jehan Guillaume de Rorthais from Dalibo for the report.
+	- Add a new configuration directive called COMPILE_SCHEMA that force
+	  Oracle to compile the PL/SQL before code extraction to validate
+	  code that was invalidate for any reason before. If you set it to 1,
+	  you will force compiling of the user session schema, but you can
+	  specify the name of the schema to compile as the value too. Thanks
+	  to Jean-Paul Argudo from Dalibo for the solution.
+	- Add new configuration directive EXPORT_INVALID to allow export of all
+	  PL/SQL code even if it is marked as invalid status. The 'VALID' or 
+	  'INVALID' status applies to functions, procedures, packages and user
+	  defined types.
+	- Excluded from export all tables, types, views, functions and packages
+	  that contains a $ character. Most of the time they don't need to be
+	  exported.
+	- PLSQL: add automatic conversion of Oracle SYS_REFURSOR as PostgreSQL
+	  REFCURSOR.
+	- Rewrite entirely the parser of DBMS_OUTPUT du to concatenation errors.
+	- PLSQL: add automatic replacement of some Oracle exception errors:
+          INVALID_CURSOR=>INVALID_CURSOR_STATE, ZERO_DIVIDE=>DIVISION_BY_ZERO,
+          STORAGE_ERROR=>OUT_OF_MEMORY.
+
+UPGRADE: Ora2Pg.pm and Ora2Pg/PGSQL.pm have changed so they must be overwritten.
+There's also changes in the configuration file and documentation has changed as
+well. Backward compatibility is fully preserved.
+
+
+2011 07 01 - 8.5
+
+	- When FILE_PER_FUNCTION is activated and export type is PACKAGE, Ora2Pg
+	  will now save all functions/procedures of a package body into a
+	  directory named as the package name and into different files. This
+	  will allow to load each function separatly or load them all with the
+	  OUTPUT SQL script generated by Ora2Pg.
+	- Fix Oracle package body parsing failure when a procedure is declared
+	  inside an other.
+	- Add new configuration options FILE_PER_CONSTRAINT and FILE_PER_INDEX
+	  to generate three files during the schema extraction. One for the
+	  'CREATE TABLE' statements, one for the constraints (primary keys,
+	  foreign keys, etc.) and the last one for indices. Thanks to Daniel
+	  Scott for the feature request.
+	- Allow to process PL/SQL Oracle code from file instead of a database
+	  to apply Ora2Pg code conversion. Thank to Mindy Markowitz for the
+	  feature request. See -i or --input_file command line option to ora2pg
+	  perl script or INPUT_FILE new configuration option.
+	- Add new configuration directive STANDARD_CONFORMING_STRINGS that is
+	  used only during DATA export type to build INSERT statements. This
+	  should avoid 'WARNING:  nonstandard use of \\ in a string literal'.
+	  Please check that this behavior is backward compatible with your
+	  PostgreSQL usage as this is enabled by default now.
+
+UPGRADE: The new features has changed Ora2Pg.pm and ora2pg.pl so that they must
+be overwritten. There's also changes in the configuration file and documentation
+has changed as well. Take care of backward compatibility with escaped strings in
+DATA export type and the new behavior on PACKAGE export. 
+
+2011 06 07 - 8.4
+
+	- Moves Ora2Pg to SourceForge.net.
+	- Fix an issue on setting owner in "ALTER SEQUENCE ... SET OWNER TO".
+	  Thanks to Herve Girres for the report.
+	- Bugfix on lower case convertion for check constraints extraction.
+	  Thanks to Alexander Korotkov for the patch.
+
+UPGRADE: There's no new functionality, this is a bug fix release.
+
+2011 05 11 - 8.3
+
+	- Fix issue on inherited user defined types converted to inherited tables.
+	  Add comment on unsupported inherited type in PostgreSQL too. Thanks to
+	  Mathieu Wingel for the report.
+	- Fix issue on column default values. Oracle all this kind of strange
+	  syntax: counter NUMBER(4) default '' not null, that was translated to
+	  counter smallint DEFAULT '' by Ora2Pg. Thanks to Mathieu Wingel this is
+	  now rewritten as DEFAULT NOT NULL.
+	- Fix case sensitivity on create view when there was double quote on the
+	  column name statement part. Thanks to Mathieu Wingel or the report.
+	- Fix bad patch applied on column name case sensitivity issue during check
+	  constraint export. Thanks to Philippe Rimbault for the report.
+	- Fix bug on package export introduced into version v8.2. The issue was
+	  related to end of package procedure detection. hanks to Mathieu Wingel
+	  or the report.
+
+UPGRADE: There's no new functionality, this is a bug fix release and every one
+should upgrade to it.
+
+
+2011 05 01 - 8.2
+
+	- PLSQL: automatic replacement of EXIT WHEN cursor%NOTFOUND; by Pg
+	  synthax: IF NOT FOUND THEN EXIT; END IF;. Works with additional
+	  condition too.
+	- PLSQL: Automatic replacement of SQL%NOTFOUND by NOT FOUND.
+	- PLSQL: Add detection of TOO_MANY_ROW to NO_DATA_FOUND to add STRICT.
+	- Completely rewrite the parsing of Oracle package body to handle all
+	  cases and especially prodedure declared into an other procedure.
+	  Those procedure are renamed INTERNAL_FUNCTION and must be rewritten.
+	- Fix type usage of ora2pg Perl script.
+	- Add a new directive FORCE_OWNER. By default the owner of the database
+	  objects is the one you're using to connect to PostgreSQL. If you use
+	  an other user (postgres for exemple) you can force Ora2Pg to set the
+	  object owner to be the one used in the Oracle database by setting the
+	  directive to 1, or to a completely different username by setting the
+	  directive value to that username. Thanks to Herve Girres from Meteo
+	  France for the suggestion and patch.
+	- Add --forceowner or -f command line option to ora2pg program.
+	- Add SHOW_ENCODING extract type to return the Oracle session encoding.
+	  For example it can return: NLS_LANG AMERICAN_AMERICA.AL32UTF8 
+	- Remove SYS_EXTRACT_UTC from index creation as Pg always stores them
+	  in UTC. Thanks to Daniel Scott for the patch.
+	- In PLSQL code SYS_EXTRACT_UTC is replaced by the Pg syntaxe:
+	  field AT TIME ZONE 'UTC'.
+	- Fix a pending problem with "Wide character in print at" on COPY mode.
+	  Thanks to Bernd Helmle from Credativ GmbH for the patch.
+	- PLSQL: Add automatic rewrite of FOR ... IN REVERSE ... into Pg synthax
+	- Fix column name case sensitivity issue during check constraint export.
+	  Thanks to Daniel Berger for the report.
+	- Remove the possibility to add comment after a configuration directive
+	  it may not be used and it was generating an issue with the passwords
+	  configuration directives for examples. Thanks to Daniel Berger for the
+	  report.
+	- Complete rewrite of user defined type extraction. Add support of inherited
+	  type using Oracle UNDER keyword as well as better support to custom type
+	  with BODY. Thanks to Mathieu Wingel for the report.
+	- Fix case sensitivity on user defined types. Thanks to Mathieu Wingel for
+	  the report.
+
+UPGRADE: All files have changed so you need a fresh install/upgrade.
+Previous release used to remove any string starting from a # in the config file,
+this was to allow comments after a configuration directive. This possibility
+have been removed in this release so you can no more add comments after a
+configuration directive.
+
+
+2011 03 28 - 8.1
+
+	- Prevent Ora2PG to export twice datas when using FILE_PER_TABLE and
+	  the data output file exist. This is useful in case of export failure
+	  and you don't want to export all data again. This also mean that if
+	  you want to get new data you have to remove the old files before.
+	- Fix parsing of procedure/function into pl/sql Oracle package.
+	- Fix bug in IS NULL/IS NOT NULL replacement. Thanks to Jean-Paul Argudo
+	  from Dalibo for the report.
+	- Add CREATE OR REPLACE on RULE creation.
+	- Add DROP TRIGGER IF EXISTS before trigger creation.
+	- Replace Oracle date "0000-00-00" by NULL.
+	- Fix infinite loop in package/fonction type replacement.
+	- Add one file per package creation if FILE_PER_FUNCTION is enabled.
+	- Fix double quote in name of custom type extraction.
+	- Add extraction of custom type IS VARRAY as an custom type of table
+	  array. Thank to Jean-Paul Argudo from Dalibo for the patch.
+	- Fix multiple double quote in name of create index definition.
+	- Apply excluded and limited table to tablespace extraction.
+	- Fix function and procedure detection/parsing on package content.
+	- Fix schema prefix in function name declaration in package export. 
+	- PLSQL: Replace some way of extracting date part of a date :
+	  TO_NUMBER(TO_CHAR(...)) rewritten into TO_CHAR(...)::integer when
+	  TO_NUMBER just have one argument.
+	- Fix Makefile.pl error when trying to modify file ora2pg now renamed
+	  into ora2pg.pl
+	- Add 3 new export types SHOW_SCHEMA, SHOW_TABLE and SHOW_COLUMN. Those
+	  new extraction keyword are use to only display the requested information
+	  and exit. This allow you to quickly know on what you are going to work.
+	  The SHOW_COLUMN allow a new ora2pg command line option: '--xtable relname'
+	  or '-x relname' to limit the displayed information to the given table.
+	- Add type replacement for BINARY_INTEGER and PLS_INTEGER as integer.
+
+UPGRADE: Please make a full upgrade asap to this release.
+
+2011 03 15 - 8.0
+
+This major release simplify and improve Oracle to PostgreSQL export. Ora2Pg v8.x
+now assume that you have a modern PostgreSQL release to take full advantage of
+the Oracle compatibility effort of the PostgreSQL development team. Ora2Pg since
+v8.x release will only be compatible with Pg >= 8.4.
+
+	- Remove addition of AS for alias as with modern PG version this can
+	  be optional (Pg >= 8.4).
+	- Fix CREATE with missing USER/ROLE for grant extraction. Thanks to
+	  Herve Girres for the report.
+	- Apply missing psql_pgsql converter to view definition.
+	- PLSQL : Normalize HAVING ... GROUP BY into GROUP BY ... HAVING clause
+	- PLSQL : Convert call to Oracle function add_months() in Pg syntax
+	- PLSQL : Convert call to Oracle function add_years() in Pg syntax
+	- Apply missing psql_pgsql converter to triggers WHEN clause.
+	- Fix DECLARE CURSOR rewrite.
+	- Allow one file per function / procedure / package exported with a new
+	  configuration option FILE_PER_FUNCTION. Useful to editing and testing.
+	  Thank to Jean-Paul Argudo from DALIBO for the feature request.
+	- The FILE_PER_TABLE configuration option is now also applied to views.
+	- Remove obsolete PG_SUPPORTS_INOUT as it is supported by with modern
+	  PG version (Pg >= 8.4).
+	- Remove obsolete PG_SUPPORTS_DEFAULT as it is supported by with modern
+	  PG version (Pg >= 8.4).
+	- Allow to adjust PostgreSQL client encoding with a new configuration
+	  directive: CLIENT_ENCODING.
+	- Add TRUNCATE_TABLE configuration directive to add TRUNCATE TABLE
+	  instruction before loading data.
+	- Add type conversion of Oracle XMLTYPE into PostgreSQL xml type.
+	- PLSQL: SYSDATE is now replaced by LOCALTIMESTAMP to not use timezone.
+	  Thanks to Jean-Paul Argudo from DALIBO for the report.
+	- Use 'CREATE OR REPLACE' on create trigger function instruction.
+	- Fix prefixing by OUTPUT_DIR when file per table/function is enabled.
+	- Use 'CREATE OR REPLACE' on create view.
+	- PLSQL_PGSQL is now enabled by default. If you want to export Oracle
+	  original function/procedure/package code, disable it.
+	- PLSQL: WHERE|AND ROWNUM = N; is automatically replaced by LIMIT N;
+	- PLSQL: Rewrite comment in CASE between WHEN and THEN that makes Pg
+	  parser unhappy.
+	- PLSQL: Replace SQLCODE by SQLSTATE
+
+UPGRADE: You must reinstall all and review your configuration file
+
+2011 02 14 - 7.3
+
+	- Remove PG_SUPPORTS_INOUT, now Ora2Pg assumes the PostgreSQL database
+	  destination support it (Pg > v8.1).
+	- Remove PG_SUPPORT_ROLES, now Ora2Pg assumes the PostgreSQL database
+	  destination support it (Pg > v8.1).
+	- Complete rewrite of the GRANT (user/role/grant) export type. It now
+	  should be only related to the current Oracle database. Note that do
+	  not try to import rights asis as you may import have errors or worse
+	  miss handling of the rights! Just remember that for example in Oracle
+	  a schema is nothing else than a user so it must not be imported like
+	  this.
+	- Fix multiple errors in partitionning definition. Thank to Reto Buchli
+	  for the report.
+	- PLSQL: reordering cursor Oracle declaration "DECLARE CURSOR name" into
+	  "DECLARE name CURSOR". Thank to Reto Buchli (WSL IT) for the report.
+	- Fix miss handling of DEFAULT parameters value in convert_function().
+	  Thanks to Leonardo Cezar for the patch.
+	- Fix Oracle tablespace export where Pg tablespace location was based on
+	  Oracle filename. This fix extract the path and replace the filename
+	  with tablespace name. Thank to Reto Buchli (WSL IT) for the report.
+	- Fix parsing of ending function code. Thanks to Leonardo Cezar for the
+	  patch. 
+	- Fix call to _convert_procedure() that is in fact the same function as
+	  _convert_function(). Thanks to Leonardo Cezar for the report.
+	- Fix multiple call on tablespace alter index on the same object. Thank
+	  to Reto Buchli (WSL IT) for the report.
+	- PSQL: Rewrite RAISE EXCEPTION concatenations. Double pipe (||) are
+	  replaced by % and value is set as parameter a la sprintf. Thank to
+	  Reto Buchli (WSL IT) for the report.
+	- Add missing comment of PARTITION export type into configutation file.
+	- Complete rewrite of the table partition export part has it was not
+	  handling all case and was really buggy. 
+	- PLSQL: add normalisation of the to_date() function.
+	- Ora2Pg now warns during grant export when it is not connected as an
+	  Oracle DBA user. GRANT export need rights of Oracle DBA or it fail.
+	- Fix install of changelog into Makefile.PL, name was wrong. Thanks to
+	  Julian Moreno Patino for the patch.
+
+
+2011 01 12 - 7.2
+
+	- Fix escaping of BLOB/RAW to bytea data import causing import to crash.
+	  Thanks to Ozmen Emre Demirkol for the report.
+	- Add support to default value into functions parameter (PG >= 8.4).
+	  Can be activated with a new configuration directive: PG_SUPPORTS_DEFAULT. 
+	  Default is 1, activated.
+	- Fix bad ending of exported function: remove trailing chars after END.
+	- Add support to WHEN clause on triggers (PG >= 9.0), can be activated
+	  with a new configuration directive: PG_SUPPORTS_WHEN.
+	- Add support to INSTEAD OF usage on triggers (incoming PG >= 9.1). Can
+	  be activated with a new configuration directive: PG_SUPPORTS_INSTEADOF.
+	- Fix error using SKIP directive. Thanks to Laurent Renard from Cap Gemini
+	  for the report.
+	- Fix missing perl object instance in format_data() function.
+	- Fix duplicate procedure or function when export type use both FUNCTION
+	  and PROCEDURE.
+
+2010 12 04 - 7.1
+
+	- Improve direct DBD::Pg data export/import speed by 10.
+	- Add --section=3 in pod2man call into Makefile.PL. Thanks to Julian
+	  Moreno Patino for the report.
+	- Renamed ChangeLog into changelog to avoid upstream warning with Debian
+	  package. Thanks to Julian Moreno Patino for the suggestion.
+	- Fix some spelling mistakes in doc/Ora2Pg.pod. Thanks to Julian Moreno
+	  Patino for the fix.
+	- Fix release version into Ora2Pg.pm and PLSQL.pm, was still in 6.5.
+	- Fix direct data export/import using DBD::Pg. Thanks to Laurent Renard
+	  from Cap Gemini for the report.
+	- Fix drop/create contraints and index during direct data export/import
+	  using DBD::Pg. Thanks to Thierry Grasland from Cap Gemini for the report.
+
+2010 11 23 - 7.0
+
+	- Rename ora2pg perl script into ora2pg.pl in sources because Windows
+	  users can't extract the tarball. During install it is renamed into
+	  ora2pg. Thanks to Andrew Marlow for the report.
+	- Fix doinst.sh for SlackWare Slackbuid packaging.
+	- The DEFER_FKEY configuration directive has been fixed as it only
+	  works in a transaction. Note that foreign keys must have been created
+	  as DEFERRABLE or it also will not works. Thanks to Igor Gelman for the
+	  report.
+	- Add DROP_FKEY configuration directive to force deletion of foreign keys
+	  before the import and recreate them and the end of the import. This may
+	  help if DEFER_FKEY not works for you.
+	- Add DROP_INDEX configuration directive to force deletion of all indexes
+	  except the automatic index (primary keys) before data import and to
+	  recreate them at end. This can be used to gain speed during import.
+	- Add TSMSYS, FLOWS_020100 and FLOWS_FILES to the owners exclude list.
+	  This concern the SRS$ table and all tables begining with 'WWV_FLOW_'
+	- Change the way DATA_LIMIT is working. It must be used now to set the
+	  bulk size of tuples return at once. Default is 10000.
+	- Improve data export speed by 6! The data export code has been entierly
+	  rewritten and the speed gain is really fun.
+	- Add OUTPUT_DIR configuration directive to set a base directory where all
+	  dumped files must be written. Default: current directory.
+	- Change value of default numeric(x) type from float to bigint and change
+	  default numeric(x,y) type to double precision.
+	- Change conversion type for BFILE from text to bytea.
+
+2010 09 10 - 6.4
+
+	- Configuration directives SHOWTABLEID, MIN and MAX are now obsolete
+	  and has been definitively removed. They were never used and add too
+	  much confusion.
+	- Fix bug in column name replacement where table name was also replaced.
+	  Thank to Jean-Paul Argudo from DALIBO for the report.
+	- Fix case sensitive errata in PG schema search path. Thank to Jean-Paul
+	  Argudo from DALIBO for the report.
+	- Remove double \n at end of debug message.
+	- Fix debug mode not activated if the DEBUG directive is enable and
+	  the -d command line is not present.
+	- Add unbuffered output for debug message.
+
+UPGRADE: simply override the Ora2Pg.pm Perl module where it is installed.
+
+
+2010 07 22 - 6.3
+
+	- Fix Oracle 8i compatibility error during schema extraction complaining
+	  that column CHAR_LENGTH doesn't exist. Thanks to Philippe Rimbault for
+	  the report. Note that the error message is still displayed but tagged
+	  as WARNING only.
+	- Fix error using the IMPORT option on a read_conf method call. Thanks
+	  to Diogo Biazus for the report.
+	- Fix export of sequences that does not handle maxvalue well and can be
+	  lower than minvalue. Thanks to Nathalie Doremieux for the report.
+
+UPGRADE: Just override Ora2Pg.pm
+
+2010 06 15 - 6.2
+
+	- Change default transaction isolation level from READ ONLY to
+	  SERIALIZABLE to ensure consistency during data export. Thanks to
+	  Hans-Jürgen Schönig from postgresql-support.de
+	- Add the TRANSACTION configuration directive to allow overriding of
+	  the isolation level. Value can be readonly, readwrite, committed and
+	  serializable. The last is the default.
+
+2010 05 07 - 6.1
+
+	- Fix error on partition export following schema definition.
+	- Add first support to export Oracle user defined types.
+	- Add CTXSYS,XDB,WMSYS,SYSMAN,SQLTXPLAIN,MDSYS,EXFSYS,ORDSYS,DMSYS,
+	  OLAPSYS to the sysuser default exclusion list.
+	- PLSQL.pm: Add automatic translation of Oracle raise_application_error
+	  and dup_val_on_index to PG RAISE EXCEPTION and UNIQUE_VIOLATION.
+	- Change/fallback to a lower case package name (ora2pg-6.x.tar.gz).
+	- Change default convert type for 'LONG RAW' to bytea.
+	- Add PG_SCHEMA configuration directive to defined a coma delimited
+	  list of schema to use in SET search_path PostgreSQL command.
+
+
+2010 02 28 - 6.0
+
+	- Publish a dedicated site to Ora2Pg at http://ora2pg.darold.net/
+	- Add export of Oracle table partitoning. See export type PARTITION.
+	- Add command line arguments to perl script ora2pg. See --help for a
+	  full listing of these option. The most interesting is --type to change
+	  the export type directly at command execution without needing to edit
+	  the configuration file, --plsql to directly enable PLSQL to PLPSQL
+	  code conversion and --source, --user --password to set Oracle data
+	  source. There's also --namespace to set the Oracle schema.
+	- Create all file for standard Perl module install. Install is now done
+	  with: perl Makefile.PL && make && make install
+	- Move Ora2Pg license from Perl Artistics to GPLv3.
+	- Move PLSQL package as Ora2Pg::PLSQL for standard Perl module install.
+	- Remove use of Perl module String::Random.
+	- Rename program ora2pg.pl into ora2pg for standard usage.
+	- Fix extra double quote on column name of index export. Thanks to
+	  Guillaume Lelarge for the patch.
+	- Add packaging facilities to build RPM, SlackBuild and Debian packages.
+	- Fix miss handling of Ora2Pg.pm options at object instance init.
+	- Configuration file ora2pg.conf is now generated by Makefile.PL
+
+2009 12 18 - 5.5
+
+	- Fix CONSTANT declaration in Procedure/Function/Package export.
+	- Fix length of char and varchar on multibyte like UTF8 encoding. Thanks
+	to Ali Pouya for the patch.
+	- Fix view export where alias to column in Oracle not use 'AS' and
+	PostgreSQL required it. Thanks to Ali Pouya for the report.
+	- Add type replacement of sql variable in PLSQL code (PLSQL.pm). Thanks
+	to vijay for the patch.
+
+2009 07 15 - 5.4
+
+	- Fix bug introduced in multiple output file feature. This bug force
+	Ora2pg to crach after the first table export when output is wanted in
+	a single file. Thanks to Leo Mannhart for the report.
+	- Fix debug filename output on multiple export file. Thanks to Leo
+	Mannhart for the report.
+
+2009 07 07 - version 5.3
+
+	- Fix wrong escaping of data named as column during view export. Thank
+	to Andrea Agosti for the patch.
+	- Allow export of datas into one file per table. See FILE_PER_TABLE
+	configuration directive. Thanks to Alexandre - Aldeia Digital for the
+	idea.
+
+2009 06 19 - version 5.2
+
+	- Fix order of the column name of the view which was not preserved. Now
+	ordered by COLUMN_ID. Thank to Andrea Agosti for the report.
+	- Fix case sensitivity in VIEW extraction. Thank to Andrea Agosti for
+	the patch.
+
+2009 03 06 - version 5.1
+
+	- Fix missing -U username at Pg connection. Thanks to Brendan Richards.
+	- Fix $ENV{ORACLE_HOME} and $ENV{NLS_LANG} to not being overwritten
+	by configuration settings if they are already defined in environment.
+	- Fix typo in ora2pg.pl where keep_pkey_names was replaced by
+	keep_pkeys_name and so prevent use of KEEP_PKEY_NAMES in configuration.
+	Thanks to Olivier Mazain for the report.
+	- Configuration file directives are now case insensitive.
+	- Force $type parameter given to _sql_type() to be uppercase in that
+	methode instead of during function call. Thanks to Ali Pouya for the
+	report.
+	- Modify ora2pg.pl to remove the obsolete call to export_data(). Use
+	only export_schema() now.
+	- Modify ora2pg.pl to simplify it. Reading configuration is now done
+	internally by Ora2Pg.pm as well as all other initialization process.
+	You can always overwrite all configuration options into call to new
+	Ora2Pg(). Now ora2pg.pl can be as simple as:
+
+		use Ora2Pg;
+		my $schema = new Ora2Pg('config' => "/etc/ora2pg.conf");
+		$schema->export_schema();
+		exit(0);
+
+	This will be less confusing. You can upgrade Ora2Pg.pm without carring
+	about that, backward compatibility with previous version is preserved.
+	- Review entire documentation with the great help of Ali Pouya.
+	- Add type BOOLEAN converted to boolean.
+	- PG_SUPPORTS_INOUT is now enabled by default in the configuration file
+	- SQL and PL/SQL to PLPGSQL converter:
+	    .Replace MINUS call to EXCEPT
+	    .Replace DBMS_OUTPUT.put, DBMS_OUTPUT.put_line, DBMS_OUTPUT.new_line
+	     by the PLPGSQL equivalent: RAISE NOTICE
+	    .Rewrite function/procedure/package convertion functions.
+	This Oracle SQL converter for function/procedure/package is now only
+	applied if the configuration directive PLSQL_PGSQL is enable, else
+	these Oracle code are exported as is. Thanks to Ali Pouya for the help.
+
+	- Reserved call to sql transaction only for DATA export type. Others
+	export type now use \set ON_ERROR_STOP ON. Thanks to Ali Pouya.
+	- Fix tablespace creation into schema (missing search_path). Thanks to
+	Olivier Mazain.
+	- Fix the type returned by the _sql_type() method in the case of a
+	numeric with null len and pg_numeric_type is set. Thanks to Ali Pouya.
+	- Change function body delimiter to $body$ to allow use of $$ into the
+	body as quote replacement. Thanks to Ali Pouya.
+	- Fix returns type from function. If multiple OUT parameters: RECORD,
+	if only one OUT parameter, return his type. If no out parameter: return
+	VOID. Thanks to Ali Pouya.
+	- Fix export DATA when the name of a column in the table match COMMENT,
+	AUDIT or any other defined reserved words. These reserved words are
+	defined in a new configuration variable ORA_RESERVED_WORDS. It accept
+	a list of comma separated reserved words. Thanks to Andrea Agosti for
+	the report.
+	- Fix configuration parser that omit custom SYSUSERS definition.
+
+2009 02 13 - version 5.0
+
+	- Fix places where $self->{prefix} where not used. This prefix is
+	used to replace DBA_... objects into ALL_... objects. Thanks to Daniel
+	Scott report and patch.
+	- Fix some problem on trigger export (missing ending semicolon, return
+	opaque replaced by return trigger, add missing return new value, single
+	quote for delimitating the function body hits against quotes inside the
+	function). Thanks to Luca DallOlio for reports and patches.
+	- Add first attempt to rewrite plsql code to plpgsql code (see function
+	plsql_to_plpgsql in new perl module PLSQL.pm). There's a configuration
+	option named PLSQL_PGSQL to activate the convertion.
+
+2008 12 16 - version 4.11
+
+	- Fix Ora2Pg failure on Oracle database with case sensitive tables.
+	Thanks to Marc Cousin for report and patch.
+	- Fix missing schema name in query when extract views as tables.
+
+2008 12 04 - version 4.10
+
+	- Fix missing replacement of table name on disable triggers when
+	  required.
+	- Fix some malformed debug output messages.
+	- Add the capability to extract data from view as if it was a table.
+	  This is usefull if you want to export/import data from an Oracle
+	  view into a Pg table. There's nothing special to do, just to give
+	  the view name into the TABLES configuration directive and set TYPE
+	  to DATA or COPY. If views are not specified in the TABLES directive
+	  there's not view export but only table data.
+	- Add capability to extract views structure as table schema. There's
+	  nothing special to do, just to give the view name into the TABLES
+	  configuration directive and set TYPE to TABLE. This will not extract
+	  constraints or other table tuning from table used in the view. Thanks
+	  to Groupe SAMSE for the feature request.
+
+2008 10 27 - version 4.9
+
+	- Modify the DISABLE_TABLE_TRIGGERS configuration option. Should be now
+	  replaced by DISABLE_TRIGGERS, but compatibility is preserved.
+	- Add DISABLE_SEQUENCE configuration option to not export alter
+	  sequence after COPY or DATA export.
+	- Fix extraction of function based index that appears as SYS_NC....
+	  Thanks to Bozkurt Erkut from SONY for the report
+
+2008 09 04 - version 4.8
+
+	- Add SYSUSERS configuration option that allow you to specify a coma
+	  separated list of Oracle System user/schema to exclude from extracted
+	  object. By default it only exclude user SYS,SYSTEM,DBSNMP,OUTLN and 
+	  PERFSTAT
+	- Add support to other binary mode output than ':raw' to avoid the Perl
+	  error message:"Wide character in print". See the BINMODE configuration
+	  directive. This will help a lot if you have UTF-8 records.
+	  Thank to Guillaume Demillecamps for the report.
+	- Fix double escaping of special character.
+	  Thank to Guillaume Demillecamps for the report.
+
+2008 01 25 - version 4.7
+
+	- Add support to regular expressions in the exclusion list. Thanks to
+	  Peter Eisentraut
+	- Fix misformatted SQL string in function _extract_sequence_info.
+	  Thanks to Bernd Helmle.
+	- Add escaping of backslash on COPY output. Thanks to Peter Eisentraut
+
+2008 01 03 - version 4.6
+
+	- Applied a patch to add ALTER SEQUENCE statements to the dump to
+	  adjust the sequence to the correct values after DATA and COPY dumps.
+	  Thanks to Bernd Helmle.
+	- Applied a patch which fixes problems with broken COPY output when
+	  extracting data from Orace databases with embedded tabs, carriage
+	  returns and line feeds. Thanks to Bernd Helmle.
+	- Move the project to PgFoundry
+
+2007 06 20 - version 4.5
+
+	- Fix columns order in index extraction. Thanks to Ugo Brunel from BULL.
+
+2007 04 30 - version 4.4
+
+	- Fix missing single quote in role extraction.
+	- Add configuration directive NOESCAPE to enable/disable
+	  escaping characters during data extraction. Default is enabled.
+	- Add TIMESTAMP, BINARY_FLOAT and BINARY_DOUBLE data type translation.
+	- Add DATA_TYPE configuration directive to allow user defined data type
+	  translation.
+	- Add NLS_LANG configuration directive to set Oracle database encoding
+	  and enforce a default language-setting in ora2pg.pl. Thanks to Lars
+	  Weber
+
+2007 04 03 - version 4.3
+
+	- Fix duplicate view export. Add schema selector to views. Thank to
+	  Ugo BRUNEL from BULL for the fix.
+	- Remove 'use strict' to prevent failure on certain condition.
+	  Thank to Andrea Schnabl for the report.
+
+2006 06 08 - version 4.2
+
+	- Fix a miss taping on constraint type search that convert unique key
+	  to primary key. Thank to Ugo BRUNEL (BULL) for the patch.
+	- Fix case sensitivity on CHECK constraint that could cause problem when
+	  check value is uppercase. Thank to Ugo BRUNEL (BULL) for the patch.
+
+2006 03 28 - version 4.1
+
+	- Fix a problem when using data_limit and where clause. Thank to
+	  Rene Bentzen for the patch.
+	- Add enable/disable trigger on data import. Thank to Bernd Helmle.
+	- Fix escaping of chr(13) MS crashing data import into PG. Thank
+	  to Ugo Brunel (BULL).
+
+2006 03 22 - version 4.0
+
+	- Add validation of the requested schema in the database before all.
+	  Thanks to Max Walton for the idea.
+	- Add multiple export type at the same time. Thanks to Max Walton
+	  for the idea.
+	- Add support for in/out/inout function parameter. See PG_SUPPORTS_INOUT
+	  configuration option. Thanks to Bernd Helmle for this great
+	  contribution/patch.
+	- Add support for ROLES with Pg v8.1+. See PG_SUPPORTS_ROLE configure
+	  option.
+
+2006 02 10 - version 3.4
+
+	This release add better support to Oracle grant, function and grant
+	extraction. Great thanks to the Pg team!
+
+	- Add preservation of oracle primary key names. See KEEP_PKEY_NAMES
+	  configuration option. Thanks to Antonios Christofides for this patch.
+	- Fix bug in case insensitive check constrainte. Thanks to Wojciech
+	  Szenajch for the patch.
+	- Fix saving data to files correctly (binmod) when the oracle database
+	  contains utf8 chars. Thanks to Richard Chen for the report.
+	- Fix bug on view extraction when a column contains the word WITH.
+	  Thanks to Richard Chen for the patch.
+	- Fix wrong mapping between tge data type in Oracle "number(10)" and
+	  Postgresql, which should be "integer" and not "bigint". Thanks to
+	  Sergio Freire for the patch.
+	- Fix bug in EXCLUDE configuration directive parsing. Thanks to Matt
+	  Miller for the patch.
+
+2005 02 22 - version 3.3
+
+	- Fix bug "Modification of a read-only value attempted"
+
+2005 02 11 - version 3.2
+
+	- Fix patch error on column position sort
+	- Replace 'now' by CURRENT_TIMESTAMP on SYSDATE replacement
+	- Fix bytea type that was not quoted.
+
+2005 02 10 - version 3.1
+
+	- Fix bug on deferrable constraint. Thanks to Antonios Christofide for
+	  the patch.
+	- Fix problem on defer_fkey that should be in a transaction. Thanks to
+	  Antonios Christofide for the patch.
+	- Add sort by column position during schema extraction.
+	- Add support to SYSDATE. Thanks to David Cotter-Alatto Technologies Ltd
+
+2004 12 24 - version 3.0
+
+	- Add 'TABLESPACE' extraction type to create PostgreSQL v8 tablespace.
+
+2004 12 24 - version 2.9
+
+	- Debuging output rewrite. Thanks to Antonios Christofide for help.
+	- Add 'PG_NUMERIC_TYPE' configuration option to replace portable
+	  numeric type into PostgreSQL internal type (smallint, integer,
+	  bigint, real and float).
+
+2004 12 24 - version 2.8
+
+	- Fix/add support to data export of type BLOB, RAW and LONG RAW.
+	  Thanks to Antonios Christofide for help.
+
+2004 12 23 - version 2.7
+
+	- Add 'FKEY_DEFERRABLE' configuration option to force foreign key
+	  constraints to be exported as deferrable. Thanks to Antonios
+	  Christofide for help.
+	- Add 'DEFER_FKEY' configuration option to defer all foreign key
+	  constraints during data export. Thanks to Antonios Christofide
+	  for help.
+
+2004 12 23 - version 2.6
+
+	- Fix duplicate output during export. Thanks to Adriano Bonat for the
+	  report.
+	- Fix data limit infinite loop during data extraction. Thanks to Thomas
+	  REISS for the report.
+	- Add 'GEN_USER_PWD' configuration option allowing to generate a random
+	  password.  Thanks to Antonios Christofide for help.
+	  (Require String::Random from CPAN).
+	- Fix USER/ROLES/GRANT extraction problem. Now all users are dumped.
+	  All roles are translated to PostgreSQL groups. All grants are
+	  exported. YOU MUST EDIT the output file to rewrite real privilege
+	  and match your needs. Thanks to Antonios Christofide for help.
+	- Fix split COPY export into multiple transaction for large data export.
+	  The number of row per transaction is set to 'DATA_LIMIT' value. A
+	  value of O mean all in a single transaction.
+
+2004 10 13 - version 2.5
+
+	- Fix extraction problem when the connection to Oracle DB is not as DBA.
+
+2004 08 22 - version 2.4
+
+	- Fix bug in DBI errstr call.
+	- Add CASE_SENSITIVE configuration option to allow case sensitivity on
+	  Add a new configuration directive 'USER_GRANTS' to do that. Thanks to
+	  Octavi Fors for the report.
+	  object name. Thanks to Thomas Wegner.
+	- Fix major bug in unique keys extraction. Thanks to Andreas Haumer and
+	  Marco Lombardo for their great help.
+	- Add CHECK constraint extration. Thanks again to Andreas Haumer.
+	- Add IMPORT configuration option to include common configuration file
+	  throught multiple configuration files.Thanks to Adam Sah and Zedo Inc.
+	- Add SKIP configuration option to turning off extraction of certain
+	- schema features. Thanks to Adam Sah and Zedo Inc.
+	- Fix bug in excluded tables
+	- Fix backslash escaping. Thanks to Adam Sah and Zedo Inc.
+	- Add REPLACE_TABLES configuration option to change table name during
+	  data extraction.
+	- Add REPLACE_COLS configuration option to change columns name during
+	  data extraction.
+	- Add WHERE configuration option to add where clause to each table or
+	  specific tables during extraction. Usefull for replication. Thanks
+	  to Adam Sah and Zedo Inc.
+	- Add progress indicators (per 1000 rows) and performance results
+	  during data extraction in debug mod. Thanks to Adam Sah and Zedo Inc.
+	- Add Gzip and Bzip2 compress to output file if extension .gz or .bz2.
+	  Gzip compress require perl module Compress::Zlib from CPAN. Thanks
+	  to Adam Sah for the idea.
+
+2004 04 13 - Version 2.3
+
+	- Fix bug in date/time conversion when using data export limit. Thanks
+	  to Andreas Haumer.
+	- Add sort order when extracting tables and data to respect the TABLES
+	  limited extraction array write order. Usefull if you have foreign key
+	  constraints. Thanks to Andreas Haumer for the idea.
+
+2004 04 13 - Version 2.2
+
+	- Add EXCLUDE configuration option to allow table exclusion
+	  from all extraction.
+	- Fix a bug in escaping single quote on data export.
+
+2004 03 09 - Version 2.1
+
+	- Fix COPY output by replacing special character.
+	- Add configuration file usefull for people who don't have Perl in mind
+	  Thank's to Tanya Krasnokutsky to force me to do that :-)
+	- Fix other minor problem.
+
+2002 12 26 - Version 2.0
+
+	- Clean code.
+	- Fix COPY output on column value with EOL and add column naming.
+	- Add support to the PostgreSQL 7.3 schema. So Oracle schema can now be
+	  exported. (see export_schema init option)
+	- Remove data extraction limit (old default: 10) so each tuple will be
+	  dump by default.
+
+2002 12 03 - Version 1.12
+
+	I have fixed 2 bugs when using it against Oracle 817R3 on linux.
+
+	- Fix problem regarding RI constraints, the owner name was not
+	  getting into the sql statement. Thank to Ian Boston.
+	- Moved all the RI constraints out of the create table statement.
+	  Thank to Ian Boston for this contribution. This was a major request
+	  from Ora2pg users.
+
+2002 09 27 - Version 1.11
+
+	- Fix a problem when retrieving package+package body. Thanks to Mike
+	  WILHELM-HILTZ.
+	- Set LongReadLen to 100000 when exporting table information. Many
+	  users reports this kind of error: A-01406 LongReadLen too small and/or
+	  LongTruncOk not set. This should fix the problem else you must
+	  increase the value.
+	- Filtering by owner for better performance when retreiving database
+	  schema. Thanks to Jefferson MEDEIROS.
+
+2002 07 29 - Version 1.10
+
+	- Fix a problem with local settings regarding decimal separator (all ,
+	  are changed to .) Thank to Jan Kester.
+
+2002 06 04 - Version 1.9
+
+	- Fix a problem on exporting data which fill NULL instead of 0 or
+	  empty string. Thanks to Jan Kester.
+	- Add time + date when export data [ tochar('YYYY-MM-DD HH24:MI:SS') ].
+	  Thanks to Paolo Mattioli.
+
+2002 03 05 - Version 1.8
+
+	- Add Oracle type FLOAT conversion to float8.
+	- Add column alias extraction on view.
+	  Thanks to Jean-Francois RIPOUTEAU
+	- Add PACKAGE extraction (type => DATA).
+
+2002 02 14 - Version 1.7
+
+	- Remove export of OUTLINE object type. Thanks to Jean-Paul ARGUDO.
+
+2002 01 07 - Version 1.6
+
+	- Fix problem exporting NULL value. Thanks to Stephane Schildknecht.
+
+2001 12 28 - Version 1.5
+
+	- Fix LongReadLen problem when exporting Oracle data on LONG and LOB
+	  types. Thanks to Stephane Schildknecht for report and test.
+	- Add more precision on NUMBER type conversion
+	- Add conversion of type LONG, LOB, FILE
+	- Fix a problem when extracting data, sometime table could need to be
+	  prefixed by the schema name.
+	- Fix output of Oracle data extraction. It now require a call to
+	  function export_data().
+
+2001 06 27 - Version 1.4
+
+	- Add online Oracle data extraction and insertion into PG database.
+	- Data export as insert statement (type => DATA)
+	- Data export as copy from stdin statement (type => COPY)
+
+2001 06 20 - Version 1.3
+
+	- Grant/privilege extraction are now done separatly with option
+	  type=>'GRANT'
+	- Sequence extraction with the option type=>'SEQUENCE'
+	- Trigger extraction with the option type=>'TRIGGER'
+	- Function extraction with the option type=>'FUNCTION' and
+	  type=>'PROCEDURE'
+	- Complete rewrite of the foreign key extraction
+	- Fix incorrect type translation and many other bug fix
+	- Add schema only extraction by option schema => 'MYSCHEM'
+
+2001 05 11 - Version 1.2
+
+	- Views extraction is now really done with the option type=>'VIEW'
+	- Add indexes extraction on tables.
+	- Changes name of constraints, default is now used.
+	- Add debug printing to see that the process is running :-)
+	- Add extraction of only required tablename.
+	- Add extraction of only n to n table indice. Indices of extraction
+	  can be obtained with the option showtableid set to 1.
+	- Fix print of NOT NULL field.
+	- Complete rewrite of the grant extraction
+	- Complete rewrite of most things
+
+2001 05 09 - Version 1.1
+
+	- Add table grant extraction based on group.
+	  Oracle ROLES are exported as groups in PG
+
+2001 05 09 - Initial version 1.0
+
+------------------------------------------------------------------------------
+
+Special thanks to Ali Pouya for documentation review. All my recognition
+to Ali Pouya and Olivier Mazain for their great work in the package and
+function export. Thanks to Jean-Paul Argudo for the time spent to heavily
+testing Ora2Pg.
+
+Special thanks to Josian Larcheveque and Stephane Silly as Oracle DBA
+and their "patience".
+
+Many thanks for all congratulation message, idea and bug report+fix I received.
+
+Very special thanks to Jean-Paul Argudo that represent Ora2Pg at Linux Solution Paris 2005.
+
+Gilles DAROLD <gilles (at) darold (dot) net>
+

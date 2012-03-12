@@ -1,0 +1,157 @@
+#!/bin/sh
+# Written by Gilles Darold < gilles at darold dot net >
+# Licence: GPL v3
+#
+# Build script for Slackware - Ora2Pg SlackBuild
+#
+# Latest Software sourcecode is available at:
+# http://ora2pg.darold.net/
+#
+# Depends: d/perl
+# Suggests:
+
+## Fill these variables to your needs ##
+NAMESRC=${NAMESRC:-ora2pg}
+VERSION=${VERSION:-8.10}
+EXT=${EXT:-tar.bz2}
+NAMEPKG=${NAMEPKG:-ora2pg}
+PKGEXT=${PKGEXT:-tgz/txz}
+BUILD=${BUILD:-1}
+TAG=${TAG:-_gda}
+PNAME=${PNAME:-ora2pg}
+
+TMP=${TMP:-/tmp}
+OUT=${OUT:-$TMP/build}
+ARCH=${ARCH:-i486}
+TARGET=${TARGET:-i486}
+WGET=${WGET:-http://downloads.sourceforge.net/ora2pg/$NAMESRC-$VERSION.$EXT}
+DOC="Change* INSTALL README"
+SUM=""
+########################################
+
+set -e
+umask 022
+
+if [ ! -r $NAMESRC-$VERSION.$EXT ]; then
+  wget -vc $WGET -O $NAMESRC-$VERSION.$EXT.part
+  mv $NAMESRC-$VERSION.$EXT.part $NAMESRC-$VERSION.$EXT
+fi
+
+# if checksum is include in the script : generate and check
+if [ -n "$SUM" ]; then
+echo "$SUM  $NAMESRC-$VERSION.$EXT" > $NAMESRC-$VERSION.$EXT.sha1
+sha1sum -c $NAMESRC-$VERSION.$EXT.sha1
+elif [ -f $NAMESRC-$VERSION.$EXT.sha1 ]; then
+sha1sum -c $NAMESRC-$VERSION.$EXT.sha1
+fi
+
+# or just check if the .sha1 is another file
+
+CWD=$(pwd)
+PKG=$TMP/build/$NAMEPKG
+NAME=$(tar ft $NAMESRC-$VERSION.$EXT | head -n 1 | awk -F/ '{ print $1 }')
+
+case $ARCH in
+	        i386)SLKCFLAGS="-O2 -march=i386 -mtune=i686";LIBDIRSUFFIX="";;
+	        i486)SLKCFLAGS="-O2 -march=i486 -mtune=i686";LIBDIRSUFFIX="";;
+	        i586)SLKCFLAGS="-O2 -march=i586 -mtune=i686";LIBDIRSUFFIX="";;
+	        i686)SLKCFLAGS="-O2 -march=i686 -mtune=i686";LIBDIRSUFFIX="";;
+	        s390)SLKCFLAGS="-O2";LIBDIRSUFFIX="";;
+	        x86_64)SLKCFLAGS="-O2 -fPIC";LIBDIRSUFFIX="64"
+	esac
+
+if [ "$(id -u)" = "0" ]; then
+  echo "You shouldn't run this SlackBuild as ROOT !"
+  exit 1
+fi
+
+if [ ! -d $TMP ]; then
+  echo "$TMP doesn't exist or is not a directory !"
+  exit 1
+fi
+
+# Build the software
+cd $TMP
+
+echo "Building $NAMESRC-$VERSION.$EXT..."
+tar xf $CWD/$NAMESRC-$VERSION.$EXT
+cd $NAME
+perl Makefile.PL \
+  INSTALLDIRS=vendor \
+  QUIET=1 \
+  BINDIR=/usr/bin \
+  CONFDIR=/etc/$PNAME \
+  MANDIR=/usr/man/man3 \
+  DOCDIR=/usr/share/doc/$PNAME \
+  DESTDIR=$PKG || exit 1
+
+make
+make install DESTDIR=$PKG 
+# Please note that some software use INSTALL_ROOT=$PKG or prefix=$PKG/usr or install_root=$PKG ...
+
+# Install a slack-desc
+mkdir -p $PKG/install
+cat $CWD/slack-desc > $PKG/install/slack-desc
+
+# Install a doinst.sh, if it exists
+if [ -r $CWD/doinst.sh ]; then
+  cat $CWD/doinst.sh > $PKG/install/doinst.sh
+fi
+
+mkdir -p $PKG/usr/doc/$PNAME-$VERSION
+cp -a $DOC $PKG/usr/doc/$PNAME-$VERSION
+
+# Compress the man pages
+if [ -d $PKG/usr/man ]; then
+	find $PKG/usr/man -type f -name "*.?" -exec gzip -9 {} \;
+	for manpage in $(find $PKG/usr/man -type l) ; do
+		ln -s $(readlink $manpage).gz $manpage.gz
+		rm -f $manpage
+	done
+fi
+if [ -d $PKG/usr/share/man ]; then
+	find $PKG/usr/share/man -type f -name "*.?" -exec gzip -9 {} \;
+	for manpage in $(find $PKG/usr/share/man -type l) ; do
+		ln -s $(readlink $manpage).gz $manpage.gz
+		rm -f $manpage
+	done
+fi
+
+# Compress the info pages
+if [ -d $PKG/usr/info ]; then
+	rm -f $PKG/usr/info/dir
+	gzip -9 $PKG/usr/info/*.info*
+fi
+
+# Remove 'special' files
+find $PKG -name perllocal.pod \
+-o -name ".packlist" \
+-o -name "*.bs" \
+| xargs rm -f
+# Remove empty directory
+rmdir --parents $PKG/usr/lib/perl5/5.*/i486-linux-thread-multi 2>/dev/null || true
+rmdir --parents $PKG/usr/lib/perl5/vendor_perl/5.*/i486-linux-thread-multi/auto/Ora2Pg 2>/dev/null || true
+
+# Strip binaries, libraries and archives
+find $PKG -type f | xargs file | grep "LSB executable" | cut -f 1 -d : | xargs \
+  strip --strip-unneeded 2> /dev/null || echo "No binaries to strip"
+find $PKG -type f | xargs file | grep "shared object" | cut -f 1 -d : | xargs \
+  strip --strip-unneeded 2> /dev/null || echo "No shared objects to strip"
+find $PKG -type f | xargs file | grep "current ar archive" | cut -f 1 -d : | \
+  xargs strip -g 2> /dev/null || echo "No archives to strip"
+
+# Build the package
+cd $PKG
+mkdir -p $OUT
+PACKAGING="
+chown root:root . -R
+/sbin/makepkg -l y -c n $OUT/$NAMEPKG-$VERSION-$ARCH-$BUILD$TAG.tgz
+rm -rf $PKG
+rm -rf $TMP/$NAME
+"
+if [ "$(which fakeroot 2> /dev/null)" ]; then
+  echo "$PACKAGING" | fakeroot
+else
+  su -c "$PACKAGING"
+fi
+

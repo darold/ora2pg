@@ -1,0 +1,11 @@
+changelog
+INSTALL
+README
+LICENSE
+MANIFEST
+Makefile.PL
+Ora2Pg.pm
+Ora2Pg/PLSQL.pm
+ora2pg_pl
+doc/Ora2Pg.pod
+doc/ora2pg.3
