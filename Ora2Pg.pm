@@ -4131,7 +4131,6 @@ sub format_data_row
 			if ($row->[$idx] eq '') {
 				$row->[$idx] = 'NULL';
 			} elsif ($data_type eq 'bytea') {
-				$row->[$idx] =~ s/\0//gs;
 				$row->[$idx] = escape_bytea($row->[$idx]);
 				if (!$self->{standard_conforming_strings}) {
 					$row->[$idx] = "'$row->[$idx]'";
@@ -4165,7 +4164,6 @@ sub format_data_row
 				$row->[$idx] =~ s/,/\./;
 				$row->[$idx] =~ s/\~/inf/;
 			} elsif ($data_type eq 'bytea') {
-				$row->[$idx] =~ s/\0//gs;
 				$row->[$idx] = escape_bytea($row->[$idx]);
 			} elsif ($data_type !~ /(date|time)/) {
 				$row->[$idx] =~ s/\0//gs;
