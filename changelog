@@ -1,3 +1,13 @@
+2012 04 30 - 8.11
+
+	- Fix an error when running ora2pg directly against PG, index and
+	  constraints are created against PG instead of being written to
+	  the output file. Thanks to David Greco for the report.
+	- Ora2Pg will now output a warning message when direct import to PG
+	  is set with other import type than COPY and DATA.
+	- Fix NUL character removing on LOB to bytea export. Thanks to info31
+	  on PostgresqlFr for the report.
+
 2012 03 11 - 8.10
 
 	- Add two configuration directives to control the BLOB export.
