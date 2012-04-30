@@ -1568,10 +1568,8 @@ sub _get_sql_data
 			my $cycle = '';
 			$cycle = ' CYCLE' if ($seq->[6] eq 'Y');
 			if (!$self->{case_sensitive}) {
-				#$sql_output .= "DROP SEQUENCE IF EXIST \"\L$seq->[0]\E\" CASCADE;\n";
 				$sql_output .= "CREATE SEQUENCE \"\L$seq->[0]\E\" INCREMENT $seq->[3]";
 			} else {
-				#$sql_output .= "DROP SEQUENCE IF EXIST \"$seq->[0]\" CASCADE;\n";
 				$sql_output .= "CREATE SEQUENCE \"$seq->[0]\" INCREMENT $seq->[3]";
 			}
 			if ($seq->[1] <= (-2**63-1)) {
@@ -3057,7 +3055,7 @@ sub _extract_sequence_info
 	while (my $seq_info = $sth->fetchrow_hashref) {
 		my $nextvalue = $seq_info->{LAST_NUMBER} + $seq_info->{INCREMENT_BY};
 		my $alter ="ALTER SEQUENCE $seq_info->{SEQUENCE_NAME} RESTART WITH $nextvalue;";
-		$script .="$alter\n";
+		$script .= "$alter\n";
 		$self->logit("Extracted sequence information for sequence \"$seq_info->{SEQUENCE_NAME}\"\n", 1);
 
 	}
