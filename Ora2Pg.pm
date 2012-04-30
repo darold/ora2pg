@@ -900,7 +900,13 @@ sub _init
 		$self->{plsql_pgsql} = 1;
 		if (grep(/^$self->{type}$/, 'FUNCTION','PROCEDURE','PACKAGE')) {
 			$self->export_schema();
-			$self->_send_to_pgdb() if ($self->{pg_dsn} && !$self->{dbhdest});
+			if ( ($self->{type} eq 'DATA') || ($self->{type} eq 'COPY') ) {
+				$self->_send_to_pgdb() if ($self->{pg_dsn} && !$self->{dbhdest});
+			} else {
+				$self->logit("WARNING: can't use direct import into PostgreSQL with this type of export.\n");
+				$self->logit("Only DATA or COPY export type can be use with direct import, file output will be used.\n");
+				sleep(2);
+			}
 		} else {
 			$self->logit("FATAL: bad export type using input file option\n", 0, 1);
 		}
@@ -961,7 +967,13 @@ sub _init
 	# Disconnect from the database
 	$self->{dbh}->disconnect() if ($self->{dbh});
 
-	$self->_send_to_pgdb() if ($self->{pg_dsn} && !$self->{dbhdest});
+	if ( ($self->{type} eq 'DATA') || ($self->{type} eq 'COPY') ) {
+		$self->_send_to_pgdb() if ($self->{pg_dsn} && !$self->{dbhdest});
+	} else {
+		$self->logit("WARNING: can't use direct import into PostgreSQL with this type of export.\n");
+		$self->logit("Only DATA or COPY export type can be use with direct import, file output will be used.\n");
+		sleep(2);
+	}
 }
 
 
@@ -2436,31 +2448,45 @@ sub _get_sql_data
 					$self->dump("COMMIT;\n");
 				}
 			} elsif ($self->{drop_fkey}) {
-				my $create_all = '';
+				my @create_all = ();
 				# Recreate all foreign keys of the concerned tables
 				foreach my $table (sort { $self->{tables}{$a}{internal_id} <=> $self->{tables}{$b}{internal_id} } keys %{$self->{tables}}) {
 					$self->logit("Restoring table $table foreign keys...\n", 1);
-					$create_all .= $self->_create_foreign_keys($table, @{$self->{tables}{$table}{foreign_key}});
+					push(@create_all, $self->_create_foreign_keys($table, @{$self->{tables}{$table}{foreign_key}}));
 				}
-				if (!$self->{dbhdest}) {
-					$self->dump($create_all);
-				} else {
-					print DBH $create_all;
+				foreach my $str (@create_all) {
+					if ($self->{dbhdest}) {
+						if ($self->{type} ne 'COPY') {
+							my $s = $self->{dbhdest}->do($str) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
+						} else {
+							print DBH "$str\n";
+						}
+					} else {
+						$self->dump("$str\n");
+					}
 				}
-				$create_all = '';
 			}
 		}
 		if ($self->{drop_indexes}) {
-			my $create_all = '';
+			my @create_all = ();
 			# Recreate all indexes
 			foreach my $table (sort { $self->{tables}{$a}{internal_id} <=> $self->{tables}{$b}{internal_id} } keys %{$self->{tables}}) {
 				$self->logit("Restoring table $table indexes...\n", 1);
-				$create_all .= $self->_create_indexes($table, %{$self->{tables}{$table}{indexes}});
+				push(@create_all, $self->_create_indexes($table, %{$self->{tables}{$table}{indexes}}));
 			}
-			if ($create_all) {
-				$self->dump($create_all);
+			if ($#create_all >= 0) {
+				if ($self->{dbhdest}) {
+					foreach my $str (@create_all) {
+						if ($self->{type} ne 'COPY') {
+							my $s = $self->{dbhdest}->do($str) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
+						} else {
+							print DBH "$str\n";
+						}
+					}
+				} else {
+					$self->dump(join("\n", @create_all, "\n"));
+				}
 			}
-			$create_all = '';
 		}
 		# Disconnect from the database
 		$self->{dbh}->disconnect() if ($self->{dbh});
@@ -2664,6 +2690,7 @@ CREATE TRIGGER insert_${table}_trigger
 		}
 		if (!$self->{file_per_index} || $self->{dbhdest}) {
 			$sql_output .= $indices;
+			$sql_output .= "\n" if ($indices);
 			$indices = '';
 		}
 
@@ -2768,7 +2795,7 @@ sub _create_indexes
 	if (exists $self->{replaced_tables}{"\L$table\E"} && $self->{replaced_tables}{"\L$table\E"}) {
 		$table = $self->{replaced_tables}{"\L$table\E"};
 	}
-	my $out = '';
+	my @out = ();
 	# Set the index definition
 	foreach my $idx (keys %indexes) {
 		map { if ($_ !~ /\(.*\)/) { s/^/"/; s/$/"/; } } @{$indexes{$idx}};
@@ -2787,18 +2814,10 @@ sub _create_indexes
 		} else {
 			$str .= "CREATE$unique INDEX $idx ON \"$table\" ($columns);";
 		}
-		if ($self->{dbhdest}) {
-			if ($self->{type} ne 'COPY') {
-				my $s = $self->{dbhdest}->do($str) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
-			} else {
-				print DBH "$str\n";
-			}
-		} else {
-			$out .= $str . "\n";
-		}
+		push(@out, $str);
 	}
 
-	return $out;
+	return wantarray ? @out : join("\n", @out);
 }
 
 =head2 _drop_indexes
@@ -2923,7 +2942,7 @@ sub _create_foreign_keys
 {
 	my ($self, $table, @foreign_key) = @_;
 
-	my $out = '';
+	my @out = ();
 
 	# Add constraint definition
 	my @done = ();
@@ -2965,19 +2984,12 @@ sub _create_foreign_keys
 			$str .= " ON DELETE $h->[3]";
 			$str .= " $h->[4]";
 			$str .= " INITIALLY $h->[5];\n";
-			if ($self->{dbhdest}) {
-				if ($self->{type} ne 'COPY') {
-					my $s = $self->{dbhdest}->do($str) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
-				} else {
-					print DBH "$str\n";
-				}
-			} else {
-				$out .= $str . "\n";
-			}
+			push(@out, $str);
 		}
 	}
 
-	return $out;
+	return wantarray ? @out : join("\n", @out);
+
 }
 
 =head2 _drop_foreign_keys
