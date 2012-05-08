@@ -3101,7 +3101,7 @@ sub _get_data
 		if ( $type->[$k] =~ /(date|time)/) {
 			$str .= "to_char($name->[$k], 'YYYY-MM-DD HH24:MI:SS'),";
 		} elsif ( $src_type->[$k] =~ /xmltype/i) {
-			$str .= "$alias.$name->[$k].extract('/').getStringVal(),";
+			$str .= "$alias.$name->[$k].extract('/').getClobVal(),";
 		} else {
 			$str .= "$name->[$k],";
 		}
