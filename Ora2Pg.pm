@@ -2129,8 +2129,10 @@ sub _get_sql_data
 					$self->logit("\tReplacing table $table as " . $self->{replaced_tables}{lc($table)}, "...\n", 1);
 					$tmptb = $self->{replaced_tables}{lc($table)};
 				}
-				if ($self->{ora_sensitive} && ($tmptb !~ /"/)) {
+				if ($self->{case_sensitive} && ($tmptb !~ /"/)) {
 					$tmptb = '"' . $tmptb . '"';
+				} else {
+					$tmptb = lc($tmptb);
 				}
 				if ($self->{dbhdest}) {
 					if ($self->{type} ne 'COPY') {
@@ -2149,8 +2151,10 @@ sub _get_sql_data
 				if (exists $self->{replaced_tables}{"\L$table\E"} && $self->{replaced_tables}{"\L$table\E"}) {
 					$tmptb = $self->{replaced_tables}{lc($table)};
 				}
-				if ($self->{ora_sensitive} && ($tmptb !~ /"/)) {
+				if ($self->{case_sensitive} && ($tmptb !~ /"/)) {
 					$tmptb = '"' . $tmptb . '"';
+				} else {
+					$tmptb = lc($tmptb);
 				}
 				if ($self->{dbhdest}) {
 					if ($self->{type} ne 'COPY') {
@@ -2249,8 +2253,10 @@ sub _get_sql_data
 					$self->logit("\tReplacing table $table as " . $self->{replaced_tables}{lc($table)} . "...\n", 1);
 					$tmptb = $self->{replaced_tables}{lc($table)};
 				}
-				if ($self->{ora_sensitive} && ($tmptb !~ /"/)) {
+				if ($self->{case_sensitive} && ($tmptb !~ /"/)) {
 					$tmptb = '"' . $tmptb . '"';
+				} else {
+					$tmptb = lc($tmptb);
 				}
 				if ($self->{dbhdest}) {
 					if ($self->{type} ne 'COPY') {
@@ -2320,12 +2326,16 @@ sub _get_sql_data
 						$self->logit("\tReplacing table $table as " . $self->{replaced_tables}{lc($table)} . "...\n", 1);
 						$tmptb = $self->{replaced_tables}{lc($table)};
 					}
-				    if ($self->{dbhdest}) {
-					print DBH "ALTER TABLE $tmptb DISABLE TRIGGER $self->{disable_triggers};\n";
-				    } else {
-					$self->dump("ALTER TABLE $tmptb DISABLE TRIGGER $self->{disable_triggers};\n", $fhdl);
-				    }
-
+					if ($self->{case_sensitive} && ($tmptb !~ /"/)) {
+						$tmptb = '"' . $tmptb . '"';
+					} else {
+						$tmptb = lc($tmptb);
+					}
+					if ($self->{dbhdest}) {
+						print DBH "ALTER TABLE $tmptb DISABLE TRIGGER $self->{disable_triggers};\n";
+					} else {
+						$self->dump("ALTER TABLE $tmptb DISABLE TRIGGER $self->{disable_triggers};\n", $fhdl);
+					}
 				}
 
 				my @tt = ();
@@ -2415,12 +2425,16 @@ sub _get_sql_data
 						$self->logit("\tReplacing table $table as " . $self->{replaced_tables}{lc($table)} . "...\n", 1);
 						$tmptb = $self->{replaced_tables}{lc($table)};
 					}
-				    if ($self->{dbhdest}) {
-					print DBH "ALTER TABLE $tmptb ENABLE TRIGGER $self->{disable_triggers};\n";
-				    } else {
-					$self->dump("ALTER TABLE $tmptb ENABLE TRIGGER $self->{disable_triggers};\n", $fhdl);
-				    }
-
+					if ($self->{case_sensitive} && ($tmptb !~ /"/)) {
+						$tmptb = '"' . $tmptb . '"';
+					} else {
+						$tmptb = lc($tmptb);
+					}
+					if ($self->{dbhdest}) {
+						print DBH "ALTER TABLE $tmptb ENABLE TRIGGER $self->{disable_triggers};\n";
+					} else {
+						$self->dump("ALTER TABLE $tmptb ENABLE TRIGGER $self->{disable_triggers};\n", $fhdl);
+					}
 				}
 
 				if ($self->{file_per_table} && !$self->{dbhdest}) {
@@ -3101,7 +3115,7 @@ sub _get_data
 		if ( $type->[$k] =~ /(date|time)/) {
 			$str .= "to_char($name->[$k], 'YYYY-MM-DD HH24:MI:SS'),";
 		} elsif ( $src_type->[$k] =~ /xmltype/i) {
-			$str .= "$alias.$name->[$k].extract('/').getStringVal(),";
+			$str .= "$alias.$name->[$k].extract('/').getClobVal(),";
 		} else {
 			$str .= "$name->[$k],";
 		}
