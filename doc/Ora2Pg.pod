@@ -800,6 +800,11 @@ Take a look at this page to learn more: http://search.cpan.org/~pythian/DBD-Orac
 
 If you want to bypass the 'ORA-24345: A Truncation' error, set this directive to 1, it will truncate the data extracted to the LongReadLen value. Disable by default.
 
+=item XML_PRETTY
+
+Force the use getStringVal() instead of getClobVal() for XML data export. Default is 1,
+enabled for backward compatibility. Set it to 0 to use extract method a la CLOB.
+
 =back
 
 =head2 Special options to handle character encoding

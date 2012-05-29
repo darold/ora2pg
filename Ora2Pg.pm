@@ -783,6 +783,11 @@ sub _init
 	if ($AConfig{'DEBUG'} == 1) {
 		$self->{debug} = 1;
 	}
+	# Set default XML data extract method
+	if (not defined $self->{xml_pretty} || ($self->{xml_pretty} != 0)) {
+		$self->{xml_pretty} = 1;
+	}
+
 	# Log file handle
 	$self->{fhlog} = undef;
 	if ($self->{logfile}) {
@@ -3115,7 +3120,11 @@ sub _get_data
 		if ( $type->[$k] =~ /(date|time)/) {
 			$str .= "to_char($name->[$k], 'YYYY-MM-DD HH24:MI:SS'),";
 		} elsif ( $src_type->[$k] =~ /xmltype/i) {
-			$str .= "$alias.$name->[$k].extract('/').getClobVal(),";
+			if ($self->{xml_pretty}) {
+				$str .= "$alias.$name->[$k].extract('/').getStringVal(),";
+			} else {
+				$str .= "$alias.$name->[$k].extract('/').getClobVal(),";
+			}
 		} else {
 			$str .= "$name->[$k],";
 		}

@@ -364,6 +364,11 @@ ALLOW_CODE_BREAK	1
 # If you want to bypass the 'ORA-24345: A Truncation' error, set this directive
 # to 1, it will truncate the data extracted to the LongReadLen value.
 #LONGTRUNKOK	0
+
+# Use getStringVal() instead of getClobVal() for XML data export. Default is
+# enabled for backward compatibility.
+XML_PRETTY	1
+
 };
 close(OUTCFG);
 

@@ -872,6 +872,10 @@ Take a look at this page to learn more: http://search.cpan.org/~pythian/DBD\-Ora
 .IP "\s-1LONGTRUNKOK\s0" 4
 .IX Item "LONGTRUNKOK"
 If you want to bypass the '\s-1ORA\-24345:\s0 A Truncation' error, set this directive to 1, it will truncate the data extracted to the LongReadLen value. Disable by default.
+.IP "\s-1XML_PRETTY\s0" 4
+.IX Item "XML_PRETTY"
+Force the use \fIgetStringVal()\fR instead of \fIgetClobVal()\fR for \s-1XML\s0 data export. Default is 1,
+enabled for backward compatibility. Set it to 0 to use extract method a la \s-1CLOB\s0.
 .SS "Special options to handle character encoding"
 .IX Subsection "Special options to handle character encoding"
 .IP "\s-1NLS_LANG\s0" 4

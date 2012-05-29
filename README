@@ -753,6 +753,11 @@ CONFIGURATION
         directive to 1, it will truncate the data extracted to the
         LongReadLen value. Disable by default.
 
+    XML_PRETTY
+        Force the use getStringVal() instead of getClobVal() for XML data
+        export. Default is 1, enabled for backward compatibility. Set it to
+        0 to use extract method a la CLOB.
+
   Special options to handle character encoding
     NLS_LANG
         If you experience any issues where mutibyte characters are being
