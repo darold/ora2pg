@@ -855,7 +855,7 @@ SUPPORT
     applied.
 
 LICENSE
-    Copyright (c) 2000-2011 Gilles Darold - All rights reserved.
+    Copyright (c) 2000-2012 Gilles Darold - All rights reserved.
 
             This program is free software: you can redistribute it and/or modify
             it under the terms of the GNU General Public License as published by
@@ -914,6 +914,7 @@ ACKNOWLEDGEMENT
             Sam Nelson
             Krasi Zlatev
             Henk Enting
+            Magnus Hagander
 
     and all others who help me to build a useful and reliable product:
 
