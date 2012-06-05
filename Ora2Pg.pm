@@ -3156,10 +3156,13 @@ sub _get_data
 		$self->logit("\tApplying WHERE global clause: " . $self->{global_where} . "\n", 1);
 	}
 
-
+	# Backward compatibility with LongTrunkOk with typo
+	if ($self->{longtrunkok} && not defined $self->{longtruncok}) {
+		$self->{longtruncok} = $self->{longtrunkok};
+	}
 	# Fix a problem when exporting type LONG and LOB
 	$self->{dbh}->{'LongReadLen'} = $self->{longreadlen} || (1023*1024);
-	$self->{dbh}->{'LongTruncOk'} = $self->{longtrunkok} || 0;
+	$self->{dbh}->{'LongTruncOk'} = $self->{longtruncok} || 0;
 
 	my $sth = $self->{dbh}->prepare($str,{ora_pers_lob=>1}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
