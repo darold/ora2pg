@@ -787,6 +787,9 @@ sub _init
 	if (not defined $self->{xml_pretty} || ($self->{xml_pretty} != 0)) {
 		$self->{xml_pretty} = 1;
 	}
+	if (!$self->{fdw_server}) {
+		$self->{fdw_server} = 'orcl';
+	}
 
 	# Log file handle
 	$self->{fhlog} = undef;
@@ -921,7 +924,7 @@ sub _init
 	# Retreive all table informations
         foreach my $t (@{$self->{export_type}}) {
                 $self->{type} = $t;
-		if (($self->{type} eq 'TABLE') || ($self->{type} eq 'DATA') || ($self->{type} eq 'COPY')) {
+		if (($self->{type} eq 'TABLE') || ($self->{type} eq 'FDW') || ($self->{type} eq 'DATA') || ($self->{type} eq 'COPY')) {
 			$self->{dbh}->{LongReadLen} = 100000;
 			$self->_tables();
 		} elsif ($self->{type} eq 'VIEW') {
@@ -957,7 +960,7 @@ sub _init
 			$self->{dbh}->disconnect() if ($self->{dbh}); 
 			exit 0;
 		} else {
-			warn "type option must be TABLE, VIEW, GRANT, SEQUENCE, TRIGGER, PACKAGE, FUNCTION, PROCEDURE, PARTITION, DATA, COPY, TABLESPACE, SHOW_SCHEMA, SHOW_TABLE, SHOW_COLUMN, SHOW_ENCODING\n";
+			warn "type option must be TABLE, VIEW, GRANT, SEQUENCE, TRIGGER, PACKAGE, FUNCTION, PROCEDURE, PARTITION, DATA, COPY, TABLESPACE, SHOW_SCHEMA, SHOW_TABLE, SHOW_COLUMN, SHOW_ENCODING, FDW\n";
 		}
 		# Mofify export structure if required
 		if ($self->{type} =~ /^(DATA|COPY)$/) {
@@ -2642,10 +2645,14 @@ CREATE TRIGGER insert_${table}_trigger
 			$tbname = $self->{replaced_tables}{"\L$table\E"};
 			$self->logit("\tReplacing tablename $table as $tbname...\n", 1);
 		}
+		my $foreign = '';
+		if ($self->{type} eq 'FDW') {
+			$foreign = ' FOREIGN';
+		}
 		if (!$self->{case_sensitive}) {
-			$sql_output .= "CREATE ${$self->{tables}{$table}{table_info}}[1] \"\L$tbname\E\" (\n";
+			$sql_output .= "CREATE$foreign ${$self->{tables}{$table}{table_info}}[1] \"\L$tbname\E\" (\n";
 		} else {
-			$sql_output .= "CREATE ${$self->{tables}{$table}{table_info}}[1] \"$tbname\" (\n";
+			$sql_output .= "CREATE$foreign ${$self->{tables}{$table}{table_info}}[1] \"$tbname\" (\n";
 		}
 		foreach my $i ( 0 .. $#{$self->{tables}{$table}{field_name}} ) {
 			foreach my $f (@{$self->{tables}{$table}{column_info}}) {
@@ -2670,7 +2677,7 @@ CREATE TRIGGER insert_${table}_trigger
 					$f->[4] =~ s/[\s\t]+$//;
 					if (($f->[4] eq "''") && (!$f->[3] || ($f->[3] eq 'N'))) {
 						$sql_output .= " NOT NULL";
-					} else {
+					} elsif ($self->{type} ne 'FDW') {
 						$sql_output .= " DEFAULT $f->[4]";
 					}
 				} elsif (!$f->[3] || ($f->[3] eq 'N')) {
@@ -2681,7 +2688,16 @@ CREATE TRIGGER insert_${table}_trigger
 			}
 		}
 		$sql_output =~ s/,$//;
-		$sql_output .= ");\n";
+		if ($self->{type} ne 'FDW') {
+			$sql_output .= ");\n";
+		} else {
+			my $schem = "schema '$self->{schema}'," if ($self->{schema});
+			if ($self->{case_sensitive}) {
+				$sql_output .= ") SERVER $self->{fdw_server} OPTIONS($schem table '$table');\n";
+			} else {
+				$sql_output .= ") SERVER $self->{fdw_server} OPTIONS($schem table \L$table\E);\n";
+			}
+		}
 		if ($self->{force_owner}) {
 			my $owner = ${$self->{tables}{$table}{table_info}}[0];
 			$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
@@ -2691,26 +2707,27 @@ CREATE TRIGGER insert_${table}_trigger
 				$sql_output .= "ALTER ${$self->{tables}{$table}{table_info}}[1] \"$tbname\" OWNER TO $owner;\n";
 			}
 		}
-		# Set the unique (and primary) key definition 
-		$constraints .= $self->_create_unique_keys($table, $self->{tables}{$table}{unique_key});
-		# Set the check constraint definition 
-		$constraints .= $self->_create_check_constraint($table, $self->{tables}{$table}{check_constraint},$self->{tables}{$table}{field_name});
-		if (!$self->{file_per_constraint} || $self->{dbhdest}) {
-			$sql_output .= $constraints;
-			$constraints = '';
-		}
+		if ($self->{type} ne 'FDW') {
+			# Set the unique (and primary) key definition 
+			$constraints .= $self->_create_unique_keys($table, $self->{tables}{$table}{unique_key});
+			# Set the check constraint definition 
+			$constraints .= $self->_create_check_constraint($table, $self->{tables}{$table}{check_constraint},$self->{tables}{$table}{field_name});
+			if (!$self->{file_per_constraint} || $self->{dbhdest}) {
+				$sql_output .= $constraints;
+				$constraints = '';
+			}
 
-		# Set the index definition
-		$indices .= $self->_create_indexes($table, %{$self->{tables}{$table}{indexes}});
-		if ($self->{plsql_pgsql}) {
-			$indices = Ora2Pg::PLSQL::plsql_to_plpgsql($indices, $self->{allow_code_break});
+			# Set the index definition
+			$indices .= $self->_create_indexes($table, %{$self->{tables}{$table}{indexes}});
+			if ($self->{plsql_pgsql}) {
+				$indices = Ora2Pg::PLSQL::plsql_to_plpgsql($indices, $self->{allow_code_break});
+			}
+			if (!$self->{file_per_index} || $self->{dbhdest}) {
+				$sql_output .= $indices;
+				$sql_output .= "\n" if ($indices);
+				$indices = '';
+			}
 		}
-		if (!$self->{file_per_index} || $self->{dbhdest}) {
-			$sql_output .= $indices;
-			$sql_output .= "\n" if ($indices);
-			$indices = '';
-		}
-
 	}
 	if ($self->{file_per_index} && !$self->{dbhdest}) {
 		my $fhdl = undef;

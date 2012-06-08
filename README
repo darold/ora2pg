@@ -19,7 +19,8 @@ FEATURES
     by setting the DSN to the Oracle database and optionaly the name of a
     schema. Once that's done you just have to set the type of export you
     want: TABLE with constraints, VIEW, TABLESPACE, SEQUENCE, INDEXES,
-    TRIGGER, GRANT, FUNCTION, PROCEDURE, PACKAGE, PARTITION, TYPE, and DATA.
+    TRIGGER, GRANT, FUNCTION, PROCEDURE, PACKAGE, PARTITION, TYPE, DATA or
+    COPY, FDW.
 
     By default Ora2Pg exports to a file that you can load into PostgreSQL
     with the psql client, but you can also import directly into a PostgreSQL
@@ -43,6 +44,7 @@ FEATURES
             - Export Oracle user defined types.
             - Provide some basic automatic conversion of PLSQL code to PLPGSQL.
             - Works on any plateform.
+            - Export Oracle tables as foreign data wrapper tables.
 
     Ora2Pg do its best to automatically convert your Oracle database to
     PostgreSQL but there's still manual works to do. The Oracle specific
@@ -343,6 +345,7 @@ CONFIGURATION
                 - COPY: Extract datas as COPY statement.
                 - PARTITION: Extract range and list Oracle partitioning.
                 - TYPE: Extract user defined Oracle type.
+                - FDW: Export Oracle tables as foreign table for oracle_fdw.
 
         Only one type of export can be perform at the same time so the TYPE
         directive must be unique. If you have more than one only the last
@@ -388,6 +391,21 @@ CONFIGURATION
         option: '--xtable relname' or '-x relname' to limit the displayed
         information to the given table.
 
+        Since release v8.12, Ora2Pg allow you to export your Oracle Table
+        definition to be use with the oracle_fdw foreign data wrapper. By
+        using type FDW your Oracle tables will be exported as follow:
+
+                CREATE FOREIGN TABLE oratab (
+                        id        integer           NOT NULL,
+                        text      character varying(30),
+                        floating  double precision  NOT NULL
+                ) SERVER oradb OPTIONS (table 'ORATAB');
+
+        Now you can use the table like a regular PostgreSQL table.
+
+        See http://pgxn.org/dist/oracle_fdw/ for more information on this
+        foreign data wrapper.
+
     THREAD_COUNT
         This configuration directive adds multi-threading support to data
         export type, the value is the number of threads to use. Default to
@@ -404,6 +422,13 @@ CONFIGURATION
         If your Perl installation do not support threads, multi-threading
         will not be enabled. This configuration directive is available since
         Ora2Pg v8.7 thanks to the work of Marc Cousin.
+
+    FDW_SERVER
+        This directive is used to set the name of the foreign data server
+        that is used in the "CREATE SERVER name FOREIGN DATA WRAPPER
+        oracle_fdw ..." command. This name will then be used in the "CREATE
+        FOREIGN TABLE ..." SQL command. Default is arbitrary set to orcl.
+        This only concern export type FDW.
 
   Limiting object to export
     You may want to export only a part of an Oracle database, here are a set
@@ -920,6 +945,7 @@ ACKNOWLEDGEMENT
             Krasi Zlatev
             Henk Enting
             Magnus Hagander
+            David Fetter
 
     and all others who help me to build a useful and reliable product:
 

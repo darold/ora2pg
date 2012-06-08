@@ -369,6 +369,12 @@ ALLOW_CODE_BREAK	1
 # enabled for backward compatibility.
 XML_PRETTY	1
 
+# This directive is used to set the name of the foreign data server that is used in
+# the "CREATE SERVER name FOREIGN DATA WRAPPER oracle_fdw ..." command. This name will
+# then be used in the "CREATE FOREIGN TABLE ..." SQL command. Default is arbitrary set
+# to orcl. This only concern export type FDW.
+FDW_SERVER	orcl
+
 };
 close(OUTCFG);
 

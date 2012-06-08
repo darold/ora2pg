@@ -124,7 +124,7 @@
 .\" ========================================================================
 .\"
 .IX Title "ORA2PG 1"
-.TH ORA2PG 1 "2012-05-29" "perl v5.10.1" "User Contributed Perl Documentation"
+.TH ORA2PG 1 "2012-06-08" "perl v5.10.1" "User Contributed Perl Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -150,7 +150,7 @@ only thing you have to modify is the configuration file ora2pg.conf by setting
 the \s-1DSN\s0 to the Oracle database and optionaly the name of a schema. Once that's
 done you just have to set the type of export you want: \s-1TABLE\s0 with constraints,
 \&\s-1VIEW\s0, \s-1TABLESPACE\s0, \s-1SEQUENCE\s0, \s-1INDEXES\s0, \s-1TRIGGER\s0, \s-1GRANT\s0, \s-1FUNCTION\s0, \s-1PROCEDURE\s0,
-\&\s-1PACKAGE\s0, \s-1PARTITION\s0, \s-1TYPE\s0, and \s-1DATA\s0.
+\&\s-1PACKAGE\s0, \s-1PARTITION\s0, \s-1TYPE\s0, \s-1DATA\s0 or \s-1COPY\s0, \s-1FDW\s0.
 .PP
 By default Ora2Pg exports to a file that you can load into PostgreSQL with the
 psql client, but you can also import directly into a PostgreSQL database by
@@ -174,6 +174,7 @@ Features included:
 \&        \- Export Oracle user defined types.
 \&        \- Provide some basic automatic conversion of PLSQL code to PLPGSQL.
 \&        \- Works on any plateform.
+\&        \- Export Oracle tables as foreign data wrapper tables.
 .Ve
 .PP
 Ora2Pg do its best to automatically convert your Oracle database to PostgreSQL
@@ -482,6 +483,7 @@ Here are the different values of the \s-1TYPE\s0 directive, default is \s-1TABLE
 \&        \- COPY: Extract datas as COPY statement.
 \&        \- PARTITION: Extract range and list Oracle partitioning.
 \&        \- TYPE: Extract user defined Oracle type.
+\&        \- FDW: Export Oracle tables as foreign table for oracle_fdw.
 .Ve
 .Sp
 Only one type of export can be perform at the same time so the \s-1TYPE\s0 directive
@@ -527,6 +529,22 @@ Those extraction keyword are use to only display the requested information and e
 This allow you to quickly know on what you are going to work. The \s-1SHOW_COLUMN\s0 allow
 a new ora2pg command line option: '\-\-xtable relname' or '\-x relname' to limit the
 displayed information to the given table.
+.Sp
+Since release v8.12, Ora2Pg allow you to export your Oracle Table definition to be
+use with the oracle_fdw foreign data wrapper. By using type \s-1FDW\s0 your Oracle tables
+will be exported as follow:
+.Sp
+.Vb 5
+\&        CREATE FOREIGN TABLE oratab (
+\&                id        integer           NOT NULL,
+\&                text      character varying(30),
+\&                floating  double precision  NOT NULL
+\&        ) SERVER oradb OPTIONS (table \*(AqORATAB\*(Aq);
+.Ve
+.Sp
+Now you can use the table like a regular PostgreSQL table.
+.Sp
+See http://pgxn.org/dist/oracle_fdw/ for more information on this foreign data wrapper.
 .IP "\s-1THREAD_COUNT\s0" 4
 .IX Item "THREAD_COUNT"
 This configuration directive adds multi-threading support to data export type, the
@@ -542,6 +560,12 @@ you activate threading.
 If your Perl installation do not support threads, multi-threading will not be enabled.
 This configuration directive is available since Ora2Pg v8.7 thanks to the work of
 Marc Cousin.
+.IP "\s-1FDW_SERVER\s0" 4
+.IX Item "FDW_SERVER"
+This directive is used to set the name of the foreign data server that is used in
+the \*(L"\s-1CREATE\s0 \s-1SERVER\s0 name \s-1FOREIGN\s0 \s-1DATA\s0 \s-1WRAPPER\s0 oracle_fdw ...\*(R" command. This name will
+then be used in the \*(L"\s-1CREATE\s0 \s-1FOREIGN\s0 \s-1TABLE\s0 ...\*(R" \s-1SQL\s0 command. Default is arbitrary set
+to orcl. This only concern export type \s-1FDW\s0.
 .SS "Limiting object to export"
 .IX Subsection "Limiting object to export"
 You may want to export only a part of an Oracle database, here are a set of configuration
@@ -1044,6 +1068,7 @@ I must thanks a lot all the great contributors:
 \&        Krasi Zlatev
 \&        Henk Enting
 \&        Magnus Hagander
+\&        David Fetter
 .Ve
 .PP
 and all others who help me to build a useful and reliable product:
