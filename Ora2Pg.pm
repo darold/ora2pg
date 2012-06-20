@@ -3009,6 +3009,8 @@ sub _create_foreign_keys
 					map { s/"$c"/"$self->{replaced_cols}{"\L$desttable\E"}{$c}"/i } @rfkeys;
 				}
 			}
+			map { s/["]+/"/g; } @rfkeys;
+			map { s/["]+/"/g; } @lfkeys;
 			if (!$self->{case_sensitive}) {
 				$str .= "ALTER TABLE \"\L$substable\E\" ADD CONSTRAINT \"\L$h->[0]\E\" FOREIGN KEY (" . lc(join(',', @lfkeys)) . ") REFERENCES \"\L$subsdesttable\E\" (" . lc(join(',', @rfkeys)) . ")";
 			} else {
