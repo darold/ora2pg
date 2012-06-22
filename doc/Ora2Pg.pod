@@ -868,6 +868,19 @@ NLS_LANG to FRENCH_FRANCE.WE8ISO8859P15 and the CLIENT_ENCODING to LATIN9.
 
 You can take a look at the PostgreSQL supported character sets here: http://www.postgresql.org/docs/9.0/static/multibyte.html
 
+=item ENABLE_MICROSECOND
+
+Set it to 1 if you want to export millisecond from Oracle timestamp columns.
+Timestamp are formated with:
+
+	to_char(..., 'YYYY-MM-DD HH24:MI:SS')
+
+enabling this directive will change the format to:
+
+	'YYYY-MM-DD HH24:MI:SS.FF3'
+
+By default milliseconds are not exported.
+
 =back
 
 =head2 PLSQL to PLPSQL convertion
@@ -1029,5 +1042,6 @@ and all others who help me to build a useful and reliable product:
 	Jehan Guillaume de Rorthais
 	Aaron Culich
 	Sriram Chandrasekaran
+	Patrick King
 	...
 

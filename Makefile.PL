@@ -369,12 +369,16 @@ ALLOW_CODE_BREAK	1
 # enabled for backward compatibility.
 XML_PRETTY	1
 
-# This directive is used to set the name of the foreign data server that is used in
-# the "CREATE SERVER name FOREIGN DATA WRAPPER oracle_fdw ..." command. This name will
-# then be used in the "CREATE FOREIGN TABLE ..." SQL command. Default is arbitrary set
-# to orcl. This only concern export type FDW.
+# This directive is used to set the name of the foreign data server that is used
+# in the "CREATE SERVER name FOREIGN DATA WRAPPER oracle_fdw ..." command. This
+# name will then be used in the "CREATE FOREIGN TABLE ..." SQL command. Default
+# is arbitrary set to orcl. This only concern export type FDW.
 FDW_SERVER	orcl
 
+# Set it to 1 if you want to export milliseconds from Oracle timestamp columns.
+# Timestamp are formated with to_char(..., 'YYYY-MM-DD HH24:MI:SS'), enabling
+# this directive will change the format to 'YYYY-MM-DD HH24:MI:SS.FF3'.
+ENABLE_MICROSECOND	0
 };
 close(OUTCFG);
 

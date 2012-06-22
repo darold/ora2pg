@@ -850,6 +850,7 @@ sub _init
 	$self->{binmode} ||= ':raw';
 	$self->{binmode} =~ s/^://;
 	$self->{binmode} = ':' . lc($self->{binmode});
+	$self->{enable_microsecond} ||= 0;
 
 	if (($self->{standard_conforming_strings} =~ /^off$/i) || ($self->{standard_conforming_strings} == 0)) {
 		$self->{standard_conforming_strings} = 0;
@@ -3128,6 +3129,10 @@ sub _get_data
 
 	my $str = "SELECT ";
 	my $extraStr = "";
+	my $dateformat = 'YYYY-MM-DD HH24:MI:SS';
+	if ($self->{enable_microsecond}) {
+		$dateformat = 'YYYY-MM-DD HH24:MI:SS.FF3';
+	}
 	for my $k (0 .. $#{$name}) {
 
 		if ($self->{ora_sensitive} && ($name->[$k] !~ /"/)) {
@@ -3137,7 +3142,7 @@ sub _get_data
 			$name->[$k] = lc($name->[$k]);
 		}
 		if ( $type->[$k] =~ /(date|time)/) {
-			$str .= "to_char($name->[$k], 'YYYY-MM-DD HH24:MI:SS'),";
+			$str .= "to_char($name->[$k], $dateformat),";
 		} elsif ( $src_type->[$k] =~ /xmltype/i) {
 			if ($self->{xml_pretty}) {
 				$str .= "$alias.$name->[$k].extract('/').getStringVal(),";

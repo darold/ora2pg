@@ -124,7 +124,7 @@
 .\" ========================================================================
 .\"
 .IX Title "ORA2PG 1"
-.TH ORA2PG 1 "2012-06-08" "perl v5.10.1" "User Contributed Perl Documentation"
+.TH ORA2PG 1 "2012-06-22" "perl v5.10.1" "User Contributed Perl Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -934,6 +934,22 @@ and your PostgreSQL database is encoded in \s-1UTF8\s0. What you have to do is s
 \&\s-1NLS_LANG\s0 to \s-1FRENCH_FRANCE\s0.WE8ISO8859P15 and the \s-1CLIENT_ENCODING\s0 to \s-1LATIN9\s0.
 .Sp
 You can take a look at the PostgreSQL supported character sets here: http://www.postgresql.org/docs/9.0/static/multibyte.html
+.IP "\s-1ENABLE_MICROSECOND\s0" 4
+.IX Item "ENABLE_MICROSECOND"
+Set it to 1 if you want to export millisecond from Oracle timestamp columns.
+Timestamp are formated with:
+.Sp
+.Vb 1
+\&        to_char(..., \*(AqYYYY\-MM\-DD HH24:MI:SS\*(Aq)
+.Ve
+.Sp
+enabling this directive will change the format to:
+.Sp
+.Vb 1
+\&        \*(AqYYYY\-MM\-DD HH24:MI:SS.FF3\*(Aq
+.Ve
+.Sp
+By default milliseconds are not exported.
 .SS "\s-1PLSQL\s0 to \s-1PLPSQL\s0 convertion"
 .IX Subsection "PLSQL to PLPSQL convertion"
 Automatic code convertion from Oracle \s-1PLSQL\s0 to PostgreSQL \s-1PLPGSQL\s0 is a work in
@@ -1087,5 +1103,6 @@ and all others who help me to build a useful and reliable product:
 \&        Jehan Guillaume de Rorthais
 \&        Aaron Culich
 \&        Sriram Chandrasekaran
+\&        Patrick King
 \&        ...
 .Ve
