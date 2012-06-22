@@ -1,3 +1,23 @@
+2012 06 22 - 8.12
+
+	- Add nex configuration directive ENABLE_MICROSECOND to allow timestamp
+	  to be exported with millisecond precision. Thanks to Patrick King for
+	  the feature request.
+	- Fix multiple quote on foreign keys column names. Thanks to Vitaliy for
+	  the report.
+	- Add new export type FDW to allow table export as foreign table for
+	  oracle_fdw. Thanks to David Fetter for the feature request.
+	- Fix typo in LongTruncOk variable name. Thanks to Magnus Hagander for
+	  the patch.
+	- Add XML_PRETTY configuration directive to replace getStringVal() by
+	  getClobVal() when extracting XML data. Thanks to Magnus Hagander for
+	  the patch.
+	- Fix case sensitivity issue in ALTER TABLE and TRUNCATE statement.
+	  Thanks to Magnus Hagander for the patch.
+
+UPGRADE: Ora2Pg.pm and ora2pg perl scripts have changed as well as configuration
+file. Documentation has been updated too so you'd better install all again.
+
 2012 04 30 - 8.11
 
 	- Fix an error when running ora2pg directly against PG, index and
@@ -21,8 +41,8 @@
 	  from Oracle as '~'. Replaced by 'inf'. Thanks to Daniel Lyons for the
 	  report.
 
-UPGRADE: only Ora2Pg.pm have changed so you can just override it. See documentation
-for the new configuration directives: LONGREADLEN and LONGTRUNKOK.
+UPGRADE: only Ora2Pg.pm have changed so you can just override it. See also
+documentation for new configuration directives: LONGREADLEN and LONGTRUNKOK.
 	
 2011 11 07 - 8.9
 
