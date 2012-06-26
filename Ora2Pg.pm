@@ -3142,7 +3142,7 @@ sub _get_data
 			$name->[$k] = lc($name->[$k]);
 		}
 		if ( $type->[$k] =~ /(date|time)/) {
-			$str .= "to_char($name->[$k], $dateformat),";
+			$str .= "to_char($name->[$k], '$dateformat'),";
 		} elsif ( $src_type->[$k] =~ /xmltype/i) {
 			if ($self->{xml_pretty}) {
 				$str .= "$alias.$name->[$k].extract('/').getStringVal(),";
