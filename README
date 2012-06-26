@@ -391,7 +391,7 @@ CONFIGURATION
         option: '--xtable relname' or '-x relname' to limit the displayed
         information to the given table.
 
-        Since release v8.12, Ora2Pg allow you to export your Oracle Table
+        Since release v8.13, Ora2Pg allow you to export your Oracle Table
         definition to be use with the oracle_fdw foreign data wrapper. By
         using type FDW your Oracle tables will be exported as follow:
 

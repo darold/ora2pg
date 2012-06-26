@@ -34,7 +34,7 @@ use Config;
 #set locale to LC_NUMERIC C
 setlocale(LC_NUMERIC,"C");
 
-$VERSION = '8.12';
+$VERSION = '8.13';
 $PSQL = $ENV{PLSQL} || 'psql';
 
 $| = 1;
