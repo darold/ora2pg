@@ -3179,7 +3179,7 @@ sub _extract_sequence_info
 
 	my $sql = "SELECT DISTINCT SEQUENCE_NAME, MIN_VALUE, MAX_VALUE, INCREMENT_BY, CYCLE_FLAG, ORDER_FLAG, CACHE_SIZE, LAST_NUMBER FROM $self->{prefix}_SEQUENCES";
 	if ($self->{schema}) {
-		$sql .= " WHERE SEQUENCE_OWNER='\U$self->{schema}\E'";
+		$sql .= " WHERE upper(SEQUENCE_OWNER)='\U$self->{schema}\E'";
 	} else {
 		$sql .= " WHERE SEQUENCE_OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
 	}
@@ -3387,7 +3387,7 @@ sub _column_info
 {
 	my ($self, $table, $owner) = @_;
 
-	$owner = "AND OWNER='$owner' " if ($owner);
+	$owner = "AND upper(OWNER)='\U$owner\E' " if ($owner);
 	my $sth = $self->{dbh}->prepare(<<END) or $self->logit("WARNING only: " . $self->{dbh}->errstr . "\n", 0, 0);
 SELECT COLUMN_NAME, DATA_TYPE, DATA_LENGTH, NULLABLE, DATA_DEFAULT, DATA_PRECISION, DATA_SCALE, CHAR_LENGTH
 FROM $self->{prefix}_TAB_COLUMNS
@@ -3446,7 +3446,7 @@ sub _unique_key
         push @accepted_constraint_types, "'U'" unless($self->{skip_ukeys});
         return %result unless(@accepted_constraint_types);
         my $cons_types = '('. join(',', @accepted_constraint_types) .')';
-	$owner = "AND OWNER='$owner'" if ($owner);
+	$owner = "AND upper(OWNER)='\U$owner\E'" if ($owner);
 	my $sth = $self->{dbh}->prepare(<<END) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 SELECT CONSTRAINT_NAME,R_CONSTRAINT_NAME,SEARCH_CONDITION,DELETE_RULE,DEFERRABLE,DEFERRED,R_OWNER,CONSTRAINT_TYPE
 FROM $self->{prefix}_CONSTRAINTS
@@ -3484,7 +3484,7 @@ sub _check_constraint
 {
 	my($self, $table, $owner) = @_;
 
-	$owner = "AND OWNER='$owner'" if ($owner);
+	$owner = "AND upper(OWNER)='\U$owner\E'" if ($owner);
 	my $sth = $self->{dbh}->prepare(<<END) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 SELECT CONSTRAINT_NAME,R_CONSTRAINT_NAME,SEARCH_CONDITION,DELETE_RULE,DEFERRABLE,DEFERRED,R_OWNER
 FROM $self->{prefix}_CONSTRAINTS
@@ -3531,7 +3531,7 @@ sub _foreign_key
 {
 	my ($self, $table, $owner) = @_;
 
-	$owner = "AND OWNER='$owner'" if ($owner);
+	$owner = "AND upper(OWNER)='\U$owner\E'" if ($owner);
 	my $deferrable = $self->{fkey_deferrable} ? "'DEFERRABLE' AS DEFERRABLE" : "DEFERRABLE";
 	my $sth = $self->{dbh}->prepare(<<END) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 SELECT CONSTRAINT_NAME,R_CONSTRAINT_NAME,SEARCH_CONDITION,DELETE_RULE,$deferrable,DEFERRED,R_OWNER
@@ -3594,7 +3594,7 @@ sub _get_privilege
 	# Retrieve all privilege per table defined in this database
 	my $str = "SELECT GRANTEE,OWNER,TABLE_NAME,PRIVILEGE FROM DBA_TAB_PRIVS";
 	if ($self->{schema}) {
-		$str .= " WHERE GRANTOR = '$self->{schema}'";
+		$str .= " WHERE upper(GRANTOR) = '\U$self->{schema}\E'";
 	} else {
 		$str .= " WHERE GRANTOR NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
 	}
@@ -3615,7 +3615,7 @@ sub _get_privilege
 	# Retrieve all privilege per column table defined in this database
 	$str = "SELECT GRANTEE,OWNER,TABLE_NAME,PRIVILEGE,COLUMN_NAME FROM DBA_COL_PRIVS";
 	if ($self->{schema}) {
-		$str .= " WHERE GRANTOR = '$self->{schema}'";
+		$str .= " WHERE upper(GRANTOR) = '\U$self->{schema}\E'";
 	} else {
 		$str .= " WHERE GRANTOR NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
 	}
@@ -3688,11 +3688,11 @@ sub _get_indexes
 
 	my $idxowner = '';
 	if ($owner) {
-		$idxowner = "AND IC.TABLE_OWNER = '$owner'";
+		$idxowner = "AND upper(IC.TABLE_OWNER) = '\U$owner\E'";
 	}
 	my $sub_owner = '';
 	if ($owner) {
-		$owner = "AND $self->{prefix}_INDEXES.OWNER='$owner' AND $self->{prefix}_IND_COLUMNS.INDEX_OWNER=$self->{prefix}_INDEXES.OWNER";
+		$owner = "AND upper($self->{prefix}_INDEXES.OWNER)='\U$owner\E' AND $self->{prefix}_IND_COLUMNS.INDEX_OWNER=$self->{prefix}_INDEXES.OWNER";
 		$sub_owner = "AND OWNER=$self->{prefix}_INDEXES.TABLE_OWNER";
 	}
 	# Retrieve all indexes 
@@ -3752,7 +3752,7 @@ sub _get_sequences
 	if (!$self->{schema}) {
 		$str .= " WHERE SEQUENCE_OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
 	} else {
-		$str .= " WHERE SEQUENCE_OWNER = '\U$self->{schema}\E'";
+		$str .= " WHERE upper(SEQUENCE_OWNER) = '\U$self->{schema}\E'";
 	}
 	$str .= " ORDER BY SEQUENCE_NAME";
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -3784,7 +3784,7 @@ sub _get_views
 	if (!$self->{schema}) {
 		$str .= " WHERE OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
 	} else {
-		$str .= " WHERE OWNER = '\U$self->{schema}\E'";
+		$str .= " WHERE upper(OWNER) = '\U$self->{schema}\E'";
 	}
 	$str .= " ORDER BY VIEW_NAME";
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -3819,7 +3819,7 @@ sub _alias_info
 
 	my $str = "SELECT COLUMN_NAME, COLUMN_ID FROM $self->{prefix}_TAB_COLUMNS WHERE TABLE_NAME='$view'";
 	if ($self->{schema}) {
-		$str .= " AND OWNER = '\U$self->{schema}\E'";
+		$str .= " AND upper(OWNER) = '\U$self->{schema}\E'";
 	}
 	$str .= " ORDER BY COLUMN_ID ASC";
         my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -3850,7 +3850,7 @@ sub _get_triggers
 	if (!$self->{schema}) {
 		$str .= " AND OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
 	} else {
-		$str .= " AND OWNER = '\U$self->{schema}\E'";
+		$str .= " AND upper(OWNER) = '\U$self->{schema}\E'";
 	}
 	$str .= " ORDER BY TABLE_NAME, TRIGGER_NAME";
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -3883,7 +3883,7 @@ sub _get_functions
 	if (!$self->{schema}) {
 		$str .= " AND OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
 	} else {
-		$str .= " AND OWNER = '\U$self->{schema}\E'";
+		$str .= " AND upper(OWNER) = '\U$self->{schema}\E'";
 	}
 	$str .= " ORDER BY OBJECT_NAME";
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -3923,7 +3923,7 @@ sub _get_procedures
 	if (!$self->{schema}) {
 		$str .= " AND OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
 	} else {
-		$str .= " AND OWNER = '\U$self->{schema}\E'";
+		$str .= " AND upper(OWNER) = '\U$self->{schema}\E'";
 	}
 	$str .= " ORDER BY OBJECT_NAME";
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -3964,7 +3964,7 @@ sub _get_packages
 	if (!$self->{schema}) {
 		$str .= " AND OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
 	} else {
-		$str .= " AND OWNER = '\U$self->{schema}\E'";
+		$str .= " AND upper(OWNER) = '\U$self->{schema}\E'";
 	}
 	$str .= " ORDER BY OBJECT_NAME";
 
@@ -4010,7 +4010,7 @@ sub _get_types
 		$str .= " AND OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
 		unshift(@{$self->{sysusers}},'SYSTEM');
 	} else {
-		$str .= " AND (OWNER = '\U$self->{schema}\E' OR OWNER = 'SYSTEM')";
+		$str .= " AND (upper(OWNER) = '\U$self->{schema}\E' OR OWNER = 'SYSTEM')";
 	}
 	$str .= " ORDER BY OBJECT_NAME";
 
@@ -4100,7 +4100,7 @@ AND a.OWNER = b.OWNER
 AND a.TABLESPACE_NAME = c.TABLESPACE_NAME
 };
 	if ($self->{schema}) {
-		$str .= " AND a.OWNER='\U$self->{schema}\E'";
+		$str .= " AND upper(a.OWNER)='\U$self->{schema}\E'";
 	} else {
 		$str .= " AND a.TABLESPACE_NAME NOT IN ('SYSTEM','TOOLS')";
 	}
