@@ -229,6 +229,11 @@ sub plsql_to_plpgsql
 	# PROGRAM_ERROR => INTERNAL ERROR ?
 	# ROWTYPE_MISMATCH => DATATYPE MISMATCH ?
 
+	# Replace special IEEE 754 values for not a number and infinity
+	$str =~ s/BINARY_(FLOAT|DOUBLE)_NAN/'NaN'/igs;
+	$str =~ s/([\-]*)BINARY_(FLOAT|DOUBLE)_INFINITY/'$1Infinity'/igs;
+	$str =~ s/'([\-]*)Inf'/'$1Infinity'/igs;
+
 	if ($allow_code_break) {
 		# Replace Oracle substr(string, start_position, length) with
 		# PostgreSQL substring(string from start_position for length)
