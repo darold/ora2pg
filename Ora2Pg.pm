@@ -2142,6 +2142,18 @@ sub _get_sql_data
 					$search_path = "SET search_path = \"$self->{schema}\", pg_catalog;";
 				}
 			}
+			if ($search_path) {
+				if ($self->{dbhdest}) {
+					if ($self->{type} ne 'COPY') {
+						my $s = $self->{dbhdest}->do("$search_path") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
+					} else {
+						print DBH "$search_path\n";
+					}
+				} else {
+					$self->dump("$search_path\n", $fhdl);
+				}
+			}
+
 
 			# Start transaction to speed up bulkload
 			if ($self->{dbhdest}) {
@@ -2153,7 +2165,6 @@ sub _get_sql_data
 			} else {
 				$self->dump("BEGIN;\n", $fhdl);
 			}
-
 			## disable triggers of current table if requested
 			if ($self->{disable_triggers}) {
 				my $tmptb = $table;
