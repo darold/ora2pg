@@ -2128,6 +2128,20 @@ sub _get_sql_data
 					$self->dump("SET client_encoding TO '\U$self->{client_encoding}\E';\n", $fhdl);
 				}
 			}
+			my $search_path = '';
+			if ($self->{pg_schema}) {
+				if (!$self->{case_sensitive}) {
+					$search_path = "SET search_path = \L$self->{pg_schema}\E;";
+				} else {
+					$search_path = "SET search_path = \"$self->{pg_schema}\";";
+				}
+			} elsif ($self->{schema}) {
+				if (!$self->{case_sensitive}) {
+					$search_path = "SET search_path = \L$self->{schema}\E, pg_catalog;";
+				} else {
+					$search_path = "SET search_path = \"$self->{schema}\", pg_catalog;";
+				}
+			}
 
 			# Start transaction to speed up bulkload
 			if ($self->{dbhdest}) {
