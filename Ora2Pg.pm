@@ -850,7 +850,9 @@ sub _init
 	$self->{binmode} ||= ':raw';
 	$self->{binmode} =~ s/^://;
 	$self->{binmode} = ':' . lc($self->{binmode});
-	$self->{enable_microsecond} ||= 0;
+	if ($self->{enable_microsecond} eq '') {
+		$self->{enable_microsecond} = 1;
+	} 
 
 	if (($self->{standard_conforming_strings} =~ /^off$/i) || ($self->{standard_conforming_strings} == 0)) {
 		$self->{standard_conforming_strings} = 0;
