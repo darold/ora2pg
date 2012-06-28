@@ -1234,7 +1234,7 @@ sub _tables
 				}
 			}
 			# usually OWNER,TYPE. QUALIFIER is omitted until I know what to do with that
-			$self->{tables}{$t->[2]}{table_info} = [($t->[1],$t->[3])];
+			$self->{tables}{$t->[2]}{table_info} = [($t->[1],$t->[3],$t->[4])];
 			# Set the fields information
 			my $query = "SELECT * FROM $t->[1].$t->[2] WHERE 1=0";
 			if ($self->{ora_sensitive} && ($t->[2] !~ /"/)) {
@@ -1254,6 +1254,7 @@ sub _tables
 			$self->{tables}{$t->[2]}{field_type} = $sth->{TYPE};
 
 			@{$self->{tables}{$t->[2]}{column_info}} = $self->_column_info($t->[2],$t->[1]);
+			@{$self->{tables}{$t->[2]}{column_comments}} = $self->_column_comments($t->[2],$t->[1]);
                         # We don't check for skip_ukeys/skip_pkeys here; this is taken care of inside _unique_key
 			%{$self->{tables}{$t->[2]}{unique_key}} = $self->_unique_key($t->[2],$t->[1]);
 			($self->{tables}{$t->[2]}{foreign_link}, $self->{tables}{$t->[2]}{foreign_key}) = $self->_foreign_key($t->[2],$t->[1]) if (!$self->{skip_fkeys});
@@ -2699,6 +2700,15 @@ CREATE TRIGGER insert_${table}_trigger
 				$sql_output .= ") SERVER $self->{fdw_server} OPTIONS($schem table \L$table\E);\n";
 			}
 		}
+		# Add comments on table
+		if (${$self->{tables}{$table}{table_info}}[2]) {
+			if (!$self->{case_sensitive}) {
+				$sql_output .= "COMMENT ON TABLE \"\L$tbname\E\" IS E'${$self->{tables}{$table}{table_info}}[2]';\n";
+			} else {
+				$sql_output .= "COMMENT ON TABLE \"$tbname\".\"$f->[0]\" IS E'${$self->{tables}{$table}{table_info}}[2]';\n";
+			}
+		}
+
 		if ($self->{force_owner}) {
 			my $owner = ${$self->{tables}{$table}{table_info}}[0];
 			$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
@@ -2708,6 +2718,18 @@ CREATE TRIGGER insert_${table}_trigger
 				$sql_output .= "ALTER ${$self->{tables}{$table}{table_info}}[1] \"$tbname\" OWNER TO $owner;\n";
 			}
 		}
+
+		# Add comments on columns
+		foreach $f (@{$self->{tables}{$table}{column_comments}}) {
+			next unless $f->[1];
+			$f->[1] =~ s/'/\\'/gs;
+			if (!$self->{case_sensitive}) {
+				$sql_output .= "COMMENT ON COLUMN \L$tbname\.$f->[0]\E IS E'$f->[1]';\n";
+			} else {
+				$sql_output .= "COMMENT ON COLUMN \"$tbname\".\"$f->[0]\" IS E'$f->[1]';\n";
+			}
+		}
+
 		if ($self->{type} ne 'FDW') {
 			# Set the unique (and primary) key definition 
 			$constraints .= $self->_create_unique_keys($table, $self->{tables}{$table}{unique_key});
@@ -2816,6 +2838,30 @@ CREATE TRIGGER insert_${table}_trigger
 
 	$self->dump($sql_header . $sql_output);
 }
+
+=head2 _column_comments
+
+This function return comments associated to columns
+
+=cut
+sub _column_comments
+{
+	my ($self, $table, $owner) = @_;
+
+	$owner = "AND upper(OWNER)='\U$owner\E' " if ($owner);
+	my $sth = $self->{dbh}->prepare(<<END) or $self->logit("WARNING only: " . $self->{dbh}->errstr . "\n", 0, 0);
+SELECT COLUMN_NAME,COMMENTS
+FROM $self->{prefix}_COL_COMMENTS
+WHERE upper(TABLE_NAME)='\U$table\E' $owner       
+END
+
+	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+
+	my $data = $sth->fetchall_arrayref();
+
+	return @$data;
+}
+
 
 =head2 _create_indexes
 
