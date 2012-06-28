@@ -4062,7 +4062,7 @@ sub _table_info
             and at.TABLE_NAME = tc.TABLE_NAME
 	";
 	if ($xtable) {
-		$sql .= " and at.TABLE_NAME='\U$xtable\E'";
+		$sql .= " and upper(at.TABLE_NAME)='\U$xtable\E'";
 	}
 
 	if ($self->{schema}) {
