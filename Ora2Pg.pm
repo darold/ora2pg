@@ -4669,10 +4669,14 @@ sub _convert_function
 			$function .= " RETURNS $func_ret_type AS \$body\$\n";
 		} else {
 			my @nout = $func_args =~ /\bOUT /ig;
+			my @ninout = $func_args =~ /\bINOUT /ig;
 			if ($#nout > 0) {
 				$function .= " RETURNS RECORD AS \$body\$\n";
 			} elsif ($#nout == 0) {
-				$func_args =~ /([A-Z0-9_\$]+)[\s\t]+OUT[\s\t]+/;
+				$func_args =~ /[\s\t]*OUT[\s\t]+([A-Z0-9_\$\%\.]+)[\s\t\),]*/i;
+				$function .= " RETURNS $1 AS \$body\$\n";
+			} elsif ($#ninout == 0) {
+				$func_args =~ /[\s\t]*INOUT[\s\t]+([A-Z0-9_\$\%\.]+)[\s\t\),]*/i;
 				$function .= " RETURNS $1 AS \$body\$\n";
 			} else {
 				$function .= " RETURNS VOID AS \$body\$\n";
