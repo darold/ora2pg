@@ -4654,7 +4654,17 @@ sub _convert_function
 		$func_args = '()' if (!$func_args);
 		$func_name = $pname . '.' . $func_name if ($pname);
 		my $function = "\nCREATE OR REPLACE FUNCTION $func_name $func_args";
-		$self->logit("\tParsing function $func_name...\n", 1);
+		if (!$pname && $self->{export_schema} && $self->{schema}) {
+			if (!$self->{case_sensitive}) {
+				$function = "\nCREATE OR REPLACE FUNCTION $self->{schema}\.$func_name $func_args";
+				$self->logit("\tParsing function $self->{schema}\.$func_name...\n", 1);
+			} else {
+				$function = "\nCREATE OR REPLACE FUNCTION \"$self->{schema}\"\.$func_name $func_args";
+				$self->logit("\tParsing function \"$self->{schema}\"\.$func_name...\n", 1);
+			}
+		} else {
+			$self->logit("\tParsing function $func_name...\n", 1);
+		}
 		if ($hasreturn) {
 			$function .= " RETURNS $func_ret_type AS \$body\$\n";
 		} else {
