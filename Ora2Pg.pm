@@ -2090,6 +2090,11 @@ sub _get_sql_data
 				$self->dump("\\set ON_ERROR_STOP ON\n");
 			}
 		}
+		# Force datetime format
+		if ($self->{enable_microsecond}) {
+			$self->_datetime_format();
+		}
+
 		my $dirprefix = '';
 		$dirprefix = "$self->{output_dir}/" if ($self->{output_dir});
 		foreach my $table (@ordered_tables) {
@@ -5297,6 +5302,21 @@ end;
 		my $sth = $self->{dbh}->do($qcomp) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 		$sth = undef;
 	}
+
+}
+
+=head2 _datetime_format
+
+This function force Oracle database to format the time correctly
+
+=cut
+
+sub _datetime_format
+{
+	my ($self) = @_;
+
+	my $sth = $self->{dbh}->do("ALTER SESSION SET NLS_TIMESTAMP_FORMAT='YYYY-MM-DD HH24:MI:SS.FF3'") or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth = undef;
 
 }
 
