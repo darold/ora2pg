@@ -1407,7 +1407,11 @@ sub _get_sql_data
 	}
 	if ($self->{export_schema} && ($self->{type} ne 'TABLE')) {
 		if ($self->{pg_schema}) {
-			$sql_header .= "SET search_path = $self->{pg_schema};\n\n";
+			if (!$self->{case_sensitive}) {
+				$sql_header .= "SET search_path = \L$self->{pg_schema}\E;\n\n";
+			} else {
+				$sql_header .= "SET search_path = \"$self->{pg_schema}\";\n\n";
+			}
 		} else {
 			if (!$self->{case_sensitive}) {
 				$sql_header .= "SET search_path = \L$self->{schema}\E, pg_catalog;\n\n" if ($self->{schema});
@@ -1981,7 +1985,7 @@ sub _get_sql_data
 				$search_path = "SET search_path = \"$self->{schema}\", pg_catalog";
 			}
 			if ($self->{pg_schema}) {
-				$search_path = "SET search_path = \E$self->{pg_schema}\L";
+				$search_path = "SET search_path = \L$self->{pg_schema}\E";
 				if ($self->{case_sensitive}) {
 					$search_path = "SET search_path = \"$self->{schema}\"";
 				}
@@ -2790,7 +2794,21 @@ CREATE TRIGGER insert_${table}_trigger
 		$self->logit("Dumping indexes to one separate file : INDEXES_$self->{output}\n", 1);
 		$fhdl = $self->export_file("INDEXES_$self->{output}");
 		$indices = "-- Nothing found of type indexes\n" if (!$indices);
-		$self->dump($sql_header . $indices, $fhdl);
+		my $search_path = '';
+		if ($self->{pg_schema}) {
+			if (!$self->{case_sensitive}) {
+				$search_path = "SET search_path = \L$self->{pg_schema}\E;\n\n";
+			} else {
+				$search_path = "SET search_path = \"$self->{pg_schema}\";\n\n";
+			}
+		} else {
+			if (!$self->{case_sensitive}) {
+				$search_path = "SET search_path = \L$self->{schema}\E, pg_catalog;\n\n" if ($self->{schema});
+			} else {
+				$search_path = "SET search_path = \"$self->{schema}\", pg_catalog;\n\n" if ($self->{schema});
+			}
+		}
+		$self->dump($sql_header . "\n$search_path" . $indices, $fhdl);
 		$self->close_export_file($fhdl);
 		$indices = '';
 	}
