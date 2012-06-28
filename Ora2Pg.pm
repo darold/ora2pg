@@ -1976,12 +1976,15 @@ sub _get_sql_data
 		}
 
 		if ($self->{dbhdest} && $self->{export_schema} &&  $self->{schema}) {
-			my $search_path = "SET search_path = $self->{schema}, pg_catalog";
+			my $search_path = "SET search_path = \L$self->{schema}\E, pg_catalog";
 			if ($self->{case_sensitive}) {
 				$search_path = "SET search_path = \"$self->{schema}\", pg_catalog";
 			}
 			if ($self->{pg_schema}) {
-				$search_path = "SET search_path = $self->{pg_schema}";
+				$search_path = "SET search_path = \E$self->{pg_schema}\L";
+				if ($self->{case_sensitive}) {
+					$search_path = "SET search_path = \"$self->{schema}\"";
+				}
 			}
 			if ($self->{type} ne 'COPY') {
 				my $s = $self->{dbhdest}->do($search_path) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
@@ -2629,14 +2632,14 @@ CREATE TRIGGER insert_${table}_trigger
 		if (!$self->{case_sensitive}) {
 			$sql_output .= "CREATE SCHEMA \"\L$self->{schema}\E\";\n\n";
 			if ($self->{pg_schema}) {
-				$sql_output .= "SET search_path = $self->{pg_schema};\n\n";
+				$sql_output .= "SET search_path = \L$self->{pg_schema}\E;\n\n";
 			} else {
-				$sql_output .= "SET search_path = $self->{schema}, pg_catalog;\n\n";
+				$sql_output .= "SET search_path = \L$self->{schema}\E, pg_catalog;\n\n";
 			}
 		} else {
 			$sql_output .= "CREATE SCHEMA \"$self->{schema}\";\n\n";
 			if ($self->{pg_schema}) {
-				$sql_output .= "SET search_path = $self->{pg_schema};\n\n";
+				$sql_output .= "SET search_path = \"$self->{pg_schema}\";\n\n";
 			} else {
 				$sql_output .= "SET search_path = \"$self->{schema}\", pg_catalog;\n\n";
 			}
