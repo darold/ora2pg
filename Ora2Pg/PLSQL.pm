@@ -187,7 +187,7 @@ sub plsql_to_plpgsql
 	}
 
 	# Remove the function name repetion at end
-	$str =~ s/END[\s\t]+(?!IF|LOOP|CASE|INTO|FROM|,)[a-z0-9_]+[\s\t]*;/END;/igs;
+	$str =~ s/END[\s\t]+(?!IF|LOOP|CASE|INTO|FROM|,)[a-z0-9_]+[\s\t]*$/END/igs;
 
 	# Replace ending ROWNUM with LIMIT
 	$str =~ s/(WHERE|AND)[\s\t]*ROWNUM[\s\t]*=[\s\t]*(\d+)/LIMIT $2/igs;
