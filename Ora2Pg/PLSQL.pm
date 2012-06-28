@@ -237,8 +237,8 @@ sub plsql_to_plpgsql
 	if ($allow_code_break) {
 		# Replace Oracle substr(string, start_position, length) with
 		# PostgreSQL substring(string from start_position for length)
-		$str =~ s/substr[\s\t]*\(([^;]*),[\s\t]*(\d+)[\s\t]*,[\s\t]*(\d+)[\s\t]*\)/substring($1 from $2 for $3)/igs;
-		$str =~ s/substr[\s\t]*\(([^;]*),[\s\t]*(\d+)[\s\t]*\)/substring($1 from $2)/igs;
+		$str =~ s/substr[\s\t]*\(([^;]*),[\s\t]*([^,\s\t]+)[\s\t]*,[\s\t]*([^,\)\s\t]+)[\s\t]*\)/substring($1 from $2 for $3)/igs;
+		$str =~ s/substr[\s\t]*\(([^;]*),[\s\t]*([^,\)\s\t]+)[\s\t]*\)/substring($1 from $2)/igs;
 
 		# Replace decode("user_status",'active',"username",null)
 		# PostgreSQL (CASE WHEN "user_status"='ACTIVE' THEN "username" ELSE NULL END)
