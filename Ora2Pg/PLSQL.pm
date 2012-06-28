@@ -63,6 +63,7 @@ my %uncovered_score = (
 	'EXTRACT' => 3,
 	'EXCEPTION' => 2,
 	'SUBSTR' => 1,
+	'TO_NUMBER' => 1,
 );
 
 =head1 NAME
@@ -243,6 +244,12 @@ sub plsql_to_plpgsql
 		# Replace decode("user_status",'active',"username",null)
 		# PostgreSQL (CASE WHEN "user_status"='ACTIVE' THEN "username" ELSE NULL END)
 		$str =~ s/decode[\s\t]*\([\s\t]*([^,]*),[\s\t]*([^,]*),[\s\t]*([^,]*),[\s\t]*([^\)]*)\)/\(CASE WHEN $1=$2 THEN $3 ELSE $4 END\)/igs;
+
+		# The to_number() function reclaim a second argument under postgres which is the format.
+		# By default we use '99999999999999999999D99999999999999999999' that may allow bigint
+		# and double precision number. Feel free to modify it - maybe a configuration option
+		# should be added
+		$str =~ s/to_number[\s\t]*\([\s\t]*([a-z0-9\-\_"\.,\s]+)[\s\t]*\)/to_number\($1,'99999999999999999999D99999999999999999999'\)/igs;
 	}
 
 	return $str;
@@ -427,6 +434,8 @@ sub estimate_cost
 	$cost += $uncovered_score{'EXTRACT'}*$n;
 	$n = () = $str =~ m/\bSUBSTR[\t\s]*\(/igs;
 	$cost += $uncovered_score{'SUBSTR'}*$n;
+	$n = () = $str =~ m/\bTO_NUMBER[\t\s]*\(/igs;
+	$cost += $uncovered_score{'TO_NUMBER'}*$n;
 	# See:  http://www.postgresql.org/docs/9.0/static/errcodes-appendix.html#ERRCODES-TABLE
 	$n = () = $str =~ m/\b(DUP_VAL_ON_INDEX|TIMEOUT_ON_RESOURCE|TRANSACTION_BACKED_OUT|NOT_LOGGED_ON|LOGIN_DENIED|INVALID_NUMBER|PROGRAM_ERROR|VALUE_ERROR|ROWTYPE_MISMATCH|CURSOR_ALREADY_OPEN|ACCESS_INTO_NULL|COLLECTION_IS_NULL)\b/igs;
 	$cost += $uncovered_score{'EXCEPTION'}*$n;
