@@ -4154,7 +4154,7 @@ WHERE
 };
 	if ($self->{prefix} ne 'USER') {
 		if ($self->{schema}) {
-			$str .= "\tAND a.table_owner ='\U$self->{schema}\E'\n";
+			$str .= "\tAND upper(a.table_owner) ='\U$self->{schema}\E'\n";
 		} else {
 			$str .= "\tAND a.table_owner NOT IN ('" . join("','", @{$self->{sysusers}}) . "')\n";
 		}
