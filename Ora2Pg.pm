@@ -1209,6 +1209,7 @@ sub _tables
 		my $i = 1;
 		foreach my $t (@$table) {
 			next if ($t->[2] =~ /\$/);
+
 			# Jump to desired extraction
 			if (grep(/^$t->[2]$/, @done)) {
 				$self->logit("Duplicate entry found: $t->[0] - $t->[1] - $t->[2]\n", 1);
@@ -3699,13 +3700,14 @@ sub _get_indexes
 	}
 	# Retrieve all indexes 
 	my $sth = $self->{dbh}->prepare(<<END) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-SELECT DISTINCT $self->{prefix}_IND_COLUMNS.INDEX_NAME,$self->{prefix}_IND_COLUMNS.COLUMN_NAME,$self->{prefix}_INDEXES.UNIQUENESS,$self->{prefix}_IND_COLUMNS.COLUMN_POSITION
+SELECT DISTINCT $self->{prefix}_IND_COLUMNS.INDEX_NAME,$self->{prefix}_IND_COLUMNS.COLUMN_NAME,$self->{prefix}_INDEXES.UNIQUENESS,$self->{prefix}_IND_COLUMNS.COLUMN_POSITION,$self->{prefix}_INDEXES.INDEX_TYPE,$self->{prefix}_INDEXES.TABLE_TYPE
 FROM $self->{prefix}_IND_COLUMNS, $self->{prefix}_INDEXES
 WHERE $self->{prefix}_IND_COLUMNS.TABLE_NAME='$table' $owner
 AND $self->{prefix}_INDEXES.INDEX_NAME=$self->{prefix}_IND_COLUMNS.INDEX_NAME
-AND $self->{prefix}_IND_COLUMNS.INDEX_NAME NOT IN (SELECT CONSTRAINT_NAME FROM $self->{prefix}_CONSTRAINTS WHERE TABLE_NAME='$table' $sub_owner)
 ORDER BY $self->{prefix}_IND_COLUMNS.COLUMN_POSITION
 END
+
+#AND $self->{prefix}_IND_COLUMNS.INDEX_NAME NOT IN (SELECT CONSTRAINT_NAME FROM $self->{prefix}_CONSTRAINTS WHERE TABLE_NAME='$table' $sub_owner)
 	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	my $idxnc = qq{SELECT IE.COLUMN_EXPRESSION FROM $self->{prefix}_IND_EXPRESSIONS IE, $self->{prefix}_IND_COLUMNS IC
 WHERE  IE.INDEX_OWNER = IC.INDEX_OWNER
@@ -3721,6 +3723,9 @@ $idxowner
 	my %data = ();
 	my %unique = ();
 	while (my $row = $sth->fetch) {
+		next if (grep(/^$row->[0]$/i, keys %{$self->{tables}{$table}{unique_key}}));
+		next if ($self->{tables}{$table}{unique_key}{$row->[0]}{type} eq 'P');
+
 		$unique{$row->[0]} = $row->[2];
 		# Replace function based index type
 		if ($row->[1] =~ /^SYS_NC/i) {
