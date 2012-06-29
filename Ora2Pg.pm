@@ -1246,6 +1246,7 @@ sub _tables
 			my $sth = $self->{dbh}->prepare($query);
 			if (!defined($sth)) {
 				warn "Can't prepare statement: $DBI::errstr";
+				warn "ORA2PG HINT: May be this tablename need Oracle case sensitivity to be exported. See ORA_SENSITIVE in ora2pg.conf to export this table.\n";
 				next;
 			}
 			$sth->execute;
