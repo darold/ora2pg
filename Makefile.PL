@@ -375,10 +375,14 @@ XML_PRETTY	1
 # is arbitrary set to orcl. This only concern export type FDW.
 FDW_SERVER	orcl
 
-# Set it to 0 if you don't want to export milliseconds from Oracle timestamp columns.
-# Timestamp are formated with to_char(..., 'YYYY-MM-DD HH24:MI:SS.FF3'), disabling
-# this directive will change the format to 'YYYY-MM-DD HH24:MI:SS'.
+# Set it to 0 if you don't want to export milliseconds from Oracle timestamp
+# columns. Timestamp are formated with to_char(...,'YYYY-MM-DD HH24:MI:SS.FF3')
+# disabling this directive will change the format to 'YYYY-MM-DD HH24:MI:SS'.
 ENABLE_MICROSECOND	1
+
+# Set this to 1 if you don"t want to export comment associated to tables and
+# columns definition. Default is enabled.
+DISABLE_COMMENT		0
 };
 close(OUTCFG);
 

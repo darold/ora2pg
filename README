@@ -35,6 +35,7 @@ FEATURES
             - Export grants/privileges for users and groups.
             - Export range and list partition.
             - Export a table selection (by specifying the table names).
+            - Export comments on tables and columns definition.
             - Export Oracle schema to a PostgreSQL 8.4+ schema.
             - Export predefined functions, triggers, procedures, packages and
               package bodies.
@@ -319,8 +320,8 @@ CONFIGURATION
         to connect to PostgreSQL using the psql command. If you use an other
         user (postgres for exemple) you can force Ora2Pg to set the object
         owner to be the one used in the Oracle database by setting the
-        directive to 1, or to a completely different username by setting the
-        directive value to that username.
+        directive to 1, or to a completely different user name by setting
+        the directive value to that username.
 
   Export type
     The export action is perform following a single configuration directive
@@ -383,16 +384,16 @@ CONFIGURATION
 
         Since Ora2Pg v8.2 there's a new export type:
 
-                SHOW_ENCODING : display the Oracle session encoding, useful to set NSL_LANG.
+                SHOW_ENCODING : display Oracle session encoding, useful to set NSL_LANG.
 
         Those extraction keyword are use to only display the requested
         information and exit. This allow you to quickly know on what you are
-        going to work. The SHOW_COLUMN allow a new ora2pg command line
+        going to work. The type SHOW_COLUMN allow a new ora2pg command line
         option: '--xtable relname' or '-x relname' to limit the displayed
         information to the given table.
 
         Since release v8.13, Ora2Pg allow you to export your Oracle Table
-        definition to be use with the oracle_fdw foreign data wrapper. By
+        definition to be used with the oracle_fdw foreign data wrapper. By
         using type FDW your Oracle tables will be exported as follow:
 
                 CREATE FOREIGN TABLE oratab (
@@ -466,6 +467,11 @@ CONFIGURATION
         be applied to all exported table including the tables defined in the
         where clause. These WHERE clauses are very useful if you want to
         archive some data or at the opposite only export some recent data.
+
+    DISABLE_COMMENT
+        This directive interact with the TABLE export type to enable or
+        disable the export of the comments defined on tables and columns in
+        the Oracle database. It is enable by default.
 
   Modifying object structure
     One of the great usage of Ora2Pg is its flexibility to replicate Oracle

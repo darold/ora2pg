@@ -2742,7 +2742,7 @@ CREATE TRIGGER insert_${table}_trigger
 			}
 		}
 		# Add comments on table
-		if (${$self->{tables}{$table}{table_info}}[2]) {
+		if (!$self->{disable_comment} && ${$self->{tables}{$table}{table_info}}[2]) {
 			if (!$self->{case_sensitive}) {
 				$sql_output .= "COMMENT ON TABLE \"\L$tbname\E\" IS E'${$self->{tables}{$table}{table_info}}[2]';\n";
 			} else {
@@ -2750,6 +2750,20 @@ CREATE TRIGGER insert_${table}_trigger
 			}
 		}
 
+		# Add comments on columns
+		if (!$self->{disable_comment}) {
+			foreach $f (@{$self->{tables}{$table}{column_comments}}) {
+				next unless $f->[1];
+				$f->[1] =~ s/'/\\'/gs;
+				if (!$self->{case_sensitive}) {
+					$sql_output .= "COMMENT ON COLUMN \L$tbname\.$f->[0]\E IS E'$f->[1]';\n";
+				} else {
+					$sql_output .= "COMMENT ON COLUMN \"$tbname\".\"$f->[0]\" IS E'$f->[1]';\n";
+				}
+			}
+		}
+
+		# Change ownership
 		if ($self->{force_owner}) {
 			my $owner = ${$self->{tables}{$table}{table_info}}[0];
 			$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
@@ -2759,18 +2773,6 @@ CREATE TRIGGER insert_${table}_trigger
 				$sql_output .= "ALTER ${$self->{tables}{$table}{table_info}}[1] \"$tbname\" OWNER TO $owner;\n";
 			}
 		}
-
-		# Add comments on columns
-		foreach $f (@{$self->{tables}{$table}{column_comments}}) {
-			next unless $f->[1];
-			$f->[1] =~ s/'/\\'/gs;
-			if (!$self->{case_sensitive}) {
-				$sql_output .= "COMMENT ON COLUMN \L$tbname\.$f->[0]\E IS E'$f->[1]';\n";
-			} else {
-				$sql_output .= "COMMENT ON COLUMN \"$tbname\".\"$f->[0]\" IS E'$f->[1]';\n";
-			}
-		}
-
 		if ($self->{type} ne 'FDW') {
 			# Set the unique (and primary) key definition 
 			$constraints .= $self->_create_unique_keys($table, $self->{tables}{$table}{unique_key});
