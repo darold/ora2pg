@@ -3023,11 +3023,13 @@ sub _create_unique_keys
 			}
 		}
 		my $columnlist = join(',', map(qq{"$_"}, @conscols));
-		$columnlist = lc($columnlist) unless ($self->{case_sensitive});
-		if(($constype ne 'P') || $self->{keep_pkey_names}) {
-		    $out .= qq{ALTER TABLE "$newtabname" ADD CONSTRAINT "$newconsname" $constypename ($columnlist);\n};
-		} else {
-		    $out .= qq{ALTER TABLE "$newtabname" ADD PRIMARY KEY ($columnlist);\n};
+		if ($columnlist) {
+			$columnlist = lc($columnlist) unless ($self->{case_sensitive});
+			if(($constype ne 'P') || $self->{keep_pkey_names}) {
+			    $out .= qq{ALTER TABLE "$newtabname" ADD CONSTRAINT "$newconsname" $constypename ($columnlist);\n};
+			} else {
+			    $out .= qq{ALTER TABLE "$newtabname" ADD PRIMARY KEY ($columnlist);\n};
+			}
 		}
 	}
 	return $out;
@@ -3051,6 +3053,7 @@ sub _create_check_constraint
 	# Set the check constraint definition 
 	foreach my $k (keys %$check_constraint) {
 		my $chkconstraint = $check_constraint->{$k};
+		next if (!$chkconstraint);
 		if (exists $self->{replaced_cols}{"\L$tbsaved\E"} && $self->{replaced_cols}{"\L$tbsaved\E"}) {
 			foreach my $c (keys %{$self->{replaced_cols}{"\L$tbsaved\E"}}) {
 				$chkconstraint =~ s/"$c"/"$self->{replaced_cols}{"\L$tbsaved\E"}{$c}"/gsi;
