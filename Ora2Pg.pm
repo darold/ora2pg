@@ -3237,7 +3237,7 @@ sub _get_data
 	my $extraStr = "";
 	my $dateformat = 'YYYY-MM-DD HH24:MI:SS';
 	if ($self->{enable_microsecond}) {
-		$dateformat = 'YYYY-MM-DD HH24:MI:SS.FF3';
+		$dateformat = 'YYYY-MM-DD HH24:MI:SS.FF';
 	}
 	for my $k (0 .. $#{$name}) {
 
@@ -5388,7 +5388,7 @@ sub _datetime_format
 {
 	my ($self) = @_;
 
-	my $sth = $self->{dbh}->do("ALTER SESSION SET NLS_TIMESTAMP_FORMAT='YYYY-MM-DD HH24:MI:SS.FF3'") or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	my $sth = $self->{dbh}->do("ALTER SESSION SET NLS_TIMESTAMP_FORMAT='YYYY-MM-DD HH24:MI:SS.FF'") or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth = undef;
 
 }
