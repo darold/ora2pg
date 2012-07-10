@@ -825,16 +825,16 @@ CONFIGURATION
         http://www.postgresql.org/docs/9.0/static/multibyte.html
 
     ENABLE_MICROSECOND
-        Set it to 1 if you want to export millisecond from Oracle timestamp
-        columns. Timestamp are formated with:
+        Set it to 0 if you don't want to export millisecond from Oracle
+        timestamp columns. Timestamp will be formated with:
 
                 to_char(..., 'YYYY-MM-DD HH24:MI:SS')
 
-        enabling this directive will change the format to:
+        instead of using the default format to:
 
-                'YYYY-MM-DD HH24:MI:SS.FF3'
+                'YYYY-MM-DD HH24:MI:SS.FF'
 
-        By default milliseconds are not exported.
+        By default milliseconds are exported.
 
   PLSQL to PLPSQL convertion
     Automatic code convertion from Oracle PLSQL to PostgreSQL PLPGSQL is a
