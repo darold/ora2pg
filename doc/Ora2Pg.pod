@@ -884,7 +884,7 @@ Timestamp are formated with:
 
 enabling this directive will change the format to:
 
-	'YYYY-MM-DD HH24:MI:SS.FF3'
+	'YYYY-MM-DD HH24:MI:SS.FF'
 
 By default milliseconds are not exported.
 

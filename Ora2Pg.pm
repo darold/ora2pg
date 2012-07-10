@@ -853,6 +853,12 @@ sub _init
 	if ($self->{enable_microsecond} eq '') {
 		$self->{enable_microsecond} = 1;
 	} 
+	# Backward compatibility with LongTrunkOk with typo
+	if ($self->{longtrunkok} && not defined $self->{longtruncok}) {
+		$self->{longtruncok} = $self->{longtrunkok};
+	}
+	$self->{longtruncok} = 0 if (not defined $self->{longtruncok});
+	$self->{longreadlen} ||= (1024*1024);
 
 	if (($self->{standard_conforming_strings} =~ /^off$/i) || ($self->{standard_conforming_strings} == 0)) {
 		$self->{standard_conforming_strings} = 0;
@@ -885,13 +891,16 @@ sub _init
 	if (!$self->{input_file}) {
 		# Connect the database
 		$self->logit("Trying to connect to database: $self->{oracle_dsn}\n", 1);
-		$self->{dbh} = DBI->connect($self->{oracle_dsn}, $self->{oracle_user}, $self->{oracle_pwd});
+		$self->{dbh} = DBI->connect($self->{oracle_dsn}, $self->{oracle_user}, $self->{oracle_pwd}, { LongReadLen=>$self->{longreadlen}, LongTruncOk=>$self->{longtruncok} });
+
+		# Fix a problem when exporting type LONG and LOB
+		$self->{dbh}->{'LongReadLen'} = $self->{longreadlen};
+		$self->{dbh}->{'LongTruncOk'} = $self->{longtruncok};
 
 		# Check for connection failure
 		if (!$self->{dbh}) {
 			$self->logit("FATAL: $DBI::err ... $DBI::errstr\n", 0, 1);
 		}
-		$self->{dbh}->{LongReadLen} = 0;
 
 		# Use consistent reads for concurrent dumping...
 		$self->{dbh}->begin_work || $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -928,37 +937,28 @@ sub _init
         foreach my $t (@{$self->{export_type}}) {
                 $self->{type} = $t;
 		if (($self->{type} eq 'TABLE') || ($self->{type} eq 'FDW') || ($self->{type} eq 'DATA') || ($self->{type} eq 'COPY')) {
-			$self->{dbh}->{LongReadLen} = 100000;
 			$self->_tables();
 		} elsif ($self->{type} eq 'VIEW') {
-			$self->{dbh}->{LongReadLen} = 100000;
 			$self->_views();
 		} elsif ($self->{type} eq 'GRANT') {
 			$self->_grants();
 		} elsif ($self->{type} eq 'SEQUENCE') {
 			$self->_sequences();
 		} elsif ($self->{type} eq 'TRIGGER') {
-			$self->{dbh}->{LongReadLen} = 100000;
 			$self->_triggers();
 		} elsif ($self->{type} eq 'FUNCTION') {
-			$self->{dbh}->{LongReadLen} = 100000;
 			$self->_functions();
 		} elsif ($self->{type} eq 'PROCEDURE') {
-			$self->{dbh}->{LongReadLen} = 100000;
 			$self->_procedures();
 		} elsif ($self->{type} eq 'PACKAGE') {
-			$self->{dbh}->{LongReadLen} = 100000;
 			$self->_packages();
 		} elsif ($self->{type} eq 'TYPE') {
-			$self->{dbh}->{LongReadLen} = 100000;
 			$self->_types();
 		} elsif ($self->{type} eq 'TABLESPACE') {
 			$self->_tablespaces();
 		} elsif ($self->{type} eq 'PARTITION') {
-			$self->{dbh}->{LongReadLen} = 100000;
 			$self->_partitions();
 		} elsif (($self->{type} eq 'SHOW_SCHEMA') || ($self->{type} eq 'SHOW_TABLE') || ($self->{type} eq 'SHOW_COLUMN') || ($self->{type} eq 'SHOW_ENCODING')) {
-			$self->{dbh}->{LongReadLen} = 100000;
 			$self->_show_infos($self->{type});
 			$self->{dbh}->disconnect() if ($self->{dbh}); 
 			exit 0;
@@ -1962,8 +1962,14 @@ sub _get_sql_data
 
 	# Extract data only
 	if (($self->{type} eq 'DATA') || ($self->{type} eq 'COPY')) {
+
 		# Connect the database
-		$self->{dbh} = DBI->connect($self->{oracle_dsn}, $self->{oracle_user}, $self->{oracle_pwd});
+		$self->{dbh} = DBI->connect($self->{oracle_dsn}, $self->{oracle_user}, $self->{oracle_pwd}, { LongReadLen=>$self->{longreadlen}, LongTruncOk=>$self->{longtruncok} });
+
+		# Fix a problem when exporting type LONG and LOB
+		$self->{dbh}->{'LongReadLen'} = $self->{longreadlen};
+		$self->{dbh}->{'LongTruncOk'} = $self->{longtruncok};
+
 		# Check for connection failure
 		if (!$self->{dbh}) {
 			$self->logit("FATAL: $DBI::err ... $DBI::errstr\n", 0, 1);
@@ -3285,14 +3291,6 @@ sub _get_data
 		$str .= '(' . $self->{global_where} . ')';
 		$self->logit("\tApplying WHERE global clause: " . $self->{global_where} . "\n", 1);
 	}
-
-	# Backward compatibility with LongTrunkOk with typo
-	if ($self->{longtrunkok} && not defined $self->{longtruncok}) {
-		$self->{longtruncok} = $self->{longtrunkok};
-	}
-	# Fix a problem when exporting type LONG and LOB
-	$self->{dbh}->{'LongReadLen'} = $self->{longreadlen} || (1023*1024);
-	$self->{dbh}->{'LongTruncOk'} = $self->{longtruncok} || 0;
 
 	my $sth = $self->{dbh}->prepare($str,{ora_pers_lob=>1}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
