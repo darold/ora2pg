@@ -221,6 +221,32 @@ CONFIGURATION
         you don't know what you do don't use this directive, I use it to
         find PL/SQL parser and PL/PGSQL converter issues.
 
+   Oracle client encryption
+    If you want to encrypt the client/server exchange between Ora2Pg and
+    your Oracle server, your Oracle Client config file need to already
+    includes the encryption method. Then DBD:Oracle uses those settings to
+    encrypt the connection while you extract the data.
+
+    The Oracle Client config file ($ORACLE_HOME/network/admin/sqlnet.ora or
+    .sqlnet) should have defined the following information:
+
+            # Configure encryption of connections to Oracle
+            SQLNET.ENCRYPTION_CLIENT = required
+            SQLNET.ENCRYPTION_TYPES_CLIENT = (AES256, RC4_256)
+            SQLNET.CRYPTO_SEED = '10-70 random characters'
+
+    See this HowTo at
+    https://kb.berkeley.edu/jivekb/entry.jspa?externalID=1005 for more
+    information.
+
+    Any tool that ultimately uses the Oracle client to talk to the database
+    will be encrypted if you follow the above steps to setup.
+
+    In the Ora2Pg case, Perl's DBI uses DBD-Oracle, which uses the Oracle
+    client for actually handling database communication. If the installation
+    of Oracle client used by Perl is setup to request encrypted connections,
+    then your connection to an Oracle database will also be encrypted.
+
   Testing
     Once you have set the Oracle database DSN you can execute ora2pg to see
     if it works. By default the configuration file will export the database
@@ -964,6 +990,7 @@ ACKNOWLEDGEMENT
             Henk Enting
             Magnus Hagander
             David Fetter
+            Jenny Palomino
 
     and all others who help me to build a useful and reliable product:
 

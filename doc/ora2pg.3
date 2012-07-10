@@ -359,6 +359,35 @@ Oracle database end just apply his convertion tool to the content of the
 file. This can only be used with the following export type: \s-1PROCEDURE\s0,
 \&\s-1FUNCTION\s0 or \s-1PACKAGE\s0. If you don't know what you do don't use this directive, I
 use it to find \s-1PL/SQL\s0 parser and \s-1PL/PGSQL\s0 converter issues.
+.PP
+\fIOracle client encryption\fR
+.IX Subsection "Oracle client encryption"
+.PP
+If you want to encrypt the client/server exchange between Ora2Pg and your Oracle
+server, your Oracle Client config file need to already includes the encryption
+method. Then DBD:Oracle uses those settings to encrypt the connection while you
+extract the data.
+.PP
+The Oracle Client config file ($ORACLE_HOME/network/admin/sqlnet.ora or .sqlnet)
+should have defined the following information:
+.PP
+.Vb 4
+\&        # Configure encryption of connections to Oracle
+\&        SQLNET.ENCRYPTION_CLIENT = required
+\&        SQLNET.ENCRYPTION_TYPES_CLIENT = (AES256, RC4_256)
+\&        SQLNET.CRYPTO_SEED = \*(Aq10\-70 random characters\*(Aq
+.Ve
+.PP
+See this HowTo at https://kb.berkeley.edu/jivekb/entry.jspa?externalID=1005 for
+more information.
+.PP
+Any tool that ultimately uses the Oracle client to talk to the database will be
+encrypted if you follow the above steps to setup.
+.PP
+In the Ora2Pg case, Perl's \s-1DBI\s0 uses DBD-Oracle, which uses the Oracle client for
+actually handling database communication. If the installation of Oracle client
+used by Perl is setup to request encrypted connections, then your connection to
+an Oracle database will also be encrypted.
 .SS "Testing"
 .IX Subsection "Testing"
 Once you have set the Oracle database \s-1DSN\s0 you can execute ora2pg to see if
@@ -1092,6 +1121,7 @@ I must thanks a lot all the great contributors:
 \&        Henk Enting
 \&        Magnus Hagander
 \&        David Fetter
+\&        Jenny Palomino
 .Ve
 .PP
 and all others who help me to build a useful and reliable product:
