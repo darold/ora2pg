@@ -859,6 +859,7 @@ sub _init
 	}
 	$self->{longtruncok} = 0 if (not defined $self->{longtruncok});
 	$self->{longreadlen} ||= (1024*1024);
+	$self->{ora_piece_size} ||= $self->{longreadlen};
 
 	if (($self->{standard_conforming_strings} =~ /^off$/i) || ($self->{standard_conforming_strings} == 0)) {
 		$self->{standard_conforming_strings} = 0;
@@ -3292,7 +3293,8 @@ sub _get_data
 		$self->logit("\tApplying WHERE global clause: " . $self->{global_where} . "\n", 1);
 	}
 
-	my $sth = $self->{dbh}->prepare($str,{ora_pers_lob=>1}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	my $sth = $self->{dbh}->prepare($str,{ora_piece_lob=>1,ora_piece_size=>$self->{ora_piece_size}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+
 	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
 	return $sth;	
