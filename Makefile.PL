@@ -1,6 +1,6 @@
 use ExtUtils::MakeMaker qw(prompt WriteMakefile);
 
-my @ALLOWED_ARGS = ('BINDIR','CONFDIR','MANDIR','DOCDIR','DESTDIR','QUIET','INSTALLDIRS');
+my @ALLOWED_ARGS = ('CONFDIR','DOCDIR','DESTDIR','QUIET','INSTALLDIRS','INSTALL_BASE','PREFIX');
 
 # Parse command line arguments and store them as environment variables
 while ($_ = shift) {
@@ -9,26 +9,51 @@ while ($_ = shift) {
 		$ENV{$k} = $v;
 	}
 }
-$ENV{DESTDIR} =~ s/\/$//;
 
 # Default install path
-my $BINDIR = $ENV{BINDIR} || '/usr/local/bin';
 my $CONFDIR = $ENV{CONFDIR} || '/etc/ora2pg';
-my $MANDIR = $ENV{MANDIR} || '/usr/local/man/man3';
-my $DOCDIR = $ENV{DOCDIR} || '/usr/local/share/ora2pg';
-my $DESTDIR = $ENV{DESTDIR} || '';
+my $DOCDIR = $ENV{DOCDIR} || '/usr/local/share/doc/ora2pg';
+
+
+my $PREFIX = $ENV{DESTDIR} || $ENV{PREFIX} || $ENV{INSTALL_BASE} ||  '';
+$PREFIX =~ s/\/$//;
 $ENV{INSTALLDIRS} ||= 'site';
 
+# Try to set the default configuration directory following $PREFIX
+if ($^O !~ /MSWin32|dos/i) {
+	if ($PREFIX =~ m#^/usr/local(/|$)#) {
+		$CONFDIR = '/usr/local/etc';
+		$DOCDIR = '/usr/local/share/doc/ora2pg';
+	} elsif ($PREFIX =~ m#^/opt(/|$)#) {
+		$CONFDIR =  '/etc/opt';
+		$DOCDIR = '/opt/ora2pg';
+	} else {
+		$CONFDIR = '/etc';
+		$DOCDIR = '/usr/share/doc/ora2pg';
+	}
+} else {
+	$CONFDIR = 'C:\ora2pg';
+	$DOCDIR = 'C:\ora2pg';
+}
+
+if ($PREFIX) {
+	$CONFDIR = $PREFIX . $CONFDIR;
+	$DOCDIR = $PREFIX . $DOCDIR;
+}
+
 # Try to find all binary used by Ora2Pg
-my $bzip2 = `which bzip2`;
-chomp($bzip2);
-$bzip2 ||= '/usr/bin/bzip2';
+my $bzip2 = '';
+if ($^O !~ /MSWin32|dos/i) {
+	my $bzip2 = `which bzip2`;
+	chomp($bzip2);
+	$bzip2 ||= '/usr/bin/bzip2';
+}
 
 my $oracle_home = $ENV{ORACLE_HOME} || '/usr/local/oracle/10g';
 
-# Setup ok. generating ora2pg.conf config file
-unless(open(OUTCFG, ">ora2pg.conf")) {
-	print "\nError: can't write config file ora2pg.conf, $!\n";
+# Setup ok. generating default ora2pg.conf config file
+unless(open(OUTCFG, ">ora2pg.conf.dist")) {
+	print "\nError: can't write config file ora2pg.conf.dist, $!\n";
 	exit 0;
 }
 
@@ -369,75 +394,26 @@ ALLOW_CODE_BREAK	1
 # enabled for backward compatibility.
 XML_PRETTY	1
 
-# This directive is used to set the name of the foreign data server that is used
-# in the "CREATE SERVER name FOREIGN DATA WRAPPER oracle_fdw ..." command. This
-# name will then be used in the "CREATE FOREIGN TABLE ..." SQL command. Default
-# is arbitrary set to orcl. This only concern export type FDW.
+# This directive is used to set the name of the foreign data server that is used in
+# the "CREATE SERVER name FOREIGN DATA WRAPPER oracle_fdw ..." command. This name will
+# then be used in the "CREATE FOREIGN TABLE ..." SQL command. Default is arbitrary set
+# to orcl. This only concern export type FDW.
 FDW_SERVER	orcl
 
-# Set it to 0 if you don't want to export milliseconds from Oracle timestamp
-# columns. Timestamp are formated with to_char(...,'YYYY-MM-DD HH24:MI:SS.FF3')
-# disabling this directive will change the format to 'YYYY-MM-DD HH24:MI:SS'.
-ENABLE_MICROSECOND	1
-
-# Set this to 1 if you don"t want to export comment associated to tables and
-# columns definition. Default is enabled.
-DISABLE_COMMENT		0
 };
 close(OUTCFG);
 
-unless(open(INST, ">install_all.sh")) {
-	print "\nError: can't write post install file install_all.sh, $!\n";
-	exit 0;
+if ($^O !~ /MSWin32|dos/i) {
+	`perl -p -i -e "s#my \\\$CONFIG_FILE .*#my \\\$CONFIG_FILE = '$CONFDIR/ora2pg.conf';#" scripts/ora2pg`;
+} else {
+	my $tmp_conf = quotemeta($CONFDIR);
+	`perl -p -e "s#my \\\$CONFIG_FILE .*#my \\\$CONFIG_FILE = '$tmp_conf\\\\ora2pg.conf';#" scripts\\ora2pg > scripts\\ora2pg.tmp`;
+	`copy scripts\\ora2pg.tmp scripts\\ora2pg /Y`;
 }
-print INST qq{#!/bin/sh
-if [ ! -d "$DESTDIR$BINDIR" ]; then
-	mkdir -p $DESTDIR$BINDIR
-fi
-if [ ! -d "$DESTDIR$CONFDIR" ]; then
-	mkdir -p $DESTDIR$CONFDIR
-fi
-if [ ! -d "$DESTDIR$MANDIR" ]; then
-	mkdir -p $DESTDIR$MANDIR
-fi
-if [ ! -d "$DESTDIR$DOCDIR" ]; then
-	mkdir -p $DESTDIR$DOCDIR
-fi
-
-filedestconf="ora2pg.conf"
-if [ -e $DESTDIR$CONFDIR/ora2pg.conf ]; then
-	echo "File $DESTDIR$CONFDIR/ora2pg.conf already exists. Installing new one as ora2pg.conf.new"
-	filedestconf="ora2pg.conf.new"
-fi
-install -m 644 ora2pg.conf $DESTDIR$CONFDIR/\$filedestconf
-install -m 755 ora2pg_pl $DESTDIR$BINDIR/ora2pg
-pod2man --section=3 doc/Ora2Pg.pod doc/ora2pg.3
-install -m 644 doc/ora2pg.3 $DESTDIR$MANDIR/
-install -m 644 README $DESTDIR$DOCDIR/
-install -m 644 INSTALL $DESTDIR$DOCDIR/
-install -m 644 changelog $DESTDIR$DOCDIR/
-
-};
-if (!$ENV{QUIET}) {
-	print INST qq{
-echo "
-------------------------------------------------------------------------------
-
-Please read documentation at http://ora2pg.darold.net/ before asking for help
-
-------------------------------------------------------------------------------
-"
-};
-}
-close(INST);
-`chmod 755 install_all.sh`;
-
-`perl -p -i -e "s#my \\\$CONFIG_FILE .*#my \\\$CONFIG_FILE = '$CONFDIR/ora2pg.conf';#" ora2pg_pl`;
 
 WriteMakefile(
     'NAME'         => 'Ora2Pg',
-    'VERSION_FROM' => 'Ora2Pg.pm',
-    'DIR'          => [qw(Ora2Pg)],
+    'VERSION_FROM' => 'lib/Ora2Pg.pm',
     'LICENSE'      => 'GPLv3',
     'dist'         => {
 			'COMPRESS'=>'gzip -9f', 'SUFFIX' => 'gz',
@@ -445,10 +421,22 @@ WriteMakefile(
 		      },
     'AUTHOR'       => 'Gilles Darold (gilles _AT_ darold _DOT_ net)',
     'ABSTRACT'     => 'Oracle to PostgreSQL migration toolkit',
-    'DESTDIR'      => $ENV{DESTDIR},
+    'EXE_FILES'    => [ qw(scripts/ora2pg) ],
+    'MAN3PODS'     => { 'doc/Ora2Pg.pod' => 'blib/man3/ora2pg.3' },
+    'DESTDIR'      => $PREFIX,
     'INSTALLDIRS'  => $ENV{INSTALLDIRS},
-    'clean'        => {FILES => "install_all.sh ora2pg.conf"},
+    'clean'        => {FILES => "ora2pg.conf.dist lib/blib/"},
     'PREREQ_PM'    => { DBI => 0, DBD::Oracle },
+    'META_MERGE'   => {
+	resources  => {
+		homepage => 'http://ora2pg.darold.net/',
+		repository  => {
+			type => 'git',
+			git => 'git@github.com:darold/ora2pg.git',
+			web => 'https://github.com/darold/ora2pg',
+		},
+	},
+    }
 );
 
 sub MY::install {
@@ -461,15 +449,43 @@ sub MY::install {
 }
 
 sub MY::postamble {
-	my $postamble = <<'END';
-install_all: install_all.sh
-	sh install_all.sh
-END
-	return $postamble;
+	my $postamble = qq{
+install_all :
+	\@echo "Installing default configuration file (ora2pg.conf.dist) to $CONFDIR"
+	\@\$(MKPATH) $CONFDIR/ora2pg
+	\@\$(CP) --force ora2pg.conf.dist $CONFDIR/ora2pg/ora2pg.conf.dist
+	\@\$(MKPATH) $DOCDIR
+	\@\$(CP) --force README $DOCDIR/README
+	\@\$(CP) --force INSTALL $DOCDIR/INSTALL
+	\@\$(CP) --force changelog $DOCDIR/changelog
+};
+	if ($^O =~ /MSWin32|dos/i) {
+		my $tmp_conf = quotemeta($CONFDIR);
+		$postamble = qq{
+install_all :
+	\@echo "Installing default configuration file (ora2pg.conf.dist) to $CONFDIR"
+	\@\$(MKPATH) $CONFDIR
+	\@\$(CP) ora2pg.conf.dist $CONFDIR\\ora2pg.conf.dist
+	\@\$(CP) README $CONFDIR\\README
+	\@\$(CP) INSTALL $CONFDIR\\INSTALL
+	\@\$(CP) changelog $CONFDIR\\changelog
+};
+	}
+        return $postamble;
 }
+
 
 if (!$ENV{QUIET}) {
-	print "Done...\n\n";
-	print "Now type 'make && make install'\n\n";
-}
+	print qq{
+Done...
+------------------------------------------------------------------------------
+Please read documentation at http://ora2pg.darold.net/ before asking for help
+------------------------------------------------------------------------------
+};
+	if ($^O !~ /MSWin32|dos/i) {
+		print "Now type: make && make install\n";
+	} else {
+		print "Now type: dmake && dmake install\n";
+	}
 
+}

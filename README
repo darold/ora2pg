@@ -35,7 +35,6 @@ FEATURES
             - Export grants/privileges for users and groups.
             - Export range and list partition.
             - Export a table selection (by specifying the table names).
-            - Export comments on tables and columns definition.
             - Export Oracle schema to a PostgreSQL 8.4+ schema.
             - Export predefined functions, triggers, procedures, packages and
               package bodies.
@@ -221,32 +220,6 @@ CONFIGURATION
         you don't know what you do don't use this directive, I use it to
         find PL/SQL parser and PL/PGSQL converter issues.
 
-   Oracle client encryption
-    If you want to encrypt the client/server exchange between Ora2Pg and
-    your Oracle server, your Oracle Client config file need to already
-    includes the encryption method. Then DBD:Oracle uses those settings to
-    encrypt the connection while you extract the data.
-
-    The Oracle Client config file ($ORACLE_HOME/network/admin/sqlnet.ora or
-    .sqlnet) should have defined the following information:
-
-            # Configure encryption of connections to Oracle
-            SQLNET.ENCRYPTION_CLIENT = required
-            SQLNET.ENCRYPTION_TYPES_CLIENT = (AES256, RC4_256)
-            SQLNET.CRYPTO_SEED = '10-70 random characters'
-
-    See this HowTo at
-    https://kb.berkeley.edu/jivekb/entry.jspa?externalID=1005 for more
-    information.
-
-    Any tool that ultimately uses the Oracle client to talk to the database
-    will be encrypted if you follow the above steps to setup.
-
-    In the Ora2Pg case, Perl's DBI uses DBD-Oracle, which uses the Oracle
-    client for actually handling database communication. If the installation
-    of Oracle client used by Perl is setup to request encrypted connections,
-    then your connection to an Oracle database will also be encrypted.
-
   Testing
     Once you have set the Oracle database DSN you can execute ora2pg to see
     if it works. By default the configuration file will export the database
@@ -346,8 +319,8 @@ CONFIGURATION
         to connect to PostgreSQL using the psql command. If you use an other
         user (postgres for exemple) you can force Ora2Pg to set the object
         owner to be the one used in the Oracle database by setting the
-        directive to 1, or to a completely different user name by setting
-        the directive value to that username.
+        directive to 1, or to a completely different username by setting the
+        directive value to that username.
 
   Export type
     The export action is perform following a single configuration directive
@@ -410,16 +383,16 @@ CONFIGURATION
 
         Since Ora2Pg v8.2 there's a new export type:
 
-                SHOW_ENCODING : display Oracle session encoding, useful to set NSL_LANG.
+                SHOW_ENCODING : display the Oracle session encoding, useful to set NSL_LANG.
 
         Those extraction keyword are use to only display the requested
         information and exit. This allow you to quickly know on what you are
-        going to work. The type SHOW_COLUMN allow a new ora2pg command line
+        going to work. The SHOW_COLUMN allow a new ora2pg command line
         option: '--xtable relname' or '-x relname' to limit the displayed
         information to the given table.
 
-        Since release v8.13, Ora2Pg allow you to export your Oracle Table
-        definition to be used with the oracle_fdw foreign data wrapper. By
+        Since release v8.12, Ora2Pg allow you to export your Oracle Table
+        definition to be use with the oracle_fdw foreign data wrapper. By
         using type FDW your Oracle tables will be exported as follow:
 
                 CREATE FOREIGN TABLE oratab (
@@ -493,11 +466,6 @@ CONFIGURATION
         be applied to all exported table including the tables defined in the
         where clause. These WHERE clauses are very useful if you want to
         archive some data or at the opposite only export some recent data.
-
-    DISABLE_COMMENT
-        This directive interact with the TABLE export type to enable or
-        disable the export of the comments defined on tables and columns in
-        the Oracle database. It is enable by default.
 
   Modifying object structure
     One of the great usage of Ora2Pg is its flexibility to replicate Oracle
@@ -851,16 +819,16 @@ CONFIGURATION
         http://www.postgresql.org/docs/9.0/static/multibyte.html
 
     ENABLE_MICROSECOND
-        Set it to 0 if you don't want to export millisecond from Oracle
-        timestamp columns. Timestamp will be formated with:
+        Set it to 1 if you want to export millisecond from Oracle timestamp
+        columns. Timestamp are formated with:
 
                 to_char(..., 'YYYY-MM-DD HH24:MI:SS')
 
-        instead of using the default format to:
+        enabling this directive will change the format to:
 
-                'YYYY-MM-DD HH24:MI:SS.FF'
+                'YYYY-MM-DD HH24:MI:SS.FF3'
 
-        By default milliseconds are exported.
+        By default milliseconds are not exported.
 
   PLSQL to PLPSQL convertion
     Automatic code convertion from Oracle PLSQL to PostgreSQL PLPGSQL is a
@@ -990,7 +958,6 @@ ACKNOWLEDGEMENT
             Henk Enting
             Magnus Hagander
             David Fetter
-            Jenny Palomino
 
     and all others who help me to build a useful and reliable product:
 

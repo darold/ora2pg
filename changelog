@@ -1,11 +1,3 @@
-2012 06 26 - 8.13
-
-	- Fix broken export with missing single quote in Oracle timestamp export
-	  formating with to_char(timestampcolumn, YYYY-MM-DD HH24:mi:ss). Thanks
-	  to Steve Delong for the report.
-
-UPGRADE: If you don't want to reinstall all, just overwriting Ora2Pg.pm will be enough.
-
 2012 06 22 - 8.12
 
 	- Add nex configuration directive ENABLE_MICROSECOND to allow timestamp

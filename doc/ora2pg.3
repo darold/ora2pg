@@ -124,7 +124,7 @@
 .\" ========================================================================
 .\"
 .IX Title "ORA2PG 1"
-.TH ORA2PG 1 "2012-07-10" "perl v5.10.1" "User Contributed Perl Documentation"
+.TH ORA2PG 1 "2012-06-22" "perl v5.10.1" "User Contributed Perl Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -165,7 +165,6 @@ Features included:
 \&        \- Export grants/privileges for users and groups.
 \&        \- Export range and list partition.
 \&        \- Export a table selection (by specifying the table names).
-\&        \- Export comments on tables and columns definition.
 \&        \- Export Oracle schema to a PostgreSQL 8.4+ schema.
 \&        \- Export predefined functions, triggers, procedures, packages and
 \&          package bodies.
@@ -359,35 +358,6 @@ Oracle database end just apply his convertion tool to the content of the
 file. This can only be used with the following export type: \s-1PROCEDURE\s0,
 \&\s-1FUNCTION\s0 or \s-1PACKAGE\s0. If you don't know what you do don't use this directive, I
 use it to find \s-1PL/SQL\s0 parser and \s-1PL/PGSQL\s0 converter issues.
-.PP
-\fIOracle client encryption\fR
-.IX Subsection "Oracle client encryption"
-.PP
-If you want to encrypt the client/server exchange between Ora2Pg and your Oracle
-server, your Oracle Client config file need to already includes the encryption
-method. Then DBD:Oracle uses those settings to encrypt the connection while you
-extract the data.
-.PP
-The Oracle Client config file ($ORACLE_HOME/network/admin/sqlnet.ora or .sqlnet)
-should have defined the following information:
-.PP
-.Vb 4
-\&        # Configure encryption of connections to Oracle
-\&        SQLNET.ENCRYPTION_CLIENT = required
-\&        SQLNET.ENCRYPTION_TYPES_CLIENT = (AES256, RC4_256)
-\&        SQLNET.CRYPTO_SEED = \*(Aq10\-70 random characters\*(Aq
-.Ve
-.PP
-See this HowTo at https://kb.berkeley.edu/jivekb/entry.jspa?externalID=1005 for
-more information.
-.PP
-Any tool that ultimately uses the Oracle client to talk to the database will be
-encrypted if you follow the above steps to setup.
-.PP
-In the Ora2Pg case, Perl's \s-1DBI\s0 uses DBD-Oracle, which uses the Oracle client for
-actually handling database communication. If the installation of Oracle client
-used by Perl is setup to request encrypted connections, then your connection to
-an Oracle database will also be encrypted.
 .SS "Testing"
 .IX Subsection "Testing"
 Once you have set the Oracle database \s-1DSN\s0 you can execute ora2pg to see if
@@ -485,10 +455,10 @@ will add users \s-1INTERNAL\s0 and \s-1SYSDBA\s0 to the schema exclusion list.
 .IP "\s-1FORCE_OWNER\s0" 4
 .IX Item "FORCE_OWNER"
 By default the owner of the database objects is the one you're using to connect
-to PostgreSQL using the psql command. If you use an other user (postgres for
-exemple) you can force Ora2Pg to set the object owner to be the one used in the
-Oracle database by setting the directive to 1, or to a completely different user
-name by setting the directive value to that username.
+to PostgreSQL using the psql command. If you use an other user (postgres for exemple)
+you can force Ora2Pg to set the object owner to be the one used in the Oracle database
+by setting the directive to 1, or to a completely different username by setting the
+directive value to that username.
 .SS "Export type"
 .IX Subsection "Export type"
 The export action is perform following a single configuration directive '\s-1TYPE\s0',
@@ -552,17 +522,17 @@ Since Ora2Pg v8.1 there's three new export types:
 Since Ora2Pg v8.2 there's a new export type:
 .Sp
 .Vb 1
-\&        SHOW_ENCODING : display Oracle session encoding, useful to set NSL_LANG.
+\&        SHOW_ENCODING : display the Oracle session encoding, useful to set NSL_LANG.
 .Ve
 .Sp
-Those extraction keyword are use to only display the requested information and
-exit. This allow you to quickly know on what you are going to work. The type
-\&\s-1SHOW_COLUMN\s0 allow a new ora2pg command line option: '\-\-xtable relname' or
-\&'\-x relname' to limit the displayed information to the given table.
+Those extraction keyword are use to only display the requested information and exit.
+This allow you to quickly know on what you are going to work. The \s-1SHOW_COLUMN\s0 allow
+a new ora2pg command line option: '\-\-xtable relname' or '\-x relname' to limit the
+displayed information to the given table.
 .Sp
-Since release v8.13, Ora2Pg allow you to export your Oracle Table definition to
-be used with the oracle_fdw foreign data wrapper. By using type \s-1FDW\s0 your Oracle
-tables will be exported as follow:
+Since release v8.12, Ora2Pg allow you to export your Oracle Table definition to be
+use with the oracle_fdw foreign data wrapper. By using type \s-1FDW\s0 your Oracle tables
+will be exported as follow:
 .Sp
 .Vb 5
 \&        CREATE FOREIGN TABLE oratab (
@@ -574,8 +544,7 @@ tables will be exported as follow:
 .Sp
 Now you can use the table like a regular PostgreSQL table.
 .Sp
-See http://pgxn.org/dist/oracle_fdw/ for more information on this foreign data
-wrapper.
+See http://pgxn.org/dist/oracle_fdw/ for more information on this foreign data wrapper.
 .IP "\s-1THREAD_COUNT\s0" 4
 .IX Item "THREAD_COUNT"
 This configuration directive adds multi-threading support to data export type, the
@@ -633,11 +602,6 @@ Any where clause not included into a table name bracket clause will be applied
 to all exported table including the tables defined in the where clause. These
 \&\s-1WHERE\s0 clauses are very useful if you want to archive some data or at the
 opposite only export some recent data.
-.IP "\s-1DISABLE_COMMENT\s0" 4
-.IX Item "DISABLE_COMMENT"
-This directive interact with the \s-1TABLE\s0 export type to enable or disable the
-export of the comments defined on tables and columns in the Oracle database.
-It is enable by default.
 .SS "Modifying object structure"
 .IX Subsection "Modifying object structure"
 One of the great usage of Ora2Pg is its flexibility to replicate Oracle database
@@ -972,20 +936,20 @@ and your PostgreSQL database is encoded in \s-1UTF8\s0. What you have to do is s
 You can take a look at the PostgreSQL supported character sets here: http://www.postgresql.org/docs/9.0/static/multibyte.html
 .IP "\s-1ENABLE_MICROSECOND\s0" 4
 .IX Item "ENABLE_MICROSECOND"
-Set it to 0 if you don't want to export millisecond from Oracle timestamp
-columns. Timestamp will be formated with:
+Set it to 1 if you want to export millisecond from Oracle timestamp columns.
+Timestamp are formated with:
 .Sp
 .Vb 1
 \&        to_char(..., \*(AqYYYY\-MM\-DD HH24:MI:SS\*(Aq)
 .Ve
 .Sp
-instead of using the default format to:
+enabling this directive will change the format to:
 .Sp
 .Vb 1
-\&        \*(AqYYYY\-MM\-DD HH24:MI:SS.FF\*(Aq
+\&        \*(AqYYYY\-MM\-DD HH24:MI:SS.FF3\*(Aq
 .Ve
 .Sp
-By default milliseconds are exported.
+By default milliseconds are not exported.
 .SS "\s-1PLSQL\s0 to \s-1PLPSQL\s0 convertion"
 .IX Subsection "PLSQL to PLPSQL convertion"
 Automatic code convertion from Oracle \s-1PLSQL\s0 to PostgreSQL \s-1PLPGSQL\s0 is a work in
@@ -1121,7 +1085,6 @@ I must thanks a lot all the great contributors:
 \&        Henk Enting
 \&        Magnus Hagander
 \&        David Fetter
-\&        Jenny Palomino
 .Ve
 .PP
 and all others who help me to build a useful and reliable product:
