@@ -1043,6 +1043,8 @@ I must thanks a lot all the great contributors:
 	Henk Enting
 	Magnus Hagander
 	David Fetter
+	Mohamed Gargouri
+	Rodrigo
 
 and all others who help me to build a useful and reliable product:
 
@@ -1060,5 +1062,6 @@ and all others who help me to build a useful and reliable product:
 	Aaron Culich
 	Sriram Chandrasekaran
 	Patrick King
+	Jenny Palomino
 	...
 

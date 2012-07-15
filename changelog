@@ -22,7 +22,7 @@
 	- Fix bug with LONGREADLEN and LONGTRUNCOK when exporting LOB that was
 	  not applied even after change into the configuration file. Reported
 	  by Mohamed Gargouri
-	- Fix microsecond format FF3 not compatible with Oracle 8i.
+	- Fix microsecond format FF3 not compatible with Oracle 8i. Set to FF.
 	- Add a warning to stderr when a table export need that ORA_SENSITIVE
 	  be enabled.
 	- Fix case where Oracle indexes with same name as a constraint was not
