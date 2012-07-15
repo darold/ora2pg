@@ -369,8 +369,31 @@ Set this directive to a file containing \s-1PL/SQL\s0 Oracle Code like function,
 procedure or full package body to prevent Ora2Pg from connecting to an
 Oracle database end just apply his convertion tool to the content of the
 file. This can only be used with the following export type: \s-1PROCEDURE\s0,
-\&\s-1FUNCTION\s0 or \s-1PACKAGE\s0. If you don't know what you do don't use this directive, I
-use it to find \s-1PL/SQL\s0 parser and \s-1PL/PGSQL\s0 converter issues.
+\&\s-1FUNCTION\s0 or \s-1PACKAGE\s0. If you don't know what you do don't use this directive,
+I use it to find \s-1PL/SQL\s0 parser and \s-1PL/PGSQL\s0 converter issues.
+.SS "Data encryption with Oracle server"
+.IX Subsection "Data encryption with Oracle server"
+If your Oracle Client config file already includes the encryption method,
+then DBD:Oracle uses those settings to encrypt the connection while you
+extract the data. For example if you have configured the Oracle Client
+config file (sqlnet.or or .sqlnet) with the following information:
+.PP
+.Vb 4
+\&        # Configure encryption of connections to Oracle
+\&        SQLNET.ENCRYPTION_CLIENT = required
+\&        SQLNET.ENCRYPTION_TYPES_CLIENT = (AES256, RC4_256)
+\&        SQLNET.CRYPTO_SEED = \*(Aqshould be 10\-70 random characters\*(Aq
+.Ve
+.PP
+Any tool that uses the Oracle client to talk to the database will be
+encrypted if you setup a session encryption like above.
+.PP
+For example, Perl's \s-1DBI\s0 uses DBD-Oracle, which uses the Oracle client
+for actually handling database communication. If the installation of
+Oracle client used by Perl is setup to request encrypted connections,
+then your Perl connection to an Oracle database will also be encrypted.
+.PP
+Full details at https://kb.berkeley.edu/jivekb/entry.jspa?externalID=1005
 .SS "Testing"
 .IX Subsection "Testing"
 Once you have set the Oracle database \s-1DSN\s0 you can execute ora2pg to see if

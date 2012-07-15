@@ -245,10 +245,32 @@ Set this directive to a file containing PL/SQL Oracle Code like function,
 procedure or full package body to prevent Ora2Pg from connecting to an
 Oracle database end just apply his convertion tool to the content of the
 file. This can only be used with the following export type: PROCEDURE,
-FUNCTION or PACKAGE. If you don't know what you do don't use this directive, I
-use it to find PL/SQL parser and PL/PGSQL converter issues.
+FUNCTION or PACKAGE. If you don't know what you do don't use this directive,
+I use it to find PL/SQL parser and PL/PGSQL converter issues.
 
 =back
+
+=head2 Data encryption with Oracle server
+
+If your Oracle Client config file already includes the encryption method,
+then DBD:Oracle uses those settings to encrypt the connection while you
+extract the data. For example if you have configured the Oracle Client
+config file (sqlnet.or or .sqlnet) with the following information:
+
+	# Configure encryption of connections to Oracle
+	SQLNET.ENCRYPTION_CLIENT = required
+	SQLNET.ENCRYPTION_TYPES_CLIENT = (AES256, RC4_256)
+	SQLNET.CRYPTO_SEED = 'should be 10-70 random characters'
+
+Any tool that uses the Oracle client to talk to the database will be
+encrypted if you setup a session encryption like above.
+
+For example, Perl's DBI uses DBD-Oracle, which uses the Oracle client
+for actually handling database communication. If the installation of
+Oracle client used by Perl is setup to request encrypted connections,
+then your Perl connection to an Oracle database will also be encrypted.
+
+Full details at https://kb.berkeley.edu/jivekb/entry.jspa?externalID=1005
 
 =head2 Testing
 
