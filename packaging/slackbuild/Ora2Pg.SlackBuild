@@ -79,9 +79,7 @@ cd $NAME
 perl Makefile.PL \
   INSTALLDIRS=vendor \
   QUIET=1 \
-  BINDIR=/usr/bin \
   CONFDIR=/etc/$PNAME \
-  MANDIR=/usr/man/man3 \
   DOCDIR=/usr/share/doc/$PNAME \
   DESTDIR=$PKG || exit 1
 

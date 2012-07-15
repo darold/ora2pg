@@ -30,9 +30,7 @@ Oracle database to a PostgreSQL database.
 %{__perl} Makefile.PL \
     INSTALLDIRS=vendor \
     QUIET=1 \
-    BINDIR=%{_bindir} \
     CONFDIR=%{_sysconfdir} \
-    MANDIR=%{_mandir}/man1 \
     DOCDIR=%{_docdir}/%{wname}-%{version} \
     DESTDIR=%{buildroot} < /dev/null
 %{__make}

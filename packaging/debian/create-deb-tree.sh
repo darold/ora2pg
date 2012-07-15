@@ -9,9 +9,7 @@ cd ../../
 perl Makefile.PL \
   INSTALLDIRS=vendor \
   QUIET=1 \
-  BINDIR=/usr/bin \
   CONFDIR=/etc/ora2pg \
-  MANDIR=/usr/share/man/man3 \
   DOCDIR=/usr/share/doc/ora2pg \
   DESTDIR=$DEST || exit 1
 
