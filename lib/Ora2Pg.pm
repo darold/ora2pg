@@ -4378,10 +4378,6 @@ sub dump
 {
 	my ($self, $data, $fh) = @_;
 
-	if ($^O =~ /MSWin32|dos/i) {
-		$data =~ s/\n/\r\n/gs;
-	}
-
 	if (!$self->{compress}) {
 		if (defined $fh) {
 			$fh->print($data);
