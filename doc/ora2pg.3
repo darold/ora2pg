@@ -124,7 +124,7 @@
 .\" ========================================================================
 .\"
 .IX Title "ORA2PG 1"
-.TH ORA2PG 1 "2012-06-22" "perl v5.10.1" "User Contributed Perl Documentation"
+.TH ORA2PG 1 "2012-07-15" "perl v5.10.1" "User Contributed Perl Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -190,6 +190,9 @@ type the full name of the module (ex: DBD::Oracle) into the search input box,
 it will brings you the page for download.
 .PP
 Releases of Ora2Pg stay at \s-1SF\s0.net (https://sourceforge.net/projects/ora2pg/).
+.PP
+Under Windows(tm) you should install Strawberry Perl 5.10 and the OSes
+corresponding Oracle client.
 .SS "Requirement"
 .IX Subsection "Requirement"
 You need a modern Perl distribution (perl 5.6 and more), the \s-1DBI\s0 and DBD::Oracle
@@ -220,6 +223,16 @@ Like any other Perl Module Ora2Pg can be installed with the following commands:
 .PP
 This will install Ora2Pg.pm into your site Perl repository, ora2pg into
 /usr/local/bin/ and ora2pg.conf into /etc/ora2pg/.
+.PP
+On Windows(tm) OSes you may use instead:
+.PP
+.Vb 2
+\&        perl Makefile.PL
+\&        dmake && dmake install
+.Ve
+.PP
+This will install scripts and libraries into your Perl site installation directory
+and the ora2pg.conf file as well as all documentation files into C:\eora2pg\e
 .SS "Packaging"
 .IX Subsection "Packaging"
 If you want to build binary package for your preferred Linux distribution take a

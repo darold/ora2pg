@@ -65,6 +65,9 @@ it will brings you the page for download.
 
 Releases of Ora2Pg stay at SF.net (https://sourceforge.net/projects/ora2pg/).
 
+Under Windows(tm) you should install Strawberry Perl 5.10 and the OSes
+corresponding Oracle client.
+
 =head2 Requirement
 
 You need a modern Perl distribution (perl 5.6 and more), the DBI and DBD::Oracle
@@ -95,6 +98,15 @@ Like any other Perl Module Ora2Pg can be installed with the following commands:
 
 This will install Ora2Pg.pm into your site Perl repository, ora2pg into
 /usr/local/bin/ and ora2pg.conf into /etc/ora2pg/.
+
+On Windows(tm) OSes you may use instead:
+
+        perl Makefile.PL
+        dmake && dmake install
+
+This will install scripts and libraries into your Perl site installation directory
+and the ora2pg.conf file as well as all documentation files into C:\ora2pg\
+
 
 =head2 Packaging
 
