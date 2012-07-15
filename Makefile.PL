@@ -405,6 +405,9 @@ FDW_SERVER	orcl
 # Enabling this directive, the default, format to 'YYYY-MM-DD HH24:MI:SS.FF'.
 #ENABLE_MICROSECOND      1
 
+# Set this to 1 if you don't want to export comment associated to tables and
+# columns definition. Default is enabled.
+DISABLE_COMMENT         0
 
 };
 close(OUTCFG);

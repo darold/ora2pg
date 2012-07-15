@@ -913,6 +913,10 @@ If you want to bypass the '\s-1ORA\-24345:\s0 A Truncation' error, set this dire
 .IX Item "XML_PRETTY"
 Force the use \fIgetStringVal()\fR instead of \fIgetClobVal()\fR for \s-1XML\s0 data export. Default is 1,
 enabled for backward compatibility. Set it to 0 to use extract method a la \s-1CLOB\s0.
+.IP "\s-1DISABLE_COMMENT\s0" 4
+.IX Item "DISABLE_COMMENT"
+Set this to 1 if you don't want to export comment associated to tables and
+columns definition. Default is enabled.
 .SS "Special options to handle character encoding"
 .IX Subsection "Special options to handle character encoding"
 .IP "\s-1NLS_LANG\s0" 4
@@ -949,20 +953,20 @@ and your PostgreSQL database is encoded in \s-1UTF8\s0. What you have to do is s
 You can take a look at the PostgreSQL supported character sets here: http://www.postgresql.org/docs/9.0/static/multibyte.html
 .IP "\s-1ENABLE_MICROSECOND\s0" 4
 .IX Item "ENABLE_MICROSECOND"
-Set it to 1 if you want to export millisecond from Oracle timestamp columns.
-Timestamp are formated with:
+Set it to O if you want to disable export of millisecond from Oracle timestamp
+columns. By default milliseconds are exported with the use of following format:
+.Sp
+.Vb 1
+\&        \*(AqYYYY\-MM\-DD HH24:MI:SS.FF\*(Aq
+.Ve
+.Sp
+Disabling will force the use of the following Oracle format:
 .Sp
 .Vb 1
 \&        to_char(..., \*(AqYYYY\-MM\-DD HH24:MI:SS\*(Aq)
 .Ve
 .Sp
-enabling this directive will change the format to:
-.Sp
-.Vb 1
-\&        \*(AqYYYY\-MM\-DD HH24:MI:SS.FF3\*(Aq
-.Ve
-.Sp
-By default milliseconds are not exported.
+By default milliseconds are exported.
 .SS "\s-1PLSQL\s0 to \s-1PLPSQL\s0 convertion"
 .IX Subsection "PLSQL to PLPSQL convertion"
 Automatic code convertion from Oracle \s-1PLSQL\s0 to PostgreSQL \s-1PLPGSQL\s0 is a work in
