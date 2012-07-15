@@ -29,7 +29,7 @@ use Getopt::Long;
 
 my $VERSION = '8.13';
 
-my $CONFIG_FILE = "/etc/ora2pg/ora2pg.conf";
+my $CONFIG_FILE = '/etc/ora2pg/ora2pg.conf';
 my $DEBUG = 0;
 my $HELP = 0;
 my $LOGFILE = '';
