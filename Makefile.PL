@@ -432,7 +432,7 @@ Please read documentation at http://ora2pg.darold.net/ before asking for help
 close(INST);
 `chmod 755 install_all.sh`;
 
-`perl -p -i -e 's#my \\\$CONFIG_FILE .*#my \\\$CONFIG_FILE = "$CONFDIR/ora2pg.conf";#' ora2pg_pl`;
+`perl -p -i -e "s#my \\\$CONFIG_FILE .*#my \\\$CONFIG_FILE = '$CONFDIR/ora2pg.conf';#" ora2pg_pl`;
 
 WriteMakefile(
     'NAME'         => 'Ora2Pg',
