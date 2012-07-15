@@ -2112,9 +2112,7 @@ sub _get_sql_data
 			}
 		}
 		# Force datetime format
-		if ($self->{enable_microsecond}) {
-			$self->_datetime_format();
-		}
+		$self->_datetime_format();
 
 		my $dirprefix = '';
 		$dirprefix = "$self->{output_dir}/" if ($self->{output_dir});
@@ -3246,8 +3244,9 @@ sub _get_data
 	my $str = "SELECT ";
 	my $extraStr = "";
 	my $dateformat = 'YYYY-MM-DD HH24:MI:SS';
+	my $timeformat = $dateformat;
 	if ($self->{enable_microsecond}) {
-		$dateformat = 'YYYY-MM-DD HH24:MI:SS.FF';
+		$timeformat = 'YYYY-MM-DD HH24:MI:SS.FF';
 	}
 	for my $k (0 .. $#{$name}) {
 
@@ -3257,8 +3256,10 @@ sub _get_data
 		if (!$self->{ora_sensitive}) {
 			$name->[$k] = lc($name->[$k]);
 		}
-		if ( $type->[$k] =~ /(date|time)/) {
+		if ( $src_type->[$k] =~ /date/) {
 			$str .= "to_char($name->[$k], '$dateformat'),";
+		} elsif ( $src_type->[$k] =~ /time/) {
+			$str .= "to_char($name->[$k], '$timeformat'),";
 		} elsif ( $src_type->[$k] =~ /xmltype/i) {
 			if ($self->{xml_pretty}) {
 				$str .= "$alias.$name->[$k].extract('/').getStringVal(),";
@@ -5391,9 +5392,11 @@ sub _datetime_format
 {
 	my ($self) = @_;
 
-	my $sth = $self->{dbh}->do("ALTER SESSION SET NLS_TIMESTAMP_FORMAT='YYYY-MM-DD HH24:MI:SS.FF'") or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-	$sth = undef;
-
+	if ($self->{enable_microsecond}) {
+		my $sth = $self->{dbh}->do("ALTER SESSION SET NLS_TIMESTAMP_FORMAT='YYYY-MM-DD HH24:MI:SS.FF'") or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	} else {
+		my $sth = $self->{dbh}->do("ALTER SESSION SET NLS_TIMESTAMP_FORMAT='YYYY-MM-DD HH24:MI:SS'") or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	}
 }
 
 # Preload the bytea array at lib init
