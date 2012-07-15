@@ -1,3 +1,68 @@
+2012 07 15 - 9.0
+
+	- Remove call to obsolete BINDIR and MANDIR variables into packaging
+	  scripts to reflect the changes in Makefile.PL.
+	- Update documentation about installation of Ora2Pg under Windows.
+	- Automatically set LONGREADLEN to ORA_PIECE_SIZE length if the last one
+	  is larger, for CLOB export.
+	- Change Makefile.PL and source tree to fully support installation under
+	  Windows OSes.
+	- Change double quote by single in Makefile.PL perl replacement call.
+	- Replace double quote by single one in $CONFIG_FILE default setting to
+	  simplify automatic replacement at install.
+	- Fix CLOB export that was limited to 64Kb even with LONGREADLEN defined
+	  to an upper value. Patch use the ora_piece_size DBD::Oracle prepare
+	  attribute. Patch by Mohamed Gargouri. See here for more detail:
+		http://search.cpan.org/~pythian/DBD-Oracle-1.46/lib/DBD/Oracle.pm#Piecewise_Fetch_with_Polling
+	- Add a note into documentation about encrypted communication between
+	  Ora2Pg and Oracle. Note by Jenny Palomino.
+	- Change documentation to reflect change to the format of the Oracle
+	  timestamp with millisecond. This format is now enabled by default in
+	  configuration file.
+	- Fix bug with LONGREADLEN and LONGTRUNCOK when exporting LOB that was
+	  not applied even after change into the configuration file. Reported
+	  by Mohamed Gargouri
+	- Fix microsecond format FF3 not compatible with Oracle 8i.
+	- Add a warning to stderr when a table export need that ORA_SENSITIVE
+	  be enabled.
+	- Fix case where Oracle indexes with same name as a constraint was not
+	  exported - Rodrigo
+
+	The following are old patches that was not applied to v8.10 and the git
+	repository:
+
+	- Fix creation of bad constraint for each indexes.
+	- Add DISABLE_COMMENT configuration directive to remove comments from
+	  TABLE export type. Comments are exported by default.
+	- Fix a bug in removing function name repetion at end
+	- Add PL/SQL to PLGPSQL replacement of the to_number function
+	- Fix PL/SQL to PLGPSQL replacement of substr into substring
+	- Add replacement of specials IEEE 754 values BINARY_(FLOAT|DOUBLE)_NAN
+	  and BINARY_(FLOAT|DOUBLE)_INFINITY by NaN and Infinity on PLPGSQL
+	  conversion and on data export - Thanks to Daniel Lyons.
+	- Fix return type of function with just OUT or INOUT params. Thanks to
+	  Krasi Zlatev for the patch.
+	- Add schema name on functions or procedures export when EXPORT_SCHEMA
+	  is activated. Thanks to Krasi Zlatev for the patch.
+	- Fix case sensitivity issue with schema on partition export.
+	- Fix case sensitivity issue with --xtable option.
+	- Fix issues with case sensitivity on the schema owner set into the
+	  SCHEMA configuration directive.
+	- Add default search_path on schema for contraints, index and data
+	  export when EXPORT_SCHEMA is activated.
+	- Fix case sensitivity issue in search_path.
+	- Force Oracle datetime format to be YYYY-MM-DD HH24:MI:SS.FF in client
+	  session to prevent other defined output format. Thanks to Aaron Culich
+	  for the patch.
+	- Add export/import of table and column comment. Thanks to Krasi Zlatev
+	  for the patch.
+
+2012 06 26 - 8.13
+
+	- Fix broken export with missing single quote in Oracle timestamp export
+	  formating with to_char(timestampcolumn, YYYY-MM-DD HH24:mi:ss). Thanks
+	  to Steve Delong for the report.
+
 2012 06 22 - 8.12
 
 	- Add nex configuration directive ENABLE_MICROSECOND to allow timestamp
