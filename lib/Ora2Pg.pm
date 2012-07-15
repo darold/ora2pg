@@ -860,6 +860,9 @@ sub _init
 	$self->{longtruncok} = 0 if (not defined $self->{longtruncok});
 	$self->{longreadlen} ||= (1024*1024);
 	$self->{ora_piece_size} ||= $self->{longreadlen};
+	if ($self->{ora_piece_size} > $self->{longreadlen}) {
+		$self->{longreadlen} = $self->{ora_piece_size};
+	}
 
 	if (($self->{standard_conforming_strings} =~ /^off$/i) || ($self->{standard_conforming_strings} == 0)) {
 		$self->{standard_conforming_strings} = 0;
