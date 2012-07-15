@@ -818,6 +818,19 @@ CONFIGURATION
         export. Default is 1, enabled for backward compatibility. Set it to
         0 to use extract method a la CLOB.
 
+    ENABLE_MICROSECOND
+        Set it to O if you want to disable export of millisecond from Oracle
+        timestamp columns. By default milliseconds are exported with the use
+        of following format:
+
+                'YYYY-MM-DD HH24:MI:SS.FF'
+
+        Disabling will force the use of the following Oracle format:
+
+                to_char(..., 'YYYY-MM-DD HH24:MI:SS')
+
+        By default milliseconds are exported.
+
     DISABLE_COMMENT
         Set this to 1 if you don't want to export comment associated to
         tables and columns definition. Default is enabled.
@@ -856,19 +869,6 @@ CONFIGURATION
 
         You can take a look at the PostgreSQL supported character sets here:
         http://www.postgresql.org/docs/9.0/static/multibyte.html
-
-    ENABLE_MICROSECOND
-        Set it to O if you want to disable export of millisecond from Oracle
-        timestamp columns. By default milliseconds are exported with the use
-        of following format:
-
-                'YYYY-MM-DD HH24:MI:SS.FF'
-
-        Disabling will force the use of the following Oracle format:
-
-                to_char(..., 'YYYY-MM-DD HH24:MI:SS')
-
-        By default milliseconds are exported.
 
   PLSQL to PLPSQL convertion
     Automatic code convertion from Oracle PLSQL to PostgreSQL PLPGSQL is a
