@@ -87,8 +87,8 @@ INSTALLATION
     Like any other Perl Module Ora2Pg can be installed with the following
     commands:
 
-            tar xzf ora2pg-8.x.tar.gz
-            cd ora2pg-8.x/
+            tar xzf ora2pg-9.x.tar.gz
+            cd ora2pg-9.x/
             perl Makefile.PL
             make && make install
 
