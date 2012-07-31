@@ -712,9 +712,21 @@ CONFIGURATION
         during data migration. Default is 0, alter sequences.
 
     NOESCAPE
-        By default all datas exported as INSERT statement are escaped, if
-        you experience any problem with that set it to 1 to disable
-        character escaping during data export.
+        By default all data that are not of type date or time are escaped.
+        If you experience any problem with that you can set it to 1 to
+        disable character escaping during data export. This directive is
+        only used during a COPY export. See STANDARD_CONFORMING_STRINGS for
+        enabling/disabling escape with INSERT statements.
+
+    STANDARD_CONFORMING_STRINGS
+        This controls whether ordinary string literals ('...') treat
+        backslashes literally, as specified in SQL standard. This was the
+        default before Ora2Pg v8.5 so that all strings was escaped first,
+        now this is currently on, causing Ora2Pg to use the escape string
+        syntax (E'...') if this parameter is not set to 0. This is the exact
+        behavior of the same option in PostgreSQL. This directive is only
+        used during DATA export to build INSERT statements. See NOESCAPE for
+        enabling/disabling escape in COPY statements.
 
     PG_NUMERIC_TYPE
         This directive set to 1 replace portable numeric type into

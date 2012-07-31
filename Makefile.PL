@@ -248,9 +248,11 @@ KEEP_PKEY_NAMES 0
 # data migration.
 DISABLE_TABLE_TRIGGERS 1
 
-# By default all datas that are not of type character, date or time are
-# escaped. If you experience any problem with that you can set it to 1
-# to disable it.
+# By default all data that are not of type date or time are escaped. If you
+# experience any problem with that you can set it to 1 to disable it. This
+# directive is only used during a COPY export type.
+# See STANDARD_CONFORMING_STRINGS for enabling/disabling escape with INSERT
+# statements.
 NOESCAPE	0
 
 # If you're experiencing problems in data type export, the following directive
@@ -354,10 +356,11 @@ FORCE_OWNER	0
 
 # This controls whether ordinary string literals ('...') treat backslashes
 # literally, as specified in SQL standard. This was the default before Ora2Pg
-# v8.5 so that all stringis was escaped first, now this is currently on, causing
-# Ora2Pg will now use the escape string syntax (E'...') if this parameter is not
-# set to off or 0. This is the exact behaviour of the same option in PostgreSQL
-# This is used only during DATA export type to build INSERT statements.
+# v8.5 so that all strings was escaped first, now this is currently on, causing
+# Ora2Pg to use the escape string syntax (E'...') if this parameter is not
+# set to 0. This is the exact behavior of the same option in PostgreSQL.
+# This directive is only used during DATA export to build INSERT statements.
+# See NOESCAPE for enabling/disabling escape in COPY statements.
 STANDARD_CONFORMING_STRINGS	1
 
 # Multi-threading support. It is only used to do the escaping to convert

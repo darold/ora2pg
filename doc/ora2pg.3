@@ -124,7 +124,7 @@
 .\" ========================================================================
 .\"
 .IX Title "ORA2PG 1"
-.TH ORA2PG 1 "2012-07-15" "perl v5.10.1" "User Contributed Perl Documentation"
+.TH ORA2PG 1 "2012-07-31" "perl v5.10.1" "User Contributed Perl Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -851,9 +851,20 @@ mode. This is used to prevent the update of sequence during data migration.
 Default is 0, alter sequences.
 .IP "\s-1NOESCAPE\s0" 4
 .IX Item "NOESCAPE"
-By default all datas exported as \s-1INSERT\s0 statement are escaped, if you experience
-any problem with that set it to 1 to disable character escaping during data
-export.
+By default all data that are not of type date or time are escaped. If you
+experience any problem with that you can set it to 1 to disable character
+escaping during data export. This directive is only used during a \s-1COPY\s0 export.
+See \s-1STANDARD_CONFORMING_STRINGS\s0 for enabling/disabling escape with \s-1INSERT\s0
+statements.
+.IP "\s-1STANDARD_CONFORMING_STRINGS\s0" 4
+.IX Item "STANDARD_CONFORMING_STRINGS"
+This controls whether ordinary string literals ('...') treat backslashes
+literally, as specified in \s-1SQL\s0 standard. This was the default before Ora2Pg
+v8.5 so that all strings was escaped first, now this is currently on, causing
+Ora2Pg to use the escape string syntax (E'...') if this parameter is not
+set to 0. This is the exact behavior of the same option in PostgreSQL.
+This directive is only used during \s-1DATA\s0 export to build \s-1INSERT\s0 statements.
+See \s-1NOESCAPE\s0 for enabling/disabling escape in \s-1COPY\s0 statements.
 .IP "\s-1PG_NUMERIC_TYPE\s0" 4
 .IX Item "PG_NUMERIC_TYPE"
 This directive set to 1 replace portable numeric type into PostgreSQL internal
