@@ -3068,6 +3068,9 @@ sub _create_check_constraint
 				$chkconstraint =~ s/\b$c\b/$self->{replaced_cols}{"\L$tbsaved\E"}{$c}/gsi;
 			}
 		}
+		if ($self->{plsql_pgsql}) {
+			$chkconstraint = Ora2Pg::PLSQL::plsql_to_plpgsql($chkconstraint, $self->{allow_code_break});
+		}
 		if (!$self->{case_sensitive}) {
 			foreach my $c (@$field_name) {
 				# Force lower case
