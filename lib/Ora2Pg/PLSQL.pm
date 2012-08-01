@@ -235,6 +235,9 @@ sub plsql_to_plpgsql
 	$str =~ s/([\-]*)BINARY_(FLOAT|DOUBLE)_INFINITY/'$1Infinity'/igs;
 	$str =~ s/'([\-]*)Inf'/'$1Infinity'/igs;
 
+	# REGEX_LIKE( string, pattern ) => string ~ pattern
+	$str =~ s/REGEXP_LIKE[\s\t]*\([\s\t]*([^\']+),[\s\t]*('[^\']+')[^\)]*\)/$1 \~ $2/igs;
+
 	if ($allow_code_break) {
 		# Replace Oracle substr(string, start_position, length) with
 		# PostgreSQL substring(string from start_position for length)
