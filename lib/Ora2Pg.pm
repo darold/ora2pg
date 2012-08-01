@@ -3325,7 +3325,7 @@ sub _sql_type
 	# Simplify timestamp type
 	$type =~ s/TIMESTAMP.*/TIMESTAMP/i;
 
-        # Overiride the length
+        # Overide the length
         $len = $precision if ( ($type eq 'NUMBER') && $precision );
 
         if (exists $TYPE{uc($type)}) {
@@ -3344,7 +3344,7 @@ sub _sql_type
 						if ($self->{pg_numeric_type}) {
 							if ($precision < 5) {
 								return 'smallint';
-							} elsif ($precision <= 10) {
+							} elsif ($precision <= 9) {
 								return 'integer'; # The speediest in PG
 							} else {
 								return 'bigint';
