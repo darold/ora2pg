@@ -729,21 +729,25 @@ CONFIGURATION
         enabling/disabling escape in COPY statements.
 
     PG_NUMERIC_TYPE
-        This directive set to 1 replace portable numeric type into
-        PostgreSQL internal type as numeric(p,s) type is much slower than
-        the different PostgreSQL numeric types. Oracle data type NUMBER(p,s)
-        is approximatively converted to smallint, integer, bigint, real and
-        float PostgreSQL numeric type following the precision. If you have
-        lot of monetary fields you should preserve the numeric(p,s) Pg data
-        type if you need very good precision. NUMBER without precision are
-        set to float unless you redefine it with the DEFAULT_NUMERIC
-        configuration option.
+        If set to 1 replace portable numeric type into PostgreSQL internal
+        type. Oracle data type NUMBER(p,s) is approximatively converted to
+        real and float PostgreSQL data type. If you have monetary fields or
+        don't want rounding issues with the extra decimals you should
+        preserve the same numeric(p,s) PostgreSQL data type. Do that only if
+        you need very good precision because using numeric(p,s) is slower
+        than using real or double.
+
+    PG_INTEGER_TYPE
+        If set to 1 replace portable numeric type into PostgreSQL internal
+        type. Oracle data type NUMBER(p) or NUMBER are converted to
+        smallint, integer or bigint PostgreSQL data type following the
+        length of the precision. If NUMBER without precision are set to
+        DEFAULT_NUMERIC (see bellow).
 
     DEFAULT_NUMERIC
-        NUMBER without precision are converted by default to bigint if
-        PG_NUMERIC_TYPE is true. You can overwrite this value to any PG
-        numeric type, like smallint or integer. Note that before release 7.0
-        the value was wrongly set to float.
+        NUMBER without precision are converted by default to bigint only if
+        PG_INTEGER_TYPE is true. You can overwrite this value to any PG
+        type, like integer or float.
 
     DATA_TYPE
         If you're experiencing any problem in data type schema conversion

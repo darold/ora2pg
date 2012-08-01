@@ -227,14 +227,22 @@ DROP_FKEY	0
 DROP_INDEXES	0
 
 # If set to 1 replace portable numeric type into PostgreSQL internal type.
-# Oracle data type NUMBER(p,s) is approximatively converted to smallint,
-# integer, bigint, real and float PostgreSQL data type. If you have monetary
-# fields you should preserve the numeric(p,s) PostgreSQL data type if you need
-# very good precision. NUMBER without precision are set to float.
+# Oracle data type NUMBER(p,s) is approximatively converted to real and
+# float PostgreSQL data type. If you have monetary fields or don't want
+# rounding issues with the extra decimals you should preserve the same
+# numeric(p,s) PostgreSQL data type. Do that only if you need very good
+# precision because using numeric(p,s) is slower than using real or double.
 PG_NUMERIC_TYPE	1
 
-# NUMBER(x) are converted by default to bigint if PG_NUMERIC_TYPE is true.
-# You can overwrite this value to any PG type, like integer or bigint.
+# If set to 1 replace portable numeric type into PostgreSQL internal type.
+# Oracle data type NUMBER(p) or NUMBER are converted to smallint, integer
+# or bigint PostgreSQL data type following the length of the precision. If
+# NUMBER without precision are set to DEFAULT_NUMERIC (see bellow).
+PG_INTEGER_TYPE	1
+
+# NUMBER() without precision are converted by default to bigint only if
+# PG_INTEGER_TYPE is true. You can overwrite this value to any PG type,
+# like integer or float.
 DEFAULT_NUMERIC bigint
 
 # By default, primary key names in the source database are ignored, and

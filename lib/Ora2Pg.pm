@@ -377,8 +377,10 @@ options are (See ora2pg.conf for more details):
       data import and recreated at the end. Defaults to 0: export as is.
     - drop_indexes: Force deletion of non automatic index on tables before
       data import and recreate them at end of the import. Default 0, disabled.
-    - pg_numeric_type: Convert the Oracle NUMBER data type to adequate PG data
-      types instead of using the slow numeric(p,s) data type.
+    - pg_numeric_type: Convert the Oracle NUMBER(p,s) data type to adequate
+      PG data types instead of using the slow numeric(p,s) data type.
+    - pg_integer_type: Convert the Oracle NUMBER(p) or NUMBER() data type
+      adequate PG data types instead of using the slow numeric(p) data type.
     - default_numeric: By default the NUMBER(x) type without precision is
       converted to bigint. You can overwrite this data type by any PG type.
     - keep_pkey_names: Preserve oracle primary key names. The default is to
@@ -863,6 +865,8 @@ sub _init
 	if ($self->{ora_piece_size} > $self->{longreadlen}) {
 		$self->{longreadlen} = $self->{ora_piece_size};
 	}
+	# Backward compatibility with PG_NUMERIC_TYPE alone
+	$self->{pg_integer_type} = 1 if (not defined $self->{pg_integer_type});
 
 	if (($self->{standard_conforming_strings} =~ /^off$/i) || ($self->{standard_conforming_strings} == 0)) {
 		$self->{standard_conforming_strings} = 0;
@@ -3341,7 +3345,7 @@ sub _sql_type
 				# This is an integer
 				if (!$scale) {
 					if ($precision) {
-						if ($self->{pg_numeric_type}) {
+						if ($self->{pg_integer_type}) {
 							if ($precision < 5) {
 								return 'smallint';
 							} elsif ($precision <= 9) {
@@ -3351,7 +3355,7 @@ sub _sql_type
 							}
 						}
 						return "numeric($precision)";
-					} elsif ($self->{pg_numeric_type}) {
+					} elsif ($self->{pg_integer_type}) {
 						# Most of the time interger should be enought?
 						return $self->{default_numeric} || 'bigint';
 					}
@@ -3370,7 +3374,7 @@ sub _sql_type
 			}
 			return "$TYPE{$type}";
 		} else {
-			if (($type eq 'NUMBER') && $self->{pg_numeric_type}) {
+			if (($type eq 'NUMBER') && $self->{pg_integer_type}) {
 				return $self->{default_numeric};
 			} else {
 				return $TYPE{$type};
@@ -4657,10 +4661,10 @@ sub _convert_function
 		# IN OUT should be INOUT
 		$func_args =~ s/IN[\s\t]+OUT/INOUT/s;
 		# Now convert types
-		$func_args = Ora2Pg::PLSQL::replace_sql_type($func_args, $self->{pg_numeric_type}, $self->{default_numeric});
+		$func_args = Ora2Pg::PLSQL::replace_sql_type($func_args, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type});
 
 		#$func_declare = $self->_convert_declare($func_declare);
-		$func_declare = Ora2Pg::PLSQL::replace_sql_type($func_declare, $self->{pg_numeric_type}, $self->{default_numeric});
+		$func_declare = Ora2Pg::PLSQL::replace_sql_type($func_declare, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type});
 		# Replace PL/SQL code into PL/PGSQL similar code
 		$func_declare = Ora2Pg::PLSQL::plsql_to_plpgsql($func_declare, $self->{allow_code_break});
 		if ($func_code) {
@@ -4962,7 +4966,7 @@ sub _convert_type
 	my $content = '';
 	if ($plsql =~ /TYPE[\t\s]+([^\t\s]+)[\t\s]+(IS|AS)[\t\s]*TABLE[\t\s]*OF[\t\s]+(.*)/is) {
 		my $type_name = $1;
-		my $type = Ora2Pg::PLSQL::replace_sql_type($3, $self->{pg_numeric_type}, $self->{default_numeric});
+		my $type = Ora2Pg::PLSQL::replace_sql_type($3, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type});
 		$type_name =~ s/"//g;
 		$content = qq{
 --
@@ -4990,7 +4994,7 @@ CREATE TYPE \"\L$type_name\E\" (
 		while ($description =~ s/(MAP MEMBER |MEMBER )(FUNCTION|PROCEDURE)[\t\s]+([^\t\s\(]+)(.*?)RETURN[^,;]+[,;]//is) {
 			push(@{$fctname{member}}, lc($3));
 		}
-		my $declar = Ora2Pg::PLSQL::replace_sql_type($description, $self->{pg_numeric_type}, $self->{default_numeric});
+		my $declar = Ora2Pg::PLSQL::replace_sql_type($description, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type});
 		$type_name =~ s/"//g;
 		return if ($type_name =~ /\$/);
 
@@ -5041,7 +5045,7 @@ $declar
 		$notfinal =~ s/[\s\t\r\n]+//gs;
 		return $plsql if ($description =~ /[\s\t]*(MAP MEMBER |MEMBER )(FUNCTION|PROCEDURE).*/);
 		# $description =~ s/[\s\t]*(MAP MEMBER |MEMBER )(FUNCTION|PROCEDURE).*//is;
-		my $declar = Ora2Pg::PLSQL::replace_sql_type($description, $self->{pg_numeric_type}, $self->{default_numeric});
+		my $declar = Ora2Pg::PLSQL::replace_sql_type($description, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type});
 		$type_name =~ s/"//g;
 		if ($notfinal =~ /FINAL/is) {
 			$content = "-- Inherited types are not supported in PostgreSQL, replacing with inherited table\n";
@@ -5062,7 +5066,7 @@ $declar
 		my $description = $3;
 		$description =~ s/\)[^\);]*;$//;
 		return $plsql if ($description =~ /[\s\t]*(MAP MEMBER |MEMBER )(FUNCTION|PROCEDURE).*/);
-		my $declar = Ora2Pg::PLSQL::replace_sql_type($description, $self->{pg_numeric_type}, $self->{default_numeric});
+		my $declar = Ora2Pg::PLSQL::replace_sql_type($description, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type});
 		$type_name =~ s/"//g;
 		$content = qq{
 CREATE TABLE \"\L$type_name\E\" (

@@ -286,7 +286,7 @@ sub raise_output
 
 sub replace_sql_type
 {
-        my ($str, $pg_numeric_type, $default_numeric) = @_;
+        my ($str, $pg_numeric_type, $default_numeric, $pg_integer_type) = @_;
 
 
 	$str =~ s/with local time zone/with time zone/igs;
@@ -318,17 +318,17 @@ sub replace_sql_type
 			# This is an integer
 			if (!$scale) {
 				if ($precision) {
-					if ($pg_numeric_type) {
+					if ($pg_integer_type) {
 						if ($precision < 5) {
 							$str =~ s/\b$type\b[\s\t]*\([^\)]+\)/smallint/is;
-						} elsif ($precision <= 10) {
+						} elsif ($precision <= 9) {
 							$str =~ s/\b$type\b[\s\t]*\([^\)]+\)/integer/is;
 						} else {
 							$str =~ s/\b$type\b[\s\t]*\([^\)]+\)/bigint/is;
 						}
 					}
 					$str =~ s/\b$type\b[\s\t]*\([^\)]+\)/numeric\%\|$precision\%\|\%/i;
-				} elsif ($pg_numeric_type) {
+				} elsif ($pg_integer_type) {
 					my $tmp = $default_numeric || 'bigint';
 					$str =~ s/\b$type\b[\s\t]*\([^\)]+\)/$tmp/is;
 				}
@@ -360,7 +360,7 @@ sub replace_sql_type
 
         # Replace datatype without precision
 	my $number = $Ora2Pg::TYPE{'NUMBER'};
-	$number = $default_numeric if ($pg_numeric_type);
+	$number = $default_numeric if ($pg_integer_type);
 	$str =~ s/\bNUMBER\b/$number/igs;
 
 	# Set varchar without length to text
