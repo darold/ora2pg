@@ -118,6 +118,11 @@ sub plsql_to_plpgsql
 	# Remove leading : on Oracle variable
 	$str =~ s/([^\w]+):(\w+)/$1$2/igs;
 
+	# INSERTING|DELETING|UPDATING -> TG_OP = 'INSERT'|'DELETE'|'UPDATE'
+	$str =~ s/INSERTING/TG_OP = 'INSERT'/igs;
+	$str =~ s/DELETING/TG_OP = 'DELETE'/igs;
+	$str =~ s/UPDATING/TG_OP = 'UPDATE'/igs;
+
 	# Change nextval on sequence
 	# Oracle's sequence grammar is sequence_name.nextval.
 	# Postgres's sequence grammar is nextval('sequence_name'). 
