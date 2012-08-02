@@ -109,8 +109,15 @@ sub plsql_to_plpgsql
 	#$str =~ s/LOCALTIMESTAMP([\s\t]*\-|\+[\s\t]*)(\d+)[\s\t]*,/LOCALTIMESTAMP$1'$2 day'\:\:interval,/igs;
 	# remove FROM DUAL
 	$str =~ s/FROM DUAL//igs;
+
+	# Converting triggers
+	#       :new. -> NEW.
+	$str =~ s/([^\w]+):new\./$1NEW\./igs;
+	#       :old. -> OLD.
+	$str =~ s/([^\w]+):old\./$1OLD\./igs;
 	# Remove leading : on Oracle variable
 	$str =~ s/([^\w]+):(\w+)/$1$2/igs;
+
 	# Change nextval on sequence
 	# Oracle's sequence grammar is sequence_name.nextval.
 	# Postgres's sequence grammar is nextval('sequence_name'). 
