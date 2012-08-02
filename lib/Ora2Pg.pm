@@ -740,6 +740,7 @@ sub _init
 	$self->{idxcomment} = 0;
 	$self->{standard_conforming_strings} = 1;
 	$self->{allow_code_break} = 1;
+	$self->{create_schema} = 1;
 	# Initialyze following configuration file
 	foreach my $k (keys %AConfig) {
 		if (lc($k) eq 'tables') {
@@ -2672,17 +2673,21 @@ CREATE TRIGGER insert_${table}_trigger
 		return;
 	}
 
-	# Dump the database structure
+	# Dump the database structure: tables, constraints, indexes, etc.
 	if ($self->{export_schema} &&  $self->{schema}) {
 		if (!$self->{case_sensitive}) {
-			$sql_output .= "CREATE SCHEMA \"\L$self->{schema}\E\";\n\n";
+			if ($self->{create_schema}) {
+				$sql_output .= "CREATE SCHEMA \"\L$self->{schema}\E\";\n\n";
+			}
 			if ($self->{pg_schema}) {
 				$sql_output .= "SET search_path = \L$self->{pg_schema}\E;\n\n";
 			} else {
 				$sql_output .= "SET search_path = \L$self->{schema}\E, pg_catalog;\n\n";
 			}
 		} else {
-			$sql_output .= "CREATE SCHEMA \"$self->{schema}\";\n\n";
+			if ($self->{create_schema}) {
+				$sql_output .= "CREATE SCHEMA \"$self->{schema}\";\n\n";
+			}
 			if ($self->{pg_schema}) {
 				$sql_output .= "SET search_path = \"$self->{pg_schema}\";\n\n";
 			} else {

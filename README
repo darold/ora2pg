@@ -295,6 +295,10 @@ CONFIGURATION
         set in the SCHEMA directive with the default pg_catalog schema. If
         you want to change this path, use the directive PG_SCHEMA.
 
+    CREATE_SCHEMA
+        Enable/disable the CREATE SCHEMA SQL order at starting of the output
+        file. It is enable by default and concern on TABLE export type.
+
     COMPILE_SCHEMA
         By default Ora2Pg will only export valid PL/SQL code. You can force
         Oracle to compile again the invalidated code to get a chance to have

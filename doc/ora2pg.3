@@ -124,7 +124,7 @@
 .\" ========================================================================
 .\"
 .IX Title "ORA2PG 1"
-.TH ORA2PG 1 "2012-08-01" "perl v5.10.1" "User Contributed Perl Documentation"
+.TH ORA2PG 1 "2012-08-02" "perl v5.10.1" "User Contributed Perl Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -433,6 +433,10 @@ export this schema and create all objects under this namespace, set the
 \&\s-1EXPORT_SCHEMA\s0 directive to 1. This will set the schema search_path at top of
 export \s-1SQL\s0 file to the schema name set in the \s-1SCHEMA\s0 directive with the default
 pg_catalog schema. If you want to change this path, use the directive \s-1PG_SCHEMA\s0.
+.IP "\s-1CREATE_SCHEMA\s0" 4
+.IX Item "CREATE_SCHEMA"
+Enable/disable the \s-1CREATE\s0 \s-1SCHEMA\s0 \s-1SQL\s0 order at starting of the output file.
+It is enable by default and concern on \s-1TABLE\s0 export type.
 .IP "\s-1COMPILE_SCHEMA\s0" 4
 .IX Item "COMPILE_SCHEMA"
 By default Ora2Pg will only export valid \s-1PL/SQL\s0 code. You can force Oracle to

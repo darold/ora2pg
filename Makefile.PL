@@ -94,6 +94,10 @@ EXPORT_SCHEMA	0
 # Oracle schema/owner to use
 #SCHEMA		SCHEMA_NAME
 
+# Enable/disable the CREATE SCHEMA SQL order at starting of the output file.
+# It is enable by default and concern on TABLE export type.
+CREATE_SCHEMA	1
+
 # Enable this directive to force Oracle to compile schema before exporting code.
 # This will ask to Oracle to validate the PL/SQL that could have been invalidate
 # after a export/import for example. If you set the value to 1 will exec:
@@ -109,10 +113,10 @@ COMPILE_SCHEMA	0
 #PG_SCHEMA	pg_catalog
 
 # Type of export. Values can be the following keyword:
-#	TABLE		Export tables
+#	TABLE		Export tables, constraints, indexex, ...
 #	PACKAGE		Export packages
-#	DATA		Export datas from table as INSERT statement
-#	COPY		Export datas from table as COPY statement
+#	DATA		Export data from table as INSERT statement
+#	COPY		Export data from table as COPY statement
 #	VIEW		Export views
 #	GRANT		Export grants
 #	SEQUENCE	Export sequences
