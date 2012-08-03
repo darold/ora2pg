@@ -3952,6 +3952,7 @@ sub format_data_row
 					$row->[$idx] =~ s/\0//gs;
 					$row->[$idx] = "'$row->[$idx]'";
 				} else {
+					$row->[$idx] =~ s/\\/\\\\/g;
 					$row->[$idx] =~ s/\0//gs;
 					$row->[$idx] = "E'$row->[$idx]'";
 				}
