@@ -2890,9 +2890,9 @@ sub _get_data
 		if (!$self->{ora_sensitive}) {
 			$name->[$k] = lc($name->[$k]);
 		}
-		if ( $src_type->[$k] =~ /date/) {
+		if ( $src_type->[$k] =~ /date/i) {
 			$str .= "to_char($name->[$k], '$dateformat'),";
-		} elsif ( $src_type->[$k] =~ /time/) {
+		} elsif ( $src_type->[$k] =~ /time/i) {
 			$str .= "to_char($name->[$k], '$timeformat'),";
 		} elsif ( $src_type->[$k] =~ /xmltype/i) {
 			if ($self->{xml_pretty}) {
@@ -5032,6 +5032,7 @@ sub _datetime_format
 	} else {
 		my $sth = $self->{dbh}->do("ALTER SESSION SET NLS_TIMESTAMP_FORMAT='YYYY-MM-DD HH24:MI:SS'") or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	}
+	my $sth = $self->{dbh}->do("ALTER SESSION SET NLS_DATE_FORMAT='YYYY-MM-DD HH24:MI:SS'") or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 }
 
 # Preload the bytea array at lib init
