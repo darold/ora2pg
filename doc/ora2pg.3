@@ -124,7 +124,7 @@
 .\" ========================================================================
 .\"
 .IX Title "ORA2PG 1"
-.TH ORA2PG 1 "2012-08-02" "perl v5.10.1" "User Contributed Perl Documentation"
+.TH ORA2PG 1 "2012-08-06" "perl v5.10.1" "User Contributed Perl Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -191,8 +191,12 @@ it will brings you the page for download.
 .PP
 Releases of Ora2Pg stay at \s-1SF\s0.net (https://sourceforge.net/projects/ora2pg/).
 .PP
-Under Windows(tm) you should install Strawberry Perl 5.10 and the OSes
-corresponding Oracle client.
+Under Windows you should install Strawberry Perl (http://strawberryperl.com/)
+and the OSes corresponding Oracle clients. It seems that compiling DBD::Oracle
+from \s-1CPAN\s0 on Windows can be a struggle and there be little documentation on that
+(mostly outdated and not working). Installing the free version of ActiveState
+Perl (http://www.activestate.com/activeperl) could help as they seems to have
+an already packaged DBD::Oracle easy to install.
 .SS "Requirement"
 .IX Subsection "Requirement"
 You need a modern Perl distribution (perl 5.6 and more), the \s-1DBI\s0 and DBD::Oracle

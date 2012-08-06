@@ -62,8 +62,13 @@ INSTALLATION
     Releases of Ora2Pg stay at SF.net
     (https://sourceforge.net/projects/ora2pg/).
 
-    Under Windows(tm) you should install Strawberry Perl 5.10 and the OSes
-    corresponding Oracle client.
+    Under Windows you should install Strawberry Perl
+    (http://strawberryperl.com/) and the OSes corresponding Oracle clients.
+    It seems that compiling DBD::Oracle from CPAN on Windows can be a
+    struggle and there be little documentation on that (mostly outdated and
+    not working). Installing the free version of ActiveState Perl
+    (http://www.activestate.com/activeperl) could help as they seems to have
+    an already packaged DBD::Oracle easy to install.
 
   Requirement
     You need a modern Perl distribution (perl 5.6 and more), the DBI and
