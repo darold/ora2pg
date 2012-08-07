@@ -3947,6 +3947,7 @@ sub format_data_row
 				}
 			} elsif ($data_type =~ /(char|text|xml)/) {
 				$row->[$idx] =~ s/([^\\])'/$1''/gs; # escape single quote
+				$row->[$idx] =~ s/^'/''/gs;
 				if (!$self->{standard_conforming_strings}) {
 					$row->[$idx] =~ s/\\/\\\\/g;
 					$row->[$idx] =~ s/\0//gs;
