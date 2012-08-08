@@ -3947,12 +3947,12 @@ sub format_data_row
 				}
 			} elsif ($data_type =~ /(char|text|xml)/) {
 				$row->[$idx] =~ s/'/''/gs; # double single quote
-				$row->[$idx] =~ s/([^\\])\\'/$1\\\\'/gs; # escape escaped single quote
 				if (!$self->{standard_conforming_strings}) {
 					$row->[$idx] =~ s/\\/\\\\/g;
 					$row->[$idx] =~ s/\0//gs;
 					$row->[$idx] = "'$row->[$idx]'";
 				} else {
+					$row->[$idx] =~ s/([^\\])\\'/$1\\\\'/gs; # escape escaped single quote
 					$row->[$idx] =~ s/\\$/\\\\/s;
 					$row->[$idx] =~ s/\0//gs;
 					$row->[$idx] = "E'$row->[$idx]'";
