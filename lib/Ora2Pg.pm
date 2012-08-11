@@ -447,9 +447,9 @@ sub _init
 	} else {
 		$self->{thread_count} = 0;
 	}
-	# Set user defined datatype translation
-	if ($self->{datatype}) {
-		my @transl = split(/[,;]/, $self->{datatype});
+	# Set user defined data type translation
+	if ($self->{data_type}) {
+		my @transl = split(/[,;]/, $self->{data_type});
 		foreach my $t (@transl) {
 			my ($typ, $val) = split(/:/, $t);
 			$typ =~ s/^\s+//;
@@ -2944,7 +2944,7 @@ sub _get_data
 
 =head2 _sql_type INTERNAL_TYPE LENGTH PRECISION SCALE
 
-This function returns the PostgreSQL datatype corresponding to the
+This function returns the PostgreSQL data type corresponding to the
 Oracle data type.
 
 =cut
