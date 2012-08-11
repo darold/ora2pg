@@ -594,7 +594,7 @@ sub _init
 			$self->{dbh}->disconnect() if ($self->{dbh}); 
 			exit 0;
 		} else {
-			warn "type option must be TABLE, VIEW, GRANT, SEQUENCE, TRIGGER, PACKAGE, FUNCTION, PROCEDURE, PARTITION, DATA, COPY, TABLESPACE, SHOW_SCHEMA, SHOW_TABLE, SHOW_COLUMN, SHOW_ENCODING, FDW\n";
+			warn "type option must be TABLE, VIEW, GRANT, SEQUENCE, TRIGGER, PACKAGE, FUNCTION, PROCEDURE, PARTITION, TYPE, DATA, COPY, TABLESPACE, SHOW_SCHEMA, SHOW_TABLE, SHOW_COLUMN, SHOW_ENCODING, FDW\n";
 		}
 		# Mofify export structure if required
 		if ($self->{type} =~ /^(DATA|COPY)$/) {
@@ -1421,6 +1421,8 @@ sub _get_sql_data
 			my $fcnm = '';
 			foreach my $l (@allfct) {
 				chomp($l);
+				$l =~ s/^CREATE OR REPLACE (FUNCTION|PROCEDURE)/$1/is;
+				$l =~ s/^CREATE (FUNCTION|PROCEDURE)/$1/is;
 				if ($l =~ /^(function|procedure)[\s\t]+([^\s\(\t]+)/i) {
 					$fcnm = $2;
 				}
