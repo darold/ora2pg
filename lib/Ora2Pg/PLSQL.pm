@@ -64,6 +64,9 @@ my %uncovered_score = (
 	'EXCEPTION' => 2,
 	'SUBSTR' => 1,
 	'TO_NUMBER' => 1,
+	'REGEXP_LIKE' => 1,
+	'TG_OP' => 1,
+	'CURSOR' => 2,
 );
 
 =head1 NAME
@@ -454,6 +457,14 @@ sub estimate_cost
 	# See:  http://www.postgresql.org/docs/9.0/static/errcodes-appendix.html#ERRCODES-TABLE
 	$n = () = $str =~ m/\b(DUP_VAL_ON_INDEX|TIMEOUT_ON_RESOURCE|TRANSACTION_BACKED_OUT|NOT_LOGGED_ON|LOGIN_DENIED|INVALID_NUMBER|PROGRAM_ERROR|VALUE_ERROR|ROWTYPE_MISMATCH|CURSOR_ALREADY_OPEN|ACCESS_INTO_NULL|COLLECTION_IS_NULL)\b/igs;
 	$cost += $uncovered_score{'EXCEPTION'}*$n;
+	$n = () = $str =~ m/REGEXP_LIKE/igs;
+	$cost += $uncovered_score{'REGEXP_LIKE'}*$n;
+	$n = () = $str =~ m/REGEXP_LIKE/igs;
+	$cost += $uncovered_score{'REGEXP_LIKE'}*$n;
+	$n = () = $str =~ m/INSERTING|DELETING|UPDATING/igs;
+	$cost += $uncovered_score{'TG_OP'}*$n;
+	$n = () = $str =~ m/CURSOR/igs;
+	$cost += $uncovered_score{'CURSOR'}*$n;
 
 
 
