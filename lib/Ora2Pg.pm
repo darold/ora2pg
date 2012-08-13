@@ -876,9 +876,19 @@ sub _tables
 			}
 			my $sth = $self->{dbh}->prepare($query);
 			if (!defined($sth)) {
-				warn "Can't prepare statement: $DBI::errstr";
-				warn "ORA2PG HINT: May be this tablename need Oracle case sensitivity to be exported. See ORA_SENSITIVE in ora2pg.conf to export this table.\n";
-				next;
+				# Automaticaly try with Oracle sensitivity
+				if (!$self->{ora_sensitive}) {
+					$query = "SELECT * FROM $t->[1].\"$t->[2]\" WHERE 1=0";
+				} else {
+					$query = "SELECT * FROM $t->[1].$t->[2] WHERE 1=0";
+				}
+				$self->logit("DEBUG: Automaticaly trying with and without Oracle sensitivity: $query\n", 1);
+				$sth = $self->{dbh}->prepare($query);
+				if (!defined($sth)) {
+					warn "Can't prepare statement: $DBI::errstr";
+					warn "ORA2PG HINT: May be this tablename has some encoding issue.\n";
+					next;
+				}
 			}
 			$sth->execute;
 			if ($sth->err) {
