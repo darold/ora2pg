@@ -1291,16 +1291,17 @@ sub _get_sql_data
 				if (!$self->{case_sensitive}) {
 					$sql_output .= "CREATE OR REPLACE RULE \"\L$trig->[0]\E\" AS\n\tON \L$trig->[3]\E\n\tDO INSTEAD\n(\n\t$trig->[4]\n);\n\n";
 				} else {
-					$sql_output .= "CREATE OR REPLACE RULE \"$trig->[0]\" AS\n\tON $trig->[3]\n\tDO INSTEAD\n(\n\t$trig->[4]\n);\n\n";
+					$sql_output .= "CREATE OR REPLACE RULE \L$trig->[0]\E AS\n\tON \"$trig->[3]\"\n\tDO INSTEAD\n(\n\t$trig->[4]\n);\n\n";
 				}
 			} else {
 				if ($self->{plsql_pgsql}) {
 					$trig->[4] = Ora2Pg::PLSQL::plsql_to_plpgsql($trig->[4], $self->{allow_code_break});
 					$trig->[4] =~ s/\b(END[;]*)$/RETURN NEW;\n$1/igs;
 				}
-
+				my $trig_table = $trig->[0];
+				$trig_table = lc($trig->[0]) if (!$self->{case_sensitive});
 				if ($self->{pg_supports_when} && $trig->[5]) {
-					$sql_output .= "DROP TRIGGER IF EXISTS \L$trig->[0]\E ON \L$trig->[3]\E CASCADE;\n";
+					$sql_output .= "DROP TRIGGER IF EXISTS \L$trig->[0]\E ON \"$trig_table\" CASCADE;\n";
 					$sql_output .= "CREATE OR REPLACE FUNCTION trigger_fct_\L$trig->[0]\E () RETURNS trigger AS \$BODY\$\n$trig->[4]\n\$BODY\$\n LANGUAGE 'plpgsql';\n\n";
 					$trig->[6] =~ s/\n+$//s;
 					$trig->[6] =~ s/^[^\.\s\t]+\.//;
@@ -1312,26 +1313,16 @@ sub _get_sql_data
 						$sql_output .= "\tWHEN ($trig->[5])\n";
 					}
 					$sql_output .= "\tEXECUTE PROCEDURE trigger_fct_\L$trig->[0]\E();\n\n";
-				} elsif (!$self->{case_sensitive}) {
-					$sql_output .= "DROP TRIGGER IF EXISTS \L$trig->[0]\E ON \"\L$trig->[3]\E\" CASCADE;\n";
+				} else {
+					$sql_output .= "DROP TRIGGER IF EXISTS \L$trig->[0]\E ON \"$trig_table\" CASCADE;\n";
 					$sql_output .= "CREATE OR REPLACE FUNCTION trigger_fct_\L$trig->[0]\E () RETURNS trigger AS \$BODY\$\n$trig->[4]\n\$BODY\$\n LANGUAGE 'plpgsql';\n\n";
 					$sql_output .= "CREATE TRIGGER \L$trig->[0]\E\n\t";
 					if ($trig->[1] =~ s/ STATEMENT//) {
-						$sql_output .= "$trig->[1] $trig->[2] ON \"\L$trig->[3]\E\" FOR EACH STATEMENT\n";
+						$sql_output .= "$trig->[1] $trig->[2] ON \"$trig_table\" FOR EACH STATEMENT\n";
 					} else {
-						$sql_output .= "$trig->[1] $trig->[2] ON \"\L$trig->[3]\E\" FOR EACH ROW\n";
+						$sql_output .= "$trig->[1] $trig->[2] ON \"$trig_table\" FOR EACH ROW\n";
 					}
 					$sql_output .= "\tEXECUTE PROCEDURE trigger_fct_\L$trig->[0]\E();\n\n";
-				} else {
-					$sql_output .= "DROP TRIGGER IF EXISTS \L$trig->[0]\E ON \L$trig->[3]\E CASCADE;\n";
-					$sql_output .= "CREATE OR REPLACE FUNCTION trigger_fct_$trig->[0] () RETURNS trigger AS \$BODY\$\n$trig->[4]\n\$BODY\$ LANGUAGE 'plpgsql';\n\n";
-					$sql_output .= "CREATE TRIGGER $trig->[0]\n\t";
-					if ($trig->[1] =~ s/ STATEMENT//) {
-						$sql_output .= "$trig->[1] $trig->[2] ON \"$trig->[3]\" FOR EACH STATEMENT\n";
-					} else {
-						$sql_output .= "$trig->[1] $trig->[2] ON \"$trig->[3]\" FOR EACH ROW\n";
-					}
-					$sql_output .= "\tEXECUTE PROCEDURE trigger_fct_$trig->[0]();\n\n";
 				}
 			}
 			if ($self->{file_per_function} && !$self->{dbhdest}) {
