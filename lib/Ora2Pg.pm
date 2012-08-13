@@ -3368,9 +3368,6 @@ $idxowner
 	my %data = ();
 	my %unique = ();
 	while (my $row = $sth->fetch) {
-		next if (grep(/^$row->[0]$/i, keys %{$self->{tables}{$table}{unique_key}}));
-		next if ($self->{tables}{$table}{unique_key}{$row->[0]}{type} eq 'P');
-
 		$unique{$row->[0]} = $row->[2];
 		# Replace function based index type
 		if ($row->[1] =~ /^SYS_NC/i) {
