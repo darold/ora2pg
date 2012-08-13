@@ -2898,8 +2898,7 @@ sub _get_data
 		$timeformat = 'YYYY-MM-DD HH24:MI:SS.FF';
 	}
 	for my $k (0 .. $#{$name}) {
-
-		if ($self->{ora_sensitive} && ($name->[$k] !~ /"/)) {
+		if (($self->{ora_sensitive} || ($name->[$k] !~ /^[a-zA-Z_][a-zA-Z0-9_]*$/)) && ($name->[$k] !~ /"/)) {
 			$name->[$k] = '"' . $name->[$k] . '"';
 		}
 		if (!$self->{ora_sensitive}) {
