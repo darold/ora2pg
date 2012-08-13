@@ -1094,6 +1094,7 @@ I must thanks a lot all the great contributors:
 	David Fetter
 	Mohamed Gargouri
 	Rodrigo
+	Dominique Legendre
 
 and all others who help me to build a useful and reliable product:
 
