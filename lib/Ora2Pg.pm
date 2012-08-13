@@ -877,18 +877,21 @@ sub _tables
 			my $sth = $self->{dbh}->prepare($query);
 			if (!defined($sth)) {
 				# Automaticaly try with Oracle sensitivity
+				my $cond = 'with';
 				if (!$self->{ora_sensitive}) {
 					$query = "SELECT * FROM $t->[1].\"$t->[2]\" WHERE 1=0";
 				} else {
 					$query = "SELECT * FROM $t->[1].$t->[2] WHERE 1=0";
+					$cond = 'without';
 				}
-				$self->logit("DEBUG: Automaticaly trying with and without Oracle sensitivity: $query\n", 1);
+				$self->logit("WARNING: Automaticaly trying $cond Oracle sensitivity: $query\n");
 				$sth = $self->{dbh}->prepare($query);
 				if (!defined($sth)) {
 					warn "Can't prepare statement: $DBI::errstr";
 					warn "ORA2PG HINT: May be this tablename has some encoding issue.\n";
 					next;
 				}
+				$self->{tables}{$t->[2]}{ora_sensitive} = $cond;
 			}
 			$sth->execute;
 			if ($sth->err) {
@@ -2879,7 +2882,7 @@ sub _get_data
 
 	# Fix a problem when the table need to be prefixed by the schema
 	my $realtable = $table;
-	if ($self->{ora_sensitive} && ($table !~ /"/)) {
+	if (($self->{ora_sensitive} || ($self->{tables}{$table}{ora_sensitive} eq 'with')) && ($table !~ /"/)) {
 		$realtable = "\"$table\"";
 	}
 	if ($self->{schema}) {
