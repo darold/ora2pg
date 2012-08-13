@@ -279,6 +279,11 @@ CONFIGURATION
     Oracle as super user or take a look at directive USER_GRANTS above and
     at next section, especiallly the SCHEMA directive.
 
+    LOGFILE
+        By default all message are sent to the standard output. If you give
+        a file path to that directive, all output will be appended to this
+        file.
+
   Oracle schema to export
     The Oracle database export can be limited to a specific Schema or
     Namespace, this can be mandatory following the database connection user.

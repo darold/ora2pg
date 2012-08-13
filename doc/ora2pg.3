@@ -416,6 +416,9 @@ the error and your settings and try again. The perl script says nothing and the
 output file is empty: the user has not enough right to extract something from
 the database. Try to connect Oracle as super user or take a look at directive
 \&\s-1USER_GRANTS\s0 above and at next section, especiallly the \s-1SCHEMA\s0 directive.
+.IP "\s-1LOGFILE\s0" 4
+.IX Item "LOGFILE"
+By default all message are sent to the standard output. If you give a file path to that directive, all output will be appended to this file.
 .SS "Oracle schema to export"
 .IX Subsection "Oracle schema to export"
 The Oracle database export can be limited to a specific Schema or Namespace,
