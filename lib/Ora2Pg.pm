@@ -1051,7 +1051,7 @@ sub _get_sql_data
 	$sql_header .= "-- Copyright 2000-2012 Gilles DAROLD. All rights reserved.\n";
 	$sql_header .= "-- DATASOURCE: $self->{oracle_dsn}\n\n";
 	if ($self->{client_encoding}) {
-		$sql_header .= "SET client_encoding TO \U$self->{client_encoding}\E;\n\n";
+		$sql_header .= "SET client_encoding TO '\U$self->{client_encoding}\E';\n\n";
 	}
 	if ($self->{export_schema} && ($self->{type} ne 'TABLE')) {
 		if ($self->{pg_schema}) {
@@ -4369,7 +4369,7 @@ sub _convert_function
 			$sql_header .= "-- Copyright 2000-2012 Gilles DAROLD. All rights reserved.\n";
 			$sql_header .= "-- DATASOURCE: $self->{oracle_dsn}\n\n";
 			if ($self->{client_encoding}) {
-				$sql_header .= "SET client_encoding TO \U$self->{client_encoding}\E;\n\n";
+				$sql_header .= "SET client_encoding TO '\U$self->{client_encoding}\E';\n\n";
 			}
 			my $fhdl = $self->export_file("$dirprefix\L$pname/$func_name\E_$self->{output}", 1);
 			$self->_restore_comments(\$function, $hrefcomments);
