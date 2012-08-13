@@ -1277,6 +1277,8 @@ sub _get_sql_data
 		foreach my $trig (sort {$a->[0] cmp $b->[0]} @{$self->{triggers}}) {
 			my $fhdl = undef;
 			next if ($trig->[0] =~ /\$/);
+			next if (($#{$self->{limited}} >= 0) && !grep(/^$trig->[3]$/i, @{$self->{limited}}));
+			next if (($#{$self->{excluded}} >= 0) && grep(/^$trig->[3]$/i, @{$self->{excluded}}));
 			if ($self->{file_per_function} && !$self->{dbhdest}) {
 				$self->dump("\\i $dirprefix$trig->[0]_$self->{output}\n");
 				$self->logit("Dumping to one file per trigger : $trig->[0]_$self->{output}\n", 1);
@@ -1285,7 +1287,7 @@ sub _get_sql_data
 			$trig->[1] =~ s/\s*EACH ROW//is;
 			chop($trig->[4]);
 			chomp($trig->[4]);
-			$self->logit("\tDumping trigger $trig->[0]...\n", 1);
+			$self->logit("\tDumping trigger $trig->[0] defined on table $trig->[3]...\n", 1);
 			# Check if it's like a pg rule
 			if (!$self->{pg_supports_insteadof} && $trig->[1] =~ /INSTEAD OF/) {
 				if (!$self->{case_sensitive}) {
