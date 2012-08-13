@@ -3967,8 +3967,6 @@ sub format_data_row
 					$row->[$idx] =~ s/\0//gs;
 					$row->[$idx] = "'$row->[$idx]'";
 				} else {
-					$row->[$idx] =~ s/([^\\])\\'/$1\\\\'/gs; # escape escaped single quote
-					$row->[$idx] =~ s/\\$/\\\\/s;
 					$row->[$idx] =~ s/\0//gs;
 					$row->[$idx] = "E'$row->[$idx]'";
 				}
