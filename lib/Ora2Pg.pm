@@ -1229,11 +1229,7 @@ sub _get_sql_data
 			$cache = $seq->[5] if ($seq->[5]);
 			my $cycle = '';
 			$cycle = ' CYCLE' if ($seq->[6] eq 'Y');
-			if (!$self->{case_sensitive}) {
-				$sql_output .= "CREATE SEQUENCE \"\L$seq->[0]\E\" INCREMENT $seq->[3]";
-			} else {
-				$sql_output .= "CREATE SEQUENCE \"$seq->[0]\" INCREMENT $seq->[3]";
-			}
+			$sql_output .= "CREATE SEQUENCE \"\L$seq->[0]\E\" INCREMENT $seq->[3]";
 			if ($seq->[1] <= (-2**63-1)) {
 				$sql_output .= " NO MINVALUE";
 			} else {
@@ -1249,11 +1245,7 @@ sub _get_sql_data
 			if ($self->{force_owner}) {
 				my $owner = $seq->[7];
 				$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
-				if (!$self->{case_sensitive}) {
-					$sql_output .= "ALTER SEQUENCE \"\L$seq->[0]\E\" OWNER TO \L$owner\E;\n";
-				} else {
-					$sql_output .= "ALTER SEQUENCE \"$seq->[0]\" OWNER TO $owner;\n";
-				}
+				$sql_output .= "ALTER SEQUENCE \"\L$seq->[0]\E\" OWNER TO \L$owner\E;\n";
 			}
 
 		}
