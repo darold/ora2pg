@@ -2735,6 +2735,7 @@ sub _create_unique_keys
 	foreach my $consname (keys %$unique_key) {
 		my $newconsname = $self->{case_sensitive} ? $consname : lc($consname);
 		my $constype =   $unique_key->{$consname}{type};
+		my $constgen =   $unique_key->{$consname}{generated};
 		my @conscols = @{$unique_key->{$consname}{columns}};
 		my %constypenames = ('U' => 'UNIQUE', 'P' => 'PRIMARY KEY');
 		my $constypename = $constypenames{$constype};
@@ -2747,10 +2748,10 @@ sub _create_unique_keys
 		my $columnlist = join(',', map(qq{"$_"}, @conscols));
 		if ($columnlist) {
 			$columnlist = lc($columnlist) unless ($self->{case_sensitive});
-			if(($constype ne 'P') || $self->{keep_pkey_names}) {
-			    $out .= qq{ALTER TABLE "$newtabname" ADD CONSTRAINT "$newconsname" $constypename ($columnlist);\n};
+			if (!$self->{keep_pkey_names} || ($constgen eq 'GENERATED NAME')) {
+				$out .= qq{ALTER TABLE "$newtabname" ADD $constypename ($columnlist);\n};
 			} else {
-			    $out .= qq{ALTER TABLE "$newtabname" ADD PRIMARY KEY ($columnlist);\n};
+				$out .= qq{ALTER TABLE "$newtabname" ADD CONSTRAINT "$newconsname" $constypename ($columnlist);\n};
 			}
 		}
 	}
@@ -3185,7 +3186,7 @@ sub _unique_key
         my $cons_types = '('. join(',', @accepted_constraint_types) .')';
 	$owner = "AND upper(OWNER)='\U$owner\E'" if ($owner);
 	my $sth = $self->{dbh}->prepare(<<END) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-SELECT CONSTRAINT_NAME,R_CONSTRAINT_NAME,SEARCH_CONDITION,DELETE_RULE,DEFERRABLE,DEFERRED,R_OWNER,CONSTRAINT_TYPE
+SELECT CONSTRAINT_NAME,R_CONSTRAINT_NAME,SEARCH_CONDITION,DELETE_RULE,DEFERRABLE,DEFERRED,R_OWNER,CONSTRAINT_TYPE,GENERATED
 FROM $self->{prefix}_CONSTRAINTS
 WHERE CONSTRAINT_TYPE IN $cons_types
 AND STATUS='ENABLED'
@@ -3194,7 +3195,7 @@ END
 	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
 	while (my $row = $sth->fetch) {
-		my %constraint = (type => $row->[7], columns => ());
+		my %constraint = (type => $row->[7], 'generated' => $row->[8], columns => ());
 		my $sql = "SELECT DISTINCT COLUMN_NAME,POSITION FROM $self->{prefix}_CONS_COLUMNS WHERE CONSTRAINT_NAME='$row->[0]' $owner ORDER BY POSITION";
 		my $sth2 = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 		$sth2->execute or $self->logit("FATAL: " . $sth2->errstr . "\n", 0, 1);
