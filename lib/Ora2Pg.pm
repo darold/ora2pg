@@ -1722,7 +1722,7 @@ sub _get_sql_data
 			# First of all we drop all indexes
 			foreach my $table (sort { $self->{tables}{$a}{internal_id} <=> $self->{tables}{$b}{internal_id} } keys %{$self->{tables}}) {
 				$self->logit("Dropping table $table indexes...\n", 1);
-				$drop_all .= $self->_drop_indexes(%{$self->{tables}{$table}{indexes}});
+				$drop_all .= $self->_drop_indexes($table, %{$self->{tables}{$table}{indexes}}) . "\n";
 			}
 			if ($drop_all) {
 				$self->dump($drop_all);
@@ -2175,6 +2175,11 @@ sub _get_sql_data
 				push(@create_all, $self->_create_indexes($table, %{$self->{tables}{$table}{indexes}}));
 			}
 			if ($#create_all >= 0) {
+				if ($self->{plsql_pgsql}) {
+					for (my $i = 0; $i <= $#create_all; $i++) {
+						$create_all[$i] = Ora2Pg::PLSQL::plsql_to_plpgsql($create_all[$i], $self->{allow_code_break});
+					}
+				}
 				if ($self->{dbhdest}) {
 					foreach my $str (@create_all) {
 						if ($self->{type} ne 'COPY') {
@@ -2585,18 +2590,47 @@ sub _create_indexes
 		}
 		my $columns = join(',', @{$indexes{$idx}});
 		$columns =~ s/""/"/gs;
-		my $unique = '';
-		$unique = ' UNIQUE' if ($self->{tables}{$table}{uniqueness}{$idx} eq 'UNIQUE');
-		my $str = '';
-		if (!$self->{case_sensitive}) {
-			$str .= "CREATE$unique INDEX \L$idx\E ON \"\L$table\E\" (\L$columns\E);";
-		} else {
-			$str .= "CREATE$unique INDEX $idx ON \"$table\" ($columns);";
+		my $colscompare = $columns;
+		$colscompare =~ s/"//gs;
+		my $columnlist = '';
+		my $skip_index_creation = 0;
+		my $unique_key = $self->{tables}{$table}{unique_key};
+		foreach my $consname (keys %$unique_key) {
+			my $newconsname = $self->{case_sensitive} ? $consname : lc($consname);
+			my $constype =   $unique_key->{$consname}{type};
+			next if (($constype ne 'P') && ($constype ne 'U'));
+			my @conscols = @{$unique_key->{$consname}{columns}};
+			for (my $i = 0; $i <= $#conscols; $i++) {
+				# Change column names
+				if (exists $self->{replaced_cols}{"\L$tbsaved\E"}{"\L$conscols[$i]\E"} && $self->{replaced_cols}{"\L$tbsaved\E"}{"\L$conscols[$i]\E"}) {
+					$conscols[$i] = $self->{replaced_cols}{"\L$tbsaved\E"}{"\L$conscols[$i]\E"};
+				}
+			}
+			$columnlist = join(',', @conscols);
+			$columnlist =~ s/"//gs;
+			if (lc($columnlist) eq lc($colscompare)) {
+				$skip_index_creation = 1;
+				last;
+			}
 		}
-		push(@out, $str);
+
+		# Do not create the index if there already a constraint on the same column list
+		# the index will be automatically created by PostgreSQL at constraint import time.
+		if (!$skip_index_creation) {
+			my $unique = '';
+			$unique = ' UNIQUE' if ($self->{tables}{$table}{uniqueness}{$idx} eq 'UNIQUE');
+			my $str = '';
+			if (!$self->{case_sensitive}) {
+				$str .= "CREATE$unique INDEX \L$idx\E ON \"\L$table\E\" (\L$columns\E);";
+			} else {
+				$str .= "CREATE$unique INDEX $idx ON \"$table\" ($columns);";
+			}
+			push(@out, $str);
+		}
 	}
 
 	return wantarray ? @out : join("\n", @out);
+
 }
 
 =head2 _drop_indexes
@@ -2606,30 +2640,67 @@ This function return SQL code to drop indexes of a table
 =cut
 sub _drop_indexes
 {
-	my ($self, %indexes) = @_;
+	my ($self, $table, %indexes) = @_;
 
-	my $out = '';
+	my $tbsaved = $table;
+	if (exists $self->{replaced_tables}{"\L$table\E"} && $self->{replaced_tables}{"\L$table\E"}) {
+		$table = $self->{replaced_tables}{"\L$table\E"};
+	}
+	my @out = ();
 	# Set the index definition
 	foreach my $idx (keys %indexes) {
-		my $str = '';
-		if (!$self->{case_sensitive}) {
-			$str = "DROP INDEX \L$idx\E;";
-		} else {
-			$str = "DROP INDEX $idx;";
-		}
-		if ($self->{dbhdest}) {
-			if ($self->{type} ne 'COPY') {
-				my $s = $self->{dbhdest}->do($str);
-			} else {
-				print DBH "$str\n";
+		map { if ($_ !~ /\(.*\)/) { s/^/"/; s/$/"/; } } @{$indexes{$idx}};
+		if (exists $self->{replaced_cols}{"\L$tbsaved\E"} && $self->{replaced_cols}{"\L$tbsaved\E"}) {
+			foreach my $c (keys %{$self->{replaced_cols}{"\L$tbsaved\E"}}) {
+				map { s/"$c"/"$self->{replaced_cols}{"\L$tbsaved\E"}{$c}"/i } @{$indexes{$idx}};
 			}
-		} else {
-			$out .= $str . "\n";
+		}
+		my $columns = join(',', @{$indexes{$idx}});
+		$columns =~ s/""/"/gs;
+		my $colscompare = $columns;
+		$colscompare =~ s/"//gs;
+		my $columnlist = '';
+		my $skip_index_creation = 0;
+		my $unique_key = $self->{tables}{$table}{unique_key};
+		foreach my $consname (keys %$unique_key) {
+			my $newconsname = $self->{case_sensitive} ? $consname : lc($consname);
+			my $constype =   $unique_key->{$consname}{type};
+			next if (($constype ne 'P') && ($constype ne 'U'));
+			my @conscols = @{$unique_key->{$consname}{columns}};
+			for (my $i = 0; $i <= $#conscols; $i++) {
+				# Change column names
+				if (exists $self->{replaced_cols}{"\L$tbsaved\E"}{"\L$conscols[$i]\E"} && $self->{replaced_cols}{"\L$tbsaved\E"}{"\L$conscols[$i]\E"}) {
+					$conscols[$i] = $self->{replaced_cols}{"\L$tbsaved\E"}{"\L$conscols[$i]\E"};
+				}
+			}
+			$columnlist = join(',', @conscols);
+			$columnlist =~ s/"//gs;
+			if (lc($columnlist) eq lc($colscompare)) {
+				$skip_index_creation = 1;
+				last;
+			}
+		}
+
+		# Do not create the index if there already a constraint on the same column list
+		# the index will be automatically created by PostgreSQL at constraint import time.
+		if (!$skip_index_creation) {
+			my $str = "DROP INDEX $idx;";
+			if (!$self->{case_sensitive}) {
+				$str = "DROP INDEX \L$idx\E;";
+			}
+			if ($self->{dbhdest}) {
+				if ($self->{type} ne 'COPY') {
+					my $s = $self->{dbhdest}->do($str);
+				} else {
+					print DBH "$str\n";
+				}
+			} else {
+				push(@out, $str);
+			}
 		}
 	}
-	$out .= "\n" if ($out);
 
-	return $out;
+	return wantarray ? @out : join("\n", @out);
 }
 
 
@@ -3347,9 +3418,10 @@ sub _get_indexes
 	}
 	# Retrieve all indexes 
 	my $sth = $self->{dbh}->prepare(<<END) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-SELECT DISTINCT $self->{prefix}_IND_COLUMNS.INDEX_NAME,$self->{prefix}_IND_COLUMNS.COLUMN_NAME,$self->{prefix}_INDEXES.UNIQUENESS,$self->{prefix}_IND_COLUMNS.COLUMN_POSITION,$self->{prefix}_INDEXES.INDEX_TYPE,$self->{prefix}_INDEXES.TABLE_TYPE
+SELECT DISTINCT $self->{prefix}_IND_COLUMNS.INDEX_NAME,$self->{prefix}_IND_COLUMNS.COLUMN_NAME,$self->{prefix}_INDEXES.UNIQUENESS,$self->{prefix}_IND_COLUMNS.COLUMN_POSITION,$self->{prefix}_INDEXES.INDEX_TYPE,$self->{prefix}_INDEXES.TABLE_TYPE,$self->{prefix}_INDEXES.GENERATED
 FROM $self->{prefix}_IND_COLUMNS, $self->{prefix}_INDEXES
 WHERE $self->{prefix}_IND_COLUMNS.TABLE_NAME='$table' $owner
+AND $self->{prefix}_INDEXES.GENERATED != 'Y'
 AND $self->{prefix}_INDEXES.INDEX_NAME=$self->{prefix}_IND_COLUMNS.INDEX_NAME
 ORDER BY $self->{prefix}_IND_COLUMNS.COLUMN_POSITION
 END
