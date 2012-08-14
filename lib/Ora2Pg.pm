@@ -1288,9 +1288,17 @@ sub _get_sql_data
 					$sql_output .= "CREATE OR REPLACE RULE \L$trig->[0]\E AS\n\tON \"$trig->[3]\"\n\tDO INSTEAD\n(\n\t$trig->[4]\n);\n\n";
 				}
 			} else {
-				if ($self->{plsql_pgsql}) {
-					$trig->[4] = Ora2Pg::PLSQL::plsql_to_plpgsql($trig->[4], $self->{allow_code_break});
-					$trig->[4] =~ s/\b(END[;]*)$/RETURN NEW;\n$1/igs;
+				# Replace direct call of a stored procedure in triggers
+				if ($trig->[7] eq 'CALL') {
+					if ($self->{plsql_pgsql}) {
+						$trig->[4] = Ora2Pg::PLSQL::plsql_to_plpgsql($trig->[4], $self->{allow_code_break});
+					}
+					$trig->[4] = "BEGIN;\nSELECT $trig->[4];\nEND;";
+				} else {
+					if ($self->{plsql_pgsql}) {
+						$trig->[4] = Ora2Pg::PLSQL::plsql_to_plpgsql($trig->[4], $self->{allow_code_break});
+						$trig->[4] =~ s/\b(END[;]*)$/RETURN NEW;\n$1/igs;
+					}
 				}
 				my $trig_table = $trig->[3];
 				$trig_table = lc($trig->[3]) if (!$self->{case_sensitive});
@@ -3569,7 +3577,7 @@ sub _get_triggers
 	my($self) = @_;
 
 	# Retrieve all indexes 
-	my $str = "SELECT TRIGGER_NAME, TRIGGER_TYPE, TRIGGERING_EVENT, TABLE_NAME, TRIGGER_BODY, WHEN_CLAUSE, DESCRIPTION FROM $self->{prefix}_TRIGGERS WHERE STATUS='ENABLED'";
+	my $str = "SELECT TRIGGER_NAME, TRIGGER_TYPE, TRIGGERING_EVENT, TABLE_NAME, TRIGGER_BODY, WHEN_CLAUSE, DESCRIPTION,ACTION_TYPE FROM $self->{prefix}_TRIGGERS WHERE STATUS='ENABLED'";
 	if (!$self->{schema}) {
 		$str .= " AND OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
 	} else {
