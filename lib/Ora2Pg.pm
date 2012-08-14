@@ -1292,8 +1292,8 @@ sub _get_sql_data
 					$trig->[4] = Ora2Pg::PLSQL::plsql_to_plpgsql($trig->[4], $self->{allow_code_break});
 					$trig->[4] =~ s/\b(END[;]*)$/RETURN NEW;\n$1/igs;
 				}
-				my $trig_table = $trig->[0];
-				$trig_table = lc($trig->[0]) if (!$self->{case_sensitive});
+				my $trig_table = $trig->[3];
+				$trig_table = lc($trig->[3]) if (!$self->{case_sensitive});
 				if ($self->{pg_supports_when} && $trig->[5]) {
 					$sql_output .= "DROP TRIGGER IF EXISTS \L$trig->[0]\E ON \"$trig_table\" CASCADE;\n";
 					$sql_output .= "CREATE OR REPLACE FUNCTION trigger_fct_\L$trig->[0]\E () RETURNS trigger AS \$BODY\$\n$trig->[4]\n\$BODY\$\n LANGUAGE 'plpgsql';\n\n";
