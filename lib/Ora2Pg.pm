@@ -2374,10 +2374,12 @@ CREATE TRIGGER insert_${table}_trigger
 					$f->[4] =~ s/[\s\t]+$//;
 					if (($f->[4] eq "''") && (!$f->[3] || ($f->[3] eq 'N'))) {
 						$sql_output .= " NOT NULL";
+						push(@{$self->{tables}{$table}{check_constraint}{notnull}}, $f->[0]);
 					} elsif ($self->{type} ne 'FDW') {
 						$sql_output .= " DEFAULT $f->[4]";
 					}
 				} elsif (!$f->[3] || ($f->[3] eq 'N')) {
+					push(@{$self->{tables}{$table}{check_constraint}{notnull}}, $f->[0]);
 					$sql_output .= " NOT NULL";
 				}
 				$sql_output .= ",\n";
@@ -2771,26 +2773,34 @@ sub _create_check_constraint
 
 	my $out = '';
 	# Set the check constraint definition 
-	foreach my $k (keys %$check_constraint) {
-		my $chkconstraint = $check_constraint->{$k};
+	foreach my $k (keys %{$check_constraint->{constraint}}) {
+		my $chkconstraint = $check_constraint->{constraint}->{$k};
 		next if (!$chkconstraint);
-		if (exists $self->{replaced_cols}{"\L$tbsaved\E"} && $self->{replaced_cols}{"\L$tbsaved\E"}) {
-			foreach my $c (keys %{$self->{replaced_cols}{"\L$tbsaved\E"}}) {
-				$chkconstraint =~ s/"$c"/"$self->{replaced_cols}{"\L$tbsaved\E"}{$c}"/gsi;
-				$chkconstraint =~ s/\b$c\b/$self->{replaced_cols}{"\L$tbsaved\E"}{$c}/gsi;
+		my $skip_create = 0;
+		if (exists $check_constraint->{notnull}) {
+			foreach my $col (@{$check_constraint->{notnull}}) {
+				$skip_create = 1, last if (lc($chkconstraint) eq lc("\"$col\" IS NOT NULL"));
 			}
 		}
-		if ($self->{plsql_pgsql}) {
-			$chkconstraint = Ora2Pg::PLSQL::plsql_to_plpgsql($chkconstraint, $self->{allow_code_break});
-		}
-		if (!$self->{case_sensitive}) {
-			foreach my $c (@$field_name) {
-				# Force lower case
-				$chkconstraint =~ s/"$c"/"\L$c\E"/igs;
+		if (!$skip_create) {
+			if (exists $self->{replaced_cols}{"\L$tbsaved\E"} && $self->{replaced_cols}{"\L$tbsaved\E"}) {
+				foreach my $c (keys %{$self->{replaced_cols}{"\L$tbsaved\E"}}) {
+					$chkconstraint =~ s/"$c"/"$self->{replaced_cols}{"\L$tbsaved\E"}{$c}"/gsi;
+					$chkconstraint =~ s/\b$c\b/$self->{replaced_cols}{"\L$tbsaved\E"}{$c}/gsi;
+				}
 			}
-			$out .= "ALTER TABLE \"\L$table\E\" ADD CONSTRAINT \"\L$k\E\" CHECK ($chkconstraint);\n";
-		} else {
-			$out .= "ALTER TABLE \"$table\" ADD CONSTRAINT \"$k\" CHECK ($chkconstraint);\n";
+			if ($self->{plsql_pgsql}) {
+				$chkconstraint = Ora2Pg::PLSQL::plsql_to_plpgsql($chkconstraint, $self->{allow_code_break});
+			}
+			if (!$self->{case_sensitive}) {
+				foreach my $c (@$field_name) {
+					# Force lower case
+					$chkconstraint =~ s/"$c"/"\L$c\E"/igs;
+				}
+				$out .= "ALTER TABLE \"\L$table\E\" ADD CONSTRAINT \"\L$k\E\" CHECK ($chkconstraint);\n";
+			} else {
+				$out .= "ALTER TABLE \"$table\" ADD CONSTRAINT \"$k\" CHECK ($chkconstraint);\n";
+			}
 		}
 	}
 
@@ -3225,7 +3235,7 @@ END
 
 	my %data = ();
 	while (my $row = $sth->fetch) {
-		$data{$row->[0]} = $row->[2];
+		$data{constraint}{$row->[0]} = $row->[2];
 	}
 
 	return %data;
