@@ -869,12 +869,14 @@ sub _tables
 			}
 			# usually OWNER,TYPE. QUALIFIER is omitted until I know what to do with that
 			$self->{tables}{$t->[2]}{table_info} = [($t->[1],$t->[3],$t->[4])];
+
 			# Set the fields information
 			my $query = "SELECT * FROM $t->[1].$t->[2] WHERE 1=0";
 			if ($self->{ora_sensitive} && ($t->[2] !~ /"/)) {
 				$query = "SELECT * FROM $t->[1].\"$t->[2]\" WHERE 1=0";
 			}
 			my $sth = $self->{dbh}->prepare($query);
+			my $need_sensitivity = 0;
 			if (!defined($sth)) {
 				# Automaticaly try with Oracle sensitivity
 				my $cond = 'with';
@@ -892,6 +894,7 @@ sub _tables
 					next;
 				}
 				$self->{tables}{$t->[2]}{ora_sensitive} = $cond;
+				$need_sensitivity = 1;
 			}
 			$sth->execute;
 			if ($sth->err) {
@@ -901,7 +904,7 @@ sub _tables
 			$self->{tables}{$t->[2]}{field_name} = $sth->{NAME};
 			$self->{tables}{$t->[2]}{field_type} = $sth->{TYPE};
 
-			@{$self->{tables}{$t->[2]}{column_info}} = $self->_column_info($t->[2],$t->[1]);
+			@{$self->{tables}{$t->[2]}{column_info}} = $self->_column_info($t->[2],$t->[1], $need_sensitivity);
 			@{$self->{tables}{$t->[2]}{column_comments}} = $self->_column_comments($t->[2],$t->[1]);
                         # We don't check for skip_ukeys/skip_pkeys here; this is taken care of inside _unique_key
 			%{$self->{tables}{$t->[2]}{unique_key}} = $self->_unique_key($t->[2],$t->[1]);
@@ -1896,7 +1899,7 @@ sub _get_sql_data
 					$type = "$f->[1], $f->[2]" if (!$type);
 					push(@stt, uc($f->[1]));
 					push(@tt, $type);
-					push(@nn, $f->[0]);
+					push(@nn, $f);
 					if ($self->{type} ne 'COPY') {
 						if (!$self->{case_sensitive}) {
 							$s_out .= "\"\L$f->[0]\E\",";
@@ -2068,7 +2071,7 @@ sub _get_sql_data
 						$type = "$f->[1], $f->[2]" if (!$type);
 						push(@tt, $type);
 						push(@stt, $f->[1]);
-						push(@nn, $f->[0]);
+						push(@nn, $f);
 						if ($self->{type} ne 'COPY') {
 							if (!$self->{case_sensitive}) {
 								$s_out .= "\"\L$f->[0]\E\",";
@@ -2975,24 +2978,24 @@ sub _get_data
 		$timeformat = 'YYYY-MM-DD HH24:MI:SS.FF';
 	}
 	for my $k (0 .. $#{$name}) {
-		if (($self->{ora_sensitive} || ($name->[$k] !~ /^[a-zA-Z_][a-zA-Z0-9_]*$/)) && ($name->[$k] !~ /"/)) {
-			$name->[$k] = '"' . $name->[$k] . '"';
+		if (($self->{ora_sensitive} || ($name->[$k]->[0] !~ /^[a-zA-Z_][a-zA-Z0-9_]*$/) || $name->[$k]->[-1] ) && ($name->[$k]->[0] !~ /"/)) {
+			$name->[$k]->[0] = '"' . $name->[$k]->[0] . '"';
 		}
-		if (!$self->{ora_sensitive}) {
-			$name->[$k] = lc($name->[$k]);
+		if (!$self->{ora_sensitive} && !$name->[$k]->[-1]) {
+			$name->[$k]->[0] = lc($name->[$k]->[0]);
 		}
 		if ( $src_type->[$k] =~ /date/i) {
-			$str .= "to_char($name->[$k], '$dateformat'),";
+			$str .= "to_char($name->[$k]->[0], '$dateformat'),";
 		} elsif ( $src_type->[$k] =~ /time/i) {
-			$str .= "to_char($name->[$k], '$timeformat'),";
+			$str .= "to_char($name->[$k]->[0], '$timeformat'),";
 		} elsif ( $src_type->[$k] =~ /xmltype/i) {
 			if ($self->{xml_pretty}) {
-				$str .= "$alias.$name->[$k].extract('/').getStringVal(),";
+				$str .= "$alias.$name->[$k]->[0].extract('/').getStringVal(),";
 			} else {
-				$str .= "$alias.$name->[$k].extract('/').getClobVal(),";
+				$str .= "$alias.$name->[$k]->[0].extract('/').getClobVal(),";
 			}
 		} else {
-			$str .= "$name->[$k],";
+			$str .= "$name->[$k]->[0],";
 		}
 	}
 	$str =~ s/,$//;
@@ -3123,13 +3126,14 @@ elements for each column the specified table
 
 sub _column_info
 {
-	my ($self, $table, $owner) = @_;
+	my ($self, $table, $owner, $tb_sensitive) = @_;
 
-	$owner = "AND upper(OWNER)='\U$owner\E' " if ($owner);
+	my $schema = '';
+	$schema = "AND upper(OWNER)='\U$owner\E' " if ($owner);
 	my $sth = $self->{dbh}->prepare(<<END) or $self->logit("WARNING only: " . $self->{dbh}->errstr . "\n", 0, 0);
 SELECT COLUMN_NAME, DATA_TYPE, DATA_LENGTH, NULLABLE, DATA_DEFAULT, DATA_PRECISION, DATA_SCALE, CHAR_LENGTH
 FROM $self->{prefix}_TAB_COLUMNS
-WHERE TABLE_NAME='$table' $owner
+WHERE TABLE_NAME='$table' $schema
 ORDER BY COLUMN_ID
 END
 	if (not defined $sth) {
@@ -3137,7 +3141,7 @@ END
 		$sth = $self->{dbh}->prepare(<<END) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 SELECT COLUMN_NAME, DATA_TYPE, DATA_LENGTH, NULLABLE, DATA_DEFAULT, DATA_PRECISION, DATA_SCALE
 FROM $self->{prefix}_TAB_COLUMNS
-WHERE TABLE_NAME='$table' $owner
+WHERE TABLE_NAME='$table' $schema
 ORDER BY COLUMN_ID
 END
 		$self->logit("INFO: please forget the above error message, this is a warning only for Oracle 8i database.\n", 0, 0);
@@ -3145,19 +3149,44 @@ END
 	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
 	my $data = $sth->fetchall_arrayref();
+	$table = '"' . $table . "'" if ($tb_sensitive);
 	foreach my $d (@$data) {
+		my $need_sensitivity = $self->_detect_column_sensitivity($owner, $table, $d->[0]);
+		push(@$d, $need_sensitivity);
 		if ($#{$d} == 7) {
-			$self->logit("\t$d->[0] => type:$d->[1] , length:$d->[2] (char_length:$d->[7]), precision:$d->[5], scale:$d->[6], nullable:$d->[3] , default:$d->[4]\n", 1);
+			$self->logit("\t$d->[0] => type:$d->[1] , length:$d->[2] (char_length:$d->[7]), precision:$d->[5], scale:$d->[6], nullable:$d->[3] , default:$d->[4] , sensitivity:$d->[-1]\n", 1);
 			$d->[2] = $d->[7] if $d->[1] =~ /char/i;
 		} else {
-			$self->logit("\t$d->[0] => type:$d->[1] , length:$d->[2] (char_length:$d->[2]), precision:$d->[5], scale:$d->[6], nullable:$d->[3] , default:$d->[4]\n", 1);
+			$self->logit("\t$d->[0] => type:$d->[1] , length:$d->[2] (char_length:$d->[2]), precision:$d->[5], scale:$d->[6], nullable:$d->[3] , default:$d->[4] , sensitivity:$d->[-1]\n", 1);
 		}
 	}
 
 	return @$data;	
-
 }
 
+
+sub _detect_column_sensitivity
+{
+	my ($self, $owner, $table, $column) = @_;
+
+	my $query = "SELECT $column FROM $owner.$table WHERE 1=0";
+	my $sth = $self->{dbh}->prepare($query);
+	if (!defined($sth)) {
+		# Automaticaly try with Oracle sensitivity
+		my $cond = 'with';
+		$query = "SELECT \"$column\" FROM $owner.$table WHERE 1=0";
+		$sth = $self->{dbh}->prepare($query);
+		if (!defined($sth)) {
+			return 0;
+		}
+		$sth->finish();
+		$self->logit("WARNING: column $column need Oracle sensitivity\n");
+		return 1;
+	}
+	$sth->finish();
+
+	return 0;
+}
 
 =head2 _unique_key TABLE OWNER
 
