@@ -1619,16 +1619,6 @@ sub _get_sql_data
 
 		if (!$self->{dbhdest}) {
 			$self->dump($sql_header);
-		} else {
-			if ($self->{type} eq 'COPY') {
-				if ($self->{dbuser}) {
-					open(DBH, "| $PSQL -h $self->{dbhost} -p $self->{dbport} -d $self->{dbname} -U $self->{dbuser}") or $self->logit("FATAL: Can't open $PSQL command, $!\n", 0, 1);
-				} else {
-					# Executed as current user
-					open(DBH, "| $PSQL -h $self->{dbhost} -p $self->{dbport} -d $self->{dbname}") or $self->logit("FATAL: Can't open $PSQL command, $!\n", 0, 1);
-				}
-				binmode(DBH, $self->{binmode});
-			}
 		}
 
 		if ($self->{dbhdest} && $self->{export_schema} &&  $self->{schema}) {
@@ -1642,11 +1632,7 @@ sub _get_sql_data
 					$search_path = "SET search_path = \"$self->{schema}\"";
 				}
 			}
-			if ($self->{type} ne 'COPY') {
-				my $s = $self->{dbhdest}->do($search_path) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
-			} else {
-				print DBH "$search_path;\n";
-			}
+			my $s = $self->{dbhdest}->do($search_path) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
 		}
 		# Try to ordered table for export as we don't have issues with foreign keys
 		# we first extract all tables that dont have foreign keys
@@ -1685,11 +1671,7 @@ sub _get_sql_data
 		}
 
 		if ($self->{drop_indexes} || $self->{drop_fkey}) {
-			if ($self->{dbhdest}) {
-				if ($self->{type} eq 'COPY') {
-					print DBH "\\set ON_ERROR_STOP OFF\n";
-				}
-			} else {
+			if (!$self->{dbhdest}) {
 				$self->dump("\\set ON_ERROR_STOP OFF\n");
 			}
 		}
@@ -1700,13 +1682,8 @@ sub _get_sql_data
 			if ($self->{defer_fkey} && !$self->{drop_fkey}) {
 				$deferred_fkey = 1;
 				if ($self->{dbhdest}) {
-					if ($self->{type} ne 'COPY') {
-						my $s = $self->{dbhdest}->do("BEGIN;") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
-						$s = $self->{dbhdest}->do("SET CONSTRAINTS ALL DEFERRED;") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
-					} else {
-						print DBH "BEGIN;\n";
-						print DBH "SET CONSTRAINTS ALL DEFERRED;\n";
-					}
+					my $s = $self->{dbhdest}->do("BEGIN;") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
+					$s = $self->{dbhdest}->do("SET CONSTRAINTS ALL DEFERRED;") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
 				} else {
 					$self->dump("BEGIN;\n");
 					$self->dump("SET CONSTRAINTS ALL DEFERRED;\n");
@@ -1741,11 +1718,7 @@ sub _get_sql_data
 			$drop_all = '';
 		}
 		if ($self->{drop_indexes} || $self->{drop_fkey}) {
-			if ($self->{dbhdest}) {
-				if ($self->{type} eq 'COPY') {
-					print DBH "\\set ON_ERROR_STOP ON\n";
-				}
-			} else {
+			if (!$self->{dbhdest}) {
 				$self->dump("\\set ON_ERROR_STOP ON\n");
 			}
 		}
@@ -1773,11 +1746,7 @@ sub _get_sql_data
 			if ($self->{client_encoding}) {
 				$self->logit("Changing client encoding as \U$self->{client_encoding}\E...\n", 1);
 				if ($self->{dbhdest}) {
-					if ($self->{type} ne 'COPY') {
-						my $s = $self->{dbhdest}->do("SET client_encoding TO '\U$self->{client_encoding}\E';") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
-					} else {
-						print DBH "SET client_encoding TO '\U$self->{client_encoding}\E';\n";
-					}
+					my $s = $self->{dbhdest}->do("SET client_encoding TO '\U$self->{client_encoding}\E';") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
 				} else {
 					$self->dump("SET client_encoding TO '\U$self->{client_encoding}\E';\n", $fhdl);
 				}
@@ -1800,11 +1769,7 @@ sub _get_sql_data
 			}
 			if ($search_path) {
 				if ($self->{dbhdest}) {
-					if ($self->{type} ne 'COPY') {
-						my $s = $self->{dbhdest}->do("$search_path") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
-					} else {
-						print DBH "$search_path\n";
-					}
+					my $s = $self->{dbhdest}->do("$search_path") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
 				} else {
 					$self->dump("$search_path\n", $fhdl);
 				}
@@ -1813,11 +1778,7 @@ sub _get_sql_data
 
 			# Start transaction to speed up bulkload
 			if ($self->{dbhdest}) {
-				if ($self->{type} ne 'COPY') {
-					my $s = $self->{dbhdest}->do("BEGIN;") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
-				} else {
-					print DBH "BEGIN;\n";
-				}
+				my $s = $self->{dbhdest}->do("BEGIN;") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
 			} else {
 				$self->dump("BEGIN;\n", $fhdl);
 			}
@@ -1835,11 +1796,7 @@ sub _get_sql_data
 					$tmptb = '"' . $tmptb . '"';
 				}
 				if ($self->{dbhdest}) {
-					if ($self->{type} ne 'COPY') {
-						my $s = $self->{dbhdest}->do("ALTER TABLE $tmptb DISABLE TRIGGER ALL;") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
-					} else {
-						print DBH "ALTER TABLE $tmptb DISABLE TRIGGER ALL;\n";
-					}
+					my $s = $self->{dbhdest}->do("ALTER TABLE $tmptb DISABLE TRIGGER ALL;") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
 				} else {
 					$self->dump("ALTER TABLE $tmptb DISABLE TRIGGER ALL;\n", $fhdl);
 				}
@@ -1857,11 +1814,7 @@ sub _get_sql_data
 					$tmptb = lc($tmptb);
 				}
 				if ($self->{dbhdest}) {
-					if ($self->{type} ne 'COPY') {
-						my $s = $self->{dbhdest}->do("TRUNCATE TABLE $tmptb;") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
-					} else {
-						print DBH "TRUNCATE TABLE $tmptb;\n";
-					}
+					my $s = $self->{dbhdest}->do("TRUNCATE TABLE $tmptb;") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
 				} else {
 					$self->dump("TRUNCATE TABLE $tmptb;\n", $fhdl);
 				}
@@ -1913,7 +1866,7 @@ sub _get_sql_data
 			}
 			if ($self->{type} eq 'COPY') {
 				map { $_ = '"' . $_ . '"' } @fname;
-				$s_out .= '(' . join(',', @fname) . ") FROM stdin;\n";
+				$s_out .= '(' . join(',', @fname) . ") FROM STDIN;\n";
 			}
 
 			if ($self->{type} ne 'COPY') {
@@ -1941,6 +1894,9 @@ sub _get_sql_data
 					$s_out =~ s/,$//;
 					$s_out .= ")";
 					$sprep = $s_out;
+				} else {
+					my $s = $self->{dbhdest}->do("$s_out") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
+					$s_out = '';
 				}
 			}
 			# Extract all data from the current table
@@ -1960,22 +1916,14 @@ sub _get_sql_data
 					$tmptb = '"' . $tmptb . '"';
 				}
 				if ($self->{dbhdest}) {
-					if ($self->{type} ne 'COPY') {
-						my $s = $self->{dbhdest}->do("ALTER TABLE $tmptb ENABLE TRIGGER ALL;") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
-					} else {
-						print DBH "ALTER TABLE $tmptb ENABLE TRIGGER ALL;\n";
-					}
+					my $s = $self->{dbhdest}->do("ALTER TABLE $tmptb ENABLE TRIGGER ALL;") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
 				} else {
 					$self->dump("ALTER TABLE $tmptb ENABLE TRIGGER ALL;\n", $fhdl);
 				}
 			}
 			# COMMIT transaction at end for speed improvement
 			if ($self->{dbhdest}) {
-				if ($self->{type} ne 'COPY') {
-					my $s = $self->{dbhdest}->do("COMMIT;") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
-				} else {
-					print DBH "COMMIT;\n";
-				}
+				my $s = $self->{dbhdest}->do("COMMIT;") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
 			} else {
 				$self->dump("COMMIT;\n", $fhdl);
 			}
@@ -2034,7 +1982,7 @@ sub _get_sql_data
 						$tmptb = '"' . $tmptb . '"';
 					}
 					if ($self->{dbhdest}) {
-						print DBH "ALTER TABLE $tmptb DISABLE TRIGGER $self->{disable_triggers};\n";
+						my $s = $self->{dbhdest}->do("ALTER TABLE $tmptb DISABLE TRIGGER $self->{disable_triggers};") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
 					} else {
 						$self->dump("ALTER TABLE $tmptb DISABLE TRIGGER $self->{disable_triggers};\n", $fhdl);
 					}
@@ -2087,7 +2035,7 @@ sub _get_sql_data
 				}
 				if ($self->{type} eq 'COPY') {
 					map { $_ = '"' . $_ . '"' } @fname;
-					$s_out .= '(' . join(',', @fname) . ") FROM stdin;\n";
+					$s_out .= '(' . join(',', @fname) . ") FROM STDIN;\n";
 				}
 
 				if ($self->{type} ne 'COPY') {
@@ -2115,6 +2063,9 @@ sub _get_sql_data
 						$s_out =~ s/,$//;
 						$s_out .= ")";
 						$sprep = $s_out;
+					} else {
+						my $s = $self->{dbhdest}->do($s_out) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
+						$s_out = '';
 					}
 				}
 				# Extract all data from the current table
@@ -2134,7 +2085,7 @@ sub _get_sql_data
 						$tmptb = '"' . $tmptb . '"';
 					}
 					if ($self->{dbhdest}) {
-						print DBH "ALTER TABLE $tmptb ENABLE TRIGGER $self->{disable_triggers};\n";
+						my $s = $self->{dbhdest}->do("ALTER TABLE $tmptb ENABLE TRIGGER $self->{disable_triggers};") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
 					} else {
 						$self->dump("ALTER TABLE $tmptb ENABLE TRIGGER $self->{disable_triggers};\n", $fhdl);
 					}
@@ -2158,7 +2109,7 @@ sub _get_sql_data
 			if ($self->{defer_fkey} && !$self->{drop_fkey}) {
 				$deferred_fkey = 1;
 				if ($self->{dbhdest}) {
-					print DBH "COMMIT;\n";
+					my $s = $self->{dbhdest}->do("COMMIT;") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
 				} else {
 					$self->dump("COMMIT;\n");
 				}
@@ -2171,11 +2122,7 @@ sub _get_sql_data
 				}
 				foreach my $str (@create_all) {
 					if ($self->{dbhdest}) {
-						if ($self->{type} ne 'COPY') {
-							my $s = $self->{dbhdest}->do($str) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
-						} else {
-							print DBH "$str\n";
-						}
+						my $s = $self->{dbhdest}->do($str) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
 					} else {
 						$self->dump("$str\n");
 					}
@@ -2197,11 +2144,7 @@ sub _get_sql_data
 				}
 				if ($self->{dbhdest}) {
 					foreach my $str (@create_all) {
-						if ($self->{type} ne 'COPY') {
-							my $s = $self->{dbhdest}->do($str) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
-						} else {
-							print DBH "$str\n";
-						}
+						my $s = $self->{dbhdest}->do($str) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
 					}
 				} else {
 					$self->dump(join("\n", @create_all, "\n"));
@@ -2212,9 +2155,6 @@ sub _get_sql_data
 		$self->{dbh}->disconnect() if ($self->{dbh});
 		$self->{dbhdest}->disconnect() if ($self->{dbhdest});
 
-		if ($self->{type} eq 'COPY') {
-			close DBH;
-		}
 		return;
 	}
 
@@ -2701,16 +2641,12 @@ sub _drop_indexes
 		# Do not create the index if there already a constraint on the same column list
 		# the index will be automatically created by PostgreSQL at constraint import time.
 		if (!$skip_index_creation) {
-			my $str = "DROP INDEX $idx;";
+			my $str = "DROP INDEX \"$idx\";";
 			if (!$self->{case_sensitive}) {
-				$str = "DROP INDEX \L$idx\E;";
+				$str = "DROP INDEX \"\L$idx\E\";";
 			}
 			if ($self->{dbhdest}) {
-				if ($self->{type} ne 'COPY') {
-					my $s = $self->{dbhdest}->do($str);
-				} else {
-					print DBH "$str\n";
-				}
+				my $s = $self->{dbhdest}->do($str);
 			} else {
 				push(@out, $str);
 			}
@@ -2902,11 +2838,7 @@ sub _drop_foreign_keys
 			$str .= "ALTER TABLE \"$table\" DROP CONSTRAINT \"$h->[0]\";";
 		}
 		if ($self->{dbhdest}) {
-			if ($self->{type} ne 'COPY') {
-				my $s = $self->{dbhdest}->do($str);
-			} else {
-				print DBH "$str\n";
-			}
+			my $s = $self->{dbhdest}->do($str);
 		} else {
 			$out .= $str . "\n";
 		}
@@ -4873,8 +4805,17 @@ sub extract_data
 		$self->logit("DEBUG: Creating output for $self->{data_limit} tuples\n", 1);
 		my $count = 0;
 		if ($self->{type} eq 'COPY') {
-			map { $sql .= join("\t", @$_) . "\n"; $count++; } @$rows;
-			$sql .= "\\.\n";
+			if ($self->{dbhdest}) {
+				$self->logit("DEBUG: Sending COPY bulk output directly to PostgreSQL backend\n", 1);
+				foreach my $row (@$rows) {
+					$count++;
+					my $s = $self->{dbhdest}->pg_putcopydata(join("\t", @$row) . "\n") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
+				}
+				my $s = $self->{dbhdest}->pg_putcopyend() or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
+			} else {
+				map { $sql .= join("\t", @$_) . "\n"; $count++; } @$rows;
+				$sql .= "\\.\n";
+			}
 		} elsif (!defined $sprep) {
 			foreach my $row (@$rows) {
 				$sql .= $s_out;
@@ -4886,7 +4827,7 @@ sub extract_data
 		if ($self->{dbhdest}) {
 			if ($self->{type} ne 'COPY') {
 				if (!defined $sprep) {
-					$self->logit("DEBUG: Sending output directly to PostgreSQL backend\n", 1);
+					$self->logit("DEBUG: Sending INSERT output directly to PostgreSQL backend\n", 1);
 					my $s = $self->{dbhdest}->do($sql) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
 				} else {
 					my $ps = $self->{dbhdest}->prepare($sprep) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
@@ -4895,16 +4836,13 @@ sub extract_data
 							$ps->bind_param($i+1, undef, { pg_type => DBD::Pg::PG_BYTEA });
 						}
 					}
-					$self->logit("DEBUG: Sending bulk output directly to PostgreSQL backend\n", 1);
+					$self->logit("DEBUG: Sending INSERT bulk output directly to PostgreSQL backend\n", 1);
 					foreach my $row (@$rows) {
 						$ps->execute(@$row) or $self->logit("FATAL: " . $ps->errstr . "\n", 0, 1);
 						$count++;
 					}
 					$ps->finish();
 				}
-			} else {
-				$self->logit("DEBUG: Dumping output to psql\n", 1);
-				print DBH $sql;
 			}
 		} else {
 			$self->dump($sql, $fhdl);
