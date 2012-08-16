@@ -100,11 +100,6 @@ sub plsql_to_plpgsql
 	#--------------------------------------------
 	# Change NVL to COALESCE
 	$str =~ s/NVL[\s\t]*\(/coalesce(/igs;
-	# Change trunc() to date_trunc('day', field)
-	# Trunc is replaced with date_trunc if we find date in the name of
-	# the value because Oracle have the same trunc function on number
-	# and date type
-	$str =~ s/trunc\(([^\)]*date[^\)]*)\)/date_trunc('day', $1)/igs;
 	# Change SYSDATE to 'now' or current timestamp.
 	$str =~ s/SYSDATE[\s\t]*\([\s\t]*\)/LOCALTIMESTAMP/igs;
 	$str =~ s/SYSDATE/LOCALTIMESTAMP/igs;
@@ -254,6 +249,12 @@ sub plsql_to_plpgsql
 	$str =~ s/REGEXP_LIKE[\s\t]*\([\s\t]*([^,]+)[\s\t]*,[\s\t]*('[^\']+')[\s\t]*\)/$1 \~ $2/igs;
 
 	if ($allow_code_break) {
+		# Change trunc() to date_trunc('day', field)
+		# Trunc is replaced with date_trunc if we find date in the name of
+		# the value because Oracle have the same trunc function on number
+		# and date type
+		$str =~ s/trunc\(([^\)]*date[^\)]*)\)/date_trunc('day', $1)/igs;
+
 		# Replace Oracle substr(string, start_position, length) with
 		# PostgreSQL substring(string from start_position for length)
 		$str =~ s/substr[\s\t]*\(([^;]*),[\s\t]*([^,\s\t]+)[\s\t]*,[\s\t]*([^,\)\s\t]+)[\s\t]*\)/substring($1 from $2 for $3)/igs;
