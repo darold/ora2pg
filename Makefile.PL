@@ -347,7 +347,8 @@ PG_SUPPORTS_INSTEADOF	0
 # The files will be named as funcname_OUTPUT. Where OUTPUT is the value
 # of the corresponding configuration directive. You can use .gz xor .bz2
 # extension to enable compression. Default is to save all data in one
-# file. This is usable only during FUNCTION or PROCEDURE export type.
+# file. It is usable during FUNCTION, PROCEDURE, TRIGGER and PACKAGE
+# export type.
 FILE_PER_FUNCTION	0
 
 # Add a TRUNCATE TABLE instruction before loading data on COPY and DATA
