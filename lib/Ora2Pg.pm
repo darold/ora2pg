@@ -914,7 +914,7 @@ sub _tables
 			$i++;
 		}
 	}
-
+ 
 	# Try to search requested TABLE names in the VIEW names if not found in
 	# real TABLE names
 	if ($#{$self->{limited}} >= 0) {
@@ -1828,10 +1828,11 @@ sub _get_sql_data
 					$self->logit("\tReplacing table $table as " . $self->{replaced_tables}{lc($table)}, "...\n", 1);
 					$tmptb = $self->{replaced_tables}{lc($table)};
 				}
-				if ($self->{case_sensitive} && ($tmptb !~ /"/)) {
-					$tmptb = '"' . $tmptb . '"';
-				} else {
+				if (!$self->{case_sensitive}) {
 					$tmptb = lc($tmptb);
+				}
+				if ($tmptb !~ /"/) {
+					$tmptb = '"' . $tmptb . '"';
 				}
 				if ($self->{dbhdest}) {
 					if ($self->{type} ne 'COPY') {
@@ -1952,10 +1953,11 @@ sub _get_sql_data
 					$self->logit("\tReplacing table $table as " . $self->{replaced_tables}{lc($table)} . "...\n", 1);
 					$tmptb = $self->{replaced_tables}{lc($table)};
 				}
-				if ($self->{case_sensitive} && ($tmptb !~ /"/)) {
-					$tmptb = '"' . $tmptb . '"';
-				} else {
+				if (!$self->{case_sensitive}) {
 					$tmptb = lc($tmptb);
+				}
+				if ($tmptb !~ /"/) {
+					$tmptb = '"' . $tmptb . '"';
 				}
 				if ($self->{dbhdest}) {
 					if ($self->{type} ne 'COPY') {
@@ -2025,10 +2027,11 @@ sub _get_sql_data
 						$self->logit("\tReplacing table $table as " . $self->{replaced_tables}{lc($table)} . "...\n", 1);
 						$tmptb = $self->{replaced_tables}{lc($table)};
 					}
-					if ($self->{case_sensitive} && ($tmptb !~ /"/)) {
-						$tmptb = '"' . $tmptb . '"';
-					} else {
+					if (!$self->{case_sensitive}) {
 						$tmptb = lc($tmptb);
+					}
+					if ($tmptb !~ /"/) {
+						$tmptb = '"' . $tmptb . '"';
 					}
 					if ($self->{dbhdest}) {
 						print DBH "ALTER TABLE $tmptb DISABLE TRIGGER $self->{disable_triggers};\n";
@@ -2124,10 +2127,11 @@ sub _get_sql_data
 						$self->logit("\tReplacing table $table as " . $self->{replaced_tables}{lc($table)} . "...\n", 1);
 						$tmptb = $self->{replaced_tables}{lc($table)};
 					}
-					if ($self->{case_sensitive} && ($tmptb !~ /"/)) {
-						$tmptb = '"' . $tmptb . '"';
-					} else {
+					if (!$self->{case_sensitive}) {
 						$tmptb = lc($tmptb);
+					}
+					if ($tmptb !~ /"/) {
+						$tmptb = '"' . $tmptb . '"';
 					}
 					if ($self->{dbhdest}) {
 						print DBH "ALTER TABLE $tmptb ENABLE TRIGGER $self->{disable_triggers};\n";
