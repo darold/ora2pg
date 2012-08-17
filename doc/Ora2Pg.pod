@@ -201,13 +201,14 @@ by the DBD::Oracle Perl module.
 This directive is used to set the data source name in the form standard DBI DSN.
 For example:
 
-	dbi:Oracle:host=oradb_host.mydom.dom;sid=TEST
+	dbi:Oracle:host=oradb_host.myhost.com;sid=DB_SID
 
 or
 
 	dbi:Oracle:DB_SID
 
-The SID must be declared in the $ORACLE_HOME/network/admin/tnsnames.ora file.
+for the second notation the SID should be declared in the well known file
+$ORACLE_HOME/network/admin/tnsnames.ora.
 
 =item ORACLE_USER et ORACLE_PWD
 

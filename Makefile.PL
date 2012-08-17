@@ -75,7 +75,6 @@ unless(open(OUTCFG, ">ora2pg.conf.dist")) {
 ORACLE_HOME	$oracle_home
 
 # Set Oracle database connection (datasource, user, password)
-# Your SID should be declared on your tnsnames.ora file
 ORACLE_DSN	dbi:Oracle:host=mydb.mydom.fr;sid=SIDNAME
 ORACLE_USER	system
 ORACLE_PWD	manager

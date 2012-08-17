@@ -325,7 +325,7 @@ This directive is used to set the data source name in the form standard \s-1DBI\
 For example:
 .Sp
 .Vb 1
-\&        dbi:Oracle:host=oradb_host.mydom.dom;sid=TEST
+\&        dbi:Oracle:host=oradb_host.myhost.com;sid=DB_SID
 .Ve
 .Sp
 or
@@ -334,7 +334,8 @@ or
 \&        dbi:Oracle:DB_SID
 .Ve
 .Sp
-The \s-1SID\s0 must be declared in the \f(CW$ORACLE_HOME\fR/network/admin/tnsnames.ora file.
+for the second notation the \s-1SID\s0 should be declared in the well known file
+\&\f(CW$ORACLE_HOME\fR/network/admin/tnsnames.ora.
 .IP "\s-1ORACLE_USER\s0 et \s-1ORACLE_PWD\s0" 4
 .IX Item "ORACLE_USER et ORACLE_PWD"
 These two directives are used to define the user and password for the Oracle
