@@ -174,10 +174,11 @@ Usage: ora2pg [-dhvp] [--option value]
     -f | --forceowner : if set to 1 force ora2pg to set tables and sequences
                         owner. If the value is set to a username this one will
                         be set as the objects owner.
-    --nls_lang code: use this to set the Oracle NLS_LANG client encoding.
+    --nls_lang code   : use this to set the Oracle NLS_LANG client encoding.
     --client_encoding code: Use this to set the PostgreSQL client encoding.
     -i | --input_file file: File containing Oracle PL/SQL code to convert with
                         no Oracle database connection initiated.
+    -q | quiet        : do not show progress bar during data export
 
 
 Previous version do not accept any command line parameter than the path to the

@@ -801,7 +801,7 @@ Keys are the names of all tables retrieved from the current
 database. Each table information is composed of an array associated
 to the table_info key as array reference. In other way:
 
-    $self->{tables}{$class_name}{table_info} = [(OWNER,TYPE)];
+    $self->{tables}{$class_name}{table_info} = [(OWNER,TYPE,COMMENT,NUMROW)];
 
 DBI TYPE can be TABLE, VIEW, SYSTEM TABLE, GLOBAL TEMPORARY, LOCAL TEMPORARY,
 ALIAS, SYNONYM or a data source specific type identifier. This only extracts
@@ -850,7 +850,6 @@ sub _tables
 			}
 			next if (($#{$self->{limited}} >= 0) && !grep($t->[2] =~ /^$_$/i, @{$self->{limited}}));
 			next if (($#{$self->{excluded}} >= 0) && grep($t->[2] =~ /^$_$/i, @{$self->{excluded}}));
-
 			$self->logit("[$i] Scanning $t->[2] (@$t)...\n", 1);
 			
 			# Check of uniqueness of the table
@@ -868,8 +867,8 @@ sub _tables
 					}
 				}
 			}
-			# usually OWNER,TYPE. QUALIFIER is omitted until I know what to do with that
-			$self->{tables}{$t->[2]}{table_info} = [($t->[1],$t->[3],$t->[4])];
+			# usually OWNER,TYPE,COMMENT,NUMROW
+			$self->{tables}{$t->[2]}{table_info} = [($t->[1],$t->[3],$t->[4],$t->[5])];
 
 			# Set the fields information
 			my $query = "SELECT * FROM $t->[1].$t->[2] WHERE 1=0";
@@ -1640,10 +1639,12 @@ sub _get_sql_data
 		# second we extract all tables that only references the previous tables
 		# If there's still tables with reference, it is not possible to ordering so
 		my @ordered_tables = ();
+		my $global_rows = 0;
 		foreach my $table (keys %{$self->{tables}}) {
 			if (!exists $self->{tables}{$table}{foreign_link} || (scalar keys %{$self->{tables}{$table}{foreign_link}} == 0) ) {
 				push(@ordered_tables, $table);
 			}
+			$global_rows += $self->{tables}{$table}{table_info}[3];
 		}
 		my $cur_len = 0;
 		while ($cur_len != $#ordered_tables) {
@@ -1728,6 +1729,7 @@ sub _get_sql_data
 
 		my $dirprefix = '';
 		$dirprefix = "$self->{output_dir}/" if ($self->{output_dir});
+		my $global_count = 0;
 		foreach my $table (@ordered_tables) {
 			my $start_time = time();
 			my $fhdl = undef;
@@ -1907,6 +1909,15 @@ sub _get_sql_data
 			}
 			# Extract all data from the current table
 			my $total_record = $self->extract_data($table, $s_out, \@nn, \@tt, $fhdl, $sprep, \@stt);
+			$global_count += $total_record;
+			my $end_time = time();
+			my $dt = $end_time - $start_time;
+			$dt ||= 1;
+			my $rps = sprintf("%.1f", $global_count / ($dt+.0001));
+			$self->logit("Total extracted records from table $table: $total_record\n", 1);
+			if (!$self->{quiet}) {
+				print &progress_bar($global_count, $global_rows, 25, '=', "on total data ($rps recs/sec)" ), "\n";
+			}
 
                         ## don't forget to enable all triggers if needed...
 			if ($self->{disable_triggers}) {
@@ -1936,15 +1947,6 @@ sub _get_sql_data
 			}
 			if ($self->{file_per_table} && !$self->{dbhdest}) {
 				$self->close_export_file($fhdl);
-			}
-			$self->logit("Total extracted records from table $table: $total_record\n", 1);
-			my $end_time = time();
-			my $dt = $end_time - $start_time;
-			my $rps = sprintf("%.1f", $total_record / ($dt+.0001));
-			if ($dt > 0) {
-				$self->logit("in $dt secs = $rps recs/sec\n", 1);
-			} else {
-				$self->logit("in $dt secs\n", 1);
 			}
 		}
 
@@ -2078,8 +2080,18 @@ sub _get_sql_data
 						$s_out = '';
 					}
 				}
+
 				# Extract all data from the current table
 				my $total_record = $self->extract_data($table, $s_out, \@nn, \@tt, $fhdl, $sprep, \@stt);
+				$global_count += $total_record;
+				$self->logit("Total extracted records from tableview $table: $total_record\n", 1);
+				my $end_time = time();
+				my $dt = $end_time - $start_time;
+				$dt ||= 1;
+				my $rps = sprintf("%.1f", $global_record / ($dt+.0001));
+				if (!$self->{quiet}) {
+					print &progress_bar($global_count, $global_rows, 25, '=', "on total data ($rps recs/sec)" ), " \n";
+				}
 
 				## don't forget to enable all triggers if needed...
 				if ($self->{disable_triggers}) {
@@ -2104,15 +2116,6 @@ sub _get_sql_data
 
 				if ($self->{file_per_table} && !$self->{dbhdest}) {
 					$self->close_export_file($fhdl);
-				}
-				$self->logit("Total extracted records from table $table: $total_record\n", 1);
-				my $end_time = time();
-				my $dt = $end_time - $start_time;
-				my $rps = sprintf("%.1f", $total_record / ($dt+.0001));
-				if ($dt > 0) {
-					$self->logit("in $dt secs = $rps recs/sec\n", 1);
-				} else {
-					$self->logit("in $dt secs\n", 1);
 				}
 			}
 		}
@@ -3791,7 +3794,8 @@ sub _table_info
                 at.OWNER        TABLE_SCHEM,
                 at.TABLE_NAME,
                 tc.TABLE_TYPE,
-                tc.COMMENTS     REMARKS
+                tc.COMMENTS     REMARKS,
+		NVL(at.num_rows,1) NUMBER_ROWS
             from ALL_TABLES at, ALL_TAB_COMMENTS tc
             where at.OWNER = tc.OWNER
             and at.TABLE_NAME = tc.TABLE_NAME
@@ -4808,11 +4812,11 @@ sub extract_data
 	my $total_record = 0;
 	$self->{data_limit} ||= 10000;
 
-
 	my $sth = $self->_get_data($table, $nn, $tt, $stt);
 
+	my $start_time = time();
+	my $total_row = $self->{tables}{$table}{table_info}->[3];
 	while( my $rows = $sth->fetchall_arrayref(undef,$self->{data_limit})) {
-		my $inter_time = time();
 
 		my $sql = '';
 		if ($self->{type} eq 'COPY') {
@@ -4878,16 +4882,18 @@ sub extract_data
 		}
 
 		my $end_time = time();
-		my $dt = $end_time - $inter_time;
-		my $rps = sprintf("%2.1f", $count / ($dt+.0001));
-		if ($dt > 0) {
-			$self->logit("\n$count records in $dt secs = $rps recs/sec\n", 1);
-		} else {
-			$self->logit("\n$count records in $dt secs\n", 1);
-		}
+		my $dt = $end_time - $start_time;
+		$dt ||= 1;
+		my $rps = sprintf("%2.1f", $total_row / ($dt+.0001));
 		$total_record += $count;
+		if (!$self->{quiet}) {
+			print &progress_bar($total_record, $total_row, 25, '=', "table $table ($rps recs/sec)");
+		}
 	}
 	$sth->finish();
+	if (!$self->{quiet}) {
+		print "\n";
+	}
 
 	return $total_record;
 }
@@ -4980,7 +4986,7 @@ sub _show_infos
 				next if (($#{$self->{limited}} >= 0) && !grep($t->[2] =~ /^$_$/i, @{$self->{limited}}));
 				next if (($#{$self->{excluded}} >= 0) && grep($t->[2] =~ /^$_$/i, @{$self->{excluded}}));
 
-				$self->logit("[$i] TABLE $t->[2]\n", 0);
+				$self->logit("[$i] TABLE $t->[2] ($t->[5] rows)\n", 0);
 
 				# Set the fields information
 				if ($type eq 'SHOW_COLUMN') {
@@ -5122,6 +5128,27 @@ sub _datetime_format
 		my $sth = $self->{dbh}->do("ALTER SESSION SET NLS_TIMESTAMP_FORMAT='YYYY-MM-DD HH24:MI:SS'") or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	}
 	my $sth = $self->{dbh}->do("ALTER SESSION SET NLS_DATE_FORMAT='YYYY-MM-DD HH24:MI:SS'") or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+}
+
+sub progress_bar
+{
+	my ($got, $total, $width, $char, $msg) = @_;
+	$width ||= 25;
+	$char  ||= '=';
+	my $num_width = length $total;
+	if ($total > 0) {
+		sprintf(
+			"[%-${width}s] dumped %${num_width}s of %s rows (%.1f%%) $msg\r",
+			$char x (($width - 1) * $got / $total) . '>',
+			$got, $total, 100 * $got / +$total
+		);
+	} else {
+		sprintf(
+			"[%-${width}s] dumped %${num_width}s of %s rows (%.1f%%) $msg\r",
+			$char x ($width - 1) . '>',
+			$got, $total, 100
+		);
+	}
 }
 
 # Preload the bytea array at lib init

@@ -31,6 +31,7 @@ my $VERSION = '9.1';
 
 my $CONFIG_FILE = '/etc/ora2pg/ora2pg.conf';
 my $DEBUG = 0;
+my $QUIET = 0;
 my $HELP = 0;
 my $LOGFILE = '';
 my $EXPORT_TYPE = '';
@@ -74,6 +75,7 @@ GetOptions (
 	'nls_lang=s' => \$ORA_ENCODING,
 	'client_encoding=s' => \$PG_ENCODING,
 	'input_file|i=s' => \$INPUT_FILE,
+	'quiet|q' => \$QUIET,
 );
 
 # Check command line parameters
@@ -114,6 +116,7 @@ my $schema = new Ora2Pg (
         nls_lang => $ORA_ENCODING,
         client_encoding => $PG_ENCODING,
         input_file => $INPUT_FILE,
+	quiet => $QUIET,
 );
 
 
