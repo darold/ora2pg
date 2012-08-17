@@ -783,10 +783,11 @@ CONFIGURATION
         unless you always quote object names on all your scripts.
 
     ORA_SENSITIVE
-        Since version 4.10 you can export Oracle databases with case
-        sensitive table or view names. This requires the use of quoted
-        table/view names during Oracle querying. Set this configuration
-        option to 1 to enable this feature. By default it is off.
+        This directive force Ora2Pg to use case sensitivity when scanning
+        the Oracle database. Enable iit this if you have some object defined
+        with case sensitivity in your database. Since release 9.2 Ora2Pg is
+        able to auto detect object with case sensitivity so this directive
+        may be obsoltete. By default it is off.
 
     ORA_RESERVED_WORDS
         Allow escaping of column name using Oracle reserved words. Value is

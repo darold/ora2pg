@@ -124,7 +124,7 @@
 .\" ========================================================================
 .\"
 .IX Title "ORA2PG 1"
-.TH ORA2PG 1 "2012-08-14" "perl v5.10.1" "User Contributed Perl Documentation"
+.TH ORA2PG 1 "2012-08-17" "perl v5.10.1" "User Contributed Perl Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -916,10 +916,10 @@ directive to 1. I do not recommand this unless you always quote object names
 on all your scripts.
 .IP "\s-1ORA_SENSITIVE\s0" 4
 .IX Item "ORA_SENSITIVE"
-Since version 4.10 you can export Oracle databases with case sensitive table or
-view names. This requires the use of quoted table/view names during Oracle
-querying. Set this configuration option to 1 to enable this feature. By default
-it is off.
+This directive force Ora2Pg to use case sensitivity when scanning the Oracle
+database. Enable iit this if you have some object defined with case sensitivity
+in your database. Since release 9.2 Ora2Pg is able to auto detect object with
+case sensitivity so this directive may be obsoltete. By default it is off.
 .IP "\s-1ORA_RESERVED_WORDS\s0" 4
 .IX Item "ORA_RESERVED_WORDS"
 Allow escaping of column name using Oracle reserved words. Value is a list of
