@@ -150,7 +150,7 @@ only thing you have to modify is the configuration file ora2pg.conf by setting
 the \s-1DSN\s0 to the Oracle database and optionaly the name of a schema. Once that's
 done you just have to set the type of export you want: \s-1TABLE\s0 with constraints,
 \&\s-1VIEW\s0, \s-1TABLESPACE\s0, \s-1SEQUENCE\s0, \s-1INDEXES\s0, \s-1TRIGGER\s0, \s-1GRANT\s0, \s-1FUNCTION\s0, \s-1PROCEDURE\s0,
-\&\s-1PACKAGE\s0, \s-1PARTITION\s0, \s-1TYPE\s0, \s-1DATA\s0 or \s-1COPY\s0, \s-1FDW\s0.
+\&\s-1PACKAGE\s0, \s-1PARTITION\s0, \s-1TYPE\s0, \s-1INSERT\s0 or \s-1COPY\s0, \s-1FDW\s0.
 .PP
 By default Ora2Pg exports to a file that you can load into PostgreSQL with the
 psql client, but you can also import directly into a PostgreSQL database by
@@ -168,7 +168,7 @@ Features included:
 \&        \- Export Oracle schema to a PostgreSQL 8.4+ schema.
 \&        \- Export predefined functions, triggers, procedures, packages and
 \&          package bodies.
-\&        \- Export full datas or following a WHERE clause.
+\&        \- Export full data or following a WHERE clause.
 \&        \- Full support of Oracle BLOB object as PG BYTEA.
 \&        \- Export Oracle views as PG tables.
 \&        \- Export Oracle user defined types.
@@ -252,7 +252,7 @@ By reading this documentation you will also be able to:
 .Vb 6
 \&        \- Select only certain tables and/or column for export.
 \&        \- Rename some tables and/or column during export.
-\&        \- Select datas to export following a WHERE clause per table.
+\&        \- Select data to export following a WHERE clause per table.
 \&        \- Delay database constraints during data loading.
 \&        \- Compress exported data to save disk space.
 \&        \- and much more.
@@ -294,7 +294,7 @@ Usage: ora2pg [\-dhvp] [\-\-option value]
 \&    \-t | \-\-type export: Used to set the export type. It will override the one
 \&                        given in the configuration file (TYPE).
 \&    \-p | \-\-plsql      : Enable PLSQL to PLPSQL code conversion.
-\&    \-s | \-\-source dsn : Allow to set the Oracle DBI datasource.
+\&    \-s | \-\-source dsn : Allow to set the Oracle DBI dataource.
 \&    \-u | \-\-user  user : Used to set the Oracle database connection user.
 \&    \-w | \-\-password pass: Used to set the password of the Oracle database user.
 \&    \-n | \-\-namespace schema: Used to set the Oracle schema to extract from.
@@ -526,8 +526,8 @@ Here are the different values of the \s-1TYPE\s0 directive, default is \s-1TABLE
 \&        \- FUNCTION: Extract functions.
 \&        \- PROCEDURE: Extract procedures.
 \&        \- PACKAGE: Extract packages and package bodies.
-\&        \- DATA: Extract datas as INSERT statement.
-\&        \- COPY: Extract datas as COPY statement.
+\&        \- INSERT: Extract data as INSERT statement.
+\&        \- COPY: Extract data as COPY statement.
 \&        \- PARTITION: Extract range and list Oracle partitioning.
 \&        \- TYPE: Extract user defined Oracle type.
 \&        \- FDW: Export Oracle tables as foreign table for oracle_fdw.
@@ -711,7 +711,7 @@ The command:
 will import content of file output.sql into PostgreSQL mydb database.
 .IP "\s-1DATA_LIMIT\s0" 4
 .IX Item "DATA_LIMIT"
-When you are performing \s-1DATA/COPY\s0 export Ora2Pg proceed by chunks of \s-1DATA_LIMIT\s0
+When you are performing \s-1INSERT/COPY\s0 export Ora2Pg proceed by chunks of \s-1DATA_LIMIT\s0
 tuples for speed improvement. Tuples are stored in memory before being written
 to disk, so if you want speed and have enough system resources you can grow
 this limit to an upper value for example: 100000 or 1000000. Before release 7.0
@@ -753,7 +753,7 @@ Allow data export to be saved in one file per table/view. The files will be
 named as tablename_OUTPUT, where \s-1OUTPUT\s0 is the value of the corresponding
 configuration directive. You can still use .gz xor .bz2 extension in the \s-1OUTPUT\s0
 directive to enable compression. Default 0 will save all data in one file, set
-it to 1 to enable this feature. This is usable only during \s-1DATA\s0 or \s-1COPY\s0 export
+it to 1 to enable this feature. This is usable only during \s-1INSERT\s0 or \s-1COPY\s0 export
 type.
 .IP "\s-1FILE_PER_FUNCTION\s0" 4
 .IX Item "FILE_PER_FUNCTION"
@@ -772,12 +772,12 @@ packagename_OUTPUT, where \s-1OUTPUT\s0 is the value of the corresponding direct
 .IP "\s-1TRUNCATE_TABLE\s0" 4
 .IX Item "TRUNCATE_TABLE"
 If this directive is set to 1, a \s-1TRUNCATE\s0 \s-1TABLE\s0 instruction will be add before
-loading data. This is usable only during \s-1DATA\s0 or \s-1COPY\s0 export type.
+loading data. This is usable only during \s-1INSERT\s0 or \s-1COPY\s0 export type.
 .PP
 If you want to import data on the fly to the PostgreSQL database you have three
 configuration directives to set the PostgreSQL database connection. This is only
-possible with '\s-1COPY\s0' or '\s-1DATA\s0' export type as for database schema there's no
-real interest to do that.
+possible with \s-1COPY\s0 or \s-1INSERT\s0 export type as for database schema there's no real
+interest to do that.
 .IP "\s-1PG_DSN\s0" 4
 .IX Item "PG_DSN"
 Use this directive to set the PostgreSQL data source namespace using DBD::Pg
@@ -833,7 +833,7 @@ be exported as deferrable.
 In addition, when exporting data the \s-1DEFER_FKEY\s0 option set to 1 will add a
 command to defer all foreign key constraints during data export. Constraints
 will then be checked at the end of each transaction. Note that this will works
-only if foreign keys are deferrable and that all datas can stay in a single
+only if foreign keys are deferrable and that all data can stay in a single
 transaction.
 .Sp
 Since release 7.0 Ora2Pg will first try to ordered data export following the
@@ -851,13 +851,13 @@ automatic index (ex: indexes of primary keys) and recreate them at the end of
 data import.
 .IP "\s-1DISABLE_TABLE_TRIGGERS\s0" 4
 .IX Item "DISABLE_TABLE_TRIGGERS"
-This directive is used to disables triggers on all tables in \s-1COPY\s0 or \s-1DATA\s0 export
+This directive is used to disables triggers on all tables in \s-1COPY\s0 or \s-1INSERT\s0 export
 modes during data migration. The possible values are 0 to enable triggers, \s-1USER\s0
 to disable userdefined triggers and \s-1ALL\s0 to disable userdefined triggers as well
 as includes \s-1RI\s0 system triggers.
 .IP "\s-1DISABLE_SEQUENCE\s0" 4
 .IX Item "DISABLE_SEQUENCE"
-If set to 1 disables alter of sequences on all tables during \s-1COPY\s0 or \s-1DATA\s0 export
+If set to 1 disables alter of sequences on all tables during \s-1COPY\s0 or \s-1INSERT\s0 export
 mode. This is used to prevent the update of sequence during data migration.
 Default is 0, alter sequences.
 .IP "\s-1NOESCAPE\s0" 4
@@ -874,7 +874,7 @@ literally, as specified in \s-1SQL\s0 standard. This was the default before Ora2
 v8.5 so that all strings was escaped first, now this is currently on, causing
 Ora2Pg to use the escape string syntax (E'...') if this parameter is not
 set to 0. This is the exact behavior of the same option in PostgreSQL.
-This directive is only used during \s-1DATA\s0 export to build \s-1INSERT\s0 statements.
+This directive is only used during data export to build \s-1INSERT\s0 statements.
 See \s-1NOESCAPE\s0 for enabling/disabling escape in \s-1COPY\s0 statements.
 .IP "\s-1PG_NUMERIC_TYPE\s0" 4
 .IX Item "PG_NUMERIC_TYPE"

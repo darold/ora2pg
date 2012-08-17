@@ -24,7 +24,7 @@ only thing you have to modify is the configuration file ora2pg.conf by setting
 the DSN to the Oracle database and optionaly the name of a schema. Once that's
 done you just have to set the type of export you want: TABLE with constraints,
 VIEW, TABLESPACE, SEQUENCE, INDEXES, TRIGGER, GRANT, FUNCTION, PROCEDURE,
-PACKAGE, PARTITION, TYPE, DATA or COPY, FDW.
+PACKAGE, PARTITION, TYPE, INSERT or COPY, FDW.
 
 By default Ora2Pg exports to a file that you can load into PostgreSQL with the
 psql client, but you can also import directly into a PostgreSQL database by
@@ -41,7 +41,7 @@ Features included:
 	- Export Oracle schema to a PostgreSQL 8.4+ schema.
 	- Export predefined functions, triggers, procedures, packages and
 	  package bodies.
-	- Export full datas or following a WHERE clause.
+	- Export full data or following a WHERE clause.
 	- Full support of Oracle BLOB object as PG BYTEA.
 	- Export Oracle views as PG tables.
 	- Export Oracle user defined types.
@@ -128,7 +128,7 @@ By reading this documentation you will also be able to:
 
 	- Select only certain tables and/or column for export.
 	- Rename some tables and/or column during export.
-	- Select datas to export following a WHERE clause per table.
+	- Select data to export following a WHERE clause per table.
 	- Delay database constraints during data loading.
 	- Compress exported data to save disk space.
 	- and much more.
@@ -165,7 +165,7 @@ Usage: ora2pg [-dhvp] [--option value]
     -t | --type export: Used to set the export type. It will override the one
                         given in the configuration file (TYPE).
     -p | --plsql      : Enable PLSQL to PLPSQL code conversion.
-    -s | --source dsn : Allow to set the Oracle DBI datasource.
+    -s | --source dsn : Allow to set the Oracle DBI dataource.
     -u | --user  user : Used to set the Oracle database connection user.
     -w | --password pass: Used to set the password of the Oracle database user.
     -n | --namespace schema: Used to set the Oracle schema to extract from.
@@ -418,8 +418,8 @@ Here are the different values of the TYPE directive, default is TABLE:
 	- FUNCTION: Extract functions.
 	- PROCEDURE: Extract procedures.
 	- PACKAGE: Extract packages and package bodies.
-	- DATA: Extract datas as INSERT statement.
-	- COPY: Extract datas as COPY statement.
+	- INSERT: Extract data as INSERT statement.
+	- COPY: Extract data as COPY statement.
 	- PARTITION: Extract range and list Oracle partitioning.
 	- TYPE: Extract user defined Oracle type.
 	- FDW: Export Oracle tables as foreign table for oracle_fdw.
@@ -607,7 +607,7 @@ will import content of file output.sql into PostgreSQL mydb database.
 
 =item DATA_LIMIT
 
-When you are performing DATA/COPY export Ora2Pg proceed by chunks of DATA_LIMIT
+When you are performing INSERT/COPY export Ora2Pg proceed by chunks of DATA_LIMIT
 tuples for speed improvement. Tuples are stored in memory before being written
 to disk, so if you want speed and have enough system resources you can grow
 this limit to an upper value for example: 100000 or 1000000. Before release 7.0
@@ -655,7 +655,7 @@ Allow data export to be saved in one file per table/view. The files will be
 named as tablename_OUTPUT, where OUTPUT is the value of the corresponding
 configuration directive. You can still use .gz xor .bz2 extension in the OUTPUT
 directive to enable compression. Default 0 will save all data in one file, set
-it to 1 to enable this feature. This is usable only during DATA or COPY export
+it to 1 to enable this feature. This is usable only during INSERT or COPY export
 type. 
 
 =item FILE_PER_FUNCTION
@@ -677,14 +677,14 @@ packagename_OUTPUT, where OUTPUT is the value of the corresponding directive.
 =item TRUNCATE_TABLE
 
 If this directive is set to 1, a TRUNCATE TABLE instruction will be add before
-loading data. This is usable only during DATA or COPY export type.
+loading data. This is usable only during INSERT or COPY export type.
 
 =back
 
 If you want to import data on the fly to the PostgreSQL database you have three
 configuration directives to set the PostgreSQL database connection. This is only
-possible with 'COPY' or 'DATA' export type as for database schema there's no
-real interest to do that.
+possible with COPY or INSERT export type as for database schema there's no real
+interest to do that.
 
 =over 4
 
@@ -747,7 +747,7 @@ be exported as deferrable.
 In addition, when exporting data the DEFER_FKEY option set to 1 will add a
 command to defer all foreign key constraints during data export. Constraints
 will then be checked at the end of each transaction. Note that this will works
-only if foreign keys are deferrable and that all datas can stay in a single
+only if foreign keys are deferrable and that all data can stay in a single
 transaction.
 
 Since release 7.0 Ora2Pg will first try to ordered data export following the
@@ -768,14 +768,14 @@ data import.
 
 =item DISABLE_TABLE_TRIGGERS
 
-This directive is used to disables triggers on all tables in COPY or DATA export
+This directive is used to disables triggers on all tables in COPY or INSERT export
 modes during data migration. The possible values are 0 to enable triggers, USER
 to disable userdefined triggers and ALL to disable userdefined triggers as well
 as includes RI system triggers.
 
 =item DISABLE_SEQUENCE
 
-If set to 1 disables alter of sequences on all tables during COPY or DATA export
+If set to 1 disables alter of sequences on all tables during COPY or INSERT export
 mode. This is used to prevent the update of sequence during data migration.
 Default is 0, alter sequences.
 
@@ -794,7 +794,7 @@ literally, as specified in SQL standard. This was the default before Ora2Pg
 v8.5 so that all strings was escaped first, now this is currently on, causing
 Ora2Pg to use the escape string syntax (E'...') if this parameter is not
 set to 0. This is the exact behavior of the same option in PostgreSQL.
-This directive is only used during DATA export to build INSERT statements.
+This directive is only used during data export to build INSERT statements.
 See NOESCAPE for enabling/disabling escape in COPY statements.
 
 =item PG_NUMERIC_TYPE

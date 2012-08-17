@@ -503,10 +503,11 @@ sub _init
 	$self->{export_type} = ();
 	if ($self->{type}) {
 		@{$self->{export_type}} = split(/[\s\t,;]+/, $self->{type});
+		# Assume backward comaptibility with DATA replacement by INSERT
+		map { s/^DATA$/INSERT/; } @{$self->{export_type}};
 	} else {
 		push(@{$self->{export_type}}, 'TABLE');
 	}
-
 	# If you decide to autorewrite PLSQL code, this load the dedicated
 	# Perl module
 	if ($self->{plsql_pgsql}) {
@@ -551,11 +552,11 @@ sub _init
 		$self->{plsql_pgsql} = 1;
 		if (grep(/^$self->{type}$/, 'FUNCTION','PROCEDURE','PACKAGE')) {
 			$self->export_schema();
-			if ( ($self->{type} eq 'DATA') || ($self->{type} eq 'COPY') ) {
+			if ( ($self->{type} eq 'INSERT') || ($self->{type} eq 'COPY') ) {
 				$self->_send_to_pgdb() if ($self->{pg_dsn} && !$self->{dbhdest});
 			} else {
 				$self->logit("WARNING: can't use direct import into PostgreSQL with this type of export.\n");
-				$self->logit("Only DATA or COPY export type can be use with direct import, file output will be used.\n");
+				$self->logit("Only INSERT or COPY export type can be use with direct import, file output will be used.\n");
 				sleep(2);
 			}
 		} else {
@@ -567,7 +568,7 @@ sub _init
 	# Retreive all table informations
         foreach my $t (@{$self->{export_type}}) {
                 $self->{type} = $t;
-		if (($self->{type} eq 'TABLE') || ($self->{type} eq 'FDW') || ($self->{type} eq 'DATA') || ($self->{type} eq 'COPY')) {
+		if (($self->{type} eq 'TABLE') || ($self->{type} eq 'FDW') || ($self->{type} eq 'INSERT') || ($self->{type} eq 'COPY')) {
 			$self->_tables();
 		} elsif ($self->{type} eq 'VIEW') {
 			$self->_views();
@@ -594,10 +595,10 @@ sub _init
 			$self->{dbh}->disconnect() if ($self->{dbh}); 
 			exit 0;
 		} else {
-			warn "type option must be TABLE, VIEW, GRANT, SEQUENCE, TRIGGER, PACKAGE, FUNCTION, PROCEDURE, PARTITION, TYPE, DATA, COPY, TABLESPACE, SHOW_SCHEMA, SHOW_TABLE, SHOW_COLUMN, SHOW_ENCODING, FDW\n";
+			warn "type option must be TABLE, VIEW, GRANT, SEQUENCE, TRIGGER, PACKAGE, FUNCTION, PROCEDURE, PARTITION, TYPE, INSERT, COPY, TABLESPACE, SHOW_SCHEMA, SHOW_TABLE, SHOW_COLUMN, SHOW_ENCODING, FDW\n";
 		}
 		# Mofify export structure if required
-		if ($self->{type} =~ /^(DATA|COPY)$/) {
+		if ($self->{type} =~ /^(INSERT|COPY)$/) {
 			for my $t (keys %{$self->{'modify_struct'}}) {
 				$self->modify_struct($t, @{$self->{'modify_struct'}{$t}});
 			}
@@ -609,11 +610,11 @@ sub _init
 	# Disconnect from the database
 	$self->{dbh}->disconnect() if ($self->{dbh});
 
-	if ( ($self->{type} eq 'DATA') || ($self->{type} eq 'COPY') ) {
+	if ( ($self->{type} eq 'INSERT') || ($self->{type} eq 'COPY') ) {
 		$self->_send_to_pgdb() if ($self->{pg_dsn} && !$self->{dbhdest});
 	} else {
 		$self->logit("WARNING: can't use direct import into PostgreSQL with this type of export.\n");
-		$self->logit("Only DATA or COPY export type can be use with direct import, file output will be used.\n");
+		$self->logit("Only INSERT or COPY export type can be use with direct import, file output will be used.\n");
 		sleep(2);
 	}
 }
@@ -1603,7 +1604,7 @@ sub _get_sql_data
 	}
 
 	# Extract data only
-	if (($self->{type} eq 'DATA') || ($self->{type} eq 'COPY')) {
+	if (($self->{type} eq 'INSERT') || ($self->{type} eq 'COPY')) {
 
 		# Connect the database
 		$self->{dbh} = DBI->connect($self->{oracle_dsn}, $self->{oracle_user}, $self->{oracle_pwd}, { LongReadLen=>$self->{longreadlen}, LongTruncOk=>$self->{longtruncok} });
