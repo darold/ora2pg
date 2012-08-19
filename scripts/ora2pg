@@ -160,6 +160,7 @@ Usage: ora2pg [-dhpv] [--option value]
     --client_encoding code: Use this to set the PostgreSQL client encoding.
     -i | --input_file file: File containing Oracle PL/SQL code to convert with
 		no Oracle database connection initiated.
+    -q | --quiet : disable progress bar.
 
 See full documentation at http://ora2pg.darold.net/ for more help or see
 manpage with 'man ora2pg'.

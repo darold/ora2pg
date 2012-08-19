@@ -1,5 +1,7 @@
 2012 08 19 - 9.1
 
+	- Add progress bar to show data export progression.
+	- Add -q | --quiet option to ora2pg perl script to disable progress bar.
 	- Change documention about tnsnames.ora to mark it is not necessary.
 	- Add progress bar during data export, per table and globaly.
 	- Replace export type DATA by INSERT to mark the difference with COPY
