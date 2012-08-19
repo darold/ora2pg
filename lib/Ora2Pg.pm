@@ -1916,7 +1916,7 @@ sub _get_sql_data
 			my $rps = sprintf("%.1f", $global_count / ($dt+.0001));
 			$self->logit("Total extracted records from table $table: $total_record\n", 1);
 			if (!$self->{quiet}) {
-				print &progress_bar($global_count, $global_rows, 25, '=', "on total data ($rps recs/sec)" ), "\n";
+				print STDERR &progress_bar($global_count, $global_rows, 25, '=', "on total data ($rps recs/sec)" ), "\n";
 			}
 
                         ## don't forget to enable all triggers if needed...
@@ -2090,7 +2090,7 @@ sub _get_sql_data
 				$dt ||= 1;
 				my $rps = sprintf("%.1f", $global_record / ($dt+.0001));
 				if (!$self->{quiet}) {
-					print &progress_bar($global_count, $global_rows, 25, '=', "on total data ($rps recs/sec)" ), " \n";
+					print STDERR &progress_bar($global_count, $global_rows, 25, '=', "on total data ($rps recs/sec)" ), " \n";
 				}
 
 				## don't forget to enable all triggers if needed...
@@ -4887,12 +4887,12 @@ sub extract_data
 		my $rps = sprintf("%2.1f", $total_row / ($dt+.0001));
 		$total_record += $count;
 		if (!$self->{quiet}) {
-			print &progress_bar($total_record, $total_row, 25, '=', "table $table ($rps recs/sec)");
+			print STDERR &progress_bar($total_record, $total_row, 25, '=', "table $table ($rps recs/sec)");
 		}
 	}
 	$sth->finish();
 	if (!$self->{quiet}) {
-		print "\n";
+		print STDERR "\n";
 	}
 
 	return $total_record;
