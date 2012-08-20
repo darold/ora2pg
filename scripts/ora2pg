@@ -91,11 +91,14 @@ if (! -e $CONFIG_FILE) {
 	&usage();
 }
 
+# Validate export type
 $EXPORT_TYPE = uc($EXPORT_TYPE);
-$EXPORT_TYPE = 'INSERT' if ($EXPORT_TYPE eq 'DATA');
-if ($EXPORT_TYPE && !grep(/^$EXPORT_TYPE$/, @CAPABILITIES)) {
-	print "FATAL: Unknow export type: $EXPORT_TYPE.\n";
-	&usage();
+$EXPORT_TYPE =~ s/DATA/INSERT/;
+foreach my $t (split(/[,;\s\t]+/, $EXPORT_TYPE)) {
+	if ($t && !grep(/^$t$/, @CAPABILITIES)) {
+		print "FATAL: Unknow export type: $t. Type supported: ", join(',', @CAPABILITIES), "\n";
+		&usage();
+	}
 }
 
 # Create an instance of the Ora2Pg perl module
