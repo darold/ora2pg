@@ -554,7 +554,7 @@ sub _init
 			$self->export_schema();
 			if ( ($self->{type} eq 'INSERT') || ($self->{type} eq 'COPY') ) {
 				$self->_send_to_pgdb() if ($self->{pg_dsn} && !$self->{dbhdest});
-			} else {
+			} elsif ($self->{dbhdest}) {
 				$self->logit("WARNING: can't use direct import into PostgreSQL with this type of export.\n");
 				$self->logit("Only INSERT or COPY export type can be use with direct import, file output will be used.\n");
 				sleep(2);
@@ -612,7 +612,7 @@ sub _init
 
 	if ( ($self->{type} eq 'INSERT') || ($self->{type} eq 'COPY') ) {
 		$self->_send_to_pgdb() if ($self->{pg_dsn} && !$self->{dbhdest});
-	} else {
+	} elsif ($self->{dbhdest}) {
 		$self->logit("WARNING: can't use direct import into PostgreSQL with this type of export.\n");
 		$self->logit("Only INSERT or COPY export type can be use with direct import, file output will be used.\n");
 		sleep(2);
