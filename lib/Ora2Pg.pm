@@ -2294,9 +2294,6 @@ CREATE TRIGGER insert_${table}_trigger
 		}
 	}
 
-	if ($self->{client_encoding}) {
-		$sql_output .= "SET client_encoding TO '\U$self->{client_encoding}\E';\n\n";
-	}
 	my $constraints = '';
 	my $indices = '';
 	foreach my $table (sort { $self->{tables}{$a}{internal_id} <=> $self->{tables}{$b}{internal_id} } keys %{$self->{tables}}) {
