@@ -114,7 +114,7 @@ COMPILE_SCHEMA	0
 # Type of export. Values can be the following keyword:
 #	TABLE		Export tables, constraints, indexex, ...
 #	PACKAGE		Export packages
-#	DATA		Export data from table as INSERT statement
+#	INSERT		Export data from table as INSERT statement
 #	COPY		Export data from table as COPY statement
 #	VIEW		Export views
 #	GRANT		Export grants
@@ -152,16 +152,17 @@ TYPE		TABLE
 DATA_LIMIT	10000
 
 # You may wish to just extract data from some fields, the following directives
-# will help you to do that. Works only with TYPE = DATA or COPY
+# will help you to do that. Works only with TYPE = INSERT or COPY
 # Modify output from the following tables(fields separate by space or comma)
 #MODIFY_STRUCT	TABLE_TEST(dico,dossier)
 
 # You may wish to change table names during data extraction, especally for replication use.
-# Give a liste of tables separate by space as follow. Works only with TYPE = DATA or COPY
+# Give a liste of tables separate by space as follow. Works only with TYPE = INSERT or COPY
 # REPLACE_TABLES	ORIG_TABLE_NAME1:NEW_TABLE_NAME1 ORIG_TABLE_NAME2:NEW_TABLE_NAME2 
 
 # You may wish to change column names during data extraction, especally for replication use.
-# Give a liste of tables and columns separate by space as follow. Works only with TYPE = DATA or COPY
+# Give a liste of tables and columns separate by space as follow. Works only with TYPE =
+# INSERT or COPY.
 # REPLACE_COLS	ORIG_TABLE_NAME(ORIG_COL_NAME1:NEW_COL_NAME1,ORIG_COL_NAME2:NEW_COL_NAME2)
 
 # Define the following directive to send export directly to a PostgreSQL database
@@ -253,7 +254,7 @@ DEFAULT_NUMERIC bigint
 # primary key names are kept.
 KEEP_PKEY_NAMES 0
 
-# Disables triggers on all tables in COPY or DATA mode. Available modes 
+# Disables triggers on all tables in COPY or INSERT mode. Available modes 
 # are USER (userdefined triggers) and ALL (includes RI system 
 # triggers). Set to 0 if you don't want to disable triggers during
 # data migration.
@@ -293,7 +294,7 @@ NOESCAPE	0
 # Other list of users set to this directive will be added to this list.
 #SYSUSERS	
 
-# Disables alter of sequences on all tables in COPY or DATA mode.
+# Disables alter of sequences on all tables in COPY or INSERT mode.
 # Set to 1 if you want to disable update of sequence during data migration.
 DISABLE_SEQUENCE	0
 
@@ -326,7 +327,7 @@ FILE_PER_INDEX		0
 # will be named as tablename_OUTPUT. Where OUTPUT is the value of the
 # corresponding configuration directive. You can use .gz xor .bz2
 # extension to enable compression. Default is to save all data in one
-# file. This is usable only during DATA or COPY export type.
+# file. This is usable only during INSERT or COPY export type.
 FILE_PER_TABLE	0
 
 # This directive may be used if you want to change the default isolation
@@ -350,7 +351,7 @@ PG_SUPPORTS_INSTEADOF	0
 # export type.
 FILE_PER_FUNCTION	0
 
-# Add a TRUNCATE TABLE instruction before loading data on COPY and DATA
+# Add a TRUNCATE TABLE instruction before loading data on COPY and INSERT
 # export.
 TRUNCATE_TABLE	0
 
@@ -371,7 +372,7 @@ FORCE_OWNER	0
 # v8.5 so that all strings was escaped first, now this is currently on, causing
 # Ora2Pg to use the escape string syntax (E'...') if this parameter is not
 # set to 0. This is the exact behavior of the same option in PostgreSQL.
-# This directive is only used during DATA export to build INSERT statements.
+# This directive is only used during INSERT export to build INSERT statements.
 # See NOESCAPE for enabling/disabling escape in COPY statements.
 STANDARD_CONFORMING_STRINGS	1
 
