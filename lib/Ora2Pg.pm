@@ -2088,7 +2088,7 @@ sub _get_sql_data
 				my $end_time = time();
 				my $dt = $end_time - $start_time;
 				$dt ||= 1;
-				my $rps = sprintf("%.1f", $global_record / ($dt+.0001));
+				my $rps = sprintf("%.1f", $global_count / ($dt+.0001));
 				if (!$self->{quiet}) {
 					print STDERR &progress_bar($global_count, $global_rows, 25, '=', "on total data ($rps recs/sec)" ), " \n";
 				}
@@ -2765,11 +2765,7 @@ sub _create_check_constraint
 					# Force lower case
 					$chkconstraint =~ s/"$c"/"\L$c\E"/igs;
 				}
-				#if ($self->{tables}{$table}{ora_sensitive} ne 'with') {
-				#	$out .= "ALTER TABLE \"\L$table\E\" ADD CONSTRAINT \"\L$k\E\" CHECK ($chkconstraint);\n";
-				#} else {
-					$out .= "ALTER TABLE \"$table\" ADD CONSTRAINT \"\L$k\E\" CHECK ($chkconstraint);\n";
-				#}
+				$out .= "ALTER TABLE \" \L$table\E\" ADD CONSTRAINT \"\L$k\E\" CHECK ($chkconstraint);\n";
 			} else {
 				$out .= "ALTER TABLE \"$table\" ADD CONSTRAINT \"$k\" CHECK ($chkconstraint);\n";
 			}
