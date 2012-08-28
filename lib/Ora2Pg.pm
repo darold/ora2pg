@@ -1792,7 +1792,6 @@ sub _get_sql_data
 					$self->logit("\tReplacing table $table as " . $self->{replaced_tables}{lc($table)}, "...\n", 1);
 					$tmptb = $self->{replaced_tables}{lc($table)};
 				}
-				#if ( (!$self->{case_sensitive}) && ($self->{tables}{$table}{ora_sensitive} ne 'with') ) {
 				if (!$self->{case_sensitive}) {
 					$tmptb = lc($tmptb);
 				}
@@ -1812,7 +1811,6 @@ sub _get_sql_data
 				if (exists $self->{replaced_tables}{"\L$table\E"} && $self->{replaced_tables}{"\L$table\E"}) {
 					$tmptb = $self->{replaced_tables}{lc($table)};
 				}
-				#if ( (!$self->{case_sensitive}) && ($self->{tables}{$table}{ora_sensitive} ne 'with') ) {
 				if (!$self->{case_sensitive}) {
 					$tmptb = lc($tmptb);
 				}
@@ -1830,11 +1828,9 @@ sub _get_sql_data
 			my @stt = ();
 			my @nn = ();
 			my $s_out = "INSERT INTO \"\L$table\E\" (";
-			#$s_out = "INSERT INTO \"$table\" (" if ($self->{case_sensitive} || ($self->{tables}{$table}{ora_sensitive} eq 'with'));
 			$s_out = "INSERT INTO \"$table\" (" if ($self->{case_sensitive});
 			if ($self->{type} eq 'COPY') {
 				$s_out = "\nCOPY \"\L$table\E\" ";
-				#$s_out = "\nCOPY \"$table\" " if ($self->{case_sensitive} || ($self->{tables}{$table}{ora_sensitive} eq 'with'));
 				$s_out = "\nCOPY \"$table\" " if ($self->{case_sensitive});
 			}
 			my @fname = ();
@@ -1926,7 +1922,6 @@ sub _get_sql_data
 					$self->logit("\tReplacing table $table as " . $self->{replaced_tables}{lc($table)} . "...\n", 1);
 					$tmptb = $self->{replaced_tables}{lc($table)};
 				}
-				#if ( (!$self->{case_sensitive}) && ($self->{tables}{$table}{ora_sensitive} ne 'with') ) {
 				if (!$self->{case_sensitive}) {
 					$tmptb = lc($tmptb);
 				}
@@ -1984,7 +1979,6 @@ sub _get_sql_data
 						$self->logit("\tReplacing table $table as " . $self->{replaced_tables}{lc($table)} . "...\n", 1);
 						$tmptb = $self->{replaced_tables}{lc($table)};
 					}
-					#if ( (!$self->{case_sensitive}) && ($self->{tables}{$table}{ora_sensitive} ne 'with') ) {
 					if (!$self->{case_sensitive}) {
 						$tmptb = lc($tmptb);
 					}
@@ -2002,11 +1996,9 @@ sub _get_sql_data
 				my @stt = ();
 				my @nn = ();
 				my $s_out = "INSERT INTO \"\L$table\E\" (";
-				#$s_out = "INSERT INTO \"$table\" (" if ($self->{case_sensitive} || ($self->{tables}{$table}{ora_sensitive} eq 'with'));
 				$s_out = "INSERT INTO \"$table\" (" if ($self->{case_sensitive});
 				if ($self->{type} eq 'COPY') {
 					$s_out = "\nCOPY \"\L$table\E\" ";
-					#$s_out = "\nCOPY \"$table\" " if ($self->{case_sensitive} || ($self->{tables}{$table}{ora_sensitive} eq 'with'));
 					$s_out = "\nCOPY \"$table\" " if ($self->{case_sensitive});
 				}
 				my @fname = ();
@@ -2100,7 +2092,6 @@ sub _get_sql_data
 						$self->logit("\tReplacing table $table as " . $self->{replaced_tables}{lc($table)} . "...\n", 1);
 						$tmptb = $self->{replaced_tables}{lc($table)};
 					}
-					#if ( (!$self->{case_sensitive}) && ($self->{tables}{$table}{ora_sensitive} ne 'with') ) {
 					if (!$self->{case_sensitive}) {
 						$tmptb = lc($tmptb);
 					}
@@ -2307,7 +2298,6 @@ CREATE TRIGGER insert_${table}_trigger
 		if ($self->{type} eq 'FDW') {
 			$foreign = ' FOREIGN';
 		}
-		#if (!$self->{case_sensitive} && ($self->{tables}{$table}{ora_sensitive} ne 'with')) {
 		if (!$self->{case_sensitive}) {
 			$sql_output .= "CREATE$foreign ${$self->{tables}{$table}{table_info}}[1] \"\L$tbname\E\" (\n";
 		} else {
@@ -2453,7 +2443,6 @@ CREATE TRIGGER insert_${table}_trigger
 			if (exists $self->{replaced_tables}{"\L$table\E"} && $self->{replaced_tables}{"\L$table\E"}) {
 				$tbname = $self->{replaced_tables}{"\L$table\E"};
 			}
-			#if (!$self->{case_sensitive} && ($self->{tables}{$table}{ora_sensitive} ne 'with')) {
 			if (!$self->{case_sensitive}) {
 				$sql_output .= "CREATE TABLE \"\L$tbname\E\" (\n";
 			} else {
@@ -2594,11 +2583,7 @@ sub _create_indexes
 			$unique = ' UNIQUE' if ($self->{tables}{$table}{uniqueness}{$idx} eq 'UNIQUE');
 			my $str = '';
 			if (!$self->{case_sensitive}) {
-				#if ($self->{tables}{$table}{ora_sensitive} ne 'with') {
-				#	$str .= "CREATE$unique INDEX \L$idx\E ON \"\L$table\E\" (\L$columns\E);";
-				#} else {
-					$str .= "CREATE$unique INDEX \L$idx\E ON \"$table\" (\L$columns\E);";
-				#}
+				$str .= "CREATE$unique INDEX \L$idx\E ON \"\L$table\E\" (\L$columns\E);";
 			} else {
 				$str .= "CREATE$unique INDEX $idx ON \"$table\" ($columns);";
 			}
@@ -2695,7 +2680,6 @@ sub _create_unique_keys
 
 	# Set the unique (and primary) key definition 
 	my $newtabname = $table;
-	#if ( (!$self->{case_sensitive}) && ($self->{tables}{$table}{ora_sensitive} ne 'with') ) {
 	if (!$self->{case_sensitive}) {
 		$newtabname = lc($table);
 	}
@@ -2855,7 +2839,6 @@ sub _drop_foreign_keys
 			$table = $self->{replaced_tables}{"\L$table\E"};
 		}
 		my $str = '';
-		#if ( (!$self->{case_sensitive}) && ($self->{tables}{$table}{ora_sensitive} ne 'with') ) {
 		if (!$self->{case_sensitive}) {
 			$str = "ALTER TABLE \"\L$table\E\" DROP CONSTRAINT \"\L$h->[0]\E\";";
 		} else {
