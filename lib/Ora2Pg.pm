@@ -2824,11 +2824,7 @@ sub _create_foreign_keys
 			map { s/["]+/"/g; } @rfkeys;
 			map { s/["]+/"/g; } @lfkeys;
 			if (!$self->{case_sensitive}) {
-				#if ($self->{tables}{$table}{ora_sensitive} ne 'with') {
-				#	$str .= "ALTER TABLE \"\L$substable\E\" ADD CONSTRAINT \"\L$h->[0]\E\" FOREIGN KEY (" . lc(join(',', @lfkeys)) . ") REFERENCES \"\L$subsdesttable\E\" (" . lc(join(',', @rfkeys)) . ")";
-				#} else {
-					$str .= "ALTER TABLE \"$substable\" ADD CONSTRAINT \"\L$h->[0]\E\" FOREIGN KEY (" . lc(join(',', @lfkeys)) . ") REFERENCES \"\L$subsdesttable\E\" (" . lc(join(',', @rfkeys)) . ")";
-				#}
+				$str .= "ALTER TABLE \"\L$substable\E\" ADD CONSTRAINT \"\L$h->[0]\E\" FOREIGN KEY (" . lc(join(',', @lfkeys)) . ") REFERENCES \"\L$subsdesttable\E\" (" . lc(join(',', @rfkeys)) . ")";
 			} else {
 				$str .= "ALTER TABLE \"$substable\" ADD CONSTRAINT \"$h->[0]\" FOREIGN KEY (" . join(',', @lfkeys) . ") REFERENCES \"$subsdesttable\" (" . join(',', @rfkeys) . ")";
 			}
