@@ -3805,9 +3805,9 @@ sub _table_info
 	}
 
 	if ($self->{schema}) {
-		$sql .= " and at.OWNER='\U$self->{schema}\E'";
+		$sql .= " and upper(at.OWNER)='\U$self->{schema}\E'";
 	} else {
-            $sql .= "AND at.OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
+            $sql .= "AND upper(at.OWNER) NOT IN ('" . uc(join("','", @{$self->{sysusers}})) . "')";
 	}
         $sql .= " order by tc.TABLE_TYPE, at.OWNER, at.TABLE_NAME";
         my $sth = $self->{dbh}->prepare( $sql ) or return undef;
