@@ -1515,11 +1515,13 @@ sub _get_sql_data
 			$self->logit("Dumping package $pkg...\n", 1);
 			if ($self->{plsql_pgsql} && $self->{file_per_function} && !$self->{dbhdest}) {
 				my $dir = lc("$dirprefix${pkg}");
-				if (not mkdir($dir)) {
-					$self->logit("Fail creating directory package : $dir - $!\n", 1);
-					next;
-				} else {
-					$self->logit("Creating directory package: $dir\n", 1);
+				if (!-d "$dir") {
+					if (not mkdir($dir)) {
+						$self->logit("Fail creating directory package : $dir - $!\n", 1);
+						next;
+					} else {
+						$self->logit("Creating directory package: $dir\n", 1);
+					}
 				}
 			}
 			if ($self->{plsql_pgsql}) {
@@ -1528,7 +1530,7 @@ sub _get_sql_data
 			} else {
 				$pkgbody = $self->{packages}{$pkg};
 			}
-			if ($pkgbody && ($pkgbody =~ /[a-z]/i)) {
+			if ($pkgbody && ($pkgbody =~ /[a-z]/is)) {
 				$sql_output .= "-- Oracle package '$pkg' declaration, please edit to match PostgreSQL syntax.\n";
 				$sql_output .= $pkgbody . "\n";
 				$sql_output .= "-- End of Oracle package '$pkg' declaration\n\n";
