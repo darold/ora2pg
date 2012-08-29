@@ -922,7 +922,7 @@ sub _tables
 					$realview = "\"$table\"";
 				}
 				if ($self->{schema}) {
-					$realview = $self->{schema} . ".$realview";
+					$realview = "\"$self->{schema}\".$realview";
 				}
 				# Set the fields information
 				my $sth = $self->{dbh}->prepare("SELECT * FROM $realview WHERE 1=0");
@@ -1547,7 +1547,6 @@ sub _get_sql_data
 		if (!$sql_output) {
 			$sql_output = "-- Nothing found of type $self->{type}\n";
 		}
-
 		$self->dump($sql_header . $sql_output);
 		return;
 	}
@@ -2247,29 +2246,54 @@ CREATE TRIGGER insert_${table}_trigger
 
 	# Dump the database structure: tables, constraints, indexes, etc.
 	if ($self->{export_schema} &&  $self->{schema}) {
-		if (!$self->{case_sensitive}) {
-			if ($self->{create_schema}) {
-				$sql_output .= "CREATE SCHEMA \"\L$self->{schema}\E\";\n\n";
-			}
-			if ($self->{pg_schema}) {
-				$sql_output .= "SET search_path = \L$self->{pg_schema}\E;\n\n";
+		my $schem = $self->{schema};
+		$schem = lc($self->{schema})  if (!$self->{case_sensitive});
+		if ($self->{create_schema}) {
+			$sql_output .= "CREATE SCHEMA \"$schem\";\n\n";
+		}
+		if ($self->{pg_schema}) {
+			if (!$self->{case_sensitive}) {
+				$sql_output .= "SET search_path = \"\L$self->{pg_schema}\E\";\n\n";
 			} else {
-				$sql_output .= "SET search_path = \L$self->{schema}\E, pg_catalog;\n\n";
+				$sql_output .= "SET search_path = \"$self->{pg_schema}\";\n\n";
 			}
 		} else {
-			if ($self->{create_schema}) {
-				$sql_output .= "CREATE SCHEMA \"$self->{schema}\";\n\n";
-			}
-			if ($self->{pg_schema}) {
-				$sql_output .= "SET search_path = \"$self->{pg_schema}\";\n\n";
-			} else {
-				$sql_output .= "SET search_path = \"$self->{schema}\", pg_catalog;\n\n";
-			}
+			$sql_output .= "SET search_path = \"$schem\", pg_catalog;\n\n";
 		}
 	}
 
 	my $constraints = '';
+	if ($self->{export_schema} && $self->{file_per_constraint}) {
+		if ($self->{pg_schema}) {
+			if (!$self->{case_sensitive}) {
+				$constraints .= "SET search_path = \L$self->{pg_schema}\E;\n\n";
+			} else {
+				$constraints .= "SET search_path = \"$self->{pg_schema}\";\n\n";
+			}
+		} elsif ($self->{schema}) {
+			if (!$self->{case_sensitive}) {
+				$constraints .= "SET search_path = \L$self->{schema}\E, pg_catalog;\n\n";
+			} else {
+				$constraints .= "SET search_path = \"$self->{schema}\", pg_catalog;\n\n";
+			}
+		}
+	}
 	my $indices = '';
+	if ($self->{export_schema} && $self->{file_per_index}) {
+		if ($self->{pg_schema}) {
+			if (!$self->{case_sensitive}) {
+				$indices .= "SET search_path = \L$self->{pg_schema}\E;\n\n";
+			} else {
+				$indices .= "SET search_path = \"$self->{pg_schema}\";\n\n";
+			}
+		} elsif ($self->{schema}) {
+			if (!$self->{case_sensitive}) {
+				$indices .= "SET search_path = \L$self->{schema}\E, pg_catalog;\n\n";
+			} else {
+				$indices .= "SET search_path = \"$self->{schema}\", pg_catalog;\n\n";
+			}
+		}
+	}
 	foreach my $table (sort { $self->{tables}{$a}{internal_id} <=> $self->{tables}{$b}{internal_id} } keys %{$self->{tables}}) {
 		$self->logit("Dumping table $table...\n", 1);
 		my $tbname = $table;
@@ -2390,21 +2414,7 @@ CREATE TRIGGER insert_${table}_trigger
 		$self->logit("Dumping indexes to one separate file : INDEXES_$self->{output}\n", 1);
 		$fhdl = $self->export_file("INDEXES_$self->{output}");
 		$indices = "-- Nothing found of type indexes\n" if (!$indices);
-		my $search_path = '';
-		if ($self->{pg_schema}) {
-			if (!$self->{case_sensitive}) {
-				$search_path = "SET search_path = \L$self->{pg_schema}\E;\n\n";
-			} else {
-				$search_path = "SET search_path = \"$self->{pg_schema}\";\n\n";
-			}
-		} else {
-			if (!$self->{case_sensitive}) {
-				$search_path = "SET search_path = \L$self->{schema}\E, pg_catalog;\n\n" if ($self->{schema});
-			} else {
-				$search_path = "SET search_path = \"$self->{schema}\", pg_catalog;\n\n" if ($self->{schema});
-			}
-		}
-		$self->dump($sql_header . "\n$search_path" . $indices, $fhdl);
+		$self->dump($sql_header . $indices, $fhdl);
 		$self->close_export_file($fhdl);
 		$indices = '';
 	}
@@ -2891,7 +2901,9 @@ sub _get_data
 		$realtable = "\"$table\"";
 	}
 	if ($self->{schema}) {
-		$realtable = $self->{schema} . ".$realtable";
+		my $schem = $self->{schema};
+		$schem = lc($self->{schema})  if (!$self->{case_sensitive});
+		$realtable = "\"$schem\".$realtable";
 	}
 	my $alias = 'a';
 
@@ -3486,6 +3498,8 @@ sub _alias_info
 	my $str = "SELECT COLUMN_NAME, COLUMN_ID FROM $self->{prefix}_TAB_COLUMNS WHERE TABLE_NAME='$view'";
 	if ($self->{schema}) {
 		$str .= " AND upper(OWNER) = '\U$self->{schema}\E'";
+	} else {
+		$str .= " AND OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
 	}
 	$str .= " ORDER BY COLUMN_ID ASC";
         my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -4370,8 +4384,26 @@ sub _convert_function
 			$sql_header .= "-- Copyright 2000-2012 Gilles DAROLD. All rights reserved.\n";
 			$sql_header .= "-- DATASOURCE: $self->{oracle_dsn}\n\n";
 			if ($self->{client_encoding}) {
-				$sql_header .= "SET client_encoding TO '\U$self->{client_encoding}\E';\n\n";
+				$sql_header .= "SET client_encoding TO '\U$self->{client_encoding}\E';\n";
 			}
+			my $search_path = '';
+			if ($self->{export_schema}) {
+				if ($self->{pg_schema}) {
+					if (!$self->{case_sensitive}) {
+						$search_path = "SET search_path = \L$self->{pg_schema}\E;\n";
+					} else {
+						$search_path = "SET search_path = \"$self->{pg_schema}\";\n";
+					}
+				} elsif ($self->{schema}) {
+					if (!$self->{case_sensitive}) {
+						$search_path = "SET search_path = \L$self->{schema}\E, pg_catalog;\n";
+					} else {
+						$search_path = "SET search_path = \"$self->{schema}\", pg_catalog;\n";
+					}
+				}
+			}
+			$sql_header .= "$search_path\n";
+
 			my $fhdl = $self->export_file("$dirprefix\L$pname/$func_name\E_$self->{output}", 1);
 			$self->_restore_comments(\$function, $hrefcomments);
 			$self->dump($sql_header . $function, $fhdl);
