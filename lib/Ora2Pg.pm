@@ -3672,7 +3672,7 @@ sub _get_packages
 	my ($self) = @_;
 
 	# Retrieve all indexes 
-	my $str = "SELECT DISTINCT OBJECT_NAME,OWNER FROM $self->{prefix}_OBJECTS WHERE OBJECT_TYPE='PACKAGE'";
+	my $str = "SELECT DISTINCT OBJECT_NAME,OWNER FROM $self->{prefix}_OBJECTS WHERE OBJECT_TYPE LIKE 'PACKAGE%'";
 	$str .= " AND STATUS='VALID'" if (!$self->{export_invalid});
 	if (!$self->{schema}) {
 		$str .= " AND OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
