@@ -2395,13 +2395,12 @@ CREATE TRIGGER insert_${table}_trigger
 			}
 
 			# Set the index definition
-			$indices .= $self->_create_indexes($table, %{$self->{tables}{$table}{indexes}});
+			$indices .= $self->_create_indexes($table, %{$self->{tables}{$table}{indexes}}) . "\n";
 			if ($self->{plsql_pgsql}) {
 				$indices = Ora2Pg::PLSQL::plsql_to_plpgsql($indices, $self->{allow_code_break});
 			}
 			if (!$self->{file_per_index} || $self->{dbhdest}) {
 				$sql_output .= $indices;
-				$sql_output .= "\n" if ($indices);
 				$indices = '';
 			}
 		}
