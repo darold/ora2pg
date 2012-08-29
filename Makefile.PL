@@ -105,6 +105,12 @@ CREATE_SCHEMA	1
 # command: DBMS_UTILITY.compile_schema(schema => 'schamename');
 COMPILE_SCHEMA	0
 
+# If the above configuration directive is not enough to validate your PL/SQL code
+# enable this configuration directive to allow export of all PL/SQL code even if
+# it is marked as invalid. The 'VALID' or 'INVALID' status applies to functions,
+# procedures, packages and user defined types.
+EXPORT_INVALID	0
+
 # PostreSQL search path schem to use. Can be a coma delimited list,
 # for example: users_schem,public will result in the following PostgreSQL 
 # schema path: SET search_path = users_schema,public;
