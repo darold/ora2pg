@@ -1489,6 +1489,7 @@ sub _get_sql_data
 		# containing the untouched PL/SQL code from Oracle Package
 		#---------------------------------------------------------
 		if ($self->{input_file}) {
+			$self->{plsql_pgsql} = 1;
 			$self->{packages} = ();
 			$self->logit("Reading input code from file $self->{input_file}...\n", 1);
 			sleep(1);
