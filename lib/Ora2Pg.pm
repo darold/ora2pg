@@ -854,7 +854,7 @@ sub _tables
 			
 			# Check of uniqueness of the table
 			if (exists $self->{tables}{$t->[2]}{field_name}) {
-				$self->logit("Warning duplicate table $t->[2], SYNONYME ? Skipped.\n", 1);
+				$self->logit("Warning duplicate table $t->[2], maybe a SYNONYME ? Skipped.\n", 1);
 				next;
 			}
 			# Try to respect order specified in the TABLES limited extraction array
@@ -868,33 +868,14 @@ sub _tables
 				}
 			}
 			# usually OWNER,TYPE,COMMENT,NUMROW
-			$self->{tables}{$t->[2]}{table_info} = [($t->[1],$t->[3],$t->[4],$t->[5])];
+			$self->{tables}{$t->[2]}{table_info} = [($t->[1],$t->[3],$t->[4])];
 
 			# Set the fields information
-			my $query = "SELECT * FROM $t->[1].$t->[2] WHERE 1=0";
-			if ($self->{ora_sensitive} && ($t->[2] !~ /"/)) {
-				$query = "SELECT * FROM $t->[1].\"$t->[2]\" WHERE 1=0";
-			}
+			my $query = "SELECT * FROM \"$t->[1]\".\"$t->[2]\" WHERE 1=0";
 			my $sth = $self->{dbh}->prepare($query);
-			my $need_sensitivity = 0;
 			if (!defined($sth)) {
-				# Automaticaly try with Oracle sensitivity
-				my $cond = 'with';
-				if (!$self->{ora_sensitive}) {
-					$query = "SELECT * FROM $t->[1].\"$t->[2]\" WHERE 1=0";
-				} else {
-					$query = "SELECT * FROM $t->[1].$t->[2] WHERE 1=0";
-					$cond = 'without';
-				}
-				$self->logit("WARNING: Automaticaly trying $cond Oracle sensitivity: $query\n");
-				$sth = $self->{dbh}->prepare($query);
-				if (!defined($sth)) {
-					warn "Can't prepare statement: $DBI::errstr";
-					warn "ORA2PG HINT: May be this tablename has some encoding issue.\n";
-					next;
-				}
-				$self->{tables}{$t->[2]}{ora_sensitive} = $cond;
-				$need_sensitivity = 1;
+				warn "Can't prepare statement: $DBI::errstr";
+				next;
 			}
 			$sth->execute;
 			if ($sth->err) {
@@ -904,7 +885,7 @@ sub _tables
 			$self->{tables}{$t->[2]}{field_name} = $sth->{NAME};
 			$self->{tables}{$t->[2]}{field_type} = $sth->{TYPE};
 
-			@{$self->{tables}{$t->[2]}{column_info}} = $self->_column_info($t->[2],$t->[1], $need_sensitivity);
+			@{$self->{tables}{$t->[2]}{column_info}} = $self->_column_info($t->[2],$t->[1]);
 			@{$self->{tables}{$t->[2]}{column_comments}} = $self->_column_comments($t->[2],$t->[1]);
                         # We don't check for skip_ukeys/skip_pkeys here; this is taken care of inside _unique_key
 			%{$self->{tables}{$t->[2]}{unique_key}} = $self->_unique_key($t->[2],$t->[1]);
@@ -937,7 +918,7 @@ sub _tables
 				$self->{views}{$table}{text} = $view_infos{$table};
 				$self->{views}{$table}{alias}= $view_infos{$table}{alias};
 				my $realview = $table;
-				if ($self->{ora_sensitive} && ($table !~ /"/)) {
+				if ($table !~ /"/) {
 					$realview = "\"$table\"";
 				}
 				if ($self->{schema}) {
@@ -2182,7 +2163,6 @@ BEGIN
 			my $funct_cond = '';
 			my %create_table = ();
 			my $idx = 0;
-		#push(@{$parts{$rows->[0]}{$rows->[1]}{$rows->[2]}}, [ { 'type' => $rows->[5], 'value' => $rows->[3], 'column' => $rows->[7], 'colpos' => $rows->[8], 'tablespace' => $rows->[4] } ]);
 			my $old_pos = '';
 			my $old_part = '';
 			foreach my $pos (sort {$a <=> $b} keys %{$self->{partitions}{$table}}) {
@@ -2907,7 +2887,7 @@ sub _get_data
 
 	# Fix a problem when the table need to be prefixed by the schema
 	my $realtable = $table;
-	if (($self->{ora_sensitive} || ($self->{tables}{$table}{ora_sensitive} eq 'with')) && ($table !~ /"/)) {
+	if ($table !~ /"/) {
 		$realtable = "\"$table\"";
 	}
 	if ($self->{schema}) {
@@ -2923,11 +2903,8 @@ sub _get_data
 		$timeformat = 'YYYY-MM-DD HH24:MI:SS.FF';
 	}
 	for my $k (0 .. $#{$name}) {
-		if (($self->{ora_sensitive} || ($name->[$k]->[0] !~ /^[a-zA-Z_][a-zA-Z0-9_]*$/) || $name->[$k]->[-1] ) && ($name->[$k]->[0] !~ /"/)) {
+		if ($name->[$k]->[0] !~ /"/) {
 			$name->[$k]->[0] = '"' . $name->[$k]->[0] . '"';
-		}
-		if (!$self->{ora_sensitive} && !$name->[$k]->[-1]) {
-			$name->[$k]->[0] = lc($name->[$k]->[0]);
 		}
 		if ( $src_type->[$k] =~ /date/i) {
 			$str .= "to_char($name->[$k]->[0], '$dateformat'),";
@@ -3096,41 +3073,15 @@ END
 	my $data = $sth->fetchall_arrayref();
 	$table = '"' . $table . '"' if ($tb_sensitive);
 	foreach my $d (@$data) {
-		my $need_sensitivity = $self->_detect_column_sensitivity($owner, $table, $d->[0]);
-		push(@$d, $need_sensitivity);
 		if ($#{$d} == 7) {
-			$self->logit("\t$d->[0] => type:$d->[1] , length:$d->[2] (char_length:$d->[7]), precision:$d->[5], scale:$d->[6], nullable:$d->[3] , default:$d->[4] , sensitivity:$d->[-1]\n", 1);
+			$self->logit("\t$d->[0] => type:$d->[1] , length:$d->[2] (char_length:$d->[7]), precision:$d->[5], scale:$d->[6], nullable:$d->[3] , default:$d->[4]\n", 1);
 			$d->[2] = $d->[7] if $d->[1] =~ /char/i;
 		} else {
-			$self->logit("\t$d->[0] => type:$d->[1] , length:$d->[2] (char_length:$d->[2]), precision:$d->[5], scale:$d->[6], nullable:$d->[3] , default:$d->[4] , sensitivity:$d->[-1]\n", 1);
+			$self->logit("\t$d->[0] => type:$d->[1] , length:$d->[2] (char_length:$d->[2]), precision:$d->[5], scale:$d->[6], nullable:$d->[3] , default:$d->[4]\n", 1);
 		}
 	}
 
 	return @$data;	
-}
-
-
-sub _detect_column_sensitivity
-{
-	my ($self, $owner, $table, $column) = @_;
-
-	my $query = "SELECT $column FROM $owner.$table WHERE 1=0";
-	my $sth = $self->{dbh}->prepare($query);
-	if (!defined($sth)) {
-		# Automaticaly try with Oracle sensitivity
-		my $cond = 'with';
-		$query = "SELECT \"$column\" FROM $owner.$table WHERE 1=0";
-		$sth = $self->{dbh}->prepare($query);
-		if (!defined($sth)) {
-			return 0;
-		}
-		$sth->finish();
-		$self->logit("WARNING: column $column need Oracle sensitivity\n");
-		return 1;
-	}
-	$sth->finish();
-
-	return 0;
 }
 
 =head2 _unique_key TABLE OWNER
@@ -4967,10 +4918,7 @@ sub _show_infos
 
 				# Set the fields information
 				if ($type eq 'SHOW_COLUMN') {
-					my $query = "SELECT * FROM $t->[1].$t->[2] WHERE 1=0";
-					if ($self->{ora_sensitive} && ($t->[2] !~ /"/)) {
-						$query = "SELECT * FROM $t->[1].\"$t->[2]\" WHERE 1=0";
-					}
+					my $query = "SELECT * FROM \"$t->[1]\".\"$t->[2]\" WHERE 1=0";
 					my $sth = $self->{dbh}->prepare($query);
 					if (!defined($sth)) {
 						warn "Can't prepare statement: $DBI::errstr";

@@ -304,9 +304,6 @@ NOESCAPE	0
 # Set to 1 if you want to disable update of sequence during data migration.
 DISABLE_SEQUENCE	0
 
-# Force to use Oracle case sensitive table/view name. Default disabled.
-ORA_SENSITIVE	0
-
 # Enable PLSQL to PLPSQL convertion. This is a work in progress, feel
 # free modify/add you own code and send me patches. The code is under
 # function plsql_toplpgsql in Ora2PG/PLSQL.pm. Default disabled.

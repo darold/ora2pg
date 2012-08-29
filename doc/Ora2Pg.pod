@@ -840,13 +840,6 @@ insensitive. If you want to preserve the case of Oracle object name set this
 directive to 1. I do not recommand this unless you always quote object names
 on all your scripts.
 
-=item ORA_SENSITIVE
-
-This directive force Ora2Pg to use case sensitivity when scanning the Oracle
-database. Enable iit this if you have some object defined with case sensitivity
-in your database. Since release 9.1 Ora2Pg is able to auto detect object with
-case sensitivity so this directive may be obsoltete. By default it is off.
-
 =item ORA_RESERVED_WORDS
 
 Allow escaping of column name using Oracle reserved words. Value is a list of
