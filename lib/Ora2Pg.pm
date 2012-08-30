@@ -1719,7 +1719,7 @@ sub _get_sql_data
 			if ($self->{file_per_table} && !$self->{dbhdest}) {
 				# Do not dump data again if the file already exists
 				if (-e "$dirprefix${table}_$self->{output}") {
-					$self->logit("Skipping $table, file already exists ${table}_$self->{output}\n", 1);
+					$self->logit("WARNING: Skipping dumping data from $table, file already exists ${table}_$self->{output}\n", 0);
 					next;
 				}
 				$self->dump("\\i $dirprefix${table}_$self->{output}\n");
@@ -4812,6 +4812,7 @@ sub extract_data
 				$count++;
 			}
 		}
+
 		# Insert data if we are in online processing mode
 		if ($self->{dbhdest}) {
 			if ($self->{type} ne 'COPY') {
