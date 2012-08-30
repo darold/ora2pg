@@ -1761,7 +1761,6 @@ sub _get_sql_data
 				}
 			}
 
-
 			# Start transaction to speed up bulkload
 			if ($self->{dbhdest}) {
 				my $s = $self->{dbhdest}->do("BEGIN;") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
@@ -2904,8 +2903,6 @@ sub _get_data
 		$realtable = "\"$self->{schema}\".$realtable";
 	}
 	my $alias = 'a';
-print STDERR "ZZZZZZZZZZZZZZZZZZZ $self->{schema} : $realtable\n";
-
 	my $str = "SELECT ";
 	my $extraStr = "";
 	my $dateformat = 'YYYY-MM-DD HH24:MI:SS';
