@@ -1881,8 +1881,8 @@ sub _get_sql_data
 					$s_out .= ")";
 					$sprep = $s_out;
 				} else {
-					my $s = $self->{dbhdest}->do("$s_out") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
-					$s_out = '';
+					#my $s = $self->{dbhdest}->do("$s_out") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
+					#$s_out = '';
 				}
 			}
 			# Extract all data from the current table
@@ -2050,8 +2050,8 @@ sub _get_sql_data
 						$s_out .= ")";
 						$sprep = $s_out;
 					} else {
-						my $s = $self->{dbhdest}->do($s_out) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
-						$s_out = '';
+						#my $s = $self->{dbhdest}->do($s_out) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
+						#$s_out = '';
 					}
 				}
 
@@ -4796,6 +4796,8 @@ sub extract_data
 		if ($self->{type} eq 'COPY') {
 			if ($self->{dbhdest}) {
 				$self->logit("DEBUG: Sending COPY bulk output directly to PostgreSQL backend\n", 1);
+				my $s = $self->{dbhdest}->do($sql) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
+				$sql = '';
 				foreach my $row (@$rows) {
 					$count++;
 					my $s = $self->{dbhdest}->pg_putcopydata(join("\t", @$row) . "\n") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
