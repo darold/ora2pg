@@ -2901,11 +2901,10 @@ sub _get_data
 		$realtable = "\"$table\"";
 	}
 	if ($self->{schema}) {
-		my $schem = $self->{schema};
-		$schem = lc($self->{schema})  if (!$self->{case_sensitive});
-		$realtable = "\"$schem\".$realtable";
+		$realtable = "\"$self->{schema}\".$realtable";
 	}
 	my $alias = 'a';
+print STDERR "ZZZZZZZZZZZZZZZZZZZ $self->{schema} : $realtable\n";
 
 	my $str = "SELECT ";
 	my $extraStr = "";
