@@ -1870,7 +1870,9 @@ sub _get_sql_data
 				}
 			}
 			if ($self->{type} eq 'COPY') {
-				map { $_ = '"' . $_ . '"' } @fname;
+				if ($self->{preserve_case}) {
+					map { $_ = '"' . $_ . '"' } @fname;
+				}
 				$s_out .= '(' . join(',', @fname) . ") FROM STDIN;\n";
 			} else {
 				$s_out =~ s/,$//;
@@ -1897,9 +1899,6 @@ sub _get_sql_data
 					$s_out =~ s/,$//;
 					$s_out .= ")";
 					$sprep = $s_out;
-				} else {
-					#my $s = $self->{dbhdest}->do("$s_out") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
-					#$s_out = '';
 				}
 			}
 			# Extract all data from the current table
