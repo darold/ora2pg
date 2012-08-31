@@ -411,7 +411,7 @@ ALLOW_CODE_BREAK	1
 
 # Use getStringVal() instead of getClobVal() for XML data export. Default is
 # enabled for backward compatibility.
-XML_PRETTY	1
+XML_PRETTY	0
 
 # This directive is used to set the name of the foreign data server that is used
 # in the "CREATE SERVER name FOREIGN DATA WRAPPER oracle_fdw ..." command. This
