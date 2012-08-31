@@ -264,7 +264,7 @@ sub modify_struct
 {
 	my ($self, $table, @fields) = @_;
 
-	if (!$self->{case_sensitive}) {
+	if (!$self->{preserve_case}) {
 		map { $_ = lc($_) } @fields;
 		$table = lc($table);
 	}
@@ -490,6 +490,8 @@ sub _init
 	}
 	# Backward compatibility with PG_NUMERIC_TYPE alone
 	$self->{pg_integer_type} = 1 if (not defined $self->{pg_integer_type});
+	# Backward compatibility with CASE_SENSITIVE
+	$self->{preserve_case} = $self->{case_sensitive} if (defined $self->{case_sensitive});
 
 	if (($self->{standard_conforming_strings} =~ /^off$/i) || ($self->{standard_conforming_strings} == 0)) {
 		$self->{standard_conforming_strings} = 0;
@@ -1039,13 +1041,13 @@ sub _get_sql_data
 	}
 	if ($self->{export_schema} && ($self->{type} ne 'TABLE')) {
 		if ($self->{pg_schema}) {
-			if (!$self->{case_sensitive}) {
+			if (!$self->{preserve_case}) {
 				$sql_header .= "SET search_path = \L$self->{pg_schema}\E;\n\n";
 			} else {
 				$sql_header .= "SET search_path = \"$self->{pg_schema}\";\n\n";
 			}
 		} else {
-			if (!$self->{case_sensitive}) {
+			if (!$self->{preserve_case}) {
 				$sql_header .= "SET search_path = \L$self->{schema}\E, pg_catalog;\n\n" if ($self->{schema});
 			} else {
 				$sql_header .= "SET search_path = \"$self->{schema}\", pg_catalog;\n\n" if ($self->{schema});
@@ -1074,14 +1076,14 @@ sub _get_sql_data
 			$self->{views}{$view}{text} =~ s/\s*\bWITH\b\s+.*$//s;
 			$self->{views}{$view}{text} = $self->_format_view($self->{views}{$view}{text});
 			if (!@{$self->{views}{$view}{alias}}) {
-				if (!$self->{case_sensitive}) {
+				if (!$self->{preserve_case}) {
 					$sql_output .= "CREATE OR REPLACE VIEW \"\L$view\E\" AS ";
 				} else {
 					$sql_output .= "CREATE OR REPLACE VIEW \"$view\" AS ";
 				}
 				$sql_output .= $self->{views}{$view}{text} . ";\n";
 			} else {
-				if (!$self->{case_sensitive}) {
+				if (!$self->{preserve_case}) {
 					$sql_output .= "CREATE OR REPLACE VIEW \"\L$view\E\" (";
 				} else {
 					$sql_output .= "CREATE OR REPLACE VIEW \"$view\" (";
@@ -1093,13 +1095,13 @@ sub _get_sql_data
 					} else {
 						$sql_output .= ", ";
 					}
-					if (!$self->{case_sensitive}) {
+					if (!$self->{preserve_case}) {
 						$sql_output .= "\"\L$d->[0]\E\"";
 					} else {
 						$sql_output .= "\"$d->[0]\"";
 					}
 				}
-				if (!$self->{case_sensitive}) {
+				if (!$self->{preserve_case}) {
 					if ($self->{views}{$view}{text} =~ /SELECT[^\s\t]*(.*?)[^\s\t]*FROM/is) {
 						my $clause = $1;
 						$clause =~ s/"([^"]+)"/"\L$1\E"/gs;
@@ -1140,12 +1142,12 @@ sub _get_sql_data
 			my $isfunc = 0;
 			my $obj = 'TABLE';
 			if ($self->{export_schema} &&  $self->{schema}) {
-				if (!$self->{case_sensitive}) {
+				if (!$self->{preserve_case}) {
 					$realtable =  "\L$self->{schema}.$table\E";
 				} else {
 					$realtable =  "\"$self->{schema}\".\"$table\"";
 				}
-			} elsif ($self->{case_sensitive}) {
+			} elsif ($self->{preserve_case}) {
 				$realtable =  "\"$table\"";
 			}
 			if ($self->{grants}{$table}{owner}) {
@@ -1266,7 +1268,7 @@ sub _get_sql_data
 			$self->logit("\tDumping trigger $trig->[0] defined on table $trig->[3]...\n", 1);
 			# Check if it's like a pg rule
 			if (!$self->{pg_supports_insteadof} && $trig->[1] =~ /INSTEAD OF/) {
-				if (!$self->{case_sensitive}) {
+				if (!$self->{preserve_case}) {
 					$sql_output .= "CREATE OR REPLACE RULE \"\L$trig->[0]\E\" AS\n\tON \L$trig->[3]\E\n\tDO INSTEAD\n(\n\t$trig->[4]\n);\n\n";
 				} else {
 					$sql_output .= "CREATE OR REPLACE RULE \L$trig->[0]\E AS\n\tON \"$trig->[3]\"\n\tDO INSTEAD\n(\n\t$trig->[4]\n);\n\n";
@@ -1285,7 +1287,7 @@ sub _get_sql_data
 					}
 				}
 				my $trig_table = $trig->[3];
-				$trig_table = lc($trig->[3]) if (!$self->{case_sensitive});
+				$trig_table = lc($trig->[3]) if (!$self->{preserve_case});
 				if ($self->{pg_supports_when} && $trig->[5]) {
 					$sql_output .= "DROP TRIGGER IF EXISTS \L$trig->[0]\E ON \"$trig_table\" CASCADE;\n";
 					$sql_output .= "CREATE OR REPLACE FUNCTION trigger_fct_\L$trig->[0]\E () RETURNS trigger AS \$BODY\$\n$trig->[4]\n\$BODY\$\n LANGUAGE 'plpgsql';\n\n";
@@ -1606,12 +1608,12 @@ sub _get_sql_data
 
 		if ($self->{dbhdest} && $self->{export_schema} &&  $self->{schema}) {
 			my $search_path = "SET search_path = \L$self->{schema}\E, pg_catalog";
-			if ($self->{case_sensitive}) {
+			if ($self->{preserve_case}) {
 				$search_path = "SET search_path = \"$self->{schema}\", pg_catalog";
 			}
 			if ($self->{pg_schema}) {
 				$search_path = "SET search_path = \L$self->{pg_schema}\E";
-				if ($self->{case_sensitive}) {
+				if ($self->{preserve_case}) {
 					$search_path = "SET search_path = \"$self->{schema}\"";
 				}
 			}
@@ -1740,13 +1742,13 @@ sub _get_sql_data
 			my $search_path = '';
 			if ($self->{export_schema}) {
 				if ($self->{pg_schema}) {
-					if (!$self->{case_sensitive}) {
+					if (!$self->{preserve_case}) {
 						$search_path = "SET search_path = \L$self->{pg_schema}\E;";
 					} else {
 						$search_path = "SET search_path = \"$self->{pg_schema}\";";
 					}
 				} elsif ($self->{schema}) {
-					if (!$self->{case_sensitive}) {
+					if (!$self->{preserve_case}) {
 						$search_path = "SET search_path = \L$self->{schema}\E, pg_catalog;";
 					} else {
 						$search_path = "SET search_path = \"$self->{schema}\", pg_catalog;";
@@ -1774,7 +1776,7 @@ sub _get_sql_data
 					$self->logit("\tReplacing table $table as " . $self->{replaced_tables}{lc($table)}, "...\n", 1);
 					$tmptb = $self->{replaced_tables}{lc($table)};
 				}
-				if (!$self->{case_sensitive}) {
+				if (!$self->{preserve_case}) {
 					$tmptb = lc($tmptb);
 				}
 				if ($tmptb !~ /"/) {
@@ -1793,7 +1795,7 @@ sub _get_sql_data
 				if (exists $self->{replaced_tables}{"\L$table\E"} && $self->{replaced_tables}{"\L$table\E"}) {
 					$tmptb = $self->{replaced_tables}{lc($table)};
 				}
-				if (!$self->{case_sensitive}) {
+				if (!$self->{preserve_case}) {
 					$tmptb = lc($tmptb);
 				}
 				if ($tmptb !~ /"/) {
@@ -1810,15 +1812,15 @@ sub _get_sql_data
 			my @stt = ();
 			my @nn = ();
 			my $s_out = "INSERT INTO \"\L$table\E\" (";
-			$s_out = "INSERT INTO \"$table\" (" if ($self->{case_sensitive});
+			$s_out = "INSERT INTO \"$table\" (" if ($self->{preserve_case});
 			if ($self->{type} eq 'COPY') {
 				$s_out = "\nCOPY \"\L$table\E\" ";
-				$s_out = "\nCOPY \"$table\" " if ($self->{case_sensitive});
+				$s_out = "\nCOPY \"$table\" " if ($self->{preserve_case});
 			}
 			my @fname = ();
 			foreach my $i ( 0 .. $#{$self->{tables}{$table}{field_name}} ) {
 				my $fieldname = ${$self->{tables}{$table}{field_name}}[$i];
-				if (!$self->{case_sensitive}) {
+				if (!$self->{preserve_case}) {
 					if (exists $self->{modify}{"\L$table\E"}) {
 						next if (!grep(/$fieldname/i, @{$self->{modify}{"\L$table\E"}}));
 					}
@@ -1827,7 +1829,7 @@ sub _get_sql_data
 						next if (!grep(/$fieldname/i, @{$self->{modify}{"$table"}}));
 					}
 				}
-				if (!$self->{case_sensitive}) {
+				if (!$self->{preserve_case}) {
 					push(@fname, lc($fieldname));
 				} else {
 					push(@fname, $fieldname);
@@ -1841,7 +1843,7 @@ sub _get_sql_data
 					push(@tt, $type);
 					push(@nn, $f);
 					if ($self->{type} ne 'COPY') {
-						if (!$self->{case_sensitive}) {
+						if (!$self->{preserve_case}) {
 							$s_out .= "\"\L$f->[0]\E\",";
 						} else {
 							$s_out .= "\"$f->[0]\",";
@@ -1902,7 +1904,7 @@ sub _get_sql_data
 					$self->logit("\tReplacing table $table as " . $self->{replaced_tables}{lc($table)} . "...\n", 1);
 					$tmptb = $self->{replaced_tables}{lc($table)};
 				}
-				if (!$self->{case_sensitive}) {
+				if (!$self->{preserve_case}) {
 					$tmptb = lc($tmptb);
 				}
 				if ($tmptb !~ /"/) {
@@ -1959,7 +1961,7 @@ sub _get_sql_data
 						$self->logit("\tReplacing table $table as " . $self->{replaced_tables}{lc($table)} . "...\n", 1);
 						$tmptb = $self->{replaced_tables}{lc($table)};
 					}
-					if (!$self->{case_sensitive}) {
+					if (!$self->{preserve_case}) {
 						$tmptb = lc($tmptb);
 					}
 					if ($tmptb !~ /"/) {
@@ -1976,15 +1978,15 @@ sub _get_sql_data
 				my @stt = ();
 				my @nn = ();
 				my $s_out = "INSERT INTO \"\L$table\E\" (";
-				$s_out = "INSERT INTO \"$table\" (" if ($self->{case_sensitive});
+				$s_out = "INSERT INTO \"$table\" (" if ($self->{preserve_case});
 				if ($self->{type} eq 'COPY') {
 					$s_out = "\nCOPY \"\L$table\E\" ";
-					$s_out = "\nCOPY \"$table\" " if ($self->{case_sensitive});
+					$s_out = "\nCOPY \"$table\" " if ($self->{preserve_case});
 				}
 				my @fname = ();
 				foreach my $i ( 0 .. $#{$self->{views}{$table}{field_name}} ) {
 					my $fieldname = ${$self->{views}{$table}{field_name}}[$i];
-					if (!$self->{case_sensitive}) {
+					if (!$self->{preserve_case}) {
 						if (exists $self->{modify}{"\L$table\E"}) {
 							next if (!grep(/$fieldname/i, @{$self->{modify}{"\L$table\E"}}));
 						}
@@ -1993,7 +1995,7 @@ sub _get_sql_data
 							next if (!grep(/$fieldname/i, @{$self->{modify}{"$table"}}));
 						}
 					}
-					if (!$self->{case_sensitive}) {
+					if (!$self->{preserve_case}) {
 						push(@fname, lc($fieldname));
 					} else {
 						push(@fname, $fieldname);
@@ -2008,7 +2010,7 @@ sub _get_sql_data
 						push(@stt, $f->[1]);
 						push(@nn, $f);
 						if ($self->{type} ne 'COPY') {
-							if (!$self->{case_sensitive}) {
+							if (!$self->{preserve_case}) {
 								$s_out .= "\"\L$f->[0]\E\",";
 							} else {
 								$s_out .= "\"$f->[0]\",";
@@ -2072,7 +2074,7 @@ sub _get_sql_data
 						$self->logit("\tReplacing table $table as " . $self->{replaced_tables}{lc($table)} . "...\n", 1);
 						$tmptb = $self->{replaced_tables}{lc($table)};
 					}
-					if (!$self->{case_sensitive}) {
+					if (!$self->{preserve_case}) {
 						$tmptb = lc($tmptb);
 					}
 					if ($tmptb !~ /"/) {
@@ -2244,12 +2246,12 @@ CREATE TRIGGER insert_${table}_trigger
 	# Dump the database structure: tables, constraints, indexes, etc.
 	if ($self->{export_schema} &&  $self->{schema}) {
 		my $schem = $self->{schema};
-		$schem = lc($self->{schema})  if (!$self->{case_sensitive});
+		$schem = lc($self->{schema})  if (!$self->{preserve_case});
 		if ($self->{create_schema}) {
 			$sql_output .= "CREATE SCHEMA \"$schem\";\n\n";
 		}
 		if ($self->{pg_schema}) {
-			if (!$self->{case_sensitive}) {
+			if (!$self->{preserve_case}) {
 				$sql_output .= "SET search_path = \"\L$self->{pg_schema}\E\";\n\n";
 			} else {
 				$sql_output .= "SET search_path = \"$self->{pg_schema}\";\n\n";
@@ -2262,13 +2264,13 @@ CREATE TRIGGER insert_${table}_trigger
 	my $constraints = '';
 	if ($self->{export_schema} && $self->{file_per_constraint}) {
 		if ($self->{pg_schema}) {
-			if (!$self->{case_sensitive}) {
+			if (!$self->{preserve_case}) {
 				$constraints .= "SET search_path = \L$self->{pg_schema}\E;\n\n";
 			} else {
 				$constraints .= "SET search_path = \"$self->{pg_schema}\";\n\n";
 			}
 		} elsif ($self->{schema}) {
-			if (!$self->{case_sensitive}) {
+			if (!$self->{preserve_case}) {
 				$constraints .= "SET search_path = \L$self->{schema}\E, pg_catalog;\n\n";
 			} else {
 				$constraints .= "SET search_path = \"$self->{schema}\", pg_catalog;\n\n";
@@ -2278,13 +2280,13 @@ CREATE TRIGGER insert_${table}_trigger
 	my $indices = '';
 	if ($self->{export_schema} && $self->{file_per_index}) {
 		if ($self->{pg_schema}) {
-			if (!$self->{case_sensitive}) {
+			if (!$self->{preserve_case}) {
 				$indices .= "SET search_path = \L$self->{pg_schema}\E;\n\n";
 			} else {
 				$indices .= "SET search_path = \"$self->{pg_schema}\";\n\n";
 			}
 		} elsif ($self->{schema}) {
-			if (!$self->{case_sensitive}) {
+			if (!$self->{preserve_case}) {
 				$indices .= "SET search_path = \L$self->{schema}\E, pg_catalog;\n\n";
 			} else {
 				$indices .= "SET search_path = \"$self->{schema}\", pg_catalog;\n\n";
@@ -2302,7 +2304,7 @@ CREATE TRIGGER insert_${table}_trigger
 		if ($self->{type} eq 'FDW') {
 			$foreign = ' FOREIGN';
 		}
-		if (!$self->{case_sensitive}) {
+		if (!$self->{preserve_case}) {
 			$sql_output .= "CREATE$foreign ${$self->{tables}{$table}{table_info}}[1] \"\L$tbname\E\" (\n";
 		} else {
 			$sql_output .= "CREATE$foreign ${$self->{tables}{$table}{table_info}}[1] \"$tbname\" (\n";
@@ -2318,7 +2320,7 @@ CREATE TRIGGER insert_${table}_trigger
 					$self->logit("\tReplacing column \L$f->[0]\E as " . $self->{replaced_cols}{lc($table)}{lc($fname)} . "...\n", 1);
 					$fname = $self->{replaced_cols}{"\L$table\E"}{"\L$fname\E"};
 				}
-				if (!$self->{case_sensitive}) {
+				if (!$self->{preserve_case}) {
 					$sql_output .= "\t\"\L$fname\E\" $type";
 				} else {
 					$sql_output .= "\t\"$fname\" $type";
@@ -2347,7 +2349,7 @@ CREATE TRIGGER insert_${table}_trigger
 			$sql_output .= ");\n";
 		} else {
 			my $schem = "schema '$self->{schema}'," if ($self->{schema});
-			if ($self->{case_sensitive}) {
+			if ($self->{preserve_case}) {
 				$sql_output .= ") SERVER $self->{fdw_server} OPTIONS($schem table '$table');\n";
 			} else {
 				$sql_output .= ") SERVER $self->{fdw_server} OPTIONS($schem table \L$table\E);\n";
@@ -2355,7 +2357,7 @@ CREATE TRIGGER insert_${table}_trigger
 		}
 		# Add comments on table
 		if (!$self->{disable_comment} && ${$self->{tables}{$table}{table_info}}[2]) {
-			if (!$self->{case_sensitive}) {
+			if (!$self->{preserve_case}) {
 				$sql_output .= "COMMENT ON TABLE \"\L$tbname\E\" IS E'${$self->{tables}{$table}{table_info}}[2]';\n";
 			} else {
 				$sql_output .= "COMMENT ON TABLE \"$tbname\".\"$f->[0]\" IS E'${$self->{tables}{$table}{table_info}}[2]';\n";
@@ -2367,7 +2369,7 @@ CREATE TRIGGER insert_${table}_trigger
 			foreach $f (@{$self->{tables}{$table}{column_comments}}) {
 				next unless $f->[1];
 				$f->[1] =~ s/'/\\'/gs;
-				if (!$self->{case_sensitive}) {
+				if (!$self->{preserve_case}) {
 					$sql_output .= "COMMENT ON COLUMN \L$tbname\.$f->[0]\E IS E'$f->[1]';\n";
 				} else {
 					$sql_output .= "COMMENT ON COLUMN \"$tbname\".\"$f->[0]\" IS E'$f->[1]';\n";
@@ -2379,7 +2381,7 @@ CREATE TRIGGER insert_${table}_trigger
 		if ($self->{force_owner}) {
 			my $owner = ${$self->{tables}{$table}{table_info}}[0];
 			$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
-			if (!$self->{case_sensitive}) {
+			if (!$self->{preserve_case}) {
 				$sql_output .= "ALTER ${$self->{tables}{$table}{table_info}}[1] \"\L$tbname\E\" OWNER TO \L$owner\E;\n";
 			} else {
 				$sql_output .= "ALTER ${$self->{tables}{$table}{table_info}}[1] \"$tbname\" OWNER TO $owner;\n";
@@ -2432,7 +2434,7 @@ CREATE TRIGGER insert_${table}_trigger
 			if (exists $self->{replaced_tables}{"\L$table\E"} && $self->{replaced_tables}{"\L$table\E"}) {
 				$tbname = $self->{replaced_tables}{"\L$table\E"};
 			}
-			if (!$self->{case_sensitive}) {
+			if (!$self->{preserve_case}) {
 				$sql_output .= "CREATE TABLE \"\L$tbname\E\" (\n";
 			} else {
 				$sql_output .= "CREATE TABLE \"$tbname\" (\n";
@@ -2442,7 +2444,7 @@ CREATE TRIGGER insert_${table}_trigger
 					next if ($f->[0] ne "${$self->{views}{$table}{field_name}}[$i]");
 					my $type = $self->_sql_type($f->[1], $f->[2], $f->[5], $f->[6]);
 					$type = "$f->[1], $f->[2]" if (!$type);
-					if (!$self->{case_sensitive}) {
+					if (!$self->{preserve_case}) {
 						$sql_output .= "\t\"\L$f->[0]\E\" $type";
 					} else {
 						$sql_output .= "\t\"$f->[0]\" $type";
@@ -2547,7 +2549,7 @@ sub _create_indexes
 		my $skip_index_creation = 0;
 		my $unique_key = $self->{tables}{$table}{unique_key};
 		foreach my $consname (keys %$unique_key) {
-			my $newconsname = $self->{case_sensitive} ? $consname : lc($consname);
+			my $newconsname = $self->{preserve_case} ? $consname : lc($consname);
 			my $constype =   $unique_key->{$consname}{type};
 			next if (($constype ne 'P') && ($constype ne 'U'));
 			my @conscols = @{$unique_key->{$consname}{columns}};
@@ -2571,7 +2573,7 @@ sub _create_indexes
 			my $unique = '';
 			$unique = ' UNIQUE' if ($self->{tables}{$table}{uniqueness}{$idx} eq 'UNIQUE');
 			my $str = '';
-			if (!$self->{case_sensitive}) {
+			if (!$self->{preserve_case}) {
 				$str .= "CREATE$unique INDEX \L$idx\E ON \"\L$table\E\" (\L$columns\E);";
 			} else {
 				$str .= "CREATE$unique INDEX $idx ON \"$table\" ($columns);";
@@ -2614,7 +2616,7 @@ sub _drop_indexes
 		my $skip_index_creation = 0;
 		my $unique_key = $self->{tables}{$table}{unique_key};
 		foreach my $consname (keys %$unique_key) {
-			my $newconsname = $self->{case_sensitive} ? $consname : lc($consname);
+			my $newconsname = $self->{preserve_case} ? $consname : lc($consname);
 			my $constype =   $unique_key->{$consname}{type};
 			next if (($constype ne 'P') && ($constype ne 'U'));
 			my @conscols = @{$unique_key->{$consname}{columns}};
@@ -2636,7 +2638,7 @@ sub _drop_indexes
 		# the index will be automatically created by PostgreSQL at constraint import time.
 		if (!$skip_index_creation) {
 			my $str = "DROP INDEX \"$idx\";";
-			if (!$self->{case_sensitive}) {
+			if (!$self->{preserve_case}) {
 				$str = "DROP INDEX \"\L$idx\E\";";
 			}
 			if ($self->{dbhdest}) {
@@ -2669,11 +2671,11 @@ sub _create_unique_keys
 
 	# Set the unique (and primary) key definition 
 	my $newtabname = $table;
-	if (!$self->{case_sensitive}) {
+	if (!$self->{preserve_case}) {
 		$newtabname = lc($table);
 	}
 	foreach my $consname (keys %$unique_key) {
-		my $newconsname = $self->{case_sensitive} ? $consname : lc($consname);
+		my $newconsname = $self->{preserve_case} ? $consname : lc($consname);
 		my $constype =   $unique_key->{$consname}{type};
 		my $constgen =   $unique_key->{$consname}{generated};
 		my @conscols = @{$unique_key->{$consname}{columns}};
@@ -2687,7 +2689,7 @@ sub _create_unique_keys
 		}
 		my $columnlist = join(',', map(qq{"$_"}, @conscols));
 		if ($columnlist) {
-			$columnlist = lc($columnlist) unless ($self->{case_sensitive});
+			$columnlist = lc($columnlist) unless ($self->{preserve_case});
 			if (!$self->{keep_pkey_names} || ($constgen eq 'GENERATED NAME')) {
 				$out .= qq{ALTER TABLE "$newtabname" ADD $constypename ($columnlist);\n};
 			} else {
@@ -2733,7 +2735,7 @@ sub _create_check_constraint
 			if ($self->{plsql_pgsql}) {
 				$chkconstraint = Ora2Pg::PLSQL::plsql_to_plpgsql($chkconstraint, $self->{allow_code_break});
 			}
-			if (!$self->{case_sensitive}) {
+			if (!$self->{preserve_case}) {
 				foreach my $c (@$field_name) {
 					# Force lower case
 					$chkconstraint =~ s/"$c"/"\L$c\E"/igs;
@@ -2792,7 +2794,7 @@ sub _create_foreign_keys
 			}
 			map { s/["]+/"/g; } @rfkeys;
 			map { s/["]+/"/g; } @lfkeys;
-			if (!$self->{case_sensitive}) {
+			if (!$self->{preserve_case}) {
 				$str .= "ALTER TABLE \"\L$substable\E\" ADD CONSTRAINT \"\L$h->[0]\E\" FOREIGN KEY (" . lc(join(',', @lfkeys)) . ") REFERENCES \"\L$subsdesttable\E\" (" . lc(join(',', @rfkeys)) . ")";
 			} else {
 				$str .= "ALTER TABLE \"$substable\" ADD CONSTRAINT \"$h->[0]\" FOREIGN KEY (" . join(',', @lfkeys) . ") REFERENCES \"$subsdesttable\" (" . join(',', @rfkeys) . ")";
@@ -2828,7 +2830,7 @@ sub _drop_foreign_keys
 			$table = $self->{replaced_tables}{"\L$table\E"};
 		}
 		my $str = '';
-		if (!$self->{case_sensitive}) {
+		if (!$self->{preserve_case}) {
 			$str = "ALTER TABLE \"\L$table\E\" DROP CONSTRAINT \"\L$h->[0]\E\";";
 		} else {
 			$str .= "ALTER TABLE \"$table\" DROP CONSTRAINT \"$h->[0]\";";
@@ -4363,12 +4365,12 @@ sub _convert_function
 		return $plsql;
 	}
 	if ($func_code) {
-		$func_name= "\"$func_name\"" if ($self->{case_sensitive});
+		$func_name= "\"$func_name\"" if ($self->{preserve_case});
 		$func_args = '()' if (!$func_args);
 		$func_name = $pname . '.' . $func_name if ($pname);
 		my $function = "\nCREATE OR REPLACE FUNCTION $func_name $func_args";
 		if (!$pname && $self->{export_schema} && $self->{schema}) {
-			if (!$self->{case_sensitive}) {
+			if (!$self->{preserve_case}) {
 				$function = "\nCREATE OR REPLACE FUNCTION $self->{schema}\.$func_name $func_args";
 				$self->logit("\tParsing function $self->{schema}\.$func_name...\n", 1);
 			} else {
@@ -4421,13 +4423,13 @@ sub _convert_function
 			my $search_path = '';
 			if ($self->{export_schema}) {
 				if ($self->{pg_schema}) {
-					if (!$self->{case_sensitive}) {
+					if (!$self->{preserve_case}) {
 						$search_path = "SET search_path = \L$self->{pg_schema}\E;\n";
 					} else {
 						$search_path = "SET search_path = \"$self->{pg_schema}\";\n";
 					}
 				} elsif ($self->{schema}) {
-					if (!$self->{case_sensitive}) {
+					if (!$self->{preserve_case}) {
 						$search_path = "SET search_path = \L$self->{schema}\E, pg_catalog;\n";
 					} else {
 						$search_path = "SET search_path = \"$self->{schema}\", pg_catalog;\n";
@@ -4562,7 +4564,7 @@ sub _format_view
 		next if (!$tb);
 		my $regextb = $tb;
 		$regextb =~ s/\$/\\\$/g;
-		if (!$self->{case_sensitive}) {
+		if (!$self->{preserve_case}) {
 			# Escape column name
 			$sqlstr =~ s/["']*\b$regextb\b["']*\.["']*([A-Z_0-9\$]+)["']*(,?)/\L$tb\E.\L$1\E$2/igs;
 			# Escape table name

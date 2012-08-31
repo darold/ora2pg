@@ -291,11 +291,11 @@ CONFIGURATION
 
     SCHEMA
         This directive is used to set the schema name to use during export.
-        Take care that this directive is case sensitive. For example:
+        For example:
 
                 SCHEMA  APPS
 
-        will only extract objects associated to the APPS schema.
+        will extract objects associated to the APPS schema.
 
     EXPORT_SCHEMA
         By default the Oracle schema is not exported into the PostgreSQL
@@ -777,11 +777,12 @@ CONFIGURATION
         Note that the directive and the list definition must be a single
         line.
 
-    CASE_SENSITIVE
-        By default Ora2P convert all object names to lower case as
-        PostgreSQL is case insensitive. If you want to preserve the case of
-        Oracle object name set this directive to 1. I do not recommand this
-        unless you always quote object names on all your scripts.
+    PRESERVE_CASE
+        If you want to preserve the case of Oracle object name set this
+        directive to 1. By default Ora2Pg will convert all Oracle object
+        names to lower case. I do not recommand to enable this unless you
+        will always have to double-quote object names on all your SQL
+        scripts.
 
     ORA_RESERVED_WORDS
         Allow escaping of column name using Oracle reserved words. Value is

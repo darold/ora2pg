@@ -315,11 +315,12 @@ this can be mandatory following the database connection user.
 
 =item SCHEMA
 
-This directive is used to set the schema name to use during export. Take care that this directive is case sensitive. For example:
+This directive is used to set the schema name to use during export.
+For example:
 
 	SCHEMA	APPS
 
-will only extract objects associated to the APPS schema.
+will extract objects associated to the APPS schema.
 
 =item EXPORT_SCHEMA
 
@@ -833,12 +834,12 @@ the default list used:
 
 Note that the directive and the list definition must be a single line.
 
-=item CASE_SENSITIVE
+=item PRESERVE_CASE
 
-By default Ora2P convert all object names to lower case as PostgreSQL is case
-insensitive. If you want to preserve the case of Oracle object name set this
-directive to 1. I do not recommand this unless you always quote object names
-on all your scripts.
+If you want to preserve the case of Oracle object name set this directive to 1.
+By default Ora2Pg will convert all Oracle object names to lower case.  I do not
+recommand to enable this unless you will always have to double-quote object
+names on all your SQL scripts.
 
 =item ORA_RESERVED_WORDS
 

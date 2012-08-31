@@ -180,7 +180,7 @@ DATA_LIMIT	10000
 # By default all object names are converted to lower case, if you
 # want to preserve Oracle object name asis set this to 1. Not recommanded
 # unless you always quote all tables and columns on all your scripts.
-CASE_SENSITIVE	0
+PRESERVE_CASE	0
 
 # Support for include a WHERE clause filter when dumping the contents
 # of tables. Value is construct as follow: TABLE_NAME[WHERE_CLAUSE], or

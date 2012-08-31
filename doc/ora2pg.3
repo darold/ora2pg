@@ -427,13 +427,14 @@ The Oracle database export can be limited to a specific Schema or Namespace,
 this can be mandatory following the database connection user.
 .IP "\s-1SCHEMA\s0" 4
 .IX Item "SCHEMA"
-This directive is used to set the schema name to use during export. Take care that this directive is case sensitive. For example:
+This directive is used to set the schema name to use during export.
+For example:
 .Sp
 .Vb 1
 \&        SCHEMA  APPS
 .Ve
 .Sp
-will only extract objects associated to the \s-1APPS\s0 schema.
+will extract objects associated to the \s-1APPS\s0 schema.
 .IP "\s-1EXPORT_SCHEMA\s0" 4
 .IX Item "EXPORT_SCHEMA"
 By default the Oracle schema is not exported into the PostgreSQL database and
@@ -910,12 +911,12 @@ the default list used:
 .Ve
 .Sp
 Note that the directive and the list definition must be a single line.
-.IP "\s-1CASE_SENSITIVE\s0" 4
-.IX Item "CASE_SENSITIVE"
-By default Ora2P convert all object names to lower case as PostgreSQL is case
-insensitive. If you want to preserve the case of Oracle object name set this
-directive to 1. I do not recommand this unless you always quote object names
-on all your scripts.
+.IP "\s-1PRESERVE_CASE\s0" 4
+.IX Item "PRESERVE_CASE"
+If you want to preserve the case of Oracle object name set this directive to 1.
+By default Ora2Pg will convert all Oracle object names to lower case.  I do not
+recommand to enable this unless you will always have to double-quote object
+names on all your \s-1SQL\s0 scripts.
 .IP "\s-1ORA_RESERVED_WORDS\s0" 4
 .IX Item "ORA_RESERVED_WORDS"
 Allow escaping of column name using Oracle reserved words. Value is a list of
