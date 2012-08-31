@@ -491,7 +491,7 @@ sub _init
 	# Backward compatibility with PG_NUMERIC_TYPE alone
 	$self->{pg_integer_type} = 1 if (not defined $self->{pg_integer_type});
 	# Backward compatibility with CASE_SENSITIVE
-	$self->{preserve_case} = $self->{case_sensitive} if (defined $self->{case_sensitive});
+	$self->{preserve_case} = $self->{case_sensitive} if (defined $self->{case_sensitive} && not defined $self->{preserve_case});
 
 	if (($self->{standard_conforming_strings} =~ /^off$/i) || ($self->{standard_conforming_strings} == 0)) {
 		$self->{standard_conforming_strings} = 0;
@@ -1077,14 +1077,14 @@ sub _get_sql_data
 			$self->{views}{$view}{text} = $self->_format_view($self->{views}{$view}{text});
 			if (!@{$self->{views}{$view}{alias}}) {
 				if (!$self->{preserve_case}) {
-					$sql_output .= "CREATE OR REPLACE VIEW \"\L$view\E\" AS ";
+					$sql_output .= "CREATE OR REPLACE VIEW \L$view\E AS ";
 				} else {
 					$sql_output .= "CREATE OR REPLACE VIEW \"$view\" AS ";
 				}
 				$sql_output .= $self->{views}{$view}{text} . ";\n";
 			} else {
 				if (!$self->{preserve_case}) {
-					$sql_output .= "CREATE OR REPLACE VIEW \"\L$view\E\" (";
+					$sql_output .= "CREATE OR REPLACE VIEW \L$view\E (";
 				} else {
 					$sql_output .= "CREATE OR REPLACE VIEW \"$view\" (";
 				}
@@ -1096,7 +1096,7 @@ sub _get_sql_data
 						$sql_output .= ", ";
 					}
 					if (!$self->{preserve_case}) {
-						$sql_output .= "\"\L$d->[0]\E\"";
+						$sql_output .= "\L$d->[0]\E";
 					} else {
 						$sql_output .= "\"$d->[0]\"";
 					}
@@ -1215,7 +1215,11 @@ sub _get_sql_data
 			$cache = $seq->[5] if ($seq->[5]);
 			my $cycle = '';
 			$cycle = ' CYCLE' if ($seq->[6] eq 'Y');
-			$sql_output .= "CREATE SEQUENCE \"\L$seq->[0]\E\" INCREMENT $seq->[3]";
+			if (!$self->{preserve_case}) {
+				$sql_output .= "CREATE SEQUENCE \L$seq->[0]\E INCREMENT $seq->[3]";
+			} else {
+				$sql_output .= "CREATE SEQUENCE \"$seq->[0]\" INCREMENT $seq->[3]";
+			}
 			if ($seq->[1] <= (-2**63-1)) {
 				$sql_output .= " NO MINVALUE";
 			} else {
@@ -1269,7 +1273,7 @@ sub _get_sql_data
 			# Check if it's like a pg rule
 			if (!$self->{pg_supports_insteadof} && $trig->[1] =~ /INSTEAD OF/) {
 				if (!$self->{preserve_case}) {
-					$sql_output .= "CREATE OR REPLACE RULE \"\L$trig->[0]\E\" AS\n\tON \L$trig->[3]\E\n\tDO INSTEAD\n(\n\t$trig->[4]\n);\n\n";
+					$sql_output .= "CREATE OR REPLACE RULE \L$trig->[0]\E AS\n\tON \L$trig->[3]\E\n\tDO INSTEAD\n(\n\t$trig->[4]\n);\n\n";
 				} else {
 					$sql_output .= "CREATE OR REPLACE RULE \L$trig->[0]\E AS\n\tON \"$trig->[3]\"\n\tDO INSTEAD\n(\n\t$trig->[4]\n);\n\n";
 				}
@@ -1286,10 +1290,12 @@ sub _get_sql_data
 						$trig->[4] =~ s/\b(END[;]*)$/RETURN NEW;\n$1/igs;
 					}
 				}
-				my $trig_table = $trig->[3];
-				$trig_table = lc($trig->[3]) if (!$self->{preserve_case});
+				if (!$self->{preserve_case}) {
+					$sql_output .= "DROP TRIGGER IF EXISTS \L$trig->[0]\E ON \L$trig->[3]\E CASCADE;\n";
+				} else {
+					$sql_output .= "DROP TRIGGER IF EXISTS \L$trig->[0]\E ON \"$trig->[3]\" CASCADE;\n";
+				}
 				if ($self->{pg_supports_when} && $trig->[5]) {
-					$sql_output .= "DROP TRIGGER IF EXISTS \L$trig->[0]\E ON \"$trig_table\" CASCADE;\n";
 					$sql_output .= "CREATE OR REPLACE FUNCTION trigger_fct_\L$trig->[0]\E () RETURNS trigger AS \$BODY\$\n$trig->[4]\n\$BODY\$\n LANGUAGE 'plpgsql';\n\n";
 					$trig->[6] =~ s/\n+$//s;
 					$trig->[6] =~ s/^[^\.\s\t]+\.//;
@@ -1302,13 +1308,17 @@ sub _get_sql_data
 					}
 					$sql_output .= "\tEXECUTE PROCEDURE trigger_fct_\L$trig->[0]\E();\n\n";
 				} else {
-					$sql_output .= "DROP TRIGGER IF EXISTS \L$trig->[0]\E ON \"$trig_table\" CASCADE;\n";
 					$sql_output .= "CREATE OR REPLACE FUNCTION trigger_fct_\L$trig->[0]\E () RETURNS trigger AS \$BODY\$\n$trig->[4]\n\$BODY\$\n LANGUAGE 'plpgsql';\n\n";
 					$sql_output .= "CREATE TRIGGER \L$trig->[0]\E\n\t";
-					if ($trig->[1] =~ s/ STATEMENT//) {
-						$sql_output .= "$trig->[1] $trig->[2] ON \"$trig_table\" FOR EACH STATEMENT\n";
+					if (!$self->{preserve_case}) {
+						$sql_output .= "$trig->[1] $trig->[2] ON \L$trig->[3]\E ";
 					} else {
-						$sql_output .= "$trig->[1] $trig->[2] ON \"$trig_table\" FOR EACH ROW\n";
+						$sql_output .= "$trig->[1] $trig->[2] ON \"$trig->[3]\" ";
+					}
+					if ($trig->[1] =~ s/ STATEMENT//) {
+						$sql_output .= "FOR EACH STATEMENT\n";
+					} else {
+						$sql_output .= "FOR EACH ROW\n";
 					}
 					$sql_output .= "\tEXECUTE PROCEDURE trigger_fct_\L$trig->[0]\E();\n\n";
 				}
@@ -1559,6 +1569,7 @@ sub _get_sql_data
 		$sql_header .= "-- Oracle tablespaces export, please edit path to match your filesystem.\n";
 		$sql_header .= "-- In PostgreSQl the path must be a directory and is expected to already exists\n";
 		my $create_tb = '';
+		my @done = ();
 		foreach my $tb_type (sort keys %{$self->{tablespaces}}) {
 			# TYPE - TABLESPACE_NAME - FILEPATH - OBJECT_NAME
 			foreach my $tb_name (sort keys %{$self->{tablespaces}{$tb_type}}) {
@@ -1567,13 +1578,19 @@ sub _get_sql_data
 					my $loc = $tb_name;
 					$tb_path =~ /^(.*)[^\\\/]+$/;
 					$loc = $1 . $loc;
-					$create_tb .= "CREATE TABLESPACE $tb_name LOCATION '$loc';\n" if ($create_tb !~ /CREATE TABLESPACE $tb_name LOCATION/s);
+					if (!grep(/^$tb_name$/, @done)) {
+						$create_tb .= "CREATE TABLESPACE \L$tb_name\E LOCATION '$loc';\n";
+					}
+					push(@done, $tb_name);
 					foreach my $obj (@{$self->{tablespaces}{$tb_type}{$tb_name}{$tb_path}}) {
 						next if ($obj =~ /\$/);
 						next if (($#{$self->{limited}} >= 0) && !grep($obj =~ /^$_$/i, @{$self->{limited}}));
 						next if (($#{$self->{excluded}} >= 0) && grep($obj =~ /^$_$/i, @{$self->{excluded}}));
-						next if ($sql_output =~ /ALTER $tb_type $obj SET TABLESPACE/i);
-						$sql_output .= "ALTER $tb_type $obj SET TABLESPACE $tb_name;\n";
+						if (!$self->{preserve_case} || ($tb_type eq 'INDEX')) {
+							$sql_output .= "ALTER $tb_type \L$obj\E SET TABLESPACE \L$tb_name\E;\n";
+						} else {
+							$sql_output .= "ALTER $tb_type \"$obj\" SET TABLESPACE \L$tb_name\E;\n";
+						}
 					}
 				}
 			}
@@ -1778,8 +1795,8 @@ sub _get_sql_data
 				}
 				if (!$self->{preserve_case}) {
 					$tmptb = lc($tmptb);
-				}
-				if ($tmptb !~ /"/) {
+					$tmptb =~ s/"//g;
+				} elsif ($tmptb !~ /"/) {
 					$tmptb = '"' . $tmptb . '"';
 				}
 				if ($self->{dbhdest}) {
@@ -1797,8 +1814,8 @@ sub _get_sql_data
 				}
 				if (!$self->{preserve_case}) {
 					$tmptb = lc($tmptb);
-				}
-				if ($tmptb !~ /"/) {
+					$tmptb =~ s/"//g;
+				} elsif ($tmptb !~ /"/) {
 					$tmptb = '"' . $tmptb . '"';
 				}
 				if ($self->{dbhdest}) {
@@ -1811,10 +1828,10 @@ sub _get_sql_data
 			my @tt = ();
 			my @stt = ();
 			my @nn = ();
-			my $s_out = "INSERT INTO \"\L$table\E\" (";
+			my $s_out = "INSERT INTO \L$table\E (";
 			$s_out = "INSERT INTO \"$table\" (" if ($self->{preserve_case});
 			if ($self->{type} eq 'COPY') {
-				$s_out = "\nCOPY \"\L$table\E\" ";
+				$s_out = "\nCOPY \L$table\E ";
 				$s_out = "\nCOPY \"$table\" " if ($self->{preserve_case});
 			}
 			my @fname = ();
@@ -1844,7 +1861,7 @@ sub _get_sql_data
 					push(@nn, $f);
 					if ($self->{type} ne 'COPY') {
 						if (!$self->{preserve_case}) {
-							$s_out .= "\"\L$f->[0]\E\",";
+							$s_out .= "\L$f->[0]\E,";
 						} else {
 							$s_out .= "\"$f->[0]\",";
 						}
@@ -1906,8 +1923,8 @@ sub _get_sql_data
 				}
 				if (!$self->{preserve_case}) {
 					$tmptb = lc($tmptb);
-				}
-				if ($tmptb !~ /"/) {
+					$tmptb =~ s/"//g;
+				} elsif ($tmptb !~ /"/) {
 					$tmptb = '"' . $tmptb . '"';
 				}
 				if ($self->{dbhdest}) {
@@ -1963,8 +1980,8 @@ sub _get_sql_data
 					}
 					if (!$self->{preserve_case}) {
 						$tmptb = lc($tmptb);
-					}
-					if ($tmptb !~ /"/) {
+						$tmptb =~ s/"//g;
+					} elsif ($tmptb !~ /"/) {
 						$tmptb = '"' . $tmptb . '"';
 					}
 					if ($self->{dbhdest}) {
@@ -1977,10 +1994,10 @@ sub _get_sql_data
 				my @tt = ();
 				my @stt = ();
 				my @nn = ();
-				my $s_out = "INSERT INTO \"\L$table\E\" (";
+				my $s_out = "INSERT INTO \L$table\E (";
 				$s_out = "INSERT INTO \"$table\" (" if ($self->{preserve_case});
 				if ($self->{type} eq 'COPY') {
-					$s_out = "\nCOPY \"\L$table\E\" ";
+					$s_out = "\nCOPY \L$table\E ";
 					$s_out = "\nCOPY \"$table\" " if ($self->{preserve_case});
 				}
 				my @fname = ();
@@ -2011,7 +2028,7 @@ sub _get_sql_data
 						push(@nn, $f);
 						if ($self->{type} ne 'COPY') {
 							if (!$self->{preserve_case}) {
-								$s_out .= "\"\L$f->[0]\E\",";
+								$s_out .= "\L$f->[0]\E,";
 							} else {
 								$s_out .= "\"$f->[0]\",";
 							}
@@ -2076,8 +2093,8 @@ sub _get_sql_data
 					}
 					if (!$self->{preserve_case}) {
 						$tmptb = lc($tmptb);
-					}
-					if ($tmptb !~ /"/) {
+						$tmptb =~ s/"//g;
+					} elsif ($tmptb !~ /"/) {
 						$tmptb = '"' . $tmptb . '"';
 					}
 					if ($self->{dbhdest}) {
@@ -2245,19 +2262,25 @@ CREATE TRIGGER insert_${table}_trigger
 
 	# Dump the database structure: tables, constraints, indexes, etc.
 	if ($self->{export_schema} &&  $self->{schema}) {
-		my $schem = $self->{schema};
-		$schem = lc($self->{schema})  if (!$self->{preserve_case});
 		if ($self->{create_schema}) {
-			$sql_output .= "CREATE SCHEMA \"$schem\";\n\n";
+			if (!$self->{preserve_case}) {
+				$sql_output .= "CREATE SCHEMA \L$self->{schema}\E;\n\n";
+			} else {
+				$sql_output .= "CREATE SCHEMA \"$self->{schema}\";\n\n";
+			}
 		}
 		if ($self->{pg_schema}) {
 			if (!$self->{preserve_case}) {
-				$sql_output .= "SET search_path = \"\L$self->{pg_schema}\E\";\n\n";
+				$sql_output .= "SET search_path = \L$self->{pg_schema}\E;\n\n";
 			} else {
 				$sql_output .= "SET search_path = \"$self->{pg_schema}\";\n\n";
 			}
 		} else {
-			$sql_output .= "SET search_path = \"$schem\", pg_catalog;\n\n";
+			if (!$self->{preserve_case}) {
+				$sql_output .= "SET search_path = \L$self->{schema}, pg_catalog\E;\n\n";
+			} else {
+				$sql_output .= "SET search_path = \"$self->{schema}, pg_catalog\";\n\n";
+			}
 		}
 	}
 
@@ -2305,7 +2328,7 @@ CREATE TRIGGER insert_${table}_trigger
 			$foreign = ' FOREIGN';
 		}
 		if (!$self->{preserve_case}) {
-			$sql_output .= "CREATE$foreign ${$self->{tables}{$table}{table_info}}[1] \"\L$tbname\E\" (\n";
+			$sql_output .= "CREATE$foreign ${$self->{tables}{$table}{table_info}}[1] \L$tbname\E (\n";
 		} else {
 			$sql_output .= "CREATE$foreign ${$self->{tables}{$table}{table_info}}[1] \"$tbname\" (\n";
 		}
@@ -2321,7 +2344,7 @@ CREATE TRIGGER insert_${table}_trigger
 					$fname = $self->{replaced_cols}{"\L$table\E"}{"\L$fname\E"};
 				}
 				if (!$self->{preserve_case}) {
-					$sql_output .= "\t\"\L$fname\E\" $type";
+					$sql_output .= "\t\L$fname\E $type";
 				} else {
 					$sql_output .= "\t\"$fname\" $type";
 				}
@@ -2358,7 +2381,7 @@ CREATE TRIGGER insert_${table}_trigger
 		# Add comments on table
 		if (!$self->{disable_comment} && ${$self->{tables}{$table}{table_info}}[2]) {
 			if (!$self->{preserve_case}) {
-				$sql_output .= "COMMENT ON TABLE \"\L$tbname\E\" IS E'${$self->{tables}{$table}{table_info}}[2]';\n";
+				$sql_output .= "COMMENT ON TABLE \L$tbname\E IS E'${$self->{tables}{$table}{table_info}}[2]';\n";
 			} else {
 				$sql_output .= "COMMENT ON TABLE \"$tbname\".\"$f->[0]\" IS E'${$self->{tables}{$table}{table_info}}[2]';\n";
 			}
@@ -2382,7 +2405,7 @@ CREATE TRIGGER insert_${table}_trigger
 			my $owner = ${$self->{tables}{$table}{table_info}}[0];
 			$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
 			if (!$self->{preserve_case}) {
-				$sql_output .= "ALTER ${$self->{tables}{$table}{table_info}}[1] \"\L$tbname\E\" OWNER TO \L$owner\E;\n";
+				$sql_output .= "ALTER ${$self->{tables}{$table}{table_info}}[1] \L$tbname\E OWNER TO \L$owner\E;\n";
 			} else {
 				$sql_output .= "ALTER ${$self->{tables}{$table}{table_info}}[1] \"$tbname\" OWNER TO $owner;\n";
 			}
@@ -2435,7 +2458,7 @@ CREATE TRIGGER insert_${table}_trigger
 				$tbname = $self->{replaced_tables}{"\L$table\E"};
 			}
 			if (!$self->{preserve_case}) {
-				$sql_output .= "CREATE TABLE \"\L$tbname\E\" (\n";
+				$sql_output .= "CREATE TABLE \L$tbname\E (\n";
 			} else {
 				$sql_output .= "CREATE TABLE \"$tbname\" (\n";
 			}
@@ -2445,7 +2468,7 @@ CREATE TRIGGER insert_${table}_trigger
 					my $type = $self->_sql_type($f->[1], $f->[2], $f->[5], $f->[6]);
 					$type = "$f->[1], $f->[2]" if (!$type);
 					if (!$self->{preserve_case}) {
-						$sql_output .= "\t\"\L$f->[0]\E\" $type";
+						$sql_output .= "\t\L$f->[0]\E $type";
 					} else {
 						$sql_output .= "\t\"$f->[0]\" $type";
 					}
@@ -2542,14 +2565,17 @@ sub _create_indexes
 			}
 		}
 		my $columns = join(',', @{$indexes{$idx}});
-		$columns =~ s/""/"/gs;
+		if (!$self->{preserve_case}) {
+			$columns =~ s/"//gs;
+		} else {
+			$columns =~ s/""/"/gs;
+		}
 		my $colscompare = $columns;
 		$colscompare =~ s/"//gs;
 		my $columnlist = '';
 		my $skip_index_creation = 0;
 		my $unique_key = $self->{tables}{$table}{unique_key};
 		foreach my $consname (keys %$unique_key) {
-			my $newconsname = $self->{preserve_case} ? $consname : lc($consname);
 			my $constype =   $unique_key->{$consname}{type};
 			next if (($constype ne 'P') && ($constype ne 'U'));
 			my @conscols = @{$unique_key->{$consname}{columns}};
@@ -2574,9 +2600,9 @@ sub _create_indexes
 			$unique = ' UNIQUE' if ($self->{tables}{$table}{uniqueness}{$idx} eq 'UNIQUE');
 			my $str = '';
 			if (!$self->{preserve_case}) {
-				$str .= "CREATE$unique INDEX \L$idx\E ON \"\L$table\E\" (\L$columns\E);";
+				$str .= "CREATE$unique INDEX \L$idx\E ON \L$table\E (\L$columns\E);";
 			} else {
-				$str .= "CREATE$unique INDEX $idx ON \"$table\" ($columns);";
+				$str .= "CREATE$unique INDEX \L$idx\E ON \"$table\" ($columns);";
 			}
 			push(@out, $str);
 		}
@@ -2616,7 +2642,6 @@ sub _drop_indexes
 		my $skip_index_creation = 0;
 		my $unique_key = $self->{tables}{$table}{unique_key};
 		foreach my $consname (keys %$unique_key) {
-			my $newconsname = $self->{preserve_case} ? $consname : lc($consname);
 			my $constype =   $unique_key->{$consname}{type};
 			next if (($constype ne 'P') && ($constype ne 'U'));
 			my @conscols = @{$unique_key->{$consname}{columns}};
@@ -2637,10 +2662,7 @@ sub _drop_indexes
 		# Do not create the index if there already a constraint on the same column list
 		# the index will be automatically created by PostgreSQL at constraint import time.
 		if (!$skip_index_creation) {
-			my $str = "DROP INDEX \"$idx\";";
-			if (!$self->{preserve_case}) {
-				$str = "DROP INDEX \"\L$idx\E\";";
-			}
+			my $str = "DROP INDEX \L$idx\E;";
 			if ($self->{dbhdest}) {
 				my $s = $self->{dbhdest}->do($str);
 			} else {
@@ -2670,12 +2692,7 @@ sub _create_unique_keys
 	}
 
 	# Set the unique (and primary) key definition 
-	my $newtabname = $table;
-	if (!$self->{preserve_case}) {
-		$newtabname = lc($table);
-	}
 	foreach my $consname (keys %$unique_key) {
-		my $newconsname = $self->{preserve_case} ? $consname : lc($consname);
 		my $constype =   $unique_key->{$consname}{type};
 		my $constgen =   $unique_key->{$consname}{generated};
 		my @conscols = @{$unique_key->{$consname}{columns}};
@@ -2687,13 +2704,25 @@ sub _create_unique_keys
 				$conscols[$i] = $self->{replaced_cols}{"\L$tbsaved\E"}{"\L$conscols[$i]\E"};
 			}
 		}
-		my $columnlist = join(',', map(qq{"$_"}, @conscols));
+		my $columnlist = join(',', @conscols);
+		if ($self->{preserve_case}) {
+			$columnlist = join(',', map(qq{"$_"}, @conscols));
+		} else {
+			$columnlist = lc($columnlist);
+		}
 		if ($columnlist) {
-			$columnlist = lc($columnlist) unless ($self->{preserve_case});
 			if (!$self->{keep_pkey_names} || ($constgen eq 'GENERATED NAME')) {
-				$out .= qq{ALTER TABLE "$newtabname" ADD $constypename ($columnlist);\n};
+				if (!$self->{preserve_case}) {
+					$out .= "ALTER TABLE \L$table\E ADD $constypename ($columnlist);\n";
+				} else {
+					$out .= "ALTER TABLE \"$table\" ADD $constypename ($columnlist);\n";
+				}
 			} else {
-				$out .= qq{ALTER TABLE "$newtabname" ADD CONSTRAINT "$newconsname" $constypename ($columnlist);\n};
+				if (!$self->{preserve_case}) {
+					$out .= "ALTER TABLE \L$table\E ADD CONSTRAINT \L$consname\E $constypename ($columnlist);\n";
+				} else {
+					$out .= "ALTER TABLE \"$table\" ADD CONSTRAINT \L$consname\E $constypename ($columnlist);\n";
+				}
 			}
 		}
 	}
@@ -2738,11 +2767,11 @@ sub _create_check_constraint
 			if (!$self->{preserve_case}) {
 				foreach my $c (@$field_name) {
 					# Force lower case
-					$chkconstraint =~ s/"$c"/"\L$c\E"/igs;
+					$chkconstraint =~ s/"$c"/\L$c\E/igs;
 				}
-				$out .= "ALTER TABLE \" \L$table\E\" ADD CONSTRAINT \"\L$k\E\" CHECK ($chkconstraint);\n";
+				$out .= "ALTER TABLE \L$table\E ADD CONSTRAINT \L$k\E CHECK ($chkconstraint);\n";
 			} else {
-				$out .= "ALTER TABLE \"$table\" ADD CONSTRAINT \"$k\" CHECK ($chkconstraint);\n";
+				$out .= "ALTER TABLE \"$table\" ADD CONSTRAINT $k CHECK ($chkconstraint);\n";
 			}
 		}
 	}
@@ -2792,12 +2821,17 @@ sub _create_foreign_keys
 					map { s/"$c"/"$self->{replaced_cols}{"\L$desttable\E"}{$c}"/i } @rfkeys;
 				}
 			}
-			map { s/["]+/"/g; } @rfkeys;
-			map { s/["]+/"/g; } @lfkeys;
-			if (!$self->{preserve_case}) {
-				$str .= "ALTER TABLE \"\L$substable\E\" ADD CONSTRAINT \"\L$h->[0]\E\" FOREIGN KEY (" . lc(join(',', @lfkeys)) . ") REFERENCES \"\L$subsdesttable\E\" (" . lc(join(',', @rfkeys)) . ")";
+			if ($self->{preserve_case}) {
+				map { s/["]+/"/g; } @rfkeys;
+				map { s/["]+/"/g; } @lfkeys;
 			} else {
-				$str .= "ALTER TABLE \"$substable\" ADD CONSTRAINT \"$h->[0]\" FOREIGN KEY (" . join(',', @lfkeys) . ") REFERENCES \"$subsdesttable\" (" . join(',', @rfkeys) . ")";
+				map { s/["]+//g; } @rfkeys;
+				map { s/["]+//g; } @lfkeys;
+			}
+			if (!$self->{preserve_case}) {
+				$str .= "ALTER TABLE \L$substable\E ADD CONSTRAINT \L$h->[0]\E FOREIGN KEY (" . lc(join(',', @lfkeys)) . ") REFERENCES \L$subsdesttable\E (" . lc(join(',', @rfkeys)) . ")";
+			} else {
+				$str .= "ALTER TABLE \"$substable\" ADD CONSTRAINT $h->[0] FOREIGN KEY (" . join(',', @lfkeys) . ") REFERENCES \"$subsdesttable\" (" . join(',', @rfkeys) . ")";
 			}
 			$str .= " MATCH $h->[2]" if ($h->[2]);
 			$str .= " ON DELETE $h->[3]";
@@ -2831,9 +2865,9 @@ sub _drop_foreign_keys
 		}
 		my $str = '';
 		if (!$self->{preserve_case}) {
-			$str = "ALTER TABLE \"\L$table\E\" DROP CONSTRAINT \"\L$h->[0]\E\";";
+			$str = "ALTER TABLE \L$table\E DROP CONSTRAINT \L$h->[0]\E;";
 		} else {
-			$str .= "ALTER TABLE \"$table\" DROP CONSTRAINT \"$h->[0]\";";
+			$str .= "ALTER TABLE \"$table\" DROP CONSTRAINT $h->[0];";
 		}
 		if ($self->{dbhdest}) {
 			my $s = $self->{dbhdest}->do($str);
@@ -3271,7 +3305,7 @@ sub _get_privilege
 		$str .= " WHERE GRANTOR NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
 	}
 	$str .= " ORDER BY TABLE_NAME, GRANTEE";
-	my $error = "\n\nFATAL: YOU MUST BE CONNECTED AS AN ORACLE DBA USER TO RETRIEVED GRANTS\n\n";
+	my $error = "\n\nFATAL: You must be connected as an oracle dba user to retrieved grants\n\n";
 	my $sth = $self->{dbh}->prepare($str) or $self->logit($error . "FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	while (my $row = $sth->fetch) {
@@ -3769,8 +3803,8 @@ sub _get_tablespaces
 
 	# Retrieve all object with tablespaces.
 my $str = qq{
-SELECT a.SEGMENT_NAME,a.TABLESPACE_NAME,a.SEGMENT_TYPE,c.FILE_NAME
-FROM $self->{prefix}_SEGMENTS a,$self->{prefix}_OBJECTS b, $self->{prefix}_DATA_FILES c
+SELECT a.SEGMENT_NAME,a.TABLESPACE_NAME,a.SEGMENT_TYPE,c.FILE_NAME, a.OWNER
+FROM DBA_SEGMENTS a, $self->{prefix}_OBJECTS b, DBA_DATA_FILES c
 WHERE a.SEGMENT_TYPE IN ('INDEX', 'TABLE')
 AND a.SEGMENT_NAME = b.OBJECT_NAME
 AND a.SEGMENT_TYPE = b.OBJECT_TYPE
@@ -3780,10 +3814,10 @@ AND a.TABLESPACE_NAME = c.TABLESPACE_NAME
 	if ($self->{schema}) {
 		$str .= " AND upper(a.OWNER)='\U$self->{schema}\E'";
 	} else {
-		$str .= " AND a.TABLESPACE_NAME NOT IN ('SYSTEM','TOOLS')";
+		$str .= " AND upper(a.OWNER) NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
 	}
 	$str .= " ORDER BY TABLESPACE_NAME";
-	my $error = "\n\nFATAL: YOU MUST BE CONNECTED AS AN ORACLE DBA USER TO RETRIEVED TABLESPACES\n\n";
+	my $error = "\n\nFATAL: You must be connected as an oracle dba user to retrieved tablespaces\n\n";
 	my $sth = $self->{dbh}->prepare($str) or $self->logit($error . "FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
@@ -4234,9 +4268,15 @@ sub _convert_package
 		$content =~ s/END[^;]*;$//is;
 		my %comments = $self->_remove_comments(\$content);
 		my @functions = $self->_extract_functions($content);
-		$content = "-- PostgreSQL does not recognize PACKAGES, using SCHEMA instead.\n";
-		$content .= "DROP SCHEMA IF EXISTS $pname CASCADE;\n";
-		$content .= "CREATE SCHEMA $pname;\n";
+		if (!$self->{preserve_case}) {
+			$content = "-- PostgreSQL does not recognize PACKAGES, using SCHEMA instead.\n";
+			$content .= "DROP SCHEMA IF EXISTS $pname CASCADE;\n";
+			$content .= "CREATE SCHEMA $pname;\n";
+		} else {
+			$content = "-- PostgreSQL does not recognize PACKAGES, using SCHEMA instead.\n";
+			$content .= "DROP SCHEMA IF EXISTS \"$pname\" CASCADE;\n";
+			$content .= "CREATE SCHEMA \"$pname\";\n";
+		}
 		$self->{pkgcost} = 0;
 		foreach my $f (@functions) {
 			$content .= $self->_convert_function($f, $pname, \%comments);
@@ -4365,9 +4405,14 @@ sub _convert_function
 		return $plsql;
 	}
 	if ($func_code) {
-		$func_name= "\"$func_name\"" if ($self->{preserve_case});
+		if ($self->{preserve_case}) {
+			$func_name= "\"$func_name\"";
+			$func_name = "\"$pname\"" . '.' . $func_name if ($pname);
+		} else {
+			$func_name= lc($func_name);
+			$func_name = $pname . '.' . $func_name if ($pname);
+		}
 		$func_args = '()' if (!$func_args);
-		$func_name = $pname . '.' . $func_name if ($pname);
 		my $function = "\nCREATE OR REPLACE FUNCTION $func_name $func_args";
 		if (!$pname && $self->{export_schema} && $self->{schema}) {
 			if (!$self->{preserve_case}) {
@@ -4409,9 +4454,8 @@ sub _convert_function
 		}
 		$function = "\n$func_before$function";
 
-		$pname =~ s/"//g; # Remove case sensitivity quoting
 		if ($pname && $self->{file_per_function} && !$self->{dbhdest}) {
-			$func_name =~ s/^$pname\.//i;
+			$func_name =~ s/^"*$pname"*\.//i;
 			$func_name =~ s/"//g; # Remove case sensitivity quoting
 			$self->logit("\tDumping to one file per function: $dirprefix\L$pname/$func_name\E_$self->{output}\n", 1);
 			my $sql_header = "-- Generated by Ora2Pg, the Oracle database Schema converter, version $VERSION\n";
@@ -4679,12 +4723,12 @@ sub _convert_type
 		$type_name =~ s/"//g;
 		$content = qq{
 --
-CREATE TYPE \"\L$type_name\E\";
+CREATE TYPE \L$type_name\E;
 CREATE OR REPLACE FUNCTION \L$type_name\E_in_function(cstring) RETURNS \L$type_name\E AS
  ... CODE HERE WHAT TO DO WHEN INSERTING A VALUE ... ;
 CREATE OR REPLACE FUNCTION \L$type_name\E_out_function(\L$type_name\E) RETURNS cstring AS
  ... CODE HERE WHAT TO DO WHEN QUERYING THE VALUE ... ;
-CREATE TYPE \"\L$type_name\E\" (
+CREATE TYPE \L$type_name\E (
         INTERNALLENGTH = VARIABLE,
         INPUT = \L$type_name\E_in_function,
         OUTPUT = \L$type_name\E_out_function,
@@ -4722,7 +4766,7 @@ CREATE TYPE \"\L$type_name\E\" (
 		}
 		if (!exists $fctname{constructor} && !exists $fctname{member}) {
 			$content .= qq{
-CREATE TYPE \"\L$type_name\E\" AS (
+CREATE TYPE \L$type_name\E AS (
 $declar
 );
 };
@@ -4731,7 +4775,7 @@ $declar
 			$content .= qq{
 -- Oracle custom type body are equivalent to PostgreSQL custom type, feel free
 -- to adapt the above function to the following custom type.
-CREATE TYPE \"\L$type_name\E\" AS (
+CREATE TYPE \L$type_name\E AS (
 $declar
 	INTERNALLENGTH = VARIABLE,
 	INPUT = $fctname{constructor},
@@ -4765,7 +4809,7 @@ $declar
 };
 		} else {
 			$content = qq{
-CREATE TYPE \"\L$type_name\E\" AS (
+CREATE TYPE \L$type_name\E AS (
 $declar
 );
 };
@@ -4791,7 +4835,7 @@ $declar
 		$tbname =~ s/;//g;
 		return if ($type_name =~ /\$/);
 		$content = qq{
-CREATE TYPE \"\L$type_name\E\" AS ($type_name $tbname\[$size\]);
+CREATE TYPE \L$type_name\E AS ($type_name $tbname\[$size\]);
 };
 	} else {
 		$plsql =~ s/;$//;
@@ -4869,7 +4913,7 @@ sub _extract_type
 		$tbname =~ s/;//g;
 		return if ($type_name =~ /\$/);
 		$content = qq{
-CREATE TYPE \"\L$type_name\E\" AS ($type_name $tbname\[$size\]);
+CREATE TYPE \L$type_name\E AS ($type_name $tbname\[$size\]);
 };
 	}
 
