@@ -868,7 +868,7 @@ sub _tables
 				}
 			}
 			# usually OWNER,TYPE,COMMENT,NUMROW
-			$self->{tables}{$t->[2]}{table_info} = [($t->[1],$t->[3],$t->[4])];
+			$self->{tables}{$t->[2]}{table_info} = [($t->[1],$t->[3],$t->[4],$t->[5])];
 
 			# Set the fields information
 			my $query = "SELECT * FROM \"$t->[1]\".\"$t->[2]\" WHERE 1=0";
@@ -4667,6 +4667,7 @@ CREATE TYPE \"\L$type_name\E\" (
 		}
 		my $declar = Ora2Pg::PLSQL::replace_sql_type($description, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type});
 		$type_name =~ s/"//g;
+		$declar =~ s/\);$//s;
 		return if ($type_name =~ /\$/);
 
 		if ($body =~ /TYPE BODY[\s\t]+$type_name[\s\t]*(IS|AS)[\s\t]*(.*)END;/is) {
