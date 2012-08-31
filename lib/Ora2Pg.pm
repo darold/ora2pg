@@ -1853,9 +1853,7 @@ sub _get_sql_data
 			if ($self->{type} eq 'COPY') {
 				map { $_ = '"' . $_ . '"' } @fname;
 				$s_out .= '(' . join(',', @fname) . ") FROM STDIN;\n";
-			}
-
-			if ($self->{type} ne 'COPY') {
+			} else {
 				$s_out =~ s/,$//;
 				$s_out .= ") VALUES (";
 			}
@@ -3675,11 +3673,12 @@ Returns a hash of all type names with their code.
 
 sub _get_types
 {
-	my ($self) = @_;
+	my ($self, $name) = @_;
 
 	# Retrieve all user defined types
 	my $str = "SELECT DISTINCT OBJECT_NAME,OWNER FROM $self->{prefix}_OBJECTS WHERE OBJECT_TYPE='TYPE'";
 	$str .= " AND STATUS='VALID'" if (!$self->{export_invalid});
+	$str .= " AND OBJECT_NAME='$name'" if ($name);
 	if (!$self->{schema}) {
 		# We need to remove SYSTEM from the exclusion list
 		shift(@{$self->{sysusers}});
@@ -3860,7 +3859,7 @@ WHERE
 # This is a routine paralellizing access to format_data_for_parallel over several threads
 sub format_data_parallel
 {
-	my ($self, $rows, $data_types, $action, $src_data_types) = @_;
+	my ($self, $rows, $data_types, $action, $src_data_types, $custom_types) = @_;
 
 	# Ok, here is the required parallelism
 
@@ -3946,86 +3945,123 @@ sub worker_format_data
 		my $payload=$queue_todo->dequeue();
 		last unless (defined $payload);
 		# The received payload is an array of a columns array, types array, type of action and source types array
-		$self->format_data_row($payload->[0],$payload->[1],$payload->[2], $payload->[3]);
+		$self->format_data_row($payload->[0],$payload->[1],$payload->[2], $payload->[3], $payload->[4]);
 		$queue_done->enqueue($payload->[0]); # We only need data
 		$counter++;
 	}
 	return 0;
 }
 
+sub _get_custom_types
+{
+        my $str = uc(shift);
+
+	my %all_types = %TYPE;
+	$all_types{'DOUBLE'} = $all_types{'DOUBLE PRECISION'};
+	delete $all_types{'DOUBLE PRECISION'};
+	my @types_found = ();
+	while ($str =~ s/(\w+)//s) {
+		if (exists $all_types{$1}) {
+			push(@types_found, $all_types{$1});
+		}
+	}
+        return @types_found;
+}
+
+
 sub format_data_row
 {
-	my ($self, $row, $data_types, $action, $src_data_types) = @_;
+	my ($self, $row, $data_types, $action, $src_data_types, $custom_types) = @_;
 
 	for (my $idx = 0; $idx < scalar(@$data_types); $idx++) {
 		my $data_type = $data_types->[$idx] || '';
-
-		# Preparing data for output
-		if ($action ne 'COPY') {
-			if ($row->[$idx] eq '') {
-				$row->[$idx] = 'NULL';
-			} elsif ($data_type eq 'bytea') {
-				$row->[$idx] = escape_bytea($row->[$idx]);
-				if (!$self->{standard_conforming_strings}) {
-					$row->[$idx] = "'$row->[$idx]'";
-				} else {
-					$row->[$idx] = "E'$row->[$idx]'";
-				}
-			} elsif ($data_type =~ /(char|text|xml)/) {
-				$row->[$idx] =~ s/'/''/gs; # double single quote
-				if (!$self->{standard_conforming_strings}) {
-					$row->[$idx] =~ s/\\/\\\\/g;
-					$row->[$idx] =~ s/\0//gs;
-					$row->[$idx] = "'$row->[$idx]'";
-				} else {
-					$row->[$idx] =~ s/\0//gs;
-					$row->[$idx] = "E'$row->[$idx]'";
-				}
-			} elsif ($data_type =~ /(date|time)/) {
-				if ($row->[$idx] =~ /^0000-00-00/) {
-					$row->[$idx] = 'NULL';
-				} else {
-					$row->[$idx] = "'$row->[$idx]'";
-				}
+		if ($row->[$idx] =~ /^ARRAY/) {
+			my @type_col = ();
+			for (my $i = 0;  $i <= $#{$row->[$idx]}; $i++) {
+				push(@type_col, $self->format_data_type($row->[$idx][$i], $custom_types->{$data_type}[$i], $action));
+			}
+			if ($action eq 'COPY') {
+				$row->[$idx] =  "(" . join(',', @type_col) . ")";
 			} else {
-				$row->[$idx] =~ s/,/\./;
-				$row->[$idx] =~ s/\~/inf/;
+				$row->[$idx] =  "ROW(" . join(',', @type_col) . ")";
 			}
 		} else {
-			if ($row->[$idx] eq '') {
-				$row->[$idx] = '\N';
-			} elsif ($data_type !~ /(char|date|time|text|bytea|xml)/) {
-				$row->[$idx] =~ s/,/\./;
-				$row->[$idx] =~ s/\~/inf/;
-			} elsif ($data_type eq 'bytea') {
-				$row->[$idx] = escape_bytea($row->[$idx]);
-			} elsif ($data_type !~ /(date|time)/) {
-				$row->[$idx] =~ s/\0//gs;
-				$row->[$idx] =~ s/\\/\\\\/g;
-				$row->[$idx] =~ s/\r/\\r/g;
-				$row->[$idx] =~ s/\n/\\n/g;
-				$row->[$idx] =~ s/\t/\\t/g;
-				if (!$self->{noescape}) {
-					$row->[$idx] =~ s/\f/\\f/gs;
-					$row->[$idx] =~ s/([\1-\10])/sprintf("\\%03o", ord($1))/egs;
-					$row->[$idx] =~ s/([\13-\14])/sprintf("\\%03o", ord($1))/egs;
-					$row->[$idx] =~ s/([\16-\37])/sprintf("\\%03o", ord($1))/egs;
-				}
-			} elsif ($data_type =~ /(date|time)/) {
-				if ($row->[$idx] =~ /^0000-00-00/) {
-					$row->[$idx] = '\N';
-				}
-			}
+			$row->[$idx] = $self->format_data_type($row->[$idx], $data_type, $action);
 		}
 	}
 }
 
+sub format_data_type
+{
+	my ($self, $col, $data_type, $action) = @_;
+
+	# Preparing data for output
+	if ($action ne 'COPY') {
+		if ($col eq '') {
+			$col = 'NULL';
+		} elsif ($data_type eq 'bytea') {
+			$col = escape_bytea($col);
+			if (!$self->{standard_conforming_strings}) {
+				$col = "'$col'";
+			} else {
+				$col = "E'$col'";
+			}
+		} elsif ($data_type =~ /(char|text|xml)/) {
+			$col =~ s/'/''/gs; # double single quote
+			if (!$self->{standard_conforming_strings}) {
+				$col =~ s/\\/\\\\/g;
+				$col =~ s/\0//gs;
+				$col = "'$col'";
+			} else {
+				$col =~ s/\0//gs;
+				$col = "E'$col'";
+			}
+		} elsif ($data_type =~ /(date|time)/) {
+			if ($col =~ /^0000-00-00/) {
+				$col = 'NULL';
+			} else {
+				$col = "'$col'";
+			}
+		} else {
+			$col =~ s/,/\./;
+			$col =~ s/\~/inf/;
+		}
+	} else {
+		if ($col eq '') {
+			$col = '\N';
+		} elsif ($data_type !~ /(char|date|time|text|bytea|xml)/) {
+			$col =~ s/,/\./;
+			$col =~ s/\~/inf/;
+		} elsif ($data_type eq 'bytea') {
+			$col = escape_bytea($col);
+		} elsif ($data_type !~ /(date|time)/) {
+			$col =~ s/\0//gs;
+			$col =~ s/\\/\\\\/g;
+			$col =~ s/\r/\\r/g;
+			$col =~ s/\n/\\n/g;
+			$col =~ s/\t/\\t/g;
+			if (!$self->{noescape}) {
+				$col =~ s/\f/\\f/gs;
+				$col =~ s/([\1-\10])/sprintf("\\%03o", ord($1))/egs;
+				$col =~ s/([\13-\14])/sprintf("\\%03o", ord($1))/egs;
+				$col =~ s/([\16-\37])/sprintf("\\%03o", ord($1))/egs;
+			}
+		} elsif ($data_type =~ /(date|time)/) {
+			if ($col =~ /^0000-00-00/) {
+				$col = '\N';
+			}
+		}
+	}
+	return $col;
+}
+
+
 sub format_data
 {
-	my ($self, $rows, $data_types, $action, $src_data_types) = @_;
+	my ($self, $rows, $data_types, $action, $src_data_types, $custom_types) = @_;
 
 	foreach my $row (@$rows) {
-		format_data_row($self,$row,$data_types,$action, $src_data_types);
+		$self->format_data_row($row,$data_types,$action, $src_data_types, $custom_types);
 	}
 }
 
@@ -4762,12 +4798,102 @@ CREATE TYPE \"\L$type_name\E\" AS ($type_name $tbname\[$size\]);
 	return $content;
 }
 
+=head2 _extract_type
+
+This function is used to return an array of types from a custom Oracle type
+
+=cut
+
+sub _extract_type
+{
+	my ($self, $plsql) = @_;
+
+	my @types = ();
+	if ($plsql =~ /TYPE[\t\s]+([^\t\s]+)[\t\s]+(IS|AS)[\t\s]*TABLE[\t\s]*OF[\t\s]+(.*)/is) {
+		my $type_name = $1;
+		my $type = Ora2Pg::PLSQL::replace_sql_type($3, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type});
+		$type_name =~ s/"//g;
+	} elsif ($plsql =~ /TYPE[\t\s]+([^\t\s]+)[\t\s]+(AS|IS)[\t\s]*OBJECT[\t\s]+\((.*?)(TYPE BODY.*)/is) {
+		my $type_name = $1;
+		my $description = $3;
+		my $body = $4;
+		my %fctname = ();
+		# extract input function
+		while ($description =~ s/CONSTRUCTOR (FUNCTION|PROCEDURE)[\t\s]+([^\t\s\(]+)(.*?)RETURN[^,;]+[,;]//is) {
+			$fctname{constructor} = lc($2) if (!$fctname{constructor});
+		}
+		while ($description =~ s/(MAP MEMBER |MEMBER )(FUNCTION|PROCEDURE)[\t\s]+([^\t\s\(]+)(.*?)RETURN[^,;]+[,;]//is) {
+			push(@{$fctname{member}}, lc($3));
+		}
+		my $declar = Ora2Pg::PLSQL::replace_sql_type($description, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type});
+		$type_name =~ s/"//g;
+		$declar =~ s/\);$//s;
+		return if ($type_name =~ /\$/);
+
+		if ($body =~ /TYPE BODY[\s\t]+$type_name[\s\t]*(IS|AS)[\s\t]*(.*)END;/is) {
+			my $content2 = $2;
+			my %comments = $self->_remove_comments(\$content2);
+			$content2 =~ s/(CONSTRUCTOR |MAP MEMBER |MEMBER )(FUNCTION|PROCEDURE)/FUNCTION/igs;
+			my @functions = $self->_extract_functions($content2);
+			$content2 = '';
+			foreach my $f (@functions) {
+				$content .= $self->_convert_function($f);
+			}
+			$self->_restore_comments(\$content, \%comments);
+
+		}
+
+	} elsif ($plsql =~ /TYPE[\t\s]+([^\t\s]+)[\t\s]+(AS|IS)[\t\s]*OBJECT[\t\s]+\((.*)/is) {
+		my $type_name = $1;
+		my $description = $3;
+		$description =~ s/\)[\t\s]*(FINAL|NOT FINAL|INSTANTIABLE|NOT INSTANTIABLE).*//is;
+		my $notfinal = $1;
+		$notfinal =~ s/[\s\t\r\n]+//gs;
+		return $plsql if ($description =~ /[\s\t]*(MAP MEMBER |MEMBER )(FUNCTION|PROCEDURE).*/);
+		# $description =~ s/[\s\t]*(MAP MEMBER |MEMBER )(FUNCTION|PROCEDURE).*//is;
+		my $declar = Ora2Pg::PLSQL::replace_sql_type($description, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type});
+	} elsif ($plsql =~ /TYPE[\t\s]+([^\t\s]+)[\t\s]+UNDER[\t\s]*([^\t\s]+)[\t\s]+\((.*)/is) {
+		my $type_name = $1;
+		my $type_inherit = $2;
+		my $description = $3;
+		$description =~ s/\)[^\);]*;$//;
+		return $plsql if ($description =~ /[\s\t]*(MAP MEMBER |MEMBER )(FUNCTION|PROCEDURE).*/);
+		my $declar = Ora2Pg::PLSQL::replace_sql_type($description, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type});
+	} elsif ($plsql =~ /TYPE[\t\s]+([^\t\s]+)[\t\s]+(AS|IS)[\t\s]*VARRAY[\t\s]*\((\d+)\)[\t\s]*OF[\t\s]*(.*)/is) {
+		my $type_name = $1;
+		my $size = $3;
+		my $tbname = $4;
+		$type_name =~ s/"//g;
+		$tbname =~ s/;//g;
+		return if ($type_name =~ /\$/);
+		$content = qq{
+CREATE TYPE \"\L$type_name\E\" AS ($type_name $tbname\[$size\]);
+};
+	}
+
+	return @types;
+}
+
+
 sub extract_data
 {
 	my ($self, $table, $s_out, $nn, $tt, $fhdl, $sprep, $stt) = @_;
 
 	my $total_record = 0;
 	$self->{data_limit} ||= 10000;
+
+	my %user_type = ();
+	for (my $idx = 0; $idx < scalar(@$tt); $idx++) {
+		my $data_type = $tt->[$idx] || '';
+		my $custom_type = '';
+		if (!exists $TYPE{$stt->[$idx]}) {
+			$custom_type = $self->_get_types($stt->[$idx]);
+			foreach my $tpe (sort {length($a->{name}) <=> length($b->{name}) } @{$custom_type}) {
+				$self->logit("Looking inside custom type $tpe->{name} to extract values...\n", 1);
+				push(@{$user_type{$data_type}}, &_get_custom_types($tpe->{code}));
+			}
+		}
+	}
 
 	my $sth = $self->_get_data($table, $nn, $tt, $stt);
 
@@ -4785,10 +4911,10 @@ sub extract_data
 			# If there is a bytea column
 			if ($self->{thread_count} && scalar(grep(/bytea/,@$tt))) {
 				# We need to parallelize this formatting, as it is costly (bytea)
-				$rows = $self->format_data_parallel($rows, $tt, $self->{type}, $stt);
+				$rows = $self->format_data_parallel($rows, $tt, $self->{type}, $stt, \%user_type);
 				# we change $rows reference!
 			} else {
-				$self->format_data($rows, $tt, $self->{type}, $stt);
+				$self->format_data($rows, $tt, $self->{type}, $stt, \%user_type);
 			}
 		}
 		# Creating output
@@ -4801,9 +4927,9 @@ sub extract_data
 				$sql = '';
 				foreach my $row (@$rows) {
 					$count++;
-					my $s = $self->{dbhdest}->pg_putcopydata(join("\t", @$row) . "\n") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
+					$s = $self->{dbhdest}->pg_putcopydata(join("\t", @$row) . "\n") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
 				}
-				my $s = $self->{dbhdest}->pg_putcopyend() or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
+				$s = $self->{dbhdest}->pg_putcopyend() or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
 			} else {
 				map { $sql .= join("\t", @$_) . "\n"; $count++; } @$rows;
 				$sql .= "\\.\n";
