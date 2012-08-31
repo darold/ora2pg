@@ -624,11 +624,24 @@ directives that will allow you to control what parts of the database should be e
 .IX Item "TABLES"
 This directive allow you to set a list of tables on witch the export must be
 limited, excluding all other tables. The value is a space separated list of
-table name to export.
+table name to export. You can include valid regex into the list. For example:
+.Sp
+.Vb 1
+\&        TABLES          EMPLOYEES SALE_.* COUNTRIES
+.Ve
+.Sp
+will export tables \s-1EMPLOYEES\s0, \s-1COUNTRIES\s0 and all tables begining with '\s-1SALE_\s0'.
 .IP "\s-1EXCLUDE\s0" 4
 .IX Item "EXCLUDE"
 This directive is the opposite of the previous, it allow you to define a space
-separated list of table name to exclude from the export.
+separated list of table name to exclude from the export. You can include valid
+regex into the list. For example:
+.Sp
+.Vb 1
+\&        EXCLUDE         EMPLOYEES TMP_.* COUNTRIES
+.Ve
+.Sp
+will exclude tables \s-1EMPLOYEES\s0, \s-1COUNTRIES\s0 and all tables begining with 'tmp_'.
 .IP "\s-1WHERE\s0" 4
 .IX Item "WHERE"
 This directive allow you to specify a \s-1WHERE\s0 clause filter when dumping the

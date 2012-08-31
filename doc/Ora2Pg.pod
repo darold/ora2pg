@@ -518,12 +518,21 @@ directives that will allow you to control what parts of the database should be e
 
 This directive allow you to set a list of tables on witch the export must be
 limited, excluding all other tables. The value is a space separated list of
-table name to export.
+table name to export. You can include valid regex into the list. For example:
+
+	TABLES		EMPLOYEES SALE_.* COUNTRIES
+
+will export tables EMPLOYEES, COUNTRIES and all tables begining with 'SALE_'.
 
 =item EXCLUDE
 
 This directive is the opposite of the previous, it allow you to define a space
-separated list of table name to exclude from the export.
+separated list of table name to exclude from the export. You can include valid
+regex into the list. For example:
+
+	EXCLUDE		EMPLOYEES TMP_.* COUNTRIES
+
+will exclude tables EMPLOYEES, COUNTRIES and all tables begining with 'tmp_'.
 
 =item WHERE
 
