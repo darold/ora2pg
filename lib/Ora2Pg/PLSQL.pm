@@ -124,6 +124,9 @@ sub plsql_to_plpgsql
 	# EXECUTE IMMEDIATE => EXECUTE
 	$str =~ s/EXECUTE IMMEDIATE/EXECUTE/igs;
 
+	# SELECT without INTO should be PERFORM
+	$str =~ s/SELECT(?![^;]+\bINTO\b[^;]+FROM[^;]+;)/PERFORM$1/isg;
+
 	# Change nextval on sequence
 	# Oracle's sequence grammar is sequence_name.nextval.
 	# Postgres's sequence grammar is nextval('sequence_name'). 
