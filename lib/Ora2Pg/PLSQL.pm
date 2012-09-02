@@ -67,6 +67,7 @@ my %uncovered_score = (
 	'REGEXP_LIKE' => 1,
 	'TG_OP' => 1,
 	'CURSOR' => 2,
+	'INTERSECT' => 1,
 );
 
 =head1 NAME
@@ -131,8 +132,10 @@ sub plsql_to_plpgsql
 	# Oracle's sequence grammar is sequence_name.nextval.
 	# Postgres's sequence grammar is nextval('sequence_name'). 
 	$str =~ s/(\w+)\.nextval/nextval('\L$1\E')/isg;
-	# Oracle MINUS can be replaced by EXCEPT as is
+	# Oracle MINUS or INTERSECT can be replaced by EXCEPT as is
 	$str =~ s/\bMINUS\b/EXCEPT/igs;
+	# Oracle INTERSECT can be replaced by EXCEPT as is
+	$str =~ s/\bINTERSECT\b/EXCEPT/igs;
 
 	$str =~ s/DBMS_OUTPUT\.(put_line|put|new_line)*\((.*?)\);/&raise_output($2)/igse;
 
@@ -472,8 +475,8 @@ sub estimate_cost
 	$cost += $uncovered_score{'TG_OP'}*$n;
 	$n = () = $str =~ m/CURSOR/igs;
 	$cost += $uncovered_score{'CURSOR'}*$n;
-
-
+	$n = () = $str =~ m/INTERSECT/igs;
+	$cost += $uncovered_score{'INTERSECT'}*$n;
 
 	return $cost;
 }
