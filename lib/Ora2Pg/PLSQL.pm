@@ -121,6 +121,9 @@ sub plsql_to_plpgsql
 	$str =~ s/DELETING/TG_OP = 'DELETE'/igs;
 	$str =~ s/UPDATING/TG_OP = 'UPDATE'/igs;
 
+	# EXECUTE IMMEDIATE => EXECUTE
+	$str =~ s/EXECUTE IMMEDIATE/EXECUTE/igs;
+
 	# Change nextval on sequence
 	# Oracle's sequence grammar is sequence_name.nextval.
 	# Postgres's sequence grammar is nextval('sequence_name'). 
