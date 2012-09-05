@@ -132,11 +132,9 @@ sub plsql_to_plpgsql
 	# Oracle's sequence grammar is sequence_name.nextval.
 	# Postgres's sequence grammar is nextval('sequence_name'). 
 	$str =~ s/(\w+)\.nextval/nextval('\L$1\E')/isg;
-	# Oracle MINUS or INTERSECT can be replaced by EXCEPT as is
+	# Oracle MINUS can be replaced by EXCEPT as is
 	$str =~ s/\bMINUS\b/EXCEPT/igs;
-	# Oracle INTERSECT can be replaced by EXCEPT as is
-	$str =~ s/\bINTERSECT\b/EXCEPT/igs;
-
+	# Raise information to the client
 	$str =~ s/DBMS_OUTPUT\.(put_line|put|new_line)*\((.*?)\);/&raise_output($2)/igse;
 
 	# Substitution to replace type of sql variable in PLSQL code
