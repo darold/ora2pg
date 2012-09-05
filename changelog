@@ -1,3 +1,55 @@
+2012 09 05 - v9.2
+
+	- In plpgsql conversion, SELECT without INTO becomes PERFORM.
+	- In plpgsql conversion, EXECUTE IMMEDIATE replaced by EXECUTE.
+	- Fix DATA_TYPE value in configuration file.
+	- Fix case sensitivity on data export using COPY mode.
+	- Directive XML_PRETTY is now disabled by default as it is better to
+	  use getClobVal() to get the XML data out of an xmltype column.
+	- Add documentation about regex usage int EXCLUDE and TABLES directives.
+	- Remove all double-quote around object name when CASE_SENSITIVY is
+	  disabled. Thanks to Dominique Legendre for the suggestion.
+	- Rename CASE_SENSITIVE by PRESERVE_CASE to be less confusing, backward
+	  compatibility preserved. Thanks to Dominique Legendre for the request.
+	- Add support to user defined type data export. Before it will simply
+	  export an array reference ARRAY(0xa555fb8), now the array is explored
+	  and inserted as ROW(col1,col2,...). Thanks to Mathieu Wingel for the
+	  feature request.
+	- Fix bug in direct data import in postgresql with COPY: pg_putcopydata
+	  can only be called directly after issuing a COPY FROM command. Thanks
+	  to Steve Delong for the report.
+	- Add warning at any debug level before abort when a data file already
+	  exist during data export.
+	- Fix issue with oracle sensitivity when exporting data.
+	- Fix search_path on package export, indexed and constraints files on
+	  TABLE export.
+	- Remove obsolete ORA_SENSITIVE configuration directive, thanks to
+	  Dominique Legendre it is no more used.
+	- Force automatic conversion of PL/SQL when entry is an input file.
+	- Fix errors in main file for package loader with FILE_PER_FUNCTION
+	  enabled.
+	- Fix case where package body where not exported.
+	- Add missing EXPORT_INVALID directive into default configuration file.
+	- Fix replacement of END followed by the name of the function, the semi-
+	  colon was removed.
+	- Fix case sensitivity issue in INDEX creation.
+	- Fix case sensitivity issue in CHECK constraint and a typo in a
+	  progress bar variable.
+	- Replace old DATA export type by INSERT in configuration file.
+	- Fix case sensitivity issue in ALTER TABLE ... ADD CONSTRAINT. Thanks
+	  to David Greco for the report.
+	- Add set client_encoding before table output to handle character
+	  encoding into comments and possibly objects names.
+	- Fix some case sensitivity issue with schema name. Thanks to Dominique
+	  Legendre for the report.
+	- Do not display warning message about direct import if no connection
+	  to a PostgreSQL database is defined.
+	- Allow multiple export type to be specified into the ora2pg -t command
+	  line option.
+	- Dump progress bar to stderr instead of stdout to separate logs.
+	- Add new -q | --quiet option to perl script ora2pg to disable progress
+	  bar.
+
 2012 08 19 - 9.1
 
 	- Add progress bar to show data export progression.

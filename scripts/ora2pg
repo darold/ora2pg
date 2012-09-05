@@ -27,7 +27,7 @@ use strict qw/vars/;
 use Ora2Pg;
 use Getopt::Long;
 
-my $VERSION = '9.1';
+my $VERSION = '9.2';
 
 my $CONFIG_FILE = '/etc/ora2pg/ora2pg.conf';
 my $DEBUG = 0;
