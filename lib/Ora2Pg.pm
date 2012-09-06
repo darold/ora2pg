@@ -1372,6 +1372,7 @@ sub _get_sql_data
 		#--------------------------------------------------------
 
 		foreach my $fct (sort keys %{$self->{functions}}) {
+			next if (($#{$self->{excluded}} >= 0) && grep($fct =~ /^$_$/i, @{$self->{excluded}}));
 			$self->logit("\tDumping function $fct...\n", 1);
 			my $fhdl = undef;
 			if ($self->{file_per_function} && !$self->{dbhdest}) {
@@ -1438,6 +1439,7 @@ sub _get_sql_data
 		#--------------------------------------------------------
 
 		foreach my $fct (sort keys %{$self->{procedures}}) {
+			next if (($#{$self->{excluded}} >= 0) && grep($fct =~ /^$_$/i, @{$self->{excluded}}));
 			$self->logit("\tDumping procedure $fct...\n", 1);
 			my $fhdl = undef;
 			if ($self->{file_per_function} && !$self->{dbhdest}) {
@@ -4370,6 +4372,7 @@ sub _convert_function
 		my $clause = '';
 		my $code = '';
 		$func_name =~ s/"//g;
+		return if (($#{$self->{excluded}} >= 0) && grep($func_name =~ /^$_$/i, @{$self->{excluded}}));
 		if ($func_declare =~ s/(.*?)RETURN[\s\t]+self[\s\t]+AS RESULT IS//is) {
 			$func_args .= $1;
 			$hasreturn = 1;
