@@ -389,9 +389,11 @@ sub _init
 	# and try to preserve backward compatibility
 	foreach my $k (keys %options) {
 		if ($options{tables} && (lc($k) eq 'tables')) {
-			$self->{limited} = $options{tables};
+			$self->{limited} = ();
+			push(@{$self->{limited}}, split(/[\s\t;,]+/, $options{tables}) );
 		} elsif ($options{exclude} && (lc($k) eq 'exclude')) {
-			$self->{excluded} = $options{exclude};
+			$self->{excluded} = ();
+			push(@{$self->{excluded}}, split(/[\s\t;,]+/, $options{exclude}) );
 		} elsif ($options{datasource} && (lc($k) eq 'datasource')) {
 			$self->{oracle_dsn} = $options{datasource};
 		} elsif ($options{user} && (lc($k) eq 'user')) {

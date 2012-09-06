@@ -48,6 +48,7 @@ my $FORCEOWNER = '';
 my $ORA_ENCODING = '';
 my $PG_ENCODING = '';
 my $INPUT_FILE = '';
+my $EXCLUDE = '';
 
 my @CAPABILITIES = qw(
 	TABLE PACKAGE INSERT COPY VIEW GRANT SEQUENCE TRIGGER
@@ -76,6 +77,7 @@ GetOptions (
 	'client_encoding=s' => \$PG_ENCODING,
 	'input_file|i=s' => \$INPUT_FILE,
 	'quiet|q' => \$QUIET,
+	'exclude|e=s' => \$EXCLUDE,
 );
 
 # Check command line parameters
@@ -120,6 +122,7 @@ my $schema = new Ora2Pg (
         client_encoding => $PG_ENCODING,
         input_file => $INPUT_FILE,
 	quiet => $QUIET,
+	exclude => $EXCLUDE,
 );
 
 
@@ -141,6 +144,7 @@ Usage: ora2pg [-dhpv] [--option value]
     -v | --version    : Show Ora2Pg Version and exit.
     -c | --conf file  : Used to set an alternate configuration file than the
 			default /etc/ora2pg/ora2pg.conf.
+    -e | --exclude str: coma separated list of objects to exclude from export.
     -l | --log file   : Used to set a log file. Default is stdout.
     -o | --out file   : Used to set the path to the output file where SQL will
 			be written. Default: output.sql in running directory.
