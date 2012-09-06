@@ -159,6 +159,7 @@ Usage: ora2pg [-dhvp] [--option value]
     -v | --version    : Show Ora2Pg Version and exit.
     -c | --conf file  : Used to set an alternate configuration file than the
                         default /etc/or2pg/ora2pg.conf.
+    -e | --exclude str: coma separated list of objects to exclude from export.
     -l | --log file   : Used to set a log file. Default is stdout.
     -o | --out file   : Used to set the path to the output file where SQL will
                         be written. Default: output.sql in running directory.
@@ -527,12 +528,19 @@ will export tables EMPLOYEES, COUNTRIES and all tables begining with 'SALE_'.
 =item EXCLUDE
 
 This directive is the opposite of the previous, it allow you to define a space
-separated list of table name to exclude from the export. You can include valid
+separated list of object name to exclude from the export. You can include valid
 regex into the list. For example:
 
 	EXCLUDE		EMPLOYEES TMP_.* COUNTRIES
 
 will exclude tables EMPLOYEES, COUNTRIES and all tables begining with 'tmp_'.
+
+You can also ban from export some unwanted function with this directive:
+
+	EXCLUDE		write_to_.* send_mail_.*
+
+this example will exclude all function, procedure or function in a package
+with the name begining with those regex.
 
 =item WHERE
 
