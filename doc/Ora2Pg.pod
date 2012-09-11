@@ -48,6 +48,7 @@ Features included:
 	- Provide some basic automatic conversion of PLSQL code to PLPGSQL.
 	- Works on any plateform.
 	- Export Oracle tables as foreign data wrapper tables.
+	- Export materialized view.
 
 Ora2Pg do its best to automatically convert your Oracle database to PostgreSQL
 but there's still manual works to do. The Oracle specific PL/SQL code generated
@@ -427,6 +428,7 @@ Here are the different values of the TYPE directive, default is TABLE:
 	- PARTITION: Extract range and list Oracle partitioning.
 	- TYPE: Extract user defined Oracle type.
 	- FDW: Export Oracle tables as foreign table for oracle_fdw.
+	- MVIEW: Export materialized view.
 
 Only one type of export can be perform at the same time so the TYPE directive
 must be unique. If you have more than one only the last found in the file will
@@ -1009,6 +1011,45 @@ will break the code. You can still compare to the original Oracle code and
 solve the problem, but if you want you can disable this unsecure replacement.
 
 =back
+
+=head2 Materialized view
+
+For now Ora2Pg will export all materialized views as "Snapshot Materialized Views" as explain
+in this document: http://tech.jonathangardner.net/wiki/PostgreSQL/Materialized_Views.
+
+When exporting materialized view Ora2Pg will first add the SQL code to create the "materialized_views" table:
+
+	CREATE TABLE materialized_views (
+		mview_name text NOT NULL PRIMARY KEY,
+		view_name text NOT NULL,
+		iname text,
+		last_refresh TIMESTAMP WITH TIME ZONE
+	);
+
+all materialized views will have an entry in this table. It then adds the plpgsql code to create tree functions:
+
+	create_materialized_view(text, text, text) used to create a materialized view
+	drop_materialized_view(text) used to delete a materialized view
+	refresh_full_materialized_view(text) used to refresh a view
+
+then it adds the SQL code to create the view and the materialized view:
+
+	CREATE VIEW mviewname_mview AS
+	SELECT ... FROM ...;
+
+	SELECT create_materialized_view('mviewname','mviewname_mview', change with the name of the colum to used for the index);
+
+The first argument is the name of the materializd view, the second the name of the view on which the materialized view is based
+and the third is the column name on which the index should be build (aka most od the time the primary key). This column is not
+automatically deduced so you need to repace its name.
+
+As said above Ora2Pg only supports snapshot materialized views so the table will be entirely refreshed by issuing first a truncate
+of the table and then by load again all data from the view:
+
+	 refresh_full_materialized_view('mviewname');
+
+To drop the materialized view you just have to call the drop_materialized_view() function with the name of the materialized view
+as parameter.
 
 =head2 Other configuration directives
 

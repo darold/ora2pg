@@ -133,7 +133,7 @@
 .\" ========================================================================
 .\"
 .IX Title "ORA2PG 1"
-.TH ORA2PG 1 "2012-09-06" "perl v5.10.1" "User Contributed Perl Documentation"
+.TH ORA2PG 1 "2012-09-11" "perl v5.10.1" "User Contributed Perl Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -184,6 +184,7 @@ Features included:
 \&        \- Provide some basic automatic conversion of PLSQL code to PLPGSQL.
 \&        \- Works on any plateform.
 \&        \- Export Oracle tables as foreign data wrapper tables.
+\&        \- Export materialized view.
 .Ve
 .PP
 Ora2Pg do its best to automatically convert your Oracle database to PostgreSQL
@@ -544,6 +545,7 @@ Here are the different values of the \s-1TYPE\s0 directive, default is \s-1TABLE
 \&        \- PARTITION: Extract range and list Oracle partitioning.
 \&        \- TYPE: Extract user defined Oracle type.
 \&        \- FDW: Export Oracle tables as foreign table for oracle_fdw.
+\&        \- MVIEW: Export materialized view.
 .Ve
 .Sp
 Only one type of export can be perform at the same time so the \s-1TYPE\s0 directive
@@ -1085,6 +1087,52 @@ or \fIdecode()\fR parameter. For example the replacement of
 .Sp
 will break the code. You can still compare to the original Oracle code and
 solve the problem, but if you want you can disable this unsecure replacement.
+.SS "Materialized view"
+.IX Subsection "Materialized view"
+For now Ora2Pg will export all materialized views as \*(L"Snapshot Materialized Views\*(R" as explain
+in this document: http://tech.jonathangardner.net/wiki/PostgreSQL/Materialized_Views.
+.PP
+When exporting materialized view Ora2Pg will first add the \s-1SQL\s0 code to create the \*(L"materialized_views\*(R" table:
+.PP
+.Vb 6
+\&        CREATE TABLE materialized_views (
+\&                mview_name text NOT NULL PRIMARY KEY,
+\&                view_name text NOT NULL,
+\&                iname text,
+\&                last_refresh TIMESTAMP WITH TIME ZONE
+\&        );
+.Ve
+.PP
+all materialized views will have an entry in this table. It then adds the plpgsql code to create tree functions:
+.PP
+.Vb 3
+\&        create_materialized_view(text, text, text) used to create a materialized view
+\&        drop_materialized_view(text) used to delete a materialized view
+\&        refresh_full_materialized_view(text) used to refresh a view
+.Ve
+.PP
+then it adds the \s-1SQL\s0 code to create the view and the materialized view:
+.PP
+.Vb 2
+\&        CREATE VIEW mviewname_mview AS
+\&        SELECT ... FROM ...;
+\&
+\&        SELECT create_materialized_view(\*(Aqmviewname\*(Aq,\*(Aqmviewname_mview\*(Aq, change with the name of the colum to used for the index);
+.Ve
+.PP
+The first argument is the name of the materializd view, the second the name of the view on which the materialized view is based
+and the third is the column name on which the index should be build (aka most od the time the primary key). This column is not
+automatically deduced so you need to repace its name.
+.PP
+As said above Ora2Pg only supports snapshot materialized views so the table will be entirely refreshed by issuing first a truncate
+of the table and then by load again all data from the view:
+.PP
+.Vb 1
+\&         refresh_full_materialized_view(\*(Aqmviewname\*(Aq);
+.Ve
+.PP
+To drop the materialized view you just have to call the \fIdrop_materialized_view()\fR function with the name of the materialized view
+as parameter.
 .SS "Other configuration directives"
 .IX Subsection "Other configuration directives"
 .IP "\s-1DEBUG\s0" 4

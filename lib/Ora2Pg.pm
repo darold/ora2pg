@@ -594,12 +594,14 @@ sub _init
 			$self->_tablespaces();
 		} elsif ($self->{type} eq 'PARTITION') {
 			$self->_partitions();
+		} elsif ($self->{type} eq 'MVIEW') {
+			$self->_materialized_views();
 		} elsif (($self->{type} eq 'SHOW_SCHEMA') || ($self->{type} eq 'SHOW_TABLE') || ($self->{type} eq 'SHOW_COLUMN') || ($self->{type} eq 'SHOW_ENCODING')) {
 			$self->_show_infos($self->{type});
 			$self->{dbh}->disconnect() if ($self->{dbh}); 
 			exit 0;
 		} else {
-			warn "type option must be TABLE, VIEW, GRANT, SEQUENCE, TRIGGER, PACKAGE, FUNCTION, PROCEDURE, PARTITION, TYPE, INSERT, COPY, TABLESPACE, SHOW_SCHEMA, SHOW_TABLE, SHOW_COLUMN, SHOW_ENCODING, FDW\n";
+			warn "type option must be TABLE, VIEW, GRANT, SEQUENCE, TRIGGER, PACKAGE, FUNCTION, PROCEDURE, PARTITION, TYPE, INSERT, COPY, TABLESPACE, SHOW_SCHEMA, SHOW_TABLE, SHOW_COLUMN, SHOW_ENCODING, FDW, MVIEW\n";
 		}
 		# Mofify export structure if required
 		if ($self->{type} =~ /^(INSERT|COPY)$/) {
@@ -989,6 +991,50 @@ sub _views
 
 }
 
+=head2 _materialized_views
+
+This function is used to retrieve all materialized views information.
+
+Sets the main hash of the views definition $self->{materialized_views}.
+Keys are the names of all materialized views retrieved from the current
+database and values are the text definitions of the views.
+
+It then sets the main hash as follows:
+
+    # Definition of the matérialized view
+    $self->{materialized_views}{text} = $view_infos{$view};
+
+=cut
+
+sub _materialized_views
+{
+	my ($self) = @_;
+
+	# Get all views information
+	$self->logit("Retrieving materialized views information...\n", 1);
+	my %view_infos = $self->_get_materialized_views();
+
+	my $i = 1;
+	foreach my $table (sort keys %view_infos) {
+		# Set the table information for each class found
+		# Jump to desired extraction
+		next if ($table =~ /\$/);
+		next if (($#{$self->{limited}} >= 0) && !grep($table =~ /^$_$/i, @{$self->{limited}}));
+		next if (($#{$self->{excluded}} >= 0) && grep($table =~ /^$_$/i, @{$self->{excluded}}));
+
+		$self->logit("[$i] Scanning $table...\n", 1);
+
+		$self->{materialized_views}{$table}{text} = $view_infos{$table}{text};
+		$self->{materialized_views}{$table}{updatable}= $view_infos{$table}{updatable};
+		$self->{materialized_views}{$table}{refresh_mode}= $view_infos{$table}{refresh_mode};
+		$self->{materialized_views}{$table}{refresh_method}= $view_infos{$table}{refresh_method};
+		$self->{materialized_views}{$table}{no_index}= $view_infos{$table}{no_index};
+		$self->{materialized_views}{$table}{rewritable}= $view_infos{$table}{rewritable};
+		$i++;
+	}
+
+}
+
 =head2 _tablespaces
 
 This function is used to retrieve all Oracle Tablespaces information.
@@ -1123,6 +1169,158 @@ sub _get_sql_data
 			$sql_output = "-- Nothing found of type $self->{type}\n";
 		} else {
 			$sql_output .= "\n";
+		}
+
+		$self->dump($sql_output);
+
+		return;
+	}
+
+	# Process materialized view only
+	if ($self->{type} eq 'MVIEW') {
+		$self->logit("Add materialized views definition...\n", 1);
+		my $nothing = 0;
+		$self->dump($sql_header) if ($self->{file_per_table} && !$self->{dbhdest});
+		my $dirprefix = '';
+		$dirprefix = "$self->{output_dir}/" if ($self->{output_dir});
+		if ($self->{plsql_pgsql}) {
+			my $sqlout = qq{
+$sql_header
+
+BEGIN;
+
+CREATE TABLE materialized_views (
+        mview_name text NOT NULL PRIMARY KEY,
+        view_name text NOT NULL,
+        iname text,
+        last_refresh TIMESTAMP WITH TIME ZONE
+);
+
+CREATE OR REPLACE FUNCTION create_materialized_view(text, text, text)
+RETURNS VOID
+AS \$\$
+DECLARE
+    mview ALIAS FOR \$1; -- name of the materialized view to create
+    vname ALIAS FOR \$2; -- name of the related view
+    iname ALIAS FOR \$3; -- name of the colum of mview to used for the index
+    entry materialized_views%ROWTYPE;
+BEGIN
+    EXECUTE 'SELECT * FROM materialized_views WHERE mview_name = ''' || mview || '''' INTO entry;
+    IF entry.iname IS NOT NULL THEN
+        RAISE EXCEPTION 'Materialized view % already exist.', mview;
+    END IF;
+
+    EXECUTE 'REVOKE ALL ON ' || vname || ' FROM PUBLIC';
+    EXECUTE 'GRANT SELECT ON ' || vname || ' TO PUBLIC';
+    EXECUTE 'CREATE TABLE ' || mview || ' AS SELECT * FROM ' || vname;
+    EXECUTE 'REVOKE ALL ON ' || mview || ' FROM PUBLIC';
+    EXECUTE 'GRANT SELECT ON ' || mview || ' TO PUBLIC';
+    INSERT INTO materialized_views (mview_name, view_name, iname, last_refresh)
+      VALUES (mview, vname, iname, CURRENT_TIMESTAMP);
+    IF iname IS NOT NULL THEN
+        EXECUTE 'CREATE INDEX ' || mview || '_' || iname  || '_idx ON ' || mview || '(' || iname || ')';
+    END IF;
+
+    RETURN;
+END
+\$\$
+SECURITY DEFINER
+LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION drop_materialized_view(text) RETURNS VOID
+AS
+\$\$
+DECLARE
+    mview ALIAS FOR \$1;
+    entry materialized_views%ROWTYPE;
+BEGIN
+    EXECUTE 'SELECT * FROM materialized_views WHERE mview_name = ''' || mview || '''' INTO entry;
+    IF entry.iname IS NULL THEN
+        RAISE EXCEPTION 'Materialized view % does not exist.', mview;
+    END IF;
+
+    IF entry.iname IS NOT NULL THEN
+        EXECUTE 'DROP INDEX ' || mview || '_' || entry.iname  || '_idx';
+    END IF;
+    EXECUTE 'DROP TABLE ' || mview;
+    EXECUTE 'DELETE FROM materialized_views WHERE mview_name=''' || mview || '''';
+
+    RETURN;
+END
+\$\$
+SECURITY DEFINER
+LANGUAGE plpgsql ;
+
+CREATE OR REPLACE FUNCTION refresh_full_materialized_view(text) RETURNS VOID
+AS \$\$
+DECLARE
+    mview ALIAS FOR \$1;
+    entry materialized_views%ROWTYPE;
+BEGIN
+    EXECUTE 'SELECT * FROM materialized_views WHERE mview_name = ''' || mview || '''' INTO entry;
+    IF entry.iname IS NULL THEN
+        RAISE EXCEPTION 'Materialized view % does not exist.', mview;
+    END IF;
+
+    IF entry.iname IS NOT NULL THEN
+        EXECUTE 'DROP INDEX ' || mview || '_' || entry.iname  || '_idx';
+    END IF;
+    EXECUTE 'TRUNCATE ' || mview;
+    EXECUTE 'INSERT INTO ' || mview || ' SELECT * FROM ' || entry.view_name;
+    EXECUTE 'UPDATE materialized_views SET last_refresh=CURRENT_TIMESTAMP WHERE mview_name=''' || mview || '''';
+
+    IF entry.iname IS NOT NULL THEN
+        EXECUTE 'CREATE INDEX ' || mview || '_' || entry.iname  || '_idx ON ' || mview || '(' || entry.iname || ')';
+    END IF;
+
+    RETURN;
+END
+\$\$
+SECURITY DEFINER
+LANGUAGE plpgsql ;
+
+};
+			$self->dump($sqlout) if (!$self->{dbhdest});
+		}
+		foreach my $view (sort { $a cmp $b } keys %{$self->{materialized_views}}) {
+			$self->logit("\tAdding materialized view $view...\n", 1);
+			my $fhdl = undef;
+			if ($self->{file_per_table} && !$self->{dbhdest}) {
+				$self->dump("\\i $dirprefix${view}_$self->{output}\n");
+				$self->logit("Dumping to one file per materialized view : ${view}_$self->{output}\n", 1);
+				$fhdl = $self->export_file("${view}_$self->{output}");
+			}
+			if (!$self->{plsql_pgsql}) {
+				$sql_output .= "CREATE MATERIALIZED VIEW $view\n";
+				$sql_output .= "REFRESH $self->{materialized_views}{$view}{refresh_method} ON $self->{materialized_views}{$view}{refresh_mode}\n";
+				$sql_output .= "ENABLE QUERY REWRITE" if ($self->{materialized_views}{$view}{rewritable});
+				$sql_output .= "AS $self->{materialized_views}{$view}{text}";
+				$sql_output .= " USING INDEX" if ($self->{materialized_views}{$view}{no_index});
+				$sql_output .= " USING NO INDEX" if (!$self->{materialized_views}{$view}{no_index});
+				$sql_output .= ";\n\n";
+			} else {
+				$self->{materialized_views}{$view}{text} = $self->_format_view($self->{materialized_views}{$view}{text});
+				if (!$self->{preserve_case}) {
+					$self->{materialized_views}{$view}{text} =~ s/"//gs;
+				}
+				$self->{materialized_views}{$view}{text} =~ s/^PERFORM/SELECT/;
+				$sql_output .= "CREATE VIEW \L$view\E_mview AS\n";
+				$sql_output .= $self->{materialized_views}{$view}{text};
+				$sql_output .= ";\n\n";
+				$sql_output .= "SELECT create_materialized_view('\L$view\E','\L$view\E_mview', change with the name of the colum to used for the index);\n\n\n";
+			}
+
+			if ($self->{file_per_table} && !$self->{dbhdest}) {
+				$self->dump($sql_header . $sql_output, $fhdl);
+				$self->close_export_file($fhdl);
+				$sql_output = '';
+			}
+			$nothing++;
+		}
+		if (!$nothing) {
+			$sql_output = "-- Nothing found of type $self->{type}\n";
+		} else {
+			$sql_output .= "COMMIT;\n";
 		}
 
 		$self->dump($sql_output);
@@ -3505,6 +3703,42 @@ sub _get_views
 	while (my $row = $sth->fetch) {
 		$data{$row->[0]} = $row->[1];
 		@{$data{$row->[0]}{alias}} = $self->_alias_info ($row->[0]);
+	}
+
+	return %data;
+}
+
+=head2 _get_materialized_views
+
+This function implements an Oracle-native materialized views information.
+
+Returns a hash of view names with the SQL queries they are based on.
+
+=cut
+
+sub _get_materialized_views
+{
+	my($self) = @_;
+
+	# Retrieve all views
+	my $str = "SELECT MVIEW_NAME,QUERY,UPDATABLE,REFRESH_MODE,REFRESH_METHOD,USE_NO_INDEX,REWRITE_ENABLED FROM $self->{prefix}_MVIEWS";
+	if (!$self->{schema}) {
+		$str .= " WHERE OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
+	} else {
+		$str .= " WHERE upper(OWNER) = '\U$self->{schema}\E'";
+	}
+	$str .= " ORDER BY MVIEW_NAME";
+	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+
+	my %data = ();
+	while (my $row = $sth->fetch) {
+		$data{$row->[0]}{text} = $row->[1];
+		$data{$row->[0]}{updatable} = ($row->[2] eq 'Y') ? 1 : 0;
+		$data{$row->[0]}{refresh_mode} = $row->[3];
+		$data{$row->[0]}{refresh_method} = $row->[4];
+		$data{$row->[0]}{no_index} = ($row->[5] eq 'Y') ? 1 : 0;
+		$data{$row->[0]}{rewritable} = ($row->[6] eq 'Y') ? 1 : 0;
 	}
 
 	return %data;
