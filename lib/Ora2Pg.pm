@@ -1709,23 +1709,27 @@ LANGUAGE plpgsql ;
 		foreach my $pkg (sort keys %{$self->{packages}}) {
 			next if (!$self->{packages}{$pkg});
 			my $pkgbody = '';
-			$self->logit("Dumping package $pkg...\n", 1);
-			if ($self->{plsql_pgsql} && $self->{file_per_function} && !$self->{dbhdest}) {
-				my $dir = lc("$dirprefix${pkg}");
-				if (!-d "$dir") {
-					if (not mkdir($dir)) {
-						$self->logit("Fail creating directory package : $dir - $!\n", 1);
-						next;
-					} else {
-						$self->logit("Creating directory package: $dir\n", 1);
+			if (!$self->{plsql_pgsql}) {
+				$self->logit("Dumping package $pkg...\n", 1);
+				if ($self->{plsql_pgsql} && $self->{file_per_function} && !$self->{dbhdest}) {
+					my $dir = lc("$dirprefix${pkg}");
+					if (!-d "$dir") {
+						if (not mkdir($dir)) {
+							$self->logit("Fail creating directory package : $dir - $!\n", 1);
+							next;
+						} else {
+							$self->logit("Creating directory package: $dir\n", 1);
+						}
 					}
 				}
-			}
-			if ($self->{plsql_pgsql}) {
-				$pkgbody = $self->_convert_package($self->{packages}{$pkg});
-				$pkgbody =~ s/[\r\n]*END;$//is;
-			} else {
 				$pkgbody = $self->{packages}{$pkg};
+			} else {
+				my @codes = split(/CREATE PACKAGE BODY/, $self->{packages}{$pkg});
+				foreach my $txt (@codes) {
+					$pkgbody .= $self->_convert_package("CREATE PACKAGE BODY$txt");
+					$pkgbody =~ s/[\r\n]*END;[\t\s\r\n]*$//is;
+					$pkgbody =~ s/([\r\n]*);[\t\s\r\n]*$/$1/is;
+				}
 			}
 			if ($pkgbody && ($pkgbody =~ /[a-z]/is)) {
 				$sql_output .= "-- Oracle package '$pkg' declaration, please edit to match PostgreSQL syntax.\n";
@@ -4461,7 +4465,7 @@ sub _extract_functions
 	my $before = '';
 	my $fcname =  '';
 	for (my $i = 0; $i <= $#lines; $i++) { 
-		if ($lines[$i] =~ /^(FUNCTION|PROCEDURE)[\t\s]+([a-z0-9_\-"]+)(.*)/i) {
+		if ($lines[$i] =~ /^[\t\s]*(FUNCTION|PROCEDURE)[\t\s]+([a-z0-9_\-"]+)(.*)/i) {
 			$fcname = $2;
 			if ($before) {
 				push(@functions, "$before\n");
@@ -4496,12 +4500,26 @@ sub _convert_package
 {
 	my ($self, $plsql) = @_;
 
+	my $dirprefix = '';
+	$dirprefix = "$self->{output_dir}/" if ($self->{output_dir});
 	my $content = '';
 	if ($plsql =~ /PACKAGE[\s\t]+BODY[\s\t]*([^\s\t]+)[\s\t]*(AS|IS)[\s\t]*(.*)/is) {
 		my $pname = $1;
 		my $type = $2;
 		$content = $3;
 		$pname =~ s/"//g;
+		$self->logit("Dumping package $pname...\n", 1);
+		if ($self->{file_per_function} && !$self->{dbhdest}) {
+			my $dir = lc("$dirprefix$pname");
+			if (!-d "$dir") {
+				if (not mkdir($dir)) {
+					$self->logit("Fail creating directory package : $dir - $!\n", 1);
+					next;
+				} else {
+					$self->logit("Creating directory package: $dir\n", 1);
+				}
+			}
+		}
 		$self->{idxcomment} = 0;
 		$content =~ s/END[^;]*;$//is;
 		my %comments = $self->_remove_comments(\$content);
@@ -4525,6 +4543,7 @@ sub _convert_package
 			$self->{total_pkgcost} += $self->{pkgcost} || 0;
 		}
 	}
+
 	return $content;
 }
 
