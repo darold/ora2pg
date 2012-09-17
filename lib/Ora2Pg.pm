@@ -93,6 +93,7 @@ our %TYPE = (
 	'BOOLEAN' => 'boolean',
 	'INTERVAL' => 'interval',
 	'XMLTYPE' => 'xml',
+	'TIMESTAMP WITH TIME ZONE' => 'timestamp with time zone',
 );
 
 
@@ -3213,7 +3214,7 @@ sub _sql_type
 	my $data_type = '';
 
 	# Simplify timestamp type
-	$type =~ s/TIMESTAMP.*/TIMESTAMP/i;
+	$type =~ s/TIMESTAMP\(\d+\)/TIMESTAMP/i;
 
         # Overide the length
         $len = $precision if ( ($type eq 'NUMBER') && $precision );
