@@ -578,10 +578,23 @@ will try to convert it to PostgreSQL syntax.
 .Sp
 Since Ora2Pg v8.1 there's three new export types:
 .Sp
-.Vb 3
+.Vb 4
 \&        SHOW_SCHEMA : display the list of schema available in the database.
 \&        SHOW_TABLE : display the list of tables available.
-\&        SHOW_COLUMN : display the list of tables columns available.
+\&        SHOW_COLUMN : display the list of tables columns available and the
+\&                Ora2PG conversion type from Oracle to PostgreSQL that will be applied.
+.Ve
+.Sp
+Here is an example of the \s-1SHOW_COLUMN\s0 output:
+.Sp
+.Vb 7
+\&        [6] TABLE LOCATIONS (23 rows)
+\&                LOCATION_ID : NUMBER(4) => smallint
+\&                STREET_ADDRESS : VARCHAR2(40) => varchar(40)
+\&                POSTAL_CODE : VARCHAR2(12) => varchar(12)
+\&                CITY : VARCHAR2(30) => varchar(30)
+\&                STATE_PROVINCE : VARCHAR2(25) => varchar(25)
+\&                COUNTRY_ID : CHAR(2) => char(2)
 .Ve
 .Sp
 Since Ora2Pg v8.2 there's a new export type:

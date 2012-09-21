@@ -3301,7 +3301,7 @@ elements for each column the specified table
 
 sub _column_info
 {
-	my ($self, $table, $owner, $tb_sensitive) = @_;
+	my ($self, $table, $owner, $not_show_info) = @_;
 
 	my $schema = '';
 	$schema = "AND upper(OWNER)='\U$owner\E' " if ($owner);
@@ -3324,12 +3324,11 @@ END
 	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
 	my $data = $sth->fetchall_arrayref();
-	$table = '"' . $table . '"' if ($tb_sensitive);
 	foreach my $d (@$data) {
 		if ($#{$d} == 7) {
-			$self->logit("\t$d->[0] => type:$d->[1] , length:$d->[2] (char_length:$d->[7]), precision:$d->[5], scale:$d->[6], nullable:$d->[3] , default:$d->[4]\n", 1);
+			$self->logit("\t$d->[0] => type:$d->[1] , length:$d->[2] (char_length:$d->[7]), precision:$d->[5], scale:$d->[6], nullable:$d->[3] , default:$d->[4]\n", 1) if (!$not_show_info);
 			$d->[2] = $d->[7] if $d->[1] =~ /char/i;
-		} else {
+		} elsif (!$not_show_info) {
 			$self->logit("\t$d->[0] => type:$d->[1] , length:$d->[2] (char_length:$d->[2]), precision:$d->[5], scale:$d->[6], nullable:$d->[3] , default:$d->[4]\n", 1);
 		}
 	}
@@ -5385,21 +5384,24 @@ sub _show_infos
 
 				# Set the fields information
 				if ($type eq 'SHOW_COLUMN') {
-					my $query = "SELECT * FROM \"$t->[1]\".\"$t->[2]\" WHERE 1=0";
-					my $sth = $self->{dbh}->prepare($query);
-					if (!defined($sth)) {
-						warn "Can't prepare statement: $DBI::errstr";
-						next;
+					@{$self->{tables}{$t->[1]}{column_info}} = $self->_column_info($t->[2],$t->[1], 1);
+					foreach my $d (@{$self->{tables}{$t->[1]}{column_info}}) {
+						my $type = $self->_sql_type($d->[1], $d->[2], $d->[5], $d->[6]);
+						$type = "$d->[1], $d->[2]" if (!$type);
+						my $len = $d->[2];
+						if ($#{$d} == 7) {
+							$d->[2] = $d->[7] if $d->[1] =~ /char/i;
+						}
+						$self->logit("\t$d->[0] : $d->[1]");
+						if ($d->[2] && !$d->[5]) {
+							$self->logit("($d->[2])");
+						} elsif ($d->[5] && ($d->[1] =~ /NUMBER/i) ) {
+							$self->logit("($d->[5]");
+							$self->logit("$d->[6]") if ($d->[6]);
+							$self->logit(")");
+						}
+						$self->logit(" => $type\n");
 					}
-					$sth->execute;
-					if ($sth->err) {
-						warn "Can't execute statement: $DBI::errstr";
-						next;
-					}
-					foreach my $j ( 0 .. $#{$sth->{NAME}} ) {
-						$self->logit("\t$sth->{NAME}->[$j]\n", 0);
-					}
-					$sth->finish();
 				}
 				$i++;
 			}
