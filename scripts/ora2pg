@@ -139,24 +139,27 @@ sub usage
 	print qq{
 Usage: ora2pg [-dhpv] [--option value]
 
-    -d | --debug      : Enable verbose output.
-    -h | --help       : Print this short help.
-    -v | --version    : Show Ora2Pg Version and exit.
-    -c | --conf file  : Used to set an alternate configuration file than the
-			default /etc/ora2pg/ora2pg.conf.
-    -e | --exclude str: coma separated list of objects to exclude from export.
-    -l | --log file   : Used to set a log file. Default is stdout.
-    -o | --out file   : Used to set the path to the output file where SQL will
-			be written. Default: output.sql in running directory.
-    -t | --type export: Used to set the export type. It will override the one
-			given in the configuration file (TYPE).
-    -p | --plsql      : Enable PLSQL to PLPSQL code conversion.
-    -s | --source     : Allow to set the Oracle DBI datasource.
-    -u | --user       : Used to set the Oracle database connection user.
-    -w | --password   : Used to set the password of the Oracle database user.
-    -n | --namespace schema : Used to set the Oracle schema to extract from.
     -b | --basedir dir: Used to set the default output directory, where files
 			resulting from exports will be stored.
+    -c | --conf file  : Used to set an alternate configuration file than the
+			default /etc/ora2pg/ora2pg.conf.
+    -d | --debug      : Enable verbose output.
+    -e | --exclude str: coma separated list of objects to exclude from export.
+    -h | --help       : Print this short help.
+    -i | --input_file file: File containing Oracle PL/SQL code to convert with
+		no Oracle database connection initiated.
+    -l | --log file   : Used to set a log file. Default is stdout.
+    -n | --namespace schema : Used to set the Oracle schema to extract from.
+    -o | --out file   : Used to set the path to the output file where SQL will
+			be written. Default: output.sql in running directory.
+    -p | --plsql      : Enable PLSQL to PLPSQL code conversion.
+    -q | --quiet : disable progress bar.
+    -s | --source     : Allow to set the Oracle DBI datasource.
+    -t | --type export: Used to set the export type. It will override the one
+			given in the configuration file (TYPE).
+    -u | --user       : Used to set the Oracle database connection user.
+    -v | --version    : Show Ora2Pg Version and exit.
+    -w | --password   : Used to set the password of the Oracle database user.
     -x | --xtable relname: Used to display columns names of the given table,
 		 	could be used with SHOW_COLUMN type only.
     --forceowner : if set to 1 force ora2pg to set tables and sequences owner
@@ -165,9 +168,6 @@ Usage: ora2pg [-dhpv] [--option value]
 		used to connect to the Pg database that will be the owner.
     --nls_lang code: use this to set the Oracle NLS_LANG client encoding.
     --client_encoding code: Use this to set the PostgreSQL client encoding.
-    -i | --input_file file: File containing Oracle PL/SQL code to convert with
-		no Oracle database connection initiated.
-    -q | --quiet : disable progress bar.
 
 See full documentation at http://ora2pg.darold.net/ for more help or see
 manpage with 'man ora2pg'.
