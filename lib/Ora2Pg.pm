@@ -1203,23 +1203,28 @@ AS \$\$
 DECLARE
     mview ALIAS FOR \$1; -- name of the materialized view to create
     vname ALIAS FOR \$2; -- name of the related view
-    iname ALIAS FOR \$3; -- name of the colum of mview to used for the index
+    iname ALIAS FOR \$3; -- name of the colum of mview to used as unique key
     entry materialized_views%ROWTYPE;
 BEGIN
-    EXECUTE 'SELECT * FROM materialized_views WHERE mview_name = ''' || mview || '''' INTO entry;
+    EXECUTE 'SELECT * FROM materialized_views WHERE mview_name = ' || quote_literal(mview) || ' INTO entry;
     IF entry.iname IS NOT NULL THEN
         RAISE EXCEPTION 'Materialized view % already exist.', mview;
     END IF;
 
-    EXECUTE 'REVOKE ALL ON ' || vname || ' FROM PUBLIC';
-    EXECUTE 'GRANT SELECT ON ' || vname || ' TO PUBLIC';
-    EXECUTE 'CREATE TABLE ' || mview || ' AS SELECT * FROM ' || vname;
-    EXECUTE 'REVOKE ALL ON ' || mview || ' FROM PUBLIC';
-    EXECUTE 'GRANT SELECT ON ' || mview || ' TO PUBLIC';
+    EXECUTE 'REVOKE ALL ON ' || quote_ident(vname) || ' FROM PUBLIC';
+    EXECUTE 'GRANT SELECT ON ' || quote_ident(vname) || ' TO PUBLIC';
+    EXECUTE 'CREATE TABLE ' || quote_ident(mview) || ' AS SELECT * FROM ' || quote_ident(vname);
+    EXECUTE 'REVOKE ALL ON ' || quote_ident(mview) || ' FROM PUBLIC';
+    EXECUTE 'GRANT SELECT ON ' || quote_ident(mview) || ' TO PUBLIC';
     INSERT INTO materialized_views (mview_name, view_name, iname, last_refresh)
-      VALUES (mview, vname, iname, CURRENT_TIMESTAMP);
+    VALUES (
+	quote_literal(mview), 
+	quote_literal(vname),
+	quote_literal(iname),
+	CURRENT_TIMESTAMP
+    );
     IF iname IS NOT NULL THEN
-        EXECUTE 'CREATE INDEX ' || mview || '_' || iname  || '_idx ON ' || mview || '(' || iname || ')';
+        EXECUTE 'CREATE INDEX ' || quote_ident(mview) || '_' || quote_ident(iname)  || '_idx ON ' || quote_ident(mview) || '(' || quote_ident(iname) || ')';
     END IF;
 
     RETURN;
@@ -1235,16 +1240,16 @@ DECLARE
     mview ALIAS FOR \$1;
     entry materialized_views%ROWTYPE;
 BEGIN
-    EXECUTE 'SELECT * FROM materialized_views WHERE mview_name = ''' || mview || '''' INTO entry;
+    EXECUTE 'SELECT * FROM materialized_views WHERE mview_name = ''' || quote_literal(mview) || '''' INTO entry;
     IF entry.iname IS NULL THEN
         RAISE EXCEPTION 'Materialized view % does not exist.', mview;
     END IF;
 
     IF entry.iname IS NOT NULL THEN
-        EXECUTE 'DROP INDEX ' || mview || '_' || entry.iname  || '_idx';
+        EXECUTE 'DROP INDEX ' || quote_ident(mview) || '_' || entry.iname  || '_idx';
     END IF;
-    EXECUTE 'DROP TABLE ' || mview;
-    EXECUTE 'DELETE FROM materialized_views WHERE mview_name=''' || mview || '''';
+    EXECUTE 'DROP TABLE ' || quote_ident(mview);
+    EXECUTE 'DELETE FROM materialized_views WHERE mview_name=''' || quote_literal(mview) || '''';
 
     RETURN;
 END
@@ -1258,20 +1263,20 @@ DECLARE
     mview ALIAS FOR \$1;
     entry materialized_views%ROWTYPE;
 BEGIN
-    EXECUTE 'SELECT * FROM materialized_views WHERE mview_name = ''' || mview || '''' INTO entry;
+    EXECUTE 'SELECT * FROM materialized_views WHERE mview_name = ''' || quote_literal(mview) || '''' INTO entry;
     IF entry.iname IS NULL THEN
         RAISE EXCEPTION 'Materialized view % does not exist.', mview;
     END IF;
 
     IF entry.iname IS NOT NULL THEN
-        EXECUTE 'DROP INDEX ' || mview || '_' || entry.iname  || '_idx';
+        EXECUTE 'DROP INDEX ' || quote_ident(mview) || '_' || entry.iname  || '_idx';
     END IF;
-    EXECUTE 'TRUNCATE ' || mview;
-    EXECUTE 'INSERT INTO ' || mview || ' SELECT * FROM ' || entry.view_name;
-    EXECUTE 'UPDATE materialized_views SET last_refresh=CURRENT_TIMESTAMP WHERE mview_name=''' || mview || '''';
+    EXECUTE 'TRUNCATE ' || quote_ident(mview);
+    EXECUTE 'INSERT INTO ' || quote_ident(mview) || ' SELECT * FROM ' || entry.view_name;
+    EXECUTE 'UPDATE materialized_views SET last_refresh=CURRENT_TIMESTAMP WHERE mview_name=''' || quote_literal(mview) || '''';
 
     IF entry.iname IS NOT NULL THEN
-        EXECUTE 'CREATE INDEX ' || mview || '_' || entry.iname  || '_idx ON ' || mview || '(' || entry.iname || ')';
+        EXECUTE 'CREATE INDEX ' || quote_ident(mview) || '_' || entry.iname  || '_idx ON ' || quote_ident(mview) || '(' || entry.iname || ')';
     END IF;
 
     RETURN;
