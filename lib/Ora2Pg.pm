@@ -1998,19 +1998,20 @@ LANGUAGE plpgsql ;
 			} else {
 				$self->dump("BEGIN;\n", $fhdl);
 			}
+			# Rename table and double-quote it if required
+			my $tmptb = $table;
+			if (exists $self->{replaced_tables}{"\L$table\E"} && $self->{replaced_tables}{"\L$table\E"}) {
+				$self->logit("\tReplacing table $table as " . $self->{replaced_tables}{lc($table)} . "...\n", 1);
+				$tmptb = $self->{replaced_tables}{lc($table)};
+			}
+			if (!$self->{preserve_case}) {
+				$tmptb = lc($tmptb);
+				$tmptb =~ s/"//g;
+			} elsif ($tmptb !~ /"/) {
+				$tmptb = '"' . $tmptb . '"';
+			}
 			## disable triggers of current table if requested
 			if ($self->{disable_triggers}) {
-				my $tmptb = $table;
-				if (exists $self->{replaced_tables}{"\L$table\E"} && $self->{replaced_tables}{"\L$table\E"}) {
-					$self->logit("\tReplacing table $table as " . $self->{replaced_tables}{lc($table)}, "...\n", 1);
-					$tmptb = $self->{replaced_tables}{lc($table)};
-				}
-				if (!$self->{preserve_case}) {
-					$tmptb = lc($tmptb);
-					$tmptb =~ s/"//g;
-				} elsif ($tmptb !~ /"/) {
-					$tmptb = '"' . $tmptb . '"';
-				}
 				if ($self->{dbhdest}) {
 					my $s = $self->{dbhdest}->do("ALTER TABLE $tmptb DISABLE TRIGGER ALL;") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
 				} else {
@@ -2020,16 +2021,6 @@ LANGUAGE plpgsql ;
 
 			## Truncate current table if requested
 			if ($self->{truncate_table}) {
-				my $tmptb = $table;
-				if (exists $self->{replaced_tables}{"\L$table\E"} && $self->{replaced_tables}{"\L$table\E"}) {
-					$tmptb = $self->{replaced_tables}{lc($table)};
-				}
-				if (!$self->{preserve_case}) {
-					$tmptb = lc($tmptb);
-					$tmptb =~ s/"//g;
-				} elsif ($tmptb !~ /"/) {
-					$tmptb = '"' . $tmptb . '"';
-				}
 				if ($self->{dbhdest}) {
 					my $s = $self->{dbhdest}->do("TRUNCATE TABLE $tmptb;") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
 				} else {
@@ -2040,22 +2031,21 @@ LANGUAGE plpgsql ;
 			my @tt = ();
 			my @stt = ();
 			my @nn = ();
-			my $s_out = "INSERT INTO \L$table\E (";
-			$s_out = "INSERT INTO \"$table\" (" if ($self->{preserve_case});
+			my $s_out = "INSERT INTO $tmptb (";
 			if ($self->{type} eq 'COPY') {
-				$s_out = "\nCOPY \L$table\E ";
-				$s_out = "\nCOPY \"$table\" " if ($self->{preserve_case});
+				$s_out = "\nCOPY $tmptb (";
 			}
+
 			my @fname = ();
 			foreach my $i ( 0 .. $#{$self->{tables}{$table}{field_name}} ) {
 				my $fieldname = ${$self->{tables}{$table}{field_name}}[$i];
 				if (!$self->{preserve_case}) {
 					if (exists $self->{modify}{"\L$table\E"}) {
-						next if (!grep(/$fieldname/i, @{$self->{modify}{"\L$table\E"}}));
+						next if (!grep(/^$fieldname$/i, @{$self->{modify}{"\L$table\E"}}));
 					}
 				} else {
 					if (exists $self->{modify}{"$table"}) {
-						next if (!grep(/$fieldname/i, @{$self->{modify}{"$table"}}));
+						next if (!grep(/^$fieldname$/i, @{$self->{modify}{"$table"}}));
 					}
 				}
 				if (!$self->{preserve_case}) {
@@ -2071,7 +2061,15 @@ LANGUAGE plpgsql ;
 					push(@stt, uc($f->[1]));
 					push(@tt, $type);
 					push(@nn, $f);
-					if ($self->{type} ne 'COPY') {
+					# Change column names
+					if ($self->{replaced_cols}{lc($table)}{lc($f->[0])}) {
+						$self->logit("\tReplacing column $f->[0] as " . $self->{replaced_cols}{lc($table)}{lc($f->[0])} . "...\n", 1);
+						if (!$self->{preserve_case}) {
+							$s_out .= "\L$self->{replaced_cols}{lc($table)}{lc($f->[0])}\E,";
+						} else {
+							$s_out .= "\"$self->{replaced_cols}{lc($table)}{lc($f->[0])}\",";
+						}
+					} else {
 						if (!$self->{preserve_case}) {
 							$s_out .= "\L$f->[0]\E,";
 						} else {
@@ -2081,29 +2079,13 @@ LANGUAGE plpgsql ;
 					last;
 				}
 			}
+			$s_out =~ s/,$//;
 			if ($self->{type} eq 'COPY') {
-				if ($self->{preserve_case}) {
-					map { $_ = '"' . $_ . '"' } @fname;
-				}
-				$s_out .= '(' . join(',', @fname) . ") FROM STDIN;\n";
+				$s_out .= ") FROM STDIN;\n";
 			} else {
-				$s_out =~ s/,$//;
 				$s_out .= ") VALUES (";
 			}
 
-			# Change table name
-			if (exists $self->{replaced_tables}{"\L$table\E"} && $self->{replaced_tables}{"\L$table\E"}) {
-				$self->logit("\tReplacing table $table as " . $self->{replaced_tables}{lc($table)} . "...\n", 1);
-				$s_out =~ s/INSERT INTO "$table"/INSERT INTO "$self->{replaced_tables}{lc($table)}"/si;
-				$s_out =~ s/COPY "$table"/COPY "$self->{replaced_tables}{lc($table)}"/si;
-			}
-			# Change column names
-			if (exists $self->{replaced_cols}{"\L$table\E"} && $self->{replaced_cols}{"\L$table\E"}) {
-				foreach my $c (keys %{$self->{replaced_cols}{"\L$table\E"}}) {
-					$self->logit("\tReplacing column $c as " . $self->{replaced_cols}{lc($table)}{$c} . "...\n", 1);
-					$s_out =~ s/"$c"/"$self->{replaced_cols}{lc($table)}{$c}"/si;
-				}
-			}
 			my $sprep = undef;
 			if ($self->{dbhdest}) {
 				if ($self->{type} ne 'COPY') {
@@ -2181,20 +2163,20 @@ LANGUAGE plpgsql ;
 					$self->logit("Dumping to one file per table/view : ${table}_$self->{output}\n", 1);
 					$fhdl = $self->export_file("${table}_$self->{output}");
 				}
-
+				# Rename table and double-quote is named if required
+				my $tmptb = $table;
+				if (exists $self->{replaced_tables}{"\L$table\E"} && $self->{replaced_tables}{"\L$table\E"}) {
+					$self->logit("\tReplacing table $table as " . $self->{replaced_tables}{lc($table)} . "...\n", 1);
+					$tmptb = $self->{replaced_tables}{lc($table)};
+				}
+				if (!$self->{preserve_case}) {
+					$tmptb = lc($tmptb);
+					$tmptb =~ s/"//g;
+				} elsif ($tmptb !~ /"/) {
+					$tmptb = '"' . $tmptb . '"';
+				}
 				## disable triggers of current table if requested
 				if ($self->{disable_triggers}) {
-					my $tmptb = $table;
-					if (exists $self->{replaced_tables}{"\L$table\E"} && $self->{replaced_tables}{"\L$table\E"}) {
-						$self->logit("\tReplacing table $table as " . $self->{replaced_tables}{lc($table)} . "...\n", 1);
-						$tmptb = $self->{replaced_tables}{lc($table)};
-					}
-					if (!$self->{preserve_case}) {
-						$tmptb = lc($tmptb);
-						$tmptb =~ s/"//g;
-					} elsif ($tmptb !~ /"/) {
-						$tmptb = '"' . $tmptb . '"';
-					}
 					if ($self->{dbhdest}) {
 						my $s = $self->{dbhdest}->do("ALTER TABLE $tmptb DISABLE TRIGGER $self->{disable_triggers};") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
 					} else {
@@ -2205,11 +2187,9 @@ LANGUAGE plpgsql ;
 				my @tt = ();
 				my @stt = ();
 				my @nn = ();
-				my $s_out = "INSERT INTO \L$table\E (";
-				$s_out = "INSERT INTO \"$table\" (" if ($self->{preserve_case});
+				my $s_out = "INSERT INTO $tmptb (";
 				if ($self->{type} eq 'COPY') {
-					$s_out = "\nCOPY \L$table\E ";
-					$s_out = "\nCOPY \"$table\" " if ($self->{preserve_case});
+					$s_out = "\nCOPY $tmptb (";
 				}
 				my @fname = ();
 				foreach my $i ( 0 .. $#{$self->{views}{$table}{field_name}} ) {
@@ -2237,7 +2217,15 @@ LANGUAGE plpgsql ;
 						push(@tt, $type);
 						push(@stt, $f->[1]);
 						push(@nn, $f);
-						if ($self->{type} ne 'COPY') {
+						# Change column names
+						if ($self->{replaced_cols}{lc($table)}{lc($f->[0])}) {
+							$self->logit("\tReplacing column $f->[0] as " . $self->{replaced_cols}{lc($table)}{lc($f->[0])} . "...\n", 1);
+							if (!$self->{preserve_case}) {
+								$s_out .= "\L$self->{replaced_cols}{lc($table)}{lc($f->[0])}\E,";
+							} else {
+								$s_out .= "\"$self->{replaced_cols}{lc($table)}{lc($f->[0])}\",";
+							}
+						} else {
 							if (!$self->{preserve_case}) {
 								$s_out .= "\L$f->[0]\E,";
 							} else {
@@ -2247,29 +2235,15 @@ LANGUAGE plpgsql ;
 						last;
 					}
 				}
+				$s_out =~ s/,$//;
 				if ($self->{type} eq 'COPY') {
-					map { $_ = '"' . $_ . '"' } @fname;
-					$s_out .= '(' . join(',', @fname) . ") FROM STDIN;\n";
+					$s_out .= ") FROM STDIN;\n";
 				}
 
 				if ($self->{type} ne 'COPY') {
-					$s_out =~ s/,$//;
 					$s_out .= ") VALUES (";
 				}
 
-				# Change table name
-				if (exists $self->{replaced_tables}{"\L$table\E"} && $self->{replaced_tables}{"\L$table\E"}) {
-					$self->logit("\tReplacing table $table as " . $self->{replaced_tables}{lc($table)} . "...\n", 1);
-					$s_out =~ s/INSERT INTO "$table"/INSERT INTO "$self->{replaced_tables}{lc($table)}"/si;
-					$s_out =~ s/COPY "$table"/COPY "$self->{replaced_tables}{lc($table)}"/si;
-				}
-				# Change column names
-				if (exists $self->{replaced_cols}{"\L$table\E"} && $self->{replaced_cols}{"\L$table\E"}) {
-					foreach my $c (keys %{$self->{replaced_cols}{"\L$table\E"}}) {
-						$self->logit("\tReplacing column $c as " . $self->{replaced_cols}{lc($table)}{$c} . "...\n", 1);
-						$s_out =~ s/"$c"/"$self->{replaced_cols}{lc($table)}{$c}"/si;
-					}
-				}
 				my $sprep = undef;
 				if ($self->{dbhdest}) {
 					if ($self->{type} ne 'COPY') {
@@ -2277,9 +2251,6 @@ LANGUAGE plpgsql ;
 						$s_out =~ s/,$//;
 						$s_out .= ")";
 						$sprep = $s_out;
-					} else {
-						#my $s = $self->{dbhdest}->do($s_out) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
-						#$s_out = '';
 					}
 				}
 
@@ -2297,17 +2268,6 @@ LANGUAGE plpgsql ;
 
 				## don't forget to enable all triggers if needed...
 				if ($self->{disable_triggers}) {
-					my $tmptb = $table;
-					if (exists $self->{replaced_tables}{"\L$table\E"} && $self->{replaced_tables}{"\L$table\E"}) {
-						$self->logit("\tReplacing table $table as " . $self->{replaced_tables}{lc($table)} . "...\n", 1);
-						$tmptb = $self->{replaced_tables}{lc($table)};
-					}
-					if (!$self->{preserve_case}) {
-						$tmptb = lc($tmptb);
-						$tmptb =~ s/"//g;
-					} elsif ($tmptb !~ /"/) {
-						$tmptb = '"' . $tmptb . '"';
-					}
 					if ($self->{dbhdest}) {
 						my $s = $self->{dbhdest}->do("ALTER TABLE $tmptb ENABLE TRIGGER $self->{disable_triggers};") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
 					} else {
