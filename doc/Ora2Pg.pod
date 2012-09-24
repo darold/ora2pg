@@ -1172,6 +1172,7 @@ I must thanks a lot all the great contributors:
 	Dominique Legendre - BRGM (Bureau de Recherches Geologiques et Minieres)
 	Stephan Hilb
 	David Greco
+	Steve DeLong
 
 and all others who help me to build a useful and reliable product:
 
