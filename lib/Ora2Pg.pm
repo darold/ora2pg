@@ -94,6 +94,7 @@ our %TYPE = (
 	'INTERVAL' => 'interval',
 	'XMLTYPE' => 'xml',
 	'TIMESTAMP WITH TIME ZONE' => 'timestamp with time zone',
+	'TIMESTAMP WITH LOCAL TIME ZONE' => 'timestamp with time zone',
 );
 
 
@@ -3115,13 +3116,16 @@ sub _get_data
 	if ($self->{enable_microsecond}) {
 		$timeformat = 'YYYY-MM-DD HH24:MI:SS.FF';
 	}
+	my $timeformat_tz = $timeformat . ' TZH:TZM';
 	for my $k (0 .. $#{$name}) {
 		if ($name->[$k]->[0] !~ /"/) {
 			$name->[$k]->[0] = '"' . $name->[$k]->[0] . '"';
 		}
 		if ( $src_type->[$k] =~ /date/i) {
 			$str .= "to_char($name->[$k]->[0], '$dateformat'),";
-		} elsif ( $src_type->[$k] =~ /time/i) {
+		} elsif ( $src_type->[$k] =~ /timestamp.*with time zone/i) {
+			$str .= "to_char($name->[$k]->[0], '$timeformat_tz'),";
+		} elsif ( $src_type->[$k] =~ /timestamp/i) {
 			$str .= "to_char($name->[$k]->[0], '$timeformat'),";
 		} elsif ( $src_type->[$k] =~ /xmltype/i) {
 			if ($self->{xml_pretty}) {
@@ -5482,6 +5486,7 @@ sub _datetime_format
 		my $sth = $self->{dbh}->do("ALTER SESSION SET NLS_TIMESTAMP_FORMAT='YYYY-MM-DD HH24:MI:SS'") or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	}
 	my $sth = $self->{dbh}->do("ALTER SESSION SET NLS_DATE_FORMAT='YYYY-MM-DD HH24:MI:SS'") or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth = $self->{dbh}->do("ALTER SESSION SET NLS_TIMESTAMP_TZ_FORMAT='YYYY-MM-DD HH24:MI:SS TZH:TZM'") or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 }
 
 sub progress_bar
