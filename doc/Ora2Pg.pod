@@ -1173,6 +1173,7 @@ I must thanks a lot all the great contributors:
 	Stephan Hilb
 	David Greco
 	Steve DeLong
+	Siva Janamanchi
 
 and all others who help me to build a useful and reliable product:
 
