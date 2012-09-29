@@ -768,6 +768,13 @@ For example:
 
 will removed indexes ans check constraints from export.
 
+=item PKEY_IN_CREATE
+
+Enable this directive if you want to add primary key definition inside the
+create table statement. If disabled (the default) primary key definition
+will be add with an alter table statement. Enable it if you are exporting
+to GreenPlum PostgreSQL database.
+
 =item KEEP_PKEY_NAMES
 
 By default names of the primary key in the source Oracle database are ignored

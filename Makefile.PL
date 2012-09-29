@@ -432,6 +432,12 @@ DISABLE_COMMENT         0
 # word for PostgreSQL. Ora2Pg will double quote the name of the object. 
 USE_RESERVED_WORDS	0
 
+# Enable this directive if you want to add primary key definition inside the
+# create table statement. If disabled (the default) primary key definition
+# will be add with an alter table statement. Enable it if you are exporting
+# to GreenPlum PostgreSQL database.
+PKEY_IN_CREATE		0
+
 };
 close(OUTCFG);
 

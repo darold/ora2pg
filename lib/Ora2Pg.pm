@@ -552,6 +552,7 @@ sub _init
 	$self->{compile_schema} ||= 0;
 	$self->{export_invalid} ||= 0;
 	$self->{use_reserved_words} ||= 0;
+	$self->{pkey_in_create} ||= 0;
 
 	# Allow multiple or chained extraction export type
 	$self->{export_type} = ();
@@ -2588,6 +2589,9 @@ CREATE TRIGGER insert_${table}_trigger
 				last;
 			}
 		}
+		if ($self->{pkey_in_create}) {
+			$sql_output .= $self->_get_primary_keys($table, $self->{tables}{$table}{unique_key});
+		}
 		$sql_output =~ s/,$//;
 		if ($self->{type} ne 'FDW') {
 			$sql_output .= ");\n";
@@ -2903,6 +2907,61 @@ sub _drop_indexes
 	return wantarray ? @out : join("\n", @out);
 }
 
+=head2 _get_primary_keys
+
+This function return SQL code to add primary keys of a create table definition
+
+=cut
+sub _get_primary_keys
+{
+	my ($self, $table, $unique_key) = @_;
+
+	my $out = '';
+
+	my $tbsaved = $table;
+	if (exists $self->{replaced_tables}{"\L$table\E"} && $self->{replaced_tables}{"\L$table\E"}) {
+		$table = $self->{replaced_tables}{"\L$table\E"};
+	}
+
+	# Set the unique (and primary) key definition 
+	foreach my $consname (keys %$unique_key) {
+		next if ($self->{pkey_in_create} && ($unique_key->{$consname}{type} ne 'P'));
+		my $constype =   $unique_key->{$consname}{type};
+		my $constgen =   $unique_key->{$consname}{generated};
+		my @conscols = @{$unique_key->{$consname}{columns}};
+		my %constypenames = ('U' => 'UNIQUE', 'P' => 'PRIMARY KEY');
+		my $constypename = $constypenames{$constype};
+		for (my $i = 0; $i <= $#conscols; $i++) {
+			# Change column names
+			if (exists $self->{replaced_cols}{"\L$tbsaved\E"}{"\L$conscols[$i]\E"} && $self->{replaced_cols}{"\L$tbsaved\E"}{"\L$conscols[$i]\E"}) {
+				$conscols[$i] = $self->{replaced_cols}{"\L$tbsaved\E"}{"\L$conscols[$i]\E"};
+			}
+		}
+		map { s/"//gs } @conscols;
+		if (!$self->{preserve_case}) {
+			map { $_ = $self->quote_reserved_words($_) } @conscols;
+		} else {
+			map { s/^/"/; s/$/"/; } @conscols;
+		}
+		my $columnlist = join(',', @conscols);
+		if (!$self->{preserve_case}) {
+			$columnlist = lc($columnlist);
+		}
+		if ($columnlist) {
+			if (!$self->{keep_pkey_names} || ($constgen eq 'GENERATED NAME')) {
+				if ($self->{pkey_in_create}) {
+					$out .= "\tPRIMARY KEY ($columnlist);\n";
+				}
+			} else {
+				if ($self->{pkey_in_create}) {
+					$out .= "\tCONSTRAINT \L$consname\E PRIMARY KEY ($columnlist);\n";
+				}
+			}
+		}
+	}
+	return $out;
+}
+
 
 =head2 _create_unique_keys
 
@@ -2922,6 +2981,7 @@ sub _create_unique_keys
 
 	# Set the unique (and primary) key definition 
 	foreach my $consname (keys %$unique_key) {
+		next if ($self->{pkey_in_create} && ($unique_key->{$consname}{type} eq 'P'));
 		my $constype =   $unique_key->{$consname}{type};
 		my $constgen =   $unique_key->{$consname}{generated};
 		my @conscols = @{$unique_key->{$consname}{columns}};
