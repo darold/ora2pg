@@ -436,10 +436,16 @@ CONFIGURATION
                 SHOW_SCHEMA : display the list of schema available in the database.
                 SHOW_TABLE : display the list of tables available.
                 SHOW_COLUMN : display the list of tables columns available and the
-                        Ora2PG conversion type from Oracle to PostgreSQL that will be applied.
+                        Ora2PG conversion type from Oracle to PostgreSQL that will be
+                        applied. It will also warn you if there's PostgreSQL reserved
+                        words in Oracle object names.
 
         Here is an example of the SHOW_COLUMN output:
 
+                [2] TABLE CURRENT_SCHEMA (1 rows) (Warning: 'CURRENT_SCHEMA' is a reserved word in PostgreSQL)
+                        CONSTRAINT : NUMBER(22) => bigint (Warning: 'CONSTRAINT' is a reserved word in PostgreSQL)
+                        FREEZE : VARCHAR2(25) => varchar(25) (Warning: 'FREEZE' is a reserved word in PostgreSQL)
+                ...
                 [6] TABLE LOCATIONS (23 rows)
                         LOCATION_ID : NUMBER(4) => smallint
                         STREET_ADDRESS : VARCHAR2(40) => varchar(40)
@@ -823,6 +829,11 @@ CONFIGURATION
     ORA_RESERVED_WORDS
         Allow escaping of column name using Oracle reserved words. Value is
         a list of coma separated reserved word. Default is audit,comment.
+
+    USE_RESERVED_WORDS
+        Enable this directive if you have table or column names that are a
+        reserved word for PostgreSQL. Ora2Pg will double quote the name of
+        the object.
 
     GEN_USER_PWD
         Set this directive to 1 to replace default password by a random

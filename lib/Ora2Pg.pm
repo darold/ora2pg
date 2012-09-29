@@ -97,6 +97,18 @@ our %TYPE = (
 	'TIMESTAMP WITH LOCAL TIME ZONE' => 'timestamp with time zone',
 );
 
+our @KEYWORDS = qw(
+	ALL ANALYSE ANALYZE AND ANY ARRAY AS ASC ASYMMETRIC BOTH CASE CAST
+	CHECK COLLATE COLUMN CONCURRENTLY CONSTRAINT CREATE CROSS
+	CURRENT_CATALOG CURRENT_DATE CURRENT_ROLE CURRENT_SCHEMA CURRENT_TIME
+	CURRENT_TIMESTAMP CURRENT_USER DEFAULT DEFERRABLE DESC DISTINCT DO ELSE
+	END EXCEPT FALSE FETCH FOR FOREIGN FREEZE FROM FULL GRANT GROUP HAVING
+	ILIKE IN INITIALLY INTERSECT INTO IS ISNULL JOIN LEADING LEFT LIKE
+	LIMIT LOCALTIME LOCALTIMESTAMP NATURAL NOT NOTNULL NULL OFFSET ON ONLY
+	OR ORDER OUTER OVER OVERLAPS PLACING PRIMARY REFERENCES RETURNING RIGHT
+	SELECT SESSION_USER SIMILAR SOME SYMMETRIC TABLE THEN TO TRAILING TRUE
+	UNION UNIQUE USER USING VARIADIC VERBOSE WHEN WHERE WINDOW WITH
+);
 
 =head1 PUBLIC METHODS
 
@@ -274,6 +286,41 @@ sub modify_struct
 	push(@{$self->{modify}{$table}}, @fields);
 
 }
+
+=head2 quote_reserved_words
+
+Return a quoted object named if it is a PostgreSQL reserved word
+
+=cut
+
+sub quote_reserved_words
+{
+	my ($self, $obj_name) = @_;
+
+	if ($self->{use_reserved_words}) {
+		if ($obj_name && grep(/^$obj_name$/i, @KEYWORDS)) {
+			return '"' . $obj_name . '"';
+		}
+	}
+	return $obj_name;
+}
+
+=head2 is_reserved_words
+
+Return 1 if the given object name is a PostgreSQL reserved word
+
+=cut
+
+sub is_reserved_words
+{
+	my ($obj_name) = @_;
+
+	if ($obj_name && grep(/^$obj_name$/i, @KEYWORDS)) {
+		return 1;
+	}
+	return 0;
+}
+
 
 =head2 replace_tables HASH
 
@@ -504,6 +551,7 @@ sub _init
 	}
 	$self->{compile_schema} ||= 0;
 	$self->{export_invalid} ||= 0;
+	$self->{use_reserved_words} ||= 0;
 
 	# Allow multiple or chained extraction export type
 	$self->{export_type} = ();
@@ -2011,6 +2059,8 @@ LANGUAGE plpgsql ;
 			} elsif ($tmptb !~ /"/) {
 				$tmptb = '"' . $tmptb . '"';
 			}
+			$tmptb = $self->quote_reserved_words($tmptb);
+
 			## disable triggers of current table if requested
 			if ($self->{disable_triggers}) {
 				if ($self->{dbhdest}) {
@@ -2063,19 +2113,16 @@ LANGUAGE plpgsql ;
 					push(@tt, $type);
 					push(@nn, $f);
 					# Change column names
+					my $colname = $f->[0];
 					if ($self->{replaced_cols}{lc($table)}{lc($f->[0])}) {
 						$self->logit("\tReplacing column $f->[0] as " . $self->{replaced_cols}{lc($table)}{lc($f->[0])} . "...\n", 1);
-						if (!$self->{preserve_case}) {
-							$s_out .= "\L$self->{replaced_cols}{lc($table)}{lc($f->[0])}\E,";
-						} else {
-							$s_out .= "\"$self->{replaced_cols}{lc($table)}{lc($f->[0])}\",";
-						}
+						$colname = $self->{replaced_cols}{lc($table)}{lc($f->[0])};
+					}
+					if (!$self->{preserve_case}) {
+						$colname = $self->quote_reserved_words($colname);
+						$s_out .= "\L$colname\E,";
 					} else {
-						if (!$self->{preserve_case}) {
-							$s_out .= "\L$f->[0]\E,";
-						} else {
-							$s_out .= "\"$f->[0]\",";
-						}
+						$s_out .= "\"$colname\",";
 					}
 					last;
 				}
@@ -2121,6 +2168,7 @@ LANGUAGE plpgsql ;
 				} elsif ($tmptb !~ /"/) {
 					$tmptb = '"' . $tmptb . '"';
 				}
+				$tmptb = $self->quote_reserved_words($tmptb);
 				if ($self->{dbhdest}) {
 					my $s = $self->{dbhdest}->do("ALTER TABLE $tmptb ENABLE TRIGGER ALL;") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
 				} else {
@@ -2176,6 +2224,8 @@ LANGUAGE plpgsql ;
 				} elsif ($tmptb !~ /"/) {
 					$tmptb = '"' . $tmptb . '"';
 				}
+				$tmptb = $self->quote_reserved_words($tmptb);
+
 				## disable triggers of current table if requested
 				if ($self->{disable_triggers}) {
 					if ($self->{dbhdest}) {
@@ -2219,19 +2269,16 @@ LANGUAGE plpgsql ;
 						push(@stt, $f->[1]);
 						push(@nn, $f);
 						# Change column names
+						my $colname = $f->[0];
 						if ($self->{replaced_cols}{lc($table)}{lc($f->[0])}) {
 							$self->logit("\tReplacing column $f->[0] as " . $self->{replaced_cols}{lc($table)}{lc($f->[0])} . "...\n", 1);
-							if (!$self->{preserve_case}) {
-								$s_out .= "\L$self->{replaced_cols}{lc($table)}{lc($f->[0])}\E,";
-							} else {
-								$s_out .= "\"$self->{replaced_cols}{lc($table)}{lc($f->[0])}\",";
-							}
+							$colname = $self->{replaced_cols}{lc($table)}{lc($f->[0])};
+						}
+						if (!$self->{preserve_case}) {
+							$colname = $self->quote_reserved_words($colname);
+							$s_out .= "\L$colname\E,";
 						} else {
-							if (!$self->{preserve_case}) {
-								$s_out .= "\L$f->[0]\E,";
-							} else {
-								$s_out .= "\"$f->[0]\",";
-							}
+							$s_out .= "\"$colname\",";
 						}
 						last;
 					}
@@ -2500,6 +2547,7 @@ CREATE TRIGGER insert_${table}_trigger
 			$foreign = ' FOREIGN';
 		}
 		if (!$self->{preserve_case}) {
+			$tbname = $self->quote_reserved_words($tbname);
 			$sql_output .= "CREATE$foreign ${$self->{tables}{$table}{table_info}}[1] \L$tbname\E (\n";
 		} else {
 			$sql_output .= "CREATE$foreign ${$self->{tables}{$table}{table_info}}[1] \"$tbname\" (\n";
@@ -2516,6 +2564,7 @@ CREATE TRIGGER insert_${table}_trigger
 					$fname = $self->{replaced_cols}{"\L$table\E"}{"\L$fname\E"};
 				}
 				if (!$self->{preserve_case}) {
+					$fname = $self->quote_reserved_words($fname);
 					$sql_output .= "\t\L$fname\E $type";
 				} else {
 					$sql_output .= "\t\"$fname\" $type";
@@ -2630,6 +2679,7 @@ CREATE TRIGGER insert_${table}_trigger
 				$tbname = $self->{replaced_tables}{"\L$table\E"};
 			}
 			if (!$self->{preserve_case}) {
+				$tbname = $self->quote_reserved_words($tbname);
 				$sql_output .= "CREATE TABLE \L$tbname\E (\n";
 			} else {
 				$sql_output .= "CREATE TABLE \"$tbname\" (\n";
@@ -2736,12 +2786,13 @@ sub _create_indexes
 				map { s/"$c"/"$self->{replaced_cols}{"\L$tbsaved\E"}{$c}"/i } @{$indexes{$idx}};
 			}
 		}
-		my $columns = join(',', @{$indexes{$idx}});
+		map { s/"//gs } @{$indexes{$idx}};
 		if (!$self->{preserve_case}) {
-			$columns =~ s/"//gs;
+			map { $_ = $self->quote_reserved_words($_) } @{$indexes{$idx}};
 		} else {
-			$columns =~ s/""/"/gs;
+			map { if ($_ !~ /\(.*\)/) { s/^/"/; s/$/"/; } } @{$indexes{$idx}};
 		}
+		my $columns = join(',', @{$indexes{$idx}});
 		my $colscompare = $columns;
 		$colscompare =~ s/"//gs;
 		my $columnlist = '';
@@ -2772,6 +2823,7 @@ sub _create_indexes
 			$unique = ' UNIQUE' if ($self->{tables}{$table}{uniqueness}{$idx} eq 'UNIQUE');
 			my $str = '';
 			if (!$self->{preserve_case}) {
+				$table = $self->quote_reserved_words($table);
 				$str .= "CREATE$unique INDEX \L$idx\E ON \L$table\E (\L$columns\E);";
 			} else {
 				$str .= "CREATE$unique INDEX \L$idx\E ON \"$table\" ($columns);";
@@ -2806,8 +2858,13 @@ sub _drop_indexes
 				map { s/"$c"/"$self->{replaced_cols}{"\L$tbsaved\E"}{$c}"/i } @{$indexes{$idx}};
 			}
 		}
+		map { s/"//gs } @{$indexes{$idx}};
+		if (!$self->{preserve_case}) {
+			map { $_ = $self->quote_reserved_words($_) } @{$indexes{$idx}};
+		} else {
+			map { if ($_ !~ /\(.*\)/) { s/^/"/; s/$/"/; } } @{$indexes{$idx}};
+		}
 		my $columns = join(',', @{$indexes{$idx}});
-		$columns =~ s/""/"/gs;
 		my $colscompare = $columns;
 		$colscompare =~ s/"//gs;
 		my $columnlist = '';
@@ -2876,21 +2933,27 @@ sub _create_unique_keys
 				$conscols[$i] = $self->{replaced_cols}{"\L$tbsaved\E"}{"\L$conscols[$i]\E"};
 			}
 		}
-		my $columnlist = join(',', @conscols);
-		if ($self->{preserve_case}) {
-			$columnlist = join(',', map(qq{"$_"}, @conscols));
+		map { s/"//gs } @conscols;
+		if (!$self->{preserve_case}) {
+			map { $_ = $self->quote_reserved_words($_) } @conscols;
 		} else {
+			map { s/^/"/; s/$/"/; } @conscols;
+		}
+		my $columnlist = join(',', @conscols);
+		if (!$self->{preserve_case}) {
 			$columnlist = lc($columnlist);
 		}
 		if ($columnlist) {
 			if (!$self->{keep_pkey_names} || ($constgen eq 'GENERATED NAME')) {
 				if (!$self->{preserve_case}) {
+					$table = $self->quote_reserved_words($table);
 					$out .= "ALTER TABLE \L$table\E ADD $constypename ($columnlist);\n";
 				} else {
 					$out .= "ALTER TABLE \"$table\" ADD $constypename ($columnlist);\n";
 				}
 			} else {
 				if (!$self->{preserve_case}) {
+					$table = $self->quote_reserved_words($table);
 					$out .= "ALTER TABLE \L$table\E ADD CONSTRAINT \L$consname\E $constypename ($columnlist);\n";
 				} else {
 					$out .= "ALTER TABLE \"$table\" ADD CONSTRAINT \L$consname\E $constypename ($columnlist);\n";
@@ -2939,8 +3002,10 @@ sub _create_check_constraint
 			if (!$self->{preserve_case}) {
 				foreach my $c (@$field_name) {
 					# Force lower case
-					$chkconstraint =~ s/"$c"/\L$c\E/igs;
+					my $ret = $self->quote_reserved_words($c);
+					$chkconstraint =~ s/"$c"/\L$ret\E/igs;
 				}
+				$table = $self->quote_reserved_words($table);
 				$out .= "ALTER TABLE \L$table\E ADD CONSTRAINT \L$k\E CHECK ($chkconstraint);\n";
 			} else {
 				$out .= "ALTER TABLE \"$table\" ADD CONSTRAINT $k CHECK ($chkconstraint);\n";
@@ -3001,6 +3066,9 @@ sub _create_foreign_keys
 				map { s/["]+//g; } @lfkeys;
 			}
 			if (!$self->{preserve_case}) {
+				$substable = $self->quote_reserved_words($substable);
+				map { $_ = $self->quote_reserved_words($_) } @lfkeys;
+				map { $_ = $self->quote_reserved_words($_) } @rfkeys;
 				$str .= "ALTER TABLE \L$substable\E ADD CONSTRAINT \L$h->[0]\E FOREIGN KEY (" . lc(join(',', @lfkeys)) . ") REFERENCES \L$subsdesttable\E (" . lc(join(',', @rfkeys)) . ")";
 			} else {
 				$str .= "ALTER TABLE \"$substable\" ADD CONSTRAINT $h->[0] FOREIGN KEY (" . join(',', @lfkeys) . ") REFERENCES \"$subsdesttable\" (" . join(',', @rfkeys) . ")";
@@ -3037,6 +3105,7 @@ sub _drop_foreign_keys
 		}
 		my $str = '';
 		if (!$self->{preserve_case}) {
+			$table = $self->quote_reserved_words($table);
 			$str = "ALTER TABLE \L$table\E DROP CONSTRAINT \L$h->[0]\E;";
 		} else {
 			$str .= "ALTER TABLE \"$table\" DROP CONSTRAINT $h->[0];";
@@ -5317,7 +5386,11 @@ sub _show_infos
 		$self->logit("Showing all schema...\n", 1);
 		my $sth = $self->_schema_list()  or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 		while ( my @row = $sth->fetchrow()) {
-			$self->logit("SCHEMA $row[0]\n", 0);
+			my $warning = '';
+			if (&is_reserved_words($row[0])) {
+				$warning = " (Warning: '$row[0]' is a reserved word in PostgreSQL)";
+			}
+			$self->logit("SCHEMA $row[0]$warning\n", 0);
 		}
 		$sth->finish();
 	} elsif ( ($type eq 'SHOW_TABLE') || ($type eq 'SHOW_COLUMN') ) {
@@ -5343,8 +5416,12 @@ sub _show_infos
 				}
 				next if (($#{$self->{limited}} >= 0) && !grep($t->[2] =~ /^$_$/i, @{$self->{limited}}));
 				next if (($#{$self->{excluded}} >= 0) && grep($t->[2] =~ /^$_$/i, @{$self->{excluded}}));
+				my $warning = '';
+				if (&is_reserved_words($t->[2])) {
+					$warning = " (Warning: '$t->[2]' is a reserved word in PostgreSQL)";
+				}
 
-				$self->logit("[$i] TABLE $t->[2] ($t->[5] rows)\n", 0);
+				$self->logit("[$i] TABLE $t->[2] ($t->[5] rows)$warning\n", 0);
 
 				# Set the fields information
 				if ($type eq 'SHOW_COLUMN') {
@@ -5364,7 +5441,11 @@ sub _show_infos
 							$self->logit("$d->[6]") if ($d->[6]);
 							$self->logit(")");
 						}
-						$self->logit(" => $type\n");
+						$warning = '';
+						if (&is_reserved_words($d->[0])) {
+							$warning = " (Warning: '$d->[0]' is a reserved word in PostgreSQL)";
+						}
+						$self->logit(" => $type$warning\n");
 					}
 				}
 				$i++;

@@ -428,6 +428,10 @@ FDW_SERVER	orcl
 # columns definition. Default is enabled.
 DISABLE_COMMENT         0
 
+# Enable this directive if you have table or column names that are a reserved
+# word for PostgreSQL. Ora2Pg will double quote the name of the object. 
+USE_RESERVED_WORDS	0
+
 };
 close(OUTCFG);
 
