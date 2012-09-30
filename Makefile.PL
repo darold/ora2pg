@@ -162,17 +162,17 @@ DATA_LIMIT	10000
 # Modify output from the following tables(fields separate by space or comma)
 #MODIFY_STRUCT	TABLE_TEST(dico,dossier)
 
-# You may wish to change table names during data extraction, especally for replication use.
-# Give a liste of tables separate by space as follow. Works only with TYPE = INSERT or COPY
-# REPLACE_TABLES	ORIG_TABLE_NAME1:NEW_TABLE_NAME1 ORIG_TABLE_NAME2:NEW_TABLE_NAME2 
+# You may wish to change table names during data extraction, especally for
+# replication use. Give a list of tables separate by space as follow.
+#REPLACE_TABLES	ORIG_TB_NAME1:NEW_TB_NAME1 ORIG_TB_NAME2:NEW_TB_NAME2 
 
-# You may wish to change column names during data extraction, especally for replication use.
-# Give a liste of tables and columns separate by space as follow. Works only with TYPE =
-# INSERT or COPY.
-# REPLACE_COLS	ORIG_TABLE_NAME(ORIG_COL_NAME1:NEW_COL_NAME1,ORIG_COL_NAME2:NEW_COL_NAME2)
+# You may wish to change column names during data extraction, especally for
+# replication use. Give a list of tables and columns separate by space as
+# follow.
+#REPLACE_COLS	TB_NAME(ORIG_COLNAME1:NEW_COLNAME1,ORIG_COLNAME2:NEW_COLNAME2)
 
-# Define the following directive to send export directly to a PostgreSQL database
-# This will disable file output.
+# Define the following directive to send export directly to a PostgreSQL
+# database. This will disable file output.
 #PG_DSN		dbi:Pg:dbname=test_db;host=localhost;port=5432
 #PG_USER	test
 #PG_PWD		test
@@ -189,16 +189,14 @@ PRESERVE_CASE	0
 #WHERE  1=1	# Apply to all tables
 #WHERE	TABLE_TEST[ID1='001']	# Apply only on table TABLE_TEST
 #WHERE	TABLE_TEST[ID1='001' AND ID1='002] DATE_CREATE > '2001-01-01' TABLE_INFO[NAME='test']
-# The last applies two different where clause on tables TABLE_TEST and TABLE_INFO and
-# a generic where clause on DATE_CREATE to all other tables
+# The last applies two different where clause on tables TABLE_TEST and
+# TABLE_INFO and a generic where clause on DATE_CREATE to all other tables
 
 # By default all output is dump to STDOUT if not send directly to postgresql
 # database (see above). Give a filename to save export to it. If you want
 # a Gzipped compressed file just add the extension .gz to the filename, you
 # need perl module Compress::Zlib from CPAN. Add extension .bz2 to use Bzip2
-# compression
-#OUTPUT		output.sql.gz
-#OUTPUT		output.sql.bz2
+# compression.
 OUTPUT		output.sql
 
 # Base directory where all dumped files must be written
