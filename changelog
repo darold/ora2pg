@@ -1,3 +1,46 @@
+
+	- Add new configuration directive PKEY_IN_CREATE to add primary keys
+	  definition in CREATE TABLE statement instead of creating them after
+	  with an ALTER TABLE statement. For Greenplum database, primary key
+	  must be created with the CREATE TABLE statement so you may want to
+	  enable this configuration directive. Thanks to Siva Janamanchi for
+	  the feature request.
+	- Add new configuration directive USE_RESERVED_WORDS to force Ora2Pg to
+	  auto-detect PostgreSQL reserved words in Oracle object's names and
+	  automatically double quote them. Thanks to Siva Janamanchi for the
+	  feature request.
+	- SHOW_TABLE and SHOW_COLUMN will now display a warning when Oracle
+	  object's name is a PG reserved words. Those names will need to be
+	  renamed or double-quoted (see USE_RESERVED_WORDS).
+	- Add TIMESTAMP WITH LOCAL TIME ZONE Oracle type conversion to timestamp
+	  and force timestamp with time zone format to use TZH:TZM. Thanks to
+	  Siva Janamanchi for the report.
+	- Fix table and column replacement issues introduced with path that
+	  removed double-quote when PRESERVE_CASE is disabled. Thanks to Steve
+	  DeLong for the report.
+	- PLPGSQL convertion: Fix SELECT replacement with PERFORM in VIEW
+	  declaration. Thanks to Thierry Capitaine for the report.
+	- Add display Ora2Pg type conversion map between Oracle originals types
+	  and PostgreSQL's types when using export type SHOW_COLUMN. Thanks to
+	  Thierry Capitaine for the feature request.
+	- Reorder command line options in ora2pg script usage and documentation.
+	- Add call to quote_ident() and quote_literal() into materialized
+	  functions to secure parameters.
+	- Fix major issue in pl/sql to pl/pgsql conversion with multiple package
+	  declaration in the same code record. Thanks to Marc Cousin for the
+	  report.
+	- Add data type TIMESTAMP WITH TIME ZONE. Thanks to Siva Janamanchi for
+	  the report.
+	- Add new export type: MVIEW to allow export of all materialized views
+	  as snapshot materialized view (fully reload of the view).
+	- Add -e | --exclude option to Perl script ora2pg to exclude some given
+	  objects from the export. It will override any value of the EXCLUDE
+	  directive. The value is a coma separated list of object name or regex.
+	- Update domumentation about the EXCLUDE directive change.
+	- Allow exclusion from export of functions, procedures and functions in
+	  package by specifying a list of name or regex in EXCLUDE directive.
+	  Thanks to Keith Fiske from Omniti for the feature request.
+
 2012 09 05 - v9.2
 
 	- In plpgsql conversion, SELECT without INTO becomes PERFORM.
