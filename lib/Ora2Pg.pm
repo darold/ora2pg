@@ -110,6 +110,19 @@ our @KEYWORDS = qw(
 	UNION UNIQUE USER USING VARIADIC VERBOSE WHEN WHERE WINDOW WITH
 );
 
+our %BOOLEAN_MAP = (
+	'yes' => 't',
+	'no' => 'f',
+	'y' => 't',
+	'n' => 'f',
+	'1' => 't',
+	'0' => 'f',
+	'true' => 't',
+	'false' => 'f',
+	'enabled'=> 't',
+	'disabled'=> 't',
+);
+
 =head1 PUBLIC METHODS
 
 =head2 new HASH_OPTIONS
@@ -403,6 +416,8 @@ sub _init
 	$self->{modify} = ();
 	$self->{replaced_tables} = ();
 	$self->{replaced_cols} = ();
+	$self->{replace_as_boolean} = ();
+	$self->{ora_boolean_values} = ();
 	$self->{where} = ();
 	@{$self->{sysusers}} = ('SYSTEM','SYS','DBSNMP','OUTLN','PERFSTAT','CTXSYS','XDB','WMSYS','SYSMAN','SQLTXPLAIN','MDSYS','EXFSYS','ORDSYS','DMSYS','OLAPSYS','FLOWS_020100','FLOWS_FILES','TSMSYS');
 	$self->{ora_reserved_words} = (); 
@@ -421,6 +436,14 @@ sub _init
 		} else {
 			$self->{lc($k)} = $AConfig{uc($k)};
 		}
+	}
+	# Default boolean values
+	foreach my $k (keys %BOOLEAN_MAP) {
+		$self->{ora_boolean_values}{lc($k)} = $BOOLEAN_MAP{$k};
+	}
+	# additional boolean values given from config file
+	foreach my $k (keys %{$self->{boolean_values}}) {
+		$self->{ora_boolean_values}{lc($k)} = $self->{boolean_values}{$k};
 	}
 
 	# Set transaction isolation level
@@ -2564,6 +2587,9 @@ CREATE TRIGGER insert_${table}_trigger
 					$self->logit("\tReplacing column \L$f->[0]\E as " . $self->{replaced_cols}{lc($table)}{lc($fname)} . "...\n", 1);
 					$fname = $self->{replaced_cols}{"\L$table\E"}{"\L$fname\E"};
 				}
+				if (grep(/^$f->[0]$/i, @{$self->{'replace_as_boolean'}{$table}})) {
+					$type = 'boolean';
+				}
 				if (!$self->{preserve_case}) {
 					$fname = $self->quote_reserved_words($fname);
 					$sql_output .= "\t\L$fname\E $type";
@@ -4234,7 +4260,7 @@ WHERE
 # This is a routine paralellizing access to format_data_for_parallel over several threads
 sub format_data_parallel
 {
-	my ($self, $rows, $data_types, $action, $src_data_types, $custom_types) = @_;
+	my ($self, $rows, $data_types, $action, $src_data_types, $custom_types, $table) = @_;
 
 	# Ok, here is the required parallelism
 
@@ -4268,6 +4294,8 @@ sub format_data_parallel
 				my @temptypes :shared;
 				my $tempaction :shared;
 				my @tempsrctypes :shared;
+				my @tempcustomtypes :shared;
+				my $temptable :shared;
 				foreach my $elt (@$row)
 				{
 					my $tempelt :shared;
@@ -4291,6 +4319,15 @@ sub format_data_parallel
 					push @tempsrctypes,($tempelt);
 				}
 				push @temprecord,(\@tempsrctypes);
+				foreach my $elt (@$custom_types)
+				{
+					my $tempelt :shared;
+					$tempelt=$elt;
+					push @tempcustomtypes,($tempelt);
+				}
+				push @temprecord,(\@tempcustomtypes);
+				$temptable=$table;
+				push @temprecord,$temptable;
 				$queue_todo->enqueue(\@temprecord);
 				$sent_rows++;
 			}
@@ -4319,8 +4356,8 @@ sub worker_format_data
 	while (1) {
 		my $payload=$queue_todo->dequeue();
 		last unless (defined $payload);
-		# The received payload is an array of a columns array, types array, type of action and source types array
-		$self->format_data_row($payload->[0],$payload->[1],$payload->[2], $payload->[3], $payload->[4]);
+		# The received payload is an array of a columns array, types array, type of action and source types array, table name
+		$self->format_data_row($payload->[0],$payload->[1],$payload->[2], $payload->[3], $payload->[4], $payload->[5]);
 		$queue_done->enqueue($payload->[0]); # We only need data
 		$counter++;
 	}
@@ -4346,14 +4383,14 @@ sub _get_custom_types
 
 sub format_data_row
 {
-	my ($self, $row, $data_types, $action, $src_data_types, $custom_types) = @_;
+	my ($self, $row, $data_types, $action, $src_data_types, $custom_types, $table) = @_;
 
 	for (my $idx = 0; $idx < scalar(@$data_types); $idx++) {
 		my $data_type = $data_types->[$idx] || '';
 		if ($row->[$idx] =~ /^ARRAY/) {
 			my @type_col = ();
 			for (my $i = 0;  $i <= $#{$row->[$idx]}; $i++) {
-				push(@type_col, $self->format_data_type($row->[$idx][$i], $custom_types->{$data_type}[$i], $action));
+				push(@type_col, $self->format_data_type($row->[$idx][$i], $custom_types->{$data_type}[$i], $action, $table));
 			}
 			if ($action eq 'COPY') {
 				$row->[$idx] =  "(" . join(',', @type_col) . ")";
@@ -4368,7 +4405,7 @@ sub format_data_row
 
 sub format_data_type
 {
-	my ($self, $col, $data_type, $action) = @_;
+	my ($self, $col, $data_type, $action, $table) = @_;
 
 	# Preparing data for output
 	if ($action ne 'COPY') {
@@ -4397,6 +4434,8 @@ sub format_data_type
 			} else {
 				$col = "'$col'";
 			}
+		} elsif ($data_type eq 'boolean') {
+			$col = "." . ($self->{ora_boolean_values}{lc($col)} || $col) . "'";
 		} else {
 			$col =~ s/,/\./;
 			$col =~ s/\~/inf/;
@@ -4404,6 +4443,8 @@ sub format_data_type
 	} else {
 		if ($col eq '') {
 			$col = '\N';
+		} elsif ($data_type eq 'boolean') {
+			$col = ($self->{ora_boolean_values}{lc($col)} || $col);
 		} elsif ($data_type !~ /(char|date|time|text|bytea|xml)/) {
 			$col =~ s/,/\./;
 			$col =~ s/\~/inf/;
@@ -4433,10 +4474,10 @@ sub format_data_type
 
 sub format_data
 {
-	my ($self, $rows, $data_types, $action, $src_data_types, $custom_types) = @_;
+	my ($self, $rows, $data_types, $action, $src_data_types, $custom_types, $table) = @_;
 
 	foreach my $row (@$rows) {
-		$self->format_data_row($row,$data_types,$action, $src_data_types, $custom_types);
+		$self->format_data_row($row,$data_types,$action, $src_data_types, $custom_types, $table);
 	}
 }
 
@@ -4503,7 +4544,7 @@ sub read_config
 					$AConfig{"skip_\L$s\E"} = 1;
 				}
 			}
-		} elsif (!grep(/^$var$/, 'TABLES', 'MODIFY_STRUCT', 'REPLACE_TABLES', 'REPLACE_COLS', 'WHERE', 'EXCLUDE', 'ORA_RESERVED_WORDS','SYSUSERS')) {
+		} elsif (!grep(/^$var$/, 'TABLES', 'MODIFY_STRUCT', 'REPLACE_TABLES', 'REPLACE_COLS', 'WHERE', 'EXCLUDE', 'ORA_RESERVED_WORDS','SYSUSERS','REPLACE_AS_BOOLEAN','BOOLEAN_VALUES')) {
 			$AConfig{$var} = $val;
 		} elsif ( ($var eq 'TABLES') || ($var eq 'EXCLUDE') ) {
 			push(@{$AConfig{$var}}, split(/[\s\t;,]+/, $val) );
@@ -4532,10 +4573,23 @@ sub read_config
 				}
 			}
 		} elsif ($var eq 'REPLACE_TABLES') {
-			my @replace_tables = split(/[\s\t]+/, $val);
+			my @replace_tables = split(/[\s,;\t]+/, $val);
 			foreach my $r (@replace_tables) { 
 				my ($old, $new) = split(/:/, $r);
 				$AConfig{$var}{$old} = $new;
+			}
+		} elsif ($var eq 'REPLACE_AS_BOOLEAN') {
+			my @replace_boolean = split(/[\s,;\t]+/, $val);
+			foreach my $r (@replace_boolean) { 
+				my ($table, $col) = split(/:/, $r);
+				push(@{$AConfig{$var}{$table}}, $col);
+			}
+		} elsif ($var eq 'BOOLEAN_VALUES') {
+			my @replace_boolean = split(/[\s,;\t]+/, $val);
+			foreach my $r (@replace_boolean) { 
+				my ($yes, $no) = split(/:/, $r);
+				$AConfig{$var}{lc($yes)} = 't';
+				$AConfig{$var}{lc($no)} = 't';
 			}
 		} elsif ($var eq 'WHERE') {
 			while ($val =~ s/([^\[\s\t]+)[\t\s]*\[([^\]]+)\][\s\t]*//) {
@@ -5298,6 +5352,13 @@ sub extract_data
 
 	my $sth = $self->_get_data($table, $nn, $tt, $stt);
 
+	for (my $i = 0; $i <= $#{$nn}; $i++) {
+		my $colname = $nn->[$i]->[0];
+		$colname =~ s/"//g;
+		if (grep(/^$colname$/i, @{$self->{'replace_as_boolean'}{$table}})) {
+			$tt->[$i] = 'boolean';
+		}
+	}
 	my $start_time = time();
 	my $total_row = $self->{tables}{$table}{table_info}->[3];
 	while( my $rows = $sth->fetchall_arrayref(undef,$self->{data_limit})) {
@@ -5312,10 +5373,10 @@ sub extract_data
 			# If there is a bytea column
 			if ($self->{thread_count} && scalar(grep(/bytea/,@$tt))) {
 				# We need to parallelize this formatting, as it is costly (bytea)
-				$rows = $self->format_data_parallel($rows, $tt, $self->{type}, $stt, \%user_type);
+				$rows = $self->format_data_parallel($rows, $tt, $self->{type}, $stt, \%user_type, $table);
 				# we change $rows reference!
 			} else {
-				$self->format_data($rows, $tt, $self->{type}, $stt, \%user_type);
+				$self->format_data($rows, $tt, $self->{type}, $stt, \%user_type, $table);
 			}
 		}
 		# Creating output
@@ -5504,6 +5565,9 @@ sub _show_infos
 						$warning = '';
 						if (&is_reserved_words($d->[0])) {
 							$warning = " (Warning: '$d->[0]' is a reserved word in PostgreSQL)";
+						}
+						if (grep(/^$d->[0]$/i, @{$self->{'replace_as_boolean'}{$t->[2]}})) {
+							$type = 'boolean';
 						}
 						$self->logit(" => $type$warning\n");
 					}
