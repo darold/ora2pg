@@ -436,6 +436,14 @@ USE_RESERVED_WORDS	0
 # to GreenPlum PostgreSQL database.
 PKEY_IN_CREATE		0
 
+# If you want to replace some column as PostgreSQL boolean define here a list
+# of tables and column separated by space as follow.
+#REPLACE_AS_BOOLEAN	TB_NAME1:COL_NAME1 TB_NAME1:COL_NAME2 TB_NAME2:COL_NAME2
+
+# Use this to add additional definition of the possible boolean values in Oracle
+# field. You must set a space separated list of TRUE:FALSE values. BY default:
+#BOOLEAN_VALUES	yes:no y:n 1:0 true:false enabled:disabled
+
 };
 close(OUTCFG);
 
