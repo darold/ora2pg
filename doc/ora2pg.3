@@ -124,7 +124,7 @@
 .\" ========================================================================
 .\"
 .IX Title "ORA2PG 1"
-.TH ORA2PG 1 "2012-09-29" "perl v5.10.1" "User Contributed Perl Documentation"
+.TH ORA2PG 1 "2012-10-01" "perl v5.10.1" "User Contributed Perl Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -749,6 +749,30 @@ For example:
 .Sp
 will rename Oracle columns 'dico' and 'dossier' from table T_TEST into new name
 \&'dictionary' and 'folder'.
+.IP "\s-1REPLACE_AS_BOOLEAN\s0" 4
+.IX Item "REPLACE_AS_BOOLEAN"
+If you want to change the type of some Oracle columns into PostgreSQL boolean
+during the export you can define here a list of tables and column separated by
+space as follow.
+.Sp
+.Vb 1
+\&        REPLACE_AS_BOOLEAN     TB_NAME1:COL_NAME1 TB_NAME1:COL_NAME2 TB_NAME2:COL_NAME2
+.Ve
+.Sp
+The values set in the boolean columns list will be replaced with the 't' and 'f'
+following the default replacement values and those additionally set in directive
+\&\s-1BOOLEAN_VALUES\s0.
+.IP "\s-1BOOLEAN_VALUES\s0" 4
+.IX Item "BOOLEAN_VALUES"
+Use this to add additional definition of the possible boolean values used in
+Oracle fields. You must set a space separated list of \s-1TRUE:FALSE\s0 values. By
+default here are the values recognized by Ora2Pg:
+.Sp
+.Vb 1
+\&        BOOLEAN_VALUES          yes:no y:n 1:0 true:false enabled:disabled
+.Ve
+.Sp
+Any values defined here will be added to the default list.
 .SS "PostgreSQL Import"
 .IX Subsection "PostgreSQL Import"
 By default conversion to PostgreSQL format is written to file 'output.sql'.

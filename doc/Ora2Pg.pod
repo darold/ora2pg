@@ -633,6 +633,28 @@ For example:
 will rename Oracle columns 'dico' and 'dossier' from table T_TEST into new name
 'dictionary' and 'folder'.
 
+=item REPLACE_AS_BOOLEAN
+
+If you want to change the type of some Oracle columns into PostgreSQL boolean
+during the export you can define here a list of tables and column separated by
+space as follow.
+
+	REPLACE_AS_BOOLEAN     TB_NAME1:COL_NAME1 TB_NAME1:COL_NAME2 TB_NAME2:COL_NAME2
+
+The values set in the boolean columns list will be replaced with the 't' and 'f'
+following the default replacement values and those additionally set in directive
+BOOLEAN_VALUES.
+
+=item BOOLEAN_VALUES
+
+Use this to add additional definition of the possible boolean values used in
+Oracle fields. You must set a space separated list of TRUE:FALSE values. By
+default here are the values recognized by Ora2Pg:
+
+	BOOLEAN_VALUES		yes:no y:n 1:0 true:false enabled:disabled
+
+Any values defined here will be added to the default list.
+
 =back
 
 =head2 PostgreSQL Import
