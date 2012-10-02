@@ -2976,15 +2976,17 @@ sub _get_primary_keys
 		if ($columnlist) {
 			if (!$self->{keep_pkey_names} || ($constgen eq 'GENERATED NAME')) {
 				if ($self->{pkey_in_create}) {
-					$out .= "\tPRIMARY KEY ($columnlist);\n";
+					$out .= "\tPRIMARY KEY ($columnlist),\n";
 				}
 			} else {
 				if ($self->{pkey_in_create}) {
-					$out .= "\tCONSTRAINT \L$consname\E PRIMARY KEY ($columnlist);\n";
+					$out .= "\tCONSTRAINT \L$consname\E PRIMARY KEY ($columnlist),\n";
 				}
 			}
 		}
 	}
+	$out =~ s/,$//s;
+
 	return $out;
 }
 
