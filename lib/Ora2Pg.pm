@@ -435,9 +435,10 @@ sub _init
 		} elsif (lc($k) eq 'exclude') {
 			$self->{excluded} = $AConfig{EXCLUDE};
 		} else {
-			$self->{lc($k)} = $AConfig{uc($k)};
+			$self->{lc($k)} = $AConfig{$k};
 		}
 	}
+
 	# Default boolean values
 	foreach my $k (keys %BOOLEAN_MAP) {
 		$self->{ora_boolean_values}{lc($k)} = $BOOLEAN_MAP{$k};
