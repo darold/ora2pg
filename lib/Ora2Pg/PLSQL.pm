@@ -93,7 +93,7 @@ This function return a PLSQL code translated to PLPGSQL code
 
 sub plsql_to_plpgsql
 {
-        my ($str, $allow_code_break) = @_;
+        my ($str, $allow_code_break, $null_equal_empty) = @_;
 
 	#--------------------------------------------
 	# PL/SQL to PL/PGSQL code conversion
@@ -212,9 +212,11 @@ sub plsql_to_plpgsql
 	# Rewrite comment in CASE between WHEN and THEN
 	$str =~ s/([\s\t]*)(WHEN[\s\t]+[^\s\t]+[\s\t]*)(ORA2PG_COMMENT\d+\%)([\s\t]*THEN)/$1$3$1$2$4/igs;
 
-	# Rewrite all IF ... IS NULL with coalesce because for Oracle empty and NULL is the same
-	$str =~ s/([a-z0-9_\.]+)[\s\t]+IS NULL/coalesce($1::text, '') = ''/igs;
-	$str =~ s/([a-z0-9_\.]+)[\s\t]+IS NOT NULL/($1 IS NOT NULL AND $1::text <> '')/igs;
+	if ($null_equal_empty) {
+		# Rewrite all IF ... IS NULL with coalesce because for Oracle empty and NULL is the same
+		$str =~ s/([a-z0-9_\.]+)[\s\t]+IS NULL/coalesce($1::text, '') = ''/igs;
+		$str =~ s/([a-z0-9_\.]+)[\s\t]+IS NOT NULL/($1 IS NOT NULL AND $1::text <> '')/igs;
+	}
 
 	# Replace SQLCODE by SQLSTATE
 	$str =~ s/\bSQLCODE\b/SQLSTATE/igs;

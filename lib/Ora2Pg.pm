@@ -418,6 +418,7 @@ sub _init
 	$self->{replaced_cols} = ();
 	$self->{replace_as_boolean} = ();
 	$self->{ora_boolean_values} = ();
+	$self->{null_equal_empty} = 1;
 	$self->{where} = ();
 	@{$self->{sysusers}} = ('SYSTEM','SYS','DBSNMP','OUTLN','PERFSTAT','CTXSYS','XDB','WMSYS','SYSMAN','SQLTXPLAIN','MDSYS','EXFSYS','ORDSYS','DMSYS','OLAPSYS','FLOWS_020100','FLOWS_FILES','TSMSYS');
 	$self->{ora_reserved_words} = (); 
@@ -1560,12 +1561,12 @@ LANGUAGE plpgsql ;
 				# Replace direct call of a stored procedure in triggers
 				if ($trig->[7] eq 'CALL') {
 					if ($self->{plsql_pgsql}) {
-						$trig->[4] = Ora2Pg::PLSQL::plsql_to_plpgsql($trig->[4], $self->{allow_code_break});
+						$trig->[4] = Ora2Pg::PLSQL::plsql_to_plpgsql($trig->[4], $self->{allow_code_break},$self->{null_equal_empty});
 					}
 					$trig->[4] = "BEGIN;\nSELECT $trig->[4];\nEND;";
 				} else {
 					if ($self->{plsql_pgsql}) {
-						$trig->[4] = Ora2Pg::PLSQL::plsql_to_plpgsql($trig->[4], $self->{allow_code_break});
+						$trig->[4] = Ora2Pg::PLSQL::plsql_to_plpgsql($trig->[4], $self->{allow_code_break},$self->{null_equal_empty});
 						$trig->[4] =~ s/\b(END[;]*)$/RETURN NEW;\n$1/igs;
 					}
 				}
@@ -1581,7 +1582,7 @@ LANGUAGE plpgsql ;
 					$sql_output .= "CREATE TRIGGER $trig->[6]\n";
 					if ($trig->[5]) {
 						if ($self->{plsql_pgsql}) {
-							$trig->[5] = Ora2Pg::PLSQL::plsql_to_plpgsql($trig->[5], $self->{allow_code_break});
+							$trig->[5] = Ora2Pg::PLSQL::plsql_to_plpgsql($trig->[5], $self->{allow_code_break},$self->{null_equal_empty});
 						}
 						$sql_output .= "\tWHEN ($trig->[5])\n";
 					}
@@ -2386,7 +2387,7 @@ LANGUAGE plpgsql ;
 			if ($#create_all >= 0) {
 				if ($self->{plsql_pgsql}) {
 					for (my $i = 0; $i <= $#create_all; $i++) {
-						$create_all[$i] = Ora2Pg::PLSQL::plsql_to_plpgsql($create_all[$i], $self->{allow_code_break});
+						$create_all[$i] = Ora2Pg::PLSQL::plsql_to_plpgsql($create_all[$i], $self->{allow_code_break},$self->{null_equal_empty});
 					}
 				}
 				if ($self->{dbhdest}) {
@@ -2432,17 +2433,17 @@ BEGIN
 							$create_table{$table}{table} .= "\t$self->{partitions}{$table}{$pos}{$part}[$i]->{column} IN ($self->{partitions}{$table}{$pos}{$part}[$i]->{value})";
 						} else {
 							if ($old_part eq '') {
-								$create_table{$table}{table} .= "\t$self->{partitions}{$table}{$pos}{$part}[$i]->{column} <= " . Ora2Pg::PLSQL::plsql_to_plpgsql($self->{partitions}{$table}{$pos}{$part}[$i]->{value}, $self->{allow_code_break});
+								$create_table{$table}{table} .= "\t$self->{partitions}{$table}{$pos}{$part}[$i]->{column} <= " . Ora2Pg::PLSQL::plsql_to_plpgsql($self->{partitions}{$table}{$pos}{$part}[$i]->{value}, $self->{allow_code_break},$self->{null_equal_empty});
 							} else {
-								$create_table{$table}{table} .= "\t$self->{partitions}{$table}{$pos}{$part}[$i]->{column} > " . Ora2Pg::PLSQL::plsql_to_plpgsql($self->{partitions}{$table}{$old_pos}{$old_part}[$i]->{value}, $self->{allow_code_break}) . " AND $self->{partitions}{$table}{$pos}{$part}[$i]->{column} <= " . Ora2Pg::PLSQL::plsql_to_plpgsql($self->{partitions}{$table}{$pos}{$part}[$i]->{value}, $self->{allow_code_break});
+								$create_table{$table}{table} .= "\t$self->{partitions}{$table}{$pos}{$part}[$i]->{column} > " . Ora2Pg::PLSQL::plsql_to_plpgsql($self->{partitions}{$table}{$old_pos}{$old_part}[$i]->{value}, $self->{allow_code_break},$self->{null_equal_empty}) . " AND $self->{partitions}{$table}{$pos}{$part}[$i]->{column} <= " . Ora2Pg::PLSQL::plsql_to_plpgsql($self->{partitions}{$table}{$pos}{$part}[$i]->{value}, $self->{allow_code_break},$self->{null_equal_empty});
 							}
 						}
 						$create_table{$table}{table} .= " AND" if ($i < $#{$self->{partitions}{$table}{$pos}{$part}});
 						$create_table{$table}{'index'} .= "CREATE INDEX ${part}_$self->{partitions}{$table}{$pos}{$part}[$i]->{column} ON $part ($self->{partitions}{$table}{$pos}{$part}[$i]->{column});\n";
 						if ($self->{partitions}{$table}{$pos}{$part}[$i]->{type} eq 'LIST') {
-							push(@condition, "NEW.$self->{partitions}{$table}{$pos}{$part}[$i]->{column} IN (" . Ora2Pg::PLSQL::plsql_to_plpgsql($self->{partitions}{$table}{$pos}{$part}[$i]->{value}, $self->{allow_code_break}) . ")");
+							push(@condition, "NEW.$self->{partitions}{$table}{$pos}{$part}[$i]->{column} IN (" . Ora2Pg::PLSQL::plsql_to_plpgsql($self->{partitions}{$table}{$pos}{$part}[$i]->{value}, $self->{allow_code_break}, $self->{null_equal_empty}) . ")");
 						} else {
-							push(@condition, "NEW.$self->{partitions}{$table}{$pos}{$part}[$i]->{column} <= " . Ora2Pg::PLSQL::plsql_to_plpgsql($self->{partitions}{$table}{$pos}{$part}[$i]->{value}, $self->{allow_code_break}));
+							push(@condition, "NEW.$self->{partitions}{$table}{$pos}{$part}[$i]->{column} <= " . Ora2Pg::PLSQL::plsql_to_plpgsql($self->{partitions}{$table}{$pos}{$part}[$i]->{value}, $self->{allow_code_break},$self->{null_equal_empty}));
 						}
 					}
 					$create_table{$table}{table} .= "\n) ) INHERITS ($table);\n";
@@ -2674,7 +2675,7 @@ CREATE TRIGGER insert_${table}_trigger
 			# Set the index definition
 			$indices .= $self->_create_indexes($table, %{$self->{tables}{$table}{indexes}}) . "\n";
 			if ($self->{plsql_pgsql}) {
-				$indices = Ora2Pg::PLSQL::plsql_to_plpgsql($indices, $self->{allow_code_break});
+				$indices = Ora2Pg::PLSQL::plsql_to_plpgsql($indices, $self->{allow_code_break},$self->{null_equal_empty});
 			}
 			if (!$self->{file_per_index} || $self->{dbhdest}) {
 				$sql_output .= $indices;
@@ -3085,7 +3086,7 @@ sub _create_check_constraint
 				}
 			}
 			if ($self->{plsql_pgsql}) {
-				$chkconstraint = Ora2Pg::PLSQL::plsql_to_plpgsql($chkconstraint, $self->{allow_code_break});
+				$chkconstraint = Ora2Pg::PLSQL::plsql_to_plpgsql($chkconstraint, $self->{allow_code_break},$self->{null_equal_empty});
 			}
 			if (!$self->{preserve_case}) {
 				foreach my $c (@$field_name) {
@@ -4808,9 +4809,9 @@ sub _convert_function
 		#$func_declare = $self->_convert_declare($func_declare);
 		$func_declare = Ora2Pg::PLSQL::replace_sql_type($func_declare, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type});
 		# Replace PL/SQL code into PL/PGSQL similar code
-		$func_declare = Ora2Pg::PLSQL::plsql_to_plpgsql($func_declare, $self->{allow_code_break});
+		$func_declare = Ora2Pg::PLSQL::plsql_to_plpgsql($func_declare, $self->{allow_code_break},$self->{null_equal_empty});
 		if ($func_code) {
-			$func_code = Ora2Pg::PLSQL::plsql_to_plpgsql("BEGIN".$func_code, $self->{allow_code_break});
+			$func_code = Ora2Pg::PLSQL::plsql_to_plpgsql("BEGIN".$func_code, $self->{allow_code_break},$self->{null_equal_empty});
 		}
 	} else {
 		return $plsql;
@@ -5041,7 +5042,7 @@ sub _format_view
 		}
 	}
 	if ($self->{plsql_pgsql}) {
-		$sqlstr = Ora2Pg::PLSQL::plsql_to_plpgsql($sqlstr, $self->{allow_code_break});
+		$sqlstr = Ora2Pg::PLSQL::plsql_to_plpgsql($sqlstr, $self->{allow_code_break},$self->{null_equal_empty});
 	}
 
 	return $sqlstr;

@@ -102,7 +102,7 @@ CREATE_SCHEMA	1
 # after a export/import for example. If you set the value to 1 will exec:
 # DBMS_UTILITY.compile_schema(schema => sys_context('USERENV', 'SESSION_USER'));
 # but if you probvide the name of a particular schema it will use the following
-# command: DBMS_UTILITY.compile_schema(schema => 'schamename');
+# command: DBMS_UTILITY.compile_schema(schema => 'schemaname');
 COMPILE_SCHEMA	0
 
 # If the above configuration directive is not enough to validate your PL/SQL code
@@ -443,6 +443,13 @@ PKEY_IN_CREATE		0
 # Use this to add additional definition of the possible boolean values in Oracle
 # field. You must set a space separated list of TRUE:FALSE values. BY default:
 #BOOLEAN_VALUES	yes:no y:n 1:0 true:false enabled:disabled
+
+# By default Ora2Pg will replace all conditions with a test on NULL by a call
+# to the coalesce() function to mimic the Oracle behavior where empty field are
+# considered equal to NULL. Ex: (field1 IS NULL) and (field2 IS NOT NULL) will
+# be replaced by (coalesce(field1::text, '') = '') and (field2 IS NOT NULL AND
+# field2::text <> '')
+NULL_EQUAL_EMPTY	1
 
 };
 close(OUTCFG);

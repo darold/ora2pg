@@ -1006,6 +1006,17 @@ CONFIGURATION
         code and solve the problem, but if you want you can disable this
         unsecure replacement.
 
+    NULL_EQUAL_EMPTY
+        By default Ora2Pg will replace all conditions with a test on NULL by
+        a call to the coalesce() function to mimic the Oracle behavior where
+        empty string are considered equal to NULL.
+
+                (field1 IS NULL) is replaced by (coalesce(field1::text, '') = '')
+                (field2 IS NOT NULL) is replaced by (field2 IS NOT NULL AND field2::text <> '')
+
+        Default is replacement to be sure that your application will have se
+        same behavior.
+
   Materialized view
     For now Ora2Pg will export all materialized views as "Snapshot
     Materialized Views" as explain in this document:
