@@ -920,7 +920,7 @@ sub _tables
 		# Set the table information for each class found
 		my $i = 1;
 		foreach my $t (@$table) {
-			next if ($t->[2] =~ /\$/);
+			#next if ($t->[2] =~ /\$/);
 
 			# Jump to desired extraction
 			if (grep(/^$t->[2]$/, @done)) {
@@ -1051,7 +1051,7 @@ sub _views
 	foreach my $table (sort keys %view_infos) {
 		# Set the table information for each class found
 		# Jump to desired extraction
-		next if ($table =~ /\$/);
+		#next if ($table =~ /\$/);
 		next if (($#{$self->{limited}} >= 0) && !grep($table =~ /^$_$/i, @{$self->{limited}}));
 		next if (($#{$self->{excluded}} >= 0) && grep($table =~ /^$_$/i, @{$self->{excluded}}));
 
@@ -1092,7 +1092,7 @@ sub _materialized_views
 	foreach my $table (sort keys %view_infos) {
 		# Set the table information for each class found
 		# Jump to desired extraction
-		next if ($table =~ /\$/);
+		#next if ($table =~ /\$/);
 		next if (($#{$self->{limited}} >= 0) && !grep($table =~ /^$_$/i, @{$self->{limited}}));
 		next if (($#{$self->{excluded}} >= 0) && grep($table =~ /^$_$/i, @{$self->{excluded}}));
 
@@ -1537,7 +1537,7 @@ LANGUAGE plpgsql ;
 		my $nothing = 0;
 		foreach my $trig (sort {$a->[0] cmp $b->[0]} @{$self->{triggers}}) {
 			my $fhdl = undef;
-			next if ($trig->[0] =~ /\$/);
+			#next if ($trig->[0] =~ /\$/);
 			next if (($#{$self->{limited}} >= 0) && !grep(/^$trig->[3]$/i, @{$self->{limited}}));
 			next if (($#{$self->{excluded}} >= 0) && grep(/^$trig->[3]$/i, @{$self->{excluded}}));
 			if ($self->{file_per_function} && !$self->{dbhdest}) {
@@ -1830,7 +1830,7 @@ LANGUAGE plpgsql ;
 	if ($self->{type} eq 'TYPE') {
 		$self->logit("Add custom types definition...\n", 1);
 		foreach my $tpe (sort {length($a->{name}) <=> length($b->{name}) } @{$self->{types}}) {
-			next if ($tpe->{name} =~ /\$/);
+			#next if ($tpe->{name} =~ /\$/);
 			$self->logit("Dumping type $tpe->{name}...\n", 1);
 			$sql_output .= "-- Oracle type '$tpe->{name}' declaration, please edit to match PostgreSQL syntax.\n";
 			if ($self->{plsql_pgsql}) {
@@ -1868,7 +1868,7 @@ LANGUAGE plpgsql ;
 					}
 					push(@done, $tb_name);
 					foreach my $obj (@{$self->{tablespaces}{$tb_type}{$tb_name}{$tb_path}}) {
-						next if ($obj =~ /\$/);
+						#next if ($obj =~ /\$/);
 						next if (($#{$self->{limited}} >= 0) && !grep($obj =~ /^$_$/i, @{$self->{limited}}));
 						next if (($#{$self->{excluded}} >= 0) && grep($obj =~ /^$_$/i, @{$self->{excluded}}));
 						if (!$self->{preserve_case} || ($tb_type eq 'INDEX')) {
@@ -4051,7 +4051,7 @@ sub _get_packages
 	my %packages = ();
 	my @fct_done = ();
 	while (my $row = $sth->fetch) {
-		next if ($row->[0] =~ /\$/);
+		#next if ($row->[0] =~ /\$/);
 		$self->logit("\tFound Package: $row->[0]\n", 1);
 		next if (grep(/^$row->[0]$/, @fct_done));
 		push(@fct_done, $row->[0]);
@@ -4098,7 +4098,7 @@ sub _get_types
 	my @types = ();
 	my @fct_done = ();
 	while (my $row = $sth->fetch) {
-		next if ($row->[0] =~ /\$/);
+		#next if ($row->[0] =~ /\$/);
 		$self->logit("\tFound Type: $row->[0]\n", 1);
 		next if (grep(/^$row->[0]$/, @fct_done));
 		push(@fct_done, $row->[0]);
@@ -5161,7 +5161,7 @@ CREATE TYPE \L$type_name\E (
 		my $declar = Ora2Pg::PLSQL::replace_sql_type($description, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type});
 		$type_name =~ s/"//g;
 		$declar =~ s/\);$//s;
-		return if ($type_name =~ /\$/);
+		#return if ($type_name =~ /\$/);
 
 		if ($body =~ /TYPE BODY[\s\t]+$type_name[\s\t]*(IS|AS)[\s\t]*(.*)END;/is) {
 			my $content2 = $2;
@@ -5244,7 +5244,7 @@ $declar
 		my $tbname = $4;
 		$type_name =~ s/"//g;
 		$tbname =~ s/;//g;
-		return if ($type_name =~ /\$/);
+		#return if ($type_name =~ /\$/);
 		$content = qq{
 CREATE TYPE \L$type_name\E AS ($type_name $tbname\[$size\]);
 };
@@ -5285,7 +5285,7 @@ sub _extract_type
 		my $declar = Ora2Pg::PLSQL::replace_sql_type($description, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type});
 		$type_name =~ s/"//g;
 		$declar =~ s/\);$//s;
-		return if ($type_name =~ /\$/);
+		#return if ($type_name =~ /\$/);
 
 		if ($body =~ /TYPE BODY[\s\t]+$type_name[\s\t]*(IS|AS)[\s\t]*(.*)END;/is) {
 			my $content2 = $2;
@@ -5322,7 +5322,7 @@ sub _extract_type
 		my $tbname = $4;
 		$type_name =~ s/"//g;
 		$tbname =~ s/;//g;
-		return if ($type_name =~ /\$/);
+		#return if ($type_name =~ /\$/);
 		$content = qq{
 CREATE TYPE \L$type_name\E AS ($type_name $tbname\[$size\]);
 };
