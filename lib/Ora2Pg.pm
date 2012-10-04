@@ -1623,7 +1623,7 @@ LANGUAGE plpgsql ;
 	if ($self->{type} eq 'FUNCTION') {
 		use constant SQL_DATATYPE => 2;
 		$self->logit("Add functions definition...\n", 1);
-		$self->dump($sql_header) if ($self->{file_per_function} && !$self->{dbhdest});
+		$self->dump($sql_header);
 		my $nothing = 0;
 		my $dirprefix = '';
 		$dirprefix = "$self->{output_dir}/" if ($self->{output_dir});
@@ -1691,7 +1691,7 @@ LANGUAGE plpgsql ;
 		my $nothing = 0;
 		my $dirprefix = '';
 		$dirprefix = "$self->{output_dir}/" if ($self->{output_dir});
-		$self->dump($sql_header) if ($self->{file_per_function} && !$self->{dbhdest});
+		$self->dump($sql_header);
 		#---------------------------------------------------------
 		# Code to use to find procedure parser issues, it load a file
 		# containing the untouched PL/SQL code from Oracle Procedure
@@ -1758,7 +1758,7 @@ LANGUAGE plpgsql ;
 		my $nothing = 0;
 		my $dirprefix = '';
 		$dirprefix = "$self->{output_dir}/" if ($self->{output_dir});
-		$self->dump($sql_header) if ($self->{file_per_function} && !$self->{dbhdest});
+		$self->dump($sql_header);
 
 		#---------------------------------------------------------
 		# Code to use to find package parser bugs, it load a file
