@@ -1,4 +1,24 @@
 
+	- Fix missing set client_encoding orders into fonction or procedure
+	  export file. Thanks to Dominique Legendre for the report.
+	- Fix not working SKIP configuration directive. Thanks to Siva
+	  Janamanchi for the report.
+	- Add configuration directive NULL_EQUAL_EMPTY to disable the IS NULL
+	  and IS NOT NULL replacement into PL/SQL code. Enabled by default.
+	  Thanks to Dominique Legendre for the feature request.
+	- Remove exclusion of object names with the dollar sign. Thanks to
+	  Konrad Beiske for the suggestion.
+	- Fix timestamp with time zone when microsecond is enabled. Thanks
+	  to Siva Janamanchi for the report.
+	- Fix extra semi-column when PKEY_IN_CREATE is enabled. Thanks to
+	  Siva Janamanchi for the report.
+	- Update configuration about boolean replacement.
+	- Allow any column type replacement as a boolean in PostgreSQL, values
+	  will be converted as well. Thanks to Konrad Beiske for the feature
+	  request.
+	- Add REPLACE_AS_BOOLEAN and BOOLEAN_VALUES configuration directives
+	  to allow type replacement with a boolean. Thanks to Konrad Beiske
+	  for the feature request.
 	- Add new configuration directive PKEY_IN_CREATE to add primary keys
 	  definition in CREATE TABLE statement instead of creating them after
 	  with an ALTER TABLE statement. For Greenplum database, primary key
