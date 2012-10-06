@@ -478,9 +478,7 @@ sub _init
 			$self->{"\L$k\E"} = $options{$k};
 		}
 	}
-	if ($self->{nls_lang}) {
-		$ENV{NLS_LANG} = $self->{nls_lang};
-	}
+
 	if ($AConfig{'DEBUG'} == 1) {
 		$self->{debug} = 1;
 	}
@@ -624,6 +622,32 @@ sub _init
 		$sth->finish;
 		undef $sth;
 
+		# Auto detect character set
+		if ($self->{debug}) {
+			$self->logit("Auto detecting Oracle character set and the corresponding PostgreSQL client encoding to use.\n", 1);
+		}
+		my $encoding = $self->_get_encoding();
+		if (!$self->{nls_lang}) {
+			$self->{nls_lang} = $encoding;
+			if ($self->{debug}) {
+				$self->logit("\tUsing Oracle character set: $self->{nls_lang}.\n", 1);
+			}
+		} else {
+			$ENV{NLS_LANG} = $self->{nls_lang};
+			if ($self->{debug}) {
+				$self->logit("\tUsing the character set given in NLS_LANG configuration directive ($self->{nls_lang}).\n", 1);
+			}
+		}
+		if (!$self->{client_encoding}) {
+			$self->{client_encoding} = &auto_set_encoding($encoding);
+			if ($self->{debug}) {
+				$self->logit("\tUsing PostgreSQL client encoding: $self->{client_encoding}.\n", 1);
+			}
+		} else {
+			if ($self->{debug}) {
+				$self->logit("\tUsing PostgreSQL client encoding given in CLIENT_ENCODING configuration directive ($self->{client_encoding}).\n", 1);
+			}
+		}
 		if ($self->{debug}) {
 			$self->logit("Force Oracle to compile schema before code extraction\n", 1);
 		}
@@ -5504,7 +5528,6 @@ sub _show_infos
 		$self->logit("Showing Oracle encoding...\n", 1);
 		my $encoding = $self->_get_encoding();
 		$self->logit("NLS_LANG $encoding\n", 0);
-		$self->logit("NLS_LANG2 $ENV{NLS_LANG}\n", 0);
 		$self->logit("CLIENT ENCODING $self->{client_encoding}\n", 0);
 	} elsif ($type eq 'SHOW_SCHEMA') {
 		# Get all tables information specified by the DBI method table_info
@@ -5700,6 +5723,9 @@ sub _datetime_format
 	} else {
 		$sth = $self->{dbh}->do("ALTER SESSION SET NLS_TIMESTAMP_TZ_FORMAT='YYYY-MM-DD HH24:MI:SS.FF TZH:TZM'") or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	}
+	# NLS_NCHAR is unset so that N* data types will be converted to the
+	# character set specified in NLS_LANG.
+	$sth = $self->{dbh}->do("ALTER SESSION SET NLS_NCHAR=''") or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 }
 
 sub progress_bar
@@ -5721,6 +5747,48 @@ sub progress_bar
 			$got, $total, 100
 		);
 	}
+}
+
+sub auto_set_encoding
+{
+	my $oracle_encoding = shift;
+
+	my %ENCODING = (
+		"AL32UTF8" => "UTF8",
+		"JA16EUC" => "EUC_JP",
+		"JA16SJIS" => "EUC_JIS_2004",
+		"ZHT32EUC" => "EUC_TW",
+		"CL8ISO8859P5" => "ISO_8859_5",
+		"AR8ISO8859P6" => "ISO_8859_6",
+		"EL8ISO8859P7" => "ISO_8859_7",
+		"IW8ISO8859P8" => "ISO_8859_8",
+		"CL8KOI8R" => "KOI8R",
+		"CL8KOI8U" => "KOI8U",
+		"WE8ISO8859P1" => "LATIN1",
+		"EE8ISO8859P2" => "LATIN2",
+		"SE8ISO8859P3" => "LATIN3",
+		"NEE8ISO8859P4"=> "LATIN4",
+		"WE8ISO8859P9" => "LATIN5",
+		"NE8ISO8859P10"=> "LATIN6",
+		"BLT8ISO8859P13"=> "LATIN7",
+		"CEL8ISO8859P14"=> "LATIN8",
+		"WE8ISO8859P15" => "LATIN9",
+		"RU8PC866" => "WIN866",
+		"EE8MSWIN1250" => "WIN1250",
+		"CL8MSWIN1251" => "WIN1251",
+		"WE8MSWIN1252" => "WIN1252",
+		"EL8MSWIN1253" => "WIN1253",
+		"TR8MSWIN1254" => "WIN1254",
+		"IW8MSWIN1255" => "WIN1255",
+		"AR8MSWIN1256" => "WIN1256",
+		"BLT8MSWIN1257"=> "WIN1257"
+	);
+
+	foreach my $k (keys %ENCODING) {
+		return $ENCODING{$k} if ($oracle_encoding =~ /\.$k/i);
+	}
+
+	return '';
 }
 
 # Preload the bytea array at lib init
