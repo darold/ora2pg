@@ -181,6 +181,11 @@ sub plsql_to_plpgsql
 	# Reorder cursor declaration
 	$str =~ s/\bCURSOR\b[\s\t]*([A-Z0-9_\$]+)/$1 CURSOR/isg;
 
+	# Replace CURSOR IS SELECT by CURSOR FOR SELECT
+	$str =~ s/\bCURSOR([\s\t]*)IS([\s\t]*)SELECT/CURSOR$1FOR$2SELECT/isg;
+	# Replace CURSOR (param) IS SELECT by CURSOR FOR SELECT
+	$str =~ s/\bCURSOR([\s\t]*\([^\)]+\)[\s\t]*)IS([\s\t]*)SELECT/CURSOR$1FOR$2SELECT/isg;
+
 	# Rewrite TO_DATE formating call
 	$str =~ s/TO_DATE[\s\t]*\([\s\t]*('[^\']+'),[\s\t]*('[^\']+')[^\)]*\)/to_date($1,$2)/igs;
 
@@ -238,6 +243,10 @@ sub plsql_to_plpgsql
 	$str =~ s/EXIT WHEN \([\s\t]*([^\%]+)\%NOTFOUND[\s\t]+([\)]+)\)[\s\t]*;/IF NOT FOUND $2 THEN EXIT; END IF; -- apply on $1/isg;
 	# Replacle call to SQL%NOTFOUND
 	$str =~ s/SQL\%NOTFOUND/NOT FOUND/isg;
+
+	# Replace REF CURSOR as Pg REFCURSOR
+	$str =~ s/\bIS([\s\t]*)REF[\s\t]+CURSOR/REFCURSOR/isg;
+	$str =~ s/\bREF[\s\t]+CURSOR/REFCURSOR/isg;
 
 	# Replace SYS_REFCURSOR as Pg REFCURSOR
 	$str =~ s/SYS_REFCURSOR/REFCURSOR/isg;
