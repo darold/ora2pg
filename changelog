@@ -1,4 +1,12 @@
+2012 10 07 - v9.3
 
+	- Add auto detection of Oracle character set and the corresponding
+	  PostgreSQL client encoding to use. NLS_LANG and CLIENT_ENCODING
+	  configuration directives can be leaved commented, Ora2Pg will set
+	  their values automatically.
+	- Add PL/SQL replacement of CURSOR IS SELECT by CURSOR FOR SELECT and
+	  IS REF CURSOR by REFCURSOR. Thanks to Dominique Legendre for the
+	  report.
 	- Fix missing set client_encoding orders into fonction or procedure
 	  export file. Thanks to Dominique Legendre for the report.
 	- Fix not working SKIP configuration directive. Thanks to Siva
@@ -60,6 +68,8 @@
 	- Allow exclusion from export of functions, procedures and functions in
 	  package by specifying a list of name or regex in EXCLUDE directive.
 	  Thanks to Keith Fiske from Omniti for the feature request.
+
+UPGRADE: Almost all files have changed so a new installation is required.
 
 2012 09 05 - v9.2
 
