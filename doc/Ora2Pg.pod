@@ -992,7 +992,8 @@ columns definition. Default is enabled.
 
 =item NLS_LANG
 
-If you experience any issues where mutibyte characters are being substituted
+By default since Ora2Pg 9.3 Oracle character set is automatically detected, but
+if you experience any issues where mutibyte characters are being substituted
 with some replacement characters during the export try to set the NLS_LANG
 configuration directive to the Oracle encoding. This may help a lot especially
 with UTF8 encoding. For example:
@@ -1012,9 +1013,10 @@ binary mode.
 
 =item CLIENT_ENCODING
 
-If you experience ERROR: invalid byte sequence for encoding "UTF8": 0xe87472
+By default since Ora2Pg 9.3 PostgreSQL client encoding is automatically detected
+and set to avoid encoding issue. If you want to defined your own or if you
+experience some ERROR: invalid byte sequence for encoding "UTF8": 0xe87472
 when loading data you may want to set the encoding of the PostgreSQL client.
-By default it is not set and it will depend of you system client encoding.
 
 For example, let's say you have an Oracle database with all data encoded in
 FRENCH_FRANCE.WE8ISO8859P15, your system use fr_FR.UTF-8 as console encoding
