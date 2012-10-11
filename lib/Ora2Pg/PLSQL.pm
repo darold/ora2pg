@@ -127,6 +127,7 @@ sub plsql_to_plpgsql
 
 	# SELECT without INTO should be PERFORM. Exclude select of view when prefixed with AS ot IS
 	$str =~ s/([\s\t\n\r]+)(?<!AS|IS)([\s\t\n\r]+)SELECT(?![^;]+\bINTO\b[^;]+FROM[^;]+;)/$1$2$3PERFORM$4/isg;
+	$str =~ s/\b(AS|IS)([\s\t\n\r]+)PERFORM/$1$2SELECT/isg;
 
 	# Change nextval on sequence
 	# Oracle's sequence grammar is sequence_name.nextval.
