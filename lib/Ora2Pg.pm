@@ -5723,9 +5723,6 @@ sub _datetime_format
 	} else {
 		$sth = $self->{dbh}->do("ALTER SESSION SET NLS_TIMESTAMP_TZ_FORMAT='YYYY-MM-DD HH24:MI:SS.FF TZH:TZM'") or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	}
-	# NLS_NCHAR is unset so that N* data types will be converted to the
-	# character set specified in NLS_LANG.
-	$sth = $self->{dbh}->do("ALTER SESSION SET NLS_NCHAR=''") or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 }
 
 sub progress_bar
