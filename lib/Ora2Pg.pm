@@ -1047,6 +1047,7 @@ sub _tables
 			}
 		}
 	}
+
 }
 
 
@@ -1947,42 +1948,9 @@ LANGUAGE plpgsql ;
 			}
 			my $s = $self->{dbhdest}->do($search_path) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
 		}
-		# Try to ordered table for export as we don't have issues with foreign keys
-		# we first extract all tables that dont have foreign keys
-		# second we extract all tables that only references the previous tables
-		# If there's still tables with reference, it is not possible to ordering so
-		my @ordered_tables = ();
 		my $global_rows = 0;
 		foreach my $table (keys %{$self->{tables}}) {
-			if (!exists $self->{tables}{$table}{foreign_link} || (scalar keys %{$self->{tables}{$table}{foreign_link}} == 0) ) {
-				push(@ordered_tables, $table);
-			}
 			$global_rows += $self->{tables}{$table}{table_info}[3];
-		}
-		my $cur_len = 0;
-		while ($cur_len != $#ordered_tables) {
-			$cur_len = $#ordered_tables;
-			foreach my $table (keys %{$self->{tables}}) {
-				next if (grep(/^$table$/i, @ordered_tables));
-				my $notfound = 0;
-				foreach my $key (keys %{$self->{tables}{$table}{foreign_link}}) {
-					if (!exists $self->{tables}{$table}{foreign_link}{$key}{remote} || (scalar keys %{$self->{tables}{$table}{foreign_link}{$key}{remote}} == 0) ) {
-						push(@ordered_tables, $table) if (!grep(/^$table$/i, @ordered_tables));
-						next;
-					}
-					foreach my $desttable (keys %{$self->{tables}{$table}{foreign_link}{$key}{remote}}) {
-						next if ($desttable eq $table);
-						if (!grep(/^$desttable$/i, @ordered_tables)) {
-							$notfound = 1;
-							last;
-						}
-					}
-				}
-				if (!$notfound && !grep(/^$table$/i, @ordered_tables)) {
-					$cur_len = 0;
-					push(@ordered_tables, $table);
-				}
-			}
 		}
 
 		if ($self->{drop_indexes} || $self->{drop_fkey}) {
@@ -1991,34 +1959,31 @@ LANGUAGE plpgsql ;
 			}
 		}
 		my $deferred_fkey = 0;
-		if ( ($#ordered_tables + 1) != scalar keys %{$self->{tables}} ) {
-			# Ok ordering is impossible
-			@ordered_tables = keys %{$self->{tables}};
-			if ($self->{defer_fkey} && !$self->{drop_fkey}) {
-				$deferred_fkey = 1;
-				if ($self->{dbhdest}) {
-					my $s = $self->{dbhdest}->do("BEGIN;") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
-					$s = $self->{dbhdest}->do("SET CONSTRAINTS ALL DEFERRED;") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
-				} else {
-					$self->dump("BEGIN;\n");
-					$self->dump("SET CONSTRAINTS ALL DEFERRED;\n");
-				}
-			} elsif ($self->{drop_fkey}) {
-				$deferred_fkey = 1;
-				my $drop_all = '';
-				# First of all we drop all foreign keys
-				foreach my $table (sort { $self->{tables}{$a}{internal_id} <=> $self->{tables}{$b}{internal_id} } keys %{$self->{tables}}) {
-					$self->logit("Dropping table $table foreign keys...\n", 1);
-					$drop_all .= $self->_drop_foreign_keys($table, @{$self->{tables}{$table}{foreign_key}});
-				}
-				if ($drop_all) {
-					$self->dump($drop_all);
-				}
-				$drop_all = '';
+		my @ordered_tables = sort { $a cmp $b } keys %{$self->{tables}};
+		# Ok ordering is impossible
+		if ($self->{defer_fkey} && !$self->{drop_fkey}) {
+			$deferred_fkey = 1;
+			if ($self->{dbhdest}) {
+				my $s = $self->{dbhdest}->do("BEGIN;") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
+				$s = $self->{dbhdest}->do("SET CONSTRAINTS ALL DEFERRED;") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
 			} else {
-				$self->logit("WARNING: ordering table export to respect foreign keys is not possible.\n", 0);
-				$self->logit("Please consider using DEFER_FKEY or DROP_FKEY configuration directives.\n", 0);
+				$self->dump("BEGIN;\n");
+				$self->dump("SET CONSTRAINTS ALL DEFERRED;\n");
 			}
+		} elsif ($self->{drop_fkey}) {
+			$deferred_fkey = 1;
+			my $drop_all = '';
+			# First of all we drop all foreign keys
+			foreach my $table (sort { $self->{tables}{$a}{internal_id} <=> $self->{tables}{$b}{internal_id} } keys %{$self->{tables}}) {
+				$self->logit("Dropping table $table foreign keys...\n", 1);
+				$drop_all .= $self->_drop_foreign_keys($table, @{$self->{tables}{$table}{foreign_key}});
+			}
+			if ($drop_all) {
+				$self->dump($drop_all);
+			}
+			$drop_all = '';
+		} else {
+			$self->logit("WARNING: Please consider using DEFER_FKEY or DROP_FKEY configuration directives.\n", 0);
 		}
 		if ($self->{drop_indexes}) {
 			my $drop_all = '';
