@@ -1021,8 +1021,8 @@ sub _tables
 				next if (!grep($table =~ /^$_$/i, @{$self->{limited}}));
 				$self->logit("Scanning view $table...\n", 1);
 
-				$self->{views}{$table}{text} = $view_infos{$table};
-				$self->{views}{$table}{alias}= $view_infos{$table}{alias};
+				$self->{tables}{$table}{text} = $view_infos{$table};
+				$self->{tables}{$table}{alias}= $view_infos{$table}{alias};
 				my $realview = $table;
 				if ($table !~ /"/) {
 					$realview = "\"$table\"";
@@ -1041,9 +1041,9 @@ sub _tables
 					warn "Can't execute statement: $DBI::errstr";
 					next;
 				}
-				$self->{views}{$table}{field_name} = $sth->{NAME};
-				$self->{views}{$table}{field_type} = $sth->{TYPE};
-				@{$self->{views}{$table}{column_info}} = $self->_column_info($table);
+				$self->{tables}{$table}{field_name} = $sth->{NAME};
+				$self->{tables}{$table}{field_type} = $sth->{TYPE};
+				@{$self->{tables}{$table}{column_info}} = $self->_column_info($table);
 			}
 		}
 	}
@@ -2241,143 +2241,6 @@ LANGUAGE plpgsql ;
 			$self->logit("Restarting sequences\n", 1);
 			$self->dump($self->_extract_sequence_info());
 		}
-
-		# Extract data from view if requested
-		my $search_in_view = 0;
-		foreach (@{$self->{limited}}) {
-			if (not exists $self->{tables}{$_} && not exists $self->{tables}{lc($_)}) {
-				$self->logit("Found view data export for $_\n", 1);
-				$search_in_view = 1;
-				last;
-			}
-		}
-		if ($search_in_view) {
-			foreach my $table (sort keys %{$self->{views}}) {
-				my $start_time = time();
-				$self->logit("Dumping view $table...\n", 1);
-
-				my $fhdl = undef;
-				if ($self->{file_per_table} && !$self->{dbhdest}) {
-					$self->dump("\\i $dirprefix${table}_$self->{output}\n");
-					$self->logit("Dumping to one file per table/view : ${table}_$self->{output}\n", 1);
-					$fhdl = $self->export_file("${table}_$self->{output}");
-				}
-				# Rename table and double-quote is named if required
-				my $tmptb = $table;
-				if (exists $self->{replaced_tables}{"\L$table\E"} && $self->{replaced_tables}{"\L$table\E"}) {
-					$self->logit("\tReplacing table $table as " . $self->{replaced_tables}{lc($table)} . "...\n", 1);
-					$tmptb = $self->{replaced_tables}{lc($table)};
-				}
-				if (!$self->{preserve_case}) {
-					$tmptb = lc($tmptb);
-					$tmptb =~ s/"//g;
-				} elsif ($tmptb !~ /"/) {
-					$tmptb = '"' . $tmptb . '"';
-				}
-				$tmptb = $self->quote_reserved_words($tmptb);
-
-				## disable triggers of current table if requested
-				if ($self->{disable_triggers}) {
-					if ($self->{dbhdest}) {
-						my $s = $self->{dbhdest}->do("ALTER TABLE $tmptb DISABLE TRIGGER $self->{disable_triggers};") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
-					} else {
-						$self->dump("ALTER TABLE $tmptb DISABLE TRIGGER $self->{disable_triggers};\n", $fhdl);
-					}
-				}
-
-				my @tt = ();
-				my @stt = ();
-				my @nn = ();
-				my $s_out = "INSERT INTO $tmptb (";
-				if ($self->{type} eq 'COPY') {
-					$s_out = "\nCOPY $tmptb (";
-				}
-				my @fname = ();
-				foreach my $i ( 0 .. $#{$self->{views}{$table}{field_name}} ) {
-					my $fieldname = ${$self->{views}{$table}{field_name}}[$i];
-					if (!$self->{preserve_case}) {
-						if (exists $self->{modify}{"\L$table\E"}) {
-							next if (!grep(/$fieldname/i, @{$self->{modify}{"\L$table\E"}}));
-						}
-					} else {
-						if (exists $self->{modify}{"$table"}) {
-							next if (!grep(/$fieldname/i, @{$self->{modify}{"$table"}}));
-						}
-					}
-					if (!$self->{preserve_case}) {
-						push(@fname, lc($fieldname));
-					} else {
-						push(@fname, $fieldname);
-					}
-
-					foreach my $f (@{$self->{views}{$table}{column_info}}) {
-						next if ($f->[0] ne "$fieldname");
-
-						my $type = $self->_sql_type($f->[1], $f->[2], $f->[5], $f->[6]);
-						$type = "$f->[1], $f->[2]" if (!$type);
-						push(@tt, $type);
-						push(@stt, $f->[1]);
-						push(@nn, $f);
-						# Change column names
-						my $colname = $f->[0];
-						if ($self->{replaced_cols}{lc($table)}{lc($f->[0])}) {
-							$self->logit("\tReplacing column $f->[0] as " . $self->{replaced_cols}{lc($table)}{lc($f->[0])} . "...\n", 1);
-							$colname = $self->{replaced_cols}{lc($table)}{lc($f->[0])};
-						}
-						if (!$self->{preserve_case}) {
-							$colname = $self->quote_reserved_words($colname);
-							$s_out .= "\L$colname\E,";
-						} else {
-							$s_out .= "\"$colname\",";
-						}
-						last;
-					}
-				}
-				$s_out =~ s/,$//;
-				if ($self->{type} eq 'COPY') {
-					$s_out .= ") FROM STDIN;\n";
-				}
-
-				if ($self->{type} ne 'COPY') {
-					$s_out .= ") VALUES (";
-				}
-
-				my $sprep = undef;
-				if ($self->{dbhdest}) {
-					if ($self->{type} ne 'COPY') {
-						$s_out .= '?,' foreach (@fname);
-						$s_out =~ s/,$//;
-						$s_out .= ")";
-						$sprep = $s_out;
-					}
-				}
-
-				# Extract all data from the current table
-				my $total_record = $self->extract_data($table, $s_out, \@nn, \@tt, $fhdl, $sprep, \@stt);
-				$global_count += $total_record;
-				$self->logit("Total extracted records from tableview $table: $total_record\n", 1);
-				my $end_time = time();
-				my $dt = $end_time - $start_time;
-				$dt ||= 1;
-				my $rps = sprintf("%.1f", $global_count / ($dt+.0001));
-				if (!$self->{quiet}) {
-					print STDERR &progress_bar($global_count, $global_rows, 25, '=', "on total data ($rps recs/sec)" ), " \n";
-				}
-
-				## don't forget to enable all triggers if needed...
-				if ($self->{disable_triggers}) {
-					if ($self->{dbhdest}) {
-						my $s = $self->{dbhdest}->do("ALTER TABLE $tmptb ENABLE TRIGGER $self->{disable_triggers};") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
-					} else {
-						$self->dump("ALTER TABLE $tmptb ENABLE TRIGGER $self->{disable_triggers};\n", $fhdl);
-					}
-				}
-
-				if ($self->{file_per_table} && !$self->{dbhdest}) {
-					$self->close_export_file($fhdl);
-				}
-			}
-		}
 		if ($deferred_fkey) {
 			if ($self->{defer_fkey} && !$self->{drop_fkey}) {
 				$deferred_fkey = 1;
@@ -2596,11 +2459,12 @@ CREATE TRIGGER insert_${table}_trigger
 		if ($self->{type} eq 'FDW') {
 			$foreign = ' FOREIGN';
 		}
+		my $obj_type = ${$self->{tables}{$table}{table_info}}[1] || 'TABLE';
 		if (!$self->{preserve_case}) {
 			$tbname = $self->quote_reserved_words($tbname);
-			$sql_output .= "CREATE$foreign ${$self->{tables}{$table}{table_info}}[1] \L$tbname\E (\n";
+			$sql_output .= "CREATE$foreign $obj_type \L$tbname\E (\n";
 		} else {
-			$sql_output .= "CREATE$foreign ${$self->{tables}{$table}{table_info}}[1] \"$tbname\" (\n";
+			$sql_output .= "CREATE$foreign $obj_type \"$tbname\" (\n";
 		}
 		foreach my $i ( 0 .. $#{$self->{tables}{$table}{field_name}} ) {
 			foreach my $f (@{$self->{tables}{$table}{column_info}}) {
@@ -2716,53 +2580,6 @@ CREATE TRIGGER insert_${table}_trigger
 		$self->dump($sql_header . $indices, $fhdl);
 		$self->close_export_file($fhdl);
 		$indices = '';
-	}
-
-	# Extract data from view if requested
-	my $search_in_view = 0;
-	foreach (@{$self->{limited}}) {
-		if (not exists $self->{tables}{$_}) {
-			$self->logit("Found view data export for $_\n", 1);
-			$search_in_view = 1;
-			last;
-		}
-	}
-	if ($search_in_view) {
-		foreach my $table (sort keys %{$self->{views}}) {
-			$self->logit("Dumping views as table $table...\n", 1);
-			my $tbname = $table;
-			if (exists $self->{replaced_tables}{"\L$table\E"} && $self->{replaced_tables}{"\L$table\E"}) {
-				$tbname = $self->{replaced_tables}{"\L$table\E"};
-			}
-			if (!$self->{preserve_case}) {
-				$tbname = $self->quote_reserved_words($tbname);
-				$sql_output .= "CREATE TABLE \L$tbname\E (\n";
-			} else {
-				$sql_output .= "CREATE TABLE \"$tbname\" (\n";
-			}
-			foreach my $i ( 0 .. $#{$self->{views}{$table}{field_name}} ) {
-				foreach my $f (@{$self->{views}{$table}{column_info}}) {
-					next if ($f->[0] ne "${$self->{views}{$table}{field_name}}[$i]");
-					my $type = $self->_sql_type($f->[1], $f->[2], $f->[5], $f->[6]);
-					$type = "$f->[1], $f->[2]" if (!$type);
-					if (!$self->{preserve_case}) {
-						$sql_output .= "\t\L$f->[0]\E $type";
-					} else {
-						$sql_output .= "\t\"$f->[0]\" $type";
-					}
-					if ($f->[4] ne "") {
-						$f->[4] =~  s/SYSDATE/CURRENT_TIMESTAMP/ig;
-						$sql_output .= " DEFAULT $f->[4]";
-					} elsif (!$f->[3] || ($f->[3] eq 'N')) {
-						$sql_output .= " NOT NULL";
-					}
-					$sql_output .= ",\n";
-					last;
-				}
-			}
-			$sql_output =~ s/,$//;
-			$sql_output .= ");\n";
-		}
 	}
 
 	foreach my $table (keys %{$self->{tables}}) {
