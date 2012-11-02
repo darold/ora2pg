@@ -133,15 +133,13 @@ EXPORT_INVALID	0
 #	PARTITION	Export range or list partition (PostgreSQL >= v8.4)
 TYPE		TABLE
 
-# Set which table to export from. By default export from all tables.
-# Additionally the extraction will respect the table list order given
-# here. This is usefull if you have lots of foreign key constraints.
-# Value must be a list of table name separated by space.
-#TABLES		TABLE_TEST
+# Set which object to export from. By default Ora2Pg export all objects.
+# Value must be a list of object name or regex separated by space.
+#ALLOW		TABLE_TEST
 
-# Set which table to exclude from extraction process. By default none.
-# Value must be a list of table name separated by space.
-#EXCLUDE		OTHER_TABLES
+# Set which object to exclude from export process. By default none.
+# Value must be a list of object name or regexp separated by space.
+#EXCLUDE	OTHER_TABLES
 
 # Support for turning off certain schema features in the postgres side
 # during schema export. Values can be : fkeys, pkeys, ukeys, indexes, checks

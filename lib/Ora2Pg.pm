@@ -946,16 +946,15 @@ sub _tables
 		# Set the table information for each class found
 		my $i = 1;
 		foreach my $t (@$table) {
-			#next if ($t->[2] =~ /\$/);
 
-			# Jump to desired extraction
+			# forget this object if it is in the exclude or allow lists.
+			next if ($self->skip_this_object('TABLE', $t->[2]));
+
 			if (grep(/^$t->[2]$/, @done)) {
 				$self->logit("Duplicate entry found: $t->[0] - $t->[1] - $t->[2]\n", 1);
 			} else {
 				push(@done, $t->[2]);
-			}
-			next if (($#{$self->{limited}} >= 0) && !grep($t->[2] =~ /^$_$/i, @{$self->{limited}}));
-			next if (($#{$self->{excluded}} >= 0) && grep($t->[2] =~ /^$_$/i, @{$self->{excluded}}));
+			} 
 			$self->logit("[$i] Scanning $t->[2] (@$t)...\n", 1);
 			
 			# Check of uniqueness of the table
@@ -1076,16 +1075,9 @@ sub _views
 
 	my $i = 1;
 	foreach my $table (sort keys %view_infos) {
-		# Set the table information for each class found
-		# Jump to desired extraction
-		#next if ($table =~ /\$/);
-		next if (($#{$self->{limited}} >= 0) && !grep($table =~ /^$_$/i, @{$self->{limited}}));
-		next if (($#{$self->{excluded}} >= 0) && grep($table =~ /^$_$/i, @{$self->{excluded}}));
-
 		$self->logit("[$i] Scanning $table...\n", 1);
-
 		$self->{views}{$table}{text} = $view_infos{$table};
-                ## Added JFR : 3/3/02 : Retrieve also aliases from views
+                # Retrieve also aliases from views
                 $self->{views}{$table}{alias}= $view_infos{$table}{alias};
 		$i++;
 	}
@@ -1117,14 +1109,7 @@ sub _materialized_views
 
 	my $i = 1;
 	foreach my $table (sort keys %view_infos) {
-		# Set the table information for each class found
-		# Jump to desired extraction
-		#next if ($table =~ /\$/);
-		next if (($#{$self->{limited}} >= 0) && !grep($table =~ /^$_$/i, @{$self->{limited}}));
-		next if (($#{$self->{excluded}} >= 0) && grep($table =~ /^$_$/i, @{$self->{excluded}}));
-
 		$self->logit("[$i] Scanning $table...\n", 1);
-
 		$self->{materialized_views}{$table}{text} = $view_infos{$table}{text};
 		$self->{materialized_views}{$table}{updatable}= $view_infos{$table}{updatable};
 		$self->{materialized_views}{$table}{refresh_mode}= $view_infos{$table}{refresh_mode};
@@ -1564,9 +1549,6 @@ LANGUAGE plpgsql ;
 		my $nothing = 0;
 		foreach my $trig (sort {$a->[0] cmp $b->[0]} @{$self->{triggers}}) {
 			my $fhdl = undef;
-			#next if ($trig->[0] =~ /\$/);
-			next if (($#{$self->{limited}} >= 0) && !grep(/^$trig->[3]$/i, @{$self->{limited}}));
-			next if (($#{$self->{excluded}} >= 0) && grep(/^$trig->[3]$/i, @{$self->{excluded}}));
 			if ($self->{file_per_function} && !$self->{dbhdest}) {
 				$self->dump("\\i $dirprefix$trig->[0]_$self->{output}\n");
 				$self->logit("Dumping to one file per trigger : $trig->[0]_$self->{output}\n", 1);
@@ -1678,7 +1660,10 @@ LANGUAGE plpgsql ;
 		#--------------------------------------------------------
 
 		foreach my $fct (sort keys %{$self->{functions}}) {
-			next if (($#{$self->{excluded}} >= 0) && grep($fct =~ /^$_$/i, @{$self->{excluded}}));
+
+			# forget this object if it is in the exclude or allow lists.
+			next if ($self->skip_this_object('FUNCTION', $fct));
+
 			$self->logit("\tDumping function $fct...\n", 1);
 			my $fhdl = undef;
 			if ($self->{file_per_function} && !$self->{dbhdest}) {
@@ -1745,7 +1730,10 @@ LANGUAGE plpgsql ;
 		#--------------------------------------------------------
 
 		foreach my $fct (sort keys %{$self->{procedures}}) {
-			next if (($#{$self->{excluded}} >= 0) && grep($fct =~ /^$_$/i, @{$self->{excluded}}));
+
+			# forget this object if it is in the exclude or allow lists.
+			next if ($self->skip_this_object('PROCEDURE', $fct));
+
 			$self->logit("\tDumping procedure $fct...\n", 1);
 			my $fhdl = undef;
 			if ($self->{file_per_function} && !$self->{dbhdest}) {
@@ -1895,9 +1883,6 @@ LANGUAGE plpgsql ;
 					}
 					push(@done, $tb_name);
 					foreach my $obj (@{$self->{tablespaces}{$tb_type}{$tb_name}{$tb_path}}) {
-						#next if ($obj =~ /\$/);
-						next if (($#{$self->{limited}} >= 0) && !grep($obj =~ /^$_$/i, @{$self->{limited}}));
-						next if (($#{$self->{excluded}} >= 0) && grep($obj =~ /^$_$/i, @{$self->{excluded}}));
 						if (!$self->{preserve_case} || ($tb_type eq 'INDEX')) {
 							$sql_output .= "ALTER $tb_type \L$obj\E SET TABLESPACE \L$tb_name\E;\n";
 						} else {
@@ -3566,6 +3551,9 @@ $idxowner
 	my %data = ();
 	my %unique = ();
 	while (my $row = $sth->fetch) {
+		# forget this object if it is in the exclude or allow lists.
+		next if ($self->skip_this_object('INDEX', $row->[0]));
+
 		$unique{$row->[0]} = $row->[2];
 		# Replace function based index type
 		if ($row->[1] =~ /^SYS_NC/i) {
@@ -3607,6 +3595,10 @@ sub _get_sequences
 
 	my @seqs = ();
 	while (my $row = $sth->fetch) {
+
+		# forget this object if it is in the exclude or allow lists.
+		next if ($self->skip_this_object('SEQUENCE', $row->[0]));
+
 		push(@seqs, [ @$row ]);
 	}
 
@@ -3639,6 +3631,10 @@ sub _get_views
 
 	my %data = ();
 	while (my $row = $sth->fetch) {
+
+		# forget this object if it is in the exclude or allow lists.
+		next if ($self->skip_this_object('VIEW', $row->[0]));
+
 		$data{$row->[0]} = $row->[1];
 		@{$data{$row->[0]}{alias}} = $self->_alias_info ($row->[0]);
 	}
@@ -3671,6 +3667,10 @@ sub _get_materialized_views
 
 	my %data = ();
 	while (my $row = $sth->fetch) {
+
+		# forget this object if it is in the exclude or allow lists.
+		next if ($self->skip_this_object('MVIEW', $row->[0]));
+
 		$data{$row->[0]}{text} = $row->[1];
 		$data{$row->[0]}{updatable} = ($row->[2] eq 'Y') ? 1 : 0;
 		$data{$row->[0]}{refresh_mode} = $row->[3];
@@ -3743,6 +3743,10 @@ sub _get_triggers
 
 	my @triggers = ();
 	while (my $row = $sth->fetch) {
+
+		# forget this object if it is in the exclude or allow lists.
+		next if ($self->skip_this_object('TRIGGER', $row->[0]));
+
 		push(@triggers, [ @$row ]);
 	}
 
@@ -3777,6 +3781,10 @@ sub _get_functions
 	my %functions = ();
 	my @fct_done = ();
 	while (my $row = $sth->fetch) {
+
+		# forget this object if it is in the exclude or allow lists.
+		next if ($self->skip_this_object('FUNCTION', $row->[0]));
+
 		next if (grep(/^$row->[0]$/, @fct_done));
 		push(@fct_done, $row->[0]);
 		my $sql = "SELECT TEXT FROM $self->{prefix}_SOURCE WHERE OWNER='$row->[1]' AND NAME='$row->[0]' ORDER BY LINE";
@@ -3817,6 +3825,10 @@ sub _get_procedures
 	my %procedures = ();
 	my @fct_done = ();
 	while (my $row = $sth->fetch) {
+
+		# forget this object if it is in the exclude or allow lists.
+		next if ($self->skip_this_object('PROCEDURE', $row->[0]));
+
 		next if (grep(/^$row->[0]$/, @fct_done));
 		push(@fct_done, $row->[0]);
 		my $sql = "SELECT TEXT FROM $self->{prefix}_SOURCE WHERE OWNER='$row->[1]' AND NAME='$row->[0]' ORDER BY LINE";
@@ -3859,7 +3871,10 @@ sub _get_packages
 	my %packages = ();
 	my @fct_done = ();
 	while (my $row = $sth->fetch) {
-		#next if ($row->[0] =~ /\$/);
+
+		# forget this object if it is in the exclude or allow lists.
+		next if ($self->skip_this_object('PACKAGE', $row->[0]));
+
 		$self->logit("\tFound Package: $row->[0]\n", 1);
 		next if (grep(/^$row->[0]$/, @fct_done));
 		push(@fct_done, $row->[0]);
@@ -3906,7 +3921,10 @@ sub _get_types
 	my @types = ();
 	my @fct_done = ();
 	while (my $row = $sth->fetch) {
-		#next if ($row->[0] =~ /\$/);
+
+		# forget this object if it is in the exclude or allow lists.
+		next if ($self->skip_this_object('TYPE', $row->[0]));
+
 		$self->logit("\tFound Type: $row->[0]\n", 1);
 		next if (grep(/^$row->[0]$/, @fct_done));
 		push(@fct_done, $row->[0]);
@@ -3998,6 +4016,10 @@ AND a.TABLESPACE_NAME = c.TABLESPACE_NAME
 
 	my %tbs = ();
 	while (my $row = $sth->fetch) {
+
+		# forget this object if it is in the exclude or allow lists.
+		next if ($self->skip_this_object('TABLESPACE', $row->[1]));
+
 		# TYPE - TABLESPACE_NAME - FILEPATH - OBJECT_NAME
 		push(@{$tbs{$row->[2]}{$row->[1]}{$row->[3]}}, $row->[0]);
 		$self->logit(".",1);
@@ -4053,12 +4075,16 @@ WHERE
 
 	my %parts = ();
 	my %default = ();
-	while (my $rows = $sth->fetch) {
-		if ( ($rows->[3] eq 'MAXVALUE') || ($rows->[3] eq 'DEFAULT')) {
-			$default{$rows->[0]} = $rows->[2];
+	while (my $row = $sth->fetch) {
+
+		# forget this object if it is in the exclude or allow lists.
+		next if ($self->skip_this_object('PARTITION', $row->[2]));
+
+		if ( ($row->[3] eq 'MAXVALUE') || ($row->[3] eq 'DEFAULT')) {
+			$default{$row->[0]} = $row->[2];
 			next;
 		}
-		push(@{$parts{$rows->[0]}{$rows->[1]}{$rows->[2]}}, { 'type' => $rows->[5], 'value' => $rows->[3], 'column' => $rows->[7], 'colpos' => $rows->[8], 'tablespace' => $rows->[4] });
+		push(@{$parts{$row->[0]}{$row->[1]}{$row->[2]}}, { 'type' => $row->[5], 'value' => $row->[3], 'column' => $row->[7], 'colpos' => $row->[8], 'tablespace' => $row->[4] });
 		$self->logit(".",1);
 	}
 	$sth->finish;
@@ -4589,7 +4615,10 @@ sub _convert_function
 		my $clause = '';
 		my $code = '';
 		$func_name =~ s/"//g;
-		return if (($#{$self->{excluded}} >= 0) && grep($func_name =~ /^$_$/i, @{$self->{excluded}}));
+
+		# forget this object if it is in the exclude or allow lists.
+		return if ($self->skip_this_object('FUNCTION', $func_name));
+
 		if ($func_declare =~ s/(.*?)RETURN[\s\t]+self[\s\t]+AS RESULT IS//is) {
 			$func_args .= $1;
 			$hasreturn = 1;
@@ -5344,8 +5373,6 @@ sub _show_infos
 				} else {
 					push(@done, $t->[2]);
 				}
-				next if (($#{$self->{limited}} >= 0) && !grep($t->[2] =~ /^$_$/i, @{$self->{limited}}));
-				next if (($#{$self->{excluded}} >= 0) && grep($t->[2] =~ /^$_$/i, @{$self->{excluded}}));
 				my $warning = '';
 				if (&is_reserved_words($t->[2])) {
 					$warning = " (Warning: '$t->[2]' is a reserved word in PostgreSQL)";
@@ -5568,6 +5595,20 @@ sub auto_set_encoding
 	}
 
 	return '';
+}
+
+# Return 0 if the object should be exported, 1 if it not found in allow list
+# and 2 if it is found in the exclude list
+sub skip_this_object
+{
+	my ($self, $obj_type, $name) = @_;
+
+	# Check if this object is in the allowed list of object to export.
+	return 1 if (($#{$self->{limited}} >= 0) && !grep($t->[2] =~ /^$_$/i, @{$self->{limited}}));
+	# Check if this object is in the exlusion list of object to export.
+	return 2 if (($#{$self->{excluded}} >= 0) && grep($t->[2] =~ /^$_$/i, @{$self->{excluded}}));
+
+	return 0;
 }
 
 # Preload the bytea array at lib init

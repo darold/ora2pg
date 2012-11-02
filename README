@@ -508,16 +508,20 @@ CONFIGURATION
     of configuration directives that will allow you to control what parts of
     the database should be exported.
 
-    TABLES
-        This directive allow you to set a list of tables on witch the export
-        must be limited, excluding all other tables. The value is a space
-        separated list of table name to export. You can include valid regex
-        into the list. For example:
+    ALLOW
+        This directive allow you to set a list of objects on witch the
+        export must be limited, excluding all other objects in the same type
+        of export. The value is a space separated list of objects name to
+        export. You can include valid regex into the list. For example:
 
-                TABLES          EMPLOYEES SALE_.* COUNTRIES
+                ALLOW           EMPLOYEES SALE_.* COUNTRIES .*_GEOM_SEQ
 
-        will export tables EMPLOYEES, COUNTRIES and all tables begining with
-        'SALE_'.
+        will export objects with name EMPLOYEES, COUNTRIES, all objects
+        begining with 'SALE_' and all objects with a name ending by
+        '_GEOM_SEQ'. The object depends of the export type.
+
+        This directive replace the obsolète 'TABLES' configuration
+        directive, this is just a renaming to be less confusing.
 
     EXCLUDE
         This directive is the opposite of the previous, it allow you to
@@ -526,16 +530,16 @@ CONFIGURATION
 
                 EXCLUDE         EMPLOYEES TMP_.* COUNTRIES
 
-        will exclude tables EMPLOYEES, COUNTRIES and all tables begining
-        with 'tmp_'.
+        will exclude object with name EMPLOYEES, COUNTRIES and all tables
+        begining with 'tmp_'.
 
-        You can also ban from export some unwanted function with this
-        directive:
+        For example, you can ban from export some unwanted function with
+        this directive:
 
                 EXCLUDE         write_to_.* send_mail_.*
 
-        this example will exclude all function, procedure or function in a
-        package with the name begining with those regex.
+        this example will exclude all functions, procedures or functions in
+        a package with the name begining with those regex.
 
     WHERE
         This directive allow you to specify a WHERE clause filter when

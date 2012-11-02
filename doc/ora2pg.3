@@ -124,7 +124,7 @@
 .\" ========================================================================
 .\"
 .IX Title "ORA2PG 1"
-.TH ORA2PG 1 "2012-10-07" "perl v5.10.1" "User Contributed Perl Documentation"
+.TH ORA2PG 1 "2012-11-02" "perl v5.10.1" "User Contributed Perl Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -645,17 +645,23 @@ to orcl. This only concern export type \s-1FDW\s0.
 .IX Subsection "Limiting object to export"
 You may want to export only a part of an Oracle database, here are a set of configuration
 directives that will allow you to control what parts of the database should be exported.
-.IP "\s-1TABLES\s0" 4
-.IX Item "TABLES"
-This directive allow you to set a list of tables on witch the export must be
-limited, excluding all other tables. The value is a space separated list of
-table name to export. You can include valid regex into the list. For example:
+.IP "\s-1ALLOW\s0" 4
+.IX Item "ALLOW"
+This directive allow you to set a list of objects on witch the export must be
+limited, excluding all other objects in the same type of export. The value is
+a space separated list of objects name to export. You can include valid regex
+into the list. For example:
 .Sp
 .Vb 1
-\&        TABLES          EMPLOYEES SALE_.* COUNTRIES
+\&        ALLOW           EMPLOYEES SALE_.* COUNTRIES .*_GEOM_SEQ
 .Ve
 .Sp
-will export tables \s-1EMPLOYEES\s0, \s-1COUNTRIES\s0 and all tables begining with '\s-1SALE_\s0'.
+will export objects with name \s-1EMPLOYEES\s0, \s-1COUNTRIES\s0, all objects begining with
+\&'\s-1SALE_\s0' and all objects with a name ending by '_GEOM_SEQ'. The object depends
+of the export type.
+.Sp
+This directive replace the obsolA\*~Xte '\s-1TABLES\s0' configuration directive, this is
+just a renaming to be less confusing.
 .IP "\s-1EXCLUDE\s0" 4
 .IX Item "EXCLUDE"
 This directive is the opposite of the previous, it allow you to define a space
@@ -666,15 +672,16 @@ regex into the list. For example:
 \&        EXCLUDE         EMPLOYEES TMP_.* COUNTRIES
 .Ve
 .Sp
-will exclude tables \s-1EMPLOYEES\s0, \s-1COUNTRIES\s0 and all tables begining with 'tmp_'.
+will exclude object with name \s-1EMPLOYEES\s0, \s-1COUNTRIES\s0 and all tables begining with
+\&'tmp_'.
 .Sp
-You can also ban from export some unwanted function with this directive:
+For example, you can ban from export some unwanted function with this directive:
 .Sp
 .Vb 1
 \&        EXCLUDE         write_to_.* send_mail_.*
 .Ve
 .Sp
-this example will exclude all function, procedure or function in a package
+this example will exclude all functions, procedures or functions in a package
 with the name begining with those regex.
 .IP "\s-1WHERE\s0" 4
 .IX Item "WHERE"
