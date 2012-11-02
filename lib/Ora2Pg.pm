@@ -430,8 +430,8 @@ sub _init
 	$self->{create_schema} = 1;
 	# Initialyze following configuration file
 	foreach my $k (keys %AConfig) {
-		if (lc($k) eq 'tables') {
-			$self->{limited} = $AConfig{TABLES};
+		if (lc($k) eq 'allow') {
+			$self->{limited} = $AConfig{ALLOW};
 		} elsif (lc($k) eq 'exclude') {
 			$self->{excluded} = $AConfig{EXCLUDE};
 		} else {
@@ -4380,9 +4380,10 @@ sub read_config
 					$AConfig{"skip_\L$s\E"} = 1;
 				}
 			}
-		} elsif (!grep(/^$var$/, 'TABLES', 'MODIFY_STRUCT', 'REPLACE_TABLES', 'REPLACE_COLS', 'WHERE', 'EXCLUDE', 'ORA_RESERVED_WORDS','SYSUSERS','REPLACE_AS_BOOLEAN','BOOLEAN_VALUES')) {
+		} elsif (!grep(/^$var$/, 'TABLES', 'ALLOW', 'MODIFY_STRUCT', 'REPLACE_TABLES', 'REPLACE_COLS', 'WHERE', 'EXCLUDE', 'ORA_RESERVED_WORDS','SYSUSERS','REPLACE_AS_BOOLEAN','BOOLEAN_VALUES')) {
 			$AConfig{$var} = $val;
-		} elsif ( ($var eq 'TABLES') || ($var eq 'EXCLUDE') ) {
+		} elsif ( ($var eq 'TABLES') || ($var eq 'ALLOW') || ($var eq 'EXCLUDE') ) {
+			$var = 'ALLOW' if ($var eq 'TABLES');
 			push(@{$AConfig{$var}}, split(/[\s\t;,]+/, $val) );
 		} elsif ( $var eq 'SYSUSERS' ) {
 			push(@{$AConfig{$var}}, split(/[\s\t;,]+/, $val) );
@@ -5366,6 +5367,10 @@ sub _show_infos
 			# Set the table information for each class found
 			my $i = 1;
 			foreach my $t (@$table) {
+
+				# forget this object if it is in the exclude or allow lists.
+				next if ($self->skip_this_object('TABLE', $t->[2]));
+
 				# Jump to desired extraction
 				if (grep(/^$t->[2]$/, @done)) {
 					$self->logit("Duplicate entry found: $t->[0] - $t->[1] - $t->[2]\n", 1);
@@ -5604,9 +5609,10 @@ sub skip_this_object
 	my ($self, $obj_type, $name) = @_;
 
 	# Check if this object is in the allowed list of object to export.
-	return 1 if (($#{$self->{limited}} >= 0) && !grep($t->[2] =~ /^$_$/i, @{$self->{limited}}));
+	return 1 if (($#{$self->{limited}} >= 0) && !grep($name =~ /^$_$/i, @{$self->{limited}}));
+
 	# Check if this object is in the exlusion list of object to export.
-	return 2 if (($#{$self->{excluded}} >= 0) && grep($t->[2] =~ /^$_$/i, @{$self->{excluded}}));
+	return 2 if (($#{$self->{excluded}} >= 0) && grep($name =~ /^$_$/i, @{$self->{excluded}}));
 
 	return 0;
 }
