@@ -1273,8 +1273,6 @@ sub _get_sql_data
 			my $sqlout = qq{
 $sql_header
 
-BEGIN;
-
 CREATE TABLE materialized_views (
         mview_name text NOT NULL PRIMARY KEY,
         view_name text NOT NULL,
@@ -1410,8 +1408,6 @@ LANGUAGE plpgsql ;
 		}
 		if (!$nothing) {
 			$sql_output = "-- Nothing found of type $self->{type}\n";
-		} else {
-			$sql_output .= "COMMIT;\n";
 		}
 
 		$self->dump($sql_output);
@@ -1943,20 +1939,18 @@ LANGUAGE plpgsql ;
 				$self->dump("\\set ON_ERROR_STOP OFF\n");
 			}
 		}
-		my $deferred_fkey = 0;
 		my @ordered_tables = sort { $a cmp $b } keys %{$self->{tables}};
 		# Ok ordering is impossible
-		if ($self->{defer_fkey} && !$self->{drop_fkey}) {
-			$deferred_fkey = 1;
+		if ($self->{defer_fkey}) {
 			if ($self->{dbhdest}) {
 				my $s = $self->{dbhdest}->do("BEGIN;") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
-				$s = $self->{dbhdest}->do("SET CONSTRAINTS ALL DEFERRED;") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
+				$self->{dbhdest}->do("SET CONSTRAINTS ALL DEFERRED;") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
 			} else {
-				$self->dump("BEGIN;\n");
-				$self->dump("SET CONSTRAINTS ALL DEFERRED;\n");
+				$self->dump("BEGIN;\n", $fhdl);
+				$self->dump("SET CONSTRAINTS ALL DEFERRED;\n\n");
 			}
-		} elsif ($self->{drop_fkey}) {
-			$deferred_fkey = 1;
+		}
+		if ($self->{drop_fkey}) {
 			my $drop_all = '';
 			# First of all we drop all foreign keys
 			foreach my $table (sort { $self->{tables}{$a}{internal_id} <=> $self->{tables}{$b}{internal_id} } keys %{$self->{tables}}) {
@@ -1967,7 +1961,8 @@ LANGUAGE plpgsql ;
 				$self->dump($drop_all);
 			}
 			$drop_all = '';
-		} else {
+		}
+		if (!$self->{drop_fkey} && !$self->{defer_fkey}) {
 			$self->logit("WARNING: Please consider using DEFER_FKEY or DROP_FKEY configuration directives.\n", 0);
 		}
 		if ($self->{drop_indexes}) {
@@ -2009,7 +2004,7 @@ LANGUAGE plpgsql ;
 				$self->logit("Dumping table $table...\n", 1);
 			}
 			## Set client encoding if requested
-			if ($self->{client_encoding}) {
+			if ($self->{file_per_table} && $self->{client_encoding}) {
 				$self->logit("Changing client encoding as \U$self->{client_encoding}\E...\n", 1);
 				if ($self->{dbhdest}) {
 					my $s = $self->{dbhdest}->do("SET client_encoding TO '\U$self->{client_encoding}\E';") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
@@ -2042,10 +2037,12 @@ LANGUAGE plpgsql ;
 			}
 
 			# Start transaction to speed up bulkload
-			if ($self->{dbhdest}) {
-				my $s = $self->{dbhdest}->do("BEGIN;") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
-			} else {
-				$self->dump("BEGIN;\n", $fhdl);
+			if (!$self->{defer_fkey}) {
+				if ($self->{dbhdest}) {
+					my $s = $self->{dbhdest}->do("BEGIN;") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
+				} else {
+					$self->dump("BEGIN;\n", $fhdl);
+				}
 			}
 			# Rename table and double-quote it if required
 			my $tmptb = $table;
@@ -2172,14 +2169,16 @@ LANGUAGE plpgsql ;
 				if ($self->{dbhdest}) {
 					my $s = $self->{dbhdest}->do("ALTER TABLE $tmptb ENABLE TRIGGER ALL;") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
 				} else {
-					$self->dump("ALTER TABLE $tmptb ENABLE TRIGGER ALL;\n", $fhdl);
+					$self->dump("ALTER TABLE $tmptb ENABLE TRIGGER ALL;\n\n", $fhdl);
 				}
 			}
 			# COMMIT transaction at end for speed improvement
-			if ($self->{dbhdest}) {
-				my $s = $self->{dbhdest}->do("COMMIT;") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
-			} else {
-				$self->dump("COMMIT;\n", $fhdl);
+			if (!$self->{defer_fkey}) {
+				if ($self->{dbhdest}) {
+					my $s = $self->{dbhdest}->do("COMMIT;") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
+				} else {
+					$self->dump("COMMIT;\n\n", $fhdl);
+				}
 			}
 			if ($self->{file_per_table} && !$self->{dbhdest}) {
 				$self->close_export_file($fhdl);
@@ -2191,28 +2190,26 @@ LANGUAGE plpgsql ;
 			$self->logit("Restarting sequences\n", 1);
 			$self->dump($self->_extract_sequence_info());
 		}
-		if ($deferred_fkey) {
-			if ($self->{defer_fkey} && !$self->{drop_fkey}) {
-				$deferred_fkey = 1;
+		if ($self->{drop_fkey}) {
+			my @create_all = ();
+			# Recreate all foreign keys of the concerned tables
+			foreach my $table (sort { $self->{tables}{$a}{internal_id} <=> $self->{tables}{$b}{internal_id} } keys %{$self->{tables}}) {
+				$self->logit("Restoring table $table foreign keys...\n", 1);
+				push(@create_all, $self->_create_foreign_keys($table, @{$self->{tables}{$table}{foreign_key}}));
+			}
+			foreach my $str (@create_all) {
 				if ($self->{dbhdest}) {
-					my $s = $self->{dbhdest}->do("COMMIT;") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
+					my $s = $self->{dbhdest}->do($str) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
 				} else {
-					$self->dump("COMMIT;\n");
+					$self->dump("$str\n");
 				}
-			} elsif ($self->{drop_fkey}) {
-				my @create_all = ();
-				# Recreate all foreign keys of the concerned tables
-				foreach my $table (sort { $self->{tables}{$a}{internal_id} <=> $self->{tables}{$b}{internal_id} } keys %{$self->{tables}}) {
-					$self->logit("Restoring table $table foreign keys...\n", 1);
-					push(@create_all, $self->_create_foreign_keys($table, @{$self->{tables}{$table}{foreign_key}}));
-				}
-				foreach my $str (@create_all) {
-					if ($self->{dbhdest}) {
-						my $s = $self->{dbhdest}->do($str) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
-					} else {
-						$self->dump("$str\n");
-					}
-				}
+			}
+		}
+		if ($self->{defer_fkey}) {
+			if ($self->{dbhdest}) {
+				my $s = $self->{dbhdest}->do("COMMIT;") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
+			} else {
+				$self->dump("COMMIT;\n\n", $fhdl);
 			}
 		}
 		if ($self->{drop_indexes}) {

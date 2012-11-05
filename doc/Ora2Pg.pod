@@ -840,14 +840,10 @@ will then be checked at the end of each transaction. Note that this will works
 only if foreign keys are deferrable and that all data can stay in a single
 transaction.
 
-Since release 7.0 Ora2Pg will first try to ordered data export following the
-tables foreign keys. If it fails (some cases can not be handle), Ora2Pg will
-set constraint all deferrable if DEFER_FKEY is activated and DROP_FKEY disabled.
-
 =item DROP_FKEY
 
-New since release 7.0 this directive enabled force the deletion of all foreign
-keys before data import and to recreate them at end of the import.
+When this directive is enabled Ora2Pg forces the deletion of all foreign
+keys before data import and to recreate them at end of the data import.
 
 =item DROP_INDEXES
 
