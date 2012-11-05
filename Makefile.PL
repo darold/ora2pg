@@ -135,6 +135,9 @@ TYPE		TABLE
 
 # Set which object to export from. By default Ora2Pg export all objects.
 # Value must be a list of object name or regex separated by space.
+# Particular case: if the object name is a view and the export type is TABLE,
+# the view will be exported as a create table statement. If export type is COPY
+# or INSERT, the corresponding data will be exported.
 #ALLOW		TABLE_TEST
 
 # Set which object to exclude from export process. By default none.

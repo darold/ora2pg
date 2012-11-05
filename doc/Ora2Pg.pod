@@ -23,7 +23,7 @@ Ora2Pg consist of a Perl script (ora2pg) and a Perl module (Ora2Pg.pm), the
 only thing you have to modify is the configuration file ora2pg.conf by setting
 the DSN to the Oracle database and optionaly the name of a schema. Once that's
 done you just have to set the type of export you want: TABLE with constraints,
-VIEW, TABLESPACE, SEQUENCE, INDEXES, TRIGGER, GRANT, FUNCTION, PROCEDURE,
+VIEW, MVIEW, TABLESPACE, SEQUENCE, INDEXES, TRIGGER, GRANT, FUNCTION, PROCEDURE,
 PACKAGE, PARTITION, TYPE, INSERT or COPY, FDW.
 
 By default Ora2Pg exports to a file that you can load into PostgreSQL with the
@@ -484,14 +484,15 @@ Since Ora2Pg v8.2 there's a new export type:
 
 	SHOW_ENCODING : display the Oracle session encoding, useful to set NSL_LANG.
 
-Those extraction keyword are use to only display the requested information and exit.
-This allow you to quickly know on what you are going to work. The SHOW_COLUMN allow
-a new ora2pg command line option: '--xtable relname' or '-x relname' to limit the
-displayed information to the given table.
+Those extraction keyword are use to only display the requested information and
+exit. This allow you to quickly know on what you are going to work.
 
-Since release v8.12, Ora2Pg allow you to export your Oracle Table definition to be
-use with the oracle_fdw foreign data wrapper. By using type FDW your Oracle tables
-will be exported as follow:
+The SHOW_COLUMN allow an other ora2pg command line option: '--xtable relname'
+or '-x relname' to limit the displayed information to the given table.
+
+Since release v8.12, Ora2Pg allow you to export your Oracle Table definition to
+be use with the oracle_fdw foreign data wrapper. By using type FDW your Oracle
+tables will be exported as follow:
 
 	CREATE FOREIGN TABLE oratab (
 		id        integer           NOT NULL,
@@ -506,33 +507,38 @@ See http://pgxn.org/dist/oracle_fdw/ for more information on this foreign data w
 
 =item THREAD_COUNT
 
-This configuration directive adds multi-threading support to data export type, the
-value is the number of threads to use. Default to zero, disabled multi-threading.
+This configuration directive adds multi-threading support to data export type,
+the value is the number of threads to use. Default to zero, disabled multi-
+threading.
+
 It is only used to do the escaping to convert LOBs to byteas, as it is very CPU
 hungry. Putting 6 threads will only triple your throughput, if your machine has
-enough cores. If zero do not use threads, do not waste CPU, but be slower with bytea.
-Performance seems to peak at 5 threads, if you have enough cores, and triples throughput
-on tables having LOB. Another important thing: because of the way threading works in
-perl, threads consume a lot of memory. Put a low (5000 for instance) DATA_LIMIT if
-you activate threading.
+enough cores. If zero do not use threads, do not waste CPU, but be slower with
+bytea.
 
-If your Perl installation do not support threads, multi-threading will not be enabled.
-This configuration directive is available since Ora2Pg v8.7 thanks to the work of
-Marc Cousin.
+Performance seems to peak at 5 threads, if you have enough cores, and triples
+throughput on tables having LOB. Another important thing: because of the way
+threading works in perl, threads consume a lot of memory. Put a low (5000 for
+instance) DATA_LIMIT if you activate threading.
+
+If your Perl installation do not support threads, multi-threading will not be
+enabled. This configuration directive is available since Ora2Pg v8.7 thanks to
+the work of Marc Cousin.
 
 =item FDW_SERVER
 
-This directive is used to set the name of the foreign data server that is used in
-the "CREATE SERVER name FOREIGN DATA WRAPPER oracle_fdw ..." command. This name will
-then be used in the "CREATE FOREIGN TABLE ..." SQL command. Default is arbitrary set
-to orcl. This only concern export type FDW.
+This directive is used to set the name of the foreign data server that is used
+in the "CREATE SERVER name FOREIGN DATA WRAPPER oracle_fdw ..." command. This
+name will then be used in the "CREATE FOREIGN TABLE ..." SQL command. Default
+is arbitrary set to orcl. This only concern export type FDW.
 
 =back
 
 =head2 Limiting object to export
 
-You may want to export only a part of an Oracle database, here are a set of configuration
-directives that will allow you to control what parts of the database should be exported.
+You may want to export only a part of an Oracle database, here are a set of
+configuration directives that will allow you to control what parts of the
+database should be exported.
 
 =over 4
 
@@ -551,6 +557,13 @@ of the export type.
 
 This directive replace the obsolète 'TABLES' configuration directive, this is
 just a renaming to be less confusing.
+
+Particular case: if the object name is a view and the export type is TABLE,
+the view will be exported as a create table statement. If export type is COPY
+or INSERT, the corresponding data will be exported.
+
+See chapter "Exporting Oracle views as PostgreSQL tables" for more details.
+
 
 =item EXCLUDE
 
@@ -1143,6 +1156,17 @@ current configuration file.
 
 =back
 
+=head2 Exporting Oracle views as PostgreSQL tables
+
+You can export any Oracle view as a PostgreSQL table simply by setting TYPE
+configuration option to TABLE to have the corresponding create table statement.
+Or use type COPY or INSERT to export the corresponding data. To allow that you
+have to specify your views in the ALLOW configuration option.
+
+Then if Ora2Pg does not find the name in Oracle table names it automaticaly
+deduces that it must search for it in the view names, and if it finds the view
+it will extract its schema (if TYPE=TABLE) into a PG create table form, then it
+will extract the data (if TYPE=COPY or INSERT) following the view schema. 
 
 =head1 SUPPORT
 
@@ -1229,13 +1253,16 @@ I must thanks a lot all the great contributors:
 	David Fetter
 	Mohamed Gargouri
 	Rodrigo
-	Dominique Legendre - BRGM (Bureau de Recherches Geologiques et Minieres)
 	Stephan Hilb
 	David Greco
 	Steve DeLong
+	Dominique Legendre - BRGM (Bureau de Recherches Geologiques et Minieres)
 	Siva Janamanchi
 
-and all others who help me to build a useful and reliable product:
+with very specials thanks to Dominique Legendre for his help on testing and
+retesting all Ora2pg functionalities and suggesting lot of improvements.
+
+And all others who help me to build a useful and reliable product:
 
         Jason Servetar
         Jean-Francois Ripouteau
