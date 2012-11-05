@@ -3025,6 +3025,10 @@ sub _extract_sequence_info
 	$sth->execute() or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);    
 
 	while (my $seq_info = $sth->fetchrow_hashref) {
+
+		# forget this object if it is in the exclude or allow lists.
+		next if ($self->skip_this_object('SEQUENCE', $seq_info->{SEQUENCE_NAME}));
+
 		my $nextvalue = $seq_info->{LAST_NUMBER} + $seq_info->{INCREMENT_BY};
 		my $alter ="ALTER SEQUENCE $seq_info->{SEQUENCE_NAME} RESTART WITH $nextvalue;";
 		$script .= "$alter\n";
