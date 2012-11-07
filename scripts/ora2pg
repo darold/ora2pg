@@ -49,6 +49,8 @@ my $ORA_ENCODING = '';
 my $PG_ENCODING = '';
 my $INPUT_FILE = '';
 my $EXCLUDE = '';
+my $ALLOW = '';
+my $VIEW_AS_TABLE = '';
 
 my @CAPABILITIES = qw(
 	TABLE PACKAGE INSERT COPY VIEW GRANT SEQUENCE TRIGGER
@@ -78,6 +80,8 @@ GetOptions (
 	'input_file|i=s' => \$INPUT_FILE,
 	'quiet|q' => \$QUIET,
 	'exclude|e=s' => \$EXCLUDE,
+	'allow|a=s' => \$ALLOW,
+	'view_as_table=s' => \$VIEW_AS_TABLE,
 );
 
 # Check command line parameters
@@ -123,6 +127,8 @@ my $schema = new Ora2Pg (
         input_file => $INPUT_FILE,
 	quiet => $QUIET,
 	exclude => $EXCLUDE,
+	allow => $ALLOW,
+	view_as_table => $VIEW_AS_TABLE,
 );
 
 
@@ -139,6 +145,7 @@ sub usage
 	print qq{
 Usage: ora2pg [-dhpv] [--option value]
 
+    -a | --allow str  : coma separated list of objects to allow from export.
     -b | --basedir dir: Used to set the default output directory, where files
 			resulting from exports will be stored.
     -c | --conf file  : Used to set an alternate configuration file than the
@@ -168,6 +175,7 @@ Usage: ora2pg [-dhpv] [--option value]
 		used to connect to the Pg database that will be the owner.
     --nls_lang code: use this to set the Oracle NLS_LANG client encoding.
     --client_encoding code: Use this to set the PostgreSQL client encoding.
+    --view_as_table str: coma separated list of view to export as table.
 
 See full documentation at http://ora2pg.darold.net/ for more help or see
 manpage with 'man ora2pg'.

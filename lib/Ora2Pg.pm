@@ -413,6 +413,7 @@ sub _init
 	# Init arrays
 	$self->{limited} = ();
 	$self->{excluded} = ();
+	$self->{view_as_table} = ();
 	$self->{modify} = ();
 	$self->{replaced_tables} = ();
 	$self->{replaced_cols} = ();
@@ -434,6 +435,8 @@ sub _init
 			$self->{limited} = $AConfig{ALLOW};
 		} elsif (lc($k) eq 'exclude') {
 			$self->{excluded} = $AConfig{EXCLUDE};
+		} elsif (lc($k) eq 'view_as_table') {
+			$self->{view_as_table} = $AConfig{VIEW_AS_TABLE};
 		} else {
 			$self->{lc($k)} = $AConfig{$k};
 		}
@@ -462,12 +465,19 @@ sub _init
 	# Overwrite configuration with all given parameters
 	# and try to preserve backward compatibility
 	foreach my $k (keys %options) {
-		if ($options{tables} && (lc($k) eq 'tables')) {
+		if ($options{allow} && (lc($k) eq 'allow')) {
+			$self->{limited} = ();
+			push(@{$self->{limited}}, split(/[\s\t;,]+/, $options{allow}) );
+		# preserve backward compatibility
+		} elsif ($options{tables} && (lc($k) eq 'tables')) {
 			$self->{limited} = ();
 			push(@{$self->{limited}}, split(/[\s\t;,]+/, $options{tables}) );
 		} elsif ($options{exclude} && (lc($k) eq 'exclude')) {
 			$self->{excluded} = ();
 			push(@{$self->{excluded}}, split(/[\s\t;,]+/, $options{exclude}) );
+		} elsif ($options{view_as_table} && (lc($k) eq 'view_as_table')) {
+			$self->{view_as_table} = ();
+			push(@{$self->{view_as_table}}, split(/[\s\t;,]+/, $options{view_as_table}) );
 		} elsif ($options{datasource} && (lc($k) eq 'datasource')) {
 			$self->{oracle_dsn} = $options{datasource};
 		} elsif ($options{user} && (lc($k) eq 'user')) {
@@ -948,14 +958,16 @@ sub _tables
 		foreach my $t (@$table) {
 
 			# forget this object if it is in the exclude or allow lists.
-			next if ($self->skip_this_object('TABLE', $t->[2]));
+			if ($self->{tables}{$t->[2]}{type} ne 'view') {
+				next if ($self->skip_this_object('TABLE', $t->[2]));
+			}
 
 			if (grep(/^$t->[2]$/, @done)) {
 				$self->logit("Duplicate entry found: $t->[0] - $t->[1] - $t->[2]\n", 1);
 			} else {
 				push(@done, $t->[2]);
 			} 
-			$self->logit("[$i] Scanning $t->[2] (@$t)...\n", 1);
+			$self->logit("[$i] Scanning table $t->[2] (@$t)...\n", 1);
 			
 			# Check of uniqueness of the table
 			if (exists $self->{tables}{$t->[2]}{field_name}) {
@@ -987,6 +999,7 @@ sub _tables
 				warn "Can't execute statement: $DBI::errstr";
 				next;
 			}
+			$self->{tables}{$t->[2]}{type} = 'table';
 			$self->{tables}{$t->[2]}{field_name} = $sth->{NAME};
 			$self->{tables}{$t->[2]}{field_type} = $sth->{TYPE};
 
@@ -1003,47 +1016,38 @@ sub _tables
  
 	# Try to search requested TABLE names in the VIEW names if not found in
 	# real TABLE names
-	if ($#{$self->{limited}} >= 0) {
-		my $search_in_view = 0;
-		foreach (@{$self->{limited}}) {
-			if (not exists $self->{tables}{$_}) {
-				$self->logit("Found view extraction for $_\n", 1);
-				$search_in_view = 1;
-				last;
-			}
-		}
-		if ($search_in_view) {
-			my %view_infos = $self->_get_views();
-			foreach my $table (sort keys %view_infos) {
-				# Set the table information for each class found
-				# Jump to desired extraction
-				next if (!grep($table =~ /^$_$/i, @{$self->{limited}}));
-				$self->logit("Scanning view $table...\n", 1);
+	if ($#{$self->{view_as_table}} >= 0) {
+		my %view_infos = $self->_get_views();
+		foreach my $view (sort keys %view_infos) {
+			# Set the table information for each class found
+			# Jump to desired extraction
+			next if (!grep($view =~ /^$_$/i, @{$self->{view_as_table}}));
+			$self->logit("Scanning view $view to export as table...\n", 1);
 
-				$self->{tables}{$table}{text} = $view_infos{$table};
-				$self->{tables}{$table}{alias}= $view_infos{$table}{alias};
-				my $realview = $table;
-				if ($table !~ /"/) {
-					$realview = "\"$table\"";
-				}
-				if ($self->{schema}) {
-					$realview = "\"$self->{schema}\".$realview";
-				}
-				# Set the fields information
-				my $sth = $self->{dbh}->prepare("SELECT * FROM $realview WHERE 1=0");
-				if (!defined($sth)) {
-					warn "Can't prepare statement: $DBI::errstr";
-					next;
-				}
-				$sth->execute;
-				if ($sth->err) {
-					warn "Can't execute statement: $DBI::errstr";
-					next;
-				}
-				$self->{tables}{$table}{field_name} = $sth->{NAME};
-				$self->{tables}{$table}{field_type} = $sth->{TYPE};
-				@{$self->{tables}{$table}{column_info}} = $self->_column_info($table);
+			$self->{tables}{$view}{type} = 'view';
+			$self->{tables}{$view}{text} = $view_infos{$view};
+			$self->{tables}{$view}{alias}= $view_infos{$view}{alias};
+			my $realview = $view;
+			if ($view !~ /"/) {
+				$realview = "\"$view\"";
 			}
+			if ($self->{schema}) {
+				$realview = "\"$self->{schema}\".$realview";
+			}
+			# Set the fields information
+			my $sth = $self->{dbh}->prepare("SELECT * FROM $realview WHERE 1=0");
+			if (!defined($sth)) {
+				warn "Can't prepare statement: $DBI::errstr";
+				next;
+			}
+			$sth->execute;
+			if ($sth->err) {
+				warn "Can't execute statement: $DBI::errstr";
+				next;
+			}
+			$self->{tables}{$view}{field_name} = $sth->{NAME};
+			$self->{tables}{$view}{field_type} = $sth->{TYPE};
+			@{$self->{tables}{$view}{column_info}} = $self->_column_info($view);
 		}
 	}
 
@@ -1074,11 +1078,11 @@ sub _views
 	my %view_infos = $self->_get_views();
 
 	my $i = 1;
-	foreach my $table (sort keys %view_infos) {
-		$self->logit("[$i] Scanning $table...\n", 1);
-		$self->{views}{$table}{text} = $view_infos{$table};
+	foreach my $view (sort keys %view_infos) {
+		$self->logit("[$i] Scanning $view...\n", 1);
+		$self->{views}{$view}{text} = $view_infos{$view};
                 # Retrieve also aliases from views
-                $self->{views}{$table}{alias}= $view_infos{$table}{alias};
+                $self->{views}{$view}{alias}= $view_infos{$view}{alias};
 		$i++;
 	}
 
@@ -2396,6 +2400,12 @@ CREATE TRIGGER insert_${table}_trigger
 		}
 	}
 	foreach my $table (sort { $self->{tables}{$a}{internal_id} <=> $self->{tables}{$b}{internal_id} } keys %{$self->{tables}}) {
+
+		# forget this object if it is in the exclude or allow lists.
+		if ($self->{tables}{$table}{type} ne 'view') {
+			next if ($self->skip_this_object('TABLE', $table));
+		}
+
 		$self->logit("Dumping table $table...\n", 1);
 		my $tbname = $table;
 		if (exists $self->{replaced_tables}{"\L$table\E"} && $self->{replaced_tables}{"\L$table\E"}) {
@@ -3634,7 +3644,9 @@ sub _get_views
 	while (my $row = $sth->fetch) {
 
 		# forget this object if it is in the exclude or allow lists.
-		next if ($self->skip_this_object('VIEW', $row->[0]));
+		if (!grep($row->[0] =~ /^$_$/, @{$self->{view_as_table}})) {
+			next if ($self->skip_this_object('VIEW', $row->[0]));
+		}
 
 		$data{$row->[0]} = $row->[1];
 		@{$data{$row->[0]}{alias}} = $self->_alias_info ($row->[0]);
@@ -4381,9 +4393,9 @@ sub read_config
 					$AConfig{"skip_\L$s\E"} = 1;
 				}
 			}
-		} elsif (!grep(/^$var$/, 'TABLES', 'ALLOW', 'MODIFY_STRUCT', 'REPLACE_TABLES', 'REPLACE_COLS', 'WHERE', 'EXCLUDE', 'ORA_RESERVED_WORDS','SYSUSERS','REPLACE_AS_BOOLEAN','BOOLEAN_VALUES')) {
+		} elsif (!grep(/^$var$/, 'TABLES', 'ALLOW', 'MODIFY_STRUCT', 'REPLACE_TABLES', 'REPLACE_COLS', 'WHERE', 'EXCLUDE','VIEW_AS_TABLE','ORA_RESERVED_WORDS','SYSUSERS','REPLACE_AS_BOOLEAN','BOOLEAN_VALUES')) {
 			$AConfig{$var} = $val;
-		} elsif ( ($var eq 'TABLES') || ($var eq 'ALLOW') || ($var eq 'EXCLUDE') ) {
+		} elsif ( ($var eq 'TABLES') || ($var eq 'ALLOW') || ($var eq 'EXCLUDE') || ($var eq 'VIEW_AS_TABLE') ) {
 			$var = 'ALLOW' if ($var eq 'TABLES');
 			push(@{$AConfig{$var}}, split(/[\s\t;,]+/, $val) );
 		} elsif ( $var eq 'SYSUSERS' ) {
@@ -5370,7 +5382,9 @@ sub _show_infos
 			foreach my $t (@$table) {
 
 				# forget this object if it is in the exclude or allow lists.
-				next if ($self->skip_this_object('TABLE', $t->[2]));
+				if ($self->{tables}{$t->[2]}{type} ne 'view') {
+					next if ($self->skip_this_object('TABLE', $t->[2]));
+				}
 
 				# Jump to desired extraction
 				if (grep(/^$t->[2]$/, @done)) {

@@ -149,6 +149,7 @@ CONFIGURATION
 
     Usage: ora2pg [-dhvp] [--option value]
 
+        -a | --allow str  : coma separated list of objects to allow from export.
         -b | --basedir dir: Used to set the default output directory, where files
                             resulting from exports will be stored.
         -c | --conf file  : Used to set an alternate configuration file than the
@@ -178,6 +179,7 @@ CONFIGURATION
                     used to connect to the Pg database that will be the owner.
         --nls_lang code: use this to set the Oracle NLS_LANG client encoding.
         --client_encoding code: Use this to set the PostgreSQL client encoding.
+        --view_as_table str: coma separated list of view to export as table.
 
     Previous version do not accept any command line parameter than the path
     to the configuration file.
@@ -528,14 +530,6 @@ CONFIGURATION
         This directive replace the obsolète 'TABLES' configuration
         directive, this is just a renaming to be less confusing.
 
-        Particular case: if the object name is a view and the export type is
-        TABLE, the view will be exported as a create table statement. If
-        export type is COPY or INSERT, the corresponding data will be
-        exported.
-
-        See chapter "Exporting Oracle views as PostgreSQL tables" for more
-        details.
-
     EXCLUDE
         This directive is the opposite of the previous, it allow you to
         define a space separated list of object name to exclude from the
@@ -553,6 +547,19 @@ CONFIGURATION
 
         this example will exclude all functions, procedures or functions in
         a package with the name begining with those regex.
+
+    VIEW_AS_TABLE
+        Set which view to export as table. By default none. Value must be a
+        list of view name or regexp separated by space. If the object name
+        is a view and the export type is TABLE, the view will be exported as
+        a create table statement. If export type is COPY or INSERT, the
+        corresponding data will be exported.
+
+        This was initialy done with the ALLOW (or old TABLES directive) but
+        that was not allow to use both object exclusion and view as table.
+
+        See chapter "Exporting Oracle views as PostgreSQL tables" for more
+        details.
 
     WHERE
         This directive allow you to specify a WHERE clause filter when
@@ -1095,14 +1102,15 @@ CONFIGURATION
     You can export any Oracle view as a PostgreSQL table simply by setting
     TYPE configuration option to TABLE to have the corresponding create
     table statement. Or use type COPY or INSERT to export the corresponding
-    data. To allow that you have to specify your views in the ALLOW
+    data. To allow that you have to specify your views in the VIEW_AS_TABLE
     configuration option.
 
-    Then if Ora2Pg does not find the name in Oracle table names it
-    automaticaly deduces that it must search for it in the view names, and
-    if it finds the view it will extract its schema (if TYPE=TABLE) into a
-    PG create table form, then it will extract the data (if TYPE=COPY or
-    INSERT) following the view schema.
+    Then if Ora2Pg finds the view it will extract its schema (if TYPE=TABLE)
+    into a PG create table form, then it will extract the data (if TYPE=COPY
+    or INSERT) following the view schema.
+
+    You can use the ALLOW and EXCLUDE directive in addition to select the
+    others objects to export.
 
 SUPPORT
   Author / Maintainer

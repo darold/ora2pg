@@ -133,7 +133,7 @@
 .\" ========================================================================
 .\"
 .IX Title "ORA2PG 1"
-.TH ORA2PG 1 "2012-11-05" "perl v5.10.1" "User Contributed Perl Documentation"
+.TH ORA2PG 1 "2012-11-07" "perl v5.10.1" "User Contributed Perl Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -293,6 +293,7 @@ Here are all command line parameters available since version 6.0:
 Usage: ora2pg [\-dhvp] [\-\-option value]
 .PP
 .Vb 10
+\&    \-a | \-\-allow str  : coma separated list of objects to allow from export.
 \&    \-b | \-\-basedir dir: Used to set the default output directory, where files
 \&                        resulting from exports will be stored.
 \&    \-c | \-\-conf file  : Used to set an alternate configuration file than the
@@ -322,6 +323,7 @@ Usage: ora2pg [\-dhvp] [\-\-option value]
 \&                used to connect to the Pg database that will be the owner.
 \&    \-\-nls_lang code: use this to set the Oracle NLS_LANG client encoding.
 \&    \-\-client_encoding code: Use this to set the PostgreSQL client encoding.
+\&    \-\-view_as_table str: coma separated list of view to export as table.
 .Ve
 .PP
 Previous version do not accept any command line parameter than the path to the
@@ -677,12 +679,6 @@ of the export type.
 .Sp
 This directive replace the obsolA\*~Xte '\s-1TABLES\s0' configuration directive, this is
 just a renaming to be less confusing.
-.Sp
-Particular case: if the object name is a view and the export type is \s-1TABLE\s0,
-the view will be exported as a create table statement. If export type is \s-1COPY\s0
-or \s-1INSERT\s0, the corresponding data will be exported.
-.Sp
-See chapter \*(L"Exporting Oracle views as PostgreSQL tables\*(R" for more details.
 .IP "\s-1EXCLUDE\s0" 4
 .IX Item "EXCLUDE"
 This directive is the opposite of the previous, it allow you to define a space
@@ -704,6 +700,17 @@ For example, you can ban from export some unwanted function with this directive:
 .Sp
 this example will exclude all functions, procedures or functions in a package
 with the name begining with those regex.
+.IP "\s-1VIEW_AS_TABLE\s0" 4
+.IX Item "VIEW_AS_TABLE"
+Set which view to export as table. By default none. Value must be a list of
+view name or regexp separated by space. If the object name is a view and the
+export type is \s-1TABLE\s0, the view will be exported as a create table statement.
+If export type is \s-1COPY\s0 or \s-1INSERT\s0, the corresponding data will be exported.
+.Sp
+This was initialy done with the \s-1ALLOW\s0 (or old \s-1TABLES\s0 directive) but that was
+not allow to use both object exclusion and view as table.
+.Sp
+See chapter \*(L"Exporting Oracle views as PostgreSQL tables\*(R" for more details.
 .IP "\s-1WHERE\s0" 4
 .IX Item "WHERE"
 This directive allow you to specify a \s-1WHERE\s0 clause filter when dumping the
@@ -1225,7 +1232,9 @@ as parameter.
 Set it to 1 will enable verbose output.
 .IP "\s-1IMPORT\s0" 4
 .IX Item "IMPORT"
-You can define common Ora2Pg configuration directives into a single file that can be imported into other configuration files with the \s-1IMPORT\s0 configuration directive as follow:
+You can define common Ora2Pg configuration directives into a single file that
+can be imported into other configuration files with the \s-1IMPORT\s0 configuration
+directive as follow:
 .Sp
 .Vb 1
 \&        IMPORT  commonfile.conf
@@ -1238,12 +1247,14 @@ current configuration file.
 You can export any Oracle view as a PostgreSQL table simply by setting \s-1TYPE\s0
 configuration option to \s-1TABLE\s0 to have the corresponding create table statement.
 Or use type \s-1COPY\s0 or \s-1INSERT\s0 to export the corresponding data. To allow that you
-have to specify your views in the \s-1ALLOW\s0 configuration option.
+have to specify your views in the \s-1VIEW_AS_TABLE\s0 configuration option.
 .PP
-Then if Ora2Pg does not find the name in Oracle table names it automaticaly
-deduces that it must search for it in the view names, and if it finds the view
-it will extract its schema (if TYPE=TABLE) into a \s-1PG\s0 create table form, then it
-will extract the data (if TYPE=COPY or \s-1INSERT\s0) following the view schema.
+Then if Ora2Pg finds the view it will extract its schema (if TYPE=TABLE) into
+a \s-1PG\s0 create table form, then it will extract the data (if TYPE=COPY or \s-1INSERT\s0)
+following the view schema.
+.PP
+You can use the \s-1ALLOW\s0 and \s-1EXCLUDE\s0 directive in addition to select the others
+objects to export.
 .SH "SUPPORT"
 .IX Header "SUPPORT"
 .SS "Author / Maintainer"

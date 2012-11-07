@@ -135,14 +135,17 @@ TYPE		TABLE
 
 # Set which object to export from. By default Ora2Pg export all objects.
 # Value must be a list of object name or regex separated by space.
-# Particular case: if the object name is a view and the export type is TABLE,
-# the view will be exported as a create table statement. If export type is COPY
-# or INSERT, the corresponding data will be exported.
 #ALLOW		TABLE_TEST
 
 # Set which object to exclude from export process. By default none.
 # Value must be a list of object name or regexp separated by space.
 #EXCLUDE	OTHER_TABLES
+
+# Set which view to export as table. By default none. Value must be a list of
+# view name or regexp separated by space. If the object name is a view and the
+# export type is TABLE, the view will be exported as a create table statement.
+# If export type is COPY or INSERT, the corresponding data will be exported.
+#VIEW_AS_TABLE	VIEW_NAME
 
 # Support for turning off certain schema features in the postgres side
 # during schema export. Values can be : fkeys, pkeys, ukeys, indexes, checks
