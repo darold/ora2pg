@@ -706,12 +706,12 @@ sub _init
 			$self->_partitions();
 		} elsif ($self->{type} eq 'MVIEW') {
 			$self->_materialized_views();
-		} elsif (($self->{type} eq 'SHOW_SCHEMA') || ($self->{type} eq 'SHOW_TABLE') || ($self->{type} eq 'SHOW_COLUMN') || ($self->{type} eq 'SHOW_ENCODING')) {
+		} elsif (($self->{type} eq 'SHOW_VERSION') || ($self->{type} eq 'SHOW_SCHEMA') || ($self->{type} eq 'SHOW_TABLE') || ($self->{type} eq 'SHOW_COLUMN') || ($self->{type} eq 'SHOW_ENCODING')) {
 			$self->_show_infos($self->{type});
 			$self->{dbh}->disconnect() if ($self->{dbh}); 
 			exit 0;
 		} else {
-			warn "type option must be TABLE, VIEW, GRANT, SEQUENCE, TRIGGER, PACKAGE, FUNCTION, PROCEDURE, PARTITION, TYPE, INSERT, COPY, TABLESPACE, SHOW_SCHEMA, SHOW_TABLE, SHOW_COLUMN, SHOW_ENCODING, FDW, MVIEW\n";
+			warn "type option must be TABLE, VIEW, GRANT, SEQUENCE, TRIGGER, PACKAGE, FUNCTION, PROCEDURE, PARTITION, TYPE, INSERT, COPY, TABLESPACE, SHOW_VERSION, SHOW_SCHEMA, SHOW_TABLE, SHOW_COLUMN, SHOW_ENCODING, FDW, MVIEW\n";
 		}
 		# Mofify export structure if required
 		if ($self->{type} =~ /^(INSERT|COPY)$/) {
@@ -5354,6 +5354,10 @@ sub _show_infos
 		my $encoding = $self->_get_encoding();
 		$self->logit("NLS_LANG $encoding\n", 0);
 		$self->logit("CLIENT ENCODING $self->{client_encoding}\n", 0);
+	} elsif ($type eq 'SHOW_VERSION') {
+		$self->logit("Showing Oracle Version...\n", 1);
+		my $ver = $self->_get_version();
+		$self->logit("$ver\n", 0);
 	} elsif ($type eq 'SHOW_SCHEMA') {
 		# Get all tables information specified by the DBI method table_info
 		$self->logit("Showing all schema...\n", 1);
@@ -5434,6 +5438,33 @@ sub _show_infos
 
 	}
 }
+
+=head2 _get_version
+
+This function retrieves the Oracle version inforamtion
+
+=cut
+
+sub _get_version
+{
+	my $self = shift;
+
+	my $oraver = '';
+	my $sql = "SELECT BANNER FROM v\$version";
+
+        my $sth = $self->{dbh}->prepare( $sql ) or return undef;
+        $sth->execute or return undef;
+	while ( my @row = $sth->fetchrow()) {
+		$oraver = $row[0];
+		last;
+	}
+	$sth->finish();
+
+	$oraver =~ s/ \- .*//;
+
+	return $oraver;
+}
+
 
 =head2 _schema_list
 

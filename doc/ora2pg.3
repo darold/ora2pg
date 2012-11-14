@@ -133,7 +133,7 @@
 .\" ========================================================================
 .\"
 .IX Title "ORA2PG 1"
-.TH ORA2PG 1 "2012-11-07" "perl v5.10.1" "User Contributed Perl Documentation"
+.TH ORA2PG 1 "2012-11-14" "perl v5.10.1" "User Contributed Perl Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -580,10 +580,11 @@ will try to convert it to PostgreSQL syntax.
 .Sp
 Since Ora2Pg v8.1 there's three new export types:
 .Sp
-.Vb 6
-\&        SHOW_SCHEMA : display the list of schema available in the database.
-\&        SHOW_TABLE : display the list of tables available.
-\&        SHOW_COLUMN : display the list of tables columns available and the
+.Vb 7
+\&        SHOW_VERSION : display Oracle version
+\&        SHOW_SCHEMA  : display the list of schema available in the database.
+\&        SHOW_TABLE   : display the list of tables available.
+\&        SHOW_COLUMN  : display the list of tables columns available and the
 \&                Ora2PG conversion type from Oracle to PostgreSQL that will be
 \&                applied. It will also warn you if there\*(Aqs PostgreSQL reserved
 \&                words in Oracle object names.

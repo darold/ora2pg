@@ -461,9 +461,10 @@ will try to convert it to PostgreSQL syntax.
 
 Since Ora2Pg v8.1 there's three new export types:
 
-	SHOW_SCHEMA : display the list of schema available in the database.
-	SHOW_TABLE : display the list of tables available.
-	SHOW_COLUMN : display the list of tables columns available and the
+	SHOW_VERSION : display Oracle version
+	SHOW_SCHEMA  : display the list of schema available in the database.
+	SHOW_TABLE   : display the list of tables available.
+	SHOW_COLUMN  : display the list of tables columns available and the
 		Ora2PG conversion type from Oracle to PostgreSQL that will be
 		applied. It will also warn you if there's PostgreSQL reserved
 		words in Oracle object names.
