@@ -268,7 +268,7 @@ sub plsql_to_plpgsql
 	$str =~ s/REGEXP_LIKE[\s\t]*\([\s\t]*([^,]+)[\s\t]*,[\s\t]*('[^\']+')[\s\t]*\)/$1 \~ $2/igs;
 
 	# Add the name keyword to XMLELEMENT
-	$str =~ s/XMLELEMENT[\s\t]*([\s\t]*/XMLELEMENT(name /igs;
+	$str =~ s/XMLELEMENT[\s\t]*\([\s\t]*/XMLELEMENT(name /igs;
 
 	if ($allow_code_break) {
 		# Change trunc() to date_trunc('day', field)
