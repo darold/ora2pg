@@ -430,7 +430,7 @@ sub _init
 	$self->{allow_code_break} = 1;
 	$self->{create_schema} = 1;
 	# Initialyze following configuration file
-	foreach my $k (keys %AConfig) {
+	foreach my $k (sort keys %AConfig) {
 		if (lc($k) eq 'allow') {
 			$self->{limited} = $AConfig{ALLOW};
 		} elsif (lc($k) eq 'exclude') {
@@ -967,7 +967,7 @@ sub _tables
 			} else {
 				push(@done, $t->[2]);
 			} 
-			$self->logit("[$i] Scanning table $t->[2] (@$t)...\n", 1);
+			$self->logit("[$i] Scanning table $t->[2] (@$t rows)...\n", 1);
 			
 			# Check of uniqueness of the table
 			if (exists $self->{tables}{$t->[2]}{field_name}) {
@@ -1967,7 +1967,7 @@ LANGUAGE plpgsql ;
 			$drop_all = '';
 		}
 		if (!$self->{drop_fkey} && !$self->{defer_fkey}) {
-			$self->logit("WARNING: Please consider using DEFER_FKEY or DROP_FKEY configuration directives.\n", 0);
+			$self->logit("WARNING: Please consider using DEFER_FKEY or DROP_FKEY configuration directives if foreign key have already been imported.\n", 0);
 		}
 		if ($self->{drop_indexes}) {
 			my $drop_all = '';
@@ -1993,6 +1993,7 @@ LANGUAGE plpgsql ;
 		$dirprefix = "$self->{output_dir}/" if ($self->{output_dir});
 		my $global_count = 0;
 		foreach my $table (@ordered_tables) {
+			next if ($self->skip_this_object('TABLE', $table));
 			my $start_time = time();
 			my $fhdl = undef;
 			if ($self->{file_per_table} && !$self->{dbhdest}) {
@@ -2005,7 +2006,7 @@ LANGUAGE plpgsql ;
 				$self->logit("Dumping $table to file: ${table}_$self->{output}\n", 1);
 				$fhdl = $self->export_file("${table}_$self->{output}");
 			} else {
-				$self->logit("Dumping table $table...\n", 1);
+				$self->logit("Dumping data from table $table...\n", 1);
 			}
 			## Set client encoding if requested
 			if ($self->{file_per_table} && $self->{client_encoding}) {
@@ -3063,11 +3064,8 @@ sub _get_data
 
 	# Fix a problem when the table need to be prefixed by the schema
 	my $realtable = $table;
-	if ($table !~ /"/) {
-		$realtable = "\"$table\"";
-	}
 	if ($self->{schema}) {
-		$realtable = "\"$self->{schema}\".$realtable";
+		$realtable = "\U$self->{schema}.$realtable\E";
 	}
 	my $alias = 'a';
 	my $str = "SELECT ";
@@ -5370,10 +5368,16 @@ sub _show_infos
 		$self->logit("Schema\t$self->{schema}\n", 0);
 		$self->logit("Size\t$size\n\n", 0);
 		$self->logit("--------------------------------------\n", 0);
-		$self->logit("Object\tNumber\n", 0);
+		$self->logit("Object\tNumber\tInvalid\n", 0);
 		$self->logit("--------------------------------------\n", 0);
-		foreach my $typ (sort keys %report) { 
-			$self->logit("$typ\t" . ($#{$report{$typ}} + 1) . "\n", 0);
+		foreach my $typ (sort keys %report) {
+			my $number = 0;
+			my $invalid = 0;
+			for (my $i = 0; $i <= $#{$report{$typ}}; $i++) {
+				$number++;
+				$invalid++ if ($report{$typ}[$i]->{invalid});
+			}
+			$self->logit("$typ\t$number\t$invalid\n", 0);
 		}
 	} elsif ($type eq 'SHOW_SCHEMA') {
 		# Get all tables information specified by the DBI method table_info
@@ -5518,8 +5522,7 @@ sub _get_report
 
 	my $oraver = '';
 	# OWNER|OBJECT_NAME|SUBOBJECT_NAME|OBJECT_ID|DATA_OBJECT_ID|OBJECT_TYPE|CREATED|LAST_DDL_TIME|TIMESTAMP|STATUS|TEMPORARY|GENERATED|SECONDARY
-	my $sql = "SELECT OBJECT_NAME,OBJECT_TYPE FROM $self->{prefix}_OBJECTS WHERE TEMPORARY='N' AND GENERATED='N'";
-	$sql .= " AND STATUS='VALID'" if (!$self->{export_invalid});
+	my $sql = "SELECT OBJECT_NAME,OBJECT_TYPE,STATUS FROM $self->{prefix}_OBJECTS WHERE TEMPORARY='N' AND GENERATED='N'";
         if ($self->{schema}) {
                 $sql .= " AND upper(OWNER)='\U$self->{schema}\E'";
         } else {
@@ -5531,7 +5534,7 @@ sub _get_report
 	push(@infos, join('|', @{$sth->{NAME}}));
         $sth->execute or return undef;
 	while ( my @row = $sth->fetchrow()) {
-		push(@{$infos{$row[1]}}, $row[0]);
+		push(@{$infos{$row[1]}}, { ( name => $row[0], invalid => ($row[2] eq 'VALID') ? 0 : 1) });
 	}
 	$sth->finish();
 
