@@ -706,12 +706,12 @@ sub _init
 			$self->_partitions();
 		} elsif ($self->{type} eq 'MVIEW') {
 			$self->_materialized_views();
-		} elsif (($self->{type} eq 'SHOW_VERSION') || ($self->{type} eq 'SHOW_SCHEMA') || ($self->{type} eq 'SHOW_TABLE') || ($self->{type} eq 'SHOW_COLUMN') || ($self->{type} eq 'SHOW_ENCODING')) {
+		} elsif (($self->{type} eq 'SHOW_REPORT') || ($self->{type} eq 'SHOW_VERSION') || ($self->{type} eq 'SHOW_SCHEMA') || ($self->{type} eq 'SHOW_TABLE') || ($self->{type} eq 'SHOW_COLUMN') || ($self->{type} eq 'SHOW_ENCODING')) {
 			$self->_show_infos($self->{type});
 			$self->{dbh}->disconnect() if ($self->{dbh}); 
 			exit 0;
 		} else {
-			warn "type option must be TABLE, VIEW, GRANT, SEQUENCE, TRIGGER, PACKAGE, FUNCTION, PROCEDURE, PARTITION, TYPE, INSERT, COPY, TABLESPACE, SHOW_VERSION, SHOW_SCHEMA, SHOW_TABLE, SHOW_COLUMN, SHOW_ENCODING, FDW, MVIEW\n";
+			warn "type option must be TABLE, VIEW, GRANT, SEQUENCE, TRIGGER, PACKAGE, FUNCTION, PROCEDURE, PARTITION, TYPE, INSERT, COPY, TABLESPACE, SHOW_REPORT, SHOW_VERSION, SHOW_SCHEMA, SHOW_TABLE, SHOW_COLUMN, SHOW_ENCODING, FDW, MVIEW\n";
 		}
 		# Mofify export structure if required
 		if ($self->{type} =~ /^(INSERT|COPY)$/) {
@@ -5358,6 +5358,23 @@ sub _show_infos
 		$self->logit("Showing Oracle Version...\n", 1);
 		my $ver = $self->_get_version();
 		$self->logit("$ver\n", 0);
+	} elsif ($type eq 'SHOW_REPORT') {
+		my $ver = $self->_get_version();
+		my $size = $self->_get_database_size();
+		$self->logit("Reporting Oracle Content...\n", 1);
+		my %report = $self->_get_report();
+		$self->logit("--------------------------------------\n", 0);
+		$self->logit("Ora2Pg: Oracle Database Content Report\n", 0);
+		$self->logit("--------------------------------------\n", 0);
+		$self->logit("Version\t$ver\n", 0);
+		$self->logit("Schema\t$self->{schema}\n", 0);
+		$self->logit("Size\t$size\n\n", 0);
+		$self->logit("--------------------------------------\n", 0);
+		$self->logit("Object\tNumber\n", 0);
+		$self->logit("--------------------------------------\n", 0);
+		foreach my $typ (sort keys %report) { 
+			$self->logit("$typ\t" . ($#{$report{$typ}} + 1) . "\n", 0);
+		}
 	} elsif ($type eq 'SHOW_SCHEMA') {
 		# Get all tables information specified by the DBI method table_info
 		$self->logit("Showing all schema...\n", 1);
@@ -5441,7 +5458,7 @@ sub _show_infos
 
 =head2 _get_version
 
-This function retrieves the Oracle version inforamtion
+This function retrieves the Oracle version information
 
 =cut
 
@@ -5465,6 +5482,61 @@ sub _get_version
 	return $oraver;
 }
 
+=head2 _get_database_size
+
+This function retrieves the size of the Oracle database in MB
+
+=cut
+
+
+sub _get_database_size
+{
+	my $self = shift;
+
+	my $mb_size = '';
+	my $sql = "SELECT sum(bytes)/1024/1024 FROM DBA_DATA_FILES";
+        my $sth = $self->{dbh}->prepare( $sql ) or return undef;
+        $sth->execute or return undef;
+	while ( my @row = $sth->fetchrow()) {
+		$mb_size = sprintf("%.2f MB", $row[0]);
+		last;
+	}
+	$sth->finish();
+
+	return $mb_size;
+}
+
+=head2 _get_report
+
+This function retrieves the Oracle content information
+
+=cut
+
+sub _get_report
+{
+	my $self = shift;
+
+	my $oraver = '';
+	# OWNER|OBJECT_NAME|SUBOBJECT_NAME|OBJECT_ID|DATA_OBJECT_ID|OBJECT_TYPE|CREATED|LAST_DDL_TIME|TIMESTAMP|STATUS|TEMPORARY|GENERATED|SECONDARY
+	my $sql = "SELECT OBJECT_NAME,OBJECT_TYPE FROM $self->{prefix}_OBJECTS WHERE TEMPORARY='N' AND GENERATED='N'";
+	$sql .= " AND STATUS='VALID'" if (!$self->{export_invalid});
+        if ($self->{schema}) {
+                $sql .= " AND upper(OWNER)='\U$self->{schema}\E'";
+        } else {
+                $sql .= " AND OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
+        }
+
+	my %infos = ();
+        my $sth = $self->{dbh}->prepare( $sql ) or return undef;
+	push(@infos, join('|', @{$sth->{NAME}}));
+        $sth->execute or return undef;
+	while ( my @row = $sth->fetchrow()) {
+		push(@{$infos{$row[1]}}, $row[0]);
+	}
+	$sth->finish();
+
+	return %infos;
+}
 
 =head2 _schema_list
 
