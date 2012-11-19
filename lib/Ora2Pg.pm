@@ -97,6 +97,20 @@ our %TYPE = (
 	'TIMESTAMP WITH LOCAL TIME ZONE' => 'timestamp with time zone',
 );
 
+our %INDEX_TYPE = (
+	'NORMAL' => 'b-tree',
+	'NORMAL/REV' => 'reversed b-tree',
+	'FUNCTION-BASED NORMAL' => 'function based b-tree',
+	'FUNCTION-BASED NORMAL/REV' => 'function based reversed b-tree',
+	'BITMAP' => 'bitmap',
+	'BITMAP JOIN' => 'bitmap join',
+	'FUNCTION-BASED BITMAP' => 'function based bitmap',
+	'FUNCTION-BASED BITMAP JOIN' => 'function based bitmap join',
+	'CLUSTER' => 'cluster',
+	'DOMAIN' => 'domain',
+	'IOT - TOP' => 'IOT',
+);
+
 our @KEYWORDS = qw(
 	ALL ANALYSE ANALYZE AND ANY ARRAY AS ASC ASYMMETRIC BOTH CASE CAST
 	CHECK COLLATE COLLATION COLUMN CONCURRENTLY CONSTRAINT CREATE CROSS
@@ -941,7 +955,7 @@ of the database structure :
 
 sub _tables
 {
-	my ($self) = @_;
+	my ($self, $nodetail) = @_;
 
 	# Get all tables information specified by the DBI method table_info
 	$self->logit("Retrieving table information...\n", 1);
@@ -1003,12 +1017,12 @@ sub _tables
 			$self->{tables}{$t->[2]}{field_name} = $sth->{NAME};
 			$self->{tables}{$t->[2]}{field_type} = $sth->{TYPE};
 
-			@{$self->{tables}{$t->[2]}{column_info}} = $self->_column_info($t->[2],$t->[1]);
-			@{$self->{tables}{$t->[2]}{column_comments}} = $self->_column_comments($t->[2],$t->[1]);
+			@{$self->{tables}{$t->[2]}{column_info}} = $self->_column_info($t->[2],$t->[1]) if (!$nodetail);
+			@{$self->{tables}{$t->[2]}{column_comments}} = $self->_column_comments($t->[2],$t->[1]) if (!$nodetail);
                         # We don't check for skip_ukeys/skip_pkeys here; this is taken care of inside _unique_key
 			%{$self->{tables}{$t->[2]}{unique_key}} = $self->_unique_key($t->[2],$t->[1]);
 			($self->{tables}{$t->[2]}{foreign_link}, $self->{tables}{$t->[2]}{foreign_key}) = $self->_foreign_key($t->[2],$t->[1]) if (!$self->{skip_fkeys});
-			($self->{tables}{$t->[2]}{uniqueness}, $self->{tables}{$t->[2]}{indexes}) = $self->_get_indexes($t->[2],$t->[1]) if (!$self->{skip_indices} && !$self->{skip_indexes});
+			($self->{tables}{$t->[2]}{uniqueness}, $self->{tables}{$t->[2]}{indexes}, $self->{tables}{$t->[2]}{idx_type}) = $self->_get_indexes($t->[2],$t->[1]) if (!$self->{skip_indices} && !$self->{skip_indexes});
 			%{$self->{tables}{$t->[2]}{check_constraint}} = $self->_check_constraint($t->[2],$t->[1]) if (!$self->{skip_checks});
 			$i++;
 		}
@@ -2611,6 +2625,9 @@ sub _create_indexes
 	my @out = ();
 	# Set the index definition
 	foreach my $idx (keys %indexes) {
+		# Cluster, domain, bitmap join, reversed and IOT indexes will not be exported at all
+		next if ($self->{tables}{$table}{idx_type}{$idx} =~ /JOIN|IOT|CLUSTER|DOMAIN|REV/i);
+
 		map { if ($_ !~ /\(.*\)/) { s/^/"/; s/$/"/; } } @{$indexes{$idx}};
 		if (exists $self->{replaced_cols}{"\L$tbsaved\E"} && $self->{replaced_cols}{"\L$tbsaved\E"}) {
 			foreach my $c (keys %{$self->{replaced_cols}{"\L$tbsaved\E"}}) {
@@ -2683,6 +2700,9 @@ sub _drop_indexes
 	my @out = ();
 	# Set the index definition
 	foreach my $idx (keys %indexes) {
+		# Cluster, domain, bitmap join, reversed and IOT indexes will not be exported at all
+		next if ($self->{tables}{$table}{idx_type}{$idx} =~ /JOIN|IOT|CLUSTER|DOMAIN|REV/i);
+
 		map { if ($_ !~ /\(.*\)/) { s/^/"/; s/$/"/; } } @{$indexes{$idx}};
 		if (exists $self->{replaced_cols}{"\L$tbsaved\E"} && $self->{replaced_cols}{"\L$tbsaved\E"}) {
 			foreach my $c (keys %{$self->{replaced_cols}{"\L$tbsaved\E"}}) {
@@ -2733,6 +2753,47 @@ sub _drop_indexes
 
 	return wantarray ? @out : join("\n", @out);
 }
+
+=head2 _exportable_indexes
+
+This function return the indexes that will be exported
+
+=cut
+sub _exportable_indexes
+{
+	my ($self, $table, %indexes) = @_;
+
+	my @out = ();
+	# Set the index definition
+	foreach my $idx (keys %indexes) {
+		map { if ($_ !~ /\(.*\)/) { s/^/"/; s/$/"/; } } @{$indexes{$idx}};
+		map { s/"//gs } @{$indexes{$idx}};
+		my $columns = join(',', @{$indexes{$idx}});
+		my $colscompare = $columns;
+		my $columnlist = '';
+		my $skip_index_creation = 0;
+		my $unique_key = $self->{tables}{$table}{unique_key};
+		foreach my $consname (keys %$unique_key) {
+			my $constype =   $unique_key->{$consname}{type};
+			next if (($constype ne 'P') && ($constype ne 'U'));
+			my @conscols = @{$unique_key->{$consname}{columns}};
+			$columnlist = join(',', @conscols);
+			$columnlist =~ s/"//gs;
+			if (lc($columnlist) eq lc($colscompare)) {
+				$skip_index_creation = 1;
+				last;
+			}
+		}
+
+		# The index iwill not be created if there is already a constraint on the same column list.
+		if (!$skip_index_creation) {
+			push(@out, $idx);
+		}
+	}
+
+	return @out;
+}
+
 
 =head2 _get_primary_keys
 
@@ -3536,10 +3597,12 @@ sub _get_indexes
 	}
 	# Retrieve all indexes 
 	my $sth = $self->{dbh}->prepare(<<END) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-SELECT DISTINCT $self->{prefix}_IND_COLUMNS.INDEX_NAME,$self->{prefix}_IND_COLUMNS.COLUMN_NAME,$self->{prefix}_INDEXES.UNIQUENESS,$self->{prefix}_IND_COLUMNS.COLUMN_POSITION,$self->{prefix}_INDEXES.INDEX_TYPE,$self->{prefix}_INDEXES.TABLE_TYPE,$self->{prefix}_INDEXES.GENERATED
+SELECT DISTINCT $self->{prefix}_IND_COLUMNS.INDEX_NAME,$self->{prefix}_IND_COLUMNS.COLUMN_NAME,$self->{prefix}_INDEXES.UNIQUENESS,$self->{prefix}_IND_COLUMNS.COLUMN_POSITION,$self->{prefix}_INDEXES.INDEX_TYPE,$self->{prefix}_INDEXES.TABLE_TYPE,$self->{prefix}_INDEXES.GENERATED,$self->{prefix}_INDEXES.JOIN_INDEX
 FROM $self->{prefix}_IND_COLUMNS, $self->{prefix}_INDEXES
 WHERE $self->{prefix}_IND_COLUMNS.TABLE_NAME='$table' $owner
-AND $self->{prefix}_INDEXES.GENERATED != 'Y'
+AND $self->{prefix}_INDEXES.GENERATED <> 'Y'
+AND $self->{prefix}_INDEXES.TEMPORARY <> 'Y'
+AND $self->{prefix}_INDEXES.DROPPED <> 'Y'
 AND $self->{prefix}_INDEXES.INDEX_NAME=$self->{prefix}_IND_COLUMNS.INDEX_NAME
 ORDER BY $self->{prefix}_IND_COLUMNS.COLUMN_POSITION
 END
@@ -3559,11 +3622,16 @@ $idxowner
 	my $sth2 = $self->{dbh}->prepare($idxnc);
 	my %data = ();
 	my %unique = ();
+	my %idx_type = ();
 	while (my $row = $sth->fetch) {
 		# forget this object if it is in the exclude or allow lists.
 		next if ($self->skip_this_object('INDEX', $row->[0]));
-
 		$unique{$row->[0]} = $row->[2];
+		if ($row->[7] eq 'Y') {
+			$idx_type{$row->[0]} = $row->[4] . ' JOIN';
+		} else {
+			$idx_type{$row->[0]} = $row->[4];
+		}
 		# Replace function based index type
 		if ($row->[1] =~ /^SYS_NC/i) {
 			$sth2->execute($row->[1]) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -3574,7 +3642,7 @@ $idxowner
 		push(@{$data{$row->[0]}}, $row->[1]);
 	}
 
-	return \%unique, \%data;
+	return \%unique, \%data, \%idx_type;
 }
 
 
@@ -5367,8 +5435,26 @@ sub _show_infos
 		$self->logit("Version\t$ver\n", 0);
 		$self->logit("Schema\t$self->{schema}\n", 0);
 		$self->logit("Size\t$size\n\n", 0);
+
+		# Determining how many non automatiques indexes will be exported
+		my %all_indexes = ();
+		$self->{skip_fkeys} = $self->{skip_indices} = $self->{skip_indexes} = $self->{skip_checks} = 0;
+		$self->{view_as_table} = ();
+		$self->_tables(1);
+		my $total_index = 0;
+		foreach my $table (sort keys %{$self->{tables}}) {
+			push(@exported_indexes, $self->_exportable_indexes($table, %{$self->{tables}{$table}{indexes}}));
+			foreach my $idx (sort keys %{$self->{tables}{$table}{idx_type}}) {
+				next if (!grep(/^$idx$/i, @exported_indexes));
+				my $typ = $self->{tables}{$table}{idx_type}{$idx};
+				push(@{$all_indexes{$typ}}, $idx);
+				$total_index++;
+			}
+print 
+		}
+
 		$self->logit("--------------------------------------\n", 0);
-		$self->logit("Object\tNumber\tInvalid\n", 0);
+		$self->logit("Object\tNumber\tInvalid\tComments\n", 0);
 		$self->logit("--------------------------------------\n", 0);
 		foreach my $typ (sort keys %report) {
 			my $number = 0;
@@ -5377,8 +5463,21 @@ sub _show_infos
 				$number++;
 				$invalid++ if ($report{$typ}[$i]->{invalid});
 			}
-			$self->logit("$typ\t$number\t$invalid\n", 0);
+			my $comment = '';
+			if ($typ eq 'INDEX') {
+				my $detail = '';
+				my $bitmap = 0;
+				foreach my $t (sort keys %INDEX_TYPE) {
+					my $len = ($#{$all_indexes{$t}}+1);
+					$detail .= ". $len $INDEX_TYPE{$t} index(es)" if ($len);
+				}
+				$comment = "$total_index index(es) are concerned by the export, others are automatically generated and will do so on PostgreSQL";
+				$comment .= $detail;
+				$comment .= " Note that bitmap index(es) will be exported as b-tree index(es) and reverse index will be emulated using the reverse(function) if any. Cluster, domain, bitmap join and IOT indexes will not be exported at all. Reverse indexes are not exported too, use a trigram-based index (see pg_trgm) or a reverse() function based index and search.";
+			}
+			$self->logit("$typ\t" . ($number-$invalid) . "\t$invalid\t$comment\n", 0);
 		}
+
 	} elsif ($type eq 'SHOW_SCHEMA') {
 		# Get all tables information specified by the DBI method table_info
 		$self->logit("Showing all schema...\n", 1);
@@ -5522,14 +5621,14 @@ sub _get_report
 
 	my $oraver = '';
 	# OWNER|OBJECT_NAME|SUBOBJECT_NAME|OBJECT_ID|DATA_OBJECT_ID|OBJECT_TYPE|CREATED|LAST_DDL_TIME|TIMESTAMP|STATUS|TEMPORARY|GENERATED|SECONDARY
-	my $sql = "SELECT OBJECT_NAME,OBJECT_TYPE,STATUS FROM $self->{prefix}_OBJECTS WHERE TEMPORARY='N' AND GENERATED='N'";
+	my $sql = "SELECT OBJECT_NAME,OBJECT_TYPE,STATUS FROM $self->{prefix}_OBJECTS WHERE TEMPORARY='N' AND GENERATED='N' AND SECONDARY='N'";
         if ($self->{schema}) {
                 $sql .= " AND upper(OWNER)='\U$self->{schema}\E'";
         } else {
                 $sql .= " AND OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
         }
 
-	my %infos = ();
+	my @infos = ();
         my $sth = $self->{dbh}->prepare( $sql ) or return undef;
 	push(@infos, join('|', @{$sth->{NAME}}));
         $sth->execute or return undef;
