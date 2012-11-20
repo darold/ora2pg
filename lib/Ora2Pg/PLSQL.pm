@@ -342,8 +342,7 @@ sub replace_sql_type
 
 		my ($precision, $scale) = split(/,/, $args);
 		$scale ||= 0;
-		my $len = $precision;
-		$precision = 0 if (!$scale);
+		my $len = $precision || 0;
 		if ( $type =~ /CHAR/i ) {
 			# Type CHAR have default length set to 1
 			# Type VARCHAR(2) must have a specified length
