@@ -363,8 +363,9 @@ sub replace_sql_type
 						} else {
 							$str =~ s/\b$type\b[\s\t]*\([^\)]+\)/bigint/is;
 						}
+					} else {
+						$str =~ s/\b$type\b[\s\t]*\([^\)]+\)/numeric\%\|$precision\%\|\%/i;
 					}
-					$str =~ s/\b$type\b[\s\t]*\([^\)]+\)/numeric\%\|$precision\%\|\%/i;
 				} elsif ($pg_integer_type) {
 					my $tmp = $default_numeric || 'bigint';
 					$str =~ s/\b$type\b[\s\t]*\([^\)]+\)/$tmp/is;
