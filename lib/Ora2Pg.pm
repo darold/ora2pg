@@ -3691,6 +3691,39 @@ sub _get_sequences
 	return \@seqs;
 }
 
+=head2 _get_dblink
+
+This function implements an Oracle-native database link information.
+
+Returns a hash of dblink names with the connection they are based on.
+
+=cut
+
+
+sub _get_dblink
+{
+	my($self) = @_;
+
+	# Retrieve all database link from dba_db_links table
+	my $str = "SELECT OWNER,DB_LINK,USERNAME,HOST,CREATED FROM $self->{prefix}_db_links";
+	if (!$self->{schema}) {
+		$str .= " WHERE OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
+	} else {
+		$str .= " WHERE upper(OWNER) = '\U$self->{schema}\E'";
+	}
+	$str .= " ORDER BY DB_LINK";
+	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+
+	my %data = ();
+	while (my $row = $sth->fetch) {
+		$data{$row->[1]}{owner} = $row->[0];
+		$data{$row->[1]}{username} = $row->[2];
+		$data{$row->[1]}{host} = $row->[3];
+	}
+
+	return %data;
+}
 
 =head2 _get_views
 
