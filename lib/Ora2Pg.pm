@@ -971,6 +971,9 @@ sub _tables
 		my $i = 1;
 		foreach my $t (@$table) {
 
+			if (!$self->{quiet}) {
+				print STDERR &progress_bar($i, $#{$table} + 1, 25, '=', 'tables', "scanning table $t->[2]" );
+			}
 			# forget this object if it is in the exclude or allow lists.
 			if ($self->{tables}{$t->[2]}{type} ne 'view') {
 				next if ($self->skip_this_object('TABLE', $t->[2]));
@@ -1016,15 +1019,21 @@ sub _tables
 			$self->{tables}{$t->[2]}{type} = 'table';
 			$self->{tables}{$t->[2]}{field_name} = $sth->{NAME};
 			$self->{tables}{$t->[2]}{field_type} = $sth->{TYPE};
-
+			# Retrieve column's details
 			@{$self->{tables}{$t->[2]}{column_info}} = $self->_column_info($t->[2],$t->[1]) if (!$nodetail);
+			# Retrieve comment of each columns
 			@{$self->{tables}{$t->[2]}{column_comments}} = $self->_column_comments($t->[2],$t->[1]) if (!$nodetail);
-                        # We don't check for skip_ukeys/skip_pkeys here; this is taken care of inside _unique_key
 			%{$self->{tables}{$t->[2]}{unique_key}} = $self->_unique_key($t->[2],$t->[1]);
+			# We don't check for skip_ukeys/skip_pkeys here; this is taken care of inside _unique_key
 			($self->{tables}{$t->[2]}{foreign_link}, $self->{tables}{$t->[2]}{foreign_key}) = $self->_foreign_key($t->[2],$t->[1]) if (!$self->{skip_fkeys});
-			($self->{tables}{$t->[2]}{uniqueness}, $self->{tables}{$t->[2]}{indexes}, $self->{tables}{$t->[2]}{idx_type}) = $self->_get_indexes($t->[2],$t->[1]) if (!$self->{skip_indices} && !$self->{skip_indexes});
+			# Same for check cosntraints
 			%{$self->{tables}{$t->[2]}{check_constraint}} = $self->_check_constraint($t->[2],$t->[1]) if (!$self->{skip_checks});
+			# Retrieve indexes informations
+			($self->{tables}{$t->[2]}{uniqueness}, $self->{tables}{$t->[2]}{indexes}, $self->{tables}{$t->[2]}{idx_type}) = $self->_get_indexes($t->[2],$t->[1]) if (!$self->{skip_indices} && !$self->{skip_indexes});
 			$i++;
+		}
+		if (!$self->{quiet}) {
+			print STDERR &progress_bar($i - 1, $#{$table} + 1, 25, '=', 'table', 'end of scan.'), "\n";
 		}
 	}
  
@@ -2168,7 +2177,7 @@ LANGUAGE plpgsql ;
 			my $rps = sprintf("%.1f", $global_count / ($dt+.0001));
 			$self->logit("Total extracted records from table $table: $total_record\n", 1);
 			if (!$self->{quiet}) {
-				print STDERR &progress_bar($global_count, $global_rows, 25, '=', "on total data ($rps recs/sec)" ), "\n";
+				print STDERR &progress_bar($global_count, $global_rows, 25, '=', 'rows', "on total data ($rps recs/sec)" ), "\n";
 			}
 
                         ## don't forget to enable all triggers if needed...
@@ -5354,7 +5363,7 @@ sub extract_data
 		my $rps = sprintf("%2.1f", $total_row / ($dt+.0001));
 		$total_record += $count;
 		if (!$self->{quiet}) {
-			print STDERR &progress_bar($total_record, $total_row, 25, '=', "table $table ($rps recs/sec)");
+			print STDERR &progress_bar($total_record, $total_row, 25, '=', 'rows', "table $table ($rps recs/sec)");
 		}
 	}
 	$sth->finish();
@@ -5473,10 +5482,12 @@ print
 				}
 				$comment = "$total_index index(es) are concerned by the export, others are automatically generated and will do so on PostgreSQL";
 				$comment .= $detail;
-				$comment .= " Note that bitmap index(es) will be exported as b-tree index(es) and reverse index will be emulated using the reverse(function) if any. Cluster, domain, bitmap join and IOT indexes will not be exported at all. Reverse indexes are not exported too, use a trigram-based index (see pg_trgm) or a reverse() function based index and search.";
+				$comment .= " Note that bitmap index(es) will be exported as b-tree index(es) if any. Cluster, domain, bitmap join and IOT indexes will not be exported at all. Reverse indexes are not exported too, you may use a trigram-based index (see pg_trgm) or a reverse() function based index and search.";
 			}
 			$self->logit("$typ\t" . ($number-$invalid) . "\t$invalid\t$comment\n", 0);
 		}
+		my %dblink = $self->_get_dblink();
+		$self->logit("DATABASE LINK\t" . (scalar keys %dblink) . "\t\t\n", 0);
 
 	} elsif ($type eq 'SHOW_SCHEMA') {
 		# Get all tables information specified by the DBI method table_info
@@ -5761,19 +5772,20 @@ sub _datetime_format
 
 sub progress_bar
 {
-	my ($got, $total, $width, $char, $msg) = @_;
+	my ($got, $total, $width, $char, $kind, $msg) = @_;
 	$width ||= 25;
 	$char  ||= '=';
+	$kind  ||= 'rows';
 	my $num_width = length $total;
 	if ($total > 0) {
 		sprintf(
-			"[%-${width}s] dumped %${num_width}s of %s rows (%.1f%%) $msg\r",
+			"[%-${width}s] dumped %${num_width}s of %s $kind (%.1f%%) $msg\r",
 			$char x (($width - 1) * $got / $total) . '>',
 			$got, $total, 100 * $got / +$total
 		);
 	} else {
 		sprintf(
-			"[%-${width}s] dumped %${num_width}s of %s rows (%.1f%%) $msg\r",
+			"[%-${width}s] dumped %${num_width}s of %s $kind (%.1f%%) $msg\r",
 			$char x ($width - 1) . '>',
 			$got, $total, 100
 		);
