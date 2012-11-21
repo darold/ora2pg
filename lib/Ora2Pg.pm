@@ -4026,13 +4026,13 @@ sub _get_types
 	my $str = "SELECT DISTINCT OBJECT_NAME,OWNER FROM $self->{prefix}_OBJECTS WHERE OBJECT_TYPE='TYPE'";
 	$str .= " AND STATUS='VALID'" if (!$self->{export_invalid});
 	$str .= " AND OBJECT_NAME='$name'" if ($name);
+	$str .= " AND GENERATED='N'";
 	if (!$self->{schema}) {
 		# We need to remove SYSTEM from the exclusion list
 		shift(@{$self->{sysusers}});
 		$str .= " AND OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
-		unshift(@{$self->{sysusers}},'SYSTEM');
 	} else {
-		$str .= " AND (upper(OWNER) = '\U$self->{schema}\E' OR OWNER = 'SYSTEM')";
+		$str .= " AND (upper(OWNER) = '\U$self->{schema}\E')";
 	}
 	$str .= " ORDER BY OBJECT_NAME";
 
@@ -5126,6 +5126,7 @@ CREATE TYPE \L$type_name\E (
 		}
 		my $declar = Ora2Pg::PLSQL::replace_sql_type($description, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type});
 		$type_name =~ s/"//g;
+		$declar =~ s/\/$//s;
 		$declar =~ s/\);$//s;
 		#return if ($type_name =~ /\$/);
 
@@ -5177,6 +5178,8 @@ $declar
 		return $plsql if ($description =~ /[\s\t]*(MAP MEMBER |MEMBER )(FUNCTION|PROCEDURE).*/);
 		# $description =~ s/[\s\t]*(MAP MEMBER |MEMBER )(FUNCTION|PROCEDURE).*//is;
 		my $declar = Ora2Pg::PLSQL::replace_sql_type($description, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type});
+		$declar =~ s/\/$//s;
+		$declar =~ s/\);$//s;
 		$type_name =~ s/"//g;
 		if ($notfinal =~ /FINAL/is) {
 			$content = "-- Inherited types are not supported in PostgreSQL, replacing with inherited table\n";
