@@ -57,7 +57,6 @@ my %uncovered_score = (
 	'PROCEDURE' => 3,
 	'SQLCODE' => 2,
 	'TABLE' => 3,
-	'PIPE' => 4,
 	'DBMS_' => 2,
 	'UTL_' => 2,
 	'EXTRACT' => 3,
@@ -68,6 +67,7 @@ my %uncovered_score = (
 	'TG_OP' => 1,
 	'CURSOR' => 2,
 	'INTERSECT' => 1,
+	'PIPE ROW' => 1,
 );
 
 =head1 NAME
@@ -270,6 +270,10 @@ sub plsql_to_plpgsql
 	# Add the name keyword to XMLELEMENT
 	$str =~ s/XMLELEMENT[\s\t]*\([\s\t]*/XMLELEMENT(name /igs;
 
+	# Replace PIPE ROW by RETURN NEXT
+	$str =~ s/PIPE[\s\t]+ROW[\s\t]*/RETURN NEXT /igs;
+	$str =~ s/(RETURN NEXT )\(([^\)]+)\)/$1$2/igs;
+
 	if ($allow_code_break) {
 		# Change trunc() to date_trunc('day', field)
 		# Trunc is replaced with date_trunc if we find date in the name of
@@ -466,7 +470,7 @@ sub estimate_cost
 	$n = () = $str =~ m/FROM[^;]*\bTABLE[\t\s]*\(/igs;
 	$cost += $uncovered_score{'TABLE'}*$n;
 	$n = () = $str =~ m/PIPE[\t\s]+ROW/igs;
-	$cost += $uncovered_score{'PIPE'}*$n;
+	$cost += $uncovered_score{'PIPE ROW'}*$n;
 	$n = () = $str =~ m/DBMS_\w/igs;
 	$cost += $uncovered_score{'DBMS_'}*$n;
 	$n = () = $str =~ m/UTL_\w/igs;
