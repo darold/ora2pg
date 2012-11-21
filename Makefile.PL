@@ -508,11 +508,11 @@ sub MY::postamble {
 install_all :
 	\@echo "Installing default configuration file (ora2pg.conf.dist) to $CONFDIR"
 	\@\$(MKPATH) $CONFDIR/ora2pg
-	\@\$(CP) --force ora2pg.conf.dist $CONFDIR/ora2pg/ora2pg.conf.dist
+	\@\$(CP) -f ora2pg.conf.dist $CONFDIR/ora2pg/ora2pg.conf.dist
 	\@\$(MKPATH) $DOCDIR
-	\@\$(CP) --force README $DOCDIR/README
-	\@\$(CP) --force INSTALL $DOCDIR/INSTALL
-	\@\$(CP) --force changelog $DOCDIR/changelog
+	\@\$(CP) -f README $DOCDIR/README
+	\@\$(CP) -f INSTALL $DOCDIR/INSTALL
+	\@\$(CP) -f changelog $DOCDIR/changelog
 };
 	if ($^O =~ /MSWin32|dos/i) {
 		my $tmp_conf = quotemeta($CONFDIR);
@@ -520,10 +520,10 @@ install_all :
 install_all :
 	\@echo "Installing default configuration file (ora2pg.conf.dist) to $CONFDIR"
 	\@\$(MKPATH) $CONFDIR
-	\@\$(CP) ora2pg.conf.dist $CONFDIR\\ora2pg.conf.dist
-	\@\$(CP) README $CONFDIR\\README
-	\@\$(CP) INSTALL $CONFDIR\\INSTALL
-	\@\$(CP) changelog $CONFDIR\\changelog
+	\@\$(CP) /Y ora2pg.conf.dist $CONFDIR\\ora2pg.conf.dist
+	\@\$(CP) /Y README $CONFDIR\\README
+	\@\$(CP) /Y INSTALL $CONFDIR\\INSTALL
+	\@\$(CP) /Y changelog $CONFDIR\\changelog
 };
 	}
         return $postamble;
