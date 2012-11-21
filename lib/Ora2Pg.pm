@@ -1812,7 +1812,7 @@ LANGUAGE plpgsql ;
 			my $before = '';
 			foreach my $l (@allpkg) {
 				chomp($l);
-				if ($l =~ /^PACKAGE[\s\t]+([^\t\s]+)[\s\t]*(AS|IS)/is) {
+				if ($l =~ /^(?:CREATE|CREATE OR REPLACE)?[\s\t]*PACKAGE[\s\t]+([^\t\s]+)[\s\t]*(AS|IS)/is) {
 					$pknm = lc($1);
 				}
 				if ($pknm) {
@@ -1840,11 +1840,11 @@ LANGUAGE plpgsql ;
 				}
 				$pkgbody = $self->{packages}{$pkg};
 			} else {
-				my @codes = split(/CREATE PACKAGE BODY/, $self->{packages}{$pkg});
+				my @codes = split(/CREATE(?: OR REPLACE)? PACKAGE BODY/, $self->{packages}{$pkg});
 				foreach my $txt (@codes) {
-					$pkgbody .= $self->_convert_package("CREATE PACKAGE BODY$txt");
+					$pkgbody .= $self->_convert_package("CREATE OR REPLACE PACKAGE BODY$txt");
 					$pkgbody =~ s/[\r\n]*END;[\t\s\r\n]*$//is;
-					$pkgbody =~ s/([\r\n]*);[\t\s\r\n]*$/$1/is;
+					$pkgbody =~ s/([\r\n]*;)[\t\s\r\n]*$/$1/is;
 				}
 			}
 			if ($pkgbody && ($pkgbody =~ /[a-z]/is)) {
@@ -4724,6 +4724,8 @@ sub _convert_function
 	my $func_args = '';
 	my $func_ret_type = 'OPAQUE';
 	my $hasreturn = 0;
+	my $immutable = '';
+	my $setof = '';
 
 	my $dirprefix = '';
 	$dirprefix = "$self->{output_dir}/" if ($self->{output_dir});
@@ -4741,6 +4743,8 @@ sub _convert_function
 		# forget this object if it is in the exclude or allow lists.
 		return if ($self->skip_this_object('FUNCTION', $func_name));
 
+		$immutable = 1 if ($func_declare =~ s/\bDETERMINISTIC\b//is);
+		$setof = 1 if ($func_declare =~ s/\bPIPELINED\b//is);
 		if ($func_declare =~ s/(.*?)RETURN[\s\t]+self[\s\t]+AS RESULT IS//is) {
 			$func_args .= $1;
 			$hasreturn = 1;
@@ -4750,6 +4754,7 @@ sub _convert_function
 			$hasreturn = 1;
 			$func_ret_type = $self->_sql_type($2) || 'OPAQUE';
 		}
+		$func_declare =~ s/[\s\t]+/ /gs;
 		if ($func_declare =~ s/(.*?)(USING|AS|IS)//is) {
 			$func_args .= $1 if (!$hasreturn);
 			$clause = $2;
@@ -4795,19 +4800,20 @@ sub _convert_function
 		} else {
 			$self->logit("\tParsing function $func_name...\n", 1);
 		}
+		$setof = ' SETOF' if ($setof);
 		if ($hasreturn) {
-			$function .= " RETURNS $func_ret_type AS \$body\$\n";
+			$function .= " RETURNS$setof $func_ret_type AS \$body\$\n";
 		} else {
 			my @nout = $func_args =~ /\bOUT /ig;
 			my @ninout = $func_args =~ /\bINOUT /ig;
 			if ($#nout > 0) {
-				$function .= " RETURNS RECORD AS \$body\$\n";
+				$function .= " RETURNS$setof RECORD AS \$body\$\n";
 			} elsif ($#nout == 0) {
 				$func_args =~ /[\s\t]*OUT[\s\t]+([A-Z0-9_\$\%\.]+)[\s\t\),]*/i;
-				$function .= " RETURNS $1 AS \$body\$\n";
+				$function .= " RETURNS$setof $1 AS \$body\$\n";
 			} elsif ($#ninout == 0) {
 				$func_args =~ /[\s\t]*INOUT[\s\t]+([A-Z0-9_\$\%\.]+)[\s\t\),]*/i;
-				$function .= " RETURNS $1 AS \$body\$\n";
+				$function .= " RETURNS$setof $1 AS \$body\$\n";
 			} else {
 				$function .= " RETURNS VOID AS \$body\$\n";
 			}
@@ -4815,7 +4821,8 @@ sub _convert_function
 		$func_declare = '' if ($func_declare !~ /[a-z]/is);
 		$function .= "DECLARE\n$func_declare\n" if ($func_declare);
 		$function .= $func_code;
-		$function .= "\n\$body\$\nLANGUAGE PLPGSQL;\n";
+		$immutable = ' IMMUTABLE' if ($immutable);
+		$function .= "\n\$body\$\nLANGUAGE PLPGSQL$immutable;\n";
 		if ($self->{estimate_cost}) {
 			$func_name =~ s/"//g;
 			my $cost = Ora2Pg::PLSQL::estimate_cost($function);
