@@ -4344,7 +4344,7 @@ sub format_data_row
 
 	for (my $idx = 0; $idx < scalar(@$data_types); $idx++) {
 		my $data_type = $data_types->[$idx] || '';
-		if ($row->[$idx] =~ /^ARRAY/) {
+		if ($row->[$idx] =~ /^ARRAY\(0x/) {
 			my @type_col = ();
 			for (my $i = 0;  $i <= $#{$row->[$idx]}; $i++) {
 				push(@type_col, $self->format_data_type($row->[$idx][$i], $custom_types->{$data_type}[$i], $action, $table));
@@ -5492,7 +5492,6 @@ sub _show_infos
 				push(@{$all_indexes{$typ}}, $idx);
 				$total_index++;
 			}
-print 
 		}
 
 		$self->logit("--------------------------------------\n", 0);
