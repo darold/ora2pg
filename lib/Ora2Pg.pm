@@ -5127,6 +5127,7 @@ CREATE TYPE \L$type_name\E (
 		my $declar = Ora2Pg::PLSQL::replace_sql_type($description, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type});
 		$type_name =~ s/"//g;
 		$declar =~ s/\/$//s;
+		$declar =~ s/\)$//s;
 		$declar =~ s/\);$//s;
 		#return if ($type_name =~ /\$/);
 
@@ -5172,13 +5173,15 @@ $declar
 	} elsif ($plsql =~ /TYPE[\t\s]+([^\t\s]+)[\t\s]+(AS|IS)[\t\s]*OBJECT[\t\s]+\((.*)/is) {
 		my $type_name = $1;
 		my $description = $3;
-		$description =~ s/\)[\t\s]*(FINAL|NOT FINAL|INSTANTIABLE|NOT INSTANTIABLE).*//is;
+
+		$description =~ s/\)([\t\s]*FINAL|NOT FINAL|INSTANTIABLE|NOT INSTANTIABLE).*//is;
 		my $notfinal = $1;
-		$notfinal =~ s/[\s\t\r\n]+//gs;
+		$notfinal =~ s/[\s\t\r\n]+/ /gs;
 		return $plsql if ($description =~ /[\s\t]*(MAP MEMBER |MEMBER )(FUNCTION|PROCEDURE).*/);
 		# $description =~ s/[\s\t]*(MAP MEMBER |MEMBER )(FUNCTION|PROCEDURE).*//is;
 		my $declar = Ora2Pg::PLSQL::replace_sql_type($description, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type});
 		$declar =~ s/\/$//s;
+		$declar =~ s/\)$//s;
 		$declar =~ s/\);$//s;
 		$type_name =~ s/"//g;
 		if ($notfinal =~ /FINAL/is) {
@@ -5218,7 +5221,7 @@ $declar
 CREATE TYPE \L$type_name\E AS ($type_name $tbname\[$size\]);
 };
 	} else {
-		$plsql =~ s/;$//;
+		$declar =~ s/;$//s;
 		$content = "CREATE $plsql;"
 	}
 	return $content;
@@ -5253,6 +5256,8 @@ sub _extract_type
 		}
 		my $declar = Ora2Pg::PLSQL::replace_sql_type($description, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type});
 		$type_name =~ s/"//g;
+		$declar =~ s/\/$//s;
+		$declar =~ s/\)$//s;
 		$declar =~ s/\);$//s;
 		#return if ($type_name =~ /\$/);
 
