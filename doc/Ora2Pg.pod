@@ -535,6 +535,12 @@ in the "CREATE SERVER name FOREIGN DATA WRAPPER oracle_fdw ..." command. This
 name will then be used in the "CREATE FOREIGN TABLE ..." SQL command. Default
 is arbitrary set to orcl. This only concern export type FDW.
 
+=item EXTERNAL_TO_FDW
+
+This directive, enabled by default, allow to export Oracle's External Tables as
+file_fdw foreign tables. To not export these tables at all, set the directive
+to 0.
+
 =back
 
 =head2 Limiting object to export

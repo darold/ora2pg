@@ -511,6 +511,11 @@ CONFIGURATION
         FOREIGN TABLE ..." SQL command. Default is arbitrary set to orcl.
         This only concern export type FDW.
 
+    EXTERNAL_TO_FDW
+        This directive, enabled by default, allow to export Oracle's
+        External Tables as file_fdw foreign tables. To not export these
+        tables at all, set the directive to 0.
+
   Limiting object to export
     You may want to export only a part of an Oracle database, here are a set
     of configuration directives that will allow you to control what parts of

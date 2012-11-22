@@ -455,6 +455,11 @@ PKEY_IN_CREATE		0
 # field2::text <> '')
 NULL_EQUAL_EMPTY	1
 
+# By default Ora2Pg will export your external table as file_fdw tables. If
+# you don't want to export those tables at all, set the directive to 0.
+EXTERNAL_TO_FDW		1
+
+
 };
 close(OUTCFG);
 

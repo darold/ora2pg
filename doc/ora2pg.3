@@ -133,7 +133,7 @@
 .\" ========================================================================
 .\"
 .IX Title "ORA2PG 1"
-.TH ORA2PG 1 "2012-11-14" "perl v5.10.1" "User Contributed Perl Documentation"
+.TH ORA2PG 1 "2012-11-22" "perl v5.10.1" "User Contributed Perl Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -658,6 +658,11 @@ This directive is used to set the name of the foreign data server that is used
 in the \*(L"\s-1CREATE\s0 \s-1SERVER\s0 name \s-1FOREIGN\s0 \s-1DATA\s0 \s-1WRAPPER\s0 oracle_fdw ...\*(R" command. This
 name will then be used in the \*(L"\s-1CREATE\s0 \s-1FOREIGN\s0 \s-1TABLE\s0 ...\*(R" \s-1SQL\s0 command. Default
 is arbitrary set to orcl. This only concern export type \s-1FDW\s0.
+.IP "\s-1EXTERNAL_TO_FDW\s0" 4
+.IX Item "EXTERNAL_TO_FDW"
+This directive, enabled by default, allow to export Oracle's External Tables as
+file_fdw foreign tables. To not export these tables at all, set the directive
+to 0.
 .SS "Limiting object to export"
 .IX Subsection "Limiting object to export"
 You may want to export only a part of an Oracle database, here are a set of

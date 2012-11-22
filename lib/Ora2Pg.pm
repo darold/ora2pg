@@ -95,6 +95,7 @@ our %TYPE = (
 	'XMLTYPE' => 'xml',
 	'TIMESTAMP WITH TIME ZONE' => 'timestamp with time zone',
 	'TIMESTAMP WITH LOCAL TIME ZONE' => 'timestamp with time zone',
+	'SDO_GEOMETRY' => 'geometry(Geometry,27572)',
 );
 
 our %INDEX_TYPE = (
@@ -443,6 +444,7 @@ sub _init
 	$self->{standard_conforming_strings} = 1;
 	$self->{allow_code_break} = 1;
 	$self->{create_schema} = 1;
+	$self->{external_table} = ();
 	# Initialyze following configuration file
 	foreach my $k (sort keys %AConfig) {
 		if (lc($k) eq 'allow') {
@@ -576,6 +578,9 @@ sub _init
 	if ($self->{enable_microsecond} eq '') {
 		$self->{enable_microsecond} = 1;
 	} 
+	if ($self->{external_to_fdw} eq '') {
+		$self->{external_to_fdw} = 1;
+	}
 	# Backward compatibility with LongTrunkOk with typo
 	if ($self->{longtrunkok} && not defined $self->{longtruncok}) {
 		$self->{longtruncok} = $self->{longtrunkok};
@@ -974,7 +979,7 @@ sub _tables
 			if (!$self->{quiet}) {
 				print STDERR &progress_bar($i, $#{$table} + 1, 25, '=', 'tables', "scanning table $t->[2]" );
 			}
-			# forget this object if it is in the exclude or allow lists.
+			# forget or not this object if it is in the exclude or allow lists.
 			if ($self->{tables}{$t->[2]}{type} ne 'view') {
 				next if ($self->skip_this_object('TABLE', $t->[2]));
 			}
@@ -1073,6 +1078,9 @@ sub _tables
 			@{$self->{tables}{$view}{column_info}} = $self->_column_info($view);
 		}
 	}
+
+	# Look at external tables
+	%{$self->{external_table}} = $self->_get_external_tables();
 
 }
 
@@ -1684,7 +1692,7 @@ LANGUAGE plpgsql ;
 
 		foreach my $fct (sort keys %{$self->{functions}}) {
 
-			# forget this object if it is in the exclude or allow lists.
+			# forget or not this object if it is in the exclude or allow lists.
 			next if ($self->skip_this_object('FUNCTION', $fct));
 
 			$self->logit("\tDumping function $fct...\n", 1);
@@ -1754,7 +1762,7 @@ LANGUAGE plpgsql ;
 
 		foreach my $fct (sort keys %{$self->{procedures}}) {
 
-			# forget this object if it is in the exclude or allow lists.
+			# forget or not this object if it is in the exclude or allow lists.
 			next if ($self->skip_this_object('PROCEDURE', $fct));
 
 			$self->logit("\tDumping procedure $fct...\n", 1);
@@ -1956,6 +1964,13 @@ LANGUAGE plpgsql ;
 			}
 			my $s = $self->{dbhdest}->do($search_path) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
 		}
+		# Remove external table from data export
+		foreach my $table (keys %{$self->{tables}}) {
+			if ( grep(/^$table$/i, keys %{$self->{external_table}}) ) {
+				delete $self->{tables}{$table};
+			}
+		}
+		# Set total number of rows
 		my $global_rows = 0;
 		foreach my $table (keys %{$self->{tables}}) {
 			$global_rows += $self->{tables}{$table}{table_info}[3];
@@ -2425,19 +2440,30 @@ CREATE TRIGGER insert_${table}_trigger
 	}
 	foreach my $table (sort { $self->{tables}{$a}{internal_id} <=> $self->{tables}{$b}{internal_id} } keys %{$self->{tables}}) {
 
-		# forget this object if it is in the exclude or allow lists.
+		# forget or not this object if it is in the exclude or allow lists.
 		if ($self->{tables}{$table}{type} ne 'view') {
 			next if ($self->skip_this_object('TABLE', $table));
 		}
 
 		$self->logit("Dumping table $table...\n", 1);
+		# Create FDW server if required
+		if ( grep(/^$table$/i, keys %{$self->{external_table}}) ) {
+			if ($self->{external_to_fdw}) {
+				$sql_header .= "CREATE EXTENSION file_fdw;\n\n" if ($sql_header !~ /CREATE EXTENSION file_fdw;/is);
+				$sql_header .= "CREATE SERVER \L$self->{external_table}{$table}{directory}\E FOREIGN DATA WRAPPER file_fdw;\n\n" if ($sql_header !~ /CREATE SERVER $self->{external_table}{$table}{directory} FOREIGN DATA WRAPPER file_fdw;/is);
+			} else {
+				# External tables will not be exported
+				next;
+			}
+		}
+
 		my $tbname = $table;
 		if (exists $self->{replaced_tables}{"\L$table\E"} && $self->{replaced_tables}{"\L$table\E"}) {
 			$tbname = $self->{replaced_tables}{"\L$table\E"};
 			$self->logit("\tReplacing tablename $table as $tbname...\n", 1);
 		}
 		my $foreign = '';
-		if ($self->{type} eq 'FDW') {
+		if ( ($self->{type} eq 'FDW') || grep(/^$table$/i, keys %{$self->{external_table}}) ) {
 			$foreign = ' FOREIGN';
 		}
 		my $obj_type = ${$self->{tables}{$table}{table_info}}[1] || 'TABLE';
@@ -2490,8 +2516,10 @@ CREATE TRIGGER insert_${table}_trigger
 			$sql_output .= $self->_get_primary_keys($table, $self->{tables}{$table}{unique_key});
 		}
 		$sql_output =~ s/,$//;
-		if ($self->{type} ne 'FDW') {
+		if ( ($self->{type} ne 'FDW') && !grep(/^$table$/i, keys %{$self->{external_table}}) ) {
 			$sql_output .= ");\n";
+		} elsif ( grep(/^$table$/i, keys %{$self->{external_table}}) ) {
+			$sql_output .= ") SERVER \L$self->{external_table}{$table}{directory}\E OPTIONS(filename '$self->{external_table}{$table}{directory_path}/$table.csv', format 'csv', delimiter '$self->{external_table}{$table}{delimiter}');\n";
 		} else {
 			my $schem = "schema '$self->{schema}'," if ($self->{schema});
 			if ($self->{preserve_case}) {
@@ -3104,7 +3132,7 @@ sub _extract_sequence_info
 
 	while (my $seq_info = $sth->fetchrow_hashref) {
 
-		# forget this object if it is in the exclude or allow lists.
+		# forget or not this object if it is in the exclude or allow lists.
 		next if ($self->skip_this_object('SEQUENCE', $seq_info->{SEQUENCE_NAME}));
 
 		my $nextvalue = $seq_info->{LAST_NUMBER} + $seq_info->{INCREMENT_BY};
@@ -3633,7 +3661,7 @@ $idxowner
 	my %unique = ();
 	my %idx_type = ();
 	while (my $row = $sth->fetch) {
-		# forget this object if it is in the exclude or allow lists.
+		# forget or not this object if it is in the exclude or allow lists.
 		next if ($self->skip_this_object('INDEX', $row->[0]));
 		$unique{$row->[0]} = $row->[2];
 		if ($row->[7] eq 'Y') {
@@ -3682,7 +3710,7 @@ sub _get_sequences
 	my @seqs = ();
 	while (my $row = $sth->fetch) {
 
-		# forget this object if it is in the exclude or allow lists.
+		# forget or not this object if it is in the exclude or allow lists.
 		next if ($self->skip_this_object('SEQUENCE', $row->[0]));
 
 		push(@seqs, [ @$row ]);
@@ -3690,6 +3718,48 @@ sub _get_sequences
 
 	return \@seqs;
 }
+
+=head2 _get_external_tables
+
+This function implements an Oracle-native external tables information.
+
+Returns a hash of external tables names with the file they are based on.
+
+=cut
+
+sub _get_external_tables
+{
+	my($self) = @_;
+
+	# Retrieve all database link from dba_db_links table
+	#my $str = "SELECT OWNER,TABLE_NAME,DEFAULT_DIRECTORY_NAME FROM $self->{prefix}_EXTERNAL_TABLES";
+	my $str = "SELECT a.*,b.DIRECTORY_PATH FROM $self->{prefix}_EXTERNAL_TABLES a JOIN $self->{prefix}_DIRECTORIES b ON (a.DEFAULT_DIRECTORY_NAME = b.DIRECTORY_NAME)";
+	if (!$self->{schema}) {
+		$str .= " WHERE a.OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
+	} else {
+		$str .= " WHERE upper(a.OWNER) = '\U$self->{schema}\E'";
+	}
+	$str .= " ORDER BY TABLE_NAME";
+	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	
+	my %data = ();
+	while (my $row = $sth->fetch) {
+
+		# forget or not this object if it is in the exclude or allow lists.
+		next if ($self->skip_this_object('TABLE', $row->[1]));
+
+		$data{$row->[1]}{directory} = $row->[5];
+		$data{$row->[1]}{directory_path} = $row->[10];
+		if ($row->[8] =~ /FIELDS TERMINATED BY '(.)'/) {
+			$data{$row->[1]}{delimiter} = $1 if ($1 ne ',');
+		}
+	}
+	$sth->finish();
+
+	return %data;
+}
+
 
 =head2 _get_dblink
 
@@ -3751,7 +3821,7 @@ sub _get_views
 	my %data = ();
 	while (my $row = $sth->fetch) {
 
-		# forget this object if it is in the exclude or allow lists.
+		# forget or not this object if it is in the exclude or allow lists.
 		if (!grep($row->[0] =~ /^$_$/, @{$self->{view_as_table}})) {
 			next if ($self->skip_this_object('VIEW', $row->[0]));
 		}
@@ -3789,7 +3859,7 @@ sub _get_materialized_views
 	my %data = ();
 	while (my $row = $sth->fetch) {
 
-		# forget this object if it is in the exclude or allow lists.
+		# forget or not this object if it is in the exclude or allow lists.
 		next if ($self->skip_this_object('MVIEW', $row->[0]));
 
 		$data{$row->[0]}{text} = $row->[1];
@@ -3865,7 +3935,7 @@ sub _get_triggers
 	my @triggers = ();
 	while (my $row = $sth->fetch) {
 
-		# forget this object if it is in the exclude or allow lists.
+		# forget or not this object if it is in the exclude or allow lists.
 		next if ($self->skip_this_object('TRIGGER', $row->[0]));
 
 		push(@triggers, [ @$row ]);
@@ -3903,7 +3973,7 @@ sub _get_functions
 	my @fct_done = ();
 	while (my $row = $sth->fetch) {
 
-		# forget this object if it is in the exclude or allow lists.
+		# forget or not this object if it is in the exclude or allow lists.
 		next if ($self->skip_this_object('FUNCTION', $row->[0]));
 
 		next if (grep(/^$row->[0]$/, @fct_done));
@@ -3947,7 +4017,7 @@ sub _get_procedures
 	my @fct_done = ();
 	while (my $row = $sth->fetch) {
 
-		# forget this object if it is in the exclude or allow lists.
+		# forget or not this object if it is in the exclude or allow lists.
 		next if ($self->skip_this_object('PROCEDURE', $row->[0]));
 
 		next if (grep(/^$row->[0]$/, @fct_done));
@@ -3993,7 +4063,7 @@ sub _get_packages
 	my @fct_done = ();
 	while (my $row = $sth->fetch) {
 
-		# forget this object if it is in the exclude or allow lists.
+		# forget or not this object if it is in the exclude or allow lists.
 		next if ($self->skip_this_object('PACKAGE', $row->[0]));
 
 		$self->logit("\tFound Package: $row->[0]\n", 1);
@@ -4043,7 +4113,7 @@ sub _get_types
 	my @fct_done = ();
 	while (my $row = $sth->fetch) {
 
-		# forget this object if it is in the exclude or allow lists.
+		# forget or not this object if it is in the exclude or allow lists.
 		next if ($self->skip_this_object('TYPE', $row->[0]));
 
 		$self->logit("\tFound Type: $row->[0]\n", 1);
@@ -4138,7 +4208,7 @@ AND a.TABLESPACE_NAME = c.TABLESPACE_NAME
 	my %tbs = ();
 	while (my $row = $sth->fetch) {
 
-		# forget this object if it is in the exclude or allow lists.
+		# forget or not this object if it is in the exclude or allow lists.
 		next if ($self->skip_this_object('TABLESPACE', $row->[1]));
 
 		# TYPE - TABLESPACE_NAME - FILEPATH - OBJECT_NAME
@@ -4198,7 +4268,7 @@ WHERE
 	my %default = ();
 	while (my $row = $sth->fetch) {
 
-		# forget this object if it is in the exclude or allow lists.
+		# forget or not this object if it is in the exclude or allow lists.
 		next if ($self->skip_this_object('PARTITION', $row->[2]));
 
 		if ( ($row->[3] eq 'MAXVALUE') || ($row->[3] eq 'DEFAULT')) {
@@ -4740,7 +4810,7 @@ sub _convert_function
 		my $code = '';
 		$func_name =~ s/"//g;
 
-		# forget this object if it is in the exclude or allow lists.
+		# forget or not this object if it is in the exclude or allow lists.
 		return if ($self->skip_this_object('FUNCTION', $func_name));
 
 		$immutable = 1 if ($func_declare =~ s/\bDETERMINISTIC\b//is);
@@ -5530,6 +5600,16 @@ sub _show_infos
 				$comment = "$total_index index(es) are concerned by the export, others are automatically generated and will do so on PostgreSQL";
 				$comment .= $detail;
 				$comment .= " Note that bitmap index(es) will be exported as b-tree index(es) if any. Cluster, domain, bitmap join and IOT indexes will not be exported at all. Reverse indexes are not exported too, you may use a trigram-based index (see pg_trgm) or a reverse() function based index and search.";
+			} elsif ($typ eq 'TABLE') {
+				my $exttb = scalar keys %{$self->{external_table}};
+				if ($exttb) {
+					if ($self->{external_to_fdw}) {
+						$comment = "$exttb external tables will be exported as file_fdw foreign tables, see EXTERNAL_TO_FDW configuration directive to disable this feature.";
+					} else {
+						$comment = "$exttb external tables will not be exported as file_fdw foreign tables, see EXTERNAL_TO_FDW configuration directive to enable this feature or use COPY in your code if you just want to load data.";
+					}
+					$number -= $exttb;
+				}
 			}
 			$self->logit("$typ\t" . ($number-$invalid) . "\t$invalid\t$comment\n", 0);
 		}
@@ -5563,7 +5643,7 @@ sub _show_infos
 			my $i = 1;
 			foreach my $t (@$table) {
 
-				# forget this object if it is in the exclude or allow lists.
+				# forget or not this object if it is in the exclude or allow lists.
 				if ($self->{tables}{$t->[2]}{type} ne 'view') {
 					next if ($self->skip_this_object('TABLE', $t->[2]));
 				}
