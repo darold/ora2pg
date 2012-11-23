@@ -2523,7 +2523,7 @@ CREATE TRIGGER insert_${table}_trigger
 		if ( ($self->{type} ne 'FDW') && !grep(/^$table$/i, keys %{$self->{external_table}}) ) {
 			$sql_output .= ");\n";
 		} elsif ( grep(/^$table$/i, keys %{$self->{external_table}}) ) {
-			$sql_output .= ") SERVER \L$self->{external_table}{$table}{directory}\E OPTIONS(filename '$self->{external_table}{$table}{directory_path}/$table.csv', format 'csv', delimiter '$self->{external_table}{$table}{delimiter}');\n";
+			$sql_output .= ") SERVER \L$self->{external_table}{$table}{directory}\E OPTIONS(filename '$self->{external_table}{$table}{directory_path}$self->{external_table}{$table}{location}', format 'csv', delimiter '$self->{external_table}{$table}{delimiter}');\n";
 		} else {
 			my $schem = "schema '$self->{schema}'," if ($self->{schema});
 			if ($self->{preserve_case}) {
@@ -3736,8 +3736,7 @@ sub _get_external_tables
 	my($self) = @_;
 
 	# Retrieve all database link from dba_db_links table
-	#my $str = "SELECT OWNER,TABLE_NAME,DEFAULT_DIRECTORY_NAME FROM $self->{prefix}_EXTERNAL_TABLES";
-	my $str = "SELECT a.*,b.DIRECTORY_PATH FROM $self->{prefix}_EXTERNAL_TABLES a JOIN $self->{prefix}_DIRECTORIES b ON (a.DEFAULT_DIRECTORY_NAME = b.DIRECTORY_NAME)";
+	my $str = "SELECT a.*,b.DIRECTORY_PATH,c.LOCATION FROM $self->{prefix}_EXTERNAL_TABLES a JOIN $self->{prefix}_DIRECTORIES b ON (a.DEFAULT_DIRECTORY_NAME = b.DIRECTORY_NAME) JOIN $self->{prefix}_EXTERNAL_LOCATIONS c ON (a.TABLE_NAME=c.TABLE_NAME AND a.DEFAULT_DIRECTORY_NAME=c.DIRECTORY_NAME AND a.OWNER=c.OWNER)";
 	if (!$self->{schema}) {
 		$str .= " WHERE a.OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
 	} else {
@@ -3755,8 +3754,13 @@ sub _get_external_tables
 
 		$data{$row->[1]}{directory} = $row->[5];
 		$data{$row->[1]}{directory_path} = $row->[10];
+		if ($data{$row->[1]}{directory_path} =~ /([\/\\])/) {
+			$data{$row->[1]}{directory_path} .= $1 if ($data{$row->[1]}{directory_path} !~ /$1$/); 
+		}
+		$data{$row->[1]}{location} = $row->[11];
+		$data{$row->[1]}{delimiter} = ',';
 		if ($row->[8] =~ /FIELDS TERMINATED BY '(.)'/) {
-			$data{$row->[1]}{delimiter} = $1 if ($1 ne ',');
+			$data{$row->[1]}{delimiter} = $1;
 		}
 	}
 	$sth->finish();
