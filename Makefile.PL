@@ -346,7 +346,7 @@ TRANSACTION	serializable
 PG_SUPPORTS_WHEN		1
 
 # Allow support of INSTEAD OF in triggers definition PG>=9.1
-PG_SUPPORTS_INSTEADOF	0
+PG_SUPPORTS_INSTEADOF	1
 
 # Allow function export to be saved in one file per function/procedure.
 # The files will be named as funcname_OUTPUT. Where OUTPUT is the value
