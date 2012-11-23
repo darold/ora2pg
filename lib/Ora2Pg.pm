@@ -575,11 +575,15 @@ sub _init
 	$self->{binmode} ||= ':raw';
 	$self->{binmode} =~ s/^://;
 	$self->{binmode} = ':' . lc($self->{binmode});
+	# Set some default values
 	if ($self->{enable_microsecond} eq '') {
 		$self->{enable_microsecond} = 1;
 	} 
 	if ($self->{external_to_fdw} eq '') {
 		$self->{external_to_fdw} = 1;
+	}
+	if ($self->{pg_supports_insteadof} eq '') {
+		$self->{pg_supports_insteadof} = 1;
 	}
 	# Backward compatibility with LongTrunkOk with typo
 	if ($self->{longtrunkok} && not defined $self->{longtruncok}) {
