@@ -107,6 +107,14 @@ foreach my $t (split(/[,;\s\t]+/, $EXPORT_TYPE)) {
 	}
 }
 
+# Preserve barckward compatibility
+if ($TABLEONLY) {
+	warn "-x | --xtable is deprecated, use -a | --allow option instead.\n";
+	if (!$ALLOW) {
+		$ALLOW = $TABLEONLY;
+	}
+}
+
 # Create an instance of the Ora2Pg perl module
 my $schema = new Ora2Pg (
 	config => $CONFIG_FILE,
@@ -120,7 +128,6 @@ my $schema = new Ora2Pg (
 	user => $DBUSER,
 	password => $DBPWD,
 	schema => $SCHEMA,
-	xtable => $TABLEONLY,
 	force_owner => $FORCEOWNER,
         nls_lang => $ORA_ENCODING,
         client_encoding => $PG_ENCODING,
@@ -143,36 +150,36 @@ exit(0);
 sub usage
 {
 	print qq{
-Usage: ora2pg [-dhpv] [--option value]
+Usage: ora2pg [-dhpqsv] [--option value]
 
     -a | --allow str  : coma separated list of objects to allow from export.
+			Can be used with SHOW_COLUMN too.
     -b | --basedir dir: Used to set the default output directory, where files
 			resulting from exports will be stored.
     -c | --conf file  : Used to set an alternate configuration file than the
 			default /etc/ora2pg/ora2pg.conf.
     -d | --debug      : Enable verbose output.
     -e | --exclude str: coma separated list of objects to exclude from export.
+			Can be used with SHOW_COLUMN too.
     -h | --help       : Print this short help.
-    -i | --input_file file: File containing Oracle PL/SQL code to convert with
-		no Oracle database connection initiated.
+    -i | --input file : File containing Oracle PL/SQL code to convert with
+			no Oracle database connection initiated.
     -l | --log file   : Used to set a log file. Default is stdout.
     -n | --namespace schema : Used to set the Oracle schema to extract from.
     -o | --out file   : Used to set the path to the output file where SQL will
 			be written. Default: output.sql in running directory.
     -p | --plsql      : Enable PLSQL to PLPSQL code conversion.
-    -q | --quiet : disable progress bar.
+    -q | --quiet      : disable progress bar.
     -s | --source     : Allow to set the Oracle DBI datasource.
     -t | --type export: Used to set the export type. It will override the one
 			given in the configuration file (TYPE).
-    -u | --user       : Used to set the Oracle database connection user.
+    -u | --user name  : Used to set the Oracle database connection user.
     -v | --version    : Show Ora2Pg Version and exit.
-    -w | --password   : Used to set the password of the Oracle database user.
-    -x | --xtable relname: Used to display columns names of the given table,
-		 	could be used with SHOW_COLUMN type only.
-    --forceowner : if set to 1 force ora2pg to set tables and sequences owner
-		like in Oracle database. If the value is set to a username this
-		one will be used as the objects owner. By default it's the user
-		used to connect to the Pg database that will be the owner.
+    -w | --password pwd : Used to set the password of the Oracle database user.
+    --forceowner: if set to 1 force ora2pg to set tables and sequences owner
+		  like in Oracle database. If the value is set to a username this
+		  one will be used as the objects owner. By default it's the user
+		  used to connect to the Pg database that will be the owner.
     --nls_lang code: use this to set the Oracle NLS_LANG client encoding.
     --client_encoding code: Use this to set the PostgreSQL client encoding.
     --view_as_table str: coma separated list of view to export as table.

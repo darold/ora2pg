@@ -4144,7 +4144,6 @@ Returns a handle to a DB query statement.
 sub _table_info
 {
 	my $self = shift;
-	my $xtable = shift;
 
 	my $sql = "SELECT
                 NULL            TABLE_CAT,
@@ -4157,9 +4156,6 @@ sub _table_info
             where at.OWNER = tc.OWNER
             and at.TABLE_NAME = tc.TABLE_NAME
 	";
-	if ($xtable) {
-		$sql .= " and upper(at.TABLE_NAME)='\U$xtable\E'";
-	}
 
 	if ($self->{schema}) {
 		$sql .= " and upper(at.OWNER)='\U$self->{schema}\E'";
@@ -5632,7 +5628,7 @@ sub _show_infos
 		# Get all tables information specified by the DBI method table_info
 		$self->logit("Showing table information...\n", 1);
 
-		my $sth = $self->_table_info($self->{xtable})  or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+		my $sth = $self->_table_info()  or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 		my @tables_infos = $sth->fetchall_arrayref();
 		$sth->finish();
 
