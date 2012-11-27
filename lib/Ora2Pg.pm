@@ -3765,7 +3765,7 @@ sub _get_external_tables
 	} else {
 		$str .= " WHERE upper(a.OWNER) = '\U$self->{schema}\E'";
 	}
-	$str .= " ORDER BY TABLE_NAME";
+	$str .= " ORDER BY a.TABLE_NAME";
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	
