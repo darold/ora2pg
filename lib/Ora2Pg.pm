@@ -568,6 +568,7 @@ sub _init
 	}
 	$self->{bzip2} ||= '/usr/bin/bzip2';
 	$self->{default_numeric} ||= 'bigint';
+	$self->{type_of_type} = ();
 	# backward compatibility
 	if ($self->{disable_table_triggers}) {
 		$self->{disable_triggers} = $self->{disable_table_triggers};
@@ -1880,15 +1881,16 @@ LANGUAGE plpgsql ;
 	if ($self->{type} eq 'TYPE') {
 		$self->logit("Add custom types definition...\n", 1);
 		foreach my $tpe (sort {length($a->{name}) <=> length($b->{name}) } @{$self->{types}}) {
-			#next if ($tpe->{name} =~ /\$/);
 			$self->logit("Dumping type $tpe->{name}...\n", 1);
-			$sql_output .= "-- Oracle type '$tpe->{name}' declaration, please edit to match PostgreSQL syntax.\n";
+			my $typ = $tpe->{code};
 			if ($self->{plsql_pgsql}) {
-				$sql_output .= $self->_convert_type($tpe->{code}) . "\n";
-			} else {
-				$sql_output .= $tpe->{code} . "\n";
+				$typ = $self->_convert_type($tpe->{code});
 			}
-			$sql_output .= "-- End of Oracle type '$tpe->{name}' declaration\n\n";
+			if ($typ) {
+				$sql_output .= "-- Oracle type '$tpe->{name}' declaration, please edit to match PostgreSQL syntax.\n";
+				$sql_output .= $typ . "\n";
+				$sql_output .= "-- End of Oracle type '$tpe->{name}' declaration\n\n";
+			}
 		}
 
 		if (!$sql_output) {
@@ -5193,93 +5195,34 @@ sub _convert_type
 	my $content = '';
 	if ($plsql =~ /TYPE[\t\s]+([^\t\s]+)[\t\s]+(IS|AS)[\t\s]*TABLE[\t\s]*OF[\t\s]+(.*)/is) {
 		my $type_name = $1;
-		my $type = Ora2Pg::PLSQL::replace_sql_type($3, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type});
-		$type_name =~ s/"//g;
-		$content = qq{
---
-CREATE TYPE \L$type_name\E;
-CREATE OR REPLACE FUNCTION \L$type_name\E_in_function(cstring) RETURNS \L$type_name\E AS
- ... CODE HERE WHAT TO DO WHEN INSERTING A VALUE ... ;
-CREATE OR REPLACE FUNCTION \L$type_name\E_out_function(\L$type_name\E) RETURNS cstring AS
- ... CODE HERE WHAT TO DO WHEN QUERYING THE VALUE ... ;
-CREATE TYPE \L$type_name\E (
-        INTERNALLENGTH = VARIABLE,
-        INPUT = \L$type_name\E_in_function,
-        OUTPUT = \L$type_name\E_out_function,
-        ELEMENT = $type
-);
-};
-	} elsif ($plsql =~ /TYPE[\t\s]+([^\t\s]+)[\t\s]+(AS|IS)[\t\s]*OBJECT[\t\s]+\((.*?)(TYPE BODY.*)/is) {
-		my $type_name = $1;
-		my $description = $3;
-		my $body = $4;
-		my %fctname = ();
-		# extract input function
-		while ($description =~ s/CONSTRUCTOR (FUNCTION|PROCEDURE)[\t\s]+([^\t\s\(]+)(.*?)RETURN[^,;]+[,;]//is) {
-			$fctname{constructor} = lc($2) if (!$fctname{constructor});
-		}
-		while ($description =~ s/(MAP MEMBER |MEMBER )(FUNCTION|PROCEDURE)[\t\s]+([^\t\s\(]+)(.*?)RETURN[^,;]+[,;]//is) {
-			push(@{$fctname{member}}, lc($3));
-		}
-		my $declar = Ora2Pg::PLSQL::replace_sql_type($description, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type});
-		$type_name =~ s/"//g;
-		$declar =~ s/\/$//s;
-		$declar =~ s/\)$//s;
-		$declar =~ s/\);$//s;
-		#return if ($type_name =~ /\$/);
-
-		if ($body =~ /TYPE BODY[\s\t]+$type_name[\s\t]*(IS|AS)[\s\t]*(.*)END;/is) {
-			my $content2 = $2;
-			my %comments = $self->_remove_comments(\$content2);
-			$content2 =~ s/(CONSTRUCTOR |MAP MEMBER |MEMBER )(FUNCTION|PROCEDURE)/FUNCTION/igs;
-			my @functions = $self->_extract_functions($content2);
-			$content2 = '';
-			foreach my $f (@functions) {
-				$content .= $self->_convert_function($f);
-			}
-			$self->_restore_comments(\$content, \%comments);
-
-		}
-		if (!exists $fctname{constructor} && !exists $fctname{member}) {
-			$content .= qq{
-CREATE TYPE \L$type_name\E AS (
-$declar
-);
-};
+		my $type_of = $3;
+		$type_of =~ s/[\t\s\r\n]*NOT[\t\s]+NULL//s;
+		$type_of =~ s/[\t\s\r\n]*;$//s;
+		$type_of =~ s/^[\t\s\r\n]+//s;
+		if ($type_of !~ /[\t\s\r\n]/s) { 
+			$self->{type_of_type}{'Nested Tables'}++;
+			$content = "CREATE TYPE \L$type_name\E AS (\L$type_name\E $type_of\[\]);\n";
 		} else {
-			my $funcdecl = join(',', @{$fctname{member}});
-			$content .= qq{
--- Oracle custom type body are equivalent to PostgreSQL custom type, feel free
--- to adapt the above function to the following custom type.
-CREATE TYPE \L$type_name\E AS (
-$declar
-	INTERNALLENGTH = VARIABLE,
-	INPUT = $fctname{constructor},
-	OUTPUT = output_function
-	[ , RECEIVE = receive_function ]
-	[ , SEND = send_function ]
-	[ , TYPMOD_IN = type_modifier_input_function ]
-	[ , TYPMOD_OUT = type_modifier_output_function ]
-	[ , ANALYZE = analyze_function ]
-	-- List of available function declared aboved:
-	$funcdecl
-);
-};
+			$self->{type_of_type}{'Associative Arrays'}++;
+			$self->logit("WARNING: this kind of Nested Tables are not supported, skipping type $1\n", 0);
+			return '';
 		}
-
-	} elsif ($plsql =~ /TYPE[\t\s]+([^\t\s]+)[\t\s]+(AS|IS)[\t\s]*OBJECT[\t\s]+\((.*)/is) {
+	} elsif ($plsql =~ /TYPE[\t\s]+([^\t\s]+)[\t\s]+(AS|IS)[\t\s]*OBJECT[\t\s]+\((.*?)(TYPE BODY.*)/is) {
+		$self->{type_of_type}{'Type Boby'}++;
+		$self->logit("WARNING: TYPE BODY are not supported, skipping type $1\n", 0);
+		return '';
+	} elsif ($plsql =~ /TYPE[\t\s]+([^\t\s]+)[\t\s]+(AS|IS)[\t\s]*OBJECT[\t\s]+\((.*)\)([^\)]*)/is) {
 		my $type_name = $1;
 		my $description = $3;
-
-		$description =~ s/\)([\t\s]*FINAL|NOT FINAL|INSTANTIABLE|NOT INSTANTIABLE).*//is;
-		my $notfinal = $1;
+		my $notfinal = $4;
 		$notfinal =~ s/[\s\t\r\n]+/ /gs;
-		return $plsql if ($description =~ /[\s\t]*(MAP MEMBER |MEMBER )(FUNCTION|PROCEDURE).*/);
-		# $description =~ s/[\s\t]*(MAP MEMBER |MEMBER )(FUNCTION|PROCEDURE).*//is;
+		if ($description =~ /[\s\t]*(MAP MEMBER|MEMBER|CONSTRUCTOR)[\t\s]+(FUNCTION|PROCEDURE).*/is) {
+			$self->{type_of_type}{'Type with member method'}++;
+			$self->logit("WARNING: TYPE with CONSTRUCTOR and MEMBER FUNCTION are not supported, skipping type $type_name\n", 0);
+			return '';
+		}
+		$description =~ s/^[\s\t\r\n]+//s;
 		my $declar = Ora2Pg::PLSQL::replace_sql_type($description, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type});
-		$declar =~ s/\/$//s;
-		$declar =~ s/\)$//s;
-		$declar =~ s/\);$//s;
 		$type_name =~ s/"//g;
 		if ($notfinal =~ /FINAL/is) {
 			$content = "-- Inherited types are not supported in PostgreSQL, replacing with inherited table\n";
@@ -5287,19 +5230,25 @@ $declar
 $declar
 );
 };
+			$self->{type_of_type}{'Type inherited'}++;
 		} else {
 			$content = qq{
 CREATE TYPE \L$type_name\E AS (
 $declar
 );
 };
+			$self->{type_of_type}{'Object type'}++;
 		}
-	} elsif ($plsql =~ /TYPE[\t\s]+([^\t\s]+)[\t\s]+UNDER[\t\s]*([^\t\s]+)[\t\s]+\((.*)/is) {
+	} elsif ($plsql =~ /TYPE[\t\s]+([^\t\s]+)[\t\s]+UNDER[\t\s]*([^\t\s]+)[\t\s]+\((.*)\)([^\)]*)/is) {
 		my $type_name = $1;
 		my $type_inherit = $2;
 		my $description = $3;
-		$description =~ s/\)[^\);]*;$//;
-		return $plsql if ($description =~ /[\s\t]*(MAP MEMBER |MEMBER )(FUNCTION|PROCEDURE).*/);
+		if ($description =~ /[\s\t]*(MAP MEMBER|MEMBER|CONSTRUCTOR)[\t\s]+(FUNCTION|PROCEDURE).*/is) {
+			$self->logit("WARNING: TYPE with CONSTRUCTOR and MEMBER FUNCTION are not supported, skipping type $type_name\n", 0);
+			$self->{type_of_type}{'Type with member method'}++;
+			return '';
+		}
+		$description =~ s/^[\s\t\r\n]+//s;
 		my $declar = Ora2Pg::PLSQL::replace_sql_type($description, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type});
 		$type_name =~ s/"//g;
 		$content = qq{
@@ -5307,101 +5256,26 @@ CREATE TABLE \"\L$type_name\E\" (
 $declar
 ) INHERITS (\L$type_inherit\E);
 };
-	} elsif ($plsql =~ /TYPE[\t\s]+([^\t\s]+)[\t\s]+(AS|IS)[\t\s]*VARRAY[\t\s]*\((\d+)\)[\t\s]*OF[\t\s]*(.*)/is) {
+		$self->{type_of_type}{'Subtype'}++;
+	} elsif ($plsql =~ /TYPE[\t\s]+([^\t\s]+)[\t\s]+(AS|IS)[\t\s]*(VARRAY|VARYING ARRAY)[\t\s]*\((\d+)\)[\t\s]*OF[\t\s]*(.*)/is) {
 		my $type_name = $1;
-		my $size = $3;
-		my $tbname = $4;
+		my $size = $4;
+		my $tbname = $5;
 		$type_name =~ s/"//g;
 		$tbname =~ s/;//g;
-		#return if ($type_name =~ /\$/);
+		chomp($tbname);
+		my $declar = Ora2Pg::PLSQL::replace_sql_type($tbname, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type});
 		$content = qq{
-CREATE TYPE \L$type_name\E AS ($type_name $tbname\[$size\]);
+CREATE TYPE \L$type_name\E AS ($type_name $declar\[$size\]);
 };
+		$self->{type_of_type}{Varrays}++;
 	} else {
+		$self->{type_of_type}{Unknown}++;
 		$plsql =~ s/;$//s;
 		$content = "CREATE $plsql;"
 	}
 	return $content;
 }
-
-=head2 _extract_type
-
-This function is used to return an array of types from a custom Oracle type
-
-=cut
-
-sub _extract_type
-{
-	my ($self, $plsql) = @_;
-
-	my @types = ();
-	if ($plsql =~ /TYPE[\t\s]+([^\t\s]+)[\t\s]+(IS|AS)[\t\s]*TABLE[\t\s]*OF[\t\s]+(.*)/is) {
-		my $type_name = $1;
-		my $type = Ora2Pg::PLSQL::replace_sql_type($3, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type});
-		$type_name =~ s/"//g;
-	} elsif ($plsql =~ /TYPE[\t\s]+([^\t\s]+)[\t\s]+(AS|IS)[\t\s]*OBJECT[\t\s]+\((.*?)(TYPE BODY.*)/is) {
-		my $type_name = $1;
-		my $description = $3;
-		my $body = $4;
-		my %fctname = ();
-		# extract input function
-		while ($description =~ s/CONSTRUCTOR (FUNCTION|PROCEDURE)[\t\s]+([^\t\s\(]+)(.*?)RETURN[^,;]+[,;]//is) {
-			$fctname{constructor} = lc($2) if (!$fctname{constructor});
-		}
-		while ($description =~ s/(MAP MEMBER |MEMBER )(FUNCTION|PROCEDURE)[\t\s]+([^\t\s\(]+)(.*?)RETURN[^,;]+[,;]//is) {
-			push(@{$fctname{member}}, lc($3));
-		}
-		my $declar = Ora2Pg::PLSQL::replace_sql_type($description, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type});
-		$type_name =~ s/"//g;
-		$declar =~ s/\/$//s;
-		$declar =~ s/\)$//s;
-		$declar =~ s/\);$//s;
-		#return if ($type_name =~ /\$/);
-
-		if ($body =~ /TYPE BODY[\s\t]+$type_name[\s\t]*(IS|AS)[\s\t]*(.*)END;/is) {
-			my $content2 = $2;
-			my %comments = $self->_remove_comments(\$content2);
-			$content2 =~ s/(CONSTRUCTOR |MAP MEMBER |MEMBER )(FUNCTION|PROCEDURE)/FUNCTION/igs;
-			my @functions = $self->_extract_functions($content2);
-			$content2 = '';
-			foreach my $f (@functions) {
-				$content .= $self->_convert_function($f);
-			}
-			$self->_restore_comments(\$content, \%comments);
-
-		}
-
-	} elsif ($plsql =~ /TYPE[\t\s]+([^\t\s]+)[\t\s]+(AS|IS)[\t\s]*OBJECT[\t\s]+\((.*)/is) {
-		my $type_name = $1;
-		my $description = $3;
-		$description =~ s/\)[\t\s]*(FINAL|NOT FINAL|INSTANTIABLE|NOT INSTANTIABLE).*//is;
-		my $notfinal = $1;
-		$notfinal =~ s/[\s\t\r\n]+//gs;
-		return $plsql if ($description =~ /[\s\t]*(MAP MEMBER |MEMBER )(FUNCTION|PROCEDURE).*/);
-		# $description =~ s/[\s\t]*(MAP MEMBER |MEMBER )(FUNCTION|PROCEDURE).*//is;
-		my $declar = Ora2Pg::PLSQL::replace_sql_type($description, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type});
-	} elsif ($plsql =~ /TYPE[\t\s]+([^\t\s]+)[\t\s]+UNDER[\t\s]*([^\t\s]+)[\t\s]+\((.*)/is) {
-		my $type_name = $1;
-		my $type_inherit = $2;
-		my $description = $3;
-		$description =~ s/\)[^\);]*;$//;
-		return $plsql if ($description =~ /[\s\t]*(MAP MEMBER |MEMBER )(FUNCTION|PROCEDURE).*/);
-		my $declar = Ora2Pg::PLSQL::replace_sql_type($description, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type});
-	} elsif ($plsql =~ /TYPE[\t\s]+([^\t\s]+)[\t\s]+(AS|IS)[\t\s]*VARRAY[\t\s]*\((\d+)\)[\t\s]*OF[\t\s]*(.*)/is) {
-		my $type_name = $1;
-		my $size = $3;
-		my $tbname = $4;
-		$type_name =~ s/"//g;
-		$tbname =~ s/;//g;
-		#return if ($type_name =~ /\$/);
-		$content = qq{
-CREATE TYPE \L$type_name\E AS ($type_name $tbname\[$size\]);
-};
-	}
-
-	return @types;
-}
-
 
 sub extract_data
 {
@@ -5605,6 +5479,10 @@ sub _show_infos
 				$total_index++;
 			}
 		}
+		$self->_types();
+		foreach my $tpe (sort {length($a->{name}) <=> length($b->{name}) } @{$self->{types}}) {
+			$self->_convert_type($tpe->{code});
+		}
 
 		$self->logit("--------------------------------------\n", 0);
 		$self->logit("Object\tNumber\tInvalid\tComments\n", 0);
@@ -5637,6 +5515,18 @@ sub _show_infos
 					}
 					$number -= $exttb;
 				}
+			} elsif ($typ eq 'TYPE') {
+				my $detail = '';
+				my $total_type = 0;
+				foreach my $typ (sort keys %{$self->{type_of_type}}) {
+					$total_type++ if (!grep(/^$typ$/, 'Associative Arrays','Type Boby','Type with member method'));
+					$detail .= ". $self->{type_of_type}{$typ} $typ" if ($self->{type_of_type}{$typ});
+				}
+				$comment = "$total_type type(s) are concerned by the export, others are not supported";
+				$comment .= $detail;
+				$comment .= '. Note that Type inherited and Subtype are converted as table, type inheritance is not supported.';
+			} elsif ($typ eq 'TYPE BODY') {
+				$comment = "Export of type with member method are not supported, they will not be exported.";
 			}
 			$self->logit("$typ\t" . ($number-$invalid) . "\t$invalid\t$comment\n", 0);
 		}
