@@ -325,7 +325,10 @@ FILE_PER_CONSTRAINT	0
 # will be named INDEXES_OUTPUT. Where OUTPUT is the value of the corresponding
 # configuration directive. You can use .gz xor .bz2 file extension to enable
 # compression. Default is to save all data in the OUTPUT file. This directive
-# is usable only with TABLE export type.
+# is usable only with TABLE or TABLESPACE export type.  With the TABLESPACE
+# export, it is used to write "ALTER INDEX ... TABLESPACE ..." into a separate
+# file named TBSP_INDEXES_OUTPUT that can be loaded at end of the migration
+# after the indexes creation to move the indexes.
 FILE_PER_INDEX		0
 
 # Allow data export to be saved in one file per table/view. The files

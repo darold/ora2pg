@@ -133,7 +133,7 @@
 .\" ========================================================================
 .\"
 .IX Title "ORA2PG 1"
-.TH ORA2PG 1 "2012-11-23" "perl v5.10.1" "User Contributed Perl Documentation"
+.TH ORA2PG 1 "2012-11-27" "perl v5.10.1" "User Contributed Perl Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -864,7 +864,10 @@ Allow indexes to be saved in a separate file during schema export. The file
 will be named \s-1INDEXES_OUTPUT\s0, where \s-1OUTPUT\s0 is the value of the corresponding
 configuration directive. You can use .gz xor .bz2 file extension to enable
 compression. Default is to save all data in the \s-1OUTPUT\s0 file. This directive
-is usable only with \s-1TABLE\s0 export type.
+is usable only with \s-1TABLE\s0 \s-1AND\s0 \s-1TABLESPACE\s0 export type. With the \s-1TABLESPACE\s0
+export, it is used to write \*(L"\s-1ALTER\s0 \s-1INDEX\s0 ... \s-1TABLESPACE\s0 ...\*(R" into a separate
+file named \s-1TBSP_INDEXES_OUPUT\s0 that can be loaded at end of the migration after
+the indexes creation to move the indexes.
 .IP "\s-1FILE_PER_TABLE\s0" 4
 .IX Item "FILE_PER_TABLE"
 Allow data export to be saved in one file per table/view. The files will be

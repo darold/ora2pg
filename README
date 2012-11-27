@@ -703,8 +703,11 @@ CONFIGURATION
         The file will be named INDEXES_OUTPUT, where OUTPUT is the value of
         the corresponding configuration directive. You can use .gz xor .bz2
         file extension to enable compression. Default is to save all data in
-        the OUTPUT file. This directive is usable only with TABLE export
-        type.
+        the OUTPUT file. This directive is usable only with TABLE AND
+        TABLESPACE export type. With the TABLESPACE export, it is used to
+        write "ALTER INDEX ... TABLESPACE ..." into a separate file named
+        TBSP_INDEXES_OUPUT that can be loaded at end of the migration after
+        the indexes creation to move the indexes.
 
     FILE_PER_TABLE
         Allow data export to be saved in one file per table/view. The files

@@ -1918,6 +1918,7 @@ LANGUAGE plpgsql ;
 					}
 					push(@done, $tb_name);
 					foreach my $obj (@{$self->{tablespaces}{$tb_type}{$tb_name}{$tb_path}}) {
+						next if ($self->{file_per_index} && !$self->{dbhdest} && ($tb_type eq 'INDEX'));
 						if (!$self->{preserve_case} || ($tb_type eq 'INDEX')) {
 							$sql_output .= "ALTER $tb_type \L$obj\E SET TABLESPACE \L$tb_name\E;\n";
 						} else {
@@ -1933,6 +1934,31 @@ LANGUAGE plpgsql ;
 		}
 		$self->dump($sql_header . "$create_tb\n" . $sql_output);
 
+		
+		if ($self->{file_per_index} && !$self->{dbhdest}) {
+			my $fhdl = undef;
+			$self->logit("Dumping tablespace alter indexes to one separate file : TBSP_INDEXES_$self->{output}\n", 1);
+			$fhdl = $self->export_file("TBSP_INDEXES_$self->{output}");
+			$sql_output = '';
+			foreach my $tb_type (sort keys %{$self->{tablespaces}}) {
+				# TYPE - TABLESPACE_NAME - FILEPATH - OBJECT_NAME
+				foreach my $tb_name (sort keys %{$self->{tablespaces}{$tb_type}}) {
+					foreach my $tb_path (sort keys %{$self->{tablespaces}{$tb_type}{$tb_name}}) {
+						# Replace Oracle tablespace filename
+						my $loc = $tb_name;
+						$tb_path =~ /^(.*)[^\\\/]+$/;
+						$loc = $1 . $loc;
+						foreach my $obj (@{$self->{tablespaces}{$tb_type}{$tb_name}{$tb_path}}) {
+							next if ($tb_type eq 'TABLE');
+							$sql_output .= "ALTER $tb_type \L$obj\E SET TABLESPACE \L$tb_name\E;\n";
+						}
+					}
+				}
+			}
+			$sql_output = "-- Nothing found of type $self->{type}\n" if (!$sql_output);
+			$self->dump($sql_header . $sql_output, $fhdl);
+			$self->close_export_file($fhdl);
+		}
 		return;
 	}
 
@@ -5295,7 +5321,7 @@ $declar
 CREATE TYPE \L$type_name\E AS ($type_name $tbname\[$size\]);
 };
 	} else {
-		$declar =~ s/;$//s;
+		$plsql =~ s/;$//s;
 		$content = "CREATE $plsql;"
 	}
 	return $content;
