@@ -5511,7 +5511,11 @@ sub _show_infos
 					if ($self->{external_to_fdw}) {
 						$comment = "$exttb external tables will be exported as file_fdw foreign tables, see EXTERNAL_TO_FDW configuration directive to disable this feature.";
 					} else {
-						$comment = "$exttb external tables will not be exported as file_fdw foreign tables, see EXTERNAL_TO_FDW configuration directive to enable this feature or use COPY in your code if you just want to load data.";
+						if (!$self->{external_to_fdw}) {
+							$comment = "$exttb external table(s) will be exported as standard table. See EXTERNAL_TO_FDW configuration directive to export as file_fdw foreign tables or use COPY in your code if you just want to load data from external files.";
+						} else {
+							$comment = "$exttb external table(s) will be exported as file_fdw foreign table. See EXTERNAL_TO_FDW configuration directive to export as standard table or use COPY in your code if you just want to load data from external files.";
+						}
 					}
 					$number -= $exttb;
 				}
