@@ -2477,13 +2477,10 @@ CREATE TRIGGER insert_${table}_trigger
 
 		$self->logit("Dumping table $table...\n", 1);
 		# Create FDW server if required
-		if ( grep(/^$table$/i, keys %{$self->{external_table}}) ) {
-			if ($self->{external_to_fdw}) {
-				$sql_header .= "CREATE EXTENSION file_fdw;\n\n" if ($sql_header !~ /CREATE EXTENSION file_fdw;/is);
-				$sql_header .= "CREATE SERVER \L$self->{external_table}{$table}{directory}\E FOREIGN DATA WRAPPER file_fdw;\n\n" if ($sql_header !~ /CREATE SERVER $self->{external_table}{$table}{directory} FOREIGN DATA WRAPPER file_fdw;/is);
-			} else {
-				# External tables will not be exported
-				next;
+		if ($self->{external_to_fdw}) {
+			if ( grep(/^$table$/i, keys %{$self->{external_table}}) ) {
+					$sql_header .= "CREATE EXTENSION file_fdw;\n\n" if ($sql_header !~ /CREATE EXTENSION file_fdw;/is);
+					$sql_header .= "CREATE SERVER \L$self->{external_table}{$table}{directory}\E FOREIGN DATA WRAPPER file_fdw;\n\n" if ($sql_header !~ /CREATE SERVER $self->{external_table}{$table}{directory} FOREIGN DATA WRAPPER file_fdw;/is);
 			}
 		}
 
@@ -2493,7 +2490,7 @@ CREATE TRIGGER insert_${table}_trigger
 			$self->logit("\tReplacing tablename $table as $tbname...\n", 1);
 		}
 		my $foreign = '';
-		if ( ($self->{type} eq 'FDW') || grep(/^$table$/i, keys %{$self->{external_table}}) ) {
+		if ( ($self->{type} eq 'FDW') || ($self->{external_to_fdw} && grep(/^$table$/i, keys %{$self->{external_table}})) ) {
 			$foreign = ' FOREIGN';
 		}
 		my $obj_type = ${$self->{tables}{$table}{table_info}}[1] || 'TABLE';
@@ -2546,7 +2543,7 @@ CREATE TRIGGER insert_${table}_trigger
 			$sql_output .= $self->_get_primary_keys($table, $self->{tables}{$table}{unique_key});
 		}
 		$sql_output =~ s/,$//;
-		if ( ($self->{type} ne 'FDW') && !grep(/^$table$/i, keys %{$self->{external_table}}) ) {
+		if ( ($self->{type} ne 'FDW') && (!$self->{external_to_fdw} || !grep(/^$table$/i, keys %{$self->{external_table}})) ) {
 			$sql_output .= ");\n";
 		} elsif ( grep(/^$table$/i, keys %{$self->{external_table}}) ) {
 			$sql_output .= ") SERVER \L$self->{external_table}{$table}{directory}\E OPTIONS(filename '$self->{external_table}{$table}{directory_path}$self->{external_table}{$table}{location}', format 'csv', delimiter '$self->{external_table}{$table}{delimiter}');\n";
