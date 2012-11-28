@@ -1710,9 +1710,9 @@ LANGUAGE plpgsql ;
 			$self->{idxcomment} = 0;
 			my %comments = $self->_remove_comments(\$self->{functions}{$fct});
 			if ($self->{plsql_pgsql}) {
-				$sql_output .= $self->_convert_function($self->{functions}{$fct}) . "\n";
+				$sql_output .= $self->_convert_function($self->{functions}{$fct}) . "\n\n";
 			} else {
-				$sql_output .= $self->{functions}{$fct} . "\n";
+				$sql_output .= $self->{functions}{$fct} . "\n\n";
 			}
 			$self->_restore_comments(\$sql_output, \%comments);
 			if ($self->{file_per_function} && !$self->{dbhdest}) {
@@ -1780,9 +1780,9 @@ LANGUAGE plpgsql ;
 			$self->{idxcomment} = 0;
 			my %comments = $self->_remove_comments(\$self->{procedures}{$fct});
 			if ($self->{plsql_pgsql}) {
-				$sql_output .= $self->_convert_function($self->{procedures}{$fct}) . "\n";
+				$sql_output .= $self->_convert_function($self->{procedures}{$fct}) . "\n\n";
 			} else {
-				$sql_output .= $self->{procedures}{$fct} . "\n";
+				$sql_output .= $self->{procedures}{$fct} . "\n\n";
 			}
 			$self->_restore_comments(\$sql_output, \%comments);
 			if ($self->{file_per_function} && !$self->{dbhdest}) {
@@ -4767,7 +4767,7 @@ sub _restore_comments
 	my ($self, $content, $comments) = @_;
 
 	foreach my $k (keys %$comments) {
-		$$content =~ s/$k/$comments->{$k}/;
+		$$content =~ s/$k[\n]?/$comments->{$k}\n/s;
 	}
 
 }
@@ -5505,6 +5505,8 @@ sub _show_infos
 				$comment = "$total_index index(es) are concerned by the export, others are automatically generated and will do so on PostgreSQL";
 				$comment .= $detail;
 				$comment .= " Note that bitmap index(es) will be exported as b-tree index(es) if any. Cluster, domain, bitmap join and IOT indexes will not be exported at all. Reverse indexes are not exported too, you may use a trigram-based index (see pg_trgm) or a reverse() function based index and search.";
+			} elsif ($typ eq 'MATERIALIZED VIEW') {
+				$comment = "All materialized view will be exported as snapshot materialized views, they are only updated when fully refreshed.";
 			} elsif ($typ eq 'TABLE') {
 				my $exttb = scalar keys %{$self->{external_table}};
 				if ($exttb) {
@@ -5518,6 +5520,54 @@ sub _show_infos
 						}
 					}
 					$number -= $exttb;
+				}
+
+				my $sth = $self->_table_info()  or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+				my @tables_infos = $sth->fetchall_arrayref();
+				$sth->finish();
+
+				my %table_detail = ();
+				my $virt_column = 0;
+				my @done = ();
+				my $id = 0;
+				foreach my $table (@tables_infos) {
+					# Set the table information for each class found
+					my $i = 1;
+					foreach my $t (@$table) {
+
+						# forget or not this object if it is in the exclude or allow lists.
+						next if ($self->skip_this_object('TABLE', $t->[2]));
+
+						# Jump to desired extraction
+						if (grep(/^$t->[2]$/, @done)) {
+							next;
+						} else {
+							push(@done, $t->[2]);
+						}
+						if (&is_reserved_words($t->[2])) {
+							$table_detail{'reserved words in table name'}++;
+						}
+						# Set the fields information
+						@{$self->{tables}{$t->[1]}{column_info}} = $self->_column_info($t->[2],$t->[1], 1);
+						foreach my $d (@{$self->{tables}{$t->[1]}{column_info}}) {
+							if (&is_reserved_words($d->[0])) {
+								$table_detail{'reserved words in column name'}++;
+							}
+							$d->[1] =~ s/TIMESTAMP\(\d+\)/TIMESTAMP/i;
+							if (!exists $TYPE{uc($d->[1])}) {
+								$table_detail{'unknow types'}++;
+							}
+							if ( (uc($d->[1]) eq 'NUMBER') && ($d->[2] eq '') ) {
+								$table_detail{'numbers with no precision'}++;
+							}
+							if ( $TYPE{uc($d->[1])} eq 'bytea' ) {
+								$table_detail{'binary columns'}++;
+							}
+						}
+					}
+				}
+				foreach my $d (sort keys %table_detail) {
+					$comment .= " $table_detail{$d} $d.";
 				}
 			} elsif ($typ eq 'TYPE') {
 				my $detail = '';
