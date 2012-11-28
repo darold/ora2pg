@@ -4285,6 +4285,7 @@ WHERE
 	(b.partitioning_type = 'RANGE' OR b.partitioning_type = 'LIST')
 	AND a.table_name = c.name
 };
+
 	if ($self->{prefix} ne 'USER') {
 		if ($self->{schema}) {
 			$str .= "\tAND upper(a.table_owner) ='\U$self->{schema}\E'\n";
@@ -4315,6 +4316,53 @@ WHERE
 	$self->logit("\n", 1);
 
 	return \%parts, \%default;
+}
+
+=head2 _get_partitions_list
+
+This function implements an Oracle-native partitions information.
+Return a hash of the partition table_name => type
+=cut
+
+sub _get_partitions_list
+{
+	my($self) = @_;
+
+	# Retrieve all partitions.
+	my $str = qq{
+SELECT
+	a.table_name,
+	a.partition_position,
+	a.partition_name,
+	a.high_value,
+	a.tablespace_name,
+	b.partitioning_type
+FROM $self->{prefix}_tab_partitions a, $self->{prefix}_part_tables b
+WHERE a.table_name = b.table_name
+};
+
+	if ($self->{prefix} ne 'USER') {
+		if ($self->{schema}) {
+			$str .= "\tAND upper(a.table_owner) ='\U$self->{schema}\E'\n";
+		} else {
+			$str .= "\tAND a.table_owner NOT IN ('" . join("','", @{$self->{sysusers}}) . "')\n";
+		}
+	}
+	$str .= "ORDER BY a.table_name\n";
+
+	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+
+	my %parts = ();
+	while (my $row = $sth->fetch) {
+
+		# forget or not this object if it is in the exclude or allow lists.
+		next if ($self->skip_this_object('PARTITION', $row->[2]));
+		$parts{$row->[5]}++;
+	}
+	$sth->finish;
+
+	return %parts;
 }
 
 # This is a routine paralellizing access to format_data_for_parallel over several threads
@@ -5492,6 +5540,7 @@ sub _show_infos
 		$self->logit("Object\tNumber\tInvalid\tComments\n", 0);
 		$self->logit("--------------------------------------\n", 0);
 		foreach my $typ (sort keys %report) {
+			next if ($typ eq 'PACKAGE');
 			my $number = 0;
 			my $invalid = 0;
 			for (my $i = 0; $i <= $#{$report{$typ}}; $i++) {
@@ -5574,6 +5623,7 @@ sub _show_infos
 				foreach my $d (sort keys %table_detail) {
 					$comment .= " $table_detail{$d} $d.";
 				}
+				$comment = "Nothing particular." if (!$comment);
 			} elsif ($typ eq 'TYPE') {
 				my $detail = '';
 				my $total_type = 0;
@@ -5618,6 +5668,17 @@ sub _show_infos
 				$comment = "Total size of package code: $total_size.";
 			} elsif ($typ eq 'SYNONYME') {
 				$comment = "SYNONYME are not exported at all. An usual workaround is to use View instead or set the PostgreSQL search_path in your session to access object outside the current schema.";
+			} elsif ($typ eq 'TABLE PARTITION') {
+				my %partitions = $self->_get_partitions_list();
+				my $detail = '';
+				foreach my $t (sort keys %partitions) {
+					$detail .= ". $partitions{$t} $t partitions";
+				}
+				$comment = "Partitions are exported using table inheritance and check constraint";
+				$comment .= $detail;
+				$comment .= ". Note that Hash partitions are not supported.";
+			} elsif ($typ eq 'CLUSTER') {
+				$comment = "Clusters are not supported and will not be exported.";
 			}
 			$self->logit("$typ\t" . ($number-$invalid) . "\t$invalid\t$comment\n", 0);
 		}
