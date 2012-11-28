@@ -4279,10 +4279,7 @@ SELECT
 	c.name,
 	c.column_name,
 	c.column_position
-FROM
-	dba_tab_partitions a,
-	dba_part_tables b,
-	dba_part_key_columns c
+FROM $self->{prefix}_tab_partitions a, $self->{prefix}_part_tables b, $self->{prefix}_part_key_columns c
 WHERE
 	a.table_name = b.table_name AND
 	(b.partitioning_type = 'RANGE' OR b.partitioning_type = 'LIST')
@@ -5512,6 +5509,7 @@ sub _show_infos
 				$comment = "$total_index index(es) are concerned by the export, others are automatically generated and will do so on PostgreSQL";
 				$comment .= $detail;
 				$comment .= " Note that bitmap index(es) will be exported as b-tree index(es) if any. Cluster, domain, bitmap join and IOT indexes will not be exported at all. Reverse indexes are not exported too, you may use a trigram-based index (see pg_trgm) or a reverse() function based index and search.";
+				$comment .= " You may also use 'varchar_pattern_ops', 'text_pattern_ops' or 'bpchar_pattern_ops' operators in your indexes to improve search with the LIKE operator respectively into varchar, text or char columns.";
 			} elsif ($typ eq 'MATERIALIZED VIEW') {
 				$comment = "All materialized view will be exported as snapshot materialized views, they are only updated when fully refreshed.";
 			} elsif ($typ eq 'TABLE') {
@@ -5588,6 +5586,38 @@ sub _show_infos
 				$comment .= '. Note that Type inherited and Subtype are converted as table, type inheritance is not supported.';
 			} elsif ($typ eq 'TYPE BODY') {
 				$comment = "Export of type with member method are not supported, they will not be exported.";
+			} elsif ($typ eq 'TRIGGER') {
+				my $triggers = $self->_get_triggers();
+				my $total_size = 0;
+				foreach my $trig (@{$triggers}) {
+					$total_size += length($trig->[4]);
+				}
+				$comment = "Total size of trigger code: $total_size.";
+			} elsif ($typ eq 'SEQUENCE') {
+				$comment = "Sequences are fully supported, but all call to sequence_name.NEXTVAL or sequence_name.CURRVAL will be transformed into NEXTVAL('sequence_name') or CURRVAL('sequence_name').";
+			} elsif ($typ eq 'FUNCTION') {
+				my $functions = $self->_get_functions();
+				my $total_size = 0;
+				foreach my $fct (keys %{$functions}) {
+					$total_size += length($functions->{$fct});
+				}
+				$comment = "Total size of function code: $total_size.";
+			} elsif ($typ eq 'PROCEDURE') {
+				my $procedures = $self->_get_procedures();
+				my $total_size = 0;
+				foreach my $proc (keys %{$procedures}) {
+					$total_size += length($procedures->{$proc});
+				}
+				$comment = "Total size of procedure code: $total_size.";
+			} elsif ($typ eq 'PACKAGE BODY') {
+				my $packages = $self->_get_packages();
+				my $total_size = 0;
+				foreach my $pkg (keys %{$packages}) {
+					$total_size += length($packages->{$pkg});
+				}
+				$comment = "Total size of package code: $total_size.";
+			} elsif ($typ eq 'SYNONYME') {
+				$comment = "SYNONYME are not exported at all. An usual workaround is to use View instead or set the PostgreSQL search_path in your session to access object outside the current schema.";
 			}
 			$self->logit("$typ\t" . ($number-$invalid) . "\t$invalid\t$comment\n", 0);
 		}
