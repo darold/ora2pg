@@ -4860,7 +4860,6 @@ sub _convert_function
 			$hasreturn = 1;
 			$func_ret_type = $self->_sql_type($2) || 'OPAQUE';
 		}
-		$func_declare =~ s/[\s\t]+/ /gs;
 		if ($func_declare =~ s/(.*?)(USING|AS|IS)//is) {
 			$func_args .= $1 if (!$hasreturn);
 			$clause = $2;
@@ -4872,8 +4871,9 @@ sub _convert_function
 		$func_args =~ s/[\s\t]*NOCOPY//s;
 		# IN OUT should be INOUT
 		$func_args =~ s/IN[\s\t]+OUT/INOUT/s;
+
 		# Now convert types
-		$func_args = Ora2Pg::PLSQL::replace_sql_type($func_args, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type});
+		$func_args = Ora2Pg::PLSQL::replace_sql_type($func_args, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type}, 1);
 
 		#$func_declare = $self->_convert_declare($func_declare);
 		$func_declare = Ora2Pg::PLSQL::replace_sql_type($func_declare, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type});
