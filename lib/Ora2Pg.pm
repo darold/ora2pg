@@ -673,9 +673,16 @@ sub _init
 			}
 		}
 		if (!$self->{client_encoding}) {
-			$self->{client_encoding} = &auto_set_encoding($encoding);
-			if ($self->{debug}) {
-				$self->logit("\tUsing PostgreSQL client encoding: $self->{client_encoding}.\n", 1);
+			if ($self->{'binmode'} =~ /utf8/i) {
+				$self->{client_encoding} = 'UTF8';
+				if ($self->{debug}) {
+					$self->logit("\tUsing PostgreSQL client encoding forced to UTF8 as BINMODE configuration directive has been set to $self->{binmode}.\n", 1);
+				}
+			} else {
+				$self->{client_encoding} = &auto_set_encoding($encoding);
+				if ($self->{debug}) {
+					$self->logit("\tUsing PostgreSQL client encoding: $self->{client_encoding}.\n", 1);
+				}
 			}
 		} else {
 			if ($self->{debug}) {
