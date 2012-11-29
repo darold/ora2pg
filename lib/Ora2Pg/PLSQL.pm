@@ -69,6 +69,7 @@ my %uncovered_score = (
 	'CURSOR' => 2,
 	'INTERSECT' => 1,
 	'PIPE ROW' => 1,
+	'ORA_ROWSCN' => 3,
 );
 
 =head1 NAME
@@ -498,6 +499,8 @@ sub estimate_cost
 	$cost += $uncovered_score{'CURSOR'}*$n;
 	$n = () = $str =~ m/INTERSECT/igs;
 	$cost += $uncovered_score{'INTERSECT'}*$n;
+	$n = () = $str =~ m/ORA_ROWSCN/igs;
+	$cost += $uncovered_score{'ORA_ROWSCN'}*$n;
 
 	return $cost;
 }
