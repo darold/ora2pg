@@ -3845,6 +3845,40 @@ sub _get_dblink
 	return %data;
 }
 
+=head2 _get_job
+
+This function implements an Oracle-native job information.
+
+Returns a hash of job number with the connection they are based on.
+
+=cut
+
+
+sub _get_job
+{
+	my($self) = @_;
+
+	# Retrieve all database job from user_jobs table
+	my $str = "SELECT JOB,WHAT,INTERVAL FROM $self->{prefix}_jobs";
+	if (!$self->{schema}) {
+		$str .= " WHERE SCHEMA_USER NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
+	} else {
+		$str .= " WHERE upper(SCHEMA_USER) = '\U$self->{schema}\E'";
+	}
+	$str .= " ORDER BY JOB";
+	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+
+	my %data = ();
+	while (my $row = $sth->fetch) {
+		$data{$row->[0]}{what} = $row->[1];
+		$data{$row->[0]}{interval} = $row->[2];
+	}
+
+	return %data;
+}
+
+
 =head2 _get_views
 
 This function implements an Oracle-native views information.
@@ -5730,10 +5764,11 @@ sub _show_infos
 			$self->logit("DATABASE LINK\t" . (scalar keys %dblink) . "\t\t$comment\n", 0);
 		}
 
-		if ($all_invalid) {
-			$self->logit("\nNote: Invalid code will not be exported unless the EXPORT_INVALID configuration directive is activated.\n", 0);
+		my %jobs = $self->_get_job();
+		if (scalar keys %jobs > 0) {
+			my $comment = "Job are not exported. You may set external cron job with them.";
+			$self->logit("JOB\t" . (scalar keys %jobs) . "\t\t$comment\n", 0);
 		}
-
 	} elsif ($type eq 'SHOW_SCHEMA') {
 		# Get all tables information specified by the DBI method table_info
 		$self->logit("Showing all schema...\n", 1);
