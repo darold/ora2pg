@@ -70,6 +70,7 @@ my %uncovered_score = (
 	'INTERSECT' => 1,
 	'PIPE ROW' => 1,
 	'ORA_ROWSCN' => 3,
+	'SAVEPOINT' => 1,
 );
 
 =head1 NAME
@@ -501,6 +502,8 @@ sub estimate_cost
 	$cost += $uncovered_score{'INTERSECT'}*$n;
 	$n = () = $str =~ m/ORA_ROWSCN/igs;
 	$cost += $uncovered_score{'ORA_ROWSCN'}*$n;
+	$n = () = $str =~ m/SAVEPOINT/igs;
+	$cost += $uncovered_score{'SAVEPOINT'}*$n;
 
 	return $cost;
 }
