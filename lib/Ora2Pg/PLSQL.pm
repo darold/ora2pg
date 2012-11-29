@@ -117,6 +117,13 @@ sub plsql_to_plpgsql
 	$str =~ s/([^\w]+):new\./$1NEW\./igs;
 	#       :old. -> OLD.
 	$str =~ s/([^\w]+):old\./$1OLD\./igs;
+
+	# Replace EXEC function into variable, ex: EXEC :a := test(:r,1,2,3);
+	$str =~ s/EXEC[\s\t]+:([^\s\t:]+)[\s\t]*:=/SELECT INTO $2/igs;
+
+	# Replace simple EXEC function call by SELECT function
+	$str =~ s/EXEC([\s\t]+)/SELECT$1/igs;
+
 	# Remove leading : on Oracle variable
 	$str =~ s/([^\w]+):(\w+)/$1$2/igs;
 
