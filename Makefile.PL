@@ -444,7 +444,10 @@ USE_RESERVED_WORDS	0
 PKEY_IN_CREATE		0
 
 # If you want to replace some column as PostgreSQL boolean define here a list
-# of tables and column separated by space as follow.
+# of tables and column separated by space as follow. You can also give a type
+# and a precision to automatically convert all fields of that type as a boolean.
+# For example: NUMBER:1 or CHAR:1 will replace any field of type number(1) or
+# char(1) as a boolean in all exported tables.
 #REPLACE_AS_BOOLEAN	TB_NAME1:COL_NAME1 TB_NAME1:COL_NAME2 TB_NAME2:COL_NAME2
 
 # Use this to add additional definition of the possible boolean values in Oracle

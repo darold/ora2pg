@@ -133,7 +133,7 @@
 .\" ========================================================================
 .\"
 .IX Title "ORA2PG 1"
-.TH ORA2PG 1 "2012-11-27" "perl v5.10.1" "User Contributed Perl Documentation"
+.TH ORA2PG 1 "2012-11-29" "perl v5.10.1" "User Contributed Perl Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -806,6 +806,16 @@ space as follow.
 The values set in the boolean columns list will be replaced with the 't' and 'f'
 following the default replacement values and those additionally set in directive
 \&\s-1BOOLEAN_VALUES\s0.
+.Sp
+You can also give a type and a precision to automatically convert all fields of
+that type as a boolean. For example:
+.Sp
+.Vb 1
+\&        REPLACE_AS_BOOLEAN      NUMBER:1 CHAR:1 TB_NAME1:COL_NAME1 TB_NAME1:COL_NAME2
+.Ve
+.Sp
+will also replace any field of type \fInumber\fR\|(1) or \fIchar\fR\|(1) as a boolean in all exported
+tables.
 .IP "\s-1BOOLEAN_VALUES\s0" 4
 .IX Item "BOOLEAN_VALUES"
 Use this to add additional definition of the possible boolean values used in

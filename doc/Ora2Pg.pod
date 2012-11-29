@@ -683,6 +683,14 @@ The values set in the boolean columns list will be replaced with the 't' and 'f'
 following the default replacement values and those additionally set in directive
 BOOLEAN_VALUES.
 
+You can also give a type and a precision to automatically convert all fields of
+that type as a boolean. For example:
+
+	REPLACE_AS_BOOLEAN	NUMBER:1 CHAR:1 TB_NAME1:COL_NAME1 TB_NAME1:COL_NAME2
+
+will also replace any field of type number(1) or char(1) as a boolean in all exported
+tables.
+
 =item BOOLEAN_VALUES
 
 Use this to add additional definition of the possible boolean values used in

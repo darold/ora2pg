@@ -988,12 +988,12 @@ sub _tables
 		my $i = 1;
 		foreach my $t (@$table) {
 
-			if (!$self->{quiet}) {
-				print STDERR &progress_bar($i, $#{$table} + 1, 25, '=', 'tables', "scanning table $t->[2]" );
-			}
 			# forget or not this object if it is in the exclude or allow lists.
 			if ($self->{tables}{$t->[2]}{type} ne 'view') {
 				next if ($self->skip_this_object('TABLE', $t->[2]));
+			}
+			if (!$self->{quiet}) {
+				print STDERR &progress_bar($i, $#{$table} + 1, 25, '=', 'tables', "scanning table $t->[2]" );
 			}
 
 			if (grep(/^$t->[2]$/, @done)) {
@@ -1050,7 +1050,7 @@ sub _tables
 			$i++;
 		}
 		if (!$self->{quiet}) {
-			print STDERR &progress_bar($i - 1, $#{$table} + 1, 25, '=', 'table', 'end of scan.'), "\n";
+			print STDERR &progress_bar($i - 1, $#{$table} + 1, 25, '=', 'tables', 'end of scan.'), "\n";
 		}
 	}
  
@@ -2520,7 +2520,11 @@ CREATE TRIGGER insert_${table}_trigger
 					$self->logit("\tReplacing column \L$f->[0]\E as " . $self->{replaced_cols}{lc($table)}{lc($fname)} . "...\n", 1);
 					$fname = $self->{replaced_cols}{"\L$table\E"}{"\L$fname\E"};
 				}
-				if (grep(/^$f->[0]$/i, @{$self->{'replace_as_boolean'}{$table}})) {
+				# Check if this column should be replaced by a boolean following table/column name
+				if (grep(/^$f->[0]$/i, @{$self->{'replace_as_boolean'}{uc($table)}})) {
+					$type = 'boolean';
+				# Check if this column should be replaced by a boolean following type/precision
+				} elsif (exists $self->{'replace_as_boolean'}{uc($f->[1])} && ($self->{'replace_as_boolean'}{uc($f->[1])}[0] == $f->[5])) {
 					$type = 'boolean';
 				}
 				if (!$self->{preserve_case}) {
@@ -4691,7 +4695,7 @@ sub read_config
 			my @replace_boolean = split(/[\s,;\t]+/, $val);
 			foreach my $r (@replace_boolean) { 
 				my ($table, $col) = split(/:/, $r);
-				push(@{$AConfig{$var}{$table}}, $col);
+				push(@{$AConfig{$var}{uc($table)}}, uc($col));
 			}
 		} elsif ($var eq 'BOOLEAN_VALUES') {
 			my @replace_boolean = split(/[\s,;\t]+/, $val);
@@ -5354,7 +5358,11 @@ sub extract_data
 	for (my $i = 0; $i <= $#{$nn}; $i++) {
 		my $colname = $nn->[$i]->[0];
 		$colname =~ s/"//g;
-		if (grep(/^$colname$/i, @{$self->{'replace_as_boolean'}{$table}})) {
+		# Check if this column should be replaced by a boolean following table/column name
+		if (grep(/^$colname$/i, @{$self->{'replace_as_boolean'}{uc($table)}})) {
+			$tt->[$i] = 'boolean';
+		# Check if this column should be replaced by a boolean following type/precision
+		} elsif (exists $self->{'replace_as_boolean'}{uc($nn->[$i]->[1])} && ($self->{'replace_as_boolean'}{uc($nn->[$i]->[1])}[0] == $nn->[$i]->[5])) {
 			$tt->[$i] = 'boolean';
 		}
 	}
@@ -5680,10 +5688,13 @@ sub _show_infos
 			} elsif ($typ eq 'CLUSTER') {
 				$comment = "Clusters are not supported and will not be exported.";
 			}
-			$self->logit("$typ\t" . ($number-$invalid) . "\t$invalid\t$comment\n", 0);
+			$self->logit("$typ\t" . ($number-$invalid) . "\t$invalid\t$comment\n", 0) if ($number > 0);
 		}
 		my %dblink = $self->_get_dblink();
-		$self->logit("DATABASE LINK\t" . (scalar keys %dblink) . "\t\t\n", 0);
+		if (scalar keys %dblink > 0) {
+			my $comment = "Database links will not be exported. You may try the dblink perl contrib module or use the SQL/MED PostgreSQL feature with different Foreign Data Wrapper (FDW) extentions.";
+			$self->logit("DATABASE LINK\t" . (scalar keys %dblink) . "\t\t$comment\n", 0);
+		}
 
 	} elsif ($type eq 'SHOW_SCHEMA') {
 		# Get all tables information specified by the DBI method table_info
@@ -5753,7 +5764,11 @@ sub _show_infos
 						if (&is_reserved_words($d->[0])) {
 							$warning = " (Warning: '$d->[0]' is a reserved word in PostgreSQL)";
 						}
+						# Check if this column should be replaced by a boolean following table/column name
 						if (grep(/^$d->[0]$/i, @{$self->{'replace_as_boolean'}{$t->[2]}})) {
+							$type = 'boolean';
+						# Check if this column should be replaced by a boolean following type/precision
+						} elsif (exists $self->{'replace_as_boolean'}{uc($d->[1])} && ($self->{'replace_as_boolean'}{uc($d->[1])}[0] == $d->[5])) {
 							$type = 'boolean';
 						}
 						$self->logit(" => $type$warning\n");

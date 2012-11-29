@@ -329,7 +329,7 @@ sub raise_output
 
 sub replace_sql_type
 {
-        my ($str, $pg_numeric_type, $default_numeric, $pg_integer_type) = @_;
+        my ($str, $pg_numeric_type, $default_numeric, $pg_integer_type, $nobreak) = @_;
 
 
 	$str =~ s/with local time zone/with time zone/igs;
