@@ -982,12 +982,16 @@ This direction is also introduce since version 7.0 and allow you to gain lot of
 speed improvement during data import by removing all indexes that are not an
 automatic index (ex: indexes of primary keys) and recreate them at the end of
 data import.
-.IP "\s-1DISABLE_TABLE_TRIGGERS\s0" 4
-.IX Item "DISABLE_TABLE_TRIGGERS"
-This directive is used to disables triggers on all tables in \s-1COPY\s0 or \s-1INSERT\s0 export
-modes during data migration. The possible values are 0 to enable triggers, \s-1USER\s0
-to disable userdefined triggers and \s-1ALL\s0 to disable userdefined triggers as well
-as includes \s-1RI\s0 system triggers.
+.IP "\s-1DISABLE_TRIGGERS\s0" 4
+.IX Item "DISABLE_TRIGGERS"
+This directive is used to disable triggers on all tables in \s-1COPY\s0 or \s-1INSERT\s0 export
+modes. Available values are iO, \s-1USER\s0 (disable userdefined triggers only) and \s-1ALL\s0
+(includes \s-1RI\s0 system triggers). Default is 0: do not add \s-1SQL\s0 statements to disable
+trigger before data import.
+.Sp
+If you want to disable triggers during data migration, set the value to
+\&\s-1USER\s0 if your are connected as non superuser and \s-1ALL\s0 if you are connected
+as PostgreSQL superuser. A value of 1 is equal to \s-1USER\s0.
 .IP "\s-1DISABLE_SEQUENCE\s0" 4
 .IX Item "DISABLE_SEQUENCE"
 If set to 1 disables alter of sequences on all tables during \s-1COPY\s0 or \s-1INSERT\s0 export

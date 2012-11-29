@@ -264,9 +264,11 @@ KEEP_PKEY_NAMES 0
 
 # Disables triggers on all tables in COPY or INSERT mode. Available modes 
 # are USER (userdefined triggers) and ALL (includes RI system 
-# triggers). Set to 0 if you don't want to disable triggers during
-# data migration.
-DISABLE_TABLE_TRIGGERS 1
+# triggers). Default is 0 do not add SQL statement to disable trigger.
+# If you want to disable triggers during data migration, set the value to
+# USER if your are connected as non superuser and ALL if you are connected
+# as PostgreSQL superuser. A value of 1 is equal to USER.
+DISABLE_TRIGGERS 0
 
 # By default all data that are not of type date or time are escaped. If you
 # experience any problem with that you can set it to 1 to disable it. This

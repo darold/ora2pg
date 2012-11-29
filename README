@@ -823,11 +823,16 @@ CONFIGURATION
         indexes that are not an automatic index (ex: indexes of primary
         keys) and recreate them at the end of data import.
 
-    DISABLE_TABLE_TRIGGERS
-        This directive is used to disables triggers on all tables in COPY or
-        INSERT export modes during data migration. The possible values are 0
-        to enable triggers, USER to disable userdefined triggers and ALL to
-        disable userdefined triggers as well as includes RI system triggers.
+    DISABLE_TRIGGERS
+        This directive is used to disable triggers on all tables in COPY or
+        INSERT export modes. Available values are iO, USER (disable
+        userdefined triggers only) and ALL (includes RI system triggers).
+        Default is 0: do not add SQL statements to disable trigger before
+        data import.
+
+        If you want to disable triggers during data migration, set the value
+        to USER if your are connected as non superuser and ALL if you are
+        connected as PostgreSQL superuser. A value of 1 is equal to USER.
 
     DISABLE_SEQUENCE
         If set to 1 disables alter of sequences on all tables during COPY or

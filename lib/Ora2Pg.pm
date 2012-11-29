@@ -2142,10 +2142,12 @@ LANGUAGE plpgsql ;
 
 			## disable triggers of current table if requested
 			if ($self->{disable_triggers}) {
+				my $trig_type = 'USER';
+				$trig_type = 'ALL' if (uc($self->{disable_triggers}) eq 'ALL');
 				if ($self->{dbhdest}) {
-					my $s = $self->{dbhdest}->do("ALTER TABLE $tmptb DISABLE TRIGGER USER;") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
+					my $s = $self->{dbhdest}->do("ALTER TABLE $tmptb DISABLE TRIGGER $trig_type;") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
 				} else {
-					$self->dump("ALTER TABLE $tmptb DISABLE TRIGGER USER;\n", $fhdl);
+					$self->dump("ALTER TABLE $tmptb DISABLE TRIGGER $trig_type;\n", $fhdl);
 				}
 			}
 
@@ -2248,10 +2250,12 @@ LANGUAGE plpgsql ;
 					$tmptb = '"' . $tmptb . '"';
 				}
 				$tmptb = $self->quote_reserved_words($tmptb);
+				my $trig_type = 'USER';
+				$trig_type = 'ALL' if (uc($self->{disable_triggers}) eq 'ALL');
 				if ($self->{dbhdest}) {
-					my $s = $self->{dbhdest}->do("ALTER TABLE $tmptb ENABLE TRIGGER USER;") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
+					my $s = $self->{dbhdest}->do("ALTER TABLE $tmptb ENABLE TRIGGER $trig_type;") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
 				} else {
-					$self->dump("ALTER TABLE $tmptb ENABLE TRIGGER USER;\n\n", $fhdl);
+					$self->dump("ALTER TABLE $tmptb ENABLE TRIGGER $trig_type;\n\n", $fhdl);
 				}
 			}
 			# COMMIT transaction at end for speed improvement
