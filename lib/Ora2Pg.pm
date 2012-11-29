@@ -5266,12 +5266,12 @@ sub _convert_type
 			$content = "CREATE TYPE \L$type_name\E AS (\L$type_name\E $type_of\[\]);\n";
 		} else {
 			$self->{type_of_type}{'Associative Arrays'}++;
-			$self->logit("WARNING: this kind of Nested Tables are not supported, skipping type $1\n", 0);
+			$self->logit("WARNING: this kind of Nested Tables are not supported, skipping type $1\n", 1);
 			return '';
 		}
 	} elsif ($plsql =~ /TYPE[\t\s]+([^\t\s]+)[\t\s]+(AS|IS)[\t\s]*OBJECT[\t\s]+\((.*?)(TYPE BODY.*)/is) {
 		$self->{type_of_type}{'Type Boby'}++;
-		$self->logit("WARNING: TYPE BODY are not supported, skipping type $1\n", 0);
+		$self->logit("WARNING: TYPE BODY are not supported, skipping type $1\n", 1);
 		return '';
 	} elsif ($plsql =~ /TYPE[\t\s]+([^\t\s]+)[\t\s]+(AS|IS)[\t\s]*OBJECT[\t\s]+\((.*)\)([^\)]*)/is) {
 		my $type_name = $1;
@@ -5280,7 +5280,7 @@ sub _convert_type
 		$notfinal =~ s/[\s\t\r\n]+/ /gs;
 		if ($description =~ /[\s\t]*(MAP MEMBER|MEMBER|CONSTRUCTOR)[\t\s]+(FUNCTION|PROCEDURE).*/is) {
 			$self->{type_of_type}{'Type with member method'}++;
-			$self->logit("WARNING: TYPE with CONSTRUCTOR and MEMBER FUNCTION are not supported, skipping type $type_name\n", 0);
+			$self->logit("WARNING: TYPE with CONSTRUCTOR and MEMBER FUNCTION are not supported, skipping type $type_name\n", 1);
 			return '';
 		}
 		$description =~ s/^[\s\t\r\n]+//s;
@@ -5306,7 +5306,7 @@ $declar
 		my $type_inherit = $2;
 		my $description = $3;
 		if ($description =~ /[\s\t]*(MAP MEMBER|MEMBER|CONSTRUCTOR)[\t\s]+(FUNCTION|PROCEDURE).*/is) {
-			$self->logit("WARNING: TYPE with CONSTRUCTOR and MEMBER FUNCTION are not supported, skipping type $type_name\n", 0);
+			$self->logit("WARNING: TYPE with CONSTRUCTOR and MEMBER FUNCTION are not supported, skipping type $type_name\n", 1);
 			$self->{type_of_type}{'Type with member method'}++;
 			return '';
 		}
@@ -5553,6 +5553,7 @@ sub _show_infos
 		$self->logit("--------------------------------------\n", 0);
 		$self->logit("Object\tNumber\tInvalid\tComments\n", 0);
 		$self->logit("--------------------------------------\n", 0);
+		my $all_invalid = 0;
 		foreach my $typ (sort keys %report) {
 			next if ($typ eq 'PACKAGE');
 			my $number = 0;
@@ -5560,6 +5561,7 @@ sub _show_infos
 			for (my $i = 0; $i <= $#{$report{$typ}}; $i++) {
 				$number++;
 				$invalid++ if ($report{$typ}[$i]->{invalid});
+				$all_invalid += $invalid;
 			}
 			my $comment = '';
 			if ($typ eq 'INDEX') {
@@ -5654,7 +5656,13 @@ sub _show_infos
 				my $triggers = $self->_get_triggers();
 				my $total_size = 0;
 				foreach my $trig (@{$triggers}) {
-					$total_size += length($trig->[4]);
+					# remove C style comments
+					$trig->[4] =~ s/\\\*(.*?)\*\///gs;
+					# Remove SQL comments and empty line
+					my @content = split(/[\r\n]/, $trig->[4]);
+					map { s/[\s\t]*\-\-.*// } @content;
+					@content = grep(!/^$/, @content);
+					$total_size += length(join("\n", @content));
 				}
 				$comment = "Total size of trigger code: $total_size.";
 			} elsif ($typ eq 'SEQUENCE') {
@@ -5663,21 +5671,39 @@ sub _show_infos
 				my $functions = $self->_get_functions();
 				my $total_size = 0;
 				foreach my $fct (keys %{$functions}) {
-					$total_size += length($functions->{$fct});
+					# remove C style comments
+					$functions->{$fct} =~ s/\\\*(.*?)\*\///gs;
+					# Remove SQL comments and empty line
+					my @content = split(/[\r\n]/, $functions->{$fct});
+					map { s/[\s\t]*\-\-.*// } @content;
+					@content = grep(!/^$/, @content);
+					$total_size += length(join("\n", @content));
 				}
 				$comment = "Total size of function code: $total_size.";
 			} elsif ($typ eq 'PROCEDURE') {
 				my $procedures = $self->_get_procedures();
 				my $total_size = 0;
 				foreach my $proc (keys %{$procedures}) {
-					$total_size += length($procedures->{$proc});
+					# remove C style comments
+					$procedures->{$proc} =~ s/\\\*(.*?)\*\///gs;
+					# Remove SQL comments and empty line
+					my @content = split(/[\r\n]/, $procedures->{$proc});
+					map { s/[\s\t]*\-\-.*// } @content;
+					@content = grep(!/^$/, @content);
+					$total_size += length(join("\n", @content));
 				}
 				$comment = "Total size of procedure code: $total_size.";
 			} elsif ($typ eq 'PACKAGE BODY') {
 				my $packages = $self->_get_packages();
 				my $total_size = 0;
 				foreach my $pkg (keys %{$packages}) {
-					$total_size += length($packages->{$pkg});
+					# remove C style comments
+					$packages->{$pkg} =~ s/\\\*(.*?)\*\///gs;
+					# Remove SQL comments and empty line
+					my @content = split(/[\r\n]/, $packages->{$pkg});
+					map { s/[\s\t]*\-\-.*// } @content;
+					@content = grep(!/^$/, @content);
+					$total_size += length(join("\n", @content));
 				}
 				$comment = "Total size of package code: $total_size.";
 			} elsif ($typ eq 'SYNONYME') {
@@ -5693,13 +5719,19 @@ sub _show_infos
 				$comment .= ". Note that Hash partitions are not supported.";
 			} elsif ($typ eq 'CLUSTER') {
 				$comment = "Clusters are not supported and will not be exported.";
+			} elsif ($typ eq 'VIEW') {
+				$comment = "Views are fully supported, but if you have updatable views you will need to use INSTEAD OF triggers.";
 			}
 			$self->logit("$typ\t" . ($number-$invalid) . "\t$invalid\t$comment\n", 0) if ($number > 0);
 		}
 		my %dblink = $self->_get_dblink();
 		if (scalar keys %dblink > 0) {
-			my $comment = "Database links will not be exported. You may try the dblink perl contrib module or use the SQL/MED PostgreSQL feature with different Foreign Data Wrapper (FDW) extentions.";
+			my $comment = "Database links will not be exported. You may try the dblink perl contrib module or use the SQL/MED PostgreSQL features with the different Foreign Data Wrapper (FDW) extentions.";
 			$self->logit("DATABASE LINK\t" . (scalar keys %dblink) . "\t\t$comment\n", 0);
+		}
+
+		if ($all_invalid) {
+			$self->logit("\nNote: Invalid code will not be exported unless the EXPORT_INVALID configuration directive is activated.\n", 0);
 		}
 
 	} elsif ($type eq 'SHOW_SCHEMA') {
