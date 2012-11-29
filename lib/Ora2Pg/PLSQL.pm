@@ -59,6 +59,7 @@ my %uncovered_score = (
 	'TABLE' => 3,
 	'DBMS_' => 2,
 	'UTL_' => 2,
+	'CTX_' => 2,
 	'EXTRACT' => 3,
 	'EXCEPTION' => 2,
 	'SUBSTR' => 1,
@@ -476,6 +477,8 @@ sub estimate_cost
 	$cost += $uncovered_score{'DBMS_'}*$n;
 	$n = () = $str =~ m/UTL_\w/igs;
 	$cost += $uncovered_score{'UTL_'}*$n;
+	$n = () = $str =~ m/CTX_\w/igs;
+	$cost += $uncovered_score{'CTX_'}*$n;
 	$n = () = $str =~ m/\bEXTRACT[\t\s]*\(/igs;
 	$cost += $uncovered_score{'EXTRACT'}*$n;
 	$n = () = $str =~ m/\bSUBSTR[\t\s]*\(/igs;
