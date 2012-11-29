@@ -71,6 +71,7 @@ my %uncovered_score = (
 	'PIPE ROW' => 1,
 	'ORA_ROWSCN' => 3,
 	'SAVEPOINT' => 1,
+	'DBLINK' => 4,
 );
 
 =head1 NAME
@@ -511,6 +512,8 @@ sub estimate_cost
 	$cost += $uncovered_score{'ORA_ROWSCN'}*$n;
 	$n = () = $str =~ m/SAVEPOINT/igs;
 	$cost += $uncovered_score{'SAVEPOINT'}*$n;
+	$n = () = $str =~ m/(FROM|EXEC)((?!WHERE).)*\b[\w\_]+\@[\w\_]+\b/igs;
+	$cost += $uncovered_score{'DBLINK'}*$n;
 
 	return $cost;
 }
