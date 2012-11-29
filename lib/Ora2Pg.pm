@@ -1517,7 +1517,8 @@ LANGUAGE plpgsql ;
 			if ($self->{gen_user_pwd}) {
 				$secret = &randpattern("CccnCccn");
 			}
-			$sql_header .= "CREATE " . ($self->{roles}{type}{$r} ||'USER') . " $r WITH PASSWORD '$secret'";
+			$sql_header .= "CREATE " . ($self->{roles}{type}{$r} ||'USER') . " $r";
+			$sql_header .= " WITH PASSWORD '$secret'" if ($self->{roles}{password_required}{$r} ne 'NO');
 			# It's difficult to parse all oracle privilege. So if one admin option is set we set all PG admin option.
 			if (grep(/YES|1/, @{$self->{roles}{$r}{admin_option}})) {
 				$sql_header .= " CREATEDB CREATEROLE CREATEUSER INHERIT";
@@ -3640,11 +3641,12 @@ sub _get_privilege
 			$roles{type}{$u} = 'USER';
 		}
 		next if  $roles{type}{$u};
-		$str = "SELECT ROLE FROM DBA_ROLES WHERE ROLE='$u'";
+		$str = "SELECT ROLE,PASSWORD_REQUIRED FROM DBA_ROLES WHERE ROLE='$u'";
 		$sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 		$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 		while (my $row = $sth->fetch) {
 			$roles{type}{$u} = 'ROLE';
+			$roles{password_required}{$u} = $row->[1];
 		}
 		$sth->finish();
 	}
