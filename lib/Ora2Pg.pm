@@ -1689,9 +1689,21 @@ LANGUAGE plpgsql ;
 			my @allfct = <IN>;
 			close(IN);
 			my $fcnm = '';
+			my $old_line = '';
 			foreach my $l (@allfct) {
 				chomp($l);
-				if ($l =~ /^(function|procedure)[\s\t]+([^\s\(\t]+)/i) {
+				next if ($l =~ /^[\s\t]*$/);
+				if ($old_line) {
+					$l = $old_line .= ' ' . $l;
+					$old_line = '';
+				}
+				if ($l =~ /^[\s\t]*CREATE OR REPLACE (FUNCTION|PROCEDURE)[\s\t]*$/i) {
+					$old_line = $l;
+					next;
+				}
+				$l =~ s/^[\s\t]*CREATE OR REPLACE (FUNCTION|PROCEDURE)/$1/is;
+				$l =~ s/^[\s\t]*CREATE (FUNCTION|PROCEDURE)/$1/is;
+				if ($l =~ /^(FUNCTION|PROCEDURE)[\s\t]+([^\s\(\t]+)/i) {
 					$fcnm = $2;
 				}
 				next if (!$fcnm);
@@ -1757,11 +1769,21 @@ LANGUAGE plpgsql ;
 			my @allfct = <IN>;
 			close(IN);
 			my $fcnm = '';
+			my $old_line = '';
 			foreach my $l (@allfct) {
 				chomp($l);
-				$l =~ s/^CREATE OR REPLACE (FUNCTION|PROCEDURE)/$1/is;
-				$l =~ s/^CREATE (FUNCTION|PROCEDURE)/$1/is;
-				if ($l =~ /^(function|procedure)[\s\t]+([^\s\(\t]+)/i) {
+				next if ($l =~ /^[\s\t]*$/);
+				if ($old_line) {
+					$l = $old_line .= ' ' . $l;
+					$old_line = '';
+				}
+				if ($l =~ /^[\s\t]*CREATE OR REPLACE (FUNCTION|PROCEDURE)[\s\t]*$/i) {
+					$old_line = $l;
+					next;
+				}
+				$l =~ s/^[\s\t]*CREATE OR REPLACE (FUNCTION|PROCEDURE)/$1/i;
+				$l =~ s/^[\s\t]*CREATE (FUNCTION|PROCEDURE)/$1/i;
+				if ($l =~ /^(FUNCTION|PROCEDURE)[\s\t]+([^\s\(\t]+)/i) {
 					$fcnm = $2;
 				}
 				next if (!$fcnm);
@@ -1831,8 +1853,18 @@ LANGUAGE plpgsql ;
 			close(IN);
 			my $pknm = '';
 			my $before = '';
+			my $old_line = '';
 			foreach my $l (@allpkg) {
 				chomp($l);
+				next if ($l =~ /^[\s\t]*$/);
+				if ($old_line) {
+					$l = $old_line .= ' ' . $l;
+					$old_line = '';
+				}
+				if ($l =~ /^(?:CREATE|CREATE OR REPLACE)?[\s\t]*PACKAGE[\s\t]*$/i) {
+					$old_line = $l;
+					next;
+				}
 				if ($l =~ /^(?:CREATE|CREATE OR REPLACE)?[\s\t]*PACKAGE[\s\t]+([^\t\s]+)[\s\t]*(AS|IS)/is) {
 					$pknm = lc($1);
 				}
@@ -4446,7 +4478,7 @@ sub format_data_parallel
 				my @temptypes :shared;
 				my $tempaction :shared;
 				my @tempsrctypes :shared;
-				my @tempcustomtypes :shared;
+				my %tempcustomtypes :shared;
 				my $temptable :shared;
 				foreach my $elt (@$row)
 				{
@@ -4471,13 +4503,13 @@ sub format_data_parallel
 					push @tempsrctypes,($tempelt);
 				}
 				push @temprecord,(\@tempsrctypes);
-				foreach my $elt (@$custom_types)
+				foreach my $elt (%$custom_types)
 				{
 					my $tempelt :shared;
-					$tempelt=$elt;
-					push @tempcustomtypes,($tempelt);
+					$tempelt=$custom_types->{$elt};
+					push @{$tempcustomtypes{$elt}},@$tempelt;
 				}
-				push @temprecord,(\@tempcustomtypes);
+				push @temprecord,(\%tempcustomtypes);
 				$temptable=$table;
 				push @temprecord,$temptable;
 				$queue_todo->enqueue(\@temprecord);
