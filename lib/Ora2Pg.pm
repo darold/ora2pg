@@ -4507,7 +4507,7 @@ sub format_data_parallel
 				{
 					my $tempelt :shared;
 					$tempelt=$custom_types->{$elt};
-					push @{$tempcustomtypes{$elt}},@$tempelt;
+					push @{$tempcustomtypes{$elt}},($tempelt);
 				}
 				push @temprecord,(\%tempcustomtypes);
 				$temptable=$table;
@@ -4563,7 +4563,6 @@ sub _get_custom_types
 	}
         return @types_found;
 }
-
 
 sub format_data_row
 {
