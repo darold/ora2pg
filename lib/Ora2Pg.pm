@@ -3606,13 +3606,18 @@ sub _get_privilege
 	my %roles = ();
 
 	# Retrieve all privilege per table defined in this database
-	my $str = "SELECT GRANTEE,OWNER,TABLE_NAME,PRIVILEGE FROM DBA_TAB_PRIVS";
-	if ($self->{schema}) {
-		$str .= " WHERE upper(GRANTOR) = '\U$self->{schema}\E'";
-	} else {
-		$str .= " WHERE GRANTOR NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
+	my $str = "SELECT b.GRANTEE,b.OWNER,b.TABLE_NAME,b.PRIVILEGE FROM DBA_TAB_PRIVS b";
+	if (!$self->{export_invalid}) {
+		$str .= " JOIN DBA_OBJECTS a ON (b.TABLE_NAME=a.OBJECT_NAME AND a.OWNER=b.GRANTOR)";
 	}
-	$str .= " ORDER BY TABLE_NAME, GRANTEE";
+	if ($self->{schema}) {
+		$str .= " WHERE upper(b.GRANTOR) = '\U$self->{schema}\E'";
+	} else {
+		$str .= " WHERE b.GRANTOR NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
+	}
+	$str .= " AND a.STATUS='VALID'" if (!$self->{export_invalid});
+	$str .= " ORDER BY b.TABLE_NAME, b.GRANTEE";
+
 	my $error = "\n\nFATAL: You must be connected as an oracle dba user to retrieved grants\n\n";
 	my $sth = $self->{dbh}->prepare($str) or $self->logit($error . "FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -3627,12 +3632,16 @@ sub _get_privilege
 	$sth->finish();
 
 	# Retrieve all privilege per column table defined in this database
-	$str = "SELECT GRANTEE,OWNER,TABLE_NAME,PRIVILEGE,COLUMN_NAME FROM DBA_COL_PRIVS";
-	if ($self->{schema}) {
-		$str .= " WHERE upper(GRANTOR) = '\U$self->{schema}\E'";
-	} else {
-		$str .= " WHERE GRANTOR NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
+	$str = "SELECT b.GRANTEE,b.OWNER,b.TABLE_NAME,b.PRIVILEGE,b.COLUMN_NAME FROM DBA_COL_PRIVS b";
+	if (!$self->{export_invalid}) {
+		$str .= " JOIN DBA_OBJECTS a ON (b.TABLE_NAME=a.OBJECT_NAME AND a.OWNER=b.GRANTOR)";
 	}
+	if ($self->{schema}) {
+		$str .= " WHERE upper(b.GRANTOR) = '\U$self->{schema}\E'";
+	} else {
+		$str .= " WHERE b.GRANTOR NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
+	}
+	$str .= " AND a.STATUS='VALID'" if (!$self->{export_invalid});
 	$sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	while (my $row = $sth->fetch) {
