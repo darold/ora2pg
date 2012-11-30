@@ -1262,7 +1262,7 @@ sub _get_sql_data
 				} else {
 					$sql_output .= "CREATE OR REPLACE VIEW \"$view\" AS ";
 				}
-				$sql_output .= $self->{views}{$view}{text} . ";\n";
+				$sql_output .= $self->{views}{$view}{text} . ";\n\n";
 			} else {
 				if (!$self->{preserve_case}) {
 					$sql_output .= "CREATE OR REPLACE VIEW \L$view\E (";
@@ -1289,7 +1289,7 @@ sub _get_sql_data
 						$self->{views}{$view}{text} =~ s/SELECT[^\s\t]*(.*?)[^\s\t]*FROM/SELECT $clause FROM/is;
 					}
 				}
-				$sql_output .= ") AS " . $self->{views}{$view}{text} . ";\n";
+				$sql_output .= ") AS " . $self->{views}{$view}{text} . ";\n\n";
 			}
 			if ($self->{file_per_table} && !$self->{dbhdest}) {
 				$self->dump($sql_header . $sql_output, $fhdl);
@@ -3924,13 +3924,19 @@ sub _get_views
 	my($self) = @_;
 
 	# Retrieve all views
-	my $str = "SELECT VIEW_NAME,TEXT FROM $self->{prefix}_VIEWS";
-	if (!$self->{schema}) {
-		$str .= " WHERE OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
-	} else {
-		$str .= " WHERE upper(OWNER) = '\U$self->{schema}\E'";
+	my $str = "SELECT VIEW_NAME,TEXT FROM $self->{prefix}_VIEWS v";
+	if (!$self->{export_invalid}) {
+		$str .= " JOIN  $self->{prefix}_OBJECTS a ON (v.VIEW_NAME=a.OBJECT_NAME AND a.OWNER=v.OWNER)";
 	}
-	$str .= " ORDER BY VIEW_NAME";
+
+	if (!$self->{schema}) {
+		$str .= " WHERE v.OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
+	} else {
+		$str .= " WHERE upper(v.OWNER) = '\U$self->{schema}\E'";
+	}
+	$str .= " AND a.OBJECT_TYPE='VIEW' AND a.STATUS='VALID'" if (!$self->{export_invalid});
+	$str .= " ORDER BY v.VIEW_NAME";
+
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
