@@ -138,6 +138,13 @@ our %BOOLEAN_MAP = (
 	'disabled'=> 't',
 );
 
+our @GRANTS = (
+	'SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE',
+	'REFERENCES', 'TRIGGER', 'USAGE', 'CREATE', 'CONNECT',
+	'TEMPORARY', 'TEMP', 'USAGE', 'ALL', 'ALL PRIVILEGES',
+	'EXECUTE'
+);
+
 =head1 PUBLIC METHODS
 
 =head2 new HASH_OPTIONS
@@ -1484,6 +1491,7 @@ LANGUAGE plpgsql ;
 			} elsif ($self->{preserve_case}) {
 				$realtable =  "\"$table\"";
 			}
+
 			if ($self->{grants}{$table}{owner}) {
 				if ($self->{grants}{$table}{type} eq 'function') {
 					$obj = 'FUNCTION';
@@ -1507,7 +1515,12 @@ LANGUAGE plpgsql ;
 			foreach my $usr (sort keys %{$self->{grants}{$table}{privilege}}) {
 				$obj = 'TABLE';
 				$obj = 'FUNCTION' if (grep(/^EXECUTE$/i, @{$self->{grants}{$table}{privilege}{$usr}}));
-				$grants .= "GRANT " . join(',', @{$self->{grants}{$table}{privilege}{$usr}}) . " ON $obj $realtable TO $usr;\n";
+				my $agrants = '';
+				foreach my $g (@GRANTS) {
+					$agrants .= "$g," if (grep(/^$g$/i, @{$self->{grants}{$table}{privilege}{$usr}}));
+				}
+				$agrants =~ s/,$//;
+				$grants .= "GRANT $agrants ON $obj $realtable TO $usr;\n";
 			}
 			$grants .= "\n";
 		}
