@@ -295,8 +295,8 @@ sub plsql_to_plpgsql
 
 		# Replace Oracle substr(string, start_position, length) with
 		# PostgreSQL substring(string from start_position for length)
-		$str =~ s/substr[\s\t]*\(([^;]*),[\s\t]*([^,\s\t]+)[\s\t]*,[\s\t]*([^,\)\s\t]+)[\s\t]*\)/substring($1 from $2 for $3)/igs;
-		$str =~ s/substr[\s\t]*\(([^;]*),[\s\t]*([^,\)\s\t]+)[\s\t]*\)/substring($1 from $2)/igs;
+		$str =~ s/substr[\s\t]*\(([^,]+),[\s\t]*([^,\s\t]+)[\s\t]*,[\s\t]*([^,\)\s\t]+)[\s\t]*\)/substring($1 from $2 for $3)/igs;
+		$str =~ s/substr[\s\t]*\(([^,]+),[\s\t]*([^,\)\s\t]+)[\s\t]*\)/substring($1 from $2)/igs;
 
 		# Replace decode("user_status",'active',"username",null)
 		# PostgreSQL (CASE WHEN "user_status"='ACTIVE' THEN "username" ELSE NULL END)
@@ -340,7 +340,7 @@ sub raise_output
 
 sub replace_sql_type
 {
-        my ($str, $pg_numeric_type, $default_numeric, $pg_integer_type, $nobreak) = @_;
+        my ($str, $pg_numeric_type, $default_numeric, $pg_integer_type) = @_;
 
 
 	$str =~ s/with local time zone/with time zone/igs;

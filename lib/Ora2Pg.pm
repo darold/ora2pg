@@ -4993,7 +4993,7 @@ sub _convert_function
 		$func_args =~ s/IN[\s\t]+OUT/INOUT/s;
 
 		# Now convert types
-		$func_args = Ora2Pg::PLSQL::replace_sql_type($func_args, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type}, 1);
+		$func_args = Ora2Pg::PLSQL::replace_sql_type($func_args, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type});
 
 		#$func_declare = $self->_convert_declare($func_declare);
 		$func_declare = Ora2Pg::PLSQL::replace_sql_type($func_declare, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type});
