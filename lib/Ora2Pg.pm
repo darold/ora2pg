@@ -209,6 +209,9 @@ sub export_schema
 	}
 
 	if ($outfile) {
+		if ($outfile eq $self->{input_file}) {
+			$self->logit("FATAL: input file is the same as output file: $outfile, can not overwrite it.\n",0,1);
+		}
 		# Send output to the specified file
 		if ($outfile =~ /\.gz$/) {
 			use Compress::Zlib;
@@ -442,6 +445,7 @@ sub _init
 	$self->{replace_as_boolean} = ();
 	$self->{ora_boolean_values} = ();
 	$self->{null_equal_empty} = 1;
+	$self->{estimate_cost} = 0;
 	$self->{where} = ();
 	@{$self->{sysusers}} = ('SYSTEM','SYS','DBSNMP','OUTLN','PERFSTAT','CTXSYS','XDB','WMSYS','SYSMAN','SQLTXPLAIN','MDSYS','EXFSYS','ORDSYS','DMSYS','OLAPSYS','FLOWS_020100','FLOWS_FILES','TSMSYS');
 	$self->{ora_reserved_words} = (); 
@@ -484,6 +488,9 @@ sub _init
 	} else {
 		$self->{transaction} = 'SET TRANSACTION ISOLATION LEVEL SERIALIZABLE';
 	}
+
+	# Set default cost unit value to 5 minutes
+	$self->{cost_unit_value} ||= 5;
 
 	# Overwrite configuration with all given parameters
 	# and try to preserve backward compatibility
@@ -702,15 +709,8 @@ sub _init
 		$self->_compile_schema(uc($self->{compile_schema})) if ($self->{compile_schema});
 	} else {
 		$self->{plsql_pgsql} = 1;
-		if (grep(/^$self->{type}$/, 'FUNCTION','PROCEDURE','PACKAGE')) {
+		if (grep(/^$self->{type}$/, 'QUERY', 'FUNCTION','PROCEDURE','PACKAGE')) {
 			$self->export_schema();
-			if ( ($self->{type} eq 'INSERT') || ($self->{type} eq 'COPY') ) {
-				$self->_send_to_pgdb() if ($self->{pg_dsn} && !$self->{dbhdest});
-			} elsif ($self->{dbhdest}) {
-				$self->logit("WARNING: can't use direct import into PostgreSQL with this type of export.\n");
-				$self->logit("Only INSERT or COPY export type can be use with direct import, file output will be used.\n");
-				sleep(2);
-			}
 		} else {
 			$self->logit("FATAL: bad export type using input file option\n", 0, 1);
 		}
@@ -749,7 +749,7 @@ sub _init
 			$self->{dbh}->disconnect() if ($self->{dbh}); 
 			exit 0;
 		} else {
-			warn "type option must be TABLE, VIEW, GRANT, SEQUENCE, TRIGGER, PACKAGE, FUNCTION, PROCEDURE, PARTITION, TYPE, INSERT, COPY, TABLESPACE, SHOW_REPORT, SHOW_VERSION, SHOW_SCHEMA, SHOW_TABLE, SHOW_COLUMN, SHOW_ENCODING, FDW, MVIEW\n";
+			warn "type option must be TABLE, VIEW, GRANT, SEQUENCE, TRIGGER, PACKAGE, FUNCTION, PROCEDURE, PARTITION, TYPE, INSERT, COPY, TABLESPACE, SHOW_REPORT, SHOW_VERSION, SHOW_SCHEMA, SHOW_TABLE, SHOW_COLUMN, SHOW_ENCODING, FDW, MVIEW, QUERY\n";
 		}
 		# Mofify export structure if required
 		if ($self->{type} =~ /^(INSERT|COPY)$/) {
@@ -1683,6 +1683,92 @@ LANGUAGE plpgsql ;
 		return;
 	}
 
+	# Process queries only
+	if ($self->{type} eq 'QUERY') {
+		$self->logit("Parse queries definition...\n", 1);
+		$self->dump($sql_header);
+		my $nothing = 0;
+		my $dirprefix = '';
+		$dirprefix = "$self->{output_dir}/" if ($self->{output_dir});
+		#---------------------------------------------------------
+		# Code to use to find queries parser issues, it load a file
+		# containing the untouched SQL code from Oracle queries
+		#---------------------------------------------------------
+		if ($self->{input_file}) {
+			$self->{functions} = ();
+			$self->logit("Reading input code from file $self->{input_file}...\n", 1);
+			open(IN, "$self->{input_file}");
+			my @allqueries = <IN>;
+			close(IN);
+			my $query = 1;
+			my $content = join('', @allqueries);
+			@allqueries = ();
+			$self->{idxcomment} = 0;
+			my %comments = $self->_remove_comments(\$content);
+			foreach my $l (split(/\n/, $content)) {
+				chomp($l);
+				next if ($l =~ /^[\s\t]*$/);
+				if ($old_line) {
+					$l = $old_line .= ' ' . $l;
+					$old_line = '';
+				}
+				if ( ($l =~ s/^\/$/;/) || ($l =~ /;[\s\t]*$/) ) {
+						$self->{queries}{$query} .= "$l\n";
+						$query++;
+				} else {
+					$self->{queries}{$query} .= "$l\n";
+				}
+			}
+			foreach my $q (keys %{$self->{queries}}) {
+				if ($self->{queries}{$q} !~ /(SELECT|UPDATE|DELETE|INSERT)/is) {
+					delete $self->{queries}{$q};
+				} else {
+					$self->_restore_comments(\$self->{queries}{$q}, \%comments);
+				}
+			}
+		}
+		#--------------------------------------------------------
+
+		my $total_size = 0;
+		my $cost_value = 0;
+		foreach my $q (sort keys %{$self->{queries}}) {
+
+			if ($self->{estimate_cost} && $self->{input_file}) {
+				$total_size += length($self->{queries}{$q});
+				my $cost = Ora2Pg::PLSQL::estimate_cost($self->{queries}{$q});
+				$cost += $Ora2Pg::PLSQL::OBJECT_SCORE{'QUERY'};
+				$cost_value += $cost;
+				$self->logit("Query $q estimated cost: $cost\n", 0);
+				next;
+			}
+			$self->logit("\tDumping query $q...\n", 1);
+			my $fhdl = undef;
+			my %comments = $self->_remove_comments($self->{queries}{$q});
+			if ($self->{plsql_pgsql}) {
+				$sql_output .= Ora2Pg::PLSQL::plsql_to_plpgsql($self->{queries}{$q}, $self->{allow_code_break},$self->{null_equal_empty}, $self->{type});
+			} else {
+				$sql_output .= $self->{queries}{$q};
+			}
+			$sql_output .= "\n\n";
+			$self->_restore_comments(\$sql_output, \%comments);
+			$nothing++;
+		}
+		if ($self->{estimate_cost} && $self->{input_file}) {
+			$self->logit("Total number of queries: " . (scalar keys %{$self->{queries}}) . ".\n", 0);
+			$self->logit("Total size of queries code: $total_size bytes.\n", 0);
+			$self->logit("Total estimated cost: $cost_value units, " . $self->_get_human_cost($cost_value) . ".\n", 0);
+			$self->{queries} = ();
+			return;
+		}
+		if (!$nothing) {
+			$sql_output = "-- Nothing found of type $self->{type}\n";
+		}
+		$self->dump($sql_output);
+		$self->{queries} = ();
+		return;
+	}
+
+
 	# Process functions only
 	if ($self->{type} eq 'FUNCTION') {
 		use constant SQL_DATATYPE => 2;
@@ -1728,11 +1814,20 @@ LANGUAGE plpgsql ;
 		}
 		#--------------------------------------------------------
 
+		my $total_size = 0;
+		my $cost_value = 0;
 		foreach my $fct (sort keys %{$self->{functions}}) {
 
 			# forget or not this object if it is in the exclude or allow lists.
 			next if ($self->skip_this_object('FUNCTION', $fct));
-
+			if ($self->{estimate_cost} && $self->{input_file}) {
+				$total_size += length($self->{functions}->{$fct});
+				my $cost = Ora2Pg::PLSQL::estimate_cost($self->{functions}->{$fct});
+				$cost += $Ora2Pg::PLSQL::OBJECT_SCORE{'FUNCTION'};
+				$cost_value += $cost;
+				$self->logit("Function $fct estimated cost: $cost\n", 0);
+				next;
+			}
 			$self->logit("\tDumping function $fct...\n", 1);
 			my $fhdl = undef;
 			if ($self->{file_per_function} && !$self->{dbhdest}) {
@@ -1754,6 +1849,13 @@ LANGUAGE plpgsql ;
 				$sql_output = '';
 			}
 			$nothing++;
+		}
+		if ($self->{estimate_cost} && $self->{input_file}) {
+			$self->logit("Total number of functions: " . (scalar keys %{$self->{functions}}) . ".\n", 0);
+			$self->logit("Total size of function code: $total_size bytes.\n", 0);
+			$self->logit("Total estimated cost: $cost_value units, " . $self->_get_human_cost($cost_value) . ".\n", 0);
+			$self->{functions} = ();
+			return;
 		}
 		if (!$nothing) {
 			$sql_output = "-- Nothing found of type $self->{type}\n";
@@ -1807,11 +1909,20 @@ LANGUAGE plpgsql ;
 			}
 		}
 		#--------------------------------------------------------
-
+                my $total_size = 0;
+                my $cost_value = 0;
 		foreach my $fct (sort keys %{$self->{procedures}}) {
 
 			# forget or not this object if it is in the exclude or allow lists.
 			next if ($self->skip_this_object('PROCEDURE', $fct));
+			if ($self->{estimate_cost} && $self->{input_file}) {
+				$total_size += length($self->{procedures}->{$fct});
+				my $cost = Ora2Pg::PLSQL::estimate_cost($self->{procedures}->{$fct});
+				$cost += $Ora2Pg::PLSQL::OBJECT_SCORE{'PROCEDURE'};
+				$cost_value += $cost;
+				$self->logit("Function $fct estimated cost: $cost\n", 0);
+				next;
+			}
 
 			$self->logit("\tDumping procedure $fct...\n", 1);
 			my $fhdl = undef;
@@ -1834,6 +1945,13 @@ LANGUAGE plpgsql ;
 				$sql_output = '';
 			}
 			$nothing++;
+		}
+		if ($self->{estimate_cost} && $self->{input_file}) {
+			$self->logit("Total number of functions: " . (scalar keys %{$self->{procedures}}) . ".\n", 0);
+			$self->logit("Total size of function code: $total_size bytes.\n", 0);
+			$self->logit("Total estimated cost: $cost_value units, " . $self->_get_human_cost($cost_value) . ".\n", 0);
+			$self->{procedures} = ();
+			return;
 		}
 		if (!$nothing) {
 			$sql_output = "-- Nothing found of type $self->{type}\n";
@@ -1874,11 +1992,11 @@ LANGUAGE plpgsql ;
 					$l = $old_line .= ' ' . $l;
 					$old_line = '';
 				}
-				if ($l =~ /^(?:CREATE|CREATE OR REPLACE)?[\s\t]*PACKAGE[\s\t]*$/i) {
+				if ($l =~ /^(?:CREATE|CREATE OR REPLACE)?[\s\t]*PACKAGE[\s\t]*(?:BODY[\s\t]*)?$/i) {
 					$old_line = $l;
 					next;
 				}
-				if ($l =~ /^(?:CREATE|CREATE OR REPLACE)?[\s\t]*PACKAGE[\s\t]+([^\t\s]+)[\s\t]*(AS|IS)/is) {
+				if ($l =~ /^(?:CREATE|CREATE OR REPLACE)?[\s\t]*PACKAGE[\s\t]+(?:BODY[\s\t]+)?([^\t\s]+)[\s\t]*(AS|IS)/is) {
 					$pknm = lc($1);
 				}
 				if ($pknm) {
@@ -1888,6 +2006,8 @@ LANGUAGE plpgsql ;
 		}
 		#--------------------------------------------------------
 
+		my $total_size = 0;
+		my $number_fct = 0;
 		foreach my $pkg (sort keys %{$self->{packages}}) {
 			next if (!$self->{packages}{$pkg});
 			my $pkgbody = '';
@@ -1907,11 +2027,34 @@ LANGUAGE plpgsql ;
 				$pkgbody = $self->{packages}{$pkg};
 			} else {
 				my @codes = split(/CREATE(?: OR REPLACE)? PACKAGE BODY/, $self->{packages}{$pkg});
-				foreach my $txt (@codes) {
-					$pkgbody .= $self->_convert_package("CREATE OR REPLACE PACKAGE BODY$txt");
-					$pkgbody =~ s/[\r\n]*END;[\t\s\r\n]*$//is;
-					$pkgbody =~ s/([\r\n]*;)[\t\s\r\n]*$/$1/is;
+				if ($self->{estimate_cost} && $self->{input_file}) {
+					$total_size += length($self->{packages}->{$pkg});
+					foreach my $txt (@codes) {
+						my %infos = $self->_lookup_package("CREATE OR REPLACE PACKAGE BODY$txt");
+						foreach my $f (sort keys %infos) {
+							next if (!$f);
+							my $cost = Ora2Pg::PLSQL::estimate_cost($infos{$f});
+							$cost += $Ora2Pg::PLSQL::OBJECT_SCORE{'FUNCTION'};
+							$self->logit("Function $f estimated cost: $cost\n", 0);
+							$cost_value += $cost;
+							$number_fct++;
+						}
+						$cost_value += $Ora2Pg::PLSQL::OBJECT_SCORE{'PACKAGE BODY'};
+					}
+				} else {
+					foreach my $txt (@codes) {
+						$pkgbody .= $self->_convert_package("CREATE OR REPLACE PACKAGE BODY$txt");
+						$pkgbody =~ s/[\r\n]*END;[\t\s\r\n]*$//is;
+						$pkgbody =~ s/([\r\n]*;)[\t\s\r\n]*$/$1/is;
+					}
 				}
+			}
+			if ($self->{estimate_cost} && $self->{input_file}) {
+				$self->logit("Total size of package code: $total_size bytes.\n", 0);
+				$self->logit("Total number of functions found inside those packages: $number_fct.\n", 0);
+				$self->logit("Total estimated cost: $cost_value units, " . $self->_get_human_cost($cost_value) . ".\n", 0);
+				$self->{packages} = ();
+				return;
 			}
 			if ($pkgbody && ($pkgbody =~ /[a-z]/is)) {
 				$sql_output .= "-- Oracle package '$pkg' declaration, please edit to match PostgreSQL syntax.\n";
@@ -3739,7 +3882,6 @@ FROM $self->{prefix}_IND_COLUMNS, $self->{prefix}_INDEXES
 WHERE $self->{prefix}_IND_COLUMNS.TABLE_NAME='$table' $owner
 AND $self->{prefix}_INDEXES.GENERATED <> 'Y'
 AND $self->{prefix}_INDEXES.TEMPORARY <> 'Y'
-AND $self->{prefix}_INDEXES.DROPPED <> 'Y'
 AND $self->{prefix}_INDEXES.INDEX_NAME=$self->{prefix}_IND_COLUMNS.INDEX_NAME
 ORDER BY $self->{prefix}_IND_COLUMNS.COLUMN_POSITION
 END
@@ -5643,10 +5785,14 @@ sub _show_infos
 			$self->_convert_type($tpe->{code});
 		}
 
+		my $cost_header = '';
+		$cost_header = "\tEstimated cost" if ($self->{estimate_cost});
 		$self->logit("--------------------------------------\n", 0);
-		$self->logit("Object\tNumber\tInvalid\tComments\n", 0);
+		$self->logit("Object\tNumber\tInvalid$cost_header\tComments\n", 0);
 		$self->logit("--------------------------------------\n", 0);
-		my $all_invalid = 0;
+		my $total_cost_value = 0;
+		my $total_object_invalid = 0;
+		my $total_object_number = 0;
 		foreach my $typ (sort keys %report) {
 			next if ($typ eq 'PACKAGE');
 			my $number = 0;
@@ -5654,35 +5800,39 @@ sub _show_infos
 			for (my $i = 0; $i <= $#{$report{$typ}}; $i++) {
 				$number++;
 				$invalid++ if ($report{$typ}[$i]->{invalid});
-				$all_invalid += $invalid;
 			}
+			$total_object_invalid += $invalid;
+			$total_object_number += $number;
 			my $comment = '';
+			my $cost_value = 0;
+			my $real_number = 0;
+			my $detail = '';
+			if ($number > 0) {
+				$real_number = ($number-$invalid);
+				$real_number = $number if ($self->{export_invalid});
+			}
+			$cost_value = ($real_number*$Ora2Pg::PLSQL::OBJECT_SCORE{$typ}) if ($self->{estimate_cost});
 			if ($typ eq 'INDEX') {
-				my $detail = '';
 				my $bitmap = 0;
 				foreach my $t (sort keys %INDEX_TYPE) {
 					my $len = ($#{$all_indexes{$t}}+1);
 					$detail .= ". $len $INDEX_TYPE{$t} index(es)" if ($len);
 				}
+				$cost_value = ($Ora2Pg::PLSQL::OBJECT_SCORE{$typ}*$total_index) if ($self->{estimate_cost});
 				$comment = "$total_index index(es) are concerned by the export, others are automatically generated and will do so on PostgreSQL";
 				$comment .= $detail;
-				$comment .= " Note that bitmap index(es) will be exported as b-tree index(es) if any. Cluster, domain, bitmap join and IOT indexes will not be exported at all. Reverse indexes are not exported too, you may use a trigram-based index (see pg_trgm) or a reverse() function based index and search.";
+				$comment .= ". Note that bitmap index(es) will be exported as b-tree index(es) if any. Cluster, domain, bitmap join and IOT indexes will not be exported at all. Reverse indexes are not exported too, you may use a trigram-based index (see pg_trgm) or a reverse() function based index and search.";
 				$comment .= " You may also use 'varchar_pattern_ops', 'text_pattern_ops' or 'bpchar_pattern_ops' operators in your indexes to improve search with the LIKE operator respectively into varchar, text or char columns.";
 			} elsif ($typ eq 'MATERIALIZED VIEW') {
 				$comment = "All materialized view will be exported as snapshot materialized views, they are only updated when fully refreshed.";
 			} elsif ($typ eq 'TABLE') {
 				my $exttb = scalar keys %{$self->{external_table}};
 				if ($exttb) {
-					if ($self->{external_to_fdw}) {
-						$comment = "$exttb external tables will be exported as file_fdw foreign tables, see EXTERNAL_TO_FDW configuration directive to disable this feature.";
+					if (!$self->{external_to_fdw}) {
+						$comment = "$exttb external table(s) will be exported as standard table. See EXTERNAL_TO_FDW configuration directive to export as file_fdw foreign tables or use COPY in your code if you just want to load data from external files.";
 					} else {
-						if (!$self->{external_to_fdw}) {
-							$comment = "$exttb external table(s) will be exported as standard table. See EXTERNAL_TO_FDW configuration directive to export as file_fdw foreign tables or use COPY in your code if you just want to load data from external files.";
-						} else {
-							$comment = "$exttb external table(s) will be exported as file_fdw foreign table. See EXTERNAL_TO_FDW configuration directive to export as standard table or use COPY in your code if you just want to load data from external files.";
-						}
+						$comment = "$exttb external table(s) will be exported as file_fdw foreign table. See EXTERNAL_TO_FDW configuration directive to export as standard table or use COPY in your code if you just want to load data from external files.";
 					}
-					$number -= $exttb;
 				}
 
 				my $sth = $self->_table_info()  or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -5736,10 +5886,11 @@ sub _show_infos
 			} elsif ($typ eq 'TYPE') {
 				my $detail = '';
 				my $total_type = 0;
-				foreach my $typ (sort keys %{$self->{type_of_type}}) {
-					$total_type++ if (!grep(/^$typ$/, 'Associative Arrays','Type Boby','Type with member method'));
-					$detail .= ". $self->{type_of_type}{$typ} $typ" if ($self->{type_of_type}{$typ});
+				foreach my $t (sort keys %{$self->{type_of_type}}) {
+					$total_type++ if (!grep(/^$t$/, 'Associative Arrays','Type Boby','Type with member method'));
+					$detail .= ". $self->{type_of_type}{$t} $t" if ($self->{type_of_type}{$t});
 				}
+				$cost_value = ($Ora2Pg::PLSQL::OBJECT_SCORE{$typ}*$total_type) if ($self->{estimate_cost});
 				$comment = "$total_type type(s) are concerned by the export, others are not supported";
 				$comment .= $detail;
 				$comment .= '. Note that Type inherited and Subtype are converted as table, type inheritance is not supported.';
@@ -5749,56 +5900,79 @@ sub _show_infos
 				my $triggers = $self->_get_triggers();
 				my $total_size = 0;
 				foreach my $trig (@{$triggers}) {
-					# remove C style comments
-					$trig->[4] =~ s/\\\*(.*?)\*\///gs;
-					# Remove SQL comments and empty line
-					my @content = split(/[\r\n]/, $trig->[4]);
-					map { s/[\s\t]*\-\-.*// } @content;
-					@content = grep(!/^$/, @content);
-					$total_size += length(join("\n", @content));
+					$total_size += length($trig->[4]);
+					if ($self->{estimate_cost}) {
+						my $cost = Ora2Pg::PLSQL::estimate_cost($trig->[4]);
+						$cost_value += $cost;
+						$detail .= "$trig->[0]: $cost, ";
+					}
 				}
-				$comment = "Total size of trigger code: $total_size.";
+				$comment = "Total size of trigger code: $total_size bytes.";
+				if ($detail) {
+					$detail =~ s/, $/./;
+					$comment .= " " . $detail;
+				}
 			} elsif ($typ eq 'SEQUENCE') {
 				$comment = "Sequences are fully supported, but all call to sequence_name.NEXTVAL or sequence_name.CURRVAL will be transformed into NEXTVAL('sequence_name') or CURRVAL('sequence_name').";
 			} elsif ($typ eq 'FUNCTION') {
 				my $functions = $self->_get_functions();
 				my $total_size = 0;
 				foreach my $fct (keys %{$functions}) {
-					# remove C style comments
-					$functions->{$fct} =~ s/\\\*(.*?)\*\///gs;
-					# Remove SQL comments and empty line
-					my @content = split(/[\r\n]/, $functions->{$fct});
-					map { s/[\s\t]*\-\-.*// } @content;
-					@content = grep(!/^$/, @content);
-					$total_size += length(join("\n", @content));
+					$total_size += length($functions->{$fct});
+					if ($self->{estimate_cost}) {
+						my $cost = Ora2Pg::PLSQL::estimate_cost($functions->{$fct});
+						$cost_value += $cost;
+						$detail .= "$fct: $cost, ";
+					}
 				}
-				$comment = "Total size of function code: $total_size.";
+				$comment = "Total size of function code: $total_size bytes.";
+				if ($detail) {
+					$detail =~ s/, $/./;
+					$comment .= " " . $detail;
+				}
 			} elsif ($typ eq 'PROCEDURE') {
 				my $procedures = $self->_get_procedures();
 				my $total_size = 0;
 				foreach my $proc (keys %{$procedures}) {
-					# remove C style comments
-					$procedures->{$proc} =~ s/\\\*(.*?)\*\///gs;
-					# Remove SQL comments and empty line
-					my @content = split(/[\r\n]/, $procedures->{$proc});
-					map { s/[\s\t]*\-\-.*// } @content;
-					@content = grep(!/^$/, @content);
-					$total_size += length(join("\n", @content));
+					$total_size += length($procedures->{$proc});
+					if ($self->{estimate_cost}) {
+						my $cost = Ora2Pg::PLSQL::estimate_cost($procedures->{$proc});
+						$cost_value += $cost;
+						$detail .= "$proc: $cost, ";
+					}
 				}
-				$comment = "Total size of procedure code: $total_size.";
+				$comment = "Total size of procedure code: $total_size bytes.";
+				if ($detail) {
+					$detail =~ s/, $/./;
+					$comment .= " " . $detail;
+				}
 			} elsif ($typ eq 'PACKAGE BODY') {
 				my $packages = $self->_get_packages();
 				my $total_size = 0;
+				my $number_fct = 0;
 				foreach my $pkg (keys %{$packages}) {
-					# remove C style comments
-					$packages->{$pkg} =~ s/\\\*(.*?)\*\///gs;
-					# Remove SQL comments and empty line
-					my @content = split(/[\r\n]/, $packages->{$pkg});
-					map { s/[\s\t]*\-\-.*// } @content;
-					@content = grep(!/^$/, @content);
-					$total_size += length(join("\n", @content));
+					next if (!$packages->{$pkg});
+					$total_size += length($packages->{$pkg});
+					my @codes = split(/CREATE(?: OR REPLACE)? PACKAGE BODY/, $packages->{$pkg});
+					foreach my $txt (@codes) {
+						my %infos = $self->_lookup_package("CREATE OR REPLACE PACKAGE BODY$txt");
+						foreach my $f (sort keys %infos) {
+							next if (!$f);
+							if ($self->{estimate_cost}) {
+								my $cost = Ora2Pg::PLSQL::estimate_cost($infos{$f});
+								$cost_value += $cost;
+								$detail .= "$f: $cost, ";
+							}
+							$number_fct++;
+						}
+					}
+					$cost_value += ($number_fct*$Ora2Pg::PLSQL::OBJECT_SCORE{'FUNCTION'}) if ($self->{estimate_cost});
 				}
-				$comment = "Total size of package code: $total_size.";
+				$comment = "Total size of package code: $total_size bytes. Number of procedures and functions found inside those packages: $number_fct";
+				if ($detail) {
+					$detail =~ s/, $/./;
+					$comment .= ". " . $detail;
+				}
 			} elsif ($typ eq 'SYNONYME') {
 				$comment = "SYNONYME are not exported at all. An usual workaround is to use View instead or set the PostgreSQL search_path in your session to access object outside the current schema.";
 			} elsif ($typ eq 'TABLE PARTITION') {
@@ -5815,19 +5989,45 @@ sub _show_infos
 			} elsif ($typ eq 'VIEW') {
 				$comment = "Views are fully supported, but if you have updatable views you will need to use INSTEAD OF triggers.";
 			}
-			$self->logit("$typ\t" . ($number-$invalid) . "\t$invalid\t$comment\n", 0) if ($number > 0);
+			$total_cost_value += $cost_value;
+			if ($self->{estimate_cost}) {
+				$self->logit("$typ\t" . ($number-$invalid) . "\t$invalid\t$cost_value\t$comment\n", 0);
+			} else {
+				$self->logit("$typ\t" . ($number-$invalid) . "\t$invalid\t$comment\n", 0);
+			}
 		}
 		my %dblink = $self->_get_dblink();
-		if (scalar keys %dblink > 0) {
-			my $comment = "Database links will not be exported. You may try the dblink perl contrib module or use the SQL/MED PostgreSQL features with the different Foreign Data Wrapper (FDW) extentions.";
-			$self->logit("DATABASE LINK\t" . (scalar keys %dblink) . "\t\t$comment\n", 0);
+		my $ndlink = scalar keys %dblink;
+		$total_object_number += $ndlink;
+		my $comment = "Database links will not be exported. You may try the dblink perl contrib module or use the SQL/MED PostgreSQL features with the different Foreign Data Wrapper (FDW) extentions.";
+		if ($self->{estimate_cost}) {
+			$cost_value = ($Ora2Pg::PLSQL::OBJECT_SCORE{'DATABASE LINK'}*$ndlink);
+			$self->logit("DATABASE LINK\t$ndlink\t0\t$cost_value\t$comment\n", 0);
+			$total_cost_value += $cost_value;
+		} else {
+			$self->logit("DATABASE LINK\t$ndlink\t0\t$comment\n", 0);
 		}
 
 		my %jobs = $self->_get_job();
-		if (scalar keys %jobs > 0) {
-			my $comment = "Job are not exported. You may set external cron job with them.";
-			$self->logit("JOB\t" . (scalar keys %jobs) . "\t\t$comment\n", 0);
+		my $njob = scalar keys %jobs;
+		$total_object_number += $njob;
+		$comment = "Job are not exported. You may set external cron job with them.";
+		if ($self->{estimate_cost}) {
+			$cost_value = ($Ora2Pg::PLSQL::OBJECT_SCORE{'JOB'}*$ndlink);
+			$self->logit("JOB\t$njob\t0\t$cost_value\t$comment\n", 0);
+			$total_cost_value += $cost_value;
+		} else {
+			$self->logit("JOB\t$njob\t0\t$comment\n", 0);
 		}
+		$self->logit("--------------------------------------\n", 0);
+		if ($self->{estimate_cost}) {
+			my $human_cost = $self->_get_human_cost($total_cost_value);
+			$comment = "$total_cost_value cost migration units means approximatively $human_cost.\n";
+			$self->logit("Total\t$total_object_number\t$total_object_invalid\t$total_cost_value\t$comment\n", 0);
+		} else {
+			$self->logit("Total\t$total_object_number\t$total_object_invalid\n", 0);
+		}
+		$self->logit("--------------------------------------\n", 0);
 	} elsif ($type eq 'SHOW_SCHEMA') {
 		# Get all tables information specified by the DBI method table_info
 		$self->logit("Showing all schema...\n", 1);
@@ -6196,6 +6396,90 @@ sub skip_this_object
 BEGIN
 {
 	build_escape_bytea();
+}
+
+
+=head2 _lookup_package
+
+This function is used to look at Oracle PACKAGE code to estimate the cost
+of a migration. It return an hash: function name => function code
+
+=cut
+
+sub _lookup_package
+{
+	my ($self, $plsql) = @_;
+
+	my $content = '';
+	my %infos = ();
+	if ($plsql =~ /PACKAGE[\s\t]+BODY[\s\t]*([^\s\t]+)[\s\t]*(AS|IS)[\s\t]*(.*)/is) {
+		my $pname = $1;
+		my $type = $2;
+		$content = $3;
+		$pname =~ s/"//g;
+		$self->logit("Looking at package $pname...\n", 1);
+		$self->{idxcomment} = 0;
+		$content =~ s/END[^;]*;$//is;
+		my %comments = $self->_remove_comments(\$content);
+		my @functions = $self->_extract_functions($content);
+		foreach my $f (@functions) {
+			next if (!$f);
+			my $func_name = $self->_lookup_function($f, $pname);
+			$infos{"$pname.$func_name"} = $f if ($func_name);
+		}
+	}
+
+	return %infos;
+}
+
+=head2 _lookup_function
+
+This function is used to look at Oracle FUNCTION code to estimate
+the cost of a migration.
+
+Return the function name and the code
+
+=cut
+
+sub _lookup_function
+{
+	my ($self, $plsql, $pname) = @_;
+
+	my %fct_infos = ();
+
+	my $func_name = '';
+
+	# Split data into declarative and code part
+	my ($func_declare, $func_code) = split(/\bBEGIN\b/i,$plsql,2);
+	if ( $func_declare =~ s/(.*?)\b(FUNCTION|PROCEDURE)[\s\t]+([^\s\t\(]+)[\s\t]*(\([^\)]*\)|[\s\t]*)//is ) {
+		$func_name = $3;
+		$func_name =~ s/"//g;
+
+		# forget or not this object if it is in the exclude or allow lists.
+		$func_name = '' if ($self->skip_this_object('FUNCTION', $func_name));
+	}
+
+	return $func_name;
+}
+
+sub _get_human_cost
+{
+	my ($self, $total_cost_value) = @_;
+
+	return 0 if (!$total_cost_value);
+
+	my $human_cost = $total_cost_value * $self->{cost_unit_value};
+	if ($human_cost > 450) {
+		my $tmp = $human_cost/450;
+		$tmp++ if ($tmp =~ s/\.\d+//);
+		$human_cost = "$tmp man day(s)";
+	} else {
+		my $tmp = $human_cost/60;
+		$tmp++ if ($tmp =~ s/\.\d+//);
+		$human_cost = "$tmp man hour(s)";
+	} 
+
+	return $human_cost;
 }
 
 1;
