@@ -6469,8 +6469,8 @@ sub _get_human_cost
 	return 0 if (!$total_cost_value);
 
 	my $human_cost = $total_cost_value * $self->{cost_unit_value};
-	if ($human_cost > 450) {
-		my $tmp = $human_cost/450;
+	if ($human_cost >= 420) {
+		my $tmp = $human_cost/420;
 		$tmp++ if ($tmp =~ s/\.\d+//);
 		$human_cost = "$tmp man day(s)";
 	} else {
