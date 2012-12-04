@@ -133,7 +133,7 @@
 .\" ========================================================================
 .\"
 .IX Title "ORA2PG 1"
-.TH ORA2PG 1 "2012-11-29" "perl v5.10.1" "User Contributed Perl Documentation"
+.TH ORA2PG 1 "2012-12-04" "perl v5.10.1" "User Contributed Perl Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -159,7 +159,7 @@ only thing you have to modify is the configuration file ora2pg.conf by setting
 the \s-1DSN\s0 to the Oracle database and optionaly the name of a schema. Once that's
 done you just have to set the type of export you want: \s-1TABLE\s0 with constraints,
 \&\s-1VIEW\s0, \s-1MVIEW\s0, \s-1TABLESPACE\s0, \s-1SEQUENCE\s0, \s-1INDEXES\s0, \s-1TRIGGER\s0, \s-1GRANT\s0, \s-1FUNCTION\s0, \s-1PROCEDURE\s0,
-\&\s-1PACKAGE\s0, \s-1PARTITION\s0, \s-1TYPE\s0, \s-1INSERT\s0 or \s-1COPY\s0, \s-1FDW\s0.
+\&\s-1PACKAGE\s0, \s-1PARTITION\s0, \s-1TYPE\s0, \s-1INSERT\s0 or \s-1COPY\s0, \s-1FDW\s0, \s-1QUERY\s0.
 .PP
 By default Ora2Pg exports to a file that you can load into PostgreSQL with the
 psql client, but you can also import directly into a PostgreSQL database by
@@ -185,6 +185,10 @@ Features included:
 \&        \- Works on any plateform.
 \&        \- Export Oracle tables as foreign data wrapper tables.
 \&        \- Export materialized view.
+\&        \- Estimation cost of an Oracle database migration.
+\&        \- Estimation cost of PL/SQL migration from external file.
+\&        \- Estimation cost of Oracle SQL queries.
+\&        \- Show a detailled report of an Oracle database content.
 .Ve
 .PP
 Ora2Pg do its best to automatically convert your Oracle database to PostgreSQL
@@ -324,6 +328,10 @@ Here are all command line parameters available when using ora2pg:
 \&            \-\-nls_lang code: use this to set the Oracle NLS_LANG client encoding.
 \&            \-\-client_encoding code: Use this to set the PostgreSQL client encoding.
 \&            \-\-view_as_table str: coma separated list of view to export as table.
+\&            \-\-estimate_cost   : activate the migration cost evalution with SHOW_REPORT
+\&            \-\-cost_unit_value minutes: number of minutes for a cost evalution unit.
+\&                          default: 5 minutes, correspond to a migration conducted by
+\&                          an expert. Set it to 10 or 15 if this is your first migration.
 \&
 \&        See full documentation at http://ora2pg.darold.net/ for more help or see
 \&        manpage with \*(Aqman ora2pg\*(Aq.
@@ -554,6 +562,7 @@ Here are the different values of the \s-1TYPE\s0 directive, default is \s-1TABLE
 \&        \- TYPE: Extract user defined Oracle type.
 \&        \- FDW: Export Oracle tables as foreign table for oracle_fdw.
 \&        \- MVIEW: Export materialized view.
+\&        \- QUERY: Try to automatically convert Oracle SQL queries.
 .Ve
 .Sp
 Only one type of export can be perform at the same time so the \s-1TYPE\s0 directive
@@ -562,7 +571,7 @@ be registered.
 .Sp
 Some export type can not or should not be load directly into the PostgreSQL
 database and still require little manual editing. This is the case for \s-1GRANT\s0,
-\&\s-1TABLESPACE\s0, \s-1TRIGGER\s0, \s-1FUNCTION\s0, \s-1PROCEDURE\s0, \s-1TYPE\s0 and \s-1PACKAGE\s0 export types
+\&\s-1TABLESPACE\s0, \s-1TRIGGER\s0, \s-1FUNCTION\s0, \s-1PROCEDURE\s0, \s-1TYPE\s0, \s-1QUERY\s0 and \s-1PACKAGE\s0 export types
 especially if you have \s-1PLSQL\s0 code or Oracle specific \s-1SQL\s0 in it.
 .Sp
 For \s-1TABLESPACE\s0 you must ensure that file path exist on the system.
@@ -609,17 +618,17 @@ Here is an example of the \s-1SHOW_COLUMN\s0 output:
 \&                COUNTRY_ID : CHAR(2) => char(2)
 .Ve
 .Sp
+Those extraction keyword are use to only display the requested information and
+exit. This allow you to quickly know on what you are going to work.
+.Sp
+The \s-1SHOW_COLUMN\s0 allow an other ora2pg command line option: '\-\-allow relname'
+or '\-a relname' to limit the displayed information to the given table.
+.Sp
 Since Ora2Pg v8.2 there's a new export type:
 .Sp
 .Vb 1
 \&        SHOW_ENCODING : display the Oracle session encoding, useful to set NSL_LANG.
 .Ve
-.Sp
-Those extraction keyword are use to only display the requested information and
-exit. This allow you to quickly know on what you are going to work.
-.Sp
-The \s-1SHOW_COLUMN\s0 allow an other ora2pg command line option: '\-\-xtable relname'
-or '\-x relname' to limit the displayed information to the given table.
 .Sp
 Since release v8.12, Ora2Pg allow you to export your Oracle Table definition to
 be use with the oracle_fdw foreign data wrapper. By using type \s-1FDW\s0 your Oracle
@@ -636,6 +645,74 @@ tables will be exported as follow:
 Now you can use the table like a regular PostgreSQL table.
 .Sp
 See http://pgxn.org/dist/oracle_fdw/ for more information on this foreign data wrapper.
+.Sp
+Release 10.0 add e new export type destinated to evaluate the content of the database
+to migrate, in terms of number of object and cost to end the migration:
+.Sp
+.Vb 1
+\&        SHOW_REPORT  : show a detailled report of the Oracle database content.
+.Ve
+.Sp
+Here is a sample of report:
+.Sp
+.Vb 6
+\&        \-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-
+\&        Ora2Pg: Oracle Database Content Report
+\&        \-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-
+\&        Version Oracle Database 10g Express Edition Release 10.2.0.1.0
+\&        Schema  HR
+\&        Size  880.00 MB
+\&         
+\&        \-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-
+\&        Object  Number  Invalid Comments
+\&        \-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-
+\&        CLUSTER   2 0 Clusters are not supported and will not be exported.
+\&        FUNCTION  40  0 Total size of function code: 81992.
+\&        INDEX     435 0 232 index(es) are concerned by the export, others are automatically generated and will
+\&                                        do so on PostgreSQL. 1 bitmap index(es). 230 b\-tree index(es). 1 reversed b\-tree index(es)
+\&                                        Note that bitmap index(es) will be exported as b\-tree index(es) if any. Cluster, domain,
+\&                                        bitmap join and IOT indexes will not be exported at all. Reverse indexes are not exported
+\&                                        too, you may use a trigram\-based index (see pg_trgm) or a reverse() function based index
+\&                                        and search. You may also use \*(Aqvarchar_pattern_ops\*(Aq, \*(Aqtext_pattern_ops\*(Aq or \*(Aqbpchar_pattern_ops\*(Aq
+\&                                        operators in your indexes to improve search with the LIKE operator respectively into
+\&                                        varchar, text or char columns.
+\&        MATERIALIZED VIEW 1 0 All materialized view will be exported as snapshot materialized views, they
+\&                                        are only updated when fully refreshed.
+\&        PACKAGE BODY  2 1 Total size of package code: 20700.
+\&        PROCEDURE 7 0 Total size of procedure code: 19198.
+\&        SEQUENCE  160 0 Sequences are fully supported, but all call to sequence_name.NEXTVAL or sequence_name.CURRVAL
+\&                                        will be transformed into NEXTVAL(\*(Aqsequence_name\*(Aq) or CURRVAL(\*(Aqsequence_name\*(Aq).
+\&        TABLE     265 0 1 external table(s) will be exported as standard table. See EXTERNAL_TO_FDW configuration
+\&                                        directive to export as file_fdw foreign tables or use COPY in your code if you just
+\&                                        want to load data from external files. 2 binary columns. 4 unknow types.
+\&        TABLE PARTITION 8 0 Partitions are exported using table inheritance and check constraint. 1 HASH partitions.
+\&                                        2 LIST partitions. 6 RANGE partitions. Note that Hash partitions are not supported.
+\&        TRIGGER   30  0 Total size of trigger code: 21677.
+\&        TYPE      7 1 5 type(s) are concerned by the export, others are not supported. 2 Nested Tables.
+\&                                        2 Object type. 1 Subtype. 1 Type Boby. 1 Type inherited. 1 Varrays. Note that Type
+\&                                        inherited and Subtype are converted as table, type inheritance is not supported.
+\&        TYPE BODY 0 3 Export of type with member method are not supported, they will not be exported.
+\&        VIEW      7 0 Views are fully supported, but if you have updatable views you will need to use
+\&                                        INSTEAD OF triggers.
+\&        DATABASE LINK 1 0 Database links will not be exported. You may try the dblink perl contrib module or use
+\&                                        the SQL/MED PostgreSQL features with the different Foreign Data Wrapper (FDW) extentions.
+\&                                        
+\&        Note: Invalid code will not be exported unless the EXPORT_INVALID configuration directive is activated.
+.Ve
+.Sp
+There also a more advanced report with migration cost. See the dedicated chapter
+about Migration Cost Evaluation.
+.IP "\s-1ESTIMATE_COST\s0" 4
+.IX Item "ESTIMATE_COST"
+Activate the migration cost evaluation. Must only be used with \s-1SHOW_REPORT\s0,
+\&\s-1FUNCTION\s0, \s-1PROCEDURE\s0, \s-1PACKAGE\s0 and \s-1QUERY\s0 export type. Default is disabled.
+You may wat to use the \-\-estimate_cost command line option instead to activate
+this functionnality.
+.IP "\s-1COST_UNIT_VALUE\s0" 4
+.IX Item "COST_UNIT_VALUE"
+Set the value in minutes of the migration cost evaluation unit. Default
+is five minutes per unit. See \-\-cost_unit_value to change the unit value
+at command line.
 .IP "\s-1THREAD_COUNT\s0" 4
 .IX Item "THREAD_COUNT"
 This configuration directive adds multi-threading support to data export type,
