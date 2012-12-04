@@ -131,6 +131,8 @@ EXPORT_INVALID	0
 #	TABLESPACE	Export tablespace (PostgreSQL >= 8 only)
 #	TYPE		Export user defined Oracle types
 #	PARTITION	Export range or list partition (PostgreSQL >= v8.4)
+#	FDW		Export table as foreign data wrapper tables
+#	MVIEW		Export materialized view as snapshot refresh view
 TYPE		TABLE
 
 # Set which object to export from. By default Ora2Pg export all objects.
@@ -467,6 +469,13 @@ NULL_EQUAL_EMPTY	1
 # you don't want to export those tables at all, set the directive to 0.
 EXTERNAL_TO_FDW		1
 
+# Activate the migration cost evaluation. Must only be used with SHOW_REPORT,
+# FUNCTION, PROCEDURE, PACKAGE and QUERY export type. Default is disabled.
+ESTIMATE_COST		0
+
+# Set the value in minutes of the migration cost evaluation unit. Default
+# is five minutes per unit.
+COST_UNIT_VALUE		5
 
 };
 close(OUTCFG);
