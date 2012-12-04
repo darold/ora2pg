@@ -24,7 +24,7 @@ package Ora2Pg::PLSQL;
 # 
 #------------------------------------------------------------------------------
 
-use vars qw($VERSION);
+use vars qw($VERSION %OBJECT_SCORE $SIZE_SCORE %UNCOVERED_SCORE);
 use POSIX qw(locale_h);
 
 #set locale to LC_NUMERIC C
@@ -33,14 +33,36 @@ setlocale(LC_NUMERIC,"C");
 
 $VERSION = '9.3';
 
+#----------------------------------------------------
 # Cost scores used when converting PLSQL to PLPGSQL
-my %size_score = (
-	'2000' => 1,
-	'5000' => 2,
-	'10000' => 3,
+#----------------------------------------------------
+
+# Scores associated to each database objects:
+%OBJECT_SCORE = (
+	'CLUSTER' => 0, # Not supported and no equivalent
+	'FUNCTION' => 1, # read/adapt the header
+	'INDEX' => 1, # Read/adapt
+	'MATERIALIZED VIEW' => 3, # Read/adapt, will just concern automatic snapshot export
+	'PACKAGE BODY' => 3, # Look at globals variables
+	'PROCEDURE' => 1, # read/adapt the header
+	'SEQUENCE' => 0, # Nothing to do
+	'TABLE' => 0.5, # read/adapt the column type/name
+	'TABLE PARTITION' => 3, # Read/check that table partitionning is ok
+	'TRIGGER' => 1, # read/adapt the header
+	'TYPE' => 1, # read
+	'TYPE BODY' => 10, # Not directly supported need adaptation
+	'VIEW' => 0.5, # read/adapt
+	'DATABASE LINK' => 6, # Not directly supported need adaptation
+	'DIMENSION' => 0, # Not supported and no equivalent
+	'JOB' => 2, # read/adapt
 );
 
-my %uncovered_score = (
+# Scores following the number of lines: number of lines for one unit
+# Note: his correspond to the global read time not to the difficulty.
+$SIZE_SCORE = 100;
+
+# Scores associated to each code difficulties.
+%UNCOVERED_SCORE = (
 	'FROM' => 1,
 	'TRUNC' => 2,
 	'DECODE' => 2,
@@ -72,6 +94,7 @@ my %uncovered_score = (
 	'ORA_ROWSCN' => 3,
 	'SAVEPOINT' => 1,
 	'DBLINK' => 4,
+	'CONCAT' => 1,
 );
 
 =head1 NAME
@@ -97,7 +120,7 @@ This function return a PLSQL code translated to PLPGSQL code
 
 sub plsql_to_plpgsql
 {
-        my ($str, $allow_code_break, $null_equal_empty) = @_;
+        my ($str, $allow_code_break, $null_equal_empty, $export_type) = @_;
 
 	#--------------------------------------------
 	# PL/SQL to PL/PGSQL code conversion
@@ -137,8 +160,10 @@ sub plsql_to_plpgsql
 	$str =~ s/EXECUTE IMMEDIATE/EXECUTE/igs;
 
 	# SELECT without INTO should be PERFORM. Exclude select of view when prefixed with AS ot IS
-	$str =~ s/([\s\t\n\r]+)(?<!AS|IS)([\s\t\n\r]+)SELECT(?![^;]+\bINTO\b[^;]+FROM[^;]+;)/$1$2$3PERFORM$4/isg;
-	$str =~ s/\b(AS|IS)([\s\t\n\r]+)PERFORM/$1$2SELECT/isg;
+	if ($export_type ne 'QUERY') {
+		$str =~ s/([\s\t\n\r]+)(?<!AS|IS)([\s\t\n\r]+)SELECT(?![^;]+\bINTO\b[^;]+FROM[^;]+;)/$1$2$3PERFORM$4/isg;
+		$str =~ s/\b(AS|IS)([\s\t\n\r]+)PERFORM/$1$2SELECT/isg;
+	}
 
 	# Change nextval on sequence
 	# Oracle's sequence grammar is sequence_name.nextval.
@@ -225,7 +250,17 @@ sub plsql_to_plpgsql
 	$str =~ s/END[\s\t]+(?!IF|LOOP|CASE|INTO|FROM|,)[a-z0-9_]+[\s\t]*([;]*)$/END$1/igs;
 
 	# Replace ending ROWNUM with LIMIT
-	$str =~ s/(WHERE|AND)[\s\t]*ROWNUM[\s\t]*=[\s\t]*(\d+)/LIMIT $2/igs;
+	$str =~ s/(WHERE|AND)[\s\t]*ROWNUM[\s\t]*=[\s\t]*(\d+)/LIMIT 1 OFFSET $2/igs;
+	$str =~ s/(WHERE|AND)[\s\t]*ROWNUM[\s\t]*<=[\s\t]*(\d+)/LIMIT $2/igs;
+	$str =~ s/(WHERE|AND)[\s\t]*ROWNUM[\s\t]*>=[\s\t]*(\d+)/LIMIT ALL OFFSET $2/igs;
+	while ($str =~ /(WHERE|AND)[\s\t]*ROWNUM[\s\t]*<[\s\t]*(\d+)/is) {
+		my $limit = $2 - 1;
+		$str =~ s/(WHERE|AND)[\s\t]*ROWNUM[\s\t]*<[\s\t]*(\d+)/LIMIT $limit/is;
+	}
+	while ($str =~ /(WHERE|AND)[\s\t]*ROWNUM[\s\t]*>[\s\t]*(\d+)/is) {
+		my $offset = $2 + 1;
+		$str =~ s/(WHERE|AND)[\s\t]*ROWNUM[\s\t]*>[\s\t]*(\d+)/LIMIT ALL OFFSET $offset/is;
+	}
 
 	# Rewrite comment in CASE between WHEN and THEN
 	$str =~ s/([\s\t]*)(WHEN[\s\t]+[^\s\t]+[\s\t]*)(ORA2PG_COMMENT\d+\%)([\s\t]*THEN)/$1$3$1$2$4/igs;
@@ -295,8 +330,8 @@ sub plsql_to_plpgsql
 
 		# Replace Oracle substr(string, start_position, length) with
 		# PostgreSQL substring(string from start_position for length)
-		$str =~ s/substr[\s\t]*\(([^,]+),[\s\t]*([^,\s\t]+)[\s\t]*,[\s\t]*([^,\)\s\t]+)[\s\t]*\)/substring($1 from $2 for $3)/igs;
-		$str =~ s/substr[\s\t]*\(([^,]+),[\s\t]*([^,\)\s\t]+)[\s\t]*\)/substring($1 from $2)/igs;
+		$str =~ s/substr[\s\t]*\(([^,\(]+),[\s\t]*([^,\s\t]+)[\s\t]*,[\s\t]*([^,\)\s\t]+)[\s\t]*\)/substring($1 from $2 for $3)/igs;
+		$str =~ s/substr[\s\t]*\(([^,\(]+),[\s\t]*([^,\)\s\t]+)[\s\t]*\)/substring($1 from $2)/igs;
 
 		# Replace decode("user_status",'active',"username",null)
 		# PostgreSQL (CASE WHEN "user_status"='ACTIVE' THEN "username" ELSE NULL END)
@@ -435,85 +470,78 @@ sub estimate_cost
 	my $cost = 1;
 
 	# Set cost following code length
-	my $cost_size = 0;
-	foreach my $k (sort { $a <=> $b } %size_score) {
-		if (length($str) < $k) {
-			$cost_size = $size_score{$k};
-			last;
-		};
-	}
-	if (!$cost_size) {
-		# Set the cost to max size value
-		foreach my $k (sort { $a <=> $b } %size_score) { $cost_size = $size_score{$k} };
-	}
+	my $cost_size = int(length($str)/$SIZE_SCORE) || 1;
+
 	$cost += $cost_size;
 
 	# Try to figure out the manual work
 	my $n = () = $str =~ m/\bFROM[\t\s]*\(/igs;
-	$cost += $uncovered_score{'FROM'}*$n;
+	$cost += $UNCOVERED_SCORE{'FROM'}*$n;
 	$n = () = $str =~ m/\bTRUNC[\t\s]*\(/igs;
-	$cost += $uncovered_score{'TRUNC'}*$n;
+	$cost += $UNCOVERED_SCORE{'TRUNC'}*$n;
 	$n = () = $str =~ m/\bDECODE[\t\s]*\(/igs;
-	$cost += $uncovered_score{'DECODE'}*$n;
+	$cost += $UNCOVERED_SCORE{'DECODE'}*$n;
 	$n = () = $str =~ m/\bIS[\t\s]+TABLE[\t\s]+OF\b/igs;
-	$cost += $uncovered_score{'IS TABLE OF'}*$n;
+	$cost += $UNCOVERED_SCORE{'IS TABLE OF'}*$n;
 	$n = () = $str =~ m/\(\+\)/igs;
-	$cost += $uncovered_score{'OUTER JOIN'}*$n;
+	$cost += $UNCOVERED_SCORE{'OUTER JOIN'}*$n;
 	$n = () = $str =~ m/\bCONNECT[\t\s]+BY\b/igs;
-	$cost += $uncovered_score{'CONNECT BY'}*$n;
+	$cost += $UNCOVERED_SCORE{'CONNECT BY'}*$n;
 	$n = () = $str =~ m/\bBULK[\t\s]+COLLECT\b/igs;
-	$cost += $uncovered_score{'BULK COLLECT'}*$n;
+	$cost += $UNCOVERED_SCORE{'BULK COLLECT'}*$n;
 	$n = () = $str =~ m/\bFORALL\b/igs;
-	$cost += $uncovered_score{'FORALL'}*$n;
+	$cost += $UNCOVERED_SCORE{'FORALL'}*$n;
 	$n = () = $str =~ m/\bGOTO\b/igs;
-	$cost += $uncovered_score{'GOTO'}*$n;
+	$cost += $UNCOVERED_SCORE{'GOTO'}*$n;
 	$n = () = $str =~ m/\bROWNUM\b/igs;
-	$cost += $uncovered_score{'ROWNUM'}*$n;
+	$cost += $UNCOVERED_SCORE{'ROWNUM'}*$n;
 	$n = () = $str =~ m/\bNOTFOUND\b/igs;
-	$cost += $uncovered_score{'NOTFOUND'}*$n;
+	$cost += $UNCOVERED_SCORE{'NOTFOUND'}*$n;
 	$n = () = $str =~ m/\bROWID\b/igs;
-	$cost += $uncovered_score{'ROWID'}*$n;
+	$cost += $UNCOVERED_SCORE{'ROWID'}*$n;
 	$n = () = $str =~ m/\bSQLSTATE\b/igs;
-	$cost += $uncovered_score{'SQLCODE'}*$n;
+	$cost += $UNCOVERED_SCORE{'SQLCODE'}*$n;
 	$n = () = $str =~ m/\bIS RECORD\b/igs;
-	$cost += $uncovered_score{'IS RECORD'}*$n;
+	$cost += $UNCOVERED_SCORE{'IS RECORD'}*$n;
 	$n = () = $str =~ m/\bINTERNAL_FUNCTION\b/igs;
-	$cost += $uncovered_score{'PROCEDURE'}*$n;
+	$cost += $UNCOVERED_SCORE{'PROCEDURE'}*$n;
 	$n = () = $str =~ m/FROM[^;]*\bTABLE[\t\s]*\(/igs;
-	$cost += $uncovered_score{'TABLE'}*$n;
+	$cost += $UNCOVERED_SCORE{'TABLE'}*$n;
 	$n = () = $str =~ m/PIPE[\t\s]+ROW/igs;
-	$cost += $uncovered_score{'PIPE ROW'}*$n;
+	$cost += $UNCOVERED_SCORE{'PIPE ROW'}*$n;
 	$n = () = $str =~ m/DBMS_\w/igs;
-	$cost += $uncovered_score{'DBMS_'}*$n;
+	$cost += $UNCOVERED_SCORE{'DBMS_'}*$n;
 	$n = () = $str =~ m/UTL_\w/igs;
-	$cost += $uncovered_score{'UTL_'}*$n;
+	$cost += $UNCOVERED_SCORE{'UTL_'}*$n;
 	$n = () = $str =~ m/CTX_\w/igs;
-	$cost += $uncovered_score{'CTX_'}*$n;
+	$cost += $UNCOVERED_SCORE{'CTX_'}*$n;
 	$n = () = $str =~ m/\bEXTRACT[\t\s]*\(/igs;
-	$cost += $uncovered_score{'EXTRACT'}*$n;
+	$cost += $UNCOVERED_SCORE{'EXTRACT'}*$n;
 	$n = () = $str =~ m/\bSUBSTR[\t\s]*\(/igs;
-	$cost += $uncovered_score{'SUBSTR'}*$n;
+	$cost += $UNCOVERED_SCORE{'SUBSTR'}*$n;
 	$n = () = $str =~ m/\bTO_NUMBER[\t\s]*\(/igs;
-	$cost += $uncovered_score{'TO_NUMBER'}*$n;
+	$cost += $UNCOVERED_SCORE{'TO_NUMBER'}*$n;
 	# See:  http://www.postgresql.org/docs/9.0/static/errcodes-appendix.html#ERRCODES-TABLE
 	$n = () = $str =~ m/\b(DUP_VAL_ON_INDEX|TIMEOUT_ON_RESOURCE|TRANSACTION_BACKED_OUT|NOT_LOGGED_ON|LOGIN_DENIED|INVALID_NUMBER|PROGRAM_ERROR|VALUE_ERROR|ROWTYPE_MISMATCH|CURSOR_ALREADY_OPEN|ACCESS_INTO_NULL|COLLECTION_IS_NULL)\b/igs;
-	$cost += $uncovered_score{'EXCEPTION'}*$n;
+	$cost += $UNCOVERED_SCORE{'EXCEPTION'}*$n;
 	$n = () = $str =~ m/REGEXP_LIKE/igs;
-	$cost += $uncovered_score{'REGEXP_LIKE'}*$n;
+	$cost += $UNCOVERED_SCORE{'REGEXP_LIKE'}*$n;
 	$n = () = $str =~ m/REGEXP_LIKE/igs;
-	$cost += $uncovered_score{'REGEXP_LIKE'}*$n;
+	$cost += $UNCOVERED_SCORE{'REGEXP_LIKE'}*$n;
 	$n = () = $str =~ m/INSERTING|DELETING|UPDATING/igs;
-	$cost += $uncovered_score{'TG_OP'}*$n;
+	$cost += $UNCOVERED_SCORE{'TG_OP'}*$n;
 	$n = () = $str =~ m/CURSOR/igs;
-	$cost += $uncovered_score{'CURSOR'}*$n;
+	$cost += $UNCOVERED_SCORE{'CURSOR'}*$n;
 	$n = () = $str =~ m/INTERSECT/igs;
-	$cost += $uncovered_score{'INTERSECT'}*$n;
+	$cost += $UNCOVERED_SCORE{'INTERSECT'}*$n;
 	$n = () = $str =~ m/ORA_ROWSCN/igs;
-	$cost += $uncovered_score{'ORA_ROWSCN'}*$n;
+	$cost += $UNCOVERED_SCORE{'ORA_ROWSCN'}*$n;
 	$n = () = $str =~ m/SAVEPOINT/igs;
-	$cost += $uncovered_score{'SAVEPOINT'}*$n;
+	$cost += $UNCOVERED_SCORE{'SAVEPOINT'}*$n;
 	$n = () = $str =~ m/(FROM|EXEC)((?!WHERE).)*\b[\w\_]+\@[\w\_]+\b/igs;
-	$cost += $uncovered_score{'DBLINK'}*$n;
+	$cost += $UNCOVERED_SCORE{'DBLINK'}*$n;
+	$n = () = $str =~ m/CONCAT[\s\t]*\(/igs;
+	$cost += $UNCOVERED_SCORE{'CONCAT'}*$n;
 
 	return $cost;
 }
