@@ -51,37 +51,41 @@ my $INPUT_FILE = '';
 my $EXCLUDE = '';
 my $ALLOW = '';
 my $VIEW_AS_TABLE = '';
+my $ESTIMATE_COST = 0;
+my $COST_UNIT_VALUE = 0;
 
 my @CAPABILITIES = qw(
-	TABLE PACKAGE INSERT COPY VIEW GRANT SEQUENCE TRIGGER
+	TABLE PACKAGE INSERT COPY VIEW GRANT SEQUENCE TRIGGER QUERY
 	FUNCTION PROCEDURE TABLESPACE PARTITION TYPE MVIEW SHOW_VERSION
 	SHOW_REPORT SHOW_SCHEMA SHOW_TABLE SHOW_COLUMN SHOW_ENCODING FDW
 );
 
 # Collect command line arguments
 GetOptions (
-        'conf|c=s' => \$CONFIG_FILE,
-        'debug|d' => \$DEBUG,
-        'help|h' => \$HELP,
-        'log|l=s' => \$LOGFILE,
-        'type|t=s' => \$EXPORT_TYPE,
-        'out|o=s' => \$OUTFILE,
-        'basedir|b=s' => \$OUTDIR,
-	'version|v' => \$SHOW_VER,
-	'plsql|p' => \$PLSQL,
-	'source|s=s' => \$DSN,
-	'user|u=s' => \$DBUSER,
-	'password|w=s' => \$DBPWD,
-	'namespace|n=s' => \$SCHEMA,
-	'xtable|x=s' => \$TABLEONLY,
+	'a|allow=s' => \$ALLOW,
+        'b|basedir=s' => \$OUTDIR,
+        'c|conf=s' => \$CONFIG_FILE,
+        'd|debug!' => \$DEBUG,
+	'e|exclude=s' => \$EXCLUDE,
+        'h|help!' => \$HELP,
+	'i|input_file=s' => \$INPUT_FILE,
+        'l|log=s' => \$LOGFILE,
+        'o|out=s' => \$OUTFILE,
+	'p|plsql!' => \$PLSQL,
+	'q|quiet!' => \$QUIET,
+        't|type=s' => \$EXPORT_TYPE,
+	'v|version!' => \$SHOW_VER,
+	's|source=s' => \$DSN,
+	'u|user=s' => \$DBUSER,
+	'w|password=s' => \$DBPWD,
+	'n|namespace=s' => \$SCHEMA,
+	'x|xtable=s' => \$TABLEONLY, # Obsolete
 	'forceowner=s' => \$FORCEOWNER,
 	'nls_lang=s' => \$ORA_ENCODING,
 	'client_encoding=s' => \$PG_ENCODING,
-	'input_file|i=s' => \$INPUT_FILE,
-	'quiet|q' => \$QUIET,
-	'exclude|e=s' => \$EXCLUDE,
-	'allow|a=s' => \$ALLOW,
 	'view_as_table=s' => \$VIEW_AS_TABLE,
+	'estimate_cost!' =>\$ESTIMATE_COST,
+	'cost_unit_value=i' =>\$COST_UNIT_VALUE,
 );
 
 # Check command line parameters
@@ -136,6 +140,8 @@ my $schema = new Ora2Pg (
 	exclude => $EXCLUDE,
 	allow => $ALLOW,
 	view_as_table => $VIEW_AS_TABLE,
+	estimate_cost => $ESTIMATE_COST,
+	cost_unit_value => $COST_UNIT_VALUE,
 );
 
 
@@ -183,6 +189,10 @@ Usage: ora2pg [-dhpqsv] [--option value]
     --nls_lang code: use this to set the Oracle NLS_LANG client encoding.
     --client_encoding code: Use this to set the PostgreSQL client encoding.
     --view_as_table str: coma separated list of view to export as table.
+    --estimate_cost   : activate the migration cost evalution with SHOW_REPORT
+    --cost_unit_value minutes: number of minutes for a cost evalution unit.
+		  default: 5 minutes, correspond to a migration conducted by
+		  an expert. Set it to 10 or 15 if this is your first migration.
 
 See full documentation at http://ora2pg.darold.net/ for more help or see
 manpage with 'man ora2pg'.
