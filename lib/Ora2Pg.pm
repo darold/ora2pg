@@ -999,7 +999,7 @@ sub _tables
 			if ($self->{tables}{$t->[2]}{type} ne 'view') {
 				next if ($self->skip_this_object('TABLE', $t->[2]));
 			}
-			if (!$self->{quiet}) {
+			if (!$self->{quiet} && !$self->{debug}) {
 				print STDERR &progress_bar($i, $#{$table} + 1, 25, '=', 'tables', "scanning table $t->[2]" );
 			}
 
@@ -1056,7 +1056,7 @@ sub _tables
 			($self->{tables}{$t->[2]}{uniqueness}, $self->{tables}{$t->[2]}{indexes}, $self->{tables}{$t->[2]}{idx_type}) = $self->_get_indexes($t->[2],$t->[1]) if (!$self->{skip_indices} && !$self->{skip_indexes});
 			$i++;
 		}
-		if (!$self->{quiet}) {
+		if (!$self->{quiet} && !$self->{debug}) {
 			print STDERR &progress_bar($i - 1, $#{$table} + 1, 25, '=', 'tables', 'end of scan.'), "\n";
 		}
 	}
@@ -2421,7 +2421,7 @@ LANGUAGE plpgsql ;
 			$dt ||= 1;
 			my $rps = sprintf("%.1f", $global_count / ($dt+.0001));
 			$self->logit("Total extracted records from table $table: $total_record\n", 1);
-			if (!$self->{quiet}) {
+			if (!$self->{quiet} && !$self->{debug}) {
 				print STDERR &progress_bar($global_count, $global_rows, 25, '=', 'rows', "on total data ($rps recs/sec)" ), "\n";
 			}
 
@@ -5682,7 +5682,7 @@ sub extract_data
 		$dt ||= 1;
 		my $rps = sprintf("%2.1f", $total_row / ($dt+.0001));
 		$total_record += $count;
-		if (!$self->{quiet}) {
+		if (!$self->{quiet} && !$self->{debug}) {
 			print STDERR &progress_bar($total_record, $total_row, 25, '=', 'rows', "table $table ($rps recs/sec)");
 		}
 	}
