@@ -95,7 +95,7 @@ our %TYPE = (
 	'XMLTYPE' => 'xml',
 	'TIMESTAMP WITH TIME ZONE' => 'timestamp with time zone',
 	'TIMESTAMP WITH LOCAL TIME ZONE' => 'timestamp with time zone',
-	'SDO_GEOMETRY' => 'geometry(Geometry,27572)',
+	#'SDO_GEOMETRY' => 'geometry(Geometry,27572)',
 );
 
 our %INDEX_TYPE = (
@@ -5817,6 +5817,12 @@ sub _show_infos
 				foreach my $t (sort keys %INDEX_TYPE) {
 					my $len = ($#{$all_indexes{$t}}+1);
 					$detail .= ". $len $INDEX_TYPE{$t} index(es)" if ($len);
+					if ($self->{estimate_cost} && $len && ( ($t =~ /FUNCTION.*NORMAL/) || ($t eq 'FUNCTION-BASED BITMAP') ) ) {
+						$cost_value += ($len * $Ora2Pg::PLSQL::OBJECT_SCORE{'FUNCTION-BASED-INDEX'});
+					}
+					if ($self->{estimate_cost} && $len && ($t =~ /REV/)) {
+						$cost_value += ($len * $Ora2Pg::PLSQL::OBJECT_SCORE{'REV-INDEX'});
+					}
 				}
 				$cost_value = ($Ora2Pg::PLSQL::OBJECT_SCORE{$typ}*$total_index) if ($self->{estimate_cost});
 				$comment = "$total_index index(es) are concerned by the export, others are automatically generated and will do so on PostgreSQL";
@@ -5843,6 +5849,7 @@ sub _show_infos
 				my $virt_column = 0;
 				my @done = ();
 				my $id = 0;
+				my $total_check = 0;
 				foreach my $table (@tables_infos) {
 					# Set the table information for each class found
 					my $i = 1;
@@ -5877,8 +5884,16 @@ sub _show_infos
 								$table_detail{'binary columns'}++;
 							}
 						}
+
+						%{$self->{tables}{$t->[2]}{check_constraint}} = $self->_check_constraint($t->[2],$t->[1]);
+						my @constraints = $self->_lookup_check_constraint($t->[2], $self->{tables}{$t->[2]}{check_constraint},$self->{tables}{$t->[2]}{field_name});
+						$total_check += ($#constraints + 1);
+						if ($self->{estimate_cost} && ($#constraints >= 0)) {
+							$cost_value += (($#constraints + 1) * $Ora2Pg::PLSQL::OBJECT_SCORE{'CHECK'});
+						}
 					}
 				}
+				$comment .= " $total_check check constraint(s)." if ($total_check);
 				foreach my $d (sort keys %table_detail) {
 					$comment .= " $table_detail{$d} $d.";
 				}
@@ -6396,6 +6411,60 @@ sub skip_this_object
 BEGIN
 {
 	build_escape_bytea();
+}
+
+
+=head2 _lookup_check_constraint
+
+This function return an array of the SQL code of the check constraints of a table
+
+=cut
+sub _lookup_check_constraint
+{
+	my ($self, $table, $check_constraint, $field_name) = @_;
+
+	my  @chk_constr = ();
+
+	my $tbsaved = $table;
+	if (exists $self->{replaced_tables}{"\L$table\E"} && $self->{replaced_tables}{"\L$table\E"}) {
+		$table = $self->{replaced_tables}{"\L$table\E"};
+	}
+
+	# Set the check constraint definition 
+	foreach my $k (keys %{$check_constraint->{constraint}}) {
+		my $chkconstraint = $check_constraint->{constraint}->{$k};
+		next if (!$chkconstraint);
+		my $skip_create = 0;
+		if (exists $check_constraint->{notnull}) {
+			foreach my $col (@{$check_constraint->{notnull}}) {
+				$skip_create = 1, last if (lc($chkconstraint) eq lc("\"$col\" IS NOT NULL"));
+			}
+		}
+		if (!$skip_create) {
+			if (exists $self->{replaced_cols}{"\L$tbsaved\E"} && $self->{replaced_cols}{"\L$tbsaved\E"}) {
+				foreach my $c (keys %{$self->{replaced_cols}{"\L$tbsaved\E"}}) {
+					$chkconstraint =~ s/"$c"/"$self->{replaced_cols}{"\L$tbsaved\E"}{$c}"/gsi;
+					$chkconstraint =~ s/\b$c\b/$self->{replaced_cols}{"\L$tbsaved\E"}{$c}/gsi;
+				}
+			}
+			if ($self->{plsql_pgsql}) {
+				$chkconstraint = Ora2Pg::PLSQL::plsql_to_plpgsql($chkconstraint, $self->{allow_code_break},$self->{null_equal_empty});
+			}
+			if (!$self->{preserve_case}) {
+				foreach my $c (@$field_name) {
+					# Force lower case
+					my $ret = $self->quote_reserved_words($c);
+					$chkconstraint =~ s/"$c"/\L$ret\E/igs;
+				}
+				$table = $self->quote_reserved_words($table);
+				push(@chk_constr,  "ALTER TABLE \L$table\E ADD CONSTRAINT \L$k\E CHECK ($chkconstraint);\n");
+			} else {
+				push(@chk_constr,  "ALTER TABLE \"$table\" ADD CONSTRAINT $k CHECK ($chkconstraint);\n");
+			}
+		}
+	}
+
+	return @chk_constr;
 }
 
 
