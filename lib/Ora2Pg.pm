@@ -5594,6 +5594,7 @@ sub extract_data
 		}
 	}
 
+	$self->logit("Looking for data from $table...\n", 1);
 	my $sth = $self->_get_data($table, $nn, $tt, $stt);
 
 	for (my $i = 0; $i <= $#{$nn}; $i++) {
@@ -5609,7 +5610,8 @@ sub extract_data
 	}
 	my $start_time = time();
 	my $total_row = $self->{tables}{$table}{table_info}->[3];
-	while( my $rows = $sth->fetchall_arrayref(undef,$self->{data_limit})) {
+	$self->logit("Fetching all data from $table...\n", 1);
+	while ( my $rows = $sth->fetchall_arrayref(undef,$self->{data_limit})) {
 
 		my $sql = '';
 		if ($self->{type} eq 'COPY') {
@@ -5620,7 +5622,7 @@ sub extract_data
 		if (!defined $sprep) {
 			# If there is a bytea column
 			if ($self->{thread_count} && scalar(grep(/bytea/,@$tt))) {
-				# We need to parallelize this formatting, as it is costly (bytea)
+				$self->logit("DEBUG: Parallelizing this formatting, as it is costly (bytea found)\n", 1);
 				$rows = $self->format_data_parallel($rows, $tt, $self->{type}, $stt, \%user_type, $table);
 				# we change $rows reference!
 			} else {
@@ -5652,6 +5654,8 @@ sub extract_data
 			}
 		}
 
+		$self->logit("DEBUG: Dumping output of total size of " . length($sql) . "\n", 1);
+
 		# Insert data if we are in online processing mode
 		if ($self->{dbhdest}) {
 			if ($self->{type} ne 'COPY') {
@@ -5679,11 +5683,19 @@ sub extract_data
 
 		my $end_time = time();
 		my $dt = $end_time - $start_time;
+		$start_time = $end_time;
 		$dt ||= 1;
-		my $rps = sprintf("%2.1f", $total_row / ($dt+.0001));
+		my $rps = sprintf("%2.1f", $count / ($dt+.0001));
 		$total_record += $count;
 		if (!$self->{quiet} && !$self->{debug}) {
 			print STDERR &progress_bar($total_record, $total_row, 25, '=', 'rows', "table $table ($rps recs/sec)");
+		} elsif ($self->{debug}) {
+			$self->logit("Total extracted records from table $table: $total_record\n", 1);
+			if ($dt > 0) {
+				$self->logit("$count records in $dt secs = $rps recs/sec\n", 1);
+			} else {
+				$self->logit("$count records in $dt secs\n", 1);
+			}
 		}
 	}
 	$sth->finish();
