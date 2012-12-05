@@ -186,8 +186,8 @@ CONFIGURATION
                 --view_as_table str: coma separated list of view to export as table.
                 --estimate_cost   : activate the migration cost evalution with SHOW_REPORT
                 --cost_unit_value minutes: number of minutes for a cost evalution unit.
-                              default: 5 minutes, correspond to a migration conducted by
-                              an expert. Set it to 10 or 15 if this is your first migration.
+                              default: 5 minutes, correspond to a migration conducted by a
+                              PostgreSQL expert. Set it to 10 if this is your first migration.
 
             See full documentation at http://ora2pg.darold.net/ for more help or see
             manpage with 'man ora2pg'.
