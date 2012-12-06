@@ -97,6 +97,17 @@ $SIZE_SCORE = 100;
 	'ORA_ROWSCN' => 3,
 	'SAVEPOINT' => 1,
 	'DBLINK' => 4,
+	'PLVDATE' => 1,
+	'PLVSTR' => 1,
+	'PLVCHR' => 1,
+	'PLVSUBST' => 1,
+	'PLVLEX' => 1,
+	'PLUNIT' => 1,
+	'ADD_MONTHS' => 1,
+	'LAST_DATE' => 1,
+	'NEXT_DAY' => 1,
+	'MONTHS_BETWEEN' => 1,
+	'NVL2' => 1,
 );
 
 =head1 NAME
@@ -542,6 +553,29 @@ sub estimate_cost
 	$cost += $UNCOVERED_SCORE{'SAVEPOINT'}*$n;
 	$n = () = $str =~ m/(FROM|EXEC)((?!WHERE).)*\b[\w\_]+\@[\w\_]+\b/igs;
 	$cost += $UNCOVERED_SCORE{'DBLINK'}*$n;
+
+	$n = () = $str =~ m/PLVDATE/igs;
+	$cost += $UNCOVERED_SCORE{'PLVDATE'}*$n;
+	$n = () = $str =~ m/PLVSTR/igs;
+	$cost += $UNCOVERED_SCORE{'PLVSTR'}*$n;
+	$n = () = $str =~ m/PLVCHR/igs;
+	$cost += $UNCOVERED_SCORE{'PLVCHR'}*$n;
+	$n = () = $str =~ m/PLVSUBST/igs;
+	$cost += $UNCOVERED_SCORE{'PLVSUBST'}*$n;
+	$n = () = $str =~ m/PLVLEX/igs;
+	$cost += $UNCOVERED_SCORE{'PLVLEX'}*$n;
+	$n = () = $str =~ m/PLUNIT/igs;
+	$cost += $UNCOVERED_SCORE{'PLUNIT'}*$n;
+	$n = () = $str =~ m/ADD_MONTHS/igs;
+	$cost += $UNCOVERED_SCORE{'ADD_MONTHS'}*$n;
+	$n = () = $str =~ m/LAST_DATE/igs;
+	$cost += $UNCOVERED_SCORE{'LAST_DATE'}*$n;
+	$n = () = $str =~ m/NEXT_DAY/igs;
+	$cost += $UNCOVERED_SCORE{'NEXT_DAY'}*$n;
+	$n = () = $str =~ m/MONTHS_BETWEEN/igs;
+	$cost += $UNCOVERED_SCORE{'MONTHS_BETWEEN'}*$n;
+	$n = () = $str =~ m/NVL2/igs;
+	$cost += $UNCOVERED_SCORE{'NVL2'}*$n;
 
 	return $cost;
 }
