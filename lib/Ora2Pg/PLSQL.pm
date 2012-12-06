@@ -48,13 +48,13 @@ $VERSION = '9.3';
 	'MATERIALIZED VIEW' => 3, # Read/adapt, will just concern automatic snapshot export
 	'PACKAGE BODY' => 3, # Look at globals variables
 	'PROCEDURE' => 1, # read/adapt the header
-	'SEQUENCE' => 0, # Nothing to do
+	'SEQUENCE' => 0.5, # read/adapt to convert name.nextval() into nextval('name')
 	'TABLE' => 0.5, # read/adapt the column type/name
 	'TABLE PARTITION' => 3, # Read/check that table partitionning is ok
 	'TRIGGER' => 1, # read/adapt the header
 	'TYPE' => 1, # read
 	'TYPE BODY' => 10, # Not directly supported need adaptation
-	'VIEW' => 0.5, # read/adapt
+	'VIEW' => 1, # read/adapt
 	'DATABASE LINK' => 6, # Not directly supported need adaptation
 	'DIMENSION' => 0, # Not supported and no equivalent
 	'JOB' => 2, # read/adapt
@@ -79,12 +79,11 @@ $SIZE_SCORE = 100;
 	'NOTFOUND' => 2,
 	'ROWID' => 2,
 	'IS RECORD' => 1,
-	'PROCEDURE' => 3,
 	'SQLCODE' => 2,
 	'TABLE' => 3,
-	'DBMS_' => 2,
-	'UTL_' => 2,
-	'CTX_' => 2,
+	'DBMS_' => 3,
+	'UTL_' => 3,
+	'CTX_' => 3,
 	'EXTRACT' => 3,
 	'EXCEPTION' => 2,
 	'SUBSTR' => 1,
@@ -92,17 +91,16 @@ $SIZE_SCORE = 100;
 	'REGEXP_LIKE' => 1,
 	'TG_OP' => 1,
 	'CURSOR' => 2,
-	'INTERSECT' => 1,
 	'PIPE ROW' => 1,
 	'ORA_ROWSCN' => 3,
 	'SAVEPOINT' => 1,
 	'DBLINK' => 4,
-	'PLVDATE' => 1,
-	'PLVSTR' => 1,
-	'PLVCHR' => 1,
-	'PLVSUBST' => 1,
-	'PLVLEX' => 1,
-	'PLUNIT' => 1,
+	'PLVDATE' => 2,
+	'PLVSTR' => 2,
+	'PLVCHR' => 2,
+	'PLVSUBST' => 2,
+	'PLVLEX' => 2,
+	'PLUNIT' => 2,
 	'ADD_MONTHS' => 1,
 	'LAST_DATE' => 1,
 	'NEXT_DAY' => 1,
@@ -516,8 +514,6 @@ sub estimate_cost
 	$cost += $UNCOVERED_SCORE{'SQLCODE'}*$n;
 	$n = () = $str =~ m/\bIS RECORD\b/igs;
 	$cost += $UNCOVERED_SCORE{'IS RECORD'}*$n;
-	$n = () = $str =~ m/\bINTERNAL_FUNCTION\b/igs;
-	$cost += $UNCOVERED_SCORE{'PROCEDURE'}*$n;
 	$n = () = $str =~ m/FROM[^;]*\bTABLE[\t\s]*\(/igs;
 	$cost += $UNCOVERED_SCORE{'TABLE'}*$n;
 	$n = () = $str =~ m/PIPE[\t\s]+ROW/igs;
@@ -545,8 +541,6 @@ sub estimate_cost
 	$cost += $UNCOVERED_SCORE{'TG_OP'}*$n;
 	$n = () = $str =~ m/CURSOR/igs;
 	$cost += $UNCOVERED_SCORE{'CURSOR'}*$n;
-	$n = () = $str =~ m/INTERSECT/igs;
-	$cost += $UNCOVERED_SCORE{'INTERSECT'}*$n;
 	$n = () = $str =~ m/ORA_ROWSCN/igs;
 	$cost += $UNCOVERED_SCORE{'ORA_ROWSCN'}*$n;
 	$n = () = $str =~ m/SAVEPOINT/igs;
