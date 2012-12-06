@@ -97,7 +97,6 @@ $SIZE_SCORE = 100;
 	'ORA_ROWSCN' => 3,
 	'SAVEPOINT' => 1,
 	'DBLINK' => 4,
-	'CONCAT' => 1,
 );
 
 =head1 NAME
@@ -543,8 +542,6 @@ sub estimate_cost
 	$cost += $UNCOVERED_SCORE{'SAVEPOINT'}*$n;
 	$n = () = $str =~ m/(FROM|EXEC)((?!WHERE).)*\b[\w\_]+\@[\w\_]+\b/igs;
 	$cost += $UNCOVERED_SCORE{'DBLINK'}*$n;
-	$n = () = $str =~ m/CONCAT[\s\t]*\(/igs;
-	$cost += $UNCOVERED_SCORE{'CONCAT'}*$n;
 
 	return $cost;
 }
