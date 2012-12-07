@@ -3792,14 +3792,16 @@ sub _get_privilege
 	# Retrieve all privilege per column table defined in this database
 	$str = "SELECT b.GRANTEE,b.OWNER,b.TABLE_NAME,b.PRIVILEGE,b.COLUMN_NAME FROM DBA_COL_PRIVS b";
 	if (!$self->{export_invalid}) {
-		$str .= " JOIN DBA_OBJECTS a ON (b.TABLE_NAME=a.OBJECT_NAME AND a.OWNER=b.GRANTOR)";
+		$str .= ", DBA_OBJECTS a";
 	}
 	if ($self->{schema}) {
 		$str .= " WHERE upper(b.GRANTOR) = '\U$self->{schema}\E'";
 	} else {
 		$str .= " WHERE b.GRANTOR NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
 	}
-	$str .= " AND a.STATUS='VALID'" if (!$self->{export_invalid});
+	if (!$self->{export_invalid}) {
+		$str .= " AND a.STATUS='VALID' AND b.TABLE_NAME=a.OBJECT_NAME AND a.OWNER=b.GRANTOR";
+	}
 	$sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	while (my $row = $sth->fetch) {
@@ -3989,12 +3991,13 @@ sub _get_external_tables
 	my($self) = @_;
 
 	# Retrieve all database link from dba_db_links table
-	my $str = "SELECT a.*,b.DIRECTORY_PATH,c.LOCATION FROM $self->{prefix}_EXTERNAL_TABLES a JOIN $self->{prefix}_DIRECTORIES b ON (a.DEFAULT_DIRECTORY_NAME = b.DIRECTORY_NAME) JOIN $self->{prefix}_EXTERNAL_LOCATIONS c ON (a.TABLE_NAME=c.TABLE_NAME AND a.DEFAULT_DIRECTORY_NAME=c.DIRECTORY_NAME AND a.OWNER=c.OWNER)";
+	my $str = "SELECT a.*,b.DIRECTORY_PATH,c.LOCATION FROM $self->{prefix}_EXTERNAL_TABLES a, $self->{prefix}_DIRECTORIES b, $self->{prefix}_EXTERNAL_LOCATIONS c";
 	if (!$self->{schema}) {
 		$str .= " WHERE a.OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
 	} else {
 		$str .= " WHERE upper(a.OWNER) = '\U$self->{schema}\E'";
 	}
+	$str .= " AND a.DEFAULT_DIRECTORY_NAME = b.DIRECTORY_NAME a.TABLE_NAME=c.TABLE_NAME AND a.DEFAULT_DIRECTORY_NAME=c.DIRECTORY_NAME AND a.OWNER=c.OWNER";
 	$str .= " ORDER BY a.TABLE_NAME";
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -4105,7 +4108,7 @@ sub _get_views
 	# Retrieve all views
 	my $str = "SELECT VIEW_NAME,TEXT FROM $self->{prefix}_VIEWS v";
 	if (!$self->{export_invalid}) {
-		$str .= " JOIN  $self->{prefix}_OBJECTS a ON (v.VIEW_NAME=a.OBJECT_NAME AND a.OWNER=v.OWNER)";
+		$str .= ", $self->{prefix}_OBJECTS a";
 	}
 
 	if (!$self->{schema}) {
@@ -4113,7 +4116,9 @@ sub _get_views
 	} else {
 		$str .= " WHERE upper(v.OWNER) = '\U$self->{schema}\E'";
 	}
-	$str .= " AND a.OBJECT_TYPE='VIEW' AND a.STATUS='VALID'" if (!$self->{export_invalid});
+	if (!$self->{export_invalid}) {
+		$str .= " AND a.OBJECT_TYPE='VIEW' AND a.STATUS='VALID' AND v.VIEW_NAME=a.OBJECT_NAME AND a.OWNER=v.OWNER";
+	}
 	$str .= " ORDER BY v.VIEW_NAME";
 
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
