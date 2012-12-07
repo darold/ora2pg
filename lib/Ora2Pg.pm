@@ -3876,7 +3876,7 @@ sub _get_indexes
 		$sub_owner = "AND OWNER=$self->{prefix}_INDEXES.TABLE_OWNER";
 	}
 	# Retrieve all indexes 
-	my $sth = $self->{dbh}->prepare(<<END) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	my $sth = $self->{dbh}->prepare(<<END) or $self->logit("WARNING ONLY: " . $self->{dbh}->errstr . "\n", 0, 0);
 SELECT DISTINCT $self->{prefix}_IND_COLUMNS.INDEX_NAME,$self->{prefix}_IND_COLUMNS.COLUMN_NAME,$self->{prefix}_INDEXES.UNIQUENESS,$self->{prefix}_IND_COLUMNS.COLUMN_POSITION,$self->{prefix}_INDEXES.INDEX_TYPE,$self->{prefix}_INDEXES.TABLE_TYPE,$self->{prefix}_INDEXES.GENERATED,$self->{prefix}_INDEXES.JOIN_INDEX
 FROM $self->{prefix}_IND_COLUMNS, $self->{prefix}_INDEXES
 WHERE $self->{prefix}_IND_COLUMNS.TABLE_NAME='$table' $owner
@@ -3886,6 +3886,19 @@ AND $self->{prefix}_INDEXES.INDEX_NAME=$self->{prefix}_IND_COLUMNS.INDEX_NAME
 ORDER BY $self->{prefix}_IND_COLUMNS.COLUMN_POSITION
 END
 
+	if (not defined $sth) {
+		# Maybe a 8i database.
+		$sth = $self->{dbh}->prepare(<<END) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+SELECT DISTINCT $self->{prefix}_IND_COLUMNS.INDEX_NAME,$self->{prefix}_IND_COLUMNS.COLUMN_NAME,$self->{prefix}_INDEXES.UNIQUENESS,$self->{prefix}_IND_COLUMNS.COLUMN_POSITION,$self->{prefix}_INDEXES.INDEX_TYPE,$self->{prefix}_INDEXES.TABLE_TYPE,$self->{prefix}_INDEXES.GENERATED
+FROM $self->{prefix}_IND_COLUMNS, $self->{prefix}_INDEXES
+WHERE $self->{prefix}_IND_COLUMNS.TABLE_NAME='$table' $owner
+AND $self->{prefix}_INDEXES.GENERATED <> 'Y'
+AND $self->{prefix}_INDEXES.TEMPORARY <> 'Y'
+AND $self->{prefix}_INDEXES.INDEX_NAME=$self->{prefix}_IND_COLUMNS.INDEX_NAME
+ORDER BY $self->{prefix}_IND_COLUMNS.COLUMN_POSITION
+END
+		$self->logit("INFO: please forget the above error message, this is a warning only for Oracle 8i database.\n", 0, 0);
+	}
 #AND $self->{prefix}_IND_COLUMNS.INDEX_NAME NOT IN (SELECT CONSTRAINT_NAME FROM $self->{prefix}_CONSTRAINTS WHERE TABLE_NAME='$table' $sub_owner)
 	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	my $idxnc = qq{SELECT IE.COLUMN_EXPRESSION FROM $self->{prefix}_IND_EXPRESSIONS IE, $self->{prefix}_IND_COLUMNS IC
@@ -3906,7 +3919,7 @@ $idxowner
 		# forget or not this object if it is in the exclude or allow lists.
 		next if ($self->skip_this_object('INDEX', $row->[0]));
 		$unique{$row->[0]} = $row->[2];
-		if ($row->[7] eq 'Y') {
+		if (($#{$row} > 6) && ($row->[7] eq 'Y')) {
 			$idx_type{$row->[0]} = $row->[4] . ' JOIN';
 		} else {
 			$idx_type{$row->[0]} = $row->[4];
