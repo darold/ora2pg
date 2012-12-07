@@ -3764,14 +3764,16 @@ sub _get_privilege
 	# Retrieve all privilege per table defined in this database
 	my $str = "SELECT b.GRANTEE,b.OWNER,b.TABLE_NAME,b.PRIVILEGE FROM DBA_TAB_PRIVS b";
 	if (!$self->{export_invalid}) {
-		$str .= " JOIN DBA_OBJECTS a ON (b.TABLE_NAME=a.OBJECT_NAME AND a.OWNER=b.GRANTOR)";
+		$str .= ", DBA_OBJECTS a";
 	}
 	if ($self->{schema}) {
 		$str .= " WHERE upper(b.GRANTOR) = '\U$self->{schema}\E'";
 	} else {
 		$str .= " WHERE b.GRANTOR NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
 	}
-	$str .= " AND a.STATUS='VALID'" if (!$self->{export_invalid});
+	if (!$self->{export_invalid}) {
+		$str .= " AND a.STATUS='VALID' AND b.TABLE_NAME=a.OBJECT_NAME AND a.OWNER=b.GRANTOR";
+	}
 	$str .= " ORDER BY b.TABLE_NAME, b.GRANTEE";
 
 	my $error = "\n\nFATAL: You must be connected as an oracle dba user to retrieved grants\n\n";
