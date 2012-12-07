@@ -3997,7 +3997,7 @@ sub _get_external_tables
 	} else {
 		$str .= " WHERE upper(a.OWNER) = '\U$self->{schema}\E'";
 	}
-	$str .= " AND a.DEFAULT_DIRECTORY_NAME = b.DIRECTORY_NAME a.TABLE_NAME=c.TABLE_NAME AND a.DEFAULT_DIRECTORY_NAME=c.DIRECTORY_NAME AND a.OWNER=c.OWNER";
+	$str .= " AND a.DEFAULT_DIRECTORY_NAME = b.DIRECTORY_NAME AND a.TABLE_NAME=c.TABLE_NAME AND a.DEFAULT_DIRECTORY_NAME=c.DIRECTORY_NAME AND a.OWNER=c.OWNER";
 	$str .= " ORDER BY a.TABLE_NAME";
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
