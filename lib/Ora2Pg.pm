@@ -1488,6 +1488,7 @@ LANGUAGE plpgsql ;
 			} elsif ($self->{preserve_case}) {
 				$realtable =  "\"$table\"";
 			}
+			$grants .= "-- Set priviledge on $self->{grants}{$table}{type} $table\n";
 
 			if ($self->{grants}{$table}{owner}) {
 				if (grep(/^$self->{grants}{$table}{owner}$/, @{$self->{roles}{roles}})) {
