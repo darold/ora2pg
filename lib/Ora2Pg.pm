@@ -1476,7 +1476,7 @@ LANGUAGE plpgsql ;
 		my $users = '';
 
 		# Add privilege definition
-		foreach my $table (sort keys %{$self->{grants}}) {
+		foreach my $table (sort {"$self->{grants}{$a}{type}.$a" cmp "$self->{grants}{$b}{type}.$b" } keys %{$self->{grants}}) {
 			my $realtable = lc($table);
 			my $obj = $self->{grants}{$table}{type} || 'TABLE';
 			if ($self->{export_schema} &&  $self->{schema}) {
