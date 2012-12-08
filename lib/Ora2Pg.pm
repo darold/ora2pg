@@ -1490,21 +1490,34 @@ LANGUAGE plpgsql ;
 			}
 			$grants .= "-- Set priviledge on $self->{grants}{$table}{type} $table\n";
 
-			if ($self->{grants}{$table}{owner}) {
-				if (grep(/^$self->{grants}{$table}{owner}$/, @{$self->{roles}{roles}})) {
-					$grants .= "ALTER $obj $realtable OWNER TO ROLE $self->{grants}{$table}{owner};\n";
-					$obj = '' if (!grep(/^$obj$/, 'FUNCTION', 'SEQUENCE','SCHEMA','TABLESPACE'));
-					$grants .= "GRANT ALL ON $obj $realtable TO ROLE $self->{grants}{$table}{owner};\n";
-				} else {
-					$grants .= "ALTER $obj $realtable OWNER TO $self->{grants}{$table}{owner};\n";
-					$obj = '' if (!grep(/^$obj$/, 'FUNCTION', 'SEQUENCE','SCHEMA','TABLESPACE'));
-					$grants .= "GRANT ALL ON $obj $realtable TO $self->{grants}{$table}{owner};\n";
+			if ($self->{grants}{$table}{type} ne 'PACKAGE BODY') {
+				if ($self->{grants}{$table}{owner}) {
+					if (grep(/^$self->{grants}{$table}{owner}$/, @{$self->{roles}{roles}})) {
+						$grants .= "ALTER $obj $realtable OWNER TO ROLE $self->{grants}{$table}{owner};\n";
+						$obj = '' if (!grep(/^$obj$/, 'FUNCTION', 'SEQUENCE','SCHEMA','TABLESPACE'));
+						$grants .= "GRANT ALL ON $obj $realtable TO ROLE $self->{grants}{$table}{owner};\n";
+					} else {
+						$grants .= "ALTER $obj $realtable OWNER TO $self->{grants}{$table}{owner};\n";
+						$obj = '' if (!grep(/^$obj$/, 'FUNCTION', 'SEQUENCE','SCHEMA','TABLESPACE'));
+						$grants .= "GRANT ALL ON $obj $realtable TO $self->{grants}{$table}{owner};\n";
+					}
 				}
-			}
-			if (grep(/^$self->{grants}{$table}{type}$/, 'FUNCTION', 'SEQUENCE','SCHEMA','TABLESPACE')) {
-				$grants .= "REVOKE ALL ON $self->{grants}{$table}{type} $realtable FROM PUBLIC;\n";
+				if (grep(/^$self->{grants}{$table}{type}$/, 'FUNCTION', 'SEQUENCE','SCHEMA','TABLESPACE')) {
+					$grants .= "REVOKE ALL ON $self->{grants}{$table}{type} $realtable FROM PUBLIC;\n";
+				} else {
+					$grants .= "REVOKE ALL ON $realtable FROM PUBLIC;\n";
+				}
 			} else {
-				$grants .= "REVOKE ALL ON $realtable FROM PUBLIC;\n";
+				if ($self->{grants}{$table}{owner}) {
+					if (grep(/^$self->{grants}{$table}{owner}$/, @{$self->{roles}{roles}})) {
+						$grants .= "ALTER SCHEMA $realtable OWNER TO ROLE $self->{grants}{$table}{owner};\n";
+						$grants .= "GRANT ALL ON SCHEMA $realtable TO ROLE $self->{grants}{$table}{owner};\n";
+					} else {
+						$grants .= "ALTER SCHEMA $realtable OWNER TO $self->{grants}{$table}{owner};\n";
+						$grants .= "GRANT ALL ON SCHEMA $realtable TO $self->{grants}{$table}{owner};\n";
+					}
+				}
+				$grants .= "REVOKE ALL ON SCHEMA $realtable FROM PUBLIC;\n";
 			}
 			foreach my $usr (sort keys %{$self->{grants}{$table}{privilege}}) {
 				my $agrants = '';
@@ -1512,10 +1525,15 @@ LANGUAGE plpgsql ;
 					$agrants .= "$g," if (grep(/^$g$/i, @{$self->{grants}{$table}{privilege}{$usr}}));
 				}
 				$agrants =~ s/,$//;
-				if (grep(/^$self->{grants}{$table}{type}$/, 'FUNCTION', 'SEQUENCE','SCHEMA','TABLESPACE')) {
-					$grants .= "GRANT $agrants ON $obj $realtable TO $usr;\n";
+				if ($self->{grants}{$table}{type} ne 'PACKAGE BODY') {
+					if (grep(/^$self->{grants}{$table}{type}$/, 'FUNCTION', 'SEQUENCE','SCHEMA','TABLESPACE')) {
+						$grants .= "GRANT $agrants ON $obj $realtable TO $usr;\n";
+					} else {
+						$grants .= "GRANT $agrants ON $realtable TO $usr;\n";
+					}
 				} else {
-					$grants .= "GRANT $agrants ON $realtable TO $usr;\n";
+						$grants .= "GRANT USAGE ON SCHEMA $realtable TO $usr;\n";
+						$grants .= "GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA $realtable TO $usr;\n";
 				}
 			}
 			$grants .= "\n";
