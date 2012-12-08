@@ -1475,13 +1475,10 @@ LANGUAGE plpgsql ;
 		my $grants = '';
 		my $users = '';
 
-                #push(@{$privs{$row->[2]}{column}{$row->[4]}{$row->[0]}}, $row->[3]);
-
 		# Add privilege definition
 		foreach my $table (sort keys %{$self->{grants}}) {
 			my $realtable = lc($table);
-			my $isfunc = 0;
-			my $obj = 'TABLE';
+			my $obj = $self->{grants}{$table}{type} || 'TABLE';
 			if ($self->{export_schema} &&  $self->{schema}) {
 				if (!$self->{preserve_case}) {
 					$realtable =  "\L$self->{schema}.$table\E";
@@ -1493,34 +1490,32 @@ LANGUAGE plpgsql ;
 			}
 
 			if ($self->{grants}{$table}{owner}) {
-				if ($self->{grants}{$table}{type} eq 'function') {
-					$obj = 'FUNCTION';
-					$isfunc = 1;
-				}
 				if (grep(/^$self->{grants}{$table}{owner}$/, @{$self->{roles}{roles}})) {
 					$grants .= "ALTER $obj $realtable OWNER TO ROLE $self->{grants}{$table}{owner};\n";
-					$obj = '' if ($obj eq 'TABLE');
+					$obj = '' if (!grep(/^$obj$/, 'FUNCTION', 'SEQUENCE','SCHEMA','TABLESPACE'));
 					$grants .= "GRANT ALL ON $obj $realtable TO ROLE $self->{grants}{$table}{owner};\n";
 				} else {
 					$grants .= "ALTER $obj $realtable OWNER TO $self->{grants}{$table}{owner};\n";
-					$obj = '' if ($obj eq 'TABLE');
+					$obj = '' if (!grep(/^$obj$/, 'FUNCTION', 'SEQUENCE','SCHEMA','TABLESPACE'));
 					$grants .= "GRANT ALL ON $obj $realtable TO $self->{grants}{$table}{owner};\n";
 				}
 			}
-			if ($isfunc) {
-				$grants .= "REVOKE ALL ON FUNCTION $realtable FROM PUBLIC;\n";
+			if (grep(/^$self->{grants}{$table}{type}$/, 'FUNCTION', 'SEQUENCE','SCHEMA','TABLESPACE')) {
+				$grants .= "REVOKE ALL ON $self->{grants}{$table}{type} $realtable FROM PUBLIC;\n";
 			} else {
 				$grants .= "REVOKE ALL ON $realtable FROM PUBLIC;\n";
 			}
 			foreach my $usr (sort keys %{$self->{grants}{$table}{privilege}}) {
-				$obj = 'TABLE';
-				$obj = 'FUNCTION' if (grep(/^EXECUTE$/i, @{$self->{grants}{$table}{privilege}{$usr}}));
 				my $agrants = '';
 				foreach my $g (@GRANTS) {
 					$agrants .= "$g," if (grep(/^$g$/i, @{$self->{grants}{$table}{privilege}{$usr}}));
 				}
 				$agrants =~ s/,$//;
-				$grants .= "GRANT $agrants ON $obj $realtable TO $usr;\n";
+				if (grep(/^$self->{grants}{$table}{type}$/, 'FUNCTION', 'SEQUENCE','SCHEMA','TABLESPACE')) {
+					$grants .= "GRANT $agrants ON $obj $realtable TO $usr;\n";
+				} else {
+					$grants .= "GRANT $agrants ON $realtable TO $usr;\n";
+				}
 			}
 			$grants .= "\n";
 		}
@@ -3762,17 +3757,16 @@ sub _get_privilege
 	my %roles = ();
 
 	# Retrieve all privilege per table defined in this database
-	my $str = "SELECT b.GRANTEE,b.OWNER,b.TABLE_NAME,b.PRIVILEGE FROM DBA_TAB_PRIVS b";
-	if (!$self->{export_invalid}) {
-		$str .= ", DBA_OBJECTS a";
-	}
+	my $str = "SELECT b.GRANTEE,b.OWNER,b.TABLE_NAME,b.PRIVILEGE,a.OBJECT_TYPE FROM DBA_TAB_PRIVS b, DBA_OBJECTS a";
 	if ($self->{schema}) {
 		$str .= " WHERE upper(b.GRANTOR) = '\U$self->{schema}\E'";
 	} else {
 		$str .= " WHERE b.GRANTOR NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
 	}
+	$str .= " AND b.TABLE_NAME=a.OBJECT_NAME AND a.OWNER=b.GRANTOR";
+	
 	if (!$self->{export_invalid}) {
-		$str .= " AND a.STATUS='VALID' AND b.TABLE_NAME=a.OBJECT_NAME AND a.OWNER=b.GRANTOR";
+		$str .= " AND a.STATUS='VALID'";
 	}
 	$str .= " ORDER BY b.TABLE_NAME, b.GRANTEE";
 
@@ -3780,8 +3774,7 @@ sub _get_privilege
 	my $sth = $self->{dbh}->prepare($str) or $self->logit($error . "FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	while (my $row = $sth->fetch) {
-		$privs{$row->[2]}{type} = 'table';
-		$privs{$row->[2]}{type} = 'function' if (uc($row->[3]) eq 'EXECUTE');
+		$privs{$row->[2]}{type} = $row->[4];
 		$privs{$row->[2]}{owner} = $row->[1] if (!$privs{$row->[2]}{owner});
 		push(@{$privs{$row->[2]}{privilege}{$row->[0]}}, $row->[3]);
 		push(@{$roles{owner}}, $row->[1]) if (!grep(/^$row->[1]$/, @{$roles{owner}}));
