@@ -1000,7 +1000,7 @@ sub _tables
 				next if ($self->skip_this_object('TABLE', $t->[2]));
 			}
 			if (!$self->{quiet} && !$self->{debug}) {
-				print STDERR &progress_bar($i, $#{$table} + 1, 25, '=', 'tables', "scanning table $t->[2]" );
+				print STDERR $self->progress_bar($i, $#{$table} + 1, 25, '=', 'tables', "scanning table $t->[2]" );
 			}
 
 			if (grep(/^$t->[2]$/, @done)) {
@@ -1057,7 +1057,7 @@ sub _tables
 			$i++;
 		}
 		if (!$self->{quiet} && !$self->{debug}) {
-			print STDERR &progress_bar($i - 1, $#{$table} + 1, 25, '=', 'tables', 'end of scan.'), "\n";
+			print STDERR $self->progress_bar($i - 1, $#{$table} + 1, 25, '=', 'tables', 'end of scan.'), "\n";
 		}
 	}
  
@@ -2417,7 +2417,7 @@ LANGUAGE plpgsql ;
 			my $rps = sprintf("%.1f", $global_count / ($dt+.0001));
 			$self->logit("Total extracted records from table $table: $total_record\n", 1);
 			if (!$self->{quiet} && !$self->{debug}) {
-				print STDERR &progress_bar($global_count, $global_rows, 25, '=', 'rows', "on total data ($rps recs/sec)" ), "\n";
+				print STDERR $self->progress_bar($global_count, $global_rows, 25, '=', 'rows', "on total data ($rps recs/sec)" ), "\n";
 			}
 
                         ## don't forget to enable all triggers if needed...
@@ -2452,6 +2452,15 @@ LANGUAGE plpgsql ;
 			}
 			if ($self->{file_per_table} && !$self->{dbhdest}) {
 				$self->close_export_file($fhdl);
+			}
+		}
+		if (!$self->{quiet} && !$self->{debug}) {
+			my $ratio = 1;
+			if ($global_rows) {
+				$ratio = ($global_count / +$global_rows) * 100;
+				if ($ratio != 100) {
+					print STDERR "The total number of rows is an estimation so the final percentage may not be equal to 100.\n";
+				}
 			}
 		}
 
@@ -5701,7 +5710,7 @@ sub extract_data
 		my $rps = sprintf("%2.1f", $count / ($dt+.0001));
 		$total_record += $count;
 		if (!$self->{quiet} && !$self->{debug}) {
-			print STDERR &progress_bar($total_record, $total_row, 25, '=', 'rows', "table $table ($rps recs/sec)");
+			print STDERR $self->progress_bar($total_record, $total_row, 25, '=', 'rows', "table $table ($rps recs/sec)");
 		} elsif ($self->{debug}) {
 			$self->logit("Total extracted records from table $table: $total_record\n", 1);
 			if ($dt > 0) {
@@ -6353,27 +6362,46 @@ sub _datetime_format
 	}
 }
 
+
+=head2 progress_bar
+
+This function is used to display a progress bar during object scanning.
+
+=cut
+
 sub progress_bar
 {
-	my ($got, $total, $width, $char, $kind, $msg) = @_;
+	my ($self, $got, $total, $width, $char, $kind, $msg) = @_;
+
 	$width ||= 25;
 	$char  ||= '=';
 	$kind  ||= 'rows';
 	my $num_width = length $total;
+	my $ratio = 1;
 	if ($total > 0) {
-		sprintf(
-			"[%-${width}s] dumped %${num_width}s of %s $kind (%.1f%%) $msg\r",
-			$char x (($width - 1) * $got / $total) . '>',
-			$got, $total, 100 * $got / +$total
-		);
-	} else {
-		sprintf(
-			"[%-${width}s] dumped %${num_width}s of %s $kind (%.1f%%) $msg\r",
-			$char x ($width - 1) . '>',
-			$got, $total, 100
-		);
+		$ratio = $got / +$total;
 	}
+	my $str = sprintf(
+		"[%-${width}s] dumped %${num_width}s of %s $kind (%.1f%%) $msg",
+		$char x (($width - 1) * $ratio) . '>',
+		$got, $total, 100 * $ratio
+	);
+	my $len = length($str);
+	$self->{prgb_len} ||= $len;
+	if ($len < $self->{prgb_len}) {
+		$str .= ' ' x ($self->{prgb_len} - $len);
+	}
+	$self->{prgb_len} = $len;
+
+	return "$str\r";
 }
+
+=head2 auto_set_encoding
+
+This function is used to find the PostgreSQL charset corresponding to the
+Oracle NLS_LANG value
+
+=cut
 
 sub auto_set_encoding
 {
