@@ -959,10 +959,37 @@ CONFIGURATION
         "Oracle datatype:Postgresql datatype". Here are the default list
         used:
 
-                DATA_TYPE       DATE:timestamp,LONG:text,LONG RAW:bytea,CLOB:text,NCLOB:text,BLOB:bytea,BFILE:bytea,RAW:bytea,ROWID:oid,FLOAT:double precision,DEC:decimal,DECIMAL:decimal,DOUBLE PRECISION:double precision,INT:integer,INTEGER:integer,REAL:real,SMALLINT:smallint,BINARY_FLOAT:double precision,BINARY_DOUBLE:double precision,TIMESTAMP:timestamp,XMLTYPE:xml,BINARY_INTEGER:integer,PLS_INTEGER:integer,TIMESTAMP WITH TIME ZONE:timestamp with time zone,TIMESTAMP WITH LOCAL TIME ZONE:timestamp with time zone
+                DATA_TYPE       DATE:timestamp,LONG:text,LONG RAW:bytea,CLOB:text,NCLOB:text,BLOB:bytea,BFILE:text,RAW:bytea,ROWID:oid,FLOAT:double precision,DEC:decimal,DECIMAL:decimal,DOUBLE PRECISION:double precision,INT:integer,INTEGER:integer,REAL:real,SMALLINT:smallint,BINARY_FLOAT:double precision,BINARY_DOUBLE:double precision,TIMESTAMP:timestamp,XMLTYPE:xml,BINARY_INTEGER:integer,PLS_INTEGER:integer,TIMESTAMP WITH TIME ZONE:timestamp with time zone,TIMESTAMP WITH LOCAL TIME ZONE:timestamp with time zone
 
         Note that the directive and the list definition must be a single
         line.
+
+        There's a special case with BFILE that are converted as text field,
+        they will contains the path to the external file. Oracle stores a
+        locator that could lead to export the BFILE as bytea, but BFILE are
+        external files so Ora2Pg will only retrieve the full path to that
+        files and store it in a text field.
+
+        There's no SQL function available to retrieve the pathi to the
+        BFILE, then Ora2Pg have to create one using the DBMS_LOB package.
+
+                CREATE OR REPLACE FUNCTION ora2pg_get_bfilename( p_bfile IN BFILE )
+                RETURN VARCHAR2
+                  AS
+                    l_dir   VARCHAR2(4000);
+                    l_fname VARCHAR2(4000);
+                    l_path  VARCHAR2(4000);
+                  BEGIN
+                    dbms_lob.FILEGETNAME( p_bfile, l_dir, l_fname );
+                    SELECT directory_path INTO l_path FROM all_directories
+                        WHERE directory_name = l_dir;
+                    l_dir := rtrim(l_path,'/');
+                    RETURN l_dir || '/' || l_fname;
+                  END;
+
+        This function is only created if Ora2Pg found a table with a BFILE
+        column and the function is dropped at end of the export. This
+        concern COPY and INSERT export type.
 
     PRESERVE_CASE
         If you want to preserve the case of Oracle object name set this
