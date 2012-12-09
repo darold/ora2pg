@@ -606,10 +606,10 @@ sub _init
 	}
 	$self->{longtruncok} = 0 if (not defined $self->{longtruncok});
 	$self->{longreadlen} ||= (1024*1024);
-	$self->{ora_piece_size} ||= $self->{longreadlen};
-	if ($self->{ora_piece_size} > $self->{longreadlen}) {
-		$self->{longreadlen} = $self->{ora_piece_size};
-	}
+	#$self->{ora_piece_size} ||= $self->{longreadlen};
+	#if ($self->{ora_piece_size} > $self->{longreadlen}) {
+	#	$self->{longreadlen} = $self->{ora_piece_size};
+	#}
 	# Backward compatibility with PG_NUMERIC_TYPE alone
 	$self->{pg_integer_type} = 1 if (not defined $self->{pg_integer_type});
 	# Backward compatibility with CASE_SENSITIVE
@@ -2272,9 +2272,9 @@ LANGUAGE plpgsql ;
 		my $dirprefix = '';
 		$dirprefix = "$self->{output_dir}/" if ($self->{output_dir});
 		my $global_count = 0;
+		my $start_time = time();
 		foreach my $table (@ordered_tables) {
 			next if ($self->skip_this_object('TABLE', $table));
-			my $start_time = time();
 			my $fhdl = undef;
 			if ($self->{file_per_table} && !$self->{dbhdest}) {
 				# Do not dump data again if the file already exists
@@ -3477,7 +3477,8 @@ sub _get_data
 		$self->logit("\tApplying WHERE global clause: " . $self->{global_where} . "\n", 1);
 	}
 
-	my $sth = $self->{dbh}->prepare($str,{ora_piece_lob=>1,ora_piece_size=>$self->{ora_piece_size}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	#my $sth = $self->{dbh}->prepare($str,{ora_piece_lob=>1,ora_piece_size=>$self->{ora_piece_size}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	my $sth = $self->{dbh}->prepare($str,{ora_auto_lob => 1}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
 	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
