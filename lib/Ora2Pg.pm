@@ -70,7 +70,7 @@ our %TYPE = (
 	'CLOB' => 'text', # A large object containing single-byte characters
 	'NCLOB' => 'text', # A large object containing national character set data
 	'BLOB' => 'bytea', # Binary large object
-	'BFILE' => 'bytea', # Locator for external large binary file
+	'BFILE' => 'text', # Locator for external large binary file
 	# The RAW type is presented as hexadecimal characters. The
 	# contents are treated as binary data. Limit of 2000 bytes
 	# PG type text should match all needs or if you want you could
@@ -2476,9 +2476,9 @@ LANGUAGE plpgsql ;
 		if (!$self->{quiet} && !$self->{debug}) {
 			my $ratio = 1;
 			if ($global_rows) {
-				$ratio = ($global_count / +$global_rows) * 100;
-				if ($ratio != 100) {
-					print STDERR "The total number of rows is an estimation so the final percentage may not be equal to 100.\n";
+				$ratio = sprintf("%.1f", ($global_count / +$global_rows) * 100);
+				if ($ratio != 100.0) {
+					print STDERR "The total number of rows is an estimation, the final percentage may not be equal to 100.\n";
 				}
 			}
 		}
@@ -3429,6 +3429,7 @@ sub _get_data
 	if ($self->{enable_microsecond}) {
 		$timeformat = 'YYYY-MM-DD HH24:MI:SS.FF';
 	}
+	my $bfile_found = 0;
 	my $timeformat_tz = $timeformat . ' TZH:TZM';
 	for my $k (0 .. $#{$name}) {
 		if ($name->[$k]->[0] !~ /"/) {
@@ -3440,6 +3441,9 @@ sub _get_data
 			$str .= "to_char($name->[$k]->[0], '$timeformat_tz'),";
 		} elsif ( $src_type->[$k] =~ /timestamp/i) {
 			$str .= "to_char($name->[$k]->[0], '$timeformat'),";
+		} elsif ( $src_type->[$k] =~ /bfile/i) {
+			$str .= "ora2pg_get_bfilename($name->[$k]->[0]),";
+			$bfile_found = 1;
 		} elsif ( $src_type->[$k] =~ /xmltype/i) {
 			if ($self->{xml_pretty}) {
 				$str .= "$alias.$name->[$k]->[0].extract('/').getStringVal(),";
@@ -3451,6 +3455,26 @@ sub _get_data
 		}
 	}
 	$str =~ s/,$//;
+
+	# If we hava BFILE we need to create a function
+	if ($bfile_found) {
+		$self->logit("Creating function ora2pg_get_bfilename( p_bfile IN BFILE ) to retrieve path from BFILE.\n", 1);
+		my $bfile_function = qq{
+CREATE OR REPLACE FUNCTION ora2pg_get_bfilename( p_bfile IN BFILE ) RETURN 
+VARCHAR2
+  AS
+    l_dir   VARCHAR2(4000);
+    l_fname VARCHAR2(4000);
+    l_path  VARCHAR2(4000);
+  BEGIN
+    dbms_lob.FILEGETNAME( p_bfile, l_dir, l_fname );
+    SELECT directory_path INTO l_path FROM all_directories WHERE directory_name = l_dir;
+    l_dir := rtrim(l_path,'/');
+    RETURN l_dir || '/' || l_fname;
+  END;
+};
+		my $sth2 = $self->{dbh}->do($bfile_function);
+	}
 
 	# Fix a problem when using data_limit AND where clause
 	if (exists $self->{where}{"\L$table\E"} && $self->{where}{"\L$table\E"}) {
