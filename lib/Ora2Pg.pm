@@ -2483,6 +2483,11 @@ LANGUAGE plpgsql ;
 			}
 		}
 
+		if ($self->{bfile_found}) {
+			$self->logit("Removing function ora2pg_get_bfilename() used to retrieve path from BFILE.\n", 1);
+			my $bfile_function = "DROP FUNCTION ora2pg_get_bfilename";
+			my $sth2 = $self->{dbh}->do($bfile_function);
+		}
 		# extract sequence information
 		if (($#ordered_tables >= 0) && !$self->{disable_sequence}) {
 			$self->logit("Restarting sequences\n", 1);
@@ -3443,7 +3448,7 @@ sub _get_data
 			$str .= "to_char($name->[$k]->[0], '$timeformat'),";
 		} elsif ( $src_type->[$k] =~ /bfile/i) {
 			$str .= "ora2pg_get_bfilename($name->[$k]->[0]),";
-			$bfile_found = 1;
+			$self->{bfile_found} = 1;
 		} elsif ( $src_type->[$k] =~ /xmltype/i) {
 			if ($self->{xml_pretty}) {
 				$str .= "$alias.$name->[$k]->[0].extract('/').getStringVal(),";
@@ -3457,7 +3462,7 @@ sub _get_data
 	$str =~ s/,$//;
 
 	# If we hava BFILE we need to create a function
-	if ($bfile_found) {
+	if ($self->{bfile_found}) {
 		$self->logit("Creating function ora2pg_get_bfilename( p_bfile IN BFILE ) to retrieve path from BFILE.\n", 1);
 		my $bfile_function = qq{
 CREATE OR REPLACE FUNCTION ora2pg_get_bfilename( p_bfile IN BFILE ) RETURN 
