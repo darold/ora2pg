@@ -70,7 +70,9 @@ our %TYPE = (
 	'CLOB' => 'text', # A large object containing single-byte characters
 	'NCLOB' => 'text', # A large object containing national character set data
 	'BLOB' => 'bytea', # Binary large object
-	'BFILE' => 'text', # Locator for external large binary file
+	# The full path to the external file is returned if destination type is text.
+	# If the destination type is bytea the content of the external file is returned.
+	'BFILE' => 'bytea', # Locator for external large binary file
 	# The RAW type is presented as hexadecimal characters. The
 	# contents are treated as binary data. Limit of 2000 bytes
 	# PG type text should match all needs or if you want you could
@@ -3446,7 +3448,8 @@ sub _get_data
 			$str .= "to_char($name->[$k]->[0], '$timeformat_tz'),";
 		} elsif ( $src_type->[$k] =~ /timestamp/i) {
 			$str .= "to_char($name->[$k]->[0], '$timeformat'),";
-		} elsif ( $src_type->[$k] =~ /bfile/i) {
+		# Only extract the path to the bfile, if dest type is bytea the bfile should be exported.
+		} elsif ( ($src_type->[$k] =~ /bfile/i) && ($type->[$k] =~ /text/i) ) {
 			$str .= "ora2pg_get_bfilename($name->[$k]->[0]),";
 			$self->{bfile_found} = 1;
 		} elsif ( $src_type->[$k] =~ /xmltype/i) {

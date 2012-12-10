@@ -1020,16 +1020,15 @@ PostgreSQL types to redefine data type translation used in Ora2pg. The syntax
 is a coma separated list of "Oracle datatype:Postgresql datatype". Here are
 the default list used:
 
-	DATA_TYPE	DATE:timestamp,LONG:text,LONG RAW:bytea,CLOB:text,NCLOB:text,BLOB:bytea,BFILE:text,RAW:bytea,ROWID:oid,FLOAT:double precision,DEC:decimal,DECIMAL:decimal,DOUBLE PRECISION:double precision,INT:integer,INTEGER:integer,REAL:real,SMALLINT:smallint,BINARY_FLOAT:double precision,BINARY_DOUBLE:double precision,TIMESTAMP:timestamp,XMLTYPE:xml,BINARY_INTEGER:integer,PLS_INTEGER:integer,TIMESTAMP WITH TIME ZONE:timestamp with time zone,TIMESTAMP WITH LOCAL TIME ZONE:timestamp with time zone
+	DATA_TYPE	DATE:timestamp,LONG:text,LONG RAW:bytea,CLOB:text,NCLOB:text,BLOB:bytea,BFILE:bytea,RAW:bytea,ROWID:oid,FLOAT:double precision,DEC:decimal,DECIMAL:decimal,DOUBLE PRECISION:double precision,INT:integer,INTEGER:integer,REAL:real,SMALLINT:smallint,BINARY_FLOAT:double precision,BINARY_DOUBLE:double precision,TIMESTAMP:timestamp,XMLTYPE:xml,BINARY_INTEGER:integer,PLS_INTEGER:integer,TIMESTAMP WITH TIME ZONE:timestamp with time zone,TIMESTAMP WITH LOCAL TIME ZONE:timestamp with time zone
 
 Note that the directive and the list definition must be a single line.
 
-There's a special case with BFILE that are converted as text field, they will
-contains the path to the external file. Oracle stores a locator that could lead
-to export the BFILE as bytea, but BFILE are external files so Ora2Pg will only
-retrieve the full path to that files and store it in a text field.
+There's a special case with BFILE when they are converted to text field, they will
+contains the path to the external file. If you set the destination type to bytea, the
+default, Ora2Pg will export the BFILE as bytea.
 
-There's no SQL function available to retrieve the pathi to the BFILE, then Ora2Pg
+There's no SQL function available to retrieve the path to the BFILE, then Ora2Pg
 have to create one using the DBMS_LOB package.
 
 	CREATE OR REPLACE FUNCTION ora2pg_get_bfilename( p_bfile IN BFILE )
