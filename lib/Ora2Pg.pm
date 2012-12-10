@@ -3472,10 +3472,14 @@ VARCHAR2
     l_fname VARCHAR2(4000);
     l_path  VARCHAR2(4000);
   BEGIN
-    dbms_lob.FILEGETNAME( p_bfile, l_dir, l_fname );
-    SELECT directory_path INTO l_path FROM all_directories WHERE directory_name = l_dir;
-    l_dir := rtrim(l_path,'/');
-    RETURN l_dir || '/' || l_fname;
+    IF p_bfile IS NULL
+    THEN RETURN NULL;
+    ELSE
+      dbms_lob.FILEGETNAME( p_bfile, l_dir, l_fname );
+      SELECT directory_path INTO l_path FROM all_directories WHERE directory_name = l_dir;
+      l_dir := rtrim(l_path,'/');
+      RETURN l_dir || '/' || l_fname;
+  END IF;
   END;
 };
 		my $sth2 = $self->{dbh}->do($bfile_function);
