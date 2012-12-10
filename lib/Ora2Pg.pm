@@ -719,6 +719,9 @@ sub _init
 		return;
 	}
 
+	# Get the Oracle version
+	$self->{db_version} = $self->_get_version() if (!$self->{input_file});
+
 	# Retreive all table informations
         foreach my $t (@{$self->{export_type}}) {
                 $self->{type} = $t;
@@ -1101,7 +1104,9 @@ sub _tables
 	}
 
 	# Look at external tables
-	%{$self->{external_table}} = $self->_get_external_tables();
+	if ($self->{db_version} !~ /Release 8/) {
+		%{$self->{external_table}} = $self->_get_external_tables();
+	}
 
 }
 
@@ -2209,9 +2214,11 @@ LANGUAGE plpgsql ;
 			my $s = $self->{dbhdest}->do($search_path) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
 		}
 		# Remove external table from data export
-		foreach my $table (keys %{$self->{tables}}) {
-			if ( grep(/^$table$/i, keys %{$self->{external_table}}) ) {
-				delete $self->{tables}{$table};
+		if (scalar keys %{$self->{external_table}} ) {
+			foreach my $table (keys %{$self->{tables}}) {
+				if ( grep(/^$table$/i, keys %{$self->{external_table}}) ) {
+					delete $self->{tables}{$table};
+				}
 			}
 		}
 		# Set total number of rows
@@ -3619,21 +3626,22 @@ sub _column_info
 
 	my $schema = '';
 	$schema = "AND upper(OWNER)='\U$owner\E' " if ($owner);
-	my $sth = $self->{dbh}->prepare(<<END) or $self->logit("WARNING only: " . $self->{dbh}->errstr . "\n", 0, 0);
+	my $sth = '';
+	if ($self->{db_version} !~ /Release 8/) {
+		$sth = $self->{dbh}->prepare(<<END) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 SELECT COLUMN_NAME, DATA_TYPE, DATA_LENGTH, NULLABLE, DATA_DEFAULT, DATA_PRECISION, DATA_SCALE, CHAR_LENGTH
 FROM $self->{prefix}_TAB_COLUMNS
 WHERE TABLE_NAME='$table' $schema
 ORDER BY COLUMN_ID
 END
-	if (not defined $sth) {
-		# Maybe a 8i database.
+	} else {
+		# an 8i database.
 		$sth = $self->{dbh}->prepare(<<END) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 SELECT COLUMN_NAME, DATA_TYPE, DATA_LENGTH, NULLABLE, DATA_DEFAULT, DATA_PRECISION, DATA_SCALE
 FROM $self->{prefix}_TAB_COLUMNS
 WHERE TABLE_NAME='$table' $schema
 ORDER BY COLUMN_ID
 END
-		$self->logit("INFO: please forget the above error message, this is a warning only for Oracle 8i database.\n", 0, 0);
 	}
 	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
@@ -3938,7 +3946,9 @@ sub _get_indexes
 		$sub_owner = "AND OWNER=$self->{prefix}_INDEXES.TABLE_OWNER";
 	}
 	# Retrieve all indexes 
-	my $sth = $self->{dbh}->prepare(<<END) or $self->logit("WARNING ONLY: " . $self->{dbh}->errstr . "\n", 0, 0);
+	my $sth = '';
+	if ($self->{db_version} !~ /Release 8/) {
+		$sth = $self->{dbh}->prepare(<<END) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 SELECT DISTINCT $self->{prefix}_IND_COLUMNS.INDEX_NAME,$self->{prefix}_IND_COLUMNS.COLUMN_NAME,$self->{prefix}_INDEXES.UNIQUENESS,$self->{prefix}_IND_COLUMNS.COLUMN_POSITION,$self->{prefix}_INDEXES.INDEX_TYPE,$self->{prefix}_INDEXES.TABLE_TYPE,$self->{prefix}_INDEXES.GENERATED,$self->{prefix}_INDEXES.JOIN_INDEX
 FROM $self->{prefix}_IND_COLUMNS, $self->{prefix}_INDEXES
 WHERE $self->{prefix}_IND_COLUMNS.TABLE_NAME='$table' $owner
@@ -3947,9 +3957,8 @@ AND $self->{prefix}_INDEXES.TEMPORARY <> 'Y'
 AND $self->{prefix}_INDEXES.INDEX_NAME=$self->{prefix}_IND_COLUMNS.INDEX_NAME
 ORDER BY $self->{prefix}_IND_COLUMNS.COLUMN_POSITION
 END
-
-	if (not defined $sth) {
-		# Maybe a 8i database.
+	} else {
+		# an 8i database.
 		$sth = $self->{dbh}->prepare(<<END) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 SELECT DISTINCT $self->{prefix}_IND_COLUMNS.INDEX_NAME,$self->{prefix}_IND_COLUMNS.COLUMN_NAME,$self->{prefix}_INDEXES.UNIQUENESS,$self->{prefix}_IND_COLUMNS.COLUMN_POSITION,$self->{prefix}_INDEXES.INDEX_TYPE,$self->{prefix}_INDEXES.TABLE_TYPE,$self->{prefix}_INDEXES.GENERATED
 FROM $self->{prefix}_IND_COLUMNS, $self->{prefix}_INDEXES
@@ -3959,9 +3968,8 @@ AND $self->{prefix}_INDEXES.TEMPORARY <> 'Y'
 AND $self->{prefix}_INDEXES.INDEX_NAME=$self->{prefix}_IND_COLUMNS.INDEX_NAME
 ORDER BY $self->{prefix}_IND_COLUMNS.COLUMN_POSITION
 END
-		$self->logit("INFO: please forget the above error message, this is a warning only for Oracle 8i database.\n", 0, 0);
 	}
-#AND $self->{prefix}_IND_COLUMNS.INDEX_NAME NOT IN (SELECT CONSTRAINT_NAME FROM $self->{prefix}_CONSTRAINTS WHERE TABLE_NAME='$table' $sub_owner)
+
 	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	my $idxnc = qq{SELECT IE.COLUMN_EXPRESSION FROM $self->{prefix}_IND_EXPRESSIONS IE, $self->{prefix}_IND_COLUMNS IC
 WHERE  IE.INDEX_OWNER = IC.INDEX_OWNER
@@ -5841,8 +5849,7 @@ sub _show_infos
 		$self->logit("CLIENT ENCODING $self->{client_encoding}\n", 0);
 	} elsif ($type eq 'SHOW_VERSION') {
 		$self->logit("Showing Oracle Version...\n", 1);
-		my $ver = $self->_get_version();
-		$self->logit("$ver\n", 0);
+		$self->logit("$self->{db_version}\n", 0);
 	} elsif ($type eq 'SHOW_REPORT') {
 		my $ver = $self->_get_version();
 		my $size = $self->_get_database_size();
