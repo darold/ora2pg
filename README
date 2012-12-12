@@ -1327,6 +1327,15 @@ ACKNOWLEDGEMENT
     and retesting all Ora2pg functionalities and suggesting lot of
     improvements.
 
+    Thanks a lot to Philippe Lang - Service Delivery Manager, Atos - for the
+    complete review of the french documentation and overall the global
+    project management about adding global report and migration cost to
+    Ora2Pg.
+
+    All my recognition goes to the French DGFiP (Direction Générale des
+    Finances Publiques) who asked for the great Ora2Pg v10 improvement:
+    global reports and migration cost.
+
     And all others who help me to build a useful and reliable product:
 
             Jason Servetar
