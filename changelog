@@ -1,3 +1,163 @@
+2012 12 12 - v10
+
+This is the first version of Ora2Pg 10.x series, that is a major release.
+Overall numerous improvements and bugs fixes there's now a new export type:
+SHOW_REPORT that will output a report of all objects contained in your Oracle
+database and some comments on how they will be exported. With this report you
+can use a new directive ESTIMATE_COST to ask to Ora2Pg to evaluate the database
+migration cost in terms of man days. There's also an other new configuration
+directive EXTERNAL_TO_FDW, disable by default, to permit the export of all
+Oracle external tables as file_fdw foreign tables.
+
+The database content report and the migration cost estimation is a work in
+progress so all feedback on these new features are welcome. Here is the complete
+changelog:
+
+	- Update documentation about ora2pg usage and new feature.
+	- Fix some other issues with 8i databases, added database version auto-
+	  detection to avoid printinf warning. Thanks to Sebastian Fischer for
+	  the help.
+	- Allow null value in BFILE to the oar2pg_get_bfilename().
+	- Update documentation about BFILE export.
+	- Add drop function ora2pg_get_bfilename() when necessary.
+	- Add support to BFILE external path export by creating a function
+	  ora2pg_get_bfilename( p_bfile IN BFILE ) to retrieve path from BFILE.
+	  BFILE will be exported as text field with the full path to the file as
+	  value. Note that this is the first time that Ora2Pg need write access
+	  to the Oracle database, if you do not have BFILE or you have set the
+	  corresponding PostgreSQL type asd bytea (the default) the function
+	  will not be created.
+	- Fix a performance issue when extracting BLOB with a LongReadLen upper
+	  than 1MB.
+	- Fix priviledge on schema created from Oracle package body. Thanks to
+	  Dominique Legendre for the report.
+	- Add object type in comment before priviledge extraction.
+	- Order output of grant to groups grants by object types. This is useful
+	  to quickly disable some SQL orders corresponding of not already loaded
+	  objects. Thanks to Dominique Legendre for the feature request.
+	- Fix progress bar output.
+	- Fix priviledge on sequence, tablespace and schema.
+	- Fix backward compatibility with Oracle 8i, remove query with JOIN.
+	  Thanks to Sebastian Fischer for the report.
+	- Fix backward compatibility with Oracle 8i on priviledge extraction.
+	  Thanks to Sebastian Fischer for the report.
+	- Fix backward compatibility with Oracle 8i on index extraction. Thanks
+	  to Sebastian Fischer for the report.
+	- Add more precision in cost estimation.
+	- Add somme other PL/SQL uncovered code detection.
+	- Add more debug information during data extraction.
+	- Removed progress bar when debug is enabled.
+	- Add report and estimate cost about CHECK constraint and function
+	  based indexes.
+	- Update documentation about new export directives SHOW_REPORT and
+	  ESTIMATE_COST.
+	- Add --estimate_cost and --cost_unit_value command line options.
+	- Add ESTIMATE_COST and COST_UNIT_VALUE to default configuration file.
+	- Rewritte and extend support to ROWNUM replacement.
+	- Remove incompatible grants between Oracle and the PortgreSQL export,
+	  especially on views.
+	- Limit GRANT export to VALID object. Activate EXPORT_INVALID to enable
+	  grants export on all object.
+	- Add export of VALID only views. To export all with INVALID ones you
+	  must activate the EXPORT_INVALID directive. Thanks to Dominique
+	  Legendre for the feature request.
+	- Fix issue in substr() pl/sql replacement, thanks to Dominique
+	  Legendre for the report, plus add other code replacements in pl/sql.
+	- Fix issue with function name not on the same line as the create
+	  statement - was affecting file input only.
+	- Add report of number of JOB object in the database (SHOW_REPORT).
+	- Add PL/SQL replacement of various form of EXEC function call.
+	- Remove creation of password with users that are not requiring
+	  password. Thanks to Dominique Legendre for the feature request.
+	- A sql type and a precision can now be used in REPLACE_AS_BOOLEAN to
+	  replace all filed with that type as a boolean, example:
+	  NUMBER:1 will replace all field of type NUMBER(1) as a boolean.
+	- Fix grants on partition export, will now used all_ and user_ tables.
+	- Fix removing of newline in the DECLARE clause. Thanks to Dominique
+	  Legendre for the report.
+	- PostgreSQL client_encoding is now forced to UTF8 when BINMODE is set
+	  to utf8. Thanks to Dominique Legendre for the report.
+	- Replace DISABLE TRIGGER ALL by DISABLE TRIGGER USER following the value
+	  if USER_GRANTS to avoid permission denied on constraint trigger when
+	  data are load under a non PG superuser. Thanks to Dominique Legendre
+	  for the report.
+	- Rename DISABLE_TABLE_TRIGGERS to DISABLE_TRIGGERS and set default value
+	  to 0. Other values are USER or ALL following the connected user.
+	- Fix missing newline after comment in PL/SQL code. Thanks to Dominique
+	  Legendre for the report.
+	- Fix report message on external table export.
+	- The export TYPE have been entirely rewritten to only export supported
+	  user defined types. Exported are: Nested Tables, Object type, Type in
+	  herited and Subtype, Varrays. Associative Arrays, Type Body and type
+	  with member method are not supported.
+	- When FILE_PER_INDEX is enable, SQL order to move indexes in their
+	  respective tablespace will be written into a dedicated file prefixed
+	  by TBSP_INDEXES_.
+	- Fix location on external table export. Thanks to Thomas Reiss for
+	  the help.
+	- PG_SUPPORTS_INSTEADOF is now activated by default, that mean that
+	  migration should be done on PG >= 9.1.
+	- Remove obsolete --xtable commande line option, should be replaced by
+	  --allow, backward compatibility is preserved.
+	- Add EXTERNAL_TO_FDW configuration directive, disable by default, to
+	  export all Oracle external tables as file_fdw foreign tables.
+	- Fix an other case where user defined type were not exported with an
+	  ending semi-colon. Thank to Dominique Legrendre for the report.
+	- Fix export of user defined type with extra ");" at end of the type
+	  definition and remove system types from export. Thanks to Dominique
+	  Legendre for the report.
+	- Add PLSQL replacemement of currval. Thanks to Thomas Reiss for the
+	  patch.
+	- Add PLSQL replacement of PIPELINED and PIPE ROW by SETOF and RETURN
+	  NEXT.
+	- Add rewrite of Oracle DETERMINISTIC function into PostgreSQL
+	  IMMUTABLE function.
+	- Fix copy during install on MacOSx and add /Y option to windows
+	  install copy to force overwrite existing files. Thanks to Dennis
+	  Spaag for the report.
+	- Fix issue exporting rows with perl ARRAYS ref. Thanks to Sorin
+	  Gheorghiu for the report.
+	- Add report of number of database link in SHOW_REPORT output.
+	- Fix major bug on export of NUMBER with precision, they was all
+	  exported as bigint. Thanks to Dominique Legendre for the report.
+	- Add progress bar during SHOW_REPORT export.
+	- Add detailed report about index in SHOW_REPORT output.
+	- Fix data export when schema was given in lower case. Thanks to
+	  Dominique Legendre for the report.
+	- Add SHOW_REPORT export type to display a full summary of the Oracle
+	  database content.
+	- PLPGSQL: add the name keyword to XMLELEMENT call. Thanks to Thomas
+	  Reiss for the hint.
+	- Add SHOW_VERSION export type to display the version of Oracle.
+	- Add COLLATION to the keyword list. Thanks to Dominique  Legendre for
+	  the report
+	- Change documentation to add more detail on exporting Oracle views as
+	  PostgreSQL tables based on the new VIEW_AS_TABLE directive.
+	- Add -a | --allow option and --view_as_table to ora2pg script.
+	- Add VIEW_AS_TABLE configuration option to allow export of view as
+	  table and permit the additional use of the ALLOW or/and EXCLUDE
+	  directive. Thanks to Dominique Legendre for the feature request.
+	- Removed conflict with transaction when DEFER_FKEY was enabled and
+	  allow DEFER_FKEY and DROP_FKEY to be enabled both. Before, only
+	  DEFER_FKEY was used in this case, now both are used and of course
+	  DEFER_FKEY is wasted. Thanks to Dominique Legendre for the report.
+	- Directives ALLOW and EXCLUDE are now usable with all kind of object
+	  following the export type.
+	- Rename TABLES directive as ALLOW to be less confusing, backward
+	  compatibility is preserved.
+	- Thanks to Dominique Legendre for the feature request.
+	- Remove auto ordering of table export following the foreign keys to
+	  fix an infinite loop. Thanks to Siva Janamanchi for the report.
+	- Rewrite the view as table export to reuse the same code as table
+	  export, old code was resulting in issues with disable triggers and
+	  deferring constraints.
+	- Remove alter session to set NLS_NCHAR that was returning error on some
+	  installation. Thanks to Dominique Legendre for the report.
+	- Fix replacement of IS SELECT wrongly replaced by IS PERFORM in some
+	  case. Thanks to Dominique Legendre fot the report.
+
+UPGRADE: Almost all files have changed so a new installation is required.
+
 2012 10 07 - v9.3
 
 	- Add auto detection of Oracle character set and the corresponding
