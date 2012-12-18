@@ -124,7 +124,7 @@
 .\" ========================================================================
 .\"
 .IX Title "ORA2PG 1"
-.TH ORA2PG 1 "2012-12-09" "perl v5.10.1" "User Contributed Perl Documentation"
+.TH ORA2PG 1 "2012-12-18" "perl v5.10.1" "User Contributed Perl Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -176,10 +176,10 @@ Features included:
 \&        \- Works on any plateform.
 \&        \- Export Oracle tables as foreign data wrapper tables.
 \&        \- Export materialized view.
-\&        \- Estimation cost of an Oracle database migration.
-\&        \- Estimation cost of PL/SQL migration from external file.
-\&        \- Estimation cost of Oracle SQL queries.
 \&        \- Show a detailled report of an Oracle database content.
+\&        \- Estimation migration cost of an Oracle database.
+\&        \- Estimation migration cost of PL/SQL code from a file.
+\&        \- Estimation cost of Oracle SQL queries strored in a file.
 .Ve
 .PP
 Ora2Pg do its best to automatically convert your Oracle database to PostgreSQL
@@ -224,8 +224,8 @@ program bzip2 must be available in your \s-1PATH\s0.
 Like any other Perl Module Ora2Pg can be installed with the following commands:
 .PP
 .Vb 4
-\&        tar xzf ora2pg\-9.x.tar.gz
-\&        cd ora2pg\-9.x/
+\&        tar xzf ora2pg\-10.x.tar.gz
+\&        cd ora2pg\-10.x/
 \&        perl Makefile.PL
 \&        make && make install
 .Ve
@@ -328,8 +328,9 @@ Here are all command line parameters available when using ora2pg:
 \&        manpage with \*(Aqman ora2pg\*(Aq.
 .Ve
 .PP
-Old version before 6.0 do not accept any command line parameter than the path to the
-configuration file.
+It is possible to add your own custom option(s) in the Perl script ora2pg as any
+configuration directive from ora2pg.conf can be passed in lower case to the new
+Ora2Pg object instance. See ora2pg code on how to add your own option.
 .SS "Oracle database connection"
 .IX Subsection "Oracle database connection"
 There's 5 configuration directives to control the access to the Oracle database.
@@ -1175,21 +1176,32 @@ PostgreSQL function declarations (disable it for PostgreSQL database version
 lower than 8.1), This is now enable by default.
 .IP "\s-1PG_SUPPORTS_DEFAULT\s0" 4
 .IX Item "PG_SUPPORTS_DEFAULT"
-This directive enable or disable the use of default parameter value in function export. Until PostgreSQL 8.4 such a default value was not supported, this feature is now enable by default.
-.IP "\s-1PG_SUPPORTS_WHEN\s0" 4
-.IX Item "PG_SUPPORTS_WHEN"
-Add support to \s-1WHEN\s0 clause on triggers as PostgreSQL v9.0 now support it. This directive is disabled by default, set it to 1 enable this feature.
-.IP "\s-1PG_SUPPORTS_INSTEADOF\s0" 4
-.IX Item "PG_SUPPORTS_INSTEADOF"
-Add support to \s-1INSTEAD\s0 \s-1OF\s0 usage on triggers (for incoming \s-1PG\s0 >= 9.1), if this directive is not enabled the \s-1INSTEAD\s0 \s-1OF\s0 triggers will be rewritten as Pg rules.
+This directive enable or disable the use of default parameter value in function
+export. Until PostgreSQL 8.4 such a default value was not supported, this feature
+is now enable by default.
+.IP "\s-1PG_SUPPORTS_WHEN\s0 (Deprecated)" 4
+.IX Item "PG_SUPPORTS_WHEN (Deprecated)"
+Add support to \s-1WHEN\s0 clause on triggers as PostgreSQL v9.0 now support it. This
+directive is enabled by default, set it to 0 disable this feature.
+.IP "\s-1PG_SUPPORTS_INSTEADOF\s0 (Deprecated)" 4
+.IX Item "PG_SUPPORTS_INSTEADOF (Deprecated)"
+Add support to \s-1INSTEAD\s0 \s-1OF\s0 usage on triggers (used with \s-1PG\s0 >= 9.1), if this
+directive is disabled the \s-1INSTEAD\s0 \s-1OF\s0 triggers will be rewritten as Pg rules.
 .IP "\s-1LONGREADLEN\s0" 4
 .IX Item "LONGREADLEN"
-Use this directive to set the database handle's 'LongReadLen' attribute to a value that will be the larger than the expected size of the LOBs. The default is 1Mb witch may not be enough to extract BLOBs or CLOBs. If the size of the \s-1LOB\s0 exceeds the 'LongReadLen' DBD::Oracle will return a '\s-1ORA\-24345:\s0 A Truncation' error. Default: 1023*1024 bytes.
+Use this directive to set the database handle's 'LongReadLen' attribute to a
+value that will be the larger than the expected size of the LOBs. The default
+is 1Mb witch may not be enough to extract BLOBs or CLOBs. If the size of the
+\&\s-1LOB\s0 exceeds the 'LongReadLen' DBD::Oracle will return a '\s-1ORA\-24345:\s0 A Truncation'
+error. Default: 1023*1024 bytes.
 .Sp
 Take a look at this page to learn more: http://search.cpan.org/~pythian/DBD\-Oracle\-1.22/Oracle.pm#Data_Interface_for_Persistent_LOBs
 .IP "\s-1LONGTRUNKOK\s0" 4
 .IX Item "LONGTRUNKOK"
-If you want to bypass the '\s-1ORA\-24345:\s0 A Truncation' error, set this directive to 1, it will truncate the data extracted to the LongReadLen value. Disable by default.
+If you want to bypass the '\s-1ORA\-24345:\s0 A Truncation' error, set this directive
+to 1, it will truncate the data extracted to the LongReadLen value. Disable
+by default so that you will be warned if your LongReadLen value is not high
+enough.
 .IP "\s-1XML_PRETTY\s0" 4
 .IX Item "XML_PRETTY"
 Force the use \fIgetStringVal()\fR instead of \fIgetClobVal()\fR for \s-1XML\s0 data export. Default is 1,
@@ -1377,6 +1389,157 @@ following the view schema.
 .PP
 You can use the \s-1ALLOW\s0 and \s-1EXCLUDE\s0 directive in addition to select the others
 objects to export.
+.SS "Migration cost assessment"
+.IX Subsection "Migration cost assessment"
+Estimating the cost of a migration process from Oracle to PostgreSQL is not easy. To
+obtain a good assessment of this migration cost, Ora2Pg will inspect all database
+objects, all functions and stored procedures to detect if there's still some objects
+and \s-1PL/SQL\s0 code that can not be automatically converted by Ora2Pg.
+.PP
+Ora2Pg has a content analysis mode that inspect the Oracle database to generate a
+text report on what the Oracle database contains and what can not be exported.
+.PP
+To activate the \*(L"analysis and report\*(R" mode, you have to use the export de type
+\&\s-1SHOW_REPORT\s0 like in the following command:
+.PP
+.Vb 1
+\&        ora2pg \-t SHOW_REPORT
+.Ve
+.PP
+Here is a sample report obtained with this command:
+.PP
+.Vb 6
+\&        \-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-
+\&        Ora2Pg: Oracle Database Content Report
+\&        \-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-
+\&        Version Oracle Database 10g Enterprise Edition Release 10.2.0.1.0
+\&        Schema  HR
+\&        Size  880.00 MB
+\&         
+\&        \-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-
+\&        Object  Number  Invalid Comments
+\&        \-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-
+\&        CLUSTER   2 0 Clusters are not supported and will not be exported.
+\&        FUNCTION  40  0 Total size of function code: 81992.
+\&        INDEX     435 0 232 index(es) are concerned by the export, others are automatically generated and will
+\&                                        do so on PostgreSQL. 1 bitmap index(es). 230 b\-tree index(es). 1 reversed b\-tree index(es)
+\&                                        Note that bitmap index(es) will be exported as b\-tree index(es) if any. Cluster, domain,
+\&                                        bitmap join and IOT indexes will not be exported at all. Reverse indexes are not exported
+\&                                        too, you may use a trigram\-based index (see pg_trgm) or a reverse() function based index
+\&                                        and search. You may also use \*(Aqvarchar_pattern_ops\*(Aq, \*(Aqtext_pattern_ops\*(Aq or \*(Aqbpchar_pattern_ops\*(Aq
+\&                                        operators in your indexes to improve search with the LIKE operator respectively into
+\&                                        varchar, text or char columns.
+\&        MATERIALIZED VIEW 1 0 All materialized view will be exported as snapshot materialized views, they
+\&                                        are only updated when fully refreshed.
+\&        PACKAGE BODY  2 1 Total size of package code: 20700.
+\&        PROCEDURE 7 0 Total size of procedure code: 19198.
+\&        SEQUENCE  160 0 Sequences are fully supported, but all call to sequence_name.NEXTVAL or sequence_name.CURRVAL
+\&                                        will be transformed into NEXTVAL(\*(Aqsequence_name\*(Aq) or CURRVAL(\*(Aqsequence_name\*(Aq).
+\&        TABLE     265 0 1 external table(s) will be exported as standard table. See EXTERNAL_TO_FDW configuration
+\&                                        directive to export as file_fdw foreign tables or use COPY in your code if you just
+\&                                        want to load data from external files. 2 binary columns. 4 unknow types.
+\&        TABLE PARTITION 8 0 Partitions are exported using table inheritance and check constraint. 1 HASH partitions.
+\&                                        2 LIST partitions. 6 RANGE partitions. Note that Hash partitions are not supported.
+\&        TRIGGER   30  0 Total size of trigger code: 21677.
+\&        TYPE      7 1 5 type(s) are concerned by the export, others are not supported. 2 Nested Tables.
+\&                                        2 Object type. 1 Subtype. 1 Type Boby. 1 Type inherited. 1 Varrays. Note that Type
+\&                                        inherited and Subtype are converted as table, type inheritance is not supported.
+\&        TYPE BODY 0 3 Export of type with member method are not supported, they will not be exported.
+\&        VIEW      7 0 Views are fully supported, but if you have updatable views you will need to use
+\&                                        INSTEAD OF triggers.
+\&        DATABASE LINK 1 0 Database links will not be exported. You may try the dblink perl contrib module or use
+\&                                        the SQL/MED PostgreSQL features with the different Foreign Data Wrapper (FDW) extentions.
+\&                                        
+\&        Note: Invalid code will not be exported unless the EXPORT_INVALID configuration directive is activated.
+.Ve
+.PP
+Once the database can be analysed, Ora2Pg, by his ability to convert \s-1SQL\s0 and \s-1PL/SQL\s0
+code from Oracle syntax to PostgreSQL, can go further by estimating the code difficulties
+and estimate the time necessary to operate a full database migration.
+.PP
+To estimate the migration cost in man-days, Ora2Pg allow you to use a configuration
+directive called \s-1ESTIMATE_COST\s0 that you can also enabled at command line:
+.PP
+.Vb 1
+\&        \-\-estimate_cost
+.Ve
+.PP
+This feature can only be used with the \s-1SHOW_REPORT\s0, \s-1FUNCTION\s0, \s-1PROCEDURE\s0, \s-1PACKAGE\s0
+and \s-1QUERY\s0 export type.
+.PP
+.Vb 1
+\&        ora2pg \-t SHOW_REPORT  \-\-estimate_cost
+.Ve
+.PP
+The generated report is same as above but with a new 'Estimated cost' column as follow:
+.PP
+.Vb 6
+\&        \-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-
+\&        Ora2Pg: Oracle Database Content Report
+\&        \-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-
+\&        Version Oracle Database 10g Express Edition Release 10.2.0.1.0
+\&        Schema  HR
+\&        Size  890.00 MB
+\&         
+\&        \-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-
+\&        Object  Number  Invalid Estimated cost  Comments
+\&        \-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-
+\&        FUNCTION  2 0 7 Total size of function code: 369 bytes. HIGH_SALARY: 2, VALIDATE_SSN: 3.
+\&        INDEX 21  0 11  11 index(es) are concerned by the export, others are automatically generated and will do so
+\&                                        on PostgreSQL. 11 b\-tree index(es). Note that bitmap index(es) will be exported as b\-tree
+\&                                        index(es) if any. Cluster, domain, bitmap join and IOT indexes will not be exported at all.
+\&                                        Reverse indexes are not exported too, you may use a trigram\-based index (see pg_trgm) or a
+\&                                        reverse() function based index and search. You may also use \*(Aqvarchar_pattern_ops\*(Aq, \*(Aqtext_pattern_ops\*(Aq
+\&                                        or \*(Aqbpchar_pattern_ops\*(Aq operators in your indexes to improve search with the LIKE operator
+\&                                        respectively into varchar, text or char columns.
+\&        MATERIALIZED VIEW 1 0 3 All materialized view will be exported as snapshot materialized views, they
+\&                                                are only updated when fully refreshed.
+\&        PACKAGE BODY  0 2 54  Total size of package code: 2487 bytes. Number of procedures and functions found
+\&                                                inside those packages: 7. two_proc.get_table: 10, emp_mgmt.create_dept: 4,
+\&                                                emp_mgmt.hire: 13, emp_mgmt.increase_comm: 4, emp_mgmt.increase_sal: 4,
+\&                                                emp_mgmt.remove_dept: 3, emp_mgmt.remove_emp: 2.
+\&        PROCEDURE 4 0 39  Total size of procedure code: 2436 bytes. TEST_COMMENTAIRE: 2, SECURE_DML: 3,
+\&                                                PHD_GET_TABLE: 24, ADD_JOB_HISTORY: 6.
+\&        SEQUENCE  3 0 0 Sequences are fully supported, but all call to sequence_name.NEXTVAL or sequence_name.CURRVAL
+\&                                                will be transformed into NEXTVAL(\*(Aqsequence_name\*(Aq) or CURRVAL(\*(Aqsequence_name\*(Aq).
+\&        TABLE 17  0 8.5 1 external table(s) will be exported as standard table. See EXTERNAL_TO_FDW configuration
+\&                                        directive to export as file_fdw foreign tables or use COPY in your code if you just want to
+\&                                        load data from external files. 2 binary columns. 4 unknow types.
+\&        TRIGGER 1 1 4 Total size of trigger code: 123 bytes. UPDATE_JOB_HISTORY: 2.
+\&        TYPE  7 1 5 5 type(s) are concerned by the export, others are not supported. 2 Nested Tables. 2 Object type.
+\&                                        1 Subtype. 1 Type Boby. 1 Type inherited. 1 Varrays. Note that Type inherited and Subtype are
+\&                                        converted as table, type inheritance is not supported.
+\&        TYPE BODY 0 3 30  Export of type with member method are not supported, they will not be exported.
+\&        VIEW  1 1 1 Views are fully supported, but if you have updatable views you will need to use INSTEAD OF triggers.
+\&        DATABASE LINK 0 0 0 Database links will not be exported. You may try the dblink perl contrib module or
+\&                                                use the SQL/MED PostgreSQL features with the different Foreign Data Wrapper (FDW) extentions.
+\&        JOB 0 0 0 Job are not exported. You may set external cron job with them.
+\&        \-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-
+\&        Total 65  8 162.5 162.5 cost migration units means approximatively 2 man day(s).
+.Ve
+.PP
+The last line shows the total estimated migration code in man-days following the
+number of migration units estimated for each object. This migration unit represent
+around five minutes for a PostgreSQL expert. If this is your first migration you can
+get it higher with the configuration directive \s-1COST_UNIT_VALUE\s0 or the \-\-cost_unit_value
+command line option:
+.PP
+.Vb 1
+\&        ora2pg \-t SHOW_REPORT  \-\-estimate_cost \-\-cost_unit_value 10
+.Ve
+.SS "Migration assessment method"
+.IX Subsection "Migration assessment method"
+Migration unit scores given to each type of Oracle database object are defined in the
+Perl library lib/Ora2Pg/PLSQL.pm in the \f(CW%OBJECT_SCORE\fR variable definition.
+.PP
+The number of \s-1PL/SQL\s0 lines associated to a migration unit is also defined in this file
+in the \f(CW$SIZE_SCORE\fR variable value.
+.PP
+The number of migration units associated to each \s-1PL/SQL\s0 code difficulties can be found
+in the same Perl library lib/Ora2Pg/PLSQL.pm in the hash \f(CW%UNCOVERED_SCORE\fR initialization.
+.PP
+This assessment method is a work in progress so I'm expecting feedbacks on migration
+experiences to polish the scores/units attribued in those variables.
 .SH "SUPPORT"
 .IX Header "SUPPORT"
 .SS "Author / Maintainer"
@@ -1468,7 +1631,13 @@ I must thanks a lot all the great contributors:
 .Ve
 .PP
 with very specials thanks to Dominique Legendre for his help on testing and
-retesting all Ora2pg functionalities and suggesting lot of improvements.
+retesting all Ora2pg features and suggesting numerous improvements. About
+the migration cost assessment part, I want to thanks Philippe Lang \- Service
+Delivery Manager, Atos \- for the complete review of the french documentation
+and the global project management. All my recognition goes to the French DGFiP
+(Direction Generale des Finances Publiques) who asked for that great Ora2Pg
+improvement and of course Dalibo who offer me the opportunity to work on this
+project and PostgreSQL in general.
 .PP
 And all others who help me to build a useful and reliable product:
 .PP
@@ -1488,5 +1657,6 @@ And all others who help me to build a useful and reliable product:
 \&        Sriram Chandrasekaran
 \&        Patrick King
 \&        Jenny Palomino
+\&        Sebastian Fischer
 \&        ...
 .Ve
