@@ -2791,6 +2791,7 @@ CREATE TRIGGER insert_${table}_trigger
 		}
 		# Add comments on table
 		if (!$self->{disable_comment} && ${$self->{tables}{$table}{table_info}}[2]) {
+			${$self->{tables}{$table}{table_info}}[2] =~ s/'/\\'/gs;
 			if (!$self->{preserve_case}) {
 				$sql_output .= "COMMENT ON TABLE \L$tbname\E IS E'${$self->{tables}{$table}{table_info}}[2]';\n";
 			} else {
