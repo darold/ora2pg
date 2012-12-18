@@ -1110,17 +1110,16 @@ is a coma separated list of \*(L"Oracle datatype:Postgresql datatype\*(R". Here 
 the default list used:
 .Sp
 .Vb 1
-\&        DATA_TYPE       DATE:timestamp,LONG:text,LONG RAW:bytea,CLOB:text,NCLOB:text,BLOB:bytea,BFILE:text,RAW:bytea,ROWID:oid,FLOAT:double precision,DEC:decimal,DECIMAL:decimal,DOUBLE PRECISION:double precision,INT:integer,INTEGER:integer,REAL:real,SMALLINT:smallint,BINARY_FLOAT:double precision,BINARY_DOUBLE:double precision,TIMESTAMP:timestamp,XMLTYPE:xml,BINARY_INTEGER:integer,PLS_INTEGER:integer,TIMESTAMP WITH TIME ZONE:timestamp with time zone,TIMESTAMP WITH LOCAL TIME ZONE:timestamp with time zone
+\&        DATA_TYPE       DATE:timestamp,LONG:text,LONG RAW:bytea,CLOB:text,NCLOB:text,BLOB:bytea,BFILE:bytea,RAW:bytea,ROWID:oid,FLOAT:double precision,DEC:decimal,DECIMAL:decimal,DOUBLE PRECISION:double precision,INT:integer,INTEGER:integer,REAL:real,SMALLINT:smallint,BINARY_FLOAT:double precision,BINARY_DOUBLE:double precision,TIMESTAMP:timestamp,XMLTYPE:xml,BINARY_INTEGER:integer,PLS_INTEGER:integer,TIMESTAMP WITH TIME ZONE:timestamp with time zone,TIMESTAMP WITH LOCAL TIME ZONE:timestamp with time zone
 .Ve
 .Sp
 Note that the directive and the list definition must be a single line.
 .Sp
-There's a special case with \s-1BFILE\s0 that are converted as text field, they will
-contains the path to the external file. Oracle stores a locator that could lead
-to export the \s-1BFILE\s0 as bytea, but \s-1BFILE\s0 are external files so Ora2Pg will only
-retrieve the full path to that files and store it in a text field.
+There's a special case with \s-1BFILE\s0 when they are converted to text field, they will
+contains the path to the external file. If you set the destination type to bytea, the
+default, Ora2Pg will export the \s-1BFILE\s0 as bytea.
 .Sp
-There's no \s-1SQL\s0 function available to retrieve the pathi to the \s-1BFILE\s0, then Ora2Pg
+There's no \s-1SQL\s0 function available to retrieve the path to the \s-1BFILE\s0, then Ora2Pg
 have to create one using the \s-1DBMS_LOB\s0 package.
 .Sp
 .Vb 10
@@ -1230,11 +1229,10 @@ columns definition. Default is enabled.
 .IX Subsection "Special options to handle character encoding"
 .IP "\s-1NLS_LANG\s0" 4
 .IX Item "NLS_LANG"
-By default since Ora2Pg 9.3 Oracle character set is automatically detected, but
-if you experience any issues where mutibyte characters are being substituted
-with some replacement characters during the export try to set the \s-1NLS_LANG\s0
-configuration directive to the Oracle encoding. This may help a lot especially
-with \s-1UTF8\s0 encoding. For example:
+By default Oracle character set is automatically detected, but if you experience
+any issues where mutibyte characters are being substituted with some replacement
+characters during the export try to set the \s-1NLS_LANG\s0 configuration directive to
+the Oracle encoding. This may help a lot especially with \s-1UTF8\s0 encoding. For example:
 .Sp
 .Vb 1
 \&        NLS_LANG        AMERICAN_AMERICA.UTF8
@@ -1251,10 +1249,10 @@ this: binmode \s-1OUTFH\s0, \*(L":utf8\*(R"; By default Ora2Pg opens the output 
 binary mode.
 .IP "\s-1CLIENT_ENCODING\s0" 4
 .IX Item "CLIENT_ENCODING"
-By default since Ora2Pg 9.3 PostgreSQL client encoding is automatically detected
-and set to avoid encoding issue. If you want to defined your own or if you
-experience some \s-1ERROR:\s0 invalid byte sequence for encoding \*(L"\s-1UTF8\s0\*(R": 0xe87472
-when loading data you may want to set the encoding of the PostgreSQL client.
+By default PostgreSQL client encoding is automatically detected and set to avoid
+encoding issue. If you want to defined your own or if you experience some
+\&\s-1ERROR:\s0 invalid byte sequence for encoding \*(L"\s-1UTF8\s0\*(R": 0xe87472 when loading data you
+may want to set the encoding of the PostgreSQL client.
 .Sp
 For example, let's say you have an Oracle database with all data encoded in
 \&\s-1FRENCH_FRANCE\s0.WE8ISO8859P15, your system use fr_FR.UTF\-8 as console encoding

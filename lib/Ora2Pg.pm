@@ -34,7 +34,7 @@ use Config;
 #set locale to LC_NUMERIC C
 setlocale(LC_NUMERIC,"C");
 
-$VERSION = '9.3';
+$VERSION = '10.0';
 $PSQL = $ENV{PLSQL} || 'psql';
 
 $| = 1;
@@ -70,7 +70,9 @@ our %TYPE = (
 	'CLOB' => 'text', # A large object containing single-byte characters
 	'NCLOB' => 'text', # A large object containing national character set data
 	'BLOB' => 'bytea', # Binary large object
-	'BFILE' => 'text', # Locator for external large binary file
+	# The full path to the external file is returned if destination type is text.
+	# If the destination type is bytea the content of the external file is returned.
+	'BFILE' => 'bytea', # Locator for external large binary file
 	# The RAW type is presented as hexadecimal characters. The
 	# contents are treated as binary data. Limit of 2000 bytes
 	# PG type text should match all needs or if you want you could
@@ -717,6 +719,9 @@ sub _init
 		return;
 	}
 
+	# Get the Oracle version
+	$self->{db_version} = $self->_get_version() if (!$self->{input_file});
+
 	# Retreive all table informations
         foreach my $t (@{$self->{export_type}}) {
                 $self->{type} = $t;
@@ -1099,7 +1104,9 @@ sub _tables
 	}
 
 	# Look at external tables
-	%{$self->{external_table}} = $self->_get_external_tables();
+	if ($self->{db_version} !~ /Release 8/) {
+		%{$self->{external_table}} = $self->_get_external_tables();
+	}
 
 }
 
@@ -2207,9 +2214,11 @@ LANGUAGE plpgsql ;
 			my $s = $self->{dbhdest}->do($search_path) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
 		}
 		# Remove external table from data export
-		foreach my $table (keys %{$self->{tables}}) {
-			if ( grep(/^$table$/i, keys %{$self->{external_table}}) ) {
-				delete $self->{tables}{$table};
+		if (scalar keys %{$self->{external_table}} ) {
+			foreach my $table (keys %{$self->{tables}}) {
+				if ( grep(/^$table$/i, keys %{$self->{external_table}}) ) {
+					delete $self->{tables}{$table};
+				}
 			}
 		}
 		# Set total number of rows
@@ -3447,7 +3456,8 @@ sub _get_data
 			$str .= "to_char($name->[$k]->[0], '$timeformat_tz'),";
 		} elsif ( $src_type->[$k] =~ /timestamp/i) {
 			$str .= "to_char($name->[$k]->[0], '$timeformat'),";
-		} elsif ( $src_type->[$k] =~ /bfile/i) {
+		# Only extract the path to the bfile, if dest type is bytea the bfile should be exported.
+		} elsif ( ($src_type->[$k] =~ /bfile/i) && ($type->[$k] =~ /text/i) ) {
 			$str .= "ora2pg_get_bfilename($name->[$k]->[0]),";
 			$self->{bfile_found} = 1;
 		} elsif ( $src_type->[$k] =~ /xmltype/i) {
@@ -3473,10 +3483,14 @@ VARCHAR2
     l_fname VARCHAR2(4000);
     l_path  VARCHAR2(4000);
   BEGIN
-    dbms_lob.FILEGETNAME( p_bfile, l_dir, l_fname );
-    SELECT directory_path INTO l_path FROM all_directories WHERE directory_name = l_dir;
-    l_dir := rtrim(l_path,'/');
-    RETURN l_dir || '/' || l_fname;
+    IF p_bfile IS NULL
+    THEN RETURN NULL;
+    ELSE
+      dbms_lob.FILEGETNAME( p_bfile, l_dir, l_fname );
+      SELECT directory_path INTO l_path FROM all_directories WHERE directory_name = l_dir;
+      l_dir := rtrim(l_path,'/');
+      RETURN l_dir || '/' || l_fname;
+  END IF;
   END;
 };
 		my $sth2 = $self->{dbh}->do($bfile_function);
@@ -3613,21 +3627,22 @@ sub _column_info
 
 	my $schema = '';
 	$schema = "AND upper(OWNER)='\U$owner\E' " if ($owner);
-	my $sth = $self->{dbh}->prepare(<<END) or $self->logit("WARNING only: " . $self->{dbh}->errstr . "\n", 0, 0);
+	my $sth = '';
+	if ($self->{db_version} !~ /Release 8/) {
+		$sth = $self->{dbh}->prepare(<<END) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 SELECT COLUMN_NAME, DATA_TYPE, DATA_LENGTH, NULLABLE, DATA_DEFAULT, DATA_PRECISION, DATA_SCALE, CHAR_LENGTH
 FROM $self->{prefix}_TAB_COLUMNS
 WHERE TABLE_NAME='$table' $schema
 ORDER BY COLUMN_ID
 END
-	if (not defined $sth) {
-		# Maybe a 8i database.
+	} else {
+		# an 8i database.
 		$sth = $self->{dbh}->prepare(<<END) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 SELECT COLUMN_NAME, DATA_TYPE, DATA_LENGTH, NULLABLE, DATA_DEFAULT, DATA_PRECISION, DATA_SCALE
 FROM $self->{prefix}_TAB_COLUMNS
 WHERE TABLE_NAME='$table' $schema
 ORDER BY COLUMN_ID
 END
-		$self->logit("INFO: please forget the above error message, this is a warning only for Oracle 8i database.\n", 0, 0);
 	}
 	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
@@ -3932,7 +3947,9 @@ sub _get_indexes
 		$sub_owner = "AND OWNER=$self->{prefix}_INDEXES.TABLE_OWNER";
 	}
 	# Retrieve all indexes 
-	my $sth = $self->{dbh}->prepare(<<END) or $self->logit("WARNING ONLY: " . $self->{dbh}->errstr . "\n", 0, 0);
+	my $sth = '';
+	if ($self->{db_version} !~ /Release 8/) {
+		$sth = $self->{dbh}->prepare(<<END) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 SELECT DISTINCT $self->{prefix}_IND_COLUMNS.INDEX_NAME,$self->{prefix}_IND_COLUMNS.COLUMN_NAME,$self->{prefix}_INDEXES.UNIQUENESS,$self->{prefix}_IND_COLUMNS.COLUMN_POSITION,$self->{prefix}_INDEXES.INDEX_TYPE,$self->{prefix}_INDEXES.TABLE_TYPE,$self->{prefix}_INDEXES.GENERATED,$self->{prefix}_INDEXES.JOIN_INDEX
 FROM $self->{prefix}_IND_COLUMNS, $self->{prefix}_INDEXES
 WHERE $self->{prefix}_IND_COLUMNS.TABLE_NAME='$table' $owner
@@ -3941,9 +3958,8 @@ AND $self->{prefix}_INDEXES.TEMPORARY <> 'Y'
 AND $self->{prefix}_INDEXES.INDEX_NAME=$self->{prefix}_IND_COLUMNS.INDEX_NAME
 ORDER BY $self->{prefix}_IND_COLUMNS.COLUMN_POSITION
 END
-
-	if (not defined $sth) {
-		# Maybe a 8i database.
+	} else {
+		# an 8i database.
 		$sth = $self->{dbh}->prepare(<<END) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 SELECT DISTINCT $self->{prefix}_IND_COLUMNS.INDEX_NAME,$self->{prefix}_IND_COLUMNS.COLUMN_NAME,$self->{prefix}_INDEXES.UNIQUENESS,$self->{prefix}_IND_COLUMNS.COLUMN_POSITION,$self->{prefix}_INDEXES.INDEX_TYPE,$self->{prefix}_INDEXES.TABLE_TYPE,$self->{prefix}_INDEXES.GENERATED
 FROM $self->{prefix}_IND_COLUMNS, $self->{prefix}_INDEXES
@@ -3953,9 +3969,8 @@ AND $self->{prefix}_INDEXES.TEMPORARY <> 'Y'
 AND $self->{prefix}_INDEXES.INDEX_NAME=$self->{prefix}_IND_COLUMNS.INDEX_NAME
 ORDER BY $self->{prefix}_IND_COLUMNS.COLUMN_POSITION
 END
-		$self->logit("INFO: please forget the above error message, this is a warning only for Oracle 8i database.\n", 0, 0);
 	}
-#AND $self->{prefix}_IND_COLUMNS.INDEX_NAME NOT IN (SELECT CONSTRAINT_NAME FROM $self->{prefix}_CONSTRAINTS WHERE TABLE_NAME='$table' $sub_owner)
+
 	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	my $idxnc = qq{SELECT IE.COLUMN_EXPRESSION FROM $self->{prefix}_IND_EXPRESSIONS IE, $self->{prefix}_IND_COLUMNS IC
 WHERE  IE.INDEX_OWNER = IC.INDEX_OWNER
@@ -5835,8 +5850,7 @@ sub _show_infos
 		$self->logit("CLIENT ENCODING $self->{client_encoding}\n", 0);
 	} elsif ($type eq 'SHOW_VERSION') {
 		$self->logit("Showing Oracle Version...\n", 1);
-		my $ver = $self->_get_version();
-		$self->logit("$ver\n", 0);
+		$self->logit("$self->{db_version}\n", 0);
 	} elsif ($type eq 'SHOW_REPORT') {
 		my $ver = $self->_get_version();
 		my $size = $self->_get_database_size();
