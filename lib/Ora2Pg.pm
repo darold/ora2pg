@@ -587,6 +587,8 @@ sub _init
 	$self->{bzip2} ||= '/usr/bin/bzip2';
 	$self->{default_numeric} ||= 'bigint';
 	$self->{type_of_type} = ();
+	$self->{dump_as_html} ||= 0;
+
 	# backward compatibility
 	if ($self->{disable_table_triggers}) {
 		$self->{disable_triggers} = $self->{disable_table_triggers};
@@ -6610,11 +6612,11 @@ sub _get_human_cost
 	if ($human_cost >= 420) {
 		my $tmp = $human_cost/420;
 		$tmp++ if ($tmp =~ s/\.\d+//);
-		$human_cost = "$tmp man day(s)";
+		$human_cost = "$tmp man-day(s)";
 	} else {
 		my $tmp = $human_cost/60;
 		$tmp++ if ($tmp =~ s/\.\d+//);
-		$human_cost = "$tmp man hour(s)";
+		$human_cost = "$tmp man-hour(s)";
 	} 
 
 	return $human_cost;
@@ -6624,35 +6626,167 @@ sub _show_report
 {
 	my ($self, %report_info) = @_;
 
-	# Generate report.
-	my $cost_header = '';
-	$cost_header = "\tEstimated cost" if ($self->{estimate_cost});
-	$self->logit("-------------------------------------------------------------------------------\n", 0);
-	$self->logit("Ora2Pg: Oracle Database Content Report\n", 0);
-	$self->logit("-------------------------------------------------------------------------------\n", 0);
-	$self->logit("Version\t$report_info{'Version'}\n", 0);
-	$self->logit("Schema\t$report_info{'Schema'}\n", 0);
-	$self->logit("Size\t$report_info{'Size'}\n\n", 0);
-	$self->logit("-------------------------------------------------------------------------------\n", 0);
-	$self->logit("Object\tNumber\tInvalid$cost_header\tComments\tDetails\n", 0);
-	$self->logit("-------------------------------------------------------------------------------\n", 0);
-	foreach my $typ (sort keys %{ $report_info{'Objects'} } ) {
-		$report_info{'Objects'}{$typ}{'detail'} =~ s/\n/\. /gs;
-		if ($self->{estimate_cost}) {
-			$self->logit("$typ\t$report_info{'Objects'}{$typ}{'number'}\t$report_info{'Objects'}{$typ}{'invalid'}\t$report_info{'Objects'}{$typ}{'cost_value'}\t$report_info{'Objects'}{$typ}{'comment'}\t$report_info{'Objects'}{$typ}{'detail'}\n", 0);
-		} else {
-			$self->logit("$typ\t$report_info{'Objects'}{$typ}{'number'}\t$report_info{'Objects'}{$typ}{'invalid'}\t$report_info{'Objects'}{$typ}{'comment'}\t$report_info{'Objects'}{$typ}{'detail'}\n", 0);
+	# Generate report text report
+	if (!$self->{dump_as_html}) {
+		my $cost_header = '';
+		$cost_header = "\tEstimated cost" if ($self->{estimate_cost});
+		$self->logit("-------------------------------------------------------------------------------\n", 0);
+		$self->logit("Ora2Pg v$VERSION - Database Migration Report\n", 0);
+		$self->logit("-------------------------------------------------------------------------------\n", 0);
+		$self->logit("Version\t$report_info{'Version'}\n", 0);
+		$self->logit("Schema\t$report_info{'Schema'}\n", 0);
+		$self->logit("Size\t$report_info{'Size'}\n\n", 0);
+		$self->logit("-------------------------------------------------------------------------------\n", 0);
+		$self->logit("Object\tNumber\tInvalid$cost_header\tComments\tDetails\n", 0);
+		$self->logit("-------------------------------------------------------------------------------\n", 0);
+		foreach my $typ (sort keys %{ $report_info{'Objects'} } ) {
+			$report_info{'Objects'}{$typ}{'detail'} =~ s/\n/\. /gs;
+			if ($self->{estimate_cost}) {
+				$self->logit("$typ\t$report_info{'Objects'}{$typ}{'number'}\t$report_info{'Objects'}{$typ}{'invalid'}\t$report_info{'Objects'}{$typ}{'cost_value'}\t$report_info{'Objects'}{$typ}{'comment'}\t$report_info{'Objects'}{$typ}{'detail'}\n", 0);
+			} else {
+				$self->logit("$typ\t$report_info{'Objects'}{$typ}{'number'}\t$report_info{'Objects'}{$typ}{'invalid'}\t$report_info{'Objects'}{$typ}{'comment'}\t$report_info{'Objects'}{$typ}{'detail'}\n", 0);
+			}
 		}
-	}
-	$self->logit("-------------------------------------------------------------------------------\n", 0);
-	if ($self->{estimate_cost}) {
-		my $human_cost = $self->_get_human_cost($report_info{'total_cost_value'});
-		my $comment = "$report_info{'total_cost_value'} cost migration units means approximatively $human_cost.\n";
-		$self->logit("Total\t$report_info{'total_object_number'}\t$report_info{'total_object_invalid'}\t$report_info{'total_cost_value'}\t$comment\n", 0);
+		$self->logit("-------------------------------------------------------------------------------\n", 0);
+		if ($self->{estimate_cost}) {
+			my $human_cost = $self->_get_human_cost($report_info{'total_cost_value'});
+			my $comment = "$report_info{'total_cost_value'} cost migration units means approximatively $human_cost.\n";
+			$self->logit("Total\t$report_info{'total_object_number'}\t$report_info{'total_object_invalid'}\t$report_info{'total_cost_value'}\t$comment\n", 0);
+		} else {
+			$self->logit("Total\t$report_info{'total_object_number'}\t$report_info{'total_object_invalid'}\n", 0);
+		}
+		$self->logit("-------------------------------------------------------------------------------\n", 0);
 	} else {
-		$self->logit("Total\t$report_info{'total_object_number'}\t$report_info{'total_object_invalid'}\n", 0);
+		my $cost_header = '';
+		$cost_header = "<th>Estimated cost</th>" if ($self->{estimate_cost});
+		my $date = localtime(time);
+		my $html_header = qq{<!DOCTYPE html>
+<html>
+  <head>
+  <title>Ora2Pg - Database Migration Report</title>
+  <meta HTTP-EQUIV="Generator" CONTENT="Ora2Pg v$VERSION">
+  <meta HTTP-EQUIV="Date" CONTENT="$date">
+  <style>
+body {
+	margin: 30px 0;
+	padding: 0;
+	background: #EFEFEF;
+	font-size: 12px;
+	color: #1e1e1e;
+}
+
+h1 {
+	margin-bottom: 20px;
+	border-bottom: 1px solid #DFDFDF;
+	font-size: 22px;
+	padding: 0px;
+	padding-bottom: 5px;
+	font-weight: bold;
+	color: #0094C7;
+}
+
+#header table {
+	padding: 0 5px 0 5px;
+	border: 1px solid #DBDBDB;
+	margin-bottom: 20px;
+	margin-left: 30px;
+}
+
+#header th {
+	padding: 0 5px 0 5px;
+	text-decoration: none;
+	font-size: 16px;
+	color: #EC5800;
+}
+
+#content table {
+	padding: 0 5px 0 5px;
+	border: 1px solid #DBDBDB;
+	margin-bottom: 20px;
+	margin-left: 10px;
+	margin-right: 10px;
+}
+#content td {
+	padding: 0 5px 0 5px;
+	border-bottom: 1px solid #888888;
+	margin-bottom: 20px;
+	text-align: left;
+	vertical-align: top;
+}
+
+#content th {
+	border-bottom: 1px solid #BBBBBB;
+	padding: 0 5px 0 5px;
+	text-decoration: none;
+	font-size: 16px;
+	color: #EC5800;
+}
+
+.object_name {
+        font-weight: bold;
+        color: #0094C7;
+	text-align: left;
+	white-space: pre;
+}
+
+.detail {
+	white-space: pre;
+}
+
+#footer {
+	margin-right: 10px;
+	text-align: right;
+}
+
+#footer a {
+	color: #EC5800;
+}
+
+#footer a:hover {
+	text-decoration: none;
+}
+  </style>
+</head>
+<body>
+<div id="header">
+<h1>Ora2Pg - Database Migration Report</h1>
+<table>
+<tr><th>Version</th><td>$report_info{'Version'}</td></tr>
+<tr><th>Schema</th><td>$report_info{'Schema'}</td></tr>
+<tr><th>Size</th><td>$report_info{'Size'}</td></tr>
+</table>
+</div>
+<div id="content">
+<table>
+<tr><th>Object</th><th>Number</th><th>Invalid</th>$cost_header<th>Comments</th><th>Details</th></tr>
+};
+
+		$self->logit($html_header, 0);
+		foreach my $typ (sort keys %{ $report_info{'Objects'} } ) {
+			$report_info{'Objects'}{$typ}{'detail'} =~ s/\n/<br>/gs;
+			if ($self->{estimate_cost}) {
+				$self->logit("<tr><td class=\"object_name\">$typ</td><td style=\"text-align: center;\">$report_info{'Objects'}{$typ}{'number'}</td><td style=\"text-align: center;\">$report_info{'Objects'}{$typ}{'invalid'}</td><td style=\"text-align: center;\">$report_info{'Objects'}{$typ}{'cost_value'}</td><td>$report_info{'Objects'}{$typ}{'comment'}</td><td class=\"detail\">$report_info{'Objects'}{$typ}{'detail'}</td></tr>\n", 0);
+			} else {
+				$self->logit("<tr><td class=\"object_name\">$typ</td><td style=\"text-align: center;\">$report_info{'Objects'}{$typ}{'number'}</td><td style=\"text-align: center;\">$report_info{'Objects'}{$typ}{'invalid'}</td><td>$report_info{'Objects'}{$typ}{'comment'}</td><td class=\"detail\">$report_info{'Objects'}{$typ}{'detail'}</td></tr>\n", 0);
+			}
+		}
+		if ($self->{estimate_cost}) {
+			my $human_cost = $self->_get_human_cost($report_info{'total_cost_value'});
+			my $comment = "$report_info{'total_cost_value'} cost migration units means approximatively $human_cost.\n";
+			$self->logit("<tr><th style=\"text-align: center; border-bottom: 0px; vertical-align: bottom;\">Total</th><td style=\"text-align: center; border-bottom: 0px; vertical-align: bottom;\">$report_info{'total_object_number'}</td><td style=\"text-align: center; border-bottom: 0px; vertical-align: bottom;\">$report_info{'total_object_invalid'}</td><td style=\"text-align: center; border-bottom: 0px; vertical-align: bottom;\">$report_info{'total_cost_value'}</td><td colspan=\"2\" style=\"border-bottom: 0px; vertical-align: bottom;\">$comment</td></tr>\n", 0);
+		} else {
+			$self->logit("<tr><th style=\"text-align: center; border-bottom: 0px; vertical-align: bottom;\">Total</th><td style=\"text-align: center; border-bottom: 0px; vertical-align: bottom; border-bottom: 0px; vertical-align: bottom;\">$report_info{'total_object_number'}</td><td style=\"text-align: center; border-bottom: 0px; vertical-align: bottom;\">$report_info{'total_object_invalid'}</td><td colspan=\"3\" style=\"border-bottom: 0px; vertical-align: bottom;\"></td></tr>\n", 0);
+		}
+		my $html_footer = qq{</table>
+</div>
+<div id="footer">
+Generated by <a href="http://ora2pg.darold.net/">Ora2Pg v$VERSION</a>
+</div>
+</body>
+</html>
+};
+		$self->logit($html_footer, 0);
 	}
-	$self->logit("-------------------------------------------------------------------------------\n", 0);
 
 }
 
