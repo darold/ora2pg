@@ -5917,7 +5917,7 @@ sub _show_infos
 				my $bitmap = 0;
 				foreach my $t (sort keys %INDEX_TYPE) {
 					my $len = ($#{$all_indexes{$t}}+1);
-					$report_info{'Objects'}{$typ}{'detail'} .= "$len $INDEX_TYPE{$t} index(es)\n" if ($len);
+					$report_info{'Objects'}{$typ}{'detail'} .= "\L$len $INDEX_TYPE{$t} index(es)\E\n" if ($len);
 					if ($self->{estimate_cost} && $len && ( ($t =~ /FUNCTION.*NORMAL/) || ($t eq 'FUNCTION-BASED BITMAP') ) ) {
 						$report_info{'Objects'}{$typ}{'cost_value'} += ($len * $Ora2Pg::PLSQL::OBJECT_SCORE{'FUNCTION-BASED-INDEX'});
 					}
@@ -5993,14 +5993,14 @@ sub _show_infos
 				}
 				$report_info{'Objects'}{$typ}{'comment'} .= " $total_check check constraint(s)." if ($total_check);
 				foreach my $d (sort keys %table_detail) {
-					$report_info{'Objects'}{$typ}{'detail'} .= "$table_detail{$d} $d\n";
+					$report_info{'Objects'}{$typ}{'detail'} .= "\L$table_detail{$d} $d\E\n";
 				}
 				$comment = "Nothing particular." if (!$comment);
 			} elsif ($typ eq 'TYPE') {
 				my $total_type = 0;
 				foreach my $t (sort keys %{$self->{type_of_type}}) {
 					$total_type++ if (!grep(/^$t$/, 'Associative Arrays','Type Boby','Type with member method'));
-					$report_info{'Objects'}{$typ}{'detail'} .= "$self->{type_of_type}{$t} $t\n" if ($self->{type_of_type}{$t});
+					$report_info{'Objects'}{$typ}{'detail'} .= "\L$self->{type_of_type}{$t} $t\E\n" if ($self->{type_of_type}{$t});
 				}
 				$report_info{'Objects'}{$typ}{'cost_value'} = ($Ora2Pg::PLSQL::OBJECT_SCORE{$typ}*$total_type) if ($self->{estimate_cost});
 				$report_info{'Objects'}{$typ}{'comment'} = "$total_type type(s) are concerned by the export, others are not supported. Note that Type inherited and Subtype are converted as table, type inheritance is not supported.";
@@ -6014,7 +6014,7 @@ sub _show_infos
 					if ($self->{estimate_cost}) {
 						my $cost = Ora2Pg::PLSQL::estimate_cost($trig->[4]);
 						$report_info{'Objects'}{$typ}{'cost_value'} += $cost;
-						$report_info{'Objects'}{$typ}{'detail'} .= "$trig->[0]: $cost\n";
+						$report_info{'Objects'}{$typ}{'detail'} .= "\L$trig->[0]: $cost\E\n";
 					}
 				}
 				$report_info{'Objects'}{$typ}{'comment'} = "Total size of trigger code: $total_size bytes.";
@@ -6028,7 +6028,7 @@ sub _show_infos
 					if ($self->{estimate_cost}) {
 						my $cost = Ora2Pg::PLSQL::estimate_cost($functions->{$fct});
 						$report_info{'Objects'}{$typ}{'cost_value'} += $cost;
-						$report_info{'Objects'}{$typ}{'detail'} .= "$fct: $cost\n";
+						$report_info{'Objects'}{$typ}{'detail'} .= "\L$fct: $cost\E\n";
 					}
 				}
 				$report_info{'Objects'}{$typ}{'comment'} = "Total size of function code: $total_size bytes.";
@@ -6040,7 +6040,7 @@ sub _show_infos
 					if ($self->{estimate_cost}) {
 						my $cost = Ora2Pg::PLSQL::estimate_cost($procedures->{$proc});
 						$report_info{'Objects'}{$typ}{'cost_value'} += $cost;
-						$report_info{'Objects'}{$typ}{'detail'} .= "$proc: $cost\n";
+						$report_info{'Objects'}{$typ}{'detail'} .= "\L$proc: $cost\E\n";
 					}
 				}
 				$report_info{'Objects'}{$typ}{'comment'} = "Total size of procedure code: $total_size bytes.";
@@ -6059,7 +6059,7 @@ sub _show_infos
 							if ($self->{estimate_cost}) {
 								my $cost = Ora2Pg::PLSQL::estimate_cost($infos{$f});
 								$report_info{'Objects'}{$typ}{'cost_value'} += $cost;
-								$report_info{'Objects'}{$typ}{'detail'} .= "$f: $cost\n";
+								$report_info{'Objects'}{$typ}{'detail'} .= "\L$f: $cost\E\n";
 							}
 							$number_fct++;
 						}
@@ -6072,7 +6072,7 @@ sub _show_infos
 			} elsif ($typ eq 'TABLE PARTITION') {
 				my %partitions = $self->_get_partitions_list();
 				foreach my $t (sort keys %partitions) {
-					$report_info{'Objects'}{$typ}{'detail'} .= "$partitions{$t} $t partitions\n";
+					$report_info{'Objects'}{$typ}{'detail'} .= "\L$partitions{$t} $t\E partitions\n";
 				}
 				$report_info{'Objects'}{$typ}{'comment'} = "Partitions are exported using table inheritance and check constraint. Hash partitions are not supported by PostgreSQL and will not be exported.";
 			} elsif ($typ eq 'CLUSTER') {
