@@ -6650,7 +6650,7 @@ sub _show_report
 		$self->logit("-------------------------------------------------------------------------------\n", 0);
 		if ($self->{estimate_cost}) {
 			my $human_cost = $self->_get_human_cost($report_info{'total_cost_value'});
-			my $comment = "$report_info{'total_cost_value'} cost migration units means approximatively $human_cost.\n";
+			my $comment = "$report_info{'total_cost_value'} cost migration units means approximatively $human_cost. The migration unit was set to $self->{cost_unit_value} minute(s)\n";
 			$self->logit("Total\t$report_info{'total_object_number'}\t$report_info{'total_object_invalid'}\t$report_info{'total_cost_value'}\t$comment\n", 0);
 		} else {
 			$self->logit("Total\t$report_info{'total_object_number'}\t$report_info{'total_object_invalid'}\n", 0);
@@ -6772,7 +6772,7 @@ h1 {
 		}
 		if ($self->{estimate_cost}) {
 			my $human_cost = $self->_get_human_cost($report_info{'total_cost_value'});
-			my $comment = "$report_info{'total_cost_value'} cost migration units means approximatively $human_cost.\n";
+			my $comment = "$report_info{'total_cost_value'} cost migration units means approximatively $human_cost. The migration unit was set to $self->{cost_unit_value} minute(s)\n";
 			$self->logit("<tr><th style=\"text-align: center; border-bottom: 0px; vertical-align: bottom;\">Total</th><td style=\"text-align: center; border-bottom: 0px; vertical-align: bottom;\">$report_info{'total_object_number'}</td><td style=\"text-align: center; border-bottom: 0px; vertical-align: bottom;\">$report_info{'total_object_invalid'}</td><td style=\"text-align: center; border-bottom: 0px; vertical-align: bottom;\">$report_info{'total_cost_value'}</td><td colspan=\"2\" style=\"border-bottom: 0px; vertical-align: bottom;\">$comment</td></tr>\n", 0);
 		} else {
 			$self->logit("<tr><th style=\"text-align: center; border-bottom: 0px; vertical-align: bottom;\">Total</th><td style=\"text-align: center; border-bottom: 0px; vertical-align: bottom; border-bottom: 0px; vertical-align: bottom;\">$report_info{'total_object_number'}</td><td style=\"text-align: center; border-bottom: 0px; vertical-align: bottom;\">$report_info{'total_object_invalid'}</td><td colspan=\"3\" style=\"border-bottom: 0px; vertical-align: bottom;\"></td></tr>\n", 0);
