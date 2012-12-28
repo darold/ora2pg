@@ -188,6 +188,8 @@ CONFIGURATION
                 --cost_unit_value minutes: number of minutes for a cost evalution unit.
                               default: 5 minutes, correspond to a migration conducted by a
                               PostgreSQL expert. Set it to 10 if this is your first migration.
+               --dump_as_html     : force ora2pg to dump report in HTML, used only with
+                                    SHOW_REPORT. Default is to dump report as simple text.
 
             See full documentation at http://ora2pg.darold.net/ for more help or see
             manpage with 'man ora2pg'.
@@ -562,6 +564,13 @@ CONFIGURATION
         Set the value in minutes of the migration cost evaluation unit.
         Default is five minutes per unit. See --cost_unit_value to change
         the unit value at command line.
+
+    DUMP_AS_HTML
+        By default when using SHOW_REPORT the migration report is generated
+        as simple text, enabling this directive will force ora2pg to create
+        a report in HTML format.
+
+        See http://ora2pg.darold.net/report.html for a sample report.
 
     THREAD_COUNT
         This configuration directive adds multi-threading support to data

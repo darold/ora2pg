@@ -1,4 +1,7 @@
 #!/usr/bin/perl
+
+eval 'exec /usr/bin/perl  -S $0 ${1+"$@"}'
+    if 0; # not running under some shell
 #------------------------------------------------------------------------------
 # Project  : Oracle to Postgresql converter
 # Name     : ora2pg
@@ -53,6 +56,7 @@ my $ALLOW = '';
 my $VIEW_AS_TABLE = '';
 my $ESTIMATE_COST = 0;
 my $COST_UNIT_VALUE = 0;
+my $DUMP_AS_HTML = 0;
 
 my @CAPABILITIES = qw(
 	TABLE PACKAGE INSERT COPY VIEW GRANT SEQUENCE TRIGGER QUERY
@@ -86,6 +90,7 @@ GetOptions (
 	'view_as_table=s' => \$VIEW_AS_TABLE,
 	'estimate_cost!' =>\$ESTIMATE_COST,
 	'cost_unit_value=i' =>\$COST_UNIT_VALUE,
+	'dump_as_html!' =>\$DUMP_AS_HTML,
 );
 
 # Check command line parameters
@@ -142,6 +147,7 @@ my $schema = new Ora2Pg (
 	view_as_table => $VIEW_AS_TABLE,
 	estimate_cost => $ESTIMATE_COST,
 	cost_unit_value => $COST_UNIT_VALUE,
+	dump_as_html => $DUMP_AS_HTML,
 );
 
 
@@ -193,6 +199,8 @@ Usage: ora2pg [-dhpqsv] [--option value]
     --cost_unit_value minutes: number of minutes for a cost evalution unit.
 		  default: 5 minutes, correspond to a migration conducted by a
 		  PostgreSQL expert. Set it to 10 if this is your first migration.
+   --dump_as_html     : force ora2pg to dump report in HTML, used only with
+			SHOW_REPORT. Default is to dump report as simple text.
 
 See full documentation at http://ora2pg.darold.net/ for more help or see
 manpage with 'man ora2pg'.

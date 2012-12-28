@@ -477,6 +477,11 @@ ESTIMATE_COST		0
 # is five minutes per unit.
 COST_UNIT_VALUE		5
 
+# By default when using SHOW_REPORT the migration report is generated as
+# simple text, enabling this directive will force ora2pg to create a report
+# in HTML format.
+DUMP_AS_HTML		0
+
 };
 close(OUTCFG);
 
