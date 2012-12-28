@@ -242,6 +242,8 @@ sub export_schema
 	} else {
 
 		foreach my $t (@{$self->{export_type}}) {
+			next if ($t !~ /^SHOW_/i);
+			next if ($self->{input_file} && grep(/^$t$/i, 'QUERY', 'FUNCTION','PROCEDURE','PACKAGE'));
 			$self->{type} = $t;
 			# Return data as string
 			$self->_get_sql_data();
@@ -5852,17 +5854,12 @@ sub _show_infos
 		$self->logit("Showing Oracle Version...\n", 1);
 		$self->logit("$self->{db_version}\n", 0);
 	} elsif ($type eq 'SHOW_REPORT') {
+		$self->logit("Reporting Oracle Content...\n", 1);
+		# Get Oracle database version and size
 		my $ver = $self->_get_version();
 		my $size = $self->_get_database_size();
-		$self->logit("Reporting Oracle Content...\n", 1);
-		my %report = $self->_get_report();
-		$self->logit("--------------------------------------\n", 0);
-		$self->logit("Ora2Pg: Oracle Database Content Report\n", 0);
-		$self->logit("--------------------------------------\n", 0);
-		$self->logit("Version\t$ver\n", 0);
-		$self->logit("Schema\t$self->{schema}\n", 0);
-		$self->logit("Size\t$size\n\n", 0);
-
+		# Get the list of all database objects
+		my %objects = $self->_get_objects();
 		# Determining how many non automatiques indexes will be exported
 		my %all_indexes = ();
 		$self->{skip_fkeys} = $self->{skip_indices} = $self->{skip_indexes} = $self->{skip_checks} = 0;
@@ -5878,64 +5875,65 @@ sub _show_infos
 				$total_index++;
 			}
 		}
+		# Convert Oracle user defined type to PostgreSQL
 		$self->_types();
 		foreach my $tpe (sort {length($a->{name}) <=> length($b->{name}) } @{$self->{types}}) {
 			$self->_convert_type($tpe->{code});
 		}
+		# Get definition of Oracle Database Link
+		my %dblink = $self->_get_dblink();
+		$objects{'DATABASE LINK'} = scalar keys %dblink;	
+		# Get definition of Oracle Jobs
+		my %jobs = $self->_get_job();
+		$objects{'JOB'} = scalar keys %jobs;	
 
-		my $cost_header = '';
-		$cost_header = "\tEstimated cost" if ($self->{estimate_cost});
-		$self->logit("--------------------------------------\n", 0);
-		$self->logit("Object\tNumber\tInvalid$cost_header\tComments\n", 0);
-		$self->logit("--------------------------------------\n", 0);
-		my $total_cost_value = 0;
-		my $total_object_invalid = 0;
-		my $total_object_number = 0;
-		foreach my $typ (sort keys %report) {
-			next if ($typ eq 'PACKAGE');
-			my $number = 0;
-			my $invalid = 0;
-			for (my $i = 0; $i <= $#{$report{$typ}}; $i++) {
-				$number++;
-				$invalid++ if ($report{$typ}[$i]->{invalid});
+		# Look at all database objects to compute report
+		my %report_info = ();
+		$report_info{'Version'} = $ver || 'Unknown';
+		$report_info{'Schema'} = $self->{schema} || '';
+		$report_info{'Size'} = $size || 'Unknown';
+		foreach my $typ (sort keys %objects) {
+			next if ($typ eq 'PACKAGE'); # Package are scanned with PACKAGE BODY not PACKAGE objects
+			$report_info{'Objects'}{$typ}{'number'} = 0;
+			$report_info{'Objects'}{$typ}{'invalid'} = 0;
+			if (!grep(/^$typ$/, 'DATABASE LINK', 'JOB')) {
+				for (my $i = 0; $i <= $#{$objects{$typ}}; $i++) {
+					$report_info{'Objects'}{$typ}{'number'}++;
+					$report_info{'Objects'}{$typ}{'invalid'}++ if ($objects{$typ}[$i]->{invalid});
+				}
+			} else {
+				$report_info{'Objects'}{$typ}{'number'} = $objects{$typ};
 			}
-			$total_object_invalid += $invalid;
-			$total_object_number += $number;
-			my $comment = '';
-			my $cost_value = 0;
-			my $real_number = 0;
-			my $detail = '';
-			if ($number > 0) {
-				$real_number = ($number-$invalid);
-				$real_number = $number if ($self->{export_invalid});
+			$report_info{'total_object_invalid'} += $report_info{'Objects'}{$typ}{'invalid'};
+			$report_info{'total_object_number'} += $report_info{'Objects'}{$typ}{'number'};
+			if ($report_info{'Objects'}{$typ}{'number'} > 0) {
+				$report_info{'Objects'}{$typ}{'real_number'} = ($report_info{'Objects'}{$typ}{'number'} - $report_info{'Objects'}{$typ}{'invalid'});
+				$report_info{'Objects'}{$typ}{'real_number'} = $report_info{'Objects'}{$typ}{'number'} if ($self->{export_invalid});
 			}
-			$cost_value = ($real_number*$Ora2Pg::PLSQL::OBJECT_SCORE{$typ}) if ($self->{estimate_cost});
+			$report_info{'Objects'}{$typ}{'cost_value'} = ($report_info{'Objects'}{$typ}{'real_number'}*$Ora2Pg::PLSQL::OBJECT_SCORE{$typ}) if ($self->{estimate_cost});
 			if ($typ eq 'INDEX') {
 				my $bitmap = 0;
 				foreach my $t (sort keys %INDEX_TYPE) {
 					my $len = ($#{$all_indexes{$t}}+1);
-					$detail .= ". $len $INDEX_TYPE{$t} index(es)" if ($len);
+					$report_info{'Objects'}{$typ}{'detail'} .= "$len $INDEX_TYPE{$t} index(es)\n" if ($len);
 					if ($self->{estimate_cost} && $len && ( ($t =~ /FUNCTION.*NORMAL/) || ($t eq 'FUNCTION-BASED BITMAP') ) ) {
-						$cost_value += ($len * $Ora2Pg::PLSQL::OBJECT_SCORE{'FUNCTION-BASED-INDEX'});
+						$report_info{'Objects'}{$typ}{'cost_value'} += ($len * $Ora2Pg::PLSQL::OBJECT_SCORE{'FUNCTION-BASED-INDEX'});
 					}
 					if ($self->{estimate_cost} && $len && ($t =~ /REV/)) {
-						$cost_value += ($len * $Ora2Pg::PLSQL::OBJECT_SCORE{'REV-INDEX'});
+						$report_info{'Objects'}{$typ}{'cost_value'} += ($len * $Ora2Pg::PLSQL::OBJECT_SCORE{'REV-INDEX'});
 					}
 				}
-				$cost_value = ($Ora2Pg::PLSQL::OBJECT_SCORE{$typ}*$total_index) if ($self->{estimate_cost});
-				$comment = "$total_index index(es) are concerned by the export, others are automatically generated and will do so on PostgreSQL";
-				$comment .= $detail;
-				$comment .= ". Note that bitmap index(es) will be exported as b-tree index(es) if any. Cluster, domain, bitmap join and IOT indexes will not be exported at all. Reverse indexes are not exported too, you may use a trigram-based index (see pg_trgm) or a reverse() function based index and search.";
-				$comment .= " You may also use 'varchar_pattern_ops', 'text_pattern_ops' or 'bpchar_pattern_ops' operators in your indexes to improve search with the LIKE operator respectively into varchar, text or char columns.";
+				$report_info{'Objects'}{$typ}{'cost_value'} += ($Ora2Pg::PLSQL::OBJECT_SCORE{$typ}*$total_index) if ($self->{estimate_cost});
+				$report_info{'Objects'}{$typ}{'comment'} = "$total_index index(es) are concerned by the export, others are automatically generated and will do so on PostgreSQL. Bitmap index(es) will be exported as b-tree index(es) if any. Cluster, domain, bitmap join and IOT indexes will not be exported at all. Reverse indexes are not exported too, you may use a trigram-based index (see pg_trgm) or a reverse() function based index and search. Use 'varchar_pattern_ops', 'text_pattern_ops' or 'bpchar_pattern_ops' operators in your indexes to improve search with the LIKE operator respectively into varchar, text or char columns.";
 			} elsif ($typ eq 'MATERIALIZED VIEW') {
-				$comment = "All materialized view will be exported as snapshot materialized views, they are only updated when fully refreshed.";
+				$report_info{'Objects'}{$typ}{'comment'}= "All materialized view will be exported as snapshot materialized views, they are only updated when fully refreshed.";
 			} elsif ($typ eq 'TABLE') {
 				my $exttb = scalar keys %{$self->{external_table}};
 				if ($exttb) {
 					if (!$self->{external_to_fdw}) {
-						$comment = "$exttb external table(s) will be exported as standard table. See EXTERNAL_TO_FDW configuration directive to export as file_fdw foreign tables or use COPY in your code if you just want to load data from external files.";
+						$report_info{'Objects'}{$typ}{'comment'} = "$exttb external table(s) will be exported as standard table. See EXTERNAL_TO_FDW configuration directive to export as file_fdw foreign tables or use COPY in your code if you just want to load data from external files.";
 					} else {
-						$comment = "$exttb external table(s) will be exported as file_fdw foreign table. See EXTERNAL_TO_FDW configuration directive to export as standard table or use COPY in your code if you just want to load data from external files.";
+						$report_info{'Objects'}{$typ}{'comment'} = "$exttb external table(s) will be exported as file_fdw foreign table. See EXTERNAL_TO_FDW configuration directive to export as standard table or use COPY in your code if you just want to load data from external files.";
 					}
 				}
 
@@ -5987,28 +5985,25 @@ sub _show_infos
 						my @constraints = $self->_lookup_check_constraint($t->[2], $self->{tables}{$t->[2]}{check_constraint},$self->{tables}{$t->[2]}{field_name});
 						$total_check += ($#constraints + 1);
 						if ($self->{estimate_cost} && ($#constraints >= 0)) {
-							$cost_value += (($#constraints + 1) * $Ora2Pg::PLSQL::OBJECT_SCORE{'CHECK'});
+							$report_info{'Objects'}{$typ}{'cost_value'} += (($#constraints + 1) * $Ora2Pg::PLSQL::OBJECT_SCORE{'CHECK'});
 						}
 					}
 				}
-				$comment .= " $total_check check constraint(s)." if ($total_check);
+				$report_info{'Objects'}{$typ}{'comment'} .= " $total_check check constraint(s)." if ($total_check);
 				foreach my $d (sort keys %table_detail) {
-					$comment .= " $table_detail{$d} $d.";
+					$report_info{'Objects'}{$typ}{'detail'} .= "$table_detail{$d} $d\n";
 				}
 				$comment = "Nothing particular." if (!$comment);
 			} elsif ($typ eq 'TYPE') {
-				my $detail = '';
 				my $total_type = 0;
 				foreach my $t (sort keys %{$self->{type_of_type}}) {
 					$total_type++ if (!grep(/^$t$/, 'Associative Arrays','Type Boby','Type with member method'));
-					$detail .= ". $self->{type_of_type}{$t} $t" if ($self->{type_of_type}{$t});
+					$report_info{'Objects'}{$typ}{'detail'} .= "$self->{type_of_type}{$t} $t\n" if ($self->{type_of_type}{$t});
 				}
-				$cost_value = ($Ora2Pg::PLSQL::OBJECT_SCORE{$typ}*$total_type) if ($self->{estimate_cost});
-				$comment = "$total_type type(s) are concerned by the export, others are not supported";
-				$comment .= $detail;
-				$comment .= '. Note that Type inherited and Subtype are converted as table, type inheritance is not supported.';
+				$report_info{'Objects'}{$typ}{'cost_value'} = ($Ora2Pg::PLSQL::OBJECT_SCORE{$typ}*$total_type) if ($self->{estimate_cost});
+				$report_info{'Objects'}{$typ}{'comment'} = "$total_type type(s) are concerned by the export, others are not supported. Note that Type inherited and Subtype are converted as table, type inheritance is not supported.";
 			} elsif ($typ eq 'TYPE BODY') {
-				$comment = "Export of type with member method are not supported, they will not be exported.";
+				$report_info{'Objects'}{$typ}{'comment'} = "Export of type with member method are not supported, they will not be exported.";
 			} elsif ($typ eq 'TRIGGER') {
 				my $triggers = $self->_get_triggers();
 				my $total_size = 0;
@@ -6016,17 +6011,13 @@ sub _show_infos
 					$total_size += length($trig->[4]);
 					if ($self->{estimate_cost}) {
 						my $cost = Ora2Pg::PLSQL::estimate_cost($trig->[4]);
-						$cost_value += $cost;
-						$detail .= "$trig->[0]: $cost, ";
+						$report_info{'Objects'}{$typ}{'cost_value'} += $cost;
+						$report_info{'Objects'}{$typ}{'detail'} .= "$trig->[0]: $cost\n";
 					}
 				}
-				$comment = "Total size of trigger code: $total_size bytes.";
-				if ($detail) {
-					$detail =~ s/, $/./;
-					$comment .= " " . $detail;
-				}
+				$report_info{'Objects'}{$typ}{'comment'} = "Total size of trigger code: $total_size bytes.";
 			} elsif ($typ eq 'SEQUENCE') {
-				$comment = "Sequences are fully supported, but all call to sequence_name.NEXTVAL or sequence_name.CURRVAL will be transformed into NEXTVAL('sequence_name') or CURRVAL('sequence_name').";
+				$report_info{'Objects'}{$typ}{'comment'} = "Sequences are fully supported, but all call to sequence_name.NEXTVAL or sequence_name.CURRVAL will be transformed into NEXTVAL('sequence_name') or CURRVAL('sequence_name').";
 			} elsif ($typ eq 'FUNCTION') {
 				my $functions = $self->_get_functions();
 				my $total_size = 0;
@@ -6034,15 +6025,11 @@ sub _show_infos
 					$total_size += length($functions->{$fct});
 					if ($self->{estimate_cost}) {
 						my $cost = Ora2Pg::PLSQL::estimate_cost($functions->{$fct});
-						$cost_value += $cost;
-						$detail .= "$fct: $cost, ";
+						$report_info{'Objects'}{$typ}{'cost_value'} += $cost;
+						$report_info{'Objects'}{$typ}{'detail'} .= "$fct: $cost\n";
 					}
 				}
-				$comment = "Total size of function code: $total_size bytes.";
-				if ($detail) {
-					$detail =~ s/, $/./;
-					$comment .= " " . $detail;
-				}
+				$report_info{'Objects'}{$typ}{'comment'} = "Total size of function code: $total_size bytes.";
 			} elsif ($typ eq 'PROCEDURE') {
 				my $procedures = $self->_get_procedures();
 				my $total_size = 0;
@@ -6050,15 +6037,11 @@ sub _show_infos
 					$total_size += length($procedures->{$proc});
 					if ($self->{estimate_cost}) {
 						my $cost = Ora2Pg::PLSQL::estimate_cost($procedures->{$proc});
-						$cost_value += $cost;
-						$detail .= "$proc: $cost, ";
+						$report_info{'Objects'}{$typ}{'cost_value'} += $cost;
+						$report_info{'Objects'}{$typ}{'detail'} .= "$proc: $cost\n";
 					}
 				}
-				$comment = "Total size of procedure code: $total_size bytes.";
-				if ($detail) {
-					$detail =~ s/, $/./;
-					$comment .= " " . $detail;
-				}
+				$report_info{'Objects'}{$typ}{'comment'} = "Total size of procedure code: $total_size bytes.";
 			} elsif ($typ eq 'PACKAGE BODY') {
 				my $packages = $self->_get_packages();
 				my $total_size = 0;
@@ -6073,74 +6056,43 @@ sub _show_infos
 							next if (!$f);
 							if ($self->{estimate_cost}) {
 								my $cost = Ora2Pg::PLSQL::estimate_cost($infos{$f});
-								$cost_value += $cost;
-								$detail .= "$f: $cost, ";
+								$report_info{'Objects'}{$typ}{'cost_value'} += $cost;
+								$report_info{'Objects'}{$typ}{'detail'} .= "$f: $cost\n";
 							}
 							$number_fct++;
 						}
 					}
-					$cost_value += ($number_fct*$Ora2Pg::PLSQL::OBJECT_SCORE{'FUNCTION'}) if ($self->{estimate_cost});
+					$report_info{'Objects'}{$typ}{'cost_value'} += ($number_fct*$Ora2Pg::PLSQL::OBJECT_SCORE{'FUNCTION'}) if ($self->{estimate_cost});
 				}
-				$comment = "Total size of package code: $total_size bytes. Number of procedures and functions found inside those packages: $number_fct";
-				if ($detail) {
-					$detail =~ s/, $/./;
-					$comment .= ". " . $detail;
-				}
+				$report_info{'Objects'}{$typ}{'comment'} = "Total size of package code: $total_size bytes. Number of procedures and functions found inside those packages: $number_fct.";
 			} elsif ($typ eq 'SYNONYME') {
-				$comment = "SYNONYME are not exported at all. An usual workaround is to use View instead or set the PostgreSQL search_path in your session to access object outside the current schema.";
+				$report_info{'Objects'}{$typ}{'comment'} = "SYNONYME are not exported at all. An usual workaround is to use View instead or set the PostgreSQL search_path in your session to access object outside the current schema.";
 			} elsif ($typ eq 'TABLE PARTITION') {
 				my %partitions = $self->_get_partitions_list();
-				my $detail = '';
 				foreach my $t (sort keys %partitions) {
-					$detail .= ". $partitions{$t} $t partitions";
+					$report_info{'Objects'}{$typ}{'detail'} .= "$partitions{$t} $t partitions\n";
 				}
-				$comment = "Partitions are exported using table inheritance and check constraint";
-				$comment .= $detail;
-				$comment .= ". Note that Hash partitions are not supported.";
+				$report_info{'Objects'}{$typ}{'comment'} = "Partitions are exported using table inheritance and check constraint. Hash partitions are not supported by PostgreSQL and will not be exported.";
 			} elsif ($typ eq 'CLUSTER') {
-				$comment = "Clusters are not supported and will not be exported.";
+				$report_info{'Objects'}{$typ}{'comment'} = "Clusters are not supported by PostgreSQL and will not be exported.";
 			} elsif ($typ eq 'VIEW') {
-				$comment = "Views are fully supported, but if you have updatable views you will need to use INSTEAD OF triggers.";
+				$report_info{'Objects'}{$typ}{'comment'} = "Views are fully supported, but if you have updatable views you will need to use INSTEAD OF triggers.";
+			} elsif ($typ eq 'DATABASE LINK') {
+				$report_info{'Objects'}{$typ}{'comment'} = "Database links will not be exported. You may try the dblink perl contrib module or use the SQL/MED PostgreSQL features with the different Foreign Data Wrapper (FDW) extentions.";
+				if ($self->{estimate_cost}) {
+					$report_info{'Objects'}{$typ}{'cost_value'} = ($Ora2Pg::PLSQL::OBJECT_SCORE{'DATABASE LINK'}*$objects{$typ});
+				}
+			} elsif ($typ eq 'JOB') {
+				$report_info{'Objects'}{$typ}{'comment'} = "Job are not exported. You may set external cron job with them.";
+				if ($self->{estimate_cost}) {
+					$report_info{'Objects'}{$typ}{'cost_value'} = ($Ora2Pg::PLSQL::OBJECT_SCORE{'JOB'}*$objects{$typ});
+				}
 			}
-			$total_cost_value += $cost_value;
-			if ($self->{estimate_cost}) {
-				$self->logit("$typ\t" . ($number-$invalid) . "\t$invalid\t$cost_value\t$comment\n", 0);
-			} else {
-				$self->logit("$typ\t" . ($number-$invalid) . "\t$invalid\t$comment\n", 0);
-			}
+			$report_info{'total_cost_value'} += $report_info{'Objects'}{$typ}{'cost_value'};
 		}
-		my %dblink = $self->_get_dblink();
-		my $ndlink = scalar keys %dblink;
-		$total_object_number += $ndlink;
-		my $comment = "Database links will not be exported. You may try the dblink perl contrib module or use the SQL/MED PostgreSQL features with the different Foreign Data Wrapper (FDW) extentions.";
-		if ($self->{estimate_cost}) {
-			$cost_value = ($Ora2Pg::PLSQL::OBJECT_SCORE{'DATABASE LINK'}*$ndlink);
-			$self->logit("DATABASE LINK\t$ndlink\t0\t$cost_value\t$comment\n", 0);
-			$total_cost_value += $cost_value;
-		} else {
-			$self->logit("DATABASE LINK\t$ndlink\t0\t$comment\n", 0);
-		}
+		# Display report in the requested format
+		$self->_show_report(%report_info);
 
-		my %jobs = $self->_get_job();
-		my $njob = scalar keys %jobs;
-		$total_object_number += $njob;
-		$comment = "Job are not exported. You may set external cron job with them.";
-		if ($self->{estimate_cost}) {
-			$cost_value = ($Ora2Pg::PLSQL::OBJECT_SCORE{'JOB'}*$ndlink);
-			$self->logit("JOB\t$njob\t0\t$cost_value\t$comment\n", 0);
-			$total_cost_value += $cost_value;
-		} else {
-			$self->logit("JOB\t$njob\t0\t$comment\n", 0);
-		}
-		$self->logit("--------------------------------------\n", 0);
-		if ($self->{estimate_cost}) {
-			my $human_cost = $self->_get_human_cost($total_cost_value);
-			$comment = "$total_cost_value cost migration units means approximatively $human_cost.\n";
-			$self->logit("Total\t$total_object_number\t$total_object_invalid\t$total_cost_value\t$comment\n", 0);
-		} else {
-			$self->logit("Total\t$total_object_number\t$total_object_invalid\n", 0);
-		}
-		$self->logit("--------------------------------------\n", 0);
 	} elsif ($type eq 'SHOW_SCHEMA') {
 		# Get all tables information specified by the DBI method table_info
 		$self->logit("Showing all schema...\n", 1);
@@ -6276,13 +6228,13 @@ sub _get_database_size
 	return $mb_size;
 }
 
-=head2 _get_report
+=head2 _get_objects
 
-This function retrieves the Oracle content information
+This function retrieves all object the Oracle information
 
 =cut
 
-sub _get_report
+sub _get_objects
 {
 	my $self = shift;
 
@@ -6667,6 +6619,43 @@ sub _get_human_cost
 
 	return $human_cost;
 }
+
+sub _show_report
+{
+	my ($self, %report_info) = @_;
+
+	# Generate report.
+	my $cost_header = '';
+	$cost_header = "\tEstimated cost" if ($self->{estimate_cost});
+	$self->logit("-------------------------------------------------------------------------------\n", 0);
+	$self->logit("Ora2Pg: Oracle Database Content Report\n", 0);
+	$self->logit("-------------------------------------------------------------------------------\n", 0);
+	$self->logit("Version\t$report_info{'Version'}\n", 0);
+	$self->logit("Schema\t$report_info{'Schema'}\n", 0);
+	$self->logit("Size\t$report_info{'Size'}\n\n", 0);
+	$self->logit("-------------------------------------------------------------------------------\n", 0);
+	$self->logit("Object\tNumber\tInvalid$cost_header\tComments\tDetails\n", 0);
+	$self->logit("-------------------------------------------------------------------------------\n", 0);
+	foreach my $typ (sort keys %{ $report_info{'Objects'} } ) {
+		$report_info{'Objects'}{$typ}{'detail'} =~ s/\n/\. /gs;
+		if ($self->{estimate_cost}) {
+			$self->logit("$typ\t$report_info{'Objects'}{$typ}{'number'}\t$report_info{'Objects'}{$typ}{'invalid'}\t$report_info{'Objects'}{$typ}{'cost_value'}\t$report_info{'Objects'}{$typ}{'comment'}\t$report_info{'Objects'}{$typ}{'detail'}\n", 0);
+		} else {
+			$self->logit("$typ\t$report_info{'Objects'}{$typ}{'number'}\t$report_info{'Objects'}{$typ}{'invalid'}\t$report_info{'Objects'}{$typ}{'comment'}\t$report_info{'Objects'}{$typ}{'detail'}\n", 0);
+		}
+	}
+	$self->logit("-------------------------------------------------------------------------------\n", 0);
+	if ($self->{estimate_cost}) {
+		my $human_cost = $self->_get_human_cost($report_info{'total_cost_value'});
+		my $comment = "$report_info{'total_cost_value'} cost migration units means approximatively $human_cost.\n";
+		$self->logit("Total\t$report_info{'total_object_number'}\t$report_info{'total_object_invalid'}\t$report_info{'total_cost_value'}\t$comment\n", 0);
+	} else {
+		$self->logit("Total\t$report_info{'total_object_number'}\t$report_info{'total_object_invalid'}\n", 0);
+	}
+	$self->logit("-------------------------------------------------------------------------------\n", 0);
+
+}
+
 
 1;
 
