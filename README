@@ -47,9 +47,9 @@ FEATURES
             - Export Oracle tables as foreign data wrapper tables.
             - Export materialized view.
             - Show a detailled report of an Oracle database content.
-            - Estimation migration cost of an Oracle database.
-            - Estimation migration cost of PL/SQL code from a file.
-            - Estimation cost of Oracle SQL queries strored in a file.
+            - Migration cost assessment of an Oracle database.
+            - Migration cost assessment of PL/SQL code from a file.
+            - Migration cost assessment of Oracle SQL queries stored in a file.
 
     Ora2Pg do its best to automatically convert your Oracle database to
     PostgreSQL but there's still manual works to do. The Oracle specific
@@ -58,6 +58,9 @@ FEATURES
     useful recommandations on porting Oracle PL/SQL code to PostgreSQL
     PL/PGSQL at "Converting from other Databases to PostgreSQL", section:
     Oracle (http://wiki.postgresql.org/wiki/Main_Page).
+
+    See http://ora2pg.darold.net/report.html for a HTML sample of an Oracle
+    database migration report.
 
 INSTALLATION
     All Perl modules can always be found at CPAN (http://search.cpan.org/).
