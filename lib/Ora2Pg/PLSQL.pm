@@ -24,7 +24,7 @@ package Ora2Pg::PLSQL;
 # 
 #------------------------------------------------------------------------------
 
-use vars qw($VERSION %OBJECT_SCORE $SIZE_SCORE %UNCOVERED_SCORE);
+use vars qw($VERSION %OBJECT_SCORE $SIZE_SCORE %UNCOVERED_SCORE @ORA_FUNCTIONS);
 use POSIX qw(locale_h);
 
 #set locale to LC_NUMERIC C
@@ -106,6 +106,50 @@ $SIZE_SCORE = 100;
 	'NEXT_DAY' => 1,
 	'MONTHS_BETWEEN' => 1,
 	'NVL2' => 1,
+);
+
+@ORA_FUNCTIONS = qq(
+    AsciiStr
+    Compose
+    Decompose
+    Dump
+    Instr
+    VSize
+    Bin_To_Num
+    CharToRowid
+    From_Tz
+    HexToRaw
+    NumToDSInterval
+    NumToYMInterval
+    RawToHex
+    To_Clob
+    To_DSInterval
+    To_Lob
+    To_Multi_Byte
+    To_NClob
+    To_Single_Byte
+    To_YMInterval
+    BFilename
+    Cardinality
+    Group_ID
+    LNNVL
+    NANVL
+    Sys_Context
+    Uid
+    UserEnv
+    Bin_To_Num
+    BitAnd
+    Cosh
+    Median
+    Remainder
+    Sinh
+    Tanh
+    DbTimeZone
+    From_Tz
+    New_Time
+    SessionTimeZone
+    Tz_Offset
+    SysTimestamp
 );
 
 =head1 NAME
@@ -570,6 +614,10 @@ sub estimate_cost
 	$cost += $UNCOVERED_SCORE{'MONTHS_BETWEEN'}*$n;
 	$n = () = $str =~ m/NVL2/igs;
 	$cost += $UNCOVERED_SCORE{'NVL2'}*$n;
+
+	foreach my $f (@ORA_FUNCTIONS) {
+		$cost += 0.5 if ($str =~ /\b$f[\s\t]*\(/);
+	}
 
 	return $cost;
 }
