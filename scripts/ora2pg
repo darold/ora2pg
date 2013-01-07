@@ -6,7 +6,7 @@ eval 'exec /usr/bin/perl  -S $0 ${1+"$@"}'
 # Project  : Oracle to Postgresql converter
 # Name     : ora2pg
 # Author   : Gilles Darold, gilles _AT_ darold _DOT_ net
-# Copyright: Copyright (c) 2000-2012 : Gilles Darold - All rights reserved -
+# Copyright: Copyright (c) 2000-2013 : Gilles Darold - All rights reserved -
 # Function : Script used to convert Oracle Database to PostgreSQL
 # Usage    : ora2pg configuration_file
 #------------------------------------------------------------------------------
