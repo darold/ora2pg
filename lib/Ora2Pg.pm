@@ -4879,7 +4879,7 @@ sub format_data_type
 				$col = "'$col'";
 			}
 		} elsif ($data_type eq 'boolean') {
-			$col = "." . ($self->{ora_boolean_values}{lc($col)} || $col) . "'";
+			$col = "'" . ($self->{ora_boolean_values}{lc($col)} || $col) . "'";
 		} else {
 			$col =~ s/,/\./;
 			$col =~ s/\~/inf/;
