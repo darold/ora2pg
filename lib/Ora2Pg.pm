@@ -579,7 +579,7 @@ sub _init
 	}
 
 	# Set some default
-	$self->{global_where} = '';
+	$self->{global_where} ||= '';
 	$self->{prefix} = 'DBA';
 	if ($self->{user_grants}) {
 		$self->{prefix} = 'ALL';
