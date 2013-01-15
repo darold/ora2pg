@@ -616,7 +616,7 @@ sub estimate_cost
 	$cost += $UNCOVERED_SCORE{'NVL2'}*$n;
 
 	foreach my $f (@ORA_FUNCTIONS) {
-		$cost += 1 if ($str =~ /\b$f\b/i);
+		$cost += 2 if ($str =~ /\b$f\b/i);
 	}
 
 	return $cost;
