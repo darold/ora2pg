@@ -17,7 +17,7 @@ This release adds HTML report for migration cost assessment and some bug fix.
 	- Allow migration report to be generated as HTML.
 	- Separate report generation code from data collection code.
 
-2012 12 12 - v10
+2012 12 12 - v10.0
 
 This is the first version of Ora2Pg 10.x series, that is a major release.
 Overall numerous improvements and bugs fixes there's now a new export type:

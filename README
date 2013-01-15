@@ -503,9 +503,9 @@ CONFIGURATION
         See http://pgxn.org/dist/oracle_fdw/ for more information on this
         foreign data wrapper.
 
-        Release 10.0 add e new export type destinated to evaluate the
-        content of the database to migrate, in terms of number of object and
-        cost to end the migration:
+        Release 10 adds a new export type destinated to evaluate the content
+        of the database to migrate, in terms of objects and cost to end the
+        migration:
 
                 SHOW_REPORT  : show a detailled report of the Oracle database content.
 
