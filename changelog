@@ -1,3 +1,22 @@
+2013 01 15 - v10.1
+
+This release adds HTML report for migration cost assessment and some bug fix.
+
+	- Fix global where should not be overwritten. Thanks to Dan Harbin for
+	  the patch.
+	- Fix bug/typo in boolean replacement, where a colon was used instead
+	  of a single quote. Thanks to Alex Delianis for the patch.
+	- Update copyright.
+	- Add detection of additional Oracle functions for better migration
+	  cost assessment.
+	- Update documentation.
+	- Force report detail in lowercase.
+	- Added information about the migration cost value to the reports.
+	- Add --dump_as_html command line option and DUMP_AS_HTML configuration
+	  directive.
+	- Allow migration report to be generated as HTML.
+	- Separate report generation code from data collection code.
+
 2012 12 12 - v10
 
 This is the first version of Ora2Pg 10.x series, that is a major release.
