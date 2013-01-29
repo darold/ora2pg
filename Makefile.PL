@@ -13,7 +13,10 @@ while ($_ = shift) {
 # Default install path
 my $CONFDIR = $ENV{CONFDIR} || '/etc/ora2pg';
 my $DOCDIR = $ENV{DOCDIR} || '/usr/local/share/doc/ora2pg';
-
+my $DEST_CONF_FILE = 'ora2pg.conf.dist';
+if ($^O =~ /MSWin32|dos/i) {
+	$DEST_CONF_FILE = 'ora2pg_dist.conf';
+}
 
 my $PREFIX = $ENV{DESTDIR} || $ENV{PREFIX} || $ENV{INSTALL_BASE} ||  '';
 $PREFIX =~ s/\/$//;
@@ -52,8 +55,8 @@ if ($^O !~ /MSWin32|dos/i) {
 my $oracle_home = $ENV{ORACLE_HOME} || '/usr/local/oracle/10g';
 
 # Setup ok. generating default ora2pg.conf config file
-unless(open(OUTCFG, ">ora2pg.conf.dist")) {
-	print "\nError: can't write config file ora2pg.conf.dist, $!\n";
+unless(open(OUTCFG, ">$DEST_CONF_FILE")) {
+	print "\nError: can't write config file $DEST_CONF_FILE, $!\n";
 	exit 0;
 }
 
@@ -507,7 +510,7 @@ WriteMakefile(
     'MAN3PODS'     => { 'doc/Ora2Pg.pod' => 'blib/man3/ora2pg.3' },
     'DESTDIR'      => $PREFIX,
     'INSTALLDIRS'  => $ENV{INSTALLDIRS},
-    'clean'        => {FILES => "ora2pg.conf.dist lib/blib/"},
+    'clean'        => {FILES => "$DEST_CONF_FILE lib/blib/"},
     'PREREQ_PM'    => { DBI => 0, DBD::Oracle },
     'META_MERGE'   => {
 	resources  => {
@@ -533,9 +536,9 @@ sub MY::install {
 sub MY::postamble {
 	my $postamble = qq{
 install_all :
-	\@echo "Installing default configuration file (ora2pg.conf.dist) to $CONFDIR"
+	\@echo "Installing default configuration file ($DEST_CONF_FILE) to $CONFDIR"
 	\@\$(MKPATH) $CONFDIR/ora2pg
-	\@\$(CP) -f ora2pg.conf.dist $CONFDIR/ora2pg/ora2pg.conf.dist
+	\@\$(CP) -f $DEST_CONF_FILE $CONFDIR/ora2pg/$DEST_CONF_FILE
 	\@\$(MKPATH) $DOCDIR
 	\@\$(CP) -f README $DOCDIR/README
 	\@\$(CP) -f INSTALL $DOCDIR/INSTALL
@@ -545,9 +548,9 @@ install_all :
 		my $tmp_conf = quotemeta($CONFDIR);
 		$postamble = qq{
 install_all :
-	\@echo "Installing default configuration file (ora2pg.conf.dist) to $CONFDIR"
+	\@echo "Installing default configuration file ($DEST_CONF_FILE) to $CONFDIR"
 	\@\$(MKPATH) $CONFDIR
-	\@\$(CP) /Y ora2pg.conf.dist $CONFDIR\\ora2pg.conf.dist
+	\@\$(CP) /Y $DEST_CONF_FILE $CONFDIR\\$DEST_CONF_FILE
 	\@\$(CP) /Y README $CONFDIR\\README
 	\@\$(CP) /Y INSTALL $CONFDIR\\INSTALL
 	\@\$(CP) /Y changelog $CONFDIR\\changelog
