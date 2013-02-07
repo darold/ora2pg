@@ -997,6 +997,10 @@ sub _tables
 	my @tables_infos = $sth->fetchall_arrayref();
 	$sth->finish();
 
+	# Retrieve all column's details
+	my @columns_infos = ();
+	@columns_infos = $self->_column_info('',$self->{schema}) if (!$nodetail);
+
 	my @done = ();
 	my $id = 0;
 	foreach my $table (@tables_infos) {
@@ -1053,7 +1057,7 @@ sub _tables
 			$self->{tables}{$t->[2]}{field_name} = $sth->{NAME};
 			$self->{tables}{$t->[2]}{field_type} = $sth->{TYPE};
 			# Retrieve column's details
-			@{$self->{tables}{$t->[2]}{column_info}} = $self->_column_info($t->[2],$t->[1]) if (!$nodetail);
+			@{$self->{tables}{$t->[2]}{column_info}} = grep { $_->[8] eq $t->[2] && $_->[9] eq $t->[1] } @columns_infos if (!$nodetail);
 			# Retrieve comment of each columns
 			@{$self->{tables}{$t->[2]}{column_comments}} = $self->_column_comments($t->[2],$t->[1]) if (!$nodetail);
 			%{$self->{tables}{$t->[2]}{unique_key}} = $self->_unique_key($t->[2],$t->[1]);
@@ -3631,22 +3635,23 @@ sub _column_info
 {
 	my ($self, $table, $owner, $not_show_info) = @_;
 
-	my $schema = '';
-	$schema = "AND OWNER='$owner' " if ($owner);
+	my $condition = '';
+	$condition .= "AND TABLE_NAME='$table' " if ($table);
+	$condition .= "AND OWNER='$owner' " if ($owner);
+	$condition =~ s/^AND/WHERE/;
+
 	my $sth = '';
 	if ($self->{db_version} !~ /Release 8/) {
 		$sth = $self->{dbh}->prepare(<<END) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-SELECT COLUMN_NAME, DATA_TYPE, DATA_LENGTH, NULLABLE, DATA_DEFAULT, DATA_PRECISION, DATA_SCALE, CHAR_LENGTH
-FROM $self->{prefix}_TAB_COLUMNS
-WHERE TABLE_NAME='$table' $schema
+SELECT COLUMN_NAME, DATA_TYPE, DATA_LENGTH, NULLABLE, DATA_DEFAULT, DATA_PRECISION, DATA_SCALE, CHAR_LENGTH, TABLE_NAME, OWNER
+FROM $self->{prefix}_TAB_COLUMNS $condition
 ORDER BY COLUMN_ID
 END
 	} else {
 		# an 8i database.
 		$sth = $self->{dbh}->prepare(<<END) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-SELECT COLUMN_NAME, DATA_TYPE, DATA_LENGTH, NULLABLE, DATA_DEFAULT, DATA_PRECISION, DATA_SCALE
-FROM $self->{prefix}_TAB_COLUMNS
-WHERE TABLE_NAME='$table' $schema
+SELECT COLUMN_NAME, DATA_TYPE, DATA_LENGTH, NULLABLE, DATA_DEFAULT, DATA_PRECISION, DATA_SCALE, TABLE_NAME, OWNER
+FROM $self->{prefix}_TAB_COLUMNS $condition
 ORDER BY COLUMN_ID
 END
 	}
@@ -3654,10 +3659,12 @@ END
 
 	my $data = $sth->fetchall_arrayref();
 	foreach my $d (@$data) {
-		if ($#{$d} == 7) {
-			$self->logit("\t$d->[0] => type:$d->[1] , length:$d->[2] (char_length:$d->[7]), precision:$d->[5], scale:$d->[6], nullable:$d->[3] , default:$d->[4]\n", 1) if (!$not_show_info);
+		# forget or not this object if it is in the exclude or allow lists.
+		next if ($self->skip_this_object('TABLE', $d->[-2]));
+		if ($#{$d} == 9) {
+			$self->logit("\t$d->[0] => type:$d->[1] , length:$d->[2] (char_length:$d->[7]), precision:$d->[5], scale:$d->[6], nullable:$d->[3] , default:$d->[4]\n", 1) if (!$not_show_info && $table);
 			$d->[2] = $d->[7] if $d->[1] =~ /char/i;
-		} elsif (!$not_show_info) {
+		} elsif (!$not_show_info && $table) {
 			$self->logit("\t$d->[0] => type:$d->[1] , length:$d->[2] (char_length:$d->[2]), precision:$d->[5], scale:$d->[6], nullable:$d->[3] , default:$d->[4]\n", 1);
 		}
 	}
@@ -4531,9 +4538,9 @@ sub _table_info
                 tc.TABLE_TYPE,
                 tc.COMMENTS     REMARKS,
 		NVL(at.num_rows,1) NUMBER_ROWS
-            from ALL_TABLES at, ALL_TAB_COMMENTS tc
-            where at.OWNER = tc.OWNER
-            and at.TABLE_NAME = tc.TABLE_NAME
+            FROM ALL_TABLES at, ALL_TAB_COMMENTS tc
+            WHERE at.OWNER = tc.OWNER
+            AND at.TABLE_NAME = tc.TABLE_NAME
 	";
 
 	if ($self->{schema}) {
@@ -5946,9 +5953,13 @@ sub _show_infos
 					}
 				}
 
+				# Retrieve tables informations
 				my $sth = $self->_table_info()  or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 				my @tables_infos = $sth->fetchall_arrayref();
 				$sth->finish();
+
+				# Retrieve all columns informations
+				my @columns_infos = $self->_column_info('',$self->{schema}, 1);
 
 				my %table_detail = ();
 				my $virt_column = 0;
@@ -5973,8 +5984,8 @@ sub _show_infos
 							$table_detail{'reserved words in table name'}++;
 						}
 						# Set the fields information
-						@{$self->{tables}{$t->[1]}{column_info}} = $self->_column_info($t->[2],$t->[1], 1);
-						foreach my $d (@{$self->{tables}{$t->[1]}{column_info}}) {
+						@{$self->{tables}{$t->[2]}{column_info}} = grep { $_->[8] eq $t->[2] && $_->[9] eq $t->[1] } @columns_infos;
+						foreach my $d (@{$self->{tables}{$t->[2]}{column_info}}) {
 							if (&is_reserved_words($d->[0])) {
 								$table_detail{'reserved words in column name'}++;
 							}
@@ -6118,9 +6129,13 @@ sub _show_infos
 		# Get all tables information specified by the DBI method table_info
 		$self->logit("Showing table information...\n", 1);
 
+		# Retrieve tables informations
 		my $sth = $self->_table_info()  or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 		my @tables_infos = $sth->fetchall_arrayref();
 		$sth->finish();
+
+		# Retrieve all columns information
+		my @columns_infos = $self->_column_info('',$self->{schema}, 1);
 
 		my @done = ();
 		my $id = 0;
@@ -6150,12 +6165,12 @@ sub _show_infos
 
 				# Set the fields information
 				if ($type eq 'SHOW_COLUMN') {
-					@{$self->{tables}{$t->[1]}{column_info}} = $self->_column_info($t->[2],$t->[1], 1);
-					foreach my $d (@{$self->{tables}{$t->[1]}{column_info}}) {
+					@{$self->{tables}{$t->[2]}{column_info}} = grep { $_->[8] eq $t->[2] && $_->[9] eq $t->[1] } @columns_infos;
+					foreach my $d (@{$self->{tables}{$t->[2]}{column_info}}) {
 						my $type = $self->_sql_type($d->[1], $d->[2], $d->[5], $d->[6]);
 						$type = "$d->[1], $d->[2]" if (!$type);
 						my $len = $d->[2];
-						if ($#{$d} == 7) {
+						if ($#{$d} == 9) {
 							$d->[2] = $d->[7] if $d->[1] =~ /char/i;
 						}
 						$self->logit("\t$d->[0] : $d->[1]");
