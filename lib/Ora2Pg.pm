@@ -1000,6 +1000,8 @@ sub _tables
 	# Retrieve all column's details
 	my @columns_infos = ();
 	@columns_infos = $self->_column_info('',$self->{schema}) if (!$nodetail);
+	my @columns_comments = ();
+	@columns_comments = $self->_column_comments('',$self->{schema}) if (!$nodetail);
 
 	my @done = ();
 	my $id = 0;
@@ -1059,7 +1061,7 @@ sub _tables
 			# Retrieve column's details
 			@{$self->{tables}{$t->[2]}{column_info}} = grep { $_->[8] eq $t->[2] && $_->[9] eq $t->[1] } @columns_infos if (!$nodetail);
 			# Retrieve comment of each columns
-			@{$self->{tables}{$t->[2]}{column_comments}} = $self->_column_comments($t->[2],$t->[1]) if (!$nodetail);
+			@{$self->{tables}{$t->[2]}{column_comments}} = grep { $_->[2] eq $t->[2] && $_->[3] eq $t->[1] } @columns_comments if (!$nodetail);
 			%{$self->{tables}{$t->[2]}{unique_key}} = $self->_unique_key($t->[2],$t->[1]);
 			# We don't check for skip_ukeys/skip_pkeys here; this is taken care of inside _unique_key
 			($self->{tables}{$t->[2]}{foreign_link}, $self->{tables}{$t->[2]}{foreign_key}) = $self->_foreign_key($t->[2],$t->[1]) if (!$self->{skip_fkeys});
@@ -2910,11 +2912,15 @@ sub _column_comments
 {
 	my ($self, $table, $owner) = @_;
 
+	my $condition = '';
+	$condition .= "AND TABLE_NAME='$table' " if ($table);
+	$condition .= "AND OWNER='$owner' " if ($owner);
+	$condition =~ s/^AND/WHERE/;
+
 	$owner = "AND OWNER='$owner' " if ($owner);
 	my $sth = $self->{dbh}->prepare(<<END) or $self->logit("WARNING only: " . $self->{dbh}->errstr . "\n", 0, 0);
-SELECT COLUMN_NAME,COMMENTS
-FROM $self->{prefix}_COL_COMMENTS
-WHERE TABLE_NAME='$table' $owner       
+SELECT COLUMN_NAME,COMMENTS,TABLE_NAME,OWNER
+FROM $self->{prefix}_COL_COMMENTS $condition
 END
 
 	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
