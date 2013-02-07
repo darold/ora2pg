@@ -27,7 +27,7 @@ package Ora2Pg;
 use vars qw($VERSION $PSQL %AConfig);
 use Carp qw(confess);
 use DBI;
-use POSIX qw(locale_h);
+use POSIX qw(locale_h _exit :sys_wait_h);
 use IO::File;
 use Config;
 
@@ -3294,6 +3294,8 @@ sub _create_foreign_keys
 	foreach my $h (@foreign_key) {
 		next if (grep(/^$h->[0]$/, @done));
 		foreach my $desttable (keys %{$self->{tables}{$table}{foreign_link}{$h->[0]}{remote}}) {
+			# Do not export foreign key to table that are not exported
+			next if ($self->skip_this_object('TABLE', $desttable));
 			my $str = '';
 			push(@done, $h->[0]);
 			map { $_ = '"' . $_ . '"' } @{$self->{tables}{$table}{foreign_link}{$h->[0]}{local}};
@@ -4895,6 +4897,7 @@ sub format_data_type
 		} elsif ($data_type eq 'bytea') {
 			$col = escape_bytea($col);
 		} elsif ($data_type !~ /(date|time)/) {
+			utf8::encode($col) if (!utf8::valid($col));
 			$col =~ s/\0//gs;
 			$col =~ s/\\/\\\\/g;
 			$col =~ s/\r/\\r/g;
@@ -5668,6 +5671,7 @@ CREATE TYPE \L$type_name\E AS ($type_name $declar\[$size\]);
 sub extract_data
 {
 	my ($self, $table, $s_out, $nn, $tt, $fhdl, $sprep, $stt) = @_;
+	my $childcnt = 0;
 
 	my $total_record = 0;
 	$self->{data_limit} ||= 10000;
@@ -5702,7 +5706,31 @@ sub extract_data
 	my $start_time = time();
 	my $total_row = $self->{tables}{$table}{table_info}->[3];
 	$self->logit("Fetching all data from $table...\n", 1);
+
+	pipe $in1, $out1 if ($self->{fork_child});
+
 	while ( my $rows = $sth->fetchall_arrayref(undef,$self->{data_limit})) {
+
+		if ($self->{fork_child}) {
+			my ($tmpf1,$tmpf2) = (undef, undef);
+			while ($childcnt >= $self->{fork_child}) {
+				$childcnt-- if (wait);
+			}
+			pipe $tmpf1, $tmpf2;
+			($in2,$out2) = ($tmpf1,$tmpf2);
+
+			if (($child = fork ()) == 0) {
+				close $out1;
+				close $in2;
+			} else {
+				close $in1;
+				close $out1;
+				$in1 = $in2;
+				$out1 = $out2;
+				$childcnt++;
+				next;
+			}
+		}
 
 		my $sql = '';
 		if ($self->{type} eq 'COPY') {
@@ -5725,6 +5753,7 @@ sub extract_data
 		my $count = 0;
 		if ($self->{type} eq 'COPY') {
 			if ($self->{dbhdest}) {
+				$total_record += <$in1> if ($self->{fork_child});
 				$self->logit("DEBUG: Sending COPY bulk output directly to PostgreSQL backend\n", 1);
 				my $s = $self->{dbhdest}->do($sql) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
 				$sql = '';
@@ -5746,6 +5775,7 @@ sub extract_data
 		}
 
 		$self->logit("DEBUG: Dumping output of total size of " . length($sql) . "\n", 1);
+		$total_record += <$in1> if ($self->{fork_child}); # this line does nothing if $in1 was previously read
 
 		# Insert data if we are in online processing mode
 		if ($self->{dbhdest}) {
@@ -5788,7 +5818,23 @@ sub extract_data
 				$self->logit("$count records in $dt secs\n", 1);
 			}
 		}
+		if ($self->{fork_child}) {
+			close DBH if defined DBH;
+			close $fhdl if defined $fhdl;
+			close $self->{fhout} if defined $self->{fhout};
+			if ($self->{fork_child} > 0) {
+				print $out2 "$total_record\n";
+				close $out2;
+			}
+			_exit (0);
+		}
 	}
+	if ($self->{fork_child}) {
+		$total_record = <$in1>;
+		chomp ($total_record);
+		waitpid ($child, 0);
+	}
+
 	$sth->finish();
 	if (!$self->{quiet}) {
 		print STDERR "\n";
