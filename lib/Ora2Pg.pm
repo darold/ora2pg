@@ -3627,13 +3627,14 @@ elements for each column the specified table
   column length,
   nullable column,
   default value
+  ...
 )]
 
 =cut
 
 sub _column_info
 {
-	my ($self, $table, $owner, $not_show_info) = @_;
+	my ($self, $table, $owner) = @_;
 
 	my $condition = '';
 	$condition .= "AND TABLE_NAME='$table' " if ($table);
@@ -3662,10 +3663,7 @@ END
 		# forget or not this object if it is in the exclude or allow lists.
 		next if ($self->skip_this_object('TABLE', $d->[-2]));
 		if ($#{$d} == 9) {
-			$self->logit("\t$d->[0] => type:$d->[1] , length:$d->[2] (char_length:$d->[7]), precision:$d->[5], scale:$d->[6], nullable:$d->[3] , default:$d->[4]\n", 1) if (!$not_show_info && $table);
 			$d->[2] = $d->[7] if $d->[1] =~ /char/i;
-		} elsif (!$not_show_info && $table) {
-			$self->logit("\t$d->[0] => type:$d->[1] , length:$d->[2] (char_length:$d->[2]), precision:$d->[5], scale:$d->[6], nullable:$d->[3] , default:$d->[4]\n", 1);
 		}
 	}
 
@@ -5959,7 +5957,7 @@ sub _show_infos
 				$sth->finish();
 
 				# Retrieve all columns informations
-				my @columns_infos = $self->_column_info('',$self->{schema}, 1);
+				my @columns_infos = $self->_column_info('',$self->{schema});
 
 				my %table_detail = ();
 				my $virt_column = 0;
@@ -6135,7 +6133,7 @@ sub _show_infos
 		$sth->finish();
 
 		# Retrieve all columns information
-		my @columns_infos = $self->_column_info('',$self->{schema}, 1);
+		my @columns_infos = $self->_column_info('',$self->{schema});
 
 		my @done = ();
 		my $id = 0;
@@ -6198,7 +6196,6 @@ sub _show_infos
 				$i++;
 			}
 		}
-
 	}
 }
 
