@@ -630,6 +630,8 @@ sub _init
 	$self->{export_invalid} ||= 0;
 	$self->{use_reserved_words} ||= 0;
 	$self->{pkey_in_create} ||= 0;
+	# Should we add SET ON_ERROR_STOP to generated SQL files
+	$self->{stop_on_error} = 1 if (not defined $self->{stop_on_error});
 
 	# Allow multiple or chained extraction export type
 	$self->{export_type} = ();
@@ -1375,7 +1377,7 @@ sub _get_sql_data
 			}
 		}
 	}
-	$sql_header .= "\\set ON_ERROR_STOP ON\n\n";
+	$sql_header .= "\\set ON_ERROR_STOP ON\n\n" if ($self->{stop_on_error});
 
 	my $sql_output = "";
 
@@ -2353,13 +2355,15 @@ LANGUAGE plpgsql ;
 			$global_rows += $self->{tables}{$table}{table_info}[3];
 		}
 
+		# Disable SQL script exit on error
 		if ($self->{drop_indexes} || $self->{drop_fkey}) {
 			if (!$self->{dbhdest}) {
 				$self->dump("\\set ON_ERROR_STOP OFF\n");
 			}
 		}
+
+		# Ordering tables by name
 		my @ordered_tables = sort { $a cmp $b } keys %{$self->{tables}};
-		# Ok ordering is impossible
 		if ($self->{defer_fkey}) {
 			if ($self->{dbhdest}) {
 				my $s = $self->{dbhdest}->do("BEGIN;") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
@@ -2396,9 +2400,11 @@ LANGUAGE plpgsql ;
 			}
 			$drop_all = '';
 		}
-		if ($self->{drop_indexes} || $self->{drop_fkey}) {
-			if (!$self->{dbhdest}) {
-				$self->dump("\\set ON_ERROR_STOP ON\n");
+		if ($self->{stop_on_error}) {
+			if ($self->{drop_indexes} || $self->{drop_fkey}) {
+				if (!$self->{dbhdest}) {
+					$self->dump("\\set ON_ERROR_STOP ON\n");
+				}
 			}
 		}
 		# Force datetime format

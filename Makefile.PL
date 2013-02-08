@@ -485,6 +485,10 @@ COST_UNIT_VALUE		5
 # in HTML format.
 DUMP_AS_HTML		0
 
+# Set it to 0 to not include the call to \set ON_ERROR_STOP ON in all SQL
+# scripts. By default this order is always present.
+STOP_ON_ERROR		1
+
 };
 close(OUTCFG);
 
