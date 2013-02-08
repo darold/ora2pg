@@ -1,7 +1,4 @@
 #!/usr/bin/perl
-
-eval 'exec /usr/bin/perl  -S $0 ${1+"$@"}'
-    if 0; # not running under some shell
 #------------------------------------------------------------------------------
 # Project  : Oracle to Postgresql converter
 # Name     : ora2pg
@@ -29,6 +26,9 @@ use strict qw/vars/;
 
 use Ora2Pg;
 use Getopt::Long;
+use POSIX qw(locale_h sys_wait_h _exit);
+setlocale(LC_NUMERIC, '');
+setlocale(LC_ALL,     'C');
 
 my $VERSION = '10.1';
 
@@ -123,6 +123,17 @@ if ($TABLEONLY) {
 		$ALLOW = $TABLEONLY;
 	}
 }
+
+sub getout
+{
+        my $sig = shift;
+        print STDERR "Received terminating signal ($sig).\n";
+        $SIG{INT} = \&getout;
+        $SIG{TERM} = \&getout;
+	exit 1;
+}
+$SIG{INT} = \&getout;
+$SIG{TERM} = \&getout;
 
 # Create an instance of the Ora2Pg perl module
 my $schema = new Ora2Pg (
