@@ -1011,6 +1011,11 @@ sub _tables
 	if (!$self->{skip_indices} && !$self->{skip_indexes}) {
 		($uniqueness, $indexes, $idx_type) = $self->_get_indexes('',$self->{schema});
 	}
+	# Retrieve all foreign keys
+	my ($foreign_link, $foreign_key);
+	if (!$self->{skip_fkeys}) {
+		($foreign_link, $foreign_key) = $self->_foreign_key('',$self->{schema});
+	}
 
 	my @done = ();
 	my $id = 0;
@@ -1082,8 +1087,23 @@ sub _tables
 				}
 			}
 
-			# We don't check for skip_ukeys/skip_pkeys here; this is taken care of inside _unique_key
-			($self->{tables}{$t->[2]}{foreign_link}, $self->{tables}{$t->[2]}{foreign_key}) = $self->_foreign_key($t->[2],$t->[1]) if (!$self->{skip_fkeys});
+			# Extract foreign keys informations for the current table
+			if (!$self->{skip_fkeys}) {
+				foreach my $o (keys %{$foreign_link}) {
+					next if ($o ne $t->[1]);
+					foreach my $tb (keys %{$foreign_link->{$o}}) {
+						next if ($tb ne $t->[2]);
+						%{$self->{tables}{$t->[2]}{foreign_link}} =  %{$foreign_link->{$o}{$tb}};
+					}
+				}
+				foreach my $o (keys %{$foreign_key}) {
+					next if ($o ne $t->[1]);
+					foreach my $tb (keys %{$foreign_key->{$o}}) {
+						next if ($tb ne $t->[2]);
+						push(@{$self->{tables}{$t->[2]}{foreign_key}}, @{$foreign_key->{$o}{$tb}});
+					}
+				}
+			}
 			# Same for check constraints for the current table
 			if (!$self->{skip_checks}) {
 				foreach my $o (keys %check_constraints) {
@@ -2921,6 +2941,7 @@ CREATE TRIGGER insert_${table}_trigger
 		$indices = '';
 	}
 
+	# Dumping foreign key constraints
 	foreach my $table (keys %{$self->{tables}}) {
 		next if ($#{$self->{tables}{$table}{foreign_key}} < 0);
 		$self->logit("Dumping RI $table...\n", 1);
@@ -3852,50 +3873,68 @@ sub _foreign_key
 {
 	my ($self, $table, $owner) = @_;
 
-	$owner = "AND OWNER='$owner'" if ($owner);
+	my $condition = '';
+	$condition .= "AND TABLE_NAME='$table' " if ($table);
+	$condition .= "AND OWNER='$owner' " if ($owner);
+
+	my $sql = "SELECT DISTINCT COLUMN_NAME,POSITION,TABLE_NAME,OWNER,CONSTRAINT_NAME FROM $self->{prefix}_CONS_COLUMNS";
+	$sql .= " WHERE OWNER='$owner'" if ($owner);
+	$sql .= " ORDER BY POSITION";
+	my $sth2 = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth2->execute or $self->logit("FATAL: " . $sth2->errstr . "\n", 0, 1);
+	my @cons_columns = ();
+	while (my $r = $sth2->fetch) {
+		push(@cons_columns, [ @$r ]);
+	}
+
 	my $deferrable = $self->{fkey_deferrable} ? "'DEFERRABLE' AS DEFERRABLE" : "DEFERRABLE";
 	my $sth = $self->{dbh}->prepare(<<END) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-SELECT CONSTRAINT_NAME,R_CONSTRAINT_NAME,SEARCH_CONDITION,DELETE_RULE,$deferrable,DEFERRED,R_OWNER
+SELECT CONSTRAINT_NAME,R_CONSTRAINT_NAME,SEARCH_CONDITION,DELETE_RULE,$deferrable,DEFERRED,R_OWNER,TABLE_NAME,OWNER
 FROM $self->{prefix}_CONSTRAINTS
-WHERE CONSTRAINT_TYPE='R'
+WHERE CONSTRAINT_TYPE='R' $condition
 AND STATUS='ENABLED'
 AND GENERATED != 'GENERATED NAME'
-AND TABLE_NAME='$table' $owner
 END
 	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
-	my @data = ();
+	my %data = ();
 	my %link = ();
 	my @tab_done = ();
 	while (my $row = $sth->fetch) {
-		next if (grep(/^$row->[0]$/, @tab_done));
-		push(@data, [ @$row ]);
-		push(@tab_done, $row->[0]);
-		my $sql = "SELECT DISTINCT COLUMN_NAME,POSITION FROM $self->{prefix}_CONS_COLUMNS WHERE CONSTRAINT_NAME='$row->[0]' $owner ORDER BY POSITION";
-		my $sth2 = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-		$sth2->execute or $self->logit("FATAL: " . $sth2->errstr . "\n", 0, 1);
+		next if (grep(/^$row->[8]$row->[7]$row->[0]$/, @tab_done));
+		push(@{$data{$row->[8]}{$row->[7]}}, [ @$row ]);
+		push(@tab_done, "$row->[8]$row->[7]$row->[0]");
 		my @done = ();
-		while (my $r = $sth2->fetch) {
-			if (!grep(/^$r->[0]$/, @done)) {
-				push(@{$link{$row->[0]}{local}}, $r->[0]);
-				push(@done, $r->[0]);
+	my $sql = "SELECT DISTINCT COLUMN_NAME,POSITION,TABLE_NAME,OWNER,CONSTRAINT_NAME FROM $self->{prefix}_CONS_COLUMNS";
+		foreach my $r (@cons_columns) {
+			# Skip it if tablename and owner are not the same
+			next if (($r->[2] ne $row->[7]) && ($r->[3] ne $row->[8]));
+			# If the names of the constraints are the same set the local column of the foreign keys
+			if ($r->[4] eq $row->[0]) {
+				if (!grep(/^$r->[2]$r->[3]$r->[0]$/, @done)) {
+					push(@{$link{$row->[8]}{$row->[7]}{$row->[0]}{local}}, $r->[0]);
+					push(@done, "$r->[2]$r->[3]$r->[0]");
+				}
 			}
 		}
-		$sql = "SELECT DISTINCT TABLE_NAME,COLUMN_NAME,POSITION FROM $self->{prefix}_CONS_COLUMNS WHERE CONSTRAINT_NAME='$row->[1]' " . ($owner ? "AND OWNER = '$row->[6]'" : '') . " ORDER BY POSITION";
-		$sth2 = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-		$sth2->execute or $self->logit("FATAL: " . $sth2->errstr . "\n", 0, 1);
 		@done = ();
-		while (my $r = $sth2->fetch) {
-			if (!grep(/^$r->[1]$/, @done)) {
-				#            column             tablename  column  
-				push(@{$link{$row->[0]}{remote}{$r->[0]}}, $r->[1]);
-				push(@done, $r->[1]);
-			}
 
+		foreach my $r (@cons_columns) {
+			# Skip it if tablename and owner are not the same
+			next if (($r->[2] ne $row->[7]) && ($r->[3] ne $row->[8]));
+			# If the names of the constraints are the same as the unique constraint definition for
+			# the referenced table set the remote part of the foreign keys
+			if ($r->[4] eq $row->[1]) {
+				if (!grep(/^$r->[2]$r->[3]$r->[2]$r->[0]$/, @done)) {
+					#            column             tablename  column  
+					push(@{$link{$row->[8]}{$row->[7]}{$row->[0]}{remote}{$r->[2]}}, $r->[0]);
+					push(@done, "$r->[2]$r->[3]$r->[2]$r->[0]");
+				}
+			}
 		}
 	}
 
-	return \%link, \@data;
+	return \%link, \%data;
 }
 
 =head2 _get_privilege
@@ -6571,7 +6610,7 @@ sub skip_this_object
 	my ($self, $obj_type, $name) = @_;
 
 	# Check if this object is in the allowed list of object to export.
-	if ($obj_type ne 'INDEX') {
+	if (($obj_type ne 'INDEX') && ($obj_type ne 'FKEY')) {
 		return 1 if (($#{$self->{limited}} >= 0) && !grep($name =~ /^$_$/i, @{$self->{limited}}));
 	}
 
