@@ -1077,7 +1077,7 @@ sub _tables
 				next if ($o ne $t->[1]);
 				foreach my $tb (keys %{$columns_infos{$o}}) {
 					next if ($tb ne $t->[2]);
-					@{$self->{tables}{$t->[2]}{column_info}} = @{$columns_infos{$o}{$tb}};
+					push(@{$self->{tables}{$t->[2]}{column_info}}, @{$columns_infos{$o}{$tb}});
 					delete $columns_infos{$o}{$tb};
 					last;
 				}
@@ -2942,6 +2942,7 @@ CREATE TRIGGER insert_${table}_trigger
 			$sql_output .= "CREATE$foreign $obj_type \"$tbname\" (\n";
 		}
 		foreach my $i ( 0 .. $#{$self->{tables}{$table}{field_name}} ) {
+
 			foreach my $f (@{$self->{tables}{$table}{column_info}}) {
 				next if ($f->[0] ne "${$self->{tables}{$table}{field_name}}[$i]");
 				my $type = $self->_sql_type($f->[1], $f->[2], $f->[5], $f->[6]);
@@ -3873,7 +3874,7 @@ END
 		if ($#{$row} == 9) {
 			$row->[2] = $row->[7] if $row->[1] =~ /char/i;
 		}
-		push(@{$data{$row->[-1]}{$row->[-2]}}, $row);
+		push(@{$data{$row->[-1]}{$row->[-2]}}, [ @$row ]);
 	}
 
 	return %data;	
