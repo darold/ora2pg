@@ -1002,6 +1002,7 @@ sub _tables
 	@columns_infos = $self->_column_info('',$self->{schema}) if (!$nodetail);
 	my @columns_comments = ();
 	@columns_comments = $self->_column_comments('',$self->{schema}) if (!$nodetail);
+	my %unique_keys = $self->_unique_key('',$self->{schema});
 
 	my @done = ();
 	my $id = 0;
@@ -1058,14 +1059,24 @@ sub _tables
 			$self->{tables}{$t->[2]}{type} = 'table';
 			$self->{tables}{$t->[2]}{field_name} = $sth->{NAME};
 			$self->{tables}{$t->[2]}{field_type} = $sth->{TYPE};
-			# Retrieve column's details
+			# Retrieve column's details related to this table
 			@{$self->{tables}{$t->[2]}{column_info}} = grep { $_->[8] eq $t->[2] && $_->[9] eq $t->[1] } @columns_infos if (!$nodetail);
-			# Retrieve comment of each columns
+			# Retrieve comment of each columns related to this table
 			@{$self->{tables}{$t->[2]}{column_comments}} = grep { $_->[2] eq $t->[2] && $_->[3] eq $t->[1] } @columns_comments if (!$nodetail);
-			%{$self->{tables}{$t->[2]}{unique_key}} = $self->_unique_key($t->[2],$t->[1]);
+			# Retrieve unique keys related to this table
+			foreach my $o (keys %unique_keys) {
+				next if ($o ne $t->[1]);
+				foreach my $tb (keys %{$unique_keys{$o}}) {
+					next if ($tb ne $t->[2]);
+					foreach my $c (keys %{$unique_keys{$o}{$tb}}) {
+						$self->{tables}{$t->[2]}{unique_key}{$c} = $unique_keys{$o}{$tb}{$c};
+					}
+				}
+			}
+
 			# We don't check for skip_ukeys/skip_pkeys here; this is taken care of inside _unique_key
 			($self->{tables}{$t->[2]}{foreign_link}, $self->{tables}{$t->[2]}{foreign_key}) = $self->_foreign_key($t->[2],$t->[1]) if (!$self->{skip_fkeys});
-			# Same for check cosntraints
+			# Same for check constraints
 			%{$self->{tables}{$t->[2]}{check_constraint}} = $self->_check_constraint($t->[2],$t->[1]) if (!$self->{skip_checks});
 			# Retrieve indexes informations
 			($self->{tables}{$t->[2]}{uniqueness}, $self->{tables}{$t->[2]}{indexes}, $self->{tables}{$t->[2]}{idx_type}) = $self->_get_indexes($t->[2],$t->[1]) if (!$self->{skip_indices} && !$self->{skip_indexes});
@@ -3682,9 +3693,9 @@ This function implements an Oracle-native unique (including primary)
 key column information.
 
 Returns a hash of hashes in the following form:
-    ( constraintname => (type => 'PRIMARY',
+    ( owner => table => constraintname => (type => 'PRIMARY',
                          columns => ('a', 'b', 'c')),
-      constraintname => (type => 'UNIQUE',
+      owner => table => constraintname => (type => 'UNIQUE',
                          columns => ('b', 'c', 'd')),
       etc.
     )
@@ -3700,26 +3711,41 @@ sub _unique_key
         push @accepted_constraint_types, "'P'" unless($self->{skip_pkeys});
         push @accepted_constraint_types, "'U'" unless($self->{skip_ukeys});
         return %result unless(@accepted_constraint_types);
+
         my $cons_types = '('. join(',', @accepted_constraint_types) .')';
-	$owner = "AND OWNER='$owner'" if ($owner);
-	my $sth = $self->{dbh}->prepare(<<END) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-SELECT CONSTRAINT_NAME,R_CONSTRAINT_NAME,SEARCH_CONDITION,DELETE_RULE,DEFERRABLE,DEFERRED,R_OWNER,CONSTRAINT_TYPE,GENERATED
+
+	my $sql = "SELECT DISTINCT COLUMN_NAME,POSITION,CONSTRAINT_NAME FROM $self->{prefix}_CONS_COLUMNS";
+	$sql .=  " WHERE OWNER='$owner'" if ($owner);
+	$sql .=  " ORDER BY POSITION";
+	my $sth = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute or $self->logit("FATAL: " . $sth->errstr . "\n", 0, 1);
+	my @cons_columns = ();
+	while (my $r = $sth->fetch) {
+		push(@cons_columns, [ @$r ]);
+	}
+	$sth->finish;
+
+	my $condition = '';
+	$condition .= "AND TABLE_NAME='$table' " if ($table);
+	$condition .= "AND OWNER='$owner' " if ($owner);
+
+	$sth = $self->{dbh}->prepare(<<END) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+SELECT CONSTRAINT_NAME,R_CONSTRAINT_NAME,SEARCH_CONDITION,DELETE_RULE,DEFERRABLE,DEFERRED,R_OWNER,CONSTRAINT_TYPE,GENERATED,TABLE_NAME,OWNER
 FROM $self->{prefix}_CONSTRAINTS
 WHERE CONSTRAINT_TYPE IN $cons_types
 AND STATUS='ENABLED'
-AND TABLE_NAME='$table' $owner
+$condition
 END
 	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
 	while (my $row = $sth->fetch) {
 		my %constraint = (type => $row->[7], 'generated' => $row->[8], columns => ());
-		my $sql = "SELECT DISTINCT COLUMN_NAME,POSITION FROM $self->{prefix}_CONS_COLUMNS WHERE CONSTRAINT_NAME='$row->[0]' $owner ORDER BY POSITION";
-		my $sth2 = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-		$sth2->execute or $self->logit("FATAL: " . $sth2->errstr . "\n", 0, 1);
-		while (my $r = $sth2->fetch) {
-			push @{$constraint{'columns'}}, $r->[0];
+		foreach my $r (@cons_columns) {
+			if ($r->[2] eq $row->[0]) {
+				push(@{$constraint{'columns'}}, $r->[0]);
+			}
 		}
-		$result{$row->[0]} = \%constraint;
+		$result{$row->[10]}{$row->[9]}{$row->[0]} = \%constraint;
 	}
 
 	return %result;
