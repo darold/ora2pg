@@ -1006,6 +1006,11 @@ sub _tables
 	my %unique_keys = $self->_unique_key('',$self->{schema});
 	# Retrieve check constraints
 	my %check_constraints = $self->_check_constraint('',$self->{schema});
+	# Retrieve all indexes informations
+	my ($uniqueness, $indexes, $idx_type);
+	if (!$self->{skip_indices} && !$self->{skip_indexes}) {
+		($uniqueness, $indexes, $idx_type) = $self->_get_indexes('',$self->{schema});
+	}
 
 	my @done = ();
 	my $id = 0;
@@ -1090,7 +1095,29 @@ sub _tables
 				}
 			}
 			# Retrieve indexes informations
-			($self->{tables}{$t->[2]}{uniqueness}, $self->{tables}{$t->[2]}{indexes}, $self->{tables}{$t->[2]}{idx_type}) = $self->_get_indexes($t->[2],$t->[1]) if (!$self->{skip_indices} && !$self->{skip_indexes});
+			if (!$self->{skip_indices} && !$self->{skip_indexes}) {
+				foreach my $o (keys %{$uniqueness}) {
+					next if ($o ne $t->[1]);
+					foreach my $tb (keys %{$uniqueness->{$o}}) {
+						next if ($tb ne $t->[2]);
+						%{$self->{tables}{$t->[2]}{uniqueness}} = ( %{$uniqueness->{$o}{$tb}});
+					}
+				}
+				foreach my $o (keys %{$indexes}) {
+					next if ($o ne $t->[1]);
+					foreach my $tb (keys %{$indexes->{$o}}) {
+						next if ($tb ne $t->[2]);
+						%{$self->{tables}{$t->[2]}{indexes}} = ( %{$indexes->{$o}{$tb}});
+					}
+				}
+				foreach my $o (keys %{$idx_type}) {
+					next if ($o ne $t->[1]);
+					foreach my $tb (keys %{$idx_type->{$o}}) {
+						next if ($tb ne $t->[2]);
+						%{$self->{tables}{$t->[2]}{idx_type}} = ( %{$idx_type->{$o}{$tb}});
+					}
+				}
+			}
 			$i++;
 		}
 		if (!$self->{quiet} && !$self->{debug}) {
@@ -3999,30 +4026,31 @@ sub _get_indexes
 	}
 	my $sub_owner = '';
 	if ($owner) {
-		$owner = "AND $self->{prefix}_INDEXES.OWNER='$owner' AND $self->{prefix}_IND_COLUMNS.INDEX_OWNER=$self->{prefix}_INDEXES.OWNER";
 		$sub_owner = "AND OWNER=$self->{prefix}_INDEXES.TABLE_OWNER";
 	}
+
+	my $condition = '';
+	$condition .= "AND $self->{prefix}_IND_COLUMNS.TABLE_NAME='$table' " if ($table);
+	$condition .= "AND $self->{prefix}_IND_COLUMNS.INDEX_OWNER='$owner' AND $self->{prefix}_INDEXES.OWNER='$owner' " if ($owner);
+
 	# Retrieve all indexes 
 	my $sth = '';
 	if ($self->{db_version} !~ /Release 8/) {
 		$sth = $self->{dbh}->prepare(<<END) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-SELECT DISTINCT $self->{prefix}_IND_COLUMNS.INDEX_NAME,$self->{prefix}_IND_COLUMNS.COLUMN_NAME,$self->{prefix}_INDEXES.UNIQUENESS,$self->{prefix}_IND_COLUMNS.COLUMN_POSITION,$self->{prefix}_INDEXES.INDEX_TYPE,$self->{prefix}_INDEXES.TABLE_TYPE,$self->{prefix}_INDEXES.GENERATED,$self->{prefix}_INDEXES.JOIN_INDEX
-FROM $self->{prefix}_IND_COLUMNS, $self->{prefix}_INDEXES
-WHERE $self->{prefix}_IND_COLUMNS.TABLE_NAME='$table' $owner
-AND $self->{prefix}_INDEXES.GENERATED <> 'Y'
-AND $self->{prefix}_INDEXES.TEMPORARY <> 'Y'
-AND $self->{prefix}_INDEXES.INDEX_NAME=$self->{prefix}_IND_COLUMNS.INDEX_NAME
+SELECT DISTINCT $self->{prefix}_IND_COLUMNS.INDEX_NAME,$self->{prefix}_IND_COLUMNS.COLUMN_NAME,$self->{prefix}_INDEXES.UNIQUENESS,$self->{prefix}_IND_COLUMNS.COLUMN_POSITION,$self->{prefix}_INDEXES.INDEX_TYPE,$self->{prefix}_INDEXES.TABLE_TYPE,$self->{prefix}_INDEXES.GENERATED,$self->{prefix}_INDEXES.JOIN_INDEX,$self->{prefix}_IND_COLUMNS.TABLE_NAME,$self->{prefix}_IND_COLUMNS.INDEX_OWNER
+FROM $self->{prefix}_IND_COLUMNS
+JOIN $self->{prefix}_INDEXES ON ($self->{prefix}_INDEXES.INDEX_NAME=$self->{prefix}_IND_COLUMNS.INDEX_NAME)
+WHERE $self->{prefix}_INDEXES.GENERATED <> 'Y' AND $self->{prefix}_INDEXES.TEMPORARY <> 'Y' $condition
 ORDER BY $self->{prefix}_IND_COLUMNS.COLUMN_POSITION
 END
 	} else {
 		# an 8i database.
 		$sth = $self->{dbh}->prepare(<<END) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-SELECT DISTINCT $self->{prefix}_IND_COLUMNS.INDEX_NAME,$self->{prefix}_IND_COLUMNS.COLUMN_NAME,$self->{prefix}_INDEXES.UNIQUENESS,$self->{prefix}_IND_COLUMNS.COLUMN_POSITION,$self->{prefix}_INDEXES.INDEX_TYPE,$self->{prefix}_INDEXES.TABLE_TYPE,$self->{prefix}_INDEXES.GENERATED
+SELECT DISTINCT $self->{prefix}_IND_COLUMNS.INDEX_NAME,$self->{prefix}_IND_COLUMNS.COLUMN_NAME,$self->{prefix}_INDEXES.UNIQUENESS,$self->{prefix}_IND_COLUMNS.COLUMN_POSITION,$self->{prefix}_INDEXES.INDEX_TYPE,$self->{prefix}_INDEXES.TABLE_TYPE,$self->{prefix}_INDEXES.GENERATED,$self->{prefix}_IND_COLUMNS.TABLE_NAME,$self->{prefix}_IND_COLUMNS.INDEX_OWNER
 FROM $self->{prefix}_IND_COLUMNS, $self->{prefix}_INDEXES
-WHERE $self->{prefix}_IND_COLUMNS.TABLE_NAME='$table' $owner
+WHERE $self->{prefix}_INDEXES.INDEX_NAME=$self->{prefix}_IND_COLUMNS.INDEX_NAME $condition
 AND $self->{prefix}_INDEXES.GENERATED <> 'Y'
 AND $self->{prefix}_INDEXES.TEMPORARY <> 'Y'
-AND $self->{prefix}_INDEXES.INDEX_NAME=$self->{prefix}_IND_COLUMNS.INDEX_NAME
 ORDER BY $self->{prefix}_IND_COLUMNS.COLUMN_POSITION
 END
 	}
@@ -4035,7 +4063,7 @@ AND    IE.TABLE_OWNER = IC.TABLE_OWNER
 AND    IE.TABLE_NAME = IC.TABLE_NAME
 AND    IE.COLUMN_POSITION = IC.COLUMN_POSITION
 AND    IC.COLUMN_NAME = ?
-AND    IE.TABLE_NAME = '$table'
+AND    IE.TABLE_NAME = ?
 $idxowner
 };
 	my $sth2 = $self->{dbh}->prepare($idxnc);
@@ -4045,20 +4073,20 @@ $idxowner
 	while (my $row = $sth->fetch) {
 		# forget or not this object if it is in the exclude or allow lists.
 		next if ($self->skip_this_object('INDEX', $row->[0]));
-		$unique{$row->[0]} = $row->[2];
+		$unique{$row->[-1]}{$row->[-2]}{$row->[0]} = $row->[2];
 		if (($#{$row} > 6) && ($row->[7] eq 'Y')) {
-			$idx_type{$row->[0]} = $row->[4] . ' JOIN';
+			$idx_type{$row->[-1]}{$row->[-2]}{$row->[0]} = $row->[4] . ' JOIN';
 		} else {
-			$idx_type{$row->[0]} = $row->[4];
+			$idx_type{$row->[-1]}{$row->[-2]}{$row->[0]} = $row->[4];
 		}
 		# Replace function based index type
 		if ($row->[1] =~ /^SYS_NC/i) {
-			$sth2->execute($row->[1]) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+			$sth2->execute($row->[1],$row->[-2]) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 			my $nc = $sth2->fetch();
 			$row->[1] = $nc->[0];
 		}
 		$row->[1] =~ s/SYS_EXTRACT_UTC[\s\t]*\(([^\)]+)\)/$1/isg;
-		push(@{$data{$row->[0]}}, $row->[1]);
+		push(@{$data{$row->[-1]}{$row->[-2]}{$row->[0]}}, $row->[1]);
 	}
 
 	return \%unique, \%data, \%idx_type;
@@ -6543,7 +6571,9 @@ sub skip_this_object
 	my ($self, $obj_type, $name) = @_;
 
 	# Check if this object is in the allowed list of object to export.
-	return 1 if (($#{$self->{limited}} >= 0) && !grep($name =~ /^$_$/i, @{$self->{limited}}));
+	if ($obj_type ne 'INDEX') {
+		return 1 if (($#{$self->{limited}} >= 0) && !grep($name =~ /^$_$/i, @{$self->{limited}}));
+	}
 
 	# Check if this object is in the exlusion list of object to export.
 	return 2 if (($#{$self->{excluded}} >= 0) && grep($name =~ /^$_$/i, @{$self->{excluded}}));
