@@ -1002,7 +1002,10 @@ sub _tables
 	@columns_infos = $self->_column_info('',$self->{schema}) if (!$nodetail);
 	my @columns_comments = ();
 	@columns_comments = $self->_column_comments('',$self->{schema}) if (!$nodetail);
+	# Retrieve unique keys informations
 	my %unique_keys = $self->_unique_key('',$self->{schema});
+	# Retrieve check constraints
+	my %check_constraints = $self->_check_constraint('',$self->{schema});
 
 	my @done = ();
 	my $id = 0;
@@ -1076,8 +1079,16 @@ sub _tables
 
 			# We don't check for skip_ukeys/skip_pkeys here; this is taken care of inside _unique_key
 			($self->{tables}{$t->[2]}{foreign_link}, $self->{tables}{$t->[2]}{foreign_key}) = $self->_foreign_key($t->[2],$t->[1]) if (!$self->{skip_fkeys});
-			# Same for check constraints
-			%{$self->{tables}{$t->[2]}{check_constraint}} = $self->_check_constraint($t->[2],$t->[1]) if (!$self->{skip_checks});
+			# Same for check constraints for the current table
+			if (!$self->{skip_checks}) {
+				foreach my $o (keys %check_constraints) {
+					next if ($o ne $t->[1]);
+					foreach my $tb (keys %{$check_constraints{$o}}) {
+						next if ($tb ne $t->[2]);
+						%{$self->{tables}{$t->[2]}{check_constraint}} = ( %{$check_constraints{$o}{$tb}});
+					}
+				}
+			}
 			# Retrieve indexes informations
 			($self->{tables}{$t->[2]}{uniqueness}, $self->{tables}{$t->[2]}{indexes}, $self->{tables}{$t->[2]}{idx_type}) = $self->_get_indexes($t->[2],$t->[1]) if (!$self->{skip_indices} && !$self->{skip_indexes});
 			$i++;
@@ -3765,20 +3776,22 @@ sub _check_constraint
 {
 	my($self, $table, $owner) = @_;
 
-	$owner = "AND OWNER='$owner'" if ($owner);
+	my $condition = '';
+	$condition .= "AND TABLE_NAME='$table' " if ($table);
+	$condition .= "AND OWNER='$owner' " if ($owner);
+
 	my $sth = $self->{dbh}->prepare(<<END) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-SELECT CONSTRAINT_NAME,R_CONSTRAINT_NAME,SEARCH_CONDITION,DELETE_RULE,DEFERRABLE,DEFERRED,R_OWNER
+SELECT CONSTRAINT_NAME,R_CONSTRAINT_NAME,SEARCH_CONDITION,DELETE_RULE,DEFERRABLE,DEFERRED,R_OWNER,TABLE_NAME,OWNER
 FROM $self->{prefix}_CONSTRAINTS
-WHERE CONSTRAINT_TYPE='C'
+WHERE CONSTRAINT_TYPE='C' $condition
 AND STATUS='ENABLED'
 AND GENERATED != 'GENERATED NAME'
-AND TABLE_NAME='$table' $owner
 END
 	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
 	my %data = ();
 	while (my $row = $sth->fetch) {
-		$data{constraint}{$row->[0]} = $row->[2];
+		$data{$row->[8]}{$row->[7]}{constraint}{$row->[0]} = $row->[2];
 	}
 
 	return %data;
@@ -5991,6 +6004,9 @@ sub _show_infos
 				# Retrieve all columns informations
 				my @columns_infos = $self->_column_info('',$self->{schema});
 
+				# Retrieve check constraints
+				my %check_constraints = $self->_check_constraint('',$self->{schema});
+
 				my %table_detail = ();
 				my $virt_column = 0;
 				my @done = ();
@@ -6030,8 +6046,14 @@ sub _show_infos
 								$table_detail{'binary columns'}++;
 							}
 						}
-
-						%{$self->{tables}{$t->[2]}{check_constraint}} = $self->_check_constraint($t->[2],$t->[1]);
+						# Select constraints related to this table
+						foreach my $o (keys %check_constraints) {
+							next if ($o ne $t->[1]);
+							foreach my $tb (keys %{$check_constraints{$o}}) {
+								next if ($tb ne $t->[2]);
+								%{$self->{tables}{$t->[2]}{check_constraint}} = ( %{$check_constraints{$o}{$tb}});
+							}
+						}
 						my @constraints = $self->_lookup_check_constraint($t->[2], $self->{tables}{$t->[2]}{check_constraint},$self->{tables}{$t->[2]}{field_name});
 						$total_check += ($#constraints + 1);
 						if ($self->{estimate_cost} && ($#constraints >= 0)) {
