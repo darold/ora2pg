@@ -1084,6 +1084,8 @@ sub _tables
 					foreach my $c (keys %{$unique_keys{$o}{$tb}}) {
 						$self->{tables}{$t->[2]}{unique_key}{$c} = $unique_keys{$o}{$tb}{$c};
 					}
+					delete $unique_keys{$o}{$tb};
+					last;
 				}
 			}
 
@@ -1094,14 +1096,20 @@ sub _tables
 					foreach my $tb (keys %{$foreign_link->{$o}}) {
 						next if ($tb ne $t->[2]);
 						%{$self->{tables}{$t->[2]}{foreign_link}} =  %{$foreign_link->{$o}{$tb}};
+						delete $foreign_link->{$o}{$tb};
+						last;
 					}
+					last;
 				}
 				foreach my $o (keys %{$foreign_key}) {
 					next if ($o ne $t->[1]);
 					foreach my $tb (keys %{$foreign_key->{$o}}) {
 						next if ($tb ne $t->[2]);
 						push(@{$self->{tables}{$t->[2]}{foreign_key}}, @{$foreign_key->{$o}{$tb}});
+						delete $foreign_key->{$o}{$tb};
+						last;
 					}
+					last;
 				}
 			}
 			# Same for check constraints for the current table
@@ -1111,7 +1119,10 @@ sub _tables
 					foreach my $tb (keys %{$check_constraints{$o}}) {
 						next if ($tb ne $t->[2]);
 						%{$self->{tables}{$t->[2]}{check_constraint}} = ( %{$check_constraints{$o}{$tb}});
+						delete $check_constraints{$o}{$tb};
+						last;
 					}
+					last;
 				}
 			}
 			# Retrieve indexes informations
@@ -1121,21 +1132,30 @@ sub _tables
 					foreach my $tb (keys %{$uniqueness->{$o}}) {
 						next if ($tb ne $t->[2]);
 						%{$self->{tables}{$t->[2]}{uniqueness}} = ( %{$uniqueness->{$o}{$tb}});
+						delete $uniqueness->{$o}{$tb};
+						last;
 					}
+					last;
 				}
 				foreach my $o (keys %{$indexes}) {
 					next if ($o ne $t->[1]);
 					foreach my $tb (keys %{$indexes->{$o}}) {
 						next if ($tb ne $t->[2]);
 						%{$self->{tables}{$t->[2]}{indexes}} = ( %{$indexes->{$o}{$tb}});
+						delete $indexes->{$o}{$tb};
+						last;
 					}
+					last;
 				}
 				foreach my $o (keys %{$idx_type}) {
 					next if ($o ne $t->[1]);
 					foreach my $tb (keys %{$idx_type->{$o}}) {
 						next if ($tb ne $t->[2]);
 						%{$self->{tables}{$t->[2]}{idx_type}} = ( %{$idx_type->{$o}{$tb}});
+						delete $idx_type->{$o}{$tb};
+						last;
 					}
+					last;
 				}
 			}
 			$i++;
