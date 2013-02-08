@@ -1388,8 +1388,13 @@ sub _get_sql_data
 		$self->dump($sql_header) if ($self->{file_per_table} && !$self->{dbhdest});
 		my $dirprefix = '';
 		$dirprefix = "$self->{output_dir}/" if ($self->{output_dir});
+		my $i = 1;
+		my $num_total_view = scalar keys %{$self->{views}};
 		foreach my $view (sort { $a cmp $b } keys %{$self->{views}}) {
 			$self->logit("\tAdding view $view...\n", 1);
+			if (!$self->{quiet} && !$self->{debug}) {
+				print STDERR $self->progress_bar($i, $num_total_view, 25, '=', 'views', "generating $view" );
+			}
 			my $fhdl = undef;
 			if ($self->{file_per_table} && !$self->{dbhdest}) {
 				$self->dump("\\i $dirprefix${view}_$self->{output}\n");
@@ -1439,7 +1444,12 @@ sub _get_sql_data
 				$sql_output = '';
 			}
 			$nothing++;
+			$i++
 		}
+		if (!$self->{quiet} && !$self->{debug}) {
+			print STDERR $self->progress_bar($i - 1, $num_total_view, 25, '=', 'views', 'end of output.'), "\n";
+		}
+
 		if (!$nothing) {
 			$sql_output = "-- Nothing found of type $self->{type}\n";
 		} else {
@@ -1560,8 +1570,13 @@ LANGUAGE plpgsql ;
 };
 			$self->dump($sqlout) if (!$self->{dbhdest});
 		}
+                my $i = 1;
+                my $num_total_mview = scalar keys %{$self->{materialized_views}};
 		foreach my $view (sort { $a cmp $b } keys %{$self->{materialized_views}}) {
 			$self->logit("\tAdding materialized view $view...\n", 1);
+			if (!$self->{quiet} && !$self->{debug}) {
+				print STDERR $self->progress_bar($i, $num_total_mview, 25, '=', 'materialized views', "generating $view" );
+			}
 			my $fhdl = undef;
 			if ($self->{file_per_table} && !$self->{dbhdest}) {
 				$self->dump("\\i $dirprefix${view}_$self->{output}\n");
@@ -1594,6 +1609,10 @@ LANGUAGE plpgsql ;
 				$sql_output = '';
 			}
 			$nothing++;
+			$i++;
+		}
+		if (!$self->{quiet} && !$self->{debug}) {
+			print STDERR $self->progress_bar($i - 1, $num_total_mview, 25, '=', 'materialized views', 'end of output.'), "\n";
 		}
 		if (!$nothing) {
 			$sql_output = "-- Nothing found of type $self->{type}\n";
@@ -1707,7 +1726,12 @@ LANGUAGE plpgsql ;
 	# Process sequences only
 	if ($self->{type} eq 'SEQUENCE') {
 		$self->logit("Add sequences definition...\n", 1);
+		my $i = 1;
+		my $num_total_sequence = @{$self->{sequences}} + 1;
 		foreach my $seq (sort { $a->[0] cmp $b->[0] } @{$self->{sequences}}) {
+			if (!$self->{quiet} && !$self->{debug}) {
+				print STDERR $self->progress_bar($i, $num_total_sequence, 25, '=', 'sequences', "generating $seq->[0]" );
+			}
 			my $cache = 1;
 			$cache = $seq->[5] if ($seq->[5]);
 			my $cycle = '';
@@ -1734,7 +1758,10 @@ LANGUAGE plpgsql ;
 				$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
 				$sql_output .= "ALTER SEQUENCE \"\L$seq->[0]\E\" OWNER TO \L$owner\E;\n";
 			}
-
+			$i++;
+		}
+		if (!$self->{quiet} && !$self->{debug}) {
+			print STDERR $self->progress_bar($i - 1, $num_total_sequence, 25, '=', 'sequences', 'end of output.'), "\n";
 		}
 		if (!$sql_output) {
 			$sql_output = "-- Nothing found of type $self->{type}\n";
@@ -1753,7 +1780,12 @@ LANGUAGE plpgsql ;
 		my $dirprefix = '';
 		$dirprefix = "$self->{output_dir}/" if ($self->{output_dir});
 		my $nothing = 0;
+                my $i = 1;      
+                my $num_total_trigger = $#{$self->{triggers}} + 1;
 		foreach my $trig (sort {$a->[0] cmp $b->[0]} @{$self->{triggers}}) {
+			if (!$self->{quiet} && !$self->{debug}) {
+				print STDERR $self->progress_bar($i, $num_total_trigger, 25, '=', 'triggers', "generating $trig->[0]" );
+			}
 			my $fhdl = undef;
 			if ($self->{file_per_function} && !$self->{dbhdest}) {
 				$self->dump("\\i $dirprefix$trig->[0]_$self->{output}\n");
@@ -1823,6 +1855,10 @@ LANGUAGE plpgsql ;
 				$sql_output = '';
 			}
 			$nothing++;
+			$i++;
+		}
+		if (!$self->{quiet} && !$self->{debug}) {
+			print STDERR $self->progress_bar($i - 1, $num_total_trigger, 25, '=', 'triggers', 'end of output.'), "\n";
 		}
 		if (!$nothing) {
 			$sql_output = "-- Nothing found of type $self->{type}\n";
@@ -1965,10 +2001,16 @@ LANGUAGE plpgsql ;
 
 		my $total_size = 0;
 		my $cost_value = 0;
+                my $i = 1;
+                my $num_total_function = scalar keys %{$self->{functions}};
 		foreach my $fct (sort keys %{$self->{functions}}) {
 
+			if (!$self->{quiet} && !$self->{debug}) {
+				print STDERR $self->progress_bar($i, $num_total_function, 25, '=', 'functions', "generating $fct" );
+			}
+
 			# forget or not this object if it is in the exclude or allow lists.
-			next if ($self->skip_this_object('FUNCTION', $fct));
+			$i++, next if ($self->skip_this_object('FUNCTION', $fct));
 			if ($self->{estimate_cost} && $self->{input_file}) {
 				$total_size += length($self->{functions}->{$fct});
 				my $cost = Ora2Pg::PLSQL::estimate_cost($self->{functions}->{$fct});
@@ -1998,6 +2040,10 @@ LANGUAGE plpgsql ;
 				$sql_output = '';
 			}
 			$nothing++;
+			$i++;
+		}
+		if (!$self->{quiet} && !$self->{debug}) {
+			print STDERR $self->progress_bar($i - 1, $num_total_function, 25, '=', 'functions', 'end of output.'), "\n";
 		}
 		if ($self->{estimate_cost} && $self->{input_file}) {
 			$self->logit("Total number of functions: " . (scalar keys %{$self->{functions}}) . ".\n", 0);
@@ -2060,10 +2106,15 @@ LANGUAGE plpgsql ;
 		#--------------------------------------------------------
                 my $total_size = 0;
                 my $cost_value = 0;
+		my $i = 1;
+		my $num_total_procedure = scalar keys %{$self->{procedures}};
 		foreach my $fct (sort keys %{$self->{procedures}}) {
 
+			if (!$self->{quiet} && !$self->{debug}) {
+				print STDERR $self->progress_bar($i, $num_total_procedure, 25, '=', 'procedures', "generating $fct" );
+			}
 			# forget or not this object if it is in the exclude or allow lists.
-			next if ($self->skip_this_object('PROCEDURE', $fct));
+			$i++, next if ($self->skip_this_object('PROCEDURE', $fct));
 			if ($self->{estimate_cost} && $self->{input_file}) {
 				$total_size += length($self->{procedures}->{$fct});
 				my $cost = Ora2Pg::PLSQL::estimate_cost($self->{procedures}->{$fct});
@@ -2094,6 +2145,10 @@ LANGUAGE plpgsql ;
 				$sql_output = '';
 			}
 			$nothing++;
+			$i++;
+		}
+		if (!$self->{quiet} && !$self->{debug}) {
+			print STDERR $self->progress_bar($i - 1, $num_total_procedure, 25, '=', 'procedures', 'end of output.'), "\n";
 		}
 		if ($self->{estimate_cost} && $self->{input_file}) {
 			$self->logit("Total number of functions: " . (scalar keys %{$self->{procedures}}) . ".\n", 0);
@@ -2157,8 +2212,14 @@ LANGUAGE plpgsql ;
 
 		my $total_size = 0;
 		my $number_fct = 0;
+		my $i = 1;
+		my $num_total_package = scalar keys %{$self->{packages}};
 		foreach my $pkg (sort keys %{$self->{packages}}) {
-			next if (!$self->{packages}{$pkg});
+
+			if (!$self->{quiet} && !$self->{debug}) {
+				print STDERR $self->progress_bar($i, $num_total_package, 25, '=', 'packages', "generating $pkg" );
+			}
+			$i++, next if (!$self->{packages}{$pkg});
 			my $pkgbody = '';
 			if (!$self->{plsql_pgsql}) {
 				$self->logit("Dumping package $pkg...\n", 1);
@@ -2211,6 +2272,10 @@ LANGUAGE plpgsql ;
 				$sql_output .= "-- End of Oracle package '$pkg' declaration\n\n";
 				$nothing++;
 			}
+			$i++;
+		}
+		if (!$self->{quiet} && !$self->{debug}) {
+			print STDERR $self->progress_bar($i - 1, $num_total_package, 25, '=', 'packages', 'end of output.'), "\n";
 		}
 		if (!$nothing) {
 			$sql_output = "-- Nothing found of type $self->{type}\n";
@@ -2839,6 +2904,8 @@ CREATE TRIGGER insert_${table}_trigger
 			}
 		}
 	}
+	my $i = 1;
+	my $num_total_table = scalar keys %{$self->{tables}};
 	foreach my $table (sort { $self->{tables}{$a}{internal_id} <=> $self->{tables}{$b}{internal_id} } keys %{$self->{tables}}) {
 
 		# forget or not this object if it is in the exclude or allow lists.
@@ -2847,6 +2914,9 @@ CREATE TRIGGER insert_${table}_trigger
 		}
 
 		$self->logit("Dumping table $table...\n", 1);
+		if (!$self->{quiet} && !$self->{debug}) {
+			print STDERR $self->progress_bar($i, $num_total_table, 25, '=', 'tables', "generating $table" );
+		}
 		# Create FDW server if required
 		if ($self->{external_to_fdw}) {
 			if ( grep(/^$table$/i, keys %{$self->{external_table}}) ) {
@@ -2983,7 +3053,12 @@ CREATE TRIGGER insert_${table}_trigger
 				$indices = '';
 			}
 		}
+		$i++;
 	}
+	if (!$self->{quiet} && !$self->{debug}) {
+		print STDERR $self->progress_bar($i - 1, $num_total_table, 25, '=', 'tables', 'end of output.'), "\n";
+	}
+
 	if ($self->{file_per_index} && !$self->{dbhdest}) {
 		my $fhdl = undef;
 		$self->logit("Dumping indexes to one separate file : INDEXES_$self->{output}\n", 1);
@@ -6087,8 +6162,13 @@ sub _show_infos
 		$report_info{'Version'} = $ver || 'Unknown';
 		$report_info{'Schema'} = $self->{schema} || '';
 		$report_info{'Size'} = $size || 'Unknown';
+		my $i = 1;
+		my $num_total_obj = scalar keys %objects;
 		foreach my $typ (sort keys %objects) {
-			next if ($typ eq 'PACKAGE'); # Package are scanned with PACKAGE BODY not PACKAGE objects
+			$i++, next if ($typ eq 'PACKAGE'); # Package are scanned with PACKAGE BODY not PACKAGE objects
+			if (!$self->{quiet} && !$self->{debug}) {
+				print STDERR $self->progress_bar($i, $num_total_obj, 25, '=', 'objects types', "inspecting object $typ" );
+			}
 			$report_info{'Objects'}{$typ}{'number'} = 0;
 			$report_info{'Objects'}{$typ}{'invalid'} = 0;
 			if (!grep(/^$typ$/, 'DATABASE LINK', 'JOB')) {
@@ -6304,7 +6384,12 @@ sub _show_infos
 				}
 			}
 			$report_info{'total_cost_value'} += $report_info{'Objects'}{$typ}{'cost_value'};
+			$i++;
 		}
+		if (!$self->{quiet} && !$self->{debug}) {
+			print STDERR $self->progress_bar($i - 1, $num_total_obj, 25, '=', 'objects types', 'end of objects auditing.'), "\n";
+		}
+
 		# Display report in the requested format
 		$self->_show_report(%report_info);
 
