@@ -993,10 +993,8 @@ sub _tables
 	# Get all tables information specified by the DBI method table_info
 	$self->logit("Retrieving table information...\n", 1);
 
-	my $sth = $self->_table_info()  or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-	my @tables_infos = $sth->fetchall_arrayref();
-	$sth->finish();
-
+	# Retrieve tables informations
+	my @tables_infos = $self->_table_info();
 	# Retrieve all column's details
 	my @columns_infos = ();
 	@columns_infos = $self->_column_info('',$self->{schema}) if (!$nodetail);
@@ -4679,9 +4677,12 @@ sub _table_info
             $sql .= "AND at.OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
 	}
         $sql .= " order by tc.TABLE_TYPE, at.OWNER, at.TABLE_NAME";
-        my $sth = $self->{dbh}->prepare( $sql ) or return undef;
-        $sth->execute or return undef;
-        $sth;
+        my $sth = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+        $sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	my @tables_infos = $sth->fetchall_arrayref();
+	$sth->finish();
+
+	return @tables_infos;
 }
 
 
@@ -6084,9 +6085,7 @@ sub _show_infos
 				}
 
 				# Retrieve tables informations
-				my $sth = $self->_table_info()  or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-				my @tables_infos = $sth->fetchall_arrayref();
-				$sth->finish();
+				my @tables_infos = $self->_table_info();
 
 				# Retrieve all columns informations
 				my @columns_infos = $self->_column_info('',$self->{schema});
@@ -6269,9 +6268,7 @@ sub _show_infos
 		$self->logit("Showing table information...\n", 1);
 
 		# Retrieve tables informations
-		my $sth = $self->_table_info()  or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-		my @tables_infos = $sth->fetchall_arrayref();
-		$sth->finish();
+		my @tables_infos = $self->_table_info();
 
 		# Retrieve all columns information
 		my @columns_infos = $self->_column_info('',$self->{schema});
