@@ -996,10 +996,10 @@ sub _tables
 	# Retrieve tables informations
 	my @tables_infos = $self->_table_info();
 	# Retrieve all column's details
-	my @columns_infos = ();
-	@columns_infos = $self->_column_info('',$self->{schema}) if (!$nodetail);
-	my @columns_comments = ();
-	@columns_comments = $self->_column_comments('',$self->{schema}) if (!$nodetail);
+	my %columns_infos = ();
+	%columns_infos = $self->_column_info('',$self->{schema}) if (!$nodetail);
+	my %columns_comments = ();
+	%columns_comments = $self->_column_comments('',$self->{schema}) if (!$nodetail);
 	# Retrieve unique keys informations
 	my %unique_keys = $self->_unique_key('',$self->{schema});
 	# Retrieve check constraints
@@ -1070,9 +1070,32 @@ sub _tables
 		$self->{tables}{$t->[2]}{field_name} = $sth->{NAME};
 		$self->{tables}{$t->[2]}{field_type} = $sth->{TYPE};
 		# Retrieve column's details related to this table
-		@{$self->{tables}{$t->[2]}{column_info}} = grep { $_->[8] eq $t->[2] && $_->[9] eq $t->[1] } @columns_infos if (!$nodetail);
+		if (!$nodetail) {
+			foreach my $o (keys %columns_infos) {
+				next if ($o ne $t->[1]);
+				foreach my $tb (keys %{$columns_infos{$o}}) {
+					next if ($tb ne $t->[2]);
+					@{$self->{tables}{$t->[2]}{column_info}} = @{$columns_infos{$o}{$tb}};
+					delete $columns_infos{$o}{$tb};
+					last;
+				}
+				last;
+			}
+		}
 		# Retrieve comment of each columns related to this table
-		@{$self->{tables}{$t->[2]}{column_comments}} = grep { $_->[2] eq $t->[2] && $_->[3] eq $t->[1] } @columns_comments if (!$nodetail);
+		foreach my $o (keys %columns_comments) {
+			next if ($o ne $t->[1]);
+			foreach my $tb (keys %{$columns_comments{$o}}) {
+				next if ($tb ne $t->[2]);
+				foreach my $c (keys %{$columns_comments{$o}{$tb}}) {
+					$self->{tables}{$t->[2]}{column_comments}{$c} = $columns_comments{$o}{$tb}{$c};
+				}
+				delete $columns_comments{$o}{$tb};
+				last;
+			}
+			last;
+		}
+
 		# Retrieve unique keys related to this table
 		foreach my $o (keys %unique_keys) {
 			next if ($o ne $t->[1]);
@@ -1194,7 +1217,15 @@ sub _tables
 			}
 			$self->{tables}{$view}{field_name} = $sth->{NAME};
 			$self->{tables}{$view}{field_type} = $sth->{TYPE};
-			@{$self->{tables}{$view}{column_info}} = $self->_column_info($view);
+			my %columns_infos = $self->_column_info($view);
+			foreach my $o (keys %columns_infos) {
+				foreach my $tb (keys %{$columns_infos{$o}}) {
+					next if ($tb ne $view);
+					@{$self->{tables}{$view}{column_info}} = @{$columns_infos{$o}{$tb}};
+					delete $columns_infos{$o}{$tb};
+					last;
+				}
+			}
 		}
 	}
 
@@ -2905,13 +2936,13 @@ CREATE TRIGGER insert_${table}_trigger
 
 		# Add comments on columns
 		if (!$self->{disable_comment}) {
-			foreach $f (@{$self->{tables}{$table}{column_comments}}) {
-				next unless $f->[1];
-				$f->[1] =~ s/'/\\'/gs;
+			foreach $f (keys %{$self->{tables}{$table}{column_comments}}) {
+				next unless $self->{tables}{$table}{column_comments}{$f};
+				$self->{tables}{$table}{column_comments}{$f} =~ s/'/\\'/gs;
 				if (!$self->{preserve_case}) {
-					$sql_output .= "COMMENT ON COLUMN \L$tbname\.$f->[0]\E IS E'$f->[1]';\n";
+					$sql_output .= "COMMENT ON COLUMN \L$tbname\.$f\E IS E'$self->{tables}{$table}{column_comments}{$f}';\n";
 				} else {
-					$sql_output .= "COMMENT ON COLUMN \"$tbname\".\"$f->[0]\" IS E'$f->[1]';\n";
+					$sql_output .= "COMMENT ON COLUMN \"$tbname\".\"$f\" IS E'$self->{tables}{$table}{column_comments}{$f}';\n";
 				}
 			}
 		}
@@ -3010,10 +3041,14 @@ FROM $self->{prefix}_COL_COMMENTS $condition
 END
 
 	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	my %data = ();
+	while (my $row = $sth->fetch) {
+		# forget or not this object if it is in the exclude or allow lists.
+		next if ($self->skip_this_object('TABLE', $row->[2]));
+		$data{$row->[3]}{$row->[2]}{$row->[0]} = $row->[1];
+	}
 
-	my $data = $sth->fetchall_arrayref();
-
-	return @$data;
+	return %data;
 }
 
 
@@ -3750,16 +3785,17 @@ END
 	}
 	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
-	my $data = $sth->fetchall_arrayref();
-	foreach my $d (@$data) {
+	my %data = ();
+	while (my $row = $sth->fetch) {
 		# forget or not this object if it is in the exclude or allow lists.
-		next if ($self->skip_this_object('TABLE', $d->[-2]));
-		if ($#{$d} == 9) {
-			$d->[2] = $d->[7] if $d->[1] =~ /char/i;
+		next if ($self->skip_this_object('TABLE', $row->[-2]));
+		if ($#{$row} == 9) {
+			$row->[2] = $row->[7] if $row->[1] =~ /char/i;
 		}
+		push(@{$data{$row->[-1]}{$row->[-2]}}, $row);
 	}
 
-	return @$data;	
+	return %data;	
 }
 
 =head2 _unique_key TABLE OWNER
@@ -6094,7 +6130,7 @@ sub _show_infos
 				my @tables_infos = $self->_table_info();
 
 				# Retrieve all columns informations
-				my @columns_infos = $self->_column_info('',$self->{schema});
+				my %columns_infos = $self->_column_info('',$self->{schema});
 
 				# Retrieve check constraints
 				my %check_constraints = $self->_check_constraint('',$self->{schema});
@@ -6120,7 +6156,16 @@ sub _show_infos
 						$table_detail{'reserved words in table name'}++;
 					}
 					# Set the fields information
-					@{$self->{tables}{$t->[2]}{column_info}} = grep { $_->[8] eq $t->[2] && $_->[9] eq $t->[1] } @columns_infos;
+					foreach my $o (keys %columns_infos) {
+						next if ($o ne $t->[1]);
+						foreach my $tb (keys %{$columns_infos{$o}}) {
+							next if ($tb ne $t->[2]);
+							@{$self->{tables}{$t->[2]}{column_info}} = @{$columns_infos{$o}{$tb}};
+							delete $columns_infos{$o}{$tb};
+							last;
+						}
+						last;
+					}
 					foreach my $d (@{$self->{tables}{$t->[2]}{column_info}}) {
 						if (&is_reserved_words($d->[0])) {
 							$table_detail{'reserved words in column name'}++;
@@ -6142,7 +6187,10 @@ sub _show_infos
 						foreach my $tb (keys %{$check_constraints{$o}}) {
 							next if ($tb ne $t->[2]);
 							%{$self->{tables}{$t->[2]}{check_constraint}} = ( %{$check_constraints{$o}{$tb}});
+							delete $check_constraints{$o}{$tb};
+							last;
 						}
+						last;
 					}
 					my @constraints = $self->_lookup_check_constraint($t->[2], $self->{tables}{$t->[2]}{check_constraint},$self->{tables}{$t->[2]}{field_name});
 					$total_check += ($#constraints + 1);
@@ -6274,7 +6322,7 @@ sub _show_infos
 		my @tables_infos = $self->_table_info();
 
 		# Retrieve all columns information
-		my @columns_infos = $self->_column_info('',$self->{schema});
+		my %columns_infos = $self->_column_info('',$self->{schema});
 
 		my @done = ();
 		my $id = 0;
@@ -6303,7 +6351,16 @@ sub _show_infos
 
 			# Set the fields information
 			if ($type eq 'SHOW_COLUMN') {
-				@{$self->{tables}{$t->[2]}{column_info}} = grep { $_->[8] eq $t->[2] && $_->[9] eq $t->[1] } @columns_infos;
+				foreach my $o (keys %columns_infos) {
+					next if ($o ne $t->[1]);
+					foreach my $tb (keys %{$columns_infos{$o}}) {
+						next if ($tb ne $t->[2]);
+						@{$self->{tables}{$t->[2]}{column_info}} = @{$columns_infos{$o}{$tb}};
+						delete $columns_infos{$o}{$tb};
+						last;
+					}
+					last;
+				}
 				foreach my $d (@{$self->{tables}{$t->[2]}{column_info}}) {
 					my $type = $self->_sql_type($d->[1], $d->[2], $d->[5], $d->[6]);
 					$type = "$d->[1], $d->[2]" if (!$type);
