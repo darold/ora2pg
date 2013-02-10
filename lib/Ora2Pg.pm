@@ -1080,7 +1080,7 @@ sub _tables
 				next if ($o ne $t->[1]);
 				foreach my $tb (keys %{$columns_infos{$o}}) {
 					next if ($tb ne $t->[2]);
-					push(@{$self->{tables}{$t->[2]}{column_info}}, @{$columns_infos{$o}{$tb}});
+					push(@{$self->{tables}{$t->[2]}{column_info}{$columns_infos{$o}{$tb}->[0]}}, @{$columns_infos{$o}{$tb}});
 					delete $columns_infos{$o}{$tb};
 					last;
 				}
@@ -1227,7 +1227,7 @@ sub _tables
 			foreach my $o (keys %columns_infos) {
 				foreach my $tb (keys %{$columns_infos{$o}}) {
 					next if ($tb ne $view);
-					@{$self->{tables}{$view}{column_info}} = @{$columns_infos{$o}{$tb}};
+					@{$self->{tables}{$view}{column_info}{$columns_infos{$o}{$tb}->[0]}} = @{$columns_infos{$o}{$tb}};
 					delete $columns_infos{$o}{$tb};
 					last;
 				}
@@ -1352,7 +1352,7 @@ sub _partitions
 
 =head2 _get_sql_data
 
-Returns a string containing the entire PostgreSQL compatible SQL Schema
+Returns a string containing the PostgreSQL compatible SQL Schema
 definition.
 
 =cut
@@ -1449,7 +1449,7 @@ sub _get_sql_data
 				$sql_output = '';
 			}
 			$nothing++;
-			$i++
+			$i++;
 		}
 		if (!$self->{quiet} && !$self->{debug}) {
 			print STDERR $self->progress_bar($i - 1, $num_total_view, 25, '=', 'views', 'end of output.'), "\n";
@@ -2582,6 +2582,7 @@ LANGUAGE plpgsql ;
 				$s_out = "\nCOPY $tmptb (";
 			}
 
+			# Extract column information following the Oracle position order
 			my @fname = ();
 			foreach my $i ( 0 .. $#{$self->{tables}{$table}{field_name}} ) {
 				my $fieldname = ${$self->{tables}{$table}{field_name}}[$i];
@@ -2600,26 +2601,24 @@ LANGUAGE plpgsql ;
 					push(@fname, $fieldname);
 				}
 
-				foreach my $f (@{$self->{tables}{$table}{column_info}}) {
-					next if ($f->[0] ne "$fieldname");
-					my $type = $self->_sql_type($f->[1], $f->[2], $f->[5], $f->[6]);
-					$type = "$f->[1], $f->[2]" if (!$type);
-					push(@stt, uc($f->[1]));
-					push(@tt, $type);
-					push(@nn, $f);
-					# Change column names
-					my $colname = $f->[0];
-					if ($self->{replaced_cols}{lc($table)}{lc($f->[0])}) {
-						$self->logit("\tReplacing column $f->[0] as " . $self->{replaced_cols}{lc($table)}{lc($f->[0])} . "...\n", 1);
-						$colname = $self->{replaced_cols}{lc($table)}{lc($f->[0])};
-					}
-					if (!$self->{preserve_case}) {
-						$colname = $self->quote_reserved_words($colname);
-						$s_out .= "\L$colname\E,";
-					} else {
-						$s_out .= "\"$colname\",";
-					}
-					last;
+				my @f = ();
+				push(@f, @{$self->{tables}{$table}{column_info}{$fieldname}});
+				my $type = $self->_sql_type($f[1], $f[2], $f[5], $f[6]);
+				$type = "$f[1], $f[2]" if (!$type);
+				push(@stt, uc($f[1]));
+				push(@tt, $type);
+				push(@nn, $f);
+				# Change column names
+				my $colname = $f[0];
+				if ($self->{replaced_cols}{lc($table)}{lc($f[0])}) {
+					$self->logit("\tReplacing column $f[0] as " . $self->{replaced_cols}{lc($table)}{lc($f[0])} . "...\n", 1);
+					$colname = $self->{replaced_cols}{lc($table)}{lc($f[0])};
+				}
+				if (!$self->{preserve_case}) {
+					$colname = $self->quote_reserved_words($colname);
+					$s_out .= "\L$colname\E,";
+				} else {
+					$s_out .= "\"$colname\",";
 				}
 			}
 			$s_out =~ s/,$//;
@@ -2853,6 +2852,7 @@ CREATE TRIGGER insert_${table}_trigger
 		return;
 	}
 
+	# DATABASE DESIGN
 	# Dump the database structure: tables, constraints, indexes, etc.
 	if ($self->{export_schema} &&  $self->{schema}) {
 		if ($self->{create_schema}) {
@@ -2909,7 +2909,7 @@ CREATE TRIGGER insert_${table}_trigger
 			}
 		}
 	}
-	my $i = 1;
+	my $ib = 1;
 	my $num_total_table = scalar keys %{$self->{tables}};
 	foreach my $table (sort { $self->{tables}{$a}{internal_id} <=> $self->{tables}{$b}{internal_id} } keys %{$self->{tables}}) {
 
@@ -2919,8 +2919,9 @@ CREATE TRIGGER insert_${table}_trigger
 		}
 
 		$self->logit("Dumping table $table...\n", 1);
+
 		if (!$self->{quiet} && !$self->{debug}) {
-			print STDERR $self->progress_bar($i, $num_total_table, 25, '=', 'tables', "generating $table" );
+			print STDERR $self->progress_bar($ib, $num_total_table, 25, '=', 'tables', "exporting $table" );
 		}
 		# Create FDW server if required
 		if ($self->{external_to_fdw}) {
@@ -2946,49 +2947,48 @@ CREATE TRIGGER insert_${table}_trigger
 		} else {
 			$sql_output .= "CREATE$foreign $obj_type \"$tbname\" (\n";
 		}
+		# Extract column information following the Oracle position order
 		foreach my $i ( 0 .. $#{$self->{tables}{$table}{field_name}} ) {
 
-			foreach my $f (@{$self->{tables}{$table}{column_info}}) {
-				next if ($f->[0] ne "${$self->{tables}{$table}{field_name}}[$i]");
-				my $type = $self->_sql_type($f->[1], $f->[2], $f->[5], $f->[6]);
-				$type = "$f->[1], $f->[2]" if (!$type);
-				# Change column names
-				my $fname = $f->[0];
-				if (exists $self->{replaced_cols}{"\L$table\E"}{"\L$fname\E"} && $self->{replaced_cols}{"\L$table\E"}{"\L$fname\E"}) {
-					$self->logit("\tReplacing column \L$f->[0]\E as " . $self->{replaced_cols}{lc($table)}{lc($fname)} . "...\n", 1);
-					$fname = $self->{replaced_cols}{"\L$table\E"}{"\L$fname\E"};
-				}
-				# Check if this column should be replaced by a boolean following table/column name
-				if (grep(/^$f->[0]$/i, @{$self->{'replace_as_boolean'}{uc($table)}})) {
-					$type = 'boolean';
-				# Check if this column should be replaced by a boolean following type/precision
-				} elsif (exists $self->{'replace_as_boolean'}{uc($f->[1])} && ($self->{'replace_as_boolean'}{uc($f->[1])}[0] == $f->[5])) {
-					$type = 'boolean';
-				}
-				if (!$self->{preserve_case}) {
-					$fname = $self->quote_reserved_words($fname);
-					$sql_output .= "\t\L$fname\E $type";
-				} else {
-					$sql_output .= "\t\"$fname\" $type";
-				}
-				if ($f->[4] ne "") {
-					$f->[4] =~ s/SYSDATE[\s\t]*\([\s\t]*\)/LOCALTIMESTAMP/igs;
-					$f->[4] =~ s/SYSDATE/LOCALTIMESTAMP/ig;
-					$f->[4] =~ s/^[\s\t]+//;
-					$f->[4] =~ s/[\s\t]+$//;
-					if (($f->[4] eq "''") && (!$f->[3] || ($f->[3] eq 'N'))) {
-						$sql_output .= " NOT NULL";
-						push(@{$self->{tables}{$table}{check_constraint}{notnull}}, $f->[0]);
-					} elsif ($self->{type} ne 'FDW') {
-						$sql_output .= " DEFAULT $f->[4]";
-					}
-				} elsif (!$f->[3] || ($f->[3] eq 'N')) {
-					push(@{$self->{tables}{$table}{check_constraint}{notnull}}, $f->[0]);
-					$sql_output .= " NOT NULL";
-				}
-				$sql_output .= ",\n";
-				last;
+			my @f = ();
+			push(@f, @{$self->{tables}{$table}{column_info}{$self->{tables}{$table}{field_name}[$i]}});
+			my $type = $self->_sql_type($f[1], $f[2], $f[5], $f[6]);
+			$type = "$f[1], $f[2]" if (!$type);
+			# Change column names
+			my $fname = $f[0];
+			if (exists $self->{replaced_cols}{"\L$table\E"}{"\L$fname\E"} && $self->{replaced_cols}{"\L$table\E"}{"\L$fname\E"}) {
+				$self->logit("\tReplacing column \L$f[0]\E as " . $self->{replaced_cols}{lc($table)}{lc($fname)} . "...\n", 1);
+				$fname = $self->{replaced_cols}{"\L$table\E"}{"\L$fname\E"};
 			}
+			# Check if this column should be replaced by a boolean following table/column name
+			if (grep(/^$f[0]$/i, @{$self->{'replace_as_boolean'}{uc($table)}})) {
+				$type = 'boolean';
+			# Check if this column should be replaced by a boolean following type/precision
+			} elsif (exists $self->{'replace_as_boolean'}{uc($f[1])} && ($self->{'replace_as_boolean'}{uc($f[1])}[0] == $f[5])) {
+				$type = 'boolean';
+			}
+			if (!$self->{preserve_case}) {
+				$fname = $self->quote_reserved_words($fname);
+				$sql_output .= "\t\L$fname\E $type";
+			} else {
+				$sql_output .= "\t\"$fname\" $type";
+			}
+			if ($f[4] ne "") {
+				$f[4] =~ s/SYSDATE[\s\t]*\([\s\t]*\)/LOCALTIMESTAMP/igs;
+				$f[4] =~ s/SYSDATE/LOCALTIMESTAMP/ig;
+				$f[4] =~ s/^[\s\t]+//;
+				$f[4] =~ s/[\s\t]+$//;
+				if (($f[4] eq "''") && (!$f[3] || ($f[3] eq 'N'))) {
+					$sql_output .= " NOT NULL";
+					push(@{$self->{tables}{$table}{check_constraint}{notnull}}, $f[0]);
+				} elsif ($self->{type} ne 'FDW') {
+					$sql_output .= " DEFAULT $f[4]";
+				}
+			} elsif (!$f[3] || ($f[3] eq 'N')) {
+				push(@{$self->{tables}{$table}{check_constraint}{notnull}}, $f[0]);
+				$sql_output .= " NOT NULL";
+			}
+			$sql_output .= ",\n";
 		}
 		if ($self->{pkey_in_create}) {
 			$sql_output .= $self->_get_primary_keys($table, $self->{tables}{$table}{unique_key});
@@ -3059,10 +3059,10 @@ CREATE TRIGGER insert_${table}_trigger
 				$indices = '';
 			}
 		}
-		$i++;
+		$ib++;
 	}
 	if (!$self->{quiet} && !$self->{debug}) {
-		print STDERR $self->progress_bar($i - 1, $num_total_table, 25, '=', 'tables', 'end of output.'), "\n";
+		print STDERR $self->progress_bar($ib - 1, $num_total_table, 25, '=', 'tables', 'end of table export.'), "\n";
 	}
 
 	if ($self->{file_per_index} && !$self->{dbhdest}) {
@@ -6239,18 +6239,18 @@ sub _show_infos
 						$table_detail{'reserved words in table name'}++;
 					}
 					# Get fields informations
-					foreach my $d (@{$self->{tables}{$t->[2]}{column_info}}) {
-						if (&is_reserved_words($d->[0])) {
+					foreach my $k (sort keys %{$self->{tables}{$t->[2]}{column_info}}) {
+						if (&is_reserved_words($self->{tables}{$t->[2]}{column_info}{$k}[0])) {
 							$table_detail{'reserved words in column name'}++;
 						}
-						$d->[1] =~ s/TIMESTAMP\(\d+\)/TIMESTAMP/i;
-						if (!exists $TYPE{uc($d->[1])}) {
+						$self->{tables}{$t->[2]}{column_info}{$k}[1] =~ s/TIMESTAMP\(\d+\)/TIMESTAMP/i;
+						if (!exists $TYPE{uc($self->{tables}{$t->[2]}{column_info}{$k}[1])}) {
 							$table_detail{'unknow types'}++;
 						}
-						if ( (uc($d->[1]) eq 'NUMBER') && ($d->[2] eq '') ) {
+						if ( (uc($self->{tables}{$t->[2]}{column_info}{$k}[1]) eq 'NUMBER') && ($self->{tables}{$t->[2]}{column_info}{$k}[2] eq '') ) {
 							$table_detail{'numbers with no precision'}++;
 						}
-						if ( $TYPE{uc($d->[1])} eq 'bytea' ) {
+						if ( $TYPE{uc($self->{tables}{$t->[2]}{column_info}{$k}[1])} eq 'bytea' ) {
 							$table_detail{'binary columns'}++;
 						}
 					}
@@ -6419,40 +6419,32 @@ sub _show_infos
 
 			# Set the fields information
 			if ($type eq 'SHOW_COLUMN') {
-				foreach my $o (keys %columns_infos) {
-					next if ($o ne $t->[1]);
-					foreach my $tb (keys %{$columns_infos{$o}}) {
-						next if ($tb ne $t->[2]);
-						@{$self->{tables}{$t->[2]}{column_info}} = @{$columns_infos{$o}{$tb}};
-						delete $columns_infos{$o}{$tb};
-						last;
-					}
-					last;
-				}
-				foreach my $d (@{$self->{tables}{$t->[2]}{column_info}}) {
-					my $type = $self->_sql_type($d->[1], $d->[2], $d->[5], $d->[6]);
-					$type = "$d->[1], $d->[2]" if (!$type);
-					my $len = $d->[2];
+				foreach my $k (sort keys %{$self->{tables}{$t->[2]}{column_info}}) {
+					my @d = ();
+					push(@d, @{$self->{tables}{$t->[2]}{column_info}{$k}});
+					my $type = $self->_sql_type($d[1], $d[2], $d[5], $d[6]);
+					$type = "$d[1], $d[2]" if (!$type);
+					my $len = $d[2];
 					if ($#{$d} == 9) {
-						$d->[2] = $d->[7] if $d->[1] =~ /char/i;
+						$d[2] = $d[7] if $d[1] =~ /char/i;
 					}
-					$self->logit("\t$d->[0] : $d->[1]");
-					if ($d->[2] && !$d->[5]) {
-						$self->logit("($d->[2])");
-					} elsif ($d->[5] && ($d->[1] =~ /NUMBER/i) ) {
-						$self->logit("($d->[5]");
-						$self->logit("$d->[6]") if ($d->[6]);
+					$self->logit("\t$d[0] : $d[1]");
+					if ($d[2] && !$d[5]) {
+						$self->logit("($d[2])");
+					} elsif ($d[5] && ($d[1] =~ /NUMBER/i) ) {
+						$self->logit("($d[5]");
+						$self->logit("$d[6]") if ($d[6]);
 						$self->logit(")");
 					}
 					$warning = '';
-					if (&is_reserved_words($d->[0])) {
-						$warning = " (Warning: '$d->[0]' is a reserved word in PostgreSQL)";
+					if (&is_reserved_words($d[0])) {
+						$warning = " (Warning: '$d[0]' is a reserved word in PostgreSQL)";
 					}
 					# Check if this column should be replaced by a boolean following table/column name
-					if (grep(/^$d->[0]$/i, @{$self->{'replace_as_boolean'}{$t->[2]}})) {
+					if (grep(/^$d[0]$/i, @{$self->{'replace_as_boolean'}{$t->[2]}})) {
 						$type = 'boolean';
 					# Check if this column should be replaced by a boolean following type/precision
-					} elsif (exists $self->{'replace_as_boolean'}{uc($d->[1])} && ($self->{'replace_as_boolean'}{uc($d->[1])}[0] == $d->[5])) {
+					} elsif (exists $self->{'replace_as_boolean'}{uc($d[1])} && ($self->{'replace_as_boolean'}{uc($d[1])}[0] == $d[5])) {
 						$type = 'boolean';
 					}
 					$self->logit(" => $type$warning\n");
