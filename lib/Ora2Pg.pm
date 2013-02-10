@@ -1003,7 +1003,8 @@ sub _tables
 	my %columns_comments = ();
 	%columns_comments = $self->_column_comments('',$self->{schema}) if (!$nodetail);
 	# Retrieve unique keys informations
-	my %unique_keys = $self->_unique_key('',$self->{schema}) if (!$nodetail);
+	my %unique_keys = ();
+	%unique_keys = $self->_unique_key('',$self->{schema}) if (!$nodetail);
 	# Retrieve check constraints
 	my %check_constraints = $self->_check_constraint('',$self->{schema});
 	# Retrieve all indexes informations
