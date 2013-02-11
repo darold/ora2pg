@@ -811,7 +811,7 @@ sub _send_to_pgdb
 {
 	my ($self, $destsrc, $destuser, $destpasswd) = @_;
 
-	use DBD::Pg qw(:pg_types);
+	eval("use DBD::Pg qw(:pg_types);");
 
 	# Init with configuration options if no parameters
 	$destsrc ||= $self->{pg_dsn};
@@ -996,26 +996,73 @@ sub _tables
 	$self->logit("Retrieving table information...\n", 1);
 
 	# Retrieve tables informations
-	my @tables_infos = $self->_table_info();
-	# Retrieve all column's details
-	my %columns_infos = ();
-	%columns_infos = $self->_column_info('',$self->{schema});
-	my %columns_comments = ();
-	%columns_comments = $self->_column_comments('',$self->{schema}) if (!$nodetail);
-	# Retrieve unique keys informations
-	my %unique_keys = ();
-	%unique_keys = $self->_unique_key('',$self->{schema}) if (!$nodetail);
-	# Retrieve check constraints
-	my %check_constraints = $self->_check_constraint('',$self->{schema});
-	# Retrieve all indexes informations
-	my ($uniqueness, $indexes, $idx_type);
-	if (!$self->{skip_indices} && !$self->{skip_indexes}) {
-		($uniqueness, $indexes, $idx_type) = $self->_get_indexes('',$self->{schema});
+	my %tables_infos = $self->_table_info();
+
+	# Get detailed informations on each tables
+	if (!$nodetail) {
+		# Retrieve all column's details
+		my %columns_infos = $self->_column_info('',$self->{schema});
+		foreach my $tb (keys %columns_infos) {
+			next if (!exists $tables_infos{$tb});
+			foreach my $c (keys %{$columns_infos{$tb}}) {
+				push(@{$self->{tables}{$tb}{column_info}{$c}}, @{$columns_infos{$tb}{$c}});
+			}
+		}
+		%columns_infos = ();
+
+		# Retrieve comment of each columns
+		my %columns_comments = $self->_column_comments('',$self->{schema});
+		foreach my $tb (keys %columns_comments) {
+			next if (!exists $tables_infos{$tb});
+			foreach my $c (keys %{$columns_comments{$tb}}) {
+				$self->{tables}{$tb}{column_comments}{$c} = $columns_comments{$tb}{$c};
+			}
+		}
+
+		# Extract foreign keys informations
+		if (!$self->{skip_fkeys}) {
+			my ($foreign_link, $foreign_key) = $self->_foreign_key('',$self->{schema});
+			foreach my $tb (keys %{$foreign_link}) {
+				next if (!exists $tables_infos{$tb});
+				%{$self->{tables}{$tb}{foreign_link}} =  %{$foreign_link->{$tb}};
+			}
+			foreach my $tb (keys %{$foreign_key}) {
+				next if (!exists $tables_infos{$tb});
+				push(@{$self->{tables}{$tb}{foreign_key}}, @{$foreign_key->{$tb}});
+			}
+		}
 	}
-	# Retrieve all foreign keys
-	my ($foreign_link, $foreign_key);
-	if (!$self->{skip_fkeys}) {
-		($foreign_link, $foreign_key) = $self->_foreign_key('',$self->{schema}) if (!$nodetail);
+
+	# Retrieve all unique keys informations
+	my %unique_keys = $self->_unique_key('',$self->{schema});
+	foreach my $tb (keys %unique_keys) {
+		next if (!exists $tables_infos{$tb});
+		foreach my $c (keys %{$unique_keys{$tb}}) {
+			$self->{tables}{$tb}{unique_key}{$c} = $unique_keys{$tb}{$c};
+		}
+	}
+	%unique_keys = ();
+
+	# Retrieve check constraints
+	if (!$self->{skip_checks}) {
+		my %check_constraints = $self->_check_constraint('',$self->{schema});
+		foreach my $tb (keys %check_constraints) {
+			%{$self->{tables}{$tb}{check_constraint}} = ( %{$check_constraints{$tb}});
+		}
+	}
+
+	# Retrieve all indexes informations
+	if (!$self->{skip_indices} && !$self->{skip_indexes}) {
+		my ($uniqueness, $indexes, $idx_type) = $self->_get_indexes('',$self->{schema});
+		foreach my $tb (keys %{$uniqueness}) {
+			%{$self->{tables}{$tb}{uniqueness}} = %{$uniqueness->{$tb}};
+		}
+		foreach my $tb (keys %{$indexes}) {
+			%{$self->{tables}{$tb}{indexes}} = %{$indexes->{$tb}};
+		}
+		foreach my $tb (keys %{$idx_type}) {
+			%{$self->{tables}{$tb}{idx_type}} = %{$idx_type->{$tb}};
+		}
 	}
 
 	my @done = ();
@@ -1023,44 +1070,49 @@ sub _tables
 	# Set the table information for each class found
 	my $i = 1;
 	my @table_list = ();
-	foreach my $t (@tables_infos) {
+	my $num_total_table = scalar keys %tables_infos;
+	foreach my $t (sort keys %tables_infos) {
 
 		# forget or not this object if it is in the exclude or allow lists.
-		if ($self->{tables}{$t->[2]}{type} ne 'view') {
-			next if ($self->skip_this_object('TABLE', $t->[2]));
+		if ($self->{tables}{$t}{table_info}{type} ne 'view') {
+			next if ($self->skip_this_object('TABLE', $t));
 		}
 		if (!$self->{quiet} && !$self->{debug}) {
-			print STDERR $self->progress_bar($i, $#tables_infos + 1, 25, '=', 'tables', "scanning table $t->[2]" );
+			print STDERR $self->progress_bar($i, $num_total_table, 25, '=', 'tables', "scanning table $t" );
 		}
 
-		if (grep(/^$t->[2]$/, @done)) {
-			$self->logit("Duplicate entry found: $t->[1] - $t->[2]\n", 1);
+		if (grep(/^$t$/, @done)) {
+			$self->logit("Duplicate entry found: $t\n", 1);
 		} else {
-			push(@done, $t->[2]);
+			push(@done, $t);
 		} 
-		$self->logit("[$i] Scanning table $t->[2] (@$t rows)...\n", 1);
-		push(@table_list, [ (@$t) ]);
+		$self->logit("[$i] Scanning table $t ($tables_infos{$t}{num_rows} rows)...\n", 1);
+		push(@table_list, $t);
 		
 		# Check of uniqueness of the table
-		if (exists $self->{tables}{$t->[2]}{field_name}) {
-			$self->logit("Warning duplicate table $t->[2], maybe a SYNONYME ? Skipped.\n", 1);
+		if (exists $self->{tables}{$t}{field_name}) {
+			$self->logit("Warning duplicate table $t, maybe a SYNONYME ? Skipped.\n", 1);
 			next;
 		}
 		# Try to respect order specified in the TABLES limited extraction array
-		$self->{tables}{$t->[2]}{internal_id} = 0;
+		$self->{tables}{$t}{internal_id} = 0;
 		if ($#{$self->{limited}} >= 0) {
 			for (my $j = 0; $j <= $#{$self->{limited}}; $j++) {
-				if (uc($self->{limited}->[$j]) eq uc($t->[2])) {
-					$self->{tables}{$t->[2]}{internal_id} = $j;
+				if (uc($self->{limited}->[$j]) eq uc($t)) {
+					$self->{tables}{$t}{internal_id} = $j;
 					last;
 				}
 			}
 		}
-		# usually OWNER,TYPE,COMMENT,NUMROW
-		$self->{tables}{$t->[2]}{table_info} = [($t->[1],$t->[5],$t->[4],$t->[3])];
+
+		# usually TYPE,COMMENT,NUMROW
+		$self->{tables}{$t}{table_info}{type} = $tables_infos{$t}{type};
+		$self->{tables}{$t}{table_info}{comment} = $tables_infos{$t}{comment};
+		$self->{tables}{$t}{table_info}{num_rows} = $tables_infos{$t}{num_rows};
+		$self->{tables}{$t}{table_info}{owner} = $tables_infos{$t}{owner};
 
 		# Set the fields information
-		my $query = "SELECT * FROM \"$t->[1]\".\"$t->[2]\" WHERE 1=0";
+		my $query = "SELECT * FROM \"$tables_infos{$t}{owner}\".\"$t\" WHERE 1=0";
 		my $sth = $self->{dbh}->prepare($query);
 		if (!defined($sth)) {
 			warn "Can't prepare statement: $DBI::errstr";
@@ -1071,122 +1123,14 @@ sub _tables
 			warn "Can't execute statement: $DBI::errstr";
 			next;
 		}
-		$self->{tables}{$t->[2]}{type} = 'table';
-		$self->{tables}{$t->[2]}{field_name} = $sth->{NAME};
-		$self->{tables}{$t->[2]}{field_type} = $sth->{TYPE};
-		# Retrieve column's details related to this table
-		if (!$nodetail) {
-			foreach my $o (keys %columns_infos) {
-				next if ($o ne $t->[1]);
-				foreach my $tb (keys %{$columns_infos{$o}}) {
-					next if ($tb ne $t->[2]);
-					push(@{$self->{tables}{$t->[2]}{column_info}{$columns_infos{$o}{$tb}->[0]}}, @{$columns_infos{$o}{$tb}});
-					delete $columns_infos{$o}{$tb};
-					last;
-				}
-				last;
-			}
-		}
-		# Retrieve comment of each columns related to this table
-		foreach my $o (keys %columns_comments) {
-			next if ($o ne $t->[1]);
-			foreach my $tb (keys %{$columns_comments{$o}}) {
-				next if ($tb ne $t->[2]);
-				foreach my $c (keys %{$columns_comments{$o}{$tb}}) {
-					$self->{tables}{$t->[2]}{column_comments}{$c} = $columns_comments{$o}{$tb}{$c};
-				}
-				delete $columns_comments{$o}{$tb};
-				last;
-			}
-			last;
-		}
-
-		# Retrieve unique keys related to this table
-		foreach my $o (keys %unique_keys) {
-			next if ($o ne $t->[1]);
-			foreach my $tb (keys %{$unique_keys{$o}}) {
-				next if ($tb ne $t->[2]);
-				foreach my $c (keys %{$unique_keys{$o}{$tb}}) {
-					$self->{tables}{$t->[2]}{unique_key}{$c} = $unique_keys{$o}{$tb}{$c};
-				}
-				delete $unique_keys{$o}{$tb};
-				last;
-			}
-		}
-
-		# Extract foreign keys informations for the current table
-		if (!$self->{skip_fkeys}) {
-			foreach my $o (keys %{$foreign_link}) {
-				next if ($o ne $t->[1]);
-				foreach my $tb (keys %{$foreign_link->{$o}}) {
-					next if ($tb ne $t->[2]);
-					%{$self->{tables}{$t->[2]}{foreign_link}} =  %{$foreign_link->{$o}{$tb}};
-					delete $foreign_link->{$o}{$tb};
-					last;
-				}
-				last;
-			}
-			foreach my $o (keys %{$foreign_key}) {
-				next if ($o ne $t->[1]);
-				foreach my $tb (keys %{$foreign_key->{$o}}) {
-					next if ($tb ne $t->[2]);
-					push(@{$self->{tables}{$t->[2]}{foreign_key}}, @{$foreign_key->{$o}{$tb}});
-					delete $foreign_key->{$o}{$tb};
-					last;
-				}
-				last;
-			}
-		}
-		# Same for check constraints for the current table
-		if (!$self->{skip_checks}) {
-			foreach my $o (keys %check_constraints) {
-				next if ($o ne $t->[1]);
-				foreach my $tb (keys %{$check_constraints{$o}}) {
-					next if ($tb ne $t->[2]);
-					%{$self->{tables}{$t->[2]}{check_constraint}} = ( %{$check_constraints{$o}{$tb}});
-					delete $check_constraints{$o}{$tb};
-					last;
-				}
-				last;
-			}
-		}
-		# Retrieve indexes informations
-		if (!$self->{skip_indices} && !$self->{skip_indexes}) {
-			foreach my $o (keys %{$uniqueness}) {
-				next if ($o ne $t->[1]);
-				foreach my $tb (keys %{$uniqueness->{$o}}) {
-					next if ($tb ne $t->[2]);
-					%{$self->{tables}{$t->[2]}{uniqueness}} = ( %{$uniqueness->{$o}{$tb}});
-					delete $uniqueness->{$o}{$tb};
-					last;
-				}
-				last;
-			}
-			foreach my $o (keys %{$indexes}) {
-				next if ($o ne $t->[1]);
-				foreach my $tb (keys %{$indexes->{$o}}) {
-					next if ($tb ne $t->[2]);
-					%{$self->{tables}{$t->[2]}{indexes}} = ( %{$indexes->{$o}{$tb}});
-					delete $indexes->{$o}{$tb};
-					last;
-				}
-				last;
-			}
-			foreach my $o (keys %{$idx_type}) {
-				next if ($o ne $t->[1]);
-				foreach my $tb (keys %{$idx_type->{$o}}) {
-					next if ($tb ne $t->[2]);
-					%{$self->{tables}{$t->[2]}{idx_type}} = ( %{$idx_type->{$o}{$tb}});
-					delete $idx_type->{$o}{$tb};
-					last;
-				}
-				last;
-			}
-		}
+		$self->{tables}{$t}{type} = 'table';
+		$self->{tables}{$t}{field_name} = $sth->{NAME};
+		$self->{tables}{$t}{field_type} = $sth->{TYPE};
 		$i++;
 	}
+
 	if (!$self->{quiet} && !$self->{debug}) {
-		print STDERR $self->progress_bar($i - 1, $#tables_infos + 1, 25, '=', 'tables', 'end of scan.'), "\n";
+		print STDERR $self->progress_bar($i - 1, $num_total_table, 25, '=', 'tables', 'end of scanning.'), "\n";
 	}
  
 	# Try to search requested TABLE names in the VIEW names if not found in
@@ -1224,12 +1168,10 @@ sub _tables
 			$self->{tables}{$view}{field_name} = $sth->{NAME};
 			$self->{tables}{$view}{field_type} = $sth->{TYPE};
 			my %columns_infos = $self->_column_info($view);
-			foreach my $o (keys %columns_infos) {
-				foreach my $tb (keys %{$columns_infos{$o}}) {
-					next if ($tb ne $view);
-					@{$self->{tables}{$view}{column_info}{$columns_infos{$o}{$tb}->[0]}} = @{$columns_infos{$o}{$tb}};
-					delete $columns_infos{$o}{$tb};
-					last;
+			foreach my $tb (keys %columns_infos) {
+				next if ($tb ne $view);
+				foreach my $c (keys %{$columns_infos{$tb}}) {
+					push(@{$self->{tables}{$view}{column_info}{$c}}, @{$columns_infos{$tb}{$c}});
 				}
 			}
 		}
@@ -2422,7 +2364,7 @@ LANGUAGE plpgsql ;
 		# Set total number of rows
 		my $global_rows = 0;
 		foreach my $table (keys %{$self->{tables}}) {
-			$global_rows += $self->{tables}{$table}{table_info}[3];
+			$global_rows += $self->{tables}{$table}{table_info}{num_rows};
 		}
 
 		# Disable SQL script exit on error
@@ -2601,18 +2543,17 @@ LANGUAGE plpgsql ;
 					push(@fname, $fieldname);
 				}
 
-				my @f = ();
-				push(@f, @{$self->{tables}{$table}{column_info}{$fieldname}});
-				my $type = $self->_sql_type($f[1], $f[2], $f[5], $f[6]);
-				$type = "$f[1], $f[2]" if (!$type);
-				push(@stt, uc($f[1]));
+				my $f = $self->{tables}{$table}{column_info}{$fieldname};
+				my $type = $self->_sql_type($f->[1], $f->[2], $f->[5], $f->[6]);
+				$type = "$f->[1], $f->[2]" if (!$type);
+				push(@stt, uc($f->[1]));
 				push(@tt, $type);
-				push(@nn, $f);
+				push(@nn,  $self->{tables}{$table}{column_info}{$fieldname});
 				# Change column names
-				my $colname = $f[0];
-				if ($self->{replaced_cols}{lc($table)}{lc($f[0])}) {
-					$self->logit("\tReplacing column $f[0] as " . $self->{replaced_cols}{lc($table)}{lc($f[0])} . "...\n", 1);
-					$colname = $self->{replaced_cols}{lc($table)}{lc($f[0])};
+				my $colname = $f->[0];
+				if ($self->{replaced_cols}{lc($table)}{lc($f->[0])}) {
+					$self->logit("\tReplacing column $f->[0] as " . $self->{replaced_cols}{lc($table)}{lc($f->[0])} . "...\n", 1);
+					$colname = $self->{replaced_cols}{lc($table)}{lc($f->[0])};
 				}
 				if (!$self->{preserve_case}) {
 					$colname = $self->quote_reserved_words($colname);
@@ -2913,7 +2854,6 @@ CREATE TRIGGER insert_${table}_trigger
 	my $num_total_table = scalar keys %{$self->{tables}};
 	foreach my $table (sort { $self->{tables}{$a}{internal_id} <=> $self->{tables}{$b}{internal_id} } keys %{$self->{tables}}) {
 
-		# forget or not this object if it is in the exclude or allow lists.
 		if ($self->{tables}{$table}{type} ne 'view') {
 			next if ($self->skip_this_object('TABLE', $table));
 		}
@@ -2940,7 +2880,7 @@ CREATE TRIGGER insert_${table}_trigger
 		if ( ($self->{type} eq 'FDW') || ($self->{external_to_fdw} && grep(/^$table$/i, keys %{$self->{external_table}})) ) {
 			$foreign = ' FOREIGN';
 		}
-		my $obj_type = ${$self->{tables}{$table}{table_info}}[1] || 'TABLE';
+		my $obj_type = $self->{tables}{$table}{table_info}{type} || 'TABLE';
 		if (!$self->{preserve_case}) {
 			$tbname = $self->quote_reserved_words($tbname);
 			$sql_output .= "CREATE$foreign $obj_type \L$tbname\E (\n";
@@ -2950,21 +2890,20 @@ CREATE TRIGGER insert_${table}_trigger
 		# Extract column information following the Oracle position order
 		foreach my $i ( 0 .. $#{$self->{tables}{$table}{field_name}} ) {
 
-			my @f = ();
-			push(@f, @{$self->{tables}{$table}{column_info}{$self->{tables}{$table}{field_name}[$i]}});
-			my $type = $self->_sql_type($f[1], $f[2], $f[5], $f[6]);
-			$type = "$f[1], $f[2]" if (!$type);
+			my $f = $self->{tables}{$table}{column_info}{$self->{tables}{$table}{field_name}[$i]};
+			my $type = $self->_sql_type($f->[1], $f->[2], $f->[5], $f->[6]);
+			$type = "$f->[1], $f->[2]" if (!$type);
 			# Change column names
-			my $fname = $f[0];
+			my $fname = $f->[0];
 			if (exists $self->{replaced_cols}{"\L$table\E"}{"\L$fname\E"} && $self->{replaced_cols}{"\L$table\E"}{"\L$fname\E"}) {
-				$self->logit("\tReplacing column \L$f[0]\E as " . $self->{replaced_cols}{lc($table)}{lc($fname)} . "...\n", 1);
+				$self->logit("\tReplacing column \L$f->[0]\E as " . $self->{replaced_cols}{lc($table)}{lc($fname)} . "...\n", 1);
 				$fname = $self->{replaced_cols}{"\L$table\E"}{"\L$fname\E"};
 			}
 			# Check if this column should be replaced by a boolean following table/column name
-			if (grep(/^$f[0]$/i, @{$self->{'replace_as_boolean'}{uc($table)}})) {
+			if (grep(/^$f->[0]$/i, @{$self->{'replace_as_boolean'}{uc($table)}})) {
 				$type = 'boolean';
 			# Check if this column should be replaced by a boolean following type/precision
-			} elsif (exists $self->{'replace_as_boolean'}{uc($f[1])} && ($self->{'replace_as_boolean'}{uc($f[1])}[0] == $f[5])) {
+			} elsif (exists $self->{'replace_as_boolean'}{uc($f->[1])} && ($self->{'replace_as_boolean'}{uc($f->[1])}[0] == $f->[5])) {
 				$type = 'boolean';
 			}
 			if (!$self->{preserve_case}) {
@@ -2973,19 +2912,19 @@ CREATE TRIGGER insert_${table}_trigger
 			} else {
 				$sql_output .= "\t\"$fname\" $type";
 			}
-			if ($f[4] ne "") {
-				$f[4] =~ s/SYSDATE[\s\t]*\([\s\t]*\)/LOCALTIMESTAMP/igs;
-				$f[4] =~ s/SYSDATE/LOCALTIMESTAMP/ig;
-				$f[4] =~ s/^[\s\t]+//;
-				$f[4] =~ s/[\s\t]+$//;
-				if (($f[4] eq "''") && (!$f[3] || ($f[3] eq 'N'))) {
+			if ($f->[4] ne "") {
+				$f->[4] =~ s/SYSDATE[\s\t]*\([\s\t]*\)/LOCALTIMESTAMP/igs;
+				$f->[4] =~ s/SYSDATE/LOCALTIMESTAMP/ig;
+				$f->[4] =~ s/^[\s\t]+//;
+				$f->[4] =~ s/[\s\t]+$//;
+				if (($f->[4] eq "''") && (!$f->[3] || ($f->[3] eq 'N'))) {
 					$sql_output .= " NOT NULL";
-					push(@{$self->{tables}{$table}{check_constraint}{notnull}}, $f[0]);
+					push(@{$self->{tables}{$table}{check_constraint}{notnull}}, $f->[0]);
 				} elsif ($self->{type} ne 'FDW') {
-					$sql_output .= " DEFAULT $f[4]";
+					$sql_output .= " DEFAULT $f->[4]";
 				}
-			} elsif (!$f[3] || ($f[3] eq 'N')) {
-				push(@{$self->{tables}{$table}{check_constraint}{notnull}}, $f[0]);
+			} elsif (!$f->[3] || ($f->[3] eq 'N')) {
+				push(@{$self->{tables}{$table}{check_constraint}{notnull}}, $f->[0]);
 				$sql_output .= " NOT NULL";
 			}
 			$sql_output .= ",\n";
@@ -3007,12 +2946,12 @@ CREATE TRIGGER insert_${table}_trigger
 			}
 		}
 		# Add comments on table
-		if (!$self->{disable_comment} && ${$self->{tables}{$table}{table_info}}[2]) {
-			${$self->{tables}{$table}{table_info}}[2] =~ s/'/\\'/gs;
+		if (!$self->{disable_comment} && $self->{tables}{$table}{table_info}{comment}) {
+			$self->{tables}{$table}{table_info}{comment} =~ s/'/\\'/gs;
 			if (!$self->{preserve_case}) {
-				$sql_output .= "COMMENT ON TABLE \L$tbname\E IS E'${$self->{tables}{$table}{table_info}}[2]';\n";
+				$sql_output .= "COMMENT ON TABLE \L$tbname\E IS E'$self->{tables}{$table}{table_info}{comment}';\n";
 			} else {
-				$sql_output .= "COMMENT ON TABLE \"$tbname\".\"$f->[0]\" IS E'${$self->{tables}{$table}{table_info}}[2]';\n";
+				$sql_output .= "COMMENT ON TABLE \"$tbname\".\"$f->[0]\" IS E'$self->{tables}{$table}{table_info}{comment}';\n";
 			}
 		}
 
@@ -3031,12 +2970,12 @@ CREATE TRIGGER insert_${table}_trigger
 
 		# Change ownership
 		if ($self->{force_owner}) {
-			my $owner = ${$self->{tables}{$table}{table_info}}[0];
+			my $owner = $self->{tables}{$table}{table_info}{owner};
 			$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
 			if (!$self->{preserve_case}) {
-				$sql_output .= "ALTER ${$self->{tables}{$table}{table_info}}[1] \L$tbname\E OWNER TO \L$owner\E;\n";
+				$sql_output .= "ALTER $self->{tables}{$table}{table_info}{type} \L$tbname\E OWNER TO \L$owner\E;\n";
 			} else {
-				$sql_output .= "ALTER ${$self->{tables}{$table}{table_info}}[1] \"$tbname\" OWNER TO $owner;\n";
+				$sql_output .= "ALTER $self->{tables}{$table}{table_info}{type} \"$tbname\" OWNER TO $owner;\n";
 			}
 		}
 		if ($self->{type} ne 'FDW') {
@@ -3107,6 +3046,7 @@ CREATE TRIGGER insert_${table}_trigger
 	$self->dump($sql_header . $sql_output);
 }
 
+
 =head2 _column_comments
 
 This function return comments associated to columns
@@ -3132,7 +3072,7 @@ END
 	while (my $row = $sth->fetch) {
 		# forget or not this object if it is in the exclude or allow lists.
 		next if ($self->skip_this_object('TABLE', $row->[2]));
-		$data{$row->[3]}{$row->[2]}{$row->[0]} = $row->[1];
+		$data{$row->[2]}{$row->[0]} = $row->[1];
 	}
 
 	return %data;
@@ -3155,9 +3095,9 @@ sub _create_indexes
 	my @out = ();
 	# Set the index definition
 	foreach my $idx (keys %indexes) {
+
 		# Cluster, domain, bitmap join, reversed and IOT indexes will not be exported at all
 		next if ($self->{tables}{$table}{idx_type}{$idx} =~ /JOIN|IOT|CLUSTER|DOMAIN|REV/i);
-
 		map { if ($_ !~ /\(.*\)/) { s/^/"/; s/$/"/; } } @{$indexes{$idx}};
 		if (exists $self->{replaced_cols}{"\L$tbsaved\E"} && $self->{replaced_cols}{"\L$tbsaved\E"}) {
 			foreach my $c (keys %{$self->{replaced_cols}{"\L$tbsaved\E"}}) {
@@ -3175,11 +3115,10 @@ sub _create_indexes
 		$colscompare =~ s/"//gs;
 		my $columnlist = '';
 		my $skip_index_creation = 0;
-		my $unique_key = $self->{tables}{$table}{unique_key};
-		foreach my $consname (keys %$unique_key) {
-			my $constype =   $unique_key->{$consname}{type};
+		foreach my $consname (keys %{$self->{tables}{$table}{unique_key}}) {
+			my $constype =  $self->{tables}{$table}{unique_key}->{$consname}{type};
 			next if (($constype ne 'P') && ($constype ne 'U'));
-			my @conscols = @{$unique_key->{$consname}{columns}};
+			my @conscols = @{$self->{tables}{$table}{unique_key}->{$consname}{columns}};
 			for (my $i = 0; $i <= $#conscols; $i++) {
 				# Change column names
 				if (exists $self->{replaced_cols}{"\L$tbsaved\E"}{"\L$conscols[$i]\E"} && $self->{replaced_cols}{"\L$tbsaved\E"}{"\L$conscols[$i]\E"}) {
@@ -3250,11 +3189,10 @@ sub _drop_indexes
 		$colscompare =~ s/"//gs;
 		my $columnlist = '';
 		my $skip_index_creation = 0;
-		my $unique_key = $self->{tables}{$table}{unique_key};
-		foreach my $consname (keys %$unique_key) {
-			my $constype =   $unique_key->{$consname}{type};
+		foreach my $consname (keys %{$self->{tables}{$table}{unique_key}}) {
+			my $constype =   $self->{tables}{$table}{unique_key}->{$consname}{type};
 			next if (($constype ne 'P') && ($constype ne 'U'));
-			my @conscols = @{$unique_key->{$consname}{columns}};
+			my @conscols = @{$self->{tables}{$table}{unique_key}->{$consname}{columns}};
 			for (my $i = 0; $i <= $#conscols; $i++) {
 				# Change column names
 				if (exists $self->{replaced_cols}{"\L$tbsaved\E"}{"\L$conscols[$i]\E"} && $self->{replaced_cols}{"\L$tbsaved\E"}{"\L$conscols[$i]\E"}) {
@@ -3296,17 +3234,17 @@ sub _exportable_indexes
 	my @out = ();
 	# Set the index definition
 	foreach my $idx (keys %indexes) {
+
 		map { if ($_ !~ /\(.*\)/) { s/^/"/; s/$/"/; } } @{$indexes{$idx}};
 		map { s/"//gs } @{$indexes{$idx}};
 		my $columns = join(',', @{$indexes{$idx}});
 		my $colscompare = $columns;
 		my $columnlist = '';
 		my $skip_index_creation = 0;
-		my $unique_key = $self->{tables}{$table}{unique_key};
-		foreach my $consname (keys %$unique_key) {
-			my $constype =   $unique_key->{$consname}{type};
+		foreach my $consname (keys %{$self->{tables}{$table}{unique_key}}) {
+			my $constype =  $self->{tables}{$table}{unique_key}->{$consname}{type};
 			next if (($constype ne 'P') && ($constype ne 'U'));
-			my @conscols = @{$unique_key->{$consname}{columns}};
+			my @conscols = @{$self->{tables}{$table}{unique_key}->{$consname}{columns}};
 			$columnlist = join(',', @conscols);
 			$columnlist =~ s/"//gs;
 			if (lc($columnlist) eq lc($colscompare)) {
@@ -3315,7 +3253,7 @@ sub _exportable_indexes
 			}
 		}
 
-		# The index iwill not be created if there is already a constraint on the same column list.
+		# The index will not be created
 		if (!$skip_index_creation) {
 			push(@out, $idx);
 		}
@@ -3510,6 +3448,7 @@ sub _create_foreign_keys
 	# Add constraint definition
 	my @done = ();
 	foreach my $h (@foreign_key) {
+
 		next if (grep(/^$h->[0]$/, @done));
 		foreach my $desttable (keys %{$self->{tables}{$table}{foreign_link}{$h->[0]}{remote}}) {
 			# Do not export foreign key to table that are not exported
@@ -3873,13 +3812,15 @@ END
 	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
 	my %data = ();
+	my $pos = 0;
 	while (my $row = $sth->fetch) {
 		# forget or not this object if it is in the exclude or allow lists.
 		next if ($self->skip_this_object('TABLE', $row->[-2]));
 		if ($#{$row} == 9) {
 			$row->[2] = $row->[7] if $row->[1] =~ /char/i;
 		}
-		push(@{$data{$row->[-1]}{$row->[-2]}}, [ @$row ]);
+		push(@{$data{$row->[-2]}{$row->[0]}}, (@$row, $pos));
+		$pos++;
 	}
 
 	return %data;	
@@ -3943,7 +3884,7 @@ END
 				push(@{$constraint{'columns'}}, $r->[0]);
 			}
 		}
-		$result{$row->[10]}{$row->[9]}{$row->[0]} = \%constraint;
+		$result{$row->[9]}{$row->[0]} = \%constraint;
 	}
 
 	return %result;
@@ -3978,7 +3919,7 @@ END
 
 	my %data = ();
 	while (my $row = $sth->fetch) {
-		$data{$row->[8]}{$row->[7]}{constraint}{$row->[0]} = $row->[2];
+		$data{$row->[7]}{constraint}{$row->[0]} = $row->[2];
 	}
 
 	return %data;
@@ -4040,19 +3981,18 @@ END
 	my %link = ();
 	my @tab_done = ();
 	while (my $row = $sth->fetch) {
-		next if (grep(/^$row->[8]$row->[7]$row->[0]$/, @tab_done));
-		push(@{$data{$row->[8]}{$row->[7]}}, [ @$row ]);
-		push(@tab_done, "$row->[8]$row->[7]$row->[0]");
+		next if (grep(/^$row->[7]$row->[0]$/, @tab_done));
+		push(@{$data{$row->[7]}}, [ @$row ]);
+		push(@tab_done, "$row->[7]$row->[0]");
 		my @done = ();
-	my $sql = "SELECT DISTINCT COLUMN_NAME,POSITION,TABLE_NAME,OWNER,CONSTRAINT_NAME FROM $self->{prefix}_CONS_COLUMNS";
 		foreach my $r (@cons_columns) {
 			# Skip it if tablename and owner are not the same
 			next if (($r->[2] ne $row->[7]) && ($r->[3] ne $row->[8]));
 			# If the names of the constraints are the same set the local column of the foreign keys
 			if ($r->[4] eq $row->[0]) {
-				if (!grep(/^$r->[2]$r->[3]$r->[0]$/, @done)) {
-					push(@{$link{$row->[8]}{$row->[7]}{$row->[0]}{local}}, $r->[0]);
-					push(@done, "$r->[2]$r->[3]$r->[0]");
+				if (!grep(/^$r->[2]$r->[0]$/, @done)) {
+					push(@{$link{$row->[7]}{$row->[0]}{local}}, $r->[0]);
+					push(@done, "$r->[2]$r->[0]");
 				}
 			}
 		}
@@ -4064,10 +4004,9 @@ END
 			# If the names of the constraints are the same as the unique constraint definition for
 			# the referenced table set the remote part of the foreign keys
 			if ($r->[4] eq $row->[1]) {
-				if (!grep(/^$r->[2]$r->[3]$r->[2]$r->[0]$/, @done)) {
-					#            column             tablename  column  
-					push(@{$link{$row->[8]}{$row->[7]}{$row->[0]}{remote}{$r->[2]}}, $r->[0]);
-					push(@done, "$r->[2]$r->[3]$r->[2]$r->[0]");
+				if (!grep(/^$r->[2]$r->[0]$/, @done)) {
+					push(@{$link{$row->[7]}{$row->[0]}{remote}{$r->[2]}}, $r->[0]);
+					push(@done, "$r->[2]$r->[0]");
 				}
 			}
 		}
@@ -4251,11 +4190,11 @@ $idxowner
 	while (my $row = $sth->fetch) {
 		# forget or not this object if it is in the exclude or allow lists.
 		next if ($self->skip_this_object('INDEX', $row->[0]));
-		$unique{$row->[-1]}{$row->[-2]}{$row->[0]} = $row->[2];
+		$unique{$row->[-2]}{$row->[0]} = $row->[2];
 		if (($#{$row} > 6) && ($row->[7] eq 'Y')) {
-			$idx_type{$row->[-1]}{$row->[-2]}{$row->[0]} = $row->[4] . ' JOIN';
+			$idx_type{$row->[-2]}{$row->[0]} = $row->[4] . ' JOIN';
 		} else {
-			$idx_type{$row->[-1]}{$row->[-2]}{$row->[0]} = $row->[4];
+			$idx_type{$row->[-2]}{$row->[0]} = $row->[4];
 		}
 		# Replace function based index type
 		if ($row->[1] =~ /^SYS_NC/i) {
@@ -4264,7 +4203,7 @@ $idxowner
 			$row->[1] = $nc->[0];
 		}
 		$row->[1] =~ s/SYS_EXTRACT_UTC[\s\t]*\(([^\)]+)\)/$1/isg;
-		push(@{$data{$row->[-1]}{$row->[-2]}{$row->[0]}}, $row->[1]);
+		push(@{$data{$row->[-2]}{$row->[0]}}, $row->[1]);
 	}
 
 	return \%unique, \%data, \%idx_type;
@@ -4795,23 +4734,27 @@ sub _table_info
 	while (my $row = $sth->fetch) {
 		# forget or not this object if it is in the exclude or allow lists.
 		next if ($self->skip_this_object('TABLE', $row->[0]));
-		push(@{$comments{$row->[0]}}, $row->[1], $row->[2]);
+		$comments{$row->[0]}{comment} = $row->[1];
+		$comments{$row->[0]}{table_type} = $row->[2];
 	}
 	$sth->finish();
 
-	$sql = "SELECT NULL,OWNER,TABLE_NAME,NVL(num_rows,1) NUMBER_ROWS FROM ALL_TABLES $owner";
+	$sql = "SELECT OWNER,TABLE_NAME,NVL(num_rows,1) NUMBER_ROWS FROM ALL_TABLES $owner";
         $sql .= " ORDER BY OWNER, TABLE_NAME";
         $sth = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
         $sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-	my @tables_infos = ();
+	my %tables_infos = ();
 	while (my $row = $sth->fetch) {
 		# forget or not this object if it is in the exclude or allow lists.
-		next if ($self->skip_this_object('TABLE', $row->[2]));
-		push(@tables_infos, [ ($row->[0], $row->[1], $row->[2],$row->[3], $comments{$row->[2]}[0] || '', $comments{$row->[2]}[1] || '') ]);
+		next if ($self->skip_this_object('TABLE', $row->[1]));
+		$tables_infos{$row->[1]}{owner} = $row->[0] || '';
+		$tables_infos{$row->[1]}{num_rows} = $row->[2] || 0;
+		$tables_infos{$row->[1]}{comment} =  $comments{$row->[1]}{comment} || '';
+		$tables_infos{$row->[1]}{type} =  $comments{$row->[1]}{table_type} || '';
 	}
 	$sth->finish();
 
-	return @tables_infos;
+	return %tables_infos;
 }
 
 
@@ -5971,7 +5914,7 @@ sub extract_data
 		}
 	}
 	my $start_time = time();
-	my $total_row = $self->{tables}{$table}{table_info}->[3];
+	my $total_row = $self->{tables}{$table}{table_info}{num_rows};
 	$self->logit("Fetching all data from $table...\n", 1);
 
 	while ( my $rows = $sth->fetchall_arrayref(undef,$self->{data_limit})) {
@@ -6239,7 +6182,7 @@ sub _show_infos
 						$table_detail{'reserved words in table name'}++;
 					}
 					# Get fields informations
-					foreach my $k (sort keys %{$self->{tables}{$t->[2]}{column_info}}) {
+					foreach my $k (sort {$self->{tables}{$t}{column_info}{$a}[-1] <=> $self->{tables}{$t}{column_info}{$a}[-1]} keys %{$self->{tables}{$t->[2]}{column_info}}) {
 						if (&is_reserved_words($self->{tables}{$t->[2]}{column_info}{$k}[0])) {
 							$table_detail{'reserved words in column name'}++;
 						}
@@ -6387,64 +6330,71 @@ sub _show_infos
 		$self->logit("Showing table information...\n", 1);
 
 		# Retrieve tables informations
-		my @tables_infos = $self->_table_info();
+		my %tables_infos = $self->_table_info();
 
 		# Retrieve all columns information
 		my %columns_infos = $self->_column_info('',$self->{schema});
+		foreach my $tb (keys %columns_infos) {
+			foreach my $c (keys %{$columns_infos{$tb}}) {
+				push(@{$self->{tables}{$tb}{column_info}{$c}}, @{$columns_infos{$tb}{$c}});
+			}
+		}
+		%columns_infos = ();
 
 		my @done = ();
 		my $id = 0;
 		# Set the table information for each class found
 		my $i = 1;
-		foreach my $t (@tables_infos) {
+		foreach my $t (sort keys %tables_infos) {
 
 			# forget or not this object if it is in the exclude or allow lists.
-			if ($t->[5] ne 'VIEW') {
-				next if ($self->skip_this_object('TABLE', $t->[2]));
+			if ($tables_infos{$t}{type} ne 'VIEW') {
+				next if ($self->skip_this_object('TABLE', $t));
 			}
 
 			# Jump to desired extraction
-			if (grep(/^$t->[2]$/, @done)) {
-				$self->logit("Duplicate entry found: $t->[1] - $t->[2]\n", 1);
+			if (grep(/^$t$/, @done)) {
+				$self->logit("Duplicate entry found: $t\n", 1);
 				next;
 			} else {
-				push(@done, $t->[2]);
+				push(@done, $t);
 			}
 			my $warning = '';
-			if (&is_reserved_words($t->[2])) {
-				$warning = " (Warning: '$t->[2]' is a reserved word in PostgreSQL)";
+			if (&is_reserved_words($t)) {
+				$warning = " (Warning: '$t' is a reserved word in PostgreSQL)";
 			}
 
-			$self->logit("[$i] TABLE $t->[2] ($t->[3] rows)$warning\n", 0);
+			$self->logit("[$i] TABLE $t ($tables_infos{$t}{num_rows} rows)$warning\n", 0);
 
 			# Set the fields information
 			if ($type eq 'SHOW_COLUMN') {
-				foreach my $k (sort keys %{$self->{tables}{$t->[2]}{column_info}}) {
-					my @d = ();
-					push(@d, @{$self->{tables}{$t->[2]}{column_info}{$k}});
-					my $type = $self->_sql_type($d[1], $d[2], $d[5], $d[6]);
-					$type = "$d[1], $d[2]" if (!$type);
-					my $len = $d[2];
+				# Collect column's details for the current table with attempt to preserve column declaration order
+				foreach my $k (sort {$self->{tables}{$t}{column_info}{$a}[-1] <=> $self->{tables}{$t}{column_info}{$b}[-1]} keys %{$self->{tables}{$t}{column_info}}) {
+					# COLUMN_NAME,DATA_TYPE,DATA_LENGTH,NULLABLE,DATA_DEFAULT,DATA_PRECISION,DATA_SCALE,TABLE_NAME,OWNER
+					my $d = $self->{tables}{$t}{column_info}{$k};
+					my $type = $self->_sql_type($d->[1], $d->[2], $d->[5], $d->[6]);
+					$type = "$d->[1], $d->[2]" if (!$type);
+					my $len = $d->[2];
 					if ($#{$d} == 9) {
-						$d[2] = $d[7] if $d[1] =~ /char/i;
+						$d->[2] = $d->[7] if $d->[1] =~ /char/i;
 					}
-					$self->logit("\t$d[0] : $d[1]");
-					if ($d[2] && !$d[5]) {
-						$self->logit("($d[2])");
-					} elsif ($d[5] && ($d[1] =~ /NUMBER/i) ) {
-						$self->logit("($d[5]");
-						$self->logit("$d[6]") if ($d[6]);
+					$self->logit("\t$d->[0] : $d->[1]");
+					if ($d->[2] && !$d->[5]) {
+						$self->logit("($d->[2])");
+					} elsif ($d->[5] && ($d->[1] =~ /NUMBER/i) ) {
+						$self->logit("($d->[5]");
+						$self->logit("$d->[6]") if ($d->[6]);
 						$self->logit(")");
 					}
 					$warning = '';
-					if (&is_reserved_words($d[0])) {
-						$warning = " (Warning: '$d[0]' is a reserved word in PostgreSQL)";
+					if (&is_reserved_words($d->[0])) {
+						$warning = " (Warning: '$d->[0]' is a reserved word in PostgreSQL)";
 					}
 					# Check if this column should be replaced by a boolean following table/column name
-					if (grep(/^$d[0]$/i, @{$self->{'replace_as_boolean'}{$t->[2]}})) {
+					if (grep(/^$d->[0]$/i, @{$self->{'replace_as_boolean'}{$t}})) {
 						$type = 'boolean';
 					# Check if this column should be replaced by a boolean following type/precision
-					} elsif (exists $self->{'replace_as_boolean'}{uc($d[1])} && ($self->{'replace_as_boolean'}{uc($d[1])}[0] == $d[5])) {
+					} elsif (exists $self->{'replace_as_boolean'}{uc($d->[1])} && ($self->{'replace_as_boolean'}{uc($d->[1])}[0] == $d->[5])) {
 						$type = 'boolean';
 					}
 					$self->logit(" => $type$warning\n");
