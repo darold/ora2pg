@@ -1070,7 +1070,6 @@ sub _tables
 	my $id = 0;
 	# Set the table information for each class found
 	my $i = 1;
-	my @table_list = ();
 	my $num_total_table = scalar keys %tables_infos;
 	foreach my $t (sort keys %tables_infos) {
 
@@ -1088,7 +1087,6 @@ sub _tables
 			push(@done, $t);
 		} 
 		$self->logit("[$i] Scanning table $t ($tables_infos{$t}{num_rows} rows)...\n", 1);
-		push(@table_list, $t);
 		
 		# Check of uniqueness of the table
 		if (exists $self->{tables}{$t}{field_name}) {
@@ -1143,7 +1141,6 @@ sub _tables
 			# Jump to desired extraction
 			next if (!grep($view =~ /^$_$/i, @{$self->{view_as_table}}));
 			$self->logit("Scanning view $view to export as table...\n", 1);
-			push(@table_list, $view);
 
 			$self->{tables}{$view}{type} = 'view';
 			$self->{tables}{$view}{text} = $view_infos{$view};
@@ -1183,7 +1180,6 @@ sub _tables
 		%{$self->{external_table}} = $self->_get_external_tables();
 	}
 
-	return @table_list;
 }
 
 
@@ -6084,7 +6080,8 @@ sub _show_infos
 		my %all_indexes = ();
 		$self->{skip_fkeys} = $self->{skip_indices} = $self->{skip_indexes} = $self->{skip_checks} = 0;
 		$self->{view_as_table} = ();
-		my @tables_infos = $self->_tables(1);
+		# Extract all tables informations
+		$self->_tables(1);
 		my $total_index = 0;
 		foreach my $table (sort keys %{$self->{tables}}) {
 			push(@exported_indexes, $self->_exportable_indexes($table, %{$self->{tables}{$table}{indexes}}));
@@ -6168,38 +6165,33 @@ sub _show_infos
 				my $id = 0;
 				my $total_check = 0;
 				# Set the table information for each class found
-				foreach my $t (@tables_infos) {
+				foreach my $t (sort keys %{$self->{tables}}) {
 
 					# forget or not this object if it is in the exclude or allow lists.
-					next if ($self->skip_this_object('TABLE', $t->[2]));
+					next if ($self->skip_this_object('TABLE', $t));
 
-					# Jump to desired extraction
-					if (grep(/^$t->[2]$/, @done)) {
-						next;
-					}
-					push(@done, $t->[2]);
 					# Look at reserved words if tablename is found
-					if (&is_reserved_words($t->[2])) {
+					if (&is_reserved_words($t)) {
 						$table_detail{'reserved words in table name'}++;
 					}
 					# Get fields informations
-					foreach my $k (sort {$self->{tables}{$t}{column_info}{$a}[-1] <=> $self->{tables}{$t}{column_info}{$a}[-1]} keys %{$self->{tables}{$t->[2]}{column_info}}) {
-						if (&is_reserved_words($self->{tables}{$t->[2]}{column_info}{$k}[0])) {
+					foreach my $k (sort {$self->{tables}{$t}{column_info}{$a}[-1] <=> $self->{tables}{$t}{column_info}{$a}[-1]} keys %{$self->{tables}{$t}{column_info}}) {
+						if (&is_reserved_words($self->{tables}{$t}{column_info}{$k}[0])) {
 							$table_detail{'reserved words in column name'}++;
 						}
-						$self->{tables}{$t->[2]}{column_info}{$k}[1] =~ s/TIMESTAMP\(\d+\)/TIMESTAMP/i;
-						if (!exists $TYPE{uc($self->{tables}{$t->[2]}{column_info}{$k}[1])}) {
+						$self->{tables}{$t}{column_info}{$k}[1] =~ s/TIMESTAMP\(\d+\)/TIMESTAMP/i;
+						if (!exists $TYPE{uc($self->{tables}{$t}{column_info}{$k}[1])}) {
 							$table_detail{'unknow types'}++;
 						}
-						if ( (uc($self->{tables}{$t->[2]}{column_info}{$k}[1]) eq 'NUMBER') && ($self->{tables}{$t->[2]}{column_info}{$k}[2] eq '') ) {
+						if ( (uc($self->{tables}{$t}{column_info}{$k}[1]) eq 'NUMBER') && ($self->{tables}{$t}{column_info}{$k}[2] eq '') ) {
 							$table_detail{'numbers with no precision'}++;
 						}
-						if ( $TYPE{uc($self->{tables}{$t->[2]}{column_info}{$k}[1])} eq 'bytea' ) {
+						if ( $TYPE{uc($self->{tables}{$t}{column_info}{$k}[1])} eq 'bytea' ) {
 							$table_detail{'binary columns'}++;
 						}
 					}
 					# Get check constraints information related to this table
-					my @constraints = $self->_lookup_check_constraint($t->[2], $self->{tables}{$t->[2]}{check_constraint},$self->{tables}{$t->[2]}{field_name});
+					my @constraints = $self->_lookup_check_constraint($t, $self->{tables}{$t}{check_constraint},$self->{tables}{$t}{field_name});
 					$total_check += ($#constraints + 1);
 					if ($self->{estimate_cost} && ($#constraints >= 0)) {
 						$report_info{'Objects'}{$typ}{'cost_value'} += (($#constraints + 1) * $Ora2Pg::PLSQL::OBJECT_SCORE{'CHECK'});
@@ -6211,8 +6203,8 @@ sub _show_infos
 				}
 				$report_info{'Objects'}{$typ}{'detail'} .= "Top $self->{top_max} of tables sorted by rows number:\n";
 				$i = 1;
-				foreach my $t (sort {$tables_infos{$b}{num_rows} <=> $tables_infos{$a}{num_rows}} keys %tables_infos) {
-					$report_info{'Objects'}{$typ}{'detail'} .= "\L$t\E ($tables_infos{$t}{num_rows} rows)\n";
+				foreach my $t (sort {$self->{tables}{$b}{table_info}{num_rows} <=> $self->{tables}{$a}{table_info}{num_rows}} keys %{$self->{tables}}) {
+					$report_info{'Objects'}{$typ}{'detail'} .= "\L$t\E ($self->{tables}{$t}{table_info}{num_rows} rows)\n";
 					$i++;
 					last if ($i > $self->{top_max});
 				}
