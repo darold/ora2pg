@@ -1092,7 +1092,7 @@ sub _tables
 		
 		# Check of uniqueness of the table
 		if (exists $self->{tables}{$t}{field_name}) {
-			$self->logit("Warning duplicate table $t, maybe a SYNONYME ? Skipped.\n", 1);
+			$self->logit("Warning duplicate table $t, maybe a SYNONYM ? Skipped.\n", 1);
 			next;
 		}
 		# Try to respect order specified in the TABLES limited extraction array
@@ -6288,8 +6288,8 @@ sub _show_infos
 					$report_info{'Objects'}{$typ}{'cost_value'} += ($number_fct*$Ora2Pg::PLSQL::OBJECT_SCORE{'FUNCTION'}) if ($self->{estimate_cost});
 				}
 				$report_info{'Objects'}{$typ}{'comment'} = "Total size of package code: $total_size bytes. Number of procedures and functions found inside those packages: $number_fct.";
-			} elsif ($typ eq 'SYNONYME') {
-				$report_info{'Objects'}{$typ}{'comment'} = "SYNONYME are not exported at all. An usual workaround is to use View instead or set the PostgreSQL search_path in your session to access object outside the current schema.";
+			} elsif ($typ eq 'SYNONYM') {
+				$report_info{'Objects'}{$typ}{'comment'} = "SYNONYM are not exported at all. An usual workaround is to use View instead or set the PostgreSQL search_path in your session to access object outside the current schema.";
 			} elsif ($typ eq 'TABLE PARTITION') {
 				my %partitions = $self->_get_partitions_list();
 				foreach my $t (sort keys %partitions) {
