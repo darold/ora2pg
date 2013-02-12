@@ -588,6 +588,7 @@ sub _init
 	$self->{default_numeric} ||= 'bigint';
 	$self->{type_of_type} = ();
 	$self->{dump_as_html} ||= 0;
+	$self->{top_max} ||= 10;
 
 	# backward compatibility
 	if ($self->{disable_table_triggers}) {
@@ -6208,6 +6209,13 @@ sub _show_infos
 				foreach my $d (sort keys %table_detail) {
 					$report_info{'Objects'}{$typ}{'detail'} .= "\L$table_detail{$d} $d\E\n";
 				}
+				$report_info{'Objects'}{$typ}{'detail'} .= "Top $self->{top_max} of tables sorted by rows number:\n";
+				$i = 1;
+				foreach my $t (sort {$tables_infos{$b}{num_rows} <=> $tables_infos{$a}{num_rows}} keys %tables_infos) {
+					$report_info{'Objects'}{$typ}{'detail'} .= "\L$t\E ($tables_infos{$t}{num_rows} rows)\n";
+					$i++;
+					last if ($i > $self->{top_max});
+				}
 				$comment = "Nothing particular." if (!$comment);
 			} elsif ($typ eq 'TYPE') {
 				my $total_type = 0;
@@ -6401,6 +6409,14 @@ sub _show_infos
 				}
 			}
 			$i++;
+		}
+		$self->logit("----------------------------------------------------------\n", 0);
+		$self->logit("Top $self->{top_max} of tables sorted by rows number:\n", 0);
+		$i = 1;
+		foreach my $t (sort {$tables_infos{$b}{num_rows} <=> $tables_infos{$a}{num_rows}} keys %tables_infos) {
+			$self->logit("\t[$i] TABLE $t ($tables_infos{$t}{num_rows} rows)\n", 0);
+			$i++;
+			last if ($i > $self->{top_max});
 		}
 	}
 }
