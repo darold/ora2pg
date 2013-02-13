@@ -6164,11 +6164,15 @@ sub _show_infos
 				my @done = ();
 				my $id = 0;
 				my $total_check = 0;
+				my $total_row_num = 0;
 				# Set the table information for each class found
 				foreach my $t (sort keys %{$self->{tables}}) {
 
 					# forget or not this object if it is in the exclude or allow lists.
 					next if ($self->skip_this_object('TABLE', $t));
+
+					# Set the total number of rows
+					$total_row_num += $self->{tables}{$t}{table_info}{num_rows};
 
 					# Look at reserved words if tablename is found
 					if (&is_reserved_words($t)) {
@@ -6201,6 +6205,7 @@ sub _show_infos
 				foreach my $d (sort keys %table_detail) {
 					$report_info{'Objects'}{$typ}{'detail'} .= "\L$table_detail{$d} $d\E\n";
 				}
+				$report_info{'Objects'}{$typ}{'detail'} .= "Total number of rows: $total_row_num\n";
 				$report_info{'Objects'}{$typ}{'detail'} .= "Top $self->{top_max} of tables sorted by rows number:\n";
 				$i = 1;
 				foreach my $t (sort {$self->{tables}{$b}{table_info}{num_rows} <=> $self->{tables}{$a}{table_info}{num_rows}} keys %{$self->{tables}}) {
@@ -6345,6 +6350,7 @@ sub _show_infos
 		my $id = 0;
 		# Set the table information for each class found
 		my $i = 1;
+		my $total_row_num = 0;
 		foreach my $t (sort keys %tables_infos) {
 
 			# forget or not this object if it is in the exclude or allow lists.
@@ -6364,6 +6370,9 @@ sub _show_infos
 				$warning = " (Warning: '$t' is a reserved word in PostgreSQL)";
 			}
 
+			$total_row_num += $tables_infos{$t}{num_rows};
+
+			# Show table information
 			$self->logit("[$i] TABLE $t ($tables_infos{$t}{num_rows} rows)$warning\n", 0);
 
 			# Set the fields information
@@ -6403,6 +6412,7 @@ sub _show_infos
 			$i++;
 		}
 		$self->logit("----------------------------------------------------------\n", 0);
+		$self->logit("Total number of rows: $total_row_num\n", 0);
 		$self->logit("Top $self->{top_max} of tables sorted by rows number:\n", 0);
 		$i = 1;
 		foreach my $t (sort {$tables_infos{$b}{num_rows} <=> $tables_infos{$a}{num_rows}} keys %tables_infos) {
