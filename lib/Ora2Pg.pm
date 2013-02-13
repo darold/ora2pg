@@ -6083,8 +6083,14 @@ sub _show_infos
 		# Extract all tables informations
 		$self->_tables(1);
 		my $total_index = 0;
+		my $total_table_objects = 0;
+		my $total_index_objects = 0;
 		foreach my $table (sort keys %{$self->{tables}}) {
+			# forget or not this object if it is in the exclude or allow lists.
+			next if ($self->skip_this_object('TABLE', $table));
+			$total_table_objects++;
 			push(@exported_indexes, $self->_exportable_indexes($table, %{$self->{tables}{$table}{indexes}}));
+			$total_index_objects += scalar keys %{$self->{tables}{$table}{indexes}};
 			foreach my $idx (sort keys %{$self->{tables}{$table}{idx_type}}) {
 				next if (!grep(/^$idx$/i, @exported_indexes));
 				my $typ = $self->{tables}{$table}{idx_type}{$idx};
@@ -6118,11 +6124,15 @@ sub _show_infos
 			}
 			$report_info{'Objects'}{$typ}{'number'} = 0;
 			$report_info{'Objects'}{$typ}{'invalid'} = 0;
-			if (!grep(/^$typ$/, 'DATABASE LINK', 'JOB')) {
+			if (!grep(/^$typ$/, 'DATABASE LINK', 'JOB', 'TABLE', 'INDEX')) {
 				for (my $i = 0; $i <= $#{$objects{$typ}}; $i++) {
 					$report_info{'Objects'}{$typ}{'number'}++;
 					$report_info{'Objects'}{$typ}{'invalid'}++ if ($objects{$typ}[$i]->{invalid});
 				}
+			} elsif ($typ eq 'TABLE') {
+				$report_info{'Objects'}{$typ}{'number'} = $total_table_objects;
+			} elsif ($typ eq 'INDEX') {
+				$report_info{'Objects'}{$typ}{'number'} = $total_index_objects;
 			} else {
 				$report_info{'Objects'}{$typ}{'number'} = $objects{$typ};
 			}
