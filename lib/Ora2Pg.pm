@@ -2847,8 +2847,16 @@ CREATE TRIGGER insert_${table}_trigger
 			}
 		}
 	}
+	# Find first the total number of tables
+	my $num_total_table = 0;
+	foreach my $table (keys %{$self->{tables}}) {
+		if ($self->{tables}{$table}{type} ne 'view') {
+			next if ($self->skip_this_object('TABLE', $table));
+		}
+		$num_total_table++;
+	}
+	# Dump all table/index/constraints SQL definitions
 	my $ib = 1;
-	my $num_total_table = scalar keys %{$self->{tables}};
 	foreach my $table (sort { $self->{tables}{$a}{internal_id} <=> $self->{tables}{$b}{internal_id} } keys %{$self->{tables}}) {
 
 		if ($self->{tables}{$table}{type} ne 'view') {
