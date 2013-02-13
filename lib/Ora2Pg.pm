@@ -6225,11 +6225,11 @@ sub _show_infos
 				}
 				$report_info{'Objects'}{$typ}{'detail'} .= "Total number of rows: $total_row_num\n";
 				$report_info{'Objects'}{$typ}{'detail'} .= "Top $self->{top_max} of tables sorted by rows number:\n";
-				$i = 1;
+				my $j = 1;
 				foreach my $t (sort {$self->{tables}{$b}{table_info}{num_rows} <=> $self->{tables}{$a}{table_info}{num_rows}} keys %{$self->{tables}}) {
 					$report_info{'Objects'}{$typ}{'detail'} .= "\L$t\E ($self->{tables}{$t}{table_info}{num_rows} rows)\n";
-					$i++;
-					last if ($i > $self->{top_max});
+					$j++;
+					last if ($j > $self->{top_max});
 				}
 				$comment = "Nothing particular." if (!$comment);
 			} elsif ($typ eq 'TYPE') {
