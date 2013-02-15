@@ -2911,6 +2911,7 @@ CREATE TRIGGER insert_${table}_trigger
 			} elsif (exists $self->{'replace_as_boolean'}{uc($f->[1])} && ($self->{'replace_as_boolean'}{uc($f->[1])}[0] == $f->[5])) {
 				$type = 'boolean';
 			}
+			$type = $self->{'modify_type'}{"\L$table\E"}{"\L$f->[0]\E"} if (exists $self->{'modify_type'}{"\L$table\E"}{"\L$f->[0]\E"});
 			if (!$self->{preserve_case}) {
 				$fname = $self->quote_reserved_words($fname);
 				$sql_output .= "\t\L$fname\E $type";
@@ -5206,7 +5207,7 @@ sub read_config
 					$AConfig{"skip_\L$s\E"} = 1;
 				}
 			}
-		} elsif (!grep(/^$var$/, 'TABLES', 'ALLOW', 'MODIFY_STRUCT', 'REPLACE_TABLES', 'REPLACE_COLS', 'WHERE', 'EXCLUDE','VIEW_AS_TABLE','ORA_RESERVED_WORDS','SYSUSERS','REPLACE_AS_BOOLEAN','BOOLEAN_VALUES')) {
+		} elsif (!grep(/^$var$/, 'TABLES', 'ALLOW', 'MODIFY_STRUCT', 'REPLACE_TABLES', 'REPLACE_COLS', 'WHERE', 'EXCLUDE','VIEW_AS_TABLE','ORA_RESERVED_WORDS','SYSUSERS','REPLACE_AS_BOOLEAN','BOOLEAN_VALUES','MODIFY_TYPE')) {
 			$AConfig{$var} = $val;
 		} elsif ( ($var eq 'TABLES') || ($var eq 'ALLOW') || ($var eq 'EXCLUDE') || ($var eq 'VIEW_AS_TABLE') ) {
 			$var = 'ALLOW' if ($var eq 'TABLES');
@@ -5222,6 +5223,12 @@ sub read_config
 				$fields =~ s/^\s+//;
 				$fields =~ s/\s+$//;
 				push(@{$AConfig{$var}{$table}}, split(/[\s,]+/, $fields) );
+			}
+		} elsif ($var eq 'MODIFY_TYPE') {
+			my @modif_type = split(/[\s,;\t]+/, $val);
+			foreach my $r (@modif_type) { 
+				my ($table, $col, $type) = split(/:/, lc($r));
+				$AConfig{$var}{$table}{$col} = $type;
 			}
 		} elsif ($var eq 'REPLACE_COLS') {
 			while ($val =~ s/([^\(\s\t]+)\s*\(([^\)]+)\)\s*//) {
