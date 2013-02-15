@@ -451,7 +451,6 @@ sub _init
 	$self->{null_equal_empty} = 1;
 	$self->{estimate_cost} = 0;
 	$self->{where} = ();
-	@{$self->{sysusers}} = ('SYSTEM','SYS','DBSNMP','OUTLN','PERFSTAT','CTXSYS','XDB','WMSYS','SYSMAN','SQLTXPLAIN','MDSYS','EXFSYS','ORDSYS','DMSYS','OLAPSYS','FLOWS_020100','FLOWS_FILES','TSMSYS');
 	$self->{ora_reserved_words} = (); 
 	# Init PostgreSQL DB handle
 	$self->{dbhdest} = undef;
@@ -460,6 +459,7 @@ sub _init
 	$self->{allow_code_break} = 1;
 	$self->{create_schema} = 1;
 	$self->{external_table} = ();
+
 	# Initialyze following configuration file
 	foreach my $k (sort keys %AConfig) {
 		if (lc($k) eq 'allow') {
@@ -472,6 +472,9 @@ sub _init
 			$self->{lc($k)} = $AConfig{$k};
 		}
 	}
+
+	# Set default system user/schema to not export
+	push(@{$self->{sysusers}}, 'SYSTEM','SYS','DBSNMP','OUTLN','PERFSTAT','CTXSYS','XDB','WMSYS','SYSMAN','SQLTXPLAIN','MDSYS','EXFSYS','ORDSYS','DMSYS','OLAPSYS','FLOWS_020100','FLOWS_FILES','TSMSYS','WKSYS','FLOWS_030000');
 
 	# Default boolean values
 	foreach my $k (keys %BOOLEAN_MAP) {
@@ -2918,20 +2921,18 @@ CREATE TRIGGER insert_${table}_trigger
 			} else {
 				$sql_output .= "\t\"$fname\" $type";
 			}
+			if (!$f->[3] || ($f->[3] eq 'N')) {
+				push(@{$self->{tables}{$table}{check_constraint}{notnull}}, $f->[0]);
+				$sql_output .= " NOT NULL";
+			}
 			if ($f->[4] ne "") {
 				$f->[4] =~ s/SYSDATE[\s\t]*\([\s\t]*\)/LOCALTIMESTAMP/igs;
 				$f->[4] =~ s/SYSDATE/LOCALTIMESTAMP/ig;
 				$f->[4] =~ s/^[\s\t]+//;
 				$f->[4] =~ s/[\s\t]+$//;
-				if (($f->[4] eq "''") && (!$f->[3] || ($f->[3] eq 'N'))) {
-					$sql_output .= " NOT NULL";
-					push(@{$self->{tables}{$table}{check_constraint}{notnull}}, $f->[0]);
-				} elsif ($self->{type} ne 'FDW') {
+				if ($self->{type} ne 'FDW') {
 					$sql_output .= " DEFAULT $f->[4]";
 				}
-			} elsif (!$f->[3] || ($f->[3] eq 'N')) {
-				push(@{$self->{tables}{$table}{check_constraint}{notnull}}, $f->[0]);
-				$sql_output .= " NOT NULL";
 			}
 			$sql_output .= ",\n";
 		}
@@ -4872,6 +4873,39 @@ WHERE
 
 	return \%parts, \%default;
 }
+=head2 _get_synonym
+This function implements an Oracle-native synonym information.
+=cut
+
+sub _get_synonym
+{
+	my($self) = @_;
+
+	# Retrieve all synonym
+	my $str = "SELECT SYNONYM_NAME,TABLE_OWNER,TABLE_NAME,DB_LINK FROM $self->{prefix}_SYNONYMS";
+	if ($self->{schema}) {
+		$str .= "\tWHERE owner ='$self->{schema}' AND table_owner NOT IN ('" . join("','", @{$self->{sysusers}}) . "')\n";
+	} else {
+		$str .= "\tWHERE owner NOT IN ('" . join("','", @{$self->{sysusers}}) . "') AND table_owner NOT IN ('" . join("','", @{$self->{sysusers}}) . "')\n";
+	}
+	$str .= "ORDER BY SYNONYM_NAME\n";
+
+	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+
+	my %synonyms = ();
+	while (my $row = $sth->fetch) {
+		# forget or not this object if it is in the exclude or allow lists.
+		next if ($self->skip_this_object('SYNONYM', $row->[0]));
+		$synonyms{$row->[0]}{owner} = $row->[1];
+		$synonyms{$row->[0]}{table} = $row->[2];
+		$synonyms{$row->[0]}{dblink} = $row->[3];
+	}
+	$sth->finish;
+
+	return %synonyms;
+}
+
 
 =head2 _get_partitions_list
 
@@ -6311,6 +6345,16 @@ sub _show_infos
 				}
 				$report_info{'Objects'}{$typ}{'comment'} = "Total size of package code: $total_size bytes. Number of procedures and functions found inside those packages: $number_fct.";
 			} elsif ($typ eq 'SYNONYM') {
+				my %synonyms = $self->_get_synonyms();
+				foreach my $t (sort keys %synonyms) {
+					if ($synonyms{$t}{dblink}) {
+						$report_info{'Objects'}{$typ}{'detail'} .= "\L$t\E is a link to $synonyms{$t}{dblink}";
+						$report_info{'Objects'}{$typ}{'detail'} .= " ($synonyms{$t}{owner}.$synonyms{$t}{table})" if ($synonyms{$t}{table});
+						$report_info{'Objects'}{$typ}{'detail'} .= "\n";
+					} else {
+						$report_info{'Objects'}{$typ}{'detail'} .= "\L$t\E is an alias to $synonyms{$t}{owner}.$synonyms{$t}{table}\n";
+					}
+				}
 				$report_info{'Objects'}{$typ}{'comment'} = "SYNONYM are not exported at all. An usual workaround is to use View instead or set the PostgreSQL search_path in your session to access object outside the current schema.";
 			} elsif ($typ eq 'TABLE PARTITION') {
 				my %partitions = $self->_get_partitions_list();
