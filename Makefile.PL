@@ -171,6 +171,10 @@ DATA_LIMIT	10000
 # Modify output from the following tables(fields separate by space or comma)
 #MODIFY_STRUCT	TABLE_TEST(dico,dossier)
 
+# Some time you need to force the destination type, for example a column
+# exported as timestamp by Ora2Pg can be forced into type date. 
+#MODIFY_TYPE    TABLE:COLUMN:FINAL_TYPE
+
 # You may wish to change table names during data extraction, especally for
 # replication use. Give a list of tables separate by space as follow.
 #REPLACE_TABLES	ORIG_TB_NAME1:NEW_TB_NAME1 ORIG_TB_NAME2:NEW_TB_NAME2 
