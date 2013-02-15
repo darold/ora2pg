@@ -309,9 +309,10 @@ NOESCAPE	0
 # installed. By default it will suppress all object owned by the following
 # system users:
 #	SYS,SYSTEM,DBSNMP,OUTLN,PERFSTAT,CTXSYS,XDB,WMSYS,SYSMAN,SQLTXPLAIN,
-# 	MDSYS,EXFSYS,ORDSYS,DMSYS,OLAPSYS,FLOWS_020100,FLOWS_FILES,TSMSYS
+# 	MDSYS,EXFSYS,ORDSYS,DMSYS,OLAPSYS,FLOWS_020100,FLOWS_FILES,TSMSYS,
+#	WKSYS,FLOWS_030000
 # Other list of users set to this directive will be added to this list.
-#SYSUSERS	
+#SYSUSERS	OE,HR
 
 # Disables alter of sequences on all tables in COPY or INSERT mode.
 # Set to 1 if you want to disable update of sequence during data migration.
