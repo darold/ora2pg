@@ -173,7 +173,11 @@ Here are all command line parameters available when using ora2pg:
 	    -h | --help       : Print this short help.
 	    -i | --input file : File containing Oracle PL/SQL code to convert with
 				no Oracle database connection initiated.
+	    -j | --jobs num   : number of parallel process to send data to PostgreSQL.
+	    -J | --copies num : number of parallel connection to extract data from Oracle.
 	    -l | --log file   : Used to set a log file. Default is stdout.
+	    -L | --limit num  : number of tuples extracted from Oracle and stored in
+				memory before writing, default: 10000.
 	    -n | --namespace schema : Used to set the Oracle schema to extract from.
 	    -o | --out file   : Used to set the path to the output file where SQL will
 				be written. Default: output.sql in running directory.

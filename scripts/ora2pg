@@ -1,4 +1,7 @@
 #!/usr/bin/perl
+
+eval 'exec /usr/bin/perl  -S $0 ${1+"$@"}'
+    if 0; # not running under some shell
 #------------------------------------------------------------------------------
 # Project  : Oracle to Postgresql converter
 # Name     : ora2pg
@@ -25,7 +28,7 @@
 use strict qw/vars/;
 
 use Ora2Pg;
-use Getopt::Long;
+use Getopt::Long qw(:config no_ignore_case bundling);
 use POSIX qw(locale_h sys_wait_h _exit);
 setlocale(LC_NUMERIC, '');
 setlocale(LC_ALL,     'C');
@@ -57,6 +60,9 @@ my $VIEW_AS_TABLE = '';
 my $ESTIMATE_COST = 0;
 my $COST_UNIT_VALUE = 0;
 my $DUMP_AS_HTML = 0;
+my $THREAD_COUNT = 0;
+my $ORACLE_COPIES = 0;
+my $DATA_LIMIT = 0;
 
 my @CAPABILITIES = qw(
 	TABLE PACKAGE INSERT COPY VIEW GRANT SEQUENCE TRIGGER QUERY
@@ -73,7 +79,10 @@ GetOptions (
 	'e|exclude=s' => \$EXCLUDE,
         'h|help!' => \$HELP,
 	'i|input_file=s' => \$INPUT_FILE,
+	'j|jobs=i' => \$THREAD_COUNT,
+	'J|copies=i' => \$ORACLE_COPIES,
         'l|log=s' => \$LOGFILE,
+	'L|limit=i' => \$DATA_LIMIT,
         'o|out=s' => \$OUTFILE,
 	'p|plsql!' => \$PLSQL,
 	'q|quiet!' => \$QUIET,
@@ -159,6 +168,9 @@ my $schema = new Ora2Pg (
 	estimate_cost => $ESTIMATE_COST,
 	cost_unit_value => $COST_UNIT_VALUE,
 	dump_as_html => $DUMP_AS_HTML,
+	thread_count => $THREAD_COUNT,
+	oracle_copies => $ORACLE_COPIES,
+	data_limit => $DATA_LIMIT,
 );
 
 
@@ -187,7 +199,11 @@ Usage: ora2pg [-dhpqsv] [--option value]
     -h | --help       : Print this short help.
     -i | --input file : File containing Oracle PL/SQL code to convert with
 			no Oracle database connection initiated.
+    -j | --jobs num   : number of parallel process to send data to PostgreSQL.
+    -J | --copies num : number of parallel connection to extract data from Oracle.
     -l | --log file   : Used to set a log file. Default is stdout.
+    -L | --limit num  : number of tuples extracted from Oracle and stored in
+			memory before writing, default: 10000.
     -n | --namespace schema : Used to set the Oracle schema to extract from.
     -o | --out file   : Used to set the path to the output file where SQL will
 			be written. Default: output.sql in running directory.
