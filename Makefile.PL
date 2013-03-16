@@ -396,17 +396,29 @@ FORCE_OWNER	0
 # See NOESCAPE for enabling/disabling escape in COPY statements.
 STANDARD_CONFORMING_STRINGS	1
 
-# Multi-threading support. It is only used to do the escaping to convert
-# LOBs to byteas, as it is very cpu hungry.
-# There's a lot of CPU-waste here. Putting 6 threads will only triple your
-# throughput, if your machine has enough cores.
-# If zero, do not use threads, do not waste CPU, but be slower with bytea.
-# Performance seems to peak at 5 threads, if you have enough cores, and
-# triples throughput on tables having LOB.
-# Another important thing: because of the way threading works in perl, threads
-# consume a lot of memory. Put a low (5000 for instance) DATA_LIMIT if you
-# activate threading. Default is threads disabled.
-THREAD_COUNT		0
+# Multiprocess support. This directive replace the obsolete THREAD_COUNT
+# variable. Ora2Pg now use fork() to do parallel process instead of Perl
+# threadis. This directive should defined the number of parallel connection
+# to PostgreSQL for direct data migration. The limit is the number of cores
+# on your machine. This is useful if PostgreSQL is the bottleneck. COPIES
+JOBS		1
+
+# Multiprocess support. This directive should defined the number of parallel
+# connection to Oracle when extracting data. The limit is the number of cores
+# on your machine. This is useful if Oracle is the bottleneck. Take care that
+# this directive can only be used if there is a column defined in DEFINED_PK.
+ORACLE_COPIES	1
+
+# Multiprocess support. This directive is used to split the select queries
+# between the differents connections to Oracle if ORA_COPIES is used. Ora2Pg
+# will extract data with the following prepare statement:
+# 	SELECT * FROM TABLE WHERE MOD(COLUMN, $ORA_COPIES) = ?
+# Where $ORA_COPIES is the total number of cores used to extract data and set
+# with ORA_COPIES directive, and ? is the current core used at execution time.
+# This mean that Ora2Pg need to know the numeric column to used in this query,
+# if this column is a real, float, numeric or decimal, you must add the ROUND()
+# function with the column to round the value to the nearest integer.
+#DEFINED_PK	TABLE:COLUMN TABLE:ROUND(COLUMN)
 
 # This directive is use to enable/disable the plsql to pgplsql conversion part
 # that could break the original code if they include complex subqueries.
