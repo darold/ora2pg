@@ -30,6 +30,10 @@ use DBI;
 use POSIX qw(locale_h _exit :sys_wait_h);
 use IO::File;
 use Config;
+use Time::HiRes qw/usleep/;
+use Fcntl qw/ :flock /;
+use IO::Handle;
+use IO::Pipe;
 
 #set locale to LC_NUMERIC C
 setlocale(LC_NUMERIC,"C");
@@ -38,6 +42,11 @@ $VERSION = '10.1';
 $PSQL = $ENV{PLSQL} || 'psql';
 
 $| = 1;
+
+our %RUNNING_PIDS = ();
+# Multiprocess communication pipe
+our $pipe = undef;
+
 
 # These definitions can be overriden from configuration file
 our %TYPE = (
@@ -147,6 +156,48 @@ our @GRANTS = (
 	'EXECUTE'
 );
 
+$SIG{'CHLD'} = 'DEFAULT';
+
+####
+# method used to fork as many child as wanted
+##
+sub spawn
+{
+	my $coderef = shift;
+
+	unless (@_ == 0 && $coderef && ref($coderef) eq 'CODE') {
+		print "usage: spawn CODEREF";
+		exit 0;
+	}
+
+	my $pid;
+	if (!defined($pid = fork)) {
+		print STDERR "Error: cannot fork: $!\n";
+		return;
+	} elsif ($pid) {
+		$RUNNING_PIDS{$pid} = $pid;
+		return; # the parent
+	}
+	# the child -- go spawn
+	$< = $>;
+	$( = $); # suid progs only
+
+	exit &$coderef();
+}
+
+# With multiprocess we need to wait all childs
+sub wait_child
+{
+        my $sig = shift;
+        print STDERR "Received terminating signal ($sig).\n";
+        1 while wait != -1;
+        $SIG{INT} = \&wait_child;
+        $SIG{TERM} = \&wait_child;
+        _exit(0);
+}
+$SIG{INT} = \&wait_child;
+$SIG{TERM} = \&wait_child;
+
 =head1 PUBLIC METHODS
 
 =head2 new HASH_OPTIONS
@@ -254,13 +305,13 @@ sub export_schema
 }
 
 
-=head2 export_file FILENAME
+=head2 open_export_file FILENAME
 
 Open a file handle to a given filename.
 
 =cut
 
-sub export_file
+sub open_export_file
 {
 	my ($self, $outfile, $noprefix) = @_;
 
@@ -286,8 +337,43 @@ sub export_file
 		}
 
 	}
+	$filehdl->autoflush(1);
+
 	return $filehdl;
 }
+
+=head2 append_export_file FILENAME
+
+Open a file handle to a given filename to append data.
+
+=cut
+
+sub append_export_file
+{
+	my ($self, $outfile, $noprefix) = @_;
+
+	my $filehdl = undef;
+
+	if ($outfile) {
+		if ($self->{output_dir} && !$noprefix) {
+			$outfile = $self->{output_dir} . '/' . $outfile;
+		}
+		# If user request data compression
+		if ($self->{output} =~ /\.gz$/) {
+			die "FATAL: you can't use compressed output with parallel dump\n";
+		} elsif ($self->{output} =~ /\.bz2$/) {
+			die "FATAL: you can't use compressed output with parallel dump\n";
+		} else {
+			$filehdl = new IO::File;
+			$filehdl->open(">>$outfile") or $self->logit("FATAL: Can't open $outfile: $!\n", 0, 1);
+			binmode($filehdl, $self->{'binmode'});
+		}
+	}
+	$filehdl->autoflush(1);
+
+	return $filehdl;
+}
+
 
 
 =head2 close_export_file FILEHANDLE
@@ -452,6 +538,8 @@ sub _init
 	$self->{estimate_cost} = 0;
 	$self->{where} = ();
 	$self->{ora_reserved_words} = (); 
+	$self->{defined_pk} = ();
+
 	# Init PostgreSQL DB handle
 	$self->{dbhdest} = undef;
 	$self->{idxcomment} = 0;
@@ -548,26 +636,18 @@ sub _init
 	%options = ();
 	%AConfig = ();
 
-	# If iThreads and THREAD_COUNT are enabled
-	$self->{queue_todo_bytea} = undef;
-	$self->{queue_done_bytea} = undef;
-	$self->{bytea_worker_threads} = ();
-	if ($Config{useithreads} && $self->{thread_count}) {
-		require threads;
-		require threads::shared;
-		require Thread::Queue;
-		# Create the worker threads. They all wait on us to feed them
-		# records. We get the records back formatted by the CPU-hungry
-		# format_data.
-		$self->{queue_todo_bytea} = Thread::Queue->new();
-		$self->{queue_done_bytea} = Thread::Queue->new();
-		for (my $i=0;$i<$self->{thread_count};$i++) {
-			my $thread=threads->create('worker_format_data',$self,$i);
-			push(@{$self->{bytea_worker_threads}},($thread));
-		}
-	} else {
-		$self->{thread_count} = 0;
+	# Multiprocess init
+	$self->{jobs} ||= 1;
+	$self->{child_count}  = 0;
+	# backward compatibility
+	if ($self->{thread_count}) {
+		$self->{jobs} = $self->{thread_count} || 1;
 	}
+	# Multiple Oracle connection
+	$self->{oracle_copies} ||= 0;
+	$self->{ora_conn_count} = 0;
+	$self->{data_limit} ||= 10000;
+
 	# Set user defined data type translation
 	if ($self->{data_type}) {
 		my @transl = split(/[,;]/, $self->{data_type});
@@ -616,10 +696,6 @@ sub _init
 	}
 	$self->{longtruncok} = 0 if (not defined $self->{longtruncok});
 	$self->{longreadlen} ||= (1024*1024);
-	#$self->{ora_piece_size} ||= $self->{longreadlen};
-	#if ($self->{ora_piece_size} > $self->{longreadlen}) {
-	#	$self->{longreadlen} = $self->{ora_piece_size};
-	#}
 	# Backward compatibility with PG_NUMERIC_TYPE alone
 	$self->{pg_integer_type} = 1 if (not defined $self->{pg_integer_type});
 	# Backward compatibility with CASE_SENSITIVE
@@ -660,65 +736,23 @@ sub _init
 
 	if (!$self->{input_file}) {
 		# Connect the database
-		$self->logit("Trying to connect to database: $self->{oracle_dsn}\n", 1);
-		$self->{dbh} = DBI->connect($self->{oracle_dsn}, $self->{oracle_user}, $self->{oracle_pwd}, { LongReadLen=>$self->{longreadlen}, LongTruncOk=>$self->{longtruncok} });
-
-		# Fix a problem when exporting type LONG and LOB
-		$self->{dbh}->{'LongReadLen'} = $self->{longreadlen};
-		$self->{dbh}->{'LongTruncOk'} = $self->{longtruncok};
-
-		# Check for connection failure
-		if (!$self->{dbh}) {
-			$self->logit("FATAL: $DBI::err ... $DBI::errstr\n", 0, 1);
-		}
-
-		# Use consistent reads for concurrent dumping...
-		$self->{dbh}->begin_work || $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-		if ($self->{debug}) {
-			$self->logit("Isolation level: $self->{transaction}\n", 1);
-		}
-		my $sth = $self->{dbh}->prepare($self->{transaction}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-		$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-		$sth->finish;
-		undef $sth;
+		$self->{dbh} = $self->_oracle_connection();
 
 		# Auto detect character set
-		if ($self->{debug}) {
-			$self->logit("Auto detecting Oracle character set and the corresponding PostgreSQL client encoding to use.\n", 1);
+		if ($self->_init_oracle_connection($self->{dbh})) {
+			$self->{dbh}->disconnect();
+			$self->{dbh} = $self->_oracle_connection();
+			$self->_init_oracle_connection($self->{dbh});
 		}
-		my $encoding = $self->_get_encoding();
-		if (!$self->{nls_lang}) {
-			$self->{nls_lang} = $encoding;
-			if ($self->{debug}) {
-				$self->logit("\tUsing Oracle character set: $self->{nls_lang}.\n", 1);
+
+		# Compile again all objects in the schema
+		if ($self->{compile_schema}) {
+			if ($self->{debug} && $self->{compile_schema}) {
+				$self->logit("Force Oracle to compile schema before code extraction\n", 1);
 			}
-		} else {
-			$ENV{NLS_LANG} = $self->{nls_lang};
-			if ($self->{debug}) {
-				$self->logit("\tUsing the character set given in NLS_LANG configuration directive ($self->{nls_lang}).\n", 1);
-			}
+			$self->_compile_schema($self->{dbh}, uc($self->{compile_schema}));
 		}
-		if (!$self->{client_encoding}) {
-			if ($self->{'binmode'} =~ /utf8/i) {
-				$self->{client_encoding} = 'UTF8';
-				if ($self->{debug}) {
-					$self->logit("\tUsing PostgreSQL client encoding forced to UTF8 as BINMODE configuration directive has been set to $self->{binmode}.\n", 1);
-				}
-			} else {
-				$self->{client_encoding} = &auto_set_encoding($encoding);
-				if ($self->{debug}) {
-					$self->logit("\tUsing PostgreSQL client encoding: $self->{client_encoding}.\n", 1);
-				}
-			}
-		} else {
-			if ($self->{debug}) {
-				$self->logit("\tUsing PostgreSQL client encoding given in CLIENT_ENCODING configuration directive ($self->{client_encoding}).\n", 1);
-			}
-		}
-		if ($self->{debug}) {
-			$self->logit("Force Oracle to compile schema before code extraction\n", 1);
-		}
-		$self->_compile_schema(uc($self->{compile_schema})) if ($self->{compile_schema});
+
 	} else {
 		$self->{plsql_pgsql} = 1;
 		if (grep(/^$self->{type}$/, 'QUERY', 'FUNCTION','PROCEDURE','PACKAGE')) {
@@ -776,16 +810,96 @@ sub _init
 		$self->replace_cols(%{$self->{'replace_cols'}});
 		$self->set_where_clause($self->{"global_where"}, %{$self->{'where'}});
 	}
-	# Disconnect from the database
-	$self->{dbh}->disconnect() if ($self->{dbh});
 
 	if ( ($self->{type} eq 'INSERT') || ($self->{type} eq 'COPY') ) {
-		$self->_send_to_pgdb() if ($self->{pg_dsn} && !$self->{dbhdest});
-	} elsif ($self->{dbhdest}) {
+		$self->{dbhdest} = $self->_send_to_pgdb() if ($self->{pg_dsn} && !$self->{dbhdest});
+	} elsif ($self->{pg_dsn}) {
 		$self->logit("WARNING: can't use direct import into PostgreSQL with this type of export.\n");
 		$self->logit("Only INSERT or COPY export type can be use with direct import, file output will be used.\n");
 		sleep(2);
 	}
+
+	# Disconnect from the database
+	$self->{dbh}->disconnect() if ($self->{dbh});
+
+}
+
+
+sub _oracle_connection
+{
+	my $self = shift;
+
+	$self->logit("Trying to connect to database: $self->{oracle_dsn}\n", 1);
+
+	my $dbh = DBI->connect($self->{oracle_dsn}, $self->{oracle_user}, $self->{oracle_pwd}, {ora_envhp => 0, LongReadLen=>$self->{longreadlen}, LongTruncOk=>$self->{longtruncok} });
+
+	# Fix a problem when exporting type LONG and LOB
+	$dbh->{'LongReadLen'} = $self->{longreadlen};
+	$dbh->{'LongTruncOk'} = $self->{longtruncok};
+
+	# Check for connection failure
+	if (!$dbh) {
+		$self->logit("FATAL: $DBI::err ... $DBI::errstr\n", 0, 1);
+	}
+
+	# Use consistent reads for concurrent dumping...
+	$dbh->begin_work || $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
+	if ($self->{debug}) {
+		$self->logit("Isolation level: $self->{transaction}\n", 1);
+	}
+	my $sth = $dbh->prepare($self->{transaction}) or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
+	$sth->execute or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
+	$sth->finish;
+	undef $sth;
+
+	return $dbh;
+}
+
+# use to set encoding
+sub _init_oracle_connection
+{
+	my ($self, $dbh) = @_;
+
+	my $must_reconnect = 0;
+
+	# Auto detect character set
+	if ($self->{debug}) {
+		$self->logit("Auto detecting Oracle character set and the corresponding PostgreSQL client encoding to use.\n", 1);
+	}
+	my $encoding = $self->_get_encoding($dbh);
+	if (!$self->{nls_lang}) {
+		$self->{nls_lang} = $encoding;
+		$ENV{NLS_LANG} = $self->{nls_lang};
+		if ($self->{debug}) {
+			$self->logit("\tUsing Oracle character set: $self->{nls_lang}.\n", 1);
+		}
+		$must_reconnect = 1;
+	} else {
+		$ENV{NLS_LANG} = $self->{nls_lang};
+		if ($self->{debug}) {
+			$self->logit("\tUsing the character set given in NLS_LANG configuration directive ($self->{nls_lang}).\n", 1);
+		}
+	}
+
+	if (!$self->{client_encoding}) {
+		if ($self->{'binmode'} =~ /utf8/i) {
+			$self->{client_encoding} = 'UTF8';
+			if ($self->{debug}) {
+				$self->logit("\tUsing PostgreSQL client encoding forced to UTF8 as BINMODE configuration directive has been set to $self->{binmode}.\n", 1);
+			}
+		} else {
+			$self->{client_encoding} = &auto_set_encoding($encoding);
+			if ($self->{debug}) {
+				$self->logit("\tUsing PostgreSQL client encoding: $self->{client_encoding}.\n", 1);
+			}
+		}
+	} else {
+		if ($self->{debug}) {
+			$self->logit("\tUsing PostgreSQL client encoding given in CLIENT_ENCODING configuration directive ($self->{client_encoding}).\n", 1);
+		}
+	}
+
+	return $must_reconnect;
 }
 
 
@@ -795,12 +909,7 @@ sub DESTROY
 {
 	my $self = shift;
 
-	foreach my $thread (@{$self->{bytea_worker_threads}}) {
-		$self->{queue_todo_bytea}->enqueue(undef);
-	}
-	foreach my $thread (@{$self->{bytea_worker_threads}}) {
-		$thread->join();
-	}
+	#$self->{dbh}->disconnect() if ($self->{dbh});
 
 }
 
@@ -823,7 +932,7 @@ sub _send_to_pgdb
 	$destpasswd ||= $self->{pg_pwd};
 
         # Then connect the destination database
-        $self->{dbhdest} = DBI->connect($destsrc, $destuser, $destpasswd);
+        my $dbhdest = DBI->connect($destsrc, $destuser, $destpasswd);
 
 	$destsrc =~ /dbname=([^;]*)/;
 	$self->{dbname} = $1;
@@ -837,16 +946,17 @@ sub _send_to_pgdb
 	$self->{dbpwd} = $destpasswd;
 
         # Check for connection failure
-        if (!$self->{dbhdest}) {
+        if (!$dbhdest) {
 		$self->logit("FATAL: $DBI::err ... $DBI::errstr\n", 0, 1);
 	}
 
+	return $dbhdest;
 }
 
 # Backward Compatibility
 sub send_to_pgdb
 {
-	&_send_to_pgdb(@_);
+	return &_send_to_pgdb(@_);
 
 }
 
@@ -1309,20 +1419,8 @@ sub _get_sql_data
 	if ($self->{client_encoding}) {
 		$sql_header .= "SET client_encoding TO '\U$self->{client_encoding}\E';\n\n";
 	}
-	if ($self->{export_schema} && ($self->{type} ne 'TABLE')) {
-		if ($self->{pg_schema}) {
-			if (!$self->{preserve_case}) {
-				$sql_header .= "SET search_path = \L$self->{pg_schema}\E;\n\n";
-			} else {
-				$sql_header .= "SET search_path = \"$self->{pg_schema}\";\n\n";
-			}
-		} else {
-			if (!$self->{preserve_case}) {
-				$sql_header .= "SET search_path = \L$self->{schema}\E, pg_catalog;\n\n" if ($self->{schema});
-			} else {
-				$sql_header .= "SET search_path = \"$self->{schema}\", pg_catalog;\n\n" if ($self->{schema});
-			}
-		}
+	if ($self->{type} ne 'TABLE') {
+		$sql_header .= $self->set_search_path();
 	}
 	$sql_header .= "\\set ON_ERROR_STOP ON\n\n" if ($self->{stop_on_error});
 
@@ -1332,7 +1430,7 @@ sub _get_sql_data
 	if ($self->{type} eq 'VIEW') {
 		$self->logit("Add views definition...\n", 1);
 		my $nothing = 0;
-		$self->dump($sql_header) if ($self->{file_per_table} && !$self->{dbhdest});
+		$self->dump($sql_header) if ($self->{file_per_table} && !$self->{pg_dsn});
 		my $dirprefix = '';
 		$dirprefix = "$self->{output_dir}/" if ($self->{output_dir});
 		my $i = 1;
@@ -1343,10 +1441,10 @@ sub _get_sql_data
 				print STDERR $self->progress_bar($i, $num_total_view, 25, '=', 'views', "generating $view" );
 			}
 			my $fhdl = undef;
-			if ($self->{file_per_table} && !$self->{dbhdest}) {
+			if ($self->{file_per_table} && !$self->{pg_dsn}) {
 				$self->dump("\\i $dirprefix${view}_$self->{output}\n");
 				$self->logit("Dumping to one file per view : ${view}_$self->{output}\n", 1);
-				$fhdl = $self->export_file("${view}_$self->{output}");
+				$fhdl = $self->open_export_file("${view}_$self->{output}");
 			}
 			$self->{views}{$view}{text} =~ s/\s*\bWITH\b\s+.*$//s;
 			$self->{views}{$view}{text} = $self->_format_view($self->{views}{$view}{text});
@@ -1385,7 +1483,7 @@ sub _get_sql_data
 				}
 				$sql_output .= ") AS " . $self->{views}{$view}{text} . ";\n\n";
 			}
-			if ($self->{file_per_table} && !$self->{dbhdest}) {
+			if ($self->{file_per_table} && !$self->{pg_dsn}) {
 				$self->dump($sql_header . $sql_output, $fhdl);
 				$self->close_export_file($fhdl);
 				$sql_output = '';
@@ -1412,7 +1510,7 @@ sub _get_sql_data
 	if ($self->{type} eq 'MVIEW') {
 		$self->logit("Add materialized views definition...\n", 1);
 		my $nothing = 0;
-		$self->dump($sql_header) if ($self->{file_per_table} && !$self->{dbhdest});
+		$self->dump($sql_header) if ($self->{file_per_table} && !$self->{pg_dsn});
 		my $dirprefix = '';
 		$dirprefix = "$self->{output_dir}/" if ($self->{output_dir});
 		if ($self->{plsql_pgsql}) {
@@ -1515,7 +1613,7 @@ SECURITY DEFINER
 LANGUAGE plpgsql ;
 
 };
-			$self->dump($sqlout) if (!$self->{dbhdest});
+			$self->dump($sqlout) if (!$self->{pg_dsn});
 		}
                 my $i = 1;
                 my $num_total_mview = scalar keys %{$self->{materialized_views}};
@@ -1525,10 +1623,10 @@ LANGUAGE plpgsql ;
 				print STDERR $self->progress_bar($i, $num_total_mview, 25, '=', 'materialized views', "generating $view" );
 			}
 			my $fhdl = undef;
-			if ($self->{file_per_table} && !$self->{dbhdest}) {
+			if ($self->{file_per_table} && !$self->{pg_dsn}) {
 				$self->dump("\\i $dirprefix${view}_$self->{output}\n");
 				$self->logit("Dumping to one file per materialized view : ${view}_$self->{output}\n", 1);
-				$fhdl = $self->export_file("${view}_$self->{output}");
+				$fhdl = $self->open_export_file("${view}_$self->{output}");
 			}
 			if (!$self->{plsql_pgsql}) {
 				$sql_output .= "CREATE MATERIALIZED VIEW $view\n";
@@ -1550,7 +1648,7 @@ LANGUAGE plpgsql ;
 				$sql_output .= "SELECT create_materialized_view('\L$view\E','\L$view\E_mview', change with the name of the colum to used for the index);\n\n\n";
 			}
 
-			if ($self->{file_per_table} && !$self->{dbhdest}) {
+			if ($self->{file_per_table} && !$self->{pg_dsn}) {
 				$self->dump($sql_header . $sql_output, $fhdl);
 				$self->close_export_file($fhdl);
 				$sql_output = '';
@@ -1734,10 +1832,10 @@ LANGUAGE plpgsql ;
 				print STDERR $self->progress_bar($i, $num_total_trigger, 25, '=', 'triggers', "generating $trig->[0]" );
 			}
 			my $fhdl = undef;
-			if ($self->{file_per_function} && !$self->{dbhdest}) {
+			if ($self->{file_per_function} && !$self->{pg_dsn}) {
 				$self->dump("\\i $dirprefix$trig->[0]_$self->{output}\n");
 				$self->logit("Dumping to one file per trigger : $trig->[0]_$self->{output}\n", 1);
-				$fhdl = $self->export_file("$trig->[0]_$self->{output}");
+				$fhdl = $self->open_export_file("$trig->[0]_$self->{output}");
 			}
 			$trig->[1] =~ s/\s*EACH ROW//is;
 			chop($trig->[4]);
@@ -1796,7 +1894,7 @@ LANGUAGE plpgsql ;
 					$sql_output .= "\tEXECUTE PROCEDURE trigger_fct_\L$trig->[0]\E();\n\n";
 				}
 			}
-			if ($self->{file_per_function} && !$self->{dbhdest}) {
+			if ($self->{file_per_function} && !$self->{pg_dsn}) {
 				$self->dump($sql_header . $sql_output, $fhdl);
 				$self->close_export_file($fhdl);
 				$sql_output = '';
@@ -1968,10 +2066,10 @@ LANGUAGE plpgsql ;
 			}
 			$self->logit("\tDumping function $fct...\n", 1);
 			my $fhdl = undef;
-			if ($self->{file_per_function} && !$self->{dbhdest}) {
+			if ($self->{file_per_function} && !$self->{pg_dsn}) {
 				$self->dump("\\i $dirprefix${fct}_$self->{output}\n");
 				$self->logit("Dumping to one file per function : ${fct}_$self->{output}\n", 1);
-				$fhdl = $self->export_file("${fct}_$self->{output}");
+				$fhdl = $self->open_export_file("${fct}_$self->{output}");
 			}
 			$self->{idxcomment} = 0;
 			my %comments = $self->_remove_comments(\$self->{functions}{$fct});
@@ -1981,7 +2079,7 @@ LANGUAGE plpgsql ;
 				$sql_output .= $self->{functions}{$fct} . "\n\n";
 			}
 			$self->_restore_comments(\$sql_output, \%comments);
-			if ($self->{file_per_function} && !$self->{dbhdest}) {
+			if ($self->{file_per_function} && !$self->{pg_dsn}) {
 				$self->dump($sql_header . $sql_output, $fhdl);
 				$self->close_export_file($fhdl);
 				$sql_output = '';
@@ -2073,10 +2171,10 @@ LANGUAGE plpgsql ;
 
 			$self->logit("\tDumping procedure $fct...\n", 1);
 			my $fhdl = undef;
-			if ($self->{file_per_function} && !$self->{dbhdest}) {
+			if ($self->{file_per_function} && !$self->{pg_dsn}) {
 				$self->dump("\\i $dirprefix${fct}_$self->{output}\n");
 				$self->logit("Dumping to one file per procedure : ${fct}_$self->{output}\n", 1);
-				$fhdl = $self->export_file("${fct}_$self->{output}");
+				$fhdl = $self->open_export_file("${fct}_$self->{output}");
 			}
 			$self->{idxcomment} = 0;
 			my %comments = $self->_remove_comments(\$self->{procedures}{$fct});
@@ -2086,7 +2184,7 @@ LANGUAGE plpgsql ;
 				$sql_output .= $self->{procedures}{$fct} . "\n\n";
 			}
 			$self->_restore_comments(\$sql_output, \%comments);
-			if ($self->{file_per_function} && !$self->{dbhdest}) {
+			if ($self->{file_per_function} && !$self->{pg_dsn}) {
 				$self->dump($sql_header . $sql_output, $fhdl);
 				$self->close_export_file($fhdl);
 				$sql_output = '';
@@ -2170,7 +2268,7 @@ LANGUAGE plpgsql ;
 			my $pkgbody = '';
 			if (!$self->{plsql_pgsql}) {
 				$self->logit("Dumping package $pkg...\n", 1);
-				if ($self->{plsql_pgsql} && $self->{file_per_function} && !$self->{dbhdest}) {
+				if ($self->{plsql_pgsql} && $self->{file_per_function} && !$self->{pg_dsn}) {
 					my $dir = lc("$dirprefix${pkg}");
 					if (!-d "$dir") {
 						if (not mkdir($dir)) {
@@ -2277,7 +2375,7 @@ LANGUAGE plpgsql ;
 					}
 					push(@done, $tb_name);
 					foreach my $obj (@{$self->{tablespaces}{$tb_type}{$tb_name}{$tb_path}}) {
-						next if ($self->{file_per_index} && !$self->{dbhdest} && ($tb_type eq 'INDEX'));
+						next if ($self->{file_per_index} && !$self->{pg_dsn} && ($tb_type eq 'INDEX'));
 						if (!$self->{preserve_case} || ($tb_type eq 'INDEX')) {
 							$sql_output .= "ALTER $tb_type \L$obj\E SET TABLESPACE \L$tb_name\E;\n";
 						} else {
@@ -2294,10 +2392,10 @@ LANGUAGE plpgsql ;
 		$self->dump($sql_header . "$create_tb\n" . $sql_output);
 
 		
-		if ($self->{file_per_index} && !$self->{dbhdest}) {
+		if ($self->{file_per_index} && !$self->{pg_dsn}) {
 			my $fhdl = undef;
 			$self->logit("Dumping tablespace alter indexes to one separate file : TBSP_INDEXES_$self->{output}\n", 1);
-			$fhdl = $self->export_file("TBSP_INDEXES_$self->{output}");
+			$fhdl = $self->open_export_file("TBSP_INDEXES_$self->{output}");
 			$sql_output = '';
 			foreach my $tb_type (sort keys %{$self->{tablespaces}}) {
 				# TYPE - TABLESPACE_NAME - FILEPATH - OBJECT_NAME
@@ -2324,8 +2422,8 @@ LANGUAGE plpgsql ;
 	# Extract data only
 	if (($self->{type} eq 'INSERT') || ($self->{type} eq 'COPY')) {
 
-		# Connect the database
-		$self->{dbh} = DBI->connect($self->{oracle_dsn}, $self->{oracle_user}, $self->{oracle_pwd}, { LongReadLen=>$self->{longreadlen}, LongTruncOk=>$self->{longtruncok} });
+		# Connect the Oracle database to gather information
+		$self->{dbh} = DBI->connect($self->{oracle_dsn}, $self->{oracle_user}, $self->{oracle_pwd}, { ora_envhp  => 0, LongReadLen=>$self->{longreadlen}, LongTruncOk=>$self->{longtruncok} });
 
 		# Fix a problem when exporting type LONG and LOB
 		$self->{dbh}->{'LongReadLen'} = $self->{longreadlen};
@@ -2336,23 +2434,6 @@ LANGUAGE plpgsql ;
 			$self->logit("FATAL: $DBI::err ... $DBI::errstr\n", 0, 1);
 		}
 
-		if (!$self->{dbhdest}) {
-			$self->dump($sql_header);
-		}
-
-		if ($self->{dbhdest} && $self->{export_schema} &&  $self->{schema}) {
-			my $search_path = "SET search_path = \L$self->{schema}\E, pg_catalog";
-			if ($self->{preserve_case}) {
-				$search_path = "SET search_path = \"$self->{schema}\", pg_catalog";
-			}
-			if ($self->{pg_schema}) {
-				$search_path = "SET search_path = \L$self->{pg_schema}\E";
-				if ($self->{preserve_case}) {
-					$search_path = "SET search_path = \"$self->{schema}\"";
-				}
-			}
-			my $s = $self->{dbhdest}->do($search_path) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
-		}
 		# Remove external table from data export
 		if (scalar keys %{$self->{external_table}} ) {
 			foreach my $table (keys %{$self->{tables}}) {
@@ -2361,30 +2442,35 @@ LANGUAGE plpgsql ;
 				}
 			}
 		}
-		# Set total number of rows
-		my $global_rows = 0;
-		foreach my $table (keys %{$self->{tables}}) {
-			$global_rows += $self->{tables}{$table}{table_info}{num_rows};
-		}
-
-		# Disable SQL script exit on error
-		if ($self->{drop_indexes} || $self->{drop_fkey}) {
-			if (!$self->{dbhdest}) {
-				$self->dump("\\set ON_ERROR_STOP OFF\n");
-			}
-		}
 
 		# Ordering tables by name
 		my @ordered_tables = sort { $a cmp $b } keys %{$self->{tables}};
-		if ($self->{defer_fkey}) {
-			if ($self->{dbhdest}) {
-				my $s = $self->{dbhdest}->do("BEGIN;") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
-				$self->{dbhdest}->do("SET CONSTRAINTS ALL DEFERRED;") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
-			} else {
+
+		if (!$self->{pg_dsn}) {
+			$self->dump($sql_header);
+			# Disable SQL script exit on error
+			if ($self->{drop_indexes} || $self->{drop_fkey}) {
+				$self->dump("\\set ON_ERROR_STOP OFF\n");
+			}
+			# Defer all constraints
+			if ($self->{defer_fkey}) {
 				$self->dump("BEGIN;\n", $fhdl);
 				$self->dump("SET CONSTRAINTS ALL DEFERRED;\n\n");
 			}
+		} else {
+			# Set search path
+			my $search_path = $self->set_search_path();
+			if ($search_path) {
+				$self->{dbhdest}->do($search_path) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
+			}
+			# Defer all constraints
+			if ($self->{defer_fkey}) {
+				$self->{dbhdest}->do("BEGIN;") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
+				$self->{dbhdest}->do("SET CONSTRAINTS ALL DEFERRED;") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
+			}
 		}
+
+		# Drop foreign keys if required
 		if ($self->{drop_fkey}) {
 			my $drop_all = '';
 			# First of all we drop all foreign keys
@@ -2397,9 +2483,8 @@ LANGUAGE plpgsql ;
 			}
 			$drop_all = '';
 		}
-		if (!$self->{drop_fkey} && !$self->{defer_fkey}) {
-			$self->logit("WARNING: Please consider using DEFER_FKEY or DROP_FKEY configuration directives if foreign key have already been imported.\n", 0);
-		}
+
+		# Drop indexes if required
 		if ($self->{drop_indexes}) {
 			my $drop_all = '';
 			# First of all we drop all indexes
@@ -2412,263 +2497,103 @@ LANGUAGE plpgsql ;
 			}
 			$drop_all = '';
 		}
-		if ($self->{stop_on_error}) {
+
+		# Force again the script to fail on error
+		if (!$self->{pg_dsn} && $self->{stop_on_error}) {
 			if ($self->{drop_indexes} || $self->{drop_fkey}) {
-				if (!$self->{dbhdest}) {
-					$self->dump("\\set ON_ERROR_STOP ON\n");
-				}
+				$self->dump("\\set ON_ERROR_STOP ON\n");
 			}
 		}
+
 		# Force datetime format
 		$self->_datetime_format();
 
+		# Set total number of rows
+		my $global_rows = 0;
+		foreach my $table (keys %{$self->{tables}}) {
+			$global_rows += $self->{tables}{$table}{table_info}{num_rows};
+		}
+		# Open a pipe for interprocess communication
+		my $reader = new IO::Handle;
+		my $writer = new IO::Handle;
+		$pipe = IO::Pipe->new($reader, $writer);
+		$writer->autoflush(1);
+
+		# Fork the logger process
+		spawn sub {
+			$self->multiprocess_progressbar($global_rows);
+		};
+
 		my $dirprefix = '';
 		$dirprefix = "$self->{output_dir}/" if ($self->{output_dir});
-		my $global_count = 0;
 		my $start_time = time();
 		foreach my $table (@ordered_tables) {
 			next if ($self->skip_this_object('TABLE', $table));
-			my $fhdl = undef;
-			if ($self->{file_per_table} && !$self->{dbhdest}) {
-				# Do not dump data again if the file already exists
-				if (-e "$dirprefix${table}_$self->{output}") {
-					$self->logit("WARNING: Skipping dumping data from $table, file already exists ${table}_$self->{output}\n", 0);
-					next;
-				}
-				$self->dump("\\i $dirprefix${table}_$self->{output}\n");
-				$self->logit("Dumping $table to file: ${table}_$self->{output}\n", 1);
-				$fhdl = $self->export_file("${table}_$self->{output}");
-			} else {
-				$self->logit("Dumping data from table $table...\n", 1);
-			}
-			## Set client encoding if requested
-			if ($self->{file_per_table} && $self->{client_encoding}) {
-				$self->logit("Changing client encoding as \U$self->{client_encoding}\E...\n", 1);
-				if ($self->{dbhdest}) {
-					my $s = $self->{dbhdest}->do("SET client_encoding TO '\U$self->{client_encoding}\E';") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
-				} else {
-					$self->dump("SET client_encoding TO '\U$self->{client_encoding}\E';\n", $fhdl);
-				}
-			}
-			my $search_path = '';
-			if ($self->{export_schema}) {
-				if ($self->{pg_schema}) {
-					if (!$self->{preserve_case}) {
-						$search_path = "SET search_path = \L$self->{pg_schema}\E;";
-					} else {
-						$search_path = "SET search_path = \"$self->{pg_schema}\";";
-					}
-				} elsif ($self->{schema}) {
-					if (!$self->{preserve_case}) {
-						$search_path = "SET search_path = \L$self->{schema}\E, pg_catalog;";
-					} else {
-						$search_path = "SET search_path = \"$self->{schema}\", pg_catalog;";
-					}
-				}
-			}
-			if ($search_path) {
-				if ($self->{dbhdest}) {
-					my $s = $self->{dbhdest}->do("$search_path") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
-				} else {
-					$self->dump("$search_path\n", $fhdl);
-				}
-			}
-
-			# Start transaction to speed up bulkload
-			if (!$self->{defer_fkey}) {
-				if ($self->{dbhdest}) {
-					my $s = $self->{dbhdest}->do("BEGIN;") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
-				} else {
-					$self->dump("BEGIN;\n", $fhdl);
-				}
-			}
-			# Rename table and double-quote it if required
-			my $tmptb = $table;
-			if (exists $self->{replaced_tables}{"\L$table\E"} && $self->{replaced_tables}{"\L$table\E"}) {
-				$self->logit("\tReplacing table $table as " . $self->{replaced_tables}{lc($table)} . "...\n", 1);
-				$tmptb = $self->{replaced_tables}{lc($table)};
-			}
-			if (!$self->{preserve_case}) {
-				$tmptb = lc($tmptb);
-				$tmptb =~ s/"//g;
-			} elsif ($tmptb !~ /"/) {
-				$tmptb = '"' . $tmptb . '"';
-			}
-			$tmptb = $self->quote_reserved_words($tmptb);
-
-			## disable triggers of current table if requested
-			if ($self->{disable_triggers}) {
-				my $trig_type = 'USER';
-				$trig_type = 'ALL' if (uc($self->{disable_triggers}) eq 'ALL');
-				if ($self->{dbhdest}) {
-					my $s = $self->{dbhdest}->do("ALTER TABLE $tmptb DISABLE TRIGGER $trig_type;") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
-				} else {
-					$self->dump("ALTER TABLE $tmptb DISABLE TRIGGER $trig_type;\n", $fhdl);
-				}
-			}
-
-			## Truncate current table if requested
-			if ($self->{truncate_table}) {
-				if ($self->{dbhdest}) {
-					my $s = $self->{dbhdest}->do("TRUNCATE TABLE $tmptb;") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
-				} else {
-					$self->dump("TRUNCATE TABLE $tmptb;\n", $fhdl);
-				}
-			}
-
-			my @tt = ();
-			my @stt = ();
-			my @nn = ();
-			my $s_out = "INSERT INTO $tmptb (";
-			if ($self->{type} eq 'COPY') {
-				$s_out = "\nCOPY $tmptb (";
-			}
-
-			# Extract column information following the Oracle position order
-			my @fname = ();
-			foreach my $i ( 0 .. $#{$self->{tables}{$table}{field_name}} ) {
-				my $fieldname = ${$self->{tables}{$table}{field_name}}[$i];
-				if (!$self->{preserve_case}) {
-					if (exists $self->{modify}{"\L$table\E"}) {
-						next if (!grep(/^$fieldname$/i, @{$self->{modify}{"\L$table\E"}}));
-					}
-				} else {
-					if (exists $self->{modify}{"$table"}) {
-						next if (!grep(/^$fieldname$/i, @{$self->{modify}{"$table"}}));
-					}
-				}
-				if (!$self->{preserve_case}) {
-					push(@fname, lc($fieldname));
-				} else {
-					push(@fname, $fieldname);
-				}
-
-				my $f = $self->{tables}{$table}{column_info}{$fieldname};
-				my $type = $self->_sql_type($f->[1], $f->[2], $f->[5], $f->[6]);
-				$type = "$f->[1], $f->[2]" if (!$type);
-				push(@stt, uc($f->[1]));
-				push(@tt, $type);
-				push(@nn,  $self->{tables}{$table}{column_info}{$fieldname});
-				# Change column names
-				my $colname = $f->[0];
-				if ($self->{replaced_cols}{lc($table)}{lc($f->[0])}) {
-					$self->logit("\tReplacing column $f->[0] as " . $self->{replaced_cols}{lc($table)}{lc($f->[0])} . "...\n", 1);
-					$colname = $self->{replaced_cols}{lc($table)}{lc($f->[0])};
-				}
-				if (!$self->{preserve_case}) {
-					$colname = $self->quote_reserved_words($colname);
-					$s_out .= "\L$colname\E,";
-				} else {
-					$s_out .= "\"$colname\",";
-				}
-			}
-			$s_out =~ s/,$//;
-			if ($self->{type} eq 'COPY') {
-				$s_out .= ") FROM STDIN;\n";
-			} else {
-				$s_out .= ") VALUES (";
-			}
-
-			my $sprep = undef;
-			if ($self->{dbhdest}) {
-				if ($self->{type} ne 'COPY') {
-					$s_out .= '?,' foreach (@fname);
-					$s_out =~ s/,$//;
-					$s_out .= ")";
-					$sprep = $s_out;
-				}
-			}
-			# Extract all data from the current table
-			my $total_record = $self->extract_data($table, $s_out, \@nn, \@tt, $fhdl, $sprep, \@stt);
-			$global_count += $total_record;
-			my $end_time = time();
-			my $dt = $end_time - $start_time;
-			$dt ||= 1;
-			my $rps = sprintf("%.1f", $global_count / ($dt+.0001));
-			$self->logit("Total extracted records from table $table: $total_record\n", 1);
-			if (!$self->{quiet} && !$self->{debug}) {
-				print STDERR $self->progress_bar($global_count, $global_rows, 25, '=', 'rows', "on total data ($rps recs/sec)" ), "\n";
-			}
-
-                        ## don't forget to enable all triggers if needed...
-			if ($self->{disable_triggers}) {
-				my $tmptb = $table;
-				if (exists $self->{replaced_tables}{"\L$table\E"} && $self->{replaced_tables}{"\L$table\E"}) {
-					$self->logit("\tReplacing table $table as " . $self->{replaced_tables}{lc($table)} . "...\n", 1);
-					$tmptb = $self->{replaced_tables}{lc($table)};
-				}
-				if (!$self->{preserve_case}) {
-					$tmptb = lc($tmptb);
-					$tmptb =~ s/"//g;
-				} elsif ($tmptb !~ /"/) {
-					$tmptb = '"' . $tmptb . '"';
-				}
-				$tmptb = $self->quote_reserved_words($tmptb);
-				my $trig_type = 'USER';
-				$trig_type = 'ALL' if (uc($self->{disable_triggers}) eq 'ALL');
-				if ($self->{dbhdest}) {
-					my $s = $self->{dbhdest}->do("ALTER TABLE $tmptb ENABLE TRIGGER $trig_type;") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
-				} else {
-					$self->dump("ALTER TABLE $tmptb ENABLE TRIGGER $trig_type;\n\n", $fhdl);
-				}
-			}
-			# COMMIT transaction at end for speed improvement
-			if (!$self->{defer_fkey}) {
-				if ($self->{dbhdest}) {
-					my $s = $self->{dbhdest}->do("COMMIT;") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
-				} else {
-					$self->dump("COMMIT;\n\n", $fhdl);
-				}
-			}
-			if ($self->{file_per_table} && !$self->{dbhdest}) {
-				$self->close_export_file($fhdl);
-			}
-		}
-		if (!$self->{quiet} && !$self->{debug}) {
-			my $ratio = 1;
-			if ($global_rows) {
-				$ratio = sprintf("%.1f", ($global_count / +$global_rows) * 100);
-				if ($ratio != 100.0) {
-					print STDERR "The total number of rows is an estimation, the final percentage may not be equal to 100.\n";
-				}
-			}
+			$self->_dump_table($dirprefix, $sql_header, $table, $start_time, $global_rows);
 		}
 
+		# Wait for all child die
+		if ($self->{oracle_copies} > 1) {
+			# Wait for all child dies less the logger
+			while (scalar keys %RUNNING_PIDS > 1) {
+				my $kid = waitpid(-1, WNOHANG);
+				if ($kid > 0) {
+					delete $RUNNING_PIDS{$kid};
+				}
+				usleep(500000);
+			}
+			# Terminate the process logger
+			foreach my $k (keys %RUNNING_PIDS) {
+				kill(10, $k);
+				%RUNNING_PIDS = ();
+			}
+			$self->{dbh}->disconnect() if ($self->{dbh});
+			$self->{dbh} = $self->_oracle_connection();
+			$self->_init_oracle_connection($self->{dbh});
+		}
+
+
+		# Remove function created to export external table
 		if ($self->{bfile_found}) {
 			$self->logit("Removing function ora2pg_get_bfilename() used to retrieve path from BFILE.\n", 1);
 			my $bfile_function = "DROP FUNCTION ora2pg_get_bfilename";
 			my $sth2 = $self->{dbh}->do($bfile_function);
 		}
-		# extract sequence information
+
+		# Insert restart sequences orders
 		if (($#ordered_tables >= 0) && !$self->{disable_sequence}) {
 			$self->logit("Restarting sequences\n", 1);
 			$self->dump($self->_extract_sequence_info());
 		}
+
+		# Recreate all foreign keys of the concerned tables
 		if ($self->{drop_fkey}) {
 			my @create_all = ();
-			# Recreate all foreign keys of the concerned tables
 			foreach my $table (sort { $self->{tables}{$a}{internal_id} <=> $self->{tables}{$b}{internal_id} } keys %{$self->{tables}}) {
 				$self->logit("Restoring table $table foreign keys...\n", 1);
 				push(@create_all, $self->_create_foreign_keys($table, @{$self->{tables}{$table}{foreign_key}}));
 			}
 			foreach my $str (@create_all) {
-				if ($self->{dbhdest}) {
+				if ($self->{pg_dsn}) {
 					my $s = $self->{dbhdest}->do($str) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
 				} else {
 					$self->dump("$str\n");
 				}
 			}
 		}
+
+		# Commit transaction if required
 		if ($self->{defer_fkey}) {
-			if ($self->{dbhdest}) {
+			if ($self->{pg_dsn}) {
 				my $s = $self->{dbhdest}->do("COMMIT;") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
 			} else {
 				$self->dump("COMMIT;\n\n", $fhdl);
 			}
 		}
+
+		# Recreate all indexes
 		if ($self->{drop_indexes}) {
 			my @create_all = ();
-			# Recreate all indexes
 			foreach my $table (sort { $self->{tables}{$a}{internal_id} <=> $self->{tables}{$b}{internal_id} } keys %{$self->{tables}}) {
 				$self->logit("Restoring table $table indexes...\n", 1);
 				push(@create_all, $self->_create_indexes($table, %{$self->{tables}{$table}{indexes}}));
@@ -2679,7 +2604,7 @@ LANGUAGE plpgsql ;
 						$create_all[$i] = Ora2Pg::PLSQL::plsql_to_plpgsql($create_all[$i], $self->{allow_code_break},$self->{null_equal_empty});
 					}
 				}
-				if ($self->{dbhdest}) {
+				if ($self->{pg_dsn}) {
 					foreach my $str (@create_all) {
 						my $s = $self->{dbhdest}->do($str) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
 					}
@@ -2688,6 +2613,7 @@ LANGUAGE plpgsql ;
 				}
 			}
 		}
+
 		# Disconnect from the database
 		$self->{dbh}->disconnect() if ($self->{dbh});
 		$self->{dbhdest}->disconnect() if ($self->{dbhdest});
@@ -2803,52 +2729,16 @@ CREATE TRIGGER insert_${table}_trigger
 				$sql_output .= "CREATE SCHEMA \"$self->{schema}\";\n\n";
 			}
 		}
-		if ($self->{pg_schema}) {
-			if (!$self->{preserve_case}) {
-				$sql_output .= "SET search_path = \L$self->{pg_schema}\E;\n\n";
-			} else {
-				$sql_output .= "SET search_path = \"$self->{pg_schema}\";\n\n";
-			}
-		} else {
-			if (!$self->{preserve_case}) {
-				$sql_output .= "SET search_path = \L$self->{schema}, pg_catalog\E;\n\n";
-			} else {
-				$sql_output .= "SET search_path = \"$self->{schema}, pg_catalog\";\n\n";
-			}
-		}
 	}
+	$sql_output .= $self->set_search_path();
 
 	my $constraints = '';
-	if ($self->{export_schema} && $self->{file_per_constraint}) {
-		if ($self->{pg_schema}) {
-			if (!$self->{preserve_case}) {
-				$constraints .= "SET search_path = \L$self->{pg_schema}\E;\n\n";
-			} else {
-				$constraints .= "SET search_path = \"$self->{pg_schema}\";\n\n";
-			}
-		} elsif ($self->{schema}) {
-			if (!$self->{preserve_case}) {
-				$constraints .= "SET search_path = \L$self->{schema}\E, pg_catalog;\n\n";
-			} else {
-				$constraints .= "SET search_path = \"$self->{schema}\", pg_catalog;\n\n";
-			}
-		}
+	if ($self->{file_per_constraint}) {
+		$constraints .= $self->set_search_path();
 	}
 	my $indices = '';
-	if ($self->{export_schema} && $self->{file_per_index}) {
-		if ($self->{pg_schema}) {
-			if (!$self->{preserve_case}) {
-				$indices .= "SET search_path = \L$self->{pg_schema}\E;\n\n";
-			} else {
-				$indices .= "SET search_path = \"$self->{pg_schema}\";\n\n";
-			}
-		} elsif ($self->{schema}) {
-			if (!$self->{preserve_case}) {
-				$indices .= "SET search_path = \L$self->{schema}\E, pg_catalog;\n\n";
-			} else {
-				$indices .= "SET search_path = \"$self->{schema}\", pg_catalog;\n\n";
-			}
-		}
+	if ($self->{file_per_index}) {
+		$indices .= $self->set_search_path();
 	}
 	# Find first the total number of tables
 	my $num_total_table = 0;
@@ -2990,7 +2880,7 @@ CREATE TRIGGER insert_${table}_trigger
 			$constraints .= $self->_create_unique_keys($table, $self->{tables}{$table}{unique_key});
 			# Set the check constraint definition 
 			$constraints .= $self->_create_check_constraint($table, $self->{tables}{$table}{check_constraint},$self->{tables}{$table}{field_name});
-			if (!$self->{file_per_constraint} || $self->{dbhdest}) {
+			if (!$self->{file_per_constraint}) {
 				$sql_output .= $constraints;
 				$constraints = '';
 			}
@@ -3000,7 +2890,7 @@ CREATE TRIGGER insert_${table}_trigger
 			if ($self->{plsql_pgsql}) {
 				$indices = Ora2Pg::PLSQL::plsql_to_plpgsql($indices, $self->{allow_code_break},$self->{null_equal_empty});
 			}
-			if (!$self->{file_per_index} || $self->{dbhdest}) {
+			if (!$self->{file_per_index}) {
 				$sql_output .= $indices;
 				$indices = '';
 			}
@@ -3011,10 +2901,10 @@ CREATE TRIGGER insert_${table}_trigger
 		print STDERR $self->progress_bar($ib - 1, $num_total_table, 25, '=', 'tables', 'end of table export.'), "\n";
 	}
 
-	if ($self->{file_per_index} && !$self->{dbhdest}) {
+	if ($self->{file_per_index}) {
 		my $fhdl = undef;
 		$self->logit("Dumping indexes to one separate file : INDEXES_$self->{output}\n", 1);
-		$fhdl = $self->export_file("INDEXES_$self->{output}");
+		$fhdl = $self->open_export_file("INDEXES_$self->{output}");
 		$indices = "-- Nothing found of type indexes\n" if (!$indices);
 		$self->dump($sql_header . $indices, $fhdl);
 		$self->close_export_file($fhdl);
@@ -3028,7 +2918,7 @@ CREATE TRIGGER insert_${table}_trigger
 		# Add constraint definition
 		my $create_all = $self->_create_foreign_keys($table, @{$self->{tables}{$table}{foreign_key}});
 		if ($create_all) {
-			if ($self->{file_per_constraint} && !$self->{dbhdest}) {
+			if ($self->{file_per_constraint}) {
 				$constraints .= $create_all;
 			} else {
 				$sql_output .= $create_all;
@@ -3036,10 +2926,10 @@ CREATE TRIGGER insert_${table}_trigger
 		}
 	}
 
-	if ($self->{file_per_constraint} && !$self->{dbhdest}) {
+	if ($self->{file_per_constraint}) {
 		my $fhdl = undef;
 		$self->logit("Dumping constraints to one separate file : CONSTRAINTS_$self->{output}\n", 1);
-		$fhdl = $self->export_file("CONSTRAINTS_$self->{output}");
+		$fhdl = $self->open_export_file("CONSTRAINTS_$self->{output}");
 		$constraints = "-- Nothing found of type constraints\n" if (!$constraints);
 		$self->dump($sql_header . $constraints, $fhdl);
 		$self->close_export_file($fhdl);
@@ -3053,6 +2943,147 @@ CREATE TRIGGER insert_${table}_trigger
 	$self->dump($sql_header . $sql_output);
 }
 
+####
+# dump table content
+####
+sub _dump_table
+{
+	my ($self, $dirprefix, $sql_header, $table, $start_time, $global_rows) = @_;
+
+	my $fhdl = undef;
+	if ($self->{file_per_table} && !$self->{pg_dsn}) {
+		# Do not dump data again if the file already exists
+		if (-e "$dirprefix${table}_$self->{output}") {
+			$self->logit("WARNING: Skipping dumping data from $table, file already exists ${table}_$self->{output}\n", 0);
+			return;
+		}
+		$self->dump("\\i $dirprefix${table}_$self->{output}\n");
+	}
+
+	my @cmd_head = ();
+	my @cmd_foot = ();
+	# Set client encoding if requested
+	if ($self->{file_per_table} && $self->{client_encoding}) {
+		$self->logit("Changing client encoding as \U$self->{client_encoding}\E...\n", 1);
+		push(@cmd_head, "SET client_encoding TO '\U$self->{client_encoding}\E';");
+	}
+	# Set search path
+	my $search_path = $self->set_search_path();
+	if ($search_path) {
+		push(@cmd_head,$search_path);
+	}
+
+
+	# Start transaction to speed up bulkload
+	if (!$self->{defer_fkey}) {
+		push(@cmd_head,"BEGIN;");
+	}
+
+	# Rename table and double-quote it if required
+	my $tmptb = $table;
+	if (exists $self->{replaced_tables}{"\L$table\E"} && $self->{replaced_tables}{"\L$table\E"}) {
+		$self->logit("\tReplacing table $table as " . $self->{replaced_tables}{lc($table)} . "...\n", 1);
+		$tmptb = $self->{replaced_tables}{lc($table)};
+	}
+	if (!$self->{preserve_case}) {
+		$tmptb = lc($tmptb);
+		$tmptb =~ s/"//g;
+	} elsif ($tmptb !~ /"/) {
+		$tmptb = '"' . $tmptb . '"';
+	}
+	$tmptb = $self->quote_reserved_words($tmptb);
+
+	# disable triggers of current table if requested
+	if ($self->{disable_triggers}) {
+		my $trig_type = 'USER';
+		$trig_type = 'ALL' if (uc($self->{disable_triggers}) eq 'ALL');
+		push(@cmd_head,"ALTER TABLE $tmptb DISABLE TRIGGER $trig_type;");
+		# don't forget to enable all triggers if needed...
+		push(@cmd_foot,"ALTER TABLE $tmptb ENABLE TRIGGER $trig_type;");
+	}
+
+	# Truncate current table if requested
+	if ($self->{truncate_table}) {
+		if ($self->{pg_dsn}) {
+			my $s = $self->{dbhdest}->do("TRUNCATE TABLE $tmptb;");
+		} else {
+			$self->dump("TRUNCATE TABLE $tmptb;");
+		}
+	}
+
+	# COMMIT transaction at end if required
+	if (!$self->{defer_fkey}) {
+		push(@cmd_foot, "COMMIT;");
+	}
+
+	# Build the header of the query
+	my @tt = ();
+	my @stt = ();
+	my @nn = ();
+	my $s_out = "INSERT INTO $tmptb (";
+	if ($self->{type} eq 'COPY') {
+		$s_out = "\nCOPY $tmptb (";
+	}
+
+	# Extract column information following the Oracle position order
+	my @fname = ();
+	foreach my $i ( 0 .. $#{$self->{tables}{$table}{field_name}} ) {
+		my $fieldname = ${$self->{tables}{$table}{field_name}}[$i];
+		if (!$self->{preserve_case}) {
+			if (exists $self->{modify}{"\L$table\E"}) {
+				next if (!grep(/^$fieldname$/i, @{$self->{modify}{"\L$table\E"}}));
+			}
+		} else {
+			if (exists $self->{modify}{"$table"}) {
+				next if (!grep(/^$fieldname$/i, @{$self->{modify}{"$table"}}));
+			}
+		}
+		if (!$self->{preserve_case}) {
+			push(@fname, lc($fieldname));
+		} else {
+			push(@fname, $fieldname);
+		}
+
+		my $f = $self->{tables}{$table}{column_info}{$fieldname};
+		my $type = $self->_sql_type($f->[1], $f->[2], $f->[5], $f->[6]);
+		$type = "$f->[1], $f->[2]" if (!$type);
+		push(@stt, uc($f->[1]));
+		push(@tt, $type);
+		push(@nn,  $self->{tables}{$table}{column_info}{$fieldname});
+		# Change column names
+		my $colname = $f->[0];
+		if ($self->{replaced_cols}{lc($table)}{lc($f->[0])}) {
+			$self->logit("\tReplacing column $f->[0] as " . $self->{replaced_cols}{lc($table)}{lc($f->[0])} . "...\n", 1);
+			$colname = $self->{replaced_cols}{lc($table)}{lc($f->[0])};
+		}
+		if (!$self->{preserve_case}) {
+			$colname = $self->quote_reserved_words($colname);
+			$s_out .= "\L$colname\E,";
+		} else {
+			$s_out .= "\"$colname\",";
+		}
+	}
+	$s_out =~ s/,$//;
+	if ($self->{type} eq 'COPY') {
+		$s_out .= ") FROM STDIN;\n";
+	} else {
+		$s_out .= ") VALUES (";
+	}
+
+	my $sprep = '';
+	if ($self->{pg_dsn}) {
+		if ($self->{type} ne 'COPY') {
+			$s_out .= '?,' foreach (@fname);
+			$s_out =~ s/,$//;
+			$s_out .= ")";
+			$sprep = $s_out;
+		}
+	}
+
+	# Extract all data from the current table
+	$self->ask_for_data($table, \@cmd_head, \@cmd_foot, $s_out, \@nn, \@tt, $sprep, \@stt);
+
+}
 
 =head2 _column_comments
 
@@ -3218,7 +3249,7 @@ sub _drop_indexes
 		# the index will be automatically created by PostgreSQL at constraint import time.
 		if (!$skip_index_creation) {
 			my $str = "DROP INDEX \L$idx\E;";
-			if ($self->{dbhdest}) {
+			if ($self->{pg_dsn}) {
 				my $s = $self->{dbhdest}->do($str);
 			} else {
 				push(@out, $str);
@@ -3538,7 +3569,7 @@ sub _drop_foreign_keys
 		} else {
 			$str .= "ALTER TABLE \"$table\" DROP CONSTRAINT $h->[0];";
 		}
-		if ($self->{dbhdest}) {
+		if ($self->{pg_dsn}) {
 			my $s = $self->{dbhdest}->do($str);
 		} else {
 			$out .= $str . "\n";
@@ -3589,15 +3620,15 @@ sub _extract_sequence_info
 }
 
 
-=head2 _get_data TABLE
+=head2 _howto_get_data TABLE
 
 This function implements an Oracle-native data extraction.
 
-Returns a list of array references containing the data
+Returns the SQL query to use to retrieve data
 
 =cut
 
-sub _get_data
+sub _howto_get_data
 {
 	my ($self, $table, $name, $type, $src_type) = @_;
 
@@ -3642,7 +3673,7 @@ sub _get_data
 	}
 	$str =~ s/,$//;
 
-	# If we hava BFILE we need to create a function
+	# If we have a BFILE we need to create a function
 	if ($self->{bfile_found}) {
 		$self->logit("Creating function ora2pg_get_bfilename( p_bfile IN BFILE ) to retrieve path from BFILE.\n", 1);
 		my $bfile_function = qq{
@@ -3691,13 +3722,15 @@ VARCHAR2
 		$self->logit("\tApplying WHERE global clause: " . $self->{global_where} . "\n", 1);
 	}
 
-	#my $sth = $self->{dbh}->prepare($str,{ora_piece_lob=>1,ora_piece_size=>$self->{ora_piece_size}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-	my $sth = $self->{dbh}->prepare($str,{ora_auto_lob => 1}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	if ( ($self->{oracle_copies} > 1) && $self->{defined_pk}{"\L$table\E"} ) {
+		if ($str =~ / WHERE /) {
+			$str .= " AND MOD(" . $self->{defined_pk}{"\L$table\E"} . ", $self->{oracle_copies}) = ?";
+		} else {
+			$str .= " WHERE MOD(" . $self->{defined_pk}{"\L$table\E"} . ", $self->{oracle_copies}) = ?";
+		}
+	}
 
-	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-
-	return $sth;	
-
+	return $str;
 }
 
 
@@ -3893,7 +3926,6 @@ END
 		}
 		$result{$row->[9]}{$row->[0]} = \%constraint;
 	}
-
 	return %result;
 }
 
@@ -4954,113 +4986,6 @@ WHERE a.table_name = b.table_name
 	return %parts;
 }
 
-# This is a routine paralellizing access to format_data_for_parallel over several threads
-sub format_data_parallel
-{
-	my ($self, $rows, $data_types, $action, $src_data_types, $custom_types, $table) = @_;
-
-	# Ok, here is the required parallelism
-
-	# We use the threads::queue mecanism.
-	# The problem is that the queued data structure must be shared, hence the following code
-	# Not sure it is necessary for Perl > 5.8.6
-	# We try not to enqueue too many messages at once, to save on memory. We don't enqueue more than 
-	# 2*number of threads
-	my $max_queued=$self->{thread_count}*2;
-	my $total_rows=scalar(@$rows);
-	my $retrieved_rows=0;
-	my $sent_rows=0;
-	my @new_rows;
-	my $queue_todo=$self->{queue_todo_bytea};
-	my $queue_done=$self->{queue_done_bytea};
-
-	while (1)
-	{
-		# Do we have something to queue ?
-		if ($sent_rows<$total_rows)
-		{
-			# we still have rows to send. Do we queue one ?
-			if ($sent_rows-$retrieved_rows<$max_queued)
-			{
-				# We can send a new one
-				my $row=$rows->[$sent_rows];
-				# create new row (and its metadata), thread-shared this time
-				# And add to it the types array and the action
-				my @temprow :shared;
-				my @temprecord :shared;
-				my @temptypes :shared;
-				my $tempaction :shared;
-				my @tempsrctypes :shared;
-				my %tempcustomtypes :shared;
-				my $temptable :shared;
-				foreach my $elt (@$row)
-				{
-					my $tempelt :shared;
-					$tempelt=$elt;
-					push @temprow,($tempelt);
-				}
-				push @temprecord,(\@temprow);
-				foreach my $elt (@$data_types)
-				{
-					my $tempelt :shared;
-					$tempelt=$elt;
-					push @temptypes,($tempelt);
-				}
-				push @temprecord,(\@temptypes);
-				$tempaction=$action;
-				push @temprecord,($tempaction);
-				foreach my $elt (@$src_data_types)
-				{
-					my $tempelt :shared;
-					$tempelt=$elt;
-					push @tempsrctypes,($tempelt);
-				}
-				push @temprecord,(\@tempsrctypes);
-				foreach my $elt (%$custom_types)
-				{
-					my $tempelt :shared;
-					$tempelt=$custom_types->{$elt};
-					push @{$tempcustomtypes{$elt}},($tempelt);
-				}
-				push @temprecord,(\%tempcustomtypes);
-				$temptable=$table;
-				push @temprecord,$temptable;
-				$queue_todo->enqueue(\@temprecord);
-				$sent_rows++;
-			}
-		}
-		# Do we have something to dequeue or is the queue full enough?
-		if ($queue_done->pending()>0 or $sent_rows-$retrieved_rows>=$max_queued)
-		{
-			# get our record
-			 my $payload=$queue_done->dequeue();
-			 push @new_rows,($payload);
-
-			$retrieved_rows++;
-		}
-		last if ($retrieved_rows==$total_rows);
-	}
-	return (\@new_rows);
-}
-
-# This gets messages from one queue, pass it to format data, and queue the response
-sub worker_format_data
-{
-	my ($self,$thread_number)=@_;
-	my $counter=0;
-	my $queue_todo=$self->{queue_todo_bytea};
-	my $queue_done=$self->{queue_done_bytea};
-	while (1) {
-		my $payload=$queue_todo->dequeue();
-		last unless (defined $payload);
-		# The received payload is an array of a columns array, types array, type of action and source types array, table name
-		$self->format_data_row($payload->[0],$payload->[1],$payload->[2], $payload->[3], $payload->[4], $payload->[5]);
-		$queue_done->enqueue($payload->[0]); # We only need data
-		$counter++;
-	}
-	return 0;
-}
-
 sub _get_custom_types
 {
         my $str = uc(shift);
@@ -5105,7 +5030,7 @@ sub format_data_type
 
 	# Preparing data for output
 	if ($action ne 'COPY') {
-		if ($col eq '') {
+		if (!defined $col) {
 			$col = 'NULL';
 		} elsif ($data_type eq 'bytea') {
 			$col = escape_bytea($col);
@@ -5135,15 +5060,17 @@ sub format_data_type
 		} else {
 			$col =~ s/,/\./;
 			$col =~ s/\~/inf/;
+			$col = 'NULL' if ($col eq '');
 		}
 	} else {
-		if ($col eq '') {
+		if (!defined $col) {
 			$col = '\N';
 		} elsif ($data_type eq 'boolean') {
 			$col = ($self->{ora_boolean_values}{lc($col)} || $col);
 		} elsif ($data_type !~ /(char|date|time|text|bytea|xml)/) {
 			$col =~ s/,/\./;
 			$col =~ s/\~/inf/;
+			$col = '\N' if ($col eq '');
 		} elsif ($data_type eq 'bytea') {
 			$col = escape_bytea($col);
 		} elsif ($data_type !~ /(date|time)/) {
@@ -5241,7 +5168,7 @@ sub read_config
 					$AConfig{"skip_\L$s\E"} = 1;
 				}
 			}
-		} elsif (!grep(/^$var$/, 'TABLES', 'ALLOW', 'MODIFY_STRUCT', 'REPLACE_TABLES', 'REPLACE_COLS', 'WHERE', 'EXCLUDE','VIEW_AS_TABLE','ORA_RESERVED_WORDS','SYSUSERS','REPLACE_AS_BOOLEAN','BOOLEAN_VALUES','MODIFY_TYPE')) {
+		} elsif (!grep(/^$var$/, 'TABLES', 'ALLOW', 'MODIFY_STRUCT', 'REPLACE_TABLES', 'REPLACE_COLS', 'WHERE', 'EXCLUDE','VIEW_AS_TABLE','ORA_RESERVED_WORDS','SYSUSERS','REPLACE_AS_BOOLEAN','BOOLEAN_VALUES','MODIFY_TYPE','DEFINED_PK')) {
 			$AConfig{$var} = $val;
 		} elsif ( ($var eq 'TABLES') || ($var eq 'ALLOW') || ($var eq 'EXCLUDE') || ($var eq 'VIEW_AS_TABLE') ) {
 			$var = 'ALLOW' if ($var eq 'TABLES');
@@ -5294,6 +5221,12 @@ sub read_config
 				my ($yes, $no) = split(/:/, $r);
 				$AConfig{$var}{lc($yes)} = 't';
 				$AConfig{$var}{lc($no)} = 't';
+			}
+		} elsif ($var eq 'DEFINED_PK') {
+			my @defined_pk = split(/[\s,;\t]+/, $val);
+			foreach my $r (@defined_pk) { 
+				my ($table, $col) = split(/:/, lc($r));
+				$AConfig{$var}{lc($table)} = $col;
 			}
 		} elsif ($var eq 'WHERE') {
 			while ($val =~ s/([^\[\s\t]+)[\t\s]*\[([^\]]+)\][\s\t]*//) {
@@ -5364,7 +5297,7 @@ sub _convert_package
 		$content = $3;
 		$pname =~ s/"//g;
 		$self->logit("Dumping package $pname...\n", 1);
-		if ($self->{file_per_function} && !$self->{dbhdest}) {
+		if ($self->{file_per_function} && !$self->{pg_dsn}) {
 			my $dir = lc("$dirprefix$pname");
 			if (!-d "$dir") {
 				if (not mkdir($dir)) {
@@ -5577,7 +5510,7 @@ sub _convert_function
 		}
 		$function = "\n$func_before$function";
 
-		if ($pname && $self->{file_per_function} && !$self->{dbhdest}) {
+		if ($pname && $self->{file_per_function} && !$self->{pg_dsn}) {
 			$func_name =~ s/^"*$pname"*\.//i;
 			$func_name =~ s/"//g; # Remove case sensitivity quoting
 			$self->logit("\tDumping to one file per function: $dirprefix\L$pname/$func_name\E_$self->{output}\n", 1);
@@ -5587,25 +5520,9 @@ sub _convert_function
 			if ($self->{client_encoding}) {
 				$sql_header .= "SET client_encoding TO '\U$self->{client_encoding}\E';\n";
 			}
-			my $search_path = '';
-			if ($self->{export_schema}) {
-				if ($self->{pg_schema}) {
-					if (!$self->{preserve_case}) {
-						$search_path = "SET search_path = \L$self->{pg_schema}\E;\n";
-					} else {
-						$search_path = "SET search_path = \"$self->{pg_schema}\";\n";
-					}
-				} elsif ($self->{schema}) {
-					if (!$self->{preserve_case}) {
-						$search_path = "SET search_path = \L$self->{schema}\E, pg_catalog;\n";
-					} else {
-						$search_path = "SET search_path = \"$self->{schema}\", pg_catalog;\n";
-					}
-				}
-			}
-			$sql_header .= "$search_path\n";
+			$sql_header .= $self->set_search_path();
 
-			my $fhdl = $self->export_file("$dirprefix\L$pname/$func_name\E_$self->{output}", 1);
+			my $fhdl = $self->open_export_file("$dirprefix\L$pname/$func_name\E_$self->{output}", 1);
 			$self->_restore_comments(\$function, $hrefcomments);
 			$self->dump($sql_header . $function, $fhdl);
 			$self->close_export_file($fhdl);
@@ -5924,13 +5841,54 @@ CREATE TYPE \L$type_name\E AS ($type_name $declar\[$size\]);
 	return $content;
 }
 
-sub extract_data
+sub ask_for_data
 {
-	my ($self, $table, $s_out, $nn, $tt, $fhdl, $sprep, $stt) = @_;
-	my $childcnt = 0;
+	my ($self, $table, $cmd_head, $cmd_foot, $s_out, $nn, $tt, $sprep, $stt) = @_;
 
-	my $total_record = 0;
-	$self->{data_limit} ||= 10000;
+	# Build SQL query to retrieve data from this table
+	$self->logit("Looking how to retrieve data from $table...\n", 1);
+	my $query = $self->_howto_get_data($table, $nn, $tt, $stt);
+
+	# Check for boolean rewritting
+	for (my $i = 0; $i <= $#{$nn}; $i++) {
+		my $colname = $nn->[$i]->[0];
+		$colname =~ s/"//g;
+		# Check if this column should be replaced by a boolean following table/column name
+		if (grep(/^$colname$/i, @{$self->{'replace_as_boolean'}{uc($table)}})) {
+			$tt->[$i] = 'boolean';
+		# Check if this column should be replaced by a boolean following type/precision
+		} elsif (exists $self->{'replace_as_boolean'}{uc($nn->[$i]->[1])} && ($self->{'replace_as_boolean'}{uc($nn->[$i]->[1])}[0] == $nn->[$i]->[5])) {
+			$tt->[$i] = 'boolean';
+		}
+	}
+
+	if ( ($self->{oracle_copies} > 1) && $self->{defined_pk}{"\L$table\E"} ) {
+		$self->{ora_conn_count} = 0;
+		while ($self->{ora_conn_count} < $self->{oracle_copies}) {
+			spawn sub {
+				$self->logit("Creating new connection to Oracle database...\n", 1);
+				$self->_extract_data($query, $table, $cmd_head, $cmd_foot, $s_out, $nn, $tt, $sprep, $stt, $self->{ora_conn_count});
+			};
+			$self->{ora_conn_count}++;
+		}
+		# Wait for oracle connection terminaison
+		while ($self->{ora_conn_count} > 0) {
+			my $kid = waitpid(-1, WNOHANG);
+			if ($kid > 0) {
+				$self->{ora_conn_count}--;
+				delete $RUNNING_PIDS{$kid};
+			}
+			usleep(500000);
+		}
+
+	} else {
+		$self->_extract_data($query, $table, $cmd_head, $cmd_foot, $s_out, $nn, $tt, $sprep, $stt);
+	}
+}
+
+sub _extract_data
+{
+	my ($self, $query, $table, $cmd_head, $cmd_foot, $s_out, $nn, $tt, $sprep, $stt, $proc) = @_;
 
 	my %user_type = ();
 	for (my $idx = 0; $idx < scalar(@$tt); $idx++) {
@@ -5945,119 +5903,203 @@ sub extract_data
 		}
 	}
 
-	$self->logit("Looking for data from $table...\n", 1);
-	my $sth = $self->_get_data($table, $nn, $tt, $stt);
+	my $dbh;
+	my $sth;
+	if ( ($self->{oracle_copies} > 1) && $self->{defined_pk}{"\L$table\E"} ) {
 
-	for (my $i = 0; $i <= $#{$nn}; $i++) {
-		my $colname = $nn->[$i]->[0];
-		$colname =~ s/"//g;
-		# Check if this column should be replaced by a boolean following table/column name
-		if (grep(/^$colname$/i, @{$self->{'replace_as_boolean'}{uc($table)}})) {
-			$tt->[$i] = 'boolean';
-		# Check if this column should be replaced by a boolean following type/precision
-		} elsif (exists $self->{'replace_as_boolean'}{uc($nn->[$i]->[1])} && ($self->{'replace_as_boolean'}{uc($nn->[$i]->[1])}[0] == $nn->[$i]->[5])) {
-			$tt->[$i] = 'boolean';
+		$dbh = $self->{dbh}->clone();
+
+		$self->{dbh}->{InactiveDestroy} = 1;
+		$self->{dbh} = undef;
+
+		# Set row cache size
+		$dbh->{RowCacheSize} = int($self->{data_limit}/10);
+
+		# prepare the query before execution
+		$sth = $dbh->prepare($query,{ora_auto_lob => 1,ora_exe_mode=>OCI_STMT_SCROLLABLE_READONLY, ora_check_sql => 1}) or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
+		my $r = $sth->{NAME};
+
+		# Extract data now by chunk of DATA_LIMIT and send them to a dedicated job
+		$self->logit("Fetching all data from $table tuples...\n", 1);
+		if (defined $proc) {
+			$sth->execute($proc) or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
+		} else {
+			$sth->execute() or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
+		}
+
+	} else {
+
+		# Set row cache size
+		$self->{dbh}->{RowCacheSize} = int($self->{data_limit}/10);
+
+		# prepare the query before execution
+		$sth = $self->{dbh}->prepare($query,{ora_auto_lob => 1,ora_exe_mode=>OCI_STMT_SCROLLABLE_READONLY, ora_check_sql => 1}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+		my $r = $sth->{NAME};
+
+		# Extract data now by chunk of DATA_LIMIT and send them to a dedicated job
+		$self->logit("Fetching all data from $table tuples...\n", 1);
+		if (defined $proc) {
+			$sth->execute($proc) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+		} else {
+			$sth->execute() or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 		}
 	}
-	my $start_time = time();
+	my $start_time   = time();
+	my $total_record = 0;
 	my $total_row = $self->{tables}{$table}{table_info}{num_rows};
-	$self->logit("Fetching all data from $table...\n", 1);
-
+	my $nrows = 0;
 	while ( my $rows = $sth->fetchall_arrayref(undef,$self->{data_limit})) {
 
-		my $sql = '';
-		if ($self->{type} eq 'COPY') {
-			$sql = $s_out;
-		}
-		# Preparing data for output
-		$self->logit("DEBUG: Preparing bulk of $self->{data_limit} data for output\n", 1);
-		if (!defined $sprep) {
-			# If there is a bytea column
-			if ($self->{thread_count} && scalar(grep(/bytea/,@$tt))) {
-				$self->logit("DEBUG: Parallelizing this formatting, as it is costly (bytea found)\n", 1);
-				$rows = $self->format_data_parallel($rows, $tt, $self->{type}, $stt, \%user_type, $table);
-				# we change $rows reference!
-			} else {
-				$self->format_data($rows, $tt, $self->{type}, $stt, \%user_type, $table);
+		$nrows =  @$rows;
+		$total_record += $nrows;
+		while ($self->{child_count} >= $self->{jobs}) {
+			my $kid = waitpid(-1, WNOHANG);
+			if ($kid > 0) {
+				$self->{child_count}--;
+				delete $RUNNING_PIDS{$kid};
 			}
+			usleep(50000);
 		}
-		# Creating output
-		$self->logit("DEBUG: Creating output for $self->{data_limit} tuples\n", 1);
-		my $count = 0;
-		if ($self->{type} eq 'COPY') {
-			if ($self->{dbhdest}) {
-				$total_record += <$in1> if ($self->{fork_child});
-				$self->logit("DEBUG: Sending COPY bulk output directly to PostgreSQL backend\n", 1);
-				my $s = $self->{dbhdest}->do($sql) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
-				$sql = '';
-				foreach my $row (@$rows) {
-					$count++;
-					$s = $self->{dbhdest}->pg_putcopydata(join("\t", @$row) . "\n") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
-				}
-				$s = $self->{dbhdest}->pg_putcopyend() or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
-			} else {
-				map { $sql .= join("\t", @$_) . "\n"; $count++; } @$rows;
-				$sql .= "\\.\n";
-			}
-		} elsif (!defined $sprep) {
-			foreach my $row (@$rows) {
-				$sql .= $s_out;
-				$sql .= join(',', @$row) . ");\n";
-				$count++;
-			}
-		}
-
-		$self->logit("DEBUG: Dumping output of total size of " . length($sql) . "\n", 1);
-		$total_record += <$in1> if ($self->{fork_child}); # this line does nothing if $in1 was previously read
-
-		# Insert data if we are in online processing mode
-		if ($self->{dbhdest}) {
-			if ($self->{type} ne 'COPY') {
-				if (!defined $sprep) {
-					$self->logit("DEBUG: Sending INSERT output directly to PostgreSQL backend\n", 1);
-					my $s = $self->{dbhdest}->do($sql) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
-				} else {
-					my $ps = $self->{dbhdest}->prepare($sprep) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
-					for (my $i = 0; $i <= $#{$tt}; $i++) {
-						if ($tt->[$i] eq 'bytea') {
-							$ps->bind_param($i+1, undef, { pg_type => DBD::Pg::PG_BYTEA });
-						}
-					}
-					$self->logit("DEBUG: Sending INSERT bulk output directly to PostgreSQL backend\n", 1);
-					foreach my $row (@$rows) {
-						$ps->execute(@$row) or $self->logit("FATAL: " . $ps->errstr . "\n", 0, 1);
-						$count++;
-					}
-					$ps->finish();
-				}
-			}
-		} else {
-			$self->dump($sql, $fhdl);
-		}
-
-		my $end_time = time();
-		my $dt = $end_time - $start_time;
-		$start_time = $end_time;
-		$dt ||= 1;
-		my $rps = sprintf("%2.1f", $count / ($dt+.0001));
-		$total_record += $count;
-		if (!$self->{quiet} && !$self->{debug}) {
-			print STDERR $self->progress_bar($total_record, $total_row, 25, '=', 'rows', "table $table ($rps recs/sec)");
-		} elsif ($self->{debug}) {
-			$self->logit("Total extracted records from table $table: $total_record\n", 1);
-			if ($dt > 0) {
-				$self->logit("$count records in $dt secs = $rps recs/sec\n", 1);
-			} else {
-				$self->logit("$count records in $dt secs\n", 1);
-			}
-		}
+		spawn sub {
+			$self->_dump_to_pg($dbh, $rows, $table, $cmd_head, $cmd_foot, $s_out, $tt, $sprep, $stt, $start_time, %user_type);
+		};
+		$self->{child_count}++;
 	}
 	$sth->finish();
-	if (!$self->{quiet}) {
-		print STDERR "\n";
+
+	# Wait for all child end
+	while ($self->{child_count} > 0) {
+		my $kid = waitpid(-1, WNOHANG);
+		if ($kid > 0) {
+			$self->{child_count}--;
+			delete $RUNNING_PIDS{$kid};
+		}
+		usleep(500000);
 	}
 
-	return $total_record;
+	$dbh->disconnect() if (defined $dbh);
+
+	return;
+}
+
+
+sub _dump_to_pg
+{
+	my ($self, $dbh, $rows, $table, $cmd_head, $cmd_foot, $s_out, $tt, $sprep, $stt, $start_time, %user_type) = @_;
+
+	# The parent's connection should not be closed when $dbh is destroyed
+	$self->{dbh}->{InactiveDestroy} = 1;
+	$dbh->{InactiveDestroy} = 1 if (defined $dbh);
+
+	$pipe->writer();
+
+	# Open a connection to the postgreSQL database if required
+	my $dbhdest = undef;
+	if ($self->{pg_dsn}) {
+		$dbhdest = $self->_send_to_pgdb();
+		$self->logit("Dumping data from table $table into PostgreSQL...\n", 1);
+		$self->logit("Disabling synchronous commit when writing to PostgreSQL...\n", 1);
+		my $s = $dbhdest->do("SET synchronous_commit TO off") or $self->logit("FATAL: " . $dbhdest->errstr . "\n", 0, 1);
+	}
+	my $fhdl = undef;
+	if ($self->{file_per_table} && !$self->{pg_dsn}) {
+		$self->logit("Dumping $table to file: ${table}_$self->{output}\n", 1);
+		my $filename = "${table}_$self->{output}";
+		$fhdl = $self->append_export_file("$filename");
+		flock($fhdl, 2) || die "FATAL: can't lock file $filename\n";
+	}
+	foreach my $cmd (@$cmd_head) {
+		if ($self->{pg_dsn}) {
+			my $s = $dbhdest->do("$cmd") or $self->logit("FATAL: " . $dbhdest->errstr . "\n", 0, 1);
+		} else {
+			$self->dump("$cmd\n", $fhdl);
+		}
+	}
+
+	my $sql_out = '';
+	if ($self->{type} eq 'COPY') {
+		$sql_out = $s_out;
+	}
+	# Preparing data for output
+	if (!$sprep) {
+		$self->logit("DEBUG: Formatting bulk of $self->{data_limit} data for PostgreSQL.\n", 1);
+		$self->format_data($rows, $tt, $self->{type}, $stt, \%user_type, $table);
+	}
+	# Creating output
+	$self->logit("DEBUG: Creating output for $self->{data_limit} tuples\n", 1);
+	if ($self->{type} eq 'COPY') {
+		if ($self->{pg_dsn}) {
+			$sql_out =~ s/;$//;
+			$self->logit("DEBUG: Sending COPY bulk output directly to PostgreSQL backend\n", 1);
+			my $s = $dbhdest->do($sql_out) or $self->logit("FATAL: " . $dbhdest->errstr . "\n", 0, 1);
+			$sql_out = '';
+			foreach my $row (@$rows) {
+				$s = $dbhdest->pg_putcopydata(join("\t", @$row) . "\n") or $self->logit("FATAL: " . $dbhdest->errstr . "\n", 0, 1);
+			}
+			$s = $dbhdest->pg_putcopyend() or $self->logit("FATAL: " . $dbhdest->errstr . "\n", 0, 1);
+		} else {
+			map { $sql_out .= join("\t", @$_) . "\n"; } @$rows;
+			$sql_out .= "\\.\n";
+		}
+	} elsif (!$sprep) {
+		foreach my $row (@$rows) {
+			$sql_out .= $s_out;
+			$sql_out .= join(',', @$row) . ");\n";
+		}
+	}
+
+	# Insert data if we are in online processing mode
+	if ($self->{pg_dsn}) {
+		if ($self->{type} ne 'COPY') {
+			if (!$sprep) {
+				$self->logit("DEBUG: Sending INSERT output directly to PostgreSQL backend\n", 1);
+				my $s = $dbhdest->do($sql_out) or $self->logit("FATAL: " . $dbhdest->errstr . "\n", 0, 1);
+			} else {
+				my $ps = $dbhdest->prepare($sprep) or $self->logit("FATAL: " . $dbhdest->errstr . "\n", 0, 1);
+				for (my $i = 0; $i <= $#{$tt}; $i++) {
+					if ($tt->[$i] eq 'bytea') {
+						$ps->bind_param($i+1, undef, { pg_type => DBD::Pg::PG_BYTEA });
+					}
+				}
+				$self->logit("DEBUG: Sending INSERT bulk output directly to PostgreSQL backend\n", 1);
+				foreach my $row (@$rows) {
+					$ps->execute(@$row) or $self->logit("FATAL: " . $ps->errstr . "\n", 0, 1);
+				}
+				$ps->finish();
+			}
+		}
+	} else {
+		$self->dump($sql_out, $fhdl);
+	}
+
+	foreach my $cmd (@$cmd_foot) {
+		if ($self->{pg_dsn}) {
+			my $s = $dbhdest->do("$cmd") or $self->logit("FATAL: " . $dbhdest->errstr . "\n", 0, 1);
+		} else {
+			$self->dump("$cmd\n", $fhdl);
+		}
+	}
+	my $total_row = $self->{tables}{$table}{table_info}{num_rows};
+	my $tt_record = @$rows;
+	if ($self->{file_per_table} && !$self->{pg_dsn}) {
+		$self->close_export_file($fhdl);
+		# Remove files without data to copy
+		if ($tt_record == 0) {
+			unlink("${table}_$self->{output}.$$");
+		}
+	}
+	$dbhdest->disconnect() if ($dbhdest);
+
+	my $end_time = time();
+	my $dt = $end_time - $start_time;
+	$dt ||= 1;
+	my $rps = sprintf("%2.1f", $tt_record / ($dt+.0001));
+	if (!$self->{quiet} && !$self->{debug}) {
+		$pipe->print("$tt_record $table $total_row $start_time\n");
+	} elsif ($self->{debug}) {
+		$self->logit("Extracted records from table $table: $tt_record ($rps recs/sec)\n", 1);
+	}
+
 }
 
 # Global array, to store the converted values
@@ -6112,7 +6154,7 @@ sub _show_infos
 
 	if ($type eq 'SHOW_ENCODING') {
 		$self->logit("Showing Oracle encoding...\n", 1);
-		my $encoding = $self->_get_encoding();
+		my $encoding = $self->_get_encoding($self->{dbh});
 		$self->logit("NLS_LANG $encoding\n", 0);
 		$self->logit("CLIENT ENCODING $self->{client_encoding}\n", 0);
 	} elsif ($type eq 'SHOW_VERSION') {
@@ -6446,10 +6488,12 @@ sub _show_infos
 
 			# Set the fields information
 			if ($type eq 'SHOW_COLUMN') {
+
 				# Collect column's details for the current table with attempt to preserve column declaration order
 				foreach my $k (sort {$self->{tables}{$t}{column_info}{$a}[-1] <=> $self->{tables}{$t}{column_info}{$b}[-1]} keys %{$self->{tables}{$t}{column_info}}) {
 					# COLUMN_NAME,DATA_TYPE,DATA_LENGTH,NULLABLE,DATA_DEFAULT,DATA_PRECISION,DATA_SCALE,TABLE_NAME,OWNER
 					my $d = $self->{tables}{$t}{column_info}{$k};
+
 					my $type = $self->_sql_type($d->[1], $d->[2], $d->[5], $d->[6]);
 					$type = "$d->[1], $d->[2]" if (!$type);
 					my $len = $d->[2];
@@ -6602,11 +6646,11 @@ Returns a handle to a DB query statement.
 
 sub _get_encoding
 {
-	my $self = shift;
+	my ($self, $dbh) = @_;
 
 	my $sql = "SELECT * FROM NLS_DATABASE_PARAMETERS";
-        my $sth = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-        $sth->execute() or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+        my $sth = $dbh->prepare($sql) or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
+        $sth->execute() or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
 	my $language = '';
 	my $territory = '';
 	my $charset = '';
@@ -6622,8 +6666,8 @@ sub _get_encoding
 	}
 	$sth->finish();
 	$sql = "SELECT * FROM NLS_SESSION_PARAMETERS";
-        $sth = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-        $sth->execute() or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+        $sth = $dbh->prepare($sql) or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
+        $sth->execute() or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
 	my $encoding = '';
 	while ( my @row = $sth->fetchrow()) {
 		#$self->logit("SESSION PARAMETERS: $row[0] $row[1]\n", 1);
@@ -6650,7 +6694,7 @@ invalidate PL/SQL code
 
 sub _compile_schema
 {
-	my ($self, $schema) = @_;
+	my ($self, $dbh, $schema) = @_;
 
 	my $qcomp = '';
 
@@ -6663,7 +6707,7 @@ end;
 		$qcomp = "EXEC DBMS_UTILITY.compile_schema(schema => sys_context('USERENV', 'SESSION_USER'));";
 	}
 	if ($qcomp) {
-		my $sth = $self->{dbh}->do($qcomp) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+		my $sth = $dbh->do($qcomp) or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
 		$sth = undef;
 	}
 
@@ -6692,6 +6736,79 @@ sub _datetime_format
 	}
 }
 
+=head2 multiprocess_progressbar
+
+This function is used to display a progress bar during object scanning.
+
+=cut
+
+sub multiprocess_progressbar
+{
+	my ($self, $total_rows) = @_;
+
+	$self->logit("Starting progressbar writer process", 1);
+
+	$0 = 'Ora2Pg logger';
+
+	$self->{dbh}->{InactiveDestroy} = 1;
+	$self->{dbh} = undef;
+
+	# Terminate the process when we doesn't read the complete file but must exit
+	local $SIG{USR1} = sub {
+		print STDERR "\n";
+		exit 0;
+	};
+
+	my $width = 25;
+	my $char  = '=';
+	my $kind  = 'rows';
+	my $table_count = 0;
+	my $table = '';
+	my $global_count = 0;
+	my $global_start_time = 0;
+
+	$pipe->reader();
+	while ( my $r = <$pipe> ) {
+		chomp($r);
+		# When quit is received, then exit immediatly
+		last if ($r eq 'quit');
+		my @infos = split(/\s+/, $r);
+		my $table_numrows = $infos[2];
+		my $start_time = $infos[3];
+		$global_start_time = $start_time if (!$global_start_time);
+		# Display total and reset counter when it is a new table
+		if ($table && ($infos[1] ne $table)) {
+			print STDERR "\n";
+			my $end_time = time();
+			my $dt = $end_time - $global_start_time;
+			$dt ||= 1;
+			my $rps = sprintf("%.1f", $global_count / ($dt+.0001));
+			print STDERR $self->progress_bar($global_count, $total_rows, 25, '=', 'rows', "on total data (avg: $rps recs/sec)");
+			print STDERR "\n";
+			$table_count = 0;
+		}
+		$table = $infos[1];
+		$table_count += $infos[0];
+		$global_count += $infos[0];
+		my $end_time = time();
+		my $dt = $end_time - $start_time;
+		$dt ||= 1;
+		my $rps = sprintf("%.1f", $table_count / ($dt+.0001));
+		print STDERR $self->progress_bar($table_count, $table_numrows, 25, '=', 'rows', "Table $table ($rps recs/sec)");
+	}
+	print STDERR "\n";
+	if ($global_count) {
+		my $end_time = time();
+		my $dt = $end_time - $global_start_time;
+		$dt ||= 1;
+		my $rps = sprintf("%.1f", $global_count / ($dt+.0001));
+		print STDERR $self->progress_bar($global_count, $total_rows, 25, '=', 'rows', "on total data (avg: $rps recs/sec)");
+		print STDERR "\n";
+	}
+
+	exit 0;
+}
+
 
 =head2 progress_bar
 
@@ -6712,7 +6829,7 @@ sub progress_bar
 		$ratio = $got / +$total;
 	}
 	my $str = sprintf(
-		"[%-${width}s] %${num_width}s of %s $kind (%.1f%%) $msg",
+		"[%-${width}s] %${num_width}s/%s $kind (%.1f%%) $msg",
 		$char x (($width - 1) * $ratio) . '>',
 		$got, $total, 100 * $ratio
 	);
@@ -6914,6 +7031,34 @@ sub _lookup_function
 	}
 
 	return $func_name;
+}
+
+####
+# Return a string to set the current search path
+####
+sub set_search_path
+{
+	my $self = shift;
+
+	my $search_path = '';
+
+	if ($self->{export_schema}) {
+		if ($self->{pg_schema}) {
+			if (!$self->{preserve_case}) {
+				$search_path = "SET search_path = \L$self->{pg_schema}\E;";
+			} else {
+				$search_path = "SET search_path = \"$self->{pg_schema}\";";
+			}
+		} elsif ($self->{schema}) {
+			if (!$self->{preserve_case}) {
+				$search_path = "SET search_path = \L$self->{schema}\E, pg_catalog;";
+			} else {
+				$search_path = "SET search_path = \"$self->{schema}\", pg_catalog;";
+			}
+		}
+	}
+
+	return $search_path;
 }
 
 sub _get_human_cost
@@ -7139,5 +7284,291 @@ L<DBD::Oracle>, L<DBD::Pg>
 
 
 =cut
+
+__DATA__
+
+<transformation>
+  <info>
+    <name>template</name>
+    <description/>
+    <extended_description/>
+    <trans_version/>
+    <trans_type>Normal</trans_type>
+    <trans_status>0</trans_status>
+    <directory>&#47;</directory>
+    <parameters>
+    </parameters>
+    <log>
+<trans-log-table><connection/>
+<schema/>
+<table/>
+<size_limit_lines/>
+<interval/>
+<timeout_days/>
+<field><id>ID_BATCH</id><enabled>Y</enabled><name>ID_BATCH</name></field><field><id>CHANNEL_ID</id><enabled>Y</enabled><name>CHANNEL_ID</name></field><field><id>TRANSNAME</id><enabled>Y</enabled><name>TRANSNAME</name></field><field><id>STATUS</id><enabled>Y</enabled><name>STATUS</name></field><field><id>LINES_READ</id><enabled>Y</enabled><name>LINES_READ</name><subject/></field><field><id>LINES_WRITTEN</id><enabled>Y</enabled><name>LINES_WRITTEN</name><subject/></field><field><id>LINES_UPDATED</id><enabled>Y</enabled><name>LINES_UPDATED</name><subject/></field><field><id>LINES_INPUT</id><enabled>Y</enabled><name>LINES_INPUT</name><subject/></field><field><id>LINES_OUTPUT</id><enabled>Y</enabled><name>LINES_OUTPUT</name><subject/></field><field><id>LINES_REJECTED</id><enabled>Y</enabled><name>LINES_REJECTED</name><subject/></field><field><id>ERRORS</id><enabled>Y</enabled><name>ERRORS</name></field><field><id>STARTDATE</id><enabled>Y</enabled><name>STARTDATE</name></field><field><id>ENDDATE</id><enabled>Y</enabled><name>ENDDATE</name></field><field><id>LOGDATE</id><enabled>Y</enabled><name>LOGDATE</name></field><field><id>DEPDATE</id><enabled>Y</enabled><name>DEPDATE</name></field><field><id>REPLAYDATE</id><enabled>Y</enabled><name>REPLAYDATE</name></field><field><id>LOG_FIELD</id><enabled>Y</enabled><name>LOG_FIELD</name></field></trans-log-table>
+<perf-log-table><connection/>
+<schema/>
+<table/>
+<interval/>
+<timeout_days/>
+<field><id>ID_BATCH</id><enabled>Y</enabled><name>ID_BATCH</name></field><field><id>SEQ_NR</id><enabled>Y</enabled><name>SEQ_NR</name></field><field><id>LOGDATE</id><enabled>Y</enabled><name>LOGDATE</name></field><field><id>TRANSNAME</id><enabled>Y</enabled><name>TRANSNAME</name></field><field><id>STEPNAME</id><enabled>Y</enabled><name>STEPNAME</name></field><field><id>STEP_COPY</id><enabled>Y</enabled><name>STEP_COPY</name></field><field><id>LINES_READ</id><enabled>Y</enabled><name>LINES_READ</name></field><field><id>LINES_WRITTEN</id><enabled>Y</enabled><name>LINES_WRITTEN</name></field><field><id>LINES_UPDATED</id><enabled>Y</enabled><name>LINES_UPDATED</name></field><field><id>LINES_INPUT</id><enabled>Y</enabled><name>LINES_INPUT</name></field><field><id>LINES_OUTPUT</id><enabled>Y</enabled><name>LINES_OUTPUT</name></field><field><id>LINES_REJECTED</id><enabled>Y</enabled><name>LINES_REJECTED</name></field><field><id>ERRORS</id><enabled>Y</enabled><name>ERRORS</name></field><field><id>INPUT_BUFFER_ROWS</id><enabled>Y</enabled><name>INPUT_BUFFER_ROWS</name></field><field><id>OUTPUT_BUFFER_ROWS</id><enabled>Y</enabled><name>OUTPUT_BUFFER_ROWS</name></field></perf-log-table>
+<channel-log-table><connection/>
+<schema/>
+<table/>
+<timeout_days/>
+<field><id>ID_BATCH</id><enabled>Y</enabled><name>ID_BATCH</name></field><field><id>CHANNEL_ID</id><enabled>Y</enabled><name>CHANNEL_ID</name></field><field><id>LOG_DATE</id><enabled>Y</enabled><name>LOG_DATE</name></field><field><id>LOGGING_OBJECT_TYPE</id><enabled>Y</enabled><name>LOGGING_OBJECT_TYPE</name></field><field><id>OBJECT_NAME</id><enabled>Y</enabled><name>OBJECT_NAME</name></field><field><id>OBJECT_COPY</id><enabled>Y</enabled><name>OBJECT_COPY</name></field><field><id>REPOSITORY_DIRECTORY</id><enabled>Y</enabled><name>REPOSITORY_DIRECTORY</name></field><field><id>FILENAME</id><enabled>Y</enabled><name>FILENAME</name></field><field><id>OBJECT_ID</id><enabled>Y</enabled><name>OBJECT_ID</name></field><field><id>OBJECT_REVISION</id><enabled>Y</enabled><name>OBJECT_REVISION</name></field><field><id>PARENT_CHANNEL_ID</id><enabled>Y</enabled><name>PARENT_CHANNEL_ID</name></field><field><id>ROOT_CHANNEL_ID</id><enabled>Y</enabled><name>ROOT_CHANNEL_ID</name></field></channel-log-table>
+<step-log-table><connection/>
+<schema/>
+<table/>
+<timeout_days/>
+<field><id>ID_BATCH</id><enabled>Y</enabled><name>ID_BATCH</name></field><field><id>CHANNEL_ID</id><enabled>Y</enabled><name>CHANNEL_ID</name></field><field><id>LOG_DATE</id><enabled>Y</enabled><name>LOG_DATE</name></field><field><id>TRANSNAME</id><enabled>Y</enabled><name>TRANSNAME</name></field><field><id>STEPNAME</id><enabled>Y</enabled><name>STEPNAME</name></field><field><id>STEP_COPY</id><enabled>Y</enabled><name>STEP_COPY</name></field><field><id>LINES_READ</id><enabled>Y</enabled><name>LINES_READ</name></field><field><id>LINES_WRITTEN</id><enabled>Y</enabled><name>LINES_WRITTEN</name></field><field><id>LINES_UPDATED</id><enabled>Y</enabled><name>LINES_UPDATED</name></field><field><id>LINES_INPUT</id><enabled>Y</enabled><name>LINES_INPUT</name></field><field><id>LINES_OUTPUT</id><enabled>Y</enabled><name>LINES_OUTPUT</name></field><field><id>LINES_REJECTED</id><enabled>Y</enabled><name>LINES_REJECTED</name></field><field><id>ERRORS</id><enabled>Y</enabled><name>ERRORS</name></field><field><id>LOG_FIELD</id><enabled>N</enabled><name>LOG_FIELD</name></field></step-log-table>
+    </log>
+    <maxdate>
+      <connection/>
+      <table/>
+      <field/>
+      <offset>0.0</offset>
+      <maxdiff>0.0</maxdiff>
+    </maxdate>
+    <size_rowset>__rowset__</size_rowset>
+    <sleep_time_empty>10</sleep_time_empty>
+    <sleep_time_full>10</sleep_time_full>
+    <unique_connections>N</unique_connections>
+    <feedback_shown>Y</feedback_shown>
+    <feedback_size>500000</feedback_size>
+    <using_thread_priorities>Y</using_thread_priorities>
+    <shared_objects_file/>
+    <capture_step_performance>Y</capture_step_performance>
+    <step_performance_capturing_delay>1000</step_performance_capturing_delay>
+    <step_performance_capturing_size_limit>100</step_performance_capturing_size_limit>
+    <dependencies>
+    </dependencies>
+    <partitionschemas>
+    </partitionschemas>
+    <slaveservers>
+    </slaveservers>
+    <clusterschemas>
+    </clusterschemas>
+  <created_user>-</created_user>
+  <created_date>2013&#47;02&#47;28 14:04:49.560</created_date>
+  <modified_user>-</modified_user>
+  <modified_date>2013&#47;03&#47;01 12:35:39.999</modified_date>
+  </info>
+  <notepads>
+  </notepads>
+  <connection>
+    <name>__oracle_db__</name>
+    <server>__oracle_host__</server>
+    <type>ORACLE</type>
+    <access>Native</access>
+    <database>__oracle_instance__</database>
+    <port>__oracle_port__</port>
+    <username>__oracle_username__</username>
+    <password>__oracle_password__</password>
+    <servername/>
+    <data_tablespace/>
+    <index_tablespace/>
+    <attributes>
+      <attribute><code>EXTRA_OPTION_ORACLE.defaultRowPrefetch</code><attribute>10000</attribute></attribute>
+      <attribute><code>EXTRA_OPTION_ORACLE.fetchSize</code><attribute>1000</attribute></attribute>
+      <attribute><code>FORCE_IDENTIFIERS_TO_LOWERCASE</code><attribute>N</attribute></attribute>
+      <attribute><code>FORCE_IDENTIFIERS_TO_UPPERCASE</code><attribute>N</attribute></attribute>
+      <attribute><code>IS_CLUSTERED</code><attribute>N</attribute></attribute>
+      <attribute><code>PORT_NUMBER</code><attribute>__oracle_port__</attribute></attribute>
+      <attribute><code>QUOTE_ALL_FIELDS</code><attribute>N</attribute></attribute>
+      <attribute><code>SUPPORTS_BOOLEAN_DATA_TYPE</code><attribute>N</attribute></attribute>
+      <attribute><code>USE_POOLING</code><attribute>N</attribute></attribute>
+    </attributes>
+  </connection>
+  <connection>
+    <name>__postgres_db__</name>
+    <server>__postgres_host__</server>
+    <type>POSTGRESQL</type>
+    <access>Native</access>
+    <database>__postgres_database_name__</database>
+    <port>__postgres_port__</port>
+    <username>__postgres_username__</username>
+    <password>__postgres_password__</password>
+    <servername/>
+    <data_tablespace/>
+    <index_tablespace/>
+    <attributes>
+      <attribute><code>FORCE_IDENTIFIERS_TO_LOWERCASE</code><attribute>N</attribute></attribute>
+      <attribute><code>FORCE_IDENTIFIERS_TO_UPPERCASE</code><attribute>N</attribute></attribute>
+      <attribute><code>IS_CLUSTERED</code><attribute>N</attribute></attribute>
+      <attribute><code>PORT_NUMBER</code><attribute>__postgres_port__</attribute></attribute>
+      <attribute><code>QUOTE_ALL_FIELDS</code><attribute>N</attribute></attribute>
+      <attribute><code>SUPPORTS_BOOLEAN_DATA_TYPE</code><attribute>Y</attribute></attribute>
+      <attribute><code>USE_POOLING</code><attribute>N</attribute></attribute>
+      <attribute><code>EXTRA_OPTION_POSTGRESQL.synchronous_commit</code><attribute>__sync_commit_onoff__</attribute></attribute>
+    </attributes>
+  </connection>
+  <order>
+  <hop> <from>Table input</from><to>Modified Java Script Value</to><enabled>Y</enabled> </hop>  <hop> <from>Modified Java Script Value</from><to>Table output</to><enabled>Y</enabled> </hop>
+
+  </order>
+  <step>
+    <name>Table input</name>
+    <type>TableInput</type>
+    <description/>
+    <distribute>Y</distribute>
+    <copies>1</copies>
+         <partitioning>
+           <method>none</method>
+           <schema_name/>
+           </partitioning>
+    <connection>__oracle_db__</connection>
+    <sql>SELECT * FROM __oracle_table_name__</sql>
+    <limit>0</limit>
+    <lookup/>
+    <execute_each_row>N</execute_each_row>
+    <variables_active>N</variables_active>
+    <lazy_conversion_active>N</lazy_conversion_active>
+     <cluster_schema/>
+ <remotesteps>   <input>   </input>   <output>   </output> </remotesteps>    <GUI>
+      <xloc>122</xloc>
+      <yloc>160</yloc>
+      <draw>Y</draw>
+      </GUI>
+    </step>
+
+  <step>
+    <name>Table output</name>
+    <type>TableOutput</type>
+    <description/>
+    <distribute>Y</distribute>
+    <copies>__insert_copies__</copies>
+         <partitioning>
+           <method>none</method>
+           <schema_name/>
+           </partitioning>
+    <connection>__postgres_db__</connection>
+    <schema/>
+    <table>__postgres_table_name__</table>
+    <commit>__commit_size__</commit>
+    <truncate>Y</truncate>
+    <ignore_errors>Y</ignore_errors>
+    <use_batch>Y</use_batch>
+    <specify_fields>N</specify_fields>
+    <partitioning_enabled>N</partitioning_enabled>
+    <partitioning_field/>
+    <partitioning_daily>N</partitioning_daily>
+    <partitioning_monthly>Y</partitioning_monthly>
+    <tablename_in_field>N</tablename_in_field>
+    <tablename_field/>
+    <tablename_in_table>Y</tablename_in_table>
+    <return_keys>N</return_keys>
+    <return_field/>
+    <fields>
+    </fields>
+     <cluster_schema/>
+ <remotesteps>   <input>   </input>   <output>   </output> </remotesteps>    <GUI>
+      <xloc>369</xloc>
+      <yloc>155</yloc>
+      <draw>Y</draw>
+      </GUI>
+    </step>
+
+  <step>
+    <name>Modified Java Script Value</name>
+    <type>ScriptValueMod</type>
+    <description/>
+    <distribute>Y</distribute>
+    <copies>__js_copies__</copies>
+         <partitioning>
+           <method>none</method>
+           <schema_name/>
+           </partitioning>
+    <compatible>N</compatible>
+    <optimizationLevel>9</optimizationLevel>
+    <jsScripts>      <jsScript>        <jsScript_type>0</jsScript_type>
+        <jsScript_name>Script 1</jsScript_name>
+        <jsScript_script>for (var i=0;i&lt;getInputRowMeta().size();i++) { 
+  var valueMeta = getInputRowMeta().getValueMeta(i);
+  if (valueMeta.getTypeDesc().equals(&quot;String&quot;)) {
+    row[i]=replace(row[i],&quot;\00&quot;,&apos;&apos;);
+  }
+} </jsScript_script>
+      </jsScript>    </jsScripts>    <fields>    </fields>     <cluster_schema/>
+ <remotesteps>   <input>   </input>   <output>   </output> </remotesteps>    <GUI>
+      <xloc>243</xloc>
+      <yloc>166</yloc>
+      <draw>Y</draw>
+      </GUI>
+    </step>
+
+  <step_error_handling>
+  </step_error_handling>
+   <slave-step-copy-partition-distribution>
+</slave-step-copy-partition-distribution>
+   <slave_transformation>N</slave_transformation>
+</transformation>
+
+#!/usr/bin/perl -w
+
+
+# Constants for creating kettle files from the template
+
+my $table_list_file='/var/lib/pgsql/dalibo/liste_grosses_tables';
+my $destination_dir='/var/lib/pgsql/dalibo/transformations';
+my $template='/var/lib/pgsql/dalibo/repo_kettle/template.ktr';
+my $oracle_host='10.10.7.1';
+my $oracle_instance='DW2';
+my $oracle_port=1521;
+my $oracle_username='nl_511';
+my $oracle_password='nl_511';
+my $postgres_host='localhost';
+my $postgres_database_name='neolan_test';
+my $postgres_port=5432;
+my $postgres_username='neolan_test';
+my $postgres_password='neolan_test';
+my $insert_copies=8;
+my $js_copies=$insert_copies;
+#my $psql_path='/usr/bin/psql';
+my $rowset=10000;
+my $commit_size=50;
+my $sync_commit_onoff='off';
+
+open(TABLES,$table_list_file) or die "$table_list_file: $!\n";
+
+while (my $line=<TABLES>)
+{
+	chomp $line;
+	my ($schema,$table)=split(',',$line);
+	# Create a new file from the template
+	open IN,"$template" or die "$template $!\n";
+	unless (-d $destination_dir)
+	{
+		mkdir $destination_dir or die "$destination_dir $!\n";
+	}
+	open OUT,">$destination_dir/$schema.$table.ktr" or die "$schema.$table.ktr $!\n";
+	while (my $xml=<IN>)
+	{
+		$xml =~ s/__oracle_host__/$oracle_host/g;
+		$xml =~ s/__oracle_instance__/$oracle_instance/g;
+		$xml =~ s/__oracle_port__/$oracle_port/g;
+		$xml =~ s/__oracle_username__/$oracle_username/g;
+		$xml =~ s/__oracle_password__/$oracle_password/g;
+		$xml =~ s/__postgres_host__/$postgres_host/g;
+		$xml =~ s/__postgres_database_name__/$postgres_database_name/g;
+		$xml =~ s/__postgres_port__/$postgres_port/g;
+		$xml =~ s/__postgres_username__/$postgres_username/g;
+		$xml =~ s/__postgres_password__/$postgres_password/g;
+		$xml =~ s/__insert_copies__/$insert_copies/g;
+		$xml =~ s/__js_copies__/$js_copies/g;
+		$xml =~ s/__transformation_name__/$schema $table/g;
+		$xml =~ s/__oracle_table_name__/$schema.$table/g;
+		$xml =~ s/__postgres_table_name__/$table/g;
+#		$xml =~ s/__psql_path__/$psql_path/g;
+		$xml =~ s/__rowset__/$rowset/g;
+		$xml =~ s/__commit_size__/$commit_size/g;
+		$xml =~ s/__sync_commit_onoff__/$sync_commit_onoff/g;
+		print OUT $xml;
+	}
+	close OUT;
+	close IN;
+}
+
+JAVAMAXMEM=4096 ./pan.sh -file ../transformations/NL_511.NMSADDRESS.ktr -level Detailed
 
 
