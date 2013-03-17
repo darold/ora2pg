@@ -6753,12 +6753,6 @@ sub multiprocess_progressbar
 	$self->{dbh}->{InactiveDestroy} = 1;
 	$self->{dbh} = undef;
 
-	# Terminate the process when we doesn't read the complete file but must exit
-	local $SIG{USR1} = sub {
-		print STDERR "\n";
-		exit 0;
-	};
-
 	my $width = 25;
 	my $char  = '=';
 	my $kind  = 'rows';
@@ -6766,6 +6760,20 @@ sub multiprocess_progressbar
 	my $table = '';
 	my $global_count = 0;
 	my $global_start_time = 0;
+
+	# Terminate the process when we doesn't read the complete file but must exit
+	local $SIG{USR1} = sub {
+		print STDERR "\n";
+		if ($global_count) {
+			my $end_time = time();
+			my $dt = $end_time - $global_start_time;
+			$dt ||= 1;
+			my $rps = sprintf("%.1f", $global_count / ($dt+.0001));
+			print STDERR $self->progress_bar($global_count, $total_rows, 25, '=', 'rows', "on total data (avg: $rps recs/sec)");
+			print STDERR "\n";
+		}
+		exit 0;
+	};
 
 	$pipe->reader();
 	while ( my $r = <$pipe> ) {
