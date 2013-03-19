@@ -506,6 +506,10 @@ DUMP_AS_HTML		0
 # scripts. By default this order is always present.
 STOP_ON_ERROR		1
 
+# Set the total number of tables to display in the Top N per row and size
+# list in the SHOW_TABLE and SHOW_REPORT output. Default 10.
+TOP_MAX			10
+
 };
 close(OUTCFG);
 
