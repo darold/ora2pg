@@ -4905,11 +4905,14 @@ WHERE
 
 	return \%parts, \%default;
 }
-=head2 _get_synonym
+
+=head2 _get_synonyms
+
 This function implements an Oracle-native synonym information.
+
 =cut
 
-sub _get_synonym
+sub _get_synonyms
 {
 	my($self) = @_;
 
@@ -6307,12 +6310,19 @@ sub _show_infos
 					$report_info{'Objects'}{$typ}{'detail'} .= "\L$table_detail{$d} $d\E\n";
 				}
 				$report_info{'Objects'}{$typ}{'detail'} .= "Total number of rows: $total_row_num\n";
-				$report_info{'Objects'}{$typ}{'detail'} .= "Top $self->{top_max} of tables sorted by rows number:\n";
+				$report_info{'Objects'}{$typ}{'detail'} .= "Top $self->{top_max} of tables sorted by number of rows:\n";
 				my $j = 1;
 				foreach my $t (sort {$self->{tables}{$b}{table_info}{num_rows} <=> $self->{tables}{$a}{table_info}{num_rows}} keys %{$self->{tables}}) {
-					$report_info{'Objects'}{$typ}{'detail'} .= "\L$t\E ($self->{tables}{$t}{table_info}{num_rows} rows)\n";
+					$report_info{'Objects'}{$typ}{'detail'} .= "\L$t\E has $self->{tables}{$t}{table_info}{num_rows} rows\n";
 					$j++;
 					last if ($j > $self->{top_max});
+				}
+				$report_info{'Objects'}{$typ}{'detail'} .= "Top $self->{top_max} of largest tables:\n";
+				$i = 1;
+				my %largest_table = $self->_get_largest_tables();
+				foreach my $t (sort { $largest_table{$b} <=> $largest_table{$a} } keys %largest_table) {
+					$report_info{'Objects'}{$typ}{'detail'} .= "\L$t\E: $largest_table{$t} MB\n";
+					$i++;
 				}
 				$comment = "Nothing particular." if (!$comment);
 			} elsif ($typ eq 'TYPE') {
@@ -6525,13 +6535,20 @@ sub _show_infos
 			$i++;
 		}
 		$self->logit("----------------------------------------------------------\n", 0);
-		$self->logit("Total number of rows: $total_row_num\n", 0);
-		$self->logit("Top $self->{top_max} of tables sorted by rows number:\n", 0);
+		$self->logit("Total number of rows: $total_row_num\n\n", 0);
+		$self->logit("Top $self->{top_max} of tables sorted by number of rows:\n", 0);
 		$i = 1;
 		foreach my $t (sort {$tables_infos{$b}{num_rows} <=> $tables_infos{$a}{num_rows}} keys %tables_infos) {
-			$self->logit("\t[$i] TABLE $t ($tables_infos{$t}{num_rows} rows)\n", 0);
+			$self->logit("\t[$i] TABLE $t has $tables_infos{$t}{num_rows} rows\n", 0);
 			$i++;
 			last if ($i > $self->{top_max});
+		}
+		$self->logit("Top $self->{top_max} of largest tables:\n", 0);
+		$i = 1;
+		my %largest_table = $self->_get_largest_tables();
+		foreach my $t (sort { $largest_table{$b} <=> $largest_table{$a} } keys %largest_table) {
+			$self->logit("\t[$i] TABLE $t: $largest_table{$t} MB\n", 0);
+			$i++;
 		}
 	}
 }
@@ -6567,7 +6584,6 @@ sub _get_version
 This function retrieves the size of the Oracle database in MB
 
 =cut
-
 
 sub _get_database_size
 {
@@ -6635,6 +6651,37 @@ sub _schema_list
         $sth->execute or return undef;
         $sth;
 }
+
+=head2 _get_largest_tables
+
+This function retrieves the list of largest table of the Oracle database in MB
+
+=cut
+
+sub _get_largest_tables
+{
+	my $self = shift;
+
+	my %table_size = ();
+
+	my $sql = "SELECT * FROM ( SELECT SEGMENT_NAME, ROUND(BYTES/1024/1024) SIZE_MB FROM DBA_SEGMENTS WHERE SEGMENT_TYPE='TABLE'";
+        if ($self->{schema}) {
+                $sql .= " AND OWNER='$self->{schema}'";
+        } else {
+                $sql .= " AND OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
+        }
+	$sql .= " ORDER BY BYTES DESC) WHERE ROWNUM <= $self->{top_max}";
+        my $sth = $self->{dbh}->prepare( $sql ) or return undef;
+        $sth->execute or return undef;
+	while ( my @row = $sth->fetchrow()) {
+		next if ($self->skip_this_object('TABLE', $row[0]));
+		$table_size{$row[0]} = $row[1];
+	}
+	$sth->finish();
+
+	return %table_size;
+}
+
 
 =head2 _get_encoding
 
