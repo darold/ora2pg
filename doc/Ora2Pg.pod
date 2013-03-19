@@ -714,6 +714,12 @@ to all exported table including the tables defined in the where clause. These
 WHERE clauses are very useful if you want to archive some data or at the
 opposite only export some recent data.
 
+=item TOP_MAX
+
+This directive is used to limit the number of item shown in the top N lists
+like the top list of tables per number of rows and the top list of largest
+tables in megabytes. By default it is set to 10 items.
+
 =back
 
 =head2 Modifying object structure

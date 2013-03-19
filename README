@@ -684,6 +684,12 @@ CONFIGURATION
         where clause. These WHERE clauses are very useful if you want to
         archive some data or at the opposite only export some recent data.
 
+    TOP_MAX
+        This directive is used to limit the number of item shown in the top
+        N lists like the top list of tables per number of rows and the top
+        list of largest tables in megabytes. By default it is set to 10
+        items.
+
   Modifying object structure
     One of the great usage of Ora2Pg is its flexibility to replicate Oracle
     database into PostgreSQL database with a different structure or schema.
