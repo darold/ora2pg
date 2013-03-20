@@ -6321,7 +6321,7 @@ sub _show_infos
 				$i = 1;
 				my %largest_table = $self->_get_largest_tables();
 				foreach my $t (sort { $largest_table{$b} <=> $largest_table{$a} } keys %largest_table) {
-					$report_info{'Objects'}{$typ}{'detail'} .= "\L$t\E: $largest_table{$t} MB\n";
+					$report_info{'Objects'}{$typ}{'detail'} .= "\L$t\E: $largest_table{$t} MB ($self->{tables}{$t}{table_info}{num_rows} rows)\n";
 					$i++;
 				}
 				$comment = "Nothing particular." if (!$comment);
@@ -6547,7 +6547,7 @@ sub _show_infos
 		$i = 1;
 		my %largest_table = $self->_get_largest_tables();
 		foreach my $t (sort { $largest_table{$b} <=> $largest_table{$a} } keys %largest_table) {
-			$self->logit("\t[$i] TABLE $t: $largest_table{$t} MB\n", 0);
+			$self->logit("\t[$i] TABLE $t: $largest_table{$t} MB ($self->{tables}{$t}{table_info}{num_rows} rows)\n", 0);
 			$i++;
 		}
 	}
