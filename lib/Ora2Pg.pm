@@ -6317,12 +6317,14 @@ sub _show_infos
 					$j++;
 					last if ($j > $self->{top_max});
 				}
-				$report_info{'Objects'}{$typ}{'detail'} .= "Top $self->{top_max} of largest tables:\n";
-				$i = 1;
-				my %largest_table = $self->_get_largest_tables();
-				foreach my $t (sort { $largest_table{$b} <=> $largest_table{$a} } keys %largest_table) {
-					$report_info{'Objects'}{$typ}{'detail'} .= "\L$t\E: $largest_table{$t} MB ($self->{tables}{$t}{table_info}{num_rows} rows)\n";
-					$i++;
+				if (!$self->{user_grants}) {
+					$report_info{'Objects'}{$typ}{'detail'} .= "Top $self->{top_max} of largest tables:\n";
+					$i = 1;
+					my %largest_table = $self->_get_largest_tables();
+					foreach my $t (sort { $largest_table{$b} <=> $largest_table{$a} } keys %largest_table) {
+						$report_info{'Objects'}{$typ}{'detail'} .= "\L$t\E: $largest_table{$t} MB ($self->{tables}{$t}{table_info}{num_rows} rows)\n";
+						$i++;
+					}
 				}
 				$comment = "Nothing particular." if (!$comment);
 			} elsif ($typ eq 'TYPE') {
@@ -6543,12 +6545,14 @@ sub _show_infos
 			$i++;
 			last if ($i > $self->{top_max});
 		}
-		$self->logit("Top $self->{top_max} of largest tables:\n", 0);
-		$i = 1;
-		my %largest_table = $self->_get_largest_tables();
-		foreach my $t (sort { $largest_table{$b} <=> $largest_table{$a} } keys %largest_table) {
-			$self->logit("\t[$i] TABLE $t: $largest_table{$t} MB ($self->{tables}{$t}{table_info}{num_rows} rows)\n", 0);
-			$i++;
+		if (!$self->{user_grants}) {
+			$self->logit("Top $self->{top_max} of largest tables:\n", 0);
+			$i = 1;
+			my %largest_table = $self->_get_largest_tables();
+			foreach my $t (sort { $largest_table{$b} <=> $largest_table{$a} } keys %largest_table) {
+				$self->logit("\t[$i] TABLE $t: $largest_table{$t} MB ($self->{tables}{$t}{table_info}{num_rows} rows)\n", 0);
+				$i++;
+			}
 		}
 	}
 }
