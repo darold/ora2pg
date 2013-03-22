@@ -3952,8 +3952,8 @@ SELECT CONSTRAINT_NAME,R_CONSTRAINT_NAME,SEARCH_CONDITION,DELETE_RULE,DEFERRABLE
 FROM $self->{prefix}_CONSTRAINTS
 WHERE CONSTRAINT_TYPE='C' $condition
 AND STATUS='ENABLED'
-AND GENERATED != 'GENERATED NAME'
 END
+
 	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
 	my %data = ();
@@ -4012,7 +4012,6 @@ SELECT CONSTRAINT_NAME,R_CONSTRAINT_NAME,SEARCH_CONDITION,DELETE_RULE,$deferrabl
 FROM $self->{prefix}_CONSTRAINTS
 WHERE CONSTRAINT_TYPE='R' $condition
 AND STATUS='ENABLED'
-AND GENERATED != 'GENERATED NAME'
 END
 	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
