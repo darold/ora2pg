@@ -1,3 +1,79 @@
+2013 03 24 - v11.0
+
+This is a new major release because it adds support to multiprocessing to export
+data in parallel mode, this allow to improve speed during data import by more
+than ten times. This multiprocessiing capabilities allow Ora2Pg to be closer than
+the speed of any ETL. To compare speed or allow using Kettle for data import,
+there's now a new export type to obtain Kettle XML transformation files. This
+release adds also lot of work on speed improvement to scan Oracle database with
+huge number of object.
+
+	- Add documentation about JOBS, ORACLE_COPIES, DEFINED_PK configuration
+	  directive and informations about KETTLE export type.
+	- Add KETTLE export type to generate XML transformation file definition
+	  for Penthatlo Data Integrator (Kettle). Thanks to Marc Cousin for the
+	  work. Example of use:
+		ora2pg -c ora2pg.conf -t KETTLE -j 12 -J 4 -o loaddata.sh
+	- Fix major bug in export of auto generated named constraint. Thanks to
+	  mrojasaquino fot the report.
+	- Show number of rows in the top largest tables.
+	- Add TOP_MAX description to the documentation.
+	- Add the TOP_MAX directive to default configuration file and update
+	  documentation. Directive used to control the top N tables to show.
+	- Add top N of largest tables in SHOW_TABLE, SHOW_COLUMN and SHOW_REPORT
+	  export type.
+	- Fix progressbar output when ora2pg is interrupted by ctrl+c.
+	- Add JOBS, ORACLE_COPIES and DEFINED_PK directives to configuration file.
+	  JOBS replacing THREAD_COUNT but backward compatibility is preserve.
+	- Add 3 new command line options, -j | --jobs and -J | --copies, used to
+	  set the number of connection to PostgreSQL and Oracle for parallel
+	  processing. The third, -L | --limit is used to change DATA_LIMIT at
+	  command line.
+	- Add multiprocess support on data export. With the help of Thomas Ogrisegg.
+	- Add more schema in SYSUSERS that should not be exported.
+	- Add full detailed information about SYNONYM in SHOW_REPORT.
+	- Add MODIFY_TYPE configuration directive to allow some table/column
+	  type to be changed on PostgreSQL side during the export.
+	- Fix objects type count in progressbar of SHOW_REPORT.
+	- Restrict table and index in SHOW_REPORT to the tables defined in ALLOW
+	  and EXCLUDE directives.
+	- Show total number of rows in SHOW_TABLE and SHOW_REPORT output.
+	- Add top 10 of tables sorted by number of rows in SHOW_TABLE and
+	  SHOW_REPORT output.
+	- Fix typo in SYNONYM objects.
+	- Add report of top ten tables ordered y number of rows.
+	- Rewrite most of the Oracle schema storage information extraction for
+	  speed improvement.
+	- Use Hash to store column informations.
+	- Fix %unique_keys declaration in _table() method.
+	- Remove call to _table_info() from SHOW_REPORT code as those informations
+	  are already loaded with the _table() method.
+	- Fix missing column definition on TABLE export.
+	- Add progress bar during output generation following export type.
+	- Add STOP_ON_ERROR configuration directive to enable/disable the call to
+	  ON_ERROR_STOP into generated SQL scripts. Thanks to Ludovic Penet for
+	  the feature request.
+	- Huge speed improvement on columns informations retrieving.
+	- Fix progress bar to keep the total number of tables related to the ALLOW
+	  or EXCLUDE configuration directives. Thanks to Ludovic Penet for the report.
+	- Change return type of function _table_info(), it now returns data instead
+	  of the database handle.
+	- Improve speed on indexes and constraints extraction for database with huge
+	  number of tables.
+	- Improve performance to retrieve columns information and comments.
+	- Remove report of column details during export in debug mode, use SHOW_COLUMN
+	  instead.
+	- Remove call to upper() in objects owner condition to improve performance
+	  with database with huge number of objects.
+	- Add a fix to not export foreign key for exclude tables. Thanks to Ludovic
+	  Penet for the report.
+	- Fix Windows install issue with copying ora2pg.conf.dist. Thanks to
+	  Dominique FOURDRINOY for the report.
+	- Increase the cost of Oracle function not converted to PG automatically.
+
+UPGRADE: reinstall all is required to override the old installation, you may use the
+new ora2pg.conf.dist file which included the new configuration directives. 
+
 2013 01 15 - v10.1
 
 This release adds HTML report for migration cost assessment and some bug fix.
