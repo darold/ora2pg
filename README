@@ -20,7 +20,7 @@ FEATURES
     schema. Once that's done you just have to set the type of export you
     want: TABLE with constraints, VIEW, MVIEW, TABLESPACE, SEQUENCE,
     INDEXES, TRIGGER, GRANT, FUNCTION, PROCEDURE, PACKAGE, PARTITION, TYPE,
-    INSERT or COPY, FDW, QUERY.
+    INSERT or COPY, FDW, QUERY, KETTLE .
 
     By default Ora2Pg exports to a file that you can load into PostgreSQL
     with the psql client, but you can also import directly into a PostgreSQL
@@ -50,6 +50,7 @@ FEATURES
             - Migration cost assessment of an Oracle database.
             - Migration cost assessment of PL/SQL code from a file.
             - Migration cost assessment of Oracle SQL queries stored in a file.
+            - Generate XML ktr files to be used with Penthalo Data Integrator (Kettle)
 
     Ora2Pg do its best to automatically convert your Oracle database to
     PostgreSQL but there's still manual works to do. The Oracle specific
@@ -427,6 +428,7 @@ CONFIGURATION
                 - FDW: Export Oracle tables as foreign table for oracle_fdw.
                 - MVIEW: Export materialized view.
                 - QUERY: Try to automatically convert Oracle SQL queries.
+                - KETTLE: generate XML ktr template files to be used by Kettle.
 
         Only one type of export can be perform at the same time so the TYPE
         directive must be unique. If you have more than one only the last
@@ -455,6 +457,9 @@ CONFIGURATION
         don't use the --plsql command line parameter it simply dump Oracle
         user type asis else Ora2Pg will try to convert it to PostgreSQL
         syntax.
+
+        The KETTLE export type requires that the Oracle and PostgreSQL DNS
+        are defined.
 
         Since Ora2Pg v8.1 there's three new export types:
 
@@ -528,34 +533,34 @@ CONFIGURATION
                 CLUSTER   2 0 Clusters are not supported and will not be exported.
                 FUNCTION  40  0 Total size of function code: 81992.
                 INDEX     435 0 232 index(es) are concerned by the export, others are automatically generated and will
-                                                do so on PostgreSQL. 1 bitmap index(es). 230 b-tree index(es). 1 reversed b-tree index(es)
-                                                Note that bitmap index(es) will be exported as b-tree index(es) if any. Cluster, domain,
-                                                bitmap join and IOT indexes will not be exported at all. Reverse indexes are not exported
-                                                too, you may use a trigram-based index (see pg_trgm) or a reverse() function based index
-                                                and search. You may also use 'varchar_pattern_ops', 'text_pattern_ops' or 'bpchar_pattern_ops'
-                                                operators in your indexes to improve search with the LIKE operator respectively into
-                                                varchar, text or char columns.
+                                        do so on PostgreSQL. 1 bitmap index(es). 230 b-tree index(es). 1 reversed b-tree index(es)
+                                        Note that bitmap index(es) will be exported as b-tree index(es) if any. Cluster, domain,
+                                        bitmap join and IOT indexes will not be exported at all. Reverse indexes are not exported
+                                        too, you may use a trigram-based index (see pg_trgm) or a reverse() function based index
+                                        and search. You may also use 'varchar_pattern_ops', 'text_pattern_ops' or 'bpchar_pattern_ops'
+                                        operators in your indexes to improve search with the LIKE operator respectively into
+                                        varchar, text or char columns.
                 MATERIALIZED VIEW 1 0 All materialized view will be exported as snapshot materialized views, they
-                                                are only updated when fully refreshed.
+                                        are only updated when fully refreshed.
                 PACKAGE BODY  2 1 Total size of package code: 20700.
                 PROCEDURE 7 0 Total size of procedure code: 19198.
                 SEQUENCE  160 0 Sequences are fully supported, but all call to sequence_name.NEXTVAL or sequence_name.CURRVAL
-                                                will be transformed into NEXTVAL('sequence_name') or CURRVAL('sequence_name').
+                                        will be transformed into NEXTVAL('sequence_name') or CURRVAL('sequence_name').
                 TABLE     265 0 1 external table(s) will be exported as standard table. See EXTERNAL_TO_FDW configuration
-                                                directive to export as file_fdw foreign tables or use COPY in your code if you just
-                                                want to load data from external files. 2 binary columns. 4 unknow types.
+                                        directive to export as file_fdw foreign tables or use COPY in your code if you just
+                                        want to load data from external files. 2 binary columns. 4 unknow types.
                 TABLE PARTITION 8 0 Partitions are exported using table inheritance and check constraint. 1 HASH partitions.
-                                                2 LIST partitions. 6 RANGE partitions. Note that Hash partitions are not supported.
+                                        2 LIST partitions. 6 RANGE partitions. Note that Hash partitions are not supported.
                 TRIGGER   30  0 Total size of trigger code: 21677.
                 TYPE      7 1 5 type(s) are concerned by the export, others are not supported. 2 Nested Tables.
-                                                2 Object type. 1 Subtype. 1 Type Boby. 1 Type inherited. 1 Varrays. Note that Type
-                                                inherited and Subtype are converted as table, type inheritance is not supported.
+                                        2 Object type. 1 Subtype. 1 Type Boby. 1 Type inherited. 1 Varrays. Note that Type
+                                        inherited and Subtype are converted as table, type inheritance is not supported.
                 TYPE BODY 0 3 Export of type with member method are not supported, they will not be exported.
                 VIEW      7 0 Views are fully supported, but if you have updatable views you will need to use
-                                                INSTEAD OF triggers.
+                                        INSTEAD OF triggers.
                 DATABASE LINK 1 0 Database links will not be exported. You may try the dblink perl contrib module or use
-                                                the SQL/MED PostgreSQL features with the different Foreign Data Wrapper (FDW) extentions.
-                                        
+                                        the SQL/MED PostgreSQL features with the different Foreign Data Wrapper (FDW) extentions.
+
                 Note: Invalid code will not be exported unless the EXPORT_INVALID configuration directive is activated.
 
         There also a more advanced report with migration cost. See the
@@ -579,25 +584,47 @@ CONFIGURATION
 
         See http://ora2pg.darold.net/report.html for a sample report.
 
-    THREAD_COUNT
-        This configuration directive adds multi-threading support to data
-        export type, the value is the number of threads to use. Default to
-        zero, disabled multi- threading.
+    JOBS
+        This configuration directive adds multiprocess support to data
+        export type, the value is the number of process to use. Default is
+        multiprocess disable.
 
-        It is only used to do the escaping to convert LOBs to byteas, as it
-        is very CPU hungry. Putting 6 threads will only triple your
-        throughput, if your machine has enough cores. If zero do not use
-        threads, do not waste CPU, but be slower with bytea.
+        This directive is used to set the number of cores to used to
+        parallelize data import into PostgreSQL. It replace the old code
+        based on Perl Threads activated with the obsolete THREAD_COUNT
+        configuration directive that was not very useful and is now replaced
+        with fork() calls.
 
-        Performance seems to peak at 5 threads, if you have enough cores,
-        and triples throughput on tables having LOB. Another important
-        thing: because of the way threading works in perl, threads consume a
-        lot of memory. Put a low (5000 for instance) DATA_LIMIT if you
-        activate threading.
+        There's no more limitation in parallel processing than the number of
+        cores and the PostgreSQL I/O performance capabilities.
 
-        If your Perl installation do not support threads, multi-threading
-        will not be enabled. This configuration directive is available since
-        Ora2Pg v8.7 thanks to the work of Marc Cousin.
+    ORACLE_COPIES
+        This configuration directive adds multiprocess support to extract
+        data from Oracle. The value is the number of process to use to
+        parallelize the select query. Default is parallel query disable.
+
+        The parallelism is built on splitting the query following of the
+        number of cores given as value to ORACLE_COPIES as follow:
+
+                SELECT * FROM MYTABLE WHERE MOD(COLUMN, ORACLE_COPIES) = CUR_PROC
+
+        where COLUMN is a technical key like a primary or unique key where
+        split will be based and the current core used by the query
+        (CUR_PROC).
+
+    DEFINED_PK
+        This directive is used to defined the technical key to used to split
+        the query between number of cores set with the ORACLE_COPIES
+        variable. For example:
+
+                DEFINED_PK      EMPLOYEES:employee_id
+
+        The parallel query that will be used supposing that -J or
+        ORACLE_COPIES is set to 8:
+
+                SELECT * FROM EMPLOYEES WHERE MOD(employee_id, 8) = N
+
+        where N is the current process forked starting from 0.
 
     FDW_SERVER
         This directive is used to set the name of the foreign data server
@@ -1266,6 +1293,48 @@ CONFIGURATION
 
     You can use the ALLOW and EXCLUDE directive in addition to select the
     others objects to export.
+
+  Export as Kettle transformation XML files
+    The KETTLE export type is useful if you want to use Penthalo Data
+    Integrator (Kettle) to import data to PostgreSQL. With this type of
+    export Ora2Pg will generate one XML Kettle transformation files (.ktr)
+    per table and add a line to manually execute the transformation in the
+    output.sql file. For example:
+
+            ora2pg -c ora2pg.conf -t KETTLE -j 12 -a MYTABLE -o load_mydata.sh
+
+    will generate one file called 'HR.MYTABLE.ktr' and add a line to the
+    output file (load_mydata.sh):
+
+            #!/bin/sh
+
+            KETTLE_TEMPLATE_PATH='.'
+
+            JAVAMAXMEM=4096 ./pan.sh -file $KETTLE_TEMPLATE_PATH/HR.MYTABLE.ktr -level Detailed
+
+    The -j 12 option will create a template with 12 processes to insert data
+    into PostgreSQL. It is also possible to specify the number of parallel
+    queries used to extract data from the Oracle with the -J command line
+    option as follow:
+
+            ora2pg -c ora2pg.conf -t KETTLE -J 4 -j 12 -a EMPLOYEES -o load_mydata.sh
+
+    This is only possible if you have defined the technical key to used to
+    split the query between cores in the DEFINED_PKEY configuration
+    directive. For example:
+
+            DEFINED_PK      EMPLOYEES:employee_id
+
+    will force the number of Oracle connection copies to 4 and defined the
+    SQL query as follow in the Kettle XML transformation file:
+
+            <sql>SELECT * FROM HR.EMPLOYEES WHERE MOD(employee_id,${Internal.Step.Unique.Count})=${Internal.Step.Unique.Number}</sql>
+
+    The KETTLE export type requires that the Oracle and PostgreSQL DSN are
+    defined. You can also activate the TRUNCATE_TABLE directive to force a
+    truncation of the table before data import.
+
+    The KETTLE export type is an original work of Marc Cousin.
 
   Migration cost assessment
     Estimating the cost of a migration process from Oracle to PostgreSQL is
