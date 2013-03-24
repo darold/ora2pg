@@ -1569,6 +1569,7 @@ ACKNOWLEDGEMENT
             Steve DeLong
             Dominique Legendre - BRGM (Bureau de Recherches Geologiques et Minieres)
             Siva Janamanchi
+            Thomas Ogrisegg
 
     with very specials thanks to Dominique Legendre for his help on testing
     and retesting all Ora2pg features and suggesting numerous improvements.
@@ -1597,5 +1598,7 @@ ACKNOWLEDGEMENT
             Patrick King
             Jenny Palomino
             Sebastian Fischer
+            Dominique Fourdrinoy
+            Ludovic Penet
             ...
 

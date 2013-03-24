@@ -1635,6 +1635,7 @@ I must thanks a lot all the great contributors:
 	Steve DeLong
 	Dominique Legendre - BRGM (Bureau de Recherches Geologiques et Minieres)
 	Siva Janamanchi
+	Thomas Ogrisegg
 
 with very specials thanks to Dominique Legendre for his help on testing and
 retesting all Ora2pg features and suggesting numerous improvements. About
@@ -1663,5 +1664,7 @@ And all others who help me to build a useful and reliable product:
 	Patrick King
 	Jenny Palomino
 	Sebastian Fischer
+	Dominique Fourdrinoy
+	Ludovic Penet
 	...
 

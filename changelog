@@ -68,7 +68,7 @@ huge number of object.
 	- Add a fix to not export foreign key for exclude tables. Thanks to Ludovic
 	  Penet for the report.
 	- Fix Windows install issue with copying ora2pg.conf.dist. Thanks to
-	  Dominique FOURDRINOY for the report.
+	  Dominique Fourdrinoy for the report.
 	- Increase the cost of Oracle function not converted to PG automatically.
 
 UPGRADE: reinstall all is required to override the old installation, you may use the
