@@ -647,6 +647,7 @@ sub _init
 	$self->{oracle_copies} ||= 0;
 	$self->{ora_conn_count} = 0;
 	$self->{data_limit} ||= 10000;
+	$self->{disable_partition} ||= 0;
 
 	# Set user defined data type translation
 	if ($self->{data_type}) {
@@ -1434,7 +1435,7 @@ sub _get_sql_data
 	if ($self->{type} eq 'VIEW') {
 		$self->logit("Add views definition...\n", 1);
 		my $nothing = 0;
-		$self->dump($sql_header) if ($self->{file_per_table} && !$self->{pg_dsn});
+		$self->dump($sql_header);
 		my $dirprefix = '';
 		$dirprefix = "$self->{output_dir}/" if ($self->{output_dir});
 		my $i = 1;
@@ -1445,7 +1446,7 @@ sub _get_sql_data
 				print STDERR $self->progress_bar($i, $num_total_view, 25, '=', 'views', "generating $view" );
 			}
 			my $fhdl = undef;
-			if ($self->{file_per_table} && !$self->{pg_dsn}) {
+			if ($self->{file_per_table}) {
 				$self->dump("\\i $dirprefix${view}_$self->{output}\n");
 				$self->logit("Dumping to one file per view : ${view}_$self->{output}\n", 1);
 				$fhdl = $self->open_export_file("${view}_$self->{output}");
@@ -1487,7 +1488,7 @@ sub _get_sql_data
 				}
 				$sql_output .= ") AS " . $self->{views}{$view}{text} . ";\n\n";
 			}
-			if ($self->{file_per_table} && !$self->{pg_dsn}) {
+			if ($self->{file_per_table}) {
 				$self->dump($sql_header . $sql_output, $fhdl);
 				$self->close_export_file($fhdl);
 				$sql_output = '';
@@ -2475,6 +2476,8 @@ LANGUAGE plpgsql ;
 				}
 			}
 		}
+		# Get partition information
+		$self->_partitions() if (!$self->{disable_partition});
 
 		# Ordering tables by name
 		my @ordered_tables = sort { $a cmp $b } keys %{$self->{tables}};
@@ -2562,7 +2565,20 @@ LANGUAGE plpgsql ;
 		my $start_time = time();
 		foreach my $table (@ordered_tables) {
 			next if ($self->skip_this_object('TABLE', $table));
-			$self->_dump_table($dirprefix, $sql_header, $table, $start_time, $global_rows);
+			# With partitioned table, load data direct from table partition
+			if (exists $self->{partitions}{$table}) {
+				foreach my $pos (sort {$self->{partitions}{$table}{$a} <=> $self->{partitions}{$table}{$b}} keys %{$self->{partitions}{$table}}) {
+					foreach my $part_name (sort {$self->{partitions}{$table}{$pos}{$a}->{'colpos'} <=> $self->{partitions}{$table}{$pos}{$b}->{'colpos'}} keys %{$self->{partitions}{$table}{$pos}}) {
+						$self->_dump_table($dirprefix, $sql_header, $table, $start_time, $global_rows, $part_name);
+					}
+				}
+				# Now load content of the default partion table
+				if ($self->{partitions_default}{$table}) {
+					$self->_dump_table($dirprefix, $sql_header, $table, $start_time, $global_rows, $self->{partitions_default}{$table});
+				}
+			} else {
+				$self->_dump_table($dirprefix, $sql_header, $table, $start_time, $global_rows);
+			}
 		}
 
 		# Wait for all child die
@@ -2981,16 +2997,17 @@ CREATE TRIGGER insert_${table}_trigger
 ####
 sub _dump_table
 {
-	my ($self, $dirprefix, $sql_header, $table, $start_time, $global_rows) = @_;
+	my ($self, $dirprefix, $sql_header, $table, $start_time, $global_rows, $part_name) = @_;
 
 	my $fhdl = undef;
 	if ($self->{file_per_table} && !$self->{pg_dsn}) {
+		my $rname = $part_name || $table;
 		# Do not dump data again if the file already exists
-		if (-e "$dirprefix${table}_$self->{output}") {
-			$self->logit("WARNING: Skipping dumping data from $table, file already exists ${table}_$self->{output}\n", 0);
+		if (-e "$dirprefix${rname}_$self->{output}") {
+			$self->logit("WARNING: Skipping dumping data from $rname, file already exists ${rname}_$self->{output}\n", 0);
 			return;
 		}
-		$self->dump("\\i $dirprefix${table}_$self->{output}\n");
+		$self->dump("\\i $dirprefix${rname}_$self->{output}\n");
 	}
 
 	my @cmd_head = ();
@@ -3013,10 +3030,10 @@ sub _dump_table
 	}
 
 	# Rename table and double-quote it if required
-	my $tmptb = $table;
-	if (exists $self->{replaced_tables}{"\L$table\E"} && $self->{replaced_tables}{"\L$table\E"}) {
-		$self->logit("\tReplacing table $table as " . $self->{replaced_tables}{lc($table)} . "...\n", 1);
-		$tmptb = $self->{replaced_tables}{lc($table)};
+	my $tmptb = $part_name || $table;
+	if (exists $self->{replaced_tables}{"\L$tmptb\E"} && $self->{replaced_tables}{"\L$tmptb\E"}) {
+		$self->logit("\tReplacing table $tmptb as " . $self->{replaced_tables}{lc($tmptb)} . "...\n", 1);
+		$tmptb = $self->{replaced_tables}{lc($tmptb)};
 	}
 	if (!$self->{preserve_case}) {
 		$tmptb = lc($tmptb);
@@ -3114,7 +3131,7 @@ sub _dump_table
 	}
 
 	# Extract all data from the current table
-	$self->ask_for_data($table, \@cmd_head, \@cmd_foot, $s_out, \@nn, \@tt, $sprep, \@stt);
+	$self->ask_for_data($table, \@cmd_head, \@cmd_foot, $s_out, \@nn, \@tt, $sprep, \@stt, $part_name);
 
 }
 
@@ -3663,7 +3680,7 @@ Returns the SQL query to use to retrieve data
 
 sub _howto_get_data
 {
-	my ($self, $table, $name, $type, $src_type) = @_;
+	my ($self, $table, $name, $type, $src_type, $part_name) = @_;
 
 	# Fix a problem when the table need to be prefixed by the schema
 	my $realtable = $table;
@@ -3735,6 +3752,9 @@ VARCHAR2
 		$extraStr .= ' AND (' . $self->{where}{"\L$table\E"} . ')';
 	} elsif ($self->{global_where}) {
 		$extraStr .= ' AND (' . $self->{global_where} . ')';
+	}
+	if ($part_name) {
+		$alias = "PARTITION($part_name)";
 	}
 	$str .= " FROM $realtable $alias";
 	if (exists $self->{where}{"\L$table\E"} && $self->{where}{"\L$table\E"}) {
@@ -5640,26 +5660,6 @@ sub _format_view
 	my ($self, $sqlstr) = @_;
 
 
-	# Add missing AS in column alias => optional in Oracle
-	# and requiered in PostgreSQL
-# THIS PART IS REMOVED AS PG since 8.4 at least support optional AS for alias
-#	if ($sqlstr =~ /(.*?)\bFROM\b(.*)/is) {
-#		my $item = $1;
-#		my $tmp = $2;
-#		# Disable coma between brackets
-#		my $i = 0;
-#		my @repstr = ();
-#		while ($item =~ s/(\([^\(\)]+\))/\@REPLACEME${i}HERE\@/s) {
-#			push(@repstr, $1);
-#			$i++;
-#		}
-#		$item =~ s/([a-z0-9_\$]+)([\t\s]+[a-z0-9_\$]+,)/$1 AS$2/igs;
-#		$item =~ s/([a-z0-9_\$]+)([\t\s]+[a-z0-9_\$]+)$/$1 AS$2/igs;
-#		$item =~ s/[\t\s]AS[\t\s]+as\b/ AS/igs;
-#		$sqlstr = $item . ' FROM ' . $tmp;
-#		while($sqlstr =~ s/\@REPLACEME(\d+)HERE\@/$repstr[$1]/sg) {};
-#	}
-#
 	my @tbs = ();
 	# Retrieve all tbs names used in view if possible
 	if ($sqlstr =~ /\bFROM\b(.*)/is) {
@@ -5705,7 +5705,7 @@ sub _format_view
 		}
 	}
 	if ($self->{plsql_pgsql}) {
-		$sqlstr = Ora2Pg::PLSQL::plsql_to_plpgsql($sqlstr, $self->{allow_code_break},$self->{null_equal_empty});
+		$sqlstr = Ora2Pg::PLSQL::plsql_to_plpgsql($sqlstr, $self->{allow_code_break},$self->{null_equal_empty}, $self->{type});
 	}
 
 	return $sqlstr;
@@ -5878,11 +5878,15 @@ CREATE TYPE \L$type_name\E AS ($type_name $declar\[$size\]);
 
 sub ask_for_data
 {
-	my ($self, $table, $cmd_head, $cmd_foot, $s_out, $nn, $tt, $sprep, $stt) = @_;
+	my ($self, $table, $cmd_head, $cmd_foot, $s_out, $nn, $tt, $sprep, $stt, $part_name) = @_;
 
 	# Build SQL query to retrieve data from this table
-	$self->logit("Looking how to retrieve data from $table...\n", 1);
-	my $query = $self->_howto_get_data($table, $nn, $tt, $stt);
+	if (!$part_name) {
+		$self->logit("Looking how to retrieve data from $table...\n", 1);
+	} else {
+		$self->logit("Looking how to retrieve data from $table partition $part_name...\n", 1);
+	}
+	my $query = $self->_howto_get_data($table, $nn, $tt, $stt, $part_name);
 
 	# Check for boolean rewritting
 	for (my $i = 0; $i <= $#{$nn}; $i++) {
@@ -5902,7 +5906,7 @@ sub ask_for_data
 		while ($self->{ora_conn_count} < $self->{oracle_copies}) {
 			spawn sub {
 				$self->logit("Creating new connection to Oracle database...\n", 1);
-				$self->_extract_data($query, $table, $cmd_head, $cmd_foot, $s_out, $nn, $tt, $sprep, $stt, $self->{ora_conn_count});
+				$self->_extract_data($query, $table, $cmd_head, $cmd_foot, $s_out, $nn, $tt, $sprep, $stt, $part_name, $self->{ora_conn_count});
 			};
 			$self->{ora_conn_count}++;
 		}
@@ -5917,13 +5921,13 @@ sub ask_for_data
 		}
 
 	} else {
-		$self->_extract_data($query, $table, $cmd_head, $cmd_foot, $s_out, $nn, $tt, $sprep, $stt);
+		$self->_extract_data($query, $table, $cmd_head, $cmd_foot, $s_out, $nn, $tt, $sprep, $stt, $part_name);
 	}
 }
 
 sub _extract_data
 {
-	my ($self, $query, $table, $cmd_head, $cmd_foot, $s_out, $nn, $tt, $sprep, $stt, $proc) = @_;
+	my ($self, $query, $table, $cmd_head, $cmd_foot, $s_out, $nn, $tt, $sprep, $stt, $part_name, $proc) = @_;
 
 	my %user_type = ();
 	for (my $idx = 0; $idx < scalar(@$tt); $idx++) {
@@ -5938,6 +5942,7 @@ sub _extract_data
 		}
 	}
 
+	my $rname = $part_name || $table;
 	my $dbh;
 	my $sth;
 	if ( ($self->{oracle_copies} > 1) && $self->{defined_pk}{"\L$table\E"} ) {
@@ -5955,7 +5960,7 @@ sub _extract_data
 		my $r = $sth->{NAME};
 
 		# Extract data now by chunk of DATA_LIMIT and send them to a dedicated job
-		$self->logit("Fetching all data from $table tuples...\n", 1);
+		$self->logit("Fetching all data from $rname tuples...\n", 1);
 		if (defined $proc) {
 			$sth->execute($proc) or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
 		} else {
@@ -5972,7 +5977,7 @@ sub _extract_data
 		my $r = $sth->{NAME};
 
 		# Extract data now by chunk of DATA_LIMIT and send them to a dedicated job
-		$self->logit("Fetching all data from $table tuples...\n", 1);
+		$self->logit("Fetching all data from $rname tuples...\n", 1);
 		if (defined $proc) {
 			$sth->execute($proc) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 		} else {
@@ -5996,7 +6001,7 @@ sub _extract_data
 			usleep(50000);
 		}
 		spawn sub {
-			$self->_dump_to_pg($dbh, $rows, $table, $cmd_head, $cmd_foot, $s_out, $tt, $sprep, $stt, $start_time, %user_type);
+			$self->_dump_to_pg($dbh, $rows, $table, $cmd_head, $cmd_foot, $s_out, $tt, $sprep, $stt, $start_time, $part_name, %user_type);
 		};
 		$self->{child_count}++;
 	}
@@ -6020,7 +6025,7 @@ sub _extract_data
 
 sub _dump_to_pg
 {
-	my ($self, $dbh, $rows, $table, $cmd_head, $cmd_foot, $s_out, $tt, $sprep, $stt, $start_time, %user_type) = @_;
+	my ($self, $dbh, $rows, $table, $cmd_head, $cmd_foot, $s_out, $tt, $sprep, $stt, $start_time, $part_name, %user_type) = @_;
 
 	# The parent's connection should not be closed when $dbh is destroyed
 	$self->{dbh}->{InactiveDestroy} = 1;
@@ -6029,17 +6034,18 @@ sub _dump_to_pg
 	$pipe->writer();
 
 	# Open a connection to the postgreSQL database if required
+	my $rname = $part_name || $table;
 	my $dbhdest = undef;
 	if ($self->{pg_dsn}) {
 		$dbhdest = $self->_send_to_pgdb();
-		$self->logit("Dumping data from table $table into PostgreSQL...\n", 1);
+		$self->logit("Dumping data from table $rname into PostgreSQL...\n", 1);
 		$self->logit("Disabling synchronous commit when writing to PostgreSQL...\n", 1);
 		my $s = $dbhdest->do("SET synchronous_commit TO off") or $self->logit("FATAL: " . $dbhdest->errstr . "\n", 0, 1);
 	}
 	my $fhdl = undef;
 	if ($self->{file_per_table} && !$self->{pg_dsn}) {
-		$self->logit("Dumping $table to file: ${table}_$self->{output}\n", 1);
-		my $filename = "${table}_$self->{output}";
+		$self->logit("Dumping $rname to file: ${rname}_$self->{output}\n", 1);
+		my $filename = "${rname}_$self->{output}";
 		$fhdl = $self->append_export_file("$filename");
 		flock($fhdl, 2) || die "FATAL: can't lock file $filename\n";
 	}
@@ -6120,7 +6126,7 @@ sub _dump_to_pg
 		$self->close_export_file($fhdl);
 		# Remove files without data to copy
 		if ($tt_record == 0) {
-			unlink("${table}_$self->{output}.$$");
+			unlink("${rname}_$self->{output}.$$");
 		}
 	}
 	$dbhdest->disconnect() if ($dbhdest);
