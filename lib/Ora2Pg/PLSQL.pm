@@ -390,7 +390,7 @@ sub plsql_to_plpgsql
 
 		# Replace decode("user_status",'active',"username",null)
 		# PostgreSQL (CASE WHEN "user_status"='ACTIVE' THEN "username" ELSE NULL END)
-		$str =~ s/decode[\s\t]*\([\s\t]*([^,]*),[\s\t]*([^,]*),[\s\t]*([^,]*),[\s\t]*([^\)]*)\)/\(CASE WHEN $1=$2 THEN $3 ELSE $4 END\)/igs;
+		$str =~ s/decode[\s\t]*\([\s\t]*([^,\(]*),[\s\t]*([^,\(]*),[\s\t]*([^,\(]*),[\s\t]*([^\(\)]*)\)/\(CASE WHEN $1=$2 THEN $3 ELSE $4 END\)/igs;
 
 		# The to_number() function reclaim a second argument under postgres which is the format.
 		# By default we use '99999999999999999999D99999999999999999999' that may allow bigint
