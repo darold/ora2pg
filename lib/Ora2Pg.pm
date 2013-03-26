@@ -267,7 +267,7 @@ sub export_schema
 		}
 		# Send output to the specified file
 		if ($outfile =~ /\.gz$/) {
-			use Compress::Zlib;
+			eval("use Compress::Zlib;");
 			$self->{compress} = 'Zlib';
 			$self->{zlib_hdl} = gzopen($outfile, "wb") or $self->logit("FATAL: Can't create deflation file $outfile\n", 0, 1);
 		} elsif ($outfile =~ /\.bz2$/) {
@@ -323,7 +323,7 @@ sub open_export_file
 		}
 		# If user request data compression
 		if ($self->{output} =~ /\.gz$/) {
-			use Compress::Zlib;
+			eval("use Compress::Zlib;");
 			$self->{compress} = 'Zlib';
 			$filehdl = gzopen("$outfile.gz", "wb") or $self->logit("FATAL: Can't create deflation file $outfile.gz\n",0,1);
 		} elsif ($self->{output} =~ /\.bz2$/) {
