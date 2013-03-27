@@ -539,6 +539,7 @@ sub _init
 	$self->{where} = ();
 	$self->{ora_reserved_words} = (); 
 	$self->{defined_pk} = ();
+	$self->{allow_partition} = ();
 
 	# Init PostgreSQL DB handle
 	$self->{dbhdest} = undef;
@@ -2569,12 +2570,15 @@ LANGUAGE plpgsql ;
 			if (exists $self->{partitions}{$table}) {
 				foreach my $pos (sort {$self->{partitions}{$table}{$a} <=> $self->{partitions}{$table}{$b}} keys %{$self->{partitions}{$table}}) {
 					foreach my $part_name (sort {$self->{partitions}{$table}{$pos}{$a}->{'colpos'} <=> $self->{partitions}{$table}{$pos}{$b}->{'colpos'}} keys %{$self->{partitions}{$table}{$pos}}) {
+						next if ($self->{allow_partition} && !grep($_ =~ /^$part_name$/i, @{$self->{allow_partition}}));
 						$self->_dump_table($dirprefix, $sql_header, $table, $start_time, $global_rows, $part_name);
 					}
 				}
 				# Now load content of the default partion table
 				if ($self->{partitions_default}{$table}) {
-					$self->_dump_table($dirprefix, $sql_header, $table, $start_time, $global_rows, $self->{partitions_default}{$table});
+					if (!$self->{allow_partition} || grep($_ =~ /^$self->{partitions_default}{$table}$/i, @{$self->{allow_partition}})) {
+						$self->_dump_table($dirprefix, $sql_header, $table, $start_time, $global_rows, $self->{partitions_default}{$table});
+					}
 				}
 			} else {
 				$self->_dump_table($dirprefix, $sql_header, $table, $start_time, $global_rows);
@@ -5223,9 +5227,9 @@ sub read_config
 					$AConfig{"skip_\L$s\E"} = 1;
 				}
 			}
-		} elsif (!grep(/^$var$/, 'TABLES', 'ALLOW', 'MODIFY_STRUCT', 'REPLACE_TABLES', 'REPLACE_COLS', 'WHERE', 'EXCLUDE','VIEW_AS_TABLE','ORA_RESERVED_WORDS','SYSUSERS','REPLACE_AS_BOOLEAN','BOOLEAN_VALUES','MODIFY_TYPE','DEFINED_PK')) {
+		} elsif (!grep(/^$var$/, 'TABLES', 'ALLOW', 'MODIFY_STRUCT', 'REPLACE_TABLES', 'REPLACE_COLS', 'WHERE', 'EXCLUDE','VIEW_AS_TABLE','ORA_RESERVED_WORDS','SYSUSERS','REPLACE_AS_BOOLEAN','BOOLEAN_VALUES','MODIFY_TYPE','DEFINED_PK', 'ALLOW_PARTITION')) {
 			$AConfig{$var} = $val;
-		} elsif ( ($var eq 'TABLES') || ($var eq 'ALLOW') || ($var eq 'EXCLUDE') || ($var eq 'VIEW_AS_TABLE') ) {
+		} elsif ( ($var eq 'TABLES') || ($var eq 'ALLOW') || ($var eq 'EXCLUDE') || ($var eq 'VIEW_AS_TABLE') || ($var eq 'ALLOW_PARTITION') ) {
 			$var = 'ALLOW' if ($var eq 'TABLES');
 			push(@{$AConfig{$var}}, split(/[\s\t;,]+/, $val) );
 		} elsif ( $var eq 'SYSUSERS' ) {

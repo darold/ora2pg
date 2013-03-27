@@ -510,6 +510,9 @@ STOP_ON_ERROR		1
 # list in the SHOW_TABLE and SHOW_REPORT output. Default 10.
 TOP_MAX			10
 
+# Use this directive to limit partition data export to some partition name.
+# Tha value is a list of partition name separated by a space.
+ALLOW_PARTITION		PARTNAME
 };
 close(OUTCFG);
 
