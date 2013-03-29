@@ -88,7 +88,7 @@ ORACLE_PWD	manager
 USER_GRANTS     0
 
 # Trace all to stderr
-DEBUG		1
+DEBUG		0
 
 # Export Oracle schema to PostgreSQL schema
 EXPORT_SCHEMA	0
