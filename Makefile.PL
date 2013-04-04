@@ -167,7 +167,7 @@ TYPE		TABLE
 DATA_LIMIT	10000
 
 # You may wish to just extract data from some fields, the following directives
-# will help you to do that. Works only with TYPE = INSERT or COPY
+# will help you to do that. Works only with export type INSERT or COPY
 # Modify output from the following tables(fields separate by space or comma)
 #MODIFY_STRUCT	TABLE_TEST(dico,dossier)
 
