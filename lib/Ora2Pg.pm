@@ -5112,7 +5112,7 @@ sub format_data_type
 			if ($col =~ /^0000-00-00/) {
 				$col = 'NULL';
 			} elsif ($col =~ /^(\d+-\d+-\d+ \d+:\d+:\d+)\.$/) {
-				$col = $1;
+				$col = "'$1'";
 			} else {
 				$col = "'$col'";
 			}
