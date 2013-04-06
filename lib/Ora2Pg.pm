@@ -3721,6 +3721,10 @@ sub _howto_get_data
 			} else {
 				$str .= "$alias.$name->[$k]->[0].extract('/').getClobVal(),";
 			}
+		} elsif ( $src_type->[$k] =~ /raw/i) {
+			# Select from a RAW column always return Hex data
+			# try to convert this data to allow insert into a bytea
+			$str .= "utl_raw.cast_to_varchar2($name->[$k]->[0]),";
 		} else {
 			$str .= "$name->[$k]->[0],";
 		}
