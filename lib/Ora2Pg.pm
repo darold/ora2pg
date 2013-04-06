@@ -3027,6 +3027,10 @@ sub _dump_table
 		push(@cmd_head,$search_path);
 	}
 
+	# Truncate current table if requested
+	if ($self->{truncate_table}) {
+		push(@cmd_head,"TRUNCATE TABLE $tmptb;");
+	}
 
 	# Start transaction to speed up bulkload
 	if (!$self->{defer_fkey}) {
@@ -3054,15 +3058,6 @@ sub _dump_table
 		push(@cmd_head,"ALTER TABLE $tmptb DISABLE TRIGGER $trig_type;");
 		# don't forget to enable all triggers if needed...
 		push(@cmd_foot,"ALTER TABLE $tmptb ENABLE TRIGGER $trig_type;");
-	}
-
-	# Truncate current table if requested
-	if ($self->{truncate_table}) {
-		if ($self->{pg_dsn}) {
-			my $s = $self->{dbhdest}->do("TRUNCATE TABLE $tmptb;");
-		} else {
-			$self->dump("TRUNCATE TABLE $tmptb;");
-		}
 	}
 
 	# COMMIT transaction at end if required
