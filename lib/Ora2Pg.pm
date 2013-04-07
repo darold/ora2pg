@@ -6455,6 +6455,8 @@ sub _show_infos
 					}
 				}
 				$report_info{'Objects'}{$typ}{'comment'} = "SYNONYM are not exported at all. An usual workaround is to use View instead or set the PostgreSQL search_path in your session to access object outside the current schema.";
+			} elsif ($typ eq 'INDEX PARTITION') {
+				$report_info{'Objects'}{$typ}{'comment'} = "Only local indexes partition are exported, they are build on the column used for the partitioning.";
 			} elsif ($typ eq 'TABLE PARTITION') {
 				my %partitions = $self->_get_partitions_list();
 				foreach my $t (sort keys %partitions) {
