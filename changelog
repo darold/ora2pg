@@ -1,3 +1,37 @@
+2013 04 07 - v11.1
+
+This release adds partition data speed improvement by exporting data directly
+from and into the destination partitioned table. There's also some bug fix on
+RAW or LONG RAW data export and PL/SQL to PL/PGSQL code rewrite.
+
+	- Adjust cost assessment for indexes, tables and tables partition.
+	- Add comment to report of index partition about local index only.
+	- Fix position of TRUNCATE TABLE in output file.
+	- Fix export of data from RAW or LONG RAW columns, they was exported
+	  as hex string. Now data are converted using utl_raw.cast_to_varchar2()
+	  function before being escaped for insert into a bytea. Thanks to Alex
+	  Delianis for the report.
+	- Fix issue with Oracle TIMESTAMP(0) data export that add a single
+	  ending point, ex: "2008-08-09 00:00:00.", this ending character is
+	  now removed by format_data_type(). Thanks to Pierre-Marie Petit for
+	  the report.
+	- Fix typo on MODIFY_STRUCT description.
+	- Force DEBUG to off in default configuration file.
+	- Change range PARTITION operators in the check conditions, >= and <
+	  replaced by > and <=, corresponding to Oracle VALUES LESS THAN.
+	- Add ALLOW_PARTITION to limit data export to a list of partition name.
+	- PLSQL: Fix wrong replacement of SELECT by PERFORM during VIEW export.
+	- Partitioned tables data is now imported directly into the destination
+	  tables instead of inserted into the main table and dispatched by the
+	  trigger. Ora2Pg will automatically detect the in/out table partition,
+	  there's nothing to configure.
+	- PL/SQL: Do not allow decode() rewrite by case/when/else when there
+	  is a function call in it.
+	- Fix Error when Compress::Zlib is not installed, this module is not
+	  mandatory.
+
+UPGRADE: please reinstall all as all files have changed.
+
 2013 03 24 - v11.0
 
 This is a new major release because it adds support to multiprocessing to export
