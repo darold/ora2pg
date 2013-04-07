@@ -3027,16 +3027,6 @@ sub _dump_table
 		push(@cmd_head,$search_path);
 	}
 
-	# Truncate current table if requested
-	if ($self->{truncate_table}) {
-		push(@cmd_head,"TRUNCATE TABLE $tmptb;");
-	}
-
-	# Start transaction to speed up bulkload
-	if (!$self->{defer_fkey}) {
-		push(@cmd_head,"BEGIN;");
-	}
-
 	# Rename table and double-quote it if required
 	my $tmptb = $part_name || $table;
 	if (exists $self->{replaced_tables}{"\L$tmptb\E"} && $self->{replaced_tables}{"\L$tmptb\E"}) {
@@ -3050,6 +3040,16 @@ sub _dump_table
 		$tmptb = '"' . $tmptb . '"';
 	}
 	$tmptb = $self->quote_reserved_words($tmptb);
+
+	# Truncate current table if requested
+	if ($self->{truncate_table}) {
+		push(@cmd_head,"TRUNCATE TABLE $tmptb;");
+	}
+
+	# Start transaction to speed up bulkload
+	if (!$self->{defer_fkey}) {
+		push(@cmd_head,"BEGIN;");
+	}
 
 	# disable triggers of current table if requested
 	if ($self->{disable_triggers}) {
@@ -6281,7 +6281,10 @@ sub _show_infos
 				$report_info{'Objects'}{$typ}{'real_number'} = ($report_info{'Objects'}{$typ}{'number'} - $report_info{'Objects'}{$typ}{'invalid'});
 				$report_info{'Objects'}{$typ}{'real_number'} = $report_info{'Objects'}{$typ}{'number'} if ($self->{export_invalid});
 			}
-			$report_info{'Objects'}{$typ}{'cost_value'} = ($report_info{'Objects'}{$typ}{'real_number'}*$Ora2Pg::PLSQL::OBJECT_SCORE{$typ}) if ($self->{estimate_cost});
+			 if ($self->{estimate_cost}) {
+				$report_info{'Objects'}{$typ}{'cost_value'} = ($report_info{'Objects'}{$typ}{'real_number'}*$Ora2Pg::PLSQL::OBJECT_SCORE{$typ});
+				$report_info{'Objects'}{$typ}{'cost_value'} = 288 if (($typ eq 'TABLE') && ($report_info{'Objects'}{$typ}{'cost_value'} > 288));
+			}
 			if ($typ eq 'INDEX') {
 				my $bitmap = 0;
 				foreach my $t (sort keys %INDEX_TYPE) {
