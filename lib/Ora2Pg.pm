@@ -6284,6 +6284,8 @@ sub _show_infos
 			 if ($self->{estimate_cost}) {
 				$report_info{'Objects'}{$typ}{'cost_value'} = ($report_info{'Objects'}{$typ}{'real_number'}*$Ora2Pg::PLSQL::OBJECT_SCORE{$typ});
 				$report_info{'Objects'}{$typ}{'cost_value'} = 288 if (($typ eq 'TABLE') && ($report_info{'Objects'}{$typ}{'cost_value'} > 288));
+				$report_info{'Objects'}{$typ}{'cost_value'} = 288 if (($typ eq 'INDEX') && ($report_info{'Objects'}{$typ}{'cost_value'} > 288));
+				$report_info{'Objects'}{$typ}{'cost_value'} = 96 if (($typ eq 'TABLE PARTITION') && ($report_info{'Objects'}{$typ}{'cost_value'} > 96));
 			}
 			if ($typ eq 'INDEX') {
 				my $bitmap = 0;
