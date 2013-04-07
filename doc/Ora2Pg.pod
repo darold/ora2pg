@@ -1666,5 +1666,7 @@ And all others who help me to build a useful and reliable product:
 	Sebastian Fischer
 	Dominique Fourdrinoy
 	Ludovic Penet
+	Alex Delianis
+	Pierre-Marie Petit
 	...
 
