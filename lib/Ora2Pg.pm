@@ -6204,7 +6204,7 @@ sub _show_infos
 		$self->logit("Showing Oracle encoding...\n", 1);
 		my $encoding = $self->_get_encoding($self->{dbh});
 		$self->logit("NLS_LANG $encoding\n", 0);
-		$self->logit("CLIENT ENCODING $self->{client_encoding}\n", 0);
+		$self->logit("CLIENT_ENCODING $self->{client_encoding}\n", 0);
 	} elsif ($type eq 'SHOW_VERSION') {
 		$self->logit("Showing Oracle Version...\n", 1);
 		$self->logit("$self->{db_version}\n", 0);
