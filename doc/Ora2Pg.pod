@@ -160,7 +160,7 @@ line argument:
 
 Here are all command line parameters available when using ora2pg:
 
-	Usage: ora2pg [-dhpqsv] [--option value]
+	Usage: ora2pg [-dhpqv --estimate_cost --dump_as_html] [--option value]
 
 	    -a | --allow str  : coma separated list of objects to allow from export.
 				Can be used with SHOW_COLUMN too.
@@ -184,7 +184,7 @@ Here are all command line parameters available when using ora2pg:
 				be written. Default: output.sql in running directory.
 	    -p | --plsql      : Enable PLSQL to PLPSQL code conversion.
 	    -q | --quiet      : disable progress bar.
-	    -s | --source     : Allow to set the Oracle DBI datasource.
+	    -s | --source DSN : Allow to set the Oracle DBI datasource.
 	    -t | --type export: Used to set the export type. It will override the one
 				given in the configuration file (TYPE).
 	    -u | --user name  : Used to set the Oracle database connection user.
