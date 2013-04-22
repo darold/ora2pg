@@ -293,7 +293,7 @@ sub export_schema
 	} else {
 
 		foreach my $t (@{$self->{export_type}}) {
-			next if ($t !~ /^SHOW_/i);
+			next if ($t =~ /^SHOW_/i);
 			next if ($self->{input_file} && grep(/^$t$/i, 'QUERY', 'FUNCTION','PROCEDURE','PACKAGE'));
 			$self->{type} = $t;
 			# Return data as string
