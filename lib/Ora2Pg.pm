@@ -2557,9 +2557,11 @@ LANGUAGE plpgsql ;
 		$writer->autoflush(1);
 
 		# Fork the logger process
+		$self->{dbh}->{InactiveDestroy} = 1;
 		spawn sub {
 			$self->multiprocess_progressbar($global_rows);
 		};
+		$self->{dbh}->{InactiveDestroy} = 0;
 
 		my $dirprefix = '';
 		$dirprefix = "$self->{output_dir}/" if ($self->{output_dir});
@@ -5936,6 +5938,8 @@ sub _extract_data
 {
 	my ($self, $query, $table, $cmd_head, $cmd_foot, $s_out, $nn, $tt, $sprep, $stt, $part_name, $proc) = @_;
 
+	$0 = 'ora2pg - querying Oracle';
+
 	my %user_type = ();
 	for (my $idx = 0; $idx < scalar(@$tt); $idx++) {
 		my $data_type = $tt->[$idx] || '';
@@ -6007,10 +6011,16 @@ sub _extract_data
 			}
 			usleep(50000);
 		}
+		# The parent's connection should not be closed when $dbh is destroyed
+		$self->{dbh}->{InactiveDestroy} = 1;
+		$dbh->{InactiveDestroy} = 1 if (defined $dbh);
+
 		spawn sub {
 			$self->_dump_to_pg($dbh, $rows, $table, $cmd_head, $cmd_foot, $s_out, $tt, $sprep, $stt, $start_time, $part_name, %user_type);
 		};
 		$self->{child_count}++;
+		$self->{dbh}->{InactiveDestroy} = 0;
+		$dbh->{InactiveDestroy} = 0 if (defined $dbh);
 	}
 	$sth->finish();
 
@@ -6034,9 +6044,7 @@ sub _dump_to_pg
 {
 	my ($self, $dbh, $rows, $table, $cmd_head, $cmd_foot, $s_out, $tt, $sprep, $stt, $start_time, $part_name, %user_type) = @_;
 
-	# The parent's connection should not be closed when $dbh is destroyed
-	$self->{dbh}->{InactiveDestroy} = 1;
-	$dbh->{InactiveDestroy} = 1 if (defined $dbh);
+	$0 = 'ora2pg - sending to PostgreSQL';
 
 	$pipe->writer();
 
@@ -6851,10 +6859,7 @@ sub multiprocess_progressbar
 
 	$self->logit("Starting progressbar writer process", 1);
 
-	$0 = 'Ora2Pg logger';
-
-	$self->{dbh}->{InactiveDestroy} = 1;
-	$self->{dbh} = undef;
+	$0 = 'ora2pg logger';
 
 	my $width = 25;
 	my $char  = '=';
