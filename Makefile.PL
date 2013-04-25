@@ -578,10 +578,10 @@ install_all :
 install_all :
 	\@echo "Installing default configuration file ($DEST_CONF_FILE) to $CONFDIR"
 	\@\$(MKPATH) $CONFDIR
-	\@\$(CP) /Y $DEST_CONF_FILE $CONFDIR\\$DEST_CONF_FILE
-	\@\$(CP) /Y README $CONFDIR\\README
-	\@\$(CP) /Y INSTALL $CONFDIR\\INSTALL
-	\@\$(CP) /Y changelog $CONFDIR\\changelog
+	\@\$(CP) $DEST_CONF_FILE $CONFDIR\\$DEST_CONF_FILE
+	\@\$(CP) README $CONFDIR\\README
+	\@\$(CP) INSTALL $CONFDIR\\INSTALL
+	\@\$(CP) changelog $CONFDIR\\changelog
 };
 	}
         return $postamble;
