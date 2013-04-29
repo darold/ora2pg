@@ -3043,11 +3043,6 @@ sub _dump_table
 	}
 	$tmptb = $self->quote_reserved_words($tmptb);
 
-	# Truncate current table if requested
-	if ($self->{truncate_table}) {
-		push(@cmd_head,"TRUNCATE TABLE $tmptb;");
-	}
-
 	# Start transaction to speed up bulkload
 	if (!$self->{defer_fkey}) {
 		push(@cmd_head,"BEGIN;");
@@ -3060,6 +3055,15 @@ sub _dump_table
 		push(@cmd_head,"ALTER TABLE $tmptb DISABLE TRIGGER $trig_type;");
 		# don't forget to enable all triggers if needed...
 		push(@cmd_foot,"ALTER TABLE $tmptb ENABLE TRIGGER $trig_type;");
+	}
+
+	# Truncate current table if requested
+	if ($self->{truncate_table}) {
+		if ($self->{pg_dsn}) {
+			my $s = $self->{dbhdest}->do("TRUNCATE TABLE $tmptb;");
+		} else {
+			$self->dump("TRUNCATE TABLE $tmptb;\n");
+		}
 	}
 
 	# COMMIT transaction at end if required
@@ -7648,7 +7652,6 @@ sub create_kettle_output
 
 	my $insert_copies = $self->{jobs} || 4;
 	my $js_copies = $insert_copies;
-	#my $psql_path = '/usr/bin/psql';
 	my $rowset = $self->{data_limit} || 10000;
 	my $commit_size = 500;
 	my $sync_commit_onoff = 'off';
