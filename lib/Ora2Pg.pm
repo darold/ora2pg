@@ -3722,10 +3722,6 @@ sub _howto_get_data
 			} else {
 				$str .= "$alias.$name->[$k]->[0].extract('/').getClobVal(),";
 			}
-		} elsif ( $src_type->[$k] =~ /raw/i) {
-			# Select from a RAW column always return Hex data
-			# try to convert this data to allow insert into a bytea
-			$str .= "utl_raw.cast_to_varchar2($name->[$k]->[0]),";
 		} else {
 			$str .= "$name->[$k]->[0],";
 		}
@@ -5083,14 +5079,14 @@ sub format_data_row
 				$row->[$idx] =  "ROW(" . join(',', @type_col) . ")";
 			}
 		} else {
-			$row->[$idx] = $self->format_data_type($row->[$idx], $data_type, $action);
+			$row->[$idx] = $self->format_data_type($row->[$idx], $data_type, $action, '', $src_data_types->[$idx]);
 		}
 	}
 }
 
 sub format_data_type
 {
-	my ($self, $col, $data_type, $action, $table) = @_;
+	my ($self, $col, $data_type, $action, $table, $src_type) = @_;
 
 	# Preparing data for output
 	if ($action ne 'COPY') {
@@ -6193,13 +6189,14 @@ This function return an escaped bytea entry for Pg.
 
 sub escape_bytea
 {
-	 # In this function, we use the array built by build_escape_bytea
-	 my @array= unpack("C*",$_[0]);
-	 foreach my $elt(@array)
-	 {
-		 $elt=$bytea_array[$elt];
-	 }
-	 return join('',@array);
+	my $data = shift;
+
+	# In this function, we use the array built by build_escape_bytea
+	my @array= unpack("C*", $data);
+	foreach my $elt (@array) {
+		$elt = $bytea_array[$elt];
+	}
+	return join('', @array);
 }
 
 =head2 _show_infos
