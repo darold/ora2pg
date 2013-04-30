@@ -190,9 +190,11 @@ sub wait_child
 {
         my $sig = shift;
         print STDERR "Received terminating signal ($sig).\n";
-        1 while wait != -1;
-        $SIG{INT} = \&wait_child;
-        $SIG{TERM} = \&wait_child;
+	if ($^O !~ /MSWin32|dos/i) {
+		1 while wait != -1;
+		$SIG{INT} = \&wait_child;
+		$SIG{TERM} = \&wait_child;
+	}
         _exit(0);
 }
 $SIG{INT} = \&wait_child;
@@ -735,6 +737,15 @@ sub _init
 	$self->{zlib_hdl} = undef;
 	$self->{pkgcost} = 0;
 	$self->{total_pkgcost} = 0;
+
+	if ($^O =~ /MSWin32|dos/i) {
+		if ( ($self->{oracle_copies} > 1) || ($self->{jobs} > 1) ) {
+			$self->logit("WARNING: multiprocess is not supported under that kind of OS.\n", 0);
+			$self->logit("If you need full speed at data export, please use Linux instead.\n", 0);
+		}
+		$self->{oracle_copies} = 0;
+		$self->{jobs} = 0;
+	}
 
 	if (!$self->{input_file}) {
 		# Connect the database
@@ -2553,21 +2564,24 @@ LANGUAGE plpgsql ;
 		# Open a pipe for interprocess communication
 		my $reader = new IO::Handle;
 		my $writer = new IO::Handle;
-		$pipe = IO::Pipe->new($reader, $writer);
-		$writer->autoflush(1);
 
 		# Fork the logger process
-		$self->{dbh}->{InactiveDestroy} = 1;
-		spawn sub {
-			$self->multiprocess_progressbar($global_rows);
-		};
-		$self->{dbh}->{InactiveDestroy} = 0;
-
+		$pipe = IO::Pipe->new($reader, $writer);
+		$writer->autoflush(1);
+		if ( ($self->{jobs} > 1) || ($self->{oracle_copies} > 1) ) {
+			$self->{dbh}->{InactiveDestroy} = 1;
+			spawn sub {
+				$self->multiprocess_progressbar($global_rows);
+			};
+			$self->{dbh}->{InactiveDestroy} = 0;
+		}
 		my $dirprefix = '';
 		$dirprefix = "$self->{output_dir}/" if ($self->{output_dir});
 		my $start_time = time();
+		my $global_count = 0;
 		foreach my $table (@ordered_tables) {
 			next if ($self->skip_this_object('TABLE', $table));
+			$global_count += $self->{tables}{$table}{table_info}{num_rows};
 			# With partitioned table, load data direct from table partition
 			if (exists $self->{partitions}{$table}) {
 				foreach my $pos (sort {$self->{partitions}{$table}{$a} <=> $self->{partitions}{$table}{$b}} keys %{$self->{partitions}{$table}}) {
@@ -2584,6 +2598,14 @@ LANGUAGE plpgsql ;
 				}
 			} else {
 				$self->_dump_table($dirprefix, $sql_header, $table, $start_time, $global_rows);
+			}
+			if ( ($self->{jobs} <= 1) && ($self->{oracle_copies} <= 1) ) {
+				my $end_time = time();
+				my $dt = $end_time - $start_time;
+				$dt ||= 1;
+				my $rps = sprintf("%.1f", $global_count / ($dt+.0001));
+				print STDERR $self->progress_bar($global_count, $global_rows, 25, '=', 'rows', "on total data (avg: $rps recs/sec)");
+				print STDERR "\n";
 			}
 		}
 
@@ -6003,26 +6025,34 @@ sub _extract_data
 
 		$nrows =  @$rows;
 		$total_record += $nrows;
-		while ($self->{child_count} >= $self->{jobs}) {
-			my $kid = waitpid(-1, WNOHANG);
-			if ($kid > 0) {
-				$self->{child_count}--;
-				delete $RUNNING_PIDS{$kid};
+		if ( ($self->{jobs} > 1) || ($self->{oracle_copies} > 1) ) {
+			while ($self->{child_count} >= $self->{jobs}) {
+				my $kid = waitpid(-1, WNOHANG);
+				if ($kid > 0) {
+					$self->{child_count}--;
+					delete $RUNNING_PIDS{$kid};
+				}
+				usleep(50000);
 			}
-			usleep(50000);
-		}
-		# The parent's connection should not be closed when $dbh is destroyed
-		$self->{dbh}->{InactiveDestroy} = 1;
-		$dbh->{InactiveDestroy} = 1 if (defined $dbh);
+			# The parent's connection should not be closed when $dbh is destroyed
+			$self->{dbh}->{InactiveDestroy} = 1;
+			$dbh->{InactiveDestroy} = 1 if (defined $dbh);
 
-		spawn sub {
-			$self->_dump_to_pg($dbh, $rows, $table, $cmd_head, $cmd_foot, $s_out, $tt, $sprep, $stt, $start_time, $part_name, %user_type);
-		};
-		$self->{child_count}++;
-		$self->{dbh}->{InactiveDestroy} = 0;
-		$dbh->{InactiveDestroy} = 0 if (defined $dbh);
+			spawn sub {
+				$self->_dump_to_pg($dbh, $rows, $table, $cmd_head, $cmd_foot, $s_out, $tt, $sprep, $stt, $start_time, $part_name, $total_record, %user_type);
+			};
+			$self->{child_count}++;
+			$self->{dbh}->{InactiveDestroy} = 0;
+			$dbh->{InactiveDestroy} = 0 if (defined $dbh);
+		} else {
+			$self->_dump_to_pg($dbh, $rows, $table, $cmd_head, $cmd_foot, $s_out, $tt, $sprep, $stt, $start_time, $part_name, $total_record, %user_type);
+		}
 	}
 	$sth->finish();
+
+	if ( ($self->{jobs} <= 1) && ($self->{oracle_copies} <= 1) ) {
+		print STDERR "\n";
+	}
 
 	# Wait for all child end
 	while ($self->{child_count} > 0) {
@@ -6042,12 +6072,13 @@ sub _extract_data
 
 sub _dump_to_pg
 {
-	my ($self, $dbh, $rows, $table, $cmd_head, $cmd_foot, $s_out, $tt, $sprep, $stt, $start_time, $part_name, %user_type) = @_;
+	my ($self, $dbh, $rows, $table, $cmd_head, $cmd_foot, $s_out, $tt, $sprep, $stt, $start_time, $part_name, $glob_total_record, %user_type) = @_;
 
 	$0 = 'ora2pg - sending to PostgreSQL';
 
-	$pipe->writer();
-
+	if ( ($self->{jobs} > 1) || ($self->{oracle_copies} > 1) ) {
+		$pipe->writer();
+	}
 	# Open a connection to the postgreSQL database if required
 	my $rname = $part_name || $table;
 	my $dbhdest = undef;
@@ -6151,7 +6182,12 @@ sub _dump_to_pg
 	$dt ||= 1;
 	my $rps = sprintf("%2.1f", $tt_record / ($dt+.0001));
 	if (!$self->{quiet} && !$self->{debug}) {
-		$pipe->print("$tt_record $table $total_row $start_time\n");
+		if ( ($self->{jobs} > 1) || ($self->{oracle_copies} > 1) ) {
+			$pipe->print("$tt_record $table $total_row $start_time\n");
+		} else {
+			$rps = sprintf("%2.1f", $glob_total_record / ($dt+.0001));
+			print STDERR $self->progress_bar($glob_total_record, $total_row, 25, '=', 'rows', "Table $table ($rps recs/sec)");
+		}
 	} elsif ($self->{debug}) {
 		$self->logit("Extracted records from table $table: $tt_record ($rps recs/sec)\n", 1);
 	}
