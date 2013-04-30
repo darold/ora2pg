@@ -598,6 +598,8 @@ CONFIGURATION
         There's no more limitation in parallel processing than the number of
         cores and the PostgreSQL I/O performance capabilities.
 
+        Doesn't works under Windows Operating System, it is simply disabled.
+
     ORACLE_COPIES
         This configuration directive adds multiprocess support to extract
         data from Oracle. The value is the number of process to use to
@@ -611,6 +613,8 @@ CONFIGURATION
         where COLUMN is a technical key like a primary or unique key where
         split will be based and the current core used by the query
         (CUR_PROC).
+
+        Doesn't works under Windows Operating System, it is simply disabled.
 
     DEFINED_PK
         This directive is used to defined the technical key to used to split
@@ -1602,5 +1606,8 @@ ACKNOWLEDGEMENT
             Ludovic Penet
             Alex Delianis
             Pierre-Marie Petit
+            Jean Marc Yao Adingra
+            Prabhat Tripathi
+            Bruce (kithril)
             ...
 

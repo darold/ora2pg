@@ -619,6 +619,8 @@ not very useful and is now replaced with fork() calls.
 There's no more limitation in parallel processing than the number of cores
 and the PostgreSQL I/O performance capabilities.
 
+Doesn't works under Windows Operating System, it is simply disabled.
+
 =item ORACLE_COPIES
 
 This configuration directive adds multiprocess support to extract data
@@ -632,6 +634,8 @@ of cores given as value to ORACLE_COPIES as follow:
 
 where COLUMN is a technical key like a primary or unique key where split
 will be based and the current core used by the query (CUR_PROC).
+
+Doesn't works under Windows Operating System, it is simply disabled.
 
 =item DEFINED_PK
 
@@ -1668,5 +1672,8 @@ And all others who help me to build a useful and reliable product:
 	Ludovic Penet
 	Alex Delianis
 	Pierre-Marie Petit
+	Jean Marc Yao Adingra
+	Prabhat Tripathi
+	Bruce (kithril)
 	...
 
