@@ -1,3 +1,32 @@
+2013 05 01 - v11.2
+
+This release fixes several major issues especially with direct import of data
+into PostgreSQL and Windows port that was both broken.
+
+	- Update doc about Windows multiprocess issues and acknowledgements.
+	- Fix Windows OS issues using multiprocessing options by disabling
+	  multiprocess support on this plateform. When -J or -j will be used a
+	  warning will be displayed and Ora2Pg will simply run single process
+	  like in previous 10.x versions. Thanks to Jean Marc Yao Adingra for
+	  the report.
+	- Fix RAW and LONG RAW export to ByteA. Thanks to Prabhat Tripathi for
+	  the report and testing.
+	- Fix patch regression on multiple TRUNCATE call for a single table.
+	  Thanks to David Greco for the report.
+	- Placed calls to DB handle InactiveDestroy outside the forked process
+	  to prevent fatal errors on Windows. Thanks to Jean Marc Adingra for
+	  the report.
+	- Forked running processes are renamed into more readable name like
+	  "ora2pg logger" for the progress bar, "ora2pg - querying Oracle" when
+	  used with -J option and "ora2pg - sending to PostgreSQL" to better
+	  now  what is the current job of the process.
+	- Removed the use of /Y flag in Windows install script, this was causing	  error "dmake:  Error code 130, while making install_all". Thanks to
+	  Jean-Marc Adingra for the report.
+	- Fix direct import to PostgreSQL that was just producing nothing. Thank
+	  to David Greco for the path.
+	- Fix ora2pg usage documentation.
+	- Add an underscore to CLIENT ENCODING in SHOW_ENCODING output to be the	  same as the configuration directive.
+
 2013 04 07 - v11.1
 
 This release adds partition data speed improvement by exporting data directly
