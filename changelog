@@ -19,13 +19,17 @@ into PostgreSQL and Windows port that was both broken.
 	- Forked running processes are renamed into more readable name like
 	  "ora2pg logger" for the progress bar, "ora2pg - querying Oracle" when
 	  used with -J option and "ora2pg - sending to PostgreSQL" to better
-	  now  what is the current job of the process.
-	- Removed the use of /Y flag in Windows install script, this was causing	  error "dmake:  Error code 130, while making install_all". Thanks to
+	  know  what is the current job of the process.
+	- Removed the use of /Y flag in Windows install script, this was causing
+	  error "dmake:  Error code 130, while making install_all". Thanks to
 	  Jean-Marc Adingra for the report.
 	- Fix direct import to PostgreSQL that was just producing nothing. Thank
-	  to David Greco for the path.
+	  to David Greco for the patch.
 	- Fix ora2pg usage documentation.
-	- Add an underscore to CLIENT ENCODING in SHOW_ENCODING output to be the	  same as the configuration directive.
+	- Add an underscore to CLIENT ENCODING in SHOW_ENCODING output to be the
+	  same as the configuration directive.
+
+UPGRADE: please reinstall all as most of the files have changed.
 
 2013 04 07 - v11.1
 
