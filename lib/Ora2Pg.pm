@@ -6422,6 +6422,7 @@ sub _show_infos
 					}
 				}
 				$comment = "Nothing particular." if (!$comment);
+				$report_info{'Objects'}{$typ}{'cost_value'} =~ s/(\.\d).*$/$1/;
 			} elsif ($typ eq 'TYPE') {
 				my $total_type = 0;
 				foreach my $t (sort keys %{$self->{type_of_type}}) {
