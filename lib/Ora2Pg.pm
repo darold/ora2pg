@@ -6265,7 +6265,7 @@ sub _show_infos
 		$self->{skip_fkeys} = $self->{skip_indices} = $self->{skip_indexes} = $self->{skip_checks} = 0;
 		$self->{view_as_table} = ();
 		# Extract all tables informations
-		$self->_tables(1);
+		$self->_tables();
 		my $total_index = 0;
 		my $total_table_objects = 0;
 		my $total_index_objects = 0;
@@ -6394,7 +6394,7 @@ sub _show_infos
 						}
 					}
 					# Get check constraints information related to this table
-					my @constraints = $self->_lookup_check_constraint($t, $self->{tables}{$t}{check_constraint},$self->{tables}{$t}{field_name});
+					my @constraints = $self->_lookup_check_constraint($t, $self->{tables}{$t}{check_constraint},$self->{tables}{$t}{field_name}, 1);
 					$total_check += ($#constraints + 1);
 					if ($self->{estimate_cost} && ($#constraints >= 0)) {
 						$report_info{'Objects'}{$typ}{'cost_value'} += (($#constraints + 1) * $Ora2Pg::PLSQL::OBJECT_SCORE{'CHECK'});
@@ -7077,7 +7077,7 @@ This function return an array of the SQL code of the check constraints of a tabl
 =cut
 sub _lookup_check_constraint
 {
-	my ($self, $table, $check_constraint, $field_name) = @_;
+	my ($self, $table, $check_constraint, $field_name, $nonotnull) = @_;
 
 	my  @chk_constr = ();
 
@@ -7106,6 +7106,7 @@ sub _lookup_check_constraint
 			if ($self->{plsql_pgsql}) {
 				$chkconstraint = Ora2Pg::PLSQL::plsql_to_plpgsql($chkconstraint, $self->{allow_code_break},$self->{null_equal_empty});
 			}
+			next if ($nonotnull && ($chkconstraint =~ /IS NOT NULL/));
 			if (!$self->{preserve_case}) {
 				foreach my $c (@$field_name) {
 					# Force lower case
