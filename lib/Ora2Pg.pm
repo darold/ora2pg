@@ -2262,6 +2262,10 @@ LANGUAGE plpgsql ;
 					$old_line = $l;
 					next;
 				}
+				if ($l =~ /^(?:CREATE|CREATE OR REPLACE)?[\s\t]*PACKAGE[\s\t]+(?:BODY[\s\t]+)?([^\t\s]+)[\s\t]*$/is) {
+					$old_line = $l;
+					next;
+				}
 				if ($l =~ /^(?:CREATE|CREATE OR REPLACE)?[\s\t]*PACKAGE[\s\t]+(?:BODY[\s\t]+)?([^\t\s]+)[\s\t]*(AS|IS)/is) {
 					$pknm = lc($1);
 				}
