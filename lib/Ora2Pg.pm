@@ -728,6 +728,7 @@ sub _init
 	}
 	# If you decide to autorewrite PLSQL code, this load the dedicated
 	# Perl module
+	$self->{plsql_pgsql} = 1 if ($self->{estimate_cost});
 	if ($self->{plsql_pgsql}) {
 		use Ora2Pg::PLSQL;
 	}
@@ -1979,18 +1980,17 @@ LANGUAGE plpgsql ;
 		my $total_size = 0;
 		my $cost_value = 0;
 		foreach my $q (sort keys %{$self->{queries}}) {
-
+			$self->{idxcomment} = 0;
+			my %comments = $self->_remove_comments($self->{queries}{$q});
 			if ($self->{estimate_cost} && $self->{input_file}) {
 				$total_size += length($self->{queries}{$q});
-				my $cost = Ora2Pg::PLSQL::estimate_cost($self->{queries}{$q});
+				my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($self->{queries}{$q});
 				$cost += $Ora2Pg::PLSQL::OBJECT_SCORE{'QUERY'};
 				$cost_value += $cost;
-				$self->logit("Query $q estimated cost: $cost\n", 0);
-				next;
+				$self->logit("Estimed cost of query [ $q ]: $cost\n", 0);
 			}
 			$self->logit("\tDumping query $q...\n", 1);
 			my $fhdl = undef;
-			my %comments = $self->_remove_comments($self->{queries}{$q});
 			if ($self->{plsql_pgsql}) {
 				$sql_output .= Ora2Pg::PLSQL::plsql_to_plpgsql($self->{queries}{$q}, $self->{allow_code_break},$self->{null_equal_empty}, $self->{type});
 			} else {
@@ -2065,6 +2065,7 @@ LANGUAGE plpgsql ;
 		my $cost_value = 0;
                 my $i = 1;
                 my $num_total_function = scalar keys %{$self->{functions}};
+		my $fct_cost = '';
 		foreach my $fct (sort keys %{$self->{functions}}) {
 
 			if (!$self->{quiet} && !$self->{debug}) {
@@ -2073,13 +2074,21 @@ LANGUAGE plpgsql ;
 
 			# forget or not this object if it is in the exclude or allow lists.
 			$i++, next if ($self->skip_this_object('FUNCTION', $fct));
+			$self->{idxcomment} = 0;
+			my %comments = $self->_remove_comments(\$self->{functions}{$fct});
 			if ($self->{estimate_cost} && $self->{input_file}) {
 				$total_size += length($self->{functions}->{$fct});
-				my $cost = Ora2Pg::PLSQL::estimate_cost($self->{functions}->{$fct});
+				my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($self->{functions}->{$fct});
 				$cost += $Ora2Pg::PLSQL::OBJECT_SCORE{'FUNCTION'};
 				$cost_value += $cost;
 				$self->logit("Function $fct estimated cost: $cost\n", 0);
-				next;
+				$fct_cost .= "\t-- Function $fct total estimated cost: $cost\n";
+				foreach (sort { $cost_detail{$b} <=> $cost_detail{$a} } keys %cost_detail) {
+					next if (!$cost_detail{$_});
+					$fct_cost .= "\t\t-- $_ => $cost_detail{$_}";
+					$fct_cost .= " (cost: $Ora2Pg::PLSQL::UNCOVERED_SCORE{$_})" if ($Ora2Pg::PLSQL::UNCOVERED_SCORE{$_});
+					$fct_cost .= "\n";
+				}
 			}
 			$self->logit("\tDumping function $fct...\n", 1);
 			my $fhdl = undef;
@@ -2088,14 +2097,13 @@ LANGUAGE plpgsql ;
 				$self->logit("Dumping to one file per function : ${fct}_$self->{output}\n", 1);
 				$fhdl = $self->open_export_file("${fct}_$self->{output}");
 			}
-			$self->{idxcomment} = 0;
-			my %comments = $self->_remove_comments(\$self->{functions}{$fct});
 			if ($self->{plsql_pgsql}) {
 				$sql_output .= $self->_convert_function($self->{functions}{$fct}) . "\n\n";
 			} else {
 				$sql_output .= $self->{functions}{$fct} . "\n\n";
 			}
 			$self->_restore_comments(\$sql_output, \%comments);
+			$sql_output .= $fct_cost;
 			if ($self->{file_per_function} && !$self->{pg_dsn}) {
 				$self->dump($sql_header . $sql_output, $fhdl);
 				$self->close_export_file($fhdl);
@@ -2170,6 +2178,7 @@ LANGUAGE plpgsql ;
                 my $cost_value = 0;
 		my $i = 1;
 		my $num_total_procedure = scalar keys %{$self->{procedures}};
+		my $fct_cost = '';
 		foreach my $fct (sort keys %{$self->{procedures}}) {
 
 			if (!$self->{quiet} && !$self->{debug}) {
@@ -2177,13 +2186,21 @@ LANGUAGE plpgsql ;
 			}
 			# forget or not this object if it is in the exclude or allow lists.
 			$i++, next if ($self->skip_this_object('PROCEDURE', $fct));
+			$self->{idxcomment} = 0;
+			my %comments = $self->_remove_comments(\$self->{procedures}{$fct});
 			if ($self->{estimate_cost} && $self->{input_file}) {
 				$total_size += length($self->{procedures}->{$fct});
-				my $cost = Ora2Pg::PLSQL::estimate_cost($self->{procedures}->{$fct});
+				my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($self->{procedures}->{$fct});
 				$cost += $Ora2Pg::PLSQL::OBJECT_SCORE{'PROCEDURE'};
 				$cost_value += $cost;
 				$self->logit("Function $fct estimated cost: $cost\n", 0);
-				next;
+				$fct_cost .= "\t-- Function $fct total estimated cost: $cost\n";
+				foreach (sort { $cost_detail{$b} <=> $cost_detail{$a} } keys %cost_detail) {
+					next if (!$cost_detail{$_});
+					$fct_cost .= "\t\t-- $_ => $cost_detail{$_}";
+					$fct_cost .= " (cost: $Ora2Pg::PLSQL::UNCOVERED_SCORE{$_})" if ($Ora2Pg::PLSQL::UNCOVERED_SCORE{$_});
+					$fct_cost .= "\n";
+				}
 			}
 
 			$self->logit("\tDumping procedure $fct...\n", 1);
@@ -2193,14 +2210,13 @@ LANGUAGE plpgsql ;
 				$self->logit("Dumping to one file per procedure : ${fct}_$self->{output}\n", 1);
 				$fhdl = $self->open_export_file("${fct}_$self->{output}");
 			}
-			$self->{idxcomment} = 0;
-			my %comments = $self->_remove_comments(\$self->{procedures}{$fct});
 			if ($self->{plsql_pgsql}) {
 				$sql_output .= $self->_convert_function($self->{procedures}{$fct}) . "\n\n";
 			} else {
 				$sql_output .= $self->{procedures}{$fct} . "\n\n";
 			}
 			$self->_restore_comments(\$sql_output, \%comments);
+			$sql_output .= $fct_cost;
 			if ($self->{file_per_function} && !$self->{pg_dsn}) {
 				$self->dump($sql_header . $sql_output, $fhdl);
 				$self->close_export_file($fhdl);
@@ -2217,7 +2233,6 @@ LANGUAGE plpgsql ;
 			$self->logit("Total size of function code: $total_size bytes.\n", 0);
 			$self->logit("Total estimated cost: $cost_value units, " . $self->_get_human_cost($cost_value) . ".\n", 0);
 			$self->{procedures} = ();
-			return;
 		}
 		if (!$nothing) {
 			$sql_output = "-- Nothing found of type $self->{type}\n";
@@ -2277,6 +2292,7 @@ LANGUAGE plpgsql ;
 		#--------------------------------------------------------
 
 		my $total_size = 0;
+		my $total_size_no_comment = 0;
 		my $number_fct = 0;
 		my $i = 1;
 		my $num_total_package = scalar keys %{$self->{packages}};
@@ -2287,6 +2303,7 @@ LANGUAGE plpgsql ;
 			}
 			$i++, next if (!$self->{packages}{$pkg});
 			my $pkgbody = '';
+			my $fct_cost = '';
 			if (!$self->{plsql_pgsql}) {
 				$self->logit("Dumping package $pkg...\n", 1);
 				if ($self->{plsql_pgsql} && $self->{file_per_function} && !$self->{pg_dsn}) {
@@ -2303,41 +2320,60 @@ LANGUAGE plpgsql ;
 				$pkgbody = $self->{packages}{$pkg};
 			} else {
 				my @codes = split(/CREATE(?: OR REPLACE)? PACKAGE BODY/, $self->{packages}{$pkg});
-				if ($self->{estimate_cost} && $self->{input_file}) {
+				if ($self->{estimate_cost}) {
 					$total_size += length($self->{packages}->{$pkg});
 					foreach my $txt (@codes) {
 						my %infos = $self->_lookup_package("CREATE OR REPLACE PACKAGE BODY$txt");
 						foreach my $f (sort keys %infos) {
 							next if (!$f);
-							my $cost = Ora2Pg::PLSQL::estimate_cost($infos{$f});
+							$self->{idxcomment} = 0;
+							my %comments = $self->_remove_comments(\$infos{$f});
+							$total_size_no_comment += (length($infos{$f}) - (17 * $self->{idxcomment}));
+							my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($infos{$f});
+							$self->_restore_comments(\$infos{$f}, \%comments);
 							$cost += $Ora2Pg::PLSQL::OBJECT_SCORE{'FUNCTION'};
-							$self->logit("Function $f estimated cost: $cost\n", 0);
+							$self->logit("Function $f estimated cost: $cost\n", 1);
 							$cost_value += $cost;
 							$number_fct++;
+							$fct_cost .= "\t-- Function $f total estimated cost: $cost\n";
+							foreach (sort { $cost_detail{$b} <=> $cost_detail{$a} } keys %cost_detail) {
+								next if (!$cost_detail{$_});
+								$fct_cost .= "\t\t-- $_ => $cost_detail{$_}";
+								$fct_cost .= " (cost: $Ora2Pg::PLSQL::UNCOVERED_SCORE{$_})" if ($Ora2Pg::PLSQL::UNCOVERED_SCORE{$_});
+								$fct_cost .= "\n";
+							}
 						}
 						$cost_value += $Ora2Pg::PLSQL::OBJECT_SCORE{'PACKAGE BODY'};
 					}
-				} else {
-					foreach my $txt (@codes) {
-						$pkgbody .= $self->_convert_package("CREATE OR REPLACE PACKAGE BODY$txt");
-						$pkgbody =~ s/[\r\n]*END;[\t\s\r\n]*$//is;
-						$pkgbody =~ s/([\r\n]*;)[\t\s\r\n]*$/$1/is;
-					}
+					$fct_cost .= "-- Total estimated cost for package $pkg: $cost_value\n";
+				}
+				foreach my $txt (@codes) {
+					$pkgbody .= $self->_convert_package("CREATE OR REPLACE PACKAGE BODY$txt");
+					$pkgbody =~ s/[\r\n]*END;[\t\s\r\n]*$//is;
+					$pkgbody =~ s/([\r\n]*;)[\t\s\r\n]*$/$1/is;
 				}
 			}
-			if ($self->{estimate_cost} && $self->{input_file}) {
-				$self->logit("Total size of package code: $total_size bytes.\n", 0);
-				$self->logit("Total number of functions found inside those packages: $number_fct.\n", 0);
-				$self->logit("Total estimated cost: $cost_value units, " . $self->_get_human_cost($cost_value) . ".\n", 0);
-				$self->{packages} = ();
-				return;
+			if ($self->{estimate_cost}) {
+				$self->logit("Total size of package code: $total_size bytes.\n", 1);
+				$self->logit("Total size of package code without comments: $total_size_no_comment bytes.\n", 1);
+				$self->logit("Total number of functions found inside those packages: $number_fct.\n", 1);
+				$self->logit("Total estimated cost: $cost_value units, " . $self->_get_human_cost($cost_value) . ".\n", 1);
 			}
 			if ($pkgbody && ($pkgbody =~ /[a-z]/is)) {
 				$sql_output .= "-- Oracle package '$pkg' declaration, please edit to match PostgreSQL syntax.\n";
 				$sql_output .= $pkgbody . "\n";
 				$sql_output .= "-- End of Oracle package '$pkg' declaration\n\n";
+				if ($self->{estimate_cost}) {
+					$sql_output .= "-- Total size of package code: $total_size bytes.\n";
+					$sql_output .= "-- Total size of package code without comments: $total_size_no_comment bytes.\n";
+					$sql_output .= "-- Total number of functions found inside those packages: $number_fct.\n";
+					$sql_output .= "-- Total estimated cost: $cost_value units, " . $self->_get_human_cost($cost_value) . ".\n";
+					$sql_output .= "-- Detailed cost per function:\n\n" . $fct_cost;
+				}
 				$nothing++;
 			}
+			$self->{total_pkgcost} += ($number_fct*$Ora2Pg::PLSQL::OBJECT_SCORE{'FUNCTION'});
+			$self->{total_pkgcost} += $Ora2Pg::PLSQL::OBJECT_SCORE{'PACKAGE BODY'};
 			$i++;
 		}
 		if (!$self->{quiet} && !$self->{debug}) {
@@ -2345,8 +2381,6 @@ LANGUAGE plpgsql ;
 		}
 		if (!$nothing) {
 			$sql_output = "-- Nothing found of type $self->{type}\n";
-		} elsif ($self->{estimate_cost}) {
-			$sql_output .= "\n-- Porting cost of all packages: $self->{total_pkgcost}\n";
 		}
 		$self->dump($sql_output);
 		$self->{packages} = ();
@@ -5417,7 +5451,6 @@ sub _convert_package
 		}
 		$self->_restore_comments(\$content, \%comments);
 		if ($self->{estimate_cost}) {
-			$content .= "-- Porting cost of package \L$pname\E: $self->{pkgcost}\n" if ($self->{pkgcost});
 			$self->{total_pkgcost} += $self->{pkgcost} || 0;
 		}
 	}
@@ -5592,10 +5625,19 @@ sub _convert_function
 		$function .= $func_code;
 		$immutable = ' IMMUTABLE' if ($immutable);
 		$function .= "\n\$body\$\nLANGUAGE PLPGSQL$immutable;\n";
+		my $fct_cost = '';
 		if ($self->{estimate_cost}) {
 			$func_name =~ s/"//g;
-			my $cost = Ora2Pg::PLSQL::estimate_cost($function);
-			$function .= "-- Porting cost of function \L$func_name\E: $cost\n" if ($cost);
+			my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($function);
+			if ($cost && ($self->{type} ne 'PACKAGE')) {
+				$function .= "-- Porting cost of function \L$func_name\E: $cost\n";
+				foreach (sort { $cost_detail{$b} <=> $cost_detail{$a} } keys %cost_detail) {
+					next if (!$cost_detail{$_});
+					$function .= "\t-- $_ => $cost_detail{$_}";
+					$function .= " (cost: $Ora2Pg::PLSQL::UNCOVERED_SCORE{$_})" if ($Ora2Pg::PLSQL::UNCOVERED_SCORE{$_});
+					$function .= "\n";
+				}
+			}
 			$self->{pkgcost} += ($cost || 0);
 		}
 		$function = "\n$func_before$function";
@@ -6443,7 +6485,7 @@ sub _show_infos
 				foreach my $trig (@{$triggers}) {
 					$total_size += length($trig->[4]);
 					if ($self->{estimate_cost}) {
-						my $cost = Ora2Pg::PLSQL::estimate_cost($trig->[4]);
+						my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($trig->[4]);
 						$report_info{'Objects'}{$typ}{'cost_value'} += $cost;
 						$report_info{'Objects'}{$typ}{'detail'} .= "\L$trig->[0]: $cost\E\n";
 					}
@@ -6457,9 +6499,17 @@ sub _show_infos
 				foreach my $fct (keys %{$functions}) {
 					$total_size += length($functions->{$fct});
 					if ($self->{estimate_cost}) {
-						my $cost = Ora2Pg::PLSQL::estimate_cost($functions->{$fct});
+						my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($functions->{$fct});
 						$report_info{'Objects'}{$typ}{'cost_value'} += $cost;
 						$report_info{'Objects'}{$typ}{'detail'} .= "\L$fct: $cost\E\n";
+						$report_info{full_function_details}{"\L$fct\E"}{count} = $cost;
+						foreach my $d (sort { $cost_detail{$b} <=> $cost_detail{$a} } keys %cost_detail) {
+							next if (!$cost_detail{$d});
+							$report_info{full_function_details}{"\L$fct\E"}{info} .= "\t$d => $cost_detail{$d}";
+							$report_info{full_function_details}{"\L$fct\E"}{info} .= " (cost: $Ora2Pg::PLSQL::UNCOVERED_SCORE{$d})" if ($Ora2Pg::PLSQL::UNCOVERED_SCORE{$d});
+							$report_info{full_function_details}{"\L$fct\E"}{info} .= "\n";
+						}
+
 					}
 				}
 				$report_info{'Objects'}{$typ}{'comment'} = "Total size of function code: $total_size bytes.";
@@ -6469,7 +6519,7 @@ sub _show_infos
 				foreach my $proc (keys %{$procedures}) {
 					$total_size += length($procedures->{$proc});
 					if ($self->{estimate_cost}) {
-						my $cost = Ora2Pg::PLSQL::estimate_cost($procedures->{$proc});
+						my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($procedures->{$proc});
 						$report_info{'Objects'}{$typ}{'cost_value'} += $cost;
 						$report_info{'Objects'}{$typ}{'detail'} .= "\L$proc: $cost\E\n";
 					}
@@ -6488,7 +6538,7 @@ sub _show_infos
 						foreach my $f (sort keys %infos) {
 							next if (!$f);
 							if ($self->{estimate_cost}) {
-								my $cost = Ora2Pg::PLSQL::estimate_cost($infos{$f});
+								my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($infos{$f});
 								$report_info{'Objects'}{$typ}{'cost_value'} += $cost;
 								$report_info{'Objects'}{$typ}{'detail'} .= "\L$f: $cost\E\n";
 							}
@@ -7274,6 +7324,13 @@ sub _show_report
 			$self->logit("Total\t$report_info{'total_object_number'}\t$report_info{'total_object_invalid'}\n", 0);
 		}
 		$self->logit("-------------------------------------------------------------------------------\n", 0);
+		if ($self->{estimate_cost}) {
+			foreach my $fct (sort { $report_info{'full_function_details'}{$b}{count} <=> $report_info{'full_function_details'}{$a}{count} } keys %{ $report_info{'full_function_details'} } ) {
+				$self->logit("Function $fct total estimated cost: $report_info{'full_function_details'}{$fct}{count}\n", 0);
+				$self->logit($report_info{'full_function_details'}{$fct}{info}, 0);
+			}
+			$self->logit("-------------------------------------------------------------------------------\n", 0);
+		}
 	} else {
 		my $cost_header = '';
 		$cost_header = "<th>Estimated cost</th>" if ($self->{estimate_cost});
@@ -7297,6 +7354,15 @@ h1 {
 	margin-bottom: 20px;
 	border-bottom: 1px solid #DFDFDF;
 	font-size: 22px;
+	padding: 0px;
+	padding-bottom: 5px;
+	font-weight: bold;
+	color: #0094C7;
+}
+
+h2 {
+	margin-bottom: 10px;
+	font-size: 18px;
 	padding: 0px;
 	padding-bottom: 5px;
 	font-weight: bold;
@@ -7395,8 +7461,23 @@ h1 {
 		} else {
 			$self->logit("<tr><th style=\"text-align: center; border-bottom: 0px; vertical-align: bottom;\">Total</th><td style=\"text-align: center; border-bottom: 0px; vertical-align: bottom; border-bottom: 0px; vertical-align: bottom;\">$report_info{'total_object_number'}</td><td style=\"text-align: center; border-bottom: 0px; vertical-align: bottom;\">$report_info{'total_object_invalid'}</td><td colspan=\"3\" style=\"border-bottom: 0px; vertical-align: bottom;\"></td></tr>\n", 0);
 		}
-		my $html_footer = qq{</table>
-</div>
+		$self->logit("</table>\n</div>\n", 0);
+
+		if ($self->{estimate_cost}) {
+			$self->logit("<h2>Details of cost assessment per function</h2>\n", 0);
+			$self->logit("<ul>\n", 0);
+			foreach my $fct (sort { $report_info{'full_function_details'}{$b}{count} <=> $report_info{'full_function_details'}{$a}{count} } keys %{ $report_info{'full_function_details'} } ) {
+				
+				$self->logit("<li>Function $fct total estimated cost: $report_info{'full_function_details'}{$fct}{count}</li>\n", 0);
+				$self->logit("<ul>\n", 0);
+				$report_info{'full_function_details'}{$fct}{info} =~ s/\t/<li>/gs;
+				$report_info{'full_function_details'}{$fct}{info} =~ s/\n/<\/li>\n/gs;
+				$self->logit($report_info{'full_function_details'}{$fct}{info}, 0);
+				$self->logit("</ul>\n", 0);
+			}
+			$self->logit("</ul>\n", 0);
+		}
+		my $html_footer = qq{
 <div id="footer">
 Generated by <a href="http://ora2pg.darold.net/">Ora2Pg v$VERSION</a>
 </div>
