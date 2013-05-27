@@ -1,3 +1,25 @@
+2013 05 27 - v11.3
+
+This release fixes several major issues on migration cost assessment, especialy
+with stored procedures with lot of lines or if you have lot of comments in that
+code. You may want to run your database evaluation again as the estimated times
+can be up to tree time lower on huge PL/SQL code. 
+
+	- Add full details about PL/SQL evaluation by ora2pg when --estimate_cost
+	  or ESTIMATE_COST is enable. This will display cost units per keywords
+	  detected in the function/package code.
+	- Fix wrong cost unit assessment on PL/SQL code size, this bug generated
+	  very high migration cost assessment for functions/packages with lot of
+	  lines. Please run your tests again, estimated times can be up to tree
+	  time lower on huge code.
+	- Remove comments before code evalution.
+	- Fix file input parser for PL/SQL packages export when IS or AS was in
+	  the next line than the CREATE PACKAGE BODY ...
+	- Exclude NOT NULL constraint from the count of CHECK constraints into
+	  the TABLE report.
+	- Fix decimal precision in table migration assessment cost.
+	- Fix typo in changelog.
+
 2013 05 01 - v11.2
 
 This release fixes several major issues especially with direct import of data
