@@ -60,14 +60,14 @@ $VERSION = '11.2';
 	'JOB' => 2, # read/adapt
 );
 
-# Scores following the number of lines: number of lines for one unit
+# Scores following the number of characters: 1000 chars for one unit.
 # Note: his correspond to the global read time not to the difficulty.
-$SIZE_SCORE = 100;
+$SIZE_SCORE = 1000;
 
 # Scores associated to each code difficulties.
 %UNCOVERED_SCORE = (
 	'FROM' => 1,
-	'TRUNC' => 2,
+	'TRUNC' => 1,
 	'DECODE' => 2,
 	'IS TABLE OF' => 4,
 	'OUTER JOIN' => 3,
@@ -108,7 +108,7 @@ $SIZE_SCORE = 100;
 	'NVL2' => 1,
 );
 
-@ORA_FUNCTIONS = qq(
+@ORA_FUNCTIONS = qw(
     AsciiStr
     Compose
     Decompose
@@ -521,6 +521,7 @@ sub estimate_cost
 {
 	my $str = shift;
 
+	my %cost_details = ();
 	# Default cost is 1 that mean it at least must be tested
 	my $cost = 1;
 
@@ -528,98 +529,106 @@ sub estimate_cost
 	my $cost_size = int(length($str)/$SIZE_SCORE) || 1;
 
 	$cost += $cost_size;
+	$cost_details{'SIZE'} = $cost_size;
 
 	# Try to figure out the manual work
 	my $n = () = $str =~ m/\bFROM[\t\s]*\(/igs;
-	$cost += $UNCOVERED_SCORE{'FROM'}*$n;
+	$cost_details{'FROM'} += $n;
 	$n = () = $str =~ m/\bTRUNC[\t\s]*\(/igs;
-	$cost += $UNCOVERED_SCORE{'TRUNC'}*$n;
+	$cost_details{'TRUNC'} += $n;
 	$n = () = $str =~ m/\bDECODE[\t\s]*\(/igs;
-	$cost += $UNCOVERED_SCORE{'DECODE'}*$n;
+	$cost_details{'DECODE'} += $n;
 	$n = () = $str =~ m/\bIS[\t\s]+TABLE[\t\s]+OF\b/igs;
-	$cost += $UNCOVERED_SCORE{'IS TABLE OF'}*$n;
+	$cost_details{'IS TABLE OF'} += $n;
 	$n = () = $str =~ m/\(\+\)/igs;
-	$cost += $UNCOVERED_SCORE{'OUTER JOIN'}*$n;
+	$cost_details{'OUTER JOIN'} += $n;
 	$n = () = $str =~ m/\bCONNECT[\t\s]+BY\b/igs;
-	$cost += $UNCOVERED_SCORE{'CONNECT BY'}*$n;
+	$cost_details{'CONNECT BY'} += $n;
 	$n = () = $str =~ m/\bBULK[\t\s]+COLLECT\b/igs;
-	$cost += $UNCOVERED_SCORE{'BULK COLLECT'}*$n;
+	$cost_details{'BULK COLLECT'} += $n;
 	$n = () = $str =~ m/\bFORALL\b/igs;
-	$cost += $UNCOVERED_SCORE{'FORALL'}*$n;
+	$cost_details{'FORALL'} += $n;
 	$n = () = $str =~ m/\bGOTO\b/igs;
-	$cost += $UNCOVERED_SCORE{'GOTO'}*$n;
+	$cost_details{'GOTO'} += $n;
 	$n = () = $str =~ m/\bROWNUM\b/igs;
-	$cost += $UNCOVERED_SCORE{'ROWNUM'}*$n;
+	$cost_details{'ROWNUM'} += $n;
 	$n = () = $str =~ m/\bNOTFOUND\b/igs;
-	$cost += $UNCOVERED_SCORE{'NOTFOUND'}*$n;
+	$cost_details{'NOTFOUND'} += $n;
 	$n = () = $str =~ m/\bROWID\b/igs;
-	$cost += $UNCOVERED_SCORE{'ROWID'}*$n;
+	$cost_details{'ROWID'} += $n;
 	$n = () = $str =~ m/\bSQLSTATE\b/igs;
-	$cost += $UNCOVERED_SCORE{'SQLCODE'}*$n;
+	$cost_details{'SQLCODE'} += $n;
 	$n = () = $str =~ m/\bIS RECORD\b/igs;
-	$cost += $UNCOVERED_SCORE{'IS RECORD'}*$n;
+	$cost_details{'IS RECORD'} += $n;
 	$n = () = $str =~ m/FROM[^;]*\bTABLE[\t\s]*\(/igs;
-	$cost += $UNCOVERED_SCORE{'TABLE'}*$n;
+	$cost_details{'TABLE'} += $n;
 	$n = () = $str =~ m/PIPE[\t\s]+ROW/igs;
-	$cost += $UNCOVERED_SCORE{'PIPE ROW'}*$n;
+	$cost_details{'PIPE ROW'} += $n;
 	$n = () = $str =~ m/DBMS_\w/igs;
-	$cost += $UNCOVERED_SCORE{'DBMS_'}*$n;
+	$cost_details{'DBMS_'} += $n;
 	$n = () = $str =~ m/UTL_\w/igs;
-	$cost += $UNCOVERED_SCORE{'UTL_'}*$n;
+	$cost_details{'UTL_'} += $n;
 	$n = () = $str =~ m/CTX_\w/igs;
-	$cost += $UNCOVERED_SCORE{'CTX_'}*$n;
+	$cost_details{'CTX_'} += $n;
 	$n = () = $str =~ m/\bEXTRACT[\t\s]*\(/igs;
-	$cost += $UNCOVERED_SCORE{'EXTRACT'}*$n;
+	$cost_details{'EXTRACT'} += $n;
 	$n = () = $str =~ m/\bSUBSTR[\t\s]*\(/igs;
-	$cost += $UNCOVERED_SCORE{'SUBSTR'}*$n;
+	$cost_details{'SUBSTR'} += $n;
 	$n = () = $str =~ m/\bTO_NUMBER[\t\s]*\(/igs;
-	$cost += $UNCOVERED_SCORE{'TO_NUMBER'}*$n;
+	$cost_details{'TO_NUMBER'} += $n;
 	# See:  http://www.postgresql.org/docs/9.0/static/errcodes-appendix.html#ERRCODES-TABLE
 	$n = () = $str =~ m/\b(DUP_VAL_ON_INDEX|TIMEOUT_ON_RESOURCE|TRANSACTION_BACKED_OUT|NOT_LOGGED_ON|LOGIN_DENIED|INVALID_NUMBER|PROGRAM_ERROR|VALUE_ERROR|ROWTYPE_MISMATCH|CURSOR_ALREADY_OPEN|ACCESS_INTO_NULL|COLLECTION_IS_NULL)\b/igs;
-	$cost += $UNCOVERED_SCORE{'EXCEPTION'}*$n;
+	$cost_details{'EXCEPTION'} += $n;
 	$n = () = $str =~ m/REGEXP_LIKE/igs;
-	$cost += $UNCOVERED_SCORE{'REGEXP_LIKE'}*$n;
-	$n = () = $str =~ m/REGEXP_LIKE/igs;
-	$cost += $UNCOVERED_SCORE{'REGEXP_LIKE'}*$n;
+	$cost_details{'REGEXP_LIKE'} += $n;
 	$n = () = $str =~ m/INSERTING|DELETING|UPDATING/igs;
-	$cost += $UNCOVERED_SCORE{'TG_OP'}*$n;
+	$cost_details{'TG_OP'} += $n;
 	$n = () = $str =~ m/CURSOR/igs;
-	$cost += $UNCOVERED_SCORE{'CURSOR'}*$n;
+	$cost_details{'CURSOR'} += $n;
 	$n = () = $str =~ m/ORA_ROWSCN/igs;
-	$cost += $UNCOVERED_SCORE{'ORA_ROWSCN'}*$n;
+	$cost_details{'ORA_ROWSCN'} += $n;
 	$n = () = $str =~ m/SAVEPOINT/igs;
-	$cost += $UNCOVERED_SCORE{'SAVEPOINT'}*$n;
+	$cost_details{'SAVEPOINT'} += $n;
 	$n = () = $str =~ m/(FROM|EXEC)((?!WHERE).)*\b[\w\_]+\@[\w\_]+\b/igs;
-	$cost += $UNCOVERED_SCORE{'DBLINK'}*$n;
+	$cost_details{'DBLINK'} += $n;
 
 	$n = () = $str =~ m/PLVDATE/igs;
-	$cost += $UNCOVERED_SCORE{'PLVDATE'}*$n;
+	$cost_details{'PLVDATE'} += $n;
 	$n = () = $str =~ m/PLVSTR/igs;
-	$cost += $UNCOVERED_SCORE{'PLVSTR'}*$n;
+	$cost_details{'PLVSTR'} += $n;
 	$n = () = $str =~ m/PLVCHR/igs;
-	$cost += $UNCOVERED_SCORE{'PLVCHR'}*$n;
+	$cost_details{'PLVCHR'} += $n;
 	$n = () = $str =~ m/PLVSUBST/igs;
-	$cost += $UNCOVERED_SCORE{'PLVSUBST'}*$n;
+	$cost_details{'PLVSUBST'} += $n;
 	$n = () = $str =~ m/PLVLEX/igs;
-	$cost += $UNCOVERED_SCORE{'PLVLEX'}*$n;
+	$cost_details{'PLVLEX'} += $n;
 	$n = () = $str =~ m/PLUNIT/igs;
-	$cost += $UNCOVERED_SCORE{'PLUNIT'}*$n;
+	$cost_details{'PLUNIT'} += $n;
 	$n = () = $str =~ m/ADD_MONTHS/igs;
-	$cost += $UNCOVERED_SCORE{'ADD_MONTHS'}*$n;
+	$cost_details{'ADD_MONTHS'} += $n;
 	$n = () = $str =~ m/LAST_DATE/igs;
-	$cost += $UNCOVERED_SCORE{'LAST_DATE'}*$n;
+	$cost_details{'LAST_DATE'} += $n;
 	$n = () = $str =~ m/NEXT_DAY/igs;
-	$cost += $UNCOVERED_SCORE{'NEXT_DAY'}*$n;
+	$cost_details{'NEXT_DAY'} += $n;
 	$n = () = $str =~ m/MONTHS_BETWEEN/igs;
-	$cost += $UNCOVERED_SCORE{'MONTHS_BETWEEN'}*$n;
+	$cost_details{'MONTHS_BETWEEN'} += $n;
 	$n = () = $str =~ m/NVL2/igs;
-	$cost += $UNCOVERED_SCORE{'NVL2'}*$n;
+	$cost_details{'NVL2'} += $n;
 
 	foreach my $f (@ORA_FUNCTIONS) {
-		$cost += 2 if ($str =~ /\b$f\b/i);
+		if ($str =~ /\b$f\b/is) {
+			$cost += 1;
+			$cost_details{$f} += 1;
+		}
+	}
+	foreach my $t (keys %UNCOVERED_SCORE) {
+		#$n = $cost_details{$t}/10;
+		#$n = 1 if ($n < 1);
+		#$cost += $UNCOVERED_SCORE{$t}*$n;
+		$cost += $UNCOVERED_SCORE{$t}*$cost_details{$t};
 	}
 
-	return $cost;
+	return $cost, %cost_details;
 }
 
 1;
