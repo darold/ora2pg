@@ -24,7 +24,7 @@ package Ora2Pg::PLSQL;
 # 
 #------------------------------------------------------------------------------
 
-use vars qw($VERSION %OBJECT_SCORE $SIZE_SCORE %UNCOVERED_SCORE @ORA_FUNCTIONS);
+use vars qw($VERSION %OBJECT_SCORE $SIZE_SCORE $FCT_TEST_SCORE %UNCOVERED_SCORE @ORA_FUNCTIONS);
 use POSIX qw(locale_h);
 
 #set locale to LC_NUMERIC C
@@ -41,14 +41,14 @@ $VERSION = '11.3';
 %OBJECT_SCORE = (
 	'CLUSTER' => 0, # Not supported and no equivalent
 	'FUNCTION' => 1, # read/adapt the header
-	'INDEX' => 1, # Read/adapt - use varcharops like operator ?
-	'FUNCTION-BASED-INDEX' => 1, # Check code of function call
+	'INDEX' => 0.1, # Read/adapt - use varcharops like operator ?
+	'FUNCTION-BASED-INDEX' => 0.2, # Check code of function call
 	'REV-INDEX' => 1, # Check/rewrite the index to use trigram
 	'CHECK' => 0.1, # Check/adapt the check constraint
 	'MATERIALIZED VIEW' => 3, # Read/adapt, will just concern automatic snapshot export
-	'PACKAGE BODY' => 3, # Look at globals variables
+	'PACKAGE BODY' => 3, # Look at globals variables and global 
 	'PROCEDURE' => 1, # read/adapt the header
-	'SEQUENCE' => 0.5, # read/adapt to convert name.nextval() into nextval('name')
+	'SEQUENCE' => 0.1, # read/adapt to convert name.nextval() into nextval('name')
 	'TABLE' => 0.5, # read/adapt the column type/name
 	'TABLE PARTITION' => 0.1, # Read/check that table partitionning is ok
 	'TRIGGER' => 1, # read/adapt the header
@@ -63,6 +63,9 @@ $VERSION = '11.3';
 # Scores following the number of characters: 1000 chars for one unit.
 # Note: his correspond to the global read time not to the difficulty.
 $SIZE_SCORE = 1000;
+
+# Cost to apply on each function for testing
+$FCT_TEST_SCORE = 2;
 
 # Scores associated to each code difficulties.
 %UNCOVERED_SCORE = (
@@ -522,8 +525,10 @@ sub estimate_cost
 	my $str = shift;
 
 	my %cost_details = ();
-	# Default cost is 1 that mean it at least must be tested
-	my $cost = 1;
+
+	# Default cost is testing that mean it at least must be tested
+	my $cost = $FCT_TEST_SCORE;
+	$cost_details{'TEST'} = $cost;
 
 	# Set cost following code length
 	my $cost_size = int(length($str)/$SIZE_SCORE) || 1;
@@ -616,15 +621,12 @@ sub estimate_cost
 	$cost_details{'NVL2'} += $n;
 
 	foreach my $f (@ORA_FUNCTIONS) {
-		if ($str =~ /\b$f\b/is) {
+		if ($str =~ /\b$f\b/igs) {
 			$cost += 1;
 			$cost_details{$f} += 1;
 		}
 	}
 	foreach my $t (keys %UNCOVERED_SCORE) {
-		#$n = $cost_details{$t}/10;
-		#$n = 1 if ($n < 1);
-		#$cost += $UNCOVERED_SCORE{$t}*$n;
 		$cost += $UNCOVERED_SCORE{$t}*$cost_details{$t};
 	}
 
