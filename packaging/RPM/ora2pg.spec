@@ -4,7 +4,7 @@
 
 Name: %{wname}
 Epoch: 0
-Version: 11.3
+Version: 11.4
 Release: 1%{?dist}
 Summary: Oracle to PostgreSQL database schema converter
 

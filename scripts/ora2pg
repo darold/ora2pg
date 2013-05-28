@@ -30,7 +30,7 @@ use POSIX qw(locale_h sys_wait_h _exit);
 setlocale(LC_NUMERIC, '');
 setlocale(LC_ALL,     'C');
 
-my $VERSION = '11.3';
+my $VERSION = '11.4';
 
 my $CONFIG_FILE = '/etc/ora2pg/ora2pg.conf';
 my $DEBUG = 0;

@@ -1,3 +1,11 @@
+2013 05 28 - v11.4
+
+This release fixes others several major issues on migration cost assessment that
+was not addressed in previous release, please upgrade.
+
+	- Fix other major issues in migration cost assessment.
+	- Redefine some migration cost values to be more precise.
+
 2013 05 27 - v11.3
 
 This release fixes several major issues on migration cost assessment, especialy
