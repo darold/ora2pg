@@ -1819,7 +1819,11 @@ LANGUAGE plpgsql ;
 			if ($self->{force_owner}) {
 				my $owner = $seq->[7];
 				$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
-				$sql_output .= "ALTER SEQUENCE \"\L$seq->[0]\E\" OWNER TO \L$owner\E;\n";
+				if (!$self->{preserve_case}) {
+					$sql_output .= "ALTER SEQUENCE \L$seq->[0]\E OWNER TO \L$owner\E;\n";
+				} else {
+					$sql_output .= "ALTER SEQUENCE \"$seq->[0]\" OWNER TO \"$owner\";\n";
+				}
 			}
 			$i++;
 		}
@@ -3735,7 +3739,10 @@ sub _extract_sequence_info
 		next if ($self->skip_this_object('SEQUENCE', $seq_info->{SEQUENCE_NAME}));
 
 		my $nextvalue = $seq_info->{LAST_NUMBER} + $seq_info->{INCREMENT_BY};
-		my $alter ="ALTER SEQUENCE $seq_info->{SEQUENCE_NAME} RESTART WITH $nextvalue;";
+		my $alter ="ALTER SEQUENCE \L$seq_info->{SEQUENCE_NAME}\E RESTART WITH $nextvalue;";
+		if ($self->{preserve_case}) {
+			$alter = "ALTER SEQUENCE \"$seq_info->{SEQUENCE_NAME}\" RESTART WITH $nextvalue;";
+		}
 		$script .= "$alter\n";
 		$self->logit("Extracted sequence information for sequence \"$seq_info->{SEQUENCE_NAME}\"\n", 1);
 
