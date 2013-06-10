@@ -2975,7 +2975,7 @@ CREATE TRIGGER insert_${table}_trigger
 			if (!$self->{preserve_case}) {
 				$sql_output .= "COMMENT ON TABLE \L$tbname\E IS E'$self->{tables}{$table}{table_info}{comment}';\n";
 			} else {
-				$sql_output .= "COMMENT ON TABLE \"$tbname\".\"$f->[0]\" IS E'$self->{tables}{$table}{table_info}{comment}';\n";
+				$sql_output .= "COMMENT ON TABLE \"$tbname\" IS E'$self->{tables}{$table}{table_info}{comment}';\n";
 			}
 		}
 
