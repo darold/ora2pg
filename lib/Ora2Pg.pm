@@ -3861,9 +3861,9 @@ VARCHAR2
 
 	if ( ($self->{oracle_copies} > 1) && $self->{defined_pk}{"\L$table\E"} ) {
 		if ($str =~ / WHERE /) {
-			$str .= " AND MOD(" . $self->{defined_pk}{"\L$table\E"} . ", $self->{oracle_copies}) = ?";
+			$str .= " AND ABS(MOD(" . $self->{defined_pk}{"\L$table\E"} . ", $self->{oracle_copies})) = ?";
 		} else {
-			$str .= " WHERE MOD(" . $self->{defined_pk}{"\L$table\E"} . ", $self->{oracle_copies}) = ?";
+			$str .= " WHERE ABS(MOD(" . $self->{defined_pk}{"\L$table\E"} . ", $self->{oracle_copies})) = ?";
 		}
 	}
 
@@ -7800,9 +7800,9 @@ sub create_kettle_output
 	my $select_copies = $self->{oracle_copies} || 1;
 	if (($self->{oracle_copies} > 1) && $self->{defined_pk}{"\L$table\E"}) {
 		if ($self->{schema}) {
-			$select_query = "SELECT * FROM $self->{schema}.$table WHERE MOD(" . $self->{defined_pk}{"\L$table\E"} . ",\${Internal.Step.Unique.Count})=\${Internal.Step.Unique.Number}";
+			$select_query = "SELECT * FROM $self->{schema}.$table WHERE ABS(MOD(" . $self->{defined_pk}{"\L$table\E"} . ",\${Internal.Step.Unique.Count}))=\${Internal.Step.Unique.Number}";
 		} else {
-			$select_query = "SELECT * FROM $table WHERE mod(" . $self->{defined_pk}{"\L$table\E"} . ",\${Internal.Step.Unique.Count})=\${Internal.Step.Unique.Number}";
+			$select_query = "SELECT * FROM $table WHERE ABS(MOD(" . $self->{defined_pk}{"\L$table\E"} . ",\${Internal.Step.Unique.Count}))=\${Internal.Step.Unique.Number}";
 		}
 	} else {
 		$select_copies = 1;

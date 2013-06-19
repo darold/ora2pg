@@ -630,7 +630,7 @@ the select query. Default is parallel query disable.
 The parallelism is built on splitting the query following of the number
 of cores given as value to ORACLE_COPIES as follow:
 
-	SELECT * FROM MYTABLE WHERE MOD(COLUMN, ORACLE_COPIES) = CUR_PROC
+	SELECT * FROM MYTABLE WHERE ABS(MOD(COLUMN, ORACLE_COPIES)) = CUR_PROC
 
 where COLUMN is a technical key like a primary or unique key where split
 will be based and the current core used by the query (CUR_PROC).
@@ -648,7 +648,7 @@ For example:
 The parallel query that will be used supposing that -J or ORACLE_COPIES
 is set to 8:
 
-	SELECT * FROM EMPLOYEES WHERE MOD(employee_id, 8) = N
+	SELECT * FROM EMPLOYEES WHERE ABS(MOD(employee_id, 8)) = N
 
 where N is the current process forked starting from 0.
 
@@ -1400,7 +1400,7 @@ the query between cores in the DEFINED_PKEY configuration directive. For example
 will force the number of Oracle connection copies to 4 and defined the SQL query
 as follow in the Kettle XML transformation file:
 
-	<sql>SELECT * FROM HR.EMPLOYEES WHERE MOD(employee_id,${Internal.Step.Unique.Count})=${Internal.Step.Unique.Number}</sql>
+	<sql>SELECT * FROM HR.EMPLOYEES WHERE ABS(MOD(employee_id,${Internal.Step.Unique.Count}))=${Internal.Step.Unique.Number}</sql>
 
 The KETTLE export type requires that the Oracle and PostgreSQL DSN are defined.
 You can also activate the TRUNCATE_TABLE directive to force a truncation of the

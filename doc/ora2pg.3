@@ -133,7 +133,7 @@
 .\" ========================================================================
 .\"
 .IX Title "ORA2PG 1"
-.TH ORA2PG 1 "2013-04-30" "perl v5.10.1" "User Contributed Perl Documentation"
+.TH ORA2PG 1 "2013-06-19" "perl v5.10.1" "User Contributed Perl Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -759,7 +759,7 @@ The parallelism is built on splitting the query following of the number
 of cores given as value to \s-1ORACLE_COPIES\s0 as follow:
 .Sp
 .Vb 1
-\&        SELECT * FROM MYTABLE WHERE MOD(COLUMN, ORACLE_COPIES) = CUR_PROC
+\&        SELECT * FROM MYTABLE WHERE ABS(MOD(COLUMN, ORACLE_COPIES)) = CUR_PROC
 .Ve
 .Sp
 where \s-1COLUMN\s0 is a technical key like a primary or unique key where split
@@ -780,7 +780,7 @@ The parallel query that will be used supposing that \-J or \s-1ORACLE_COPIES\s0
 is set to 8:
 .Sp
 .Vb 1
-\&        SELECT * FROM EMPLOYEES WHERE MOD(employee_id, 8) = N
+\&        SELECT * FROM EMPLOYEES WHERE ABS(MOD(employee_id, 8)) = N
 .Ve
 .Sp
 where N is the current process forked starting from 0.
@@ -1498,7 +1498,7 @@ will force the number of Oracle connection copies to 4 and defined the \s-1SQL\s
 as follow in the Kettle \s-1XML\s0 transformation file:
 .PP
 .Vb 1
-\&        <sql>SELECT * FROM HR.EMPLOYEES WHERE MOD(employee_id,${Internal.Step.Unique.Count})=${Internal.Step.Unique.Number}</sql>
+\&        <sql>SELECT * FROM HR.EMPLOYEES WHERE ABS(MOD(employee_id,${Internal.Step.Unique.Count}))=${Internal.Step.Unique.Number}</sql>
 .Ve
 .PP
 The \s-1KETTLE\s0 export type requires that the Oracle and PostgreSQL \s-1DSN\s0 are defined.
