@@ -1493,10 +1493,10 @@ sub _get_sql_data
 					}
 				}
 				if (!$self->{preserve_case}) {
-					if ($self->{views}{$view}{text} =~ /SELECT[^\s\t]*(.*?)[^\s\t]*FROM/is) {
+					if ($self->{views}{$view}{text} =~ /SELECT[^\s\t]*(.*?)\bFROM\b/is) {
 						my $clause = $1;
 						$clause =~ s/"([^"]+)"/"\L$1\E"/gs;
-						$self->{views}{$view}{text} =~ s/SELECT[^\s\t]*(.*?)[^\s\t]*FROM/SELECT $clause FROM/is;
+						$self->{views}{$view}{text} =~ s/SELECT[^\s\t]*(.*?)\bFROM\b/SELECT $clause FROM/is;
 					}
 				}
 				$sql_output .= ") AS " . $self->{views}{$view}{text} . ";\n\n";
