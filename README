@@ -151,7 +151,7 @@ CONFIGURATION
     If you want to call another configuration file, just give the path as
     command line argument:
 
-            /usr/local/bin/ora2pg --config /etc/ora2pg/new_ora2pg.conf
+            /usr/local/bin/ora2pg -c /etc/ora2pg/new_ora2pg.conf
 
     Here are all command line parameters available when using ora2pg:
 
