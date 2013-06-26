@@ -86,6 +86,8 @@ INSTALLATION
     to have the Oracle client libraries installed and the ORACLE_HOME
     environment variable must be defined.
 
+    On old Perl version you may need to install the Time::HiRes Perl module.
+
   Optional
     By default Ora2Pg dumps export to flat files, to load them into your
     PostgreSQL database you need the PostgreSQL client (psql). If you don't

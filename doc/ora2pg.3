@@ -221,6 +221,8 @@ You need a modern Perl distribution (perl 5.6 and more), the \s-1DBI\s0 and DBD:
 Perl modules to be installed. These are used to connect to the Oracle database.
 To install DBD::Oracle and have it working you need to have the Oracle client
 libraries installed and the \s-1ORACLE_HOME\s0 environment variable must be defined.
+.PP
+On old Perl version you may need to install the Time::HiRes Perl module.
 .SS "Optional"
 .IX Subsection "Optional"
 By default Ora2Pg dumps export to flat files, to load them into your PostgreSQL
