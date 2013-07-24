@@ -2975,7 +2975,7 @@ CREATE TRIGGER insert_${table}_trigger
 		}
 		# Add comments on table
 		if (!$self->{disable_comment} && $self->{tables}{$table}{table_info}{comment}) {
-			$self->{tables}{$table}{table_info}{comment} =~ s/'/\\'/gs;
+			$self->{tables}{$table}{table_info}{comment} =~ s/'/''/gs;
 			if (!$self->{preserve_case}) {
 				$sql_output .= "COMMENT ON TABLE \L$tbname\E IS E'$self->{tables}{$table}{table_info}{comment}';\n";
 			} else {
@@ -2987,7 +2987,7 @@ CREATE TRIGGER insert_${table}_trigger
 		if (!$self->{disable_comment}) {
 			foreach $f (keys %{$self->{tables}{$table}{column_comments}}) {
 				next unless $self->{tables}{$table}{column_comments}{$f};
-				$self->{tables}{$table}{column_comments}{$f} =~ s/'/\\'/gs;
+				$self->{tables}{$table}{column_comments}{$f} =~ s/'/''/gs;
 				if (!$self->{preserve_case}) {
 					$sql_output .= "COMMENT ON COLUMN \L$tbname\.$f\E IS E'$self->{tables}{$table}{column_comments}{$f}';\n";
 				} else {
