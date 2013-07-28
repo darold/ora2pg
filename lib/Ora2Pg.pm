@@ -7143,6 +7143,9 @@ sub skip_this_object
 {
 	my ($self, $obj_type, $name) = @_;
 
+	# Exclude object in Recycle Bin from the export
+	return 3 if ($name =~ /^BIN\$/);
+
 	# Check if this object is in the allowed list of object to export.
 	if (($obj_type ne 'INDEX') && ($obj_type ne 'FKEY')) {
 		return 1 if (($#{$self->{limited}} >= 0) && !grep($name =~ /^$_$/i, @{$self->{limited}}));
