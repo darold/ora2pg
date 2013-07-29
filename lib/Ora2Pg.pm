@@ -2609,6 +2609,8 @@ LANGUAGE plpgsql ;
 
 		# Force datetime format
 		$self->_datetime_format();
+		# Force numeric format
+		$self->_numeric_format();
 
 		# Set total number of rows
 		my $global_rows = 0;
@@ -5199,7 +5201,8 @@ sub format_data_type
 		} elsif ($data_type eq 'boolean') {
 			$col = "'" . ($self->{ora_boolean_values}{lc($col)} || $col) . "'";
 		} else {
-			$col =~ s/,/\./;
+			# covered now by the call to _numeric_format()
+			# $col =~ s/,/\./;
 			$col =~ s/\~/inf/;
 			$col = 'NULL' if ($col eq '');
 		}
@@ -5209,7 +5212,8 @@ sub format_data_type
 		} elsif ($data_type eq 'boolean') {
 			$col = ($self->{ora_boolean_values}{lc($col)} || $col);
 		} elsif ($data_type !~ /(char|date|time|text|bytea|xml)/) {
-			$col =~ s/,/\./;
+			# covered now by the call to _numeric_format()
+			#$col =~ s/,/\./;
 			$col =~ s/\~/inf/;
 			$col = '\N' if ($col eq '');
 		} elsif ($data_type eq 'bytea') {
@@ -6975,6 +6979,14 @@ sub _datetime_format
 		$sth = $self->{dbh}->do("ALTER SESSION SET NLS_TIMESTAMP_TZ_FORMAT='YYYY-MM-DD HH24:MI:SS.FF TZH:TZM'") or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	}
 }
+
+sub _numeric_format
+{
+	my ($self) = @_;
+
+	my $sth = $self->{dbh}->do("ALTER SESSION SET NLS_NUMERIC_CHARACTERS = '.,'") or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+}
+
 
 =head2 multiprocess_progressbar
 
