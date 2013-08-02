@@ -231,29 +231,14 @@ sub new
 }
 
 
-=head2 export_data FILENAME
+=head2 pre_open_file FILENAME
 
-OBSOLETE: you must use export_schema instead. Still here
-for backward compatibility. It simply callback export_schema().
-
-=cut
-
-sub export_data
-{
-	my ($self, $outfile) = @_;
-
-	$self->export_schema($outfile);
-}
-
-
-=head2 export_schema FILENAME
-
-Print SQL data output to a file name or
-to STDOUT if no file name is specified.
+Set output file and open a file handle on it,
+will use STDOUT if no file name is specified.
 
 =cut
 
-sub export_schema
+sub pre_open_file
 {
 	my ($self, $outfile) = @_;
 
@@ -274,6 +259,7 @@ sub export_schema
 			$self->{zlib_hdl} = gzopen($outfile, "wb") or $self->logit("FATAL: Can't create deflation file $outfile\n", 0, 1);
 		} elsif ($outfile =~ /\.bz2$/) {
 			$self->logit("FATAL: can't run bzip2\n",0,1) if (!-x $self->{bzip2});
+			$self->{compress} = 'Bzip2';
 			$self->{fhout} = new IO::File;
 			$self->{fhout}->open("|$self->{bzip2} --stdout >$outfile") or $self->logit("FATAL: Can't open pipe to $self->{bzip2} --stdout >$outfile: $!\n", 0, 1);
 		} else {
@@ -281,27 +267,34 @@ sub export_schema
 			$self->{fhout}->open(">$outfile") or $self->logit("FATAL: Can't open $outfile: $!\n", 0, 1);
 			binmode($self->{fhout},$self->{'binmode'});
 		}
-		foreach my $t (@{$self->{export_type}}) {
-			$self->{type} = $t;
-			# Return data as string
-			$self->_get_sql_data();
+		if ( $self->{compress} && (($self->{jobs} > 1) || ($self->{oracle_copies} > 1)) ) {
+			die "FATAL: you can't use compressed output with parallel dump\n";
 		}
-		if ($outfile =~ /\.gz$/) {
-			$self->{zlib_hdl}->gzclose();
-		} else {
-			$self->{fhout}->close();
-		}
+	}
 
-	} else {
+}
 
-		foreach my $t (@{$self->{export_type}}) {
-			next if ($t =~ /^SHOW_/i);
-			next if ($self->{input_file} && grep(/^$t$/i, 'QUERY', 'FUNCTION','PROCEDURE','PACKAGE'));
-			$self->{type} = $t;
-			# Return data as string
-			$self->_get_sql_data();
-		}
 
+
+=head2 export_schema FILENAME
+
+Print SQL data output to a file name or
+to STDOUT if no file name is specified.
+
+=cut
+
+sub export_schema
+{
+	my $self = shift;
+
+	#$self->pre_open_file();
+
+	foreach my $t (@{$self->{export_type}}) {
+		next if ($t =~ /^SHOW_/i);
+		next if ($self->{input_file} && grep(/^$t$/i, 'QUERY', 'FUNCTION','PROCEDURE','PACKAGE'));
+		$self->{type} = $t;
+		# Return data as string
+		$self->_get_sql_data();
 	}
 
 }
@@ -324,22 +317,22 @@ sub open_export_file
 			$outfile = $self->{output_dir} . '/' . $outfile;
 		}
 		# If user request data compression
-		if ($self->{output} =~ /\.gz$/) {
+		if ($outfile =~ /\.gz$/i) {
 			eval("use Compress::Zlib;");
 			$self->{compress} = 'Zlib';
-			$filehdl = gzopen("$outfile.gz", "wb") or $self->logit("FATAL: Can't create deflation file $outfile.gz\n",0,1);
-		} elsif ($self->{output} =~ /\.bz2$/) {
+			$filehdl = gzopen("$outfile", "wb") or $self->logit("FATAL: Can't create deflation file $outfile\n",0,1);
+		} elsif ($outfile =~ /\.bz2$/i) {
 			$self->logit("Error: can't run bzip2\n",0,1) if (!-x $self->{bzip2});
+			$self->{compress} = 'Bzip2';
 			$filehdl = new IO::File;
-			$filehdl->open("|$self->{bzip2} --stdout >$outfile.bz2") or $self->logit("FATAL: Can't open pipe to $self->{bzip2} --stdout >$outfile.bz2: $!\n", 0,1);
+			$filehdl->open("|$self->{bzip2} --stdout >$outfile") or $self->logit("FATAL: Can't open pipe to $self->{bzip2} --stdout >$outfile: $!\n", 0,1);
 		} else {
 			$filehdl = new IO::File;
 			$filehdl->open(">$outfile") or $self->logit("FATAL: Can't open $outfile: $!\n", 0, 1);
 			binmode($filehdl, $self->{'binmode'});
 		}
-
+		$filehdl->autoflush(1) if (defined $filehdl);
 	}
-	$filehdl->autoflush(1);
 
 	return $filehdl;
 }
@@ -361,17 +354,15 @@ sub append_export_file
 			$outfile = $self->{output_dir} . '/' . $outfile;
 		}
 		# If user request data compression
-		if ($self->{output} =~ /\.gz$/) {
-			die "FATAL: you can't use compressed output with parallel dump\n";
-		} elsif ($self->{output} =~ /\.bz2$/) {
+		if ($self->{compress}) {
 			die "FATAL: you can't use compressed output with parallel dump\n";
 		} else {
 			$filehdl = new IO::File;
 			$filehdl->open(">>$outfile") or $self->logit("FATAL: Can't open $outfile: $!\n", 0, 1);
 			binmode($filehdl, $self->{'binmode'});
+			$filehdl->autoflush(1);
 		}
 	}
-	$filehdl->autoflush(1);
 
 	return $filehdl;
 }
@@ -388,6 +379,8 @@ sub close_export_file
 {
 	my ($self, $filehdl) = @_;
 
+
+	return if (!defined $filehdl);
 
 	if ($self->{output} =~ /\.gz$/) {
 		$filehdl->gzclose();
@@ -2548,16 +2541,17 @@ LANGUAGE plpgsql ;
 		# Ordering tables by name
 		my @ordered_tables = sort { $a cmp $b } keys %{$self->{tables}};
 
+		my $first_header = '';
 		if (!$self->{pg_dsn}) {
-			$self->dump($sql_header);
-			# Disable SQL script exit on error
+			$first_header .= "$sql_header\n";
+			# Disable SQL script exit on error as indexes or fkey may not have been loaded
 			if ($self->{drop_indexes} || $self->{drop_fkey}) {
-				$self->dump("\\set ON_ERROR_STOP OFF\n");
+				$first_header .= "\\set ON_ERROR_STOP ON\n";
 			}
+			$first_header .= "BEGIN;\n";
 			# Defer all constraints
 			if ($self->{defer_fkey}) {
-				$self->dump("BEGIN;\n", $fhdl);
-				$self->dump("SET CONSTRAINTS ALL DEFERRED;\n\n");
+				$first_header .= "SET CONSTRAINTS ALL DEFERRED;\n\n";
 			}
 		} else {
 			# Set search path
@@ -2565,47 +2559,16 @@ LANGUAGE plpgsql ;
 			if ($search_path) {
 				$self->{dbhdest}->do($search_path) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
 			}
+			$self->{dbhdest}->do("BEGIN;") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
 			# Defer all constraints
 			if ($self->{defer_fkey}) {
-				$self->{dbhdest}->do("BEGIN;") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
 				$self->{dbhdest}->do("SET CONSTRAINTS ALL DEFERRED;") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
 			}
 		}
-
-		# Drop foreign keys if required
-		if ($self->{drop_fkey}) {
-			my $drop_all = '';
-			# First of all we drop all foreign keys
-			foreach my $table (sort { $self->{tables}{$a}{internal_id} <=> $self->{tables}{$b}{internal_id} } keys %{$self->{tables}}) {
-				$self->logit("Dropping table $table foreign keys...\n", 1);
-				$drop_all .= $self->_drop_foreign_keys($table, @{$self->{tables}{$table}{foreign_key}});
-			}
-			if ($drop_all) {
-				$self->dump($drop_all);
-			}
-			$drop_all = '';
-		}
-
-		# Drop indexes if required
-		if ($self->{drop_indexes}) {
-			my $drop_all = '';
-			# First of all we drop all indexes
-			foreach my $table (sort { $self->{tables}{$a}{internal_id} <=> $self->{tables}{$b}{internal_id} } keys %{$self->{tables}}) {
-				$self->logit("Dropping table $table indexes...\n", 1);
-				$drop_all .= $self->_drop_indexes($table, %{$self->{tables}{$table}{indexes}}) . "\n";
-			}
-			if ($drop_all) {
-				$self->dump($drop_all);
-			}
-			$drop_all = '';
-		}
-
-		# Force again the script to fail on error
-		if (!$self->{pg_dsn} && $self->{stop_on_error}) {
-			if ($self->{drop_indexes} || $self->{drop_fkey}) {
-				$self->dump("\\set ON_ERROR_STOP ON\n");
-			}
-		}
+		my $fhdl = $self->open_export_file($self->{output});
+		$self->dump($first_header, $fhdl);
+		$self->close_export_file($fhdl);
+		$fhdl = undef;
 
 		# Force datetime format
 		$self->_datetime_format();
@@ -2637,24 +2600,111 @@ LANGUAGE plpgsql ;
 		my $global_count = 0;
 		foreach my $table (@ordered_tables) {
 			next if ($self->skip_this_object('TABLE', $table));
+
+			if ($self->{file_per_table} && !$self->{pg_dsn}) {
+				my $fhdl = $self->append_export_file($self->{output});
+				$self->dump("\\i $dirprefix${table}_$self->{output}\n", $fhdl);
+				$self->close_export_file($fhdl);
+				$fhdl = undef;
+				# Do not dump data again if the file already exists
+				next if ($self->file_exists("$dirprefix${table}_$self->{output}"));
+			}
+
+			$first_header = '';
+			$first_header = $sql_header if ($self->{file_per_table});
+
+			# Drop foreign keys if required
+			if ($self->{drop_fkey}) {
+				$self->logit("Dropping foreign keys of table $table...\n", 1);
+				my $drop_all = $self->_drop_foreign_keys($table, @{$self->{tables}{$table}{foreign_key}});
+				$first_header .= "$drop_all\n";
+			}
+
+			# Drop indexes if required
+			if ($self->{drop_indexes}) {
+				$self->logit("Dropping indexes of table $table...\n", 1);
+				my $drop_all = $self->_drop_indexes($table, %{$self->{tables}{$table}{indexes}}) . "\n";
+				if ($drop_all) {
+					$first_header .=  "$drop_all\n";
+				}
+				$drop_all = '';
+			}
+			$self->data_dump($first_header, $table);
+
 			$global_count += $self->{tables}{$table}{table_info}{num_rows};
 			# With partitioned table, load data direct from table partition
 			if (exists $self->{partitions}{$table}) {
 				foreach my $pos (sort {$self->{partitions}{$table}{$a} <=> $self->{partitions}{$table}{$b}} keys %{$self->{partitions}{$table}}) {
 					foreach my $part_name (sort {$self->{partitions}{$table}{$pos}{$a}->{'colpos'} <=> $self->{partitions}{$table}{$pos}{$b}->{'colpos'}} keys %{$self->{partitions}{$table}{$pos}}) {
 						next if ($self->{allow_partition} && !grep($_ =~ /^$part_name$/i, @{$self->{allow_partition}}));
+
+						if ($self->{file_per_table} && !$self->{pg_dsn}) {
+							my $fhdl = $self->append_export_file($self->{output});
+							$self->dump("\\i $dirprefix${part_name}_$self->{output}\n", $fhdl);
+							$self->close_export_file($fhdl);
+							$fhdl = undef;
+							# Do not dump data again if the file already exists
+							next if ($self->file_exists("$dirprefix${part_name}_$self->{output}"));
+						}
 						$self->_dump_table($dirprefix, $sql_header, $table, $start_time, $global_rows, $part_name);
 					}
 				}
 				# Now load content of the default partion table
 				if ($self->{partitions_default}{$table}) {
 					if (!$self->{allow_partition} || grep($_ =~ /^$self->{partitions_default}{$table}$/i, @{$self->{allow_partition}})) {
+						if ($self->{file_per_table} && !$self->{pg_dsn}) {
+							my $part_name = $self->{partitions_default}{$table};
+							my $fhdl = $self->append_export_file($self->{output});
+							$self->dump("\\i $dirprefix${part_name}_$self->{output}\n", $fhdl);
+							$self->close_export_file($fhdl);
+							$fhdl = undef;
+							# Do not dump data again if the file already exists
+							next if ($self->file_exists("$dirprefix${part_name}_$self->{output}"));
+						}
 						$self->_dump_table($dirprefix, $sql_header, $table, $start_time, $global_rows, $self->{partitions_default}{$table});
 					}
 				}
 			} else {
 				$self->_dump_table($dirprefix, $sql_header, $table, $start_time, $global_rows);
 			}
+
+			# Recreate all foreign keys of the concerned tables
+			my $last_footer = '';
+			if ($self->{drop_fkey}) {
+				my @create_all = ();
+				$self->logit("Restoring foreign keys of table $table...\n", 1);
+				push(@create_all, $self->_create_foreign_keys($table, @{$self->{tables}{$table}{foreign_key}}));
+				foreach my $str (@create_all) {
+					if ($self->{pg_dsn}) {
+						my $s = $self->{dbhdest}->do($str) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
+					} else {
+						$last_footer .= "$str\n";
+					}
+				}
+			}
+
+			# Recreate all indexes
+			if ($self->{drop_indexes}) {
+				my @create_all = ();
+				$self->logit("Restoring indexes of table $table...\n", 1);
+				push(@create_all, $self->_create_indexes($table, %{$self->{tables}{$table}{indexes}}));
+				if ($#create_all >= 0) {
+					if ($self->{plsql_pgsql}) {
+						for (my $i = 0; $i <= $#create_all; $i++) {
+							$create_all[$i] = Ora2Pg::PLSQL::plsql_to_plpgsql($create_all[$i], $self->{allow_code_break},$self->{null_equal_empty});
+						}
+					}
+					if ($self->{pg_dsn}) {
+						foreach my $str (@create_all) {
+							my $s = $self->{dbhdest}->do($str) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
+						}
+					} else {
+						$last_footer .= join("\n", @create_all, "\n");
+					}
+				}
+			}
+			$self->data_dump($last_footer, $table);
+
 			if ( ($self->{jobs} <= 1) && ($self->{oracle_copies} <= 1) ) {
 				my $end_time = time();
 				my $dt = $end_time - $start_time;
@@ -2693,59 +2743,23 @@ LANGUAGE plpgsql ;
 			my $sth2 = $self->{dbh}->do($bfile_function);
 		}
 
+		my $last_footer = '';
 		# Insert restart sequences orders
 		if (($#ordered_tables >= 0) && !$self->{disable_sequence}) {
 			$self->logit("Restarting sequences\n", 1);
-			$self->dump($self->_extract_sequence_info());
+			$last_footer .= $self->_extract_sequence_info() . "\n";
 		}
 
-		# Recreate all foreign keys of the concerned tables
-		if ($self->{drop_fkey}) {
-			my @create_all = ();
-			foreach my $table (sort { $self->{tables}{$a}{internal_id} <=> $self->{tables}{$b}{internal_id} } keys %{$self->{tables}}) {
-				$self->logit("Restoring table $table foreign keys...\n", 1);
-				push(@create_all, $self->_create_foreign_keys($table, @{$self->{tables}{$table}{foreign_key}}));
-			}
-			foreach my $str (@create_all) {
-				if ($self->{pg_dsn}) {
-					my $s = $self->{dbhdest}->do($str) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
-				} else {
-					$self->dump("$str\n");
-				}
-			}
+		# Commit transaction
+		if ($self->{pg_dsn}) {
+			my $s = $self->{dbhdest}->do("COMMIT;") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
+		} else {
+			$last_footer .= "COMMIT;\n\n";
 		}
 
-		# Commit transaction if required
-		if ($self->{defer_fkey}) {
-			if ($self->{pg_dsn}) {
-				my $s = $self->{dbhdest}->do("COMMIT;") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
-			} else {
-				$self->dump("COMMIT;\n\n", $fhdl);
-			}
-		}
-
-		# Recreate all indexes
-		if ($self->{drop_indexes}) {
-			my @create_all = ();
-			foreach my $table (sort { $self->{tables}{$a}{internal_id} <=> $self->{tables}{$b}{internal_id} } keys %{$self->{tables}}) {
-				$self->logit("Restoring table $table indexes...\n", 1);
-				push(@create_all, $self->_create_indexes($table, %{$self->{tables}{$table}{indexes}}));
-			}
-			if ($#create_all >= 0) {
-				if ($self->{plsql_pgsql}) {
-					for (my $i = 0; $i <= $#create_all; $i++) {
-						$create_all[$i] = Ora2Pg::PLSQL::plsql_to_plpgsql($create_all[$i], $self->{allow_code_break},$self->{null_equal_empty});
-					}
-				}
-				if ($self->{pg_dsn}) {
-					foreach my $str (@create_all) {
-						my $s = $self->{dbhdest}->do($str) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
-					}
-				} else {
-					$self->dump(join("\n", @create_all, "\n"));
-				}
-			}
-		}
+		$fhdl = $self->append_export_file($self->{output});
+		$self->dump($last_footer, $fhdl);
+		$fhdl->close();
 
 		# Disconnect from the database
 		$self->{dbh}->disconnect() if ($self->{dbh});
@@ -3076,6 +3090,19 @@ CREATE TRIGGER insert_${table}_trigger
 	$self->dump($sql_header . $sql_output);
 }
 
+sub file_exists
+{
+	my ($self, $file) = @_;
+
+	if ($self->{file_per_table} && !$self->{pg_dsn}) {
+		if (-e "$file") {
+			$self->logit("WARNING: Skipping dumping data to file $file, file already exists.\n", 0);
+			return 1;
+		}
+	}
+	return 0;
+}
+
 ####
 # dump table content
 ####
@@ -3083,24 +3110,9 @@ sub _dump_table
 {
 	my ($self, $dirprefix, $sql_header, $table, $start_time, $global_rows, $part_name) = @_;
 
-	my $fhdl = undef;
-	if ($self->{file_per_table} && !$self->{pg_dsn}) {
-		my $rname = $part_name || $table;
-		# Do not dump data again if the file already exists
-		if (-e "$dirprefix${rname}_$self->{output}") {
-			$self->logit("WARNING: Skipping dumping data from $rname, file already exists ${rname}_$self->{output}\n", 0);
-			return;
-		}
-		$self->dump("\\i $dirprefix${rname}_$self->{output}\n");
-	}
-
 	my @cmd_head = ();
 	my @cmd_foot = ();
-	# Set client encoding if requested
-	if ($self->{file_per_table} && $self->{client_encoding}) {
-		$self->logit("Changing client encoding as \U$self->{client_encoding}\E...\n", 1);
-		push(@cmd_head, "SET client_encoding TO '\U$self->{client_encoding}\E';");
-	}
+
 	# Set search path
 	my $search_path = $self->set_search_path();
 	if ($search_path) {
@@ -3133,20 +3145,6 @@ sub _dump_table
 		push(@cmd_head,"ALTER TABLE $tmptb DISABLE TRIGGER $trig_type;");
 		# don't forget to enable all triggers if needed...
 		push(@cmd_foot,"ALTER TABLE $tmptb ENABLE TRIGGER $trig_type;");
-	}
-
-	# Truncate current table if requested
-	if ($self->{truncate_table}) {
-		if ($self->{pg_dsn}) {
-			my $s = $self->{dbhdest}->do("TRUNCATE TABLE $tmptb;");
-		} else {
-			$self->dump("TRUNCATE TABLE $tmptb;\n");
-		}
-	}
-
-	# COMMIT transaction at end if required
-	if (!$self->{defer_fkey}) {
-		push(@cmd_foot, "COMMIT;");
 	}
 
 	# Build the header of the query
@@ -5277,7 +5275,36 @@ sub dump
 			$fh->gzwrite($data) or $self->logit("FATAL: error writing compressed data\n", 0, 1);
 		}
 	}
+	$self->logit("Written " . length($data) . " bytes to $self->{output}\n", 1);
 
+}
+
+
+=head2 data_dump
+
+This function dump data to the right output (gzip file, file or stdout) in multiprocess safety.
+File is open and locked before writind data, it is closed at end.
+
+=cut
+
+sub data_dump
+{
+	my ($self, $data, $rname) = @_;
+
+	my $filename = $self->{output};
+	if ($self->{file_per_table} && !$self->{pg_dsn}) {
+		$self->logit("Dumping data from $rname to file: ${rname}_$self->{output}\n", 1);
+		$filename = "${rname}_$self->{output}";
+	}
+	my $fh = $self->append_export_file("$filename");
+	flock($fh, 2) || die "FATAL: can't lock file $filename\n";
+	if (!$self->{compress}) {
+		$fh->print($data);
+	} elsif ($self->{compress} eq 'Zlib') {
+			$fh->gzwrite($data) or $self->logit("FATAL: error writing compressed data\n", 0, 1);
+	}
+	$self->close_export_file($fh);
+	$self->logit("Written " . length($data) . " bytes to $filename\n", 1);
 }
 
 =head2 read_config
@@ -6157,31 +6184,34 @@ sub _dump_to_pg
 		$self->logit("Disabling synchronous commit when writing to PostgreSQL...\n", 1);
 		my $s = $dbhdest->do("SET synchronous_commit TO off") or $self->logit("FATAL: " . $dbhdest->errstr . "\n", 0, 1);
 	}
-	my $fhdl = undef;
-	if ($self->{file_per_table} && !$self->{pg_dsn}) {
-		$self->logit("Dumping $rname to file: ${rname}_$self->{output}\n", 1);
-		my $filename = "${rname}_$self->{output}";
-		$fhdl = $self->append_export_file("$filename");
-		flock($fhdl, 2) || die "FATAL: can't lock file $filename\n";
-	}
+
+	# Build header of the file
+	my $h_towrite = '';
 	foreach my $cmd (@$cmd_head) {
 		if ($self->{pg_dsn}) {
 			my $s = $dbhdest->do("$cmd") or $self->logit("FATAL: " . $dbhdest->errstr . "\n", 0, 1);
 		} else {
-			$self->dump("$cmd\n", $fhdl);
+			$h_towrite .= "$cmd\n";
 		}
 	}
 
-	my $sql_out = '';
-	if ($self->{type} eq 'COPY') {
-		$sql_out = $s_out;
+	# Build footer of the file
+	my $e_towrite = '';
+	foreach my $cmd (@$cmd_foot) {
+		if ($self->{pg_dsn}) {
+			my $s = $dbhdest->do("$cmd") or $self->logit("FATAL: " . $dbhdest->errstr . "\n", 0, 1);
+		} else {
+			$e_towrite .= "$cmd\n";
+		}
 	}
+
 	# Preparing data for output
 	if (!$sprep) {
 		$self->logit("DEBUG: Formatting bulk of $self->{data_limit} data for PostgreSQL.\n", 1);
 		$self->format_data($rows, $tt, $self->{type}, $stt, \%user_type, $table);
 	}
 	# Creating output
+	my $sql_out = '';
 	$self->logit("DEBUG: Creating output for $self->{data_limit} tuples\n", 1);
 	if ($self->{type} eq 'COPY') {
 		if ($self->{pg_dsn}) {
@@ -6194,6 +6224,9 @@ sub _dump_to_pg
 			}
 			$s = $dbhdest->pg_putcopyend() or $self->logit("FATAL: " . $dbhdest->errstr . "\n", 0, 1);
 		} else {
+			# Add COPY header to the output
+			$sql_out .= $s_out;
+			# then add data to the output
 			map { $sql_out .= join("\t", @$_) . "\n"; } @$rows;
 			$sql_out .= "\\.\n";
 		}
@@ -6225,16 +6258,9 @@ sub _dump_to_pg
 			}
 		}
 	} else {
-		$self->dump($sql_out, $fhdl);
+		$self->data_dump($h_towrite . $sql_out . $e_towrite, $part_name || $table);
 	}
 
-	foreach my $cmd (@$cmd_foot) {
-		if ($self->{pg_dsn}) {
-			my $s = $dbhdest->do("$cmd") or $self->logit("FATAL: " . $dbhdest->errstr . "\n", 0, 1);
-		} else {
-			$self->dump("$cmd\n", $fhdl);
-		}
-	}
 	my $total_row = $self->{tables}{$table}{table_info}{num_rows};
 	my $tt_record = @$rows;
 	if ($self->{file_per_table} && !$self->{pg_dsn}) {
@@ -7085,9 +7111,11 @@ sub progress_bar
 	if ($total > 0) {
 		$ratio = $got / +$total;
 	}
+	my $len = (($width - 1) * $ratio);
+	$len = $width - 1 if ($len >= $width);
 	my $str = sprintf(
 		"[%-${width}s] %${num_width}s/%s $kind (%.1f%%) $msg",
-		$char x (($width - 1) * $ratio) . '>',
+		$char x $len . '>',
 		$got, $total, 100 * $ratio
 	);
 	my $len = length($str);
