@@ -231,50 +231,6 @@ sub new
 }
 
 
-=head2 pre_open_file FILENAME
-
-Set output file and open a file handle on it,
-will use STDOUT if no file name is specified.
-
-=cut
-
-sub pre_open_file
-{
-	my ($self, $outfile) = @_;
-
-	# Init with configuration OUTPUT filename
-	$outfile ||= $self->{output};
-	if ($self->{output_dir} && $outfile) {
-		$outfile = $self->{output_dir} . "/" . $outfile;
-	}
-
-	if ($outfile) {
-		if ($outfile eq $self->{input_file}) {
-			$self->logit("FATAL: input file is the same as output file: $outfile, can not overwrite it.\n",0,1);
-		}
-		# Send output to the specified file
-		if ($outfile =~ /\.gz$/) {
-			eval("use Compress::Zlib;");
-			$self->{compress} = 'Zlib';
-			$self->{zlib_hdl} = gzopen($outfile, "wb") or $self->logit("FATAL: Can't create deflation file $outfile\n", 0, 1);
-		} elsif ($outfile =~ /\.bz2$/) {
-			$self->logit("FATAL: can't run bzip2\n",0,1) if (!-x $self->{bzip2});
-			$self->{compress} = 'Bzip2';
-			$self->{fhout} = new IO::File;
-			$self->{fhout}->open("|$self->{bzip2} --stdout >$outfile") or $self->logit("FATAL: Can't open pipe to $self->{bzip2} --stdout >$outfile: $!\n", 0, 1);
-		} else {
-			$self->{fhout} = new IO::File;
-			$self->{fhout}->open(">$outfile") or $self->logit("FATAL: Can't open $outfile: $!\n", 0, 1);
-			binmode($self->{fhout},$self->{'binmode'});
-		}
-		if ( $self->{compress} && (($self->{jobs} > 1) || ($self->{oracle_copies} > 1)) ) {
-			die "FATAL: you can't use compressed output with parallel dump\n";
-		}
-	}
-
-}
-
-
 
 =head2 export_schema FILENAME
 
@@ -287,7 +243,14 @@ sub export_schema
 {
 	my $self = shift;
 
-	#$self->pre_open_file();
+	# Create default export file where things will be written with the dump() method
+	# First remove it if the output file already exists
+	if (not defined $self->{fhout}) {
+		$self->remove_export_file();
+		$self->create_export_file();
+	} else {
+		$self->logit("FATAL: method export_schema() could not be called several time.\n",0,1);
+	}
 
 	foreach my $t (@{$self->{export_type}}) {
 		next if ($t =~ /^SHOW_/i);
@@ -313,6 +276,9 @@ sub open_export_file
 	my $filehdl = undef;
 
 	if ($outfile) {
+		if ($self->{input_file} && ($outfile eq $self->{input_file})) {
+			$self->logit("FATAL: input file is the same as output file: $outfile, can not overwrite it.\n",0,1);
+		}
 		if ($self->{output_dir} && !$noprefix) {
 			$outfile = $self->{output_dir} . '/' . $outfile;
 		}
@@ -331,11 +297,76 @@ sub open_export_file
 			$filehdl->open(">$outfile") or $self->logit("FATAL: Can't open $outfile: $!\n", 0, 1);
 			binmode($filehdl, $self->{'binmode'});
 		}
-		$filehdl->autoflush(1) if (defined $filehdl);
+		$filehdl->autoflush(1) if (defined $filehdl && !$self->{compress});
 	}
 
 	return $filehdl;
 }
+
+=head2 create_export_file FILENAME
+
+Set output file and open a file handle on it,
+will use STDOUT if no file name is specified.
+
+=cut
+
+sub create_export_file
+{
+	my ($self, $outfile) = @_;
+
+
+	# Init with configuration OUTPUT filename
+	$outfile ||= $self->{output};
+	if ($self->{input_file} && ($outfile eq $self->{input_file})) {
+		$self->logit("FATAL: input file is the same as output file: $outfile, can not overwrite it.\n",0,1);
+	}
+	if ($outfile) {
+		if ($self->{output_dir} && $outfile) {
+			$outfile = $self->{output_dir} . "/" . $outfile;
+		}
+		# Send output to the specified file
+		if ($outfile =~ /\.gz$/) {
+			eval("use Compress::Zlib;");
+			$self->{compress} = 'Zlib';
+			$self->{fhout} = gzopen($outfile, "wb") or $self->logit("FATAL: Can't create deflation file $outfile\n", 0, 1);
+		} elsif ($outfile =~ /\.bz2$/) {
+			$self->logit("FATAL: can't run bzip2\n",0,1) if (!-x $self->{bzip2});
+			$self->{compress} = 'Bzip2';
+			$self->{fhout} = new IO::File;
+			$self->{fhout}->open("|$self->{bzip2} --stdout >$outfile") or $self->logit("FATAL: Can't open pipe to $self->{bzip2} --stdout >$outfile: $!\n", 0, 1);
+		} else {
+			$self->{fhout} = new IO::File;
+			$self->{fhout}->open(">>$outfile") or $self->logit("FATAL: Can't open $outfile: $!\n", 0, 1);
+			binmode($self->{fhout},$self->{'binmode'});
+		}
+		if ( $self->{compress} && (($self->{jobs} > 1) || ($self->{oracle_copies} > 1)) ) {
+			die "FATAL: you can't use compressed output with parallel dump\n";
+		}
+	}
+
+}
+
+sub remove_export_file
+{
+	my ($self, $outfile) = @_;
+
+
+	# Init with configuration OUTPUT filename
+	$outfile ||= $self->{output};
+	if ($self->{input_file} && ($outfile eq $self->{input_file})) {
+		$self->logit("FATAL: input file is the same as output file: $outfile, can not overwrite it.\n",0,1);
+	}
+	if ($outfile) {
+		if ($self->{output_dir} && $outfile) {
+			$outfile = $self->{output_dir} . "/" . $outfile;
+		}
+		unlink($outfile);
+	}
+
+}
+
+
+
 
 =head2 append_export_file FILENAME
 
@@ -425,6 +456,10 @@ sub quote_reserved_words
 			return '"' . $obj_name . '"';
 		}
 	}
+	if (!$self->{preserve_case}) {
+		$obj_name = lc($obj_name);
+	}
+
 	return $obj_name;
 }
 
@@ -728,7 +763,6 @@ sub _init
 
 	$self->{fhout} = undef;
 	$self->{compress} = '';
-	$self->{zlib_hdl} = undef;
 	$self->{pkgcost} = 0;
 	$self->{total_pkgcost} = 0;
 
@@ -1413,6 +1447,24 @@ sub _partitions
 }
 
 
+sub get_replaced_tbname
+{
+	my ($self, $tmptb) = @_;
+
+	if (exists $self->{replaced_tables}{"\L$tmptb\E"} && $self->{replaced_tables}{"\L$tmptb\E"}) {
+		$self->logit("\tReplacing table $tmptb as " . $self->{replaced_tables}{lc($tmptb)} . "...\n", 1);
+		$tmptb = $self->{replaced_tables}{lc($tmptb)};
+	}
+	if (!$self->{preserve_case}) {
+		$tmptb = lc($tmptb);
+		$tmptb =~ s/"//g;
+	} elsif ($tmptb !~ /"/) {
+		$tmptb = '"' . $tmptb . '"';
+	}
+	$tmptb = $self->quote_reserved_words($tmptb);
+
+	return $tmptb; 
+}
 =head2 _get_sql_data
 
 Returns a string containing the PostgreSQL compatible SQL Schema
@@ -1453,7 +1505,9 @@ sub _get_sql_data
 			}
 			my $fhdl = undef;
 			if ($self->{file_per_table}) {
-				$self->dump("\\i $dirprefix${view}_$self->{output}\n");
+				my $file_name = "$dirprefix${view}_$self->{output}";
+				$file_name =~ s/\.(gz|bz2)$//;
+				$self->dump("\\i $file_name\n");
 				$self->logit("Dumping to one file per view : ${view}_$self->{output}\n", 1);
 				$fhdl = $self->open_export_file("${view}_$self->{output}");
 			}
@@ -1635,7 +1689,9 @@ LANGUAGE plpgsql ;
 			}
 			my $fhdl = undef;
 			if ($self->{file_per_table} && !$self->{pg_dsn}) {
-				$self->dump("\\i $dirprefix${view}_$self->{output}\n");
+				my $file_name = "$dirprefix${view}_$self->{output}";
+				$file_name =~ s/\.(gz|bz2)$//;
+				$self->dump("\\i $file_name\n");
 				$self->logit("Dumping to one file per materialized view : ${view}_$self->{output}\n", 1);
 				$fhdl = $self->open_export_file("${view}_$self->{output}");
 			}
@@ -1850,7 +1906,6 @@ LANGUAGE plpgsql ;
 			if ($self->{file_per_function} && !$self->{pg_dsn}) {
 				$self->dump("\\i $dirprefix$trig->[0]_$self->{output}\n");
 				$self->logit("Dumping to one file per trigger : $trig->[0]_$self->{output}\n", 1);
-				$fhdl = $self->open_export_file("$trig->[0]_$self->{output}");
 			}
 			$trig->[1] =~ s/\s*EACH ROW//is;
 			chop($trig->[4]);
@@ -2544,10 +2599,6 @@ LANGUAGE plpgsql ;
 		my $first_header = '';
 		if (!$self->{pg_dsn}) {
 			$first_header .= "$sql_header\n";
-			# Disable SQL script exit on error as indexes or fkey may not have been loaded
-			if ($self->{drop_indexes} || $self->{drop_fkey}) {
-				$first_header .= "\\set ON_ERROR_STOP ON\n";
-			}
 			$first_header .= "BEGIN;\n";
 			# Defer all constraints
 			if ($self->{defer_fkey}) {
@@ -2565,10 +2616,7 @@ LANGUAGE plpgsql ;
 				$self->{dbhdest}->do("SET CONSTRAINTS ALL DEFERRED;") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
 			}
 		}
-		my $fhdl = $self->open_export_file($self->{output});
-		$self->dump($first_header, $fhdl);
-		$self->close_export_file($fhdl);
-		$fhdl = undef;
+		$self->dump($first_header);
 
 		# Force datetime format
 		$self->_datetime_format();
@@ -2601,11 +2649,13 @@ LANGUAGE plpgsql ;
 		foreach my $table (@ordered_tables) {
 			next if ($self->skip_this_object('TABLE', $table));
 
+			# Rename table and double-quote it if required
+			my $tmptb = $self->get_replaced_tbname($table);
+
 			if ($self->{file_per_table} && !$self->{pg_dsn}) {
-				my $fhdl = $self->append_export_file($self->{output});
-				$self->dump("\\i $dirprefix${table}_$self->{output}\n", $fhdl);
-				$self->close_export_file($fhdl);
-				$fhdl = undef;
+				my $file_name = "$dirprefix${table}_$self->{output}";
+				$file_name =~ s/\.(gz|bz2)$//;
+				$self->dump("\\i $file_name\n");
 				# Do not dump data again if the file already exists
 				next if ($self->file_exists("$dirprefix${table}_$self->{output}"));
 			}
@@ -2613,6 +2663,11 @@ LANGUAGE plpgsql ;
 			$first_header = '';
 			$first_header = $sql_header if ($self->{file_per_table});
 
+			# Disable SQL script exit on error as indexes or fkey may not have been loaded
+			if ($self->{drop_indexes} || $self->{drop_fkey}) {
+				$first_header .= "-- Do not stop script during index/constraint drop\n";
+				$first_header .= "\\set ON_ERROR_STOP OFF\n\n";
+			}
 			# Drop foreign keys if required
 			if ($self->{drop_fkey}) {
 				$self->logit("Dropping foreign keys of table $table...\n", 1);
@@ -2629,6 +2684,18 @@ LANGUAGE plpgsql ;
 				}
 				$drop_all = '';
 			}
+			# Enable SQL script exit on error
+			if ($self->{drop_indexes} || $self->{drop_fkey}) {
+				$first_header .= "\\set ON_ERROR_STOP ON\n\n";
+			}
+
+			# disable triggers of current table if requested
+			if ($self->{disable_triggers}) {
+				my $trig_type = 'USER';
+				$trig_type = 'ALL' if (uc($self->{disable_triggers}) eq 'ALL');
+				$first_header .=  "ALTER TABLE $tmptb DISABLE TRIGGER $trig_type;\n";
+			}
+
 			$self->data_dump($first_header, $table);
 
 			$global_count += $self->{tables}{$table}{table_info}{num_rows};
@@ -2639,10 +2706,9 @@ LANGUAGE plpgsql ;
 						next if ($self->{allow_partition} && !grep($_ =~ /^$part_name$/i, @{$self->{allow_partition}}));
 
 						if ($self->{file_per_table} && !$self->{pg_dsn}) {
-							my $fhdl = $self->append_export_file($self->{output});
-							$self->dump("\\i $dirprefix${part_name}_$self->{output}\n", $fhdl);
-							$self->close_export_file($fhdl);
-							$fhdl = undef;
+							my $file_name = "$dirprefix${part_name}_$self->{output}";
+							$file_name =~ s/\.(gz|bz2)$//;
+							$self->dump("\\i $file_name\n");
 							# Do not dump data again if the file already exists
 							next if ($self->file_exists("$dirprefix${part_name}_$self->{output}"));
 						}
@@ -2654,10 +2720,9 @@ LANGUAGE plpgsql ;
 					if (!$self->{allow_partition} || grep($_ =~ /^$self->{partitions_default}{$table}$/i, @{$self->{allow_partition}})) {
 						if ($self->{file_per_table} && !$self->{pg_dsn}) {
 							my $part_name = $self->{partitions_default}{$table};
-							my $fhdl = $self->append_export_file($self->{output});
-							$self->dump("\\i $dirprefix${part_name}_$self->{output}\n", $fhdl);
-							$self->close_export_file($fhdl);
-							$fhdl = undef;
+							my $file_name = "$dirprefix${part_name}_$self->{output}";
+							$file_name =~ s/\.(gz|bz2)$//;
+							$self->dump("\\i $file_name\n");
 							# Do not dump data again if the file already exists
 							next if ($self->file_exists("$dirprefix${part_name}_$self->{output}"));
 						}
@@ -2668,8 +2733,21 @@ LANGUAGE plpgsql ;
 				$self->_dump_table($dirprefix, $sql_header, $table, $start_time, $global_rows);
 			}
 
+			# disable triggers of current table if requested
+			my $last_footer = "\n";
+			if ($self->{disable_triggers}) {
+				my $trig_type = 'USER';
+				$trig_type = 'ALL' if (uc($self->{disable_triggers}) eq 'ALL');
+				# don't forget to enable all triggers if needed...
+				$last_footer .=  "ALTER TABLE $tmptb ENABLE TRIGGER $trig_type;\n\n";
+			}
+
+			# Disable SQL script exit on error as indexes or fkey may already have been loaded
+			if ($self->{drop_indexes} || $self->{drop_fkey}) {
+				$last_footer .= "\\set ON_ERROR_STOP OFF\n\n";
+			}
+
 			# Recreate all foreign keys of the concerned tables
-			my $last_footer = '';
 			if ($self->{drop_fkey}) {
 				my @create_all = ();
 				$self->logit("Restoring foreign keys of table $table...\n", 1);
@@ -2704,6 +2782,7 @@ LANGUAGE plpgsql ;
 				}
 			}
 			$self->data_dump($last_footer, $table);
+			$self->close_export_file($self->{cfhout}) if (defined $self->{cfhout});
 
 			if ( ($self->{jobs} <= 1) && ($self->{oracle_copies} <= 1) ) {
 				my $end_time = time();
@@ -2756,10 +2835,7 @@ LANGUAGE plpgsql ;
 		} else {
 			$last_footer .= "COMMIT;\n\n";
 		}
-
-		$fhdl = $self->append_export_file($self->{output});
-		$self->dump($last_footer, $fhdl);
-		$fhdl->close();
+		$self->dump($last_footer);
 
 		# Disconnect from the database
 		$self->{dbh}->disconnect() if ($self->{dbh});
@@ -2916,22 +2992,14 @@ CREATE TRIGGER insert_${table}_trigger
 			}
 		}
 
-		my $tbname = $table;
-		if (exists $self->{replaced_tables}{"\L$table\E"} && $self->{replaced_tables}{"\L$table\E"}) {
-			$tbname = $self->{replaced_tables}{"\L$table\E"};
-			$self->logit("\tReplacing tablename $table as $tbname...\n", 1);
-		}
+		my $tbname = $self->get_replaced_tbname($table);
 		my $foreign = '';
 		if ( ($self->{type} eq 'FDW') || ($self->{external_to_fdw} && grep(/^$table$/i, keys %{$self->{external_table}})) ) {
 			$foreign = ' FOREIGN';
 		}
 		my $obj_type = $self->{tables}{$table}{table_info}{type} || 'TABLE';
-		if (!$self->{preserve_case}) {
-			$tbname = $self->quote_reserved_words($tbname);
-			$sql_output .= "CREATE$foreign $obj_type \L$tbname\E (\n";
-		} else {
-			$sql_output .= "CREATE$foreign $obj_type \"$tbname\" (\n";
-		}
+		$sql_output .= "CREATE$foreign $obj_type $tbname (\n";
+
 		# Extract column information following the Oracle position order
 		foreach my $i ( 0 .. $#{$self->{tables}{$table}{field_name}} ) {
 
@@ -2992,11 +3060,7 @@ CREATE TRIGGER insert_${table}_trigger
 		# Add comments on table
 		if (!$self->{disable_comment} && $self->{tables}{$table}{table_info}{comment}) {
 			$self->{tables}{$table}{table_info}{comment} =~ s/'/''/gs;
-			if (!$self->{preserve_case}) {
-				$sql_output .= "COMMENT ON TABLE \L$tbname\E IS E'$self->{tables}{$table}{table_info}{comment}';\n";
-			} else {
-				$sql_output .= "COMMENT ON TABLE \"$tbname\" IS E'$self->{tables}{$table}{table_info}{comment}';\n";
-			}
+			$sql_output .= "COMMENT ON TABLE $tbname IS E'$self->{tables}{$table}{table_info}{comment}';\n";
 		}
 
 		# Add comments on columns
@@ -3004,11 +3068,13 @@ CREATE TRIGGER insert_${table}_trigger
 			foreach $f (keys %{$self->{tables}{$table}{column_comments}}) {
 				next unless $self->{tables}{$table}{column_comments}{$f};
 				$self->{tables}{$table}{column_comments}{$f} =~ s/'/''/gs;
-				if (!$self->{preserve_case}) {
-					$sql_output .= "COMMENT ON COLUMN \L$tbname\.$f\E IS E'$self->{tables}{$table}{column_comments}{$f}';\n";
-				} else {
-					$sql_output .= "COMMENT ON COLUMN \"$tbname\".\"$f\" IS E'$self->{tables}{$table}{column_comments}{$f}';\n";
+				# Change column names
+				my $fname = lc($f);
+				if (exists $self->{replaced_cols}{"\L$table\E"}{$fname} && $self->{replaced_cols}{"\L$table\E"}{$fname}) {
+					$self->logit("\tReplacing column $fname as " . $self->{replaced_cols}{"\L$table\E"}{$fname} . "...\n", 1);
+					$fname = $self->{replaced_cols}{"\L$table\E"}{$fname};
 				}
+				$sql_output .= "COMMENT ON COLUMN $tbname.$fname IS E'" . $self->{tables}{$table}{column_comments}{$f} .  "';\n";
 			}
 		}
 
@@ -3016,11 +3082,7 @@ CREATE TRIGGER insert_${table}_trigger
 		if ($self->{force_owner}) {
 			my $owner = $self->{tables}{$table}{table_info}{owner};
 			$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
-			if (!$self->{preserve_case}) {
-				$sql_output .= "ALTER $self->{tables}{$table}{table_info}{type} \L$tbname\E OWNER TO \L$owner\E;\n";
-			} else {
-				$sql_output .= "ALTER $self->{tables}{$table}{table_info}{type} \"$tbname\" OWNER TO $owner;\n";
-			}
+			$sql_output .= "ALTER $self->{tables}{$table}{table_info}{type} $tbname OWNER TO $owner;\n";
 		}
 		if ($self->{type} ne 'FDW') {
 			# Set the unique (and primary) key definition 
@@ -3120,32 +3182,7 @@ sub _dump_table
 	}
 
 	# Rename table and double-quote it if required
-	my $tmptb = $part_name || $table;
-	if (exists $self->{replaced_tables}{"\L$tmptb\E"} && $self->{replaced_tables}{"\L$tmptb\E"}) {
-		$self->logit("\tReplacing table $tmptb as " . $self->{replaced_tables}{lc($tmptb)} . "...\n", 1);
-		$tmptb = $self->{replaced_tables}{lc($tmptb)};
-	}
-	if (!$self->{preserve_case}) {
-		$tmptb = lc($tmptb);
-		$tmptb =~ s/"//g;
-	} elsif ($tmptb !~ /"/) {
-		$tmptb = '"' . $tmptb . '"';
-	}
-	$tmptb = $self->quote_reserved_words($tmptb);
-
-	# Start transaction to speed up bulkload
-	if (!$self->{defer_fkey}) {
-		push(@cmd_head,"BEGIN;");
-	}
-
-	# disable triggers of current table if requested
-	if ($self->{disable_triggers}) {
-		my $trig_type = 'USER';
-		$trig_type = 'ALL' if (uc($self->{disable_triggers}) eq 'ALL');
-		push(@cmd_head,"ALTER TABLE $tmptb DISABLE TRIGGER $trig_type;");
-		# don't forget to enable all triggers if needed...
-		push(@cmd_foot,"ALTER TABLE $tmptb ENABLE TRIGGER $trig_type;");
-	}
+	my $tmptb = $self->get_replaced_tbname($part_name || $table);
 
 	# Build the header of the query
 	my @tt = ();
@@ -3257,20 +3294,18 @@ sub _create_indexes
 {
 	my ($self, $table, %indexes) = @_;
 
-	my $tbsaved = $table;
-	if (exists $self->{replaced_tables}{"\L$table\E"} && $self->{replaced_tables}{"\L$table\E"}) {
-		$table = $self->{replaced_tables}{"\L$table\E"};
-	}
+	my $tbsaved = lc($table);
+	$table = $self->get_replaced_tbname($table);
 	my @out = ();
 	# Set the index definition
 	foreach my $idx (keys %indexes) {
 
 		# Cluster, domain, bitmap join, reversed and IOT indexes will not be exported at all
-		next if ($self->{tables}{$table}{idx_type}{$idx} =~ /JOIN|IOT|CLUSTER|DOMAIN|REV/i);
+		next if ($self->{tables}{$tbsaved}{idx_type}{$idx} =~ /JOIN|IOT|CLUSTER|DOMAIN|REV/i);
 		map { if ($_ !~ /\(.*\)/) { s/^/"/; s/$/"/; } } @{$indexes{$idx}};
-		if (exists $self->{replaced_cols}{"\L$tbsaved\E"} && $self->{replaced_cols}{"\L$tbsaved\E"}) {
-			foreach my $c (keys %{$self->{replaced_cols}{"\L$tbsaved\E"}}) {
-				map { s/"$c"/"$self->{replaced_cols}{"\L$tbsaved\E"}{$c}"/i } @{$indexes{$idx}};
+		if (exists $self->{replaced_cols}{$tbsaved} && $self->{replaced_cols}{$tbsaved}) {
+			foreach my $c (keys %{$self->{replaced_cols}{$tbsaved}}) {
+				map { s/"$c"/"$self->{replaced_cols}{$tbsaved}{$c}"/i } @{$indexes{$idx}};
 			}
 		}
 		map { s/"//gs } @{$indexes{$idx}};
@@ -3284,14 +3319,14 @@ sub _create_indexes
 		$colscompare =~ s/"//gs;
 		my $columnlist = '';
 		my $skip_index_creation = 0;
-		foreach my $consname (keys %{$self->{tables}{$table}{unique_key}}) {
-			my $constype =  $self->{tables}{$table}{unique_key}->{$consname}{type};
+		foreach my $consname (keys %{$self->{tables}{$tbsaved}{unique_key}}) {
+			my $constype =  $self->{tables}{$tbsaved}{unique_key}->{$consname}{type};
 			next if (($constype ne 'P') && ($constype ne 'U'));
-			my @conscols = @{$self->{tables}{$table}{unique_key}->{$consname}{columns}};
+			my @conscols = @{$self->{tables}{$tbsaved}{unique_key}->{$consname}{columns}};
 			for (my $i = 0; $i <= $#conscols; $i++) {
 				# Change column names
-				if (exists $self->{replaced_cols}{"\L$tbsaved\E"}{"\L$conscols[$i]\E"} && $self->{replaced_cols}{"\L$tbsaved\E"}{"\L$conscols[$i]\E"}) {
-					$conscols[$i] = $self->{replaced_cols}{"\L$tbsaved\E"}{"\L$conscols[$i]\E"};
+				if (exists $self->{replaced_cols}{$tbsaved}{"\L$conscols[$i]\E"} && $self->{replaced_cols}{$tbsaved}{"\L$conscols[$i]\E"}) {
+					$conscols[$i] = $self->{replaced_cols}{$tbsaved}{"\L$conscols[$i]\E"};
 				}
 			}
 			$columnlist = join(',', @conscols);
@@ -3306,14 +3341,10 @@ sub _create_indexes
 		# the index will be automatically created by PostgreSQL at constraint import time.
 		if (!$skip_index_creation) {
 			my $unique = '';
-			$unique = ' UNIQUE' if ($self->{tables}{$table}{uniqueness}{$idx} eq 'UNIQUE');
+			$unique = ' UNIQUE' if ($self->{tables}{$tbsaved}{uniqueness}{$idx} eq 'UNIQUE');
 			my $str = '';
-			if (!$self->{preserve_case}) {
-				$table = $self->quote_reserved_words($table);
-				$str .= "CREATE$unique INDEX \L$idx\E ON \L$table\E (\L$columns\E);";
-			} else {
-				$str .= "CREATE$unique INDEX \L$idx\E ON \"$table\" ($columns);";
-			}
+			$columns = lc($columns) if (!$self->{preserve_case});
+			$str .= "CREATE$unique INDEX \L$idx\E ON $table ($columns);";
 			push(@out, $str);
 		}
 	}
@@ -3331,10 +3362,9 @@ sub _drop_indexes
 {
 	my ($self, $table, %indexes) = @_;
 
-	my $tbsaved = $table;
-	if (exists $self->{replaced_tables}{"\L$table\E"} && $self->{replaced_tables}{"\L$table\E"}) {
-		$table = $self->{replaced_tables}{"\L$table\E"};
-	}
+	my $tbsaved = lc($table);
+	$table = $self->{replaced_tables}{"\L$table\E"};
+
 	my @out = ();
 	# Set the index definition
 	foreach my $idx (keys %indexes) {
@@ -3443,10 +3473,7 @@ sub _get_primary_keys
 
 	my $out = '';
 
-	my $tbsaved = $table;
-	if (exists $self->{replaced_tables}{"\L$table\E"} && $self->{replaced_tables}{"\L$table\E"}) {
-		$table = $self->{replaced_tables}{"\L$table\E"};
-	}
+	$table = lc($table);
 
 	# Set the unique (and primary) key definition 
 	foreach my $consname (keys %$unique_key) {
@@ -3458,8 +3485,8 @@ sub _get_primary_keys
 		my $constypename = $constypenames{$constype};
 		for (my $i = 0; $i <= $#conscols; $i++) {
 			# Change column names
-			if (exists $self->{replaced_cols}{"\L$tbsaved\E"}{"\L$conscols[$i]\E"} && $self->{replaced_cols}{"\L$tbsaved\E"}{"\L$conscols[$i]\E"}) {
-				$conscols[$i] = $self->{replaced_cols}{"\L$tbsaved\E"}{"\L$conscols[$i]\E"};
+			if (exists $self->{replaced_cols}{"$table"}{"\L$conscols[$i]\E"} && $self->{replaced_cols}{"$table"}{"\L$conscols[$i]\E"}) {
+				$conscols[$i] = $self->{replaced_cols}{"$table"}{"\L$conscols[$i]\E"};
 			}
 		}
 		map { s/"//gs } @conscols;
@@ -3501,10 +3528,8 @@ sub _create_unique_keys
 
 	my $out = '';
 
-	my $tbsaved = $table;
-	if (exists $self->{replaced_tables}{"\L$table\E"} && $self->{replaced_tables}{"\L$table\E"}) {
-		$table = $self->{replaced_tables}{"\L$table\E"};
-	}
+	my $tbsaved = lc($table);
+	$table = $self->get_replaced_tbname($table);
 
 	# Set the unique (and primary) key definition 
 	foreach my $consname (keys %$unique_key) {
@@ -3516,8 +3541,8 @@ sub _create_unique_keys
 		my $constypename = $constypenames{$constype};
 		for (my $i = 0; $i <= $#conscols; $i++) {
 			# Change column names
-			if (exists $self->{replaced_cols}{"\L$tbsaved\E"}{"\L$conscols[$i]\E"} && $self->{replaced_cols}{"\L$tbsaved\E"}{"\L$conscols[$i]\E"}) {
-				$conscols[$i] = $self->{replaced_cols}{"\L$tbsaved\E"}{"\L$conscols[$i]\E"};
+			if (exists $self->{replaced_cols}{"$tbsaved"}{"\L$conscols[$i]\E"} && $self->{replaced_cols}{"$tbsaved"}{"\L$conscols[$i]\E"}) {
+				$conscols[$i] = $self->{replaced_cols}{"$tbsaved"}{"\L$conscols[$i]\E"};
 			}
 		}
 		map { s/"//gs } @conscols;
@@ -3532,19 +3557,9 @@ sub _create_unique_keys
 		}
 		if ($columnlist) {
 			if (!$self->{keep_pkey_names} || ($constgen eq 'GENERATED NAME')) {
-				if (!$self->{preserve_case}) {
-					$table = $self->quote_reserved_words($table);
-					$out .= "ALTER TABLE \L$table\E ADD $constypename ($columnlist);\n";
-				} else {
-					$out .= "ALTER TABLE \"$table\" ADD $constypename ($columnlist);\n";
-				}
+				$out .= "ALTER TABLE $table ADD $constypename ($columnlist);\n";
 			} else {
-				if (!$self->{preserve_case}) {
-					$table = $self->quote_reserved_words($table);
-					$out .= "ALTER TABLE \L$table\E ADD CONSTRAINT \L$consname\E $constypename ($columnlist);\n";
-				} else {
-					$out .= "ALTER TABLE \"$table\" ADD CONSTRAINT \L$consname\E $constypename ($columnlist);\n";
-				}
+				$out .= "ALTER TABLE $table ADD CONSTRAINT \L$consname\E $constypename ($columnlist);\n";
 			}
 		}
 	}
@@ -3560,10 +3575,8 @@ sub _create_check_constraint
 {
 	my ($self, $table, $check_constraint, $field_name) = @_;
 
-	my $tbsaved = $table;
-	if (exists $self->{replaced_tables}{"\L$table\E"} && $self->{replaced_tables}{"\L$table\E"}) {
-		$table = $self->{replaced_tables}{"\L$table\E"};
-	}
+	my $tbsaved = lc($table);
+	$table = $self->get_replaced_tbname($table);
 
 	my $out = '';
 	# Set the check constraint definition 
@@ -3577,10 +3590,10 @@ sub _create_check_constraint
 			}
 		}
 		if (!$skip_create) {
-			if (exists $self->{replaced_cols}{"\L$tbsaved\E"} && $self->{replaced_cols}{"\L$tbsaved\E"}) {
-				foreach my $c (keys %{$self->{replaced_cols}{"\L$tbsaved\E"}}) {
-					$chkconstraint =~ s/"$c"/"$self->{replaced_cols}{"\L$tbsaved\E"}{$c}"/gsi;
-					$chkconstraint =~ s/\b$c\b/$self->{replaced_cols}{"\L$tbsaved\E"}{$c}/gsi;
+			if (exists $self->{replaced_cols}{"$tbsaved"} && $self->{replaced_cols}{"$tbsaved"}) {
+				foreach my $c (keys %{$self->{replaced_cols}{"$tbsaved"}}) {
+					$chkconstraint =~ s/"$c"/"$self->{replaced_cols}{"$tbsaved"}{$c}"/gsi;
+					$chkconstraint =~ s/\b$c\b/$self->{replaced_cols}{"$tbsaved"}{$c}/gsi;
 				}
 			}
 			if ($self->{plsql_pgsql}) {
@@ -3592,11 +3605,9 @@ sub _create_check_constraint
 					my $ret = $self->quote_reserved_words($c);
 					$chkconstraint =~ s/"$c"/\L$ret\E/igs;
 				}
-				$table = $self->quote_reserved_words($table);
-				$out .= "ALTER TABLE \L$table\E ADD CONSTRAINT \L$k\E CHECK ($chkconstraint);\n";
-			} else {
-				$out .= "ALTER TABLE \"$table\" ADD CONSTRAINT $k CHECK ($chkconstraint);\n";
+				$k = lc($k);
 			}
+			$out .= "ALTER TABLE $table ADD CONSTRAINT $k CHECK ($chkconstraint);\n";
 		}
 	}
 
@@ -3614,35 +3625,32 @@ sub _create_foreign_keys
 
 	my @out = ();
 
+	my $tbsaved = $table;
+	$table = $self->get_replaced_tbname($table);
+
 	# Add constraint definition
 	my @done = ();
 	foreach my $h (@foreign_key) {
 
 		next if (grep(/^$h->[0]$/, @done));
-		foreach my $desttable (keys %{$self->{tables}{$table}{foreign_link}{$h->[0]}{remote}}) {
+		$h->[0] = uc($h->[0]);
+		foreach my $desttable (keys %{$self->{tables}{$tbsaved}{foreign_link}{$h->[0]}{remote}}) {
 			# Do not export foreign key to table that are not exported
-			next if ($self->skip_this_object('TABLE', $desttable));
+			#next if ($self->skip_this_object('TABLE', $desttable));
 			my $str = '';
 			push(@done, $h->[0]);
-			map { $_ = '"' . $_ . '"' } @{$self->{tables}{$table}{foreign_link}{$h->[0]}{local}};
-			map { $_ = '"' . $_ . '"' } @{$self->{tables}{$table}{foreign_link}{$h->[0]}{remote}{$desttable}};
-			my $substable = $table;
-			my $subsdesttable = $desttable;
-			if (exists $self->{replaced_tables}{"\L$table\E"} && $self->{replaced_tables}{"\L$table\E"}) {
-				$substable = $self->{replaced_tables}{"\L$table\E"};
-			}
-			if (exists $self->{replaced_tables}{"\L$desttable\E"} && $self->{replaced_tables}{"\L$desttable\E"}) {
-				$subsdesttable = $self->{replaced_tables}{"\L$desttable\E"};
-			}
+			map { $_ = '"' . $_ . '"' } @{$self->{tables}{$tbsaved}{foreign_link}{$h->[0]}{local}};
+			map { $_ = '"' . $_ . '"' } @{$self->{tables}{$tbsaved}{foreign_link}{$h->[0]}{remote}{$desttable}};
+			my $subsdesttable = $self->get_replaced_tbname($desttable);
 			my @lfkeys = ();
-			push(@lfkeys, @{$self->{tables}{$table}{foreign_link}{$h->[0]}{local}});
-			if (exists $self->{replaced_cols}{"\L$table\E"} && $self->{replaced_cols}{"\L$table\E"}) {
-				foreach my $c (keys %{$self->{replaced_cols}{"\L$table\E"}}) {
-					map { s/"$c"/"$self->{replaced_cols}{"\L$table\E"}{$c}"/i } @lfkeys;
+			push(@lfkeys, @{$self->{tables}{$tbsaved}{foreign_link}{$h->[0]}{local}});
+			if (exists $self->{replaced_cols}{"\L$tbsaved\E"} && $self->{replaced_cols}{"\L$tbsaved\E"}) {
+				foreach my $c (keys %{$self->{replaced_cols}{"\L$tbsaved\E"}}) {
+					map { s/"$c"/"$self->{replaced_cols}{"\L$tbsaved\E"}{$c}"/i } @lfkeys;
 				}
 			}
 			my @rfkeys = ();
-			push(@rfkeys, @{$self->{tables}{$table}{foreign_link}{$h->[0]}{remote}{$desttable}});
+			push(@rfkeys, @{$self->{tables}{$tbsaved}{foreign_link}{$h->[0]}{remote}{$desttable}});
 			if (exists $self->{replaced_cols}{"\L$desttable\E"} && $self->{replaced_cols}{"\L$desttable\E"}) {
 				foreach my $c (keys %{$self->{replaced_cols}{"\L$desttable\E"}}) {
 					map { s/"$c"/"$self->{replaced_cols}{"\L$desttable\E"}{$c}"/i } @rfkeys;
@@ -3656,13 +3664,10 @@ sub _create_foreign_keys
 				map { s/["]+//g; } @lfkeys;
 			}
 			if (!$self->{preserve_case}) {
-				$substable = $self->quote_reserved_words($substable);
 				map { $_ = $self->quote_reserved_words($_) } @lfkeys;
 				map { $_ = $self->quote_reserved_words($_) } @rfkeys;
-				$str .= "ALTER TABLE \L$substable\E ADD CONSTRAINT \L$h->[0]\E FOREIGN KEY (" . lc(join(',', @lfkeys)) . ") REFERENCES \L$subsdesttable\E (" . lc(join(',', @rfkeys)) . ")";
-			} else {
-				$str .= "ALTER TABLE \"$substable\" ADD CONSTRAINT $h->[0] FOREIGN KEY (" . join(',', @lfkeys) . ") REFERENCES \"$subsdesttable\" (" . join(',', @rfkeys) . ")";
 			}
+			$str .= "ALTER TABLE $table ADD CONSTRAINT $h->[0] FOREIGN KEY (" . join(',', @lfkeys) . ") REFERENCES $subsdesttable (" . join(',', @rfkeys) . ")";
 			$str .= " MATCH $h->[2]" if ($h->[2]);
 			$str .= " ON DELETE $h->[3]";
 			$str .= " $h->[4]";
@@ -3685,21 +3690,16 @@ sub _drop_foreign_keys
 
 	my $out = '';
 
+	$table = $self->get_replaced_tbname($table);
+
 	# Add constraint definition
 	my @done = ();
 	foreach my $h (@foreign_key) {
 		next if (grep(/^$h->[0]$/, @done));
 		push(@done, $h->[0]);
-		if (exists $self->{replaced_tables}{"\L$table\E"} && $self->{replaced_tables}{"\L$table\E"}) {
-			$table = $self->{replaced_tables}{"\L$table\E"};
-		}
 		my $str = '';
-		if (!$self->{preserve_case}) {
-			$table = $self->quote_reserved_words($table);
-			$str = "ALTER TABLE \L$table\E DROP CONSTRAINT \L$h->[0]\E;";
-		} else {
-			$str .= "ALTER TABLE \"$table\" DROP CONSTRAINT $h->[0];";
-		}
+		$h->[0] = lc($h->[0]) if (!$self->{preserve_case});
+		$str .= "ALTER TABLE $table DROP CONSTRAINT $h->[0];";
 		if ($self->{pg_dsn}) {
 			my $s = $self->{dbhdest}->do($str);
 		} else {
@@ -5270,12 +5270,13 @@ sub dump
 		}
 	} elsif ($self->{compress} eq 'Zlib') {
 		if (not defined $fh) {
-			$self->{zlib_hdl}->gzwrite($data) or $self->logit("FATAL: error writing compressed data\n", 0, 1);
+			$self->{fhout}->gzwrite($data) or $self->logit("FATAL: error writing compressed data\n", 0, 1);
 		} else {
 			$fh->gzwrite($data) or $self->logit("FATAL: error writing compressed data\n", 0, 1);
 		}
+	} else {
+		 $self->{fhout}->print($data);
 	}
-	$self->logit("Written " . length($data) . " bytes to $self->{output}\n", 1);
 
 }
 
@@ -5291,20 +5292,34 @@ sub data_dump
 {
 	my ($self, $data, $rname) = @_;
 
+	my $dirprefix = '';
+	$dirprefix = "$self->{output_dir}/" if ($self->{output_dir});
+
 	my $filename = $self->{output};
-	if ($self->{file_per_table} && !$self->{pg_dsn}) {
+	if ($self->{file_per_table}) {
 		$self->logit("Dumping data from $rname to file: ${rname}_$self->{output}\n", 1);
 		$filename = "${rname}_$self->{output}";
 	}
-	my $fh = $self->append_export_file("$filename");
-	flock($fh, 2) || die "FATAL: can't lock file $filename\n";
-	if (!$self->{compress}) {
+	if ( ($self->{jobs} > 1) || ($self->{oracle_copies} > 1) ) {
+		$self->{fhout}->close() if (defined $self->{fhout} && !$self->{file_per_table} && !$self->{pg_dsn});
+		my $fh = $self->append_export_file("$dirprefix$filename");
+		flock($fh, 2) || die "FATAL: can't lock file $dirprefix$filename\n";
 		$fh->print($data);
-	} elsif ($self->{compress} eq 'Zlib') {
-			$fh->gzwrite($data) or $self->logit("FATAL: error writing compressed data\n", 0, 1);
+		$self->close_export_file($fh);
+		$self->logit("Written " . length($data) . " bytes to $dirprefix$filename\n", 1);
+		# Reopen default output file
+		$self->create_export_file() if (defined $self->{fhout} && !$self->{file_per_table} && !$self->{pg_dsn});
+	} elsif ($self->{file_per_table}) {
+		$self->{cfhout} = $self->open_export_file("$dirprefix$filename") if (!defined $self->{cfhout});
+		if ($self->{compress} eq 'Zlib') {
+			$self->{cfhout}->gzwrite($data) or $self->logit("FATAL: error writing compressed data\n", 0, 1);
+		} else {
+			$self->{cfhout}->print($data);
+		}
+	} else {
+		$self->dump($data);
 	}
-	$self->close_export_file($fh);
-	$self->logit("Written " . length($data) . " bytes to $filename\n", 1);
+
 }
 
 =head2 read_config
@@ -7024,7 +7039,7 @@ sub multiprocess_progressbar
 {
 	my ($self, $total_rows) = @_;
 
-	$self->logit("Starting progressbar writer process", 1);
+	$self->logit("Starting progressbar writer process\n", 1);
 
 	$0 = 'ora2pg logger';
 
@@ -7118,7 +7133,7 @@ sub progress_bar
 		$char x $len . '>',
 		$got, $total, 100 * $ratio
 	);
-	my $len = length($str);
+	$len = length($str);
 	$self->{prgb_len} ||= $len;
 	if ($len < $self->{prgb_len}) {
 		$str .= ' ' x ($self->{prgb_len} - $len);
@@ -7215,10 +7230,8 @@ sub _lookup_check_constraint
 
 	my  @chk_constr = ();
 
-	my $tbsaved = $table;
-	if (exists $self->{replaced_tables}{"\L$table\E"} && $self->{replaced_tables}{"\L$table\E"}) {
-		$table = $self->{replaced_tables}{"\L$table\E"};
-	}
+	my $tbsaved = lc($table);
+	$table = $self->get_replaced_tbname($table);
 
 	# Set the check constraint definition 
 	foreach my $k (keys %{$check_constraint->{constraint}}) {
@@ -7231,10 +7244,10 @@ sub _lookup_check_constraint
 			}
 		}
 		if (!$skip_create) {
-			if (exists $self->{replaced_cols}{"\L$tbsaved\E"} && $self->{replaced_cols}{"\L$tbsaved\E"}) {
-				foreach my $c (keys %{$self->{replaced_cols}{"\L$tbsaved\E"}}) {
-					$chkconstraint =~ s/"$c"/"$self->{replaced_cols}{"\L$tbsaved\E"}{$c}"/gsi;
-					$chkconstraint =~ s/\b$c\b/$self->{replaced_cols}{"\L$tbsaved\E"}{$c}/gsi;
+			if (exists $self->{replaced_cols}{"$tbsaved"} && $self->{replaced_cols}{"$tbsaved"}) {
+				foreach my $c (keys %{$self->{replaced_cols}{"$tbsaved"}}) {
+					$chkconstraint =~ s/"$c"/"$self->{replaced_cols}{"$tbsaved"}{$c}"/gsi;
+					$chkconstraint =~ s/\b$c\b/$self->{replaced_cols}{"$tbsaved"}{$c}/gsi;
 				}
 			}
 			if ($self->{plsql_pgsql}) {
@@ -7245,13 +7258,12 @@ sub _lookup_check_constraint
 				foreach my $c (@$field_name) {
 					# Force lower case
 					my $ret = $self->quote_reserved_words($c);
-					$chkconstraint =~ s/"$c"/\L$ret\E/igs;
+					$chkconstraint =~ s/"$c"/$ret/igs;
+					$chkconstraint =~ s/\b$c\b/$ret/gsi;
 				}
-				$table = $self->quote_reserved_words($table);
-				push(@chk_constr,  "ALTER TABLE \L$table\E ADD CONSTRAINT \L$k\E CHECK ($chkconstraint);\n");
-			} else {
-				push(@chk_constr,  "ALTER TABLE \"$table\" ADD CONSTRAINT $k CHECK ($chkconstraint);\n");
+				$k = lc($k);
 			}
+			push(@chk_constr,  "ALTER TABLE $table ADD CONSTRAINT $k CHECK ($chkconstraint);\n");
 		}
 	}
 
