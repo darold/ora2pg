@@ -995,6 +995,10 @@ sub _send_to_pgdb
 		$self->logit("FATAL: $DBI::err ... $DBI::errstr\n", 0, 1);
 	}
 
+	#if ($self->{client_encoding} eq 'UTF8') {
+	#	$dbhdest->pg_enable_utf8(1);
+	#}
+
 	return $dbhdest;
 }
 
@@ -2664,7 +2668,7 @@ LANGUAGE plpgsql ;
 			$first_header = $sql_header if ($self->{file_per_table});
 
 			# Disable SQL script exit on error as indexes or fkey may not have been loaded
-			if ($self->{drop_indexes} || $self->{drop_fkey}) {
+			if ($self->{stop_on_error} && ($self->{drop_indexes} || $self->{drop_fkey})) {
 				$first_header .= "-- Do not stop script during index/constraint drop\n";
 				$first_header .= "\\set ON_ERROR_STOP OFF\n\n";
 			}
@@ -2685,7 +2689,7 @@ LANGUAGE plpgsql ;
 				$drop_all = '';
 			}
 			# Enable SQL script exit on error
-			if ($self->{drop_indexes} || $self->{drop_fkey}) {
+			if ($self->{stop_on_error} && ($self->{drop_indexes} || $self->{drop_fkey})) {
 				$first_header .= "\\set ON_ERROR_STOP ON\n\n";
 			}
 
@@ -2743,7 +2747,7 @@ LANGUAGE plpgsql ;
 			}
 
 			# Disable SQL script exit on error as indexes or fkey may already have been loaded
-			if ($self->{drop_indexes} || $self->{drop_fkey}) {
+			if ($self->{stop_on_error} && ($self->{drop_indexes} || $self->{drop_fkey})) {
 				$last_footer .= "\\set ON_ERROR_STOP OFF\n\n";
 			}
 
