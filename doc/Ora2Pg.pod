@@ -1001,7 +1001,12 @@ In addition, when exporting data the DEFER_FKEY option set to 1 will add a
 command to defer all foreign key constraints during data export. Constraints
 will then be checked at the end of each transaction. Note that this will works
 only if foreign keys are deferrable and that all data can stay in a single
-transaction.
+transaction. This will work only if foreign keys have been exported as
+deferrables. Constraints will then be checked at the end of the transaction.
+
+This directive can also be enabled if you want to force all foreign keys to
+be created as deferrable and initially deferred during schema export (TABLE
+export type). Since release 11.5 only.
 
 =item DROP_FKEY
 

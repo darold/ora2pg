@@ -744,6 +744,9 @@ sub _init
 	$self->{pkey_in_create} ||= 0;
 	# Should we add SET ON_ERROR_STOP to generated SQL files
 	$self->{stop_on_error} = 1 if (not defined $self->{stop_on_error});
+	# Force foreign keys to be created initialy deferred if export type
+	# is TABLE or to set constraint deferred with data export types/
+	$self->{defer_fkey} ||= 0;
 
 	# Allow multiple or chained extraction export type
 	$self->{export_type} = ();
@@ -3674,8 +3677,10 @@ sub _create_foreign_keys
 			$str .= "ALTER TABLE $table ADD CONSTRAINT $h->[0] FOREIGN KEY (" . join(',', @lfkeys) . ") REFERENCES $subsdesttable (" . join(',', @rfkeys) . ")";
 			$str .= " MATCH $h->[2]" if ($h->[2]);
 			$str .= " ON DELETE $h->[3]";
-			$str .= " $h->[4]";
-			$str .= " INITIALLY $h->[5];\n";
+			# if DEFER_FKEY is enabled, force constraint to be
+			# deferrable and defer it initially.
+			$str .= (($self->{'defer_fkey'} ) ? ' DEFERRABLE' : " $h->[4]");
+			$str .= " INITIALLY " . ( ($self->{'defer_fkey'} ) ? 'DEFERRED' : $h->[5] ) . ";\n";
 			push(@out, $str);
 		}
 	}
