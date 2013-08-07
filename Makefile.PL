@@ -233,7 +233,9 @@ FKEY_DEFERRABLE	0
 # a command to defer all foreign key constraints during data export and
 # the import will be done in a single transaction. This will work only if
 # foreign keys have been exported as deferrables. Constraints will then be
-# checked at the end of the transaction. 
+# checked at the end of the transaction. This directive can also be enabled 
+# if you want to force all foreign keys to be created as deferrable and
+# initially deferred during schema export (TABLE export type).
 DEFER_FKEY	0
 
 # If deferring foreign keys is not possible du to the amount of data in a
@@ -513,6 +515,11 @@ TOP_MAX			10
 # Use this directive to limit partition data export to some partition name.
 # Tha value is a list of partition name separated by a space.
 ALLOW_PARTITION		PARTNAME
+
+# When enabled this directive force ora2pg to export all tables, indexes
+# constraint and indexes using the tablespace name defined in Oracle database.
+# This works only with tablespace that are not TEMP, USERS and SYSTEM.
+USE_TABLESPACE		0
 };
 close(OUTCFG);
 

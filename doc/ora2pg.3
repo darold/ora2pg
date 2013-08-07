@@ -540,6 +540,11 @@ to PostgreSQL using the psql command. If you use an other user (postgres for exe
 you can force Ora2Pg to set the object owner to be the one used in the Oracle database
 by setting the directive to 1, or to a completely different username by setting the
 directive value to that username.
+.IP "\s-1USE_TABLESPACE\s0" 4
+.IX Item "USE_TABLESPACE"
+When enabled this directive force ora2pg to export all tables, indexes constraint and
+indexes using the tablespace name defined in Oracle database. This works only with
+tablespace that are not \s-1TEMP\s0, \s-1USERS\s0 and \s-1SYSTEM\s0.
 .SS "Export type"
 .IX Subsection "Export type"
 The export action is perform following a single configuration directive '\s-1TYPE\s0',
