@@ -556,6 +556,7 @@ sub _init
 	$ENV{NLS_LANG} = $AConfig{'NLS_LANG'} if ($AConfig{'NLS_LANG'});
 
 	# Init arrays
+	$self->{default_tablespaces} = ();
 	$self->{limited} = ();
 	$self->{excluded} = ();
 	$self->{view_as_table} = ();
@@ -594,6 +595,9 @@ sub _init
 
 	# Set default system user/schema to not export
 	push(@{$self->{sysusers}}, 'SYSTEM','SYS','DBSNMP','OUTLN','PERFSTAT','CTXSYS','XDB','WMSYS','SYSMAN','SQLTXPLAIN','MDSYS','EXFSYS','ORDSYS','DMSYS','OLAPSYS','FLOWS_020100','FLOWS_FILES','TSMSYS','WKSYS','FLOWS_030000');
+
+	# Set default tablespace to exclude when using USE_TABLESPACE
+	push(@{$self->{default_tablespaces}}, 'TEMP', 'USERS','SYSTEM');
 
 	# Default boolean values
 	foreach my $k (keys %BOOLEAN_MAP) {
@@ -1219,7 +1223,7 @@ sub _tables
 
 	# Retrieve all indexes informations
 	if (!$self->{skip_indices} && !$self->{skip_indexes}) {
-		my ($uniqueness, $indexes, $idx_type) = $self->_get_indexes('',$self->{schema});
+		my ($uniqueness, $indexes, $idx_type, $idx_tbsp) = $self->_get_indexes('',$self->{schema});
 		foreach my $tb (keys %{$uniqueness}) {
 			%{$self->{tables}{$tb}{uniqueness}} = %{$uniqueness->{$tb}};
 		}
@@ -1228,6 +1232,9 @@ sub _tables
 		}
 		foreach my $tb (keys %{$idx_type}) {
 			%{$self->{tables}{$tb}{idx_type}} = %{$idx_type->{$tb}};
+		}
+		foreach my $tb (keys %{$idx_tbsp}) {
+			%{$self->{tables}{$tb}{idx_tbsp}} = %{$idx_tbsp->{$tb}};
 		}
 	}
 
@@ -1274,6 +1281,7 @@ sub _tables
 		$self->{tables}{$t}{table_info}{comment} = $tables_infos{$t}{comment};
 		$self->{tables}{$t}{table_info}{num_rows} = $tables_infos{$t}{num_rows};
 		$self->{tables}{$t}{table_info}{owner} = $tables_infos{$t}{owner};
+		$self->{tables}{$t}{table_info}{tablespace} = $tables_infos{$t}{tablespace};
 
 		# Set the fields information
 		my $query = "SELECT * FROM \"$tables_infos{$t}{owner}\".\"$t\" WHERE 1=0";
@@ -3016,7 +3024,7 @@ CREATE TRIGGER insert_${table}_trigger
 			# Change column names
 			my $fname = $f->[0];
 			if (exists $self->{replaced_cols}{"\L$table\E"}{"\L$fname\E"} && $self->{replaced_cols}{"\L$table\E"}{"\L$fname\E"}) {
-				$self->logit("\tReplacing column \L$f->[0]\E as " . $self->{replaced_cols}{lc($table)}{lc($fname)} . "...\n", 1);
+				$self->logit("\tReplacing column \L$f->[0]\E as " . $self->{replaced_cols}{"\L$table\E"}{"\L$fname\E"} . "...\n", 1);
 				$fname = $self->{replaced_cols}{"\L$table\E"}{"\L$fname\E"};
 			}
 			# Check if this column should be replaced by a boolean following table/column name
@@ -3053,7 +3061,11 @@ CREATE TRIGGER insert_${table}_trigger
 		}
 		$sql_output =~ s/,$//;
 		if ( ($self->{type} ne 'FDW') && (!$self->{external_to_fdw} || !grep(/^$table$/i, keys %{$self->{external_table}})) ) {
-			$sql_output .= ");\n";
+			if ($self->{use_tablespace} && $self->{tables}{$table}{table_info}{tablespace} && !grep(/^$self->{tables}{$table}{table_info}{tablespace}$/i, @{$self->{default_tablespaces}})) {
+				$sql_output .= ") TABLESPACE $self->{tables}{$table}{table_info}{tablespace};\n";
+			} else {
+				$sql_output .= ");\n";
+			}
 		} elsif ( grep(/^$table$/i, keys %{$self->{external_table}}) ) {
 			$sql_output .= ") SERVER \L$self->{external_table}{$table}{directory}\E OPTIONS(filename '$self->{external_table}{$table}{directory_path}$self->{external_table}{$table}{location}', format 'csv', delimiter '$self->{external_table}{$table}{delimiter}');\n";
 		} else {
@@ -3301,7 +3313,7 @@ sub _create_indexes
 {
 	my ($self, $table, %indexes) = @_;
 
-	my $tbsaved = lc($table);
+	my $tbsaved = $table;
 	$table = $self->get_replaced_tbname($table);
 	my @out = ();
 	# Set the index definition
@@ -3310,9 +3322,9 @@ sub _create_indexes
 		# Cluster, domain, bitmap join, reversed and IOT indexes will not be exported at all
 		next if ($self->{tables}{$tbsaved}{idx_type}{$idx} =~ /JOIN|IOT|CLUSTER|DOMAIN|REV/i);
 		map { if ($_ !~ /\(.*\)/) { s/^/"/; s/$/"/; } } @{$indexes{$idx}};
-		if (exists $self->{replaced_cols}{$tbsaved} && $self->{replaced_cols}{$tbsaved}) {
-			foreach my $c (keys %{$self->{replaced_cols}{$tbsaved}}) {
-				map { s/"$c"/"$self->{replaced_cols}{$tbsaved}{$c}"/i } @{$indexes{$idx}};
+		if (exists $self->{replaced_cols}{"\L$tbsaved\E"} && $self->{replaced_cols}{"\L$tbsaved\E"}) {
+			foreach my $c (keys %{$self->{replaced_cols}{"\L$tbsaved\E"}}) {
+				map { s/"$c"/"$self->{replaced_cols}{"\L$tbsaved\E"}{$c}"/i } @{$indexes{$idx}};
 			}
 		}
 		map { s/"//gs } @{$indexes{$idx}};
@@ -3332,8 +3344,8 @@ sub _create_indexes
 			my @conscols = @{$self->{tables}{$tbsaved}{unique_key}->{$consname}{columns}};
 			for (my $i = 0; $i <= $#conscols; $i++) {
 				# Change column names
-				if (exists $self->{replaced_cols}{$tbsaved}{"\L$conscols[$i]\E"} && $self->{replaced_cols}{$tbsaved}{"\L$conscols[$i]\E"}) {
-					$conscols[$i] = $self->{replaced_cols}{$tbsaved}{"\L$conscols[$i]\E"};
+				if (exists $self->{replaced_cols}{"\L$tbsaved\E"}{"\L$conscols[$i]\E"} && $self->{replaced_cols}{"\L$tbsaved\E"}{"\L$conscols[$i]\E"}) {
+					$conscols[$i] = $self->{replaced_cols}{"\L$tbsaved\E"}{"\L$conscols[$i]\E"};
 				}
 			}
 			$columnlist = join(',', @conscols);
@@ -3351,7 +3363,11 @@ sub _create_indexes
 			$unique = ' UNIQUE' if ($self->{tables}{$tbsaved}{uniqueness}{$idx} eq 'UNIQUE');
 			my $str = '';
 			$columns = lc($columns) if (!$self->{preserve_case});
-			$str .= "CREATE$unique INDEX \L$idx\E ON $table ($columns);";
+			$str .= "CREATE$unique INDEX \L$idx\E ON $table ($columns)";
+			if ($self->{use_tablespace} && $self->{tables}{$tbsaved}{idx_tbsp}{$idx} && !grep(/^$self->{tables}{$tbsaved}{idx_tbsp}{$idx}$/i, @{$self->{default_tablespaces}})) {
+				$str .= " TABLESPACE $self->{tables}{$tbsaved}{idx_tbsp}{$idx}";
+			}
+			$str .= ";";
 			push(@out, $str);
 		}
 	}
@@ -3369,7 +3385,7 @@ sub _drop_indexes
 {
 	my ($self, $table, %indexes) = @_;
 
-	my $tbsaved = lc($table);
+	my $tbsaved = $table;
 	$table = $self->{replaced_tables}{"\L$table\E"};
 
 	my @out = ();
@@ -3480,20 +3496,19 @@ sub _get_primary_keys
 
 	my $out = '';
 
-	$table = lc($table);
-
 	# Set the unique (and primary) key definition 
 	foreach my $consname (keys %$unique_key) {
 		next if ($self->{pkey_in_create} && ($unique_key->{$consname}{type} ne 'P'));
 		my $constype =   $unique_key->{$consname}{type};
 		my $constgen =   $unique_key->{$consname}{generated};
+		my $index_name = $unique_key->{$consname}{index_name};
 		my @conscols = @{$unique_key->{$consname}{columns}};
 		my %constypenames = ('U' => 'UNIQUE', 'P' => 'PRIMARY KEY');
 		my $constypename = $constypenames{$constype};
 		for (my $i = 0; $i <= $#conscols; $i++) {
 			# Change column names
-			if (exists $self->{replaced_cols}{"$table"}{"\L$conscols[$i]\E"} && $self->{replaced_cols}{"$table"}{"\L$conscols[$i]\E"}) {
-				$conscols[$i] = $self->{replaced_cols}{"$table"}{"\L$conscols[$i]\E"};
+			if (exists $self->{replaced_cols}{"\L$table\E"}{"\L$conscols[$i]\E"} && $self->{replaced_cols}{"\L$table\E"}{"\L$conscols[$i]\E"}) {
+				$conscols[$i] = $self->{replaced_cols}{"\L$table\E"}{"\L$conscols[$i]\E"};
 			}
 		}
 		map { s/"//gs } @conscols;
@@ -3507,14 +3522,16 @@ sub _get_primary_keys
 			$columnlist = lc($columnlist);
 		}
 		if ($columnlist) {
-			if (!$self->{keep_pkey_names} || ($constgen eq 'GENERATED NAME')) {
-				if ($self->{pkey_in_create}) {
-					$out .= "\tPRIMARY KEY ($columnlist),\n";
+			if ($self->{pkey_in_create}) {
+				if (!$self->{keep_pkey_names} || ($constgen eq 'GENERATED NAME')) {
+					$out .= "\tPRIMARY KEY ($columnlist)";
+				} else {
+					$out .= "\tCONSTRAINT \L$consname\E PRIMARY KEY ($columnlist)";
 				}
-			} else {
-				if ($self->{pkey_in_create}) {
-					$out .= "\tCONSTRAINT \L$consname\E PRIMARY KEY ($columnlist),\n";
+				if ($self->{use_tablespace} && $self->{tables}{$table}{idx_tbsp}{$index_name} && !grep(/^$self->{tables}{$table}{idx_tbsp}{$index_name}$/i, @{$self->{default_tablespaces}})) {
+					$out .= " USING INDEX TABLESPACE $self->{tables}{$table}{idx_tbsp}{$index_name}";
 				}
+				$out .= ",\n";
 			}
 		}
 	}
@@ -3535,7 +3552,7 @@ sub _create_unique_keys
 
 	my $out = '';
 
-	my $tbsaved = lc($table);
+	my $tbsaved = $table;
 	$table = $self->get_replaced_tbname($table);
 
 	# Set the unique (and primary) key definition 
@@ -3543,6 +3560,7 @@ sub _create_unique_keys
 		next if ($self->{pkey_in_create} && ($unique_key->{$consname}{type} eq 'P'));
 		my $constype =   $unique_key->{$consname}{type};
 		my $constgen =   $unique_key->{$consname}{generated};
+		my $index_name = $unique_key->{$consname}{index_name};
 		my @conscols = @{$unique_key->{$consname}{columns}};
 		my %constypenames = ('U' => 'UNIQUE', 'P' => 'PRIMARY KEY');
 		my $constypename = $constypenames{$constype};
@@ -3564,10 +3582,14 @@ sub _create_unique_keys
 		}
 		if ($columnlist) {
 			if (!$self->{keep_pkey_names} || ($constgen eq 'GENERATED NAME')) {
-				$out .= "ALTER TABLE $table ADD $constypename ($columnlist);\n";
+				$out .= "ALTER TABLE $table ADD $constypename ($columnlist)";
 			} else {
-				$out .= "ALTER TABLE $table ADD CONSTRAINT \L$consname\E $constypename ($columnlist);\n";
+				$out .= "ALTER TABLE $table ADD CONSTRAINT \L$consname\E $constypename ($columnlist)";
 			}
+			if ($self->{use_tablespace} && $self->{tables}{$tbsaved}{idx_tbsp}{$index_name} && !grep(/^$self->{tables}{$tbsaved}{idx_tbsp}{$index_name}$/i, @{$self->{default_tablespaces}})) {
+				$out .= " USING INDEX TABLESPACE $self->{tables}{$tbsaved}{idx_tbsp}{$index_name}";
+			}
+			$out .= ";\n";
 		}
 	}
 	return $out;
@@ -3582,7 +3604,7 @@ sub _create_check_constraint
 {
 	my ($self, $table, $check_constraint, $field_name) = @_;
 
-	my $tbsaved = lc($table);
+	my $tbsaved = $table;
 	$table = $self->get_replaced_tbname($table);
 
 	my $out = '';
@@ -3673,6 +3695,9 @@ sub _create_foreign_keys
 			if (!$self->{preserve_case}) {
 				map { $_ = $self->quote_reserved_words($_) } @lfkeys;
 				map { $_ = $self->quote_reserved_words($_) } @rfkeys;
+			}
+			if (!$self->{preserve_case}) {
+					$h->[0] = lc($h->[0]);
 			}
 			$str .= "ALTER TABLE $table ADD CONSTRAINT $h->[0] FOREIGN KEY (" . join(',', @lfkeys) . ") REFERENCES $subsdesttable (" . join(',', @rfkeys) . ")";
 			$str .= " MATCH $h->[2]" if ($h->[2]);
@@ -4055,7 +4080,7 @@ sub _unique_key
 	$condition .= "AND OWNER='$owner' " if ($owner);
 
 	$sth = $self->{dbh}->prepare(<<END) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-SELECT CONSTRAINT_NAME,R_CONSTRAINT_NAME,SEARCH_CONDITION,DELETE_RULE,DEFERRABLE,DEFERRED,R_OWNER,CONSTRAINT_TYPE,GENERATED,TABLE_NAME,OWNER
+SELECT CONSTRAINT_NAME,R_CONSTRAINT_NAME,SEARCH_CONDITION,DELETE_RULE,DEFERRABLE,DEFERRED,R_OWNER,CONSTRAINT_TYPE,GENERATED,TABLE_NAME,OWNER,INDEX_NAME
 FROM $self->{prefix}_CONSTRAINTS
 WHERE CONSTRAINT_TYPE IN $cons_types
 AND STATUS='ENABLED'
@@ -4064,7 +4089,7 @@ END
 	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
 	while (my $row = $sth->fetch) {
-		my %constraint = (type => $row->[7], 'generated' => $row->[8], columns => ());
+		my %constraint = (type => $row->[7], 'generated' => $row->[8], 'index_name' => $row->[11], columns => ());
 		foreach my $r (@cons_columns) {
 			if ($r->[2] eq $row->[0]) {
 				push(@{$constraint{'columns'}}, $r->[0]);
@@ -4338,7 +4363,7 @@ sub _get_indexes
 	my $sth = '';
 	if ($self->{db_version} !~ /Release 8/) {
 		$sth = $self->{dbh}->prepare(<<END) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-SELECT DISTINCT $self->{prefix}_IND_COLUMNS.INDEX_NAME,$self->{prefix}_IND_COLUMNS.COLUMN_NAME,$self->{prefix}_INDEXES.UNIQUENESS,$self->{prefix}_IND_COLUMNS.COLUMN_POSITION,$self->{prefix}_INDEXES.INDEX_TYPE,$self->{prefix}_INDEXES.TABLE_TYPE,$self->{prefix}_INDEXES.GENERATED,$self->{prefix}_INDEXES.JOIN_INDEX,$self->{prefix}_IND_COLUMNS.TABLE_NAME,$self->{prefix}_IND_COLUMNS.INDEX_OWNER
+SELECT DISTINCT $self->{prefix}_IND_COLUMNS.INDEX_NAME,$self->{prefix}_IND_COLUMNS.COLUMN_NAME,$self->{prefix}_INDEXES.UNIQUENESS,$self->{prefix}_IND_COLUMNS.COLUMN_POSITION,$self->{prefix}_INDEXES.INDEX_TYPE,$self->{prefix}_INDEXES.TABLE_TYPE,$self->{prefix}_INDEXES.GENERATED,$self->{prefix}_INDEXES.JOIN_INDEX,$self->{prefix}_IND_COLUMNS.TABLE_NAME,$self->{prefix}_IND_COLUMNS.INDEX_OWNER,$self->{prefix}_INDEXES.TABLESPACE_NAME
 FROM $self->{prefix}_IND_COLUMNS
 JOIN $self->{prefix}_INDEXES ON ($self->{prefix}_INDEXES.INDEX_NAME=$self->{prefix}_IND_COLUMNS.INDEX_NAME)
 WHERE $self->{prefix}_INDEXES.GENERATED <> 'Y' AND $self->{prefix}_INDEXES.TEMPORARY <> 'Y' $condition
@@ -4347,7 +4372,7 @@ END
 	} else {
 		# an 8i database.
 		$sth = $self->{dbh}->prepare(<<END) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-SELECT DISTINCT $self->{prefix}_IND_COLUMNS.INDEX_NAME,$self->{prefix}_IND_COLUMNS.COLUMN_NAME,$self->{prefix}_INDEXES.UNIQUENESS,$self->{prefix}_IND_COLUMNS.COLUMN_POSITION,$self->{prefix}_INDEXES.INDEX_TYPE,$self->{prefix}_INDEXES.TABLE_TYPE,$self->{prefix}_INDEXES.GENERATED,$self->{prefix}_IND_COLUMNS.TABLE_NAME,$self->{prefix}_IND_COLUMNS.INDEX_OWNER
+SELECT DISTINCT $self->{prefix}_IND_COLUMNS.INDEX_NAME,$self->{prefix}_IND_COLUMNS.COLUMN_NAME,$self->{prefix}_INDEXES.UNIQUENESS,$self->{prefix}_IND_COLUMNS.COLUMN_POSITION,$self->{prefix}_INDEXES.INDEX_TYPE,$self->{prefix}_INDEXES.TABLE_TYPE,$self->{prefix}_INDEXES.GENERATED,$self->{prefix}_IND_COLUMNS.TABLE_NAME,$self->{prefix}_IND_COLUMNS.INDEX_OWNER,$self->{prefix}_INDEXES.TABLESPACE_NAME
 FROM $self->{prefix}_IND_COLUMNS, $self->{prefix}_INDEXES
 WHERE $self->{prefix}_INDEXES.INDEX_NAME=$self->{prefix}_IND_COLUMNS.INDEX_NAME $condition
 AND $self->{prefix}_INDEXES.GENERATED <> 'Y'
@@ -4374,23 +4399,25 @@ $idxowner
 	while (my $row = $sth->fetch) {
 		# forget or not this object if it is in the exclude or allow lists.
 		next if ($self->skip_this_object('INDEX', $row->[0]));
-		$unique{$row->[-2]}{$row->[0]} = $row->[2];
+		$unique{$row->[-3]}{$row->[0]} = $row->[2];
 		if (($#{$row} > 6) && ($row->[7] eq 'Y')) {
-			$idx_type{$row->[-2]}{$row->[0]} = $row->[4] . ' JOIN';
+			$idx_type{$row->[-3]}{$row->[0]} = $row->[4] . ' JOIN';
 		} else {
-			$idx_type{$row->[-2]}{$row->[0]} = $row->[4];
+			$idx_type{$row->[-3]}{$row->[0]} = $row->[4];
 		}
 		# Replace function based index type
 		if ($row->[1] =~ /^SYS_NC/i) {
-			$sth2->execute($row->[1],$row->[-2]) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+			$sth2->execute($row->[1],$row->[-3]) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 			my $nc = $sth2->fetch();
 			$row->[1] = $nc->[0];
 		}
 		$row->[1] =~ s/SYS_EXTRACT_UTC[\s\t]*\(([^\)]+)\)/$1/isg;
-		push(@{$data{$row->[-2]}{$row->[0]}}, $row->[1]);
+		push(@{$data{$row->[-3]}{$row->[0]}}, $row->[1]);
+print SDTERR "AAAAAAAAAAAAAAAAAAAAAAAA $row->[-3] : $row->[0] : $row->[-1]\n";
+		$index_tablespace{$row->[-3]}{$row->[0]} = $row->[-1];
 	}
 
-	return \%unique, \%data, \%idx_type;
+	return \%unique, \%data, \%idx_type, \%index_tablespace;
 }
 
 
@@ -4923,7 +4950,7 @@ sub _table_info
 	}
 	$sth->finish();
 
-	$sql = "SELECT OWNER,TABLE_NAME,NVL(num_rows,1) NUMBER_ROWS FROM ALL_TABLES $owner";
+	$sql = "SELECT OWNER,TABLE_NAME,NVL(num_rows,1) NUMBER_ROWS,TABLESPACE_NAME FROM ALL_TABLES $owner";
         $sql .= " ORDER BY OWNER, TABLE_NAME";
         $sth = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
         $sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -4933,6 +4960,7 @@ sub _table_info
 		next if ($self->skip_this_object('TABLE', $row->[1]));
 		$tables_infos{$row->[1]}{owner} = $row->[0] || '';
 		$tables_infos{$row->[1]}{num_rows} = $row->[2] || 0;
+		$tables_infos{$row->[1]}{tablespace} = $row->[3] || 0;
 		$tables_infos{$row->[1]}{comment} =  $comments{$row->[1]}{comment} || '';
 		$tables_infos{$row->[1]}{type} =  $comments{$row->[1]}{table_type} || '';
 	}
@@ -7239,7 +7267,7 @@ sub _lookup_check_constraint
 
 	my  @chk_constr = ();
 
-	my $tbsaved = lc($table);
+	my $tbsaved = $table;
 	$table = $self->get_replaced_tbname($table);
 
 	# Set the check constraint definition 
@@ -7253,10 +7281,10 @@ sub _lookup_check_constraint
 			}
 		}
 		if (!$skip_create) {
-			if (exists $self->{replaced_cols}{"$tbsaved"} && $self->{replaced_cols}{"$tbsaved"}) {
-				foreach my $c (keys %{$self->{replaced_cols}{"$tbsaved"}}) {
-					$chkconstraint =~ s/"$c"/"$self->{replaced_cols}{"$tbsaved"}{$c}"/gsi;
-					$chkconstraint =~ s/\b$c\b/$self->{replaced_cols}{"$tbsaved"}{$c}/gsi;
+			if (exists $self->{replaced_cols}{"\L$tbsaved\E"} && $self->{replaced_cols}{"\E$tbsaved\L"}) {
+				foreach my $c (keys %{$self->{replaced_cols}{"\L$tbsaved\E"}}) {
+					$chkconstraint =~ s/"$c"/"$self->{replaced_cols}{"\L$tbsaved\E"}{$c}"/gsi;
+					$chkconstraint =~ s/\b$c\b/$self->{replaced_cols}{"\L$tbsaved\E"}{$c}/gsi;
 				}
 			}
 			if ($self->{plsql_pgsql}) {
