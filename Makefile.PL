@@ -520,6 +520,10 @@ ALLOW_PARTITION		PARTNAME
 # constraint and indexes using the tablespace name defined in Oracle database.
 # This works only with tablespace that are not TEMP, USERS and SYSTEM.
 USE_TABLESPACE		0
+
+# Allow support of native MATERIALIZED VIEW PG>=9.3
+PG_SUPPORTS_MVIEW	0
+
 };
 close(OUTCFG);
 

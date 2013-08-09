@@ -726,6 +726,8 @@ sub _init
 	if ($self->{pg_supports_insteadof} eq '') {
 		$self->{pg_supports_insteadof} = 1;
 	}
+	$self->{pg_supports_mview} ||= 0;
+
 	# Backward compatibility with LongTrunkOk with typo
 	if ($self->{longtrunkok} && not defined $self->{longtruncok}) {
 		$self->{longtruncok} = $self->{longtrunkok};
@@ -1422,6 +1424,7 @@ sub _materialized_views
 		$self->{materialized_views}{$table}{refresh_method}= $view_infos{$table}{refresh_method};
 		$self->{materialized_views}{$table}{no_index}= $view_infos{$table}{no_index};
 		$self->{materialized_views}{$table}{rewritable}= $view_infos{$table}{rewritable};
+		$self->{materialized_views}{$table}{build_mode}= $view_infos{$table}{build_mode};
 		$i++;
 	}
 
@@ -1593,7 +1596,7 @@ sub _get_sql_data
 		$self->dump($sql_header) if ($self->{file_per_table} && !$self->{pg_dsn});
 		my $dirprefix = '';
 		$dirprefix = "$self->{output_dir}/" if ($self->{output_dir});
-		if ($self->{plsql_pgsql}) {
+		if ($self->{plsql_pgsql} && !$self->{pg_supports_mview}) {
 			my $sqlout = qq{
 $sql_header
 
@@ -1712,6 +1715,7 @@ LANGUAGE plpgsql ;
 			}
 			if (!$self->{plsql_pgsql}) {
 				$sql_output .= "CREATE MATERIALIZED VIEW $view\n";
+				$sql_output .= "BUILD $self->{materialized_views}{$view}{build_mode}\n";
 				$sql_output .= "REFRESH $self->{materialized_views}{$view}{refresh_method} ON $self->{materialized_views}{$view}{refresh_mode}\n";
 				$sql_output .= "ENABLE QUERY REWRITE" if ($self->{materialized_views}{$view}{rewritable});
 				$sql_output .= "AS $self->{materialized_views}{$view}{text}";
@@ -1724,10 +1728,19 @@ LANGUAGE plpgsql ;
 					$self->{materialized_views}{$view}{text} =~ s/"//gs;
 				}
 				$self->{materialized_views}{$view}{text} =~ s/^PERFORM/SELECT/;
-				$sql_output .= "CREATE VIEW \L$view\E_mview AS\n";
-				$sql_output .= $self->{materialized_views}{$view}{text};
-				$sql_output .= ";\n\n";
-				$sql_output .= "SELECT create_materialized_view('\L$view\E','\L$view\E_mview', change with the name of the colum to used for the index);\n\n\n";
+				if (!$self->{pg_supports_mview}) {
+					$sql_output .= "CREATE VIEW \L$view\E_mview AS\n";
+					$sql_output .= $self->{materialized_views}{$view}{text};
+					$sql_output .= ";\n\n";
+					$sql_output .= "SELECT create_materialized_view('\L$view\E','\L$view\E_mview', change with the name of the colum to used for the index);\n\n\n";
+				} else {
+					$sql_output .= "CREATE MATERIALIZED VIEW \L$view\E AS\n";
+					$sql_output .= $self->{materialized_views}{$view}{text};
+					if ($self->{materialized_views}{$view}{build_mode} eq 'DEFERRED') {
+						$sql_output .= " WITH NO DATA";
+					}
+					$sql_output .= ";\n\n";
+				}
 			}
 
 			if ($self->{file_per_table} && !$self->{pg_dsn}) {
@@ -4413,7 +4426,6 @@ $idxowner
 		}
 		$row->[1] =~ s/SYS_EXTRACT_UTC[\s\t]*\(([^\)]+)\)/$1/isg;
 		push(@{$data{$row->[-3]}{$row->[0]}}, $row->[1]);
-print SDTERR "AAAAAAAAAAAAAAAAAAAAAAAA $row->[-3] : $row->[0] : $row->[-1]\n";
 		$index_tablespace{$row->[-3]}{$row->[0]} = $row->[-1];
 	}
 
@@ -4631,7 +4643,7 @@ sub _get_materialized_views
 	my($self) = @_;
 
 	# Retrieve all views
-	my $str = "SELECT MVIEW_NAME,QUERY,UPDATABLE,REFRESH_MODE,REFRESH_METHOD,USE_NO_INDEX,REWRITE_ENABLED FROM $self->{prefix}_MVIEWS";
+	my $str = "SELECT MVIEW_NAME,QUERY,UPDATABLE,REFRESH_MODE,REFRESH_METHOD,USE_NO_INDEX,REWRITE_ENABLED,BUILD_MODE FROM $self->{prefix}_MVIEWS";
 	if (!$self->{schema}) {
 		$str .= " WHERE OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
 	} else {
@@ -4653,6 +4665,7 @@ sub _get_materialized_views
 		$data{$row->[0]}{refresh_method} = $row->[4];
 		$data{$row->[0]}{no_index} = ($row->[5] eq 'Y') ? 1 : 0;
 		$data{$row->[0]}{rewritable} = ($row->[6] eq 'Y') ? 1 : 0;
+		$data{$row->[0]}{build_mode} = $row->[7];
 	}
 
 	return %data;

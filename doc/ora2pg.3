@@ -124,7 +124,7 @@
 .\" ========================================================================
 .\"
 .IX Title "ORA2PG 1"
-.TH ORA2PG 1 "2013-08-07" "perl v5.14.2" "User Contributed Perl Documentation"
+.TH ORA2PG 1 "2013-08-09" "perl v5.14.2" "User Contributed Perl Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -1232,6 +1232,11 @@ word for PostgreSQL. Ora2Pg will double quote the name of the object.
 .IX Item "GEN_USER_PWD"
 Set this directive to 1 to replace default password by a random password for all
 extracted user during a \s-1GRANT\s0 export.
+.IP "\s-1PG_SUPPORTS_MVIEW\s0" 4
+.IX Item "PG_SUPPORTS_MVIEW"
+Since PostgreSQL 9.3, materialized view are supported with the \s-1CREATE\s0 \s-1MATERIALIZED\s0 \s-1VIEW\s0
+syntax, to force Ora2Pg to use the native PostgreSQL support you must enable this
+configuration. Disable by default.
 .IP "\s-1PG_SUPPORTS_ROLE\s0 (Deprecated)" 4
 .IX Item "PG_SUPPORTS_ROLE (Deprecated)"
 This option is deprecated since Ora2Pg release v7.3.
@@ -1386,7 +1391,11 @@ considered equal to \s-1NULL\s0.
 Default is replacement to be sure that your application will have se same behavior.
 .SS "Materialized view"
 .IX Subsection "Materialized view"
-For now Ora2Pg will export all materialized views as \*(L"Snapshot Materialized Views\*(R" as explain
+Since PostgreSQL 9.3, materialized view are supported with the \s-1CREATE\s0 \s-1MATERIALIZED\s0 \s-1VIEW\s0 syntax,
+to force Ora2Pg to use the native PostgreSQL support you must enable the configuration
+directive \s-1PG_SUPPORTS_MVIEW\s0.
+.PP
+In other case Ora2Pg will export all materialized views as \*(L"Snapshot Materialized Views\*(R" as explain
 in this document: http://tech.jonathangardner.net/wiki/PostgreSQL/Materialized_Views.
 .PP
 When exporting materialized view Ora2Pg will first add the \s-1SQL\s0 code to create the \*(L"materialized_views\*(R" table:

@@ -1142,6 +1142,13 @@ word for PostgreSQL. Ora2Pg will double quote the name of the object.
 Set this directive to 1 to replace default password by a random password for all
 extracted user during a GRANT export.
 
+=item PG_SUPPORTS_MVIEW
+
+Since PostgreSQL 9.3, materialized view are supported with the CREATE MATERIALIZED VIEW
+syntax, to force Ora2Pg to use the native PostgreSQL support you must enable this
+configuration. Disable by default.
+
+
 =item PG_SUPPORTS_ROLE (Deprecated)
 
 This option is deprecated since Ora2Pg release v7.3.
@@ -1309,7 +1316,11 @@ Default is replacement to be sure that your application will have se same behavi
 
 =head2 Materialized view
 
-For now Ora2Pg will export all materialized views as "Snapshot Materialized Views" as explain
+Since PostgreSQL 9.3, materialized view are supported with the CREATE MATERIALIZED VIEW syntax,
+to force Ora2Pg to use the native PostgreSQL support you must enable the configuration
+directive PG_SUPPORTS_MVIEW.
+
+In other case Ora2Pg will export all materialized views as "Snapshot Materialized Views" as explain
 in this document: http://tech.jonathangardner.net/wiki/PostgreSQL/Materialized_Views.
 
 When exporting materialized view Ora2Pg will first add the SQL code to create the "materialized_views" table:

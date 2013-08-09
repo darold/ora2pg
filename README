@@ -1085,6 +1085,12 @@ CONFIGURATION
         Set this directive to 1 to replace default password by a random
         password for all extracted user during a GRANT export.
 
+    PG_SUPPORTS_MVIEW
+        Since PostgreSQL 9.3, materialized view are supported with the
+        CREATE MATERIALIZED VIEW syntax, to force Ora2Pg to use the native
+        PostgreSQL support you must enable this configuration. Disable by
+        default.
+
     PG_SUPPORTS_ROLE (Deprecated)
         This option is deprecated since Ora2Pg release v7.3.
 
@@ -1240,7 +1246,11 @@ CONFIGURATION
         same behavior.
 
   Materialized view
-    For now Ora2Pg will export all materialized views as "Snapshot
+    Since PostgreSQL 9.3, materialized view are supported with the CREATE
+    MATERIALIZED VIEW syntax, to force Ora2Pg to use the native PostgreSQL
+    support you must enable the configuration directive PG_SUPPORTS_MVIEW.
+
+    In other case Ora2Pg will export all materialized views as "Snapshot
     Materialized Views" as explain in this document:
     http://tech.jonathangardner.net/wiki/PostgreSQL/Materialized_Views.
 
