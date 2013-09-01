@@ -6880,7 +6880,7 @@ sub _get_database_size
 	my $self = shift;
 
 	my $mb_size = '';
-	my $sql = "SELECT sum(bytes)/1024/1024 FROM DBA_DATA_FILES";
+	my $sql = "SELECT sum(bytes)/1024/1024 FROM USER_SEGMENTS";
         my $sth = $self->{dbh}->prepare( $sql ) or return undef;
         $sth->execute or return undef;
 	while ( my @row = $sth->fetchrow()) {
