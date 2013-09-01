@@ -1979,12 +1979,14 @@ LANGUAGE plpgsql ;
 				} else {
 					$sql_output .= "CREATE OR REPLACE FUNCTION trigger_fct_\L$trig->[0]\E () RETURNS trigger AS \$BODY\$\n$trig->[4]\n\$BODY\$\n LANGUAGE 'plpgsql';\n\n";
 					$sql_output .= "CREATE TRIGGER \L$trig->[0]\E\n\t";
+					my $statement = 0;
+					$statement = 1 if ($trig->[1] =~ s/ STATEMENT//);
 					if (!$self->{preserve_case}) {
 						$sql_output .= "$trig->[1] $trig->[2] ON \L$trig->[3]\E ";
 					} else {
 						$sql_output .= "$trig->[1] $trig->[2] ON \"$trig->[3]\" ";
 					}
-					if ($trig->[1] =~ s/ STATEMENT//) {
+					if ($statement) {
 						$sql_output .= "FOR EACH STATEMENT\n";
 					} else {
 						$sql_output .= "FOR EACH ROW\n";
