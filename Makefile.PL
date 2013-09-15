@@ -521,8 +521,10 @@ ALLOW_PARTITION		PARTNAME
 # This works only with tablespace that are not TEMP, USERS and SYSTEM.
 USE_TABLESPACE		0
 
-# Allow support of native MATERIALIZED VIEW PG>=9.3
-PG_SUPPORTS_MVIEW	0
+# Allow support of native MATERIALIZED VIEW PG>=9.3. If disable Ora2Pg
+# will use old behavior, a normal table with a set of function to refresh
+# the view.
+PG_SUPPORTS_MVIEW	1
 
 };
 close(OUTCFG);

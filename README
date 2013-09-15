@@ -1086,10 +1086,11 @@ CONFIGURATION
         password for all extracted user during a GRANT export.
 
     PG_SUPPORTS_MVIEW
-        Since PostgreSQL 9.3, materialized view are supported with the
-        CREATE MATERIALIZED VIEW syntax, to force Ora2Pg to use the native
-        PostgreSQL support you must enable this configuration. Disable by
-        default.
+        Since PostgreSQL 9.3, materialized view are supported with the SQL
+        syntax 'CREATE MATERIALIZED VIEW'. To force Ora2Pg to use the native
+        PostgreSQL support you must enable this configuration - enable by
+        default. If you want to use the old style with table and a set of
+        function, you should disable it.
 
     PG_SUPPORTS_ROLE (Deprecated)
         This option is deprecated since Ora2Pg release v7.3.

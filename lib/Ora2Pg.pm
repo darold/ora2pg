@@ -726,7 +726,9 @@ sub _init
 	if ($self->{pg_supports_insteadof} eq '') {
 		$self->{pg_supports_insteadof} = 1;
 	}
-	$self->{pg_supports_mview} ||= 0;
+	if ($self->{pg_supports_mview} eq '') {
+		$self->{pg_supports_mview} = 1;
+	}
 
 	# Backward compatibility with LongTrunkOk with typo
 	if ($self->{longtrunkok} && not defined $self->{longtruncok}) {

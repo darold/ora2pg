@@ -124,7 +124,7 @@
 .\" ========================================================================
 .\"
 .IX Title "ORA2PG 1"
-.TH ORA2PG 1 "2013-08-09" "perl v5.14.2" "User Contributed Perl Documentation"
+.TH ORA2PG 1 "2013-09-15" "perl v5.14.2" "User Contributed Perl Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -1234,9 +1234,10 @@ Set this directive to 1 to replace default password by a random password for all
 extracted user during a \s-1GRANT\s0 export.
 .IP "\s-1PG_SUPPORTS_MVIEW\s0" 4
 .IX Item "PG_SUPPORTS_MVIEW"
-Since PostgreSQL 9.3, materialized view are supported with the \s-1CREATE\s0 \s-1MATERIALIZED\s0 \s-1VIEW\s0
-syntax, to force Ora2Pg to use the native PostgreSQL support you must enable this
-configuration. Disable by default.
+Since PostgreSQL 9.3, materialized view are supported with the \s-1SQL\s0 syntax
+\&'\s-1CREATE\s0 \s-1MATERIALIZED\s0 \s-1VIEW\s0'. To force Ora2Pg to use the native PostgreSQL
+support you must enable this configuration \- enable by default. If you want
+to use the old style with table and a set of function, you should disable it.
 .IP "\s-1PG_SUPPORTS_ROLE\s0 (Deprecated)" 4
 .IX Item "PG_SUPPORTS_ROLE (Deprecated)"
 This option is deprecated since Ora2Pg release v7.3.
