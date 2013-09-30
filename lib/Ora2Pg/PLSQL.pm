@@ -301,8 +301,8 @@ sub plsql_to_plpgsql
 	$str =~ s/add_years[\s\t]*\((.*?),[\s\t]*([\-\d]+)[\s\t]*\)/$1 + '$2 year'::interval/gsi;
 
 	# Add STRICT keyword when select...into and an exception with NO_DATA_FOUND/TOO_MANY_ROW is present
-	if ($str !~ s/(SELECT.*?INTO)(.*?)(EXCEPTION.*?NO_DATA_FOUND)/$1 STRICT $2 $3/igs) {
-		$str =~ s/(SELECT.*?INTO)(.*?)(EXCEPTION.*?TOO_MANY_ROW)/$1 STRICT $2 $3/igs;
+	if ($str !~ s/\b(SELECT\b[^;]*?INTO)(.*?)(EXCEPTION.*?NO_DATA_FOUND)/$1 STRICT $2 $3/igs) {
+		$str =~ s/\b(SELECT\b[^;]*?INTO)(.*?)(EXCEPTION.*?TOO_MANY_ROW)/$1 STRICT $2 $3/igs;
 	}
 
 	# Remove the function name repetion at end
