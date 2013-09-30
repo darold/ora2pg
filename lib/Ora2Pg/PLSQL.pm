@@ -220,7 +220,8 @@ sub plsql_to_plpgsql
 	# SELECT without INTO should be PERFORM. Exclude select of view when prefixed with AS ot IS
 	if ( ($export_type ne 'QUERY') && ($export_type ne 'VIEW') ) {
 		$str =~ s/([\s\t\n\r]+)(?<!AS|IS)([\s\t\n\r]+)SELECT(?![^;]+\bINTO\b[^;]+FROM[^;]+;)/$1$2$3PERFORM$4/isg;
-		$str =~ s/\b(AS|IS)([\s\t\n\r]+)PERFORM/$1$2SELECT/isg;
+		$str =~ s/\b(AS|IS|FOR|)([\s\t\n\r]+)PERFORM/$1$2SELECT/isg;
+		$str =~ s/(\([\s\t\n\r]*)PERFORM/$1SELECT/isg;
 	}
 
 	# Change nextval on sequence

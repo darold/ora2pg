@@ -254,7 +254,6 @@ sub export_schema
 
 	foreach my $t (@{$self->{export_type}}) {
 		next if ($t =~ /^SHOW_/i);
-		next if ($self->{input_file} && grep(/^$t$/i, 'QUERY', 'FUNCTION','PROCEDURE','PACKAGE'));
 		$self->{type} = $t;
 		# Return data as string
 		$self->_get_sql_data();
@@ -2223,6 +2222,7 @@ LANGUAGE plpgsql ;
 
 	# Process procedures only
 	if ($self->{type} eq 'PROCEDURE') {
+
 		use constant SQL_DATATYPE => 2;
 		$self->logit("Add procedures definition...\n", 1);
 		my $nothing = 0;
