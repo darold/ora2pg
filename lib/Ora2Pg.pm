@@ -604,7 +604,7 @@ sub _init
 	}
 	# additional boolean values given from config file
 	foreach my $k (keys %{$self->{boolean_values}}) {
-		$self->{ora_boolean_values}{lc($k)} = $self->{boolean_values}{$k};
+		$self->{ora_boolean_values}{lc($k)} = $AConfig{BOOLEAN_VALUES}{$k};
 	}
 
 	# Set transaction isolation level
@@ -5251,7 +5251,9 @@ sub format_data_type
 				$col = "'$col'";
 			}
 		} elsif ($data_type eq 'boolean') {
-			$col = "'" . ($self->{ora_boolean_values}{lc($col)} || $col) . "'";
+			if (exists $self->{ora_boolean_values}{lc($col)}) {
+				$col = "'" . $self->{ora_boolean_values}{lc($col)} . "'";
+			}
 		} else {
 			# covered now by the call to _numeric_format()
 			# $col =~ s/,/\./;
@@ -5262,7 +5264,9 @@ sub format_data_type
 		if (!defined $col) {
 			$col = '\N';
 		} elsif ($data_type eq 'boolean') {
-			$col = ($self->{ora_boolean_values}{lc($col)} || $col);
+			if (exists $self->{ora_boolean_values}{lc($col)}) {
+				$col = $self->{ora_boolean_values}{lc($col)};
+			}
 		} elsif ($data_type !~ /(char|date|time|text|bytea|xml)/) {
 			# covered now by the call to _numeric_format()
 			#$col =~ s/,/\./;
@@ -5463,7 +5467,7 @@ sub read_config
 			foreach my $r (@replace_boolean) { 
 				my ($yes, $no) = split(/:/, $r);
 				$AConfig{$var}{lc($yes)} = 't';
-				$AConfig{$var}{lc($no)} = 't';
+				$AConfig{$var}{lc($no)} = 'f';
 			}
 		} elsif ($var eq 'DEFINED_PK') {
 			my @defined_pk = split(/[\s,;\t]+/, $val);
