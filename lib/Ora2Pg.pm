@@ -146,7 +146,7 @@ our %BOOLEAN_MAP = (
 	'true' => 't',
 	'false' => 'f',
 	'enabled'=> 't',
-	'disabled'=> 't',
+	'disabled'=> 'f',
 );
 
 our @GRANTS = (
