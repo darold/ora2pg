@@ -1935,6 +1935,7 @@ LANGUAGE plpgsql ;
 			if ($self->{file_per_function} && !$self->{pg_dsn}) {
 				$self->dump("\\i $dirprefix$trig->[0]_$self->{output}\n");
 				$self->logit("Dumping to one file per trigger : $trig->[0]_$self->{output}\n", 1);
+				$fhdl = $self->open_export_file("$trig->[0]_$self->{output}");
 			}
 			$trig->[1] =~ s/\s*EACH ROW//is;
 			chop($trig->[4]);
