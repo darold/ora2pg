@@ -1005,10 +1005,6 @@ sub _send_to_pgdb
 		$self->logit("FATAL: $DBI::err ... $DBI::errstr\n", 0, 1);
 	}
 
-	#if ($self->{client_encoding} eq 'UTF8') {
-	#	$dbhdest->pg_enable_utf8(1);
-	#}
-
 	return $dbhdest;
 }
 
@@ -2604,7 +2600,8 @@ LANGUAGE plpgsql ;
 	if (($self->{type} eq 'INSERT') || ($self->{type} eq 'COPY')) {
 
 		# Connect the Oracle database to gather information
-		$self->{dbh} = DBI->connect($self->{oracle_dsn}, $self->{oracle_user}, $self->{oracle_pwd}, { ora_envhp  => 0, LongReadLen=>$self->{longreadlen}, LongTruncOk=>$self->{longtruncok} });
+		$self->{dbh} = DBI->connect($self->{oracle_dsn}, $self->{oracle_user}, $self->{oracle_pwd},
+				{ ora_envhp  => 0, LongReadLen => $self->{longreadlen}, LongTruncOk => $self->{longtruncok} });
 
 		# Fix a problem when exporting type LONG and LOB
 		$self->{dbh}->{'LongReadLen'} = $self->{longreadlen};
@@ -2629,9 +2626,17 @@ LANGUAGE plpgsql ;
 		# Ordering tables by name
 		my @ordered_tables = sort { $a cmp $b } keys %{$self->{tables}};
 
-		my $first_header = '';
+		# Set SQL orders that should be in the file header
+		# (before the COPY or INSERT commands)
+		my $first_header = "$sql_header\n";
+		# Add search path and constraint deferring
+		my $search_path = $self->set_search_path();
 		if (!$self->{pg_dsn}) {
-			$first_header .= "$sql_header\n";
+			# Set search path
+			if ($search_path) {
+				$first_header .= $self->set_search_path() . "\n";
+			}
+			# Open transaction
 			$first_header .= "BEGIN;\n";
 			# Defer all constraints
 			if ($self->{defer_fkey}) {
@@ -2639,7 +2644,6 @@ LANGUAGE plpgsql ;
 			}
 		} else {
 			# Set search path
-			my $search_path = $self->set_search_path();
 			if ($search_path) {
 				$self->{dbhdest}->do($search_path) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
 			}
@@ -2649,7 +2653,110 @@ LANGUAGE plpgsql ;
 				$self->{dbhdest}->do("SET CONSTRAINTS ALL DEFERRED;") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
 			}
 		}
-		$self->dump($first_header);
+
+		#### Defined all SQL commands that must be executed before and after data loading
+		my $load_file = "\n";
+		foreach my $table (@ordered_tables) {
+			next if ($self->skip_this_object('TABLE', $table));
+
+			# Rename table and double-quote it if required
+			my $tmptb = $self->get_replaced_tbname($table);
+
+			#### Set SQL commands that must be executed before data loading
+
+			# Drop foreign keys if required
+			if ($self->{drop_fkey}) {
+				$self->logit("Dropping foreign keys of table $table...\n", 1);
+				my @drop_all = $self->_drop_foreign_keys($table, @{$self->{tables}{$table}{foreign_key}});
+				foreach my $str (@drop_all) {
+					chomp($str);
+					next if (!$str);
+					if ($self->{pg_dsn}) {
+						my $s = $self->{dbhdest}->do($str) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
+					} else {
+						$first_header .= "$str\n";
+					}
+				}
+			}
+
+			# Drop indexes if required
+			if ($self->{drop_indexes}) {
+				$self->logit("Dropping indexes of table $table...\n", 1);
+				my @drop_all = $self->_drop_indexes($table, %{$self->{tables}{$table}{indexes}}) . "\n";
+				foreach my $str (@drop_all) {
+					chomp($str);
+					next if (!$str);
+					if ($self->{pg_dsn}) {
+						my $s = $self->{dbhdest}->do($str) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
+					} else {
+						$first_header .= "$str\n";
+					}
+				}
+			}
+
+			# Disable triggers of current table if requested
+			if ($self->{disable_triggers}) {
+				my $trig_type = 'USER';
+				$trig_type = 'ALL' if (uc($self->{disable_triggers}) eq 'ALL');
+				if ($self->{pg_dsn}) {
+					my $s = $self->{dbhdest}->do("ALTER TABLE $tmptb DISABLE TRIGGER $trig_type;") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
+				} else {
+					$first_header .=  "ALTER TABLE $tmptb DISABLE TRIGGER $trig_type;\n";
+				}
+			}
+
+			#### Add external data file loading if file_per_table is enable
+			if ($self->{file_per_table} && !$self->{pg_dsn}) {
+				my $file_name = "$dirprefix${table}_$self->{output}";
+				$file_name =~ s/\.(gz|bz2)$//;
+				$load_file .=  "\\i $file_name\n";
+			}
+
+			# With partitioned table, load data direct from table partition
+			if (exists $self->{partitions}{$table}) {
+				foreach my $pos (sort {$self->{partitions}{$table}{$a} <=> $self->{partitions}{$table}{$b}} keys %{$self->{partitions}{$table}}) {
+					foreach my $part_name (sort {$self->{partitions}{$table}{$pos}{$a}->{'colpos'} <=> $self->{partitions}{$table}{$pos}{$b}->{'colpos'}} keys %{$self->{partitions}{$table}{$pos}}) {
+						next if ($self->{allow_partition} && !grep($_ =~ /^$part_name$/i, @{$self->{allow_partition}}));
+
+						if ($self->{file_per_table} && !$self->{pg_dsn}) {
+							my $file_name = "$dirprefix${part_name}_$self->{output}";
+							$file_name =~ s/\.(gz|bz2)$//;
+							$load_file .=  "\\i $file_name\n";
+						}
+					}
+				}
+				# Now load content of the default partion table
+				if ($self->{partitions_default}{$table}) {
+					if (!$self->{allow_partition} || grep($_ =~ /^$self->{partitions_default}{$table}$/i, @{$self->{allow_partition}})) {
+						if ($self->{file_per_table} && !$self->{pg_dsn}) {
+							my $part_name = $self->{partitions_default}{$table};
+							my $file_name = "$dirprefix${part_name}_$self->{output}";
+							$file_name =~ s/\.(gz|bz2)$//;
+							$load_file .=  "\\i $file_name\n";
+						}
+					}
+				}
+			}
+		}
+
+		if (!$self->{pg_dsn}) {
+			# Write header to file
+			$self->dump($first_header);
+
+			if ($self->{file_per_table}) {
+				# Write file loader
+				$self->dump($load_file);
+			}
+		}
+
+		# Commit transaction with direct connection to avoid deadlocks
+		if ($self->{pg_dsn}) {
+			my $s = $self->{dbhdest}->do("COMMIT;") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
+		}
+
+		####
+		#### Proceed to data export
+		####
 
 		# Force datetime format
 		$self->_datetime_format();
@@ -2670,68 +2777,50 @@ LANGUAGE plpgsql ;
 		$writer->autoflush(1);
 		if ( ($self->{jobs} > 1) || ($self->{oracle_copies} > 1) ) {
 			$self->{dbh}->{InactiveDestroy} = 1;
+			$self->{dbhdest}->{InactiveDestroy} = 1;
 			spawn sub {
 				$self->multiprocess_progressbar($global_rows);
 			};
 			$self->{dbh}->{InactiveDestroy} = 0;
+			$self->{dbhdest}->{InactiveDestroy} = 0;
 		}
 		my $dirprefix = '';
 		$dirprefix = "$self->{output_dir}/" if ($self->{output_dir});
 		my $start_time = time();
 		my $global_count = 0;
+
 		foreach my $table (@ordered_tables) {
+
 			next if ($self->skip_this_object('TABLE', $table));
 
 			# Rename table and double-quote it if required
 			my $tmptb = $self->get_replaced_tbname($table);
 
 			if ($self->{file_per_table} && !$self->{pg_dsn}) {
-				my $file_name = "$dirprefix${table}_$self->{output}";
-				$file_name =~ s/\.(gz|bz2)$//;
-				$self->dump("\\i $file_name\n");
 				# Do not dump data again if the file already exists
 				next if ($self->file_exists("$dirprefix${table}_$self->{output}"));
 			}
 
-			$first_header = '';
-			$first_header = $sql_header if ($self->{file_per_table});
+			# Open output file
+			$self->data_dump($sql_header, $table) if (!$self->{pg_dsn} && $self->{file_per_table});
 
-			# Disable SQL script exit on error as indexes or fkey may not have been loaded
-			if ($self->{stop_on_error} && ($self->{drop_indexes} || $self->{drop_fkey})) {
-				$first_header .= "-- Do not stop script during index/constraint drop\n";
-				$first_header .= "\\set ON_ERROR_STOP OFF\n\n";
-			}
-			# Drop foreign keys if required
-			if ($self->{drop_fkey}) {
-				$self->logit("Dropping foreign keys of table $table...\n", 1);
-				my $drop_all = $self->_drop_foreign_keys($table, @{$self->{tables}{$table}{foreign_key}});
-				$first_header .= "$drop_all\n";
-			}
-
-			# Drop indexes if required
-			if ($self->{drop_indexes}) {
-				$self->logit("Dropping indexes of table $table...\n", 1);
-				my $drop_all = $self->_drop_indexes($table, %{$self->{tables}{$table}{indexes}}) . "\n";
-				if ($drop_all) {
-					$first_header .=  "$drop_all\n";
+			# Add table truncate order
+			if ($self->{truncate_table}) {
+				$self->logit("Truncating table $table...\n", 1);
+				if ($self->{pg_dsn}) {
+					my $s = $self->{dbhdest}->do("TRUNCATE TABLE $tmptb;") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
+				} else {
+					if ($self->{file_per_table}) {
+						$self->data_dump("TRUNCATE TABLE $tmptb;\n",  $table);
+					} else {
+						$self->dump("\nTRUNCATE TABLE $tmptb;\n");
+					}
 				}
-				$drop_all = '';
-			}
-			# Enable SQL script exit on error
-			if ($self->{stop_on_error} && ($self->{drop_indexes} || $self->{drop_fkey})) {
-				$first_header .= "\\set ON_ERROR_STOP ON\n\n";
 			}
 
-			# disable triggers of current table if requested
-			if ($self->{disable_triggers}) {
-				my $trig_type = 'USER';
-				$trig_type = 'ALL' if (uc($self->{disable_triggers}) eq 'ALL');
-				$first_header .=  "ALTER TABLE $tmptb DISABLE TRIGGER $trig_type;\n";
-			}
-
-			$self->data_dump($first_header, $table);
-
+			# Set global count
 			$global_count += $self->{tables}{$table}{table_info}{num_rows};
+
 			# With partitioned table, load data direct from table partition
 			if (exists $self->{partitions}{$table}) {
 				foreach my $pos (sort {$self->{partitions}{$table}{$a} <=> $self->{partitions}{$table}{$b}} keys %{$self->{partitions}{$table}}) {
@@ -2739,9 +2828,6 @@ LANGUAGE plpgsql ;
 						next if ($self->{allow_partition} && !grep($_ =~ /^$part_name$/i, @{$self->{allow_partition}}));
 
 						if ($self->{file_per_table} && !$self->{pg_dsn}) {
-							my $file_name = "$dirprefix${part_name}_$self->{output}";
-							$file_name =~ s/\.(gz|bz2)$//;
-							$self->dump("\\i $file_name\n");
 							# Do not dump data again if the file already exists
 							next if ($self->file_exists("$dirprefix${part_name}_$self->{output}"));
 						}
@@ -2752,10 +2838,6 @@ LANGUAGE plpgsql ;
 				if ($self->{partitions_default}{$table}) {
 					if (!$self->{allow_partition} || grep($_ =~ /^$self->{partitions_default}{$table}$/i, @{$self->{allow_partition}})) {
 						if ($self->{file_per_table} && !$self->{pg_dsn}) {
-							my $part_name = $self->{partitions_default}{$table};
-							my $file_name = "$dirprefix${part_name}_$self->{output}";
-							$file_name =~ s/\.(gz|bz2)$//;
-							$self->dump("\\i $file_name\n");
 							# Do not dump data again if the file already exists
 							next if ($self->file_exists("$dirprefix${part_name}_$self->{output}"));
 						}
@@ -2766,57 +2848,11 @@ LANGUAGE plpgsql ;
 				$self->_dump_table($dirprefix, $sql_header, $table, $start_time, $global_rows);
 			}
 
-			# disable triggers of current table if requested
-			my $last_footer = "\n";
-			if ($self->{disable_triggers}) {
-				my $trig_type = 'USER';
-				$trig_type = 'ALL' if (uc($self->{disable_triggers}) eq 'ALL');
-				# don't forget to enable all triggers if needed...
-				$last_footer .=  "ALTER TABLE $tmptb ENABLE TRIGGER $trig_type;\n\n";
-			}
-
-			# Disable SQL script exit on error as indexes or fkey may already have been loaded
-			if ($self->{stop_on_error} && ($self->{drop_indexes} || $self->{drop_fkey})) {
-				$last_footer .= "\\set ON_ERROR_STOP OFF\n\n";
-			}
-
-			# Recreate all foreign keys of the concerned tables
-			if ($self->{drop_fkey}) {
-				my @create_all = ();
-				$self->logit("Restoring foreign keys of table $table...\n", 1);
-				push(@create_all, $self->_create_foreign_keys($table, @{$self->{tables}{$table}{foreign_key}}));
-				foreach my $str (@create_all) {
-					if ($self->{pg_dsn}) {
-						my $s = $self->{dbhdest}->do($str) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
-					} else {
-						$last_footer .= "$str\n";
-					}
-				}
-			}
-
-			# Recreate all indexes
-			if ($self->{drop_indexes}) {
-				my @create_all = ();
-				$self->logit("Restoring indexes of table $table...\n", 1);
-				push(@create_all, $self->_create_indexes($table, %{$self->{tables}{$table}{indexes}}));
-				if ($#create_all >= 0) {
-					if ($self->{plsql_pgsql}) {
-						for (my $i = 0; $i <= $#create_all; $i++) {
-							$create_all[$i] = Ora2Pg::PLSQL::plsql_to_plpgsql($create_all[$i], $self->{allow_code_break},$self->{null_equal_empty});
-						}
-					}
-					if ($self->{pg_dsn}) {
-						foreach my $str (@create_all) {
-							my $s = $self->{dbhdest}->do($str) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
-						}
-					} else {
-						$last_footer .= join("\n", @create_all, "\n");
-					}
-				}
-			}
-			$self->data_dump($last_footer, $table);
+			# Close data file
 			$self->close_export_file($self->{cfhout}) if (defined $self->{cfhout});
+			$self->{cfhout} = undef;
 
+			# Display total export position
 			if ( ($self->{jobs} <= 1) && ($self->{oracle_copies} <= 1) ) {
 				my $end_time = time();
 				my $dt = $end_time - $start_time;
@@ -2847,28 +2883,102 @@ LANGUAGE plpgsql ;
 			$self->_init_oracle_connection($self->{dbh});
 		}
 
+		# Commit transaction
+		if ($self->{pg_dsn}) {
+			my $s = $self->{dbhdest}->do("BEGIN;") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
+
+		}
 
 		# Remove function created to export external table
 		if ($self->{bfile_found}) {
 			$self->logit("Removing function ora2pg_get_bfilename() used to retrieve path from BFILE.\n", 1);
-			my $bfile_function = "DROP FUNCTION ora2pg_get_bfilename";
+			my $bfile_function = "DROP FUNCTION IF EXISTS ora2pg_get_bfilename";
 			my $sth2 = $self->{dbh}->do($bfile_function);
 		}
 
-		my $last_footer = '';
+		#### Set SQL commands that must be executed after data loading
+		my $footer = '';
+		foreach my $table (@ordered_tables) {
+			next if ($self->skip_this_object('TABLE', $table));
+
+			# Rename table and double-quote it if required
+			my $tmptb = $self->get_replaced_tbname($table);
+
+
+			# disable triggers of current table if requested
+			if ($self->{disable_triggers}) {
+				my $trig_type = 'USER';
+				$trig_type = 'ALL' if (uc($self->{disable_triggers}) eq 'ALL');
+				my $str = "ALTER TABLE $tmptb ENABLE TRIGGER $trig_type;";
+				if ($self->{pg_dsn}) {
+					my $s = $self->{dbhdest}->do($str) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
+				} else {
+					$footer .= "$str\n";
+				}
+			}
+
+			# Recreate all foreign keys of the concerned tables
+			if ($self->{drop_fkey}) {
+				my @create_all = ();
+				$self->logit("Restoring foreign keys of table $table...\n", 1);
+				push(@create_all, $self->_create_foreign_keys($table, @{$self->{tables}{$table}{foreign_key}}));
+				foreach my $str (@create_all) {
+					chomp($str);
+					next if (!$str);
+					if ($self->{pg_dsn}) {
+						my $s = $self->{dbhdest}->do($str) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
+					} else {
+						$footer .= "$str\n";
+					}
+				}
+			}
+
+			# Recreate all indexes
+			if ($self->{drop_indexes}) {
+				my @create_all = ();
+				$self->logit("Restoring indexes of table $table...\n", 1);
+				push(@create_all, $self->_create_indexes($table, %{$self->{tables}{$table}{indexes}}));
+				if ($#create_all >= 0) {
+					if ($self->{plsql_pgsql}) {
+						for (my $i = 0; $i <= $#create_all; $i++) {
+							$create_all[$i] = Ora2Pg::PLSQL::plsql_to_plpgsql($create_all[$i], $self->{allow_code_break},$self->{null_equal_empty});
+						}
+					}
+					foreach my $str (@create_all) {
+						chomp($str);
+						next if (!$str);
+						if ($self->{pg_dsn}) {
+							my $s = $self->{dbhdest}->do($str) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
+						} else {
+							$footer .= "$str\n";
+						}
+					}
+				}
+			}
+		}
+
 		# Insert restart sequences orders
 		if (($#ordered_tables >= 0) && !$self->{disable_sequence}) {
 			$self->logit("Restarting sequences\n", 1);
-			$last_footer .= $self->_extract_sequence_info() . "\n";
+			my @restart_sequence = $self->_extract_sequence_info();
+			foreach my $str (@restart_sequence) {
+				if ($self->{pg_dsn}) {
+					my $s = $self->{dbhdest}->do($str) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
+				} else {
+					$footer .= "$str\n";
+				}
+			}
 		}
 
 		# Commit transaction
 		if ($self->{pg_dsn}) {
 			my $s = $self->{dbhdest}->do("COMMIT;") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
 		} else {
-			$last_footer .= "COMMIT;\n\n";
+			$footer .= "COMMIT;\n\n";
 		}
-		$self->dump($last_footer);
+
+		# Recreate constraint an indexes if required
+		$self->dump("\n$footer") if (!$self->{pg_dsn} && $footer);
 
 		# Disconnect from the database
 		$self->{dbh}->disconnect() if ($self->{dbh});
@@ -3450,12 +3560,7 @@ sub _drop_indexes
 		# Do not create the index if there already a constraint on the same column list
 		# the index will be automatically created by PostgreSQL at constraint import time.
 		if (!$skip_index_creation) {
-			my $str = "DROP INDEX \L$idx\E;";
-			if ($self->{pg_dsn}) {
-				my $s = $self->{dbhdest}->do($str);
-			} else {
-				push(@out, $str);
-			}
+			push(@out, "DROP INDEX IF EXISTS \L$idx\E;");
 		}
 	}
 
@@ -3740,7 +3845,7 @@ sub _drop_foreign_keys
 {
 	my ($self, $table, @foreign_key) = @_;
 
-	my $out = '';
+	my @out = ();
 
 	$table = $self->get_replaced_tbname($table);
 
@@ -3751,15 +3856,11 @@ sub _drop_foreign_keys
 		push(@done, $h->[0]);
 		my $str = '';
 		$h->[0] = lc($h->[0]) if (!$self->{preserve_case});
-		$str .= "ALTER TABLE $table DROP CONSTRAINT $h->[0];";
-		if ($self->{pg_dsn}) {
-			my $s = $self->{dbhdest}->do($str);
-		} else {
-			$out .= $str . "\n";
-		}
+		$str .= "ALTER TABLE IF EXISTS $table DROP CONSTRAINT IF EXISTS $h->[0];";
+		push(@out, $str);
 	}
 
-	return $out;
+	return wantarray ? @out : join("\n", @out);
 }
 
 
@@ -3780,7 +3881,7 @@ sub _extract_sequence_info
 	} else {
 		$sql .= " WHERE SEQUENCE_OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
 	}
-	my $script = '';
+	my @script = ();
 
 	my $sth = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr ."\n", 0, 1);
 	$sth->execute() or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);    
@@ -3791,17 +3892,16 @@ sub _extract_sequence_info
 		next if ($self->skip_this_object('SEQUENCE', $seq_info->{SEQUENCE_NAME}));
 
 		my $nextvalue = $seq_info->{LAST_NUMBER} + $seq_info->{INCREMENT_BY};
-		my $alter ="ALTER SEQUENCE \L$seq_info->{SEQUENCE_NAME}\E RESTART WITH $nextvalue;";
+		my $alter ="ALTER SEQUENCE IF EXISTS \L$seq_info->{SEQUENCE_NAME}\E RESTART WITH $nextvalue;";
 		if ($self->{preserve_case}) {
-			$alter = "ALTER SEQUENCE \"$seq_info->{SEQUENCE_NAME}\" RESTART WITH $nextvalue;";
+			$alter = "ALTER SEQUENCE IF EXISTS \"$seq_info->{SEQUENCE_NAME}\" RESTART WITH $nextvalue;";
 		}
-		$script .= "$alter\n";
+		push(@script, $alter);
 		$self->logit("Extracted sequence information for sequence \"$seq_info->{SEQUENCE_NAME}\"\n", 1);
-
 	}
-
 	$sth->finish();
-	return $script;
+
+	return @script;
 
 }
 
@@ -6154,6 +6254,10 @@ sub _extract_data
 
 		$self->{dbh}->{InactiveDestroy} = 1;
 		$self->{dbh} = undef;
+		if (defined $self->{dbhdest}) {
+			$self->{dbhdest}->{InactiveDestroy} = 1;
+			$self->{dbhdest} = undef;
+		}
 
 		# Set row cache size
 		$dbh->{RowCacheSize} = int($self->{data_limit}/10);
@@ -6206,6 +6310,7 @@ sub _extract_data
 			}
 			# The parent's connection should not be closed when $dbh is destroyed
 			$self->{dbh}->{InactiveDestroy} = 1;
+			$self->{dbhdest}->{InactiveDestroy} = 1 if (defined $self->{dbhdest});
 			$dbh->{InactiveDestroy} = 1 if (defined $dbh);
 
 			spawn sub {
@@ -6213,6 +6318,7 @@ sub _extract_data
 			};
 			$self->{child_count}++;
 			$self->{dbh}->{InactiveDestroy} = 0;
+			$self->{dbhdest}->{InactiveDestroy} = 0 if (defined $self->{dbhdest});
 			$dbh->{InactiveDestroy} = 0 if (defined $dbh);
 		} else {
 			$self->_dump_to_pg($dbh, $rows, $table, $cmd_head, $cmd_foot, $s_out, $tt, $sprep, $stt, $start_time, $part_name, $total_record, %user_type);
@@ -6284,8 +6390,11 @@ sub _dump_to_pg
 		$self->logit("DEBUG: Formatting bulk of $self->{data_limit} data for PostgreSQL.\n", 1);
 		$self->format_data($rows, $tt, $self->{type}, $stt, \%user_type, $table);
 	}
+
+	# Add COPY header to the output
+	my $sql_out = $s_out;
+
 	# Creating output
-	my $sql_out = '';
 	$self->logit("DEBUG: Creating output for $self->{data_limit} tuples\n", 1);
 	if ($self->{type} eq 'COPY') {
 		if ($self->{pg_dsn}) {
@@ -6298,13 +6407,12 @@ sub _dump_to_pg
 			}
 			$s = $dbhdest->pg_putcopyend() or $self->logit("FATAL: " . $dbhdest->errstr . "\n", 0, 1);
 		} else {
-			# Add COPY header to the output
-			$sql_out .= $s_out;
 			# then add data to the output
 			map { $sql_out .= join("\t", @$_) . "\n"; } @$rows;
 			$sql_out .= "\\.\n";
 		}
 	} elsif (!$sprep) {
+		$sql_out = '';
 		foreach my $row (@$rows) {
 			$sql_out .= $s_out;
 			$sql_out .= join(',', @$row) . ");\n";
@@ -6337,13 +6445,6 @@ sub _dump_to_pg
 
 	my $total_row = $self->{tables}{$table}{table_info}{num_rows};
 	my $tt_record = @$rows;
-	if ($self->{file_per_table} && !$self->{pg_dsn}) {
-		$self->close_export_file($fhdl);
-		# Remove files without data to copy
-		if ($tt_record == 0) {
-			unlink("${rname}_$self->{output}.$$");
-		}
-	}
 	$dbhdest->disconnect() if ($dbhdest);
 
 	my $end_time = time();
