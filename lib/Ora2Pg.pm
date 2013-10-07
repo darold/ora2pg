@@ -2777,12 +2777,12 @@ LANGUAGE plpgsql ;
 		$writer->autoflush(1);
 		if ( ($self->{jobs} > 1) || ($self->{oracle_copies} > 1) ) {
 			$self->{dbh}->{InactiveDestroy} = 1;
-			$self->{dbhdest}->{InactiveDestroy} = 1;
+			$self->{dbhdest}->{InactiveDestroy} = 1 if (defined $self->{dbhdest});
 			spawn sub {
 				$self->multiprocess_progressbar($global_rows);
 			};
 			$self->{dbh}->{InactiveDestroy} = 0;
-			$self->{dbhdest}->{InactiveDestroy} = 0;
+			$self->{dbhdest}->{InactiveDestroy} = 0 if (defined $self->{dbhdest});
 		}
 		my $dirprefix = '';
 		$dirprefix = "$self->{output_dir}/" if ($self->{output_dir});
@@ -2834,12 +2834,12 @@ LANGUAGE plpgsql ;
 						$self->_dump_table($dirprefix, $sql_header, $table, $start_time, $global_rows, $part_name);
 					}
 				}
-				# Now load content of the default partion table
+				# Now load content of the default partition table
 				if ($self->{partitions_default}{$table}) {
 					if (!$self->{allow_partition} || grep($_ =~ /^$self->{partitions_default}{$table}$/i, @{$self->{allow_partition}})) {
 						if ($self->{file_per_table} && !$self->{pg_dsn}) {
 							# Do not dump data again if the file already exists
-							next if ($self->file_exists("$dirprefix${part_name}_$self->{output}"));
+							next if ($self->file_exists("$dirprefix$self->{partitions_default}{$table}_$self->{output}"));
 						}
 						$self->_dump_table($dirprefix, $sql_header, $table, $start_time, $global_rows, $self->{partitions_default}{$table});
 					}
