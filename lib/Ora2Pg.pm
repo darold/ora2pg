@@ -47,6 +47,23 @@ our %RUNNING_PIDS = ();
 # Multiprocess communication pipe
 our $pipe = undef;
 
+# Minimized the footprint on disc, so that more rows fit on a data page,
+# which is the most important factor for speed. 
+our %TYPALIGN = (
+	'bool' => 0, 'boolean' => 0, 'bytea' => 4, 'char' => 0, 'name' => 0,
+	'int8' => 8, 'int2' => 2, 'int4' => 4, 'text' => 4, 'oid' => 4, 'json' => 4,
+	'xml' => 4, 'point' => 8, 'lseg' => 8, 'path' => 8, 'box' => 8,
+	'polygon' => 8, 'line' => 8, 'float4' => 4, 'float8' => 8,
+	'abstime' => 4, 'reltime' => 4, 'tinterval' => 4, 'circle' => 8,
+	'money' => 8, 'macaddr' => 4, 'inet' => 4, 'cidr' => 4, 'bpchar' => 4,
+	'varchar' => 4, 'date' => 4, 'time' => 8, 'timestamp' => 8,
+	'timestamptz' => 8, 'interval' => 8, 'timetz' => 8, 'bit' => 4,
+	'varbit' => 4, 'numeric' => 4, 'uuid' => 0, 'timestamp with time zone' => 8,
+	'character varying' => 0, 'timestamp without time zone' => 8,
+	'double precision' => 8, 'smallint' => 2, 'integer' => 4, 'bigint' => 8,
+	'decimal' => '4', 'real' => 4, 'smallserial' => 2, 'serial' => 4,
+	'bigserial' => 8
+);
 
 # These definitions can be overriden from configuration file
 our %TYPE = (
@@ -620,6 +637,9 @@ sub _init
 
 	# Set default cost unit value to 5 minutes
 	$self->{cost_unit_value} ||= 5;
+
+	# Defined if column order must be optimized
+	$self->{reordering_columns} ||= 0;
 
 	# Overwrite configuration with all given parameters
 	# and try to preserve backward compatibility
@@ -3114,6 +3134,7 @@ CREATE TRIGGER insert_${table}_trigger
 		}
 		$num_total_table++;
 	}
+
 	# Dump all table/index/constraints SQL definitions
 	my $ib = 1;
 	foreach my $table (sort { $self->{tables}{$a}{internal_id} <=> $self->{tables}{$b}{internal_id} } keys %{$self->{tables}}) {
@@ -3144,9 +3165,21 @@ CREATE TRIGGER insert_${table}_trigger
 		$sql_output .= "CREATE$foreign $obj_type $tbname (\n";
 
 		# Extract column information following the Oracle position order
-		foreach my $i ( 0 .. $#{$self->{tables}{$table}{field_name}} ) {
+		foreach my $k (sort { 
+				if (!$self->{reordering_columns}) {
+					$self->{tables}{$table}{column_info}{$a}[-1] <=> $self->{tables}{$table}{column_info}{$b}[-1];
+				} else {
+					my $tmpa = $self->{tables}{$table}{column_info}{$a};
+					my $typa = $self->_sql_type($tmpa->[1], $tmpa->[2], $tmpa->[5], $tmpa->[6]);
+					$typa =~ s/\(.*//;
+					my $tmpb = $self->{tables}{$table}{column_info}{$b};
+					my $typb = $self->_sql_type($tmpb->[1], $tmpb->[2], $tmpb->[5], $tmpb->[6]);
+					$typb =~ s/\(.*//;
+					$TYPALIGN{$typb} <=> $TYPALIGN{$typa};
+				}
+			} keys %{$self->{tables}{$table}{column_info}}) {
 
-			my $f = $self->{tables}{$table}{column_info}{$self->{tables}{$table}{field_name}[$i]};
+			my $f = $self->{tables}{$table}{column_info}{$k};
 			my $type = $self->_sql_type($f->[1], $f->[2], $f->[5], $f->[6]);
 			$type = "$f->[1], $f->[2]" if (!$type);
 			# Change column names
@@ -4130,6 +4163,7 @@ SELECT COLUMN_NAME, DATA_TYPE, DATA_LENGTH, NULLABLE, DATA_DEFAULT, DATA_PRECISI
 FROM $self->{prefix}_TAB_COLUMNS $condition
 ORDER BY COLUMN_ID
 END
+
 	} else {
 		# an 8i database.
 		$sth = $self->{dbh}->prepare(<<END) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -6505,6 +6539,7 @@ sub escape_bytea
 	return join('', @array);
 }
 
+
 =head2 _show_infos
 
 This function display a list of schema, table or column only to stdout.
@@ -6896,10 +6931,21 @@ sub _show_infos
 			if ($type eq 'SHOW_COLUMN') {
 
 				# Collect column's details for the current table with attempt to preserve column declaration order
-				foreach my $k (sort {$self->{tables}{$t}{column_info}{$a}[-1] <=> $self->{tables}{$t}{column_info}{$b}[-1]} keys %{$self->{tables}{$t}{column_info}}) {
+				foreach my $k (sort { 
+						if (!$self->{reordering_columns}) {
+							$self->{tables}{$t}{column_info}{$a}[-1] <=> $self->{tables}{$t}{column_info}{$b}[-1];
+						} else {
+							my $tmpa = $self->{tables}{$t}{column_info}{$a};
+							my $typa = $self->_sql_type($tmpa->[1], $tmpa->[2], $tmpa->[5], $tmpa->[6]);
+							$typa =~ s/\(.*//;
+							my $tmpb = $self->{tables}{$t}{column_info}{$b};
+							my $typb = $self->_sql_type($tmpb->[1], $tmpb->[2], $tmpb->[5], $tmpb->[6]);
+							$typb =~ s/\(.*//;
+							$TYPALIGN{$typb} <=> $TYPALIGN{$typa};
+						}
+					} keys %{$self->{tables}{$t}{column_info}}) {
 					# COLUMN_NAME,DATA_TYPE,DATA_LENGTH,NULLABLE,DATA_DEFAULT,DATA_PRECISION,DATA_SCALE,TABLE_NAME,OWNER
 					my $d = $self->{tables}{$t}{column_info}{$k};
-
 					my $type = $self->_sql_type($d->[1], $d->[2], $d->[5], $d->[6]);
 					$type = "$d->[1], $d->[2]" if (!$type);
 					my $len = $d->[2];
@@ -6915,6 +6961,12 @@ sub _show_infos
 						$self->logit(")");
 					}
 					$warning = '';
+					my $align = '';
+					if ($self->{reordering_columns}) {
+						my $typ = $type;
+						$typ =~ s/\(.*//;
+						$align = " - typalign: $TYPALIGN{$typ}";
+					}
 					if (&is_reserved_words($d->[0])) {
 						$warning = " (Warning: '$d->[0]' is a reserved word in PostgreSQL)";
 					}
@@ -6925,7 +6977,7 @@ sub _show_infos
 					} elsif (exists $self->{'replace_as_boolean'}{uc($d->[1])} && ($self->{'replace_as_boolean'}{uc($d->[1])}[0] == $d->[5])) {
 						$type = 'boolean';
 					}
-					$self->logit(" => $type$warning\n");
+					$self->logit(" => $type$warning$align\n");
 				}
 			}
 			$i++;

@@ -578,7 +578,8 @@ CONFIGURATION
         Activate the migration cost evaluation. Must only be used with
         SHOW_REPORT, FUNCTION, PROCEDURE, PACKAGE and QUERY export type.
         Default is disabled. You may wat to use the --estimate_cost command
-        line option instead to activate this functionnality.
+        line option instead to activate this functionnality. Note that
+        enabling this directive will force PLSQL_PGSQL activation.
 
     COST_UNIT_VALUE
         Set the value in minutes of the migration cost evaluation unit.
@@ -735,6 +736,14 @@ CONFIGURATION
     There's three configuration directives that allow you to map those
     differences.
 
+    REORDERING_COLUMNS
+        Enable this directive to reordering columns and minimized the
+        footprint on disc, so that more rows fit on a data page, which is
+        the most important factor for speed. Default is disabled, that mean
+        the same order than in Oracle tables definition, that's should be
+        enough for most usage. This directive is only used with TABLE
+        export.
+
     MODIFY_STRUCT
         This directive allow you to limit the columns to extract for a given
         table. The value consist in a space separated list of table name
@@ -747,7 +756,8 @@ CONFIGURATION
                 MODIFY_STRUCT   T_TEST1(id,dossier) T_TEST2(id,fichier)
 
         This will only extract columns 'id' and 'dossier' from table T_TEST1
-        and columns 'id' and 'fichier' from the T_TEST2 table.
+        and columns 'id' and 'fichier' from the T_TEST2 table. This
+        directive is only used with COPY or INSERT export.
 
     REPLACE_TABLES
         This directive allow you to remap a list of Oracle table name to a
@@ -1208,8 +1218,7 @@ CONFIGURATION
     and package body headers and parameters rewrite.
 
     PLSQL_PGSQL
-        Enable/disable PLSQL to PLPSQL convertion. Enabled by default since
-        8.x.
+        Enable/disable PLSQL to PLPSQL convertion. Enabled by default.
 
     ALLOW_CODE_BREAK
         This directive is use to enable/disable the plsql to pgplsql

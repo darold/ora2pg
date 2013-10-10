@@ -322,7 +322,7 @@ DISABLE_SEQUENCE	0
 
 # Enable PLSQL to PLPSQL convertion. This is a work in progress, feel
 # free modify/add you own code and send me patches. The code is under
-# function plsql_toplpgsql in Ora2PG/PLSQL.pm. Default disabled.
+# function plsql_toplpgsql in Ora2PG/PLSQL.pm. Default enabled.
 PLSQL_PGSQL	1
 
 # Allow escaping of column name using Oracle reserved words.
@@ -493,6 +493,7 @@ EXTERNAL_TO_FDW		1
 
 # Activate the migration cost evaluation. Must only be used with SHOW_REPORT,
 # FUNCTION, PROCEDURE, PACKAGE and QUERY export type. Default is disabled.
+# Not that enabling this directive will force PLSQL_PGSQL activation.
 ESTIMATE_COST		0
 
 # Set the value in minutes of the migration cost evaluation unit. Default
@@ -525,6 +526,12 @@ USE_TABLESPACE		0
 # will use old behavior, a normal table with a set of function to refresh
 # the view.
 PG_SUPPORTS_MVIEW	1
+
+# Enable this directive to reordering columns and minimized the footprint
+# on disc, so that more rows fit on a data page, which is the most important
+# factor for speed. Default is same order than in Oracle table definition,
+# that's should be enough for most usage.
+REORDERING_COLUMNS	0
 
 };
 close(OUTCFG);

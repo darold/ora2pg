@@ -124,7 +124,7 @@
 .\" ========================================================================
 .\"
 .IX Title "ORA2PG 1"
-.TH ORA2PG 1 "2013-09-15" "perl v5.14.2" "User Contributed Perl Documentation"
+.TH ORA2PG 1 "2013-10-10" "perl v5.14.2" "User Contributed Perl Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -720,7 +720,8 @@ about Migration Cost Evaluation.
 Activate the migration cost evaluation. Must only be used with \s-1SHOW_REPORT\s0,
 \&\s-1FUNCTION\s0, \s-1PROCEDURE\s0, \s-1PACKAGE\s0 and \s-1QUERY\s0 export type. Default is disabled.
 You may wat to use the \-\-estimate_cost command line option instead to activate
-this functionnality.
+this functionnality. Note that enabling this directive will force \s-1PLSQL_PGSQL\s0
+activation.
 .IP "\s-1COST_UNIT_VALUE\s0" 4
 .IX Item "COST_UNIT_VALUE"
 Set the value in minutes of the migration cost evaluation unit. Default
@@ -880,6 +881,13 @@ tables in megabytes. By default it is set to 10 items.
 One of the great usage of Ora2Pg is its flexibility to replicate Oracle database
 into PostgreSQL database with a different structure or schema. There's three
 configuration directives that allow you to map those differences.
+.IP "\s-1REORDERING_COLUMNS\s0" 4
+.IX Item "REORDERING_COLUMNS"
+Enable this directive to reordering columns and minimized the footprint
+on disc, so that more rows fit on a data page, which is the most important
+factor for speed. Default is disabled, that mean the same order than in
+Oracle tables definition, that's should be enough for most usage. This
+directive is only used with \s-1TABLE\s0 export.
 .IP "\s-1MODIFY_STRUCT\s0" 4
 .IX Item "MODIFY_STRUCT"
 This directive allow you to limit the columns to extract for a given table. The
@@ -897,7 +905,8 @@ for example:
 .Ve
 .Sp
 This will only extract columns 'id' and 'dossier' from table T_TEST1 and columns
-\&'id' and 'fichier' from the T_TEST2 table.
+\&'id' and 'fichier' from the T_TEST2 table. This directive is only used with \s-1COPY\s0
+or \s-1INSERT\s0 export.
 .IP "\s-1REPLACE_TABLES\s0" 4
 .IX Item "REPLACE_TABLES"
 This directive allow you to remap a list of Oracle table name to a PostgreSQL table name during export. The value is a list of space separated values with the following structure:
@@ -1349,7 +1358,7 @@ main work in on function, procedure, package and package body headers and
 parameters rewrite.
 .IP "\s-1PLSQL_PGSQL\s0" 4
 .IX Item "PLSQL_PGSQL"
-Enable/disable \s-1PLSQL\s0 to \s-1PLPSQL\s0 convertion. Enabled by default since 8.x.
+Enable/disable \s-1PLSQL\s0 to \s-1PLPSQL\s0 convertion. Enabled by default.
 .IP "\s-1ALLOW_CODE_BREAK\s0" 4
 .IX Item "ALLOW_CODE_BREAK"
 This directive is use to enable/disable the plsql to pgplsql conversion part
