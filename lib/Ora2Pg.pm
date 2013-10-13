@@ -3158,7 +3158,7 @@ CREATE TRIGGER insert_${table}_trigger
 			$foreign = ' FOREIGN';
 		}
 		my $obj_type = $self->{tables}{$table}{table_info}{type} || 'TABLE';
-		$sql_output .= "CREATE$foreign $obj_type $tbname (\n";
+		$sql_output .= "\nCREATE$foreign $obj_type $tbname (\n";
 
 		# Extract column information following the Oracle position order
 		foreach my $k (sort { 
@@ -3233,6 +3233,7 @@ CREATE TRIGGER insert_${table}_trigger
 				$sql_output .= ") SERVER $self->{fdw_server} OPTIONS($schem table \L$table\E);\n";
 			}
 		}
+
 		# Add comments on table
 		if (!$self->{disable_comment} && $self->{tables}{$table}{table_info}{comment}) {
 			$self->{tables}{$table}{table_info}{comment} =~ s/'/''/gs;
@@ -3286,7 +3287,7 @@ CREATE TRIGGER insert_${table}_trigger
 		print STDERR $self->progress_bar($ib - 1, $num_total_table, 25, '=', 'tables', 'end of table export.'), "\n";
 	}
 
-	if ($self->{file_per_index}) {
+	if ($self->{file_per_index} && ($self->{type} ne 'FDW')) {
 		my $fhdl = undef;
 		$self->logit("Dumping indexes to one separate file : INDEXES_$self->{output}\n", 1);
 		$fhdl = $self->open_export_file("INDEXES_$self->{output}");
@@ -3301,17 +3302,19 @@ CREATE TRIGGER insert_${table}_trigger
 		next if ($#{$self->{tables}{$table}{foreign_key}} < 0);
 		$self->logit("Dumping RI $table...\n", 1);
 		# Add constraint definition
-		my $create_all = $self->_create_foreign_keys($table, @{$self->{tables}{$table}{foreign_key}});
-		if ($create_all) {
-			if ($self->{file_per_constraint}) {
-				$constraints .= $create_all;
-			} else {
-				$sql_output .= $create_all;
+		if ($self->{type} ne 'FDW') {
+			my $create_all = $self->_create_foreign_keys($table, @{$self->{tables}{$table}{foreign_key}});
+			if ($create_all) {
+				if ($self->{file_per_constraint}) {
+					$constraints .= $create_all;
+				} else {
+					$sql_output .= $create_all;
+				}
 			}
 		}
 	}
 
-	if ($self->{file_per_constraint}) {
+	if ($self->{file_per_constraint} && ($self->{type} ne 'FDW')) {
 		my $fhdl = undef;
 		$self->logit("Dumping constraints to one separate file : CONSTRAINTS_$self->{output}\n", 1);
 		$fhdl = $self->open_export_file("CONSTRAINTS_$self->{output}");
