@@ -888,10 +888,6 @@ sub _init
 		} elsif ($self->{type} ne 'KETTLE') {
 			$self->{dbhdest} = $self->_send_to_pgdb() if ($self->{pg_dsn} && !$self->{dbhdest});
 		}
-	} elsif ($self->{pg_dsn}) {
-		$self->logit("WARNING: can't use direct import into PostgreSQL with this type of export.\n");
-		$self->logit("Only INSERT or COPY export type can be use with direct import, file output will be used.\n");
-		sleep(2);
 	}
 
 	# Disconnect from the database
