@@ -1880,7 +1880,7 @@ LANGUAGE plpgsql ;
 	if ($self->{type} eq 'SEQUENCE') {
 		$self->logit("Add sequences definition...\n", 1);
 		my $i = 1;
-		my $num_total_sequence = @{$self->{sequences}} + 1;
+		my $num_total_sequence = $#{$self->{sequences}} + 1;
 		foreach my $seq (sort { $a->[0] cmp $b->[0] } @{$self->{sequences}}) {
 			if (!$self->{quiet} && !$self->{debug}) {
 				print STDERR $self->progress_bar($i, $num_total_sequence, 25, '=', 'sequences', "generating $seq->[0]" );
@@ -3913,7 +3913,7 @@ sub _extract_sequence_info
 	my @script = ();
 
 	my $sth = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr ."\n", 0, 1);
-	$sth->execute() or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);    
+	$sth->execute() or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
 	while (my $seq_info = $sth->fetchrow_hashref) {
 
@@ -4604,6 +4604,7 @@ sub _get_sequences
 		$str .= " WHERE SEQUENCE_OWNER = '$self->{schema}'";
 	}
 	$str .= " ORDER BY SEQUENCE_NAME";
+
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
