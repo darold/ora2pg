@@ -4149,7 +4149,7 @@ elements for each column the specified table
 
 sub _column_info
 {
-	my ($self, $table, $owner) = @_;
+	my ($self, $table, $owner, $recurs) = @_;
 
 	my $condition = '';
 	$condition .= "AND TABLE_NAME='$table' " if ($table);
@@ -4158,19 +4158,34 @@ sub _column_info
 
 	my $sth = '';
 	if ($self->{db_version} !~ /Release 8/) {
-		$sth = $self->{dbh}->prepare(<<END) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+		$sth = $self->{dbh}->prepare(<<END);
 SELECT COLUMN_NAME, DATA_TYPE, DATA_LENGTH, NULLABLE, DATA_DEFAULT, DATA_PRECISION, DATA_SCALE, CHAR_LENGTH, TABLE_NAME, OWNER
 FROM $self->{prefix}_TAB_COLUMNS $condition
 ORDER BY COLUMN_ID
 END
-
+		if (!$sth) {
+			my $ret = $self->{dbh}->err;
+			if (!$recurs && ($ret == 942) && ($self->{prefix} eq 'DBA')) {
+				$self->logit("HINT: Please activate USER_GRANTS or connect using a user with DBA privilege.\n");
+				$self->{prefix} = 'ALL';
+				return $self->_column_info($table, $owner, 1);
+			}
+			$self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+		}
 	} else {
 		# an 8i database.
-		$sth = $self->{dbh}->prepare(<<END) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+		$sth = $self->{dbh}->prepare(<<END);
 SELECT COLUMN_NAME, DATA_TYPE, DATA_LENGTH, NULLABLE, DATA_DEFAULT, DATA_PRECISION, DATA_SCALE, TABLE_NAME, OWNER
 FROM $self->{prefix}_TAB_COLUMNS $condition
 ORDER BY COLUMN_ID
 END
+		my $ret = $self->{dbh}->err;
+		if (!$recurs && ($ret == 942) && ($self->{prefix} eq 'DBA')) {
+			$self->logit("HINT: Please activate USER_GRANTS or connect using a user with DBA privilege.\n");
+			$self->{prefix} = 'ALL';
+			return $self->_column_info($table, $owner, 1);
+		}
+		$self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	}
 	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
@@ -6717,7 +6732,7 @@ sub _show_infos
 					$j++;
 					last if ($j > $self->{top_max});
 				}
-				if (!$self->{user_grants}) {
+				if ($self->{prefix} eq 'DBA') {
 					$report_info{'Objects'}{$typ}{'detail'} .= "Top $self->{top_max} of largest tables:\n";
 					$i = 1;
 					my %largest_table = $self->_get_largest_tables();
@@ -6991,7 +7006,7 @@ sub _show_infos
 			$i++;
 			last if ($i > $self->{top_max});
 		}
-		if (!$self->{user_grants}) {
+		if ($self->{prefix} eq 'DBA') {
 			$self->logit("Top $self->{top_max} of largest tables:\n", 0);
 			$i = 1;
 			my %largest_table = $self->_get_largest_tables();
