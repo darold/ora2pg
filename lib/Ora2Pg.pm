@@ -1234,6 +1234,7 @@ sub _tables
 	if (!$self->{skip_checks}) {
 		my %check_constraints = $self->_check_constraint('',$self->{schema});
 		foreach my $tb (keys %check_constraints) {
+			next if (!exists $tables_infos{$tb});
 			%{$self->{tables}{$tb}{check_constraint}} = ( %{$check_constraints{$tb}});
 		}
 	}
@@ -1242,15 +1243,19 @@ sub _tables
 	if (!$self->{skip_indices} && !$self->{skip_indexes}) {
 		my ($uniqueness, $indexes, $idx_type, $idx_tbsp) = $self->_get_indexes('',$self->{schema});
 		foreach my $tb (keys %{$uniqueness}) {
+			next if (!exists $tables_infos{$tb});
 			%{$self->{tables}{$tb}{uniqueness}} = %{$uniqueness->{$tb}};
 		}
 		foreach my $tb (keys %{$indexes}) {
+			next if (!exists $tables_infos{$tb});
 			%{$self->{tables}{$tb}{indexes}} = %{$indexes->{$tb}};
 		}
 		foreach my $tb (keys %{$idx_type}) {
+			next if (!exists $tables_infos{$tb});
 			%{$self->{tables}{$tb}{idx_type}} = %{$idx_type->{$tb}};
 		}
 		foreach my $tb (keys %{$idx_tbsp}) {
+			next if (!exists $tables_infos{$tb});
 			%{$self->{tables}{$tb}{idx_tbsp}} = %{$idx_tbsp->{$tb}};
 		}
 	}
