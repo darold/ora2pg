@@ -814,8 +814,8 @@ sub _init
 		# Auto detect character set
 		if ($self->_init_oracle_connection($self->{dbh})) {
 			$self->{dbh}->disconnect();
-			$self->{dbh} = $self->_oracle_connection();
-			$self->_init_oracle_connection($self->{dbh});
+			$self->{dbh} = $self->_oracle_connection(1);
+			$self->_init_oracle_connection($self->{dbh}, 1);
 		}
 
 		# Compile again all objects in the schema
@@ -900,9 +900,9 @@ sub _init
 
 sub _oracle_connection
 {
-	my $self = shift;
+	my ($self, $quiet) = @_;
 
-	$self->logit("Trying to connect to database: $self->{oracle_dsn}\n", 1);
+	$self->logit("Trying to connect to database: $self->{oracle_dsn}\n", 1) if (!$quiet);
 
 	my $dbh = DBI->connect($self->{oracle_dsn}, $self->{oracle_user}, $self->{oracle_pwd}, {ora_envhp => 0, LongReadLen=>$self->{longreadlen}, LongTruncOk=>$self->{longtruncok} });
 
@@ -917,7 +917,7 @@ sub _oracle_connection
 
 	# Use consistent reads for concurrent dumping...
 	$dbh->begin_work || $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
-	if ($self->{debug}) {
+	if ($self->{debug} && !$quiet) {
 		$self->logit("Isolation level: $self->{transaction}\n", 1);
 	}
 	my $sth = $dbh->prepare($self->{transaction}) or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
@@ -931,25 +931,25 @@ sub _oracle_connection
 # use to set encoding
 sub _init_oracle_connection
 {
-	my ($self, $dbh) = @_;
+	my ($self, $dbh, $quiet) = @_;
 
 	my $must_reconnect = 0;
 
 	# Auto detect character set
-	if ($self->{debug}) {
+	if ($self->{debug} && !$quiet) {
 		$self->logit("Auto detecting Oracle character set and the corresponding PostgreSQL client encoding to use.\n", 1);
 	}
 	my $encoding = $self->_get_encoding($dbh);
 	if (!$self->{nls_lang}) {
 		$self->{nls_lang} = $encoding;
 		$ENV{NLS_LANG} = $self->{nls_lang};
-		if ($self->{debug}) {
+		if ($self->{debug} && !$quiet) {
 			$self->logit("\tUsing Oracle character set: $self->{nls_lang}.\n", 1);
 		}
 		$must_reconnect = 1;
 	} else {
 		$ENV{NLS_LANG} = $self->{nls_lang};
-		if ($self->{debug}) {
+		if ($self->{debug} && !$quiet) {
 			$self->logit("\tUsing the character set given in NLS_LANG configuration directive ($self->{nls_lang}).\n", 1);
 		}
 	}
@@ -957,17 +957,17 @@ sub _init_oracle_connection
 	if (!$self->{client_encoding}) {
 		if ($self->{'binmode'} =~ /utf8/i) {
 			$self->{client_encoding} = 'UTF8';
-			if ($self->{debug}) {
+			if ($self->{debug} && !$quiet) {
 				$self->logit("\tUsing PostgreSQL client encoding forced to UTF8 as BINMODE configuration directive has been set to $self->{binmode}.\n", 1);
 			}
 		} else {
 			$self->{client_encoding} = &auto_set_encoding($encoding);
-			if ($self->{debug}) {
+			if ($self->{debug} && !$quiet) {
 				$self->logit("\tUsing PostgreSQL client encoding: $self->{client_encoding}.\n", 1);
 			}
 		}
 	} else {
-		if ($self->{debug}) {
+		if ($self->{debug} && !$quiet) {
 			$self->logit("\tUsing PostgreSQL client encoding given in CLIENT_ENCODING configuration directive ($self->{client_encoding}).\n", 1);
 		}
 	}
