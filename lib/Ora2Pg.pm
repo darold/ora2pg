@@ -828,7 +828,7 @@ sub _init
 
 	} else {
 		$self->{plsql_pgsql} = 1;
-		if (grep(/^$self->{type}$/, 'QUERY', 'FUNCTION','PROCEDURE','PACKAGE')) {
+		if (grep(/^$self->{type}$/, 'QUERY', 'FUNCTION','PROCEDURE','PACKAGE','TYPE')) {
 			$self->export_schema();
 		} else {
 			$self->logit("FATAL: bad export type using input file option\n", 0, 1);
@@ -2506,17 +2506,45 @@ LANGUAGE plpgsql ;
 	# Process types only
 	if ($self->{type} eq 'TYPE') {
 		$self->logit("Add custom types definition...\n", 1);
+		#---------------------------------------------------------
+		# Code to use to find type parser issues, it load a file
+		# containing the untouched PL/SQL code from Oracle type
+		#---------------------------------------------------------
+		if ($self->{input_file}) {
+			$self->{types} = ();
+			$self->logit("Reading input code from file $self->{input_file}...\n", 1);
+			open(IN, "$self->{input_file}");
+			my @alltype = <IN>;
+			close(IN);
+			my $typnm = '';
+			my $code = '';
+			foreach my $l (@alltype) {
+				chomp($l);
+				next if ($l =~ /^[\s\t]*$/);
+				$l =~ s/^[\s\t]*CREATE OR REPLACE[\s\t]*//i;
+				$l =~ s/^[\s\t]*CREATE[\s\t]*//i;
+				$code .= $l . "\n";
+				if ($code =~ /^TYPE[\s\t]+([^\s\(\t]+)/is) {
+					$typnm = $1;
+				}
+				next if (!$typnm);
+				if ($code =~ /;/s) {
+					push(@{$self->{types}}, { ('name' => $typnm, 'code' => $code) });
+					$typnm = '';
+					$code = '';
+				}
+			}
+		}
+		#--------------------------------------------------------
 		foreach my $tpe (sort {length($a->{name}) <=> length($b->{name}) } @{$self->{types}}) {
 			$self->logit("Dumping type $tpe->{name}...\n", 1);
-			my $typ = $tpe->{code};
 			if ($self->{plsql_pgsql}) {
-				$typ = $self->_convert_type($tpe->{code});
+				$tpe->{code} = $self->_convert_type($tpe->{code});
+			} else {
+				$sql_output .= "-- Unsupported, please edit to match PostgreSQL syntax";
+				$tpe->{code} = "CREATE OR REPLACE $tpe->{code}";
 			}
-			if ($typ) {
-				$sql_output .= "-- Oracle type '$tpe->{name}' declaration, please edit to match PostgreSQL syntax.\n";
-				$sql_output .= $typ . "\n";
-				$sql_output .= "-- End of Oracle type '$tpe->{name}' declaration\n\n";
-			}
+			$sql_output .= $tpe->{code} . "\n";
 		}
 
 		if (!$sql_output) {
@@ -6178,6 +6206,7 @@ sub _convert_type
 {
 	my ($self, $plsql) = @_;
 
+	my $unsupported = "-- Unsupported, please edit to match PostgreSQL syntax\n";
 	my $content = '';
 	if ($plsql =~ /TYPE[\t\s]+([^\t\s]+)[\t\s]+(IS|AS)[\t\s]*TABLE[\t\s]*OF[\t\s]+(.*)/is) {
 		my $type_name = $1;
@@ -6191,12 +6220,12 @@ sub _convert_type
 		} else {
 			$self->{type_of_type}{'Associative Arrays'}++;
 			$self->logit("WARNING: this kind of Nested Tables are not supported, skipping type $1\n", 1);
-			return '';
+			return "${unsupported}CREATE OR REPLACE $plsql";
 		}
 	} elsif ($plsql =~ /TYPE[\t\s]+([^\t\s]+)[\t\s]+(AS|IS)[\t\s]*OBJECT[\t\s]+\((.*?)(TYPE BODY.*)/is) {
 		$self->{type_of_type}{'Type Boby'}++;
 		$self->logit("WARNING: TYPE BODY are not supported, skipping type $1\n", 1);
-		return '';
+		return "${unsupported}CREATE OR REPLACE $plsql";
 	} elsif ($plsql =~ /TYPE[\t\s]+([^\t\s]+)[\t\s]+(AS|IS)[\t\s]*OBJECT[\t\s]+\((.*)\)([^\)]*)/is) {
 		my $type_name = $1;
 		my $description = $3;
@@ -6205,21 +6234,22 @@ sub _convert_type
 		if ($description =~ /[\s\t]*(MAP MEMBER|MEMBER|CONSTRUCTOR)[\t\s]+(FUNCTION|PROCEDURE).*/is) {
 			$self->{type_of_type}{'Type with member method'}++;
 			$self->logit("WARNING: TYPE with CONSTRUCTOR and MEMBER FUNCTION are not supported, skipping type $type_name\n", 1);
-			return '';
+			return "${unsupported}CREATE OR REPLACE $plsql";
 		}
 		$description =~ s/^[\s\t\r\n]+//s;
 		my $declar = Ora2Pg::PLSQL::replace_sql_type($description, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type});
 		$type_name =~ s/"//g;
+		$type_name = $self->get_replaced_tbname($type_name);
 		if ($notfinal =~ /FINAL/is) {
 			$content = "-- Inherited types are not supported in PostgreSQL, replacing with inherited table\n";
-			$content .= qq{CREATE TABLE \"\L$type_name\E\" (
+			$content .= qq{CREATE TABLE $type_name (
 $declar
 );
 };
 			$self->{type_of_type}{'Type inherited'}++;
 		} else {
 			$content = qq{
-CREATE TYPE \L$type_name\E AS (
+CREATE TYPE $type_name AS (
 $declar
 );
 };
@@ -6232,13 +6262,14 @@ $declar
 		if ($description =~ /[\s\t]*(MAP MEMBER|MEMBER|CONSTRUCTOR)[\t\s]+(FUNCTION|PROCEDURE).*/is) {
 			$self->logit("WARNING: TYPE with CONSTRUCTOR and MEMBER FUNCTION are not supported, skipping type $type_name\n", 1);
 			$self->{type_of_type}{'Type with member method'}++;
-			return '';
+			return "${unsupported}CREATE OR REPLACE $plsql";
 		}
 		$description =~ s/^[\s\t\r\n]+//s;
 		my $declar = Ora2Pg::PLSQL::replace_sql_type($description, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type});
 		$type_name =~ s/"//g;
+		$type_name = $self->get_replaced_tbname($type_name);
 		$content = qq{
-CREATE TABLE \"\L$type_name\E\" (
+CREATE TABLE $type_name (
 $declar
 ) INHERITS (\L$type_inherit\E);
 };
@@ -6258,7 +6289,7 @@ CREATE TYPE \L$type_name\E AS ($type_name $declar\[$size\]);
 	} else {
 		$self->{type_of_type}{Unknown}++;
 		$plsql =~ s/;$//s;
-		$content = "CREATE $plsql;"
+		$content = "${unsupported}CREATE OR REPLACE $plsql;"
 	}
 	return $content;
 }
