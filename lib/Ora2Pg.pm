@@ -2657,6 +2657,9 @@ LANGUAGE plpgsql ;
 	# Extract data only
 	if (($self->{type} eq 'INSERT') || ($self->{type} eq 'COPY')) {
 
+		my $dirprefix = '';
+		$dirprefix = "$self->{output_dir}/" if ($self->{output_dir});
+
 		# Connect the Oracle database to gather information
 		$self->{dbh} = DBI->connect($self->{oracle_dsn}, $self->{oracle_user}, $self->{oracle_pwd},
 				{ ora_envhp  => 0, LongReadLen => $self->{longreadlen}, LongTruncOk => $self->{longtruncok} });
@@ -5592,12 +5595,12 @@ sub data_dump
 
 	my $filename = $self->{output};
 	if ($self->{file_per_table}) {
-		$self->logit("Dumping data from $rname to file: ${rname}_$self->{output}\n", 1);
+		$self->logit("Dumping data from $rname to file: $dirprefix${rname}_$self->{output}\n", 1);
 		$filename = "${rname}_$self->{output}";
 	}
 	if ( ($self->{jobs} > 1) || ($self->{oracle_copies} > 1) ) {
 		$self->{fhout}->close() if (defined $self->{fhout} && !$self->{file_per_table} && !$self->{pg_dsn});
-		my $fh = $self->append_export_file("$dirprefix$filename");
+		my $fh = $self->append_export_file($filename);
 		flock($fh, 2) || die "FATAL: can't lock file $dirprefix$filename\n";
 		$fh->print($data);
 		$self->close_export_file($fh);
@@ -5605,7 +5608,7 @@ sub data_dump
 		# Reopen default output file
 		$self->create_export_file() if (defined $self->{fhout} && !$self->{file_per_table} && !$self->{pg_dsn});
 	} elsif ($self->{file_per_table}) {
-		$self->{cfhout} = $self->open_export_file("$dirprefix$filename") if (!defined $self->{cfhout});
+		$self->{cfhout} = $self->open_export_file($filename) if (!defined $self->{cfhout});
 		if ($self->{compress} eq 'Zlib') {
 			$self->{cfhout}->gzwrite($data) or $self->logit("FATAL: error writing compressed data\n", 0, 1);
 		} else {
