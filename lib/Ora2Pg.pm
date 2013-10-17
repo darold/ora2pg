@@ -2536,8 +2536,12 @@ LANGUAGE plpgsql ;
 			}
 		}
 		#--------------------------------------------------------
+		my $i = 1;
 		foreach my $tpe (sort {length($a->{name}) <=> length($b->{name}) } @{$self->{types}}) {
 			$self->logit("Dumping type $tpe->{name}...\n", 1);
+			if (!$self->{quiet} && !$self->{debug}) {
+				print STDERR $self->progress_bar($i, $#{$self->{types}}+1, 25, '=', 'types', "generating $tpe->{name}" );
+			}
 			if ($self->{plsql_pgsql}) {
 				$tpe->{code} = $self->_convert_type($tpe->{code});
 			} else {
@@ -2545,8 +2549,12 @@ LANGUAGE plpgsql ;
 				$tpe->{code} = "CREATE OR REPLACE $tpe->{code}";
 			}
 			$sql_output .= $tpe->{code} . "\n";
+			$i++;
 		}
 
+		if (!$self->{quiet} && !$self->{debug}) {
+			print STDERR $self->progress_bar($i - 1, $#{$self->{types}}+1, 25, '=', 'types', 'end of output.'), "\n";
+		}
 		if (!$sql_output) {
 			$sql_output = "-- Nothing found of type $self->{type}\n";
 		}
@@ -3043,7 +3051,15 @@ LANGUAGE plpgsql ;
 		$self->logit("Add partitions definition...\n", 1);
 		$sql_header .= "-- Oracle partitions export.\n";
 		$sql_header .= "-- Please take a look at the export to see if order and default table match your need\n";
-
+		my $total_partition = 0;
+		foreach my $table (sort keys %{$self->{partitions}}) {
+			foreach my $pos (keys %{$self->{partitions}{$table}}) {
+				foreach my $part (keys %{$self->{partitions}{$table}{$pos}}) {
+					$total_partition++;
+				}
+			}
+		}
+		my $i = 1;
 		foreach my $table (sort keys %{$self->{partitions}}) {
 			my $function = qq{
 CREATE OR REPLACE FUNCTION ${table}_insert_trigger()
@@ -3058,6 +3074,9 @@ BEGIN
 			my $old_part = '';
 			foreach my $pos (sort {$a <=> $b} keys %{$self->{partitions}{$table}}) {
 				foreach my $part (sort {$self->{partitions}{$table}{$pos}{$a}->{'colpos'} <=> $self->{partitions}{$table}{$pos}{$b}->{'colpos'}} keys %{$self->{partitions}{$table}{$pos}}) {
+					if (!$self->{quiet} && !$self->{debug}) {
+						print STDERR $self->progress_bar($i, $total_partition, 25, '=', 'partitions', "generating $part" );
+					}
 					$create_table{$table}{table} .= "CREATE TABLE $part ( CHECK (\n";
 					my @condition = ();
 					for (my $i = 0; $i <= $#{$self->{partitions}{$table}{$pos}{$part}}; $i++) {
@@ -3082,6 +3101,7 @@ BEGIN
 					$funct_cond .= "\t$cond ( " . join(' AND ', @condition) . " ) THEN INSERT INTO $part VALUES (NEW.*);\n";
 					$cond = 'ELSIF';
 					$old_part = $part;
+					$i++;
 				}
 				$old_pos = $pos;
 			}
@@ -3127,6 +3147,9 @@ CREATE TRIGGER insert_${table}_trigger
 };
 		}
 
+		if (!$self->{quiet} && !$self->{debug}) {
+			print STDERR $self->progress_bar($i - 1, $total_partition, 25, '=', 'partitions', 'end of output.'), "\n";
+		}
 		if (!$sql_output) {
 			$sql_output = "-- Nothing found of type $self->{type}\n";
 		}
