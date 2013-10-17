@@ -2845,8 +2845,9 @@ LANGUAGE plpgsql ;
 			$self->{dbh}->{InactiveDestroy} = 0;
 			$self->{dbhdest}->{InactiveDestroy} = 0 if (defined $self->{dbhdest});
 		}
-		my $dirprefix = '';
+		$dirprefix = '';
 		$dirprefix = "$self->{output_dir}/" if ($self->{output_dir});
+
 		my $start_time = time();
 		my $global_count = 0;
 
@@ -4316,13 +4317,18 @@ END
 	while (my $row = $sth->fetch) {
 		my %constraint = (type => $row->[7], 'generated' => $row->[8], 'index_name' => $row->[11], columns => ());
 		foreach my $r (@cons_columns) {
+			# Skip constraints on system internal columns
+			next if ($r->[0] =~ /^SYS_NC/i);
 			if ($r->[2] eq $row->[0]) {
 				push(@{$constraint{'columns'}}, $r->[0]);
 			}
 		}
-		$result{$row->[9]}{$row->[0]} = \%constraint;
+		if ($#{$constraint{'columns'}} >= 0) {
+			$result{$row->[9]}{$row->[0]} = \%constraint;
+		}
 	}
 	return %result;
+
 }
 
 =head2 _check_constraint TABLE OWNER
