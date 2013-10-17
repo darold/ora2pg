@@ -2545,8 +2545,7 @@ LANGUAGE plpgsql ;
 			if ($self->{plsql_pgsql}) {
 				$tpe->{code} = $self->_convert_type($tpe->{code});
 			} else {
-				$sql_output .= "-- Unsupported, please edit to match PostgreSQL syntax";
-				$tpe->{code} = "CREATE OR REPLACE $tpe->{code}";
+				$tpe->{code} = "CREATE OR REPLACE $tpe->{code}\n";
 			}
 			$sql_output .= $tpe->{code} . "\n";
 			$i++;
