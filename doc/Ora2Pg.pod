@@ -1710,5 +1710,10 @@ And all others who help me to build a useful and reliable product:
 	Jean Marc Yao Adingra
 	Prabhat Tripathi
 	Bruce (kithril)
+	Jacky Rigoreau
+	Pierre Boizot
+	Mike Kienenberger
+	Maciej Bak
+	Jean-Max Reymond
 	...
 
