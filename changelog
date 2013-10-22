@@ -1,3 +1,82 @@
+2013 10 22 - v12.0
+
+This release fixes lot of issues and three new features. Using REORDERING_COLUMNS
+directive you will be able to reorder columns to minimized the footprint on disc,
+so that more rows fit on a data page. The PG_SUPPORTS_MVIEW will allow you to
+export materialized with native PostgreSQL 9.3 syntaxe. The USE_TABLESPACE variable
+will allow you to export object using their original tablespace.
+
+	- Skip constraints on system internal columns (sys_nc...$) from export.
+	- Fix missing output directory in generic psql file for data loading.
+	- Add missing progress bar during TYPE and PARTITION export type.
+	- Remove duplicated message in debug mode during Oracle reconnection.
+	- Allow file input with create type declaration to use ora2pg converter.
+	  Unsupported syntax is signaled into the output file.
+	- Exclude MLOG$.* and RUPD$.* table from export.
+	- Prevent export of indexes and constraints during FDW export type.
+	- Fix wrong total number of sequences shown in progress bar.
+	- Remove warning when PG_DSN is define during a export type that do not
+	  support direct import into PostgreSQL.
+	- Auto switch prefix from DBA to ALL when error 942 is returned when
+	  looking at tables informations. A hint is also displayed to ask for
+	  activating USER_GRANTS or connect using a user with DBA privilege.
+	- Add REORDERING_COLUMNS configuration directive to allow reordering
+	  columns during the TABLE export. This could help to minimized the
+	  footprint on disc, so that more rows fit on a data page. Thanks to
+	  Christian Bjornbak for the feature request.
+	- Fix call to unblessed reference at disconnect when direct import to
+	  pg is not used. Thanks to Christian Bjornbak for the report.
+	- Fix regression in drop/create foreign keys and index during data
+	  export. Thanks to Christian Bjornbak for the report.
+	- Fix truncate table error with parallel and direct data copy. Thanks
+	  to keymaper for the report.
+	- Fix several other issues with parallel and direct data import.
+	- Fix trigger export on multi files when FILE_PER_FUNCTION is enabled.
+	- Fix issue on converting boolean values with non default values.
+	  Thanks to Christian Bjornbak for the report.
+	- Fix boolean value for disabled key in default %BOOLEAN_MAP key/value.
+	- Fix case where INTO was wrongly replaced by INTO STRICT. Thanks to
+	  Jacky Rigoreau for the report.
+	- Fix case where label after a END was not removed. Thanks to Jacky
+	  Rigoreau for the report.
+	- Fix discard of input file parsing. Fix PERFORM replacement in PL/SQL
+	  code wirh cursor. Thanks to Jacky Rigoreau for the report.
+	- Enable PG_SUPPORTS_MVIEW by default and update documentation.
+	- Replace DBA_DATA_FILES by USER_SEGMENTS to get database size to avoid
+	  error ORA-00942. Thanks to Pierre Boizot for the report.
+	- Fix trigger conversion error. Thanks to Pierre Boizot for the report.
+	- Add support to PostgreSQL 9.3 materialized view syntaxe, this need a
+	  new configuration directive PG_SUPPORTS_MVIEW to be enabled.
+	- Update default configuration file and documentation about USE_TABLESPACE.
+	- Add USE_TABLESPACE configuration directive to force ora2pg to use Oracle
+	  tablespace name with table, constraints indexes and indexes if tablespace
+	  in not in the default (TEMP, USERS, SYSTEM). Thanks to Rob Moolhuijsen
+	  for the feature request.
+	- Allow DEFER_FKEY, when enabled during TABLE export, to create all foreign
+	  keys as DEFERRABLE and INITIALLY DEFERRED. Thanks to David Greco for the patch.
+	- Fix non working ON_ERROR_STOP set to 0 during data export.
+	- Lot of code changes to fix dump to file in multiprocess mode. Ora2Pg will
+	  also only drop/create constraints and indexes related to the allow/exclude
+	  tables, thanks to Maciej Bak for the report.
+	- Force decimal character from Oracle output to be a dot. Thanks to Maciej Bak
+	  for the report.
+	- Add default exclusion of Oracle recycle bin objects with name begining by BIN$.
+	- Fix escaping quote in table and column comments. Thanks to realyota for the report.
+	- Reduce DECODE migration cost from 2 to 1 unit.
+	- Reduce OUTER JOIN (+) migration cost from 3 to 1 unit.
+	- Add Time::HiRes to the requirement chapter for Perl <= 5.8. Thanks to
+	  Mike Kienenberger for the report.
+	- Replace wrong use of --config instead of --conf into the documentation. Thanks
+	  to Mike Kienenberger for the report.
+	- Fix regex used to rewrite CREATE VIEW code. Thanks to David Greco for
+	  the patch.
+	- Fix an issue with oracle copies when primary key was negative. Thanks
+	  to David Greco for the patch.
+	- Fix case sensitivity with SEQUENCE when preserve_case is enabled.
+	  Thanks to Jean-Max Reymond for the report.
+	- Fix table COMMENT export when preserve_case is enabled. Thanks to
+	  Jean-Max Reymond for the report.
+
 2013 05 28 - v11.4
 
 This release fixes others several major issues on migration cost assessment that
