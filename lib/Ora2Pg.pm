@@ -1716,7 +1716,7 @@ SECURITY DEFINER
 LANGUAGE plpgsql ;
 
 };
-			$self->dump($sqlout) if (!$self->{pg_dsn});
+			$self->dump($sqlout);
 		}
                 my $i = 1;
                 my $num_total_mview = scalar keys %{$self->{materialized_views}};
