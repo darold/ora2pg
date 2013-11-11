@@ -3287,11 +3287,7 @@ CREATE TRIGGER insert_${table}_trigger
 			$sql_output .= ") SERVER \L$self->{external_table}{$table}{directory}\E OPTIONS(filename '$self->{external_table}{$table}{directory_path}$self->{external_table}{$table}{location}', format 'csv', delimiter '$self->{external_table}{$table}{delimiter}');\n";
 		} else {
 			my $schem = "schema '$self->{schema}'," if ($self->{schema});
-			if ($self->{preserve_case}) {
-				$sql_output .= ") SERVER $self->{fdw_server} OPTIONS($schem table '$table');\n";
-			} else {
-				$sql_output .= ") SERVER $self->{fdw_server} OPTIONS($schem table \L$table\E);\n";
-			}
+			$sql_output .= ") SERVER $self->{fdw_server} OPTIONS($schem table '$table');\n";
 		}
 
 		# Add comments on table
