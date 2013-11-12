@@ -128,6 +128,35 @@ If you want to build binary package for your preferred Linux distribution take a
 look at the packaging/ directory of the source tarball. There's everything to
 build RPM, Slackware and Debian packages. See README file in that directory.
 
+=head2 Installing DBD::Oracle
+
+Ora2Pg need perl module DBD::Oracle for connectivity to an Oracle database from
+perl DBI. To get DBD::Oracle get it from CPAN a perl module repository.
+
+After setting ORACLE_HOME and LD_LIBRARY_PATH environment variables as root
+user, install DBD::Oracle. Proceed as follow:
+
+	export LD_LIBRARY_PATH=/usr/lib/oracle/11.2/client64/lib
+	export ORACLE_HOME=/usr/lib/oracle/11.2/client64/
+	perl -MCPAN -e 'install DBD::Oracle'
+
+If you are running for the first time it will ask so many questions which you
+can keep defaults by pressing ENTER key, but you need to give one appropriate
+i.e., mirror site for CPAN to download the modules. Or install through CPAN
+manually if the above don't works:
+
+	#perl -MCPAN -e shell
+	cpan> get DBD::Oracle
+	cpan> quit
+	cd ~/.cpan/build/DBD-Oracle*
+	export LD_LIBRARY_PATH=/usr/lib/oracle/11.2/client64/lib
+	export ORACLE_HOME=/usr/lib/oracle/11.2/client64/
+	perl Makefile.PL
+	make
+	make install
+
+Installing DBD::Oracle require that the three Oracle packages: instant-client,
+SDK and SQLplus are installed.
 
 =head1 CONFIGURATION
 

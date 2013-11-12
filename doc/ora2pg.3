@@ -124,7 +124,7 @@
 .\" ========================================================================
 .\"
 .IX Title "ORA2PG 1"
-.TH ORA2PG 1 "2013-10-22" "perl v5.14.2" "User Contributed Perl Documentation"
+.TH ORA2PG 1 "2013-11-12" "perl v5.14.2" "User Contributed Perl Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -253,6 +253,39 @@ and the ora2pg.conf file as well as all documentation files into C:\eora2pg\e
 If you want to build binary package for your preferred Linux distribution take a
 look at the packaging/ directory of the source tarball. There's everything to
 build \s-1RPM\s0, Slackware and Debian packages. See \s-1README\s0 file in that directory.
+.SS "Installing DBD::Oracle"
+.IX Subsection "Installing DBD::Oracle"
+Ora2Pg need perl module DBD::Oracle for connectivity to an Oracle database from
+perl \s-1DBI\s0. To get DBD::Oracle get it from \s-1CPAN\s0 a perl module repository.
+.PP
+After setting \s-1ORACLE_HOME\s0 and \s-1LD_LIBRARY_PATH\s0 environment variables as root
+user, install DBD::Oracle. Proceed as follow:
+.PP
+.Vb 3
+\&        export LD_LIBRARY_PATH=/usr/lib/oracle/11.2/client64/lib
+\&        export ORACLE_HOME=/usr/lib/oracle/11.2/client64/
+\&        perl \-MCPAN \-e \*(Aqinstall DBD::Oracle\*(Aq
+.Ve
+.PP
+If you are running for the first time it will ask so many questions which you
+can keep defaults by pressing \s-1ENTER\s0 key, but you need to give one appropriate
+i.e., mirror site for \s-1CPAN\s0 to download the modules. Or install through \s-1CPAN\s0
+manually if the above don't works:
+.PP
+.Vb 9
+\&        #perl \-MCPAN \-e shell
+\&        cpan> get DBD::Oracle
+\&        cpan> quit
+\&        cd ~/.cpan/build/DBD\-Oracle*
+\&        export LD_LIBRARY_PATH=/usr/lib/oracle/11.2/client64/lib
+\&        export ORACLE_HOME=/usr/lib/oracle/11.2/client64/
+\&        perl Makefile.PL
+\&        make
+\&        make install
+.Ve
+.PP
+Installing DBD::Oracle require that the three Oracle packages: instant-client,
+\&\s-1SDK\s0 and SQLplus are installed.
 .SH "CONFIGURATION"
 .IX Header "CONFIGURATION"
 Ora2Pg configuration can be as simple as choose the Oracle database to export
