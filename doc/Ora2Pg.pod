@@ -193,14 +193,14 @@ Here are all command line parameters available when using ora2pg:
 
 	Usage: ora2pg [-dhpqv --estimate_cost --dump_as_html] [--option value]
 
-	    -a | --allow str  : coma separated list of objects to allow from export.
+	    -a | --allow str  : comma-separated list of objects to allow from export.
 				Can be used with SHOW_COLUMN too.
 	    -b | --basedir dir: Used to set the default output directory, where files
 				resulting from exports will be stored.
 	    -c | --conf file  : Used to set an alternate configuration file than the
 				default /etc/ora2pg/ora2pg.conf.
 	    -d | --debug      : Enable verbose output.
-	    -e | --exclude str: coma separated list of objects to exclude from export.
+	    -e | --exclude str: comma-separated list of objects to exclude from export.
 				Can be used with SHOW_COLUMN too.
 	    -h | --help       : Print this short help.
 	    -i | --input file : File containing Oracle PL/SQL code to convert with
@@ -227,7 +227,7 @@ Here are all command line parameters available when using ora2pg:
 			  used to connect to the Pg database that will be the owner.
 	    --nls_lang code: use this to set the Oracle NLS_LANG client encoding.
 	    --client_encoding code: Use this to set the PostgreSQL client encoding.
-	    --view_as_table str: coma separated list of view to export as table.
+	    --view_as_table str: comma-separated list of view to export as table.
 	    --estimate_cost   : activate the migration cost evalution with SHOW_REPORT
 	    --cost_unit_value minutes: number of minutes for a cost evalution unit.
 			  default: 5 minutes, correspond to a migration conducted by a
@@ -418,7 +418,7 @@ procedures, packages and user defined types.
 =item PG_SCHEMA
 
 Allow you to defined/force the PostgreSQL schema to use. The value can be a
-coma delimited list of schema name. By default if you set EXPORT_SCHEMA to 1,
+comma delimited list of schema name. By default if you set EXPORT_SCHEMA to 1,
 the PostgreSQL schema search_path will be set to the schema name set as value of
 the SCHEMA directive plus the default pg_catalog schema as follow:
 
@@ -439,7 +439,7 @@ system schema or role: SYS, SYSTEM, DBSNMP, OUTLN, PERFSTAT, CTXSYS, XDB, WMSYS,
 SYSMAN, SQLTXPLAIN, MDSYS, EXFSYS, ORDSYS, DMSYS, OLAPSYS, FLOWS_020100,
 FLOWS_FILES, TSMSYS. Following your Oracle installation you may have several
 other system role defined. To append these users to the schema exclusion list,
-just set the SYSUSERS configuration directive to a coma separated list of system
+just set the SYSUSERS configuration directive to a comma-separated list of system
 user to exclude. For example:
 
 	SYSUSERS	INTERNAL,SYSDBA
@@ -505,7 +505,7 @@ especially if you have PLSQL code or Oracle specific SQL in it.
 For TABLESPACE you must ensure that file path exist on the system.
 
 Note that you can chained multiple export by giving to the TYPE directive a
-coma separated list of export type.
+comma-separated list of export type.
 
 The PARTITION export is a work in progress as table partition support is not
 yet implemented into PostgreSQL. Ora2Pg will convert Oracle partition using
@@ -717,8 +717,8 @@ database should be exported.
 
 This directive allow you to set a list of objects on witch the export must be
 limited, excluding all other objects in the same type of export. The value is
-a space separated list of objects name to export. You can include valid regex
-into the list. For example:
+a space or comma-separated list of objects name to export. You can include
+valid regex into the list. For example:
 
 	ALLOW		EMPLOYEES SALE_.* COUNTRIES .*_GEOM_SEQ
 
@@ -732,8 +732,8 @@ just a renaming to be less confusing.
 =item EXCLUDE
 
 This directive is the opposite of the previous, it allow you to define a space
-separated list of object name to exclude from the export. You can include valid
-regex into the list. For example:
+or comma-separated list of object name to exclude from the export. You can
+include valid regex into the list. For example:
 
 	EXCLUDE		EMPLOYEES TMP_.* COUNTRIES
 
@@ -750,9 +750,10 @@ with the name begining with those regex.
 =item VIEW_AS_TABLE
 
 Set which view to export as table. By default none. Value must be a list of
-view name or regexp separated by space. If the object name is a view and the
-export type is TABLE, the view will be exported as a create table statement.
-If export type is COPY or INSERT, the corresponding data will be exported.
+view name or regexp separated by space or comma. If the object name is a view
+and the export type is TABLE, the view will be exported as a create table
+statement. If export type is COPY or INSERT, the corresponding data will be
+exported.
 
 This was initialy done with the ALLOW (or old TABLES directive) but that was
 not allow to use both object exclusion and view as table.
@@ -809,7 +810,7 @@ directive is only used with TABLE export.
 =item MODIFY_STRUCT
 
 This directive allow you to limit the columns to extract for a given table. The
-value consist in a space separated list of table name with a set of column
+value consist in a space-separated list of table name with a set of column
 between parenthesis as follow:
 
 	MODIFY_STRUCT	NOM_TABLE(nomcol1,nomcol2,...) ...
@@ -824,7 +825,7 @@ or INSERT export.
 
 =item REPLACE_TABLES
 
-This directive allow you to remap a list of Oracle table name to a PostgreSQL table name during export. The value is a list of space separated values with the following structure:
+This directive allow you to remap a list of Oracle table name to a PostgreSQL table name during export. The value is a list of space-separated values with the following structure:
 
 	REPLACE_TABLES	ORIG_TBNAME1:DEST_TBNAME1 ORIG_TBNAME2:DEST_TBNAME2
 
@@ -868,7 +869,7 @@ tables.
 =item BOOLEAN_VALUES
 
 Use this to add additional definition of the possible boolean values used in
-Oracle fields. You must set a space separated list of TRUE:FALSE values. By
+Oracle fields. You must set a space-separated list of TRUE:FALSE values. By
 default here are the values recognized by Ora2Pg:
 
 	BOOLEAN_VALUES		yes:no y:n 1:0 true:false enabled:disabled
@@ -1003,7 +1004,7 @@ The following other configuration directives interact directly with the export p
 =item SKIP
 
 For TABLE export you may not want to export all schema constraints, the SKIP
-configuration directive allow you to specify a space separated list of
+configuration directive allow you to specify a space-separated list of
 constraints that should not be exported. Possible values are:
 
 	- fkeys: turn off foreign key constraints
@@ -1127,7 +1128,7 @@ like integer or float.
 If you're experiencing any problem in data type schema conversion with this
 directive you can take full control of the correspondence between Oracle and
 PostgreSQL types to redefine data type translation used in Ora2pg. The syntax
-is a coma separated list of "Oracle datatype:Postgresql datatype". Here are
+is a comma-separated list of "Oracle datatype:Postgresql datatype". Here are
 the default list used:
 
 	DATA_TYPE	DATE:timestamp,LONG:text,LONG RAW:bytea,CLOB:text,NCLOB:text,BLOB:bytea,BFILE:bytea,RAW:bytea,ROWID:oid,FLOAT:double precision,DEC:decimal,DECIMAL:decimal,DOUBLE PRECISION:double precision,INT:integer,INTEGER:integer,REAL:real,SMALLINT:smallint,BINARY_FLOAT:double precision,BINARY_DOUBLE:double precision,TIMESTAMP:timestamp,XMLTYPE:xml,BINARY_INTEGER:integer,PLS_INTEGER:integer,TIMESTAMP WITH TIME ZONE:timestamp with time zone,TIMESTAMP WITH LOCAL TIME ZONE:timestamp with time zone
@@ -1169,7 +1170,7 @@ names on all your SQL scripts.
 =item ORA_RESERVED_WORDS
 
 Allow escaping of column name using Oracle reserved words. Value is a list of
-coma separated reserved word. Default is audit,comment.
+comma-separated reserved word. Default is audit,comment.
 
 =item USE_RESERVED_WORDS
 

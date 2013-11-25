@@ -124,7 +124,7 @@
 .\" ========================================================================
 .\"
 .IX Title "ORA2PG 1"
-.TH ORA2PG 1 "2013-11-12" "perl v5.14.2" "User Contributed Perl Documentation"
+.TH ORA2PG 1 "2013-11-25" "perl v5.14.2" "User Contributed Perl Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -327,14 +327,14 @@ Here are all command line parameters available when using ora2pg:
 .Vb 1
 \&        Usage: ora2pg [\-dhpqv \-\-estimate_cost \-\-dump_as_html] [\-\-option value]
 \&
-\&            \-a | \-\-allow str  : coma separated list of objects to allow from export.
+\&            \-a | \-\-allow str  : comma\-separated list of objects to allow from export.
 \&                                Can be used with SHOW_COLUMN too.
 \&            \-b | \-\-basedir dir: Used to set the default output directory, where files
 \&                                resulting from exports will be stored.
 \&            \-c | \-\-conf file  : Used to set an alternate configuration file than the
 \&                                default /etc/ora2pg/ora2pg.conf.
 \&            \-d | \-\-debug      : Enable verbose output.
-\&            \-e | \-\-exclude str: coma separated list of objects to exclude from export.
+\&            \-e | \-\-exclude str: comma\-separated list of objects to exclude from export.
 \&                                Can be used with SHOW_COLUMN too.
 \&            \-h | \-\-help       : Print this short help.
 \&            \-i | \-\-input file : File containing Oracle PL/SQL code to convert with
@@ -361,7 +361,7 @@ Here are all command line parameters available when using ora2pg:
 \&                          used to connect to the Pg database that will be the owner.
 \&            \-\-nls_lang code: use this to set the Oracle NLS_LANG client encoding.
 \&            \-\-client_encoding code: Use this to set the PostgreSQL client encoding.
-\&            \-\-view_as_table str: coma separated list of view to export as table.
+\&            \-\-view_as_table str: comma\-separated list of view to export as table.
 \&            \-\-estimate_cost   : activate the migration cost evalution with SHOW_REPORT
 \&            \-\-cost_unit_value minutes: number of minutes for a cost evalution unit.
 \&                          default: 5 minutes, correspond to a migration conducted by a
@@ -534,7 +534,7 @@ procedures, packages and user defined types.
 .IP "\s-1PG_SCHEMA\s0" 4
 .IX Item "PG_SCHEMA"
 Allow you to defined/force the PostgreSQL schema to use. The value can be a
-coma delimited list of schema name. By default if you set \s-1EXPORT_SCHEMA\s0 to 1,
+comma delimited list of schema name. By default if you set \s-1EXPORT_SCHEMA\s0 to 1,
 the PostgreSQL schema search_path will be set to the schema name set as value of
 the \s-1SCHEMA\s0 directive plus the default pg_catalog schema as follow:
 .Sp
@@ -558,7 +558,7 @@ system schema or role: \s-1SYS\s0, \s-1SYSTEM\s0, \s-1DBSNMP\s0, \s-1OUTLN\s0, \
 \&\s-1SYSMAN\s0, \s-1SQLTXPLAIN\s0, \s-1MDSYS\s0, \s-1EXFSYS\s0, \s-1ORDSYS\s0, \s-1DMSYS\s0, \s-1OLAPSYS\s0, \s-1FLOWS_020100\s0,
 \&\s-1FLOWS_FILES\s0, \s-1TSMSYS\s0. Following your Oracle installation you may have several
 other system role defined. To append these users to the schema exclusion list,
-just set the \s-1SYSUSERS\s0 configuration directive to a coma separated list of system
+just set the \s-1SYSUSERS\s0 configuration directive to a comma-separated list of system
 user to exclude. For example:
 .Sp
 .Vb 1
@@ -620,7 +620,7 @@ especially if you have \s-1PLSQL\s0 code or Oracle specific \s-1SQL\s0 in it.
 For \s-1TABLESPACE\s0 you must ensure that file path exist on the system.
 .Sp
 Note that you can chained multiple export by giving to the \s-1TYPE\s0 directive a
-coma separated list of export type.
+comma-separated list of export type.
 .Sp
 The \s-1PARTITION\s0 export is a work in progress as table partition support is not
 yet implemented into PostgreSQL. Ora2Pg will convert Oracle partition using
@@ -836,8 +836,8 @@ database should be exported.
 .IX Item "ALLOW"
 This directive allow you to set a list of objects on witch the export must be
 limited, excluding all other objects in the same type of export. The value is
-a space separated list of objects name to export. You can include valid regex
-into the list. For example:
+a space or comma-separated list of objects name to export. You can include
+valid regex into the list. For example:
 .Sp
 .Vb 1
 \&        ALLOW           EMPLOYEES SALE_.* COUNTRIES .*_GEOM_SEQ
@@ -852,8 +852,8 @@ just a renaming to be less confusing.
 .IP "\s-1EXCLUDE\s0" 4
 .IX Item "EXCLUDE"
 This directive is the opposite of the previous, it allow you to define a space
-separated list of object name to exclude from the export. You can include valid
-regex into the list. For example:
+or comma-separated list of object name to exclude from the export. You can
+include valid regex into the list. For example:
 .Sp
 .Vb 1
 \&        EXCLUDE         EMPLOYEES TMP_.* COUNTRIES
@@ -873,9 +873,10 @@ with the name begining with those regex.
 .IP "\s-1VIEW_AS_TABLE\s0" 4
 .IX Item "VIEW_AS_TABLE"
 Set which view to export as table. By default none. Value must be a list of
-view name or regexp separated by space. If the object name is a view and the
-export type is \s-1TABLE\s0, the view will be exported as a create table statement.
-If export type is \s-1COPY\s0 or \s-1INSERT\s0, the corresponding data will be exported.
+view name or regexp separated by space or comma. If the object name is a view
+and the export type is \s-1TABLE\s0, the view will be exported as a create table
+statement. If export type is \s-1COPY\s0 or \s-1INSERT\s0, the corresponding data will be
+exported.
 .Sp
 This was initialy done with the \s-1ALLOW\s0 (or old \s-1TABLES\s0 directive) but that was
 not allow to use both object exclusion and view as table.
@@ -924,7 +925,7 @@ directive is only used with \s-1TABLE\s0 export.
 .IP "\s-1MODIFY_STRUCT\s0" 4
 .IX Item "MODIFY_STRUCT"
 This directive allow you to limit the columns to extract for a given table. The
-value consist in a space separated list of table name with a set of column
+value consist in a space-separated list of table name with a set of column
 between parenthesis as follow:
 .Sp
 .Vb 1
@@ -942,7 +943,7 @@ This will only extract columns 'id' and 'dossier' from table T_TEST1 and columns
 or \s-1INSERT\s0 export.
 .IP "\s-1REPLACE_TABLES\s0" 4
 .IX Item "REPLACE_TABLES"
-This directive allow you to remap a list of Oracle table name to a PostgreSQL table name during export. The value is a list of space separated values with the following structure:
+This directive allow you to remap a list of Oracle table name to a PostgreSQL table name during export. The value is a list of space-separated values with the following structure:
 .Sp
 .Vb 1
 \&        REPLACE_TABLES  ORIG_TBNAME1:DEST_TBNAME1 ORIG_TBNAME2:DEST_TBNAME2
@@ -993,7 +994,7 @@ tables.
 .IP "\s-1BOOLEAN_VALUES\s0" 4
 .IX Item "BOOLEAN_VALUES"
 Use this to add additional definition of the possible boolean values used in
-Oracle fields. You must set a space separated list of \s-1TRUE:FALSE\s0 values. By
+Oracle fields. You must set a space-separated list of \s-1TRUE:FALSE\s0 values. By
 default here are the values recognized by Ora2Pg:
 .Sp
 .Vb 1
@@ -1107,7 +1108,7 @@ The following other configuration directives interact directly with the export p
 .IP "\s-1SKIP\s0" 4
 .IX Item "SKIP"
 For \s-1TABLE\s0 export you may not want to export all schema constraints, the \s-1SKIP\s0
-configuration directive allow you to specify a space separated list of
+configuration directive allow you to specify a space-separated list of
 constraints that should not be exported. Possible values are:
 .Sp
 .Vb 5
@@ -1221,7 +1222,7 @@ like integer or float.
 If you're experiencing any problem in data type schema conversion with this
 directive you can take full control of the correspondence between Oracle and
 PostgreSQL types to redefine data type translation used in Ora2pg. The syntax
-is a coma separated list of \*(L"Oracle datatype:Postgresql datatype\*(R". Here are
+is a comma-separated list of \*(L"Oracle datatype:Postgresql datatype\*(R". Here are
 the default list used:
 .Sp
 .Vb 1
@@ -1265,7 +1266,7 @@ names on all your \s-1SQL\s0 scripts.
 .IP "\s-1ORA_RESERVED_WORDS\s0" 4
 .IX Item "ORA_RESERVED_WORDS"
 Allow escaping of column name using Oracle reserved words. Value is a list of
-coma separated reserved word. Default is audit,comment.
+comma-separated reserved word. Default is audit,comment.
 .IP "\s-1USE_RESERVED_WORDS\s0" 4
 .IX Item "USE_RESERVED_WORDS"
 Enable this directive if you have table or column names that are a reserved

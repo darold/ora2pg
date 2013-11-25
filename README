@@ -189,14 +189,14 @@ CONFIGURATION
 
             Usage: ora2pg [-dhpqv --estimate_cost --dump_as_html] [--option value]
 
-                -a | --allow str  : coma separated list of objects to allow from export.
+                -a | --allow str  : comma-separated list of objects to allow from export.
                                     Can be used with SHOW_COLUMN too.
                 -b | --basedir dir: Used to set the default output directory, where files
                                     resulting from exports will be stored.
                 -c | --conf file  : Used to set an alternate configuration file than the
                                     default /etc/ora2pg/ora2pg.conf.
                 -d | --debug      : Enable verbose output.
-                -e | --exclude str: coma separated list of objects to exclude from export.
+                -e | --exclude str: comma-separated list of objects to exclude from export.
                                     Can be used with SHOW_COLUMN too.
                 -h | --help       : Print this short help.
                 -i | --input file : File containing Oracle PL/SQL code to convert with
@@ -223,7 +223,7 @@ CONFIGURATION
                               used to connect to the Pg database that will be the owner.
                 --nls_lang code: use this to set the Oracle NLS_LANG client encoding.
                 --client_encoding code: Use this to set the PostgreSQL client encoding.
-                --view_as_table str: coma separated list of view to export as table.
+                --view_as_table str: comma-separated list of view to export as table.
                 --estimate_cost   : activate the migration cost evalution with SHOW_REPORT
                 --cost_unit_value minutes: number of minutes for a cost evalution unit.
                               default: 5 minutes, correspond to a migration conducted by a
@@ -396,7 +396,7 @@ CONFIGURATION
 
     PG_SCHEMA
         Allow you to defined/force the PostgreSQL schema to use. The value
-        can be a coma delimited list of schema name. By default if you set
+        can be a comma delimited list of schema name. By default if you set
         EXPORT_SCHEMA to 1, the PostgreSQL schema search_path will be set to
         the schema name set as value of the SCHEMA directive plus the
         default pg_catalog schema as follow:
@@ -419,8 +419,8 @@ CONFIGURATION
         ORDSYS, DMSYS, OLAPSYS, FLOWS_020100, FLOWS_FILES, TSMSYS. Following
         your Oracle installation you may have several other system role
         defined. To append these users to the schema exclusion list, just
-        set the SYSUSERS configuration directive to a coma separated list of
-        system user to exclude. For example:
+        set the SYSUSERS configuration directive to a comma-separated list
+        of system user to exclude. For example:
 
                 SYSUSERS        INTERNAL,SYSDBA
 
@@ -481,7 +481,7 @@ CONFIGURATION
         For TABLESPACE you must ensure that file path exist on the system.
 
         Note that you can chained multiple export by giving to the TYPE
-        directive a coma separated list of export type.
+        directive a comma-separated list of export type.
 
         The PARTITION export is a work in progress as table partition
         support is not yet implemented into PostgreSQL. Ora2Pg will convert
@@ -689,8 +689,9 @@ CONFIGURATION
     ALLOW
         This directive allow you to set a list of objects on witch the
         export must be limited, excluding all other objects in the same type
-        of export. The value is a space separated list of objects name to
-        export. You can include valid regex into the list. For example:
+        of export. The value is a space or comma-separated list of objects
+        name to export. You can include valid regex into the list. For
+        example:
 
                 ALLOW           EMPLOYEES SALE_.* COUNTRIES .*_GEOM_SEQ
 
@@ -703,8 +704,9 @@ CONFIGURATION
 
     EXCLUDE
         This directive is the opposite of the previous, it allow you to
-        define a space separated list of object name to exclude from the
-        export. You can include valid regex into the list. For example:
+        define a space or comma-separated list of object name to exclude
+        from the export. You can include valid regex into the list. For
+        example:
 
                 EXCLUDE         EMPLOYEES TMP_.* COUNTRIES
 
@@ -721,10 +723,10 @@ CONFIGURATION
 
     VIEW_AS_TABLE
         Set which view to export as table. By default none. Value must be a
-        list of view name or regexp separated by space. If the object name
-        is a view and the export type is TABLE, the view will be exported as
-        a create table statement. If export type is COPY or INSERT, the
-        corresponding data will be exported.
+        list of view name or regexp separated by space or comma. If the
+        object name is a view and the export type is TABLE, the view will be
+        exported as a create table statement. If export type is COPY or
+        INSERT, the corresponding data will be exported.
 
         This was initialy done with the ALLOW (or old TABLES directive) but
         that was not allow to use both object exclusion and view as table.
@@ -776,7 +778,7 @@ CONFIGURATION
 
     MODIFY_STRUCT
         This directive allow you to limit the columns to extract for a given
-        table. The value consist in a space separated list of table name
+        table. The value consist in a space-separated list of table name
         with a set of column between parenthesis as follow:
 
                 MODIFY_STRUCT   NOM_TABLE(nomcol1,nomcol2,...) ...
@@ -791,8 +793,8 @@ CONFIGURATION
 
     REPLACE_TABLES
         This directive allow you to remap a list of Oracle table name to a
-        PostgreSQL table name during export. The value is a list of space
-        separated values with the following structure:
+        PostgreSQL table name during export. The value is a list of
+        space-separated values with the following structure:
 
                 REPLACE_TABLES  ORIG_TBNAME1:DEST_TBNAME1 ORIG_TBNAME2:DEST_TBNAME2
 
@@ -833,7 +835,7 @@ CONFIGURATION
 
     BOOLEAN_VALUES
         Use this to add additional definition of the possible boolean values
-        used in Oracle fields. You must set a space separated list of
+        used in Oracle fields. You must set a space-separated list of
         TRUE:FALSE values. By default here are the values recognized by
         Ora2Pg:
 
@@ -952,9 +954,9 @@ CONFIGURATION
 
     SKIP
         For TABLE export you may not want to export all schema constraints,
-        the SKIP configuration directive allow you to specify a space
-        separated list of constraints that should not be exported. Possible
-        values are:
+        the SKIP configuration directive allow you to specify a
+        space-separated list of constraints that should not be exported.
+        Possible values are:
 
                 - fkeys: turn off foreign key constraints
                 - pkeys: turn off primary keys
@@ -1070,7 +1072,7 @@ CONFIGURATION
         If you're experiencing any problem in data type schema conversion
         with this directive you can take full control of the correspondence
         between Oracle and PostgreSQL types to redefine data type
-        translation used in Ora2pg. The syntax is a coma separated list of
+        translation used in Ora2pg. The syntax is a comma-separated list of
         "Oracle datatype:Postgresql datatype". Here are the default list
         used:
 
@@ -1114,7 +1116,7 @@ CONFIGURATION
 
     ORA_RESERVED_WORDS
         Allow escaping of column name using Oracle reserved words. Value is
-        a list of coma separated reserved word. Default is audit,comment.
+        a list of comma-separated reserved word. Default is audit,comment.
 
     USE_RESERVED_WORDS
         Enable this directive if you have table or column names that are a
