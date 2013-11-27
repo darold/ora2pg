@@ -1636,7 +1636,7 @@ DECLARE
     iname ALIAS FOR \$3; -- name of the colum of mview to used as unique key
     entry materialized_views%ROWTYPE;
 BEGIN
-    EXECUTE 'SELECT * FROM materialized_views WHERE mview_name = ' || quote_literal(mview) || ' INTO entry;
+    EXECUTE 'SELECT * FROM materialized_views WHERE mview_name = ' || quote_literal(mview) || '' INTO entry;
     IF entry.iname IS NOT NULL THEN
         RAISE EXCEPTION 'Materialized view % already exist.', mview;
     END IF;
