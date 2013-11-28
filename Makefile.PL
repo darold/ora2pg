@@ -172,8 +172,10 @@ DATA_LIMIT	10000
 #MODIFY_STRUCT	TABLE_TEST(dico,dossier)
 
 # Some time you need to force the destination type, for example a column
-# exported as timestamp by Ora2Pg can be forced into type date. 
-#MODIFY_TYPE    TABLE:COLUMN:FINAL_TYPE
+# exported as timestamp by Ora2Pg can be forced into type date. Value is
+# a comma-separated list of TABLE:COLUMN:TYPE structure. If you need to use
+# comma or space inside type definintion you will have to backslach them.
+#MODIFY_TYPE     TABLE1:COL3:varchar,TABLE1:COL4:decimal(9\,6)
 
 # You may wish to change table names during data extraction, especally for
 # replication use. Give a list of tables separate by space as follow.
