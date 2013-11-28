@@ -5675,8 +5675,10 @@ sub read_config
 				push(@{$AConfig{$var}{$table}}, split(/[\s,]+/, $fields) );
 			}
 		} elsif ($var eq 'MODIFY_TYPE') {
+			$val =~ s/\\,/#NOSEP#/gs;
 			my @modif_type = split(/[\s,;\t]+/, $val);
 			foreach my $r (@modif_type) { 
+				$val =~ s/#NOSEP#/,/gs;
 				my ($table, $col, $type) = split(/:/, lc($r));
 				$AConfig{$var}{$table}{$col} = $type;
 			}
