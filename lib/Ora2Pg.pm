@@ -3867,6 +3867,8 @@ sub _create_foreign_keys
 
 	my $tbsaved = $table;
 	$table = $self->get_replaced_tbname($table);
+	# Do not export foreign keys on excluded tables
+	return if ($self->skip_this_object('TABLE', $table)); 
 
 	# Add constraint definition
 	my @done = ();
@@ -3876,7 +3878,7 @@ sub _create_foreign_keys
 		$h->[0] = uc($h->[0]);
 		foreach my $desttable (keys %{$self->{tables}{$tbsaved}{foreign_link}{$h->[0]}{remote}}) {
 			# Do not export foreign key to table that are not exported
-			#next if ($self->skip_this_object('TABLE', $desttable));
+			next if ($self->skip_this_object('TABLE', $desttable));
 			my $str = '';
 			push(@done, $h->[0]);
 			map { $_ = '"' . $_ . '"' } @{$self->{tables}{$tbsaved}{foreign_link}{$h->[0]}{local}};
