@@ -2661,8 +2661,9 @@ LANGUAGE plpgsql ;
 		$dirprefix = "$self->{output_dir}/" if ($self->{output_dir});
 
 		# Connect the Oracle database to gather information
-		$self->{dbh} = DBI->connect($self->{oracle_dsn}, $self->{oracle_user}, $self->{oracle_pwd},
-				{ ora_envhp  => 0, LongReadLen => $self->{longreadlen}, LongTruncOk => $self->{longtruncok} });
+		$self->{dbh} = $self->_oracle_connection();
+		# $self->{dbh} = DBI->connect($self->{oracle_dsn}, $self->{oracle_user}, $self->{oracle_pwd},
+		#		{ ora_envhp  => 0, LongReadLen => $self->{longreadlen}, LongTruncOk => $self->{longtruncok} });
 
 		# Fix a problem when exporting type LONG and LOB
 		$self->{dbh}->{'LongReadLen'} = $self->{longreadlen};
