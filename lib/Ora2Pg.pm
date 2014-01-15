@@ -3947,7 +3947,7 @@ sub _drop_foreign_keys
 		push(@done, $h->[0]);
 		my $str = '';
 		$h->[0] = lc($h->[0]) if (!$self->{preserve_case});
-		$str .= "ALTER TABLE IF EXISTS $table DROP CONSTRAINT IF EXISTS $h->[0];";
+		$str .= "ALTER TABLE $table DROP CONSTRAINT IF EXISTS $h->[0];";
 		push(@out, $str);
 	}
 
@@ -5639,7 +5639,8 @@ sub read_config
 	$fh->open($file) or $self->logit("FATAL: can't read configuration file $file, $!\n", 0, 1);
 	while (my $l = <$fh>) {
 		chomp($l);
-		$l =~ s///gs;
+		$l =~ s/
+//gs;
 		$l =~ s/^[\s\t]*\#.*$//g;
 		next if (!$l || ($l =~ /^[\s\t]+$/));
 		$l =~ s/^\s*//; $l =~ s/\s*$//;
