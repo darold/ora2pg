@@ -5639,8 +5639,7 @@ sub read_config
 	$fh->open($file) or $self->logit("FATAL: can't read configuration file $file, $!\n", 0, 1);
 	while (my $l = <$fh>) {
 		chomp($l);
-		$l =~ s/
-//gs;
+		$l =~ s/\r//gs;
 		$l =~ s/^[\s\t]*\#.*$//g;
 		next if (!$l || ($l =~ /^[\s\t]+$/));
 		$l =~ s/^\s*//; $l =~ s/\s*$//;
