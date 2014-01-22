@@ -852,6 +852,14 @@ CONFIGURATION
 
         Any values defined here will be added to the default list.
 
+    INDEXES_SUFFIX
+        Add the given value as suffix to indexes names. Useful if you have
+        indexes with same name as tables. For example:
+
+                INDEXES_SUFFIX          _idx
+
+        will add _idx at ed of all index name. Not so common but can help.
+
   PostgreSQL Import
     By default conversion to PostgreSQL format is written to file
     'output.sql'. The command:

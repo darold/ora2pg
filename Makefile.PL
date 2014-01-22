@@ -535,6 +535,10 @@ PG_SUPPORTS_MVIEW	1
 # that's should be enough for most usage.
 REORDERING_COLUMNS	0
 
+# Add the given value as suffix to indexes names. Useful if you have indexes
+# with same name as tables. Not so common but can help.
+#INDEXES_SUFFIX		_idx
+
 };
 close(OUTCFG);
 

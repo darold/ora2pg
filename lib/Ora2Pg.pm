@@ -643,6 +643,9 @@ sub _init
 	# Defined if column order must be optimized
 	$self->{reordering_columns} ||= 0;
 
+	# Initialize suffix that may be added to the index name
+	$self->{indexes_suffix} ||= '';
+
 	# Overwrite configuration with all given parameters
 	# and try to preserve backward compatibility
 	foreach my $k (keys %options) {
@@ -3580,7 +3583,7 @@ sub _create_indexes
 			$unique = ' UNIQUE' if ($self->{tables}{$tbsaved}{uniqueness}{$idx} eq 'UNIQUE');
 			my $str = '';
 			$columns = lc($columns) if (!$self->{preserve_case});
-			$str .= "CREATE$unique INDEX \L$idx\E ON $table ($columns)";
+			$str .= "CREATE$unique INDEX \L$idx$self->{indexes_suffix}\E ON $table ($columns)";
 			if ($self->{use_tablespace} && $self->{tables}{$tbsaved}{idx_tbsp}{$idx} && !grep(/^$self->{tables}{$tbsaved}{idx_tbsp}{$idx}$/i, @{$self->{default_tablespaces}})) {
 				$str .= " TABLESPACE $self->{tables}{$tbsaved}{idx_tbsp}{$idx}";
 			}
@@ -3649,7 +3652,7 @@ sub _drop_indexes
 		# Do not create the index if there already a constraint on the same column list
 		# the index will be automatically created by PostgreSQL at constraint import time.
 		if (!$skip_index_creation) {
-			push(@out, "DROP INDEX IF EXISTS \L$idx\E;");
+			push(@out, "DROP INDEX IF EXISTS \L$idx$self->{indexes_suffix}\E;");
 		}
 	}
 

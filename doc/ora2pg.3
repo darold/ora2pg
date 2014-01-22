@@ -124,7 +124,7 @@
 .\" ========================================================================
 .\"
 .IX Title "ORA2PG 1"
-.TH ORA2PG 1 "2013-11-28" "perl v5.14.2" "User Contributed Perl Documentation"
+.TH ORA2PG 1 "2014-01-22" "perl v5.14.2" "User Contributed Perl Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -1012,6 +1012,16 @@ default here are the values recognized by Ora2Pg:
 .Ve
 .Sp
 Any values defined here will be added to the default list.
+.IP "\s-1INDEXES_SUFFIX\s0" 4
+.IX Item "INDEXES_SUFFIX"
+Add the given value as suffix to indexes names. Useful if you have indexes
+with same name as tables. For example:
+.Sp
+.Vb 1
+\&        INDEXES_SUFFIX          _idx
+.Ve
+.Sp
+will add _idx at ed of all index name. Not so common but can help.
 .SS "PostgreSQL Import"
 .IX Subsection "PostgreSQL Import"
 By default conversion to PostgreSQL format is written to file 'output.sql'.
