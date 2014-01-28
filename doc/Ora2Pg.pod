@@ -776,7 +776,7 @@ value. Both are possible too. Here are some examples:
 
 	# Applies two different clause on tables TABLE_NAME and OTHER_TABLE
 	# and a generic where clause on DATE_CREATE to all other tables
-	WHERE  TABLE_NAME[ID1='001' AND ID1='002] DATE_CREATE > '2001-01-01' OTHER_TABLE[NAME='test']
+	WHERE  TABLE_NAME[ID1='001' OR ID1='002] DATE_CREATE > '2001-01-01' OTHER_TABLE[NAME='test']
 
 Any where clause not included into a table name bracket clause will be applied
 to all exported table including the tables defined in the where clause. These

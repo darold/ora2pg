@@ -124,7 +124,7 @@
 .\" ========================================================================
 .\"
 .IX Title "ORA2PG 1"
-.TH ORA2PG 1 "2014-01-22" "perl v5.14.2" "User Contributed Perl Documentation"
+.TH ORA2PG 1 "2014-01-28" "perl v5.14.2" "User Contributed Perl Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -898,7 +898,7 @@ value. Both are possible too. Here are some examples:
 \&
 \&        # Applies two different clause on tables TABLE_NAME and OTHER_TABLE
 \&        # and a generic where clause on DATE_CREATE to all other tables
-\&        WHERE  TABLE_NAME[ID1=\*(Aq001\*(Aq AND ID1=\*(Aq002] DATE_CREATE > \*(Aq2001\-01\-01\*(Aq OTHER_TABLE[NAME=\*(Aqtest\*(Aq]
+\&        WHERE  TABLE_NAME[ID1=\*(Aq001\*(Aq OR ID1=\*(Aq002] DATE_CREATE > \*(Aq2001\-01\-01\*(Aq OTHER_TABLE[NAME=\*(Aqtest\*(Aq]
 .Ve
 .Sp
 Any where clause not included into a table name bracket clause will be applied

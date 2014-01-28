@@ -203,7 +203,7 @@ PRESERVE_CASE	0
 # clause as value. Both are possible too. Here are some examples:
 #WHERE  1=1	# Apply to all tables
 #WHERE	TABLE_TEST[ID1='001']	# Apply only on table TABLE_TEST
-#WHERE	TABLE_TEST[ID1='001' AND ID1='002] DATE_CREATE > '2001-01-01' TABLE_INFO[NAME='test']
+#WHERE	TABLE_TEST[ID1='001' OR ID1='002] DATE_CREATE > '2001-01-01' TABLE_INFO[NAME='test']
 # The last applies two different where clause on tables TABLE_TEST and
 # TABLE_INFO and a generic where clause on DATE_CREATE to all other tables
 
