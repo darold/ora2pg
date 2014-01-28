@@ -1,3 +1,37 @@
+2014 01 28 - v12.1
+
+This is a maintenance release with some minor bug fixes and a new configuration
+directive, INDEXES_SUFFIX, to allow appending a suffix to indexes names.
+
+	- Fix example given for the WHERE configuration directive. Thanks to
+	  Bob Treumann for the report.
+	- Add INDEXES_SUFFIX configuration option to allow append a suffix to
+	  indexes names.
+	- Replace special charater ^M by \r as they are not supported by git.
+	- Fix IF EXISTS in alter table of sub _drop_foreign_keys. Thanks to
+	  Francis Corriveau for the patch.
+	- Fix isolation level when exporting data. Thanks to Ludovic Penet for
+	  the report.
+	- Fix regression when ora2pg tries to create foreign keys on tables or
+	  to tables that are not selected for export. Thanks to Ludovic Penet.
+	- Add information about backslashed comma into directive MODIFY_TYPE
+	  into Makefile.PL.
+	- Add missing MODIFY_TYPE definition in documentation.
+	- Allow backslashed comma into MODIFY_TYPE type redefinition. Example:
+		TABLE1:COL3:decimal(9\,6),TABLE1:COL4:decimal(9\,6).
+	  Thanks to Mike Kienenberger for the report
+	- Fix missing single cote into create_materialized_view() call. Thanks
+	  to Jacky Rigoreau for the patch.
+	- Fix some typo in documentation, thanks to Mike Kienenberger for the
+	  report.
+	- Add a chapter about installing DBD::Oracle into documentation. Thanks
+	  to Raghavendra for the patch.
+	- Fix case sensitivity on external table name with FDW export type.
+	  Thanks to Guillaume Lelarge for the report.
+	- Fix export of materialized views when PG_SUPPORTS_MVIEW is disabled.
+	  Thanks to Christian Bjornbak for the report.
+	- Update copyright.
+
 2013 10 22 - v12.0
 
 This release fixes lot of issues and three new features. Using REORDERING_COLUMNS

@@ -38,7 +38,7 @@ use IO::Pipe;
 #set locale to LC_NUMERIC C
 setlocale(LC_NUMERIC,"C");
 
-$VERSION = '12.0';
+$VERSION = '12.1';
 $PSQL = $ENV{PLSQL} || 'psql';
 
 $| = 1;
