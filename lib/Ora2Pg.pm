@@ -4871,8 +4871,15 @@ sub _get_materialized_views
 		$str .= " WHERE OWNER = '$self->{schema}'";
 	}
 	$str .= " ORDER BY MVIEW_NAME";
-	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	my $sth = $self->{dbh}->prepare($str);
+	if (not defined $sth) {
+		$self->logit("ERROR: " . $self->{dbh}->errstr . "\n", 0, 0);
+		return ();
+	}
+	if (not $sth->execute) {
+		$self->logit("ERROR: " . $self->{dbh}->errstr . "\n", 0, 0);
+		return ();
+	}
 
 	my %data = ();
 	while (my $row = $sth->fetch) {
@@ -4904,8 +4911,15 @@ sub _get_materialized_view_names
 		$str .= " WHERE OWNER = '$self->{schema}'";
 	}
 	$str .= " ORDER BY MVIEW_NAME";
-	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	my $sth = $self->{dbh}->prepare($str);
+	if (not defined $sth) {
+		$self->logit("ERROR: " . $self->{dbh}->errstr . "\n", 0, 0);
+		return ();
+	}
+	if (not $sth->execute) {
+		$self->logit("ERROR: " . $self->{dbh}->errstr . "\n", 0, 0);
+		return ();
+	}
 
 	my @data = ();
 	while (my $row = $sth->fetch) {
