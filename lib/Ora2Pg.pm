@@ -4240,13 +4240,15 @@ SELECT COLUMN_NAME, DATA_TYPE, DATA_LENGTH, NULLABLE, DATA_DEFAULT, DATA_PRECISI
 FROM $self->{prefix}_TAB_COLUMNS $condition
 ORDER BY COLUMN_ID
 END
-		my $ret = $self->{dbh}->err;
-		if (!$recurs && ($ret == 942) && ($self->{prefix} eq 'DBA')) {
-			$self->logit("HINT: Please activate USER_GRANTS or connect using a user with DBA privilege.\n");
-			$self->{prefix} = 'ALL';
-			return $self->_column_info($table, $owner, 1);
+		if (!$sth) {
+			my $ret = $self->{dbh}->err;
+			if (!$recurs && ($ret == 942) && ($self->{prefix} eq 'DBA')) {
+				$self->logit("HINT: Please activate USER_GRANTS or connect using a user with DBA privilege.\n");
+				$self->{prefix} = 'ALL';
+				return $self->_column_info($table, $owner, 1);
+			}
+			$self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 		}
-		$self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	}
 	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
