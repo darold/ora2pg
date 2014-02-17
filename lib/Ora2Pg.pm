@@ -4873,11 +4873,10 @@ sub _get_materialized_views
 	$str .= " ORDER BY MVIEW_NAME";
 	my $sth = $self->{dbh}->prepare($str);
 	if (not defined $sth) {
-		$self->logit("ERROR: " . $self->{dbh}->errstr . "\n", 0, 0);
-		return ();
+		$self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	}
 	if (not $sth->execute) {
-		$self->logit("ERROR: " . $self->{dbh}->errstr . "\n", 0, 0);
+		$self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 		return ();
 	}
 
@@ -4913,12 +4912,10 @@ sub _get_materialized_view_names
 	$str .= " ORDER BY MVIEW_NAME";
 	my $sth = $self->{dbh}->prepare($str);
 	if (not defined $sth) {
-		$self->logit("ERROR: " . $self->{dbh}->errstr . "\n", 0, 0);
-		return ();
+		$self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	}
 	if (not $sth->execute) {
-		$self->logit("ERROR: " . $self->{dbh}->errstr . "\n", 0, 0);
-		return ();
+		$self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	}
 
 	my @data = ();
