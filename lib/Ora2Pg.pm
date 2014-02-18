@@ -702,6 +702,13 @@ sub _init
 	if ($self->{thread_count}) {
 		$self->{jobs} = $self->{thread_count} || 1;
 	}
+	$self->{has_utf8_fct} = 1;
+	eval { utf8::valid("test utf8 function"); };
+	if ($@) {
+		# Old perl install doesn't include these functions
+		$self->{has_utf8_fct} = 0;
+	}
+
 	# Multiple Oracle connection
 	$self->{oracle_copies} ||= 0;
 	$self->{ora_conn_count} = 0;
@@ -5549,7 +5556,9 @@ sub format_data_type
 		} elsif ($data_type eq 'bytea') {
 			$col = escape_bytea($col);
 		} elsif ($data_type !~ /(date|time)/) {
-			eval { utf8::encode($col) if (!utf8::valid($col)); };
+			if ($self->{has_utf8_fct}) {
+				utf8::encode($col) if (!utf8::valid($col));
+			}
 			$col =~ s/\0//gs;
 			$col =~ s/\\/\\\\/g;
 			$col =~ s/\r/\\r/g;
