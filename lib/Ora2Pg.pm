@@ -4887,6 +4887,9 @@ sub _get_materialized_views
 
 	# Retrieve all views
 	my $str = "SELECT MVIEW_NAME,QUERY,UPDATABLE,REFRESH_MODE,REFRESH_METHOD,USE_NO_INDEX,REWRITE_ENABLED,BUILD_MODE FROM $self->{prefix}_MVIEWS";
+	if ($self->{db_version} !~ /Release 8/) {
+		$str = "SELECT MVIEW_NAME,QUERY,UPDATABLE,REFRESH_MODE,REFRESH_METHOD,'',REWRITE_ENABLED,BUILD_MODE FROM $self->{prefix}_MVIEWS";
+	}
 	if (!$self->{schema}) {
 		$str .= " WHERE OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
 	} else {
