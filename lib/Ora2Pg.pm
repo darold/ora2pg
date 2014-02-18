@@ -4309,16 +4309,29 @@ sub _unique_key
 	$condition .= "AND TABLE_NAME='$table' " if ($table);
 	$condition .= "AND OWNER='$owner' " if ($owner);
 
-	$sth = $self->{dbh}->prepare(<<END) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	if ($self->{db_version} !~ /Release 8/) {
+		$sth = $self->{dbh}->prepare(<<END) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 SELECT CONSTRAINT_NAME,R_CONSTRAINT_NAME,SEARCH_CONDITION,DELETE_RULE,DEFERRABLE,DEFERRED,R_OWNER,CONSTRAINT_TYPE,GENERATED,TABLE_NAME,OWNER,INDEX_NAME
 FROM $self->{prefix}_CONSTRAINTS
 WHERE CONSTRAINT_TYPE IN $cons_types
 AND STATUS='ENABLED'
 $condition
 END
+	} else {
+		$sth = $self->{dbh}->prepare(<<END) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+SELECT CONSTRAINT_NAME,R_CONSTRAINT_NAME,SEARCH_CONDITION,DELETE_RULE,DEFERRABLE,DEFERRED,R_OWNER,CONSTRAINT_TYPE,GENERATED,TABLE_NAME,OWNER
+FROM $self->{prefix}_CONSTRAINTS
+WHERE CONSTRAINT_TYPE IN $cons_types
+AND STATUS='ENABLED'
+$condition
+END
+	}
 	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
 	while (my $row = $sth->fetch) {
+		if ($self->{db_version} =~ /Release 8/) {
+			push(@$row, '');
+		}
 		my %constraint = (type => $row->[7], 'generated' => $row->[8], 'index_name' => $row->[11], columns => ());
 		foreach my $r (@cons_columns) {
 			# Skip constraints on system internal columns
