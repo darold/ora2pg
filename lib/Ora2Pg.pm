@@ -5529,7 +5529,7 @@ sub format_data_type
 				$col = "'" . $self->{ora_boolean_values}{lc($col)} . "'";
 			}
 		} else {
-			# covered now by the call to _numeric_format()
+			# covered now by the call to _numeric_format()
 			# $col =~ s/,/\./;
 			$col =~ s/\~/inf/;
 			$col = 'NULL' if ($col eq '');
@@ -5542,14 +5542,14 @@ sub format_data_type
 				$col = $self->{ora_boolean_values}{lc($col)};
 			}
 		} elsif ($data_type !~ /(char|date|time|text|bytea|xml)/) {
-			# covered now by the call to _numeric_format()
+			# covered now by the call to _numeric_format()
 			#$col =~ s/,/\./;
 			$col =~ s/\~/inf/;
 			$col = '\N' if ($col eq '');
 		} elsif ($data_type eq 'bytea') {
 			$col = escape_bytea($col);
 		} elsif ($data_type !~ /(date|time)/) {
-			utf8::encode($col) if (!utf8::valid($col));
+			eval { utf8::encode($col) if (!utf8::valid($col)); };
 			$col =~ s/\0//gs;
 			$col =~ s/\\/\\\\/g;
 			$col =~ s/\r/\\r/g;
