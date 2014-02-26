@@ -5516,6 +5516,8 @@ sub format_data_type
 			} else {
 				$col = "E'$col'";
 			}
+			# RAW data type is returned in hex
+			$col = "decode($col, 'hex')" if ($src_type eq 'RAW');
 		} elsif ($data_type =~ /(char|text|xml)/) {
 			$col =~ s/'/''/gs; # double single quote
 			if (!$self->{standard_conforming_strings}) {
@@ -5558,6 +5560,8 @@ sub format_data_type
 			$col = '\N' if ($col eq '');
 		} elsif ($data_type eq 'bytea') {
 			$col = escape_bytea($col);
+			# RAW data type is returned in hex
+			$col = '\x' . $col if ($src_type eq 'RAW');
 		} elsif ($data_type !~ /(date|time)/) {
 			if ($self->{has_utf8_fct}) {
 				utf8::encode($col) if (!utf8::valid($col));
