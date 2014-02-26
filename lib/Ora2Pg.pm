@@ -1513,6 +1513,7 @@ sub get_replaced_tbname
 
 	return $tmptb; 
 }
+
 =head2 _get_sql_data
 
 Returns a string containing the PostgreSQL compatible SQL Schema
@@ -3313,10 +3314,10 @@ CREATE TRIGGER insert_${table}_trigger
 				next unless $self->{tables}{$table}{column_comments}{$f};
 				$self->{tables}{$table}{column_comments}{$f} =~ s/'/''/gs;
 				# Change column names
-				my $fname = lc($f);
-				if (exists $self->{replaced_cols}{"\L$table\E"}{$fname} && $self->{replaced_cols}{"\L$table\E"}{$fname}) {
-					$self->logit("\tReplacing column $fname as " . $self->{replaced_cols}{"\L$table\E"}{$fname} . "...\n", 1);
-					$fname = $self->{replaced_cols}{"\L$table\E"}{$fname};
+				my $fname = $f;
+				if (exists $self->{replaced_cols}{"\L$table\E"}{lc($fname)} && $self->{replaced_cols}{"\L$table\E"}{lc($fname)}) {
+					$self->logit("\tReplacing column $f as " . $self->{replaced_cols}{"\L$table\E"}{lc($fname)} . "...\n", 1);
+					$fname = $self->{replaced_cols}{"\L$table\E"}{lc($fname)};
 				}
 				$sql_output .= "COMMENT ON COLUMN $tbname.$fname IS E'" . $self->{tables}{$table}{column_comments}{$f} .  "';\n";
 			}
@@ -5561,7 +5562,7 @@ sub format_data_type
 		} elsif ($data_type eq 'bytea') {
 			$col = escape_bytea($col);
 			# RAW data type is returned in hex
-			$col = '\x' . $col if ($src_type eq 'RAW');
+			$col = '\\\\x' . $col if ($src_type eq 'RAW');
 		} elsif ($data_type !~ /(date|time)/) {
 			if ($self->{has_utf8_fct}) {
 				utf8::encode($col) if (!utf8::valid($col));
