@@ -3319,7 +3319,12 @@ CREATE TRIGGER insert_${table}_trigger
 					$self->logit("\tReplacing column $f as " . $self->{replaced_cols}{"\L$table\E"}{lc($fname)} . "...\n", 1);
 					$fname = $self->{replaced_cols}{"\L$table\E"}{lc($fname)};
 				}
-				$sql_output .= "COMMENT ON COLUMN $tbname.$fname IS E'" . $self->{tables}{$table}{column_comments}{$f} .  "';\n";
+				if (!$self->{preserve_case}) {
+					$sql_output .= "COMMENT ON COLUMN $tbname.$fname IS E'" . $self->{tables}{$table}{column_comments}{$f} .  "';\n";
+				} else {
+					$sql_output .= "COMMENT ON COLUMN $tbname.\"$fname\" IS E'" . $self->{tables}{$table}{column_comments}{$f} .  "';\n";
+				}
+
 			}
 		}
 
