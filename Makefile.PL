@@ -436,6 +436,12 @@ ALLOW_CODE_BREAK	1
 # exceeds the 'LongReadLen' DBD::Oracle will return a 'ORA-24345: A Truncation'
 # error.  Default: 1023*1024 bytes. Take a look at this page to learn more:
 # http://search.cpan.org/~pythian/DBD-Oracle-1.22/Oracle.pm#Data_Interface_for_Persistent_LOBs
+#
+# Important note: If you increase the value of this directive take care that 
+# DATA_LIMIT will probably needs to be reduced. Even if you only have a 1Mb blob
+# trying to read 10000 of them (the default DATA_LIMIT) all at once will require
+# 10Gb of memory. You may extract data from those table separatly and set a
+# DATA_LIMIT to 500 or lower, otherwise you may experience some Out of memory.
 #LONGREADLEN	1047552
 
 # If you want to bypass the 'ORA-24345: A Truncation' error, set this directive
