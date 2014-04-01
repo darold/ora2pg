@@ -5525,13 +5525,15 @@ sub format_data_type
 			# RAW data type is returned in hex
 			$col = "decode($col, 'hex')" if ($src_type eq 'RAW');
 		} elsif ($data_type =~ /(char|text|xml)/) {
-			$col =~ s/'/''/gs; # double single quote
 			if (!$self->{standard_conforming_strings}) {
+				$col =~ s/'/''/gs; # double single quote
 				$col =~ s/\\/\\\\/g;
 				$col =~ s/\0//gs;
 				$col = "'$col'";
 			} else {
 				$col =~ s/\0//gs;
+				$col =~ s/\\/\\\\/g;
+				$col =~ s/'/\\'/gs; # escape single quote
 				$col = "E'$col'";
 			}
 		} elsif ($data_type =~ /(date|time)/) {
