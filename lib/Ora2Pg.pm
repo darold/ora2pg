@@ -5966,7 +5966,7 @@ sub _convert_function
 		$func_name =~ s/"//g;
 
 		# forget or not this object if it is in the exclude or allow lists.
-		return if ($self->skip_this_object('FUNCTION', $func_name));
+		return if (($self->{type} =~ /(FUNCTION|PROCEDURE)/) && $self->skip_this_object('FUNCTION', $func_name));
 
 		$immutable = 1 if ($func_declare =~ s/\bDETERMINISTIC\b//is);
 		$setof = 1 if ($func_declare =~ s/\bPIPELINED\b//is);
