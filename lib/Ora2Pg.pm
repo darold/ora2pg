@@ -3566,6 +3566,12 @@ sub _create_indexes
 		} else {
 			map { if ($_ !~ /\(.*\)/) { s/^/"/; s/$/"/; } } @{$indexes{$idx}};
 		}
+		# Add parentheses to index column definition when a space is found
+		for (my $i = 0; $i <= $#{$indexes{$idx}}; $i++) {
+			if ($indexes{$idx}->[$i] =~ /\s/) {
+				$indexes{$idx}->[$i] = '(' . $indexes{$idx}->[$i] . ')';
+			}
+		}
 		my $columns = join(',', @{$indexes{$idx}});
 		my $colscompare = $columns;
 		$colscompare =~ s/"//gs;
