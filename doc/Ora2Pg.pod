@@ -184,6 +184,9 @@ the file exist you can simply execute:
 
 	/usr/local/bin/ora2pg
 
+or under Windows(tm) run ora2pg.bat file, located in your perl bin directory.
+Windows(tm) users may also find a template configuration file in C:\ora2pg
+
 If you want to call another configuration file, just give the path as command
 line argument:
 

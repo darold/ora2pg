@@ -124,7 +124,7 @@
 .\" ========================================================================
 .\"
 .IX Title "ORA2PG 1"
-.TH ORA2PG 1 "2014-01-28" "perl v5.14.2" "User Contributed Perl Documentation"
+.TH ORA2PG 1 "2014-05-03" "perl v5.14.2" "User Contributed Perl Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -314,6 +314,9 @@ the file exist you can simply execute:
 .Vb 1
 \&        /usr/local/bin/ora2pg
 .Ve
+.PP
+or under Windows(tm) run ora2pg.bat file, located in your perl bin directory.
+Windows(tm) users may also find a template configuration file in C:\eora2pg
 .PP
 If you want to call another configuration file, just give the path as command
 line argument:
@@ -1337,6 +1340,12 @@ is 1Mb witch may not be enough to extract BLOBs or CLOBs. If the size of the
 error. Default: 1023*1024 bytes.
 .Sp
 Take a look at this page to learn more: http://search.cpan.org/~pythian/DBD\-Oracle\-1.22/Oracle.pm#Data_Interface_for_Persistent_LOBs
+.Sp
+Important note: If you increase the value of this directive take care that
+\&\s-1DATA_LIMIT\s0 will probably needs to be reduced. Even if you only have a 1Mb blob,
+trying to read 10000 of them (the default \s-1DATA_LIMIT\s0) all at once will require
+10Gb of memory. You may extract data from those table separatly and set a
+\&\s-1DATA_LIMIT\s0 to 500 or lower, otherwise you may experience some Out of memory.
 .IP "\s-1LONGTRUNKOK\s0" 4
 .IX Item "LONGTRUNKOK"
 If you want to bypass the '\s-1ORA\-24345:\s0 A Truncation' error, set this directive
