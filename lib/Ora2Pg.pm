@@ -841,7 +841,7 @@ sub _init
 
 	} else {
 		$self->{plsql_pgsql} = 1;
-		if (grep(/^$self->{type}$/, 'QUERY', 'FUNCTION','PROCEDURE','PACKAGE','TYPE')) {
+		if (grep(/^$self->{type}$/, 'TABLE', 'QUERY', 'FUNCTION','PROCEDURE','PACKAGE','TYPE')) {
 			$self->export_schema();
 		} else {
 			$self->logit("FATAL: bad export type using input file option\n", 0, 1);
@@ -1252,6 +1252,28 @@ sub _tables
 		}
 	}
 
+        while (my $row = $sth->fetch) {
+                # forget or not this object if it is in the exclude or allow lists.
+                next if ($self->skip_this_object('INDEX', $row->[0]));
+                $unique{$row->[-3]}{$row->[0]} = $row->[2];
+                if (($#{$row} > 6) && ($row->[7] eq 'Y')) {
+                        $idx_type{$row->[-3]}{$row->[0]} = $row->[4] . ' JOIN';
+                } else {
+                        $idx_type{$row->[-3]}{$row->[0]} = $row->[4];
+                }
+                # Replace function based index type
+                if ($row->[1] =~ /^SYS_NC/i) {
+                        $sth2->execute($row->[1],$row->[-3]) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+                        my $nc = $sth2->fetch();
+                        $row->[1] = $nc->[0];
+                }
+                $row->[1] =~ s/SYS_EXTRACT_UTC[\s\t]*\(([^\)]+)\)/$1/isg;
+                push(@{$data{$row->[-3]}{$row->[0]}}, $row->[1]);
+                $index_tablespace{$row->[-3]}{$row->[0]} = $row->[-1];
+        }
+
+        return \%unique, \%data, \%idx_type, \%index_tablespace;
+
 	# Retrieve all indexes informations
 	if (!$self->{skip_indices} && !$self->{skip_indexes}) {
 		my ($uniqueness, $indexes, $idx_type, $idx_tbsp) = $self->_get_indexes('',$self->{schema});
@@ -1390,6 +1412,301 @@ sub _tables
 
 }
 
+sub _split_table_definition
+{
+	my $str = shift();
+
+	my $ct = '';
+	my @parts = split(/([\(\)])/, $str);
+	my $def = '';
+	my $param = '';
+	my $i = 0;
+	for (; $i <= $#parts; $i++) {
+		$ct++ if ($parts[$i] =~ /\(/);
+		$ct-- if ($parts[$i] =~ /\)/);
+		if ( ($def ne '') && ($ct == 0) ) {
+			last;
+		}
+		$def .= $parts[$i] if ($def || ($parts[$i] ne '('));
+	}
+	$i++;
+	for (; $i <= $#parts; $i++) {
+		$param .= $parts[$i];
+	}
+
+	$def =~ s/[\t\s]+/ /g;
+	$param =~ s/[\t\s]+/ /g;
+
+	return ($def, $param);
+}
+
+sub _parse_constraint
+{
+	my ($self, $tb_name, $cur_col_name, $c) = @_;
+
+	if ($c =~ /^([^\s]+) (UNIQUE|PRIMARY KEY)\s*\(([^\)]+)\)/i) {
+		my $tp = 'U';
+		$tp = 'P' if ($2 eq 'PRIMARY KEY');
+		$self->{tables}{$tb_name}{unique_key}{$1} = { (
+			type => $tp, 'generated' => 0, 'index_name' => $1,
+			columns => ()
+		) };
+		push(@{$self->{tables}{$tb_name}{unique_key}{$1}{columns}}, split(/\s*,\s*/, $3));
+	} elsif ($c =~ /^([^\s]+) CHECK\s*\(([^\)]+)\)/i) {
+		my %tmp = ($1 => $2);
+		$self->{tables}{$tb_name}{check_constraint}{constraint}{$1} = $2;
+	} elsif ($c =~ /^([^\s]+) FOREIGN KEY (\([^\)]+\))?\s*REFERENCES ([^\(]+)\(([^\)]+)\)/i) {
+		my $c_name = $1;
+		if ($2) {
+			$cur_col_name = $2;
+		}
+		my $f_tb_name = $3;
+		my @col_list = split(/,/, $4);
+		$c_name =~ s/"//g;
+		$f_tb_name =~ s/"//g;
+		$cur_col_name =~ s/[\("\)]//g;
+		map { s/"//g; } @col_list;
+		if (!$self->{export_schema}) {
+			$f_tb_name =~ s/^[^\.]+\.//;
+			$f_tb_name =~ s/^[^\.]+\.//;
+			map { s/^[^\.]+\.//; } @col_list;
+		}
+		push(@{$self->{tables}{$tb_name}{foreign_link}{"\U$c_name\E"}{local}}, $cur_col_name);
+		push(@{$self->{tables}{$tb_name}{foreign_link}{"\U$c_name\E"}{remote}{$f_tb_name}}, @col_list);
+		my $deferrable = '';
+		$deferrable = 'DEFERRABLE' if ($c =~ /DEFERRABLE/);
+		my $deferred = '';
+		$deferred = 'DEFERRED' if ($c =~ /INITIALLY DEFERRED/);
+		# CONSTRAINT_NAME,R_CONSTRAINT_NAME,SEARCH_CONDITION,DELETE_RULE,$deferrable,DEFERRED,R_OWNER,TABLE_NAME,OWNER
+		push(@{$self->{tables}{$tb_name}{foreign_key}}, [ ($c_name,'','','',$deferrable,$deferred,'',$tb_name,'') ]);
+	}
+}
+
+
+sub read_schema_from_file
+{
+	my $self = shift;
+
+	# Load file in a singlr string
+	if (not open(INFILE, $self->{input_file})) {
+		die "FATAL: can't read file $self->{input_file}, $!\n";
+	}
+	my $content = '';
+	while (my $l = <INFILE>) {
+		chomp($l);
+		$l =~ s/\r//g;
+		$l =~ s/\t+/ /g;
+		$content =~ s/\-\-.*//;
+		next if (!$l);
+		$content .= $l . ' ';
+	}
+	close(INFILE);
+
+	$content =~ s/\/\*(.*?)\*\// /g;
+
+	my $tid = 0; 
+
+	while ($content =~ s/TRUNCATE TABLE\s+([^;]+);//i) {
+		my $tb_name = $1;
+		$tb_name =~ s/"//g;
+		if (!exists $self->{tables}{$tb_name}{table_info}{type}) {
+			$self->{tables}{$tb_name}{table_info}{type} = 'TABLE';
+			$self->{tables}{$tb_name}{table_info}{num_rows} = 0;
+			$tid++;
+			$self->{tables}{$tb_name}{internal_id} = $tid;
+		}
+		$self->{tables}{$tb_name}{truncate_table} = 1;
+	}
+
+
+	while ($content =~ s/CREATE\s+(GLOBAL)?\s*(TEMPORARY)?\s*TABLE[\s]+([^\s]+)\s+AS\s+([^;]+);//i) {
+		my $tb_name = $3;
+		$tb_name =~ s/"//g;
+		my $tb_def = $4;
+		$tb_def =~ s/\s+/ /g;
+		$self->{tables}{$tb_name}{table_info}{type} = 'TEMPORARY ' if ($2);
+		$self->{tables}{$tb_name}{table_info}{type} .= 'TABLE';
+		$self->{tables}{$tb_name}{table_info}{num_rows} = 0;
+		$tid++;
+		$self->{tables}{$tb_name}{internal_id} = $tid;
+		$self->{tables}{$tb_name}{table_as} = $tb_def;
+	}
+
+	while ($content =~ s/CREATE\s+(GLOBAL)?\s*(TEMPORARY)?\s*TABLE[\s]+([^\s\(]+)\s*([^;]+);//i) {
+		my $tb_name = $3;
+		my $tb_def  = $4;
+		my $tb_param  = '';
+		$tb_name =~ s/"//g;
+		$self->{tables}{$tb_name}{table_info}{type} = 'TEMPORARY ' if ($2);
+		$self->{tables}{$tb_name}{table_info}{type} .= 'TABLE';
+		$self->{tables}{$tb_name}{table_info}{num_rows} = 0;
+		$tid++;
+		$self->{tables}{$tb_name}{internal_id} = $tid;
+
+		($tb_def, $tb_param) = &_split_table_definition($tb_def);
+		my @column_defs = split(/\s*,\s*/, $tb_def);
+		map { s/^\s+//; s/\s+$//; } @column_defs;
+		# Fix split on scale comma, for example NUMBER(9,4)
+		for (my $i = 0; $i <= $#column_defs; $i++) {
+			if ($column_defs[$i] =~ /^\d+/) {
+				$column_defs[$i-1] .= ",$column_defs[$i]";
+				$column_defs[$i] = '';
+			}
+		}
+		# Fix split on multicolumn's constraints, ex: UNIQUE (last_name,first_name) 
+		for (my $i = $#column_defs; $i >= 0; $i--) {
+			if ( ($column_defs[$i] !~ /\s/) || ($column_defs[$i] =~ /^[^\(]+\) REFERENCES/i) || ($column_defs[$i] =~ /^[^\(]+\) USING INDEX/ii)) {
+				$column_defs[$i-1] .= ",$column_defs[$i]";
+				$column_defs[$i] = '';
+			}
+		}
+		my $pos = 0;
+		my $cur_c_name = '';
+		foreach my $c (@column_defs) {
+			next if (!$c);
+			# Remove things that are not possible with postgres
+			$c =~ s/(PRIMARY KEY.*)NOT NULL/$1/i;
+			# Rewrite some parts for easiest/generic parsing
+			$c =~ s/^(PRIMARY KEY|UNIQUE)/CONSTRAINT ora2pg_ukey_$tb_name $1/i;
+			$c =~ s/^CHECK\b/CONSTRAINT ora2pg_ckey_$tb_name CHECK/i;
+			$c =~ s/^FOREIGN KEY/CONSTRAINT ora2pg_fkey_$tb_name FOREIGN KEY/i;
+			# Get column name
+			if ($c =~ s/^\s*([^\s]+)\s*//) {
+				my $c_name = $1;
+				$c_name =~ s/"//g;
+				# Retrieve all columns information
+				if (uc($c_name) ne 'CONSTRAINT') {
+					$cur_c_name = $c_name;
+					my $c_type = '';
+					if ($c =~ s/^([^\s\(]+)\s*//) {
+						$c_type = $1;
+					} else {
+						next;
+					}
+					my $c_length = '';
+					my $c_scale = '';
+					if ($c =~ s/^\(([^\)]+)\)\s*//) {
+						$c_length = $1;
+						if ($c_length =~ s/\s*,\s*(\d+)\s*//) {
+							$c_scale = $1;
+						}
+					}
+					my $c_nullable = 1;
+					if ($c =~ s/CONSTRAINT\s*([^\s]+)?\s*NOT NULL//) {
+						$c_nullable = 0;
+					} elsif ($c =~ s/NOT NULL//) {
+						$c_nullable = 0;
+					}
+
+					if (($c =~ s/(UNIQUE|PRIMARY KEY)\s*\(([^\)]+)\)//i) || ($c =~ s/(UNIQUE|PRIMARY KEY)\s*//i)) {
+						my $pk_name = 'ora2pg_ukey_' . $c_name; 
+						my $cols = $c_name;
+						if ($2) {
+							$cols = $2;
+						}
+						$self->_parse_constraint($tb_name, $c_name, "$pk_name $1 ($cols)");
+
+					} elsif ( ($c =~ s/CONSTRAINT\s([^\s]+)\sCHECK\s*\(([^\)]+)\)//i) || ($c =~ s/CHECK\s*\(([^\)]+)\)//i) ) {
+						my $pk_name = 'ora2pg_ckey_' . $c_name; 
+						my $chk_search = $1;
+						if ($2) {
+							$pk_name = $1;
+							$chk_search = $2;
+						}
+						$self->_parse_constraint($tb_name, $c_name, "$pk_name CHECK ($chk_search)");
+
+					} elsif ($c =~ s/REFERENCES\s+([^\(]+)\(([^\)]+)\)//i) {
+
+						my $pk_name = 'ora2pg_fkey_' . $c_name; 
+						my $chk_search = $1 . "($2)";
+						$chk_search =~ s/\s+//g;
+						$self->_parse_constraint($tb_name, $c_name, "$pk_name FOREIGN KEY ($c_name) REFERENCES $chk_search");
+					}
+
+					my $c_default = '';
+					if ($c =~ s/DEFAULT\s+([^\s]+)\s*//) {
+						$c_default = $1;
+					}
+					#COLUMN_NAME, DATA_TYPE, DATA_LENGTH, NULLABLE, DATA_DEFAULT, DATA_PRECISION, DATA_SCALE, CHAR_LENGTH, TABLE_NAME, OWNER
+					push(@{$self->{tables}{$tb_name}{column_info}{$c_name}}, ($c_name, $c_type, $c_length, $c_nullable, $c_default, $c_length, $c_scale, $c_length, $tb_name, '', $pos));
+				} else {
+					$self->_parse_constraint($tb_name, $cur_c_name, $c);
+				}
+			}
+			$pos++;
+		}
+		map {s/^/\t/; s/$/,\n/; } @column_defs;
+		# look for storage information
+		if ($tb_param =~ /TABLESPACE[\s]+([^\s]+)/i) {
+			$self->{tables}{$tb_name}{table_info}{tablespace} = $1;
+			$self->{tables}{$tb_name}{table_info}{tablespace} =~ s/"//g;
+		}
+		if ($tb_param =~ /PCTFREE\s+(\d+)/i) {
+			$self->{tables}{$tb_name}{table_info}{fillfactor} = $1;
+		}
+		if ($tb_param =~ /\bNOLOGGING\b/i) {
+			$self->{tables}{$tb_name}{table_info}{nologging} = 1;
+		}
+
+		#$comments{$row->[0]}{comment} = $row->[1];
+		#$comments{$row->[0]}{table_type} = $row->[2];
+		#$tables_infos{$row->[1]}{owner} = $row->[0] || '';
+		#$tables_infos{$row->[1]}{comment} =  $comments{$row->[1]}{comment} || '';
+	}
+
+	while ($content =~ s/ALTER\s+TABLE[\s]+([^\s]+)\s+([^;]+);//i) {
+		my $tb_name = $1;
+		$tb_name =~ s/"//g;
+		my $tb_def = $2;
+		$tb_def =~ s/\s+/ /g;
+		$tb_def =~ s/\s*USING INDEX.*//g;
+		if (!exists $self->{tables}{$tb_name}{table_info}{type}) {
+			$self->{tables}{$tb_name}{table_info}{type} = 'TABLE';
+			$self->{tables}{$tb_name}{table_info}{num_rows} = 0;
+			$tid++;
+			$self->{tables}{$tb_name}{internal_id} = $tid;
+		}
+		push(@{$self->{tables}{$tb_name}{alter_table}}, $tb_def);
+	}
+
+	while ($content =~ s/CREATE\s+(UNIQUE)?\s*INDEX\s+([^\s]+)\s+ON\s+([^\s\(]+)\s*\(([^;]+);//i) {
+		my $is_unique = $1;
+		my $idx_name = $2;
+		$idx_name =~ s/"//g;
+		my $tb_name = $3;
+		$tb_name =~ s/\s+/ /g;
+		my $idx_def = $4;
+		$idx_def =~ s/\s+/ /g;
+		$idx_def =~ s/\s*nologging//i;
+		$idx_def =~ s/STORAGE\s*\([^\)]+\)\s*//i;
+		$idx_def =~ s/COMPRESS(\s+\d+)?\s*//i;
+		# look for storage information
+		if ($idx_def =~ s/TABLESPACE\s*([^\s]+)\s*//i) {
+			$self->{tables}{$tb_name}{idx_tbsp}{$idx_name} = $1;
+			$self->{tables}{$tb_name}{idx_tbsp}{$idx_name} =~ s/"//g;
+		}
+		if ($idx_def =~ s/ONLINE\s*//i) {
+			$self->{tables}{$tb_name}{concurrently}{$idx_name} = 1;
+		}
+		$idx_def =~ s/\)[^\)]*$//;
+		$self->{tables}{$tb_name}{uniqueness}{$idx_name} = $is_unique || '';
+                $idx_def =~ s/SYS_EXTRACT_UTC[\s\t]*\(([^\)]+)\)/$1/isg;
+		push(@{$self->{tables}{$tb_name}{indexes}{$idx_name}}, $idx_def);
+		$self->{tables}{$tb_name}{idx_type}{$idx_name} = 'NORMAL';
+		if ($idx_def =~ /\(/) {
+			$self->{tables}{$tb_name}{idx_type}{$idx_name} = 'FUNCTION-BASED';
+		}
+
+		if (!exists $self->{tables}{$tb_name}{table_info}{type}) {
+			$self->{tables}{$tb_name}{table_info}{type} = 'TABLE';
+			$self->{tables}{$tb_name}{table_info}{num_rows} = 0;
+			$tid++;
+			$self->{tables}{$tb_name}{internal_id} = $tid;
+		}
+
+	}
+
+}
 
 =head2 _views
 
@@ -3190,6 +3507,10 @@ CREATE TRIGGER insert_${table}_trigger
 	}
 	$sql_output .= $self->set_search_path();
 
+	if ($self->{input_file}) {
+		$self->read_schema_from_file();
+	}
+
 	my $constraints = '';
 	if ($self->{file_per_constraint}) {
 		$constraints .= $self->set_search_path();
@@ -3198,6 +3519,7 @@ CREATE TRIGGER insert_${table}_trigger
 	if ($self->{file_per_index}) {
 		$indices .= $self->set_search_path();
 	}
+
 	# Find first the total number of tables
 	my $num_total_table = 0;
 	foreach my $table (keys %{$self->{tables}}) {
@@ -3233,76 +3555,91 @@ CREATE TRIGGER insert_${table}_trigger
 			$foreign = ' FOREIGN';
 		}
 		my $obj_type = $self->{tables}{$table}{table_info}{type} || 'TABLE';
-		$sql_output .= "\nCREATE$foreign $obj_type $tbname (\n";
+		if ( ($obj_type eq 'TABLE') && $self->{tables}{$table}{table_info}{nologging}) {
+			$obj_type = 'UNLOGGED ' . $obj_type;
+		}
+		if (exists $self->{tables}{$table}{table_as}) {
+			if ($self->{plsql_pgsql}) {
+				$self->{tables}{$table}{table_as} = Ora2Pg::PLSQL::plsql_to_plpgsql($self->{tables}{$table}{table_as}, $self->{allow_code_break},$self->{null_equal_empty});
+			}
+			$sql_output .= "\nCREATE $obj_type $tbname AS $self->{tables}{$table}{table_as};\n";
+			next;
+		}
+		if (exists $self->{tables}{$table}{truncate_table}) {
+			$sql_output .= "\nTRUNCATE TABLE $tbname;\n";
+		}
+		if (exists $self->{tables}{$table}{column_info}) {
+			$sql_output .= "\nCREATE$foreign $obj_type $tbname (\n";
 
-		# Extract column information following the Oracle position order
-		foreach my $k (sort { 
-				if (!$self->{reordering_columns}) {
-					$self->{tables}{$table}{column_info}{$a}[-1] <=> $self->{tables}{$table}{column_info}{$b}[-1];
+			# Extract column information following the Oracle position order
+			foreach my $k (sort { 
+					if (!$self->{reordering_columns}) {
+						$self->{tables}{$table}{column_info}{$a}[-1] <=> $self->{tables}{$table}{column_info}{$b}[-1];
+					} else {
+						my $tmpa = $self->{tables}{$table}{column_info}{$a};
+						my $typa = $self->_sql_type($tmpa->[1], $tmpa->[2], $tmpa->[5], $tmpa->[6]);
+						$typa =~ s/\(.*//;
+						my $tmpb = $self->{tables}{$table}{column_info}{$b};
+						my $typb = $self->_sql_type($tmpb->[1], $tmpb->[2], $tmpb->[5], $tmpb->[6]);
+						$typb =~ s/\(.*//;
+						$TYPALIGN{$typb} <=> $TYPALIGN{$typa};
+					}
+				} keys %{$self->{tables}{$table}{column_info}}) {
+
+				my $f = $self->{tables}{$table}{column_info}{$k};
+				my $type = $self->_sql_type($f->[1], $f->[2], $f->[5], $f->[6]);
+				$type = "$f->[1], $f->[2]" if (!$type);
+				# Change column names
+				my $fname = $f->[0];
+				if (exists $self->{replaced_cols}{"\L$table\E"}{"\L$fname\E"} && $self->{replaced_cols}{"\L$table\E"}{"\L$fname\E"}) {
+					$self->logit("\tReplacing column \L$f->[0]\E as " . $self->{replaced_cols}{"\L$table\E"}{"\L$fname\E"} . "...\n", 1);
+					$fname = $self->{replaced_cols}{"\L$table\E"}{"\L$fname\E"};
+				}
+				# Check if this column should be replaced by a boolean following table/column name
+				if (grep(/^$f->[0]$/i, @{$self->{'replace_as_boolean'}{uc($table)}})) {
+					$type = 'boolean';
+				# Check if this column should be replaced by a boolean following type/precision
+				} elsif (exists $self->{'replace_as_boolean'}{uc($f->[1])} && ($self->{'replace_as_boolean'}{uc($f->[1])}[0] == $f->[5])) {
+					$type = 'boolean';
+				}
+				$type = $self->{'modify_type'}{"\L$table\E"}{"\L$f->[0]\E"} if (exists $self->{'modify_type'}{"\L$table\E"}{"\L$f->[0]\E"});
+				if (!$self->{preserve_case}) {
+					$fname = $self->quote_reserved_words($fname);
+					$sql_output .= "\t\L$fname\E $type";
 				} else {
-					my $tmpa = $self->{tables}{$table}{column_info}{$a};
-					my $typa = $self->_sql_type($tmpa->[1], $tmpa->[2], $tmpa->[5], $tmpa->[6]);
-					$typa =~ s/\(.*//;
-					my $tmpb = $self->{tables}{$table}{column_info}{$b};
-					my $typb = $self->_sql_type($tmpb->[1], $tmpb->[2], $tmpb->[5], $tmpb->[6]);
-					$typb =~ s/\(.*//;
-					$TYPALIGN{$typb} <=> $TYPALIGN{$typa};
+					$sql_output .= "\t\"$fname\" $type";
 				}
-			} keys %{$self->{tables}{$table}{column_info}}) {
-
-			my $f = $self->{tables}{$table}{column_info}{$k};
-			my $type = $self->_sql_type($f->[1], $f->[2], $f->[5], $f->[6]);
-			$type = "$f->[1], $f->[2]" if (!$type);
-			# Change column names
-			my $fname = $f->[0];
-			if (exists $self->{replaced_cols}{"\L$table\E"}{"\L$fname\E"} && $self->{replaced_cols}{"\L$table\E"}{"\L$fname\E"}) {
-				$self->logit("\tReplacing column \L$f->[0]\E as " . $self->{replaced_cols}{"\L$table\E"}{"\L$fname\E"} . "...\n", 1);
-				$fname = $self->{replaced_cols}{"\L$table\E"}{"\L$fname\E"};
-			}
-			# Check if this column should be replaced by a boolean following table/column name
-			if (grep(/^$f->[0]$/i, @{$self->{'replace_as_boolean'}{uc($table)}})) {
-				$type = 'boolean';
-			# Check if this column should be replaced by a boolean following type/precision
-			} elsif (exists $self->{'replace_as_boolean'}{uc($f->[1])} && ($self->{'replace_as_boolean'}{uc($f->[1])}[0] == $f->[5])) {
-				$type = 'boolean';
-			}
-			$type = $self->{'modify_type'}{"\L$table\E"}{"\L$f->[0]\E"} if (exists $self->{'modify_type'}{"\L$table\E"}{"\L$f->[0]\E"});
-			if (!$self->{preserve_case}) {
-				$fname = $self->quote_reserved_words($fname);
-				$sql_output .= "\t\L$fname\E $type";
-			} else {
-				$sql_output .= "\t\"$fname\" $type";
-			}
-			if (!$f->[3] || ($f->[3] eq 'N')) {
-				push(@{$self->{tables}{$table}{check_constraint}{notnull}}, $f->[0]);
-				$sql_output .= " NOT NULL";
-			}
-			if ($f->[4] ne "") {
-				$f->[4] =~ s/SYSDATE[\s\t]*\([\s\t]*\)/LOCALTIMESTAMP/igs;
-				$f->[4] =~ s/SYSDATE/LOCALTIMESTAMP/ig;
-				$f->[4] =~ s/^[\s\t]+//;
-				$f->[4] =~ s/[\s\t]+$//;
-				if ($self->{type} ne 'FDW') {
-					$sql_output .= " DEFAULT $f->[4]";
+				if (!$f->[3] || ($f->[3] eq 'N')) {
+					push(@{$self->{tables}{$table}{check_constraint}{notnull}}, $f->[0]);
+					$sql_output .= " NOT NULL";
 				}
+				if ($f->[4] ne "") {
+					$f->[4] =~ s/SYSDATE[\s\t]*\([\s\t]*\)/LOCALTIMESTAMP/igs;
+					$f->[4] =~ s/SYSDATE/LOCALTIMESTAMP/ig;
+					$f->[4] =~ s/^[\s\t]+//;
+					$f->[4] =~ s/[\s\t]+$//;
+					if ($self->{type} ne 'FDW') {
+						$sql_output .= " DEFAULT $f->[4]";
+					}
+				}
+				$sql_output .= ",\n";
 			}
-			$sql_output .= ",\n";
-		}
-		if ($self->{pkey_in_create}) {
-			$sql_output .= $self->_get_primary_keys($table, $self->{tables}{$table}{unique_key});
-		}
-		$sql_output =~ s/,$//;
-		if ( ($self->{type} ne 'FDW') && (!$self->{external_to_fdw} || !grep(/^$table$/i, keys %{$self->{external_table}})) ) {
-			if ($self->{use_tablespace} && $self->{tables}{$table}{table_info}{tablespace} && !grep(/^$self->{tables}{$table}{table_info}{tablespace}$/i, @{$self->{default_tablespaces}})) {
-				$sql_output .= ") TABLESPACE $self->{tables}{$table}{table_info}{tablespace};\n";
+			if ($self->{pkey_in_create}) {
+				$sql_output .= $self->_get_primary_keys($table, $self->{tables}{$table}{unique_key});
+			}
+			$sql_output =~ s/,$//;
+			if ( ($self->{type} ne 'FDW') && (!$self->{external_to_fdw} || !grep(/^$table$/i, keys %{$self->{external_table}})) ) {
+				if ($self->{use_tablespace} && $self->{tables}{$table}{table_info}{tablespace} && !grep(/^$self->{tables}{$table}{table_info}{tablespace}$/i, @{$self->{default_tablespaces}})) {
+					$sql_output .= ") TABLESPACE $self->{tables}{$table}{table_info}{tablespace};\n";
+				} else {
+					$sql_output .= ");\n";
+				}
+			} elsif ( grep(/^$table$/i, keys %{$self->{external_table}}) ) {
+				$sql_output .= ") SERVER \L$self->{external_table}{$table}{directory}\E OPTIONS(filename '$self->{external_table}{$table}{directory_path}$self->{external_table}{$table}{location}', format 'csv', delimiter '$self->{external_table}{$table}{delimiter}');\n";
 			} else {
-				$sql_output .= ");\n";
+				my $schem = "schema '$self->{schema}'," if ($self->{schema});
+				$sql_output .= ") SERVER $self->{fdw_server} OPTIONS($schem table '$table');\n";
 			}
-		} elsif ( grep(/^$table$/i, keys %{$self->{external_table}}) ) {
-			$sql_output .= ") SERVER \L$self->{external_table}{$table}{directory}\E OPTIONS(filename '$self->{external_table}{$table}{directory_path}$self->{external_table}{$table}{location}', format 'csv', delimiter '$self->{external_table}{$table}{delimiter}');\n";
-		} else {
-			my $schem = "schema '$self->{schema}'," if ($self->{schema});
-			$sql_output .= ") SERVER $self->{fdw_server} OPTIONS($schem table '$table');\n";
 		}
 
 		# Add comments on table
@@ -3336,6 +3673,12 @@ CREATE TRIGGER insert_${table}_trigger
 			my $owner = $self->{tables}{$table}{table_info}{owner};
 			$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
 			$sql_output .= "ALTER $self->{tables}{$table}{table_info}{type} $tbname OWNER TO $owner;\n";
+		}
+		if (exists $self->{tables}{$table}{alter_table}) {
+			$obj_type =~ s/UNLOGGED //;
+			foreach (@{$self->{tables}{$table}{alter_table}}) {
+				$sql_output .= "\nALTER $obj_type $tbname $_;\n";
+			}
 		}
 		if ($self->{type} ne 'FDW') {
 			# Set the unique (and primary) key definition 
@@ -3604,8 +3947,13 @@ sub _create_indexes
 			my $unique = '';
 			$unique = ' UNIQUE' if ($self->{tables}{$tbsaved}{uniqueness}{$idx} eq 'UNIQUE');
 			my $str = '';
+			my $concurrently = '';
+			if ($self->{tables}{$tbsaved}{concurrently}{$idx}) {
+				$concurrently = ' CONCURRENTLY';
+			}
 			$columns = lc($columns) if (!$self->{preserve_case});
-			$str .= "CREATE$unique INDEX \L$idx$self->{indexes_suffix}\E ON $table ($columns)";
+			$columns =~ s/^\((.*)\)$/$1/;
+			$str .= "CREATE$unique INDEX$concurrently \L$idx$self->{indexes_suffix}\E ON $table ($columns)";
 			if ($self->{use_tablespace} && $self->{tables}{$tbsaved}{idx_tbsp}{$idx} && !grep(/^$self->{tables}{$tbsaved}{idx_tbsp}{$idx}$/i, @{$self->{default_tablespaces}})) {
 				$str .= " TABLESPACE $self->{tables}{$tbsaved}{idx_tbsp}{$idx}";
 			}
@@ -3903,6 +4251,7 @@ sub _create_foreign_keys
 		next if (grep(/^$h->[0]$/, @done));
 		$h->[0] = uc($h->[0]);
 		foreach my $desttable (keys %{$self->{tables}{$tbsaved}{foreign_link}{$h->[0]}{remote}}) {
+
 			# Do not export foreign key to table that are not exported
 			next if ($self->skip_this_object('TABLE', $desttable));
 			my $str = '';
@@ -3938,12 +4287,12 @@ sub _create_foreign_keys
 			if (!$self->{preserve_case}) {
 					$h->[0] = lc($h->[0]);
 			}
-			$str .= "ALTER TABLE $table ADD CONSTRAINT $h->[0] FOREIGN KEY (" . join(',', @lfkeys) . ") REFERENCES $subsdesttable (" . join(',', @rfkeys) . ")";
+			$str .= "ALTER TABLE $table ADD CONSTRAINT $h->[0] FOREIGN KEY (" . join(',', @lfkeys) . ") REFERENCES $subsdesttable(" . join(',', @rfkeys) . ")";
 			$str .= " MATCH $h->[2]" if ($h->[2]);
-			$str .= " ON DELETE $h->[3]";
+			$str .= " ON DELETE $h->[3]" if ($h->[3]);
 			# if DEFER_FKEY is enabled, force constraint to be
 			# deferrable and defer it initially.
-			$str .= (($self->{'defer_fkey'} ) ? ' DEFERRABLE' : " $h->[4]");
+			$str .= (($self->{'defer_fkey'} ) ? ' DEFERRABLE' : " $h->[4]") if ($h->[4]);
 			$str .= " INITIALLY " . ( ($self->{'defer_fkey'} ) ? 'DEFERRED' : $h->[5] ) . ";\n";
 			push(@out, $str);
 		}
@@ -6572,8 +6921,8 @@ sub _dump_to_pg
 	if ($self->{pg_dsn}) {
 		$dbhdest = $self->_send_to_pgdb();
 		$self->logit("Dumping data from table $rname into PostgreSQL...\n", 1);
+		$self->logit("Disabling synchronous commit when writing to PostgreSQL...\n", 1);
 		if (!$self->{synchronous_commit}) {
-			$self->logit("Disabling synchronous commit when writing to PostgreSQL...\n", 1);
 			my $s = $dbhdest->do("SET synchronous_commit TO off") or $self->logit("FATAL: " . $dbhdest->errstr . "\n", 0, 1);
 		}
 	}
