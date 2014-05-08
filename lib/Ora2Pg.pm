@@ -646,6 +646,9 @@ sub _init
 	# Initialize suffix that may be added to the index name
 	$self->{indexes_suffix} ||= '';
 
+	# Disable synchronous commit for pg data load
+	$self->{synchronous_commit} ||= 0;
+
 	# Overwrite configuration with all given parameters
 	# and try to preserve backward compatibility
 	foreach my $k (keys %options) {
@@ -6569,8 +6572,10 @@ sub _dump_to_pg
 	if ($self->{pg_dsn}) {
 		$dbhdest = $self->_send_to_pgdb();
 		$self->logit("Dumping data from table $rname into PostgreSQL...\n", 1);
-		$self->logit("Disabling synchronous commit when writing to PostgreSQL...\n", 1);
-		my $s = $dbhdest->do("SET synchronous_commit TO off") or $self->logit("FATAL: " . $dbhdest->errstr . "\n", 0, 1);
+		if (!$self->{synchronous_commit}) {
+			$self->logit("Disabling synchronous commit when writing to PostgreSQL...\n", 1);
+			my $s = $dbhdest->do("SET synchronous_commit TO off") or $self->logit("FATAL: " . $dbhdest->errstr . "\n", 0, 1);
+		}
 	}
 
 	# Build header of the file

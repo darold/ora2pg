@@ -124,7 +124,7 @@
 .\" ========================================================================
 .\"
 .IX Title "ORA2PG 1"
-.TH ORA2PG 1 "2014-05-03" "perl v5.14.2" "User Contributed Perl Documentation"
+.TH ORA2PG 1 "2014-05-08" "perl v5.14.2" "User Contributed Perl Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -1125,6 +1125,15 @@ will connect to database 'pgdb' on localhost at tcp port 5432.
 .IP "\s-1PG_USER\s0 and \s-1PG_PWD\s0" 4
 .IX Item "PG_USER and PG_PWD"
 These two directives are used to set the login user and password.
+.IP "\s-1SYNCHRONOUS_COMMIT\s0" 4
+.IX Item "SYNCHRONOUS_COMMIT"
+Specifies whether transaction commit will wait for \s-1WAL\s0 records to be written
+to disk before the command returns a \*(L"success\*(R" indication to the client. This
+is the equivalent to set synchronous_commit directive of postgresql.conf file.
+This is only used when you load data directly to PostgreSQL, the default is
+off to disable synchronous commit to gain speed at writing data. Some modified
+version of PostgreSQL, like greenplum, do not have this setting, so in this
+set this directive to 1, ora2pg will not  try to change the setting.
 .SS "Taking export under control"
 .IX Subsection "Taking export under control"
 The following other configuration directives interact directly with the export process and give you fine granuality in database export control.

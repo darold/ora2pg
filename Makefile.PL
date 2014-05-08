@@ -545,6 +545,14 @@ REORDERING_COLUMNS	0
 # with same name as tables. Not so common but can help.
 #INDEXES_SUFFIX		_idx
 
+# Specifies whether transaction commit will wait for WAL records to be written
+# to disk before the command returns a "success" indication to the client. This
+# is the equivalent to set synchronous_commit directive of postgresql.conf file.
+# This is only used when you load data directly to PostgreSQL, the default is
+# off to disable synchronous commit to gain speed at writing data. Some modified
+# version of PostgreSQL, like greenplum, do not have this setting, so in this
+# set this directive to 1, ora2pg will not  try to change the setting.
+SYNCHRONOUS_COMMIT	0
 };
 close(OUTCFG);
 
