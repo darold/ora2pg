@@ -763,6 +763,7 @@ sub _init
 	if ($self->{pg_supports_mview} eq '') {
 		$self->{pg_supports_mview} = 1;
 	}
+	$self->{pg_supports_checkoption} ||= 0;
 
 	# Backward compatibility with LongTrunkOk with typo
 	if ($self->{longtrunkok} && not defined $self->{longtruncok}) {
@@ -841,7 +842,7 @@ sub _init
 
 	} else {
 		$self->{plsql_pgsql} = 1;
-		if (grep(/^$self->{type}$/, 'TABLE', 'QUERY', 'FUNCTION','PROCEDURE','PACKAGE','TYPE')) {
+		if (grep(/^$self->{type}$/, 'TABLE', 'VIEW', 'QUERY', 'FUNCTION','PROCEDURE','PACKAGE','TYPE')) {
 			$self->export_schema();
 		} else {
 			$self->logit("FATAL: bad export type using input file option\n", 0, 1);
@@ -1252,28 +1253,6 @@ sub _tables
 		}
 	}
 
-        while (my $row = $sth->fetch) {
-                # forget or not this object if it is in the exclude or allow lists.
-                next if ($self->skip_this_object('INDEX', $row->[0]));
-                $unique{$row->[-3]}{$row->[0]} = $row->[2];
-                if (($#{$row} > 6) && ($row->[7] eq 'Y')) {
-                        $idx_type{$row->[-3]}{$row->[0]} = $row->[4] . ' JOIN';
-                } else {
-                        $idx_type{$row->[-3]}{$row->[0]} = $row->[4];
-                }
-                # Replace function based index type
-                if ($row->[1] =~ /^SYS_NC/i) {
-                        $sth2->execute($row->[1],$row->[-3]) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-                        my $nc = $sth2->fetch();
-                        $row->[1] = $nc->[0];
-                }
-                $row->[1] =~ s/SYS_EXTRACT_UTC[\s\t]*\(([^\)]+)\)/$1/isg;
-                push(@{$data{$row->[-3]}{$row->[0]}}, $row->[1]);
-                $index_tablespace{$row->[-3]}{$row->[0]} = $row->[-1];
-        }
-
-        return \%unique, \%data, \%idx_type, \%index_tablespace;
-
 	# Retrieve all indexes informations
 	if (!$self->{skip_indices} && !$self->{skip_indexes}) {
 		my ($uniqueness, $indexes, $idx_type, $idx_tbsp) = $self->_get_indexes('',$self->{schema});
@@ -1482,12 +1461,11 @@ sub _parse_constraint
 	}
 }
 
-
-sub read_schema_from_file
+sub _get_dml_from_file
 {
 	my $self = shift;
 
-	# Load file in a singlr string
+	# Load file in a single string
 	if (not open(INFILE, $self->{input_file})) {
 		die "FATAL: can't read file $self->{input_file}, $!\n";
 	}
@@ -1503,6 +1481,17 @@ sub read_schema_from_file
 	close(INFILE);
 
 	$content =~ s/\/\*(.*?)\*\// /g;
+	$content =~ s/CREATE\s+OR\s+REPLACE/CREATE/g;
+
+	return $content;
+}
+
+sub read_schema_from_file
+{
+	my $self = shift;
+
+	# Load file in a single string
+	my $content = $self->_get_dml_from_file();
 
 	my $tid = 0; 
 
@@ -1517,7 +1506,6 @@ sub read_schema_from_file
 		}
 		$self->{tables}{$tb_name}{truncate_table} = 1;
 	}
-
 
 	while ($content =~ s/CREATE\s+(GLOBAL)?\s*(TEMPORARY)?\s*TABLE[\s]+([^\s]+)\s+AS\s+([^;]+);//i) {
 		my $tb_name = $3;
@@ -1708,6 +1696,47 @@ sub read_schema_from_file
 
 }
 
+sub read_view_from_file
+{
+	my $self = shift;
+
+	# Load file in a single string
+	my $content = $self->_get_dml_from_file();
+
+	my $tid = 0; 
+
+	$content =~ s/CREATE\s+NO\s+FORCE\s+VIEW/CREATE VIEW/g;
+	$content =~ s/CREATE\s+FORCE\s+VIEW/CREATE VIEW/g;
+	$content =~ s/CREATE VIEW[\s]+([^\s]+)\s+OF\s+(.*?)\s+AS\s+/CREATE VIEW $1 AS /g;
+	# Views with aliases
+	while ($content =~ s/CREATE\sVIEW[\s]+([^\s]+)\s*\((.*?)\)\s+AS\s+([^;]+);//i) {
+		my $v_name = $1;
+		$v_name =~ s/"//g;
+		my $v_alias = $2;
+		my $v_def = $3;
+		$v_def =~ s/\s+/ /g;
+		$tid++;
+	        $self->{views}{$v_name}{text} = $v_def;
+		# Remove constraint
+		while ($v_alias =~ s/(,[^,\(]+\(.*)$//) {};
+		my @aliases = split(/\s*,\s*/, $v_alias);
+		foreach (@aliases) {
+			my @tmp = split(/\s+/);
+			push(@{$self->{views}{$v_name}{alias}}, \@tmp);
+		}
+	}
+	# Standard views
+	while ($content =~ s/CREATE\sVIEW[\s]+([^\s]+)\s+AS\s+([^;]+);//i) {
+		my $v_name = $1;
+		$v_name =~ s/"//g;
+		my $v_def = $2;
+		$v_def =~ s/\s+/ /g;
+		$tid++;
+	        $self->{views}{$v_name}{text} = $v_def;
+	}
+}
+
+
 =head2 _views
 
 This function is used to retrieve all views information.
@@ -1861,6 +1890,10 @@ sub _get_sql_data
 	# Process view only
 	if ($self->{type} eq 'VIEW') {
 		$self->logit("Add views definition...\n", 1);
+		# Read DML from file if any
+		if ($self->{input_file}) {
+			$self->read_view_from_file();
+		}
 		my $nothing = 0;
 		$self->dump($sql_header);
 		my $dirprefix = '';
@@ -1880,7 +1913,11 @@ sub _get_sql_data
 				$self->logit("Dumping to one file per view : ${view}_$self->{output}\n", 1);
 				$fhdl = $self->open_export_file("${view}_$self->{output}");
 			}
-			$self->{views}{$view}{text} =~ s/\s*\bWITH\b\s+.*$//s;
+			if ($self->{pg_supports_checkoption} && ($self->{views}{$view}{text} =~ /\bCHECK\s+OPTION\b/i)) {
+				$self->{views}{$view}{text} =~ s/\s*\bWITH\b\s+.*$/ WITH CHECK OPTION/s;
+			} else {	
+				$self->{views}{$view}{text} =~ s/\s*\bWITH\b\s+.*$//s;
+			}
 			$self->{views}{$view}{text} = $self->_format_view($self->{views}{$view}{text});
 			if (!@{$self->{views}{$view}{alias}}) {
 				if (!$self->{preserve_case}) {
@@ -3507,6 +3544,7 @@ CREATE TRIGGER insert_${table}_trigger
 	}
 	$sql_output .= $self->set_search_path();
 
+	# Read DML from file if any
 	if ($self->{input_file}) {
 		$self->read_schema_from_file();
 	}
