@@ -1253,6 +1253,11 @@ directive is enabled by default, set it to 0 disable this feature.
 Add support to INSTEAD OF usage on triggers (used with PG >= 9.1), if this
 directive is disabled the INSTEAD OF triggers will be rewritten as Pg rules.
 
+=item PG_SUPPORTS_CHECKOPTION
+
+If enabled, export views with CHECK OPTION. Enable it if you have PostgreSQL
+version 9.4 or higher. Default: 0, disabled.
+
 =item LONGREADLEN
 
 Use this directive to set the database handle's 'LongReadLen' attribute to a

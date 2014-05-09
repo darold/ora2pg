@@ -553,6 +553,11 @@ REORDERING_COLUMNS	0
 # version of PostgreSQL, like greenplum, do not have this setting, so in this
 # set this directive to 1, ora2pg will not  try to change the setting.
 SYNCHRONOUS_COMMIT	0
+
+# If enabled, export view with CHECK OPTION. Enable it if you have PostgreSQL
+# version 9.4 or higher. Default, disabled
+PG_SUPPORTS_CHECKOPTION	0
+
 };
 close(OUTCFG);
 

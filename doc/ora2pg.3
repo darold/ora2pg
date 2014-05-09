@@ -124,7 +124,7 @@
 .\" ========================================================================
 .\"
 .IX Title "ORA2PG 1"
-.TH ORA2PG 1 "2014-05-08" "perl v5.14.2" "User Contributed Perl Documentation"
+.TH ORA2PG 1 "2014-05-09" "perl v5.14.2" "User Contributed Perl Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -1340,6 +1340,10 @@ directive is enabled by default, set it to 0 disable this feature.
 .IX Item "PG_SUPPORTS_INSTEADOF (Deprecated)"
 Add support to \s-1INSTEAD\s0 \s-1OF\s0 usage on triggers (used with \s-1PG\s0 >= 9.1), if this
 directive is disabled the \s-1INSTEAD\s0 \s-1OF\s0 triggers will be rewritten as Pg rules.
+.IP "\s-1PG_SUPPORTS_CHECKOPTION\s0" 4
+.IX Item "PG_SUPPORTS_CHECKOPTION"
+If enabled, export views with \s-1CHECK\s0 \s-1OPTION\s0. Enable it if you have PostgreSQL
+version 9.4 or higher. Default: 0, disabled.
 .IP "\s-1LONGREADLEN\s0" 4
 .IX Item "LONGREADLEN"
 Use this directive to set the database handle's 'LongReadLen' attribute to a

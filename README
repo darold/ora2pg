@@ -1196,6 +1196,10 @@ CONFIGURATION
         if this directive is disabled the INSTEAD OF triggers will be
         rewritten as Pg rules.
 
+    PG_SUPPORTS_CHECKOPTION
+        If enabled, export views with CHECK OPTION. Enable it if you have
+        PostgreSQL version 9.4 or higher. Default: 0, disabled.
+
     LONGREADLEN
         Use this directive to set the database handle's 'LongReadLen'
         attribute to a value that will be the larger than the expected size
