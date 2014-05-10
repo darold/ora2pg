@@ -1706,13 +1706,16 @@ sub read_schema_from_file
 		if ($idx_def =~ s/ONLINE\s*//i) {
 			$self->{tables}{$tb_name}{concurrently}{$idx_name} = 1;
 		}
+		if ($idx_def =~ s/INDEXTYPE\s+IS\s+.*SPATIAL_INDEX//i) {
+			$self->{tables}{$tb_name}{spatial}{$idx_name} = 1;
+		}
 		$idx_def =~ s/\)[^\)]*$//;
 		$self->{tables}{$tb_name}{uniqueness}{$idx_name} = $is_unique || '';
                 $idx_def =~ s/SYS_EXTRACT_UTC[\s\t]*\(([^\)]+)\)/$1/isg;
 		push(@{$self->{tables}{$tb_name}{indexes}{$idx_name}}, $idx_def);
-		$self->{tables}{$tb_name}{idx_type}{$idx_name} = 'NORMAL';
+		$self->{tables}{$tb_name}{idx_type}{$idx_name}{type} = 'NORMAL';
 		if ($idx_def =~ /\(/) {
-			$self->{tables}{$tb_name}{idx_type}{$idx_name} = 'FUNCTION-BASED';
+			$self->{tables}{$tb_name}{idx_type}{$idx_name}{type} = 'FUNCTION-BASED';
 		}
 
 		if (!exists $self->{tables}{$tb_name}{table_info}{type}) {
@@ -4022,7 +4025,8 @@ sub _create_indexes
 	foreach my $idx (keys %indexes) {
 
 		# Cluster, domain, bitmap join, reversed and IOT indexes will not be exported at all
-		next if ($self->{tables}{$tbsaved}{idx_type}{$idx} =~ /JOIN|IOT|CLUSTER|DOMAIN|REV/i);
+		next if ($self->{tables}{$tbsaved}{idx_type}{$idx}{type} =~ /JOIN|IOT|CLUSTER|REV/i);
+		next if ($self->{tables}{$tbsaved}{idx_type}{$idx}{type} =~ /DOMAIN/i && $self->{tables}{$tbsaved}{idx_type}{$idx}{type_name} !~ /SPATIAL_INDEX/);
 		map { if ($_ !~ /\(.*\)/) { s/^/"/; s/$/"/; } } @{$indexes{$idx}};
 		if (exists $self->{replaced_cols}{"\L$tbsaved\E"} && $self->{replaced_cols}{"\L$tbsaved\E"}) {
 			foreach my $c (keys %{$self->{replaced_cols}{"\L$tbsaved\E"}}) {
@@ -4076,7 +4080,11 @@ sub _create_indexes
 			}
 			$columns = lc($columns) if (!$self->{preserve_case});
 			$columns =~ s/^\((.*)\)$/$1/;
-			$str .= "CREATE$unique INDEX$concurrently \L$idx$self->{indexes_suffix}\E ON $table ($columns)";
+			if ($self->{tables}{$tbsaved}{idx_type}{$idx}{type_name} !~ /SPATIAL_INDEX/) {
+				$str .= "CREATE$unique INDEX$concurrently \L$idx$self->{indexes_suffix}\E ON $table ($columns)";
+			} else {
+				$str .= "CREATE$unique INDEX$concurrently \L$idx$self->{indexes_suffix}\E ON $table USING gist($columns)";
+			}
 			if ($self->{use_tablespace} && $self->{tables}{$tbsaved}{idx_tbsp}{$idx} && !grep(/^$self->{tables}{$tbsaved}{idx_tbsp}{$idx}$/i, @{$self->{default_tablespaces}})) {
 				$str .= " TABLESPACE $self->{tables}{$tbsaved}{idx_tbsp}{$idx}";
 			}
@@ -4105,7 +4113,8 @@ sub _drop_indexes
 	# Set the index definition
 	foreach my $idx (keys %indexes) {
 		# Cluster, domain, bitmap join, reversed and IOT indexes will not be exported at all
-		next if ($self->{tables}{$table}{idx_type}{$idx} =~ /JOIN|IOT|CLUSTER|DOMAIN|REV/i);
+		next if ($self->{tables}{$table}{idx_type}{$idx}{type} =~ /JOIN|IOT|CLUSTER|REV/i);
+		next if ($self->{tables}{$table}{idx_type}{$idx}{type} =~ /DOMAIN/i && $self->{tables}{$table}{idx_type}{$idx}{type_name} !~ /SPATIAL_INDEX/);
 
 		map { if ($_ !~ /\(.*\)/) { s/^/"/; s/$/"/; } } @{$indexes{$idx}};
 		if (exists $self->{replaced_cols}{"\L$tbsaved\E"} && $self->{replaced_cols}{"\L$tbsaved\E"}) {
@@ -5105,7 +5114,7 @@ sub _get_indexes
 	my $sth = '';
 	if ($self->{db_version} !~ /Release 8/) {
 		$sth = $self->{dbh}->prepare(<<END) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-SELECT DISTINCT $self->{prefix}_IND_COLUMNS.INDEX_NAME,$self->{prefix}_IND_COLUMNS.COLUMN_NAME,$self->{prefix}_INDEXES.UNIQUENESS,$self->{prefix}_IND_COLUMNS.COLUMN_POSITION,$self->{prefix}_INDEXES.INDEX_TYPE,$self->{prefix}_INDEXES.TABLE_TYPE,$self->{prefix}_INDEXES.GENERATED,$self->{prefix}_INDEXES.JOIN_INDEX,$self->{prefix}_IND_COLUMNS.TABLE_NAME,$self->{prefix}_IND_COLUMNS.INDEX_OWNER,$self->{prefix}_INDEXES.TABLESPACE_NAME
+SELECT DISTINCT $self->{prefix}_IND_COLUMNS.INDEX_NAME,$self->{prefix}_IND_COLUMNS.COLUMN_NAME,$self->{prefix}_INDEXES.UNIQUENESS,$self->{prefix}_IND_COLUMNS.COLUMN_POSITION,$self->{prefix}_INDEXES.INDEX_TYPE,$self->{prefix}_INDEXES.TABLE_TYPE,$self->{prefix}_INDEXES.GENERATED,$self->{prefix}_INDEXES.JOIN_INDEX,$self->{prefix}_IND_COLUMNS.TABLE_NAME,$self->{prefix}_IND_COLUMNS.INDEX_OWNER,$self->{prefix}_INDEXES.TABLESPACE_NAME,$self->{prefix}_INDEXES.ITYP_NAME
 FROM $self->{prefix}_IND_COLUMNS
 JOIN $self->{prefix}_INDEXES ON ($self->{prefix}_INDEXES.INDEX_NAME=$self->{prefix}_IND_COLUMNS.INDEX_NAME)
 WHERE $self->{prefix}_INDEXES.GENERATED <> 'Y' AND $self->{prefix}_INDEXES.TEMPORARY <> 'Y' $condition
@@ -5114,7 +5123,7 @@ END
 	} else {
 		# an 8i database.
 		$sth = $self->{dbh}->prepare(<<END) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-SELECT DISTINCT $self->{prefix}_IND_COLUMNS.INDEX_NAME,$self->{prefix}_IND_COLUMNS.COLUMN_NAME,$self->{prefix}_INDEXES.UNIQUENESS,$self->{prefix}_IND_COLUMNS.COLUMN_POSITION,$self->{prefix}_INDEXES.INDEX_TYPE,$self->{prefix}_INDEXES.TABLE_TYPE,$self->{prefix}_INDEXES.GENERATED,$self->{prefix}_IND_COLUMNS.TABLE_NAME,$self->{prefix}_IND_COLUMNS.INDEX_OWNER,$self->{prefix}_INDEXES.TABLESPACE_NAME
+SELECT DISTINCT $self->{prefix}_IND_COLUMNS.INDEX_NAME,$self->{prefix}_IND_COLUMNS.COLUMN_NAME,$self->{prefix}_INDEXES.UNIQUENESS,$self->{prefix}_IND_COLUMNS.COLUMN_POSITION,$self->{prefix}_INDEXES.INDEX_TYPE,$self->{prefix}_INDEXES.TABLE_TYPE,$self->{prefix}_INDEXES.GENERATED,$self->{prefix}_IND_COLUMNS.TABLE_NAME,$self->{prefix}_IND_COLUMNS.INDEX_OWNER,$self->{prefix}_INDEXES.TABLESPACE_NAME,$self->{prefix}_INDEXES.ITYP_NAME
 FROM $self->{prefix}_IND_COLUMNS, $self->{prefix}_INDEXES
 WHERE $self->{prefix}_INDEXES.INDEX_NAME=$self->{prefix}_IND_COLUMNS.INDEX_NAME $condition
 AND $self->{prefix}_INDEXES.GENERATED <> 'Y'
@@ -5141,11 +5150,14 @@ $idxowner
 	while (my $row = $sth->fetch) {
 		# forget or not this object if it is in the exclude or allow lists.
 		next if ($self->skip_this_object('INDEX', $row->[0]));
-		$unique{$row->[-3]}{$row->[0]} = $row->[2];
+		$unique{$row->[-4]}{$row->[0]} = $row->[2];
 		if (($#{$row} > 6) && ($row->[7] eq 'Y')) {
-			$idx_type{$row->[-3]}{$row->[0]} = $row->[4] . ' JOIN';
+			$idx_type{$row->[-4]}{$row->[0]}{type} = $row->[4] . ' JOIN';
 		} else {
-			$idx_type{$row->[-3]}{$row->[0]} = $row->[4];
+			$idx_type{$row->[-4]}{$row->[0]}{type} = $row->[4];
+		}
+		if ($row->[-1] =~ /SPATIAL_INDEX/) {
+			$idx_type{$row->[-4]}{$row->[0]}{type_name} = $row->[-1];
 		}
 		# Replace function based index type
 		if ($row->[1] =~ /^SYS_NC/i) {
@@ -5154,8 +5166,8 @@ $idxowner
 			$row->[1] = $nc->[0];
 		}
 		$row->[1] =~ s/SYS_EXTRACT_UTC[\s\t]*\(([^\)]+)\)/$1/isg;
-		push(@{$data{$row->[-3]}{$row->[0]}}, $row->[1]);
-		$index_tablespace{$row->[-3]}{$row->[0]} = $row->[-1];
+		push(@{$data{$row->[-4]}{$row->[0]}}, $row->[1]);
+		$index_tablespace{$row->[-4]}{$row->[0]} = $row->[-2];
 	}
 
 	return \%unique, \%data, \%idx_type, \%index_tablespace;
@@ -7233,7 +7245,7 @@ sub _show_infos
 			$total_index_objects += scalar keys %{$self->{tables}{$table}{indexes}};
 			foreach my $idx (sort keys %{$self->{tables}{$table}{idx_type}}) {
 				next if (!grep(/^$idx$/i, @exported_indexes));
-				my $typ = $self->{tables}{$table}{idx_type}{$idx};
+				my $typ = $self->{tables}{$table}{idx_type}{$idx}{type};
 				push(@{$all_indexes{$typ}}, $idx);
 				$total_index++;
 			}
