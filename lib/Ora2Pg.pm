@@ -1707,7 +1707,7 @@ sub read_schema_from_file
 			$self->{tables}{$tb_name}{concurrently}{$idx_name} = 1;
 		}
 		if ($idx_def =~ s/INDEXTYPE\s+IS\s+.*SPATIAL_INDEX//i) {
-			$self->{tables}{$tb_name}{spatial}{$idx_name} = 1;
+			$self->{tables}{$tb_name}{idx_type}{$idx_name}{type_name} = 'SPATIAL_INDEX';
 		}
 		$idx_def =~ s/\)[^\)]*$//;
 		$self->{tables}{$tb_name}{uniqueness}{$idx_name} = $is_unique || '';
