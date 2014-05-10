@@ -842,7 +842,7 @@ sub _init
 
 	} else {
 		$self->{plsql_pgsql} = 1;
-		if (grep(/^$self->{type}$/, 'TABLE', 'VIEW', 'QUERY', 'FUNCTION','PROCEDURE','PACKAGE','TYPE')) {
+		if (grep(/^$self->{type}$/, 'TABLE', 'VIEW', 'TRIGGER', 'QUERY', 'FUNCTION','PROCEDURE','PACKAGE','TYPE')) {
 			$self->export_schema();
 		} else {
 			$self->logit("FATAL: bad export type using input file option\n", 0, 1);
@@ -1419,6 +1419,36 @@ sub _split_table_definition
 	return ($def, $param);
 }
 
+sub _get_plsql_code
+{
+	my $str = shift();
+
+	my $ct = '';
+	my @parts = split(/(BEGIN|DECLARE|END[\t\s]*(?!IF|LOOP|CASE|INTO|FROM|,)[^;\s\t]*[\t\s]*;)/, $str);
+	my $code = '';
+	my $other = '';
+	my $i = 0;
+	for (; $i <= $#parts; $i++) {
+		$ct++ if ($parts[$i] =~ /\bBEGIN\b/);
+		$ct-- if ($parts[$i] =~ /END[\t\s]*(?!IF|LOOP|CASE|INTO|FROM|,)[^;\s\t]*[\t\s]*;/);
+		if ( ($ct ne '') && ($ct == 0) ) {
+			$code .= $parts[$i];
+			last;
+		}
+		$code .= $parts[$i];
+	}
+	$i++;
+	for (; $i <= $#parts; $i++) {
+		$other .= $parts[$i];
+	}
+
+	$code =~ s/[\t\s]+/ /g;
+	$other =~ s/[\t\s]+/ /g;
+
+	return ($code, $other);
+}
+
+
 sub _parse_constraint
 {
 	my ($self, $tb_name, $cur_col_name, $c) = @_;
@@ -1735,6 +1765,56 @@ sub read_view_from_file
 	        $self->{views}{$v_name}{text} = $v_def;
 	}
 }
+
+sub read_trigger_from_file
+{
+	my $self = shift;
+
+	# Load file in a single string
+	my $content = $self->_get_dml_from_file();
+
+	my $tid = 0; 
+
+	my $doloop = 1;
+	do {
+		if ($content =~ s/CREATE\s+TRIGGER\s+([^\s]+)\s+(BEFORE|AFTER|INSTEAD\s+OF)\s+(.*?)\s+ON\s+([^\s]+)\s+(.*)//i) {
+			my $t_name = $1;
+			$t_name =~ s/"//g;
+			my $t_pos = $2;
+			my $t_event = $3;
+			my $tb_name = $4;
+			my $trigger = $5;
+			my $t_type = '';
+			if ($trigger =~ s/^\s*(FOR\s+EACH\s+)(ROW|STATEMENT)\s*//i) {
+				$t_type = $1 . $2;
+			}
+			my $t_when_cond = '';
+			if ($trigger =~ s/^\s*WHEN\s+(.*?)\s+((?:BEGIN|DECLARE|CALL).*)//i) {
+				$t_when_cond = $1;
+				$trigger = $2;
+				if ($trigger =~ /^(BEGIN|DECLARE)/) {
+					($trigger, $content) = &_get_plsql_code($trigger);
+				} else {
+					$trigger =~ s/([^;]+;)[\t\s]*(.*)/$1/;
+					$content = $2;
+				}
+			} else {
+				if ($trigger =~ /^(BEGIN|DECLARE)/) {
+					($trigger, $content) = &_get_plsql_code($trigger);
+				}
+			}
+			$tid++;
+			# TRIGGER_NAME, TRIGGER_TYPE, TRIGGERING_EVENT, TABLE_NAME, TRIGGER_BODY, WHEN_CLAUSE, DESCRIPTION,ACTION_TYPE
+			$trigger =~ s/END\s[^\s]+$/END/is;
+			push(@{$self->{triggers}}, [($t_name, $t_pos, $t_event, $tb_name, $trigger, $t_when_cond, '', $t_type)]);
+
+		} else {
+			$doloop = 0;
+		}
+	} while ($doloop);
+
+}
+
 
 
 =head2 _views
@@ -2309,12 +2389,17 @@ LANGUAGE plpgsql ;
 	if ($self->{type} eq 'TRIGGER') {
 		$self->logit("Add triggers definition...\n", 1);
 		$self->dump($sql_header);
+		# Read DML from file if any
+		if ($self->{input_file}) {
+			$self->read_trigger_from_file();
+		}
 		my $dirprefix = '';
 		$dirprefix = "$self->{output_dir}/" if ($self->{output_dir});
 		my $nothing = 0;
                 my $i = 1;      
                 my $num_total_trigger = $#{$self->{triggers}} + 1;
 		foreach my $trig (sort {$a->[0] cmp $b->[0]} @{$self->{triggers}}) {
+
 			if (!$self->{quiet} && !$self->{debug}) {
 				print STDERR $self->progress_bar($i, $num_total_trigger, 25, '=', 'triggers', "generating $trig->[0]" );
 			}
@@ -2325,15 +2410,15 @@ LANGUAGE plpgsql ;
 				$fhdl = $self->open_export_file("$trig->[0]_$self->{output}");
 			}
 			$trig->[1] =~ s/\s*EACH ROW//is;
-			chop($trig->[4]);
 			chomp($trig->[4]);
+			$trig->[4] =~ s/[;\/]$//;
 			$self->logit("\tDumping trigger $trig->[0] defined on table $trig->[3]...\n", 1);
 			# Check if it's like a pg rule
 			if (!$self->{pg_supports_insteadof} && $trig->[1] =~ /INSTEAD OF/) {
 				if (!$self->{preserve_case}) {
-					$sql_output .= "CREATE OR REPLACE RULE \L$trig->[0]\E AS\n\tON \L$trig->[3]\E\n\tDO INSTEAD\n(\n\t$trig->[4]\n);\n\n";
+					$sql_output .= "CREATE OR REPLACE RULE \L$trig->[0]\E AS\n\tON $trig->[2] TO \L$trig->[3]\E\n\tDO INSTEAD\n(\n\t$trig->[4]\n);\n\n";
 				} else {
-					$sql_output .= "CREATE OR REPLACE RULE \L$trig->[0]\E AS\n\tON \"$trig->[3]\"\n\tDO INSTEAD\n(\n\t$trig->[4]\n);\n\n";
+					$sql_output .= "CREATE OR REPLACE RULE \L$trig->[0]\E AS\n\tON $trig->[2] TO \"$trig->[3]\"\n\tDO INSTEAD\n(\n\t$trig->[4]\n);\n\n";
 				}
 			} else {
 				# Replace direct call of a stored procedure in triggers
