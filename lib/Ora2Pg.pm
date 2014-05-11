@@ -123,7 +123,20 @@ our %TYPE = (
 	'XMLTYPE' => 'xml',
 	'TIMESTAMP WITH TIME ZONE' => 'timestamp with time zone',
 	'TIMESTAMP WITH LOCAL TIME ZONE' => 'timestamp with time zone',
-	#'SDO_GEOMETRY' => 'geometry(Geometry,27572)',
+	'SDO_GEOMETRY' => 'geometry',
+);
+
+our %ORA2PG_SDO_GTYPE = (
+	'0' => 'GEOMETRY',
+	'1' => 'POINT',
+	'2' => 'LINESTRING',
+	'3' => 'POLYGON',
+	'4' => 'GEOMETRYCOLLECTION',
+	'5' => 'MULTIPOINT',
+	'6' => 'MULTILINESTRING',
+	'7' => 'MULTIPOLYGON',
+	'8' => 'SOLID',
+	'9' => 'MULTISOLID'
 );
 
 our %INDEX_TYPE = (
@@ -648,6 +661,9 @@ sub _init
 
 	# Disable synchronous commit for pg data load
 	$self->{synchronous_commit} ||= 0;
+
+	# Autodetect spatial type
+	$self->{autodetect_spatial_type} ||= 0;
 
 	# Overwrite configuration with all given parameters
 	# and try to preserve backward compatibility
@@ -1707,7 +1723,7 @@ sub read_schema_from_file
 			$self->{tables}{$tb_name}{concurrently}{$idx_name} = 1;
 		}
 		if ($idx_def =~ s/INDEXTYPE\s+IS\s+.*SPATIAL_INDEX//i) {
-			$self->{tables}{$tb_name}{idx_type}{$idx_name}{type_name} = 'SPATIAL_INDEX';
+			$self->{tables}{$tb_name}{spatial}{$idx_name} = 1;
 		}
 		$idx_def =~ s/\)[^\)]*$//;
 		$self->{tables}{$tb_name}{uniqueness}{$idx_name} = $is_unique || '';
@@ -3700,7 +3716,7 @@ CREATE TRIGGER insert_${table}_trigger
 			# Extract column information following the Oracle position order
 			foreach my $k (sort { 
 					if (!$self->{reordering_columns}) {
-						$self->{tables}{$table}{column_info}{$a}[-1] <=> $self->{tables}{$table}{column_info}{$b}[-1];
+						$self->{tables}{$table}{column_info}{$a}[10] <=> $self->{tables}{$table}{column_info}{$b}[10];
 					} else {
 						my $tmpa = $self->{tables}{$table}{column_info}{$a};
 						my $typa = $self->_sql_type($tmpa->[1], $tmpa->[2], $tmpa->[5], $tmpa->[6]);
@@ -3728,6 +3744,24 @@ CREATE TRIGGER insert_${table}_trigger
 				} elsif (exists $self->{'replace_as_boolean'}{uc($f->[1])} && ($self->{'replace_as_boolean'}{uc($f->[1])}[0] == $f->[5])) {
 					$type = 'boolean';
 				}
+
+				if ($f->[1] =~ /SDO_GEOMETRY/) {
+					# Set the dimension
+					my $suffix = '';
+					if ($f->[11] == 3) {
+						$suffix = 'Z';
+					} elsif ($f->[11] == 4) {
+						$suffix = 'ZM';
+					}
+					$f->[12] ||= 0;
+					$type = "geometry($ORA2PG_SDO_GTYPE{$f->[12]}$suffix";
+					if ($f->[13]) {
+						$type .= ",$f->[13]";
+					}
+					$type .= ")";
+					
+				}
+
 				$type = $self->{'modify_type'}{"\L$table\E"}{"\L$f->[0]\E"} if (exists $self->{'modify_type'}{"\L$table\E"}{"\L$f->[0]\E"});
 				if (!$self->{preserve_case}) {
 					$fname = $self->quote_reserved_words($fname);
@@ -4739,7 +4773,7 @@ END
 	} else {
 		# an 8i database.
 		$sth = $self->{dbh}->prepare(<<END);
-SELECT COLUMN_NAME, DATA_TYPE, DATA_LENGTH, NULLABLE, DATA_DEFAULT, DATA_PRECISION, DATA_SCALE, TABLE_NAME, OWNER
+SELECT COLUMN_NAME, DATA_TYPE, DATA_LENGTH, NULLABLE, DATA_DEFAULT, DATA_PRECISION, DATA_SCALE, DATA_LENGTH, TABLE_NAME, OWNER
 FROM $self->{prefix}_TAB_COLUMNS $condition
 ORDER BY COLUMN_ID
 END
@@ -4755,6 +4789,9 @@ END
 	}
 	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
+	my $spatial_query =  'SELECT DISTINCT c.%s.SDO_GTYPE FROM %s c';
+	my $spatial_sysref = 'SELECT DISTINCT c.%s.SDO_SRID  FROM %s c';
+
 	my %data = ();
 	my $pos = 0;
 	while (my $row = $sth->fetch) {
@@ -4763,7 +4800,56 @@ END
 		if ($#{$row} == 9) {
 			$row->[2] = $row->[7] if $row->[1] =~ /char/i;
 		}
-		push(@{$data{$row->[-2]}{$row->[0]}}, (@$row, $pos));
+		# check if this is a spatial column
+		my @geom_inf = ();
+		if ($row->[1] eq 'SDO_GEOMETRY') {
+			# Set dimension and type of the spatial column
+			if ($self->{autodetect_spatial_type}) {
+				# Get spatial information
+				my $squery = sprintf($spatial_query, $row->[0], $row->[-2]);
+				my $sth2 = $self->{dbh}->prepare($squery);
+				if (!$sth2) {
+					$self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+				}
+				$sth2->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+				my @result = ();
+				my @dims = ();
+				while (my $r = $sth2->fetch) {
+					$r->[0] =~s /^(\d)00//;
+					push(@result, $r->[0]);
+					push(@dims, $1) if (!grep(/^$1/, @dims));
+				}
+				$sth2->finish();
+				if ($#result == 0) {
+					push(@geom_inf, $dims[0], $result[0]);
+				} elsif ($#dims == 0) {
+					push(@geom_inf, $dims[0], 0);
+				} else {
+					push(@geom_inf, 0, 0);
+				}
+			} else {
+				push(@geom_inf, 0, 0);
+			}
+			# Get the SRID of the column
+			my $squery = sprintf($spatial_sysref, $row->[0], $row->[-2]);
+			my $sth2 = $self->{dbh}->prepare($squery);
+			if (!$sth2) {
+				$self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+			}
+			$sth2->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+			my @result = ();
+			while (my $r = $sth2->fetch) {
+				push(@result, $r->[0]) if ($r->[0] =~ /\d+/);
+			}
+			$sth2->finish();
+			if ($#result == 0) {
+				push(@geom_inf, $result[0]);
+			} else {
+				push(@geom_inf, 0);
+			}
+		}
+		push(@{$data{$row->[-2]}{$row->[0]}}, (@$row, $pos, @geom_inf));
+
 		$pos++;
 	}
 
@@ -7346,7 +7432,7 @@ sub _show_infos
 						$table_detail{'reserved words in table name'}++;
 					}
 					# Get fields informations
-					foreach my $k (sort {$self->{tables}{$t}{column_info}{$a}[-1] <=> $self->{tables}{$t}{column_info}{$a}[-1]} keys %{$self->{tables}{$t}{column_info}}) {
+					foreach my $k (sort {$self->{tables}{$t}{column_info}{$a}[10] <=> $self->{tables}{$t}{column_info}{$a}[10]} keys %{$self->{tables}{$t}{column_info}}) {
 						if (&is_reserved_words($self->{tables}{$t}{column_info}{$k}[0])) {
 							$table_detail{'reserved words in column name'}++;
 						}
@@ -7596,7 +7682,7 @@ sub _show_infos
 				# Collect column's details for the current table with attempt to preserve column declaration order
 				foreach my $k (sort { 
 						if (!$self->{reordering_columns}) {
-							$self->{tables}{$t}{column_info}{$a}[-1] <=> $self->{tables}{$t}{column_info}{$b}[-1];
+							$self->{tables}{$t}{column_info}{$a}[10] <=> $self->{tables}{$t}{column_info}{$b}[10];
 						} else {
 							my $tmpa = $self->{tables}{$t}{column_info}{$a};
 							my $typa = $self->_sql_type($tmpa->[1], $tmpa->[2], $tmpa->[5], $tmpa->[6]);
@@ -7607,28 +7693,45 @@ sub _show_infos
 							$TYPALIGN{$typb} <=> $TYPALIGN{$typa};
 						}
 					} keys %{$self->{tables}{$t}{column_info}}) {
-					# COLUMN_NAME,DATA_TYPE,DATA_LENGTH,NULLABLE,DATA_DEFAULT,DATA_PRECISION,DATA_SCALE,TABLE_NAME,OWNER
+					# COLUMN_NAME,DATA_TYPE,DATA_LENGTH,NULLABLE,DATA_DEFAULT,DATA_PRECISION,DATA_SCALE,CHAR_LENGTH,TABLE_NAME,OWNER,POSITION,SDO_DIM,SDO_GTYPE,SRID
 					my $d = $self->{tables}{$t}{column_info}{$k};
 					my $type = $self->_sql_type($d->[1], $d->[2], $d->[5], $d->[6]);
 					$type = "$d->[1], $d->[2]" if (!$type);
+					my $align = '';
 					my $len = $d->[2];
-					if ($#{$d} == 9) {
-						$d->[2] = $d->[7] if $d->[1] =~ /char/i;
+					if (($d->[1] =~ /char/i) && ($d->[7] > $d->[2])) {
+						$d->[2] = $d->[7];
 					}
 					$self->logit("\t$d->[0] : $d->[1]");
-					if ($d->[2] && !$d->[5]) {
-						$self->logit("($d->[2])");
-					} elsif ($d->[5] && ($d->[1] =~ /NUMBER/i) ) {
-						$self->logit("($d->[5]");
-						$self->logit("$d->[6]") if ($d->[6]);
-						$self->logit(")");
-					}
-					$warning = '';
-					my $align = '';
-					if ($self->{reordering_columns}) {
-						my $typ = $type;
-						$typ =~ s/\(.*//;
-						$align = " - typalign: $TYPALIGN{$typ}";
+					if ($d->[1] !~ /SDO_GEOMETRY/) {
+						if ($d->[2] && !$d->[5]) {
+							$self->logit("($d->[2])");
+						} elsif ($d->[5] && ($d->[1] =~ /NUMBER/i) ) {
+							$self->logit("($d->[5]");
+							$self->logit(",$d->[6]") if ($d->[6]);
+							$self->logit(")");
+						}
+						$warning = '';
+						if ($self->{reordering_columns}) {
+							my $typ = $type;
+							$typ =~ s/\(.*//;
+							$align = " - typalign: $TYPALIGN{$typ}";
+						}
+					} else {
+						# Set the dimension
+						my $suffix = '';
+						if ($d->[11] == 3) {
+							$suffix = 'Z';
+						} elsif ($d->[11] == 4) {
+							$suffix = 'ZM';
+						}
+						$d->[12] ||= 0;
+						$type = "geometry($ORA2PG_SDO_GTYPE{$d->[12]}$suffix";
+						if ($d->[13]) {
+							$type .= ",$d->[13]";
+						}
+						$type .= ")";
+						
 					}
 					if (&is_reserved_words($d->[0])) {
 						$warning = " (Warning: '$d->[0]' is a reserved word in PostgreSQL)";
