@@ -864,6 +864,27 @@ CONFIGURATION
 
         will add _idx at ed of all index name. Not so common but can help.
 
+    AUTODETECT_SPATIAL_TYPE
+        Enable this directive if you want Ora2Pg to detect the real spatial
+        type and dimension used in a spatial column. Otherwise column will
+        be created with non-constrained "geometry" type. Enabling this
+        feature will force Ora2Pg to scan the entire column stored
+        information, following the number of row it could slow down the
+        schema export. By default it is disable.
+
+        For example, in the case of a column named shape and defined with
+        Oracle type SDO_GEOMETRY, with AUTODETECT_SPATIAL_TYPE disabled it
+        will be converted as:
+
+            shape geometry(GEOMETRY) or shape geometry(GEOMETRY, 4326)
+
+        and if the directive is enabled and the column just contains a
+        single geometry type that use a single dimension:
+
+            shape geometry(POLIGONZ, 4326) or shape geometry(POLIGON, 4326)
+
+        with a two or three dimensional polygon.
+
   PostgreSQL Import
     By default conversion to PostgreSQL format is written to file
     'output.sql'. The command:

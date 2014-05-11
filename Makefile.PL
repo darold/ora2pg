@@ -558,6 +558,12 @@ SYNCHRONOUS_COMMIT	0
 # version 9.4 or higher. Default, disabled
 PG_SUPPORTS_CHECKOPTION	0
 
+# Enable this directive if you want Ora2Pg to detect the real spatial type and
+# dimension used in a spatial column. Otherwise column will be created with
+# non-constrained "geometry" type. Enabling this feature will force Ora2Pg to
+# scan the entire column stored information, following the number of row it
+# could slow down the schema export.
+AUTODETECT_SPATIAL_TYPE	0
 };
 close(OUTCFG);
 
