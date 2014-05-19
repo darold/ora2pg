@@ -917,6 +917,14 @@ geometry type that use a single dimension:
 
 with a two or three dimensional polygon.
 
+=item PREFIX_PARTITION
+
+Enable this directive if you want that your partition table name will be
+exported using the parent table name. Disabled by default. If you have
+multiple partitioned table, when exported to PostgreSQL some partitions
+could have the same name but dfferent parent tables. This is not allowed,
+table name must be unique.
+
 =back
 
 =head2 PostgreSQL Import

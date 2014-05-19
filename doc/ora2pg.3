@@ -124,7 +124,7 @@
 .\" ========================================================================
 .\"
 .IX Title "ORA2PG 1"
-.TH ORA2PG 1 "2014-05-12" "perl v5.14.2" "User Contributed Perl Documentation"
+.TH ORA2PG 1 "2014-05-19" "perl v5.14.2" "User Contributed Perl Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -1048,6 +1048,13 @@ geometry type that use a single dimension:
 .Ve
 .Sp
 with a two or three dimensional polygon.
+.IP "\s-1PREFIX_PARTITION\s0" 4
+.IX Item "PREFIX_PARTITION"
+Enable this directive if you want that your partition table name will be
+exported using the parent table name. Disabled by default. If you have
+multiple partitioned table, when exported to PostgreSQL some partitions
+could have the same name but dfferent parent tables. This is not allowed,
+table name must be unique.
 .SS "PostgreSQL Import"
 .IX Subsection "PostgreSQL Import"
 By default conversion to PostgreSQL format is written to file 'output.sql'.

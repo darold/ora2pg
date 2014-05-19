@@ -564,6 +564,14 @@ PG_SUPPORTS_CHECKOPTION	0
 # scan the entire column stored information, following the number of row it
 # could slow down the schema export.
 AUTODETECT_SPATIAL_TYPE	0
+
+# Enable this directive if you want that your partition table name will be
+# exported using the parent table name. Disabled by default. If you have
+# multiple partitioned table, when exported to PostgreSQL some partitions
+# could have the same name but dfferent parent tables. This is not allowed,
+# table name must be unique. 
+PREFIX_PARTITION	0
+
 };
 close(OUTCFG);
 

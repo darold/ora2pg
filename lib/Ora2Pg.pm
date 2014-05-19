@@ -609,6 +609,9 @@ sub _init
 	$self->{create_schema} = 1;
 	$self->{external_table} = ();
 
+	# Used to precise if we need to prefix partition tablename with main tablename
+	$self->{prefix_partition} = 0;
+
 	# Initialyze following configuration file
 	foreach my $k (sort keys %AConfig) {
 		if (lc($k) eq 'allow') {
@@ -3250,6 +3253,7 @@ LANGUAGE plpgsql ;
 			if (exists $self->{partitions}{$table}) {
 				foreach my $pos (sort {$self->{partitions}{$table}{$a} <=> $self->{partitions}{$table}{$b}} keys %{$self->{partitions}{$table}}) {
 					foreach my $part_name (sort {$self->{partitions}{$table}{$pos}{$a}->{'colpos'} <=> $self->{partitions}{$table}{$pos}{$b}->{'colpos'}} keys %{$self->{partitions}{$table}{$pos}}) {
+						$part_name = $table . '_' . $part_name if ($self->{prefix_partition});
 						next if ($self->{allow_partition} && !grep($_ =~ /^$part_name$/i, @{$self->{allow_partition}}));
 
 						if ($self->{file_per_table} && !$self->{pg_dsn}) {
@@ -3264,6 +3268,7 @@ LANGUAGE plpgsql ;
 					if (!$self->{allow_partition} || grep($_ =~ /^$self->{partitions_default}{$table}$/i, @{$self->{allow_partition}})) {
 						if ($self->{file_per_table} && !$self->{pg_dsn}) {
 							my $part_name = $self->{partitions_default}{$table};
+							$part_name = $table . '_' . $part_name if ($self->{prefix_partition});
 							my $file_name = "$dirprefix${part_name}_$self->{output}";
 							$file_name =~ s/\.(gz|bz2)$//;
 							$load_file .=  "\\i $file_name\n";
@@ -3360,11 +3365,13 @@ LANGUAGE plpgsql ;
 			if (exists $self->{partitions}{$table}) {
 				foreach my $pos (sort {$self->{partitions}{$table}{$a} <=> $self->{partitions}{$table}{$b}} keys %{$self->{partitions}{$table}}) {
 					foreach my $part_name (sort {$self->{partitions}{$table}{$pos}{$a}->{'colpos'} <=> $self->{partitions}{$table}{$pos}{$b}->{'colpos'}} keys %{$self->{partitions}{$table}{$pos}}) {
-						next if ($self->{allow_partition} && !grep($_ =~ /^$part_name$/i, @{$self->{allow_partition}}));
+						my $tbpart_name = $part_name;
+						$tbpart_name = $table . '_' . $part_name if ($self->{prefix_partition});
+						next if ($self->{allow_partition} && !grep($_ =~ /^$tbpart_name$/i, @{$self->{allow_partition}}));
 
 						if ($self->{file_per_table} && !$self->{pg_dsn}) {
 							# Do not dump data again if the file already exists
-							next if ($self->file_exists("$dirprefix${part_name}_$self->{output}"));
+							next if ($self->file_exists("$dirprefix${tbpart_name}_$self->{output}"));
 						}
 						$self->_dump_table($dirprefix, $sql_header, $table, $start_time, $global_rows, $part_name);
 					}
@@ -3553,7 +3560,9 @@ BEGIN
 					if (!$self->{quiet} && !$self->{debug}) {
 						print STDERR $self->progress_bar($i, $total_partition, 25, '=', 'partitions', "generating $part" );
 					}
-					$create_table{$table}{table} .= "CREATE TABLE $part ( CHECK (\n";
+					my $tb_name = $part;
+					$tb_name = $table . "_" . $part if ($self->{prefix_partition});
+					$create_table{$table}{table} .= "CREATE TABLE $tb_name ( CHECK (\n";
 					my @condition = ();
 					for (my $i = 0; $i <= $#{$self->{partitions}{$table}{$pos}{$part}}; $i++) {
 						if ($self->{partitions}{$table}{$pos}{$part}[$i]->{type} eq 'LIST') {
@@ -3566,7 +3575,7 @@ BEGIN
 							}
 						}
 						$create_table{$table}{table} .= " AND" if ($i < $#{$self->{partitions}{$table}{$pos}{$part}});
-						$create_table{$table}{'index'} .= "CREATE INDEX ${part}_$self->{partitions}{$table}{$pos}{$part}[$i]->{column} ON $part ($self->{partitions}{$table}{$pos}{$part}[$i]->{column});\n";
+						$create_table{$table}{'index'} .= "CREATE INDEX ${part}_$self->{partitions}{$table}{$pos}{$part}[$i]->{column} ON $tb_name ($self->{partitions}{$table}{$pos}{$part}[$i]->{column});\n";
 						if ($self->{partitions}{$table}{$pos}{$part}[$i]->{type} eq 'LIST') {
 							push(@condition, "NEW.$self->{partitions}{$table}{$pos}{$part}[$i]->{column} IN (" . Ora2Pg::PLSQL::plsql_to_plpgsql($self->{partitions}{$table}{$pos}{$part}[$i]->{value}, $self->{allow_code_break}, $self->{null_equal_empty}) . ")");
 						} else {
@@ -3574,7 +3583,7 @@ BEGIN
 						}
 					}
 					$create_table{$table}{table} .= "\n) ) INHERITS ($table);\n";
-					$funct_cond .= "\t$cond ( " . join(' AND ', @condition) . " ) THEN INSERT INTO $part VALUES (NEW.*);\n";
+					$funct_cond .= "\t$cond ( " . join(' AND ', @condition) . " ) THEN INSERT INTO $tb_name VALUES (NEW.*);\n";
 					$cond = 'ELSIF';
 					$old_part = $part;
 					$i++;
@@ -3940,7 +3949,15 @@ sub _dump_table
 	}
 
 	# Rename table and double-quote it if required
-	my $tmptb = $self->get_replaced_tbname($part_name || $table);
+	my $tmptb = '';
+
+	# Prefix partition name with tablename
+	if ($part_name && $self->{prefix_partition}) {
+		$tmptb = $self->get_replaced_tbname($table . '_' . $part_name);
+	} else {
+		$tmptb = $self->get_replaced_tbname($part_name || $table);
+	}
+
 
 	# Build the header of the query
 	my @tt = ();
@@ -7138,6 +7155,8 @@ sub _dump_to_pg
 	}
 	# Open a connection to the postgreSQL database if required
 	my $rname = $part_name || $table;
+
+	# Connect to PostgreSQL if direct import is enabled
 	my $dbhdest = undef;
 	if ($self->{pg_dsn}) {
 		$dbhdest = $self->_send_to_pgdb();
@@ -7223,6 +7242,9 @@ sub _dump_to_pg
 			}
 		}
 	} else {
+		if ($part_name && $self->{prefix_partition})  {
+			$part_name = $table . '_' . $part_name;
+		}
 		$self->data_dump($h_towrite . $sql_out . $e_towrite, $part_name || $table);
 	}
 
