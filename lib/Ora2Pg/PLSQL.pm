@@ -385,7 +385,8 @@ sub plsql_to_plpgsql
 		# Trunc is replaced with date_trunc if we find date in the name of
 		# the value because Oracle have the same trunc function on number
 		# and date type
-		$str =~ s/trunc\(([^\)]*date[^\)]*)\)/date_trunc('day', $1)/igs;
+		$str =~ s/trunc\(([^,\)]*(?:date|timestamp)[\,]*),([^\)]*)\)/date_trunc($2, $1)/igs;
+		$str =~ s/trunc\(([^,\)]*(?:date|timestamp)[^,\)]*)\)/date_trunc('day', $1)/igs;
 
 		# Replace Oracle substr(string, start_position, length) with
 		# PostgreSQL substring(string from start_position for length)

@@ -876,6 +876,7 @@ sub _init
         foreach my $t (@{$self->{export_type}}) {
                 $self->{type} = $t;
 		if (($self->{type} eq 'TABLE') || ($self->{type} eq 'FDW') || ($self->{type} eq 'INSERT') || ($self->{type} eq 'COPY') || ($self->{type} eq 'KETTLE')) {
+			$self->{plsql_pgsql} = 1;
 			$self->_tables();
 		} elsif ($self->{type} eq 'VIEW') {
 			$self->_views();
@@ -1662,7 +1663,11 @@ sub read_schema_from_file
 
 					my $c_default = '';
 					if ($c =~ s/DEFAULT\s+([^\s]+)\s*//) {
-						$c_default = $1;
+						if (!$self->{plsql_pgsql}) {
+							$c_default = $1;
+						} else {
+							$c_default = Ora2Pg::PLSQL::plsql_to_plpgsql($1, $self->{allow_code_break},$self->{null_equal_empty});
+						}
 					}
 					#COLUMN_NAME, DATA_TYPE, DATA_LENGTH, NULLABLE, DATA_DEFAULT, DATA_PRECISION, DATA_SCALE, CHAR_LENGTH, TABLE_NAME, OWNER
 					push(@{$self->{tables}{$tb_name}{column_info}{$c_name}}, ($c_name, $c_type, $c_length, $c_nullable, $c_default, $c_length, $c_scale, $c_length, $tb_name, '', $pos));
@@ -3783,10 +3788,11 @@ CREATE TRIGGER insert_${table}_trigger
 					$sql_output .= " NOT NULL";
 				}
 				if ($f->[4] ne "") {
-					$f->[4] =~ s/SYSDATE[\s\t]*\([\s\t]*\)/LOCALTIMESTAMP/igs;
-					$f->[4] =~ s/SYSDATE/LOCALTIMESTAMP/ig;
 					$f->[4] =~ s/^[\s\t]+//;
 					$f->[4] =~ s/[\s\t]+$//;
+					if ($self->{plsql_pgsql}) {
+						$f->[4] = Ora2Pg::PLSQL::plsql_to_plpgsql($f->[4], $self->{allow_code_break},$self->{null_equal_empty});
+					}
 					if ($self->{type} ne 'FDW') {
 						$sql_output .= " DEFAULT $f->[4]";
 					}
