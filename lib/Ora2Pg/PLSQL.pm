@@ -186,11 +186,11 @@ sub plsql_to_plpgsql
 	#--------------------------------------------
 	# Change NVL to COALESCE
 	$str =~ s/NVL[\s\t]*\(/coalesce(/igs;
+	# Replace sysdate +/- N by localtimestamp - 1 day intervel
+	$str =~ s/SYSDATE[\s\t]*(\+|\-)[\s\t]*(\d+)/LOCALTIMESTAMP $1 interval '$2 days'/igs;
 	# Change SYSDATE to 'now' or current timestamp.
 	$str =~ s/SYSDATE[\s\t]*\([\s\t]*\)/LOCALTIMESTAMP/igs;
 	$str =~ s/SYSDATE/LOCALTIMESTAMP/igs;
-	# Replace sysdate +/- N by localtimestamp - 1 day intervel
-	#$str =~ s/LOCALTIMESTAMP([\s\t]*\-|\+[\s\t]*)(\d+)[\s\t]*,/LOCALTIMESTAMP$1'$2 day'\:\:interval,/igs;
 	# remove FROM DUAL
 	$str =~ s/FROM DUAL//igs;
 
