@@ -7006,6 +7006,13 @@ sub ask_for_data
 		}
 	}
 
+	# check if destination column type must be changed
+	for (my $i = 0; $i <= $#{$nn}; $i++) {
+		my $colname = $nn->[$i]->[0];
+		$colname =~ s/"//g;
+		$tt->[$i] = $self->{'modify_type'}{"\L$table\E"}{"\L$colname\E"} if (exists $self->{'modify_type'}{"\L$table\E"}{"\L$colname\E"});
+	}
+
 	if ( ($self->{oracle_copies} > 1) && $self->{defined_pk}{"\L$table\E"} ) {
 		$self->{ora_conn_count} = 0;
 		while ($self->{ora_conn_count} < $self->{oracle_copies}) {
@@ -7725,6 +7732,7 @@ sub _show_infos
 					my $d = $self->{tables}{$t}{column_info}{$k};
 					my $type = $self->_sql_type($d->[1], $d->[2], $d->[5], $d->[6]);
 					$type = "$d->[1], $d->[2]" if (!$type);
+					$type = $self->{'modify_type'}{"\L$t\E"}{"\L$k\E"} if (exists $self->{'modify_type'}{"\L$t\E"}{"\L$k\E"});
 					my $align = '';
 					my $len = $d->[2];
 					if (($d->[1] =~ /char/i) && ($d->[7] > $d->[2])) {
