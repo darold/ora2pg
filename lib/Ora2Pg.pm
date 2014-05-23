@@ -867,7 +867,7 @@ sub _init
 
 	} else {
 		$self->{plsql_pgsql} = 1;
-		if (grep(/^$self->{type}$/, 'TABLE', 'SEQUENCE', 'TABLESPACE', 'VIEW', 'TRIGGER', 'QUERY', 'FUNCTION','PROCEDURE','PACKAGE','TYPE')) {
+		if (grep(/^$self->{type}$/, 'TABLE', 'SEQUENCE', 'GRANT', 'TABLESPACE', 'VIEW', 'TRIGGER', 'QUERY', 'FUNCTION','PROCEDURE','PACKAGE','TYPE')) {
 			$self->export_schema();
 		} else {
 			$self->logit("FATAL: bad export type using input file option\n", 0, 1);
@@ -1839,6 +1839,34 @@ sub read_view_from_file
 	$self->read_comment_from_file();
 }
 
+sub read_grant_from_file
+{
+	my $self = shift;
+
+	# Load file in a single string
+	my $content = $self->_get_dml_from_file();
+
+	my $tid = 0; 
+
+	# Extract grant information
+	while ($content =~ s/GRANT\s+(.*?)\s+ON\s+([^\s]+)\s+TO\s+([^;]+)(\s+WITH GRANT OPTION)?;//i) {
+		my $g_priv = $1;
+		my $g_name = $2;
+		$g_name =~ s/"//g;
+		my $g_user = $3;
+		my $g_option = $4;
+		$g_priv =~ s/\s+//g;
+		$tid++;
+		$self->{grants}{$g_name}{type} = '';
+		push(@{$self->{grants}{$g_name}{privilege}{$g_user}}, split(/,/, $g_priv));
+		if ($g_priv =~ /EXECUTE/) {
+			$self->{grants}{$table}{type} = 'PACKAGE BODY';
+		} else {
+			$self->{grants}{$table}{type} = 'TABLE';
+		}
+	}
+}
+
 sub read_trigger_from_file
 {
 	my $self = shift;
@@ -2414,6 +2442,10 @@ LANGUAGE plpgsql ;
 		my $grants = '';
 		my $users = '';
 
+		# Read DML from file if any
+		if ($self->{input_file}) {
+			$self->read_grant_from_file();
+		}
 		# Add privilege definition
 		foreach my $table (sort {"$self->{grants}{$a}{type}.$a" cmp "$self->{grants}{$b}{type}.$b" } keys %{$self->{grants}}) {
 			my $realtable = lc($table);
