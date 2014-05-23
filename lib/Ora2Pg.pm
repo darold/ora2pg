@@ -1551,6 +1551,10 @@ sub read_schema_from_file
 
 	my $tid = 0; 
 
+	# Remove potential dynamic table creation before parsing
+	while ($content =~ s/'(TRUNCATE|CREATE)\s+(GLOBAL|UNIQUE)?\s*(TEMPORARY)?\s*(TABLE|INDEX)([^']+)'//i) {};
+	while ($content =~ s/'ALTER\s+TABLE\s*([^']+)'//i) {};
+
 	while ($content =~ s/TRUNCATE TABLE\s+([^;]+);//i) {
 		my $tb_name = $1;
 		$tb_name =~ s/"//g;
@@ -1696,10 +1700,6 @@ sub read_schema_from_file
 			$self->{tables}{$tb_name}{table_info}{nologging} = 1;
 		}
 
-		#$comments{$row->[0]}{comment} = $row->[1];
-		#$comments{$row->[0]}{table_type} = $row->[2];
-		#$tables_infos{$row->[1]}{owner} = $row->[0] || '';
-		#$tables_infos{$row->[1]}{comment} =  $comments{$row->[1]}{comment} || '';
 	}
 
 	while ($content =~ s/ALTER\s+TABLE[\s]+([^\s]+)\s+([^;]+);//i) {
@@ -1756,8 +1756,45 @@ sub read_schema_from_file
 		}
 
 	}
+	# Extract comments
+	$self->read_comment_from_file();
+}
+
+sub read_comment_from_file
+{
+	my $self = shift;
+
+	# Load file in a single string
+	my $content = $self->_get_dml_from_file();
+
+	my $tid = 0; 
+
+	while ($content =~ s/COMMENT\s+ON\s+TABLE\s+([^\s]+)\s*IS\s*'([^;]+);//i) {
+		my $tb_name = $1;
+		my $tb_comment = $2;
+		$tb_name =~ s/"//g;
+		$tb_comment =~ s/'$//g;
+		if (exists $self->{tables}{$tb_name}) {
+			$self->{tables}{$tb_name}{table_info}{comment} = $tb_comment;
+		}
+	}
+
+	while ($content =~ s/COMMENT\s+ON\s+COLUMN\s+([^\s]+)\s*IS\s*'([^;]+);//i) {
+		my $tb_name = $1;
+		my $tb_comment = $2;
+		$tb_name =~ s/"//g;
+		$tb_comment =~ s/'$//g;
+		if ($tb_name =~ s/\.([^\.]+)$//) {
+			if (exists $self->{tables}{$tb_name}) {
+					$self->{tables}{$tb_name}{column_comments}{"\L$1\E"} = $tb_comment;
+			} elsif (exists $self->{views}{$tb_name}) {
+					$self->{views}{$tb_name}{column_comments}{"\L$1\E"} = $tb_comment;
+			}
+		}
+	}
 
 }
+
 
 sub read_view_from_file
 {
@@ -1797,6 +1834,9 @@ sub read_view_from_file
 		$tid++;
 	        $self->{views}{$v_name}{text} = $v_def;
 	}
+
+	# Extract comments
+	$self->read_comment_from_file();
 }
 
 sub read_trigger_from_file
@@ -2161,7 +2201,24 @@ sub _get_sql_data
 			}
 			$nothing++;
 			$i++;
+
+			# Add comments on columns
+			if (!$self->{disable_comment}) {
+				foreach $f (keys %{$self->{views}{$view}{column_comments}}) {
+					next unless $self->{views}{$view}{column_comments}{$f};
+					$self->{views}{$view}{column_comments}{$f} =~ s/'/''/gs;
+					if (!$self->{preserve_case}) {
+						$sql_output .= "COMMENT ON COLUMN $view.$f IS E'" . $self->{views}{$view}{column_comments}{$f} .  "';\n";
+					} else {
+						my $vname = $view;
+						$vname =~ s/\./"."/;
+						$sql_output .= "COMMENT ON COLUMN \"$vname\".\"$f\" IS E'" . $self->{views}{$view}{column_comments}{$f} .  "';\n";
+					}
+				}
+			}
+
 		}
+
 		if (!$self->{quiet} && !$self->{debug}) {
 			print STDERR $self->progress_bar($i - 1, $num_total_view, 25, '=', 'views', 'end of output.'), "\n";
 		}
