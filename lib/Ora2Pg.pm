@@ -866,7 +866,7 @@ sub _init
 
 	} else {
 		$self->{plsql_pgsql} = 1;
-		if (grep(/^$self->{type}$/, 'TABLE', 'VIEW', 'TRIGGER', 'QUERY', 'FUNCTION','PROCEDURE','PACKAGE','TYPE')) {
+		if (grep(/^$self->{type}$/, 'TABLE', 'SEQUENCE', 'VIEW', 'TRIGGER', 'QUERY', 'FUNCTION','PROCEDURE','PACKAGE','TYPE')) {
 			$self->export_schema();
 		} else {
 			$self->logit("FATAL: bad export type using input file option\n", 0, 1);
@@ -1847,6 +1847,66 @@ sub read_trigger_from_file
 
 }
 
+sub read_sequence_from_file
+{
+	my $self = shift;
+
+	# Load file in a single string
+	my $content = $self->_get_dml_from_file();
+
+	my $tid = 0; 
+
+	# Sequences 
+	while ($content =~ s/CREATE\s+SEQUENCE[\s]+([^\s]+)\s*([^;]+);//i) {
+		my $s_name = $1;
+		$s_name =~ s/"//g;
+		my $s_def = $2;
+		$s_def =~ s/\s+/ /g;
+		$tid++;
+		my @seq_info = ();
+
+		# SEQUENCE_NAME, MIN_VALUE, MAX_VALUE, INCREMENT_BY, LAST_NUMBER, CACHE_SIZE, CYCLE_FLAG, SEQUENCE_OWNER FROM $self->{prefix}_SEQUENCES";
+		push(@seq_info, $s_name);
+		if ($s_def =~ /MINVALUE\s+(\d+)/i) {
+			push(@seq_info, $1);
+		} else {
+			push(@seq_info, '');
+		}
+		if ($s_def =~ /MAXVALUE\s+(\d+)/i) {
+			push(@seq_info, $1);
+		} else {
+			push(@seq_info, '');
+		}
+		if ($s_def =~ /INCREMENT\s*(?:BY)?\s+(\d+)/i) {
+			push(@seq_info, $1);
+		} else {
+			push(@seq_info, 1);
+		}
+		if ($s_def =~ /START\s+WITH\s+(\d+)/i) {
+			push(@seq_info, $1);
+		} else {
+			push(@seq_info, '');
+		}
+		if ($s_def =~ /CACHE\s+(\d+)/i) {
+			push(@seq_info, $1);
+		} else {
+			push(@seq_info, '');
+		}
+		if ($s_def =~ /NOCYCLE/i) {
+			push(@seq_info, 'NO');
+		} else {
+			push(@seq_info, 'YES');
+		}
+		if ($s_name =~ /^([^\.]+)\./i) {
+			push(@seq_info, $1);
+		} else {
+			push(@seq_info, '');
+		}
+		push(@{$self->{sequences}}, \@seq_info);
+	}
+}
+
+
 
 
 =head2 _views
@@ -2366,8 +2426,13 @@ LANGUAGE plpgsql ;
 	# Process sequences only
 	if ($self->{type} eq 'SEQUENCE') {
 		$self->logit("Add sequences definition...\n", 1);
+		# Read DML from file if any
+		if ($self->{input_file}) {
+			$self->read_sequence_from_file();
+		}
 		my $i = 1;
 		my $num_total_sequence = $#{$self->{sequences}} + 1;
+
 		foreach my $seq (sort { $a->[0] cmp $b->[0] } @{$self->{sequences}}) {
 			if (!$self->{quiet} && !$self->{debug}) {
 				print STDERR $self->progress_bar($i, $num_total_sequence, 25, '=', 'sequences', "generating $seq->[0]" );
@@ -3585,7 +3650,7 @@ BEGIN
 							}
 						}
 						$create_table{$table}{table} .= " AND" if ($i < $#{$self->{partitions}{$table}{$pos}{$part}});
-						$create_table{$table}{'index'} .= "CREATE INDEX ${tbname}_$self->{partitions}{$table}{$pos}{$part}[$i]->{column} ON $tb_name ($self->{partitions}{$table}{$pos}{$part}[$i]->{column});\n";
+						$create_table{$table}{'index'} .= "CREATE INDEX ${tb_name}_$self->{partitions}{$table}{$pos}{$part}[$i]->{column} ON $tb_name ($self->{partitions}{$table}{$pos}{$part}[$i]->{column});\n";
 						if ($self->{partitions}{$table}{$pos}{$part}[$i]->{type} eq 'LIST') {
 							push(@condition, "NEW.$self->{partitions}{$table}{$pos}{$part}[$i]->{column} IN (" . Ora2Pg::PLSQL::plsql_to_plpgsql($self->{partitions}{$table}{$pos}{$part}[$i]->{value}, $self->{allow_code_break}, $self->{null_equal_empty}) . ")");
 						} else {
