@@ -565,6 +565,10 @@ PG_SUPPORTS_CHECKOPTION	0
 # could slow down the schema export.
 AUTODETECT_SPATIAL_TYPE	0
 
+# Disable this directive if you don't want to automatically convert SRID to EPSG
+# using the sdo_cs.map_oracle_srid_to_epsg() function. Default: enabled
+CONVERT_SRID		1
+
 # Enable this directive if you want that your partition table name will be
 # exported using the parent table name. Disabled by default. If you have
 # multiple partitioned table, when exported to PostgreSQL some partitions

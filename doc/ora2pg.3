@@ -124,7 +124,7 @@
 .\" ========================================================================
 .\"
 .IX Title "ORA2PG 1"
-.TH ORA2PG 1 "2014-05-19" "perl v5.14.2" "User Contributed Perl Documentation"
+.TH ORA2PG 1 "2014-05-23" "perl v5.14.2" "User Contributed Perl Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -1048,6 +1048,11 @@ geometry type that use a single dimension:
 .Ve
 .Sp
 with a two or three dimensional polygon.
+.IP "\s-1CONVERT_SRID\s0" 4
+.IX Item "CONVERT_SRID"
+This directive allow you to control the automatically convertion of Oracle
+\&\s-1SRID\s0 to standard \s-1EPSG\s0. If enabled, Ora2Pg will use the Oracle function
+sdo_cs.\fImap_oracle_srid_to_epsg()\fR to convert all \s-1SRID\s0. Enabled by default.
 .IP "\s-1PREFIX_PARTITION\s0" 4
 .IX Item "PREFIX_PARTITION"
 Enable this directive if you want that your partition table name will be

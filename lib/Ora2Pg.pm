@@ -713,6 +713,11 @@ sub _init
 		$self->{fhlog}->open(">>$self->{logfile}") or $self->logit("FATAL: can't log to $self->{logfile}, $!\n", 0, 1);
 	}
 
+	# Autoconvert SRID
+	if (not defined $self->{convert_srid} || ($self->{convert_srid} != 0)) {
+		$self->{convert_srid} = 1;
+	}
+
 	# Free some memory
 	%options = ();
 	%AConfig = ();
@@ -4813,7 +4818,10 @@ END
 	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
 	my $spatial_query =  'SELECT DISTINCT c.%s.SDO_GTYPE FROM %s c';
-	my $spatial_sysref = 'SELECT DISTINCT c.%s.SDO_SRID  FROM %s c';
+	my $spatial_sysref = 'SELECT DISTINCT c.%s.SDO_SRID,  FROM %s c';
+	if ($self->{cnvert_srid}) {
+		$spatial_sysref = 'SELECT DISTINCT sdo_cs.map_oracle_srid_to_epsg(c.%s.SDO_SRID) FROM %s c';
+	}
 
 	my %data = ();
 	my $pos = 0;

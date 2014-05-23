@@ -885,6 +885,12 @@ CONFIGURATION
 
         with a two or three dimensional polygon.
 
+    CONVERT_SRID
+        This directive allow you to control the automatically convertion of
+        Oracle SRID to standard EPSG. If enabled, Ora2Pg will use the Oracle
+        function sdo_cs.map_oracle_srid_to_epsg() to convert all SRID.
+        Enabled by default.
+
     PREFIX_PARTITION
         Enable this directive if you want that your partition table name
         will be exported using the parent table name. Disabled by default.
