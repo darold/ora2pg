@@ -34,6 +34,7 @@ use Time::HiRes qw/usleep/;
 use Fcntl qw/ :flock /;
 use IO::Handle;
 use IO::Pipe;
+use File::Basename;
 
 #set locale to LC_NUMERIC C
 setlocale(LC_NUMERIC,"C");
@@ -866,7 +867,7 @@ sub _init
 
 	} else {
 		$self->{plsql_pgsql} = 1;
-		if (grep(/^$self->{type}$/, 'TABLE', 'SEQUENCE', 'VIEW', 'TRIGGER', 'QUERY', 'FUNCTION','PROCEDURE','PACKAGE','TYPE')) {
+		if (grep(/^$self->{type}$/, 'TABLE', 'SEQUENCE', 'TABLESPACE', 'VIEW', 'TRIGGER', 'QUERY', 'FUNCTION','PROCEDURE','PACKAGE','TYPE')) {
 			$self->export_schema();
 		} else {
 			$self->logit("FATAL: bad export type using input file option\n", 0, 1);
@@ -1905,6 +1906,33 @@ sub read_sequence_from_file
 		push(@{$self->{sequences}}, \@seq_info);
 	}
 }
+
+sub read_tablespace_from_file
+{
+	my $self = shift;
+
+	# Load file in a single string
+	my $content = $self->_get_dml_from_file();
+
+	my $tid = 0; 
+
+	# tablespace
+	while ($content =~ s/CREATE\s+TABLESPACE[\s]+([^\s]+)\s*DATAFILE\s*([^;]+);//i) {
+		my $t_name = $1;
+		$t_name =~ s/"//g;
+		my $t_def = $2;
+		$t_def =~ s/\s+/ /g;
+		$tid++;
+		# get path
+		if ($t_def =~ /'([^\']+)'/) {
+			my $t_path = dirname($1);
+			# TYPE - TABLESPACE_NAME - FILEPATH - OBJECT_NAME
+			@{$self->{tablespaces}{TABLE}{$t_name}{$t_path}} = ();
+		}
+
+	}
+}
+
 
 
 
@@ -3118,6 +3146,11 @@ LANGUAGE plpgsql ;
 		$sql_header .= "-- In PostgreSQl the path must be a directory and is expected to already exists\n";
 		my $create_tb = '';
 		my @done = ();
+		# Read DML from file if any
+		if ($self->{input_file}) {
+			$self->read_tablespace_from_file();
+		}
+		my $dirprefix = '';
 		foreach my $tb_type (sort keys %{$self->{tablespaces}}) {
 			# TYPE - TABLESPACE_NAME - FILEPATH - OBJECT_NAME
 			foreach my $tb_name (sort keys %{$self->{tablespaces}{$tb_type}}) {
