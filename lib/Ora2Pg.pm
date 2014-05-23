@@ -5981,7 +5981,7 @@ WHERE
 	while (my $row = $sth->fetch) {
 
 		# forget or not this object if it is in the exclude or allow lists.
-		next if ($self->skip_this_object('PARTITION', $row->[2]));
+		next if ($self->skip_this_object('PARTITION', $row->[0]));
 
 		if ( ($row->[3] eq 'MAXVALUE') || ($row->[3] eq 'DEFAULT')) {
 			$default{$row->[0]} = $row->[2];
