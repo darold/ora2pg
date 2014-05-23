@@ -3893,9 +3893,11 @@ CREATE TRIGGER insert_${table}_trigger
 						$self->{tables}{$table}{column_info}{$a}[10] <=> $self->{tables}{$table}{column_info}{$b}[10];
 					} else {
 						my $tmpa = $self->{tables}{$table}{column_info}{$a};
+						$tmpa->[2] =~ s/\D//g;
 						my $typa = $self->_sql_type($tmpa->[1], $tmpa->[2], $tmpa->[5], $tmpa->[6]);
 						$typa =~ s/\(.*//;
 						my $tmpb = $self->{tables}{$table}{column_info}{$b};
+						$tmpb->[2] =~ s/\D//g;
 						my $typb = $self->_sql_type($tmpb->[1], $tmpb->[2], $tmpb->[5], $tmpb->[6]);
 						$typb =~ s/\(.*//;
 						$TYPALIGN{$typb} <=> $TYPALIGN{$typa};
@@ -3903,6 +3905,7 @@ CREATE TRIGGER insert_${table}_trigger
 				} keys %{$self->{tables}{$table}{column_info}}) {
 
 				my $f = $self->{tables}{$table}{column_info}{$k};
+				$f->[2] =~ s/\D//g;
 				my $type = $self->_sql_type($f->[1], $f->[2], $f->[5], $f->[6]);
 				$type = "$f->[1], $f->[2]" if (!$type);
 				# Change column names
@@ -4154,6 +4157,7 @@ sub _dump_table
 		}
 
 		my $f = $self->{tables}{$table}{column_info}{$fieldname};
+		$f->[2] =~ s/\D//g;
 		my $type = $self->_sql_type($f->[1], $f->[2], $f->[5], $f->[6]);
 		$type = "$f->[1], $f->[2]" if (!$type);
 		push(@stt, uc($f->[1]));
@@ -6896,6 +6900,7 @@ sub _convert_declare
 						$scale ||= 0;
 						my $len = $prec;
 						$prec = 0 if (!$scale);
+						$len =~ s/\D//g;
 						$tmp_type = $self->_sql_type($type_name,$len,$prec,$scale);
 					} else {
 						$tmp_type = $self->_sql_type($tmp_type);
@@ -7883,9 +7888,11 @@ sub _show_infos
 							$self->{tables}{$t}{column_info}{$a}[10] <=> $self->{tables}{$t}{column_info}{$b}[10];
 						} else {
 							my $tmpa = $self->{tables}{$t}{column_info}{$a};
+							$tmpa->[2] =~ s/\D//g;
 							my $typa = $self->_sql_type($tmpa->[1], $tmpa->[2], $tmpa->[5], $tmpa->[6]);
 							$typa =~ s/\(.*//;
 							my $tmpb = $self->{tables}{$t}{column_info}{$b};
+							$tmpb->[2] =~ s/\D//g;
 							my $typb = $self->_sql_type($tmpb->[1], $tmpb->[2], $tmpb->[5], $tmpb->[6]);
 							$typb =~ s/\(.*//;
 							$TYPALIGN{$typb} <=> $TYPALIGN{$typa};
@@ -7893,6 +7900,7 @@ sub _show_infos
 					} keys %{$self->{tables}{$t}{column_info}}) {
 					# COLUMN_NAME,DATA_TYPE,DATA_LENGTH,NULLABLE,DATA_DEFAULT,DATA_PRECISION,DATA_SCALE,CHAR_LENGTH,TABLE_NAME,OWNER,POSITION,SDO_DIM,SDO_GTYPE,SRID
 					my $d = $self->{tables}{$t}{column_info}{$k};
+					$d->[2] =~ s/\D//g;
 					my $type = $self->_sql_type($d->[1], $d->[2], $d->[5], $d->[6]);
 					$type = "$d->[1], $d->[2]" if (!$type);
 					$type = $self->{'modify_type'}{"\L$t\E"}{"\L$k\E"} if (exists $self->{'modify_type'}{"\L$t\E"}{"\L$k\E"});
