@@ -5009,8 +5009,8 @@ END
 	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
 	my $spatial_query =  'SELECT DISTINCT c.%s.SDO_GTYPE FROM %s c';
-	my $spatial_sysref = 'SELECT DISTINCT c.%s.SDO_SRID,  FROM %s c';
-	if ($self->{cnvert_srid}) {
+	my $spatial_sysref = 'SELECT DISTINCT c.%s.SDO_SRID  FROM %s c';
+	if ($self->{convert_srid}) {
 		$spatial_sysref = 'SELECT DISTINCT sdo_cs.map_oracle_srid_to_epsg(c.%s.SDO_SRID) FROM %s c';
 	}
 
