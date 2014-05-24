@@ -6262,7 +6262,7 @@ WHERE a.table_name = b.table_name
 	while (my $row = $sth->fetch) {
 
 		# forget or not this object if it is in the exclude or allow lists.
-		next if ($self->skip_this_object('PARTITION', $row->[2]));
+		next if ($self->skip_this_object('PARTITION', $row->[0]));
 		$parts{$row->[5]}++;
 	}
 	$sth->finish;
