@@ -4803,6 +4803,16 @@ sub _howto_get_data
 			} else {
 				$str .= "$alias.$name->[$k]->[0].extract('/').getClobVal(),";
 			}
+		} elsif ( $src_type->[$k] =~ /geometry/i) {
+			if ($self->{type} eq 'INSERT') {
+				my $spatial_sysref = "t.$name->[$k]->[0].SDO_SRID";
+				if ($self->{convert_srid}) {
+					$spatial_sysref = "sdo_cs.map_oracle_srid_to_epsg(t.$name->[$k]->[0].SDO_SRID)";
+				}
+				$str .= "'ST_GeomFromText('''||SDO_UTIL.TO_WKTGEOMETRY($name->[$k]->[0])||''','||$spatial_sysref||')',";
+			} else {
+				$str .= "SDO_UTIL.TO_WKBGEOMETRY($name->[$k]->[0])";
+			}
 		} else {
 			$str .= "$name->[$k]->[0],";
 		}
@@ -4841,6 +4851,8 @@ VARCHAR2
 	}
 	if ($part_name) {
 		$alias = "PARTITION($part_name)";
+	} else {
+		$alias = 't';
 	}
 	$str .= " FROM $realtable $alias";
 	if (exists $self->{where}{"\L$table\E"} && $self->{where}{"\L$table\E"}) {
@@ -5009,7 +5021,7 @@ END
 	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
 	my $spatial_query =  'SELECT DISTINCT c.%s.SDO_GTYPE FROM %s c';
-	my $spatial_sysref = 'SELECT DISTINCT c.%s.SDO_SRID  FROM %s c';
+	my $spatial_sysref = 'SELECT DISTINCT c.%s.SDO_SRID FROM %s c';
 	if ($self->{convert_srid}) {
 		$spatial_sysref = 'SELECT DISTINCT sdo_cs.map_oracle_srid_to_epsg(c.%s.SDO_SRID) FROM %s c';
 	}
@@ -6262,7 +6274,7 @@ WHERE a.table_name = b.table_name
 	while (my $row = $sth->fetch) {
 
 		# forget or not this object if it is in the exclude or allow lists.
-		next if ($self->skip_this_object('PARTITION', $row->[0]));
+		next if ($self->skip_this_object('PARTITION', $row->[2]));
 		$parts{$row->[5]}++;
 	}
 	$sth->finish;
@@ -6311,6 +6323,8 @@ sub format_data_row
 sub format_data_type
 {
 	my ($self, $col, $data_type, $action, $table, $src_type) = @_;
+
+	$col =~ s/^\x01\x02$//;
 
 	# Preparing data for output
 	if ($action ne 'COPY') {
@@ -7522,7 +7536,6 @@ sub escape_bytea
 	}
 	return join('', @array);
 }
-
 
 =head2 _show_infos
 
