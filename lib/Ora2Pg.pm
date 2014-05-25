@@ -6337,8 +6337,6 @@ sub format_data_type
 {
 	my ($self, $col, $data_type, $action, $table, $src_type) = @_;
 
-	$col =~ s/^\x01\x02$//;
-
 	# Preparing data for output
 	if ($action ne 'COPY') {
 		if (!defined $col) {
