@@ -7134,11 +7134,11 @@ sub _convert_type
 			$self->logit("WARNING: this kind of Nested Tables are not supported, skipping type $1\n", 1);
 			return "${unsupported}CREATE OR REPLACE $plsql";
 		}
-	} elsif ($plsql =~ /TYPE[\t\s]+([^\t\s]+)[\t\s]+(AS|IS)[\t\s]*OBJECT[\t\s]+\((.*?)(TYPE BODY.*)/is) {
+	} elsif ($plsql =~ /TYPE[\t\s]+([^\t\s]+)[\t\s]+(AS|IS)[\t\s]*OBJECT[\t\s]*\((.*?)(TYPE BODY.*)/is) {
 		$self->{type_of_type}{'Type Boby'}++;
 		$self->logit("WARNING: TYPE BODY are not supported, skipping type $1\n", 1);
 		return "${unsupported}CREATE OR REPLACE $plsql";
-	} elsif ($plsql =~ /TYPE[\t\s]+([^\t\s]+)[\t\s]+(AS|IS)[\t\s]*OBJECT[\t\s]+\((.*)\)([^\)]*)/is) {
+	} elsif ($plsql =~ /TYPE[\t\s]+([^\t\s]+)[\t\s]+(AS|IS)[\t\s]*OBJECT[\t\s]*\((.*)\)([^\)]*)/is) {
 		my $type_name = $1;
 		my $description = $3;
 		my $notfinal = $4;
