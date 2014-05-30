@@ -613,6 +613,9 @@ sub _init
 	# Used to precise if we need to prefix partition tablename with main tablename
 	$self->{prefix_partition} = 0;
 
+	# Use to preserve the data export type with geometry objects
+	$self->{local_type} = '';
+
 	# Initialyze following configuration file
 	foreach my $k (sort keys %AConfig) {
 		if (lc($k) eq 'allow') {
@@ -4164,10 +4167,7 @@ sub _dump_table
 	my @tt = ();
 	my @stt = ();
 	my @nn = ();
-	my $s_out = "INSERT INTO $tmptb (";
-	if ($self->{type} eq 'COPY') {
-		$s_out = "\nCOPY $tmptb (";
-	}
+	my $col_list = '';
 
 	# Extract column information following the Oracle position order
 	my @fname = ();
@@ -4190,6 +4190,12 @@ sub _dump_table
 
 		my $f = $self->{tables}{$table}{column_info}{$fieldname};
 		$f->[2] =~ s/\D//g;
+
+		if ($f->[1] =~ /GEOMETRY/i) {
+			$self->{local_type} = $self->{type} if (!$self->{local_type});
+			$self->{type} = 'INSERT';
+		}
+
 		my $type = $self->_sql_type($f->[1], $f->[2], $f->[5], $f->[6]);
 		$type = "$f->[1], $f->[2]" if (!$type);
 		push(@stt, uc($f->[1]));
@@ -4203,12 +4209,18 @@ sub _dump_table
 		}
 		if (!$self->{preserve_case}) {
 			$colname = $self->quote_reserved_words($colname);
-			$s_out .= "\L$colname\E,";
+			$col_list .= "\L$colname\E,";
 		} else {
-			$s_out .= "\"$colname\",";
+			$col_list .= "\"$colname\",";
 		}
 	}
-	$s_out =~ s/,$//;
+	$col_list =~ s/,$//;
+
+	my $s_out = "INSERT INTO $tmptb ($col_list";
+	if ($self->{type} eq 'COPY') {
+		$s_out = "\nCOPY $tmptb ($col_list";
+	}
+
 	if ($self->{type} eq 'COPY') {
 		$s_out .= ") FROM STDIN;\n";
 	} else {
@@ -4228,6 +4240,8 @@ sub _dump_table
 	# Extract all data from the current table
 	$self->ask_for_data($table, \@cmd_head, \@cmd_foot, $s_out, \@nn, \@tt, $sprep, \@stt, $part_name);
 
+	$self->{type} = $self->{local_type} if ($self->{local_type});
+	$self->{local_type} = '';
 }
 
 =head2 _column_comments
@@ -4805,14 +4819,16 @@ sub _howto_get_data
 				$str .= "$alias.$name->[$k]->[0].extract('/').getClobVal(),";
 			}
 		} elsif ( $src_type->[$k] =~ /geometry/i) {
+			my $spatial_sysref = "t.$name->[$k]->[0].SDO_SRID";
+			if ($self->{convert_srid}) {
+				$spatial_sysref = "sdo_cs.map_oracle_srid_to_epsg(t.$name->[$k]->[0].SDO_SRID)";
+			}
 			if ($self->{type} eq 'INSERT') {
-				my $spatial_sysref = "t.$name->[$k]->[0].SDO_SRID";
-				if ($self->{convert_srid}) {
-					$spatial_sysref = "sdo_cs.map_oracle_srid_to_epsg(t.$name->[$k]->[0].SDO_SRID)";
-				}
 				$str .= "'ST_GeomFromText('''||SDO_UTIL.TO_WKTGEOMETRY($name->[$k]->[0])||''','||$spatial_sysref||')',";
 			} else {
-				$str .= "UTL_RAW.CAST_TO_VARCHAR2(SDO_UTIL.TO_WKBGEOMETRY($name->[$k]->[0]))";
+				# Need to find a solution here. Copy want the spatial object to be gserialized.
+				# Maybe the SC04 package can be used. Need more work
+				#$str .= "ST_AsEWKB(ST_GeomFromEWKT('SRID=' || $spatial_sysref || ';' || SDO_UTIL.TO_WKTGEOMETRY($name->[$k]->[0])))"
 			}
 		} else {
 			$str .= "$name->[$k]->[0],";
