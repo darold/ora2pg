@@ -39,7 +39,7 @@ use File::Basename;
 #set locale to LC_NUMERIC C
 setlocale(LC_NUMERIC,"C");
 
-$VERSION = '12.1';
+$VERSION = '13.0';
 $PSQL = $ENV{PLSQL} || 'psql';
 
 $| = 1;

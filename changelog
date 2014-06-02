@@ -1,3 +1,122 @@
+2014 06 02 - v13.0
+
+This major release adds first support to export Oracle Spatial Objects to PostGis
+Spatial objects. There's also a new configuration directive to allow logging of
+statement failures to prevent Ora2Pg to abort and continue to load valid data. 
+The other main feature is the possibility to convert DDL files without needing an
+Oracle database connection, until now this was reserved to files containing stored
+procedures. There's also several bug fixes.
+
+	- Allow error logging during data import. This feature controlled by the
+	  LOG_ON_ERROR directive allow you to not abort the data import process
+	  when an error is encountered and to log to a file the COPY or INSERT
+	  statement that generate the error. After fixing the statement you will
+	  be able to load the missing data. Thanks to menardoram for the feature
+	  request.
+	- Force export type to be INSERT when COPY is used and a table have a
+	  GEOMETRY column. I can not find a solution to export as copy statement
+	  for the moment. Thanks to Dominique Legendre and Vincent Picavet for
+	  the help.
+	- Fix export of user defined type as object. Thanks to Shanshan Wang for
+	  the report.
+	- Limit look up of objects to the ALLOW or EXCLUDE filter into the SQL
+	  query instead of the Perl code to avoid retrieving huge list of objects
+	  on such database. Thanks to menardorama for the feature request.
+	- Add support to spatial data export in INSERT mode. Still need some work
+	  in COPY export mode if possible.
+	- Fix query to retrieve SRID that broken with patch on CONVERT_SRID.
+	- Fix wrong filter with ALLOW directive when getting list of  partition.
+	- Add GRANT export read from an input file.
+	- Fix data type conversion when using input file and data type such
+	  varchar2(10 BYTE).
+	- Add export of comment with TABLE and VIEW exports using an input file.
+	- Add extraction of TABLESPACE from an input file.
+	- Add support to SEQUENCE extraction from input file.
+	- Fix wrong filter with ALLOW directive when exporting partition. The
+	  filter was done on partition name instead of table name, that mean
+	  that setting ALLOW directive was resulting in no export at all. Thanks
+	  to menardorama for the report.
+	- Add CONVERT_SRID configuration directive to control the automatic
+	  conversion of SRID to standard EPSG using the Oracle SDO function
+	  sdo_cs.map_oracle_srid_to_epsg() Oracle function. Thanks to Dominique
+	  Legendre for the help.
+	- Fix a typo in the create index prefix on partitioned tables. Thanks
+	  to menardorama for the patch.
+	- Fix non replacement of destination during SHOW_COLUMN and COPY export.
+	  Using MODIFY_TYPE was only working in TABLE export.
+	- Force pl/sql conversion with TABLE export to replace advanced default
+	  values. Fix code TRUNC(SYSDATE, MONTH) in default value and everywhere
+	  that should be: date_trunc(month,LOCALTIMESTAMP). Thanks to menardorama
+	  for the report.
+	- Fix code regarding unique partition index naming. Thanks to menardorama
+	  for the report.
+	- Add PREFIX_PARTITION configuration directive. When enabled it will force
+	  renaming all partition table name with the name of the parent table.
+	  Thanks to menardoram for the feature request.
+	- Add AUTODETECT_SPATIAL_TYPE in configuration file and documentation
+	  about this new directive.
+	- Add export of SDO_GEOMETRY column type. They are basically exported to
+	  the non-constrained "geometry" type with SRID if defined. When the
+	  configuration directive AUTODETECT_SPATIAL_TYPE is enable, Ora2Pg will
+	  try to autodetect the geometry type, the dimension and the SRID used
+	  to set a constrained geometry type. For example, in the first case
+	  column shape with Oracle type SDO_GEOMETRY will be converted as:
+
+		shape geometry(GEOMETRY) or shape geometry(GEOMETRY, 4326)
+
+	  and in the second case, with constrained geometry type:
+
+		shape geometry(POLIGONZ, 4326)
+
+	  with a three dimensional polygon. Thanks to Vincent Picavet for the
+	  feature request and specification.
+	- Add support to spatial index read from file.
+	- Add export of Oracle spatial index. For example, index:
+		CREATE INDEX cola_spatial_idx ON cola_markets(shape) INDEXTYPE IS MDSYS.SPATIAL_INDEX;
+	  will be exported as
+		CREATE INDEX cola_spatial_idx ON cola_markets USING GIST(shape);
+	  Thanks to Vincent Picavet / Oslandia for the feature request and explanations.
+	- Allow TRIGGER export to parse an input file with Oracle DML orders.
+	- Add PG_SUPPORTS_CHECKOPTION configuration directive to not remove
+	  WITH CHECK OPTION in create view statement. It is supported in 
+	  PostgreSQL 9.4.
+	- Allow VIEW export to parse an input file with Oracle DML orders.
+	- Allow TABLE export to parse an input file with Oracle DML orders.
+	- Add SYNCHRONOUS_COMMIT configuration directive disabled by default.
+	  This is the current behavior of Ora2Pg, it set synchronous_commit
+	  to off before data import to PostgreSQL. This is only used when you
+	  load data directly to PostgreSQL, the default is off to disable
+	  synchronous commit to gain speed at writing data. Some modified or
+	  old version of PostgreSQL, like Greenplum, do not have this setting.
+	- Add some useful information for Windows user in documentation. Thanks
+	  to Roger Park for the report.
+	- Fix case when parentheses are omitted in index creation. Thanks to
+	  Yuri Ushakov for the report.
+	- Fix export type PACKAGE when ALLOW is defined to extract only some
+	  packages. Thanks to Maciej Bak for the report.
+	- Fix INSERT export where backslash should be escaped and single be
+	  doubled in standard conforming string notation. Thanks to Yuri
+	  Ushakov for the report.
+	- Add important note about LONGREADLEN and DATA_LIMIT that could need
+	  to be adjusted to avoid out of memory. Thanks to Mike Kienenberger
+	  for the patch.
+	- Fix case sensitivity issue with export of comment on column. Thanks
+	  to Pierre Crumeyrolle for the report.
+	- Fix export of RAW data in COPY mode, was missing a backslash. Thanks
+	  to jwiechmann for the report.
+	- Fix RAW data export in COPY and INSERT mode, RAW data type is returned
+	  in hex by DBD::Oracle. Thanks to jwiechmann for the report.
+	- Fix one release 8i condition.
+	- Fix inexistent column USE_NO_INDEX with Oracle 8i and MVIEW export.
+	- Enclose call to utf8::encode and utf8::valid into eval.
+	- Fix export of constraint with Oracle 8i release.
+	- Fix unrecognized fatal error with 8i database. Thanks to UnvorherSeba
+	  for the patch.
+	- Revert change level of error from fatal to error, when querying
+	  materialized view.
+	- Change level of error from fatal to error, when querying materialized
+	  view.
+
 2014 01 28 - v12.1
 
 This is a maintenance release with some minor bug fixes and a new configuration
