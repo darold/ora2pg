@@ -309,10 +309,9 @@ This directive did not control the Oracle database connection or unless it
 purely disable the use of any Oracle database by accepting a file as argument.
 Set this directive to a file containing PL/SQL Oracle Code like function,
 procedure or full package body to prevent Ora2Pg from connecting to an
-Oracle database end just apply his convertion tool to the content of the
-file. This can only be used with the following export type: PROCEDURE,
-FUNCTION or PACKAGE. If you don't know what you do don't use this directive,
-I use it to find PL/SQL parser and PL/PGSQL converter issues.
+Oracle database and just apply his convertion tool to the content of the
+file. This can be used with the most of export types: TABLE, TRIGGER, PROCEDURE,
+VIEW, FUNCTION or PACKAGEi, etc.
 
 =back
 

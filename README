@@ -298,11 +298,10 @@ CONFIGURATION
         unless it purely disable the use of any Oracle database by accepting
         a file as argument. Set this directive to a file containing PL/SQL
         Oracle Code like function, procedure or full package body to prevent
-        Ora2Pg from connecting to an Oracle database end just apply his
-        convertion tool to the content of the file. This can only be used
-        with the following export type: PROCEDURE, FUNCTION or PACKAGE. If
-        you don't know what you do don't use this directive, I use it to
-        find PL/SQL parser and PL/PGSQL converter issues.
+        Ora2Pg from connecting to an Oracle database and just apply his
+        convertion tool to the content of the file. This can be used with
+        the most of export types: TABLE, TRIGGER, PROCEDURE, VIEW, FUNCTION
+        or PACKAGEi, etc.
 
   Data encryption with Oracle server
     If your Oracle Client config file already includes the encryption
@@ -765,6 +764,15 @@ CONFIGURATION
         N lists like the top list of tables per number of rows and the top
         list of largest tables in megabytes. By default it is set to 10
         items.
+
+    LOG_ON_ERROR
+        Enable this directive if you want to continue direct data import on
+        error. When Ora2Pg received an error in the COPY or INSERT statement
+        from PostgreSQL it will log the statement to a file calles
+        TABLENAME_error.log in the output directory and continue to next
+        bulk of data. Like this you can try to fix the statement and
+        manually reload the error log file. Default is disabled: abort
+        import on error.
 
   Modifying object structure
     One of the great usage of Ora2Pg is its flexibility to replicate Oracle

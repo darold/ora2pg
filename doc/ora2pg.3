@@ -124,7 +124,7 @@
 .\" ========================================================================
 .\"
 .IX Title "ORA2PG 1"
-.TH ORA2PG 1 "2014-05-23" "perl v5.14.2" "User Contributed Perl Documentation"
+.TH ORA2PG 1 "2014-06-02" "perl v5.14.2" "User Contributed Perl Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -440,10 +440,9 @@ This directive did not control the Oracle database connection or unless it
 purely disable the use of any Oracle database by accepting a file as argument.
 Set this directive to a file containing \s-1PL/SQL\s0 Oracle Code like function,
 procedure or full package body to prevent Ora2Pg from connecting to an
-Oracle database end just apply his convertion tool to the content of the
-file. This can only be used with the following export type: \s-1PROCEDURE\s0,
-\&\s-1FUNCTION\s0 or \s-1PACKAGE\s0. If you don't know what you do don't use this directive,
-I use it to find \s-1PL/SQL\s0 parser and \s-1PL/PGSQL\s0 converter issues.
+Oracle database and just apply his convertion tool to the content of the
+file. This can be used with the most of export types: \s-1TABLE\s0, \s-1TRIGGER\s0, \s-1PROCEDURE\s0,
+\&\s-1VIEW\s0, \s-1FUNCTION\s0 or PACKAGEi, etc.
 .SS "Data encryption with Oracle server"
 .IX Subsection "Data encryption with Oracle server"
 If your Oracle Client config file already includes the encryption method,
@@ -913,6 +912,14 @@ opposite only export some recent data.
 This directive is used to limit the number of item shown in the top N lists
 like the top list of tables per number of rows and the top list of largest
 tables in megabytes. By default it is set to 10 items.
+.IP "\s-1LOG_ON_ERROR\s0" 4
+.IX Item "LOG_ON_ERROR"
+Enable this directive if you want to continue direct data import on error.
+When Ora2Pg received an error in the \s-1COPY\s0 or \s-1INSERT\s0 statement from PostgreSQL
+it will log the statement to a file calles TABLENAME_error.log in the output
+directory and continue to next bulk of data. Like this you can try to fix the
+statement and manually reload the error log file. Default is disabled: abort
+import on error.
 .SS "Modifying object structure"
 .IX Subsection "Modifying object structure"
 One of the great usage of Ora2Pg is its flexibility to replicate Oracle database
