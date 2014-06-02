@@ -616,6 +616,9 @@ sub _init
 	# Use to preserve the data export type with geometry objects
 	$self->{local_type} = '';
 
+	# Shall we log on error during data import or abort.
+	$self->{log_on_error} = 0;
+
 	# Initialyze following configuration file
 	foreach my $k (sort keys %AConfig) {
 		if (lc($k) eq 'allow') {
@@ -7397,6 +7400,44 @@ sub _extract_data
 	return;
 }
 
+sub log_error_copy
+{
+	my ($self, $table, $s_out, $rows) = @_;
+
+	my $outfile = '';
+	if ($self->{output_dir} && !$noprefix) {
+		$outfile = $self->{output_dir} . '/';
+	}
+	$outfile .= $table . '_error.log';
+
+	open(OUTERROR, ">>$outfile") or $self->logit("FATAL: can not write to $outfile, $!\n", 0, 1);
+	binmode(OUTERROR, $self->{'binmode'});
+	print OUTERROR "$s_out";
+	foreach my $row (@$rows) {
+		print OUTERROR join("\t", @$row), "\n";
+	}
+	print OUTERROR "\\.\n";
+	close(OUTERROR);
+
+}
+
+sub log_error_insert
+{
+	my ($self, $table, $sql_out) = @_;
+
+	my $outfile = '';
+	if ($self->{output_dir} && !$noprefix) {
+		$outfile = $self->{output_dir} . '/';
+	}
+	$outfile .= $table . '_error.log';
+
+	open(OUTERROR, ">>$outfile") or $self->logit("FATAL: can not write to $outfile, $!\n", 0, 1);
+	binmode(OUTERROR, $self->{'binmode'});
+	print OUTERROR "$sql_out\n";
+	close(OUTERROR);
+
+}
+
 
 sub _dump_to_pg
 {
@@ -7458,10 +7499,27 @@ sub _dump_to_pg
 			$self->logit("DEBUG: Sending COPY bulk output directly to PostgreSQL backend\n", 1);
 			my $s = $dbhdest->do($sql_out) or $self->logit("FATAL: " . $dbhdest->errstr . "\n", 0, 1);
 			$sql_out = '';
+			my $skip_end = 0;
 			foreach my $row (@$rows) {
-				$s = $dbhdest->pg_putcopydata(join("\t", @$row) . "\n") or $self->logit("FATAL: " . $dbhdest->errstr . "\n", 0, 1);
+				unless($dbhdest->pg_putcopydata(join("\t", @$row) . "\n")) {
+					if ($self->{log_on_error}) {
+						$self->logit("ERROR (log error enabled): " . $dbhdest->errstr . "\n", 0, 0);
+						$self->log_error_copy($table, $s_out, $rows);
+						$skip_end = 1;
+						last;
+					} else {
+						$self->logit("FATAL: " . $dbhdest->errstr . "\n", 0, 1);
+					}
+				}
 			}
-			$s = $dbhdest->pg_putcopyend() or $self->logit("FATAL: " . $dbhdest->errstr . "\n", 0, 1);
+			unless ($dbhdest->pg_putcopyend()) {
+				if ($self->{log_on_error}) {
+					$self->logit("ERROR (log error enabled): " . $dbhdest->errstr . "\n", 0, 0);
+					$self->log_error_copy($table, $s_out, $rows) if (!$skip_end);
+				} else {
+					$self->logit("FATAL: " . $dbhdest->errstr . "\n", 0, 1);
+				}
+			}
 		} else {
 			# then add data to the output
 			map { $sql_out .= join("\t", @$_) . "\n"; } @$rows;
@@ -7480,7 +7538,14 @@ sub _dump_to_pg
 		if ($self->{type} ne 'COPY') {
 			if (!$sprep) {
 				$self->logit("DEBUG: Sending INSERT output directly to PostgreSQL backend\n", 1);
-				my $s = $dbhdest->do($sql_out) or $self->logit("FATAL: " . $dbhdest->errstr . "\n", 0, 1);
+				unless($dbhdest->do($sql_out)) {
+					if ($self->{log_on_error}) {
+						$self->logit("WARNING (log error enabled): " . $dbhdest->errstr . "\n", 0, 0);
+						$self->log_error_insert($table, $sql_out);
+					} else {
+						$self->logit("FATAL: " . $dbhdest->errstr . "\n", 0, 1);
+					}
+				}
 			} else {
 				my $ps = $dbhdest->prepare($sprep) or $self->logit("FATAL: " . $dbhdest->errstr . "\n", 0, 1);
 				for (my $i = 0; $i <= $#{$tt}; $i++) {
@@ -7490,7 +7555,16 @@ sub _dump_to_pg
 				}
 				$self->logit("DEBUG: Sending INSERT bulk output directly to PostgreSQL backend\n", 1);
 				foreach my $row (@$rows) {
-					$ps->execute(@$row) or $self->logit("FATAL: " . $ps->errstr . "\n", 0, 1);
+					unless ($ps->execute(@$row) ) {
+						if ($self->{log_on_error}) {
+							$self->logit("ERROR (log error enabled): " . $ps->errstr . "\n", 0, 0);
+							$s_out =~ s/\([,\?]+\)/\(/;
+							$self->format_data_row($row,$tt,'INSERT', $stt, \%user_type, $table);
+							$self->log_error_insert($table, $s_out . join(',', @$row) . ");\n");
+						} else {
+							$self->logit("FATAL: " . $ps->errstr . "\n", 0, 1);
+						}
+					}
 				}
 				$ps->finish();
 			}

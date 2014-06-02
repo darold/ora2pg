@@ -792,6 +792,15 @@ This directive is used to limit the number of item shown in the top N lists
 like the top list of tables per number of rows and the top list of largest
 tables in megabytes. By default it is set to 10 items.
 
+=item LOG_ON_ERROR
+
+Enable this directive if you want to continue direct data import on error.
+When Ora2Pg received an error in the COPY or INSERT statement from PostgreSQL
+it will log the statement to a file calles TABLENAME_error.log in the output
+directory and continue to next bulk of data. Like this you can try to fix the
+statement and manually reload the error log file. Default is disabled: abort
+import on error.
+
 =back
 
 =head2 Modifying object structure

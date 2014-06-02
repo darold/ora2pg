@@ -576,6 +576,14 @@ CONVERT_SRID		1
 # table name must be unique. 
 PREFIX_PARTITION	0
 
+# Enable this directive if you want to continue direct data import on error.
+# When Ora2Pg received an error in the COPY or INSERT statement from PostgreSQL
+# it will log the statement to a file calles TABLENAME_error.log in the output
+# directory and continue to next bulk of data. Like this you can try to fix the
+# statement and manually reload the error log file. Default is disabled: abort
+# import on error.
+LOG_ON_ERROR		0
+
 };
 close(OUTCFG);
 
