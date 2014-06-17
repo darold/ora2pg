@@ -1406,7 +1406,7 @@ sub _tables
 			}
 			$self->{tables}{$view}{field_name} = $sth->{NAME};
 			$self->{tables}{$view}{field_type} = $sth->{TYPE};
-			my %columns_infos = $self->_column_info($view);
+			my %columns_infos = $self->_column_info($view, $self->{schema});
 			foreach my $tb (keys %columns_infos) {
 				next if ($tb ne $view);
 				foreach my $c (keys %{$columns_infos{$tb}}) {
