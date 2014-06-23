@@ -5830,6 +5830,7 @@ sub _alias_info
         my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
         $sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
         my $data = $sth->fetchall_arrayref();
+	$self->logit("View $view column aliases:\n", 1);
 	foreach my $d (@$data) {
 		$self->logit("\t$d->[0] =>  column id:$d->[1]\n", 1);
 	}
