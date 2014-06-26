@@ -6578,7 +6578,7 @@ sub read_config
 			}
 		} elsif ($var eq 'MODIFY_TYPE') {
 			$val =~ s/\\,/#NOSEP#/gs;
-			my @modif_type = split(/[\s,;\t]+/, $val);
+			my @modif_type = split(/[,;]+/, $val);
 			foreach my $r (@modif_type) { 
 				$val =~ s/#NOSEP#/,/gs;
 				my ($table, $col, $type) = split(/:/, lc($r));
