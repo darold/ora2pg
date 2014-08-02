@@ -598,6 +598,7 @@ sub _init
 	$self->{null_equal_empty} = 1;
 	$self->{estimate_cost} = 0;
 	$self->{where} = ();
+	$self->{replace_query} = ();
 	$self->{ora_reserved_words} = (); 
 	$self->{defined_pk} = ();
 	$self->{allow_partition} = ();
@@ -6559,7 +6560,7 @@ sub read_config
 					$AConfig{"skip_\L$s\E"} = 1;
 				}
 			}
-		} elsif (!grep(/^$var$/, 'TABLES', 'ALLOW', 'MODIFY_STRUCT', 'REPLACE_TABLES', 'REPLACE_COLS', 'WHERE', 'EXCLUDE','VIEW_AS_TABLE','ORA_RESERVED_WORDS','SYSUSERS','REPLACE_AS_BOOLEAN','BOOLEAN_VALUES','MODIFY_TYPE','DEFINED_PK', 'ALLOW_PARTITION')) {
+		} elsif (!grep(/^$var$/, 'TABLES', 'ALLOW', 'MODIFY_STRUCT', 'REPLACE_TABLES', 'REPLACE_COLS', 'WHERE', 'EXCLUDE','VIEW_AS_TABLE','ORA_RESERVED_WORDS','SYSUSERS','REPLACE_AS_BOOLEAN','BOOLEAN_VALUES','MODIFY_TYPE','DEFINED_PK', 'ALLOW_PARTITION','REPLACE_QUERY')) {
 			$AConfig{$var} = $val;
 		} elsif ( ($var eq 'TABLES') || ($var eq 'ALLOW') || ($var eq 'EXCLUDE') || ($var eq 'VIEW_AS_TABLE') || ($var eq 'ALLOW_PARTITION') ) {
 			$var = 'ALLOW' if ($var eq 'TABLES');
@@ -6631,6 +6632,14 @@ sub read_config
 			}
 			if ($val) {
 				$AConfig{"GLOBAL_WHERE"} = $val;
+			}
+		} elsif ($var eq 'REPLACE_QUERY') {
+			while ($val =~ s/([^\[\s\t]+)[\t\s]*\[([^\]]+)\][\s\t]*//) {
+				my $table = lc($1);
+				my $query = $2;
+				$query =~ s/^\s+//;
+				$query =~ s/\s+$//;
+				$AConfig{$var}{$table} = $query;
 			}
 		}
 	}
@@ -7287,6 +7296,11 @@ sub _extract_data
 	my ($self, $query, $table, $cmd_head, $cmd_foot, $s_out, $nn, $tt, $sprep, $stt, $part_name, $proc) = @_;
 
 	$0 = 'ora2pg - querying Oracle';
+
+	# Overwrite the query if REPLACE_QUERY is defined for this table
+	if ($self->{replace_query}{"\L$table\E"}) {
+		$query = $self->{replace_query}{"\L$table\E"};
+	}
 
 	my %user_type = ();
 	for (my $idx = 0; $idx < scalar(@$tt); $idx++) {
@@ -8593,7 +8607,7 @@ sub _lookup_check_constraint
 			}
 		}
 		if (!$skip_create) {
-			if (exists $self->{replaced_cols}{"\L$tbsaved\E"} && $self->{replaced_cols}{"\E$tbsaved\L"}) {
+			if (exists $self->{replaced_cols}{"\L$tbsaved\E"} && $self->{replaced_cols}{"\L$tbsaved\E"}) {
 				foreach my $c (keys %{$self->{replaced_cols}{"\L$tbsaved\E"}}) {
 					$chkconstraint =~ s/"$c"/"$self->{replaced_cols}{"\L$tbsaved\E"}{$c}"/gsi;
 					$chkconstraint =~ s/\b$c\b/$self->{replaced_cols}{"\L$tbsaved\E"}{$c}/gsi;

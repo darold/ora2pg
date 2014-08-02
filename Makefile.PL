@@ -584,6 +584,16 @@ PREFIX_PARTITION	0
 # import on error.
 LOG_ON_ERROR		0
 
+# Sometime you may want to extract data from an Oracle table but you need a
+# a custom query for that. Not just a "SELECT * FROM table" like Ora2Pg do
+# but a more complexe query. This directive allow you to overwrite the query
+# used by Ora2Pg to extract data. The format is TABLENAME[SQL_QUERY].
+# If you have multiple table to extract by replacing the Ora2Pg query, you can
+# define multiple REPLACE_QUERY lines.
+#REPLACE_QUERY	EMPLOYEES[SELECT e.id,e.fisrtname,lastname FROM EMPLOYEES e JOIN EMP_UPDT u ON (e.id=u.id AND u.cdate>'2014-08-01 00:00:00')]
+
+
+
 };
 close(OUTCFG);
 
