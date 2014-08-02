@@ -7444,7 +7444,11 @@ sub _dump_to_pg
 {
 	my ($self, $dbh, $rows, $table, $cmd_head, $cmd_foot, $s_out, $tt, $sprep, $stt, $start_time, $part_name, $glob_total_record, %user_type) = @_;
 
-	$0 = 'ora2pg - sending to PostgreSQL';
+	if ($self->{pg_dsn}) {
+		$0 = 'ora2pg - sending data to PostgreSQL';
+	} else {
+		$0 = 'ora2pg - sending data to file';
+	}
 
 	if ( ($self->{jobs} > 1) || ($self->{oracle_copies} > 1) ) {
 		$pipe->writer();
