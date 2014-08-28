@@ -1639,6 +1639,17 @@ CONFIGURATION
     on migration experiences to polish the scores/units attribued in those
     variables.
 
+  Hints
+    Converting your queries with Oracle style outer join (+) syntax to ANSI
+    standard SQL at the Oracle side can save you lot of time for the
+    migration. You can use TOAD Query Builder can re-write these using the
+    proper ANSI syntax, see:
+    http://www.toadworld.com/products/toad-for-oracle/f/10/t/9518.aspx
+
+    There's also an alternative with SQL Developer Data Modeler, see
+    http://www.thatjeffsmith.com/archive/2012/01/sql-developer-data-modeler-
+    quick-tip-use-oracle-join-syntax-or-ansi/
+
 SUPPORT
   Author / Maintainer
     Gilles Darold <gilles AT darold DOT net>

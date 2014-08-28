@@ -124,7 +124,7 @@
 .\" ========================================================================
 .\"
 .IX Title "ORA2PG 1"
-.TH ORA2PG 1 "2014-06-02" "perl v5.14.2" "User Contributed Perl Documentation"
+.TH ORA2PG 1 "2014-08-28" "perl v5.14.2" "User Contributed Perl Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -1797,6 +1797,14 @@ in the same Perl library lib/Ora2Pg/PLSQL.pm in the hash \f(CW%UNCOVERED_SCORE\f
 .PP
 This assessment method is a work in progress so I'm expecting feedbacks on migration
 experiences to polish the scores/units attribued in those variables.
+.SS "Hints"
+.IX Subsection "Hints"
+Converting your queries with Oracle style outer join (+) syntax to \s-1ANSI\s0 standard \s-1SQL\s0 at
+the Oracle side can save you lot of time for the migration. You can use \s-1TOAD\s0 Query Builder
+can re-write these using the proper \s-1ANSI\s0 syntax, see: http://www.toadworld.com/products/toad\-for\-oracle/f/10/t/9518.aspx
+.PP
+There's also an alternative with \s-1SQL\s0 Developer Data Modeler, see
+http://www.thatjeffsmith.com/archive/2012/01/sql\-developer\-data\-modeler\-quick\-tip\-use\-oracle\-join\-syntax\-or\-ansi/
 .SH "SUPPORT"
 .IX Header "SUPPORT"
 .SS "Author / Maintainer"
