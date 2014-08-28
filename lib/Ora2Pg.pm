@@ -5062,7 +5062,8 @@ END
 			# Set dimension and type of the spatial column
 			if ($self->{autodetect_spatial_type}) {
 				# Get spatial information
-				my $squery = sprintf($spatial_query, $row->[0], $row->[-2]);
+				my $colname = $row->[-1] . "." . $row->[-2];
+				my $squery = sprintf($spatial_query, $row->[0], $colname);
 				my $sth2 = $self->{dbh}->prepare($squery);
 				if (!$sth2) {
 					$self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -5087,7 +5088,8 @@ END
 				push(@geom_inf, 0, 0);
 			}
 			# Get the SRID of the column
-			my $squery = sprintf($spatial_sysref, $row->[0], $row->[-2]);
+			my $colname = $row->[-1] . "." . $row->[-2];
+			my $squery = sprintf($spatial_sysref, $row->[0], $colname);
 			my $sth2 = $self->{dbh}->prepare($squery);
 			if (!$sth2) {
 				$self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
