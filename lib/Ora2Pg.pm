@@ -636,7 +636,7 @@ sub _init
 	push(@{$self->{excluded}}, 'MLOG\$_.*', 'RUPD\$_.*');
 
 	# Set default system user/schema to not export
-	push(@{$self->{sysusers}}, 'SYSTEM','SYS','DBSNMP','OUTLN','PERFSTAT','CTXSYS','XDB','WMSYS','SYSMAN','SQLTXPLAIN','MDSYS','EXFSYS','ORDSYS','DMSYS','OLAPSYS','FLOWS_020100','FLOWS_FILES','TSMSYS','WKSYS','FLOWS_030000');
+	push(@{$self->{sysusers}}, 'CTXSYS','DBSNMP','EXFSYS','LBACSYS','MDSYS','MGMT_VIEW','OLAPSYS','ORDDATA','OWBSYS','ORDPLUGINS','ORDSYS','OUTLN','SI_INFORMTN_SCHEMA','SYS','SYSMAN','SYSTEM','WK_TEST','WKSYS','WKPROXY','WMSYS','XDB','PERFSTAT','SQLTXPLAIN','DMSYS','FLOWS_020100','FLOWS_FILES','TSMSYS','WKSYS','FLOWS_030000','APEX_040200','DVSYS','OJVMSYS','IX','GSMADMIN_INTERNAL','APPQOSSYS');
 
 	# Set default tablespace to exclude when using USE_TABLESPACE
 	push(@{$self->{default_tablespaces}}, 'TEMP', 'USERS','SYSTEM');

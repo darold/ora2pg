@@ -124,7 +124,7 @@
 .\" ========================================================================
 .\"
 .IX Title "ORA2PG 1"
-.TH ORA2PG 1 "2014-08-28" "perl v5.14.2" "User Contributed Perl Documentation"
+.TH ORA2PG 1 "2014-08-31" "perl v5.14.2" "User Contributed Perl Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -556,12 +556,20 @@ This will force to not use the Oracle schema set in the \s-1SCHEMA\s0 directive.
 .IP "\s-1SYSUSERS\s0" 4
 .IX Item "SYSUSERS"
 Without explicit schema, Ora2Pg will export all objects that not belongs to
-system schema or role: \s-1SYS\s0, \s-1SYSTEM\s0, \s-1DBSNMP\s0, \s-1OUTLN\s0, \s-1PERFSTAT\s0, \s-1CTXSYS\s0, \s-1XDB\s0, \s-1WMSYS\s0,
-\&\s-1SYSMAN\s0, \s-1SQLTXPLAIN\s0, \s-1MDSYS\s0, \s-1EXFSYS\s0, \s-1ORDSYS\s0, \s-1DMSYS\s0, \s-1OLAPSYS\s0, \s-1FLOWS_020100\s0,
-\&\s-1FLOWS_FILES\s0, \s-1TSMSYS\s0. Following your Oracle installation you may have several
-other system role defined. To append these users to the schema exclusion list,
-just set the \s-1SYSUSERS\s0 configuration directive to a comma-separated list of system
-user to exclude. For example:
+system schema or role:
+.Sp
+.Vb 5
+\&        CTXSYS,DBSNMP,EXFSYS,LBACSYS,MDSYS,MGMT_VIEW,OLAPSYS,ORDDATA,OWBSYS,
+\&        ORDPLUGINS,ORDSYS,OUTLN,SI_INFORMTN_SCHEMA,SYS,SYSMAN,SYSTEM,WK_TEST,
+\&        WKSYS,WKPROXY,WMSYS,XDB,PERFSTAT,SQLTXPLAIN,DMSYS,FLOWS_020100,
+\&        FLOWS_FILES,TSMSYS,WKSYS,FLOWS_030000,APEX_040200,DVSYS,OJVMSYS,IX,
+\&        GSMADMIN_INTERNAL,APPQOSSYS
+.Ve
+.Sp
+Following your Oracle installation you may have several other system role
+defined. To append these users to the schema exclusion list, just set the
+\&\s-1SYSUSERS\s0 configuration directive to a comma-separated list of system user to
+exclude. For example:
 .Sp
 .Vb 1
 \&        SYSUSERS        INTERNAL,SYSDBA

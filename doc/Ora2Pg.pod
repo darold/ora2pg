@@ -437,12 +437,18 @@ This will force to not use the Oracle schema set in the SCHEMA directive.
 =item SYSUSERS
 
 Without explicit schema, Ora2Pg will export all objects that not belongs to
-system schema or role: SYS, SYSTEM, DBSNMP, OUTLN, PERFSTAT, CTXSYS, XDB, WMSYS,
-SYSMAN, SQLTXPLAIN, MDSYS, EXFSYS, ORDSYS, DMSYS, OLAPSYS, FLOWS_020100,
-FLOWS_FILES, TSMSYS. Following your Oracle installation you may have several
-other system role defined. To append these users to the schema exclusion list,
-just set the SYSUSERS configuration directive to a comma-separated list of system
-user to exclude. For example:
+system schema or role:
+
+	CTXSYS,DBSNMP,EXFSYS,LBACSYS,MDSYS,MGMT_VIEW,OLAPSYS,ORDDATA,OWBSYS,
+	ORDPLUGINS,ORDSYS,OUTLN,SI_INFORMTN_SCHEMA,SYS,SYSMAN,SYSTEM,WK_TEST,
+	WKSYS,WKPROXY,WMSYS,XDB,PERFSTAT,SQLTXPLAIN,DMSYS,FLOWS_020100,
+	FLOWS_FILES,TSMSYS,WKSYS,FLOWS_030000,APEX_040200,DVSYS,OJVMSYS,IX,
+	GSMADMIN_INTERNAL,APPQOSSYS
+
+Following your Oracle installation you may have several other system role
+defined. To append these users to the schema exclusion list, just set the
+SYSUSERS configuration directive to a comma-separated list of system user to
+exclude. For example:
 
 	SYSUSERS	INTERNAL,SYSDBA
 
