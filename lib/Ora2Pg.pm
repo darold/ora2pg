@@ -6104,7 +6104,8 @@ sub _table_info
 	}
 	$sth->finish();
 
-	$sql = "SELECT OWNER,TABLE_NAME,NVL(num_rows,1) NUMBER_ROWS,TABLESPACE_NAME FROM ALL_TABLES $owner";
+	$owner =~ s/^WHERE/AND/;
+	$sql = "SELECT OWNER,TABLE_NAME,NVL(num_rows,1) NUMBER_ROWS,TABLESPACE_NAME,IOT_TYPE FROM ALL_TABLES WHERE (IOT_TYPE IS NULL OR IOT_TYPE = 'IOT') $owner";
         $sql .= " ORDER BY OWNER, TABLE_NAME";
         $sth = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
         $sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
