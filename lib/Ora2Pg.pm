@@ -8044,7 +8044,9 @@ sub _show_infos
 			$total_row_num += $tables_infos{$t}{num_rows};
 
 			# Show table information
-			$self->logit("[$i] TABLE $t ($tables_infos{$t}{num_rows} rows)$warning\n", 0);
+			my $tname = $t;
+			$tname = "$tables_infos{$t}{owner}.$t" if ($self->{debug});
+			$self->logit("[$i] TABLE $tname ($tables_infos{$t}{num_rows} rows)$warning\n", 0);
 
 			# Set the fields information
 			if ($type eq 'SHOW_COLUMN') {
@@ -8127,7 +8129,9 @@ sub _show_infos
 		$self->logit("Top $self->{top_max} of tables sorted by number of rows:\n", 0);
 		$i = 1;
 		foreach my $t (sort {$tables_infos{$b}{num_rows} <=> $tables_infos{$a}{num_rows}} keys %tables_infos) {
-			$self->logit("\t[$i] TABLE $t has $tables_infos{$t}{num_rows} rows\n", 0);
+			my $tname = $t;
+			$tname = "$tables_infos{$t}{owner}.$t" if ($self->{debug});
+			$self->logit("\t[$i] TABLE $tname has $tables_infos{$t}{num_rows} rows\n", 0);
 			$i++;
 			last if ($i > $self->{top_max});
 		}
@@ -8136,7 +8140,9 @@ sub _show_infos
 			$i = 1;
 			my %largest_table = $self->_get_largest_tables();
 			foreach my $t (sort { $largest_table{$b} <=> $largest_table{$a} } keys %largest_table) {
-				$self->logit("\t[$i] TABLE $t: $largest_table{$t} MB ($self->{tables}{$t}{table_info}{num_rows} rows)\n", 0);
+				my $tname = $t;
+				$tname = "$tables_infos{$t}{owner}.$t" if ($self->{debug});
+				$self->logit("\t[$i] TABLE $tname: $largest_table{$t} MB ($self->{tables}{$t}{table_info}{num_rows} rows)\n", 0);
 				$i++;
 			}
 		}
