@@ -6081,8 +6081,6 @@ sub _table_info
 {
 	my $self = shift;
 
-	my @mviews = $self->_get_materialized_view_names();
-
 	my $owner = '';
 	if ($self->{schema}) {
 		$owner .= "AND OWNER='$self->{schema}' ";
@@ -6094,19 +6092,20 @@ sub _table_info
 
 	my %comments = ();
 	my $sql = "SELECT TABLE_NAME,COMMENTS,TABLE_TYPE FROM ALL_TAB_COMMENTS $owner";
+	$sql .= " AND (OWNER, TABLE_NAME) NOT IN (SELECT OWNER, MVIEW_NAME FROM ALL_MVIEWS UNION ALL SELECT LOG_OWNER, LOG_TABLE FROM ALL_MVIEW_LOGS)";
 	my $sth = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	while (my $row = $sth->fetch) {
 		# forget or not this object if it is in the exclude or allow lists.
 		next if ($self->skip_this_object('TABLE', $row->[0]));
-		next if (grep(/^$row->[0]$/i, @mviews));
 		$comments{$row->[0]}{comment} = $row->[1];
 		$comments{$row->[0]}{table_type} = $row->[2];
 	}
 	$sth->finish();
 
 	$owner =~ s/^WHERE/AND/;
-	$sql = "SELECT OWNER,TABLE_NAME,NVL(num_rows,1) NUMBER_ROWS,TABLESPACE_NAME,IOT_TYPE FROM ALL_TABLES WHERE (IOT_TYPE IS NULL OR IOT_TYPE = 'IOT') $owner";
+	$sql = "SELECT OWNER,TABLE_NAME,NVL(num_rows,1) NUMBER_ROWS,TABLESPACE_NAME,LOGGING FROM ALL_TABLES WHERE (IOT_TYPE IS NULL OR IOT_TYPE = 'IOT') AND (LOGGING = '' OR LOGGING = 'NO' OR LOGGING IS NULL) $owner";
+	$sql .= " AND (OWNER, TABLE_NAME) NOT IN (SELECT OWNER, MVIEW_NAME FROM ALL_MVIEWS UNION ALL SELECT LOG_OWNER, LOG_TABLE FROM ALL_MVIEW_LOGS)";
         $sql .= " ORDER BY OWNER, TABLE_NAME";
         $sth = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
         $sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -6114,7 +6113,6 @@ sub _table_info
 	while (my $row = $sth->fetch) {
 		# forget or not this object if it is in the exclude or allow lists.
 		next if ($self->skip_this_object('TABLE', $row->[1]));
-		next if (grep(/^$row->[1]$/i, @mviews));
 		$tables_infos{$row->[1]}{owner} = $row->[0] || '';
 		$tables_infos{$row->[1]}{num_rows} = $row->[2] || 0;
 		$tables_infos{$row->[1]}{tablespace} = $row->[3] || 0;
@@ -8262,7 +8260,7 @@ sub _get_largest_tables
 
 	my %table_size = ();
 
-	my $sql = "SELECT * FROM ( SELECT SEGMENT_NAME, ROUND(BYTES/1024/1024) SIZE_MB FROM DBA_SEGMENTS WHERE SEGMENT_TYPE='TABLE'";
+	my $sql = "SELECT * FROM ( SELECT SEGMENT_NAME, ROUND(BYTES/1024/1024) SIZE_MB FROM DBA_SEGMENTS WHERE SEGMENT_TYPE LIKE 'TABLE%'";
         if ($self->{schema}) {
                 $sql .= " AND OWNER='$self->{schema}'";
         } else {
