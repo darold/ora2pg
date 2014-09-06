@@ -6115,7 +6115,7 @@ sub _table_info
 
 	$owner =~ s/^WHERE/AND/;
 	$sql = "SELECT OWNER,TABLE_NAME,NVL(num_rows,1) NUMBER_ROWS,TABLESPACE_NAME,NESTED,LOGGING FROM ALL_TABLES WHERE (IOT_TYPE IS NULL OR IOT_TYPE = 'IOT') $owner";
-	$sql .= " AND TEMPORARY='N' AND (NESTED != 'YES' OR LOGGING != 'YES') AND (DROPPED IS NULL OR DROPPED = 'NO') $owner";
+	$sql .= " AND TEMPORARY='N' AND (NESTED != 'YES' OR LOGGING != 'YES') AND (DROPPED IS NULL OR DROPPED = 'NO')";
 	$sql .= " AND (OWNER, TABLE_NAME) NOT IN (SELECT OWNER, MVIEW_NAME FROM ALL_MVIEWS UNION ALL SELECT LOG_OWNER, LOG_TABLE FROM ALL_MVIEW_LOGS)";
         $sql .= " ORDER BY OWNER, TABLE_NAME";
         $sth = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
