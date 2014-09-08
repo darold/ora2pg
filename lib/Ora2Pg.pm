@@ -6093,16 +6093,20 @@ sub _table_info
 
 	my $owner = '';
 	if ($self->{schema}) {
-		$owner .= "AND OWNER='$self->{schema}' ";
+		$owner .= "AND A.OWNER='$self->{schema}' ";
 	} else {
-            $owner .= "AND OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "') ";
+            $owner .= "AND A.OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "') ";
 	}
 	$owner .= $self->limit_to_tables();
 	$owner =~ s/^AND/WHERE/;
 
+	my $join_segment = '';
+	if (!$self->{user_grants}) {
+		$join_segment = " JOIN DBA_SEGMENTS S ON (S.SEGMENT_TYPE LIKE 'TABLE%' AND S.SEGMENT_NAME=A.TABLE_NAME)";
+	}
 	my %comments = ();
-	my $sql = "SELECT TABLE_NAME,COMMENTS,TABLE_TYPE FROM ALL_TAB_COMMENTS $owner";
-	$sql .= " AND (OWNER, TABLE_NAME) NOT IN (SELECT OWNER, MVIEW_NAME FROM ALL_MVIEWS UNION ALL SELECT LOG_OWNER, LOG_TABLE FROM ALL_MVIEW_LOGS)";
+	my $sql = "SELECT A.TABLE_NAME,A.COMMENTS,A.TABLE_TYPE FROM ALL_TAB_COMMENTS A $join_segment $owner";
+	$sql .= " AND (A.OWNER, A.TABLE_NAME) NOT IN (SELECT OWNER, MVIEW_NAME FROM ALL_MVIEWS UNION ALL SELECT LOG_OWNER, LOG_TABLE FROM ALL_MVIEW_LOGS)";
 	my $sth = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	while (my $row = $sth->fetch) {
@@ -6114,10 +6118,11 @@ sub _table_info
 	$sth->finish();
 
 	$owner =~ s/^WHERE/AND/;
-	$sql = "SELECT OWNER,TABLE_NAME,NVL(num_rows,1) NUMBER_ROWS,TABLESPACE_NAME,NESTED,LOGGING FROM ALL_TABLES WHERE (IOT_TYPE IS NULL OR IOT_TYPE = 'IOT') $owner";
-	$sql .= " AND TEMPORARY='N' AND (NESTED != 'YES' OR LOGGING != 'YES') $owner";
-	$sql .= " AND (OWNER, TABLE_NAME) NOT IN (SELECT OWNER, MVIEW_NAME FROM ALL_MVIEWS UNION ALL SELECT LOG_OWNER, LOG_TABLE FROM ALL_MVIEW_LOGS)";
-        $sql .= " ORDER BY OWNER, TABLE_NAME";
+	$sql = "SELECT A.OWNER,A.TABLE_NAME,NVL(num_rows,1) NUMBER_ROWS,A.TABLESPACE_NAME,A.NESTED,A.LOGGING FROM ALL_TABLES A $join_segment WHERE (A.IOT_TYPE IS NULL OR A.IOT_TYPE = 'IOT') $owner";
+	$sql .= " AND A.TEMPORARY='N' AND (A.NESTED != 'YES' OR A.LOGGING != 'YES') $owner";
+	$sql .= " AND (A.OWNER, A.TABLE_NAME) NOT IN (SELECT OWNER, MVIEW_NAME FROM ALL_MVIEWS UNION ALL SELECT LOG_OWNER, LOG_TABLE FROM ALL_MVIEW_LOGS)";
+        $sql .= " ORDER BY A.OWNER, A.TABLE_NAME";
+
         $sth = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
         $sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	my %tables_infos = ();
@@ -8078,7 +8083,7 @@ sub _show_infos
 			# Show table information
 			my $tname = $t;
 			$tname = "$tables_infos{$t}{owner}.$t" if ($self->{debug});
-			$self->logit("[$i] TABLE $tname ($tables_infos{$t}{num_rows} rows)$warning - $tables_infos{$t}{nested}\n", 0);
+			$self->logit("[$i] TABLE $tname (owner: $tables_infos{$t}{owner}, $tables_infos{$t}{num_rows} rows)$warning\n", 0);
 
 			# Set the fields information
 			if ($type eq 'SHOW_COLUMN') {
