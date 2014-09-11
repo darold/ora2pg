@@ -706,7 +706,8 @@ CONFIGURATION
 
         will export objects with name EMPLOYEES, COUNTRIES, all objects
         begining with 'SALE_' and all objects with a name ending by
-        '_GEOM_SEQ'. The object depends of the export type.
+        '_GEOM_SEQ'. The object depends of the export type. Note that regex
+        will not works with 8i database.
 
         This directive replace the obsolète 'TABLES' configuration
         directive, this is just a renaming to be less confusing.
@@ -728,7 +729,8 @@ CONFIGURATION
                 EXCLUDE         write_to_.* send_mail_.*
 
         this example will exclude all functions, procedures or functions in
-        a package with the name begining with those regex.
+        a package with the name begining with those regex. Note that regex
+        will not works with 8i database.
 
     VIEW_AS_TABLE
         Set which view to export as table. By default none. Value must be a

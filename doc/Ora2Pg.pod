@@ -733,7 +733,7 @@ valid regex into the list. For example:
 
 will export objects with name EMPLOYEES, COUNTRIES, all objects begining with
 'SALE_' and all objects with a name ending by '_GEOM_SEQ'. The object depends
-of the export type.
+of the export type. Note that regex will not works with 8i database.
 
 This directive replace the obsolète 'TABLES' configuration directive, this is
 just a renaming to be less confusing.
@@ -754,7 +754,8 @@ For example, you can ban from export some unwanted function with this directive:
 	EXCLUDE		write_to_.* send_mail_.*
 
 this example will exclude all functions, procedures or functions in a package
-with the name begining with those regex.
+with the name begining with those regex. Note that regex will not works with
+8i database.
 
 =item VIEW_AS_TABLE
 

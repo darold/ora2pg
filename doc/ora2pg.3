@@ -124,7 +124,7 @@
 .\" ========================================================================
 .\"
 .IX Title "ORA2PG 1"
-.TH ORA2PG 1 "2014-08-31" "perl v5.14.2" "User Contributed Perl Documentation"
+.TH ORA2PG 1 "2014-09-11" "perl v5.14.2" "User Contributed Perl Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -856,7 +856,7 @@ valid regex into the list. For example:
 .Sp
 will export objects with name \s-1EMPLOYEES\s0, \s-1COUNTRIES\s0, all objects begining with
 \&'\s-1SALE_\s0' and all objects with a name ending by '_GEOM_SEQ'. The object depends
-of the export type.
+of the export type. Note that regex will not works with 8i database.
 .Sp
 This directive replace the obsolA\*~Xte '\s-1TABLES\s0' configuration directive, this is
 just a renaming to be less confusing.
@@ -880,7 +880,8 @@ For example, you can ban from export some unwanted function with this directive:
 .Ve
 .Sp
 this example will exclude all functions, procedures or functions in a package
-with the name begining with those regex.
+with the name begining with those regex. Note that regex will not works with
+8i database.
 .IP "\s-1VIEW_AS_TABLE\s0" 4
 .IX Item "VIEW_AS_TABLE"
 Set which view to export as table. By default none. Value must be a list of
