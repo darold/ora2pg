@@ -6130,6 +6130,7 @@ sub _table_info
 	while (my $row = $sth->fetch) {
 		# forget or not this object if it is in the exclude or allow lists.
 		next if ($self->skip_this_object('TABLE', $row->[1]));
+
 		$tables_infos{$row->[1]}{owner} = $row->[0] || '';
 		$tables_infos{$row->[1]}{num_rows} = $row->[2] || 0;
 		$tables_infos{$row->[1]}{tablespace} = $row->[3] || 0;
@@ -8612,14 +8613,33 @@ sub limit_to_tables
 {
 	my ($self, $column) = @_;
 
-	my $str = '';
+	my $str = ' AND (';
 	$column ||= 'TABLE_NAME';
 
 	if ($#{$self->{limited}} >= 0) {
-		$str = "AND $column IN ('" .  join("','", @{$self->{limited}}) . "') ";
+		if ($self->{db_version} =~ /Release 8/) {
+			$str = "AND $column IN ('" .  join("','", @{$self->{limited}}) . "') ";
+		} else {
+			for (my $j = 0; $j <= $#{$self->{limited}}; $j++) {
+				$str .= " REGEXP_LIKE($column,'\^$self->{limited}->[$j]\$')" ;
+				if ($j < $#{$self->{limited}}){
+					$str .= " OR ";
+				}
+			}
+		}
 	} elsif ($#{$self->{excluded}} >= 0) {
-		$str = "AND $column NOT IN ('" .  join("','", @{$self->{excluded}}) . "') ";
+		if ($self->{db_version} =~ /Release 8/) {
+			$str = "$column NOT IN ('" .  join("','", @{$self->{excluded}}) . "') ";
+		} else {
+			for (my $j = 0; $j <= $#{$self->{excluded}}; $j++) {
+				$str .= " NOT REGEXP_LIKE($column,'\^$self->{excluded}->[$j]\$')" ;
+				if ($j < $#{$self->{excluded}}){
+					$str .= " AND ";
+				}
+			}
+		}
 	}
+	$str .= ')';
 
 	return uc($str);
 }
