@@ -8613,12 +8613,12 @@ sub limit_to_tables
 {
 	my ($self, $column) = @_;
 
-	my $str = ' AND (';
+	my $str = 'AND (';
 	$column ||= 'TABLE_NAME';
 
 	if ($#{$self->{limited}} >= 0) {
 		if ($self->{db_version} =~ /Release 8/) {
-			$str = "AND $column IN ('" .  join("','", @{$self->{limited}}) . "') ";
+			$str = " $column IN ('" .  join("','", @{$self->{limited}}) . "') ";
 		} else {
 			for (my $j = 0; $j <= $#{$self->{limited}}; $j++) {
 				$str .= " REGEXP_LIKE($column,'\^$self->{limited}->[$j]\$')" ;
