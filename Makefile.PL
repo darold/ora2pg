@@ -422,6 +422,8 @@ ORACLE_COPIES	1
 # in parallel data extraction. The limit is the number of cores on your machine.
 # Ora2Pg will open one database connection for each parallel table extraction.
 # This directive, when upper than 1, will invalidate ORACLE_COPIES but not JOBS.
+# Note that this directive when set upper that 1 will also automatically enable
+# the FILE_PER_TABLE directive if your are exporting to files.
 PARALLEL_TABLES	1
 
 # Multiprocess support. This directive is used to split the select queries

@@ -732,6 +732,10 @@ CONFIGURATION
         1, will invalidate ORACLE_COPIES but not JOBS, so the real number of
         process that will be used if PARALLEL_TABLES * JOBS.
 
+        Note that this directive when set upper that 1 will also
+        automatically enable the FILE_PER_TABLE directive if your are
+        exporting to files.
+
     FDW_SERVER
         This directive is used to set the name of the foreign data server
         that is used in the "CREATE SERVER name FOREIGN DATA WRAPPER
