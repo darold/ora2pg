@@ -61,6 +61,7 @@ my $COST_UNIT_VALUE = 0;
 my $DUMP_AS_HTML = 0;
 my $THREAD_COUNT = 0;
 my $ORACLE_COPIES = 0;
+my $PARALLEL_TABLES = 0;
 my $DATA_LIMIT = 0;
 my $CREATE_PROJECT = '';
 my $PROJECT_BASE = '.';
@@ -87,6 +88,7 @@ GetOptions (
 	'L|limit=i' => \$DATA_LIMIT,
         'o|out=s' => \$OUTFILE,
 	'p|plsql!' => \$PLSQL,
+	'P|parallel=i' =>\$PARALLEL_TABLES,
 	'q|quiet!' => \$QUIET,
         't|type=s' => \$EXPORT_TYPE,
 	'v|version!' => \$SHOW_VER,
@@ -188,6 +190,7 @@ my $schema = new Ora2Pg (
 	thread_count => $THREAD_COUNT,
 	oracle_copies => $ORACLE_COPIES,
 	data_limit => $DATA_LIMIT,
+	parallel_tables => $PARALLEL_TABLES,
 );
 
 
@@ -228,6 +231,7 @@ Usage: ora2pg [-dhpqv --estimate_cost --dump_as_html] [--option value]
     -o | --out file   : Used to set the path to the output file where SQL will
 			be written. Default: output.sql in running directory.
     -p | --plsql      : Enable PLSQL to PLPSQL code conversion.
+    -P | --parallel num: Number of parallel tables to extract at the same time.
     -q | --quiet      : disable progress bar.
     -s | --source DSN : Allow to set the Oracle DBI datasource.
     -t | --type export: Used to set the export type. It will override the one

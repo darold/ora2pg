@@ -351,6 +351,7 @@ Here are all command line parameters available when using ora2pg:
 \&    \-o | \-\-out file   : Used to set the path to the output file where SQL will
 \&                        be written. Default: output.sql in running directory.
 \&    \-p | \-\-plsql      : Enable PLSQL to PLPSQL code conversion.
+\&    \-P | \-\-parallel num: Number of parallel tables to extract at the same time.
 \&    \-q | \-\-quiet      : disable progress bar.
 \&    \-s | \-\-source DSN : Allow to set the Oracle DBI datasource.
 \&    \-t | \-\-type export: Used to set the export type. It will override the one
@@ -874,6 +875,13 @@ is set to 8:
 .Ve
 .Sp
 where N is the current process forked starting from 0.
+.IP "\s-1PARALLEL_TABLES\s0" 4
+.IX Item "PARALLEL_TABLES"
+This directive is used to defined the number of tables that will be processed
+in parallel for data extraction. The limit is the number of cores on your machine.
+Ora2Pg will open one database connection for each parallel table extraction.
+This directive, when upper than 1, will invalidate \s-1ORACLE_COPIES\s0 but not \s-1JOBS\s0,
+so the real number of process that will be used if \s-1PARALLEL_TABLES\s0 * \s-1JOBS\s0.
 .IP "\s-1FDW_SERVER\s0" 4
 .IX Item "FDW_SERVER"
 This directive is used to set the name of the foreign data server that is used

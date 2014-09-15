@@ -214,6 +214,7 @@ CONFIGURATION
         -o | --out file   : Used to set the path to the output file where SQL will
                             be written. Default: output.sql in running directory.
         -p | --plsql      : Enable PLSQL to PLPSQL code conversion.
+        -P | --parallel num: Number of parallel tables to extract at the same time.
         -q | --quiet      : disable progress bar.
         -s | --source DSN : Allow to set the Oracle DBI datasource.
         -t | --type export: Used to set the export type. It will override the one
@@ -722,6 +723,14 @@ CONFIGURATION
                 SELECT * FROM EMPLOYEES WHERE ABS(MOD(employee_id, 8)) = N
 
         where N is the current process forked starting from 0.
+
+    PARALLEL_TABLES
+        This directive is used to defined the number of tables that will be
+        processed in parallel for data extraction. The limit is the number
+        of cores on your machine. Ora2Pg will open one database connection
+        for each parallel table extraction. This directive, when upper than
+        1, will invalidate ORACLE_COPIES but not JOBS, so the real number of
+        process that will be used if PARALLEL_TABLES * JOBS.
 
     FDW_SERVER
         This directive is used to set the name of the foreign data server
