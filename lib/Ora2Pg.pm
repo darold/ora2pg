@@ -750,7 +750,10 @@ sub _init
 	$self->{ora_conn_count} = 0;
 	$self->{data_limit} ||= 10000;
 	$self->{disable_partition} ||= 0;
-	$self->{parallel_tabless} ||= 0;
+	$self->{parallel_tables} ||= 1;
+	if ($self->{parallel_tables} > 1) {
+		$self->{file_per_table} = 1;
+	}
 
 	# Set user defined data type translation
 	if ($self->{data_type}) {
@@ -2188,6 +2191,7 @@ sub _export_table_data
 					# Do not dump data again if the file already exists
 					next if ($self->file_exists("$dirprefix${tbpart_name}_$self->{output}"));
 				}
+
 				$self->_dump_table($dirprefix, $sql_header, $table, $start_time, $global_rows, $part_name);
 			}
 		}
@@ -3471,6 +3475,9 @@ LANGUAGE plpgsql ;
 		foreach my $table (@ordered_tables) {
 			next if ($self->skip_this_object('TABLE', $table));
 
+			# Remove main table partition
+			delete $self->{partitions}{$table} if (exists $self->{partitions}{$table});
+
 			# Rename table and double-quote it if required
 			my $tmptb = $self->get_replaced_tbname($table);
 
@@ -3603,8 +3610,8 @@ LANGUAGE plpgsql ;
 
 		my $start_time = time();
 		my $global_count = 0;
-		my $parallel_tables_count = 0;
-		$self->{oracle_copies} = 1 if ($self->{parallel_tables});
+		my $parallel_tables_count = 1;
+		$self->{oracle_copies} = 1 if ($self->{parallel_tables} > 1);
 
 		foreach my $table (@ordered_tables) {
 
@@ -3637,7 +3644,7 @@ LANGUAGE plpgsql ;
 			$self->{cfhout} = undef;
 
 			# Display total export position
-			if ( ($self->{jobs} <= 1) && ($self->{oracle_copies} <= 1) ) {
+			if ( ($self->{jobs} <= 1) && ($self->{oracle_copies} <= 1) && ($self->{parallel_tables} <= 1) ) {
 				my $end_time = time();
 				my $dt = $end_time - $start_time;
 				$dt ||= 1;
