@@ -797,6 +797,9 @@ sub _init
 		$self->{pg_supports_mview} = 1;
 	}
 	$self->{pg_supports_checkoption} ||= 0;
+	if ($self->{pg_supports_ifexists} eq '') {
+		$self->{pg_supports_ifexists} = 1;
+	}
 
 	# Backward compatibility with LongTrunkOk with typo
 	if ($self->{longtrunkok} && not defined $self->{longtruncok}) {
@@ -2659,10 +2662,12 @@ LANGUAGE plpgsql ;
 						$trig->[4] =~ s/\b(END[;]*)$/RETURN NEW;\n$1/igs;
 					}
 				}
+				my $ifexists = '';
+				$ifexists = 'IF EXISTS' if ($self->{pg_supports_ifexists});
 				if (!$self->{preserve_case}) {
-					$sql_output .= "DROP TRIGGER IF EXISTS \L$trig->[0]\E ON \L$trig->[3]\E CASCADE;\n";
+					$sql_output .= "DROP TRIGGER $ifexists \L$trig->[0]\E ON \L$trig->[3]\E CASCADE;\n";
 				} else {
-					$sql_output .= "DROP TRIGGER IF EXISTS \L$trig->[0]\E ON \"$trig->[3]\" CASCADE;\n";
+					$sql_output .= "DROP TRIGGER $ifexists \L$trig->[0]\E ON \"$trig->[3]\" CASCADE;\n";
 				}
 				if ($self->{pg_supports_when} && $trig->[5]) {
 					$sql_output .= "CREATE OR REPLACE FUNCTION trigger_fct_\L$trig->[0]\E () RETURNS trigger AS \$BODY\$\n$trig->[4]\n\$BODY\$\n LANGUAGE 'plpgsql';\n\n";
@@ -3643,7 +3648,9 @@ LANGUAGE plpgsql ;
 		# Remove function created to export external table
 		if ($self->{bfile_found}) {
 			$self->logit("Removing function ora2pg_get_bfilename() used to retrieve path from BFILE.\n", 1);
-			my $bfile_function = "DROP FUNCTION IF EXISTS ora2pg_get_bfilename";
+			my $ifexists = '';
+			$ifexists = 'IF EXISTS' if ($self->{pg_supports_ifexists});
+			my $bfile_function = "DROP FUNCTION $ifexists ora2pg_get_bfilename";
 			my $sth2 = $self->{dbh}->do($bfile_function);
 		}
 
@@ -4431,7 +4438,9 @@ sub _drop_indexes
 		# Do not create the index if there already a constraint on the same column list
 		# the index will be automatically created by PostgreSQL at constraint import time.
 		if (!$skip_index_creation) {
-			push(@out, "DROP INDEX IF EXISTS \L$idx$self->{indexes_suffix}\E;");
+			my $ifexists = '';
+			$ifexists = 'IF EXISTS' if ($self->{pg_supports_ifexists});
+			push(@out, "DROP INDEX $ifexists \L$idx$self->{indexes_suffix}\E;");
 		}
 	}
 
@@ -4730,7 +4739,9 @@ sub _drop_foreign_keys
 		push(@done, $h->[0]);
 		my $str = '';
 		$h->[0] = lc($h->[0]) if (!$self->{preserve_case});
-		$str .= "ALTER TABLE $table DROP CONSTRAINT IF EXISTS $h->[0];";
+		my $ifexists = '';
+		$ifexists = 'IF EXISTS' if ($self->{pg_supports_ifexists});
+		$str .= "ALTER TABLE $table DROP CONSTRAINT $ifexists $h->[0];";
 		push(@out, $str);
 	}
 
@@ -4766,9 +4777,11 @@ sub _extract_sequence_info
 		next if ($self->skip_this_object('SEQUENCE', $seq_info->{SEQUENCE_NAME}));
 
 		my $nextvalue = $seq_info->{LAST_NUMBER} + $seq_info->{INCREMENT_BY};
-		my $alter ="ALTER SEQUENCE IF EXISTS \L$seq_info->{SEQUENCE_NAME}\E RESTART WITH $nextvalue;";
+		my $ifexists = '';
+		$ifexists = 'IF EXISTS' if ($self->{pg_supports_ifexists});
+		my $alter ="ALTER SEQUENCE $ifexists \L$seq_info->{SEQUENCE_NAME}\E RESTART WITH $nextvalue;";
 		if ($self->{preserve_case}) {
-			$alter = "ALTER SEQUENCE IF EXISTS \"$seq_info->{SEQUENCE_NAME}\" RESTART WITH $nextvalue;";
+			$alter = "ALTER SEQUENCE $ifexists \"$seq_info->{SEQUENCE_NAME}\" RESTART WITH $nextvalue;";
 		}
 		push(@script, $alter);
 		$self->logit("Extracted sequence information for sequence \"$seq_info->{SEQUENCE_NAME}\"\n", 1);
@@ -6754,13 +6767,15 @@ sub _convert_package
 		$content =~ s/END[^;]*;$//is;
 		my %comments = $self->_remove_comments(\$content);
 		my @functions = $self->_extract_functions($content);
+		my $ifexists = '';
+		$ifexists = 'IF EXISTS' if ($self->{pg_supports_ifexists});
 		if (!$self->{preserve_case}) {
 			$content = "-- PostgreSQL does not recognize PACKAGES, using SCHEMA instead.\n";
-			$content .= "DROP SCHEMA IF EXISTS $pname CASCADE;\n";
+			$content .= "DROP SCHEMA $ifexists $pname CASCADE;\n";
 			$content .= "CREATE SCHEMA $pname;\n";
 		} else {
 			$content = "-- PostgreSQL does not recognize PACKAGES, using SCHEMA instead.\n";
-			$content .= "DROP SCHEMA IF EXISTS \"$pname\" CASCADE;\n";
+			$content .= "DROP SCHEMA $ifexists \"$pname\" CASCADE;\n";
 			$content .= "CREATE SCHEMA \"$pname\";\n";
 		}
 		$self->{pkgcost} = 0;

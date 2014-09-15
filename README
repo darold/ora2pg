@@ -191,57 +191,102 @@ CONFIGURATION
 
     Here are all command line parameters available when using ora2pg:
 
-            Usage: ora2pg [-dhpqv --estimate_cost --dump_as_html] [--option value]
+      Usage: ora2pg [-dhpqv --estimate_cost --dump_as_html] [--option value]
 
-                -a | --allow str  : comma-separated list of objects to allow from export.
-                                    Can be used with SHOW_COLUMN too.
-                -b | --basedir dir: Used to set the default output directory, where files
-                                    resulting from exports will be stored.
-                -c | --conf file  : Used to set an alternate configuration file than the
-                                    default /etc/ora2pg/ora2pg.conf.
-                -d | --debug      : Enable verbose output.
-                -e | --exclude str: comma-separated list of objects to exclude from export.
-                                    Can be used with SHOW_COLUMN too.
-                -h | --help       : Print this short help.
-                -i | --input file : File containing Oracle PL/SQL code to convert with
-                                    no Oracle database connection initiated.
-                -j | --jobs num   : number of parallel process to send data to PostgreSQL.
-                -J | --copies num : number of parallel connection to extract data from Oracle.
-                -l | --log file   : Used to set a log file. Default is stdout.
-                -L | --limit num  : number of tuples extracted from Oracle and stored in
-                                    memory before writing, default: 10000.
-                -n | --namespace schema : Used to set the Oracle schema to extract from.
-                -o | --out file   : Used to set the path to the output file where SQL will
-                                    be written. Default: output.sql in running directory.
-                -p | --plsql      : Enable PLSQL to PLPSQL code conversion.
-                -q | --quiet      : disable progress bar.
-                -s | --source DSN : Allow to set the Oracle DBI datasource.
-                -t | --type export: Used to set the export type. It will override the one
-                                    given in the configuration file (TYPE).
-                -u | --user name  : Used to set the Oracle database connection user.
-                -v | --version    : Show Ora2Pg Version and exit.
-                -w | --password pwd : Used to set the password of the Oracle database user.
-                --forceowner: if set to 1 force ora2pg to set tables and sequences owner
-                              like in Oracle database. If the value is set to a username this
-                              one will be used as the objects owner. By default it's the user
-                              used to connect to the Pg database that will be the owner.
-                --nls_lang code: use this to set the Oracle NLS_LANG client encoding.
-                --client_encoding code: Use this to set the PostgreSQL client encoding.
-                --view_as_table str: comma-separated list of view to export as table.
-                --estimate_cost   : activate the migration cost evalution with SHOW_REPORT
-                --cost_unit_value minutes: number of minutes for a cost evalution unit.
-                              default: 5 minutes, correspond to a migration conducted by a
-                              PostgreSQL expert. Set it to 10 if this is your first migration.
-               --dump_as_html     : force ora2pg to dump report in HTML, used only with
-                                    SHOW_REPORT. Default is to dump report as simple text.
-
-            See full documentation at http://ora2pg.darold.net/ for more help or see
-            manpage with 'man ora2pg'.
+        -a | --allow str  : comma-separated list of objects to allow from export.
+                            Can be used with SHOW_COLUMN too.
+        -b | --basedir dir: Used to set the default output directory, where files
+                            resulting from exports will be stored.
+        -c | --conf file  : Used to set an alternate configuration file than the
+                            default /etc/ora2pg/ora2pg.conf.
+        -d | --debug      : Enable verbose output.
+        -e | --exclude str: comma-separated list of objects to exclude from export.
+                            Can be used with SHOW_COLUMN too.
+        -h | --help       : Print this short help.
+        -i | --input file : File containing Oracle PL/SQL code to convert with
+                            no Oracle database connection initiated.
+        -j | --jobs num   : number of parallel process to send data to PostgreSQL.
+        -J | --copies num : number of parallel connection to extract data from Oracle.
+        -l | --log file   : Used to set a log file. Default is stdout.
+        -L | --limit num  : number of tuples extracted from Oracle and stored in
+                            memory before writing, default: 10000.
+        -n | --namespace schema : Used to set the Oracle schema to extract from.
+        -o | --out file   : Used to set the path to the output file where SQL will
+                            be written. Default: output.sql in running directory.
+        -p | --plsql      : Enable PLSQL to PLPSQL code conversion.
+        -q | --quiet      : disable progress bar.
+        -s | --source DSN : Allow to set the Oracle DBI datasource.
+        -t | --type export: Used to set the export type. It will override the one
+                            given in the configuration file (TYPE).
+        -u | --user name  : Used to set the Oracle database connection user.
+        -v | --version    : Show Ora2Pg Version and exit.
+        -w | --password pwd : Used to set the password of the Oracle database user.
+        --forceowner: if set to 1 force ora2pg to set tables and sequences owner
+                      like in Oracle database. If the value is set to a username this
+                      one will be used as the objects owner. By default it's the user
+                      used to connect to the Pg database that will be the owner.
+        --nls_lang code: use this to set the Oracle NLS_LANG client encoding.
+        --client_encoding code: Use this to set the PostgreSQL client encoding.
+        --view_as_table str: comma-separated list of view to export as table.
+        --estimate_cost   : activate the migration cost evalution with SHOW_REPORT
+        --cost_unit_value minutes: number of minutes for a cost evalution unit.
+                      default: 5 minutes, correspond to a migration conducted by a
+                      PostgreSQL expert. Set it to 10 if this is your first migration.
+       --dump_as_html     : force ora2pg to dump report in HTML, used only with
+                            SHOW_REPORT. Default is to dump report as simple text.
+       --init_project NAME: initialise a typical ora2pg project tree. Top directory
+                            will be created under project base dir.
+       --project_base DIR : define the base dir for ora2pg project trees. Default
+                            is current directory.
 
     It is possible to add your own custom option(s) in the Perl script
     ora2pg as any configuration directive from ora2pg.conf can be passed in
     lower case to the new Ora2Pg object instance. See ora2pg code on how to
     add your own option.
+
+  Generate a migration template
+    The two options --project_base and --init_project when used indicate to
+    ora2pg that he has to create a project template with a work tree, a
+    configuration file and a script to export all objects from the Oracle
+    database. Here a sample of the command usage:
+
+        ora2pg --project_base /home/git/tmp --init_project test_project
+
+            Creating project test_project.
+            /home/git/tmp/test_project/
+                    schema/
+                            fdws/
+                            functions/
+                            grants/
+                            kettles/
+                            mviews/
+                            packages/
+                            partitions/
+                            procedures/
+                            sequences/
+                            tables/
+                            tablespaces/
+                            triggers/
+                            types/
+                            views/
+                    sources/
+                            functions/
+                            mviews/
+                            packages/
+                            partitions/
+                            procedures/
+                            triggers/
+                            types/
+                            views/
+                    data/
+                    config/
+                    reports/
+
+            Generating generic configuration file
+            Creating script export_schema.sh to automate all exports.
+
+    It create a generic config file where you just have to define the Oracle
+    database connection and a shell script called export_schema.sh.
 
   Oracle database connection
     There's 5 configuration directives to control the access to the Oracle
@@ -1249,6 +1294,10 @@ CONFIGURATION
     PG_SUPPORTS_CHECKOPTION
         If enabled, export views with CHECK OPTION. Enable it if you have
         PostgreSQL version 9.4 or higher. Default: 0, disabled.
+
+    PG_SUPPORTS_IFEXISTS
+        If disabled, do not export object with IF EXISTS statements. Enabled
+        by default.
 
     LONGREADLEN
         Use this directive to set the database handle's 'LongReadLen'
