@@ -750,6 +750,7 @@ sub _init
 	$self->{ora_conn_count} = 0;
 	$self->{data_limit} ||= 10000;
 	$self->{disable_partition} ||= 0;
+	$self->{parallel_tabless} ||= 0;
 
 	# Set user defined data type translation
 	if ($self->{data_type}) {
@@ -2144,6 +2145,66 @@ sub get_replaced_tbname
 	$tmptb = $self->quote_reserved_words($tmptb);
 
 	return $tmptb; 
+}
+
+sub _export_table_data
+{
+	my ($self, $table, $dirprefix, $sql_header) = @_;
+
+	# Rename table and double-quote it if required
+	my $tmptb = $self->get_replaced_tbname($table);
+
+	if ($self->{file_per_table} && !$self->{pg_dsn}) {
+		# Do not dump data again if the file already exists
+		next if ($self->file_exists("$dirprefix${table}_$self->{output}"));
+	}
+
+	# Open output file
+	$self->data_dump($sql_header, $table) if (!$self->{pg_dsn} && $self->{file_per_table});
+
+	# Add table truncate order
+	if ($self->{truncate_table}) {
+		$self->logit("Truncating table $table...\n", 1);
+		if ($self->{pg_dsn}) {
+			my $s = $self->{dbhdest}->do("TRUNCATE TABLE $tmptb;") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
+		} else {
+			if ($self->{file_per_table}) {
+				$self->data_dump("TRUNCATE TABLE $tmptb;\n",  $table);
+			} else {
+				$self->dump("\nTRUNCATE TABLE $tmptb;\n");
+			}
+		}
+	}
+
+	# With partitioned table, load data direct from table partition
+	if (exists $self->{partitions}{$table}) {
+		foreach my $pos (sort {$self->{partitions}{$table}{$a} <=> $self->{partitions}{$table}{$b}} keys %{$self->{partitions}{$table}}) {
+			foreach my $part_name (sort {$self->{partitions}{$table}{$pos}{$a}->{'colpos'} <=> $self->{partitions}{$table}{$pos}{$b}->{'colpos'}} keys %{$self->{partitions}{$table}{$pos}}) {
+				my $tbpart_name = $part_name;
+				$tbpart_name = $table . '_' . $part_name if ($self->{prefix_partition});
+				next if ($self->{allow_partition} && !grep($_ =~ /^$tbpart_name$/i, @{$self->{allow_partition}}));
+
+				if ($self->{file_per_table} && !$self->{pg_dsn}) {
+					# Do not dump data again if the file already exists
+					next if ($self->file_exists("$dirprefix${tbpart_name}_$self->{output}"));
+				}
+				$self->_dump_table($dirprefix, $sql_header, $table, $start_time, $global_rows, $part_name);
+			}
+		}
+		# Now load content of the default partition table
+		if ($self->{partitions_default}{$table}) {
+			if (!$self->{allow_partition} || grep($_ =~ /^$self->{partitions_default}{$table}$/i, @{$self->{allow_partition}})) {
+				if ($self->{file_per_table} && !$self->{pg_dsn}) {
+					# Do not dump data again if the file already exists
+					next if ($self->file_exists("$dirprefix$self->{partitions_default}{$table}_$self->{output}"));
+				}
+				$self->_dump_table($dirprefix, $sql_header, $table, $start_time, $global_rows, $self->{partitions_default}{$table});
+			}
+		}
+	} else {
+		$self->_dump_table($dirprefix, $sql_header, $table, $start_time, $global_rows);
+	}
+
 }
 
 =head2 _get_sql_data
@@ -3542,66 +3603,33 @@ LANGUAGE plpgsql ;
 
 		my $start_time = time();
 		my $global_count = 0;
+		my $parallel_tables_count = 0;
+		$self->{oracle_copies} = 1 if ($self->{parallel_tables});
 
 		foreach my $table (@ordered_tables) {
 
 			next if ($self->skip_this_object('TABLE', $table));
 
-			# Rename table and double-quote it if required
-			my $tmptb = $self->get_replaced_tbname($table);
-
-			if ($self->{file_per_table} && !$self->{pg_dsn}) {
-				# Do not dump data again if the file already exists
-				next if ($self->file_exists("$dirprefix${table}_$self->{output}"));
-			}
-
-			# Open output file
-			$self->data_dump($sql_header, $table) if (!$self->{pg_dsn} && $self->{file_per_table});
-
-			# Add table truncate order
-			if ($self->{truncate_table}) {
-				$self->logit("Truncating table $table...\n", 1);
-				if ($self->{pg_dsn}) {
-					my $s = $self->{dbhdest}->do("TRUNCATE TABLE $tmptb;") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
-				} else {
-					if ($self->{file_per_table}) {
-						$self->data_dump("TRUNCATE TABLE $tmptb;\n",  $table);
-					} else {
-						$self->dump("\nTRUNCATE TABLE $tmptb;\n");
-					}
-				}
-			}
-
 			# Set global count
-			$global_count += $self->{tables}{$table}{table_info}{num_rows};
+			$global_count = $self->{tables}{$table}{table_info}{num_rows};
 
-			# With partitioned table, load data direct from table partition
-			if (exists $self->{partitions}{$table}) {
-				foreach my $pos (sort {$self->{partitions}{$table}{$a} <=> $self->{partitions}{$table}{$b}} keys %{$self->{partitions}{$table}}) {
-					foreach my $part_name (sort {$self->{partitions}{$table}{$pos}{$a}->{'colpos'} <=> $self->{partitions}{$table}{$pos}{$b}->{'colpos'}} keys %{$self->{partitions}{$table}{$pos}}) {
-						my $tbpart_name = $part_name;
-						$tbpart_name = $table . '_' . $part_name if ($self->{prefix_partition});
-						next if ($self->{allow_partition} && !grep($_ =~ /^$tbpart_name$/i, @{$self->{allow_partition}}));
-
-						if ($self->{file_per_table} && !$self->{pg_dsn}) {
-							# Do not dump data again if the file already exists
-							next if ($self->file_exists("$dirprefix${tbpart_name}_$self->{output}"));
-						}
-						$self->_dump_table($dirprefix, $sql_header, $table, $start_time, $global_rows, $part_name);
+			if ($self->{parallel_tables} > 1) {
+				spawn sub {
+					$self->logit("Creating new connection to Oracle database to export table $table...\n", 1);
+					$self->_export_table_data($table, $dirprefix, $sql_header);
+				};
+				$parallel_tables_count++;
+				# Wait for oracle connection terminaison
+				while ($parallel_tables_count > $self->{parallel_tables}) {
+					my $kid = waitpid(-1, WNOHANG);
+					if ($kid > 0) {
+						$parallel_tables_count--;
+						delete $RUNNING_PIDS{$kid};
 					}
-				}
-				# Now load content of the default partition table
-				if ($self->{partitions_default}{$table}) {
-					if (!$self->{allow_partition} || grep($_ =~ /^$self->{partitions_default}{$table}$/i, @{$self->{allow_partition}})) {
-						if ($self->{file_per_table} && !$self->{pg_dsn}) {
-							# Do not dump data again if the file already exists
-							next if ($self->file_exists("$dirprefix$self->{partitions_default}{$table}_$self->{output}"));
-						}
-						$self->_dump_table($dirprefix, $sql_header, $table, $start_time, $global_rows, $self->{partitions_default}{$table});
-					}
+					usleep(500000);
 				}
 			} else {
-				$self->_dump_table($dirprefix, $sql_header, $table, $start_time, $global_rows);
+				$self->_export_table_data($table, $dirprefix, $sql_header);
 			}
 
 			# Close data file
@@ -3620,7 +3648,7 @@ LANGUAGE plpgsql ;
 		}
 
 		# Wait for all child die
-		if ($self->{oracle_copies} > 1) {
+		if ( ($self->{oracle_copies} > 1) || ($self->{parallel_tables} > 1) ){
 			# Wait for all child dies less the logger
 			while (scalar keys %RUNNING_PIDS > 1) {
 				my $kid = waitpid(-1, WNOHANG);
@@ -7341,7 +7369,6 @@ sub ask_for_data
 			}
 			usleep(500000);
 		}
-
 	} else {
 		$self->_extract_data($query, $table, $cmd_head, $cmd_foot, $s_out, $nn, $tt, $sprep, $stt, $part_name);
 	}
@@ -7374,7 +7401,7 @@ sub _extract_data
 	my $rname = $part_name || $table;
 	my $dbh;
 	my $sth;
-	if ( ($self->{oracle_copies} > 1) && $self->{defined_pk}{"\L$table\E"} ) {
+	if ( $self->{parallel_tables} || (($self->{oracle_copies} > 1) && $self->{defined_pk}{"\L$table\E"}) ) {
 
 		$dbh = $self->{dbh}->clone();
 

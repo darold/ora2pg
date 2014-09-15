@@ -418,6 +418,12 @@ JOBS		1
 # this directive can only be used if there is a column defined in DEFINED_PK.
 ORACLE_COPIES	1
 
+# Multiprocess support. This directive should defined the number of tables
+# in parallel data extraction. The limit is the number of cores on your machine.
+# Ora2Pg will open one database connection for each parallel table extraction.
+# This directive, when upper than 1, will invalidate ORACLE_COPIES but not JOBS.
+PARALLEL_TABLES	1
+
 # Multiprocess support. This directive is used to split the select queries
 # between the differents connections to Oracle if ORA_COPIES is used. Ora2Pg
 # will extract data with the following prepare statement:
