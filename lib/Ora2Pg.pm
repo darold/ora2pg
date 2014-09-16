@@ -726,6 +726,10 @@ sub _init
 	if (not defined $self->{convert_srid} || ($self->{convert_srid} != 0)) {
 		$self->{convert_srid} = 1;
 	}
+	if (not defined $self->{default_srid}) {
+		$self->{default_srid} = 4326;
+	}
+	
 
 	# Free some memory
 	%options = ();
@@ -4880,9 +4884,9 @@ sub _howto_get_data
 		} elsif ( $src_type->[$k] =~ /geometry/i) {
 			my $spatial_sysref = "t.$name->[$k]->[0].SDO_SRID";
 			if ($self->{convert_srid}) {
-				$spatial_sysref = "COALESCE(sdo_cs.map_oracle_srid_to_epsg(t.$name->[$k]->[0].SDO_SRID), 4326)";
+				$spatial_sysref = "COALESCE(sdo_cs.map_oracle_srid_to_epsg(t.$name->[$k]->[0].SDO_SRID), $self->{default_srid})";
 			} else {
-				$spatial_sysref = "COALESCE(t.$name->[$k]->[0].SDO_SRID, 8307)";
+				$spatial_sysref = "COALESCE(t.$name->[$k]->[0].SDO_SRID, $self->{default_srid})";
 			}
 			if ($self->{type} eq 'INSERT') {
 				$str .= "'ST_GeomFromText('''||SDO_UTIL.TO_WKTGEOMETRY($name->[$k]->[0])||''','||$spatial_sysref||')',";

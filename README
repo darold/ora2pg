@@ -966,8 +966,11 @@ CONFIGURATION
         Enabled by default.
 
         If the SDO_SRID returned by Oracle is NULL, it will be replaced by
-        the default value: 8307 and converted to its EPSG value: 4326 if
-        enabled
+        the default value 8307 converted to its EPSG value: 4326 (see
+        DEFAULT_SRID).
+
+    DEFAULT_SRID
+        Use this directive to override the default EPSG SRID to used: 4326.
 
     PREFIX_PARTITION
         Enable this directive if you want that your partition table name

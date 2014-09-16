@@ -581,8 +581,11 @@ AUTODETECT_SPATIAL_TYPE	0
 # Disable this directive if you don't want to automatically convert SRID to
 # EPSG using the sdo_cs.map_oracle_srid_to_epsg() function. Default: enabled
 # If the SDO_SRID returned by Oracle is NULL, it will be replaced by the
-# default value: 8307 and converted to its EPSG value: 4326 if enabled
+# default value 8307 converted to its EPSG value: 4326 (see DEFAULT_SRID)
 CONVERT_SRID		1
+
+# Use this directive to override the default EPSG SRID to used: 4326.
+DEFAULT_SRID		4326
 
 # Enable this directive if you want that your partition table name will be
 # exported using the parent table name. Disabled by default. If you have

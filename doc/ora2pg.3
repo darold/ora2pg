@@ -1130,7 +1130,10 @@ This directive allow you to control the automatically convertion of Oracle
 sdo_cs.\fImap_oracle_srid_to_epsg()\fR to convert all \s-1SRID\s0. Enabled by default.
 .Sp
 If the \s-1SDO_SRID\s0 returned by Oracle is \s-1NULL\s0, it will be replaced by the
-default value: 8307 and converted to its \s-1EPSG\s0 value: 4326 if enabled
+default value 8307 converted to its \s-1EPSG\s0 value: 4326 (see \s-1DEFAULT_SRID\s0).
+.IP "\s-1DEFAULT_SRID\s0" 4
+.IX Item "DEFAULT_SRID"
+Use this directive to override the default \s-1EPSG\s0 \s-1SRID\s0 to used: 4326.
 .IP "\s-1PREFIX_PARTITION\s0" 4
 .IX Item "PREFIX_PARTITION"
 Enable this directive if you want that your partition table name will be

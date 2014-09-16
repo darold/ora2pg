@@ -999,7 +999,11 @@ SRID to standard EPSG. If enabled, Ora2Pg will use the Oracle function
 sdo_cs.map_oracle_srid_to_epsg() to convert all SRID. Enabled by default.
 
 If the SDO_SRID returned by Oracle is NULL, it will be replaced by the
-default value: 8307 and converted to its EPSG value: 4326 if enabled
+default value 8307 converted to its EPSG value: 4326 (see DEFAULT_SRID).
+
+=item DEFAULT_SRID
+
+Use this directive to override the default EPSG SRID to used: 4326.
 
 =item PREFIX_PARTITION
 
