@@ -610,7 +610,10 @@ LOG_ON_ERROR		0
 # define multiple REPLACE_QUERY lines.
 #REPLACE_QUERY	EMPLOYEES[SELECT e.id,e.fisrtname,lastname FROM EMPLOYEES e JOIN EMP_UPDT u ON (e.id=u.id AND u.cdate>'2014-08-01 00:00:00')]
 
-
+# PostgreSQL version below 9.x do not support IF EXISTS in DDL statements.
+# Disabling the directive with value 0 will prevent Ora2Pg to add those
+# keywords in all generated statments.
+PG_SUPPORTS_IFEXISTS	1
 
 };
 close(OUTCFG);

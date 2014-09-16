@@ -1429,6 +1429,11 @@ Since PostgreSQL 9.3, materialized view are supported with the \s-1SQL\s0 syntax
 \&'\s-1CREATE\s0 \s-1MATERIALIZED\s0 \s-1VIEW\s0'. To force Ora2Pg to use the native PostgreSQL
 support you must enable this configuration \- enable by default. If you want
 to use the old style with table and a set of function, you should disable it.
+.IP "\s-1PG_SUPPORTS_IFEXISTS\s0" 4
+.IX Item "PG_SUPPORTS_IFEXISTS"
+PostgreSQL version below 9.x do not support \s-1IF\s0 \s-1EXISTS\s0 in \s-1DDL\s0 statements.
+Disabling the directive with value 0 will prevent Ora2Pg to add those
+keywords in all generated statments. Default value is 1, enabled.
 .IP "\s-1PG_SUPPORTS_ROLE\s0 (Deprecated)" 4
 .IX Item "PG_SUPPORTS_ROLE (Deprecated)"
 This option is deprecated since Ora2Pg release v7.3.

@@ -1282,6 +1282,12 @@ CONFIGURATION
         default. If you want to use the old style with table and a set of
         function, you should disable it.
 
+    PG_SUPPORTS_IFEXISTS
+        PostgreSQL version below 9.x do not support IF EXISTS in DDL
+        statements. Disabling the directive with value 0 will prevent Ora2Pg
+        to add those keywords in all generated statments. Default value is
+        1, enabled.
+
     PG_SUPPORTS_ROLE (Deprecated)
         This option is deprecated since Ora2Pg release v7.3.
 
