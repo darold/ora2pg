@@ -7403,7 +7403,7 @@ sub _extract_data
 	my $rname = $part_name || $table;
 	my $dbh;
 	my $sth;
-	if ( $self->{parallel_tables} || (($self->{oracle_copies} > 1) && $self->{defined_pk}{"\L$table\E"}) ) {
+	if ( ($self->{parallel_tables} > 1) || (($self->{oracle_copies} > 1) && $self->{defined_pk}{"\L$table\E"}) ) {
 
 		$dbh = $self->{dbh}->clone();
 
