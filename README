@@ -965,6 +965,10 @@ CONFIGURATION
         function sdo_cs.map_oracle_srid_to_epsg() to convert all SRID.
         Enabled by default.
 
+        If the SDO_SRID returned by Oracle is NULL, it will be replaced by
+        the default value: 8307 and converted to its EPSG value: 4326 if
+        enabled
+
     PREFIX_PARTITION
         Enable this directive if you want that your partition table name
         will be exported using the parent table name. Disabled by default.

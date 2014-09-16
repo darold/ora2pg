@@ -4881,7 +4881,9 @@ sub _howto_get_data
 		} elsif ( $src_type->[$k] =~ /geometry/i) {
 			my $spatial_sysref = "t.$name->[$k]->[0].SDO_SRID";
 			if ($self->{convert_srid}) {
-				$spatial_sysref = "sdo_cs.map_oracle_srid_to_epsg(t.$name->[$k]->[0].SDO_SRID)";
+				$spatial_sysref = "COALESCE(sdo_cs.map_oracle_srid_to_epsg(t.$name->[$k]->[0].SDO_SRID), 4326)";
+			} else {
+				$spatial_sysref = "COALESCE(t.$name->[$k]->[0].SDO_SRID, 8307)";
 			}
 			if ($self->{type} eq 'INSERT') {
 				$str .= "'ST_GeomFromText('''||SDO_UTIL.TO_WKTGEOMETRY($name->[$k]->[0])||''','||$spatial_sysref||')',";
