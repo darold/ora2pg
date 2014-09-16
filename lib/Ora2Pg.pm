@@ -6168,7 +6168,7 @@ sub _table_info
 	$owner =~ s/^WHERE/AND/;
 
 	$sql = "SELECT A.OWNER,A.TABLE_NAME,NVL(num_rows,1) NUMBER_ROWS,A.TABLESPACE_NAME,A.NESTED,A.LOGGING FROM ALL_TABLES A $join_segment WHERE (A.IOT_TYPE IS NULL OR A.IOT_TYPE = 'IOT') $owner";
-	$sql .= " AND A.TEMPORARY='N' AND (A.NESTED != 'YES' OR A.LOGGING != 'YES') AND (DROPPED IS NULL OR DROPPED = 'NO') $owner";
+	$sql .= " AND A.TEMPORARY='N' AND (A.NESTED != 'YES' OR A.LOGGING != 'YES') AND (DROPPED IS NULL OR DROPPED = 'NO') AND SECONDARY = 'N'";
 	$sql .= " AND (A.OWNER, A.TABLE_NAME) NOT IN (SELECT OWNER, MVIEW_NAME FROM ALL_MVIEWS UNION ALL SELECT LOG_OWNER, LOG_TABLE FROM ALL_MVIEW_LOGS)";
         $sql .= " ORDER BY A.OWNER, A.TABLE_NAME";
 
@@ -8348,13 +8348,18 @@ sub _get_largest_tables
 
 	my %table_size = ();
 
-	my $sql = "SELECT * FROM ( SELECT SEGMENT_NAME, ROUND(BYTES/1024/1024) SIZE_MB FROM DBA_SEGMENTS WHERE SEGMENT_TYPE LIKE 'TABLE%'";
+	my $join_segment = '';
+	if (!$self->{user_grants}) {
+		$join_segment = " JOIN DBA_SEGMENTS S ON (S.SEGMENT_TYPE LIKE 'TABLE%' AND S.SEGMENT_NAME=A.TABLE_NAME)";
+	}
+
+	my $sql = "SELECT * FROM ( SELECT S.SEGMENT_NAME, ROUND(S.BYTES/1024/1024) SIZE_MB FROM DBA_SEGMENTS S JOIN ALL_TABLES A ON (A.SEGMENT_NAME=A.TABLE_NAME AND S.OWNER=A.OWNER) WHERE S.SEGMENT_TYPE LIKE 'TABLE%' AND A.SECONDARY = 'N'";
         if ($self->{schema}) {
-                $sql .= " AND OWNER='$self->{schema}'";
+                $sql .= " AND S.OWNER='$self->{schema}'";
         } else {
-                $sql .= " AND OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
+                $sql .= " AND S.OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
         }
-	$sql .= " ORDER BY BYTES DESC) WHERE ROWNUM <= $self->{top_max}";
+	$sql .= " ORDER BY S.BYTES DESC) WHERE ROWNUM <= $self->{top_max}";
         my $sth = $self->{dbh}->prepare( $sql ) or return undef;
         $sth->execute or return undef;
 	while ( my @row = $sth->fetchrow()) {
