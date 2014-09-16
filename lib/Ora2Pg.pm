@@ -4244,7 +4244,6 @@ sub _dump_table
 
 		if ($f->[1] =~ /GEOMETRY/i) {
 			$self->{local_type} = $self->{type} if (!$self->{local_type});
-			$self->{type} = 'INSERT';
 		}
 
 		my $type = $self->_sql_type($f->[1], $f->[2], $f->[5], $f->[6]);
@@ -4888,9 +4887,7 @@ sub _howto_get_data
 			if ($self->{type} eq 'INSERT') {
 				$str .= "'ST_GeomFromText('''||SDO_UTIL.TO_WKTGEOMETRY($name->[$k]->[0])||''','||$spatial_sysref||')',";
 			} else {
-				# Need to find a solution here. Copy want the spatial object to be gserialized.
-				# Maybe the SC04 package can be used. Need more work
-				#$str .= "ST_AsEWKB(ST_GeomFromEWKT('SRID=' || $spatial_sysref || ';' || SDO_UTIL.TO_WKTGEOMETRY($name->[$k]->[0])))"
+				$str .= "'SRID=' || $spatial_sysref || ';' || SDO_UTIL.TO_WKTGEOMETRY($name->[$k]->[0])"
 			}
 		} else {
 			$str .= "$name->[$k]->[0],";
