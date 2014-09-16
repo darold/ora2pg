@@ -5928,8 +5928,8 @@ sub _get_triggers
 	my @triggers = ();
 	while (my $row = $sth->fetch) {
 
-		# forget or not this object if it is in the exclude or allow lists.
-		next if ($self->skip_this_object('TRIGGER', $row->[0]));
+		# forget this trigger if the table is excluded or allowed.
+		next if ($self->skip_this_object('TRIGGER', $row->[3]));
 
 		push(@triggers, [ @$row ]);
 	}
