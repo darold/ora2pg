@@ -207,6 +207,7 @@ sub plsql_to_plpgsql
 	$str =~ s/EXEC([\s\t]+)/SELECT$1/igs;
 
 	# Remove leading : on Oracle variable
+	$str =~ s/([^\w]+):(\d+)/$1\$$2/igs;
 	$str =~ s/([^\w]+):(\w+)/$1$2/igs;
 
 	# INSERTING|DELETING|UPDATING -> TG_OP = 'INSERT'|'DELETE'|'UPDATE'
