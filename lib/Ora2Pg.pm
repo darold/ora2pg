@@ -3450,7 +3450,7 @@ LANGUAGE plpgsql ;
 		if (!$self->{pg_dsn}) {
 			# Set search path
 			if ($search_path) {
-				$first_header .= $self->set_search_path() . "\n";
+				$first_header .= $self->set_search_path();
 			}
 			# Open transaction
 			$first_header .= "BEGIN;\n";
@@ -8845,7 +8845,7 @@ sub set_search_path
 		}
 	}
 
-	return $search_path;
+	return "$search_path\n";
 }
 
 sub _get_human_cost
