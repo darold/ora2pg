@@ -2275,18 +2275,23 @@ sub _get_sql_data
 				$self->{views}{$view}{text} =~ s/\s*\bWITH\b\s+.*$//s;
 			}
 			$self->{views}{$view}{text} = $self->_format_view($self->{views}{$view}{text});
+			my $tmpv = $view;
+			if (exists $self->{replaced_tables}{"\L$tmpv\E"} && $self->{replaced_tables}{"\L$tmpv\E"}) {
+				$self->logit("\tReplacing table $tmpv as " . $self->{replaced_tables}{lc($tmpv)} . "...\n", 1);
+				$tmpv = $self->{replaced_tables}{lc($tmpv)};
+			}
 			if (!@{$self->{views}{$view}{alias}}) {
 				if (!$self->{preserve_case}) {
-					$sql_output .= "CREATE OR REPLACE VIEW \L$view\E AS ";
+					$sql_output .= "CREATE OR REPLACE VIEW \L$tmpv\E AS ";
 				} else {
-					$sql_output .= "CREATE OR REPLACE VIEW \"$view\" AS ";
+					$sql_output .= "CREATE OR REPLACE VIEW \"$tmpv\" AS ";
 				}
 				$sql_output .= $self->{views}{$view}{text} . ";\n\n";
 			} else {
 				if (!$self->{preserve_case}) {
-					$sql_output .= "CREATE OR REPLACE VIEW \L$view\E (";
+					$sql_output .= "CREATE OR REPLACE VIEW \L$tmpv\E (";
 				} else {
-					$sql_output .= "CREATE OR REPLACE VIEW \"$view\" (";
+					$sql_output .= "CREATE OR REPLACE VIEW \"$tmpv\" (";
 				}
 				my $count = 0;
 				foreach my $d (@{$self->{views}{$view}{alias}}) {
@@ -2295,12 +2300,19 @@ sub _get_sql_data
 					} else {
 						$sql_output .= ", ";
 					}
+					# Change column names
+					my $fname = $d->[0];
+					if (exists $self->{replaced_cols}{"\L$view\E"}{"\L$fname\E"} && $self->{replaced_cols}{"\L$view\E"}{"\L$fname\E"}) {
+						$self->logit("\tReplacing column \L$d->[0]\E as " . $self->{replaced_cols}{"\L$view\E"}{"\L$fname\E"} . "...\n", 1);
+						$fname = $self->{replaced_cols}{"\L$view\E"}{"\L$fname\E"};
+					}
 					if (!$self->{preserve_case}) {
-						$sql_output .= "\L$d->[0]\E";
+						$sql_output .= "\L$fname\E";
 					} else {
-						$sql_output .= "\"$d->[0]\"";
+						$sql_output .= "\"$fname\"";
 					}
 				}
+
 				if (!$self->{preserve_case}) {
 					if ($self->{views}{$view}{text} =~ /SELECT[^\s\t]*(.*?)\bFROM\b/is) {
 						my $clause = $1;
@@ -2323,12 +2335,17 @@ sub _get_sql_data
 				foreach $f (keys %{$self->{views}{$view}{column_comments}}) {
 					next unless $self->{views}{$view}{column_comments}{$f};
 					$self->{views}{$view}{column_comments}{$f} =~ s/'/''/gs;
+					# Change column names
+					my $fname = $f;
+					if (exists $self->{replaced_cols}{"\L$view\E"}{"\L$f\E"} && $self->{replaced_cols}{"\L$view\E"}{"\L$f\E"}) {
+						$fname = $self->{replaced_cols}{"\L$view\E"}{"\L$f\E"};
+					}
 					if (!$self->{preserve_case}) {
-						$sql_output .= "COMMENT ON COLUMN $view.$f IS E'" . $self->{views}{$view}{column_comments}{$f} .  "';\n";
+						$sql_output .= "COMMENT ON COLUMN $tmpv.$fname IS E'" . $self->{views}{$view}{column_comments}{$f} .  "';\n";
 					} else {
-						my $vname = $view;
+						my $vname = $tmpv;
 						$vname =~ s/\./"."/;
-						$sql_output .= "COMMENT ON COLUMN \"$vname\".\"$f\" IS E'" . $self->{views}{$view}{column_comments}{$f} .  "';\n";
+						$sql_output .= "COMMENT ON COLUMN \"$vname\".\"$fname\" IS E'" . $self->{views}{$view}{column_comments}{$f} .  "';\n";
 					}
 				}
 			}
