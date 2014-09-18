@@ -638,7 +638,7 @@ sub _init
 
 	# Set default system user/schema to not export. Most of them are extracted from this doc:
 	# http://docs.oracle.com/cd/E11882_01/server.112/e10575/tdpsg_user_accounts.htm#TDPSG20030
-	push(@{$self->{sysusers}}, 'CTXSYS','DBSNMP','EXFSYS','LBACSYS','MDSYS','MGMT_VIEW','OLAPSYS','ORDDATA','OWBSYS','ORDPLUGINS','ORDSYS','OUTLN','SI_INFORMTN_SCHEMA','SYS','SYSMAN','SYSTEM','WK_TEST','WKSYS','WKPROXY','WMSYS','XDB','APEX_PUBLIC_USER','DIP','FLOWS_020100','FLOWS_030000','FLOWS_040100','FLOWS_FILES','MDDATA','ORACLE_OCM','SPATIAL_CSW_ADMIN_USR','SPATIAL_WFS_ADMIN_USR','XS$NULL','PERFSTAT','SQLTXPLAIN','DMSYS','TSMSYS','WKSYS','APEX_040200','DVSYS','OJVMSYS','GSMADMIN_INTERNAL','APPQOSSYS');
+	push(@{$self->{sysusers}},'SYSTEM','CTXSYS','DBSNMP','EXFSYS','LBACSYS','MDSYS','MGMT_VIEW','OLAPSYS','ORDDATA','OWBSYS','ORDPLUGINS','ORDSYS','OUTLN','SI_INFORMTN_SCHEMA','SYS','SYSMAN','WK_TEST','WKSYS','WKPROXY','WMSYS','XDB','APEX_PUBLIC_USER','DIP','FLOWS_020100','FLOWS_030000','FLOWS_040100','FLOWS_FILES','MDDATA','ORACLE_OCM','SPATIAL_CSW_ADMIN_USR','SPATIAL_WFS_ADMIN_USR','XS$NULL','PERFSTAT','SQLTXPLAIN','DMSYS','TSMSYS','WKSYS','APEX_040200','DVSYS','OJVMSYS','GSMADMIN_INTERNAL','APPQOSSYS');
 
 	# Set default tablespace to exclude when using USE_TABLESPACE
 	push(@{$self->{default_tablespaces}}, 'TEMP', 'USERS','SYSTEM');
@@ -6137,8 +6137,9 @@ sub _get_types
 	$str .= " AND GENERATED='N'";
 	if (!$self->{schema}) {
 		# We need to remove SYSTEM from the exclusion list
-		shift(@{$self->{sysusers}});
-		$str .= " AND OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
+		my @tmpusers = @{$self->{sysusers}};
+		shift(@tmpusers);
+		$str .= " AND OWNER NOT IN ('" . join("','", @tmpusers) . "')";
 	} else {
 		$str .= " AND OWNER = '$self->{schema}'";
 	}
@@ -6372,6 +6373,7 @@ sub _get_synonyms
 	while (my $row = $sth->fetch) {
 		# forget or not this object if it is in the exclude or allow lists.
 		next if ($self->skip_this_object('SYNONYM', $row->[0]));
+
 		$synonyms{$row->[0]}{owner} = $row->[1];
 		$synonyms{$row->[0]}{table} = $row->[2];
 		$synonyms{$row->[0]}{dblink} = $row->[3];
@@ -8097,7 +8099,7 @@ sub _show_infos
 			} elsif ($typ eq 'CLUSTER') {
 				$report_info{'Objects'}{$typ}{'comment'} = "Clusters are not supported by PostgreSQL and will not be exported.";
 			} elsif ($typ eq 'VIEW') {
-				$report_info{'Objects'}{$typ}{'comment'} = "Views are fully supported, but if you have updatable views you will need to use INSTEAD OF triggers.";
+				$report_info{'Objects'}{$typ}{'comment'} = "Views are fully supported.";
 			} elsif ($typ eq 'DATABASE LINK') {
 				$report_info{'Objects'}{$typ}{'comment'} = "Database links will not be exported. You may try the dblink perl contrib module or use the SQL/MED PostgreSQL features with the different Foreign Data Wrapper (FDW) extentions.";
 				if ($self->{estimate_cost}) {
