@@ -574,9 +574,10 @@ PG_SUPPORTS_CHECKOPTION	0
 # Enable this directive if you want Ora2Pg to detect the real spatial type and
 # dimension used in a spatial column. Otherwise column will be created with
 # non-constrained "geometry" type. Enabling this feature will force Ora2Pg to
-# scan the entire column stored information, following the number of row it
-# could slow down the schema export.
-AUTODETECT_SPATIAL_TYPE	0
+# scan a sample of 50000 column to look at the GTYPE used. You can increase
+# the sample by setting the value of AUTODETECT_SPATIAL_TYPE to the desired
+# number of line.
+AUTODETECT_SPATIAL_TYPE	1
 
 # Disable this directive if you don't want to automatically convert SRID to
 # EPSG using the sdo_cs.map_oracle_srid_to_epsg() function. Default: enabled
