@@ -109,6 +109,7 @@ $FCT_TEST_SCORE = 2;
 	'NEXT_DAY' => 1,
 	'MONTHS_BETWEEN' => 1,
 	'NVL2' => 1,
+	'SDO_' => 2,
 );
 
 @ORA_FUNCTIONS = qw(
@@ -623,6 +624,8 @@ sub estimate_cost
 	$cost_details{'MONTHS_BETWEEN'} += $n;
 	$n = () = $str =~ m/NVL2/igs;
 	$cost_details{'NVL2'} += $n;
+	$n = () = $str =~ m/SDO_\w/igs;
+	$cost_details{'SDO_'} += $n;
 
 	foreach my $f (@ORA_FUNCTIONS) {
 		if ($str =~ /\b$f\b/igs) {
