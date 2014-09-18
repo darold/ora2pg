@@ -4031,19 +4031,24 @@ CREATE TRIGGER insert_${table}_trigger
 				}
 
 				if ($f->[1] =~ /SDO_GEOMETRY/) {
-					# Set the dimension
+					# Set the dimension, array is (srid, dims, gtype)
 					my $suffix = '';
-					if ($f->[11] == 3) {
+					if ($f->[12] == 3) {
 						$suffix = 'Z';
-					} elsif ($f->[11] == 4) {
+					} elsif ($f->[12] == 4) {
 						$suffix = 'ZM';
 					}
-					$f->[12] ||= 0;
-					$type = "geometry($ORA2PG_SDO_GTYPE{$f->[12]}$suffix";
-					if ($f->[13]) {
-						$type .= ",$f->[13]";
+					my $gtypes = '';
+					if (!$d->[13] || ($d->[13] =~  /\D/)) {
+						$gtypes = $d->[13] if ($d->[13]);
+						$d->[13] = 0;
+					}
+					$type = "geometry($ORA2PG_SDO_GTYPE{$d->[13]}$suffix";
+					if ($f->[11]) {
+						$type .= ",$f->[11]";
 					}
 					$type .= ")";
+					$type .= " - $gtypes" if ($gtypes);
 					
 				}
 
@@ -5116,11 +5121,19 @@ END
 	}
 	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
-	my $spatial_query =  'SELECT DISTINCT c.%s.SDO_GTYPE FROM %s c';
-	my $spatial_sysref = 'SELECT DISTINCT c.%s.SDO_SRID FROM %s c';
+	# Default number of line to scan to grab the geometry type of the column.
+	# If it not limited, the query will scan the entire table which may take a very long time.
+	my $max_lines = 50000;
+	$max_lines = $self->{autodetect_spatial_type} if ($self->{autodetect_spatial_type} > 1);
+	my $spatial_gtype =  'SELECT DISTINCT c.%s.SDO_GTYPE FROM %s c WHERE ROWNUM < ' . $max_lines;
+	# Set query to retrieve the SRID
+	my $spatial_srid = "SELECT SRID FROM ALL_SDO_GEOM_METADATA WHERE TABLE_NAME=? AND COLUMN_NAME=?";
 	if ($self->{convert_srid}) {
-		$spatial_sysref = 'SELECT DISTINCT sdo_cs.map_oracle_srid_to_epsg(c.%s.SDO_SRID) FROM %s c';
+		# Translate SRID to standard EPSG SRID, may return 0 because there's lot of Oracle only SRID.
+		$spatial_sysref = 'SELECT sdo_cs.map_oracle_srid_to_epsg(SRID) FROM ALL_SDO_GEOM_METADATA WHERE TABLE_NAME=? AND COLUMN_NAME=?';
 	}
+	# Get the dimension of the geometry by looking at the number of element in the SDO_DIM_ARRAY
+	my $spatial_dim = "SELECT SDO_DIMNAME, SDO_LB, SDO_UB FROM TABLE ( SELECT DIMINFO a FROM ALL_SDO_GEOM_METADATA WHERE TABLE_NAME=? AND COLUMN_NAME=?)";
 
 	my %data = ();
 	my $pos = 0;
@@ -5130,14 +5143,48 @@ END
 		if ($#{$row} == 9) {
 			$row->[2] = $row->[7] if $row->[1] =~ /char/i;
 		}
-		# check if this is a spatial column
+
+		# check if this is a spatial column (srid, dim, gtype)
 		my @geom_inf = ();
 		if ($row->[1] eq 'SDO_GEOMETRY') {
+
+			# Get the SRID of the column
+			my $sth2 = $self->{dbh}->prepare($spatial_srid);
+			if (!$sth2) {
+				$self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+			}
+			$sth2->execute($row->[-2],$row->[0]) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+			my @result = ();
+			while (my $r = $sth2->fetch) {
+				push(@result, $r->[0]) if ($r->[0] =~ /\d+/);
+			}
+			$sth2->finish();
+			if ($#result == 0) {
+				push(@geom_inf, $result[0]);
+			} else {
+				push(@geom_inf, 0);
+			}
+
+
+			# Get the dimension of the geometry column
+			my $sth2 = $self->{dbh}->prepare($spatial_dim);
+			if (!$sth2) {
+				$self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+			}
+			$sth2->execute($row->[-2],$row->[0]) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+			my $count = 0;
+			while (my $r = $sth2->fetch) {
+				$count++;
+			}
+			$sth2->finish();
+			push(@geom_inf, $count);
+
 			# Set dimension and type of the spatial column
 			if ($self->{autodetect_spatial_type}) {
+
 				# Get spatial information
 				my $colname = $row->[-1] . "." . $row->[-2];
-				my $squery = sprintf($spatial_query, $row->[0], $colname);
+				my $squery = sprintf($spatial_gtype, $row->[0], $colname);
 				my $sth2 = $self->{dbh}->prepare($squery);
 				if (!$sth2) {
 					$self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -5146,36 +5193,18 @@ END
 				my @result = ();
 				my @dims = ();
 				while (my $r = $sth2->fetch) {
-					$r->[0] =~s /^(\d)00//;
-					push(@result, $r->[0]);
-					push(@dims, $1) if (!grep(/^$1/, @dims));
+					if ($r->[0] =~ /(\d)$/) {
+						push(@result, $1);
+					}
 				}
 				$sth2->finish();
 				if ($#result == 0) {
-					push(@geom_inf, $dims[0], $result[0]);
-				} elsif ($#dims == 0) {
-					push(@geom_inf, $dims[0], 0);
+					push(@geom_inf, $result[0]);
 				} else {
-					push(@geom_inf, 0, 0);
+					map { s/^\d{3}(\d)$/$1/; $_ = $ORA2PG_SDO_GTYPE{$_}; } @result;
+					push(@geom_inf, join(',', @result));
 				}
-			} else {
-				push(@geom_inf, 0, 0);
-			}
-			# Get the SRID of the column
-			my $colname = $row->[-1] . "." . $row->[-2];
-			my $squery = sprintf($spatial_sysref, $row->[0], $colname);
-			my $sth2 = $self->{dbh}->prepare($squery);
-			if (!$sth2) {
-				$self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-			}
-			$sth2->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-			my @result = ();
-			while (my $r = $sth2->fetch) {
-				push(@result, $r->[0]) if ($r->[0] =~ /\d+/);
-			}
-			$sth2->finish();
-			if ($#result == 0) {
-				push(@geom_inf, $result[0]);
+
 			} else {
 				push(@geom_inf, 0);
 			}
@@ -7942,7 +7971,7 @@ sub _show_infos
 					$i = 1;
 					my %largest_table = $self->_get_largest_tables();
 					foreach my $t (sort { $largest_table{$b} <=> $largest_table{$a} } keys %largest_table) {
-						$report_info{'Objects'}{$typ}{'detail'} .= "\L$t\E: $largest_table{$t} MB ($self->{tables}{$t}{table_info}{num_rows} rows)\n";
+						$report_info{'Objects'}{$typ}{'detail'} .= "\L$t\E: $largest_table{$t} MB (" . $self->{tables}{$t}{table_info}{num_rows} . " rows)\n";
 						$i++;
 					}
 				}
@@ -8195,19 +8224,24 @@ sub _show_infos
 							$align = " - typalign: $TYPALIGN{$typ}";
 						}
 					} else {
-						# Set the dimension
+						# Set the dimension, array is (srid, dims, gtype)
 						my $suffix = '';
-						if ($d->[11] == 3) {
+						if ($d->[12] == 3) {
 							$suffix = 'Z';
-						} elsif ($d->[11] == 4) {
+						} elsif ($d->[12] == 4) {
 							$suffix = 'ZM';
 						}
-						$d->[12] ||= 0;
-						$type = "geometry($ORA2PG_SDO_GTYPE{$d->[12]}$suffix";
-						if ($d->[13]) {
-							$type .= ",$d->[13]";
+						my $gtypes = '';
+						if (!$d->[13] || ($d->[13] =~  /\D/)) {
+							$gtypes = $d->[13] if ($d->[13]);
+							$d->[13] = 0;
+						}
+						$type = "geometry($ORA2PG_SDO_GTYPE{$d->[13]}$suffix";
+						if ($d->[11]) {
+							$type .= ",$d->[11]";
 						}
 						$type .= ")";
+						$type .= " - $gtypes" if ($gtypes);
 						
 					}
 					if (&is_reserved_words($d->[0])) {
@@ -8243,7 +8277,7 @@ sub _show_infos
 			foreach my $t (sort { $largest_table{$b} <=> $largest_table{$a} } keys %largest_table) {
 				my $tname = $t;
 				$tname = "$tables_infos{$t}{owner}.$t" if ($self->{debug});
-				$self->logit("\t[$i] TABLE $tname: $largest_table{$t} MB ($self->{tables}{$t}{table_info}{num_rows} rows)\n", 0);
+				$self->logit("\t[$i] TABLE $tname: $largest_table{$t} MB (" . $tables_infos{$t}{num_rows} . " rows)\n", 0);
 				$i++;
 			}
 		}
