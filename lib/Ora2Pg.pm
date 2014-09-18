@@ -8077,7 +8077,7 @@ sub _show_infos
 				}
 				$report_info{'Objects'}{$typ}{'comment'} = "Total size of package code: $total_size bytes. Number of procedures and functions found inside those packages: $number_fct.";
 			} elsif ($typ eq 'SYNONYM') {
-				my %synonyms = $self->_get_synonyms();
+				$report_info{'Objects'}{$typ}{'number'} = scalar keys %synonyms;
 				foreach my $t (sort keys %synonyms) {
 					if ($synonyms{$t}{dblink}) {
 						$report_info{'Objects'}{$typ}{'detail'} .= "\L$t\E is a link to $synonyms{$t}{dblink}";
