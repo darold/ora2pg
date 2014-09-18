@@ -302,7 +302,7 @@ sub create_project
 
 	# Copy configuration file and transform it as a generic one
 	print "Generating generic configuration file\n";
-	my $conf_file = $CONFIG_FILE || '/etc/ora2pg/ora2pg.conf.dist';
+	my $conf_file = '/etc/ora2pg/ora2pg.conf.dist';
 	if (open(IN, "$conf_file")) {
 		my @cf = <IN>;
 		close(IN);
@@ -377,6 +377,7 @@ sub make_config_generic
 		$conf_arr->[$i] =~ s/^TRUNCATE_TABLE.*0/TRUNCATE_TABLE\t1/;
 		$conf_arr->[$i] =~ s/^#CLIENT_ENCODING.*LATIN9/CLIENT_ENCODING\tUTF8/;
 		$conf_arr->[$i] =~ s/^#LONGREADLEN.*1047552/LONGREADLEN\t5000000/;
+		$conf_arr->[$i] =~ s/^AUTODETECT_SPATIAL_TYPE.*0/AUTODETECT_SPATIAL_TYPE\t1/;
 	}
 	map { s/$/\n/; } @$conf_arr;
 }
