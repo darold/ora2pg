@@ -378,4 +378,5 @@ sub make_config_generic
 		$conf_arr->[$i] =~ s/^#CLIENT_ENCODING.*LATIN9/CLIENT_ENCODING\tUTF8/;
 		$conf_arr->[$i] =~ s/^#LONGREADLEN.*1047552/LONGREADLEN\t5000000/;
 	}
+	map { s/$/\n/; } @$conf_arr;
 }
