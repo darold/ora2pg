@@ -347,6 +347,8 @@ do
         ora2pg -t \$etype -o \$ltype.sql -b \$namespace/sources/\$\{ltype\}s -c \$namespace/config/ora2pg.conf
 done
 
+echo
+echo
 echo "To extract data use the following command:"
 echo
 echo "ora2pg -t COPY -o data.sql -b \$namespace/data -c \$namespace/config/ora2pg.conf"
