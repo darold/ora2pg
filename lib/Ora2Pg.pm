@@ -638,7 +638,7 @@ sub _init
 
 	# Set default system user/schema to not export. Most of them are extracted from this doc:
 	# http://docs.oracle.com/cd/E11882_01/server.112/e10575/tdpsg_user_accounts.htm#TDPSG20030
-	push(@{$self->{sysusers}},'SYSTEM','CTXSYS','DBSNMP','EXFSYS','LBACSYS','MDSYS','MGMT_VIEW','OLAPSYS','ORDDATA','OWBSYS','ORDPLUGINS','ORDSYS','OUTLN','SI_INFORMTN_SCHEMA','SYS','SYSMAN','WK_TEST','WKSYS','WKPROXY','WMSYS','XDB','APEX_PUBLIC_USER','DIP','FLOWS_020100','FLOWS_030000','FLOWS_040100','FLOWS_FILES','MDDATA','ORACLE_OCM','SPATIAL_CSW_ADMIN_USR','SPATIAL_WFS_ADMIN_USR','XS$NULL','PERFSTAT','SQLTXPLAIN','DMSYS','TSMSYS','WKSYS','APEX_040200','DVSYS','OJVMSYS','GSMADMIN_INTERNAL','APPQOSSYS','DVSYS','DVF');
+	push(@{$self->{sysusers}},'SYSTEM','CTXSYS','DBSNMP','EXFSYS','LBACSYS','MDSYS','MGMT_VIEW','OLAPSYS','ORDDATA','OWBSYS','ORDPLUGINS','ORDSYS','OUTLN','SI_INFORMTN_SCHEMA','SYS','SYSMAN','WK_TEST','WKSYS','WKPROXY','WMSYS','XDB','APEX_PUBLIC_USER','DIP','FLOWS_020100','FLOWS_030000','FLOWS_040100','FLOWS_FILES','MDDATA','ORACLE_OCM','SPATIAL_CSW_ADMIN_USR','SPATIAL_WFS_ADMIN_USR','XS$NULL','PERFSTAT','SQLTXPLAIN','DMSYS','TSMSYS','WKSYS','APEX_040200','DVSYS','OJVMSYS','GSMADMIN_INTERNAL','APPQOSSYS','DVSYS','DVF','AUDSYS');
 
 	# Set default tablespace to exclude when using USE_TABLESPACE
 	push(@{$self->{default_tablespaces}}, 'TEMP', 'USERS','SYSTEM');
@@ -4266,7 +4266,7 @@ sub _dump_table
 			push(@fname, $fieldname);
 		}
 
-		my $f = $self->{tables}{$table}{column_info}{$fieldname};
+		my $f = $self->{tables}{"$table"}{column_info}{"$fieldname"};
 		$f->[2] =~ s/\D//g;
 
 		if ($f->[1] =~ /GEOMETRY/i) {
@@ -4879,6 +4879,7 @@ sub _howto_get_data
 	my $bfile_found = 0;
 	my $timeformat_tz = $timeformat . ' TZH:TZM';
 	for my $k (0 .. $#{$name}) {
+		my $realcolname = $name->[$k]->[0];
 		if ($name->[$k]->[0] !~ /"/) {
 			$name->[$k]->[0] = '"' . $name->[$k]->[0] . '"';
 		}
@@ -4899,16 +4900,27 @@ sub _howto_get_data
 				$str .= "$alias.$name->[$k]->[0].extract('/').getClobVal(),";
 			}
 		} elsif ( $src_type->[$k] =~ /geometry/i) {
-			my $spatial_sysref = "t.$name->[$k]->[0].SDO_SRID";
+
+			# Get the SRID of the column
+			my $spatial_srid = "SELECT COALESCE(SRID, $self->{default_srid}) FROM ALL_SDO_GEOM_METADATA WHERE TABLE_NAME='\U$table\E' AND COLUMN_NAME='\U$realcolname\E' AND OWNER='\U$self->{tables}{$table}{table_info}{owner}\E'";
 			if ($self->{convert_srid}) {
-				$spatial_sysref = "COALESCE(sdo_cs.map_oracle_srid_to_epsg(t.$name->[$k]->[0].SDO_SRID), $self->{default_srid})";
-			} else {
-				$spatial_sysref = "COALESCE(t.$name->[$k]->[0].SDO_SRID, $self->{default_srid})";
+				$spatial_srid = "SELECT COALESCE(sdo_cs.map_oracle_srid_to_epsg(SRID), $self->{default_srid}) FROM ALL_SDO_GEOM_METADATA WHERE TABLE_NAME='\U$table\E' AND COLUMN_NAME='\U$realcolname\E' AND OWNER='\U$self->{tables}{$table}{table_info}{owner}\E'";
 			}
+			my $sth2 = $self->{dbh}->prepare($spatial_srid);
+			if (!$sth2) {
+				$self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+			}
+			$sth2->execute() or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+			my @result = ();
+			while (my $r = $sth2->fetch) {
+				push(@result, $r->[0]) if ($r->[0] =~ /\d+/);
+			}
+			$sth2->finish();
+			$spatial_srid = $result[0] || 0;
 			if ($self->{type} eq 'INSERT') {
-				$str .= "'ST_GeomFromText('''||SDO_UTIL.TO_WKTGEOMETRY($name->[$k]->[0])||''','||$spatial_sysref||')',";
+				$str .= "'ST_GeomFromText('''||SDO_UTIL.TO_WKTGEOMETRY($name->[$k]->[0])||''','||$spatial_srid||')',";
 			} else {
-				$str .= "'SRID=' || $spatial_sysref || ';' || SDO_UTIL.TO_WKTGEOMETRY($name->[$k]->[0])"
+				$str .= "'SRID=' || $spatial_srid || ';' || SDO_UTIL.TO_WKTGEOMETRY($name->[$k]->[0])"
 			}
 		} else {
 			$str .= "$name->[$k]->[0],";
@@ -5130,10 +5142,10 @@ END
 	my $spatial_srid = "SELECT SRID FROM ALL_SDO_GEOM_METADATA WHERE TABLE_NAME=? AND COLUMN_NAME=?";
 	if ($self->{convert_srid}) {
 		# Translate SRID to standard EPSG SRID, may return 0 because there's lot of Oracle only SRID.
-		$spatial_sysref = 'SELECT sdo_cs.map_oracle_srid_to_epsg(SRID) FROM ALL_SDO_GEOM_METADATA WHERE TABLE_NAME=? AND COLUMN_NAME=?';
+		$spatial_srid = 'SELECT sdo_cs.map_oracle_srid_to_epsg(SRID) FROM ALL_SDO_GEOM_METADATA WHERE TABLE_NAME=? AND COLUMN_NAME=? AND OWNER=?';
 	}
 	# Get the dimension of the geometry by looking at the number of element in the SDO_DIM_ARRAY
-	my $spatial_dim = "SELECT SDO_DIMNAME, SDO_LB, SDO_UB FROM TABLE ( SELECT DIMINFO a FROM ALL_SDO_GEOM_METADATA WHERE TABLE_NAME=? AND COLUMN_NAME=?)";
+	my $spatial_dim = "SELECT SDO_DIMNAME, SDO_LB, SDO_UB FROM TABLE ( SELECT DIMINFO a FROM ALL_SDO_GEOM_METADATA WHERE TABLE_NAME=? AND COLUMN_NAME=? AND OWNER=?)";
 
 	my %data = ();
 	my $pos = 0;
@@ -5153,7 +5165,7 @@ END
 			if (!$sth2) {
 				$self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 			}
-			$sth2->execute($row->[-2],$row->[0]) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+			$sth2->execute($row->[-2],$row->[0],$row->[-1]) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 			my @result = ();
 			while (my $r = $sth2->fetch) {
 				push(@result, $r->[0]) if ($r->[0] =~ /\d+/);
@@ -5167,11 +5179,11 @@ END
 
 
 			# Get the dimension of the geometry column
-			my $sth2 = $self->{dbh}->prepare($spatial_dim);
+			$sth2 = $self->{dbh}->prepare($spatial_dim);
 			if (!$sth2) {
 				$self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 			}
-			$sth2->execute($row->[-2],$row->[0]) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+			$sth2->execute($row->[-2],$row->[0],$row->[-1]) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 			my $count = 0;
 			while (my $r = $sth2->fetch) {
 				$count++;
@@ -5209,7 +5221,7 @@ END
 				push(@geom_inf, 0);
 			}
 		}
-		push(@{$data{$row->[-2]}{$row->[0]}}, (@$row, $pos, @geom_inf));
+		push(@{$data{"$row->[-2]"}{"$row->[0]"}}, (@$row, $pos, @geom_inf));
 
 		$pos++;
 	}
