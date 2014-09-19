@@ -4862,9 +4862,9 @@ sub _howto_get_data
 
 	# Fix a problem when the table need to be prefixed by the schema
 	my $realtable = $table;
-	if ($self->{schema}) {
-		$realtable = "\U$self->{schema}.$realtable\E";
-	}
+	$realtable = "$self->{tables}{$table}{table_info}{owner}.$realtable" if ($self->{tables}{$table}{table_info}{owner});
+	$realtable = uc($realtable);
+
 	my $alias = 'a';
 	my $str = "SELECT ";
 	if ($self->{tables}{$table}{table_info}{nested} eq 'YES') {
