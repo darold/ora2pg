@@ -4939,11 +4939,15 @@ sub _howto_get_data
 				}
 
 			} else {
+				my $schem = '';
+				if ($self->{use_sc40_package} =~ /\D\D+/) {
+					$schem = $self->{use_sc40_package}.'.';
+				}
 
 				if ($self->{type} eq 'INSERT') {
-					$str .= "'ST_GeomFromText('''||SC4O.ST_AsText($name->[$k]->[0])||''','||$spatial_srid||')',";
+					$str .= "'ST_GeomFromText('''||" . $schem . "SC4O.ST_AsText($name->[$k]->[0])||''','||$spatial_srid||')',";
 				} else {
-					$str .= "'SRID=' || $spatial_srid || ';' || SC4O.ST_AsText($name->[$k]->[0])"
+					$str .= "'SRID=' || $spatial_srid || ';' || " . $schem . "SC4O.ST_AsText($name->[$k]->[0])"
 				}
 			}
 

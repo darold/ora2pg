@@ -994,6 +994,13 @@ CONFIGURATION
         Greener and available at
         http://www.spatialdbadvisor.com/source_code_form
 
+        If SC40 is not installed in the same schema, you can set the value
+        to the schema name. Example:
+
+                     USE_SC40_PACKAGE   CODESYS
+
+        The function will be called as CODESYS.SC4O.ST_AsText().
+
   PostgreSQL Import
     By default conversion to PostgreSQL format is written to file
     'output.sql'. The command:

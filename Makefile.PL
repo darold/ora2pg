@@ -594,6 +594,8 @@ DEFAULT_SRID		4326
 # this directive. You must install the SC40 package before, this is the
 # SpatialDB Advisor extension developped by Simon Greener and available at
 # http://www.spatialdbadvisor.com/source_code_form
+# If SC40 is not installed in the same schema, you can set the value to the
+# schema name.
 USE_SC40_PACKAGE	0
 
 # Enable this directive if you want that your partition table name will be
