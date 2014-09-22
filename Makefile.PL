@@ -588,6 +588,13 @@ CONVERT_SRID		1
 # Use this directive to override the default EPSG SRID to used: 4326.
 DEFAULT_SRID		4326
 
+# If you want to replace call to SDO_UTIL.TO_WKTGEOMETRY() by a call to the
+# more efficient methode SC4O.ST_AsText(), especially for 3D geomrtry, activate
+# this directive. You must install the SC40 package before, this is the
+# SpatialDB Advisor extension developped by Simon Greener and available at
+# http://www.spatialdbadvisor.com/source_code_form
+USE_SC40_PACKAGE	0
+
 # Enable this directive if you want that your partition table name will be
 # exported using the parent table name. Disabled by default. If you have
 # multiple partitioned table, when exported to PostgreSQL some partitions

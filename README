@@ -767,7 +767,7 @@ CONFIGURATION
         '_GEOM_SEQ'. The object depends of the export type. Note that regex
         will not works with 8i database.
 
-        This directive replace the obsolète 'TABLES' configuration
+        This directive replace the obsolete 'TABLES' configuration
         directive, this is just a renaming to be less confusing.
 
     EXCLUDE
@@ -938,6 +938,17 @@ CONFIGURATION
 
         will add _idx at ed of all index name. Not so common but can help.
 
+    PREFIX_PARTITION
+        Enable this directive if you want that your partition table name
+        will be exported using the parent table name. Disabled by default.
+        If you have multiple partitioned table, when exported to PostgreSQL
+        some partitions could have the same name but dfferent parent tables.
+        This is not allowed, table name must be unique.
+
+  Oracle Spatial to PostGis
+    Ora2Pg fully export Spatial object from Oracle database. There's some
+    configuration directives that could be used to control the export.
+
     AUTODETECT_SPATIAL_TYPE
         Enable this directive if you want Ora2Pg to detect the real spatial
         type and dimension used in a spatial column. Otherwise column will
@@ -973,12 +984,13 @@ CONFIGURATION
     DEFAULT_SRID
         Use this directive to override the default EPSG SRID to used: 4326.
 
-    PREFIX_PARTITION
-        Enable this directive if you want that your partition table name
-        will be exported using the parent table name. Disabled by default.
-        If you have multiple partitioned table, when exported to PostgreSQL
-        some partitions could have the same name but dfferent parent tables.
-        This is not allowed, table name must be unique.
+    USE_SC40_PACKAGE
+        If you want to replace call to SDO_UTIL.TO_WKTGEOMETRY() by a call
+        to the more efficient methode SC4O.ST_AsText(), especially for 3D
+        geomrtry, activate this directive. You must install the SC40 package
+        before, this is the SpatialDB Advisor extension developped by Simon
+        Greener and available at
+        http://www.spatialdbadvisor.com/source_code_form
 
   PostgreSQL Import
     By default conversion to PostgreSQL format is written to file
