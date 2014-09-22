@@ -381,6 +381,7 @@ sub make_config_generic
 		$conf_arr->[$i] =~ s/^#CLIENT_ENCODING.*LATIN9/CLIENT_ENCODING\tUTF8/;
 		$conf_arr->[$i] =~ s/^#LONGREADLEN.*1047552/LONGREADLEN\t5000000/;
 		$conf_arr->[$i] =~ s/^AUTODETECT_SPATIAL_TYPE.*0/AUTODETECT_SPATIAL_TYPE\t1/;
+		$conf_arr->[$i] =~ s/^NULL_EQUAL_EMPTY.*1/NULL_EQUAL_EMPTY\t0/;
 	}
 	map { s/$/\n/; } @$conf_arr;
 }
