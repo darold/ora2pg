@@ -583,6 +583,7 @@ AUTODETECT_SPATIAL_TYPE	1
 # EPSG using the sdo_cs.map_oracle_srid_to_epsg() function. Default: enabled
 # If the SDO_SRID returned by Oracle is NULL, it will be replaced by the
 # default value 8307 converted to its EPSG value: 4326 (see DEFAULT_SRID)
+# If the value is upper than 1, all SRID will be forced to this value.
 CONVERT_SRID		1
 
 # Use this directive to override the default EPSG SRID to used: 4326.

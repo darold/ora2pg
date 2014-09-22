@@ -981,6 +981,8 @@ CONFIGURATION
         the default value 8307 converted to its EPSG value: 4326 (see
         DEFAULT_SRID).
 
+        If the value is upper than 1, all SRID will be forced to this value.
+
     DEFAULT_SRID
         Use this directive to override the default EPSG SRID to used: 4326.
 

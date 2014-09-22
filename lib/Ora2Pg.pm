@@ -4910,35 +4910,47 @@ sub _howto_get_data
 
 			# Get the SRID of the column
 			my $spatial_srid = "SELECT COALESCE(SRID, $self->{default_srid}) FROM ALL_SDO_GEOM_METADATA WHERE TABLE_NAME='\U$table\E' AND COLUMN_NAME='\U$realcolname\E' AND OWNER='\U$self->{tables}{$table}{table_info}{owner}\E'";
-			if ($self->{convert_srid}) {
+			if ($self->{convert_srid} == 1) {
 				$spatial_srid = "SELECT COALESCE(sdo_cs.map_oracle_srid_to_epsg(SRID), $self->{default_srid}) FROM ALL_SDO_GEOM_METADATA WHERE TABLE_NAME='\U$table\E' AND COLUMN_NAME='\U$realcolname\E' AND OWNER='\U$self->{tables}{$table}{table_info}{owner}\E'";
+
+				my $sth2 = $self->{dbh}->prepare($spatial_srid);
+				if (!$sth2) {
+					$self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+				}
+				$sth2->execute() or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+				my @result = ();
+				while (my $r = $sth2->fetch) {
+					push(@result, $r->[0]) if ($r->[0] =~ /\d+/);
+				}
+				$sth2->finish();
+				$spatial_srid = $result[0] || 0;
+
+			} elsif ($self->{convert_srid} > 1) {
+
+				$spatial_srid = $self->{convert_srid};
+
 			}
-			my $sth2 = $self->{dbh}->prepare($spatial_srid);
-			if (!$sth2) {
-				$self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-			}
-			$sth2->execute() or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-			my @result = ();
-			while (my $r = $sth2->fetch) {
-				push(@result, $r->[0]) if ($r->[0] =~ /\d+/);
-			}
-			$sth2->finish();
-			$spatial_srid = $result[0] || 0;
 			if (!$self->{use_sc40_package}) {
+
 				if ($self->{type} eq 'INSERT') {
 					$str .= "'ST_GeomFromText('''||SDO_UTIL.TO_WKTGEOMETRY($name->[$k]->[0])||''','||$spatial_srid||')',";
 				} else {
 					$str .= "'SRID=' || $spatial_srid || ';' || SDO_UTIL.TO_WKTGEOMETRY($name->[$k]->[0])"
 				}
+
 			} else {
+
 				if ($self->{type} eq 'INSERT') {
 					$str .= "'ST_GeomFromText('''||SC4O.ST_AsText($name->[$k]->[0])||''','||$spatial_srid||')',";
 				} else {
 					$str .= "'SRID=' || $spatial_srid || ';' || SC4O.ST_AsText($name->[$k]->[0])"
 				}
 			}
+
 		} else {
+
 			$str .= "$name->[$k]->[0],";
+
 		}
 	}
 	$str =~ s/,$//;

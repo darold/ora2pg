@@ -1152,6 +1152,8 @@ sdo_cs.\fImap_oracle_srid_to_epsg()\fR to convert all \s-1SRID.\s0 Enabled by de
 .Sp
 If the \s-1SDO_SRID\s0 returned by Oracle is \s-1NULL,\s0 it will be replaced by the
 default value 8307 converted to its \s-1EPSG\s0 value: 4326 (see \s-1DEFAULT_SRID\s0).
+.Sp
+If the value is upper than 1, all \s-1SRID\s0 will be forced to this value.
 .IP "\s-1DEFAULT_SRID\s0" 4
 .IX Item "DEFAULT_SRID"
 Use this directive to override the default \s-1EPSG SRID\s0 to used: 4326.
