@@ -607,6 +607,7 @@ sub _init
 	$self->{ora_reserved_words} = (); 
 	$self->{defined_pk} = ();
 	$self->{allow_partition} = ();
+	$self->{use_sc40_package} = 0;
 
 	# Init PostgreSQL DB handle
 	$self->{dbhdest} = undef;
@@ -4923,10 +4924,18 @@ sub _howto_get_data
 			}
 			$sth2->finish();
 			$spatial_srid = $result[0] || 0;
-			if ($self->{type} eq 'INSERT') {
-				$str .= "'ST_GeomFromText('''||SDO_UTIL.TO_WKTGEOMETRY($name->[$k]->[0])||''','||$spatial_srid||')',";
+			if (!$self->{use_sc40_package}) {
+				if ($self->{type} eq 'INSERT') {
+					$str .= "'ST_GeomFromText('''||SDO_UTIL.TO_WKTGEOMETRY($name->[$k]->[0])||''','||$spatial_srid||')',";
+				} else {
+					$str .= "'SRID=' || $spatial_srid || ';' || SDO_UTIL.TO_WKTGEOMETRY($name->[$k]->[0])"
+				}
 			} else {
-				$str .= "'SRID=' || $spatial_srid || ';' || SDO_UTIL.TO_WKTGEOMETRY($name->[$k]->[0])"
+				if ($self->{type} eq 'INSERT') {
+					$str .= "'ST_GeomFromText('''||SC4O.ST_AsText($name->[$k]->[0])||''','||$spatial_srid||')',";
+				} else {
+					$str .= "'SRID=' || $spatial_srid || ';' || SC4O.ST_AsText($name->[$k]->[0])"
+				}
 			}
 		} else {
 			$str .= "$name->[$k]->[0],";
