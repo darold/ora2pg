@@ -4340,7 +4340,7 @@ sub _column_comments
 	my $condition = '';
 	$condition .= "AND TABLE_NAME='$table' " if ($table);
 	$condition .= "AND OWNER='$owner' " if ($owner);
-	$condition .= $self->limit_to_tables() if (!$table);
+	$condition .= $self->limit_to_objects() if (!$table);
 	$condition =~ s/^AND/WHERE/;
 
 	$owner = "AND OWNER='$owner' " if ($owner);
@@ -5122,7 +5122,7 @@ sub _column_info
 	my $condition = '';
 	$condition .= "AND TABLE_NAME='$table' " if ($table);
 	$condition .= "AND OWNER='$owner' " if ($owner);
-	$condition .= $self->limit_to_tables() if (!$table);
+	$condition .= $self->limit_to_objects() if (!$table);
 	$condition =~ s/^AND/WHERE/;
 
 	my $sth = '';
@@ -5297,7 +5297,7 @@ sub _unique_key
 	my $condition = '';
 	$condition .= "AND TABLE_NAME='$table' " if ($table);
 	$condition .= "AND OWNER='$owner' " if ($owner);
-	$condition .= $self->limit_to_tables() if (!$table);
+	$condition .= $self->limit_to_objects() if (!$table);
 
 	if ($self->{db_version} !~ /Release 8/) {
 		$sth = $self->{dbh}->prepare(<<END) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -5355,7 +5355,7 @@ sub _check_constraint
 	my $condition = '';
 	$condition .= "AND TABLE_NAME='$table' " if ($table);
 	$condition .= "AND OWNER='$owner' " if ($owner);
-	$condition .= $self->limit_to_tables() if (!$table);
+	$condition .= $self->limit_to_objects() if (!$table);
 
 	my $sth = $self->{dbh}->prepare(<<END) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 SELECT CONSTRAINT_NAME,R_CONSTRAINT_NAME,SEARCH_CONDITION,DELETE_RULE,DEFERRABLE,DEFERRED,R_OWNER,TABLE_NAME,OWNER
@@ -5405,7 +5405,7 @@ sub _foreign_key
 	my $condition = '';
 	$condition .= "AND TABLE_NAME='$table' " if ($table);
 	$condition .= "AND OWNER='$owner' " if ($owner);
-	$condition .= $self->limit_to_tables() if (!$table);
+	$condition .= $self->limit_to_objects() if (!$table);
 
 	my $sql = "SELECT DISTINCT COLUMN_NAME,POSITION,TABLE_NAME,OWNER,CONSTRAINT_NAME FROM $self->{prefix}_CONS_COLUMNS";
 	$sql .= " WHERE OWNER='$owner'" if ($owner);
@@ -5487,7 +5487,7 @@ sub _get_privilege
 		$str .= " WHERE b.GRANTOR NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
 	}
 	$str .= " AND b.TABLE_NAME=a.OBJECT_NAME AND a.OWNER=b.GRANTOR";
-	$str .= " " . $self->limit_to_tables('b.TABLE_NAME');
+	$str .= " " . $self->limit_to_objects('b.TABLE_NAME');
 	
 	if (!$self->{export_invalid}) {
 		$str .= " AND a.STATUS='VALID'";
@@ -5519,7 +5519,7 @@ sub _get_privilege
 	if (!$self->{export_invalid}) {
 		$str .= " AND a.STATUS='VALID' AND b.TABLE_NAME=a.OBJECT_NAME AND a.OWNER=b.GRANTOR";
 	}
-	$str .= " " . $self->limit_to_tables('b.TABLE_NAME');
+	$str .= " " . $self->limit_to_objects('b.TABLE_NAME');
 
 	$sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -5601,7 +5601,7 @@ sub _get_indexes
 	my $condition = '';
 	$condition .= "AND $self->{prefix}_IND_COLUMNS.TABLE_NAME='$table' " if ($table);
 	$condition .= "AND $self->{prefix}_IND_COLUMNS.INDEX_OWNER='$owner' AND $self->{prefix}_INDEXES.OWNER='$owner' " if ($owner);
-	$condition .= $self->limit_to_tables("$self->{prefix}_IND_COLUMNS.TABLE_NAME") if (!$table);
+	$condition .= $self->limit_to_objects("$self->{prefix}_IND_COLUMNS.TABLE_NAME") if (!$table);
 
 	# Retrieve all indexes 
 	my $sth = '';
@@ -6003,7 +6003,7 @@ sub _get_triggers
 	} else {
 		$str .= " AND OWNER = '$self->{schema}'";
 	}
-	$str .= " " . $self->limit_to_tables();
+	$str .= " " . $self->limit_to_objects();
 
 	$str .= " ORDER BY TABLE_NAME, TRIGGER_NAME";
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -6171,6 +6171,7 @@ sub _get_types
 
 	# Retrieve all user defined types
 	my $str = "SELECT DISTINCT OBJECT_NAME,OWNER FROM $self->{prefix}_OBJECTS WHERE OBJECT_TYPE='TYPE'";
+	$str .= $self->limit_to_objects('OBJECT_NAME') if (!$name);
 	$str .= " AND STATUS='VALID'" if (!$self->{export_invalid});
 	$str .= " AND OBJECT_NAME='$name'" if ($name);
 	$str .= " AND GENERATED='N'";
@@ -6229,7 +6230,7 @@ sub _table_info
 	} else {
             $owner .= "AND A.OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "') ";
 	}
-	$owner .= $self->limit_to_tables();
+	$owner .= $self->limit_to_objects();
 	$owner =~ s/^AND/WHERE/;
 
 	my $join_segment = '';
@@ -6402,7 +6403,7 @@ sub _get_synonyms
 	} else {
 		$str .= "\tWHERE owner NOT IN ('" . join("','", @{$self->{sysusers}}) . "') AND table_owner NOT IN ('" . join("','", @{$self->{sysusers}}) . "') ";
 	}
-	$str .= $self->limit_to_tables();
+	$str .= $self->limit_to_objects();
 	$str .= " ORDER BY SYNONYM_NAME\n";
 
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -8751,7 +8752,7 @@ sub skip_this_object
 	return 0;
 }
 
-sub limit_to_tables
+sub limit_to_objects
 {
 	my ($self, $column) = @_;
 
