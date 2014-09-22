@@ -234,7 +234,7 @@ sub plsql_to_plpgsql
 	# Oracle MINUS can be replaced by EXCEPT as is
 	$str =~ s/\bMINUS\b/EXCEPT/igs;
 	# Raise information to the client
-	$str =~ s/DBMS_OUTPUT\.(put_line|put|new_line)*\((.*?)\);/&raise_output($2)/igse;
+	$str =~ s/DBMS_OUTPUT\.(put_line|put|new_line)\s*\((.*?)\);/&raise_output($2)/igse;
 
 	# Substitution to replace type of sql variable in PLSQL code
 	foreach my $t (keys %Ora2Pg::TYPE) {
