@@ -8930,18 +8930,27 @@ sub set_search_path
 
 	my $search_path = '';
 
+	my $local_path = '';
+	if ($self->{postgis_schema}) {
+		if (!$self->{preserve_case}) {
+			$local_path = ', ' . lc($self->{postgis_schema});
+		} else {
+			$local_path = ', "' . $self->{postgis_schema} . '"';
+		}
+	}
+	
 	if ($self->{export_schema}) {
 		if ($self->{pg_schema}) {
 			if (!$self->{preserve_case}) {
-				$search_path = "SET search_path = \L$self->{pg_schema}\E;";
+				$search_path = "SET search_path = \L$self->{pg_schema}\E$local_path;";
 			} else {
-				$search_path = "SET search_path = \"$self->{pg_schema}\";";
+				$search_path = "SET search_path = \"$self->{pg_schema}\"$local_path;";
 			}
 		} elsif ($self->{schema}) {
 			if (!$self->{preserve_case}) {
-				$search_path = "SET search_path = \L$self->{schema}\E, pg_catalog;";
+				$search_path = "SET search_path = \L$self->{schema}\E$local_path, pg_catalog;";
 			} else {
-				$search_path = "SET search_path = \"$self->{schema}\", pg_catalog;";
+				$search_path = "SET search_path = \"$self->{schema}\"$local_path, pg_catalog;";
 			}
 		}
 	}

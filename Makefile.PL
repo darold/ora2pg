@@ -601,6 +601,10 @@ DEFAULT_SRID		4326
 # schema name.
 USE_SC40_PACKAGE	0
 
+# Use this directive to add a specific schema to the search path to look
+# for PostGis functions.
+#POSTGIS_SCHEMA		
+
 # Enable this directive if you want that your partition table name will be
 # exported using the parent table name. Disabled by default. If you have
 # multiple partitioned table, when exported to PostgreSQL some partitions

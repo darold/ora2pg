@@ -1043,6 +1043,11 @@ schema name. Example:
 
 The function will be called as CODESYS.SC4O.ST_AsText().
 
+=item POSTGIS_SCHEMA
+
+Use this directive to add a specific schema to the search path to look
+for PostGis functions.
+
 =back
 
 =head2 PostgreSQL Import

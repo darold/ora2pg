@@ -1004,6 +1004,10 @@ CONFIGURATION
 
         The function will be called as CODESYS.SC4O.ST_AsText().
 
+    POSTGIS_SCHEMA
+        Use this directive to add a specific schema to the search path to
+        look for PostGis functions.
+
   PostgreSQL Import
     By default conversion to PostgreSQL format is written to file
     'output.sql'. The command:
