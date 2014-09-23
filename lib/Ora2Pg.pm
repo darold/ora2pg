@@ -4046,17 +4046,18 @@ CREATE TRIGGER insert_${table}_trigger
 						$suffix = 'ZM';
 					}
 					my $gtypes = '';
-					if (!$d->[13] || ($d->[13] =~  /\D/)) {
-						$gtypes = $d->[13] if ($d->[13]);
-						$d->[13] = 0;
+					if (!$f->[13]) {
+						$gtypes = $ORA2PG_SDO_GTYPE{0};
+					} elsif ($f->[13] =~  /\D/) {
+						$gtypes = $f->[13];
+					} else {
+						$gtypes = $ORA2PG_SDO_GTYPE{$f->[13]};
 					}
-					$type = "geometry($ORA2PG_SDO_GTYPE{$d->[13]}$suffix";
+					$type = "geometry($gtypes$suffix";
 					if ($f->[11]) {
 						$type .= ",$f->[11]";
 					}
 					$type .= ")";
-					$type .= " - $gtypes" if ($gtypes);
-					
 				}
 
 				$type = $self->{'modify_type'}{"\L$table\E"}{"\L$f->[0]\E"} if (exists $self->{'modify_type'}{"\L$table\E"}{"\L$f->[0]\E"});
@@ -5192,20 +5193,24 @@ END
 		if ($row->[1] eq 'SDO_GEOMETRY') {
 
 			# Get the SRID of the column
-			my $sth2 = $self->{dbh}->prepare($spatial_srid);
-			if (!$sth2) {
-				$self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-			}
-			$sth2->execute($row->[-2],$row->[0],$row->[-1]) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-			my @result = ();
-			while (my $r = $sth2->fetch) {
-				push(@result, $r->[0]) if ($r->[0] =~ /\d+/);
-			}
-			$sth2->finish();
-			if ($#result == 0) {
-				push(@geom_inf, $result[0]);
+			if ($self->{convert_srid} == 1) {
+				my $sth2 = $self->{dbh}->prepare($spatial_srid);
+				if (!$sth2) {
+					$self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+				}
+				$sth2->execute($row->[-2],$row->[0],$row->[-1]) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+				my @result = ();
+				while (my $r = $sth2->fetch) {
+					push(@result, $r->[0]) if ($r->[0] =~ /\d+/);
+				}
+				$sth2->finish();
+				if ($#result == 0) {
+					push(@geom_inf, $result[0]);
+				} else {
+					push(@geom_inf, 0);
+				}
 			} else {
-				push(@geom_inf, 0);
+				push(@geom_inf, $self->{convert_srid});
 			}
 
 
@@ -5244,7 +5249,6 @@ END
 				if ($#result == 0) {
 					push(@geom_inf, $result[0]);
 				} else {
-					map { s/^\d{3}(\d)$/$1/; $_ = $ORA2PG_SDO_GTYPE{$_}; } @result;
 					push(@geom_inf, join(',', @result));
 				}
 
@@ -8278,11 +8282,14 @@ sub _show_infos
 							$suffix = 'ZM';
 						}
 						my $gtypes = '';
-						if (!$d->[13] || ($d->[13] =~  /\D/)) {
-							$gtypes = $d->[13] if ($d->[13]);
-							$d->[13] = 0;
+						if (!$d->[13]) {
+							$gtypes = $ORA2PG_SDO_GTYPE{0};
+						} elsif ($d->[13] =~  /\D/) {
+							$gtypes = $d->[13];
+						} else {
+							$gtypes = $ORA2PG_SDO_GTYPE{$d->[13]};
 						}
-						$type = "geometry($ORA2PG_SDO_GTYPE{$d->[13]}$suffix";
+						$type = "geometry($gtypes$suffix";
 						if ($d->[11]) {
 							$type .= ",$d->[11]";
 						}
