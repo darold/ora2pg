@@ -1019,11 +1019,14 @@ sdo_cs.map_oracle_srid_to_epsg() to convert all SRID. Enabled by default.
 If the SDO_SRID returned by Oracle is NULL, it will be replaced by the
 default value 8307 converted to its EPSG value: 4326 (see DEFAULT_SRID).
 
-If the value is upper than 1, all SRID will be forced to this value.
+If the value is upper than 1, all SRID will be forced to this value, in
+this case DEFAULT_SRID will not be used when Oracle returns a null value
+and the value will be forced to CONVERT_SRID.
 
 =item DEFAULT_SRID
 
 Use this directive to override the default EPSG SRID to used: 4326.
+Can be overwritten by CONVERT_SRID, see above.
 
 =item USE_SC40_PACKAGE
 

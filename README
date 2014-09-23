@@ -981,10 +981,13 @@ CONFIGURATION
         the default value 8307 converted to its EPSG value: 4326 (see
         DEFAULT_SRID).
 
-        If the value is upper than 1, all SRID will be forced to this value.
+        If the value is upper than 1, all SRID will be forced to this value,
+        in this case DEFAULT_SRID will not be used when Oracle returns a
+        null value and the value will be forced to CONVERT_SRID.
 
     DEFAULT_SRID
         Use this directive to override the default EPSG SRID to used: 4326.
+        Can be overwritten by CONVERT_SRID, see above.
 
     USE_SC40_PACKAGE
         If you want to replace call to SDO_UTIL.TO_WKTGEOMETRY() by a call
