@@ -4934,9 +4934,9 @@ sub _howto_get_data
 			if (!$self->{use_sc40_package}) {
 
 				if ($self->{type} eq 'INSERT') {
-					$str .= "'ST_GeomFromText('''||SDO_UTIL.TO_WKTGEOMETRY($name->[$k]->[0])||''','||$spatial_srid||')',";
+					$str .= "CASE WHEN $name->[$k]->[0] IS NOT NULL THEN 'ST_GeomFromText('''||SDO_UTIL.TO_WKTGEOMETRY($name->[$k]->[0])||''','||$spatial_srid||')' ELSE NULL END,";
 				} else {
-					$str .= "'SRID=' || $spatial_srid || ';' || SDO_UTIL.TO_WKTGEOMETRY($name->[$k]->[0])"
+					$str .= "CASE WHEN $name->[$k]->[0] IS NOT NULL THEN 'SRID=' || $spatial_srid || ';' || SDO_UTIL.TO_WKTGEOMETRY($name->[$k]->[0]) ELSE NULL END";
 				}
 
 			} else {
@@ -4946,9 +4946,9 @@ sub _howto_get_data
 				}
 
 				if ($self->{type} eq 'INSERT') {
-					$str .= "'ST_GeomFromText('''||" . $schem . "SC4O.ST_AsText($name->[$k]->[0])||''','||$spatial_srid||')',";
+					$str .= "CASE WHEN $name->[$k]->[0] IS NOT NULL THEN 'ST_GeomFromText('''||" . $schem . "SC4O.ST_AsText($name->[$k]->[0])||''','||$spatial_srid||')' ELSE NULL END,";
 				} else {
-					$str .= "'SRID=' || $spatial_srid || ';' || " . $schem . "SC4O.ST_AsText($name->[$k]->[0])"
+					$str .= "CASE WHEN $name->[$k]->[0] IS NOT NULL THEN 'SRID=' || $spatial_srid || ';' || " . $schem . "SC4O.ST_AsText($name->[$k]->[0]) ELSE NULL END";
 				}
 			}
 
