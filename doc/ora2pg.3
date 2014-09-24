@@ -133,7 +133,7 @@
 .\" ========================================================================
 .\"
 .IX Title "ORA2PG 1"
-.TH ORA2PG 1 "2014-09-23" "perl v5.18.2" "User Contributed Perl Documentation"
+.TH ORA2PG 1 "2014-09-24" "perl v5.18.2" "User Contributed Perl Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -993,7 +993,7 @@ tables in megabytes. By default it is set to 10 items.
 .IX Item "LOG_ON_ERROR"
 Enable this directive if you want to continue direct data import on error.
 When Ora2Pg received an error in the \s-1COPY\s0 or \s-1INSERT\s0 statement from PostgreSQL
-it will log the statement to a file calles TABLENAME_error.log in the output
+it will log the statement to a file called TABLENAME_error.log in the output
 directory and continue to next bulk of data. Like this you can try to fix the
 statement and manually reload the error log file. Default is disabled: abort
 import on error.
