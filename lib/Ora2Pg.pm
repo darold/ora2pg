@@ -4046,12 +4046,10 @@ CREATE TRIGGER insert_${table}_trigger
 						$suffix = 'ZM';
 					}
 					my $gtypes = '';
-					if (!$f->[13]) {
+					if (!$d->[13] || ($d->[13] =~  /,/) ) {
 						$gtypes = $ORA2PG_SDO_GTYPE{0};
-					} elsif ($f->[13] =~  /\D/) {
-						$gtypes = $f->[13];
 					} else {
-						$gtypes = $ORA2PG_SDO_GTYPE{$f->[13]};
+						$gtypes = $d->[13];
 					}
 					$type = "geometry($gtypes$suffix";
 					if ($f->[11]) {
@@ -5193,7 +5191,9 @@ END
 		if ($row->[1] eq 'SDO_GEOMETRY') {
 
 			# Get the SRID of the column
-			if ($self->{convert_srid} == 1) {
+			if ($self->{convert_srid} > 1) {
+				push(@geom_inf, $self->{convert_srid});
+			} else {
 				my $sth2 = $self->{dbh}->prepare($spatial_srid);
 				if (!$sth2) {
 					$self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -5206,11 +5206,11 @@ END
 				$sth2->finish();
 				if ($#result == 0) {
 					push(@geom_inf, $result[0]);
+				} elsif ($self->{default_srid}) {
+					push(@geom_inf, $self->{default_srid});
 				} else {
 					push(@geom_inf, 0);
 				}
-			} else {
-				push(@geom_inf, $self->{convert_srid});
 			}
 
 
@@ -5239,10 +5239,9 @@ END
 				}
 				$sth2->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 				my @result = ();
-				my @dims = ();
 				while (my $r = $sth2->fetch) {
 					if ($r->[0] =~ /(\d)$/) {
-						push(@result, $1);
+						push(@result, $ORA2PG_SDO_GTYPE{$1});
 					}
 				}
 				$sth2->finish();
@@ -5253,7 +5252,7 @@ END
 				}
 
 			} else {
-				push(@geom_inf, 0);
+				push(@geom_inf, $ORA2PG_SDO_GTYPE{0});
 			}
 		}
 		push(@{$data{"$row->[-2]"}{"$row->[0]"}}, (@$row, $pos, @geom_inf));
@@ -8282,19 +8281,17 @@ sub _show_infos
 							$suffix = 'ZM';
 						}
 						my $gtypes = '';
-						if (!$d->[13]) {
+						if (!$d->[13] || ($d->[13] =~  /,/) ) {
 							$gtypes = $ORA2PG_SDO_GTYPE{0};
-						} elsif ($d->[13] =~  /\D/) {
-							$gtypes = $d->[13];
 						} else {
-							$gtypes = $ORA2PG_SDO_GTYPE{$d->[13]};
+							$gtypes = $d->[13];
 						}
 						$type = "geometry($gtypes$suffix";
 						if ($d->[11]) {
 							$type .= ",$d->[11]";
 						}
 						$type .= ")";
-						$type .= " - $gtypes" if ($gtypes);
+						$type .= " - $d->[13]" if ($d->[13] =~  /,/);
 						
 					}
 					if (&is_reserved_words($d->[0])) {
