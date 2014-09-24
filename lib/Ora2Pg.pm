@@ -4046,10 +4046,10 @@ CREATE TRIGGER insert_${table}_trigger
 						$suffix = 'ZM';
 					}
 					my $gtypes = '';
-					if (!$d->[13] || ($d->[13] =~  /,/) ) {
+					if (!$f->[13] || ($f->[13] =~  /,/) ) {
 						$gtypes = $ORA2PG_SDO_GTYPE{0};
 					} else {
-						$gtypes = $d->[13];
+						$gtypes = $f->[13];
 					}
 					$type = "geometry($gtypes$suffix";
 					if ($f->[11]) {
@@ -4932,9 +4932,9 @@ sub _howto_get_data
 			if (!$self->{use_sc40_package}) {
 
 				if ($self->{type} eq 'INSERT') {
-					$str .= "CASE WHEN $name->[$k]->[0] IS NOT NULL THEN 'ST_GeomFromText('''||SDO_UTIL.TO_WKTGEOMETRY($name->[$k]->[0])||''','||$spatial_srid||')' ELSE NULL END,";
+					$str .= "CASE WHEN $name->[$k]->[0] IS NOT NULL THEN 'ST_GeomFromText('''||SDO_UTIL.TO_WKTGEOMETRY($name->[$k]->[0])||''','||($spatial_srid)||')' ELSE NULL END,";
 				} else {
-					$str .= "CASE WHEN $name->[$k]->[0] IS NOT NULL THEN 'SRID=' || $spatial_srid || ';' || SDO_UTIL.TO_WKTGEOMETRY($name->[$k]->[0]) ELSE NULL END,";
+					$str .= "CASE WHEN $name->[$k]->[0] IS NOT NULL THEN 'SRID=' || ($spatial_srid) || ';' || SDO_UTIL.TO_WKTGEOMETRY($name->[$k]->[0]) ELSE NULL END,";
 				}
 
 			} else {
@@ -5169,7 +5169,7 @@ END
 	$max_lines = $self->{autodetect_spatial_type} if ($self->{autodetect_spatial_type} > 1);
 	my $spatial_gtype =  'SELECT DISTINCT c.%s.SDO_GTYPE FROM %s c WHERE ROWNUM < ' . $max_lines;
 	# Set query to retrieve the SRID
-	my $spatial_srid = "SELECT SRID FROM ALL_SDO_GEOM_METADATA WHERE TABLE_NAME=? AND COLUMN_NAME=?";
+	my $spatial_srid = "SELECT SRID FROM ALL_SDO_GEOM_METADATA WHERE TABLE_NAME=? AND COLUMN_NAME=? AND OWNER=?";
 	if ($self->{convert_srid}) {
 		# Translate SRID to standard EPSG SRID, may return 0 because there's lot of Oracle only SRID.
 		$spatial_srid = 'SELECT sdo_cs.map_oracle_srid_to_epsg(SRID) FROM ALL_SDO_GEOM_METADATA WHERE TABLE_NAME=? AND COLUMN_NAME=? AND OWNER=?';
