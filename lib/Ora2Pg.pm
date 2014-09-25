@@ -349,7 +349,6 @@ sub create_export_file
 {
 	my ($self, $outfile) = @_;
 
-
 	# Init with configuration OUTPUT filename
 	$outfile ||= $self->{output};
 	if ($self->{input_file} && ($outfile eq $self->{input_file})) {
@@ -399,9 +398,6 @@ sub remove_export_file
 	}
 
 }
-
-
-
 
 =head2 append_export_file FILENAME
 
@@ -3934,11 +3930,13 @@ CREATE TRIGGER insert_${table}_trigger
 				$sql_output .= "CREATE SCHEMA \"$self->{schema}\";\n";
 			}
 		}
-		if ($self->{force_owner}) {
+		my $owner = '';
+		$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
+		if ($owner) {
 			if (!$self->{preserve_case}) {
-				$sql_output .= "ALTER SCHEMA \L$self->{schema}\E OWNER TO \L$self->{force_owner}\E;\n";
+				$sql_output .= "ALTER SCHEMA \L$self->{schema}\E OWNER TO \L$owner\E;\n";
 			} else {
-				$sql_output .= "ALTER SCHEMA \"$self->{schema}\" OWNER TO \"$self->{force_owner}\";\n";
+				$sql_output .= "ALTER SCHEMA \"$self->{schema}\" OWNER TO \"$owner\";\n";
 			}
 		}
 		$sql_output .= "\n";
