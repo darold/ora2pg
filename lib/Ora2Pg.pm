@@ -3929,11 +3929,19 @@ CREATE TRIGGER insert_${table}_trigger
 	if ($self->{export_schema} &&  $self->{schema}) {
 		if ($self->{create_schema}) {
 			if (!$self->{preserve_case}) {
-				$sql_output .= "CREATE SCHEMA \L$self->{schema}\E;\n\n";
+				$sql_output .= "CREATE SCHEMA \L$self->{schema}\E;\n";
 			} else {
-				$sql_output .= "CREATE SCHEMA \"$self->{schema}\";\n\n";
+				$sql_output .= "CREATE SCHEMA \"$self->{schema}\";\n";
 			}
 		}
+		if ($self->{force_owner}) {
+			if (!$self->{preserve_case}) {
+				$sql_output .= "ALTER SCHEMA \L$self->{schema}\E OWNER TO \L$self->{force_owner}\E;\n";
+			} else {
+				$sql_output .= "ALTER SCHEMA \"$self->{schema}\" OWNER TO \"$self->{force_owner}\";\n";
+			}
+		}
+		$sql_output .= "\n";
 	}
 	$sql_output .= $self->set_search_path();
 
@@ -8952,7 +8960,7 @@ sub set_search_path
 		}
 	}
 
-	return "$search_path\n";
+	return "$search_path\n" if ($search_path);
 }
 
 sub _get_human_cost
