@@ -1967,22 +1967,22 @@ sub read_sequence_from_file
 
 		# SEQUENCE_NAME, MIN_VALUE, MAX_VALUE, INCREMENT_BY, LAST_NUMBER, CACHE_SIZE, CYCLE_FLAG, SEQUENCE_OWNER FROM $self->{prefix}_SEQUENCES";
 		push(@seq_info, $s_name);
-		if ($s_def =~ /MINVALUE\s+(\d+)/i) {
+		if ($s_def =~ /MINVALUE\s+([\-\d]+)/i) {
 			push(@seq_info, $1);
 		} else {
 			push(@seq_info, '');
 		}
-		if ($s_def =~ /MAXVALUE\s+(\d+)/i) {
+		if ($s_def =~ /MAXVALUE\s+([\-\d]+)/i) {
 			push(@seq_info, $1);
 		} else {
 			push(@seq_info, '');
 		}
-		if ($s_def =~ /INCREMENT\s*(?:BY)?\s+(\d+)/i) {
+		if ($s_def =~ /INCREMENT\s*(?:BY)?\s+([\-\d]+)/i) {
 			push(@seq_info, $1);
 		} else {
 			push(@seq_info, 1);
 		}
-		if ($s_def =~ /START\s+WITH\s+(\d+)/i) {
+		if ($s_def =~ /START\s+WITH\s+([\-\d]+)/i) {
 			push(@seq_info, $1);
 		} else {
 			push(@seq_info, '');
@@ -2672,12 +2672,12 @@ LANGUAGE plpgsql ;
 			} else {
 				$sql_output .= "CREATE SEQUENCE \"$seq->[0]\" INCREMENT $seq->[3]";
 			}
-			if ($seq->[1] <= (-2**63-1)) {
+			if ($seq->[1] < (-2**63-1)) {
 				$sql_output .= " NO MINVALUE";
 			} else {
 				$sql_output .= " MINVALUE $seq->[1]";
 			}
-			if ($seq->[2] >= (2**63-1)) {
+			if ($seq->[2] > (2**63-1)) {
 				$sql_output .= " NO MAXVALUE";
 			} else {
 				$sql_output .= " MAXVALUE $seq->[2]";
