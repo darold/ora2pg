@@ -5654,8 +5654,10 @@ $idxowner
 	my %unique = ();
 	my %idx_type = ();
 	while (my $row = $sth->fetch) {
+
 		# forget or not this object if it is in the exclude or allow lists.
 		next if ($self->skip_this_object('INDEX', $row->[0]));
+
 		$unique{$row->[-4]}{$row->[0]} = $row->[2];
 		if (($#{$row} > 6) && ($row->[7] eq 'Y')) {
 			$idx_type{$row->[-4]}{$row->[0]}{type} = $row->[4] . ' JOIN';
@@ -5665,9 +5667,10 @@ $idxowner
 		if ($row->[-1] =~ /SPATIAL_INDEX/) {
 			$idx_type{$row->[-4]}{$row->[0]}{type_name} = $row->[-1];
 		}
+
 		# Replace function based index type
-		if ($row->[1] =~ /^SYS_NC/i) {
-			$sth2->execute($row->[1],$row->[-3]) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+		if ($row->[4] =~ /FUNCTION-BASED/i) {
+			$sth2->execute($row->[1],$row->[-4]) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 			my $nc = $sth2->fetch();
 			$row->[1] = $nc->[0];
 		}
