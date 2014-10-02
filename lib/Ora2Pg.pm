@@ -622,6 +622,9 @@ sub _init
 	# Shall we log on error during data import or abort.
 	$self->{log_on_error} = 0;
 
+	# Force Ora2Pg to extract spatial object in binary format
+	$self->{use_ewkb} = 1;
+
 	# Initialyze following configuration file
 	foreach my $k (sort keys %AConfig) {
 		if (lc($k) eq 'allow') {
@@ -3722,7 +3725,6 @@ LANGUAGE plpgsql ;
 			# Rename table and double-quote it if required
 			my $tmptb = $self->get_replaced_tbname($table);
 
-
 			# disable triggers of current table if requested
 			if ($self->{disable_triggers}) {
 				my $trig_type = 'USER';
@@ -4892,6 +4894,7 @@ sub _howto_get_data
 	my $timeformat_tz = $timeformat . ' TZH:TZM';
 	for my $k (0 .. $#{$name}) {
 		my $realcolname = $name->[$k]->[0];
+		my $spatial_srid = '';
 		if ($name->[$k]->[0] !~ /"/) {
 			$name->[$k]->[0] = '"' . $name->[$k]->[0] . '"';
 		}
@@ -4914,7 +4917,7 @@ sub _howto_get_data
 		} elsif ( $src_type->[$k] =~ /geometry/i) {
 
 			# Get the SRID of the column
-			my $spatial_srid = "SELECT COALESCE(SRID, $self->{default_srid}) FROM ALL_SDO_GEOM_METADATA WHERE TABLE_NAME='\U$table\E' AND COLUMN_NAME='\U$realcolname\E' AND OWNER='\U$self->{tables}{$table}{table_info}{owner}\E'";
+			$spatial_srid = "SELECT COALESCE(SRID, $self->{default_srid}) FROM ALL_SDO_GEOM_METADATA WHERE TABLE_NAME='\U$table\E' AND COLUMN_NAME='\U$realcolname\E' AND OWNER='\U$self->{tables}{$table}{table_info}{owner}\E'";
 			if ($self->{convert_srid} == 1) {
 				$spatial_srid = "SELECT COALESCE(sdo_cs.map_oracle_srid_to_epsg(SRID), $self->{default_srid}) FROM ALL_SDO_GEOM_METADATA WHERE TABLE_NAME='\U$table\E' AND COLUMN_NAME='\U$realcolname\E' AND OWNER='\U$self->{tables}{$table}{table_info}{owner}\E'";
 
@@ -4937,10 +4940,14 @@ sub _howto_get_data
 			}
 			if (!$self->{use_sc40_package}) {
 
-				if ($self->{type} eq 'INSERT') {
-					$str .= "CASE WHEN $name->[$k]->[0] IS NOT NULL THEN 'ST_GeomFromText('''||SDO_UTIL.TO_WKTGEOMETRY($name->[$k]->[0])||''','||($spatial_srid)||')' ELSE NULL END,";
+				if ($self->{use_ewkb}) {
+					$str .= "CASE WHEN $name->[$k]->[0] IS NOT NULL THEN SDO_UTIL.TO_WKBGEOMETRY($name->[$k]->[0]) ELSE NULL END,";
 				} else {
-					$str .= "CASE WHEN $name->[$k]->[0] IS NOT NULL THEN 'SRID=' || ($spatial_srid) || ';' || SDO_UTIL.TO_WKTGEOMETRY($name->[$k]->[0]) ELSE NULL END,";
+					if ($self->{type} eq 'INSERT') {
+						$str .= "CASE WHEN $name->[$k]->[0] IS NOT NULL THEN 'ST_GeomFromText('''||SDO_UTIL.TO_WKTGEOMETRY($name->[$k]->[0])||''','||($spatial_srid)||')' ELSE NULL END,";
+					} else {
+						$str .= "CASE WHEN $name->[$k]->[0] IS NOT NULL THEN 'SRID=' || ($spatial_srid) || ';' || SDO_UTIL.TO_WKTGEOMETRY($name->[$k]->[0]) ELSE NULL END,";
+					}
 				}
 
 			} else {
@@ -4961,6 +4968,7 @@ sub _howto_get_data
 			$str .= "$name->[$k]->[0],";
 
 		}
+		push(@{$self->{spatial_srid}{$table}}, $spatial_srid);
 	}
 	$str =~ s/,$//;
 
@@ -5603,6 +5611,7 @@ sub _get_indexes
 	my ($self, $table, $owner) = @_;
 
 	my $idxowner = '';
+
 	if ($owner) {
 		$idxowner = "AND IC.TABLE_OWNER = '$owner'";
 	}
@@ -5667,7 +5676,6 @@ $idxowner
 		if ($row->[-1] =~ /SPATIAL_INDEX/) {
 			$idx_type{$row->[-4]}{$row->[0]}{type_name} = $row->[-1];
 		}
-
 		# Replace function based index type
 		if ($row->[4] =~ /FUNCTION-BASED/i) {
 			$sth2->execute($row->[1],$row->[-4]) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -5677,6 +5685,7 @@ $idxowner
 		$row->[1] =~ s/SYS_EXTRACT_UTC[\s\t]*\(([^\)]+)\)/$1/isg;
 		push(@{$data{$row->[-4]}{$row->[0]}}, $row->[1]);
 		$index_tablespace{$row->[-4]}{$row->[0]} = $row->[-2];
+
 	}
 
 	return \%unique, \%data, \%idx_type, \%index_tablespace;
@@ -6517,7 +6526,7 @@ sub format_data_row
 					$custom_types->{$data_type}[$i] = $custom_types->{$data_type}[0];
 					$is_nested = 1;
 				}
-				push(@type_col, $self->format_data_type($row->[$idx][$i], $custom_types->{$data_type}[$i], $action, $table));
+				push(@type_col, $self->format_data_type($row->[$idx][$i], $custom_types->{$data_type}[$i], $action, $table, $idx));
 			}
 			if (!$is_nested) {
 				if ($action eq 'COPY') {
@@ -6539,19 +6548,21 @@ sub format_data_row
 				}
 			}
 		} else {
-			$row->[$idx] = $self->format_data_type($row->[$idx], $data_type, $action, '', $src_data_types->[$idx]);
+			$row->[$idx] = $self->format_data_type($row->[$idx], $data_type, $action, $table, $src_data_types->[$idx], $idx);
 		}
 	}
 }
 
 sub format_data_type
 {
-	my ($self, $col, $data_type, $action, $table, $src_type) = @_;
+	my ($self, $col, $data_type, $action, $table, $src_type, $idx) = @_;
 
 	# Preparing data for output
 	if ($action ne 'COPY') {
 		if (!defined $col) {
 			$col = 'NULL';
+		} elsif ( ($src_type =~ /geometry/i) && ($self->{use_ewkb}) ) {
+			$col = "St_GeomFromWKB('\\x" . unpack('H*', $col) . "', $self->{spatial_srid}{$table}->[$idx])";
 		} elsif ($data_type eq 'bytea') {
 			$col = escape_bytea($col);
 			if (!$self->{standard_conforming_strings}) {
@@ -6594,6 +6605,8 @@ sub format_data_type
 	} else {
 		if (!defined $col) {
 			$col = '\N';
+		} elsif ( ($src_type =~ /geometry/i) && ($self->{use_ewkb}) ) {
+			$col = 'SRID=' . $self->{spatial_srid}{$table}->[$idx] . ';' . unpack('H*', $col);
 		} elsif ($data_type eq 'boolean') {
 			if (exists $self->{ora_boolean_values}{lc($col)}) {
 				$col = $self->{ora_boolean_values}{lc($col)};
@@ -7508,6 +7521,7 @@ sub _extract_data
 	my $rname = $part_name || $table;
 	my $dbh;
 	my $sth;
+	$self->{data_cols}{$table} = ();
 	if ( ($self->{parallel_tables} > 1) || (($self->{oracle_copies} > 1) && $self->{defined_pk}{"\L$table\E"}) ) {
 
 		$dbh = $self->{dbh}->clone();
@@ -7524,7 +7538,9 @@ sub _extract_data
 
 		# prepare the query before execution
 		$sth = $dbh->prepare($query,{ora_auto_lob => 1,ora_exe_mode=>OCI_STMT_SCROLLABLE_READONLY, ora_check_sql => 1}) or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
-		my $r = $sth->{NAME};
+		foreach (@{$sth->{NAME}}) {
+			push(@{$self->{data_cols}{$table}}, $_);
+		}
 
 		# Extract data now by chunk of DATA_LIMIT and send them to a dedicated job
 		$self->logit("Fetching all data from $rname tuples...\n", 1);
@@ -7541,7 +7557,9 @@ sub _extract_data
 
 		# prepare the query before execution
 		$sth = $self->{dbh}->prepare($query,{ora_auto_lob => 1,ora_exe_mode=>OCI_STMT_SCROLLABLE_READONLY, ora_check_sql => 1}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-		my $r = $sth->{NAME};
+		foreach (@{$sth->{NAME}}) {
+			push(@{$self->{data_cols}{$table}}, $_);
+		}
 
 		# Extract data now by chunk of DATA_LIMIT and send them to a dedicated job
 		$self->logit("Fetching all data from $rname tuples...\n", 1);
