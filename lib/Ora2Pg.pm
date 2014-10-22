@@ -4110,7 +4110,9 @@ CREATE TRIGGER insert_${table}_trigger
 		# Add comments on table
 		if (!$self->{disable_comment} && $self->{tables}{$table}{table_info}{comment}) {
 			$self->{tables}{$table}{table_info}{comment} =~ s/'/''/gs;
-			$sql_output .= "COMMENT ON TABLE $tbname IS E'$self->{tables}{$table}{table_info}{comment}';\n";
+			my $foreign = '';
+			$foreign = ' FOREIGN' if ($self->{type} eq 'FDW');
+			$sql_output .= "COMMENT ON$foreign TABLE $tbname IS E'$self->{tables}{$table}{table_info}{comment}';\n";
 		}
 
 		# Add comments on columns
