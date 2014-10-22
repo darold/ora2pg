@@ -109,7 +109,8 @@ $FCT_TEST_SCORE = 2;
 	'NEXT_DAY' => 1,
 	'MONTHS_BETWEEN' => 1,
 	'NVL2' => 1,
-	'SDO_' => 2,
+	'SDO_' => 6,
+	'PRAGMA' => 6,
 );
 
 @ORA_FUNCTIONS = qw(
@@ -382,6 +383,9 @@ sub plsql_to_plpgsql
 	$str =~ s/PIPE[\s\t]+ROW[\s\t]*/RETURN NEXT /igs;
 	$str =~ s/(RETURN NEXT )\(([^\)]+)\)/$1$2/igs;
 
+	# Replace sys_context call to the postgresql equivalent
+	$str = &replace_sys_context($str);
+
 	if ($allow_code_break) {
 		# Change trunc() to date_trunc('day', field)
 		# Trunc is replaced with date_trunc if we find date in the name of
@@ -409,6 +413,25 @@ sub plsql_to_plpgsql
 	return $str;
 }
 
+# Function to replace call to SYS_CONTECT('USERENV', ...)
+# List of Oracle environment variables: http://docs.oracle.com/cd/B28359_01/server.111/b28286/functions172.htm
+# Possibly corresponding PostgreSQL variables: http://www.postgresql.org/docs/current/static/functions-info.html
+sub replace_sys_context
+{
+	my $str = shift;
+
+	$str =~ s/SYS_CONTEXT\s*\(\s*'USERENV'\s*,\s*'(OS_USER|SESSION_USER|AUTHENTICATED_IDENTITY)'\s*\)/session_user/igs;
+	$str =~ s/SYS_CONTEXT\s*\(\s*'USERENV'\s*,\s*'BG_JOB_ID'\s*\)/pg_backend_pid()/igs;
+	$str =~ s/SYS_CONTEXT\s*\(\s*'USERENV'\s*,\s*'(CLIENT_IDENTIFIER|PROXY_USER)'\s*\)/session_user/igs;
+	$str =~ s/SYS_CONTEXT\s*\(\s*'USERENV'\s*,\s*'CURRENT_SCHEMA'\s*\)/current_schema/igs;
+	$str =~ s/SYS_CONTEXT\s*\(\s*'USERENV'\s*,\s*'CURRENT_USER'\s*\)/current_user/igs;
+	$str =~ s/SYS_CONTEXT\s*\(\s*'USERENV'\s*,\s*'(DB_NAME|DB_UNIQUE_NAME)'\s*\)/current_database/igs;
+	$str =~ s/SYS_CONTEXT\s*\(\s*'USERENV'\s*,\s*'(HOST|IP_ADDRESS)'\s*\)/inet_client_addr()/igs;
+	$str =~ s/SYS_CONTEXT\s*\(\s*'USERENV'\s*,\s*'SERVER_HOST'\s*\)/inet_server_addr()/igs;
+
+	return $str;
+}
+	
 # Function used to rewrite dbms_output.put, dbms_output.put_line and
 # dbms_output.new_line by a plpgsql code
 sub raise_output
@@ -626,6 +649,9 @@ sub estimate_cost
 	$cost_details{'NVL2'} += $n;
 	$n = () = $str =~ m/SDO_\w/igs;
 	$cost_details{'SDO_'} += $n;
+	$n = () = $str =~ m/PRAGMA/igs;
+	$cost_details{'PRAGMA'} += $n;
+
 
 	foreach my $f (@ORA_FUNCTIONS) {
 		if ($str =~ /\b$f\b/igs) {
