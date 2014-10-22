@@ -2019,24 +2019,20 @@ sub read_tablespace_from_file
 	my $tid = 0; 
 
 	# tablespace
-	while ($content =~ s/CREATE\s+TABLESPACE[\s]+([^\s]+)\s*DATAFILE\s*([^;]+);//i) {
+	while ($content =~ s/CREATE\s+TABLESPACE\s+([^\s]+)\s+([^;]+);//is) {
 		my $t_name = $1;
-		$t_name =~ s/"//g;
 		my $t_def = $2;
-		$t_def =~ s/\s+/ /g;
-		$tid++;
-		# get path
-		if ($t_def =~ /'([^\']+)'/) {
-			my $t_path = dirname($1);
+		$t_name =~ s/"//g;
+		if ($t_def =~ s/.*DATAFILE\s+'([^']+)'.*/$1/s) {
+			$tid++;
+			# get path
+			my $t_path = dirname($t_def);
 			# TYPE - TABLESPACE_NAME - FILEPATH - OBJECT_NAME
 			@{$self->{tablespaces}{TABLE}{$t_name}{$t_path}} = ();
 		}
-
 	}
+
 }
-
-
-
 
 
 =head2 _views
