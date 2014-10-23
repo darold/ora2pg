@@ -1412,8 +1412,9 @@ sub _tables
 			$self->logit("Scanning view $view to export as table...\n", 1);
 
 			$self->{tables}{$view}{type} = 'view';
-			$self->{tables}{$view}{text} = $view_infos{$view};
+			$self->{tables}{$view}{text} = $view_infos{$view}{text};
 			$self->{tables}{$view}{alias}= $view_infos{$view}{alias};
+			$self->{tables}{$view}{comment} = $view_infos{$view}{comment};
 			my $realview = $view;
 			if ($view !~ /"/) {
 				$realview = "\"$view\"";
@@ -2061,7 +2062,8 @@ sub _views
 	my $i = 1;
 	foreach my $view (sort keys %view_infos) {
 		$self->logit("[$i] Scanning $view...\n", 1);
-		$self->{views}{$view}{text} = $view_infos{$view};
+		$self->{views}{$view}{text} = $view_infos{$view}{text};
+		$self->{views}{$view}{comment} = $view_infos{$view}{comment};
                 # Retrieve also aliases from views
                 $self->{views}{$view}{alias}= $view_infos{$view}{alias};
 		$i++;
@@ -2325,16 +2327,20 @@ sub _get_sql_data
 				}
 				$sql_output .= ") AS " . $self->{views}{$view}{text} . ";\n\n";
 			}
-			if ($self->{file_per_table}) {
-				$self->dump($sql_header . $sql_output, $fhdl);
-				$self->close_export_file($fhdl);
-				$sql_output = '';
-			}
-			$nothing++;
-			$i++;
 
 			# Add comments on columns
 			if (!$self->{disable_comment}) {
+
+				if ($self->{views}{$view}{comment}) {
+					if (!$self->{preserve_case}) {
+						$sql_output .= "COMMENT ON VIEW \L$tmpv\E ";
+					} else {
+						$sql_output .= "COMMENT ON VIEW \"$tmpv\" ";
+					}
+					$self->{views}{$view}{comment} =~ s/'/''/gs;
+					$sql_output .= " IS E'" . $self->{views}{$view}{comment} . "';\n\n";
+				}
+
 				foreach $f (keys %{$self->{views}{$view}{column_comments}}) {
 					next unless $self->{views}{$view}{column_comments}{$f};
 					$self->{views}{$view}{column_comments}{$f} =~ s/'/''/gs;
@@ -2352,6 +2358,14 @@ sub _get_sql_data
 					}
 				}
 			}
+
+			if ($self->{file_per_table}) {
+				$self->dump($sql_header . $sql_output, $fhdl);
+				$self->close_export_file($fhdl);
+				$sql_output = '';
+			}
+			$nothing++;
+			$i++;
 
 		}
 
@@ -5852,6 +5866,30 @@ sub _get_views
 {
 	my($self) = @_;
 
+	my $owner = '';
+	if ($self->{schema}) {
+		$owner .= "WHERE A.OWNER='$self->{schema}' ";
+	} else {
+	    $owner .= "WHERE A.OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "') ";
+	}
+
+	my $join_segment = '';
+	if (!$self->{user_grants}) {
+		$join_segment = " JOIN DBA_SEGMENTS S ON (S.SEGMENT_TYPE LIKE 'TABLE%' AND S.SEGMENT_NAME=A.TABLE_NAME)";
+	}
+	my %comments = ();
+	my $sql = "SELECT A.TABLE_NAME,A.COMMENTS,A.TABLE_TYPE FROM ALL_TAB_COMMENTS A $join_segment $owner";
+	$sql .= " AND (A.OWNER, A.TABLE_NAME) NOT IN (SELECT OWNER, TABLE_NAME FROM ALL_TABLES UNION ALL SELECT LOG_OWNER, LOG_TABLE FROM ALL_MVIEW_LOGS)";
+	my $sth = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	while (my $row = $sth->fetch) {
+		# forget or not this object if it is in the exclude or allow lists.
+		next if ($self->skip_this_object('TABLE', $row->[0]));
+		$comments{$row->[0]}{comment} = $row->[1];
+		$comments{$row->[0]}{table_type} = $row->[2];
+	}
+	$sth->finish();
+
 	# Retrieve all views
 	my $str = "SELECT VIEW_NAME,TEXT FROM $self->{prefix}_VIEWS v";
 	if (!$self->{export_invalid}) {
@@ -5868,7 +5906,7 @@ sub _get_views
 	}
 	$str .= " ORDER BY v.VIEW_NAME";
 
-	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
 	my %data = ();
@@ -5878,9 +5916,10 @@ sub _get_views
 		if (!grep($row->[0] =~ /^$_$/, @{$self->{view_as_table}})) {
 			next if ($self->skip_this_object('VIEW', $row->[0]));
 		}
-
-		$data{$row->[0]} = $row->[1];
+		$data{$row->[0]}{text} = $row->[1];
+		$data{$row->[0]}{comment} = $comments{$row->[0]}{comment};
 		@{$data{$row->[0]}{alias}} = $self->_alias_info ($row->[0]);
+
 	}
 
 	return %data;
