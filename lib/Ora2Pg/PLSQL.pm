@@ -383,8 +383,16 @@ sub plsql_to_plpgsql
 	$str =~ s/PIPE[\s\t]+ROW[\s\t]*/RETURN NEXT /igs;
 	$str =~ s/(RETURN NEXT )\(([^\)]+)\)/$1$2/igs;
 
+	# The to_number() function reclaim a second argument under postgres which is the format.
+	# By default we use '99999999999999999999D99999999999999999999' that may allow bigint
+	# and double precision number. Feel free to modify it
+	$str =~ s/TO_NUMBER\s*\(([^,\)]+)\s*\)/to_number\($1,'99999999999999999999D99999999999999999999'\)/igs;
+
 	# Replace sys_context call to the postgresql equivalent
 	$str = &replace_sys_context($str);
+
+	# Replace SDO_GEOM to the postgresql equivalent
+	$str = &replace_sdo_function($str);
 
 	if ($allow_code_break) {
 		# Change trunc() to date_trunc('day', field)
@@ -403,11 +411,6 @@ sub plsql_to_plpgsql
 		# PostgreSQL (CASE WHEN "user_status"='ACTIVE' THEN "username" ELSE NULL END)
 		$str =~ s/decode[\s\t]*\([\s\t]*([^,\(]*),[\s\t]*([^,\(]*),[\s\t]*([^,\(]*),[\s\t]*([^\(\)]*)\)/\(CASE WHEN $1=$2 THEN $3 ELSE $4 END\)/igs;
 
-		# The to_number() function reclaim a second argument under postgres which is the format.
-		# By default we use '99999999999999999999D99999999999999999999' that may allow bigint
-		# and double precision number. Feel free to modify it - maybe a configuration option
-		# should be added
-		$str =~ s/to_number[\s\t]*\([\s\t]*([a-z0-9\-\_"\.,\s]+)[\s\t]*\)/to_number\($1,'99999999999999999999D99999999999999999999'\)/igs;
 	}
 
 	return $str;
@@ -431,7 +434,19 @@ sub replace_sys_context
 
 	return $str;
 }
-	
+
+sub replace_sdo_function
+{
+	my $str = shift;
+
+	$str =~ s/SDO_GEOM\.//igs;
+	$str =~ s/SDO_DISTANCE/St_Distance/igs;
+	# Remove tolerance parameter
+	$str =~ s/(St_Distance\s*\([^\)]+),\s*[\d\.]+\s*\)/$1\)/igs;
+
+	return $str;
+}
+
 # Function used to rewrite dbms_output.put, dbms_output.put_line and
 # dbms_output.new_line by a plpgsql code
 sub raise_output
