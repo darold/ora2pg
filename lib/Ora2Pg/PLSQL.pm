@@ -114,47 +114,47 @@ $FCT_TEST_SCORE = 2;
 );
 
 @ORA_FUNCTIONS = qw(
-    AsciiStr
-    Compose
-    Decompose
-    Dump
-    Instr
-    VSize
-    Bin_To_Num
-    CharToRowid
-    From_Tz
-    HexToRaw
-    NumToDSInterval
-    NumToYMInterval
-    RawToHex
-    To_Clob
-    To_DSInterval
-    To_Lob
-    To_Multi_Byte
-    To_NClob
-    To_Single_Byte
-    To_YMInterval
-    BFilename
-    Cardinality
-    Group_ID
-    LNNVL
-    NANVL
-    Sys_Context
-    Uid
-    UserEnv
-    Bin_To_Num
-    BitAnd
-    Cosh
-    Median
-    Remainder
-    Sinh
-    Tanh
-    DbTimeZone
-    From_Tz
-    New_Time
-    SessionTimeZone
-    Tz_Offset
-    SysTimestamp
+	AsciiStr
+	Compose
+	Decompose
+	Dump
+	Instr
+	VSize
+	Bin_To_Num
+	CharToRowid
+	From_Tz
+	HexToRaw
+	NumToDSInterval
+	NumToYMInterval
+	RawToHex
+	To_Clob
+	To_DSInterval
+	To_Lob
+	To_Multi_Byte
+	To_NClob
+	To_Single_Byte
+	To_YMInterval
+	BFilename
+	Cardinality
+	Group_ID
+	LNNVL
+	NANVL
+	Sys_Context
+	Uid
+	UserEnv
+	Bin_To_Num
+	BitAnd
+	Cosh
+	Median
+	Remainder
+	Sinh
+	Tanh
+	DbTimeZone
+	From_Tz
+	New_Time
+	SessionTimeZone
+	Tz_Offset
+	SysTimestamp
 );
 
 =head1 NAME
@@ -555,7 +555,8 @@ sub replace_sql_type
 	$str =~ s/\bNUMBER\b/$number/igs;
 
 	# Set varchar without length to text
-	$str =~ s/\bVARCHAR\d*([\s\t]*(?!\())/text$1/igs;
+	$str =~ s/VARCHAR2/VARCHAR/igs;
+	$str =~ s/\bVARCHAR([\s\t]*(?!\())/text$1/igs;
 
 	foreach my $t ('DATE','LONG RAW','LONG','NCLOB','CLOB','BLOB','BFILE','RAW','ROWID','FLOAT','DOUBLE PRECISION','INTEGER','INT','REAL','SMALLINT','BINARY_FLOAT','BINARY_DOUBLE','BOOLEAN','XMLTYPE') {
 		$str =~ s/\b$t\b/$Ora2Pg::TYPE{$t}/igs;
