@@ -440,9 +440,19 @@ sub replace_sdo_function
 	my $str = shift;
 
 	$str =~ s/SDO_GEOM\.//igs;
-	$str =~ s/SDO_DISTANCE/St_Distance/igs;
+	$str =~ s/SDO_DISTANCE/ST_Distance/igs;
+	$str =~ s/SDO_BUFFER/ST_Buffer/igs;
+	$str =~ s/SDO_CENTROID/ST_Centroid/igs;
+	$str =~ s/SDO_UTIL\.GETVERTICES/ST_DumpPoints/igs;
+	$str =~ s/SDO_TRANSLATE/ST_Translate/igs;
+	$str =~ s/SDO_SIMPLIFY/ST_Simplify/igs;
+	# Note that with :
+	# TABLE(SDO_UTIL.GETVERTICES(C.GEOLOC)) T
+	# T.X, T.Y, T.ID must be replaced manually as ST_X(T.geom) X, ST_Y(T.geom) Y, (T).path[1] ID
 	# Remove tolerance parameter
-	$str =~ s/(St_Distance\s*\([^\)]+),\s*[\d\.]+\s*\)/$1\)/igs;
+	$str =~ s/(ST_Distance\s*\([^\(\)]+),\s*[\d\.]+\s*\)/$1\)/igs;
+	$str =~ s/(ST_Buffer\s*\([^\(,]+,[^\(,]+),\s*[^\(,\)]+/$1/igs;
+	$str =~ s/(ST_Centroid\s*\([^\(\)]+),\s*[\d\.]+\s*\)/$1\)/igs;
 
 	return $str;
 }
