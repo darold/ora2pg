@@ -2939,6 +2939,7 @@ LANGUAGE plpgsql ;
 			close(IN);
 			my $fcnm = '';
 			my $old_line = '';
+			my $language = '';
 			foreach my $l (@allfct) {
 				chomp($l);
 				next if ($l =~ /^[\s\t]*$/);
@@ -2956,9 +2957,19 @@ LANGUAGE plpgsql ;
 					$fcnm = $2;
 				}
 				next if (!$fcnm);
+				if ($l =~ /LANGUAGE\s+([^\s="'><\!\(\)]+)/is) {
+					$language = $1;
+				}
 				$self->{functions}{$fcnm} .= "$l\n";
-				if ($l =~ /^END[\s\t]+($fcnm)[\s\t]*;/i) {
-					$fcnm = '';
+                                if (!$language) {
+					if ($l =~ /^END[\s\t]+($fcnm)[\s\t]*;/i) {
+						$fcnm = '';
+					}
+				} else {
+					if ($l =~ /;/i) {
+						$fcnm = '';
+						$language = '';
+					}
 				}
 			}
 		}
@@ -3058,6 +3069,7 @@ LANGUAGE plpgsql ;
 			close(IN);
 			my $fcnm = '';
 			my $old_line = '';
+			my $language = '';
 			foreach my $l (@allfct) {
 				chomp($l);
 				next if ($l =~ /^[\s\t]*$/);
@@ -3075,9 +3087,19 @@ LANGUAGE plpgsql ;
 					$fcnm = $2;
 				}
 				next if (!$fcnm);
+				if ($l =~ /LANGUAGE\s+([^\s="'><\!\(\)]+)/is) {
+					$language = $1;
+				}
 				$self->{procedures}{$fcnm} .= "$l\n";
-				if ($l =~ /^END[\s\t]+($fcnm)[\s\t]*;/i) {
-					$fcnm = '';
+                                if (!$language) {
+					if ($l =~ /^END[\s\t]+($fcnm)[\s\t]*;/i) {
+						$fcnm = '';
+					}
+				} else {
+					if ($l =~ /;/i) {
+						$fcnm = '';
+						$language = '';
+					}
 				}
 			}
 		}
@@ -7051,6 +7073,9 @@ sub _convert_function
 	my $func_ret_type = 'OPAQUE';
 	my $hasreturn = 0;
 	my $immutable = '';
+	my $language = '';
+	my $library = '';
+	my $library_fct = '';
 	my $setof = '';
 
 	my $dirprefix = '';
@@ -7084,6 +7109,15 @@ sub _convert_function
 			$func_args .= $1 if (!$hasreturn);
 			$clause = $2;
 		}
+		if ($func_declare =~ /LANGUAGE\s+([^\s="'><\!\(\)]+)/is) {
+			$language = $1;
+			if ($func_declare =~ /LIBRARY\s+([^\s="'><\!\(\)]+)/is) {
+				$library = $1;
+			}
+			if ($func_declare =~ /NAME\s+"([^"]+)"/is) {
+				$library_fct = $1;
+			}
+		}
 		# rewrite argument syntax
 		# Replace alternate syntax for default value
 		$func_args =~ s/:=/DEFAULT/igs;
@@ -7105,88 +7139,77 @@ sub _convert_function
 	} else {
 		return $plsql;
 	}
+	if ($self->{preserve_case}) {
+		$func_name= "\"$func_name\"";
+		$func_name = "\"$pname\"" . '.' . $func_name if ($pname);
+	} else {
+		$func_name= lc($func_name);
+		$func_name = $pname . '.' . $func_name if ($pname);
+	}
+	$func_args = '()' if (!$func_args);
+	$func_args =~ s/\s+IN\s+/ /ig; # Remove default IN keyword
+	my $function = "\nCREATE OR REPLACE FUNCTION $func_name $func_args";
+	if (!$pname && $self->{export_schema} && $self->{schema}) {
+		if (!$self->{preserve_case}) {
+			$function = "\nCREATE OR REPLACE FUNCTION $self->{schema}\.$func_name $func_args";
+			$self->logit("Parsing function $self->{schema}\.$func_name...\n", 1);
+		} else {
+			$function = "\nCREATE OR REPLACE FUNCTION \"$self->{schema}\"\.$func_name $func_args";
+			$self->logit("Parsing function \"$self->{schema}\"\.$func_name...\n", 1);
+		}
+	} else {
+		$self->logit("Parsing function $func_name...\n", 1);
+	}
+	$setof = ' SETOF' if ($setof);
+	if ($hasreturn) {
+		$function .= " RETURNS$setof $func_ret_type AS \$body\$\n";
+	} else {
+		my @nout = $func_args =~ /\bOUT /ig;
+		my @ninout = $func_args =~ /\bINOUT /ig;
+		if ($#nout > 0) {
+			$function .= " RETURNS$setof RECORD AS \$body\$\n";
+		} elsif ($#nout == 0) {
+			$func_args =~ /[\s\t]*OUT[\s\t]+([A-Z0-9_\$\%\.]+)[\s\t\),]*/i;
+			$function .= " RETURNS$setof $1 AS \$body\$\n";
+		} elsif ($#ninout == 0) {
+			$func_args =~ /[\s\t]*INOUT[\s\t]+([A-Z0-9_\$\%\.]+)[\s\t\),]*/i;
+			$function .= " RETURNS$setof $1 AS \$body\$\n";
+		} else {
+			$function .= " RETURNS VOID AS \$body\$\n";
+		}
+	}
+	$immutable = ' IMMUTABLE' if ($immutable);
+	if ($language && ($language !~ /SQL/i)) {
+		$function .= "AS '$library', '$library_fct'\nLANGUAGE $language$immutable;\n";
+		$function =~ s/AS \$body\$//;
+	}
+
 	if ($func_code) {
-		if ($self->{preserve_case}) {
-			$func_name= "\"$func_name\"";
-			$func_name = "\"$pname\"" . '.' . $func_name if ($pname);
-		} else {
-			$func_name= lc($func_name);
-			$func_name = $pname . '.' . $func_name if ($pname);
-		}
-		$func_args = '()' if (!$func_args);
-		my $function = "\nCREATE OR REPLACE FUNCTION $func_name $func_args";
-		if (!$pname && $self->{export_schema} && $self->{schema}) {
-			if (!$self->{preserve_case}) {
-				$function = "\nCREATE OR REPLACE FUNCTION $self->{schema}\.$func_name $func_args";
-				$self->logit("Parsing function $self->{schema}\.$func_name...\n", 1);
-			} else {
-				$function = "\nCREATE OR REPLACE FUNCTION \"$self->{schema}\"\.$func_name $func_args";
-				$self->logit("Parsing function \"$self->{schema}\"\.$func_name...\n", 1);
-			}
-		} else {
-			$self->logit("Parsing function $func_name...\n", 1);
-		}
-		$setof = ' SETOF' if ($setof);
-		if ($hasreturn) {
-			$function .= " RETURNS$setof $func_ret_type AS \$body\$\n";
-		} else {
-			my @nout = $func_args =~ /\bOUT /ig;
-			my @ninout = $func_args =~ /\bINOUT /ig;
-			if ($#nout > 0) {
-				$function .= " RETURNS$setof RECORD AS \$body\$\n";
-			} elsif ($#nout == 0) {
-				$func_args =~ /[\s\t]*OUT[\s\t]+([A-Z0-9_\$\%\.]+)[\s\t\),]*/i;
-				$function .= " RETURNS$setof $1 AS \$body\$\n";
-			} elsif ($#ninout == 0) {
-				$func_args =~ /[\s\t]*INOUT[\s\t]+([A-Z0-9_\$\%\.]+)[\s\t\),]*/i;
-				$function .= " RETURNS$setof $1 AS \$body\$\n";
-			} else {
-				$function .= " RETURNS VOID AS \$body\$\n";
-			}
-		}
 		$func_declare = '' if ($func_declare !~ /[a-z]/is);
 		$function .= "DECLARE\n$func_declare\n" if ($func_declare);
 		$function .= $func_code;
-		$immutable = ' IMMUTABLE' if ($immutable);
 		$function .= "\n\$body\$\nLANGUAGE PLPGSQL$immutable;\n";
-#		my $fct_cost = '';
-#		if ($self->{estimate_cost}) {
-#			$func_name =~ s/"//g;
-#			my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($function);
-#			if ($cost && ($self->{type} ne 'PACKAGE')) {
-#				$function .= "-- Porting cost of function \L$func_name\E: $cost\n";
-#				foreach (sort { $cost_detail{$b} <=> $cost_detail{$a} } keys %cost_detail) {
-#					next if (!$cost_detail{$_});
-#					$function .= "\t-- $_ => $cost_detail{$_}";
-#					$function .= " (cost: $Ora2Pg::PLSQL::UNCOVERED_SCORE{$_})" if ($Ora2Pg::PLSQL::UNCOVERED_SCORE{$_});
-#					$function .= "\n";
-#				}
-#			}
-#			$self->{pkgcost} += ($cost || 0);
-#		}
 		$function = "\n$func_before$function";
-
-		if ($pname && $self->{file_per_function} && !$self->{pg_dsn}) {
-			$func_name =~ s/^"*$pname"*\.//i;
-			$func_name =~ s/"//g; # Remove case sensitivity quoting
-			$self->logit("\tDumping to one file per function: $dirprefix\L$pname/$func_name\E_$self->{output}\n", 1);
-			my $sql_header = "-- Generated by Ora2Pg, the Oracle database Schema converter, version $VERSION\n";
-			$sql_header .= "-- Copyright 2000-2014 Gilles DAROLD. All rights reserved.\n";
-			$sql_header .= "-- DATASOURCE: $self->{oracle_dsn}\n\n";
-			if ($self->{client_encoding}) {
-				$sql_header .= "SET client_encoding TO '\U$self->{client_encoding}\E';\n";
-			}
-			$sql_header .= $self->set_search_path();
-
-			my $fhdl = $self->open_export_file("$dirprefix\L$pname/$func_name\E_$self->{output}", 1);
-			$self->_restore_comments(\$function, $hrefcomments);
-			$self->dump($sql_header . $function, $fhdl);
-			$self->close_export_file($fhdl);
-			$function = "\\i $dirprefix\L$pname/$func_name\E_$self->{output}\n";
-		}
-		return $function;
 	}
-	return $func_declare;
+	if ($pname && $self->{file_per_function} && !$self->{pg_dsn}) {
+		$func_name =~ s/^"*$pname"*\.//i;
+		$func_name =~ s/"//g; # Remove case sensitivity quoting
+		$self->logit("\tDumping to one file per function: $dirprefix\L$pname/$func_name\E_$self->{output}\n", 1);
+		my $sql_header = "-- Generated by Ora2Pg, the Oracle database Schema converter, version $VERSION\n";
+		$sql_header .= "-- Copyright 2000-2014 Gilles DAROLD. All rights reserved.\n";
+		$sql_header .= "-- DATASOURCE: $self->{oracle_dsn}\n\n";
+		if ($self->{client_encoding}) {
+			$sql_header .= "SET client_encoding TO '\U$self->{client_encoding}\E';\n";
+		}
+		$sql_header .= $self->set_search_path();
+
+		my $fhdl = $self->open_export_file("$dirprefix\L$pname/$func_name\E_$self->{output}", 1);
+		$self->_restore_comments(\$function, $hrefcomments);
+		$self->dump($sql_header . $function, $fhdl);
+		$self->close_export_file($fhdl);
+		$function = "\\i $dirprefix\L$pname/$func_name\E_$self->{output}\n";
+	}
+	return $function;
 }
 
 =head2 _convert_declare
