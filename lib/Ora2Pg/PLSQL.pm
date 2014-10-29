@@ -482,12 +482,13 @@ sub replace_sql_type
 	$str =~ s/([A-Z])ORA2PG_COMMENT/$1 ORA2PG_COMMENT/igs;
 
 	# Replace type with precision
-	while ($str =~ /(.*)\b([^\s\t\(]+)[\s\t]*\(([^\)]+)\)/) {
+	my $oratype_regex = join('|', keys %Ora2Pg::TYPE);
+	while ($str =~ /(.*)\b($oratype_regex)[\s\t]*\(([^\)]+)\)/) {
 		my $backstr = $1;
 		my $type = uc($2);
 		my $args = $3;
 		if ($backstr =~ /_$/) {
-		    $str =~ s/\b([^\s\t\(]+)[\s\t]*\(([^\)]+)\)/$1\%\|$2\%\|\%/is;
+		    $str =~ s/\b($oratype_regex)[\s\t]*\(([^\)]+)\)/$1\%\|$2\%\|\%/is;
 		    next;
 		}
 
