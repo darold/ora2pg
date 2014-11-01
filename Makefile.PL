@@ -592,6 +592,19 @@ CONVERT_SRID		1
 # Can be overwritten by CONVERT_SRID, see above.
 DEFAULT_SRID		4326
 
+# This directive can take three values: WKT (default), WKB and INTERNAL.
+# When it is set to WKT, Ora2Pg will use SDO_UTIL.TO_WKTGEOMETRY() to
+# extract the geometry data. When it is set to WKB, Ora2Pg will use the
+# binary output using SDO_UTIL.TO_WKBGEOMETRY(). If those two extract type
+# are calles at Oracle side, they are slow and you can easily reach Out Of
+# Memory when you have lot of rows. Also WKB is not able to export 3D geometry
+# and some geometries like CURVEPOLYGON. In this case you may use the INTERNAL
+# extraction type. It will use a Pure Perl library to convert the SDO_GEOMETRY
+# data into a WKT representation, the translation is done on Ora2Pg side.
+# This is a work in progress, please validate your exported data geometries
+# before use.
+GEOMETRY_EXTRACT_TYPE	WKT
+
 # If you want to replace call to SDO_UTIL.TO_WKTGEOMETRY() by a call to the
 # more efficient methode SC4O.ST_AsText(), especially for 3D geomrtry, activate
 # this directive. You must install the SC40 package before, this is the
