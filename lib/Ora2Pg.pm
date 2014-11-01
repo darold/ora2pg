@@ -603,7 +603,6 @@ sub _init
 	$self->{ora_reserved_words} = (); 
 	$self->{defined_pk} = ();
 	$self->{allow_partition} = ();
-	$self->{use_sc40_package} = 0;
 
 	# Init PostgreSQL DB handle
 	$self->{dbhdest} = undef;
@@ -621,9 +620,6 @@ sub _init
 
 	# Shall we log on error during data import or abort.
 	$self->{log_on_error} = 0;
-
-	# Force Ora2Pg to extract spatial object in binary format
-	$self->{use_ewkb} = 1;
 
 	# Initialyze following configuration file
 	foreach my $k (sort keys %AConfig) {
@@ -737,6 +733,12 @@ sub _init
 		$self->{default_srid} = 4326;
 	}
 	
+	# Force Ora2Pg to extract spatial object in binary format
+	$self->{geometry_extract_type} = uc($self->{geometry_extract_type});
+	if (!$self->{geometry_extract_type} || !grep(/^$self->{geometry_extract_type}$/, 'WKT','WKB','INTERNAL')) {
+		$self->{geometry_extract_type} = 'WKT';
+	}
+
 
 	# Free some memory
 	%options = ();
@@ -2031,9 +2033,12 @@ sub read_tablespace_from_file
 			# TYPE - TABLESPACE_NAME - FILEPATH - OBJECT_NAME
 			@{$self->{tablespaces}{TABLE}{$t_name}{$t_path}} = ();
 		}
-	}
 
+	}
 }
+
+
+
 
 
 =head2 _views
@@ -2328,7 +2333,7 @@ sub _get_sql_data
 				$sql_output .= ") AS " . $self->{views}{$view}{text} . ";\n\n";
 			}
 
-			# Add comments on columns
+			# Add comments on view and columns
 			if (!$self->{disable_comment}) {
 
 				if ($self->{views}{$view}{comment}) {
@@ -2947,6 +2952,10 @@ LANGUAGE plpgsql ;
 					$l = $old_line .= ' ' . $l;
 					$old_line = '';
 				}
+				if ($l =~ /^[\s\t]*(FUNCTION|PROCEDURE)$/i) {
+					$old_line = $l;
+					next;
+				}
 				if ($l =~ /^[\s\t]*CREATE OR REPLACE (FUNCTION|PROCEDURE)[\s\t]*$/i) {
 					$old_line = $l;
 					next;
@@ -2961,7 +2970,8 @@ LANGUAGE plpgsql ;
 					$language = $1;
 				}
 				$self->{functions}{$fcnm} .= "$l\n";
-                                if (!$language) {
+
+				if (!$language) {
 					if ($l =~ /^END[\s\t]+($fcnm)[\s\t]*;/i) {
 						$fcnm = '';
 					}
@@ -3077,6 +3087,10 @@ LANGUAGE plpgsql ;
 					$l = $old_line .= ' ' . $l;
 					$old_line = '';
 				}
+				if ($l =~ /^[\s\t]*(FUNCTION|PROCEDURE)$/i) {
+					$old_line = $l;
+					next;
+				}
 				if ($l =~ /^[\s\t]*CREATE OR REPLACE (FUNCTION|PROCEDURE)[\s\t]*$/i) {
 					$old_line = $l;
 					next;
@@ -3091,7 +3105,7 @@ LANGUAGE plpgsql ;
 					$language = $1;
 				}
 				$self->{procedures}{$fcnm} .= "$l\n";
-                                if (!$language) {
+				if (!$language) {
 					if ($l =~ /^END[\s\t]+($fcnm)[\s\t]*;/i) {
 						$fcnm = '';
 					}
@@ -4958,10 +4972,17 @@ sub _howto_get_data
 			}
 		} elsif ( $src_type->[$k] =~ /geometry/i) {
 
-			# Get the SRID of the column
-			$spatial_srid = "SELECT COALESCE(SRID, $self->{default_srid}) FROM ALL_SDO_GEOM_METADATA WHERE TABLE_NAME='\U$table\E' AND COLUMN_NAME='\U$realcolname\E' AND OWNER='\U$self->{tables}{$table}{table_info}{owner}\E'";
-			if ($self->{convert_srid} == 1) {
-				$spatial_srid = "SELECT COALESCE(sdo_cs.map_oracle_srid_to_epsg(SRID), $self->{default_srid}) FROM ALL_SDO_GEOM_METADATA WHERE TABLE_NAME='\U$table\E' AND COLUMN_NAME='\U$realcolname\E' AND OWNER='\U$self->{tables}{$table}{table_info}{owner}\E'";
+			# Set SQL query to get the SRID of the column
+			if ($self->{convert_srid} > 1) {
+
+				$spatial_srid = $self->{convert_srid};
+
+			} else {
+
+				$spatial_srid = "SELECT COALESCE(SRID, $self->{default_srid}) FROM ALL_SDO_GEOM_METADATA WHERE TABLE_NAME='\U$table\E' AND COLUMN_NAME='\U$realcolname\E' AND OWNER='\U$self->{tables}{$table}{table_info}{owner}\E'";
+				if ($self->{convert_srid} == 1) {
+					$spatial_srid = "SELECT COALESCE(sdo_cs.map_oracle_srid_to_epsg(SRID), $self->{default_srid}) FROM ALL_SDO_GEOM_METADATA WHERE TABLE_NAME='\U$table\E' AND COLUMN_NAME='\U$realcolname\E' AND OWNER='\U$self->{tables}{$table}{table_info}{owner}\E'";
+				}
 
 				my $sth2 = $self->{dbh}->prepare($spatial_srid);
 				if (!$sth2) {
@@ -4973,35 +4994,26 @@ sub _howto_get_data
 					push(@result, $r->[0]) if ($r->[0] =~ /\d+/);
 				}
 				$sth2->finish();
-				$spatial_srid = $result[0] || 0;
-
-			} elsif ($self->{convert_srid} > 1) {
-
-				$spatial_srid = $self->{convert_srid};
+				$spatial_srid = $result[0] || $self->{default_srid} || '0';
 
 			}
-			if (!$self->{use_sc40_package}) {
 
-				if ($self->{use_ewkb}) {
+			# With INSERT statement we always use WKT
+			if ($self->{type} eq 'INSERT') {
+				if ($self->{geometry_extract_type} eq 'WKB') {
 					$str .= "CASE WHEN $name->[$k]->[0] IS NOT NULL THEN SDO_UTIL.TO_WKBGEOMETRY($name->[$k]->[0]) ELSE NULL END,";
+				} elsif ($self->{geometry_extract_type} eq 'INTERNAL') {
+					$str .= "CASE WHEN $name->[$k]->[0] IS NOT NULL THEN $name->[$k]->[0] ELSE NULL END,";
 				} else {
-					if ($self->{type} eq 'INSERT') {
-						$str .= "CASE WHEN $name->[$k]->[0] IS NOT NULL THEN 'ST_GeomFromText('''||SDO_UTIL.TO_WKTGEOMETRY($name->[$k]->[0])||''','||($spatial_srid)||')' ELSE NULL END,";
-					} else {
-						$str .= "CASE WHEN $name->[$k]->[0] IS NOT NULL THEN 'SRID=' || ($spatial_srid) || ';' || SDO_UTIL.TO_WKTGEOMETRY($name->[$k]->[0]) ELSE NULL END,";
-					}
+					$str .= "CASE WHEN $name->[$k]->[0] IS NOT NULL THEN 'ST_GeomFromText('''||SDO_UTIL.TO_WKTGEOMETRY($name->[$k]->[0])||''','||($spatial_srid)||')' ELSE NULL END,";
 				}
-
 			} else {
-				my $schem = '';
-				if ($self->{use_sc40_package} =~ /\D\D+/) {
-					$schem = $self->{use_sc40_package}.'.';
-				}
-
-				if ($self->{type} eq 'INSERT') {
-					$str .= "CASE WHEN $name->[$k]->[0] IS NOT NULL THEN 'ST_GeomFromText('''||" . $schem . "SC4O.ST_AsText($name->[$k]->[0])||''','||$spatial_srid||')' ELSE NULL END,";
+				if ($self->{geometry_extract_type} eq 'WKB') {
+					$str .= "CASE WHEN $name->[$k]->[0] IS NOT NULL THEN SDO_UTIL.TO_WKBGEOMETRY($name->[$k]->[0]) ELSE NULL END,";
+				} elsif ($self->{geometry_extract_type} eq 'INTERNAL') {
+					$str .= "CASE WHEN $name->[$k]->[0] IS NOT NULL THEN $name->[$k]->[0] ELSE NULL END,";
 				} else {
-					$str .= "CASE WHEN $name->[$k]->[0] IS NOT NULL THEN 'SRID=' || $spatial_srid || ';' || " . $schem . "SC4O.ST_AsText($name->[$k]->[0]) ELSE NULL END,";
+					$str .= "CASE WHEN $name->[$k]->[0] IS NOT NULL THEN SDO_UTIL.TO_WKTGEOMETRY($name->[$k]->[0]) ELSE NULL END,";
 				}
 			}
 
@@ -5049,6 +5061,8 @@ VARCHAR2
 	}
 	if ($part_name) {
 		$alias = "PARTITION($part_name)";
+	} else {
+		$alias = 't';
 	}
 	$str .= " FROM $realtable $alias";
 	if (exists $self->{where}{"\L$table\E"} && $self->{where}{"\L$table\E"}) {
@@ -5900,7 +5914,7 @@ sub _get_views
 	if ($self->{schema}) {
 		$owner .= "WHERE A.OWNER='$self->{schema}' ";
 	} else {
-	    $owner .= "WHERE A.OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "') ";
+            $owner .= "WHERE A.OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "') ";
 	}
 
 	my $join_segment = '';
@@ -5946,10 +5960,10 @@ sub _get_views
 		if (!grep($row->[0] =~ /^$_$/, @{$self->{view_as_table}})) {
 			next if ($self->skip_this_object('VIEW', $row->[0]));
 		}
+
 		$data{$row->[0]}{text} = $row->[1];
 		$data{$row->[0]}{comment} = $comments{$row->[0]}{comment};
 		@{$data{$row->[0]}{alias}} = $self->_alias_info ($row->[0]);
-
 	}
 
 	return %data;
@@ -6583,7 +6597,26 @@ sub format_data_row
 
 	for (my $idx = 0; $idx < scalar(@$data_types); $idx++) {
 		my $data_type = $data_types->[$idx] || '';
-		if ($row->[$idx] =~ /^ARRAY\(0x/) {
+		if ($row->[$idx] && $src_data_types->[$idx] =~ /GEOMETRY/) {
+			if ($self->{type} ne 'INSERT') {
+				if ($self->{geometry_extract_type} eq 'INTERNAL') {
+					use Ora2Pg::GEOM;
+					my $geom_obj = new Ora2Pg::GEOM('srid' => $self->{spatial_srid}{$table}->[$idx]);
+					$row->[$idx] = $geom_obj->parse_sdo_geometry($row->[$idx]);
+				} elsif ($self->{geometry_extract_type} eq 'WKB') {
+					$row->[$idx] = unpack('H*', $row->[$idx]);
+				}
+				$row->[$idx]  = 'SRID=' . $self->{spatial_srid}{$table}->[$idx] . ';' . $row->[$idx];
+			} elsif ($self->{geometry_extract_type} eq 'WKB') {
+				$row->[$idx] = unpack('H*', $row->[$idx]);
+				$row->[$idx]  = "'SRID=" . $self->{spatial_srid}{$table}->[$idx] . ';' . $row->[$idx] . "'";
+			} elsif ($self->{geometry_extract_type} eq 'INTERNAL') {
+				use Ora2Pg::GEOM;
+				my $geom_obj = new Ora2Pg::GEOM('srid' => $self->{spatial_srid}{$table}->[$idx]);
+				$row->[$idx] = $geom_obj->parse_sdo_geometry($row->[$idx]);
+				$row->[$idx] = "ST_GeomFromText('" . $row->[$idx] . "', $self->{spatial_srid}{$table}->[$idx])";
+			}
+		} elsif ($row->[$idx] =~ /^ARRAY\(0x/) {
 			my @type_col = ();
 			my $is_nested = 0;
 			for (my $i = 0;  $i <= $#{$row->[$idx]}; $i++) {
@@ -6626,7 +6659,7 @@ sub format_data_type
 	if ($action ne 'COPY') {
 		if (!defined $col) {
 			$col = 'NULL';
-		} elsif ( ($src_type =~ /geometry/i) && ($self->{use_ewkb}) ) {
+		} elsif ( ($src_type =~ /geometry/i) && ($self->{geometry_extract_type} eq 'WKB') ) {
 			$col = "St_GeomFromWKB('\\x" . unpack('H*', $col) . "', $self->{spatial_srid}{$table}->[$idx])";
 		} elsif ($data_type eq 'bytea') {
 			$col = escape_bytea($col);
@@ -6670,7 +6703,7 @@ sub format_data_type
 	} else {
 		if (!defined $col) {
 			$col = '\N';
-		} elsif ( ($src_type =~ /geometry/i) && ($self->{use_ewkb}) ) {
+		} elsif ( ($src_type =~ /geometry/i) && ($self->{geometry_extract_type} eq 'WKB') ) {
 			$col = 'SRID=' . $self->{spatial_srid}{$table}->[$idx] . ';' . unpack('H*', $col);
 		} elsif ($data_type eq 'boolean') {
 			if (exists $self->{ora_boolean_values}{lc($col)}) {
@@ -6678,7 +6711,6 @@ sub format_data_type
 			}
 		} elsif ($data_type !~ /(char|date|time|text|bytea|xml)/) {
 			# covered now by the call to _numeric_format()
-			#$col =~ s/,/\./;
 			$col =~ s/\~/inf/;
 			$col = '\N' if ($col eq '');
 		} elsif ($data_type eq 'bytea') {
@@ -7131,6 +7163,7 @@ sub _convert_function
 
 		#$func_declare = $self->_convert_declare($func_declare);
 		$func_declare = Ora2Pg::PLSQL::replace_sql_type($func_declare, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type});
+
 		# Replace PL/SQL code into PL/PGSQL similar code
 		$func_declare = Ora2Pg::PLSQL::plsql_to_plpgsql($func_declare, $self->{allow_code_break},$self->{null_equal_empty});
 		if ($func_code) {
@@ -7139,6 +7172,7 @@ sub _convert_function
 	} else {
 		return $plsql;
 	}
+
 	if ($self->{preserve_case}) {
 		$func_name= "\"$func_name\"";
 		$func_name = "\"$pname\"" . '.' . $func_name if ($pname);
@@ -7191,6 +7225,7 @@ sub _convert_function
 		$function .= "\n\$body\$\nLANGUAGE PLPGSQL$immutable;\n";
 		$function = "\n$func_before$function";
 	}
+
 	if ($pname && $self->{file_per_function} && !$self->{pg_dsn}) {
 		$func_name =~ s/^"*$pname"*\.//i;
 		$func_name =~ s/"//g; # Remove case sensitivity quoting
