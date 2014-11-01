@@ -1042,21 +1042,6 @@ data into a WKT representation, the translation is done on Ora2Pg side.
 This is a work in progress, please validate your exported data geometries
 before use.
 
-=item USE_SC40_PACKAGE
-
-If you want to replace call to SDO_UTIL.TO_WKTGEOMETRY() by a call to the
-more efficient methode SC4O.ST_AsText(), especially for 3D geomrtry, activate
-this directive. You must install the SC40 package before, this is the
-SpatialDB Advisor extension developped by Simon Greener and available at
-http://www.spatialdbadvisor.com/source_code_form
-
-If SC40 is not installed in the same schema, you can set the value to the
-schema name. Example:
-
-	     USE_SC40_PACKAGE	CODESYS
-
-The function will be called as CODESYS.SC4O.ST_AsText().
-
 =item POSTGIS_SCHEMA
 
 Use this directive to add a specific schema to the search path to look

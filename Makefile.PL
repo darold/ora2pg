@@ -605,15 +605,6 @@ DEFAULT_SRID		4326
 # before use.
 GEOMETRY_EXTRACT_TYPE	WKT
 
-# If you want to replace call to SDO_UTIL.TO_WKTGEOMETRY() by a call to the
-# more efficient methode SC4O.ST_AsText(), especially for 3D geomrtry, activate
-# this directive. You must install the SC40 package before, this is the
-# SpatialDB Advisor extension developped by Simon Greener and available at
-# http://www.spatialdbadvisor.com/source_code_form
-# If SC40 is not installed in the same schema, you can set the value to the
-# schema name.
-USE_SC40_PACKAGE	0
-
 # Use this directive to add a specific schema to the search path to look
 # for PostGis functions.
 #POSTGIS_SCHEMA		
