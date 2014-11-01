@@ -439,6 +439,7 @@ sub replace_sdo_function
 {
 	my $str = shift;
 
+	$str =~ s/SDO_GEOM\.RELATE/ST_Relate/igs;
 	$str =~ s/SDO_GEOM\.//igs;
 	$str =~ s/SDO_DISTANCE/ST_Distance/igs;
 	$str =~ s/SDO_BUFFER/ST_Buffer/igs;
@@ -446,13 +447,26 @@ sub replace_sdo_function
 	$str =~ s/SDO_UTIL\.GETVERTICES/ST_DumpPoints/igs;
 	$str =~ s/SDO_TRANSLATE/ST_Translate/igs;
 	$str =~ s/SDO_SIMPLIFY/ST_Simplify/igs;
-	# Note that with :
+	$str =~ s/SDO_AREA/ST_Area/igs;
+	$str =~ s/SDO_CONVEXHULL/ST_ConvexHull/igs;
+	$str =~ s/SDO_DIFFERENCE/ST_Difference/igs;
+	$str =~ s/SDO_INTERSECTION/ST_Intersection/igs;
+	$str =~ s/SDO_LENGTH/ST_Length/igs;
+
+	# Note that with ST_DumpPoints and :
 	# TABLE(SDO_UTIL.GETVERTICES(C.GEOLOC)) T
 	# T.X, T.Y, T.ID must be replaced manually as ST_X(T.geom) X, ST_Y(T.geom) Y, (T).path[1] ID
-	# Remove tolerance parameter
-	$str =~ s/(ST_Distance\s*\([^\(\)]+),\s*[\d\.]+\s*\)/$1\)/igs;
+
+	$str =~ s/(ST_Distance\s*\([^\(\)]+),\s*[^,\)]+\s*\)/$1\)/igs;
 	$str =~ s/(ST_Buffer\s*\([^\(,]+,[^\(,]+),\s*[^\(,\)]+/$1/igs;
-	$str =~ s/(ST_Centroid\s*\([^\(\)]+),\s*[\d\.]+\s*\)/$1\)/igs;
+	$str =~ s/(ST_Centroid\s*\([^\(\)]+),\s*[^,\)]+\s*\)/$1\)/igs;
+	$str =~ s/(ST_Relate\s*\([^\(,]+),[^\(,]+(,\s*[^\(,\)]+),\s*[\d\.]+\s*\)/$1$2\)/igs;
+	$str =~ s/(ST_Relate\s*\([^\(,]+),[^\(,]+(,\s*[^\(,\)]+)/$1$2/igs;
+	$str =~ s/(ST_Area\s*\([^\(\)]+),\s*[^,\)]+\s*\)/$1\)/igs;
+	$str =~ s/(ST_ConvexHull\s*\([^\(\)]+),\s*[^,\)]+\s*\)/$1\)/igs;
+	$str =~ s/(ST_Difference\s*\([^\(,]+,[^\(,]+),\s*[^,\)]+\s*\)/$1\)/igs;
+	$str =~ s/(ST_Intersection\s*\([^\(,]+,[^\(,]+),\s*[^,\)]+\s*\)/$1\)/igs;
+	$str =~ s/(ST_Length\s*\([^\(\)]+),\s*[^,\)]+\s*\)/$1\)/igs;
 
 	return $str;
 }
