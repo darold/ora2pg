@@ -440,6 +440,8 @@ sub replace_sdo_function
 	my $str = shift;
 
 	$str =~ s/SDO_GEOM\.RELATE/ST_Relate/igs;
+	$str =~ s/SDO_GEOM\.VALIDATE_GEOMETRY_WITH_CONTEXT/ST_IsValidReason/igs;
+	$str =~ s/SDO_GEOM\.WITHIN_DISTANCE/ST_DWithin/igs;
 	$str =~ s/SDO_GEOM\.//igs;
 	$str =~ s/SDO_DISTANCE/ST_Distance/igs;
 	$str =~ s/SDO_BUFFER/ST_Buffer/igs;
@@ -452,21 +454,49 @@ sub replace_sdo_function
 	$str =~ s/SDO_DIFFERENCE/ST_Difference/igs;
 	$str =~ s/SDO_INTERSECTION/ST_Intersection/igs;
 	$str =~ s/SDO_LENGTH/ST_Length/igs;
+	$str =~ s/SDO_POINTONSURFACE/ST_PointOnSurface/igs;
+	$str =~ s/SDO_UNION/ST_Union/igs;
+	$str =~ s/SDO_XOR/ST_SymDifference/igs;
 
 	# Note that with ST_DumpPoints and :
 	# TABLE(SDO_UTIL.GETVERTICES(C.GEOLOC)) T
 	# T.X, T.Y, T.ID must be replaced manually as ST_X(T.geom) X, ST_Y(T.geom) Y, (T).path[1] ID
+	my $field = '\s*[^\(\),]+\s*';
+	my $num_field = '\s*[\d\.]+\s*';
 
-	$str =~ s/(ST_Distance\s*\([^\(\)]+),\s*[^,\)]+\s*\)/$1\)/igs;
-	$str =~ s/(ST_Buffer\s*\([^\(,]+,[^\(,]+),\s*[^\(,\)]+/$1/igs;
-	$str =~ s/(ST_Centroid\s*\([^\(\)]+),\s*[^,\)]+\s*\)/$1\)/igs;
-	$str =~ s/(ST_Relate\s*\([^\(,]+),[^\(,]+(,\s*[^\(,\)]+),\s*[\d\.]+\s*\)/$1$2\)/igs;
-	$str =~ s/(ST_Relate\s*\([^\(,]+),[^\(,]+(,\s*[^\(,\)]+)/$1$2/igs;
-	$str =~ s/(ST_Area\s*\([^\(\)]+),\s*[^,\)]+\s*\)/$1\)/igs;
-	$str =~ s/(ST_ConvexHull\s*\([^\(\)]+),\s*[^,\)]+\s*\)/$1\)/igs;
-	$str =~ s/(ST_Difference\s*\([^\(,]+,[^\(,]+),\s*[^,\)]+\s*\)/$1\)/igs;
+	# SDO_GEOM.RELATE(geom1 IN SDO_GEOMETRY,mask IN VARCHAR2,geom2 IN SDO_GEOMETRY,tol IN NUMBER)
+	$str =~ s/(ST_Relate\s*\($field),$field,($field),($field)\)/$1,$2\)/igs;
+	# SDO_GEOM.RELATE(geom1 IN SDO_GEOMETRY,dim1 IN SDO_DIM_ARRAY,mask IN VARCHAR2,geom2 IN SDO_GEOMETRY,dim2 IN SDO_DIM_ARRAY)
+	$str =~ s/(ST_Relate\s*\($field),$field,$field,($field),$field\)/$1,$2\)/igs;
+	# SDO_GEOM.SDO_AREA(geom IN SDO_GEOMETRY, tol IN NUMBER [, unit IN VARCHAR2])
+	# SDO_GEOM.SDO_AREA(geom IN SDO_GEOMETRY,dim IN SDO_DIM_ARRAY [, unit IN VARCHAR2])
+	$str =~ s/(ST_Area\s*\($field),[^\)]+\)/$1\)/igs;
+	# SDO_GEOM.SDO_BUFFER(geom IN SDO_GEOMETRY,dist IN NUMBER, tol IN NUMBER [, params IN VARCHAR2])
+	$str =~ s/(ST_Buffer\s*\($field,$num_field),[^\)]+\)/$1\)/igs;
+	# SDO_GEOM.SDO_BUFFER(geom IN SDO_GEOMETRY,dim IN SDO_DIM_ARRAY,dist IN NUMBER [, params IN VARCHAR2])
+	$str =~ s/(ST_Buffer\s*\($field),$field,($num_field)[^\)]*\)/$1,$2\)/igs;
+	# SDO_GEOM.SDO_CENTROID(geom1 IN SDO_GEOMETRY,tol IN NUMBER)
+	# SDO_GEOM.SDO_CENTROID(geom1 IN SDO_GEOMETRY,dim1 IN SDO_DIM_ARRAY)
+	$str =~ s/(ST_Centroid\s*\($field),$field\)/$1\)/igs;
+	# SDO_GEOM.SDO_CONVEXHULL(geom1 IN SDO_GEOMETRY,tol IN NUMBER)
+	# SDO_GEOM.SDO_CONVEXHULL(geom1 IN SDO_GEOMETRY,dim1 IN SDO_DIM_ARRAY)
+	$str =~ s/(ST_ConvexHull\s*\($field),$field\)/$1\)/igs;
+	# SDO_GEOM.SDO_DIFFERENCE(geom1 IN SDO_GEOMETRY,geom2 IN SDO_GEOMETRY,tol IN NUMBER)
+	$str =~ s/(ST_Difference\s*\($field,$field),$field\)/$1\)/igs;
+	# SDO_GEOM.SDO_DIFFERENCE(geom1 IN SDO_GEOMETRY,dim1 IN SDO_DIM_ARRAY,geom2 IN SDO_GEOMETRY,dim2 IN SDO_DIM_ARRAY)
+	$str =~ s/(ST_Difference\s*\($field),$field,($field),$field\)/$1,$2\)/igs;
+	# SDO_GEOM.SDO_DISTANCE(geom1 IN SDO_GEOMETRY,geom2 IN SDO_GEOMETRY,tol IN NUMBER [, unit IN VARCHAR2])
+	$str =~ s/(ST_Distance\s*\($field,$field),($num_field)[^\)]*\)/$1\)/igs;
+	# SDO_GEOM.SDO_DISTANCE(geom1 IN SDO_GEOMETRY,dim1 IN SDO_DIM_ARRAY,geom2 IN SDO_GEOMETRY,dim2 IN SDO_DIM_ARRAY [, unit IN VARCHAR2])
+	$str =~ s/(ST_Distance\s*\($field),$field,($field),($field)[^\)]*\)/$1,$2\)/igs;
+
 	$str =~ s/(ST_Intersection\s*\([^\(,]+,[^\(,]+),\s*[^,\)]+\s*\)/$1\)/igs;
 	$str =~ s/(ST_Length\s*\([^\(\)]+),\s*[^,\)]+\s*\)/$1\)/igs;
+	$str =~ s/(ST_PointOnSurface\s*\([^\(\)]+),\s*[^,\)]+\s*\)/$1\)/igs;
+	$str =~ s/(ST_Union\s*\([^\(,]+,[^\(,]+),\s*[^,\)]+\s*\)/$1\)/igs;
+	$str =~ s/(ST_SymDifference\s*\([^\(,]+,[^\(,]+),\s*[^,\)]+\s*\)/$1\)/igs;
+	$str =~ s/(ST_IsValidReason\s*\([^\(\)]+),\s*[^,\)]+\s*\)/$1\)/igs;
+	$str =~ s/(ST_DWithin\s*\([^\(,]+)(,[^\(,]+)(,[^\(,\)]+),[^,\)]+\)/$1$3$2\)/igs;
 
 	return $str;
 }
