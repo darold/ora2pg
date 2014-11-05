@@ -109,7 +109,7 @@ $FCT_TEST_SCORE = 2;
 	'NEXT_DAY' => 1,
 	'MONTHS_BETWEEN' => 1,
 	'NVL2' => 1,
-	'SDO_' => 6,
+	'SDO_' => 3,
 	'PRAGMA' => 6,
 );
 
@@ -412,7 +412,10 @@ sub plsql_to_plpgsql
 
 		# Replace decode("user_status",'active',"username",null)
 		# PostgreSQL (CASE WHEN "user_status"='ACTIVE' THEN "username" ELSE NULL END)
-		$str =~ s/decode[\s\t]*\([\s\t]*([^,\(]*),[\s\t]*([^,\(]*),[\s\t]*([^,\(]*),[\s\t]*([^\(\)]*)\)/\(CASE WHEN $1=$2 THEN $3 ELSE $4 END\)/igs;
+		my $field = '\s*([^,\)\(]+)\s*';
+		$str =~ s/DECODE\s*\($field,$field,$field,$field\)/\(CASE WHEN $1=$2 THEN $3 ELSE $4 END\)/igs;
+		$str =~ s/DECODE\s*\($field,$field,$field,$field,$field,$field\)/\(CASE WHEN $1=$2 THEN $3 WHEN $1=$4 THEN $5 ELSE $6 END\)/igs;
+		$str =~ s/DECODE\s*\($field,$field,$field,$field,$field,$field,$field,$field\)/\(CASE WHEN $1=$2 THEN $3 WHEN $1=$4 THEN $5 WHEN $1=$6 THEN $7 ELSE $8 END\)/igs;
 
 	}
 
