@@ -391,8 +391,11 @@ sub plsql_to_plpgsql
 	# Replace sys_context call to the postgresql equivalent
 	$str = &replace_sys_context($str);
 
-	# Replace SDO_GEOM to the postgresql equivalent
+	# Replace SDO_GEOM to the postgis equivalent
 	$str = &replace_sdo_function($str);
+
+	# Replace Spatial Operator to the postgis equivalent
+	$str = &replace_sdo_operator($str);
 
 	if ($allow_code_break) {
 		# Change trunc() to date_trunc('day', field)
@@ -514,6 +517,54 @@ sub replace_sdo_function
 	$str =~ s/(ST_DWithin\s*\($field),$field,($field),($field),($field)[^\)]*\)/$1,$3,$2\)/igsgs;
 	# SDO_GEOM.WITHIN_DISTANCE(geom1 IN SDO_GEOMETRY,dist IN NUMBER,geom2 IN SDO_GEOMETRY, tol IN NUMBER [, units IN VARCHAR2])
 	$str =~ s/(ST_DWithin\s*\($field)(,$field)(,$field),($field)[^\)]*\)/$1$3$2\)/igs;
+
+	return $str;
+}
+
+sub replace_sdo_operator
+{
+	my $str = shift;
+
+	# SDO_CONTAINS(geometry1, geometry2) = 'TRUE'
+	$str =~ s/SDO_CONTAINS\s*\((.*?)\)\s*=\s*[']+TRUE[']+/ST_Contains($1)/igs;
+	$str =~ s/SDO_CONTAINS\s*\((.*?)\)\s*=\s*[']+FALSE[']+/NOT ST_Contains($1)/igs;
+	$str =~ s/SDO_CONTAINS\s*\(([^\)]+)\)/ST_Contains($1)/igs;
+	# SDO_RELATE(geometry1, geometry2, param) = 'TRUE'
+	$str =~ s/SDO_RELATE\s*\((.*?)\)\s*=\s*[']+TRUE[']+/ST_Relate($1)/igs;
+	$str =~ s/SDO_RELATE\s*\((.*?)\)\s*=\s*[']+FALSE[']+/NOT ST_Relate($1)/igs;
+	$str =~ s/SDO_RELATE\s*\(([^\)]+)\)/ST_Relate($1)/igs;
+	# SDO_WITHIN_DISTANCE(geometry1, aGeom, params) = 'TRUE'
+	$str =~ s/SDO_WITHIN_DISTANCE\s*\((.*?)\)\s*=\s*[']+TRUE[']+/ST_DWithin($1)/igs;
+	$str =~ s/SDO_WITHIN_DISTANCE\s*\((.*?)\)\s*=\s*[']+FALSE[']+/NOT ST_DWithin($1)/igs;
+	$str =~ s/SDO_WITHIN_DISTANCE\s*\(([^\)]+)\)/ST_DWithin($1)/igs;
+	# SDO_TOUCH(geometry1, geometry2) = 'TRUE'
+	$str =~ s/SDO_TOUCH\s*\((.*?)\)\s*=\s*[']+TRUE[']+/ST_Touches($1)/igs;
+	$str =~ s/SDO_TOUCH\s*\((.*?)\)\s*=\s*[']+FALSE[']+/NOT ST_Touches($1)/igs;
+	$str =~ s/SDO_TOUCH\s*\(([^\)]+)\)/ST_Touches($1)/igs;
+	# SDO_OVERLAPS(geometry1, geometry2) = 'TRUE'
+	$str =~ s/SDO_OVERLAPS\s*\((.*?)\)\s*=\s*[']+TRUE[']+/ST_Overlaps($1)/igs;
+	$str =~ s/SDO_OVERLAPS\s*\((.*?)\)\s*=\s*[']+FALSE[']+/NOT ST_Overlaps($1)/igs;
+	$str =~ s/SDO_OVERLAPS\s*\(([^\)]+)\)/ST_Overlaps($1)/igs;
+	# SDO_INSIDE(geometry1, geometry2) = 'TRUE'
+	$str =~ s/SDO_INSIDE\s*\((.*?)\)\s*=\s*[']+TRUE[']+/ST_Within($1)/igs;
+	$str =~ s/SDO_INSIDE\s*\((.*?)\)\s*=\s*[']+FALSE[']+/NOT ST_Within($1)/igs;
+	$str =~ s/SDO_INSIDE\s*\(([^\)]+)\)/ST_Within($1)/igs;
+	# SDO_EQUAL(geometry1, geometry2) = 'TRUE'
+	$str =~ s/SDO_EQUAL\s*\((.*?)\)\s*=\s*[']+TRUE[']+/ST_Equals($1)/igs;
+	$str =~ s/SDO_EQUAL\s*\((.*?)\)\s*=\s*[']+FALSE[']+/NOT ST_Equals($1)/igs;
+	$str =~ s/SDO_EQUAL\s*\(([^\)]+)\)/ST_Equals($1)/igs;
+	# SDO_COVERS(geometry1, geometry2) = 'TRUE'
+	$str =~ s/SDO_COVERS\s*\((.*?)\)\s*=\s*[']+TRUE[']+/ST_Covers($1)/igs;
+	$str =~ s/SDO_COVERS\s*\((.*?)\)\s*=\s*[']+FALSE[']+/NOT ST_Covers($1)/igs;
+	$str =~ s/SDO_COVERS\s*\(([^\)]+)\)/ST_Covers($1)/igs;
+	# SDO_COVEREDBY(geometry1, geometry2) = 'TRUE'
+	$str =~ s/SDO_COVEREDBY\s*\((.*?)\)\s*=\s*[']+TRUE[']+/ST_CoveredBy($1)/igs;
+	$str =~ s/SDO_COVEREDBY\s*\((.*?)\)\s*=\s*[']+FALSE[']+/NOT ST_CoveredBy($1)/igs;
+	$str =~ s/SDO_COVEREDBY\s*\(([^\)]+)\)/ST_CoveredBy($1)/igs;
+	# SDO_ANYINTERACT(geometry1, geometry2) = 'TRUE'
+	$str =~ s/SDO_ANYINTERACT\s*\((.*?)\)\s*=\s*[']+TRUE[']+/ST_Intersects($1)/igs;
+	$str =~ s/SDO_ANYINTERACT\s*\((.*?)\)\s*=\s*[']+FALSE[']+/NOT ST_Intersects($1)/igs;
+	$str =~ s/SDO_ANYINTERACT\s*\(([^\)]+)\)/ST_Intersects($1)/igs;
 
 	return $str;
 }
