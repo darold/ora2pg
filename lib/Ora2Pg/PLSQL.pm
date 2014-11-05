@@ -489,14 +489,31 @@ sub replace_sdo_function
 	$str =~ s/(ST_Distance\s*\($field,$field),($num_field)[^\)]*\)/$1\)/igs;
 	# SDO_GEOM.SDO_DISTANCE(geom1 IN SDO_GEOMETRY,dim1 IN SDO_DIM_ARRAY,geom2 IN SDO_GEOMETRY,dim2 IN SDO_DIM_ARRAY [, unit IN VARCHAR2])
 	$str =~ s/(ST_Distance\s*\($field),$field,($field),($field)[^\)]*\)/$1,$2\)/igs;
-
-	$str =~ s/(ST_Intersection\s*\([^\(,]+,[^\(,]+),\s*[^,\)]+\s*\)/$1\)/igs;
-	$str =~ s/(ST_Length\s*\([^\(\)]+),\s*[^,\)]+\s*\)/$1\)/igs;
-	$str =~ s/(ST_PointOnSurface\s*\([^\(\)]+),\s*[^,\)]+\s*\)/$1\)/igs;
-	$str =~ s/(ST_Union\s*\([^\(,]+,[^\(,]+),\s*[^,\)]+\s*\)/$1\)/igs;
-	$str =~ s/(ST_SymDifference\s*\([^\(,]+,[^\(,]+),\s*[^,\)]+\s*\)/$1\)/igs;
-	$str =~ s/(ST_IsValidReason\s*\([^\(\)]+),\s*[^,\)]+\s*\)/$1\)/igs;
-	$str =~ s/(ST_DWithin\s*\([^\(,]+)(,[^\(,]+)(,[^\(,\)]+),[^,\)]+\)/$1$3$2\)/igs;
+	# SDO_GEOM.SDO_INTERSECTION(geom1 IN SDO_GEOMETRY,geom2 IN SDO_GEOMETRY,tol IN NUMBER)
+	$str =~ s/(ST_Intersection\s*\($field,$field),$field\)/$1\)/igs;
+	# SDO_GEOM.SDO_INTERSECTION(geom1 IN SDO_GEOMETRY,dim1 IN SDO_DIM_ARRAY,geom2 IN SDO_GEOMETRY,dim2 IN SDO_DIM_ARRAY)
+	$str =~ s/(ST_Intersection\s*\($field),$field,($field),$field\)/$1,$2\)/igs;
+	# SDO_GEOM.SDO_LENGTH(geom IN SDO_GEOMETRY, dim IN SDO_DIM_ARRAY [, unit IN VARCHAR2])
+	# SDO_GEOM.SDO_LENGTH(geom IN SDO_GEOMETRY, tol IN NUMBER [, unit IN VARCHAR2])
+	$str =~ s/(ST_Length\s*\($field),($field)[^\)]*\)/$1\)/igs;
+	# SDO_GEOM.SDO_POINTONSURFACE(geom1 IN SDO_GEOMETRY, tol IN NUMBER)
+	# SDO_GEOM.SDO_POINTONSURFACE(geom1 IN SDO_GEOMETRY, dim1 IN SDO_DIM_ARRAY)
+	$str =~ s/(ST_PointOnSurface\s*\($field),$field\)/$1\)/igs;
+	# SDO_GEOM.SDO_UNION(geom1 IN SDO_GEOMETRY, geom2 IN SDO_GEOMETRY, tol IN NUMBER)
+	$str =~ s/(ST_Union\s*\($field,$field),$field\)/$1\)/igs;
+	# SDO_GEOM.SDO_UNION(geom1 IN SDO_GEOMETRY,dim1 IN SDO_DIM_ARRAY,geom2 IN SDO_GEOMETRY,dim2 IN SDO_DIM_ARRAY)
+	$str =~ s/(ST_Union\s*\($field),$field,($field),$field\)/$1,$2\)/igs;
+	# SDO_GEOM.SDO_XOR(geom1 IN SDO_GEOMETRY,geom2 IN SDO_GEOMETRY, tol IN NUMBER)
+	$str =~ s/(ST_SymDifference\s*\($field,$field),$field\)/$1\)/igs;
+	# SDO_GEOM.SDO_XOR(geom1 IN SDO_GEOMETRY,dim1 IN SDO_DIM_ARRAY,geom2 IN SDO_GEOMETRY,dim2 IN SDO_DIM_ARRAY)
+	$str =~ s/(ST_SymDifference\s*\($field),$field,($field),$field\)/$1,$2\)/igs;
+	# SDO_GEOM.VALIDATE_GEOMETRY_WITH_CONTEXT(geom1 IN SDO_GEOMETRY, tol IN NUMBER)
+	# SDO_GEOM.VALIDATE_GEOMETRY_WITH_CONTEXT(geom1 IN SDO_GEOMETRY, dim1 IN SDO_DIM_ARRAY)
+	$str =~ s/(ST_IsValidReason\s*\($field),$field\)/$1\)/igs;
+	# SDO_GEOM.WITHIN_DISTANCE(geom1 IN SDO_GEOMETRY,dim1 IN SDO_DIM_ARRAY,dist IN NUMBER,geom2 IN SDO_GEOMETRY,dim2 IN SDO_DIM_ARRAY [, units IN VARCHAR2])
+	$str =~ s/(ST_DWithin\s*\($field),$field,($field),($field),($field)[^\)]*\)/$1,$3,$2\)/igsgs;
+	# SDO_GEOM.WITHIN_DISTANCE(geom1 IN SDO_GEOMETRY,dist IN NUMBER,geom2 IN SDO_GEOMETRY, tol IN NUMBER [, units IN VARCHAR2])
+	$str =~ s/(ST_DWithin\s*\($field)(,$field)(,$field),($field)[^\)]*\)/$1$3$2\)/igs;
 
 	return $str;
 }
