@@ -54,6 +54,7 @@ Features included:
 	- Migration cost assessment of PL/SQL code from a file.
 	- Migration cost assessment of Oracle SQL queries stored in a file.
 	- Generate XML ktr files to be used with Penthalo Data Integrator (Kettle)
+	- Export Oracle locator and spatial geometries into PostGis.
 
 Ora2Pg do its best to automatically convert your Oracle database to PostgreSQL
 but there's still manual works to do. The Oracle specific PL/SQL code generated
@@ -176,6 +177,21 @@ The full control of the Oracle database migration is taken though a single
 configuration file named ora2pg.conf. The format of this file consist in a
 directive name in upper case followed by tab character and a value.
 Comments are lines beginning with a #.
+
+There's no specific order to place the configuration directives, they are
+set at the time they are read in the configuration file.
+
+For configuration directives that just take a single value, you can use them
+multiple time in the configuration file but only the last occurence found
+in the file will be used. For configuration directives that allow a list
+of value, you can use it multiple time, the values will be appended to the
+list. If you use the IMPORT directive to load a custom configuration file,
+directives defined in this file will be stores from the place the IMPORT
+directive is found, so it is better to put it at the end of the configuration
+file.
+
+Values set in command line options will override values from the configuration
+file.
 
 =head2 Ora2Pg usage
 
@@ -316,7 +332,8 @@ or
 	dbi:Oracle:DB_SID
 
 for the second notation the SID should be declared in the well known file
-$ORACLE_HOME/network/admin/tnsnames.ora.
+$ORACLE_HOME/network/admin/tnsnames.ora or in the path given to the TNS_ADMIN
+environment variable.
 
 =item ORACLE_USER et ORACLE_PWD
 
