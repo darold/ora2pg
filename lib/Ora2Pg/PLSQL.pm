@@ -397,6 +397,17 @@ sub plsql_to_plpgsql
 	# Replace Spatial Operator to the postgis equivalent
 	$str = &replace_sdo_operator($str);
 
+	# Replace decode("user_status",'active',"username",null)
+	# PostgreSQL (CASE WHEN "user_status"='ACTIVE' THEN "username" ELSE NULL END)
+	my $field = '\s*([^,\)\(]+)\s*';
+	$str =~ s/DECODE\s*\($field,$field,$field,$field\)/\(CASE WHEN $1=$2 THEN $3 ELSE $4 END\)/igs;
+	$str =~ s/DECODE\s*\($field,$field,$field,$field,$field\)/\(CASE WHEN $1=$2 THEN $3 WHEN $1=$4 THEN $5 END\)/igs;
+	$str =~ s/DECODE\s*\($field,$field,$field,$field,$field,$field\)/\(CASE WHEN $1=$2 THEN $3 WHEN $1=$4 THEN $5 ELSE $6 END\)/igs;
+	$str =~ s/DECODE\s*\($field,$field,$field,$field,$field,$field,$field\)/\(CASE WHEN $1=$2 THEN $3 WHEN $1=$4 THEN $5 WHEN $1=$6 THEN $7 END\)/igs;
+	$str =~ s/DECODE\s*\($field,$field,$field,$field,$field,$field,$field,$field\)/\(CASE WHEN $1=$2 THEN $3 WHEN $1=$4 THEN $5 WHEN $1=$6 THEN $7 ELSE $8 END\)/igs;
+	$str =~ s/DECODE\s*\($field,$field,$field,$field,$field,$field,$field,$field,$field\)/\(CASE WHEN $1=$2 THEN $3 WHEN $1=$4 THEN $5 WHEN $1=$6 THEN $7 WHEN $1=$8 THEN $9 END\)/igs;
+	$str =~ s/DECODE\s*\($field,$field,$field,$field,$field,$field,$field,$field,$field,$field\)/\(CASE WHEN $1=$2 THEN $3 WHEN $1=$4 THEN $5 WHEN $1=$6 THEN $7 WHEN $1=$8 THEN $9 ELSE $10 END\)/igs;
+
 	if ($allow_code_break) {
 		# Change trunc() to date_trunc('day', field)
 		# Trunc is replaced with date_trunc if we find date in the name of
@@ -410,12 +421,6 @@ sub plsql_to_plpgsql
 		$str =~ s/substr[\s\t]*\(([^,\(]+),[\s\t]*([^,\s\t]+)[\s\t]*,[\s\t]*([^,\)\s\t]+)[\s\t]*\)/substring($1 from $2 for $3)/igs;
 		$str =~ s/substr[\s\t]*\(([^,\(]+),[\s\t]*([^,\)\s\t]+)[\s\t]*\)/substring($1 from $2)/igs;
 
-		# Replace decode("user_status",'active',"username",null)
-		# PostgreSQL (CASE WHEN "user_status"='ACTIVE' THEN "username" ELSE NULL END)
-		my $field = '\s*([^,\)\(]+)\s*';
-		$str =~ s/DECODE\s*\($field,$field,$field,$field\)/\(CASE WHEN $1=$2 THEN $3 ELSE $4 END\)/igs;
-		$str =~ s/DECODE\s*\($field,$field,$field,$field,$field,$field\)/\(CASE WHEN $1=$2 THEN $3 WHEN $1=$4 THEN $5 ELSE $6 END\)/igs;
-		$str =~ s/DECODE\s*\($field,$field,$field,$field,$field,$field,$field,$field\)/\(CASE WHEN $1=$2 THEN $3 WHEN $1=$4 THEN $5 WHEN $1=$6 THEN $7 ELSE $8 END\)/igs;
 
 	}
 
