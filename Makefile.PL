@@ -637,6 +637,10 @@ LOG_ON_ERROR		0
 # keywords in all generated statments.
 PG_SUPPORTS_IFEXISTS	1
 
+# Activating this directive will force Ora2Pg to add WITH (OIDS) when creating
+# tables or views as tables. Default is same as PostgreSQL, disabled.
+WITH_OID		0
+
 };
 close(OUTCFG);
 

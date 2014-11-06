@@ -124,7 +124,7 @@
 .\" ========================================================================
 .\"
 .IX Title "ORA2PG 1"
-.TH ORA2PG 1 "2014-11-05" "perl v5.14.2" "User Contributed Perl Documentation"
+.TH ORA2PG 1 "2014-11-06" "perl v5.14.2" "User Contributed Perl Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -654,6 +654,10 @@ directive value to that username.
 When enabled this directive force ora2pg to export all tables, indexes constraint and
 indexes using the tablespace name defined in Oracle database. This works only with
 tablespace that are not \s-1TEMP\s0, \s-1USERS\s0 and \s-1SYSTEM\s0.
+.IP "\s-1WITH_OID\s0" 4
+.IX Item "WITH_OID"
+Activating this directive will force Ora2Pg to add \s-1WITH\s0 (\s-1OIDS\s0) when creating
+tables or views as tables. Default is same as PostgreSQL, disabled.
 .SS "Export type"
 .IX Subsection "Export type"
 The export action is perform following a single configuration directive '\s-1TYPE\s0',

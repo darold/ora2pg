@@ -534,6 +534,11 @@ When enabled this directive force ora2pg to export all tables, indexes constrain
 indexes using the tablespace name defined in Oracle database. This works only with
 tablespace that are not TEMP, USERS and SYSTEM.
 
+=item WITH_OID
+
+Activating this directive will force Ora2Pg to add WITH (OIDS) when creating
+tables or views as tables. Default is same as PostgreSQL, disabled.
+ 
 =back
 
 =head2 Export type

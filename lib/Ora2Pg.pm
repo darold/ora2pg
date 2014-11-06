@@ -679,6 +679,9 @@ sub _init
 	# Autodetect spatial type
 	$self->{autodetect_spatial_type} ||= 0;
 
+	# Create tables with OIDs or not, default to not create OIDs
+	$self->{with_oid} ||= 0;
+
 	# Overwrite configuration with all given parameters
 	# and try to preserve backward compatibility
 	foreach my $k (keys %options) {
@@ -2923,7 +2926,6 @@ LANGUAGE plpgsql ;
 		return;
 	}
 
-
 	# Process functions only
 	if ($self->{type} eq 'FUNCTION') {
 		use constant SQL_DATATYPE => 2;
@@ -3491,7 +3493,6 @@ LANGUAGE plpgsql ;
 		return;
 	}
 
-
 	# Extract data only
 	if (($self->{type} eq 'INSERT') || ($self->{type} eq 'COPY')) {
 
@@ -4055,7 +4056,9 @@ CREATE TRIGGER insert_${table}_trigger
 			if ($self->{plsql_pgsql}) {
 				$self->{tables}{$table}{table_as} = Ora2Pg::PLSQL::plsql_to_plpgsql($self->{tables}{$table}{table_as}, $self->{allow_code_break},$self->{null_equal_empty});
 			}
-			$sql_output .= "\nCREATE $obj_type $tbname AS $self->{tables}{$table}{table_as};\n";
+			my $withoid = '';
+			$withoid = 'WITH (OIDS)' if ($self->{with_oid});
+			$sql_output .= "\nCREATE $obj_type $tbname $withoid AS $self->{tables}{$table}{table_as};\n";
 			next;
 		}
 		if (exists $self->{tables}{$table}{truncate_table}) {
@@ -4148,10 +4151,12 @@ CREATE TRIGGER insert_${table}_trigger
 			}
 			$sql_output =~ s/,$//;
 			if ( ($self->{type} ne 'FDW') && (!$self->{external_to_fdw} || !grep(/^$table$/i, keys %{$self->{external_table}})) ) {
+				my $withoid = '';
+				$withoid = 'WITH (OIDS)' if ($self->{with_oid});
 				if ($self->{use_tablespace} && $self->{tables}{$table}{table_info}{tablespace} && !grep(/^$self->{tables}{$table}{table_info}{tablespace}$/i, @{$self->{default_tablespaces}})) {
-					$sql_output .= ") TABLESPACE $self->{tables}{$table}{table_info}{tablespace};\n";
+					$sql_output .= ") $withoid TABLESPACE $self->{tables}{$table}{table_info}{tablespace};\n";
 				} else {
-					$sql_output .= ");\n";
+					$sql_output .= ") $withoid;\n";
 				}
 			} elsif ( grep(/^$table$/i, keys %{$self->{external_table}}) ) {
 				$sql_output .= ") SERVER \L$self->{external_table}{$table}{directory}\E OPTIONS(filename '$self->{external_table}{$table}{directory_path}$self->{external_table}{$table}{location}', format 'csv', delimiter '$self->{external_table}{$table}{delimiter}');\n";

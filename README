@@ -512,6 +512,11 @@ CONFIGURATION
         Oracle database. This works only with tablespace that are not TEMP,
         USERS and SYSTEM.
 
+    WITH_OID
+        Activating this directive will force Ora2Pg to add WITH (OIDS) when
+        creating tables or views as tables. Default is same as PostgreSQL,
+        disabled.
+
   Export type
     The export action is perform following a single configuration directive
     'TYPE', some other add more control on what should be really exported.
