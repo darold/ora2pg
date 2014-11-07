@@ -301,13 +301,17 @@ of the command usage:
 			views/
 		data/
 		config/
+			ora2pg.conf
 		reports/
 
 	Generating generic configuration file
 	Creating script export_schema.sh to automate all exports.
 
 It create a generic config file where you just have to define the Oracle database
-connection and a shell script called export_schema.sh.
+connection and a shell script called export_schema.sh. The sources/ directory will
+contains the Oracle code, the schema/ will contains the code ported to PostgreSQL.
+The reports/ directory will contains the html reports with the migration cost
+assessment.
 
 =head2 Oracle database connection
 

@@ -435,6 +435,7 @@ of the command usage:
 \&                        views/
 \&                data/
 \&                config/
+\&                        ora2pg.conf
 \&                reports/
 \&
 \&        Generating generic configuration file
@@ -442,7 +443,10 @@ of the command usage:
 .Ve
 .PP
 It create a generic config file where you just have to define the Oracle database
-connection and a shell script called export_schema.sh.
+connection and a shell script called export_schema.sh. The sources/ directory will
+contains the Oracle code, the schema/ will contains the code ported to PostgreSQL.
+The reports/ directory will contains the html reports with the migration cost
+assessment.
 .SS "Oracle database connection"
 .IX Subsection "Oracle database connection"
 There's 5 configuration directives to control the access to the Oracle database.
