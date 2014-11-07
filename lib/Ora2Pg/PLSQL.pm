@@ -408,6 +408,9 @@ sub plsql_to_plpgsql
 	$str =~ s/DECODE\s*\($field,$field,$field,$field,$field,$field,$field,$field,$field\)/\(CASE WHEN $1=$2 THEN $3 WHEN $1=$4 THEN $5 WHEN $1=$6 THEN $7 WHEN $1=$8 THEN $9 END\)/igs;
 	$str =~ s/DECODE\s*\($field,$field,$field,$field,$field,$field,$field,$field,$field,$field\)/\(CASE WHEN $1=$2 THEN $3 WHEN $1=$4 THEN $5 WHEN $1=$6 THEN $7 WHEN $1=$8 THEN $9 ELSE $10 END\)/igs;
 
+	# Rewrite replace(a,b) with three argument
+	$str =~ s/REPLACE\s*\($field,$field\)/replace\($1, $2, ''\)/igs;
+
 	if ($allow_code_break) {
 		# Change trunc() to date_trunc('day', field)
 		# Trunc is replaced with date_trunc if we find date in the name of
