@@ -124,7 +124,7 @@
 .\" ========================================================================
 .\"
 .IX Title "ORA2PG 1"
-.TH ORA2PG 1 "2014-11-06" "perl v5.14.2" "User Contributed Perl Documentation"
+.TH ORA2PG 1 "2014-11-07" "perl v5.14.2" "User Contributed Perl Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -1013,6 +1013,18 @@ it will log the statement to a file called TABLENAME_error.log in the output
 directory and continue to next bulk of data. Like this you can try to fix the
 statement and manually reload the error log file. Default is disabled: abort
 import on error.
+.IP "\s-1REPLACE_QUERY\s0" 4
+.IX Item "REPLACE_QUERY"
+Sometime you may want to extract data from an Oracle table but you need a
+a custom query for that. Not just a \*(L"\s-1SELECT\s0 * \s-1FROM\s0 table\*(R" like Ora2Pg do
+but a more complexe query. This directive allow you to overwrite the query
+used by Ora2Pg to extract data. The format is TABLENAME[\s-1SQL_QUERY\s0].
+If you have multiple table to extract by replacing the Ora2Pg query, you can
+define multiple \s-1REPLACE_QUERY\s0 lines.
+.Sp
+.Vb 1
+\&        REPLACE_QUERY   EMPLOYEES[SELECT e.id,e.fisrtname,lastname FROM EMPLOYEES e JOIN EMP_UPDT u ON (e.id=u.id AND u.cdate>\*(Aq2014\-08\-01 00:00:00\*(Aq)]
+.Ve
 .SS "Modifying object structure"
 .IX Subsection "Modifying object structure"
 One of the great usage of Ora2Pg is its flexibility to replicate Oracle database
