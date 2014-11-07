@@ -408,6 +408,11 @@ sub plsql_to_plpgsql
 	$str =~ s/DECODE\s*\($field,$field,$field,$field,$field,$field,$field,$field,$field\)/\(CASE WHEN $1=$2 THEN $3 WHEN $1=$4 THEN $5 WHEN $1=$6 THEN $7 WHEN $1=$8 THEN $9 END\)/igs;
 	$str =~ s/DECODE\s*\($field,$field,$field,$field,$field,$field,$field,$field,$field,$field\)/\(CASE WHEN $1=$2 THEN $3 WHEN $1=$4 THEN $5 WHEN $1=$6 THEN $7 WHEN $1=$8 THEN $9 ELSE $10 END\)/igs;
 
+	#  Convert all x <> NULL or x != NULL clauses to x IS NOT NULL.
+	$str =~ s/\s*(<>|\!=)\s*NULL/ IS NOT NULL/igs;
+	#  Convert all x = NULL clauses to x IS NULL.
+	$str =~ s/\s*=\s*NULL/ IS NULL/igs;
+
 	# Rewrite replace(a,b) with three argument
 	$str =~ s/REPLACE\s*\($field,$field\)/replace\($1, $2, ''\)/igs;
 
