@@ -26,6 +26,7 @@ use strict qw/vars/;
 
 use Ora2Pg;
 use Getopt::Long qw(:config no_ignore_case bundling);
+use File::Spec qw/ tmpdir /;
 use POSIX qw(locale_h sys_wait_h _exit);
 setlocale(LC_NUMERIC, '');
 setlocale(LC_ALL,     'C');
@@ -73,6 +74,8 @@ my @SOURCES_ARRAY = qw( PACKAGE VIEW TRIGGER FUNCTION PROCEDURE PARTITION TYPE M
 my @DATA_ARRAY    = qw( INSERT COPY );
 my @CAPABILITIES  = qw( QUERY);
 push(@CAPABILITIES, @SCHEMA_ARRAY, @REPORT_ARRAY, @DATA_ARRAY, @EXTERNAL_ARRAY);
+
+my $TMP_DIR      = File::Spec->tmpdir() || '/tmp';
 
 # Collect command line arguments
 GetOptions (
@@ -129,6 +132,17 @@ if ($CREATE_PROJECT) {
 	exit 0;
 }
 
+# Clean temporary files
+unless(opendir(DIR, "$TMP_DIR")) {
+	die "Error: can't opendir $TMP_DIR: $!";
+}
+my @files = grep { $_ =~ /^tmp_ora2pg.*$/ } readdir(DIR);
+closedir DIR;
+foreach (@files) {
+	unlink("$TMP_DIR/$_\n");
+}
+
+
 # Check configuration file
 if (! -e $CONFIG_FILE) {
 	print "FATAL: can't find configuration file $CONFIG_FILE\n";
@@ -159,6 +173,17 @@ sub getout
         print STDERR "Received terminating signal ($sig).\n";
         $SIG{INT} = \&getout;
         $SIG{TERM} = \&getout;
+
+	# Cleaning temporary files
+	unless(opendir(DIR, "$TMP_DIR")) {
+		die "Error: can't opendir $TMP_DIR: $!";
+	}
+	my @files = grep { $_ =~ /^tmp_ora2pg.*$/ } readdir(DIR);
+	closedir DIR;
+	foreach (@files) {
+		unlink("$TMP_DIR/$_\n");
+	}
+
 	exit 1;
 }
 $SIG{INT} = \&getout;
@@ -199,6 +224,16 @@ my $schema = new Ora2Pg (
 # configuration file definitions.
 if ( ($EXPORT_TYPE !~ /^SHOW_/i) && !$INPUT_FILE ) {
 	$schema->export_schema();
+}
+
+# Check if error occurs during data export 
+unless(opendir(DIR, "$TMP_DIR")) {
+	die "Error: can't opendir $TMP_DIR: $!";
+}
+my @files = grep { $_ =~ /^tmp_ora2pg.*$/ } readdir(DIR);
+closedir DIR;
+if ($#files >= 0) {
+	print STDERR "\nWARNING: an error occurs during data export. Please check what's happen.\n\n";
 }
 
 exit(0);
