@@ -95,6 +95,9 @@ default setting in configuration file, but it is not recommanded.
 
 Here is the full changlog of the release:
 
+    - Fix inline comments into function declaration. Thanks to Marcel Huber
+      for the report.
+    - Fix case where SELECT ... INTO was wrongly replaced by PERFORM.
     - Fix DECODE() translation. Thanks to Dominique Legendre for the report.
     - Add replacement of SDO_OPERATOR into PostGis relationships.
     - Add replacement of SDO_GEOM spatial function to postgis ST_* functions.
