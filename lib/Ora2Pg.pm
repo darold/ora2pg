@@ -2163,11 +2163,6 @@ sub _export_table_data
 	# Rename table and double-quote it if required
 	my $tmptb = $self->get_replaced_tbname($table);
 
-	if ($self->{file_per_table} && !$self->{pg_dsn}) {
-		# Do not dump data again if the file already exists
-		next if ($self->file_exists("$dirprefix${table}_$self->{output}"));
-	}
-
 	# Open output file
 	$self->data_dump($sql_header, $table) if (!$self->{pg_dsn} && $self->{file_per_table});
 
@@ -3688,7 +3683,12 @@ LANGUAGE plpgsql ;
 			next if ($self->skip_this_object('TABLE', $table));
 
 			# Set global count
-			$global_count = $self->{tables}{$table}{table_info}{num_rows};
+			$global_count += $self->{tables}{$table}{table_info}{num_rows};
+
+			if ($self->{file_per_table} && !$self->{pg_dsn}) {
+				# Do not dump data again if the file already exists
+				next if ($self->file_exists("$dirprefix${table}_$self->{output}"));
+			}
 
 			if ($self->{parallel_tables} > 1) {
 				spawn sub {
@@ -7665,9 +7665,17 @@ sub _extract_data
 	my $nrows = 0;
 	while ( my $rows = $sth->fetchall_arrayref(undef,$self->{data_limit})) {
 
-		if ($self->{dbh}->errstr) {
-			$self->logit("ERROR: " . $self->{dbh}->errstr . "\n", 0, 0);
-			last;
+		
+		if (defined $dbh) {
+			if ($dbh->errstr) {
+				$self->logit("ERROR: " . $dbh->errstr . "\n", 0, 0);
+				last;
+			}
+		} else {
+			if ($self->{dbh}->errstr) {
+				$self->logit("ERROR: " . $self->{dbh}->errstr . "\n", 0, 0);
+				last;
+			}
 		}
 	
 		$nrows =  @$rows;
