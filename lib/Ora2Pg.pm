@@ -2934,6 +2934,10 @@ LANGUAGE plpgsql ;
 					$l = $old_line .= ' ' . $l;
 					$old_line = '';
 				}
+				if ($l =~ /^[\s\t]*CREATE OR REPLACE$/i) {
+					$old_line = $l;
+					next;
+				}
 				if ($l =~ /^[\s\t]*(FUNCTION|PROCEDURE)$/i) {
 					$old_line = $l;
 					next;
@@ -3069,6 +3073,10 @@ LANGUAGE plpgsql ;
 					$l = $old_line .= ' ' . $l;
 					$old_line = '';
 				}
+				if ($l =~ /^[\s\t]*CREATE OR REPLACE$/i) {
+					$old_line = $l;
+					next;
+				}
 				if ($l =~ /^[\s\t]*(FUNCTION|PROCEDURE)$/i) {
 					$old_line = $l;
 					next;
@@ -3203,6 +3211,10 @@ LANGUAGE plpgsql ;
 				if ($old_line) {
 					$l = $old_line .= ' ' . $l;
 					$old_line = '';
+				}
+				if ($l =~ /^[\s\t]*CREATE OR REPLACE$/i) {
+					$old_line = $l;
+					next;
 				}
 				if ($l =~ /^(?:CREATE|CREATE OR REPLACE)?[\s\t]*PACKAGE[\s\t]*(?:BODY[\s\t]*)?$/i) {
 					$old_line = $l;
@@ -7104,10 +7116,11 @@ sub _convert_function
 
 	# Split data into declarative and code part
 	my ($func_declare, $func_code) = split(/\bBEGIN\b/i,$plsql,2);
-	if ( $func_declare =~ s/(.*?)\b(FUNCTION|PROCEDURE)[\s\t]+([^\s\t\(]+)[\s\t]*(\([^\)]*\)|[\s\t]*)//is ) {
+	if ( $func_declare =~ s/(.*?)\b(FUNCTION|PROCEDURE)[\s\t]+([^\s\t\(]+)([^\(]*)(\([^\)]*\)|[\s\t]*)//is ) {
 		$func_before = $1;
 		$func_name = $3;
-		$func_args = $4;
+		$func_before .= "\n$4";
+		$func_args = $5;
 		my $clause = '';
 		my $code = '';
 		$func_name =~ s/"//g;
