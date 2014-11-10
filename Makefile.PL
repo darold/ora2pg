@@ -299,15 +299,18 @@ NOESCAPE	0
 # DATA_TYPE	DATE:timestamp,LONG:text,LONG RAW:bytea,CLOB:text,NCLOB:text,BLOB:bytea,BFILE:bytea,RAW:bytea,ROWID:oid,FLOAT:double precision,DEC:decimal,DECIMAL:decimal,DOUBLE PRECISION:double precision,INT:integer,INTEGER:integer,REAL:real,SMALLINT:smallint,BINARY_FLOAT:double precision,BINARY_DOUBLE:double precision,TIMESTAMP:timestamp,XMLTYPE:xml,BINARY_INTEGER:integer,PLS_INTEGER:integer,TIMESTAMP WITH TIME ZONE:timestamp with time zone,TIMESTAMP WITH LOCAL TIME ZONE:timestamp with time zone
 
 # Enforce default language setting following the Oracle database encoding. This
-# may be used with mutibyte characters like UTF8.
-# This will set $ENV{NLS_LANG} to the given value.
-#NLS_LANG	AMERICAN_AMERICA.UTF8
+# may be used with mutibyte characters like UTF8. Here are the default values
+# used by Ora2Pg, you may not change them unless you have problem with this
+# encoding. This will set $ENV{NLS_LANG} to the given value.
+#NLS_LANG	AMERICAN_AMERICA.AL32UTF8
+# This will set $ENV{NLS_NCHAR} to the given value.
+#NLS_NCHAR	AL32UTF8
 
 # Enforce perl to use binary mode for output using the given encoding. This
 # must be used if you experience the perl message: "Wide character in print"
 # The warning happens when you output a Unicode string to a non-unicode
 # filehandle. If you set it to 'utf8' as follow, it will force printing
-# like this: binmode OUTFH, ":utf8";
+# like this: binmode OUTFH, ":utf8"; This is the default.
 #BINMODE		utf8
 
 # Allow to add a coma separated list of system user to exclude from 
@@ -384,10 +387,10 @@ FILE_PER_FUNCTION	0
 # export.
 TRUNCATE_TABLE	0
 
-# If you experience ERROR: invalid byte sequence for encoding "UTF8": 0xe87472
-# when loading data you may want to set the encoding of the PostgreSQL client.
-# By default it is not set and it will depend of you system client encoding.
-#CLIENT_ENCODING	LATIN9
+# By default PostgreSQL client encoding is automatically set to UTF8 to avoid
+# encoding issue. If you have changed the value of NLS_LANG you might have to
+# change  the encoding of the PostgreSQL client.
+#CLIENT_ENCODING	UTF8
 
 # By default the owner of database objects is the one you're using to connect
 # to PostgreSQL. If you use an other user (postgres for exemple) you can force

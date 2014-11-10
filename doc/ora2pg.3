@@ -124,7 +124,7 @@
 .\" ========================================================================
 .\"
 .IX Title "ORA2PG 1"
-.TH ORA2PG 1 "2014-11-07" "perl v5.14.2" "User Contributed Perl Documentation"
+.TH ORA2PG 1 "2014-11-10" "perl v5.14.2" "User Contributed Perl Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -1580,37 +1580,23 @@ Set this to 1 if you don't want to export comment associated to tables and
 columns definition. Default is enabled.
 .SS "Special options to handle character encoding"
 .IX Subsection "Special options to handle character encoding"
-.IP "\s-1NLS_LANG\s0" 4
-.IX Item "NLS_LANG"
-By default Oracle character set is automatically detected, but if you experience
-any issues where mutibyte characters are being substituted with some replacement
-characters during the export try to set the \s-1NLS_LANG\s0 configuration directive to
-the Oracle encoding. This may help a lot especially with \s-1UTF8\s0 encoding. For example:
-.Sp
-.Vb 1
-\&        NLS_LANG        AMERICAN_AMERICA.UTF8
-.Ve
-.Sp
-This will set \f(CW$ENV\fR{\s-1NLS_LANG\s0} to the given value.
+.IP "\s-1NLS_LANG\s0 and \s-1NLS_NCHAR\s0" 4
+.IX Item "NLS_LANG and NLS_NCHAR"
+By default Ora2Pg will set \s-1NLS_LANG\s0 to \s-1AMERICAN_AMERICA\s0.AL32UTF8 and \s-1NLS_NCHAR\s0
+to \s-1AL32UTF8\s0. It is not recommanded to change those settings but in some case it
+could be useful. Using your own settings with those configuration directive will
+change the client encoding at Oracle side by setting the environment variables
+\&\f(CW$ENV\fR{\s-1NLS_LANG\s0} and \f(CW$ENV\fR{\s-1NLS_NCHAR\s0}.
 .IP "\s-1BINMODE\s0" 4
 .IX Item "BINMODE"
-If you experience the Perl warning: \*(L"Wide character in print\*(R", it means that
-you tried to write a Unicode string to a non-unicode file handle. You can force
-Perl to use binary mode for output by setting the \s-1BINMODE\s0 configuration option
-to the specified encoding. If you set it to 'utf8', it will force printing like
-this: binmode \s-1OUTFH\s0, \*(L":utf8\*(R"; By default Ora2Pg opens the output file in 'raw'
-binary mode.
+By default Ora2Pg will force Perl output to be Unicode. It will force printing
+to file like this: binmode \s-1OUTFH\s0, \*(L":utf8\*(R"; If you have change the \s-1NLS_LANG\s0
+value you might want to set it to raw.
 .IP "\s-1CLIENT_ENCODING\s0" 4
 .IX Item "CLIENT_ENCODING"
-By default PostgreSQL client encoding is automatically detected and set to avoid
-encoding issue. If you want to defined your own or if you experience some
-\&\s-1ERROR:\s0 invalid byte sequence for encoding \*(L"\s-1UTF8\s0\*(R": 0xe87472 when loading data you
-may want to set the encoding of the PostgreSQL client.
-.Sp
-For example, let's say you have an Oracle database with all data encoded in
-\&\s-1FRENCH_FRANCE\s0.WE8ISO8859P15, your system use fr_FR.UTF\-8 as console encoding
-and your PostgreSQL database is encoded in \s-1UTF8\s0. What you have to do is set the
-\&\s-1NLS_LANG\s0 to \s-1FRENCH_FRANCE\s0.WE8ISO8859P15 and the \s-1CLIENT_ENCODING\s0 to \s-1LATIN9\s0.
+By default PostgreSQL client encoding is automatically set to \s-1UTF8\s0 to avoid
+encoding issue. If you have changed the value of \s-1NLS_LANG\s0 you might have to
+change  the encoding of the PostgreSQL client.
 .Sp
 You can take a look at the PostgreSQL supported character sets here: http://www.postgresql.org/docs/9.0/static/multibyte.html
 .SS "\s-1PLSQL\s0 to \s-1PLPSQL\s0 convertion"

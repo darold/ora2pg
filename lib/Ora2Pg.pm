@@ -764,6 +764,11 @@ sub _init
 		$self->{has_utf8_fct} = 0;
 	}
 
+	# Set Oracle, Perl and PostgreSQL encoding that will be used
+	$self->_init_environment();
+	$self->{binmode} =~ s/^://;
+	$self->{binmode} = ':' . lc($self->{binmode});
+
 	# Multiple Oracle connection
 	$self->{oracle_copies} ||= 0;
 	$self->{ora_conn_count} = 0;
@@ -803,9 +808,6 @@ sub _init
 	if ($self->{disable_table_triggers}) {
 		$self->{disable_triggers} = $self->{disable_table_triggers};
 	}
-	$self->{binmode} ||= ':raw';
-	$self->{binmode} =~ s/^://;
-	$self->{binmode} = ':' . lc($self->{binmode});
 	# Set some default values
 	if ($self->{enable_microsecond} eq '') {
 		$self->{enable_microsecond} = 1;
@@ -887,13 +889,6 @@ sub _init
 	if (!$self->{input_file}) {
 		# Connect the database
 		$self->{dbh} = $self->_oracle_connection();
-
-		# Auto detect character set
-		if ($self->_init_oracle_connection($self->{dbh})) {
-			$self->{dbh}->disconnect();
-			$self->{dbh} = $self->_oracle_connection(1);
-			$self->_init_oracle_connection($self->{dbh}, 1);
-		}
 
 		# Compile again all objects in the schema
 		if ($self->{compile_schema}) {
@@ -1007,50 +1002,37 @@ sub _oracle_connection
 }
 
 # use to set encoding
-sub _init_oracle_connection
+sub _init_environment
 {
-	my ($self, $dbh, $quiet) = @_;
+	my ($self) = @_;
 
-	my $must_reconnect = 0;
-
-	# Auto detect character set
-	if ($self->{debug} && !$quiet) {
-		$self->logit("Auto detecting Oracle character set and the corresponding PostgreSQL client encoding to use.\n", 1);
-	}
-	my $encoding = $self->_get_encoding($dbh);
+	# Set default Oracle client encoding
 	if (!$self->{nls_lang}) {
-		$self->{nls_lang} = $encoding;
-		$ENV{NLS_LANG} = $self->{nls_lang};
-		if ($self->{debug} && !$quiet) {
-			$self->logit("\tUsing Oracle character set: $self->{nls_lang}.\n", 1);
-		}
-		$must_reconnect = 1;
-	} else {
-		$ENV{NLS_LANG} = $self->{nls_lang};
-		if ($self->{debug} && !$quiet) {
-			$self->logit("\tUsing the character set given in NLS_LANG configuration directive ($self->{nls_lang}).\n", 1);
-		}
+		$self->{nls_lang} = 'AMERICAN_AMERICA.AL32UTF8';
+	}
+	if (!$self->{nls_nchar}) {
+		$self->{nls_nchar} = 'AL32UTF8';
+	}
+	$ENV{NLS_LANG} = $self->{nls_lang};
+	$ENV{NLS_NCHAR} = $self->{nls_nchar};
+	if ($self->{debug}) {
+		$self->logit("\tUsing character set: NLS_LANG=$self->{nls_lang}, NLS_NCHAR=$self->{nls_nchar}.\n", 1);
+	}
+	# Force Perl to use utf8 output encoding by default
+	if ( !$self->{'binmode'} || ($self->{nls_lang} =~ /UTF8/) ) {
+			$self->{'binmode'} = ':utf8';
+	}
+	if ($self->{debug}) {
+		$self->logit("\tUsing Perl output encoding $self->{binmode}.\n", 1);
+	}
+	# Set default PostgreSQL client encoding to UTF8
+	if (!$self->{client_encoding} || ($self->{nls_lang} =~ /UTF8/) ) {
+		$self->{client_encoding} = 'UTF8';
+	}
+	if ($self->{debug}) {
+		$self->logit("\tUsing PostgreSQL client encoding $self->{client_encoding}.\n", 1);
 	}
 
-	if (!$self->{client_encoding}) {
-		if ($self->{'binmode'} =~ /utf8/i) {
-			$self->{client_encoding} = 'UTF8';
-			if ($self->{debug} && !$quiet) {
-				$self->logit("\tUsing PostgreSQL client encoding forced to UTF8 as BINMODE configuration directive has been set to $self->{binmode}.\n", 1);
-			}
-		} else {
-			$self->{client_encoding} = &auto_set_encoding($encoding);
-			if ($self->{debug} && !$quiet) {
-				$self->logit("\tUsing PostgreSQL client encoding: $self->{client_encoding}.\n", 1);
-			}
-		}
-	} else {
-		if ($self->{debug} && !$quiet) {
-			$self->logit("\tUsing PostgreSQL client encoding given in CLIENT_ENCODING configuration directive ($self->{client_encoding}).\n", 1);
-		}
-	}
-
-	return $must_reconnect;
 }
 
 
@@ -3759,7 +3741,6 @@ LANGUAGE plpgsql ;
 			}
 			$self->{dbh}->disconnect() if ($self->{dbh});
 			$self->{dbh} = $self->_oracle_connection();
-			$self->_init_oracle_connection($self->{dbh});
 		}
 
 		# Commit transaction
