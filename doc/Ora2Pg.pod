@@ -1043,7 +1043,7 @@ SDO_GEOMETRY, with AUTODETECT_SPATIAL_TYPE disabled it will be converted as:
 and if the directive is enabled and the column just contains a single
 geometry type that use a single dimension:
 
-    shape geometry(POLIGON, 4326) or shape geometry(POLIGONZ, 4326)
+    shape geometry(POLYGON, 4326) or shape geometry(POLYGONZ, 4326)
 
 with a two or three dimensional polygon.
 
