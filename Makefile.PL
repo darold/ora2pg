@@ -541,8 +541,8 @@ STOP_ON_ERROR		1
 TOP_MAX			10
 
 # Use this directive to limit partition data export to some partition name.
-# Tha value is a list of partition name separated by a space.
-ALLOW_PARTITION		PARTNAME
+# The value is a list of partition name separated by a space.
+#ALLOW_PARTITION		PARTNAME
 
 # When enabled this directive force ora2pg to export all tables, indexes
 # constraint and indexes using the tablespace name defined in Oracle database.
