@@ -136,6 +136,9 @@ EXPORT_INVALID	0
 #	PARTITION	Export range or list partition (PostgreSQL >= v8.4)
 #	FDW		Export table as foreign data wrapper tables
 #	MVIEW		Export materialized view as snapshot refresh view
+#       QUERY		Convert Oracle SQL queries from a file.
+#       KETTLE		Generate XML ktr template files to be used by Kettle.
+
 TYPE		TABLE
 
 # Set which object to export from. By default Ora2Pg export all objects.
