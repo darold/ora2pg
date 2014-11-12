@@ -180,7 +180,7 @@ This function return a PLSQL code translated to PLPGSQL code
 
 sub plsql_to_plpgsql
 {
-        my ($str, $allow_code_break, $null_equal_empty, $export_type) = @_;
+        my ($str, $null_equal_empty, $export_type) = @_;
 
 	#--------------------------------------------
 	# PL/SQL to PL/PGSQL code conversion
@@ -417,21 +417,18 @@ sub plsql_to_plpgsql
 	# Rewrite replace(a,b) with three argument
 	$str =~ s/REPLACE\s*\($field,$field\)/replace\($1, $2, ''\)/igs;
 
-	if ($allow_code_break) {
-		# Change trunc() to date_trunc('day', field)
-		# Trunc is replaced with date_trunc if we find date in the name of
-		# the value because Oracle have the same trunc function on number
-		# and date type
-		$str =~ s/trunc\(([^,\)]*(?:date|timestamp)[\,]*),([^\)]*)\)/date_trunc($2, $1)/igs;
-		$str =~ s/trunc\(([^,\)]*(?:date|timestamp)[^,\)]*)\)/date_trunc('day', $1)/igs;
+	# Replace Oracle substr(string, start_position, length) with
+	# PostgreSQL substring(string from start_position for length)
+	$str =~ s/substr\s*\($field,$field,$field\)/substring($1 from $2 for $3)/igs;
+	$str =~ s/substr\s*\($field,$field\)/substring($1 from $2)/igs;
 
-		# Replace Oracle substr(string, start_position, length) with
-		# PostgreSQL substring(string from start_position for length)
-		$str =~ s/substr[\s\t]*\(([^,\(]+),[\s\t]*([^,\s\t]+)[\s\t]*,[\s\t]*([^,\)\s\t]+)[\s\t]*\)/substring($1 from $2 for $3)/igs;
-		$str =~ s/substr[\s\t]*\(([^,\(]+),[\s\t]*([^,\)\s\t]+)[\s\t]*\)/substring($1 from $2)/igs;
-
-
-	}
+	# Change trunc() to date_trunc('day', field)
+	# Trunc is replaced with date_trunc if we find date in the name of
+	# the value because Oracle have the same trunc function on number
+	# and date type
+	my $date_field = '\s*([^,\)\(]*(?:date|timestamp)[^,\)\(]*)\s*';
+	$str =~ s/\btrunc\($date_field\)/date_trunc('day', $1)/igs;
+	$str =~ s/\btrunc\($date_field,$field\)/date_trunc($2, $1)/igs;
 
 	return $str;
 }

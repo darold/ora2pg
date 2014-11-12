@@ -443,12 +443,6 @@ PARALLEL_TABLES	1
 # function with the column to round the value to the nearest integer.
 #DEFINED_PK	TABLE:COLUMN TABLE:ROUND(COLUMN)
 
-# This directive is use to enable/disable the plsql to pgplsql conversion part
-# that could break the original code if they include complex subqueries.
-# Default is enabled, you must disabled if to preserve backward compatibility.
-# This concern the following replacement: decode(), substr() 
-ALLOW_CODE_BREAK	1
-
 # Use this directive to set the database handle's 'LongReadLen' attribute to
 # a value that will be the larger than the expected size of the LOB. The default
 # is 1Mb witch may not be enough to extract BLOB objects. If the size of the LOB

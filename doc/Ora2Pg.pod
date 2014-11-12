@@ -1548,29 +1548,6 @@ parameters rewrite.
 
 Enable/disable PLSQL to PLPSQL convertion. Enabled by default.
 
-=item ALLOW_CODE_BREAK
-
-This directive is use to enable/disable the plsql to pgplsql conversion part
-that could break the original code if they include complex subqueries.
-Default is enabled, you must disabled if to preserve backward compatibility.
-This concern the following replacement: decode(), substr()
-
-For example code like this:
-
-	substr(decode("db_status",'active',"dbname",null),1,128)
-
-can easily be replaced by the PostgreSQL equivalent:
-
-	substring((CASE WHEN "db_status"='active' THEN "dbname" ELSE NULL END) from 1 for 128)) 
-
-The problem could comes when you introduce subquery into one of the substr()
-or decode() parameter. For example the replacement of
-
-	substr(decode("db_status",(select status from dbcluster where lbl=substr("dbname",1,3)),"dbname",null),1,128)
-
-will break the code. You can still compare to the original Oracle code and
-solve the problem, but if you want you can disable this unsecure replacement.
-
 =item NULL_EQUAL_EMPTY
 
 By default Ora2Pg will replace all conditions with a test on NULL by a call
