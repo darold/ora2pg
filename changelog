@@ -1,3 +1,13 @@
+2014 11 12 - v14.1
+
+This is a maintenance release only mainly to add patches that was not
+been applied in previous major release.
+
+    - Remove ALLOW_CODE_BREAK, it is no more useful.
+    - Change output of SHOW_ENCODING to reflect change to default encoding.
+    - Comment ALLOW_PARTITION in default configuration file
+    - Add QUERY and KETTLE export type in configuration file comments.
+
 2014 11 05 - v14.0
 
 This major release adds full export of Oracle Locator or Spatial geometries into
