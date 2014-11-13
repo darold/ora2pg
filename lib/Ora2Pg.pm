@@ -5919,7 +5919,7 @@ sub _get_views
 
 	my $join_segment = '';
 	if (!$self->{user_grants}) {
-		$join_segment = " JOIN DBA_SEGMENTS S ON (S.SEGMENT_TYPE LIKE 'TABLE%' AND S.SEGMENT_NAME=A.TABLE_NAME)";
+		$join_segment = " LEFT JOIN DBA_SEGMENTS S ON (S.SEGMENT_TYPE LIKE 'TABLE%' AND S.SEGMENT_NAME=A.TABLE_NAME)";
 	}
 	my %comments = ();
 	my $sql = "SELECT A.TABLE_NAME,A.COMMENTS,A.TABLE_TYPE FROM ALL_TAB_COMMENTS A $join_segment $owner";
