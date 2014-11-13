@@ -1227,7 +1227,7 @@ main hash of the database structure :
 It also calls these other private subroutines to affect the main hash
 of the database structure :
 
-    @{$self->{tables}{$class_name}{column_info}} = $self->_column_info($class_name, $owner);
+    @{$self->{tables}{$class_name}{column_info}} = $self->_column_info($class_name, $owner, 'TABLE');
     %{$self->{tables}{$class_name}{unique_key}}  = $self->_unique_key($class_name, $owner);
     @{$self->{tables}{$class_name}{foreign_key}} = $self->_foreign_key($class_name, $owner);
     %{$self->{tables}{$class_name}{check_constraint}}  = $self->_check_constraint($class_name, $owner);
@@ -1247,7 +1247,7 @@ sub _tables
 	# Get detailed informations on each tables
 	if (!$nodetail) {
 		# Retrieve all column's details
-		my %columns_infos = $self->_column_info('',$self->{schema});
+		my %columns_infos = $self->_column_info('',$self->{schema}, 'TABLE');
 		foreach my $tb (keys %columns_infos) {
 			next if (!exists $tables_infos{$tb});
 			foreach my $c (keys %{$columns_infos{$tb}}) {
@@ -1432,7 +1432,7 @@ sub _tables
 			}
 			$self->{tables}{$view}{field_name} = $sth->{NAME};
 			$self->{tables}{$view}{field_type} = $sth->{TYPE};
-			my %columns_infos = $self->_column_info($view, $self->{schema});
+			my %columns_infos = $self->_column_info($view, $self->{schema}, 'VIEW');
 			foreach my $tb (keys %columns_infos) {
 				next if ($tb ne $view);
 				foreach my $c (keys %{$columns_infos{$tb}}) {
@@ -5202,43 +5202,44 @@ elements for each column the specified table
 
 sub _column_info
 {
-	my ($self, $table, $owner, $recurs) = @_;
+	my ($self, $table, $owner, $objtype, $recurs) = @_;
+
+	$objtype ||= 'TABLE';
 
 	my $condition = '';
-	$condition .= "AND TABLE_NAME='$table' " if ($table);
-	$condition .= "AND OWNER='$owner' " if ($owner);
+	$condition .= "AND A.TABLE_NAME='$table' " if ($table);
+	$condition .= "AND A.OWNER='$owner' " if ($owner);
 	$condition .= $self->limit_to_objects() if (!$table);
-	$condition =~ s/^AND/WHERE/;
 
 	my $sth = '';
 	if ($self->{db_version} !~ /Release 8/) {
 		$sth = $self->{dbh}->prepare(<<END);
-SELECT COLUMN_NAME, DATA_TYPE, DATA_LENGTH, NULLABLE, DATA_DEFAULT, DATA_PRECISION, DATA_SCALE, CHAR_LENGTH, TABLE_NAME, OWNER
-FROM $self->{prefix}_TAB_COLUMNS $condition
-ORDER BY COLUMN_ID
+SELECT A.COLUMN_NAME, A.DATA_TYPE, A.DATA_LENGTH, A.NULLABLE, A.DATA_DEFAULT, A.DATA_PRECISION, A.DATA_SCALE, A.CHAR_LENGTH, A.TABLE_NAME, A.OWNER
+FROM $self->{prefix}_TAB_COLUMNS A, ALL_OBJECTS O WHERE A.OWNER=O.OWNER and A.TABLE_NAME=O.OBJECT_NAME and O.OBJECT_TYPE='$objtype' $condition
+ORDER BY A.COLUMN_ID
 END
 		if (!$sth) {
 			my $ret = $self->{dbh}->err;
 			if (!$recurs && ($ret == 942) && ($self->{prefix} eq 'DBA')) {
 				$self->logit("HINT: Please activate USER_GRANTS or connect using a user with DBA privilege.\n");
 				$self->{prefix} = 'ALL';
-				return $self->_column_info($table, $owner, 1);
+				return $self->_column_info($table, $owner, $objtype, 1);
 			}
 			$self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 		}
 	} else {
 		# an 8i database.
 		$sth = $self->{dbh}->prepare(<<END);
-SELECT COLUMN_NAME, DATA_TYPE, DATA_LENGTH, NULLABLE, DATA_DEFAULT, DATA_PRECISION, DATA_SCALE, DATA_LENGTH, TABLE_NAME, OWNER
-FROM $self->{prefix}_TAB_COLUMNS $condition
-ORDER BY COLUMN_ID
+SELECT A.COLUMN_NAME, A.DATA_TYPE, A.DATA_LENGTH, A.NULLABLE, A.DATA_DEFAULT, A.DATA_PRECISION, A.DATA_SCALE, A.DATA_LENGTH, A.TABLE_NAME, A.OWNER
+FROM $self->{prefix}_TAB_COLUMNS A, ALL_OBJECTS O WHERE A.OWNER=O.OWNER and A.TABLE_NAME=O.OBJECT_NAME and O.OBJECT_TYPE='$objtype' $condition
+ORDER BY A.COLUMN_ID
 END
 		if (!$sth) {
 			my $ret = $self->{dbh}->err;
 			if (!$recurs && ($ret == 942) && ($self->{prefix} eq 'DBA')) {
 				$self->logit("HINT: Please activate USER_GRANTS or connect using a user with DBA privilege.\n");
 				$self->{prefix} = 'ALL';
-				return $self->_column_info($table, $owner, 1);
+				return $self->_column_info($table, $owner, $objtype, 1);
 			}
 			$self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 		}
@@ -8341,7 +8342,7 @@ sub _show_infos
 		my %tables_infos = $self->_table_info();
 
 		# Retrieve all columns information
-		my %columns_infos = $self->_column_info('',$self->{schema});
+		my %columns_infos = $self->_column_info('',$self->{schema}, 'TABLE');
 		foreach my $tb (keys %columns_infos) {
 			foreach my $c (keys %{$columns_infos{$tb}}) {
 				push(@{$self->{tables}{$tb}{column_info}{$c}}, @{$columns_infos{$tb}{$c}});
