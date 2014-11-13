@@ -1398,6 +1398,7 @@ sub _tables
 		my %columns_comments = $self->_column_comments('',$self->{schema});
 		foreach my $view (keys %columns_comments) {
 			next if (!exists $view_infos{$view});
+			next if (!grep($view =~ /^$_$/i, @{$self->{view_as_table}}));
 			foreach my $c (keys %{$columns_comments{$view}}) {
 				$self->{tables}{$view}{column_comments}{$c} = $columns_comments{$view}{$c};
 			}
