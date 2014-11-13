@@ -111,6 +111,7 @@ $FCT_TEST_SCORE = 2;
 	'NVL2' => 1,
 	'SDO_' => 3,
 	'PRAGMA' => 6,
+	'MDSYS' => 1,
 );
 
 @ORA_FUNCTIONS = qw(
@@ -423,6 +424,9 @@ sub plsql_to_plpgsql
 	my $date_field = '\s*([^,\)\(]*(?:date|timestamp)[^,\)\(]*)\s*';
 	$str =~ s/\btrunc\($date_field\)/date_trunc('day', $1)/igs;
 	$str =~ s/\btrunc\($date_field,$field\)/date_trunc($2, $1)/igs;
+
+	# Remove any call to MDSYS schema in the code
+	$str =~ s/MDSYS\.//igs;
 
 	return $str;
 }
@@ -798,7 +802,8 @@ sub estimate_cost
 	$cost_details{'SDO_'} += $n;
 	$n = () = $str =~ m/PRAGMA/igs;
 	$cost_details{'PRAGMA'} += $n;
-
+	$n = () = $str =~ m/MDSYS\./igs;
+	$cost_details{'MDSYS'} += $n;
 
 	foreach my $f (@ORA_FUNCTIONS) {
 		if ($str =~ /\b$f\b/igs) {
