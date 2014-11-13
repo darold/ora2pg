@@ -124,7 +124,7 @@
 .\" ========================================================================
 .\"
 .IX Title "ORA2PG 1"
-.TH ORA2PG 1 "2014-11-12" "perl v5.14.2" "User Contributed Perl Documentation"
+.TH ORA2PG 1 "2014-11-13" "perl v5.14.2" "User Contributed Perl Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -627,13 +627,15 @@ This will force to not use the Oracle schema set in the \s-1SCHEMA\s0 directive.
 Without explicit schema, Ora2Pg will export all objects that not belongs to
 system schema or role:
 .Sp
-.Vb 6
+.Vb 8
 \&        CTXSYS,DBSNMP,EXFSYS,LBACSYS,MDSYS,MGMT_VIEW,OLAPSYS,ORDDATA,OWBSYS,
 \&        ORDPLUGINS,ORDSYS,OUTLN,SI_INFORMTN_SCHEMA,SYS,SYSMAN,SYSTEM,WK_TEST,
 \&        WKSYS,WKPROXY,WMSYS,XDB,APEX_PUBLIC_USER,DIP,FLOWS_020100,FLOWS_030000,
 \&        FLOWS_040100,FLOWS_FILES,MDDATA,ORACLE_OCM,SPATIAL_CSW_ADMIN_USR,
 \&        SPATIAL_WFS_ADMIN_USR,XS$NULL,PERFSTAT,SQLTXPLAIN,DMSYS,TSMSYS,WKSYS,
-\&        APEX_040200,DVSYS,OJVMSYS,GSMADMIN_INTERNAL,APPQOSSYS
+\&        APEX_040200,DVSYS,OJVMSYS,GSMADMIN_INTERNAL,APPQOSSYS,\*(AqMGMT_VIEW\*(Aq,
+\&        \*(AqODM\*(Aq,\*(AqODM_MTR\*(Aq,\*(AqTRACESRV\*(Aq,\*(AqMTMSYS\*(Aq,\*(AqOWBSYS_AUDIT\*(Aq,\*(AqWEBSYS\*(Aq,\*(AqWK_PROXY\*(Aq,
+\&        \*(AqOSE$HTTP$ADMIN\*(Aq,\*(AqAURORA$JIS$UTILITY$\*(Aq,\*(AqAURORA$ORB$UNAUTHENTICATED\*(Aq
 .Ve
 .Sp
 Following your Oracle installation you may have several other system role
@@ -642,7 +644,7 @@ defined. To append these users to the schema exclusion list, just set the
 exclude. For example:
 .Sp
 .Vb 1
-\&        SYSUSERS        INTERNAL,SYSDBA
+\&        SYSUSERS        INTERNAL,SYSDBA,BI,HR,IX,OE,PM,SH
 .Ve
 .Sp
 will add users \s-1INTERNAL\s0 and \s-1SYSDBA\s0 to the schema exclusion list.
