@@ -1411,6 +1411,7 @@ sub _tables
 
 			$self->{tables}{$view}{type} = 'view';
 			$self->{tables}{$view}{text} = $view_infos{$view}{text};
+			$self->{tables}{$view}{owner} = $view_infos{$view}{owner};
 			$self->{tables}{$view}{alias}= $view_infos{$view}{alias};
 			$self->{tables}{$view}{comment} = $view_infos{$view}{comment};
 			my $realview = $view;
@@ -2072,6 +2073,7 @@ sub _views
 	foreach my $view (sort keys %view_infos) {
 		$self->logit("[$i] Scanning $view...\n", 1);
 		$self->{views}{$view}{text} = $view_infos{$view}{text};
+		$self->{views}{$view}{owner} = $view_infos{$view}{owner};
 		$self->{views}{$view}{comment} = $view_infos{$view}{comment};
                 # Retrieve also aliases from views
                 $self->{views}{$view}{alias}= $view_infos{$view}{alias};
@@ -4943,11 +4945,15 @@ Returns the SQL query to use to retrieve data
 
 sub _howto_get_data
 {
-	my ($self, $table, $name, $type, $src_type, $part_name) = @_;
+	my ($self, $table, $name, $type, $src_type, $part_name, $with_schema) = @_;
 
 	# Fix a problem when the table need to be prefixed by the schema
 	my $realtable = $table;
-	$realtable = "$self->{tables}{$table}{table_info}{owner}.$realtable" if ($self->{tables}{$table}{table_info}{owner});
+	if ($self->{tables}{$table}{table_info}{owner}) {
+		$realtable = "$self->{tables}{$table}{table_info}{owner}.$realtable";
+	} elsif ($self->{tables}{$table}{owner}) {
+		$realtable = "$self->{tables}{$table}{owner}.$realtable";
+	}
 	$realtable = uc($realtable);
 
 	my $alias = 'a';
@@ -5946,7 +5952,7 @@ sub _get_views
 	$sth->finish();
 
 	# Retrieve all views
-	my $str = "SELECT VIEW_NAME,TEXT FROM $self->{prefix}_VIEWS v";
+	my $str = "SELECT VIEW_NAME,TEXT,OWNER FROM $self->{prefix}_VIEWS v";
 	if (!$self->{export_invalid}) {
 		$str .= ", $self->{prefix}_OBJECTS a";
 	}
@@ -5973,6 +5979,7 @@ sub _get_views
 		}
 
 		$data{$row->[0]}{text} = $row->[1];
+		$data{$row->[0]}{owner} = $row->[2];
 		$data{$row->[0]}{comment} = $comments{$row->[0]}{comment};
 		@{$data{$row->[0]}{alias}} = $self->_alias_info ($row->[0]);
 	}
