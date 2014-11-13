@@ -1394,6 +1394,14 @@ sub _tables
 	# real TABLE names
 	if ($#{$self->{view_as_table}} >= 0) {
 		my %view_infos = $self->_get_views();
+		# Retrieve comment of each columns
+		my %columns_comments = $self->_column_comments('',$self->{schema});
+		foreach my $view (keys %columns_comments) {
+			next if (!exists $view_infos{$view});
+			foreach my $c (keys %{$columns_comments{$view}}) {
+				$self->{tables}{$view}{column_comments}{$c} = $columns_comments{$view}{$c};
+			}
+		}
 		foreach my $view (sort keys %view_infos) {
 			# Set the table information for each class found
 			# Jump to desired extraction
@@ -2050,6 +2058,14 @@ sub _views
 	# Get all views information
 	$self->logit("Retrieving views information...\n", 1);
 	my %view_infos = $self->_get_views();
+	# Retrieve comment of each columns
+	my %columns_comments = $self->_column_comments('',$self->{schema});
+	foreach my $view (keys %columns_comments) {
+		next if (!exists $view_infos{$view});
+		foreach my $c (keys %{$columns_comments{$view}}) {
+			$self->{views}{$view}{column_comments}{$c} = $columns_comments{$view}{$c};
+		}
+	}
 
 	my $i = 1;
 	foreach my $view (sort keys %view_infos) {
@@ -2337,7 +2353,7 @@ sub _get_sql_data
 						$fname = $self->{replaced_cols}{"\L$view\E"}{"\L$f\E"};
 					}
 					if (!$self->{preserve_case}) {
-						$sql_output .= "COMMENT ON COLUMN $tmpv.$fname IS E'" . $self->{views}{$view}{column_comments}{$f} .  "';\n";
+						$sql_output .= "COMMENT ON COLUMN \L$tmpv.$fname\E IS E'" . $self->{views}{$view}{column_comments}{$f} .  "';\n";
 					} else {
 						my $vname = $tmpv;
 						$vname =~ s/\./"."/;
@@ -4181,7 +4197,7 @@ CREATE TRIGGER insert_${table}_trigger
 					$fname = $self->{replaced_cols}{"\L$table\E"}{lc($fname)};
 				}
 				if (!$self->{preserve_case}) {
-					$sql_output .= "COMMENT ON COLUMN $tbname.$fname IS E'" . $self->{tables}{$table}{column_comments}{$f} .  "';\n";
+					$sql_output .= "COMMENT ON COLUMN \L$tbname.$fname\E IS E'" . $self->{tables}{$table}{column_comments}{$f} .  "';\n";
 				} else {
 					$sql_output .= "COMMENT ON COLUMN $tbname.\"$fname\" IS E'" . $self->{tables}{$table}{column_comments}{$f} .  "';\n";
 				}
@@ -4407,10 +4423,8 @@ sub _column_comments
 	$condition =~ s/^AND/WHERE/;
 
 	$owner = "AND OWNER='$owner' " if ($owner);
-	my $sth = $self->{dbh}->prepare(<<END) or $self->logit("WARNING only: " . $self->{dbh}->errstr . "\n", 0, 0);
-SELECT COLUMN_NAME,COMMENTS,TABLE_NAME,OWNER
-FROM $self->{prefix}_COL_COMMENTS $condition
-END
+	my $sql = "SELECT COLUMN_NAME,COMMENTS,TABLE_NAME,OWNER FROM $self->{prefix}_COL_COMMENTS $condition";
+	my $sth = $self->{dbh}->prepare($sql) or $self->logit("WARNING only: " . $self->{dbh}->errstr . "\n", 0, 0);
 
 	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	my %data = ();
@@ -5912,18 +5926,13 @@ sub _get_views
 
 	my $owner = '';
 	if ($self->{schema}) {
-		$owner .= "WHERE A.OWNER='$self->{schema}' ";
+		$owner .= "AND A.OWNER='$self->{schema}' ";
 	} else {
-            $owner .= "WHERE A.OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "') ";
+            $owner .= "AND A.OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "') ";
 	}
 
-	my $join_segment = '';
-	if (!$self->{user_grants}) {
-		$join_segment = " LEFT JOIN DBA_SEGMENTS S ON (S.SEGMENT_TYPE LIKE 'TABLE%' AND S.SEGMENT_NAME=A.TABLE_NAME)";
-	}
 	my %comments = ();
-	my $sql = "SELECT A.TABLE_NAME,A.COMMENTS,A.TABLE_TYPE FROM ALL_TAB_COMMENTS A $join_segment $owner";
-	$sql .= " AND (A.OWNER, A.TABLE_NAME) NOT IN (SELECT OWNER, TABLE_NAME FROM ALL_TABLES UNION ALL SELECT LOG_OWNER, LOG_TABLE FROM ALL_MVIEW_LOGS)";
+	my $sql = "SELECT A.TABLE_NAME,A.COMMENTS,A.TABLE_TYPE FROM ALL_TAB_COMMENTS A, ALL_OBJECTS O WHERE A.OWNER=O.OWNER and A.TABLE_NAME=O.OBJECT_NAME and O.OBJECT_TYPE='VIEW' $owner";
 	my $sth = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	while (my $row = $sth->fetch) {
@@ -6335,14 +6344,9 @@ sub _table_info
             $owner .= "AND A.OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "') ";
 	}
 	$owner .= $self->limit_to_objects();
-	$owner =~ s/^AND/WHERE/;
 
-	my $join_segment = '';
-	if (!$self->{user_grants}) {
-		$join_segment = " LEFT JOIN DBA_SEGMENTS S ON (S.SEGMENT_TYPE LIKE 'TABLE%' AND S.SEGMENT_NAME=A.TABLE_NAME)";
-	}
 	my %comments = ();
-	my $sql = "SELECT A.TABLE_NAME,A.COMMENTS,A.TABLE_TYPE FROM ALL_TAB_COMMENTS A $join_segment $owner";
+	my $sql = "SELECT A.TABLE_NAME,A.COMMENTS,A.TABLE_TYPE FROM ALL_TAB_COMMENTS A, ALL_OBJECTS O WHERE A.OWNER=O.OWNER and A.TABLE_NAME=O.OBJECT_NAME and O.OBJECT_TYPE='TABLE' $owner";
 	$sql .= " AND (A.OWNER, A.TABLE_NAME) NOT IN (SELECT OWNER, MVIEW_NAME FROM ALL_MVIEWS UNION ALL SELECT LOG_OWNER, LOG_TABLE FROM ALL_MVIEW_LOGS)";
 	my $sth = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -6354,12 +6358,10 @@ sub _table_info
 	}
 	$sth->finish();
 
-	$owner =~ s/^WHERE/AND/;
-
-	$sql = "SELECT A.OWNER,A.TABLE_NAME,NVL(num_rows,1) NUMBER_ROWS,A.TABLESPACE_NAME,A.NESTED,A.LOGGING FROM ALL_TABLES A $join_segment WHERE (A.IOT_TYPE IS NULL OR A.IOT_TYPE = 'IOT') $owner";
-	$sql .= " AND A.TEMPORARY='N' AND (A.NESTED != 'YES' OR A.LOGGING != 'YES') AND (DROPPED IS NULL OR DROPPED = 'NO') AND SECONDARY = 'N'";
+	$sql = "SELECT A.OWNER,A.TABLE_NAME,NVL(num_rows,1) NUMBER_ROWS,A.TABLESPACE_NAME,A.NESTED,A.LOGGING FROM ALL_TABLES A, ALL_OBJECTS O WHERE A.OWNER=O.OWNER AND A.TABLE_NAME=O.OBJECT_NAME AND O.OBJECT_TYPE='TABLE' $owner";
+	$sql .= " AND A.TEMPORARY='N' AND (A.NESTED != 'YES' OR A.LOGGING != 'YES') AND (A.DROPPED IS NULL OR A.DROPPED = 'NO') AND A.SECONDARY = 'N'";
 	$sql .= " AND (A.OWNER, A.TABLE_NAME) NOT IN (SELECT OWNER, MVIEW_NAME FROM ALL_MVIEWS UNION ALL SELECT LOG_OWNER, LOG_TABLE FROM ALL_MVIEW_LOGS)";
-        $sql .= " ORDER BY A.OWNER, A.TABLE_NAME";
+        $sql .= " AND (A.IOT_TYPE IS NULL OR A.IOT_TYPE = 'IOT') ORDER BY A.OWNER, A.TABLE_NAME";
 
         $sth = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
         $sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
