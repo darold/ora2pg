@@ -328,12 +328,6 @@ sub plsql_to_plpgsql
 	# Rewrite comment in CASE between WHEN and THEN
 	$str =~ s/([\s\t]*)(WHEN[\s\t]+[^\s\t]+[\s\t]*)(ORA2PG_COMMENT\d+\%)([\s\t]*THEN)/$1$3$1$2$4/igs;
 
-	if ($null_equal_empty) {
-		# Rewrite all IF ... IS NULL with coalesce because for Oracle empty and NULL is the same
-		$str =~ s/([a-z0-9_\.]+)[\s\t]+IS NULL/coalesce($1::text, '') = ''/igs;
-		$str =~ s/([a-z0-9_\.]+)[\s\t]+IS NOT NULL/($1 IS NOT NULL AND $1::text <> '')/igs;
-	}
-
 	# Replace SQLCODE by SQLSTATE
 	$str =~ s/\bSQLCODE\b/SQLSTATE/igs;
 
@@ -412,7 +406,7 @@ sub plsql_to_plpgsql
 	#  Convert all x <> NULL or x != NULL clauses to x IS NOT NULL.
 	$str =~ s/\s*(<>|\!=)\s*NULL/ IS NOT NULL/igs;
 	#  Convert all x = NULL clauses to x IS NULL.
-	$str =~ s/\s*=\s*NULL/ IS NULL/igs;
+	$str =~ s/(?!:)(.)=\s*NULL/$1 IS NULL/igs;
 
 	# Rewrite replace(a,b) with three argument
 	$str =~ s/REPLACE\s*\($field,$field\)/replace\($1, $2, ''\)/igs;
