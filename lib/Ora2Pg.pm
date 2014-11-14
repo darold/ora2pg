@@ -4109,10 +4109,12 @@ CREATE TRIGGER insert_${table}_trigger
 					$fname = $self->{replaced_cols}{"\L$table\E"}{"\L$fname\E"};
 				}
 				# Check if this column should be replaced by a boolean following table/column name
+				my $typlen = $f->[5];
+				$typlen ||= $f->[2];
 				if (grep(/^$f->[0]$/i, @{$self->{'replace_as_boolean'}{uc($table)}})) {
 					$type = 'boolean';
 				# Check if this column should be replaced by a boolean following type/precision
-				} elsif (exists $self->{'replace_as_boolean'}{uc($f->[1])} && ($self->{'replace_as_boolean'}{uc($f->[1])}[0] == $f->[5])) {
+				} elsif (exists $self->{'replace_as_boolean'}{uc($f->[1])} && ($self->{'replace_as_boolean'}{uc($f->[1])}[0] == $typlen)) {
 					$type = 'boolean';
 				}
 
@@ -7568,11 +7570,13 @@ sub ask_for_data
 	for (my $i = 0; $i <= $#{$nn}; $i++) {
 		my $colname = $nn->[$i]->[0];
 		$colname =~ s/"//g;
+		my $typlen = $nn->[$i]->[5];
+		$typlen ||= $nn->[$i]->[2];
 		# Check if this column should be replaced by a boolean following table/column name
 		if (grep(/^$colname$/i, @{$self->{'replace_as_boolean'}{uc($table)}})) {
 			$tt->[$i] = 'boolean';
 		# Check if this column should be replaced by a boolean following type/precision
-		} elsif (exists $self->{'replace_as_boolean'}{uc($nn->[$i]->[1])} && ($self->{'replace_as_boolean'}{uc($nn->[$i]->[1])}[0] == $nn->[$i]->[5])) {
+		} elsif (exists $self->{'replace_as_boolean'}{uc($nn->[$i]->[1])} && ($self->{'replace_as_boolean'}{uc($nn->[$i]->[1])}[0] == $typlen)) {
 			$tt->[$i] = 'boolean';
 		}
 	}
@@ -8460,10 +8464,12 @@ sub _show_infos
 						$warning = " (Warning: '$d->[0]' is a reserved word in PostgreSQL)";
 					}
 					# Check if this column should be replaced by a boolean following table/column name
+					my $typlen = $d->[5];
+					$typlen ||= $d->[2];
 					if (grep(/^$d->[0]$/i, @{$self->{'replace_as_boolean'}{$t}})) {
 						$type = 'boolean';
 					# Check if this column should be replaced by a boolean following type/precision
-					} elsif (exists $self->{'replace_as_boolean'}{uc($d->[1])} && ($self->{'replace_as_boolean'}{uc($d->[1])}[0] == $d->[5])) {
+					} elsif (exists $self->{'replace_as_boolean'}{uc($d->[1])} && ($self->{'replace_as_boolean'}{uc($d->[1])}[0] == $typlen)) {
 						$type = 'boolean';
 					}
 					$self->logit(" => $type$warning$align\n");
