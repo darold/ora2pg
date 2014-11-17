@@ -5954,7 +5954,7 @@ sub _get_views
 	$sth->finish();
 
 	# Retrieve all views
-	my $str = "SELECT VIEW_NAME,TEXT,OWNER FROM $self->{prefix}_VIEWS v";
+	my $str = "SELECT v.VIEW_NAME,v.TEXT,v.OWNER FROM $self->{prefix}_VIEWS v";
 	if (!$self->{export_invalid}) {
 		$str .= ", $self->{prefix}_OBJECTS a";
 	}
