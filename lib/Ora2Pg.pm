@@ -56,7 +56,7 @@ our $TMP_DIR = File::Spec->tmpdir() || '/tmp';
 # LogMiner, Oracle Advanced Replication, hash table used by loadjava.
 our @EXCLUDED_TABLES = ('USLOG\$_.*', 'MLOG\$_.*', 'RUPD\$_.*', 'MDXT_.*', 'MDRT_.*', 'MDRS_.*', 'DR\$.*', 'CLI_SWP\$.*', 'LOGMNR\$.*', 'REPCAT\$.*', 'JAVA\$.*');
 
-our @FKEY_OPTIONS = ('ON DELETE NO ACTION', 'ON UPDATE NO ACTION', 'ON DELETE RESTRICT', 'ON UPDATE RESTRICT', 'ON DELETE CASCADE', 'ON UPDATE CASCADE');
+our @FKEY_OPTIONS = ('NEVER', 'DELETE', 'ALWAYS');
 
 # Minimized the footprint on disc, so that more rows fit on a data page,
 # which is the most important factor for speed. 
@@ -2117,6 +2117,7 @@ sub _materialized_views
 		$self->{materialized_views}{$table}{no_index}= $view_infos{$table}{no_index};
 		$self->{materialized_views}{$table}{rewritable}= $view_infos{$table}{rewritable};
 		$self->{materialized_views}{$table}{build_mode}= $view_infos{$table}{build_mode};
+		$self->{materialized_views}{$table}{owner}= $view_infos{$table}{owner};
 		$i++;
 	}
 
@@ -2579,9 +2580,9 @@ LANGUAGE plpgsql ;
 				my $owner = $self->{materialized_views}{$view}{owner};
 				$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
 				if (!$self->{preserve_case}) {
-					$sql_output .= "ALTER MATERIALIZED VIEW \L$view\E OWNER TO \L$owner\E;\n";
+					$sql_output .= "ALTER MATERIALIZED VIEW \L$view\E OWNER TO \L$owner\E;\n\n";
 				} else {
-					$sql_output .= "ALTER MATERIALIZED VIEW \"$view\" OWNER TO \"$owner\";\n";
+					$sql_output .= "ALTER MATERIALIZED VIEW \"$view\" OWNER TO \"$owner\";\n\n";
 				}
 			}
 
@@ -2831,7 +2832,7 @@ LANGUAGE plpgsql ;
 					if ($self->{force_owner}) {
 						my $owner = $trig->[8];
 						$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
-						$sql_output .= "ALTER FUNCTION trigger_fct_\L$trig->[0]\E OWNER TO \L$owner\E;\n";
+						$sql_output .= "ALTER FUNCTION trigger_fct_\L$trig->[0]\E OWNER TO \L$owner\E;\n\n";
 					}
 					$trig->[6] =~ s/\n+$//s;
 					$trig->[6] =~ s/^[^\.\s\t]+\.//;
@@ -2848,7 +2849,7 @@ LANGUAGE plpgsql ;
 					if ($self->{force_owner}) {
 						my $owner = $trig->[8];
 						$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
-						$sql_output .= "ALTER FUNCTION trigger_fct_\L$trig->[0]\E OWNER TO \L$owner\E;\n";
+						$sql_output .= "ALTER FUNCTION trigger_fct_\L$trig->[0]\E OWNER TO \L$owner\E;\n\n";
 					}
 					$sql_output .= "CREATE TRIGGER \L$trig->[0]\E\n\t";
 					my $statement = 0;
@@ -3061,7 +3062,7 @@ LANGUAGE plpgsql ;
 				$fhdl = $self->open_export_file("${fct}_$self->{output}");
 			}
 			if ($self->{plsql_pgsql}) {
-				my $sql_f = $self->_convert_function($self->{functions}{$fct}{text});
+				my $sql_f = $self->_convert_function($self->{functions}{$fct}{owner}, $self->{functions}{$fct}{text});
 				$sql_output .= $sql_f . "\n\n";
 				if ($self->{estimate_cost}) {
 					my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($sql_f);
@@ -3082,17 +3083,6 @@ LANGUAGE plpgsql ;
 			}
 			$self->_restore_comments(\$sql_output, \%comments);
 
-			if ($self->{force_owner}) {
-				my $owner = $self->{functions}{$fct}{owner};
-				$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
-				if ($owner) {
-					if (!$self->{preserve_case}) {
-						$sql_output .= "ALTER FUNCTION \L$fct\E OWNER TO \L$owner\E;\n";
-					} else {
-						$sql_output .= "ALTER FUNCTION \"$fct\" OWNER TO \"$owner\";\n";
-					}
-				}
-			}
 			if ($self->{file_per_function} && !$self->{pg_dsn}) {
 				$self->dump($sql_header . $sql_output, $fhdl);
 				$self->close_export_file($fhdl);
@@ -3210,7 +3200,7 @@ LANGUAGE plpgsql ;
 				$fhdl = $self->open_export_file("${fct}_$self->{output}");
 			}
 			if ($self->{plsql_pgsql}) {
-				my $sql_p = $self->_convert_function($self->{procedures}{$fct}{text});
+				my $sql_p = $self->_convert_function($self->{functions}{$fct}{owner}, $self->{procedures}{$fct}{text});
 				$sql_output .= $sql_p . "\n\n";
 				if ($self->{estimate_cost}) {
 					my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($sql_p);
@@ -3229,17 +3219,6 @@ LANGUAGE plpgsql ;
 				$sql_output .= $self->{procedures}{$fct}{text} . "\n\n";
 			}
 			$self->_restore_comments(\$sql_output, \%comments);
-			if ($self->{force_owner}) {
-				my $owner = $self->{procedures}{$fct}{owner};
-				$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
-				if ($owner) {
-					if (!$self->{preserve_case}) {
-						$sql_output .= "ALTER FUNCTION \L$fct\E OWNER TO \L$owner\E;\n";
-					} else {
-						$sql_output .= "ALTER FUNCTION \"$fct\" OWNER TO \"$owner\";\n";
-					}
-				}
-			}
 			$sql_output .= $fct_cost;
 			if ($self->{file_per_function} && !$self->{pg_dsn}) {
 				$self->dump($sql_header . $sql_output, $fhdl);
@@ -4956,10 +4935,9 @@ sub _create_foreign_keys
 			}
 			$str .= "ALTER TABLE $table ADD CONSTRAINT $h->[0] FOREIGN KEY (" . join(',', @lfkeys) . ") REFERENCES $subsdesttable(" . join(',', @rfkeys) . ")";
 			$str .= " MATCH $h->[2]" if ($h->[2]);
-			if (!$self->{fkey_options}) {
-				$str .= " ON DELETE $h->[3]" if ($h->[3]);
-			} else {
-				$str .= " " . join(' ', @{$self->{fkey_options}});
+			$str .= " ON DELETE $h->[3]" if ($h->[3]);
+			if ( ($self->{fkey_add_update} eq 'ALWAYS') || ( ($self->{fkey_add_update} eq 'DELETE') && ($str =~ /ON DELETE CASCADE/) ) ) {
+				$str .= " ON UPDATE CASCADE";
 			}
 			# if DEFER_FKEY is enabled, force constraint to be
 			# deferrable and defer it initially.
@@ -6139,7 +6117,7 @@ sub _get_materialized_views
 		$data{$row->[0]}{no_index} = ($row->[5] eq 'Y') ? 1 : 0;
 		$data{$row->[0]}{rewritable} = ($row->[6] eq 'Y') ? 1 : 0;
 		$data{$row->[0]}{build_mode} = $row->[7];
-		$data{$row->[0]}{owner} = $row->[-1];
+		$data{$row->[0]}{owner} = $row->[8];
 	}
 
 	return %data;
@@ -7021,7 +6999,7 @@ sub read_config
 					$AConfig{"skip_\L$s\E"} = 1;
 				}
 			}
-		} elsif (!grep(/^$var$/, 'TABLES', 'ALLOW', 'MODIFY_STRUCT', 'REPLACE_TABLES', 'REPLACE_COLS', 'WHERE', 'EXCLUDE','VIEW_AS_TABLE','ORA_RESERVED_WORDS','SYSUSERS','REPLACE_AS_BOOLEAN','BOOLEAN_VALUES','MODIFY_TYPE','DEFINED_PK', 'ALLOW_PARTITION','REPLACE_QUERY','FKEY_OPTIONS')) {
+		} elsif (!grep(/^$var$/, 'TABLES', 'ALLOW', 'MODIFY_STRUCT', 'REPLACE_TABLES', 'REPLACE_COLS', 'WHERE', 'EXCLUDE','VIEW_AS_TABLE','ORA_RESERVED_WORDS','SYSUSERS','REPLACE_AS_BOOLEAN','BOOLEAN_VALUES','MODIFY_TYPE','DEFINED_PK', 'ALLOW_PARTITION','REPLACE_QUERY','FKEY_ADD_UPDATE')) {
 			$AConfig{$var} = $val;
 		} elsif ( ($var eq 'TABLES') || ($var eq 'ALLOW') || ($var eq 'EXCLUDE') || ($var eq 'VIEW_AS_TABLE') || ($var eq 'ALLOW_PARTITION') ) {
 			$var = 'ALLOW' if ($var eq 'TABLES');
@@ -7030,17 +7008,11 @@ sub read_config
 			push(@{$AConfig{$var}}, split(/[\s\t;,]+/, $val) );
 		} elsif ( $var eq 'ORA_RESERVED_WORDS' ) {
 			push(@{$AConfig{$var}}, split(/[\s\t;,]+/, $val) );
-		} elsif ( $var eq 'FKEY_OPTIONS' ) {
-			my @tmp = split(/[;,]+/, $val);
-			foreach my $a (@tmp) {
-				$a =~ s/^\s+//;
-				$a =~ s/\s+$//;
-				next if (!$a);
-				if (grep(/^$a$/i, @FKEY_OPTIONS)) {
-					push(@{$AConfig{$var}}, uc($a));
-				} else {
-					$self->logit("FATAL: invalid foreign key option, see FKEY_OPTIONS in configuration file\n", 0, 1);
-				}
+		} elsif ( $var eq 'FKEY_ADD_UPDATE' ) {
+			if (grep(/^$val$/i, @FKEY_OPTIONS)) {
+				$AConfig{$var} = uc($val);
+			} else {
+				$self->logit("FATAL: invalid option, see FKEY_ADD_UPDATE in configuration file\n", 0, 1);
 			}
 		} elsif ($var eq 'MODIFY_STRUCT') {
 			while ($val =~ s/([^\(\s\t]+)[\t\s]*\(([^\)]+)\)[\t\s]*//) {
@@ -7208,17 +7180,7 @@ sub _convert_package
 		}
 		$self->{pkgcost} = 0;
 		foreach my $f (@functions) {
-			$content .= $self->_convert_function($f, $pname, \%comments);
-			if ($self->{force_owner}) {
-				$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
-				if ($owner) {
-					if (!$self->{preserve_case}) {
-						$content .= "ALTER FUNCTION \L$f\E OWNER TO \L$owner\E;\n";
-					} else {
-						$content .= "ALTER FUNCTION \"$f\" OWNER TO \"$owner\";\n";
-					}
-				}
-			}
+			$content .= $self->_convert_function($owner, $f, $pname, \%comments);
 		}
 		$self->_restore_comments(\$content, \%comments);
 		if ($self->{estimate_cost}) {
@@ -7290,7 +7252,7 @@ is set to 1.
 
 sub _convert_function
 {
-	my ($self, $plsql, $pname, $hrefcomments) = @_;
+	my ($self, $owner, $plsql, $pname, $hrefcomments) = @_;
 
 	my $func_before = '';
 	my $func_name = '';
@@ -7420,6 +7382,17 @@ sub _convert_function
 		$function = "\n$func_before$function";
 	}
 
+	if ($self->{force_owner}) {
+		$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
+		if ($owner) {
+			if (!$self->{preserve_case}) {
+				$function .= "ALTER FUNCTION \L$func_name\E OWNER TO \L$owner\E;\n";
+			} else {
+				$function .= "ALTER FUNCTION \"$func_name\" OWNER TO \"$owner\";\n";
+			}
+		}
+	}
+
 	if ($pname && $self->{file_per_function} && !$self->{pg_dsn}) {
 		$func_name =~ s/^"*$pname"*\.//i;
 		$func_name =~ s/"//g; # Remove case sensitivity quoting
@@ -7438,6 +7411,7 @@ sub _convert_function
 		$self->close_export_file($fhdl);
 		$function = "\\i $dirprefix\L$pname/$func_name\E_$self->{output}\n";
 	}
+
 	return $function;
 }
 

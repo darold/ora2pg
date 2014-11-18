@@ -229,13 +229,17 @@ BZIP2	$bzip2
 # during GRANT export
 GEN_USER_PWD	0
 
-# This directive can be used to replace the foreign key options. Possible
-# values are: ON DELETE NO ACTION, ON UPDATE NO ACTION, ON DELETE RESTRICT,
-# ON UPDATE RESTRICT, ON DELETE CASCADE, ON UPDATE CASCADE. By default Ora2Pg
-# will export foreign keys as they are defined in Oracle. If you want to
-# replace those definitions for all foreign keys you can use any valid
-# combinaison of the above values as a coma separated list.
-#FKEY_OPTIONS	ON DELETE CASCADE,ON UPDATE CASCADE
+# This directive allow you to add an ON UPDATE CASCADE option to a foreign
+# key when a ON DELETE CASCADE is defined or always. Oracle do not support
+# this feature, you have to use trigger to operate the ON UPDATE CASCADE.
+# As PostgreSQL has this feature, you can choose how to add the foreign
+# key option. There is three value to this directive: never, the default
+# that mean that foreign keys will be declared exactly like in Oracle.
+# The second value is delete, that mean that the ON UPDATE CASCADE option
+# will be added only if the ON DELETE CASCADE is already defined on the
+# foreign Keys. The last value, always, will force all foreign keys to be
+# defined using the update option.
+FKEY_ADD_UPDATE		never
 
 # When exporting tables, Ora2Pg normally exports constraints as they are;
 # if they are non-deferrable they are exported as non-deferrable.
