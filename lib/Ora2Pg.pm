@@ -56,6 +56,8 @@ our $TMP_DIR = File::Spec->tmpdir() || '/tmp';
 # LogMiner, Oracle Advanced Replication, hash table used by loadjava.
 our @EXCLUDED_TABLES = ('USLOG\$_.*', 'MLOG\$_.*', 'RUPD\$_.*', 'MDXT_.*', 'MDRT_.*', 'MDRS_.*', 'DR\$.*', 'CLI_SWP\$.*', 'LOGMNR\$.*', 'REPCAT\$.*', 'JAVA\$.*');
 
+our @FKEY_OPTIONS = ('ON DELETE NO ACTION', 'ON UPDATE NO ACTION', 'ON DELETE RESTRICT', 'ON UPDATE RESTRICT', 'ON DELETE CASCADE', 'ON UPDATE CASCADE');
+
 # Minimized the footprint on disc, so that more rows fit on a data page,
 # which is the most important factor for speed. 
 our %TYPALIGN = (
@@ -4855,7 +4857,11 @@ sub _create_foreign_keys
 			}
 			$str .= "ALTER TABLE $table ADD CONSTRAINT $h->[0] FOREIGN KEY (" . join(',', @lfkeys) . ") REFERENCES $subsdesttable(" . join(',', @rfkeys) . ")";
 			$str .= " MATCH $h->[2]" if ($h->[2]);
-			$str .= " ON DELETE $h->[3]" if ($h->[3]);
+			if (!$self->{fkey_options}) {
+				$str .= " ON DELETE $h->[3]" if ($h->[3]);
+			} else {
+				$str .= " " . join(' ', @{$self->{fkey_options}});
+			}
 			# if DEFER_FKEY is enabled, force constraint to be
 			# deferrable and defer it initially.
 			$str .= (($self->{'defer_fkey'} ) ? ' DEFERRABLE' : " $h->[4]") if ($h->[4]);
@@ -6873,7 +6879,7 @@ sub read_config
 					$AConfig{"skip_\L$s\E"} = 1;
 				}
 			}
-		} elsif (!grep(/^$var$/, 'TABLES', 'ALLOW', 'MODIFY_STRUCT', 'REPLACE_TABLES', 'REPLACE_COLS', 'WHERE', 'EXCLUDE','VIEW_AS_TABLE','ORA_RESERVED_WORDS','SYSUSERS','REPLACE_AS_BOOLEAN','BOOLEAN_VALUES','MODIFY_TYPE','DEFINED_PK', 'ALLOW_PARTITION','REPLACE_QUERY')) {
+		} elsif (!grep(/^$var$/, 'TABLES', 'ALLOW', 'MODIFY_STRUCT', 'REPLACE_TABLES', 'REPLACE_COLS', 'WHERE', 'EXCLUDE','VIEW_AS_TABLE','ORA_RESERVED_WORDS','SYSUSERS','REPLACE_AS_BOOLEAN','BOOLEAN_VALUES','MODIFY_TYPE','DEFINED_PK', 'ALLOW_PARTITION','REPLACE_QUERY','FKEY_OPTIONS')) {
 			$AConfig{$var} = $val;
 		} elsif ( ($var eq 'TABLES') || ($var eq 'ALLOW') || ($var eq 'EXCLUDE') || ($var eq 'VIEW_AS_TABLE') || ($var eq 'ALLOW_PARTITION') ) {
 			$var = 'ALLOW' if ($var eq 'TABLES');
@@ -6882,6 +6888,18 @@ sub read_config
 			push(@{$AConfig{$var}}, split(/[\s\t;,]+/, $val) );
 		} elsif ( $var eq 'ORA_RESERVED_WORDS' ) {
 			push(@{$AConfig{$var}}, split(/[\s\t;,]+/, $val) );
+		} elsif ( $var eq 'FKEY_OPTIONS' ) {
+			my @tmp = split(/[;,]+/, $val);
+			foreach my $a (@tmp) {
+				$a =~ s/^\s+//;
+				$a =~ s/\s+$//;
+				next if (!$a);
+				if (grep(/^$a$/i, @FKEY_OPTIONS)) {
+					push(@{$AConfig{$var}}, uc($a));
+				} else {
+					$self->logit("FATAL: invalid foreign key option, see FKEY_OPTIONS in configuration file\n", 0, 1);
+				}
+			}
 		} elsif ($var eq 'MODIFY_STRUCT') {
 			while ($val =~ s/([^\(\s\t]+)[\t\s]*\(([^\)]+)\)[\t\s]*//) {
 				my $table = $1;

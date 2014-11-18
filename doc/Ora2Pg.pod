@@ -1253,6 +1253,19 @@ are ignored and key names are created in the target PostgreSQL database with
 the PostgreSQL internal default naming rules. If you want to preserve Oracle
 primary key names set this option to 1.
 
+=item FKEY_OPTIONS
+
+This directive can be used to replace the foreign key options. Possible
+values are: ON DELETE NO ACTION, ON UPDATE NO ACTION, ON DELETE RESTRICT,
+ON UPDATE RESTRICT, ON DELETE CASCADE, ON UPDATE CASCADE. By default Ora2Pg
+will export foreign keys as they are defined in Oracle. If you want to
+replace those definitions for all foreign keys you can use any valid
+combinaison of the above values as a coma separated list. For example:
+
+	FKEY_OPTIONS	ON DELETE CASCADE,ON UPDATE CASCADE
+
+will add those options to all foreign keys definitions.
+
 =item FKEY_DEFERRABLE
 
 When exporting tables, Ora2Pg normally exports constraints as they are, if they

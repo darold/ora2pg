@@ -229,6 +229,14 @@ BZIP2	$bzip2
 # during GRANT export
 GEN_USER_PWD	0
 
+# This directive can be used to replace the foreign key options. Possible
+# values are: ON DELETE NO ACTION, ON UPDATE NO ACTION, ON DELETE RESTRICT,
+# ON UPDATE RESTRICT, ON DELETE CASCADE, ON UPDATE CASCADE. By default Ora2Pg
+# will export foreign keys as they are defined in Oracle. If you want to
+# replace those definitions for all foreign keys you can use any valid
+# combinaison of the above values as a coma separated list.
+#FKEY_OPTIONS	ON DELETE CASCADE,ON UPDATE CASCADE
+
 # When exporting tables, Ora2Pg normally exports constraints as they are;
 # if they are non-deferrable they are exported as non-deferrable.
 # However, non-deferrable constraints will probably cause problems when
