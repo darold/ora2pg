@@ -2136,6 +2136,7 @@ sub _tablespaces
 
 	$self->logit("Retrieving tablespaces information...\n", 1);
 	$self->{tablespaces} = $self->_get_tablespaces();
+	$self->{list_tablespaces} = $self->_list_tablespaces();
 
 }
 
@@ -2336,6 +2337,16 @@ sub _get_sql_data
 				$sql_output .= ") AS " . $self->{views}{$view}{text} . ";\n\n";
 			}
 
+			if ($self->{force_owner}) {
+				my $owner = $self->{views}{$view}{owner};
+				$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
+				if (!$self->{preserve_case}) {
+					$sql_output .= "ALTER VIEW \L$tmpv\E OWNER TO \L$owner\E;\n";
+				} else {
+					$sql_output .= "ALTER VIEW \"$tmpv\" OWNER TO \"$owner\";\n";
+				}
+			}
+
 			# Add comments on view and columns
 			if (!$self->{disable_comment}) {
 
@@ -2533,6 +2544,7 @@ LANGUAGE plpgsql ;
 				$sql_output .= " USING INDEX" if ($self->{materialized_views}{$view}{no_index});
 				$sql_output .= " USING NO INDEX" if (!$self->{materialized_views}{$view}{no_index});
 				$sql_output .= ";\n\n";
+
 			} else {
 				$self->{materialized_views}{$view}{text} = $self->_format_view($self->{materialized_views}{$view}{text});
 				if (!$self->{preserve_case}) {
@@ -2544,6 +2556,16 @@ LANGUAGE plpgsql ;
 					$sql_output .= $self->{materialized_views}{$view}{text};
 					$sql_output .= ";\n\n";
 					$sql_output .= "SELECT create_materialized_view('\L$view\E','\L$view\E_mview', change with the name of the colum to used for the index);\n\n\n";
+
+					if ($self->{force_owner}) {
+						my $owner = $self->{materialized_views}{$view}{owner};
+						$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
+						if (!$self->{preserve_case}) {
+							$sql_output .= "ALTER VIEW \L$view\E_mview OWNER TO \L$owner\E;\n";
+						} else {
+							$sql_output .= "ALTER VIEW \L$view\E_mview OWNER TO \"$owner\";\n";
+						}
+					}
 				} else {
 					$sql_output .= "CREATE MATERIALIZED VIEW \L$view\E AS\n";
 					$sql_output .= $self->{materialized_views}{$view}{text};
@@ -2551,6 +2573,15 @@ LANGUAGE plpgsql ;
 						$sql_output .= " WITH NO DATA";
 					}
 					$sql_output .= ";\n\n";
+				}
+			}
+			if ($self->{force_owner}) {
+				my $owner = $self->{materialized_views}{$view}{owner};
+				$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
+				if (!$self->{preserve_case}) {
+					$sql_output .= "ALTER MATERIALIZED VIEW \L$view\E OWNER TO \L$owner\E;\n";
+				} else {
+					$sql_output .= "ALTER MATERIALIZED VIEW \"$view\" OWNER TO \"$owner\";\n";
 				}
 			}
 
@@ -2772,6 +2803,11 @@ LANGUAGE plpgsql ;
 				} else {
 					$sql_output .= "CREATE OR REPLACE RULE \L$trig->[0]\E AS\n\tON $trig->[2] TO \"$trig->[3]\"\n\tDO INSTEAD\n(\n\t$trig->[4]\n);\n\n";
 				}
+				if ($self->{force_owner}) {
+					my $owner = $trig->[8];
+					$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
+					$sql_output .= "ALTER RULE\L$trig->[0]\E OWNER TO \L$owner\E;\n";
+				}
 			} else {
 				# Replace direct call of a stored procedure in triggers
 				if ($trig->[7] eq 'CALL') {
@@ -2792,6 +2828,11 @@ LANGUAGE plpgsql ;
 				}
 				if ($self->{pg_supports_when} && $trig->[5]) {
 					$sql_output .= "CREATE OR REPLACE FUNCTION trigger_fct_\L$trig->[0]\E () RETURNS trigger AS \$BODY\$\n$trig->[4]\n\$BODY\$\n LANGUAGE 'plpgsql';\n\n";
+					if ($self->{force_owner}) {
+						my $owner = $trig->[8];
+						$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
+						$sql_output .= "ALTER FUNCTION trigger_fct_\L$trig->[0]\E OWNER TO \L$owner\E;\n";
+					}
 					$trig->[6] =~ s/\n+$//s;
 					$trig->[6] =~ s/^[^\.\s\t]+\.//;
 					$sql_output .= "CREATE TRIGGER $trig->[6]\n";
@@ -2804,6 +2845,11 @@ LANGUAGE plpgsql ;
 					$sql_output .= "\tEXECUTE PROCEDURE trigger_fct_\L$trig->[0]\E();\n\n";
 				} else {
 					$sql_output .= "CREATE OR REPLACE FUNCTION trigger_fct_\L$trig->[0]\E () RETURNS trigger AS \$BODY\$\n$trig->[4]\n\$BODY\$\n LANGUAGE 'plpgsql';\n\n";
+					if ($self->{force_owner}) {
+						my $owner = $trig->[8];
+						$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
+						$sql_output .= "ALTER FUNCTION trigger_fct_\L$trig->[0]\E OWNER TO \L$owner\E;\n";
+					}
 					$sql_output .= "CREATE TRIGGER \L$trig->[0]\E\n\t";
 					my $statement = 0;
 					$statement = 1 if ($trig->[1] =~ s/ STATEMENT//);
@@ -2975,7 +3021,7 @@ LANGUAGE plpgsql ;
 				if ($l =~ /LANGUAGE\s+([^\s="'><\!\(\)]+)/is) {
 					$language = $1;
 				}
-				$self->{functions}{$fcnm} .= "$l\n";
+				$self->{functions}{$fcnm}{text} .= "$l\n";
 
 				if (!$language) {
 					if ($l =~ /^END[\s\t]+($fcnm)[\s\t]*;/i) {
@@ -3005,8 +3051,8 @@ LANGUAGE plpgsql ;
 			# forget or not this object if it is in the exclude or allow lists.
 			$i++, next if ($self->skip_this_object('FUNCTION', $fct));
 			$self->{idxcomment} = 0;
-			my %comments = $self->_remove_comments(\$self->{functions}{$fct});
-			$total_size += length($self->{functions}->{$fct});
+			my %comments = $self->_remove_comments(\$self->{functions}{$fct}{text});
+			$total_size += length($self->{functions}->{$fct}{text});
 			$self->logit("Dumping function $fct...\n", 1);
 			my $fhdl = undef;
 			if ($self->{file_per_function} && !$self->{pg_dsn}) {
@@ -3015,7 +3061,7 @@ LANGUAGE plpgsql ;
 				$fhdl = $self->open_export_file("${fct}_$self->{output}");
 			}
 			if ($self->{plsql_pgsql}) {
-				my $sql_f = $self->_convert_function($self->{functions}{$fct});
+				my $sql_f = $self->_convert_function($self->{functions}{$fct}{text});
 				$sql_output .= $sql_f . "\n\n";
 				if ($self->{estimate_cost}) {
 					my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($sql_f);
@@ -3032,9 +3078,21 @@ LANGUAGE plpgsql ;
 					}
 				}
 			} else {
-				$sql_output .= $self->{functions}{$fct} . "\n\n";
+				$sql_output .= $self->{functions}{$fct}{text} . "\n\n";
 			}
 			$self->_restore_comments(\$sql_output, \%comments);
+
+			if ($self->{force_owner}) {
+				my $owner = $self->{functions}{$fct}{owner};
+				$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
+				if ($owner) {
+					if (!$self->{preserve_case}) {
+						$sql_output .= "ALTER FUNCTION \L$fct\E OWNER TO \L$owner\E;\n";
+					} else {
+						$sql_output .= "ALTER FUNCTION \"$fct\" OWNER TO \"$owner\";\n";
+					}
+				}
+			}
 			if ($self->{file_per_function} && !$self->{pg_dsn}) {
 				$self->dump($sql_header . $sql_output, $fhdl);
 				$self->close_export_file($fhdl);
@@ -3114,7 +3172,7 @@ LANGUAGE plpgsql ;
 				if ($l =~ /LANGUAGE\s+([^\s="'><\!\(\)]+)/is) {
 					$language = $1;
 				}
-				$self->{procedures}{$fcnm} .= "$l\n";
+				$self->{procedures}{$fcnm}{text} .= "$l\n";
 				if (!$language) {
 					if ($l =~ /^END[\s\t]+($fcnm)[\s\t]*;/i) {
 						$fcnm = '';
@@ -3141,8 +3199,8 @@ LANGUAGE plpgsql ;
 			# forget or not this object if it is in the exclude or allow lists.
 			$i++, next if ($self->skip_this_object('PROCEDURE', $fct));
 			$self->{idxcomment} = 0;
-			my %comments = $self->_remove_comments(\$self->{procedures}{$fct});
-			$total_size += length($self->{procedures}->{$fct});
+			my %comments = $self->_remove_comments(\$self->{procedures}{$fct}{text});
+			$total_size += length($self->{procedures}->{$fct}{text});
 
 			$self->logit("Dumping procedure $fct...\n", 1);
 			my $fhdl = undef;
@@ -3152,7 +3210,7 @@ LANGUAGE plpgsql ;
 				$fhdl = $self->open_export_file("${fct}_$self->{output}");
 			}
 			if ($self->{plsql_pgsql}) {
-				my $sql_p = $self->_convert_function($self->{procedures}{$fct});
+				my $sql_p = $self->_convert_function($self->{procedures}{$fct}{text});
 				$sql_output .= $sql_p . "\n\n";
 				if ($self->{estimate_cost}) {
 					my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($sql_p);
@@ -3168,9 +3226,20 @@ LANGUAGE plpgsql ;
 					}
 				}
 			} else {
-				$sql_output .= $self->{procedures}{$fct} . "\n\n";
+				$sql_output .= $self->{procedures}{$fct}{text} . "\n\n";
 			}
 			$self->_restore_comments(\$sql_output, \%comments);
+			if ($self->{force_owner}) {
+				my $owner = $self->{procedures}{$fct}{owner};
+				$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
+				if ($owner) {
+					if (!$self->{preserve_case}) {
+						$sql_output .= "ALTER FUNCTION \L$fct\E OWNER TO \L$owner\E;\n";
+					} else {
+						$sql_output .= "ALTER FUNCTION \"$fct\" OWNER TO \"$owner\";\n";
+					}
+				}
+			}
 			$sql_output .= $fct_cost;
 			if ($self->{file_per_function} && !$self->{pg_dsn}) {
 				$self->dump($sql_header . $sql_output, $fhdl);
@@ -3248,7 +3317,7 @@ LANGUAGE plpgsql ;
 					$pknm = lc($1);
 				}
 				if ($pknm) {
-					$self->{packages}{$pknm} .= "$l\n";
+					$self->{packages}{$pknm}{text} .= "$l\n";
 				}
 			}
 		}
@@ -3264,7 +3333,7 @@ LANGUAGE plpgsql ;
 			if (!$self->{quiet} && !$self->{debug}) {
 				print STDERR $self->progress_bar($i, $num_total_package, 25, '=', 'packages', "generating $pkg" );
 			}
-			$i++, next if (!$self->{packages}{$pkg});
+			$i++, next if (!$self->{packages}{$pkg}{text});
 			my $pkgbody = '';
 			my $fct_cost = '';
 			if (!$self->{plsql_pgsql}) {
@@ -3280,11 +3349,11 @@ LANGUAGE plpgsql ;
 						}
 					}
 				}
-				$pkgbody = $self->{packages}{$pkg};
+				$pkgbody = $self->{packages}{$pkg}{text};
 			} else {
-				my @codes = split(/CREATE(?: OR REPLACE)? PACKAGE BODY/, $self->{packages}{$pkg});
+				my @codes = split(/CREATE(?: OR REPLACE)? PACKAGE BODY/, $self->{packages}{$pkg}{text});
 				if ($self->{estimate_cost}) {
-					$total_size += length($self->{packages}->{$pkg});
+					$total_size += length($self->{packages}->{$pkg}{text});
 					foreach my $txt (@codes) {
 						my %infos = $self->_lookup_package("CREATE OR REPLACE PACKAGE BODY$txt");
 						foreach my $f (sort keys %infos) {
@@ -3311,7 +3380,7 @@ LANGUAGE plpgsql ;
 					$fct_cost .= "-- Total estimated cost for package $pkg: $cost_value\n";
 				}
 				foreach my $txt (@codes) {
-					$pkgbody .= $self->_convert_package("CREATE OR REPLACE PACKAGE BODY$txt");
+					$pkgbody .= $self->_convert_package("CREATE OR REPLACE PACKAGE BODY$txt", $self->{packages}{$pkg}{owner});
 					$pkgbody =~ s/[\r\n]*END;[\t\s\r\n]*$//is;
 					$pkgbody =~ s/([\r\n]*;)[\t\s\r\n]*$/$1/is;
 				}
@@ -3390,7 +3459,7 @@ LANGUAGE plpgsql ;
 				print STDERR $self->progress_bar($i, $#{$self->{types}}+1, 25, '=', 'types', "generating $tpe->{name}" );
 			}
 			if ($self->{plsql_pgsql}) {
-				$tpe->{code} = $self->_convert_type($tpe->{code});
+				$tpe->{code} = $self->_convert_type($tpe->{code}, $tpe->{owner});
 			} else {
 				$tpe->{code} = "CREATE OR REPLACE $tpe->{code}\n";
 			}
@@ -3430,6 +3499,15 @@ LANGUAGE plpgsql ;
 					$loc = $1 . $loc;
 					if (!grep(/^$tb_name$/, @done)) {
 						$create_tb .= "CREATE TABLESPACE \L$tb_name\E LOCATION '$loc';\n";
+						my $owner = $self->{list_tablespaces}{$tb_name}{owner} || '';
+						$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
+						if ($owner) {
+							if (!$self->{preserve_case}) {
+								$create_tb .= "ALTER TABLESPACE \L$tb_name\E OWNER TO \L$owner\E;\n";
+							} else {
+								$create_tb .= "ALTER TABLESPACE \"$tb_name\" OWNER TO \"$owner\";\n";
+							}
+						}
 					}
 					push(@done, $tb_name);
 					foreach my $obj (@{$self->{tablespaces}{$tb_type}{$tb_name}{$tb_path}}) {
@@ -3904,6 +3982,7 @@ BEGIN
 			my $idx = 0;
 			my $old_pos = '';
 			my $old_part = '';
+			my $owner = '';
 			foreach my $pos (sort {$a <=> $b} keys %{$self->{partitions}{$table}}) {
 				foreach my $part (sort {$self->{partitions}{$table}{$pos}{$a}->{'colpos'} <=> $self->{partitions}{$table}{$pos}{$b}->{'colpos'}} keys %{$self->{partitions}{$table}{$pos}}) {
 					if (!$self->{quiet} && !$self->{debug}) {
@@ -3930,8 +4009,17 @@ BEGIN
 						} else {
 							push(@condition, "NEW.$self->{partitions}{$table}{$pos}{$part}[$i]->{column} < " . Ora2Pg::PLSQL::plsql_to_plpgsql($self->{partitions}{$table}{$pos}{$part}[$i]->{value},$self->{null_equal_empty}));
 						}
+						$owner = $self->{partitions}{$table}{$pos}{$part}[$i]->{owner} || '';
 					}
 					$create_table{$table}{table} .= "\n) ) INHERITS ($table);\n";
+					$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
+					if ($owner) {
+						if (!$self->{preserve_case}) {
+							$create_table{$table}{table} .= "ALTER TABLE \L$tb_name\E OWNER TO \L$owner\E;\n";
+						} else {
+							$create_table{$table}{table}.= "ALTER TABLE \"$tb_name\" OWNER TO \"$owner\";\n";
+						}
+					}
 					$funct_cond .= "\t$cond ( " . join(' AND ', @condition) . " ) THEN INSERT INTO $tb_name VALUES (NEW.*);\n";
 					$cond = 'ELSIF';
 					$old_part = $part;
@@ -3979,6 +4067,17 @@ CREATE TRIGGER insert_${table}_trigger
 
 -------------------------------------------------------------------------------
 };
+
+			$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
+			if ($owner) {
+				if (!$self->{preserve_case}) {
+					$sql_output .= "ALTER TABLE \L$self->{partitions_default}{$table}\E OWNER TO \L$owner\E;\n"if ($self->{partitions_default}{$table});
+					$sql_output .= "ALTER FUNCTION \L${table}_insert_trigger\E OWNER TO \L$owner\E;\n";
+				} else {
+					$sql_output .= "ALTER TABLE \"$self->{partitions_default}{$table}\" OWNER TO \"$owner\";\n"if ($self->{partitions_default}{$table});
+					$sql_output .= "ALTER FUNCTION \"${table}_insert_trigger\" OWNER TO \"$owner\";\n";
+				}
+			}
 		}
 
 		if (!$self->{quiet} && !$self->{debug}) {
@@ -6008,9 +6107,9 @@ sub _get_materialized_views
 	my($self) = @_;
 
 	# Retrieve all views
-	my $str = "SELECT MVIEW_NAME,QUERY,UPDATABLE,REFRESH_MODE,REFRESH_METHOD,USE_NO_INDEX,REWRITE_ENABLED,BUILD_MODE FROM $self->{prefix}_MVIEWS";
+	my $str = "SELECT MVIEW_NAME,QUERY,UPDATABLE,REFRESH_MODE,REFRESH_METHOD,USE_NO_INDEX,REWRITE_ENABLED,BUILD_MODE,OWNER FROM $self->{prefix}_MVIEWS";
 	if ($self->{db_version} =~ /Release 8/) {
-		$str = "SELECT MVIEW_NAME,QUERY,UPDATABLE,REFRESH_MODE,REFRESH_METHOD,'',REWRITE_ENABLED,BUILD_MODE FROM $self->{prefix}_MVIEWS";
+		$str = "SELECT MVIEW_NAME,QUERY,UPDATABLE,REFRESH_MODE,REFRESH_METHOD,'',REWRITE_ENABLED,BUILD_MODE,OWNER FROM $self->{prefix}_MVIEWS";
 	}
 	if (!$self->{schema}) {
 		$str .= " WHERE OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
@@ -6040,6 +6139,7 @@ sub _get_materialized_views
 		$data{$row->[0]}{no_index} = ($row->[5] eq 'Y') ? 1 : 0;
 		$data{$row->[0]}{rewritable} = ($row->[6] eq 'Y') ? 1 : 0;
 		$data{$row->[0]}{build_mode} = $row->[7];
+		$data{$row->[0]}{owner} = $row->[-1];
 	}
 
 	return %data;
@@ -6127,7 +6227,7 @@ sub _get_triggers
 	my($self) = @_;
 
 	# Retrieve all indexes 
-	my $str = "SELECT TRIGGER_NAME, TRIGGER_TYPE, TRIGGERING_EVENT, TABLE_NAME, TRIGGER_BODY, WHEN_CLAUSE, DESCRIPTION,ACTION_TYPE FROM $self->{prefix}_TRIGGERS WHERE STATUS='ENABLED'";
+	my $str = "SELECT TRIGGER_NAME, TRIGGER_TYPE, TRIGGERING_EVENT, TABLE_NAME, TRIGGER_BODY, WHEN_CLAUSE, DESCRIPTION, ACTION_TYPE, OWNER FROM $self->{prefix}_TRIGGERS WHERE STATUS='ENABLED'";
 	if (!$self->{schema}) {
 		$str .= " AND OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
 	} else {
@@ -6189,8 +6289,9 @@ sub _get_functions
 		my $sth2 = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 		$sth2->execute or $self->logit("FATAL: " . $sth2->errstr . "\n", 0, 1);
 		while (my $r = $sth2->fetch) {
-			$functions{"$row->[0]"} .= $r->[0];
+			$functions{"$row->[0]"}{text} .= $r->[0];
 		}
+		$functions{"$row->[0]"}{owner} .= $row->[1];
 	}
 
 	return \%functions;
@@ -6233,8 +6334,9 @@ sub _get_procedures
 		my $sth2 = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 		$sth2->execute or $self->logit("FATAL: " . $sth2->errstr . "\n", 0, 1);
 		while (my $r = $sth2->fetch) {
-			$procedures{"$row->[0]"} .= $r->[0];
+			$procedures{"$row->[0]"}{text} .= $r->[0];
 		}
+		$procedures{"$row->[0]"}{owner} = $row->[1];
 	}
 
 	return \%procedures;
@@ -6280,8 +6382,9 @@ sub _get_packages
 		my $sth2 = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 		$sth2->execute or $self->logit("FATAL: " . $sth2->errstr . "\n", 0, 1);
 		while (my $r = $sth2->fetch) {
-			$packages{"$row->[0]"} .= $r->[0];
+			$packages{"$row->[0]"}{text} .= $r->[0];
 		}
+		$packages{"$row->[0]"}{owner} = $row->[1];
 	}
 
 	return \%packages;
@@ -6335,7 +6438,8 @@ sub _get_types
 		while (my $r = $sth2->fetch) {
 			$tmp{code} .= $r->[0];
 		}
-		$tmp{name} .= $row->[0];
+		$tmp{name} = $row->[0];
+		$tmp{owner} = $row->[1];
 		push(@types, \%tmp);
 	}
 
@@ -6448,6 +6552,43 @@ AND a.TABLESPACE_NAME = c.TABLESPACE_NAME
 	return \%tbs;
 }
 
+sub _list_tablespaces
+{
+	my($self) = @_;
+
+	# list tablespaces.
+	my $str = qq{
+SELECT c.FILE_NAME, c.TABLESPACE_NAME, a.OWNER, ROUND(c.BYTES/1024000) MB
+FROM DBA_DATA_FILES c, DBA_SEGMENTS a
+WHERE a.TABLESPACE_NAME = c.TABLESPACE_NAME
+};
+	if ($self->{schema}) {
+		$str .= " AND a.OWNER='$self->{schema}'";
+	} else {
+		$str .= " AND a.OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
+	}
+	$str .= " ORDER BY c.TABLESPACE_NAME";
+	my $error = "\n\nFATAL: You must be connected as an oracle dba user to retrieved tablespaces\n\n";
+	my $sth = $self->{dbh}->prepare($str) or $self->logit($error . "FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+
+	my %tbs = ();
+	while (my $row = $sth->fetch) {
+
+		# forget or not this object if it is in the exclude or allow lists.
+		next if ($self->skip_this_object('TABLESPACE', $row->[1]));
+
+		$tbs{$row->[1]}{path} = $row->[0];
+		$tbs{$row->[1]}{owner} = $row->[2];
+		$self->logit(".",1);
+	}
+	$sth->finish;
+	$self->logit("\n", 1);
+
+	return \%tbs;
+}
+
+
 =head2 _get_partitions
 
 This function implements an Oracle-native partitions information.
@@ -6469,7 +6610,8 @@ SELECT
 	b.partitioning_type,
 	c.name,
 	c.column_name,
-	c.column_position
+	c.column_position,
+	a.table_owner
 FROM $self->{prefix}_tab_partitions a, $self->{prefix}_part_tables b, $self->{prefix}_part_key_columns c
 WHERE
 	a.table_name = b.table_name AND
@@ -6500,7 +6642,7 @@ WHERE
 			$default{$row->[0]} = $row->[2];
 			next;
 		}
-		push(@{$parts{$row->[0]}{$row->[1]}{$row->[2]}}, { 'type' => $row->[5], 'value' => $row->[3], 'column' => $row->[7], 'colpos' => $row->[8], 'tablespace' => $row->[4] });
+		push(@{$parts{$row->[0]}{$row->[1]}{$row->[2]}}, { 'type' => $row->[5], 'value' => $row->[3], 'column' => $row->[7], 'colpos' => $row->[8], 'tablespace' => $row->[4], 'owner' => $row->[9]});
 		$self->logit(".",1);
 	}
 	$sth->finish;
@@ -7019,7 +7161,7 @@ is set to 1.
 
 sub _convert_package
 {
-	my ($self, $plsql) = @_;
+	my ($self, $plsql, $owner) = @_;
 
 	my $dirprefix = '';
 	$dirprefix = "$self->{output_dir}/" if ($self->{output_dir});
@@ -7054,9 +7196,29 @@ sub _convert_package
 			$content .= "DROP SCHEMA $self->{pg_supports_ifexists} \"$pname\" CASCADE;\n";
 			$content .= "CREATE SCHEMA \"$pname\";\n";
 		}
+		if ($self->{force_owner}) {
+			$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
+			if ($owner) {
+				if (!$self->{preserve_case}) {
+					$content .= "ALTER SCHEMA \L$pname\E OWNER TO \L$owner\E;\n";
+				} else {
+					$content .= "ALTER SCHEMA \"$pname\" OWNER TO \"$owner\";\n";
+				}
+			}
+		}
 		$self->{pkgcost} = 0;
 		foreach my $f (@functions) {
 			$content .= $self->_convert_function($f, $pname, \%comments);
+			if ($self->{force_owner}) {
+				$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
+				if ($owner) {
+					if (!$self->{preserve_case}) {
+						$content .= "ALTER FUNCTION \L$f\E OWNER TO \L$owner\E;\n";
+					} else {
+						$content .= "ALTER FUNCTION \"$f\" OWNER TO \"$owner\";\n";
+					}
+				}
+			}
 		}
 		$self->_restore_comments(\$content, \%comments);
 		if ($self->{estimate_cost}) {
@@ -7149,8 +7311,8 @@ sub _convert_function
 	if ( $func_declare =~ s/(.*?)\b(FUNCTION|PROCEDURE)[\s\t]+([^\s\t\(]+)([^\(]*)(\([^\)]*\)|[\s\t]*)//is ) {
 		$func_before = $1;
 		$func_name = $3;
-		$func_before .= "\n$4";
 		$func_args = $5;
+		$func_before .= "\n$4" if ($func_args);
 		my $clause = '';
 		my $code = '';
 		$func_name =~ s/"//g;
@@ -7481,12 +7643,13 @@ is set to 1.
 
 sub _convert_type
 {
-	my ($self, $plsql) = @_;
+	my ($self, $plsql, $owner) = @_;
 
 	my $unsupported = "-- Unsupported, please edit to match PostgreSQL syntax\n";
 	my $content = '';
+	my $type_name = '';
 	if ($plsql =~ /TYPE[\t\s]+([^\t\s]+)[\t\s]+(IS|AS)[\t\s]*TABLE[\t\s]*OF[\t\s]+(.*)/is) {
-		my $type_name = $1;
+		$type_name = $1;
 		my $type_of = $3;
 		$type_of =~ s/[\t\s\r\n]*NOT[\t\s]+NULL//s;
 		$type_of =~ s/[\t\s\r\n]*;$//s;
@@ -7505,7 +7668,7 @@ sub _convert_type
 		$self->logit("WARNING: TYPE BODY are not supported, skipping type $1\n", 1);
 		return "${unsupported}CREATE OR REPLACE $plsql";
 	} elsif ($plsql =~ /TYPE[\t\s]+([^\t\s]+)[\t\s]+(AS|IS)[\t\s]*OBJECT[\t\s]*\((.*)\)([^\)]*)/is) {
-		my $type_name = $1;
+		$type_name = $1;
 		my $description = $3;
 		my $notfinal = $4;
 		$notfinal =~ s/[\s\t\r\n]+/ /gs;
@@ -7534,7 +7697,7 @@ $declar
 			$self->{type_of_type}{'Object type'}++;
 		}
 	} elsif ($plsql =~ /TYPE[\t\s]+([^\t\s]+)[\t\s]+UNDER[\t\s]*([^\t\s]+)[\t\s]+\((.*)\)([^\)]*)/is) {
-		my $type_name = $1;
+		$type_name = $1;
 		my $type_inherit = $2;
 		my $description = $3;
 		if ($description =~ /[\s\t]*(MAP MEMBER|MEMBER|CONSTRUCTOR)[\t\s]+(FUNCTION|PROCEDURE).*/is) {
@@ -7553,7 +7716,7 @@ $declar
 };
 		$self->{type_of_type}{'Subtype'}++;
 	} elsif ($plsql =~ /TYPE[\t\s]+([^\t\s]+)[\t\s]+(AS|IS)[\t\s]*(VARRAY|VARYING ARRAY)[\t\s]*\((\d+)\)[\t\s]*OF[\t\s]*(.*)/is) {
-		my $type_name = $1;
+		$type_name = $1;
 		my $size = $4;
 		my $tbname = $5;
 		$type_name =~ s/"//g;
@@ -7569,6 +7732,18 @@ CREATE TYPE \L$type_name\E AS ($type_name $declar\[$size\]);
 		$plsql =~ s/;$//s;
 		$content = "${unsupported}CREATE OR REPLACE $plsql;"
 	}
+
+	if ($self->{force_owner}) {
+		$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
+		if ($owner) {
+			if (!$self->{preserve_case}) {
+				$content .= "ALTER TYPE $type_name OWNER TO \L$owner\E;\n";
+			} else {
+				$content .= "ALTER TYPE $type_name OWNER TO \"$owner\";\n";
+			}
+		}
+	}
+
 	return $content;
 }
 
@@ -8072,7 +8247,7 @@ sub _show_infos
 		# Convert Oracle user defined type to PostgreSQL
 		$self->_types();
 		foreach my $tpe (sort {length($a->{name}) <=> length($b->{name}) } @{$self->{types}}) {
-			$self->_convert_type($tpe->{code});
+			$self->_convert_type($tpe->{code}, $tpe->{owner});
 		}
 		# Get definition of Oracle Database Link
 		my %dblink = $self->_get_dblink();
@@ -8238,9 +8413,9 @@ sub _show_infos
 				my $functions = $self->_get_functions();
 				my $total_size = 0;
 				foreach my $fct (keys %{$functions}) {
-					$total_size += length($functions->{$fct});
+					$total_size += length($functions->{$fct}{text});
 					if ($self->{estimate_cost}) {
-						my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($functions->{$fct});
+						my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($functions->{$fct}{text});
 						$report_info{'Objects'}{$typ}{'cost_value'} += $cost;
 						$report_info{'Objects'}{$typ}{'detail'} .= "\L$fct: $cost\E\n";
 						$report_info{full_function_details}{"\L$fct\E"}{count} = $cost;
@@ -8257,9 +8432,9 @@ sub _show_infos
 				my $procedures = $self->_get_procedures();
 				my $total_size = 0;
 				foreach my $proc (keys %{$procedures}) {
-					$total_size += length($procedures->{$proc});
+					$total_size += length($procedures->{$proc}{text});
 					if ($self->{estimate_cost}) {
-						my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($procedures->{$proc});
+						my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($procedures->{$proc}{text});
 						$report_info{'Objects'}{$typ}{'cost_value'} += $cost;
 						$report_info{'Objects'}{$typ}{'detail'} .= "\L$proc: $cost\E\n";
 						$report_info{full_function_details}{"\L$proc\E"}{count} = $cost;
@@ -8278,10 +8453,10 @@ sub _show_infos
 				my $number_fct = 0;
 				my $number_pkg = 0;
 				foreach my $pkg (keys %{$packages}) {
-					next if (!$packages->{$pkg});
+					next if (!$packages->{$pkg}{text});
 					$number_pkg++;
-					$total_size += length($packages->{$pkg});
-					my @codes = split(/CREATE(?: OR REPLACE)? PACKAGE BODY/, $packages->{$pkg});
+					$total_size += length($packages->{$pkg}{text});
+					my @codes = split(/CREATE(?: OR REPLACE)? PACKAGE BODY/, $packages->{$pkg}{text});
 					foreach my $txt (@codes) {
 						my %infos = $self->_lookup_package("CREATE OR REPLACE PACKAGE BODY$txt");
 						foreach my $f (sort keys %infos) {
