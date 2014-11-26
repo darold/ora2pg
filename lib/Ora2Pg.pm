@@ -780,6 +780,10 @@ sub _init
 		$self->{file_per_table} = 1;
 	}
 
+	# Shall we prefix function with a schema name to emulate a package?
+	$self->{package_is_schema} = 1 if ($self->{package_is_schema} eq '');
+	$self->{package_functions} = ();
+
 	# Set user defined data type translation
 	if ($self->{data_type}) {
 		my @transl = split(/[,;]/, $self->{data_type});
@@ -927,10 +931,13 @@ sub _init
 		} elsif ($self->{type} eq 'TRIGGER') {
 			$self->_triggers();
 		} elsif ($self->{type} eq 'FUNCTION') {
-			$self->_functions();
+			$self->_get_pkg_functions() if (!$self->{package_is_schema});
+			$self->_functions(); 
 		} elsif ($self->{type} eq 'PROCEDURE') {
+			$self->_get_pkg_functions() if (!$self->{package_is_schema});
 			$self->_procedures();
 		} elsif ($self->{type} eq 'PACKAGE') {
+			$self->_get_pkg_functions() if (!$self->{package_is_schema});
 			$self->_packages();
 		} elsif ($self->{type} eq 'TYPE') {
 			$self->_types();
@@ -7329,17 +7336,19 @@ sub _convert_function
 		return $plsql;
 	}
 
+	my $sep = '.';
+	$sep = '_' if ($self->{package_is_schema});
 	if ($self->{preserve_case}) {
 		$func_name= "\"$func_name\"";
-		$func_name = "\"$pname\"" . '.' . $func_name if ($pname);
+		$func_name = "\"$pname\"" . $sep . $func_name if ($pname);
 	} else {
 		$func_name= lc($func_name);
-		$func_name = $pname . '.' . $func_name if ($pname);
+		$func_name = $pname . $sep . $func_name if ($pname);
 	}
 	$func_args = '()' if (!$func_args);
 	$func_args =~ s/\s+IN\s+/ /ig; # Remove default IN keyword
 	my $function = "\nCREATE OR REPLACE FUNCTION $func_name $func_args";
-	if (!$pname && $self->{export_schema} && $self->{schema}) {
+	if ((!$pname || !$self->{package_is_schema}) && $self->{export_schema} && $self->{schema}) {
 		if (!$self->{preserve_case}) {
 			$function = "\nCREATE OR REPLACE FUNCTION $self->{schema}\.$func_name $func_args";
 			$self->logit("Parsing function $self->{schema}\.$func_name...\n", 1);
@@ -8669,6 +8678,35 @@ sub _show_infos
 	}
 }
 
+=head2 _get_pkg_functions
+
+This function retrieves the Oracle package list and the replacement
+value to use when the schema replacement to package is not created
+
+=cut
+
+sub _get_pkg_functions
+{
+	my $self = shift;
+
+	my $packages = $self->_get_packages();
+	foreach my $pkg (keys %{$packages}) {
+		next if (!$packages->{$pkg}{text});
+		my @codes = split(/CREATE(?: OR REPLACE)? PACKAGE BODY/, $packages->{$pkg}{text});
+		foreach my $txt (@codes) {
+			my %infos = $self->_lookup_package("CREATE OR REPLACE PACKAGE BODY$txt");
+			foreach my $f (sort keys %infos) {
+				next if (!$f);
+				if (!$self->{preserve_case}) {
+					$self->{package_functions}{"$pkg.$f"} = lc($pkg . "_" . $f);
+				} else {
+					$self->{package_functions}{"$pkg.$f"} = $pkg . "_" . $f;
+				}
+			}
+		}
+	}
+}
+
 =head2 _get_version
 
 This function retrieves the Oracle version information
@@ -9103,7 +9141,7 @@ sub limit_to_objects
 	$column ||= 'TABLE_NAME';
 
 	if ($#{$self->{limited}} >= 0) {
-		if ($self->{db_version} =~ /Release 8/) {
+		if ($self->{db_version} =~ /Release [89]/) {
 			$str = " $column IN ('" .  join("','", @{$self->{limited}}) . "') ";
 		} else {
 			for (my $j = 0; $j <= $#{$self->{limited}}; $j++) {
@@ -9114,7 +9152,7 @@ sub limit_to_objects
 			}
 		}
 	} elsif ($#{$self->{excluded}} >= 0) {
-		if ($self->{db_version} =~ /Release 8/) {
+		if ($self->{db_version} =~ /Release [89]/) {
 			$str = "$column NOT IN ('" .  join("','", @{$self->{excluded}}) . "') ";
 		} else {
 			for (my $j = 0; $j <= $#{$self->{excluded}}; $j++) {
