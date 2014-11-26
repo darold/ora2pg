@@ -614,9 +614,10 @@ CONFIGURATION
         relname' or '-a relname' to limit the displayed information to the
         given table.
 
-        Since Ora2Pg v8.2 there's a new export type:
-
-                SHOW_ENCODING : display the Oracle session encoding, useful to set NSL_LANG.
+        The SHOW_ENCODING export type will display the NLS_LANG and
+        CLIENT_ENCODING values that Ora2Pg will used and the real encoding
+        of the Oracle database with the corresponding client encoding that
+        could be used with PostgreSQL
 
         Since release v8.12, Ora2Pg allow you to export your Oracle Table
         definition to be use with the oracle_fdw foreign data wrapper. By
