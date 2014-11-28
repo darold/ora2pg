@@ -133,7 +133,7 @@
 .\" ========================================================================
 .\"
 .IX Title "ORA2PG 1"
-.TH ORA2PG 1 "2014-11-26" "perl v5.18.2" "User Contributed Perl Documentation"
+.TH ORA2PG 1 "2014-11-28" "perl v5.18.2" "User Contributed Perl Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -1193,6 +1193,13 @@ default value 8307 converted to its \s-1EPSG\s0 value: 4326 (see \s-1DEFAULT_SRI
 If the value is upper than 1, all \s-1SRID\s0 will be forced to this value, in
 this case \s-1DEFAULT_SRID\s0 will not be used when Oracle returns a null value
 and the value will be forced to \s-1CONVERT_SRID.\s0
+.Sp
+Note that it is also possible to set the \s-1EPSG\s0 value on Oracle side when
+sdo_cs.\fImap_oracle_srid_to_epsg()\fR return \s-1NULL\s0 if your want to force the value:
+.Sp
+.Vb 1
+\&  system@db> UPDATE sdo_coord_ref_sys SET legacy_code=41014 WHERE srid = 27572;
+.Ve
 .IP "\s-1DEFAULT_SRID\s0" 4
 .IX Item "DEFAULT_SRID"
 Use this directive to override the default \s-1EPSG SRID\s0 to used: 4326.

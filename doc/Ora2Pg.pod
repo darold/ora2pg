@@ -1062,6 +1062,11 @@ If the value is upper than 1, all SRID will be forced to this value, in
 this case DEFAULT_SRID will not be used when Oracle returns a null value
 and the value will be forced to CONVERT_SRID.
 
+Note that it is also possible to set the EPSG value on Oracle side when
+sdo_cs.map_oracle_srid_to_epsg() return NULL if your want to force the value:
+
+  system@db> UPDATE sdo_coord_ref_sys SET legacy_code=41014 WHERE srid = 27572;
+
 =item DEFAULT_SRID
 
 Use this directive to override the default EPSG SRID to used: 4326.
