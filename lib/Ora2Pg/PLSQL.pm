@@ -181,7 +181,7 @@ This function return a PLSQL code translated to PLPGSQL code
 
 sub plsql_to_plpgsql
 {
-        my ($str, $null_equal_empty, $export_type) = @_;
+        my ($str, $null_equal_empty, $export_type, %pkg_fcts) = @_;
 
 	#--------------------------------------------
 	# PL/SQL to PL/PGSQL code conversion
@@ -427,6 +427,15 @@ sub plsql_to_plpgsql
 
 	# Remove any call to MDSYS schema in the code
 	$str =~ s/MDSYS\.//igs;
+
+	##############
+	# Replace package.function call by package_function
+	##############
+	if (scalar keys %pkg_fcts) {
+		foreach my $k (keys %pkg_fcts) {
+			$str =~ s/\b$k\b/$pkg_fcts{$k}/igs;
+		}
+	}
 
 	return $str;
 }

@@ -656,6 +656,13 @@ PG_SUPPORTS_IFEXISTS	1
 # tables or views as tables. Default is same as PostgreSQL, disabled.
 WITH_OID		0
 
+# If you don't want to export package as schema but as simple functions you
+# might also want to replace all call to package_name.function_name. If you
+# disable the PACKAGE_AS_SCHEMA directive then Ora2Pg will replace all call
+# to package_name.function_name() by package_name_function_name(). Default
+# is to use a schema to emulate package.
+PACKAGE_AS_SCHEMA	1
+
 };
 close(OUTCFG);
 

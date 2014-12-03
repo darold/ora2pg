@@ -1504,6 +1504,18 @@ CONFIGURATION
         Default is replacement to be sure that your application will have se
         same behavior.
 
+    PACKAGE_AS_SCHEMA
+        If you don't want to export package as schema but as simple
+        functions you might also want to replace all call to
+        package_name.function_name. If you disable the PACKAGE_AS_SCHEMA
+        directive then Ora2Pg will replace all call to
+        package_name.function_name() by package_name_function_name().
+        Default is to use a schema to emulate package.
+
+        The replacement will be done in all kind of DDL or code that is
+        parsed by the PLSQL to PLPGSQL converter. PLSQL_PGSQL must be
+        enabled or -p used in command line.
+
   Materialized view
     Since PostgreSQL 9.3, materialized view are supported with the CREATE
     MATERIALIZED VIEW syntax, to force Ora2Pg to use the native PostgreSQL
