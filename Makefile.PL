@@ -660,7 +660,7 @@ WITH_OID		0
 # might also want to replace all call to package_name.function_name. If you
 # disable the PACKAGE_AS_SCHEMA directive then Ora2Pg will replace all call
 # to package_name.function_name() by package_name_function_name(). Default
-# is to use a schema to emulate package.
+# is to use a schema to emulate package.
 PACKAGE_AS_SCHEMA	1
 
 };
