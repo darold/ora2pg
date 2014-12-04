@@ -868,6 +868,7 @@ sub _init
 	$self->{export_invalid} ||= 0;
 	$self->{use_reserved_words} ||= 0;
 	$self->{pkey_in_create} ||= 0;
+	$self->{security} = ();
 	# Should we add SET ON_ERROR_STOP to generated SQL files
 	$self->{stop_on_error} = 1 if (not defined $self->{stop_on_error});
 	# Force foreign keys to be created initialy deferred if export type
@@ -917,6 +918,7 @@ sub _init
 		}
 
 		$self->_get_pkg_functions() if (!$self->{package_as_schema});
+		$self->{security} = $self->_get_security_definer($self->{type}) if (grep(/^$self->{type}$/, 'TRIGGER', 'FUNCTION','PROCEDURE','PACKAGE'));
 
 	} else {
 
@@ -2847,8 +2849,10 @@ LANGUAGE plpgsql ;
 				} else {
 					$sql_output .= "DROP TRIGGER $self->{pg_supports_ifexists} \L$trig->[0]\E ON \"$trig->[3]\" CASCADE;\n";
 				}
+				my $security = '';
+				$security = " SECURITY DEFINER" if ($self->{security}{"\U$trig->[0]\E"}{security});
 				if ($self->{pg_supports_when} && $trig->[5]) {
-					$sql_output .= "CREATE OR REPLACE FUNCTION trigger_fct_\L$trig->[0]\E () RETURNS trigger AS \$BODY\$\n$trig->[4]\n\$BODY\$\n LANGUAGE 'plpgsql';\n\n";
+					$sql_output .= "CREATE OR REPLACE FUNCTION trigger_fct_\L$trig->[0]\E () RETURNS trigger AS \$BODY\$\n$trig->[4]\n\$BODY\$\n LANGUAGE 'plpgsql'$security;\n\n";
 					if ($self->{force_owner}) {
 						my $owner = $trig->[8];
 						$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
@@ -2865,7 +2869,7 @@ LANGUAGE plpgsql ;
 					}
 					$sql_output .= "\tEXECUTE PROCEDURE trigger_fct_\L$trig->[0]\E();\n\n";
 				} else {
-					$sql_output .= "CREATE OR REPLACE FUNCTION trigger_fct_\L$trig->[0]\E () RETURNS trigger AS \$BODY\$\n$trig->[4]\n\$BODY\$\n LANGUAGE 'plpgsql';\n\n";
+					$sql_output .= "CREATE OR REPLACE FUNCTION trigger_fct_\L$trig->[0]\E () RETURNS trigger AS \$BODY\$\n$trig->[4]\n\$BODY\$\n LANGUAGE 'plpgsql'$security;\n\n";
 					if ($self->{force_owner}) {
 						my $owner = $trig->[8];
 						$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
@@ -5668,9 +5672,9 @@ END
 
 =head2 _get_privilege
 
-This function implements an Oracle-native obkect priviledge information.
+This function implements an Oracle-native object priviledge information.
 
-Returns a hash of all privilede.
+Returns a hash of all priviledge.
 
 =cut
 
@@ -5775,6 +5779,53 @@ sub _get_privilege
 
 	return (\%privs, \%roles);
 }
+
+=head2 _get_security_definer
+
+This function implements an Oracle-native functions security definer / current_user information.
+
+Returns a hash of all object_type/function/security.
+
+=cut
+
+sub _get_security_definer
+{
+	my ($self, $type) = @_;
+
+	my %security = ();
+
+	# This table does not exists before 10g
+	return if ($self->{db_version} =~ /Release [89]/);
+
+	# Retrieve security privilege per function defined in this database
+	# Version of Oracle 10 does not have the OBJECT_TYPE column.
+	my $str = "SELECT AUTHID,OBJECT_TYPE,OBJECT_NAME,OWNER FROM $self->{prefix}_PROCEDURES";
+	if ($self->{db_version} =~ /Release 10/) {
+		$str = "SELECT AUTHID,'ALL' AS OBJECT_TYPE,OBJECT_NAME,OWNER FROM $self->{prefix}_PROCEDURES";
+	}
+	if ($self->{schema}) {
+		$str .= " WHERE OWNER = '$self->{schema}'";
+	} else {
+		$str .= " WHERE OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
+	}
+	if ( $type && ($self->{db_version} !~ /Release 10/) ) {
+		$str .= " AND OBJECT_TYPE='$type'";
+	}
+	$str .= " " . $self->limit_to_objects('FUNCTION|PROCEDURE|PACKAGE|TRIGGER', 'OBJECT_NAME');
+	$str .= " ORDER BY OBJECT_NAME";
+
+	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	while (my $row = $sth->fetch) {
+		next if (!$row->[0]);
+		$security{$row->[2]}{security} = $row->[0];
+		$security{$row->[2]}{owner} = $row->[3];
+	}
+	$sth->finish();
+
+	return (\%security);
+}
+
 
 
 
@@ -7363,26 +7414,27 @@ sub _convert_function
 
 	my $sep = '.';
 	$sep = '_' if (!$self->{package_as_schema});
+	my $fname = $func_name;
 	if ($self->{preserve_case}) {
-		$func_name= "\"$func_name\"";
-		$func_name = "\"$pname\"" . $sep . $func_name if ($pname);
+		$fname= "\"$fname\"";
+		$fname = "\"$pname\"" . $sep . $fname if ($pname);
 	} else {
-		$func_name= lc($func_name);
-		$func_name = $pname . $sep . $func_name if ($pname);
+		$fname= lc($fname);
+		$fname = $pname . $sep . $fname if ($pname);
 	}
 	$func_args = '()' if (!$func_args);
 	$func_args =~ s/\s+IN\s+/ /ig; # Remove default IN keyword
-	my $function = "\nCREATE OR REPLACE FUNCTION $func_name $func_args";
+	my $function = "\nCREATE OR REPLACE FUNCTION $fname $func_args";
 	if ((!$pname || !$self->{package_as_schema}) && $self->{export_schema} && $self->{schema}) {
 		if (!$self->{preserve_case}) {
-			$function = "\nCREATE OR REPLACE FUNCTION $self->{schema}\.$func_name $func_args";
-			$self->logit("Parsing function $self->{schema}\.$func_name...\n", 1);
+			$function = "\nCREATE OR REPLACE FUNCTION $self->{schema}\.$fname $func_args";
+			$self->logit("Parsing function $self->{schema}\.$fname...\n", 1);
 		} else {
-			$function = "\nCREATE OR REPLACE FUNCTION \"$self->{schema}\"\.$func_name $func_args";
-			$self->logit("Parsing function \"$self->{schema}\"\.$func_name...\n", 1);
+			$function = "\nCREATE OR REPLACE FUNCTION \"$self->{schema}\"\.$fname $func_args";
+			$self->logit("Parsing function \"$self->{schema}\"\.$fname...\n", 1);
 		}
 	} else {
-		$self->logit("Parsing function $func_name...\n", 1);
+		$self->logit("Parsing function $fname...\n", 1);
 	}
 	$setof = ' SETOF' if ($setof);
 	if ($hasreturn) {
@@ -7412,7 +7464,13 @@ sub _convert_function
 		$func_declare = '' if ($func_declare !~ /[a-z]/is);
 		$function .= "DECLARE\n$func_declare\n" if ($func_declare);
 		$function .= $func_code;
-		$function .= "\n\$body\$\nLANGUAGE PLPGSQL$immutable;\n";
+		$function .= "\n\$body\$\nLANGUAGE PLPGSQL\n";
+		if ($self->{type} ne 'PACKAGE') {
+			$function .= "SECURITY DEFINER\n" if ($self->{security}{"\U$func_name\E"}{security});
+		} else {
+			$function .= "SECURITY DEFINER\n" if ($self->{security}{"\U$pname\E"}{security});
+		}
+		$function .= "$immutable;\n";
 		$function = "\n$func_before$function";
 	}
 
@@ -7420,17 +7478,17 @@ sub _convert_function
 		$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
 		if ($owner) {
 			if (!$self->{preserve_case}) {
-				$function .= "ALTER FUNCTION \L$func_name\E OWNER TO \L$owner\E;\n";
+				$function .= "ALTER FUNCTION \L$fname\E OWNER TO \L$owner\E;\n";
 			} else {
-				$function .= "ALTER FUNCTION \"$func_name\" OWNER TO \"$owner\";\n";
+				$function .= "ALTER FUNCTION \"$fname\" OWNER TO \"$owner\";\n";
 			}
 		}
 	}
 
 	if ($pname && $self->{file_per_function} && !$self->{pg_dsn}) {
-		$func_name =~ s/^"*$pname"*\.//i;
-		$func_name =~ s/"//g; # Remove case sensitivity quoting
-		$self->logit("\tDumping to one file per function: $dirprefix\L$pname/$func_name\E_$self->{output}\n", 1);
+		$fname =~ s/^"*$pname"*\.//i;
+		$fname =~ s/"//g; # Remove case sensitivity quoting
+		$self->logit("\tDumping to one file per function: $dirprefix\L$pname/$fname\E_$self->{output}\n", 1);
 		my $sql_header = "-- Generated by Ora2Pg, the Oracle database Schema converter, version $VERSION\n";
 		$sql_header .= "-- Copyright 2000-2014 Gilles DAROLD. All rights reserved.\n";
 		$sql_header .= "-- DATASOURCE: $self->{oracle_dsn}\n\n";
@@ -7439,11 +7497,11 @@ sub _convert_function
 		}
 		$sql_header .= $self->set_search_path();
 
-		my $fhdl = $self->open_export_file("$dirprefix\L$pname/$func_name\E_$self->{output}", 1);
+		my $fhdl = $self->open_export_file("$dirprefix\L$pname/$fname\E_$self->{output}", 1);
 		$self->_restore_comments(\$function, $hrefcomments);
 		$self->dump($sql_header . $function, $fhdl);
 		$self->close_export_file($fhdl);
-		$function = "\\i $dirprefix\L$pname/$func_name\E_$self->{output}\n";
+		$function = "\\i $dirprefix\L$pname/$fname\E_$self->{output}\n";
 	}
 
 	return $function;
@@ -9194,6 +9252,7 @@ sub limit_to_objects
 					}
 				}
 			}
+			$str .= ')';
 		} elsif ($#{$self->{excluded}{$obj}} >= 0) {
 			$str .= ' AND (';
 			if ($self->{db_version} =~ /Release [89]/) {
@@ -9206,15 +9265,13 @@ sub limit_to_objects
 					}
 				}
 			}
+			$str .= ')';
 		}
-		$str .= ')';
 	}
 
 	$str =~ s/ AND \(\)//g;
 	$str =~ s/ OR \(\)//g;
 	$str =~ s/^ OR (.*)/ AND ($1)/g;
-
-print STDERR "ZZZZZZZZZZZZZZZ $str\n";
 
 	return uc($str);
 }
