@@ -194,6 +194,8 @@ sub plsql_to_plpgsql
 	# Change SYSDATE to 'now' or current timestamp.
 	$str =~ s/SYSDATE[\s\t]*\([\s\t]*\)/LOCALTIMESTAMP/igs;
 	$str =~ s/SYSDATE/LOCALTIMESTAMP/igs;
+	# Replace SYSTIMESTAMP 
+	$str =~ s/SYSTIMESTAMP/CURRENT_TIMESTAMP/igs;
 	# remove FROM DUAL
 	$str =~ s/FROM DUAL//igs;
 
@@ -246,7 +248,10 @@ sub plsql_to_plpgsql
 	# Procedure are the same as function in PG
 	$str =~ s/\bPROCEDURE\b/FUNCTION/igs;
 	# Simply remove this as not supported
-	$str =~ s/\bDEFAULT NULL\b//igs;
+	$str =~ s/\bDEFAULT\s+NULL\b//igs;
+	# Replace DEFAULT empty_blob()
+	$str =~ s/empty_blob\(\s*\)//igs; 
+	$str =~ s/empty_blob\b//igs; 
 
 	# dup_val_on_index => unique_violation : already exist exception
 	$str =~ s/\bdup_val_on_index\b/unique_violation/igs;

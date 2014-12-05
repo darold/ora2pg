@@ -4271,7 +4271,7 @@ CREATE TRIGGER insert_${table}_trigger
 						$f->[4] = Ora2Pg::PLSQL::plsql_to_plpgsql($f->[4],$self->{null_equal_empty}, undef, %{$self->{package_functions}});
 					}
 					if ($self->{type} ne 'FDW') {
-						$sql_output .= " DEFAULT $f->[4]";
+						$sql_output .= " DEFAULT $f->[4]" if ($f->[4] ne '');
 					}
 				}
 				$sql_output .= ",\n";
