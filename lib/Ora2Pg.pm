@@ -2870,9 +2870,13 @@ LANGUAGE plpgsql ;
 					$sql_output .= "DROP TRIGGER $self->{pg_supports_ifexists} \L$trig->[0]\E ON \"$trig->[3]\" CASCADE;\n";
 				}
 				my $security = '';
-				$security = " SECURITY DEFINER" if ($self->{security}{"\U$trig->[0]\E"}{security} eq 'DEFINER');
+				my $revoke = '';
+				if ($self->{security}{"\U$trig->[0]\E"}{security} eq 'DEFINER') {
+					$security = " SECURITY DEFINER";
+					$revoke = "-- REVOKE ALL ON FUNCTION trigger_fct_\L$trig->[0]\E TO PUBLIC;\n";
+				}
 				if ($self->{pg_supports_when} && $trig->[5]) {
-					$sql_output .= "CREATE OR REPLACE FUNCTION trigger_fct_\L$trig->[0]\E () RETURNS trigger AS \$BODY\$\n$trig->[4]\n\$BODY\$\n LANGUAGE 'plpgsql'$security;\n\n";
+					$sql_output .= "CREATE OR REPLACE FUNCTION trigger_fct_\L$trig->[0]\E () RETURNS trigger AS \$BODY\$\n$trig->[4]\n\$BODY\$\n LANGUAGE 'plpgsql'$security;\n$revoke\n";
 					if ($self->{force_owner}) {
 						my $owner = $trig->[8];
 						$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
@@ -2893,7 +2897,7 @@ LANGUAGE plpgsql ;
 					}
 					$sql_output .= "\tEXECUTE PROCEDURE trigger_fct_\L$trig->[0]\E();\n\n";
 				} else {
-					$sql_output .= "CREATE OR REPLACE FUNCTION trigger_fct_\L$trig->[0]\E () RETURNS trigger AS \$BODY\$\n$trig->[4]\n\$BODY\$\n LANGUAGE 'plpgsql'$security;\n\n";
+					$sql_output .= "CREATE OR REPLACE FUNCTION trigger_fct_\L$trig->[0]\E () RETURNS trigger AS \$BODY\$\n$trig->[4]\n\$BODY\$\n LANGUAGE 'plpgsql'$security;\n$revoke\n";
 					if ($self->{force_owner}) {
 						my $owner = $trig->[8];
 						$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
@@ -6585,7 +6589,7 @@ WHERE a.TABLESPACE_NAME = c.TABLESPACE_NAME
 	} else {
 		$str .= " AND a.OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
 	}
-	$sql .= $self->limit_to_objects('TABLESPACE', 'c.TABLESPACE_NAME');
+	$str .= $self->limit_to_objects('TABLESPACE', 'c.TABLESPACE_NAME');
 	$str .= " ORDER BY c.TABLESPACE_NAME";
 	my $error = "\n\nFATAL: You must be connected as an oracle dba user to retrieved tablespaces\n\n";
 	my $sth = $self->{dbh}->prepare($str) or $self->logit($error . "FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -7380,13 +7384,16 @@ sub _convert_function
 	}
 	$func_args = '()' if (!$func_args);
 	$func_args =~ s/\s+IN\s+/ /ig; # Remove default IN keyword
+	my $name = $fname;
 	my $function = "\nCREATE OR REPLACE FUNCTION $fname $func_args";
 	if ((!$pname || !$self->{package_as_schema}) && $self->{export_schema} && $self->{schema}) {
 		if (!$self->{preserve_case}) {
 			$function = "\nCREATE OR REPLACE FUNCTION $self->{schema}\.$fname $func_args";
+			$name =  "$self->{schema}\.$fname";
 			$self->logit("Parsing function $self->{schema}\.$fname...\n", 1);
 		} else {
 			$function = "\nCREATE OR REPLACE FUNCTION \"$self->{schema}\"\.$fname $func_args";
+			$name = "\"$self->{schema}\"\.$fname";
 			$self->logit("Parsing function \"$self->{schema}\"\.$fname...\n", 1);
 		}
 	} else {
@@ -7416,11 +7423,13 @@ sub _convert_function
 		$function =~ s/AS \$body\$//;
 	}
 
+	my $revoke = '';
 	if ($func_code) {
 		$func_declare = '' if ($func_declare !~ /[a-z]/is);
 		$function .= "DECLARE\n$func_declare\n" if ($func_declare);
 		$function .= $func_code;
 		$function .= "\n\$body\$\nLANGUAGE PLPGSQL\n";
+		$revoke = "-- REVOKE ALL ON FUNCTION $name TO PUBLIC;\n";
 		if ($self->{type} ne 'PACKAGE') {
 			$function .= "SECURITY DEFINER\n" if ($self->{security}{"\U$func_name\E"}{security} eq 'DEFINER');
 		} else {
@@ -7440,6 +7449,7 @@ sub _convert_function
 			}
 		}
 	}
+	$function .= $revoke;
 
 	if ($pname && $self->{file_per_function} && !$self->{pg_dsn}) {
 		$fname =~ s/^"*$pname"*\.//i;
