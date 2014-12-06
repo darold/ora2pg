@@ -2873,7 +2873,7 @@ LANGUAGE plpgsql ;
 				my $revoke = '';
 				if ($self->{security}{"\U$trig->[0]\E"}{security} eq 'DEFINER') {
 					$security = " SECURITY DEFINER";
-					$revoke = "-- REVOKE ALL ON FUNCTION trigger_fct_\L$trig->[0]\E TO PUBLIC;\n";
+					$revoke = "-- REVOKE ALL ON FUNCTION trigger_fct_\L$trig->[0]\E FROM PUBLIC;\n";
 				}
 				if ($self->{pg_supports_when} && $trig->[5]) {
 					$sql_output .= "CREATE OR REPLACE FUNCTION trigger_fct_\L$trig->[0]\E () RETURNS trigger AS \$BODY\$\n$trig->[4]\n\$BODY\$\n LANGUAGE 'plpgsql'$security;\n$revoke\n";
@@ -7429,7 +7429,7 @@ sub _convert_function
 		$function .= "DECLARE\n$func_declare\n" if ($func_declare);
 		$function .= $func_code;
 		$function .= "\n\$body\$\nLANGUAGE PLPGSQL\n";
-		$revoke = "-- REVOKE ALL ON FUNCTION $name TO PUBLIC;\n";
+		$revoke = "-- REVOKE ALL ON FUNCTION $name FROM PUBLIC;\n";
 		if ($self->{type} ne 'PACKAGE') {
 			$function .= "SECURITY DEFINER\n" if ($self->{security}{"\U$func_name\E"}{security} eq 'DEFINER');
 		} else {
