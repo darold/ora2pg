@@ -2870,7 +2870,7 @@ LANGUAGE plpgsql ;
 					$sql_output .= "DROP TRIGGER $self->{pg_supports_ifexists} \L$trig->[0]\E ON \"$trig->[3]\" CASCADE;\n";
 				}
 				my $security = '';
-				$security = " SECURITY DEFINER" if ($self->{security}{"\U$trig->[0]\E"}{security});
+				$security = " SECURITY DEFINER" if ($self->{security}{"\U$trig->[0]\E"}{security} eq 'DEFINER');
 				if ($self->{pg_supports_when} && $trig->[5]) {
 					$sql_output .= "CREATE OR REPLACE FUNCTION trigger_fct_\L$trig->[0]\E () RETURNS trigger AS \$BODY\$\n$trig->[4]\n\$BODY\$\n LANGUAGE 'plpgsql'$security;\n\n";
 					if ($self->{force_owner}) {
@@ -7422,9 +7422,9 @@ sub _convert_function
 		$function .= $func_code;
 		$function .= "\n\$body\$\nLANGUAGE PLPGSQL\n";
 		if ($self->{type} ne 'PACKAGE') {
-			$function .= "SECURITY DEFINER\n" if ($self->{security}{"\U$func_name\E"}{security});
+			$function .= "SECURITY DEFINER\n" if ($self->{security}{"\U$func_name\E"}{security} eq 'DEFINER');
 		} else {
-			$function .= "SECURITY DEFINER\n" if ($self->{security}{"\U$pname\E"}{security});
+			$function .= "SECURITY DEFINER\n" if ($self->{security}{"\U$pname\E"}{security} eq 'DEFINER');
 		}
 		$function .= "$immutable;\n";
 		$function = "\n$func_before$function";
