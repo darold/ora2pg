@@ -8564,13 +8564,16 @@ sub _show_infos
 		my %tables_infos = $self->_table_info();
 
 		# Retrieve all columns information
-		my %columns_infos = $self->_column_info('',$self->{schema}, 'TABLE');
-		foreach my $tb (keys %columns_infos) {
-			foreach my $c (keys %{$columns_infos{$tb}}) {
-				push(@{$self->{tables}{$tb}{column_info}{$c}}, @{$columns_infos{$tb}{$c}});
+		my %columns_infos = ();
+		if ($type eq 'SHOW_COLUMN') {
+			%columns_infos = $self->_column_info('',$self->{schema}, 'TABLE');
+			foreach my $tb (keys %columns_infos) {
+				foreach my $c (keys %{$columns_infos{$tb}}) {
+					push(@{$self->{tables}{$tb}{column_info}{$c}}, @{$columns_infos{$tb}{$c}});
+				}
 			}
+			%columns_infos = ();
 		}
-		%columns_infos = ();
 
 		my @done = ();
 		my $id = 0;
@@ -8860,7 +8863,7 @@ sub _get_largest_tables
         }
 	$sql .= $self->limit_to_objects('TABLE', 'A.TABLE_NAME');
 
-	$sql .= " ORDER BY S.BYTES DESC) WHERE ROWNUM <= $self->{top_max}";
+	$sql .= " ORDER BY S.BYTES,S.SEGMENT_NAME DESC) WHERE ROWNUM <= $self->{top_max}";
 
         my $sth = $self->{dbh}->prepare( $sql ) or return undef;
         $sth->execute or return undef;
