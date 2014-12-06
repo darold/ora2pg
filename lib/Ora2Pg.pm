@@ -5711,7 +5711,6 @@ sub _get_privilege
 		$str .= " AND a.STATUS='VALID'";
 	}
 	$str .= " ORDER BY b.TABLE_NAME, b.GRANTEE";
-
 	my $error = "\n\nFATAL: You must be connected as an oracle dba user to retrieved grants\n\n";
 	my $sth = $self->{dbh}->prepare($str) or $self->logit($error . "FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -5755,7 +5754,9 @@ sub _get_privilege
 		next if (grep(/^$r$/, @done));
 		push(@done, $r);
 		# Get all system priviledge given to a role
-		$str = "SELECT PRIVILEGE,ADMIN_OPTION FROM DBA_SYS_PRIVS WHERE GRANTEE = '$r' ORDER BY PRIVILEGE";
+		$str = "SELECT PRIVILEGE,ADMIN_OPTION FROM DBA_SYS_PRIVS WHERE GRANTEE = '$r'";
+		$str .= " " . $self->limit_to_objects('GRANT', 'GRANTEE');
+		$str .= " ORDER BY PRIVILEGE";
 		$sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 		$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 		while (my $row = $sth->fetch) {
@@ -5767,12 +5768,16 @@ sub _get_privilege
 	# Now try to find if it's a user or a role 
 	foreach my $u (@done) {
 		$str = "SELECT GRANTED_ROLE FROM DBA_ROLE_PRIVS WHERE GRANTEE = '$u'";
+		$str .= " " . $self->limit_to_objects('GRANT', 'GRANTEE');
+		$str .= " ORDER BY GRANTED_ROLE";
 		$sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 		$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 		while (my $row = $sth->fetch) {
 			push(@{$roles{role}{$u}}, $row->[0]);
 		}
 		$str = "SELECT USERNAME FROM DBA_USERS WHERE USERNAME = '$u'";
+		$str .= " " . $self->limit_to_objects('GRANT', 'USERNAME');
+		$str .= " ORDER BY USERNAME";
 		$sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 		$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 		while (my $row = $sth->fetch) {
@@ -5780,6 +5785,8 @@ sub _get_privilege
 		}
 		next if  $roles{type}{$u};
 		$str = "SELECT ROLE,PASSWORD_REQUIRED FROM DBA_ROLES WHERE ROLE='$u'";
+		$str .= " " . $self->limit_to_objects('GRANT', 'ROLE');
+		$str .= " ORDER BY ROLE";
 		$sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 		$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 		while (my $row = $sth->fetch) {
