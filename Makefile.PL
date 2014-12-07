@@ -550,10 +550,6 @@ STOP_ON_ERROR		1
 # list in the SHOW_TABLE and SHOW_REPORT output. Default 10.
 TOP_MAX			10
 
-# Use this directive to limit partition data export to some partition name.
-# The value is a list of partition name separated by a space.
-#ALLOW_PARTITION		PARTNAME
-
 # When enabled this directive forces ora2pg to export all tables, index
 # constraints, and indexes using the tablespace name defined in Oracle database.
 # This works only with tablespaces that are not TEMP, USERS and SYSTEM.

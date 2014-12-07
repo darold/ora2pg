@@ -7039,18 +7039,23 @@ sub read_config
 			}
 		} elsif (!grep(/^$var$/, 'TABLES', 'ALLOW', 'MODIFY_STRUCT', 'REPLACE_TABLES', 'REPLACE_COLS', 'WHERE', 'EXCLUDE','VIEW_AS_TABLE','ORA_RESERVED_WORDS','SYSUSERS','REPLACE_AS_BOOLEAN','BOOLEAN_VALUES','MODIFY_TYPE','DEFINED_PK', 'ALLOW_PARTITION','REPLACE_QUERY','FKEY_ADD_UPDATE')) {
 			$AConfig{$var} = $val;
-		} elsif ( ($var eq 'VIEW_AS_TABLE') || ($var eq 'ALLOW_PARTITION') ) {
+		} elsif ($var eq 'VIEW_AS_TABLE') {
 			push(@{$AConfig{$var}}, split(/[\s\t;,]+/, $val) );
-		} elsif ( ($var eq 'TABLES') || ($var eq 'ALLOW') || ($var eq 'EXCLUDE') ) {
+		} elsif ( ($var eq 'TABLES') || ($var eq 'ALLOW') || ($var eq 'EXCLUDE') || ($var eq 'ALLOW_PARTITION') ) {
 			$var = 'ALLOW' if ($var eq 'TABLES');
-			# Syntax: TABLE[regex1 regex2 ...];VIEW[regex1 regex2 ...];glob_regex1 glob_regex2 ...
-			# Global regex will be applied to the export type only
-			my @vlist = split(/\s*;\s*/, $val);
-			foreach my $a (@vlist) {
-				if ($a =~ /^([^\[]+)\[(.*)\]$/) {
-					push(@{$AConfig{$var}{"\U$1\E"}}, split(/\s+/, $2) );
-				} else {
-					push(@{$AConfig{$var}{ALL}}, split(/\s+/, $a) );
+			if ($var eq 'ALLOW_PARTITION') {
+				$var = 'ALLOW';
+				push(@{$AConfig{$var}{PARTITION}}, split(/[,\s]+/, $val) );
+			} else {
+				# Syntax: TABLE[regex1 regex2 ...];VIEW[regex1 regex2 ...];glob_regex1 glob_regex2 ...
+				# Global regex will be applied to the export type only
+				my @vlist = split(/\s*;\s*/, $val);
+				foreach my $a (@vlist) {
+					if ($a =~ /^([^\[]+)\[(.*)\]$/) {
+						push(@{$AConfig{$var}{"\U$1\E"}}, split(/[,\s]+/, $2) );
+					} else {
+						push(@{$AConfig{$var}{ALL}}, split(/[,\s]+/, $a) );
+					}
 				}
 			}
 		} elsif ( $var eq 'SYSUSERS' ) {
