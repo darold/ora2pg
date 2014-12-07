@@ -143,12 +143,16 @@ TYPE		TABLE
 
 # Set which object to export from. By default Ora2Pg export all objects.
 # Value must be a list of object name or regex separated by space. Note
-# that regex will not works with 8i database.
+# that regex will not works with 8i database, use % placeholder instead
+# Ora2Pg will use the LIKE operator. There is also some extended use of
+# this directive, see chapter "Limiting object to export" in documentation.
 #ALLOW		TABLE_TEST
 
-# Set which object to exclude from export process. By default none.
-# Value must be a list of object name or regexp separated by space.
-# Note that regex will not works with 8i database.
+# Set which object to exclude from export process. By default none. Value
+# must be a list of object name or regexp separated by space. Note that regex
+# will not works with 8i database, use % placeholder instead Ora2Pg will use
+# the NOT LIKE operator. There is also some extended use of this directive,
+# see chapter "Limiting object to export" in documentation.
 #EXCLUDE	OTHER_TABLES
 
 # Set which view to export as table. By default none. Value must be a list of

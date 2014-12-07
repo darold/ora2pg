@@ -820,10 +820,47 @@ valid regex into the list. For example:
 
 will export objects with name EMPLOYEES, COUNTRIES, all objects begining with
 'SALE_' and all objects with a name ending by '_GEOM_SEQ'. The object depends
-of the export type. Note that regex will not works with 8i database.
+of the export type. Note that regex will not works with 8i database, you must
+use the % placeholder instead, Ora2Pg will use the LIKE operator.
 
-This directive replace the obsolete 'TABLES' configuration directive, this is
-just a renaming to be less confusing.
+This is the manner to declare global filters that will be used with the current
+export type. You can also use extended filters that will be applied on specific
+objects or only on their related export type. For example:
+
+	ora2pg -p -c ora2pg.conf -t TRIGGER -a 'TABLE[employees]'
+
+will limit export of trigger to those defined on table employees. Or a more
+complex form:
+
+	ora2pg -p -c ora2pg.conf -t TABLE -a 'TABLE[EMPLOYEES]' \
+		-e 'INDEX[emp_.*];CKEY[emp_salary_min]'
+
+This command will export the definition of the employee table but will exclude
+all index begining with 'emp_' and the CHECK contraint called 'emp_salary_min'.
+
+When exporting partition you can exclude some partition tables by using
+
+	ora2pg -p -c ora2pg.conf -t PARTITION -e 'PARTITION[PART_199.* PART_198.*]'
+
+This will exclude partitionned tables for year 1980 to 1999 from the export but
+not the main partition table. The trigger will also be adapted to exclude those
+table.
+
+With GRANT export you can use this extended form to exclude some users from the
+export or limit the export to some others:
+
+	ora2pg -p -c ora2pg.conf -t GRANT -a 'USER1 USER2'
+
+or
+
+	ora2pg -p -c ora2pg.conf -t GRANT -a 'GRANT[USER1 USER2]'
+
+will limit export grants to users USER1 and USER2. But if you don't want to
+export grants on some functions for these users, for example:
+
+	ora2pg -p -c ora2pg.conf -t GRANT -a 'USER1 USER2' -e 'FUNCTION[adm_.*];PROCEDURE[adm_.*]'
+
+Advanced filters may need some learning.
 
 =item EXCLUDE
 
@@ -842,7 +879,11 @@ For example, you can ban from export some unwanted function with this directive:
 
 this example will exclude all functions, procedures or functions in a package
 with the name begining with those regex. Note that regex will not works with
-8i database.
+8i database, you must use the % placeholder instead, Ora2Pg will use the NOT
+LIKE operator.
+
+See above (directive 'ALLOW') for the extended syntax.
+
 
 =item VIEW_AS_TABLE
 
