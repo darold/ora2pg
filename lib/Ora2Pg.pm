@@ -971,6 +971,8 @@ sub _init
 			$self->_tablespaces();
 		} elsif ($self->{type} eq 'PARTITION') {
 			$self->_partitions();
+		} elsif ($self->{type} eq 'DBLINK') {
+			$self->_dblinks();
 		} elsif ($self->{type} eq 'MVIEW') {
 			$self->_materialized_views();
 		} elsif (($self->{type} eq 'SHOW_REPORT') || ($self->{type} eq 'SHOW_VERSION') || ($self->{type} eq 'SHOW_SCHEMA') || ($self->{type} eq 'SHOW_TABLE') || ($self->{type} eq 'SHOW_COLUMN') || ($self->{type} eq 'SHOW_ENCODING')) {
@@ -978,7 +980,7 @@ sub _init
 			$self->{dbh}->disconnect() if ($self->{dbh}); 
 			exit 0;
 		} else {
-			warn "type option must be TABLE, VIEW, GRANT, SEQUENCE, TRIGGER, PACKAGE, FUNCTION, PROCEDURE, PARTITION, TYPE, INSERT, COPY, TABLESPACE, SHOW_REPORT, SHOW_VERSION, SHOW_SCHEMA, SHOW_TABLE, SHOW_COLUMN, SHOW_ENCODING, FDW, MVIEW, QUERY, KETTLE\n";
+			warn "type option must be TABLE, VIEW, GRANT, SEQUENCE, TRIGGER, PACKAGE, FUNCTION, PROCEDURE, PARTITION, TYPE, INSERT, COPY, TABLESPACE, SHOW_REPORT, SHOW_VERSION, SHOW_SCHEMA, SHOW_TABLE, SHOW_COLUMN, SHOW_ENCODING, FDW, MVIEW, QUERY, KETTLE, DBLINK\n";
 		}
 		# Mofify export structure if required
 		if ($self->{type} =~ /^(INSERT|COPY)$/) {
@@ -2185,6 +2187,24 @@ sub _partitions
 
 }
 
+=head2 _dblinks
+
+This function is used to retrieve all Oracle dblinks information.
+
+Sets the main hash $self->{dblink}.
+
+=cut
+
+sub _dblinks
+{
+	my ($self) = @_;
+
+	$self->logit("Retrieving dblinks information...\n", 1);
+	%{$self->{dblink}} = $self->_get_dblink();
+
+}
+
+
 
 sub get_replaced_tbname
 {
@@ -2804,6 +2824,57 @@ LANGUAGE plpgsql ;
 		$self->dump($sql_header . $sql_output);
 		return;
 	}
+
+	# Process dblink only
+	if ($self->{type} eq 'DBLINK') {
+		$self->logit("Add dblink definition...\n", 1);
+		# Read DML from file if any
+		if ($self->{input_file}) {
+			$self->read_dblink_from_file();
+		}
+		my $i = 1;
+		my $num_total_dblink = scalar keys %{$self->{dblink}};
+
+		foreach my $db (sort { $a cmp $b } keys %{$self->{dblink}}) {
+
+			if (!$self->{quiet} && !$self->{debug}) {
+				print STDERR $self->progress_bar($i, $num_total_dblink, 25, '=', 'dblink', "generating $db" );
+			}
+			if (!$self->{preserve_case}) {
+				$sql_output .= "CREATE SERVER \L$self->{dblink}{$db}{host}\E";
+			} else {
+				$sql_output .= "CREATE SERVER \"$self->{dblink}{$db}{host}\"";
+			}
+			$sql_output .= " FOREIGN DATA WRAPPER postgres_fdw OPTIONS (host '$db', dbname 'database_name', port '5432');\n";
+
+			if (!$self->{preserve_case}) {
+				$sql_output .= "CREATE USER MAPPING FOR \L$self->{dblink}{$db}{username}\E SERVER \Lserver_$self->{dblink}{$db}{host}\E OPTIONS (user '\L$self->{dblink}{$db}{username}\E', password 'secret');\n";
+			} else {
+				$sql_output .= "CREATE USER MAPPING FOR \"$self->{dblink}{$db}{username}\" SERVER \"server_$self->{dblink}{$db}{host}\" OPTIONS (user '$self->{dblink}{$db}{username}', password 'secret');\n";
+			}
+			
+			if ($self->{force_owner}) {
+				my $owner = $self->{dblink}{$db}{owner};
+				$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
+				if (!$self->{preserve_case}) {
+					$sql_output .= "ALTER FOREIGN DATA WRAPPER \L$self->{dblink}{$db}{host}\E OWNER TO \L$owner\E;\n";
+				} else {
+					$sql_output .= "ALTER FOREIGN DATA WRAPPER \"$self->{dblink}{$db}{host}\" OWNER TO \"$owner\";\n";
+				}
+			}
+			$i++;
+		}
+		if (!$self->{quiet} && !$self->{debug}) {
+			print STDERR $self->progress_bar($i - 1, $num_total_dblink, 25, '=', 'dblink', 'end of output.'), "\n";
+		}
+		if (!$sql_output) {
+			$sql_output = "-- Nothing found of type $self->{type}\n";
+		}
+
+		$self->dump($sql_header . $sql_output);
+		return;
+	}
+
 
 	# Process triggers only. PL/SQL code is pre-converted to PL/PGSQL following
 	# the recommendation of Roberto Mello, see http://techdocs.postgresql.org/
@@ -6033,7 +6104,7 @@ sub _get_dblink
 	my($self) = @_;
 
 	# Retrieve all database link from dba_db_links table
-	my $str = "SELECT OWNER,DB_LINK,USERNAME,HOST,CREATED FROM $self->{prefix}_db_links";
+	my $str = "SELECT OWNER,DB_LINK,USERNAME,HOST FROM $self->{prefix}_DB_LINKS";
 	if (!$self->{schema}) {
 		$str .= " WHERE OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
 	} else {
@@ -6041,6 +6112,7 @@ sub _get_dblink
 	}
 	$str .= $self->limit_to_objects('DBLINK', 'DB_LINK');
 	$str .= " ORDER BY DB_LINK";
+
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
