@@ -826,9 +826,6 @@ CONFIGURATION
         exported as a create table statement. If export type is COPY or
         INSERT, the corresponding data will be exported.
 
-        This was initialy done with the ALLOW (or old TABLES directive) but
-        that was not allow to use both object exclusion and view as table.
-
         See chapter "Exporting Oracle views as PostgreSQL tables" for more
         details.
 
@@ -1589,6 +1586,29 @@ CONFIGURATION
     Then if Ora2Pg finds the view it will extract its schema (if TYPE=TABLE)
     into a PG create table form, then it will extract the data (if TYPE=COPY
     or INSERT) following the view schema.
+
+    For example, with the following view:
+
+            CREATE OR REPLACE VIEW product_prices (category_id, product_count, low_price, high_price) AS
+            SELECT  category_id, COUNT(*) as product_count,
+                MIN(list_price) as low_price,
+                MAX(list_price) as high_price
+             FROM   product_information
+            GROUP BY category_id;
+
+    Setting VIEW_AS_TABLE to product_prices and using export type TABLE,
+    here is the create table statment generated:
+
+            CREATE TABLE product_prices (category_id, product_count, low_price, high_price) AS
+            SELECT  category_id,
+                COUNT(*) as product_count,
+                MIN(list_price) as low_price,
+                MAX(list_price) as high_price
+             FROM   product_information
+            GROUP BY category_id;
+
+    If you create the view as table before data has been loaded, they will
+    be loaded following the COPY export type and the view declaration.
 
     You can use the ALLOW and EXCLUDE directive in addition to select the
     others objects to export.

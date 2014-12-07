@@ -2407,12 +2407,12 @@ sub _get_sql_data
 			}
 
 			# Create view as table if asked
-			if (grep(/^$view$/i, @{$self->{view_as_table}})) {
-				$sql_output =~ s/CREATE OR REPLACE VIEW/CREATE TABLE/s;
-				$sql_output =~ s/COMMENT ON VIEW/COMMENT ON TABLE/s;
-				$sql_output =~ s/\s*\bWITH\b[^;]+;$/;/s;
-				
-			}
+#			if (grep(/^$view$/i, @{$self->{view_as_table}})) {
+#				$sql_output =~ s/CREATE OR REPLACE VIEW/CREATE TABLE/s;
+#				$sql_output =~ s/COMMENT ON VIEW/COMMENT ON TABLE/s;
+#				$sql_output =~ s/\s*\bWITH\b[^;]+;$/;/s;
+#				
+#			}
 
 			if ($self->{file_per_table}) {
 				$self->dump($sql_header . $sql_output, $fhdl);
