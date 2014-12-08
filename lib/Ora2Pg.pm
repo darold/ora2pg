@@ -897,6 +897,7 @@ sub _init
 	}
 	# If you decide to autorewrite PLSQL code, this load the dedicated
 	# Perl module
+	$self->{plsql_pgsql} = 1 if ($self->{plsql_pgsql} eq '');
 	$self->{plsql_pgsql} = 1 if ($self->{estimate_cost});
 	if ($self->{plsql_pgsql}) {
 		use Ora2Pg::PLSQL;
