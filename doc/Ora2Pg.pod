@@ -55,7 +55,7 @@ Features included:
 	- Migration cost assessment of Oracle SQL queries stored in a file.
 	- Generate XML ktr files to be used with Penthalo Data Integrator (Kettle)
 	- Export Oracle locator and spatial geometries into PostGis.
-	- Export DBLINK as PostgreSQL FDW.
+	- Export DBLINK as Oracle FDW.
 
 Ora2Pg do its best to automatically convert your Oracle database to PostgreSQL
 but there's still manual works to do. The Oracle specific PL/SQL code generated
@@ -578,7 +578,7 @@ Here are the different values of the TYPE directive, default is TABLE:
 	- MVIEW: Export materialized view.
 	- QUERY: Try to automatically convert Oracle SQL queries.
 	- KETTLE: generate XML ktr template files to be used by Kettle.
-	- DBLINK: generate remote foreign data wrapper server to use as dblink
+	- DBLINK: generate oracle foreign data wrapper server to use as dblink
 
 Only one type of export can be perform at the same time so the TYPE directive
 must be unique. If you have more than one only the last found in the file will

@@ -2842,25 +2842,27 @@ LANGUAGE plpgsql ;
 				print STDERR $self->progress_bar($i, $num_total_dblink, 25, '=', 'dblink', "generating $db" );
 			}
 			if (!$self->{preserve_case}) {
-				$sql_output .= "CREATE SERVER \L$self->{dblink}{$db}{host}\E";
+				$sql_output .= "CREATE SERVER \L$db\E";
 			} else {
-				$sql_output .= "CREATE SERVER \"$self->{dblink}{$db}{host}\"";
+				$sql_output .= "CREATE SERVER \"$db\"";
 			}
-			$sql_output .= " FOREIGN DATA WRAPPER postgres_fdw OPTIONS (host '$db', dbname 'database_name', port '5432');\n";
+			$sql_output .= " FOREIGN DATA WRAPPER oracle_fdw OPTIONS (dbserver '$self->{dblink}{$db}{host}');\n";
 
-			if (!$self->{preserve_case}) {
-				$sql_output .= "CREATE USER MAPPING FOR \L$self->{dblink}{$db}{username}\E SERVER \Lserver_$self->{dblink}{$db}{host}\E OPTIONS (user '\L$self->{dblink}{$db}{username}\E', password 'secret');\n";
-			} else {
-				$sql_output .= "CREATE USER MAPPING FOR \"$self->{dblink}{$db}{username}\" SERVER \"server_$self->{dblink}{$db}{host}\" OPTIONS (user '$self->{dblink}{$db}{username}', password 'secret');\n";
+			if ($self->{dblink}{$db}{username}) {
+				if (!$self->{preserve_case}) {
+					$sql_output .= "CREATE USER MAPPING FOR \L$self->{dblink}{$db}{username}\E SERVER \L$db\E OPTIONS (user '\L$self->{dblink}{$db}{username}\E', password 'secret');\n";
+				} else {
+					$sql_output .= "CREATE USER MAPPING FOR \"$self->{dblink}{$db}{username}\" SERVER \"$db\" OPTIONS (user '$self->{dblink}{$db}{username}', password 'secret');\n";
+				}
 			}
 			
 			if ($self->{force_owner}) {
 				my $owner = $self->{dblink}{$db}{owner};
 				$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
 				if (!$self->{preserve_case}) {
-					$sql_output .= "ALTER FOREIGN DATA WRAPPER \L$self->{dblink}{$db}{host}\E OWNER TO \L$owner\E;\n";
+					$sql_output .= "ALTER FOREIGN DATA WRAPPER \L$db\E OWNER TO \L$owner\E;\n";
 				} else {
-					$sql_output .= "ALTER FOREIGN DATA WRAPPER \"$self->{dblink}{$db}{host}\" OWNER TO \"$owner\";\n";
+					$sql_output .= "ALTER FOREIGN DATA WRAPPER \"$db\" OWNER TO \"$owner\";\n";
 				}
 			}
 			$i++;
