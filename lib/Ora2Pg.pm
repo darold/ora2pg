@@ -7465,6 +7465,8 @@ sub _convert_function
 		$fname= lc($fname);
 		$fname = $pname . $sep . $fname if ($pname);
 	}
+	$fname =~ s/"_"/_/g;
+
 	$func_args = '()' if (!$func_args);
 	$func_args =~ s/\s+IN\s+/ /ig; # Remove default IN keyword
 	my $name = $fname;
@@ -7525,10 +7527,11 @@ sub _convert_function
 	if ($self->{force_owner}) {
 		$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
 		if ($owner) {
+			$function .= "ALTER FUNCTION $fname OWNER TO";
 			if (!$self->{preserve_case}) {
-				$function .= "ALTER FUNCTION \L$fname\E OWNER TO \L$owner\E;\n";
+				$function .= " \L$owner\E;\n";
 			} else {
-				$function .= "ALTER FUNCTION \"$fname\" OWNER TO \"$owner\";\n";
+				$function .= " \"$owner\";\n";
 			}
 		}
 	}
@@ -8822,10 +8825,13 @@ sub _get_pkg_functions
 			my %infos = $self->_lookup_package("CREATE OR REPLACE PACKAGE BODY$txt");
 			foreach my $f (sort keys %infos) {
 				next if (!$f);
+				my $res_name = $f;
+				$res_name =~ s/\./_/g;
+				$res_name =~ s/"_"/_/g;
 				if (!$self->{preserve_case}) {
-					$self->{package_functions}{"\L$pkg.$f\E"} = lc($pkg . "_" . $f);
+					$self->{package_functions}{"\L$f\E"} = lc($res_name);
 				} else {
-					$self->{package_functions}{"\L$pkg.$f\E"} = $pkg . "_" . $f;
+					$self->{package_functions}{"\L$f\E"} = $res_name;
 				}
 			}
 		}
