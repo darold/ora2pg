@@ -4201,7 +4201,7 @@ CREATE TRIGGER insert_${table}_trigger
 		my $owner = '';
 		$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
 		$owner ||= $self->{schema};
-		if ($owner) {
+		if ($owner && $self->{create_schema}) {
 			if (!$self->{preserve_case}) {
 				$sql_output .= "ALTER SCHEMA \L$self->{schema}\E OWNER TO \L$owner\E;\n";
 			} else {
