@@ -831,8 +831,12 @@ objects or only on their related export type. For example:
 
 	ora2pg -p -c ora2pg.conf -t TRIGGER -a 'TABLE[employees]'
 
-will limit export of trigger to those defined on table employees. Or a more
-complex form:
+will limit export of trigger to those defined on table employees. If you want
+to extract all triggers but not some INSTEAD OF triggers:
+
+	ora2pg -c ora2pg.conf -t TRIGGER -e 'VIEW[trg_view_.*]'
+
+Or a more complex form:
 
 	ora2pg -p -c ora2pg.conf -t TABLE -a 'TABLE[EMPLOYEES]' \
 		-e 'INDEX[emp_.*];CKEY[emp_salary_min]'

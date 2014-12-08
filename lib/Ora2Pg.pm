@@ -6357,7 +6357,7 @@ sub _get_triggers
 	} else {
 		$str .= " AND OWNER = '$self->{schema}'";
 	}
-	$str .= " " . $self->limit_to_objects('TABLE|TRIGGER','TABLE_NAME|TRIGGER_NAME');
+	$str .= " " . $self->limit_to_objects('TABLE|VIEW|TRIGGER','TABLE_NAME|TABLE_NAME|TRIGGER_NAME');
 
 	$str .= " ORDER BY TABLE_NAME, TRIGGER_NAME";
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
