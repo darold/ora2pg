@@ -1742,7 +1742,7 @@ sub read_schema_from_file
 						if (!$self->{plsql_pgsql}) {
 							$c_default = $1;
 						} else {
-							$c_default = Ora2Pg::PLSQL::plsql_to_plpgsql($1,$self->{null_equal_empty}, undef, %{$self->{package_functions}});
+							$c_default = Ora2Pg::PLSQL::plsql_to_plpgsql($1,$self->{null_equal_empty}, undef, $self->{package_functions});
 						}
 					}
 					#COLUMN_NAME, DATA_TYPE, DATA_LENGTH, NULLABLE, DATA_DEFAULT, DATA_PRECISION, DATA_SCALE, CHAR_LENGTH, TABLE_NAME, OWNER
@@ -2929,12 +2929,12 @@ LANGUAGE plpgsql ;
 				# Replace direct call of a stored procedure in triggers
 				if ($trig->[7] eq 'CALL') {
 					if ($self->{plsql_pgsql}) {
-						$trig->[4] = Ora2Pg::PLSQL::plsql_to_plpgsql($trig->[4],$self->{null_equal_empty}, undef, %{$self->{package_functions}});
+						$trig->[4] = Ora2Pg::PLSQL::plsql_to_plpgsql($trig->[4],$self->{null_equal_empty}, undef, $self->{package_functions});
 					}
 					$trig->[4] = "BEGIN;\nPERFORM $trig->[4];\nEND;";
 				} else {
 					if ($self->{plsql_pgsql}) {
-						$trig->[4] = Ora2Pg::PLSQL::plsql_to_plpgsql($trig->[4],$self->{null_equal_empty}, undef, %{$self->{package_functions}});
+						$trig->[4] = Ora2Pg::PLSQL::plsql_to_plpgsql($trig->[4],$self->{null_equal_empty}, undef, $self->{package_functions});
 						$trig->[4] =~ s/\b(END[;]*)$/RETURN NEW;\n$1/igs;
 					}
 				}
@@ -2965,7 +2965,7 @@ LANGUAGE plpgsql ;
 					$sql_output .= "CREATE TRIGGER $trig->[6]\n";
 					if ($trig->[5]) {
 						if ($self->{plsql_pgsql}) {
-							$trig->[5] = Ora2Pg::PLSQL::plsql_to_plpgsql($trig->[5],$self->{null_equal_empty}, undef, %{$self->{package_functions}});
+							$trig->[5] = Ora2Pg::PLSQL::plsql_to_plpgsql($trig->[5],$self->{null_equal_empty}, undef, $self->{package_functions});
 						}
 						$sql_output .= "\tWHEN ($trig->[5])\n";
 					}
@@ -3071,7 +3071,7 @@ LANGUAGE plpgsql ;
 			$self->logit("Dumping query $q...\n", 1);
 			my $fhdl = undef;
 			if ($self->{plsql_pgsql}) {
-				my $sql_q = Ora2Pg::PLSQL::plsql_to_plpgsql($self->{queries}{$q},$self->{null_equal_empty}, $self->{type}, %{$self->{package_functions}});
+				my $sql_q = Ora2Pg::PLSQL::plsql_to_plpgsql($self->{queries}{$q},$self->{null_equal_empty}, $self->{type}, $self->{package_functions});
 				$sql_output .= $sql_q;
 				if ($self->{estimate_cost}) {
 					my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($sql_q);
@@ -4009,7 +4009,7 @@ LANGUAGE plpgsql ;
 				if ($#create_all >= 0) {
 					if ($self->{plsql_pgsql}) {
 						for (my $i = 0; $i <= $#create_all; $i++) {
-							$create_all[$i] = Ora2Pg::PLSQL::plsql_to_plpgsql($create_all[$i],$self->{null_equal_empty}, undef, %{$self->{package_functions}});
+							$create_all[$i] = Ora2Pg::PLSQL::plsql_to_plpgsql($create_all[$i],$self->{null_equal_empty}, undef, $self->{package_functions});
 						}
 					}
 					foreach my $str (@create_all) {
@@ -4096,17 +4096,17 @@ BEGIN
 							$create_table{$table}{table} .= "\t$self->{partitions}{$table}{$pos}{$part}[$i]->{column} IN ($self->{partitions}{$table}{$pos}{$part}[$i]->{value})";
 						} else {
 							if ($old_part eq '') {
-								$create_table{$table}{table} .= "\t$self->{partitions}{$table}{$pos}{$part}[$i]->{column} < " . Ora2Pg::PLSQL::plsql_to_plpgsql($self->{partitions}{$table}{$pos}{$part}[$i]->{value},$self->{null_equal_empty}, undef, %{$self->{package_functions}});
+								$create_table{$table}{table} .= "\t$self->{partitions}{$table}{$pos}{$part}[$i]->{column} < " . Ora2Pg::PLSQL::plsql_to_plpgsql($self->{partitions}{$table}{$pos}{$part}[$i]->{value},$self->{null_equal_empty}, undef, $self->{package_functions});
 							} else {
-								$create_table{$table}{table} .= "\t$self->{partitions}{$table}{$pos}{$part}[$i]->{column} >= " . Ora2Pg::PLSQL::plsql_to_plpgsql($self->{partitions}{$table}{$old_pos}{$old_part}[$i]->{value},$self->{null_equal_empty}, undef, %{$self->{package_functions}}) . " AND $self->{partitions}{$table}{$pos}{$part}[$i]->{column} < " . Ora2Pg::PLSQL::plsql_to_plpgsql($self->{partitions}{$table}{$pos}{$part}[$i]->{value},$self->{null_equal_empty}, undef, %{$self->{package_functions}});
+								$create_table{$table}{table} .= "\t$self->{partitions}{$table}{$pos}{$part}[$i]->{column} >= " . Ora2Pg::PLSQL::plsql_to_plpgsql($self->{partitions}{$table}{$old_pos}{$old_part}[$i]->{value},$self->{null_equal_empty}, undef, $self->{package_functions}) . " AND $self->{partitions}{$table}{$pos}{$part}[$i]->{column} < " . Ora2Pg::PLSQL::plsql_to_plpgsql($self->{partitions}{$table}{$pos}{$part}[$i]->{value},$self->{null_equal_empty}, undef, $self->{package_functions});
 							}
 						}
 						$create_table{$table}{table} .= " AND" if ($i < $#{$self->{partitions}{$table}{$pos}{$part}});
 						$create_table{$table}{'index'} .= "CREATE INDEX ${tb_name}_$self->{partitions}{$table}{$pos}{$part}[$i]->{column} ON $tb_name ($self->{partitions}{$table}{$pos}{$part}[$i]->{column});\n";
 						if ($self->{partitions}{$table}{$pos}{$part}[$i]->{type} eq 'LIST') {
-							push(@condition, "NEW.$self->{partitions}{$table}{$pos}{$part}[$i]->{column} IN (" . Ora2Pg::PLSQL::plsql_to_plpgsql($self->{partitions}{$table}{$pos}{$part}[$i]->{value}, $self->{null_equal_empty}, undef, %{$self->{package_functions}}) . ")");
+							push(@condition, "NEW.$self->{partitions}{$table}{$pos}{$part}[$i]->{column} IN (" . Ora2Pg::PLSQL::plsql_to_plpgsql($self->{partitions}{$table}{$pos}{$part}[$i]->{value}, $self->{null_equal_empty}, undef, $self->{package_functions}) . ")");
 						} else {
-							push(@condition, "NEW.$self->{partitions}{$table}{$pos}{$part}[$i]->{column} < " . Ora2Pg::PLSQL::plsql_to_plpgsql($self->{partitions}{$table}{$pos}{$part}[$i]->{value},$self->{null_equal_empty}, undef, %{$self->{package_functions}}));
+							push(@condition, "NEW.$self->{partitions}{$table}{$pos}{$part}[$i]->{column} < " . Ora2Pg::PLSQL::plsql_to_plpgsql($self->{partitions}{$table}{$pos}{$part}[$i]->{value},$self->{null_equal_empty}, undef, $self->{package_functions}));
 						}
 						$owner = $self->{partitions}{$table}{$pos}{$part}[$i]->{owner} || '';
 					}
@@ -4260,7 +4260,7 @@ CREATE TRIGGER insert_${table}_trigger
 		}
 		if (exists $self->{tables}{$table}{table_as}) {
 			if ($self->{plsql_pgsql}) {
-				$self->{tables}{$table}{table_as} = Ora2Pg::PLSQL::plsql_to_plpgsql($self->{tables}{$table}{table_as},$self->{null_equal_empty}, undef, %{$self->{package_functions}});
+				$self->{tables}{$table}{table_as} = Ora2Pg::PLSQL::plsql_to_plpgsql($self->{tables}{$table}{table_as},$self->{null_equal_empty}, undef, $self->{package_functions});
 			}
 			my $withoid = '';
 			$withoid = 'WITH (OIDS)' if ($self->{with_oid});
@@ -4346,7 +4346,7 @@ CREATE TRIGGER insert_${table}_trigger
 					$f->[4] =~ s/^[\s\t]+//;
 					$f->[4] =~ s/[\s\t]+$//;
 					if ($self->{plsql_pgsql}) {
-						$f->[4] = Ora2Pg::PLSQL::plsql_to_plpgsql($f->[4],$self->{null_equal_empty}, undef, %{$self->{package_functions}});
+						$f->[4] = Ora2Pg::PLSQL::plsql_to_plpgsql($f->[4],$self->{null_equal_empty}, undef, $self->{package_functions});
 					}
 					if ($self->{type} ne 'FDW') {
 						$sql_output .= " DEFAULT $f->[4]" if ($f->[4] ne '');
@@ -4431,7 +4431,7 @@ CREATE TRIGGER insert_${table}_trigger
 			# Set the index definition
 			$indices .= $self->_create_indexes($table, %{$self->{tables}{$table}{indexes}}) . "\n";
 			if ($self->{plsql_pgsql}) {
-				$indices = Ora2Pg::PLSQL::plsql_to_plpgsql($indices,$self->{null_equal_empty}, undef, %{$self->{package_functions}});
+				$indices = Ora2Pg::PLSQL::plsql_to_plpgsql($indices,$self->{null_equal_empty}, undef, $self->{package_functions});
 			}
 			if (!$self->{file_per_index}) {
 				$sql_output .= $indices;
@@ -4974,7 +4974,7 @@ sub _create_check_constraint
 				}
 			}
 			if ($self->{plsql_pgsql}) {
-				$chkconstraint = Ora2Pg::PLSQL::plsql_to_plpgsql($chkconstraint,$self->{null_equal_empty}, undef, %{$self->{package_functions}});
+				$chkconstraint = Ora2Pg::PLSQL::plsql_to_plpgsql($chkconstraint,$self->{null_equal_empty}, undef, $self->{package_functions});
 			}
 			if (!$self->{preserve_case}) {
 				foreach my $c (@$field_name) {
@@ -7309,6 +7309,36 @@ sub _convert_package
 				}
 			}
 		}
+
+		# Try to detect local function
+		foreach my $f (@functions) {
+			# Split data into declarative and code part
+			my ($func_declare, $func_code) = split(/\bBEGIN\b/i,$f,2);
+			if ( $func_declare =~ /(.*?)\b(FUNCTION|PROCEDURE)[\s\t]+([^\s\t\(]+)([^\(]*)(\([^\)]*\)|[\s\t]*)/is ) {
+				my $func_name = $3;
+				if (!$self->{preserve_case}) {
+					$func_name = lc($func_name);
+				}
+				if (!exists $self->{package_functions}{$func_name}) {
+					my $fname = $func_name;
+					$fname =~ s/^.*\.//;
+					$fname =~ s/"//g;
+					my $res_name = $fname;
+					if ($self->{package_as_schema}) {
+						$res_name = $pname . '.' . $res_name;
+					} else {
+						$res_name = $pname . '_' . $res_name;
+					}
+					$res_name =~ s/"_"/_/g;
+					if (!$self->{preserve_case}) {
+						$self->{package_functions}{"\L$fname\E"} = lc($res_name);
+					} else {
+						$self->{package_functions}{"\L$fname\E"} = $res_name;
+					}
+				}
+			}
+		}
+
 		$self->{pkgcost} = 0;
 		foreach my $f (@functions) {
 			$content .= $self->_convert_function($owner, $f, $pname, \%comments);
@@ -7318,7 +7348,6 @@ sub _convert_package
 			$self->{total_pkgcost} += $self->{pkgcost} || 0;
 		}
 	}
-
 	return $content;
 }
 
@@ -7449,9 +7478,9 @@ sub _convert_function
 		$func_declare = Ora2Pg::PLSQL::replace_sql_type($func_declare, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type});
 
 		# Replace PL/SQL code into PL/PGSQL similar code
-		$func_declare = Ora2Pg::PLSQL::plsql_to_plpgsql($func_declare,$self->{null_equal_empty}, undef, %{$self->{package_functions}});
+		$func_declare = Ora2Pg::PLSQL::plsql_to_plpgsql($func_declare,$self->{null_equal_empty}, undef, $self->{package_functions});
 		if ($func_code) {
-			$func_code = Ora2Pg::PLSQL::plsql_to_plpgsql("BEGIN".$func_code,$self->{null_equal_empty}, undef, %{$self->{package_functions}});
+			$func_code = Ora2Pg::PLSQL::plsql_to_plpgsql("BEGIN".$func_code,$self->{null_equal_empty}, undef, $self->{package_functions});
 		}
 	} else {
 		return $plsql;
@@ -7679,7 +7708,7 @@ sub _format_view
 		}
 	}
 	if ($self->{plsql_pgsql}) {
-		$sqlstr = Ora2Pg::PLSQL::plsql_to_plpgsql($sqlstr,$self->{null_equal_empty}, $self->{type}, %{$self->{package_functions}});
+		$sqlstr = Ora2Pg::PLSQL::plsql_to_plpgsql($sqlstr,$self->{null_equal_empty}, $self->{type}, $self->{package_functions});
 	}
 
 	return $sqlstr;
@@ -8827,6 +8856,7 @@ sub _get_pkg_functions
 			my %infos = $self->_lookup_package("CREATE OR REPLACE PACKAGE BODY$txt");
 			foreach my $f (sort keys %infos) {
 				next if (!$f);
+				my $int_name = $f;
 				my $res_name = $f;
 				$res_name =~ s/\./_/g;
 				$res_name =~ s/"_"/_/g;
@@ -9404,7 +9434,7 @@ sub _lookup_check_constraint
 				}
 			}
 			if ($self->{plsql_pgsql}) {
-				$chkconstraint = Ora2Pg::PLSQL::plsql_to_plpgsql($chkconstraint,$self->{null_equal_empty}, undef, %{$self->{package_functions}});
+				$chkconstraint = Ora2Pg::PLSQL::plsql_to_plpgsql($chkconstraint,$self->{null_equal_empty}, undef, $self->{package_functions});
 			}
 			next if ($nonotnull && ($chkconstraint =~ /IS NOT NULL/));
 			if (!$self->{preserve_case}) {
