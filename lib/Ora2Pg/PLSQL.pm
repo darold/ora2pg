@@ -631,7 +631,7 @@ sub replace_sql_type
 
 	# Replace type with precision
 	my $oratype_regex = join('|', keys %Ora2Pg::TYPE);
-	while ($str =~ /(.*)\b($oratype_regex)[\s\t]*\(([^\)]+)\)/) {
+	while ($str =~ /(.*)\b($oratype_regex)[\s\t]*\(([^\)]+)\)/i) {
 		my $backstr = $1;
 		my $type = uc($2);
 		my $args = $3;
