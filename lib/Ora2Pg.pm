@@ -8298,6 +8298,7 @@ sub _dump_to_pg
 		$self->logit("Extracted records from table $table: $tt_record ($rps recs/sec)\n", 1);
 	}
 
+	close($tempfiles[0]->[0]);
 	unlink($tempfiles[0]->[1]);
 }
 
