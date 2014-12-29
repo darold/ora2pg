@@ -65,6 +65,7 @@ rm -f `find %{buildroot}/%{_libdir}/perl*/ -name .packlist -type f`
 %attr(0755,root,root) %{_bindir}/%{wname}
 %attr(0644,root,root) %{_mandir}/man3/%{wname}.3.gz
 %config(noreplace) %{_sysconfdir}/%{wname}/%{wname}.conf.dist
+%{perl_vendorlib}/Ora2Pg/GEOM.pm
 %{perl_vendorlib}/Ora2Pg/PLSQL.pm
 %{perl_vendorlib}/Ora2Pg.pm
 
