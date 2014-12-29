@@ -61,10 +61,10 @@ rm -f `find %{buildroot}/%{_libdir}/perl*/ -name .packlist -type f`
 
 %files
 %defattr(0644,root,root,0755)
-%doc Change* INSTALL README
+%doc change* INSTALL README
 %attr(0755,root,root) %{_bindir}/%{wname}
 %attr(0644,root,root) %{_mandir}/man3/%{wname}.3.gz
-%config(noreplace) %{_sysconfdir}/%{wname}/%{wname}.conf
+%config(noreplace) %{_sysconfdir}/%{wname}/%{wname}.conf.dist
 %{perl_vendorlib}/Ora2Pg/PLSQL.pm
 %{perl_vendorlib}/Ora2Pg.pm
 
