@@ -416,6 +416,7 @@ sub make_config_generic
 		$conf_arr->[$i] =~ s/^FILE_PER_TABLE.*0/FILE_PER_TABLE\t1/;
 		$conf_arr->[$i] =~ s/^FILE_PER_FUNCTION.*0/FILE_PER_FUNCTION\t1/;
 		$conf_arr->[$i] =~ s/^TRUNCATE_TABLE.*0/TRUNCATE_TABLE\t1/;
+		$conf_arr->[$i] =~ s/^DISABLE_SEQUENCE.*0/DISABLE_SEQUENCE\t1/;
 		$conf_arr->[$i] =~ s/^#CLIENT_ENCODING.*LATIN9/CLIENT_ENCODING\tUTF8/;
 		$conf_arr->[$i] =~ s/^#LONGREADLEN.*1047552/LONGREADLEN\t5000000/;
 		$conf_arr->[$i] =~ s/^AUTODETECT_SPATIAL_TYPE.*0/AUTODETECT_SPATIAL_TYPE\t1/;
