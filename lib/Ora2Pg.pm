@@ -4178,7 +4178,7 @@ BEGIN
 						$funct_cond .= "\t$cond ( " . join(' AND ', @condition) . " ) THEN \n";
 						$funct_cond .= $sub_funct_cond;
 						$funct_cond .= "\t\tELSE INSERT INTO $tb_name VALUES (NEW.*);\n";
-						$funct_cond .= "\t\tENDIF;\n";
+						$funct_cond .= "\t\tEND IF;\n";
 					}
 					$cond = 'ELSIF';
 					$old_part = $part;
