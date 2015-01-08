@@ -7555,7 +7555,13 @@ sub _convert_function
 		$func_before = $1;
 		$func_name = $3;
 		$func_args = $5;
-		$func_before .= "\n$4" if ($func_args);
+		my $tmp = $4;
+		if ( $tmp =~ /^\s+IS\s+/m ) {
+			$func_declare = $tmp . ' ' . $func_args . ' ' . $func_declare;
+			$func_args = '';
+		} else {
+			$func_before .= "\n$tmp" if ($func_args);
+		}
 		my $clause = '';
 		my $code = '';
 		$func_name =~ s/"//g;
