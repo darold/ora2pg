@@ -4186,18 +4186,17 @@ BEGIN
 				}
 				$old_pos = $pos;
 			}
-			if (!$self->{partitions_default}{$table}) {
-				$function .= $funct_cond . qq{	ELSE
-                INSERT INTO $table VALUES (NEW.*);
-};
-			} else {
+			if ($self->{partitions_default}{$table}) {
 				$function .= $funct_cond . qq{	ELSE
                 INSERT INTO ${table}_$self->{partitions_default}{$table} VALUES (NEW.*);
 };
+			} else {
+				$function .= $funct_cond . qq{	ELSE
+                -- Raise an exception
+                RAISE EXCEPTION 'Value out of range. Fix the ${table}_insert_trigger() function!';
+};
 			}
 			$function .= qq{
-                -- Or if you prefer raising an exception
-                -- RAISE EXCEPTION 'Value out of range. Fix the ${table}_insert_trigger() function!';
         END IF;
         RETURN NULL;
 END;
