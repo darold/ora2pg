@@ -726,13 +726,13 @@ sub _init
 	# Global regex will be applied to the export type only
 	foreach my $i (@{$self->{limited}{ALL}}) {
 		my $typ = $self->{type} || 'TABLE';
-		$typ = 'TABLE' if ($self->{type} =~ /(SHOW_TABLE|SHOW_COLUMN|FDW|KETTLE|COPY|INSERT)/);
+		$typ = 'TABLE' if ($self->{type} =~ /(SHOW_TABLE|SHOW_COLUMN|FDW|KETTLE)/);
 		push(@{$self->{limited}{$typ}}, $i);
 	}
 	delete $self->{limited}{ALL};
 	foreach my $i (@{$self->{excluded}{ALL}}) {
 		my $typ = $self->{type} || 'TABLE';
-		$typ = 'TABLE' if ($self->{type} =~ /(SHOW_TABLE|SHOW_COLUMN|FDW|KETTLE|COPY|INSERT)/);
+		$typ = 'TABLE' if ($self->{type} =~ /(SHOW_TABLE|SHOW_COLUMN|FDW|KETTLE)/);
 		push(@{$self->{excluded}{$typ}}, $i);
 	}
 	delete $self->{excluded}{ALL};
@@ -5109,7 +5109,6 @@ sub _extract_sequence_info
 	} else {
 		$sql .= " WHERE SEQUENCE_OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
 	}
-	$sql .= " " . $self->limit_to_objects('SEQUENCE', 'SEQUENCE_NAME');
 	my @script = ();
 
 	my $sth = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr ."\n", 0, 1);
@@ -6638,7 +6637,7 @@ AND a.TABLESPACE_NAME = c.TABLESPACE_NAME
 	} else {
 		$str .= " AND a.OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
 	}
-	$str .= $self->limit_to_objects('TABLESPACE', 'a.TABLESPACE_NAME');
+	$str .= $self->limit_to_objects('TABLESPACE|TABLE', 'a.TABLESPACE_NAME|a.SEGMENT_NAME');
 	$str .= " ORDER BY TABLESPACE_NAME";
 	my $error = "\n\nFATAL: You must be connected as an oracle dba user to retrieved tablespaces\n\n";
 	my $sth = $self->{dbh}->prepare($str) or $self->logit($error . "FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -8299,7 +8298,6 @@ sub _dump_to_pg
 		$self->logit("Extracted records from table $table: $tt_record ($rps recs/sec)\n", 1);
 	}
 
-	close($tempfiles[0]->[0]);
 	unlink($tempfiles[0]->[1]);
 }
 
