@@ -7230,8 +7230,10 @@ sub _extract_functions
 	my $before = '';
 	my $fcname =  '';
 	for (my $i = 0; $i <= $#lines; $i++) { 
-		if ($lines[$i] =~ /^[\t\s]*(FUNCTION|PROCEDURE)[\t\s]+([a-z0-9_\-"]+)(.*)/i) {
+		if ($lines[$i] =~ /^(?:CREATE|CREATE OR REPLACE)?[\t\s]*(FUNCTION|PROCEDURE)[\t\s]+([a-z0-9_\-\."]+)(.*)/i) {
 			$fcname = $2;
+			$fcname =~ s/^.*\.//;
+			$fcname =~ s/"//g;
 			if ($before) {
 				push(@functions, "$before\n");
 				$functions[-1] .= "FUNCTION $2 $3\n";
