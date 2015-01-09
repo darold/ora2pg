@@ -3464,10 +3464,10 @@ LANGUAGE plpgsql ;
 						foreach my $f (sort keys %infos) {
 							next if (!$f);
 							$self->{idxcomment} = 0;
-							my %comments = $self->_remove_comments(\$infos{$f});
-							$total_size_no_comment += (length($infos{$f}) - (17 * $self->{idxcomment}));
-							my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($infos{$f});
-							$self->_restore_comments(\$infos{$f}, \%comments);
+							my %comments = $self->_remove_comments(\$infos{$f}{name});
+							$total_size_no_comment += (length($infos{$f}{name}) - (17 * $self->{idxcomment}));
+							my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($infos{$f}{name});
+							$self->_restore_comments(\$infos{$f}{name}, \%comments);
 							$cost += $Ora2Pg::PLSQL::OBJECT_SCORE{'FUNCTION'};
 							$self->logit("Function $f estimated cost: $cost\n", 1);
 							$cost_value += $cost;
@@ -7558,7 +7558,7 @@ sub _convert_function
 		my $tmp = $4;
 		if ( $tmp =~ /^\s+IS\s+/m ) {
 			$func_declare = $tmp . ' ' . $func_args . ' ' . $func_declare;
-			$func_args = '';
+			$func_args = '()';
 		} else {
 			$func_before .= "\n$tmp" if ($func_args);
 		}
@@ -8733,7 +8733,7 @@ sub _show_infos
 						foreach my $f (sort keys %infos) {
 							next if (!$f);
 							if ($self->{estimate_cost}) {
-								my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($infos{$f});
+								my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($infos{$f}{name});
 								$report_info{'Objects'}{$typ}{'cost_value'} += $cost;
 								$report_info{'Objects'}{$typ}{'detail'} .= "\L$f: $cost\E\n";
 								$report_info{full_function_details}{"\L$f\E"}{count} = $cost;
@@ -9606,8 +9606,9 @@ sub _lookup_package
 		my @functions = $self->_extract_functions($content);
 		foreach my $f (@functions) {
 			next if (!$f);
-			my $func_name = $self->_lookup_function($f, $pname);
-			$infos{"$pname.$func_name"} = $f if ($func_name);
+			my ($func_name, $func_type) = $self->_lookup_function($f, $pname);
+			$infos{"$pname.$func_name"}{name} = $f if ($func_name);
+			$infos{"$pname.$func_name"}{type} = $func_type if ($func_type);
 		}
 	}
 
@@ -9630,15 +9631,17 @@ sub _lookup_function
 	my %fct_infos = ();
 
 	my $func_name = '';
+	my $func_type = '';
 
 	# Split data into declarative and code part
 	my ($func_declare, $func_code) = split(/\bBEGIN\b/i,$plsql,2);
 	if ( $func_declare =~ s/(.*?)\b(FUNCTION|PROCEDURE)[\s\t]+([^\s\t\(]+)[\s\t]*(\([^\)]*\)|[\s\t]*)//is ) {
+		$fct_type = uc($2);
 		$func_name = $3;
 		$func_name =~ s/"//g;
 	}
 
-	return $func_name;
+	return ($func_name, $func_type);
 }
 
 ####
