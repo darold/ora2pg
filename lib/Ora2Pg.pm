@@ -8111,6 +8111,10 @@ sub _extract_data
 	if ( ($self->{parallel_tables} > 1) || (($self->{oracle_copies} > 1) && $self->{defined_pk}{"\L$table\E"}) ) {
 
 		$dbh = $self->{dbh}->clone();
+		# Force numeric format into the cloned session
+		$self->_numeric_format($dbh);
+		# Force datetime format into the cloned session
+		$self->_datetime_format($dbh);
 
 		$self->{dbh}->{InactiveDestroy} = 1;
 		$self->{dbh} = undef;
@@ -9220,26 +9224,30 @@ This function force Oracle database to format the time correctly
 
 sub _datetime_format
 {
-	my ($self) = @_;
+	my ($self, $dbh) = @_;
+
+	$dbh = $self->{dbh} if (!$dbh);
 
 	if ($self->{enable_microsecond}) {
-		my $sth = $self->{dbh}->do("ALTER SESSION SET NLS_TIMESTAMP_FORMAT='YYYY-MM-DD HH24:MI:SS.FF'") or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+		my $sth = $dbh->do("ALTER SESSION SET NLS_TIMESTAMP_FORMAT='YYYY-MM-DD HH24:MI:SS.FF'") or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
 	} else {
-		my $sth = $self->{dbh}->do("ALTER SESSION SET NLS_TIMESTAMP_FORMAT='YYYY-MM-DD HH24:MI:SS'") or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+		my $sth = $dbh->do("ALTER SESSION SET NLS_TIMESTAMP_FORMAT='YYYY-MM-DD HH24:MI:SS'") or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
 	}
-	my $sth = $self->{dbh}->do("ALTER SESSION SET NLS_DATE_FORMAT='YYYY-MM-DD HH24:MI:SS'") or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	my $sth = $dbh->do("ALTER SESSION SET NLS_DATE_FORMAT='YYYY-MM-DD HH24:MI:SS'") or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
 	if ($self->{enable_microsecond}) {
-		$sth = $self->{dbh}->do("ALTER SESSION SET NLS_TIMESTAMP_TZ_FORMAT='YYYY-MM-DD HH24:MI:SS TZH:TZM'") or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+		$sth = $dbh->do("ALTER SESSION SET NLS_TIMESTAMP_TZ_FORMAT='YYYY-MM-DD HH24:MI:SS TZH:TZM'") or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
 	} else {
-		$sth = $self->{dbh}->do("ALTER SESSION SET NLS_TIMESTAMP_TZ_FORMAT='YYYY-MM-DD HH24:MI:SS.FF TZH:TZM'") or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+		$sth = $dbh->do("ALTER SESSION SET NLS_TIMESTAMP_TZ_FORMAT='YYYY-MM-DD HH24:MI:SS.FF TZH:TZM'") or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
 	}
 }
 
 sub _numeric_format
 {
-	my ($self) = @_;
+	my ($self, $dbh) = @_;
 
-	my $sth = $self->{dbh}->do("ALTER SESSION SET NLS_NUMERIC_CHARACTERS = '.,'") or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$dbh = $self->{dbh} if (!$dbh);
+
+	my $sth = $dbh->do("ALTER SESSION SET NLS_NUMERIC_CHARACTERS = '.,'") or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
 }
 
 
