@@ -8286,8 +8286,9 @@ sub _dump_to_pg
 		$dbhdest = $self->_send_to_pgdb();
 		$self->logit("Dumping data from table $rname into PostgreSQL...\n", 1);
 		$self->logit("Disabling synchronous commit when writing to PostgreSQL...\n", 1);
+		my $s = $dbhdest->do( "SET client_encoding TO '\U$self->{client_encoding}\E';") or $self->logit("FATAL: " . $dbhdest->errstr . "\n", 0, 1);
 		if (!$self->{synchronous_commit}) {
-			my $s = $dbhdest->do("SET synchronous_commit TO off") or $self->logit("FATAL: " . $dbhdest->errstr . "\n", 0, 1);
+			$s = $dbhdest->do("SET synchronous_commit TO off") or $self->logit("FATAL: " . $dbhdest->errstr . "\n", 0, 1);
 		}
 	}
 
