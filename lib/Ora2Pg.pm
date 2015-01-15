@@ -726,13 +726,13 @@ sub _init
 	# Global regex will be applied to the export type only
 	foreach my $i (@{$self->{limited}{ALL}}) {
 		my $typ = $self->{type} || 'TABLE';
-		$typ = 'TABLE' if ($self->{type} =~ /(SHOW_TABLE|SHOW_COLUMN|FDW|KETTLE)/);
+		$typ = 'TABLE' if ($self->{type} =~ /(SHOW_TABLE|SHOW_COLUMN|FDW|KETTLE|COPY|INSERT)/);
 		push(@{$self->{limited}{$typ}}, $i);
 	}
 	delete $self->{limited}{ALL};
 	foreach my $i (@{$self->{excluded}{ALL}}) {
 		my $typ = $self->{type} || 'TABLE';
-		$typ = 'TABLE' if ($self->{type} =~ /(SHOW_TABLE|SHOW_COLUMN|FDW|KETTLE)/);
+		$typ = 'TABLE' if ($self->{type} =~ /(SHOW_TABLE|SHOW_COLUMN|FDW|KETTLE|COPY|INSERT)/);
 		push(@{$self->{excluded}{$typ}}, $i);
 	}
 	delete $self->{excluded}{ALL};
