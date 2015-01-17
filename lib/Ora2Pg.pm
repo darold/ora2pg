@@ -3190,6 +3190,7 @@ LANGUAGE plpgsql ;
 				$fhdl = $self->open_export_file("${fct}_$self->{output}");
 			}
 			if ($self->{plsql_pgsql}) {
+
 				my $sql_f = $self->_convert_function($self->{functions}{$fct}{owner}, $self->{functions}{$fct}{text});
 				$sql_output .= $sql_f . "\n\n";
 				if ($self->{estimate_cost}) {
@@ -7433,35 +7434,32 @@ sub _convert_package
 
 		# Try to detect local function
 		foreach my $f (@functions) {
-			# Split data into declarative and code part
-			my ($func_declare, $func_code) = split(/\bBEGIN\b/i,$f,2);
-			if ( $func_declare =~ /(.*?)\b(FUNCTION|PROCEDURE)[\s\t]+([^\s\t\(]+)([^\(]*)(\([^\)]*\)|[\s\t]*)/is ) {
-				my $func_name = $3;
-				if (!$self->{preserve_case}) {
-					$func_name = lc($func_name);
+			my %fct_detail = $self->_lookup_function($f);
+			next if (!$fct_detail{name});
+			if (!$self->{preserve_case}) {
+				$fct_detail{name} = lc($fct_detail{name});
+			}
+			if (!exists $self->{package_functions}{$fct_detail{name}}) {
+				$fct_detail{name} =~ s/^.*\.//;
+				$fct_detail{name} =~ s/"//g;
+				my $res_name = $fct_detail{name};
+				if ($self->{package_as_schema}) {
+					$res_name = $pname . '.' . $res_name;
+				} else {
+					$res_name = $pname . '_' . $res_name;
 				}
-				if (!exists $self->{package_functions}{$func_name}) {
-					my $fname = $func_name;
-					$fname =~ s/^.*\.//;
-					$fname =~ s/"//g;
-					my $res_name = $fname;
-					if ($self->{package_as_schema}) {
-						$res_name = $pname . '.' . $res_name;
-					} else {
-						$res_name = $pname . '_' . $res_name;
-					}
-					$res_name =~ s/"_"/_/g;
-					if (!$self->{preserve_case}) {
-						$self->{package_functions}{"\L$fname\E"} = lc($res_name);
-					} else {
-						$self->{package_functions}{"\L$fname\E"} = $res_name;
-					}
+				$res_name =~ s/"_"/_/g;
+				if (!$self->{preserve_case}) {
+					$self->{package_functions}{"\L$fct_detail{name}\E"} = lc($res_name);
+				} else {
+					$self->{package_functions}{"\L$fct_detail{name}\E"} = $res_name;
 				}
 			}
 		}
 
 		$self->{pkgcost} = 0;
 		foreach my $f (@functions) {
+			next if (!$f);
 			$content .= $self->_convert_function($owner, $f, $pname, \%comments);
 		}
 		$self->_restore_comments(\$content, \%comments);
@@ -7535,151 +7533,114 @@ sub _convert_function
 {
 	my ($self, $owner, $plsql, $pname, $hrefcomments) = @_;
 
-	my $func_before = '';
-	my $func_name = '';
-	my $func_args = '';
-	my $func_ret_type = 'OPAQUE';
-	my $hasreturn = 0;
-	my $immutable = '';
-	my $language = '';
-	my $library = '';
-	my $library_fct = '';
-	my $setof = '';
-
 	my $dirprefix = '';
 	$dirprefix = "$self->{output_dir}/" if ($self->{output_dir});
 
-	# Split data into declarative and code part
-	my ($func_declare, $func_code) = split(/\bBEGIN\b/i,$plsql,2);
-	if ( $func_declare =~ s/(.*?)\b(FUNCTION|PROCEDURE)[\s\t]+([^\s\t\(]+)([^\(]*)(\([^\)]*\)|[\s\t]*)//is ) {
-		$func_before = $1;
-		$func_name = $3;
-		$func_args = $5;
-		my $tmp = $4;
-		if ( $tmp =~ /^\s+IS\s+/m ) {
-			$func_declare = $tmp . ' ' . $func_args . ' ' . $func_declare;
-			$func_args = '()';
-		} else {
-			$func_before .= "\n$tmp" if ($func_args);
-		}
-		my $clause = '';
-		my $code = '';
-		$func_name =~ s/"//g;
-
-		$immutable = 1 if ($func_declare =~ s/\bDETERMINISTIC\b//is);
-		$setof = 1 if ($func_declare =~ s/\bPIPELINED\b//is);
-		if ($func_declare =~ s/(.*?)RETURN[\s\t]+self[\s\t]+AS RESULT IS//is) {
-			$func_args .= $1;
-			$hasreturn = 1;
-			$func_ret_type = 'OPAQUE';
-		} elsif ($func_declare =~ s/(.*?)RETURN[\s\t]+([^\s\t]+)//is) {
-			$func_args .= $1;
-			$hasreturn = 1;
-			$func_ret_type = $self->_sql_type($2) || 'OPAQUE';
-		}
-		if ($func_declare =~ s/(.*?)(USING|AS|IS)//is) {
-			$func_args .= $1 if (!$hasreturn);
-			$clause = $2;
-		}
-		if ($func_declare =~ /LANGUAGE\s+([^\s="'><\!\(\)]+)/is) {
-			$language = $1;
-			if ($func_declare =~ /LIBRARY\s+([^\s="'><\!\(\)]+)/is) {
-				$library = $1;
-			}
-			if ($func_declare =~ /NAME\s+"([^"]+)"/is) {
-				$library_fct = $1;
-			}
-		}
-		# rewrite argument syntax
-		# Replace alternate syntax for default value
-		$func_args =~ s/:=/DEFAULT/igs;
-		# NOCOPY not supported
-		$func_args =~ s/[\s\t]*NOCOPY//s;
-		# IN OUT should be INOUT
-		$func_args =~ s/IN[\s\t]+OUT/INOUT/s;
-
-		# Now convert types
-		$func_args = Ora2Pg::PLSQL::replace_sql_type($func_args, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type});
-
-		#$func_declare = $self->_convert_declare($func_declare);
-		$func_declare = Ora2Pg::PLSQL::replace_sql_type($func_declare, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type});
-
-		# Replace PL/SQL code into PL/PGSQL similar code
-		$func_declare = Ora2Pg::PLSQL::plsql_to_plpgsql($func_declare,$self->{null_equal_empty}, undef, $self->{package_functions});
-		if ($func_code) {
-			$func_code = Ora2Pg::PLSQL::plsql_to_plpgsql("BEGIN".$func_code,$self->{null_equal_empty}, undef, $self->{package_functions});
-		}
-	} else {
-		return $plsql;
-	}
+	my %fct_detail = $self->_lookup_function($plsql);
+	return $plsql if (!$fct_detail{name});
 
 	my $sep = '.';
 	$sep = '_' if (!$self->{package_as_schema});
-	my $fname = $func_name;
+	my $fname = $fct_detail{name};
 	if ($self->{preserve_case}) {
-		$fname= "\"$fname\"";
+		$fname = "\"$fname\"";
 		$fname = "\"$pname\"" . $sep . $fname if ($pname);
 	} else {
-		$fname= lc($fname);
+		$fname = lc($fname);
 		$fname = $pname . $sep . $fname if ($pname);
 	}
 	$fname =~ s/"_"/_/g;
 
-	$func_args = '()' if (!$func_args);
-	$func_args =~ s/\s+IN\s+/ /ig; # Remove default IN keyword
+	$fct_detail{args} = '()' if (!$fct_detail{args});
+	$fct_detail{args} =~ s/\s+IN\s+/ /ig; # Remove default IN keyword
+
+	# Set the return part
+	my $func_return = '';
+	$fct_detail{setof} = ' SETOF' if ($fct_detail{setof});
+	if ($fct_detail{hasreturn}) {
+		$func_return = " RETURNS$fct_detail{setof} $fct_detail{func_ret_type} AS \$body\$\n";
+	} else {
+		my @nout = $fct_detail{args} =~ /\bOUT /ig;
+		my @ninout = $fct_detail{args} =~ /\bINOUT /ig;
+		if ($#nout > 0) {
+			$func_return .= " RETURNS$fct_detail{setof} RECORD AS \$body\$\n";
+		} elsif ($#nout == 0) {
+			$fct_detail{args} =~ /[\s\t]*OUT[\s\t]+([A-Z0-9_\$\%\.]+)[\s\t\),]*/i;
+			$func_return .= " RETURNS$fct_detail{setof} $1 AS \$body\$\n";
+		} elsif ($#ninout == 0) {
+			$fct_detail{args} =~ /[\s\t]*INOUT[\s\t]+([A-Z0-9_\$\%\.]+)[\s\t\),]*/i;
+			$func_return .= " RETURNS$fct_detail{setof} $1 AS \$body\$\n";
+		} else {
+			$func_return .= " RETURNS VOID AS \$body\$\n";
+		}
+	}
+
+	my $at_suffix = '';
+	if ($fct_detail{declare} =~ s/\s*PRAGMA\s+AUTONOMOUS_TRANSACTION\s*;//is) {
+		$at_suffix = '_atx';
+	}
 	my $name = $fname;
-	my $function = "\nCREATE OR REPLACE FUNCTION $fname $func_args";
+	my $function = "\nCREATE OR REPLACE FUNCTION $fname$at_suffix $fct_detail{args}";
 	if ((!$pname || !$self->{package_as_schema}) && $self->{export_schema} && $self->{schema}) {
 		if (!$self->{preserve_case}) {
-			$function = "\nCREATE OR REPLACE FUNCTION $self->{schema}\.$fname $func_args";
+			$function = "\nCREATE OR REPLACE FUNCTION $self->{schema}\.$fname $fct_detail{args}";
 			$name =  "$self->{schema}\.$fname";
 			$self->logit("Parsing function $self->{schema}\.$fname...\n", 1);
 		} else {
-			$function = "\nCREATE OR REPLACE FUNCTION \"$self->{schema}\"\.$fname $func_args";
+			$function = "\nCREATE OR REPLACE FUNCTION \"$self->{schema}\"\.$fname $fct_detail{args}";
 			$name = "\"$self->{schema}\"\.$fname";
 			$self->logit("Parsing function \"$self->{schema}\"\.$fname...\n", 1);
 		}
 	} else {
 		$self->logit("Parsing function $fname...\n", 1);
 	}
-	$setof = ' SETOF' if ($setof);
-	if ($hasreturn) {
-		$function .= " RETURNS$setof $func_ret_type AS \$body\$\n";
-	} else {
-		my @nout = $func_args =~ /\bOUT /ig;
-		my @ninout = $func_args =~ /\bINOUT /ig;
-		if ($#nout > 0) {
-			$function .= " RETURNS$setof RECORD AS \$body\$\n";
-		} elsif ($#nout == 0) {
-			$func_args =~ /[\s\t]*OUT[\s\t]+([A-Z0-9_\$\%\.]+)[\s\t\),]*/i;
-			$function .= " RETURNS$setof $1 AS \$body\$\n";
-		} elsif ($#ninout == 0) {
-			$func_args =~ /[\s\t]*INOUT[\s\t]+([A-Z0-9_\$\%\.]+)[\s\t\),]*/i;
-			$function .= " RETURNS$setof $1 AS \$body\$\n";
-		} else {
-			$function .= " RETURNS VOID AS \$body\$\n";
-		}
+
+	# Create a wrapper for the function if we found an autonomous transaction
+	my $at_wrapper = '';
+	if ($at_suffix) {
+		$at_wrapper = qq{
+--
+-- dblink wrapper to call function $name as an autonomous transaction
+--
+CREATE OR REPLACE FUNCTION $name $fct_detail{args} RETURNS VOID AS \$body\$
+};
+		my $params = join(" || ',' || ", @{$fct_detail{at_args}});
+		my $q_str = "SELECT $fname$at_suffix ($params)";
+		$at_wrapper .= qq{DECLARE
+	-- Change this to reflect the dblink connection string
+	v_conn_str  text := 'port=5432 dbname=testdb host=localhost user=pguser password=pgpass';
+	v_query     text;
+	v_ret       smallint;
+BEGIN
+	v_query := 'SELECT 1 FROM $fname$at_suffix ( ' || $params || ' )';
+	SELECT * INTO v_ret FROM dblink(v_conn_str, v_query) AS p (ret smallint);
+END;
+\$body\$ LANGUAGE plpgsql SECURITY DEFINER;};
 	}
-	$immutable = ' IMMUTABLE' if ($immutable);
+
+	# Add the return part of the function declaration
+	$function .= $func_return;
+
+	$fct_detail{immutable} = ' IMMUTABLE' if ($fct_detail{immutable});
 	if ($language && ($language !~ /SQL/i)) {
-		$function .= "AS '$library', '$library_fct'\nLANGUAGE $language$immutable;\n";
+		$function .= "AS '$fct_detail{library}', '$fct_detail{library_fct}'\nLANGUAGE $language$fct_detail{immutable};\n";
 		$function =~ s/AS \$body\$//;
 	}
 
 	my $revoke = '';
-	if ($func_code) {
-		$func_declare = '' if ($func_declare !~ /[a-z]/is);
-		$function .= "DECLARE\n$func_declare\n" if ($func_declare);
-		$function .= $func_code;
+	if ($fct_detail{code}) {
+		$fct_detail{declare} = '' if ($fct_detail{declare} !~ /[a-z]/is);
+		$function .= "DECLARE\n$fct_detail{declare}\n" if ($fct_detail{declare});
+		$function .= $fct_detail{code};
 		$function .= "\n\$body\$\nLANGUAGE PLPGSQL\n";
 		$revoke = "-- REVOKE ALL ON FUNCTION $name FROM PUBLIC;\n";
 		if ($self->{type} ne 'PACKAGE') {
-			$function .= "SECURITY DEFINER\n" if ($self->{security}{"\U$func_name\E"}{security} eq 'DEFINER');
+			$function .= "SECURITY DEFINER\n" if ($self->{security}{"\U$fct_detail{name}\E"}{security} eq 'DEFINER');
 		} else {
 			$function .= "SECURITY DEFINER\n" if ($self->{security}{"\U$pname\E"}{security} eq 'DEFINER');
 		}
-		$function .= "$immutable;\n";
-		$function = "\n$func_before$function";
+		$function .= "$fct_detail{immutable};\n";
+		$function = "\n$fct_detail{before}$function";
 	}
 
 	if ($self->{force_owner}) {
@@ -7694,6 +7655,7 @@ sub _convert_function
 		}
 	}
 	$function .= $revoke;
+	$function = $at_wrapper . $function;
 
 	if ($pname && $self->{file_per_function} && !$self->{pg_dsn}) {
 		$fname =~ s/^"*$pname"*\.//i;
@@ -9615,9 +9577,10 @@ sub _lookup_package
 		my @functions = $self->_extract_functions($content);
 		foreach my $f (@functions) {
 			next if (!$f);
-			my ($func_name, $func_type) = $self->_lookup_function($f, $pname);
-			$infos{"$pname.$func_name"}{name} = $f if ($func_name);
-			$infos{"$pname.$func_name"}{type} = $func_type if ($func_type);
+			my %fct_detail = $self->_lookup_function($f);
+			next if (!$fct_detail{name});
+			$infos{"$pname.$fct_detail{name}"}{name} = $f if ($fct_detail{name});
+			$infos{"$pname.$fct_detail{name}"}{type} = $fct_detail{type} if ($fct_detail{type});
 		}
 	}
 
@@ -9626,32 +9589,96 @@ sub _lookup_package
 
 =head2 _lookup_function
 
-This function is used to look at Oracle FUNCTION code to estimate
-the cost of a migration.
+This function is used to look at Oracle FUNCTION code to extract
+all parts of a fonction
 
-Return the function name and the code
+Return a hast with the details of the function
 
 =cut
 
 sub _lookup_function
 {
-	my ($self, $plsql, $pname) = @_;
+	my ($self, $plsql) = @_;
 
-	my %fct_infos = ();
+	my %fct_detail = ();
 
-	my $func_name = '';
-	my $func_type = '';
+	$fct_detail{func_ret_type} = 'OPAQUE';
 
 	# Split data into declarative and code part
-	my ($func_declare, $func_code) = split(/\bBEGIN\b/i,$plsql,2);
-	if ( $func_declare =~ s/(.*?)\b(FUNCTION|PROCEDURE)[\s\t]+([^\s\t\(]+)[\s\t]*(\([^\)]*\)|[\s\t]*)//is ) {
-		$fct_type = uc($2);
-		$func_name = $3;
-		$func_name =~ s/"//g;
+	($fct_detail{declare}, $fct_detail{code}) = split(/\bBEGIN\b/i, $plsql, 2);
+
+	if ( $fct_detail{declare} =~ s/(.*?)\b(FUNCTION|PROCEDURE)\s*([^\s\(]+)([^\(]*)(\([^\)]*\)|\s*)//is ) {
+		$fct_detail{before} = $1;
+		$fct_detail{type} = uc($2);
+		$fct_detail{name} = $3;
+		$fct_detail{args} = $5;
+		my $tmp = $4;
+		if ( $tmp =~ /^\s+IS\s+/m ) {
+			$fct_detail{declare} = $tmp . ' ' . $fct_detail{args} . ' ' . $fct_detail{declare};
+			$fct_detail{args} = '()';
+		} else {
+			$fct_detail{before} .= "\n$tmp" if ($fct_detail{args});
+		}
+		my $clause = '';
+		my $code = '';
+		$fct_detail{name} =~ s/"//g;
+
+		$fct_detail{immutable} = 1 if ($fct_detail{declare} =~ s/\bDETERMINISTIC\b//is);
+		$fct_detail{setof} = 1 if ($fct_detail{declare} =~ s/\bPIPELINED\b//is);
+		if ($fct_detail{declare} =~ s/(.*?)RETURN[\s\t]+self[\s\t]+AS RESULT IS//is) {
+			$fct_detail{args} .= $1;
+			$fct_detail{hasreturn} = 1;
+			$fct_detail{func_ret_type} = 'OPAQUE';
+		} elsif ($fct_detail{declare} =~ s/(.*?)RETURN[\s\t]+([^\s\t]+)//is) {
+			$fct_detail{args} .= $1;
+			$fct_detail{hasreturn} = 1;
+			$fct_detail{func_ret_type} = $self->_sql_type($2) || 'OPAQUE';
+		}
+		if ($fct_detail{declare} =~ s/(.*?)(USING|AS|IS)//is) {
+			$fct_detail{args} .= $1 if (!$fct_detail{hasreturn});
+			$clause = $2;
+		}
+		if ($fct_detail{declare} =~ /LANGUAGE\s+([^\s="'><\!\(\)]+)/is) {
+			$fct_detail{language} = $1;
+			if ($fct_detail{declare} =~ /LIBRARY\s+([^\s="'><\!\(\)]+)/is) {
+				$fct_detail{library} = $1;
+			}
+			if ($fct_detail{declare} =~ /NAME\s+"([^"]+)"/is) {
+				$fct_detail{library_fct} = $1;
+			}
+		}
+		# rewrite argument syntax
+		# Replace alternate syntax for default value
+		$fct_detail{args} =~ s/:=/DEFAULT/igs;
+		# NOCOPY not supported
+		$fct_detail{args} =~ s/[\s\t]*NOCOPY//s;
+		# IN OUT should be INOUT
+		$fct_detail{args} =~ s/IN[\s\t]+OUT/INOUT/s;
+
+		# Now convert types
+		$fct_detail{args} = Ora2Pg::PLSQL::replace_sql_type($fct_detail{args}, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type});
+		$fct_detail{declare} = Ora2Pg::PLSQL::replace_sql_type($fct_detail{declare}, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type});
+
+		# Replace PL/SQL code into PL/PGSQL similar code
+		$fct_detail{declare} = Ora2Pg::PLSQL::plsql_to_plpgsql($fct_detail{declare},$self->{null_equal_empty}, undef, $self->{package_functions});
+		if ($fct_detail{code}) {
+			$fct_detail{code} = Ora2Pg::PLSQL::plsql_to_plpgsql("BEGIN".$fct_detail{code},$self->{null_equal_empty}, undef, $self->{package_functions});
+		}
+		# Set parameters for AUTONOMOUS TRANSACTION
+		push(@{$fct_detail{at_args}}, split(/\s*,\s*/, $fct_detail{args}));
+		# Remove type to only get parameter's name
+		map { s/\s+.*//; } @{$fct_detail{at_args}};
+		map { s/^\(//; } @{$fct_detail{at_args}};
+		map { s/\s+//; } @{$fct_detail{at_args}};
+	} else {
+		delete $fct_detail{func_ret_type};
+		delete $fct_detail{declare};
+		$fct_detail{code} = $plsql;
 	}
 
-	return ($func_name, $func_type);
+	return %fct_detail;
 }
+
 
 ####
 # Return a string to set the current search path
