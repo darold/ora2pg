@@ -7609,6 +7609,8 @@ sub _convert_function
 	my $at_suffix = '';
 	if ($fct_detail{declare} =~ s/\s*PRAGMA\s+AUTONOMOUS_TRANSACTION\s*;//is) {
 		$at_suffix = '_atx';
+		# COMMIT is not allowed in PLPGSQL function
+		$fct_detail{code} =~ s/\bCOMMIT\s*;//;
 	}
 	my $name = $fname;
 	my $function = "\nCREATE OR REPLACE FUNCTION $fname$at_suffix $fct_detail{args}";
@@ -7635,7 +7637,9 @@ sub _convert_function
 --
 CREATE OR REPLACE FUNCTION $name $fct_detail{args} RETURNS VOID AS \$body\$
 };
+		map { s/(.*)/quote_nullable($1)/; }  @{$fct_detail{at_args}};
 		my $params = join(" || ',' || ", @{$fct_detail{at_args}});
+		$params = " '' " if (!$params);
 		my $q_str = "SELECT $fname$at_suffix ($params)";
 		$at_wrapper .= qq{DECLARE
 	-- Change this to reflect the dblink connection string
@@ -7644,7 +7648,8 @@ CREATE OR REPLACE FUNCTION $name $fct_detail{args} RETURNS VOID AS \$body\$
 	v_ret       smallint;
 BEGIN
 	v_query := 'SELECT 1 FROM $fname$at_suffix ( ' || $params || ' )';
-	SELECT * INTO v_ret FROM dblink(v_conn_str, v_query) AS p (ret smallint);
+	-- SELECT * INTO v_ret FROM dblink(v_conn_str, v_query) AS p (ret smallint);
+	PERFORM * FROM dblink(v_conn_str, v_query) AS p (ret smallint);
 END;
 \$body\$ LANGUAGE plpgsql SECURITY DEFINER;};
 	}
