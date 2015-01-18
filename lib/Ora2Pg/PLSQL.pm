@@ -110,7 +110,7 @@ $FCT_TEST_SCORE = 2;
 	'MONTHS_BETWEEN' => 1,
 	'NVL2' => 1,
 	'SDO_' => 3,
-	'PRAGMA' => 6,
+	'PRAGMA' => 3,
 	'MDSYS' => 1,
 );
 
@@ -198,6 +198,9 @@ sub plsql_to_plpgsql
 	$str =~ s/SYSTIMESTAMP/CURRENT_TIMESTAMP/igs;
 	# remove FROM DUAL
 	$str =~ s/FROM DUAL//igs;
+
+	# There's no such things in PostgreSQL
+	$str =~ s/PRAGMA RESTRICT_REFERENCES[^;]+;//igs;
 
 	# Converting triggers
 	#       :new. -> NEW.
