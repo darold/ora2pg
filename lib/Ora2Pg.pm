@@ -3128,6 +3128,7 @@ LANGUAGE plpgsql ;
 			foreach my $l (@allfct) {
 				chomp($l);
 				$l =~ s/\r//g;
+				next if ($l =~ /^\/$/);
 				next if ($l =~ /^[\s\t]*$/);
 				if ($old_line) {
 					$l = $old_line .= ' ' . $l;
@@ -3147,6 +3148,7 @@ LANGUAGE plpgsql ;
 				}
 				$l =~ s/^[\s\t]*CREATE OR REPLACE (FUNCTION|PROCEDURE)/$1/is;
 				$l =~ s/^[\s\t]*CREATE (FUNCTION|PROCEDURE)/$1/is;
+				$l =~ s/^[\s\t]+(FUNCTION|PROCEDURE)/$1/i;
 				if ($l =~ /^(FUNCTION|PROCEDURE)[\s\t]+([^\s\(\t]+)/i) {
 					$fcnm = $2;
 				}
@@ -3193,19 +3195,21 @@ LANGUAGE plpgsql ;
 			if ($self->{plsql_pgsql}) {
 
 				my $sql_f = $self->_convert_function($self->{functions}{$fct}{owner}, $self->{functions}{$fct}{text});
-				$sql_output .= $sql_f . "\n\n";
-				if ($self->{estimate_cost}) {
-					my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($sql_f);
-					$cost += $Ora2Pg::PLSQL::OBJECT_SCORE{'FUNCTION'};
-					$cost_value += $cost;
-					$self->logit("Function $fct estimated cost: $cost\n", 1);
-					$sql_output .= "-- Function $fct estimated cost: $cost\n";
-					$fct_cost .= "\t-- Function $fct total estimated cost: $cost\n";
-					foreach (sort { $cost_detail{$b} <=> $cost_detail{$a} } keys %cost_detail) {
-						next if (!$cost_detail{$_});
-						$fct_cost .= "\t\t-- $_ => $cost_detail{$_}";
-						$fct_cost .= " (cost: $Ora2Pg::PLSQL::UNCOVERED_SCORE{$_})" if ($Ora2Pg::PLSQL::UNCOVERED_SCORE{$_});
-						$fct_cost .= "\n";
+				if ( $sql_f ) {
+					$sql_output .= $sql_f . "\n\n";
+					if ($self->{estimate_cost}) {
+						my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($sql_f);
+						$cost += $Ora2Pg::PLSQL::OBJECT_SCORE{'FUNCTION'};
+						$cost_value += $cost;
+						$self->logit("Function $fct estimated cost: $cost\n", 1);
+						$sql_output .= "-- Function $fct estimated cost: $cost\n";
+						$fct_cost .= "\t-- Function $fct total estimated cost: $cost\n";
+						foreach (sort { $cost_detail{$b} <=> $cost_detail{$a} } keys %cost_detail) {
+							next if (!$cost_detail{$_});
+							$fct_cost .= "\t\t-- $_ => $cost_detail{$_}";
+							$fct_cost .= " (cost: $Ora2Pg::PLSQL::UNCOVERED_SCORE{$_})" if ($Ora2Pg::PLSQL::UNCOVERED_SCORE{$_});
+							$fct_cost .= "\n";
+						}
 					}
 				}
 			} else {
@@ -3267,6 +3271,7 @@ LANGUAGE plpgsql ;
 			foreach my $l (@allfct) {
 				chomp($l);
 				$l =~ s/\r//g;
+				next if ($l =~ /^\/$/);
 				next if ($l =~ /^[\s\t]*$/);
 				if ($old_line) {
 					$l = $old_line .= ' ' . $l;
@@ -3286,6 +3291,7 @@ LANGUAGE plpgsql ;
 				}
 				$l =~ s/^[\s\t]*CREATE OR REPLACE (FUNCTION|PROCEDURE)/$1/i;
 				$l =~ s/^[\s\t]*CREATE (FUNCTION|PROCEDURE)/$1/i;
+				$l =~ s/^[\s\t]+(FUNCTION|PROCEDURE)/$1/i;
 				if ($l =~ /^(FUNCTION|PROCEDURE)[\s\t]+([^\s\(\t]+)/i) {
 					$fcnm = $2;
 				}
@@ -3330,18 +3336,20 @@ LANGUAGE plpgsql ;
 			}
 			if ($self->{plsql_pgsql}) {
 				my $sql_p = $self->_convert_function($self->{functions}{$fct}{owner}, $self->{procedures}{$fct}{text});
-				$sql_output .= $sql_p . "\n\n";
-				if ($self->{estimate_cost}) {
-					my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($sql_p);
-					$cost += $Ora2Pg::PLSQL::OBJECT_SCORE{'PROCEDURE'};
-					$cost_value += $cost;
-					$self->logit("Function $fct estimated cost: $cost\n", 1);
-					$fct_cost .= "\t-- Function $fct total estimated cost: $cost\n";
-					foreach (sort { $cost_detail{$b} <=> $cost_detail{$a} } keys %cost_detail) {
-						next if (!$cost_detail{$_});
-						$fct_cost .= "\t\t-- $_ => $cost_detail{$_}";
-						$fct_cost .= " (cost: $Ora2Pg::PLSQL::UNCOVERED_SCORE{$_})" if ($Ora2Pg::PLSQL::UNCOVERED_SCORE{$_});
-						$fct_cost .= "\n";
+				if ( $sql_p ) {
+					$sql_output .= $sql_p . "\n\n";
+					if ($self->{estimate_cost}) {
+						my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($sql_p);
+						$cost += $Ora2Pg::PLSQL::OBJECT_SCORE{'PROCEDURE'};
+						$cost_value += $cost;
+						$self->logit("Function $fct estimated cost: $cost\n", 1);
+						$fct_cost .= "\t-- Function $fct total estimated cost: $cost\n";
+						foreach (sort { $cost_detail{$b} <=> $cost_detail{$a} } keys %cost_detail) {
+							next if (!$cost_detail{$_});
+							$fct_cost .= "\t\t-- $_ => $cost_detail{$_}";
+							$fct_cost .= " (cost: $Ora2Pg::PLSQL::UNCOVERED_SCORE{$_})" if ($Ora2Pg::PLSQL::UNCOVERED_SCORE{$_});
+							$fct_cost .= "\n";
+						}
 					}
 				}
 			} else {
@@ -3402,13 +3410,24 @@ LANGUAGE plpgsql ;
 			my $pknm = '';
 			my $before = '';
 			my $old_line = '';
+			my $skip_pkg_header = 0;
 			foreach my $l (@allpkg) {
 				chomp($l);
 				$l =~ s/\r//g;
+				next if ($l =~ /^\/$/);
 				next if ($l =~ /^[\s\t]*$/);
 				if ($old_line) {
 					$l = $old_line .= ' ' . $l;
 					$old_line = '';
+				}
+				if ($skip_pkg_header) {
+					if ( $l =~ /^[\s\t]*END[^;]*;/) {
+						$skip_pkg_header = 0;
+					}
+					next;
+				}
+				if ($l =~ /^(?:CREATE|CREATE OR REPLACE)?[\s\t]*PACKAGE[\s\t]+(?!BODY)/i) {
+					$skip_pkg_header = 1;
 				}
 				if ($l =~ /^[\s\t]*CREATE OR REPLACE$/i) {
 					$old_line = $l;
@@ -7437,8 +7456,12 @@ sub _convert_package
 		}
 
 		# Try to detect local function
-		foreach my $f (@functions) {
-			my %fct_detail = $self->_lookup_function($f);
+		for (my $i = 0; $i <= $#functions; $i++) {
+			my %fct_detail = $self->_lookup_function($functions[$i]);
+			if (!exists $fct_detail{name}) {
+				$functions[$i] = '';
+				next;
+			}
 			$fct_detail{name} =~ s/^.*\.//;
 			$fct_detail{name} =~ s/"//g;
 			next if (!$fct_detail{name});
@@ -7454,10 +7477,11 @@ sub _convert_package
 				}
 				$res_name =~ s/"_"/_/g;
 				if (!$self->{preserve_case}) {
-					$self->{package_functions}{"\L$fct_detail{name}\E"} = lc($res_name);
+					$self->{package_functions}{"\L$fct_detail{name}\E"}{name} = lc($res_name);
 				} else {
-					$self->{package_functions}{"\L$fct_detail{name}\E"} = $res_name;
+					$self->{package_functions}{"\L$fct_detail{name}\E"}{name} = $res_name;
 				}
+				$self->{package_functions}{"\L$fct_detail{name}\E"}{package} = $pname;
 			}
 		}
 
@@ -7541,9 +7565,10 @@ sub _convert_function
 	$dirprefix = "$self->{output_dir}/" if ($self->{output_dir});
 
 	my %fct_detail = $self->_lookup_function($plsql);
+	return if (!exists $fct_detail{name});
+
 	$fct_detail{name} =~ s/^.*\.//;
 	$fct_detail{name} =~ s/"//g;
-	return $plsql if (!$fct_detail{name});
 
 	my $sep = '.';
 	$sep = '_' if (!$self->{package_as_schema});
@@ -8965,10 +8990,11 @@ sub _get_pkg_functions
 				$res_name =~ s/\./_/g;
 				$res_name =~ s/"_"/_/g;
 				if (!$self->{preserve_case}) {
-					$self->{package_functions}{"\L$f\E"} = lc($res_name);
+					$self->{package_functions}{"\L$f\E"}{name} = lc($res_name);
 				} else {
-					$self->{package_functions}{"\L$f\E"} = $res_name;
+					$self->{package_functions}{"\L$f\E"}{name} = $res_name;
 				}
+				$self->{package_functions}{"\L$f\E"}{package} = $pkg;
 			}
 		}
 	}
@@ -9588,9 +9614,9 @@ sub _lookup_package
 		foreach my $f (@functions) {
 			next if (!$f);
 			my %fct_detail = $self->_lookup_function($f);
+			next if (!exists $fct_detail{name});
 			$fct_detail{name} =~ s/^.*\.//;
 			$fct_detail{name} =~ s/"//g;
-			next if (!$fct_detail{name});
 			$infos{"$pname.$fct_detail{name}"}{name} = $f if ($fct_detail{name});
 			$infos{"$pname.$fct_detail{name}"}{type} = $fct_detail{type} if ($fct_detail{type});
 		}
@@ -9619,17 +9645,17 @@ sub _lookup_function
 	# Split data into declarative and code part
 	($fct_detail{declare}, $fct_detail{code}) = split(/\bBEGIN\b/i, $plsql, 2);
 
-	if ( $fct_detail{declare} =~ s/(.*?)\b(FUNCTION|PROCEDURE)\s*([^\s\(]+)([^\(]*)(\([^\)]*\)|\s*)//is ) {
+	return if (!$fct_detail{code});
+
+	if ( ($fct_detail{declare} =~ s/(.*?)\b(FUNCTION|PROCEDURE)\s+([^\s\(]+)\s*(\([^\)]*\))//is) || 
+	($fct_detail{declare} =~ s/(.*?)\b(FUNCTION|PROCEDURE)\s+([^\s\(]+)\s+(RETURN|IS)/$4/is) ) {
 		$fct_detail{before} = $1;
 		$fct_detail{type} = uc($2);
 		$fct_detail{name} = $3;
-		$fct_detail{args} = $5;
-		my $tmp = $4;
-		if ( $tmp =~ /^\s+IS\s+/m ) {
-			$fct_detail{declare} = $tmp . ' ' . $fct_detail{args} . ' ' . $fct_detail{declare};
+		$fct_detail{args} = $4;
+
+		if ($fct_detail{args} =~ /\b(RETURN|IS)\b/is) {
 			$fct_detail{args} = '()';
-		} else {
-			$fct_detail{before} .= "\n$tmp" if ($fct_detail{args});
 		}
 		my $clause = '';
 		my $code = '';
@@ -9663,9 +9689,9 @@ sub _lookup_function
 		# Replace alternate syntax for default value
 		$fct_detail{args} =~ s/:=/DEFAULT/igs;
 		# NOCOPY not supported
-		$fct_detail{args} =~ s/[\s\t]*NOCOPY//s;
+		$fct_detail{args} =~ s/[\s\t]*NOCOPY//igs;
 		# IN OUT should be INOUT
-		$fct_detail{args} =~ s/IN[\s\t]+OUT/INOUT/s;
+		$fct_detail{args} =~ s/IN[\s\t]+OUT/INOUT/igs;
 
 		# Now convert types
 		$fct_detail{args} = Ora2Pg::PLSQL::replace_sql_type($fct_detail{args}, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type});

@@ -437,7 +437,7 @@ sub plsql_to_plpgsql
 	##############
 	if (scalar keys %$pkg_fcts) {
 		foreach my $k (keys %$pkg_fcts) {
-			$str =~ s/\b$k\b/$pkg_fcts->{$k}/igs;
+			$str =~ s/($pkg_fcts->{$k}{package}\.)?$k\b/$pkg_fcts->{$k}{name}/igs;
 		}
 	}
 
