@@ -7594,23 +7594,41 @@ sub _convert_function
 		my @nout = $fct_detail{args} =~ /\bOUT /ig;
 		my @ninout = $fct_detail{args} =~ /\bINOUT /ig;
 		if ($#nout > 0) {
-			$func_return .= " RETURNS$fct_detail{setof} RECORD AS \$body\$\n";
+			$func_return = " RETURNS$fct_detail{setof} RECORD AS \$body\$\n";
+			
 		} elsif ($#nout == 0) {
 			$fct_detail{args} =~ /[\s\t]*OUT[\s\t]+([A-Z0-9_\$\%\.]+)[\s\t\),]*/i;
-			$func_return .= " RETURNS$fct_detail{setof} $1 AS \$body\$\n";
+			$func_return = " RETURNS$fct_detail{setof} $1 AS \$body\$\n";
 		} elsif ($#ninout == 0) {
 			$fct_detail{args} =~ /[\s\t]*INOUT[\s\t]+([A-Z0-9_\$\%\.]+)[\s\t\),]*/i;
-			$func_return .= " RETURNS$fct_detail{setof} $1 AS \$body\$\n";
+			$func_return = " RETURNS$fct_detail{setof} $1 AS \$body\$\n";
 		} else {
-			$func_return .= " RETURNS VOID AS \$body\$\n";
+			$func_return = " RETURNS VOID AS \$body\$\n";
 		}
 	}
 
+	my @at_ret_param = ();
+	my @at_ret_type = ();
 	my $at_suffix = '';
 	if ($fct_detail{declare} =~ s/\s*PRAGMA\s+AUTONOMOUS_TRANSACTION\s*;//is) {
 		$at_suffix = '_atx';
 		# COMMIT is not allowed in PLPGSQL function
 		$fct_detail{code} =~ s/\bCOMMIT\s*;//;
+		my @tmp = split(',', $fct_detail{args});
+		foreach my $p (@tmp) {
+			if ($p =~ s/[\s\t]*OUT[\s\t]+//) {
+				push(@at_ret_param, $p);
+				push(@at_ret_type, $p);
+			} elsif ($p =~ s/[\s\t]*INOUT[\s\t]+//) {
+				push(@at_ret_param, $p);
+				push(@at_ret_type, $p);
+			}
+		}
+		map { s/^(.*?) //; } @at_ret_type;
+		if ($#at_ret_param < 0) {
+			push(@at_ret_param, 'ret ' . $fct_detail{func_ret_type});
+			push(@at_ret_type, $fct_detail{func_ret_type});
+		}
 	}
 	my $name = $fname;
 	my $function = "\nCREATE OR REPLACE FUNCTION $fname$at_suffix $fct_detail{args}";
@@ -7635,8 +7653,12 @@ sub _convert_function
 --
 -- dblink wrapper to call function $name as an autonomous transaction
 --
-CREATE OR REPLACE FUNCTION $name $fct_detail{args} RETURNS VOID AS \$body\$
 };
+		if (!$fct_detail{hasreturn}) {
+			$at_wrapper .= "CREATE OR REPLACE FUNCTION $name $fct_detail{args} RETURNS VOID AS \$body\$";
+		} else {
+			$at_wrapper .= "CREATE OR REPLACE FUNCTION $name $fct_detail{args} $func_return";
+		}
 		map { s/(.*)/quote_nullable($1)/; }  @{$fct_detail{at_args}};
 		my $params = join(" || ',' || ", @{$fct_detail{at_args}});
 		$params = " '' " if (!$params);
@@ -7645,11 +7667,27 @@ CREATE OR REPLACE FUNCTION $name $fct_detail{args} RETURNS VOID AS \$body\$
 	-- Change this to reflect the dblink connection string
 	v_conn_str  text := 'port=5432 dbname=testdb host=localhost user=pguser password=pgpass';
 	v_query     text;
+};
+		if (!$fct_detail{hasreturn}) {
+			$at_wrapper .= qq{
 BEGIN
 	v_query := 'SELECT true FROM $fname$at_suffix ( ' || $params || ' )';
 	PERFORM * FROM dblink(v_conn_str, v_query) AS p (ret boolean);
+};
+		} elsif ($#at_ret_param == 0) {
+			my $prm = join(',', @at_ret_param);
+			$at_wrapper .= qq{
+	v_ret	$at_ret_type[0];
+BEGIN
+	v_query := 'SELECT * FROM $fname$at_suffix ( ' || $params || ' )';
+	SELECT * INTO v_ret FROM dblink(v_conn_str, v_query) AS p ($at_ret_param[0]);
+	RETURN v_ret;
+};
+		}
+		$at_wrapper .= qq{
 END;
-\$body\$ LANGUAGE plpgsql SECURITY DEFINER;};
+\$body\$ LANGUAGE plpgsql SECURITY DEFINER;
+};
 	}
 
 	# Add the return part of the function declaration
@@ -9706,11 +9744,13 @@ sub _lookup_function
 			$fct_detail{code} = Ora2Pg::PLSQL::plsql_to_plpgsql("BEGIN".$fct_detail{code},$self->{null_equal_empty}, undef, $self->{package_functions});
 		}
 		# Set parameters for AUTONOMOUS TRANSACTION
+		$fct_detail{args} =~ s/\s+/ /gs;
 		push(@{$fct_detail{at_args}}, split(/\s*,\s*/, $fct_detail{args}));
-		# Remove type to only get parameter's name
-		map { s/\s+.*//; } @{$fct_detail{at_args}};
+		# Remove type parts to only get parameter's name
+		map { s/\s(IN|OUT|INOUT)\s/ /i; } @{$fct_detail{at_args}};
 		map { s/^\(//; } @{$fct_detail{at_args}};
-		map { s/\s+//; } @{$fct_detail{at_args}};
+		map { s/^\s+//; } @{$fct_detail{at_args}};
+		map { s/\s.*//; } @{$fct_detail{at_args}};
 	} else {
 		delete $fct_detail{func_ret_type};
 		delete $fct_detail{declare};
