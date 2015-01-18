@@ -3127,6 +3127,7 @@ LANGUAGE plpgsql ;
 			my $language = '';
 			foreach my $l (@allfct) {
 				chomp($l);
+				$l =~ s/\r//g;
 				next if ($l =~ /^[\s\t]*$/);
 				if ($old_line) {
 					$l = $old_line .= ' ' . $l;
@@ -3265,6 +3266,7 @@ LANGUAGE plpgsql ;
 			my $language = '';
 			foreach my $l (@allfct) {
 				chomp($l);
+				$l =~ s/\r//g;
 				next if ($l =~ /^[\s\t]*$/);
 				if ($old_line) {
 					$l = $old_line .= ' ' . $l;
@@ -3402,6 +3404,7 @@ LANGUAGE plpgsql ;
 			my $old_line = '';
 			foreach my $l (@allpkg) {
 				chomp($l);
+				$l =~ s/\r//g;
 				next if ($l =~ /^[\s\t]*$/);
 				if ($old_line) {
 					$l = $old_line .= ' ' . $l;
@@ -7679,7 +7682,11 @@ END;
 		$function = "\\i $dirprefix\L$pname/$fname\E_$self->{output}\n";
 	}
 
-	return $function;
+	$function =~ s/\r//gs;
+	my @lines = split(/\n/, $function);
+	map { s/^\/$//; } @lines;
+
+	return join("\n", @lines);
 }
 
 =head2 _convert_declare
