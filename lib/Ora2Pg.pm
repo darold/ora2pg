@@ -7645,11 +7645,9 @@ CREATE OR REPLACE FUNCTION $name $fct_detail{args} RETURNS VOID AS \$body\$
 	-- Change this to reflect the dblink connection string
 	v_conn_str  text := 'port=5432 dbname=testdb host=localhost user=pguser password=pgpass';
 	v_query     text;
-	v_ret       smallint;
 BEGIN
-	v_query := 'SELECT 1 FROM $fname$at_suffix ( ' || $params || ' )';
-	-- SELECT * INTO v_ret FROM dblink(v_conn_str, v_query) AS p (ret smallint);
-	PERFORM * FROM dblink(v_conn_str, v_query) AS p (ret smallint);
+	v_query := 'SELECT true FROM $fname$at_suffix ( ' || $params || ' )';
+	PERFORM * FROM dblink(v_conn_str, v_query) AS p (ret boolean);
 END;
 \$body\$ LANGUAGE plpgsql SECURITY DEFINER;};
 	}
