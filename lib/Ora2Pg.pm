@@ -3156,7 +3156,7 @@ LANGUAGE plpgsql ;
 				$self->{functions}{$fcnm}{text} .= "$l\n";
 
 				if (!$language) {
-					if ($l =~ /^END[\s\t]+($fcnm)[\s\t]*;/i) {
+					if ($l =~ /^END[\s\t]+$fcnm(_atx)?[\s\t]*;/i) {
 						$fcnm = '';
 					}
 				} else {
@@ -3293,7 +3293,7 @@ LANGUAGE plpgsql ;
 				}
 				$self->{procedures}{$fcnm}{text} .= "$l\n";
 				if (!$language) {
-					if ($l =~ /^END[\s\t]+($fcnm)[\s\t]*;/i) {
+					if ($l =~ /^END[\s\t]+$fcnm(_atx)?[\s\t]*;/i) {
 						$fcnm = '';
 					}
 				} else {
@@ -3487,8 +3487,8 @@ LANGUAGE plpgsql ;
 				}
 				foreach my $txt (@codes) {
 					$pkgbody .= $self->_convert_package("CREATE OR REPLACE PACKAGE BODY$txt", $self->{packages}{$pkg}{owner});
-					$pkgbody =~ s/[\r\n]*END;[\t\s\r\n]*$//is;
-					$pkgbody =~ s/([\r\n]*;)[\t\s\r\n]*$/$1/is;
+					$pkgbody =~ s/[\r\n]*END;\s*$//is;
+					$pkgbody =~ s/(\s*;)\s*$/$1/is;
 				}
 			}
 			if ($self->{estimate_cost}) {
@@ -7369,7 +7369,7 @@ sub _extract_functions
 	}
 	#push(@functions, "$before\n") if ($before);
 
-	map { s/END[\s\t]+(?!IF|LOOP|CASE|INTO|FROM|,)[a-z0-9_]+[\s\t]*;/END;/igs; } @functions;
+	map { s/END\s+(?!IF|LOOP|CASE|INTO|FROM|,)[a-z0-9_]+\s*;/END;/igs; } @functions;
 
 	return @functions;
 }
@@ -7394,6 +7394,7 @@ sub _convert_package
 		my $type = $2;
 		$content = $3;
 		$pname =~ s/"//g;
+		$pname =~ s/^.*\.//g;
 		$self->logit("Dumping package $pname...\n", 1);
 		if ($self->{file_per_function} && !$self->{pg_dsn}) {
 			my $dir = lc("$dirprefix$pname");
@@ -7435,13 +7436,13 @@ sub _convert_package
 		# Try to detect local function
 		foreach my $f (@functions) {
 			my %fct_detail = $self->_lookup_function($f);
+			$fct_detail{name} =~ s/^.*\.//;
+			$fct_detail{name} =~ s/"//g;
 			next if (!$fct_detail{name});
 			if (!$self->{preserve_case}) {
 				$fct_detail{name} = lc($fct_detail{name});
 			}
 			if (!exists $self->{package_functions}{$fct_detail{name}}) {
-				$fct_detail{name} =~ s/^.*\.//;
-				$fct_detail{name} =~ s/"//g;
 				my $res_name = $fct_detail{name};
 				if ($self->{package_as_schema}) {
 					$res_name = $pname . '.' . $res_name;
@@ -7537,6 +7538,8 @@ sub _convert_function
 	$dirprefix = "$self->{output_dir}/" if ($self->{output_dir});
 
 	my %fct_detail = $self->_lookup_function($plsql);
+	$fct_detail{name} =~ s/^.*\.//;
+	$fct_detail{name} =~ s/"//g;
 	return $plsql if (!$fct_detail{name});
 
 	my $sep = '.';
@@ -9578,6 +9581,8 @@ sub _lookup_package
 		foreach my $f (@functions) {
 			next if (!$f);
 			my %fct_detail = $self->_lookup_function($f);
+			$fct_detail{name} =~ s/^.*\.//;
+			$fct_detail{name} =~ s/"//g;
 			next if (!$fct_detail{name});
 			$infos{"$pname.$fct_detail{name}"}{name} = $f if ($fct_detail{name});
 			$infos{"$pname.$fct_detail{name}"}{type} = $fct_detail{type} if ($fct_detail{type});
