@@ -201,6 +201,8 @@ sub plsql_to_plpgsql
 
 	# There's no such things in PostgreSQL
 	$str =~ s/PRAGMA RESTRICT_REFERENCES[^;]+;//igs;
+        $str =~ s/PRAGMA SERIALLY_REUSABLE[^;]*;//igs;
+        $str =~ s/PRAGMA INLINE[^;]+;//igs;
 
 	# Converting triggers
 	#       :new. -> NEW.
