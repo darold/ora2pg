@@ -723,6 +723,11 @@ sub estimate_cost
 
 	my %cost_details = ();
 
+	# Remove some unused pragma from the cost assessment
+	$str =~ s/PRAGMA RESTRICT_REFERENCES[^;]+;//igs;
+        $str =~ s/PRAGMA SERIALLY_REUSABLE[^;]*;//igs;
+        $str =~ s/PRAGMA INLINE[^;]+;//igs;
+
 	# Default cost is testing that mean it at least must be tested
 	my $cost = $FCT_TEST_SCORE;
 	$cost_details{'TEST'} = $cost;
