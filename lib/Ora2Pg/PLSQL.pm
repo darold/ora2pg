@@ -656,6 +656,17 @@ sub replace_sql_type
 		} elsif ($type =~ /TIMESTAMP/i) {
 			$len = 6 if ($len > 6);
 			$str =~ s/\b$type\b[\s\t]*\([^\)]+\)/timestamp\%\|$len%\|\%/is;
+ 		} elsif ($type =~ /INTERVAL/i) {
+ 			# Interval precision for year/month/day is not supported by PostgreSQL
+ 			$str =~ s/(INTERVAL\s+YEAR)\s*\(\d+\)/$1/is;
+ 			$str =~ s/(INTERVAL\s+YEAR\s+TO\s+MONTH)\s*\(\d+\)/$1/is;
+ 			$str =~ s/(INTERVAL\s+DAY)\s*\(\d+\)/$1/is;
+			# maximum precision allowed for seconds is 6
+			if ($str =~ /INTERVAL\s+DAY\s+TO\s+SECOND\s*\((\d+)\)/) {
+				if ($1 > 6) {
+					$str =~ s/(INTERVAL\s+DAY\s+TO\s+SECOND)\s*\(\d+\)/$1(6)/i;
+				}
+			}
 		} elsif ($type eq "NUMBER") {
 			# This is an integer
 			if (!$scale) {

@@ -5407,6 +5407,19 @@ sub _sql_type
 	# Simplify timestamp type
 	$type =~ s/TIMESTAMP\(\d+\)/TIMESTAMP/i;
 
+	# Interval precision for year/month/day is not supported by PostgreSQL
+	if ($type =~ /INTERVAL/i) {
+		$type =~ s/(INTERVAL\s+YEAR)\s*\(\d+\)/$1/i;
+		$type =~ s/(INTERVAL\s+YEAR\s+TO\s+MONTH)\s*\(\d+\)/$1/i;
+		$type =~ s/(INTERVAL\s+DAY)\s*\(\d+\)/$1/i;
+		# maximum precision allowed for seconds is 6
+		if ($type =~ /INTERVAL\s+DAY\s+TO\s+SECOND\s*\((\d+)\)/) {
+			if ($1 > 6) {
+				$type =~ s/(INTERVAL\s+DAY\s+TO\s+SECOND)\s*\(\d+\)/$1(6)/i;
+			}
+		}
+	}
+
         # Overide the length
         $len = $precision if ( ($type eq 'NUMBER') && $precision );
 
