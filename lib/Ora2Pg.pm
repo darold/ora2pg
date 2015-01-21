@@ -9517,7 +9517,7 @@ sub limit_to_objects
 			$str .= ' AND (';
 			if ($self->{db_version} =~ /Release [89]/) {
 				for (my $j = 0; $j <= $#{$self->{limited}{$arr_type[$i]}}; $j++) {
-					$str = "$colname LIKE '$self->{limited}{$arr_type[$i]}->[$j]'";
+					$str .= "$colname LIKE '$self->{limited}{$arr_type[$i]}->[$j]'";
 					if ($j < $#{$self->{limited}{$arr_type[$i]}}) {
 						$str .= " OR ";
 					}
@@ -9560,7 +9560,7 @@ sub limit_to_objects
 			if ($self->{db_version} =~ /Release [89]/) {
 				$str .= ' AND (';
 				foreach my $t (@EXCLUDED_TABLES_8I) {
-					$str = " AND $colname NOT LIKE '$t'";
+					$str .= " AND $colname NOT LIKE '$t'";
 				}
 				$str .= ')';
 			} else {
@@ -9576,6 +9576,7 @@ sub limit_to_objects
 		}
 	}
 
+	$str =~ s/ AND \( AND/ AND \(/g;
 	$str =~ s/ AND \(\)//g;
 	$str =~ s/ OR \(\)//g;
 
