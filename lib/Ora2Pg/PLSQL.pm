@@ -58,6 +58,7 @@ $VERSION = '14.1';
 	'DATABASE LINK' => 6, # Not directly supported need adaptation
 	'DIMENSION' => 0, # Not supported and no equivalent
 	'JOB' => 2, # read/adapt
+	'SYNONYM' => 2, # read/adapt
 );
 
 # Scores following the number of characters: 1000 chars for one unit.

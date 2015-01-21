@@ -641,7 +641,7 @@ sub _init
 
 	# Set default system user/schema to not export. Most of them are extracted from this doc:
 	# http://docs.oracle.com/cd/E11882_01/server.112/e10575/tdpsg_user_accounts.htm#TDPSG20030
-	push(@{$self->{sysusers}},'SYSTEM','CTXSYS','DBSNMP','EXFSYS','LBACSYS','MDSYS','MGMT_VIEW','OLAPSYS','ORDDATA','OWBSYS','ORDPLUGINS','ORDSYS','OUTLN','SI_INFORMTN_SCHEMA','SYS','SYSMAN','WK_TEST','WKSYS','WKPROXY','WMSYS','XDB','APEX_PUBLIC_USER','DIP','FLOWS_020100','FLOWS_030000','FLOWS_040100','FLOWS_FILES','MDDATA','ORACLE_OCM','SPATIAL_CSW_ADMIN_USR','SPATIAL_WFS_ADMIN_USR','XS$NULL','PERFSTAT','SQLTXPLAIN','DMSYS','TSMSYS','WKSYS','APEX_040200','DVSYS','OJVMSYS','GSMADMIN_INTERNAL','APPQOSSYS','DVSYS','DVF','AUDSYS','APEX_030200','MGMT_VIEW','ODM','ODM_MTR','TRACESRV','MTMSYS','OWBSYS_AUDIT','WEBSYS','WK_PROXY','OSE$HTTP$ADMIN','AURORA$JIS$UTILITY$','AURORA$ORB$UNAUTHENTICATED');
+	push(@{$self->{sysusers}},'SYSTEM','CTXSYS','DBSNMP','EXFSYS','LBACSYS','MDSYS','MGMT_VIEW','OLAPSYS','ORDDATA','OWBSYS','ORDPLUGINS','ORDSYS','OUTLN','SI_INFORMTN_SCHEMA','SYS','SYSMAN','WK_TEST','WKSYS','WKPROXY','WMSYS','XDB','APEX_PUBLIC_USER','DIP','FLOWS_020100','FLOWS_030000','FLOWS_040100','FLOWS_FILES','MDDATA','ORACLE_OCM','SPATIAL_CSW_ADMIN_USR','SPATIAL_WFS_ADMIN_USR','XS$NULL','PERFSTAT','SQLTXPLAIN','DMSYS','TSMSYS','WKSYS','APEX_040200','DVSYS','OJVMSYS','GSMADMIN_INTERNAL','APPQOSSYS','DVSYS','DVF','AUDSYS','APEX_030200','MGMT_VIEW','ODM','ODM_MTR','TRACESRV','MTMSYS','OWBSYS_AUDIT','WEBSYS','WK_PROXY','OSE$HTTP$ADMIN','AURORA$JIS$UTILITY$','AURORA$ORB$UNAUTHENTICATED','DBMS_PRIVILEGE_CAPTURE');
 
 	# Set default tablespace to exclude when using USE_TABLESPACE
 	push(@{$self->{default_tablespaces}}, 'TEMP', 'USERS','SYSTEM');
@@ -936,7 +936,7 @@ sub _init
 	} else {
 
 		$self->{plsql_pgsql} = 1;
-		if (grep(/^$self->{type}$/, 'TABLE', 'SEQUENCE', 'GRANT', 'TABLESPACE', 'VIEW', 'TRIGGER', 'QUERY', 'FUNCTION','PROCEDURE','PACKAGE','TYPE')) {
+		if (grep(/^$self->{type}$/, 'TABLE', 'SEQUENCE', 'GRANT', 'TABLESPACE', 'VIEW', 'TRIGGER', 'QUERY', 'FUNCTION','PROCEDURE','PACKAGE','TYPE','SYNONYM')) {
 			$self->export_schema();
 		} else {
 			$self->logit("FATAL: bad export type using input file option\n", 0, 1);
@@ -955,6 +955,8 @@ sub _init
 			$self->_tables();
 		} elsif ($self->{type} eq 'VIEW') {
 			$self->_views();
+		} elsif ($self->{type} eq 'SYNONYM') {
+			$self->_synonyms();
 		} elsif ($self->{type} eq 'GRANT') {
 			$self->_grants();
 		} elsif ($self->{type} eq 'SEQUENCE') {
@@ -4271,6 +4273,49 @@ CREATE TRIGGER insert_${table}_trigger
 		return;
 	}
 
+	# Process synonyms only
+	if ($self->{type} eq 'SYNONYM') {
+		$self->logit("Add synonyms definition...\n", 1);
+		# Read DML from file if any
+		if ($self->{input_file}) {
+			$self->read_synonym_from_file();
+		}
+		my $i = 1;
+		my $num_total_synonym = scalar keys %{$self->{synonyms}};
+
+		foreach my $syn (sort { $a cmp $b } keys %{$self->{synonyms}}) {
+			if (!$self->{quiet} && !$self->{debug}) {
+				print STDERR $self->progress_bar($i, $num_total_synonym, 25, '=', 'synonyms', "generating $syn" );
+			}
+			if (!$self->{preserve_case}) {
+				$sql_output .= "CREATE VIEW \L$self->{synonyms}{$syn}{owner}.$syn\E AS SELECT * FROM \L$self->{synonyms}{$syn}{table_owner}.$self->{synonyms}{$syn}{table_name}\E;\n";
+			} else {
+				$sql_output .= "CREATE VIEW \"$self->{synonyms}{$syn}{owner}\".\"$syn\" AS SELECT * FROM \"$self->{synonyms}{$syn}{table_owner}\".\"$self->{synonyms}{$syn}{table_name}\";\n";
+			}
+
+			my $owner = $self->{synonyms}{$syn}{table_owner};
+			$owner = $self->{force_owner} if ($self->{force_owner} && ($self->{force_owner} ne "1"));
+			if (!$self->{preserve_case}) {
+				$sql_output .= "ALTER VIEW \L$self->{synonyms}{$syn}{owner}.$syn\E OWNER TO \L$owner\E;\n";
+				$sql_output .= "GRANT ALL ON \L$self->{synonyms}{$syn}{owner}.$syn\E TO $self->{synonyms}{$syn}{owner};\n\n";
+			} else {
+				$sql_output .= "ALTER VIEW \"$self->{synonyms}{$syn}{owner}\".\"$syn\" OWNER TO \"$owner\";\n";
+				$sql_output .= "GRANT ALL ON \"$self->{synonyms}{$syn}{owner}\".\"$syn\" TO \"$self->{synonyms}{$syn}{owner}\";\n\n";
+			}
+			$i++;
+		}
+		if (!$self->{quiet} && !$self->{debug}) {
+			print STDERR $self->progress_bar($i - 1, $num_total_synonym, 25, '=', 'synonyms', 'end of output.'), "\n";
+		}
+		if (!$sql_output) {
+			$sql_output = "-- Nothing found of type $self->{type}\n";
+		}
+
+		$self->dump($sql_header . $sql_output);
+		return;
+	}
+
+
 	# DATABASE DESIGN
 	# Dump the database structure: tables, constraints, indexes, etc.
 	if ($self->{export_schema} &&  $self->{schema}) {
@@ -6902,6 +6947,32 @@ WHERE
 }
 
 
+=head2 _synonyms
+
+This function is used to retrieve all synonyms information.
+
+Sets the main hash of the synonyms definition $self->{synonyms}.
+Keys are the names of all synonyms retrieved from the current
+database.
+
+The synonyms hash is construct as follows:
+
+	$hash{SYNONYM_NAME}{owner} = Owner of the synonym
+	$hash{SYNONYM_NAME}{table_owner} = Owner of the object referenced by the synonym. 
+	$hash{SYNONYM_NAME}{table_name} = Name of the object referenced by the synonym. 
+	$hash{SYNONYM_NAME}{dblink} = Name of the database link referenced, if any
+
+=cut
+
+sub _synonyms
+{
+	my ($self) = @_;
+
+	# Get all synonyms information
+	$self->logit("Retrieving synonyms information...\n", 1);
+	%{$self->{synonyms}} = $self->_get_synonyms();
+}
+
 =head2 _get_synonyms
 
 This function implements an Oracle-native synonym information.
@@ -6913,11 +6984,11 @@ sub _get_synonyms
 	my($self) = @_;
 
 	# Retrieve all synonym
-	my $str = "SELECT SYNONYM_NAME,TABLE_OWNER,TABLE_NAME,DB_LINK FROM $self->{prefix}_SYNONYMS";
+	my $str = "SELECT OWNER,SYNONYM_NAME,TABLE_OWNER,TABLE_NAME,DB_LINK FROM $self->{prefix}_SYNONYMS";
 	if ($self->{schema}) {
-		$str .= "\tWHERE owner ='$self->{schema}' AND table_owner NOT IN ('" . join("','", @{$self->{sysusers}}) . "') ";
+		$str .= "\tWHERE (owner='$self->{schema}' OR owner='PUBLIC') AND table_owner NOT IN ('" . join("','", @{$self->{sysusers}}) . "') ";
 	} else {
-		$str .= "\tWHERE owner NOT IN ('" . join("','", @{$self->{sysusers}}) . "') AND table_owner NOT IN ('" . join("','", @{$self->{sysusers}}) . "') ";
+		$str .= "\tWHERE (owner='PUBLIC' OR owner NOT IN ('" . join("','", @{$self->{sysusers}}) . "')) AND table_owner NOT IN ('" . join("','", @{$self->{sysusers}}) . "') ";
 	}
 	$str .= $self->limit_to_objects('SYNONYM','SYNONYM_NAME');
 	$str .= " ORDER BY SYNONYM_NAME\n";
@@ -6927,15 +6998,15 @@ sub _get_synonyms
 
 	my %synonyms = ();
 	while (my $row = $sth->fetch) {
-		$synonyms{$row->[0]}{owner} = $row->[1];
-		$synonyms{$row->[0]}{table} = $row->[2];
-		$synonyms{$row->[0]}{dblink} = $row->[3];
+		$synonyms{$row->[1]}{owner} = $row->[0];
+		$synonyms{$row->[1]}{table_owner} = $row->[2];
+		$synonyms{$row->[1]}{table_name} = $row->[3];
+		$synonyms{$row->[1]}{dblink} = $row->[4];
 	}
 	$sth->finish;
 
 	return %synonyms;
 }
-
 
 =head2 _get_partitions_list
 
@@ -8810,17 +8881,18 @@ sub _show_infos
 				}
 				$report_info{'Objects'}{$typ}{'comment'} = "Total size of package code: $total_size bytes. Number of procedures and functions found inside those packages: $number_fct.";
 			} elsif ($typ eq 'SYNONYM') {
+				my %synonyms = $self->_synonyms();
 				$report_info{'Objects'}{$typ}{'number'} = scalar keys %synonyms;
-				foreach my $t (sort keys %synonyms) {
+				foreach my $t (sort {$a cmp $b} keys %synonyms) {
 					if ($synonyms{$t}{dblink}) {
-						$report_info{'Objects'}{$typ}{'detail'} .= "\L$t\E is a link to $synonyms{$t}{dblink}";
-						$report_info{'Objects'}{$typ}{'detail'} .= " ($synonyms{$t}{owner}.$synonyms{$t}{table})" if ($synonyms{$t}{table});
+						$report_info{'Objects'}{$typ}{'detail'} .= "\L$synonyms{$t}{owner}.$t\E is a link to $synonyms{$t}{dblink}";
+						$report_info{'Objects'}{$typ}{'detail'} .= " ($synonyms{$t}{table_owner}.$synonyms{$t}{table_name})" if ($synonyms{$t}{table_name});
 						$report_info{'Objects'}{$typ}{'detail'} .= "\n";
 					} else {
-						$report_info{'Objects'}{$typ}{'detail'} .= "\L$t\E is an alias to $synonyms{$t}{owner}.$synonyms{$t}{table}\n";
+						$report_info{'Objects'}{$typ}{'detail'} .= "\L$t\E is an alias to $synonyms{$t}{table_owner}.$synonyms{$t}{table_name}\n";
 					}
 				}
-				$report_info{'Objects'}{$typ}{'comment'} = "SYNONYM are not exported at all. An usual workaround is to use View instead or set the PostgreSQL search_path in your session to access object outside the current schema.";
+				$report_info{'Objects'}{$typ}{'comment'} = "SYNONYM will be exported as view. SYNONYMS do not exists with PostgreSQL but a common workaround is to use views or set the PostgreSQL search_path in your session to access object outside the current schema.";
 			} elsif ($typ eq 'INDEX PARTITION') {
 				$report_info{'Objects'}{$typ}{'comment'} = "Only local indexes partition are exported, they are build on the column used for the partitioning.";
 			} elsif ($typ eq 'TABLE PARTITION') {
