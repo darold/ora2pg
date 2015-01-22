@@ -1399,6 +1399,21 @@ CONFIGURATION
         column and the function is dropped at end of the export. This
         concern COPY and INSERT export type.
 
+    TRIM_TYPE
+        If you want to convert CHAR(n) from Oracle into varchar(n) or text
+        on PostgreSQL using directive DATA_TYPE, you might want to do some
+        triming on the data. By default Ora2Pg will auto-detect this
+        conversion and remove any withspace at both leading and trailing
+        position. If you just want to remove the leadings character set the
+        value to LEADING. If you just want to remove the trailing character,
+        set the value to TRAILING. Default value is BOTH.
+
+    TRIM_CHAR
+        The default triming character is space, use this directive if you
+        need to change the character that will be removed. For example, set
+        it to - if you have leading - in the char(n) field. To use space as
+        triming charger, comment this directive, this is the default value.
+
     PRESERVE_CASE
         If you want to preserve the case of Oracle object name set this
         directive to 1. By default Ora2Pg will convert all Oracle object

@@ -1555,6 +1555,20 @@ have to create one using the \s-1DBMS_LOB\s0 package.
 This function is only created if Ora2Pg found a table with a \s-1BFILE\s0 column and
 the function is dropped at end of the export. This concern \s-1COPY\s0 and \s-1INSERT\s0 export
 type.
+.IP "\s-1TRIM_TYPE\s0" 4
+.IX Item "TRIM_TYPE"
+If you want to convert \s-1CHAR\s0(n) from Oracle into varchar(n) or text on PostgreSQL
+using directive \s-1DATA_TYPE\s0, you might want to do some triming on the data. By
+default Ora2Pg will auto-detect this conversion and remove any withspace at both
+leading and trailing position. If you just want to remove the leadings character
+set the value to \s-1LEADING\s0. If you just want to remove the trailing character, set
+the value to \s-1TRAILING\s0. Default value is \s-1BOTH\s0.
+.IP "\s-1TRIM_CHAR\s0" 4
+.IX Item "TRIM_CHAR"
+The default triming character is space, use this directive if you need to
+change the character that will be removed. For example, set it to \- if you
+have leading \- in the char(n) field. To use space as triming charger, comment
+this directive, this is the default value.
 .IP "\s-1PRESERVE_CASE\s0" 4
 .IX Item "PRESERVE_CASE"
 If you want to preserve the case of Oracle object name set this directive to 1.
@@ -2059,7 +2073,7 @@ Any contribution to build a better tool is welcome, you just have to send me
 your ideas, features request or patches and there will be applied.
 .SH "LICENSE"
 .IX Header "LICENSE"
-Copyright (c) 2000\-2014 Gilles Darold \- All rights reserved.
+Copyright (c) 2000\-2015 Gilles Darold \- All rights reserved.
 .PP
 .Vb 4
 \&        This program is free software: you can redistribute it and/or modify

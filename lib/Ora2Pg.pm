@@ -769,6 +769,10 @@ sub _init
 		$self->{geometry_extract_type} = 'WKT';
 	}
 
+	# Default value for triming can be LEADING, TRAILING or BOTH
+	$self->{trim_type} = 'BOTH' if (!$self->{trim_type} || !grep(/^$self->{trim_type}/, 'BOTH', 'LEADING', 'TRAILING')); 
+	# Default triming character is space
+	$self->{trim_char} = ' ' if ($self->{trim_char} eq ''); 
 
 	# Free some memory
 	%options = ();
@@ -5300,6 +5304,8 @@ sub _howto_get_data
 		}
 		if ( $src_type->[$k] =~ /date/i) {
 			$str .= "to_char($name->[$k]->[0], '$dateformat'),";
+		} elsif ( ( $src_type->[$k] =~ /^char/i) && ($type->[$k] =~ /(varchar|text)/i)) {
+			$str .= "trim($self->{trim_type} '$self->{trim_char}' FROM $name->[$k]->[0]) AS $name->[$k]->[0],";
 		} elsif ( $src_type->[$k] =~ /timestamp.*with time zone/i) {
 			$str .= "to_char($name->[$k]->[0], '$timeformat_tz'),";
 		} elsif ( $src_type->[$k] =~ /timestamp/i) {
@@ -7143,7 +7149,7 @@ sub format_data_type
 			$col = 'NULL';
 		} elsif ( ($src_type =~ /geometry/i) && ($self->{geometry_extract_type} eq 'WKB') ) {
 			$col = "St_GeomFromWKB('\\x" . unpack('H*', $col) . "', $self->{spatial_srid}{$table}->[$idx])";
-		} elsif ($data_type eq 'bytea') {
+		} elsif ($data_type =~ /bytea/i) {
 			$col = escape_bytea($col);
 			if (!$self->{standard_conforming_strings}) {
 				$col = "'$col'";
@@ -7152,7 +7158,7 @@ sub format_data_type
 			}
 			# RAW data type is returned in hex
 			$col = "decode($col, 'hex')" if ($src_type eq 'RAW');
-		} elsif ($data_type =~ /(char|text|xml)/) {
+		} elsif ($data_type =~ /(char|text|xml)/i) {
 			if (!$self->{standard_conforming_strings}) {
 				$col =~ s/'/''/gs; # double single quote
 				$col =~ s/\\/\\\\/g;
@@ -7164,7 +7170,7 @@ sub format_data_type
 				$col =~ s/'/\\'/gs; # escape single quote
 				$col = "E'$col'";
 			}
-		} elsif ($data_type =~ /(date|time)/) {
+		} elsif ($data_type =~ /(date|time)/i) {
 			if ($col =~ /^0000-00-00/) {
 				$col = 'NULL';
 			} elsif ($col =~ /^(\d+-\d+-\d+ \d+:\d+:\d+)\.$/) {
@@ -7172,7 +7178,7 @@ sub format_data_type
 			} else {
 				$col = "'$col'";
 			}
-		} elsif ($data_type eq 'boolean') {
+		} elsif ($data_type =~ /boolean/i) {
 			if (exists $self->{ora_boolean_values}{lc($col)}) {
 				$col = "'" . $self->{ora_boolean_values}{lc($col)} . "'";
 			}
@@ -7187,19 +7193,19 @@ sub format_data_type
 			$col = '\N';
 		} elsif ( ($src_type =~ /geometry/i) && ($self->{geometry_extract_type} eq 'WKB') ) {
 			$col = 'SRID=' . $self->{spatial_srid}{$table}->[$idx] . ';' . unpack('H*', $col);
-		} elsif ($data_type eq 'boolean') {
+		} elsif ($data_type =~ /boolean/i) {
 			if (exists $self->{ora_boolean_values}{lc($col)}) {
 				$col = $self->{ora_boolean_values}{lc($col)};
 			}
-		} elsif ($data_type !~ /(char|date|time|text|bytea|xml)/) {
+		} elsif ($data_type !~ /(char|date|time|text|bytea|xml)/i) {
 			# covered now by the call to _numeric_format()
 			$col =~ s/\~/inf/;
 			$col = '\N' if ($col eq '');
-		} elsif ($data_type eq 'bytea') {
+		} elsif ($data_type =~ /bytea/i) {
 			$col = escape_bytea($col);
 			# RAW data type is returned in hex
 			$col = '\\\\x' . $col if ($src_type eq 'RAW');
-		} elsif ($data_type !~ /(date|time)/) {
+		} elsif ($data_type !~ /(date|time)/i) {
 			if ($self->{has_utf8_fct}) {
 				utf8::encode($col) if (!utf8::valid($col));
 			}
@@ -7214,7 +7220,7 @@ sub format_data_type
 				$col =~ s/([\13-\14])/sprintf("\\%03o", ord($1))/egs;
 				$col =~ s/([\16-\37])/sprintf("\\%03o", ord($1))/egs;
 			}
-		} elsif ($data_type =~ /(date|time)/) {
+		} elsif ($data_type =~ /(date|time)/i) {
 			if ($col =~ /^0000-00-00/) {
 				$col = '\N';
 			} elsif ($col =~ /^(\d+-\d+-\d+ \d+:\d+:\d+)\.$/) {

@@ -663,6 +663,20 @@ WITH_OID		0
 # is to use a schema to emulate package.
 PACKAGE_AS_SCHEMA	1
 
+# If you want to convert CHAR(n) from Oracle into varchar(n) or text under
+# PostgreSQL, you might want to do some triming on the data. By default
+# Ora2Pg will auto-detect this conversion and remove any withspace at both
+# leading and trailing position. If you just want to remove the leadings
+# character, set the value to LEADING. If you just want to remove the trailing
+# character, set the value to TRAILING. Default value is BOTH.
+TRIM_TYPE		BOTH
+
+# The default triming character is space, use the directive bellow if you need
+# to change the character that will be removed. For example, set it to - if you
+# have leading - in the char(n) field. To use space as triming charger, comment
+# this directive, this is the default value.
+#TRIM_CHAR		-
+
 };
 close(OUTCFG);
 
