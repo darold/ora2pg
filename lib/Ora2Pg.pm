@@ -4287,6 +4287,9 @@ CREATE TRIGGER insert_${table}_trigger
 			if (!$self->{quiet} && !$self->{debug}) {
 				print STDERR $self->progress_bar($i, $num_total_synonym, 25, '=', 'synonyms', "generating $syn" );
 			}
+			if ($self->{synonyms}{$syn}{dblink}) {
+				$sql_output .= "-- You need to create foreign table $self->{synonyms}{$syn}{table_owner}.$self->{synonyms}{$syn}{table_name} using foreign server: $self->{synonyms}{$syn}{dblink} (see DBLINK and FDW export type)\n";
+			}
 			if (!$self->{preserve_case}) {
 				$sql_output .= "CREATE VIEW \L$self->{synonyms}{$syn}{owner}.$syn\E AS SELECT * FROM \L$self->{synonyms}{$syn}{table_owner}.$self->{synonyms}{$syn}{table_name}\E;\n";
 			} else {
@@ -6986,12 +6989,13 @@ sub _get_synonyms
 	# Retrieve all synonym
 	my $str = "SELECT OWNER,SYNONYM_NAME,TABLE_OWNER,TABLE_NAME,DB_LINK FROM $self->{prefix}_SYNONYMS";
 	if ($self->{schema}) {
-		$str .= "\tWHERE (owner='$self->{schema}' OR owner='PUBLIC') AND table_owner NOT IN ('" . join("','", @{$self->{sysusers}}) . "') ";
+		$str .= " WHERE (owner='$self->{schema}' OR owner='PUBLIC') AND table_owner NOT IN ('" . join("','", @{$self->{sysusers}}) . "') ";
 	} else {
-		$str .= "\tWHERE (owner='PUBLIC' OR owner NOT IN ('" . join("','", @{$self->{sysusers}}) . "')) AND table_owner NOT IN ('" . join("','", @{$self->{sysusers}}) . "') ";
+		$str .= " WHERE (owner='PUBLIC' OR owner NOT IN ('" . join("','", @{$self->{sysusers}}) . "')) AND table_owner NOT IN ('" . join("','", @{$self->{sysusers}}) . "') ";
 	}
 	$str .= $self->limit_to_objects('SYNONYM','SYNONYM_NAME');
 	$str .= " ORDER BY SYNONYM_NAME\n";
+
 
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -8885,14 +8889,12 @@ sub _show_infos
 				$report_info{'Objects'}{$typ}{'number'} = scalar keys %synonyms;
 				foreach my $t (sort {$a cmp $b} keys %synonyms) {
 					if ($synonyms{$t}{dblink}) {
-						$report_info{'Objects'}{$typ}{'detail'} .= "\L$synonyms{$t}{owner}.$t\E is a link to $synonyms{$t}{dblink}";
-						$report_info{'Objects'}{$typ}{'detail'} .= " ($synonyms{$t}{table_owner}.$synonyms{$t}{table_name})" if ($synonyms{$t}{table_name});
-						$report_info{'Objects'}{$typ}{'detail'} .= "\n";
+						$report_info{'Objects'}{$typ}{'detail'} .= "\L$synonyms{$t}{owner}.$t\E is a link to \L$synonyms{$t}{table_owner}.$synonyms{$t}{table_name}\@$synonyms{$t}{dblink}\E\n";
 					} else {
 						$report_info{'Objects'}{$typ}{'detail'} .= "\L$t\E is an alias to $synonyms{$t}{table_owner}.$synonyms{$t}{table_name}\n";
 					}
 				}
-				$report_info{'Objects'}{$typ}{'comment'} = "SYNONYM will be exported as view. SYNONYMS do not exists with PostgreSQL but a common workaround is to use views or set the PostgreSQL search_path in your session to access object outside the current schema.";
+				$report_info{'Objects'}{$typ}{'comment'} = "SYNONYMs will be exported as views. SYNONYMs do not exists with PostgreSQL but a common workaround is to use views or set the PostgreSQL search_path in your session to access object outside the current schema.";
 			} elsif ($typ eq 'INDEX PARTITION') {
 				$report_info{'Objects'}{$typ}{'comment'} = "Only local indexes partition are exported, they are build on the column used for the partitioning.";
 			} elsif ($typ eq 'TABLE PARTITION') {
@@ -8906,7 +8908,7 @@ sub _show_infos
 			} elsif ($typ eq 'VIEW') {
 				$report_info{'Objects'}{$typ}{'comment'} = "Views are fully supported.";
 			} elsif ($typ eq 'DATABASE LINK') {
-				$report_info{'Objects'}{$typ}{'comment'} = "Database links will not be exported. You may try the dblink perl contrib module or use the SQL/MED PostgreSQL features with the different Foreign Data Wrapper (FDW) extentions.";
+				$report_info{'Objects'}{$typ}{'comment'} = "Database links will be exported as SQL/MED PostgreSQL's Foreign Data Wrapper (FDW) extentions using oracle_fdw.";
 				if ($self->{estimate_cost}) {
 					$report_info{'Objects'}{$typ}{'cost_value'} = ($Ora2Pg::PLSQL::OBJECT_SCORE{'DATABASE LINK'}*$objects{$typ});
 				}
