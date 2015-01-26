@@ -934,7 +934,7 @@ sub _init
 			$self->_compile_schema($self->{dbh}, uc($self->{compile_schema}));
 		}
 
-		$self->_get_pkg_functions() if (!$self->{package_as_schema});
+		$self->_get_pkg_functions() if (!$self->{package_as_schema} && (!grep(/^$self->{type}$/, 'COPY', 'INSERT', 'SEQUENCE', 'GRANT', 'TABLESPACE', 'QUERY', 'SYNONYM', 'FDW', 'KETTLE', 'DBLINK')));
 		$self->{security} = $self->_get_security_definer($self->{type}) if (grep(/^$self->{type}$/, 'TRIGGER', 'FUNCTION','PROCEDURE','PACKAGE'));
 
 	} else {
@@ -988,7 +988,7 @@ sub _init
 			$self->{dbh}->disconnect() if ($self->{dbh}); 
 			exit 0;
 		} else {
-			warn "type option must be TABLE, VIEW, GRANT, SEQUENCE, TRIGGER, PACKAGE, FUNCTION, PROCEDURE, PARTITION, TYPE, INSERT, COPY, TABLESPACE, SHOW_REPORT, SHOW_VERSION, SHOW_SCHEMA, SHOW_TABLE, SHOW_COLUMN, SHOW_ENCODING, FDW, MVIEW, QUERY, KETTLE, DBLINK\n";
+			warn "type option must be TABLE, VIEW, GRANT, SEQUENCE, TRIGGER, PACKAGE, FUNCTION, PROCEDURE, PARTITION, TYPE, INSERT, COPY, TABLESPACE, SHOW_REPORT, SHOW_VERSION, SHOW_SCHEMA, SHOW_TABLE, SHOW_COLUMN, SHOW_ENCODING, FDW, MVIEW, QUERY, KETTLE, DBLINK, SYNONYM\n";
 		}
 		# Mofify export structure if required
 		if ($self->{type} =~ /^(INSERT|COPY)$/) {
