@@ -1384,10 +1384,12 @@ CONFIGURATION
         Note that the directive and the list definition must be a single
         line.
 
-        There's a special case with BFILE when they are converted to text
-        field, they will contains the path to the external file. If you set
-        the destination type to bytea, the default, Ora2Pg will export the
-        BFILE as bytea.
+        There's a special case with BFILE when they are converted to type
+        TEXT, they will just contains the full path to the external file. If
+        you set the destination type to BYTEA, the default, Ora2Pg will
+        export the content of the BFILE as bytea. The third case is when you
+        set the destination type to EFILE, in this case, Ora2Pg will export
+        it as an EFILE record: (DIRECTORY, FILENAME).
 
         There's no SQL function available to retrieve the path to the BFILE,
         then Ora2Pg have to create one using the DBMS_LOB package.
@@ -1407,8 +1409,39 @@ CONFIGURATION
                   END;
 
         This function is only created if Ora2Pg found a table with a BFILE
-        column and the function is dropped at end of the export. This
-        concern COPY and INSERT export type.
+        column and that the destination type is TEXT. The function is
+        dropped at the end of the export. This concern both, COPY and INSERT
+        export type.
+
+        There's no SQL function available to retrieve BFILE as an EFILE
+        record, then Ora2Pg have to create one using the DBMS_LOB package.
+
+                CREATE OR REPLACE FUNCTION ora2pg_get_efile( p_bfile IN BFILE )
+                RETURN VARCHAR2
+                  AS
+                    l_dir   VARCHAR2(4000);
+                    l_fname VARCHAR2(4000);
+                  BEGIN
+                    dbms_lob.FILEGETNAME( p_bfile, l_dir, l_fname );
+                    RETURN '(' || l_dir || ',' || l_fnamei || ')';
+                  END;
+
+        This function is only created if Ora2Pg found a table with a BFILE
+        column and that the destination type is EFILE. The function is
+        dropped at the end of the export. This concern both, COPY and INSERT
+        export type.
+
+        To set the destination type, use the DATA_TYPE configuration
+        directive:
+
+                DATA_TYPE       BFILE:EFILE
+
+        for example.
+
+        The EFILE type is a user defined type created by the PostgreSQL
+        extension external_file that can be found here:
+        https://github.com/darold/external_file This is a port of the BFILE
+        Oracle type to PostgreSQL.
 
     TRIM_TYPE
         If you want to convert CHAR(n) from Oracle into varchar(n) or text

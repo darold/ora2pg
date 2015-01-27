@@ -4014,10 +4014,14 @@ LANGUAGE plpgsql ;
 		}
 
 		# Remove function created to export external table
-		if ($self->{bfile_found}) {
+		if ($self->{bfile_found} eq 'text') {
 			$self->logit("Removing function ora2pg_get_bfilename() used to retrieve path from BFILE.\n", 1);
 			my $bfile_function = "DROP FUNCTION $self->{pg_supports_ifexists} ora2pg_get_bfilename";
 			my $sth2 = $self->{dbh}->do($bfile_function);
+		} elsif ($self->{bfile_found} eq 'efile') {
+			$self->logit("Removing function ora2pg_get_efile() used to retrieve EFILE from BFILE.\n", 1);
+			my $efile_function = "DROP FUNCTION $self->{pg_supports_ifexists} ora2pg_get_efile";
+			my $sth2 = $self->{dbh}->do($efile_function);
 		}
 
 		#### Set SQL commands that must be executed after data loading
@@ -5318,7 +5322,6 @@ sub _howto_get_data
 	if ($self->{enable_microsecond}) {
 		$timeformat = 'YYYY-MM-DD HH24:MI:SS.FF';
 	}
-	my $bfile_found = 0;
 	my $timeformat_tz = $timeformat . ' TZH:TZM';
 	for my $k (0 .. $#{$name}) {
 		my $realcolname = $name->[$k]->[0];
@@ -5334,10 +5337,18 @@ sub _howto_get_data
 			$str .= "to_char($name->[$k]->[0], '$timeformat_tz'),";
 		} elsif ( $src_type->[$k] =~ /timestamp/i) {
 			$str .= "to_char($name->[$k]->[0], '$timeformat'),";
-		# Only extract the path to the bfile, if dest type is bytea the bfile should be exported.
+		# If dest type is bytea the content of the file is exported as bytea
+		} elsif ( ($src_type->[$k] =~ /bfile/i) && ($type->[$k] =~ /bytea/i) ) {
+			$self->{bfile_found} = 'bytea';
+			$str .= "$name->[$k]->[0],";
+		# If dest type is efile the content of the file is exported to use the efile extension
+		} elsif ( ($src_type->[$k] =~ /bfile/i) && ($type->[$k] =~ /efile/i) ) {
+			$self->{bfile_found} = 'efile';
+			$str .= "ora2pg_get_efile($name->[$k]->[0]),";
+		# Only extract path to the bfile if dest type is text.
 		} elsif ( ($src_type->[$k] =~ /bfile/i) && ($type->[$k] =~ /text/i) ) {
+			$self->{bfile_found} = 'text';
 			$str .= "ora2pg_get_bfilename($name->[$k]->[0]),";
-			$self->{bfile_found} = 1;
 		} elsif ( $src_type->[$k] =~ /xmltype/i) {
 			if ($self->{xml_pretty}) {
 				$str .= "$alias.$name->[$k]->[0].extract('/').getStringVal(),";
@@ -5400,8 +5411,8 @@ sub _howto_get_data
 	}
 	$str =~ s/,$//;
 
-	# If we have a BFILE we need to create a function
-	if ($self->{bfile_found}) {
+	# If we have a BFILE that might be exported as text we need to create a function
+	if ($self->{bfile_found} eq 'text') {
 		$self->logit("Creating function ora2pg_get_bfilename( p_bfile IN BFILE ) to retrieve path from BFILE.\n", 1);
 		my $bfile_function = qq{
 CREATE OR REPLACE FUNCTION ora2pg_get_bfilename( p_bfile IN BFILE ) RETURN 
@@ -5422,6 +5433,29 @@ VARCHAR2
   END;
 };
 		my $sth2 = $self->{dbh}->do($bfile_function);
+	# If we have a BFILE that might be exported as efile we need to create a function
+	} elsif ($self->{bfile_found} eq 'efile') {
+		$self->logit("Creating function ora2pg_get_efile( p_bfile IN BFILE ) to retrieve EFILE from BFILE.\n", 1);
+		my $quote = '';
+		$quote = "''" if ($self->{type} eq 'INSERT');
+		my $efile_function = qq{
+CREATE OR REPLACE FUNCTION ora2pg_get_efile( p_bfile IN BFILE ) RETURN 
+VARCHAR2
+  AS
+    l_dir   VARCHAR2(4000);
+    l_fname VARCHAR2(4000);
+  BEGIN
+    IF p_bfile IS NULL THEN
+      RETURN NULL;
+    ELSE
+      dbms_lob.FILEGETNAME( p_bfile, l_dir, l_fname );
+      RETURN '($quote' || l_dir || '$quote, $quote' || l_fname || '$quote)';
+  END IF;
+  END;
+};
+		my $sth2 = $self->{dbh}->do($efile_function);
+
+
 	}
 
 	# Fix empty column list with nested table

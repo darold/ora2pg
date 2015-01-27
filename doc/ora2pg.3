@@ -124,7 +124,7 @@
 .\" ========================================================================
 .\"
 .IX Title "ORA2PG 1"
-.TH ORA2PG 1 "2015-01-27" "perl v5.14.2" "User Contributed Perl Documentation"
+.TH ORA2PG 1 "2015-01-28" "perl v5.14.2" "User Contributed Perl Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -1541,9 +1541,11 @@ the default list used:
 .Sp
 Note that the directive and the list definition must be a single line.
 .Sp
-There's a special case with \s-1BFILE\s0 when they are converted to text field, they will
-contains the path to the external file. If you set the destination type to bytea, the
-default, Ora2Pg will export the \s-1BFILE\s0 as bytea.
+There's a special case with \s-1BFILE\s0 when they are converted to type \s-1TEXT\s0, they
+will just contains the full path to the external file. If you set the
+destination type to \s-1BYTEA\s0, the default, Ora2Pg will export the content of the
+\&\s-1BFILE\s0 as bytea. The third case is when you set the destination type to \s-1EFILE\s0,
+in this case, Ora2Pg will export it as an \s-1EFILE\s0 record: (\s-1DIRECTORY\s0, \s-1FILENAME\s0).
 .Sp
 There's no \s-1SQL\s0 function available to retrieve the path to the \s-1BFILE\s0, then Ora2Pg
 have to create one using the \s-1DBMS_LOB\s0 package.
@@ -1565,8 +1567,39 @@ have to create one using the \s-1DBMS_LOB\s0 package.
 .Ve
 .Sp
 This function is only created if Ora2Pg found a table with a \s-1BFILE\s0 column and
-the function is dropped at end of the export. This concern \s-1COPY\s0 and \s-1INSERT\s0 export
-type.
+that the destination type is \s-1TEXT\s0. The function is dropped at the end of the
+export. This concern both, \s-1COPY\s0 and \s-1INSERT\s0 export type.
+.Sp
+There's no \s-1SQL\s0 function available to retrieve \s-1BFILE\s0 as an \s-1EFILE\s0 record, then
+Ora2Pg have to create one using the \s-1DBMS_LOB\s0 package.
+.Sp
+.Vb 9
+\&        CREATE OR REPLACE FUNCTION ora2pg_get_efile( p_bfile IN BFILE )
+\&        RETURN VARCHAR2
+\&          AS
+\&            l_dir   VARCHAR2(4000);
+\&            l_fname VARCHAR2(4000);
+\&          BEGIN
+\&            dbms_lob.FILEGETNAME( p_bfile, l_dir, l_fname );
+\&            RETURN \*(Aq(\*(Aq || l_dir || \*(Aq,\*(Aq || l_fnamei || \*(Aq)\*(Aq;
+\&          END;
+.Ve
+.Sp
+This function is only created if Ora2Pg found a table with a \s-1BFILE\s0 column and
+that the destination type is \s-1EFILE\s0. The function is dropped at the end of the
+export. This concern both, \s-1COPY\s0 and \s-1INSERT\s0 export type.
+.Sp
+To set the destination type, use the \s-1DATA_TYPE\s0 configuration directive:
+.Sp
+.Vb 1
+\&        DATA_TYPE       BFILE:EFILE
+.Ve
+.Sp
+for example.
+.Sp
+The \s-1EFILE\s0 type is a user defined type created by the PostgreSQL extension
+external_file that can be found here: https://github.com/darold/external_file
+This is a port of the \s-1BFILE\s0 Oracle type to PostgreSQL.
 .IP "\s-1TRIM_TYPE\s0" 4
 .IX Item "TRIM_TYPE"
 If you want to convert \s-1CHAR\s0(n) from Oracle into varchar(n) or text on PostgreSQL
