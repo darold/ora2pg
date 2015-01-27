@@ -584,11 +584,12 @@ SYNCHRONOUS_COMMIT	0
 PG_SUPPORTS_CHECKOPTION	0
 
 # Enable this directive if you want Ora2Pg to detect the real spatial type and
-# dimension used in a spatial column. Otherwise column will be created with
-# non-constrained "geometry" type. Enabling this feature will force Ora2Pg to
-# scan a sample of 50000 column to look at the GTYPE used. You can increase
-# the sample by setting the value of AUTODETECT_SPATIAL_TYPE to the desired
-# number of line.
+# dimensions used in a spatial column. By default Ora2Pg will look at spatial
+# indexes to see if the layer_gtype and sdo_indx_dims constraint parameters have
+# been set, otherwise column will be created with the non-constrained "geometry"
+# type. Enabling this feature will force Ora2Pg to scan a sample of 50000 lines
+# to look at the GTYPE used. You can increase or reduce the sample by setting
+# the value of AUTODETECT_SPATIAL_TYPE to the desired number of line.
 AUTODETECT_SPATIAL_TYPE	1
 
 # Disable this directive if you don't want to automatically convert SRID to

@@ -1047,13 +1047,24 @@ CONFIGURATION
     configuration directives that could be used to control the export.
 
     AUTODETECT_SPATIAL_TYPE
-        Enable this directive if you want Ora2Pg to detect the real spatial
-        type and dimension used in a spatial column. Otherwise column will
-        be created with non-constrained "geometry" type. Enabling this
-        feature will force Ora2Pg to scan a sample of 50000 column to look
-        at the GTYPE used. You can increase the sample by setting the value
-        of AUTODETECT_SPATIAL_TYPE to the desired number of line. The
-        directive is enabled by default.
+        By default Ora2Pg is looking at indexes to see the spatial
+        constraint type and dimensions defined under Oracle. Those
+        constraints are passed as at index creation using for example:
+
+                CREATE INDEX ... INDEXTYPE IS MDSYS.SPATIAL_INDEX
+                PARAMETERS(‘sdo_indx_dims=2, layer_gtype=point‘);
+
+        If those Oracle constraints parameters are not set, the default is
+        to export those columns as generic type GEOMETRY to be able to
+        receive any spatial type.
+
+        The AUTODETECT_SPATIAL_TYPE directive allow to force Ora2Pg to
+        autodetect the real spatial type and dimension used in a spatial
+        column otherwise a non- constrained "geometry" type is used.
+        Enabling this feature will force Ora2Pg to scan a sample of 50000
+        column to look at the GTYPE used. You can increase or reduce the
+        sample size by setting the value of AUTODETECT_SPATIAL_TYPE to the
+        desired number of line to scan. The directive is enabled by default.
 
         For example, in the case of a column named shape and defined with
         Oracle type SDO_GEOMETRY, with AUTODETECT_SPATIAL_TYPE disabled it

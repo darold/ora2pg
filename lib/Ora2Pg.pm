@@ -151,6 +151,23 @@ our %ORA2PG_SDO_GTYPE = (
 	'9' => 'MULTISOLID'
 );
 
+our %GTYPE = (
+	'UNKNOWN_GEOMETRY' => 'GEOMETRY',
+	'GEOMETRY' => 'GEOMETRY',
+	'POINT' => 'POINT',
+	'LINE' => 'LINESTRING',
+	'CURVE' => 'LINESTRING',
+	'POLYGON' => 'POLYGON',
+	'SURFACE' => 'POLYGON',
+	'COLLECTION' => 'GEOMETRYCOLLECTION',
+	'MULTIPOINT' => 'MULTIPOINT',
+	'MULTILINE' => 'MULTILINESTRING',
+	'MULTICURVE' => 'MULTILINESTRING',
+	'MULTIPOLYGON' => 'MULTIPOLYGON',
+	'MULTISURFACE' => 'MULTIPOLYGON',
+	'SOLID' => 'SOLID',
+	'MULTISOLID' => 'MULTISOLID'
+);
 our %INDEX_TYPE = (
 	'NORMAL' => 'b-tree',
 	'NORMAL/REV' => 'reversed b-tree',
@@ -1288,6 +1305,27 @@ sub _tables
 
 	# Retrieve tables informations
 	my %tables_infos = $self->_table_info();
+	if ( (($self->{type} eq 'TABLE') || ($self->{type} eq 'SHOW_REPORT')) && !$self->{skip_indices} && !$self->{skip_indexes}) {
+
+		my ($uniqueness, $indexes, $idx_type, $idx_tbsp) = $self->_get_indexes('',$self->{schema});
+		foreach my $tb (keys %{$uniqueness}) {
+			next if (!exists $tables_infos{$tb});
+			%{$self->{tables}{$tb}{uniqueness}} = %{$uniqueness->{$tb}};
+		}
+		foreach my $tb (keys %{$indexes}) {
+			next if (!exists $tables_infos{$tb});
+			%{$self->{tables}{$tb}{indexes}} = %{$indexes->{$tb}};
+		}
+		foreach my $tb (keys %{$idx_type}) {
+			next if (!exists $tables_infos{$tb});
+			%{$self->{tables}{$tb}{idx_type}} = %{$idx_type->{$tb}};
+		}
+		foreach my $tb (keys %{$idx_tbsp}) {
+			next if (!exists $tables_infos{$tb});
+			%{$self->{tables}{$tb}{idx_tbsp}} = %{$idx_tbsp->{$tb}};
+		}
+
+	}
 
 	# Get detailed informations on each tables
 	if (!$nodetail) {
@@ -1340,27 +1378,6 @@ sub _tables
 		foreach my $tb (keys %check_constraints) {
 			next if (!exists $tables_infos{$tb});
 			%{$self->{tables}{$tb}{check_constraint}} = ( %{$check_constraints{$tb}});
-		}
-	}
-
-	# Retrieve all indexes informations
-	if (!$self->{skip_indices} && !$self->{skip_indexes}) {
-		my ($uniqueness, $indexes, $idx_type, $idx_tbsp) = $self->_get_indexes('',$self->{schema});
-		foreach my $tb (keys %{$uniqueness}) {
-			next if (!exists $tables_infos{$tb});
-			%{$self->{tables}{$tb}{uniqueness}} = %{$uniqueness->{$tb}};
-		}
-		foreach my $tb (keys %{$indexes}) {
-			next if (!exists $tables_infos{$tb});
-			%{$self->{tables}{$tb}{indexes}} = %{$indexes->{$tb}};
-		}
-		foreach my $tb (keys %{$idx_type}) {
-			next if (!exists $tables_infos{$tb});
-			%{$self->{tables}{$tb}{idx_type}} = %{$idx_type->{$tb}};
-		}
-		foreach my $tb (keys %{$idx_tbsp}) {
-			next if (!exists $tables_infos{$tb});
-			%{$self->{tables}{$tb}{idx_tbsp}} = %{$idx_tbsp->{$tb}};
 		}
 	}
 
@@ -1811,6 +1828,13 @@ sub read_schema_from_file
 		}
 		if ($idx_def =~ s/INDEXTYPE\s+IS\s+.*SPATIAL_INDEX//i) {
 			$self->{tables}{$tb_name}{spatial}{$idx_name} = 1;
+			$self->{tables}{$tb_name}{idx_type}{$idx_name}{type_name} = 'SPATIAL_INDEX';
+		}
+		if ($idx_def =~ s/layer_gtype=([^\s,]+)//i) {
+			$self->{tables}{$tb_name}{idx_type}{$idx_name}{type_constraint} = uc($1);
+		}
+		if ($idx_def =~ s/sdo_indx_dims=(\d)//i) {
+			$self->{tables}{$tb_name}{idx_type}{$idx_name}{type_dims} = $1;
 		}
 		$idx_def =~ s/\)[^\)]*$//;
 		$self->{tables}{$tb_name}{uniqueness}{$idx_name} = $is_unique || '';
@@ -5644,22 +5668,42 @@ END
 				}
 			}
 
+			# Grad constraint type and dimensions from index definition
+			my $found_contraint = 0;
+			foreach my $idx (keys %{$self->{tables}{$row->[-2]}{idx_type}}) {
+				if (exists $self->{tables}{$row->[-2]}{idx_type}{$idx}{type_constraint}) {
+					foreach my $c (@{$self->{tables}{$row->[-2]}{indexes}{$idx}}) {
+						if ($c eq $row->[0]) {
+							if ($self->{tables}{$row->[-2]}{idx_type}{$idx}{type_dims}) {
+								$found_dims = $self->{tables}{$row->[-2]}{idx_type}{$idx}{type_dims};
+							}
+							if ($self->{tables}{$row->[-2]}{idx_type}{$idx}{type_constraint}) {
+								$found_contraint = $GTYPE{$self->{tables}{$row->[-2]}{idx_type}{$idx}{type_constraint}} || $self->{tables}{$row->[-2]}{idx_type}{$idx}{type_constraint};
+							}
+						}
+					}
+				}
+			}
 
 			# Get the dimension of the geometry column
-			$sth2 = $self->{dbh}->prepare($spatial_dim);
-			if (!$sth2) {
-				$self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+			if (!$found_dims) {
+				$sth2 = $self->{dbh}->prepare($spatial_dim);
+				if (!$sth2) {
+					$self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+				}
+				$sth2->execute($row->[-2],$row->[0],$row->[-1]) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+				my $count = 0;
+				while (my $r = $sth2->fetch) {
+					$count++;
+				}
+				$sth2->finish();
+				push(@geom_inf, $count);
+			} else {
+				push(@geom_inf, $found_dims);
 			}
-			$sth2->execute($row->[-2],$row->[0],$row->[-1]) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-			my $count = 0;
-			while (my $r = $sth2->fetch) {
-				$count++;
-			}
-			$sth2->finish();
-			push(@geom_inf, $count);
 
 			# Set dimension and type of the spatial column
-			if ($self->{autodetect_spatial_type}) {
+			if (!$found_contraint && $self->{autodetect_spatial_type}) {
 
 				# Get spatial information
 				my $colname = $row->[-1] . "." . $row->[-2];
@@ -5681,6 +5725,8 @@ END
 				} else {
 					push(@geom_inf, join(',', @result));
 				}
+			} elsif ($found_contraint) {
+				push(@geom_inf, $found_contraint);
 
 			} else {
 				push(@geom_inf, $ORA2PG_SDO_GTYPE{0});
@@ -6099,7 +6145,7 @@ sub _get_indexes
 	my $sth = '';
 	if ($self->{db_version} !~ /Release 8/) {
 		$sth = $self->{dbh}->prepare(<<END) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-SELECT DISTINCT $self->{prefix}_IND_COLUMNS.INDEX_NAME,$self->{prefix}_IND_COLUMNS.COLUMN_NAME,$self->{prefix}_INDEXES.UNIQUENESS,$self->{prefix}_IND_COLUMNS.COLUMN_POSITION,$self->{prefix}_INDEXES.INDEX_TYPE,$self->{prefix}_INDEXES.TABLE_TYPE,$self->{prefix}_INDEXES.GENERATED,$self->{prefix}_INDEXES.JOIN_INDEX,$self->{prefix}_IND_COLUMNS.TABLE_NAME,$self->{prefix}_IND_COLUMNS.INDEX_OWNER,$self->{prefix}_INDEXES.TABLESPACE_NAME,$self->{prefix}_INDEXES.ITYP_NAME
+SELECT DISTINCT $self->{prefix}_IND_COLUMNS.INDEX_NAME,$self->{prefix}_IND_COLUMNS.COLUMN_NAME,$self->{prefix}_INDEXES.UNIQUENESS,$self->{prefix}_IND_COLUMNS.COLUMN_POSITION,$self->{prefix}_INDEXES.INDEX_TYPE,$self->{prefix}_INDEXES.TABLE_TYPE,$self->{prefix}_INDEXES.GENERATED,$self->{prefix}_INDEXES.JOIN_INDEX,$self->{prefix}_IND_COLUMNS.TABLE_NAME,$self->{prefix}_IND_COLUMNS.INDEX_OWNER,$self->{prefix}_INDEXES.TABLESPACE_NAME,$self->{prefix}_INDEXES.ITYP_NAME,$self->{prefix}_INDEXES.PARAMETERS
 FROM $self->{prefix}_IND_COLUMNS
 JOIN $self->{prefix}_INDEXES ON ($self->{prefix}_INDEXES.INDEX_NAME=$self->{prefix}_IND_COLUMNS.INDEX_NAME)
 WHERE $self->{prefix}_INDEXES.GENERATED <> 'Y' AND $self->{prefix}_INDEXES.TEMPORARY <> 'Y' $condition
@@ -6108,7 +6154,7 @@ END
 	} else {
 		# an 8i database.
 		$sth = $self->{dbh}->prepare(<<END) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-SELECT DISTINCT $self->{prefix}_IND_COLUMNS.INDEX_NAME,$self->{prefix}_IND_COLUMNS.COLUMN_NAME,$self->{prefix}_INDEXES.UNIQUENESS,$self->{prefix}_IND_COLUMNS.COLUMN_POSITION,$self->{prefix}_INDEXES.INDEX_TYPE,$self->{prefix}_INDEXES.TABLE_TYPE,$self->{prefix}_INDEXES.GENERATED,$self->{prefix}_IND_COLUMNS.TABLE_NAME,$self->{prefix}_IND_COLUMNS.INDEX_OWNER,$self->{prefix}_INDEXES.TABLESPACE_NAME,$self->{prefix}_INDEXES.ITYP_NAME
+SELECT DISTINCT $self->{prefix}_IND_COLUMNS.INDEX_NAME,$self->{prefix}_IND_COLUMNS.COLUMN_NAME,$self->{prefix}_INDEXES.UNIQUENESS,$self->{prefix}_IND_COLUMNS.COLUMN_POSITION,$self->{prefix}_INDEXES.INDEX_TYPE,$self->{prefix}_INDEXES.TABLE_TYPE,$self->{prefix}_INDEXES.GENERATED,$self->{prefix}_IND_COLUMNS.TABLE_NAME,$self->{prefix}_IND_COLUMNS.INDEX_OWNER,$self->{prefix}_INDEXES.TABLESPACE_NAME,$self->{prefix}_INDEXES.ITYP_NAME,$self->{prefix}_INDEXES.PARAMETERS
 FROM $self->{prefix}_IND_COLUMNS, $self->{prefix}_INDEXES
 WHERE $self->{prefix}_INDEXES.INDEX_NAME=$self->{prefix}_IND_COLUMNS.INDEX_NAME $condition
 AND $self->{prefix}_INDEXES.GENERATED <> 'Y'
@@ -6134,24 +6180,30 @@ $idxowner
 	my %idx_type = ();
 	while (my $row = $sth->fetch) {
 
-		$unique{$row->[-4]}{$row->[0]} = $row->[2];
+		$unique{$row->[-5]}{$row->[0]} = $row->[2];
 		if (($#{$row} > 6) && ($row->[7] eq 'Y')) {
-			$idx_type{$row->[-4]}{$row->[0]}{type} = $row->[4] . ' JOIN';
+			$idx_type{$row->[-5]}{$row->[0]}{type} = $row->[4] . ' JOIN';
 		} else {
-			$idx_type{$row->[-4]}{$row->[0]}{type} = $row->[4];
+			$idx_type{$row->[-5]}{$row->[0]}{type} = $row->[4];
 		}
-		if ($row->[-1] =~ /SPATIAL_INDEX/) {
-			$idx_type{$row->[-4]}{$row->[0]}{type_name} = $row->[-1];
+		if ($row->[-2] =~ /SPATIAL_INDEX/) {
+			$idx_type{$row->[-5]}{$row->[0]}{type_name} = $row->[-2];
+			if ($row->[-1] =~ /layer_gtype=([^\s,]+)/i) {
+				$idx_type{$row->[-5]}{$row->[0]}{type_constraint} = uc($1);
+			}
+			if ($row->[-1] =~ /sdo_indx_dims=(\d+)/i) {
+				$idx_type{$row->[-5]}{$row->[0]}{type_dims} = $1;
+			}
 		}
 		# Replace function based index type
 		if ($row->[4] =~ /FUNCTION-BASED/i) {
-			$sth2->execute($row->[1],$row->[-4]) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+			$sth2->execute($row->[1],$row->[-5]) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 			my $nc = $sth2->fetch();
 			$row->[1] = $nc->[0];
 		}
 		$row->[1] =~ s/SYS_EXTRACT_UTC[\s\t]*\(([^\)]+)\)/$1/isg;
-		push(@{$data{$row->[-4]}{$row->[0]}}, $row->[1]);
-		$index_tablespace{$row->[-4]}{$row->[0]} = $row->[-2];
+		push(@{$data{$row->[-5]}{$row->[0]}}, $row->[1]);
+		$index_tablespace{$row->[-5]}{$row->[0]} = $row->[-2];
 
 	}
 
@@ -8642,6 +8694,7 @@ sub _show_infos
 		my %all_indexes = ();
 		$self->{skip_fkeys} = $self->{skip_indices} = $self->{skip_indexes} = $self->{skip_checks} = 0;
 		$self->{view_as_table} = ();
+		# Determining how many non automatiques indexes will be exported
 		# Extract all tables informations
 		$self->_tables();
 		my $total_index = 0;
@@ -8669,6 +8722,9 @@ sub _show_infos
 		# Get definition of Oracle Jobs
 		my %jobs = $self->_get_job();
 		$objects{'JOB'} = scalar keys %jobs;	
+		# Get synonym inforamtion
+		my %synonyms = $self->_synonyms();
+		$objects{'SYNONYM'} = scalar keys %synonyms;	
 
 		# Look at all database objects to compute report
 		my %report_info = ();
@@ -8894,8 +8950,6 @@ sub _show_infos
 				}
 				$report_info{'Objects'}{$typ}{'comment'} = "Total size of package code: $total_size bytes. Number of procedures and functions found inside those packages: $number_fct.";
 			} elsif ($typ eq 'SYNONYM') {
-				my %synonyms = $self->_synonyms();
-				$report_info{'Objects'}{$typ}{'number'} = scalar keys %synonyms;
 				foreach my $t (sort {$a cmp $b} keys %synonyms) {
 					if ($synonyms{$t}{dblink}) {
 						$report_info{'Objects'}{$typ}{'detail'} .= "\L$synonyms{$t}{owner}.$t\E is a link to \L$synonyms{$t}{table_owner}.$synonyms{$t}{table_name}\@$synonyms{$t}{dblink}\E\n";
@@ -8966,6 +9020,18 @@ sub _show_infos
 				}
 			}
 			%columns_infos = ();
+
+			# Retrieve index informations to look at geometry constraint
+			my ($uniqueness, $indexes, $idx_type, $idx_tbsp) = $self->_get_indexes('',$self->{schema});
+			foreach my $tb (keys %{$indexes}) {
+				next if (!exists $tables_infos{$tb});
+				%{$self->{tables}{$tb}{indexes}} = %{$indexes->{$tb}};
+			}
+			foreach my $tb (keys %{$idx_type}) {
+				next if (!exists $tables_infos{$tb});
+				%{$self->{tables}{$tb}{idx_type}} = %{$idx_type->{$tb}};
+			}
+
 		}
 
 		my @done = ();
@@ -9016,6 +9082,7 @@ sub _show_infos
 					# COLUMN_NAME,DATA_TYPE,DATA_LENGTH,NULLABLE,DATA_DEFAULT,DATA_PRECISION,DATA_SCALE,CHAR_LENGTH,TABLE_NAME,OWNER,POSITION,SDO_DIM,SDO_GTYPE,SRID
 					my $d = $self->{tables}{$t}{column_info}{$k};
 					$d->[2] =~ s/\D//g;
+
 					my $type = $self->_sql_type($d->[1], $d->[2], $d->[5], $d->[6]);
 					$type = "$d->[1], $d->[2]" if (!$type);
 					$type = $self->{'modify_type'}{"\L$t\E"}{"\L$k\E"} if (exists $self->{'modify_type'}{"\L$t\E"}{"\L$k\E"});
@@ -9040,6 +9107,7 @@ sub _show_infos
 							$align = " - typalign: $TYPALIGN{$typ}";
 						}
 					} else {
+
 						# Set the dimension, array is (srid, dims, gtype)
 						my $suffix = '';
 						if ($d->[12] == 3) {
@@ -9198,13 +9266,12 @@ sub _get_objects
 
 	my $oraver = '';
 	# OWNER|OBJECT_NAME|SUBOBJECT_NAME|OBJECT_ID|DATA_OBJECT_ID|OBJECT_TYPE|CREATED|LAST_DDL_TIME|TIMESTAMP|STATUS|TEMPORARY|GENERATED|SECONDARY
-	my $sql = "SELECT OBJECT_NAME,OBJECT_TYPE,STATUS FROM $self->{prefix}_OBJECTS WHERE TEMPORARY='N' AND GENERATED='N' AND SECONDARY='N'";
+	my $sql = "SELECT OBJECT_NAME,OBJECT_TYPE,STATUS FROM $self->{prefix}_OBJECTS WHERE TEMPORARY='N' AND GENERATED='N' AND SECONDARY='N' AND OBJECT_TYPE <> 'SYNONYM'";
         if ($self->{schema}) {
                 $sql .= " AND OWNER='$self->{schema}'";
         } else {
                 $sql .= " AND OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
         }
-
 	my @infos = ();
         my $sth = $self->{dbh}->prepare( $sql ) or return undef;
 	push(@infos, join('|', @{$sth->{NAME}}));
