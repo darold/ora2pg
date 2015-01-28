@@ -830,14 +830,14 @@ sub _init
 
 	# Set user defined data type translation
 	if ($self->{data_type}) {
-		my @transl = split(/[,;]/, $self->{data_type});
+		my @transl = split(/[,;]/, uc($self->{data_type}));
 		foreach my $t (@transl) {
 			my ($typ, $val) = split(/:/, $t);
 			$typ =~ s/^\s+//;
 			$typ =~ s/\s+$//;
 			$val =~ s/^\s+//;
 			$val =~ s/\s+$//;
-			$TYPE{$typ} = $val if ($val);
+			$TYPE{$typ} = lc($val) if ($val);
 		}
 	}
 
@@ -9975,6 +9975,9 @@ sub set_search_path
 		} else {
 			$local_path = ', "' . $self->{postgis_schema} . '"';
 		}
+	}
+	if ($TYPE{BFILE} eq 'efile') {
+			$local_path .= ', external_file';
 	}
 	
 	if ($self->{export_schema}) {
