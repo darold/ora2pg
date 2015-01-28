@@ -4016,11 +4016,11 @@ LANGUAGE plpgsql ;
 		# Remove function created to export external table
 		if ($self->{bfile_found} eq 'text') {
 			$self->logit("Removing function ora2pg_get_bfilename() used to retrieve path from BFILE.\n", 1);
-			my $bfile_function = "DROP FUNCTION $self->{pg_supports_ifexists} ora2pg_get_bfilename";
+			my $bfile_function = "DROP FUNCTION ora2pg_get_bfilename";
 			my $sth2 = $self->{dbh}->do($bfile_function);
 		} elsif ($self->{bfile_found} eq 'efile') {
 			$self->logit("Removing function ora2pg_get_efile() used to retrieve EFILE from BFILE.\n", 1);
-			my $efile_function = "DROP FUNCTION $self->{pg_supports_ifexists} ora2pg_get_efile";
+			my $efile_function = "DROP FUNCTION ora2pg_get_efile";
 			my $sth2 = $self->{dbh}->do($efile_function);
 		}
 
