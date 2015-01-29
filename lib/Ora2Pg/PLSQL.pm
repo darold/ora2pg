@@ -420,6 +420,16 @@ sub plsql_to_plpgsql
 	#  Convert all x = NULL clauses to x IS NULL.
 	$str =~ s/(?!:)(.)=\s*NULL/$1 IS NULL/igs;
 
+	# Rewrite all IF ... IS NULL with coalesce because for Oracle empty and NULL is the same
+	if ($null_equal_empty) {
+		# Form: column IS NULL
+		$str =~ s/([a-z0-9_\."]+)\s*IS NULL/coalesce($1::text, '') = ''/igs;
+		$str =~ s/([a-z0-9_\."]+)\s*IS NOT NULL/($1 IS NOT NULL AND $1::text <> '')/igs;
+		# Form: fct(expression) IS NULL
+		$str =~ s/([a-z0-9_\."]+\([^\)]*\))\s*IS NULL/coalesce($1::text, '') = ''/igs;
+		$str =~ s/([a-z0-9_\."]+\([^\)]*\))\s*IS NOT NULL/($1 IS NOT NULL AND ($1)::text <> '')/igs;
+	}
+
 	# Rewrite replace(a,b) with three argument
 	$str =~ s/REPLACE\s*\($field,$field\)/replace\($1, $2, ''\)/igs;
 
