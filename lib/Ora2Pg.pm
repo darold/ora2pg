@@ -2128,6 +2128,34 @@ sub read_directory_from_file
 	}
 }
 
+sub read_synonym_from_file
+{
+	my $self = shift;
+
+	# Load file in a single string
+	my $content = $self->_get_dml_from_file();
+
+	# Directory
+	while ($content =~ s/CREATE(?: OR REPLACE)?(?: PUBLIC)?\s+SYNONYM\s+([^\s]+)\s+FOR\s+([^;\s]+)\s*;//is) {
+		my $s_name = uc($1);
+		my $s_def = $2;
+		$s_name =~ s/"//g;
+		$s_def =~ s/"//g;
+		if ($s_name =~ s/^([^\.]+)\.//) {
+			$self->{synonyms}{$s_name}{owner} = $1;
+		} else {
+			$self->{synonyms}{$s_name}{owner} = $self->{schema};
+		}
+		if ($s_def =~ s/@(.*)//) {
+			$self->{synonyms}{$s_name}{dblink} = $1;
+		}
+		if ($s_def =~ s/^([^\.]+)\.//) {
+			$self->{synonyms}{$s_name}{table_owner} = $1;
+		}
+		$self->{synonyms}{$s_name}{table_name} = $s_def;
+	}
+
+}
 
 =head2 _views
 
