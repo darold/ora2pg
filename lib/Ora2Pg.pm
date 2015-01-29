@@ -957,7 +957,7 @@ sub _init
 	} else {
 
 		$self->{plsql_pgsql} = 1;
-		if (grep(/^$self->{type}$/, 'TABLE', 'SEQUENCE', 'GRANT', 'TABLESPACE', 'VIEW', 'TRIGGER', 'QUERY', 'FUNCTION','PROCEDURE','PACKAGE','TYPE','SYNONYM', 'DIRECTORY')) {
+		if (grep(/^$self->{type}$/, 'TABLE', 'SEQUENCE', 'GRANT', 'TABLESPACE', 'VIEW', 'TRIGGER', 'QUERY', 'FUNCTION','PROCEDURE','PACKAGE','TYPE','SYNONYM', 'DIRECTORY', 'DBLINK')) {
 			$self->export_schema();
 		} else {
 			$self->logit("FATAL: bad export type using input file option\n", 0, 1);
@@ -2157,6 +2157,49 @@ sub read_synonym_from_file
 
 }
 
+sub read_dblink_from_file
+{
+	my $self = shift;
+
+	# Load file in a single string
+	my $content = $self->_get_dml_from_file();
+
+	# Directory
+	while ($content =~ s/CREATE(?: SHARED)?(?: PUBLIC)?\s+DATABASE\s+LINK\s+([^\s]+)\s+CONNECT TO\s+([^\s]+)\s*([^;]+);//is) {
+		my $d_name = $1;
+		my $d_user = $2;
+		my $d_auth = $3;
+		$d_name =~ s/"//g;
+		$d_user =~ s/"//g;
+		$self->{dblink}{$d_name}{owner} = $self->{shema};
+		$self->{dblink}{$d_name}{username} = $d_user;
+		if ($d_auth =~ s/USING\s+([^\s]+)//) {
+			$self->{dblink}{$d_name}{host} = $1;
+			$self->{dblink}{$d_name}{host} =~ s/'//g;
+		}
+		if ($d_auth =~ s/IDENTIFIED\s+BY\s+([^\s]+)//) {
+			$self->{dblink}{$d_name}{password} = $1;
+		}
+		if ($d_auth =~ s/AUTHENTICATED\s+BY\s+([^\s]+)\s+IDENTIFIED\s+BY\s+([^\s]+)//) {
+			$self->{dblink}{$d_name}{user} = $1;
+			$self->{dblink}{$d_name}{password} = $2;
+		}
+	}
+
+	# Directory
+	while ($content =~ s/CREATE(?: SHARED)?(?: PUBLIC)?\s+DATABASE\s+LINK\s+([^\s]+)\s+USING\s+([^;]+);//is) {
+		my $d_name = $1;
+		my $d_conn = $2;
+		$d_name =~ s/"//g;
+		$d_conn =~ s/'//g;
+		$self->{dblink}{$d_name}{owner} = $self->{shema};
+		$self->{dblink}{$d_name}{host} = $d_conn;
+	}
+
+
+}
+
+
 =head2 _views
 
 This function is used to retrieve all views information.
@@ -2950,12 +2993,16 @@ LANGUAGE plpgsql ;
 				$sql_output .= "CREATE SERVER \"$db\"";
 			}
 			$sql_output .= " FOREIGN DATA WRAPPER oracle_fdw OPTIONS (dbserver '$self->{dblink}{$db}{host}');\n";
-
+			if ($self->{dblink}{$db}{password} ne 'NONE') {
+				$self->{dblink}{$db}{password} ||= 'secret';
+				$self->{dblink}{$db}{password} = ", password '$self->{dblink}{$db}{password}'";
+			}
+			$self->{dblink}{$db}{user} ||= $self->{dblink}{$db}{username};
 			if ($self->{dblink}{$db}{username}) {
 				if (!$self->{preserve_case}) {
-					$sql_output .= "CREATE USER MAPPING FOR \L$self->{dblink}{$db}{username}\E SERVER \L$db\E OPTIONS (user '\L$self->{dblink}{$db}{username}\E', password 'secret');\n";
+					$sql_output .= "CREATE USER MAPPING FOR \L$self->{dblink}{$db}{username}\E SERVER \L$db\E OPTIONS (user '\L$self->{dblink}{$db}{user}\E' $self->{dblink}{$db}{password});\n";
 				} else {
-					$sql_output .= "CREATE USER MAPPING FOR \"$self->{dblink}{$db}{username}\" SERVER \"$db\" OPTIONS (user '$self->{dblink}{$db}{username}', password 'secret');\n";
+					$sql_output .= "CREATE USER MAPPING FOR \"$self->{dblink}{$db}{username}\" SERVER \"$db\" OPTIONS (user '$self->{dblink}{$db}{user}' $self->{dblink}{$db}{password});\n";
 				}
 			}
 			
