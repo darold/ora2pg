@@ -2973,9 +2973,9 @@ LANGUAGE plpgsql ;
 				my $write = 'false';
 				$write = 'true' if ($self->{directory}{$db}{grantee}{$owner} =~ /write/i);
 				if (!$self->{preserve_case}) {
-					$sql_output .= "INSERT INTO directory_roles(directory_name,directory_role,directory_read,directory_write) VALUES ('$db','\L$owner\E', true, $write);\n";
+					$sql_output .= "INSERT INTO external_file.directory_roles(directory_name,directory_role,directory_read,directory_write) VALUES ('$db','\L$owner\E', true, $write);\n";
 				} else {
-					$sql_output .= "INSERT INTO directory_roles(directory_name,directory_role,directory_read,directory_write) VALUES ('$db','$owner', true, $write);\n";
+					$sql_output .= "INSERT INTO external_file.directory_roles(directory_name,directory_role,directory_read,directory_write) VALUES ('$db','$owner', true, $write);\n";
 				}
 			}
 			$i++;
