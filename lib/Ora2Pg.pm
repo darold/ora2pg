@@ -951,13 +951,13 @@ sub _init
 			$self->_compile_schema($self->{dbh}, uc($self->{compile_schema}));
 		}
 
-		$self->_get_pkg_functions() if (!$self->{package_as_schema} && (!grep(/^$self->{type}$/, 'COPY', 'INSERT', 'SEQUENCE', 'GRANT', 'TABLESPACE', 'QUERY', 'SYNONYM', 'FDW', 'KETTLE', 'DBLINK')));
+		$self->_get_pkg_functions() if (!$self->{package_as_schema} && (!grep(/^$self->{type}$/, 'COPY', 'INSERT', 'SEQUENCE', 'GRANT', 'TABLESPACE', 'QUERY', 'SYNONYM', 'FDW', 'KETTLE', 'DBLINK', 'DIRECTORY')));
 		$self->{security} = $self->_get_security_definer($self->{type}) if (grep(/^$self->{type}$/, 'TRIGGER', 'FUNCTION','PROCEDURE','PACKAGE'));
 
 	} else {
 
 		$self->{plsql_pgsql} = 1;
-		if (grep(/^$self->{type}$/, 'TABLE', 'SEQUENCE', 'GRANT', 'TABLESPACE', 'VIEW', 'TRIGGER', 'QUERY', 'FUNCTION','PROCEDURE','PACKAGE','TYPE','SYNONYM')) {
+		if (grep(/^$self->{type}$/, 'TABLE', 'SEQUENCE', 'GRANT', 'TABLESPACE', 'VIEW', 'TRIGGER', 'QUERY', 'FUNCTION','PROCEDURE','PACKAGE','TYPE','SYNONYM', 'DIRECTORY')) {
 			$self->export_schema();
 		} else {
 			$self->logit("FATAL: bad export type using input file option\n", 0, 1);
@@ -998,6 +998,8 @@ sub _init
 			$self->_partitions();
 		} elsif ($self->{type} eq 'DBLINK') {
 			$self->_dblinks();
+		} elsif ($self->{type} eq 'DIRECTORY') {
+			$self->_directories();
 		} elsif ($self->{type} eq 'MVIEW') {
 			$self->_materialized_views();
 		} elsif (($self->{type} eq 'SHOW_REPORT') || ($self->{type} eq 'SHOW_VERSION') || ($self->{type} eq 'SHOW_SCHEMA') || ($self->{type} eq 'SHOW_TABLE') || ($self->{type} eq 'SHOW_COLUMN') || ($self->{type} eq 'SHOW_ENCODING')) {
@@ -1005,7 +1007,7 @@ sub _init
 			$self->{dbh}->disconnect() if ($self->{dbh}); 
 			exit 0;
 		} else {
-			warn "type option must be TABLE, VIEW, GRANT, SEQUENCE, TRIGGER, PACKAGE, FUNCTION, PROCEDURE, PARTITION, TYPE, INSERT, COPY, TABLESPACE, SHOW_REPORT, SHOW_VERSION, SHOW_SCHEMA, SHOW_TABLE, SHOW_COLUMN, SHOW_ENCODING, FDW, MVIEW, QUERY, KETTLE, DBLINK, SYNONYM\n";
+			warn "type option must be TABLE, VIEW, GRANT, SEQUENCE, TRIGGER, PACKAGE, FUNCTION, PROCEDURE, PARTITION, TYPE, INSERT, COPY, TABLESPACE, SHOW_REPORT, SHOW_VERSION, SHOW_SCHEMA, SHOW_TABLE, SHOW_COLUMN, SHOW_ENCODING, FDW, MVIEW, QUERY, KETTLE, DBLINK, SYNONYM, DIRECTORY\n";
 		}
 		# Mofify export structure if required
 		if ($self->{type} =~ /^(INSERT|COPY)$/) {
@@ -2097,8 +2099,34 @@ sub read_tablespace_from_file
 	}
 }
 
+sub read_directory_from_file
+{
+	my $self = shift;
 
+	# Load file in a single string
+	my $content = $self->_get_dml_from_file();
 
+	# Directory
+	while ($content =~ s/CREATE(?: OR REPLACE)?\s+DIRECTORY\s+([^\s]+)\s+AS\s+'([^']+)'\s*;//is) {
+		my $d_name = uc($1);
+		my $d_def = $2;
+		$d_name =~ s/"//g;
+		if ($d_def !~ /\/$/) {
+			$d_def .= '/';
+		}
+		$self->{directory}{$d_name}{path} = $d_def;
+	}
+
+	# Directory
+	while ($content =~ s/GRANT\s+(.*?)ON\s+DIRECTORY\s+([^\s]+)\s+TO\s+([^;\s]+)\s*;//is) {
+		my $d_grant = $1;
+		my $d_name = uc($2);
+		my $d_user = uc($3);
+		$d_name =~ s/"//g;
+		$d_user =~ s/"//g;
+		$self->{directory}{$d_name}{grantee}{$d_user} = $d_grant;
+	}
+}
 
 
 =head2 _views
@@ -2236,6 +2264,22 @@ sub _dblinks
 
 }
 
+=head2 _directories
+
+This function is used to retrieve all Oracle directories information.
+
+Sets the main hash $self->{directory}.
+
+=cut
+
+sub _directories
+{
+	my ($self) = @_;
+
+	$self->logit("Retrieving directories information...\n", 1);
+	%{$self->{directory}} = $self->_get_directory();
+
+}
 
 
 sub get_replaced_tbname
@@ -2900,6 +2944,44 @@ LANGUAGE plpgsql ;
 		}
 		if (!$self->{quiet} && !$self->{debug}) {
 			print STDERR $self->progress_bar($i - 1, $num_total_dblink, 25, '=', 'dblink', 'end of output.'), "\n";
+		}
+		if (!$sql_output) {
+			$sql_output = "-- Nothing found of type $self->{type}\n";
+		}
+
+		$self->dump($sql_header . $sql_output);
+		return;
+	}
+
+	# Process dblink only
+	if ($self->{type} eq 'DIRECTORY') {
+		$self->logit("Add directory definition...\n", 1);
+		# Read DML from file if any
+		if ($self->{input_file}) {
+			$self->read_directory_from_file();
+		}
+		my $i = 1;
+		my $num_total_directory = scalar keys %{$self->{directory}};
+
+		foreach my $db (sort { $a cmp $b } keys %{$self->{directory}}) {
+
+			if (!$self->{quiet} && !$self->{debug}) {
+				print STDERR $self->progress_bar($i, $num_total_directory, 25, '=', 'directory', "generating $db" );
+			}
+			$sql_output .= "INSERT INTO external_file.directories (directory_name,directory_path) VALUES ('$db', '$self->{directory}{$db}{path}');\n";
+			foreach my $owner (keys %{$self->{directory}{$db}{grantee}}) {
+				my $write = 'false';
+				$write = 'true' if ($self->{directory}{$db}{grantee}{$owner} =~ /write/i);
+				if (!$self->{preserve_case}) {
+					$sql_output .= "INSERT INTO directory_roles(directory_name,directory_role,directory_read,directory_write) VALUES ('$db','\L$owner\E', true, $write);\n";
+				} else {
+					$sql_output .= "INSERT INTO directory_roles(directory_name,directory_role,directory_read,directory_write) VALUES ('$db','$owner', true, $write);\n";
+				}
+			}
+			$i++;
+		}
+		if (!$self->{quiet} && !$self->{debug}) {
+			print STDERR $self->progress_bar($i - 1, $num_total_directory, 25, '=', 'directory', 'end of output.'), "\n";
 		}
 		if (!$sql_output) {
 			$sql_output = "-- Nothing found of type $self->{type}\n";
@@ -6325,6 +6407,45 @@ sub _get_external_tables
 	return %data;
 }
 
+=head2 _get_directory
+
+This function implements an Oracle-native directory information.
+
+Returns a hash of directory names with the path they are based on.
+
+=cut
+
+sub _get_directory
+{
+	my ($self) = @_;
+
+	# Retrieve all database link from dba_db_links table
+	my $str = "SELECT d.DIRECTORY_NAME, d.DIRECTORY_PATH, d.OWNER, p.GRANTEE, p.PRIVILEGE FROM $self->{prefix}_DIRECTORIES d, $self->{prefix}_TAB_PRIVS p";
+	$str .= " WHERE d.DIRECTORY_NAME = p.TABLE_NAME";
+	if (!$self->{schema}) {
+		$str .= " AND p.GRANTEE NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
+	} else {
+		$str .= " AND p.GRANTEE = '$self->{schema}'";
+	}
+	$str .= $self->limit_to_objects('TABLE', 'd.DIRECTORY_NAME');
+	$str .= " ORDER BY d.DIRECTORY_NAME";
+
+	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	
+	my %data = ();
+	while (my $row = $sth->fetch) {
+
+		$data{$row->[0]}{path} = $row->[1];
+		if ($row->[1] !~ /\/$/) {
+			$data{$row->[0]}{path} .= '/';
+		}
+		$data{$row->[0]}{grantee}{$row->[3]} .= $row->[4];
+	}
+	$sth->finish();
+
+	return %data;
+}
 
 =head2 _get_dblink
 

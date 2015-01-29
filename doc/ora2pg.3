@@ -184,6 +184,7 @@ Features included:
 \&        \- Export Oracle locator and spatial geometries into PostGis.
 \&        \- Export DBLINK as Oracle FDW.
 \&        \- Export SYNONYMS as views.
+\&        \- Export DIRECTORY as external table or directory for external_file extension.
 .Ve
 .PP
 Ora2Pg do its best to automatically convert your Oracle database to PostgreSQL
@@ -697,6 +698,7 @@ Here are the different values of the \s-1TYPE\s0 directive, default is \s-1TABLE
 \&        \- KETTLE: Generate XML ktr template files to be used by Kettle.
 \&        \- DBLINK: Generate oracle foreign data wrapper server to use as dblink.
 \&        \- SYNONYM: Export Oracle\*(Aqs synonyms as views on other schema\*(Aqs objects.
+\&        \- DIRECTORY: Export Oracle\*(Aqs directories as external_file extension objects.
 .Ve
 .Sp
 Only one type of export can be perform at the same time so the \s-1TYPE\s0 directive
@@ -1546,6 +1548,8 @@ will just contains the full path to the external file. If you set the
 destination type to \s-1BYTEA\s0, the default, Ora2Pg will export the content of the
 \&\s-1BFILE\s0 as bytea. The third case is when you set the destination type to \s-1EFILE\s0,
 in this case, Ora2Pg will export it as an \s-1EFILE\s0 record: (\s-1DIRECTORY\s0, \s-1FILENAME\s0).
+Use the \s-1DIRECTORY\s0 export type to export the existing directories as well as
+priviledge on those directories.
 .Sp
 There's no \s-1SQL\s0 function available to retrieve the path to the \s-1BFILE\s0, then Ora2Pg
 have to create one using the \s-1DBMS_LOB\s0 package.

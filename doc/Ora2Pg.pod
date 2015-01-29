@@ -57,6 +57,7 @@ Features included:
 	- Export Oracle locator and spatial geometries into PostGis.
 	- Export DBLINK as Oracle FDW.
 	- Export SYNONYMS as views.
+	- Export DIRECTORY as external table or directory for external_file extension.
 
 Ora2Pg do its best to automatically convert your Oracle database to PostgreSQL
 but there's still manual works to do. The Oracle specific PL/SQL code generated
@@ -582,6 +583,7 @@ Here are the different values of the TYPE directive, default is TABLE:
 	- KETTLE: Generate XML ktr template files to be used by Kettle.
 	- DBLINK: Generate oracle foreign data wrapper server to use as dblink.
 	- SYNONYM: Export Oracle's synonyms as views on other schema's objects.
+	- DIRECTORY: Export Oracle's directories as external_file extension objects.
 
 Only one type of export can be perform at the same time so the TYPE directive
 must be unique. If you have more than one only the last found in the file will
@@ -1441,6 +1443,8 @@ will just contains the full path to the external file. If you set the
 destination type to BYTEA, the default, Ora2Pg will export the content of the
 BFILE as bytea. The third case is when you set the destination type to EFILE,
 in this case, Ora2Pg will export it as an EFILE record: (DIRECTORY, FILENAME).
+Use the DIRECTORY export type to export the existing directories as well as
+priviledge on those directories.
 
 
 There's no SQL function available to retrieve the path to the BFILE, then Ora2Pg
