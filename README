@@ -1617,8 +1617,8 @@ CONFIGURATION
                 (field1 IS NULL) is replaced by (coalesce(field1::text, '') = '')
                 (field2 IS NOT NULL) is replaced by (field2 IS NOT NULL AND field2::text <> '')
 
-        Default is replacement to be sure that your application will have se
-        same behavior.
+        You might want this replacement to be sure that your application
+        will have the same behavior.
 
     PACKAGE_AS_SCHEMA
         If you don't want to export package as schema but as simple

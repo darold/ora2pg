@@ -521,7 +521,8 @@ PKEY_IN_CREATE		0
 # to the coalesce() function to mimic the Oracle behavior where empty field are
 # considered equal to NULL. Ex: (field1 IS NULL) and (field2 IS NOT NULL) will
 # be replaced by (coalesce(field1::text, '') = '') and (field2 IS NOT NULL AND
-# field2::text <> '')
+# field2::text <> ''). You might want this replacement to be sure that your
+# application will have se same behavior.
 NULL_EQUAL_EMPTY	1
 
 # By default Ora2Pg will export your external table as file_fdw tables. If

@@ -124,7 +124,7 @@
 .\" ========================================================================
 .\"
 .IX Title "ORA2PG 1"
-.TH ORA2PG 1 "2015-01-28" "perl v5.14.2" "User Contributed Perl Documentation"
+.TH ORA2PG 1 "2015-01-29" "perl v5.14.2" "User Contributed Perl Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -1766,7 +1766,8 @@ considered equal to \s-1NULL\s0.
 \&        (field2 IS NOT NULL) is replaced by (field2 IS NOT NULL AND field2::text <> \*(Aq\*(Aq)
 .Ve
 .Sp
-Default is replacement to be sure that your application will have se same behavior.
+You might want this replacement to be sure that your application will have the
+same behavior.
 .IP "\s-1PACKAGE_AS_SCHEMA\s0" 4
 .IX Item "PACKAGE_AS_SCHEMA"
 If you don't want to export package as schema but as simple functions you
