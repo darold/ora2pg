@@ -322,12 +322,14 @@ sub create_project
 	print "\tschema/\n";
 
 	foreach my $exp (sort @SCHEMA_ARRAY ) {
+		$exp =~ s/Y$/IE/;
 		mkdir("$base_path/schema/" . lc($exp) . 's');
 		print "\t\t" . lc($exp) . "s/\n";
 	}
 	mkdir("$base_path/sources");
 	print "\tsources/\n";
 	foreach my $exp (sort @SOURCES_ARRAY ) {
+		$exp =~ s/Y$/IE/;
 		mkdir("$base_path/sources/" . lc($exp) . 's');
 		print "\t\t" . lc($exp) . "s/\n";
 	}
@@ -374,6 +376,7 @@ ora2pg -t SHOW_REPORT -c \$namespace/config/ora2pg.conf --dump_as_html --estimat
 for etype in \$(echo \$EXPORT_TYPE | tr " " "\\n")
 do
         ltype=`echo \$etype | tr '[:upper:]' '[:lower:]'`
+        ltype=`echo \$ltype | sed 's/y\$/ie/'`
         echo "Running: ora2pg -p -t \$etype -o \$ltype.sql -b \$namespace/schema/\$\{ltype\}s -c \$namespace/config/ora2pg.conf"
         ora2pg -p -t \$etype -o \$ltype.sql -b \$namespace/schema/\$\{ltype\}s -c \$namespace/config/ora2pg.conf
 done
@@ -381,6 +384,7 @@ done
 for etype in \$(echo \$SOURCE_TYPE | tr " " "\\n")
 do
         ltype=`echo \$etype | tr '[:upper:]' '[:lower:]'`
+        ltype=`echo \$ltype | sed 's/y\$/ie/'`
         echo "Running: ora2pg -t \$etype -o \$ltype.sql -b \$namespace/sources/\$\{ltype\}s -c \$namespace/config/ora2pg.conf"
         ora2pg -t \$etype -o \$ltype.sql -b \$namespace/sources/\$\{ltype\}s -c \$namespace/config/ora2pg.conf
 done
