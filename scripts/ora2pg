@@ -1,7 +1,4 @@
 #!/usr/bin/perl
-
-eval 'exec /usr/bin/perl  -S $0 ${1+"$@"}'
-    if 0; # not running under some shell
 #------------------------------------------------------------------------------
 # Project  : Oracle to Postgresql converter
 # Name     : ora2pg
@@ -322,16 +319,18 @@ sub create_project
 	print "\tschema/\n";
 
 	foreach my $exp (sort @SCHEMA_ARRAY ) {
-		$exp =~ s/Y$/IE/;
-		mkdir("$base_path/schema/" . lc($exp) . 's');
-		print "\t\t" . lc($exp) . "s/\n";
+		my $tpath = lc($exp);
+		$tpath =~ s/y$/ie/;
+		mkdir("$base_path/schema/" . $tpath . 's');
+		print "\t\t" . $tpath . "s/\n";
 	}
 	mkdir("$base_path/sources");
 	print "\tsources/\n";
 	foreach my $exp (sort @SOURCES_ARRAY ) {
-		$exp =~ s/Y$/IE/;
-		mkdir("$base_path/sources/" . lc($exp) . 's');
-		print "\t\t" . lc($exp) . "s/\n";
+		my $tpath = lc($exp);
+		$tpath =~ s/y$/ie/;
+		mkdir("$base_path/source/" . $tpath . 's');
+		print "\t\t" . $tpath . "s/\n";
 	}
 	mkdir("$base_path/data");
 	print "\tdata/\n";
