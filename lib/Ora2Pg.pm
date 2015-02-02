@@ -3098,6 +3098,15 @@ LANGUAGE plpgsql ;
 			$trig->[4] =~ s/[;\/]$//;
 			$self->logit("\tDumping trigger $trig->[0] defined on table $trig->[3]...\n", 1);
 			my $tbname = $self->get_replaced_tbname($trig->[3]);
+			# Replace column name in function code
+			if (exists $self->{replaced_cols}{"\L$trig->[3]\E"}) {
+				foreach my $coln (sort keys %{$self->{replaced_cols}{"\L$trig->[3]\E"}}) {
+					$self->logit("\tReplacing column \L$coln\E as " . $self->{replaced_cols}{"\L$trig->[3]\E"}{"\L$coln\E"} . "...\n", 1);
+					my $cname = $self->{replaced_cols}{"\L$trig->[3]\E"}{"\L$coln\E"};
+					$cname = lc($cname) if (!$self->{preserve_case});
+					$trig->[4] =~ s/(OLD|NEW)\.$coln\b/$1\.$cname/igs;
+				}
+			}
 			# Check if it's like a pg rule
 			if (!$self->{pg_supports_insteadof} && $trig->[1] =~ /INSTEAD OF/) {
 				if (!$self->{preserve_case}) {
