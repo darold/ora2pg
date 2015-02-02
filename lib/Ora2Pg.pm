@@ -9888,10 +9888,15 @@ sub limit_to_objects
 
 	my @cols = split(/\|/, $column);
 	my @arr_type = split(/\|/, $obj_type);
+	my @done = ();
 	for (my $i = 0; $i <= $#arr_type; $i++) {
 
 		my $colname = $cols[0];
 		$colname = $cols[$i] if (($#cols >= $i) && $cols[$i]);
+
+		# Do not double exclusion/inclusion when column name is the same
+		next if (grep(/^$colname$/, @done) && ! exists $self->{limited}{$arr_type[$i]});
+		push(@done, $colname);
 
 		if ($#{$self->{limited}{$arr_type[$i]}} >= 0) {
 			$str .= ' AND (';
