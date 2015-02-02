@@ -3097,12 +3097,13 @@ LANGUAGE plpgsql ;
 			chomp($trig->[4]);
 			$trig->[4] =~ s/[;\/]$//;
 			$self->logit("\tDumping trigger $trig->[0] defined on table $trig->[3]...\n", 1);
+			my $tbname = $self->get_replaced_tbname($trig->[3]);
 			# Check if it's like a pg rule
 			if (!$self->{pg_supports_insteadof} && $trig->[1] =~ /INSTEAD OF/) {
 				if (!$self->{preserve_case}) {
-					$sql_output .= "CREATE OR REPLACE RULE \L$trig->[0]\E AS\n\tON $trig->[2] TO \L$trig->[3]\E\n\tDO INSTEAD\n(\n\t$trig->[4]\n);\n\n";
+					$sql_output .= "CREATE OR REPLACE RULE \L$trig->[0]\E AS\n\tON $trig->[2] TO $tbname\n\tDO INSTEAD\n(\n\t$trig->[4]\n);\n\n";
 				} else {
-					$sql_output .= "CREATE OR REPLACE RULE \L$trig->[0]\E AS\n\tON $trig->[2] TO \"$trig->[3]\"\n\tDO INSTEAD\n(\n\t$trig->[4]\n);\n\n";
+					$sql_output .= "CREATE OR REPLACE RULE \L$trig->[0]\E AS\n\tON $trig->[2] TO $tbname\n\tDO INSTEAD\n(\n\t$trig->[4]\n);\n\n";
 				}
 				if ($self->{force_owner}) {
 					my $owner = $trig->[8];
@@ -3127,9 +3128,9 @@ LANGUAGE plpgsql ;
 					}
 				}
 				if (!$self->{preserve_case}) {
-					$sql_output .= "DROP TRIGGER $self->{pg_supports_ifexists} \L$trig->[0]\E ON \L$trig->[3]\E CASCADE;\n";
+					$sql_output .= "DROP TRIGGER $self->{pg_supports_ifexists} \L$trig->[0]\E ON $tbname CASCADE;\n";
 				} else {
-					$sql_output .= "DROP TRIGGER $self->{pg_supports_ifexists} \L$trig->[0]\E ON \"$trig->[3]\" CASCADE;\n";
+					$sql_output .= "DROP TRIGGER $self->{pg_supports_ifexists} \L$trig->[0]\E ON $tbname CASCADE;\n";
 				}
 				my $security = '';
 				my $revoke = '';
@@ -3173,9 +3174,9 @@ LANGUAGE plpgsql ;
 					my $statement = 0;
 					$statement = 1 if ($trig->[1] =~ s/ STATEMENT//);
 					if (!$self->{preserve_case}) {
-						$sql_output .= "$trig->[1] $trig->[2] ON \L$trig->[3]\E ";
+						$sql_output .= "$trig->[1] $trig->[2] ON $tbname ";
 					} else {
-						$sql_output .= "$trig->[1] $trig->[2] ON \"$trig->[3]\" ";
+						$sql_output .= "$trig->[1] $trig->[2] ON $tbname ";
 					}
 					if ($statement) {
 						$sql_output .= "FOR EACH STATEMENT\n";
@@ -9888,14 +9889,10 @@ sub limit_to_objects
 
 	my @cols = split(/\|/, $column);
 	my @arr_type = split(/\|/, $obj_type);
-	my @done = ();
 	for (my $i = 0; $i <= $#arr_type; $i++) {
 
 		my $colname = $cols[0];
 		$colname = $cols[$i] if (($#cols >= $i) && $cols[$i]);
-
-		next if (grep(/^$colname$/, @done) && !exists $self->{limited}{$arr_type[$i]});
-		push(@done, $colname);
 
 		if ($#{$self->{limited}{$arr_type[$i]}} >= 0) {
 			$str .= ' AND (';
