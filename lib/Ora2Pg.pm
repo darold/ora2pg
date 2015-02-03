@@ -8057,7 +8057,8 @@ sub _convert_function
 		my $params = join(" || ',' || ", @{$fct_detail{at_args}});
 		$params = " '' " if (!$params);
 		my $q_str = "SELECT $fname$at_suffix ($params)";
-		$at_wrapper .= qq{DECLARE
+		$at_wrapper .= qq{
+DECLARE
 	-- Change this to reflect the dblink connection string
 	v_conn_str  text := 'port=5432 dbname=testdb host=localhost user=pguser password=pgpass';
 	v_query     text;
