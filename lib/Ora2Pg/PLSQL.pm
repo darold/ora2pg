@@ -248,9 +248,10 @@ sub plsql_to_plpgsql
 	$str =~ s/DBMS_OUTPUT\.(put_line|put|new_line)\s*\((.*?)\);/&raise_output($2)/igse;
 
 	# Substitution to replace type of sql variable in PLSQL code
-	foreach my $t (keys %Ora2Pg::TYPE) {
-		$str =~ s/\b$t\b/$Ora2Pg::TYPE{$t}/igs;
-	}
+#	foreach my $t (keys %Ora2Pg::TYPE) {
+#		$str =~ s/\b$t\b/$Ora2Pg::TYPE{$t}/igs;
+#	}
+
 	# Procedure are the same as function in PG
 	$str =~ s/\bPROCEDURE\b/FUNCTION/igs;
 	# Simply remove this as not supported
@@ -322,7 +323,7 @@ sub plsql_to_plpgsql
 	}
 
 	# Remove the function name repetion at end
-	$str =~ s/END[\s\t]+(?!IF|LOOP|CASE|INTO|FROM|,)[a-z0-9_"]+[\s\t]*([;]*)$/END$1/igs;
+	$str =~ s/END[\s\t]+(?!IF|LOOP|CASE|INTO|FROM|,)[a-z0-9_"]+\s*([;]*)\s*$/END$1/igs;
 
 	# Replace ending ROWNUM with LIMIT
 	$str =~ s/(WHERE|AND)[\s\t]*ROWNUM[\s\t]*=[\s\t]*(\d+)/LIMIT 1 OFFSET $2/igs;

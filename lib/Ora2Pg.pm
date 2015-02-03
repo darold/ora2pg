@@ -5476,11 +5476,15 @@ sub _howto_get_data
 
 	# Fix a problem when the table need to be prefixed by the schema
 	my $realtable = $table;
-	if ($self->{tables}{$table}{table_info}{owner}) {
-		$realtable = "$self->{tables}{$table}{table_info}{owner}.$realtable";
-	} elsif ($self->{tables}{$table}{owner}) {
-		$realtable = "$self->{tables}{$table}{owner}.$realtable";
+	if ($realtable =~ /[^0-9A-Z_]/i) {
+		$realtable =~ s/\"//g;
+		$realtable = "\"$realtable\"";
 	}
+	my $owner  = $self->{tables}{$table}{table_info}{owner} || $self->{tables}{$table}{owner} || '';
+	if ($owner && ($owner =~ /[^0-9A-Z_]/i)) {
+		$owner = "\"$owner\"";
+	}
+	$realtable = "$owner.$realtable";
 	$realtable = uc($realtable);
 
 	my $alias = 'a';
