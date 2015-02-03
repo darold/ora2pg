@@ -1,3 +1,215 @@
+2015 02 04 - v15.0
+
+This major release improve PL/SQL code replacement, fixes several bugs and
+adds some new useful features:
+
+    - Add support to the PostgreSQL external_file extension to mimic BFILE
+      type from Oracle. See https://github.com/darold/external_file for
+      more information.
+    - Allow export of Oracle's DIRECTORY as external_file extension objects
+      This will also try to export read/write privilege on those directories.
+    - Allow export of Oracle's DATABASE LINK as Oracle foreign data wrapper
+      server using oracle_fdw.
+    - Allow function with PRAGMA AUTONOMOUS_TRANSACTION to be exported through
+      a dblink wrapper to achieve the autonomous transaction.
+    - Allow export of Oracle's SYNONYMS as views. Views can use foreign table
+      to create "synonym" on object of a remote database.
+    - Add trimming of data when DATA_TYPE is used to convert CHAR(n) Oracle
+      column into varchar(n) or text. Default is to trim both side any space
+      character. This behavior can be controlled using two new configuration
+      directives TRIM_TYPE and TRIM_CHAR.
+    - Add auto detection of geometry constraint type and dimensions through
+      spatial index parameters. This avoid the overhead of sequential scan
+      of the geometric column.
+    - Add support to export Oracle sub partition and create sub partition
+      for PostgreSQL with the corresponding trigger.
+    - ALLOW and EXCLUDE directives are now able to apply filter on the object
+      type. Backward compatibility can not be fully preserved, older definition
+      will apply to current export type only, this could change your export in
+      some conditions. See documentation update for more explanation.
+    - Add PACKAGE_AS_SCHEMA directive to change default behavior that use a
+      schema to emulate Oracle package function call. When disable, all calls
+      to package_name.function_name() will be turn into package_name_function_name()
+      just like a function call in current schema.
+    - Add FKEY_OPTIONS to force foreign keys options. List of supported options
+      are: ON DELETE|UPDATE CASCADE|RESTRICT|NO ACTION.
+    - Add rewriting of internal functions in package body, those functions will
+      be prefixed by the package name. Thanks to Dominique Legendre for the
+      feature request.
+
+Some change can break backward compatibility and make configuration directives
+obsolete:
+
+    - The ALLOW_PARTITION configuration directive has been removed. With new
+      extended filters in ALLOW/EXCLUDE directive, this one is obsolete.
+      Backward compatibility is preserved but may be removed in the future.
+    - ALLOW and EXCLUDE directives do not works as previously. Backward
+      compatibility may be preserved with some export type but may be broken
+      in most of them. See documentation.
+    - It is recommended now to leave the NLS_LANG and CLIENT_ENCODING commented
+      to let Ora2Pg handle automatically the encoding. Those directives may be
+      removed in the future.
+
+Here is the full changelog of the release:
+
+    - Declares SYNONYM views as SECURITY DEFINER to be able to grant access to
+      objects in other schema.
+    - Fix wrong replacement of data type in function body. Thanks to Dominique
+      Legendre for the report.
+    - Fix missing column name replacement on trigger export when REPLACE_COLS
+      is defined. Thanks to Dominique Legendre for the report.
+    - Fix missing table replacement on trigger export when REPLACE_TABLES is
+      defined. Thanks to Dominique Legendre for the report.
+    - Fix case where IS NULL substitution was not working. Thanks to Dominique
+      Legendre for the report.
+    - Remove double exclusion clause when multiple export type is used with same
+      column name and no values defined.
+    - Allow parsing of DATABASE LINK and SYNONYM from a DDL file.
+    - Add DIRECTORY export type to export all Oracle directories as entries for
+      the external_file extension. This will also export read/write privilege
+      on those directories. Thanks to Dominique Legendre for the feature request.
+    - Review documentation about NULL_EQUAL_EMPTY.
+    - Fix missing code to replace IS NULL as coalesce(...). Thanks to Dominique
+      Legendre for the report.
+    - Add external_file schema to search_path when BFILE is set to EFILE in
+      directive DATA_TYPE. Thanks to Dominique Legendre for the request.
+    - Remove IF EXIST clause to oracle function created by Ora2Pg for BFILE
+      export. Thanks to Dominique Legendre for the report.
+    - Add support to the PostgreSQL external_file extension to mimic BFILE type
+      from Oracle. See https://github.com/darold/external_file for more information.
+    - Add auto detection of geometry constraint type and dimensions through the
+      spatial index parameters first. This avoid the overhead of sequential scan
+      of the geometric column.
+    - Remove lookup at package function when not required.
+    - Fix issue with database < 10g that do not have the DROPPED column into the
+      ALL_TABLES view. Thanks to Lance Jacob for the report.
+    - Add trimming of data when DATA_TYPE is used to convert CHAR(n) Oracle
+      column into varchar(n) or text column into PostgreSQL. Default is to
+      trim both side any whitespace character. This behavior can be controlled
+      using the new configuration directives TRIM_TYPE and TRIM_CHAR.
+    - Update copyright year.
+    - Add assessment cost for object TABLE SUBPARTITION and review cost for
+      object DATABASE LINK.
+    - Update documentation about SYNONYM export.
+    - Allow export of SYNONYMS as views with a new export type: SYNONYM.
+    - Fix object exclusion function with Oracle 8i and 9i. Thanks to Lance Jacob
+      for the report.
+    - Fix INTERVAL YEAR TO MONTH and DAY TO SECOND with precision.
+    - Remove unused pragma from the cost assessment.
+    - Suppress PRAGMA RESTRICT_REFERENCES, PRAGMA SERIALLY_REUSABLE and INLINE
+      from the PLSQL code. There is no equivalent and no use in plpgsql.
+    - Fix several issues in function/procedure/package extraction from file
+      input and some other related bug.
+    - Remove single slash and \\r from function code.
+    - Remove schema from package name with input file to avoid creating
+      function with SCHEMA.PKGNAME.FCTNAME
+    - Fix ALLOW/EXCLUDE ignored with type COPY or INSERT. Thanks to thleblond
+      for the patch.
+    - Fix setting of NLS_NUMERIC_CHARACTERS and NLS_TIMESTAMP_FORMAT with
+      multiprocess, the session parameters was lost with the cloning of the
+      database handle. Thanks to thleblond for the patch.
+    - Fix issue that could produce errors "invalid byte sequence" when dumping
+      data to pg database by forcing the client_encoding when PG_DSN is set.
+      Thanks to thleblond for the patch.
+    - Fix issue to add parenthesis with function with no parameters and wrong
+      use of PERFORM in cursor declaration. Thanks to hdeadman for the report.
+    - Fix broken export of function or procedure without parameter in package
+      body. Thanks to hdeadman for the report.
+    - Fix ERROR: "stack depth limit exceeded" generated by an infinite loop in
+      partition trigger when there is no default table when value is out of range.
+    - Add support to Oracle sub partition export.
+    - Fix issue with procedure in package without parameters.
+    - Enable DISABLE_SEQUENCE in generic configuration file.
+    - Fix unwanted alter sequence in data export when there is table allowed
+      or excluded.
+    - Fix initial default values of command line parameter that prevent value
+      in configuration file to be taken.
+    - Fix non working global definition of table in ALLOW and EXCLUDE directive
+      with COPY and INSERT export.
+    - Update ora2pg.spec, thanks to bbuechler for the patch.
+    - Close temporary files before deleting them, on Windows if they are not
+      explicitly closed there are not deleted. Thanks to spritchard for the
+      patch.
+    - Force schema name to be uppercase when PRESERVE_CASE is disable (default).
+      Thanks to Jim Longwill for the report.
+    - Add rewriting of internal functions in package body, those functions will
+      be prefixed by the package name. Thanks to Dominique Legendre for the
+      feature request.
+    - Fix type replacement in user defined type. Thanks to Dominique Legendre
+      for the report.
+    - Add filter with INSTEAD OF triggers on views to TRIGGER export type. Thanks
+      to Dominique Legendre for the feature request.
+    - Fix replacement of function name when PACKAGE_AS_SCHEMA is disabled.
+    - Fix PLSQL_PGSQL that was always set to 0 when -p was not used even if
+      configuration directive PLSQL_PGSQL was activated. Thanks to Dominique
+      Legendre for the report.
+    - Remove ALTER SCHEMA ... OWNER TO ... when CREATE_SCHEMA is not enable.
+      Thanks to Dominique Legendre for the report.
+    - Add DBLINK export to be created as foreign data wrapper server. Thanks to
+      the BRGM for the feature request.
+    - Remove ALLOW_PARTITION configuration directive, with extended filter in
+      ALLOW/EXCLUDE directive, this one is obsolete. Backward compatibility is
+      preserved.
+    - Add documentation about extended filters in ALLOW and EXCLUDE directive.
+    - Update documentation about VIEW_AS_TABLE and remove statement change with
+      export TYPE is VIEW.
+    - Add filter to grant export on functions, sequences, views, etc.
+    - Fix GRANT in ALLOW or EXCLUDE filters.
+    - Add commented order: "REVOKE ALL ON FUNCTION ... FROM PUBLIC;" when the
+      function is declared as SECURITY DEFINER.
+    - Prevent collecting column information with SHOW_TABLE export type.
+    - Fix default value SYSTIMESTAMP to CURRENT_TIMESTAMP, and remove DEFAULT
+      empty_blob(). Thanks to hdeadman for the report.
+    - ALLOW and EXCLUDE directives are now able to apply filter on the object
+      type. Backward compatibility can not be fully preserved, older definition
+      will apply to current export type only, this could change your export in
+      some conditions. See documentation update for more explanation. Thanks to
+      the BRGM for the feature request.
+    - Force function to be created with SECURITY DEFINER when AUTHID in table
+      ALL_PROCEDURES is set to DEFINER in Oracle. This only works with Oracle
+      >= 10g. Thanks to Dominique Legendre for the feature request.
+    - Add PACKAGE_AS_SCHEMA configuration directive to change default behavior
+      to use a schema to emulate Oracle package function call. When disable all
+      call to package_name.function_name() will be turn into package_name_function_name()
+      just like a function call in current schema. Thanks to the BRGM for the
+      feature request.
+    - Add a note to documentation about the way to convert srid into Oracle
+      database instead of in Ora2Pg. Thanks to Dominique Legendre for the hint.
+    - Fix documentation about SHOW_ENCODING export type.
+    - Remove use of REGEX_LIKE with Oracle version 9. Thanks to Lance Jacob for
+      the report.
+    - Replace new FKEY_OPTIONS by FKEY_ADD_UPDATE configuration directive with
+      three possible values: always, never and delete. It will force or not
+      Ora2Pg to add "ON UPDATE CASCADE" on foreign keys declaration.
+    - Allow FORCE_OWNER to work with all exported objects. Thanks to BRGM for
+      the feature request.
+    - Add FKEY_OPTIONS to force foreign keys options. List of supported options
+      are: ON DELETE|UPDATE CASCADE|RESTRICT|NO ACTION. Thanks to the BRGM for
+      the feature request.
+    - Fix ambiguous column in view extraction. Thanks to Dominique Legendre for
+      the report.
+    - Fix replacement of TYPE:LEN by boolean, ex: REPLACE_AS_BOOLEAN CHAR:1.
+      Thanks to jwiechmann for the report.
+    - Fix error ORA-00942 where Ora2Pg try to export data from a view defined
+      in VIEW_AS_TABLE configuration directive.
+    - Update list of excluded Oracle schema to the documentation.
+    - Fix export of all views with comments when VIEW_AS_TABLE is set.
+    - Fixed some typos in the generated sample configuration file. Thanks to
+      Hal Deadman for the patch.
+    - Limit column information export to the type of object extracted.
+    - Remove call to MDSYS in SQL code. Thanks to Dominique Legendre for the
+      report.
+    - Add more Oracle schema to the exclusion list.
+    - Fully remove join on DBA_SEGMENTS to retrieve the list of tables, views
+      and comments. Replaced by ALL_OBJECTS. Thanks to Dominique Legendre for
+      the help.
+    - Exclude JAVA\$.* tables and fix tables list query to include newly created
+      tables with no segments. Thanks to Dominique Legendre for the fix.
+    - Fix regex that convert all x = NULL clauses to x IS NULL to not replace
+      := NULL too.
+    - Autodetect unusual characters in owner name when extracting data and used
+      it embeded into double quote.
+
 2014 11 12 - v14.1
 
 This is a maintenance release only mainly to add patches that was not
