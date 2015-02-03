@@ -3097,12 +3097,22 @@ LANGUAGE plpgsql ;
 			chomp($trig->[4]);
 			$trig->[4] =~ s/[;\/]$//;
 			$self->logit("\tDumping trigger $trig->[0] defined on table $trig->[3]...\n", 1);
+			my $tbname = $self->get_replaced_tbname($trig->[3]);
+			# Replace column name in function code
+			if (exists $self->{replaced_cols}{"\L$trig->[3]\E"}) {
+				foreach my $coln (sort keys %{$self->{replaced_cols}{"\L$trig->[3]\E"}}) {
+					$self->logit("\tReplacing column \L$coln\E as " . $self->{replaced_cols}{"\L$trig->[3]\E"}{"\L$coln\E"} . "...\n", 1);
+					my $cname = $self->{replaced_cols}{"\L$trig->[3]\E"}{"\L$coln\E"};
+					$cname = lc($cname) if (!$self->{preserve_case});
+					$trig->[4] =~ s/(OLD|NEW)\.$coln\b/$1\.$cname/igs;
+				}
+			}
 			# Check if it's like a pg rule
 			if (!$self->{pg_supports_insteadof} && $trig->[1] =~ /INSTEAD OF/) {
 				if (!$self->{preserve_case}) {
-					$sql_output .= "CREATE OR REPLACE RULE \L$trig->[0]\E AS\n\tON $trig->[2] TO \L$trig->[3]\E\n\tDO INSTEAD\n(\n\t$trig->[4]\n);\n\n";
+					$sql_output .= "CREATE OR REPLACE RULE \L$trig->[0]\E AS\n\tON $trig->[2] TO $tbname\n\tDO INSTEAD\n(\n\t$trig->[4]\n);\n\n";
 				} else {
-					$sql_output .= "CREATE OR REPLACE RULE \L$trig->[0]\E AS\n\tON $trig->[2] TO \"$trig->[3]\"\n\tDO INSTEAD\n(\n\t$trig->[4]\n);\n\n";
+					$sql_output .= "CREATE OR REPLACE RULE \L$trig->[0]\E AS\n\tON $trig->[2] TO $tbname\n\tDO INSTEAD\n(\n\t$trig->[4]\n);\n\n";
 				}
 				if ($self->{force_owner}) {
 					my $owner = $trig->[8];
@@ -3124,12 +3134,17 @@ LANGUAGE plpgsql ;
 					if ($self->{plsql_pgsql}) {
 						$trig->[4] = Ora2Pg::PLSQL::plsql_to_plpgsql($trig->[4],$self->{null_equal_empty}, undef, $self->{package_functions});
 						$trig->[4] =~ s/\b(END[;]*)$/RETURN NEW;\n$1/igs;
+						my @parts = split(/BEGIN/, $trig->[4]);
+						if ($#parts > 0) {
+							$parts[0] = Ora2Pg::PLSQL::replace_sql_type($parts[0], $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type});
+						}
+						$trig->[4] = join('BEGIN', @parts);
 					}
 				}
 				if (!$self->{preserve_case}) {
-					$sql_output .= "DROP TRIGGER $self->{pg_supports_ifexists} \L$trig->[0]\E ON \L$trig->[3]\E CASCADE;\n";
+					$sql_output .= "DROP TRIGGER $self->{pg_supports_ifexists} \L$trig->[0]\E ON $tbname CASCADE;\n";
 				} else {
-					$sql_output .= "DROP TRIGGER $self->{pg_supports_ifexists} \L$trig->[0]\E ON \"$trig->[3]\" CASCADE;\n";
+					$sql_output .= "DROP TRIGGER $self->{pg_supports_ifexists} \L$trig->[0]\E ON $tbname CASCADE;\n";
 				}
 				my $security = '';
 				my $revoke = '';
@@ -3173,9 +3188,9 @@ LANGUAGE plpgsql ;
 					my $statement = 0;
 					$statement = 1 if ($trig->[1] =~ s/ STATEMENT//);
 					if (!$self->{preserve_case}) {
-						$sql_output .= "$trig->[1] $trig->[2] ON \L$trig->[3]\E ";
+						$sql_output .= "$trig->[1] $trig->[2] ON $tbname ";
 					} else {
-						$sql_output .= "$trig->[1] $trig->[2] ON \"$trig->[3]\" ";
+						$sql_output .= "$trig->[1] $trig->[2] ON $tbname ";
 					}
 					if ($statement) {
 						$sql_output .= "FOR EACH STATEMENT\n";
@@ -4480,9 +4495,9 @@ CREATE TRIGGER insert_${table}_trigger
 				$sql_output .= "-- You need to create foreign table $self->{synonyms}{$syn}{table_owner}.$self->{synonyms}{$syn}{table_name} using foreign server: $self->{synonyms}{$syn}{dblink} (see DBLINK and FDW export type)\n";
 			}
 			if (!$self->{preserve_case}) {
-				$sql_output .= "CREATE VIEW \L$self->{synonyms}{$syn}{owner}.$syn\E AS SELECT * FROM \L$self->{synonyms}{$syn}{table_owner}.$self->{synonyms}{$syn}{table_name}\E;\n";
+				$sql_output .= "CREATE VIEW \L$self->{synonyms}{$syn}{owner}.$syn\E AS SELECT * FROM \L$self->{synonyms}{$syn}{table_owner}.$self->{synonyms}{$syn}{table_name}\E SECURITY DEFINER;\n";
 			} else {
-				$sql_output .= "CREATE VIEW \"$self->{synonyms}{$syn}{owner}\".\"$syn\" AS SELECT * FROM \"$self->{synonyms}{$syn}{table_owner}\".\"$self->{synonyms}{$syn}{table_name}\";\n";
+				$sql_output .= "CREATE VIEW \"$self->{synonyms}{$syn}{owner}\".\"$syn\" AS SELECT * FROM \"$self->{synonyms}{$syn}{table_owner}\".\"$self->{synonyms}{$syn}{table_name}\" SECURITY DEFINER;\n";
 			}
 
 			my $owner = $self->{synonyms}{$syn}{table_owner};
