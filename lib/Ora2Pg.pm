@@ -41,7 +41,7 @@ use File::Temp qw/ tempfile /;
 #set locale to LC_NUMERIC C
 setlocale(LC_NUMERIC,"C");
 
-$VERSION = '14.1';
+$VERSION = '15.0';
 $PSQL = $ENV{PLSQL} || 'psql';
 
 $| = 1;
@@ -3133,12 +3133,13 @@ LANGUAGE plpgsql ;
 				} else {
 					if ($self->{plsql_pgsql}) {
 						$trig->[4] = Ora2Pg::PLSQL::plsql_to_plpgsql($trig->[4],$self->{null_equal_empty}, undef, $self->{package_functions});
-						$trig->[4] =~ s/\b(END[;]*)$/RETURN NEW;\n$1/igs;
-						my @parts = split(/BEGIN/, $trig->[4]);
+						$trig->[4] =~ s/\b(END[;]*)[\s\/]*$/RETURN NEW;\n$1/igs;
+						my @parts = split(/BEGIN/i, $trig->[4]);
 						if ($#parts > 0) {
 							$parts[0] = Ora2Pg::PLSQL::replace_sql_type($parts[0], $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type});
 						}
 						$trig->[4] = join('BEGIN', @parts);
+						$trig->[4] =~ s/\bRETURN\s*;/RETURN NEW;/igs;
 					}
 				}
 				if (!$self->{preserve_case}) {
@@ -5476,11 +5477,15 @@ sub _howto_get_data
 
 	# Fix a problem when the table need to be prefixed by the schema
 	my $realtable = $table;
-	if ($self->{tables}{$table}{table_info}{owner}) {
-		$realtable = "$self->{tables}{$table}{table_info}{owner}.$realtable";
-	} elsif ($self->{tables}{$table}{owner}) {
-		$realtable = "$self->{tables}{$table}{owner}.$realtable";
+	if ($realtable =~ /[^0-9A-Z_]/i) {
+		$realtable =~ s/\"//g;
+		$realtable = "\"$realtable\"";
 	}
+	my $owner  = $self->{tables}{$table}{table_info}{owner} || $self->{tables}{$table}{owner} || '';
+	if ($owner && ($owner =~ /[^0-9A-Z_]/i)) {
+		$owner = "\"$owner\"";
+	}
+	$realtable = "$owner.$realtable";
 	$realtable = uc($realtable);
 
 	my $alias = 'a';
@@ -8057,7 +8062,8 @@ sub _convert_function
 		my $params = join(" || ',' || ", @{$fct_detail{at_args}});
 		$params = " '' " if (!$params);
 		my $q_str = "SELECT $fname$at_suffix ($params)";
-		$at_wrapper .= qq{DECLARE
+		$at_wrapper .= qq{
+DECLARE
 	-- Change this to reflect the dblink connection string
 	v_conn_str  text := 'port=5432 dbname=testdb host=localhost user=pguser password=pgpass';
 	v_query     text;
