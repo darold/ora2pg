@@ -3134,7 +3134,7 @@ LANGUAGE plpgsql ;
 					if ($self->{plsql_pgsql}) {
 						$trig->[4] = Ora2Pg::PLSQL::plsql_to_plpgsql($trig->[4],$self->{null_equal_empty}, undef, $self->{package_functions});
 						$trig->[4] =~ s/\b(END[;]*)$/RETURN NEW;\n$1/igs;
-						my @parts = split(/BEGIN/, $trig->[4]);
+						my @parts = split(/BEGIN/i, $trig->[4]);
 						if ($#parts > 0) {
 							$parts[0] = Ora2Pg::PLSQL::replace_sql_type($parts[0], $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type});
 						}
