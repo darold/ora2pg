@@ -41,7 +41,7 @@ use File::Temp qw/ tempfile /;
 #set locale to LC_NUMERIC C
 setlocale(LC_NUMERIC,"C");
 
-$VERSION = '14.1';
+$VERSION = '15.0';
 $PSQL = $ENV{PLSQL} || 'psql';
 
 $| = 1;

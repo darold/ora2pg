@@ -209,6 +209,8 @@ Here is the full changelog of the release:
       := NULL too.
     - Autodetect unusual characters in owner name when extracting data and used
       it embeded into double quote.
+    - Replace single return with return new in trigger code. Thanks to Dominique
+      Legendre for the report.
 
 2014 11 12 - v14.1
 
