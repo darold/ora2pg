@@ -233,7 +233,7 @@ sub plsql_to_plpgsql
 	# SELECT without INTO should be PERFORM. Exclude select of view when prefixed with AS ot IS
 	if ( ($export_type ne 'QUERY') && ($export_type ne 'VIEW') ) {
 		$str =~ s/(\s+)(?<!AS|IS)(\s+)SELECT((?![^;]+\bINTO\b)[^;]+;)/$1$2PERFORM$3/isg;
-		$str =~ s/SELECT((?![^;]+\bINTO\b)[^;]+;)/PERFORM$1/isg;
+		$str =~ s/\bSELECT\b((?![^;]+\bINTO\b)[^;]+;)/PERFORM$1/isg;
 		$str =~ s/\b(AS|IS|FOR|\()(\s+)PERFORM/$1$2SELECT/isg;
 	}
 
