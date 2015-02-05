@@ -329,7 +329,7 @@ sub create_project
 	foreach my $exp (sort @SOURCES_ARRAY ) {
 		my $tpath = lc($exp);
 		$tpath =~ s/y$/ie/;
-		mkdir("$base_path/source/" . $tpath . 's');
+		mkdir("$base_path/sources/" . $tpath . 's');
 		print "\t\t" . $tpath . "s/\n";
 	}
 	mkdir("$base_path/data");
