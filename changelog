@@ -1,3 +1,8 @@
+
+    - Fix replacement of function name which include SELECT in their name by
+      PERFORM. Thanks to Frederic Bamiere for the report.
+    - Fix creation of sources subdirectories when initializing a new migration project.
+
 2015 02 04 - v15.0
 
 This major release improve PL/SQL code replacement, fixes several bugs and
