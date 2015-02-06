@@ -1,4 +1,8 @@
 
+2015 02 06 - v15.1
+
+New minor release just to fix two annoying bugs in previous release.
+
     - Fix replacement of function name which include SELECT in their name by
       PERFORM. Thanks to Frederic Bamiere for the report.
     - Fix creation of sources subdirectories when initializing a new migration project.
