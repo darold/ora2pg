@@ -3129,17 +3129,21 @@ LANGUAGE plpgsql ;
 					if ($self->{plsql_pgsql}) {
 						$trig->[4] = Ora2Pg::PLSQL::plsql_to_plpgsql($trig->[4],$self->{null_equal_empty}, undef, $self->{package_functions});
 					}
-					$trig->[4] = "BEGIN;\nPERFORM $trig->[4];\nEND;";
+					$trig->[4] = "BEGIN\nPERFORM $trig->[4];\nEND;";
 				} else {
+					my $ret_kind = 'NEW';
+					if (uc($trig->[2]) eq 'DELETE') {
+						$ret_kind = 'OLD';
+					}
 					if ($self->{plsql_pgsql}) {
 						$trig->[4] = Ora2Pg::PLSQL::plsql_to_plpgsql($trig->[4],$self->{null_equal_empty}, undef, $self->{package_functions});
-						$trig->[4] =~ s/\b(END[;]*)[\s\/]*$/RETURN NEW;\n$1/igs;
+						$trig->[4] =~ s/\b(END[;]*)[\s\/]*$/RETURN $ret_kind;\n$1/igs;
 						my @parts = split(/BEGIN/i, $trig->[4]);
 						if ($#parts > 0) {
 							$parts[0] = Ora2Pg::PLSQL::replace_sql_type($parts[0], $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type});
 						}
 						$trig->[4] = join('BEGIN', @parts);
-						$trig->[4] =~ s/\bRETURN\s*;/RETURN NEW;/igs;
+						$trig->[4] =~ s/\bRETURN\s*;/RETURN $ret_kind;/igs;
 					}
 				}
 				if (!$self->{preserve_case}) {
