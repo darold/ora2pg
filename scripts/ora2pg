@@ -36,6 +36,7 @@ my $VERSION = '15.1';
 $| = 1;
 
 my $CONFIG_FILE = '/etc/ora2pg/ora2pg.conf';
+my $FILE_CONF = '';
 my $DEBUG = 0;
 my $QUIET = 0;
 my $HELP = 0;
@@ -81,7 +82,7 @@ my $TMP_DIR      = File::Spec->tmpdir() || '/tmp';
 GetOptions (
 	'a|allow=s' => \$ALLOW,
         'b|basedir=s' => \$OUTDIR,
-        'c|conf=s' => \$CONFIG_FILE,
+        'c|conf=s' => \$FILE_CONF,
         'd|debug!' => \$DEBUG,
 	'e|exclude=s' => \$EXCLUDE,
         'h|help!' => \$HELP,
@@ -134,17 +135,24 @@ if ($CREATE_PROJECT) {
 
 # Clean temporary files
 unless(opendir(DIR, "$TMP_DIR")) {
-	die "Error: can't opendir $TMP_DIR: $!";
+	print "FATAL: can't opendir $TMP_DIR: $!\n";
+	exit 1;
 }
 my @files = grep { $_ =~ /^tmp_ora2pg.*$/ } readdir(DIR);
 closedir DIR;
 foreach (@files) {
-	unlink("$TMP_DIR/$_\n");
+	if (not unlink("$TMP_DIR/$_\n")){
+		print "FATAL: can not remove old temporary files $TMP_DIR/$_\n";
+		exit 1;
+	}
 }
 
 
 # Check configuration file
-if (! -e $CONFIG_FILE) {
+if ($FILE_CONF && ! -e $FILE_CONF) {
+	print "FATAL: can't find configuration file $FILE_CONF\n";
+	&usage();
+} elsif (! -e $CONFIG_FILE) {
 	print "FATAL: can't find configuration file $CONFIG_FILE\n";
 	&usage();
 }
@@ -176,7 +184,8 @@ sub getout
 
 	# Cleaning temporary files
 	unless(opendir(DIR, "$TMP_DIR")) {
-		die "Error: can't opendir $TMP_DIR: $!";
+		print "FATAL: can't opendir $TMP_DIR: $!\n";
+		exit 1;
 	}
 	my @files = grep { $_ =~ /^tmp_ora2pg.*$/ } readdir(DIR);
 	closedir DIR;
@@ -191,7 +200,7 @@ $SIG{TERM} = \&getout;
 
 # Create an instance of the Ora2Pg perl module
 my $schema = new Ora2Pg (
-	config => $CONFIG_FILE,
+	config => $FILE_CONF || $CONFIG_FILE,
 	type   => $EXPORT_TYPE,
 	debug  => $DEBUG,
 	logfile=> $LOGFILE,
@@ -228,12 +237,14 @@ if ( ($EXPORT_TYPE !~ /^SHOW_/i) && !$INPUT_FILE ) {
 
 # Check if error occurs during data export 
 unless(opendir(DIR, "$TMP_DIR")) {
-	die "Error: can't opendir $TMP_DIR: $!";
+	print "FATAL: can't opendir $TMP_DIR: $!\n";
+	exit 1;
 }
-my @files = grep { $_ =~ /^tmp_ora2pg.*$/ } readdir(DIR);
+@files = grep { $_ =~ /^tmp_ora2pg.*$/ } readdir(DIR);
 closedir DIR;
 if ($#files >= 0) {
 	print STDERR "\nWARNING: an error occurs during data export. Please check what's happen.\n\n";
+	exit 2;
 }
 
 exit(0);
@@ -296,8 +307,12 @@ Usage: ora2pg [-dhpqv --estimate_cost --dump_as_html] [--option value]
 See full documentation at http://ora2pg.darold.net/ for more help or see
 manpage with 'man ora2pg'.
 
+ora2pg will return 0 on success, 1 on error. It will return 2 when a child
+process have been interrupted and you've got the warning message:
+  WARNING: an error occurs during data export. Please check what's happen.
+
 };
-	exit 0;
+	exit 1;
 
 	'init_project=s' => \$CREATE_PROJECT,
 	'project_base=s' => \$PROJECT_BASE,
@@ -310,9 +325,22 @@ sub create_project
 {
 	my ($create_project, $project_base) = @_;
 
+	# Look at default configuration file to use
+	my $conf_file = $CONFIG_FILE . '.dist';
+	if ($FILE_CONF) {
+		# Use file given in parameter
+		$conf_file = $FILE_CONF;
+	}
+	if (!-f $conf_file || -z $conf_file) {
+		print "FATAL: file $conf_file does not exists.\n";
+		exit 1;
+	}
 	# Build entire project tree
 	my $base_path = $project_base . '/' . $create_project;
-	die "FATAL: project directory exists $base_path\n" if (-e $base_path);
+	if (-e $base_path) {
+		print "FATAL: project directory exists $base_path\n";
+		exit 1;
+	}
 	mkdir("$base_path");
 	print "$base_path/\n";
 	mkdir("$base_path/schema");
@@ -342,21 +370,31 @@ sub create_project
 
 	# Copy configuration file and transform it as a generic one
 	print "Generating generic configuration file\n";
-	my $conf_file = '/etc/ora2pg/ora2pg.conf.dist';
 	if (open(IN, "$conf_file")) {
 		my @cf = <IN>;
 		close(IN);
-		&make_config_generic(\@cf);
-		open(OUT, ">$base_path/config/ora2pg.conf") or die "FATAL: can't write to file $base_path/config/ora2pg.conf\n";
+		# Create a generic configuration file only if it has the .dist extension
+		# otherwise use the configuration given at command line (-c option) 
+		if ($conf_file =~ /\.dist/) {
+			&make_config_generic(\@cf);
+		}
+		unless(open(OUT, ">$base_path/config/ora2pg.conf")) {
+			print "FATAL: can't write to file $base_path/config/ora2pg.conf\n";
+			exit 1;
+		}
 		print OUT @cf;
 		close(OUT);
 	} else {
-		print "ERROR: file $CONFIG_FILE does not exists.\n";
+		print "FATAL: can not read file $conf_file, $!.\n";
+		exit 1;
 	}
 
 	# Generate shell script to execute all export
 	print "Creating script export_schema.sh to automate all exports.\n";
-	open(OUT, "> $base_path/export_schema.sh") or die "FATAL: Can't write to file $base_path/export_schema.sh\n";
+	unless(open(OUT, "> $base_path/export_schema.sh")) {
+		print "FATAL: Can't write to file $base_path/export_schema.sh\n";
+		exit 1;
+	}
 	print OUT qq{#!/bin/sh
 #-------------------------------------------------------------------------------
 #

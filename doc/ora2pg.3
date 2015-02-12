@@ -124,7 +124,7 @@
 .\" ========================================================================
 .\"
 .IX Title "ORA2PG 1"
-.TH ORA2PG 1 "2015-01-29" "perl v5.14.2" "User Contributed Perl Documentation"
+.TH ORA2PG 1 "2015-02-12" "perl v5.14.2" "User Contributed Perl Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -397,6 +397,10 @@ Here are all command line parameters available when using ora2pg:
 \&                        is current directory.
 .Ve
 .PP
+ora2pg will return 0 on success, 1 on error. It will return 2 when a child
+process have been interrupted and you've got the warning message:
+  \s-1WARNING:\s0 an error occurs during data export. Please check what's happen.
+.PP
 It is possible to add your own custom option(s) in the Perl script ora2pg as any
 configuration directive from ora2pg.conf can be passed in lower case to the new
 Ora2Pg object instance. See ora2pg code on how to add your own option.
@@ -445,11 +449,16 @@ of the command usage:
 \&        Creating script export_schema.sh to automate all exports.
 .Ve
 .PP
-It create a generic config file where you just have to define the Oracle database
-connection and a shell script called export_schema.sh. The sources/ directory will
-contains the Oracle code, the schema/ will contains the code ported to PostgreSQL.
-The reports/ directory will contains the html reports with the migration cost
-assessment.
+It create a generic config file where you just have to define the Oracle
+database connection and a shell script called export_schema.sh. The sources/
+directory will contains the Oracle code, the schema/ will contains the code
+ported to PostgreSQL. The reports/ directory will contains the html reports
+with the migration cost assessment.
+.PP
+If you want to use your own default config file, use the \-c option to give
+the path to that file. Rename it with .dist suffix if you want ora2pg to
+apply the generic configuration values otherwise, the configuration file
+will be copied untouched.
 .SS "Oracle database connection"
 .IX Subsection "Oracle database connection"
 There's 5 configuration directives to control the access to the Oracle database.
