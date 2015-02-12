@@ -8552,6 +8552,7 @@ sub _extract_data
 	$self->{data_cols}{$table} = ();
 	if ( ($self->{parallel_tables} > 1) || (($self->{oracle_copies} > 1) && $self->{defined_pk}{"\L$table\E"}) ) {
 
+		$self->logit("DEBUG: cloning Oracle database connection.\n", 1);
 		$dbh = $self->{dbh}->clone();
 		# Force numeric format into the cloned session
 		$self->_numeric_format($dbh);
