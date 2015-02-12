@@ -6395,6 +6395,10 @@ $idxowner
 	my %idx_type = ();
 	while (my $row = $sth->fetch) {
 
+		# Show a warning when an index has the same name as the table
+		if ( !$self->{indexes_suffix} && (lc($row->[0]) eq lc($table)) ) {
+			print STDERR "WARNING: index $row->[0] has the same name as the table itself. Please rename it before export.\n"; 
+		}
 		$unique{$row->[-5]}{$row->[0]} = $row->[2];
 		if (($#{$row} > 6) && ($row->[7] eq 'Y')) {
 			$idx_type{$row->[-5]}{$row->[0]}{type} = $row->[4] . ' JOIN';
