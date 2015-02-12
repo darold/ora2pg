@@ -6411,7 +6411,7 @@ $idxowner
 			}
 		}
 		# Replace function based index type
-		if ($row->[4] =~ /FUNCTION-BASED/i) {
+		if ( ($row->[4] =~ /FUNCTION-BASED/i) && ($row->[1] =~ /^SYS_NC\d+\$$/) ) {
 			$sth2->execute($row->[1],$row->[-5]) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 			my $nc = $sth2->fetch();
 			$row->[1] = $nc->[0];
