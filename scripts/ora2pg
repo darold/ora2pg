@@ -147,12 +147,11 @@ foreach (@files) {
 	}
 }
 
-
 # Check configuration file
 if ($FILE_CONF && ! -e $FILE_CONF) {
 	print "FATAL: can't find configuration file $FILE_CONF\n";
 	&usage();
-} elsif (! -e $CONFIG_FILE) {
+} elsif (!$FILE_CONF && ! -e $CONFIG_FILE) {
 	print "FATAL: can't find configuration file $CONFIG_FILE\n";
 	&usage();
 }
@@ -435,6 +434,7 @@ echo
 
 exit 0
 };
+	chmod(0700, "$base_path/export_schema.sh");
 }
 
 ####
