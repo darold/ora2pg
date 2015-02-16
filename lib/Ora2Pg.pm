@@ -9086,7 +9086,7 @@ sub _show_infos
 			}
 			$report_info{'Objects'}{$typ}{'number'} = 0;
 			$report_info{'Objects'}{$typ}{'invalid'} = 0;
-			if (!grep(/^$typ$/, 'DATABASE LINK', 'JOB', 'TABLE', 'INDEX')) {
+			if (!grep(/^$typ$/, 'DATABASE LINK', 'JOB', 'TABLE', 'INDEX','SYNONYM')) {
 				for (my $i = 0; $i <= $#{$objects{$typ}}; $i++) {
 					$report_info{'Objects'}{$typ}{'number'}++;
 					$report_info{'Objects'}{$typ}{'invalid'}++ if ($objects{$typ}[$i]->{invalid});
