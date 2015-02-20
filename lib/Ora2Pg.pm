@@ -326,7 +326,6 @@ sub spawn
 	# the child -- go spawn
 	$< = $>;
 	$( = $); # suid progs only
-
 	exit &$coderef();
 }
 
@@ -4223,6 +4222,7 @@ LANGUAGE plpgsql ;
 					$self->_export_table_data($table, $dirprefix, $sql_header);
 				};
 				$parallel_tables_count++;
+
 				# Wait for oracle connection terminaison
 				while ($parallel_tables_count > $self->{parallel_tables}) {
 					my $kid = waitpid(-1, WNOHANG);
@@ -5567,16 +5567,12 @@ sub _howto_get_data
 
 	# Fix a problem when the table need to be prefixed by the schema
 	my $realtable = $table;
-	if ($realtable =~ /[^0-9A-Z_]/i) {
-		$realtable =~ s/\"//g;
-		$realtable = "\"$realtable\"";
-	}
+	$realtable =~ s/\"//g;
+	$realtable = "\"$realtable\"";
 	my $owner  = $self->{tables}{$table}{table_info}{owner} || $self->{tables}{$table}{owner} || '';
-	if ($owner && ($owner =~ /[^0-9A-Z_]/i)) {
-		$owner = "\"$owner\"";
-	}
+	$owner =~ s/\"//g;
+	$owner = "\"$owner\"";
 	$realtable = "$owner.$realtable";
-	$realtable = uc($realtable);
 
 	my $alias = 'a';
 	my $str = "SELECT ";
@@ -10018,14 +10014,14 @@ sub limit_to_objects
 			$str .= ' AND (';
 			if ($self->{db_version} =~ /Release [89]/) {
 				for (my $j = 0; $j <= $#{$self->{limited}{$arr_type[$i]}}; $j++) {
-					$str .= "$colname LIKE '$self->{limited}{$arr_type[$i]}->[$j]'";
+					$str .= "upper($colname) LIKE \U'$self->{limited}{$arr_type[$i]}->[$j]'\E";
 					if ($j < $#{$self->{limited}{$arr_type[$i]}}) {
 						$str .= " OR ";
 					}
 				}
 			} else {
 				for (my $j = 0; $j <= $#{$self->{limited}{$arr_type[$i]}}; $j++) {
-					$str .= "REGEXP_LIKE($colname,'\^$self->{limited}{$arr_type[$i]}->[$j]\$')" ;
+					$str .= "REGEXP_LIKE(upper($colname),'\^$self->{limited}{$arr_type[$i]}->[$j]\$')" ;
 					if ($j < $#{$self->{limited}{$arr_type[$i]}}) {
 						$str .= " OR ";
 					}
@@ -10038,7 +10034,7 @@ sub limit_to_objects
 			if ($self->{db_version} =~ /Release [89]/) {
 				$str .= ' AND (';
 				for (my $j = 0; $j <= $#{$self->{excluded}{$arr_type[$i]}}; $j++) {
-					$str .= "$colname NOT LIKE '$self->{excluded}{$arr_type[$i]}->[$j]'" ;
+					$str .= "upper($colname) NOT LIKE \U'$self->{excluded}{$arr_type[$i]}->[$j]'\E" ;
 					if ($j < $#{$self->{excluded}{$arr_type[$i]}}) {
 						$str .= " AND ";
 					}
@@ -10047,7 +10043,7 @@ sub limit_to_objects
 			} else {
 				$str .= ' AND (';
 				for (my $j = 0; $j <= $#{$self->{excluded}{$arr_type[$i]}}; $j++) {
-					$str .= "NOT REGEXP_LIKE($colname,'\^$self->{excluded}{$arr_type[$i]}->[$j]\$')" ;
+					$str .= "NOT REGEXP_LIKE(upper($colname),'\^$self->{excluded}{$arr_type[$i]}->[$j]\$')" ;
 					if ($j < $#{$self->{excluded}{$arr_type[$i]}}) {
 						$str .= " AND ";
 					}
@@ -10061,13 +10057,13 @@ sub limit_to_objects
 			if ($self->{db_version} =~ /Release [89]/) {
 				$str .= ' AND (';
 				foreach my $t (@EXCLUDED_TABLES_8I) {
-					$str .= " AND $colname NOT LIKE '$t'";
+					$str .= " AND upper($colname) NOT LIKE \U'$t'\E";
 				}
 				$str .= ')';
 			} else {
 				$str .= ' AND ( ';
 				for (my $j = 0; $j <= $#EXCLUDED_TABLES; $j++) {
-					$str .= " NOT REGEXP_LIKE($colname,'\^$EXCLUDED_TABLES[$j]\$')" ;
+					$str .= " NOT REGEXP_LIKE(upper($colname),'\^$EXCLUDED_TABLES[$j]\$')" ;
 					if ($j < $#EXCLUDED_TABLES){
 						$str .= " AND ";
 					}
