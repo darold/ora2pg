@@ -8800,7 +8800,10 @@ sub _dump_to_pg
 	my ($self, $dbh, $rows, $table, $cmd_head, $cmd_foot, $s_out, $tt, $sprep, $stt, $start_time, $part_name, $glob_total_record, %user_type) = @_;
 
 	my @tempfiles = ();
-	push(@tempfiles, [ tempfile('tmp_ora2pgXXXXXX', SUFFIX => '', DIR => $TMP_DIR, UNLINK => 1 ) ]);
+
+	if ($^O =~ /MSWin32|dos/i) {
+		push(@tempfiles, [ tempfile('tmp_ora2pgXXXXXX', SUFFIX => '', DIR => $TMP_DIR, UNLINK => 1 ) ]);
+	}
 
 	if ($self->{pg_dsn}) {
 		$0 = 'ora2pg - sending data to PostgreSQL';
@@ -8959,7 +8962,9 @@ sub _dump_to_pg
 		$self->logit("Extracted records from table $table: $tt_record ($rps recs/sec)\n", 1);
 	}
 
-	unlink($tempfiles[0]->[1]);
+	if ($^O =~ /MSWin32|dos/i) {
+		unlink($tempfiles[0]->[1]);
+	}
 }
 
 # Global array, to store the converted values
