@@ -904,10 +904,7 @@ sub _init
 	$self->{ora_conn_count} = 0;
 	$self->{data_limit} ||= 10000;
 	$self->{disable_partition} ||= 0;
-	$self->{parallel_tables} ||= 1;
-	if ($self->{parallel_tables} > 1) {
-		$self->{file_per_table} = 1;
-	}
+	$self->{parallel_tables} ||= 0;
 
 	# Shall we prefix function with a schema name to emulate a package?
 	$self->{package_as_schema} = 1 if (not exists $self->{package_as_schema} || ($self->{package_as_schema} eq ''));
@@ -1016,12 +1013,16 @@ sub _init
 	$self->{total_pkgcost} = 0;
 
 	if ($^O =~ /MSWin32|dos/i) {
-		if ( ($self->{oracle_copies} > 1) || ($self->{jobs} > 1) ) {
+		if ( ($self->{oracle_copies} > 1) || ($self->{jobs} > 1) || ($self->{parallel_tables} > 1) ) {
 			$self->logit("WARNING: multiprocess is not supported under that kind of OS.\n", 0);
 			$self->logit("If you need full speed at data export, please use Linux instead.\n", 0);
 		}
 		$self->{oracle_copies} = 0;
 		$self->{jobs} = 0;
+		$self->{parallel_tables} = 0;
+	}
+	if ($self->{parallel_tables} > 1) {
+		$self->{file_per_table} = 1;
 	}
 
 	if (!$self->{input_file}) {
