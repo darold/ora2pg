@@ -2495,7 +2495,7 @@ sub _export_table_data
 					next if ($self->file_exists("$dirprefix${tbpart_name}_$self->{output}"));
 				}
 
-				$self->_dump_table($dirprefix, $sql_header, $table, $start_time, $global_rows, $part_name);
+				$self->_dump_table($dirprefix, $sql_header, $table, $part_name);
 			}
 		}
 		# Now load content of the default partition table
@@ -2505,11 +2505,11 @@ sub _export_table_data
 					# Do not dump data again if the file already exists
 					next if ($self->file_exists("$dirprefix$self->{partitions_default}{$table}_$self->{output}"));
 				}
-				$self->_dump_table($dirprefix, $sql_header, $table, $start_time, $global_rows, $self->{partitions_default}{$table});
+				$self->_dump_table($dirprefix, $sql_header, $table, $self->{partitions_default}{$table});
 			}
 		}
 	} else {
-		$self->_dump_table($dirprefix, $sql_header, $table, $start_time, $global_rows);
+		$self->_dump_table($dirprefix, $sql_header, $table);
 	}
 
 }
@@ -4930,7 +4930,7 @@ sub file_exists
 ####
 sub _dump_table
 {
-	my ($self, $dirprefix, $sql_header, $table, $start_time, $global_rows, $part_name) = @_;
+	my ($self, $dirprefix, $sql_header, $table, $part_name) = @_;
 
 	my @cmd_head = ();
 	my @cmd_foot = ();
