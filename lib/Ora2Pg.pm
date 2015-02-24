@@ -8801,7 +8801,7 @@ sub _dump_to_pg
 
 	my @tempfiles = ();
 
-	if ($^O =~ /MSWin32|dos/i) {
+	if ($^O !~ /MSWin32|dos/i) {
 		push(@tempfiles, [ tempfile('tmp_ora2pgXXXXXX', SUFFIX => '', DIR => $TMP_DIR, UNLINK => 1 ) ]);
 	}
 
@@ -8962,7 +8962,7 @@ sub _dump_to_pg
 		$self->logit("Extracted records from table $table: $tt_record ($rps recs/sec)\n", 1);
 	}
 
-	if ($^O =~ /MSWin32|dos/i) {
+	if ($^O !~ /MSWin32|dos/i) {
 		unlink($tempfiles[0]->[1]);
 	}
 }
