@@ -5734,7 +5734,7 @@ VARCHAR2
 	if ($part_name) {
 		$alias = "PARTITION($part_name)";
 	} else {
-		$alias = 't';
+		$alias = 'a';
 	}
 	$str .= " FROM $realtable $alias";
 	if (exists $self->{where}{"\L$table\E"} && $self->{where}{"\L$table\E"}) {
