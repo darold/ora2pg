@@ -9818,6 +9818,8 @@ sub _initial_command
 
 	$dbh = $self->{dbh} if (!$dbh);
 
+	$self->logit("DEBUG: executing initial command to Oracle\n", 1);
+
 	my $sth = $dbh->do($self->{ora_initial_command}) or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
 }
 
