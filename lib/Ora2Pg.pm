@@ -768,6 +768,9 @@ sub _init
 		$self->{transaction} = 'SET TRANSACTION ISOLATION LEVEL SERIALIZABLE';
 	}
 
+	# Initial command to execute at Oracle connexion
+	$self->{ora_initial_command} ||= '';
+
 	# Set default cost unit value to 5 minutes
 	$self->{cost_unit_value} ||= 5;
 
@@ -1146,6 +1149,9 @@ sub _oracle_connection
 	$sth->execute or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
 	$sth->finish;
 	undef $sth;
+
+	# Force execution of initial command
+	$self->_initial_command($dbh);
 
 	return $dbh;
 }
@@ -4269,6 +4275,7 @@ LANGUAGE plpgsql ;
 			}
 			$self->{dbh}->disconnect() if ($self->{dbh});
 			$self->{dbh} = $self->_oracle_connection();
+
 		}
 
 		# Commit transaction
@@ -8641,6 +8648,9 @@ sub _extract_data
 
 		$self->logit("DEBUG: cloning Oracle database connection.\n", 1);
 		$dbh = $self->{dbh}->clone();
+
+		# Force execution of initial command
+		$self->_initial_command($dbh);
 		# Force numeric format into the cloned session
 		$self->_numeric_format($dbh);
 		# Force datetime format into the cloned session
@@ -9799,6 +9809,18 @@ sub _numeric_format
 
 	my $sth = $dbh->do("ALTER SESSION SET NLS_NUMERIC_CHARACTERS = '.,'") or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
 }
+
+sub _initial_command
+{
+	my ($self, $dbh) = @_;
+
+	return if (!$self->{ora_initial_command});
+
+	$dbh = $self->{dbh} if (!$dbh);
+
+	my $sth = $dbh->do($self->{ora_initial_command}) or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
+}
+
 
 
 =head2 multiprocess_progressbar

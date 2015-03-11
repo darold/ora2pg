@@ -393,7 +393,12 @@ Set this directive to a file containing PL/SQL Oracle Code like function,
 procedure or full package body to prevent Ora2Pg from connecting to an
 Oracle database and just apply his convertion tool to the content of the
 file. This can be used with the most of export types: TABLE, TRIGGER, PROCEDURE,
-VIEW, FUNCTION or PACKAGEi, etc.
+VIEW, FUNCTION or PACKAGE, etc.
+
+=item ORA_INITIAL_COMMAND
+
+This directive can be used to send an initial command to Oracle, just after
+the connection. For example to unlock a policy before reading objects.
 
 =back
 
@@ -1100,7 +1105,7 @@ and dimensions defined under Oracle. Those constraints are passed as at index
 creation using for example:
 
 	CREATE INDEX ... INDEXTYPE IS MDSYS.SPATIAL_INDEX
-	PARAMETERS(‘sdo_indx_dims=2, layer_gtype=point‘);
+	PARAMETERS('sdo_indx_dims=2, layer_gtype=point');
 
 If those Oracle constraints parameters are not set, the default is to export
 those columns as generic type GEOMETRY to be able to receive any spatial type.

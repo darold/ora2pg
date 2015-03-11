@@ -679,6 +679,10 @@ TRIM_TYPE		BOTH
 # this directive, this is the default value.
 #TRIM_CHAR		-
 
+# This directive can be used to send an initial command to Oracle, just after
+# the connection. For example to unlock a policy before reading objects.
+ORA_INITIAL_COMMAND
+
 };
 close(OUTCFG);
 
