@@ -4779,8 +4779,12 @@ CREATE TRIGGER insert_${table}_trigger
 					if ($self->{plsql_pgsql}) {
 						$f->[4] = Ora2Pg::PLSQL::plsql_to_plpgsql($f->[4],$self->{null_equal_empty}, undef, $self->{package_functions});
 					}
-					if ($self->{type} ne 'FDW') {
-						$sql_output .= " DEFAULT $f->[4]" if ($f->[4] ne '');
+					if (($f->[4] ne '') && ($self->{type} ne 'FDW')) {
+						if (($type eq 'boolean') && exists $self->{ora_boolean_values}{lc($f->[4])}) {
+							$sql_output .= " DEFAULT '" . $self->{ora_boolean_values}{lc($f->[4])} . "'";
+						} else {
+							$sql_output .= " DEFAULT $f->[4]";
+						}
 					}
 				}
 				$sql_output .= ",\n";
