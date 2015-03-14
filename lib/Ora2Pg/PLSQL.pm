@@ -185,6 +185,8 @@ sub plsql_to_plpgsql
 {
         my ($str, $null_equal_empty, $export_type, $pkg_fcts) = @_;
 
+	my @xmlelt = ();
+
 	#--------------------------------------------
 	# PL/SQL to PL/PGSQL code conversion
 	# Feel free to add your contribution here.
@@ -234,7 +236,7 @@ sub plsql_to_plpgsql
 	if ( ($export_type ne 'QUERY') && ($export_type ne 'VIEW') ) {
 		$str =~ s/(\s+)(?<!AS|IS)(\s+)SELECT((?![^;]+\bINTO\b)[^;]+;)/$1$2PERFORM$3/isg;
 		$str =~ s/\bSELECT\b((?![^;]+\bINTO\b)[^;]+;)/PERFORM$1/isg;
-		$str =~ s/\b(AS|IS|FOR|\()(\s+)PERFORM/$1$2SELECT/isg;
+		$str =~ s/(AS|IS|FOR|UNION ALL|UNION|\()(\s*)PERFORM/$1$2SELECT/isg;
 	}
 
 	# Change nextval on sequence
@@ -384,8 +386,20 @@ sub plsql_to_plpgsql
 	# REGEX_LIKE( string, pattern ) => string ~ pattern
 	$str =~ s/REGEXP_LIKE[\s\t]*\([\s\t]*([^,]+)[\s\t]*,[\s\t]*('[^\']+')[\s\t]*\)/$1 \~ $2/igs;
 
+	# Remove call to XMLCDATA, there's no such function with PostgreSQL
+	$str =~ s/XMLCDATA\s*\(([^\)]+)\)/'<![CDATA[' || $1 || ']]>'/igs;
+	# Remove call to getClobVal() or getStringVal, no need of that
+	$str =~ s/\.(getClobVal|getStringVal)\(\s*\)//igs;
 	# Add the name keyword to XMLELEMENT
-	$str =~ s/XMLELEMENT[\s\t]*\([\s\t]*/XMLELEMENT(name /igs;
+	$str =~ s/XMLELEMENT\s*\(\s*/XMLELEMENT(name /igs;
+
+	# Store XML element into memory and replace it by a placeholder to be
+	# able to use it into function call and not break decode replacement
+	my $i = 0;
+	while ($str =~ s/(XMLELEMENT\s*\([^\)]+\))/%%XMLELEMENT$i%%/is) {
+		push(@xmlelt, $1);
+		$i++;
+	}
 
 	# Replace PIPE ROW by RETURN NEXT
 	$str =~ s/PIPE[\s\t]+ROW[\s\t]*/RETURN NEXT /igs;
@@ -449,6 +463,10 @@ sub plsql_to_plpgsql
 
 	# Remove any call to MDSYS schema in the code
 	$str =~ s/MDSYS\.//igs;
+
+	# Restore XMLELEMENT call
+	$str =~ s/\%\%XMLELEMENT(\d+)\%\%/$xmlelt[$1]/igs;
+	@xmlelt = ();
 
 	##############
 	# Replace package.function call by package_function
