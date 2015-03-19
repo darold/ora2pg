@@ -5093,6 +5093,7 @@ sub _create_indexes
 		# Cluster, domain, bitmap join, reversed and IOT indexes will not be exported at all
 		next if ($self->{tables}{$tbsaved}{idx_type}{$idx}{type} =~ /JOIN|IOT|CLUSTER|REV/i);
 		next if ($self->{tables}{$tbsaved}{idx_type}{$idx}{type} =~ /DOMAIN/i && $self->{tables}{$tbsaved}{idx_type}{$idx}{type_name} !~ /SPATIAL_INDEX/);
+
 		map { if ($_ !~ /\(.*\)/) { s/^/"/; s/$/"/; } } @{$indexes{$idx}};
 		if (exists $self->{replaced_cols}{"\L$tbsaved\E"} && $self->{replaced_cols}{"\L$tbsaved\E"}) {
 			foreach my $c (keys %{$self->{replaced_cols}{"\L$tbsaved\E"}}) {
@@ -5100,13 +5101,22 @@ sub _create_indexes
 			}
 		}
 		map { s/"//gs } @{$indexes{$idx}};
+
+		my @strings = ();
+		my $i = 0;
+		for (my $j = 0; $j <= $#{$indexes{$idx}}; $j++) {
+			while ($indexes{$idx}->[$j] =~ s/'([^']+)'/%%string$i%%/) {
+				push(@strings, $1);
+				$i++;
+			}
+		}
 		if (!$self->{preserve_case}) {
 			map { $_ = $self->quote_reserved_words($_) } @{$indexes{$idx}};
 		} else {
 			map { if ($_ !~ /\(.*\)/) { s/^/"/; s/$/"/; } } @{$indexes{$idx}};
 		}
 		# Add parentheses to index column definition when a space is found
-		for (my $i = 0; $i <= $#{$indexes{$idx}}; $i++) {
+		for ($i = 0; $i <= $#{$indexes{$idx}}; $i++) {
 			if ($indexes{$idx}->[$i] =~ /\s/) {
 				$indexes{$idx}->[$i] = '(' . $indexes{$idx}->[$i] . ')';
 			}
@@ -5120,7 +5130,7 @@ sub _create_indexes
 			my $constype =  $self->{tables}{$tbsaved}{unique_key}->{$consname}{type};
 			next if (($constype ne 'P') && ($constype ne 'U'));
 			my @conscols = @{$self->{tables}{$tbsaved}{unique_key}->{$consname}{columns}};
-			for (my $i = 0; $i <= $#conscols; $i++) {
+			for ($i = 0; $i <= $#conscols; $i++) {
 				# Change column names
 				if (exists $self->{replaced_cols}{"\L$tbsaved\E"}{"\L$conscols[$i]\E"} && $self->{replaced_cols}{"\L$tbsaved\E"}{"\L$conscols[$i]\E"}) {
 					$conscols[$i] = $self->{replaced_cols}{"\L$tbsaved\E"}{"\L$conscols[$i]\E"};
@@ -5145,7 +5155,10 @@ sub _create_indexes
 				$concurrently = ' CONCURRENTLY';
 			}
 			$columns = lc($columns) if (!$self->{preserve_case});
-			$columns =~ s/^\((.*)\)$/$1/;
+			for ($i = 0; $i <= $#strings; $i++) {
+				$columns =~ s/\%\%string$i\%\%/'$strings[$i]'/;
+			}
+			#$columns =~ s/^\((.*)\)$/$1/;
 			if ($self->{tables}{$tbsaved}{idx_type}{$idx}{type_name} !~ /SPATIAL_INDEX/) {
 				$str .= "CREATE$unique INDEX$concurrently \L$idx$self->{indexes_suffix}\E ON $table ($columns)";
 			} else {
