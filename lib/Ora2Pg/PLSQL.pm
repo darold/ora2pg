@@ -670,6 +670,8 @@ sub replace_sql_type
 		my $backstr = $1;
 		my $type = uc($2);
 		my $args = $3;
+		# Remove extra CHAR or BYTE information from column type
+		$args =~ s/\s*(CHAR|BYTE)\s*$//i;
 		if ($backstr =~ /_$/) {
 		    $str =~ s/\b($oratype_regex)[\s\t]*\(([^\)]+)\)/$1\%\|$2\%\|\%/is;
 		    next;
