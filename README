@@ -805,6 +805,14 @@ CONFIGURATION
         External Tables as file_fdw foreign tables. To not export these
         tables at all, set the directive to 0.
 
+    INTERNAL_DATE_MAX
+        Internal timestamp retrieves from custom type are extracted in the
+        following format: 01-JAN-77 12.00.00.000000 AM. It is impossible to
+        know the exact century that must be used, so by default any year
+        below 49 will be added to 2000 and others to 1900. You can use this
+        directive to change the default value 49. this is only relevant if
+        you have user defined type with a column timestamp.
+
   Limiting object to export
     You may want to export only a part of an Oracle database, here are a set
     of configuration directives that will allow you to control what parts of

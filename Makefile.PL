@@ -683,6 +683,13 @@ TRIM_TYPE		BOTH
 # the connection. For example to unlock a policy before reading objects.
 ORA_INITIAL_COMMAND
 
+# Internal timestamp retrieves from custom type are extracted in the following
+# format: 01-JAN-77 12.00.00.000000 AM. It is impossible to know the exact century
+# that must be used, so by default any year below 49 will be added to 2000
+# and others to 1900. You can use this directive to change this default value.
+# this is only relevant if you have user defined type with a column timestamp.
+INTERNAL_DATE_MAX	49
+
 };
 close(OUTCFG);
 
