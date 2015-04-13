@@ -41,7 +41,7 @@ use File::Temp qw/ tempfile /;
 #set locale to LC_NUMERIC C
 setlocale(LC_NUMERIC,"C");
 
-$VERSION = '15.1';
+$VERSION = '15.2';
 $PSQL = $ENV{PLSQL} || 'psql';
 
 $| = 1;
@@ -943,7 +943,7 @@ sub _init
 	$self->{top_max} ||= 10;
 
 	# Internal date boundary. Date below will be added to 2000, others will used 1900
-	$self->{internal_date_max} ||= 49
+	$self->{internal_date_max} ||= 49;
 
 	# backward compatibility
 	if ($self->{disable_table_triggers}) {

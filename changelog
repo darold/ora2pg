@@ -1,4 +1,70 @@
 
+2015 04 13 - v15.2
+
+This new minor release fixes some issues and adds two new configuration
+directives:
+
+  * ORA_INITIAL_COMMAND to be able to execute a custom command just after
+    the connection to Oracle, for example to unlock a security policy.
+  * INTERNAL_DATE_MAX to change the behavior of Ora2Pg with internal date
+    found in user defined types.
+
+This version will also automatically re-order exported views taking into
+account interdependencies.
+
+Here is the full list of changes:
+
+    - Add INTERNAL_DATE_MAX configuration directive with default to 49 to be
+      used when reformatting internal date returned with a user defined type
+      and a timestamp column. DBD::Oracle only return the internal date format
+      01-JAN-77 12.00.00.000000 AM so it is difficult to know if the year value
+      must be added to 2000 or 1900. We takes the default behavior where date
+      are between 1950 and 2049.
+    - Remove extra CHAR and BYTE information from column type. Thanks to Magnus
+      Hagander for the report.
+    - Re-order views taking into account interdependencies. Thanks to Kuppusamy
+      Ravindran and Ulrike for the suggestion and the Oracle query.
+    - Fix case sensitivity in function based indexes. Thanks to Kuppusamy
+      Ravindran for the report.
+    - Fix PERFORM wrong replacement and infinite loop processing DECODE in some
+      condition. Thanks to Didier Brugat for the report.
+    - Fix replacement of boolean value in DEFAULT value at table creation.
+      Thanks to baul87 for the report.
+    - Add ORA_INITIAL_COMMAND configuration directive to be able to execute a
+      custom command just after the connection to Oracle, to unlock a policy for
+      example. Thanks to Didier BRUGAT for the feature request.
+    - Fix alias in from clause when an XML type is found. Thanks to Lance Jacob
+      for the record.
+    - Invert condition on excluding temporary file with Windows OS. Thanks to
+      kazam for the report.
+    - Remove start time and global number of rows from _dump_table() parameters
+      they are not used anymore.
+    - Remove use of temporary file on Windows operating system.
+    - Disable parallel table export when operating system is Windows.
+    - Fix export of objects with case sensitivity using ALLOW or EXCLUDE
+      directives. Thanks to Alexey Ignatov for the report.
+    - Fix export of triggers from recycle bin.
+    - Fix count of synonym in assessment report.
+    - Add list of tables created by OEM to the exclusion list.
+    - Fix look at default configuration file and set mode of export_schema.sh
+      to executable by default. Thanks to Kuppusamy Ravindran for the report.
+    - Add AUTHORIZATION to the list of PostgreSQL reserved word. Thanks to
+      Kuppusamy Ravindran for the report.
+    - Display a warning when an index has the same name as the table itself so
+      that you can renamed it before export. Thanks to Kuppusamy Ravindran for
+      the feature request.
+    - Fix export of function based indexes with multiple column. Thanks to
+      Kuppusamy Ravindran for the report.
+    - Modify ora2pg script to return 0 on success, 1 on any fatal error and 2
+      when a child process die is detected.
+    - Change the way the generic configuration file is handle during project
+      initialization. You can use -c option to copy your own into the project
+      directory. If the file has the .dist extension, ora2pg will apply the
+      generic configuration on it. Thanks to Kuppusamy Ravindran for the report
+      and features request.
+    - Add debug information when cloning the Oracle connection.
+    - Force return of OLD when the trigger is on DELETE event
+
 2015 02 06 - v15.1
 
 New minor release just to fix two annoying bugs in previous release.
