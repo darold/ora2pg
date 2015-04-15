@@ -1394,10 +1394,10 @@ data import.
 
 =item DISABLE_TRIGGERS
 
-This directive is used to disable triggers on all tables in COPY or INSERT export
-modes. Available values are iO, USER (disable userdefined triggers only) and ALL
-(includes RI system triggers). Default is 0: do not add SQL statements to disable
-trigger before data import.
+This directive is used to disable triggers on all tables in COPY or INSERT
+export modes. Available values are USER (disable user-defined triggers only)
+and ALL (includes RI system triggers). Default is 0: do not add SQL statements
+to disable trigger before data import.
 
 If you want to disable triggers during data migration, set the value to
 USER if your are connected as non superuser and ALL if you are connected

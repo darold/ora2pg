@@ -657,7 +657,7 @@ CONFIGURATION
         See http://pgxn.org/dist/oracle_fdw/ for more information on this
         foreign data wrapper.
 
-        Release 10 adds a new export type destinated to evaluate the content
+        Release 10 adds a new export type destined to evaluate the content
         of the database to migrate, in terms of objects and cost to end the
         migration:
 
@@ -952,7 +952,7 @@ CONFIGURATION
 
     REPLACE_QUERY
         Sometime you may want to extract data from an Oracle table but you
-        need a a custom query for that. Not just a "SELECT * FROM table"
+        need a custom query for that. Not just a "SELECT * FROM table"
         like Ora2Pg do but a more complex query. This directive allow you
         to overwrite the query used by Ora2Pg to extract data. The format is
         TABLENAME[SQL_QUERY]. If you have multiple table to extract by
@@ -1343,10 +1343,9 @@ CONFIGURATION
 
     DISABLE_TRIGGERS
         This directive is used to disable triggers on all tables in COPY or
-        INSERT export modes. Available values are iO, USER (disable
-        user defined triggers only) and ALL (includes RI system triggers).
-        Default is 0: do not add SQL statements to disable trigger before
-        data import.
+        INSERT export modes. Available values are USER (disable user defined
+        triggers only) and ALL (includes RI system triggers).  Default is 0: do
+        not add SQL statements to disable trigger before data import.
 
         If you want to disable triggers during data migration, set the value
         to USER if your are connected as non superuser and ALL if you are
@@ -1572,7 +1571,7 @@ CONFIGURATION
         only have a 1Mb blob, trying to read 10000 of them (the default
         DATA_LIMIT) all at once will require 10Gb of memory. You may extract
         data from those table separately and set a DATA_LIMIT to 500 or
-        lower, otherwise you may experience some Out of memory.
+        lower, otherwise you may experience some out of memory.
 
     LONGTRUNKOK
         If you want to bypass the 'ORA-24345: A Truncation' error, set this
