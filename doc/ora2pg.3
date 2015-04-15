@@ -1715,16 +1715,16 @@ Enabled by default.
 .IX Item "LONGREADLEN"
 Use this directive to set the database handle's 'LongReadLen' attribute to a
 value that will be the larger than the expected size of the LOBs. The default
-is 1Mb witch may not be enough to extract BLOBs or CLOBs. If the size of the
+is 1MB witch may not be enough to extract BLOBs or CLOBs. If the size of the
 \&\s-1LOB\s0 exceeds the 'LongReadLen' DBD::Oracle will return a '\s-1ORA\-24345: A\s0 Truncation'
 error. Default: 1023*1024 bytes.
 .Sp
 Take a look at this page to learn more: http://search.cpan.org/~pythian/DBD\-Oracle\-1.22/Oracle.pm#Data_Interface_for_Persistent_LOBs
 .Sp
 Important note: If you increase the value of this directive take care that
-\&\s-1DATA_LIMIT\s0 will probably needs to be reduced. Even if you only have a 1Mb blob,
+\&\s-1DATA_LIMIT\s0 will probably needs to be reduced. Even if you only have a 1MB blob,
 trying to read 10000 of them (the default \s-1DATA_LIMIT\s0) all at once will require
-10Gb of memory. You may extract data from those table separatly and set a
+10GB of memory. You may extract data from those table separatly and set a
 \&\s-1DATA_LIMIT\s0 to 500 or lower, otherwise you may experience some Out of memory.
 .IP "\s-1LONGTRUNKOK\s0" 4
 .IX Item "LONGTRUNKOK"

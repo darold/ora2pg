@@ -461,15 +461,15 @@ PARALLEL_TABLES	1
 
 # Use this directive to set the database handle's 'LongReadLen' attribute to
 # a value that will be the larger than the expected size of the LOB. The default
-# is 1Mb witch may not be enough to extract BLOB objects. If the size of the LOB
+# is 1MB witch may not be enough to extract BLOB objects. If the size of the LOB
 # exceeds the 'LongReadLen' DBD::Oracle will return a 'ORA-24345: A Truncation'
 # error.  Default: 1023*1024 bytes. Take a look at this page to learn more:
 # http://search.cpan.org/~pythian/DBD-Oracle-1.22/Oracle.pm#Data_Interface_for_Persistent_LOBs
 #
 # Important note: If you increase the value of this directive take care that 
-# DATA_LIMIT will probably needs to be reduced. Even if you only have a 1Mb blob
+# DATA_LIMIT will probably needs to be reduced. Even if you only have a 1MB blob
 # trying to read 10000 of them (the default DATA_LIMIT) all at once will require
-# 10Gb of memory. You may extract data from those table separately and set a
+# 10GB of memory. You may extract data from those table separately and set a
 # DATA_LIMIT to 500 or lower, otherwise you may experience some Out of memory.
 #LONGREADLEN	1047552
 
