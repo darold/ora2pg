@@ -42,7 +42,7 @@ FEATURES
             - Full support of Oracle BLOB object as PG BYTEA.
             - Export Oracle views as PG tables.
             - Export Oracle user defined types.
-            - Provide some basic automatic conversion of PLSQL code to PLPGSQL.
+            - Provide some basic automatic conversion of PL/SQL code to PL/pgSQL.
             - Works on any platform.
             - Export Oracle tables as foreign data wrapper tables.
             - Export materialized view.
@@ -51,7 +51,7 @@ FEATURES
             - Migration cost assessment of PL/SQL code from a file.
             - Migration cost assessment of Oracle SQL queries stored in a file.
             - Generate XML ktr files to be used with Pentaho Data Integrator (Kettle)
-            - Export Oracle locator and spatial geometries into PostGis.
+            - Export Oracle locator and spatial geometries into PostGIS.
             - Export DBLINK as Oracle FDW.
             - Export SYNONYMS as views.
             - Export DIRECTORY as external table or directory for external_file extension.
@@ -84,7 +84,7 @@ INSTALLATION
     an already packaged DBD::Oracle easy to install.
 
   Requirement
-    You need a modern Perl distribution (perl 5.6 and more), the DBI and
+    You need a modern Perl distribution (Perl 5.6 and more), the DBI and
     DBD::Oracle Perl modules to be installed. These are used to connect to
     the Oracle database. To install DBD::Oracle and have it working you need
     to have the Oracle client libraries installed and the ORACLE_HOME
@@ -97,7 +97,7 @@ INSTALLATION
     PostgreSQL database you need the PostgreSQL client (psql). If you don't
     have it on the host running Ora2Pg you can always transfer these files
     to a host with the psql client installed. If you prefer to load export
-    'on the fly', the perl module DBD::Pg is required.
+    'on the fly', the Perl module DBD::Pg is required.
 
     Ora2Pg allow to dump all output int a compressed gzip file, to do that
     you need the Compress::Zlib Perl module or if you prefer using bzip2
@@ -131,8 +131,8 @@ INSTALLATION
     See README file in that directory.
 
   Installing DBD::Oracle
-    Ora2Pg need perl module DBD::Oracle for connectivity to an Oracle
-    database from perl DBI. To get DBD::Oracle get it from CPAN a perl
+    Ora2Pg need Perl module DBD::Oracle for connectivity to an Oracle
+    database from Perl DBI. To get DBD::Oracle get it from CPAN a Perl
     module repository.
 
     After setting ORACLE_HOME and LD_LIBRARY_PATH environment variables as
@@ -199,7 +199,7 @@ CONFIGURATION
 
             /usr/local/bin/ora2pg
 
-    or under Windows(tm) run ora2pg.bat file, located in your perl bin
+    or under Windows(tm) run ora2pg.bat file, located in your Perl bin
     directory. Windows(tm) users may also find a template configuration file
     in C:\ora2pg
 
@@ -232,7 +232,7 @@ CONFIGURATION
         -n | --namespace schema : Used to set the Oracle schema to extract from.
         -o | --out file   : Used to set the path to the output file where SQL will
                             be written. Default: output.sql in running directory.
-        -p | --plsql      : Enable PLSQL to PLPSQL code conversion.
+        -p | --plsql      : Enable PL/SQL to PL/pgSQL code conversion.
         -P | --parallel num: Number of parallel tables to extract at the same time.
         -q | --quiet      : disable progress bar.
         -s | --source DSN : Allow to set the Oracle DBI datasource.
@@ -421,10 +421,10 @@ CONFIGURATION
 
   Troubleshooting
     If the output.sql file has not exported anything else than the Pg
-    transaction header and footer there's two possible reasons. The perl
+    transaction header and footer there's two possible reasons. The Perl
     script ora2pg dump an ORA-XXX error, that mean that you DSN or login
     information are wrong, check the error and your settings and try again.
-    The perl script says nothing and the output file is empty: the user has
+    The Perl script says nothing and the output file is empty: the user has
     not enough right to extract something from the database. Try to connect
     Oracle as super user or take a look at directive USER_GRANTS above and
     at next section, especially the SCHEMA directive.
@@ -579,7 +579,7 @@ CONFIGURATION
         Some export type can not or should not be load directly into the
         PostgreSQL database and still require little manual editing. This is
         the case for GRANT, TABLESPACE, TRIGGER, FUNCTION, PROCEDURE, TYPE,
-        QUERY and PACKAGE export types especially if you have PLSQL code or
+        QUERY and PACKAGE export types especially if you have PL/SQL code or
         Oracle specific SQL in it.
 
         For TABLESPACE you must ensure that file path exist on the system
@@ -1066,7 +1066,7 @@ CONFIGURATION
         some partitions could have the same name but different parent tables.
         This is not allowed, table name must be unique.
 
-  Oracle Spatial to PostGis
+  Oracle Spatial to PostGIS
     Ora2Pg fully export Spatial object from Oracle database. There's some
     configuration directives that could be used to control the export.
 
@@ -1143,7 +1143,7 @@ CONFIGURATION
 
     POSTGIS_SCHEMA
         Use this directive to add a specific schema to the search path to
-        look for PostGis functions.
+        look for PostGIS functions.
 
   PostgreSQL Import
     By default conversion to PostgreSQL format is written to file
@@ -1257,7 +1257,7 @@ CONFIGURATION
         directive of postgresql.conf file. This is only used when you load
         data directly to PostgreSQL, the default is off to disable
         synchronous commit to gain speed at writing data. Some modified
-        version of PostgreSQL, like greenplum, do not have this setting, so
+        version of PostgreSQL, like Greenplum, do not have this setting, so
         in this set this directive to 1, ora2pg will not try to change the
         setting.
 
@@ -1287,7 +1287,7 @@ CONFIGURATION
         Enable this directive if you want to add primary key definition
         inside the create table statement. If disabled (the default) primary
         key definition will be add with an alter table statement. Enable it
-        if you are exporting to GreenPlum PostgreSQL database.
+        if you are exporting to Greenplum PostgreSQL database.
 
     KEEP_PKEY_NAMES
         By default names of the primary and unique key in the source Oracle
@@ -1624,8 +1624,8 @@ CONFIGURATION
         You can take a look at the PostgreSQL supported character sets here:
         http://www.postgresql.org/docs/9.0/static/multibyte.html
 
-  PLSQL to PLPSQL conversion
-    Automatic code conversion from Oracle PLSQL to PostgreSQL PLPGSQL is a
+  PL/SQL to PL/pgSQL conversion
+    Automatic code conversion from Oracle PL/SQL to PostgreSQL PL/pgSQL is a
     work in progress in Ora2Pg and surely you will always have manual work.
     The Perl code used for automatic conversion is all stored in a specific
     Perl Module named Ora2Pg/PLSQL.pm feel free to modify/add you own code
@@ -1633,7 +1633,7 @@ CONFIGURATION
     and package body headers and parameters rewrite.
 
     PLSQL_PGSQL
-        Enable/disable PLSQL to PLPSQL conversion. Enabled by default.
+        Enable/disable PL/SQL to PL/pgSQL conversion. Enabled by default.
 
     NULL_EQUAL_EMPTY
         By default Ora2Pg will replace all conditions with a test on NULL by
@@ -1655,7 +1655,7 @@ CONFIGURATION
         Default is to use a schema to emulate package.
 
         The replacement will be done in all kind of DDL or code that is
-        parsed by the PLSQL to PLPGSQL converter. PLSQL_PGSQL must be
+        parsed by the PL/SQL to PL/pgSQL converter. PLSQL_PGSQL must be
         enabled or -p used in command line.
 
   Materialized view
@@ -1678,7 +1678,7 @@ CONFIGURATION
             );
 
     all materialized views will have an entry in this table. It then adds
-    the plpgsql code to create tree functions:
+    the PL/pgSQL code to create tree functions:
 
             create_materialized_view(text, text, text) used to create a materialized view
             drop_materialized_view(text) used to delete a materialized view
