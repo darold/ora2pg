@@ -9264,7 +9264,7 @@ sub _show_infos
 						}
 						$self->{tables}{$t}{column_info}{$k}[1] =~ s/TIMESTAMP\(\d+\)/TIMESTAMP/i;
 						if (!exists $TYPE{uc($self->{tables}{$t}{column_info}{$k}[1])}) {
-							$table_detail{'unknow types'}++;
+							$table_detail{'unknown types'}++;
 						}
 						if ( (uc($self->{tables}{$t}{column_info}{$k}[1]) eq 'NUMBER') && ($self->{tables}{$t}{column_info}{$k}[2] eq '') ) {
 							$table_detail{'numbers with no precision'}++;

@@ -718,7 +718,7 @@ Here is a sample of report:
 				the current schema.
 	TABLE     265 0 1 external table(s) will be exported as standard table. See EXTERNAL_TO_FDW configuration
 				directive to export as file_fdw foreign tables or use COPY in your code if you just
-				want to load data from external files. 2 binary columns. 4 unknow types.
+				want to load data from external files. 2 binary columns. 4 unknown types.
 	TABLE PARTITION 8 0 Partitions are exported using table inheritance and check constraint. 1 HASH partitions.
 				2 LIST partitions. 6 RANGE partitions. Note that Hash partitions are not supported.
 	TRIGGER   30  0 Total size of trigger code: 21677.
@@ -1916,7 +1916,7 @@ Here is a sample report obtained with this command:
 					will be transformed into NEXTVAL('sequence_name') or CURRVAL('sequence_name').
 	TABLE     265 0 1 external table(s) will be exported as standard table. See EXTERNAL_TO_FDW configuration
 					directive to export as file_fdw foreign tables or use COPY in your code if you just
-					want to load data from external files. 2 binary columns. 4 unknow types.
+					want to load data from external files. 2 binary columns. 4 unknown types.
 	TABLE PARTITION 8 0 Partitions are exported using table inheritance and check constraint. 1 HASH partitions.
 					2 LIST partitions. 6 RANGE partitions. Note that Hash partitions are not supported.
 	TRIGGER   30  0 Total size of trigger code: 21677.
@@ -1986,7 +1986,7 @@ The generated report is same as above but with a new 'Estimated cost' column as 
 						user1.offices is an alias to hr.locations.
 	TABLE 17  0 8.5 1 external table(s) will be exported as standard table. See EXTERNAL_TO_FDW configuration
 					directive to export as file_fdw foreign tables or use COPY in your code if you just want to
-					load data from external files. 2 binary columns. 4 unknow types.
+					load data from external files. 2 binary columns. 4 unknown types.
 	TRIGGER 1 1 4 Total size of trigger code: 123 bytes. UPDATE_JOB_HISTORY: 2.
 	TYPE  7 1 5 5 type(s) are concerned by the export, others are not supported. 2 Nested Tables. 2 Object type.
 					1 Subtype. 1 Type Boby. 1 Type inherited. 1 Varrays. Note that Type inherited and Subtype are
