@@ -696,7 +696,7 @@ Here is a sample of report:
 	Object  Number  Invalid Comments
 	--------------------------------------
 	CLUSTER   2 0 Clusters are not supported and will not be exported.
-	DATABASE LINK 3 0 Database links will be exported as SQL/MED PostgreSQL's Foreign Data Wrapper (FDW) extentions
+	DATABASE LINK 3 0 Database links will be exported as SQL/MED PostgreSQL's Foreign Data Wrapper (FDW) extensions
 				using oracle_fdw.
 	FUNCTION  40  0 Total size of function code: 81992.
 	INDEX     435 0 232 index(es) are concerned by the export, others are automatically generated and will
@@ -718,7 +718,7 @@ Here is a sample of report:
 				the current schema.
 	TABLE     265 0 1 external table(s) will be exported as standard table. See EXTERNAL_TO_FDW configuration
 				directive to export as file_fdw foreign tables or use COPY in your code if you just
-				want to load data from external files. 2 binary columns. 4 unknow types.
+				want to load data from external files. 2 binary columns. 4 unknown types.
 	TABLE PARTITION 8 0 Partitions are exported using table inheritance and check constraint. 1 HASH partitions.
 				2 LIST partitions. 6 RANGE partitions. Note that Hash partitions are not supported.
 	TRIGGER   30  0 Total size of trigger code: 21677.
@@ -729,7 +729,7 @@ Here is a sample of report:
 	VIEW      7 0 Views are fully supported, but if you have updatable views you will need to use
 				INSTEAD OF triggers.
 	DATABASE LINK 1 0 Database links will not be exported. You may try the dblink perl contrib module or use
-				the SQL/MED PostgreSQL features with the different Foreign Data Wrapper (FDW) extentions.
+				the SQL/MED PostgreSQL features with the different Foreign Data Wrapper (FDW) extensions.
 
 	Note: Invalid code will not be exported unless the EXPORT_INVALID configuration directive is activated.
 
@@ -1394,10 +1394,10 @@ data import.
 
 =item DISABLE_TRIGGERS
 
-This directive is used to disable triggers on all tables in COPY or INSERT export
-modes. Available values are iO, USER (disable userdefined triggers only) and ALL
-(includes RI system triggers). Default is 0: do not add SQL statements to disable
-trigger before data import.
+This directive is used to disable triggers on all tables in COPY or INSERT
+export modes. Available values are USER (disable user-defined triggers only)
+and ALL (includes RI system triggers). Default is 0: do not add SQL statements
+to disable trigger before data import.
 
 If you want to disable triggers during data migration, set the value to
 USER if your are connected as non superuser and ALL if you are connected
@@ -1616,17 +1616,17 @@ Enabled by default.
 
 Use this directive to set the database handle's 'LongReadLen' attribute to a
 value that will be the larger than the expected size of the LOBs. The default
-is 1Mb witch may not be enough to extract BLOBs or CLOBs. If the size of the
+is 1MB witch may not be enough to extract BLOBs or CLOBs. If the size of the
 LOB exceeds the 'LongReadLen' DBD::Oracle will return a 'ORA-24345: A Truncation'
 error. Default: 1023*1024 bytes.
 
 Take a look at this page to learn more: http://search.cpan.org/~pythian/DBD-Oracle-1.22/Oracle.pm#Data_Interface_for_Persistent_LOBs
 
 Important note: If you increase the value of this directive take care that
-DATA_LIMIT will probably needs to be reduced. Even if you only have a 1Mb blob,
+DATA_LIMIT will probably needs to be reduced. Even if you only have a 1MB blob,
 trying to read 10000 of them (the default DATA_LIMIT) all at once will require
-10Gb of memory. You may extract data from those table separatly and set a
-DATA_LIMIT to 500 or lower, otherwise you may experience some Out of memory.
+10GB of memory. You may extract data from those table separatly and set a
+DATA_LIMIT to 500 or lower, otherwise you may experience some out of memory.
 
 
 =item LONGTRUNKOK
@@ -1916,7 +1916,7 @@ Here is a sample report obtained with this command:
 					will be transformed into NEXTVAL('sequence_name') or CURRVAL('sequence_name').
 	TABLE     265 0 1 external table(s) will be exported as standard table. See EXTERNAL_TO_FDW configuration
 					directive to export as file_fdw foreign tables or use COPY in your code if you just
-					want to load data from external files. 2 binary columns. 4 unknow types.
+					want to load data from external files. 2 binary columns. 4 unknown types.
 	TABLE PARTITION 8 0 Partitions are exported using table inheritance and check constraint. 1 HASH partitions.
 					2 LIST partitions. 6 RANGE partitions. Note that Hash partitions are not supported.
 	TRIGGER   30  0 Total size of trigger code: 21677.
@@ -1927,7 +1927,7 @@ Here is a sample report obtained with this command:
 	VIEW      7 0 Views are fully supported, but if you have updatable views you will need to use
 					INSTEAD OF triggers.
 	DATABASE LINK 1 0 Database links will not be exported. You may try the dblink perl contrib module or use
-					the SQL/MED PostgreSQL features with the different Foreign Data Wrapper (FDW) extentions.
+					the SQL/MED PostgreSQL features with the different Foreign Data Wrapper (FDW) extensions.
 					
 	Note: Invalid code will not be exported unless the EXPORT_INVALID configuration directive is activated. 
 
@@ -1957,7 +1957,7 @@ The generated report is same as above but with a new 'Estimated cost' column as 
 	--------------------------------------
 	Object  Number  Invalid Estimated cost  Comments
 	--------------------------------------
-	DATABASE LINK  3 0 9 Database links will be exported as SQL/MED PostgreSQL's Foreign Data Wrapper (FDW) extentions
+	DATABASE LINK  3 0 9 Database links will be exported as SQL/MED PostgreSQL's Foreign Data Wrapper (FDW) extensions
 					using oracle_fdw.
 	FUNCTION  2 0 7 Total size of function code: 369 bytes. HIGH_SALARY: 2, VALIDATE_SSN: 3.
 	INDEX 21  0 11  11 index(es) are concerned by the export, others are automatically generated and will do so
@@ -1986,7 +1986,7 @@ The generated report is same as above but with a new 'Estimated cost' column as 
 						user1.offices is an alias to hr.locations.
 	TABLE 17  0 8.5 1 external table(s) will be exported as standard table. See EXTERNAL_TO_FDW configuration
 					directive to export as file_fdw foreign tables or use COPY in your code if you just want to
-					load data from external files. 2 binary columns. 4 unknow types.
+					load data from external files. 2 binary columns. 4 unknown types.
 	TRIGGER 1 1 4 Total size of trigger code: 123 bytes. UPDATE_JOB_HISTORY: 2.
 	TYPE  7 1 5 5 type(s) are concerned by the export, others are not supported. 2 Nested Tables. 2 Object type.
 					1 Subtype. 1 Type Boby. 1 Type inherited. 1 Varrays. Note that Type inherited and Subtype are

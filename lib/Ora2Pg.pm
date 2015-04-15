@@ -9264,7 +9264,7 @@ sub _show_infos
 						}
 						$self->{tables}{$t}{column_info}{$k}[1] =~ s/TIMESTAMP\(\d+\)/TIMESTAMP/i;
 						if (!exists $TYPE{uc($self->{tables}{$t}{column_info}{$k}[1])}) {
-							$table_detail{'unknow types'}++;
+							$table_detail{'unknown types'}++;
 						}
 						if ( (uc($self->{tables}{$t}{column_info}{$k}[1]) eq 'NUMBER') && ($self->{tables}{$t}{column_info}{$k}[2] eq '') ) {
 							$table_detail{'numbers with no precision'}++;
@@ -9422,7 +9422,7 @@ sub _show_infos
 			} elsif ($typ eq 'VIEW') {
 				$report_info{'Objects'}{$typ}{'comment'} = "Views are fully supported.";
 			} elsif ($typ eq 'DATABASE LINK') {
-				$report_info{'Objects'}{$typ}{'comment'} = "Database links will be exported as SQL/MED PostgreSQL's Foreign Data Wrapper (FDW) extentions using oracle_fdw.";
+				$report_info{'Objects'}{$typ}{'comment'} = "Database links will be exported as SQL/MED PostgreSQL's Foreign Data Wrapper (FDW) extensions using oracle_fdw.";
 				if ($self->{estimate_cost}) {
 					$report_info{'Objects'}{$typ}{'cost_value'} = ($Ora2Pg::PLSQL::OBJECT_SCORE{'DATABASE LINK'}*$objects{$typ});
 				}
