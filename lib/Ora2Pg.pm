@@ -9422,7 +9422,7 @@ sub _show_infos
 			} elsif ($typ eq 'VIEW') {
 				$report_info{'Objects'}{$typ}{'comment'} = "Views are fully supported.";
 			} elsif ($typ eq 'DATABASE LINK') {
-				$report_info{'Objects'}{$typ}{'comment'} = "Database links will be exported as SQL/MED PostgreSQL's Foreign Data Wrapper (FDW) extentions using oracle_fdw.";
+				$report_info{'Objects'}{$typ}{'comment'} = "Database links will be exported as SQL/MED PostgreSQL's Foreign Data Wrapper (FDW) extensions using oracle_fdw.";
 				if ($self->{estimate_cost}) {
 					$report_info{'Objects'}{$typ}{'cost_value'} = ($Ora2Pg::PLSQL::OBJECT_SCORE{'DATABASE LINK'}*$objects{$typ});
 				}
