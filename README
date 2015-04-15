@@ -3,7 +3,7 @@ NAME
 
 DESCRIPTION
     Ora2Pg is a free tool used to migrate an Oracle database to a PostgreSQL
-    compatible schema. It connects your Oracle database, scan it
+    compatible schema. It connects to your Oracle database, scan it
     automatically and extracts its structure or data, it then generates SQL
     scripts that you can load into your PostgreSQL database.
 
