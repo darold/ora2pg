@@ -1039,6 +1039,9 @@ sub _init
 		# Connect the database
 		$self->{dbh} = $self->_oracle_connection();
 
+		# Get the Oracle version
+		$self->{db_version} = $self->_get_version();
+
 		# Compile again all objects in the schema
 		if ($self->{compile_schema}) {
 			if ($self->{debug} && $self->{compile_schema}) {
@@ -1060,9 +1063,6 @@ sub _init
 		}
 		return;
 	}
-
-	# Get the Oracle version
-	$self->{db_version} = $self->_get_version() if (!$self->{input_file});
 
 	# Retreive all table informations
         foreach my $t (@{$self->{export_type}}) {
