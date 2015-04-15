@@ -470,7 +470,7 @@ PARALLEL_TABLES	1
 # DATA_LIMIT will probably needs to be reduced. Even if you only have a 1MB blob
 # trying to read 10000 of them (the default DATA_LIMIT) all at once will require
 # 10GB of memory. You may extract data from those table separately and set a
-# DATA_LIMIT to 500 or lower, otherwise you may experience some Out of memory.
+# DATA_LIMIT to 500 or lower, otherwise you may experience some out of memory.
 #LONGREADLEN	1047552
 
 # If you want to bypass the 'ORA-24345: A Truncation' error, set this directive
