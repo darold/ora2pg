@@ -6793,7 +6793,7 @@ sub _get_views
 
 	# Compute view order, where depended view appear before using view
 	my %view_order = ();
-	if ($self->{db_version} !~ /Release 8/) {
+	if ($self->{db_version} !~ /Release (8|9|10)/) {
 		if ($self->{schema}) {
 			$owner = "AND o.OWNER='$self->{schema}' ";
 		} else {
@@ -6821,7 +6821,6 @@ ORDER BY ITER ASC, 2, 3
 		}
 		$sth->finish();
 	}
-
 
 	$sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
