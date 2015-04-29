@@ -13,15 +13,15 @@ package Ora2Pg;
 #        it under the terms of the GNU General Public License as published by
 #        the Free Software Foundation, either version 3 of the License, or
 #        any later version.
-# 
+#
 #        This program is distributed in the hope that it will be useful,
 #        but WITHOUT ANY WARRANTY; without even the implied warranty of
 #        MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 #        GNU General Public License for more details.
-# 
+#
 #        You should have received a copy of the GNU General Public License
 #        along with this program. If not, see < http://www.gnu.org/licenses/ >.
-# 
+#
 #------------------------------------------------------------------------------
 
 use vars qw($VERSION $PSQL %AConfig);
@@ -150,7 +150,7 @@ push(@EXCLUDED_TABLES, @Oracle_tables);
 our @FKEY_OPTIONS = ('NEVER', 'DELETE', 'ALWAYS');
 
 # Minimized the footprint on disc, so that more rows fit on a data page,
-# which is the most important factor for speed. 
+# which is the most important factor for speed.
 our %TYPALIGN = (
 	'bool' => 0, 'boolean' => 0, 'bytea' => 4, 'char' => 0, 'name' => 0,
 	'int8' => 8, 'int2' => 2, 'int4' => 4, 'text' => 4, 'oid' => 4, 'json' => 4,
@@ -373,7 +373,7 @@ sub new
 
 	# Initialize this object
 	$self->_init(%options);
-	
+
 	# Return the instance
 	return($self);
 }
@@ -567,7 +567,7 @@ sub close_export_file
 =head2 modify_struct TABLE_NAME ARRAYOF_FIELDNAME
 
 Modify the table structure during the export. Only the specified columns
-will be exported. 
+will be exported.
 
 =cut
 
@@ -712,7 +712,7 @@ sub _init
 	$self->{estimate_cost} = 0;
 	$self->{where} = ();
 	$self->{replace_query} = ();
-	$self->{ora_reserved_words} = (); 
+	$self->{ora_reserved_words} = ();
 	$self->{defined_pk} = ();
 	$self->{allow_partition} = ();
 
@@ -871,7 +871,7 @@ sub _init
 	if (not defined $self->{default_srid}) {
 		$self->{default_srid} = 4326;
 	}
-	
+
 	# Force Ora2Pg to extract spatial object in binary format
 	$self->{geometry_extract_type} = uc($self->{geometry_extract_type});
 	if (!$self->{geometry_extract_type} || !grep(/^$self->{geometry_extract_type}$/, 'WKT','WKB','INTERNAL')) {
@@ -879,9 +879,9 @@ sub _init
 	}
 
 	# Default value for triming can be LEADING, TRAILING or BOTH
-	$self->{trim_type} = 'BOTH' if (!$self->{trim_type} || !grep(/^$self->{trim_type}/, 'BOTH', 'LEADING', 'TRAILING')); 
+	$self->{trim_type} = 'BOTH' if (!$self->{trim_type} || !grep(/^$self->{trim_type}/, 'BOTH', 'LEADING', 'TRAILING'));
 	# Default triming character is space
-	$self->{trim_char} = ' ' if ($self->{trim_char} eq ''); 
+	$self->{trim_char} = ' ' if ($self->{trim_char} eq '');
 
 	# Free some memory
 	%options = ();
@@ -952,7 +952,7 @@ sub _init
 	# Set some default values
 	if ($self->{enable_microsecond} eq '') {
 		$self->{enable_microsecond} = 1;
-	} 
+	}
 	if ($self->{external_to_fdw} eq '') {
 		$self->{external_to_fdw} = 1;
 	}
@@ -1081,7 +1081,7 @@ sub _init
 		} elsif ($self->{type} eq 'TRIGGER') {
 			$self->_triggers();
 		} elsif ($self->{type} eq 'FUNCTION') {
-			$self->_functions(); 
+			$self->_functions();
 		} elsif ($self->{type} eq 'PROCEDURE') {
 			$self->_procedures();
 		} elsif ($self->{type} eq 'PACKAGE') {
@@ -1100,7 +1100,7 @@ sub _init
 			$self->_materialized_views();
 		} elsif (($self->{type} eq 'SHOW_REPORT') || ($self->{type} eq 'SHOW_VERSION') || ($self->{type} eq 'SHOW_SCHEMA') || ($self->{type} eq 'SHOW_TABLE') || ($self->{type} eq 'SHOW_COLUMN') || ($self->{type} eq 'SHOW_ENCODING')) {
 			$self->_show_infos($self->{type});
-			$self->{dbh}->disconnect() if ($self->{dbh}); 
+			$self->{dbh}->disconnect() if ($self->{dbh});
 			exit 0;
 		} else {
 			warn "type option must be TABLE, VIEW, GRANT, SEQUENCE, TRIGGER, PACKAGE, FUNCTION, PROCEDURE, PARTITION, TYPE, INSERT, COPY, TABLESPACE, SHOW_REPORT, SHOW_VERSION, SHOW_SCHEMA, SHOW_TABLE, SHOW_COLUMN, SHOW_ENCODING, FDW, MVIEW, QUERY, KETTLE, DBLINK, SYNONYM, DIRECTORY\n";
@@ -1515,9 +1515,9 @@ sub _tables
 			$self->logit("Duplicate entry found: $t\n", 1);
 		} else {
 			push(@done, $t);
-		} 
+		}
 		$self->logit("[$i] Scanning table $t ($tables_infos{$t}{num_rows} rows)...\n", 1);
-		
+
 		# Check of uniqueness of the table
 		if (exists $self->{tables}{$t}{field_name}) {
 			$self->logit("Warning duplicate table $t, maybe a SYNONYM ? Skipped.\n", 1);
@@ -1564,7 +1564,7 @@ sub _tables
 	if (!$self->{quiet} && !$self->{debug}) {
 		print STDERR $self->progress_bar($i - 1, $num_total_table, 25, '=', 'tables', 'end of scanning.'), "\n";
 	}
- 
+
 	# Try to search requested TABLE names in the VIEW names if not found in
 	# real TABLE names
 	if ($#{$self->{view_as_table}} >= 0) {
@@ -1759,7 +1759,7 @@ sub read_schema_from_file
 	# Load file in a single string
 	my $content = $self->_get_dml_from_file();
 
-	my $tid = 0; 
+	my $tid = 0;
 
 	# Remove potential dynamic table creation before parsing
 	while ($content =~ s/'(TRUNCATE|CREATE)\s+(GLOBAL|UNIQUE)?\s*(TEMPORARY)?\s*(TABLE|INDEX)([^']+)'//i) {};
@@ -1811,7 +1811,7 @@ sub read_schema_from_file
 				$column_defs[$i] = '';
 			}
 		}
-		# Fix split on multicolumn's constraints, ex: UNIQUE (last_name,first_name) 
+		# Fix split on multicolumn's constraints, ex: UNIQUE (last_name,first_name)
 		for (my $i = $#column_defs; $i >= 0; $i--) {
 			if ( ($column_defs[$i] !~ /\s/) || ($column_defs[$i] =~ /^[^\(]+\) REFERENCES/i) || ($column_defs[$i] =~ /^[^\(]+\) USING INDEX/ii)) {
 				$column_defs[$i-1] .= ",$column_defs[$i]";
@@ -1857,7 +1857,7 @@ sub read_schema_from_file
 					}
 
 					if (($c =~ s/(UNIQUE|PRIMARY KEY)\s*\(([^\)]+)\)//i) || ($c =~ s/(UNIQUE|PRIMARY KEY)\s*//i)) {
-						my $pk_name = 'ora2pg_ukey_' . $c_name; 
+						my $pk_name = 'ora2pg_ukey_' . $c_name;
 						my $cols = $c_name;
 						if ($2) {
 							$cols = $2;
@@ -1865,7 +1865,7 @@ sub read_schema_from_file
 						$self->_parse_constraint($tb_name, $c_name, "$pk_name $1 ($cols)");
 
 					} elsif ( ($c =~ s/CONSTRAINT\s([^\s]+)\sCHECK\s*\(([^\)]+)\)//i) || ($c =~ s/CHECK\s*\(([^\)]+)\)//i) ) {
-						my $pk_name = 'ora2pg_ckey_' . $c_name; 
+						my $pk_name = 'ora2pg_ckey_' . $c_name;
 						my $chk_search = $1;
 						if ($2) {
 							$pk_name = $1;
@@ -1875,7 +1875,7 @@ sub read_schema_from_file
 
 					} elsif ($c =~ s/REFERENCES\s+([^\(]+)\(([^\)]+)\)//i) {
 
-						my $pk_name = 'ora2pg_fkey_' . $c_name; 
+						my $pk_name = 'ora2pg_fkey_' . $c_name;
 						my $chk_search = $1 . "($2)";
 						$chk_search =~ s/\s+//g;
 						$self->_parse_constraint($tb_name, $c_name, "$pk_name FOREIGN KEY ($c_name) REFERENCES $chk_search");
@@ -1984,7 +1984,7 @@ sub read_comment_from_file
 	# Load file in a single string
 	my $content = $self->_get_dml_from_file();
 
-	my $tid = 0; 
+	my $tid = 0;
 
 	while ($content =~ s/COMMENT\s+ON\s+TABLE\s+([^\s]+)\s*IS\s*'([^;]+);//i) {
 		my $tb_name = $1;
@@ -2020,7 +2020,7 @@ sub read_view_from_file
 	# Load file in a single string
 	my $content = $self->_get_dml_from_file();
 
-	my $tid = 0; 
+	my $tid = 0;
 
 	$content =~ s/CREATE\s+NO\s+FORCE\s+VIEW/CREATE VIEW/g;
 	$content =~ s/CREATE\s+FORCE\s+VIEW/CREATE VIEW/g;
@@ -2064,7 +2064,7 @@ sub read_grant_from_file
 	# Load file in a single string
 	my $content = $self->_get_dml_from_file();
 
-	my $tid = 0; 
+	my $tid = 0;
 
 	# Extract grant information
 	while ($content =~ s/GRANT\s+(.*?)\s+ON\s+([^\s]+)\s+TO\s+([^;]+)(\s+WITH GRANT OPTION)?;//i) {
@@ -2092,7 +2092,7 @@ sub read_trigger_from_file
 	# Load file in a single string
 	my $content = $self->_get_dml_from_file();
 
-	my $tid = 0; 
+	my $tid = 0;
 
 	my $doloop = 1;
 	do {
@@ -2141,9 +2141,9 @@ sub read_sequence_from_file
 	# Load file in a single string
 	my $content = $self->_get_dml_from_file();
 
-	my $tid = 0; 
+	my $tid = 0;
 
-	# Sequences 
+	# Sequences
 	while ($content =~ s/CREATE\s+SEQUENCE[\s]+([^\s]+)\s*([^;]+);//i) {
 		my $s_name = $1;
 		$s_name =~ s/"//g;
@@ -2200,7 +2200,7 @@ sub read_tablespace_from_file
 	# Load file in a single string
 	my $content = $self->_get_dml_from_file();
 
-	my $tid = 0; 
+	my $tid = 0;
 
 	# tablespace
 	while ($content =~ s/CREATE\s+TABLESPACE\s+([^\s]+)\s+([^;]+);//is) {
@@ -2489,7 +2489,7 @@ sub get_replaced_tbname
 	}
 	$tmptb = $self->quote_reserved_words($tmptb);
 
-	return $tmptb; 
+	return $tmptb;
 }
 
 sub _export_table_data
@@ -2601,7 +2601,7 @@ sub _get_sql_data
 			}
 			if ($self->{pg_supports_checkoption} && ($self->{views}{$view}{text} =~ /\bCHECK\s+OPTION\b/i)) {
 				$self->{views}{$view}{text} =~ s/\s*\bWITH\b\s+.*$/ WITH CHECK OPTION/s;
-			} else {	
+			} else {
 				$self->{views}{$view}{text} =~ s/\s*\bWITH\b\s+.*$//s;
 			}
 			$self->{views}{$view}{text} = $self->_format_view($self->{views}{$view}{text});
@@ -2699,7 +2699,7 @@ sub _get_sql_data
 #				$sql_output =~ s/CREATE OR REPLACE VIEW/CREATE TABLE/s;
 #				$sql_output =~ s/COMMENT ON VIEW/COMMENT ON TABLE/s;
 #				$sql_output =~ s/\s*\bWITH\b[^;]+;$/;/s;
-#				
+#
 #			}
 
 			if ($self->{file_per_table}) {
@@ -2767,7 +2767,7 @@ BEGIN
     EXECUTE 'GRANT SELECT ON ' || quote_ident(mview) || ' TO PUBLIC';
     INSERT INTO materialized_views (mview_name, view_name, iname, last_refresh)
     VALUES (
-	quote_literal(mview), 
+	quote_literal(mview),
 	quote_literal(vname),
 	quote_literal(iname),
 	CURRENT_TIMESTAMP
@@ -3127,7 +3127,7 @@ LANGUAGE plpgsql ;
 					$sql_output .= "CREATE USER MAPPING FOR \"$self->{dblink}{$db}{username}\" SERVER \"$db\" OPTIONS (user '$self->{dblink}{$db}{user}' $self->{dblink}{$db}{password});\n";
 				}
 			}
-			
+
 			if ($self->{force_owner}) {
 				my $owner = $self->{dblink}{$db}{owner};
 				$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
@@ -3191,7 +3191,7 @@ LANGUAGE plpgsql ;
 
 	# Process triggers only. PL/SQL code is pre-converted to PL/PGSQL following
 	# the recommendation of Roberto Mello, see http://techdocs.postgresql.org/
-	# Oracle's PL/SQL to PostgreSQL PL/pgSQL HOWTO  
+	# Oracle's PL/SQL to PostgreSQL PL/pgSQL HOWTO
 	if ($self->{type} eq 'TRIGGER') {
 		$self->logit("Add triggers definition...\n", 1);
 		$self->dump($sql_header);
@@ -3202,7 +3202,7 @@ LANGUAGE plpgsql ;
 		my $dirprefix = '';
 		$dirprefix = "$self->{output_dir}/" if ($self->{output_dir});
 		my $nothing = 0;
-                my $i = 1;      
+                my $i = 1;
                 my $num_total_trigger = $#{$self->{triggers}} + 1;
 		foreach my $trig (sort {$a->[0] cmp $b->[0]} @{$self->{triggers}}) {
 
@@ -3984,7 +3984,7 @@ LANGUAGE plpgsql ;
 		}
 		$self->dump($sql_header . "$create_tb\n" . $sql_output);
 
-		
+
 		if ($self->{file_per_index} && !$self->{pg_dsn}) {
 			my $fhdl = undef;
 			$self->logit("Dumping tablespace alter indexes to one separate file : TBSP_INDEXES_$self->{output}\n", 1);
@@ -4584,7 +4584,7 @@ CREATE TRIGGER insert_${table}_trigger
 		if (!$sql_output) {
 			$sql_output = "-- Nothing found of type $self->{type}\n";
 		}
-	
+
 		$self->dump($sql_header . $sql_output);
 
 		return;
@@ -4719,7 +4719,7 @@ CREATE TRIGGER insert_${table}_trigger
 			$sql_output .= "\nCREATE$foreign $obj_type $tbname (\n";
 
 			# Extract column information following the Oracle position order
-			foreach my $k (sort { 
+			foreach my $k (sort {
 					if (!$self->{reordering_columns}) {
 						$self->{tables}{$table}{column_info}{$a}[10] <=> $self->{tables}{$table}{column_info}{$b}[10];
 					} else {
@@ -4868,9 +4868,9 @@ CREATE TRIGGER insert_${table}_trigger
 			}
 		}
 		if ($self->{type} ne 'FDW') {
-			# Set the unique (and primary) key definition 
+			# Set the unique (and primary) key definition
 			$constraints .= $self->_create_unique_keys($table, $self->{tables}{$table}{unique_key});
-			# Set the check constraint definition 
+			# Set the check constraint definition
 			$constraints .= $self->_create_check_constraint($table, $self->{tables}{$table}{check_constraint},$self->{tables}{$table}{field_name});
 			if (!$self->{file_per_constraint}) {
 				$sql_output .= $constraints;
@@ -5306,7 +5306,7 @@ sub _get_primary_keys
 
 	my $out = '';
 
-	# Set the unique (and primary) key definition 
+	# Set the unique (and primary) key definition
 	foreach my $consname (keys %$unique_key) {
 		next if ($self->{pkey_in_create} && ($unique_key->{$consname}{type} ne 'P'));
 		my $constype =   $unique_key->{$consname}{type};
@@ -5365,7 +5365,7 @@ sub _create_unique_keys
 	my $tbsaved = $table;
 	$table = $self->get_replaced_tbname($table);
 
-	# Set the unique (and primary) key definition 
+	# Set the unique (and primary) key definition
 	foreach my $consname (keys %$unique_key) {
 		next if ($self->{pkey_in_create} && ($unique_key->{$consname}{type} eq 'P'));
 		my $constype =   $unique_key->{$consname}{type};
@@ -5418,7 +5418,7 @@ sub _create_check_constraint
 	$table = $self->get_replaced_tbname($table);
 
 	my $out = '';
-	# Set the check constraint definition 
+	# Set the check constraint definition
 	foreach my $k (keys %{$check_constraint->{constraint}}) {
 		my $chkconstraint = $check_constraint->{constraint}->{$k};
 		next if (!$chkconstraint);
@@ -5717,7 +5717,7 @@ sub _howto_get_data
 	if ($self->{bfile_found} eq 'text') {
 		$self->logit("Creating function ora2pg_get_bfilename( p_bfile IN BFILE ) to retrieve path from BFILE.\n", 1);
 		my $bfile_function = qq{
-CREATE OR REPLACE FUNCTION ora2pg_get_bfilename( p_bfile IN BFILE ) RETURN 
+CREATE OR REPLACE FUNCTION ora2pg_get_bfilename( p_bfile IN BFILE ) RETURN
 VARCHAR2
   AS
     l_dir   VARCHAR2(4000);
@@ -5741,7 +5741,7 @@ VARCHAR2
 		my $quote = '';
 		$quote = "''" if ($self->{type} eq 'INSERT');
 		my $efile_function = qq{
-CREATE OR REPLACE FUNCTION ora2pg_get_efile( p_bfile IN BFILE ) RETURN 
+CREATE OR REPLACE FUNCTION ora2pg_get_efile( p_bfile IN BFILE ) RETURN
 VARCHAR2
   AS
     l_dir   VARCHAR2(4000);
@@ -6073,7 +6073,7 @@ END
 		$pos++;
 	}
 
-	return %data;	
+	return %data;
 }
 
 =head2 _unique_key TABLE OWNER
@@ -6309,7 +6309,7 @@ sub _get_privilege
 	}
 	$str .= " AND b.TABLE_NAME=a.OBJECT_NAME AND a.OWNER=b.GRANTOR AND a.OBJECT_TYPE <> 'TYPE'";
 	$str .= " " . $self->limit_to_objects('GRANT|TABLE|VIEW|FUNCTION|PROCEDURE|SEQUENCE', 'b.GRANTEE|b.TABLE_NAME|b.TABLE_NAME|b.TABLE_NAME|b.TABLE_NAME|b.TABLE_NAME');
-	
+
 	if (!$self->{export_invalid}) {
 		$str .= " AND a.STATUS='VALID'";
 	}
@@ -6366,7 +6366,7 @@ sub _get_privilege
 		}
 		$sth->finish();
 	}
-	# Now try to find if it's a user or a role 
+	# Now try to find if it's a user or a role
 	foreach my $u (@done) {
 		$str = "SELECT GRANTED_ROLE FROM DBA_ROLE_PRIVS WHERE GRANTEE = '$u'";
 		$str .= " " . $self->limit_to_objects('GRANT', 'GRANTEE');
@@ -6477,7 +6477,7 @@ sub _get_indexes
 	$condition .= "AND $self->{prefix}_IND_COLUMNS.INDEX_OWNER='$owner' AND $self->{prefix}_INDEXES.OWNER='$owner' " if ($owner);
 	$condition .= $self->limit_to_objects('TABLE|INDEX', "$self->{prefix}_IND_COLUMNS.TABLE_NAME|$self->{prefix}_IND_COLUMNS.INDEX_NAME") if (!$table);
 
-	# Retrieve all indexes 
+	# Retrieve all indexes
 	my $sth = '';
 	if ($self->{db_version} !~ /Release 8/) {
 		$sth = $self->{dbh}->prepare(<<END) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -6518,7 +6518,7 @@ $idxowner
 
 		# Show a warning when an index has the same name as the table
 		if ( !$self->{indexes_suffix} && (lc($row->[0]) eq lc($table)) ) {
-			print STDERR "WARNING: index $row->[0] has the same name as the table itself. Please rename it before export.\n"; 
+			print STDERR "WARNING: index $row->[0] has the same name as the table itself. Please rename it before export.\n";
 		}
 		$unique{$row->[-5]}{$row->[0]} = $row->[2];
 		if (($#{$row} > 6) && ($row->[7] eq 'Y')) {
@@ -6564,7 +6564,7 @@ sub _get_sequences
 {
 	my($self) = @_;
 
-	# Retrieve all indexes 
+	# Retrieve all indexes
 	my $str = "SELECT DISTINCT SEQUENCE_NAME, MIN_VALUE, MAX_VALUE, INCREMENT_BY, LAST_NUMBER, CACHE_SIZE, CYCLE_FLAG, SEQUENCE_OWNER FROM $self->{prefix}_SEQUENCES";
 	if (!$self->{schema}) {
 		$str .= " WHERE SEQUENCE_OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
@@ -6611,14 +6611,14 @@ sub _get_external_tables
 	$str .= " ORDER BY a.TABLE_NAME";
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-	
+
 	my %data = ();
 	while (my $row = $sth->fetch) {
 
 		$data{$row->[1]}{directory} = $row->[5];
 		$data{$row->[1]}{directory_path} = $row->[10];
 		if ($data{$row->[1]}{directory_path} =~ /([\/\\])/) {
-			$data{$row->[1]}{directory_path} .= $1 if ($data{$row->[1]}{directory_path} !~ /$1$/); 
+			$data{$row->[1]}{directory_path} .= $1 if ($data{$row->[1]}{directory_path} !~ /$1$/);
 		}
 		$data{$row->[1]}{location} = $row->[11];
 		$data{$row->[1]}{delimiter} = ',';
@@ -6656,7 +6656,7 @@ sub _get_directory
 
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-	
+
 	my %data = ();
 	while (my $row = $sth->fetch) {
 
@@ -6950,13 +6950,13 @@ sub _alias_info
 		$self->logit("\t$d->[0] =>  column id:$d->[1]\n", 1);
 	}
 
-        return @$data; 
+        return @$data;
 
 }
 
 =head2 _get_triggers
 
-This function implements an Oracle-native triggers information. 
+This function implements an Oracle-native triggers information.
 
 Returns an array of refarray of all triggers information.
 
@@ -6966,7 +6966,7 @@ sub _get_triggers
 {
 	my($self) = @_;
 
-	# Retrieve all indexes 
+	# Retrieve all indexes
 	my $str = "SELECT TRIGGER_NAME, TRIGGER_TYPE, TRIGGERING_EVENT, TABLE_NAME, TRIGGER_BODY, WHEN_CLAUSE, DESCRIPTION, ACTION_TYPE, OWNER FROM $self->{prefix}_TRIGGERS WHERE STATUS='ENABLED'";
 	if (!$self->{schema}) {
 		$str .= " AND OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
@@ -7000,7 +7000,7 @@ sub _get_functions
 {
 	my $self = shift;
 
-	# Retrieve all functions 
+	# Retrieve all functions
 	my $str = "SELECT DISTINCT OBJECT_NAME,OWNER FROM $self->{prefix}_OBJECTS WHERE OBJECT_TYPE='FUNCTION'";
 	$str .= " AND STATUS='VALID'" if (!$self->{export_invalid});
 	if (!$self->{schema}) {
@@ -7042,7 +7042,7 @@ sub _get_procedures
 {
 	my $self = shift;
 
-	# Retrieve all procedures 
+	# Retrieve all procedures
 	my $str = "SELECT DISTINCT OBJECT_NAME,OWNER FROM $self->{prefix}_OBJECTS WHERE OBJECT_TYPE='PROCEDURE'";
 	$str .= " AND STATUS='VALID'" if (!$self->{export_invalid});
 	if (!$self->{schema}) {
@@ -7085,7 +7085,7 @@ sub _get_packages
 {
 	my ($self) = @_;
 
-	# Retrieve all indexes 
+	# Retrieve all indexes
 	my $str = "SELECT DISTINCT OBJECT_NAME,OWNER FROM $self->{prefix}_OBJECTS WHERE OBJECT_TYPE LIKE 'PACKAGE%'";
 	$str .= " AND STATUS='VALID'" if (!$self->{export_invalid});
 	if (!$self->{schema}) {
@@ -7437,8 +7437,8 @@ database.
 The synonyms hash is construct as follows:
 
 	$hash{SYNONYM_NAME}{owner} = Owner of the synonym
-	$hash{SYNONYM_NAME}{table_owner} = Owner of the object referenced by the synonym. 
-	$hash{SYNONYM_NAME}{table_name} = Name of the object referenced by the synonym. 
+	$hash{SYNONYM_NAME}{table_owner} = Owner of the object referenced by the synonym.
+	$hash{SYNONYM_NAME}{table_name} = Name of the object referenced by the synonym.
 	$hash{SYNONYM_NAME}{dblink} = Name of the database link referenced, if any
 
 =cut
@@ -7882,7 +7882,7 @@ sub read_config
 		} elsif ($var eq 'MODIFY_TYPE') {
 			$val =~ s/\\,/#NOSEP#/gs;
 			my @modif_type = split(/[,;]+/, $val);
-			foreach my $r (@modif_type) { 
+			foreach my $r (@modif_type) {
 				$val =~ s/#NOSEP#/,/gs;
 				my ($table, $col, $type) = split(/:/, lc($r));
 				$AConfig{$var}{$table}{$col} = $type;
@@ -7901,26 +7901,26 @@ sub read_config
 			}
 		} elsif ($var eq 'REPLACE_TABLES') {
 			my @replace_tables = split(/[\s,;\t]+/, $val);
-			foreach my $r (@replace_tables) { 
+			foreach my $r (@replace_tables) {
 				my ($old, $new) = split(/:/, $r);
 				$AConfig{$var}{$old} = $new;
 			}
 		} elsif ($var eq 'REPLACE_AS_BOOLEAN') {
 			my @replace_boolean = split(/[\s,;\t]+/, $val);
-			foreach my $r (@replace_boolean) { 
+			foreach my $r (@replace_boolean) {
 				my ($table, $col) = split(/:/, $r);
 				push(@{$AConfig{$var}{uc($table)}}, uc($col));
 			}
 		} elsif ($var eq 'BOOLEAN_VALUES') {
 			my @replace_boolean = split(/[\s,;\t]+/, $val);
-			foreach my $r (@replace_boolean) { 
+			foreach my $r (@replace_boolean) {
 				my ($yes, $no) = split(/:/, $r);
 				$AConfig{$var}{lc($yes)} = 't';
 				$AConfig{$var}{lc($no)} = 'f';
 			}
 		} elsif ($var eq 'DEFINED_PK') {
 			my @defined_pk = split(/[\s,;\t]+/, $val);
-			foreach my $r (@defined_pk) { 
+			foreach my $r (@defined_pk) {
 				my ($table, $col) = split(/:/, lc($r));
 				$AConfig{$var}{lc($table)} = $col;
 			}
@@ -7956,7 +7956,7 @@ sub _extract_functions
 	my @functions = ('');
 	my $before = '';
 	my $fcname =  '';
-	for (my $i = 0; $i <= $#lines; $i++) { 
+	for (my $i = 0; $i <= $#lines; $i++) {
 		if ($lines[$i] =~ /^(?:CREATE|CREATE OR REPLACE)?[\t\s]*(FUNCTION|PROCEDURE)[\t\s]+([a-z0-9_\-\."]+)(.*)/i) {
 			$fcname = $2;
 			$fcname =~ s/^.*\.//;
@@ -8138,7 +8138,7 @@ sub _remove_comments
 =head2 _convert_function
 
 This function is used to rewrite Oracle FUNCTION code to
-PostgreSQL. Called only if PLSQL_PGSQL configuration directive               
+PostgreSQL. Called only if PLSQL_PGSQL configuration directive
 is set to 1.
 
 =cut
@@ -8181,7 +8181,7 @@ sub _convert_function
 		my @ninout = $fct_detail{args} =~ /\bINOUT /ig;
 		if ($#nout > 0) {
 			$func_return = " RETURNS$fct_detail{setof} RECORD AS \$body\$\n";
-			
+
 		} elsif ($#nout == 0) {
 			$fct_detail{args} =~ /[\s\t]*OUT[\s\t]+([A-Z0-9_\$\%\.]+)[\s\t\),]*/i;
 			$func_return = " RETURNS$fct_detail{setof} $1 AS \$body\$\n";
@@ -8555,7 +8555,7 @@ sub _convert_type
 		$type_of =~ s/[\t\s\r\n]*NOT[\t\s]+NULL//s;
 		$type_of =~ s/[\t\s\r\n]*;$//s;
 		$type_of =~ s/^[\t\s\r\n]+//s;
-		if ($type_of !~ /[\t\s\r\n]/s) { 
+		if ($type_of !~ /[\t\s\r\n]/s) {
 			$type_of = Ora2Pg::PLSQL::replace_sql_type($type_of, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type});
 			$self->{type_of_type}{'Nested Tables'}++;
 			$content = "CREATE TYPE \L$type_name\E AS (\L$type_name\E $type_of\[\]);\n";
@@ -8794,7 +8794,7 @@ sub _extract_data
 	my $nrows = 0;
 	while ( my $rows = $sth->fetchall_arrayref(undef,$self->{data_limit})) {
 
-		
+
 		if (defined $dbh) {
 			if ($dbh->errstr) {
 				$self->logit("ERROR: " . $dbh->errstr . "\n", 0, 0);
@@ -8806,7 +8806,7 @@ sub _extract_data
 				last;
 			}
 		}
-	
+
 		$nrows =  @$rows;
 		$total_record += $nrows;
 		if ( ($self->{jobs} > 1) || ($self->{oracle_copies} > 1) ) {
@@ -9081,7 +9081,7 @@ sub build_escape_bytea
 			} else {
 				$out = chr($tmp);
 			}
-		} else { 
+		} else {
 			$out = sprintf('\\\\%03o',$tmp);
 		}
 		$bytea_array[$tmp] = $out;
@@ -9168,13 +9168,13 @@ sub _show_infos
 		}
 		# Get definition of Oracle Database Link
 		my %dblink = $self->_get_dblink();
-		$objects{'DATABASE LINK'} = scalar keys %dblink;	
+		$objects{'DATABASE LINK'} = scalar keys %dblink;
 		# Get definition of Oracle Jobs
 		my %jobs = $self->_get_job();
-		$objects{'JOB'} = scalar keys %jobs;	
+		$objects{'JOB'} = scalar keys %jobs;
 		# Get synonym inforamtion
 		my %synonyms = $self->_synonyms();
-		$objects{'SYNONYM'} = scalar keys %synonyms;	
+		$objects{'SYNONYM'} = scalar keys %synonyms;
 
 		# Look at all database objects to compute report
 		my %report_info = ();
@@ -9514,7 +9514,7 @@ sub _show_infos
 			if ($type eq 'SHOW_COLUMN') {
 
 				# Collect column's details for the current table with attempt to preserve column declaration order
-				foreach my $k (sort { 
+				foreach my $k (sort {
 						if (!$self->{reordering_columns}) {
 							$self->{tables}{$t}{column_info}{$a}[10] <=> $self->{tables}{$t}{column_info}{$b}[10];
 						} else {
@@ -9577,7 +9577,7 @@ sub _show_infos
 						}
 						$type .= ")";
 						$type .= " - $d->[13]" if ($d->[13] =~  /,/);
-						
+
 					}
 					if (&is_reserved_words($d->[0])) {
 						$warning = " (Warning: '$d->[0]' is a reserved word in PostgreSQL)";
@@ -10234,7 +10234,7 @@ sub _lookup_check_constraint
 	my $tbsaved = $table;
 	$table = $self->get_replaced_tbname($table);
 
-	# Set the check constraint definition 
+	# Set the check constraint definition
 	foreach my $k (keys %{$check_constraint->{constraint}}) {
 		my $chkconstraint = $check_constraint->{constraint}->{$k};
 		next if (!$chkconstraint);
@@ -10331,7 +10331,7 @@ sub _lookup_function
 
 	return if (!$fct_detail{code});
 
-	if ( ($fct_detail{declare} =~ s/(.*?)\b(FUNCTION|PROCEDURE)\s+([^\s\(]+)\s*(\([^\)]*\))//is) || 
+	if ( ($fct_detail{declare} =~ s/(.*?)\b(FUNCTION|PROCEDURE)\s+([^\s\(]+)\s*(\([^\)]*\))//is) ||
 	($fct_detail{declare} =~ s/(.*?)\b(FUNCTION|PROCEDURE)\s+([^\s\(]+)\s+(RETURN|IS)/$4/is) ) {
 		$fct_detail{before} = $1;
 		$fct_detail{type} = uc($2);
@@ -10424,7 +10424,7 @@ sub set_search_path
 	if ($TYPE{BFILE} eq 'efile') {
 			$local_path .= ', external_file';
 	}
-	
+
 	if ($self->{export_schema}) {
 		if ($self->{pg_schema}) {
 			if (!$self->{preserve_case}) {
@@ -10459,7 +10459,7 @@ sub _get_human_cost
 		my $tmp = $human_cost/60;
 		$tmp++ if ($tmp =~ s/\.\d+//);
 		$human_cost = "$tmp man-hour(s)";
-	} 
+	}
 
 	return $human_cost;
 }
@@ -10642,7 +10642,7 @@ h2 {
 			$self->logit("<h2>Details of cost assessment per function</h2>\n", 0);
 			$self->logit("<ul>\n", 0);
 			foreach my $fct (sort { $report_info{'full_function_details'}{$b}{count} <=> $report_info{'full_function_details'}{$a}{count} } keys %{ $report_info{'full_function_details'} } ) {
-				
+
 				$self->logit("<li>Function $fct total estimated cost: $report_info{'full_function_details'}{$fct}{count}</li>\n", 0);
 				$self->logit("<ul>\n", 0);
 				$report_info{'full_function_details'}{$fct}{info} =~ s/\t/<li>/gs;
@@ -10865,7 +10865,7 @@ sub get_kettle_xml
     <optimizationLevel>9</optimizationLevel>
     <jsScripts>      <jsScript>        <jsScript_type>0</jsScript_type>
         <jsScript_name>Script 1</jsScript_name>
-        <jsScript_script>for (var i=0;i&lt;getInputRowMeta().size();i++) { 
+        <jsScript_script>for (var i=0;i&lt;getInputRowMeta().size();i++) {
   var valueMeta = getInputRowMeta().getValueMeta(i);
   if (valueMeta.getTypeDesc().equals(&quot;String&quot;)) {
     row[i]=replace(row[i],&quot;\\00&quot;,&apos;&apos;);
@@ -11027,4 +11027,3 @@ L<DBD::Oracle>, L<DBD::Pg>
 
 
 =cut
-
