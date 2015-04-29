@@ -5967,7 +5967,7 @@ END
 		$spatial_srid = 'SELECT sdo_cs.map_oracle_srid_to_epsg(SRID) FROM ALL_SDO_GEOM_METADATA WHERE TABLE_NAME=? AND COLUMN_NAME=? AND OWNER=?';
 	}
 	# Get the dimension of the geometry by looking at the number of element in the SDO_DIM_ARRAY
-	my $spatial_dim = "SELECT SDO_DIMNAME, SDO_LB, SDO_UB FROM TABLE ( SELECT DIMINFO a FROM ALL_SDO_GEOM_METADATA WHERE TABLE_NAME=? AND COLUMN_NAME=? AND OWNER=?)";
+	my $spatial_dim = "SELECT t.SDO_DIMNAME, t.SDO_LB, t.SDO_UB FROM ALL_SDO_GEOM_METADATA m, TABLE (m.diminfo) t WHERE m.TABLE_NAME=? AND m.COLUMN_NAME=? AND OWNER=?";
 
 	my %data = ();
 	my $pos = 0;
