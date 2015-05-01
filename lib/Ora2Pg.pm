@@ -7320,12 +7320,17 @@ sub _get_partitions
 	my($self) = @_;
 
 	# Retrieve all partitions.
+	if ($self->{db_version} =~ /Release 8/) {
+        my $highvalue =' ';
+    } else {
+        my $highvalue = 'A.HIGH_VALUE,';
+    }
 	my $str = qq{
 SELECT
 	A.TABLE_NAME,
 	A.PARTITION_POSITION,
 	A.PARTITION_NAME,
-	A.HIGH_VALUE,
+	$highvalue
 	A.TABLESPACE_NAME,
 	B.PARTITIONING_TYPE,
 	C.NAME,
