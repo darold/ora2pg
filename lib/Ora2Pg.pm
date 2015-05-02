@@ -7320,12 +7320,15 @@ sub _get_partitions
 	my($self) = @_;
 
 	# Retrieve all partitions.
+	if ($self->{db_version} !~ /Release 8/) {
+        my $highvalue = 'A.HIGH_VALUE,';
+    }  
 	my $str = qq{
 SELECT
 	A.TABLE_NAME,
 	A.PARTITION_POSITION,
 	A.PARTITION_NAME,
-	A.HIGH_VALUE,
+	$highvalue
 	A.TABLESPACE_NAME,
 	B.PARTITIONING_TYPE,
 	C.NAME,
@@ -7379,12 +7382,15 @@ sub _get_subpartitions
 	my($self) = @_;
 
 	# Retrieve all partitions.
+	if ($self->{db_version} !~ /Release 8/) {
+        my $highvalue = 'A.HIGH_VALUE,';
+    }  
 	my $str = qq{
 SELECT
 	A.TABLE_NAME,
 	A.SUBPARTITION_POSITION,
 	A.SUBPARTITION_NAME,
-	A.HIGH_VALUE,
+	$highvalue
 	A.TABLESPACE_NAME,
 	B.SUBPARTITIONING_TYPE,
 	C.NAME,
@@ -7503,12 +7509,15 @@ sub _get_partitions_list
 	my($self) = @_;
 
 	# Retrieve all partitions.
+	if ($self->{db_version} !~ /Release 8/) {
+        my $highvalue = 'A.HIGH_VALUE,';
+    }  
 	my $str = qq{
 SELECT
 	A.TABLE_NAME,
 	A.PARTITION_POSITION,
 	A.PARTITION_NAME,
-	A.HIGH_VALUE,
+	$highvalue
 	A.TABLESPACE_NAME,
 	B.PARTITIONING_TYPE
 FROM $self->{prefix}_TAB_PARTITIONS A, $self->{prefix}_PART_TABLES B
@@ -9774,7 +9783,7 @@ sub _get_largest_tables
 		$join_segment = " JOIN DBA_SEGMENTS S ON (S.SEGMENT_TYPE LIKE 'TABLE%' AND S.SEGMENT_NAME=A.TABLE_NAME)";
 	}
 
-	my $sql = "SELECT * FROM ( SELECT S.SEGMENT_NAME, ROUND(S.BYTES/1024/1024) SIZE_MB FROM DBA_SEGMENTS S JOIN ALL_TABLES A ON (S.SEGMENT_NAME=A.TABLE_NAME AND S.OWNER=A.OWNER) WHERE S.SEGMENT_TYPE LIKE 'TABLE%' AND A.SECONDARY = 'N'";
+	my $sql = "SELECT * FROM ( SELECT S.SEGMENT_NAME, ROUND(S.BYTES/1024/1024) SIZE_MB) FROM DBA_SEGMENTS S JOIN ALL_TABLES A ON (S.SEGMENT_NAME=A.TABLE_NAME AND S.OWNER=A.OWNER) WHERE S.SEGMENT_TYPE LIKE 'TABLE%' AND A.SECONDARY = 'N'";
         if ($self->{schema}) {
                 $sql .= " AND S.OWNER='$self->{schema}'";
         } else {
