@@ -7320,11 +7320,9 @@ sub _get_partitions
 	my($self) = @_;
 
 	# Retrieve all partitions.
-	if ($self->{db_version} =~ /Release 8/) {
-        my $highvalue =' ';
-    } else {
+	if ($self->{db_version} !~ /Release 8/) {
         my $highvalue = 'A.HIGH_VALUE,';
-    }
+    }  
 	my $str = qq{
 SELECT
 	A.TABLE_NAME,
@@ -7384,12 +7382,15 @@ sub _get_subpartitions
 	my($self) = @_;
 
 	# Retrieve all partitions.
+	if ($self->{db_version} !~ /Release 8/) {
+        my $highvalue = 'A.HIGH_VALUE,';
+    }  
 	my $str = qq{
 SELECT
 	A.TABLE_NAME,
 	A.SUBPARTITION_POSITION,
 	A.SUBPARTITION_NAME,
-	A.HIGH_VALUE,
+	$highvalue
 	A.TABLESPACE_NAME,
 	B.SUBPARTITIONING_TYPE,
 	C.NAME,
@@ -7508,12 +7509,15 @@ sub _get_partitions_list
 	my($self) = @_;
 
 	# Retrieve all partitions.
+	if ($self->{db_version} !~ /Release 8/) {
+        my $highvalue = 'A.HIGH_VALUE,';
+    }  
 	my $str = qq{
 SELECT
 	A.TABLE_NAME,
 	A.PARTITION_POSITION,
 	A.PARTITION_NAME,
-	A.HIGH_VALUE,
+	$highvalue
 	A.TABLESPACE_NAME,
 	B.PARTITIONING_TYPE
 FROM $self->{prefix}_TAB_PARTITIONS A, $self->{prefix}_PART_TABLES B
