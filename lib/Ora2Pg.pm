@@ -2030,9 +2030,9 @@ sub read_view_from_file
 	# Views with aliases
 	while ($content =~ s/CREATE\sVIEW[\s]+([^\s]+)\s*\((.*?)\)\s+AS\s+([^;]+);//i) {
 		my $v_name = $1;
-		$v_name =~ s/"//g;
 		my $v_alias = $2;
 		my $v_def = $3;
+		$v_name =~ s/"//g;
 		$v_def =~ s/\s+/ /g;
 		$tid++;
 	        $self->{views}{$v_name}{text} = $v_def;
@@ -2048,8 +2048,8 @@ sub read_view_from_file
 	# Standard views
 	while ($content =~ s/CREATE\sVIEW[\s]+([^\s]+)\s+AS\s+([^;]+);//i) {
 		my $v_name = $1;
-		$v_name =~ s/"//g;
 		my $v_def = $2;
+		$v_name =~ s/"//g;
 		$v_def =~ s/\s+/ /g;
 		$tid++;
 	        $self->{views}{$v_name}{text} = $v_def;
