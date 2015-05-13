@@ -1748,6 +1748,8 @@ sub _get_dml_from_file
 
 	$content =~ s/\/\*(.*?)\*\// /g;
 	$content =~ s/CREATE\s+OR\s+REPLACE/CREATE/g;
+	$content =~ s/CREATE\s+EDITIONABLE/CREATE/g;
+	$content =~ s/CREATE\s+NONEDITIONABLE/CREATE/g;
 
 	return $content;
 }
