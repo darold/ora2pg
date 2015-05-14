@@ -3460,27 +3460,26 @@ LANGUAGE plpgsql ;
 				chomp($l);
 				$l =~ s/\r//g;
 				next if ($l =~ /^\/$/);
-				next if ($l =~ /^[\s\t]*$/);
+				next if ($l =~ /^\s*$/);
 				if ($old_line) {
 					$l = $old_line .= ' ' . $l;
 					$old_line = '';
 				}
-				if ($l =~ /^[\s\t]*CREATE OR REPLACE$/i) {
+				if ($l =~ /^\s*CREATE\s*(?:OR REPLACE)?\s*(?:EDITABLE|NONEDITABLE)?\s*$/i) {
 					$old_line = $l;
 					next;
 				}
-				if ($l =~ /^[\s\t]*(FUNCTION|PROCEDURE)$/i) {
+				if ($l =~ /^\s*(?:EDITABLE|NONEDITABLE)?\s*(FUNCTION|PROCEDURE)$/i) {
 					$old_line = $l;
 					next;
 				}
-				if ($l =~ /^[\s\t]*CREATE OR REPLACE (FUNCTION|PROCEDURE)[\s\t]*$/i) {
+				if ($l =~ /^\s*CREATE\s*(?:OR REPLACE)?\s*(?:EDITABLE|NONEDITABLE)?\s*(FUNCTION|PROCEDURE)\s*$/i) {
 					$old_line = $l;
 					next;
 				}
-				$l =~ s/^[\s\t]*CREATE OR REPLACE (FUNCTION|PROCEDURE)/$1/is;
-				$l =~ s/^[\s\t]*CREATE (FUNCTION|PROCEDURE)/$1/is;
-				$l =~ s/^[\s\t]+(FUNCTION|PROCEDURE)/$1/i;
-				if ($l =~ /^(FUNCTION|PROCEDURE)[\s\t]+([^\s\(\t]+)/i) {
+				$l =~ s/^\s*CREATE (?:OR REPLACE)?\s*(?:EDITABLE|NONEDITABLE)?\s*(FUNCTION|PROCEDURE)/$1/i;
+				$l =~ s/^\s*(?:EDITABLE|NONEDITABLE)?\s*(FUNCTION|PROCEDURE)/$1/i;
+				if ($l =~ /^(FUNCTION|PROCEDURE)\s+([^\s\(]+)/i) {
 					$fcnm = $2;
 				}
 				next if (!$fcnm);
@@ -3490,7 +3489,7 @@ LANGUAGE plpgsql ;
 				$self->{functions}{$fcnm}{text} .= "$l\n";
 
 				if (!$language) {
-					if ($l =~ /^END[\s\t]+$fcnm(_atx)?[\s\t]*;/i) {
+					if ($l =~ /^END[\s\t]+$fcnm(_atx)?\s*;/i) {
 						$fcnm = '';
 					}
 				} else {
@@ -3603,27 +3602,26 @@ LANGUAGE plpgsql ;
 				chomp($l);
 				$l =~ s/\r//g;
 				next if ($l =~ /^\/$/);
-				next if ($l =~ /^[\s\t]*$/);
+				next if ($l =~ /^\s*$/);
 				if ($old_line) {
 					$l = $old_line .= ' ' . $l;
 					$old_line = '';
 				}
-				if ($l =~ /^[\s\t]*CREATE OR REPLACE$/i) {
+				if ($l =~ /^\s*CREATE\s*(?:OR REPLACE)?\s*(?:EDITABLE|NONEDITABLE)?\s*$/i) {
 					$old_line = $l;
 					next;
 				}
-				if ($l =~ /^[\s\t]*(FUNCTION|PROCEDURE)$/i) {
+				if ($l =~ /^\s*(?:EDITABLE|NONEDITABLE)?\s*(FUNCTION|PROCEDURE)$/i) {
 					$old_line = $l;
 					next;
 				}
-				if ($l =~ /^[\s\t]*CREATE OR REPLACE (FUNCTION|PROCEDURE)[\s\t]*$/i) {
+				if ($l =~ /^\s*CREATE\s*(?:OR REPLACE)?\s*(?:EDITABLE|NONEDITABLE)?\s*(FUNCTION|PROCEDURE)\s*$/i) {
 					$old_line = $l;
 					next;
 				}
-				$l =~ s/^[\s\t]*CREATE OR REPLACE (FUNCTION|PROCEDURE)/$1/i;
-				$l =~ s/^[\s\t]*CREATE (FUNCTION|PROCEDURE)/$1/i;
-				$l =~ s/^[\s\t]+(FUNCTION|PROCEDURE)/$1/i;
-				if ($l =~ /^(FUNCTION|PROCEDURE)[\s\t]+([^\s\(\t]+)/i) {
+				$l =~ s/^\s*CREATE (?:OR REPLACE)?\s*(?:EDITABLE|NONEDITABLE)?\s*(FUNCTION|PROCEDURE)/$1/i;
+				$l =~ s/^\s*(?:EDITABLE|NONEDITABLE)?\s*(FUNCTION|PROCEDURE)/$1/i;
+				if ($l =~ /^(FUNCTION|PROCEDURE)\s+([^\s\(]+)/i) {
 					$fcnm = $2;
 				}
 				next if (!$fcnm);
@@ -3752,27 +3750,28 @@ LANGUAGE plpgsql ;
 					$old_line = '';
 				}
 				if ($skip_pkg_header) {
-					if ( $l =~ /^[\s\t]*END[^;]*;/) {
+					if ( $l =~ /^\s*END[^;]*;/) {
 						$skip_pkg_header = 0;
 					}
 					next;
 				}
-				if ($l =~ /^(?:CREATE|CREATE OR REPLACE)?[\s\t]*PACKAGE[\s\t]+(?!BODY)/i) {
+				$l =~ s/^\s*((?:EDITABLE|NONEDITABLE)?\s*PACKAGE\s+)/CREATE OR REPLACE $1/;
+				if ($l =~ /^(?:CREATE|CREATE OR REPLACE)?\s*(?:EDITABLE|NONEDITABLE)?\s*PACKAGE\s+(?!BODY)/i) {
 					$skip_pkg_header = 1;
 				}
-				if ($l =~ /^[\s\t]*CREATE OR REPLACE$/i) {
+				if ($l =~ /^\s*CREATE\s*(?:OR REPLACE)?\s*$/i) {
 					$old_line = $l;
 					next;
 				}
-				if ($l =~ /^(?:CREATE|CREATE OR REPLACE)?[\s\t]*PACKAGE[\s\t]*(?:BODY[\s\t]*)?$/i) {
+				if ($l =~ /^(?:CREATE|CREATE OR REPLACE)?\s*(?:EDITABLE|NONEDITABLE)?\s*PACKAGE\s*(?:BODY\s*)?$/i) {
 					$old_line = $l;
 					next;
 				}
-				if ($l =~ /^(?:CREATE|CREATE OR REPLACE)?[\s\t]*PACKAGE[\s\t]+(?:BODY[\s\t]+)?([^\t\s]+)[\s\t]*$/is) {
+				if ($l =~ /^(?:CREATE|CREATE OR REPLACE)?\s*(?:EDITABLE|NONEDITABLE)?\s*PACKAGE\s+(?:BODY\s+)?([^\s]+)\s*$/is) {
 					$old_line = $l;
 					next;
 				}
-				if ($l =~ /^(?:CREATE|CREATE OR REPLACE)?[\s\t]*PACKAGE[\s\t]+(?:BODY[\s\t]+)?([^\t\s]+)[\s\t]*(AS|IS)/is) {
+				if ($l =~ /^(?:CREATE|CREATE OR REPLACE)?\s*(?:EDITABLE|NONEDITABLE)?\s*PACKAGE\s+(?:BODY\s+)?([^\s]+)\s*(AS|IS)/is) {
 					$pknm = lc($1);
 				}
 				if ($pknm) {
@@ -3810,7 +3809,7 @@ LANGUAGE plpgsql ;
 				}
 				$pkgbody = $self->{packages}{$pkg}{text};
 			} else {
-				my @codes = split(/CREATE(?: OR REPLACE)? PACKAGE BODY/, $self->{packages}{$pkg}{text});
+				my @codes = split(/CREATE(?: OR REPLACE)?(?: EDITABLE| NONEDITABLE)? PACKAGE BODY/i, $self->{packages}{$pkg}{text});
 				if ($self->{estimate_cost}) {
 					$total_size += length($self->{packages}->{$pkg}{text});
 					foreach my $txt (@codes) {
@@ -3896,8 +3895,8 @@ LANGUAGE plpgsql ;
 			foreach my $l (@alltype) {
 				chomp($l);
 				next if ($l =~ /^[\s\t]*$/);
-				$l =~ s/^[\s\t]*CREATE OR REPLACE[\s\t]*//i;
-				$l =~ s/^[\s\t]*CREATE[\s\t]*//i;
+				$l =~ s/^\s*CREATE\s*(?:OR REPLACE)?\s*(?:NONEDITABLE|EDITABLE)?\s*//i;
+				$l =~ s/^\s*CREATE\s*//i;
 				$code .= $l . "\n";
 				if ($code =~ /^TYPE[\s\t]+([^\s\(\t]+)/is) {
 					$typnm = $1;
@@ -7975,7 +7974,7 @@ sub _extract_functions
 	my $before = '';
 	my $fcname =  '';
 	for (my $i = 0; $i <= $#lines; $i++) { 
-		if ($lines[$i] =~ /^(?:CREATE|CREATE OR REPLACE)?[\t\s]*(FUNCTION|PROCEDURE)[\t\s]+([a-z0-9_\-\."]+)(.*)/i) {
+		if ($lines[$i] =~ /^(?:CREATE|CREATE OR REPLACE)?\s*(?:NONEDITABLE|EDITABLE)?\s*(FUNCTION|PROCEDURE)\s+([a-z0-9_\-\."]+)(.*)/i) {
 			$fcname = $2;
 			$fcname =~ s/^.*\.//;
 			$fcname =~ s/"//g;
@@ -9391,7 +9390,7 @@ sub _show_infos
 					next if (!$packages->{$pkg}{text});
 					$number_pkg++;
 					$total_size += length($packages->{$pkg}{text});
-					my @codes = split(/CREATE(?: OR REPLACE)? PACKAGE BODY/, $packages->{$pkg}{text});
+					my @codes = split(/CREATE(?: OR REPLACE)?(?: NONEDITABLE| EDITABLE)? PACKAGE BODY/, $packages->{$pkg}{text});
 					foreach my $txt (@codes) {
 						my %infos = $self->_lookup_package("CREATE OR REPLACE PACKAGE BODY$txt");
 						foreach my $f (sort keys %infos) {
@@ -9653,7 +9652,7 @@ sub _get_pkg_functions
 	my $packages = $self->_get_packages();
 	foreach my $pkg (keys %{$packages}) {
 		next if (!$packages->{$pkg}{text});
-		my @codes = split(/CREATE(?: OR REPLACE)? PACKAGE BODY/, $packages->{$pkg}{text});
+		my @codes = split(/CREATE(?: OR REPLACE)?(?: NONEDITABLE| EDITABLE)? PACKAGE BODY/, $packages->{$pkg}{text});
 		foreach my $txt (@codes) {
 			my %infos = $self->_lookup_package("CREATE OR REPLACE PACKAGE BODY$txt");
 			foreach my $f (sort keys %infos) {
