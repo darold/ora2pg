@@ -4609,9 +4609,9 @@ CREATE TRIGGER insert_${table}_trigger
 				$sql_output .= "-- You need to create foreign table $self->{synonyms}{$syn}{table_owner}.$self->{synonyms}{$syn}{table_name} using foreign server: $self->{synonyms}{$syn}{dblink} (see DBLINK and FDW export type)\n";
 			}
 			if (!$self->{preserve_case}) {
-				$sql_output .= "CREATE VIEW \L$self->{synonyms}{$syn}{owner}.$syn\E AS SELECT * FROM \L$self->{synonyms}{$syn}{table_owner}.$self->{synonyms}{$syn}{table_name}\E SECURITY DEFINER;\n";
+				$sql_output .= "CREATE VIEW \L$self->{synonyms}{$syn}{owner}.$syn\E AS SELECT * FROM \L$self->{synonyms}{$syn}{table_owner}.$self->{synonyms}{$syn}{table_name}\E;\n";
 			} else {
-				$sql_output .= "CREATE VIEW \"$self->{synonyms}{$syn}{owner}\".\"$syn\" AS SELECT * FROM \"$self->{synonyms}{$syn}{table_owner}\".\"$self->{synonyms}{$syn}{table_name}\" SECURITY DEFINER;\n";
+				$sql_output .= "CREATE VIEW \"$self->{synonyms}{$syn}{owner}\".\"$syn\" AS SELECT * FROM \"$self->{synonyms}{$syn}{table_owner}\".\"$self->{synonyms}{$syn}{table_name}\";\n";
 			}
 
 			my $owner = $self->{synonyms}{$syn}{table_owner};
