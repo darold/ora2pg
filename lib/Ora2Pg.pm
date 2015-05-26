@@ -9079,7 +9079,10 @@ sub _dump_to_pg
 	}
 
 	if ($^O !~ /MSWin32|dos/i) {
-		unlink($tempfiles[0]->[1]);
+		if (defined $tempfiles[0]->[0]) {
+			close($tempfiles[0]->[0]);
+		}
+		unlink($tempfiles[0]->[1]) if (-e $tempfiles[0]->[1]);
 	}
 }
 
