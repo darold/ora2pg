@@ -620,7 +620,7 @@ DEFAULT_SRID		4326
 # data into a WKT representation, the translation is done on Ora2Pg side.
 # This is a work in progress, please validate your exported data geometries
 # before use.
-GEOMETRY_EXTRACT_TYPE	WKT
+GEOMETRY_EXTRACT_TYPE	INTERNAL
 
 # Use this directive to add a specific schema to the search path to look
 # for PostGis functions.

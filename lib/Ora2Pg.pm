@@ -875,7 +875,7 @@ sub _init
 	# Force Ora2Pg to extract spatial object in binary format
 	$self->{geometry_extract_type} = uc($self->{geometry_extract_type});
 	if (!$self->{geometry_extract_type} || !grep(/^$self->{geometry_extract_type}$/, 'WKT','WKB','INTERNAL')) {
-		$self->{geometry_extract_type} = 'WKT';
+		$self->{geometry_extract_type} = 'INTERNAL';
 	}
 
 	# Default value for triming can be LEADING, TRAILING or BOTH

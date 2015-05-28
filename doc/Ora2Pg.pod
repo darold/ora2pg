@@ -1172,7 +1172,7 @@ and some geometries like CURVEPOLYGON. In this case you may use the INTERNAL
 extraction type. It will use a Pure Perl library to convert the SDO_GEOMETRY
 data into a WKT representation, the translation is done on Ora2Pg side.
 This is a work in progress, please validate your exported data geometries
-before use.
+before use. Default spatial object extraction type is INTERNAL.
 
 =item POSTGIS_SCHEMA
 
