@@ -9142,6 +9142,12 @@ sub _show_infos
 		$self->logit("\tNLS_LANG $self->{nls_lang}\n", 0);
 		$self->logit("\tNLS_NCHAR $self->{nls_nchar}\n", 0);
 		$self->logit("\tCLIENT_ENCODING $self->{client_encoding}\n", 0);
+		if ($self->{enable_microsecond}) {
+			$self->logit("\tNLS_TIMESTAMP_FORMAT YYYY-MM-DD HH24:MI:SS.FF\n", 0);
+		} else {
+			$self->logit("\tNLS_TIMESTAMP_FORMAT YYYY-MM-DD HH24:MI:SS\n", 0);
+		}
+		$self->logit("\tNLS_DATE_FORMAT YYYY-MM-DD HH24:MI:SS\n", 0);
 
 		my ($ora_encoding, $ora_charset, $pg_encoding, $nls_timestamp_format, $nls_date_format) = $self->_get_encoding($self->{dbh});
 		$self->logit("Showing current Oracle encoding and possible PostgreSQL client encoding:\n", 0);
