@@ -5674,15 +5674,22 @@ sub _howto_get_data
 
 				my $sth2 = $self->{dbh}->prepare($spatial_srid);
 				if (!$sth2) {
-					$self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+					if ($self->{dbh}->errstr !~ /ORA-01741/) {
+						$self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+					} else {
+						# No SRID defined, use default one
+						$spatial_srid = $self->{default_srid} || '0';
+						$self->logit("WARNING: Error retreiving SRID, no matter default SRID will be used: $spatial_srid\n", 0);
+					}
+				} else {
+					$sth2->execute() or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+					my @result = ();
+					while (my $r = $sth2->fetch) {
+						push(@result, $r->[0]) if ($r->[0] =~ /\d+/);
+					}
+					$sth2->finish();
+					$spatial_srid = $result[0] || $self->{default_srid} || '0';
 				}
-				$sth2->execute() or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-				my @result = ();
-				while (my $r = $sth2->fetch) {
-					push(@result, $r->[0]) if ($r->[0] =~ /\d+/);
-				}
-				$sth2->finish();
-				$spatial_srid = $result[0] || $self->{default_srid} || '0';
 
 			}
 
