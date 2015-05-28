@@ -450,7 +450,7 @@ sub make_config_generic
 		$conf_arr->[$i] =~ s/^USER_GRANTS.*0/USER_GRANTS\t1/;
 		$conf_arr->[$i] =~ s/^#SCHEMA.*SCHEMA_NAME/SCHEMA\tCHANGE_THIS_SCHEMA_NAME/;
 		$conf_arr->[$i] =~ s/^#(NLS_LANG.*AMERICAN_AMERICA.UTF8)/$1/;
-		$conf_arr->[$i] =~ s/^#(BINMODE.*utf8)/$1/;
+		$conf_arr->[$i] =~ s/^(BINMODE.*)/#$1/;
 		$conf_arr->[$i] =~ s/^PLSQL_PGSQL.*1/PLSQL_PGSQL\t0/;
 		$conf_arr->[$i] =~ s/^FILE_PER_CONSTRAINT.*0/FILE_PER_CONSTRAINT\t1/;
 		$conf_arr->[$i] =~ s/^FILE_PER_INDEX.*0/FILE_PER_INDEX\t1/;
