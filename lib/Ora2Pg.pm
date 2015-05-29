@@ -5993,16 +5993,22 @@ END
 			if ($self->{convert_srid} > 1) {
 				push(@geom_inf, $self->{convert_srid});
 			} else {
+				my @result = ();
 				my $sth2 = $self->{dbh}->prepare($spatial_srid);
 				if (!$sth2) {
-					$self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+					if ($self->{dbh}->errstr !~ /ORA-01741/) {
+						$self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+					} else {
+						# No SRID defined, use default one
+						$self->logit("WARNING: Error retreiving SRID, no matter default SRID will be used: $spatial_srid\n", 0);
+					}
+				} else {
+					$sth2->execute($row->[-2],$row->[0],$row->[-1]) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+					while (my $r = $sth2->fetch) {
+						push(@result, $r->[0]) if ($r->[0] =~ /\d+/);
+					}
+					$sth2->finish();
 				}
-				$sth2->execute($row->[-2],$row->[0],$row->[-1]) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-				my @result = ();
-				while (my $r = $sth2->fetch) {
-					push(@result, $r->[0]) if ($r->[0] =~ /\d+/);
-				}
-				$sth2->finish();
 				if ($#result == 0) {
 					push(@geom_inf, $result[0]);
 				} elsif ($self->{default_srid}) {
