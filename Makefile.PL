@@ -697,7 +697,7 @@ TOP_MAX			10
 
 
 #------------------------------------------------------------------------------
-# POSTGRESQL FEATURE SECTION (Control which PostgreSQL are available)
+# POSTGRESQL FEATURE SECTION (Control which PostgreSQL features are available)
 #------------------------------------------------------------------------------
 
 # Allow support of WHEN clause in trigger definition PG>=9.0
