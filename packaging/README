@@ -12,9 +12,9 @@ RPM/
 
 	The binary package may be found here:
 
-		~/rpmbuild/RPMS/noarch/ora2pg-15.2-1.noarch.rpm
+		~/rpmbuild/RPMS/noarch/ora2pg-15.3-1.noarch.rpm
 	or
-		/usr/src/redhat/RPMS/i386/ora2pg-15.2-1.noarch.rpm
+		/usr/src/redhat/RPMS/i386/ora2pg-15.3-1.noarch.rpm
 
 	To install run:
 
@@ -30,7 +30,7 @@ slackbuild/
 	then take a look at /tmp/build/ to find the Slackware package.
 	To install run the following command:
 
-		installpkg /tmp/build/ora2pg-15.2-i486-1gda.tgz
+		installpkg /tmp/build/ora2pg-15.3-i486-1gda.tgz
 
 
 debian/

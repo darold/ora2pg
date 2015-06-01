@@ -1,3 +1,41 @@
+2015 06 01 - v15.3
+
+This is a maintenance release only that fixes several minor bugs and typos.
+The configuration file have been entirely rewritten to classify configuration
+directives in section for better understanding.
+
+Here is the full list of changes:
+
+  - Ora2Pg will use DEFAULT_SRID when call to sdo_cs.map_oracle_srid_to_epsg()
+    returns an ORA-01741 error. Mostly because there's no SRID defined for that
+    column in ALL_SDO_GEOM_METADATA. The error message will still be displayed
+    but a warning will explain the reason and ora2pg will continue with default
+    value. Thanks to kazam for the report.
+  - Add current setting for NLS_TIMESTAMP_FORMAT and NLS_DATE_FORMAT to the
+    SHOW_ENCODING report.
+  - Change default value for GEOMETRY_EXTRACT_TYPE to INTERNAL instead of WKT.
+  - Change generic configuration file behavior with BINMODE parameter commented
+    if it was previously uncommented. This will force to use the default value.
+  - Fix potential issue with max open file limit with unclosed temporary file.
+    Thanks to Marc Clement for the report.
+  - Fix use of SECURITY DEFINER in SYNONYM export.
+  - Fix parsing of editable function/procedure/package from input DML file.
+  - Fix case where variable $2 and $3 was null after a too early call of a new
+    substitution in read_view_from_file(). Thanks to Alex Ignatov for the patch.
+  - Add support to "create or replace editionable|noneditionable" from input DML
+    files. Thanks to Alex Ignatov for the report.
+  - Fix unknown column HIGH_VALUE from *_TAB_PARTITIONS in Oracle 8i. Thanks to
+    Sebastian Fischer for the patch.
+  - Fix call to ALL_MVIEW_LOGS object which not exists with Oracle 8i. Thanks to
+    Sebastian Fischer for the report.
+  - Fix Error ORA-22905 while Get the dimension of the geometry by looking at
+    number of element in the SDO_DIM_ARRAY. Thanks to jkutterer for the patch.
+  - Remove reordering export of view for Oracle database before 11g. Thanks to
+    kyiannis for the report.
+  - Fix several some typos and a bunch of misspelled. Thanks to Euler Taveira
+    for all the patches.
+  - Fix missing Oracle database version before looking at function security
+    definer. Thanks to kyiannis for the report.
 
 2015 04 13 - v15.2
 
