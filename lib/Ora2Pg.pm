@@ -5759,7 +5759,7 @@ VARCHAR2
       RETURN NULL;
     ELSE
       dbms_lob.FILEGETNAME( p_bfile, l_dir, l_fname );
-      RETURN '($quote' || l_dir || '$quote, $quote' || l_fname || '$quote)';
+      RETURN '($quote' || l_dir || '$quote,$quote' || l_fname || '$quote)';
   END IF;
   END;
 };
