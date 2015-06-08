@@ -158,7 +158,8 @@ INSTALLATION
             make install
 
     Installing DBD::Oracle require that the three Oracle packages:
-    instant-client, SDK and SQLplus are installed.
+    instant-client, SDK and SQLplus are installed as well as the libaio1
+    library.
 
 CONFIGURATION
     Ora2Pg configuration can be as simple as choose the Oracle database to

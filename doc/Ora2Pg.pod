@@ -160,7 +160,7 @@ manually if the above don't works:
 	make install
 
 Installing DBD::Oracle require that the three Oracle packages: instant-client,
-SDK and SQLplus are installed.
+SDK and SQLplus are installed as well as the libaio1 library.
 
 =head1 CONFIGURATION
 
