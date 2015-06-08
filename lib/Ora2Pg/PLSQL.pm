@@ -681,7 +681,7 @@ sub replace_sql_type
 		$scale ||= 0;
 		my $len = $precision || 0;
 		$len =~ s/\D//;
-		if ( $type =~ /CHAR/i ) {
+		if ( $type =~ /CHAR|STRING/i ) {
 			# Type CHAR have default length set to 1
 			# Type VARCHAR(2) must have a specified length
 			$len = 1 if (!$len && (($type eq "CHAR") || ($type eq "NCHAR")));
@@ -752,6 +752,7 @@ sub replace_sql_type
 
 	# Set varchar without length to text
 	$str =~ s/VARCHAR2/VARCHAR/igs;
+	$str =~ s/STRING/VARCHAR/igs;
 	$str =~ s/\bVARCHAR([\s\t]*(?!\())/text$1/igs;
 
 	foreach my $t ('DATE','LONG RAW','LONG','NCLOB','CLOB','BLOB','BFILE','RAW','ROWID','FLOAT','DOUBLE PRECISION','INTEGER','INT','REAL','SMALLINT','BINARY_FLOAT','BINARY_DOUBLE','BOOLEAN','XMLTYPE') {

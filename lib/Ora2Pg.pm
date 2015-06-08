@@ -185,6 +185,7 @@ our %TYPE = (
 	'NVARCHAR' => 'varchar',
 	'VARCHAR2' => 'varchar',
 	'NVARCHAR2' => 'varchar',
+	'STRING' => 'varchar',
 	# The DATE data type is used to store the date and time
 	# information. PG type timestamp should match all needs.
 	'DATE' => 'timestamp',
