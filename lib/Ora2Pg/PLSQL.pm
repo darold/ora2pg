@@ -59,7 +59,7 @@ $VERSION = '15.3';
 	'DATABASE LINK' => 3, # Supported as FDW using oracle_fdw
 	'DIMENSION' => 0, # Not supported and no equivalent
 	'JOB' => 2, # read/adapt
-	'SYNONYM' => 2, # read/adapt
+	'SYNONYM' => 1, # read/adapt
 );
 
 # Scores following the number of characters: 1000 chars for one unit.
@@ -99,7 +99,7 @@ $FCT_TEST_SCORE = 2;
 	'PIPE ROW' => 1,
 	'ORA_ROWSCN' => 3,
 	'SAVEPOINT' => 1,
-	'DBLINK' => 4,
+	'DBLINK' => 2,
 	'PLVDATE' => 2,
 	'PLVSTR' => 2,
 	'PLVCHR' => 2,
