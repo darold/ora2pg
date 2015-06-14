@@ -2099,13 +2099,13 @@ sub read_trigger_from_file
 
 	my $doloop = 1;
 	do {
-		if ($content =~ s/CREATE\s+TRIGGER\s+([^\s]+)\s+(BEFORE|AFTER|INSTEAD\s+OF)\s+(.*?)\s+ON\s+([^\s]+)\s+(.*)//i) {
+		if ($content =~ s/CREATE(?: OR REPLACE)?\s+TRIGGER\s+([^\s]+)\s+(BEFORE|AFTER|INSTEAD\s+OF)\s+(.*?)\s+ON\s+([^\s]+)\s+(.*?)(END\s*(?!IF|LOOP|CASE|INTO|FROM|,)[a-z0-9_]*;)//i) {
 			my $t_name = $1;
 			$t_name =~ s/"//g;
 			my $t_pos = $2;
 			my $t_event = $3;
 			my $tb_name = $4;
-			my $trigger = $5;
+			my $trigger = $5 . $6;
 			my $t_type = '';
 			if ($trigger =~ s/^\s*(FOR\s+EACH\s+)(ROW|STATEMENT)\s*//i) {
 				$t_type = $1 . $2;
