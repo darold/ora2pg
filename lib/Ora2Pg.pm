@@ -3270,7 +3270,7 @@ LANGUAGE plpgsql ;
 							$parts[0] = Ora2Pg::PLSQL::replace_sql_type($parts[0], $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type});
 						}
 						$trig->[4] = join('BEGIN', @parts);
-						$trig->[4] =~ s/\bRETURN\s*;/RETURN $ret_kind;/igs;
+						$trig->[4] =~ s/\bRETURN\s*;/$ret_kind/igs;
 					}
 				}
 				if (!$self->{preserve_case}) {
