@@ -255,6 +255,7 @@ CONFIGURATION
                       PostgreSQL expert. Set it to 10 if this is your first migration.
        --dump_as_html     : force ora2pg to dump report in HTML, used only with
                             SHOW_REPORT. Default is to dump report as simple text.
+       --dump_as_csv      : same as above but force ora2pg to dump report in CSV.
        --init_project NAME: initialise a typical ora2pg project tree. Top directory
                             will be created under project base dir.
        --project_base DIR : define the base dir for ora2pg project trees. Default

@@ -61,6 +61,7 @@ my $VIEW_AS_TABLE = '';
 my $ESTIMATE_COST;
 my $COST_UNIT_VALUE;
 my $DUMP_AS_HTML;
+my $DUMP_AS_CSV;
 my $THREAD_COUNT;
 my $ORACLE_COPIES;
 my $PARALLEL_TABLES;
@@ -109,6 +110,7 @@ GetOptions (
 	'estimate_cost!' =>\$ESTIMATE_COST,
 	'cost_unit_value=i' =>\$COST_UNIT_VALUE,
 	'dump_as_html!' =>\$DUMP_AS_HTML,
+	'dump_as_csv!' =>\$DUMP_AS_CSV,
 	'init_project=s' => \$CREATE_PROJECT,
 	'project_base=s' => \$PROJECT_BASE,
 );
@@ -221,6 +223,7 @@ my $schema = new Ora2Pg (
 	estimate_cost => $ESTIMATE_COST,
 	cost_unit_value => $COST_UNIT_VALUE,
 	dump_as_html => $DUMP_AS_HTML,
+	dump_as_csv => $DUMP_AS_CSV,
 	thread_count => $THREAD_COUNT,
 	oracle_copies => $ORACLE_COPIES,
 	data_limit => $DATA_LIMIT,
@@ -298,6 +301,7 @@ Usage: ora2pg [-dhpqv --estimate_cost --dump_as_html] [--option value]
 		  PostgreSQL expert. Set it to 10 if this is your first migration.
    --dump_as_html     : force ora2pg to dump report in HTML, used only with
                         SHOW_REPORT. Default is to dump report as simple text.
+   --dump_as_csv      : as above but force ora2pg to dump report in CSV.
    --init_project NAME: initialise a typical ora2pg project tree. Top directory
                         will be created under project base dir.
    --project_base DIR : define the base dir for ora2pg project trees. Default

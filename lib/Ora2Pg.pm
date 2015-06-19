@@ -941,6 +941,7 @@ sub _init
 	$self->{default_numeric} ||= 'bigint';
 	$self->{type_of_type} = ();
 	$self->{dump_as_html} ||= 0;
+	$self->{dump_as_csv} ||= 0;
 	$self->{top_max} ||= 10;
 
 	# Internal date boundary. Date below will be added to 2000, others will used 1900
@@ -10509,7 +10510,7 @@ sub _show_report
 	my ($self, %report_info) = @_;
 
 	# Generate report text report
-	if (!$self->{dump_as_html}) {
+	if (!$self->{dump_as_html} && !$self->{dump_as_csv}) {
 		my $cost_header = '';
 		$cost_header = "\tEstimated cost" if ($self->{estimate_cost});
 		$self->logit("-------------------------------------------------------------------------------\n", 0);
@@ -10546,6 +10547,21 @@ sub _show_report
 			}
 			$self->logit("-------------------------------------------------------------------------------\n", 0);
 		}
+	} elsif ($self->{dump_as_csv}) {
+		$self->logit("-------------------------------------------------------------------------------\n", 0);
+		$self->logit("Ora2Pg v$VERSION - Database Migration Report\n", 0);
+		$self->logit("-------------------------------------------------------------------------------\n", 0);
+		$self->logit("Version\t$report_info{'Version'}\n", 0);
+		$self->logit("Schema\t$report_info{'Schema'}\n", 0);
+		$self->logit("Size\t$report_info{'Size'}\n\n", 0);
+		$self->logit("-------------------------------------------------------------------------------\n\n", 0);
+		$self->logit("Object;Number;Invalid;Estimated cost;Comments\n", 0);
+		foreach my $typ (sort keys %{ $report_info{'Objects'} } ) {
+			$report_info{'Objects'}{$typ}{'detail'} =~ s/\n/\. /gs;
+			$self->logit("$typ;$report_info{'Objects'}{$typ}{'number'};$report_info{'Objects'}{$typ}{'invalid'};$report_info{'Objects'}{$typ}{'cost_value'};$report_info{'Objects'}{$typ}{'comment'}\n", 0);
+		}
+		my $human_cost = $self->_get_human_cost($report_info{'total_cost_value'});
+		$self->logit("Total;$report_info{'total_object_number'};$report_info{'total_object_invalid'};$report_info{'total_cost_value'} = $human_cost;\n", 0);
 	} else {
 		my $cost_header = '';
 		$cost_header = "<th>Estimated cost</th>" if ($self->{estimate_cost});
