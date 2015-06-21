@@ -2100,13 +2100,13 @@ sub read_trigger_from_file
 
 	my $doloop = 1;
 	do {
-		if ($content =~ s/CREATE\s+TRIGGER\s+([^\s]+)\s+(BEFORE|AFTER|INSTEAD\s+OF)\s+(.*?)\s+ON\s+([^\s]+)\s+(.*)//i) {
+		if ($content =~ s/CREATE(?: OR REPLACE)?\s+TRIGGER\s+([^\s]+)\s+(BEFORE|AFTER|INSTEAD\s+OF)\s+(.*?)\s+ON\s+([^\s]+)\s+(.*?)(END\s*(?!IF|LOOP|CASE|INTO|FROM|,)[a-z0-9_]*;)//i) {
 			my $t_name = $1;
 			$t_name =~ s/"//g;
 			my $t_pos = $2;
 			my $t_event = $3;
 			my $tb_name = $4;
-			my $trigger = $5;
+			my $trigger = $5 . $6;
 			my $t_type = '';
 			if ($trigger =~ s/^\s*(FOR\s+EACH\s+)(ROW|STATEMENT)\s*//i) {
 				$t_type = $1 . $2;
@@ -3257,19 +3257,21 @@ LANGUAGE plpgsql ;
 					}
 					$trig->[4] = "BEGIN\nPERFORM $trig->[4];\nEND;";
 				} else {
-					my $ret_kind = 'NEW';
+					my $ret_kind = 'RETURN NEW;';
 					if (uc($trig->[2]) eq 'DELETE') {
-						$ret_kind = 'OLD';
+						$ret_kind = 'RETURN OLD;';
+					} elsif (uc($trig->[2]) =~ /DELETE/) {
+						$ret_kind = "IF TG_OP = 'DELETE' THEN\n\tRETURN OLD;\nELSE\n\tRETURN NEW;\nEND IF;\n";
 					}
 					if ($self->{plsql_pgsql}) {
 						$trig->[4] = Ora2Pg::PLSQL::plsql_to_plpgsql($trig->[4],$self->{null_equal_empty}, undef, $self->{package_functions});
-						$trig->[4] =~ s/\b(END[;]*)[\s\/]*$/RETURN $ret_kind;\n$1/igs;
+						$trig->[4] =~ s/\b(END[;]*)[\s\/]*$/$ret_kind\n$1/igs;
 						my @parts = split(/BEGIN/i, $trig->[4]);
 						if ($#parts > 0) {
 							$parts[0] = Ora2Pg::PLSQL::replace_sql_type($parts[0], $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type});
 						}
 						$trig->[4] = join('BEGIN', @parts);
-						$trig->[4] =~ s/\bRETURN\s*;/RETURN $ret_kind;/igs;
+						$trig->[4] =~ s/\bRETURN\s*;/$ret_kind/igs;
 					}
 				}
 				if (!$self->{preserve_case}) {

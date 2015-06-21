@@ -442,7 +442,7 @@ FILE_PER_FUNCTION	0
 # the NLS_LANG use an unicode encoding.
 #BINMODE		utf8
 
-# Set it to 0 to not include the call to \set ON_ERROR_STOP ON in all SQL
+# Set it to 0 to not include the call to \\set ON_ERROR_STOP ON in all SQL
 # scripts. By default this order is always present.
 STOP_ON_ERROR		1
 
@@ -657,13 +657,15 @@ EXPORT_INVALID	0
 # function plsql_toplpgsql in Ora2PG/PLSQL.pm. Default enabled.
 PLSQL_PGSQL	1
 
-# By default Ora2Pg will replace all conditions with a test on NULL by a call
-# to the coalesce() function to mimic the Oracle behavior where empty field are
+# Ora2Pg can replace all conditions with a test on NULL by a call to the
+# coalesce() function to mimic the Oracle behavior where empty field are
 # considered equal to NULL. Ex: (field1 IS NULL) and (field2 IS NOT NULL) will
 # be replaced by (coalesce(field1::text, '') = '') and (field2 IS NOT NULL AND
 # field2::text <> ''). You might want this replacement to be sure that your
-# application will have se same behavior.
-NULL_EQUAL_EMPTY	1
+# application will have the same behavior but if you have control on you app
+# a better way is to change it to transform empty string into NULL because
+# PostgreSQL makes the difference.
+NULL_EQUAL_EMPTY	0
 
 # If you don't want to export package as schema but as simple functions you
 # might also want to replace all call to package_name.function_name. If you
