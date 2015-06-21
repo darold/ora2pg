@@ -10561,7 +10561,7 @@ sub _show_report
 			$self->logit("$typ;$report_info{'Objects'}{$typ}{'number'};$report_info{'Objects'}{$typ}{'invalid'};$report_info{'Objects'}{$typ}{'cost_value'};$report_info{'Objects'}{$typ}{'comment'}\n", 0);
 		}
 		my $human_cost = $self->_get_human_cost($report_info{'total_cost_value'});
-		$self->logit("Total;$report_info{'total_object_number'};$report_info{'total_object_invalid'};$report_info{'total_cost_value'} = $human_cost;\n", 0);
+		$self->logit("Total;$report_info{'total_object_number'};$report_info{'total_object_invalid'};$report_info{'total_cost_value'};$human_cost\n", 0);
 	} else {
 		my $cost_header = '';
 		$cost_header = "<th>Estimated cost</th>" if ($self->{estimate_cost});
