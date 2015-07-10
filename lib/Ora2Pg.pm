@@ -9083,7 +9083,7 @@ sub _dump_to_pg
 	my $end_time = time();
 	my $dt = $end_time - $start_time;
 	$dt ||= 1;
-	my $rps = sprintf("%2.1f", $tt_record / ($dt+.0001));
+	my $rps = sprintf("%2.1f", $tt_record / $dt);
 	if (!$self->{quiet} && !$self->{debug}) {
 		if ( ($self->{jobs} > 1) || ($self->{oracle_copies} > 1) ) {
 			$pipe->print("$tt_record $table $total_row $start_time\n");
