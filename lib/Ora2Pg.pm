@@ -9083,7 +9083,7 @@ sub _dump_to_pg
 	my $end_time = time();
 	my $dt = $end_time - $start_time;
 	$dt ||= 1;
-	my $rps = sprintf("%2.1f", $tt_record / $dt);
+	my $rps = sprintf("%2.1f", $glob_total_record / $dt);
 	if (!$self->{quiet} && !$self->{debug}) {
 		if ( ($self->{jobs} > 1) || ($self->{oracle_copies} > 1) ) {
 			$pipe->print("$tt_record $table $total_row $start_time\n");
@@ -9092,6 +9092,7 @@ sub _dump_to_pg
 			print STDERR $self->progress_bar($glob_total_record, $total_row, 25, '=', 'rows', "Table $table ($rps recs/sec)");
 		}
 	} elsif ($self->{debug}) {
+		$self->logit("Extracted records from table $table: total_records = $glob_total_record ($rps recs/sec)\n", 1);
 		$self->logit("Extracted records from table $table: $tt_record ($rps recs/sec)\n", 1);
 	}
 
