@@ -10375,13 +10375,13 @@ sub _lookup_function
 	return if (!$fct_detail{code});
 
 	if ( ($fct_detail{declare} =~ s/(.*?)\b(FUNCTION|PROCEDURE)\s+([^\s\(]+)\s*(\([^\)]*\))//is) || 
-	($fct_detail{declare} =~ s/(.*?)\b(FUNCTION|PROCEDURE)\s+([^\s\(]+)\s+(RETURN|IS)/$4/is) ) {
+	($fct_detail{declare} =~ s/(.*?)\b(FUNCTION|PROCEDURE)\s+([^\s\(]+)\s+(RETURN|IS|AS)/$4/is) ) {
 		$fct_detail{before} = $1;
 		$fct_detail{type} = uc($2);
 		$fct_detail{name} = $3;
 		$fct_detail{args} = $4;
 
-		if ($fct_detail{args} =~ /\b(RETURN|IS)\b/is) {
+		if ($fct_detail{args} =~ /\b(RETURN|IS|AS)\b/is) {
 			$fct_detail{args} = '()';
 		}
 		my $clause = '';
