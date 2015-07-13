@@ -5142,7 +5142,7 @@ sub _create_indexes
 		}
 		# Add parentheses to index column definition when a space is found
 		for ($i = 0; $i <= $#{$indexes{$idx}}; $i++) {
-			if ($indexes{$idx}->[$i] =~ /\s/) {
+			if ( ($indexes{$idx}->[$i] =~ /\s/) && ($indexes{$idx}->[$i] !~ /^[^\s]+\s+DESC$/i) ) {
 				$indexes{$idx}->[$i] = '(' . $indexes{$idx}->[$i] . ')';
 			}
 		}
@@ -6505,7 +6505,7 @@ sub _get_indexes
 	my $sth = '';
 	if ($self->{db_version} !~ /Release 8/) {
 		$sth = $self->{dbh}->prepare(<<END) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-SELECT DISTINCT $self->{prefix}_IND_COLUMNS.INDEX_NAME,$self->{prefix}_IND_COLUMNS.COLUMN_NAME,$self->{prefix}_INDEXES.UNIQUENESS,$self->{prefix}_IND_COLUMNS.COLUMN_POSITION,$self->{prefix}_INDEXES.INDEX_TYPE,$self->{prefix}_INDEXES.TABLE_TYPE,$self->{prefix}_INDEXES.GENERATED,$self->{prefix}_INDEXES.JOIN_INDEX,$self->{prefix}_IND_COLUMNS.TABLE_NAME,$self->{prefix}_IND_COLUMNS.INDEX_OWNER,$self->{prefix}_INDEXES.TABLESPACE_NAME,$self->{prefix}_INDEXES.ITYP_NAME,$self->{prefix}_INDEXES.PARAMETERS
+SELECT DISTINCT $self->{prefix}_IND_COLUMNS.INDEX_NAME,$self->{prefix}_IND_COLUMNS.COLUMN_NAME,$self->{prefix}_INDEXES.UNIQUENESS,$self->{prefix}_IND_COLUMNS.COLUMN_POSITION,$self->{prefix}_INDEXES.INDEX_TYPE,$self->{prefix}_INDEXES.TABLE_TYPE,$self->{prefix}_INDEXES.GENERATED,$self->{prefix}_INDEXES.JOIN_INDEX,$self->{prefix}_IND_COLUMNS.TABLE_NAME,$self->{prefix}_IND_COLUMNS.INDEX_OWNER,$self->{prefix}_INDEXES.TABLESPACE_NAME,$self->{prefix}_INDEXES.ITYP_NAME,$self->{prefix}_INDEXES.PARAMETERS,$self->{prefix}_IND_COLUMNS.DESCEND
 FROM $self->{prefix}_IND_COLUMNS
 JOIN $self->{prefix}_INDEXES ON ($self->{prefix}_INDEXES.INDEX_NAME=$self->{prefix}_IND_COLUMNS.INDEX_NAME)
 WHERE $self->{prefix}_INDEXES.GENERATED <> 'Y' AND $self->{prefix}_INDEXES.TEMPORARY <> 'Y' $condition
@@ -6514,7 +6514,7 @@ END
 	} else {
 		# an 8i database.
 		$sth = $self->{dbh}->prepare(<<END) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-SELECT DISTINCT $self->{prefix}_IND_COLUMNS.INDEX_NAME,$self->{prefix}_IND_COLUMNS.COLUMN_NAME,$self->{prefix}_INDEXES.UNIQUENESS,$self->{prefix}_IND_COLUMNS.COLUMN_POSITION,$self->{prefix}_INDEXES.INDEX_TYPE,$self->{prefix}_INDEXES.TABLE_TYPE,$self->{prefix}_INDEXES.GENERATED,$self->{prefix}_IND_COLUMNS.TABLE_NAME,$self->{prefix}_IND_COLUMNS.INDEX_OWNER,$self->{prefix}_INDEXES.TABLESPACE_NAME,$self->{prefix}_INDEXES.ITYP_NAME,$self->{prefix}_INDEXES.PARAMETERS
+SELECT DISTINCT $self->{prefix}_IND_COLUMNS.INDEX_NAME,$self->{prefix}_IND_COLUMNS.COLUMN_NAME,$self->{prefix}_INDEXES.UNIQUENESS,$self->{prefix}_IND_COLUMNS.COLUMN_POSITION,$self->{prefix}_INDEXES.INDEX_TYPE,$self->{prefix}_INDEXES.TABLE_TYPE,$self->{prefix}_INDEXES.GENERATED,$self->{prefix}_IND_COLUMNS.TABLE_NAME,$self->{prefix}_IND_COLUMNS.INDEX_OWNER,$self->{prefix}_INDEXES.TABLESPACE_NAME,$self->{prefix}_INDEXES.ITYP_NAME,$self->{prefix}_INDEXES.PARAMETERS,$self->{prefix}_IND_COLUMNS.DESCEND
 FROM $self->{prefix}_IND_COLUMNS, $self->{prefix}_INDEXES
 WHERE $self->{prefix}_INDEXES.INDEX_NAME=$self->{prefix}_IND_COLUMNS.INDEX_NAME $condition
 AND $self->{prefix}_INDEXES.GENERATED <> 'Y'
@@ -6544,30 +6544,34 @@ $idxowner
 		if ( !$self->{indexes_suffix} && (lc($row->[0]) eq lc($table)) ) {
 			print STDERR "WARNING: index $row->[0] has the same name as the table itself. Please rename it before export.\n"; 
 		}
-		$unique{$row->[-5]}{$row->[0]} = $row->[2];
+		$unique{$row->[-6]}{$row->[0]} = $row->[2];
 		if (($#{$row} > 6) && ($row->[7] eq 'Y')) {
-			$idx_type{$row->[-5]}{$row->[0]}{type} = $row->[4] . ' JOIN';
+			$idx_type{$row->[-6]}{$row->[0]}{type} = $row->[4] . ' JOIN';
 		} else {
-			$idx_type{$row->[-5]}{$row->[0]}{type} = $row->[4];
+			$idx_type{$row->[-6]}{$row->[0]}{type} = $row->[4];
 		}
-		if ($row->[-2] =~ /SPATIAL_INDEX/) {
-			$idx_type{$row->[-5]}{$row->[0]}{type_name} = $row->[-2];
-			if ($row->[-1] =~ /layer_gtype=([^\s,]+)/i) {
+		if ($row->[-3] =~ /SPATIAL_INDEX/) {
+			$idx_type{$row->[-6]}{$row->[0]}{type_name} = $row->[-2];
+			if ($row->[-2] =~ /layer_gtype=([^\s,]+)/i) {
 				$idx_type{$row->[-5]}{$row->[0]}{type_constraint} = uc($1);
 			}
-			if ($row->[-1] =~ /sdo_indx_dims=(\d+)/i) {
+			if ($row->[-2] =~ /sdo_indx_dims=(\d+)/i) {
 				$idx_type{$row->[-5]}{$row->[0]}{type_dims} = $1;
 			}
 		}
+
 		# Replace function based index type
 		if ( ($row->[4] =~ /FUNCTION-BASED/i) && ($row->[1] =~ /^SYS_NC\d+\$$/) ) {
-			$sth2->execute($row->[1],$row->[-5]) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+			$sth2->execute($row->[1],$row->[-6]) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 			my $nc = $sth2->fetch();
 			$row->[1] = $nc->[0];
+			if ($row->[-1] eq 'DESC') {
+				$row->[1] .= " DESC";
+			}
 		}
 		$row->[1] =~ s/SYS_EXTRACT_UTC[\s\t]*\(([^\)]+)\)/$1/isg;
-		push(@{$data{$row->[-5]}{$row->[0]}}, $row->[1]);
-		$index_tablespace{$row->[-5]}{$row->[0]} = $row->[-2];
+		push(@{$data{$row->[-6]}{$row->[0]}}, $row->[1]);
+		$index_tablespace{$row->[-6]}{$row->[0]} = $row->[-4];
 
 	}
 
