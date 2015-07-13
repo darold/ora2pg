@@ -602,7 +602,8 @@ sub quote_reserved_words
 	}
 	if (!$self->{preserve_case}) {
 		$obj_name = lc($obj_name);
-		if ($obj_name =~ /^\d+/) {
+		if ( ($obj_name =~ /^\d+/) || ($obj_name =~ /[^a-zA-Z0-9\_]/) ) {
+		#if ($obj_name =~ /^\d+/) {
 			return '"' . $obj_name . '"';
 		}
 	}
@@ -628,6 +629,23 @@ sub is_reserved_words
 	}
 	return 0;
 }
+
+sub quote_object_name
+{
+	my ($self, $obj_name) = @_;
+
+	if (!$self->{preserve_case}) {
+		$obj_name = lc($obj_name);
+		if ($obj_name =~ /[^a-zA-Z0-9\_]/) {
+			return '"' . $obj_name . '"';
+		}
+	} else {
+		return '"' . $obj_name . '"';
+	}
+
+	return $obj_name;
+}
+
 
 
 =head2 replace_tables HASH
@@ -5119,13 +5137,13 @@ sub _create_indexes
 		next if ($self->{tables}{$tbsaved}{idx_type}{$idx}{type} =~ /JOIN|IOT|CLUSTER|REV/i);
 		next if ($self->{tables}{$tbsaved}{idx_type}{$idx}{type} =~ /DOMAIN/i && $self->{tables}{$tbsaved}{idx_type}{$idx}{type_name} !~ /SPATIAL_INDEX/);
 
-		map { if ($_ !~ /\(.*\)/) { s/^/"/; s/$/"/; } } @{$indexes{$idx}};
+#		map { if ($_ !~ /\(.*\)/) { s/^/"/; s/$/"/; } } @{$indexes{$idx}};
 		if (exists $self->{replaced_cols}{"\L$tbsaved\E"} && $self->{replaced_cols}{"\L$tbsaved\E"}) {
 			foreach my $c (keys %{$self->{replaced_cols}{"\L$tbsaved\E"}}) {
 				map { s/"$c"/"$self->{replaced_cols}{"\L$tbsaved\E"}{$c}"/i } @{$indexes{$idx}};
 			}
 		}
-		map { s/"//gs } @{$indexes{$idx}};
+#		map { s/"//gs } @{$indexes{$idx}};
 
 		my @strings = ();
 		my $i = 0;
@@ -5135,11 +5153,7 @@ sub _create_indexes
 				$i++;
 			}
 		}
-		if (!$self->{preserve_case}) {
-			map { $_ = $self->quote_reserved_words($_) } @{$indexes{$idx}};
-		} else {
-			map { if ($_ !~ /\(.*\)/) { s/^/"/; s/$/"/; } } @{$indexes{$idx}};
-		}
+
 		# Add parentheses to index column definition when a space is found
 		for ($i = 0; $i <= $#{$indexes{$idx}}; $i++) {
 			if ( ($indexes{$idx}->[$i] =~ /\s/) && ($indexes{$idx}->[$i] !~ /^[^\s]+\s+DESC$/i) ) {
@@ -5183,11 +5197,11 @@ sub _create_indexes
 			for ($i = 0; $i <= $#strings; $i++) {
 				$columns =~ s/\%\%string$i\%\%/'$strings[$i]'/;
 			}
-			#$columns =~ s/^\((.*)\)$/$1/;
+			my $idxname = $self->quote_object_name($idx);
 			if ($self->{tables}{$tbsaved}{idx_type}{$idx}{type_name} !~ /SPATIAL_INDEX/) {
-				$str .= "CREATE$unique INDEX$concurrently \L$idx$self->{indexes_suffix}\E ON $table ($columns)";
+				$str .= "CREATE$unique INDEX$concurrently \L$idxname$self->{indexes_suffix}\E ON $table ($columns)";
 			} else {
-				$str .= "CREATE$unique INDEX$concurrently \L$idx$self->{indexes_suffix}\E ON $table USING gist($columns)";
+				$str .= "CREATE$unique INDEX$concurrently \L$idxname$self->{indexes_suffix}\E ON $table USING gist($columns)";
 			}
 			if ($self->{use_tablespace} && $self->{tables}{$tbsaved}{idx_tbsp}{$idx} && !grep(/^$self->{tables}{$tbsaved}{idx_tbsp}{$idx}$/i, @{$self->{default_tablespaces}})) {
 				$str .= " TABLESPACE $self->{tables}{$tbsaved}{idx_tbsp}{$idx}";
@@ -6559,10 +6573,14 @@ $idxowner
 				$idx_type{$row->[-5]}{$row->[0]}{type_dims} = $1;
 			}
 		}
+		# Save original column name
+		my $colname = $row->[1];
+		# Enclose with double quote if required
+		$row->[1] = $self->quote_reserved_words($row->[1]);
 
 		# Replace function based index type
-		if ( ($row->[4] =~ /FUNCTION-BASED/i) && ($row->[1] =~ /^SYS_NC\d+\$$/) ) {
-			$sth2->execute($row->[1],$row->[-6]) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+		if ( ($row->[4] =~ /FUNCTION-BASED/i) && ($colname =~ /^SYS_NC\d+\$$/) ) {
+			$sth2->execute($colname,$row->[-6]) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 			my $nc = $sth2->fetch();
 			$row->[1] = $nc->[0];
 			if ($row->[-1] eq 'DESC') {
@@ -6570,6 +6588,13 @@ $idxowner
 			}
 		}
 		$row->[1] =~ s/SYS_EXTRACT_UTC[\s\t]*\(([^\)]+)\)/$1/isg;
+
+		if ($self->{preserve_case}) {
+			if (($row->[1] !~ /".*"/) && ($row->[1] !~ /\(.*\)/)) {
+				$row->[1] =~ s/^/"/;
+				$row->[1] =~ s/$/"/;
+			}
+		}
 		push(@{$data{$row->[-6]}{$row->[0]}}, $row->[1]);
 		$index_tablespace{$row->[-6]}{$row->[0]} = $row->[-4];
 
