@@ -602,7 +602,7 @@ sub quote_reserved_words
 	}
 	if (!$self->{preserve_case}) {
 		$obj_name = lc($obj_name);
-		if ($obj_name =~ /^\d+$/) {
+		if ($obj_name =~ /^\d+/) {
 			return '"' . $obj_name . '"';
 		}
 	}
