@@ -602,6 +602,9 @@ sub quote_reserved_words
 	}
 	if (!$self->{preserve_case}) {
 		$obj_name = lc($obj_name);
+		if ($obj_name =~ /^\d+$/) {
+			return '"' . $obj_name . '"';
+		}
 	}
 
 	return $obj_name;
@@ -619,6 +622,9 @@ sub is_reserved_words
 
 	if ($obj_name && grep(/^$obj_name$/i, @KEYWORDS)) {
 		return 1;
+	}
+	if ($obj_name =~ /^\d+$/) {
+		return 2;
 	}
 	return 0;
 }
@@ -9491,8 +9497,11 @@ sub _show_infos
 		my $sth = $self->_schema_list()  or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 		while ( my @row = $sth->fetchrow()) {
 			my $warning = '';
-			if (&is_reserved_words($row[0])) {
+			my $ret = &is_reserved_words($row[0]);
+			if ($ret == 1) {
 				$warning = " (Warning: '$row[0]' is a reserved word in PostgreSQL)";
+			} elsif ($ret == 2) {
+				$warning = " (Warning: '$row[0]' object name with numbers only must be double quoted in PostgreSQL)";
 			}
 			$self->logit("SCHEMA $row[0]$warning\n", 0);
 		}
@@ -9543,8 +9552,11 @@ sub _show_infos
 				push(@done, $t);
 			}
 			my $warning = '';
-			if (&is_reserved_words($t)) {
+			my $ret = &is_reserved_words($t);
+			if ($ret == 1) {
 				$warning = " (Warning: '$t' is a reserved word in PostgreSQL)";
+			} elsif ($ret == 2) {
+				$warning = " (Warning: '$t' object name with numbers only must be double quoted in PostgreSQL)";
 			}
 
 			$total_row_num += $tables_infos{$t}{num_rows};
@@ -9623,8 +9635,11 @@ sub _show_infos
 						$type .= " - $d->[13]" if ($d->[13] =~  /,/);
 						
 					}
-					if (&is_reserved_words($d->[0])) {
+					my $ret = &is_reserved_words($d->[0]);
+					if ($ret == 1) {
 						$warning = " (Warning: '$d->[0]' is a reserved word in PostgreSQL)";
+					} elsif ($ret == 2) {
+						$warning = " (Warning: '$d->[0]' object name with numbers only must be double quoted in PostgreSQL)";
 					}
 					# Check if this column should be replaced by a boolean following table/column name
 					my $typlen = $d->[5];
