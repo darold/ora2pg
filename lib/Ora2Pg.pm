@@ -595,6 +595,8 @@ sub quote_reserved_words
 {
 	my ($self, $obj_name) = @_;
 
+	return $obj_name if ($obj_name =~ /^SYS_NC\d+/);
+
 	if ($self->{use_reserved_words}) {
 		if ($obj_name && grep(/^$obj_name$/i, @KEYWORDS)) {
 			return '"' . $obj_name . '"';
@@ -6580,6 +6582,8 @@ $idxowner
 			$sth2->execute($colname,$row->[-6]) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 			my $nc = $sth2->fetch();
 			$row->[1] = $nc->[0];
+			$row->[1] =~ s/"//g;
+			$row->[1] = $self->quote_reserved_words($row->[1]);
 			if ($row->[-1] eq 'DESC') {
 				$row->[1] .= " DESC";
 			}
