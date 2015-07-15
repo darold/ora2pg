@@ -9859,12 +9859,19 @@ sub _get_largest_tables
 	}
 
 	my $sql = "SELECT * FROM ( SELECT S.SEGMENT_NAME, ROUND(S.BYTES/1024/1024) SIZE_MB FROM DBA_SEGMENTS S JOIN ALL_TABLES A ON (S.SEGMENT_NAME=A.TABLE_NAME AND S.OWNER=A.OWNER) WHERE S.SEGMENT_TYPE LIKE 'TABLE%' AND A.SECONDARY = 'N'";
+	if ($self->{db_version} =~ /Release 8/) {
+		$sql = "SELECT * FROM ( SELECT S.SEGMENT_NAME, ROUND(S.BYTES/1024/1024) SIZE_MB FROM DBA_SEGMENTS S WHERE S.SEGMENT_TYPE LIKE 'TABLE%'";
+	}
         if ($self->{schema}) {
                 $sql .= " AND S.OWNER='$self->{schema}'";
         } else {
                 $sql .= " AND S.OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
         }
-	$sql .= $self->limit_to_objects('TABLE', 'A.TABLE_NAME');
+	if ($self->{db_version} =~ /Release 8/) {
+		$sql .= $self->limit_to_objects('TABLE', 'S.SEGMENT_NAME');
+	} else {
+		$sql .= $self->limit_to_objects('TABLE', 'A.TABLE_NAME');
+	}
 
 	$sql .= " ORDER BY S.BYTES,S.SEGMENT_NAME DESC) WHERE ROWNUM <= $self->{top_max}";
 
