@@ -7953,7 +7953,7 @@ sub read_config
 			$val =~ s/\\,/#NOSEP#/gs;
 			my @modif_type = split(/[,;]+/, $val);
 			foreach my $r (@modif_type) { 
-				$val =~ s/#NOSEP#/,/gs;
+				$r =~ s/#NOSEP#/,/gs;
 				my ($table, $col, $type) = split(/:/, lc($r));
 				$AConfig{$var}{$table}{$col} = $type;
 			}
