@@ -258,9 +258,9 @@ sub plsql_to_plpgsql
 	$str =~ s/\bPROCEDURE\b/FUNCTION/igs;
 	# Simply remove this as not supported
 	$str =~ s/\bDEFAULT\s+NULL\b//igs;
-	# Replace DEFAULT empty_blob()
-	$str =~ s/empty_blob\(\s*\)//igs; 
-	$str =~ s/empty_blob\b//igs; 
+	# Replace DEFAULT empty_blob() and empty_clob()
+	$str =~ s/(empty_blob|empty_clob)\(\s*\)//igs;
+	$str =~ s/(empty_blob|empty_clob)\b//igs;
 
 	# dup_val_on_index => unique_violation : already exist exception
 	$str =~ s/\bdup_val_on_index\b/unique_violation/igs;
