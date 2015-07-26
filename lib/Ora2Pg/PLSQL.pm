@@ -192,11 +192,11 @@ sub plsql_to_plpgsql
 	# Feel free to add your contribution here.
 	#--------------------------------------------
 	# Change NVL to COALESCE
-	$str =~ s/NVL[\s\t]*\(/coalesce(/igs;
+	$str =~ s/NVL\s*\(/coalesce(/igs;
 	# Replace sysdate +/- N by localtimestamp - 1 day intervel
-	$str =~ s/SYSDATE[\s\t]*(\+|\-)[\s\t]*(\d+)/LOCALTIMESTAMP $1 interval '$2 days'/igs;
+	$str =~ s/SYSDATE\s*(\+|\-)\s*(\d+)/LOCALTIMESTAMP $1 interval '$2 days'/igs;
 	# Change SYSDATE to 'now' or current timestamp.
-	$str =~ s/SYSDATE[\s\t]*\([\s\t]*\)/LOCALTIMESTAMP/igs;
+	$str =~ s/SYSDATE\s*\(\s*\)/LOCALTIMESTAMP/igs;
 	$str =~ s/SYSDATE/LOCALTIMESTAMP/igs;
 	# Replace SYSTIMESTAMP 
 	$str =~ s/SYSTIMESTAMP/CURRENT_TIMESTAMP/igs;
@@ -215,10 +215,10 @@ sub plsql_to_plpgsql
 	$str =~ s/([^\w]+):old\./$1OLD\./igs;
 
 	# Replace EXEC function into variable, ex: EXEC :a := test(:r,1,2,3);
-	$str =~ s/EXEC[\s\t]+:([^\s\t:]+)[\s\t]*:=/SELECT INTO $2/igs;
+	$str =~ s/EXEC\s+:([^\s:]+)\s*:=/SELECT INTO $2/igs;
 
 	# Replace simple EXEC function call by SELECT function
-	$str =~ s/EXEC([\s\t]+)/SELECT$1/igs;
+	$str =~ s/EXEC(\s+)/SELECT$1/igs;
 
 	# Remove leading : on Oracle variable
 	$str =~ s/([^\w]+):(\d+)/$1\$$2/igs;
@@ -266,14 +266,14 @@ sub plsql_to_plpgsql
 	$str =~ s/\bdup_val_on_index\b/unique_violation/igs;
 
 	# Replace raise_application_error by PG standard RAISE EXCEPTION
-	$str =~ s/\braise_application_error[\s\t]*\([\s\t]*[\-\+]*\d+[\s\t]*,[\s\t]*(.*?)\);/RAISE EXCEPTION $1;/igs;
+	$str =~ s/\braise_application_error\s*\(\s*[\-\+]*\d+\s*,\s*(.*?)\);/RAISE EXCEPTION $1;/igs;
 	# and then rewrite RAISE EXCEPTION concatenations
-	while ($str =~ /RAISE EXCEPTION[\s\t]*([^;\|]+?)(\|\|)([^;]*);/) {
+	while ($str =~ /RAISE EXCEPTION\s*([^;\|]+?)(\|\|)([^;]*);/) {
 		my @ctt = split(/\|\|/, "$1$2$3");
 		my $sbt = '';
 		my @args = '';
 		for (my $i = 0; $i <= $#ctt; $i++) {
-			if (($ctt[$i] =~ s/^[\s\t]*'//s) && ($ctt[$i] =~ s/'[\s\t]*$//s)) {
+			if (($ctt[$i] =~ s/^\s*'//s) && ($ctt[$i] =~ s/'\s*$//s)) {
 				$sbt .= "$ctt[$i]";
 			} else {
 				$sbt .= '%';
@@ -284,7 +284,7 @@ sub plsql_to_plpgsql
 		if ($#args >= 0) {
 			$sbt = $sbt . join(',', @args);
 		}
-		$str =~ s/RAISE EXCEPTION[\s\t]*([^;\|]+?)(\|\|)([^;]*);/RAISE EXCEPTION $sbt;/is
+		$str =~ s/RAISE EXCEPTION\s*([^;\|]+?)(\|\|)([^;]*);/RAISE EXCEPTION $sbt;/is
 	};
 
 	# Remove IN information from cursor declaration
@@ -295,29 +295,29 @@ sub plsql_to_plpgsql
 	}
 
 	# Reorder cursor declaration
-	$str =~ s/\bCURSOR\b[\s\t]*([A-Z0-9_\$]+)/$1 CURSOR/isg;
+	$str =~ s/\bCURSOR\b\s*([A-Z0-9_\$]+)/$1 CURSOR/isg;
 
 	# Replace CURSOR IS SELECT by CURSOR FOR SELECT
-	$str =~ s/\bCURSOR([\s\t]*)IS([\s\t]*)SELECT/CURSOR$1FOR$2SELECT/isg;
+	$str =~ s/\bCURSOR(\s*)IS(\s*)SELECT/CURSOR$1FOR$2SELECT/isg;
 	# Replace CURSOR (param) IS SELECT by CURSOR FOR SELECT
-	$str =~ s/\bCURSOR([\s\t]*\([^\)]+\)[\s\t]*)IS([\s\t]*)SELECT/CURSOR$1FOR$2SELECT/isg;
+	$str =~ s/\bCURSOR(\s*\([^\)]+\)\s*)IS(\s*)SELECT/CURSOR$1FOR$2SELECT/isg;
 
 	# Rewrite TO_DATE formating call
-	$str =~ s/TO_DATE[\s\t]*\([\s\t]*('[^\']+'),[\s\t]*('[^\']+')[^\)]*\)/to_date($1,$2)/igs;
+	$str =~ s/TO_DATE\s*\(\s*('[^\']+'),\s*('[^\']+')[^\)]*\)/to_date($1,$2)/igs;
 
 	# Normalize HAVING ... GROUP BY into GROUP BY ... HAVING clause	
 	$str =~ s/\bHAVING\b(.*?)\bGROUP BY\b(.*?)((?=UNION|ORDER BY|LIMIT|INTO |FOR UPDATE|PROCEDURE)|$)/GROUP BY$2 HAVING$1/gis;
 
 	# Cast round() call as numeric => Remove because most of the time this may not be necessary
-	#$str =~ s/round[\s\t]*\((.*?),([\s\t\d]+)\)/round\($1::numeric,$2\)/igs;
+	#$str =~ s/round\s*\((.*?),([\s\d]+)\)/round\($1::numeric,$2\)/igs;
 
 	# Convert the call to the Oracle function add_months() into Pg syntax
-	$str =~ s/add_months[\s\t]*\([\s\t]*to_char\([\s\t]*([^,]+)(.*?),[\s\t]*([\-\d]+)[\s\t]*\)/$1 + '$3 month'::interval/gsi;
-	$str =~ s/add_months[\s\t]*\((.*?),[\s\t]*([\-\d]+)[\s\t]*\)/$1 + '$2 month'::interval/gsi;
+	$str =~ s/add_months\s*\(\s*to_char\(\s*([^,]+)(.*?),\s*([\-\d]+)\s*\)/$1 + '$3 month'::interval/gsi;
+	$str =~ s/add_months\s*\((.*?),\s*([\-\d]+)\s*\)/$1 + '$2 month'::interval/gsi;
 
 	# Convert the call to the Oracle function add_years() into Pg syntax
-	$str =~ s/add_years[\s\t]*\([\s\t]*to_char\([\s\t]*([^,]+)(.*?),[\s\t]*([\-\d]+)[\s\t]*\)/$1 + '$3 year'::interval/gsi;
-	$str =~ s/add_years[\s\t]*\((.*?),[\s\t]*([\-\d]+)[\s\t]*\)/$1 + '$2 year'::interval/gsi;
+	$str =~ s/add_years\s*\(\s*to_char\(\s*([^,]+)(.*?),\s*([\-\d]+)\s*\)/$1 + '$3 year'::interval/gsi;
+	$str =~ s/add_years\s*\((.*?),\s*([\-\d]+)\s*\)/$1 + '$2 year'::interval/gsi;
 
 	# Add STRICT keyword when select...into and an exception with NO_DATA_FOUND/TOO_MANY_ROW is present
 	if ($str !~ s/\b(SELECT\b[^;]*?INTO)(.*?)(EXCEPTION.*?NO_DATA_FOUND)/$1 STRICT $2 $3/igs) {
@@ -325,48 +325,48 @@ sub plsql_to_plpgsql
 	}
 
 	# Remove the function name repetion at end
-	$str =~ s/END[\s\t]+(?!IF|LOOP|CASE|INTO|FROM|,)[a-z0-9_"]+\s*([;]*)\s*$/END$1/igs;
+	$str =~ s/END\s+(?!IF|LOOP|CASE|INTO|FROM|,)[a-z0-9_"]+\s*([;]*)\s*$/END$1/igs;
 
 	# Replace ending ROWNUM with LIMIT
-	$str =~ s/(WHERE|AND)[\s\t]*ROWNUM[\s\t]*=[\s\t]*(\d+)/LIMIT 1 OFFSET $2/igs;
-	$str =~ s/(WHERE|AND)[\s\t]*ROWNUM[\s\t]*<=[\s\t]*(\d+)/LIMIT $2/igs;
-	$str =~ s/(WHERE|AND)[\s\t]*ROWNUM[\s\t]*>=[\s\t]*(\d+)/LIMIT ALL OFFSET $2/igs;
-	while ($str =~ /(WHERE|AND)[\s\t]*ROWNUM[\s\t]*<[\s\t]*(\d+)/is) {
+	$str =~ s/(WHERE|AND)\s*ROWNUM\s*=\s*(\d+)/LIMIT 1 OFFSET $2/igs;
+	$str =~ s/(WHERE|AND)\s*ROWNUM\s*<=\s*(\d+)/LIMIT $2/igs;
+	$str =~ s/(WHERE|AND)\s*ROWNUM\s*>=\s*(\d+)/LIMIT ALL OFFSET $2/igs;
+	while ($str =~ /(WHERE|AND)\s*ROWNUM\s*<\s*(\d+)/is) {
 		my $limit = $2 - 1;
-		$str =~ s/(WHERE|AND)[\s\t]*ROWNUM[\s\t]*<[\s\t]*(\d+)/LIMIT $limit/is;
+		$str =~ s/(WHERE|AND)\s*ROWNUM\s*<\s*(\d+)/LIMIT $limit/is;
 	}
-	while ($str =~ /(WHERE|AND)[\s\t]*ROWNUM[\s\t]*>[\s\t]*(\d+)/is) {
+	while ($str =~ /(WHERE|AND)\s*ROWNUM\s*>\s*(\d+)/is) {
 		my $offset = $2 + 1;
-		$str =~ s/(WHERE|AND)[\s\t]*ROWNUM[\s\t]*>[\s\t]*(\d+)/LIMIT ALL OFFSET $offset/is;
+		$str =~ s/(WHERE|AND)\s*ROWNUM\s*>\s*(\d+)/LIMIT ALL OFFSET $offset/is;
 	}
 
 	# Rewrite comment in CASE between WHEN and THEN
-	$str =~ s/([\s\t]*)(WHEN[\s\t]+[^\s\t]+[\s\t]*)(ORA2PG_COMMENT\d+\%)([\s\t]*THEN)/$1$3$1$2$4/igs;
+	$str =~ s/(\s*)(WHEN\s+[^\s]+\s*)(ORA2PG_COMMENT\d+\%)(\s*THEN)/$1$3$1$2$4/igs;
 
 	# Replace SQLCODE by SQLSTATE
 	$str =~ s/\bSQLCODE\b/SQLSTATE/igs;
 
 	# Replace some way of extracting date part of a date
-	$str =~ s/TO_NUMBER[\s\t]*\([\s\t]*TO_CHAR[\s\t]*\(([^,]+),[\s\t]*('[^']+')[\s\t]*\)[\s\t]*\)/to_char($1, $2)::integer/igs;
+	$str =~ s/TO_NUMBER\s*\(\s*TO_CHAR\s*\(([^,]+),\s*('[^']+')\s*\)\s*\)/to_char($1, $2)::integer/igs;
 
 	# Replace the UTC convertion with the PG syntaxe
-	 $str =~ s/SYS_EXTRACT_UTC[\s\t]*\(([^\)]+)\)/$1 AT TIME ZONE 'UTC'/isg;
+	 $str =~ s/SYS_EXTRACT_UTC\s*\(([^\)]+)\)/$1 AT TIME ZONE 'UTC'/isg;
 
 	# Revert order in FOR IN REVERSE
-	$str =~ s/FOR(.*?)IN[\s\t]+REVERSE[\s\t]+([^\.\s\t]+)[\s\t]*\.\.[\s\t]*([^\s\t]+)/FOR$1IN REVERSE $3..$2/isg;
+	$str =~ s/FOR(.*?)IN\s+REVERSE\s+([^\.\s]+)\s*\.\.\s*([^\s]+)/FOR$1IN REVERSE $3..$2/isg;
 
 	# Replace exit at end of cursor
-	$str =~ s/EXIT WHEN ([^\%]+)\%NOTFOUND[\s\t]*;/IF NOT FOUND THEN EXIT; END IF; -- apply on $1/isg;
-	$str =~ s/EXIT WHEN \([\s\t]*([^\%]+)\%NOTFOUND[\s\t]*\)[\s\t]*;/IF NOT FOUND THEN EXIT; END IF; -- apply on $1/isg;
+	$str =~ s/EXIT WHEN ([^\%]+)\%NOTFOUND\s*;/IF NOT FOUND THEN EXIT; END IF; -- apply on $1/isg;
+	$str =~ s/EXIT WHEN \(\s*([^\%]+)\%NOTFOUND\s*\)\s*;/IF NOT FOUND THEN EXIT; END IF; -- apply on $1/isg;
 	# Same but with additional conditions
-	$str =~ s/EXIT WHEN ([^\%]+)\%NOTFOUND[\s\t]+([;]+);/IF NOT FOUND $2 THEN EXIT; END IF; -- apply on $1/isg;
-	$str =~ s/EXIT WHEN \([\s\t]*([^\%]+)\%NOTFOUND[\s\t]+([\)]+)\)[\s\t]*;/IF NOT FOUND $2 THEN EXIT; END IF; -- apply on $1/isg;
+	$str =~ s/EXIT WHEN ([^\%]+)\%NOTFOUND\s+([;]+);/IF NOT FOUND $2 THEN EXIT; END IF; -- apply on $1/isg;
+	$str =~ s/EXIT WHEN \(\s*([^\%]+)\%NOTFOUND\s+([\)]+)\)\s*;/IF NOT FOUND $2 THEN EXIT; END IF; -- apply on $1/isg;
 	# Replacle call to SQL%NOTFOUND
 	$str =~ s/SQL\%NOTFOUND/NOT FOUND/isg;
 
 	# Replace REF CURSOR as Pg REFCURSOR
-	$str =~ s/\bIS([\s\t]*)REF[\s\t]+CURSOR/REFCURSOR/isg;
-	$str =~ s/\bREF[\s\t]+CURSOR/REFCURSOR/isg;
+	$str =~ s/\bIS(\s*)REF\s+CURSOR/REFCURSOR/isg;
+	$str =~ s/\bREF\s+CURSOR/REFCURSOR/isg;
 
 	# Replace SYS_REFCURSOR as Pg REFCURSOR
 	$str =~ s/SYS_REFCURSOR/REFCURSOR/isg;
@@ -384,7 +384,7 @@ sub plsql_to_plpgsql
 	$str =~ s/'([\-]*)Inf'/'$1Infinity'/igs;
 
 	# REGEX_LIKE( string, pattern ) => string ~ pattern
-	$str =~ s/REGEXP_LIKE[\s\t]*\([\s\t]*([^,]+)[\s\t]*,[\s\t]*('[^\']+')[\s\t]*\)/$1 \~ $2/igs;
+	$str =~ s/REGEXP_LIKE\s*\(\s*([^,]+)\s*,\s*('[^\']+')\s*\)/$1 \~ $2/igs;
 
 	# Remove call to XMLCDATA, there's no such function with PostgreSQL
 	$str =~ s/XMLCDATA\s*\(([^\)]+)\)/'<![CDATA[' || $1 || ']]>'/igs;
@@ -402,7 +402,7 @@ sub plsql_to_plpgsql
 	}
 
 	# Replace PIPE ROW by RETURN NEXT
-	$str =~ s/PIPE[\s\t]+ROW[\s\t]*/RETURN NEXT /igs;
+	$str =~ s/PIPE\s+ROW\s*/RETURN NEXT /igs;
 	$str =~ s/(RETURN NEXT )\(([^\)]+)\)/$1$2/igs;
 
 	# The to_number() function reclaim a second argument under postgres which is the format.
@@ -666,14 +666,14 @@ sub replace_sql_type
 
 	# Replace type with precision
 	my $oratype_regex = join('|', keys %Ora2Pg::TYPE);
-	while ($str =~ /(.*)\b($oratype_regex)[\s\t]*\(([^\)]+)\)/i) {
+	while ($str =~ /(.*)\b($oratype_regex)\s*\(([^\)]+)\)/i) {
 		my $backstr = $1;
 		my $type = uc($2);
 		my $args = $3;
 		# Remove extra CHAR or BYTE information from column type
 		$args =~ s/\s*(CHAR|BYTE)\s*$//i;
 		if ($backstr =~ /_$/) {
-		    $str =~ s/\b($oratype_regex)[\s\t]*\(([^\)]+)\)/$1\%\|$2\%\|\%/is;
+		    $str =~ s/\b($oratype_regex)\s*\(([^\)]+)\)/$1\%\|$2\%\|\%/is;
 		    next;
 		}
 
@@ -685,10 +685,10 @@ sub replace_sql_type
 			# Type CHAR have default length set to 1
 			# Type VARCHAR(2) must have a specified length
 			$len = 1 if (!$len && (($type eq "CHAR") || ($type eq "NCHAR")));
-			$str =~ s/\b$type\b[\s\t]*\([^\)]+\)/$Ora2Pg::TYPE{$type}\%\|$len\%\|\%/is;
+			$str =~ s/\b$type\b\s*\([^\)]+\)/$Ora2Pg::TYPE{$type}\%\|$len\%\|\%/is;
 		} elsif ($type =~ /TIMESTAMP/i) {
 			$len = 6 if ($len > 6);
-			$str =~ s/\b$type\b[\s\t]*\([^\)]+\)/timestamp\%\|$len%\|\%/is;
+			$str =~ s/\b$type\b\s*\([^\)]+\)/timestamp\%\|$len%\|\%/is;
  		} elsif ($type =~ /INTERVAL/i) {
  			# Interval precision for year/month/day is not supported by PostgreSQL
  			$str =~ s/(INTERVAL\s+YEAR)\s*\(\d+\)/$1/is;
@@ -706,36 +706,36 @@ sub replace_sql_type
 				if ($precision) {
 					if ($pg_integer_type) {
 						if ($precision < 5) {
-							$str =~ s/\b$type\b[\s\t]*\([^\)]+\)/smallint/is;
+							$str =~ s/\b$type\b\s*\([^\)]+\)/smallint/is;
 						} elsif ($precision <= 9) {
-							$str =~ s/\b$type\b[\s\t]*\([^\)]+\)/integer/is;
+							$str =~ s/\b$type\b\s*\([^\)]+\)/integer/is;
 						} else {
-							$str =~ s/\b$type\b[\s\t]*\([^\)]+\)/bigint/is;
+							$str =~ s/\b$type\b\s*\([^\)]+\)/bigint/is;
 						}
 					} else {
-						$str =~ s/\b$type\b[\s\t]*\([^\)]+\)/numeric\%\|$precision\%\|\%/i;
+						$str =~ s/\b$type\b\s*\([^\)]+\)/numeric\%\|$precision\%\|\%/i;
 					}
 				} elsif ($pg_integer_type) {
 					my $tmp = $default_numeric || 'bigint';
-					$str =~ s/\b$type\b[\s\t]*\([^\)]+\)/$tmp/is;
+					$str =~ s/\b$type\b\s*\([^\)]+\)/$tmp/is;
 				}
 			} else {
 				if ($precision) {
 					if ($pg_numeric_type) {
 						if ($precision <= 6) {
-							$str =~ s/\b$type\b[\s\t]*\([^\)]+\)/real/is;
+							$str =~ s/\b$type\b\s*\([^\)]+\)/real/is;
 						} else {
-							$str =~ s/\b$type\b[\s\t]*\([^\)]+\)/double precision/is;
+							$str =~ s/\b$type\b\s*\([^\)]+\)/double precision/is;
 						}
 					} else {
-						$str =~ s/\b$type\b[\s\t]*\([^\)]+\)/decimal\%\|$precision,$scale\%\|\%/is;
+						$str =~ s/\b$type\b\s*\([^\)]+\)/decimal\%\|$precision,$scale\%\|\%/is;
 					}
 				}
 			}
 		} elsif ($type eq "NUMERIC") {
-			$str =~ s/\b$type\b[\s\t]*\([^\)]+\)/numeric\%\|$args\%\|\%/is;
+			$str =~ s/\b$type\b\s*\([^\)]+\)/numeric\%\|$args\%\|\%/is;
 		} elsif ( ($type eq "DEC") || ($type eq "DECIMAL") ) {
-			$str =~ s/\b$type\b[\s\t]*\([^\)]+\)/decimal\%\|$args\%\|\%/is;
+			$str =~ s/\b$type\b\s*\([^\)]+\)/decimal\%\|$args\%\|\%/is;
 		} else {
 			# Prevent from infinit loop
 			$str =~ s/\(/\%\|/s;
@@ -753,7 +753,7 @@ sub replace_sql_type
 	# Set varchar without length to text
 	$str =~ s/VARCHAR2/VARCHAR/igs;
 	$str =~ s/STRING/VARCHAR/igs;
-	$str =~ s/\bVARCHAR([\s\t]*(?!\())/text$1/igs;
+	$str =~ s/\bVARCHAR(\s*(?!\())/text$1/igs;
 
 	foreach my $t ('DATE','LONG RAW','LONG','NCLOB','CLOB','BLOB','BFILE','RAW','ROWID','FLOAT','DOUBLE PRECISION','INTEGER','INT','REAL','SMALLINT','BINARY_FLOAT','BINARY_DOUBLE','BOOLEAN','XMLTYPE') {
 		$str =~ s/\b$t\b/$Ora2Pg::TYPE{$t}/igs;
@@ -784,19 +784,19 @@ sub estimate_cost
 	$cost_details{'SIZE'} = $cost_size;
 
 	# Try to figure out the manual work
-	my $n = () = $str =~ m/\bFROM[\t\s]*\(/igs;
+	my $n = () = $str =~ m/\bFROM\s*\(/igs;
 	$cost_details{'FROM'} += $n;
-	$n = () = $str =~ m/\bTRUNC[\t\s]*\(/igs;
+	$n = () = $str =~ m/\bTRUNC\s*\(/igs;
 	$cost_details{'TRUNC'} += $n;
-	$n = () = $str =~ m/\bDECODE[\t\s]*\(/igs;
+	$n = () = $str =~ m/\bDECODE\s*\(/igs;
 	$cost_details{'DECODE'} += $n;
-	$n = () = $str =~ m/\bIS[\t\s]+TABLE[\t\s]+OF\b/igs;
+	$n = () = $str =~ m/\bIS\s+TABLE\s+OF\b/igs;
 	$cost_details{'IS TABLE OF'} += $n;
 	$n = () = $str =~ m/\(\+\)/igs;
 	$cost_details{'OUTER JOIN'} += $n;
-	$n = () = $str =~ m/\bCONNECT[\t\s]+BY\b/igs;
+	$n = () = $str =~ m/\bCONNECT\s+BY\b/igs;
 	$cost_details{'CONNECT BY'} += $n;
-	$n = () = $str =~ m/\bBULK[\t\s]+COLLECT\b/igs;
+	$n = () = $str =~ m/\bBULK\s+COLLECT\b/igs;
 	$cost_details{'BULK COLLECT'} += $n;
 	$n = () = $str =~ m/\bFORALL\b/igs;
 	$cost_details{'FORALL'} += $n;
@@ -812,9 +812,9 @@ sub estimate_cost
 	$cost_details{'SQLCODE'} += $n;
 	$n = () = $str =~ m/\bIS RECORD\b/igs;
 	$cost_details{'IS RECORD'} += $n;
-	$n = () = $str =~ m/FROM[^;]*\bTABLE[\t\s]*\(/igs;
+	$n = () = $str =~ m/FROM[^;]*\bTABLE\s*\(/igs;
 	$cost_details{'TABLE'} += $n;
-	$n = () = $str =~ m/PIPE[\t\s]+ROW/igs;
+	$n = () = $str =~ m/PIPE\s+ROW/igs;
 	$cost_details{'PIPE ROW'} += $n;
 	$n = () = $str =~ m/DBMS_\w/igs;
 	$cost_details{'DBMS_'} += $n;
@@ -822,11 +822,11 @@ sub estimate_cost
 	$cost_details{'UTL_'} += $n;
 	$n = () = $str =~ m/CTX_\w/igs;
 	$cost_details{'CTX_'} += $n;
-	$n = () = $str =~ m/\bEXTRACT[\t\s]*\(/igs;
+	$n = () = $str =~ m/\bEXTRACT\s*\(/igs;
 	$cost_details{'EXTRACT'} += $n;
-	$n = () = $str =~ m/\bSUBSTR[\t\s]*\(/igs;
+	$n = () = $str =~ m/\bSUBSTR\s*\(/igs;
 	$cost_details{'SUBSTR'} += $n;
-	$n = () = $str =~ m/\bTO_NUMBER[\t\s]*\(/igs;
+	$n = () = $str =~ m/\bTO_NUMBER\s*\(/igs;
 	$cost_details{'TO_NUMBER'} += $n;
 	# See:  http://www.postgresql.org/docs/9.0/static/errcodes-appendix.html#ERRCODES-TABLE
 	$n = () = $str =~ m/\b(DUP_VAL_ON_INDEX|TIMEOUT_ON_RESOURCE|TRANSACTION_BACKED_OUT|NOT_LOGGED_ON|LOGIN_DENIED|INVALID_NUMBER|PROGRAM_ERROR|VALUE_ERROR|ROWTYPE_MISMATCH|CURSOR_ALREADY_OPEN|ACCESS_INTO_NULL|COLLECTION_IS_NULL)\b/igs;
