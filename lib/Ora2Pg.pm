@@ -847,7 +847,7 @@ sub _init
 			}
 		} elsif ((lc($k) eq 'view_as_table') && $options{view_as_table}) {
 			$self->{view_as_table} = ();
-			push(@{$self->{view_as_table}}, split(/[\s\t;,]+/, $options{view_as_table}) );
+			push(@{$self->{view_as_table}}, split(/[\s;,]+/, $options{view_as_table}) );
 		} elsif ((lc($k) eq 'datasource') && $options{datasource}) {
 			$self->{oracle_dsn} = $options{datasource};
 		} elsif ((lc($k) eq 'user') && $options{user}) {
@@ -1031,7 +1031,7 @@ sub _init
 	# Allow multiple or chained extraction export type
 	$self->{export_type} = ();
 	if ($self->{type}) {
-		@{$self->{export_type}} = split(/[\s\t,;]+/, $self->{type});
+		@{$self->{export_type}} = split(/[\s,;]+/, $self->{type});
 		# Assume backward comaptibility with DATA replacement by INSERT
 		map { s/^DATA$/INSERT/; } @{$self->{export_type}};
 	} else {
@@ -1677,8 +1677,8 @@ sub _split_table_definition
 		$param .= $parts[$i];
 	}
 
-	$def =~ s/[\t\s]+/ /g;
-	$param =~ s/[\t\s]+/ /g;
+	$def =~ s/\s+/ /g;
+	$param =~ s/\s+/ /g;
 
 	return ($def, $param);
 }
@@ -1688,13 +1688,13 @@ sub _get_plsql_code
 	my $str = shift();
 
 	my $ct = '';
-	my @parts = split(/(BEGIN|DECLARE|END[\t\s]*(?!IF|LOOP|CASE|INTO|FROM|,)[^;\s\t]*[\t\s]*;)/, $str);
+	my @parts = split(/(BEGIN|DECLARE|END\s*(?!IF|LOOP|CASE|INTO|FROM|,)[^;\s]*\s*;)/, $str);
 	my $code = '';
 	my $other = '';
 	my $i = 0;
 	for (; $i <= $#parts; $i++) {
 		$ct++ if ($parts[$i] =~ /\bBEGIN\b/);
-		$ct-- if ($parts[$i] =~ /END[\t\s]*(?!IF|LOOP|CASE|INTO|FROM|,)[^;\s\t]*[\t\s]*;/);
+		$ct-- if ($parts[$i] =~ /END\s*(?!IF|LOOP|CASE|INTO|FROM|,)[^;\s]*\s*;/);
 		if ( ($ct ne '') && ($ct == 0) ) {
 			$code .= $parts[$i];
 			last;
@@ -1706,8 +1706,8 @@ sub _get_plsql_code
 		$other .= $parts[$i];
 	}
 
-	$code =~ s/[\t\s]+/ /g;
-	$other =~ s/[\t\s]+/ /g;
+	$code =~ s/\s+/ /g;
+	$other =~ s/\s+/ /g;
 
 	return ($code, $other);
 }
@@ -1988,7 +1988,7 @@ sub read_schema_from_file
 		}
 		$idx_def =~ s/\)[^\)]*$//;
 		$self->{tables}{$tb_name}{uniqueness}{$idx_name} = $is_unique || '';
-                $idx_def =~ s/SYS_EXTRACT_UTC[\s\t]*\(([^\)]+)\)/$1/isg;
+                $idx_def =~ s/SYS_EXTRACT_UTC\s*\(([^\)]+)\)/$1/isg;
 		push(@{$self->{tables}{$tb_name}{indexes}{$idx_name}}, $idx_def);
 		$self->{tables}{$tb_name}{idx_type}{$idx_name}{type} = 'NORMAL';
 		if ($idx_def =~ /\(/) {
@@ -2144,7 +2144,7 @@ sub read_trigger_from_file
 				if ($trigger =~ /^(BEGIN|DECLARE)/) {
 					($trigger, $content) = &_get_plsql_code($trigger);
 				} else {
-					$trigger =~ s/([^;]+;)[\t\s]*(.*)/$1/;
+					$trigger =~ s/([^;]+;)\s*(.*)/$1/;
 					$content = $2;
 				}
 			} else {
@@ -2674,10 +2674,10 @@ sub _get_sql_data
 				}
 
 				if (!$self->{preserve_case}) {
-					if ($self->{views}{$view}{text} =~ /SELECT[^\s\t]*(.*?)\bFROM\b/is) {
+					if ($self->{views}{$view}{text} =~ /SELECT[^\s]*(.*?)\bFROM\b/is) {
 						my $clause = $1;
 						$clause =~ s/"([^"]+)"/"\L$1\E"/gs;
-						$self->{views}{$view}{text} =~ s/SELECT[^\s\t]*(.*?)\bFROM\b/SELECT $clause FROM/is;
+						$self->{views}{$view}{text} =~ s/SELECT[^\s]*(.*?)\bFROM\b/SELECT $clause FROM/is;
 					}
 				}
 				$sql_output .= ") AS " . $self->{views}{$view}{text} . ";\n\n";
@@ -3323,7 +3323,7 @@ LANGUAGE plpgsql ;
 						}
 					}
 					$trig->[6] =~ s/\n+$//s;
-					$trig->[6] =~ s/^[^\.\s\t]+\.//;
+					$trig->[6] =~ s/^[^\.\s]+\.//;
 					$sql_output .= "CREATE TRIGGER $trig->[6]\n";
 					if ($trig->[5]) {
 						if ($self->{plsql_pgsql}) {
@@ -3402,12 +3402,12 @@ LANGUAGE plpgsql ;
 			my %comments = $self->_remove_comments(\$content);
 			foreach my $l (split(/\n/, $content)) {
 				chomp($l);
-				next if ($l =~ /^[\s\t]*$/);
+				next if ($l =~ /^\s*$/);
 				if ($old_line) {
 					$l = $old_line .= ' ' . $l;
 					$old_line = '';
 				}
-				if ( ($l =~ s/^\/$/;/) || ($l =~ /;[\s\t]*$/) ) {
+				if ( ($l =~ s/^\/$/;/) || ($l =~ /;\s*$/) ) {
 						$self->{queries}{$query} .= "$l\n";
 						$query++;
 				} else {
@@ -3519,7 +3519,7 @@ LANGUAGE plpgsql ;
 				$self->{functions}{$fcnm}{text} .= "$l\n";
 
 				if (!$language) {
-					if ($l =~ /^END[\s\t]+$fcnm(_atx)?\s*;/i) {
+					if ($l =~ /^END\s+$fcnm(_atx)?\s*;/i) {
 						$fcnm = '';
 					}
 				} else {
@@ -3660,7 +3660,7 @@ LANGUAGE plpgsql ;
 				}
 				$self->{procedures}{$fcnm}{text} .= "$l\n";
 				if (!$language) {
-					if ($l =~ /^END[\s\t]+$fcnm(_atx)?[\s\t]*;/i) {
+					if ($l =~ /^END\s+$fcnm(_atx)?\s*;/i) {
 						$fcnm = '';
 					}
 				} else {
@@ -3774,7 +3774,7 @@ LANGUAGE plpgsql ;
 				chomp($l);
 				$l =~ s/\r//g;
 				next if ($l =~ /^\/$/);
-				next if ($l =~ /^[\s\t]*$/);
+				next if ($l =~ /^\s*$/);
 				if ($old_line) {
 					$l = $old_line .= ' ' . $l;
 					$old_line = '';
@@ -3924,11 +3924,11 @@ LANGUAGE plpgsql ;
 			my $code = '';
 			foreach my $l (@alltype) {
 				chomp($l);
-				next if ($l =~ /^[\s\t]*$/);
+				next if ($l =~ /^\s*$/);
 				$l =~ s/^\s*CREATE\s*(?:OR REPLACE)?\s*(?:NONEDITABLE|EDITABLE)?\s*//i;
 				$l =~ s/^\s*CREATE\s*//i;
 				$code .= $l . "\n";
-				if ($code =~ /^TYPE[\s\t]+([^\s\(\t]+)/is) {
+				if ($code =~ /^TYPE\s+([^\s\(]+)/is) {
 					$typnm = $1;
 				}
 				next if (!$typnm);
@@ -4819,8 +4819,8 @@ CREATE TRIGGER insert_${table}_trigger
 					$sql_output .= " NOT NULL";
 				}
 				if ($f->[4] ne "") {
-					$f->[4] =~ s/^[\s\t]+//;
-					$f->[4] =~ s/[\s\t]+$//;
+					$f->[4] =~ s/^\s+//;
+					$f->[4] =~ s/\s+$//;
 					if ($self->{plsql_pgsql}) {
 						$f->[4] = Ora2Pg::PLSQL::plsql_to_plpgsql($f->[4],$self->{null_equal_empty}, undef, $self->{package_functions});
 					}
@@ -6588,7 +6588,7 @@ $idxowner
 				$row->[1] .= " DESC";
 			}
 		}
-		$row->[1] =~ s/SYS_EXTRACT_UTC[\s\t]*\(([^\)]+)\)/$1/isg;
+		$row->[1] =~ s/SYS_EXTRACT_UTC\s*\(([^\)]+)\)/$1/isg;
 
 		if ($self->{preserve_case}) {
 			if (($row->[1] !~ /".*"/) && ($row->[1] !~ /\(.*\)/)) {
@@ -7890,10 +7890,10 @@ sub read_config
 	while (my $l = <$fh>) {
 		chomp($l);
 		$l =~ s/\r//gs;
-		$l =~ s/^[\s\t]*\#.*$//g;
-		next if (!$l || ($l =~ /^[\s\t]+$/));
+		$l =~ s/^\s*\#.*$//g;
+		next if (!$l || ($l =~ /^\s+$/));
 		$l =~ s/^\s*//; $l =~ s/\s*$//;
-		my ($var, $val) = split(/[\s\t]+/, $l, 2);
+		my ($var, $val) = split(/\s+/, $l, 2);
 		$var = uc($var);
                 if ($var eq 'IMPORT') {
 			if ($val) {
@@ -7904,7 +7904,7 @@ sub read_config
 		} elsif ($var =~ /^SKIP/) {
 			if ($val) {
 				$self->logit("No extraction of \L$val\E\n",1);
-				my @skip = split(/[\s\t;,]+/, $val);
+				my @skip = split(/[\s;,]+/, $val);
 				foreach my $s (@skip) {
 					$s = 'indexes' if ($s =~ /^indices$/i);
 					$AConfig{"skip_\L$s\E"} = 1;
@@ -7913,7 +7913,7 @@ sub read_config
 		} elsif (!grep(/^$var$/, 'TABLES', 'ALLOW', 'MODIFY_STRUCT', 'REPLACE_TABLES', 'REPLACE_COLS', 'WHERE', 'EXCLUDE','VIEW_AS_TABLE','ORA_RESERVED_WORDS','SYSUSERS','REPLACE_AS_BOOLEAN','BOOLEAN_VALUES','MODIFY_TYPE','DEFINED_PK', 'ALLOW_PARTITION','REPLACE_QUERY','FKEY_ADD_UPDATE')) {
 			$AConfig{$var} = $val;
 		} elsif ($var eq 'VIEW_AS_TABLE') {
-			push(@{$AConfig{$var}}, split(/[\s\t;,]+/, $val) );
+			push(@{$AConfig{$var}}, split(/[\s;,]+/, $val) );
 		} elsif ( ($var eq 'TABLES') || ($var eq 'ALLOW') || ($var eq 'EXCLUDE') || ($var eq 'ALLOW_PARTITION') ) {
 			$var = 'ALLOW' if ($var eq 'TABLES');
 			if ($var eq 'ALLOW_PARTITION') {
@@ -7932,9 +7932,9 @@ sub read_config
 				}
 			}
 		} elsif ( $var eq 'SYSUSERS' ) {
-			push(@{$AConfig{$var}}, split(/[\s\t;,]+/, $val) );
+			push(@{$AConfig{$var}}, split(/[\s;,]+/, $val) );
 		} elsif ( $var eq 'ORA_RESERVED_WORDS' ) {
-			push(@{$AConfig{$var}}, split(/[\s\t;,]+/, $val) );
+			push(@{$AConfig{$var}}, split(/[\s;,]+/, $val) );
 		} elsif ( $var eq 'FKEY_ADD_UPDATE' ) {
 			if (grep(/^$val$/i, @FKEY_OPTIONS)) {
 				$AConfig{$var} = uc($val);
@@ -7942,7 +7942,7 @@ sub read_config
 				$self->logit("FATAL: invalid option, see FKEY_ADD_UPDATE in configuration file\n", 0, 1);
 			}
 		} elsif ($var eq 'MODIFY_STRUCT') {
-			while ($val =~ s/([^\(\s\t]+)[\t\s]*\(([^\)]+)\)[\t\s]*//) {
+			while ($val =~ s/([^\(\s]+)\s*\(([^\)]+)\)\s*//) {
 				my $table = $1;
 				my $fields = $2;
 				$fields =~ s/^\s+//;
@@ -7958,44 +7958,44 @@ sub read_config
 				$AConfig{$var}{$table}{$col} = $type;
 			}
 		} elsif ($var eq 'REPLACE_COLS') {
-			while ($val =~ s/([^\(\s\t]+)\s*\(([^\)]+)\)\s*//) {
+			while ($val =~ s/([^\(\s]+)\s*\(([^\)]+)\)\s*//) {
 				my $table = $1;
 				my $fields = $2;
 				$fields =~ s/^\s+//;
 				$fields =~ s/\s+$//;
-				my @rel = split(/[\t\s,]+/, $fields);
+				my @rel = split(/[\s,]+/, $fields);
 				foreach my $r (@rel) {
 					my ($old, $new) = split(/:/, $r);
 					$AConfig{$var}{$table}{$old} = $new;
 				}
 			}
 		} elsif ($var eq 'REPLACE_TABLES') {
-			my @replace_tables = split(/[\s,;\t]+/, $val);
+			my @replace_tables = split(/[\s,;]+/, $val);
 			foreach my $r (@replace_tables) { 
 				my ($old, $new) = split(/:/, $r);
 				$AConfig{$var}{$old} = $new;
 			}
 		} elsif ($var eq 'REPLACE_AS_BOOLEAN') {
-			my @replace_boolean = split(/[\s,;\t]+/, $val);
+			my @replace_boolean = split(/[\s,;]+/, $val);
 			foreach my $r (@replace_boolean) { 
 				my ($table, $col) = split(/:/, $r);
 				push(@{$AConfig{$var}{uc($table)}}, uc($col));
 			}
 		} elsif ($var eq 'BOOLEAN_VALUES') {
-			my @replace_boolean = split(/[\s,;\t]+/, $val);
+			my @replace_boolean = split(/[\s,;]+/, $val);
 			foreach my $r (@replace_boolean) { 
 				my ($yes, $no) = split(/:/, $r);
 				$AConfig{$var}{lc($yes)} = 't';
 				$AConfig{$var}{lc($no)} = 'f';
 			}
 		} elsif ($var eq 'DEFINED_PK') {
-			my @defined_pk = split(/[\s,;\t]+/, $val);
+			my @defined_pk = split(/[\s,;]+/, $val);
 			foreach my $r (@defined_pk) { 
 				my ($table, $col) = split(/:/, lc($r));
 				$AConfig{$var}{lc($table)} = $col;
 			}
 		} elsif ($var eq 'WHERE') {
-			while ($val =~ s/([^\[\s\t]+)[\t\s]*\[([^\]]+)\][\s\t]*//) {
+			while ($val =~ s/([^\[\s]+)\s*\[([^\]]+)\]\s*//) {
 				my $table = $1;
 				my $where = $2;
 				$where =~ s/^\s+//;
@@ -8006,7 +8006,7 @@ sub read_config
 				$AConfig{"GLOBAL_WHERE"} = $val;
 			}
 		} elsif ($var eq 'REPLACE_QUERY') {
-			while ($val =~ s/([^\[\s\t]+)[\t\s]*\[([^\]]+)\][\s\t]*//) {
+			while ($val =~ s/([^\[\s]+)\s*\[([^\]]+)\]\s*//) {
 				my $table = lc($1);
 				my $query = $2;
 				$query =~ s/^\s+//;
@@ -8043,7 +8043,7 @@ sub _extract_functions
 		} else {
 			$before .= "$lines[$i]\n";
 		}
-		$fcname = '' if ($lines[$i] =~ /^[\t\s]*END[\t\s]+$fcname\b/i);
+		$fcname = '' if ($lines[$i] =~ /^\s*END\s+$fcname\b/i);
 	}
 	#push(@functions, "$before\n") if ($before);
 
@@ -8067,7 +8067,7 @@ sub _convert_package
 	my $dirprefix = '';
 	$dirprefix = "$self->{output_dir}/" if ($self->{output_dir});
 	my $content = '';
-	if ($plsql =~ /PACKAGE[\s\t]+BODY[\s\t]*([^\s\t]+)[\s\t]*(AS|IS)[\s\t]*(.*)/is) {
+	if ($plsql =~ /PACKAGE\s+BODY\s*([^\s]+)\s*(AS|IS)\s*(.*)/is) {
 		my $pname = $1;
 		my $type = $2;
 		$content = $3;
@@ -8188,13 +8188,13 @@ sub _remove_comments
 		$comments{"ORA2PG_COMMENT$self->{idxcomment}%"} = $1;
 		$self->{idxcomment}++;
 	}
-	while ($$content =~ s/(\'[^\'\n\r]+\b(PROCEDURE|FUNCTION)[\t\s]+[^\'\n\r]+\')/ORA2PG_COMMENT$self->{idxcomment}\%/is) {
+	while ($$content =~ s/(\'[^\'\n\r]+\b(PROCEDURE|FUNCTION)\s+[^\'\n\r]+\')/ORA2PG_COMMENT$self->{idxcomment}\%/is) {
 		$comments{"ORA2PG_COMMENT$self->{idxcomment}%"} = $1;
 		$self->{idxcomment}++;
 	}
 	my @lines = split(/\n/, $$content);
 	for (my $j = 0; $j <= $#lines; $j++) {
-		if ($lines[$j] =~ s/([\s\t]*\-\-.*)$/ORA2PG_COMMENT$self->{idxcomment}\%/) {
+		if ($lines[$j] =~ s/(\s*\-\-.*)$/ORA2PG_COMMENT$self->{idxcomment}\%/) {
 			$comments{"ORA2PG_COMMENT$self->{idxcomment}%"} = $1;
 			chomp($comments{"ORA2PG_COMMENT$self->{idxcomment}%"});
 			$self->{idxcomment}++;
@@ -8253,10 +8253,10 @@ sub _convert_function
 			$func_return = " RETURNS$fct_detail{setof} RECORD AS \$body\$\n";
 			
 		} elsif ($#nout == 0) {
-			$fct_detail{args} =~ /[\s\t]*OUT[\s\t]+([A-Z0-9_\$\%\.]+)[\s\t\),]*/i;
+			$fct_detail{args} =~ /\s*OUT\s+([A-Z0-9_\$\%\.]+)[\s\),]*/i;
 			$func_return = " RETURNS$fct_detail{setof} $1 AS \$body\$\n";
 		} elsif ($#ninout == 0) {
-			$fct_detail{args} =~ /[\s\t]*INOUT[\s\t]+([A-Z0-9_\$\%\.]+)[\s\t\),]*/i;
+			$fct_detail{args} =~ /\s*INOUT\s+([A-Z0-9_\$\%\.]+)[\s\),]*/i;
 			$func_return = " RETURNS$fct_detail{setof} $1 AS \$body\$\n";
 		} else {
 			$func_return = " RETURNS VOID AS \$body\$\n";
@@ -8272,10 +8272,10 @@ sub _convert_function
 		$fct_detail{code} =~ s/\bCOMMIT\s*;//;
 		my @tmp = split(',', $fct_detail{args});
 		foreach my $p (@tmp) {
-			if ($p =~ s/[\s\t]*OUT[\s\t]+//) {
+			if ($p =~ s/\s*OUT\s+//) {
 				push(@at_ret_param, $p);
 				push(@at_ret_type, $p);
-			} elsif ($p =~ s/[\s\t]*INOUT[\s\t]+//) {
+			} elsif ($p =~ s/\s*INOUT\s+//) {
 				push(@at_ret_param, $p);
 				push(@at_ret_type, $p);
 			}
@@ -8424,7 +8424,7 @@ sub _convert_declare
 {
 	my ($self, $declare) = @_;
 
-	$declare =~ s/[\s\t]+$//s;
+	$declare =~ s/\s+$//s;
 
 	return if (!$declare);
 
@@ -8437,18 +8437,18 @@ sub _convert_declare
 			if ($tmp_var !~ /\bcursor\b/is) {
 				# Extract default assignment
 				my $tmp_assign = '';
-				if ($tmp_var =~ s/[\s\t]*(:=|DEFAULT)(.*)$//is) {
+				if ($tmp_var =~ s/\s*(:=|DEFAULT)(.*)$//is) {
 					$tmp_assign = " $1$2";
 				}
 				# Extract variable name and type
 				my $tmp_pref = '';
 				my $tmp_name = '';
 				my $tmp_type = '';
-				if ($tmp_var =~ /([\s\t]*)([^\s\t]+)[\s\t]+(.*?)$/s) {
+				if ($tmp_var =~ /(\s*)([^\s]+)\s+(.*?)$/s) {
 					$tmp_pref = $1;
 					$tmp_name = $2;
 					$tmp_type = $3;
-					$tmp_type =~ s/[\s\t]+//gs;
+					$tmp_type =~ s/\s+//gs;
 					if ($tmp_type =~ /([^\(]+)\(([^\)]+)\)/) {
 						my $type_name = $1;
 						my ($prec, $scale) = split(/,/, $2);
@@ -8489,12 +8489,12 @@ sub _format_view
 	# Retrieve all tbs names used in view if possible
 	if ($sqlstr =~ /\bFROM\b(.*)/is) {
 		my $tmp = $1;
-		$tmp =~ s/[\r\n\t]+/ /gs;
+		$tmp =~ s/\s+/ /gs;
 		$tmp =~ s/\bWHERE.*//is;
 		# Remove all SQL reserved words of FROM STATEMENT
 		$tmp =~ s/(LEFT|RIGHT|INNER|OUTER|NATURAL|CROSS|JOIN|\(|\))//igs;
 		# Remove all ON join, if any
-		$tmp =~ s/\bON\b[A-Z_\.\s\t]*=[A-Z_\.\s\t]*//igs;
+		$tmp =~ s/\bON\b[A-Z_\.\s]*=[A-Z_\.\s]*//igs;
 		# Sub , with whitespace
 		$tmp =~ s/,/ /g;
 		if ($tmp =~ /[\(\)]/) {
@@ -8514,14 +8514,14 @@ sub _format_view
 			# Escape table name
 			$sqlstr =~ s/(^=\s?)["']*\b$regextb\b["']*/\L$tb\E/igs;
 			# Escape AS names
-			#$sqlstr =~ s/(\bAS[\s\t]*)["']*([A-Z_0-9]+)["']*/$1\L$2\E/igs;
+			#$sqlstr =~ s/(\bAS\s*)["']*([A-Z_0-9]+)["']*/$1\L$2\E/igs;
 		} else {
 			# Escape column name
 			$sqlstr =~ s/["']*\b${regextb}["']*\.["']*([A-Z_0-9\$]+)["']*(,?)/"$tb"."$1"$2/igs;
 			# Escape table name
 			$sqlstr =~ s/(^=\s?)["']*\b$regextb\b["']*/"$tb"/igs;
 			# Escape AS names
-			#$sqlstr =~ s/(\bAS[\s\t]*)["']*([A-Z_0-9]+)["']*/$1"$2"/igs;
+			#$sqlstr =~ s/(\bAS\s*)["']*([A-Z_0-9]+)["']*/$1"$2"/igs;
 			if ($tb =~ /(.*)\.(.*)/) {
 				my $prefx = $1;
 				my $sufx = $2;
@@ -8619,13 +8619,13 @@ sub _convert_type
 	my $unsupported = "-- Unsupported, please edit to match PostgreSQL syntax\n";
 	my $content = '';
 	my $type_name = '';
-	if ($plsql =~ /TYPE[\t\s]+([^\t\s]+)[\t\s]+(IS|AS)[\t\s]*TABLE[\t\s]*OF[\t\s]+(.*)/is) {
+	if ($plsql =~ /TYPE\s+([^\s]+)\s+(IS|AS)\s*TABLE\s*OF\s+(.*)/is) {
 		$type_name = $1;
 		my $type_of = $3;
-		$type_of =~ s/[\t\s\r\n]*NOT[\t\s]+NULL//s;
-		$type_of =~ s/[\t\s\r\n]*;$//s;
-		$type_of =~ s/^[\t\s\r\n]+//s;
-		if ($type_of !~ /[\t\s\r\n]/s) { 
+		$type_of =~ s/\s*NOT[\t\s]+NULL//s;
+		$type_of =~ s/\s*;$//s;
+		$type_of =~ s/^\s+//s;
+		if ($type_of !~ /\s/s) { 
 			$type_of = Ora2Pg::PLSQL::replace_sql_type($type_of, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type});
 			$self->{type_of_type}{'Nested Tables'}++;
 			$content = "CREATE TYPE \L$type_name\E AS (\L$type_name\E $type_of\[\]);\n";
@@ -8634,21 +8634,21 @@ sub _convert_type
 			$self->logit("WARNING: this kind of Nested Tables are not supported, skipping type $1\n", 1);
 			return "${unsupported}CREATE OR REPLACE $plsql";
 		}
-	} elsif ($plsql =~ /TYPE[\t\s]+([^\t\s]+)[\t\s]+(AS|IS)[\t\s]*OBJECT[\t\s]*\((.*?)(TYPE BODY.*)/is) {
+	} elsif ($plsql =~ /TYPE\s+([^\s]+)\s+(AS|IS)\s*OBJECT\s*\((.*?)(TYPE BODY.*)/is) {
 		$self->{type_of_type}{'Type Boby'}++;
 		$self->logit("WARNING: TYPE BODY are not supported, skipping type $1\n", 1);
 		return "${unsupported}CREATE OR REPLACE $plsql";
-	} elsif ($plsql =~ /TYPE[\t\s]+([^\t\s]+)[\t\s]+(AS|IS)[\t\s]*OBJECT[\t\s]*\((.*)\)([^\)]*)/is) {
+	} elsif ($plsql =~ /TYPE\s+([^\s]+)\s+(AS|IS)\s*OBJECT\s*\((.*)\)([^\)]*)/is) {
 		$type_name = $1;
 		my $description = $3;
 		my $notfinal = $4;
-		$notfinal =~ s/[\s\t\r\n]+/ /gs;
-		if ($description =~ /[\s\t]*(MAP MEMBER|MEMBER|CONSTRUCTOR)[\t\s]+(FUNCTION|PROCEDURE).*/is) {
+		$notfinal =~ s/\s+/ /gs;
+		if ($description =~ /\s*(MAP MEMBER|MEMBER|CONSTRUCTOR)\s+(FUNCTION|PROCEDURE).*/is) {
 			$self->{type_of_type}{'Type with member method'}++;
 			$self->logit("WARNING: TYPE with CONSTRUCTOR and MEMBER FUNCTION are not supported, skipping type $type_name\n", 1);
 			return "${unsupported}CREATE OR REPLACE $plsql";
 		}
-		$description =~ s/^[\s\t\r\n]+//s;
+		$description =~ s/^\s+//s;
 		my $declar = Ora2Pg::PLSQL::replace_sql_type($description, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type});
 		$type_name =~ s/"//g;
 		$type_name = $self->get_replaced_tbname($type_name);
@@ -8667,16 +8667,16 @@ $declar
 };
 			$self->{type_of_type}{'Object type'}++;
 		}
-	} elsif ($plsql =~ /TYPE[\t\s]+([^\t\s]+)[\t\s]+UNDER[\t\s]*([^\t\s]+)[\t\s]+\((.*)\)([^\)]*)/is) {
+	} elsif ($plsql =~ /TYPE\s+([^\s]+)\s+UNDER\s*([^\s]+)\s+\((.*)\)([^\)]*)/is) {
 		$type_name = $1;
 		my $type_inherit = $2;
 		my $description = $3;
-		if ($description =~ /[\s\t]*(MAP MEMBER|MEMBER|CONSTRUCTOR)[\t\s]+(FUNCTION|PROCEDURE).*/is) {
+		if ($description =~ /\s*(MAP MEMBER|MEMBER|CONSTRUCTOR)\s+(FUNCTION|PROCEDURE).*/is) {
 			$self->logit("WARNING: TYPE with CONSTRUCTOR and MEMBER FUNCTION are not supported, skipping type $type_name\n", 1);
 			$self->{type_of_type}{'Type with member method'}++;
 			return "${unsupported}CREATE OR REPLACE $plsql";
 		}
-		$description =~ s/^[\s\t\r\n]+//s;
+		$description =~ s/^\s+//s;
 		my $declar = Ora2Pg::PLSQL::replace_sql_type($description, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type});
 		$type_name =~ s/"//g;
 		$type_name = $self->get_replaced_tbname($type_name);
@@ -8686,7 +8686,7 @@ $declar
 ) INHERITS (\L$type_inherit\E);
 };
 		$self->{type_of_type}{'Subtype'}++;
-	} elsif ($plsql =~ /TYPE[\t\s]+([^\t\s]+)[\t\s]+(AS|IS)[\t\s]*(VARRAY|VARYING ARRAY)[\t\s]*\((\d+)\)[\t\s]*OF[\t\s]*(.*)/is) {
+	} elsif ($plsql =~ /TYPE\s+([^\s]+)\s+(AS|IS)\s*(VARRAY|VARYING ARRAY)\s*\((\d+)\)\s*OF\s*(.*)/is) {
 		$type_name = $1;
 		my $size = $4;
 		my $tbname = $5;
@@ -10381,7 +10381,7 @@ sub _lookup_package
 
 	my $content = '';
 	my %infos = ();
-	if ($plsql =~ /PACKAGE[\s\t]+BODY[\s\t]*([^\s\t]+)[\s\t]*(AS|IS)[\s\t]*(.*)/is) {
+	if ($plsql =~ /PACKAGE\s+BODY\s*([^\s]+)\s*(AS|IS)\s*(.*)/is) {
 		my $pname = $1;
 		my $type = $2;
 		$content = $3;
@@ -10443,11 +10443,11 @@ sub _lookup_function
 
 		$fct_detail{immutable} = 1 if ($fct_detail{declare} =~ s/\bDETERMINISTIC\b//is);
 		$fct_detail{setof} = 1 if ($fct_detail{declare} =~ s/\bPIPELINED\b//is);
-		if ($fct_detail{declare} =~ s/(.*?)RETURN[\s\t]+self[\s\t]+AS RESULT IS//is) {
+		if ($fct_detail{declare} =~ s/(.*?)RETURN\s+self\s+AS RESULT IS//is) {
 			$fct_detail{args} .= $1;
 			$fct_detail{hasreturn} = 1;
 			$fct_detail{func_ret_type} = 'OPAQUE';
-		} elsif ($fct_detail{declare} =~ s/(.*?)RETURN[\s\t]+([^\s\t]+)//is) {
+		} elsif ($fct_detail{declare} =~ s/(.*?)RETURN\s+([^\s]+)//is) {
 			$fct_detail{args} .= $1;
 			$fct_detail{hasreturn} = 1;
 			$fct_detail{func_ret_type} = $self->_sql_type($2) || 'OPAQUE';
@@ -10469,9 +10469,9 @@ sub _lookup_function
 		# Replace alternate syntax for default value
 		$fct_detail{args} =~ s/:=/DEFAULT/igs;
 		# NOCOPY not supported
-		$fct_detail{args} =~ s/[\s\t]*NOCOPY//igs;
+		$fct_detail{args} =~ s/\s*NOCOPY//igs;
 		# IN OUT should be INOUT
-		$fct_detail{args} =~ s/IN[\s\t]+OUT/INOUT/igs;
+		$fct_detail{args} =~ s/IN\s+OUT/INOUT/igs;
 
 		# Now convert types
 		$fct_detail{args} = Ora2Pg::PLSQL::replace_sql_type($fct_detail{args}, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type});
