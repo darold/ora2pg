@@ -114,6 +114,7 @@ $FCT_TEST_SCORE = 2;
 	'SDO_' => 3,
 	'PRAGMA' => 3,
 	'MDSYS' => 1,
+	'MERGE INTO' => 3,
 );
 
 @ORA_FUNCTIONS = qw(
@@ -872,6 +873,8 @@ sub estimate_cost
 	$cost_details{'PRAGMA'} += $n;
 	$n = () = $str =~ m/MDSYS\./igs;
 	$cost_details{'MDSYS'} += $n;
+	$n = () = $str =~ m/MERGE\sINTO/igs;
+	$cost_details{'MERGE'} += $n;
 
 	foreach my $f (@ORA_FUNCTIONS) {
 		if ($str =~ /\b$f\b/igs) {
