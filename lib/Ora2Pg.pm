@@ -9405,6 +9405,14 @@ sub _show_infos
 						my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($trig->[4]);
 						$report_info{'Objects'}{$typ}{'cost_value'} += $cost;
 						$report_info{'Objects'}{$typ}{'detail'} .= "\L$trig->[0]: $cost\E\n";
+						$report_info{full_trigger_details}{"\L$trig->[0]\E"}{count} = $cost;
+						foreach my $d (sort { $cost_detail{$b} <=> $cost_detail{$a} } keys %cost_detail) {
+							next if (!$cost_detail{$d});
+							$report_info{full_trigger_details}{"\L$trig->[0]\E"}{info} .= "\t$d => $cost_detail{$d}";
+							$report_info{full_trigger_details}{"\L$trig->[0]\E"}{info} .= " (cost: $Ora2Pg::PLSQL::UNCOVERED_SCORE{$d})" if ($Ora2Pg::PLSQL::UNCOVERED_SCORE{$d});
+							$report_info{full_trigger_details}{"\L$trig->[0]\E"}{info} .= "\n";
+							push(@{$report_info{full_trigger_details}{"\L$trig->[0]\E"}{keywords}}, $d) if (($d ne 'SIZE') && ($d ne 'TEST')); 
+						}
 					}
 				}
 				$report_info{'Objects'}{$typ}{'comment'} = "Total size of trigger code: $total_size bytes.";
@@ -9425,6 +9433,7 @@ sub _show_infos
 							$report_info{full_function_details}{"\L$fct\E"}{info} .= "\t$d => $cost_detail{$d}";
 							$report_info{full_function_details}{"\L$fct\E"}{info} .= " (cost: $Ora2Pg::PLSQL::UNCOVERED_SCORE{$d})" if ($Ora2Pg::PLSQL::UNCOVERED_SCORE{$d});
 							$report_info{full_function_details}{"\L$fct\E"}{info} .= "\n";
+							push(@{$report_info{full_function_details}{"\L$fct\E"}{keywords}}, $d) if (($d ne 'SIZE') && ($d ne 'TEST')); 
 						}
 					}
 				}
@@ -9444,6 +9453,7 @@ sub _show_infos
 							$report_info{full_function_details}{"\L$proc\E"}{info} .= "\t$d => $cost_detail{$d}";
 							$report_info{full_function_details}{"\L$proc\E"}{info} .= " (cost: $Ora2Pg::PLSQL::UNCOVERED_SCORE{$d})" if ($Ora2Pg::PLSQL::UNCOVERED_SCORE{$d});
 							$report_info{full_function_details}{"\L$proc\E"}{info} .= "\n";
+							push(@{$report_info{full_function_details}{"\L$proc\E"}{keywords}}, $d) if (($d ne 'SIZE') && ($d ne 'TEST')); 
 						}
 					}
 				}
@@ -10568,11 +10578,13 @@ sub difficulty_assessment
 {
 	my ($self, %report_info) = @_;
 
-	# Difficulty levels
-	# 1 = trivial, no stored functions and no triggers (migration can be run automatically)
-	# 2 = easy, no stored functions but with triggers (migration should be run automatically)
-	# 3 = manual work, stored functions and triggers but without difficulties that need manual rewriting
-	# 4 = hard, stored functions, triggers and difficulties that need manual rewriting
+	# Migration that might be run automatically
+	# 1 = trivial: no stored functions and no triggers
+	# 2 = easy: no stored functions but with triggers without code that need manual rewriting
+	# 3 = simple: stored functions and/or triggers but without code that need manual rewriting
+	# Migration that need code rewrite
+	# 4 = manual: no stored functions but with triggers and code that need manual rewriting
+	# 5 = hard, stored functions and/or triggers with code that need manual rewriting
 	my $difficulty = 1;
 
 	my @stored_function = (
@@ -10582,15 +10594,27 @@ sub difficulty_assessment
 	);
 
 	foreach my $n (@stored_function) {
-		$difficulty = 3 if ($report_info{'Objects'}{$n}{'number'});
+		if ($report_info{'Objects'}{$n}{'number'}) {
+			$difficulty = 3;
+			last;
+		}
 	}
-	if (($difficulty == 1) && $report_info{'Objects'}{'TRIGGER'}{'number'}) {
-		$difficulty = 2;
+	if ($difficulty < 3) {
+		$difficulty += 1 if ($report_info{'Objects'}{'TRIGGER'}{'number'});
 	}
-	if ($difficulty == 3) {
+
+
+	if ($difficulty < 3) {
+		foreach my $fct (keys %{ $report_info{'full_trigger_details'} } ) {
+			next if (!exists $report_info{'full_trigger_details'}{$fct}{keywords});
+			$difficulty = 4;
+			last;
+		}
+	}
+	if ($difficulty >= 3) {
 		foreach my $fct (keys %{ $report_info{'full_function_details'} } ) {
 			next if (!exists $report_info{'full_function_details'}{$fct}{keywords});
-			$difficulty = 4;
+			$difficulty = 5;
 			last;
 		}
 	}
@@ -10655,10 +10679,14 @@ sub _show_report
 	);
 
 	my $difficulty = $self->difficulty_assessment(%report_info);
-	my $lbl_mig_type = qq{	1 = trivial: no stored functions and no triggers (migration might be run automatically)
-	2 = easy: no stored functions but with triggers (migration might be run automatically after triggers review)
-	3 = normal: triggers and stored functions but without any difficulties that might need manual rewriting
-	4 = manual work: stored functions, triggers and difficulties that need manual rewriting
+	my $lbl_mig_type = qq{
+    Migration that might be run automatically
+        1 = trivial: no stored functions and no triggers
+        2 = easy: no stored functions but with triggers without code that need manual rewriting
+        3 = simple: stored functions and/or triggers but without code that need manual rewriting
+    Migration that need code rewrite
+        4 = manual: no stored functions but with triggers and code that need manual rewriting
+        5 = hard, stored functions and/or triggers with code that need manual rewriting
 };
 	# Generate report text report
 	if (!$self->{dump_as_html} && !$self->{dump_as_csv} && !$self->{dump_as_sheet}) {
@@ -10698,6 +10726,12 @@ sub _show_report
 			foreach my $fct (sort { $report_info{'full_function_details'}{$b}{count} <=> $report_info{'full_function_details'}{$a}{count} } keys %{ $report_info{'full_function_details'} } ) {
 				$self->logit("Function $fct total estimated cost: $report_info{'full_function_details'}{$fct}{count}\n", 0);
 				$self->logit($report_info{'full_function_details'}{$fct}{info}, 0);
+			}
+			$self->logit("-------------------------------------------------------------------------------\n", 0);
+			$self->logit("\nDetails of cost assessment per trigger\n", 0);
+			foreach my $fct (sort { $report_info{'full_trigger_details'}{$b}{count} <=> $report_info{'full_trigger_details'}{$a}{count} } keys %{ $report_info{'full_trigger_details'} } ) {
+				$self->logit("Trigger $fct total estimated cost: $report_info{'full_trigger_details'}{$fct}{count}\n", 0);
+				$self->logit($report_info{'full_trigger_details'}{$fct}{info}, 0);
 			}
 			$self->logit("-------------------------------------------------------------------------------\n", 0);
 		}
@@ -10866,9 +10900,22 @@ h2 {
 		}
 		$self->logit("</table>\n</div>\n", 0);
 		$self->logit("<h2>Migration level: $difficulty</h2>\n", 0);
-		$lbl_mig_type =~ s/\t/<li>/gs;
-		$lbl_mig_type =~ s/\n/<\/li>/gs;
-		$self->logit("<ul>$lbl_mig_type</ul>", 0);
+		$lbl_mig_type = qq{
+<ul>
+<li>Migration that might be run automatically</li>
+<ul>
+<li>1 = trivial: no stored functions and no triggers</li>
+<li>2 = easy: no stored functions but with triggers without code that need manual rewriting</li>
+<li>3 = simple: stored functions and/or triggers but without code that need manual rewriting</li>
+</ul>
+<li>Migration that need code rewrite</li>
+<ul>
+<li>4 = manual: no stored functions but with triggers and code that need manual rewriting</li>
+<li>5 = hard, stored functions and/or triggers with code that need manual rewriting</li>
+</ul>
+</ul>
+};
+		$self->logit($lbl_mig_type, 0);
 		if ($self->{estimate_cost}) {
 			$self->logit("<h2>Details of cost assessment per function</h2>\n", 0);
 			$self->logit("<ul>\n", 0);
@@ -10879,6 +10926,18 @@ h2 {
 				$report_info{'full_function_details'}{$fct}{info} =~ s/\t/<li>/gs;
 				$report_info{'full_function_details'}{$fct}{info} =~ s/\n/<\/li>\n/gs;
 				$self->logit($report_info{'full_function_details'}{$fct}{info}, 0);
+				$self->logit("</ul>\n", 0);
+			}
+			$self->logit("</ul>\n", 0);
+			$self->logit("<h2>Details of cost assessment per trigger</h2>\n", 0);
+			$self->logit("<ul>\n", 0);
+			foreach my $fct (sort { $report_info{'full_trigger_details'}{$b}{count} <=> $report_info{'full_trigger_details'}{$a}{count} } keys %{ $report_info{'full_trigger_details'} } ) {
+				
+				$self->logit("<li>Trigger $fct total estimated cost: $report_info{'full_trigger_details'}{$fct}{count}</li>\n", 0);
+				$self->logit("<ul>\n", 0);
+				$report_info{'full_trigger_details'}{$fct}{info} =~ s/\t/<li>/gs;
+				$report_info{'full_trigger_details'}{$fct}{info} =~ s/\n/<\/li>\n/gs;
+				$self->logit($report_info{'full_trigger_details'}{$fct}{info}, 0);
 				$self->logit("</ul>\n", 0);
 			}
 			$self->logit("</ul>\n", 0);
