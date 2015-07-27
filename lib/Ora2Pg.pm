@@ -968,7 +968,11 @@ sub _init
 	$self->{type_of_type} = ();
 	$self->{dump_as_html} ||= 0;
 	$self->{dump_as_csv} ||= 0;
+	$self->{dump_as_sheet} ||= 0;
 	$self->{top_max} ||= 10;
+	$self->{print_header} ||= 0;
+
+	$self->{estimate_cost} = 1 if ($self->{dump_as_sheet});
 
 	# Internal date boundary. Date below will be added to 2000, others will used 1900
 	$self->{internal_date_max} ||= 49;
@@ -9468,6 +9472,7 @@ sub _show_infos
 									$report_info{full_function_details}{"\L$f\E"}{info} .= "\t$d => $cost_detail{$d}";
 									$report_info{full_function_details}{"\L$f\E"}{info} .= " (cost: $Ora2Pg::PLSQL::UNCOVERED_SCORE{$d})" if ($Ora2Pg::PLSQL::UNCOVERED_SCORE{$d});
 									$report_info{full_function_details}{"\L$f\E"}{info} .= "\n";
+									push(@{$report_info{full_function_details}{"\L$f\E"}{keywords}}, $d) if (($d ne 'SIZE') && ($d ne 'TEST')); 
 								}
 							}
 							$number_fct++;
@@ -10559,13 +10564,104 @@ sub _get_human_cost
 
 	return $human_cost;
 }
+sub difficulty_assessment
+{
+	my ($self, %report_info) = @_;
+
+	# Difficulty levels
+	# 1 = trivial, no stored functions and no triggers (migration can be run automatically)
+	# 2 = easy, no stored functions but with triggers (migration should be run automatically)
+	# 3 = manual work, stored functions and triggers but without difficulties that need manual rewriting
+	# 4 = hard, stored functions, triggers and difficulties that need manual rewriting
+	my $difficulty = 1;
+
+	my @stored_function = (
+		'FUNCTION',
+		'PACKAGE BODY',
+		'PROCEDURE'
+	);
+
+	foreach my $n (@stored_function) {
+		$difficulty = 3 if ($report_info{'Objects'}{$n}{'number'});
+	}
+	if (($difficulty == 1) && $report_info{'Objects'}{'TRIGGER'}{'number'}) {
+		$difficulty = 2;
+	}
+	if ($difficulty == 3) {
+		foreach my $fct (keys %{ $report_info{'full_function_details'} } ) {
+			next if (!exists $report_info{'full_function_details'}{$fct}{keywords});
+			$difficulty = 4;
+			last;
+		}
+	}
+
+	return $difficulty;
+}
 
 sub _show_report
 {
 	my ($self, %report_info) = @_;
 
+	my @ora_object_type = (
+		'DATABASE LINK',
+		'DIRECTORY',
+		'FUNCTION',
+		'INDEX',
+		'JOB',
+		'MATERIALIZED VIEW',
+		'PACKAGE BODY',
+		'PROCEDURE',
+		'SEQUENCE',
+		'SYNONYM',
+		'TABLE',
+		'TABLE PARTITION',
+		'TABLE SUBPARTITION',
+		'TRIGGER',
+		'TYPE',
+		'VIEW',
+
+# Other object type
+#CLUSTER
+#CONSUMER GROUP
+#CONTEXT
+#DESTINATION
+#DIMENSION
+#EDITION
+#EVALUATION CONTEXT
+#INDEX PARTITION
+#INDEXTYPE
+#JAVA CLASS
+#JAVA DATA
+#JAVA RESOURCE
+#JAVA SOURCE
+#JOB CLASS
+#LIBRARY
+#LOB
+#LOB PARTITION
+#OPERATOR
+#PACKAGE
+#PROGRAM
+#QUEUE
+#RESOURCE PLAN
+#RULE
+#RULE SET
+#SCHEDULE
+#SCHEDULER GROUP
+#TYPE BODY
+#UNDEFINED
+#UNIFIED AUDIT POLICY
+#WINDOW
+#XML SCHEMA
+	);
+
+	my $difficulty = $self->difficulty_assessment(%report_info);
+	my $lbl_mig_type = qq{	1 = trivial: no stored functions and no triggers (migration might be run automatically)
+	2 = easy: no stored functions but with triggers (migration might be run automatically after triggers review)
+	3 = normal: triggers and stored functions but without any difficulties that might need manual rewriting
+	4 = manual work: stored functions, triggers and difficulties that need manual rewriting
+};
 	# Generate report text report
-	if (!$self->{dump_as_html} && !$self->{dump_as_csv}) {
+	if (!$self->{dump_as_html} && !$self->{dump_as_csv} && !$self->{dump_as_sheet}) {
 		my $cost_header = '';
 		$cost_header = "\tEstimated cost" if ($self->{estimate_cost});
 		$self->logit("-------------------------------------------------------------------------------\n", 0);
@@ -10594,6 +10690,9 @@ sub _show_report
 			$self->logit("Total\t$report_info{'total_object_number'}\t$report_info{'total_object_invalid'}\n", 0);
 		}
 		$self->logit("-------------------------------------------------------------------------------\n", 0);
+		$self->logit("Migration level : $difficulty\n", 0);
+		$self->logit($lbl_mig_type, 0);
+		$self->logit("-------------------------------------------------------------------------------\n", 0);
 		if ($self->{estimate_cost}) {
 			$self->logit("\nDetails of cost assessment per function\n", 0);
 			foreach my $fct (sort { $report_info{'full_function_details'}{$b}{count} <=> $report_info{'full_function_details'}{$a}{count} } keys %{ $report_info{'full_function_details'} } ) {
@@ -10609,6 +10708,7 @@ sub _show_report
 		$self->logit("Version\t$report_info{'Version'}\n", 0);
 		$self->logit("Schema\t$report_info{'Schema'}\n", 0);
 		$self->logit("Size\t$report_info{'Size'}\n\n", 0);
+		$self->logit("Migration level\t$difficulty\n");
 		$self->logit("-------------------------------------------------------------------------------\n\n", 0);
 		$self->logit("Object;Number;Invalid;Estimated cost;Comments\n", 0);
 		foreach my $typ (sort keys %{ $report_info{'Objects'} } ) {
@@ -10617,6 +10717,23 @@ sub _show_report
 		}
 		my $human_cost = $self->_get_human_cost($report_info{'total_cost_value'});
 		$self->logit("Total;$report_info{'total_object_number'};$report_info{'total_object_invalid'};$report_info{'total_cost_value'};$human_cost\n", 0);
+	} elsif ($self->{dump_as_sheet}) {
+			my @header = ('Instance', 'Version', 'Schema', 'Size', 'Cost assessment', 'Migration type');
+			my $human_cost = $self->_get_human_cost($report_info{'total_cost_value'});
+			my @infos  = ($self->{oracle_dsn}, $report_info{'Version'}, $report_info{'Schema'}, $report_info{'Size'}, $human_cost, $difficulty);
+			foreach my $typ (sort @ora_object_type) {
+				push(@header, $typ);
+				$report_info{'Objects'}{$typ}{'number'} ||= 0;
+				$report_info{'Objects'}{$typ}{'invalid'} ||= 0;
+				$report_info{'Objects'}{$typ}{'cost_value'} ||= 0;
+				push(@infos, "$report_info{'Objects'}{$typ}{'number'}/$report_info{'Objects'}{$typ}{'invalid'}/$report_info{'Objects'}{$typ}{'cost_value'}");
+			}
+			push(@header, "Total assessment");
+			push(@infos, "$report_info{total_object_number}/$report_info{total_object_invalid}/$report_info{total_cost_value}");
+			if ($self->{print_header}) {
+				$self->logit('"' . join('";"', @header) . '"' . "\n");
+			}
+			$self->logit('"' . join('";"', @infos) . '"' . "\n");
 	} else {
 		my $cost_header = '';
 		$cost_header = "<th>Estimated cost</th>" if ($self->{estimate_cost});
@@ -10748,7 +10865,10 @@ h2 {
 			$self->logit("<tr><th style=\"text-align: center; border-bottom: 0px; vertical-align: bottom;\">Total</th><td style=\"text-align: center; border-bottom: 0px; vertical-align: bottom; border-bottom: 0px; vertical-align: bottom;\">$report_info{'total_object_number'}</td><td style=\"text-align: center; border-bottom: 0px; vertical-align: bottom;\">$report_info{'total_object_invalid'}</td><td colspan=\"3\" style=\"border-bottom: 0px; vertical-align: bottom;\"></td></tr>\n", 0);
 		}
 		$self->logit("</table>\n</div>\n", 0);
-
+		$self->logit("<h2>Migration level: $difficulty</h2>\n", 0);
+		$lbl_mig_type =~ s/\t/<li>/gs;
+		$lbl_mig_type =~ s/\n/<\/li>/gs;
+		$self->logit("<ul>$lbl_mig_type</ul>", 0);
 		if ($self->{estimate_cost}) {
 			$self->logit("<h2>Details of cost assessment per function</h2>\n", 0);
 			$self->logit("<ul>\n", 0);
