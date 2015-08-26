@@ -425,14 +425,30 @@ sub plsql_to_plpgsql
 
 	# Replace decode("user_status",'active',"username",null)
 	# PostgreSQL (CASE WHEN "user_status"='ACTIVE' THEN "username" ELSE NULL END)
-	my $field = '\s*([^,\)\(]+)\s*';
-	$str =~ s/DECODE\s*\($field,$field,$field,$field\)/\(CASE WHEN $1=$2 THEN $3 ELSE $4 END\)/igs;
-	$str =~ s/DECODE\s*\($field,$field,$field,$field,$field\)/\(CASE WHEN $1=$2 THEN $3 WHEN $1=$4 THEN $5 END\)/igs;
-	$str =~ s/DECODE\s*\($field,$field,$field,$field,$field,$field\)/\(CASE WHEN $1=$2 THEN $3 WHEN $1=$4 THEN $5 ELSE $6 END\)/igs;
-	$str =~ s/DECODE\s*\($field,$field,$field,$field,$field,$field,$field\)/\(CASE WHEN $1=$2 THEN $3 WHEN $1=$4 THEN $5 WHEN $1=$6 THEN $7 END\)/igs;
-	$str =~ s/DECODE\s*\($field,$field,$field,$field,$field,$field,$field,$field\)/\(CASE WHEN $1=$2 THEN $3 WHEN $1=$4 THEN $5 WHEN $1=$6 THEN $7 ELSE $8 END\)/igs;
-	$str =~ s/DECODE\s*\($field,$field,$field,$field,$field,$field,$field,$field,$field\)/\(CASE WHEN $1=$2 THEN $3 WHEN $1=$4 THEN $5 WHEN $1=$6 THEN $7 WHEN $1=$8 THEN $9 END\)/igs;
-	$str =~ s/DECODE\s*\($field,$field,$field,$field,$field,$field,$field,$field,$field,$field\)/\(CASE WHEN $1=$2 THEN $3 WHEN $1=$4 THEN $5 WHEN $1=$6 THEN $7 WHEN $1=$8 THEN $9 ELSE $10 END\)/igs;
+	my $decode_idx = 0;
+	my @str_decode = ();
+	while ($str =~ s/DECODE\s*\(([^\)]+)\)/DECODE%$decode_idx%/is) {
+		push(@str_decode, $1);
+		# When there is no potential subquery in the decode statement
+		if ($str_decode[-1] !~ /(\(|\))/) {
+			# Create an array with all parameter of the decode function
+			my @fields = split(/\s*,\s*/s, $str_decode[-1]);
+			my $case_str = 'CASE ';
+			for (my $i = 1; $i <= $#fields; $i+=2) {
+				if ($i < $#fields) {
+					$case_str .= "WHEN $fields[0]=$fields[$i] THEN $fields[$i+1] ";
+				} else {
+					$case_str .= " ELSE $fields[$i] ";
+				}
+			}
+			$case_str .= 'END';
+			$str_decode[-1] = $case_str;
+		}
+	}
+	while ($str =~ /DECODE%(\d+)%/) {
+		$decode_idx = $1;
+		$str =~ s/DECODE%$decode_idx%/$str_decode[$decode_idx]/s;
+	}
 
 	#  Convert all x <> NULL or x != NULL clauses to x IS NOT NULL.
 	$str =~ s/\s*(<>|\!=)\s*NULL/ IS NOT NULL/igs;
