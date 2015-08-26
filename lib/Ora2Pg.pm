@@ -2067,8 +2067,9 @@ sub read_view_from_file
 
 	my $tid = 0; 
 
-	$content =~ s/CREATE\s+NO\s+FORCE\s+VIEW/CREATE VIEW/g;
-	$content =~ s/CREATE\s+FORCE\s+VIEW/CREATE VIEW/g;
+	$content =~ s/\s+NO\s+FORCE\s+/ /gs;
+	$content =~ s/\s+FORCE\s+/ /gs;
+	$content =~ s/\s+OR\s+REPLACE\s+/ /gs;
 	$content =~ s/CREATE VIEW[\s]+([^\s]+)\s+OF\s+(.*?)\s+AS\s+/CREATE VIEW $1 AS /g;
 	# Views with aliases
 	while ($content =~ s/CREATE\sVIEW[\s]+([^\s]+)\s*\((.*?)\)\s+AS\s+([^;]+);//i) {
@@ -6886,7 +6887,6 @@ sub _get_views
 	$str .= $self->limit_to_objects('VIEW', 'v.VIEW_NAME');
 	$str .= " ORDER BY v.VIEW_NAME";
 
-
 	# Compute view order, where depended view appear before using view
 	my %view_order = ();
 	if ($self->{db_version} !~ /Release (8|9|10|11\.1)/) {
@@ -10290,6 +10290,7 @@ sub limit_to_objects
 	my @cols = split(/\|/, $column);
 	my @arr_type = split(/\|/, $obj_type);
 	my @done = ();
+	my $has_limitation = 0;
 	for (my $i = 0; $i <= $#arr_type; $i++) {
 
 		my $colname = $cols[0];
@@ -10317,6 +10318,7 @@ sub limit_to_objects
 				}
 			}
 			$str .= ')';
+			$has_limitation = 1;
 
 		} elsif ($#{$self->{excluded}{$arr_type[$i]}} >= 0) {
 
@@ -10341,8 +10343,8 @@ sub limit_to_objects
 			}
 		}
 
-		# Always exclude unwanted tables
-		if ($arr_type[$i] =~ /TABLE|SEQUENCE|VIEW|TRIGGER/) {
+		# Always exclude unwanted tables if we don't have already a limited list of objects
+		if ( !$has_limitation && ($arr_type[$i] =~ /TABLE|SEQUENCE|VIEW|TRIGGER/) ) {
 			if ($self->{db_version} =~ /Release [89]/) {
 				$str .= ' AND (';
 				foreach my $t (@EXCLUDED_TABLES_8I) {
