@@ -49,7 +49,7 @@ $VERSION = '15.3';
 	'PACKAGE BODY' => 3, # Look at globals variables and global 
 	'PROCEDURE' => 1, # read/adapt the header
 	'SEQUENCE' => 0.1, # read/adapt to convert name.nextval() into nextval('name')
-	'TABLE' => 0.5, # read/adapt the column type/name
+	'TABLE' => 0.1, # read/adapt the column type/name
 	'TABLE PARTITION' => 0.1, # Read/check that table partitionning is ok
 	'TABLE SUBPARTITION' => 0.2, # Read/check that table sub partitionning is ok
 	'TRIGGER' => 1, # read/adapt the header
@@ -343,6 +343,9 @@ sub plsql_to_plpgsql
 
 	# Rewrite comment in CASE between WHEN and THEN
 	$str =~ s/(\s*)(WHEN\s+[^\s]+\s*)(ORA2PG_COMMENT\d+\%)(\s*THEN)/$1$3$1$2$4/igs;
+
+	# Replace INSTR by POSITION
+	$str =~ s/\bINSTR\b/POSITION/igs;
 
 	# Replace SQLCODE by SQLSTATE
 	$str =~ s/\bSQLCODE\b/SQLSTATE/igs;
