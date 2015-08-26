@@ -360,6 +360,12 @@ PRESERVE_CASE	0
 # with same name as tables. Not so common but it can help.
 #INDEXES_SUFFIX		_idx
 
+# Enable this directive to rename all indexes using tablename_columns_names.
+# Could be very useful for database that have multiple time the same index name
+# or that use the same name than a table, which is not allowed by PostgreSQL
+# Disabled by default.
+INDEXES_RENAMING	0
+
 # Enable this directive if you want that your partition table name will be
 # exported using the parent table name. Disabled by default. If you have
 # multiple partitioned table, when exported to PostgreSQL some partitions

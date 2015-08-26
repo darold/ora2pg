@@ -1061,6 +1061,12 @@ CONFIGURATION
 
         will add _idx at ed of all index name. Not so common but can help.
 
+    INDEXES_RENAMING
+        Enable this directive to rename all indexes using
+        tablename_columns_names. Could be very useful for database that have
+        multiple time the same index name or that use the same name than a
+        table, which is not allowed by PostgreSQL Disabled by default.
+
     PREFIX_PARTITION
         Enable this directive if you want that your partition table name
         will be exported using the parent table name. Disabled by default.

@@ -814,6 +814,11 @@ sub _init
 	# Disable synchronous commit for pg data load
 	$self->{synchronous_commit} ||= 0;
 
+	# Initialize rewriting of index name
+	if (not defined $self->{indexes_renaming} || $self->{indexes_renaming} != 0) {
+		$self->{indexes_renaming} = 1;
+	}
+
 	# Autodetect spatial type
 	$self->{autodetect_spatial_type} ||= 0;
 
@@ -5204,6 +5209,16 @@ sub _create_indexes
 				$columns =~ s/\%\%string$i\%\%/'$strings[$i]'/;
 			}
 			my $idxname = $self->quote_object_name($idx);
+			if ($self->{indexes_renaming}) {
+				map { s/"//g; } @{$indexes{$idx}};
+				$idxname = $self->quote_object_name($table.'_'.join('_', @{$indexes{$idx}}));
+				$idxname =~ s/\s+//g;
+				if ($self->{indexes_suffix}) {
+					$idxname = substr($idxname,0,59);
+				} else {
+					$idxname = substr($idxname,0,63);
+				}
+			}
 			if ($self->{tables}{$tbsaved}{idx_type}{$idx}{type_name} !~ /SPATIAL_INDEX/) {
 				$str .= "CREATE$unique INDEX$concurrently \L$idxname$self->{indexes_suffix}\E ON $table ($columns)";
 			} else {
@@ -5278,6 +5293,16 @@ sub _drop_indexes
 		# Do not create the index if there already a constraint on the same column list
 		# the index will be automatically created by PostgreSQL at constraint import time.
 		if (!$skip_index_creation) {
+			if ($self->{indexes_renaming}) {
+				map { s/"//g; } @{$indexes{$idx}};
+				$idx = $self->quote_object_name($table.'_'.join('_', @{$indexes{$idx}}));
+				$idx =~ s/\s+//g;
+				if ($self->{indexes_suffix}) {
+					$idx = substr($idx,0,59);
+				} else {
+					$idx = substr($idx,0,63);
+				}
+			}
 			push(@out, "DROP INDEX $self->{pg_supports_ifexists} \L$idx$self->{indexes_suffix}\E;");
 		}
 	}
@@ -6558,7 +6583,7 @@ $idxowner
 	while (my $row = $sth->fetch) {
 
 		# Show a warning when an index has the same name as the table
-		if ( !$self->{indexes_suffix} && (lc($row->[0]) eq lc($table)) ) {
+		if ( !$self->{indexes_renaming} &&  !$self->{indexes_suffix} && (lc($row->[0]) eq lc($table)) ) {
 			print STDERR "WARNING: index $row->[0] has the same name as the table itself. Please rename it before export.\n"; 
 		}
 		$unique{$row->[-6]}{$row->[0]} = $row->[2];
