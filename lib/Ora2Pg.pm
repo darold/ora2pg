@@ -2998,16 +2998,20 @@ LANGUAGE plpgsql ;
 			} else {
 				$ownee = "\"$self->{grants}{$table}{owner}\"";
 			}
+			my $wgrantoption = '';
+			if ($self->{grants}{$table}{grantable}) {
+				$wgrantoption = ' WITH GRANT OPTION';
+			}
 			if ($self->{grants}{$table}{type} ne 'PACKAGE BODY') {
 				if ($self->{grants}{$table}{owner}) {
 					if (grep(/^$self->{grants}{$table}{owner}$/, @{$self->{roles}{roles}})) {
 						$grants .= "ALTER $obj $realtable OWNER TO ROLE $ownee;\n";
 						$obj = '' if (!grep(/^$obj$/, 'FUNCTION', 'SEQUENCE','SCHEMA','TABLESPACE'));
-						$grants .= "GRANT ALL ON $obj $realtable TO ROLE $ownee;\n";
+						$grants .= "GRANT ALL ON $obj $realtable TO ROLE $ownee$wgrantoption;\n";
 					} else {
 						$grants .= "ALTER $obj $realtable OWNER TO $ownee;\n";
 						$obj = '' if (!grep(/^$obj$/, 'FUNCTION', 'SEQUENCE','SCHEMA','TABLESPACE'));
-						$grants .= "GRANT ALL ON $obj $realtable TO $ownee;\n";
+						$grants .= "GRANT ALL ON $obj $realtable TO $ownee$wgrantoption;\n";
 					}
 				}
 				if (grep(/^$self->{grants}{$table}{type}$/, 'FUNCTION', 'SEQUENCE','SCHEMA','TABLESPACE')) {
@@ -3019,10 +3023,10 @@ LANGUAGE plpgsql ;
 				if ($self->{grants}{$table}{owner}) {
 					if (grep(/^$self->{grants}{$table}{owner}$/, @{$self->{roles}{roles}})) {
 						$grants .= "ALTER SCHEMA $realtable OWNER TO ROLE $ownee;\n";
-						$grants .= "GRANT ALL ON SCHEMA $realtable TO ROLE $ownee;\n";
+						$grants .= "GRANT ALL ON SCHEMA $realtable TO ROLE $ownee$wgrantoption;\n";
 					} else {
 						$grants .= "ALTER SCHEMA $realtable OWNER TO $ownee;\n";
-						$grants .= "GRANT ALL ON SCHEMA $realtable TO $ownee;\n";
+						$grants .= "GRANT ALL ON SCHEMA $realtable TO $ownee$wgrantoption;\n";
 					}
 				}
 				$grants .= "REVOKE ALL ON SCHEMA $realtable FROM PUBLIC;\n";
@@ -3040,13 +3044,13 @@ LANGUAGE plpgsql ;
 				}
 				if ($self->{grants}{$table}{type} ne 'PACKAGE BODY') {
 					if (grep(/^$self->{grants}{$table}{type}$/, 'FUNCTION', 'SEQUENCE','SCHEMA','TABLESPACE')) {
-						$grants .= "GRANT $agrants ON $obj $realtable TO $usr;\n";
+						$grants .= "GRANT $agrants ON $obj $realtable TO $usr$wgrantoption;\n";
 					} else {
-						$grants .= "GRANT $agrants ON $realtable TO $usr;\n";
+						$grants .= "GRANT $agrants ON $realtable TO $usr$wgrantoption;\n";
 					}
 				} else {
-						$grants .= "GRANT USAGE ON SCHEMA $realtable TO $usr;\n";
-						$grants .= "GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA $realtable TO $usr;\n";
+						$grants .= "GRANT USAGE ON SCHEMA $realtable TO $usr$wgrantoption;\n";
+						$grants .= "GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA $realtable TO $usr$wgrantoption;\n";
 				}
 			}
 			$grants .= "\n";
@@ -6373,7 +6377,7 @@ sub _get_privilege
 	my %roles = ();
 
 	# Retrieve all privilege per table defined in this database
-	my $str = "SELECT b.GRANTEE,b.OWNER,b.TABLE_NAME,b.PRIVILEGE,a.OBJECT_TYPE FROM DBA_TAB_PRIVS b, DBA_OBJECTS a";
+	my $str = "SELECT b.GRANTEE,b.OWNER,b.TABLE_NAME,b.PRIVILEGE,a.OBJECT_TYPE,b.GRANTABLE FROM DBA_TAB_PRIVS b, DBA_OBJECTS a";
 	if ($self->{schema}) {
 		$str .= " WHERE b.GRANTOR = '$self->{schema}'";
 	} else {
@@ -6392,6 +6396,9 @@ sub _get_privilege
 	while (my $row = $sth->fetch) {
 		$privs{$row->[2]}{type} = $row->[4];
 		$privs{$row->[2]}{owner} = $row->[1] if (!$privs{$row->[2]}{owner});
+		if ($row->[5] eq 'YES') {
+			$privs{$row->[2]}{grantable} = $row->[5];
+		}
 		push(@{$privs{$row->[2]}{privilege}{$row->[0]}}, $row->[3]);
 		push(@{$roles{owner}}, $row->[1]) if (!grep(/^$row->[1]$/, @{$roles{owner}}));
 		push(@{$roles{grantee}}, $row->[0]) if (!grep(/^$row->[0]$/, @{$roles{grantee}}));
@@ -6882,7 +6889,7 @@ sub _get_views
 
 	# Compute view order, where depended view appear before using view
 	my %view_order = ();
-	if ($self->{db_version} !~ /Release (8|9|10)/) {
+	if ($self->{db_version} !~ /Release (8|9|10|11\.1)/) {
 		if ($self->{schema}) {
 			$owner = "AND o.OWNER='$self->{schema}' ";
 		} else {
