@@ -1217,6 +1217,12 @@ default here are the values recognized by Ora2Pg:
 .Ve
 .Sp
 Any values defined here will be added to the default list.
+.IP "\s-1REPLACE_ZERO_DATE\s0" 4
+.IX Item "REPLACE_ZERO_DATE"
+When Ora2Pg find a \*(L"zero\*(R" date: 0000\-00\-00 00:00:00 it is replaced by a \s-1NULL\s0.
+This could be a problem if your column is defined with \s-1NOT\s0 \s-1NULL\s0 constraint.
+If you can not remove the constraint, use this directive to set an arbitral
+date that will be used instead.
 .IP "\s-1INDEXES_SUFFIX\s0" 4
 .IX Item "INDEXES_SUFFIX"
 Add the given value as suffix to indexes names. Useful if you have indexes

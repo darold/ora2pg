@@ -825,6 +825,12 @@ sub _init
 	# Create tables with OIDs or not, default to not create OIDs
 	$self->{with_oid} ||= 0;
 
+	# Should we replace zero date with something else than NULL
+	$self->{replace_zero_date} ||= '';
+	if ($self->{replace_zero_date} && ($self->{replace_zero_date} !~ /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/)) {
+		die "FATAL: wrong format in REPLACE_ZERO_DATE value, should be YYYY-MM-DD HH:MM:SS\n";
+	}
+
 	# Overwrite configuration with all given parameters
 	# and try to preserve backward compatibility
 	foreach my $k (keys %options) {
@@ -7763,7 +7769,11 @@ sub format_data_type
 			}
 		} elsif ($data_type =~ /(date|time)/i) {
 			if ($col =~ /^0000-00-00/) {
-				$col = 'NULL';
+				if (!$self->{replace_zero_date}) {
+					$col = 'NULL';
+				} else {
+					$col = $self->{replace_zero_date};
+				}
 			} elsif ($col =~ /^(\d+-\d+-\d+ \d+:\d+:\d+)\.$/) {
 				$col = "'$1'";
 			} else {
@@ -7813,7 +7823,11 @@ sub format_data_type
 			}
 		} elsif ($data_type =~ /(date|time)/i) {
 			if ($col =~ /^0000-00-00/) {
-				$col = '\N';
+				if (!$self->{replace_zero_date}) {
+					$col = '\N';
+				} else {
+					$col = $self->{replace_zero_date};
+				}
 			} elsif ($col =~ /^(\d+-\d+-\d+ \d+:\d+:\d+)\.$/) {
 				$col = $1;
 			}

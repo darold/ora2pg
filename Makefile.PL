@@ -498,6 +498,11 @@ ENABLE_MICROSECOND      1
 # field. You must set a space separated list of TRUE:FALSE values. BY default:
 #BOOLEAN_VALUES	yes:no y:n 1:0 true:false enabled:disabled
 
+# When Ora2Pg find a "zero" date: 0000-00-00 00:00:00 it is replaced by a NULL.
+# This could be a problem if your column is defined with NOT NULL constraint.
+# If you can not remove the constraint, use this directive to set an arbitral
+# date that will be used instead.
+#REPLACE_ZERO_DATE	1970-01-01 00:00:00
 
 #------------------------------------------------------------------------------
 # GRANT SECTION (Control priviledge and owner export)
