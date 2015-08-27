@@ -708,6 +708,10 @@ DUMP_AS_HTML		0
 # list in the SHOW_TABLE and SHOW_REPORT output. Default 10.
 TOP_MAX			10
 
+# Use this directive to redefined the number of human-days limit where the
+# migration assessment level must switch from B to C. Default is set to 10
+# human-days.
+HUMAN_DAYS_LIMIT	10
 
 #------------------------------------------------------------------------------
 # POSTGRESQL FEATURE SECTION (Control which PostgreSQL features are available)

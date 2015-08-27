@@ -759,6 +759,12 @@ format.
 
 See http://ora2pg.darold.net/report.html for a sample report.
 
+=item HUMAN_DAYS_LIMIT
+
+Use this directive to redefined the number of human-days limit where the
+migration assessment level must switch from B to C. Default is set to 10
+human-days.
+
 =item JOBS
 
 This configuration directive adds multiprocess support to data export type,

@@ -124,7 +124,7 @@
 .\" ========================================================================
 .\"
 .IX Title "ORA2PG 1"
-.TH ORA2PG 1 "2015-08-26" "perl v5.14.2" "User Contributed Perl Documentation"
+.TH ORA2PG 1 "2015-08-27" "perl v5.14.2" "User Contributed Perl Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -879,6 +879,11 @@ text, enabling this directive will force ora2pg to create a report in \s-1HTML\s
 format.
 .Sp
 See http://ora2pg.darold.net/report.html for a sample report.
+.IP "\s-1HUMAN_DAYS_LIMIT\s0" 4
+.IX Item "HUMAN_DAYS_LIMIT"
+Use this directive to redefined the number of human-days limit where the
+migration assessment level must switch from B to C. Default is set to 10
+human-days.
 .IP "\s-1JOBS\s0" 4
 .IX Item "JOBS"
 This configuration directive adds multiprocess support to data export type,

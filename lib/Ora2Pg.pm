@@ -805,6 +805,9 @@ sub _init
 	# Set default cost unit value to 5 minutes
 	$self->{cost_unit_value} ||= 5;
 
+	# Set default human days limit for type C migration level
+	$self->{human_days_limit} ||= 10;
+
 	# Defined if column order must be optimized
 	$self->{reordering_columns} ||= 0;
 
@@ -4580,8 +4583,10 @@ BEGIN
 				$old_pos = $pos;
 			}
 			if ($self->{partitions_default}{$table}) {
+				my $deftb = '';
+				$deftb = "${table}_" if ($self->{prefix_partition});
 				$function .= $funct_cond . qq{	ELSE
-                INSERT INTO ${table}_$self->{partitions_default}{$table} VALUES (NEW.*);
+                INSERT INTO $deftb$self->{partitions_default}{$table} VALUES (NEW.*);
 };
 			} else {
 				$function .= $funct_cond . qq{	ELSE
@@ -5156,6 +5161,7 @@ sub _create_indexes
 	foreach my $idx (keys %indexes) {
 
 		# Cluster, domain, bitmap join, reversed and IOT indexes will not be exported at all
+		# Hash indexes will be exported as btree
 		next if ($self->{tables}{$tbsaved}{idx_type}{$idx}{type} =~ /JOIN|IOT|CLUSTER|REV/i);
 		next if ($self->{tables}{$tbsaved}{idx_type}{$idx}{type} =~ /DOMAIN/i && $self->{tables}{$tbsaved}{idx_type}{$idx}{type_name} !~ /SPATIAL_INDEX/);
 
@@ -5233,7 +5239,7 @@ sub _create_indexes
 			if ($self->{tables}{$tbsaved}{idx_type}{$idx}{type_name} !~ /SPATIAL_INDEX/) {
 				$str .= "CREATE$unique INDEX$concurrently \L$idxname$self->{indexes_suffix}\E ON $table ($columns)";
 			} else {
-				$str .= "CREATE$unique INDEX$concurrently \L$idxname$self->{indexes_suffix}\E ON $table USING gist($columns)";
+				$str .= "CREATE INDEX$concurrently \L$idxname$self->{indexes_suffix}\E ON $table USING gist($columns)";
 			}
 			if ($self->{use_tablespace} && $self->{tables}{$tbsaved}{idx_tbsp}{$idx} && !grep(/^$self->{tables}{$tbsaved}{idx_tbsp}{$idx}$/i, @{$self->{default_tablespaces}})) {
 				$str .= " TABLESPACE $self->{tables}{$tbsaved}{idx_tbsp}{$idx}";
@@ -5584,6 +5590,7 @@ sub _create_foreign_keys
 			# if DEFER_FKEY is enabled, force constraint to be
 			# deferrable and defer it initially.
 			$str .= (($self->{'defer_fkey'} ) ? ' DEFERRABLE' : " $h->[4]") if ($h->[4]);
+			$h->[5] = 'DEFERRED' if ($h->[5] =~ /^Y/);
 			$str .= " INITIALLY " . ( ($self->{'defer_fkey'} ) ? 'DEFERRED' : $h->[5] ) . ";\n";
 			push(@out, $str);
 		}
@@ -6597,7 +6604,7 @@ $idxowner
 	while (my $row = $sth->fetch) {
 
 		# Show a warning when an index has the same name as the table
-		if ( !$self->{indexes_renaming} &&  !$self->{indexes_suffix} && (lc($row->[0]) eq lc($table)) ) {
+		if ( !$self->{indexes_renaming} && !$self->{indexes_suffix} && (lc($row->[0]) eq lc($table)) ) {
 			print STDERR "WARNING: index $row->[0] has the same name as the table itself. Please rename it before export.\n"; 
 		}
 		$unique{$row->[-6]}{$row->[0]} = $row->[2];
@@ -8303,10 +8310,12 @@ sub _convert_function
 			$func_return = " RETURNS$fct_detail{setof} RECORD AS \$body\$\n";
 			
 		} elsif ($#nout == 0) {
-			$fct_detail{args} =~ /\s*OUT\s+([A-Z0-9_\$\%\.]+)[\s\),]*/i;
+			#$fct_detail{args} =~ /\s*OUT\s+([A-Z0-9_\$\%\.]+)[\s\),]*/i;
+			$fct_detail{args} =~ /\s*OUT\s+([^\s]+)\s+([^,\)]+)/i;
 			$func_return = " RETURNS$fct_detail{setof} $1 AS \$body\$\n";
 		} elsif ($#ninout == 0) {
-			$fct_detail{args} =~ /\s*INOUT\s+([A-Z0-9_\$\%\.]+)[\s\),]*/i;
+			#$fct_detail{args} =~ /\s*INOUT\s+([A-Z0-9_\$\%\.]+)[\s\),]*/i;
+			$fct_detail{args} =~ /\s*INOUT\s+([^\s]+)\s+([^,\)]+)/i;
 			$func_return = " RETURNS$fct_detail{setof} $1 AS \$body\$\n";
 		} else {
 			$func_return = " RETURNS VOID AS \$body\$\n";
@@ -9357,7 +9366,7 @@ sub _show_infos
 					}
 				}
 				$report_info{'Objects'}{$typ}{'cost_value'} += ($Ora2Pg::PLSQL::OBJECT_SCORE{$typ}*$total_index) if ($self->{estimate_cost});
-				$report_info{'Objects'}{$typ}{'comment'} = "$total_index index(es) are concerned by the export, others are automatically generated and will do so on PostgreSQL. Bitmap index(es) will be exported as b-tree index(es) if any. Cluster, domain, bitmap join and IOT indexes will not be exported at all. Reverse indexes are not exported too, you may use a trigram-based index (see pg_trgm) or a reverse() function based index and search. Use 'varchar_pattern_ops', 'text_pattern_ops' or 'bpchar_pattern_ops' operators in your indexes to improve search with the LIKE operator respectively into varchar, text or char columns.";
+				$report_info{'Objects'}{$typ}{'comment'} = "$total_index index(es) are concerned by the export, others are automatically generated and will do so on PostgreSQL. Bitmap and hash index(es) will be exported as b-tree index(es) if any. Cluster, domain, bitmap join and IOT indexes will not be exported at all. Reverse indexes are not exported too, you may use a trigram-based index (see pg_trgm) or a reverse() function based index and search. Use 'varchar_pattern_ops', 'text_pattern_ops' or 'bpchar_pattern_ops' operators in your indexes to improve search with the LIKE operator respectively into varchar, text or char columns.";
 			} elsif ($typ eq 'MATERIALIZED VIEW') {
 				$report_info{'Objects'}{$typ}{'comment'}= "All materialized view will be exported as snapshot materialized views, they are only updated when fully refreshed.";
 			} elsif ($typ eq 'TABLE') {
@@ -10632,7 +10641,7 @@ sub difficulty_assessment
 	# 3 = simple: stored functions and/or triggers but without code that need manual rewriting
 	# Migration that need code rewrite
 	# 4 = manual: no stored functions but with triggers and code that need manual rewriting
-	# 5 = hard, stored functions and/or triggers with code that need manual rewriting
+	# 5 = difficult, stored functions and/or triggers with code that need manual rewriting
 	my $difficulty = 1;
 
 	my @stored_function = (
@@ -10667,7 +10676,14 @@ sub difficulty_assessment
 		}
 	}
 
-	return $difficulty;
+	my $tmp = $report_info{'total_cost_value'}/84;
+	$tmp++ if ($tmp =~ s/\.\d+//);
+
+	my $level = 'A';
+	$level = 'B' if ($difficulty > 3);
+	$level = 'C' if ( ($difficulty > 3) && ($tmp > $self->{human_days_limit}) );
+
+	return "$level-$difficulty";
 }
 
 sub _show_report
@@ -10728,13 +10744,16 @@ sub _show_report
 
 	my $difficulty = $self->difficulty_assessment(%report_info);
 	my $lbl_mig_type = qq{
-    Migration that might be run automatically
-        1 = trivial: no stored functions and no triggers
-        2 = easy: no stored functions but with triggers without code that need manual rewriting
-        3 = simple: stored functions and/or triggers but without code that need manual rewriting
-    Migration that need code rewrite
-        4 = manual: no stored functions but with triggers and code that need manual rewriting
-        5 = hard, stored functions and/or triggers with code that need manual rewriting
+Migration levels:
+    A - Migration that might be run automatically
+    B - Migration that need code rewrite with human-days up to $self->{human_days_limit} days
+    C - Migration that need code rewrite with human-days above $self->{human_days_limit} days
+Technical levels:
+    1 = trivial: no stored functions and no triggers
+    2 = easy: no stored functions but with triggers without code that need manual rewriting
+    3 = simple: stored functions and/or triggers but without code that need manual rewriting
+    4 = manual: no stored functions but with triggers and code that need manual rewriting
+    5 = difficult, stored functions and/or triggers with code that need manual rewriting
 };
 	# Generate report text report
 	if (!$self->{dump_as_html} && !$self->{dump_as_csv} && !$self->{dump_as_sheet}) {
@@ -10767,6 +10786,7 @@ sub _show_report
 		}
 		$self->logit("-------------------------------------------------------------------------------\n", 0);
 		$self->logit("Migration level : $difficulty\n", 0);
+		$self->logit("-------------------------------------------------------------------------------\n", 0);
 		$self->logit($lbl_mig_type, 0);
 		$self->logit("-------------------------------------------------------------------------------\n", 0);
 		if ($self->{estimate_cost}) {
@@ -10790,15 +10810,17 @@ sub _show_report
 		$self->logit("Version\t$report_info{'Version'}\n", 0);
 		$self->logit("Schema\t$report_info{'Schema'}\n", 0);
 		$self->logit("Size\t$report_info{'Size'}\n\n", 0);
-		$self->logit("Migration level\t$difficulty\n");
 		$self->logit("-------------------------------------------------------------------------------\n\n", 0);
+		$self->logit("\n", 0);
 		$self->logit("Object;Number;Invalid;Estimated cost;Comments\n", 0);
 		foreach my $typ (sort keys %{ $report_info{'Objects'} } ) {
 			$report_info{'Objects'}{$typ}{'detail'} =~ s/\n/\. /gs;
 			$self->logit("$typ;$report_info{'Objects'}{$typ}{'number'};$report_info{'Objects'}{$typ}{'invalid'};$report_info{'Objects'}{$typ}{'cost_value'};$report_info{'Objects'}{$typ}{'comment'}\n", 0);
 		}
 		my $human_cost = $self->_get_human_cost($report_info{'total_cost_value'});
-		$self->logit("Total;$report_info{'total_object_number'};$report_info{'total_object_invalid'};$report_info{'total_cost_value'};$human_cost\n", 0);
+		$self->logit("\n", 0);
+		$self->logit("Total Number;Total Invalid;Total Estimated cost;Human days cost;Migration level\n", 0);
+		$self->logit("$report_info{'total_object_number'};$report_info{'total_object_invalid'};$report_info{'total_cost_value'};$human_cost;$difficulty\n", 0);
 	} elsif ($self->{dump_as_sheet}) {
 			my @header = ('Instance', 'Version', 'Schema', 'Size', 'Cost assessment', 'Migration type');
 			my $human_cost = $self->_get_human_cost($report_info{'total_cost_value'});
@@ -10950,17 +10972,20 @@ h2 {
 		$self->logit("<h2>Migration level: $difficulty</h2>\n", 0);
 		$lbl_mig_type = qq{
 <ul>
-<li>Migration that might be run automatically</li>
-<ul>
-<li>1 = trivial: no stored functions and no triggers</li>
-<li>2 = easy: no stored functions but with triggers without code that need manual rewriting</li>
-<li>3 = simple: stored functions and/or triggers but without code that need manual rewriting</li>
-</ul>
-<li>Migration that need code rewrite</li>
-<ul>
-<li>4 = manual: no stored functions but with triggers and code that need manual rewriting</li>
-<li>5 = hard, stored functions and/or triggers with code that need manual rewriting</li>
-</ul>
+<li>Migration levels:</li>
+  <ul>
+    <li>A - Migration that might be run automatically</li>
+    <li>B - Migration that need code rewrite with human-days up to 10 days</li>
+    <li>C - Migration that need code rewrite with human-days above 10 days</li>
+  </ul>
+<li>Technical levels:</li>
+  <ul>
+    <li>1 = trivial: no stored functions and no triggers</li>
+    <li>2 = easy: no stored functions but with triggers without code that need manual rewriting</li>
+    <li>3 = simple: stored functions and/or triggers but without code that need manual rewriting</li>
+    <li>4 = manual: no stored functions but with triggers and code that need manual rewriting</li>
+    <li>5 = difficult, stored functions and/or triggers with code that need manual rewriting</li>
+  </ul>
 </ul>
 };
 		$self->logit($lbl_mig_type, 0);
