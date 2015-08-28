@@ -124,7 +124,7 @@
 .\" ========================================================================
 .\"
 .IX Title "ORA2PG 1"
-.TH ORA2PG 1 "2015-08-27" "perl v5.14.2" "User Contributed Perl Documentation"
+.TH ORA2PG 1 "2015-08-28" "perl v5.14.2" "User Contributed Perl Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -178,6 +178,7 @@ Features included:
 \&        \- Export materialized view.
 \&        \- Show a detailled report of an Oracle database content.
 \&        \- Migration cost assessment of an Oracle database.
+\&        \- Migration difficulty level assessment of an Oracle database.
 \&        \- Migration cost assessment of PL/SQL code from a file.
 \&        \- Migration cost assessment of Oracle SQL queries stored in a file.
 \&        \- Generate XML ktr files to be used with Penthalo Data Integrator (Kettle)
@@ -392,10 +393,16 @@ Here are all command line parameters available when using ora2pg:
 \&   \-\-dump_as_html     : force ora2pg to dump report in HTML, used only with
 \&                        SHOW_REPORT. Default is to dump report as simple text.
 \&   \-\-dump_as_csv      : same as above but force ora2pg to dump report in CSV.
+\&   \-\-dump_as_sheet    : report migration assessment one CSV line per database.
 \&   \-\-init_project NAME: initialise a typical ora2pg project tree. Top directory
 \&                        will be created under project base dir.
 \&   \-\-project_base DIR : define the base dir for ora2pg project trees. Default
 \&                        is current directory.
+\&   \-\-print_header     : to be used with \-\-dump_as_sheet to print the CSV header
+\&                        especially for the first run of ora2pg.
+\&   \-\-human_days_limit num : set the number human\-days limit where the migration
+\&                        assessment level switch from B to C. Default is set to
+\&                        10 human\-days.
 .Ve
 .PP
 ora2pg will return 0 on success, 1 on error. It will return 2 when a child
@@ -2123,6 +2130,35 @@ command line option:
 .Vb 1
 \&        ora2pg \-t SHOW_REPORT  \-\-estimate_cost \-\-cost_unit_value 10
 .Ve
+.PP
+Ora2Pg is also able to give you a migration difficulty level assessment, here a sample:
+.PP
+Migration level: B\-5
+.PP
+.Vb 10
+\&    Migration levels:
+\&        A \- Migration that might be run automatically
+\&        B \- Migration that need code rewrite with human\-days up to 10 days
+\&        C \- Migration that need code rewrite with human\-days above 10 days
+\&    Technical levels:
+\&        1 = trivial: no stored functions and no triggers
+\&        2 = easy: no stored functions but with triggers without code that need manual rewriting
+\&        3 = simple: stored functions and/or triggers but without code that need manual rewriting
+\&        4 = manual: no stored functions but with triggers and code that need manual rewriting
+\&        5 = difficult, stored functions and/or triggers with code that need manual rewriting
+.Ve
+.PP
+This assessment consist in a letter A or B to specify if the migration needs
+manual rewritting or not. And a number from 1 up to 5 to give you a technical
+difficulty level. You have an additional option \-\-human_days_limit to specify
+the number of human-days limit where the migration level should be set to C
+to indicate that it need a huge amount of work and a full project managment
+with migration support. Default is 10 human-days. You can use the configuration
+directive \s-1HUMAN_DAYS_LIMIT\s0 to change this default valur permanently.
+.PP
+This feature has been developped to help you or your boss to decide which
+database to migrate first and the team that must be mobilized to operate
+the migration.
 .SS "Migration assessment method"
 .IX Subsection "Migration assessment method"
 Migration unit scores given to each type of Oracle database object are defined in the
@@ -2145,7 +2181,9 @@ can re-write these using the proper \s-1ANSI\s0 syntax, see: http://www.toadworl
 There's also an alternative with \s-1SQL\s0 Developer Data Modeler, see
 http://www.thatjeffsmith.com/archive/2012/01/sql\-developer\-data\-modeler\-quick\-tip\-use\-oracle\-join\-syntax\-or\-ansi/
 .PP
-Toad is also able to rewrite the native Oracle \s-1\fIDECODE\s0()\fR syntax into \s-1ANSI\s0 standard \s-1SQL\s0 \s-1CASE\s0 statement.
+Toad is also able to rewrite the native Oracle \s-1\fIDECODE\s0()\fR syntax into \s-1ANSI\s0
+standard \s-1SQL\s0 \s-1CASE\s0 statement. You can find some slide about this in a
+presentation given at PgConf.RU: http://ora2pg.darold.net/ora2pg_the_hard_way.pdf
 .SH "SUPPORT"
 .IX Header "SUPPORT"
 .SS "Author / Maintainer"
