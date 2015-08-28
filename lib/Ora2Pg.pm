@@ -7117,9 +7117,9 @@ sub _get_functions
 	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
 	my %functions = ();
-	my @fct_done = ();
+	my @fct_done = ('SQUIRREL_GET_ERROR_OFFSET');
 	while (my $row = $sth->fetch) {
-		next if (grep(/^$row->[0]$/, @fct_done));
+		next if (grep(/^$row->[0]$/i, @fct_done));
 		push(@fct_done, $row->[0]);
 		my $sql = "SELECT TEXT FROM $self->{prefix}_SOURCE WHERE OWNER='$row->[1]' AND NAME='$row->[0]' ORDER BY LINE";
 		my $sth2 = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
