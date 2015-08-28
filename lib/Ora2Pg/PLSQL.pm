@@ -344,7 +344,7 @@ sub plsql_to_plpgsql
 	$str =~ s/(\s*)(WHEN\s+[^\s]+\s*)(ORA2PG_COMMENT\d+\%)(\s*THEN)/$1$3$1$2$4/igs;
 
 	# Replace INSTR by POSITION
-	$str =~ s/\bINSTR\b/POSITION/igs;
+	$str =~ s/INSTR\s*\(\s*([^,]+),\s*('[^']+')\s*\)/POSITION($2 in $1)/igs;
 
 	# Replace SQLCODE by SQLSTATE
 	$str =~ s/\bSQLCODE\b/SQLSTATE/igs;
