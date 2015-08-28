@@ -774,7 +774,7 @@ sub replace_sql_type
 	$str =~ s/STRING/VARCHAR/igs;
 	$str =~ s/\bVARCHAR(\s*(?!\())/text$1/igs;
 
-	foreach my $t ('DATE','LONG RAW','LONG','NCLOB','CLOB','BLOB','BFILE','RAW','ROWID','FLOAT','DOUBLE PRECISION','INTEGER','INT','REAL','SMALLINT','BINARY_FLOAT','BINARY_DOUBLE','BOOLEAN','XMLTYPE') {
+	foreach my $t ('DATE','LONG RAW','LONG','NCLOB','CLOB','BLOB','BFILE','RAW','ROWID','FLOAT','DOUBLE PRECISION','INTEGER','INT','REAL','SMALLINT','BINARY_FLOAT','BINARY_DOUBLE','BINARY_INTEGER','BOOLEAN','XMLTYPE') {
 		$str =~ s/\b$t\b/$Ora2Pg::TYPE{$t}/igs;
 	}
 
