@@ -10785,11 +10785,11 @@ Technical levels:
 			$self->logit("Total\t$report_info{'total_object_number'}\t$report_info{'total_object_invalid'}\n", 0);
 		}
 		$self->logit("-------------------------------------------------------------------------------\n", 0);
-		$self->logit("Migration level : $difficulty\n", 0);
-		$self->logit("-------------------------------------------------------------------------------\n", 0);
-		$self->logit($lbl_mig_type, 0);
-		$self->logit("-------------------------------------------------------------------------------\n", 0);
 		if ($self->{estimate_cost}) {
+			$self->logit("Migration level : $difficulty\n", 0);
+			$self->logit("-------------------------------------------------------------------------------\n", 0);
+			$self->logit($lbl_mig_type, 0);
+			$self->logit("-------------------------------------------------------------------------------\n", 0);
 			$self->logit("\nDetails of cost assessment per function\n", 0);
 			foreach my $fct (sort { $report_info{'full_function_details'}{$b}{count} <=> $report_info{'full_function_details'}{$a}{count} } keys %{ $report_info{'full_function_details'} } ) {
 				$self->logit("Function $fct total estimated cost: $report_info{'full_function_details'}{$fct}{count}\n", 0);
@@ -10818,26 +10818,28 @@ Technical levels:
 			$self->logit("$typ;$report_info{'Objects'}{$typ}{'number'};$report_info{'Objects'}{$typ}{'invalid'};$report_info{'Objects'}{$typ}{'cost_value'};$report_info{'Objects'}{$typ}{'comment'}\n", 0);
 		}
 		my $human_cost = $self->_get_human_cost($report_info{'total_cost_value'});
+		$difficulty = '' if (!$self->{estimate_cost});
 		$self->logit("\n", 0);
 		$self->logit("Total Number;Total Invalid;Total Estimated cost;Human days cost;Migration level\n", 0);
 		$self->logit("$report_info{'total_object_number'};$report_info{'total_object_invalid'};$report_info{'total_cost_value'};$human_cost;$difficulty\n", 0);
 	} elsif ($self->{dump_as_sheet}) {
-			my @header = ('Instance', 'Version', 'Schema', 'Size', 'Cost assessment', 'Migration type');
-			my $human_cost = $self->_get_human_cost($report_info{'total_cost_value'});
-			my @infos  = ($self->{oracle_dsn}, $report_info{'Version'}, $report_info{'Schema'}, $report_info{'Size'}, $human_cost, $difficulty);
-			foreach my $typ (sort @ora_object_type) {
-				push(@header, $typ);
-				$report_info{'Objects'}{$typ}{'number'} ||= 0;
-				$report_info{'Objects'}{$typ}{'invalid'} ||= 0;
-				$report_info{'Objects'}{$typ}{'cost_value'} ||= 0;
-				push(@infos, "$report_info{'Objects'}{$typ}{'number'}/$report_info{'Objects'}{$typ}{'invalid'}/$report_info{'Objects'}{$typ}{'cost_value'}");
-			}
-			push(@header, "Total assessment");
-			push(@infos, "$report_info{total_object_number}/$report_info{total_object_invalid}/$report_info{total_cost_value}");
-			if ($self->{print_header}) {
-				$self->logit('"' . join('";"', @header) . '"' . "\n");
-			}
-			$self->logit('"' . join('";"', @infos) . '"' . "\n");
+		$difficulty = '' if (!$self->{estimate_cost});
+		my @header = ('Instance', 'Version', 'Schema', 'Size', 'Cost assessment', 'Migration type');
+		my $human_cost = $self->_get_human_cost($report_info{'total_cost_value'});
+		my @infos  = ($self->{oracle_dsn}, $report_info{'Version'}, $report_info{'Schema'}, $report_info{'Size'}, $human_cost, $difficulty);
+		foreach my $typ (sort @ora_object_type) {
+			push(@header, $typ);
+			$report_info{'Objects'}{$typ}{'number'} ||= 0;
+			$report_info{'Objects'}{$typ}{'invalid'} ||= 0;
+			$report_info{'Objects'}{$typ}{'cost_value'} ||= 0;
+			push(@infos, "$report_info{'Objects'}{$typ}{'number'}/$report_info{'Objects'}{$typ}{'invalid'}/$report_info{'Objects'}{$typ}{'cost_value'}");
+		}
+		push(@header, "Total assessment");
+		push(@infos, "$report_info{total_object_number}/$report_info{total_object_invalid}/$report_info{total_cost_value}");
+		if ($self->{print_header}) {
+			$self->logit('"' . join('";"', @header) . '"' . "\n");
+		}
+		$self->logit('"' . join('";"', @infos) . '"' . "\n");
 	} else {
 		my $cost_header = '';
 		$cost_header = "<th>Estimated cost</th>" if ($self->{estimate_cost});
@@ -10969,8 +10971,9 @@ h2 {
 			$self->logit("<tr><th style=\"text-align: center; border-bottom: 0px; vertical-align: bottom;\">Total</th><td style=\"text-align: center; border-bottom: 0px; vertical-align: bottom; border-bottom: 0px; vertical-align: bottom;\">$report_info{'total_object_number'}</td><td style=\"text-align: center; border-bottom: 0px; vertical-align: bottom;\">$report_info{'total_object_invalid'}</td><td colspan=\"3\" style=\"border-bottom: 0px; vertical-align: bottom;\"></td></tr>\n", 0);
 		}
 		$self->logit("</table>\n</div>\n", 0);
-		$self->logit("<h2>Migration level: $difficulty</h2>\n", 0);
-		$lbl_mig_type = qq{
+		if ($self->{estimate_cost}) {
+			$self->logit("<h2>Migration level: $difficulty</h2>\n", 0);
+			$lbl_mig_type = qq{
 <ul>
 <li>Migration levels:</li>
   <ul>
@@ -10988,8 +10991,8 @@ h2 {
   </ul>
 </ul>
 };
-		$self->logit($lbl_mig_type, 0);
-		if ($self->{estimate_cost}) {
+			$self->logit($lbl_mig_type, 0);
+
 			$self->logit("<h2>Details of cost assessment per function</h2>\n", 0);
 			$self->logit("<ul>\n", 0);
 			foreach my $fct (sort { $report_info{'full_function_details'}{$b}{count} <=> $report_info{'full_function_details'}{$a}{count} } keys %{ $report_info{'full_function_details'} } ) {
