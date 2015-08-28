@@ -59,7 +59,7 @@ $VERSION = '15.3';
 	'DATABASE LINK' => 3, # Supported as FDW using oracle_fdw
 	'DIMENSION' => 0, # Not supported and no equivalent
 	'JOB' => 2, # read/adapt
-	'SYNONYM' => 1, # read/adapt
+	'SYNONYM' => 0.1, # read/adapt
 );
 
 # Scores following the number of characters: 1000 chars for one unit.
@@ -81,17 +81,16 @@ $FCT_TEST_SCORE = 2;
 	'GOTO' => 2,
 	'FORALL' => 1,
 	'ROWNUM' => 2,
-	'NOTFOUND' => 2,
+	'NOTFOUND' => 1,
 	'ROWID' => 2,
 	'IS RECORD' => 1,
-	'SQLCODE' => 2,
-	'TABLE' => 3,
+	'SQLCODE' => 1,
+	'TABLE' => 1,
 	'DBMS_' => 3,
 	'UTL_' => 3,
 	'CTX_' => 3,
 	'EXTRACT' => 3,
 	'EXCEPTION' => 2,
-	'SUBSTR' => 1,
 	'TO_NUMBER' => 1,
 	'REGEXP_LIKE' => 1,
 	'TG_OP' => 1,
@@ -99,7 +98,7 @@ $FCT_TEST_SCORE = 2;
 	'PIPE ROW' => 1,
 	'ORA_ROWSCN' => 3,
 	'SAVEPOINT' => 1,
-	'DBLINK' => 2,
+	'DBLINK' => 1,
 	'PLVDATE' => 2,
 	'PLVSTR' => 2,
 	'PLVCHR' => 2,
@@ -844,8 +843,6 @@ sub estimate_cost
 	$cost_details{'CTX_'} += $n;
 	$n = () = $str =~ m/\bEXTRACT\s*\(/igs;
 	$cost_details{'EXTRACT'} += $n;
-	$n = () = $str =~ m/\bSUBSTR\s*\(/igs;
-	$cost_details{'SUBSTR'} += $n;
 	$n = () = $str =~ m/\bTO_NUMBER\s*\(/igs;
 	$cost_details{'TO_NUMBER'} += $n;
 	# See:  http://www.postgresql.org/docs/9.0/static/errcodes-appendix.html#ERRCODES-TABLE
