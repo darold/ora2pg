@@ -9852,6 +9852,14 @@ sub _get_database_size
 
 	my $mb_size = '';
 	my $sql = "SELECT sum(bytes)/1024/1024 FROM USER_SEGMENTS";
+	if (!$self->{user_grant}) {
+		$sql = "SELECT sum(bytes)/1024/1024 FROM DBA_SEGMENTS";
+		if ($self->{schema}) {
+			$sql .= " WHERE OWNER='$self->{schema}' ";
+		} else {
+			$sql .= " WHERE OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
+		}
+	}
         my $sth = $self->{dbh}->prepare( $sql ) or return undef;
         $sth->execute or return undef;
 	while ( my @row = $sth->fetchrow()) {
