@@ -462,9 +462,11 @@ sub make_config_generic
 
 	chomp(@$conf_arr);
 
+	my $schema = 'CHANGE_THIS_SCHEMA_NAME';
+	$schema = $SCHEMA if ($SCHEMA);
 	for (my $i = 0; $i <= $#{$conf_arr}; $i++) {
 		$conf_arr->[$i] =~ s/^USER_GRANTS.*0/USER_GRANTS\t1/;
-		$conf_arr->[$i] =~ s/^#SCHEMA.*SCHEMA_NAME/SCHEMA\tCHANGE_THIS_SCHEMA_NAME/;
+		$conf_arr->[$i] =~ s/^#SCHEMA.*SCHEMA_NAME/SCHEMA\t$schema/;
 		$conf_arr->[$i] =~ s/^#(NLS_LANG.*AMERICAN_AMERICA.UTF8)/$1/;
 		$conf_arr->[$i] =~ s/^(BINMODE.*)/#$1/;
 		$conf_arr->[$i] =~ s/^PLSQL_PGSQL.*1/PLSQL_PGSQL\t0/;
@@ -477,6 +479,15 @@ sub make_config_generic
 		$conf_arr->[$i] =~ s/^#CLIENT_ENCODING.*LATIN9/CLIENT_ENCODING\tUTF8/;
 		$conf_arr->[$i] =~ s/^#LONGREADLEN.*1047552/LONGREADLEN\t5000000/;
 		$conf_arr->[$i] =~ s/^AUTODETECT_SPATIAL_TYPE.*0/AUTODETECT_SPATIAL_TYPE\t1/;
+		if ($DSN) {
+			$conf_arr->[$i] =~ s/^ORACLE_DSN.*/ORACLE_DSN\t$DSN/;
+		}
+		if ($DBUSER) {
+			$conf_arr->[$i] =~ s/^ORACLE_USER.*/ORACLE_USER\t$DBUSER/;
+		}
+		if ($DBPWD) {
+			$conf_arr->[$i] =~ s/^ORACLE_PWD.*/ORACLE_PWD\t$DBPWD/;
+		}
 	}
 	map { s/$/\n/; } @$conf_arr;
 }
