@@ -9320,12 +9320,13 @@ sub _show_infos
 		$report_info{'Version'} = $ver || 'Unknown';
 		$report_info{'Schema'} = $self->{schema} || '';
 		$report_info{'Size'} = $size || 'Unknown';
-		my $i = 1;
+		my $idx = 0;
 		my $num_total_obj = scalar keys %objects;
 		foreach my $typ (sort keys %objects) {
-			$i++, next if ($typ eq 'PACKAGE'); # Package are scanned with PACKAGE BODY not PACKAGE objects
+			$idx++;
+			next if ($typ eq 'PACKAGE'); # Package are scanned with PACKAGE BODY not PACKAGE objects
 			if (!$self->{quiet} && !$self->{debug}) {
-				print STDERR $self->progress_bar($i, $num_total_obj, 25, '=', 'objects types', "inspecting object $typ" );
+				print STDERR $self->progress_bar($idx, $num_total_obj, 25, '=', 'objects types', "inspecting object $typ" );
 			}
 			$report_info{'Objects'}{$typ}{'number'} = 0;
 			$report_info{'Objects'}{$typ}{'invalid'} = 0;
@@ -9432,11 +9433,9 @@ sub _show_infos
 				}
 				if ($self->{prefix} eq 'DBA') {
 					$report_info{'Objects'}{$typ}{'detail'} .= "Top $self->{top_max} of largest tables:\n";
-					$i = 1;
 					my %largest_table = $self->_get_largest_tables();
 					foreach my $t (sort { $largest_table{$b} <=> $largest_table{$a} } keys %largest_table) {
 						$report_info{'Objects'}{$typ}{'detail'} .= "\L$t\E: $largest_table{$t} MB (" . $self->{tables}{$t}{table_info}{num_rows} . " rows)\n";
-						$i++;
 					}
 				}
 				$comment = "Nothing particular." if (!$comment);
@@ -9582,16 +9581,16 @@ sub _show_infos
 				}
 			}
 			$report_info{'total_cost_value'} += $report_info{'Objects'}{$typ}{'cost_value'};
-			$i++;
 		}
 		if (!$self->{quiet} && !$self->{debug}) {
-			print STDERR $self->progress_bar($i - 1, $num_total_obj, 25, '=', 'objects types', 'end of objects auditing.'), "\n";
+			print STDERR $self->progress_bar($idx, $num_total_obj, 25, '=', 'objects types', 'end of objects auditing.'), "\n";
 		}
 
 		# Display report in the requested format
 		$self->_show_report(%report_info);
 
 	} elsif ($type eq 'SHOW_SCHEMA') {
+
 		# Get all tables information specified by the DBI method table_info
 		$self->logit("Showing all schema...\n", 1);
 		my $sth = $self->_schema_list()  or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
