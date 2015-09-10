@@ -4511,15 +4511,36 @@ BEGIN
 							}
 						}
 						$check_cond .= " AND" if ($i < $#{$self->{partitions}{$table}{$pos}{$part}});
-						$create_table{$table}{'index'} .= "CREATE INDEX ${tb_name}_$self->{partitions}{$table}{$pos}{$part}[$i]->{column} ON $tb_name ($self->{partitions}{$table}{$pos}{$part}[$i]->{column});\n";
+						my $fct = '';
+						my $colname = $self->{partitions}{$table}{$pos}{$part}[$i]->{column};
+						if ($colname =~ s/([^\(]+)\(([^\)]+)\)/$2/) {
+							$fct = $1;
+						}
+						my $cindx = $self->{partitions}{$table}{$pos}{$part}[$i]->{column} || '';
+						$cindx = Ora2Pg::PLSQL::plsql_to_plpgsql($cindx,$self->{null_equal_empty}, undef, $self->{package_functions});
+						$create_table{$table}{'index'} .= "CREATE INDEX ${tb_name}_$colname ON $tb_name ($cindx);\n";
+						if ($self->{partitions_default}{$table} && ($create_table{$table}{'index'} !~ /ON $self->{partitions_default}{$table} /)) {
+							$cindx = $self->{partitions}{$table}{$pos}{$part}[$i]->{column} || '';
+							$cindx = Ora2Pg::PLSQL::plsql_to_plpgsql($cindx,$self->{null_equal_empty}, undef, $self->{package_functions});
+							$create_table{$table}{'index'} .= "CREATE INDEX $self->{partitions_default}{$table}_$colname ON $self->{partitions_default}{$table} ($cindx);\n";
+						}
 						push(@ind_col, $self->{partitions}{$table}{$pos}{$part}[$i]->{column}) if (!grep(/^$self->{partitions}{$table}{$pos}{$part}[$i]->{column}$/, @ind_col));
 						if ($self->{partitions}{$table}{$pos}{$part}[$i]->{type} eq 'LIST') {
-							push(@condition, "NEW.$self->{partitions}{$table}{$pos}{$part}[$i]->{column} IN (" . Ora2Pg::PLSQL::plsql_to_plpgsql($self->{partitions}{$table}{$pos}{$part}[$i]->{value}, $self->{null_equal_empty}, undef, $self->{package_functions}) . ")");
+							if (!$fct) {
+								push(@condition, "NEW.$self->{partitions}{$table}{$pos}{$part}[$i]->{column} IN (" . Ora2Pg::PLSQL::plsql_to_plpgsql($self->{partitions}{$table}{$pos}{$part}[$i]->{value}, $self->{null_equal_empty}, undef, $self->{package_functions}) . ")");
+							} else {
+								push(@condition, "$fct(NEW.$colname) IN (" . Ora2Pg::PLSQL::plsql_to_plpgsql($self->{partitions}{$table}{$pos}{$part}[$i]->{value}, $self->{null_equal_empty}, undef, $self->{package_functions}) . ")");
+							}
 						} else {
-							push(@condition, "NEW.$self->{partitions}{$table}{$pos}{$part}[$i]->{column} < " . Ora2Pg::PLSQL::plsql_to_plpgsql($self->{partitions}{$table}{$pos}{$part}[$i]->{value},$self->{null_equal_empty}, undef, $self->{package_functions}));
+							if (!$fct) {
+								push(@condition, "NEW.$self->{partitions}{$table}{$pos}{$part}[$i]->{column} < " . Ora2Pg::PLSQL::plsql_to_plpgsql($self->{partitions}{$table}{$pos}{$part}[$i]->{value},$self->{null_equal_empty}, undef, $self->{package_functions}));
+							} else {
+								push(@condition, "$fct(NEW.$colname) < " . Ora2Pg::PLSQL::plsql_to_plpgsql($self->{partitions}{$table}{$pos}{$part}[$i]->{value},$self->{null_equal_empty}, undef, $self->{package_functions}));
+							}
 						}
 						$owner = $self->{partitions}{$table}{$pos}{$part}[$i]->{owner} || '';
 					}
+					$check_cond = Ora2Pg::PLSQL::plsql_to_plpgsql($check_cond,$self->{null_equal_empty}, undef, $self->{package_functions});
 					$create_table{$table}{table} .= $check_cond;
 					$create_table{$table}{table} .= "\n) ) INHERITS ($table);\n";
 					$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
@@ -4554,14 +4575,33 @@ BEGIN
 									}
 									$sub_check_cond .= " AND " if ($i < $#{$self->{subpartitions}{$table}{$p}{$subpart}});
 									push(@ind_col, $self->{subpartitions}{$table}{$p}{$subpart}[$i]->{column}) if (!grep(/^$self->{subpartitions}{$table}{$p}{$subpart}[$i]->{column}$/, @ind_col));
-									$create_table{$table}{'index'} .= "CREATE INDEX ${tb_name}_${sub_tb_name}_$self->{subpartitions}{$table}{$p}{$subpart}[$i]->{column} ON ${tb_name}_$sub_tb_name (" . join(',', @ind_col) . ");\n";
+									my $fct = '';
+									my $colname = $self->{subpartitions}{$table}{$p}{$subpart}[$i]->{column};
+									if ($colname =~ s/([^\(]+)\(([^\)]+)\)/$2/) {
+										$fct = $1;
+									}
+									$cindx = join(',', @ind_col);
+									$cindx = Ora2Pg::PLSQL::plsql_to_plpgsql($cindx,$self->{null_equal_empty}, undef, $self->{package_functions});
+									$create_table{$table}{'index'} .= "CREATE INDEX ${tb_name}_${sub_tb_name}_$colname ON ${tb_name}_$sub_tb_name ($cindx);\n";
+									if ($self->{subpartitions_default}{$table} && ($create_table{$table}{'index'} !~ /ON $self->{subpartitions_default}{$table} /)) {
+										$create_table{$table}{'index'} .= "CREATE INDEX ${tb_name}_$self->{subpartitions_default}{$table}_$colname ON ${tb_name}_$self->{subpartitions_default}{$table} ($cindx);\n";
+									}
 									if ($self->{subpartitions}{$table}{$p}{$subpart}[$i]->{type} eq 'LIST') {
-										push(@subcondition, "NEW.$self->{subpartitions}{$table}{$p}{$subpart}[$i]->{column} IN (" . Ora2Pg::PLSQL::plsql_to_plpgsql($self->{subpartitions}{$table}{$p}{$subpart}[$i]->{value}, $self->{null_equal_empty}, undef, $self->{package_functions}) . ")");
+										if (!$fct) {
+											push(@subcondition, "NEW.$self->{subpartitions}{$table}{$p}{$subpart}[$i]->{column} IN (" . Ora2Pg::PLSQL::plsql_to_plpgsql($self->{subpartitions}{$table}{$p}{$subpart}[$i]->{value}, $self->{null_equal_empty}, undef, $self->{package_functions}) . ")");
+										} else {
+											push(@subcondition, "$fct(NEW.$colname) IN (" . Ora2Pg::PLSQL::plsql_to_plpgsql($self->{subpartitions}{$table}{$p}{$subpart}[$i]->{value}, $self->{null_equal_empty}, undef, $self->{package_functions}) . ")");
+										}
 									} else {
-										push(@subcondition, "NEW.$self->{subpartitions}{$table}{$p}{$subpart}[$i]->{column} < " . Ora2Pg::PLSQL::plsql_to_plpgsql($self->{subpartitions}{$table}{$p}{$subpart}[$i]->{value},$self->{null_equal_empty}, undef, $self->{package_functions}));
+										if (!$fct) {
+											push(@subcondition, "NEW.$self->{subpartitions}{$table}{$p}{$subpart}[$i]->{column} < " . Ora2Pg::PLSQL::plsql_to_plpgsql($self->{subpartitions}{$table}{$p}{$subpart}[$i]->{value},$self->{null_equal_empty}, undef, $self->{package_functions}));
+										} else {
+											push(@subcondition, "$fct(NEW.$colname) < " . Ora2Pg::PLSQL::plsql_to_plpgsql($self->{subpartitions}{$table}{$p}{$subpart}[$i]->{value},$self->{null_equal_empty}, undef, $self->{package_functions}));
+										}
 									}
 									$owner = $self->{subpartitions}{$table}{$p}{$subpart}[$i]->{owner} || '';
 								}
+								$sub_check_cond = Ora2Pg::PLSQL::plsql_to_plpgsql($sub_check_cond,$self->{null_equal_empty}, undef, $self->{package_functions});
 								$create_table{$table}{table} .= "$check_cond AND $sub_check_cond";
 								$create_table{$table}{table} .= "\n) ) INHERITS ($table);\n";
 								$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
@@ -4599,6 +4639,7 @@ BEGIN
                 INSERT INTO $deftb$self->{partitions_default}{$table} VALUES (NEW.*);
 };
 			} else {
+				$function = Ora2Pg::PLSQL::plsql_to_plpgsql($function,$self->{null_equal_empty}, undef, $self->{package_functions});
 				$function .= $funct_cond . qq{	ELSE
                 -- Raise an exception
                 RAISE EXCEPTION 'Value out of range. Fix the ${table}_insert_trigger() function!';
