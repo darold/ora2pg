@@ -1209,7 +1209,6 @@ sub _oracle_connection
 	my $sth = $dbh->prepare($self->{transaction}) or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
 	$sth->execute or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
 	$sth->finish;
-	undef $sth;
 
 	# Force execution of initial command
 	$self->_initial_command($dbh);
@@ -1235,7 +1234,7 @@ sub _init_environment
 		$self->logit("\tUsing character set: NLS_LANG=$self->{nls_lang}, NLS_NCHAR=$self->{nls_nchar}.\n", 1);
 	}
 	# Force Perl to use utf8 output encoding by default
-	if ( !$self->{'binmode'} || ($self->{nls_lang} =~ /UTF8/) ) {
+	if ( !$self->{'binmode'} || ($self->{nls_lang} =~ /UTF8/i) ) {
 			$self->{'binmode'} = ':utf8';
 	}
 	if ($self->{debug}) {
@@ -3313,6 +3312,12 @@ LANGUAGE plpgsql ;
 						$ret_kind = "IF TG_OP = 'DELETE' THEN\n\tRETURN OLD;\nELSE\n\tRETURN NEW;\nEND IF;\n";
 					}
 					if ($self->{plsql_pgsql}) {
+						# Add a semi colon at end if none
+						if ($trig->[4] !~ /\bBEGIN\b/) {
+							chomp($trig->[4]);
+							$trig->[4] .= ';' if ($trig->[4] !~ /;$/);
+							$trig->[4] = "BEGIN\n$trig->[4]\nEND;";
+						}
 						$trig->[4] = Ora2Pg::PLSQL::plsql_to_plpgsql($trig->[4],$self->{null_equal_empty}, undef, $self->{package_functions});
 						$trig->[4] =~ s/\b(END[;]*)[\s\/]*$/$ret_kind\n$1/igs;
 						my @parts = split(/BEGIN/i, $trig->[4]);
@@ -3350,6 +3355,11 @@ LANGUAGE plpgsql ;
 					$sql_output .= "CREATE TRIGGER $trig->[6]\n";
 					if ($trig->[5]) {
 						if ($self->{plsql_pgsql}) {
+							if ($trig->[5] !~ /\bBEGIN\b/) {
+								chomp($trig->[5]);
+								$trig->[5] .= ';' if ($trig->[5] !~ /;$/);
+								$trig->[5] = "BEGIN\n$trig->[5]\nEND;";
+							}
 							$trig->[5] = Ora2Pg::PLSQL::plsql_to_plpgsql($trig->[5],$self->{null_equal_empty}, undef, $self->{package_functions});
 						}
 						$sql_output .= "\tWHEN ($trig->[5])\n";
