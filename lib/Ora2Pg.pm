@@ -10870,17 +10870,21 @@ Technical levels:
 			$self->logit($lbl_mig_type, 0);
 			$self->logit("-------------------------------------------------------------------------------\n", 0);
 			$self->logit("\nDetails of cost assessment per function\n", 0);
-			foreach my $fct (sort { $report_info{'full_function_details'}{$b}{count} <=> $report_info{'full_function_details'}{$a}{count} } keys %{ $report_info{'full_function_details'} } ) {
-				$self->logit("Function $fct total estimated cost: $report_info{'full_function_details'}{$fct}{count}\n", 0);
-				$self->logit($report_info{'full_function_details'}{$fct}{info}, 0);
+			if (scalar keys %{ $report_info{'full_function_details'} }) {
+				foreach my $fct (sort { $report_info{'full_function_details'}{$b}{count} <=> $report_info{'full_function_details'}{$a}{count} } keys %{ $report_info{'full_function_details'} } ) {
+					$self->logit("Function $fct total estimated cost: $report_info{'full_function_details'}{$fct}{count}\n", 0);
+					$self->logit($report_info{'full_function_details'}{$fct}{info}, 0);
+				}
+				$self->logit("-------------------------------------------------------------------------------\n", 0);
 			}
-			$self->logit("-------------------------------------------------------------------------------\n", 0);
-			$self->logit("\nDetails of cost assessment per trigger\n", 0);
-			foreach my $fct (sort { $report_info{'full_trigger_details'}{$b}{count} <=> $report_info{'full_trigger_details'}{$a}{count} } keys %{ $report_info{'full_trigger_details'} } ) {
-				$self->logit("Trigger $fct total estimated cost: $report_info{'full_trigger_details'}{$fct}{count}\n", 0);
-				$self->logit($report_info{'full_trigger_details'}{$fct}{info}, 0);
+			if (scalar keys %{ $report_info{'full_trigger_details'} }) {
+				$self->logit("\nDetails of cost assessment per trigger\n", 0);
+				foreach my $fct (sort { $report_info{'full_trigger_details'}{$b}{count} <=> $report_info{'full_trigger_details'}{$a}{count} } keys %{ $report_info{'full_trigger_details'} } ) {
+					$self->logit("Trigger $fct total estimated cost: $report_info{'full_trigger_details'}{$fct}{count}\n", 0);
+					$self->logit($report_info{'full_trigger_details'}{$fct}{info}, 0);
+				}
+				$self->logit("-------------------------------------------------------------------------------\n", 0);
 			}
-			$self->logit("-------------------------------------------------------------------------------\n", 0);
 			if (scalar keys %{ $report_info{'full_view_details'} }) {
 				$self->logit("\nDetails of cost assessment per view\n", 0);
 				foreach my $fct (sort { $report_info{'full_view_details'}{$b}{count} <=> $report_info{'full_view_details'}{$a}{count} } keys %{ $report_info{'full_view_details'} } ) {
@@ -11080,30 +11084,34 @@ h2 {
 };
 			$self->logit($lbl_mig_type, 0);
 
-			$self->logit("<h2>Details of cost assessment per function</h2>\n", 0);
-			$self->logit("<ul>\n", 0);
-			foreach my $fct (sort { $report_info{'full_function_details'}{$b}{count} <=> $report_info{'full_function_details'}{$a}{count} } keys %{ $report_info{'full_function_details'} } ) {
-				
-				$self->logit("<li>Function $fct total estimated cost: $report_info{'full_function_details'}{$fct}{count}</li>\n", 0);
+			if (scalar keys %{ $report_info{'full_function_details'} }) {
+				$self->logit("<h2>Details of cost assessment per function</h2>\n", 0);
 				$self->logit("<ul>\n", 0);
-				$report_info{'full_function_details'}{$fct}{info} =~ s/\t/<li>/gs;
-				$report_info{'full_function_details'}{$fct}{info} =~ s/\n/<\/li>\n/gs;
-				$self->logit($report_info{'full_function_details'}{$fct}{info}, 0);
+				foreach my $fct (sort { $report_info{'full_function_details'}{$b}{count} <=> $report_info{'full_function_details'}{$a}{count} } keys %{ $report_info{'full_function_details'} } ) {
+					
+					$self->logit("<li>Function $fct total estimated cost: $report_info{'full_function_details'}{$fct}{count}</li>\n", 0);
+					$self->logit("<ul>\n", 0);
+					$report_info{'full_function_details'}{$fct}{info} =~ s/\t/<li>/gs;
+					$report_info{'full_function_details'}{$fct}{info} =~ s/\n/<\/li>\n/gs;
+					$self->logit($report_info{'full_function_details'}{$fct}{info}, 0);
+					$self->logit("</ul>\n", 0);
+				}
 				$self->logit("</ul>\n", 0);
 			}
-			$self->logit("</ul>\n", 0);
-			$self->logit("<h2>Details of cost assessment per trigger</h2>\n", 0);
-			$self->logit("<ul>\n", 0);
-			foreach my $fct (sort { $report_info{'full_trigger_details'}{$b}{count} <=> $report_info{'full_trigger_details'}{$a}{count} } keys %{ $report_info{'full_trigger_details'} } ) {
-				
-				$self->logit("<li>Trigger $fct total estimated cost: $report_info{'full_trigger_details'}{$fct}{count}</li>\n", 0);
+			if (scalar keys %{ $report_info{'full_trigger_details'} }) {
+				$self->logit("<h2>Details of cost assessment per trigger</h2>\n", 0);
 				$self->logit("<ul>\n", 0);
-				$report_info{'full_trigger_details'}{$fct}{info} =~ s/\t/<li>/gs;
-				$report_info{'full_trigger_details'}{$fct}{info} =~ s/\n/<\/li>\n/gs;
-				$self->logit($report_info{'full_trigger_details'}{$fct}{info}, 0);
+				foreach my $fct (sort { $report_info{'full_trigger_details'}{$b}{count} <=> $report_info{'full_trigger_details'}{$a}{count} } keys %{ $report_info{'full_trigger_details'} } ) {
+					
+					$self->logit("<li>Trigger $fct total estimated cost: $report_info{'full_trigger_details'}{$fct}{count}</li>\n", 0);
+					$self->logit("<ul>\n", 0);
+					$report_info{'full_trigger_details'}{$fct}{info} =~ s/\t/<li>/gs;
+					$report_info{'full_trigger_details'}{$fct}{info} =~ s/\n/<\/li>\n/gs;
+					$self->logit($report_info{'full_trigger_details'}{$fct}{info}, 0);
+					$self->logit("</ul>\n", 0);
+				}
 				$self->logit("</ul>\n", 0);
 			}
-			$self->logit("</ul>\n", 0);
 			if (scalar keys %{ $report_info{'full_view_details'} }) {
 				$self->logit("<h2>Details of cost assessment per view</h2>\n", 0);
 				$self->logit("<ul>\n", 0);
