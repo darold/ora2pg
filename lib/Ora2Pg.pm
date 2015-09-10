@@ -4904,7 +4904,15 @@ CREATE TRIGGER insert_${table}_trigger
 						if (($type eq 'boolean') && exists $self->{ora_boolean_values}{lc($f->[4])}) {
 							$sql_output .= " DEFAULT '" . $self->{ora_boolean_values}{lc($f->[4])} . "'";
 						} else {
-							$f->[4] = "'$f->[4]'" if (($f->[4] !~ /^'/) && ($f->[4] =~ /[^\d\.]+/) && ($type =~ /CHAR|TEXT|DATE|TIME/i));
+							if (($f->[4] !~ /^'/) && ($f->[4] =~ /[^\d\.]/)) {
+								if ($type =~ /CHAR|TEXT/i) {
+									$f->[4] = "'$f->[4]'";
+								} elsif ($type =~ /DATE|TIME/i) {
+									# do not use REPLACE_ZERO_DATE in default value, cause it can be NULL
+									$f->[4] =~ s/^0000-00-00.*/1970-01-01 00:00:00/;
+									$f->[4] = "'$f->[4]'" if ($f->[4] =~ /^\d+/);
+								}
+							}
 							$sql_output .= " DEFAULT $f->[4]";
 						}
 					}
