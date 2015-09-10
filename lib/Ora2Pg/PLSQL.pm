@@ -85,7 +85,7 @@ $FCT_TEST_SCORE = 2;
 	'ROWID' => 2,
 	'IS RECORD' => 1,
 	'SQLCODE' => 1,
-	'TABLE' => 1,
+	'TABLE' => 2,
 	'DBMS_' => 3,
 	'UTL_' => 3,
 	'CTX_' => 3,
@@ -121,7 +121,6 @@ $FCT_TEST_SCORE = 2;
 	Compose
 	Decompose
 	Dump
-	Instr
 	VSize
 	Bin_To_Num
 	CharToRowid
