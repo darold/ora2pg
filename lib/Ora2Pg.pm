@@ -10712,7 +10712,7 @@ sub difficulty_assessment
 	# 2 = easy: no stored functions but with triggers without code that need manual rewriting
 	# 3 = simple: stored functions and/or triggers but without code that need manual rewriting
 	# Migration that need code rewrite
-	# 4 = manual: no stored functions but with triggers and code that need manual rewriting
+	# 4 = 4 = manual: no stored functions but with triggers or view with code that need manual rewriting
 	# 5 = difficult, stored functions and/or triggers with code that need manual rewriting
 	my $difficulty = 1;
 
@@ -10736,6 +10736,13 @@ sub difficulty_assessment
 	if ($difficulty < 3) {
 		foreach my $fct (keys %{ $report_info{'full_trigger_details'} } ) {
 			next if (!exists $report_info{'full_trigger_details'}{$fct}{keywords});
+			$difficulty = 4;
+			last;
+		}
+	}
+	if ($difficulty <= 3) {
+		foreach my $fct (keys %{ $report_info{'full_view_details'} } ) {
+			next if (!exists $report_info{'full_view_details'}{$fct}{keywords});
 			$difficulty = 4;
 			last;
 		}
@@ -10824,7 +10831,7 @@ Technical levels:
     1 = trivial: no stored functions and no triggers
     2 = easy: no stored functions but with triggers without code that need manual rewriting
     3 = simple: stored functions and/or triggers but without code that need manual rewriting
-    4 = manual: no stored functions but with triggers and code that need manual rewriting
+    4 = manual: no stored functions but with triggers or views with code that need manual rewriting
     5 = difficult, stored functions and/or triggers with code that need manual rewriting
 };
 	# Generate report text report
@@ -10874,6 +10881,14 @@ Technical levels:
 				$self->logit($report_info{'full_trigger_details'}{$fct}{info}, 0);
 			}
 			$self->logit("-------------------------------------------------------------------------------\n", 0);
+			if (scalar keys %{ $report_info{'full_view_details'} }) {
+				$self->logit("\nDetails of cost assessment per view\n", 0);
+				foreach my $fct (sort { $report_info{'full_view_details'}{$b}{count} <=> $report_info{'full_view_details'}{$a}{count} } keys %{ $report_info{'full_view_details'} } ) {
+					$self->logit("View $fct total estimated cost: $report_info{'full_view_details'}{$fct}{count}\n", 0);
+					$self->logit($report_info{'full_view_details'}{$fct}{info}, 0);
+				}
+				$self->logit("-------------------------------------------------------------------------------\n", 0);
+			}
 		}
 	} elsif ($self->{dump_as_csv}) {
 		$self->logit("-------------------------------------------------------------------------------\n", 0);
@@ -11058,7 +11073,7 @@ h2 {
     <li>1 = trivial: no stored functions and no triggers</li>
     <li>2 = easy: no stored functions but with triggers without code that need manual rewriting</li>
     <li>3 = simple: stored functions and/or triggers but without code that need manual rewriting</li>
-    <li>4 = manual: no stored functions but with triggers and code that need manual rewriting</li>
+    <li>4 = manual: no stored functions but with triggers or views that need manual rewriting</li>
     <li>5 = difficult, stored functions and/or triggers with code that need manual rewriting</li>
   </ul>
 </ul>
@@ -11089,6 +11104,20 @@ h2 {
 				$self->logit("</ul>\n", 0);
 			}
 			$self->logit("</ul>\n", 0);
+			if (scalar keys %{ $report_info{'full_view_details'} }) {
+				$self->logit("<h2>Details of cost assessment per view</h2>\n", 0);
+				$self->logit("<ul>\n", 0);
+				foreach my $fct (sort { $report_info{'full_view_details'}{$b}{count} <=> $report_info{'full_view_details'}{$a}{count} } keys %{ $report_info{'full_view_details'} } ) {
+
+					$self->logit("<li>View $fct total estimated cost: $report_info{'full_view_details'}{$fct}{count}</li>\n", 0);
+					$self->logit("<ul>\n", 0);
+					$report_info{'full_view_details'}{$fct}{info} =~ s/\t/<li>/gs;
+					$report_info{'full_view_details'}{$fct}{info} =~ s/\n/<\/li>\n/gs;
+					$self->logit($report_info{'full_view_details'}{$fct}{info}, 0);
+					$self->logit("</ul>\n", 0);
+				}
+				$self->logit("</ul>\n", 0);
+			}
 		}
 		my $html_footer = qq{
 <div id="footer">
