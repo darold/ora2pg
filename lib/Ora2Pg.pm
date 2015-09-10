@@ -5185,7 +5185,7 @@ sub _column_comments
 	$sql .= "AND TABLE_NAME='$table' " if ($table);
 	$sql .= $self->limit_to_objects('TABLE','TABLE_NAME') if (!$table);
 
-	my $sth = $self->{dbh}->prepare($sql) or $self->logit("WARNING only: " . $self->{dbh}->errstr . "\n", 0, 0);
+	my $sth = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
 	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	my %data = ();
@@ -5217,13 +5217,11 @@ sub _create_indexes
 		next if ($self->{tables}{$tbsaved}{idx_type}{$idx}{type} =~ /JOIN|IOT|CLUSTER|REV/i);
 		next if ($self->{tables}{$tbsaved}{idx_type}{$idx}{type} =~ /DOMAIN/i && $self->{tables}{$tbsaved}{idx_type}{$idx}{type_name} !~ /SPATIAL_INDEX/);
 
-#		map { if ($_ !~ /\(.*\)/) { s/^/"/; s/$/"/; } } @{$indexes{$idx}};
 		if (exists $self->{replaced_cols}{"\L$tbsaved\E"} && $self->{replaced_cols}{"\L$tbsaved\E"}) {
 			foreach my $c (keys %{$self->{replaced_cols}{"\L$tbsaved\E"}}) {
 				map { s/"$c"/"$self->{replaced_cols}{"\L$tbsaved\E"}{$c}"/i } @{$indexes{$idx}};
 			}
 		}
-#		map { s/"//gs } @{$indexes{$idx}};
 
 		my @strings = ();
 		my $i = 0;
@@ -8356,19 +8354,18 @@ sub _convert_function
 	if ($fct_detail{hasreturn}) {
 		$func_return = " RETURNS$fct_detail{setof} $fct_detail{func_ret_type} AS \$body\$\n";
 	} else {
-		my @nout = $fct_detail{args} =~ /\bOUT /ig;
-		my @ninout = $fct_detail{args} =~ /\bINOUT /ig;
+		my @nout = $fct_detail{args} =~ /\bOUT /igs;
+		my @ninout = $fct_detail{args} =~ /\bINOUT /igs;
 		if ($#nout > 0) {
 			$func_return = " RETURNS$fct_detail{setof} RECORD AS \$body\$\n";
-			
 		} elsif ($#nout == 0) {
 			#$fct_detail{args} =~ /\s*OUT\s+([A-Z0-9_\$\%\.]+)[\s\),]*/i;
-			$fct_detail{args} =~ /\s*OUT\s+([^\s]+)\s+([^,\)]+)/i;
-			$func_return = " RETURNS$fct_detail{setof} $1 AS \$body\$\n";
+			$fct_detail{args} =~ /\s*OUT\s+([^\s]+)\s+([^,\)]+)/is;
+			$func_return = " RETURNS$fct_detail{setof} $2 AS \$body\$\n";
 		} elsif ($#ninout == 0) {
 			#$fct_detail{args} =~ /\s*INOUT\s+([A-Z0-9_\$\%\.]+)[\s\),]*/i;
-			$fct_detail{args} =~ /\s*INOUT\s+([^\s]+)\s+([^,\)]+)/i;
-			$func_return = " RETURNS$fct_detail{setof} $1 AS \$body\$\n";
+			$fct_detail{args} =~ /\s*INOUT\s+([^\s]+)\s+([^,\)]+)/is;
+			$func_return = " RETURNS$fct_detail{setof} $2 AS \$body\$\n";
 		} else {
 			$func_return = " RETURNS VOID AS \$body\$\n";
 		}
