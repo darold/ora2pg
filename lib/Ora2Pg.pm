@@ -10731,13 +10731,13 @@ sub difficulty_assessment
 	);
 
 	foreach my $n (@stored_function) {
-		if ($report_info{'Objects'}{$n}{'number'}) {
+		if (exists $report_info{'Objects'}{$n} && $report_info{'Objects'}{$n}{'number'}) {
 			$difficulty = 3;
 			last;
 		}
 	}
 	if ($difficulty < 3) {
-		$difficulty += 1 if ($report_info{'Objects'}{'TRIGGER'}{'number'});
+		$difficulty += 1 if (exists  $report_info{'Objects'}{'TRIGGER'} && $report_info{'Objects'}{'TRIGGER'}{'number'});
 	}
 
 
