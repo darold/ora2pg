@@ -9480,12 +9480,10 @@ sub _show_infos
 					$j++;
 					last if ($j > $self->{top_max});
 				}
-				if ($self->{prefix} eq 'DBA') {
-					$report_info{'Objects'}{$typ}{'detail'} .= "Top $self->{top_max} of largest tables:\n";
-					my %largest_table = $self->_get_largest_tables();
-					foreach my $t (sort { $largest_table{$b} <=> $largest_table{$a} } keys %largest_table) {
-						$report_info{'Objects'}{$typ}{'detail'} .= "\L$t\E: $largest_table{$t} MB (" . $self->{tables}{$t}{table_info}{num_rows} . " rows)\n";
-					}
+				$report_info{'Objects'}{$typ}{'detail'} .= "Top $self->{top_max} of largest tables:\n";
+				my %largest_table = $self->_get_largest_tables();
+				foreach my $t (sort { $largest_table{$b} <=> $largest_table{$a} } keys %largest_table) {
+					$report_info{'Objects'}{$typ}{'detail'} .= "\L$t\E: $largest_table{$t} MB (" . $self->{tables}{$t}{table_info}{num_rows} . " rows)\n";
 				}
 				$comment = "Nothing particular." if (!$comment);
 				$report_info{'Objects'}{$typ}{'cost_value'} =~ s/(\.\d).*$/$1/;
@@ -9617,7 +9615,27 @@ sub _show_infos
 			} elsif ($typ eq 'CLUSTER') {
 				$report_info{'Objects'}{$typ}{'comment'} = "Clusters are not supported by PostgreSQL and will not be exported.";
 			} elsif ($typ eq 'VIEW') {
-				$report_info{'Objects'}{$typ}{'comment'} = "Views are fully supported.";
+				my %view_infos = $self->_get_views();
+				foreach my $view (sort keys %view_infos) {
+					if ($self->{estimate_cost}) {
+						my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($view_infos{$view}{text});
+						next if ($cost <= ($cost_detail{SIZE}+$cost_detail{TEST}));
+						$cost -= ($cost_detail{SIZE} + $cost_detail{TEST});
+						delete $cost_detail{SIZE};
+						delete $cost_detail{TEST};
+						$report_info{'Objects'}{$typ}{'cost_value'} += $cost;
+						$report_info{'Objects'}{$typ}{'detail'} .= "\L$view: $cost\E\n";
+						$report_info{full_view_details}{"\L$view\E"}{count} = $cost;
+						foreach my $d (sort { $cost_detail{$b} <=> $cost_detail{$a} } keys %cost_detail) {
+							next if (!$cost_detail{$d});
+							$report_info{full_view_details}{"\L$view\E"}{info} .= "\t$d => $cost_detail{$d}";
+							$report_info{full_view_details}{"\L$view\E"}{info} .= " (cost: ${$uncovered_score}{$d})" if (${$uncovered_score}{$d});
+							$report_info{full_view_details}{"\L$view\E"}{info} .= "\n";
+							push(@{$report_info{full_view_details}{"\L$view\E"}{keywords}}, $d) if (($d ne 'SIZE') && ($d ne 'TEST'));
+						}
+					}
+				}
+				$report_info{'Objects'}{$typ}{'comment'} = "Views are fully supported but can use specific functions.";
 			} elsif ($typ eq 'DATABASE LINK') {
 				$report_info{'Objects'}{$typ}{'comment'} = "Database links will be exported as SQL/MED PostgreSQL's Foreign Data Wrapper (FDW) extensions using oracle_fdw.";
 				if ($self->{estimate_cost}) {
@@ -9814,16 +9832,14 @@ sub _show_infos
 			$i++;
 			last if ($i > $self->{top_max});
 		}
-		if ($self->{prefix} eq 'DBA') {
-			$self->logit("Top $self->{top_max} of largest tables:\n", 0);
-			$i = 1;
-			my %largest_table = $self->_get_largest_tables();
-			foreach my $t (sort { $largest_table{$b} <=> $largest_table{$a} } keys %largest_table) {
-				my $tname = $t;
-				$tname = "$tables_infos{$t}{owner}.$t" if ($self->{debug});
-				$self->logit("\t[$i] TABLE $tname: $largest_table{$t} MB (" . $tables_infos{$t}{num_rows} . " rows)\n", 0);
-				$i++;
-			}
+		$self->logit("Top $self->{top_max} of largest tables:\n", 0);
+		$i = 1;
+		my %largest_table = $self->_get_largest_tables();
+		foreach my $t (sort { $largest_table{$b} <=> $largest_table{$a} } keys %largest_table) {
+			my $tname = $t;
+			$tname = "$tables_infos{$t}{owner}.$t" if ($self->{debug});
+			$self->logit("\t[$i] TABLE $tname: $largest_table{$t} MB (" . $tables_infos{$t}{num_rows} . " rows)\n", 0);
+			$i++;
 		}
 	}
 }
