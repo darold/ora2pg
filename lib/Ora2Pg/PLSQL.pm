@@ -72,7 +72,7 @@ $FCT_TEST_SCORE = 2;
 # Scores associated to each code difficulties.
 %UNCOVERED_SCORE = (
 	'FROM' => 1,
-	'TRUNC' => 1,
+	'TRUNC' => 0.1,
 	'DECODE' => 1,
 	'IS TABLE OF' => 4,
 	'OUTER JOIN' => 1,
@@ -105,7 +105,7 @@ $FCT_TEST_SCORE = 2;
 	'PLVSUBST' => 2,
 	'PLVLEX' => 2,
 	'PLUNIT' => 2,
-	'ADD_MONTHS' => 1,
+	'ADD_MONTHS' => 0.1,
 	'LAST_DATE' => 1,
 	'NEXT_DAY' => 1,
 	'MONTHS_BETWEEN' => 1,
@@ -311,12 +311,16 @@ sub plsql_to_plpgsql
 	#$str =~ s/round\s*\((.*?),([\s\d]+)\)/round\($1::numeric,$2\)/igs;
 
 	# Convert the call to the Oracle function add_months() into Pg syntax
-	$str =~ s/add_months\s*\(\s*to_char\(\s*([^,]+)(.*?),\s*([\-\d]+)\s*\)/$1 + '$3 month'::interval/gsi;
-	$str =~ s/add_months\s*\((.*?),\s*([\-\d]+)\s*\)/$1 + '$2 month'::interval/gsi;
+	$str =~ s/ADD_MONTHS\s*\(\s*TO_CHAR\(\s*([^,]+)(.*?),\s*(\d+)\s*\)/$1 + '$3 month'::interval/gsi;
+	$str =~ s/ADD_MONTHS\s*\(\s*TO_CHAR\(\s*([^,]+)(.*?),\s*([^,\(\)]+)\s*\)/$1 + $3*'1 month'::interval/gsi;
+	$str =~ s/ADD_MONTHS\s*\((.*?),\s*(\d+)\s*\)/$1 + '$2 month'::interval/gsi;
+	$str =~ s/ADD_MONTHS\s*\((.*?),\s*([^,\(\)]+)\s*\)/$1 + $2*'1 month'::interval/gsi;
 
 	# Convert the call to the Oracle function add_years() into Pg syntax
-	$str =~ s/add_years\s*\(\s*to_char\(\s*([^,]+)(.*?),\s*([\-\d]+)\s*\)/$1 + '$3 year'::interval/gsi;
-	$str =~ s/add_years\s*\((.*?),\s*([\-\d]+)\s*\)/$1 + '$2 year'::interval/gsi;
+	$str =~ s/ADD_YEARS\s*\(\s*TO_CHAR\(\s*([^,]+)(.*?),\s*(\d+)\s*\)/$1 + '$3 year'::interval/gsi;
+	$str =~ s/ADD_YEARS\s*\(\s*TO_CHAR\(\s*([^,]+)(.*?),\s*([^,\(\)]+)\s*\)/$1 + $3*'1 year'::interval/gsi;
+	$str =~ s/ADD_YEARS\s*\((.*?),\s*(\d+)\s*\)/$1 + '$2 year'::interval/gsi;
+	$str =~ s/ADD_YEARS\s*\((.*?),\s*([^,\(\)]+)\s*\)/$1 + $2*' year'::interval/gsi;
 
 	# Add STRICT keyword when select...into and an exception with NO_DATA_FOUND/TOO_MANY_ROW is present
 	if ($str !~ s/\b(SELECT\b[^;]*?INTO)(.*?)(EXCEPTION.*?NO_DATA_FOUND)/$1 STRICT $2 $3/igs) {
@@ -463,6 +467,10 @@ sub plsql_to_plpgsql
 		$str =~ s/([a-z0-9_\."]+\s*\([^\)]*\))\s*IS NOT NULL/($1 IS NOT NULL AND ($1)::text <> '')/igs;
 	}
 
+	my $field = '\s*([^\(\),]+)\s*';
+	my $num_field = '\s*([\d\.]+)\s*';
+	my $date_field = '\s*([^,\)\(]*(?:date|timestamp)[^,\)\(]*)\s*';
+
 	# Rewrite replace(a,b) with three argument
 	$str =~ s/REPLACE\s*\($field,$field\)/replace\($1, $2, ''\)/igs;
 
@@ -475,9 +483,8 @@ sub plsql_to_plpgsql
 	# Trunc is replaced with date_trunc if we find date in the name of
 	# the value because Oracle have the same trunc function on number
 	# and date type
-	my $date_field = '\s*([^,\)\(]*(?:date|timestamp)[^,\)\(]*)\s*';
-	$str =~ s/\btrunc\($date_field\)/date_trunc('day', $1)/igs;
-	$str =~ s/\btrunc\($date_field,$field\)/date_trunc($2, $1)/igs;
+	$str =~ s/\bTRUNC\($date_field\)/date_trunc('day', $1)/igs;
+	$str =~ s/\bTRUNC\($date_field,$field\)/date_trunc($2, $1)/igs;
 
 	# Remove any call to MDSYS schema in the code
 	$str =~ s/MDSYS\.//igs;
