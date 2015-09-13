@@ -1553,7 +1553,7 @@ sub _tables
 	foreach my $t (sort keys %tables_infos) {
 
 		if (!$self->{quiet} && !$self->{debug}) {
-			print STDERR $self->progress_bar($i, $num_total_table, 25, '=', 'tables', "scanning table $t" );
+			print STDERR $self->progress_bar($i, $num_total_table, 25, '=', 'tables', "scanning table $t" ), "\r";
 		}
 
 		if (grep(/^$t$/, @done)) {
@@ -2637,7 +2637,7 @@ sub _get_sql_data
 		foreach my $view (sort sort_view_by_iter keys %ordered_views) {
 			$self->logit("\tAdding view $view...\n", 1);
 			if (!$self->{quiet} && !$self->{debug}) {
-				print STDERR $self->progress_bar($i, $num_total_view, 25, '=', 'views', "generating $view" );
+				print STDERR $self->progress_bar($i, $num_total_view, 25, '=', 'views', "generating $view" ), "\r";
 			}
 			my $fhdl = undef;
 			if ($self->{file_per_table}) {
@@ -2890,7 +2890,7 @@ LANGUAGE plpgsql ;
 		foreach my $view (sort { $a cmp $b } keys %{$self->{materialized_views}}) {
 			$self->logit("\tAdding materialized view $view...\n", 1);
 			if (!$self->{quiet} && !$self->{debug}) {
-				print STDERR $self->progress_bar($i, $num_total_mview, 25, '=', 'materialized views', "generating $view" );
+				print STDERR $self->progress_bar($i, $num_total_mview, 25, '=', 'materialized views', "generating $view" ), "\r";
 			}
 			my $fhdl = undef;
 			if ($self->{file_per_table} && !$self->{pg_dsn}) {
@@ -3101,7 +3101,7 @@ LANGUAGE plpgsql ;
 
 		foreach my $seq (sort { $a->[0] cmp $b->[0] } @{$self->{sequences}}) {
 			if (!$self->{quiet} && !$self->{debug}) {
-				print STDERR $self->progress_bar($i, $num_total_sequence, 25, '=', 'sequences', "generating $seq->[0]" );
+				print STDERR $self->progress_bar($i, $num_total_sequence, 25, '=', 'sequences', "generating $seq->[0]" ), "\r";
 			}
 			my $cache = 1;
 			$cache = $seq->[5] if ($seq->[5]);
@@ -3159,7 +3159,7 @@ LANGUAGE plpgsql ;
 		foreach my $db (sort { $a cmp $b } keys %{$self->{dblink}}) {
 
 			if (!$self->{quiet} && !$self->{debug}) {
-				print STDERR $self->progress_bar($i, $num_total_dblink, 25, '=', 'dblink', "generating $db" );
+				print STDERR $self->progress_bar($i, $num_total_dblink, 25, '=', 'dblink', "generating $db" ), "\r";
 			}
 			if (!$self->{preserve_case}) {
 				$sql_output .= "CREATE SERVER \L$db\E";
@@ -3215,7 +3215,7 @@ LANGUAGE plpgsql ;
 		foreach my $db (sort { $a cmp $b } keys %{$self->{directory}}) {
 
 			if (!$self->{quiet} && !$self->{debug}) {
-				print STDERR $self->progress_bar($i, $num_total_directory, 25, '=', 'directory', "generating $db" );
+				print STDERR $self->progress_bar($i, $num_total_directory, 25, '=', 'directory', "generating $db" ), "\r";
 			}
 			$sql_output .= "INSERT INTO external_file.directories (directory_name,directory_path) VALUES ('$db', '$self->{directory}{$db}{path}');\n";
 			foreach my $owner (keys %{$self->{directory}{$db}{grantee}}) {
@@ -3259,7 +3259,7 @@ LANGUAGE plpgsql ;
 		foreach my $trig (sort {$a->[0] cmp $b->[0]} @{$self->{triggers}}) {
 
 			if (!$self->{quiet} && !$self->{debug}) {
-				print STDERR $self->progress_bar($i, $num_total_trigger, 25, '=', 'triggers', "generating $trig->[0]" );
+				print STDERR $self->progress_bar($i, $num_total_trigger, 25, '=', 'triggers', "generating $trig->[0]" ), "\r";
 			}
 			my $fhdl = undef;
 			if ($self->{file_per_function} && !$self->{pg_dsn}) {
@@ -3573,7 +3573,7 @@ LANGUAGE plpgsql ;
 		foreach my $fct (sort keys %{$self->{functions}}) {
 
 			if (!$self->{quiet} && !$self->{debug}) {
-				print STDERR $self->progress_bar($i, $num_total_function, 25, '=', 'functions', "generating $fct" );
+				print STDERR $self->progress_bar($i, $num_total_function, 25, '=', 'functions', "generating $fct" ), "\r";
 			}
 			$self->{idxcomment} = 0;
 			my %comments = $self->_remove_comments(\$self->{functions}{$fct}{text});
@@ -3713,7 +3713,7 @@ LANGUAGE plpgsql ;
 		foreach my $fct (sort keys %{$self->{procedures}}) {
 
 			if (!$self->{quiet} && !$self->{debug}) {
-				print STDERR $self->progress_bar($i, $num_total_procedure, 25, '=', 'procedures', "generating $fct" );
+				print STDERR $self->progress_bar($i, $num_total_procedure, 25, '=', 'procedures', "generating $fct" ), "\r";
 			}
 			$self->{idxcomment} = 0;
 			my %comments = $self->_remove_comments(\$self->{procedures}{$fct}{text});
@@ -3852,7 +3852,7 @@ LANGUAGE plpgsql ;
 		foreach my $pkg (sort keys %{$self->{packages}}) {
 
 			if (!$self->{quiet} && !$self->{debug}) {
-				print STDERR $self->progress_bar($i, $num_total_package, 25, '=', 'packages', "generating $pkg" );
+				print STDERR $self->progress_bar($i, $num_total_package, 25, '=', 'packages', "generating $pkg" ), "\r";
 			}
 			$i++, next if (!$self->{packages}{$pkg}{text});
 			my $pkgbody = '';
@@ -3977,7 +3977,7 @@ LANGUAGE plpgsql ;
 		foreach my $tpe (sort {length($a->{name}) <=> length($b->{name}) } @{$self->{types}}) {
 			$self->logit("Dumping type $tpe->{name}...\n", 1);
 			if (!$self->{quiet} && !$self->{debug}) {
-				print STDERR $self->progress_bar($i, $#{$self->{types}}+1, 25, '=', 'types', "generating $tpe->{name}" );
+				print STDERR $self->progress_bar($i, $#{$self->{types}}+1, 25, '=', 'types', "generating $tpe->{name}" ), "\r";
 			}
 			if ($self->{plsql_pgsql}) {
 				$tpe->{code} = $self->_convert_type($tpe->{code}, $tpe->{owner});
@@ -4271,26 +4271,39 @@ LANGUAGE plpgsql ;
 		my $reader = new IO::Handle;
 		my $writer = new IO::Handle;
 
-		# Fork the logger process
-		$pipe = IO::Pipe->new($reader, $writer);
-		$writer->autoflush(1);
-		if ( ($self->{jobs} > 1) || ($self->{oracle_copies} > 1) ) {
-			$self->{dbh}->{InactiveDestroy} = 1;
-			$self->{dbhdest}->{InactiveDestroy} = 1 if (defined $self->{dbhdest});
-			spawn sub {
-				$self->multiprocess_progressbar($global_rows);
-			};
-			$self->{dbh}->{InactiveDestroy} = 0;
-			$self->{dbhdest}->{InactiveDestroy} = 0 if (defined $self->{dbhdest});
+               # Fork the logger process
+                if (!$self->{quiet} && !$self->{debug}) {
+                        if ( ($self->{jobs} > 1) || ($self->{oracle_copies} > 1) || ($self->{parallel_tables} > 1)) {
+				# Fork the logger process
+				$pipe = IO::Pipe->new($reader, $writer);
+				$writer->autoflush(1);
+				if ( ($self->{jobs} > 1) || ($self->{oracle_copies} > 1) ) {
+					$self->{dbh}->{InactiveDestroy} = 1;
+					$self->{dbhdest}->{InactiveDestroy} = 1 if (defined $self->{dbhdest});
+					spawn sub {
+						$self->multiprocess_progressbar();
+					};
+					$self->{dbh}->{InactiveDestroy} = 0;
+					$self->{dbhdest}->{InactiveDestroy} = 0 if (defined $self->{dbhdest});
+				}
+			}
 		}
 		$dirprefix = '';
 		$dirprefix = "$self->{output_dir}/" if ($self->{output_dir});
 
-		my $start_time = time();
+		my $first_start_time = time();
 		my $global_count = 0;
 		my $parallel_tables_count = 1;
 		$self->{oracle_copies} = 1 if ($self->{parallel_tables} > 1);
 
+ 		# Send global startup information to pipe
+ 		if (defined $pipe) {
+ 			$pipe->writer();
+ 			$pipe->print("GLOBAL EXPORT START TIME: $first_start_time\n");
+ 			$pipe->print("GLOBAL EXPORT ROW NUMBER: $global_rows\n");
+ 		}
+
+		my $total_record = 0;
 		foreach my $table (@ordered_tables) {
 
 			# Set global count
@@ -4318,7 +4331,7 @@ LANGUAGE plpgsql ;
 					usleep(500000);
 				}
 			} else {
-				$self->_export_table_data($table, $dirprefix, $sql_header);
+				$total_record = $self->_export_table_data($table, $dirprefix, $sql_header);
 			}
 
 			# Close data file
@@ -4326,13 +4339,14 @@ LANGUAGE plpgsql ;
 			$self->{cfhout} = undef;
 
 			# Display total export position
-			if ( ($self->{jobs} <= 1) && ($self->{oracle_copies} <= 1) && ($self->{parallel_tables} <= 1) ) {
-				my $end_time = time();
-				my $dt = $end_time - $start_time;
-				$dt ||= 1;
-				my $rps = sprintf("%.1f", $global_count / ($dt+.0001));
-				print STDERR $self->progress_bar($global_count, $global_rows, 25, '=', 'rows', "on total data (avg: $rps recs/sec)");
-				print STDERR "\n";
+			if (!$self->{quiet} && !$self->{debug}) {
+				if ( ($self->{jobs} <= 1) && ($self->{oracle_copies} <= 1) && ($self->{parallel_tables} <= 1) ) {
+					my $last_end_time = time();
+					my $dt = $last_end_time - $first_start_time;
+					$dt ||= 1;
+					my $rps = int(($total_record || $global_count) / $dt);
+					print STDERR $self->progress_bar(($total_record || $global_count), $global_rows, 25, '=', 'rows', "on total estimated data ($dt sec., avg: $rps recs/sec)"), "\n";
+				}
 			}
 		}
 
@@ -4492,7 +4506,7 @@ BEGIN
 			foreach my $pos (sort {$a <=> $b} keys %{$self->{partitions}{$table}}) {
 				foreach my $part (sort {$self->{partitions}{$table}{$pos}{$a}->{'colpos'} <=> $self->{partitions}{$table}{$pos}{$b}->{'colpos'}} keys %{$self->{partitions}{$table}{$pos}}) {
 					if (!$self->{quiet} && !$self->{debug}) {
-						print STDERR $self->progress_bar($i, $total_partition, 25, '=', 'partitions', "generating $part" );
+						print STDERR $self->progress_bar($i, $total_partition, 25, '=', 'partitions', "generating $part" ), "\r";
 					}
 					my $tb_name = $part;
 					$tb_name = $table . "_" . $part if ($self->{prefix_partition});
@@ -4709,7 +4723,7 @@ CREATE TRIGGER insert_${table}_trigger
 
 		foreach my $syn (sort { $a cmp $b } keys %{$self->{synonyms}}) {
 			if (!$self->{quiet} && !$self->{debug}) {
-				print STDERR $self->progress_bar($i, $num_total_synonym, 25, '=', 'synonyms', "generating $syn" );
+				print STDERR $self->progress_bar($i, $num_total_synonym, 25, '=', 'synonyms', "generating $syn" ), "\r";
 			}
 			if ($self->{synonyms}{$syn}{dblink}) {
 				$sql_output .= "-- You need to create foreign table $self->{synonyms}{$syn}{table_owner}.$self->{synonyms}{$syn}{table_name} using foreign server: $self->{synonyms}{$syn}{dblink} (see DBLINK and FDW export type)\n";
@@ -4791,7 +4805,7 @@ CREATE TRIGGER insert_${table}_trigger
 		$self->logit("Dumping table $table...\n", 1);
 
 		if (!$self->{quiet} && !$self->{debug}) {
-			print STDERR $self->progress_bar($ib, $num_total_table, 25, '=', 'tables', "exporting $table" );
+				print STDERR $self->progress_bar($ib, $num_total_table, 25, '=', 'tables', "exporting $table" ), "\r";
 		}
 		# Create FDW server if required
 		if ($self->{external_to_fdw}) {
@@ -5167,10 +5181,13 @@ sub _dump_table
 	}
 
 	# Extract all data from the current table
-	$self->ask_for_data($table, \@cmd_head, \@cmd_foot, $s_out, \@nn, \@tt, $sprep, \@stt, $part_name);
+	my $total_record = $self->ask_for_data($table, \@cmd_head, \@cmd_foot, $s_out, \@nn, \@tt, $sprep, \@stt, $part_name);
 
 	$self->{type} = $self->{local_type} if ($self->{local_type});
 	$self->{local_type} = '';
+
+ 	# Only useful for single process
+ 	return $total_record;
 }
 
 =head2 _column_comments
@@ -8921,6 +8938,10 @@ sub _extract_data
 	my $dbh;
 	my $sth;
 	$self->{data_cols}{$table} = ();
+
+	# Extract data now by chunk of DATA_LIMIT and send them to a dedicated job
+	$self->logit("Fetching all data from $rname tuples...\n", 1);
+
 	if ( ($self->{parallel_tables} > 1) || (($self->{oracle_copies} > 1) && $self->{defined_pk}{"\L$table\E"}) ) {
 
 		$self->logit("DEBUG: cloning Oracle database connection.\n", 1);
@@ -8949,8 +8970,6 @@ sub _extract_data
 			push(@{$self->{data_cols}{$table}}, $_);
 		}
 
-		# Extract data now by chunk of DATA_LIMIT and send them to a dedicated job
-		$self->logit("Fetching all data from $rname tuples...\n", 1);
 		if (defined $proc) {
 			$sth->execute($proc) or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
 		} else {
@@ -8968,8 +8987,6 @@ sub _extract_data
 			push(@{$self->{data_cols}{$table}}, $_);
 		}
 
-		# Extract data now by chunk of DATA_LIMIT and send them to a dedicated job
-		$self->logit("Fetching all data from $rname tuples...\n", 1);
 		if (defined $proc) {
 			$sth->execute($proc) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 		} else {
@@ -8979,24 +8996,27 @@ sub _extract_data
 	my $start_time   = time();
 	my $total_record = 0;
 	my $total_row = $self->{tables}{$table}{table_info}{num_rows};
-	my $nrows = 0;
-	while ( my $rows = $sth->fetchall_arrayref(undef,$self->{data_limit})) {
 
+	# Send current table in progress
+	if (defined $pipe) {
+		$pipe->print("TABLE EXPORT IN PROGESS: $table, start: $start_time, rows $total_row\n");
+	}
+
+	while ( my $rows = $sth->fetchall_arrayref(undef,$self->{data_limit})) {
 		
-		if (defined $dbh) {
+		if ( ($self->{parallel_tables} > 1) || (($self->{oracle_copies} > 1) && $self->{defined_pk}{"\L$table\E"}) ) {
 			if ($dbh->errstr) {
 				$self->logit("ERROR: " . $dbh->errstr . "\n", 0, 0);
 				last;
 			}
-		} else {
-			if ($self->{dbh}->errstr) {
-				$self->logit("ERROR: " . $self->{dbh}->errstr . "\n", 0, 0);
-				last;
-			}
+		} elsif ($self->{dbh}->errstr) {
+			$self->logit("ERROR: " . $self->{dbh}->errstr . "\n", 0, 0);
+			last;
 		}
-	
-		$nrows =  @$rows;
-		$total_record += $nrows;
+
+		$total_record += @$rows;
+		# Store Oracle query execute time
+		my $ora_start_time = time();
 		if ( ($self->{jobs} > 1) || ($self->{oracle_copies} > 1) ) {
 			while ($self->{child_count} >= $self->{jobs}) {
 				my $kid = waitpid(-1, WNOHANG);
@@ -9012,7 +9032,7 @@ sub _extract_data
 			$dbh->{InactiveDestroy} = 1 if (defined $dbh);
 
 			spawn sub {
-				$self->_dump_to_pg($dbh, $rows, $table, $cmd_head, $cmd_foot, $s_out, $tt, $sprep, $stt, $start_time, $part_name, $total_record, %user_type);
+				$self->_dump_to_pg($dbh, $rows, $table, $cmd_head, $cmd_foot, $s_out, $tt, $sprep, $stt, $ora_start_time, $part_name, $total_record, %user_type);
 			};
 			$self->{child_count}++;
 			$self->{dbh}->{InactiveDestroy} = 0;
@@ -9024,7 +9044,7 @@ sub _extract_data
 	}
 	$sth->finish();
 
-	if ( ($self->{jobs} <= 1) && ($self->{oracle_copies} <= 1) ) {
+	if ( ($self->{jobs} <= 1) && ($self->{oracle_copies} <= 1) && ($self->{parallel_tables} <= 1)) {
 		print STDERR "\n";
 	}
 
@@ -9038,9 +9058,15 @@ sub _extract_data
 		usleep(500000);
 	}
 
+ 	if (defined $pipe) {
+ 		my $t_time = time();
+ 		$pipe->print("TABLE EXPORT ENDED: $table, end: $t_time, rows $total_record\n");
+ 	}
+
 	$dbh->disconnect() if (defined $dbh);
 
-	return;
+	# Only useful for single process
+	return $total_record;
 }
 
 sub log_error_copy
@@ -9084,7 +9110,7 @@ sub log_error_insert
 
 sub _dump_to_pg
 {
-	my ($self, $dbh, $rows, $table, $cmd_head, $cmd_foot, $s_out, $tt, $sprep, $stt, $start_time, $part_name, $glob_total_record, %user_type) = @_;
+	my ($self, $dbh, $rows, $table, $cmd_head, $cmd_foot, $s_out, $tt, $sprep, $stt, $ora_start_time, $part_name, $glob_total_record, %user_type) = @_;
 
 	my @tempfiles = ();
 
@@ -9098,9 +9124,6 @@ sub _dump_to_pg
 		$0 = 'ora2pg - sending data to file';
 	}
 
-	if ( ($self->{jobs} > 1) || ($self->{oracle_copies} > 1) ) {
-		$pipe->writer();
-	}
 	# Open a connection to the postgreSQL database if required
 	my $rname = $part_name || $table;
 
@@ -9235,19 +9258,18 @@ sub _dump_to_pg
 	$dbhdest->disconnect() if ($dbhdest);
 
 	my $end_time = time();
-	my $dt = $end_time - $start_time;
-	$dt ||= 1;
-	my $rps = sprintf("%2.1f", $glob_total_record / $dt);
+	my $dt = $end_time - $ora_start_time;
+	my $rps = int($glob_total_record / ($dt||1));
 	if (!$self->{quiet} && !$self->{debug}) {
-		if ( ($self->{jobs} > 1) || ($self->{oracle_copies} > 1) ) {
-			$pipe->print("$tt_record $table $total_row $start_time\n");
+		# Send current table in progress
+		if (defined $pipe) {
+			$pipe->print("CHUNK $$ DUMPED: $table, time: $end_time, rows $tt_record\n");
 		} else {
-			$rps = sprintf("%2.1f", $glob_total_record / ($dt+.0001));
-			print STDERR $self->progress_bar($glob_total_record, $total_row, 25, '=', 'rows', "Table $table ($rps recs/sec)");
+			$rps = int($glob_total_record / ($dt||1));
+			print STDERR $self->progress_bar($glob_total_record, $total_row, 25, '=', 'rows', "Table $table ($rps recs/sec)"), "\r";
 		}
 	} elsif ($self->{debug}) {
-		$self->logit("Extracted records from table $table: total_records = $glob_total_record ($rps recs/sec)\n", 1);
-		$self->logit("Extracted records from table $table: $tt_record ($rps recs/sec)\n", 1);
+		$self->logit("Extracted records from table $table: total_records = $glob_total_record (avg: $rps recs/sec)\n", 1);
 	}
 
 	if ($^O !~ /MSWin32|dos/i) {
@@ -9385,7 +9407,7 @@ sub _show_infos
 			$idx++;
 			next if ($typ eq 'PACKAGE'); # Package are scanned with PACKAGE BODY not PACKAGE objects
 			if (!$self->{quiet} && !$self->{debug}) {
-				print STDERR $self->progress_bar($idx, $num_total_obj, 25, '=', 'objects types', "inspecting object $typ" );
+				print STDERR $self->progress_bar($idx, $num_total_obj, 25, '=', 'objects types', "inspecting object $typ" ), "\r";
 			}
 			$report_info{'Objects'}{$typ}{'number'} = 0;
 			$report_info{'Objects'}{$typ}{'invalid'} = 0;
@@ -10183,30 +10205,37 @@ This function is used to display a progress bar during object scanning.
 
 sub multiprocess_progressbar
 {
-	my ($self, $total_rows) = @_;
+	my ($self) = @_;
 
 	$self->logit("Starting progressbar writer process\n", 1);
 
 	$0 = 'ora2pg logger';
+
+	$| = 1;
 
 	my $width = 25;
 	my $char  = '=';
 	my $kind  = 'rows';
 	my $table_count = 0;
 	my $table = '';
-	my $global_count = 0;
 	my $global_start_time = 0;
+	my $total_rows = 0;
+	my %table_progress = ();
+	my $global_line_counter = 0;
+
+	my $refresh_time = 3; #Update progress bar each 3 seconds
+	my $last_refresh = time();
+	my $refresh_rows = 0;
 
 	# Terminate the process when we doesn't read the complete file but must exit
 	local $SIG{USR1} = sub {
 		print STDERR "\n";
-		if ($global_count) {
+		if ($global_line_counter) {
 			my $end_time = time();
 			my $dt = $end_time - $global_start_time;
 			$dt ||= 1;
-			my $rps = sprintf("%.1f", $global_count / ($dt+.0001));
-			print STDERR $self->progress_bar($global_count, $total_rows, 25, '=', 'rows', "on total data (avg: $rps recs/sec)");
-			print STDERR "\n";
+			my $rps = int($global_line_counter / $dt);
+			print STDERR $self->progress_bar($global_line_counter, $total_rows, 25, '=', 'rows', "on total estimated data ($dt sec., avg: $rps tuples/sec)"), "\n";
 		}
 		exit 0;
 	};
@@ -10216,38 +10245,52 @@ sub multiprocess_progressbar
 		chomp($r);
 		# When quit is received, then exit immediatly
 		last if ($r eq 'quit');
-		my @infos = split(/\s+/, $r);
-		my $table_numrows = $infos[2];
-		my $start_time = $infos[3];
-		$global_start_time = $start_time if (!$global_start_time);
-		# Display total and reset counter when it is a new table
-		if ($table && ($infos[1] ne $table)) {
-			print STDERR "\n";
-			my $end_time = time();
-			my $dt = $end_time - $global_start_time;
-			$dt ||= 1;
-			my $rps = sprintf("%.1f", $global_count / ($dt+.0001));
-			print STDERR $self->progress_bar($global_count, $total_rows, 25, '=', 'rows', "on total data (avg: $rps recs/sec)");
-			print STDERR "\n";
-			$table_count = 0;
+		if ($r =~ /^GLOBAL EXPORT START TIME: (\d+)/) {
+			$global_start_time = $1;
+		} elsif ($r =~ /^GLOBAL EXPORT ROW NUMBER: (\d+)/) {
+			$total_rows = $1;
+		} elsif ($r =~ /TABLE EXPORT IN PROGESS: (.*?), start: (\d+), rows (\d+)/) {
+			$table_progress{$1}{start} = $2;
+			$table_progress{$1}{rows} = $3;
+		} elsif ($r =~ /TABLE EXPORT ENDED: (.*?), end: (\d+), rows (\d+)/) {
+			$table_progress{$1}{end} = $2;
+			$table_progress{$1}{rows} = $3;
+			my $dt = $table_progress{$1}{end} - $table_progress{$1}{start};
+			my $rps = int($table_progress{$1}{progress}/ ($dt||1));
+			print STDERR $self->progress_bar($table_progress{$1}{progress}, $table_progress{$1}{rows}, 25, '=', 'rows', "Table $1 ($dt sec., $rps recs/sec)") . "\n";
+			delete $table_progress{$1};
+			my $cur_time = time();
+			$dt = $cur_time - $last_refresh;
+			$rps = int($refresh_rows/ ($dt || 1));
+			$last_refresh = $cur_time;
+			$refresh_rows = 0;
+			print STDERR $self->progress_bar($global_line_counter, $total_rows, 25, '=', 'rows', "on total estimated data ($rps recs/sec)") . "\r";
+		} elsif ($r =~ /CHUNK \d+ DUMPED: (.*?), time: (\d+), rows (\d+)/) {
+			$table_progress{$1}{progress} += $3;
+			$refresh_rows +=  $3;
+			#$table_progress{$1}{chunk}{end} = $2;
+			$global_line_counter += $3;
+			my $cur_time = time();
+			if ($cur_time >= ($last_refresh + $refresh_time)) {
+				my $dt = $cur_time - $last_refresh;
+				my $rps = int($refresh_rows/ ($dt || 1));
+				$last_refresh = $cur_time;
+				$refresh_rows = 0;
+				print STDERR $self->progress_bar($global_line_counter, $total_rows, 25, '=', 'rows', "on total estimated data ($rps recs/sec)") . "\r";
+			}
+		} else {
+			print "PROGRESS BAR ERROR (unrecognized line sent to pipe): $r\n";
 		}
-		$table = $infos[1];
-		$table_count += $infos[0];
-		$global_count += $infos[0];
-		my $end_time = time();
-		my $dt = $end_time - $start_time;
-		$dt ||= 1;
-		my $rps = sprintf("%.1f", $table_count / ($dt+.0001));
-		print STDERR $self->progress_bar($table_count, $table_numrows, 25, '=', 'rows', "Table $table ($rps recs/sec)");
+
 	}
+
 	print STDERR "\n";
-	if ($global_count) {
+	if ($global_line_counter) {
 		my $end_time = time();
 		my $dt = $end_time - $global_start_time;
 		$dt ||= 1;
-		my $rps = sprintf("%.1f", $global_count / ($dt+.0001));
-		print STDERR $self->progress_bar($global_count, $total_rows, 25, '=', 'rows', "on total data (avg: $rps recs/sec)");
-		print STDERR "\n";
+		my $rps = int($global_line_counter / $dt);
+		print STDERR $self->progress_bar($global_line_counter, $total_rows, 25, '=', 'rows', "on total estimated data ($dt sec., avg: $rps tuples/sec)"), "\n";
 	}
 
 	exit 0;
@@ -10286,7 +10329,7 @@ sub progress_bar
 	}
 	$self->{prgb_len} = $len;
 
-	return "$str\r";
+	return $str;
 }
 
 =head2 auto_set_encoding
@@ -10722,7 +10765,7 @@ sub difficulty_assessment
 	# 2 = easy: no stored functions but with triggers without code that need manual rewriting
 	# 3 = simple: stored functions and/or triggers but without code that need manual rewriting
 	# Migration that need code rewrite
-	# 4 = 4 = manual: no stored functions but with triggers or view with code that need manual rewriting
+	# 4 = manual: no stored functions but with triggers or views with code that need manual rewriting
 	# 5 = difficult, stored functions and/or triggers with code that need manual rewriting
 	my $difficulty = 1;
 
