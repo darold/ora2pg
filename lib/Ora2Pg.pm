@@ -7830,13 +7830,15 @@ sub format_data_type
 		} elsif ($data_type =~ /(char|text|xml)/i) {
 			if (!$self->{standard_conforming_strings}) {
 				$col =~ s/'/''/gs; # double single quote
-				$col =~ s/\\/\\\\/g;
+				$col =~ s/\\/\\\\/gs;
 				$col =~ s/\0//gs;
 				$col = "'$col'";
 			} else {
 				$col =~ s/\0//gs;
-				$col =~ s/\\/\\\\/g;
+				$col =~ s/\\/\\\\/gs;
 				$col =~ s/'/\\'/gs; # escape single quote
+				$col =~ s/\r/\\r/gs;
+				$col =~ s/\n/\\n/gs;
 				$col = "E'$col'";
 			}
 		} elsif ($data_type =~ /(date|time)/i) {
@@ -7883,10 +7885,10 @@ sub format_data_type
 				utf8::encode($col) if (!utf8::valid($col));
 			}
 			$col =~ s/\0//gs;
-			$col =~ s/\\/\\\\/g;
-			$col =~ s/\r/\\r/g;
-			$col =~ s/\n/\\n/g;
-			$col =~ s/\t/\\t/g;
+			$col =~ s/\\/\\\\/gs;
+			$col =~ s/\r/\\r/gs;
+			$col =~ s/\n/\\n/gs;
+			$col =~ s/\t/\\t/gs;
 			if (!$self->{noescape}) {
 				$col =~ s/\f/\\f/gs;
 				$col =~ s/([\1-\10])/sprintf("\\%03o", ord($1))/egs;
