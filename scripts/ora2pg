@@ -215,8 +215,8 @@ my $schema = new Ora2Pg (
 	output_dir => $OUTDIR,
 	plsql_pgsql => $PLSQL,
 	datasource => $DSN,
-	user => $DBUSER,
-	password => $DBPWD,
+        user => $DBUSER || $ENV{ORA2PG_USER},
+        password => $DBPWD || $ENV{ORA2PG_PASSWD},
 	schema => $SCHEMA,
 	force_owner => $FORCEOWNER,
         nls_lang => $ORA_ENCODING,
@@ -295,8 +295,10 @@ Usage: ora2pg [-dhpqv --estimate_cost --dump_as_html] [--option value]
     -t | --type export: Used to set the export type. It will override the one
 			given in the configuration file (TYPE).
     -u | --user name  : Used to set the Oracle database connection user.
+		        ORA2PG_USER environment variable can be used instead.
     -v | --version    : Show Ora2Pg Version and exit.
     -w | --password pwd : Used to set the password of the Oracle database user.
+		        ORA2PG_PASSWD environment variable can be used instead.
     --forceowner: if set to 1 force ora2pg to set tables and sequences owner
 		  like in Oracle database. If the value is set to a username this
 		  one will be used as the objects owner. By default it's the user
