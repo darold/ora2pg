@@ -10878,14 +10878,14 @@ sub _show_report
 	my $lbl_mig_type = qq{
 Migration levels:
     A - Migration that might be run automatically
-    B - Migration that need code rewrite with human-days up to $self->{human_days_limit} days
-    C - Migration that need code rewrite with human-days above $self->{human_days_limit} days
+    B - Migration with code rewrite and a human-days cost up to $self->{human_days_limit} days
+    C - Migration with code rewrite and a human-days cost above $self->{human_days_limit} days
 Technical levels:
     1 = trivial: no stored functions and no triggers
-    2 = easy: no stored functions but with triggers without code that need manual rewriting
-    3 = simple: stored functions and/or triggers but without code that need manual rewriting
-    4 = manual: no stored functions but with triggers or views with code that need manual rewriting
-    5 = difficult, stored functions and/or triggers with code that need manual rewriting
+    2 = easy: no stored functions but with triggers, no manual rewriting
+    3 = simple: stored functions and/or triggers, no manual rewriting
+    4 = manual: no stored functions but with triggers or views with code rewriting
+    5 = difficult: stored functions and/or triggers with code rewriting
 };
 	# Generate report text report
 	if (!$self->{dump_as_html} && !$self->{dump_as_csv} && !$self->{dump_as_sheet}) {
@@ -11122,16 +11122,16 @@ h2 {
 <li>Migration levels:</li>
   <ul>
     <li>A - Migration that might be run automatically</li>
-    <li>B - Migration that need code rewrite with human-days up to 10 days</li>
-    <li>C - Migration that need code rewrite with human-days above 10 days</li>
+    <li>B - Migration with code rewrite and a human-days cost up to $self->{human_days_limit} days</li>
+    <li>C - Migration with code rewrite and a human-days cost above $self->{human_days_limit} days</li>
   </ul>
 <li>Technical levels:</li>
   <ul>
     <li>1 = trivial: no stored functions and no triggers</li>
-    <li>2 = easy: no stored functions but with triggers without code that need manual rewriting</li>
-    <li>3 = simple: stored functions and/or triggers but without code that need manual rewriting</li>
-    <li>4 = manual: no stored functions but with triggers or views that need manual rewriting</li>
-    <li>5 = difficult, stored functions and/or triggers with code that need manual rewriting</li>
+    <li>2 = easy: no stored functions but with triggers, no manual rewriting</li>
+    <li>3 = simple: stored functions and/or triggers, no manual rewriting</li>
+    <li>4 = manual: no stored functions but with triggers or views with code rewriting</li>
+    <li>5 = difficult: stored functions and/or triggers with code rewriting</li>
   </ul>
 </ul>
 };
