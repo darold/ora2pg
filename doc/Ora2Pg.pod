@@ -2047,14 +2047,14 @@ Migration level: B-5
 
     Migration levels:
         A - Migration that might be run automatically
-        B - Migration that need code rewrite with human-days up to 10 days
-        C - Migration that need code rewrite with human-days above 10 days
+        B - Migration with code rewrite and a human-days cost up to 10 days
+        C - Migration with code rewrite and a human-days cost above 10 days
     Technical levels:
         1 = trivial: no stored functions and no triggers
-        2 = easy: no stored functions but with triggers without code that need manual rewriting
-        3 = simple: stored functions and/or triggers but without code that need manual rewriting
-        4 = manual: no stored functions but with triggers and code that need manual rewriting
-        5 = difficult, stored functions and/or triggers with code that need manual rewriting
+        2 = easy: no stored functions but with triggers, no manual rewriting
+        3 = simple: stored functions and/or triggers, no manual rewriting
+        4 = manual: no stored functions but with triggers or views with code rewriting
+        5 = difficult: stored functions and/or triggers with code rewriting
 
 This assessment consist in a letter A or B to specify if the migration needs
 manual rewritting or not. And a number from 1 up to 5 to give you a technical
@@ -2062,7 +2062,7 @@ difficulty level. You have an additional option --human_days_limit to specify
 the number of human-days limit where the migration level should be set to C
 to indicate that it need a huge amount of work and a full project managment
 with migration support. Default is 10 human-days. You can use the configuration
-directive HUMAN_DAYS_LIMIT to change this default valur permanently.
+directive HUMAN_DAYS_LIMIT to change this default value permanently.
 
 This feature has been developped to help you or your boss to decide which
 database to migrate first and the team that must be mobilized to operate
