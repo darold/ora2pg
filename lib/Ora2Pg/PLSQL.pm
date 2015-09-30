@@ -24,7 +24,7 @@ package Ora2Pg::PLSQL;
 # 
 #------------------------------------------------------------------------------
 
-use vars qw($VERSION %OBJECT_SCORE $SIZE_SCORE $FCT_TEST_SCORE %UNCOVERED_SCORE @ORA_FUNCTIONS);
+use vars qw($VERSION %OBJECT_SCORE $SIZE_SCORE $FCT_TEST_SCORE $QUERY_TEST_SCORE %UNCOVERED_SCORE @ORA_FUNCTIONS);
 use POSIX qw(locale_h);
 
 #set locale to LC_NUMERIC C
@@ -60,6 +60,7 @@ $VERSION = '15.3';
 	'DIMENSION' => 0, # Not supported and no equivalent
 	'JOB' => 2, # read/adapt
 	'SYNONYM' => 0.1, # read/adapt
+	'QUERY' => 0.02, # read/adapt
 );
 
 # Scores following the number of characters: 1000 chars for one unit.
@@ -68,6 +69,9 @@ $SIZE_SCORE = 1000;
 
 # Cost to apply on each function for testing
 $FCT_TEST_SCORE = 2;
+
+# Cost to apply on each query for testing
+$QUERY_TEST_SCORE = 0.1;
 
 # Scores associated to each code difficulties.
 %UNCOVERED_SCORE = (
@@ -89,12 +93,12 @@ $FCT_TEST_SCORE = 2;
 	'DBMS_' => 3,
 	'UTL_' => 3,
 	'CTX_' => 3,
-	'EXTRACT' => 3,
+	'EXTRACT' => 0.1,
 	'EXCEPTION' => 2,
-	'TO_NUMBER' => 1,
-	'REGEXP_LIKE' => 1,
+	'TO_NUMBER' => 0.1,
+	'REGEXP_LIKE' => 0.1,
 	'TG_OP' => 1,
-	'CURSOR' => 2,
+	'CURSOR' => 1,
 	'PIPE ROW' => 1,
 	'ORA_ROWSCN' => 3,
 	'SAVEPOINT' => 1,
@@ -800,11 +804,16 @@ sub estimate_cost
 
 	# Default cost is testing that mean it at least must be tested
 	my $cost = $FCT_TEST_SCORE;
+	if ($type eq 'QUERY') {
+		$cost = 0;
+	}
 	$cost_details{'TEST'} = $cost;
 
 	# Set cost following code length
 	my $cost_size = int(length($str)/$SIZE_SCORE) || 1;
-
+	if ($type eq 'QUERY') {
+		$cost_size = 0;
+	}
 	$cost += $cost_size;
 	$cost_details{'SIZE'} = $cost_size;
 
