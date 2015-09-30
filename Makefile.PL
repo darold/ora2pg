@@ -713,6 +713,14 @@ TOP_MAX			10
 # human-days.
 HUMAN_DAYS_LIMIT	10
 
+# Set the comma separated list of username that must be used to filter
+# queries from the DBA_AUDIT_TRAIL table. Default is to not scan this
+# table and to never look for queries. This parameter is used only with
+# SHOW_REPORT and QUERY export type with no input file for queries.
+# Note that queries will be normalized before output unlike when a file
+# is given at input using the -i option or INPUT directive.
+#AUDIT_USER	USERNAME1,USERNAME2
+
 #------------------------------------------------------------------------------
 # POSTGRESQL FEATURE SECTION (Control which PostgreSQL features are available)
 #------------------------------------------------------------------------------
