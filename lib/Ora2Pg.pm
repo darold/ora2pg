@@ -759,6 +759,9 @@ sub _init
 	# Shall we log on error during data import or abort.
 	$self->{log_on_error} = 0;
 
+	# List of users for audit trail
+	$self->{audit_user} = '';
+
 	# Initialyze following configuration file
 	foreach my $k (sort keys %AConfig) {
 		if (lc($k) eq 'allow') {
@@ -1081,6 +1084,13 @@ sub _init
 		$self->{file_per_table} = 1;
 	}
 
+	if ($self->{debug}) {
+		$self->logit("Ora2Pg version: $VERSION\n");
+	}
+
+	# Replace ; or space by comma in the audit user list
+	$self->{audit_user} =~ s/[;\s]+/,/g;
+
 	if (!$self->{input_file}) {
 		# Connect the database
 		$self->{dbh} = $self->_oracle_connection();
@@ -1134,6 +1144,8 @@ sub _init
 			$self->_packages();
 		} elsif ($self->{type} eq 'TYPE') {
 			$self->_types();
+		} elsif ($self->{type} eq 'QUERY') {
+			$self->_queries();
 		} elsif ($self->{type} eq 'TABLESPACE') {
 			$self->_tablespaces();
 		} elsif ($self->{type} eq 'PARTITION') {
@@ -1149,7 +1161,7 @@ sub _init
 			$self->{dbh}->disconnect() if ($self->{dbh}); 
 			exit 0;
 		} else {
-			warn "type option must be TABLE, VIEW, GRANT, SEQUENCE, TRIGGER, PACKAGE, FUNCTION, PROCEDURE, PARTITION, TYPE, INSERT, COPY, TABLESPACE, SHOW_REPORT, SHOW_VERSION, SHOW_SCHEMA, SHOW_TABLE, SHOW_COLUMN, SHOW_ENCODING, FDW, MVIEW, QUERY, KETTLE, DBLINK, SYNONYM, DIRECTORY\n";
+			warn "type option must be (TABLE, VIEW, GRANT, SEQUENCE, TRIGGER, PACKAGE, FUNCTION, PROCEDURE, PARTITION, TYPE, INSERT, COPY, TABLESPACE, SHOW_REPORT, SHOW_VERSION, SHOW_SCHEMA, SHOW_TABLE, SHOW_COLUMN, SHOW_ENCODING, FDW, MVIEW, QUERY, KETTLE, DBLINK, SYNONYM, DIRECTORY), unknow $self->{type}\n";
 		}
 		# Mofify export structure if required
 		if ($self->{type} =~ /^(INSERT|COPY)$/) {
@@ -3422,6 +3434,7 @@ LANGUAGE plpgsql ;
 		# Code to use to find queries parser issues, it load a file
 		# containing the untouched SQL code from Oracle queries
 		#---------------------------------------------------------
+		my %comments = ();
 		if ($self->{input_file}) {
 			$self->{functions} = ();
 			$self->logit("Reading input code from file $self->{input_file}...\n", 1);
@@ -3432,7 +3445,7 @@ LANGUAGE plpgsql ;
 			my $content = join('', @allqueries);
 			@allqueries = ();
 			$self->{idxcomment} = 0;
-			my %comments = $self->_remove_comments(\$content);
+			%comments = $self->_remove_comments(\$content);
 			foreach my $l (split(/\n/, $content)) {
 				chomp($l);
 				next if ($l =~ /^\s*$/);
@@ -3447,12 +3460,16 @@ LANGUAGE plpgsql ;
 					$self->{queries}{$query} .= "$l\n";
 				}
 			}
+		} else {
 			foreach my $q (keys %{$self->{queries}}) {
-				if ($self->{queries}{$q} !~ /(SELECT|UPDATE|DELETE|INSERT)/is) {
-					delete $self->{queries}{$q};
-				} else {
-					$self->_restore_comments(\$self->{queries}{$q}, \%comments);
-				}
+				$self->{queries}{$q} =~ s/ORA2PG_COMMENT\d+\%//gs;
+			}
+		}
+		foreach my $q (keys %{$self->{queries}}) {
+			if ($self->{queries}{$q} !~ /(SELECT|UPDATE|DELETE|INSERT)/is) {
+				delete $self->{queries}{$q};
+			} else {
+				$self->_restore_comments(\$self->{queries}{$q}, \%comments);
 			}
 		}
 		#--------------------------------------------------------
@@ -3469,10 +3486,10 @@ LANGUAGE plpgsql ;
 				my $sql_q = Ora2Pg::PLSQL::plsql_to_plpgsql($self->{queries}{$q},$self->{null_equal_empty}, $self->{type}, $self->{package_functions});
 				$sql_output .= $sql_q;
 				if ($self->{estimate_cost}) {
-					my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($sql_q);
+					my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($sql_q, 'QUERY');
 					$cost += $Ora2Pg::PLSQL::OBJECT_SCORE{'QUERY'};
 					$cost_value += $cost;
-					$self->logit("Estimed cost of query [ $q ]: $cost\n", 0);
+					$sql_output .= "\n-- Estimed cost of query [ $q ]: " . sprintf("%2.2f", $cost);
 				}
 			} else {
 				$sql_output .= $self->{queries}{$q};
@@ -3482,6 +3499,7 @@ LANGUAGE plpgsql ;
 			$nothing++;
 		}
 		if ($self->{estimate_cost}) {
+			$cost_value = sprintf("%2.2f", $cost_value);
 			my @infos = ( "Total number of queries: ".(scalar keys %{$self->{queries}}).".",
 				"Total size of queries code: $total_size bytes.",
 				"Total estimated cost: $cost_value units, ".$self->_get_human_cost($cost_value)."."
@@ -3852,7 +3870,7 @@ LANGUAGE plpgsql ;
 		foreach my $pkg (sort keys %{$self->{packages}}) {
 
 			if (!$self->{quiet} && !$self->{debug}) {
-				print STDERR $self->progress_bar($i, $num_total_package, 25, '=', 'packages', "generating $pkg" ), "\r";
+				print STDERR $self->progress_bar($i, $num_total_package, 25, '=', 'packages', "generating $pkg" ), "\n";
 			}
 			$i++, next if (!$self->{packages}{$pkg}{text});
 			my $pkgbody = '';
@@ -4112,14 +4130,13 @@ LANGUAGE plpgsql ;
 		# Connect the Oracle database to gather information
 		$self->{dbh} = $self->_oracle_connection();
 
-		# Remove external table from data export
-		if (scalar keys %{$self->{external_table}} ) {
-			foreach my $table (keys %{$self->{tables}}) {
-				if ( grep(/^$table$/i, keys %{$self->{external_table}}) ) {
-					delete $self->{tables}{$table};
-				}
+                # Remove remote table from export, they must be exported using FDW export type
+		foreach my $table (keys %{$self->{tables}}) {
+			if ( $self->{tables}{$table}{table_info}{connection} ) {
+				delete $self->{tables}{$table};
 			}
 		}
+
 		# Get partition information
 		$self->_partitions() if (!$self->{disable_partition});
 
@@ -4272,8 +4289,8 @@ LANGUAGE plpgsql ;
 		my $writer = new IO::Handle;
 
                # Fork the logger process
-                if (!$self->{quiet} && !$self->{debug}) {
-                        if ( ($self->{jobs} > 1) || ($self->{oracle_copies} > 1) || ($self->{parallel_tables} > 1)) {
+               if (!$self->{quiet} && !$self->{debug}) {
+			if ( ($self->{jobs} > 1) || ($self->{oracle_copies} > 1) || ($self->{parallel_tables} > 1)) {
 				# Fork the logger process
 				$pipe = IO::Pipe->new($reader, $writer);
 				$writer->autoflush(1);
@@ -4817,7 +4834,7 @@ CREATE TRIGGER insert_${table}_trigger
 
 		my $tbname = $self->get_replaced_tbname($table);
 		my $foreign = '';
-		if ( ($self->{type} eq 'FDW') || ($self->{external_to_fdw} && grep(/^$table$/i, keys %{$self->{external_table}})) ) {
+		if ( ($self->{type} eq 'FDW') || ($self->{external_to_fdw} && (grep(/^$table$/i, keys %{$self->{external_table}}) || $self->{tables}{$table}{table_info}{connection})) ) {
 			$foreign = ' FOREIGN';
 		}
 		my $obj_type = $self->{tables}{$table}{table_info}{type} || 'TABLE';
@@ -4937,7 +4954,7 @@ CREATE TRIGGER insert_${table}_trigger
 				$sql_output .= $self->_get_primary_keys($table, $self->{tables}{$table}{unique_key});
 			}
 			$sql_output =~ s/,$//;
-			if ( ($self->{type} ne 'FDW') && (!$self->{external_to_fdw} || !grep(/^$table$/i, keys %{$self->{external_table}})) ) {
+			if ( ($self->{type} ne 'FDW') && (!$self->{external_to_fdw} || (!grep(/^$table$/i, keys %{$self->{external_table}}) && !$self->{tables}{$table}{table_info}{connection})) ) {
 				my $withoid = '';
 				$withoid = 'WITH (OIDS)' if ($self->{with_oid});
 				if ($self->{use_tablespace} && $self->{tables}{$table}{table_info}{tablespace} && !grep(/^$self->{tables}{$table}{table_info}{tablespace}$/i, @{$self->{default_tablespaces}})) {
@@ -4947,6 +4964,15 @@ CREATE TRIGGER insert_${table}_trigger
 				}
 			} elsif ( grep(/^$table$/i, keys %{$self->{external_table}}) ) {
 				$sql_output .= ") SERVER \L$self->{external_table}{$table}{directory}\E OPTIONS(filename '$self->{external_table}{$table}{directory_path}$self->{external_table}{$table}{location}', format 'csv', delimiter '$self->{external_table}{$table}{delimiter}');\n";
+			} elsif ($self->{is_mysql} && $self->{tables}{$table}{table_info}{connection}) {
+				my $schem = "dbname '$self->{schema}'," if ($self->{schema});
+				my $r_server = $self->{fdw_server};
+				my $r_table = $table;
+				if ($self->{tables}{$table}{table_info}{connection} =~ /([^'\/]+)\/([^']+)/) {
+					$r_server = $1;
+					$r_table = $2;
+				}
+				$sql_output .= ") SERVER $r_server OPTIONS($schem table_name '$r_table');\n";
 			} else {
 				my $schem = "schema '$self->{schema}'," if ($self->{schema});
 				$sql_output .= ") SERVER $self->{fdw_server} OPTIONS($schem table '$table');\n";
@@ -5186,8 +5212,6 @@ sub _dump_table
 	$self->{type} = $self->{local_type} if ($self->{local_type});
 	$self->{local_type} = '';
 
- 	# Only useful for single process
- 	return $total_record;
 }
 
 =head2 _column_comments
@@ -7407,6 +7431,70 @@ sub _table_info
 	return %tables_infos;
 }
 
+=head2 _queries
+
+This function is used to retrieve all Oracle queries from DBA_AUDIT_TRAIL
+
+Sets the main hash $self->{queries}.
+
+=cut
+
+sub _queries
+{
+	my ($self) = @_;
+
+	$self->logit("Retrieving audit queries information...\n", 1);
+	%{$self->{queries}} = $self->_get_audit_queries();
+
+}
+
+=head2 _get_audit_queries
+
+This function extract SQL queries from dba_audit_trail 
+
+Returns a hash of queries.
+
+=cut
+
+sub _get_audit_queries
+{
+	my($self) = @_;
+
+	return if (!$self->{audit_user});
+
+	return Ora2Pg::MySQL::_get_audit_queries($self) if ($self->{is_mysql});
+
+	my @users = ();
+	push(@users, split(/[,;\s]/, uc($self->{audit_user})));
+
+	# Retrieve all object with tablespaces.
+	my $str = "SELECT SQL_TEXT FROM DBA_AUDIT_TRAIL WHERE ACTION_NAME IN ('INSERT','UPDATE','DELETE','SELECT')";
+	if (($#users >= 0) && !grep(/^ALL$/, @users)) {
+		$str .= " AND USERNAME IN ('" . join("','", @users) . "')";
+	}
+	my $error = "\n\nFATAL: You must be connected as an oracle dba user to retrieved audited queries\n\n";
+	my $sth = $self->{dbh}->prepare($str) or $self->logit($error . "FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+
+	my %tmp_queries = ();
+	while (my $row = $sth->fetch) {
+		$self->_remove_comments(\$row->[0]);
+		$row->[0] =  $self->normalize_query($row->[0]);
+		$tmp_queries{$row->[0]}++;
+		$self->logit(".",1);
+	}
+	$sth->finish;
+	$self->logit("\n", 1);
+
+	my %queries = ();
+	my $i = 1;
+	foreach my $q (keys %tmp_queries) {
+		$queries{$i} = $q;
+		$i++;
+	}
+
+	return %queries;
+}
 
 =head2 _get_tablespaces
 
@@ -7762,7 +7850,7 @@ sub format_data_row
 			} elsif ($self->{geometry_extract_type} eq 'WKB') {
 				$row->[$idx] = unpack('H*', $row->[$idx]);
 				$row->[$idx]  = "'SRID=" . $self->{spatial_srid}{$table}->[$idx] . ';' . $row->[$idx] . "'";
-			} elsif ($self->{geometry_extract_type} eq 'INTERNAL') {
+			} elsif (($self->{geometry_extract_type} eq 'INTERNAL') || ($self->{geometry_extract_type} eq 'WKT')) {
 				use Ora2Pg::GEOM;
 				my $geom_obj = new Ora2Pg::GEOM('srid' => $self->{spatial_srid}{$table}->[$idx]);
 				$row->[$idx] = $geom_obj->parse_sdo_geometry($row->[$idx]);
@@ -9118,14 +9206,14 @@ sub _dump_to_pg
 		push(@tempfiles, [ tempfile('tmp_ora2pgXXXXXX', SUFFIX => '', DIR => $TMP_DIR, UNLINK => 1 ) ]);
 	}
 
-	if ($self->{pg_dsn}) {
-		$0 = 'ora2pg - sending data to PostgreSQL';
-	} else {
-		$0 = 'ora2pg - sending data to file';
-	}
-
 	# Open a connection to the postgreSQL database if required
 	my $rname = $part_name || $table;
+
+	if ($self->{pg_dsn}) {
+		$0 = "ora2pg - sending data to PostgreSQL  table $rname";
+	} else {
+		$0 = "ora2pg - sending data from table $rname to file";
+	}
 
 	# Connect to PostgreSQL if direct import is enabled
 	my $dbhdest = undef;
@@ -9389,7 +9477,7 @@ sub _show_infos
 		# Get definition of Oracle Database Link
 		my %dblink = $self->_get_dblink();
 		$objects{'DATABASE LINK'} = scalar keys %dblink;	
-		# Get definition of Oracle Jobs
+		# Get Jobs
 		my %jobs = $self->_get_job();
 		$objects{'JOB'} = scalar keys %jobs;	
 		# Get synonym inforamtion
@@ -9685,6 +9773,28 @@ sub _show_infos
 			print STDERR $self->progress_bar($idx, $num_total_obj, 25, '=', 'objects types', 'end of objects auditing.'), "\n";
 		}
 
+		# DBA_AUDIT_TRAIL queries will not be count if no audit user is give
+		if ($self->{audit_user}) {
+			my $tbname = 'DBA_AUDIT_TRAIL';
+			$tbname = 'general_log' if ($self->{is_mysql});
+			$report_info{'Objects'}{'QUERY'}{'number'} = 0;
+			$report_info{'Objects'}{'QUERY'}{'invalid'} = 0;
+			$report_info{'Objects'}{'QUERY'}{'comment'} = "Normalized queries found in $tbname for user(s): $self->{audit_user}";
+			my %queries = $self->_get_audit_queries();
+			foreach my $q (sort {$a <=> $b} keys %queries) {
+				$report_info{'Objects'}{'QUERY'}{'number'}++;
+				my $sql_q = Ora2Pg::PLSQL::plsql_to_plpgsql($self, $queries{$q});
+				if ($self->{estimate_cost}) {
+					my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($self, $sql_q, 'QUERY');
+					$cost += $Ora2Pg::PLSQL::OBJECT_SCORE{'QUERY'};
+					$report_info{'Objects'}{'QUERY'}{'cost_value'} += $cost;
+					$report_info{'total_cost_value'} += $cost;
+				}
+			}
+			$report_info{'Objects'}{'QUERY'}{'cost_value'} = sprintf("%2.2f", $report_info{'Objects'}{'QUERY'}{'cost_value'});
+		}
+		$report_info{'total_cost_value'} = sprintf("%2.2f", $report_info{'total_cost_value'});
+
 		# Display report in the requested format
 		$self->_show_report(%report_info);
 
@@ -9948,7 +10058,7 @@ sub _get_database_size
 
 	my $mb_size = '';
 	my $sql = "SELECT sum(bytes)/1024/1024 FROM USER_SEGMENTS";
-	if (!$self->{user_grant}) {
+	if (!$self->{user_grants}) {
 		$sql = "SELECT sum(bytes)/1024/1024 FROM DBA_SEGMENTS";
 		if ($self->{schema}) {
 			$sql .= " WHERE OWNER='$self->{schema}' ";
@@ -10028,30 +10138,33 @@ sub _get_largest_tables
 
 	my %table_size = ();
 
-	my $join_segment = '';
+	my $prefix = 'USER';
+	my $owner_segment = '';
+	$owner_segment = " AND A.OWNER='$self->{schema}'";
 	if (!$self->{user_grants}) {
-		$join_segment = " JOIN DBA_SEGMENTS S ON (S.SEGMENT_TYPE LIKE 'TABLE%' AND S.SEGMENT_NAME=A.TABLE_NAME)";
+		$prefix = 'DBA';
+		$owner_segment = ' AND S.OWNER=A.OWNER';
 	}
 
-	my $sql = "SELECT * FROM ( SELECT S.SEGMENT_NAME, ROUND(S.BYTES/1024/1024) SIZE_MB FROM DBA_SEGMENTS S JOIN ALL_TABLES A ON (S.SEGMENT_NAME=A.TABLE_NAME AND S.OWNER=A.OWNER) WHERE S.SEGMENT_TYPE LIKE 'TABLE%' AND A.SECONDARY = 'N'";
+	my $sql = "SELECT * FROM ( SELECT S.SEGMENT_NAME, ROUND(S.BYTES/1024/1024) SIZE_MB FROM ${prefix}_SEGMENTS S JOIN ALL_TABLES A ON (S.SEGMENT_NAME=A.TABLE_NAME$owner_segment) WHERE S.SEGMENT_TYPE LIKE 'TABLE%' AND A.SECONDARY = 'N'";
 	if ($self->{db_version} =~ /Release 8/) {
-		$sql = "SELECT * FROM ( SELECT S.SEGMENT_NAME, ROUND(S.BYTES/1024/1024) SIZE_MB FROM DBA_SEGMENTS S WHERE S.SEGMENT_TYPE LIKE 'TABLE%'";
+		$sql = "SELECT * FROM ( SELECT S.SEGMENT_NAME, ROUND(S.BYTES/1024/1024) SIZE_MB FROM ${prefix}_SEGMENTS A WHERE A.SEGMENT_TYPE LIKE 'TABLE%'";
 	}
-        if ($self->{schema}) {
-                $sql .= " AND S.OWNER='$self->{schema}'";
-        } else {
-                $sql .= " AND S.OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
-        }
+	if ($self->{schema}) {
+		$sql .= " AND A.OWNER='$self->{schema}'";
+	} else {
+		$sql .= " AND A.OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
+	}
 	if ($self->{db_version} =~ /Release 8/) {
-		$sql .= $self->limit_to_objects('TABLE', 'S.SEGMENT_NAME');
+		$sql .= $self->limit_to_objects('TABLE', 'A.SEGMENT_NAME');
 	} else {
 		$sql .= $self->limit_to_objects('TABLE', 'A.TABLE_NAME');
 	}
 
 	$sql .= " ORDER BY S.BYTES,S.SEGMENT_NAME DESC) WHERE ROWNUM <= $self->{top_max}";
 
-        my $sth = $self->{dbh}->prepare( $sql ) or return undef;
-        $sth->execute or return undef;
+	my $sth = $self->{dbh}->prepare( $sql ) or return undef;
+	$sth->execute or return undef;
 	while ( my @row = $sth->fetchrow()) {
 		$table_size{$row[0]} = $row[1];
 	}
@@ -10403,7 +10516,6 @@ return 0;
 	my $found = 0;
 	foreach my $obj (split(/\|/, $obj_type)) {
 		# Check if this object is in the allowed list of object to export.
-		#if (($obj ne 'INDEX') && ($obj ne 'FKEY')) {
 		$found = 1 if (($#{$self->{limited}{$obj}} >= 0) && !grep($name =~ /^$_$/i, @{$self->{limited}{$obj}}));
 
 		# Check if this object is in the exlusion list of object to export.
@@ -10762,11 +10874,11 @@ sub difficulty_assessment
 
 	# Migration that might be run automatically
 	# 1 = trivial: no stored functions and no triggers
-	# 2 = easy: no stored functions but with triggers without code that need manual rewriting
-	# 3 = simple: stored functions and/or triggers but without code that need manual rewriting
+	# 2 = easy: no stored functions but with triggers
+	# 3 = simple: stored functions and/or triggers
 	# Migration that need code rewrite
-	# 4 = manual: no stored functions but with triggers or views with code that need manual rewriting
-	# 5 = difficult, stored functions and/or triggers with code that need manual rewriting
+	# 4 = manual: no stored functions but with triggers or view
+	# 5 = difficult: with stored functions and/or triggers
 	my $difficulty = 1;
 
 	my @stored_function = (
@@ -11519,6 +11631,46 @@ sub create_kettle_output
 	$fh->close();
 
 	return "JAVAMAXMEM=4096 ./pan.sh -file \$KETTLE_TEMPLATE_PATH/$output_dir$table.ktr -level Detailed\n";
+}
+
+sub normalize_query
+{
+	my ($self, $orig_query) = @_;
+
+	return if (!$orig_query);
+
+	# Remove comments
+	$orig_query =~ s/\/\*(.*?)\*\///gs;
+
+	# Set the entire query lowercase
+	$orig_query = lc($orig_query);
+
+	# Remove extra space, new line and tab characters by a single space
+	$orig_query =~ s/\s+/ /gs;
+
+	# Removed start of transaction 
+	if ($orig_query !~ /^\s*begin\s*;\s*$/) {
+		$orig_query =~ s/^\s*begin\s*;\s*//gs
+	}
+
+	# Remove string content
+	$orig_query =~ s/\\'//g;
+	$orig_query =~ s/'[^']*'/''/g;
+	$orig_query =~ s/''('')+/''/g;
+
+	# Remove NULL parameters
+	$orig_query =~ s/=\s*NULL/=''/g;
+
+	# Remove numbers
+	$orig_query =~ s/([^a-z_\$-])-?([0-9]+)/${1}0/g;
+
+	# Remove hexadecimal numbers
+	$orig_query =~ s/([^a-z_\$-])0x[0-9a-f]{1,10}/${1}0x/g;
+
+	# Remove IN values
+	$orig_query =~ s/in\s*\([\'0x,\s]*\)/in (...)/g;
+
+	return $orig_query;
 }
 
 1;

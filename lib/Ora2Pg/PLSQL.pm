@@ -793,7 +793,7 @@ sub replace_sql_type
 
 sub estimate_cost
 {
-	my $str = shift;
+	my ($str, $type) = @_;
 
 	my %cost_details = ();
 
