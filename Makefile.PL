@@ -501,7 +501,8 @@ ENABLE_MICROSECOND      1
 # When Ora2Pg find a "zero" date: 0000-00-00 00:00:00 it is replaced by a NULL.
 # This could be a problem if your column is defined with NOT NULL constraint.
 # If you can not remove the constraint, use this directive to set an arbitral
-# date that will be used instead.
+# date that will be used instead. You can also use -INFINITY if you don't want
+# to use a fake date.
 #REPLACE_ZERO_DATE	1970-01-01 00:00:00
 
 #------------------------------------------------------------------------------

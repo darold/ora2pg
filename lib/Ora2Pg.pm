@@ -833,7 +833,7 @@ sub _init
 
 	# Should we replace zero date with something else than NULL
 	$self->{replace_zero_date} ||= '';
-	if ($self->{replace_zero_date} && ($self->{replace_zero_date} !~ /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/)) {
+	if ($self->{replace_zero_date} && (uc($self->{replace_zero_date}) ne '-INFINITY') && ($self->{replace_zero_date} !~ /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/)) {
 		die "FATAL: wrong format in REPLACE_ZERO_DATE value, should be YYYY-MM-DD HH:MM:SS\n";
 	}
 
@@ -7951,7 +7951,7 @@ sub format_data_type
 				if (!$self->{replace_zero_date}) {
 					$col = 'NULL';
 				} else {
-					$col = $self->{replace_zero_date};
+					$col = "'$self->{replace_zero_date}'";
 				}
 			} elsif ($col =~ /^(\d+-\d+-\d+ \d+:\d+:\d+)\.$/) {
 				$col = "'$1'";
