@@ -10861,9 +10861,11 @@ sub _get_human_cost
 		$tmp++ if ($tmp =~ s/\.\d+//);
 		$human_cost = "$tmp man-day(s)";
 	} else {
-		my $tmp = $human_cost/60;
-		$tmp++ if ($tmp =~ s/\.\d+//);
-		$human_cost = "$tmp man-hour(s)";
+		#my $tmp = $human_cost/60;
+		#$tmp++ if ($tmp =~ s/\.\d+//);
+		#$human_cost = "$tmp man-hour(s)";
+		# mimimum to 1 day, hours are not really relevant
+		$human_cost = "1 man-day(s)";
 	} 
 
 	return $human_cost;
