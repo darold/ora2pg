@@ -5647,7 +5647,6 @@ sub _create_foreign_keys
 	foreach my $h (@foreign_key) {
 
 		next if (grep(/^$h->[0]$/, @done));
-		$h->[0] = uc($h->[0]);
 		foreach my $desttable (keys %{$self->{tables}{$tbsaved}{foreign_link}{$h->[0]}{remote}}) {
 
 			my $str = '';
