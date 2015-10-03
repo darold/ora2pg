@@ -890,6 +890,9 @@ sub _init
 	}
 	delete $self->{excluded}{ALL};
 
+	# Set default temporary directory
+	$self->{tmp_dir} ||= $TMP_DIR;
+
 	if ($AConfig{'DEBUG'} == 1) {
 		$self->{debug} = 1;
 	}

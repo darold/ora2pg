@@ -339,7 +339,7 @@ sub plsql_to_plpgsql
         $str =~ s/(WHERE|AND)\s*ROWNUM\s*<=\s*(\d+)/LIMIT $2/igs;
         $str =~ s/(WHERE|AND)\s*ROWNUM\s*>=\s*(\d+)/'LIMIT ALL OFFSET ' . ($2-1)/iges;
         $str =~ s/(WHERE|AND)\s*ROWNUM\s*<\s*(\d+)/'LIMIT ' . ($2-1)/iges;
-        $str =~ s/(WHERE|AND)\s*ROWNUM\s*>\s*(\d+)/'LIMIT ALL OFFSET $2/iges;
+        $str =~ s/(WHERE|AND)\s*ROWNUM\s*>\s*(\d+)/LIMIT ALL OFFSET $2/igs;
 
 	# Rewrite comment in CASE between WHEN and THEN
 	$str =~ s/(\s*)(WHEN\s+[^\s]+\s*)(ORA2PG_COMMENT\d+\%)(\s*THEN)/$1$3$1$2$4/igs;
