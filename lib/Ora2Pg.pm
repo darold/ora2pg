@@ -3360,9 +3360,9 @@ LANGUAGE plpgsql ;
 						my $owner = $trig->[8];
 						$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
 						if (!$self->{preserve_case}) {
-							$sql_output .= "ALTER FUNCTION trigger_fct_\L$trig->[0]\E OWNER TO \L$owner\E;\n\n";
+							$sql_output .= "ALTER FUNCTION trigger_fct_\L$trig->[0]\E() OWNER TO \L$owner\E;\n\n";
 						} else {
-							$sql_output .= "ALTER FUNCTION trigger_fct_\L$trig->[0]\E OWNER TO \"$owner\";\n\n";
+							$sql_output .= "ALTER FUNCTION trigger_fct_\L$trig->[0]\E() OWNER TO \"$owner\";\n\n";
 						}
 					}
 					$trig->[6] =~ s/\n+$//s;
@@ -3386,9 +3386,9 @@ LANGUAGE plpgsql ;
 						my $owner = $trig->[8];
 						$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
 						if (!$self->{preserve_case}) {
-							$sql_output .= "ALTER FUNCTION trigger_fct_\L$trig->[0]\E OWNER TO \L$owner\E;\n\n";
+							$sql_output .= "ALTER FUNCTION trigger_fct_\L$trig->[0]\E() OWNER TO \L$owner\E;\n\n";
 						} else {
-							$sql_output .= "ALTER FUNCTION trigger_fct_\L$trig->[0]\E OWNER TO \"$owner\";\n\n";
+							$sql_output .= "ALTER FUNCTION trigger_fct_\L$trig->[0]\E() OWNER TO \"$owner\";\n\n";
 						}
 					}
 					$sql_output .= "CREATE TRIGGER \L$trig->[0]\E\n\t";
@@ -4711,10 +4711,10 @@ CREATE TRIGGER insert_${table}_trigger
 			if ($owner) {
 				if (!$self->{preserve_case}) {
 					$sql_output .= "ALTER TABLE \L$self->{partitions_default}{$table}\E OWNER TO \L$owner\E;\n"if ($self->{partitions_default}{$table});
-					$sql_output .= "ALTER FUNCTION \L${table}_insert_trigger\E OWNER TO \L$owner\E;\n";
+					$sql_output .= "ALTER FUNCTION \L${table}_insert_trigger\E() OWNER TO \L$owner\E;\n";
 				} else {
 					$sql_output .= "ALTER TABLE \"$self->{partitions_default}{$table}\" OWNER TO \"$owner\";\n"if ($self->{partitions_default}{$table});
-					$sql_output .= "ALTER FUNCTION \"${table}_insert_trigger\" OWNER TO \"$owner\";\n";
+					$sql_output .= "ALTER FUNCTION \"${table}_insert_trigger\"() OWNER TO \"$owner\";\n";
 				}
 			}
 		}
