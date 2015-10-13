@@ -1203,7 +1203,7 @@ sub _oracle_connection
 
 	$self->logit("Trying to connect to database: $self->{oracle_dsn}\n", 1) if (!$quiet);
 
-	my $dbh = DBI->connect($self->{oracle_dsn}, $self->{oracle_user}, $self->{oracle_pwd}, {ora_envhp => 0, LongReadLen=>$self->{longreadlen}, LongTruncOk=>$self->{longtruncok} });
+	my $dbh = DBI->connect($self->{oracle_dsn}, $self->{oracle_user}, $self->{oracle_pwd}, {ora_envhp => 0, LongReadLen=>$self->{longreadlen}, LongTruncOk=>$self->{longtruncok}, AutoInactiveDestroy => 1 });
 
 	# Check for connection failure
 	if (!$dbh) {
@@ -1301,7 +1301,7 @@ sub _send_to_pgdb
 	$destpasswd ||= $self->{pg_pwd};
 
         # Then connect the destination database
-        my $dbhdest = DBI->connect($destsrc, $destuser, $destpasswd);
+        my $dbhdest = DBI->connect($destsrc, $destuser, $destpasswd, {AutoInactiveDestroy => 1});
 
 	$destsrc =~ /dbname=([^;]*)/;
 	$self->{dbname} = $1;
@@ -4304,13 +4304,9 @@ LANGUAGE plpgsql ;
 				$pipe = IO::Pipe->new($reader, $writer);
 				$writer->autoflush(1);
 				if ( ($self->{jobs} > 1) || ($self->{oracle_copies} > 1) ) {
-					$self->{dbh}->{InactiveDestroy} = 1;
-					$self->{dbhdest}->{InactiveDestroy} = 1 if (defined $self->{dbhdest});
 					spawn sub {
 						$self->multiprocess_progressbar();
 					};
-					$self->{dbh}->{InactiveDestroy} = 0;
-					$self->{dbhdest}->{InactiveDestroy} = 0 if (defined $self->{dbhdest});
 				}
 			}
 		}
@@ -9050,13 +9046,6 @@ sub _extract_data
 		# Force datetime format into the cloned session
 		$self->_datetime_format($dbh);
 
-		$self->{dbh}->{InactiveDestroy} = 1;
-		$self->{dbh} = undef;
-		if (defined $self->{dbhdest}) {
-			$self->{dbhdest}->{InactiveDestroy} = 1;
-			$self->{dbhdest} = undef;
-		}
-
 		# Set row cache size
 		$dbh->{RowCacheSize} = int($self->{data_limit}/10);
 
@@ -9122,18 +9111,10 @@ sub _extract_data
 				}
 				usleep(50000);
 			}
-			# The parent's connection should not be closed when $dbh is destroyed
-			$self->{dbh}->{InactiveDestroy} = 1;
-			$self->{dbhdest}->{InactiveDestroy} = 1 if (defined $self->{dbhdest});
-			$dbh->{InactiveDestroy} = 1 if (defined $dbh);
-
 			spawn sub {
 				$self->_dump_to_pg($dbh, $rows, $table, $cmd_head, $cmd_foot, $s_out, $tt, $sprep, $stt, $ora_start_time, $part_name, $total_record, %user_type);
 			};
 			$self->{child_count}++;
-			$self->{dbh}->{InactiveDestroy} = 0;
-			$self->{dbhdest}->{InactiveDestroy} = 0 if (defined $self->{dbhdest});
-			$dbh->{InactiveDestroy} = 0 if (defined $dbh);
 		} else {
 			$self->_dump_to_pg($dbh, $rows, $table, $cmd_head, $cmd_foot, $s_out, $tt, $sprep, $stt, $start_time, $part_name, $total_record, %user_type);
 		}
