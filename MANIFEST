@@ -6,5 +6,8 @@ MANIFEST
 Makefile.PL
 lib/Ora2Pg.pm
 lib/Ora2Pg/PLSQL.pm
+lib/Ora2Pg/GEOM.pm
+lib/Ora2Pg/MySQL.pm
 scripts/ora2pg
+scripts/ora2pg_scanner
 doc/Ora2Pg.pod
