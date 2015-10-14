@@ -56,6 +56,7 @@ FEATURES
             - Export DBLINK as Oracle FDW.
             - Export SYNONYMS as views.
             - Export DIRECTORY as external table or directory for external_file extension.
+            - Full MySQL export just like Oracle database.
 
     Ora2Pg do its best to automatically convert your Oracle database to
     PostgreSQL but there's still manual works to do. The Oracle specific
@@ -85,13 +86,18 @@ INSTALLATION
     an already packaged DBD::Oracle easy to install.
 
   Requirement
-    You need a modern Perl distribution (perl 5.6 and more), the DBI and
-    DBD::Oracle Perl modules to be installed. These are used to connect to
-    the Oracle database. To install DBD::Oracle and have it working you need
-    to have the Oracle client libraries installed and the ORACLE_HOME
-    environment variable must be defined.
+    You need a modern Perl distribution (perl 5.10 and more), the DBI >
+    1.614 and DBD::Oracle Perl modules to be installed. These are used to
+    connect to the Oracle database. To install DBD::Oracle and have it
+    working you need to have the Oracle client libraries installed and the
+    ORACLE_HOME environment variable must be defined.
 
-    On old Perl version you may need to install the Time::HiRes Perl module.
+    If you plan to export a MySQL database you need to install the Perl
+    module DBD::mysql which require that the mysql client libraries are
+    installed.
+
+    On some Perl distribution you may need to install the Time::HiRes Perl
+    module.
 
   Optional
     By default Ora2Pg dumps export to flat files, to load them into your
@@ -212,16 +218,16 @@ CONFIGURATION
 
     Here are all command line parameters available when using ora2pg:
 
-    Usage: ora2pg [-dhpqv --estimate_cost --dump_as_html] [--option value]
+      Usage: ora2pg [-dhpqv --estimate_cost --dump_as_html] [--option value]
 
-        -a | --allow str  : coma separated list of objects to allow from export.
+        -a | --allow str  : comma-separated list of objects to allow from export.
                             Can be used with SHOW_COLUMN too.
         -b | --basedir dir: Used to set the default output directory, where files
                             resulting from exports will be stored.
         -c | --conf file  : Used to set an alternate configuration file than the
                             default /etc/ora2pg/ora2pg.conf.
         -d | --debug      : Enable verbose output.
-        -e | --exclude str: coma separated list of objects to exclude from export.
+        -e | --exclude str: comma-separated list of objects to exclude from export.
                             Can be used with SHOW_COLUMN too.
         -h | --help       : Print this short help.
         -i | --input file : File containing Oracle PL/SQL code to convert with
@@ -231,6 +237,9 @@ CONFIGURATION
         -l | --log file   : Used to set a log file. Default is stdout.
         -L | --limit num  : number of tuples extracted from Oracle and stored in
                             memory before writing, default: 10000.
+        -m | --mysql      : inform Ora2Pg to export a MySQL database instead of an
+                            Oracle schema. Must be used when there is no database
+                            connection, otherwise it is autodetected from datasource.
         -n | --namespace schema : Used to set the Oracle schema to extract from.
         -o | --out file   : Used to set the path to the output file where SQL will
                             be written. Default: output.sql in running directory.
@@ -243,7 +252,6 @@ CONFIGURATION
         -T | --temp_dir DIR: use it to set a distinct temporary directory when two
                              or more ora2pg are run in parallel.
         -u | --user name  : Used to set the Oracle database connection user.
-        -u | --user name  : Used to set the Oracle database connection user.
                             ORA2PG_USER environment variable can be used instead.
         -v | --version    : Show Ora2Pg Version and exit.
         -w | --password pwd : Used to set the password of the Oracle database user.
@@ -254,14 +262,14 @@ CONFIGURATION
                       used to connect to the Pg database that will be the owner.
         --nls_lang code: use this to set the Oracle NLS_LANG client encoding.
         --client_encoding code: Use this to set the PostgreSQL client encoding.
-        --view_as_table str: coma separated list of view to export as table.
+        --view_as_table str: comma-separated list of view to export as table.
         --estimate_cost   : activate the migration cost evalution with SHOW_REPORT
         --cost_unit_value minutes: number of minutes for a cost evalution unit.
                       default: 5 minutes, correspond to a migration conducted by a
                       PostgreSQL expert. Set it to 10 if this is your first migration.
        --dump_as_html     : force ora2pg to dump report in HTML, used only with
                             SHOW_REPORT. Default is to dump report as simple text.
-       --dump_as_csv      : as above but force ora2pg to dump report in CSV.
+       --dump_as_csv      : same as above but force ora2pg to dump report in CSV.
        --dump_as_sheet    : report migration assessment one CSV line per database.
        --init_project NAME: initialise a typical ora2pg project tree. Top directory
                             will be created under project base dir.
@@ -275,9 +283,6 @@ CONFIGURATION
        --audit_user LIST  : comma separated list of username to filter queries in
                             the DBA_AUDIT_TRAIL table. Used only with SHOW_REPORT
                             and QUERY export type.
-
-    See full documentation at http://ora2pg.darold.net/ for more help or see
-    manpage with 'man ora2pg'.
 
     ora2pg will return 0 on success, 1 on error. It will return 2 when a
     child process have been interrupted and you've got the warning message:
@@ -760,15 +765,6 @@ CONFIGURATION
         the migration assessment level must switch from B to C. Default is
         set to 10 human-days.
 
-    AUDIT_USER
-        Set the comma separated list of username that must be used to filter
-        queries from the DBA_AUDIT_TRAIL table. Default is to not scan this
-        table and to never look for queries. This parameter is used only
-        with SHOW_REPORT and QUERY export type with no input file for
-        queries. Note that queries will be normalized before output unlike
-        when a file is given at input using the -i option or INPUT
-        directive.
-
     JOBS
         This configuration directive adds multiprocess support to data
         export type, the value is the number of process to use. Default is
@@ -846,6 +842,15 @@ CONFIGURATION
         below 49 will be added to 2000 and others to 1900. You can use this
         directive to change the default value 49. this is only relevant if
         you have user defined type with a column timestamp.
+
+    AUDIT_USER
+        Set the comma separated list of username that must be used to filter
+        queries from the DBA_AUDIT_TRAIL table. Default is to not scan this
+        table and to never look for queries. This parameter is used only
+        with SHOW_REPORT and QUERY export type with no input file for
+        queries. Note that queries will be normalized before output unlike
+        when a file is given at input using the -i option or INPUT
+        directive.
 
   Limiting object to export
     You may want to export only a part of an Oracle database, here are a set
@@ -1648,6 +1653,19 @@ CONFIGURATION
     DISABLE_COMMENT
         Set this to 1 if you don't want to export comment associated to
         tables and columns definition. Default is enabled.
+
+  Control MySQL export behavior
+    MYSQL_PIPES_AS_CONCAT
+        Enable this if double pipe and double ampersand (|| and &&) should
+        not be taken as equivalent to OR and AND. It depend of the variable
+        @sql_mode, Use it only if Ora2Pg fail on auto detecting this
+        behavior.
+
+    MYSQL_INTERNAL_EXTRACT_FORMAT
+        Enable this directive if you want EXTRACT() replacement to use the
+        internal format returned as an integer, for example DD HH24:MM:SS
+        will be replaced with format; DDHH24MMSS::bigint, this depend of
+        your apps usage.
 
   Special options to handle character encoding
     NLS_LANG and NLS_NCHAR
