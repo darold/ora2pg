@@ -4972,15 +4972,6 @@ CREATE TRIGGER insert_${table}_trigger
 				}
 			} elsif ( grep(/^$table$/i, keys %{$self->{external_table}}) ) {
 				$sql_output .= ") SERVER \L$self->{external_table}{$table}{directory}\E OPTIONS(filename '$self->{external_table}{$table}{directory_path}$self->{external_table}{$table}{location}', format 'csv', delimiter '$self->{external_table}{$table}{delimiter}');\n";
-			} elsif ($self->{is_mysql} && $self->{tables}{$table}{table_info}{connection}) {
-				my $schem = "dbname '$self->{schema}'," if ($self->{schema});
-				my $r_server = $self->{fdw_server};
-				my $r_table = $table;
-				if ($self->{tables}{$table}{table_info}{connection} =~ /([^'\/]+)\/([^']+)/) {
-					$r_server = $1;
-					$r_table = $2;
-				}
-				$sql_output .= ") SERVER $r_server OPTIONS($schem table_name '$r_table');\n";
 			} else {
 				my $schem = "schema '$self->{schema}'," if ($self->{schema});
 				$sql_output .= ") SERVER $self->{fdw_server} OPTIONS($schem table '$table');\n";
@@ -7469,8 +7460,6 @@ sub _get_audit_queries
 
 	return if (!$self->{audit_user});
 
-	return Ora2Pg::MySQL::_get_audit_queries($self) if ($self->{is_mysql});
-
 	my @users = ();
 	push(@users, split(/[,;\s]/, uc($self->{audit_user})));
 
@@ -7821,6 +7810,55 @@ WHERE A.TABLE_NAME = B.TABLE_NAME
 
 	return %parts;
 }
+
+=head2 _get_partitioned_table
+
+Return a hash of the partitioned table list with the number of partition.
+
+=cut
+
+sub _get_partitioned_table
+{
+	my($self) = @_;
+
+	my $highvalue = 'A.HIGH_VALUE';
+	if ($self->{db_version} =~ /Release 8/) {
+		$highvalue = "'' AS HIGH_VALUE";
+	}
+	# Retrieve all partitions.
+	my $str = qq{
+SELECT
+	A.TABLE_NAME,
+	A.PARTITION_POSITION,
+	A.PARTITION_NAME,
+	$highvalue,
+	A.TABLESPACE_NAME,
+	B.PARTITIONING_TYPE
+FROM $self->{prefix}_TAB_PARTITIONS A, $self->{prefix}_PART_TABLES B
+WHERE A.TABLE_NAME = B.TABLE_NAME
+};
+	$str .= $self->limit_to_objects('TABLE|PARTITION','A.TABLE_NAME|A.PARTITION_NAME');
+	if ($self->{prefix} ne 'USER') {
+		if ($self->{schema}) {
+			$str .= "\tAND a.table_owner ='$self->{schema}'\n";
+		} else {
+			$str .= "\tAND a.table_owner NOT IN ('" . join("','", @{$self->{sysusers}}) . "')\n";
+		}
+	}
+	$str .= "ORDER BY a.table_name\n";
+
+	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+
+	my %parts = ();
+	while (my $row = $sth->fetch) {
+		$parts{$row->[0]}++ if ($row->[2]);
+	}
+	$sth->finish;
+
+	return %parts;
+}
+
 
 sub _get_custom_types
 {
@@ -9768,7 +9806,6 @@ sub _show_infos
 		# DBA_AUDIT_TRAIL queries will not be count if no audit user is give
 		if ($self->{audit_user}) {
 			my $tbname = 'DBA_AUDIT_TRAIL';
-			$tbname = 'general_log' if ($self->{is_mysql});
 			$report_info{'Objects'}{'QUERY'}{'number'} = 0;
 			$report_info{'Objects'}{'QUERY'}{'invalid'} = 0;
 			$report_info{'Objects'}{'QUERY'}{'comment'} = "Normalized queries found in $tbname for user(s): $self->{audit_user}";
@@ -9837,6 +9874,12 @@ sub _show_infos
 
 		}
 
+		# Get partition list to mark tables with partition.
+		my %partitions = $self->_get_partitioned_table();
+
+		# Look for external tables
+		my %externals = $self->_get_external_tables();
+
 		my @done = ();
 		my $id = 0;
 		# Set the table information for each class found
@@ -9852,19 +9895,32 @@ sub _show_infos
 				push(@done, $t);
 			}
 			my $warning = '';
+			# Set the number of partition if any
+			if (exists $partitions{$t}) {
+				$warning .= " - $partitions{$t} partitions";
+			}
+			# Search for reserved keywords
 			my $ret = &is_reserved_words($t);
 			if ($ret == 1) {
-				$warning = " (Warning: '$t' is a reserved word in PostgreSQL)";
+				$warning .= " (Warning: '$t' is a reserved word in PostgreSQL)";
 			} elsif ($ret == 2) {
-				$warning = " (Warning: '$t' object name with numbers only must be double quoted in PostgreSQL)";
+				$warning .= " (Warning: '$t' object name with numbers only must be double quoted in PostgreSQL)";
 			}
 
 			$total_row_num += $tables_infos{$t}{num_rows};
 
 			# Show table information
+			my $kind = '';
+			$kind = ' FOREIGN'  if ($tables_infos{$t}{connection});
+			if (exists $partitions{$t}) {
+				$kind = ' PARTITIONED';
+			}
+			if (exists $externals{$t}) {
+				$kind = ' EXTERNAL';
+			}
 			my $tname = $t;
 			$tname = "$tables_infos{$t}{owner}.$t" if ($self->{debug});
-			$self->logit("[$i] TABLE $tname (owner: $tables_infos{$t}{owner}, $tables_infos{$t}{num_rows} rows)$warning\n", 0);
+			$self->logit("[$i]$kind TABLE $tname (owner: $tables_infos{$t}{owner}, $tables_infos{$t}{num_rows} rows)$warning\n", 0);
 
 			# Set the fields information
 			if ($type eq 'SHOW_COLUMN') {
