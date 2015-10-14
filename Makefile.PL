@@ -801,6 +801,21 @@ GEOMETRY_EXTRACT_TYPE	INTERNAL
 # is arbitrary set to orcl. This only concerns export type FDW.
 FDW_SERVER	orcl
 
+
+#------------------------------------------------------------------------------
+# MYSQL SECTION (Control MySQL export behavior)
+#------------------------------------------------------------------------------
+
+# Enable this if double pipe and double ampersand (|| and &&) should not be
+# taken as equivalent to OR and AND. It depend of the variable @sql_mode,
+# Use it only if Ora2Pg fail on auto detecting this behavior.
+MYSQL_PIPES_AS_CONCAT		0
+
+# Enable this directive if you want EXTRACT() replacement to use the internal
+# format returned as an integer, for example DD HH24:MM:SS will be replaced
+# with format; DDHH24MMSS::bigint, this depend of your apps usage.
+MYSQL_INTERNAL_EXTRACT_FORMAT	0
+
 };
 close(OUTCFG);
 
@@ -822,7 +837,7 @@ WriteMakefile(
 		      },
     'AUTHOR'       => 'Gilles Darold (gilles _AT_ darold _DOT_ net)',
     'ABSTRACT'     => 'Oracle to PostgreSQL migration toolkit',
-    'EXE_FILES'    => [ qw(scripts/ora2pg) ],
+    'EXE_FILES'    => [ qw(scripts/ora2pg scripts/ora2pg_scanner) ],
     'MAN3PODS'     => { 'doc/Ora2Pg.pod' => 'blib/man3/ora2pg.3' },
     'DESTDIR'      => $PREFIX,
     'INSTALLDIRS'  => $ENV{INSTALLDIRS},
