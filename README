@@ -2034,6 +2034,36 @@ CONFIGURATION
     which database to migrate first and the team that must be mobilized to
     operate the migration.
 
+  Global Oracle and MySQL migraton assessment
+    Ora2Pg come with a script ora2pg_scanner that can be used when you have
+    a huge number of instances and schema to scan for migration assessment.
+
+        Usage: ora2pg_scanner -l CSVFILE [-o OUTDIR]
+
+            -l | --list FILE : CSV file containing a list of database to scan with
+                    all requiered information. The first line of the file
+                    can contains the following header that describe the
+                    format that must be used:
+
+                    "type","schema/database","dsn","user","password"
+
+            -o | --outdir DIR : (optional) by default all reports will be dumped to a
+                    directory named 'output', it will be created automatically.
+                    If you want to change the name of this directory, set the name
+                    at second argument.
+
+        Here is a full example of a CSV database list file:
+
+            "type","schema/database","dsn","user","password"
+            "MYSQL","sakila","dbi:mysql:host=192.168.1.10;database=sakila;port=3306","root","secret"
+            "ORACLE","HR","dbi:Oracle:host=192.168.1.10;sid=XE;port=1521","system","manager"
+
+        The CSV field separator must be a comma.
+
+    It will generate a CSV file with the assessment result, one line per
+    schema or database and a detailled HTML report for each database
+    scanned.
+
   Migration assessment method
     Migration unit scores given to each type of Oracle database object are
     defined in the Perl library lib/Ora2Pg/PLSQL.pm in the %OBJECT_SCORE
