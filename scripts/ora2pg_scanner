@@ -1,0 +1,131 @@
+#!/usr/bin/perl
+#------------------------------------------------------------------------------
+# Project  : Oracle to Postgresql converter
+# Name     : ora2pg_scanner
+# Author   : Gilles Darold, gilles _AT_ darold _DOT_ net
+# Copyright: Copyright (c) 2000-2015 : Gilles Darold - All rights reserved -
+# Function : Script used to scan a list of DSN and generate reports
+# Usage    : ora2pg_scanner -l dsn_csv_file -o outdir
+#------------------------------------------------------------------------------
+#
+#        This program is free software: you can redistribute it and/or modify
+#        it under the terms of the GNU General Public License as published by
+#        the Free Software Foundation, either version 3 of the License, or
+#        any later version.
+# 
+#        This program is distributed in the hope that it will be useful,
+#        but WITHOUT ANY WARRANTY; without even the implied warranty of
+#        MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#        GNU General Public License for more details.
+# 
+#        You should have received a copy of the GNU General Public License
+#        along with this program. If not, see < http://www.gnu.org/licenses/ >.
+# 
+#------------------------------------------------------------------------------
+use strict;
+
+use Getopt::Long qw(:config no_ignore_case bundling);
+
+my $VERSION = '16.0';
+
+my @DB_DNS = ();
+my $OUTDIR = '';
+my $INPUT_FILE = '';
+my $HELP = 0;
+
+# Collect command line arguments
+GetOptions (
+	'l|list=s'   => \$INPUT_FILE,
+        'o|outdir=s' => \$OUTDIR,
+        'h|help!' => \$HELP,
+);
+
+$OUTDIR = 'output' if (!$OUTDIR);
+
+if (!$INPUT_FILE || !-e $INPUT_FILE || $HELP) {
+	usage();
+}
+
+
+open(IN, $INPUT_FILE) or die "FATAL: can not read file $INPUT_FILE, $!\n";
+while (my $l = <IN>) {
+	#"type","schema/database","dsn","user","password","audit users"
+	#"MYSQL","sakila","dbi:mysql:host=192.168.1.10;database=sakila;port=3306","root","mysecret"
+	#"ORACLE","HR","dbi:Oracle:host=192.168.1.10;sid=XE;port=1521","system","manager","hr;system;scott"
+	# skip header line
+	chomp($l);
+	next if ($l !~ /^["]*(MYSQL|ORACLE)["]*,/i);
+	$l =~ s/"//gs;
+	my ($type, $schema, $dsn, $user, $passwd, $audit_user) = split(/,/, $l);
+	push(@DB_DNS, { (
+				'type' => uc($type),
+				'schema' => $schema,
+				'dsn' => $dsn,
+				'user' => $user,
+				'pwd' => $passwd,
+				'audit_user' => $audit_user,
+			)
+		}
+	);
+}
+close(IN);
+
+# Create the output directory
+if (!-d "$OUTDIR") {
+	mkdir "$OUTDIR";
+} else {
+	print "FATAL: output directory already exists, $OUTDIR.\n";
+	exit 1;
+}
+
+# Start to generate call to ora2pg
+my $header = ' --print_header';
+for (my $i = 0; $i < @DB_DNS; $i++) {
+	$header = '' if ($i > 0);
+	$ENV{ORA2PG_USER}     = $DB_DNS[$i]->{user};
+	$ENV{ORA2PG_PASSWD} = $DB_DNS[$i]->{pwd};
+	my $typ = '';
+	$typ = ' -m' if ($DB_DNS[$i]->{type} eq 'MYSQL');
+	my $audit = '';
+	$audit = " --audit_user \"$DB_DNS[$i]->{audit_user}\"" if ($DB_DNS[$i]->{audit_user});
+	print "Running: ora2pg$typ -t SHOW_REPORT --dump_as_sheet --estimate_cost$header$audit -s '$DB_DNS[$i]->{dsn}' -n $DB_DNS[$i]->{schema} >> $OUTDIR/dbs_scan.csv\n";
+	`ora2pg$typ -t SHOW_REPORT --dump_as_sheet --estimate_cost$header$audit -s '$DB_DNS[$i]->{dsn}' -n $DB_DNS[$i]->{schema} >> $OUTDIR/dbs_scan.csv`;
+	print "Running: ora2pg$typ -t SHOW_REPORT --dump_as_html --estimate_cost$audit -s '$DB_DNS[$i]->{dsn}' -n $DB_DNS[$i]->{schema} >> $OUTDIR/$DB_DNS[$i]->{schema}-report.html\n";
+	`ora2pg$typ -t SHOW_REPORT --dump_as_html --estimate_cost$audit -s '$DB_DNS[$i]->{dsn}' -n $DB_DNS[$i]->{schema} >> $OUTDIR/$DB_DNS[$i]->{schema}-report.html`;
+}
+
+exit 0;
+
+sub usage
+{
+	my $msg = shift;
+
+	print "$msg\n" if ($msg);
+
+	print qq{
+Usage: ora2pg_scanner -l CSVFILE [-o OUTDIR]
+
+   -l | --list FILE : CSV file containing a list of database to scan with
+		all requiered information. The first line of the file
+		can contains the following header that describe the
+		format that must be used:
+
+		"type","schema/database","dsn","user","password"
+
+   -o | --outdir DIR : (optional) by default all reports will be dumped to a
+		directory named 'output', it will be created automatically.
+		If you want to change the name of this directory, set the name
+		at second argument.
+
+   Here is a full example of a CSV database list file:
+
+	"type","schema/database","dsn","user","password"
+	"MYSQL","sakila","dbi:mysql:host=192.168.1.10;database=sakila;port=3306","root","secret"
+	"ORACLE","HR","dbi:Oracle:host=192.168.1.10;sid=XE;port=1521","system","manager"
+
+   The CSV field separator must be a comma.
+
+};
+	exit 1;
+}
+
