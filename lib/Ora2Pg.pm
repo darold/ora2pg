@@ -3457,7 +3457,7 @@ LANGUAGE plpgsql ;
 				if (!$self->{preserve_case}) {
 					$sql_output .= "DROP TRIGGER $self->{pg_supports_ifexists} \L$trig->[0]\E ON $tbname CASCADE;\n";
 				} else {
-					$sql_output .= "DROP TRIGGER $self->{pg_supports_ifexists} \L$trig->[0]\E ON $tbname CASCADE;\n";
+					$sql_output .= "DROP TRIGGER $self->{pg_supports_ifexists} \"$trig->[0]\" ON $tbname CASCADE;\n";
 				}
 				my $security = '';
 				my $revoke = '';
@@ -3466,6 +3466,10 @@ LANGUAGE plpgsql ;
 					$revoke = "-- REVOKE ALL ON FUNCTION trigger_fct_\L$trig->[0]\E FROM PUBLIC;\n";
 				}
 				if ($self->{pg_supports_when} && $trig->[5]) {
+					if (!$self->{preserve_case}) {
+						$trig->[4] =~ s/"([^"]+)"/\L$1\E/gs;
+						$trig->[4] =~ s/ALTER TRIGGER\s+[^\s]+\s+ENABLE(;)?//;
+					}
 					$sql_output .= "CREATE OR REPLACE FUNCTION trigger_fct_\L$trig->[0]\E() RETURNS trigger AS \$BODY\$\n$trig->[4]\n\$BODY\$\n LANGUAGE 'plpgsql'$security;\n$revoke\n";
 					if ($self->{force_owner}) {
 						my $owner = $trig->[8];
@@ -3478,20 +3482,24 @@ LANGUAGE plpgsql ;
 					}
 					$trig->[6] =~ s/\n+$//s;
 					$trig->[6] =~ s/^[^\.\s]+\.//;
+					if (!$self->{preserve_case}) {
+						$trig->[6] =~ s/"([^"]+)"/\L$1\E/gs;
+						$trig->[5] =~ s/"([^"]+)"/\L$1\E/gs;
+					}
+					chomp($trig->[6]);
 					$sql_output .= "CREATE TRIGGER $trig->[6]\n";
 					if ($trig->[5]) {
 						if ($self->{plsql_pgsql}) {
-							if ($trig->[5] !~ /\bBEGIN\b/) {
-								chomp($trig->[5]);
-								$trig->[5] .= ';' if ($trig->[5] !~ /;$/);
-								$trig->[5] = "BEGIN\n$trig->[5]\nEND;";
-							}
 							$trig->[5] = Ora2Pg::PLSQL::plsql_to_plpgsql($self, $trig->[5]);
 						}
 						$sql_output .= "\tWHEN ($trig->[5])\n";
 					}
 					$sql_output .= "\tEXECUTE PROCEDURE trigger_fct_\L$trig->[0]\E();\n\n";
 				} else {
+					if (!$self->{preserve_case}) {
+						$trig->[4] =~ s/"([^"]+)"/\L$1\E/gs;
+						$trig->[4] =~ s/ALTER TRIGGER\s+[^\s]+\s+ENABLE(;)?//;
+					}
 					$sql_output .= "CREATE OR REPLACE FUNCTION trigger_fct_\L$trig->[0]\E() RETURNS trigger AS \$BODY\$\n$trig->[4]\n\$BODY\$\n LANGUAGE 'plpgsql'$security;\n$revoke\n";
 					if ($self->{force_owner}) {
 						my $owner = $trig->[8];
