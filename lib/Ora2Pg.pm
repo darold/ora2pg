@@ -6705,20 +6705,6 @@ $idxowner
 			print STDERR "WARNING: index $row->[0] has the same name as the table itself. Please rename it before export.\n"; 
 		}
 		$unique{$row->[-6]}{$row->[0]} = $row->[2];
-		if (($#{$row} > 6) && ($row->[7] eq 'Y')) {
-			$idx_type{$row->[-6]}{$row->[0]}{type} = $row->[4] . ' JOIN';
-		} else {
-			$idx_type{$row->[-6]}{$row->[0]}{type} = $row->[4];
-		}
-		if ($row->[-3] =~ /SPATIAL_INDEX/) {
-			$idx_type{$row->[-6]}{$row->[0]}{type_name} = $row->[-2];
-			if ($row->[-2] =~ /layer_gtype=([^\s,]+)/i) {
-				$idx_type{$row->[-5]}{$row->[0]}{type_constraint} = uc($1);
-			}
-			if ($row->[-2] =~ /sdo_indx_dims=(\d+)/i) {
-				$idx_type{$row->[-5]}{$row->[0]}{type_dims} = $1;
-			}
-		}
 		# Save original column name
 		my $colname = $row->[1];
 		# Enclose with double quote if required
@@ -6747,6 +6733,21 @@ $idxowner
 		# Index with DESC are declared as FUNCTION-BASED, fix that
 		if (($row->[4] =~ /FUNCTION-BASED/i) && ($row->[1] !~ /\(.*\)/)) {
 			$row->[4] =~ s/FUNCTION-BASED //;
+		}
+
+		if (($#{$row} > 6) && ($row->[7] eq 'Y')) {
+			$idx_type{$row->[-6]}{$row->[0]}{type} = $row->[4] . ' JOIN';
+		} else {
+			$idx_type{$row->[-6]}{$row->[0]}{type} = $row->[4];
+		}
+		if ($row->[-3] =~ /SPATIAL_INDEX/) {
+			$idx_type{$row->[-6]}{$row->[0]}{type_name} = $row->[-2];
+			if ($row->[-2] =~ /layer_gtype=([^\s,]+)/i) {
+				$idx_type{$row->[-5]}{$row->[0]}{type_constraint} = uc($1);
+			}
+			if ($row->[-2] =~ /sdo_indx_dims=(\d+)/i) {
+				$idx_type{$row->[-5]}{$row->[0]}{type_dims} = $1;
+			}
 		}
 
 		push(@{$data{$row->[-6]}{$row->[0]}}, $row->[1]);
