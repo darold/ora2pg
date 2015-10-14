@@ -31,7 +31,7 @@ use POSIX qw(locale_h sys_wait_h _exit);
 setlocale(LC_NUMERIC, '');
 setlocale(LC_ALL,     'C');
 
-my $VERSION = '15.3';
+my $VERSION = '16.0';
 
 $| = 1;
 
@@ -71,6 +71,7 @@ my $CREATE_PROJECT = '';
 my $PROJECT_BASE = '.';
 my $PRINT_HEADER = '';
 my $HUMAN_DAY_LIMIT;
+my $IS_MYSQL = 0;
 my $AUDIT_USER = '';
 
 my @SCHEMA_ARRAY  = qw( TABLE PACKAGE VIEW GRANT SEQUENCE TRIGGER FUNCTION PROCEDURE TABLESPACE PARTITION TYPE MVIEW DBLINK SYNONYM DIRECTORY );
@@ -78,8 +79,10 @@ my @EXTERNAL_ARRAY  = qw( KETTLE FDW );
 my @REPORT_ARRAY  = qw( SHOW_VERSION SHOW_REPORT SHOW_SCHEMA SHOW_TABLE SHOW_COLUMN SHOW_ENCODING  );
 my @SOURCES_ARRAY = qw( PACKAGE VIEW TRIGGER FUNCTION PROCEDURE PARTITION TYPE MVIEW );
 my @DATA_ARRAY    = qw( INSERT COPY );
-my @CAPABILITIES  = qw( QUERY);
-push(@CAPABILITIES, @SCHEMA_ARRAY, @REPORT_ARRAY, @DATA_ARRAY, @EXTERNAL_ARRAY);
+my @CAPABILITIES  = qw( QUERY );
+
+my @MYSQL_SCHEMA_ARRAY  = qw( TABLE VIEW GRANT TRIGGER FUNCTION PROCEDURE PARTITION DBLINK );
+my @MYSQL_SOURCES_ARRAY = qw( VIEW TRIGGER FUNCTION PROCEDURE PARTITION );
 
 my $TMP_DIR      = File::Spec->tmpdir() || '/tmp';
 
@@ -96,6 +99,7 @@ GetOptions (
 	'J|copies=i' => \$ORACLE_COPIES,
         'l|log=s' => \$LOGFILE,
 	'L|limit=i' => \$DATA_LIMIT,
+	'm|mysql!' => \$IS_MYSQL,
         'o|out=s' => \$OUTFILE,
 	'p|plsql!' => \$PLSQL,
 	'P|parallel=i' =>\$PARALLEL_TABLES,
@@ -133,6 +137,12 @@ if ($HELP) {
 	&usage();
 }
 
+if ($IS_MYSQL) {
+	@SCHEMA_ARRAY = @MYSQL_SCHEMA_ARRAY;
+	@SOURCES_ARRAY = @MYSQL_SOURCES_ARRAY;
+	@EXTERNAL_ARRAY = ();
+}
+
 # Create project repository and useful stuff
 if ($CREATE_PROJECT) {
 	if (!-d "$PROJECT_BASE") {
@@ -166,6 +176,8 @@ if ($FILE_CONF && ! -e $FILE_CONF) {
 	print "FATAL: can't find configuration file $CONFIG_FILE\n";
 	&usage();
 }
+
+push(@CAPABILITIES, @SCHEMA_ARRAY, @REPORT_ARRAY, @DATA_ARRAY, @EXTERNAL_ARRAY);
 
 # Validate export type
 $EXPORT_TYPE = uc($EXPORT_TYPE);
@@ -243,6 +255,7 @@ my $schema = new Ora2Pg (
 	parallel_tables => $PARALLEL_TABLES,
 	print_header => $PRINT_HEADER,
 	human_days_limit => $HUMAN_DAY_LIMIT,
+	is_mysql => $IS_MYSQL,
 	audit_user => $AUDIT_USER,
 	temp_dir => $TMP_DIR,
 );
@@ -293,6 +306,7 @@ Usage: ora2pg [-dhpqv --estimate_cost --dump_as_html] [--option value]
     -l | --log file   : Used to set a log file. Default is stdout.
     -L | --limit num  : number of tuples extracted from Oracle and stored in
 			memory before writing, default: 10000.
+    -m | --mysql      : Export a MySQL database instead of an Oracle schema.
     -n | --namespace schema : Used to set the Oracle schema to extract from.
     -o | --out file   : Used to set the path to the output file where SQL will
 			be written. Default: output.sql in running directory.
@@ -334,8 +348,8 @@ Usage: ora2pg [-dhpqv --estimate_cost --dump_as_html] [--option value]
                         assessment level switch from B to C. Default is set to
                         10 human-days.
    --audit_user LIST  : comma separated list of username to filter queries in
- 			the DBA_AUDIT_TRAIL table. Used only with SHOW_REPORT
- 			and QUERY export type.
+                        the DBA_AUDIT_TRAIL table. Used only with SHOW_REPORT
+                        and QUERY export type.
 
 See full documentation at http://ora2pg.darold.net/ for more help or see
 manpage with 'man ora2pg'.
@@ -347,6 +361,7 @@ Most of the time this is an OOM issue, you might first reduce DATA_LIMIT value.
 
 };
 	exit 1;
+
 }
 
 ####

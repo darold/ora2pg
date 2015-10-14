@@ -24,14 +24,14 @@ package Ora2Pg::PLSQL;
 # 
 #------------------------------------------------------------------------------
 
-use vars qw($VERSION %OBJECT_SCORE $SIZE_SCORE $FCT_TEST_SCORE $QUERY_TEST_SCORE %UNCOVERED_SCORE @ORA_FUNCTIONS);
+use vars qw($VERSION %OBJECT_SCORE $SIZE_SCORE $FCT_TEST_SCORE $QUERY_TEST_SCORE %UNCOVERED_SCORE %UNCOVERED_MYSQL_SCORE @ORA_FUNCTIONS @MYSQL_SPATIAL_FCT @MYSQL_FUNCTIONS);
 use POSIX qw(locale_h);
 
 #set locale to LC_NUMERIC C
 setlocale(LC_NUMERIC,"C");
 
 
-$VERSION = '15.3';
+$VERSION = '16.0';
 
 #----------------------------------------------------
 # Cost scores used when converting PLSQL to PLPGSQL
@@ -67,10 +67,8 @@ $VERSION = '15.3';
 # Note: his correspond to the global read time not to the difficulty.
 $SIZE_SCORE = 1000;
 
-# Cost to apply on each function for testing
+# Cost to apply on each function or query for testing
 $FCT_TEST_SCORE = 2;
-
-# Cost to apply on each query for testing
 $QUERY_TEST_SCORE = 0.1;
 
 # Scores associated to each code difficulties.
@@ -163,6 +161,119 @@ $QUERY_TEST_SCORE = 0.1;
 	SysTimestamp
 );
 
+@MYSQL_SPATIAL_FCT = (
+	'AsBinary',
+	'AsText',
+	'Buffer',
+	'Centroid',
+	'Contains',
+	'Crosses',
+	'Dimension',
+	'Disjoint',
+	'EndPoint',
+	'Envelope',
+	'Equals',
+	'ExteriorRing',
+	'GeomCollFromText',
+	'GeomCollFromWKB',
+	'GeometryN',
+	'GeometryType',
+	'GeomFromText',
+	'GeomFromWKB',
+	'GLength',
+	'InteriorRingN',
+	'Intersects',
+	'IsClosed',
+	'IsSimple',
+	'LineFromText',
+	'LineFromWKB',
+	'MLineFromText',
+	'MPointFromText',
+	'MPolyFromText',
+	'NumGeometries',
+	'NumInteriorRings',
+	'NumPoints',
+	'Overlaps',
+	'Point',
+	'PointFromText',
+	'PointFromWKB',
+	'PointN',
+	'PolygonFromText',
+	'Polygon',
+	'SRID',
+	'StartPoint',
+	'Touches',
+	'Within',
+	'X',
+	'Y'
+);
+
+@MYSQL_FUNCTIONS = (
+	'AES_DECRYPT',
+	'AES_ENCRYPT',
+	'ASYMMETRIC_DECRYPT',
+	'ASYMMETRIC_DERIVE',
+	'ASYMMETRIC_ENCRYPT',
+	'ASYMMETRIC_SIGN',
+	'ASYMMETRIC_VERIFY',
+	'CREATE_ASYMMETRIC_PRIV_KEY',
+	'CREATE_ASYMMETRIC_PUB_KEY',
+	'CREATE_DH_PARAMETERS',
+	'CREATE_DIGEST',
+	'DECODE',
+	'DES_DECRYPT',
+	'DES_ENCRYPT',
+	'ENCODE',
+	'ENCRYPT',
+	'SHA1',
+	'SHA2',
+	'COLLATION',
+	'COMPRESS',
+	'CONVERT',
+	'DEFAULT',
+	'FOUND_ROWS',
+	'GTID_SUBSET',
+	'GTID_SUBTRACT',
+	'INET6_ATON',
+	'INET6_NTOA',
+	'INTERVAL',
+	'IS_FREE_LOCK',
+	'IS_IPV4_COMPAT',
+	'IS_IPV4_MAPPED',
+	'IsEmpty',
+	'LAST_INSERT_ID',
+	'LOAD_FILE',
+	'MASTER_POS_WAIT',
+	'MATCH',
+	'OLD_PASSWORD',
+	'PERIOD_ADD',
+	'PERIOD_DIFF',
+	'RANDOM_BYTES',
+	'ROW_COUNT',
+	'SQL_THREAD_WAIT_AFTER_GTIDS',
+	'WAIT_UNTIL_SQL_THREAD_AFTER_GTIDS',
+	'UNCOMPRESS',
+	'UNCOMPRESSED_LENGTH',
+	'UpdateXML',
+	'UUID_SHORT',
+	'VALIDATE_PASSWORD_STRENGTH',
+	'WEIGHT_STRING',
+);
+
+# Scores associated to each code difficulties after replacement.
+%UNCOVERED_MYSQL_SCORE = (
+	'ARRAY_AGG_DISTINCT' => 1, # array_agg(distinct
+	'SOUNDS LIKE' => 1,
+	'CHARACTER SET' => 1,
+	'COUNT(DISTINCT)' => 2,
+	'MATCH' => 2,
+	'JSON' => 2,
+	'LOCK' => 2,
+	'@VAR' => 0.1,
+);
+
+
+
 =head1 NAME
 
 PSQL - Oracle to PostgreSQL procedural language converter
@@ -186,7 +297,9 @@ This function return a PLSQL code translated to PLPGSQL code
 
 sub plsql_to_plpgsql
 {
-        my ($str, $null_equal_empty, $export_type, $pkg_fcts) = @_;
+        my ($class, $str) = @_;
+
+	return mysql_to_plpgsql($class, $str) if ($class->{is_mysql});
 
 	my @xmlelt = ();
 
@@ -236,7 +349,7 @@ sub plsql_to_plpgsql
 	$str =~ s/EXECUTE IMMEDIATE/EXECUTE/igs;
 
 	# SELECT without INTO should be PERFORM. Exclude select of view when prefixed with AS ot IS
-	if ( ($export_type ne 'QUERY') && ($export_type ne 'VIEW') ) {
+	if ( ($class->{type} ne 'QUERY') && ($class->{type} ne 'VIEW') ) {
 		$str =~ s/(\s+)(?<!AS|IS)(\s+)SELECT((?![^;]+\bINTO\b)[^;]+;)/$1$2PERFORM$3/isg;
 		$str =~ s/\bSELECT\b((?![^;]+\bINTO\b)[^;]+;)/PERFORM$1/isg;
 		$str =~ s/(AS|IS|FOR|UNION ALL|UNION|\()(\s*)PERFORM/$1$2SELECT/isg;
@@ -456,7 +569,7 @@ sub plsql_to_plpgsql
 	$str =~ s/(?!:)(.)=\s*NULL/$1 IS NULL/igs;
 
 	# Rewrite all IF ... IS NULL with coalesce because for Oracle empty and NULL is the same
-	if ($null_equal_empty) {
+	if ($class->{null_equal_empty}) {
 		# Form: column IS NULL
 		$str =~ s/([a-z0-9_\."]+)\s*IS NULL/coalesce($1::text, '') = ''/igs;
 		$str =~ s/([a-z0-9_\."]+)\s*IS NOT NULL/($1 IS NOT NULL AND $1::text <> '')/igs;
@@ -494,9 +607,9 @@ sub plsql_to_plpgsql
 	##############
 	# Replace package.function call by package_function
 	##############
-	if (scalar keys %$pkg_fcts) {
-		foreach my $k (keys %$pkg_fcts) {
-			$str =~ s/($pkg_fcts->{$k}{package}\.)?$k\b/$pkg_fcts->{$k}{name}/igs;
+	if (scalar keys %{$class->{package_functions}}) {
+		foreach my $k (keys %{$class->{package_functions}}) {
+			$str =~ s/($class->{package_functions}->{$k}{package}\.)?$k\b/$class->{package_functions}->{$k}{name}/igs;
 		}
 	}
 
@@ -787,7 +900,9 @@ sub replace_sql_type
 
 sub estimate_cost
 {
-	my ($str, $type) = @_;
+	my ($class, $str, $type) = @_;
+
+	return mysql_estimate_cost($str, $type) if ($class->{is_mysql});
 
 	my %cost_details = ();
 
@@ -798,6 +913,7 @@ sub estimate_cost
 
 	# Default cost is testing that mean it at least must be tested
 	my $cost = $FCT_TEST_SCORE;
+	# When evaluating queries size must not be included here
 	if ($type eq 'QUERY') {
 		$cost = 0;
 	}
@@ -805,6 +921,7 @@ sub estimate_cost
 
 	# Set cost following code length
 	my $cost_size = int(length($str)/$SIZE_SCORE) || 1;
+	# When evaluating queries size must not be included here
 	if ($type eq 'QUERY') {
 		$cost_size = 0;
 	}
@@ -909,6 +1026,461 @@ sub estimate_cost
 	}
 	foreach my $t (keys %UNCOVERED_SCORE) {
 		$cost += $UNCOVERED_SCORE{$t}*$cost_details{$t};
+	}
+
+	return $cost, %cost_details;
+}
+
+=head2 mysql_to_plpgsql
+
+This function turn a MySQL function code into a PLPGSQL code
+
+=cut
+
+sub mysql_to_plpgsql
+{
+        my ($class, $str) = @_;
+
+	#--------------------------------------------
+	# Procedure are functions returning void
+	$str =~ s/\bPROCEDURE\b/FUNCTION/igs;
+
+	# Simply remove this as not supported
+	$str =~ s/\bDEFAULT\s+NULL\b//igs;
+
+	# Change mysql varaible affectation 
+	$str =~ s/\bSET\s+([^\s]+\s*)=([^;\n]+;)/$1:=$2/igs;
+
+	# remove declared handler
+	$str =~ s/[^\s]+\s+HANDLER\s+FOR\s+[^;]+;//igs;
+
+	# Try to replace LEAVE label by EXIT label
+	my %repl_leave = ();
+	my $i = 0;
+	while ($str =~ s/\bLEAVE\s+([^\s;]+)\s*;/%REPEXITLBL$i%/igs) {
+		my $label = $1;
+		if ( $str =~ /\b$label:/is) {
+			$repl_leave{$i} = "EXIT $label;";
+		} else {
+			# This is a main block label
+			$repl_leave{$i} = "RETURN;";
+		}
+	}
+	foreach $i (keys %repl_leave) {
+		$str =~ s/\%REPEXITLBL$i\%/$repl_leave{$i}/gs;
+	}
+	%repl_leave = ();
+	$str =~ s/\bLEAVE\s*;/EXIT;/igs;
+
+	# Try to replace ITERATE label by CONTINUE label
+	my %repl_iterate = ();
+	$i = 0;
+	while ($str =~ s/\bITERATE\s+([^\s;]+)\s*;/%REPITERLBL$i%/igs) {
+		my $label = $1;
+		$repl_iterate{$i} = "CONTINUE $label;";
+	}
+	foreach $i (keys %repl_iterate) {
+		$str =~ s/\%REPITERLBL$i\%/$repl_iterate{$i}/gs;
+	}
+	%repl_iterate = ();
+	$str =~ s/\bITERATE\s*;/CONTINUE;/igs;
+
+	# Replace now() with CURRENT_TIMESTAMP even if this is the same
+	# because parenthesis can break the following regular expressions
+	$str =~ s/\bNOW\(\s*\)/CURRENT_TIMESTAMP/igs;
+
+	# Replace EXTRACT() with unit not supported by PostgreSQL
+	if ($class->{mysql_internal_extract_format}) {
+		$str =~ s/\bEXTRACT\(\s*YEAR_MONTH\s+FROM\s+([^\(\)]+)\s*\)/to_char(($1)::timestamp, 'YYYYMM')::integer/igs;
+		$str =~ s/\bEXTRACT\(\s*DAY_HOUR\s+FROM\s+([^\(\)]+)\s*\)/to_char(($1)::timestamp, 'DDHH24')::integer/igs;
+		$str =~ s/\bEXTRACT\(\s*DAY_MINUTE\s+FROM\s+([^\(\)]+)\s*\)/to_char(($1)::timestamp, 'DDHH24MI')::integer/igs;
+		$str =~ s/\bEXTRACT\(\s*DAY_SECOND\s+FROM\s+([^\(\)]+)\s*\)/to_char(($1)::timestamp, 'DDHH24MISS')::integer/igs;
+		$str =~ s/\bEXTRACT\(\s*DAY_MICROSECOND\s+FROM\s+([^\(\)]+)\s*\)/to_char(($1)::timestamp, 'DDHH24MISSUS')::bigint/igs;
+		$str =~ s/\bEXTRACT\(\s*HOUR_MINUTE\s+FROM\s+([^\(\)]+)\s*\)/to_char(($1)::timestamp, 'HH24MI')::integer/igs;
+		$str =~ s/\bEXTRACT\(\s*HOUR_SECOND\s+FROM\s+([^\(\)]+)\s*\)/to_char(($1)::timestamp, 'HH24MISS')::integer/igs;
+		$str =~ s/\bEXTRACT\(\s*HOUR_MICROSECOND\s+FROM\s+([^\(\)]+)\s*\)/to_char(($1)::timestamp, 'HH24MISSUS')::bigint/igs;
+		$str =~ s/\bEXTRACT\(\s*MINUTE_SECOND\s+FROM\s+([^\(\)]+)\s*\)/to_char(($1)::timestamp, 'MISS')::integer/igs;
+		$str =~ s/\bEXTRACT\(\s*MINUTE_MICROSECOND\s+FROM\s+([^\(\)]+)\s*\)/to_char(($1)::timestamp, 'MISSUS')::bigint/igs;
+		$str =~ s/\bEXTRACT\(\s*SECOND_MICROSECOND\s+FROM\s+([^\(\)]+)\s*\)/to_char(($1)::timestamp, 'SSUS')::integer/igs;
+	} else {
+		$str =~ s/\bEXTRACT\(\s*YEAR_MONTH\s+FROM\s+([^\(\)]+)\s*\)/to_char(($1)::timestamp, 'YYYY-MM')/igs;
+		$str =~ s/\bEXTRACT\(\s*DAY_HOUR\s+FROM\s+([^\(\)]+)\s*\)/to_char(($1)::timestamp, 'DD HH24')/igs;
+		$str =~ s/\bEXTRACT\(\s*DAY_MINUTE\s+FROM\s+([^\(\)]+)\s*\)/to_char(($1)::timestamp, 'DD HH24:MI')/igs;
+		$str =~ s/\bEXTRACT\(\s*DAY_SECOND\s+FROM\s+([^\(\)]+)\s*\)/to_char(($1)::timestamp, 'DD HH24:MI:SS')/igs;
+		$str =~ s/\bEXTRACT\(\s*DAY_MICROSECOND\s+FROM\s+([^\(\)]+)\s*\)/to_char(($1)::timestamp, 'DD HH24:MI:SS.US')/igs;
+		$str =~ s/\bEXTRACT\(\s*HOUR_MINUTE\s+FROM\s+([^\(\)]+)\s*\)/to_char(($1)::timestamp, 'HH24:MI')/igs;
+		$str =~ s/\bEXTRACT\(\s*HOUR_SECOND\s+FROM\s+([^\(\)]+)\s*\)/to_char(($1)::timestamp, 'HH24:MI:SS')/igs;
+		$str =~ s/\bEXTRACT\(\s*HOUR_MICROSECOND\s+FROM\s+([^\(\)]+)\s*\)/to_char(($1)::timestamp, 'HH24:MI:SS.US')/igs;
+		$str =~ s/\bEXTRACT\(\s*MINUTE_SECOND\s+FROM\s+([^\(\)]+)\s*\)/to_char(($1)::timestamp, 'MI:SS')/igs;
+		$str =~ s/\bEXTRACT\(\s*MINUTE_MICROSECOND\s+FROM\s+([^\(\)]+)\s*\)/to_char(($1)::timestamp, 'MI:SS.US')/igs;
+		$str =~ s/\bEXTRACT\(\s*SECOND_MICROSECOND\s+FROM\s+([^\(\)]+)\s*\)/to_char(($1)::timestamp, 'SS.US')/igs;
+	}
+
+	# Replace operators
+	if (!$class->{mysql_pipes_as_concat}) {
+		$str =~ s/\|\|/ OR /igs;
+		$str =~ s/\&\&/ AND /igs;
+	}
+	$str =~ s/BIT_XOR\(\s*([^,]+)\s*,\s*(\d+)\s*\)/$1 # coalesce($2, 0)/igs;
+	$str =~ s/\bXOR\b/#/igs;
+	$str =~ s/\b\^\b/#/igs;
+
+	####
+	# Replace some function with their PostgreSQL syntax
+	####
+
+	# Math related fucntion
+	$str =~ s/\bATAN\(\s*([^,]+)\s*,\s*([^\(\)]+)\s*\)/atan2($1, $2)/igs;
+	$str =~ s/\bLOG\(/ln\(/igs;
+	$str =~ s/\bLOG10\(\s*([^\(\)]+)\s*\)/log\(10, $1\)/igs;
+	$str =~ s/\bLOG2\(\s*([^\(\)]+)\s*\)/log\(2, $1\)/igs;
+	$str =~ s/([^\s]+)\s+MOD\s+([^\s]+)/mod\($1, $2\)/igs;
+	$str =~ s/\bPOW\(/power\(/igs;
+	$str =~ s/\bRAND\(\s*\)/random\(\)/igs;
+
+	# Misc function
+	$str =~ s/\bCHARSET\(\s*([^\(\)]+)\s*\)/current_setting('server_encoding')/igs;
+	$str =~ s/\bCOLLATION\(\s*([^\(\)]+)\s*\)/current_setting('lc_collate')/igs;
+	$str =~ s/\bCONNECTION_ID\(\s*\)/pg_backend_pid()/igs;
+	$str =~ s/\b(DATABASE|SCHEMA)\(\s*\)/current_database()/igs;
+	$str =~ s/\bSLEEP\(/pg_sleep\(/igs;
+	$str =~ s/\bSYSTEM_USER\(\s*\)/CURRENT_USER/igs;
+	$str =~ s/\bSESSION_USER\(\s*\)/SESSION_USER/igs;
+	$str =~ s/\bTRUNCATE\(\s*([^,]+)\s*,\s*([^\(\)]+)\s*\)/trunc\($1, $2\)/igs;
+	$str =~ s/\bUSER\(\s*\)/CURRENT_USER/igs;
+
+	# Date/time related function
+	$str =~ s/\b(CURDATE|CURRENT_DATE)\(\s*\)/CURRENT_DATE/igs;
+	$str =~ s/\b(CURTIME|CURRENT_TIME)\(\s*\)/LOCALTIME(0)/igs;
+	$str =~ s/\bCURRENT_TIMESTAMP\(\s*\)/CURRENT_TIMESTAMP::timestamp(0) without time zone/igs;
+	$str =~ s/\b(LOCALTIMESTAMP|LOCALTIME)\(\s*\)/CURRENT_TIMESTAMP::timestamp(0) without time zone/igs;
+	$str =~ s/\b(LOCALTIMESTAMP|LOCALTIME)\b/CURRENT_TIMESTAMP::timestamp(0) without time zone/igs;
+	$str =~ s/\bSYSDATE\(\s*\)/timeofday()::timestamp(0) without time zone/igs;
+	$str =~ s/\bUNIX_TIMESTAMP\(\s*\)/floor(extract(epoch from CURRENT_TIMESTAMP::timestamp with time zone))/igs;
+	$str =~ s/\bUNIX_TIMESTAMP\(\s*([^\)]+)\s*\)/floor(extract(epoch from ($1)::timestamp with time zone))/igs;
+	$str =~ s/\bUTC_DATE\(\s*\)/(CURRENT_TIMESTAMP AT TIME ZONE 'UTC')::date/igs;
+	$str =~ s/\bUTC_TIME\(\s*\)/(CURRENT_TIMESTAMP AT TIME ZONE 'UTC')::time(0)/igs;
+	$str =~ s/\bUTC_TIMESTAMP\(\s*\)/(CURRENT_TIMESTAMP AT TIME ZONE 'UTC')::timestamp(0)/igs;
+
+	# Replace some function with different name and format
+	$str =~ s/\b(ADDDATE|DATE_ADD)\(\s*([^,]+)\s*,\s*INTERVAL ([^\(\),]+)\s*\)/($2)::timestamp + interval '$3'/igs;
+	$str =~ s/\bADDDATE\(\s*([^,]+)\s*,\s*(\d+)\s*\)/($1)::timestamp + ($2 * interval '1 day')/igs;
+	$str =~ s/\bADDTIME\(\s*([^,]+)\s*,\s*([^\(\)]+)\s*\)/($1)::timestamp + ($2)::interval/igs;
+	$str =~ s/\bCONVERT_TZ\(\s*([^,]+)\s*,\s*([^,]+)\s*,\s*([^\(\),]+)\s*\)/(($1)::timestamp without time zone AT TIME ZONE ($2)::text) AT TIME ZONE ($3)::text/igs;
+	$str =~ s/\bDATEDIFF\(\s*([^,]+)\s*,\s*([^\(\)]+)\s*\)/extract(day from (date_trunc('day', ($1)::timestamp) - date_trunc('day', ($2)::timestamp)))/igs;
+	$str =~ s/\bDATE_FORMAT\(\s*(.*?)\s*,\s*('[^\(\)]+')\s*\)/_mysql_dateformat_to_pgsql($1, $2)/eigs;
+	$str =~ s/\b(DAY|DAYOFMONTH)\(\s*([^\(\)]+)\s*\)/extract(day from date($1))::integer/igs;
+	$str =~ s/\bDAYNAME\(\s*([^\(\)]+)\s*\)/to_char(($1)::date, 'FMDay')/igs;
+	$str =~ s/\bDAYOFWEEK\(\s*([^\(\)]+)\s*\)/extract(dow from date($1))::integer + 1/igs; # start on sunday = 1
+	$str =~ s/\bDAYOFYEAR\(\s*([^\(\)]+)\s*\)/extract(doy from date($1))::integer/igs;
+	$str =~ s/\bFORMAT\(\s*([^,]+)\s*,\s*([^\(\)]+)\s*\)/to_char(round($1, $2), 'FM999,999,999,999,999,999,990'||case when $2 > 0 then '.'||repeat('0', $2) else '' end)/igs;
+	$str =~ s/\bFROM_DAYS\(\s*([^\(\)]+)\s*\)/'0001-01-01bc'::date + ($1)::integer/igs;
+	$str =~ s/\bFROM_UNIXTIME\(\s*([^\(\),]+)\s*\)/to_timestamp($1)::timestamp without time zone/igs;
+	$str =~ s/\bFROM_UNIXTIME\(\s*(.*?)\s*,\s*('[^\(\)]+')\s*\)/FROM_UNIXTIME2(to_timestamp($1), $2)/igs;
+	$str =~ s/\bFROM_UNIXTIME2\(\s*(.*?)\s*,\s*('[^\)]+')\s*\)/_mysql_dateformat_to_pgsql($1, $2)/eigs;
+	$str =~ s/\bGET_FORMAT\(\s*([^,]+)\s*,\s*([^\(\)]+)\s*\)/_mysql_getformat_to_pgsql($1, $2)/eigs;
+	$str =~ s/\bHOUR\(\s*([^\(\)]+)\s*\)/extract(hour from ($1)::interval)::integer/igs;
+	$str =~ s/\bLAST_DAY\(\s*([^\(\)]+)\s*\)/(date_trunc('month',($1)::timestamp + interval '1 month'))::date - 1/igs;
+	$str =~ s/\bMAKEDATE\(\s*([^,]+)\s*,\s*([^\(\)]+)\s*\)/(date($1||'-01-01') + ($2 - 1) * interval '1 day')::date/igs;
+	$str =~ s/\bMAKETIME\(\s*([^,]+)\s*,\s*([^,]+)\s*,\s*([^\(\)]+)\s*\)/($1 * interval '1 hour' + $2 * interval '1 min' + $3 * interval '1 sec')/igs;
+	$str =~ s/\bMICROSECOND\(\s*([^\(\)]+)\s*\)/extract(microsecond from ($1)::time)::integer/igs;
+	$str =~ s/\bMINUTE\(\s*([^\(\)]+)\s*\)/extract(minute from ($1)::time)::integer/igs;
+	$str =~ s/\bMONTH\(\s*([^\(\)]+)\s*\)/extract(month from date($1))::integer/igs;
+	$str =~ s/\bMONTHNAME\(\s*([^\(\)]+)\s*\)/to_char(($1)::date, 'FMMonth')/igs;
+	$str =~ s/\bQUARTER\(\s*([^\(\)]+)\s*\)/extract(quarter from date($1))::integer/igs;
+	$str =~ s/\bSECOND\(\s*([^\(\)]+)\s*\)/extract(second from ($1)::interval)::integer/igs;
+	$str =~ s/\bSEC_TO_TIME\(\s*([^\(\)]+)\s*\)/($1 * interval '1 second')/igs;
+	$str =~ s/\bSTR_TO_DATE\(\s*(.*?)\s*,\s*('[^\(\),]+')\s*\)/_mysql_strtodate_to_pgsql($1, $2)/eigs;
+	$str =~ s/\b(SUBDATE|DATE_SUB)\(\s*([^,]+)\s*,\s*INTERVAL ([^\(\)]+)\s*\)/($2)::timestamp - interval '$3'/igs;
+	$str =~ s/\bSUBDATE\(\s*([^,]+)\s*,\s*(\d+)\s*\)/($1)::timestamp - ($2 * interval '1 day')/igs;
+	$str =~ s/\bSUBTIME\(\s*([^,]+)\s*,\s*([^\(\)]+)\s*\)/($1)::timestamp - ($2)::interval/igs;
+	$str =~ s/\bTIME(\([^\(\)]+\))/($1)::time/igs;
+	$str =~ s/\bTIMEDIFF\(\s*([^,]+)\s*,\s*([^\(\)]+)\s*\)/($1)::timestamp - ($2)::timestamp/igs;
+	$str =~ s/\bTIMESTAMP\(\s*([^\(\)]+)\s*\)/($1)::timestamp/igs;
+	$str =~ s/\bTIMESTAMP\(\s*([^,]+)\s*,\s*([^\(\)]+)\s*\)/($1)::timestamp + ($2)::time/igs;
+	$str =~ s/\bTIMESTAMPADD\(\s*([^,]+)\s*,\s*([^,]+)\s*,\s*([^\(\)]+)\s*\)/($3)::timestamp + ($1 * interval '1 $2')/igs;
+	$str =~ s/\bTIMESTAMPDIFF\(\s*YEAR\s*,\s*([^,]+)\s*,\s*([^\(\),]+)\s*\)/extract(year from ($2)::timestamp) - extract(year from ($1)::timestamp)/igs;
+	$str =~ s/\bTIMESTAMPDIFF\(\s*MONTH\s*,\s*([^,]+)\s*,\s*([^\(\),]+)\s*\)/(extract(year from ($2)::timestamp) - extract(year from ($1)::timestamp))*12 + (extract(month from ($2)::timestamp) - extract(month from ($1)::timestamp))/igs;
+	$str =~ s/\bTIMESTAMPDIFF\(\s*WEEK\s*,\s*([^,]+)\s*,\s*([^\(\),]+)\s*\)/floor(extract(day from ( ($2)::timestamp - ($1)::timestamp))\/7)/igs;
+	$str =~ s/\bTIMESTAMPDIFF\(\s*DAY\s*,\s*([^,]+)\s*,\s*([^\(\),]+)\s*\)/extract(day from ( ($2)::timestamp - ($1)::timestamp))/igs;
+	$str =~ s/\bTIMESTAMPDIFF\(\s*HOUR\s*,\s*([^,]+)\s*,\s*([^\(\),]+)\s*\)/floor(extract(epoch from ( ($2)::timestamp - ($1)::timestamp))\/3600)/igs;
+	$str =~ s/\bTIMESTAMPDIFF\(\s*MINUTE\s*,\s*([^,]+)\s*,\s*([^\(\),]+)\s*\)/floor(extract(epoch from ( ($2)::timestamp - ($1)::timestamp))\/60)/igs;
+	$str =~ s/\bTIMESTAMPDIFF\(\s*SECOND\s*,\s*([^,]+)\s*,\s*([^\(\),]+)\s*\)/extract(epoch from ($2)::timestamp) - extract(epoch from ($1)::timestamp))/igs;
+	$str =~ s/\bTIME_FORMAT\(\s*(.*?)\s*,\s*('[^\(\),]+')\s*\)/_mysql_timeformat_to_pgsql($1, $2)/eigs;
+	$str =~ s/\bTIME_TO_SEC\(\s*([^\(\)]+)\s*\)/(extract(hours from ($1)::time)*3600 + extract(minutes from ($1)::time)*60 + extract(seconds from ($1)::time))::bigint/igs;
+	$str =~ s/\bTO_DAYS\(\s*([^\(\)]+)\s*\)/(($1)::date - '0001-01-01bc')::integer/igs;
+	$str =~ s/\bWEEK(\([^\(\)]+\))/extract(week from date($1)) - 1/igs;
+	$str =~ s/\bWEEKOFYEAR(\([^\(\)]+\))/extract(week from date($2))/igs;
+	$str =~ s/\bWEEKDAY\(\s*([^\(\)]+)\s*\)/to_char(($1)::timestamp, 'ID')::integer - 1/igs; # MySQL: Monday = 0, PG => 1
+	$str =~ s/\bYEAR\(\s*([^\(\)]+)\s*\)/extract(year from date($1))/igs;
+
+	# String functions
+	$str =~ s/\bBIN\(\s*([^\(\)]+)\s*\)/ltrim(textin(bit_out($1::bit(64))), '0')/igs;
+	$str =~ s/\bBINARY\(\s*([^\(\)]+)\s*\)/($1)::bytea/igs;
+	$str =~ s/\bBIT_COUNT\(\s*([^\(\)]+)\s*\)/length(replace(ltrim(textin(bit_out($1::bit(64))),'0'),'0',''))/igs;
+	$str =~ s/\bCHAR\(\s*([^\(\),]+)\s*\)/array_to_string(ARRAY(SELECT chr(unnest($1))),'')/igs;
+	$str =~ s/\bELT\(\s*([^,]+)\s*,\s*([^\(\)]+)\s*\)/(ARRAY[$2])[$1]/igs;
+	$str =~ s/\bFIELD\(\s*([^,]+)\s*,\s*([^\(\)]+)\s*\)/(SELECT i FROM generate_subscripts(array[$2], 1) g(i) WHERE $1 = (array[$2])[i] UNION ALL SELECT 0 LIMIT 1)/igs;
+	$str =~ s/\bFIND_IN_SET\(\s*([^,]+)\s*,\s*([^\(\)]+)\s*\)/(SELECT i FROM generate_subscripts(string_to_array($2,','), 1) g(i) WHERE $1 = (string_to_array($2,','))[i] UNION ALL SELECT 0 LIMIT 1)/igs;
+	$str =~ s/\bFROM_BASE64\(\s*([^\(\),]+)\s*\)/decode(($1)::bytea, 'base64')/igs;
+	$str =~ s/\bHEX\(\s*([^\(\),]+)\s*\)/upper(encode($1::bytea, 'hex'))/igs;
+	$str =~ s/\bINSTR\s*\(\s*([^,]+),\s*('[^']+')\s*\)/position($2 in $1)/igs;
+	$str =~ s/\bLOCATE\(\s*([^\(\),]+)\s*,\s*([^\(\),]+)\s*,\s*([^\(\),]+)\s*\)/position($1 in substring ($2 from $3)) + $3 - 1/igs;
+	$str =~ s/\bLOCATE\(\s*([^\(\),]+)\s*,\s*([^\(\),]+)\s*\)/position($1 in $2)/igs;
+	$str =~ s/\bLCASE\(/lower\(/igs;
+	$str =~ s/\bMID\(/substring\(/igs;
+	$str =~ s/\bORD\(/ascii\(/igs;
+	$str =~ s/\bQUOTE\(/quote_literal\(/igs;
+	$str =~ s/\bSPACE\(\s*([^\(\),]+)\s*\)/repeat(' ', $1)/igs;
+	$str =~ s/\bSTRCMP\(\s*([^\(\),]+)\s*,\s*([^\(\),]+)\s*\)/CASE WHEN $1 < $2 THEN -1 WHEN $1 > $2 THEN 1 ELSE 0 END/igs;
+	$str =~ s/\bTO_BASE64\(\s*([^\(\),]+)\s*\)/encode($1, 'base64')/igs;
+	$str =~ s/\bUCASE\(/upper\(/igs;
+	$str =~ s/\bUNHEX\(\s*([^\(\),]+)\s*\)/decode($1, 'hex')::text/igs;
+	$str =~ s/\bIS_IPV6\(\s*([^\(\)]+)\s*\)/CASE WHEN family($1) = 6 THEN 1 ELSE 0 END/igs;
+	$str =~ s/\bIS_IPV4\(\s*([^\(\)]+)\s*\)/CASE WHEN family($1) = 4 THEN 1 ELSE 0 END/igs;
+	$str =~ s/\bISNULL\(\s*([^\(\)]+)\s*\)/$1 IS NULL/igs;
+	$str =~ s/\bRLIKE/REGEXP/igs;
+	$str =~ s/\bSTD\(/STDDEV_POP\(/igs;
+	$str =~ s/\bSTDDEV\(/STDDEV_POP\(/igs;
+	$str =~ s/\bUUID\(/uuid_generate_v1\(/igs;
+	$str =~ s/\bNOT REGEXP BINARY/\!\~/igs;
+	$str =~ s/\bREGEXP BINARY/\~/igs;
+	$str =~ s/\bNOT REGEXP/\!\~\*/igs;
+	$str =~ s/\bREGEXP/\~\*/igs;
+
+	$str =~ s/\bGET_LOCK/pg_advisory_lock/igs;
+	$str =~ s/\bIS_USED_LOCK/pg_try_advisory_lock/igs;
+	$str =~ s/\bRELEASE_LOCK/pg_advisory_unlock/igs;
+
+	# GROUP_CONCAT doesn't exist, it must be replaced by calls to array_to_string() and array_agg() functions
+	$str =~ s/GROUP_CONCAT\((.*?)\s+ORDER\s+BY\s+([^\s]+)\s+(ASC|DESC)\s+SEPARATOR\s+'([^']+)'\s*\)/array_to_string(array_agg($1 ORDER BY $2 $3), '$4')/igs;
+	$str =~ s/GROUP_CONCAT\((.*?)\s+ORDER\s+BY\s+([^\s]+)\s+SEPARATOR\s+'([^']+)'\s*\)/array_to_string(array_agg($1 ORDER BY $2 ASC), '$3')/igs;
+	$str =~ s/GROUP_CONCAT\((.*?)\s+SEPARATOR\s+'([^']+)'\s*\)/array_to_string(array_agg($1), '$2')/igs;
+
+	# Replace IF() function in a query
+	$str =~ s/\bIF\(\s*([^,]+)\s*,\s*([^,]+)\s*,\s*([^\)]+\s*)\)/(CASE WHEN $1 THEN $2 ELSE $3 END)/igs;
+	$str =~ s/\bIFNULL\(\s*([^,]+)\s*,\s*([^\)]+\s*)\)/COALESCE($1, $2)/igs;
+
+	# Rewrite while loop
+	$str =~ s/\bWHILE\s+(.*?)END WHILE\s*;/WHILE $1END LOOP;/igs;
+	$str =~ s/\bWHILE\s+(.*?)DO\b/WHILE $1LOOP/igs;
+
+	# Rewrite REPEAT loop
+	my %repl_repeat = ();
+	$i = 0;
+	while ($str =~ s/\bREPEAT\s+(.*?)END REPEAT\s*;/%REPREPEATLBL$i%/igs) {
+		my $code = $1;
+		$code =~ s/\bUNTIL(.*)//;
+		$repl_repeat{$i} = "LOOP ${code}EXIT WHEN $1;\nEND LOOP;";
+	}
+	foreach $i (keys %repl_repeat) {
+		$str =~ s/\%REPREPEATLBL$i\%/$repl_repeat{$i}/gs;
+	}
+	%repl_repeat = ();
+
+	# Replace spatial related lines
+	$str = replace_mysql_spatial($str);
+
+	return $str;
+}
+
+sub replace_mysql_spatial
+{
+	my $str = shift;
+
+	$str =~ s/AsWKB\(/AsBinary\(/igs;
+	$str =~ s/AsWKT\(/AsText\(/igs;
+	$str =~ s/GeometryCollectionFromText\(/GeomCollFromText\(/igs;
+	$str =~ s/GeometryCollectionFromWKB\(/GeomCollFromWKB\(/igs;
+	$str =~ s/GeometryFromText\(/GeomFromText\(/igs;
+	$str =~ s/GLength\(/ST_Length\(/igs;
+	$str =~ s/LineStringFromWKB\(/LineFromWKB\(/igs;
+	$str =~ s/MultiLineStringFromText\(/MLineFromText\(/igs;
+	$str =~ s/MultiPointFromText\(/MPointFromText\(/igs;
+	$str =~ s/MultiPolygonFromText\(/MPolyFromText\(/igs;
+	$str =~ s/PolyFromText\(/PolygonFromText\(/igs;
+	$str =~ s/MBRContains\(/ST_Contains\(/igs;
+	$str =~ s/MBRDisjoint\(/ST_Disjoint\(/igs;
+	$str =~ s/MBREqual\(/ST_Equals\(/igs;
+	$str =~ s/MBRIntersects\(/ST_Intersects\(/igs;
+	$str =~ s/MBROverlaps\(/ST_Overlaps\(/igs;
+	$str =~ s/MBRTouches\(/ST_Touches\(/igs;
+	$str =~ s/MBRWithin\(/ST_Within\(/igs;
+	$str =~ s/MLineFromWKB\(/MultiLineStringFromWKB\(/igs;
+	$str =~ s/MPointFromWKB\(/MultiPointFromWKB\(/igs;
+	$str =~ s/MPolyFromWKB\(/MultiPolygonFromWKB\(/igs;
+	$str =~ s/PolyFromWKB\(/PolygonFromWKB\(/igs;
+
+	# Replace FromWKB functions
+	foreach my $fct ('MultiLineStringFromWKB', 'MultiPointFromWKB', 'MultiPolygonFromWKB', 'PolygonFromWKB') {
+		$str =~ s/\b$fct\(/ST_GeomFromWKB\(/igs;
+	}
+
+	# Add ST_ prefix to function alias
+	foreach my $fct (@MYSQL_SPATIAL_FCT) {
+		$str =~ s/\b$fct\(/ST_$fct\(/igs;
+	}
+
+	return $str;
+}
+
+sub _mysql_getformat_to_pgsql
+{
+	my ($type, $format) = @_;
+
+	if (uc($type) eq 'DATE') {
+		if (uc($format) eq "'USA'") {
+			$format = "'%m.%d.%Y'";
+		} elsif (uc($format) eq "'EUR'") {
+			$format = "'%d.%m.%Y'";
+		} elsif (uc($format) eq "'INTERNAL'") {
+			$format = "'%Y%m%d'";
+		} else {
+			# ISO and JIS
+			$format = "'%Y-%m-%d'";
+		} 
+	} elsif (uc($type) eq 'TIME') {
+		if (uc($format) eq "'USA'") {
+			$format = "'%h:%i:%s %p'";
+		} elsif (uc($format) eq "'EUR'") {
+			$format = "'%H.%i.%s'";
+		} elsif (uc($format) eq "'INTERNAL'") {
+			$format = "'%H%i%s'";
+		} else {
+			# ISO and JIS
+			$format = "'%H:%i:%s'";
+		}
+	} else {
+		if ( (uc($format) eq "'USA'") || (uc($format) eq "'EUR'") ) {
+			$format = "'%Y-%m-%d %H.%i.%s'";
+		} elsif (uc($format) eq "'INTERNAL'") {
+			$format = "'%Y%m%d%H%i%s'";
+		} else {
+			# ISO and JIS
+			$format = "'%Y-%m-%d %H:%i:%s'";
+		}
+	}
+
+	return $format;
+}
+
+sub _mysql_strtodate_to_pgsql
+{
+	my ($datetime, $format) = @_;
+
+	my $str = _mysql_dateformat_to_pgsql($datetime, $format, 1);
+
+	return $str;
+}
+
+sub _mysql_timeformat_to_pgsql
+{
+	my ($datetime, $format) = @_;
+
+	my $str = _mysql_dateformat_to_pgsql($datetime, $format, 0, 1);
+
+	return $str;
+}
+
+
+sub _mysql_dateformat_to_pgsql
+{
+	my ($datetime, $format, $todate, $totime) = @_;
+
+# Not supported:
+# %X	Year for the week where Sunday is the first day of the week, numeric, four digits; used with %V
+
+	$format =~ s/\%a/Dy/g;
+	$format =~ s/\%b/Mon/g;
+	$format =~ s/\%c/FMMM/g;
+	$format =~ s/\%d/DD/g;
+	$format =~ s/\%D/FMDDth/g;
+	$format =~ s/\%e/FMDD/g;
+	$format =~ s/\%f/US/g;
+	$format =~ s/\%H/HH24/g;
+	$format =~ s/\%h/HH12/g;
+	$format =~ s/\%I/HH/g;
+	$format =~ s/\%i/MI/g;
+	$format =~ s/\%j/DDD/g;
+	$format =~ s/\%k/FMHH24/g;
+	$format =~ s/\%l/FMHH12/g;
+	$format =~ s/\%m/MM/g;
+	$format =~ s/\%p/AM/g;
+	$format =~ s/\%r/HH12:MI:SS AM/g;
+	$format =~ s/\%s/SS/g;
+	$format =~ s/\%S/SS/g;
+	$format =~ s/\%T/HH24:MI:SS/g;
+	$format =~ s/\%U/WW/g;
+	$format =~ s/\%u/IW/g;
+	$format =~ s/\%V/WW/g;
+	$format =~ s/\%v/IW/g;
+	$format =~ s/\%x/YYYY/g;
+	$format =~ s/\%X/YYYY/g;
+	$format =~ s/\%Y/YYYY/g;
+	$format =~ s/\%y/YY/g;
+	$format =~ s/\%W/Day/g;
+	$format =~ s/\%M/Month/g;
+
+	if ($todate) {
+		return "to_date($datetime, $format)";
+	} elsif ($totime) {
+		return "to_char(($datetime)::time, $format)";
+	}
+
+	return "to_char(($datetime)::timestamp, $format)";
+}
+
+sub mysql_estimate_cost
+{
+	my $str = shift;
+	my $type = shift;
+
+	my %cost_details = ();
+
+	# Default cost is testing that mean it at least must be tested
+	my $cost = $FCT_TEST_SCORE;
+	# When evaluating queries tests must not be included here
+	if ($type eq 'QUERY') {
+		$cost = 0;
+	}
+	$cost_details{'TEST'} = $cost;
+
+	# Set cost following code length
+	my $cost_size = int(length($str)/$SIZE_SCORE) || 1;
+	# When evaluating queries size must not be included here
+	if ($type eq 'QUERY') {
+		$cost_size = 0;
+	}
+
+	$cost += $cost_size;
+	$cost_details{'SIZE'} = $cost_size;
+
+	# Try to figure out the manual work
+	my $n = () = $str =~ m/(ARRAY_AGG|GROUP_CONCAT)\(\s*DISTINCT/igs;
+	$cost_details{'ARRAY_AGG_DISTINCT'} += $n;
+	$n = () = $str =~ m/\bSOUNDS\s+LIKE\b/igs;
+	$cost_details{'SOUNDS LIKE'} += $n;
+	$n = () = $str =~ m/CHARACTER\s+SET/igs;
+	$cost_details{'CHARACTER SET'} += $n;
+	$n = () = $str =~ m/\bCOUNT\(\s*DISTINCT\b/igs;
+	$cost_details{'COUNT(DISTINCT)'} += $n;
+	$n = () = $str =~ m/\bMATCH.*AGAINST\b/igs;
+	$cost_details{'MATCH'} += $n;
+	$n = () = $str =~ m/\bJSON_[A-Z\_]+\(/igs;
+	$cost_details{'JSON FUNCTION'} += $n;
+	$n = () = $str =~ m/_(un)?lock\(/igs;
+	$cost_details{'LOCK'} += $n;
+	$n = () = $str =~ m/\b\@+[A-Z0-9\_]+/igs;
+	$cost_details{'@VAR'} += $n;
+
+	foreach my $t (keys %UNCOVERED_MYSQL_SCORE) {
+		$cost += $UNCOVERED_MYSQL_SCORE{$t}*$cost_details{$t};
+	}
+	foreach my $f (@MYSQL_FUNCTIONS) {
+		if ($str =~ /\b$f\b/igs) {
+			$cost += 2;
+			$cost_details{$f} += 2;
+		}
 	}
 
 	return $cost, %cost_details;

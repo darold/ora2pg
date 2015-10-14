@@ -41,7 +41,7 @@ use File::Temp qw/ tempfile /;
 #set locale to LC_NUMERIC C
 setlocale(LC_NUMERIC,"C");
 
-$VERSION = '15.3';
+$VERSION = '16.0';
 $PSQL = $ENV{PLSQL} || 'psql';
 
 $| = 1;
@@ -155,6 +155,9 @@ SMVCENDPOINT_S
 SMWEEKLYENTRY_S
 );
 push(@EXCLUDED_TABLES, @Oracle_tables);
+
+# Some function might be excluded from export and assessment.
+our @EXCLUDED_FUNCTION = ('SQUIRREL_GET_ERROR_OFFSET');
 
 our @FKEY_OPTIONS = ('NEVER', 'DELETE', 'ALWAYS');
 
@@ -353,6 +356,7 @@ sub wait_child
 		$SIG{INT} = \&wait_child;
 		$SIG{TERM} = \&wait_child;
 	}
+        print STDERR "Aborting.\n";
         _exit(0);
 }
 $SIG{INT} = \&wait_child;
@@ -768,6 +772,12 @@ sub _init
 	# Shall we log on error during data import or abort.
 	$self->{log_on_error} = 0;
 
+	# Initialize some variable related to export of mysql database
+	$self->{is_mysql} = 0;
+	$self->{mysql_mode} = '';
+	$self->{mysql_internal_extract_format} = 0;
+	$self->{mysql_pipes_as_concat} = 0;
+
 	# List of users for audit trail
 	$self->{audit_user} = '';
 
@@ -843,7 +853,7 @@ sub _init
 	# Should we replace zero date with something else than NULL
 	$self->{replace_zero_date} ||= '';
 	if ($self->{replace_zero_date} && (uc($self->{replace_zero_date}) ne '-INFINITY') && ($self->{replace_zero_date} !~ /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/)) {
-		die "FATAL: wrong format in REPLACE_ZERO_DATE value, should be YYYY-MM-DD HH:MM:SS\n";
+		die "FATAL: wrong format in REPLACE_ZERO_DATE value, should be YYYY-MM-DD HH:MM:SS or -INFINITY\n";
 	}
 
 	# Overwrite configuration with all given parameters
@@ -880,6 +890,8 @@ sub _init
 			$self->{oracle_user} = $options{user};
 		} elsif ((lc($k) eq 'password') && $options{password}) {
 			$self->{oracle_pwd} = $options{password};
+		} elsif ((lc($k) eq 'mysql') && $options{mysql}) {
+			$self->{is_mysql} = $options{is_mysql};
 		} elsif ($options{$k} ne '') {
 			$self->{"\L$k\E"} = $options{$k};
 		}
@@ -898,9 +910,6 @@ sub _init
 		push(@{$self->{excluded}{$typ}}, $i);
 	}
 	delete $self->{excluded}{ALL};
-
-	# Set default temporary directory
-	$self->{tmp_dir} ||= $TMP_DIR;
 
 	if ($AConfig{'DEBUG'} == 1) {
 		$self->{debug} = 1;
@@ -955,6 +964,11 @@ sub _init
 	if ($@) {
 		# Old perl install doesn't include these functions
 		$self->{has_utf8_fct} = 0;
+	}
+
+	# Autodetexct if we are exporting a MySQL database
+	if ($self->{oracle_dsn} =~ /dbi:mysql/i) {
+		$self->{is_mysql} = 1;
 	}
 
 	# Set Oracle, Perl and PostgreSQL encoding that will be used
@@ -1043,7 +1057,7 @@ sub _init
 	$self->{pg_integer_type} = 1 if (not defined $self->{pg_integer_type});
 	# Backward compatibility with CASE_SENSITIVE
 	$self->{preserve_case} = $self->{case_sensitive} if (defined $self->{case_sensitive} && not defined $self->{preserve_case});
-	$self->{schema} = uc($self->{schema}) if (!$self->{preserve_case});
+	$self->{schema} = uc($self->{schema}) if (!$self->{preserve_case} && ($self->{oracle_dsn} !~ /:mysql/i));
 
 	if (($self->{standard_conforming_strings} =~ /^off$/i) || ($self->{standard_conforming_strings} == 0)) {
 		$self->{standard_conforming_strings} = 0;
@@ -1105,21 +1119,33 @@ sub _init
 
 	if (!$self->{input_file}) {
 		# Connect the database
-		$self->{dbh} = $self->_oracle_connection();
+		if ($self->{oracle_dsn} =~ /dbi:mysql/i) {
+			$self->{dbh} = $self->_mysql_connection();
 
-		# Get the Oracle version
-		$self->{db_version} = $self->_get_version();
+			$self->{is_mysql} = 1;
 
-		# Compile again all objects in the schema
-		if ($self->{compile_schema}) {
-			if ($self->{debug} && $self->{compile_schema}) {
-				$self->logit("Force Oracle to compile schema before code extraction\n", 1);
+			use Ora2Pg::MySQL;
+
+			# Get the Oracle version
+			$self->{db_version} = $self->_get_version();
+
+		} else {
+			$self->{dbh} = $self->_oracle_connection();
+
+			# Get the Oracle version
+			$self->{db_version} = $self->_get_version();
+
+			# Compile again all objects in the schema
+			if ($self->{compile_schema}) {
+				if ($self->{debug} && $self->{compile_schema}) {
+					$self->logit("Force Oracle to compile schema before code extraction\n", 1);
+				}
+				$self->_compile_schema($self->{dbh}, uc($self->{compile_schema}));
 			}
-			$self->_compile_schema($self->{dbh}, uc($self->{compile_schema}));
-		}
 
-		$self->_get_pkg_functions() if (!$self->{package_as_schema} && (!grep(/^$self->{type}$/, 'COPY', 'INSERT', 'SEQUENCE', 'GRANT', 'TABLESPACE', 'QUERY', 'SYNONYM', 'FDW', 'KETTLE', 'DBLINK', 'DIRECTORY')));
-		$self->{security} = $self->_get_security_definer($self->{type}) if (grep(/^$self->{type}$/, 'TRIGGER', 'FUNCTION','PROCEDURE','PACKAGE'));
+			$self->_get_pkg_functions() if (!$self->{package_as_schema} && (!grep(/^$self->{type}$/, 'COPY', 'INSERT', 'SEQUENCE', 'GRANT', 'TABLESPACE', 'QUERY', 'SYNONYM', 'FDW', 'KETTLE', 'DBLINK', 'DIRECTORY')));
+			$self->{security} = $self->_get_security_definer($self->{type}) if (grep(/^$self->{type}$/, 'TRIGGER', 'FUNCTION','PROCEDURE','PACKAGE'));
+		}
 
 	} else {
 
@@ -1156,8 +1182,6 @@ sub _init
 			$self->_packages();
 		} elsif ($self->{type} eq 'TYPE') {
 			$self->_types();
-		} elsif ($self->{type} eq 'QUERY') {
-			$self->_queries();
 		} elsif ($self->{type} eq 'TABLESPACE') {
 			$self->_tablespaces();
 		} elsif ($self->{type} eq 'PARTITION') {
@@ -1168,6 +1192,8 @@ sub _init
 			$self->_directories();
 		} elsif ($self->{type} eq 'MVIEW') {
 			$self->_materialized_views();
+		} elsif ($self->{type} eq 'QUERY') {
+			$self->_queries();
 		} elsif (($self->{type} eq 'SHOW_REPORT') || ($self->{type} eq 'SHOW_VERSION') || ($self->{type} eq 'SHOW_SCHEMA') || ($self->{type} eq 'SHOW_TABLE') || ($self->{type} eq 'SHOW_COLUMN') || ($self->{type} eq 'SHOW_ENCODING')) {
 			$self->_show_infos($self->{type});
 			$self->{dbh}->disconnect() if ($self->{dbh}); 
@@ -1206,7 +1232,7 @@ sub _oracle_connection
 
 	$self->logit("Trying to connect to database: $self->{oracle_dsn}\n", 1) if (!$quiet);
 
-	my $dbh = DBI->connect($self->{oracle_dsn}, $self->{oracle_user}, $self->{oracle_pwd}, {ora_envhp => 0, LongReadLen=>$self->{longreadlen}, LongTruncOk=>$self->{longtruncok}, AutoInactiveDestroy => 1 });
+	my $dbh = DBI->connect($self->{oracle_dsn}, $self->{oracle_user}, $self->{oracle_pwd}, {ora_envhp => 0, LongReadLen=>$self->{longreadlen}, LongTruncOk=>$self->{longtruncok}, AutoInactiveDestroy => 1});
 
 	# Check for connection failure
 	if (!$dbh) {
@@ -1240,6 +1266,58 @@ sub _oracle_connection
 	return $dbh;
 }
 
+sub _mysql_connection
+{
+	my ($self, $quiet) = @_;
+
+	$self->logit("Trying to connect to database: $self->{oracle_dsn}\n", 1) if (!$quiet);
+
+	my $dbh = DBI->connect("$self->{oracle_dsn}", $self->{oracle_user}, $self->{oracle_pwd}, { 'RaiseError' => 1, AutoInactiveDestroy => 1});
+	# Check for connection failure
+	if (!$dbh) {
+		$self->logit("FATAL: $DBI::err ... $DBI::errstr\n", 0, 1);
+	}
+
+	# Use consistent reads for concurrent dumping...
+	#$dbh->do('START TRANSACTION WITH CONSISTENT SNAPSHOT;') || $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
+	if ($self->{debug} && !$quiet) {
+		$self->logit("Isolation level: $self->{transaction}\n", 1);
+	}
+	my $sth = $dbh->prepare($self->{transaction}) or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
+	$sth->execute or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
+	$sth->finish;
+
+	# Get SQL_MODE from the MySQL database
+	$sth = $dbh->prepare('SELECT @@sql_mode') or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
+	$sth->execute or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
+	while (my $row = $sth->fetch) {
+		$self->{mysql_mode} = $row->[0];
+	}
+	$sth->finish;
+
+	if ($self->{nls_lang}) {
+		if ($self->{debug} && !$quiet) {
+			$self->logit("Set default encoding to '$self->{nls_lang}' and collate to '$self->{nls_nchar}'\n", 1);
+		}
+		my $collate = '';
+		$collate = " COLLATE '$self->{nls_nchar}'" if ($self->{nls_nchar});
+		$sth = $dbh->prepare("SET NAMES '$self->{nls_lang}'$collate") or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
+		$sth->execute or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
+		$sth->finish;
+	}
+	# Force execution of initial command
+	$self->_initial_command($dbh);
+
+	if ($self->{mysql_mode} =~ /PIPES_AS_CONCAT/) {
+		$self->{mysql_pipes_as_concat} = 1;
+	}
+
+	# Instruct Ora2Pg that the database engine is mysql
+	$self->{is_mysql} = 1;
+
+	return $dbh;
+}
+
 # use to set encoding
 sub _init_environment
 {
@@ -1247,29 +1325,29 @@ sub _init_environment
 
 	# Set default Oracle client encoding
 	if (!$self->{nls_lang}) {
-		$self->{nls_lang} = 'AMERICAN_AMERICA.AL32UTF8';
+		if (!$self->{is_mysql}) {
+			$self->{nls_lang} = 'AMERICAN_AMERICA.AL32UTF8';
+		} else {
+			$self->{nls_lang} = 'utf8';
+		}
 	}
 	if (!$self->{nls_nchar}) {
-		$self->{nls_nchar} = 'AL32UTF8';
+		if (!$self->{is_mysql}) {
+			$self->{nls_nchar} = 'AL32UTF8';
+		} else {
+			$self->{nls_nchar} = 'utf8_general_ci';
+		}
 	}
 	$ENV{NLS_LANG} = $self->{nls_lang};
 	$ENV{NLS_NCHAR} = $self->{nls_nchar};
-	if ($self->{debug}) {
-		$self->logit("\tUsing character set: NLS_LANG=$self->{nls_lang}, NLS_NCHAR=$self->{nls_nchar}.\n", 1);
-	}
+
 	# Force Perl to use utf8 output encoding by default
 	if ( !$self->{'binmode'} || ($self->{nls_lang} =~ /UTF8/i) ) {
 			$self->{'binmode'} = ':utf8';
 	}
-	if ($self->{debug}) {
-		$self->logit("\tUsing Perl output encoding $self->{binmode}.\n", 1);
-	}
 	# Set default PostgreSQL client encoding to UTF8
 	if (!$self->{client_encoding} || ($self->{nls_lang} =~ /UTF8/) ) {
 		$self->{client_encoding} = 'UTF8';
-	}
-	if ($self->{debug}) {
-		$self->logit("\tUsing PostgreSQL client encoding $self->{client_encoding}.\n", 1);
 	}
 
 }
@@ -1378,7 +1456,6 @@ sub _triggers
 
 	$self->logit("Retrieving triggers information...\n", 1);
 	$self->{triggers} = $self->_get_triggers();
-
 }
 
 
@@ -1394,7 +1471,6 @@ sub _functions
 
 	$self->logit("Retrieving functions information...\n", 1);
 	$self->{functions} = $self->_get_functions();
-
 }
 
 =head2 _procedures
@@ -1408,6 +1484,7 @@ sub _procedures
 	my $self = shift;
 
 	$self->logit("Retrieving procedures information...\n", 1);
+
 	$self->{procedures} = $self->_get_procedures();
 }
 
@@ -1561,7 +1638,7 @@ sub _tables
 	%unique_keys = ();
 
 	# Retrieve check constraints
-	if (!$self->{skip_checks}) {
+	if (!$self->{skip_checks} && !$self->{is_mysql}) {
 		my %check_constraints = $self->_check_constraint('',$self->{schema});
 		foreach my $tb (keys %check_constraints) {
 			next if (!exists $tables_infos{$tb});
@@ -1608,9 +1685,15 @@ sub _tables
 		$self->{tables}{$t}{table_info}{owner} = $tables_infos{$t}{owner};
 		$self->{tables}{$t}{table_info}{tablespace} = $tables_infos{$t}{tablespace};
 		$self->{tables}{$t}{table_info}{nested} = $tables_infos{$t}{nested};
+		$self->{tables}{$t}{table_info}{size} = $tables_infos{$t}{size};
+		$self->{tables}{$t}{table_info}{auto_increment} = $tables_infos{$t}{auto_increment};
+		$self->{tables}{$t}{table_info}{connection} = $tables_infos{$t}{connection};
 
 		# Set the fields information
 		my $query = "SELECT * FROM \"$tables_infos{$t}{owner}\".\"$t\" WHERE 1=0";
+		if ($self->{is_mysql}) {
+			$query = "SELECT * FROM $t WHERE 1=0";
+		}
 		if ($tables_infos{$t}{nested} eq 'YES') {
 			$query = "SELECT /*+ nested_table_get_refs */ * FROM \"$tables_infos{$t}{owner}\".\"$t\" WHERE 1=0";
 		}
@@ -1690,7 +1773,7 @@ sub _tables
 	}
 
 	# Look at external tables
-	if ($self->{db_version} !~ /Release 8/) {
+	if (!$self->{is_mysql} && ($self->{db_version} !~ /Release 8/)) {
 		%{$self->{external_table}} = $self->_get_external_tables();
 	}
 
@@ -1952,16 +2035,21 @@ sub read_schema_from_file
 						$self->_parse_constraint($tb_name, $c_name, "$pk_name FOREIGN KEY ($c_name) REFERENCES $chk_search");
 					}
 
+					my $auto_incr = 0;
+					if ($c =~ s/\s*AUTO_INCREMENT\s*//i) {
+						$auto_incr = 1;
+					}
+
 					my $c_default = '';
 					if ($c =~ s/DEFAULT\s+([^\s]+)\s*//) {
 						if (!$self->{plsql_pgsql}) {
 							$c_default = $1;
 						} else {
-							$c_default = Ora2Pg::PLSQL::plsql_to_plpgsql($1,$self->{null_equal_empty}, undef, $self->{package_functions});
+							$c_default = Ora2Pg::PLSQL::plsql_to_plpgsql($self, $1);
 						}
 					}
 					#COLUMN_NAME, DATA_TYPE, DATA_LENGTH, NULLABLE, DATA_DEFAULT, DATA_PRECISION, DATA_SCALE, CHAR_LENGTH, TABLE_NAME, OWNER
-					push(@{$self->{tables}{$tb_name}{column_info}{$c_name}}, ($c_name, $c_type, $c_length, $c_nullable, $c_default, $c_length, $c_scale, $c_length, $tb_name, '', $pos));
+					push(@{$self->{tables}{$tb_name}{column_info}{$c_name}}, ($c_name, $c_type, $c_length, $c_nullable, $c_default, $c_length, $c_scale, $c_length, $tb_name, '', $pos, $auto_incr));
 				} else {
 					$self->_parse_constraint($tb_name, $cur_c_name, $c);
 				}
@@ -2574,6 +2662,8 @@ sub _export_table_data
 	# Open output file
 	$self->data_dump($sql_header, $table) if (!$self->{pg_dsn} && $self->{file_per_table});
 
+	my $total_record = 0;
+
 	# Add table truncate order
 	if ($self->{truncate_table}) {
 		$self->logit("Truncating table $table...\n", 1);
@@ -2601,7 +2691,8 @@ sub _export_table_data
 					next if ($self->file_exists("$dirprefix${tbpart_name}_$self->{output}"));
 				}
 
-				$self->_dump_table($dirprefix, $sql_header, $table, $part_name);
+				$self->logit("Dumping partition table $table...\n", 1);
+				$total_record = $self->_dump_table($dirprefix, $sql_header, $table, $part_name);
 			}
 		}
 		# Now load content of the default partition table
@@ -2611,13 +2702,14 @@ sub _export_table_data
 					# Do not dump data again if the file already exists
 					next if ($self->file_exists("$dirprefix$self->{partitions_default}{$table}_$self->{output}"));
 				}
-				$self->_dump_table($dirprefix, $sql_header, $table, $self->{partitions_default}{$table});
+				$total_record = $self->_dump_table($dirprefix, $sql_header, $table, $self->{partitions_default}{$table});
 			}
 		}
 	} else {
-		$self->_dump_table($dirprefix, $sql_header, $table);
+		$total_record = $self->_dump_table($dirprefix, $sql_header, $table);
 	}
 
+	return $total_record;
 }
 
 =head2 _get_sql_data
@@ -3076,8 +3168,8 @@ LANGUAGE plpgsql ;
 						$grants .= "GRANT $agrants ON $realtable TO $usr$wgrantoption;\n";
 					}
 				} else {
-						$grants .= "GRANT USAGE ON SCHEMA $realtable TO $usr$wgrantoption;\n";
-						$grants .= "GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA $realtable TO $usr$wgrantoption;\n";
+					$grants .= "GRANT USAGE ON SCHEMA $realtable TO $usr$wgrantoption;\n";
+					$grants .= "GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA $realtable TO $usr$wgrantoption;\n";
 				}
 			}
 			$grants .= "\n";
@@ -3190,7 +3282,13 @@ LANGUAGE plpgsql ;
 			} else {
 				$sql_output .= "CREATE SERVER \"$db\"";
 			}
-			$sql_output .= " FOREIGN DATA WRAPPER oracle_fdw OPTIONS (dbserver '$self->{dblink}{$db}{host}');\n";
+			if (!$self->{is_mysql}) {
+				$sql_output .= " FOREIGN DATA WRAPPER oracle_fdw OPTIONS (dbserver '$self->{dblink}{$db}{host}');\n";
+			} else {
+				$sql_output .= " FOREIGN DATA WRAPPER mysql_fdw OPTIONS (host '$self->{dblink}{$db}{host}'";
+				$sql_output .= ", port '$self->{dblink}{$db}{port}'" if ($self->{dblink}{$db}{port});
+				$sql_output .= ");\n";
+			}
 			if ($self->{dblink}{$db}{password} ne 'NONE') {
 				$self->{dblink}{$db}{password} ||= 'secret';
 				$self->{dblink}{$db}{password} = ", password '$self->{dblink}{$db}{password}'";
@@ -3325,7 +3423,7 @@ LANGUAGE plpgsql ;
 				# Replace direct call of a stored procedure in triggers
 				if ($trig->[7] eq 'CALL') {
 					if ($self->{plsql_pgsql}) {
-						$trig->[4] = Ora2Pg::PLSQL::plsql_to_plpgsql($trig->[4],$self->{null_equal_empty}, undef, $self->{package_functions});
+						$trig->[4] = Ora2Pg::PLSQL::plsql_to_plpgsql($self, $trig->[4]);
 					}
 					$trig->[4] = "BEGIN\nPERFORM $trig->[4];\nEND;";
 				} else {
@@ -3336,17 +3434,21 @@ LANGUAGE plpgsql ;
 						$ret_kind = "IF TG_OP = 'DELETE' THEN\n\tRETURN OLD;\nELSE\n\tRETURN NEW;\nEND IF;\n";
 					}
 					if ($self->{plsql_pgsql}) {
-						# Add a semi colon at end if none
+						# Add a semi colon if none
 						if ($trig->[4] !~ /\bBEGIN\b/) {
 							chomp($trig->[4]);
 							$trig->[4] .= ';' if ($trig->[4] !~ /;$/);
 							$trig->[4] = "BEGIN\n$trig->[4]\nEND;";
 						}
-						$trig->[4] = Ora2Pg::PLSQL::plsql_to_plpgsql($trig->[4],$self->{null_equal_empty}, undef, $self->{package_functions});
+						$trig->[4] = Ora2Pg::PLSQL::plsql_to_plpgsql($self, $trig->[4]);
 						$trig->[4] =~ s/\b(END[;]*)[\s\/]*$/$ret_kind\n$1/igs;
 						my @parts = split(/BEGIN/i, $trig->[4]);
 						if ($#parts > 0) {
-							$parts[0] = Ora2Pg::PLSQL::replace_sql_type($parts[0], $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type});
+							if (!$self->{is_mysql}) {
+								$parts[0] = Ora2Pg::PLSQL::replace_sql_type($parts[0], $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type});
+							} else {
+								$parts[0] = Ora2Pg::MySQL::replace_sql_type($parts[0], $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type});
+							}
 						}
 						$trig->[4] = join('BEGIN', @parts);
 						$trig->[4] =~ s/\bRETURN\s*;/$ret_kind/igs;
@@ -3364,7 +3466,7 @@ LANGUAGE plpgsql ;
 					$revoke = "-- REVOKE ALL ON FUNCTION trigger_fct_\L$trig->[0]\E FROM PUBLIC;\n";
 				}
 				if ($self->{pg_supports_when} && $trig->[5]) {
-					$sql_output .= "CREATE OR REPLACE FUNCTION trigger_fct_\L$trig->[0]\E () RETURNS trigger AS \$BODY\$\n$trig->[4]\n\$BODY\$\n LANGUAGE 'plpgsql'$security;\n$revoke\n";
+					$sql_output .= "CREATE OR REPLACE FUNCTION trigger_fct_\L$trig->[0]\E() RETURNS trigger AS \$BODY\$\n$trig->[4]\n\$BODY\$\n LANGUAGE 'plpgsql'$security;\n$revoke\n";
 					if ($self->{force_owner}) {
 						my $owner = $trig->[8];
 						$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
@@ -3384,13 +3486,13 @@ LANGUAGE plpgsql ;
 								$trig->[5] .= ';' if ($trig->[5] !~ /;$/);
 								$trig->[5] = "BEGIN\n$trig->[5]\nEND;";
 							}
-							$trig->[5] = Ora2Pg::PLSQL::plsql_to_plpgsql($trig->[5],$self->{null_equal_empty}, undef, $self->{package_functions});
+							$trig->[5] = Ora2Pg::PLSQL::plsql_to_plpgsql($self, $trig->[5]);
 						}
 						$sql_output .= "\tWHEN ($trig->[5])\n";
 					}
 					$sql_output .= "\tEXECUTE PROCEDURE trigger_fct_\L$trig->[0]\E();\n\n";
 				} else {
-					$sql_output .= "CREATE OR REPLACE FUNCTION trigger_fct_\L$trig->[0]\E () RETURNS trigger AS \$BODY\$\n$trig->[4]\n\$BODY\$\n LANGUAGE 'plpgsql'$security;\n$revoke\n";
+					$sql_output .= "CREATE OR REPLACE FUNCTION trigger_fct_\L$trig->[0]\E() RETURNS trigger AS \$BODY\$\n$trig->[4]\n\$BODY\$\n LANGUAGE 'plpgsql'$security;\n$revoke\n";
 					if ($self->{force_owner}) {
 						my $owner = $trig->[8];
 						$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
@@ -3488,17 +3590,17 @@ LANGUAGE plpgsql ;
 
 		my $total_size = 0;
 		my $cost_value = 0;
-		foreach my $q (sort keys %{$self->{queries}}) {
+		foreach my $q (sort {$a <=> $b} keys %{$self->{queries}}) {
 			$self->{idxcomment} = 0;
 			my %comments = $self->_remove_comments($self->{queries}{$q});
 			$total_size += length($self->{queries}{$q});
 			$self->logit("Dumping query $q...\n", 1);
 			my $fhdl = undef;
 			if ($self->{plsql_pgsql}) {
-				my $sql_q = Ora2Pg::PLSQL::plsql_to_plpgsql($self->{queries}{$q},$self->{null_equal_empty}, $self->{type}, $self->{package_functions});
+				my $sql_q = Ora2Pg::PLSQL::plsql_to_plpgsql($self, $self->{queries}{$q});
 				$sql_output .= $sql_q;
 				if ($self->{estimate_cost}) {
-					my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($sql_q, 'QUERY');
+					my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($self, $sql_q, 'QUERY');
 					$cost += $Ora2Pg::PLSQL::OBJECT_SCORE{'QUERY'};
 					$cost_value += $cost;
 					$sql_output .= "\n-- Estimed cost of query [ $q ]: " . sprintf("%2.2f", $cost);
@@ -3617,11 +3719,16 @@ LANGUAGE plpgsql ;
 			}
 			if ($self->{plsql_pgsql}) {
 
-				my $sql_f = $self->_convert_function($self->{functions}{$fct}{owner}, $self->{functions}{$fct}{text});
+				my $sql_f = '';
+				if ($self->{is_mysql}) {
+					$sql_f = $self->_convert_function($self->{functions}{$fct}{owner}, $self->{functions}{$fct}{text}, $fct);
+				} else {
+					$sql_f = $self->_convert_function($self->{functions}{$fct}{owner}, $self->{functions}{$fct}{text});
+				}
 				if ( $sql_f ) {
 					$sql_output .= $sql_f . "\n\n";
 					if ($self->{estimate_cost}) {
-						my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($sql_f);
+						my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($self, $sql_f);
 						$cost += $Ora2Pg::PLSQL::OBJECT_SCORE{'FUNCTION'};
 						$cost_value += $cost;
 						$self->logit("Function $fct estimated cost: $cost\n", 1);
@@ -3630,7 +3737,11 @@ LANGUAGE plpgsql ;
 						foreach (sort { $cost_detail{$b} <=> $cost_detail{$a} } keys %cost_detail) {
 							next if (!$cost_detail{$_});
 							$fct_cost .= "\t\t-- $_ => $cost_detail{$_}";
-							$fct_cost .= " (cost: $Ora2Pg::PLSQL::UNCOVERED_SCORE{$_})" if ($Ora2Pg::PLSQL::UNCOVERED_SCORE{$_});
+							if (!$self->{is_mysql}) {
+								$fct_cost .= " (cost: $Ora2Pg::PLSQL::UNCOVERED_SCORE{$_})" if ($Ora2Pg::PLSQL::UNCOVERED_SCORE{$_});
+							} else {
+								$fct_cost .= " (cost: $Ora2Pg::PLSQL::UNCOVERED_MYSQL_SCORE{$_})" if ($Ora2Pg::PLSQL::UNCOVERED_MYSQL_SCORE{$_});
+							}
 							$fct_cost .= "\n";
 						}
 					}
@@ -3757,11 +3868,16 @@ LANGUAGE plpgsql ;
 				$fhdl = $self->open_export_file("${fct}_$self->{output}");
 			}
 			if ($self->{plsql_pgsql}) {
-				my $sql_p = $self->_convert_function($self->{functions}{$fct}{owner}, $self->{procedures}{$fct}{text});
+				my $sql_p = '';
+				if ($self->{is_mysql}) {
+					$sql_p = $self->_convert_function($self->{functions}{$fct}{owner}, $self->{procedures}{$fct}{text}, $fct);
+				} else {
+					$sql_p = $self->_convert_function($self->{functions}{$fct}{owner}, $self->{procedures}{$fct}{text});
+				}
 				if ( $sql_p ) {
 					$sql_output .= $sql_p . "\n\n";
 					if ($self->{estimate_cost}) {
-						my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($sql_p);
+						my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($self, $sql_p);
 						$cost += $Ora2Pg::PLSQL::OBJECT_SCORE{'PROCEDURE'};
 						$cost_value += $cost;
 						$self->logit("Function $fct estimated cost: $cost\n", 1);
@@ -3769,7 +3885,11 @@ LANGUAGE plpgsql ;
 						foreach (sort { $cost_detail{$b} <=> $cost_detail{$a} } keys %cost_detail) {
 							next if (!$cost_detail{$_});
 							$fct_cost .= "\t\t-- $_ => $cost_detail{$_}";
-							$fct_cost .= " (cost: $Ora2Pg::PLSQL::UNCOVERED_SCORE{$_})" if ($Ora2Pg::PLSQL::UNCOVERED_SCORE{$_});
+							if (!$self->{is_mysql}) {
+								$fct_cost .= " (cost: $Ora2Pg::PLSQL::UNCOVERED_SCORE{$_})" if ($Ora2Pg::PLSQL::UNCOVERED_SCORE{$_});
+							} else {
+								$fct_cost .= " (cost: $Ora2Pg::PLSQL::UNCOVERED_MYSQL_SCORE{$_})" if ($Ora2Pg::PLSQL::UNCOVERED_MYSQL_SCORE{$_});
+							}
 							$fct_cost .= "\n";
 						}
 					}
@@ -3912,7 +4032,7 @@ LANGUAGE plpgsql ;
 							$self->{idxcomment} = 0;
 							my %comments = $self->_remove_comments(\$infos{$f}{name});
 							$total_size_no_comment += (length($infos{$f}{name}) - (17 * $self->{idxcomment}));
-							my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($infos{$f}{name});
+							my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($self, $infos{$f}{name});
 							$self->_restore_comments(\$infos{$f}{name}, \%comments);
 							$cost += $Ora2Pg::PLSQL::OBJECT_SCORE{'FUNCTION'};
 							$self->logit("Function $f estimated cost: $cost\n", 1);
@@ -3922,7 +4042,11 @@ LANGUAGE plpgsql ;
 							foreach (sort { $cost_detail{$b} <=> $cost_detail{$a} } keys %cost_detail) {
 								next if (!$cost_detail{$_});
 								$fct_cost .= "\t\t-- $_ => $cost_detail{$_}";
-								$fct_cost .= " (cost: $Ora2Pg::PLSQL::UNCOVERED_SCORE{$_})" if ($Ora2Pg::PLSQL::UNCOVERED_SCORE{$_});
+								if (!$self->{is_mysql}) {
+									$fct_cost .= " (cost: $Ora2Pg::PLSQL::UNCOVERED_SCORE{$_})" if ($Ora2Pg::PLSQL::UNCOVERED_SCORE{$_});
+								} else {
+									$fct_cost .= " (cost: $Ora2Pg::PLSQL::UNCOVERED_MYSQL_SCORE{$_})" if ($Ora2Pg::PLSQL::UNCOVERED_MYSQL_SCORE{$_});
+								}
 								$fct_cost .= "\n";
 							}
 						}
@@ -4140,9 +4264,21 @@ LANGUAGE plpgsql ;
 		$dirprefix = "$self->{output_dir}/" if ($self->{output_dir});
 
 		# Connect the Oracle database to gather information
-		$self->{dbh} = $self->_oracle_connection();
+		if ($self->{oracle_dsn} =~ /dbi:mysql/i) {
+			$self->{dbh} = $self->_mysql_connection();
+		} else {
+			$self->{dbh} = $self->_oracle_connection();
+		}
 
-                # Remove remote table from export, they must be exported using FDW export type
+		# Remove external table from data export
+		if (scalar keys %{$self->{external_table}} ) {
+			foreach my $table (keys %{$self->{tables}}) {
+				if ( grep(/^$table$/i, keys %{$self->{external_table}}) ) {
+					delete $self->{tables}{$table};
+				}
+			}
+		}
+		# Remove remote table from export, they must be exported using FDW export type
 		foreach my $table (keys %{$self->{tables}}) {
 			if ( $self->{tables}{$table}{table_info}{connection} ) {
 				delete $self->{tables}{$table};
@@ -4187,8 +4323,8 @@ LANGUAGE plpgsql ;
 		my $load_file = "\n";
 		foreach my $table (@ordered_tables) {
 
-			# Remove main table partition
-			delete $self->{partitions}{$table} if (exists $self->{partitions}{$table});
+			# Remove main table partition (for MySQL "SELECT * FROM emp PARTITION (p1);" is supported from 5.6)
+			delete $self->{partitions}{$table} if (exists $self->{partitions}{$table} && $self->{is_mysql} && ($self->{db_version} =~ /^5\.[012345]/));
 
 			# Rename table and double-quote it if required
 			my $tmptb = $self->get_replaced_tbname($table);
@@ -4296,21 +4432,19 @@ LANGUAGE plpgsql ;
 		foreach my $table (keys %{$self->{tables}}) {
 			$global_rows += $self->{tables}{$table}{table_info}{num_rows};
 		}
+
 		# Open a pipe for interprocess communication
 		my $reader = new IO::Handle;
 		my $writer = new IO::Handle;
 
-               # Fork the logger process
-               if (!$self->{quiet} && !$self->{debug}) {
+		# Fork the logger process
+		if (!$self->{quiet} && !$self->{debug}) {
 			if ( ($self->{jobs} > 1) || ($self->{oracle_copies} > 1) || ($self->{parallel_tables} > 1)) {
-				# Fork the logger process
 				$pipe = IO::Pipe->new($reader, $writer);
 				$writer->autoflush(1);
-				if ( ($self->{jobs} > 1) || ($self->{oracle_copies} > 1) ) {
-					spawn sub {
-						$self->multiprocess_progressbar();
-					};
-				}
+				spawn sub {
+					$self->multiprocess_progressbar();
+				};
 			}
 		}
 		$dirprefix = '';
@@ -4321,14 +4455,12 @@ LANGUAGE plpgsql ;
 		my $parallel_tables_count = 1;
 		$self->{oracle_copies} = 1 if ($self->{parallel_tables} > 1);
 
- 		# Send global startup information to pipe
- 		if (defined $pipe) {
- 			$pipe->writer();
- 			$pipe->print("GLOBAL EXPORT START TIME: $first_start_time\n");
- 			$pipe->print("GLOBAL EXPORT ROW NUMBER: $global_rows\n");
- 		}
-
-		my $total_record = 0;
+		# Send global startup information to pipe
+		if (defined $pipe) {
+			$pipe->writer();
+			$pipe->print("GLOBAL EXPORT START TIME: $first_start_time\n");
+			$pipe->print("GLOBAL EXPORT ROW NUMBER: $global_rows\n");
+		}
 		foreach my $table (@ordered_tables) {
 
 			# Set global count
@@ -4338,7 +4470,7 @@ LANGUAGE plpgsql ;
 				# Do not dump data again if the file already exists
 				next if ($self->file_exists("$dirprefix${table}_$self->{output}"));
 			}
-
+			my $total_record = 0;
 			if ($self->{parallel_tables} > 1) {
 				spawn sub {
 					$self->logit("Creating new connection to Oracle database to export table $table...\n", 1);
@@ -4390,8 +4522,12 @@ LANGUAGE plpgsql ;
 				kill(10, $k);
 				%RUNNING_PIDS = ();
 			}
-			$self->{dbh}->disconnect() if ($self->{dbh});
-			$self->{dbh} = $self->_oracle_connection();
+			$self->{dbh}->disconnect() if (defined $self->{dbh});
+			if ($self->{oracle_dsn} =~ /dbi:mysql/i) {
+				$self->{dbh} = $self->_mysql_connection();
+			} else {
+				$self->{dbh} = $self->_oracle_connection();
+			}
 
 		}
 
@@ -4453,11 +4589,6 @@ LANGUAGE plpgsql ;
 				$self->logit("Restoring indexes of table $table...\n", 1);
 				push(@create_all, $self->_create_indexes($table, %{$self->{tables}{$table}{indexes}}));
 				if ($#create_all >= 0) {
-					if ($self->{plsql_pgsql}) {
-						for (my $i = 0; $i <= $#create_all; $i++) {
-							$create_all[$i] = Ora2Pg::PLSQL::plsql_to_plpgsql($create_all[$i],$self->{null_equal_empty}, undef, $self->{package_functions});
-						}
-					}
 					foreach my $str (@create_all) {
 						chomp($str);
 						next if (!$str);
@@ -4544,9 +4675,9 @@ BEGIN
 							$check_cond .= "\t$self->{partitions}{$table}{$pos}{$part}[$i]->{column} IN ($self->{partitions}{$table}{$pos}{$part}[$i]->{value})";
 						} else {
 							if ($old_part eq '') {
-								$check_cond .= "\t$self->{partitions}{$table}{$pos}{$part}[$i]->{column} < " . Ora2Pg::PLSQL::plsql_to_plpgsql($self->{partitions}{$table}{$pos}{$part}[$i]->{value},$self->{null_equal_empty}, undef, $self->{package_functions});
+								$check_cond .= "\t$self->{partitions}{$table}{$pos}{$part}[$i]->{column} < " . Ora2Pg::PLSQL::plsql_to_plpgsql($self, $self->{partitions}{$table}{$pos}{$part}[$i]->{value});
 							} else {
-								$check_cond .= "\t$self->{partitions}{$table}{$pos}{$part}[$i]->{column} >= " . Ora2Pg::PLSQL::plsql_to_plpgsql($self->{partitions}{$table}{$old_pos}{$old_part}[$i]->{value},$self->{null_equal_empty}, undef, $self->{package_functions}) . " AND $self->{partitions}{$table}{$pos}{$part}[$i]->{column} < " . Ora2Pg::PLSQL::plsql_to_plpgsql($self->{partitions}{$table}{$pos}{$part}[$i]->{value},$self->{null_equal_empty}, undef, $self->{package_functions});
+								$check_cond .= "\t$self->{partitions}{$table}{$pos}{$part}[$i]->{column} >= " . Ora2Pg::PLSQL::plsql_to_plpgsql($self, $self->{partitions}{$table}{$old_pos}{$old_part}[$i]->{value}) . " AND $self->{partitions}{$table}{$pos}{$part}[$i]->{column} < " . Ora2Pg::PLSQL::plsql_to_plpgsql($self, $self->{partitions}{$table}{$pos}{$part}[$i]->{value});
 							}
 						}
 						$check_cond .= " AND" if ($i < $#{$self->{partitions}{$table}{$pos}{$part}});
@@ -4556,30 +4687,30 @@ BEGIN
 							$fct = $1;
 						}
 						my $cindx = $self->{partitions}{$table}{$pos}{$part}[$i]->{column} || '';
-						$cindx = Ora2Pg::PLSQL::plsql_to_plpgsql($cindx,$self->{null_equal_empty}, undef, $self->{package_functions});
+						$cindx = Ora2Pg::PLSQL::plsql_to_plpgsql($self, $cindx);
 						$create_table{$table}{'index'} .= "CREATE INDEX ${tb_name}_$colname ON $tb_name ($cindx);\n";
 						if ($self->{partitions_default}{$table} && ($create_table{$table}{'index'} !~ /ON $self->{partitions_default}{$table} /)) {
 							$cindx = $self->{partitions}{$table}{$pos}{$part}[$i]->{column} || '';
-							$cindx = Ora2Pg::PLSQL::plsql_to_plpgsql($cindx,$self->{null_equal_empty}, undef, $self->{package_functions});
+							$cindx = Ora2Pg::PLSQL::plsql_to_plpgsql($self, $cindx);
 							$create_table{$table}{'index'} .= "CREATE INDEX $self->{partitions_default}{$table}_$colname ON $self->{partitions_default}{$table} ($cindx);\n";
 						}
 						push(@ind_col, $self->{partitions}{$table}{$pos}{$part}[$i]->{column}) if (!grep(/^$self->{partitions}{$table}{$pos}{$part}[$i]->{column}$/, @ind_col));
 						if ($self->{partitions}{$table}{$pos}{$part}[$i]->{type} eq 'LIST') {
 							if (!$fct) {
-								push(@condition, "NEW.$self->{partitions}{$table}{$pos}{$part}[$i]->{column} IN (" . Ora2Pg::PLSQL::plsql_to_plpgsql($self->{partitions}{$table}{$pos}{$part}[$i]->{value}, $self->{null_equal_empty}, undef, $self->{package_functions}) . ")");
+								push(@condition, "NEW.$self->{partitions}{$table}{$pos}{$part}[$i]->{column} IN (" . Ora2Pg::PLSQL::plsql_to_plpgsql($self, $self->{partitions}{$table}{$pos}{$part}[$i]->{value}) . ")");
 							} else {
-								push(@condition, "$fct(NEW.$colname) IN (" . Ora2Pg::PLSQL::plsql_to_plpgsql($self->{partitions}{$table}{$pos}{$part}[$i]->{value}, $self->{null_equal_empty}, undef, $self->{package_functions}) . ")");
+								push(@condition, "$fct(NEW.$colname) IN (" . Ora2Pg::PLSQL::plsql_to_plpgsql($self, $self->{partitions}{$table}{$pos}{$part}[$i]->{value}) . ")");
 							}
 						} else {
 							if (!$fct) {
-								push(@condition, "NEW.$self->{partitions}{$table}{$pos}{$part}[$i]->{column} < " . Ora2Pg::PLSQL::plsql_to_plpgsql($self->{partitions}{$table}{$pos}{$part}[$i]->{value},$self->{null_equal_empty}, undef, $self->{package_functions}));
+								push(@condition, "NEW.$self->{partitions}{$table}{$pos}{$part}[$i]->{column} < " . Ora2Pg::PLSQL::plsql_to_plpgsql($self, $self->{partitions}{$table}{$pos}{$part}[$i]->{value}));
 							} else {
-								push(@condition, "$fct(NEW.$colname) < " . Ora2Pg::PLSQL::plsql_to_plpgsql($self->{partitions}{$table}{$pos}{$part}[$i]->{value},$self->{null_equal_empty}, undef, $self->{package_functions}));
+								push(@condition, "$fct(NEW.$colname) < " . Ora2Pg::PLSQL::plsql_to_plpgsql($self, $self->{partitions}{$table}{$pos}{$part}[$i]->{value}));
 							}
 						}
 						$owner = $self->{partitions}{$table}{$pos}{$part}[$i]->{owner} || '';
 					}
-					$check_cond = Ora2Pg::PLSQL::plsql_to_plpgsql($check_cond,$self->{null_equal_empty}, undef, $self->{package_functions});
+					$check_cond = Ora2Pg::PLSQL::plsql_to_plpgsql($self, $check_cond);
 					$create_table{$table}{table} .= $check_cond;
 					$create_table{$table}{table} .= "\n) ) INHERITS ($table);\n";
 					$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
@@ -4607,9 +4738,9 @@ BEGIN
 										$sub_check_cond .= "$self->{subpartitions}{$table}{$p}{$subpart}[$i]->{column} IN ($self->{subpartitions}{$table}{$p}{$subpart}[$i]->{value})";
 									} else {
 										if ($sub_old_part eq '') {
-											$sub_check_cond .= "$self->{subpartitions}{$table}{$p}{$subpart}[$i]->{column} < " . Ora2Pg::PLSQL::plsql_to_plpgsql($self->{subpartitions}{$table}{$p}{$subpart}[$i]->{value},$self->{null_equal_empty}, undef, $self->{package_functions});
+											$sub_check_cond .= "$self->{subpartitions}{$table}{$p}{$subpart}[$i]->{column} < " . Ora2Pg::PLSQL::plsql_to_plpgsql($self, $self->{subpartitions}{$table}{$p}{$subpart}[$i]->{value});
 										} else {
-											$sub_check_cond .= "$self->{subpartitions}{$table}{$p}{$subpart}[$i]->{column} >= " . Ora2Pg::PLSQL::plsql_to_plpgsql($self->{subpartitions}{$table}{$old_pos}{$sub_old_part}[$i]->{value},$self->{null_equal_empty}, undef, $self->{package_functions}) . " AND $self->{subpartitions}{$table}{$p}{$subpart}[$i]->{column} < " . Ora2Pg::PLSQL::plsql_to_plpgsql($self->{subpartitions}{$table}{$p}{$subpart}[$i]->{value},$self->{null_equal_empty}, undef, $self->{package_functions});
+											$sub_check_cond .= "$self->{subpartitions}{$table}{$p}{$subpart}[$i]->{column} >= " . Ora2Pg::PLSQL::plsql_to_plpgsql($self, $self->{subpartitions}{$table}{$old_pos}{$sub_old_part}[$i]->{value}) . " AND $self->{subpartitions}{$table}{$p}{$subpart}[$i]->{column} < " . Ora2Pg::PLSQL::plsql_to_plpgsql($self, $self->{subpartitions}{$table}{$p}{$subpart}[$i]->{value});
 										}
 									}
 									$sub_check_cond .= " AND " if ($i < $#{$self->{subpartitions}{$table}{$p}{$subpart}});
@@ -4620,27 +4751,27 @@ BEGIN
 										$fct = $1;
 									}
 									$cindx = join(',', @ind_col);
-									$cindx = Ora2Pg::PLSQL::plsql_to_plpgsql($cindx,$self->{null_equal_empty}, undef, $self->{package_functions});
+									$cindx = Ora2Pg::PLSQL::plsql_to_plpgsql($self, $cindx);
 									$create_table{$table}{'index'} .= "CREATE INDEX ${tb_name}_${sub_tb_name}_$colname ON ${tb_name}_$sub_tb_name ($cindx);\n";
 									if ($self->{subpartitions_default}{$table} && ($create_table{$table}{'index'} !~ /ON $self->{subpartitions_default}{$table} /)) {
 										$create_table{$table}{'index'} .= "CREATE INDEX ${tb_name}_$self->{subpartitions_default}{$table}_$colname ON ${tb_name}_$self->{subpartitions_default}{$table} ($cindx);\n";
 									}
 									if ($self->{subpartitions}{$table}{$p}{$subpart}[$i]->{type} eq 'LIST') {
 										if (!$fct) {
-											push(@subcondition, "NEW.$self->{subpartitions}{$table}{$p}{$subpart}[$i]->{column} IN (" . Ora2Pg::PLSQL::plsql_to_plpgsql($self->{subpartitions}{$table}{$p}{$subpart}[$i]->{value}, $self->{null_equal_empty}, undef, $self->{package_functions}) . ")");
+											push(@subcondition, "NEW.$self->{subpartitions}{$table}{$p}{$subpart}[$i]->{column} IN (" . Ora2Pg::PLSQL::plsql_to_plpgsql($self, $self->{subpartitions}{$table}{$p}{$subpart}[$i]->{value}) . ")");
 										} else {
-											push(@subcondition, "$fct(NEW.$colname) IN (" . Ora2Pg::PLSQL::plsql_to_plpgsql($self->{subpartitions}{$table}{$p}{$subpart}[$i]->{value}, $self->{null_equal_empty}, undef, $self->{package_functions}) . ")");
+											push(@subcondition, "$fct(NEW.$colname) IN (" . Ora2Pg::PLSQL::plsql_to_plpgsql($self, $self->{subpartitions}{$table}{$p}{$subpart}[$i]->{value}) . ")");
 										}
 									} else {
 										if (!$fct) {
-											push(@subcondition, "NEW.$self->{subpartitions}{$table}{$p}{$subpart}[$i]->{column} < " . Ora2Pg::PLSQL::plsql_to_plpgsql($self->{subpartitions}{$table}{$p}{$subpart}[$i]->{value},$self->{null_equal_empty}, undef, $self->{package_functions}));
+											push(@subcondition, "NEW.$self->{subpartitions}{$table}{$p}{$subpart}[$i]->{column} < " . Ora2Pg::PLSQL::plsql_to_plpgsql($self, $self->{subpartitions}{$table}{$p}{$subpart}[$i]->{value}));
 										} else {
-											push(@subcondition, "$fct(NEW.$colname) < " . Ora2Pg::PLSQL::plsql_to_plpgsql($self->{subpartitions}{$table}{$p}{$subpart}[$i]->{value},$self->{null_equal_empty}, undef, $self->{package_functions}));
+											push(@subcondition, "$fct(NEW.$colname) < " . Ora2Pg::PLSQL::plsql_to_plpgsql($self, $self->{subpartitions}{$table}{$p}{$subpart}[$i]->{value}));
 										}
 									}
 									$owner = $self->{subpartitions}{$table}{$p}{$subpart}[$i]->{owner} || '';
 								}
-								$sub_check_cond = Ora2Pg::PLSQL::plsql_to_plpgsql($sub_check_cond,$self->{null_equal_empty}, undef, $self->{package_functions});
+								$sub_check_cond = Ora2Pg::PLSQL::plsql_to_plpgsql($self, $sub_check_cond);
 								$create_table{$table}{table} .= "$check_cond AND $sub_check_cond";
 								$create_table{$table}{table} .= "\n) ) INHERITS ($table);\n";
 								$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
@@ -4660,6 +4791,7 @@ BEGIN
 					if (!$sub_funct_cond) {
 						$funct_cond .= "\t$cond ( " . join(' AND ', @condition) . " ) THEN INSERT INTO $tb_name VALUES (NEW.*);\n";
 					} else {
+						$sub_funct_cond = Ora2Pg::PLSQL::plsql_to_plpgsql($self, $sub_funct_cond);
 						$funct_cond .= "\t$cond ( " . join(' AND ', @condition) . " ) THEN \n";
 						$funct_cond .= $sub_funct_cond;
 						$funct_cond .= "\t\tELSE INSERT INTO $tb_name VALUES (NEW.*);\n";
@@ -4678,12 +4810,12 @@ BEGIN
                 INSERT INTO $deftb$self->{partitions_default}{$table} VALUES (NEW.*);
 };
 			} else {
-				$function = Ora2Pg::PLSQL::plsql_to_plpgsql($function,$self->{null_equal_empty}, undef, $self->{package_functions});
 				$function .= $funct_cond . qq{	ELSE
                 -- Raise an exception
                 RAISE EXCEPTION 'Value out of range. Fix the ${table}_insert_trigger() function!';
 };
 			}
+			$function = Ora2Pg::PLSQL::plsql_to_plpgsql($self, $function);
 			$function .= qq{
         END IF;
         RETURN NULL;
@@ -4718,7 +4850,7 @@ CREATE TRIGGER insert_${table}_trigger
 					$sql_output .= "ALTER TABLE \L$self->{partitions_default}{$table}\E OWNER TO \L$owner\E;\n"if ($self->{partitions_default}{$table});
 					$sql_output .= "ALTER FUNCTION \L${table}_insert_trigger\E() OWNER TO \L$owner\E;\n";
 				} else {
-					$sql_output .= "ALTER TABLE \"$self->{partitions_default}{$table}\" OWNER TO \"$owner\";\n"if ($self->{partitions_default}{$table});
+					$sql_output .= "ALTER TABLE \"$self->{partitions_default}{$table}\"() OWNER TO \"$owner\";\n"if ($self->{partitions_default}{$table});
 					$sql_output .= "ALTER FUNCTION \"${table}_insert_trigger\"() OWNER TO \"$owner\";\n";
 				}
 			}
@@ -4830,7 +4962,7 @@ CREATE TRIGGER insert_${table}_trigger
 		$self->logit("Dumping table $table...\n", 1);
 
 		if (!$self->{quiet} && !$self->{debug}) {
-				print STDERR $self->progress_bar($ib, $num_total_table, 25, '=', 'tables', "exporting $table" ), "\r";
+			print STDERR $self->progress_bar($ib, $num_total_table, 25, '=', 'tables', "exporting $table" ), "\r";
 		}
 		# Create FDW server if required
 		if ($self->{external_to_fdw}) {
@@ -4851,7 +4983,7 @@ CREATE TRIGGER insert_${table}_trigger
 		}
 		if (exists $self->{tables}{$table}{table_as}) {
 			if ($self->{plsql_pgsql}) {
-				$self->{tables}{$table}{table_as} = Ora2Pg::PLSQL::plsql_to_plpgsql($self->{tables}{$table}{table_as},$self->{null_equal_empty}, undef, $self->{package_functions});
+				$self->{tables}{$table}{table_as} = Ora2Pg::PLSQL::plsql_to_plpgsql($self, $self->{tables}{$table}{table_as});
 			}
 			my $withoid = '';
 			$withoid = 'WITH (OIDS)' if ($self->{with_oid});
@@ -4861,6 +4993,8 @@ CREATE TRIGGER insert_${table}_trigger
 		if (exists $self->{tables}{$table}{truncate_table}) {
 			$sql_output .= "\nTRUNCATE TABLE $tbname;\n";
 		}
+		my $serial_sequence = '';
+		my $enum_str = '';
 		if (exists $self->{tables}{$table}{column_info}) {
 			$sql_output .= "\nCREATE$foreign $obj_type $tbname (\n";
 
@@ -4891,7 +5025,25 @@ CREATE TRIGGER insert_${table}_trigger
 					$self->logit("\tReplacing column \L$f->[0]\E as " . $self->{replaced_cols}{"\L$table\E"}{"\L$fname\E"} . "...\n", 1);
 					$fname = $self->{replaced_cols}{"\L$table\E"}{"\L$fname\E"};
 				}
+				# Check if we need auto increment
+				if ($f->[12] eq 'auto_increment') {
+					if ($type !~ s/bigint/bigserial/) {
+						if ($type !~ s/smallint/smallserial/) {
+							$type =~ s/integer/serial/;
+						}
+					}
+					if ($type =~ /serial/) {
+						my $seqname = substr(lc($tbname . '_' . $fname), 0, 59) . '_seq';
+						$serial_sequence .= "ALTER SEQUENCE $seqname RESTART WITH $self->{tables}{$table}{table_info}{auto_increment};\n";
+					}
+				}
 				# Check if this column should be replaced by a boolean following table/column name
+				if (uc($f->[1]) eq 'ENUM') {
+					$f->[11] =~ s/^enum\(//i;
+					$f->[11] =~ s/\)$//;
+					my $keyname = $tbname . '_' . $fname . '_chk';
+					$enum_str .= "ALTER TABLE $tbname ADD CONSTRAINT $keyname CHECK ($fname IN ($f->[11]));\n";
+				}
 				my $typlen = $f->[5];
 				$typlen ||= $f->[2];
 				if (grep(/^$f->[0]$/i, @{$self->{'replace_as_boolean'}{uc($table)}})) {
@@ -4929,22 +5081,26 @@ CREATE TRIGGER insert_${table}_trigger
 				} else {
 					$sql_output .= "\t\"$fname\" $type";
 				}
-				if (!$f->[3] || ($f->[3] eq 'N')) {
-					push(@{$self->{tables}{$table}{check_constraint}{notnull}}, $f->[0]);
-					$sql_output .= " NOT NULL";
+				if (!$f->[3] || ($f->[3] =~ /^N/)) {
+					# smallserial, serial and bigserial use a NOT NULL sequence as default value,
+					# so we don't need to add it here
+					if ($type !~ /serial/) {
+						push(@{$self->{tables}{$table}{check_constraint}{notnull}}, $f->[0]);
+						$sql_output .= " NOT NULL";
+					}
 				}
 				if ($f->[4] ne "") {
 					$f->[4] =~ s/^\s+//;
 					$f->[4] =~ s/\s+$//;
 					if ($self->{plsql_pgsql}) {
-						$f->[4] = Ora2Pg::PLSQL::plsql_to_plpgsql($f->[4],$self->{null_equal_empty}, undef, $self->{package_functions});
+						$f->[4] = Ora2Pg::PLSQL::plsql_to_plpgsql($self, $f->[4]);
 					}
 					if (($f->[4] ne '') && ($self->{type} ne 'FDW')) {
 						if (($type eq 'boolean') && exists $self->{ora_boolean_values}{lc($f->[4])}) {
 							$sql_output .= " DEFAULT '" . $self->{ora_boolean_values}{lc($f->[4])} . "'";
 						} else {
 							if (($f->[4] !~ /^'/) && ($f->[4] =~ /[^\d\.]/)) {
-								if ($type =~ /CHAR|TEXT/i) {
+								if ($type =~ /CHAR|TEXT|ENUM/i) {
 									$f->[4] = "'$f->[4]'";
 								} elsif ($type =~ /DATE|TIME/i) {
 									# do not use REPLACE_ZERO_DATE in default value, cause it can be NULL
@@ -4972,11 +5128,22 @@ CREATE TRIGGER insert_${table}_trigger
 				}
 			} elsif ( grep(/^$table$/i, keys %{$self->{external_table}}) ) {
 				$sql_output .= ") SERVER \L$self->{external_table}{$table}{directory}\E OPTIONS(filename '$self->{external_table}{$table}{directory_path}$self->{external_table}{$table}{location}', format 'csv', delimiter '$self->{external_table}{$table}{delimiter}');\n";
+			} elsif ($self->{is_mysql} && $self->{tables}{$table}{table_info}{connection}) {
+				my $schem = "dbname '$self->{schema}'," if ($self->{schema});
+				my $r_server = $self->{fdw_server};
+				my $r_table = $table;
+				if ($self->{tables}{$table}{table_info}{connection} =~ /([^'\/]+)\/([^']+)/) {
+					$r_server = $1;
+					$r_table = $2;
+				}
+				$sql_output .= ") SERVER $r_server OPTIONS($schem table_name '$r_table');\n";
 			} else {
 				my $schem = "schema '$self->{schema}'," if ($self->{schema});
 				$sql_output .= ") SERVER $self->{fdw_server} OPTIONS($schem table '$table');\n";
 			}
 		}
+		$sql_output .= $serial_sequence;
+		$sql_output .= $enum_str;
 
 		# Add comments on table
 		if (!$self->{disable_comment} && $self->{tables}{$table}{table_info}{comment}) {
@@ -5034,9 +5201,6 @@ CREATE TRIGGER insert_${table}_trigger
 
 			# Set the index definition
 			$indices .= $self->_create_indexes($table, %{$self->{tables}{$table}{indexes}}) . "\n";
-			if ($self->{plsql_pgsql}) {
-				$indices = Ora2Pg::PLSQL::plsql_to_plpgsql($indices,$self->{null_equal_empty}, undef, $self->{package_functions});
-			}
 			if (!$self->{file_per_index}) {
 				$sql_output .= $indices;
 				$indices = '';
@@ -5166,6 +5330,10 @@ sub _dump_table
 
 		my $type = $self->_sql_type($f->[1], $f->[2], $f->[5], $f->[6]);
 		$type = "$f->[1], $f->[2]" if (!$type);
+
+		if (uc($f->[1]) eq 'ENUM') {
+			$f->[1] = 'varchar';
+		}
 		push(@stt, uc($f->[1]));
 		push(@tt, $type);
 		push(@nn,  $self->{tables}{$table}{column_info}{$fieldname});
@@ -5221,6 +5389,8 @@ This function return comments associated to columns
 sub _column_comments
 {
 	my ($self, $table) = @_;
+
+	return Ora2Pg::MySQL::_column_comments($self, $table) if ($self->{is_mysql});
 
 	my $condition = '';
 
@@ -5278,6 +5448,9 @@ sub _create_indexes
 				push(@strings, $1);
 				$i++;
 			}
+			if ($self->{plsql_pgsql}) {
+				$indexes{$idx}->[$j] = Ora2Pg::PLSQL::plsql_to_plpgsql($self, $indexes{$idx}->[$j]);
+			}
 		}
 
 		# Add parentheses to index column definition when a space is found
@@ -5334,10 +5507,45 @@ sub _create_indexes
 					$idxname = substr($idxname,0,63);
 				}
 			}
-			if ($self->{tables}{$tbsaved}{idx_type}{$idx}{type_name} !~ /SPATIAL_INDEX/) {
-				$str .= "CREATE$unique INDEX$concurrently \L$idxname$self->{indexes_suffix}\E ON $table ($columns)";
-			} else {
+			if ($self->{tables}{$tbsaved}{idx_type}{$idx}{type_name} =~ /SPATIAL_INDEX/) {
 				$str .= "CREATE INDEX$concurrently \L$idxname$self->{indexes_suffix}\E ON $table USING gist($columns)";
+			} elsif ($self->{tables}{$tbsaved}{idx_type}{$idx}{type_name} =~ /FULLTEXT/) {
+				map { s/"//g; } @{$indexes{$idx}};
+				my $newcolname = $self->quote_object_name(join('_', @{$indexes{$idx}}));
+				$str .= "ALTER TABLE $table ADD COLUMN tsv_" . substr($newcolname,0,59) . " tsvector;\n";
+				my $fctname = $self->quote_object_name($table.'_' . join('_', @{$indexes{$idx}}));
+				$fctname = "tsv_${table}_" . substr($newcolname,0,59-(length($table)+1));
+				my $trig_name = "trig_tsv_${table}_" . substr($newcolname,0,54-(length($table)+1));
+				my $contruct_vector =  '';
+				my $uptdate_vector =  '';
+				my $weight = 'A';
+				foreach my $col (@{$indexes{$idx}}) {
+					$contruct_vector .= "\t\tsetweight(to_tsvector('pg_catalog.english', coalesce(new.$col,'')), '$weight') ||\n";
+					$update_vector .= " setweight(to_tsvector('pg_catalog.english', coalesce(new.$col,'')), '$weight') ||";
+					$weight++;
+				}
+				$contruct_vector =~ s/\|\|$/;/s;
+				$update_vector =~ s/\|\|$/;/s;
+
+				$str .= qq{CREATE FUNCTION $fctname() RETURNS trigger AS \$\$
+BEGIN
+	new.$newcolname :=
+$contruct_vector
+	return new;
+END
+\$\$ LANGUAGE plpgsql;
+
+CREATE TRIGGER $trig_name BEFORE INSERT OR UPDATE
+  ON $table
+  FOR EACH ROW EXECUTE PROCEDURE $fctname();
+
+-- When the data migration is done without trigger, create tsvector data for all the existing records
+-- UPDATE $table SET $newcolname = $update_vector
+
+};
+				$str .= "CREATE$unique INDEX$concurrently \L$idxname$self->{indexes_suffix}\E ON $table USING gin(tsv_$newcolname)";
+			} else {
+				$str .= "CREATE$unique INDEX$concurrently \L$idxname$self->{indexes_suffix}\E ON $table ($columns)";
 			}
 			if ($self->{use_tablespace} && $self->{tables}{$tbsaved}{idx_tbsp}{$idx} && !grep(/^$self->{tables}{$tbsaved}{idx_tbsp}{$idx}$/i, @{$self->{default_tablespaces}})) {
 				$str .= " TABLESPACE $self->{tables}{$tbsaved}{idx_tbsp}{$idx}";
@@ -5348,7 +5556,6 @@ sub _create_indexes
 	}
 
 	return wantarray ? @out : join("\n", @out);
-
 }
 
 =head2 _drop_indexes
@@ -5607,7 +5814,7 @@ sub _create_check_constraint
 				}
 			}
 			if ($self->{plsql_pgsql}) {
-				$chkconstraint = Ora2Pg::PLSQL::plsql_to_plpgsql($chkconstraint,$self->{null_equal_empty}, undef, $self->{package_functions});
+				$chkconstraint = Ora2Pg::PLSQL::plsql_to_plpgsql($self, $chkconstraint);
 			}
 			if (!$self->{preserve_case}) {
 				foreach my $c (@$field_name) {
@@ -5643,8 +5850,8 @@ sub _create_foreign_keys
 	foreach my $h (@foreign_key) {
 
 		next if (grep(/^$h->[0]$/, @done));
+		$h->[0] = uc($h->[0]);
 		foreach my $desttable (keys %{$self->{tables}{$tbsaved}{foreign_link}{$h->[0]}{remote}}) {
-
 			my $str = '';
 			push(@done, $h->[0]);
 			map { $_ = '"' . $_ . '"' } @{$self->{tables}{$tbsaved}{foreign_link}{$h->[0]}{local}};
@@ -5681,8 +5888,12 @@ sub _create_foreign_keys
 			$str .= "ALTER TABLE $table ADD CONSTRAINT $h->[0] FOREIGN KEY (" . join(',', @lfkeys) . ") REFERENCES $subsdesttable(" . join(',', @rfkeys) . ")";
 			$str .= " MATCH $h->[2]" if ($h->[2]);
 			$str .= " ON DELETE $h->[3]" if ($h->[3]);
-			if ( ($self->{fkey_add_update} eq 'ALWAYS') || ( ($self->{fkey_add_update} eq 'DELETE') && ($str =~ /ON DELETE CASCADE/) ) ) {
-				$str .= " ON UPDATE CASCADE";
+			if ($self->{is_mysql}) {
+				$str .= " ON UPDATE $h->[9]";
+			} else {
+				if ( ($self->{fkey_add_update} eq 'ALWAYS') || ( ($self->{fkey_add_update} eq 'DELETE') && ($str =~ /ON DELETE CASCADE/) ) ) {
+					$str .= " ON UPDATE CASCADE";
+				}
 			}
 			# if DEFER_FKEY is enabled, force constraint to be
 			# deferrable and defer it initially.
@@ -5735,6 +5946,8 @@ sub _extract_sequence_info
 {
 	my $self = shift;
 
+	return Ora2Pg::MySQL::_extract_sequence_info($self) if ($self->{is_mysql});
+
 	my $sql = "SELECT DISTINCT SEQUENCE_NAME, MIN_VALUE, MAX_VALUE, INCREMENT_BY, CYCLE_FLAG, ORDER_FLAG, CACHE_SIZE, LAST_NUMBER FROM $self->{prefix}_SEQUENCES";
 	if ($self->{schema}) {
 		$sql .= " WHERE SEQUENCE_OWNER='$self->{schema}'";
@@ -5778,11 +5991,16 @@ sub _howto_get_data
 	# Fix a problem when the table need to be prefixed by the schema
 	my $realtable = $table;
 	$realtable =~ s/\"//g;
-	$realtable = "\"$realtable\"";
-	my $owner  = $self->{tables}{$table}{table_info}{owner} || $self->{tables}{$table}{owner} || '';
-	$owner =~ s/\"//g;
-	$owner = "\"$owner\"";
-	$realtable = "$owner.$realtable";
+	# Do not use double quote with mysql, but backquote
+	if (!$self->{is_mysql}) {
+		$realtable = "\"$realtable\"";
+		my $owner  = $self->{tables}{$table}{table_info}{owner} || $self->{tables}{$table}{owner} || '';
+		$owner =~ s/\"//g;
+		$owner = "\"$owner\"";
+		$realtable = "$owner.$realtable";
+	} else {
+		$realtable = "\`$realtable\`";
+	}
 
 	my $alias = 'a';
 	my $str = "SELECT ";
@@ -5800,15 +6018,20 @@ sub _howto_get_data
 		my $realcolname = $name->[$k]->[0];
 		my $spatial_srid = '';
 		if ($name->[$k]->[0] !~ /"/) {
-			$name->[$k]->[0] = '"' . $name->[$k]->[0] . '"';
+			# Do not use double quote with mysql
+			if (!$self->{is_mysql}) {
+				$name->[$k]->[0] = '"' . $name->[$k]->[0] . '"';
+			} else {
+				$name->[$k]->[0] = '`' . $name->[$k]->[0] . '`';
+			}
 		}
-		if ( $src_type->[$k] =~ /date/i) {
+		if (!$self->{is_mysql} && $src_type->[$k] =~ /date/i) {
 			$str .= "to_char($name->[$k]->[0], '$dateformat'),";
 		} elsif ( ( $src_type->[$k] =~ /^char/i) && ($type->[$k] =~ /(varchar|text)/i)) {
 			$str .= "trim($self->{trim_type} '$self->{trim_char}' FROM $name->[$k]->[0]) AS $name->[$k]->[0],";
-		} elsif ( $src_type->[$k] =~ /timestamp.*with time zone/i) {
+		} elsif (!$self->{is_mysql} &&  $src_type->[$k] =~ /timestamp.*with time zone/i) {
 			$str .= "to_char($name->[$k]->[0], '$timeformat_tz'),";
-		} elsif ( $src_type->[$k] =~ /timestamp/i) {
+		} elsif (!$self->{is_mysql} &&  $src_type->[$k] =~ /timestamp/i) {
 			$str .= "to_char($name->[$k]->[0], '$timeformat'),";
 		# If dest type is bytea the content of the file is exported as bytea
 		} elsif ( ($src_type->[$k] =~ /bfile/i) && ($type->[$k] =~ /bytea/i) ) {
@@ -5828,7 +6051,7 @@ sub _howto_get_data
 			} else {
 				$str .= "$alias.$name->[$k]->[0].extract('/').getClobVal(),";
 			}
-		} elsif ( $src_type->[$k] =~ /geometry/i) {
+		} elsif ( !$self->{is_mysql} && $src_type->[$k] =~ /geometry/i) {
 
 			# Set SQL query to get the SRID of the column
 			if ($self->{convert_srid} > 1) {
@@ -5880,6 +6103,14 @@ sub _howto_get_data
 				} else {
 					$str .= "CASE WHEN $name->[$k]->[0] IS NOT NULL THEN SDO_UTIL.TO_WKTGEOMETRY($name->[$k]->[0]) ELSE NULL END,";
 				}
+			}
+
+		} elsif ( $self->{is_mysql} && $src_type->[$k] =~ /geometry/i) {
+
+			if ($self->{geometry_extract_type} eq 'WKB') {
+				$str .= "CASE WHEN $name->[$k]->[0] IS NOT NULL THEN CONCAT('SRID=',SRID($name->[$k]->[0]),';', AsBinary($name->[$k]->[0])) ELSE NULL END,";
+			} else {
+				$str .= "CASE WHEN $name->[$k]->[0] IS NOT NULL THEN CONCAT('SRID=',SRID($name->[$k]->[0]),';',AsText($name->[$k]->[0])) ELSE NULL END,";
 			}
 
 		} else {
@@ -5994,6 +6225,10 @@ sub _sql_type
 {
         my ($self, $type, $len, $precision, $scale) = @_;
 
+	if ($self->{is_mysql}) {
+		return Ora2Pg::MySQL::_sql_type($self, $type, $len, $precision, $scale);
+	}
+
 	my $data_type = '';
 
 	# Simplify timestamp type
@@ -6090,6 +6325,8 @@ elements for each column the specified table
 sub _column_info
 {
 	my ($self, $table, $owner, $objtype, $recurs) = @_;
+
+	return Ora2Pg::MySQL::_column_info($self,'',$owner, 'TABLE') if ($self->{is_mysql});
 
 	$objtype ||= 'TABLE';
 
@@ -6279,6 +6516,8 @@ sub _unique_key
 {
 	my($self, $table, $owner) = @_;
 
+	return Ora2Pg::MySQL::_unique_key($self,$table,$owner) if ($self->{is_mysql});
+
 	my %result = ();
         my @accepted_constraint_types = ();
         push @accepted_constraint_types, "'P'" unless($self->{skip_pkeys});
@@ -6404,6 +6643,8 @@ sub _foreign_key
 {
 	my ($self, $table, $owner) = @_;
 
+	return Ora2Pg::MySQL::_foreign_key($self,$table,$owner) if ($self->{is_mysql});
+
 	my $condition = '';
 	$condition .= "AND TABLE_NAME='$table' " if ($table);
 	$condition .= "AND OWNER='$owner' " if ($owner);
@@ -6477,6 +6718,8 @@ Returns a hash of all priviledge.
 sub _get_privilege
 {
 	my($self) = @_;
+
+	return Ora2Pg::MySQL::_get_privilege($self) if ($self->{is_mysql});
 
 	my %privs = ();
 	my %roles = ();
@@ -6646,6 +6889,8 @@ sub _get_indexes
 {
 	my ($self, $table, $owner) = @_;
 
+	return Ora2Pg::MySQL::_get_indexes($self,$table,$owner) if ($self->{is_mysql});
+
 	my $idxowner = '';
 
 	if ($owner) {
@@ -6705,6 +6950,7 @@ $idxowner
 			print STDERR "WARNING: index $row->[0] has the same name as the table itself. Please rename it before export.\n"; 
 		}
 		$unique{$row->[-6]}{$row->[0]} = $row->[2];
+
 		# Save original column name
 		my $colname = $row->[1];
 		# Enclose with double quote if required
@@ -6721,6 +6967,7 @@ $idxowner
 				$row->[1] .= " DESC";
 			}
 		}
+
 		$row->[1] =~ s/SYS_EXTRACT_UTC\s*\(([^\)]+)\)/$1/isg;
 
 		if ($self->{preserve_case}) {
@@ -6729,10 +6976,9 @@ $idxowner
 				$row->[1] =~ s/$/"/;
 			}
 		}
-
 		# Index with DESC are declared as FUNCTION-BASED, fix that
 		if (($row->[4] =~ /FUNCTION-BASED/i) && ($row->[1] !~ /\(.*\)/)) {
-			$row->[4] =~ s/FUNCTION-BASED //;
+			$row->[4] =~ s/FUNCTION-BASED\s*//;
 		}
 
 		if (($#{$row} > 6) && ($row->[7] eq 'Y')) {
@@ -6771,6 +7017,8 @@ INCREMENT and LAST_NUMBER for the specified table.
 sub _get_sequences
 {
 	my($self) = @_;
+
+	return Ora2Pg::MySQL::_get_sequences($self) if ($self->{is_mysql});
 
 	# Retrieve all indexes 
 	my $str = "SELECT DISTINCT SEQUENCE_NAME, MIN_VALUE, MAX_VALUE, INCREMENT_BY, LAST_NUMBER, CACHE_SIZE, CYCLE_FLAG, SEQUENCE_OWNER FROM $self->{prefix}_SEQUENCES";
@@ -6892,6 +7140,8 @@ sub _get_dblink
 {
 	my($self) = @_;
 
+	return Ora2Pg::MySQL::_get_dblink($self) if ($self->{is_mysql});
+
 	# Retrieve all database link from dba_db_links table
 	my $str = "SELECT OWNER,DB_LINK,USERNAME,HOST FROM $self->{prefix}_DB_LINKS";
 	if (!$self->{schema}) {
@@ -6928,6 +7178,8 @@ sub _get_job
 {
 	my($self) = @_;
 
+	return Ora2Pg::MySQL::_get_job($self) if ($self->{is_mysql});
+
 	# Retrieve all database job from user_jobs table
 	my $str = "SELECT JOB,WHAT,INTERVAL FROM $self->{prefix}_jobs";
 	if (!$self->{schema}) {
@@ -6961,6 +7213,9 @@ Returns a hash of view names with the SQL queries they are based on.
 sub _get_views
 {
 	my($self) = @_;
+
+
+	return Ora2Pg::MySQL::_get_views($self) if ($self->{is_mysql});
 
 	my $owner = '';
 	if ($self->{schema}) {
@@ -6997,6 +7252,7 @@ sub _get_views
 	}
 	$str .= $self->limit_to_objects('VIEW', 'v.VIEW_NAME');
 	$str .= " ORDER BY v.VIEW_NAME";
+
 
 	# Compute view order, where depended view appear before using view
 	my %view_order = ();
@@ -7173,6 +7429,8 @@ sub _get_triggers
 {
 	my($self) = @_;
 
+	return Ora2Pg::MySQL::_get_triggers($self) if ($self->{is_mysql});
+
 	# Retrieve all indexes 
 	my $str = "SELECT TRIGGER_NAME, TRIGGER_TYPE, TRIGGERING_EVENT, TABLE_NAME, TRIGGER_BODY, WHEN_CLAUSE, DESCRIPTION, ACTION_TYPE, OWNER FROM $self->{prefix}_TRIGGERS WHERE STATUS='ENABLED'";
 	if (!$self->{schema}) {
@@ -7207,6 +7465,8 @@ sub _get_functions
 {
 	my $self = shift;
 
+	return Ora2Pg::MySQL::_get_functions($self) if ($self->{is_mysql});
+
 	# Retrieve all functions 
 	my $str = "SELECT DISTINCT OBJECT_NAME,OWNER FROM $self->{prefix}_OBJECTS WHERE OBJECT_TYPE='FUNCTION'";
 	$str .= " AND STATUS='VALID'" if (!$self->{export_invalid});
@@ -7221,7 +7481,8 @@ sub _get_functions
 	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
 	my %functions = ();
-	my @fct_done = ('SQUIRREL_GET_ERROR_OFFSET');
+	my @fct_done = ();
+	push(@fct_done, @EXCLUDED_FUNCTION);
 	while (my $row = $sth->fetch) {
 		next if (grep(/^$row->[0]$/i, @fct_done));
 		push(@fct_done, $row->[0]);
@@ -7248,6 +7509,8 @@ Returns a hash of all procedure names with their PLSQL code.
 sub _get_procedures
 {
 	my $self = shift;
+
+	return Ora2Pg::MySQL::_get_functions($self) if ($self->{is_mysql});
 
 	# Retrieve all procedures 
 	my $str = "SELECT DISTINCT OBJECT_NAME,OWNER FROM $self->{prefix}_OBJECTS WHERE OBJECT_TYPE='PROCEDURE'";
@@ -7388,6 +7651,8 @@ sub _table_info
 {
 	my $self = shift;
 
+	return Ora2Pg::MySQL::_table_info($self) if ($self->{is_mysql});
+
 	my $owner = '';
 	if ($self->{schema}) {
 		$owner .= "AND A.OWNER='$self->{schema}' ";
@@ -7453,6 +7718,7 @@ sub _queries
 
 }
 
+
 =head2 _get_audit_queries
 
 This function extract SQL queries from dba_audit_trail 
@@ -7466,6 +7732,8 @@ sub _get_audit_queries
 	my($self) = @_;
 
 	return if (!$self->{audit_user});
+
+	return Ora2Pg::MySQL::_get_audit_queries($self) if ($self->{is_mysql});
 
 	my @users = ();
 	push(@users, split(/[,;\s]/, uc($self->{audit_user})));
@@ -7499,6 +7767,7 @@ sub _get_audit_queries
 	return %queries;
 }
 
+
 =head2 _get_tablespaces
 
 This function implements an Oracle-native tablespaces information.
@@ -7510,6 +7779,8 @@ Returns a hash of an array of tablespace names with their system file path.
 sub _get_tablespaces
 {
 	my($self) = @_;
+
+	return Ora2Pg::MySQL::_get_tablespaces($self) if ($self->{is_mysql});
 
 	# Retrieve all object with tablespaces.
 my $str = qq{
@@ -7547,6 +7818,8 @@ AND a.TABLESPACE_NAME = c.TABLESPACE_NAME
 sub _list_tablespaces
 {
 	my($self) = @_;
+
+	return Ora2Pg::MySQL::_list_tablespaces($self) if ($self->{is_mysql});
 
 	# list tablespaces.
 	my $str = qq{
@@ -7587,6 +7860,8 @@ Return two hash ref with partition details and partition default.
 sub _get_partitions
 {
 	my($self) = @_;
+
+	return Ora2Pg::MySQL::_get_partitions($self) if ($self->{is_mysql});
 
 	my $highvalue = 'A.HIGH_VALUE';
 	if ($self->{db_version} =~ /Release 8/) {
@@ -7650,6 +7925,8 @@ Return two hash ref with partition details and partition default.
 sub _get_subpartitions
 {
 	my($self) = @_;
+
+	return Ora2Pg::MySQL::_get_subpartitions($self) if ($self->{is_mysql});
 
 	my $highvalue = 'A.HIGH_VALUE';
 	if ($self->{db_version} =~ /Release 8/) {
@@ -7743,6 +8020,8 @@ sub _get_synonyms
 {
 	my($self) = @_;
 
+	return Ora2Pg::MySQL::_get_synonyms($self) if ($self->{is_mysql});
+
 	# Retrieve all synonym
 	my $str = "SELECT OWNER,SYNONYM_NAME,TABLE_OWNER,TABLE_NAME,DB_LINK FROM $self->{prefix}_SYNONYMS";
 	if ($self->{schema}) {
@@ -7778,6 +8057,8 @@ Return a hash of the partition table_name => type
 sub _get_partitions_list
 {
 	my($self) = @_;
+
+	return Ora2Pg::MySQL::_get_partitions_list($self) if ($self->{is_mysql});
 
 	my $highvalue = 'A.HIGH_VALUE';
 	if ($self->{db_version} =~ /Release 8/) {
@@ -7828,6 +8109,8 @@ sub _get_partitioned_table
 {
 	my($self) = @_;
 
+	return Ora2Pg::MySQL::_get_partitioned_table($self) if ($self->{is_mysql});
+
 	my $highvalue = 'A.HIGH_VALUE';
 	if ($self->{db_version} =~ /Release 8/) {
 		$highvalue = "'' AS HIGH_VALUE";
@@ -7845,6 +8128,7 @@ FROM $self->{prefix}_TAB_PARTITIONS A, $self->{prefix}_PART_TABLES B
 WHERE A.TABLE_NAME = B.TABLE_NAME
 };
 	$str .= $self->limit_to_objects('TABLE|PARTITION','A.TABLE_NAME|A.PARTITION_NAME');
+
 	if ($self->{prefix} ne 'USER') {
 		if ($self->{schema}) {
 			$str .= "\tAND a.table_owner ='$self->{schema}'\n";
@@ -7891,22 +8175,36 @@ sub format_data_row
 		my $data_type = $data_types->[$idx] || '';
 		if ($row->[$idx] && $src_data_types->[$idx] =~ /GEOMETRY/) {
 			if ($self->{type} ne 'INSERT') {
-				if ($self->{geometry_extract_type} eq 'INTERNAL') {
+				if (!$self->{is_mysql} && ($self->{geometry_extract_type} eq 'INTERNAL')) {
 					use Ora2Pg::GEOM;
 					my $geom_obj = new Ora2Pg::GEOM('srid' => $self->{spatial_srid}{$table}->[$idx]);
 					$row->[$idx] = $geom_obj->parse_sdo_geometry($row->[$idx]);
+					$row->[$idx]  = 'SRID=' . $self->{spatial_srid}{$table}->[$idx] . ';' . $row->[$idx];
 				} elsif ($self->{geometry_extract_type} eq 'WKB') {
+					if ($self->{is_mysql}) {
+						$row->[$idx] =~ s/^SRID=(\d+);//;
+						$self->{spatial_srid}{$table}->[$idx] = $1;
+					}
 					$row->[$idx] = unpack('H*', $row->[$idx]);
+					$row->[$idx]  = 'SRID=' . $self->{spatial_srid}{$table}->[$idx] . ';' . $row->[$idx];
 				}
-				$row->[$idx]  = 'SRID=' . $self->{spatial_srid}{$table}->[$idx] . ';' . $row->[$idx];
 			} elsif ($self->{geometry_extract_type} eq 'WKB') {
+				if ($self->{is_mysql}) {
+					$row->[$idx] =~ s/^SRID=(\d+);//;
+					$self->{spatial_srid}{$table}->[$idx] = $1;
+				}
 				$row->[$idx] = unpack('H*', $row->[$idx]);
 				$row->[$idx]  = "'SRID=" . $self->{spatial_srid}{$table}->[$idx] . ';' . $row->[$idx] . "'";
 			} elsif (($self->{geometry_extract_type} eq 'INTERNAL') || ($self->{geometry_extract_type} eq 'WKT')) {
-				use Ora2Pg::GEOM;
-				my $geom_obj = new Ora2Pg::GEOM('srid' => $self->{spatial_srid}{$table}->[$idx]);
-				$row->[$idx] = $geom_obj->parse_sdo_geometry($row->[$idx]);
-				$row->[$idx] = "ST_GeomFromText('" . $row->[$idx] . "', $self->{spatial_srid}{$table}->[$idx])";
+				if (!$self->{is_mysql}) {
+					use Ora2Pg::GEOM;
+					my $geom_obj = new Ora2Pg::GEOM('srid' => $self->{spatial_srid}{$table}->[$idx]);
+					$row->[$idx] = $geom_obj->parse_sdo_geometry($row->[$idx]);
+					$row->[$idx] = "ST_GeomFromText('" . $row->[$idx] . "', $self->{spatial_srid}{$table}->[$idx])";
+				} else {
+					$row->[$idx] =~ s/^SRID=(\d+);//;
+					$row->[$idx] = "ST_GeomFromText('" . $row->[$idx] . "', $1)";
+				}
 			}
 		} elsif ($row->[$idx] =~ /^ARRAY\(0x/) {
 			my @type_col = ();
@@ -8462,16 +8760,31 @@ sub _remove_comments
 		$comments{"ORA2PG_COMMENT$self->{idxcomment}%"} = $1;
 		$self->{idxcomment}++;
 	}
+
 	while ($$content =~ s/(\'[^\'\n\r]+\b(PROCEDURE|FUNCTION)\s+[^\'\n\r]+\')/ORA2PG_COMMENT$self->{idxcomment}\%/is) {
 		$comments{"ORA2PG_COMMENT$self->{idxcomment}%"} = $1;
 		$self->{idxcomment}++;
 	}
 	my @lines = split(/\n/, $$content);
 	for (my $j = 0; $j <= $#lines; $j++) {
-		if ($lines[$j] =~ s/(\s*\-\-.*)$/ORA2PG_COMMENT$self->{idxcomment}\%/) {
-			$comments{"ORA2PG_COMMENT$self->{idxcomment}%"} = $1;
-			chomp($comments{"ORA2PG_COMMENT$self->{idxcomment}%"});
-			$self->{idxcomment}++;
+		if (!$self->{is_mysql}) {
+			if ($lines[$j] =~ s/(\s*\-\-.*)$/ORA2PG_COMMENT$self->{idxcomment}\%/) {
+				$comments{"ORA2PG_COMMENT$self->{idxcomment}%"} = $1;
+				chomp($comments{"ORA2PG_COMMENT$self->{idxcomment}%"});
+				$self->{idxcomment}++;
+			}
+		} else {
+			# Mysql supports differents kinds of comment's starter
+			if ( ($lines[$j] =~ s/(\s*COMMENT\s+'.*)$/ORA2PG_COMMENT$self->{idxcomment}\%/) ||
+			($lines[$j] =~ s/(\s*\-\- .*)$/ORA2PG_COMMENT$self->{idxcomment}\%/) ||
+			($lines[$j] =~ s/(\s*\# .*)$/ORA2PG_COMMENT$self->{idxcomment}\%/) ) {
+				$comments{"ORA2PG_COMMENT$self->{idxcomment}%"} = $1;
+				chomp($comments{"ORA2PG_COMMENT$self->{idxcomment}%"});
+				# Normalize start of comment
+				$comments{"ORA2PG_COMMENT$self->{idxcomment}%"} =~ s/^(\s*)COMMENT/$1\-\- /;
+				$comments{"ORA2PG_COMMENT$self->{idxcomment}%"} =~ s/^(\s*)\#/$1\-\- /;
+				$self->{idxcomment}++;
+			}
 		}
 	}
 	$$content = join("\n", @lines);
@@ -8494,7 +8807,13 @@ sub _convert_function
 	my $dirprefix = '';
 	$dirprefix = "$self->{output_dir}/" if ($self->{output_dir});
 
-	my %fct_detail = $self->_lookup_function($plsql);
+	my %fct_detail = ();
+	if (!$self->{is_mysql}) {
+		%fct_detail = $self->_lookup_function($plsql);
+	} else {
+		%fct_detail = $self->_lookup_function($pname);
+		$pname = '';
+	}
 	return if (!exists $fct_detail{name});
 
 	$fct_detail{name} =~ s/^.*\.//;
@@ -8505,10 +8824,10 @@ sub _convert_function
 	my $fname = $fct_detail{name};
 	if ($self->{preserve_case}) {
 		$fname = "\"$fname\"";
-		$fname = "\"$pname\"" . $sep . $fname if ($pname);
+		$fname = "\"$pname\"" . $sep . $fname if ($pname && !$self->{is_mysql});
 	} else {
 		$fname = lc($fname);
-		$fname = $pname . $sep . $fname if ($pname);
+		$fname = $pname . $sep . $fname if ($pname && !$self->{is_mysql});
 	}
 	$fname =~ s/"_"/_/g;
 
@@ -8518,6 +8837,7 @@ sub _convert_function
 	# Set the return part
 	my $func_return = '';
 	$fct_detail{setof} = ' SETOF' if ($fct_detail{setof});
+
 	if ($fct_detail{hasreturn}) {
 		$func_return = " RETURNS$fct_detail{setof} $fct_detail{func_ret_type} AS \$body\$\n";
 	} else {
@@ -8639,7 +8959,11 @@ END;
 		$function .= "\n\$body\$\nLANGUAGE PLPGSQL\n";
 		$revoke = "-- REVOKE ALL ON FUNCTION $name FROM PUBLIC;\n";
 		if ($self->{type} ne 'PACKAGE') {
-			$function .= "SECURITY DEFINER\n" if ($self->{security}{"\U$fct_detail{name}\E"}{security} eq 'DEFINER');
+			if (!$self->{is_mysql}) {
+				$function .= "SECURITY DEFINER\n" if ($self->{security}{"\U$fct_detail{name}\E"}{security} eq 'DEFINER');
+			} else  {
+				$function .= "SECURITY DEFINER\n" if ($fct_detail{security} eq 'DEFINER');
+			}
 		} else {
 			$function .= "SECURITY DEFINER\n" if ($self->{security}{"\U$pname\E"}{security} eq 'DEFINER');
 		}
@@ -8805,7 +9129,7 @@ sub _format_view
 		}
 	}
 	if ($self->{plsql_pgsql}) {
-		$sqlstr = Ora2Pg::PLSQL::plsql_to_plpgsql($sqlstr,$self->{null_equal_empty}, $self->{type}, $self->{package_functions});
+			$sqlstr = Ora2Pg::PLSQL::plsql_to_plpgsql($self, $sqlstr);
 	}
 
 	return $sqlstr;
@@ -9031,7 +9355,7 @@ sub ask_for_data
 		$self->{ora_conn_count} = 0;
 		while ($self->{ora_conn_count} < $self->{oracle_copies}) {
 			spawn sub {
-				$self->logit("Creating new connection to Oracle database...\n", 1);
+				$self->logit("Creating new connection to database to extract data...\n", 1);
 				$self->_extract_data($query, $table, $cmd_head, $cmd_foot, $s_out, $nn, $tt, $sprep, $stt, $part_name, $self->{ora_conn_count});
 			};
 			$self->{ora_conn_count}++;
@@ -9046,30 +9370,37 @@ sub ask_for_data
 			usleep(500000);
 		}
 	} else {
-		$self->_extract_data($query, $table, $cmd_head, $cmd_foot, $s_out, $nn, $tt, $sprep, $stt, $part_name);
+		my $total_record = $self->_extract_data($query, $table, $cmd_head, $cmd_foot, $s_out, $nn, $tt, $sprep, $stt, $part_name);
+		# Only useful for single process
+		return $total_record;
 	}
+
+	return;
 }
 
 sub _extract_data
 {
 	my ($self, $query, $table, $cmd_head, $cmd_foot, $s_out, $nn, $tt, $sprep, $stt, $part_name, $proc) = @_;
 
-	$0 = 'ora2pg - querying Oracle';
+	$0 = "ora2pg - querying table $table";
 
 	# Overwrite the query if REPLACE_QUERY is defined for this table
 	if ($self->{replace_query}{"\L$table\E"}) {
 		$query = $self->{replace_query}{"\L$table\E"};
 	}
 
+	# Look for user defined type
 	my %user_type = ();
-	for (my $idx = 0; $idx < scalar(@$tt); $idx++) {
-		my $data_type = $tt->[$idx] || '';
-		my $custom_type = '';
-		if (!exists $TYPE{$stt->[$idx]}) {
-			$custom_type = $self->_get_types($stt->[$idx]);
-			foreach my $tpe (sort {length($a->{name}) <=> length($b->{name}) } @{$custom_type}) {
-				$self->logit("Looking inside custom type $tpe->{name} to extract values...\n", 1);
-				push(@{$user_type{$data_type}}, &_get_custom_types($tpe->{code}));
+	if (!$self->{is_mysql}) {
+		for (my $idx = 0; $idx < scalar(@$tt); $idx++) {
+			my $data_type = $tt->[$idx] || '';
+			my $custom_type = '';
+			if (!exists $TYPE{$stt->[$idx]}) {
+				$custom_type = $self->_get_types($stt->[$idx]);
+				foreach my $tpe (sort {length($a->{name}) <=> length($b->{name}) } @{$custom_type}) {
+					$self->logit("Looking inside custom type $tpe->{name} to extract values...\n", 1);
+					push(@{$user_type{$data_type}}, &_get_custom_types($tpe->{code}));
+				}
 			}
 		}
 	}
@@ -9079,8 +9410,12 @@ sub _extract_data
 	my $sth;
 	$self->{data_cols}{$table} = ();
 
-	# Extract data now by chunk of DATA_LIMIT and send them to a dedicated job
-	$self->logit("Fetching all data from $rname tuples...\n", 1);
+	if ($self->{is_mysql}) {
+		my %col_info = Ora2Pg::MySQL::_column_info($self, $rname);
+		foreach my $col (keys %{$col_info{$rname}}) {
+			push(@{$self->{data_cols}{$table}}, $col);
+		}
+	}
 
 	if ( ($self->{parallel_tables} > 1) || (($self->{oracle_copies} > 1) && $self->{defined_pk}{"\L$table\E"}) ) {
 
@@ -9089,24 +9424,26 @@ sub _extract_data
 
 		# Force execution of initial command
 		$self->_initial_command($dbh);
-		# Force numeric format into the cloned session
-		$self->_numeric_format($dbh);
-		# Force datetime format into the cloned session
-		$self->_datetime_format($dbh);
+		if (!$self->{is_mysql}) {
+			# Force numeric format into the cloned session
+			$self->_numeric_format($dbh);
+			# Force datetime format into the cloned session
+			$self->_datetime_format($dbh);
+		}
 
 		# Set row cache size
 		$dbh->{RowCacheSize} = int($self->{data_limit}/10);
 
 		# prepare the query before execution
-		$sth = $dbh->prepare($query,{ora_auto_lob => 1,ora_exe_mode=>OCI_STMT_SCROLLABLE_READONLY, ora_check_sql => 1}) or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
-		foreach (@{$sth->{NAME}}) {
-			push(@{$self->{data_cols}{$table}}, $_);
-		}
-
-		if (defined $proc) {
-			$sth->execute($proc) or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
+		if (!$self->{is_mysql}) {
+			$sth = $dbh->prepare($query,{ora_auto_lob => 1,ora_exe_mode=>OCI_STMT_SCROLLABLE_READONLY, ora_check_sql => 1}) or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
+			foreach (@{$sth->{NAME}}) {
+				push(@{$self->{data_cols}{$table}}, $_);
+			}
 		} else {
-			$sth->execute() or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
+			#$query .= " LIMIT ?, ?";
+			$query =~ s/^SELECT\s+/SELECT \/\*\!40001 SQL_NO_CACHE \*\/ /s;
+			$sth = $dbh->prepare($query, { mysql_use_result => 1, mysql_use_row => 1 }) or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
 		}
 
 	} else {
@@ -9115,17 +9452,22 @@ sub _extract_data
 		$self->{dbh}->{RowCacheSize} = int($self->{data_limit}/10);
 
 		# prepare the query before execution
-		$sth = $self->{dbh}->prepare($query,{ora_auto_lob => 1,ora_exe_mode=>OCI_STMT_SCROLLABLE_READONLY, ora_check_sql => 1}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-		foreach (@{$sth->{NAME}}) {
-			push(@{$self->{data_cols}{$table}}, $_);
+		if (!$self->{is_mysql}) {
+			$sth = $self->{dbh}->prepare($query,{ora_auto_lob => 1,ora_exe_mode=>OCI_STMT_SCROLLABLE_READONLY, ora_check_sql => 1}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+			foreach (@{$sth->{NAME}}) {
+				push(@{$self->{data_cols}{$table}}, $_);
+			}
+		} else {
+			#$query .= " LIMIT ?, ?";
+			$query =~ s/^SELECT\s+/SELECT \/\*\!40001 SQL_NO_CACHE \*\/ /s;
+			$sth = $self->{dbh}->prepare($query, { mysql_use_result => 1, mysql_use_row => 1 }) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 		}
 
-		if (defined $proc) {
-			$sth->execute($proc) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-		} else {
-			$sth->execute() or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-		}
 	}
+
+	# Extract data now by chunk of DATA_LIMIT and send them to a dedicated job
+	$self->logit("Fetching all data from $rname tuples...\n", 1);
+
 	my $start_time   = time();
 	my $total_record = 0;
 	my $total_row = $self->{tables}{$table}{table_info}{num_rows};
@@ -9135,38 +9477,103 @@ sub _extract_data
 		$pipe->print("TABLE EXPORT IN PROGESS: $table, start: $start_time, rows $total_row\n");
 	}
 
-	while ( my $rows = $sth->fetchall_arrayref(undef,$self->{data_limit})) {
-		
-		if ( ($self->{parallel_tables} > 1) || (($self->{oracle_copies} > 1) && $self->{defined_pk}{"\L$table\E"}) ) {
-			if ($dbh->errstr) {
-				$self->logit("ERROR: " . $dbh->errstr . "\n", 0, 0);
+	my @params = ();
+	unshift(@params, $proc) if (defined $proc);
+	if ( ($self->{parallel_tables} > 1) || (($self->{oracle_copies} > 1) && $self->{defined_pk}{"\L$table\E"}) ) {
+		$sth->execute(@params) or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
+	} else {
+		$sth->execute(@params) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	}
+
+	# Oracle allow direct retreiving of bchunk of data 
+	if (!$self->{is_mysql}) {
+
+		while ( my $rows = $sth->fetchall_arrayref(undef,$self->{data_limit})) {
+
+			if ( ($self->{parallel_tables} > 1) || (($self->{oracle_copies} > 1) && $self->{defined_pk}{"\L$table\E"}) ) {
+				if ($dbh->errstr) {
+					$self->logit("ERROR: " . $dbh->errstr . "\n", 0, 0);
+					last;
+				}
+			} elsif ( $self->{dbh}->errstr ) {
+				$self->logit("ERROR: " . $self->{dbh}->errstr . "\n", 0, 0);
 				last;
 			}
-		} elsif ($self->{dbh}->errstr) {
-			$self->logit("ERROR: " . $self->{dbh}->errstr . "\n", 0, 0);
-			last;
+
+			$total_record += @$rows;
+			if ( ($self->{jobs} > 1) || ($self->{oracle_copies} > 1) ) {
+				while ($self->{child_count} >= $self->{jobs}) {
+					my $kid = waitpid(-1, WNOHANG);
+					if ($kid > 0) {
+						$self->{child_count}--;
+						delete $RUNNING_PIDS{$kid};
+					}
+					usleep(50000);
+				}
+				spawn sub {
+					$self->_dump_to_pg($rows, $table, $cmd_head, $cmd_foot, $s_out, $tt, $sprep, $stt, $start_time, $part_name, $total_record, %user_type);
+				};
+				$self->{child_count}++;
+			} else {
+				$self->_dump_to_pg($rows, $table, $cmd_head, $cmd_foot, $s_out, $tt, $sprep, $stt, $start_time, $part_name, $total_record, %user_type);
+			}
+
 		}
 
-		$total_record += @$rows;
-		# Store Oracle query execute time
-		my $ora_start_time = time();
-		if ( ($self->{jobs} > 1) || ($self->{oracle_copies} > 1) ) {
-			while ($self->{child_count} >= $self->{jobs}) {
-				my $kid = waitpid(-1, WNOHANG);
-				if ($kid > 0) {
-					$self->{child_count}--;
-					delete $RUNNING_PIDS{$kid};
+	} else {
+
+		my @rows = ();
+		my $num_row = 0;
+		while (my @row = $sth->fetchrow())  {
+			push(@rows, \@row);
+			$num_row++;
+			if ($num_row == $self->{data_limit}) {
+				$num_row  = 0;
+				$total_record += @rows;
+				if ( ($self->{parallel_tables} > 1) || (($self->{oracle_copies} > 1) && $self->{defined_pk}{"\L$table\E"}) ) {
+					my $max_jobs = $self->{jobs};
+					while ($self->{child_count} >= $max_jobs) {
+						my $kid = waitpid(-1, WNOHANG);
+						if ($kid > 0) {
+							$self->{child_count}--;
+							delete $RUNNING_PIDS{$kid};
+						}
+						usleep(50000);
+					}
+					spawn sub {
+						$self->_dump_to_pg(\@rows, $table, $cmd_head, $cmd_foot, $s_out, $tt, $sprep, $stt, $start_time, $part_name, $total_record, %user_type);
+					};
+					$self->{child_count}++;
+				} else {
+					$self->_dump_to_pg(\@rows, $table, $cmd_head, $cmd_foot, $s_out, $tt, $sprep, $stt, $start_time, $part_name, $total_record, %user_type);
 				}
-				usleep(50000);
+				@rows = ();
 			}
-			spawn sub {
-				$self->_dump_to_pg($dbh, $rows, $table, $cmd_head, $cmd_foot, $s_out, $tt, $sprep, $stt, $ora_start_time, $part_name, $total_record, %user_type);
-			};
-			$self->{child_count}++;
-		} else {
-			$self->_dump_to_pg($dbh, $rows, $table, $cmd_head, $cmd_foot, $s_out, $tt, $sprep, $stt, $start_time, $part_name, $total_record, %user_type);
+		}
+
+		if (@rows) {
+			$total_record += @rows;
+			if ( ($self->{parallel_tables} > 1) || (($self->{oracle_copies} > 1) && $self->{defined_pk}{"\L$table\E"}) ) {
+				my $max_jobs = $self->{jobs};
+				while ($self->{child_count} >= $max_jobs) {
+					my $kid = waitpid(-1, WNOHANG);
+					if ($kid > 0) {
+						$self->{child_count}--;
+						delete $RUNNING_PIDS{$kid};
+					}
+					usleep(50000);
+				}
+				spawn sub {
+					$self->_dump_to_pg(\@rows, $table, $cmd_head, $cmd_foot, $s_out, $tt, $sprep, $stt, $start_time, $part_name, $total_record, %user_type);
+				};
+				$self->{child_count}++;
+			} else {
+				$self->_dump_to_pg( \@rows, $table, $cmd_head, $cmd_foot, $s_out, $tt, $sprep, $stt, $start_time, $part_name, $total_record, %user_type);
+			}
+
 		}
 	}
+
 	$sth->finish();
 
 	if ( ($self->{jobs} <= 1) && ($self->{oracle_copies} <= 1) && ($self->{parallel_tables} <= 1)) {
@@ -9183,10 +9590,10 @@ sub _extract_data
 		usleep(500000);
 	}
 
- 	if (defined $pipe) {
- 		my $t_time = time();
- 		$pipe->print("TABLE EXPORT ENDED: $table, end: $t_time, rows $total_record\n");
- 	}
+	if (defined $pipe) {
+		my $t_time = time();
+		$pipe->print("TABLE EXPORT ENDED: $table, end: $t_time, rows $total_record\n");
+	}
 
 	$dbh->disconnect() if (defined $dbh);
 
@@ -9235,7 +9642,7 @@ sub log_error_insert
 
 sub _dump_to_pg
 {
-	my ($self, $dbh, $rows, $table, $cmd_head, $cmd_foot, $s_out, $tt, $sprep, $stt, $ora_start_time, $part_name, $glob_total_record, %user_type) = @_;
+	my ($self, $rows, $table, $cmd_head, $cmd_foot, $s_out, $tt, $sprep, $stt, $ora_start_time, $part_name, $glob_total_record, %user_type) = @_;
 
 	my @tempfiles = ();
 
@@ -9247,7 +9654,7 @@ sub _dump_to_pg
 	my $rname = $part_name || $table;
 
 	if ($self->{pg_dsn}) {
-		$0 = "ora2pg - sending data to PostgreSQL  table $rname";
+		$0 = "ora2pg - sending data to PostgreSQL table $rname";
 	} else {
 		$0 = "ora2pg - sending data from table $rname to file";
 	}
@@ -9457,29 +9864,51 @@ sub _show_infos
 	my ($self, $type) = @_;
 
 	if ($type eq 'SHOW_ENCODING') {
-		$self->logit("Current encoding settings that will be used by Ora2Pg:\n", 0);
-		$self->logit("\tNLS_LANG $self->{nls_lang}\n", 0);
-		$self->logit("\tNLS_NCHAR $self->{nls_nchar}\n", 0);
-		$self->logit("\tCLIENT_ENCODING $self->{client_encoding}\n", 0);
-		if ($self->{enable_microsecond}) {
-			$self->logit("\tNLS_TIMESTAMP_FORMAT YYYY-MM-DD HH24:MI:SS.FF\n", 0);
+		if ($self->{is_mysql}) {
+			$self->logit("Current encoding settings that will be used by Ora2Pg:\n", 0);
+			$self->logit("\tMySQL database and client encoding: $self->{nls_lang}\n", 0);
+			$self->logit("\tMySQL collation encoding: $self->{nls_nchar}\n", 0);
+			$self->logit("\tPostgreSQL CLIENT_ENCODING $self->{client_encoding}\n", 0);
+			$self->logit("\tPerl output encoding $self->{binmode}\n", 0);
+			my ($my_encoding, $my_client, $pg_encoding, $my_timestamp_format, $my_date_format) = &Ora2Pg::MySQL::_get_encoding($self, $self->{dbh});
+			$self->logit("Showing current MySQL encoding and possible PostgreSQL client encoding:\n", 0);
+			$self->logit("\tMySQL database and client encoding: $my_encoding\n", 0);
+			$self->logit("\tMySQL collation encoding: $my_client\n", 0);
+			$self->logit("\tPostgreSQL CLIENT_ENCODING: $pg_encoding\n", 0);
+			$self->logit("MySQL SQL mode: $self->{mysql_mode}\n", 0);
 		} else {
-			$self->logit("\tNLS_TIMESTAMP_FORMAT YYYY-MM-DD HH24:MI:SS\n", 0);
-		}
-		$self->logit("\tNLS_DATE_FORMAT YYYY-MM-DD HH24:MI:SS\n", 0);
+			$self->logit("Current encoding settings that will be used by Ora2Pg:\n", 0);
+			$self->logit("\tOracle NLS_LANG $self->{nls_lang}\n", 0);
+			$self->logit("\tOracle NLS_NCHAR $self->{nls_nchar}\n", 0);
+			if ($self->{enable_microsecond}) {
+				$self->logit("\tOracle NLS_TIMESTAMP_FORMAT YYYY-MM-DD HH24:MI:SS.FF\n", 0);
+			} else {
+				$self->logit("\tOracle NLS_TIMESTAMP_FORMAT YYYY-MM-DD HH24:MI:SS\n", 0);
+			}
+			$self->logit("\tOracle NLS_DATE_FORMAT YYYY-MM-DD HH24:MI:SS\n", 0);
+			$self->logit("\tPostgreSQL CLIENT_ENCODING $self->{client_encoding}\n", 0);
+			$self->logit("\tPerl output encoding $self->{binmode}\n", 0);
 
-		my ($ora_encoding, $ora_charset, $pg_encoding, $nls_timestamp_format, $nls_date_format) = $self->_get_encoding($self->{dbh});
-		$self->logit("Showing current Oracle encoding and possible PostgreSQL client encoding:\n", 0);
-		$self->logit("\tNLS_LANG $ora_encoding\n", 0);
-		$self->logit("\tNLS_NCHAR $ora_charset\n", 0);
-		$self->logit("\tCLIENT_ENCODING $pg_encoding\n", 0);
-		$self->logit("\tNLS_TIMESTAMP_FORMAT $nls_timestamp_format\n", 0);
-		$self->logit("\tNLS_DATE_FORMAT $nls_date_format\n", 0);
+			my ($ora_encoding, $ora_charset, $pg_encoding, $nls_timestamp_format, $nls_date_format) = $self->_get_encoding($self->{dbh});
+			$self->logit("Showing current Oracle encoding and possible PostgreSQL client encoding:\n", 0);
+			$self->logit("\tOracle NLS_LANG $ora_encoding\n", 0);
+			$self->logit("\tOracle NLS_NCHAR $ora_charset\n", 0);
+			$self->logit("\tOracle NLS_TIMESTAMP_FORMAT $nls_timestamp_format\n", 0);
+			$self->logit("\tOracle NLS_DATE_FORMAT $nls_date_format\n", 0);
+			$self->logit("\tPostgreSQL CLIENT_ENCODING $pg_encoding\n", 0);
+		}
 	} elsif ($type eq 'SHOW_VERSION') {
-		$self->logit("Showing Oracle Version...\n", 1);
+
+		$self->logit("Showing Database Version...\n", 1);
 		$self->logit("$self->{db_version}\n", 0);
+
 	} elsif ($type eq 'SHOW_REPORT') {
+
 		$self->logit("Reporting Oracle Content...\n", 1);
+		my $uncovered_score = 'Ora2Pg::PLSQL::UNCOVERED_SCORE';
+		if ($self->{is_mysql}) {
+			$uncovered_score = 'Ora2Pg::PLSQL::UNCOVERED_MYSQL_SCORE';
+		}
 		# Get Oracle database version and size
 		my $ver = $self->_get_version();
 		my $size = $self->_get_database_size();
@@ -9507,20 +9936,21 @@ sub _show_infos
 			}
 		}
 		# Convert Oracle user defined type to PostgreSQL
-		$self->_types();
-		foreach my $tpe (sort {length($a->{name}) <=> length($b->{name}) } @{$self->{types}}) {
-			$self->_convert_type($tpe->{code}, $tpe->{owner});
+		if (!$self->{is_mysql}) {
+			$self->_types();
+			foreach my $tpe (sort {length($a->{name}) <=> length($b->{name}) } @{$self->{types}}) {
+				$self->_convert_type($tpe->{code}, $tpe->{owner});
+			}
 		}
-		# Get definition of Oracle Database Link
+		# Get definition of Database Link
 		my %dblink = $self->_get_dblink();
 		$objects{'DATABASE LINK'} = scalar keys %dblink;	
 		# Get Jobs
 		my %jobs = $self->_get_job();
-		$objects{'JOB'} = scalar keys %jobs;	
+		$objects{'JOB'} = scalar keys %jobs;
 		# Get synonym inforamtion
 		my %synonyms = $self->_synonyms();
 		$objects{'SYNONYM'} = scalar keys %synonyms;	
-
 		# Look at all database objects to compute report
 		my %report_info = ();
 		$report_info{'Version'} = $ver || 'Unknown';
@@ -9530,6 +9960,7 @@ sub _show_infos
 		my $num_total_obj = scalar keys %objects;
 		foreach my $typ (sort keys %objects) {
 			$idx++;
+			next if ($self->{is_mysql} && ($typ eq 'SYNONYM')); # Package are scanned with PACKAGE BODY not PACKAGE objects
 			next if ($typ eq 'PACKAGE'); # Package are scanned with PACKAGE BODY not PACKAGE objects
 			if (!$self->{quiet} && !$self->{debug}) {
 				print STDERR $self->progress_bar($idx, $num_total_obj, 25, '=', 'objects types', "inspecting object $typ" ), "\r";
@@ -9573,7 +10004,12 @@ sub _show_infos
 					}
 				}
 				$report_info{'Objects'}{$typ}{'cost_value'} += ($Ora2Pg::PLSQL::OBJECT_SCORE{$typ}*$total_index) if ($self->{estimate_cost});
-				$report_info{'Objects'}{$typ}{'comment'} = "$total_index index(es) are concerned by the export, others are automatically generated and will do so on PostgreSQL. Bitmap and hash index(es) will be exported as b-tree index(es) if any. Cluster, domain, bitmap join and IOT indexes will not be exported at all. Reverse indexes are not exported too, you may use a trigram-based index (see pg_trgm) or a reverse() function based index and search. Use 'varchar_pattern_ops', 'text_pattern_ops' or 'bpchar_pattern_ops' operators in your indexes to improve search with the LIKE operator respectively into varchar, text or char columns.";
+				$report_info{'Objects'}{$typ}{'comment'} = "$total_index index(es) are concerned by the export, others are automatically generated and will do so on PostgreSQL.";
+				if (!$self->{is_mysql}) {
+					$report_info{'Objects'}{$typ}{'comment'} .= " Bitmap and hash index(es) will be exported as b-tree index(es) if any. Cluster, domain, bitmap join and IOT indexes will not be exported at all. Reverse indexes are not exported too, you may use a trigram-based index (see pg_trgm) or a reverse() function based index and search. Use 'varchar_pattern_ops', 'text_pattern_ops' or 'bpchar_pattern_ops' operators in your indexes to improve search with the LIKE operator respectively into varchar, text or char columns.";
+				} else {
+					$report_info{'Objects'}{$typ}{'comment'} .= " Hash index(es) will be exported as b-tree index(es) if any. Use 'varchar_pattern_ops', 'text_pattern_ops' or 'bpchar_pattern_ops' operators in your indexes to improve search with the LIKE operator respectively into varchar, text or char columns. Fulltext search indexes will be replaced by using a dedicated tsvector column, Ora2Pg will set the DDL to create the column, function and trigger together with the index.";
+				}
 			} elsif ($typ eq 'MATERIALIZED VIEW') {
 				$report_info{'Objects'}{$typ}{'comment'}= "All materialized view will be exported as snapshot materialized views, they are only updated when fully refreshed.";
 			} elsif ($typ eq 'TABLE') {
@@ -9608,8 +10044,14 @@ sub _show_infos
 							$table_detail{'reserved words in column name'}++;
 						}
 						$self->{tables}{$t}{column_info}{$k}[1] =~ s/TIMESTAMP\(\d+\)/TIMESTAMP/i;
-						if (!exists $TYPE{uc($self->{tables}{$t}{column_info}{$k}[1])}) {
-							$table_detail{'unknown types'}++;
+						if (!$self->{is_mysql}) {
+							if (!exists $TYPE{uc($self->{tables}{$t}{column_info}{$k}[1])}) {
+								$table_detail{'unknown types'}++;
+							}
+						} else {
+							if (!exists $Ora2Pg::MySQL::MYSQL_TYPE{uc($self->{tables}{$t}{column_info}{$k}[1])}) {
+								$table_detail{'unknown types'}++;
+							}
 						}
 						if ( (uc($self->{tables}{$t}{column_info}{$k}[1]) eq 'NUMBER') && ($self->{tables}{$t}{column_info}{$k}[2] eq '') ) {
 							$table_detail{'numbers with no precision'}++;
@@ -9637,10 +10079,25 @@ sub _show_infos
 					$j++;
 					last if ($j > $self->{top_max});
 				}
-				$report_info{'Objects'}{$typ}{'detail'} .= "Top $self->{top_max} of largest tables:\n";
-				my %largest_table = $self->_get_largest_tables();
-				foreach my $t (sort { $largest_table{$b} <=> $largest_table{$a} } keys %largest_table) {
-					$report_info{'Objects'}{$typ}{'detail'} .= "\L$t\E: $largest_table{$t} MB (" . $self->{tables}{$t}{table_info}{num_rows} . " rows)\n";
+				my %largest_table = ();
+				%largest_table = $self->_get_largest_tables() if ($self->{is_mysql});
+				if ((scalar keys %largest_table > 0) || !$self->{is_mysql}) {
+					$i = 1;
+					if (!$self->{is_mysql}) {
+						$report_info{'Objects'}{$typ}{'detail'} .= "Top $self->{top_max} of largest tables:\n";
+						foreach my $t (sort { $largest_table{$b} <=> $largest_table{$a} } keys %largest_table) {
+							$report_info{'Objects'}{$typ}{'detail'} .= "\L$t\E: $largest_table{$t} MB (" . $self->{tables}{$t}{table_info}{num_rows} . " rows)\n";
+							$i++;
+							last if ($i > $self->{top_max});
+						}
+					} else {
+						$report_info{'Objects'}{$typ}{'detail'} .= "Top $self->{top_max} of largest tables:\n";
+						foreach my $t (sort {$self->{tables}{$b}{table_info}{size} <=> $self->{tables}{$a}{table_info}{size}} keys %{$self->{tables}}) {
+							$report_info{'Objects'}{$typ}{'detail'} .= "\L$t\E: $self->{tables}{$t}{table_info}{size} MB (" . $self->{tables}{$t}{table_info}{num_rows} . " rows)\n";
+							$i++;
+							last if ($i > $self->{top_max});
+						}
+					}
 				}
 				$comment = "Nothing particular." if (!$comment);
 				$report_info{'Objects'}{$typ}{'cost_value'} =~ s/(\.\d).*$/$1/;
@@ -9660,14 +10117,14 @@ sub _show_infos
 				foreach my $trig (@{$triggers}) {
 					$total_size += length($trig->[4]);
 					if ($self->{estimate_cost}) {
-						my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($trig->[4]);
+						my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($self, $trig->[4]);
 						$report_info{'Objects'}{$typ}{'cost_value'} += $cost;
 						$report_info{'Objects'}{$typ}{'detail'} .= "\L$trig->[0]: $cost\E\n";
 						$report_info{full_trigger_details}{"\L$trig->[0]\E"}{count} = $cost;
 						foreach my $d (sort { $cost_detail{$b} <=> $cost_detail{$a} } keys %cost_detail) {
 							next if (!$cost_detail{$d});
 							$report_info{full_trigger_details}{"\L$trig->[0]\E"}{info} .= "\t$d => $cost_detail{$d}";
-							$report_info{full_trigger_details}{"\L$trig->[0]\E"}{info} .= " (cost: $Ora2Pg::PLSQL::UNCOVERED_SCORE{$d})" if ($Ora2Pg::PLSQL::UNCOVERED_SCORE{$d});
+							$report_info{full_trigger_details}{"\L$trig->[0]\E"}{info} .= " (cost: ${$uncovered_score}{$d})" if (${$uncovered_score}{$d});
 							$report_info{full_trigger_details}{"\L$trig->[0]\E"}{info} .= "\n";
 							push(@{$report_info{full_trigger_details}{"\L$trig->[0]\E"}{keywords}}, $d) if (($d ne 'SIZE') && ($d ne 'TEST')); 
 						}
@@ -9682,14 +10139,14 @@ sub _show_infos
 				foreach my $fct (keys %{$functions}) {
 					$total_size += length($functions->{$fct}{text});
 					if ($self->{estimate_cost}) {
-						my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($functions->{$fct}{text});
+						my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($self, $functions->{$fct}{text});
 						$report_info{'Objects'}{$typ}{'cost_value'} += $cost;
 						$report_info{'Objects'}{$typ}{'detail'} .= "\L$fct: $cost\E\n";
 						$report_info{full_function_details}{"\L$fct\E"}{count} = $cost;
 						foreach my $d (sort { $cost_detail{$b} <=> $cost_detail{$a} } keys %cost_detail) {
 							next if (!$cost_detail{$d});
 							$report_info{full_function_details}{"\L$fct\E"}{info} .= "\t$d => $cost_detail{$d}";
-							$report_info{full_function_details}{"\L$fct\E"}{info} .= " (cost: $Ora2Pg::PLSQL::UNCOVERED_SCORE{$d})" if ($Ora2Pg::PLSQL::UNCOVERED_SCORE{$d});
+							$report_info{full_function_details}{"\L$fct\E"}{info} .= " (cost: ${$uncovered_score}{$d})" if (${$uncovered_score}{$d});
 							$report_info{full_function_details}{"\L$fct\E"}{info} .= "\n";
 							push(@{$report_info{full_function_details}{"\L$fct\E"}{keywords}}, $d) if (($d ne 'SIZE') && ($d ne 'TEST')); 
 						}
@@ -9702,14 +10159,14 @@ sub _show_infos
 				foreach my $proc (keys %{$procedures}) {
 					$total_size += length($procedures->{$proc}{text});
 					if ($self->{estimate_cost}) {
-						my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($procedures->{$proc}{text});
+						my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($self, $procedures->{$proc}{text});
 						$report_info{'Objects'}{$typ}{'cost_value'} += $cost;
 						$report_info{'Objects'}{$typ}{'detail'} .= "\L$proc: $cost\E\n";
 						$report_info{full_function_details}{"\L$proc\E"}{count} = $cost;
 						foreach my $d (sort { $cost_detail{$b} <=> $cost_detail{$a} } keys %cost_detail) {
 							next if (!$cost_detail{$d});
 							$report_info{full_function_details}{"\L$proc\E"}{info} .= "\t$d => $cost_detail{$d}";
-							$report_info{full_function_details}{"\L$proc\E"}{info} .= " (cost: $Ora2Pg::PLSQL::UNCOVERED_SCORE{$d})" if ($Ora2Pg::PLSQL::UNCOVERED_SCORE{$d});
+							$report_info{full_function_details}{"\L$proc\E"}{info} .= " (cost: ${$uncovered_score}{$d})" if (${$uncovered_score}{$d});
 							$report_info{full_function_details}{"\L$proc\E"}{info} .= "\n";
 							push(@{$report_info{full_function_details}{"\L$proc\E"}{keywords}}, $d) if (($d ne 'SIZE') && ($d ne 'TEST')); 
 						}
@@ -9731,14 +10188,14 @@ sub _show_infos
 						foreach my $f (sort keys %infos) {
 							next if (!$f);
 							if ($self->{estimate_cost}) {
-								my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($infos{$f}{name});
+								my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($self, $infos{$f}{name});
 								$report_info{'Objects'}{$typ}{'cost_value'} += $cost;
 								$report_info{'Objects'}{$typ}{'detail'} .= "\L$f: $cost\E\n";
 								$report_info{full_function_details}{"\L$f\E"}{count} = $cost;
 								foreach my $d (sort { $cost_detail{$b} <=> $cost_detail{$a} } keys %cost_detail) {
 									next if (!$cost_detail{$d});
 									$report_info{full_function_details}{"\L$f\E"}{info} .= "\t$d => $cost_detail{$d}";
-									$report_info{full_function_details}{"\L$f\E"}{info} .= " (cost: $Ora2Pg::PLSQL::UNCOVERED_SCORE{$d})" if ($Ora2Pg::PLSQL::UNCOVERED_SCORE{$d});
+									$report_info{full_function_details}{"\L$f\E"}{info} .= " (cost: ${$uncovered_score}{$d})" if (${$uncovered_score}{$d});
 									$report_info{full_function_details}{"\L$f\E"}{info} .= "\n";
 									push(@{$report_info{full_function_details}{"\L$f\E"}{keywords}}, $d) if (($d ne 'SIZE') && ($d ne 'TEST')); 
 								}
@@ -9752,7 +10209,7 @@ sub _show_infos
 					$report_info{'Objects'}{$typ}{'cost_value'} += ($number_pkg*$Ora2Pg::PLSQL::OBJECT_SCORE{'PACKAGE BODY'});
 				}
 				$report_info{'Objects'}{$typ}{'comment'} = "Total size of package code: $total_size bytes. Number of procedures and functions found inside those packages: $number_fct.";
-			} elsif ($typ eq 'SYNONYM') {
+			} elsif ( ($typ eq 'SYNONYM') && !$self->{is_mysql} ) {
 				foreach my $t (sort {$a cmp $b} keys %synonyms) {
 					if ($synonyms{$t}{dblink}) {
 						$report_info{'Objects'}{$typ}{'detail'} .= "\L$synonyms{$t}{owner}.$t\E is a link to \L$synonyms{$t}{table_owner}.$synonyms{$t}{table_name}\@$synonyms{$t}{dblink}\E\n";
@@ -9768,14 +10225,14 @@ sub _show_infos
 				foreach my $t (sort keys %partitions) {
 					$report_info{'Objects'}{$typ}{'detail'} .= "\L$partitions{$t} $t\E partitions\n";
 				}
-				$report_info{'Objects'}{$typ}{'comment'} = "Partitions are exported using table inheritance and check constraint. Hash partitions are not supported by PostgreSQL and will not be exported.";
+				$report_info{'Objects'}{$typ}{'comment'} = "Partitions are exported using table inheritance and check constraint. Hash and Key partitions are not supported by PostgreSQL and will not be exported.";
 			} elsif ($typ eq 'CLUSTER') {
 				$report_info{'Objects'}{$typ}{'comment'} = "Clusters are not supported by PostgreSQL and will not be exported.";
 			} elsif ($typ eq 'VIEW') {
 				my %view_infos = $self->_get_views();
 				foreach my $view (sort keys %view_infos) {
 					if ($self->{estimate_cost}) {
-						my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($view_infos{$view}{text});
+						my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($self, $view_infos{$view}{text});
 						next if ($cost <= ($cost_detail{SIZE}+$cost_detail{TEST}));
 						$cost -= ($cost_detail{SIZE} + $cost_detail{TEST});
 						delete $cost_detail{SIZE};
@@ -9788,13 +10245,15 @@ sub _show_infos
 							$report_info{full_view_details}{"\L$view\E"}{info} .= "\t$d => $cost_detail{$d}";
 							$report_info{full_view_details}{"\L$view\E"}{info} .= " (cost: ${$uncovered_score}{$d})" if (${$uncovered_score}{$d});
 							$report_info{full_view_details}{"\L$view\E"}{info} .= "\n";
-							push(@{$report_info{full_view_details}{"\L$view\E"}{keywords}}, $d) if (($d ne 'SIZE') && ($d ne 'TEST'));
+							push(@{$report_info{full_view_details}{"\L$view\E"}{keywords}}, $d) if (($d ne 'SIZE') && ($d ne 'TEST')); 
 						}
 					}
 				}
 				$report_info{'Objects'}{$typ}{'comment'} = "Views are fully supported but can use specific functions.";
 			} elsif ($typ eq 'DATABASE LINK') {
-				$report_info{'Objects'}{$typ}{'comment'} = "Database links will be exported as SQL/MED PostgreSQL's Foreign Data Wrapper (FDW) extensions using oracle_fdw.";
+				my $def_fdw = 'oracle_fdw';
+				$def_fdw = 'mysql_fdw' if ($self->{is_mysql});
+				$report_info{'Objects'}{$typ}{'comment'} = "Database links will be exported as SQL/MED PostgreSQL's Foreign Data Wrapper (FDW) extensions using $def_fdw.";
 				if ($self->{estimate_cost}) {
 					$report_info{'Objects'}{$typ}{'cost_value'} = ($Ora2Pg::PLSQL::OBJECT_SCORE{'DATABASE LINK'}*$objects{$typ});
 				}
@@ -9809,10 +10268,10 @@ sub _show_infos
 		if (!$self->{quiet} && !$self->{debug}) {
 			print STDERR $self->progress_bar($idx, $num_total_obj, 25, '=', 'objects types', 'end of objects auditing.'), "\n";
 		}
-
 		# DBA_AUDIT_TRAIL queries will not be count if no audit user is give
 		if ($self->{audit_user}) {
 			my $tbname = 'DBA_AUDIT_TRAIL';
+			$tbname = 'general_log' if ($self->{is_mysql});
 			$report_info{'Objects'}{'QUERY'}{'number'} = 0;
 			$report_info{'Objects'}{'QUERY'}{'invalid'} = 0;
 			$report_info{'Objects'}{'QUERY'}{'comment'} = "Normalized queries found in $tbname for user(s): $self->{audit_user}";
@@ -9838,7 +10297,7 @@ sub _show_infos
 
 		# Get all tables information specified by the DBI method table_info
 		$self->logit("Showing all schema...\n", 1);
-		my $sth = $self->_schema_list()  or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+		my $sth = $self->_schema_list() or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 		while ( my @row = $sth->fetchrow()) {
 			my $warning = '';
 			my $ret = &is_reserved_words($row[0]);
@@ -9847,7 +10306,11 @@ sub _show_infos
 			} elsif ($ret == 2) {
 				$warning = " (Warning: '$row[0]' object name with numbers only must be double quoted in PostgreSQL)";
 			}
-			$self->logit("SCHEMA $row[0]$warning\n", 0);
+			if (!$self->{is_mysql}) {
+				$self->logit("SCHEMA $row[0]$warning\n", 0);
+			} else {
+				$self->logit("DATABASE $row[0]$warning\n", 0);
+			}
 		}
 		$sth->finish();
 	} elsif ( ($type eq 'SHOW_TABLE') || ($type eq 'SHOW_COLUMN') ) {
@@ -9878,14 +10341,16 @@ sub _show_infos
 				next if (!exists $tables_infos{$tb});
 				%{$self->{tables}{$tb}{idx_type}} = %{$idx_type->{$tb}};
 			}
-
 		}
 
 		# Get partition list to mark tables with partition.
 		my %partitions = $self->_get_partitioned_table();
 
-		# Look for external tables
-		my %externals = $self->_get_external_tables();
+                # Look for external tables
+                my %externals = ();
+		if (!$self->{is_mysql}) {
+			%externals = $self->_get_external_tables();
+		}
 
 		my @done = ();
 		my $id = 0;
@@ -9893,7 +10358,6 @@ sub _show_infos
 		my $i = 1;
 		my $total_row_num = 0;
 		foreach my $t (sort keys %tables_infos) {
-
 			# Jump to desired extraction
 			if (grep(/^$t$/, @done)) {
 				$self->logit("Duplicate entry found: $t\n", 1);
@@ -9902,10 +10366,12 @@ sub _show_infos
 				push(@done, $t);
 			}
 			my $warning = '';
+
 			# Set the number of partition if any
-			if (exists $partitions{$t}) {
+			if (exists $partitions{"\L$t\E"}) {
 				$warning .= " - $partitions{$t} partitions";
 			}
+
 			# Search for reserved keywords
 			my $ret = &is_reserved_words($t);
 			if ($ret == 1) {
@@ -9926,8 +10392,12 @@ sub _show_infos
 				$kind = ' EXTERNAL';
 			}
 			my $tname = $t;
-			$tname = "$tables_infos{$t}{owner}.$t" if ($self->{debug});
-			$self->logit("[$i]$kind TABLE $tname (owner: $tables_infos{$t}{owner}, $tables_infos{$t}{num_rows} rows)$warning\n", 0);
+			if (!$self->{is_mysql}) {
+				$tname = "$tables_infos{$t}{owner}.$t" if ($self->{debug});
+				$self->logit("[$i]$kind TABLE $tname (owner: $tables_infos{$t}{owner}, $tables_infos{$t}{num_rows} rows)$warning\n", 0);
+			} else {
+				$self->logit("[$i]$kind TABLE $tname ($tables_infos{$t}{num_rows} rows)$warning\n", 0);
+			}
 
 			# Set the fields information
 			if ($type eq 'SHOW_COLUMN') {
@@ -9954,6 +10424,19 @@ sub _show_infos
 
 					my $type = $self->_sql_type($d->[1], $d->[2], $d->[5], $d->[6]);
 					$type = "$d->[1], $d->[2]" if (!$type);
+
+					# Check if we need auto increment
+					$warning = '';
+					if ($d->[12] eq 'auto_increment') {
+						if ($type !~ s/bigint/bigserial/) {
+							if ($type !~ s/smallint/smallserial/) {
+								$type =~ s/integer/serial/;
+							}
+						}
+						if ($type =~ /serial/) {
+							$warning = " - Seq last value: $tables_infos{$t}{auto_increment}";
+						}
+					}
 					$type = $self->{'modify_type'}{"\L$t\E"}{"\L$k\E"} if (exists $self->{'modify_type'}{"\L$t\E"}{"\L$k\E"});
 					my $align = '';
 					my $len = $d->[2];
@@ -9969,7 +10452,6 @@ sub _show_infos
 							$self->logit(",$d->[6]") if ($d->[6]);
 							$self->logit(")");
 						}
-						$warning = '';
 						if ($self->{reordering_columns}) {
 							my $typ = $type;
 							$typ =~ s/\(.*//;
@@ -10000,9 +10482,9 @@ sub _show_infos
 					}
 					my $ret = &is_reserved_words($d->[0]);
 					if ($ret == 1) {
-						$warning = " (Warning: '$d->[0]' is a reserved word in PostgreSQL)";
+						$warning .= " (Warning: '$d->[0]' is a reserved word in PostgreSQL)";
 					} elsif ($ret == 2) {
-						$warning = " (Warning: '$d->[0]' object name with numbers only must be double quoted in PostgreSQL)";
+						$warning .= " (Warning: '$d->[0]' object name with numbers only must be double quoted in PostgreSQL)";
 					}
 					# Check if this column should be replaced by a boolean following table/column name
 					my $typlen = $d->[5];
@@ -10024,19 +10506,31 @@ sub _show_infos
 		$i = 1;
 		foreach my $t (sort {$tables_infos{$b}{num_rows} <=> $tables_infos{$a}{num_rows}} keys %tables_infos) {
 			my $tname = $t;
-			$tname = "$tables_infos{$t}{owner}.$t" if ($self->{debug});
+			if (!$self->{is_mysql}) {
+				$tname = "$tables_infos{$t}{owner}.$t" if ($self->{debug});
+			}
 			$self->logit("\t[$i] TABLE $tname has $tables_infos{$t}{num_rows} rows\n", 0);
 			$i++;
 			last if ($i > $self->{top_max});
 		}
 		$self->logit("Top $self->{top_max} of largest tables:\n", 0);
 		$i = 1;
-		my %largest_table = $self->_get_largest_tables();
-		foreach my $t (sort { $largest_table{$b} <=> $largest_table{$a} } keys %largest_table) {
-			my $tname = $t;
-			$tname = "$tables_infos{$t}{owner}.$t" if ($self->{debug});
-			$self->logit("\t[$i] TABLE $tname: $largest_table{$t} MB (" . $tables_infos{$t}{num_rows} . " rows)\n", 0);
-			$i++;
+		if (!$self->{is_mysql}) {
+			my %largest_table = $self->_get_largest_tables();
+			foreach my $t (sort { $largest_table{$b} <=> $largest_table{$a} } keys %largest_table) {
+				last if ($i > $self->{top_max});
+				my $tname = $t;
+				$tname = "$tables_infos{$t}{owner}.$t" if ($self->{debug});
+				$self->logit("\t[$i] TABLE $tname: $largest_table{$t} MB (" . $tables_infos{$t}{num_rows} . " rows)\n", 0);
+				$i++;
+			}
+		} else {
+			foreach my $t (sort {$tables_infos{$b}{size} <=> $tables_infos{$a}{size}} keys %tables_infos) {
+				last if ($i > $self->{top_max});
+				my $tname = $t;
+				$self->logit("\t[$i] TABLE $tname: $tables_infos{$t}{size} MB (" . $tables_infos{$t}{num_rows} . " rows)\n", 0);
+				$i++;
+			}
 		}
 	}
 }
@@ -10085,6 +10579,8 @@ sub _get_version
 {
 	my $self = shift;
 
+	return Ora2Pg::MySQL::_get_version($self) if ($self->{is_mysql});
+
 	my $oraver = '';
 	my $sql = "SELECT BANNER FROM v\$version";
 
@@ -10110,6 +10606,8 @@ This function retrieves the size of the Oracle database in MB
 sub _get_database_size
 {
 	my $self = shift;
+
+	return Ora2Pg::MySQL::_get_database_size($self) if ($self->{is_mysql});
 
 	my $mb_size = '';
 	my $sql = "SELECT sum(bytes)/1024/1024 FROM USER_SEGMENTS";
@@ -10141,6 +10639,8 @@ This function retrieves all object the Oracle information
 sub _get_objects
 {
 	my $self = shift;
+
+	return Ora2Pg::MySQL::_get_objects($self) if ($self->{is_mysql});
 
 	my $oraver = '';
 	# OWNER|OBJECT_NAME|SUBOBJECT_NAME|OBJECT_ID|DATA_OBJECT_ID|OBJECT_TYPE|CREATED|LAST_DDL_TIME|TIMESTAMP|STATUS|TEMPORARY|GENERATED|SECONDARY
@@ -10174,12 +10674,15 @@ sub _schema_list
 {
 	my $self = shift;
 
+	return Ora2Pg::MySQL::_schema_list($self) if ($self->{is_mysql});
+
 	my $sql = "SELECT DISTINCT OWNER FROM ALL_TABLES WHERE OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "') ORDER BY OWNER";
 
         my $sth = $self->{dbh}->prepare( $sql ) or return undef;
         $sth->execute or return undef;
         $sth;
 }
+
 
 =head2 _get_largest_tables
 
@@ -10190,6 +10693,8 @@ This function retrieves the list of largest table of the Oracle database in MB
 sub _get_largest_tables
 {
 	my $self = shift;
+
+	return Ora2Pg::MySQL::_get_largest_tables($self) if ($self->{is_mysql});
 
 	my %table_size = ();
 
@@ -10205,11 +10710,11 @@ sub _get_largest_tables
 	if ($self->{db_version} =~ /Release 8/) {
 		$sql = "SELECT * FROM ( SELECT S.SEGMENT_NAME, ROUND(S.BYTES/1024/1024) SIZE_MB FROM ${prefix}_SEGMENTS A WHERE A.SEGMENT_TYPE LIKE 'TABLE%'";
 	}
-	if ($self->{schema}) {
-		$sql .= " AND A.OWNER='$self->{schema}'";
-	} else {
-		$sql .= " AND A.OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
-	}
+        if ($self->{schema}) {
+                $sql .= " AND A.OWNER='$self->{schema}'";
+        } else {
+                $sql .= " AND A.OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
+        }
 	if ($self->{db_version} =~ /Release 8/) {
 		$sql .= $self->limit_to_objects('TABLE', 'A.SEGMENT_NAME');
 	} else {
@@ -10218,8 +10723,8 @@ sub _get_largest_tables
 
 	$sql .= " ORDER BY S.BYTES,S.SEGMENT_NAME DESC) WHERE ROWNUM <= $self->{top_max}";
 
-	my $sth = $self->{dbh}->prepare( $sql ) or return undef;
-	$sth->execute or return undef;
+        my $sth = $self->{dbh}->prepare( $sql ) or return undef;
+        $sth->execute or return undef;
 	while ( my @row = $sth->fetchrow()) {
 		$table_size{$row[0]} = $row[1];
 	}
@@ -10287,6 +10792,7 @@ sub _get_encoding
 	return ($ora_encoding, $charset, $pg_encoding, $nls_timestamp_format, $nls_date_format);
 }
 
+
 =head2 _compile_schema
 
 This function force Oracle database to compile a schema and validate or
@@ -10315,6 +10821,7 @@ end;
 	}
 
 }
+
 
 =head2 _datetime_format
 
@@ -10362,7 +10869,6 @@ sub _initial_command
 
 	my $sth = $dbh->do($self->{ora_initial_command}) or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
 }
-
 
 
 =head2 multiprocess_progressbar
@@ -10612,7 +11118,11 @@ sub limit_to_objects
 				}
 			} else {
 				for (my $j = 0; $j <= $#{$self->{limited}{$arr_type[$i]}}; $j++) {
-					$str .= "REGEXP_LIKE(upper($colname),'\^$self->{limited}{$arr_type[$i]}->[$j]\$')" ;
+					if ($self->{is_mysql}) {
+						$str .= "upper($colname) RLIKE '\^$self->{limited}{$arr_type[$i]}->[$j]\$'" ;
+					} else {
+						$str .= "REGEXP_LIKE(upper($colname),'\^$self->{limited}{$arr_type[$i]}->[$j]\$')" ;
+					}
 					if ($j < $#{$self->{limited}{$arr_type[$i]}}) {
 						$str .= " OR ";
 					}
@@ -10635,7 +11145,11 @@ sub limit_to_objects
 			} else {
 				$str .= ' AND (';
 				for (my $j = 0; $j <= $#{$self->{excluded}{$arr_type[$i]}}; $j++) {
-					$str .= "NOT REGEXP_LIKE(upper($colname),'\^$self->{excluded}{$arr_type[$i]}->[$j]\$')" ;
+					if ($self->{is_mysql}) {
+						$str .= "upper($colname) NOT RLIKE '\^$self->{excluded}{$arr_type[$i]}->[$j]\$'" ;
+					} else {
+						$str .= "NOT REGEXP_LIKE(upper($colname),'\^$self->{excluded}{$arr_type[$i]}->[$j]\$')" ;
+					}
 					if ($j < $#{$self->{excluded}{$arr_type[$i]}}) {
 						$str .= " AND ";
 					}
@@ -10644,8 +11158,8 @@ sub limit_to_objects
 			}
 		}
 
-		# Always exclude unwanted tables if we don't have already a limited list of objects
-		if ( !$has_limitation && ($arr_type[$i] =~ /TABLE|SEQUENCE|VIEW|TRIGGER/) ) {
+		# Always exclude unwanted tables
+		if (!$self->{is_mysql} && !$has_limitation && ($arr_type[$i] =~ /TABLE|SEQUENCE|VIEW|TRIGGER/)) {
 			if ($self->{db_version} =~ /Release [89]/) {
 				$str .= ' AND (';
 				foreach my $t (@EXCLUDED_TABLES_8I) {
@@ -10655,7 +11169,11 @@ sub limit_to_objects
 			} else {
 				$str .= ' AND ( ';
 				for (my $j = 0; $j <= $#EXCLUDED_TABLES; $j++) {
-					$str .= " NOT REGEXP_LIKE(upper($colname),'\^$EXCLUDED_TABLES[$j]\$')" ;
+					if ($self->{is_mysql}) {
+						$str .= " upper($colname) NOT RLIKE '\^$EXCLUDED_TABLES[$j]\$'" ;
+					} else {
+						$str .= " NOT REGEXP_LIKE(upper($colname),'\^$EXCLUDED_TABLES[$j]\$')" ;
+					}
 					if ($j < $#EXCLUDED_TABLES){
 						$str .= " AND ";
 					}
@@ -10712,7 +11230,7 @@ sub _lookup_check_constraint
 				}
 			}
 			if ($self->{plsql_pgsql}) {
-				$chkconstraint = Ora2Pg::PLSQL::plsql_to_plpgsql($chkconstraint,$self->{null_equal_empty}, undef, $self->{package_functions});
+				$chkconstraint = Ora2Pg::PLSQL::plsql_to_plpgsql($self, $chkconstraint);
 			}
 			next if ($nonotnull && ($chkconstraint =~ /IS NOT NULL/));
 			if (!$self->{preserve_case}) {
@@ -10782,6 +11300,14 @@ sub _lookup_function
 {
 	my ($self, $plsql) = @_;
 
+	if ($self->{is_mysql}) {
+		if ($self->{type} eq 'FUNCTION') {
+			return Ora2Pg::MySQL::_lookup_function($self, $plsql);
+		} else {
+			return Ora2Pg::MySQL::_lookup_procedure($self, $plsql);
+		}
+	}
+
 	my %fct_detail = ();
 
 	$fct_detail{func_ret_type} = 'OPAQUE';
@@ -10842,9 +11368,9 @@ sub _lookup_function
 		$fct_detail{declare} = Ora2Pg::PLSQL::replace_sql_type($fct_detail{declare}, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type});
 
 		# Replace PL/SQL code into PL/PGSQL similar code
-		$fct_detail{declare} = Ora2Pg::PLSQL::plsql_to_plpgsql($fct_detail{declare},$self->{null_equal_empty}, undef, $self->{package_functions});
+		$fct_detail{declare} = Ora2Pg::PLSQL::plsql_to_plpgsql($self, $fct_detail{declare});
 		if ($fct_detail{code}) {
-			$fct_detail{code} = Ora2Pg::PLSQL::plsql_to_plpgsql("BEGIN".$fct_detail{code},$self->{null_equal_empty}, undef, $self->{package_functions});
+			$fct_detail{code} = Ora2Pg::PLSQL::plsql_to_plpgsql($self, "BEGIN".$fct_detail{code});
 		}
 		# Set parameters for AUTONOMOUS TRANSACTION
 		$fct_detail{args} =~ s/\s+/ /gs;
@@ -10862,7 +11388,6 @@ sub _lookup_function
 
 	return %fct_detail;
 }
-
 
 ####
 # Return a string to set the current search path
@@ -10925,6 +11450,7 @@ sub _get_human_cost
 
 	return $human_cost;
 }
+
 sub difficulty_assessment
 {
 	my ($self, %report_info) = @_;
@@ -10951,7 +11477,7 @@ sub difficulty_assessment
 		}
 	}
 	if ($difficulty < 3) {
-		$difficulty += 1 if (exists  $report_info{'Objects'}{'TRIGGER'} && $report_info{'Objects'}{'TRIGGER'}{'number'});
+		$difficulty += 1 if ( exists $report_info{'Objects'}{'TRIGGER'} && $report_info{'Objects'}{'TRIGGER'}{'number'});
 	}
 
 
@@ -11000,6 +11526,7 @@ sub _show_report
 		'MATERIALIZED VIEW',
 		'PACKAGE BODY',
 		'PROCEDURE',
+		'QUERY',
 		'SEQUENCE',
 		'SYNONYM',
 		'TABLE',
@@ -11091,8 +11618,8 @@ Technical levels:
 			$self->logit("-------------------------------------------------------------------------------\n", 0);
 			$self->logit($lbl_mig_type, 0);
 			$self->logit("-------------------------------------------------------------------------------\n", 0);
-			$self->logit("\nDetails of cost assessment per function\n", 0);
 			if (scalar keys %{ $report_info{'full_function_details'} }) {
+				$self->logit("\nDetails of cost assessment per function\n", 0);
 				foreach my $fct (sort { $report_info{'full_function_details'}{$b}{count} <=> $report_info{'full_function_details'}{$a}{count} } keys %{ $report_info{'full_function_details'} } ) {
 					$self->logit("Function $fct total estimated cost: $report_info{'full_function_details'}{$fct}{count}\n", 0);
 					$self->logit($report_info{'full_function_details'}{$fct}{info}, 0);
@@ -11124,7 +11651,6 @@ Technical levels:
 		$self->logit("Schema\t$report_info{'Schema'}\n", 0);
 		$self->logit("Size\t$report_info{'Size'}\n\n", 0);
 		$self->logit("-------------------------------------------------------------------------------\n\n", 0);
-		$self->logit("\n", 0);
 		$self->logit("Object;Number;Invalid;Estimated cost;Comments\n", 0);
 		foreach my $typ (sort keys %{ $report_info{'Objects'} } ) {
 			$report_info{'Objects'}{$typ}{'detail'} =~ s/\n/\. /gs;
@@ -11305,7 +11831,6 @@ h2 {
 </ul>
 };
 			$self->logit($lbl_mig_type, 0);
-
 			if (scalar keys %{ $report_info{'full_function_details'} }) {
 				$self->logit("<h2>Details of cost assessment per function</h2>\n", 0);
 				$self->logit("<ul>\n", 0);
@@ -11338,7 +11863,7 @@ h2 {
 				$self->logit("<h2>Details of cost assessment per view</h2>\n", 0);
 				$self->logit("<ul>\n", 0);
 				foreach my $fct (sort { $report_info{'full_view_details'}{$b}{count} <=> $report_info{'full_view_details'}{$a}{count} } keys %{ $report_info{'full_view_details'} } ) {
-
+					
 					$self->logit("<li>View $fct total estimated cost: $report_info{'full_view_details'}{$fct}{count}</li>\n", 0);
 					$self->logit("<ul>\n", 0);
 					$report_info{'full_view_details'}{$fct}{info} =~ s/\t/<li>/gs;
@@ -11360,7 +11885,6 @@ Generated by <a href="http://ora2pg.darold.net/">Ora2Pg v$VERSION</a>
 	}
 
 }
-
 
 sub get_kettle_xml
 {
@@ -11690,6 +12214,7 @@ sub create_kettle_output
 	return "JAVAMAXMEM=4096 ./pan.sh -file \$KETTLE_TEMPLATE_PATH/$output_dir$table.ktr -level Detailed\n";
 }
 
+# Normalize SQL queries by removing parameters
 sub normalize_query
 {
 	my ($self, $orig_query) = @_;
