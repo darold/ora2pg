@@ -6743,6 +6743,12 @@ $idxowner
 				$row->[1] =~ s/$/"/;
 			}
 		}
+
+		# Index with DESC are declared as FUNCTION-BASED, fix that
+		if (($row->[4] =~ /FUNCTION-BASED/i) && ($row->[1] !~ /\(.*\)/)) {
+			$row->[4] =~ s/FUNCTION-BASED //;
+		}
+
 		push(@{$data{$row->[-6]}{$row->[0]}}, $row->[1]);
 		$index_tablespace{$row->[-6]}{$row->[0]} = $row->[-4];
 
