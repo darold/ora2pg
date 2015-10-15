@@ -30,14 +30,16 @@ my $VERSION = '16.0';
 
 my @DB_DNS = ();
 my $OUTDIR = '';
+my $DRYRUN = 0;
 my $INPUT_FILE = '';
 my $HELP = 0;
 
 # Collect command line arguments
 GetOptions (
 	'l|list=s'   => \$INPUT_FILE,
+	't|test!'    => \$DRYRUN,
         'o|outdir=s' => \$OUTDIR,
-        'h|help!' => \$HELP,
+        'h|help!'    => \$HELP,
 );
 
 $OUTDIR = 'output' if (!$OUTDIR);
@@ -71,11 +73,15 @@ while (my $l = <IN>) {
 close(IN);
 
 # Create the output directory
-if (!-d "$OUTDIR") {
-	mkdir "$OUTDIR";
+if (!$DRYRUN) {
+	if (!-d "$OUTDIR") {
+		mkdir "$OUTDIR";
+	} else {
+		print "FATAL: output directory already exists, $OUTDIR.\n";
+		exit 1;
+	}
 } else {
-	print "FATAL: output directory already exists, $OUTDIR.\n";
-	exit 1;
+	print "Performing connection test only by retrieving the requested schema or database.\n";
 }
 
 # Start to generate call to ora2pg
@@ -88,10 +94,15 @@ for (my $i = 0; $i < @DB_DNS; $i++) {
 	$typ = ' -m' if ($DB_DNS[$i]->{type} eq 'MYSQL');
 	my $audit = '';
 	$audit = " --audit_user \"$DB_DNS[$i]->{audit_user}\"" if ($DB_DNS[$i]->{audit_user});
-	print "Running: ora2pg$typ -t SHOW_REPORT --dump_as_sheet --estimate_cost$header$audit -s '$DB_DNS[$i]->{dsn}' -n $DB_DNS[$i]->{schema} >> $OUTDIR/dbs_scan.csv\n";
-	`ora2pg$typ -t SHOW_REPORT --dump_as_sheet --estimate_cost$header$audit -s '$DB_DNS[$i]->{dsn}' -n $DB_DNS[$i]->{schema} >> $OUTDIR/dbs_scan.csv`;
-	print "Running: ora2pg$typ -t SHOW_REPORT --dump_as_html --estimate_cost$audit -s '$DB_DNS[$i]->{dsn}' -n $DB_DNS[$i]->{schema} >> $OUTDIR/$DB_DNS[$i]->{schema}-report.html\n";
-	`ora2pg$typ -t SHOW_REPORT --dump_as_html --estimate_cost$audit -s '$DB_DNS[$i]->{dsn}' -n $DB_DNS[$i]->{schema} >> $OUTDIR/$DB_DNS[$i]->{schema}-report.html`;
+	if (!$DRYRUN) {
+		print "Running: ora2pg$typ -t SHOW_REPORT --dump_as_sheet --estimate_cost$header$audit -s '$DB_DNS[$i]->{dsn}' -n $DB_DNS[$i]->{schema} >> $OUTDIR/dbs_scan.csv\n";
+		`ora2pg$typ -t SHOW_REPORT --dump_as_sheet --estimate_cost$header$audit -s '$DB_DNS[$i]->{dsn}' -n $DB_DNS[$i]->{schema} >> $OUTDIR/dbs_scan.csv`;
+		print "Running: ora2pg$typ -t SHOW_REPORT --dump_as_html --estimate_cost$audit -s '$DB_DNS[$i]->{dsn}' -n $DB_DNS[$i]->{schema} >> $OUTDIR/$DB_DNS[$i]->{schema}-report.html\n";
+		`ora2pg$typ -t SHOW_REPORT --dump_as_html --estimate_cost$audit -s '$DB_DNS[$i]->{dsn}' -n $DB_DNS[$i]->{schema} >> $OUTDIR/$DB_DNS[$i]->{schema}-report.html`;
+	} else {
+		print "Running: ora2pg$typ -t SHOW_SCHEMA -s '$DB_DNS[$i]->{dsn}' -n $DB_DNS[$i]->{schema} | grep -i \"$DB_DNS[$i]->{schema}\"\n";
+		print `ora2pg$typ -t SHOW_SCHEMA -s '$DB_DNS[$i]->{dsn}' -n $DB_DNS[$i]->{schema} | grep -i "$DB_DNS[$i]->{schema}"`;
+	}
 }
 
 exit 0;
@@ -116,6 +127,9 @@ Usage: ora2pg_scanner -l CSVFILE [-o OUTDIR]
 		directory named 'output', it will be created automatically.
 		If you want to change the name of this directory, set the name
 		at second argument.
+
+   -t | --test : just try all connection by retrieving the requiered schema
+		 or database name. Useful to validate your CSV list file.
 
    Here is a full example of a CSV database list file:
 
