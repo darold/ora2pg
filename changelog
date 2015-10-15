@@ -1,3 +1,136 @@
+2015 10 15 - v16.0
+
+This major release improve PL/SQL code replacement, fixes several bugs and
+adds some major new features:
+
+  * Full migration of MySQL database, it just work like with Oracle database.
+  * Full migration assessment report for MySQL database.
+  * New script, ora2pg_scanner, to perform a migration assessment of all Oracle and MySQL instances on a network.
+  * Add technical difficulty level in migration assessment.
+  * Allow migration assessment on client queries extracted from AUDIT_TRAIL (oracle) or general_log table (mysql).
+  * Ora2Pg has a "made in one night" brand new Web site (still need some work) http://ora2pg.darold.net/
+
+Example of technical difficulty level assessment output for the sakila database with some more difficulties:
+
+	Total	83.90 cost migration units means approximatively 1 man-day(s).
+	Migration level: B-5
+
+Here are the explanation of the migration level code:
+
+    Migration levels:
+	A - Migration that might be run automatically
+	B - Migration with code rewrite and a human-days cost up to 10 days
+	C - Migration with code rewrite and a human-days cost above 10 days
+    Technical levels:
+	1 = trivial: no stored functions and no triggers
+	2 = easy: no stored functions but with triggers, no manual rewriting
+	3 = simple: stored functions and/or triggers, no manual rewriting
+	4 = manual: no stored functions but with triggers or views with code rewriting
+	5 = difficult: stored functions and/or triggers with code rewriting
+
+This is to help you to find the database that can be migrated first with small efforts (A and B) and those who need to conduct a full migration project (C).
+
+This release has also some new useful features:
+
+  * Export type SHOW_TABLE now shows additional information about table type (FOREIGN, EXTERNAL or PARTITIONED with the number of partition).
+  * Connection's user and password can be passed through environment variables ORA2PG_USER and ORA2PG_PASSWD to avoid setting them at ora2pg command line.
+  * Improve PL/SQL replacement on ADD_MONTH(), ADD_YEAR(), TRUNC(), INSTR() and remove the replacement limitation on DECODE().
+  * Fix INSTR() replacement by POSITION(). Thanks to Mael Rimbault for the patch.
+  * Add detection of migration difficulties in views, it was previously reserved to functions, procedures, packages and triggers.
+  * Replace values in auto generated configuration file from command line options -s, -n, -u and -p when --init_project is used.
+  * Adjust lot of scores following new functionalities in Ora2Pg, ex: dblink or synomyms are now easy to migrate.
+
+There is some new command line options to ora2pg script:
+
+  * -m | --mysql : to be used with --init_project and -i option to inform ora2pg that we work with a MySQL format
+  * -T | --temp_dir : option to be able to set a distinct temporary directory to run ora2pg in parallel.
+  * --audit_user : option to set the user used in audit filter and enable migration assessment report on queries from AUDIT_TRAIL (oracle) or general_log table (mysql).
+  * --dump_as_sheet and --print_header options to be able to compute a CSV file with all migration assessment from a list of oracle database.
+  * --dump_as_csv option to report assessments into a csv file. It will not include comments or details, just objects names, numbers and cost.
+
+Backward compatibility:
+
+  - Change NULL_EQUAL_EMPTY to be disabled by default to force change in the application instead of transforming the PL/SQL.
+
+This release adds some new configuration directives:
+
+  * MYSQL_PIPES_AS_CONCAT: Enable it if double pipe and double ampersand (|| and &&) should not be taken as equivalent to OR and AND.
+  * MYSQL_INTERNAL_EXTRACT_FORMAT: Enable it if you want EXTRACT() replacement to use the internal format returned as an integer.
+  * AUDIT_USER: Set the comma separated list of user name that must be used to filter from the DBA_AUDIT_TRAIL or general_log tables.
+  * REPLACE_ZERO_DATE: "zero" date: 0000-00-00 00:00:00 it is replaced by a NULL by default, use it to use the date of your choice.
+  * INDEXES_RENAMING: force renaming of all indexes using tablename_columnsnames. Very useful for database that have multiple time the same index name or that use the same name than a table.
+  * HUMAN_DAYS_LIMIT: default to 5 days, used to set the number of human-days limit for migration of type C.
+
+Here is the full list of other changes:
+
+  - Remove list of acknowledgment that was not maintained anymore and some person may feel injured. Acknowledgment for patches or bug reports are always written to changelog, so this part reports to it now.
+  - Fix bad trigger export when objects was enclosed in double quote and fix an additional bug in WHEN clause export. Thanks to Cyrille for the report.
+  - Update documentation.
+  - Update Makefile.PL with new script to install and new configuration directives in auto generated configuration file.
+  - Update with new and missing files.
+  - Add a Perl Module dedicated to MySQL database object discovery and export, lib/Ora2Pg/MySQL.pm.
+  - Fix function based index type replacement in previous commit.
+  - Do not report indexes with just DESC as function based index like Oracle report it. Thanks to Marc Cousin for the report.
+  - Some excluded table was missing in the previous patch.
+  - Remove use of DBI InactiveDestroy call when a fork is done and replace it to a single use AutoInactiveDestroy at connection. This require DBI >= 1.614.
+  - Add SDO_* tables and OLS_DIR_BUSINESSES to the table exclusion list to fix issue #124 when no schema is provided. Thanks to Kenny Joseph for the report.
+  - Fix partition prefix.
+  - Remove UNIQUE keyword from spatial index.
+  - Fix alter triggers function with missing parenthesis. Thanks to Spike Hodge - MWEB for the report.
+  - Fix export of foreign keys when they was defined in lowercase. Thanks to Spike for the report.
+  - Fix wrong offset when rewriting ROWNUM with LIMIT+OFFSET. Thanks to Marc Cousin for the report.
+  - Allow -INFINITY to be used to replace zero date.
+  - Migration assessment in hour-day are now set to 1 man-day, we do not need such a precision and it is easier to process csv report. Thanks to Stephane Tachoire for the report.
+  - Fix some issue with FDW and WKT spatial export. Add migration assessment of queries from the AUDIT_TRAIL table.
+  - Adjust assessment units of some objects and add QUERY migration weight.
+  - Rewrite information about migration levels.
+  - Fix speedometer in progress bar, it will now shows the current speed in tuples/sec and the speed and time related to a table when export ended for the object. Thanks to Alex Ignatov for the report.
+  - Fix break line when export data using INSERT mode. Thanks to Vu Bui for the report.
+  - Do not display line about non existent objects in migration assessment reports.
+  - Fix date default value for date when value is 0000-00-00 00:00:00
+  - Suppress display of title for function and trigger details when there is no details.
+  - Remove INSTR() from the list of Oracle function that are not supported. It is now replaced by position().
+  - Fix condition to call _get_largest_tables().
+  - Fix some minor issues and a problem in OUT/INOUT type returned by a function.
+  - Fix default value that may appears unquoted.
+  - Fix several issues on partition export: column with function, index on default partition table and plsql to plpgsql translation in check condition.
+  - Fix some minor issues.
+  - Replace values from command line options -s, -n, -u and -p in --init_project auto generated configuration file. Thanks to Stephane Tachoire for the feature request.
+  - Fix wrong object count in SHOW_REPORT. Thanks to Stephane Tachoire for the report.
+  - Use DBA_SEGMENTS to find database size when USER_GRANT is disable, aka user is a DBA
+  - Remove report of Migration Level when --estimate_cost is not enabled.
+  - Add missing BINARY_INTEGER for type replacement.
+  - Always exclude function squirrel_get_error_offset() that is created by the Squirrel Oracle plug-in.
+  - Adjust assessment scores following new functionalities in Ora2Pg, ex: dblink or synomyms are now easy to migrate.
+  - Remove man page from source, it is auto generated by Makefile.PL and make.
+  - Fix unterminated DECODE replacement when there was more than 5 parameters to DECODE() and remove the limitation to 10 parameters. There is no more limit in the number of decode parameters. Thanks to Mael Rimbault for the report.
+  - Remove inclusion of unwanted object when exporting a limited list of view with ALLOW.
+  - Disable unsupported recursive query used to reorder views when Oracle version is 11gR1. Thanks to Mael Rimbault for the patch.
+  - Add PLPGSQL replacement of INSTR() by POSITION(). Thanks to Mael Rimbault for the report.
+  - Add difficulty level information in migration assessment, this include en new configuration directive HUMAN_DAYS_LIMIT (default to 5 days) to set the number of human-days limit for migration of type C.
+  - Add MERGE with a migration cost of 3, still need work be replaced by ON CONFLICT.
+  - Remove some redundant regular expressions.
+  - Fix escaped commas not working properly in MODIFY_TYPE. A MODIFY_TYPE value like `TABLE1:COL4:decimal(9\,6)` was leading to a column like `col4 decimal(8#nosep#3)` in the SQL dump file that was generated. This fixes the output to be `col4 decimal(8,3)`. Thanks to Nick Muerdter for the patch.
+  - Strip default "empty_clob()" values from table dumps. This function doesn't exist in Postgres and is not necessary. Thanks to Nick Muerdter for the patch.
+  - Fix undesired double quoting of column name in function based indexes.
+  - Fix issue with Perl < 5.8 "Modification of a read-only value attempted"
+  - Fix retrieving of table size on Oracle 8i.
+  - Add auto double quoting of object name with unauthorized characters. Thanks to Magnus Hagander for the feature request.
+  - Automatically double quote object name beginning with a number
+  - Fix missing DESC part in descending indexes. Thanks to Magnus Hagander for the report.
+  - Fix case where a column name in oracle is just a number (e.g. the column is called "7"), it will be created in postgres without quoted identifier, which fails. Thanks to Magnus Hagander for the report.
+  - Fix "reqs/sec" display in debug mode. Thanks to Laurent Martelli for the patch
+  - Fix export if Oracle procedure is created without a parameter. Thanks to dirkgently007 for the report.
+  - Fix CSV report output.
+  - Fix triggers from file parser.
+  - Add a test on triggers return to handle case where it is triggered on DELETE + other(s) event(s). In this case a test is done on the TG_OP to return OLD if event is DELETE or NEW in other case. Thanks to Dominique Legendre for the suggestion.
+  - Change NULL_EQUAL_EMPTY to be disabled by default to force change of the application instead of transforming the PL/SQL.
+  - Change score of SYNONYM and DBLINK in the migration assessment.
+  - Add conversion of Oracle type STRING into varchar(n) or text.
+  - Add information about libaio1 requirement for instant client
+  - Remove extra space when calling ora2pg_get_efile() used to export BFILE into EFILE. Thanks to Dominique Legendre for the export.
+
+
 2015 06 01 - v15.3
 
 This is a maintenance release only that fixes several minor bugs and typos.
@@ -2447,6 +2580,9 @@ testing Ora2Pg.
 
 Special thanks to Josian Larcheveque and Stephane Silly as Oracle DBA
 and their "patience".
+
+Special Thanks to Dominique Legendre for his help on Spatial support and
+all the tests performed.
 
 Many thanks for all congratulation message, idea and bug report+fix I received.
 
