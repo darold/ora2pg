@@ -712,7 +712,7 @@ TOP_MAX			10
 # Use this directive to redefined the number of human-days limit where the
 # migration assessment level must switch from B to C. Default is set to 10
 # human-days.
-HUMAN_DAYS_LIMIT	10
+HUMAN_DAYS_LIMIT	5
 
 # Set the comma separated list of username that must be used to filter
 # queries from the DBA_AUDIT_TRAIL table. Default is to not scan this
