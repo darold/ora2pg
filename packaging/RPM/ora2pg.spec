@@ -4,7 +4,7 @@
 
 Name: %{wname}
 Epoch: 0
-Version: 15.3
+Version: 16.r0
 Release: 1%{?dist}
 Summary: Oracle to PostgreSQL database schema converter
 
@@ -18,9 +18,9 @@ BuildRoot: %(mktemp -ud %{_tmppath}/%{name}-%{version}-%{release}-XXXXXX)
 Requires: perl(:MODULE_COMPAT_%(eval "`%{__perl} -V:version`"; echo $version))
 
 %description
-This package contains a Perl module and a companion script to convert an
-Oracle database schema to PostgreSQL and to migrate the data from an
-Oracle database to a PostgreSQL database.
+This package contains all Perl modules and scripts to convert an
+Oracle or MySQL database schema, data and stored procedures to a
+PostgreSQL database.
 
 %prep
 %setup -q -n %{uname}-%{version}
@@ -63,13 +63,18 @@ rm -f `find %{buildroot}/%{_libdir}/perl*/ -name .packlist -type f`
 %defattr(0644,root,root,0755)
 %doc change* INSTALL README
 %attr(0755,root,root) %{_bindir}/%{wname}
+%attr(0755,root,root) %{_bindir}/%{wname}_scanner
 %attr(0644,root,root) %{_mandir}/man3/%{wname}.3.gz
 %config(noreplace) %{_sysconfdir}/%{wname}/%{wname}.conf.dist
 %{perl_vendorlib}/Ora2Pg/GEOM.pm
+%{perl_vendorlib}/Ora2Pg/MySQL.pm
 %{perl_vendorlib}/Ora2Pg/PLSQL.pm
 %{perl_vendorlib}/Ora2Pg.pm
 
 %changelog
+* Tue Oct 15 2015 Gilles Darold <gilles@darold.net>
+- Add MySQL.pm module and ora2pg_scanner
+
 * Fri May 07 2010 Gilles Darold <gilles@darold.net>
 - Change uname/package to be full lower case.
 
