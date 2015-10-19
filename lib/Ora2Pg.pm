@@ -6256,7 +6256,9 @@ sub _sql_type
 	}
 
         # Overide the length
-        $len = $precision if ( ($type eq 'NUMBER') && $precision );
+	if ( ($type eq 'NUMBER') && $precision ) {
+		$len = $precision;
+	}
 
         if (exists $TYPE{uc($type)}) {
 		$type = uc($type); # Force uppercase
@@ -6271,6 +6273,9 @@ sub _sql_type
 				# This is an integer
 				if (!$scale) {
 					if ($precision) {
+						if (exists $TYPE{"$type($precision)"}) {
+							return $TYPE{"$type($precision)"};
+						}
 						if ($self->{pg_integer_type}) {
 							if ($precision < 5) {
 								return 'smallint';
@@ -6286,6 +6291,9 @@ sub _sql_type
 						return $self->{default_numeric} || 'bigint';
 					}
 				} else {
+					if (exists $TYPE{"$type($precision,$scale)"}) {
+						return $TYPE{"$type($precision,$scale)"};
+					}
 					if ($precision) {
 						if ($self->{pg_numeric_type}) {
 							if ($precision <= 6) {
