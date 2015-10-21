@@ -516,7 +516,8 @@ sub plsql_to_plpgsql
 	# able to use it into function call and not break decode replacement
 	my $i = 0;
 	while ($str =~ s/(XMLELEMENT\s*\([^\)]+\))/%%XMLELEMENT$i%%/is) {
-		push(@xmlelt, $1);
+		my $tmpstr = replace_decode($1);
+		push(@xmlelt, $tmpstr);
 		$i++;
 	}
 
@@ -540,30 +541,7 @@ sub plsql_to_plpgsql
 
 	# Replace decode("user_status",'active',"username",null)
 	# PostgreSQL (CASE WHEN "user_status"='ACTIVE' THEN "username" ELSE NULL END)
-	my $decode_idx = 0;
-	my @str_decode = ();
-	while ($str =~ s/DECODE\s*\(([^\)]+)\)/DECODE%$decode_idx%/is) {
-		push(@str_decode, $1);
-		# When there is no potential subquery in the decode statement
-		if ($str_decode[-1] !~ /(\(|\))/) {
-			# Create an array with all parameter of the decode function
-			my @fields = split(/\s*,\s*/s, $str_decode[-1]);
-			my $case_str = 'CASE ';
-			for (my $i = 1; $i <= $#fields; $i+=2) {
-				if ($i < $#fields) {
-					$case_str .= "WHEN $fields[0]=$fields[$i] THEN $fields[$i+1] ";
-				} else {
-					$case_str .= " ELSE $fields[$i] ";
-				}
-			}
-			$case_str .= 'END';
-			$str_decode[-1] = $case_str;
-		}
-	}
-	while ($str =~ /DECODE%(\d+)%/) {
-		$decode_idx = $1;
-		$str =~ s/DECODE%$decode_idx%/$str_decode[$decode_idx]/s;
-	}
+	$str = replace_decode($str);
 
 	#  Convert all x <> NULL or x != NULL clauses to x IS NOT NULL.
 	$str =~ s/\s*(<>|\!=)\s*NULL/ IS NOT NULL/igs;
@@ -617,6 +595,39 @@ sub plsql_to_plpgsql
 
 	return $str;
 }
+
+sub replace_decode
+{
+	my $str = shift;
+
+	my $decode_idx = 0;
+	my @str_decode = ();
+	while ($str =~ s/DECODE\s*\(([^\(\)]+)\)/DECODE%$decode_idx%/is) {
+		push(@str_decode, $1);
+		# When there is no potential subquery in the decode statement
+		if ($str_decode[-1] !~ /(\(|\))/) {
+			# Create an array with all parameter of the decode function
+			my @fields = split(/\s*,\s*/s, $str_decode[-1]);
+			my $case_str = 'CASE ';
+			for (my $i = 1; $i <= $#fields; $i+=2) {
+				if ($i < $#fields) {
+					$case_str .= "WHEN $fields[0]=$fields[$i] THEN $fields[$i+1] ";
+				} else {
+					$case_str .= " ELSE $fields[$i] ";
+				}
+			}
+			$case_str .= 'END';
+			$str_decode[-1] = $case_str;
+		}
+	}
+	while ($str =~ /DECODE%(\d+)%/) {
+		$decode_idx = $1;
+		$str =~ s/DECODE%$decode_idx%/$str_decode[$decode_idx]/s;
+	}
+
+	return $str;
+}
+
 
 # Function to replace call to SYS_CONTECT('USERENV', ...)
 # List of Oracle environment variables: http://docs.oracle.com/cd/B28359_01/server.111/b28286/functions172.htm
