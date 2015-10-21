@@ -887,8 +887,8 @@ sub replace_sql_type
 	$str =~ s/\bNUMBER\b/$number/igs;
 
 	# Set varchar without length to text
-	$str =~ s/VARCHAR2/VARCHAR/igs;
-	$str =~ s/STRING/VARCHAR/igs;
+	$str =~ s/\bVARCHAR2\b/VARCHAR/igs;
+	$str =~ s/\bSTRING\b/VARCHAR/igs;
 	$str =~ s/\bVARCHAR(\s*(?!\())/text$1/igs;
 
 	foreach my $t ('DATE','LONG RAW','LONG','NCLOB','CLOB','BLOB','BFILE','RAW','ROWID','FLOAT','DOUBLE PRECISION','INTEGER','INT','REAL','SMALLINT','BINARY_FLOAT','BINARY_DOUBLE','BINARY_INTEGER','BOOLEAN','XMLTYPE') {
