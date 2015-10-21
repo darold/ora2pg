@@ -1011,6 +1011,7 @@ sub estimate_cost
 	$cost_details{'MONTHS_BETWEEN'} += $n;
 	$n = () = $str =~ m/NVL2/igs;
 	$cost_details{'NVL2'} += $n;
+	$str =~ s/MDSYS\.(["]*SDO_)/$1/igs;
 	$n = () = $str =~ m/SDO_\w/igs;
 	$cost_details{'SDO_'} += $n;
 	$n = () = $str =~ m/PRAGMA/igs;
