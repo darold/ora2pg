@@ -383,6 +383,8 @@ sub plsql_to_plpgsql
 
 	# Replace raise_application_error by PG standard RAISE EXCEPTION
 	$str =~ s/\braise_application_error\s*\(\s*[\-\+]*\d+\s*,\s*(.*?)\);/RAISE EXCEPTION $1;/igs;
+	$str =~ s/DBMS_STANDARD\.RAISE EXCEPTION/RAISE EXCEPTION/igs;
+
 	# and then rewrite RAISE EXCEPTION concatenations
 	while ($str =~ /RAISE EXCEPTION\s*([^;\|]+?)(\|\|)([^;]*);/) {
 		my @ctt = split(/\|\|/, "$1$2$3");
