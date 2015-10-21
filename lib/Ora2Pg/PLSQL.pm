@@ -528,7 +528,7 @@ sub plsql_to_plpgsql
 	# The to_number() function reclaim a second argument under postgres which is the format.
 	# By default we use '99999999999999999999D99999999999999999999' that may allow bigint
 	# and double precision number. Feel free to modify it
-	$str =~ s/TO_NUMBER\s*\(([^,\)]+)\s*\)/to_number\($1,'99999999999999999999D99999999999999999999'\)/igs;
+	$str =~ s/TO_NUMBER\s*\(([^,\(\)]+)\s*\)/to_number\($1,'99999999999999999999D99999999999999999999'\)/igs;
 
 	# Replace sys_context call to the postgresql equivalent
 	$str = &replace_sys_context($str);
