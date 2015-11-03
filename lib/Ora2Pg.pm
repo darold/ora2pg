@@ -1865,7 +1865,6 @@ sub _parse_constraint
 		map { s/"//g; } @col_list;
 		if (!$self->{export_schema}) {
 			$f_tb_name =~ s/^[^\.]+\.//;
-			$f_tb_name =~ s/^[^\.]+\.//;
 			map { s/^[^\.]+\.//; } @col_list;
 		}
 		push(@{$self->{tables}{$tb_name}{foreign_link}{"\U$c_name\E"}{local}}, $cur_col_name);
@@ -3100,7 +3099,7 @@ LANGUAGE plpgsql ;
 		foreach my $table (sort {"$self->{grants}{$a}{type}.$a" cmp "$self->{grants}{$b}{type}.$b" } keys %{$self->{grants}}) {
 			my $realtable = lc($table);
 			my $obj = $self->{grants}{$table}{type} || 'TABLE';
-			if ($self->{export_schema} &&  $self->{schema}) {
+			if ($self->{export_schema} && $self->{schema}) {
 				if (!$self->{preserve_case}) {
 					$realtable =  "\L$self->{schema}.$table\E";
 				} else {
@@ -4924,7 +4923,7 @@ CREATE TRIGGER insert_${table}_trigger
 
 	# DATABASE DESIGN
 	# Dump the database structure: tables, constraints, indexes, etc.
-	if ($self->{export_schema} &&  $self->{schema}) {
+	if ($self->{export_schema} && $self->{schema}) {
 		if ($self->{create_schema}) {
 			if (!$self->{preserve_case}) {
 				$sql_output .= "CREATE SCHEMA \L$self->{schema}\E;\n";
@@ -12198,7 +12197,6 @@ sub create_kettle_output
 			$pg_table = "$self->{schema}.$table";
 		}
 	}
-	$table = "$self->{schema}.$table" if ($self->{schema});
 
 	my $xml = &get_kettle_xml();
 	$xml =~ s/__oracle_host__/$oracle_host/gs;
