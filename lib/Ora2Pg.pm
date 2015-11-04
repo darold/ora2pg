@@ -617,8 +617,7 @@ sub quote_reserved_words
 	}
 	if (!$self->{preserve_case}) {
 		$obj_name = lc($obj_name);
-		if ( ($obj_name =~ /^\d+/) || ($obj_name =~ /[^a-zA-Z0-9\_]/) ) {
-		#if ($obj_name =~ /^\d+/) {
+		if ( ($obj_name =~ /^\d+/) || ($obj_name =~ /[^a-zA-Z0-9\_\.]/) ) {
 			return '"' . $obj_name . '"';
 		}
 	}
@@ -780,6 +779,9 @@ sub _init
 
 	# List of users for audit trail
 	$self->{audit_user} = '';
+
+	# Disable copy freeze by default
+	$self->{copy_freeze} = 0;
 
 	# Initialyze following configuration file
 	foreach my $k (sort keys %AConfig) {
@@ -951,6 +953,16 @@ sub _init
 	# Free some memory
 	%options = ();
 	%AConfig = ();
+
+	$self->{copy_freeze} = ' FREEZE' if ($self->{copy_freeze});
+	# Prevent use of COPY FREEZE with some incompatible case
+	if ($self->{copy_freeze}) {
+		if ($self->{pg_dsn} && ($self->{jobs} > 1)) {
+			$self->logit("FATAL: You can not use COPY FREEZE with -j (JOBS) > 1 and direct import to PostgreSQL.\n", 0, 1);
+		} elsif ($self->{oracle_copies} > 1) {
+			$self->logit("FATAL: You can not use COPY FREEZE with -J (ORACLE_COPIES) > 1.\n", 0, 1);
+		}
+	}
 
 	# Multiprocess init
 	$self->{jobs} ||= 1;
@@ -1690,12 +1702,19 @@ sub _tables
 		$self->{tables}{$t}{table_info}{connection} = $tables_infos{$t}{connection};
 
 		# Set the fields information
-		my $query = "SELECT * FROM \"$tables_infos{$t}{owner}\".\"$t\" WHERE 1=0";
-		if ($self->{is_mysql}) {
-			$query = "SELECT * FROM $t WHERE 1=0";
+		my $tmp_tbname = $t;
+		if (!$self->{is_mysql}) {
+			if ( $t !~ /\./ ) {
+				$tmp_tbname = "\"$tables_infos{$t}{owner}\".\"$t\"";
+			} else {
+				# in case we already have the schema name, add doublequote
+				$tmp_tbname =~ s/\./"."/;
+				$tmp_tbname = "\"$tmp_tbname\"";
+			}
 		}
+		my $query = "SELECT * FROM $tmp_tbname WHERE 1=0";
 		if ($tables_infos{$t}{nested} eq 'YES') {
-			$query = "SELECT /*+ nested_table_get_refs */ * FROM \"$tables_infos{$t}{owner}\".\"$t\" WHERE 1=0";
+			$query = "SELECT /*+ nested_table_get_refs */ * FROM $tmp_tbname WHERE 1=0";
 		}
 		my $sth = $self->{dbh}->prepare($query);
 		if (!defined($sth)) {
@@ -1743,11 +1762,15 @@ sub _tables
 			$self->{tables}{$view}{alias}= $view_infos{$view}{alias};
 			$self->{tables}{$view}{comment} = $view_infos{$view}{comment};
 			my $realview = $view;
-			if ($view !~ /"/) {
-				$realview = "\"$view\"";
-			}
-			if ($self->{schema}) {
-				$realview = "\"$self->{schema}\".$realview";
+			$realview =~ s/"//g;
+			if (!$self->{is_mysql}) {
+				if ($realview !~ /\./) {
+					$realview = "\"self->{tables}{$view}{owner}\".\"$realview\"";
+				} else {
+					$realview =~ s/\./"."/;
+					$realview = "\"$realview\"";
+				}
+				
 			}
 			# Set the fields information
 			my $sth = $self->{dbh}->prepare("SELECT * FROM $realview WHERE 1=0");
@@ -2663,6 +2686,16 @@ sub _export_table_data
 
 	my $total_record = 0;
 
+	# When copy freeze is required, force a transaction with a truncate
+	if ($self->{copy_freeze} && !$self->{pg_dsn}) {
+		$self->{truncate_table} = 1;
+		if ($self->{file_per_table}) {
+			$self->data_dump("BEGIN;\n",  $table);
+		} else {
+			$self->dump("\nBEGIN;\n");
+		}
+	}
+		
 	# Add table truncate order
 	if ($self->{truncate_table}) {
 		$self->logit("Truncating table $table...\n", 1);
@@ -2708,6 +2741,15 @@ sub _export_table_data
 		$total_record = $self->_dump_table($dirprefix, $sql_header, $table);
 	}
 
+	# When copy freeze is required, close the transaction
+	if ($self->{copy_freeze} && !$self->{pg_dsn}) {
+		if ($self->{file_per_table}) {
+			$self->data_dump("COMMIT;\n",  $table);
+		} else {
+			$self->dump("\nCOMMIT;\n");
+		}
+	}
+		
 	return $total_record;
 }
 
@@ -2773,10 +2815,14 @@ sub _get_sql_data
 				$self->logit("\tReplacing table $tmpv as " . $self->{replaced_tables}{lc($tmpv)} . "...\n", 1);
 				$tmpv = $self->{replaced_tables}{lc($tmpv)};
 			}
+			if ($self->{export_schema} && !$self->{schema} && ($tmpv =~ /^([^\.]+)\./) ) {
+				$sql_output .= $self->set_search_path($1) . "\n";
+			}
 			if (!@{$self->{views}{$view}{alias}}) {
 				if (!$self->{preserve_case}) {
 					$sql_output .= "CREATE OR REPLACE VIEW \L$tmpv\E AS ";
 				} else {
+					$tmpv =~ s/\./"."/;
 					$sql_output .= "CREATE OR REPLACE VIEW \"$tmpv\" AS ";
 				}
 				$sql_output .= $self->{views}{$view}{text} . ";\n\n";
@@ -2784,6 +2830,7 @@ sub _get_sql_data
 				if (!$self->{preserve_case}) {
 					$sql_output .= "CREATE OR REPLACE VIEW \L$tmpv\E (";
 				} else {
+					$tmpv =~ s/\./"."/;
 					$sql_output .= "CREATE OR REPLACE VIEW \"$tmpv\" (";
 				}
 				my $count = 0;
@@ -3030,6 +3077,9 @@ LANGUAGE plpgsql ;
 				if (!$self->{preserve_case}) {
 					$self->{materialized_views}{$view}{text} =~ s/"//gs;
 				}
+				if ($self->{export_schema} && !$self->{schema} && ($view =~ /^([^\.]+)\./) ) {
+					$sql_output .= $self->set_search_path($1) . "\n";
+				}
 				$self->{materialized_views}{$view}{text} =~ s/^PERFORM/SELECT/;
 				if (!$self->{pg_supports_mview}) {
 					$sql_output .= "CREATE VIEW \L$view\E_mview AS\n";
@@ -3222,9 +3272,13 @@ LANGUAGE plpgsql ;
 			$cache = $seq->[5] if ($seq->[5]);
 			my $cycle = '';
 			$cycle = ' CYCLE' if ($seq->[6] eq 'Y');
+			if ($self->{export_schema} && !$self->{schema}) {
+				$seq->[0] = $seq->[7] . '.' . $seq->[0];
+			}
 			if (!$self->{preserve_case}) {
 				$sql_output .= "CREATE SEQUENCE \L$seq->[0]\E INCREMENT $seq->[3]";
 			} else {
+				$seq->[0] =~ s/\./"."/;
 				$sql_output .= "CREATE SEQUENCE \"$seq->[0]\" INCREMENT $seq->[3]";
 			}
 			if ($seq->[1] < (-2**63-1)) {
@@ -3401,6 +3455,9 @@ LANGUAGE plpgsql ;
 					$cname = lc($cname) if (!$self->{preserve_case});
 					$trig->[4] =~ s/(OLD|NEW)\.$coln\b/$1\.$cname/igs;
 				}
+			}
+			if ($self->{export_schema} && !$self->{schema}) {
+				$sql_output .= $self->set_search_path($trig->[8]) . "\n";
 			}
 			# Check if it's like a pg rule
 			if (!$self->{pg_supports_insteadof} && $trig->[1] =~ /INSTEAD OF/) {
@@ -3877,9 +3934,9 @@ LANGUAGE plpgsql ;
 			if ($self->{plsql_pgsql}) {
 				my $sql_p = '';
 				if ($self->{is_mysql}) {
-					$sql_p = $self->_convert_function($self->{functions}{$fct}{owner}, $self->{procedures}{$fct}{text}, $fct);
+					$sql_p = $self->_convert_function($self->{procedures}{$fct}{owner}, $self->{procedures}{$fct}{text}, $fct);
 				} else {
-					$sql_p = $self->_convert_function($self->{functions}{$fct}{owner}, $self->{procedures}{$fct}{text});
+					$sql_p = $self->_convert_function($self->{procedures}{$fct}{owner}, $self->{procedures}{$fct}{text});
 				}
 				if ( $sql_p ) {
 					$sql_output .= $sql_p . "\n\n";
@@ -4009,7 +4066,7 @@ LANGUAGE plpgsql ;
 		foreach my $pkg (sort keys %{$self->{packages}}) {
 
 			if (!$self->{quiet} && !$self->{debug}) {
-				print STDERR $self->progress_bar($i, $num_total_package, 25, '=', 'packages', "generating $pkg" ), "\n";
+				print STDERR $self->progress_bar($i, $num_total_package, 25, '=', 'packages', "generating $pkg" ), "\r";
 			}
 			$i++, next if (!$self->{packages}{$pkg}{text});
 			my $pkgbody = '';
@@ -4672,7 +4729,13 @@ BEGIN
 						print STDERR $self->progress_bar($i, $total_partition, 25, '=', 'partitions', "generating $part" ), "\r";
 					}
 					my $tb_name = $part;
-					$tb_name = $table . "_" . $part if ($self->{prefix_partition});
+					if ($self->{prefix_partition}) {
+						$tb_name = $table . "_" . $part;
+					} else {
+						if ($self->{export_schema} && !$self->{schema} && ($table =~ /^([^\.]+)\./)) {
+							$tb_name =  $1 . '.' . $tb_name;
+						}
+					}
 					$create_table{$table}{table} .= "CREATE TABLE $tb_name ( CHECK (\n";
 					my $check_cond = '';
 					my @condition = ();
@@ -4737,6 +4800,7 @@ BEGIN
 							foreach my $subpart (sort {$a <=> $b} keys %{$self->{subpartitions}{$table}{$p}}) {
 								my $sub_tb_name = $subpart;
 								$sub_tb_name = $table . "_" . $subpart if ($self->{prefix_partition});
+								$sub_tb_name =~ s/^[^\.]+\.//; # remove schema part if any
 								$create_table{$table}{table} .= "CREATE TABLE ${tb_name}_$sub_tb_name ( CHECK (\n";
 								my $sub_check_cond = '';
 								my @subcondition = ();
@@ -4844,7 +4908,7 @@ $create_table{$table}{'index'}
 
 $function
 
-CREATE TRIGGER insert_${table}_trigger
+CREATE TRIGGER ${table}_trigger_insert
     BEFORE INSERT ON $table
     FOR EACH ROW EXECUTE PROCEDURE ${table}_insert_trigger();
 
@@ -4920,8 +4984,7 @@ CREATE TRIGGER insert_${table}_trigger
 		return;
 	}
 
-
-	# DATABASE DESIGN
+	# DATABASE DESIGN - type 'TABLE'
 	# Dump the database structure: tables, constraints, indexes, etc.
 	if ($self->{export_schema} && $self->{schema}) {
 		if ($self->{create_schema}) {
@@ -5365,7 +5428,7 @@ sub _dump_table
 	}
 
 	if ($self->{type} eq 'COPY') {
-		$s_out .= ") FROM STDIN;\n";
+		$s_out .= ") FROM STDIN$self->{copy_freeze};\n";
 	} else {
 		$s_out .= ") VALUES (";
 	}
@@ -5415,7 +5478,11 @@ sub _column_comments
 	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	my %data = ();
 	while (my $row = $sth->fetch) {
-		$data{$row->[2]}{$row->[0]} = $row->[1];
+		if (!$self->{schema} && $self->{export_schema}) {
+			$data{"$row->[3].$row->[2]"}{$row->[0]} = $row->[1];
+		} else {
+			$data{$row->[2]}{$row->[0]} = $row->[1];
+		}
 	}
 
 	return %data;
@@ -5432,6 +5499,7 @@ sub _create_indexes
 	my ($self, $table, %indexes) = @_;
 
 	my $tbsaved = $table;
+
 	$table = $self->get_replaced_tbname($table);
 	my @out = ();
 	# Set the index definition
@@ -5462,7 +5530,7 @@ sub _create_indexes
 
 		# Add parentheses to index column definition when a space is found
 		for ($i = 0; $i <= $#{$indexes{$idx}}; $i++) {
-			if ( ($indexes{$idx}->[$i] =~ /\s/) && ($indexes{$idx}->[$i] !~ /^[^\s]+\s+DESC$/i) ) {
+			if ( ($indexes{$idx}->[$i] =~ /\s/) && ($indexes{$idx}->[$i] !~ /^[^\.\s]+\s+DESC$/i) ) {
 				$indexes{$idx}->[$i] = '(' . $indexes{$idx}->[$i] . ')';
 			}
 		}
@@ -5503,10 +5571,25 @@ sub _create_indexes
 			for ($i = 0; $i <= $#strings; $i++) {
 				$columns =~ s/\%\%string$i\%\%/'$strings[$i]'/;
 			}
-			my $idxname = $self->quote_object_name($idx);
+			my $schm = '';
+			my $idxname = '';
+			if ($idx =~ /^([^\.]+)\.(.*)$/) {
+				$schm = $1;
+				$idxname = $2;
+			}
+			$idxname = $self->quote_object_name($idxname);
 			if ($self->{indexes_renaming}) {
 				map { s/"//g; } @{$indexes{$idx}};
-				$idxname = $self->quote_object_name($table.'_'.join('_', @{$indexes{$idx}}));
+				if ($table =~ /^([^\.]+)\.(.*)$/) {
+					$schm = $1;
+					$idxname = $2;
+				} else {
+					$idxname = $table;
+				}
+				my @collist = @{$indexes{$idx}};
+				# Remove DESC and parenthesys
+				map { s/\s*(.*?)\s+DESC\s*/$1/i; } @collist;
+				$idxname = $self->quote_object_name($idxname . '_' . join('_', @collist));
 				$idxname =~ s/\s+//g;
 				if ($self->{indexes_suffix}) {
 					$idxname = substr($idxname,0,59);
@@ -5514,6 +5597,7 @@ sub _create_indexes
 					$idxname = substr($idxname,0,63);
 				}
 			}
+			$idxname = $schm . '.' . $idxname if ($schm);
 			if ($self->{tables}{$tbsaved}{idx_type}{$idx}{type_name} =~ /SPATIAL_INDEX/) {
 				$str .= "CREATE INDEX$concurrently \L$idxname$self->{indexes_suffix}\E ON $table USING gist($columns)";
 			} elsif ($self->{tables}{$tbsaved}{idx_type}{$idx}{type_name} =~ /FULLTEXT/) {
@@ -5955,7 +6039,7 @@ sub _extract_sequence_info
 
 	return Ora2Pg::MySQL::_extract_sequence_info($self) if ($self->{is_mysql});
 
-	my $sql = "SELECT DISTINCT SEQUENCE_NAME, MIN_VALUE, MAX_VALUE, INCREMENT_BY, CYCLE_FLAG, ORDER_FLAG, CACHE_SIZE, LAST_NUMBER FROM $self->{prefix}_SEQUENCES";
+	my $sql = "SELECT DISTINCT SEQUENCE_NAME, MIN_VALUE, MAX_VALUE, INCREMENT_BY, CYCLE_FLAG, ORDER_FLAG, CACHE_SIZE, LAST_NUMBER,SEQUENCE_OWNER FROM $self->{prefix}_SEQUENCES";
 	if ($self->{schema}) {
 		$sql .= " WHERE SEQUENCE_OWNER='$self->{schema}'";
 	} else {
@@ -5968,13 +6052,19 @@ sub _extract_sequence_info
 
 	while (my $seq_info = $sth->fetchrow_hashref) {
 
+		my $seqname = $seq_info->{SEQUENCE_NAME};
+		if (!$self->{schema} && $self->{export_schema}) {
+			$seqname = $seq_info->{SEQUENCE_OWNER} . '.' . $seq_info->{SEQUENCE_NAME};
+		}
+
 		my $nextvalue = $seq_info->{LAST_NUMBER} + $seq_info->{INCREMENT_BY};
-		my $alter ="ALTER SEQUENCE $self->{pg_supports_ifexists} \L$seq_info->{SEQUENCE_NAME}\E RESTART WITH $nextvalue;";
+		my $alter ="ALTER SEQUENCE $self->{pg_supports_ifexists} \L$seqname\E RESTART WITH $nextvalue;";
 		if ($self->{preserve_case}) {
-			$alter = "ALTER SEQUENCE $self->{pg_supports_ifexists} \"$seq_info->{SEQUENCE_NAME}\" RESTART WITH $nextvalue;";
+			$seqname =~ s/\./"."/;
+			$alter = "ALTER SEQUENCE $self->{pg_supports_ifexists} \"$seqname\" RESTART WITH $nextvalue;";
 		}
 		push(@script, $alter);
-		$self->logit("Extracted sequence information for sequence \"$seq_info->{SEQUENCE_NAME}\"\n", 1);
+		$self->logit("Extracted sequence information for sequence \"$seqname\"\n", 1);
 	}
 	$sth->finish();
 
@@ -6000,11 +6090,16 @@ sub _howto_get_data
 	$realtable =~ s/\"//g;
 	# Do not use double quote with mysql, but backquote
 	if (!$self->{is_mysql}) {
-		$realtable = "\"$realtable\"";
-		my $owner  = $self->{tables}{$table}{table_info}{owner} || $self->{tables}{$table}{owner} || '';
-		$owner =~ s/\"//g;
-		$owner = "\"$owner\"";
-		$realtable = "$owner.$realtable";
+		if (!$self->{schema} && $self->{export_schema}) {
+			$realtable =~ s/\./"."/;
+			$realtable = "\"$realtable\"";
+		} else {
+			$realtable = "\"$realtable\"";
+			my $owner  = $self->{tables}{$table}{table_info}{owner} || $self->{tables}{$table}{owner} || '';
+			$owner =~ s/\"//g;
+			$owner = "\"$owner\"";
+			$realtable = "$owner.$realtable";
+		}
 	} else {
 		$realtable = "\`$realtable\`";
 	}
@@ -6407,6 +6502,11 @@ END
 			$row->[2] = $row->[7] if $row->[1] =~ /char/i;
 		}
 
+		my $tmptable = $row->[-2];
+		if ($self->{export_schema} && !$self->{schema}) {
+			$tmptable = "$row->[-1].$row->[-2]";
+		}
+
 		# check if this is a spatial column (srid, dim, gtype)
 		my @geom_inf = ();
 		if ($row->[1] eq 'SDO_GEOMETRY') {
@@ -6442,15 +6542,15 @@ END
 
 			# Grad constraint type and dimensions from index definition
 			my $found_contraint = 0;
-			foreach my $idx (keys %{$self->{tables}{$row->[-2]}{idx_type}}) {
-				if (exists $self->{tables}{$row->[-2]}{idx_type}{$idx}{type_constraint}) {
-					foreach my $c (@{$self->{tables}{$row->[-2]}{indexes}{$idx}}) {
+			foreach my $idx (keys %{$self->{tables}{$tmptable}{idx_type}}) {
+				if (exists $self->{tables}{$tmptable}{idx_type}{$idx}{type_constraint}) {
+					foreach my $c (@{$self->{tables}{$tmptable}{indexes}{$idx}}) {
 						if ($c eq $row->[0]) {
-							if ($self->{tables}{$row->[-2]}{idx_type}{$idx}{type_dims}) {
-								$found_dims = $self->{tables}{$row->[-2]}{idx_type}{$idx}{type_dims};
+							if ($self->{tables}{$tmptable}{idx_type}{$idx}{type_dims}) {
+								$found_dims = $self->{tables}{$tmptable}{idx_type}{$idx}{type_dims};
 							}
-							if ($self->{tables}{$row->[-2]}{idx_type}{$idx}{type_constraint}) {
-								$found_contraint = $GTYPE{$self->{tables}{$row->[-2]}{idx_type}{$idx}{type_constraint}} || $self->{tables}{$row->[-2]}{idx_type}{$idx}{type_constraint};
+							if ($self->{tables}{$tmptable}{idx_type}{$idx}{type_constraint}) {
+								$found_contraint = $GTYPE{$self->{tables}{$tmptable}{idx_type}{$idx}{type_constraint}} || $self->{tables}{$tmptable}{idx_type}{$idx}{type_constraint};
 							}
 						}
 					}
@@ -6504,7 +6604,11 @@ END
 				push(@geom_inf, $ORA2PG_SDO_GTYPE{0});
 			}
 		}
-		push(@{$data{"$row->[-2]"}{"$row->[0]"}}, (@$row, $pos, @geom_inf));
+		if (!$self->{schema} && $self->{export_schema}) {
+			push(@{$data{$tmptable}{"$row->[0]"}}, (@$row, $pos, @geom_inf));
+		} else {
+			push(@{$data{"$row->[-2]"}{"$row->[0]"}}, (@$row, $pos, @geom_inf));
+		}
 
 		$pos++;
 	}
@@ -6541,7 +6645,7 @@ sub _unique_key
 
         my $cons_types = '('. join(',', @accepted_constraint_types) .')';
 
-	my $sql = "SELECT DISTINCT COLUMN_NAME,POSITION,CONSTRAINT_NAME FROM $self->{prefix}_CONS_COLUMNS";
+	my $sql = "SELECT DISTINCT COLUMN_NAME,POSITION,CONSTRAINT_NAME,OWNER FROM $self->{prefix}_CONS_COLUMNS";
 	$sql .=  " WHERE OWNER='$owner'" if ($owner);
 	$sql .=  " ORDER BY POSITION";
 	my $sth = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -6582,12 +6686,16 @@ END
 		foreach my $r (@cons_columns) {
 			# Skip constraints on system internal columns
 			next if ($r->[0] =~ /^SYS_NC/i);
-			if ($r->[2] eq $row->[0]) {
+			if ( ($r->[2] eq $row->[0]) && ($row->[10] eq $r->[3]) ) {
 				push(@{$constraint{'columns'}}, $r->[0]);
 			}
 		}
 		if ($#{$constraint{'columns'}} >= 0) {
-			$result{$row->[9]}{$row->[0]} = \%constraint;
+			if (!$self->{schema} && $self->{export_schema}) {
+				$result{"$row->[10].$row->[9]"}{$row->[0]} = \%constraint;
+			} else {
+				$result{$row->[9]}{$row->[0]} = \%constraint;
+			}
 		}
 	}
 	return %result;
@@ -6624,6 +6732,9 @@ END
 
 	my %data = ();
 	while (my $row = $sth->fetch) {
+		if ($self->{export_schema} && !$self->{schema}) {
+			$row->[7] = "$row->[8].$row->[7]";
+		}
 		$data{$row->[7]}{constraint}{$row->[0]} = $row->[2];
 	}
 
@@ -6688,6 +6799,9 @@ END
 	my %link = ();
 	my @tab_done = ();
 	while (my $row = $sth->fetch) {
+		if ($self->{export_schema} && !$self->{schema}) {
+			$row->[7] = "$row->[8].$row->[7]";
+		}
 		next if (grep(/^$row->[7]$row->[0]$/, @tab_done));
 		push(@{$data{$row->[7]}}, [ @$row ]);
 		push(@tab_done, "$row->[7]$row->[0]");
@@ -6698,7 +6812,11 @@ END
 			# If the names of the constraints are the same set the local column of the foreign keys
 			if ($r->[4] eq $row->[0]) {
 				if (!grep(/^$r->[2]$r->[0]$/, @done)) {
-					push(@{$link{$row->[7]}{$row->[0]}{local}}, $r->[0]);
+					if (!$self->{schema} && $self->{export_schema}) {
+						push(@{$link{"$row->[8].$row->[7]"}{$row->[0]}{local}}, $r->[0]);
+					} else {
+						push(@{$link{$row->[7]}{$row->[0]}{local}}, $r->[0]);
+					}
 					push(@done, "$r->[2]$r->[0]");
 				}
 			}
@@ -6706,13 +6824,20 @@ END
 		@done = ();
 
 		foreach my $r (@cons_columns) {
+			if ($self->{export_schema} && !$self->{schema}) {
+				$r->[2] = "$r->[3].$r->[2]";
+			}
 			# Skip it if tablename and owner are not the same
 			next if (($r->[2] ne $row->[7]) && ($r->[3] ne $row->[8]));
 			# If the names of the constraints are the same as the unique constraint definition for
 			# the referenced table set the remote part of the foreign keys
 			if ($r->[4] eq $row->[1]) {
 				if (!grep(/^$r->[2]$r->[0]$/, @done)) {
-					push(@{$link{$row->[7]}{$row->[0]}{remote}{$r->[2]}}, $r->[0]);
+					if (!$self->{schema} && $self->{export_schema}) {
+						push(@{$link{"$row->[8].$row->[7]"}{$row->[0]}{remote}{$r->[2]}}, $r->[0]);
+					} else {
+						push(@{$link{$row->[7]}{$row->[0]}{remote}{$r->[2]}}, $r->[0]);
+					}
 					push(@done, "$r->[2]$r->[0]");
 				}
 			}
@@ -6757,6 +6882,9 @@ sub _get_privilege
 	my $sth = $self->{dbh}->prepare($str) or $self->logit($error . "FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	while (my $row = $sth->fetch) {
+		if (!$self->{schema} && $self->{export_schema}) {
+			$row->[2] = "$row->[1].$row->[2]";
+		}
 		$privs{$row->[2]}{type} = $row->[4];
 		$privs{$row->[2]}{owner} = $row->[1] if (!$privs{$row->[2]}{owner});
 		if ($row->[5] eq 'YES') {
@@ -6784,6 +6912,9 @@ sub _get_privilege
 	$sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	while (my $row = $sth->fetch) {
+		if (!$self->{schema} && $self->{export_schema}) {
+			$row->[2] = "$row->[1].$row->[2]";
+		}
 		$privs{$row->[2]}{owner} = $row->[1] if (!$privs{$row->[2]}{owner});
 		push(@{$privs{$row->[2]}{column}{$row->[4]}{$row->[0]}}, $row->[3]);
 		push(@{$roles{owner}}, $row->[1]) if (!grep(/^$row->[1]$/, @{$roles{owner}}));
@@ -6880,6 +7011,9 @@ sub _get_security_definer
 	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	while (my $row = $sth->fetch) {
 		next if (!$row->[0]);
+		if (!$self->{schema} && $self->{export_schema}) {
+			$row->[2] = "$row->[3].$row->[2]";
+		}
 		$security{$row->[2]}{security} = $row->[0];
 		$security{$row->[2]}{owner} = $row->[3];
 	}
@@ -6906,39 +7040,34 @@ sub _get_indexes
 
 	return Ora2Pg::MySQL::_get_indexes($self,$table,$owner) if ($self->{is_mysql});
 
-	my $idxowner = '';
-
-	if ($owner) {
-		$idxowner = "AND IC.TABLE_OWNER = '$owner'";
-	}
 	my $sub_owner = '';
 	if ($owner) {
-		$sub_owner = "AND OWNER=$self->{prefix}_INDEXES.TABLE_OWNER";
+		$sub_owner = "AND OWNER=B.TABLE_OWNER";
 	}
 
 	my $condition = '';
-	$condition .= "AND $self->{prefix}_IND_COLUMNS.TABLE_NAME='$table' " if ($table);
-	$condition .= "AND $self->{prefix}_IND_COLUMNS.INDEX_OWNER='$owner' AND $self->{prefix}_INDEXES.OWNER='$owner' " if ($owner);
-	$condition .= $self->limit_to_objects('TABLE|INDEX', "$self->{prefix}_IND_COLUMNS.TABLE_NAME|$self->{prefix}_IND_COLUMNS.INDEX_NAME") if (!$table);
+	$condition .= "AND A.TABLE_NAME='$table' " if ($table);
+	$condition .= "AND A.INDEX_OWNER='$owner' AND B.OWNER='$owner' " if ($owner);
+	$condition .= $self->limit_to_objects('TABLE|INDEX', "A.TABLE_NAME|A.INDEX_NAME") if (!$table);
 
 	# Retrieve all indexes 
 	my $sth = '';
 	if ($self->{db_version} !~ /Release 8/) {
 		$sth = $self->{dbh}->prepare(<<END) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-SELECT DISTINCT $self->{prefix}_IND_COLUMNS.INDEX_NAME,$self->{prefix}_IND_COLUMNS.COLUMN_NAME,$self->{prefix}_INDEXES.UNIQUENESS,$self->{prefix}_IND_COLUMNS.COLUMN_POSITION,$self->{prefix}_INDEXES.INDEX_TYPE,$self->{prefix}_INDEXES.TABLE_TYPE,$self->{prefix}_INDEXES.GENERATED,$self->{prefix}_INDEXES.JOIN_INDEX,$self->{prefix}_IND_COLUMNS.TABLE_NAME,$self->{prefix}_IND_COLUMNS.INDEX_OWNER,$self->{prefix}_INDEXES.TABLESPACE_NAME,$self->{prefix}_INDEXES.ITYP_NAME,$self->{prefix}_INDEXES.PARAMETERS,$self->{prefix}_IND_COLUMNS.DESCEND
-FROM $self->{prefix}_IND_COLUMNS
-JOIN $self->{prefix}_INDEXES ON ($self->{prefix}_INDEXES.INDEX_NAME=$self->{prefix}_IND_COLUMNS.INDEX_NAME)
-WHERE $self->{prefix}_INDEXES.GENERATED <> 'Y' AND $self->{prefix}_INDEXES.TEMPORARY <> 'Y' $condition
-ORDER BY $self->{prefix}_IND_COLUMNS.COLUMN_POSITION
+SELECT DISTINCT A.INDEX_NAME,A.COLUMN_NAME,B.UNIQUENESS,A.COLUMN_POSITION,B.INDEX_TYPE,B.TABLE_TYPE,B.GENERATED,B.JOIN_INDEX,A.TABLE_NAME,A.INDEX_OWNER,B.TABLESPACE_NAME,B.ITYP_NAME,B.PARAMETERS,A.DESCEND
+FROM $self->{prefix}_IND_COLUMNS A
+JOIN $self->{prefix}_INDEXES B ON (B.INDEX_NAME=A.INDEX_NAME)
+WHERE B.GENERATED <> 'Y' AND B.TEMPORARY <> 'Y' $condition
+ORDER BY A.COLUMN_POSITION
 END
 	} else {
 		# an 8i database.
 		$sth = $self->{dbh}->prepare(<<END) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-SELECT DISTINCT $self->{prefix}_IND_COLUMNS.INDEX_NAME,$self->{prefix}_IND_COLUMNS.COLUMN_NAME,$self->{prefix}_INDEXES.UNIQUENESS,$self->{prefix}_IND_COLUMNS.COLUMN_POSITION,$self->{prefix}_INDEXES.INDEX_TYPE,$self->{prefix}_INDEXES.TABLE_TYPE,$self->{prefix}_INDEXES.GENERATED,$self->{prefix}_IND_COLUMNS.TABLE_NAME,$self->{prefix}_IND_COLUMNS.INDEX_OWNER,$self->{prefix}_INDEXES.TABLESPACE_NAME,$self->{prefix}_INDEXES.ITYP_NAME,$self->{prefix}_INDEXES.PARAMETERS,$self->{prefix}_IND_COLUMNS.DESCEND
-FROM $self->{prefix}_IND_COLUMNS, $self->{prefix}_INDEXES
-WHERE $self->{prefix}_INDEXES.INDEX_NAME=$self->{prefix}_IND_COLUMNS.INDEX_NAME $condition
-AND $self->{prefix}_INDEXES.GENERATED <> 'Y'
-AND $self->{prefix}_INDEXES.TEMPORARY <> 'Y'
+SELECT DISTINCT A.INDEX_NAME,A.COLUMN_NAME,B.UNIQUENESS,A.COLUMN_POSITION,B.INDEX_TYPE,B.TABLE_TYPE,B.GENERATED,A.TABLE_NAME,A.INDEX_OWNER,B.TABLESPACE_NAME,B.ITYP_NAME,B.PARAMETERS,A.DESCEND
+FROM $self->{prefix}_IND_COLUMNS A, $self->{prefix}_INDEXES B
+WHERE B.INDEX_NAME=A.INDEX_NAME $condition
+AND B.GENERATED <> 'Y'
+AND B.TEMPORARY <> 'Y'
 ORDER BY $self->{prefix}_IND_COLUMNS.COLUMN_POSITION
 END
 	}
@@ -6952,7 +7081,7 @@ AND    IE.TABLE_NAME = IC.TABLE_NAME
 AND    IE.COLUMN_POSITION = IC.COLUMN_POSITION
 AND    IC.COLUMN_NAME = ?
 AND    IE.TABLE_NAME = ?
-$idxowner
+AND    IC.TABLE_OWNER = ?
 };
 	my $sth2 = $self->{dbh}->prepare($idxnc);
 	my %data = ();
@@ -6960,6 +7089,10 @@ $idxowner
 	my %idx_type = ();
 	while (my $row = $sth->fetch) {
 
+		my $save_tb = $row->[-6];
+		if (!$self->{schema} && $self->{export_schema}) {
+			$row->[-6] = "$row->[-5].$row->[-6]";
+		}
 		# Show a warning when an index has the same name as the table
 		if ( !$self->{indexes_renaming} && !$self->{indexes_suffix} && (lc($row->[0]) eq lc($table)) ) {
 			print STDERR "WARNING: index $row->[0] has the same name as the table itself. Please rename it before export.\n"; 
@@ -6973,7 +7106,7 @@ $idxowner
 
 		# Replace function based index type
 		if ( ($row->[4] =~ /FUNCTION-BASED/i) && ($colname =~ /^SYS_NC\d+\$$/) ) {
-			$sth2->execute($colname,$row->[-6]) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+			$sth2->execute($colname,$save_tb,$row->[-5]) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 			my $nc = $sth2->fetch();
 			$row->[1] = $nc->[0];
 			$row->[1] =~ s/"//g;
@@ -7007,7 +7140,7 @@ $idxowner
 				$idx_type{$row->[-5]}{$row->[0]}{type_constraint} = uc($1);
 			}
 			if ($row->[-2] =~ /sdo_indx_dims=(\d+)/i) {
-				$idx_type{$row->[-5]}{$row->[0]}{type_dims} = $1;
+				$idx_type{$row->[-6]}{$row->[0]}{type_dims} = $1;
 			}
 		}
 
@@ -7071,7 +7204,7 @@ sub _get_external_tables
 	my($self) = @_;
 
 	# Retrieve all database link from dba_db_links table
-	my $str = "SELECT a.*,b.DIRECTORY_PATH,c.LOCATION FROM $self->{prefix}_EXTERNAL_TABLES a, $self->{prefix}_DIRECTORIES b, $self->{prefix}_EXTERNAL_LOCATIONS c";
+	my $str = "SELECT a.*,b.DIRECTORY_PATH,c.LOCATION,a.OWNER FROM $self->{prefix}_EXTERNAL_TABLES a, $self->{prefix}_DIRECTORIES b, $self->{prefix}_EXTERNAL_LOCATIONS c";
 	if (!$self->{schema}) {
 		$str .= " WHERE a.OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
 	} else {
@@ -7086,6 +7219,9 @@ sub _get_external_tables
 	my %data = ();
 	while (my $row = $sth->fetch) {
 
+		if (!$self->{schema} && $self->{export_schema}) {
+			$row->[1] = "$row->[0].$row->[1]";
+		}
 		$data{$row->[1]}{directory} = $row->[5];
 		$data{$row->[1]}{directory_path} = $row->[10];
 		if ($data{$row->[1]}{directory_path} =~ /([\/\\])/) {
@@ -7131,6 +7267,9 @@ sub _get_directory
 	my %data = ();
 	while (my $row = $sth->fetch) {
 
+		if (!$self->{schema} && $self->{export_schema}) {
+			$row->[0] = "$row->[2].$row->[0]";
+		}
 		$data{$row->[0]}{path} = $row->[1];
 		if ($row->[1] !~ /\/$/) {
 			$data{$row->[0]}{path} .= '/';
@@ -7172,6 +7311,9 @@ sub _get_dblink
 
 	my %data = ();
 	while (my $row = $sth->fetch) {
+		if (!$self->{schema} && $self->{export_schema}) {
+			$row->[1] = "$row->[0].$row->[1]";
+		}
 		$data{$row->[1]}{owner} = $row->[0];
 		$data{$row->[1]}{username} = $row->[2];
 		$data{$row->[1]}{host} = $row->[3];
@@ -7196,7 +7338,7 @@ sub _get_job
 	return Ora2Pg::MySQL::_get_job($self) if ($self->{is_mysql});
 
 	# Retrieve all database job from user_jobs table
-	my $str = "SELECT JOB,WHAT,INTERVAL FROM $self->{prefix}_jobs";
+	my $str = "SELECT JOB,WHAT,INTERVAL,SCHEMA_USER FROM $self->{prefix}_JOBS";
 	if (!$self->{schema}) {
 		$str .= " WHERE SCHEMA_USER NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
 	} else {
@@ -7209,6 +7351,9 @@ sub _get_job
 
 	my %data = ();
 	while (my $row = $sth->fetch) {
+		if (!$self->{schema} && $self->{export_schema}) {
+			$row->[0] = "$row->[3].$row->[0]";
+		}
 		$data{$row->[0]}{what} = $row->[1];
 		$data{$row->[0]}{interval} = $row->[2];
 	}
@@ -7240,11 +7385,14 @@ sub _get_views
 	}
 
 	my %comments = ();
-	my $sql = "SELECT A.TABLE_NAME,A.COMMENTS,A.TABLE_TYPE FROM ALL_TAB_COMMENTS A, ALL_OBJECTS O WHERE A.OWNER=O.OWNER and A.TABLE_NAME=O.OBJECT_NAME and O.OBJECT_TYPE='VIEW' $owner";
+	my $sql = "SELECT A.TABLE_NAME,A.COMMENTS,A.TABLE_TYPE,A.OWNER FROM ALL_TAB_COMMENTS A, ALL_OBJECTS O WHERE A.OWNER=O.OWNER and A.TABLE_NAME=O.OBJECT_NAME and O.OBJECT_TYPE='VIEW' $owner";
 	$sql .= $self->limit_to_objects('VIEW', 'A.TABLE_NAME');
 	my $sth = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	while (my $row = $sth->fetch) {
+		if (!$self->{schema} && $self->{export_schema}) {
+			$row->[0] = "$row->[0].$row->[3]";
+		}
 		$comments{$row->[0]}{comment} = $row->[1];
 		$comments{$row->[0]}{table_type} = $row->[2];
 	}
@@ -7305,6 +7453,9 @@ ORDER BY ITER ASC, 2, 3
 
 	my %data = ();
 	while (my $row = $sth->fetch) {
+		if (!$self->{schema} && $self->{export_schema}) {
+			$row->[0] = "$row->[2].$row->[0]";
+		}
 		$data{$row->[0]}{text} = $row->[1];
 		$data{$row->[0]}{owner} = $row->[2];
 		$data{$row->[0]}{comment} = $comments{$row->[0]}{comment};
@@ -7352,6 +7503,9 @@ sub _get_materialized_views
 
 	my %data = ();
 	while (my $row = $sth->fetch) {
+		if (!$self->{schema} && $self->{export_schema}) {
+			$row->[0] = "$row->[8].$row->[0]";
+		}
 		$data{$row->[0]}{text} = $row->[1];
 		$data{$row->[0]}{updatable} = ($row->[2] eq 'Y') ? 1 : 0;
 		$data{$row->[0]}{refresh_mode} = $row->[3];
@@ -7370,7 +7524,7 @@ sub _get_materialized_view_names
 	my($self) = @_;
 
 	# Retrieve all views
-	my $str = "SELECT MVIEW_NAME FROM $self->{prefix}_MVIEWS";
+	my $str = "SELECT MVIEW_NAME,OWNER FROM $self->{prefix}_MVIEWS";
 	if (!$self->{schema}) {
 		$str .= " WHERE OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
 	} else {
@@ -7388,6 +7542,9 @@ sub _get_materialized_view_names
 
 	my @data = ();
 	while (my $row = $sth->fetch) {
+		if (!$self->{schema} && $self->{export_schema}) {
+			$row->[0] = "$row->[1].$row->[0]";
+		}
 		push(@data, uc($row->[0]));
 	}
 
@@ -7413,7 +7570,7 @@ sub _alias_info
 {
         my ($self, $view) = @_;
 
-	my $str = "SELECT COLUMN_NAME, COLUMN_ID FROM $self->{prefix}_TAB_COLUMNS WHERE TABLE_NAME='$view'";
+	my $str = "SELECT COLUMN_NAME, COLUMN_ID, OWNER FROM $self->{prefix}_TAB_COLUMNS WHERE TABLE_NAME='$view'";
 	if ($self->{schema}) {
 		$str .= " AND OWNER = '$self->{schema}'";
 	} else {
@@ -7425,6 +7582,9 @@ sub _alias_info
         my $data = $sth->fetchall_arrayref();
 	$self->logit("View $view column aliases:\n", 1);
 	foreach my $d (@$data) {
+		if (!$self->{schema} && $self->{export_schema}) {
+			$row->[0] = "$row->[2].$row->[0]";
+		}
 		$self->logit("\t$d->[0] =>  column id:$d->[1]\n", 1);
 	}
 
@@ -7499,9 +7659,12 @@ sub _get_functions
 	my @fct_done = ();
 	push(@fct_done, @EXCLUDED_FUNCTION);
 	while (my $row = $sth->fetch) {
+		my $sql = "SELECT TEXT FROM $self->{prefix}_SOURCE WHERE OWNER='$row->[1]' AND NAME='$row->[0]' ORDER BY LINE";
+		if (!$self->{schema} && $self->{export_schema}) {
+			$row->[0] = "$row->[1].$row->[0]";
+		}
 		next if (grep(/^$row->[0]$/i, @fct_done));
 		push(@fct_done, $row->[0]);
-		my $sql = "SELECT TEXT FROM $self->{prefix}_SOURCE WHERE OWNER='$row->[1]' AND NAME='$row->[0]' ORDER BY LINE";
 		my $sth2 = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 		$sth2->execute or $self->logit("FATAL: " . $sth2->errstr . "\n", 0, 1);
 		while (my $r = $sth2->fetch) {
@@ -7543,9 +7706,12 @@ sub _get_procedures
 	my %procedures = ();
 	my @fct_done = ();
 	while (my $row = $sth->fetch) {
+		my $sql = "SELECT TEXT FROM $self->{prefix}_SOURCE WHERE OWNER='$row->[1]' AND NAME='$row->[0]' ORDER BY LINE";
+		if (!$self->{schema} && $self->{export_schema}) {
+			$row->[0] = "$row->[1].$row->[0]";
+		}
 		next if (grep(/^$row->[0]$/, @fct_done));
 		push(@fct_done, $row->[0]);
-		my $sql = "SELECT TEXT FROM $self->{prefix}_SOURCE WHERE OWNER='$row->[1]' AND NAME='$row->[0]' ORDER BY LINE";
 		my $sth2 = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 		$sth2->execute or $self->logit("FATAL: " . $sth2->errstr . "\n", 0, 1);
 		while (my $r = $sth2->fetch) {
@@ -7619,13 +7785,10 @@ sub _get_types
 	$str .= " AND STATUS='VALID'" if (!$self->{export_invalid});
 	$str .= " AND OBJECT_NAME='$name'" if ($name);
 	$str .= " AND GENERATED='N'";
-	if (!$self->{schema}) {
-		# We need to remove SYSTEM from the exclusion list
-		my @tmpusers = @{$self->{sysusers}};
-		shift(@tmpusers);
-		$str .= " AND OWNER NOT IN ('" . join("','", @tmpusers) . "')";
+	if ($self->{schema}) {
+		$str .= "AND OWNER='$self->{schema}' ";
 	} else {
-		$str .= " AND OWNER = '$self->{schema}'";
+		$str .= "AND OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "') ";
 	}
 	$str .= $self->limit_to_objects('TYPE', 'OBJECT_NAME') if (!$name);
 	$str .= " ORDER BY OBJECT_NAME";
@@ -7636,11 +7799,14 @@ sub _get_types
 	my @types = ();
 	my @fct_done = ();
 	while (my $row = $sth->fetch) {
+		my $sql = "SELECT TEXT FROM $self->{prefix}_SOURCE WHERE OWNER='$row->[1]' AND NAME='$row->[0]' AND (TYPE='TYPE' OR TYPE='TYPE BODY') ORDER BY TYPE, LINE";
+		if (!$self->{schema} && $self->{export_schema}) {
+			$row->[0] = "$row->[1].$row->[0]";
+		}
 		$self->logit("\tFound Type: $row->[0]\n", 1);
 		next if (grep(/^$row->[0]$/, @fct_done));
 		push(@fct_done, $row->[0]);
 		my %tmp = ();
-		my $sql = "SELECT TEXT FROM $self->{prefix}_SOURCE WHERE OWNER='$row->[1]' AND NAME='$row->[0]' AND (TYPE='TYPE' OR TYPE='TYPE BODY') ORDER BY TYPE, LINE";
 		my $sth2 = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 		$sth2->execute or $self->logit("FATAL: " . $sth2->errstr . "\n", 0, 1);
 		while (my $r = $sth2->fetch) {
@@ -7676,7 +7842,7 @@ sub _table_info
 	}
 
 	my %comments = ();
-	my $sql = "SELECT A.TABLE_NAME,A.COMMENTS,A.TABLE_TYPE FROM ALL_TAB_COMMENTS A, ALL_OBJECTS O WHERE A.OWNER=O.OWNER and A.TABLE_NAME=O.OBJECT_NAME and O.OBJECT_TYPE='TABLE' $owner";
+	my $sql = "SELECT A.TABLE_NAME,A.COMMENTS,A.TABLE_TYPE,A.OWNER FROM ALL_TAB_COMMENTS A, ALL_OBJECTS O WHERE A.OWNER=O.OWNER and A.TABLE_NAME=O.OBJECT_NAME and O.OBJECT_TYPE='TABLE' $owner";
 	if ($self->{db_version} !~ /Release 8/) {
 		$sql .= " AND (A.OWNER, A.TABLE_NAME) NOT IN (SELECT OWNER, MVIEW_NAME FROM ALL_MVIEWS UNION ALL SELECT LOG_OWNER, LOG_TABLE FROM ALL_MVIEW_LOGS)";
 	}
@@ -7684,6 +7850,9 @@ sub _table_info
 	my $sth = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	while (my $row = $sth->fetch) {
+		if (!$self->{schema} && $self->{export_schema}) {
+			$row->[0] = "$row->[3].$row->[0]";
+		}
 		$comments{$row->[0]}{comment} = $row->[1];
 		$comments{$row->[0]}{table_type} = $row->[2];
 	}
@@ -7704,6 +7873,9 @@ sub _table_info
         $sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	my %tables_infos = ();
 	while (my $row = $sth->fetch) {
+		if (!$self->{schema} && $self->{export_schema}) {
+			$row->[1] = "$row->[0].$row->[1]";
+		}
 		$tables_infos{$row->[1]}{owner} = $row->[0] || '';
 		$tables_infos{$row->[1]}{num_rows} = $row->[2] || 0;
 		$tables_infos{$row->[1]}{tablespace} = $row->[3] || 0;
@@ -7821,6 +7993,9 @@ AND a.TABLESPACE_NAME = c.TABLESPACE_NAME
 	my %tbs = ();
 	while (my $row = $sth->fetch) {
 		# TYPE - TABLESPACE_NAME - FILEPATH - OBJECT_NAME
+		if ($self->{export_schema} && !$self->{schema}) {
+			$row->[0] = "$row->[4].$row->[0]";
+		}
 		push(@{$tbs{$row->[2]}{$row->[1]}{$row->[3]}}, $row->[0]);
 		$self->logit(".",1);
 	}
@@ -7895,7 +8070,7 @@ SELECT
 	C.COLUMN_NAME,
 	C.COLUMN_POSITION,
 	A.TABLE_OWNER
-FROM $self->{prefix}_tab_partitions A, $self->{prefix}_part_tables B, $self->{prefix}_part_key_columns C
+FROM $self->{prefix}_TAB_PARTITIONS A, $self->{prefix}_PART_TABLES B, $self->{prefix}_PART_KEY_COLUMNS C
 WHERE
 	a.table_name = b.table_name AND
 	(b.partitioning_type = 'RANGE' OR b.partitioning_type = 'LIST')
@@ -7918,6 +8093,9 @@ WHERE
 	my %parts = ();
 	my %default = ();
 	while (my $row = $sth->fetch) {
+		if (!$self->{schema} && $self->{export_schema}) {
+			$row->[0] = "$row->[9].$row->[0]";
+		}
 		if ( ($row->[3] eq 'MAXVALUE') || ($row->[3] eq 'DEFAULT')) {
 			$default{$row->[0]} = $row->[2];
 			next;
@@ -7984,6 +8162,9 @@ WHERE
 	my %subparts = ();
 	my %default = ();
 	while (my $row = $sth->fetch) {
+		if (!$self->{schema} && $self->{export_schema}) {
+			$row->[0] = "$row->[9].$row->[0]";
+		}
 		if ( ($row->[3] eq 'MAXVALUE') || ($row->[3] eq 'DEFAULT')) {
 			$default{$row->[0]} = $row->[2];
 			next;
@@ -8053,6 +8234,9 @@ sub _get_synonyms
 
 	my %synonyms = ();
 	while (my $row = $sth->fetch) {
+		if (!$self->{schema} && $self->{export_schema}) {
+			$row->[1] = "$row->[0].$row->[1]";
+		}
 		$synonyms{$row->[1]}{owner} = $row->[0];
 		$synonyms{$row->[1]}{table_owner} = $row->[2];
 		$synonyms{$row->[1]}{table_name} = $row->[3];
@@ -8087,7 +8271,8 @@ SELECT
 	A.PARTITION_NAME,
 	$highvalue,
 	A.TABLESPACE_NAME,
-	B.PARTITIONING_TYPE
+	B.PARTITIONING_TYPE,
+	A.TABLE_OWNER
 FROM $self->{prefix}_TAB_PARTITIONS A, $self->{prefix}_PART_TABLES B
 WHERE A.TABLE_NAME = B.TABLE_NAME
 };
@@ -8095,12 +8280,12 @@ WHERE A.TABLE_NAME = B.TABLE_NAME
 
 	if ($self->{prefix} ne 'USER') {
 		if ($self->{schema}) {
-			$str .= "\tAND a.table_owner ='$self->{schema}'\n";
+			$str .= "\tAND A.TABLE_OWNER ='$self->{schema}'\n";
 		} else {
-			$str .= "\tAND a.table_owner NOT IN ('" . join("','", @{$self->{sysusers}}) . "')\n";
+			$str .= "\tAND A.TABLE_OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "')\n";
 		}
 	}
-	$str .= "ORDER BY a.table_name\n";
+	$str .= "ORDER BY A.TABLE_NAME\n";
 
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -8138,7 +8323,8 @@ SELECT
 	A.PARTITION_NAME,
 	$highvalue,
 	A.TABLESPACE_NAME,
-	B.PARTITIONING_TYPE
+	B.PARTITIONING_TYPE,
+	A.TABLE_OWNER
 FROM $self->{prefix}_TAB_PARTITIONS A, $self->{prefix}_PART_TABLES B
 WHERE A.TABLE_NAME = B.TABLE_NAME
 };
@@ -8146,18 +8332,21 @@ WHERE A.TABLE_NAME = B.TABLE_NAME
 
 	if ($self->{prefix} ne 'USER') {
 		if ($self->{schema}) {
-			$str .= "\tAND a.table_owner ='$self->{schema}'\n";
+			$str .= "\tAND A.TABLE_OWNER ='$self->{schema}'\n";
 		} else {
-			$str .= "\tAND a.table_owner NOT IN ('" . join("','", @{$self->{sysusers}}) . "')\n";
+			$str .= "\tAND A.TABLE_OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "')\n";
 		}
 	}
-	$str .= "ORDER BY a.table_name\n";
+	$str .= "ORDER BY A.TABLE_NAME\n";
 
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
 	my %parts = ();
 	while (my $row = $sth->fetch) {
+		if (!$self->{schema} && $self->{export_schema}) {
+			$row->[0] = "$row->[6].$row->[0]";
+		}
 		$parts{$row->[0]}++ if ($row->[2]);
 	}
 	$sth->finish;
@@ -8853,6 +9042,11 @@ sub _convert_function
 	my $func_return = '';
 	$fct_detail{setof} = ' SETOF' if ($fct_detail{setof});
 
+	my $search_path = '';
+	if ($self->{export_schema} && !$self->{schema}) {
+		$search_path = $self->set_search_path($owner);
+	}
+
 	if ($fct_detail{hasreturn}) {
 		$func_return = " RETURNS$fct_detail{setof} $fct_detail{func_ret_type} AS \$body\$\n";
 	} else {
@@ -8896,17 +9090,30 @@ sub _convert_function
 			push(@at_ret_type, $fct_detail{func_ret_type});
 		}
 	}
+
 	my $name = $fname;
 	my $function = "\nCREATE OR REPLACE FUNCTION $fname$at_suffix $fct_detail{args}";
-	if ((!$pname || !$self->{package_as_schema}) && $self->{export_schema} && $self->{schema}) {
-		if (!$self->{preserve_case}) {
-			$function = "\nCREATE OR REPLACE FUNCTION $self->{schema}\.$fname $fct_detail{args}";
-			$name =  "$self->{schema}\.$fname";
-			$self->logit("Parsing function $self->{schema}\.$fname...\n", 1);
-		} else {
-			$function = "\nCREATE OR REPLACE FUNCTION \"$self->{schema}\"\.$fname $fct_detail{args}";
-			$name = "\"$self->{schema}\"\.$fname";
-			$self->logit("Parsing function \"$self->{schema}\"\.$fname...\n", 1);
+	if (!$pname || !$self->{package_as_schema}) {
+		if ($self->{export_schema} && !$self->{schema}) {
+			if (!$self->{preserve_case}) {
+				$function = "\nCREATE OR REPLACE FUNCTION \L$owner\.$fname\E $fct_detail{args}";
+				$name =  "\L$owner\.$fname\E";
+				$self->logit("Parsing function \L$owner\.$fname\E...\n", 1);
+			} else {
+				$function = "\nCREATE OR REPLACE FUNCTION \"$owner\"\.$fname $fct_detail{args}";
+				$name = "\"$owner\"\.$fname";
+				$self->logit("Parsing function \"$owner\"\.$fname...\n", 1);
+			}
+		} elsif ($self->{export_schema} && $self->{schema}) {
+			if (!$self->{preserve_case}) {
+				$function = "\nCREATE OR REPLACE FUNCTION $self->{schema}\.$fname $fct_detail{args}";
+				$name =  "$self->{schema}\.$fname";
+				$self->logit("Parsing function $self->{schema}\.$fname...\n", 1);
+			} else {
+				$function = "\nCREATE OR REPLACE FUNCTION \"$self->{schema}\"\.$fname $fct_detail{args}";
+				$name = "\"$self->{schema}\"\.$fname";
+				$self->logit("Parsing function \"$self->{schema}\"\.$fname...\n", 1);
+			}
 		}
 	} else {
 		$self->logit("Parsing function $fname...\n", 1);
@@ -8916,6 +9123,7 @@ sub _convert_function
 	my $at_wrapper = '';
 	if ($at_suffix) {
 		$at_wrapper = qq{
+$search_path
 --
 -- dblink wrapper to call function $name as an autonomous transaction
 --
@@ -9236,6 +9444,9 @@ sub _convert_type
 	if ($plsql =~ /TYPE\s+([^\s]+)\s+(IS|AS)\s*TABLE\s*OF\s+(.*)/is) {
 		$type_name = $1;
 		my $type_of = $3;
+		if ($self->{export_schema} && !$self->{schema} && $owner) {
+			$type_name = "$owner.$type_name";
+		}
 		$type_of =~ s/\s*NOT[\t\s]+NULL//s;
 		$type_of =~ s/\s*;$//s;
 		$type_of =~ s/^\s+//s;
@@ -9257,6 +9468,9 @@ sub _convert_type
 		my $description = $3;
 		my $notfinal = $4;
 		$notfinal =~ s/\s+/ /gs;
+		if ($self->{export_schema} && !$self->{schema} && $owner) {
+			$type_name = "$owner.$type_name";
+		}
 		if ($description =~ /\s*(MAP MEMBER|MEMBER|CONSTRUCTOR)\s+(FUNCTION|PROCEDURE).*/is) {
 			$self->{type_of_type}{'Type with member method'}++;
 			$self->logit("WARNING: TYPE with CONSTRUCTOR and MEMBER FUNCTION are not supported, skipping type $type_name\n", 1);
@@ -9285,6 +9499,9 @@ $declar
 		$type_name = $1;
 		my $type_inherit = $2;
 		my $description = $3;
+		if ($self->{export_schema} && !$self->{schema} && $owner) {
+			$type_name = "$owner.$type_name";
+		}
 		if ($description =~ /\s*(MAP MEMBER|MEMBER|CONSTRUCTOR)\s+(FUNCTION|PROCEDURE).*/is) {
 			$self->logit("WARNING: TYPE with CONSTRUCTOR and MEMBER FUNCTION are not supported, skipping type $type_name\n", 1);
 			$self->{type_of_type}{'Type with member method'}++;
@@ -9307,6 +9524,9 @@ $declar
 		$type_name =~ s/"//g;
 		$tbname =~ s/;//g;
 		chomp($tbname);
+		if ($self->{export_schema} && !$self->{schema} && $owner) {
+			$type_name = "$owner.$type_name";
+		}
 		my $declar = Ora2Pg::PLSQL::replace_sql_type($tbname, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type});
 		$content = qq{
 CREATE TYPE \L$type_name\E AS ($type_name $declar\[$size\]);
@@ -11410,8 +11630,7 @@ sub _lookup_function
 sub set_search_path
 {
 	my $self = shift;
-
-	my $search_path = '';
+	my $owner = shift;
 
 	my $local_path = '';
 	if ($self->{postgis_schema}) {
@@ -11425,7 +11644,14 @@ sub set_search_path
 			$local_path .= ', external_file';
 	}
 	
-	if ($self->{export_schema}) {
+	my $search_path = '';
+	if (!$self->{schema} && $self->{export_schema} && $owner) {
+		if (!$self->{preserve_case}) {
+			$search_path = "SET search_path = \L$owner\E$local_path;";
+		} else {
+			$search_path = "SET search_path = \"$owner\"$local_path;";
+		}
+	} elsif ($self->{export_schema} && !$owner) {
 		if ($self->{pg_schema}) {
 			if (!$self->{preserve_case}) {
 				$search_path = "SET search_path = \L$self->{pg_schema}\E$local_path;";
