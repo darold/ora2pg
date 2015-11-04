@@ -452,6 +452,14 @@ FILE_PER_FUNCTION	0
 # scripts. By default this order is always present.
 STOP_ON_ERROR		1
 
+# Enable this directive to use COPY FREEZE instead of a simple COPY to
+# export data with rows already frozen. This is intended as a performance
+# option for initial data loading. Rows will be frozen only if the table
+# being loaded has been created or truncated in the current subtransaction.
+# This will only works with export to file and when -J or ORACLE_COPIES is
+# not set or default to 1. It can be used with direct import into PostgreSQL
+# under the same condition but -j or JOBS must also be unset or default to 1.
+COPY_FREEZE		0
 
 #------------------------------------------------------------------------------
 # TYPE SECTION (Control type behaviors and redefinitions)
