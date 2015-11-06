@@ -56,6 +56,7 @@ while (my $l = <IN>) {
 	#"ORACLE","HR","dbi:Oracle:host=192.168.1.10;sid=XE;port=1521","system","manager","hr;system;scott"
 	# skip header line
 	chomp($l);
+	$l =~ s/\r//;
 	next if ($l !~ /^["]*(MYSQL|ORACLE)["]*,/i);
 	$l =~ s/"//gs;
 	my ($type, $schema, $dsn, $user, $passwd, $audit_user) = split(/,/, $l);
