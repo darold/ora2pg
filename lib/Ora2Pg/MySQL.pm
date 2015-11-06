@@ -1358,6 +1358,12 @@ sub _get_sequences
 	return;
 }
 
+sub _extract_sequence_info
+{
+	my ($self) = shift;
+
+	return;
+}
 
 1;
 
