@@ -1070,6 +1070,13 @@ sub _init
 	# Backward compatibility with CASE_SENSITIVE
 	$self->{preserve_case} = $self->{case_sensitive} if (defined $self->{case_sensitive} && not defined $self->{preserve_case});
 	$self->{schema} = uc($self->{schema}) if (!$self->{preserve_case} && ($self->{oracle_dsn} !~ /:mysql/i));
+	# With MySQL override schema with the database name
+	if ($self->{oracle_dsn} =~ /:mysql.*database=([^;]+)/i) {
+		if ($self->{schema} && ($self->{schema} ne $1)) {
+			$self->{schema} = $1;
+			$self->logit("WARNING: setting SCHEMA to MySQL database name $1.\n", 0);
+		}
+	}
 
 	if (($self->{standard_conforming_strings} =~ /^off$/i) || ($self->{standard_conforming_strings} == 0)) {
 		$self->{standard_conforming_strings} = 0;
