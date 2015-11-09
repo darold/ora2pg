@@ -6870,6 +6870,12 @@ sub _get_privilege
 {
 	my($self) = @_;
 
+	# If the user is given as not DBA, do not look at tablespace
+	if ($self->{user_grants}) {
+		$self->logit("WARNING: Exporting privilege as non DBA user is not allowed, see USER_GRANT\n", 0);
+		return;
+	}
+
 	return Ora2Pg::MySQL::_get_privilege($self) if ($self->{is_mysql});
 
 	my %privs = ();
@@ -6889,8 +6895,7 @@ sub _get_privilege
 		$str .= " AND a.STATUS='VALID'";
 	}
 	$str .= " ORDER BY b.TABLE_NAME, b.GRANTEE";
-	my $error = "\n\nFATAL: You must be connected as an oracle dba user to retrieved grants\n\n";
-	my $sth = $self->{dbh}->prepare($str) or $self->logit($error . "FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	while (my $row = $sth->fetch) {
 		if (!$self->{schema} && $self->{export_schema}) {
@@ -7931,6 +7936,12 @@ sub _get_audit_queries
 
 	return if (!$self->{audit_user});
 
+	# If the user is given as not DBA, do not look at tablespace
+	if ($self->{user_grants}) {
+		$self->logit("WARNING: Exporting audited queries as non DBA user is not allowed, see USER_GRANT\n", 0);
+		return;
+	}
+
 	return Ora2Pg::MySQL::_get_audit_queries($self) if ($self->{is_mysql});
 
 	my @users = ();
@@ -7941,8 +7952,7 @@ sub _get_audit_queries
 	if (($#users >= 0) && !grep(/^ALL$/, @users)) {
 		$str .= " AND USERNAME IN ('" . join("','", @users) . "')";
 	}
-	my $error = "\n\nFATAL: You must be connected as an oracle dba user to retrieved audited queries\n\n";
-	my $sth = $self->{dbh}->prepare($str) or $self->logit($error . "FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
 	my %tmp_queries = ();
@@ -7978,6 +7988,12 @@ sub _get_tablespaces
 {
 	my($self) = @_;
 
+	# If the user is given as not DBA, do not look at tablespace
+	if ($self->{user_grants}) {
+		$self->logit("WARNING: Exporting tablespace as non DBA user is not allowed, see USER_GRANT\n", 0);
+		return;
+	}
+
 	return Ora2Pg::MySQL::_get_tablespaces($self) if ($self->{is_mysql});
 
 	# Retrieve all object with tablespaces.
@@ -7997,8 +8013,7 @@ AND a.TABLESPACE_NAME = c.TABLESPACE_NAME
 	}
 	$str .= $self->limit_to_objects('TABLESPACE|TABLE', 'a.TABLESPACE_NAME|a.SEGMENT_NAME');
 	$str .= " ORDER BY TABLESPACE_NAME";
-	my $error = "\n\nFATAL: You must be connected as an oracle dba user to retrieved tablespaces\n\n";
-	my $sth = $self->{dbh}->prepare($str) or $self->logit($error . "FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
 	my %tbs = ();
@@ -8020,6 +8035,11 @@ sub _list_tablespaces
 {
 	my($self) = @_;
 
+	# If the user is given as not DBA, do not look at tablespace
+	if ($self->{user_grants}) {
+		return;
+	}
+
 	return Ora2Pg::MySQL::_list_tablespaces($self) if ($self->{is_mysql});
 
 	# list tablespaces.
@@ -8035,8 +8055,7 @@ WHERE a.TABLESPACE_NAME = c.TABLESPACE_NAME
 	}
 	$str .= $self->limit_to_objects('TABLESPACE', 'c.TABLESPACE_NAME');
 	$str .= " ORDER BY c.TABLESPACE_NAME";
-	my $error = "\n\nFATAL: You must be connected as an oracle dba user to retrieved tablespaces\n\n";
-	my $sth = $self->{dbh}->prepare($str) or $self->logit($error . "FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
 	my %tbs = ();
