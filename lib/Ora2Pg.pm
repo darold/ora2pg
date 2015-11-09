@@ -5600,6 +5600,7 @@ sub _create_indexes
 				my @collist = @{$indexes{$idx}};
 				# Remove DESC and parenthesys
 				map { s/\s*(.*?)\s+DESC\s*/$1/i; } @collist;
+				$idxname =~ s/"//g;
 				$idxname = $self->quote_object_name($idxname . '_' . join('_', @collist));
 				$idxname =~ s/\s+//g;
 				if ($self->{indexes_suffix}) {
