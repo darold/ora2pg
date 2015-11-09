@@ -10254,6 +10254,20 @@ sub _show_infos
 				}
 			} elsif ($typ eq 'MATERIALIZED VIEW') {
 				$report_info{'Objects'}{$typ}{'comment'}= "All materialized view will be exported as snapshot materialized views, they are only updated when fully refreshed.";
+				my %mview_infos = $self->_get_materialized_views();
+				my $oncommit = 0;
+				foreach my $mview (sort keys %mview_infos) {
+					if ($mview_infos{$mview}{refresh_mode} eq 'COMMIT') {
+						$oncommit++;
+						$report_info{'Objects'}{$typ}{'detail'} .= "$mview, ";
+					}
+				}
+				if ($oncommit) {
+					$report_info{'Objects'}{$typ}{'detail'} =~ s/, $//;
+					$report_info{'Objects'}{$typ}{'detail'} = "$oncommit materialized views are refreshed on commit ($report_info{'Objects'}{$typ}{'detail'}), this is not supported by PostgreSQL, you will need to use triggers to have the same behavior or use a simple view.";
+				}
+
+
 			} elsif ($typ eq 'TABLE') {
 				my $exttb = scalar keys %{$self->{external_table}};
 				if ($exttb) {
