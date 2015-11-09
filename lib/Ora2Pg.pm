@@ -781,7 +781,7 @@ sub _init
 	$self->{audit_user} = '';
 
 	# Disable copy freeze by default
-	$self->{copy_freeze} = 0;
+	$self->{copy_freeze} = '';
 
 	# Initialyze following configuration file
 	foreach my $k (sort keys %AConfig) {
@@ -962,6 +962,8 @@ sub _init
 		} elsif ($self->{oracle_copies} > 1) {
 			$self->logit("FATAL: You can not use COPY FREEZE with -J (ORACLE_COPIES) > 1.\n", 0, 1);
 		}
+	} else {
+		$self->{copy_freeze} = '';
 	}
 
 	# Multiprocess init
@@ -2701,6 +2703,8 @@ sub _export_table_data
 		} else {
 			$self->dump("\nBEGIN;\n");
 		}
+	} else {
+		$self->{copy_freeze} = '';
 	}
 		
 	# Add table truncate order
