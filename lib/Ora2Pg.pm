@@ -7112,7 +7112,7 @@ AND    IC.TABLE_OWNER = ?
 		}
 		# Show a warning when an index has the same name as the table
 		if ( !$self->{indexes_renaming} && !$self->{indexes_suffix} && (lc($row->[0]) eq lc($table)) ) {
-			print STDERR "WARNING: index $row->[0] has the same name as the table itself. Please rename it before export.\n"; 
+			 print STDERR "WARNING: index $row->[0] has the same name as the table itself. Please rename it before export or enable INDEXES_RENAMING.\n"; 
 		}
 		$unique{$row->[-6]}{$row->[0]} = $row->[2];
 
@@ -7152,7 +7152,7 @@ AND    IC.TABLE_OWNER = ?
 			$idx_type{$row->[-6]}{$row->[0]}{type} = $row->[4];
 		}
 		if ($row->[-3] =~ /SPATIAL_INDEX/) {
-			$idx_type{$row->[-6]}{$row->[0]}{type_name} = $row->[-2];
+			$idx_type{$row->[-6]}{$row->[0]}{type_name} = $row->[-3];
 			if ($row->[-2] =~ /layer_gtype=([^\s,]+)/i) {
 				$idx_type{$row->[-5]}{$row->[0]}{type_constraint} = uc($1);
 			}
