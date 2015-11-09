@@ -283,6 +283,7 @@ our %INDEX_TYPE = (
 	'CLUSTER' => 'cluster',
 	'DOMAIN' => 'domain',
 	'IOT - TOP' => 'IOT',
+	'SPATIAL INDEX' => 'spatial index',
 );
 
 our @KEYWORDS = qw(
@@ -2138,6 +2139,7 @@ sub read_schema_from_file
 		}
 		if ($idx_def =~ s/INDEXTYPE\s+IS\s+.*SPATIAL_INDEX//i) {
 			$self->{tables}{$tb_name}{spatial}{$idx_name} = 1;
+			$self->{tables}{$tb_name}{idx_type}{$idx_name}{type} = 'SPATIAL INDEX';
 			$self->{tables}{$tb_name}{idx_type}{$idx_name}{type_name} = 'SPATIAL_INDEX';
 		}
 		if ($idx_def =~ s/layer_gtype=([^\s,]+)//i) {
@@ -5519,7 +5521,7 @@ sub _create_indexes
 		# Cluster, domain, bitmap join, reversed and IOT indexes will not be exported at all
 		# Hash indexes will be exported as btree
 		next if ($self->{tables}{$tbsaved}{idx_type}{$idx}{type} =~ /JOIN|IOT|CLUSTER|REV/i);
-		next if ($self->{tables}{$tbsaved}{idx_type}{$idx}{type} =~ /DOMAIN/i && $self->{tables}{$tbsaved}{idx_type}{$idx}{type_name} !~ /SPATIAL_INDEX/);
+		#next if ($self->{tables}{$tbsaved}{idx_type}{$idx}{type} =~ /DOMAIN/i && $self->{tables}{$tbsaved}{idx_type}{$idx}{type_name} !~ /SPATIAL_INDEX/);
 
 		if (exists $self->{replaced_cols}{"\L$tbsaved\E"} && $self->{replaced_cols}{"\L$tbsaved\E"}) {
 			foreach my $c (keys %{$self->{replaced_cols}{"\L$tbsaved\E"}}) {
@@ -5647,6 +5649,9 @@ CREATE TRIGGER $trig_name BEFORE INSERT OR UPDATE
 
 };
 				$str .= "CREATE$unique INDEX$concurrently \L$idxname$self->{indexes_suffix}\E ON $table USING gin(tsv_$newcolname)";
+			} elsif ($self->{tables}{$tbsaved}{idx_type}{$idx}{type} =~ /DOMAIN/i && $self->{tables}{$tbsaved}{idx_type}{$idx}{type_name} !~ /SPATIAL_INDEX/) {
+				$str .= "-- Was declared as DOMAIN index, please check for FTS adaptation if require\n";
+				$str .= "-- CREATE$unique INDEX$concurrently \L$idxname$self->{indexes_suffix}\E ON $table ($columns)";
 			} else {
 				$str .= "CREATE$unique INDEX$concurrently \L$idxname$self->{indexes_suffix}\E ON $table ($columns)";
 			}
@@ -5678,7 +5683,7 @@ sub _drop_indexes
 	foreach my $idx (keys %indexes) {
 		# Cluster, domain, bitmap join, reversed and IOT indexes will not be exported at all
 		next if ($self->{tables}{$table}{idx_type}{$idx}{type} =~ /JOIN|IOT|CLUSTER|REV/i);
-		next if ($self->{tables}{$table}{idx_type}{$idx}{type} =~ /DOMAIN/i && $self->{tables}{$table}{idx_type}{$idx}{type_name} !~ /SPATIAL_INDEX/);
+		#next if ($self->{tables}{$table}{idx_type}{$idx}{type} =~ /DOMAIN/i && $self->{tables}{$table}{idx_type}{$idx}{type_name} !~ /SPATIAL_INDEX/);
 
 		map { if ($_ !~ /\(.*\)/) { s/^/"/; s/$/"/; } } @{$indexes{$idx}};
 		if (exists $self->{replaced_cols}{"\L$tbsaved\E"} && $self->{replaced_cols}{"\L$tbsaved\E"}) {
@@ -5728,7 +5733,12 @@ sub _drop_indexes
 					$idx = substr($idx,0,63);
 				}
 			}
-			push(@out, "DROP INDEX $self->{pg_supports_ifexists} \L$idx$self->{indexes_suffix}\E;");
+			if ($self->{tables}{$table}{idx_type}{$idx}{type} =~ /DOMAIN/i && $self->{tables}{$table}{idx_type}{$idx}{type_name} !~ /SPATIAL_INDEX/) {
+				push(@out, "-- Declared as DOMAIN index, uncomment line below if it must be removed");
+				push(@out, "-- DROP INDEX $self->{pg_supports_ifexists} \L$idx$self->{indexes_suffix}\E;");
+			} else {
+				push(@out, "DROP INDEX $self->{pg_supports_ifexists} \L$idx$self->{indexes_suffix}\E;");
+			}
 		}
 	}
 
@@ -7152,6 +7162,7 @@ AND    IC.TABLE_OWNER = ?
 			$idx_type{$row->[-6]}{$row->[0]}{type} = $row->[4];
 		}
 		if ($row->[-3] =~ /SPATIAL_INDEX/) {
+			$idx_type{$row->[-6]}{$row->[0]}{type} = 'SPATIAL INDEX';
 			$idx_type{$row->[-6]}{$row->[0]}{type_name} = $row->[-3];
 			if ($row->[-2] =~ /layer_gtype=([^\s,]+)/i) {
 				$idx_type{$row->[-5]}{$row->[0]}{type_constraint} = uc($1);
@@ -10272,7 +10283,7 @@ sub _show_infos
 				$report_info{'Objects'}{$typ}{'cost_value'} += ($Ora2Pg::PLSQL::OBJECT_SCORE{$typ}*$total_index) if ($self->{estimate_cost});
 				$report_info{'Objects'}{$typ}{'comment'} = "$total_index index(es) are concerned by the export, others are automatically generated and will do so on PostgreSQL.";
 				if (!$self->{is_mysql}) {
-					$report_info{'Objects'}{$typ}{'comment'} .= " Bitmap and hash index(es) will be exported as b-tree index(es) if any. Cluster, domain, bitmap join and IOT indexes will not be exported at all. Reverse indexes are not exported too, you may use a trigram-based index (see pg_trgm) or a reverse() function based index and search. Use 'varchar_pattern_ops', 'text_pattern_ops' or 'bpchar_pattern_ops' operators in your indexes to improve search with the LIKE operator respectively into varchar, text or char columns.";
+					$report_info{'Objects'}{$typ}{'comment'} .= " Bitmap and hash index(es) will be exported as b-tree index(es) if any. Domain index are exported as b-tree but commented. Cluster, bitmap join and IOT indexes will not be exported at all. Reverse indexes are not exported too, you may use a trigram-based index (see pg_trgm) or a reverse() function based index and search. Use 'varchar_pattern_ops', 'text_pattern_ops' or 'bpchar_pattern_ops' operators in your indexes to improve search with the LIKE operator respectively into varchar, text or char columns.";
 				} else {
 					$report_info{'Objects'}{$typ}{'comment'} .= " Hash index(es) will be exported as b-tree index(es) if any. Use 'varchar_pattern_ops', 'text_pattern_ops' or 'bpchar_pattern_ops' operators in your indexes to improve search with the LIKE operator respectively into varchar, text or char columns. Fulltext search indexes will be replaced by using a dedicated tsvector column, Ora2Pg will set the DDL to create the column, function and trigger together with the index.";
 				}
