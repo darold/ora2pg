@@ -1001,6 +1001,17 @@ to all exported table including the tables defined in the where clause. These
 WHERE clauses are very useful if you want to archive some data or at the
 opposite only export some recent data.
 
+To be able to quickly test data import it is useful to limit data export to the
+first thousand tuples of each table. For Oracle define the following clause:
+
+	WHERE 	ROWNUM < 1000
+
+and for MySQL, use the following:
+
+	WHERE 	1=1 LIMIT 1,1000
+
+This can also be restricted to some tables data export.
+
 =item TOP_MAX
 
 This directive is used to limit the number of item shown in the top N lists
