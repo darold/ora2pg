@@ -6314,7 +6314,11 @@ VARCHAR2
 		} else {
 			$str .= ' WHERE ';
 		}
-		$str .= '(' . $self->{where}{"\L$table\E"} . ')';
+		if (!$self->{is_mysql} || ($self->{where}{"\L$table\E"} !~ /\bLIMIT\s+\d/)) {
+			$str .= '(' . $self->{where}{"\L$table\E"} . ')';
+		} else {
+			$str .= $self->{where}{"\L$table\E"};
+		}
 		$self->logit("\tApplying WHERE clause on table: " . $self->{where}{"\L$table\E"} . "\n", 1);
 	} elsif ($self->{global_where}) {
 		if ($str =~ / WHERE /) {
@@ -6322,7 +6326,11 @@ VARCHAR2
 		} else {
 			$str .= ' WHERE ';
 		}
-		$str .= '(' . $self->{global_where} . ')';
+		if (!$self->{is_mysql} || ($self->{global_where} !~ /\bLIMIT\s+\d/)) {
+			$str .= '(' . $self->{global_where} . ')';
+		} else {
+			$str .= $self->{global_where};
+		}
 		$self->logit("\tApplying WHERE global clause: " . $self->{global_where} . "\n", 1);
 	}
 
