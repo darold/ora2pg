@@ -57,6 +57,7 @@ FEATURES
             - Export SYNONYMS as views.
             - Export DIRECTORY as external table or directory for external_file extension.
             - Full MySQL export just like Oracle database.
+            - Dispatch a list of SQL orders over multiple PostgreSQL connections
 
     Ora2Pg do its best to automatically convert your Oracle database to
     PostgreSQL but there's still manual works to do. The Oracle specific
@@ -600,6 +601,7 @@ CONFIGURATION
                 - DBLINK: Generate oracle foreign data wrapper server to use as dblink.
                 - SYNONYM: Export Oracle's synonyms as views on other schema's objects.
                 - DIRECTORY: Export Oracle's directories as external_file extension objects.
+                - LOAD: Dispatch a list of queries over multiple PostgreSQl connections.
 
         Only one type of export can be perform at the same time so the TYPE
         directive must be unique. If you have more than one only the last
@@ -1256,6 +1258,10 @@ CONFIGURATION
         to save all data in the OUTPUT file. This directive is usable only
         with TABLE export type.
 
+        The constraints can be imported quickly into PostgreSQL using the
+        LOAD export type to parallelize their creation over multiple (-j or
+        JOBS) connections.
+
     FILE_PER_INDEX
         Allow indexes to be saved in a separate file during schema export.
         The file will be named INDEXES_OUTPUT, where OUTPUT is the value of
@@ -1266,6 +1272,10 @@ CONFIGURATION
         write "ALTER INDEX ... TABLESPACE ..." into a separate file named
         TBSP_INDEXES_OUPUT that can be loaded at end of the migration after
         the indexes creation to move the indexes.
+
+        The indexes can be imported quickly into PostgreSQL using the LOAD
+        export type to parallelize their creation over multiple (-j or JOBS)
+        connections.
 
     FILE_PER_TABLE
         Allow data export to be saved in one file per table/view. The files
@@ -1814,7 +1824,7 @@ CONFIGURATION
         will import all configuration directives defined into
         commonfile.conf into the current configuration file.
 
-  Exporting Oracle views as PostgreSQL tables
+  Exporting views as PostgreSQL tables
     You can export any Oracle view as a PostgreSQL table simply by setting
     TYPE configuration option to TABLE to have the corresponding create
     table statement. Or use type COPY or INSERT to export the corresponding
@@ -2111,6 +2121,20 @@ CONFIGURATION
     This assessment method is a work in progress so I'm expecting feedbacks
     on migration experiences to polish the scores/units attribued in those
     variables.
+
+  Improving indexes and constraints creation speed
+    Using the LOAD export type and a file containing SQL orders to perform,
+    it is possible to dispatch those orders over multiple PostgreSQL
+    connections. To be able to use this feature, the PG_DSN, PG_USER and
+    PG_PWD must be set. Then:
+
+            ora2pg -t LOAD -c config/ora2pg.conf -i schema/tables/INDEXES_table.sql -j 4
+
+    will dispatch indexes creation over 4 simultaneous PostgreSQL
+    connections.
+
+    This will considerably accelerate this part of the migration process
+    with huge data size.
 
   Hints
     Converting your queries with Oracle style outer join (+) syntax to ANSI

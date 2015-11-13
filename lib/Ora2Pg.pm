@@ -1140,6 +1140,9 @@ sub _init
 	$self->{audit_user} =~ s/[;\s]+/,/g;
 
 	if (!$self->{input_file}) {
+		if ($self->{type} eq 'LOAD') {
+			$self->logit("FATAL: with LOAD you must provide an input file\n", 0, 1);
+		}
 		# Connect the database
 		if ($self->{oracle_dsn} =~ /dbi:mysql/i) {
 			$self->{dbh} = $self->_mysql_connection();
@@ -1172,7 +1175,14 @@ sub _init
 	} else {
 
 		$self->{plsql_pgsql} = 1;
-		if (grep(/^$self->{type}$/, 'TABLE', 'SEQUENCE', 'GRANT', 'TABLESPACE', 'VIEW', 'TRIGGER', 'QUERY', 'FUNCTION','PROCEDURE','PACKAGE','TYPE','SYNONYM', 'DIRECTORY', 'DBLINK')) {
+		if (grep(/^$self->{type}$/, 'TABLE', 'SEQUENCE', 'GRANT', 'TABLESPACE', 'VIEW', 'TRIGGER', 'QUERY', 'FUNCTION','PROCEDURE','PACKAGE','TYPE','SYNONYM', 'DIRECTORY', 'DBLINK','LOAD')) {
+			if ($self->{type} eq 'LOAD') {
+				if (!$self->{pg_dsn}) {
+					$self->logit("FATAL: You must set PG_DSN to connect to PostgreSQL to be able to dispatch load over multiple connections.\n", 0, 1);
+				} elsif ($self->{jobs} <= 1) {
+					$self->logit("FATAL: You must set set -j (JOBS) > 1 to be able to dispatch load over multiple connections.\n", 0, 1);
+				}
+			}
 			$self->export_schema();
 		} else {
 			$self->logit("FATAL: bad export type using input file option\n", 0, 1);
@@ -1221,7 +1231,7 @@ sub _init
 			$self->{dbh}->disconnect() if ($self->{dbh}); 
 			exit 0;
 		} else {
-			warn "type option must be (TABLE, VIEW, GRANT, SEQUENCE, TRIGGER, PACKAGE, FUNCTION, PROCEDURE, PARTITION, TYPE, INSERT, COPY, TABLESPACE, SHOW_REPORT, SHOW_VERSION, SHOW_SCHEMA, SHOW_TABLE, SHOW_COLUMN, SHOW_ENCODING, FDW, MVIEW, QUERY, KETTLE, DBLINK, SYNONYM, DIRECTORY), unknow $self->{type}\n";
+			warn "type option must be (TABLE, VIEW, GRANT, SEQUENCE, TRIGGER, PACKAGE, FUNCTION, PROCEDURE, PARTITION, TYPE, INSERT, COPY, TABLESPACE, SHOW_REPORT, SHOW_VERSION, SHOW_SCHEMA, SHOW_TABLE, SHOW_COLUMN, SHOW_ENCODING, FDW, MVIEW, QUERY, KETTLE, DBLINK, SYNONYM, DIRECTORY, LOAD), unknown $self->{type}\n";
 		}
 		# Mofify export structure if required
 		if ($self->{type} =~ /^(INSERT|COPY)$/) {
@@ -3613,6 +3623,89 @@ LANGUAGE plpgsql ;
 		$self->dump($sql_output);
 		return;
 	}
+
+	# Process queries to load
+	if ($self->{type} eq 'LOAD') {
+		$self->logit("Parse SQL orders to load...\n", 1);
+		my $nothing = 0;
+		#---------------------------------------------------------
+		# Load a file containing SQL code to load into PostgreSQL
+		#---------------------------------------------------------
+		my %comments = ();
+		if ($self->{input_file}) {
+			$self->{functions} = ();
+			$self->logit("Reading input SQL orders from file $self->{input_file}...\n", 1);
+			open(IN, "$self->{input_file}");
+			my @allqueries = <IN>;
+			close(IN);
+			my $query = 1;
+			my $content = join('', @allqueries);
+			@allqueries = ();
+			# remove comments
+			$self->_remove_comments(\$content);
+			$content =~  s/ORA2PG_COMMENT\d+\%//gs;
+			foreach my $l (split(/\n/, $content)) {
+				chomp($l);
+				next if ($l =~ /^\s*$/);
+				# do not parse interactive or session command
+				next if ($l =~ /^(SET|\\set|\\pset|\\i)/is);
+				if ($old_line) {
+					$l = $old_line .= ' ' . $l;
+					$old_line = '';
+				}
+				if ( ($l =~ s/^\/$/;/) || ($l =~ /;\s*$/) ) {
+						$self->{queries}{$query} .= "$l\n";
+						$query++;
+				} else {
+					$self->{queries}{$query} .= "$l\n";
+				}
+			}
+		} else {
+			$self->logit("No input file, aborting...\n", 0, 1);
+		}
+		#--------------------------------------------------------
+		my $total_queries = scalar keys %{$self->{queries}};
+		$self->{child_count} = 0;
+		foreach my $q (sort {$a <=> $b} keys %{$self->{queries}}) {
+			chomp($self->{queries}{$q});
+			while ($self->{child_count} >= $self->{jobs}) {
+				my $kid = waitpid(-1, WNOHANG);
+				if ($kid > 0) {
+					$self->{child_count}--;
+					delete $RUNNING_PIDS{$kid};
+				}
+				usleep(50000);
+			}
+			spawn sub {
+				$self->_pload_to_pg($q, $self->{queries}{$q});
+			};
+			$self->{child_count}++;
+			if (!$self->{quiet} && !$self->{debug}) {
+				print STDERR $self->progress_bar($q, $total_queries, 25, '=', 'queries', "dispatching query #$q" ), "\r";
+			}
+			$nothing++;
+		}
+		$self->{queries} = ();
+
+		if (!$total_queries) {
+			$self->logit("No query to load...\n", 0);
+		} else {
+			# Wait for all child end
+			while ($self->{child_count} > 0) {
+				my $kid = waitpid(-1, WNOHANG);
+				if ($kid > 0) {
+					$self->{child_count}--;
+					delete $RUNNING_PIDS{$kid};
+				}
+				usleep(500000);
+			}
+			if (!$self->{quiet} && !$self->{debug}) {
+				print STDERR "\n";
+			}
+		}
+		return;
+	}
+
 
 	# Process queries only
 	if ($self->{type} eq 'QUERY') {
@@ -10096,6 +10189,39 @@ sub _dump_to_pg
 		unlink($tempfiles[0]->[1]) if (-e $tempfiles[0]->[1]);
 	}
 }
+
+sub _pload_to_pg
+{
+	my ($self, $idx, $query) = @_;
+
+	if (!$self->{pg_dsn}) {
+		$self->logit("FATAL: No connection to PostgreSQL database set, aborting...\n", 0, 1);
+	}
+
+	my @tempfiles = ();
+
+	if ($^O !~ /MSWin32|dos/i) {
+		push(@tempfiles, [ tempfile('tmp_ora2pgXXXXXX', SUFFIX => '', DIR => $TMP_DIR, UNLINK => 1 ) ]);
+	}
+
+	# Open a connection to the postgreSQL database
+	$0 = "ora2pg - sending query to PostgreSQL database";
+
+	# Connect to PostgreSQL if direct import is enabled
+	my $dbhdest = $self->_send_to_pgdb();
+	$self->logit("Loading query #$idx: $query\n", 1);
+	$dbhdest->do( "SET client_encoding TO '\U$self->{client_encoding}\E';") or $self->logit("FATAL: " . $dbhdest->errstr . "\n", 0, 1);
+	$dbhdest->do("$query") or $self->logit("FATAL: " . $dbhdest->errstr . "\n", 0, 1);
+	$dbhdest->disconnect() if ($dbhdest);
+
+	if ($^O !~ /MSWin32|dos/i) {
+		if (defined $tempfiles[0]->[0]) {
+			close($tempfiles[0]->[0]);
+		}
+		unlink($tempfiles[0]->[1]) if (-e $tempfiles[0]->[1]);
+	}
+}
+
 
 # Global array, to store the converted values
 my @bytea_array;
