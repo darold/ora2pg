@@ -408,11 +408,13 @@ sub export_schema
 
 	# Create default export file where things will be written with the dump() method
 	# First remove it if the output file already exists
-	if (not defined $self->{fhout}) {
-		$self->remove_export_file();
-		$self->create_export_file();
-	} else {
-		$self->logit("FATAL: method export_schema() could not be called several time.\n",0,1);
+	if ($self->{type} ne 'LOAD') {
+		if (not defined $self->{fhout}) {
+			$self->remove_export_file();
+			$self->create_export_file();
+		} else {
+			$self->logit("FATAL: method export_schema() could not be called several time.\n",0,1);
+		}
 	}
 
 	foreach my $t (@{$self->{export_type}}) {
@@ -8766,7 +8768,6 @@ sub data_dump
 
 	my $dirprefix = '';
 	$dirprefix = "$self->{output_dir}/" if ($self->{output_dir});
-
 	my $filename = $self->{output};
 	if ($self->{file_per_table}) {
 		$self->logit("Dumping data from $rname to file: $dirprefix${rname}_$self->{output}\n", 1);
