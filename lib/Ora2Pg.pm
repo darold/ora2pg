@@ -7240,7 +7240,6 @@ AND    IC.TABLE_OWNER = ?
 			my $nc = $sth2->fetch();
 			$row->[1] = $nc->[0];
 			$row->[1] =~ s/"//g;
-			$row->[1] = $self->quote_reserved_words($row->[1]);
 			if ($row->[-1] eq 'DESC') {
 				$row->[1] .= " DESC";
 			}
