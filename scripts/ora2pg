@@ -462,6 +462,10 @@ do
         ltype=`echo \$ltype | sed 's/y\$/ie/'`
         echo "Running: ora2pg -p -t \$etype -o \$ltype.sql -b \$namespace/schema/\$\{ltype\}s -c \$namespace/config/ora2pg.conf"
         ora2pg -p -t \$etype -o \$ltype.sql -b \$namespace/schema/\$\{ltype\}s -c \$namespace/config/ora2pg.conf
+	ret=`grep "Nothing found" \$namespace/schema/\$\{ltype\}s/\$ltype.sql 2> /dev/null`
+	if [ ! -z "\$ret" ]; then
+		rm \$namespace/schema/\$\{ltype\}s/\$ltype.sql
+	fi
 done
 
 for etype in \$(echo \$SOURCE_TYPE | tr " " "\\n")
@@ -470,6 +474,10 @@ do
         ltype=`echo \$ltype | sed 's/y\$/ie/'`
         echo "Running: ora2pg -t \$etype -o \$ltype.sql -b \$namespace/sources/\$\{ltype\}s -c \$namespace/config/ora2pg.conf"
         ora2pg -t \$etype -o \$ltype.sql -b \$namespace/sources/\$\{ltype\}s -c \$namespace/config/ora2pg.conf
+	ret=`grep "Nothing found" \$namespace/sources/\$\{ltype\}s/\$ltype.sql 2> /dev/null`
+	if [ ! -z "\$ret" ]; then
+		rm \$namespace/sources/\$\{ltype\}s/\$ltype.sql
+	fi
 done
 
 echo
