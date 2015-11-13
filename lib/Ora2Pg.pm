@@ -4280,7 +4280,7 @@ LANGUAGE plpgsql ;
 		$self->dump($sql_header . "$create_tb\n" . $sql_output);
 
 		
-		if ($self->{file_per_index} && !$self->{pg_dsn}) {
+		if ($self->{file_per_index} && !$self->{pg_dsn} && (scalar keys %{$self->{tablespaces}} > 0)) {
 			my $fhdl = undef;
 			$self->logit("Dumping tablespace alter indexes to one separate file : TBSP_INDEXES_$self->{output}\n", 1);
 			$fhdl = $self->open_export_file("TBSP_INDEXES_$self->{output}");
