@@ -6338,6 +6338,13 @@ sub _howto_get_data
 
 		}
 		push(@{$self->{spatial_srid}{$table}}, $spatial_srid);
+		
+		if ($type->[$k] =~ /bytea/i) {
+			$self->{local_data_limit}{$table} = int($self->{data_limit}/10);
+			while ($self->{local_data_limit}{$table} > 1000) {
+				$self->{local_data_limit}{$table} = int($self->{local_data_limit}/10);
+			}
+		}
 	}
 	$str =~ s/,$//;
 
@@ -9811,6 +9818,9 @@ sub _extract_data
 
 		# Set row cache size
 		$dbh->{RowCacheSize} = int($self->{data_limit}/10);
+		if (exists $self->{local_data_limit}{$table}) {
+			$dbh->{RowCacheSize} = $self->{local_data_limit}{$table};
+		}
 
 		# prepare the query before execution
 		if (!$self->{is_mysql}) {
@@ -9828,6 +9838,9 @@ sub _extract_data
 
 		# Set row cache size
 		$self->{dbh}->{RowCacheSize} = int($self->{data_limit}/10);
+		if (exists $self->{local_data_limit}{$table}) {
+			$dbh->{RowCacheSize} = $self->{local_data_limit}{$table};
+		}
 
 		# prepare the query before execution
 		if (!$self->{is_mysql}) {
@@ -9866,7 +9879,11 @@ sub _extract_data
 	# Oracle allow direct retreiving of bchunk of data 
 	if (!$self->{is_mysql}) {
 
-		while ( my $rows = $sth->fetchall_arrayref(undef,$self->{data_limit})) {
+		my $data_limit = $self->{data_limit};
+		if (exists $self->{local_data_limit}{$table}) {
+			$data_limit = $self->{local_data_limit}{$table};
+		}
+		while ( my $rows = $sth->fetchall_arrayref(undef,$data_limit)) {
 
 			if ( ($self->{parallel_tables} > 1) || (($self->{oracle_copies} > 1) && $self->{defined_pk}{"\L$table\E"}) ) {
 				if ($dbh->errstr) {
@@ -10071,7 +10088,11 @@ sub _dump_to_pg
 
 	# Preparing data for output
 	if (!$sprep) {
-		$self->logit("DEBUG: Formatting bulk of $self->{data_limit} data for PostgreSQL.\n", 1);
+		my $data_limit = $self->{data_limit};
+		if (exists $self->{local_data_limit}{$table}) {
+			$data_limit = $self->{local_data_limit}{$table};
+		}
+		$self->logit("DEBUG: Formatting bulk of $data_limit data for PostgreSQL.\n", 1);
 		$self->format_data($rows, $tt, $self->{type}, $stt, \%user_type, $table);
 	}
 
@@ -10079,7 +10100,11 @@ sub _dump_to_pg
 	my $sql_out = $s_out;
 
 	# Creating output
-	$self->logit("DEBUG: Creating output for $self->{data_limit} tuples\n", 1);
+	my $data_limit = $self->{data_limit};
+	if (exists $self->{local_data_limit}{$table}) {
+		$data_limit = $self->{local_data_limit}{$table};
+	}
+	$self->logit("DEBUG: Creating output for $data_limit tuples\n", 1);
 	if ($self->{type} eq 'COPY') {
 		if ($self->{pg_dsn}) {
 			$sql_out =~ s/;$//;
@@ -12600,6 +12625,9 @@ sub create_kettle_output
 	my $insert_copies = $self->{jobs} || 4;
 	my $js_copies = $insert_copies;
 	my $rowset = $self->{data_limit} || 10000;
+	if (exists $self->{local_data_limit}{$table}) {
+		$rowset  = $self->{local_data_limit}{$table};
+	}
 	my $commit_size = 500;
 	my $sync_commit_onoff = 'off';
 	my $truncate = 'Y';
