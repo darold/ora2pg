@@ -1234,6 +1234,13 @@ CONFIGURATION
         flushed to disk. In 7.x branch this has been remove and chunk will
         be set to the default: 10000
 
+    BLOB_LIMIT
+        When Ora2Pg detect a table with some BLOB it will automatically
+        reduce the value of this directive by dividing it by 10 until his
+        value is below 1000. You can control this value by setting
+        BLOB_LIMIT. Exporting BLOB use lot of ressources, setting it to a
+        too high value can produce OOM.
+
     OUTPUT
         The Ora2Pg output filename can be changed with this directive.
         Default value is output.sql. if you set the file name with extension

@@ -997,6 +997,7 @@ sub _init
 	$self->{oracle_copies} ||= 0;
 	$self->{ora_conn_count} = 0;
 	$self->{data_limit} ||= 10000;
+	$self->{blob_limit} ||= 0;
 	$self->{disable_partition} ||= 0;
 	$self->{parallel_tables} ||= 0;
 
@@ -6344,6 +6345,7 @@ sub _howto_get_data
 			while ($self->{local_data_limit}{$table} > 1000) {
 				$self->{local_data_limit}{$table} = int($self->{local_data_limit}/10);
 			}
+			$self->{local_data_limit}{$table} = $self->{blob_limit} if ($self->{blob_limit});
 		}
 	}
 	$str =~ s/,$//;

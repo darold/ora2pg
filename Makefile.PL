@@ -537,6 +537,13 @@ FORCE_OWNER	0
 # a high value be sure to have enough memory if you have million of rows.
 DATA_LIMIT	10000
 
+
+# When Ora2Pg detect a table with some BLOB it will automatically reduce the
+# value of this directive by dividing it by 10 until his value is below 1000.
+# You can control this value by setting BLOB_LIMIT. Exporting BLOB use lot of
+# ressources, setting it to a too high value can produce OOM.
+#BLOB_LIMIT	500
+
 # By default all data that are not of type date or time are escaped. If you
 # experience any problem with that you can set it to 1 to disable it. This
 # directive is only used during a COPY export type.
