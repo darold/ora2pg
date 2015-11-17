@@ -9378,6 +9378,7 @@ END;
 		$self->dump($sql_header . $function, $fhdl);
 		$self->close_export_file($fhdl);
 		$function = "\\i $dirprefix\L$pname/$fname\E_$self->{output}\n";
+		return $function;
 	}
 
 	$function =~ s/\r//gs;
@@ -10688,6 +10689,7 @@ sub _show_infos
 						my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($self, $view_infos{$view}{text});
 						next if ($cost <= ($cost_detail{SIZE}+$cost_detail{TEST}));
 						$cost -= ($cost_detail{SIZE} + $cost_detail{TEST});
+						$cost = sprintf("%.1f", $cost);
 						delete $cost_detail{SIZE};
 						delete $cost_detail{TEST};
 						$report_info{'Objects'}{$typ}{'cost_value'} += $cost;
