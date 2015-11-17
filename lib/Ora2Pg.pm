@@ -3467,7 +3467,7 @@ LANGUAGE plpgsql ;
 				print STDERR $self->progress_bar($i, $num_total_trigger, 25, '=', 'triggers', "generating $trig->[0]" ), "\r";
 			}
 			my $fhdl = undef;
-			if ($self->{file_per_function} && !$self->{pg_dsn}) {
+			if ($self->{file_per_function}) {
 				$self->dump("\\i $dirprefix$trig->[0]_$self->{output}\n");
 				$self->logit("Dumping to one file per trigger : $trig->[0]_$self->{output}\n", 1);
 				$fhdl = $self->open_export_file("$trig->[0]_$self->{output}");
@@ -3612,7 +3612,7 @@ LANGUAGE plpgsql ;
 					$sql_output .= "\tEXECUTE PROCEDURE trigger_fct_\L$trig->[0]\E();\n\n";
 				}
 			}
-			if ($self->{file_per_function} && !$self->{pg_dsn}) {
+			if ($self->{file_per_function}) {
 				$self->dump($sql_header . $sql_output, $fhdl);
 				$self->close_export_file($fhdl);
 				$sql_output = '';
@@ -3889,7 +3889,7 @@ LANGUAGE plpgsql ;
 			$total_size += length($self->{functions}->{$fct}{text});
 			$self->logit("Dumping function $fct...\n", 1);
 			my $fhdl = undef;
-			if ($self->{file_per_function} && !$self->{pg_dsn}) {
+			if ($self->{file_per_function}) {
 				$self->dump("\\i $dirprefix${fct}_$self->{output}\n");
 				$self->logit("Dumping to one file per function : ${fct}_$self->{output}\n", 1);
 				$fhdl = $self->open_export_file("${fct}_$self->{output}");
@@ -3928,7 +3928,7 @@ LANGUAGE plpgsql ;
 			}
 			$self->_restore_comments(\$sql_output, \%comments);
 
-			if ($self->{file_per_function} && !$self->{pg_dsn}) {
+			if ($self->{file_per_function}) {
 				$self->dump($sql_header . $sql_output, $fhdl);
 				$self->close_export_file($fhdl);
 				$sql_output = '';
@@ -4039,7 +4039,7 @@ LANGUAGE plpgsql ;
 
 			$self->logit("Dumping procedure $fct...\n", 1);
 			my $fhdl = undef;
-			if ($self->{file_per_function} && !$self->{pg_dsn}) {
+			if ($self->{file_per_function}) {
 				$self->dump("\\i $dirprefix${fct}_$self->{output}\n");
 				$self->logit("Dumping to one file per procedure : ${fct}_$self->{output}\n", 1);
 				$fhdl = $self->open_export_file("${fct}_$self->{output}");
@@ -4076,7 +4076,7 @@ LANGUAGE plpgsql ;
 			}
 			$self->_restore_comments(\$sql_output, \%comments);
 			$sql_output .= $fct_cost;
-			if ($self->{file_per_function} && !$self->{pg_dsn}) {
+			if ($self->{file_per_function}) {
 				$self->dump($sql_header . $sql_output, $fhdl);
 				$self->close_export_file($fhdl);
 				$sql_output = '';
@@ -4186,18 +4186,15 @@ LANGUAGE plpgsql ;
 			my $fct_cost = '';
 			if (!$self->{plsql_pgsql}) {
 				$self->logit("Dumping package $pkg...\n", 1);
-				if ($self->{plsql_pgsql} && $self->{file_per_function} && !$self->{pg_dsn}) {
-					my $dir = lc("$dirprefix${pkg}");
-					if (!-d "$dir") {
-						if (not mkdir($dir)) {
-							$self->logit("Fail creating directory package : $dir - $!\n", 1);
-							next;
-						} else {
-							$self->logit("Creating directory package: $dir\n", 1);
-						}
-					}
+				if ($self->{file_per_function}) {
+					$pkgbody = "\\i $dirprefix\L${pkg}\E_$self->{output}\n";
+					my $fhdl = $self->open_export_file("$dirprefix\L${pkg}\E_$self->{output}", 1);
+					$self->dump($sql_header . $self->{packages}{$pkg}{text}, $fhdl);
+					$self->close_export_file($fhdl);
+				} else {
+					$pkgbody = $self->{packages}{$pkg}{text};
 				}
-				$pkgbody = $self->{packages}{$pkg}{text};
+
 			} else {
 				my @codes = split(/CREATE(?: OR REPLACE)?(?: EDITABLE| NONEDITABLE)? PACKAGE BODY/i, $self->{packages}{$pkg}{text});
 				if ($self->{estimate_cost}) {
@@ -4363,7 +4360,7 @@ LANGUAGE plpgsql ;
 					}
 					push(@done, $tb_name);
 					foreach my $obj (@{$self->{tablespaces}{$tb_type}{$tb_name}{$tb_path}}) {
-						next if ($self->{file_per_index} && !$self->{pg_dsn} && ($tb_type eq 'INDEX'));
+						next if ($self->{file_per_index} && ($tb_type eq 'INDEX'));
 						if (!$self->{preserve_case} || ($tb_type eq 'INDEX')) {
 							$sql_output .= "ALTER $tb_type \L$obj\E SET TABLESPACE \L$tb_name\E;\n";
 						} else {
@@ -4380,7 +4377,7 @@ LANGUAGE plpgsql ;
 		$self->dump($sql_header . "$create_tb\n" . $sql_output);
 
 		
-		if ($self->{file_per_index} && !$self->{pg_dsn} && (scalar keys %{$self->{tablespaces}} > 0)) {
+		if ($self->{file_per_index} && (scalar keys %{$self->{tablespaces}} > 0)) {
 			my $fhdl = undef;
 			$self->logit("Dumping tablespace alter indexes to one separate file : TBSP_INDEXES_$self->{output}\n", 1);
 			$fhdl = $self->open_export_file("TBSP_INDEXES_$self->{output}");
@@ -9007,7 +9004,7 @@ sub _convert_package
 		$pname =~ s/"//g;
 		$pname =~ s/^.*\.//g;
 		$self->logit("Dumping package $pname...\n", 1);
-		if ($self->{file_per_function} && !$self->{pg_dsn}) {
+		if ($self->{file_per_function}) {
 			my $dir = lc("$dirprefix$pname");
 			if (!-d "$dir") {
 				if (not mkdir($dir)) {
@@ -9365,7 +9362,7 @@ END;
 	$function .= $revoke;
 	$function = $at_wrapper . $function;
 
-	if ($pname && $self->{file_per_function} && !$self->{pg_dsn}) {
+	if ($pname && $self->{file_per_function}) {
 		$fname =~ s/^"*$pname"*\.//i;
 		$fname =~ s/"//g; # Remove case sensitivity quoting
 		$self->logit("\tDumping to one file per function: $dirprefix\L$pname/$fname\E_$self->{output}\n", 1);
