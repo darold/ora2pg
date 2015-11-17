@@ -3312,6 +3312,10 @@ LANGUAGE plpgsql ;
 			} else {
 				$sql_output .= " MINVALUE $seq->[1]";
 			}
+			# Max value lower than start value are not allowed
+			if (($seq->[2] > 0) && ($seq->[2] < $seq->[4])) {
+				$seq->[2] = $seq->[4];
+			}
 			if ($seq->[2] > (2**63-1)) {
 				$sql_output .= " NO MAXVALUE";
 			} else {
