@@ -4171,13 +4171,14 @@ LANGUAGE plpgsql ;
 		}
 		#--------------------------------------------------------
 
-		my $total_size = 0;
-		my $total_size_no_comment = 0;
 		my $number_fct = 0;
 		my $i = 1;
 		my $num_total_package = scalar keys %{$self->{packages}};
 		foreach my $pkg (sort keys %{$self->{packages}}) {
 
+			my $total_size = 0;
+			my $total_size_no_comment = 0;
+			my $cost_value = 0;
 			if (!$self->{quiet} && !$self->{debug}) {
 				print STDERR $self->progress_bar($i, $num_total_package, 25, '=', 'packages', "generating $pkg" ), "\r";
 			}
@@ -4226,7 +4227,7 @@ LANGUAGE plpgsql ;
 						}
 						$cost_value += $Ora2Pg::PLSQL::OBJECT_SCORE{'PACKAGE BODY'};
 					}
-					$fct_cost .= "-- Total estimated cost for package $pkg: $cost_value\n";
+					$fct_cost .= "-- Total estimated cost for package $pkg: $cost_value units, " . $self->_get_human_cost($cost_value) . "\n";
 				}
 				foreach my $txt (@codes) {
 					$pkgbody .= $self->_convert_package("CREATE OR REPLACE PACKAGE BODY$txt", $self->{packages}{$pkg}{owner});
@@ -4238,7 +4239,7 @@ LANGUAGE plpgsql ;
 				$self->logit("Total size of package code: $total_size bytes.\n", 1);
 				$self->logit("Total size of package code without comments: $total_size_no_comment bytes.\n", 1);
 				$self->logit("Total number of functions found inside those packages: $number_fct.\n", 1);
-				$self->logit("Total estimated cost: $cost_value units, " . $self->_get_human_cost($cost_value) . ".\n", 1);
+				$self->logit("Total estimated cost for package $pkg: $cost_value units, " . $self->_get_human_cost($cost_value) . ".\n", 1);
 			}
 			if ($pkgbody && ($pkgbody =~ /[a-z]/is)) {
 				$sql_output .= "-- Oracle package '$pkg' declaration, please edit to match PostgreSQL syntax.\n";
@@ -4248,7 +4249,6 @@ LANGUAGE plpgsql ;
 					$sql_output .= "-- Total size of package code: $total_size bytes.\n";
 					$sql_output .= "-- Total size of package code without comments: $total_size_no_comment bytes.\n";
 					$sql_output .= "-- Total number of functions found inside those packages: $number_fct.\n";
-					$sql_output .= "-- Total estimated cost: $cost_value units, " . $self->_get_human_cost($cost_value) . ".\n";
 					$sql_output .= "-- Detailed cost per function:\n" . $fct_cost;
 				}
 				$nothing++;
