@@ -7021,6 +7021,7 @@ sub _get_privilege
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	while (my $row = $sth->fetch) {
+		next if ($row->[0] eq 'PUBLIC');
 		if (!$self->{schema} && $self->{export_schema}) {
 			$row->[2] = "$row->[1].$row->[2]";
 		}
