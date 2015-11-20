@@ -9796,8 +9796,8 @@ sub _extract_data
 	}
 
 	my $rname = $part_name || $table;
-	my $dbh;
-	my $sth;
+	my $dbh = 0;
+	my $sth = 0;
 	$self->{data_cols}{$table} = ();
 
 	if ($self->{is_mysql}) {
@@ -9995,7 +9995,7 @@ sub _extract_data
 		$pipe->print("TABLE EXPORT ENDED: $table, end: $t_time, rows $total_record\n");
 	}
 
-	$dbh->disconnect() if (defined $dbh);
+	$dbh->disconnect() if ($dbh);
 
 	# Only useful for single process
 	return $total_record;
