@@ -1000,6 +1000,7 @@ sub _init
 	$self->{blob_limit} ||= 0;
 	$self->{disable_partition} ||= 0;
 	$self->{parallel_tables} ||= 0;
+	$self->{no_lob_locator} = 1 if ($self->{no_lob_locator} ne '0');
 
 	# Shall we prefix function with a schema name to emulate a package?
 	$self->{package_as_schema} = 1 if (not exists $self->{package_as_schema} || ($self->{package_as_schema} eq ''));
@@ -8633,28 +8634,9 @@ sub format_data_type
 		} elsif ( ($src_type =~ /geometry/i) && ($self->{geometry_extract_type} eq 'WKB') ) {
 			$col = "St_GeomFromWKB('\\x" . unpack('H*', $col) . "', $self->{spatial_srid}{$table}->[$idx])";
 		} elsif ($data_type =~ /bytea/i) {
-			$col = escape_bytea($col);
-			if (!$self->{standard_conforming_strings}) {
-				$col = "'$col'";
-			} else {
-				$col = "E'$col'";
-			}
-			# RAW data type is returned in hex
-			$col = "decode($col, 'hex')" if ($src_type eq 'RAW');
+			$col = $self->_escape_lob($col, 'BLOB')
 		} elsif ($data_type =~ /(char|text|xml)/i) {
-			if (!$self->{standard_conforming_strings}) {
-				$col =~ s/'/''/gs; # double single quote
-				$col =~ s/\\/\\\\/gs;
-				$col =~ s/\0//gs;
-				$col = "'$col'";
-			} else {
-				$col =~ s/\0//gs;
-				$col =~ s/\\/\\\\/gs;
-				$col =~ s/'/\\'/gs; # escape single quote
-				$col =~ s/\r/\\r/gs;
-				$col =~ s/\n/\\n/gs;
-				$col = "E'$col'";
-			}
+			$col = $self->_escape_lob($col, 'CLOB')
 		} elsif ($data_type =~ /(date|time)/i) {
 			if ($col =~ /^0000-00-00/) {
 				if (!$self->{replace_zero_date}) {
@@ -8691,24 +8673,9 @@ sub format_data_type
 			$col =~ s/\~/inf/;
 			$col = '\N' if ($col eq '');
 		} elsif ($data_type =~ /bytea/i) {
-			$col = escape_bytea($col);
-			# RAW data type is returned in hex
-			$col = '\\\\x' . $col if ($src_type eq 'RAW');
+			$col = $self->_escape_lob($col, 'BLOB')
 		} elsif ($data_type !~ /(date|time)/i) {
-			if ($self->{has_utf8_fct}) {
-				utf8::encode($col) if (!utf8::valid($col));
-			}
-			$col =~ s/\0//gs;
-			$col =~ s/\\/\\\\/gs;
-			$col =~ s/\r/\\r/gs;
-			$col =~ s/\n/\\n/gs;
-			$col =~ s/\t/\\t/gs;
-			if (!$self->{noescape}) {
-				$col =~ s/\f/\\f/gs;
-				$col =~ s/([\1-\10])/sprintf("\\%03o", ord($1))/egs;
-				$col =~ s/([\13-\14])/sprintf("\\%03o", ord($1))/egs;
-				$col =~ s/([\16-\37])/sprintf("\\%03o", ord($1))/egs;
-			}
+			$col = $self->_escape_lob($col, 'CLOB')
 		} elsif ($data_type =~ /(date|time)/i) {
 			if ($col =~ /^0000-00-00/) {
 				if (!$self->{replace_zero_date}) {
@@ -9829,7 +9796,7 @@ sub _extract_data
 
 		# prepare the query before execution
 		if (!$self->{is_mysql}) {
-			$sth = $dbh->prepare($query,{ora_auto_lob => 1,ora_exe_mode=>OCI_STMT_SCROLLABLE_READONLY, ora_check_sql => 1}) or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
+			$sth = $dbh->prepare($query,{ora_auto_lob => $self->{no_lob_locator},ora_exe_mode=>OCI_STMT_SCROLLABLE_READONLY, ora_check_sql => 1}) or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
 			foreach (@{$sth->{NAME}}) {
 				push(@{$self->{data_cols}{$table}}, $_);
 			}
@@ -9849,7 +9816,7 @@ sub _extract_data
 
 		# prepare the query before execution
 		if (!$self->{is_mysql}) {
-			$sth = $self->{dbh}->prepare($query,{ora_auto_lob => 1,ora_exe_mode=>OCI_STMT_SCROLLABLE_READONLY, ora_check_sql => 1}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+			$sth = $self->{dbh}->prepare($query,{ora_auto_lob => $self->{no_lob_locator},ora_exe_mode=>OCI_STMT_SCROLLABLE_READONLY, ora_check_sql => 1}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 			foreach (@{$sth->{NAME}}) {
 				push(@{$self->{data_cols}{$table}}, $_);
 			}
@@ -9888,6 +9855,8 @@ sub _extract_data
 		if (exists $self->{local_data_limit}{$table}) {
 			$data_limit = $self->{local_data_limit}{$table};
 		}
+		my $has_blob = 0;
+		$has_blob = 1 if (grep(/LOB/, @$stt));
 		while ( my $rows = $sth->fetchall_arrayref(undef,$data_limit)) {
 
 			if ( ($self->{parallel_tables} > 1) || (($self->{oracle_copies} > 1) && $self->{defined_pk}{"\L$table\E"}) ) {
@@ -9901,6 +9870,37 @@ sub _extract_data
 			}
 
 			$total_record += @$rows;
+
+			# Should we retrieve LOB data from locator
+			if (!$self->{no_lob_locator} && $has_blob) {
+				$self->{chunk_size} = 8192;
+				# Then foreach row use the returned lob locator to retrieve data
+				for (my $i = 0; $i <= $#$rows; $i++) {
+					# and all column with a LOB data type, extract data by chunk
+					for (my $j = 0; $j <= $#$stt; $j++) {
+						if ($stt->[$j] =~ /LOB/) {
+							my $content = '';
+							my $offset = 1;   # Offsets start at 1, not 0
+							if ( ($self->{parallel_tables} > 1) || (($self->{oracle_copies} > 1) && $self->{defined_pk}{"\L$table\E"}) ) {
+								while (1) {
+									my $lobdata = $dbh->ora_lob_read($rows->[$i][$j], $offset, $self->{chunk_size} );
+									last unless length $lobdata;
+									$offset += $self->{chunk_size};
+									$content .= $lobdata;
+								}
+							} else {
+								while (1) {
+									my $lobdata = $self->{dbh}->ora_lob_read($rows->[$i][$j], $offset, $self->{chunk_size} );
+									last unless length $lobdata;
+									$offset += $self->{chunk_size};
+									$content .= $lobdata;
+								}
+							}
+							$rows->[$i][$j] = $content;
+						}
+					}
+				}
+			}
 			if ( ($self->{jobs} > 1) || ($self->{oracle_copies} > 1) ) {
 				while ($self->{child_count} >= $self->{jobs}) {
 					my $kid = waitpid(-1, WNOHANG);
@@ -12717,6 +12717,61 @@ sub normalize_query
 	$orig_query =~ s/in\s*\([\'0x,\s]*\)/in (...)/g;
 
 	return $orig_query;
+}
+
+sub _escape_lob
+{
+	my ($self, $col, $src_type) = @_;
+
+	if ($self->{type} eq 'COPY') {
+		if ($src_type eq 'BLOB') {
+			$col = escape_bytea($col);
+			# RAW data type is returned in hex
+			$col = '\\\\x' . $col if ($src_type eq 'RAW');
+		} elsif ($src_type eq 'CLOB') {
+			if ($self->{has_utf8_fct}) {
+				utf8::encode($col) if (!utf8::valid($col));
+			}
+			$col =~ s/\0//gs;
+			$col =~ s/\\/\\\\/gs;
+			$col =~ s/\r/\\r/gs;
+			$col =~ s/\n/\\n/gs;
+			$col =~ s/\t/\\t/gs;
+			if (!$self->{noescape}) {
+				$col =~ s/\f/\\f/gs;
+				$col =~ s/([\1-\10])/sprintf("\\%03o", ord($1))/egs;
+				$col =~ s/([\13-\14])/sprintf("\\%03o", ord($1))/egs;
+				$col =~ s/([\16-\37])/sprintf("\\%03o", ord($1))/egs;
+			}
+		}
+	} else {
+		if ($src_type eq 'BLOB') {
+			$col = escape_bytea($col);
+			if (!$self->{standard_conforming_strings}) {
+				$col = "'$col'";
+			} else {
+				$col = "E'$col'";
+			}
+			# RAW data type is returned in hex
+			$col = "decode($col, 'hex')" if ($src_type eq 'RAW');
+		} elsif ($src_type eq 'CLOB') {
+			if (!$self->{standard_conforming_strings}) {
+				$col =~ s/'/''/gs; # double single quote
+				$col =~ s/\\/\\\\/gs;
+				$col =~ s/\0//gs;
+				$col = "'$col'";
+			} else {
+				$col =~ s/\0//gs;
+				$col =~ s/\\/\\\\/gs;
+				$col =~ s/'/\\'/gs; # escape single quote
+				$col =~ s/\r/\\r/gs;
+				$col =~ s/\n/\\n/gs;
+				$col = "E'$col'";
+			}
+		}
+	}
+
+	return $col;
 }
 
 1;
