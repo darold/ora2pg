@@ -1722,13 +1722,21 @@ trying to read 10000 of them (the default DATA_LIMIT) all at once will require
 10GB of memory. You may extract data from those table separatly and set a
 DATA_LIMIT to 500 or lower, otherwise you may experience some out of memory.
 
-
 =item LONGTRUNKOK
 
 If you want to bypass the 'ORA-24345: A Truncation' error, set this directive
 to 1, it will truncate the data extracted to the LongReadLen value. Disable
 by default so that you will be warned if your LongReadLen value is not high
 enough.
+
+=item NO_LOB_LOCATOR
+
+Disable this if you don't want to load full content of BLOB and CLOB and use
+LOB locators instead. This is usefull to not having to set LONGREADLEN. Note
+that this will not improve speed of BLOB export as most of the time is always
+consumed by the bytea escaping. For more information on how it works, see
+http://search.cpan.org/~pythian/DBD-Oracle-1.74/lib/DBD/Oracle.pm#Data_Interface_for_LOB_Locators
+Default is enabled, it will no use LOB locators for backward compatibility.
 
 =item XML_PRETTY
 
