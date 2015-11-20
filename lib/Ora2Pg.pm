@@ -1072,6 +1072,10 @@ sub _init
 	}
 	$self->{longtruncok} = 0 if (not defined $self->{longtruncok});
 	$self->{longreadlen} ||= (1024*1024);
+	# With lob locators we don"t care about LONGREADLEN, reduce his size at a small size
+	if (!$self->{no_lob_locator}) {
+		$self->{longreadlen} = 8192;
+	}
 	# Backward compatibility with PG_NUMERIC_TYPE alone
 	$self->{pg_integer_type} = 1 if (not defined $self->{pg_integer_type});
 	# Backward compatibility with CASE_SENSITIVE
@@ -6343,9 +6347,13 @@ sub _howto_get_data
 		push(@{$self->{spatial_srid}{$table}}, $spatial_srid);
 		
 		if ($type->[$k] =~ /bytea/i) {
-			$self->{local_data_limit}{$table} = int($self->{data_limit}/10);
-			while ($self->{local_data_limit}{$table} > 1000) {
-				$self->{local_data_limit}{$table} = int($self->{local_data_limit}/10);
+			if ($self->{data_limit} >= 1000) {
+				$self->{local_data_limit}{$table} = int($self->{data_limit}/10);
+				while ($self->{local_data_limit}{$table} > 1000) {
+					$self->{local_data_limit}{$table} = int($self->{local_data_limit}/10);
+				}
+			} else {
+				$self->{local_data_limit}{$table} = $self->{data_limit};
 			}
 			$self->{local_data_limit}{$table} = $self->{blob_limit} if ($self->{blob_limit});
 		}
