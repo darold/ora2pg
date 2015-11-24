@@ -116,6 +116,7 @@ $QUERY_TEST_SCORE = 0.1;
 	'PRAGMA' => 3,
 	'MDSYS' => 1,
 	'MERGE INTO' => 3,
+	'GET_ENV' => 3,
 );
 
 @ORA_FUNCTIONS = qw(
