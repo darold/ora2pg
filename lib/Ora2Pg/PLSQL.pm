@@ -120,6 +120,7 @@ $QUERY_TEST_SCORE = 0.1;
 	'%ROWCOUNT' => 1,
 	'%ISOPEN' => 1,
 	'%NOTFOUND' => 1,
+	'COMMIT' => 1,
 );
 
 @ORA_FUNCTIONS = qw(
