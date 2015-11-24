@@ -591,7 +591,7 @@ STANDARD_CONFORMING_STRINGS	1
 # consumed by the bytea escaping. For more information on how it works, see
 # http://search.cpan.org/~pythian/DBD-Oracle-1.74/lib/DBD/Oracle.pm#Data_Interface_for_LOB_Locators
 # Default is enabled, it will no use LOB locators for backward compatibility.
-NO_LOB_LOCATOR  0
+NO_LOB_LOCATOR  1
 
 # Use getStringVal() instead of getClobVal() for XML data export. Default is
 # enabled for backward compatibility.
