@@ -413,8 +413,15 @@ sub plsql_to_plpgsql
 		$str =~ s/\%\%CURSORREPLACE\%\%/$args/is;
 	}
 
+	# Retrieve cursor names
+	my @cursor_names = $str =~ /\bCURSOR\b\s*([A-Z0-9_\$]+)/isg;
 	# Reorder cursor declaration
 	$str =~ s/\bCURSOR\b\s*([A-Z0-9_\$]+)/$1 CURSOR/isg;
+
+	# Replace call to cursor type if any
+	foreach my $c (@cursor_names) {
+		$str =~ s/\b$c\%ROWTYPE/RECORD/isg;
+	}
 
 	# Replace CURSOR IS SELECT by CURSOR FOR SELECT
 	$str =~ s/\bCURSOR(\s*)IS(\s*)SELECT/CURSOR$1FOR$2SELECT/isg;
