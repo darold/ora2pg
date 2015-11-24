@@ -10072,9 +10072,10 @@ sub _dump_to_pg
 	if ($self->{pg_dsn}) {
 		$dbhdest = $self->_send_to_pgdb();
 		$self->logit("Dumping data from table $rname into PostgreSQL...\n", 1);
-		$self->logit("Disabling synchronous commit when writing to PostgreSQL...\n", 1);
+		$self->logit("Setting client_encoding to $self->{client_encoding}...\n", 1);
 		my $s = $dbhdest->do( "SET client_encoding TO '\U$self->{client_encoding}\E';") or $self->logit("FATAL: " . $dbhdest->errstr . "\n", 0, 1);
 		if (!$self->{synchronous_commit}) {
+			$self->logit("Disabling synchronous commit when writing to PostgreSQL...\n", 1);
 			$s = $dbhdest->do("SET synchronous_commit TO off") or $self->logit("FATAL: " . $dbhdest->errstr . "\n", 0, 1);
 		}
 	}
@@ -12733,9 +12734,11 @@ sub _escape_lob
 
 	if ($self->{type} eq 'COPY') {
 		if ($src_type eq 'BLOB') {
-			$col = escape_bytea($col);
+			#$col = escape_bytea($col);
+			$col = unpack("H*",$col);
 			# RAW data type is returned in hex
-			$col = '\\\\x' . $col if ($src_type eq 'RAW');
+			#$col = '\\\\x' . $col if ($src_type eq 'RAW');
+			$col = '\\\\x' . $col;
 		} elsif ($src_type eq 'CLOB') {
 			if ($self->{has_utf8_fct}) {
 				utf8::encode($col) if (!utf8::valid($col));
@@ -12754,7 +12757,8 @@ sub _escape_lob
 		}
 	} else {
 		if ($src_type eq 'BLOB') {
-			$col = escape_bytea($col);
+			#$col = escape_bytea($col);
+			$col = unpack("H*",$col);
 			if (!$self->{standard_conforming_strings}) {
 				$col = "'$col'";
 			} else {
