@@ -117,6 +117,9 @@ $QUERY_TEST_SCORE = 0.1;
 	'MDSYS' => 1,
 	'MERGE INTO' => 3,
 	'GET_ENV' => 3,
+	'%ROWCOUNT' => 1,
+	'%ISOPEN' => 1,
+	'%NOTFOUND' => 1,
 );
 
 @ORA_FUNCTIONS = qw(
