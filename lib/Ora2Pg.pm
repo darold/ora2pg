@@ -852,6 +852,9 @@ sub _init
 	# Autodetect spatial type
 	$self->{autodetect_spatial_type} ||= 0;
 
+	# Use btree_gin extenstion to create bitmap like index with pg >= 9.4
+	$self->{bitmap_as_gin} = 1 if ($self->{bitmap_as_gin} ne '0');
+
 	# Create tables with OIDs or not, default to not create OIDs
 	$self->{with_oid} ||= 0;
 
@@ -2139,7 +2142,7 @@ sub read_schema_from_file
 		push(@{$self->{tables}{$tb_name}{alter_table}}, $tb_def);
 	}
 
-	while ($content =~ s/CREATE\s+(UNIQUE)?\s*INDEX\s+([^\s]+)\s+ON\s+([^\s\(]+)\s*\(([^;]+);//i) {
+	while ($content =~ s/CREATE\s+(UNIQUE|BITMAP)?\s*INDEX\s+([^\s]+)\s+ON\s+([^\s\(]+)\s*\(([^;]+);//i) {
 		my $is_unique = $1;
 		my $idx_name = $2;
 		$idx_name =~ s/"//g;
@@ -2170,6 +2173,10 @@ sub read_schema_from_file
 			$self->{tables}{$tb_name}{idx_type}{$idx_name}{type_dims} = $1;
 		}
 		$idx_def =~ s/\)[^\)]*$//;
+		if ($is_unique eq 'BITMAP') {
+			$is_unique = '';
+			$self->{tables}{$tb_name}{idx_type}{$idx_name}{type_name} = 'BITMAP';
+		}
 		$self->{tables}{$tb_name}{uniqueness}{$idx_name} = $is_unique || '';
                 $idx_def =~ s/SYS_EXTRACT_UTC\s*\(([^\)]+)\)/$1/isg;
 		push(@{$self->{tables}{$tb_name}{indexes}{$idx_name}}, $idx_def);
@@ -5719,6 +5726,8 @@ sub _create_indexes
 			$idxname = $schm . '.' . $idxname if ($schm);
 			if ($self->{tables}{$tbsaved}{idx_type}{$idx}{type_name} =~ /SPATIAL_INDEX/) {
 				$str .= "CREATE INDEX$concurrently \L$idxname$self->{indexes_suffix}\E ON $table USING gist($columns)";
+			} elsif ($self->{bitmap_as_gin} && $self->{tables}{$tbsaved}{idx_type}{$idx}{type_name} eq 'BITMAP') {
+				$str .= "CREATE INDEX$concurrently \L$idxname$self->{indexes_suffix}\E ON $table USING gin($columns)";
 			} elsif ($self->{tables}{$tbsaved}{idx_type}{$idx}{type_name} =~ /FULLTEXT/) {
 				map { s/"//g; } @{$indexes{$idx}};
 				my $newcolname = $self->quote_object_name(join('_', @{$indexes{$idx}}));
@@ -7320,7 +7329,10 @@ AND    IC.TABLE_OWNER = ?
 				$idx_type{$row->[-6]}{$row->[0]}{type_dims} = $1;
 			}
 		}
-
+		if ($row->[4] eq 'BITMAP') {
+			$idx_type{$row->[-6]}{$row->[0]}{type} = $row->[4];
+			$idx_type{$row->[-6]}{$row->[0]}{type_name} = $row->[4];
+		}
 		push(@{$data{$row->[-6]}{$row->[0]}}, $row->[1]);
 		$index_tablespace{$row->[-6]}{$row->[0]} = $row->[-4];
 
@@ -10483,7 +10495,11 @@ sub _show_infos
 				$report_info{'Objects'}{$typ}{'cost_value'} += ($Ora2Pg::PLSQL::OBJECT_SCORE{$typ}*$total_index) if ($self->{estimate_cost});
 				$report_info{'Objects'}{$typ}{'comment'} = "$total_index index(es) are concerned by the export, others are automatically generated and will do so on PostgreSQL.";
 				if (!$self->{is_mysql}) {
-					$report_info{'Objects'}{$typ}{'comment'} .= " Bitmap and hash index(es) will be exported as b-tree index(es) if any. Domain index are exported as b-tree but commented. Cluster, bitmap join and IOT indexes will not be exported at all. Reverse indexes are not exported too, you may use a trigram-based index (see pg_trgm) or a reverse() function based index and search. Use 'varchar_pattern_ops', 'text_pattern_ops' or 'bpchar_pattern_ops' operators in your indexes to improve search with the LIKE operator respectively into varchar, text or char columns.";
+					my $bitmap = 'Bitmap';
+					if ($self->{bitmap_as_gin}) {
+						$bitmap = 'Bitmap will be exported as btree_gin index(es)';
+					}
+					$report_info{'Objects'}{$typ}{'comment'} .= " $bitmap and hash index(es) will be exported as b-tree index(es) if any. Domain index are exported as b-tree but commented. Cluster, bitmap join and IOT indexes will not be exported at all. Reverse indexes are not exported too, you may use a trigram-based index (see pg_trgm) or a reverse() function based index and search. Use 'varchar_pattern_ops', 'text_pattern_ops' or 'bpchar_pattern_ops' operators in your indexes to improve search with the LIKE operator respectively into varchar, text or char columns.";
 				} else {
 					$report_info{'Objects'}{$typ}{'comment'} .= " Hash index(es) will be exported as b-tree index(es) if any. Use 'varchar_pattern_ops', 'text_pattern_ops' or 'bpchar_pattern_ops' operators in your indexes to improve search with the LIKE operator respectively into varchar, text or char columns. Fulltext search indexes will be replaced by using a dedicated tsvector column, Ora2Pg will set the DDL to create the column, function and trigger together with the index.";
 				}
