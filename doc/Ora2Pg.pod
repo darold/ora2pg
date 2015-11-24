@@ -1705,6 +1705,13 @@ version 9.4 or higher. Default: 0, disabled.
 If disabled, do not export object with IF EXISTS statements.
 Enabled by default.
 
+=item BITMAP_AS_GIN
+
+Use btree_gin extenstion to create bitmap like index with pg >= 9.4
+You will need to create the extension by yourself:
+      create extension btree_gin;
+Default is to create GIN index, when disabled, a btree index will be created
+
 
 =item LONGREADLEN
 
@@ -1736,7 +1743,7 @@ LOB locators instead. This is usefull to not having to set LONGREADLEN. Note
 that this will not improve speed of BLOB export as most of the time is always
 consumed by the bytea escaping. For more information on how it works, see
 http://search.cpan.org/~pythian/DBD-Oracle-1.74/lib/DBD/Oracle.pm#Data_Interface_for_LOB_Locators
-Default is enabled, it will no use LOB locators for backward compatibility.
+Default is enabled, it will not use LOB locators for backward compatibility.
 
 =item XML_PRETTY
 

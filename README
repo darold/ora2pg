@@ -1650,6 +1650,12 @@ CONFIGURATION
         If disabled, do not export object with IF EXISTS statements. Enabled
         by default.
 
+    BITMAP_AS_GIN
+        Use btree_gin extenstion to create bitmap like index with pg >= 9.4
+        You will need to create the extension by yourself: create extension
+        btree_gin; Default is to create GIN index, when disabled, a btree
+        index will beÂ created
+
     LONGREADLEN
         Use this directive to set the database handle's 'LongReadLen'
         attribute to a value that will be the larger than the expected size
@@ -1682,8 +1688,8 @@ CONFIGURATION
         most of the time is always consumed by the bytea escaping. For more
         information on how it works, see
         http://search.cpan.org/~pythian/DBD-Oracle-1.74/lib/DBD/Oracle.pm#Da
-        ta_Interface_for_LOB_Locators Default is enabled, it will no use LOB
-        locators for backward compatibility.
+        ta_Interface_for_LOB_Locators Default is enabled, it will not use
+        LOB locators for backward compatibility.
 
     XML_PRETTY
         Force the use getStringVal() instead of getClobVal() for XML data

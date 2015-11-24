@@ -769,6 +769,11 @@ PG_SUPPORTS_CHECKOPTION	0
 # keywords in all generated statements.
 PG_SUPPORTS_IFEXISTS	1
 
+# Use btree_gin extenstion to create bitmap like index with pg >= 9.4
+# You will need to create the extension by yourself:
+# 	create extension btree_gin;
+# Default is to create GIN index, when disabled, a btree index will be created
+BITMAP_AS_GIN		1
 
 
 #------------------------------------------------------------------------------
