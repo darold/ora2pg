@@ -1009,14 +1009,17 @@ sub _init
 	# Set user defined data type translation
 	if ($self->{data_type}) {
 		my @transl = split(/[,;]/, uc($self->{data_type}));
+		%{$self->{data_type}} = %TYPE;
 		foreach my $t (@transl) {
 			my ($typ, $val) = split(/:/, $t);
 			$typ =~ s/^\s+//;
 			$typ =~ s/\s+$//;
 			$val =~ s/^\s+//;
 			$val =~ s/\s+$//;
-			$TYPE{$typ} = lc($val) if ($val);
+			$self->{data_type}{$typ} = lc($val) if ($val);
 		}
+	} else {
+		%{$self->{data_type}} = %TYPE;
 	}
 
 	# Set some default
@@ -6498,7 +6501,7 @@ sub _sql_type
 		$len = $precision;
 	}
 
-        if (exists $TYPE{uc($type)}) {
+        if (exists $self->{data_type}{uc($type)}) {
 		$type = uc($type); # Force uppercase
 		if ($len) {
 
@@ -6506,13 +6509,13 @@ sub _sql_type
 				# Type CHAR have default length set to 1
 				# Type VARCHAR(2) must have a specified length
 				$len = 1 if (!$len && ($type eq "CHAR"));
-                		return "$TYPE{$type}($len)";
+                		return "$self->{data_type}{$type}($len)";
 			} elsif ($type eq "NUMBER") {
 				# This is an integer
 				if (!$scale) {
 					if ($precision) {
-						if (exists $TYPE{"$type($precision)"}) {
-							return $TYPE{"$type($precision)"};
+						if (exists $self->{data_type}{"$type($precision)"}) {
+							return $self->{data_type}{"$type($precision)"};
 						}
 						if ($self->{pg_integer_type}) {
 							if ($precision < 5) {
@@ -6529,8 +6532,8 @@ sub _sql_type
 						return $self->{default_numeric} || 'bigint';
 					}
 				} else {
-					if (exists $TYPE{"$type($precision,$scale)"}) {
-						return $TYPE{"$type($precision,$scale)"};
+					if (exists $self->{data_type}{"$type($precision,$scale)"}) {
+						return $self->{data_type}{"$type($precision,$scale)"};
 					}
 					if ($precision) {
 						if ($self->{pg_numeric_type}) {
@@ -6544,12 +6547,12 @@ sub _sql_type
 					}
 				}
 			}
-			return "$TYPE{$type}";
+			return "$self->{data_type}{$type}";
 		} else {
 			if (($type eq 'NUMBER') && $self->{pg_integer_type}) {
 				return $self->{default_numeric};
 			} else {
-				return $TYPE{$type};
+				return $self->{data_type}{$type};
 			}
 		}
         }
@@ -9760,7 +9763,7 @@ sub _extract_data
 		for (my $idx = 0; $idx < scalar(@$tt); $idx++) {
 			my $data_type = $tt->[$idx] || '';
 			my $custom_type = '';
-			if (!exists $TYPE{$stt->[$idx]}) {
+			if (!exists $self->{data_type}{$stt->[$idx]}) {
 				$custom_type = $self->_get_types($stt->[$idx]);
 				foreach my $tpe (sort {length($a->{name}) <=> length($b->{name}) } @{$custom_type}) {
 					$self->logit("Looking inside custom type $tpe->{name} to extract values...\n", 1);
@@ -10509,7 +10512,7 @@ sub _show_infos
 						}
 						$self->{tables}{$t}{column_info}{$k}[1] =~ s/TIMESTAMP\(\d+\)/TIMESTAMP/i;
 						if (!$self->{is_mysql}) {
-							if (!exists $TYPE{uc($self->{tables}{$t}{column_info}{$k}[1])}) {
+							if (!exists $self->{data_type}{uc($self->{tables}{$t}{column_info}{$k}[1])}) {
 								$table_detail{'unknown types'}++;
 							}
 						} else {
@@ -10520,7 +10523,7 @@ sub _show_infos
 						if ( (uc($self->{tables}{$t}{column_info}{$k}[1]) eq 'NUMBER') && ($self->{tables}{$t}{column_info}{$k}[2] eq '') ) {
 							$table_detail{'numbers with no precision'}++;
 						}
-						if ( $TYPE{uc($self->{tables}{$t}{column_info}{$k}[1])} eq 'bytea' ) {
+						if ( $self->{data_type}{uc($self->{tables}{$t}{column_info}{$k}[1])} eq 'bytea' ) {
 							$table_detail{'binary columns'}++;
 						}
 					}
@@ -11870,7 +11873,7 @@ sub set_search_path
 			$local_path = ', "' . $self->{postgis_schema} . '"';
 		}
 	}
-	if ($TYPE{BFILE} eq 'efile') {
+	if ($self->{data_type}{BFILE} eq 'efile') {
 			$local_path .= ', external_file';
 	}
 	
