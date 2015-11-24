@@ -6243,6 +6243,7 @@ sub _howto_get_data
 		$timeformat = 'YYYY-MM-DD HH24:MI:SS.FF';
 	}
 	my $timeformat_tz = $timeformat . ' TZH:TZM';
+	# Lookup through columns information
 	for my $k (0 .. $#{$name}) {
 		my $realcolname = $name->[$k]->[0];
 		my $spatial_srid = '';
@@ -6451,11 +6452,34 @@ VARCHAR2
 		$self->logit("\tApplying WHERE global clause: " . $self->{global_where} . "\n", 1);
 	}
 
-	if ( ($self->{oracle_copies} > 1) && $self->{defined_pk}{"\L$table\E"} ) {
-		if ($str =~ / WHERE /) {
-			$str .= " AND ABS(MOD(" . $self->{defined_pk}{"\L$table\E"} . ", $self->{oracle_copies})) = ?";
-		} else {
-			$str .= " WHERE ABS(MOD(" . $self->{defined_pk}{"\L$table\E"} . ", $self->{oracle_copies})) = ?";
+	# Automatically set the column on which query will be splitted
+	# to the first column with a unique key and of type NUMBER.
+	if ($self->{oracle_copies} > 1) {
+		if (!exists $self->{defined_pk}{"\L$table\E"}) {
+			foreach my $consname (keys %{$self->{tables}{$table}{unique_key}}) {
+				my $constype =   $self->{tables}{$table}{unique_key}->{$consname}{type};
+				if (($constype eq 'P') || ($constype eq 'U')) {
+					foreach my $c (@{$self->{tables}{$table}{unique_key}->{$consname}{columns}}) {
+					       for my $k (0 .. $#{$name}) {
+							my $realcolname = $name->[$k]->[0];
+							$realcolname =~ s/"//g;
+							if ( ($c eq $realcolname) && ($src_type->[$k] =~ /^number/i) ) {
+								$self->{defined_pk}{"\L$table\E"} = $c;
+								last;
+							}
+						}
+						last if (exists $self->{defined_pk}{"\L$table\E"});
+					}
+				}
+				last if (exists $self->{defined_pk}{"\L$table\E"});
+			}
+		}
+		if ($self->{defined_pk}{"\L$table\E"}) {
+			if ($str =~ / WHERE /) {
+				$str .= " AND ABS(MOD(" . $self->{defined_pk}{"\L$table\E"} . ", $self->{oracle_copies})) = ?";
+			} else {
+				$str .= " WHERE ABS(MOD(" . $self->{defined_pk}{"\L$table\E"} . ", $self->{oracle_copies})) = ?";
+			}
 		}
 	}
 
