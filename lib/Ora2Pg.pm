@@ -3564,7 +3564,7 @@ LANGUAGE plpgsql ;
 				my $revoke = '';
 				if ($self->{security}{"\U$trig->[0]\E"}{security} eq 'DEFINER') {
 					$security = " SECURITY DEFINER";
-					$revoke = "-- REVOKE ALL ON FUNCTION trigger_fct_\L$trig->[0]\E FROM PUBLIC;\n";
+					$revoke = "-- REVOKE ALL ON FUNCTION trigger_fct_\L$trig->[0]()\E FROM PUBLIC;\n";
 				}
 				if ($self->{pg_supports_when} && $trig->[5]) {
 					if (!$self->{preserve_case}) {
@@ -9348,7 +9348,7 @@ END;
 		$function .= "DECLARE\n$fct_detail{declare}\n" if ($fct_detail{declare});
 		$function .= $fct_detail{code};
 		$function .= "\n\$body\$\nLANGUAGE PLPGSQL\n";
-		$revoke = "-- REVOKE ALL ON FUNCTION $name FROM PUBLIC;\n";
+		$revoke = "-- REVOKE ALL ON FUNCTION $name $fct_detail{args} FROM PUBLIC;\n";
 		if ($self->{type} ne 'PACKAGE') {
 			if (!$self->{is_mysql}) {
 				$function .= "SECURITY DEFINER\n" if ($self->{security}{"\U$fct_detail{name}\E"}{security} eq 'DEFINER');
@@ -9361,11 +9361,10 @@ END;
 		$function .= "$fct_detail{immutable};\n";
 		$function = "\n$fct_detail{before}$function";
 	}
-
 	if ($self->{force_owner}) {
 		$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
 		if ($owner) {
-			$function .= "ALTER FUNCTION $fname OWNER TO";
+			$function .= "ALTER FUNCTION $fname $fct_detail{args} OWNER TO";
 			if (!$self->{preserve_case}) {
 				$function .= " \L$owner\E;\n";
 			} else {
