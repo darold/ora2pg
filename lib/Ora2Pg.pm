@@ -6472,9 +6472,14 @@ VARCHAR2
 					       for my $k (0 .. $#{$name}) {
 							my $realcolname = $name->[$k]->[0];
 							$realcolname =~ s/"//g;
-							if ( ($c eq $realcolname) && ($src_type->[$k] =~ /^number/i) ) {
-								$self->{defined_pk}{"\L$table\E"} = $c;
-								last;
+							if ($c eq $realcolname) {
+								if ($src_type->[$k] =~ /^number\(.*,.*\)/i) {
+									$self->{defined_pk}{"\L$table\E"} = "ROUND($c)";
+									last;
+								} elsif ($src_type->[$k] =~ /^number/i) {
+									$self->{defined_pk}{"\L$table\E"} = $c;
+									last;
+								}
 							}
 						}
 						last if (exists $self->{defined_pk}{"\L$table\E"});
