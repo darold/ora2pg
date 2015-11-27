@@ -116,11 +116,10 @@ $QUERY_TEST_SCORE = 0.1;
 	'PRAGMA' => 3,
 	'MDSYS' => 1,
 	'MERGE INTO' => 3,
-	'GET_ENV' => 3,
 	'%ROWCOUNT' => 1,
 	'%ISOPEN' => 1,
 	'%NOTFOUND' => 1,
-	'COMMIT' => 1,
+	'COMMIT' => 3,
 );
 
 @ORA_FUNCTIONS = qw(
@@ -164,6 +163,7 @@ $QUERY_TEST_SCORE = 0.1;
 	SessionTimeZone
 	Tz_Offset
 	SysTimestamp
+	Get_Env
 );
 
 @MYSQL_SPATIAL_FCT = (
