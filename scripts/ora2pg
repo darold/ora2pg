@@ -508,6 +508,7 @@ sub make_config_generic
 			$conf_arr->[$i] =~ s/^# Set Oracle database/# Set MySQL database/;
 			$conf_arr->[$i] =~ s/^(ORACLE_DSN.*dbi):Oracle:(.*);sid=SIDNAME/$1:mysql:$2;database=dbname/;
 			$conf_arr->[$i] =~ s/CHANGE_THIS_SCHEMA_NAME/CHANGE_THIS_DB_NAME/;
+			$conf_arr->[$i] =~ s/#REPLACE_ZERO_DATE.*/REPLACE_ZERO_DATE\t-INFINITY/;
 		}
 		$conf_arr->[$i] =~ s/^USER_GRANTS.*0/USER_GRANTS\t1/;
 		$conf_arr->[$i] =~ s/^#SCHEMA.*SCHEMA_NAME/SCHEMA\t$schema/;
