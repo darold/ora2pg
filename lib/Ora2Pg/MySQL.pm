@@ -9,7 +9,7 @@ use POSIX qw(locale_h);
 setlocale(LC_NUMERIC,"C");
 
 
-$VERSION = '16.0';
+$VERSION = '16.1';
 
 # These definitions can be overriden from configuration file
 our %MYSQL_TYPE = (
