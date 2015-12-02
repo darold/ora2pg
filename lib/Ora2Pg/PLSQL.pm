@@ -600,9 +600,16 @@ sub plsql_to_plpgsql
 	# Replace package.function call by package_function
 	##############
 	if (scalar keys %{$class->{package_functions}}) {
-		foreach my $k (keys %{$class->{package_functions}}) {
-			$str =~ s/($class->{package_functions}->{$k}{package}\.)?$k\b/$class->{package_functions}->{$k}{name}/igs;
+		my @text_values = ();
+		my $j = 0;
+		while ($str =~ s/'([^']+)'/\%TEXTVALUE-$j\%/s) {
+			push(@text_values, $1);
+			$j++;
 		}
+		foreach my $k (keys %{$class->{package_functions}}) {
+			$str =~ s/($class->{package_functions}->{$k}{package}\.)?\b$k\b/$class->{package_functions}->{$k}{name}/igs;
+		}
+		$str =~ s/\%TEXTVALUE-(\d+)\%/'$text_values[$1]'/igs;
 	}
 
 	return $str;
