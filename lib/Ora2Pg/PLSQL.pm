@@ -607,7 +607,7 @@ sub plsql_to_plpgsql
 			$j++;
 		}
 		foreach my $k (keys %{$class->{package_functions}}) {
-			$str =~ s/($class->{package_functions}->{$k}{package}\.)?\b$k\b/$class->{package_functions}->{$k}{name}/igs;
+			$str =~ s/($class->{package_functions}->{$k}{package}\.)?\b$k\s*\(/$class->{package_functions}->{$k}{name}\(/igs;
 		}
 		$str =~ s/\%TEXTVALUE-(\d+)\%/'$text_values[$1]'/igs;
 	}
