@@ -141,7 +141,7 @@ Here is the complete list of other changes:
   - Add -t | --test command line option to ora2pg_scanner to be able to test
     all connections defined into the CVS list file.
 
-2015 10 15 - v16.1
+2015 10 15 - v16.0
 
 This major release improve PL/SQL code replacement, fixes several bugs and
 adds some major new features:
