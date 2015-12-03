@@ -75,67 +75,71 @@ Some new configuration directives:
 
 Here is the complete list of other changes:
 
-  -  Set REPLACE_ZERO_DATE to -INFINITY in generic configuration when --mysql
-     is enabled.
-  -  Fix extraction of partition with MySQL that was not limited to a single
-     database.
-  -  Do some replacement on ORACLE_DNS and SCHEMA into generic configuration
-     when --mysql is used for better understanding.
-  -  Add call to round() on -J parallelization when the auto detected column
-     is a numeric with scale.
-  -  Add COMMIT to the difficulties migration assessment keywords as it need
-     context analyzing.
-  -  Add call to cursor's %ROWCOUNT, %ISOPEN and %NOTFOUND to difficulties
-     migration assessment keywords.
-  -  Replace call to CURSOR%ROWTYPE by RECORD. Thanks to Marc Cousin for the
-     report.
-  -  Fix ALTER FUNCTION ... OWNER TO ... and REVOKE statement where functions
-     parameters were missing.
-  -  Add Get_Env to the Oracle functions list for migration assessment.
-  -  Disable variable NO_LOB_LOCATOR and set LONGREADLEN to 8192 bytes to use
-     LOB locators to extract BLOB in generic configuration file.
-  -  Fix call method "disconnect" on unblessed reference at line 9998. Thanks
-     to Stephane Tachoires for the report.
-  -  Exclude from export objects name matching /.*\$JAVA\$.*/ and /^PROF\$.*/.
-  -  Fix migration assessment report when created during the package export.
-  -  Force writing Oracle package body in separate files when FILE_PER_FUNCTION
-     is enabled and PLSQL_PGSQL disable to obtain package source code.
-  -  Fix case where sequence max value is lower than start value, in this case,
-     set max value = start value.
-  -  Fix missing newline after each package file to import in global package.sql
-     file when FILE_PER_FUNCTION is enabled.
-  -  Remove export of user PUBLIC in GRANT export.
-  -  Set DISABLE_TRIGGERS to 1 in generic configuration file auto generated when
-     ora2pg option --init_project is used.
-  -  Remove call to quote_reserved_words() with index column when it we detect
-     a function based index, too much false positive are rewritten with SQL code
-     like CASE...WHEN.
-  -  Update export_schema.sh to remove .sql files when there is not such object
-     leaving export directory empty.
-  -  Prevent creating TBSP_INDEXES_tablespace.sql when no tablespaces are found
-  -  Update documentation on WHERE clause on how to limit the number of tuples
-     exported for Oracle and MySQL to test data import.
-  -  Fix unlisted spatial indexes in assessment report.
-  -  Fix double quote on index name with index renaming and reserved keyword.
-  -  Do not try to export tablespaces, privileges and audited queries as non DBA
-     user when USER_GRANT is enabled.
-  -  Remove carriage return from list file.
-  -  Force SCHEMA to database name with MySQL migration.
-  -  Fix missing declaration of _extract_sequence_info(). Thank to Yannick DEVOS
-     for the report.
-  -  Add documentation about COPY_FREEZE directive and add a note about export
-     of all schema.
-  -  Remove systematic schema name appended to table name on KETTLE export, this
-     must only be true when EXPORT_SCHEMA is enabled.
-  -  Fix TO_NUMBER() wrong replacement when a function is called as a parameter.
-  -  Fix non converted DECODE() when they was called in an XMLELEMENT function.
-  -  Suppress MDSYS.SDO_* from MDSYS call in migration assessment cost.
-  -  Remove use of DBMS_STANDARD called with raise_application_error function
-  -  Fix STRING type replacement
-  -  Recreate README as a text file, not a man page.
-  -  Reformat changelog to 80 characters.
-  -  Add -t | --test command line option to ora2pg_scanner to be able to test
-     all connections defined into the CVS list file.
+  - Limite package function name rewrite to call with parenthesis after the
+    function name to avoid rewriting names of other objects.
+  - Fix extra replacement of function name with package prefix. On some
+    condition it was done multiple time.
+  - Set REPLACE_ZERO_DATE to -INFINITY in generic configuration when --mysql
+    is enabled.
+  - Fix extraction of partition with MySQL that was not limited to a single
+    database.
+  - Do some replacement on ORACLE_DNS and SCHEMA into generic configuration
+    when --mysql is used for better understanding.
+  - Add call to round() on -J parallelization when the auto detected column
+    is a numeric with scale.
+  - Add COMMIT to the difficulties migration assessment keywords as it need
+    context analyzing.
+  - Add call to cursor's %ROWCOUNT, %ISOPEN and %NOTFOUND to difficulties
+    migration assessment keywords.
+  - Replace call to CURSOR%ROWTYPE by RECORD. Thanks to Marc Cousin for the
+    report.
+  - Fix ALTER FUNCTION ... OWNER TO ... and REVOKE statement where functions
+    parameters were missing.
+  - Add Get_Env to the Oracle functions list for migration assessment.
+  - Disable variable NO_LOB_LOCATOR and set LONGREADLEN to 8192 bytes to use
+    LOB locators to extract BLOB in generic configuration file.
+  - Fix call method "disconnect" on unblessed reference at line 9998. Thanks
+    to Stephane Tachoires for the report.
+  - Exclude from export objects name matching /.*\$JAVA\$.*/ and /^PROF\$.*/.
+  - Fix migration assessment report when created during the package export.
+  - Force writing Oracle package body in separate files when FILE_PER_FUNCTION
+    is enabled and PLSQL_PGSQL disable to obtain package source code.
+  - Fix case where sequence max value is lower than start value, in this case,
+    set max value = start value.
+  - Fix missing newline after each package file to import in global package.sql
+    file when FILE_PER_FUNCTION is enabled.
+  - Remove export of user PUBLIC in GRANT export.
+  - Set DISABLE_TRIGGERS to 1 in generic configuration file auto generated when
+    ora2pg option --init_project is used.
+  - Remove call to quote_reserved_words() with index column when it we detect
+    a function based index, too much false positive are rewritten with SQL code
+    like CASE...WHEN.
+  - Update export_schema.sh to remove .sql files when there is not such object
+    leaving export directory empty.
+  - Prevent creating TBSP_INDEXES_tablespace.sql when no tablespaces are found
+  - Update documentation on WHERE clause on how to limit the number of tuples
+    exported for Oracle and MySQL to test data import.
+  - Fix unlisted spatial indexes in assessment report.
+  - Fix double quote on index name with index renaming and reserved keyword.
+  - Do not try to export tablespaces, privileges and audited queries as non DBA
+    user when USER_GRANT is enabled.
+  - Remove carriage return from list file.
+  - Force SCHEMA to database name with MySQL migration.
+  - Fix missing declaration of _extract_sequence_info(). Thank to Yannick DEVOS
+    for the report.
+  - Add documentation about COPY_FREEZE directive and add a note about export
+    of all schema.
+  - Remove systematic schema name appended to table name on KETTLE export, this
+    must only be true when EXPORT_SCHEMA is enabled.
+  - Fix TO_NUMBER() wrong replacement when a function is called as a parameter.
+  - Fix non converted DECODE() when they was called in an XMLELEMENT function.
+  - Suppress MDSYS.SDO_* from MDSYS call in migration assessment cost.
+  - Remove use of DBMS_STANDARD called with raise_application_error function
+  - Fix STRING type replacement
+  - Recreate README as a text file, not a man page.
+  - Reformat changelog to 80 characters.
+  - Add -t | --test command line option to ora2pg_scanner to be able to test
+    all connections defined into the CVS list file.
 
 2015 10 15 - v16.1
 
