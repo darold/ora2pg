@@ -6423,12 +6423,6 @@ VARCHAR2
 	# Fix empty column list with nested table
 	$str =~ s/ ""$/ \*/;
 
-	# Fix a problem when using data_limit AND where clause
-	if (exists $self->{where}{"\L$table\E"} && $self->{where}{"\L$table\E"}) {
-		$extraStr .= ' AND (' . $self->{where}{"\L$table\E"} . ')';
-	} elsif ($self->{global_where}) {
-		$extraStr .= ' AND (' . $self->{global_where} . ')';
-	}
 	if ($part_name) {
 		$alias = "PARTITION($part_name)";
 	} else {
@@ -6436,29 +6430,25 @@ VARCHAR2
 	}
 	$str .= " FROM $realtable $alias";
 	if (exists $self->{where}{"\L$table\E"} && $self->{where}{"\L$table\E"}) {
-		if ($str =~ / WHERE /) {
-			$str .= ' AND ';
-		} else {
-			$str .= ' WHERE ';
-		}
-		if (!$self->{is_mysql} || ($self->{where}{"\L$table\E"} !~ /\bLIMIT\s+\d/)) {
+
+		($str =~ / WHERE /) ? $str .= ' AND ' : $str .= ' WHERE ';
+		if (!$self->{is_mysql} || ($self->{where}{"\L$table\E"} !~ /\s+LIMIT\s+\d/)) {
 			$str .= '(' . $self->{where}{"\L$table\E"} . ')';
 		} else {
 			$str .= $self->{where}{"\L$table\E"};
 		}
 		$self->logit("\tApplying WHERE clause on table: " . $self->{where}{"\L$table\E"} . "\n", 1);
+
 	} elsif ($self->{global_where}) {
-		if ($str =~ / WHERE /) {
-			$str .= ' AND ';
-		} else {
-			$str .= ' WHERE ';
-		}
-		if (!$self->{is_mysql} || ($self->{global_where} !~ /\bLIMIT\s+\d/)) {
+
+		($str =~ / WHERE /) ? $str .= ' AND ' : $str .= ' WHERE ';
+		if (!$self->{is_mysql} || ($self->{global_where} !~ /\s+LIMIT\s+\d/)) {
 			$str .= '(' . $self->{global_where} . ')';
 		} else {
 			$str .= $self->{global_where};
 		}
 		$self->logit("\tApplying WHERE global clause: " . $self->{global_where} . "\n", 1);
+
 	}
 
 	# Automatically set the column on which query will be splitted
