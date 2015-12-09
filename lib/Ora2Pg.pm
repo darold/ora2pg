@@ -5228,6 +5228,10 @@ CREATE TRIGGER ${table}_trigger_insert
 						}
 					}
 					if ($type =~ /serial/) {
+						# Replace any non alphanumeric character with an underscore
+						$tbname =~ s/"//g;
+						$tbname = ~ s/[^a-zA-Z0-9\_]/_/g;
+						$fname = ~ s/[^a-zA-Z0-9\_]/_/g;
 						my $seqname = substr(lc($tbname . '_' . $fname), 0, 59) . '_seq';
 						$serial_sequence .= "ALTER SEQUENCE $seqname RESTART WITH $self->{tables}{$table}{table_info}{auto_increment};\n";
 					}
