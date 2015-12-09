@@ -5230,7 +5230,7 @@ CREATE TRIGGER ${table}_trigger_insert
 					if ($type =~ /serial/) {
 						my $seqname = substr(lc($tbname . '_' . $fname), 0, 59);
 						if ($seqname =~ /^"/) {
-							$seqname =~ /"$//;
+							$seqname =~ s/"$//;
 							$seqname .= '_seq"';
 						} else {
 							$seqname .= '_seq';
@@ -6864,11 +6864,14 @@ END
 	while (my $row = $sth->fetch) {
 
 		my %constraint = (type => $row->[7], 'generated' => $row->[8], 'index_name' => $row->[11], columns => ());
+		my @done = ();
 		foreach my $r (@cons_columns) {
 			# Skip constraints on system internal columns
 			next if ($r->[0] =~ /^SYS_NC/i);
+			next if (grep(/^$r->[0]$/, @done));
 			if ( ($r->[2] eq $row->[0]) && ($row->[10] eq $r->[3]) ) {
 				push(@{$constraint{'columns'}}, $r->[0]);
+				push(@done, $r->[0]);
 			}
 		}
 		if ($#{$constraint{'columns'}} >= 0) {
