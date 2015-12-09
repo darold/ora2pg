@@ -5544,6 +5544,7 @@ sub _dump_table
 			$self->logit("\tReplacing column $f->[0] as " . $self->{replaced_cols}{lc($table)}{lc($f->[0])} . "...\n", 1);
 			$colname = $self->{replaced_cols}{lc($table)}{lc($f->[0])};
 		}
+		$colname =~ s/"//g;
 		if (!$self->{preserve_case}) {
 			$colname = $self->quote_reserved_words($colname);
 			$col_list .= "\L$colname\E,";
@@ -6785,6 +6786,7 @@ END
 				push(@geom_inf, $ORA2PG_SDO_GTYPE{0});
 			}
 		}
+
 		if (!$self->{schema} && $self->{export_schema}) {
 			push(@{$data{$tmptable}{"$row->[0]"}}, (@$row, $pos, @geom_inf));
 		} else {
