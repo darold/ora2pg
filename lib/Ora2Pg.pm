@@ -833,7 +833,7 @@ sub _init
 	$self->{cost_unit_value} ||= 5;
 
 	# Set default human days limit for type C migration level
-	$self->{human_days_limit} ||= 10;
+	$self->{human_days_limit} ||= 5;
 
 	# Defined if column order must be optimized
 	$self->{reordering_columns} ||= 0;
