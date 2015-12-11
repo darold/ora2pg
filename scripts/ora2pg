@@ -576,6 +576,7 @@ DEBUG=0
 SCHEMA_ONLY=0
 DATA_ONLY=0
 CONSTRAINTS_ONLY=0
+NO_DBCHECK=0
 
 
 # Message functions
@@ -596,6 +597,7 @@ usage() {
     echo "    -d dbname      database name for import"
     echo "    -D             enable debug mode, will only show what will be done"
     echo "    -e encoding    database encoding to use at creation (default: UTF8)"
+    echo "    -f             force no check of user and database existing and do not try to create them"
     echo "    -h hostname    hostname of the PostgreSQL server (default: unix socket)"
     echo "    -i             only load indexes, constraints and triggers"
     echo "    -I             do not try to load indexes, constraints and triggers"
@@ -702,13 +704,14 @@ import_constraints () {
 }
 
 # Command line options
-while getopts "b:d:e:h:j:l:n:o:p:P:t:U:aDiIsyx?"  opt; do
+while getopts "b:d:e:h:j:l:n:o:p:P:t:U:aDfiIsyx?"  opt; do
     case "$opt" in
 	a) DATA_ONLY=1;;
 	b) SQL_POST_SCRIPT=$OPTARG;;
         d) DB_NAME=$OPTARG;;
         D) DEBUG=1;;
         e) DB_ENCODING=" -E $OPTARG";;
+	f) NO_DBCHECK=1;;
         h) DB_HOST=" -h $OPTARG";;
         i) CONSTRAINTS_ONLY=1;;
         I) NO_CONSTRAINTS=1;;
@@ -751,9 +754,11 @@ if [ ! -r "$NAMESPACE/schema/tables/table.sql" ]; then
 fi
 
 # Test connection to PostgreSQL instance as postgres or any superuser
-psql$DB_HOST$DB_PORT$DB_USER -Atc "select 1;" 1>/dev/null
-if [ $? -ne 0 ]; then
-	die "can not connect to PostgreSQL Instance with command: psql$DB_HOST$DB_PORT$DB_USER -c \"select 1;\"" 
+if [ $NO_DBCHECK  -eq 0 ]; then
+	psql$DB_HOST$DB_PORT$DB_USER -Atc "select 1;" 1>/dev/null
+	if [ $? -ne 0 ]; then
+		die "can not connect to PostgreSQL Instance with command: psql$DB_HOST$DB_PORT$DB_USER -c \"select 1;\"" 
+	fi
 fi
 
 # If constraints and indexes files are present propose to import these object
@@ -766,51 +771,53 @@ fi
 
 # When a PostgreSQL schema list is provided, create them
 if [ $DATA_ONLY -eq 0 ]; then
-	# Create owner user
-	user_exists=`psql$DB_HOST$DB_PORT$DB_USER -Atc "select usename from pg_user where usename='$DB_OWNER';"`
-	if [ "a$user_exists" = "a" ]; then
-		if confirm "Would you like to create the owner of the database $DB_OWNER?" ; then
-			echo "Running: createuser$DB_HOST$DB_PORT$DB_USER --no-superuser --no-createrole --no-createdb $DB_OWNER"
-			if [ $DEBUG -eq 0 ]; then
-				createuser$DB_HOST$DB_PORT$DB_USER --no-superuser --no-createrole --no-createdb $DB_OWNER
-				if [ $? -ne 0 ]; then
-					die "can not create user $DB_OWNER."
+	if [ $NO_DBCHECK  -eq 0 ]; then
+		# Create owner user
+		user_exists=`psql$DB_HOST$DB_PORT$DB_USER -Atc "select usename from pg_user where usename='$DB_OWNER';"`
+		if [ "a$user_exists" = "a" ]; then
+			if confirm "Would you like to create the owner of the database $DB_OWNER?" ; then
+				echo "Running: createuser$DB_HOST$DB_PORT$DB_USER --no-superuser --no-createrole --no-createdb $DB_OWNER"
+				if [ $DEBUG -eq 0 ]; then
+					createuser$DB_HOST$DB_PORT$DB_USER --no-superuser --no-createrole --no-createdb $DB_OWNER
+					if [ $? -ne 0 ]; then
+						die "can not create user $DB_OWNER."
+					fi
 				fi
 			fi
+		else
+			echo "Database owner $DB_OWNER already exists, skipping creation."
 		fi
-	else
-		echo "Database owner $DB_OWNER already exists, skipping creation."
-	fi
 
-	# Create database if required
-	if [ "a$DB_ENCODING" = "a" ]; then
-		DB_ENCODING=" -E UTF8"
-	fi
-	db_exists=`psql$DB_HOST$DB_PORT$DB_USER -Atc "select datname from pg_database where datname='$DB_NAME';"`
-	if [ "a$db_exists" = "a" ]; then
-		if confirm "Would you like to create the database $DB_NAME?" ; then
-			echo "Running: createdb$DB_HOST$DB_PORT$DB_USER$DB_ENCODING --owner $DB_OWNER $DB_NAME"
-			if [ $DEBUG -eq 0 ]; then
-				createdb$DB_HOST$DB_PORT$DB_USER$DB_ENCODING --owner $DB_OWNER $DB_NAME
-				if [ $? -ne 0 ]; then
-					die "can not create database $DB_NAME."
-				fi
-			fi
+		# Create database if required
+		if [ "a$DB_ENCODING" = "a" ]; then
+			DB_ENCODING=" -E UTF8"
 		fi
-	else
-		if confirm "Would you like to drop the database $DB_NAME before recreate it?" ; then
-			echo "Running: dropdb$DB_HOST$DB_PORT$DB_USER $DB_NAME"
-			if [ $DEBUG -eq 0 ]; then
-				dropdb$DB_HOST$DB_PORT$DB_USER $DB_NAME
-				if [ $? -ne 0 ]; then
-					die "can not drop database $DB_NAME."
+		db_exists=`psql$DB_HOST$DB_PORT$DB_USER -Atc "select datname from pg_database where datname='$DB_NAME';"`
+		if [ "a$db_exists" = "a" ]; then
+			if confirm "Would you like to create the database $DB_NAME?" ; then
+				echo "Running: createdb$DB_HOST$DB_PORT$DB_USER$DB_ENCODING --owner $DB_OWNER $DB_NAME"
+				if [ $DEBUG -eq 0 ]; then
+					createdb$DB_HOST$DB_PORT$DB_USER$DB_ENCODING --owner $DB_OWNER $DB_NAME
+					if [ $? -ne 0 ]; then
+						die "can not create database $DB_NAME."
+					fi
 				fi
 			fi
-			echo "Running: createdb$DB_HOST$DB_PORT$DB_USER$DB_ENCODING --owner $DB_OWNER $DB_NAME"
-			if [ $DEBUG -eq 0 ]; then
-				createdb$DB_HOST$DB_PORT$DB_USER$DB_ENCODING --owner $DB_OWNER $DB_NAME
-				if [ $? -ne 0 ]; then
-					die "can not create database $DB_NAME."
+		else
+			if confirm "Would you like to drop the database $DB_NAME before recreate it?" ; then
+				echo "Running: dropdb$DB_HOST$DB_PORT$DB_USER $DB_NAME"
+				if [ $DEBUG -eq 0 ]; then
+					dropdb$DB_HOST$DB_PORT$DB_USER $DB_NAME
+					if [ $? -ne 0 ]; then
+						die "can not drop database $DB_NAME."
+					fi
+				fi
+				echo "Running: createdb$DB_HOST$DB_PORT$DB_USER$DB_ENCODING --owner $DB_OWNER $DB_NAME"
+				if [ $DEBUG -eq 0 ]; then
+					createdb$DB_HOST$DB_PORT$DB_USER$DB_ENCODING --owner $DB_OWNER $DB_NAME
+					if [ $? -ne 0 ]; then
+						die "can not create database $DB_NAME."
+					fi
 				fi
 			fi
 		fi
