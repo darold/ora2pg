@@ -8289,9 +8289,9 @@ WHERE
 
 	if ($self->{prefix} ne 'USER') {
 		if ($self->{schema}) {
-			$str .= "\tAND A.TABLE_OWNER ='$self->{schema}'\n";
+			$str .= "\tAND A.TABLE_OWNER ='$self->{schema}' AND B.OWNER=A.TABLE_OWNER AND C.OWNER=A.TABLE_OWNER\n";
 		} else {
-			$str .= "\tAND A.TABLE_OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "')\n";
+			$str .= "\tAND A.TABLE_OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "') AND B.OWNER=A.TABLE_OWNER AND C.OWNER=A.TABLE_OWNER\n";
 		}
 	}
 	$str .= "ORDER BY A.TABLE_NAME,A.PARTITION_POSITION,C.COLUMN_POSITION\n";
@@ -8358,9 +8358,9 @@ WHERE
 
 	if ($self->{prefix} ne 'USER') {
 		if ($self->{schema}) {
-			$str .= "\tAND A.TABLE_OWNER ='$self->{schema}'\n";
+			$str .= "\tAND A.TABLE_OWNER ='$self->{schema}' AND B.OWNER=A.TABLE_OWNER AND C.OWNER=A.TABLE_OWNER\n";
 		} else {
-			$str .= "\tAND A.TABLE_OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "')\n";
+			$str .= "\tAND A.TABLE_OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "') AND B.OWNER=A.TABLE_OWNER AND C.OWNER=A.TABLE_OWNER\n";
 		}
 	}
 	$str .= "ORDER BY A.TABLE_NAME,A.SUBPARTITION_POSITION,C.COLUMN_POSITION\n";
