@@ -346,9 +346,9 @@ sub plsql_to_plpgsql
 	$str =~ s/([^\w]+):(\w+)/$1$2/igs;
 
 	# INSERTING|DELETING|UPDATING -> TG_OP = 'INSERT'|'DELETE'|'UPDATE'
-	$str =~ s/INSERTING/TG_OP = 'INSERT'/igs;
-	$str =~ s/DELETING/TG_OP = 'DELETE'/igs;
-	$str =~ s/UPDATING/TG_OP = 'UPDATE'/igs;
+	$str =~ s/\bINSERTING\b/TG_OP = 'INSERT'/igs;
+	$str =~ s/\bDELETING\b/TG_OP = 'DELETE'/igs;
+	$str =~ s/\bUPDATING\b/TG_OP = 'UPDATE'/igs;
 
 	# EXECUTE IMMEDIATE => EXECUTE
 	$str =~ s/EXECUTE IMMEDIATE/EXECUTE/igs;
@@ -1008,7 +1008,7 @@ sub estimate_cost
 	$cost_details{'EXCEPTION'} += $n;
 	$n = () = $str =~ m/REGEXP_LIKE/igs;
 	$cost_details{'REGEXP_LIKE'} += $n;
-	$n = () = $str =~ m/INSERTING|DELETING|UPDATING/igs;
+	$n = () = $str =~ m/\b(INSERTING|DELETING|UPDATING)\b/igs;
 	$cost_details{'TG_OP'} += $n;
 	$n = () = $str =~ m/CURSOR/igs;
 	$cost_details{'CURSOR'} += $n;
