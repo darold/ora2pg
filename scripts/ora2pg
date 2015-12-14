@@ -73,6 +73,9 @@ my $PRINT_HEADER = '';
 my $HUMAN_DAY_LIMIT;
 my $IS_MYSQL = 0;
 my $AUDIT_USER = '';
+my $PG_DSN = '';
+my $PG_USER = '';
+my $PG_PWD = '';
 
 my @SCHEMA_ARRAY  = qw( TABLE PACKAGE VIEW GRANT SEQUENCE TRIGGER FUNCTION PROCEDURE TABLESPACE PARTITION TYPE MVIEW DBLINK SYNONYM DIRECTORY );
 my @EXTERNAL_ARRAY  = qw( KETTLE FDW );
@@ -126,6 +129,9 @@ GetOptions (
 	'print_header!' => \$PRINT_HEADER,
 	'human_days_limit=i' => \$HUMAN_DAY_LIMIT,
 	'audit_user=s' => \$AUDIT_USER,
+	'pg_dsn=s' => \$PG_DSN,
+	'pg_user=s' => \$PG_USER,
+	'pg_pwd=s' => \$PG_PWD,
 );
 
 # Check command line parameters
@@ -258,6 +264,9 @@ my $schema = new Ora2Pg (
 	is_mysql => $IS_MYSQL,
 	audit_user => $AUDIT_USER,
 	temp_dir => $TMP_DIR,
+	pg_dsn => $PG_DSN,
+	pg_user => $PG_USER,
+	pg_pwd => $PG_PWD,
 );
 
 
@@ -350,6 +359,9 @@ Usage: ora2pg [-dhpqv --estimate_cost --dump_as_html] [--option value]
    --audit_user LIST  : comma separated list of username to filter queries in
                         the DBA_AUDIT_TRAIL table. Used only with SHOW_REPORT
                         and QUERY export type.
+   --pg_dsn DSN       : set the datasource to PostgreSQL for direct import.
+   --pg_user name     : set the PostgreSQL user to use.
+   --pg_pwd password  : set the PostgreSQL password to use.
 
 See full documentation at http://ora2pg.darold.net/ for more help or see
 manpage with 'man ora2pg'.
@@ -902,32 +914,38 @@ fi
 
 # Check if we must just import schema or proceed to data import too
 if [ $SCHEMA_ONLY -eq 0 ]; then
-	if [ -z "$IMPORT_JOBS" ] &&  [ -z "$PARALLEL_TABLES" ]; then
-		# If data file is present propose to import data
-		if [ -r "$NAMESPACE/data/data.sql" ]; then
-			if confirm "Would you like to import data from $NAMESPACE/data/data.sql?" ; then
-				echo "Running: psql$DB_HOST$DB_PORT -U $DB_OWNER -d $DB_NAME -f $NAMESPACE/data/data.sql"
-				if [ $DEBUG -eq 0 ]; then
-					psql$DB_HOST$DB_PORT -U $DB_OWNER -d $DB_NAME -f $NAMESPACE/data/data.sql
-					if [ $? -ne 0 ]; then
-						die "an error occurs when importing file $NAMESPACE/data/data.sql."
-					fi
-				fi
-			fi
+	# set the PostgreSQL datasource
+	pgdsn_defined=`grep "^PG_DSN" config/ora2pg.conf`
+	if [ "a$pgdsn_defined" = "a" ]; then
+		if [ "a$DB_HOST" != "a" ]; then
+			pgdsn_defined="dbi:Pg:dbname=$DB_NAME;host=$DB_HOST"
 		else
-			echo "NOTICE: no data to import."
+			pgdsn_defined="dbi:Pg:dbname=$DB_NAME;host=localhost"
 		fi
-	else
-		if confirm "Would you like to import data from Oracle database directly into PostgreSQL?" ; then
-			pgdsn_defined=`grep "^PG_DSN" config/ora2pg.conf`
-			if [ "a$pgdsn_defined" = "a" ]; then
-				die "PG_DSN must be defined for direct import to PostgreSQL."
-			fi
-			echo "Running: ora2pg$IMPORT_JOBS$PARALLEL_TABLES -c config/ora2pg.conf -t COPY"
+		if [ "a$DB_PORT" != "a" ]; then
+			pgdsn_defined="$pgdsn_defined;port=$DB_PORT"
+		else
+			pgdsn_defined="$pgdsn_defined;port=5432"
+		fi
+	fi
+	# If data file is present propose to import data
+	if [ -r "$NAMESPACE/data/data.sql" ]; then
+		if confirm "Would you like to import data from $NAMESPACE/data/data.sql?" ; then
+			echo "Running: psql$DB_HOST$DB_PORT -U $DB_OWNER -d $DB_NAME -f $NAMESPACE/data/data.sql"
 			if [ $DEBUG -eq 0 ]; then
 				psql$DB_HOST$DB_PORT -U $DB_OWNER -d $DB_NAME -f $NAMESPACE/data/data.sql
 				if [ $? -ne 0 ]; then
 					die "an error occurs when importing file $NAMESPACE/data/data.sql."
+				fi
+			fi
+		fi
+	else
+		if confirm "Would you like to import data from Oracle database directly into PostgreSQL?" ; then
+			echo "Running: ora2pg$IMPORT_JOBS$PARALLEL_TABLES -c config/ora2pg.conf -t COPY --pg_dsn \"$pgdsn_defined\" --pg_user $DB_OWNER"
+			if [ $DEBUG -eq 0 ]; then
+				ora2pg$IMPORT_JOBS$PARALLEL_TABLES -c config/ora2pg.conf -t COPY --pg_dsn "$pgdsn_defined" --pg_user $DB_OWNER
+				if [ $? -ne 0 ]; then
+					die "an error occurs when importing data."
 				fi
 			fi
 		fi

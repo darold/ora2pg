@@ -219,16 +219,16 @@ CONFIGURATION
 
     Here are all command line parameters available when using ora2pg:
 
-      Usage: ora2pg [-dhpqv --estimate_cost --dump_as_html] [--option value]
+    Usage: ora2pg [-dhpqv --estimate_cost --dump_as_html] [--option value]
 
-        -a | --allow str  : comma-separated list of objects to allow from export.
+        -a | --allow str  : coma separated list of objects to allow from export.
                             Can be used with SHOW_COLUMN too.
         -b | --basedir dir: Used to set the default output directory, where files
                             resulting from exports will be stored.
         -c | --conf file  : Used to set an alternate configuration file than the
                             default /etc/ora2pg/ora2pg.conf.
         -d | --debug      : Enable verbose output.
-        -e | --exclude str: comma-separated list of objects to exclude from export.
+        -e | --exclude str: coma separated list of objects to exclude from export.
                             Can be used with SHOW_COLUMN too.
         -h | --help       : Print this short help.
         -i | --input file : File containing Oracle PL/SQL code to convert with
@@ -238,9 +238,7 @@ CONFIGURATION
         -l | --log file   : Used to set a log file. Default is stdout.
         -L | --limit num  : number of tuples extracted from Oracle and stored in
                             memory before writing, default: 10000.
-        -m | --mysql      : inform Ora2Pg to export a MySQL database instead of an
-                            Oracle schema. Must be used when there is no database
-                            connection, otherwise it is autodetected from datasource.
+        -m | --mysql      : Export a MySQL database instead of an Oracle schema.
         -n | --namespace schema : Used to set the Oracle schema to extract from.
         -o | --out file   : Used to set the path to the output file where SQL will
                             be written. Default: output.sql in running directory.
@@ -263,14 +261,14 @@ CONFIGURATION
                       used to connect to the Pg database that will be the owner.
         --nls_lang code: use this to set the Oracle NLS_LANG client encoding.
         --client_encoding code: Use this to set the PostgreSQL client encoding.
-        --view_as_table str: comma-separated list of view to export as table.
+        --view_as_table str: coma separated list of view to export as table.
         --estimate_cost   : activate the migration cost evalution with SHOW_REPORT
         --cost_unit_value minutes: number of minutes for a cost evalution unit.
                       default: 5 minutes, correspond to a migration conducted by a
                       PostgreSQL expert. Set it to 10 if this is your first migration.
        --dump_as_html     : force ora2pg to dump report in HTML, used only with
                             SHOW_REPORT. Default is to dump report as simple text.
-       --dump_as_csv      : same as above but force ora2pg to dump report in CSV.
+       --dump_as_csv      : as above but force ora2pg to dump report in CSV.
        --dump_as_sheet    : report migration assessment one CSV line per database.
        --init_project NAME: initialise a typical ora2pg project tree. Top directory
                             will be created under project base dir.
@@ -284,10 +282,18 @@ CONFIGURATION
        --audit_user LIST  : comma separated list of username to filter queries in
                             the DBA_AUDIT_TRAIL table. Used only with SHOW_REPORT
                             and QUERY export type.
+       --pg_dsn DSN       : set the datasource to PostgreSQL for direct import.
+       --pg_user name     : set the PostgreSQL user to use.
+       --pg_pwd password  : set the PostgreSQL password to use.
+
+    See full documentation at http://ora2pg.darold.net/ for more help or see
+    manpage with 'man ora2pg'.
 
     ora2pg will return 0 on success, 1 on error. It will return 2 when a
     child process have been interrupted and you've got the warning message:
-    WARNING: an error occurs during data export. Please check what's happen.
+    "WARNING: an error occurs during data export. Please check what's
+    happen." Most of the time this is an OOM issue, you might first reduce
+    DATA_LIMIT value.
 
     For developpers, it is possible to add your own custom option(s) in the
     Perl script ora2pg as any configuration directive from ora2pg.conf can
@@ -1654,7 +1660,7 @@ CONFIGURATION
         Use btree_gin extenstion to create bitmap like index with pg >= 9.4
         You will need to create the extension by yourself: create extension
         btree_gin; Default is to create GIN index, when disabled, a btree
-        index will beÂ created
+        index will be created
 
     LONGREADLEN
         Use this directive to set the database handle's 'LongReadLen'
