@@ -928,6 +928,10 @@ if [ $SCHEMA_ONLY -eq 0 ]; then
 			pgdsn_defined="$pgdsn_defined;port=5432"
 		fi
 	fi
+
+	# remove command line option from the DSN string
+	pgdsn_defined=`echo "$pgdsn_defined" | sed 's/ -. //g'`
+
 	# If data file is present propose to import data
 	if [ -r "$NAMESPACE/data/data.sql" ]; then
 		if confirm "Would you like to import data from $NAMESPACE/data/data.sql?" ; then
@@ -940,6 +944,7 @@ if [ $SCHEMA_ONLY -eq 0 ]; then
 			fi
 		fi
 	else
+		# Import data directly from PostgreSQL
 		if confirm "Would you like to import data from Oracle database directly into PostgreSQL?" ; then
 			echo "Running: ora2pg$IMPORT_JOBS$PARALLEL_TABLES -c config/ora2pg.conf -t COPY --pg_dsn \"$pgdsn_defined\" --pg_user $DB_OWNER"
 			if [ $DEBUG -eq 0 ]; then
