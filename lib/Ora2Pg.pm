@@ -5708,6 +5708,8 @@ sub _create_indexes
 			if ($idx =~ /^([^\.]+)\.(.*)$/) {
 				$schm = $1;
 				$idxname = $2;
+			} else {
+				$idxname = $idx;
 			}
 			$idxname = $self->quote_object_name($idxname);
 			if ($self->{indexes_renaming}) {
