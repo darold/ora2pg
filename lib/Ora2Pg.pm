@@ -2736,12 +2736,20 @@ sub _export_table_data
 	} else {
 		$self->{copy_freeze} = '';
 	}
-		
+
+	# Open a new connection with parallel table export 
+	my $local_dbh = undef;
+	if (($self->{parallel_tables} > 1) && $self->{pg_dsn}) {
+		$local_dbh = $self->_send_to_pgdb();
+	} else {
+		$local_dbh = $self->{dbhdest};
+ 	}
+
 	# Add table truncate order
 	if ($self->{truncate_table}) {
 		$self->logit("Truncating table $table...\n", 1);
 		if ($self->{pg_dsn}) {
-			my $s = $self->{dbhdest}->do("TRUNCATE TABLE $tmptb;") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
+			my $s = $local_dbh->do("TRUNCATE TABLE $tmptb;") or $self->logit("FATAL: " . $local_dbh->errstr . "\n", 0, 1);
 		} else {
 			if ($self->{file_per_table}) {
 				$self->data_dump("TRUNCATE TABLE $tmptb;\n",  $table);
@@ -2790,7 +2798,12 @@ sub _export_table_data
 			$self->dump("\nCOMMIT;\n");
 		}
 	}
-		
+
+ 	# close the connection with parallel table export
+ 	if (($self->{parallel_tables} > 1) && $self->{pg_dsn}) {
+ 		$local_dbh->disconnect();
+ 	}
+
 	return $total_record;
 }
 
@@ -4720,7 +4733,7 @@ LANGUAGE plpgsql ;
 
 		}
 
-		# Commit transaction
+		# Start a new transaction
 		if ($self->{pg_dsn}) {
 			my $s = $self->{dbhdest}->do("BEGIN;") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
 
