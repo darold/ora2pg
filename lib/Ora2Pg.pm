@@ -4632,6 +4632,19 @@ LANGUAGE plpgsql ;
 		# Set total number of rows
 		my $global_rows = 0;
 		foreach my $table (keys %{$self->{tables}}) {
+                        if ($self->{global_where}) {
+                                if ($self->{is_mysql} && ($self->{global_where} =~ /\s+LIMIT\s+\d+,(\d+)/)) {
+					$self->{tables}{$table}{table_info}{num_rows} = $1 if ($i < $self->{tables}{$table}{table_info}{num_rows});
+                                } elsif ($self->{global_where} =~ /\s+ROWNUM\s+[<=>]+\s+(\d+)/) {
+					$self->{tables}{$table}{table_info}{num_rows} = $1 if ($i < $self->{tables}{$table}{table_info}{num_rows});
+                                }
+                        } elsif (exists $self->{where}{"\L$table\E"}) {
+                                if ($self->{is_mysql} && ($self->{where}{"\L$table\E"} =~ /\s+LIMIT\s+\d+,(\d+)/)) {
+					$self->{tables}{$table}{table_info}{num_rows} = $1 if ($i < $self->{tables}{$table}{table_info}{num_rows});
+                                } elsif ($self->{where}{"\L$table\E"} =~ /\s+ROWNUM\s+[<=>]+\s+(\d+)/) {
+					$self->{tables}{$table}{table_info}{num_rows} = $1 if ($i < $self->{tables}{$table}{table_info}{num_rows});
+                                }
+                        }
 			$global_rows += $self->{tables}{$table}{table_info}{num_rows};
 		}
 
