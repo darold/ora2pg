@@ -278,7 +278,7 @@ CONFIGURATION
                             especially for the first run of ora2pg.
        --human_days_limit num : set the number human-days limit where the migration
                             assessment level switch from B to C. Default is set to
-                            10 human-days.
+                            5 human-days.
        --audit_user LIST  : comma separated list of username to filter queries in
                             the DBA_AUDIT_TRAIL table. Used only with SHOW_REPORT
                             and QUERY export type.
