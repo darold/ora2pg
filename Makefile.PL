@@ -762,7 +762,7 @@ PG_SUPPORTS_MVIEW	1
 
 # If enabled, export view with CHECK OPTION. Enable it if you have PostgreSQL
 # version 9.4 or higher. Default, disabled
-PG_SUPPORTS_CHECKOPTION	0
+PG_SUPPORTS_CHECKOPTION	1
 
 # PostgreSQL versions below 9.x do not support IF EXISTS in DDL statements.
 # Disabling the directive with value 0 will prevent Ora2Pg to add those
