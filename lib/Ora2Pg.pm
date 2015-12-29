@@ -2325,9 +2325,14 @@ sub read_trigger_from_file
 			my $tb_name = $4;
 			my $trigger = $5 . $6;
 			my $t_type = '';
-			if ($trigger =~ s/^\s*(FOR\s+EACH\s+)(ROW|STATEMENT)\s*//i) {
+
+			# Remove referencing clause, not supported by PostgreSQL
+			$trigger =~ s/REFERENCING\s+(.*?)(FOR\s+EACH\s+)/$2/is;
+
+			if ($trigger =~ s/^\s*(FOR\s+EACH\s+)(ROW|STATEMENT)\s*//is) {
 				$t_type = $1 . $2;
 			}
+
 			my $t_when_cond = '';
 			if ($trigger =~ s/^\s*WHEN\s+(.*?)\s+((?:BEGIN|DECLARE|CALL).*)//i) {
 				$t_when_cond = $1;
@@ -2344,8 +2349,9 @@ sub read_trigger_from_file
 				}
 			}
 			$tid++;
+
 			# TRIGGER_NAME, TRIGGER_TYPE, TRIGGERING_EVENT, TABLE_NAME, TRIGGER_BODY, WHEN_CLAUSE, DESCRIPTION,ACTION_TYPE
-			$trigger =~ s/END\s[^\s]+$/END/is;
+			$trigger =~ s/END\s+[^\s]+\s+$/END/is;
 			push(@{$self->{triggers}}, [($t_name, $t_pos, $t_event, $tb_name, $trigger, $t_when_cond, '', $t_type)]);
 
 		} else {
@@ -3549,7 +3555,7 @@ LANGUAGE plpgsql ;
 					}
 					if ($self->{plsql_pgsql}) {
 						# Add a semi colon if none
-						if ($trig->[4] !~ /\bBEGIN\b/) {
+						if ($trig->[4] !~ /\bBEGIN\b/i) {
 							chomp($trig->[4]);
 							$trig->[4] .= ';' if ($trig->[4] !~ /;$/);
 							$trig->[4] = "BEGIN\n$trig->[4]\nEND;";
