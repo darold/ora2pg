@@ -9263,13 +9263,21 @@ sub _convert_function
 		if ($#nout > 0) {
 			$func_return = " RETURNS$fct_detail{setof} RECORD AS \$body\$\n";
 		} elsif ($#nout == 0) {
-			#$fct_detail{args} =~ /\s*OUT\s+([A-Z0-9_\$\%\.]+)[\s\),]*/i;
-			$fct_detail{args} =~ /\s*OUT\s+([^\s]+)\s+([^,\)]+)/is;
-			$func_return = " RETURNS$fct_detail{setof} $2 AS \$body\$\n";
+			if ($fct_detail{args} =~ /\s*OUT\s+([^\s]+)\s+([^,\)]+)/is) {
+				$func_return = " RETURNS$fct_detail{setof} $2 AS \$body\$\n";
+			} elsif ($fct_detail{args} =~ /\s*([^\s]+)\s+OUT\s+([^,\)]+)/is) {
+				$func_return = " RETURNS$fct_detail{setof} $2 AS \$body\$\n";
+			} else {
+				$func_return = " RETURNS$fct_detail{setof} PLEASE_CHECK_RETURNED_TYPE AS \$body\$\n";
+			}
 		} elsif ($#ninout == 0) {
-			#$fct_detail{args} =~ /\s*INOUT\s+([A-Z0-9_\$\%\.]+)[\s\),]*/i;
-			$fct_detail{args} =~ /\s*INOUT\s+([^\s]+)\s+([^,\)]+)/is;
-			$func_return = " RETURNS$fct_detail{setof} $2 AS \$body\$\n";
+			if ($fct_detail{args} =~ /\s*INOUT\s+([^\s]+)\s+([^,\)]+)/is) {
+				$func_return = " RETURNS$fct_detail{setof} $2 AS \$body\$\n";
+			} elsif ($fct_detail{args} =~ /\s*([^\s]+)\s+INOUT\s+([^,\)]+)/is) {
+				$func_return = " RETURNS$fct_detail{setof} $2 AS \$body\$\n";
+			} else {
+				$func_return = " RETURNS$fct_detail{setof} PLEASE_CHECK_RETURNED_TYPE AS \$body\$\n";
+			}
 		} else {
 			$func_return = " RETURNS VOID AS \$body\$\n";
 		}
