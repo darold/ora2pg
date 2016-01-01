@@ -3561,7 +3561,9 @@ LANGUAGE plpgsql ;
 							$trig->[4] = "BEGIN\n$trig->[4]\nEND;";
 						}
 						$trig->[4] = Ora2Pg::PLSQL::plsql_to_plpgsql($self, $trig->[4]);
-						$trig->[4] =~ s/\b(END[;]*)[\s\/]*$/$ret_kind\n$1/igs;
+						if ($trig->[4] !~ s/\b(EXCEPTION\s+WHEN)(.*?)\b(END[;]*)[\s\/]*$/$ret_kind\n$1$2$3/igs) {
+							$trig->[4] =~ s/\b(END[;]*)[\s\/]*$/$ret_kind\n$1/igs;
+						}
 						my @parts = split(/BEGIN/i, $trig->[4]);
 						if ($#parts > 0) {
 							if (!$self->{is_mysql}) {
