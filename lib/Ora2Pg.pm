@@ -3609,6 +3609,8 @@ LANGUAGE plpgsql ;
 						$trig->[5] =~ s/"([^"]+)"/\L$1\E/gs;
 					}
 					chomp($trig->[6]);
+					# Remove referencing clause, not supported by PostgreSQL
+					$trig->[6] =~ s/REFERENCING\s+(.*?)(FOR\s+EACH\s+)/$2/is;
 					$sql_output .= "CREATE TRIGGER $trig->[6]\n";
 					if ($trig->[5]) {
 						if ($self->{plsql_pgsql}) {
