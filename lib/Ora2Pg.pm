@@ -10264,13 +10264,27 @@ sub _dump_to_pg
 				}
 			} else {
 				my $ps = $dbhdest->prepare($sprep) or $self->logit("FATAL: " . $dbhdest->errstr . "\n", 0, 1);
+				my @date_cols = ();
 				for (my $i = 0; $i <= $#{$tt}; $i++) {
 					if ($tt->[$i] eq 'bytea') {
 						$ps->bind_param($i+1, undef, { pg_type => DBD::Pg::PG_BYTEA });
+					} elsif ($tt->[$i] =~ /(date|time)/i) {
+						push(@date_cols, $i);
 					}
 				}
 				$self->logit("DEBUG: Sending INSERT bulk output directly to PostgreSQL backend\n", 1);
 				foreach my $row (@$rows) {
+					# Even with prepared statement we need to replace zero date
+					foreach my $j (@date_cols) {
+						if ($row[$j] =~ /^0000-00-00/) {
+							if (!$self->{replace_zero_date}) {
+								$row[$j] = undef;
+							} else {
+								$row[$j] = $self->{replace_zero_date};
+							}
+						}
+					}
+					# Apply bind parmeters
 					unless ($ps->execute(@$row) ) {
 						if ($self->{log_on_error}) {
 							$self->logit("ERROR (log error enabled): " . $ps->errstr . "\n", 0, 0);
