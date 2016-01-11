@@ -10276,11 +10276,11 @@ sub _dump_to_pg
 				foreach my $row (@$rows) {
 					# Even with prepared statement we need to replace zero date
 					foreach my $j (@date_cols) {
-						if ($row[$j] =~ /^0000-00-00/) {
+						if ($row->[$j] =~ /^0000-00-00/) {
 							if (!$self->{replace_zero_date}) {
-								$row[$j] = undef;
+								$row->[$j] = undef;
 							} else {
-								$row[$j] = $self->{replace_zero_date};
+								$row->[$j] = $self->{replace_zero_date};
 							}
 						}
 					}
