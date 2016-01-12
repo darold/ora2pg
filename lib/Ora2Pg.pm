@@ -1077,11 +1077,11 @@ sub _init
 		$self->{longtruncok} = $self->{longtrunkok};
 	}
 	$self->{longtruncok} = 0 if (not defined $self->{longtruncok});
-	$self->{longreadlen} ||= (1024*1024);
-	# With lob locators we don"t care about LONGREADLEN, reduce his size at a small size
-	if (!$self->{no_lob_locator}) {
-		$self->{longreadlen} = 8192;
+	# With lob locators LONGREADLEN must at least be 1MB
+	if (!$self->{longreadlen} || !$self->{no_lob_locator}) {
+		$self->{longreadlen} = (1023*1024);
 	}
+
 	# Backward compatibility with PG_NUMERIC_TYPE alone
 	$self->{pg_integer_type} = 1 if (not defined $self->{pg_integer_type});
 	# Backward compatibility with CASE_SENSITIVE

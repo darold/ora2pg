@@ -552,7 +552,7 @@ sub make_config_generic
 		$conf_arr->[$i] =~ s/^DISABLE_TRIGGERS.*0/DISABLE_TRIGGERS\t1/;
 		$conf_arr->[$i] =~ s/^(CLIENT_ENCODING.*)/#$1/;
 		$conf_arr->[$i] =~ s/^(NLS_LANG.*)/#$1/;
-		$conf_arr->[$i] =~ s/^#LONGREADLEN.*1047552/LONGREADLEN\t8192/;
+		$conf_arr->[$i] =~ s/^#LONGREADLEN.*1047552/LONGREADLEN\t1047552/;
 		$conf_arr->[$i] =~ s/^AUTODETECT_SPATIAL_TYPE.*0/AUTODETECT_SPATIAL_TYPE\t1/;
 		$conf_arr->[$i] =~ s/^NO_LOB_LOCATOR.*/NO_LOB_LOCATOR\t0/;
 		if ($DSN) {
