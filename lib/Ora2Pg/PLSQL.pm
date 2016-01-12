@@ -84,6 +84,8 @@ $QUERY_TEST_SCORE = 0.1;
 	'FORALL' => 1,
 	'ROWNUM' => 2,
 	'NOTFOUND' => 1,
+	'ISOPEN' => 1,
+	'ROWCOUNT' => 1,
 	'ROWID' => 2,
 	'IS RECORD' => 1,
 	'SQLCODE' => 1,
@@ -116,9 +118,6 @@ $QUERY_TEST_SCORE = 0.1;
 	'PRAGMA' => 3,
 	'MDSYS' => 1,
 	'MERGE INTO' => 3,
-	'%ROWCOUNT' => 1,
-	'%ISOPEN' => 1,
-	'%NOTFOUND' => 1,
 	'COMMIT' => 3,
 );
 
@@ -1018,6 +1017,10 @@ sub estimate_cost
 	$cost_details{'SAVEPOINT'} += $n;
 	$n = () = $str =~ m/(FROM|EXEC)((?!WHERE).)*\b[\w\_]+\@[\w\_]+\b/igs;
 	$cost_details{'DBLINK'} += $n;
+	$n = () = $str =~ m/%ISOPEN\b/igs;
+	$cost_details{'ISOPEN'} += $n;
+	$n = () = $str =~ m/%ROWCOUNT\b/igs;
+	$cost_details{'ROWCOUNT'} += $n;
 
 	$n = () = $str =~ m/PLVDATE/igs;
 	$cost_details{'PLVDATE'} += $n;
