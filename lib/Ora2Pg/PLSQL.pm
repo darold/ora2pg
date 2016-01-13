@@ -91,6 +91,7 @@ $QUERY_TEST_SCORE = 0.1;
 	'SQLCODE' => 1,
 	'TABLE' => 2,
 	'DBMS_' => 3,
+	'DBMS_OUTPUT.put' => 1,
 	'UTL_' => 3,
 	'CTX_' => 3,
 	'EXTRACT' => 0.1,
@@ -994,6 +995,12 @@ sub estimate_cost
 	$cost_details{'PIPE ROW'} += $n;
 	$n = () = $str =~ m/DBMS_\w/igs;
 	$cost_details{'DBMS_'} += $n;
+	$n = () = $str =~ m/DBMS_OUTPUT\.(put_line|new_line|put)/igs;
+	$cost_details{'DBMS_'} -= $n;
+	$n = () = $str =~ m/DBMS_OUTPUT\.put\(/igs;
+	$cost_details{'DBMS_OUTPUT.put'} += $n;
+	$n = () = $str =~ m/DBMS_STANDARD\.RAISE EXCEPTION/igs;
+	$cost_details{'DBMS_'} -= $n;
 	$n = () = $str =~ m/UTL_\w/igs;
 	$cost_details{'UTL_'} += $n;
 	$n = () = $str =~ m/CTX_\w/igs;
