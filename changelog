@@ -1,7 +1,7 @@
-2016 01 12 - v16.2
+2016 01 13 - v16.2
 
-This release fixes several issues and adds some new ora2pg command
-line options:
+This release fixes several issues, is more accurates on migration
+assessment report and adds some new ora2pg command line options:
 
   * Add --pg_dsn, --pg_user and --pg_pwd to be able to set the
     connection to import directly into PostgreSQL at command line.
@@ -20,6 +20,9 @@ Potential backward compatibility issues:
 
 Here is the complete list of other changes:
 
+  - Adjust DBMS_OUTPUT calls to the migration assessment count.
+  - Fix migration assessment count of call to cursor%ISOPEN and
+    cursor%ROWCOUNT.
   - Replace zero date also with prepared statement with online
     PostgreSQL import and INSERT action. Thanks to Sebastian Albert
     for the report.
