@@ -6867,7 +6867,11 @@ sub _unique_key
         my $cons_types = '('. join(',', @accepted_constraint_types) .')';
 
 	my $sql = "SELECT DISTINCT COLUMN_NAME,POSITION,CONSTRAINT_NAME,OWNER FROM $self->{prefix}_CONS_COLUMNS";
-	$sql .=  " WHERE OWNER='$owner'" if ($owner);
+	if ($owner) {
+		$sql .= " WHERE OWNER = '$owner' ";
+	} else {
+		$sql .= " WHERE OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "') ";
+	}
 	$sql .=  " ORDER BY POSITION";
 	my $sth = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute or $self->logit("FATAL: " . $sth->errstr . "\n", 0, 1);
@@ -6879,7 +6883,11 @@ sub _unique_key
 
 	my $condition = '';
 	$condition .= "AND TABLE_NAME='$table' " if ($table);
-	$condition .= "AND OWNER='$owner' " if ($owner);
+	if ($owner) {
+		$condition .= "AND OWNER = '$owner' ";
+	} else {
+		$condition .= "AND OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "') ";
+	}
 	$condition .= $self->limit_to_objects('UKEY', 'CONSTRAINT_NAME');
 
 	if ($self->{db_version} !~ /Release 8/) {
@@ -6942,7 +6950,11 @@ sub _check_constraint
 
 	my $condition = '';
 	$condition .= "AND TABLE_NAME='$table' " if ($table);
-	$condition .= "AND OWNER='$owner' " if ($owner);
+	if ($owner) {
+		$condition .= "AND OWNER = '$owner' ";
+	} else {
+		$condition .= "AND OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "') ";
+	}
 	$condition .= $self->limit_to_objects('CKEY', 'CONSTRAINT_NAME');
 
 	my $sth = $self->{dbh}->prepare(<<END) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -6997,11 +7009,19 @@ sub _foreign_key
 
 	my $condition = '';
 	$condition .= "AND TABLE_NAME='$table' " if ($table);
-	$condition .= "AND OWNER='$owner' " if ($owner);
+	if ($owner) {
+		$condition .= "AND OWNER = '$owner' ";
+	} else {
+		$condition .= "AND OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "') ";
+	}
 	$condition .= $self->limit_to_objects('FKEY','CONSTRAINT_NAME');
 
 	my $sql = "SELECT DISTINCT COLUMN_NAME,POSITION,TABLE_NAME,OWNER,CONSTRAINT_NAME FROM $self->{prefix}_CONS_COLUMNS";
-	$sql .= " WHERE OWNER='$owner'" if ($owner);
+	if ($owner) {
+		$sql .= " WHERE OWNER='$owner'";
+	} else {
+		$sql .= " WHERE OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "') ";
+	}
 	$sql .= " ORDER BY POSITION";
 	my $sth2 = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth2->execute or $self->logit("FATAL: " . $sth2->errstr . "\n", 0, 1);
@@ -7023,12 +7043,15 @@ END
 	my %link = ();
 	my @tab_done = ();
 	while (my $row = $sth->fetch) {
-		if ($self->{export_schema} && !$self->{schema}) {
-			$row->[7] = "$row->[8].$row->[7]";
+		if (!$self->{schema} && $self->{export_schema}) {
+			next if (grep(/^$row->[8]$row->[7]$row->[0]$/, @tab_done));
+			push(@{$data{"$row->[8].$row->[7]"}}, [ @$row ]);
+			push(@tab_done, "$row->[8]$row->[7]$row->[0]");
+		} else {
+			next if (grep(/^$row->[7]$row->[0]$/, @tab_done));
+			push(@{$data{$row->[7]}}, [ @$row ]);
+			push(@tab_done, "$row->[7]$row->[0]");
 		}
-		next if (grep(/^$row->[7]$row->[0]$/, @tab_done));
-		push(@{$data{$row->[7]}}, [ @$row ]);
-		push(@tab_done, "$row->[7]$row->[0]");
 		my @done = ();
 		foreach my $r (@cons_columns) {
 			# Skip it if tablename and owner are not the same
@@ -7039,6 +7062,7 @@ END
 					if (!$self->{schema} && $self->{export_schema}) {
 						push(@{$link{"$row->[8].$row->[7]"}{$row->[0]}{local}}, $r->[0]);
 					} else {
+						#            TABLENAME  CONSTNAME           COLNAME
 						push(@{$link{$row->[7]}{$row->[0]}{local}}, $r->[0]);
 					}
 					push(@done, "$r->[2]$r->[0]");
@@ -7048,9 +7072,6 @@ END
 		@done = ();
 
 		foreach my $r (@cons_columns) {
-			if ($self->{export_schema} && !$self->{schema}) {
-				$r->[2] = "$r->[3].$r->[2]";
-			}
 			# Skip it if tablename and owner are not the same
 			next if (($r->[2] ne $row->[7]) && ($r->[3] ne $row->[8]));
 			# If the names of the constraints are the same as the unique constraint definition for
@@ -7058,8 +7079,9 @@ END
 			if ($r->[4] eq $row->[1]) {
 				if (!grep(/^$r->[2]$r->[0]$/, @done)) {
 					if (!$self->{schema} && $self->{export_schema}) {
-						push(@{$link{"$row->[8].$row->[7]"}{$row->[0]}{remote}{$r->[2]}}, $r->[0]);
+						push(@{$link{"$row->[8].$row->[7]"}{$row->[0]}{remote}{"$r->[3].$r->[2]"}}, $r->[0]);
 					} else {
+						#            TABLE     CONSTNAME          TABLENAME   COLNAME
 						push(@{$link{$row->[7]}{$row->[0]}{remote}{$r->[2]}}, $r->[0]);
 					}
 					push(@done, "$r->[2]$r->[0]");
