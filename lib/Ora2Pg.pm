@@ -4796,7 +4796,7 @@ LANGUAGE plpgsql ;
 			if ($self->{drop_fkey}) {
 				my @create_all = ();
 				$self->logit("Restoring foreign keys of table $table...\n", 1);
-				push(@create_all, $self->_create_foreign_keys($table, @{$self->{tables}{$table}{foreign_key}}));
+				push(@create_all, $self->_create_foreign_keys($table));
 				foreach my $str (@create_all) {
 					chomp($str);
 					next if (!$str);
@@ -5465,7 +5465,7 @@ CREATE TRIGGER ${table}_trigger_insert
 		$self->logit("Dumping RI $table...\n", 1);
 		# Add constraint definition
 		if ($self->{type} ne 'FDW') {
-			my $create_all = $self->_create_foreign_keys($table, @{$self->{tables}{$table}{foreign_key}});
+			my $create_all = $self->_create_foreign_keys($table);
 			if ($create_all) {
 				if ($self->{file_per_constraint}) {
 					$constraints .= $create_all;
@@ -6110,7 +6110,7 @@ This function return SQL code to create the foreign keys of a table
 =cut
 sub _create_foreign_keys
 {
-	my ($self, $table, @foreign_key) = @_;
+	my ($self, $table) = @_;
 
 	my @out = ();
 
@@ -6119,25 +6119,24 @@ sub _create_foreign_keys
 
 	# Add constraint definition
 	my @done = ();
-	foreach my $h (@foreign_key) {
+	foreach my $fkname (keys %{$self->{tables}{$tbsaved}{foreign_link}}) {
 
-		next if (grep(/^$h->[0]$/, @done));
-		$h->[0] = uc($h->[0]);
-		foreach my $desttable (keys %{$self->{tables}{$tbsaved}{foreign_link}{$h->[0]}{remote}}) {
+		next if (grep(/^$fkname$/, @done));
+		foreach my $desttable (keys %{$self->{tables}{$tbsaved}{foreign_link}{$fkname}{remote}}) {
+			push(@done, $fkname);
 			my $str = '';
-			push(@done, $h->[0]);
-			map { $_ = '"' . $_ . '"' } @{$self->{tables}{$tbsaved}{foreign_link}{$h->[0]}{local}};
-			map { $_ = '"' . $_ . '"' } @{$self->{tables}{$tbsaved}{foreign_link}{$h->[0]}{remote}{$desttable}};
+			map { $_ = '"' . $_ . '"' } @{$self->{tables}{$tbsaved}{foreign_link}{$fkname}{local}};
+			map { $_ = '"' . $_ . '"' } @{$self->{tables}{$tbsaved}{foreign_link}{$fkname}{remote}{$desttable}};
 			my $subsdesttable = $self->get_replaced_tbname($desttable);
 			my @lfkeys = ();
-			push(@lfkeys, @{$self->{tables}{$tbsaved}{foreign_link}{$h->[0]}{local}});
+			push(@lfkeys, @{$self->{tables}{$tbsaved}{foreign_link}{$fkname}{local}});
 			if (exists $self->{replaced_cols}{"\L$tbsaved\E"} && $self->{replaced_cols}{"\L$tbsaved\E"}) {
 				foreach my $c (keys %{$self->{replaced_cols}{"\L$tbsaved\E"}}) {
 					map { s/"$c"/"$self->{replaced_cols}{"\L$tbsaved\E"}{$c}"/i } @lfkeys;
 				}
 			}
 			my @rfkeys = ();
-			push(@rfkeys, @{$self->{tables}{$tbsaved}{foreign_link}{$h->[0]}{remote}{$desttable}});
+			push(@rfkeys, @{$self->{tables}{$tbsaved}{foreign_link}{$fkname}{remote}{$desttable}});
 			if (exists $self->{replaced_cols}{"\L$desttable\E"} && $self->{replaced_cols}{"\L$desttable\E"}) {
 				foreach my $c (keys %{$self->{replaced_cols}{"\L$desttable\E"}}) {
 					map { s/"$c"/"$self->{replaced_cols}{"\L$desttable\E"}{$c}"/i } @rfkeys;
@@ -6154,14 +6153,21 @@ sub _create_foreign_keys
 				map { $_ = $self->quote_reserved_words($_) } @lfkeys;
 				map { $_ = $self->quote_reserved_words($_) } @rfkeys;
 			}
-			if (!$self->{preserve_case}) {
-					$h->[0] = lc($h->[0]);
+			my $state;
+			foreach my $h (@{$self->{tables}{$tbsaved}{foreign_key}}) {
+				if ($h->[0] eq $fkname) {
+					push(@$state, @$h);
+					last;
+				}
 			}
-			$str .= "ALTER TABLE $table ADD CONSTRAINT $h->[0] FOREIGN KEY (" . join(',', @lfkeys) . ") REFERENCES $subsdesttable(" . join(',', @rfkeys) . ")";
-			$str .= " MATCH $h->[2]" if ($h->[2]);
-			$str .= " ON DELETE $h->[3]" if ($h->[3]);
+			if (!$self->{preserve_case}) {
+					$fkname = lc($fkname);
+			}
+			$str .= "ALTER TABLE $table ADD CONSTRAINT $fkname FOREIGN KEY (" . join(',', @lfkeys) . ") REFERENCES $subsdesttable(" . join(',', @rfkeys) . ")";
+			$str .= " MATCH $state->[2]" if ($state->[2]);
+			$str .= " ON DELETE $state->[3]" if ($state->[3]);
 			if ($self->{is_mysql}) {
-				$str .= " ON UPDATE $h->[9]";
+				$str .= " ON UPDATE $state->[9]";
 			} else {
 				if ( ($self->{fkey_add_update} eq 'ALWAYS') || ( ($self->{fkey_add_update} eq 'DELETE') && ($str =~ /ON DELETE CASCADE/) ) ) {
 					$str .= " ON UPDATE CASCADE";
@@ -6169,9 +6175,9 @@ sub _create_foreign_keys
 			}
 			# if DEFER_FKEY is enabled, force constraint to be
 			# deferrable and defer it initially.
-			$str .= (($self->{'defer_fkey'} ) ? ' DEFERRABLE' : " $h->[4]") if ($h->[4]);
-			$h->[5] = 'DEFERRED' if ($h->[5] =~ /^Y/);
-			$str .= " INITIALLY " . ( ($self->{'defer_fkey'} ) ? 'DEFERRED' : $h->[5] ) . ";\n";
+			$str .= (($self->{'defer_fkey'} ) ? ' DEFERRABLE' : " $state->[4]") if ($state->[4]);
+			$state->[5] = 'DEFERRED' if ($state->[5] =~ /^Y/);
+			$str .= " INITIALLY " . ( ($self->{'defer_fkey'} ) ? 'DEFERRED' : $state->[5] ) . ";\n";
 			push(@out, $str);
 		}
 	}
