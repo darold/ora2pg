@@ -12892,10 +12892,10 @@ sub _escape_lob
 			if (!$self->{standard_conforming_strings}) {
 				$col = "'$col'";
 			} else {
-				$col = "E'$col'";
+				$col = "E'\\\\x$col'";
 			}
 			# RAW data type is returned in hex
-			$col = "decode($col, 'hex')" if ($src_type eq 'RAW');
+			#$col = "decode($col, 'hex')" if ($src_type eq 'RAW');
 		} elsif ($src_type eq 'CLOB') {
 			if (!$self->{standard_conforming_strings}) {
 				$col =~ s/'/''/gs; # double single quote
