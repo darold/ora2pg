@@ -58,6 +58,7 @@ FEATURES
             - Export DIRECTORY as external table or directory for external_file extension.
             - Full MySQL export just like Oracle database.
             - Dispatch a list of SQL orders over multiple PostgreSQL connections
+            - Perform a diff between Oracle and PostgreSQL database for test purpose.
 
     Ora2Pg do its best to automatically convert your Oracle database to
     PostgreSQL but there's still manual works to do. The Oracle specific
@@ -442,14 +443,15 @@ CONFIGURATION
     Full details at
     https://kb.berkeley.edu/jivekb/entry.jspa?externalID=1005
 
-  Testing
+  Testing connection
     Once you have set the Oracle database DSN you can execute ora2pg to see
-    if it works. By default the configuration file will export the database
-    schema to a file called 'output.sql'. Take a look in it to see if the
-    schema has been exported.
+    if it works:
 
-    Take some time here to test your installation as most of the problem
-    take place here, the other configuration step are more technical.
+            ora2pg -t SHOW_VERSION -c config/ora2pg.conf
+
+    will show Oracle database server version. Take some time here to test
+    your installation as most of the problem take place here, the other
+    configuration steps are more technical.
 
   Trouble shooting
     If the output.sql file has not exported anything else than the Pg
@@ -608,6 +610,7 @@ CONFIGURATION
                 - SYNONYM: Export Oracle's synonyms as views on other schema's objects.
                 - DIRECTORY: Export Oracle's directories as external_file extension objects.
                 - LOAD: Dispatch a list of queries over multiple PostgreSQl connections.
+                - TEST: perform a diff between Oracle and PostgreSQL database.
 
         Only one type of export can be perform at the same time so the TYPE
         directive must be unique. If you have more than one only the last
@@ -2180,6 +2183,96 @@ CONFIGURATION
     standard SQL CASE statement. You can find some slide about this in a
     presentation given at PgConf.RU:
     http://ora2pg.darold.net/ora2pg_the_hard_way.pdf
+
+  Test the migration
+    The type of action called TEST allow you to check that all objects from
+    Oracle database have been created under PostgreSQL. Of course PG_DSN
+    must be set to be able to check PostgreSQL side. Note that this feature
+    will respect the schema name limitation if EXPORT_SCHEMA and SCHEMA or
+    PG_SCHEMA are defined.
+
+            ora2pg -t TEST -c config/ora2pg.conf > migration_diff.txt
+
+    Will create a file containing the report of all object and row count on
+    both side, Oracle and PostgreSQL, with an error section giving you the
+    detail of the differences for each kind of object. Here is a sample
+    result:
+
+            [TEST ROWS COUNT]
+            ORACLEDB:COUNTRIES:25
+            POSTGRES:countries:25
+            ORACLEDB:CUSTOMERS:6
+            POSTGRES:customers:6
+            ORACLEDB:DEPARTMENTS:27
+            POSTGRES:departments:27
+            ORACLEDB:EMPLOYEES:107
+            POSTGRES:employees:107
+            ORACLEDB:JOBS:19
+            POSTGRES:jobs:19
+            ORACLEDB:JOB_HISTORY:10
+            POSTGRES:job_history:10
+            ORACLEDB:LOCATIONS:23
+            POSTGRES:locations:23
+            ORACLEDB:PRODUCTS:0
+            POSTGRES:products:0
+            ORACLEDB:PTAB2:4
+            ORACLEDB:REGIONS:4
+            POSTGRES:regions:4
+            [ERRORS ROWS COUNT]
+            Table ptab2 does not exists in PostgreSQL database.
+
+            [TEST INDEXES COUNT]
+            ORACLEDB:COUNTRIES:1
+            POSTGRES:countries:1
+            ORACLEDB:JOB_HISTORY:4
+            POSTGRES:job_history:4
+            ORACLEDB:DEPARTMENTS:2
+            POSTGRES:departments:1
+            ORACLEDB:EMPLOYEES:6
+            POSTGRES:employees:6
+            ORACLEDB:CUSTOMERS:1
+            POSTGRES:customers:1
+            ORACLEDB:REGIONS:1
+            POSTGRES:regions:1
+            ORACLEDB:LOCATIONS:4
+            POSTGRES:locations:4
+            ORACLEDB:JOBS:1
+            POSTGRES:jobs:1
+            [ERRORS INDEXES COUNT]
+            Table departments doesn't have the same number of indexes in Oracle (2) and in PostgreSQL (1).
+
+            [TEST VIEW COUNT]
+            ORACLEDB:VIEW:1
+            POSTGRES:VIEW:1
+            [ERRORS VIEW COUNT]
+            OK, Oracle and PostgreSQL have the same number of VIEW.
+
+            [TEST MVIEW COUNT]
+            ORACLEDB:MVIEW:0
+            POSTGRES:MVIEW:0
+            [ERRORS MVIEW COUNT]
+            OK, Oracle and PostgreSQL have the same number of MVIEW.
+
+            [TEST SEQUENCE COUNT]
+            ORACLEDB:SEQUENCE:1
+            POSTGRES:SEQUENCE:0
+            [ERRORS SEQUENCE COUNT]
+            SEQUENCE does not have the same count in Oracle (1) and in PostgreSQL (0).
+
+            [TEST TYPE COUNT]
+            ORACLEDB:TYPE:1
+            POSTGRES:TYPE:0
+            [ERRORS TYPE COUNT]
+            TYPE does not have the same count in Oracle (1) and in PostgreSQL (0).
+
+            [TEST FDW COUNT]
+            ORACLEDB:FDW:0
+            POSTGRES:FDW:0
+            [ERRORS FDW COUNT]
+            OK, Oracle and PostgreSQL have the same number of FDW.
+
+    Here we can see that one table, one index, one sequence and one user
+    defined type have not been imported yet or have encountered an error.
 
 SUPPORT
   Author / Maintainer
