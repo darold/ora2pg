@@ -11256,6 +11256,22 @@ sub show_test_errors
 	}
 }
 
+sub set_pg_relation_name
+{
+	my ($self, $table) = @_;
+
+	my $tbmod = $self->get_replaced_tbname($table);
+	my $orig = '';
+	$orig = " (origin: $table)" if (lc($tbmod) ne lc($table));
+	if ($self->{pg_schema} && $self->{export_schema}) {
+		return ($tbmod, $orig, $self->{pg_schema}, "$self->{pg_schema}.$tbmod");
+	} elsif ($self->{schema} && $self->{export_schema}) {
+		return ($tbmod, $orig, $self->{schema}, "$self->{schema}.$tbmod");
+	}
+
+	return ($tbmod, $orig, 'public', $tbmod);
+}
+
 sub _test_table
 {
 	my $self = shift;
@@ -11274,10 +11290,8 @@ sub _test_table
 	foreach my $t (sort keys %tables_infos) {
 		print "ORACLEDB:$t:$tables_infos{$t}{num_rows}\n";
 		if ($self->{pg_dsn}) {
-			my $tbmod = $self->get_replaced_tbname($t);
-			my $orig = '';
-			$orig = " (origin: $t)" if (lc($tbmod) ne lc($t));
-			my $s = $self->{dbhdest}->prepare("SELECT count(*) FROM $tbmod;") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
+			my ($tbmod, $orig, $schema, $both) = $self->set_pg_relation_name($t);
+			my $s = $self->{dbhdest}->prepare("SELECT count(*) FROM $both;") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
 			if (not $s->execute) {
 				push(@errors, "Table $tbmod$orig does not exists in PostgreSQL database.") if ($s->state eq '42P01');
 				next;
@@ -11305,12 +11319,10 @@ sub _test_table
 		next if (!exists $tables_infos{$t});
 		my $numixd = scalar keys %{$indexes->{$t}};
 		print "ORACLEDB:$t:$numixd\n";
-		#%{$self->{tables}{$t}{indexes}} = %{$indexes->{$t}};
 		if ($self->{pg_dsn}) {
-			my $tbmod = $self->get_replaced_tbname($t);
-			my $orig = '';
-			$orig = " (origin: $t)" if (lc($tbmod) ne lc($t));
-			my $s = $self->{dbhdest}->prepare("SELECT count(*) FROM pg_indexes WHERE lower(tablename) = '\L$tbmod\E';") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
+			my ($tbmod, $orig, $schema, $both) = $self->set_pg_relation_name($t);
+			$schema = " AND schemaname='\L$schema\E'" if ($schema);
+			my $s = $self->{dbhdest}->prepare("SELECT count(*) FROM pg_indexes WHERE tablename = '\L$tbmod\E'$schema;") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
 			if (not $s->execute) {
 				push(@errors, "Can not extract information from catalog table pg_indexes.");
 				next;
@@ -11327,6 +11339,7 @@ sub _test_table
 	}
 	$self->show_test_errors('indexes', @errors);
 	@errors = ();
+return;
 
 	####
 	# Test unique constraints (including primary keys)
@@ -11341,7 +11354,8 @@ FROM pg_class
   JOIN pg_indexes ON (pg_class.relname=pg_indexes.indexname)
 WHERE pg_class.relkind = 'i'
   AND pg_index.indisunique 
-  AND lower(pg_indexes.tablename)=?;
+  AND pg_indexes.tablename=?
+  AND pg_indexes.schemaname LIKE ?
 };
 	my $s = undef;
 	if ($self->{pg_dsn}) {
@@ -11352,10 +11366,8 @@ WHERE pg_class.relkind = 'i'
 		my $numixd = scalar keys %{$unique_keys{$t}};
 		print "ORACLEDB:$t:$numixd\n";
 		if ($self->{pg_dsn}) {
-			my $tbmod = $self->get_replaced_tbname($t);
-			my $orig = '';
-			$orig = " (origin: $t)" if (lc($tbmod) ne lc($t));
-			if (not $s->execute(lc($tbmod))) {
+			my ($tbmod, $orig, $schema, $both) = $self->set_pg_relation_name($t);
+			if (not $s->execute(lc($tbmod), lc($schema))) {
 				push(@errors, "Can not extract information from catalog about unique constraints.");
 				next;
 			}
@@ -11384,7 +11396,8 @@ FROM pg_class
   JOIN pg_indexes ON (pg_class.relname=pg_indexes.indexname)
 WHERE pg_class.relkind = 'i'
   AND pg_index.indisprimary
-  AND lower(pg_indexes.tablename)=?;
+  AND pg_indexes.tablename=?
+  AND pg_indexes.schemaname LIKE ?
 };
 	if ($self->{pg_dsn}) {
 		$s = $self->{dbhdest}->prepare($sql) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
@@ -11397,10 +11410,8 @@ WHERE pg_class.relkind = 'i'
 		}
 		print "ORACLEDB:$t:$nbpk\n";
 		if ($self->{pg_dsn}) {
-			my $tbmod = $self->get_replaced_tbname($t);
-			my $orig = '';
-			$orig = " (origin: $t)" if (lc($tbmod) ne lc($t));
-			if (not $s->execute(lc($tbmod))) {
+			my ($tbmod, $orig, $schema, $both) = $self->set_pg_relation_name($t);
+			if (not $s->execute(lc($tbmod), lc($schema))) {
 				push(@errors, "Can not extract information from catalog about primary keys.");
 				next;
 			}
@@ -11426,8 +11437,9 @@ WHERE pg_class.relkind = 'i'
 	my %check_constraints = $self->_check_constraint('',$self->{schema});
 	$sql = qq{
 SELECT count(*)
-FROM pg_catalog.pg_constraint r JOIN pg_class c ON (r.conrelid=c.oid)
+FROM pg_catalog.pg_constraint r JOIN pg_class c ON (r.conrelid=c.oid) JOIN pg_namespace n (c.relnamespace=n.oid)
 WHERE c.relname = ? AND r.contype = 'c';
+AND n.nspname LIKE ?
 };
 	if ($self->{pg_dsn}) {
 		$s = $self->{dbhdest}->prepare($sql) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
@@ -11440,10 +11452,8 @@ WHERE c.relname = ? AND r.contype = 'c';
 		}
 		print "ORACLEDB:$t:$nbcheck\n";
 		if ($self->{pg_dsn}) {
-			my $tbmod = $self->get_replaced_tbname($t);
-			my $orig = '';
-			$orig = " (origin: $t)" if (lc($tbmod) ne lc($t));
-			if (not $s->execute(lc($tbmod))) {
+			my ($tbmod, $orig, $schema, $both) = $self->set_pg_relation_name($t);
+			if (not $s->execute(lc($tbmod), lc($schema))) {
 				push(@errors, "Can not extract information from catalog about check constraints.");
 				next;
 			}
@@ -11469,8 +11479,8 @@ WHERE c.relname = ? AND r.contype = 'c';
 	my %column_infos = $self->_column_attributes('', $self->{schema}, 'TABLE');
 	$sql = qq{
 SELECT count(*)
-FROM pg_catalog.pg_attribute a JOIN pg_class e ON (e.oid=a.attrelid)
-WHERE e.relname = ? AND a.attnum > 0 AND NOT a.attisdropped AND a.attnotnull;
+FROM pg_catalog.pg_attribute a JOIN pg_class e ON (e.oid=a.attrelid) JOIN pg_namespace n (e.relnamespace=n.oid)
+WHERE e.relname = ? AND a.attnum > 0 AND NOT a.attisdropped AND a.attnotnull AND n.nspname LIKE ?
 };
 	if ($self->{pg_dsn}) {
 		$s = $self->{dbhdest}->prepare($sql) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
@@ -11485,10 +11495,8 @@ WHERE e.relname = ? AND a.attnum > 0 AND NOT a.attisdropped AND a.attnotnull;
 		}
 		print "ORACLEDB:$t:$nbnull\n";
 		if ($self->{pg_dsn}) {
-			my $tbmod = $self->get_replaced_tbname($t);
-			my $orig = '';
-			$orig = " (origin: $t)" if (lc($tbmod) ne lc($t));
-			if (not $s->execute(lc($tbmod))) {
+			my ($tbmod, $orig, $schema, $both) = $self->set_pg_relation_name($t);
+			if (not $s->execute(lc($tbmod), lc($schema))) {
 				push(@errors, "Can not extract information from catalog about not null constraints.");
 				next;
 			}
@@ -11515,8 +11523,8 @@ SELECT a.attname,
   (SELECT substring(pg_catalog.pg_get_expr(d.adbin, d.adrelid) for 128)
    FROM pg_catalog.pg_attrdef d
    WHERE d.adrelid = a.attrelid AND d.adnum = a.attnum AND a.atthasdef)
-FROM pg_catalog.pg_attribute a JOIN pg_class e ON (e.oid=a.attrelid)
-WHERE e.relname = ? AND a.attnum > 0 AND NOT a.attisdropped AND a.attnotnull;
+FROM pg_catalog.pg_attribute a JOIN pg_class e ON (e.oid=a.attrelid) JOIN pg_namespace n (e.relnamespace=n.oid)
+WHERE e.relname = ? AND a.attnum > 0 AND NOT a.attisdropped AND a.attnotnull AND n.nspname LIKE ?
 };
 	if ($self->{pg_dsn}) {
 		$s = $self->{dbhdest}->prepare($sql) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
@@ -11531,10 +11539,8 @@ WHERE e.relname = ? AND a.attnum > 0 AND NOT a.attisdropped AND a.attnotnull;
 		}
 		print "ORACLEDB:$t:$nbdefault\n";
 		if ($self->{pg_dsn}) {
-			my $tbmod = $self->get_replaced_tbname($t);
-			my $orig = '';
-			$orig = " (origin: $t)" if (lc($tbmod) ne lc($t));
-			if (not $s->execute(lc($tbmod))) {
+			my ($tbmod, $orig, $schema, $both) = $self->set_pg_relation_name($t);
+			if (not $s->execute(lc($tbmod), lc($schema))) {
 				push(@errors, "Can not extract information from catalog about column default value.");
 				next;
 			}
@@ -11561,8 +11567,8 @@ WHERE e.relname = ? AND a.attnum > 0 AND NOT a.attisdropped AND a.attnotnull;
 	my ($foreign_link, $foreign_key) = $self->_foreign_key('',$self->{schema});
 	$sql = qq{
 SELECT count(*)
-FROM pg_catalog.pg_constraint r JOIN pg_class c ON (r.conrelid=c.oid)
-WHERE c.relname = ? AND r.contype = 'f';
+FROM pg_catalog.pg_constraint r JOIN pg_class c ON (r.conrelid=c.oid) JOIN pg_namespace n (c.relnamespace=n.oid)
+WHERE c.relname = ? AND r.contype = 'f' AND n.nspname LIKE ?
 };
 	if ($self->{pg_dsn}) {
 		$s = $self->{dbhdest}->prepare($sql) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
@@ -11572,10 +11578,8 @@ WHERE c.relname = ? AND r.contype = 'f';
 		my $nbfk = scalar keys %{$foreign_link->{$t}};
 		print "ORACLEDB:$t:$nbfk\n";
 		if ($self->{pg_dsn}) {
-			my $tbmod = $self->get_replaced_tbname($t);
-			my $orig = '';
-			$orig = " (origin: $t)" if (lc($tbmod) ne lc($t));
-			if (not $s->execute(lc($tbmod))) {
+			my ($tbmod, $orig, $schema, $both) = $self->set_pg_relation_name($t);
+			if (not $s->execute(lc($tbmod), lc($schema))) {
 				push(@errors, "Can not extract information from catalog about foreign key constraints.");
 				next;
 			}
@@ -11600,8 +11604,8 @@ WHERE c.relname = ? AND r.contype = 'f';
 	my %triggers = $self->_list_triggers();
 	$sql = qq{
 SELECT count(*)
-FROM pg_catalog.pg_trigger t JOIN pg_class c ON (t.tgrelid=c.oid)
-WHERE c.relname = ? AND (NOT t.tgisinternal OR (t.tgisinternal AND t.tgenabled = 'D'));
+FROM pg_catalog.pg_trigger t JOIN pg_class c ON (t.tgrelid=c.oid) JOIN pg_namespace n (c.relnamespace=n.oid)
+WHERE c.relname = ? AND (NOT t.tgisinternal OR (t.tgisinternal AND t.tgenabled = 'D')) AND n.nspname LIKE ?;
 };
 	if ($self->{pg_dsn}) {
 		$s = $self->{dbhdest}->prepare($sql) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
@@ -11611,10 +11615,8 @@ WHERE c.relname = ? AND (NOT t.tgisinternal OR (t.tgisinternal AND t.tgenabled =
 		my $nbtrg = $#{$triggers{$t}}+1;
 		print "ORACLEDB:$t:$nbtrg\n";
 		if ($self->{pg_dsn}) {
-			my $tbmod = $self->get_replaced_tbname($t);
-			my $orig = '';
-			$orig = " (origin: $t)" if (lc($tbmod) ne lc($t));
-			if (not $s->execute(lc($tbmod))) {
+			my ($tbmod, $orig, $schema, $both) = $self->set_pg_relation_name($t);
+			if (not $s->execute(lc($tbmod), lc($schema))) {
 				push(@errors, "Can not extract information from catalog about foreign key constraints.");
 				next;
 			}
@@ -11637,6 +11639,12 @@ WHERE c.relname = ? AND (NOT t.tgisinternal OR (t.tgisinternal AND t.tgenabled =
 	print "\n";
 	print "[TEST PARTITIONS COUNT]\n";
 	my %partitions = $self->_get_partitioned_table();
+	my $schema_clause = '';
+	if ($self->{pg_schema} && $self->{export_schema}) {
+		$schema_clause = "WHERE nmsp_parent.nspname = '\L$self->{pg_schema}\E'";
+	} elsif ($self->{schema} && $self->{export_schema}) {
+		$schema_clause = "WHERE nmsp_parent.nspname = '\L$self->{schema}\E'";
+	}
 	$sql = qq{
 SELECT
     nmsp_parent.nspname     AS parent_schema,
@@ -11647,6 +11655,7 @@ FROM pg_inherits
     JOIN pg_class child     ON pg_inherits.inhrelid   = child.oid
     JOIN pg_namespace nmsp_parent   ON nmsp_parent.oid  = parent.relnamespace
     JOIN pg_namespace nmsp_child    ON nmsp_child.oid   = child.relnamespace
+$schema_clause
 GROUP BY                                                                    
     parent_schema,
     parent;
@@ -11666,9 +11675,7 @@ GROUP BY
 	foreach my $t (keys %partitions) {
 		next if (!exists $tables_infos{$t});
 		print "ORACLEDB:$t:$partitions{$t}\n";
-		my $tbmod = $self->get_replaced_tbname($t);
-		my $orig = '';
-		$orig = " (origin: $t)" if (lc($tbmod) ne lc($t));
+		my ($tbmod, $orig, $schema, $both) = $self->set_pg_relation_name($t);
 		if (exists $pg_part{$tbmod}) {
 			print "POSTGRES:$tbmod$orig:$pg_part{$tbmod}\n";
 			if ($pg_part{$tbmod} != $partitions{$t}) {
@@ -11682,6 +11689,12 @@ GROUP BY
 	print "\n";
 	print "[TEST TABLE COUNT]\n";
 	my $nbobj = scalar keys %tables_infos;
+	$schema_clause = '';
+	if ($self->{pg_schema} && $self->{export_schema}) {
+		$schema_clause = "AND n.nspname = '\L$self->{pg_schema}\E'";
+	} elsif ($self->{schema} && $self->{export_schema}) {
+		$schema_clause = "AND n.nspname = '\L$self->{schema}\E'";
+	}
 	$sql = qq{
 SELECT count(*)
 FROM pg_catalog.pg_class c
@@ -11690,7 +11703,7 @@ WHERE c.relkind IN ('r','')
       AND n.nspname <> 'pg_catalog'
       AND n.nspname <> 'information_schema'
       AND n.nspname !~ '^pg_toast'
-  AND pg_catalog.pg_table_is_visible(c.oid);
+      $schema_clause
 };
 
 	print "ORACLEDB:TABLE:$nbobj\n";
@@ -11719,10 +11732,17 @@ WHERE c.relkind IN ('r','')
 		next if (!exists $tables_infos{$t});
 		$nbobj += $#{$triggers{$t}}+1;
 	}
+	$schema_clause = '';
+	if ($self->{pg_schema} && $self->{export_schema}) {
+		$schema_clause = "AND n.nspname = '\L$self->{pg_schema}\E'";
+	} elsif ($self->{schema} && $self->{export_schema}) {
+		$schema_clause = "AND n.nspname = '\L$self->{schema}\E'";
+	}
 	$sql = qq{
 SELECT count(*)
-FROM pg_catalog.pg_trigger t
-WHERE (NOT t.tgisinternal OR (t.tgisinternal AND t.tgenabled = 'D'));
+FROM pg_catalog.pg_trigger t JOIN pg_class c ON (c.oid = t.tgrelid) JOIN pg_namespace n (c.relnamespace=n.oid)
+WHERE (NOT t.tgisinternal OR (t.tgisinternal AND t.tgenabled = 'D'))
+$schema_clause
 };
 
 	print "ORACLEDB:TRIGGER:$nbobj\n";
@@ -11743,7 +11763,6 @@ WHERE (NOT t.tgisinternal OR (t.tgisinternal AND t.tgenabled = 'D'));
 	}
 	$self->show_test_errors('TRIGGER', @errors);
 	@errors = ();
-
 }
 
 sub _count_object
@@ -11754,6 +11773,12 @@ sub _count_object
 	# Get all tables information specified by the DBI method table_info
 	$self->logit("Looking for Oracle and PostgreSQL objects count...\n", 1);
 
+	my $schema_clause = '';
+	if ($self->{pg_schema} && $self->{export_schema}) {
+		$schema_clause = "AND n.nspname = '\L$self->{pg_schema}\E'";
+	} elsif ($self->{schema} && $self->{export_schema}) {
+		$schema_clause = "AND n.nspname = '\L$self->{schema}\E'";
+	}
 	my $nbobj = 0;
 	my $sql = '';
 	if ($obj_type eq 'VIEW') {
@@ -11767,7 +11792,7 @@ WHERE c.relkind IN ('v','')
       AND n.nspname <> 'pg_catalog'
       AND n.nspname <> 'information_schema'
       AND n.nspname !~ '^pg_toast'
-  AND pg_catalog.pg_table_is_visible(c.oid);
+      $schema_clause
 };
 	} elsif ($obj_type eq 'MVIEW') {
 		my %obj_infos = $self->_get_materialized_views();
@@ -11780,7 +11805,7 @@ WHERE c.relkind IN ('m','')
       AND n.nspname <> 'pg_catalog'
       AND n.nspname <> 'information_schema'
       AND n.nspname !~ '^pg_toast'
-  AND pg_catalog.pg_table_is_visible(c.oid);
+      $schema_clause
 };
 	} elsif ($obj_type eq 'SEQUENCE') {
 		my @obj_infos = $self->_get_sequences();
@@ -11793,7 +11818,7 @@ WHERE c.relkind IN ('S','')
       AND n.nspname <> 'pg_catalog'
       AND n.nspname <> 'information_schema'
       AND n.nspname !~ '^pg_toast'
-  AND pg_catalog.pg_table_is_visible(c.oid);
+      $schema_clause
 };
 	} elsif ($obj_type eq 'TYPE') {
 		my @obj_infos = $self->_get_types();
@@ -11806,7 +11831,8 @@ WHERE (t.typrelid = 0 OR (SELECT c.relkind = 'c' FROM pg_catalog.pg_class c WHER
   AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_type el WHERE el.oid = t.typelem AND el.typarray = t.oid)
       AND n.nspname <> 'pg_catalog'
       AND n.nspname <> 'information_schema'
-  AND pg_catalog.pg_type_is_visible(t.oid);
+  AND pg_catalog.pg_type_is_visible(t.oid)
+  $schema_clause
 };
 	} elsif ($obj_type eq 'FDW') {
 		my %obj_infos = $self->_get_external_tables();
@@ -11819,7 +11845,7 @@ WHERE c.relkind IN ('f','')
       AND n.nspname <> 'pg_catalog'
       AND n.nspname <> 'information_schema'
       AND n.nspname !~ '^pg_toast'
-  AND pg_catalog.pg_table_is_visible(c.oid);
+      $schema_clause
 };
 	} else {
 		return;
