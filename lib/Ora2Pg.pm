@@ -11484,7 +11484,7 @@ WHERE pg_class.relkind = 'i'
 		$sql = qq{
 SELECT count(*)
 FROM pg_catalog.pg_constraint r JOIN pg_class c ON (r.conrelid=c.oid) JOIN pg_namespace n ON (c.relnamespace=n.oid)
-WHERE c.relname = ? AND r.contype = 'c';
+WHERE c.relname = ? AND r.contype = 'c'
 AND n.nspname LIKE ?
 };
 		if ($self->{pg_dsn}) {
