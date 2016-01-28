@@ -357,6 +357,52 @@ sub _get_indexes
 	return \%unique, \%data, \%idx_type, \%index_tablespace;
 }
 
+sub _count_indexes
+{
+	my ($self, $table, $owner) = @_;
+
+	my $condition = '';
+	$condition = " FROM $self->{schema}" if ($self->{schema});
+	$condition .= $self->limit_to_objects('TABLE|INDEX', "`Table`|`Key_name`") if (!$table);
+	$condition =~ s/ AND / WHERE /;
+
+	my %tables_infos = ();
+	if ($table) {
+		$tables_infos{$table} = 1;
+	} else {
+		%tables_infos = Ora2Pg::MySQL::_table_info($self);
+	}
+	my %data = ();
+
+	# Retrieve all indexes for the given table
+	foreach my $t (keys %tables_infos) {
+		my $sth = $self->{dbh}->prepare("SHOW INDEX FROM $t $condition;") or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+		$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+
+		my $i = 1;
+		while (my $row = $sth->fetch) {
+
+		#Table : The name of the table.
+		#Non_unique : 0 if the index cannot contain duplicates, 1 if it can.
+		#Key_name : The name of the index. If the index is the primary key, the name is always PRIMARY.
+		#Seq_in_index : The column sequence number in the index, starting with 1.
+		#Column_name : The column name.
+		#Collation : How the column is sorted in the index. In MySQL, this can have values “A” (Ascending) or NULL (Not sorted).
+		#Cardinality : An estimate of the number of unique values in the index.
+		#Sub_part : The number of indexed characters if the column is only partly indexed, NULL if the entire column is indexed.
+		#Packed : Indicates how the key is packed. NULL if it is not.
+		#Null : Contains YES if the column may contain NULL values and '' if not.
+		#Index_type : The index method used (BTREE, FULLTEXT, HASH, RTREE).
+		#Comment : Information about the index not described in its own column, such as disabled if the index is disabled. 
+			push(@{$data{$row->[0]}{$row->[2]}}, $row->[4]);
+
+		}
+	}
+
+	return \%data;
+}
+
+
 sub _foreign_key
 {
         my ($self, $table, $owner) = @_;
@@ -1364,6 +1410,125 @@ sub _extract_sequence_info
 	my ($self) = shift;
 
 	return;
+}
+
+# MySQL does not have sequences but we count auto_increment as sequences
+sub _count_sequences
+{
+	my $self = shift;
+
+	# Table: information_schema.tables
+	# TABLE_CATALOG   | varchar(512)        | NO   |     |         |       |
+	# TABLE_SCHEMA    | varchar(64)         | NO   |     |         |       |
+	# TABLE_NAME      | varchar(64)         | NO   |     |         |       |
+	# TABLE_TYPE      | varchar(64)         | NO   |     |         |       |
+	# ENGINE          | varchar(64)         | YES  |     | NULL    |       |
+	# VERSION         | bigint(21) unsigned | YES  |     | NULL    |       |
+	# ROW_FORMAT      | varchar(10)         | YES  |     | NULL    |       |
+	# TABLE_ROWS      | bigint(21) unsigned | YES  |     | NULL    |       |
+	# AVG_ROW_LENGTH  | bigint(21) unsigned | YES  |     | NULL    |       |
+	# DATA_LENGTH     | bigint(21) unsigned | YES  |     | NULL    |       |
+	# MAX_DATA_LENGTH | bigint(21) unsigned | YES  |     | NULL    |       |
+	# INDEX_LENGTH    | bigint(21) unsigned | YES  |     | NULL    |       |
+	# DATA_FREE       | bigint(21) unsigned | YES  |     | NULL    |       |
+	# AUTO_INCREMENT  | bigint(21) unsigned | YES  |     | NULL    |       |
+	# CREATE_TIME     | datetime            | YES  |     | NULL    |       |
+	# UPDATE_TIME     | datetime            | YES  |     | NULL    |       |
+	# CHECK_TIME      | datetime            | YES  |     | NULL    |       |
+	# TABLE_COLLATION | varchar(32)         | YES  |     | NULL    |       |
+	# CHECKSUM        | bigint(21) unsigned | YES  |     | NULL    |       |
+	# CREATE_OPTIONS  | varchar(255)        | YES  |     | NULL    |       |
+	# TABLE_COMMENT   | varchar(2048)       | NO   |     |         |       |
+
+	my @seqs = ();
+	my $sql = "SELECT TABLE_NAME, AUTO_INCREMENT FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE='BASE TABLE' AND TABLE_SCHEMA = '$self->{schema}'";
+	$sql .= $self->limit_to_objects('TABLE', 'TABLE_NAME');
+	my $sth = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	while (my $row = $sth->fetch) {
+		push(@seqs, $row->[0]) if ($row->[1]);
+	}
+	$sth->finish();
+
+	return @seqs;
+}
+
+sub _column_attributes
+{
+	my ($self, $table, $owner, $objtype) = @_;
+
+	$objtype ||= 'TABLE';
+
+	my $condition = '';
+	if ($self->{schema}) {
+		$condition .= "AND TABLE_SCHEMA='$self->{schema}' ";
+	}
+	$condition .= "AND TABLE_NAME='$table' " if ($table);
+	$condition .= $self->limit_to_objects('TABLE', 'TABLE_NAME') if (!$table);
+	$condition =~ s/^AND/WHERE/;
+
+	# TABLE_CATALOG            | varchar(512)        | NO   |     |         |       |
+	# TABLE_SCHEMA             | varchar(64)         | NO   |     |         |       |
+	# TABLE_NAME               | varchar(64)         | NO   |     |         |       |
+	# COLUMN_NAME              | varchar(64)         | NO   |     |         |       |
+	# ORDINAL_POSITION         | bigint(21) unsigned | NO   |     | 0       |       |
+	# COLUMN_DEFAULT           | longtext            | YES  |     | NULL    |       |
+	# IS_NULLABLE              | varchar(3)          | NO   |     |         |       |
+	# DATA_TYPE                | varchar(64)         | NO   |     |         |       |
+	# CHARACTER_MAXIMUM_LENGTH | bigint(21) unsigned | YES  |     | NULL    |       |
+	# CHARACTER_OCTET_LENGTH   | bigint(21) unsigned | YES  |     | NULL    |       |
+	# NUMERIC_PRECISION        | bigint(21) unsigned | YES  |     | NULL    |       |
+	# NUMERIC_SCALE            | bigint(21) unsigned | YES  |     | NULL    |       |
+	# CHARACTER_SET_NAME       | varchar(32)         | YES  |     | NULL    |       |
+	# COLLATION_NAME           | varchar(32)         | YES  |     | NULL    |       |
+	# COLUMN_TYPE              | longtext            | NO   |     | NULL    |       |
+	# COLUMN_KEY               | varchar(3)          | NO   |     |         |       |
+	# EXTRA                    | varchar(27)         | NO   |     |         |       |
+	# PRIVILEGES               | varchar(80)         | NO   |     |         |       |
+	# COLUMN_COMMENT           | varchar(1024)       | NO   |     |         |       |
+
+	my $sth = $self->{dbh}->prepare(<<END);
+SELECT COLUMN_NAME, IS_NULLABLE, COLUMN_DEFAULT, TABLE_NAME
+FROM INFORMATION_SCHEMA.COLUMNS
+$condition
+ORDER BY ORDINAL_POSITION
+END
+	if (!$sth) {
+		$self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	}
+	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+
+	my %data = ();
+	while (my $row = $sth->fetch) {
+		$data{$row->[3]}{"$row->[0]"}{nullable} = $row->[1];
+		$data{$row->[3]}{"$row->[0]"}{default} = $row->[2];
+	}
+
+	return %data;
+
+}
+
+sub _list_triggers
+{
+        my($self) = @_;
+
+	my $str = "SELECT TRIGGER_NAME, EVENT_OBJECT_TABLE FROM INFORMATION_SCHEMA.TRIGGERS";
+	if ($self->{schema}) {
+		$str .= " AND TRIGGER_SCHEMA = '$self->{schema}'";
+	}
+	$str .= " " . $self->limit_to_objects('TABLE|VIEW|TRIGGER','EVENT_OBJECT_TABLE|EVENT_OBJECT_TABLE|TRIGGER_NAME');
+	$str =~ s/ AND / WHERE /;
+
+	$str .= " ORDER BY EVENT_OBJECT_TABLE, TRIGGER_NAME";
+	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+
+	my %triggers = ();
+	while (my $row = $sth->fetch) {
+		push(@{$triggers{$row->[1]}}, $row->[0]);
+	}
+
+	return %triggers;
 }
 
 1;

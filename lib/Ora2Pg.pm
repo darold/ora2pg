@@ -1248,14 +1248,15 @@ sub _init
 		} elsif ($self->{type} eq 'TEST') {
 			$self->{dbhdest} = $self->_send_to_pgdb() if ($self->{pg_dsn} && !$self->{dbhdest});
 			# Check if all tables have the same number of indexes, constraints, etc.
-			my %tables_infos = $self->_test_table();
+			$self->_test_table();
 			# Count each object at both sides
 			foreach my $o ('VIEW', 'MVIEW', 'SEQUENCE', 'TYPE', 'FDW') {
+				next if ($self->{is_mysql} && grep(/^$o$/, 'MVIEW','TYPE','FDW'));
 				$self->_count_object($o);
 			}
 			# Count row in each table
 			if ($self->{count_rows}) {
-				$self->_table_row_count(%tables_infos);
+				$self->_table_row_count();
 			}
 			$self->{dbh}->disconnect() if ($self->{dbh}); 
 			exit 0;
@@ -11298,15 +11299,24 @@ sub set_pg_relation_name
 sub _table_row_count
 {
 	my $self = shift;
-	my %tables_infos = @_;
+
+	my $lbl = 'ORACLEDB';
+	$lbl    = 'MYSQL_DB' if ($self->{is_mysql});
+
+	# Get all tables information specified by the DBI method table_info
+	$self->logit("Looking for real row count in source database and PostgreSQL tables...\n", 1);
+
+	# Retrieve tables informations
+	my %tables_infos = $self->_table_info(1);
 
 	####
 	# Test number of row in tables
 	####
 	my @errors = ();
+	print "\n";
 	print "[TEST ROWS COUNT]\n";
 	foreach my $t (sort keys %tables_infos) {
-		print "ORACLEDB:$t:$tables_infos{$t}{num_rows}\n";
+		print "$lbl:$t:$tables_infos{$t}{num_rows}\n";
 		if ($self->{pg_dsn}) {
 			my ($tbmod, $orig, $schema, $both) = $self->set_pg_relation_name($t);
 			my $s = $self->{dbhdest}->prepare("SELECT count(*) FROM $both;") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
@@ -11317,7 +11327,7 @@ sub _table_row_count
 			while ( my @row = $s->fetchrow()) {
 				print "POSTGRES:$tbmod$orig:$row[0]\n";
 				if ($row[0] != $tables_infos{$t}{num_rows}) {
-					push(@errors, "Table $tbmod$orig doesn't have the same number of line in Oracle ($tables_infos{$t}{num_rows}) and in PostgreSQL ($row[0]).");
+					push(@errors, "Table $tbmod$orig doesn't have the same number of line in source database ($tables_infos{$t}{num_rows}) and in PostgreSQL ($row[0]).");
 				}
 				last;
 			}
@@ -11335,21 +11345,26 @@ sub _test_table
 	my @errors = ();
 
 	# Get all tables information specified by the DBI method table_info
-	$self->logit("Looking for objects count related to Oracle and PostgreSQL tables...\n", 1);
+	$self->logit("Looking for objects count related to source database and PostgreSQL tables...\n", 1);
 
 	# Retrieve tables informations
 	my %tables_infos = $self->_table_info(1);
 
+	my $lbl = 'ORACLEDB';
+	$lbl    = 'MYSQL_DB' if ($self->{is_mysql});
+
 	####
 	# Test number of index in tables
 	####
-	print "\n";
 	print "[TEST INDEXES COUNT]\n";
 	my ($uniqueness, $indexes, $idx_type, $idx_tbsp) = $self->_get_indexes('',$self->{schema});
+	if ($self->{is_mysql}) {
+		$indexes = Ora2Pg::MySQL::_count_indexes($self, '', $self->{schema});
+	}
 	foreach my $t (keys %{$indexes}) {
 		next if (!exists $tables_infos{$t});
 		my $numixd = scalar keys %{$indexes->{$t}};
-		print "ORACLEDB:$t:$numixd\n";
+		print "$lbl:$t:$numixd\n";
 		if ($self->{pg_dsn}) {
 			my ($tbmod, $orig, $schema, $both) = $self->set_pg_relation_name($t);
 			$schema = " AND schemaname='\L$schema\E'" if ($schema);
@@ -11361,7 +11376,7 @@ sub _test_table
 			while ( my @row = $s->fetchrow()) {
 				print "POSTGRES:$tbmod$orig:$row[0]\n";
 				if ($row[0] != $numixd) {
-					push(@errors, "Table $tbmod$orig doesn't have the same number of indexes in Oracle ($numixd) and in PostgreSQL ($row[0]).");
+					push(@errors, "Table $tbmod$orig doesn't have the same number of indexes in source database ($numixd) and in PostgreSQL ($row[0]).");
 				}
 				last;
 			}
@@ -11370,7 +11385,6 @@ sub _test_table
 	}
 	$self->show_test_errors('indexes', @errors);
 	@errors = ();
-return;
 
 	####
 	# Test unique constraints (including primary keys)
@@ -11395,7 +11409,7 @@ WHERE pg_class.relkind = 'i'
 	foreach my $t (keys %unique_keys) {
 		next if (!exists $tables_infos{$t});
 		my $numixd = scalar keys %{$unique_keys{$t}};
-		print "ORACLEDB:$t:$numixd\n";
+		print "$lbl:$t:$numixd\n";
 		if ($self->{pg_dsn}) {
 			my ($tbmod, $orig, $schema, $both) = $self->set_pg_relation_name($t);
 			if (not $s->execute(lc($tbmod), lc($schema))) {
@@ -11405,7 +11419,7 @@ WHERE pg_class.relkind = 'i'
 			while ( my @row = $s->fetchrow()) {
 				print "POSTGRES:$tbmod$orig:$row[0]\n";
 				if ($row[0] != $numixd) {
-					push(@errors, "Table $tbmod$orig doesn't have the same number of unique constraints in Oracle ($numixd) and in PostgreSQL ($row[0]).");
+					push(@errors, "Table $tbmod$orig doesn't have the same number of unique constraints in source database ($numixd) and in PostgreSQL ($row[0]).");
 				}
 				last;
 			}
@@ -11439,7 +11453,7 @@ WHERE pg_class.relkind = 'i'
 		foreach my $c (keys %{$unique_keys{$t}}) {
 			$nbpk++ if ($unique_keys{$t}{$c}{type} eq 'P');
 		}
-		print "ORACLEDB:$t:$nbpk\n";
+		print "$lbl:$t:$nbpk\n";
 		if ($self->{pg_dsn}) {
 			my ($tbmod, $orig, $schema, $both) = $self->set_pg_relation_name($t);
 			if (not $s->execute(lc($tbmod), lc($schema))) {
@@ -11449,7 +11463,7 @@ WHERE pg_class.relkind = 'i'
 			while ( my @row = $s->fetchrow()) {
 				print "POSTGRES:$tbmod$orig:$row[0]\n";
 				if ($row[0] != $nbpk) {
-					push(@errors, "Table $tbmod$orig doesn't have the same number of primary keys in Oracle ($nbpk) and in PostgreSQL ($row[0]).");
+					push(@errors, "Table $tbmod$orig doesn't have the same number of primary keys in source database ($nbpk) and in PostgreSQL ($row[0]).");
 				}
 				last;
 			}
@@ -11463,44 +11477,46 @@ WHERE pg_class.relkind = 'i'
 	####
 	# Test check constraints
 	####
-	print "\n";
-	print "[TEST CHECK CONSTRAINTS COUNT]\n";
-	my %check_constraints = $self->_check_constraint('',$self->{schema});
-	$sql = qq{
+	if (!$self->{is_mysql}) {
+		print "\n";
+		print "[TEST CHECK CONSTRAINTS COUNT]\n";
+		my %check_constraints = $self->_check_constraint('',$self->{schema});
+		$sql = qq{
 SELECT count(*)
-FROM pg_catalog.pg_constraint r JOIN pg_class c ON (r.conrelid=c.oid) JOIN pg_namespace n (c.relnamespace=n.oid)
+FROM pg_catalog.pg_constraint r JOIN pg_class c ON (r.conrelid=c.oid) JOIN pg_namespace n ON (c.relnamespace=n.oid)
 WHERE c.relname = ? AND r.contype = 'c';
 AND n.nspname LIKE ?
 };
-	if ($self->{pg_dsn}) {
-		$s = $self->{dbhdest}->prepare($sql) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
-	}
-	foreach my $t (keys %check_constraints) {
-		next if (!exists $tables_infos{$t});
-		my $nbcheck = 0;
-		foreach my $cn (keys %{$check_constraints{$t}{constraint}}) {
-			$nbcheck++ if ($check_constraints{$t}{constraint}{$cn} !~ /IS NOT NULL$/);
-		}
-		print "ORACLEDB:$t:$nbcheck\n";
 		if ($self->{pg_dsn}) {
-			my ($tbmod, $orig, $schema, $both) = $self->set_pg_relation_name($t);
-			if (not $s->execute(lc($tbmod), lc($schema))) {
-				push(@errors, "Can not extract information from catalog about check constraints.");
-				next;
+			$s = $self->{dbhdest}->prepare($sql) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
+		}
+		foreach my $t (keys %check_constraints) {
+			next if (!exists $tables_infos{$t});
+			my $nbcheck = 0;
+			foreach my $cn (keys %{$check_constraints{$t}{constraint}}) {
+				$nbcheck++ if ($check_constraints{$t}{constraint}{$cn} !~ /IS NOT NULL$/);
 			}
-			while ( my @row = $s->fetchrow()) {
-				print "POSTGRES:$tbmod$orig:$row[0]\n";
-				if ($row[0] != $nbcheck) {
-					push(@errors, "Table $tbmod$orig doesn't have the same number of check constraints in Oracle ($nbcheck) and in PostgreSQL ($row[0]).");
+			print "$lbl:$t:$nbcheck\n";
+			if ($self->{pg_dsn}) {
+				my ($tbmod, $orig, $schema, $both) = $self->set_pg_relation_name($t);
+				if (not $s->execute(lc($tbmod), lc($schema))) {
+					push(@errors, "Can not extract information from catalog about check constraints.");
+					next;
 				}
-				last;
+				while ( my @row = $s->fetchrow()) {
+					print "POSTGRES:$tbmod$orig:$row[0]\n";
+					if ($row[0] != $nbcheck) {
+						push(@errors, "Table $tbmod$orig doesn't have the same number of check constraints in source database ($nbcheck) and in PostgreSQL ($row[0]).");
+					}
+					last;
+				}
 			}
 		}
+		$s->finish() if ($self->{pg_dsn});
+		%check_constraints = ();
+		$self->show_test_errors('check constraints', @errors);
+		@errors = ();
 	}
-	$s->finish() if ($self->{pg_dsn});
-	%check_constraints = ();
-	$self->show_test_errors('check constraints', @errors);
-	@errors = ();
 
 	####
 	# Test NOT NULL constraints
@@ -11510,7 +11526,7 @@ AND n.nspname LIKE ?
 	my %column_infos = $self->_column_attributes('', $self->{schema}, 'TABLE');
 	$sql = qq{
 SELECT count(*)
-FROM pg_catalog.pg_attribute a JOIN pg_class e ON (e.oid=a.attrelid) JOIN pg_namespace n (e.relnamespace=n.oid)
+FROM pg_catalog.pg_attribute a JOIN pg_class e ON (e.oid=a.attrelid) JOIN pg_namespace n ON (e.relnamespace=n.oid)
 WHERE e.relname = ? AND a.attnum > 0 AND NOT a.attisdropped AND a.attnotnull AND n.nspname LIKE ?
 };
 	if ($self->{pg_dsn}) {
@@ -11520,11 +11536,11 @@ WHERE e.relname = ? AND a.attnum > 0 AND NOT a.attisdropped AND a.attnotnull AND
 		next if (!exists $tables_infos{$t});
 		my $nbnull = 0;
 		foreach my $cn (keys %{$column_infos{$t}}) {
-			if ($column_infos{$t}{$cn}{nullable} eq 'N') {
+			if ($column_infos{$t}{$cn}{nullable} =~ /^N/) {
 				$nbnull++;
 			}
 		}
-		print "ORACLEDB:$t:$nbnull\n";
+		print "$lbl:$t:$nbnull\n";
 		if ($self->{pg_dsn}) {
 			my ($tbmod, $orig, $schema, $both) = $self->set_pg_relation_name($t);
 			if (not $s->execute(lc($tbmod), lc($schema))) {
@@ -11534,7 +11550,7 @@ WHERE e.relname = ? AND a.attnum > 0 AND NOT a.attisdropped AND a.attnotnull AND
 			while ( my @row = $s->fetchrow()) {
 				print "POSTGRES:$tbmod$orig:$row[0]\n";
 				if ($row[0] != $nbnull) {
-					push(@errors, "Table $tbmod$orig doesn't have the same number of not null constraints in Oracle ($nbnull) and in PostgreSQL ($row[0]).");
+					push(@errors, "Table $tbmod$orig doesn't have the same number of not null constraints in source database ($nbnull) and in PostgreSQL ($row[0]).");
 				}
 				last;
 			}
@@ -11554,11 +11570,15 @@ SELECT a.attname,
   (SELECT substring(pg_catalog.pg_get_expr(d.adbin, d.adrelid) for 128)
    FROM pg_catalog.pg_attrdef d
    WHERE d.adrelid = a.attrelid AND d.adnum = a.attnum AND a.atthasdef)
-FROM pg_catalog.pg_attribute a JOIN pg_class e ON (e.oid=a.attrelid) JOIN pg_namespace n (e.relnamespace=n.oid)
-WHERE e.relname = ? AND a.attnum > 0 AND NOT a.attisdropped AND a.attnotnull AND n.nspname LIKE ?
+FROM pg_catalog.pg_attribute a JOIN pg_class e ON (e.oid=a.attrelid) JOIN pg_namespace n ON (e.relnamespace=n.oid)
+WHERE e.relname = ? AND a.attnum > 0 AND NOT a.attisdropped AND n.nspname LIKE ?
 };
 	if ($self->{pg_dsn}) {
 		$s = $self->{dbhdest}->prepare($sql) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
+	}
+	my @seqs = ();
+	if ($self->{is_mysql}) {
+		@seqs = Ora2Pg::MySQL::_count_sequences($self);
 	}
 	foreach my $t (keys %column_infos) {
 		next if (!exists $tables_infos{$t});
@@ -11568,7 +11588,10 @@ WHERE e.relname = ? AND a.attnum > 0 AND NOT a.attisdropped AND a.attnotnull AND
 				$nbdefault++;
 			}
 		}
-		print "ORACLEDB:$t:$nbdefault\n";
+		if (grep(/^$t$/i, @seqs)) {
+			$nbdefault++;
+		}
+		print "$lbl:$t:$nbdefault\n";
 		if ($self->{pg_dsn}) {
 			my ($tbmod, $orig, $schema, $both) = $self->set_pg_relation_name($t);
 			if (not $s->execute(lc($tbmod), lc($schema))) {
@@ -11581,7 +11604,7 @@ WHERE e.relname = ? AND a.attnum > 0 AND NOT a.attisdropped AND a.attnotnull AND
 			}
 			print "POSTGRES:$tbmod$orig:$pgdef\n";
 			if ($pgdef != $nbdefault) {
-				push(@errors, "Table $tbmod$orig doesn't have the same number of column default value in Oracle ($pgdef) and in PostgreSQL ($row[0]).");
+				push(@errors, "Table $tbmod$orig doesn't have the same number of column default value in source database ($nbdefault) and in PostgreSQL ($pgdef).");
 			}
 		}
 	}
@@ -11598,7 +11621,7 @@ WHERE e.relname = ? AND a.attnum > 0 AND NOT a.attisdropped AND a.attnotnull AND
 	my ($foreign_link, $foreign_key) = $self->_foreign_key('',$self->{schema});
 	$sql = qq{
 SELECT count(*)
-FROM pg_catalog.pg_constraint r JOIN pg_class c ON (r.conrelid=c.oid) JOIN pg_namespace n (c.relnamespace=n.oid)
+FROM pg_catalog.pg_constraint r JOIN pg_class c ON (r.conrelid=c.oid) JOIN pg_namespace n ON (c.relnamespace=n.oid)
 WHERE c.relname = ? AND r.contype = 'f' AND n.nspname LIKE ?
 };
 	if ($self->{pg_dsn}) {
@@ -11607,7 +11630,7 @@ WHERE c.relname = ? AND r.contype = 'f' AND n.nspname LIKE ?
 	foreach my $t (keys %{$foreign_link}) {
 		next if (!exists $tables_infos{$t});
 		my $nbfk = scalar keys %{$foreign_link->{$t}};
-		print "ORACLEDB:$t:$nbfk\n";
+		print "$lbl:$t:$nbfk\n";
 		if ($self->{pg_dsn}) {
 			my ($tbmod, $orig, $schema, $both) = $self->set_pg_relation_name($t);
 			if (not $s->execute(lc($tbmod), lc($schema))) {
@@ -11617,7 +11640,7 @@ WHERE c.relname = ? AND r.contype = 'f' AND n.nspname LIKE ?
 			while ( my @row = $s->fetchrow()) {
 				print "POSTGRES:$tbmod$orig:$row[0]\n";
 				if ($row[0] != $nbfk) {
-					push(@errors, "Table $tbmod$orig doesn't have the same number of foreign key constraints in Oracle ($nbfk) and in PostgreSQL ($row[0]).");
+					push(@errors, "Table $tbmod$orig doesn't have the same number of foreign key constraints in source database ($nbfk) and in PostgreSQL ($row[0]).");
 				}
 				last;
 			}
@@ -11635,7 +11658,7 @@ WHERE c.relname = ? AND r.contype = 'f' AND n.nspname LIKE ?
 	my %triggers = $self->_list_triggers();
 	$sql = qq{
 SELECT count(*)
-FROM pg_catalog.pg_trigger t JOIN pg_class c ON (t.tgrelid=c.oid) JOIN pg_namespace n (c.relnamespace=n.oid)
+FROM pg_catalog.pg_trigger t JOIN pg_class c ON (t.tgrelid=c.oid) JOIN pg_namespace n ON (c.relnamespace=n.oid)
 WHERE c.relname = ? AND (NOT t.tgisinternal OR (t.tgisinternal AND t.tgenabled = 'D')) AND n.nspname LIKE ?;
 };
 	if ($self->{pg_dsn}) {
@@ -11644,7 +11667,7 @@ WHERE c.relname = ? AND (NOT t.tgisinternal OR (t.tgisinternal AND t.tgenabled =
 	foreach my $t (keys %triggers) {
 		next if (!exists $tables_infos{$t});
 		my $nbtrg = $#{$triggers{$t}}+1;
-		print "ORACLEDB:$t:$nbtrg\n";
+		print "$lbl:$t:$nbtrg\n";
 		if ($self->{pg_dsn}) {
 			my ($tbmod, $orig, $schema, $both) = $self->set_pg_relation_name($t);
 			if (not $s->execute(lc($tbmod), lc($schema))) {
@@ -11654,7 +11677,7 @@ WHERE c.relname = ? AND (NOT t.tgisinternal OR (t.tgisinternal AND t.tgenabled =
 			while ( my @row = $s->fetchrow()) {
 				print "POSTGRES:$tbmod$orig:$row[0]\n";
 				if ($row[0] != $nbtrg) {
-					push(@errors, "Table $tbmod$orig doesn't have the same number of triggers in Oracle ($nbtrg) and in PostgreSQL ($row[0]).");
+					push(@errors, "Table $tbmod$orig doesn't have the same number of triggers in source database ($nbtrg) and in PostgreSQL ($row[0]).");
 				}
 				last;
 			}
@@ -11668,7 +11691,7 @@ WHERE c.relname = ? AND (NOT t.tgisinternal OR (t.tgisinternal AND t.tgenabled =
 	# Test partitions
 	####
 	print "\n";
-	print "[TEST PARTITIONS COUNT]\n";
+	print "[TEST PARTITION COUNT]\n";
 	my %partitions = $self->_get_partitioned_table();
 	my $schema_clause = '';
 	if ($self->{pg_schema} && $self->{export_schema}) {
@@ -11695,7 +11718,7 @@ GROUP BY
 	if ($self->{pg_dsn}) {
 		$s = $self->{dbhdest}->prepare($sql) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
 		if (not $s->execute()) {
-			push(@errors, "Can not extract information from catalog about foreign key constraints.");
+			push(@errors, "Can not extract information from catalog about PARTITION.");
 			next;
 		}
 		while ( my @row = $s->fetchrow()) {
@@ -11705,16 +11728,18 @@ GROUP BY
 	}
 	foreach my $t (keys %partitions) {
 		next if (!exists $tables_infos{$t});
-		print "ORACLEDB:$t:$partitions{$t}\n";
+		print "$lbl:$t:$partitions{$t}\n";
 		my ($tbmod, $orig, $schema, $both) = $self->set_pg_relation_name($t);
 		if (exists $pg_part{$tbmod}) {
 			print "POSTGRES:$tbmod$orig:$pg_part{$tbmod}\n";
 			if ($pg_part{$tbmod} != $partitions{$t}) {
-				push(@errors, "Table $tbmod$orig doesn't have the same number of foreign key constraints in Oracle ($partitions{$t}) and in PostgreSQL ($row[0]).");
+				push(@errors, "Table $tbmod$orig doesn't have the same number of partitions in source database ($partitions{$t}) and in PostgreSQL ($pg_part{$tbmod}).");
 			}
+		} else {
+			push(@errors, "Table $tbmod$orig doesn't have the same number of partitions in source database ($partitions{$t}) and in PostgreSQL (0).");
 		}
 	}
-	$self->show_test_errors('partitions', @errors);
+	$self->show_test_errors('PARTITION', @errors);
 	@errors = ();
 
 	print "\n";
@@ -11737,7 +11762,7 @@ WHERE c.relkind IN ('r','')
       $schema_clause
 };
 
-	print "ORACLEDB:TABLE:$nbobj\n";
+	print "$lbl:TABLE:$nbobj\n";
 	if ($self->{pg_dsn}) {
 		$s = $self->{dbhdest}->prepare($sql) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
 		if (not $s->execute()) {
@@ -11747,7 +11772,7 @@ WHERE c.relkind IN ('r','')
 		while ( my @row = $s->fetchrow()) {
 			print "POSTGRES:TABLE:$row[0]\n";
 			if ($row[0] != $nbobj) {
-				push(@errors, "TABLE does not have the same count in Oracle ($nbobj) and in PostgreSQL ($row[0]).");
+				push(@errors, "TABLE does not have the same count in source database ($nbobj) and in PostgreSQL ($row[0]).");
 			}
 			last;
 		}
@@ -11771,12 +11796,12 @@ WHERE c.relkind IN ('r','')
 	}
 	$sql = qq{
 SELECT count(*)
-FROM pg_catalog.pg_trigger t JOIN pg_class c ON (c.oid = t.tgrelid) JOIN pg_namespace n (c.relnamespace=n.oid)
+FROM pg_catalog.pg_trigger t JOIN pg_class c ON (c.oid = t.tgrelid) JOIN pg_namespace n ON (c.relnamespace=n.oid)
 WHERE (NOT t.tgisinternal OR (t.tgisinternal AND t.tgenabled = 'D'))
 $schema_clause
 };
 
-	print "ORACLEDB:TRIGGER:$nbobj\n";
+	print "$lbl:TRIGGER:$nbobj\n";
 	if ($self->{pg_dsn}) {
 		$s = $self->{dbhdest}->prepare($sql) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
 		if (not $s->execute()) {
@@ -11786,7 +11811,7 @@ $schema_clause
 		while ( my @row = $s->fetchrow()) {
 			print "POSTGRES:TRIGGER:$row[0]\n";
 			if ($row[0] != $nbobj) {
-				push(@errors, "TRIGGER does not have the same count in Oracle ($nbobj) and in PostgreSQL ($row[0]).");
+				push(@errors, "TRIGGER does not have the same count in source database ($nbobj) and in PostgreSQL ($row[0]).");
 			}
 			last;
 		}
@@ -11795,7 +11820,6 @@ $schema_clause
 	$self->show_test_errors('TRIGGER', @errors);
 	@errors = ();
 
-	return %tables_infos;
 }
 
 sub _count_object
@@ -11804,7 +11828,10 @@ sub _count_object
 	my $obj_type = shift;
 
 	# Get all tables information specified by the DBI method table_info
-	$self->logit("Looking for Oracle and PostgreSQL objects count...\n", 1);
+	$self->logit("Looking for source database and PostgreSQL objects count...\n", 1);
+
+	my $lbl = 'ORACLEDB';
+	$lbl    = 'MYSQL_DB' if ($self->{is_mysql});
 
 	my $schema_clause = '';
 	if ($self->{pg_schema} && $self->{export_schema}) {
@@ -11841,7 +11868,12 @@ WHERE c.relkind IN ('m','')
       $schema_clause
 };
 	} elsif ($obj_type eq 'SEQUENCE') {
-		my @obj_infos = $self->_get_sequences();
+		my @obj_infos = ();
+		if (!$self->{is_mysql}) {
+			@obj_infos = $self->_get_sequences();
+		} else {
+			@obj_infos = Ora2Pg::MySQL::_count_sequences($self);
+		}
 		$nbobj = $#obj_infos + 1;
 		$sql = qq{
 SELECT count(*)
@@ -11887,7 +11919,11 @@ WHERE c.relkind IN ('f','')
 	print "\n";
 	print "[TEST $obj_type COUNT]\n";
 
-	print "ORACLEDB:$obj_type:$nbobj\n";
+	if ($self->{is_mysql} && ($obj_type eq 'SEQUENCE')) {
+		print "$lbl:AUTOINCR:$nbobj\n";
+	} else {
+		print "$lbl:$obj_type:$nbobj\n";
+	}
 	if ($self->{pg_dsn}) {
 		my $s = $self->{dbhdest}->prepare($sql) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
 		if (not $s->execute()) {
@@ -11897,7 +11933,7 @@ WHERE c.relkind IN ('f','')
 		while ( my @row = $s->fetchrow()) {
 			print "POSTGRES:$obj_type:$row[0]\n";
 			if ($row[0] != $nbobj) {
-				push(@errors, "\U$obj_type\E does not have the same count in Oracle ($nbobj) and in PostgreSQL ($row[0]).");
+				push(@errors, "\U$obj_type\E does not have the same count in source database ($nbobj) and in PostgreSQL ($row[0]).");
 			}
 			last;
 		}
