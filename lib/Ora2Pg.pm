@@ -5710,7 +5710,8 @@ sub _create_indexes
 
 		if (exists $self->{replaced_cols}{"\L$tbsaved\E"} && $self->{replaced_cols}{"\L$tbsaved\E"}) {
 			foreach my $c (keys %{$self->{replaced_cols}{"\L$tbsaved\E"}}) {
-				map { s/"$c"/"$self->{replaced_cols}{"\L$tbsaved\E"}{$c}"/i } @{$indexes{$idx}};
+				map { s/^"$c"$/"$self->{replaced_cols}{"\L$tbsaved\E"}{$c}"/i } @{$indexes{$idx}};
+				map { s/^$c$/$self->{replaced_cols}{"\L$tbsaved\E"}{$c}/i } @{$indexes{$idx}};
 			}
 		}
 
