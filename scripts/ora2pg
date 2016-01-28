@@ -76,6 +76,7 @@ my $AUDIT_USER = '';
 my $PG_DSN = '';
 my $PG_USER = '';
 my $PG_PWD = '';
+my $COUNT_ROWS = 0;
 
 my @SCHEMA_ARRAY  = qw( TABLE PACKAGE VIEW GRANT SEQUENCE TRIGGER FUNCTION PROCEDURE TABLESPACE PARTITION TYPE MVIEW DBLINK SYNONYM DIRECTORY );
 my @EXTERNAL_ARRAY  = qw( KETTLE FDW );
@@ -133,6 +134,7 @@ GetOptions (
 	'pg_dsn=s' => \$PG_DSN,
 	'pg_user=s' => \$PG_USER,
 	'pg_pwd=s' => \$PG_PWD,
+	'count_rows!' => \$COUNT_ROWS,
 );
 
 # Check command line parameters
@@ -268,6 +270,7 @@ my $schema = new Ora2Pg (
 	pg_dsn => $PG_DSN,
 	pg_user => $PG_USER,
 	pg_pwd => $PG_PWD,
+	count_rows => $COUNT_ROWS,
 );
 
 
@@ -363,6 +366,7 @@ Usage: ora2pg [-dhpqv --estimate_cost --dump_as_html] [--option value]
    --pg_dsn DSN       : set the datasource to PostgreSQL for direct import.
    --pg_user name     : set the PostgreSQL user to use.
    --pg_pwd password  : set the PostgreSQL password to use.
+   --count_rows       : force ora2pg to perform a real row count in TEST action.
 
 See full documentation at http://ora2pg.darold.net/ for more help or see
 manpage with 'man ora2pg'.

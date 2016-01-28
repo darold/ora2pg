@@ -1041,6 +1041,7 @@ sub _init
 	$self->{print_header} ||= 0;
 
 	$self->{estimate_cost} = 1 if ($self->{dump_as_sheet});
+	$self->{count_rows} ||= 0;
 
 	# Internal date boundary. Date below will be added to 2000, others will used 1900
 	$self->{internal_date_max} ||= 49;
@@ -1246,9 +1247,15 @@ sub _init
 			exit 0;
 		} elsif ($self->{type} eq 'TEST') {
 			$self->{dbhdest} = $self->_send_to_pgdb() if ($self->{pg_dsn} && !$self->{dbhdest});
-			$self->_test_table();
+			# Check if all tables have the same number of indexes, constraints, etc.
+			my %tables_infos = $self->_test_table();
+			# Count each object at both sides
 			foreach my $o ('VIEW', 'MVIEW', 'SEQUENCE', 'TYPE', 'FDW') {
 				$self->_count_object($o);
+			}
+			# Count row in each table
+			if ($self->{count_rows}) {
+				$self->_table_row_count(%tables_infos);
 			}
 			$self->{dbh}->disconnect() if ($self->{dbh}); 
 			exit 0;
@@ -11272,15 +11279,10 @@ sub set_pg_relation_name
 	return ($tbmod, $orig, 'public', $tbmod);
 }
 
-sub _test_table
+sub _table_row_count
 {
 	my $self = shift;
-
-	# Get all tables information specified by the DBI method table_info
-	$self->logit("Looking for objects count related to Oracle and PostgreSQL tables...\n", 1);
-
-	# Retrieve tables informations
-	my %tables_infos = $self->_table_info(1);
+	my %tables_infos = @_;
 
 	####
 	# Test number of row in tables
@@ -11307,7 +11309,20 @@ sub _test_table
 		}
 	}
 	$self->show_test_errors('rows', @errors);
-	@errors = ();
+}
+
+
+sub _test_table
+{
+	my $self = shift;
+
+	my @errors = ();
+
+	# Get all tables information specified by the DBI method table_info
+	$self->logit("Looking for objects count related to Oracle and PostgreSQL tables...\n", 1);
+
+	# Retrieve tables informations
+	my %tables_infos = $self->_table_info(1);
 
 	####
 	# Test number of index in tables
@@ -11763,6 +11778,8 @@ $schema_clause
 	}
 	$self->show_test_errors('TRIGGER', @errors);
 	@errors = ();
+
+	return %tables_infos;
 }
 
 sub _count_object

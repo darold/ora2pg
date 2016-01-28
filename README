@@ -286,6 +286,7 @@ CONFIGURATION
        --pg_dsn DSN       : set the datasource to PostgreSQL for direct import.
        --pg_user name     : set the PostgreSQL user to use.
        --pg_pwd password  : set the PostgreSQL password to use.
+       --count_rows       : force ora2pg to perform a real row count in TEST action.
 
     See full documentation at http://ora2pg.darold.net/ for more help or see
     manpage with 'man ora2pg'.
