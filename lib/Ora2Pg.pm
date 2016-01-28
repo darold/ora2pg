@@ -5279,16 +5279,31 @@ CREATE TRIGGER ${table}_trigger_insert
 						}
 					}
 					if ($type =~ /serial/) {
-						my $seqname = substr(lc($tbname . '_' . $fname), 0, 59);
-						if ($seqname =~ /^"/) {
-							$seqname =~ s/"$//;
-							$seqname .= '_seq"';
-						} else {
+						my $seqname = lc($tbname) . '_' . lc($fname) . '_seq';
+						my $tobequoted = 0;
+						if ($seqname =~ s/"//g) {
+							$tobequoted = 1;
+						}
+						if (length($seqname) > 63) {
+							if (length($tbname) > 29) {
+								$seqname = substr(lc($tbname), 0, 29);
+							} else {
+								$seqname = lc($tbname);
+							}
+							if (length($fname) > 29) {
+								$seqname .= '_' . substr(lc($fname), 0, 29);
+							} else {
+								$seqname .= '_' . lc($fname);
+							}
 							$seqname .= '_seq';
+						}
+						if ($tobequoted) {
+							$seqname = '"' . $seqname . '"';
 						}
 						$serial_sequence .= "ALTER SEQUENCE $seqname RESTART WITH $self->{tables}{$table}{table_info}{auto_increment};\n";
 					}
 				}
+
 				# Check if this column should be replaced by a boolean following table/column name
 				if (uc($f->[1]) eq 'ENUM') {
 					$f->[11] =~ s/^enum\(//i;
