@@ -912,6 +912,7 @@ sub _get_dblink
 	my $str = "SELECT OWNER,SERVER_NAME,USERNAME,HOST,DB,PORT,PASSWORD FROM mysql.servers";
 	$str .= $self->limit_to_objects('DBLINK', 'SERVER_NAME');
 	$str .= " ORDER BY SERVER_NAME";
+	$str =~ s/mysql.servers AND /mysql.servers WHERE /;
 
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
