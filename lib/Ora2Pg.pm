@@ -1815,7 +1815,7 @@ sub _tables
 			$realview =~ s/"//g;
 			if (!$self->{is_mysql}) {
 				if ($realview !~ /\./) {
-					$realview = "\"self->{tables}{$view}{owner}\".\"$realview\"";
+					$realview = "\"$self->{tables}{$view}{owner}\".\"$realview\"";
 				} else {
 					$realview =~ s/\./"."/;
 					$realview = "\"$realview\"";
