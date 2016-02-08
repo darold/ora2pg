@@ -8878,6 +8878,8 @@ sub format_data_type
 			$col = 'NULL';
 		} elsif ( ($src_type =~ /geometry/i) && ($self->{geometry_extract_type} eq 'WKB') ) {
 			$col = "St_GeomFromWKB('\\x" . unpack('H*', $col) . "', $self->{spatial_srid}{$table}->[$idx])";
+		} elsif (($src_type =~ /RAW/i) && ($data_type =~ /bytea/i)) {
+			$col = $self->_escape_lob($col, 'RAW')
 		} elsif ($data_type =~ /bytea/i) {
 			$col = $self->_escape_lob($col, 'BLOB')
 		} elsif ($data_type =~ /(char|text|xml)/i) {
@@ -8917,6 +8919,8 @@ sub format_data_type
 			# covered now by the call to _numeric_format()
 			$col =~ s/\~/inf/;
 			$col = '\N' if ($col eq '');
+		} elsif (($src_type =~ /RAW/i) && ($data_type =~ /bytea/i)) {
+			$col = $self->_escape_lob($col, 'RAW')
 		} elsif ($data_type =~ /bytea/i) {
 			$col = $self->_escape_lob($col, 'BLOB')
 		} elsif ($data_type !~ /(date|time)/i) {
@@ -13674,16 +13678,15 @@ sub normalize_query
 
 sub _escape_lob
 {
-	my ($self, $col, $src_type) = @_;
+	my ($self, $col, $generic_type) = @_;
 
 	if ($self->{type} eq 'COPY') {
-		if ($src_type eq 'BLOB') {
+		if ( ($generic_type eq 'BLOB') || ($generic_type eq 'RAW') ) {
 			#$col = escape_bytea($col);
-			$col = unpack("H*",$col);
 			# RAW data type is returned in hex
-			#$col = '\\\\x' . $col if ($src_type eq 'RAW');
+			$col = unpack("H*",$col) if ($generic_type ne 'RAW');
 			$col = '\\\\x' . $col;
-		} elsif ($src_type eq 'CLOB') {
+		} elsif ($generic_type eq 'CLOB') {
 			if ($self->{has_utf8_fct}) {
 				utf8::encode($col) if (!utf8::valid($col));
 			}
@@ -13700,17 +13703,17 @@ sub _escape_lob
 			}
 		}
 	} else {
-		if ($src_type eq 'BLOB') {
+		if ( ($generic_type eq 'BLOB') || ($generic_type eq 'RAW') ) {
 			#$col = escape_bytea($col);
-			$col = unpack("H*",$col);
+			# RAW data type is returned in hex
+			$col = unpack("H*",$col) if ($generic_type ne 'RAW');
 			if (!$self->{standard_conforming_strings}) {
 				$col = "'$col'";
 			} else {
 				$col = "E'$col'";
 			}
-			# RAW data type is returned in hex
-			$col = "decode($col, 'hex')" if ($src_type eq 'RAW');
-		} elsif ($src_type eq 'CLOB') {
+			$col = "decode($col, 'hex')";
+		} elsif ($generic_type eq 'CLOB') {
 			if (!$self->{standard_conforming_strings}) {
 				$col =~ s/'/''/gs; # double single quote
 				$col =~ s/\\/\\\\/gs;
