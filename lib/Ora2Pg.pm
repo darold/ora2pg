@@ -1254,6 +1254,8 @@ sub _init
 				next if ($self->{is_mysql} && grep(/^$o$/, 'MVIEW','TYPE','FDW'));
 				$self->_count_object($o);
 			}
+			# count function/procedure/package function
+			$self->_test_function();
 			# Count row in each table
 			if ($self->{count_rows}) {
 				$self->_table_row_count();
@@ -11312,7 +11314,7 @@ sub _table_row_count
 	$self->logit("Looking for real row count in source database and PostgreSQL tables...\n", 1);
 
 	# Retrieve tables informations
-	my %tables_infos = $self->_table_info(1);
+	my %tables_infos = $self->_table_info($self->{count_rows});
 
 	####
 	# Test number of row in tables
@@ -11342,7 +11344,6 @@ sub _table_row_count
 	$self->show_test_errors('rows', @errors);
 }
 
-
 sub _test_table
 {
 	my $self = shift;
@@ -11353,7 +11354,7 @@ sub _test_table
 	$self->logit("Looking for objects count related to source database and PostgreSQL tables...\n", 1);
 
 	# Retrieve tables informations
-	my %tables_infos = $self->_table_info(1);
+	my %tables_infos = $self->_table_info($self->{count_rows});
 
 	my $lbl = 'ORACLEDB';
 	$lbl    = 'MYSQL_DB' if ($self->{is_mysql});
@@ -11948,6 +11949,72 @@ WHERE c.relkind IN ('f','')
 	@errors = ();
 }
 
+sub _test_function
+{
+	my $self = shift;
+
+	my @errors = ();
+
+	$self->logit("Looking for functions count related to source database and PostgreSQL functions...\n", 1);
+
+	my $lbl = 'ORACLEDB';
+	$lbl    = 'MYSQL_DB' if ($self->{is_mysql});
+
+	####
+	# Test number of function
+	####
+	print "\n";
+	print "[TEST FUNCTION COUNT]\n";
+	my @fct_infos = $self->_list_all_funtions();
+	$schema_clause = '';
+	if ($self->{pg_schema} && $self->{export_schema}) {
+		$schema_clause = "AND n.nspname = '\L$self->{pg_schema}\E'";
+	} elsif ($self->{schema} && $self->{export_schema}) {
+		$schema_clause = "AND n.nspname = '\L$self->{schema}\E'";
+	}
+	$sql = qq{
+SELECT n.nspname,proname
+FROM pg_catalog.pg_proc p
+     LEFT JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+WHERE pg_catalog.pg_function_is_visible(p.oid)
+      AND n.nspname <> 'pg_catalog'
+      AND n.nspname <> 'information_schema'
+      $schema_clause
+};
+	my $nbobj = $#fct_infos + 1;
+	print "$lbl:FUNCTION:$nbobj\n";
+	if ($self->{pg_dsn}) {
+		$s = $self->{dbhdest}->prepare($sql) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
+		if (not $s->execute()) {
+			push(@errors, "Can not extract information from catalog about $obj_type.");
+			next;
+		}
+		my $pgfct = 0;
+		my %pg_function = ();
+		while ( my @row = $s->fetchrow()) {
+			$pgfct++;
+			my $fname = $row[1];
+			if ($row[0] ne 'public') {
+				$fname = $row[0] . '.' . $row[1];
+			}
+			$pg_function{lc($fname)} = 1;
+		}
+		print "POSTGRES:FUNCTION:$pgfct\n";
+		if ($pgfct != $nbobj) {
+			push(@errors, "FUNCTION does not have the same count in source database ($nbobj) and in PostgreSQL ($pgfct).");
+		}
+		$s->finish();
+		# search for missing funtion
+		foreach my $f (@fct_infos) {
+			 push(@errors, "Function $f is missing in PostgreSQL database.") if (!exists $pg_function{$f});
+		}
+	}
+	$self->show_test_errors('FUNCTION', @errors);
+	@errors = ();
+	print "\n";
+}
+
+
 =head2 _get_pkg_functions
 
 This function retrieves the Oracle package list and the replacement
@@ -12073,6 +12140,46 @@ sub _get_objects
 	$sth->finish();
 
 	return %infos;
+}
+
+sub _list_all_funtions
+{
+	my $self = shift;
+
+	return Ora2Pg::MySQL::_list_all_funtions($self) if ($self->{is_mysql});
+
+	my $oraver = '';
+	# OWNER|OBJECT_NAME|PROCEDURE_NAME|OBJECT_TYPE
+	my $sql = qq{
+SELECT p.owner,p.object_name,p.procedure_name,o.object_type
+  FROM $self->{prefix}_PROCEDURES p
+  JOIN $self->{prefix}_OBJECTS o ON p.owner = o.owner
+   AND p.object_name = o.object_name 
+ WHERE o.object_type IN ('PROCEDURE','PACKAGE','FUNCTION')
+   AND o.TEMPORARY='N' AND o.GENERATED='N' AND o.SECONDARY='N'
+   AND o.STATUS = 'VALID'
+};
+        if ($self->{schema}) {
+                $sql .= " AND p.OWNER='$self->{schema}'";
+        } else {
+                $sql .= " AND p.OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
+        }
+	my @infos = ();
+        my $sth = $self->{dbh}->prepare( $sql ) or return undef;
+        $sth->execute or return undef;
+	while ( my @row = $sth->fetchrow()) {
+		next if (($row[3] eq 'PACKAGE') && !$row[2]);
+		if ( $row[2] ) {
+			# package_name.fct_name
+			push(@infos, lc("$row[1].$row[2]"));
+		} else {
+			# owner.fct_name
+			push(@infos, lc($row[1]));
+		}
+	}
+	$sth->finish();
+
+	return @infos;
 }
 
 =head2 _schema_list
