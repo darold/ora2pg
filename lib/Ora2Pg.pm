@@ -8992,11 +8992,12 @@ File is open and locked before writind data, it is closed at end.
 
 sub data_dump
 {
-	my ($self, $data, $rname) = @_;
+	my ($self, $data, $tname, $pname) = @_;
 
 	my $dirprefix = '';
 	$dirprefix = "$self->{output_dir}/" if ($self->{output_dir});
 	my $filename = $self->{output};
+	my $rname = $pname || $tname;
 	if ($self->{file_per_table}) {
 		$self->logit("Dumping data from $rname to file: $dirprefix${rname}_$self->{output}\n", 1);
 		$filename = "${rname}_$self->{output}";
@@ -9011,11 +9012,18 @@ sub data_dump
 		# Reopen default output file
 		$self->create_export_file() if (defined $self->{fhout} && !$self->{file_per_table} && !$self->{pg_dsn});
 	} elsif ($self->{file_per_table}) {
-		$self->{cfhout} = $self->open_export_file($filename) if (!defined $self->{cfhout});
-		if ($self->{compress} eq 'Zlib') {
-			$self->{cfhout}->gzwrite($data) or $self->logit("FATAL: error writing compressed data\n", 0, 1);
+		if ($self->{file_per_table} && $pname) {
+			my $fh = $self->append_export_file($filename);
+			$fh->print($data);
+			$self->close_export_file($fh);
+			$self->logit("Written " . length($data) . " bytes to $dirprefix$filename\n", 1);
 		} else {
-			$self->{cfhout}->print($data);
+			$self->{cfhout} = $self->open_export_file($filename) if (!defined $self->{cfhout});
+			if ($self->{compress} eq 'Zlib') {
+				$self->{cfhout}->gzwrite($data) or $self->logit("FATAL: error writing compressed data\n", 0, 1);
+			} else {
+				$self->{cfhout}->print($data);
+			}
 		}
 	} else {
 		$self->dump($data);
@@ -10463,7 +10471,7 @@ sub _dump_to_pg
 		if ($part_name && $self->{prefix_partition})  {
 			$part_name = $table . '_' . $part_name;
 		}
-		$self->data_dump($h_towrite . $sql_out . $e_towrite, $part_name || $table);
+		$self->data_dump($h_towrite . $sql_out . $e_towrite, $table, $part_name);
 	}
 
 	my $total_row = $self->{tables}{$table}{table_info}{num_rows};
