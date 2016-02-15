@@ -9563,7 +9563,9 @@ END;
 		$function .= "DECLARE\n$fct_detail{declare}\n" if ($fct_detail{declare});
 		$function .= $fct_detail{code};
 		$function .= "\n\$body\$\nLANGUAGE PLPGSQL\n";
-		$revoke = "-- REVOKE ALL ON FUNCTION $name $fct_detail{args} FROM PUBLIC;\n";
+		$revoke = "-- REVOKE ALL ON FUNCTION $name $fct_detail{args} FROM PUBLIC;";
+		$revoke =~ s/[\n\r]+\s*/ /gs;
+		$revoke .= "\n";
 		if ($self->{type} ne 'PACKAGE') {
 			if (!$self->{is_mysql}) {
 				$function .= "SECURITY DEFINER\n" if ($self->{security}{"\U$fct_detail{name}\E"}{security} eq 'DEFINER');
