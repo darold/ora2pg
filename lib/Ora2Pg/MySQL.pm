@@ -783,6 +783,35 @@ sub _lookup_procedure
 	return %fct_detail;
 }
 
+sub _list_all_funtions
+{
+	my $self = shift;
+
+	# Retrieve all functions 
+	# ROUTINE_SCHEMA           | varchar(64)   | NO   |     |                     |       |
+	# ROUTINE_NAME             | varchar(64)   | NO   |     |                     |       |
+	# ROUTINE_TYPE             | varchar(9)    | NO   |     |                     |       |
+
+	my $str = "SELECT ROUTINE_NAME,DATA_TYPE FROM INFORMATION_SCHEMA.ROUTINES";
+	if ($self->{schema}) {
+		$str .= " AND ROUTINE_SCHEMA = '$self->{schema}'";
+	}
+	$str .= " " . $self->limit_to_objects('FUNCTION','ROUTINE_NAME');
+	$str =~ s/ AND / WHERE /;
+	$str .= " ORDER BY ROUTINE_NAME";
+	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+
+	my @functions = ();
+	while (my $row = $sth->fetch) {
+		push(@functions, $row->[0]);
+	}
+	$sth->finish();
+
+	return @functions;
+}
+
+
 
 sub _sql_type
 {
