@@ -1089,10 +1089,13 @@ sub _init
 	$self->{preserve_case} = $self->{case_sensitive} if (defined $self->{case_sensitive} && not defined $self->{preserve_case});
 	$self->{schema} = uc($self->{schema}) if (!$self->{preserve_case} && ($self->{oracle_dsn} !~ /:mysql/i));
 	# With MySQL override schema with the database name
-	if ($self->{oracle_dsn} =~ /:mysql.*database=([^;]+)/i) {
-		if ($self->{schema} && ($self->{schema} ne $1)) {
+	if ($self->{oracle_dsn} =~ /:mysql:.*database=([^;]+)/i) {
+		if ($self->{schema} ne $1) {
 			$self->{schema} = $1;
 			$self->logit("WARNING: setting SCHEMA to MySQL database name $1.\n", 0);
+		}
+		if (!$self->{schema}) {
+			$self->logit("FATAL: cannot find a valid mysql database in DSN, $self->{oracle_dsn}.\n", 0, 1);
 		}
 	}
 
