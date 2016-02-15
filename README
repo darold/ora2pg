@@ -965,8 +965,7 @@ CONFIGURATION
         exported as a create table statement. If export type is COPY or
         INSERT, the corresponding data will be exported.
 
-        See chapter "Exporting Oracle views as PostgreSQL tables" for more
-        details.
+        See chapter "Exporting views as PostgreSQL table" for more details.
 
     WHERE
         This directive allow you to specify a WHERE clause filter when
@@ -1878,21 +1877,21 @@ CONFIGURATION
             GROUP BY category_id;
 
     Setting VIEW_AS_TABLE to product_prices and using export type TABLE,
-    here is the create table statment generated:
+    will force Ora2Pg to detect columns returned types and to generate a
+    create table statement:
 
-            CREATE TABLE product_prices (category_id, product_count, low_price, high_price) AS
-            SELECT  category_id,
-                COUNT(*) as product_count,
-                MIN(list_price) as low_price,
-                MAX(list_price) as high_price
-             FROM   product_information
-            GROUP BY category_id;
+            CREATE TABLE product_prices (
+                    category_id bigint,
+                    product_count integer,
+                    low_price numeric,
+                    high_price numeric
+            );
 
-    If you create the view as table before data has been loaded, they will
-    be loaded following the COPY export type and the view declaration.
+    Data will be loaded following the COPY or INSERT export type and the
+    view declaration.
 
-    You can use the ALLOW and EXCLUDE directive in addition to select the
-    others objects to export.
+    You can use the ALLOW and EXCLUDE directive in addition to filter other
+    objects to export.
 
   Export as Kettle transformation XML files
     The KETTLE export type is useful if you want to use Penthalo Data

@@ -988,7 +988,7 @@ and the export type is TABLE, the view will be exported as a create table
 statement. If export type is COPY or INSERT, the corresponding data will be
 exported.
 
-See chapter "Exporting Oracle views as PostgreSQL tables" for more details.
+See chapter "Exporting views as PostgreSQL table" for more details.
 
 =item WHERE
 
@@ -1952,21 +1952,21 @@ For example, with the following view:
 	 FROM   product_information
 	GROUP BY category_id;
 
-Setting VIEW_AS_TABLE to product_prices and using export type TABLE, here is
-the create table statment generated:
+Setting VIEW_AS_TABLE to product_prices and using export type TABLE, will
+force Ora2Pg to detect columns returned types and to generate a create table
+statement:
 
-	CREATE TABLE product_prices (category_id, product_count, low_price, high_price) AS
-	SELECT  category_id,
-	    COUNT(*) as product_count,
-	    MIN(list_price) as low_price,
-	    MAX(list_price) as high_price
-	 FROM   product_information
-	GROUP BY category_id;
-	 
-If you create the view as table before data has been loaded, they will be loaded
-following the COPY export type and the view declaration.
+	CREATE TABLE product_prices (
+		category_id bigint,
+		product_count integer,
+		low_price numeric,
+		high_price numeric
+	);
 
-You can use the ALLOW and EXCLUDE directive in addition to select the others
+Data will be loaded following the COPY or INSERT export type and the view
+declaration.
+
+You can use the ALLOW and EXCLUDE directive in addition to filter other
 objects to export.
 
 =head2 Export as Kettle transformation XML files
