@@ -1805,7 +1805,7 @@ sub _tables
 			# Set the table information for each class found
 			# Jump to desired extraction
 			next if (!grep($view =~ /^$_$/i, @{$self->{view_as_table}}));
-			$self->logit("Scanning view $view to export as table...\n", 1);
+			$self->logit("Scanning view $view to export as table...\n", 0);
 
 			$self->{tables}{$view}{type} = 'view';
 			$self->{tables}{$view}{text} = $view_infos{$view}{text};
@@ -2981,14 +2981,6 @@ sub _get_sql_data
 					}
 				}
 			}
-
-			# Create view as table if asked
-#			if (grep(/^$view$/i, @{$self->{view_as_table}})) {
-#				$sql_output =~ s/CREATE OR REPLACE VIEW/CREATE TABLE/s;
-#				$sql_output =~ s/COMMENT ON VIEW/COMMENT ON TABLE/s;
-#				$sql_output =~ s/\s*\bWITH\b[^;]+;$/;/s;
-#				
-#			}
 
 			if ($self->{file_per_table}) {
 				$self->dump($sql_header . $sql_output, $fhdl);
