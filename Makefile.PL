@@ -588,9 +588,10 @@ STANDARD_CONFORMING_STRINGS	1
 # Disable this if you don't want to load full content of BLOB and CLOB and use
 # LOB locators instead. This is usefull to not having to set LONGREADLEN. Note
 # that this will not improve speed of BLOB export as most of the time is always
-# consumed by the bytea escaping. For more information on how it works, see
+# consumed by the bytea escaping and in this case export is done line by line
+# and not by chunk of DATA_LIMIT rows. For more information on how it works, see
 # http://search.cpan.org/~pythian/DBD-Oracle-1.74/lib/DBD/Oracle.pm#Data_Interface_for_LOB_Locators
-# Default is enabled, it will no use LOB locators for backward compatibility.
+# Default is enabled, it will not use LOB locators for backward compatibility.
 NO_LOB_LOCATOR  1
 
 # Use getStringVal() instead of getClobVal() for XML data export. Default is

@@ -8876,11 +8876,11 @@ sub format_data_type
 		} elsif ( ($src_type =~ /geometry/i) && ($self->{geometry_extract_type} eq 'WKB') ) {
 			$col = "St_GeomFromWKB('\\x" . unpack('H*', $col) . "', $self->{spatial_srid}{$table}->[$idx])";
 		} elsif (($src_type =~ /RAW/i) && ($data_type =~ /bytea/i)) {
-			$col = $self->_escape_lob($col, 'RAW')
+			$col = $self->_escape_lob($col, 'RAW');
 		} elsif ($data_type =~ /bytea/i) {
-			$col = $self->_escape_lob($col, 'BLOB')
+			$col = $self->_escape_lob($col, 'BLOB');
 		} elsif ($data_type =~ /(char|text|xml)/i) {
-			$col = $self->_escape_lob($col, 'CLOB')
+			$col = $self->_escape_lob($col, 'CLOB');
 		} elsif ($data_type =~ /(date|time)/i) {
 			if ($col =~ /^0000-00-00/) {
 				if (!$self->{replace_zero_date}) {
@@ -8917,11 +8917,11 @@ sub format_data_type
 			$col =~ s/\~/inf/;
 			$col = '\N' if ($col eq '');
 		} elsif (($src_type =~ /RAW/i) && ($data_type =~ /bytea/i)) {
-			$col = $self->_escape_lob($col, 'RAW')
+			$col = $self->_escape_lob($col, 'RAW');
 		} elsif ($data_type =~ /bytea/i) {
-			$col = $self->_escape_lob($col, 'BLOB')
+			$col = $self->_escape_lob($col, 'BLOB');
 		} elsif ($data_type !~ /(date|time)/i) {
-			$col = $self->_escape_lob($col, 'CLOB')
+			$col = $self->_escape_lob($col, 'CLOB');
 		} elsif ($data_type =~ /(date|time)/i) {
 			if ($col =~ /^0000-00-00/) {
 				if (!$self->{replace_zero_date}) {
@@ -10120,48 +10120,103 @@ sub _extract_data
 		}
 		my $has_blob = 0;
 		$has_blob = 1 if (grep(/LOB/, @$stt));
-		while ( my $rows = $sth->fetchall_arrayref(undef,$data_limit)) {
+		if (!$has_blob || $self->{no_lob_locator}) {
+			while ( my $rows = $sth->fetchall_arrayref(undef,$data_limit)) {
 
-			if ( ($self->{parallel_tables} > 1) || (($self->{oracle_copies} > 1) && $self->{defined_pk}{"\L$table\E"}) ) {
-				if ($dbh->errstr) {
-					$self->logit("ERROR: " . $dbh->errstr . "\n", 0, 0);
+				if ( ($self->{parallel_tables} > 1) || (($self->{oracle_copies} > 1) && $self->{defined_pk}{"\L$table\E"}) ) {
+					if ($dbh->errstr) {
+						$self->logit("ERROR: " . $dbh->errstr . "\n", 0, 0);
+						last;
+					}
+				} elsif ( $self->{dbh}->errstr ) {
+					$self->logit("ERROR: " . $self->{dbh}->errstr . "\n", 0, 0);
 					last;
 				}
-			} elsif ( $self->{dbh}->errstr ) {
-				$self->logit("ERROR: " . $self->{dbh}->errstr . "\n", 0, 0);
-				last;
+
+				$total_record += @$rows;
+
+				if ( ($self->{jobs} > 1) || ($self->{oracle_copies} > 1) ) {
+					while ($self->{child_count} >= $self->{jobs}) {
+						my $kid = waitpid(-1, WNOHANG);
+						if ($kid > 0) {
+							$self->{child_count}--;
+							delete $RUNNING_PIDS{$kid};
+						}
+						usleep(50000);
+					}
+					spawn sub {
+						$self->_dump_to_pg($rows, $table, $cmd_head, $cmd_foot, $s_out, $tt, $sprep, $stt, $start_time, $part_name, $total_record, %user_type);
+					};
+					$self->{child_count}++;
+				} else {
+					$self->_dump_to_pg($rows, $table, $cmd_head, $cmd_foot, $s_out, $tt, $sprep, $stt, $start_time, $part_name, $total_record, %user_type);
+				}
+
 			}
 
-			$total_record += @$rows;
+		} else {
 
-			# Should we retrieve LOB data from locator
-			if (!$self->{no_lob_locator} && $has_blob) {
+			my @rows = ();
+			while ( my @row = $sth->fetchrow_array()) {
+
+				if ( ($self->{parallel_tables} > 1) || (($self->{oracle_copies} > 1) && $self->{defined_pk}{"\L$table\E"}) ) {
+					if ($dbh->errstr) {
+						$self->logit("ERROR: " . $dbh->errstr . "\n", 0, 0);
+						last;
+					}
+				} elsif ( $self->{dbh}->errstr ) {
+					$self->logit("ERROR: " . $self->{dbh}->errstr . "\n", 0, 0);
+					last;
+				}
+
+
+				# Retrieve LOB data from locator
 				$self->{chunk_size} = 8192;
 				# Then foreach row use the returned lob locator to retrieve data
-				for (my $i = 0; $i <= $#$rows; $i++) {
-					# and all column with a LOB data type, extract data by chunk
-					for (my $j = 0; $j <= $#$stt; $j++) {
-						if ($stt->[$j] =~ /LOB/) {
-							my $content = '';
-							my $offset = 1;   # Offsets start at 1, not 0
-							if ( ($self->{parallel_tables} > 1) || (($self->{oracle_copies} > 1) && $self->{defined_pk}{"\L$table\E"}) ) {
-								while (1) {
-									my $lobdata = $dbh->ora_lob_read($rows->[$i][$j], $offset, $self->{chunk_size} );
-									last unless length $lobdata;
-									$offset += $self->{chunk_size};
-									$content .= $lobdata;
-								}
-							} else {
-								while (1) {
-									my $lobdata = $self->{dbh}->ora_lob_read($rows->[$i][$j], $offset, $self->{chunk_size} );
-									last unless length $lobdata;
-									$offset += $self->{chunk_size};
-									$content .= $lobdata;
-								}
+				# and all column with a LOB data type, extract data by chunk
+				for (my $j = 0; $j <= $#$stt; $j++) {
+					if ($stt->[$j] =~ /LOB/) {
+						my $lob_content = '';
+						my $offset = 1;   # Offsets start at 1, not 0
+						if ( ($self->{parallel_tables} > 1) || (($self->{oracle_copies} > 1) && $self->{defined_pk}{"\L$table\E"}) ) {
+							while (1) {
+								my $lobdata = $dbh->ora_lob_read($row[$j], $offset, $self->{chunk_size} );
+								last unless (defined $lobdata && length $lobdata);
+								$offset += $self->{chunk_size};
+								$lob_content .= $lobdata;
 							}
-							$rows->[$i][$j] = $content;
+						} else {
+							while (1) {
+								my $lobdata = $self->{dbh}->ora_lob_read($row[$j], $offset, $self->{chunk_size} );
+								last unless (defined $lobdata && length $lobdata);
+								$offset += $self->{chunk_size};
+								$lob_content .= $lobdata;
+							}
 						}
+						$row[$j] = $lob_content;
 					}
+				}
+				push(@rows, [@row]);
+				$total_record++;
+
+				if ($#rows == $data_limit) {
+					if ( ($self->{jobs} > 1) || ($self->{oracle_copies} > 1) ) {
+						while ($self->{child_count} >= $self->{jobs}) {
+							my $kid = waitpid(-1, WNOHANG);
+							if ($kid > 0) {
+								$self->{child_count}--;
+								delete $RUNNING_PIDS{$kid};
+							}
+							usleep(50000);
+						}
+						spawn sub {
+							$self->_dump_to_pg(\@rows, $table, $cmd_head, $cmd_foot, $s_out, $tt, $sprep, $stt, $start_time, $part_name, $total_record, %user_type);
+						};
+						$self->{child_count}++;
+					} else {
+						$self->_dump_to_pg(\@rows, $table, $cmd_head, $cmd_foot, $s_out, $tt, $sprep, $stt, $start_time, $part_name, $total_record, %user_type);
+					}
+					@rows = ();
 				}
 			}
 			if ( ($self->{jobs} > 1) || ($self->{oracle_copies} > 1) ) {
@@ -10174,12 +10229,13 @@ sub _extract_data
 					usleep(50000);
 				}
 				spawn sub {
-					$self->_dump_to_pg($rows, $table, $cmd_head, $cmd_foot, $s_out, $tt, $sprep, $stt, $start_time, $part_name, $total_record, %user_type);
+					$self->_dump_to_pg(\@rows, $table, $cmd_head, $cmd_foot, $s_out, $tt, $sprep, $stt, $start_time, $part_name, $total_record, %user_type);
 				};
 				$self->{child_count}++;
 			} else {
-				$self->_dump_to_pg($rows, $table, $cmd_head, $cmd_foot, $s_out, $tt, $sprep, $stt, $start_time, $part_name, $total_record, %user_type);
+				$self->_dump_to_pg(\@rows, $table, $cmd_head, $cmd_foot, $s_out, $tt, $sprep, $stt, $start_time, $part_name, $total_record, %user_type);
 			}
+			@rows = ();
 
 		}
 
