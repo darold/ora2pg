@@ -2774,8 +2774,8 @@ sub _export_table_data
 
 	# Add table truncate order
 	if ($self->{truncate_table}) {
-		$self->logit("Truncating table $table...\n", 1);
 		if ($self->{pg_dsn}) {
+			$self->logit("Truncating table $table...\n", 1);
 			my $s = $local_dbh->do("TRUNCATE TABLE $tmptb;") or $self->logit("FATAL: " . $local_dbh->errstr . "\n", 0, 1);
 		} else {
 			if ($self->{file_per_table}) {
@@ -6444,7 +6444,7 @@ sub _howto_get_data
 			if ($self->{data_limit} >= 1000) {
 				$self->{local_data_limit}{$table} = int($self->{data_limit}/10);
 				while ($self->{local_data_limit}{$table} > 1000) {
-					$self->{local_data_limit}{$table} = int($self->{local_data_limit}/10);
+					$self->{local_data_limit}{$table} = int($self->{local_data_limit}{$table}/10);
 				}
 			} else {
 				$self->{local_data_limit}{$table} = $self->{data_limit};
