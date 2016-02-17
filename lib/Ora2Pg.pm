@@ -10074,7 +10074,7 @@ sub _extract_data
 		# Set row cache size
 		$self->{dbh}->{RowCacheSize} = int($self->{data_limit}/10);
 		if (exists $self->{local_data_limit}{$table}) {
-			$dbh->{RowCacheSize} = $self->{local_data_limit}{$table};
+			$self->{dbh}->{RowCacheSize} = $self->{local_data_limit}{$table};
 		}
 
 		# prepare the query before execution
