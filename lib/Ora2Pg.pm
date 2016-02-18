@@ -4643,7 +4643,7 @@ LANGUAGE plpgsql ;
 			}
 		}
 
-		# Commit transaction with direct connection to avoid deadlocks
+		# Commit transaction
 		if ($self->{pg_dsn}) {
 			my $s = $self->{dbhdest}->do("COMMIT;") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
 		}
@@ -7375,7 +7375,7 @@ array of all indexe names which are not primary keys for the specified table.
 
 sub _get_indexes
 {
-	my ($self, $table, $owner) = @_;
+	my ($self, $table, $owner, $generated_indexes) = @_;
 
 	return Ora2Pg::MySQL::_get_indexes($self,$table,$owner) if ($self->{is_mysql});
 
@@ -7389,6 +7389,10 @@ sub _get_indexes
 	$condition .= "AND A.INDEX_OWNER='$owner' AND B.OWNER='$owner' " if ($owner);
 	$condition .= $self->limit_to_objects('TABLE|INDEX', "A.TABLE_NAME|A.INDEX_NAME") if (!$table);
 
+	# When comparing number of index we need to retrieve generated index (mostly PK)
+        my $generated = '';
+        $generated = " B.GENERATED <> 'Y' AND" if (!$generated_indexes);
+
 	# Retrieve all indexes 
 	my $sth = '';
 	if ($self->{db_version} !~ /Release 8/) {
@@ -7396,7 +7400,7 @@ sub _get_indexes
 SELECT DISTINCT A.INDEX_NAME,A.COLUMN_NAME,B.UNIQUENESS,A.COLUMN_POSITION,B.INDEX_TYPE,B.TABLE_TYPE,B.GENERATED,B.JOIN_INDEX,A.TABLE_NAME,A.INDEX_OWNER,B.TABLESPACE_NAME,B.ITYP_NAME,B.PARAMETERS,A.DESCEND
 FROM $self->{prefix}_IND_COLUMNS A
 JOIN $self->{prefix}_INDEXES B ON (B.INDEX_NAME=A.INDEX_NAME)
-WHERE B.GENERATED <> 'Y' AND B.TEMPORARY <> 'Y' $condition
+WHERE$generated B.TEMPORARY <> 'Y' $condition
 ORDER BY A.COLUMN_POSITION
 END
 	} else {
@@ -7405,8 +7409,7 @@ END
 SELECT DISTINCT A.INDEX_NAME,A.COLUMN_NAME,B.UNIQUENESS,A.COLUMN_POSITION,B.INDEX_TYPE,B.TABLE_TYPE,B.GENERATED,A.TABLE_NAME,A.INDEX_OWNER,B.TABLESPACE_NAME,B.ITYP_NAME,B.PARAMETERS,A.DESCEND
 FROM $self->{prefix}_IND_COLUMNS A, $self->{prefix}_INDEXES B
 WHERE B.INDEX_NAME=A.INDEX_NAME $condition
-AND B.GENERATED <> 'Y'
-AND B.TEMPORARY <> 'Y'
+AND$generated B.TEMPORARY <> 'Y'
 ORDER BY $self->{prefix}_IND_COLUMNS.COLUMN_POSITION
 END
 	}
@@ -11424,7 +11427,7 @@ sub _test_table
 	# Test number of index in tables
 	####
 	print "[TEST INDEXES COUNT]\n";
-	my ($uniqueness, $indexes, $idx_type, $idx_tbsp) = $self->_get_indexes('',$self->{schema});
+	my ($uniqueness, $indexes, $idx_type, $idx_tbsp) = $self->_get_indexes('', $self->{schema}, 1);
 	if ($self->{is_mysql}) {
 		$indexes = Ora2Pg::MySQL::_count_indexes($self, '', $self->{schema});
 	}
