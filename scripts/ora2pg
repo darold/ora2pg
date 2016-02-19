@@ -512,7 +512,7 @@ exit 0
 
 	# Generate shell script to execute all import
 	print "Creating script import_all.sh to automate all imports.\n";
-	my $exportype = "EXPORT_TYPE=\"" . join(' ', @SCHEMA_ARRAY) . "\"\n";
+	my $exportype = "EXPORT_TYPE=\"TYPE " . join(' ', grep( !/^TYPE$/, @SCHEMA_ARRAY)) . "\"\n";
 	unless(open(OUT, "> $base_path/import_all.sh")) {
 		print "FATAL: Can't write to file $base_path/import_all.sh\n";
 		exit 1;
