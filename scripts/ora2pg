@@ -922,7 +922,7 @@ fi
 # Check if we must just import schema or proceed to data import too
 if [ $SCHEMA_ONLY -eq 0 ]; then
 	# set the PostgreSQL datasource
-	pgdsn_defined=`grep "^PG_DSN" config/ora2pg.conf`
+	pgdsn_defined=`grep "^PG_DSN" config/ora2pg.conf | sed 's/.*dbi:Pg/dbi:Pg/'`
 	if [ "a$pgdsn_defined" = "a" ]; then
 		if [ "a$DB_HOST" != "a" ]; then
 			pgdsn_defined="dbi:Pg:dbname=$DB_NAME;host=$DB_HOST"
