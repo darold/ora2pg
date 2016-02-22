@@ -764,6 +764,7 @@ sub _init
 	$self->{standard_conforming_strings} = 1;
 	$self->{create_schema} = 1;
 	$self->{external_table} = ();
+	$self->{function_list} = ();
 
 	# Used to precise if we need to prefix partition tablename with main tablename
 	$self->{prefix_partition} = 0;
@@ -1187,6 +1188,7 @@ sub _init
 			}
 
 			$self->_get_pkg_functions() if (!$self->{package_as_schema} && (!grep(/^$self->{type}$/, 'COPY', 'INSERT', 'SEQUENCE', 'GRANT', 'TABLESPACE', 'QUERY', 'SYNONYM', 'FDW', 'KETTLE', 'DBLINK', 'DIRECTORY')));
+			@{$self->{function_list}} = $self->_list_all_funtions() if ($self->{plsql_pgsql} && (!grep(/^$self->{type}$/, 'COPY', 'INSERT', 'SEQUENCE', 'GRANT', 'TABLESPACE', 'QUERY', 'SYNONYM', 'FDW', 'KETTLE', 'DBLINK', 'DIRECTORY')));
 			$self->{security} = $self->_get_security_definer($self->{type}) if (grep(/^$self->{type}$/, 'TRIGGER', 'FUNCTION','PROCEDURE','PACKAGE'));
 		}
 
