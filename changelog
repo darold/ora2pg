@@ -1,3 +1,59 @@
+2016 02 22 - v17.0
+
+This new major release adds a new action type TEST to obtain a count
+of all objects at both sides, Oracle and PostgreSQL, to perform a
+diff between the two database and verify that everything have been
+well imported. It also fixes several issues reported by users.
+
+A new ora2pg command line option have been added to ora2pg script:
+
+  * Add --count_rows command line option to perform a real row count
+    on both side, Oracle and PostgreSQL, in TEST report.
+
+Here is the complete list of changes and bugfixes:
+
+  - Prefix direct call to function with a call to PERFORM. Thanks to
+    Michael Vitale for the feature request.
+  - Fix revoke call on function with multiline parameters declaration.
+  - Fix auto setting of internal schema variable with mysql.
+  - Define ORACLE_HOME with the corresponding environment variable in
+    generic configuration when available and --init_project is used.
+    Thanks to Stephane Tachoires for the report.
+  - Fix documentation about exporting view as table.
+  - Remove some obsolete code and display information when a view is
+    exported as table.
+  - Fix empty LOB data export with Oracle Lob locator (NO_LOB_LOCATOR
+    set to 0).
+  - Fix data export of partitions with single process mode and when
+    FILE_PER_TABLE is enabled.
+  - Fix export of RAW data type.
+  - Fix missing $ to call to self variable. Thanks to NTLIS and Sirko
+    for the report.
+  - Force FKey to be initially immediate when deferred is not set.
+    Thanks to Stephane Tachoire for the report.
+  - Fix count of check constraint when a schema is forced.
+  - Allow TEST action on mysql database too with some improvements
+    and bug fix on the feature.
+  - Fix index column renaming in mysql export.
+  - Fix dblink extraction query when an exclusion is set.
+  - Fix sequence name auto generation for mysql serial number.
+  - Add --count_rows command line option to make optional the real
+    row count in TEST report. This is useful when you have lot of
+    data and do not want to loose time in call to count(*).
+  - Update documentation about the TEST action and usage, see
+    chapter "Test the migration".
+  - Apply schema context on PostgreSQL side with TEST action.
+  - Add TEST action type to ask Ora2Pg to count rows and all objects
+    at both sides, Oracle and PostgreSQL, to verify that everything
+    have been well imported.
+  - Fix missing export of foreign keys on multiple columns, ex:
+	ALTER TABLE products ADD CONSTRAINT fk_supplier_comp
+		FOREIGN KEY (supplier_id,supplier_name)
+		REFERENCES supplier(supplier_id,supplier_name)...
+  - Fix import of BLOB data using INSERT statements into the bytea.
+    Thanks to rballer for the patch.
+  - Fix missing export of FK when no schema is provided.
+
 2016 01 13 - v16.2
 
 This release fixes several issues, is more accurates on migration
