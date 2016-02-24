@@ -1479,7 +1479,7 @@ sub _count_sequences
 	}
 	$sth->finish();
 
-	return @seqs;
+	return \@seqs;
 }
 
 sub _column_attributes

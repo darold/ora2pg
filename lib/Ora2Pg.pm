@@ -8825,6 +8825,7 @@ sub format_data_row
 			}
 			if (!$is_nested) {
 				if ($action eq 'COPY') {
+					map { s/^\\N$//; } @type_col; # \N for NULL is not allowed
 					$row->[$idx] =  "(" . join(',', @type_col) . ")";
 				} else {
 					$row->[$idx] =  "ROW(" . join(',', @type_col) . ")";
@@ -8835,6 +8836,7 @@ sub format_data_row
 					push(@type_col, $row->[$idx][$i]);
 				}
 				if ($action eq 'COPY') {
+					map { s/^\\N$//; } @type_col; # \N for NULL is not allowed
 					map{ if (/,/) { s/^/""/; s/$/""/; }; } @type_col;
 					$row->[$idx] =  '("{' . join(',', @type_col) . '}")';
 				} else {
@@ -10510,6 +10512,8 @@ sub _dump_to_pg
 							}
 						}
 					}
+					# Format user defined type and geometry data
+					$self->format_data_row($row,$tt,'INSERT', $stt, \%user_type, $table);
 					# Apply bind parmeters
 					unless ($ps->execute(@$row) ) {
 						if ($self->{log_on_error}) {
@@ -11360,14 +11364,38 @@ sub set_pg_relation_name
 	my $tbmod = $self->get_replaced_tbname($table);
 	my $orig = '';
 	$orig = " (origin: $table)" if (lc($tbmod) ne lc($table));
+	my $tbname = $tbmod;
+	$tbname =~ s/[^"\.]+\.//;
 	if ($self->{pg_schema} && $self->{export_schema}) {
-		return ($tbmod, $orig, $self->{pg_schema}, "$self->{pg_schema}.$tbmod");
+		return ($tbmod, $orig, $self->{pg_schema}, "$self->{pg_schema}.$tbname");
 	} elsif ($self->{schema} && $self->{export_schema}) {
-		return ($tbmod, $orig, $self->{schema}, "$self->{schema}.$tbmod");
+		return ($tbmod, $orig, $self->{schema}, "$self->{schema}.$tbname");
 	}
 
-	return ($tbmod, $orig, 'public', $tbmod);
+	return ($tbmod, $orig, '', $tbmod);
 }
+
+sub get_schema_condition
+{
+	my ($self, $attrname, $visible) = @_;
+
+	$attrname ||= 'n.nspname';
+
+	if ($self->{pg_schema} && $self->{export_schema}) {
+		return " AND $attrname IN ('" . join("','", split(/\s*,\s*/, $self->{pg_schema})) . "')";
+	} elsif ($self->{schema} && $self->{export_schema}) {
+		return "AND $attrname = '$self->{schema}'";
+	}
+
+	my $cond = '';
+	if ($visible) {
+		$cond = " AND $visible";
+	}
+	$cond .= " AND $attrname <> 'pg_catalog' AND $attrname <> 'information_schema' AND $attrname !~ '^pg_toast'";
+
+	return $cond;
+}
+
 
 sub _table_row_count
 {
@@ -11392,7 +11420,7 @@ sub _table_row_count
 		print "$lbl:$t:$tables_infos{$t}{num_rows}\n";
 		if ($self->{pg_dsn}) {
 			my ($tbmod, $orig, $schema, $both) = $self->set_pg_relation_name($t);
-			my $s = $self->{dbhdest}->prepare("SELECT count(*) FROM $both;") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
+			my $s = $self->{dbhdest}->prepare("SELECT count(*) FROM $tbmod;") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
 			if (not $s->execute) {
 				push(@errors, "Table $tbmod$orig does not exists in PostgreSQL database.") if ($s->state eq '42P01');
 				next;
@@ -11439,8 +11467,10 @@ sub _test_table
 		print "$lbl:$t:$numixd\n";
 		if ($self->{pg_dsn}) {
 			my ($tbmod, $orig, $schema, $both) = $self->set_pg_relation_name($t);
-			$schema = " AND schemaname='\L$schema\E'" if ($schema);
+			$schema = $self->get_schema_condition('schemaname');
+			$tbmod =~ s/^([^\.]+\.)//; # Remove schema part from table name
 			my $s = $self->{dbhdest}->prepare("SELECT count(*) FROM pg_indexes WHERE tablename = '\L$tbmod\E'$schema;") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
+			$tbmod = $1 . $tbmod  if ($1);
 			if (not $s->execute) {
 				push(@errors, "Can not extract information from catalog table pg_indexes.");
 				next;
@@ -11464,6 +11494,7 @@ sub _test_table
 	print "\n";
 	print "[TEST UNIQUE CONSTRAINTS COUNT]\n";
 	my %unique_keys = $self->_unique_key('',$self->{schema});
+	my $schema_cond = $self->get_schema_condition('pg_indexes.schemaname');
 	my $sql = qq{
 SELECT count(*)
 FROM pg_class
@@ -11472,7 +11503,7 @@ FROM pg_class
 WHERE pg_class.relkind = 'i'
   AND pg_index.indisunique 
   AND pg_indexes.tablename=?
-  AND pg_indexes.schemaname LIKE ?
+ $schema_cond
 };
 	my $s = undef;
 	if ($self->{pg_dsn}) {
@@ -11484,10 +11515,12 @@ WHERE pg_class.relkind = 'i'
 		print "$lbl:$t:$numixd\n";
 		if ($self->{pg_dsn}) {
 			my ($tbmod, $orig, $schema, $both) = $self->set_pg_relation_name($t);
-			if (not $s->execute(lc($tbmod), lc($schema))) {
+			$tbmod =~ s/^([^\.]+\.)//; # Remove schema part from table name
+			if (not $s->execute(lc($tbmod))) {
 				push(@errors, "Can not extract information from catalog about unique constraints.");
 				next;
 			}
+			$tbmod = $1 . $tbmod  if ($1);
 			while ( my @row = $s->fetchrow()) {
 				print "POSTGRES:$tbmod$orig:$row[0]\n";
 				if ($row[0] != $numixd) {
@@ -11506,6 +11539,7 @@ WHERE pg_class.relkind = 'i'
 	####
 	print "\n";
 	print "[TEST PRIMARY KEYS COUNT]\n";
+	$schema_cond = $self->get_schema_condition('pg_indexes.schemaname');
 	$sql = qq{
 SELECT count(*)
 FROM pg_class
@@ -11514,7 +11548,7 @@ FROM pg_class
 WHERE pg_class.relkind = 'i'
   AND pg_index.indisprimary
   AND pg_indexes.tablename=?
-  AND pg_indexes.schemaname LIKE ?
+ $schema_cond
 };
 	if ($self->{pg_dsn}) {
 		$s = $self->{dbhdest}->prepare($sql) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
@@ -11528,10 +11562,12 @@ WHERE pg_class.relkind = 'i'
 		print "$lbl:$t:$nbpk\n";
 		if ($self->{pg_dsn}) {
 			my ($tbmod, $orig, $schema, $both) = $self->set_pg_relation_name($t);
-			if (not $s->execute(lc($tbmod), lc($schema))) {
+			$tbmod =~ s/^([^\.]+\.)//; # Remove schema part from table name
+			if (not $s->execute(lc($tbmod))) {
 				push(@errors, "Can not extract information from catalog about primary keys.");
 				next;
 			}
+			$tbmod = $1 . $tbmod  if ($1);
 			while ( my @row = $s->fetchrow()) {
 				print "POSTGRES:$tbmod$orig:$row[0]\n";
 				if ($row[0] != $nbpk) {
@@ -11553,11 +11589,12 @@ WHERE pg_class.relkind = 'i'
 		print "\n";
 		print "[TEST CHECK CONSTRAINTS COUNT]\n";
 		my %check_constraints = $self->_check_constraint('',$self->{schema});
+		$schema_cond = $self->get_schema_condition();
 		$sql = qq{
 SELECT count(*)
 FROM pg_catalog.pg_constraint r JOIN pg_class c ON (r.conrelid=c.oid) JOIN pg_namespace n ON (c.relnamespace=n.oid)
 WHERE c.relname = ? AND r.contype = 'c'
-AND n.nspname LIKE ?
+$schema_cond
 };
 		if ($self->{pg_dsn}) {
 			$s = $self->{dbhdest}->prepare($sql) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
@@ -11571,10 +11608,12 @@ AND n.nspname LIKE ?
 			print "$lbl:$t:$nbcheck\n";
 			if ($self->{pg_dsn}) {
 				my ($tbmod, $orig, $schema, $both) = $self->set_pg_relation_name($t);
-				if (not $s->execute(lc($tbmod), lc($schema))) {
+				$tbmod =~ s/^([^\.]+\.)//; # Remove schema part from table name
+				if (not $s->execute(lc($tbmod))) {
 					push(@errors, "Can not extract information from catalog about check constraints.");
 					next;
 				}
+				$tbmod = $1 . $tbmod  if ($1);
 				while ( my @row = $s->fetchrow()) {
 					print "POSTGRES:$tbmod$orig:$row[0]\n";
 					if ($row[0] != $nbcheck) {
@@ -11596,10 +11635,16 @@ AND n.nspname LIKE ?
 	print "\n";
 	print "[TEST NOT NULL CONSTRAINTS COUNT]\n";
 	my %column_infos = $self->_column_attributes('', $self->{schema}, 'TABLE');
+	$schema_cond = $self->get_schema_condition();
 	$sql = qq{
 SELECT count(*)
-FROM pg_catalog.pg_attribute a JOIN pg_class e ON (e.oid=a.attrelid) JOIN pg_namespace n ON (e.relnamespace=n.oid)
-WHERE e.relname = ? AND a.attnum > 0 AND NOT a.attisdropped AND a.attnotnull AND n.nspname LIKE ?
+FROM pg_catalog.pg_attribute a
+JOIN pg_class e ON (e.oid=a.attrelid)
+JOIN pg_namespace n ON (e.relnamespace=n.oid)
+WHERE e.relname = ?
+  AND a.attnum > 0
+  AND NOT a.attisdropped AND a.attnotnull 
+ $schema_cond
 };
 	if ($self->{pg_dsn}) {
 		$s = $self->{dbhdest}->prepare($sql) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
@@ -11615,10 +11660,12 @@ WHERE e.relname = ? AND a.attnum > 0 AND NOT a.attisdropped AND a.attnotnull AND
 		print "$lbl:$t:$nbnull\n";
 		if ($self->{pg_dsn}) {
 			my ($tbmod, $orig, $schema, $both) = $self->set_pg_relation_name($t);
-			if (not $s->execute(lc($tbmod), lc($schema))) {
+			$tbmod =~ s/^([^\.]+\.)//; # Remove schema part from table name
+			if (not $s->execute(lc($tbmod))) {
 				push(@errors, "Can not extract information from catalog about not null constraints.");
 				next;
 			}
+			$tbmod = $1 . $tbmod  if ($1);
 			while ( my @row = $s->fetchrow()) {
 				print "POSTGRES:$tbmod$orig:$row[0]\n";
 				if ($row[0] != $nbnull) {
@@ -11637,13 +11684,15 @@ WHERE e.relname = ? AND a.attnum > 0 AND NOT a.attisdropped AND a.attnotnull AND
 	####
 	print "\n";
 	print "[TEST COLUMN DEFAULT VALUE COUNT]\n";
+	$schema_cond = $self->get_schema_condition();
 	$sql = qq{
 SELECT a.attname,
   (SELECT substring(pg_catalog.pg_get_expr(d.adbin, d.adrelid) for 128)
    FROM pg_catalog.pg_attrdef d
    WHERE d.adrelid = a.attrelid AND d.adnum = a.attnum AND a.atthasdef)
 FROM pg_catalog.pg_attribute a JOIN pg_class e ON (e.oid=a.attrelid) JOIN pg_namespace n ON (e.relnamespace=n.oid)
-WHERE e.relname = ? AND a.attnum > 0 AND NOT a.attisdropped AND n.nspname LIKE ?
+WHERE e.relname = ? AND a.attnum > 0 AND NOT a.attisdropped
+ $schema_cond
 };
 	if ($self->{pg_dsn}) {
 		$s = $self->{dbhdest}->prepare($sql) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
@@ -11666,10 +11715,12 @@ WHERE e.relname = ? AND a.attnum > 0 AND NOT a.attisdropped AND n.nspname LIKE ?
 		print "$lbl:$t:$nbdefault\n";
 		if ($self->{pg_dsn}) {
 			my ($tbmod, $orig, $schema, $both) = $self->set_pg_relation_name($t);
-			if (not $s->execute(lc($tbmod), lc($schema))) {
+			$tbmod =~ s/^([^\.]+\.)//; # Remove schema part from table name
+			if (not $s->execute(lc($tbmod))) {
 				push(@errors, "Can not extract information from catalog about column default value.");
 				next;
 			}
+			$tbmod = $1 . $tbmod  if ($1);
 			my $pgdef = 0;
 			while ( my @row = $s->fetchrow()) {
 				$pgdef++ if ($row[1] ne '');
@@ -11691,10 +11742,13 @@ WHERE e.relname = ? AND a.attnum > 0 AND NOT a.attisdropped AND n.nspname LIKE ?
 	print "\n";
 	print "[TEST FOREIGN KEYS COUNT]\n";
 	my ($foreign_link, $foreign_key) = $self->_foreign_key('',$self->{schema});
+	$schema_cond = $self->get_schema_condition();
 	$sql = qq{
 SELECT count(*)
 FROM pg_catalog.pg_constraint r JOIN pg_class c ON (r.conrelid=c.oid) JOIN pg_namespace n ON (c.relnamespace=n.oid)
-WHERE c.relname = ? AND r.contype = 'f' AND n.nspname LIKE ?
+WHERE c.relname = ?
+  AND r.contype = 'f'
+ $schema_cond
 };
 	if ($self->{pg_dsn}) {
 		$s = $self->{dbhdest}->prepare($sql) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
@@ -11705,10 +11759,12 @@ WHERE c.relname = ? AND r.contype = 'f' AND n.nspname LIKE ?
 		print "$lbl:$t:$nbfk\n";
 		if ($self->{pg_dsn}) {
 			my ($tbmod, $orig, $schema, $both) = $self->set_pg_relation_name($t);
-			if (not $s->execute(lc($tbmod), lc($schema))) {
+			$tbmod =~ s/^([^\.]+\.)//; # Remove schema part from table name
+			if (not $s->execute(lc($tbmod))) {
 				push(@errors, "Can not extract information from catalog about foreign key constraints.");
 				next;
 			}
+			$tbmod = $1 . $tbmod  if ($1);
 			while ( my @row = $s->fetchrow()) {
 				print "POSTGRES:$tbmod$orig:$row[0]\n";
 				if ($row[0] != $nbfk) {
@@ -11728,10 +11784,13 @@ WHERE c.relname = ? AND r.contype = 'f' AND n.nspname LIKE ?
 	print "\n";
 	print "[TEST TABLE TRIGGERS COUNT]\n";
 	my %triggers = $self->_list_triggers();
+	$schema_cond = $self->get_schema_condition();
 	$sql = qq{
 SELECT count(*)
 FROM pg_catalog.pg_trigger t JOIN pg_class c ON (t.tgrelid=c.oid) JOIN pg_namespace n ON (c.relnamespace=n.oid)
-WHERE c.relname = ? AND (NOT t.tgisinternal OR (t.tgisinternal AND t.tgenabled = 'D')) AND n.nspname LIKE ?;
+WHERE c.relname = ?
+  AND (NOT t.tgisinternal OR (t.tgisinternal AND t.tgenabled = 'D'))
+ $schema_cond
 };
 	if ($self->{pg_dsn}) {
 		$s = $self->{dbhdest}->prepare($sql) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
@@ -11742,10 +11801,12 @@ WHERE c.relname = ? AND (NOT t.tgisinternal OR (t.tgisinternal AND t.tgenabled =
 		print "$lbl:$t:$nbtrg\n";
 		if ($self->{pg_dsn}) {
 			my ($tbmod, $orig, $schema, $both) = $self->set_pg_relation_name($t);
-			if (not $s->execute(lc($tbmod), lc($schema))) {
+			$tbmod =~ s/^([^\.]+\.)//; # Remove schema part from table name
+			if (not $s->execute(lc($tbmod))) {
 				push(@errors, "Can not extract information from catalog about foreign key constraints.");
 				next;
 			}
+			$tbmod = $1 . $tbmod  if ($1);
 			while ( my @row = $s->fetchrow()) {
 				print "POSTGRES:$tbmod$orig:$row[0]\n";
 				if ($row[0] != $nbtrg) {
@@ -11765,12 +11826,8 @@ WHERE c.relname = ? AND (NOT t.tgisinternal OR (t.tgisinternal AND t.tgenabled =
 	print "\n";
 	print "[TEST PARTITION COUNT]\n";
 	my %partitions = $self->_get_partitioned_table();
-	my $schema_clause = '';
-	if ($self->{pg_schema} && $self->{export_schema}) {
-		$schema_clause = "WHERE nmsp_parent.nspname = '\L$self->{pg_schema}\E'";
-	} elsif ($self->{schema} && $self->{export_schema}) {
-		$schema_clause = "WHERE nmsp_parent.nspname = '\L$self->{schema}\E'";
-	}
+	$schema_cond = $self->get_schema_condition('nmsp_parent.nspname');
+	$schema_cond =~ s/^ AND/ WHERE/;
 	$sql = qq{
 SELECT
     nmsp_parent.nspname     AS parent_schema,
@@ -11781,7 +11838,7 @@ FROM pg_inherits
     JOIN pg_class child     ON pg_inherits.inhrelid   = child.oid
     JOIN pg_namespace nmsp_parent   ON nmsp_parent.oid  = parent.relnamespace
     JOIN pg_namespace nmsp_child    ON nmsp_child.oid   = child.relnamespace
-$schema_clause
+$schema_cond
 GROUP BY                                                                    
     parent_schema,
     parent;
@@ -11817,21 +11874,13 @@ GROUP BY
 	print "\n";
 	print "[TEST TABLE COUNT]\n";
 	my $nbobj = scalar keys %tables_infos;
-	$schema_clause = '';
-	if ($self->{pg_schema} && $self->{export_schema}) {
-		$schema_clause = "AND n.nspname = '\L$self->{pg_schema}\E'";
-	} elsif ($self->{schema} && $self->{export_schema}) {
-		$schema_clause = "AND n.nspname = '\L$self->{schema}\E'";
-	}
+	$schema_cond = $self->get_schema_condition();
 	$sql = qq{
 SELECT count(*)
 FROM pg_catalog.pg_class c
      LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
 WHERE c.relkind IN ('r','')
-      AND n.nspname <> 'pg_catalog'
-      AND n.nspname <> 'information_schema'
-      AND n.nspname !~ '^pg_toast'
-      $schema_clause
+ $schema_cond
 };
 
 	print "$lbl:TABLE:$nbobj\n";
@@ -11860,17 +11909,12 @@ WHERE c.relkind IN ('r','')
 		next if (!exists $tables_infos{$t});
 		$nbobj += $#{$triggers{$t}}+1;
 	}
-	$schema_clause = '';
-	if ($self->{pg_schema} && $self->{export_schema}) {
-		$schema_clause = "AND n.nspname = '\L$self->{pg_schema}\E'";
-	} elsif ($self->{schema} && $self->{export_schema}) {
-		$schema_clause = "AND n.nspname = '\L$self->{schema}\E'";
-	}
+	$schema_cond = $self->get_schema_condition();
 	$sql = qq{
 SELECT count(*)
 FROM pg_catalog.pg_trigger t JOIN pg_class c ON (c.oid = t.tgrelid) JOIN pg_namespace n ON (c.relnamespace=n.oid)
 WHERE (NOT t.tgisinternal OR (t.tgisinternal AND t.tgenabled = 'D'))
-$schema_clause
+ $schema_cond
 };
 
 	print "$lbl:TRIGGER:$nbobj\n";
@@ -11905,12 +11949,7 @@ sub _count_object
 	my $lbl = 'ORACLEDB';
 	$lbl    = 'MYSQL_DB' if ($self->{is_mysql});
 
-	my $schema_clause = '';
-	if ($self->{pg_schema} && $self->{export_schema}) {
-		$schema_clause = "AND n.nspname = '\L$self->{pg_schema}\E'";
-	} elsif ($self->{schema} && $self->{export_schema}) {
-		$schema_clause = "AND n.nspname = '\L$self->{schema}\E'";
-	}
+	my $schema_clause = $self->get_schema_condition();
 	my $nbobj = 0;
 	my $sql = '';
 	if ($obj_type eq 'VIEW') {
@@ -11921,9 +11960,6 @@ SELECT count(*)
 FROM pg_catalog.pg_class c
      LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
 WHERE c.relkind IN ('v','')
-      AND n.nspname <> 'pg_catalog'
-      AND n.nspname <> 'information_schema'
-      AND n.nspname !~ '^pg_toast'
       $schema_clause
 };
 	} elsif ($obj_type eq 'MVIEW') {
@@ -11934,41 +11970,33 @@ SELECT count(*)
 FROM pg_catalog.pg_class c
      LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
 WHERE c.relkind IN ('m','')
-      AND n.nspname <> 'pg_catalog'
-      AND n.nspname <> 'information_schema'
-      AND n.nspname !~ '^pg_toast'
       $schema_clause
 };
 	} elsif ($obj_type eq 'SEQUENCE') {
-		my @obj_infos = ();
+		my $obj_infos = ();
 		if (!$self->{is_mysql}) {
-			@obj_infos = $self->_get_sequences();
+			$obj_infos = $self->_get_sequences();
 		} else {
-			@obj_infos = Ora2Pg::MySQL::_count_sequences($self);
+			$obj_infos = Ora2Pg::MySQL::_count_sequences($self);
 		}
-		$nbobj = $#obj_infos + 1;
+		$nbobj = $#{$obj_infos} + 1;
 		$sql = qq{
 SELECT count(*)
 FROM pg_catalog.pg_class c
      LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
 WHERE c.relkind IN ('S','')
-      AND n.nspname <> 'pg_catalog'
-      AND n.nspname <> 'information_schema'
-      AND n.nspname !~ '^pg_toast'
       $schema_clause
 };
 	} elsif ($obj_type eq 'TYPE') {
-		my @obj_infos = $self->_get_types();
-		$nbobj = $#obj_infos + 1;
+		my $obj_infos = $self->_get_types();
+		$nbobj = $#{$obj_infos} + 1;
+		$schema_clause .= " AND pg_catalog.pg_type_is_visible(t.oid)" if ($schema_clause =~ /information_schema/);
 		$sql = qq{
 SELECT count(*)
 FROM pg_catalog.pg_type t
      LEFT JOIN pg_catalog.pg_namespace n ON n.oid = t.typnamespace
 WHERE (t.typrelid = 0 OR (SELECT c.relkind = 'c' FROM pg_catalog.pg_class c WHERE c.oid = t.typrelid))
   AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_type el WHERE el.oid = t.typelem AND el.typarray = t.oid)
-      AND n.nspname <> 'pg_catalog'
-      AND n.nspname <> 'information_schema'
-  AND pg_catalog.pg_type_is_visible(t.oid)
   $schema_clause
 };
 	} elsif ($obj_type eq 'FDW') {
@@ -11979,9 +12007,6 @@ SELECT count(*)
 FROM pg_catalog.pg_class c
      LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
 WHERE c.relkind IN ('f','')
-      AND n.nspname <> 'pg_catalog'
-      AND n.nspname <> 'information_schema'
-      AND n.nspname !~ '^pg_toast'
       $schema_clause
 };
 	} else {
@@ -12032,20 +12057,14 @@ sub _test_function
 	print "\n";
 	print "[TEST FUNCTION COUNT]\n";
 	my @fct_infos = $self->_list_all_funtions();
-	$schema_clause = '';
-	if ($self->{pg_schema} && $self->{export_schema}) {
-		$schema_clause = "AND n.nspname = '\L$self->{pg_schema}\E'";
-	} elsif ($self->{schema} && $self->{export_schema}) {
-		$schema_clause = "AND n.nspname = '\L$self->{schema}\E'";
-	}
+	my $schema_clause = $self->get_schema_condition('', 'pg_catalog.pg_function_is_visible(p.oid)');
 	$sql = qq{
-SELECT n.nspname,proname
+SELECT n.nspname,proname,prorettype
 FROM pg_catalog.pg_proc p
      LEFT JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
-WHERE pg_catalog.pg_function_is_visible(p.oid)
-      AND n.nspname <> 'pg_catalog'
-      AND n.nspname <> 'information_schema'
-      $schema_clause
+     LEFT JOIN pg_catalog.pg_type t ON t.oid=p.prorettype
+WHERE t.typname <> 'trigger'
+ $schema_clause
 };
 	my $nbobj = $#fct_infos + 1;
 	print "$lbl:FUNCTION:$nbobj\n";
@@ -12060,9 +12079,9 @@ WHERE pg_catalog.pg_function_is_visible(p.oid)
 		while ( my @row = $s->fetchrow()) {
 			$pgfct++;
 			my $fname = $row[1];
-			if ($row[0] ne 'public') {
-				$fname = $row[0] . '.' . $row[1];
-			}
+#			if ($row[0] ne 'public') {
+#				$fname = $row[0] . '.' . $row[1];
+#			}
 			$pg_function{lc($fname)} = 1;
 		}
 		print "POSTGRES:FUNCTION:$pgfct\n";
