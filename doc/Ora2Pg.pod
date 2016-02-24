@@ -553,10 +553,14 @@ the SCHEMA directive plus the default pg_catalog schema as follow:
 If you set PG_SCHEMA to something like "user_schema, public" for example the
 search path will be set like this:
 
-	SET search_path = $PG_SCHEMA;
-	-- SET search_path = user_schema, public;
+	SET search_path = user_schema, public;
 
-This will force to not use the Oracle schema set in the SCHEMA directive.
+This will force to use an other schema than the one from Oracle schema and set
+in the SCHEMA directive.
+
+You can also set the default search_path for the connected PostgreSQL user by
+using:
+	ALTER ROLE username SET search_path TO user_schema, public, pg_catalog; 
 
 =item SYSUSERS
 

@@ -124,8 +124,8 @@ COMPILE_SCHEMA	0
 # PostreSQL search path schema to use. Can be a comma delimited list,
 # for example: users_schema,public will result in the following PostgreSQL 
 # schema path: SET search_path = users_schema,public;
-# By default search_path is set to Oracle schema and pg_catalog.
-#PG_SCHEMA	pg_catalog
+# The default is the value defined for the connection user in PostgreSQL.
+#PG_SCHEMA	
 
 # Use this directive to add a specific schema to the search path to look
 # for PostGis functions.
