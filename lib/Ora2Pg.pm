@@ -716,6 +716,22 @@ sub set_where_clause
 
 }
 
+=head2 set_delete_clause HASH
+
+Add a DELETE clause before data export on specific tables or on all tables
+
+=cut
+
+sub set_delete_clause
+{
+	my ($self, $global, %table_clause) = @_;
+
+	$self->{global_delete} = $global;
+	foreach my $t (keys %table_clause) {
+		$self->{delete}{"\L$t\E"} = $table_clause{$t};
+	}
+
+}
 
 
 #### Private subroutines ####
@@ -1028,6 +1044,7 @@ sub _init
 
 	# Set some default
 	$self->{global_where} ||= '';
+	$self->{global_delete} ||= '';
 	$self->{prefix} = 'DBA';
 	if ($self->{user_grants}) {
 		$self->{prefix} = 'ALL';
@@ -1278,7 +1295,8 @@ sub _init
 		}
 		$self->replace_tables(%{$self->{'replace_tables'}});
 		$self->replace_cols(%{$self->{'replace_cols'}});
-		$self->set_where_clause($self->{"global_where"}, %{$self->{'where'}});
+		$self->set_where_clause($self->{'global_where'}, %{$self->{'where'}});
+		$self->set_delete_clause($self->{'global_delete'}, %{$self->{'delete'}});
 	}
 
 	if ( ($self->{type} eq 'INSERT') || ($self->{type} eq 'COPY') || ($self->{type} eq 'KETTLE') ) {
@@ -2774,8 +2792,32 @@ sub _export_table_data
 		$local_dbh = $self->{dbhdest};
  	}
 
-	# Add table truncate order
-	if ($self->{truncate_table}) {
+	if ($self->{global_delete} || exists $self->{delete}{"\L$table\E"}) {
+		my $delete_clause = '';
+		if (exists $self->{delete}{"\L$table\E"} && $self->{delete}{"\L$table\E"}) {
+			$delete_clause = "DELETE FROM $tmptb WHERE " . $self->{delete}{"\L$table\E"} . ";";
+			$self->logit("\tApplying DELETE clause on table: " . $self->{delete}{"\L$table\E"} . "\n", 1);
+		} elsif ($self->{global_delete}) {
+			$delete_clause = "DELETE FROM $tmptb WHERE " . $self->{global_delete} . ";";
+			$self->logit("\tApplying DELETE global clause: " . $self->{global_delete} . "\n", 1);
+
+		}
+		if ($delete_clause) {
+			if ($self->{pg_dsn}) {
+				$self->logit("Deleting from table $table...\n", 1);
+				my $s = $local_dbh->do("$delete_clause") or $self->logit("FATAL: " . $local_dbh->errstr . "\n", 0, 1);
+			} else {
+				if ($self->{file_per_table}) {
+					$self->data_dump("$delete_clause\n",  $table);
+				} else {
+					$self->dump("\n$delete_clause\n");
+				}
+			}
+		}
+	}
+
+	# Add table truncate order if there's no global DELETE clause or one specific to the current table
+	if ($self->{truncate_table} && !$self->{global_delete} && !exists $self->{delete}{"\L$table\E"}) {
 		if ($self->{pg_dsn}) {
 			$self->logit("Truncating table $table...\n", 1);
 			my $s = $local_dbh->do("TRUNCATE TABLE $tmptb;") or $self->logit("FATAL: " . $local_dbh->errstr . "\n", 0, 1);
@@ -9068,7 +9110,7 @@ sub read_config
 					$AConfig{"skip_\L$s\E"} = 1;
 				}
 			}
-		} elsif (!grep(/^$var$/, 'TABLES', 'ALLOW', 'MODIFY_STRUCT', 'REPLACE_TABLES', 'REPLACE_COLS', 'WHERE', 'EXCLUDE','VIEW_AS_TABLE','ORA_RESERVED_WORDS','SYSUSERS','REPLACE_AS_BOOLEAN','BOOLEAN_VALUES','MODIFY_TYPE','DEFINED_PK', 'ALLOW_PARTITION','REPLACE_QUERY','FKEY_ADD_UPDATE')) {
+		} elsif (!grep(/^$var$/, 'TABLES', 'ALLOW', 'MODIFY_STRUCT', 'REPLACE_TABLES', 'REPLACE_COLS', 'WHERE', 'EXCLUDE','VIEW_AS_TABLE','ORA_RESERVED_WORDS','SYSUSERS','REPLACE_AS_BOOLEAN','BOOLEAN_VALUES','MODIFY_TYPE','DEFINED_PK', 'ALLOW_PARTITION','REPLACE_QUERY','FKEY_ADD_UPDATE','DELETE')) {
 			$AConfig{$var} = $val;
 		} elsif ($var eq 'VIEW_AS_TABLE') {
 			push(@{$AConfig{$var}}, split(/[\s;,]+/, $val) );
@@ -9162,6 +9204,17 @@ sub read_config
 			}
 			if ($val) {
 				$AConfig{"GLOBAL_WHERE"} = $val;
+			}
+		} elsif ($var eq 'DELETE') {
+			while ($val =~ s/([^\[\s]+)\s*\[([^\]]+)\]\s*//) {
+				my $table = $1;
+				my $delete = $2;
+				$delete =~ s/^\s+//;
+				$delete =~ s/\s+$//;
+				$AConfig{$var}{$table} = $delete;
+			}
+			if ($val) {
+				$AConfig{"GLOBAL_DELETE"} = $val;
 			}
 		} elsif ($var eq 'REPLACE_QUERY') {
 			while ($val =~ s/([^\[\s]+)\s*\[([^\]]+)\]\s*//) {

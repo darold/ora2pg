@@ -217,8 +217,22 @@ DISABLE_COMMENT         0
 EXTERNAL_TO_FDW		1
 
 # Add a TRUNCATE TABLE instruction before loading data on COPY and INSERT
-# export.
+# export. When activated, the instruction will be added only if there's no
+# global DELETE clause or one specific to the current table (see bellow).
 TRUNCATE_TABLE	0
+
+# Support for include a DELETE FROM ... WHERE clause filter before importing
+# data and perform a delete of some lines instead of truncatinf tables.
+# Value is construct as follow: TABLE_NAME[DELETE_WHERE_CLAUSE], or
+# if you have only one where clause for all tables just put the delete
+# clause as single value. Both are possible too. Here are some examples:
+#DELETE  1=1	# Apply to all tables and delete all tuples
+#DELETE	TABLE_TEST[ID1='001']	# Apply only on table TABLE_TEST
+#DELETE	TABLE_TEST[ID1='001' OR ID1='002] DATE_CREATE > '2001-01-01' TABLE_INFO[NAME='test']
+# The last applies two different delete where clause on tables TABLE_TEST and
+# TABLE_INFO and a generic delete where clause on DATE_CREATE to all other tables.
+# If TRUNCATE_TABLE is enabled it will be applied to all tables not covered by
+# the DELETE definition.
 
 # When enabled this directive forces ora2pg to export all tables, index
 # constraints, and indexes using the tablespace name defined in Oracle database.
