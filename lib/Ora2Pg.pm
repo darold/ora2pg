@@ -5421,6 +5421,9 @@ CREATE TRIGGER ${table}_trigger_insert
 						}
 					}
 				}
+				if ($foreign) {
+					 $sql_output .= " OPTIONS (key 'true')" if ($self->is_primary_key($table, $f->[0]));
+				}
 				$sql_output .= ",\n";
 			}
 			if ($self->{pkey_in_create}) {
@@ -6015,6 +6018,30 @@ sub _exportable_indexes
 	}
 
 	return @out;
+}
+
+
+=head2 is_primary_key
+
+This function return 1 the the given column is a primary key
+
+=cut
+sub is_primary_key
+{
+	my ($self, $table, $col) = @_;
+
+	# Set the unique (and primary) key definition 
+	foreach my $consname (keys %{ $self->{tables}{$table}{unique_key} }) {
+		next if ($self->{tables}{$table}{unique_key}->{$consname}{type} ne 'P');
+		my @conscols = @{$self->{tables}{$table}{unique_key}->{$consname}{columns}};
+		for (my $i = 0; $i <= $#conscols; $i++) {
+			if (lc($conscols[$i]) eq lc($col)) {
+				return 1;
+			}
+		}
+	}
+
+	return 0;
 }
 
 
