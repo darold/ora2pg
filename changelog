@@ -1,3 +1,26 @@
+2016 02 29 - v17.1
+
+This is a maintenance release to fix several issues reported in new
+TEST action. There is also some feature improvement:
+
+  * Add OPTIONS (key 'true') on table FDW export when a column is
+    detected as a primary key.
+  * Add DELETE configuration directive that allow a similar feature
+    than the WHERE clause to replace TRUNCATE call by a "DELETE FROM
+    table WHERE condition". This feature can be useful with regular
+    "updates". Thanks to Sebastien Albert for the feature request.
+
+Here is the complete list of other changes:
+
+  - Fix the counter of user defined types and sequences in TEST action
+  - Fix COPY import of data from column with user defined type with
+    NULL value.
+  - Fix DBD::Pg segmentation fault with direct INSERT import from
+    column with user defined type.
+  - Fix TEST action with multiple PG_SCHEMA export. Thanks to Michael
+    Vitale for the report.
+  - Fix documentation about PG_SCHEMA
+
 2016 02 22 - v17.0
 
 This new major release adds a new action type TEST to obtain a count
