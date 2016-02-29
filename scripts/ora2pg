@@ -862,9 +862,9 @@ if [ $DATA_ONLY -eq 0 ]; then
 		# Change search path of the owner
 		if [ "a$nspace_list" != "a" ]; then
 			if confirm "Would you like to change search_path of the database owner?" ; then
-				echo "Running: psql$DB_HOST$DB_PORT -U $DB_OWNER -d $DB_NAME -c \"ALTER ROLE miguser SET search_path TO ${nspace_list}public;\""
+				echo "Running: psql$DB_HOST$DB_PORT$DB_USER -d $DB_NAME -c \"ALTER ROLE $DB_OWNER SET search_path TO ${nspace_list}public;\""
 				if [ $DEBUG -eq 0 ]; then
-					psql$DB_HOST$DB_PORT -U $DB_OWNER -d $DB_NAME -c "ALTER ROLE miguser SET search_path TO ${nspace_list}public;"
+					psql$DB_HOST$DB_PORT$DB_USER -d $DB_NAME -c "ALTER ROLE $DB_OWNER SET search_path TO ${nspace_list}public;"
 					if [ $? -ne 0 ]; then
 						die "can not change search_path."
 					fi
