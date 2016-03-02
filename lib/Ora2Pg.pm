@@ -8332,8 +8332,11 @@ sub _table_info
 		$tables_infos{$row->[1]}{type} =  $comments{$row->[1]}{table_type} || '';
 		$tables_infos{$row->[1]}{nested} = $row->[4] || '';
 		if ($do_real_row_count) {
-			$self->logit("DEBUG: looking for real row count for table $row->[1] (aka using count(*))...\n", 1);
+			$self->logit("DEBUG: looking for real row count for table ($row->[0]) $row->[1] (aka using count(*))...\n", 1);
 			$sql = "SELECT COUNT(*) FROM $row->[1]";
+			if ($self->{schema}) {
+				$sql = "SELECT COUNT(*) FROM $row->[0].$row->[1]";
+			}
 			my $sth2 = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 			$sth2->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 			my $size = $sth2->fetch();
