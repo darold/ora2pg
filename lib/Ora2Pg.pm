@@ -5748,10 +5748,9 @@ sub _create_indexes
 	# Set the index definition
 	foreach my $idx (keys %indexes) {
 
-		# Cluster, domain, bitmap join, reversed and IOT indexes will not be exported at all
+		# Cluster, bitmap join, reversed and IOT indexes will not be exported at all
 		# Hash indexes will be exported as btree
 		next if ($self->{tables}{$tbsaved}{idx_type}{$idx}{type} =~ /JOIN|IOT|CLUSTER|REV/i);
-		#next if ($self->{tables}{$tbsaved}{idx_type}{$idx}{type} =~ /DOMAIN/i && $self->{tables}{$tbsaved}{idx_type}{$idx}{type_name} !~ /SPATIAL_INDEX/);
 
 		if (exists $self->{replaced_cols}{"\L$tbsaved\E"} && $self->{replaced_cols}{"\L$tbsaved\E"}) {
 			foreach my $c (keys %{$self->{replaced_cols}{"\L$tbsaved\E"}}) {
@@ -5916,9 +5915,8 @@ sub _drop_indexes
 	my @out = ();
 	# Set the index definition
 	foreach my $idx (keys %indexes) {
-		# Cluster, domain, bitmap join, reversed and IOT indexes will not be exported at all
+		# Cluster, bitmap join, reversed and IOT indexes will not be exported at all
 		next if ($self->{tables}{$table}{idx_type}{$idx}{type} =~ /JOIN|IOT|CLUSTER|REV/i);
-		#next if ($self->{tables}{$table}{idx_type}{$idx}{type} =~ /DOMAIN/i && $self->{tables}{$table}{idx_type}{$idx}{type_name} !~ /SPATIAL_INDEX/);
 
 		map { if ($_ !~ /\(.*\)/) { s/^/"/; s/$/"/; } } @{$indexes{$idx}};
 		if (exists $self->{replaced_cols}{"\L$tbsaved\E"} && $self->{replaced_cols}{"\L$tbsaved\E"}) {
@@ -10877,7 +10875,7 @@ sub _show_infos
 					if ($self->{bitmap_as_gin}) {
 						$bitmap = 'Bitmap will be exported as btree_gin index(es)';
 					}
-					$report_info{'Objects'}{$typ}{'comment'} .= " $bitmap and hash index(es) will be exported as b-tree index(es) if any. Domain index are exported as b-tree but commented. Cluster, bitmap join and IOT indexes will not be exported at all. Reverse indexes are not exported too, you may use a trigram-based index (see pg_trgm) or a reverse() function based index and search. Use 'varchar_pattern_ops', 'text_pattern_ops' or 'bpchar_pattern_ops' operators in your indexes to improve search with the LIKE operator respectively into varchar, text or char columns.";
+					$report_info{'Objects'}{$typ}{'comment'} .= " $bitmap and hash index(es) will be exported as b-tree index(es) if any. Domain index are exported as b-tree but commented to be edited to mainly use FTS. Cluster, bitmap join and IOT indexes will not be exported at all. Reverse indexes are not exported too, you may use a trigram-based index (see pg_trgm) or a reverse() function based index and search. Use 'varchar_pattern_ops', 'text_pattern_ops' or 'bpchar_pattern_ops' operators in your indexes to improve search with the LIKE operator respectively into varchar, text or char columns.";
 				} else {
 					$report_info{'Objects'}{$typ}{'comment'} .= " Hash index(es) will be exported as b-tree index(es) if any. Use 'varchar_pattern_ops', 'text_pattern_ops' or 'bpchar_pattern_ops' operators in your indexes to improve search with the LIKE operator respectively into varchar, text or char columns. Fulltext search indexes will be replaced by using a dedicated tsvector column, Ora2Pg will set the DDL to create the column, function and trigger together with the index.";
 				}

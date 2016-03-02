@@ -726,55 +726,7 @@ database to migrate, in terms of objects and cost to end the migration:
 
 	SHOW_REPORT  : show a detailled report of the Oracle database content.
 
-Here is a sample of report:
-
-	--------------------------------------
-	Ora2Pg: Oracle Database Content Report
-	--------------------------------------
-	Version Oracle Database 10g Express Edition Release 10.2.0.1.0
-	Schema  HR
-	Size  880.00 MB
-	 
-	--------------------------------------
-	Object  Number  Invalid Comments
-	--------------------------------------
-	CLUSTER   2 0 Clusters are not supported and will not be exported.
-	DATABASE LINK 3 0 Database links will be exported as SQL/MED PostgreSQL's Foreign Data Wrapper (FDW) extensions
-				using oracle_fdw.
-	FUNCTION  40  0 Total size of function code: 81992.
-	INDEX     435 0 232 index(es) are concerned by the export, others are automatically generated and will
-				do so on PostgreSQL. 1 bitmap index(es). 230 b-tree index(es). 1 reversed b-tree index(es)
-				Note that bitmap index(es) will be exported as b-tree index(es) if any. Cluster, domain,
-				bitmap join and IOT indexes will not be exported at all. Reverse indexes are not exported
-				too, you may use a trigram-based index (see pg_trgm) or a reverse() function based index
-				and search. You may also use 'varchar_pattern_ops', 'text_pattern_ops' or 'bpchar_pattern_ops'
-				operators in your indexes to improve search with the LIKE operator respectively into
-				varchar, text or char columns.
-	MATERIALIZED VIEW 1 0 All materialized view will be exported as snapshot materialized views, they
-				are only updated when fully refreshed.
-	PACKAGE BODY  2 1 Total size of package code: 20700.
-	PROCEDURE 7 0 Total size of procedure code: 19198.
-	SEQUENCE  160 0 Sequences are fully supported, but all call to sequence_name.NEXTVAL or sequence_name.CURRVAL
-				will be transformed into NEXTVAL('sequence_name') or CURRVAL('sequence_name').
-	SYNONYM   3 0 SYNONYMs will be exported as views. SYNONYMs do not exists with PostgreSQL but a common workaround
-				is to use views or set the PostgreSQL search_path in your session to access object outside
-				the current schema.
-	TABLE     265 0 1 external table(s) will be exported as standard table. See EXTERNAL_TO_FDW configuration
-				directive to export as file_fdw foreign tables or use COPY in your code if you just
-				want to load data from external files. 2 binary columns. 4 unknown types.
-	TABLE PARTITION 8 0 Partitions are exported using table inheritance and check constraint. 1 HASH partitions.
-				2 LIST partitions. 6 RANGE partitions. Note that Hash partitions are not supported.
-	TRIGGER   30  0 Total size of trigger code: 21677.
-	TYPE      7 1 5 type(s) are concerned by the export, others are not supported. 2 Nested Tables.
-				2 Object type. 1 Subtype. 1 Type Boby. 1 Type inherited. 1 Varrays. Note that Type
-				inherited and Subtype are converted as table, type inheritance is not supported.
-	TYPE BODY 0 3 Export of type with member method are not supported, they will not be exported.
-	VIEW      7 0 Views are fully supported, but if you have updatable views you will need to use
-				INSTEAD OF triggers.
-	DATABASE LINK 1 0 Database links will not be exported. You may try the dblink perl contrib module or use
-				the SQL/MED PostgreSQL features with the different Foreign Data Wrapper (FDW) extensions.
-
-	Note: Invalid code will not be exported unless the EXPORT_INVALID configuration directive is activated.
+Here is a sample of report: http://ora2pg.darold.net/report.html
 
 There also a more advanced report with migration cost. See the dedicated chapter
 about Migration Cost Evaluation.
