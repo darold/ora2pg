@@ -863,10 +863,11 @@ MYSQL_INTERNAL_EXTRACT_FORMAT	0
 close(OUTCFG);
 
 if ($^O !~ /MSWin32|dos/i) {
-	`perl -p -i -e "s#my \\\$CONFIG_FILE .*#my \\\$CONFIG_FILE = '$CONFDIR/ora2pg.conf';#" scripts/ora2pg`;
+
+	`perl -p -i -e 's#my \\\$CONFIG_FILE .*#my \\\$CONFIG_FILE = "$CONFDIR/ora2pg.conf";#' scripts/ora2pg`;
 } else {
 	my $tmp_conf = quotemeta($CONFDIR);
-	`perl -p -e "s#my \\\$CONFIG_FILE .*#my \\\$CONFIG_FILE = '$tmp_conf\\\\ora2pg.conf';#" scripts\\ora2pg > scripts\\ora2pg.tmp`;
+	`perl -p -e 's#my \\\$CONFIG_FILE .*#my \\\$CONFIG_FILE = "$tmp_conf\\\\ora2pg.conf";#' scripts\\ora2pg > scripts\\ora2pg.tmp`;
 	`copy scripts\\ora2pg.tmp scripts\\ora2pg /Y`;
 }
 
