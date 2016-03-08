@@ -357,7 +357,7 @@ sub plsql_to_plpgsql
 	if ( ($class->{type} ne 'QUERY') && ($class->{type} ne 'VIEW') ) {
 		$str =~ s/(\s+)(?<!AS|IS)(\s+)SELECT((?![^;]+\bINTO\b)[^;]+;)/$1$2PERFORM$3/isg;
 		$str =~ s/\bSELECT\b((?![^;]+\bINTO\b)[^;]+;)/PERFORM$1/isg;
-		$str =~ s/(AS|IS|FOR|UNION ALL|UNION|\()(\s*)(ORA2PG_COMMENT\d+\%)?(\s*)PERFORM/$1$2$3$4SELECT/isg;
+		$str =~ s/(AS|IS|FOR|UNION ALL|UNION|EXCEPT|\()(\s*)(ORA2PG_COMMENT\d+\%)?(\s*)PERFORM/$1$2$3$4SELECT/isg;
 	}
 
 	# Change nextval on sequence
