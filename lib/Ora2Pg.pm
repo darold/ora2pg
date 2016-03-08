@@ -1603,7 +1603,7 @@ sub _types
 	my ($self) = @_;
 
 	$self->logit("Retrieving user defined types information...\n", 1);
-	$self->{types} = $self->_get_types();
+	$self->{types} = $self->_get_types($self->{dbh});
 
 }
 
@@ -8224,7 +8224,7 @@ Returns a hash of all type names with their code.
 
 sub _get_types
 {
-	my ($self, $name) = @_;
+	my ($self, $dbh, $name) = @_;
 
 	# Retrieve all user defined types
 	my $str = "SELECT DISTINCT OBJECT_NAME,OWNER FROM $self->{prefix}_OBJECTS WHERE OBJECT_TYPE='TYPE'";
@@ -8239,8 +8239,8 @@ sub _get_types
 	$str .= $self->limit_to_objects('TYPE', 'OBJECT_NAME') if (!$name);
 	$str .= " ORDER BY OBJECT_NAME";
 
-	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	my $sth = $dbh->prepare($str) or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
+	$sth->execute or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
 
 	my @types = ();
 	my @fct_done = ();
@@ -8253,7 +8253,7 @@ sub _get_types
 		next if (grep(/^$row->[0]$/, @fct_done));
 		push(@fct_done, $row->[0]);
 		my %tmp = ();
-		my $sth2 = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+		my $sth2 = $dbh->prepare($sql) or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
 		$sth2->execute or $self->logit("FATAL: " . $sth2->errstr . "\n", 0, 1);
 		while (my $r = $sth2->fetch) {
 			$tmp{code} .= $r->[0];
@@ -10097,22 +10097,7 @@ sub _extract_data
 		$query = $self->{replace_query}{"\L$table\E"};
 	}
 
-	# Look for user defined type
 	my %user_type = ();
-	if (!$self->{is_mysql}) {
-		for (my $idx = 0; $idx < scalar(@$tt); $idx++) {
-			my $data_type = $tt->[$idx] || '';
-			my $custom_type = '';
-			if (!exists $self->{data_type}{$stt->[$idx]}) {
-				$custom_type = $self->_get_types($stt->[$idx]);
-				foreach my $tpe (sort {length($a->{name}) <=> length($b->{name}) } @{$custom_type}) {
-					$self->logit("Looking inside custom type $tpe->{name} to extract values...\n", 1);
-					push(@{$user_type{$data_type}}, &_get_custom_types($tpe->{code}));
-				}
-			}
-		}
-	}
-
 	my $rname = $part_name || $table;
 	my $dbh = 0;
 	my $sth = 0;
@@ -10139,6 +10124,21 @@ sub _extract_data
 			$self->_datetime_format($dbh);
 		}
 
+		# Look for user defined type
+		if (!$self->{is_mysql}) {
+			for (my $idx = 0; $idx < scalar(@$tt); $idx++) {
+				my $data_type = $tt->[$idx] || '';
+				my $custom_type = '';
+				if (!exists $self->{data_type}{$stt->[$idx]}) {
+					$custom_type = $self->_get_types($dbh, $stt->[$idx]);
+					foreach my $tpe (sort {length($a->{name}) <=> length($b->{name}) } @{$custom_type}) {
+						$self->logit("Looking inside custom type $tpe->{name} to extract values...\n", 1);
+						push(@{$user_type{$data_type}}, &_get_custom_types($tpe->{code}));
+					}
+				}
+			}
+		}
+
 		# Set row cache size
 		$dbh->{RowCacheSize} = int($self->{data_limit}/10);
 		if (exists $self->{local_data_limit}{$table}) {
@@ -10158,6 +10158,21 @@ sub _extract_data
 		}
 
 	} else {
+
+		# Look for user defined type
+		if (!$self->{is_mysql}) {
+			for (my $idx = 0; $idx < scalar(@$tt); $idx++) {
+				my $data_type = $tt->[$idx] || '';
+				my $custom_type = '';
+				if (!exists $self->{data_type}{$stt->[$idx]}) {
+					$custom_type = $self->_get_types($self->{dbh}, $stt->[$idx]);
+					foreach my $tpe (sort {length($a->{name}) <=> length($b->{name}) } @{$custom_type}) {
+						$self->logit("Looking inside custom type $tpe->{name} to extract values...\n", 1);
+						push(@{$user_type{$data_type}}, &_get_custom_types($tpe->{code}));
+					}
+				}
+			}
+		}
 
 		# Set row cache size
 		$self->{dbh}->{RowCacheSize} = int($self->{data_limit}/10);
@@ -12069,7 +12084,7 @@ WHERE c.relkind IN ('S','')
       $schema_clause
 };
 	} elsif ($obj_type eq 'TYPE') {
-		my $obj_infos = $self->_get_types();
+		my $obj_infos = $self->_get_types($self->{dbh});
 		$nbobj = $#{$obj_infos} + 1;
 		$schema_clause .= " AND pg_catalog.pg_type_is_visible(t.oid)" if ($schema_clause =~ /information_schema/);
 		$sql = qq{
