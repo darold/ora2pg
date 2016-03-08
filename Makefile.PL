@@ -31,7 +31,7 @@ if ($^O !~ /MSWin32|dos/i) {
 		$CONFDIR =  '/etc/opt';
 		$DOCDIR = '/opt/ora2pg';
 	} else {
-		$CONFDIR = '/etc';
+		$CONFDIR = '/etc/ora2pg';
 		$DOCDIR = '/usr/share/doc/ora2pg';
 	}
 } else {
