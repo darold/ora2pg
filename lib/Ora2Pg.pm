@@ -10130,6 +10130,7 @@ sub _extract_data
 				my $data_type = $tt->[$idx] || '';
 				my $custom_type = '';
 				if (!exists $self->{data_type}{$stt->[$idx]}) {
+					$self->logit("Data type $stt->[$idx] is not native, searching on custom types.\n", 1);
 					$custom_type = $self->_get_types($dbh, $stt->[$idx]);
 					foreach my $tpe (sort {length($a->{name}) <=> length($b->{name}) } @{$custom_type}) {
 						$self->logit("Looking inside custom type $tpe->{name} to extract values...\n", 1);
@@ -10165,6 +10166,7 @@ sub _extract_data
 				my $data_type = $tt->[$idx] || '';
 				my $custom_type = '';
 				if (!exists $self->{data_type}{$stt->[$idx]}) {
+					$self->logit("Data type $stt->[$idx] is not native, searching on custom types.\n", 1);
 					$custom_type = $self->_get_types($self->{dbh}, $stt->[$idx]);
 					foreach my $tpe (sort {length($a->{name}) <=> length($b->{name}) } @{$custom_type}) {
 						$self->logit("Looking inside custom type $tpe->{name} to extract values...\n", 1);
