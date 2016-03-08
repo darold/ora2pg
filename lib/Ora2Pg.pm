@@ -10095,6 +10095,14 @@ sub _extract_data
 	# Overwrite the query if REPLACE_QUERY is defined for this table
 	if ($self->{replace_query}{"\L$table\E"}) {
 		$query = $self->{replace_query}{"\L$table\E"};
+		if (($self->{oracle_copies} > 1) && $self->{defined_pk}{"\L$table\E"}) {
+			my $cond = " ABS(MOD(" . $self->{defined_pk}{"\L$table\E"} . ", $self->{oracle_copies})) = ?";
+			if ($query !~ s/\bWHERE\s+/WHERE $cond AND /) {
+				if ($query !~ s/\b(ORDER\s+BY\s+.*)/WHERE $cond $1/) {
+					$query .= " WHERE $cond";
+				}
+			}
+		}
 	}
 
 	my %user_type = ();
@@ -10209,7 +10217,10 @@ sub _extract_data
 	}
 
 	my @params = ();
-	unshift(@params, $proc) if (defined $proc);
+	if (defined $proc) {
+		unshift(@params, $proc);
+		$self->logit("Parallelizing on core #$proc with query: $query\n", 1);
+	}
 	if ( ($self->{parallel_tables} > 1) || (($self->{oracle_copies} > 1) && $self->{defined_pk}{"\L$table\E"}) ) {
 		$sth->execute(@params) or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
 	} else {
