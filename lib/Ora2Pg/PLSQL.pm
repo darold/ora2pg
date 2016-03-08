@@ -367,6 +367,8 @@ sub plsql_to_plpgsql
 	$str =~ s/(\w+)\.currval/currval('\L$1\E')/isg;
 	# Oracle MINUS can be replaced by EXCEPT as is
 	$str =~ s/\bMINUS\b/EXCEPT/igs;
+	# Comment DBMS_OUTPUT.ENABLE calls
+	$str =~ s/(DBMS_OUTPUT.ENABLE[^;]+;)/-- $1/isg;
 	# Raise information to the client
 	$str =~ s/DBMS_OUTPUT\.(put_line|put|new_line)\s*\((.*?)\);/&raise_output($2)/igse;
 
