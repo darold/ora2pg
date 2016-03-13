@@ -10291,7 +10291,7 @@ sub _extract_data
 				# Then foreach row use the returned lob locator to retrieve data
 				# and all column with a LOB data type, extract data by chunk
 				for (my $j = 0; $j <= $#$stt; $j++) {
-					if ($stt->[$j] =~ /LOB/) {
+					if (($stt->[$j] =~ /LOB/) && $row[$j]) {
 						my $lob_content = '';
 						my $offset = 1;   # Offsets start at 1, not 0
 						if ( ($self->{parallel_tables} > 1) || (($self->{oracle_copies} > 1) && $self->{defined_pk}{"\L$table\E"}) ) {
@@ -10309,7 +10309,15 @@ sub _extract_data
 								$lob_content .= $lobdata;
 							}
 						}
-						$row[$j] = $lob_content;
+						if ($lob_content) {
+							$row[$j] = $lob_content;
+						} else {
+							$row[$j] = undef;
+						}
+					} elsif (($stt->[$j] =~ /LOB/) && !$row[$j]) {
+						# This might handle case where the LOB is NULL and might prevent error:
+						# DBD::Oracle::db::ora_lob_read: locator is not of type OCILobLocatorPtr
+						$row[$j] = undef;
 					}
 				}
 				push(@rows, [@row]);
