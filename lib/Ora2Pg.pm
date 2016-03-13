@@ -10237,6 +10237,7 @@ sub _extract_data
 		my $has_blob = 0;
 		$has_blob = 1 if (grep(/LOB/, @$stt));
 		if (!$has_blob || $self->{no_lob_locator}) {
+
 			while ( my $rows = $sth->fetchall_arrayref(undef,$data_limit)) {
 
 				if ( ($self->{parallel_tables} > 1) || (($self->{oracle_copies} > 1) && $self->{defined_pk}{"\L$table\E"}) ) {
@@ -13990,6 +13991,7 @@ sub _escape_lob
 	my ($self, $col, $generic_type) = @_;
 
 	if ($self->{type} eq 'COPY') {
+		return '\N' if (!$col);
 		if ( ($generic_type eq 'BLOB') || ($generic_type eq 'RAW') ) {
 			#$col = escape_bytea($col);
 			# RAW data type is returned in hex
@@ -14012,6 +14014,7 @@ sub _escape_lob
 			}
 		}
 	} else {
+		return 'NULL' if (!$col);
 		if ( ($generic_type eq 'BLOB') || ($generic_type eq 'RAW') ) {
 			#$col = escape_bytea($col);
 			# RAW data type is returned in hex
