@@ -9204,7 +9204,7 @@ sub read_config
 				$AConfig{$var}{$old} = $new;
 			}
 		} elsif ($var eq 'REPLACE_AS_BOOLEAN') {
-			my @replace_boolean = split(/[\s,;]+/, $val);
+			my @replace_boolean = split(/[\s;]+/, $val);
 			foreach my $r (@replace_boolean) { 
 				my ($table, $col) = split(/:/, $r);
 				push(@{$AConfig{$var}{uc($table)}}, uc($col));
