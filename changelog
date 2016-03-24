@@ -1,4 +1,47 @@
-2016 02 29 - v17.1
+2016 03 24 - v17.2
+
+This is a maintenance release to fix several issues reported in new
+LOB extraction method. There is also some feature improvement:
+
+  * Allow NUMBER with precision to be replaced as boolean.
+  * Allow full relocation of Ora2Pg installation using for
+    example: perl Makefile.PL  DESTDIR=/opt/ora2pg
+
+Here is the complete list of other changes:
+
+  - Allow NUMBER with precision to be replaced as boolean. Thanks
+    to Silvan Auer for the report.
+  - Force empty LOB to be exported as NULL when NO_LOB_LOCATOR is
+    activated to have the same behavior.
+  - Fix case where a LOB is NULL and ora2pg reports error :
+        DBD::Oracle::db::ora_lob_read: locator is not of type OCILobLocatorPtr
+    LOB initialised with EMPTY_CLOB() are also exported as NULL
+    instead of \\x
+  - Fix replacement with PERFORM after MINUS. Thanks to Stephane
+    Tachoires for the report.
+  - Comment DBMS_OUTPUT.ENABLE calls. Thanks to Stephane Tachoire for
+    the report.
+  - Fix wrong replacement of SELECT by PERFORM after EXCEPT. Thanks
+    to Stephane Tachoire for the report.
+  - Apply ORACLE_COPIES automatic predicate on custom queries set with
+    REPLACE_QUERY if possible. Thanks to pawelbs for the report.
+  - Fix install of ora2pg.conf file in /etc/ instead of /etc/ora2pg/.
+    Thanks to pawelbs for the report.
+  - Add debug information before searching for custom type.
+  - Attempt to fix error "ORA-01002: fetch out of sequence" when exporting
+    data from a table with user defined types and ORACLE_COPIES. Thanks to
+    pawelbs and Alex Ignatov fir the report.
+  - Fix replacement of path to configuration file in scripts/ora2pg
+  - Remove report sample from documentation about migration assessment
+    report and replace it with a href link. Fix comment about export of
+    domain index.
+  - Always prefix table name with schema in Oracle row count, to prevent
+    failure when the schema is not the connexion default.
+  - Add pattern TOAD_PLAN_.* to the internal table exclusion list.
+  - Fix modification of database owner search_path in import_all.sh auto
+    generated script. Thanks to Stephane Tachoire for the report.
+
+2016 02 29 - v17.2
 
 This is a maintenance release to fix several issues reported in new
 TEST action. There is also some feature improvement:
