@@ -8958,6 +8958,8 @@ sub format_data_type
 			$col = $self->_escape_lob($col, 'BLOB', $data_type);
 		} elsif (($src_type =~ /CLOB/i) && ($data_type =~ /(char|text|xml)/i)) {
 			$col = $self->_escape_lob($col, 'CLOB', $data_type);
+		} elsif ($data_type =~ /(char|text|xml)/i) {
+			$col = $self->escape_copy($col);
 		} elsif ($data_type =~ /(date|time)/i) {
 			if ($col =~ /^0000-00-00/) {
 				if (!$self->{replace_zero_date}) {
@@ -8999,6 +9001,8 @@ sub format_data_type
 			$col = $self->_escape_lob($col, 'BLOB', $data_type);
 		} elsif (($src_type =~ /CLOB/i) && ($data_type =~ /(char|text|xml)/i)) {
 			$col = $self->_escape_lob($col, 'CLOB', $data_type);
+		} elsif ($data_type =~ /(char|text|xml)/i) {
+			$col = $self->escape_insert($col);
 		} elsif ($data_type =~ /(date|time)/i) {
 			if ($col =~ /^0000-00-00/) {
 				if (!$self->{replace_zero_date}) {
@@ -13997,21 +14001,8 @@ sub _escape_lob
 			# RAW data type is returned in hex
 			$col = unpack("H*",$col) if ($generic_type ne 'RAW');
 			$col = '\\\\x' . $col;
-		} elsif ($generic_type eq 'CLOB') {
-			if ($self->{has_utf8_fct}) {
-				utf8::encode($col) if (!utf8::valid($col));
-			}
-			$col =~ s/\0//gs;
-			$col =~ s/\\/\\\\/gs;
-			$col =~ s/\r/\\r/gs;
-			$col =~ s/\n/\\n/gs;
-			$col =~ s/\t/\\t/gs;
-			if (!$self->{noescape}) {
-				$col =~ s/\f/\\f/gs;
-				$col =~ s/([\1-\10])/sprintf("\\%03o", ord($1))/egs;
-				$col =~ s/([\13-\14])/sprintf("\\%03o", ord($1))/egs;
-				$col =~ s/([\16-\37])/sprintf("\\%03o", ord($1))/egs;
-			}
+		} elsif (($generic_type eq 'CLOB') || ($data_type =~ /(char|text|xml)/i)) {
+			$col = $self->escape_copy($col);
 		}
 	} else {
 		return '\N' if (!$col && ($data_type !~ /(char|text|xml)/i));
@@ -14025,26 +14016,53 @@ sub _escape_lob
 				$col = "E'$col'";
 			}
 			$col = "decode($col, 'hex')";
-		} elsif ($generic_type eq 'CLOB') {
-			if (!$self->{standard_conforming_strings}) {
-				$col =~ s/'/''/gs; # double single quote
-				$col =~ s/\\/\\\\/gs;
-				$col =~ s/\0//gs;
-				$col = "'$col'";
-			} else {
-				$col =~ s/\0//gs;
-				$col =~ s/\\/\\\\/gs;
-				$col =~ s/'/\\'/gs; # escape single quote
-				$col =~ s/\r/\\r/gs;
-				$col =~ s/\n/\\n/gs;
-				$col = "E'$col'";
-			}
+		} elsif (($generic_type eq 'CLOB') || ($data_type =~ /(char|text|xml)/i)) {
+			$col = $self->escape_insert($col);
 		}
 	}
 
 	return $col;
 }
 
+sub escape_copy
+{
+	my ($self, $col) = @_;
+	if ($self->{has_utf8_fct}) {
+		utf8::encode($col) if (!utf8::valid($col));
+	}
+	$col =~ s/\0//gs;
+	$col =~ s/\\/\\\\/gs;
+	$col =~ s/\r/\\r/gs;
+	$col =~ s/\n/\\n/gs;
+	$col =~ s/\t/\\t/gs;
+	if (!$self->{noescape}) {
+		$col =~ s/\f/\\f/gs;
+		$col =~ s/([\1-\10])/sprintf("\\%03o", ord($1))/egs;
+		$col =~ s/([\13-\14])/sprintf("\\%03o", ord($1))/egs;
+		$col =~ s/([\16-\37])/sprintf("\\%03o", ord($1))/egs;
+	}
+	return $col;
+}
+
+sub escape_insert
+{
+	my ($self, $col) = @_;
+
+	if (!$self->{standard_conforming_strings}) {
+		$col =~ s/'/''/gs; # double single quote
+		$col =~ s/\\/\\\\/gs;
+		$col =~ s/\0//gs;
+		$col = "'$col'";
+	} else {
+		$col =~ s/\0//gs;
+		$col =~ s/\\/\\\\/gs;
+		$col =~ s/'/\\'/gs; # escape single quote
+		$col =~ s/\r/\\r/gs;
+		$col =~ s/\n/\\n/gs;
+		$col = "E'$col'";
+	}
+	return $col;
+}
 1;
 
 __END__
