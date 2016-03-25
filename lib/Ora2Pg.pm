@@ -8953,11 +8953,11 @@ sub format_data_type
 		} elsif ( ($src_type =~ /geometry/i) && ($self->{geometry_extract_type} eq 'WKB') ) {
 			$col = "St_GeomFromWKB('\\x" . unpack('H*', $col) . "', $self->{spatial_srid}{$table}->[$idx])";
 		} elsif (($src_type =~ /RAW/i) && ($data_type =~ /bytea/i)) {
-			$col = $self->_escape_lob($col, 'RAW');
+			$col = $self->_escape_lob($col, 'RAW', $data_type);
 		} elsif ($data_type =~ /bytea/i) {
-			$col = $self->_escape_lob($col, 'BLOB');
-		} elsif ($data_type =~ /(char|text|xml)/i) {
-			$col = $self->_escape_lob($col, 'CLOB');
+			$col = $self->_escape_lob($col, 'BLOB', $data_type);
+		} elsif (($src_type =~ /CLOB/i) && ($data_type =~ /(char|text|xml)/i)) {
+			$col = $self->_escape_lob($col, 'CLOB', $data_type);
 		} elsif ($data_type =~ /(date|time)/i) {
 			if ($col =~ /^0000-00-00/) {
 				if (!$self->{replace_zero_date}) {
@@ -8994,11 +8994,11 @@ sub format_data_type
 			$col =~ s/\~/inf/;
 			$col = '\N' if ($col eq '');
 		} elsif (($src_type =~ /RAW/i) && ($data_type =~ /bytea/i)) {
-			$col = $self->_escape_lob($col, 'RAW');
+			$col = $self->_escape_lob($col, 'RAW', $data_type);
 		} elsif ($data_type =~ /bytea/i) {
-			$col = $self->_escape_lob($col, 'BLOB');
-		} elsif ($data_type !~ /(date|time)/i) {
-			$col = $self->_escape_lob($col, 'CLOB');
+			$col = $self->_escape_lob($col, 'BLOB', $data_type);
+		} elsif (($src_type =~ /CLOB/i) && ($data_type =~ /(char|text|xml)/i)) {
+			$col = $self->_escape_lob($col, 'CLOB', $data_type);
 		} elsif ($data_type =~ /(date|time)/i) {
 			if ($col =~ /^0000-00-00/) {
 				if (!$self->{replace_zero_date}) {
@@ -13988,10 +13988,10 @@ sub normalize_query
 
 sub _escape_lob
 {
-	my ($self, $col, $generic_type) = @_;
+	my ($self, $col, $generic_type, $data_type) = @_;
 
 	if ($self->{type} eq 'COPY') {
-		return '\N' if (!$col);
+		return '\N' if (!$col && ($data_type !~ /(char|text|xml)/i));
 		if ( ($generic_type eq 'BLOB') || ($generic_type eq 'RAW') ) {
 			#$col = escape_bytea($col);
 			# RAW data type is returned in hex
@@ -14014,7 +14014,7 @@ sub _escape_lob
 			}
 		}
 	} else {
-		return 'NULL' if (!$col);
+		return '\N' if (!$col && ($data_type !~ /(char|text|xml)/i));
 		if ( ($generic_type eq 'BLOB') || ($generic_type eq 'RAW') ) {
 			#$col = escape_bytea($col);
 			# RAW data type is returned in hex
