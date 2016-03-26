@@ -1,3 +1,11 @@
+2016 03 26 - v17.3
+
+This release fix two regressions introduced in latest release.
+
+  * Fix major bug in data export. Thanks to Frederic Guiet for the report.
+  * Fix another regression with character data that was not escaped. Thanks
+    to Frederic Guiet for the report.
+
 2016 03 24 - v17.2
 
 This is a maintenance release to fix several issues reported in new
@@ -41,7 +49,7 @@ Here is the complete list of other changes:
   - Fix modification of database owner search_path in import_all.sh auto
     generated script. Thanks to Stephane Tachoire for the report.
 
-2016 02 29 - v17.2
+2016 02 29 - v17.1
 
 This is a maintenance release to fix several issues reported in new
 TEST action. There is also some feature improvement:
