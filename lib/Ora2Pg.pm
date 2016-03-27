@@ -8959,7 +8959,7 @@ sub format_data_type
 		} elsif (($src_type =~ /CLOB/i) && ($data_type =~ /(char|text|xml)/i)) {
 			$col = $self->_escape_lob($col, 'CLOB', $data_type);
 		} elsif ($data_type =~ /(char|text|xml)/i) {
-			$col = $self->escape_copy($col);
+			$col = $self->escape_insert($col);
 		} elsif ($data_type =~ /(date|time)/i) {
 			if ($col =~ /^0000-00-00/) {
 				if (!$self->{replace_zero_date}) {
@@ -9002,7 +9002,7 @@ sub format_data_type
 		} elsif (($src_type =~ /CLOB/i) && ($data_type =~ /(char|text|xml)/i)) {
 			$col = $self->_escape_lob($col, 'CLOB', $data_type);
 		} elsif ($data_type =~ /(char|text|xml)/i) {
-			$col = $self->escape_insert($col);
+			$col = $self->escape_copy($col);
 		} elsif ($data_type =~ /(date|time)/i) {
 			if ($col =~ /^0000-00-00/) {
 				if (!$self->{replace_zero_date}) {
