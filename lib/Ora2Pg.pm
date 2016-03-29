@@ -10050,7 +10050,7 @@ sub ask_for_data
 	# Check for boolean rewritting
 	for (my $i = 0; $i <= $#{$nn}; $i++) {
 		my $colname = $nn->[$i]->[0];
-		$colname =~ s/"//g;
+		$colname =~ s/["`]//g;
 		my $typlen = $nn->[$i]->[5];
 		$typlen ||= $nn->[$i]->[2];
 		# Check if this column should be replaced by a boolean following table/column name
@@ -10065,7 +10065,7 @@ sub ask_for_data
 	# check if destination column type must be changed
 	for (my $i = 0; $i <= $#{$nn}; $i++) {
 		my $colname = $nn->[$i]->[0];
-		$colname =~ s/"//g;
+		$colname =~ s/["`]//g;
 		$tt->[$i] = $self->{'modify_type'}{"\L$table\E"}{"\L$colname\E"} if (exists $self->{'modify_type'}{"\L$table\E"}{"\L$colname\E"});
 	}
 
@@ -11421,7 +11421,7 @@ sub _show_infos
 					# Check if this column should be replaced by a boolean following table/column name
 					my $typlen = $d->[5];
 					$typlen ||= $d->[2];
-					if (grep(/^$d->[0]$/i, @{$self->{'replace_as_boolean'}{$t}})) {
+					if (grep(/^$d->[0]$/i, @{$self->{'replace_as_boolean'}{uc($t)}})) {
 						$type = 'boolean';
 					# Check if this column should be replaced by a boolean following type/precision
 					} elsif (exists $self->{'replace_as_boolean'}{uc($d->[1])} && ($self->{'replace_as_boolean'}{uc($d->[1])}[0] == $typlen)) {
