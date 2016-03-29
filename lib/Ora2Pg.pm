@@ -10621,9 +10621,12 @@ sub _dump_to_pg
 			} else {
 				my $ps = $dbhdest->prepare($sprep) or $self->logit("FATAL: " . $dbhdest->errstr . "\n", 0, 1);
 				my @date_cols = ();
+				my @bool_cols = ();
 				for (my $i = 0; $i <= $#{$tt}; $i++) {
 					if ($tt->[$i] eq 'bytea') {
 						$ps->bind_param($i+1, undef, { pg_type => DBD::Pg::PG_BYTEA });
+					} elsif ($tt->[$i] eq 'boolean') {
+						push(@bool_cols, $i);
 					} elsif ($tt->[$i] =~ /(date|time)/i) {
 						push(@date_cols, $i);
 					}
@@ -10642,6 +10645,10 @@ sub _dump_to_pg
 					}
 					# Format user defined type and geometry data
 					$self->format_data_row($row,$tt,'INSERT', $stt, \%user_type, $table);
+					# Replace boolean 't' and 'f' by 0 and 1 for bind parameters.
+					foreach my $j (@bool_cols) {
+						($row->[$j] eq "'f'") ? $row->[$j] = 0 : $row->[$j] = 1;
+					}
 					# Apply bind parmeters
 					unless ($ps->execute(@$row) ) {
 						if ($self->{log_on_error}) {
