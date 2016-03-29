@@ -6422,6 +6422,8 @@ sub _howto_get_data
 			$str .= "to_char($name->[$k]->[0], '$timeformat_tz'),";
 		} elsif (!$self->{is_mysql} &&  $src_type->[$k] =~ /timestamp/i) {
 			$str .= "to_char($name->[$k]->[0], '$timeformat'),";
+		} elsif ($self->{is_mysql} && $src_type->[$k] =~ /bit/i) {
+			$str .= "BIN($name->[$k]->[0]),";
 		# If dest type is bytea the content of the file is exported as bytea
 		} elsif ( ($src_type->[$k] =~ /bfile/i) && ($type->[$k] =~ /bytea/i) ) {
 			$self->{bfile_found} = 'bytea';
@@ -8956,6 +8958,8 @@ sub format_data_type
 			$col = $self->_escape_lob($col, 'RAW', $data_type);
 		} elsif ($data_type =~ /bytea/i) {
 			$col = $self->_escape_lob($col, 'BLOB', $data_type);
+		} elsif ($data_type =~ /bit/i) {
+			$col = "B'$col'";
 		} elsif (($src_type =~ /CLOB/i) && ($data_type =~ /(char|text|xml)/i)) {
 			$col = $self->_escape_lob($col, 'CLOB', $data_type);
 		} elsif ($data_type =~ /(char|text|xml)/i) {
@@ -8995,6 +8999,8 @@ sub format_data_type
 			# covered now by the call to _numeric_format()
 			$col =~ s/\~/inf/;
 			$col = '\N' if ($col eq '');
+		} elsif ($data_type =~ /bit/i) {
+			$col = $col;
 		} elsif (($src_type =~ /RAW/i) && ($data_type =~ /bytea/i)) {
 			$col = $self->_escape_lob($col, 'RAW', $data_type);
 		} elsif ($data_type =~ /bytea/i) {

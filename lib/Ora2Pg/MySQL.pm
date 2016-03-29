@@ -48,6 +48,7 @@ our %MYSQL_TYPE = (
 	'TIMESTAMP' => 'timestamp without time zone',
 	'YEAR' => 'smallint',
 	'MULTIPOLYGON' => 'geometry',
+	'BIT' => 'bit varying',
 );
 
 sub _get_version
@@ -277,7 +278,6 @@ END
 	my %data = ();
 	my $pos = 0;
 	while (my $row = $sth->fetch) {
-
 		$row->[2] = $row->[7] if $row->[1] =~ /char/i;
 		$row->[10] = $pos;
 		push(@{$data{"$row->[8]"}{"$row->[0]"}}, @$row);
@@ -828,7 +828,7 @@ sub _sql_type
 	$type =~ s/(CHAR|TEXT) BINARY/$1/i;
 
         # Overide the length
-        $len = $precision if ( ($type eq 'NUMBER') && $precision );
+        $len = $precision if ( ((uc($type) eq 'NUMBER') || (uc($type) eq 'BIT')) && $precision );
         if (exists $MYSQL_TYPE{uc($type)}) {
 		$type = uc($type); # Force uppercase
 		if ($len) {
@@ -837,7 +837,13 @@ sub _sql_type
 				# Type VARCHAR(2) must have a specified length
 				$len = 1 if (!$len && ($type eq "CHAR"));
                 		return "$MYSQL_TYPE{$type}($len)";
-			} elsif ($type =~ /^(BIT|TINYINT|SMALLINT|MEDIUMINT|INTEGER|BIGINT|INT|REAL|DOUBLE|FLOAT|DECIMAL|NUMERIC)$/i) {
+			} elsif ($type eq 'BIT') {
+				if ($precision) {
+					return "$MYSQL_TYPE{$type}($precision)";
+				} else {
+					return $MYSQL_TYPE{$type};
+				}
+			} elsif ($type =~ /^(TINYINT|SMALLINT|MEDIUMINT|INTEGER|BIGINT|INT|REAL|DOUBLE|FLOAT|DECIMAL|NUMERIC)$/i) {
 				# This is an integer
 				if (!$scale) {
 					if ($precision) {
