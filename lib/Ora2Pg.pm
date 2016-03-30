@@ -14013,7 +14013,6 @@ sub _escape_lob
 	my ($self, $col, $generic_type, $cond) = @_;
 
 	if ($self->{type} eq 'COPY') {
-		return '\N' if (!$col && !$cond->{istext});
 		if ( ($generic_type eq 'BLOB') || ($generic_type eq 'RAW') ) {
 			#$col = escape_bytea($col);
 			# RAW data type is returned in hex
@@ -14023,8 +14022,6 @@ sub _escape_lob
 			$col = $self->escape_copy($col);
 		}
 	} else {
-		return '\N' if (!$col && !$cond->{istext});
-		if ( ($generic_type eq 'BLOB') || ($generic_type eq 'RAW') ) {
 			#$col = escape_bytea($col);
 			# RAW data type is returned in hex
 			$col = unpack("H*",$col) if ($generic_type ne 'RAW');
