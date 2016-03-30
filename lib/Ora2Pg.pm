@@ -8848,7 +8848,7 @@ sub _get_custom_types
 
 sub format_data_row
 {
-	my ($self, $row, $data_types, $action, $src_data_types, $custom_types, $table) = @_;
+	my ($self, $row, $data_types, $action, $src_data_types, $custom_types, $table, $colcond) = @_;
 
 	for (my $idx = 0; $idx < scalar(@$data_types); $idx++) {
 		my $data_type = $data_types->[$idx] || '';
@@ -8893,7 +8893,7 @@ sub format_data_row
 					$custom_types->{$data_type}[$i] = $custom_types->{$data_type}[0];
 					$is_nested = 1;
 				}
-				push(@type_col, $self->format_data_type($row->[$idx][$i], $custom_types->{$data_type}[$i], $action, $table, $idx));
+				push(@type_col, $self->format_data_type($row->[$idx][$i], $custom_types->{$data_type}[$i], $action, $table, $idx, $colcond->[$idx]));
 			}
 			if (!$is_nested) {
 				if ($action eq 'COPY') {
@@ -8917,17 +8917,17 @@ sub format_data_row
 				}
 			}
 		} else {
-			$row->[$idx] = $self->format_data_type($row->[$idx], $data_type, $action, $table, $src_data_types->[$idx], $idx);
+			$row->[$idx] = $self->format_data_type($row->[$idx], $data_type, $action, $table, $src_data_types->[$idx], $idx, $colcond->[$idx]);
 		}
 	}
 }
 
 sub format_data_type
 {
-	my ($self, $col, $data_type, $action, $table, $src_type, $idx) = @_;
+	my ($self, $col, $data_type, $action, $table, $src_type, $idx, $cond) = @_;
 
 	# Internal timestamp retrieves from custom type is as follow: 01-JAN-77 12.00.00.000000 AM (internal_date_max)
-	if ($col =~ /^(\d{2})-([A-Z]{3})-(\d{2}) (\d{2})\.(\d{2})\.(\d{2}\.\d+) (AM|PM)$/ && ($data_type eq 'char')) {
+	if (($data_type eq 'char') && $col =~ /^(\d{2})-([A-Z]{3})-(\d{2}) (\d{2})\.(\d{2})\.(\d{2}\.\d+) (AM|PM)$/ ) {
 		my $d = $1;
 		my $m = $ORACLE_MONTHS{$2};
 		my $y = $3;
@@ -8954,29 +8954,21 @@ sub format_data_type
 			$col = 'NULL';
 		} elsif ( ($src_type =~ /geometry/i) && ($self->{geometry_extract_type} eq 'WKB') ) {
 			$col = "St_GeomFromWKB('\\x" . unpack('H*', $col) . "', $self->{spatial_srid}{$table}->[$idx])";
-		} elsif (($src_type =~ /RAW/i) && ($data_type =~ /bytea/i)) {
-			$col = $self->_escape_lob($col, 'RAW', $data_type);
-		} elsif ($data_type =~ /bytea/i) {
-			$col = $self->_escape_lob($col, 'BLOB', $data_type);
-		} elsif ($data_type =~ /bit/i) {
+		} elsif ($cond->{isbytea}) {
+			$col = $self->_escape_lob($col, $cond->{raw} ? 'RAW' : 'BLOB', $cond);
+		} elsif ($cond->{istext}) {
+			$cond->{clob} ? $col = $self->_escape_lob($col, 'CLOB', $cond) : $col = $self->escape_insert($col);
+		} elsif ($cond->{isbit}) {
 			$col = "B'$col'";
-		} elsif (($src_type =~ /CLOB/i) && ($data_type =~ /(char|text|xml)/i)) {
-			$col = $self->_escape_lob($col, 'CLOB', $data_type);
-		} elsif ($data_type =~ /(char|text|xml)/i) {
-			$col = $self->escape_insert($col);
-		} elsif ($data_type =~ /(date|time)/i) {
+		} elsif ($cond->{isdate}) {
 			if ($col =~ /^0000-00-00/) {
-				if (!$self->{replace_zero_date}) {
-					$col = 'NULL';
-				} else {
-					$col = "'$self->{replace_zero_date}'";
-				}
+				$col = $self->{replace_zero_date} ?  "'$self->{replace_zero_date}'" : 'NULL';
 			} elsif ($col =~ /^(\d+-\d+-\d+ \d+:\d+:\d+)\.$/) {
 				$col = "'$1'";
 			} else {
 				$col = "'$col'";
 			}
-		} elsif ($data_type =~ /boolean/i) {
+		} elsif ($data_type eq 'boolean') {
 			if (exists $self->{ora_boolean_values}{lc($col)}) {
 				$col = "'" . $self->{ora_boolean_values}{lc($col)} . "'";
 			}
@@ -8989,48 +8981,60 @@ sub format_data_type
 	} else {
 		if (!defined $col) {
 			$col = '\N';
-		} elsif ( ($src_type =~ /geometry/i) && ($self->{geometry_extract_type} eq 'WKB') ) {
+		} elsif ( $cond->{geometry} && ($self->{geometry_extract_type} eq 'WKB') ) {
 			$col = 'SRID=' . $self->{spatial_srid}{$table}->[$idx] . ';' . unpack('H*', $col);
-		} elsif ($data_type =~ /boolean/i) {
+		} elsif ($data_type eq 'boolean') {
 			if (exists $self->{ora_boolean_values}{lc($col)}) {
 				$col = $self->{ora_boolean_values}{lc($col)};
 			}
-		} elsif ($data_type !~ /(char|date|time|text|bytea|xml)/i) {
+		} elsif ($cond->{isnum}) {
 			# covered now by the call to _numeric_format()
 			$col =~ s/\~/inf/;
 			$col = '\N' if ($col eq '');
-		} elsif ($data_type =~ /bit/i) {
-			$col = $col;
-		} elsif (($src_type =~ /RAW/i) && ($data_type =~ /bytea/i)) {
-			$col = $self->_escape_lob($col, 'RAW', $data_type);
-		} elsif ($data_type =~ /bytea/i) {
-			$col = $self->_escape_lob($col, 'BLOB', $data_type);
-		} elsif (($src_type =~ /CLOB/i) && ($data_type =~ /(char|text|xml)/i)) {
-			$col = $self->_escape_lob($col, 'CLOB', $data_type);
-		} elsif ($data_type =~ /(char|text|xml)/i) {
-			$col = $self->escape_copy($col);
-		} elsif ($data_type =~ /(date|time)/i) {
+		} elsif ($cond->{isbytea}) {
+			$col = $self->_escape_lob($col, $cond->{raw} ? 'RAW' : 'BLOB', $cond);
+		} elsif ($cond->{istext}) {
+			$cond->{clob} ? $col = $self->_escape_lob($col, 'CLOB', $cond) : $col = $self->escape_copy($col);
+		} elsif ($cond->{isdate}) {
 			if ($col =~ /^0000-00-00/) {
-				if (!$self->{replace_zero_date}) {
-					$col = '\N';
-				} else {
-					$col = $self->{replace_zero_date};
-				}
+				$col = $self->{replace_zero_date} || '\N';
 			} elsif ($col =~ /^(\d+-\d+-\d+ \d+:\d+:\d+)\.$/) {
 				$col = $1;
 			}
+		} elsif ($cond->{isbit}) {
+			$col = $col;
 		}
 	}
 	return $col;
 }
 
+sub hs_cond
+{
+	my ($data_types,$src_data_types) = @_;
+
+	my $col_cond = [];
+	for (my $idx = 0; $idx < scalar(@$data_types); $idx++) {
+		my $hs={};
+		$hs->{geometry} = $src_data_types->[$idx] =~ /GEOMETRY/i ? 1 : 0;
+		$hs->{isnum} =    $data_types->[$idx] !~ /^(char|varchar|date|time|text|bytea|xml)/i ? 1 :0;
+		$hs->{isdate} =  $data_types->[$idx] =~ /^(date|time)/i ? 1 : 0;
+		$hs->{raw} = $src_data_types->[$idx] =~ /RAW/i ? 1 : 0;
+		$hs->{clob} = $src_data_types->[$idx] =~ /CLOB/i ? 1 : 0;
+		$hs->{istext} = $data_types->[$idx] =~ /(char|text|xml)/i ? 1 : 0;
+		$hs->{isbytea} = $data_types->[$idx] =~ /bytea/i ? 1 : 0;
+		$hs->{isbit} = $data_types->[$idx] =~ /bit/i ? 1 : 0;
+		push @$col_cond,$hs;
+	}
+	return $col_cond;
+}
 
 sub format_data
 {
 	my ($self, $rows, $data_types, $action, $src_data_types, $custom_types, $table) = @_;
 
+	my $col_cond = hs_cond($data_types,$src_data_types);
 	foreach my $row (@$rows) {
-		$self->format_data_row($row,$data_types,$action, $src_data_types, $custom_types, $table);
+		$self->format_data_row($row,$data_types,$action,$src_data_types,$custom_types,$table,$col_cond);
 	}
 }
 
@@ -10632,6 +10636,7 @@ sub _dump_to_pg
 					}
 				}
 				$self->logit("DEBUG: Sending INSERT bulk output directly to PostgreSQL backend\n", 1);
+				my $col_cond = hs_cond($tt,$stt);
 				foreach my $row (@$rows) {
 					# Even with prepared statement we need to replace zero date
 					foreach my $j (@date_cols) {
@@ -10644,7 +10649,7 @@ sub _dump_to_pg
 						}
 					}
 					# Format user defined type and geometry data
-					$self->format_data_row($row,$tt,'INSERT', $stt, \%user_type, $table);
+					$self->format_data_row($row,$tt,'INSERT', $stt, \%user_type, $table, $col_cond);
 					# Replace boolean 't' and 'f' by 0 and 1 for bind parameters.
 					foreach my $j (@bool_cols) {
 						($row->[$j] eq "'f'") ? $row->[$j] = 0 : $row->[$j] = 1;
@@ -10654,7 +10659,7 @@ sub _dump_to_pg
 						if ($self->{log_on_error}) {
 							$self->logit("ERROR (log error enabled): " . $ps->errstr . "\n", 0, 0);
 							$s_out =~ s/\([,\?]+\)/\(/;
-							$self->format_data_row($row,$tt,'INSERT', $stt, \%user_type, $table);
+							$self->format_data_row($row,$tt,'INSERT', $stt, \%user_type, $table, $col_cond);
 							$self->log_error_insert($table, $s_out . join(',', @$row) . ");\n");
 						} else {
 							$self->logit("FATAL: " . $ps->errstr . "\n", 0, 1);
@@ -14005,20 +14010,20 @@ sub normalize_query
 
 sub _escape_lob
 {
-	my ($self, $col, $generic_type, $data_type) = @_;
+	my ($self, $col, $generic_type, $cond) = @_;
 
 	if ($self->{type} eq 'COPY') {
-		return '\N' if (!$col && ($data_type !~ /(char|text|xml)/i));
+		return '\N' if (!$col && !$cond->{istext});
 		if ( ($generic_type eq 'BLOB') || ($generic_type eq 'RAW') ) {
 			#$col = escape_bytea($col);
 			# RAW data type is returned in hex
 			$col = unpack("H*",$col) if ($generic_type ne 'RAW');
 			$col = '\\\\x' . $col;
-		} elsif (($generic_type eq 'CLOB') || ($data_type =~ /(char|text|xml)/i)) {
+		} elsif (($generic_type eq 'CLOB') || $cond->{istext}) {
 			$col = $self->escape_copy($col);
 		}
 	} else {
-		return '\N' if (!$col && ($data_type !~ /(char|text|xml)/i));
+		return '\N' if (!$col && !$cond->{istext});
 		if ( ($generic_type eq 'BLOB') || ($generic_type eq 'RAW') ) {
 			#$col = escape_bytea($col);
 			# RAW data type is returned in hex
@@ -14029,7 +14034,7 @@ sub _escape_lob
 				$col = "E'$col'";
 			}
 			$col = "decode($col, 'hex')";
-		} elsif (($generic_type eq 'CLOB') || ($data_type =~ /(char|text|xml)/i)) {
+		} elsif (($generic_type eq 'CLOB') || $cond->{istext}) {
 			$col = $self->escape_insert($col);
 		}
 	}
