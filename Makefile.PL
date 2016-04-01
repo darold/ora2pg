@@ -850,7 +850,7 @@ FDW_SERVER	orcl
 #------------------------------------------------------------------------------
 
 # Enable this if double pipe and double ampersand (|| and &&) should not be
-# taken as equivalent to OR and AND. It depend of the variable @sql_mode,
+# taken as equivalent to OR and AND. It depend of the variable \@sql_mode,
 # Use it only if Ora2Pg fail on auto detecting this behavior.
 MYSQL_PIPES_AS_CONCAT		0
 
@@ -862,13 +862,16 @@ MYSQL_INTERNAL_EXTRACT_FORMAT	0
 };
 close(OUTCFG);
 
-if ($^O !~ /MSWin32|dos/i) {
+# Do not replace configuration directory in scripts/ora2pg if this is a RPM build.
+if ($CONFDIR !~ /\%\{buildroot\}/) {
+	if ($^O !~ /MSWin32|dos/i) {
 
-	`perl -p -i -e 's#my \\\$CONFIG_FILE .*#my \\\$CONFIG_FILE = "$CONFDIR/ora2pg.conf";#' scripts/ora2pg`;
-} else {
-	my $tmp_conf = quotemeta($CONFDIR);
-	`perl -p -e 's#my \\\$CONFIG_FILE .*#my \\\$CONFIG_FILE = "$tmp_conf\\\\ora2pg.conf";#' scripts\\ora2pg > scripts\\ora2pg.tmp`;
-	`copy scripts\\ora2pg.tmp scripts\\ora2pg /Y`;
+		`perl -p -i -e 's#my \\\$CONFIG_FILE .*#my \\\$CONFIG_FILE = "$CONFDIR/ora2pg.conf";#' scripts/ora2pg`;
+	} else {
+		my $tmp_conf = quotemeta($CONFDIR);
+		`perl -p -e 's#my \\\$CONFIG_FILE .*#my \\\$CONFIG_FILE = "$tmp_conf\\\\ora2pg.conf";#' scripts\\ora2pg > scripts\\ora2pg.tmp`;
+		`copy scripts\\ora2pg.tmp scripts\\ora2pg /Y`;
+	}
 }
 
 WriteMakefile(
