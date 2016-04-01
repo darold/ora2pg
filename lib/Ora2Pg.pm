@@ -14022,6 +14022,7 @@ sub _escape_lob
 			$col = $self->escape_copy($col);
 		}
 	} else {
+		if ( ($generic_type eq 'BLOB') || ($generic_type eq 'RAW') ) {
 			#$col = escape_bytea($col);
 			# RAW data type is returned in hex
 			$col = unpack("H*",$col) if ($generic_type ne 'RAW');
@@ -14078,6 +14079,7 @@ sub escape_insert
 	}
 	return $col;
 }
+
 1;
 
 __END__
