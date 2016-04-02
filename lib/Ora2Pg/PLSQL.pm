@@ -307,6 +307,9 @@ sub plsql_to_plpgsql
 	return mysql_to_plpgsql($class, $str) if ($class->{is_mysql});
 
 	my @xmlelt = ();
+	my $field = '\s*([^\(\),]+)\s*';
+	my $num_field = '\s*([\d\.]+)\s*';
+	my $date_field = '\s*([^,\)\(]*(?:date|time)[^,\)\(]*)\s*';
 
 	#--------------------------------------------
 	# PL/SQL to PL/PGSQL code conversion
@@ -443,6 +446,21 @@ sub plsql_to_plpgsql
 	# Cast round() call as numeric => Remove because most of the time this may not be necessary
 	#$str =~ s/round\s*\((.*?),([\s\d]+)\)/round\($1::numeric,$2\)/igs;
 
+	# Change trunc() to date_trunc('day', field)
+	# Trunc is replaced with date_trunc if we find date in the name of
+	# the value because Oracle have the same trunc function on number
+	# and date type
+	my %date_trunc = ();
+	my $di = 0;
+	while ($str =~ s/\bTRUNC\($date_field\)/\%\%DATETRUNC$di\%\%/is) {
+		push(@date_trunc, "date_trunc('day', $1)");
+		$di++;
+	}
+	while ($str =~ s/\bTRUNC\($date_field,$field\)/\%\%DATETRUNC$di\%\%/is) {
+		push(@date_trunc, "date_trunc($2, $1)");
+		$di++;
+	}
+
 	# Convert the call to the Oracle function add_months() into Pg syntax
 	$str =~ s/ADD_MONTHS\s*\(\s*TO_CHAR\(\s*([^,]+)(.*?),\s*(\d+)\s*\)/$1 + '$3 month'::interval/gsi;
 	$str =~ s/ADD_MONTHS\s*\(\s*TO_CHAR\(\s*([^,]+)(.*?),\s*([^,\(\)]+)\s*\)/$1 + $3*'1 month'::interval/gsi;
@@ -454,6 +472,11 @@ sub plsql_to_plpgsql
 	$str =~ s/ADD_YEARS\s*\(\s*TO_CHAR\(\s*([^,]+)(.*?),\s*([^,\(\)]+)\s*\)/$1 + $3*'1 year'::interval/gsi;
 	$str =~ s/ADD_YEARS\s*\((.*?),\s*(\d+)\s*\)/$1 + '$2 year'::interval/gsi;
 	$str =~ s/ADD_YEARS\s*\((.*?),\s*([^,\(\)]+)\s*\)/$1 + $2*' year'::interval/gsi;
+
+	# Restore DATETRUNC call
+	$str =~ s/\%\%DATETRUNC(\d+)\%\%/$date_trunc[$1]/igs;
+	@date_trunc = ();
+	$str =~ s/date_trunc\('MM'/date_trunc('month'/igs;
 
 	# Add STRICT keyword when select...into and an exception with NO_DATA_FOUND/TOO_MANY_ROW is present
 	if ($str !~ s/\b(SELECT\b[^;]*?INTO)(.*?)(EXCEPTION.*?NO_DATA_FOUND)/$1 STRICT $2 $3/igs) {
@@ -572,10 +595,6 @@ sub plsql_to_plpgsql
 		$str =~ s/([a-z0-9_\."]+\s*\([^\)]*\))\s*IS NOT NULL/($1 IS NOT NULL AND ($1)::text <> '')/igs;
 	}
 
-	my $field = '\s*([^\(\),]+)\s*';
-	my $num_field = '\s*([\d\.]+)\s*';
-	my $date_field = '\s*([^,\)\(]*(?:date|timestamp)[^,\)\(]*)\s*';
-
 	# Rewrite replace(a,b) with three argument
 	$str =~ s/REPLACE\s*\($field,$field\)/replace\($1, $2, ''\)/igs;
 
@@ -583,13 +602,6 @@ sub plsql_to_plpgsql
 	# PostgreSQL substring(string from start_position for length)
 	$str =~ s/substr\s*\($field,$field,$field\)/substring($1 from $2 for $3)/igs;
 	$str =~ s/substr\s*\($field,$field\)/substring($1 from $2)/igs;
-
-	# Change trunc() to date_trunc('day', field)
-	# Trunc is replaced with date_trunc if we find date in the name of
-	# the value because Oracle have the same trunc function on number
-	# and date type
-	$str =~ s/\bTRUNC\($date_field\)/date_trunc('day', $1)/igs;
-	$str =~ s/\bTRUNC\($date_field,$field\)/date_trunc($2, $1)/igs;
 
 	# Remove any call to MDSYS schema in the code
 	$str =~ s/MDSYS\.//igs;
