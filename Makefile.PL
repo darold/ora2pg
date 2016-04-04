@@ -907,8 +907,8 @@ sub MY::postamble {
 	my $postamble = qq{
 install_all :
 	\@echo "Installing default configuration file ($DEST_CONF_FILE) to $CONFDIR"
-	\@\$(MKPATH) $CONFDIR/ora2pg
-	\@\$(CP) -f $DEST_CONF_FILE $CONFDIR/ora2pg/$DEST_CONF_FILE
+	\@\$(MKPATH) $CONFDIR
+	\@\$(CP) -f $DEST_CONF_FILE $CONFDIR/$DEST_CONF_FILE
 	\@\$(MKPATH) $DOCDIR
 	\@\$(CP) -f README $DOCDIR/README
 	\@\$(CP) -f INSTALL $DOCDIR/INSTALL
