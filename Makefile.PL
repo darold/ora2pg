@@ -12,7 +12,7 @@ while ($_ = shift) {
 
 # Default install path
 my $CONFDIR = $ENV{CONFDIR} || '/etc/ora2pg';
-my $DOCDIR = $ENV{DOCDIR} || '/usr/local/share/doc/ora2pg';
+my $DOCDIR  = $ENV{DOCDIR} || '/usr/local/share/doc/ora2pg';
 my $DEST_CONF_FILE = 'ora2pg.conf.dist';
 if ($^O =~ /MSWin32|dos/i) {
 	$DEST_CONF_FILE = 'ora2pg_dist.conf';
@@ -23,25 +23,17 @@ $PREFIX =~ s/\/$//;
 $ENV{INSTALLDIRS} ||= 'site';
 
 # Try to set the default configuration directory following $PREFIX
-if ($^O !~ /MSWin32|dos/i) {
-	if ($PREFIX =~ m#^/usr/local(/|$)#) {
-		$CONFDIR = '/usr/local/etc';
-		$DOCDIR = '/usr/local/share/doc/ora2pg';
-	} elsif ($PREFIX =~ m#^/opt(/|$)#) {
-		$CONFDIR =  '/etc/opt';
-		$DOCDIR = '/opt/ora2pg';
-	} else {
-		$CONFDIR = '/etc/ora2pg';
-		$DOCDIR = '/usr/share/doc/ora2pg';
-	}
-} else {
+if ($^O =~ /MSWin32|dos/i) {
+	# Force default path
 	$CONFDIR = 'C:\ora2pg';
 	$DOCDIR = 'C:\ora2pg';
-}
-
-if ($PREFIX) {
-	$CONFDIR = $PREFIX . $CONFDIR;
-	$DOCDIR = $PREFIX . $DOCDIR;
+} else {
+	if ($PREFIX && !$ENV{CONFDIR}) {
+		$CONFDIR = $PREFIX . '/etc';
+	}
+	if ($PREFIX && !$ENV{DOCDIR}) {
+		$DOCDIR = $PREFIX . '/doc';
+	}
 }
 
 # Try to find all binary used by Ora2Pg
@@ -863,7 +855,7 @@ MYSQL_INTERNAL_EXTRACT_FORMAT	0
 close(OUTCFG);
 
 # Do not replace configuration directory in scripts/ora2pg if this is a RPM build.
-if ($CONFDIR !~ /\%\{buildroot\}/) {
+if ($CONFDIR !~ /buildroot/i) {
 	if ($^O !~ /MSWin32|dos/i) {
 
 		`perl -p -i -e 's#my \\\$CONFIG_FILE .*#my \\\$CONFIG_FILE = "$CONFDIR/ora2pg.conf";#' scripts/ora2pg`;
