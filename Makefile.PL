@@ -30,9 +30,13 @@ if ($^O =~ /MSWin32|dos/i) {
 } else {
 	if ($PREFIX && !$ENV{CONFDIR}) {
 		$CONFDIR = $PREFIX . '/etc';
+	} elsif ($PREFIX && ($ENV{CONFDIR} !~ /^\//)) {
+		$CONFDIR = $PREFIX . '/' . $ENV{CONFDIR};
 	}
 	if ($PREFIX && !$ENV{DOCDIR}) {
 		$DOCDIR = $PREFIX . '/doc';
+	} elsif ($PREFIX && ($ENV{DOCDIR} !~ /^\//)) {
+		$DOCDIR = $PREFIX . '/' . $ENV{DOCDIR};
 	}
 }
 
@@ -854,16 +858,15 @@ MYSQL_INTERNAL_EXTRACT_FORMAT	0
 };
 close(OUTCFG);
 
-# Do not replace configuration directory in scripts/ora2pg if this is a RPM build.
-if ($CONFDIR !~ /buildroot/i) {
-	if ($^O !~ /MSWin32|dos/i) {
-
+if ($^O !~ /MSWin32|dos/i) {
+	# Do not replace configuration directory in scripts/ora2pg if this is a RPM build.
+	if ($CONFDIR !~ /buildroot/i) {
 		`perl -p -i -e 's#my \\\$CONFIG_FILE .*#my \\\$CONFIG_FILE = "$CONFDIR/ora2pg.conf";#' scripts/ora2pg`;
-	} else {
-		my $tmp_conf = quotemeta($CONFDIR);
-		`perl -p -e 's#my \\\$CONFIG_FILE .*#my \\\$CONFIG_FILE = "$tmp_conf\\\\ora2pg.conf";#' scripts\\ora2pg > scripts\\ora2pg.tmp`;
-		`copy scripts\\ora2pg.tmp scripts\\ora2pg /Y`;
 	}
+} else {
+	my $tmp_conf = quotemeta($CONFDIR);
+	`perl -p -e 's#my \\\$CONFIG_FILE .*#my \\\$CONFIG_FILE = "$tmp_conf\\\\ora2pg.conf";#' scripts\\ora2pg > scripts\\ora2pg.tmp`;
+	`copy scripts\\ora2pg.tmp scripts\\ora2pg /Y`;
 }
 
 WriteMakefile(
