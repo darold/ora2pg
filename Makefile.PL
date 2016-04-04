@@ -27,16 +27,23 @@ if ($^O =~ /MSWin32|dos/i) {
 	# Force default path
 	$CONFDIR = 'C:\ora2pg';
 	$DOCDIR = 'C:\ora2pg';
-} else {
-	if ($PREFIX && !$ENV{CONFDIR}) {
+} elsif ($PREFIX) {
+	if (!$ENV{CONFDIR}) {
 		$CONFDIR = $PREFIX . '/etc';
-	} elsif ($PREFIX && ($ENV{CONFDIR} !~ /^\//)) {
+	} elsif ($ENV{CONFDIR} !~ /^\//) {
 		$CONFDIR = $PREFIX . '/' . $ENV{CONFDIR};
 	}
-	if ($PREFIX && !$ENV{DOCDIR}) {
+	if (!$ENV{DOCDIR}) {
 		$DOCDIR = $PREFIX . '/doc';
-	} elsif ($PREFIX && ($ENV{DOCDIR} !~ /^\//)) {
+	} elsif ($ENV{DOCDIR} !~ /^\//) {
 		$DOCDIR = $PREFIX . '/' . $ENV{DOCDIR};
+	}
+} else {
+	if ($ENV{CONFDIR} !~ /^\//) {
+		$CONFDIR = '/etc/ora2pg/' . $ENV{CONFDIR};
+	}
+	if ($ENV{DOCDIR} !~ /^\//) {
+		$DOCDIR = '/usr/local/share/' . $ENV{DOCDIR};
 	}
 }
 
