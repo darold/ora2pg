@@ -772,14 +772,6 @@ if [ ! -r "$NAMESPACE/schema/tables/table.sql" ]; then
 	die "project directory '$NAMESPACE' is not valid or is not readable."
 fi
 
-# Test connection to PostgreSQL instance as postgres or any superuser
-if [ $NO_DBCHECK  -eq 0 ]; then
-	psql$DB_HOST$DB_PORT$DB_USER -Atc "select 1;" 1>/dev/null
-	if [ $? -ne 0 ]; then
-		die "can not connect to PostgreSQL Instance with command: psql$DB_HOST$DB_PORT$DB_USER -c \"select 1;\"" 
-	fi
-fi
-
 # If constraints and indexes files are present propose to import these object
 if [ $CONSTRAINTS_ONLY -eq 1 ]; then
 	if confirm "Would you like to load indexes, constraints and triggers?" ; then
