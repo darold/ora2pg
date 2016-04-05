@@ -6273,10 +6273,14 @@ sub _create_foreign_keys
 			}
 			# if DEFER_FKEY is enabled, force constraint to be
 			# deferrable and defer it initially.
-			$str .= (($self->{'defer_fkey'} ) ? ' DEFERRABLE' : " $state->[4]") if ($state->[4]);
-			$state->[5] = 'DEFERRED' if ($state->[5] =~ /^Y/);
-			$state->[5] ||= 'IMMEDIATE';
-			$str .= " INITIALLY " . ( ($self->{'defer_fkey'} ) ? 'DEFERRED' : $state->[5] ) . ";\n";
+			if (!$self->{is_mysql}) {
+				$str .= (($self->{'defer_fkey'} ) ? ' DEFERRABLE' : " $state->[4]") if ($state->[4]);
+				$state->[5] = 'DEFERRED' if ($state->[5] =~ /^Y/);
+				$state->[5] ||= 'IMMEDIATE';
+				$str .= " INITIALLY " . ( ($self->{'defer_fkey'} ) ? 'DEFERRED' : $state->[5] ) . ";\n";
+			} else {
+				$str .= ";\n";
+			}
 			push(@out, $str);
 		}
 	}
