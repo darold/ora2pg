@@ -6265,7 +6265,7 @@ sub _create_foreign_keys
 			$str .= " MATCH $state->[2]" if ($state->[2]);
 			$str .= " ON DELETE $state->[3]" if ($state->[3]);
 			if ($self->{is_mysql}) {
-				$str .= " ON UPDATE $state->[9]";
+				$str .= " ON UPDATE $state->[9]" if ($state->[9]);
 			} else {
 				if ( ($self->{fkey_add_update} eq 'ALWAYS') || ( ($self->{fkey_add_update} eq 'DELETE') && ($str =~ /ON DELETE CASCADE/) ) ) {
 					$str .= " ON UPDATE CASCADE";
