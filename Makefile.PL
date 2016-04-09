@@ -11,7 +11,7 @@ while ($_ = shift) {
 }
 
 # Default install path
-my $CONFDIR = $ENV{CONFDIR} || '/etc';
+my $CONFDIR = $ENV{CONFDIR} || '/etc/ora2pg';
 my $RPM_CONFDIR = $CONFDIR;
 my $DOCDIR  = $ENV{DOCDIR} || '/usr/local/share/doc/ora2pg';
 my $DEST_CONF_FILE = 'ora2pg.conf.dist';
@@ -30,7 +30,7 @@ if ($^O =~ /MSWin32|dos/i) {
 	$DOCDIR = 'C:\ora2pg';
 } elsif ($PREFIX) {
 	if (!$ENV{CONFDIR}) {
-		$CONFDIR = $PREFIX . '/etc';
+		$CONFDIR = $PREFIX . '/etc/ora2pg';
 	} else {
 		$CONFDIR = $PREFIX . '/' . $ENV{CONFDIR};
 	}
@@ -862,10 +862,10 @@ close(OUTCFG);
 if ($^O !~ /MSWin32|dos/i) {
 	# Do not replace configuration directory in scripts/ora2pg if this is a RPM build.
 	if (!$ENV{RPM_BUILD_ROOT}) {
-		`perl -p -i -e 's#my \\\$CONFIG_FILE .*#my \\\$CONFIG_FILE = "$CONFDIR/ora2pg/ora2pg.conf";#' scripts/ora2pg`;
+		`perl -p -i -e 's#my \\\$CONFIG_FILE .*#my \\\$CONFIG_FILE = "$CONFDIR/ora2pg.conf";#' scripts/ora2pg`;
 	} else {
 		# Do not include prefix with rpmbuild
-		`perl -p -i -e 's#my \\\$CONFIG_FILE .*#my \\\$CONFIG_FILE = "$RPM_CONFDIR/ora2pg/ora2pg.conf";#' scripts/ora2pg`;
+		`perl -p -i -e 's#my \\\$CONFIG_FILE .*#my \\\$CONFIG_FILE = "$RPM_CONFDIR/ora2pg.conf";#' scripts/ora2pg`;
 	}
 } else {
 	my $tmp_conf = quotemeta($CONFDIR);
@@ -914,8 +914,8 @@ sub MY::postamble {
 	my $postamble = qq{
 install_all :
 	\@echo "Installing default configuration file ($DEST_CONF_FILE) to $CONFDIR"
-	\@\$(MKPATH) $CONFDIR/ora2pg
-	\@\$(CP) -f $DEST_CONF_FILE $CONFDIR/ora2pg/$DEST_CONF_FILE
+	\@\$(MKPATH) $CONFDIR
+	\@\$(CP) -f $DEST_CONF_FILE $CONFDIR/$DEST_CONF_FILE
 	\@\$(MKPATH) $DOCDIR
 	\@\$(CP) -f README $DOCDIR/README
 	\@\$(CP) -f INSTALL $DOCDIR/INSTALL
