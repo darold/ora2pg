@@ -26,7 +26,7 @@ Oracle database to a PostgreSQL database.
 %{__perl} Makefile.PL \
     INSTALLDIRS=vendor \
     QUIET=1 \
-    CONFDIR=%{_sysconfdir} \
+    CONFDIR=%{_sysconfdir}/%{name} \
     DOCDIR=%{_docdir}/%{name}-%{version} \
     DESTDIR=%{buildroot}
 %{__make}
@@ -52,9 +52,13 @@ Oracle database to a PostgreSQL database.
 %{perl_vendorlib}/Ora2Pg/PLSQL.pm
 %{perl_vendorlib}/Ora2Pg/GEOM.pm
 %{perl_vendorlib}/Ora2Pg.pm
-%{_docdir}/%{name}/*
+%{_docdir}/%{name}-%{version}/*
 
 %changelog
+* Sat Apr  9 2016 Gilles Darold <gilles@darold.net> 17.4
+- Update to 17.4
+- Append %{name} to CONFDIR and %{version} to DOCDIR in %files section
+
 * Fri Mar 25 2016 Devrim Gündüz <devrim@gunduz.org> 17.2-1
 - Update to 17.2
 
