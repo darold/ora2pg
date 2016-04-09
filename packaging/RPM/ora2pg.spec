@@ -72,7 +72,7 @@ rm -f `find %{buildroot}/%{_libdir}/perl*/ -name .packlist -type f`
 %{perl_vendorlib}/Ora2Pg.pm
 
 %changelog
-* Tue Oct 15 2015 Gilles Darold <gilles@darold.net>
+* Thu Oct 15 2015 Gilles Darold <gilles@darold.net>
 - Add MySQL.pm module and ora2pg_scanner
 
 * Fri May 07 2010 Gilles Darold <gilles@darold.net>
