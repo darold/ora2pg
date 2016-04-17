@@ -2168,11 +2168,17 @@ sub read_schema_from_file
 
 	}
 
+	my $tbspace_move = '';
 	while ($content =~ s/ALTER\s+TABLE[\s]+([^\s]+)\s+([^;]+);//i) {
 		my $tb_name = $1;
 		$tb_name =~ s/"//g;
 		my $tb_def = $2;
 		$tb_def =~ s/\s+/ /g;
+		if ( $self->{use_tablespace} && ($tb_def =~ /USING\s+INDEX\s+TABLESPACE\s+([^\s]+)/) ) {
+			my $tbspace = $1;
+			$tb_def =~ /\s+CONSTRAINT\s+([^\s]+)\s+/;
+			$tbspace_move = "ALTER INDEX $1 SET TABLESPACE $tbspace";
+		}
 		$tb_def =~ s/\s*USING INDEX.*//g;
 		if (!exists $self->{tables}{$tb_name}{table_info}{type}) {
 			$self->{tables}{$tb_name}{table_info}{type} = 'TABLE';
@@ -2180,7 +2186,8 @@ sub read_schema_from_file
 			$tid++;
 			$self->{tables}{$tb_name}{internal_id} = $tid;
 		}
-		push(@{$self->{tables}{$tb_name}{alter_table}}, $tb_def);
+		push(@{$self->{tables}{$tb_name}{alter_table}}, $tb_def) if ($tb_def);
+		push(@{$self->{tables}{$tb_name}{alter_index}}, $tbspace_move) if ($tbspace_move);
 	}
 
 	while ($content =~ s/CREATE\s+(UNIQUE|BITMAP)?\s*INDEX\s+([^\s]+)\s+ON\s+([^\s\(]+)\s*\(([^;]+);//i) {
@@ -5499,6 +5506,11 @@ CREATE TRIGGER ${table}_trigger_insert
 			$obj_type =~ s/UNLOGGED //;
 			foreach (@{$self->{tables}{$table}{alter_table}}) {
 				$sql_output .= "\nALTER $obj_type $tbname $_;\n";
+			}
+		}
+		if (exists $self->{tables}{$table}{alter_index}) {
+			foreach (@{$self->{tables}{$table}{alter_index}}) {
+				$sql_output .= "$_;\n";
 			}
 		}
 		if ($self->{type} ne 'FDW') {
