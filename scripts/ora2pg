@@ -877,9 +877,13 @@ if [ $DATA_ONLY -eq 0 ]; then
 		ltype=`echo $ltype | sed 's/y$/ie/'`
 		if [ -r "$NAMESPACE/schema/${ltype}s/$ltype.sql" ]; then
 			if confirm "Would you like to import $etype from $NAMESPACE/schema/${ltype}s/$ltype.sql?" ; then
-				echo "Running: psql --single-transaction$DB_HOST$DB_PORT -U $DB_OWNER -d $DB_NAME -f $NAMESPACE/schema/${ltype}s/$ltype.sql"
+				single_tx='--single-transaction '
+				if [ $etype = "TABLESPACE" ]; then
+					single_tx=''
+				fi
+				echo "Running: psql $single_tx$DB_HOST$DB_PORT -U $DB_OWNER -d $DB_NAME -f $NAMESPACE/schema/${ltype}s/$ltype.sql"
 				if [ $DEBUG -eq 0 ]; then
-					psql --single-transaction$DB_HOST$DB_PORT -U $DB_OWNER -d $DB_NAME -f $NAMESPACE/schema/${ltype}s/$ltype.sql
+					psql $single_tx$DB_HOST$DB_PORT -U $DB_OWNER -d $DB_NAME -f $NAMESPACE/schema/${ltype}s/$ltype.sql
 					if [ $? -ne 0 ]; then
 						die "an error occurs when importing file $NAMESPACE/schema/${ltype}s/$ltype.sql."
 					fi
