@@ -1,3 +1,58 @@
+2016 04 20 - v17.4
+
+This is a maintenance release to fix several issues reported by users.
+There is also some major data export speed improvement thanks to the
+work of PostgreSQL Pro and a new RPM spec file provided by Devrim
+Gündüz to be able to build RPM package for Ora2Pg.
+
+There is a new configuration directive:
+
+  - EMPTY_LOB_NULL: when enabled force empty_clob() and empty_blob()
+    to be exported as NULL instead as empty string.
+
+Here is the complete list of other changes:
+
+  - Add EMPTY_LOB_NULL directive to force empty_clob() and empty_blob()
+    to be exported as NULL instead as empty string. This might improve
+    data export speed if you have lot of empty lob. Thanks to Alex
+    Ignatov for the report.
+  - Fix import_all.sh script to import grant and tablespace separately
+    as postgres user and just after indexes and constraints creation.
+  - Add parsing of tablespace from "alter table ... add constraint"
+    with DDL input file. Thanks to Felipe Lavoura.
+  - Remove --single-transaction in import_all.sh script with TABLESPACE
+    import. Thanks to Guillaume Lelarge for the report.
+  - Fix Makefile.PL to used with latest spec file from Devrim Gündüz
+    and following the advice of calbiston.
+  - Update spec file to v17.4 and latest change to Makefile.PL
+  - Replace ora2pg.spec by postgressql.org spec file by Devrim Gunduz.
+  - Generate man page to avoids rpmbuild error.
+  - Fix Windows install. Thanks to Lorena Figueredo for the report.
+  - Remove "deferrability" call for mysql foreign keys. Thanks to
+    Jean-Eric Cuendet for the report.
+  - Fix issue in restoring foreign key for mysql data export. Thanks
+    to Jean-Eric Cuendet for the report.
+  - Remove connection test to PostgreSQL instance as postgres or any
+    superuser in import_all.sh
+  - Fix creation of configuration directory.
+  - Fix Makefile to dissociate CONFDIR and DOCDIR from PREFIX or
+    DESTDIR. Thanks to Stephane Schildknecht for the report.
+  - Fix date_trunc+add_month replacement issue. Thanks to Lorena
+    Figueredo for the report.
+  - Do not replace configuration directory in scripts/ora2pg if this
+    is a RPM build. Thanks to calbiston for the report.
+  - Return empty bytea when a LOB is empty and not NULL.
+  - Regular expressions and conditions checks improvement in method
+    format_data_type() to make it a bit faster on huge tables. Thanks
+    to Svetlana Shorina for the patch.
+  - Fix INSERT using on the fly data import with boolean values.
+    Thanks to jecuendet for the report.
+  - Allow MySQL data type to be converted into boolean. Thanks to
+    jecuendet for the report.
+  - Fix export of BIT mysql data type into bit bit varying. Thanks
+    to jecuendet for the report.
+  - Fix call to escape_copy/escape_insert function call.
+
 2016 03 26 - v17.3
 
 This release fix two regressions introduced in latest release.
