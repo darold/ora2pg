@@ -586,7 +586,7 @@ __DATA__
 #
 #-------------------------------------------------------------------------------
 
-EXPORT_TYPE="TYPE,TABLE,PARTITION,VIEW,MVIEW,FUNCTION,PROCEDURE,SEQUENCE,TRIGGER,SYNONYM,DIRECTORY,DBLINK,GRANT,TABLESPACE"
+EXPORT_TYPE="TYPE,TABLE,PARTITION,VIEW,MVIEW,FUNCTION,PROCEDURE,SEQUENCE,TRIGGER,SYNONYM,DIRECTORY,DBLINK"
 AUTORUN=0
 NAMESPACE=.
 NO_CONSTRAINTS=0
@@ -873,17 +873,17 @@ if [ $DATA_ONLY -eq 0 ]; then
 			continue
 		fi
 
+		if [ $etype = "GRANT" ] || [ $etype = "TABLESPACE" ]; then
+			continue
+		fi
+
 		ltype=`echo $etype | tr '[:upper:]' '[:lower:]'`
 		ltype=`echo $ltype | sed 's/y$/ie/'`
 		if [ -r "$NAMESPACE/schema/${ltype}s/$ltype.sql" ]; then
 			if confirm "Would you like to import $etype from $NAMESPACE/schema/${ltype}s/$ltype.sql?" ; then
-				single_tx='--single-transaction '
-				if [ $etype = "TABLESPACE" ]; then
-					single_tx=''
-				fi
-				echo "Running: psql $single_tx$DB_HOST$DB_PORT -U $DB_OWNER -d $DB_NAME -f $NAMESPACE/schema/${ltype}s/$ltype.sql"
+				echo "Running: psql --single-transaction $DB_HOST$DB_PORT -U $DB_OWNER -d $DB_NAME -f $NAMESPACE/schema/${ltype}s/$ltype.sql"
 				if [ $DEBUG -eq 0 ]; then
-					psql $single_tx$DB_HOST$DB_PORT -U $DB_OWNER -d $DB_NAME -f $NAMESPACE/schema/${ltype}s/$ltype.sql
+					psql --single-transaction $DB_HOST$DB_PORT -U $DB_OWNER -d $DB_NAME -f $NAMESPACE/schema/${ltype}s/$ltype.sql
 					if [ $? -ne 0 ]; then
 						die "an error occurs when importing file $NAMESPACE/schema/${ltype}s/$ltype.sql."
 					fi
@@ -910,6 +910,30 @@ if [ $DATA_ONLY -eq 0 ]; then
 			import_constraints
 		else
 			IMPORT_INDEXES_AFTER=1
+		fi
+	fi
+
+	# Import objects that need superuser priviledge: GRANT and TABLESPACE
+	if [ -r "$NAMESPACE/schema/grants/grant.sql" ]; then
+		if confirm "Would you like to import GRANT from $NAMESPACE/schema/grants/grant.sql?" ; then
+			echo "Running: psql $DB_HOST$DB_PORT -U postgres -d $DB_NAME -f $NAMESPACE/schema/grants/grant.sql"
+			if [ $DEBUG -eq 0 ]; then
+				psql $DB_HOST$DB_PORT -U postgres -d $DB_NAME -f $NAMESPACE/schema/grants/grant.sql
+				if [ $? -ne 0 ]; then
+					die "an error occurs when importing file $NAMESPACE/schema/grants/grant.sql."
+				fi
+			fi
+		fi
+	fi
+	if [ -r "$NAMESPACE/schema/tablespaces/tablespace.sql" ]; then
+		if confirm "Would you like to import TABLESPACE from $NAMESPACE/schema/tablespaces/tablespace.sql?" ; then
+			echo "Running: psql $DB_HOST$DB_PORT -U postgres -d $DB_NAME -f $NAMESPACE/schema/tablespaces/tablespace.sql"
+			if [ $DEBUG -eq 0 ]; then
+				psql $DB_HOST$DB_PORT -U postgres -d $DB_NAME -f $NAMESPACE/schema/tablespaces/tablespace.sql
+				if [ $? -ne 0 ]; then
+					die "an error occurs when importing file $NAMESPACE/schema/tablespaces/tablespace.sql."
+				fi
+			fi
 		fi
 	fi
 fi
