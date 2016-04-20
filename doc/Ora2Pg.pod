@@ -1833,6 +1833,13 @@ same behavior but if you have control on you application a better way is to
 change it to transform empty string into NULL because PostgreSQL makes the
 difference.
 
+=item EMPTY_LOB_NULL
+
+Force empty_clob() and empty_blob() to be exported as NULL instead as empty
+string for the first one and '\x' for the second. If NULL is allowed in your
+column this might improve data export speed if you have lot of empty lob.
+Default is to preserve the exact data from Oracle.
+
 =item PACKAGE_AS_SCHEMA
 
 If you don't want to export package as schema but as simple functions you

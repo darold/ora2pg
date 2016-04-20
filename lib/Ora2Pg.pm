@@ -773,6 +773,7 @@ sub _init
 	$self->{ora_reserved_words} = (); 
 	$self->{defined_pk} = ();
 	$self->{allow_partition} = ();
+	$self->{empty_lob_null} = 0;
 
 	# Init PostgreSQL DB handle
 	$self->{dbhdest} = undef;
@@ -6518,6 +6519,16 @@ sub _howto_get_data
 				$str .= "CASE WHEN $name->[$k]->[0] IS NOT NULL THEN CONCAT('SRID=',SRID($name->[$k]->[0]),';', AsBinary($name->[$k]->[0])) ELSE NULL END,";
 			} else {
 				$str .= "CASE WHEN $name->[$k]->[0] IS NOT NULL THEN CONCAT('SRID=',SRID($name->[$k]->[0]),';',AsText($name->[$k]->[0])) ELSE NULL END,";
+			}
+
+		} elsif ( !$self->{is_mysql} && (($src_type->[$k] =~ /clob/i) || ($src_type->[$k] =~ /blob/i)) ) {
+
+			if ($self->{empty_lob_null}) {
+				$str .= "CASE WHEN dbms_lob.getlength($name->[$k]->[0]) = 0 THEN NULL ELSE $name->[$k]->[0] END,";
+			} elsif ($src_type->[$k] =~ /clob/i) {
+				$str .= "CASE WHEN dbms_lob.compare($name->[$k]->[0], empty_clob()) = 0 THEN NULL ELSE $name->[$k]->[0] END,";
+			} else {
+				$str .= "CASE WHEN dbms_lob.compare($name->[$k]->[0], empty_blob()) = 0 THEN NULL ELSE $name->[$k]->[0] END,";
 			}
 
 		} else {
