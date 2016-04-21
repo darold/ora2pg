@@ -1,4 +1,10 @@
-2016 04 20 - v17.4
+2016 04 21 - v17.4
+
+Errata in first release attempt.
+
+  - Fix previous patch that does not handle blob case but just clob
+  - Forgot to change back the query when EMPTY_LOB_NULL is not activated.
+  - Put parenthesis around AT TIME ZONE expression
 
 This is a maintenance release to fix several issues reported by users.
 There is also some major data export speed improvement thanks to the
