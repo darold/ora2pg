@@ -6525,7 +6525,7 @@ sub _howto_get_data
 
 			if ($self->{empty_lob_null}) {
 				$str .= "CASE WHEN dbms_lob.getlength($name->[$k]->[0]) = 0 THEN NULL ELSE $name->[$k]->[0] END,";
-			} elsif ($src_type->[$k] =~ /clob/i) {
+			} else {
 				$str .= "$name->[$k]->[0],";
 			}
 
