@@ -506,7 +506,7 @@ sub plsql_to_plpgsql
 	$str =~ s/TO_NUMBER\s*\(\s*TO_CHAR\s*\(([^,]+),\s*('[^']+')\s*\)\s*\)/to_char($1, $2)::integer/igs;
 
 	# Replace the UTC convertion with the PG syntaxe
-	 $str =~ s/SYS_EXTRACT_UTC\s*\(([^\)]+)\)/$1 AT TIME ZONE 'UTC'/isg;
+	$str =~ s/SYS_EXTRACT_UTC\s*\(([^\)]+)\)/($1 AT TIME ZONE 'UTC')/isg;
 
 	# Revert order in FOR IN REVERSE
 	$str =~ s/FOR(.*?)IN\s+REVERSE\s+([^\.\s]+)\s*\.\.\s*([^\s]+)/FOR$1IN REVERSE $3..$2/isg;
