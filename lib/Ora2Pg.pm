@@ -9539,8 +9539,15 @@ sub _convert_function
 	}
 	$fname =~ s/"_"/_/g;
 
-	$fct_detail{args} = '()' if (!$fct_detail{args});
 	$fct_detail{args} =~ s/\s+IN\s+/ /ig; # Remove default IN keyword
+
+	# Input parameters after one with a default value must also have defaults
+	# and we need to sort the arguments so the ones with default values will be on the bottom
+	$fct_detail{args} =~ s/^\(|\)\s*$//g;
+	my @args_sorted;
+	push(@args_sorted, grep {!/\sdefault\s/i} split ',', $fct_detail{args});
+	push(@args_sorted, grep {/\sdefault\s/i} split ',', $fct_detail{args});
+	$fct_detail{args} = '(' . join(',', @args_sorted) . ')';
 
 	# Set the return part
 	my $func_return = '';
