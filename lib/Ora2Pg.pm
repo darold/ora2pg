@@ -6526,9 +6526,7 @@ sub _howto_get_data
 			if ($self->{empty_lob_null}) {
 				$str .= "CASE WHEN dbms_lob.getlength($name->[$k]->[0]) = 0 THEN NULL ELSE $name->[$k]->[0] END,";
 			} elsif ($src_type->[$k] =~ /clob/i) {
-				$str .= "CASE WHEN dbms_lob.compare($name->[$k]->[0], empty_clob()) = 0 THEN NULL ELSE $name->[$k]->[0] END,";
-			} else {
-				$str .= "CASE WHEN dbms_lob.compare($name->[$k]->[0], empty_blob()) = 0 THEN NULL ELSE $name->[$k]->[0] END,";
+				$str .= "$name->[$k]->[0],";
 			}
 
 		} else {
