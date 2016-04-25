@@ -4796,11 +4796,12 @@ LANGUAGE plpgsql ;
 				}
 			}
 		}
-
 		# Wait for all child die
 		if ( ($self->{oracle_copies} > 1) || ($self->{parallel_tables} > 1) ){
 			# Wait for all child dies less the logger
-			while (scalar keys %RUNNING_PIDS > 1) {
+			my $numchild = 1; # will not wait for progressbar process
+			$numchild = 0 if ($self->{debug}); # in debug there is no progressbar
+			while (scalar keys %RUNNING_PIDS > $numchild) {
 				my $kid = waitpid(-1, WNOHANG);
 				if ($kid > 0) {
 					delete $RUNNING_PIDS{$kid};
