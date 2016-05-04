@@ -2229,7 +2229,7 @@ http://www.thatjeffsmith.com/archive/2012/01/sql-developer-data-modeler-quick-ti
 
 Toad is also able to rewrite the native Oracle DECODE() syntax into ANSI
 standard SQL CASE statement. You can find some slide about this in a
-presentation given at PgConf.RU: http://ora2pg.darold.net/ora2pg_the_hard_way.pdf
+presentation given at PgConf.RU: http://ora2pg.darold.net/slides/ora2pg_the_hard_way.pdf
 
 =head2 Test the migration
 
