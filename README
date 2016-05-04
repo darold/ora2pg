@@ -2168,7 +2168,7 @@ CONFIGURATION
     Toad is also able to rewrite the native Oracle DECODE() syntax into ANSI
     standard SQL CASE statement. You can find some slide about this in a
     presentation given at PgConf.RU:
-    http://ora2pg.darold.net/ora2pg_the_hard_way.pdf
+    http://ora2pg.darold.net/slides/ora2pg_the_hard_way.pdf
 
   Test the migration
     The type of action called TEST allow you to check that all objects from
