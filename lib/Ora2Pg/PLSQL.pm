@@ -361,6 +361,7 @@ sub plsql_to_plpgsql
 		$str =~ s/(\s+)(?<!AS|IS)(\s+)SELECT((?![^;]+\bINTO\b)[^;]+;)/$1$2PERFORM$3/isg;
 		$str =~ s/\bSELECT\b((?![^;]+\bINTO\b)[^;]+;)/PERFORM$1/isg;
 		$str =~ s/(AS|IS|FOR|UNION ALL|UNION|MINUS|\()(\s*)(ORA2PG_COMMENT\d+\%)?(\s*)PERFORM/$1$2$3$4SELECT/isg;
+		$str =~ s/(INSERT\s+INTO\s+[^;]+\s+)PERFORM/$1SELECT/isg;
 	}
 
 	# Change nextval on sequence
