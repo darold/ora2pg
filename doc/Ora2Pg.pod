@@ -2218,6 +2218,32 @@ will dispatch indexes creation over 4 simultaneous PostgreSQL connections.
 This will considerably accelerate this part of the migration process with huge
 data size.
 
+=head2 Exporting LONG RAW
+
+If you still have columns defined as LONG RAW, Ora2Pg will not be able to export
+these kind of data. The OCI library fail to export them and always return the
+same first record. To be able to export the data you need to transform the field
+as BLOB by creating a temporary table before migrating data. For example, the
+Oracle table:
+
+	SQL> DESC TEST_LONGRAW
+	 Name                 NULL ?   Type
+	 -------------------- -------- ----------------------------
+	 ID                            NUMBER
+	 C1                            LONG RAW
+
+need to be "translated" into a table using BLOB as follow:
+
+	CREATE TABLE test_blob (id NUMNER, c1 BLOB);
+
+And then copy the data with the following INSERT query:
+
+	INSERT INTO test_blob SELECT id, to_lob(c1) FROM test_longraw;
+
+Then you just have to exclude the original table from the export (see EXCLUDE
+directive) and to renamed the new temporary table on the fly using the
+REPLACE_TABLES configuration directive.
+
 =head2 Hints
 
 Converting your queries with Oracle style outer join (+) syntax to ANSI standard SQL at
