@@ -633,13 +633,10 @@ CONFIGURATION
         Note that you can chained multiple export by giving to the TYPE
         directive a comma-separated list of export type.
 
-        The PARTITION export is a work in progress as table partition
-        support is not yet implemented into PostgreSQL. Ora2Pg will convert
-        Oracle partition using table inheritence, trigger and function
-        workaround. See document at Pg site:
+        Ora2Pg will convert Oracle partition using table inheritence,
+        trigger and functions. See document at Pg site:
         http://www.postgresql.org/docs/current/interactive/ddl-partitioning.
-        html This new feature in Ora2Pg has not been widly tested so feel
-        free to report any bug and patch.
+        html
 
         The TYPE export allow export of user defined Oracle type. If you
         don't use the --plsql command line parameter it simply dump Oracle
@@ -1099,6 +1096,14 @@ CONFIGURATION
         If you have multiple partitioned table, when exported to PostgreSQL
         some partitions could have the same name but dfferent parent tables.
         This is not allowed, table name must be unique.
+
+    DISABLE_PARTITION
+        If you don't want to reproduce the partitioning like in Oracle and
+        want to export all partitionned Oracle data into the main single
+        table in PostgreSQL enable this directive. Ora2Pg will export all
+        data into the main table name. Default is to use partitionning,
+        Ora2Pg will export data from each partition and import them into the
+        PostgreSQL dedicated partition table.
 
   Oracle Spatial to PostGis
     Ora2Pg fully export Spatial object from Oracle database. There's some

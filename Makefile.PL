@@ -384,6 +384,13 @@ INDEXES_RENAMING	0
 # table name must be unique. 
 PREFIX_PARTITION	0
 
+# If you don't want to reproduce the partitioning like in Oracle and want to
+# export all partitionned Oracle data into the main single table in PostgreSQL
+# enable this directive. Ora2Pg will export all data into the main table name.
+# Default is to use partitionning, Ora2Pg will export data from each partition
+# and import them into the PostgreSQL dedicated partition table.
+DISABLE_PARTITION	0
+
 # Activating this directive will force Ora2Pg to add WITH (OIDS) when creating
 # tables or views as tables. Default is same as PostgreSQL, disabled.
 WITH_OID		0
