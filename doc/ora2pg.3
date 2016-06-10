@@ -124,7 +124,7 @@
 .\" ========================================================================
 .\"
 .IX Title "ORA2PG 1"
-.TH ORA2PG 1 "2016-06-07" "perl v5.14.2" "User Contributed Perl Documentation"
+.TH ORA2PG 1 "2016-06-10" "perl v5.14.2" "User Contributed Perl Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -1170,11 +1170,14 @@ or \s-1INSERT\s0 export.
 Some time you need to force the destination type, for example a column
 exported as timestamp by Ora2Pg can be forced into type date. Value is
 a comma-separated list of \s-1TABLE:COLUMN:TYPE\s0 structure. If you need to use
-comma or space inside type definintion you will have to backslach them.
+comma or space inside type definition you will have to backslach them.
 .Sp
 .Vb 1
-\&        TABLE1:COL3:varchar,TABLE1:COL4:decimal(9\e,6)
+\&        MODIFY_TYPE     TABLE1:COL3:varchar,TABLE1:COL4:decimal(9\e,6)
 .Ve
+.Sp
+Type of table1.col3 will be replaced by a varchar and table1.col4 by
+a decimal with precision.
 .IP "\s-1REPLACE_TABLES\s0" 4
 .IX Item "REPLACE_TABLES"
 This directive allow you to remap a list of Oracle table name to a PostgreSQL table name during export. The value is a list of space-separated values with the following structure:
