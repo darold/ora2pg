@@ -891,9 +891,9 @@ sub _init
 			my @allow_vlist = split(/\s*;\s*/, $options{allow});
 			foreach my $a (@allow_vlist) {
 				if ($a =~ /^([^\[]+)\[(.*)\]$/) {
-					push(@{$self->{limited}{"\U$1\E"}}, split(/\s+/, $2) );
+					push(@{$self->{limited}{"\U$1\E"}}, split(/[\s,]+/, $2) );
 				} else {
-					push(@{$self->{limited}{ALL}}, split(/\s+/, $a) );
+					push(@{$self->{limited}{ALL}}, split(/[\s,]+/, $a) );
 				}
 			}
 		} elsif ((lc($k) eq 'exclude') && $options{exclude}) {
@@ -902,9 +902,9 @@ sub _init
 			my @exclude_vlist = split(/\s*;\s*/, $options{exclude});
 			foreach my $a (@exclude_vlist) {
 				if ($a =~ /^([^\[]+)\[(.*)\]$/) {
-					push(@{$self->{excluded}{"\U$1\E"}}, split(/\s+/, $2) );
+					push(@{$self->{excluded}{"\U$1\E"}}, split(/[\s,]+/, $2) );
 				} else {
-					push(@{$self->{excluded}{ALL}}, split(/\s+/, $a) );
+					push(@{$self->{excluded}{ALL}}, split(/[\s,]+/, $a) );
 				}
 			}
 		} elsif ((lc($k) eq 'view_as_table') && $options{view_as_table}) {
