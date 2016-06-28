@@ -317,11 +317,16 @@ sub plsql_to_plpgsql
 	#--------------------------------------------
 	# Change NVL to COALESCE
 	$str =~ s/NVL\s*\(/coalesce(/igs;
+	my $conv_current_time = 'clock_timestamp()';
+	if (!grep(/$class->{type}/i, 'FUNCTION', 'PROCEDURE', 'PACKAGE')) {
+		$conv_current_time = 'LOCALTIMESTAMP';
+	}
 	# Replace sysdate +/- N by localtimestamp - 1 day intervel
-	$str =~ s/SYSDATE\s*(\+|\-)\s*(\d+)/LOCALTIMESTAMP $1 interval '$2 days'/igs;
+	$str =~ s/SYSDATE\s*(\+|\-)\s*(\d+)/$conv_current_time $1 interval '$2 days'/igs;
 	# Change SYSDATE to 'now' or current timestamp.
-	$str =~ s/SYSDATE\s*\(\s*\)/LOCALTIMESTAMP/igs;
-	$str =~ s/SYSDATE/LOCALTIMESTAMP/igs;
+	$str =~ s/SYSDATE\s*\(\s*\)/$conv_current_time/igs;
+	$str =~ s/SYSDATE/$conv_current_timeœ/igs;
+
 	# Replace SYSTIMESTAMP 
 	$str =~ s/SYSTIMESTAMP/CURRENT_TIMESTAMP/igs;
 	# remove FROM DUAL
