@@ -398,7 +398,7 @@ sub plsql_to_plpgsql
 	$str =~ s/\bdup_val_on_index\b/unique_violation/igs;
 
 	# Replace raise_application_error by PG standard RAISE EXCEPTION
-	$str =~ s/\braise_application_error\s*\(\s*[\-\+]*\d+\s*,\s*(.*?)\);/RAISE EXCEPTION $1;/igs;
+	$str =~ s/\braise_application_error\s*\(\s*[^,]+\s*,\s*(.*?)\);/RAISE EXCEPTION $1;/igs;
 	$str =~ s/DBMS_STANDARD\.RAISE EXCEPTION/RAISE EXCEPTION/igs;
 
 	# and then rewrite RAISE EXCEPTION concatenations
