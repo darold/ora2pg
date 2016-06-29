@@ -622,6 +622,7 @@ sub plsql_to_plpgsql
 	####
 	foreach my $f (@{$class->{function_list}}) {
 		$str =~ s/([;\s]+)$f\s*\(/$1PERFORM \L$f\E\(/igs;
+		$str =~ s/(=\s+)PERFORM \L$f\E\(/$1SELECT \L$f\E\(/igs;
 	}
 
 	##############
