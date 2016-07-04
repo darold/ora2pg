@@ -402,24 +402,24 @@ sub plsql_to_plpgsql
 	$str =~ s/DBMS_STANDARD\.RAISE EXCEPTION/RAISE EXCEPTION/igs;
 
 	# and then rewrite RAISE EXCEPTION concatenations
-	while ($str =~ /RAISE EXCEPTION\s*([^;\|]+?)(\|\|)([^;]*);/) {
-		my @ctt = split(/\|\|/, "$1$2$3");
-		my $sbt = '';
-		my @args = '';
-		for (my $i = 0; $i <= $#ctt; $i++) {
-			if (($ctt[$i] =~ s/^\s*'//s) && ($ctt[$i] =~ s/'\s*$//s)) {
-				$sbt .= "$ctt[$i]";
-			} else {
-				$sbt .= '%';
-				push(@args, $ctt[$i]);
-			}
-		}
-		$sbt = "'$sbt'";
-		if ($#args >= 0) {
-			$sbt = $sbt . join(',', @args);
-		}
-		$str =~ s/RAISE EXCEPTION\s*([^;\|]+?)(\|\|)([^;]*);/RAISE EXCEPTION $sbt;/is
-	};
+#	while ($str =~ /RAISE EXCEPTION\s*([^;\|]+?)(\|\|)([^;]*);/) {
+#		my @ctt = split(/\|\|/, "$1$2$3");
+#		my $sbt = '';
+#		my @args = '';
+#		for (my $i = 0; $i <= $#ctt; $i++) {
+#			if (($ctt[$i] =~ s/^\s*'//s) && ($ctt[$i] =~ s/'\s*$//s)) {
+#				$sbt .= "$ctt[$i]";
+#			} else {
+#				$sbt .= '%';
+#				push(@args, $ctt[$i]);
+#			}
+#		}
+#		$sbt = "'$sbt'";
+#		if ($#args >= 0) {
+#			$sbt = $sbt . join(',', @args);
+#		}
+#		$str =~ s/RAISE EXCEPTION\s*([^;\|]+?)(\|\|)([^;]*);/RAISE EXCEPTION $sbt;/is
+#	};
 
 	# Remove IN information from cursor declaration
 	while ($str =~ s/(\bCURSOR\b[^\(]+)\(([^\)]+\bIN\b[^\)]+)\)/$1\(\%\%CURSORREPLACE\%\%\)/is) {
