@@ -620,10 +620,10 @@ sub plsql_to_plpgsql
 	####
 	# Search direct call to function to add PERFORM before
 	####
-	foreach my $f (@{$class->{function_list}}) {
-		$str =~ s/(?<!=|,)([;\s]+)$f\s*\(/$1PERFORM \L$f\E\(/igs;
-		$str =~ s/(SELECT|PERFORM)(\s+)PERFORM/$1$2/igs;
-	}
+#	foreach my $f (@{$class->{function_list}}) {
+#		$str =~ s/(?<!=|,)([;\s]+)$f\s*\(/$1PERFORM \L$f\E\(/igs;
+#		$str =~ s/(SELECT|PERFORM)(\s+)PERFORM/$1$2/igs;
+#	}
 
 	##############
 	# Replace package.function call by package_function
