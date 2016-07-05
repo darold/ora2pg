@@ -8874,7 +8874,7 @@ sub _get_custom_types
 
 sub format_data_row
 {
-	my ($self, $row, $data_types, $action, $src_data_types, $custom_types, $table, $colcond) = @_;
+	my ($self, $row, $data_types, $action, $src_data_types, $custom_types, $table, $colcond, $sprep) = @_;
 
 	for (my $idx = 0; $idx < scalar(@$data_types); $idx++) {
 		my $data_type = $data_types->[$idx] || '';
@@ -8943,14 +8943,14 @@ sub format_data_row
 				}
 			}
 		} else {
-			$row->[$idx] = $self->format_data_type($row->[$idx], $data_type, $action, $table, $src_data_types->[$idx], $idx, $colcond->[$idx]);
+			$row->[$idx] = $self->format_data_type($row->[$idx], $data_type, $action, $table, $src_data_types->[$idx], $idx, $colcond->[$idx], $sprep);
 		}
 	}
 }
 
 sub format_data_type
 {
-	my ($self, $col, $data_type, $action, $table, $src_type, $idx, $cond) = @_;
+	my ($self, $col, $data_type, $action, $table, $src_type, $idx, $cond, $sprep) = @_;
 
 	# Internal timestamp retrieves from custom type is as follow: 01-JAN-77 12.00.00.000000 AM (internal_date_max)
 	if (($data_type eq 'char') && $col =~ /^(\d{2})-([A-Z]{3})-(\d{2}) (\d{2})\.(\d{2})\.(\d{2}\.\d+) (AM|PM)$/ ) {
@@ -8977,7 +8977,7 @@ sub format_data_type
 	# Preparing data for output
 	if ($action ne 'COPY') {
 		if (!defined $col) {
-			$col = 'NULL';
+			$col = 'NULL' if (!$sprep);
 		} elsif ( ($src_type =~ /geometry/i) && ($self->{geometry_extract_type} eq 'WKB') ) {
 			$col = "St_GeomFromWKB('\\x" . unpack('H*', $col) . "', $self->{spatial_srid}{$table}->[$idx])";
 		} elsif ($cond->{isbytea}) {
@@ -9002,7 +9002,11 @@ sub format_data_type
 			# covered now by the call to _numeric_format()
 			# $col =~ s/,/\./;
 			$col =~ s/\~/inf/;
-			$col = 'NULL' if ($col eq '');
+			if (!$sprep) {
+				$col = 'NULL' if ($col eq '');
+			} else {
+				$col = undef if ($col eq '');
+			}
 		}
 	} else {
 		if (!defined $col) {
@@ -10682,7 +10686,7 @@ sub _dump_to_pg
 						}
 					}
 					# Format user defined type and geometry data
-					$self->format_data_row($row,$tt,'INSERT', $stt, \%user_type, $table, $col_cond);
+					$self->format_data_row($row,$tt,'INSERT', $stt, \%user_type, $table, $col_cond, 1);
 					# Replace boolean 't' and 'f' by 0 and 1 for bind parameters.
 					foreach my $j (@bool_cols) {
 						($row->[$j] eq "'f'") ? $row->[$j] = 0 : $row->[$j] = 1;
