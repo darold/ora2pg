@@ -325,7 +325,7 @@ sub plsql_to_plpgsql
 	$str =~ s/SYSDATE\s*(\+|\-)\s*(\d+)/$conv_current_time $1 interval '$2 days'/igs;
 	# Change SYSDATE to 'now' or current timestamp.
 	$str =~ s/SYSDATE\s*\(\s*\)/$conv_current_time/igs;
-	$str =~ s/SYSDATE/$conv_current_timeœ/igs;
+	$str =~ s/SYSDATE/$conv_current_time/igs;
 
 	# Replace SYSTIMESTAMP 
 	$str =~ s/SYSTIMESTAMP/CURRENT_TIMESTAMP/igs;
