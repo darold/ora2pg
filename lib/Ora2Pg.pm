@@ -299,6 +299,7 @@ our @KEYWORDS = qw(
 	UNION UNIQUE USER USING VARIADIC VERBOSE WHEN WHERE WINDOW WITH
 );
 
+our @SYSTEM_FIELDS = qw(oid tableoid xmin xmin cmin xmax cmax ctid);
 our %BOOLEAN_MAP = (
 	'yes' => 't',
 	'no' => 'f',
@@ -630,7 +631,9 @@ sub quote_reserved_words
 
 =head2 is_reserved_words
 
-Return 1 if the given object name is a PostgreSQL reserved word
+Returns 1 if the given object name is a PostgreSQL reserved word
+Returns 2 if the object name is only numeric
+Returns 3 if the object name is a system column
 
 =cut
 
@@ -644,6 +647,10 @@ sub is_reserved_words
 	if ($obj_name =~ /^\d+$/) {
 		return 2;
 	}
+	if ($obj_name && grep(/^$obj_name$/i, @SYSTEM_FIELDS)) {
+		return 3;
+	}
+
 	return 0;
 }
 
@@ -11014,13 +11021,17 @@ sub _show_infos
 					$total_row_num += $self->{tables}{$t}{table_info}{num_rows};
 
 					# Look at reserved words if tablename is found
-					if (&is_reserved_words($t)) {
+					my $r = is_reserved_words($t);
+					if (($r > 0) && ($r != 3)) {
 						$table_detail{'reserved words in table name'}++;
 					}
 					# Get fields informations
 					foreach my $k (sort {$self->{tables}{$t}{column_info}{$a}[10] <=> $self->{tables}{$t}{column_info}{$a}[10]} keys %{$self->{tables}{$t}{column_info}}) {
-						if (&is_reserved_words($self->{tables}{$t}{column_info}{$k}[0])) {
+						$r = is_reserved_words($self->{tables}{$t}{column_info}{$k}[0]);
+						if (($r > 0) && ($r != 3)) {
 							$table_detail{'reserved words in column name'}++;
+						} elsif ($r == 3)) {
+							$table_detail{'system columns in column name'}++;
 						}
 						$self->{tables}{$t}{column_info}{$k}[1] =~ s/TIMESTAMP\(\d+\)/TIMESTAMP/i;
 						if (!$self->{is_mysql}) {
@@ -11466,6 +11477,8 @@ sub _show_infos
 						$warning .= " (Warning: '$d->[0]' is a reserved word in PostgreSQL)";
 					} elsif ($ret == 2) {
 						$warning .= " (Warning: '$d->[0]' object name with numbers only must be double quoted in PostgreSQL)";
+					} elsif ($ret == 3) {
+						$warning = " (Warning: '$d->[0]' is a system column in PostgreSQL)";
 					}
 					# Check if this column should be replaced by a boolean following table/column name
 					my $typlen = $d->[5];
