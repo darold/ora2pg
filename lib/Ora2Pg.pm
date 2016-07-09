@@ -1311,6 +1311,9 @@ sub _init
 		if ( ($self->{type} eq 'KETTLE') && !$self->{pg_dsn} ) {
 			$self->logit("FATAL: PostgreSQL connection datasource must be defined with KETTLE export.\n", 0, 1);
 		} elsif ($self->{type} ne 'KETTLE') {
+			if ($self->{defer_fkey} && $self->{pg_dsn}) {
+				$self->logit("FATAL: DEFER_FKEY can not be used with direct import to PostgreSQL, check use of DROP_FKEY instead.\n", 0, 1);
+			}
 			$self->{dbhdest} = $self->_send_to_pgdb() if ($self->{pg_dsn} && !$self->{dbhdest});
 		}
 	}
@@ -4597,10 +4600,6 @@ LANGUAGE plpgsql ;
 				$self->{dbhdest}->do($search_path) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
 			}
 			$self->{dbhdest}->do("BEGIN;") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
-			# Defer all constraints
-			if ($self->{defer_fkey}) {
-				$self->{dbhdest}->do("SET CONSTRAINTS ALL DEFERRED;") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
-			}
 		}
 
 		#### Defined all SQL commands that must be executed before and after data loading
