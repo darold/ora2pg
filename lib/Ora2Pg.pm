@@ -11030,7 +11030,7 @@ sub _show_infos
 						$r = is_reserved_words($self->{tables}{$t}{column_info}{$k}[0]);
 						if (($r > 0) && ($r != 3)) {
 							$table_detail{'reserved words in column name'}++;
-						} elsif ($r == 3)) {
+						} elsif ($r == 3) {
 							$table_detail{'system columns in column name'}++;
 						}
 						$self->{tables}{$t}{column_info}{$k}[1] =~ s/TIMESTAMP\(\d+\)/TIMESTAMP/i;
