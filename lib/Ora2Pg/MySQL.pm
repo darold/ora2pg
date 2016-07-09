@@ -431,7 +431,7 @@ sub _foreign_key
 		push(@{$link{$r->[2]}{$key_name}{remote}{$r->[3]}}, $r->[4]);
 		$r->[8] = 'SIMPLE'; # See pathetical documentation of mysql
 		# SELECT CONSTRAINT_NAME,R_CONSTRAINT_NAME,SEARCH_CONDITION,DELETE_RULE,$deferrable,DEFERRED,R_OWNER,TABLE_NAME,OWNER,UPDATE_RULE
-                push(@{$data{$r->[2]}}, [ ($key_name, $key_name, $r->[8], $r->[9], 'DEFERRABLE', 'Y', '', $r->[2], '', $r->[10]) ]);
+                push(@{$data{$r->[2]}}, [ ($key_name, $key_name, $r->[8], $r->[10], 'DEFERRABLE', 'Y', '', $r->[2], '', $r->[9]) ]);
 		$i++;
         }
 	$sth->finish();
