@@ -308,16 +308,18 @@ FKEY_DEFERRABLE	0
 # In addition when exporting data the DEFER_FKEY option set to 1 will add
 # a command to defer all foreign key constraints during data export and
 # the import will be done in a single transaction. This will work only if
-# foreign keys have been exported as deferrable. Constraints will then be
+# foreign keys have been exported as deferrable and you are not using direct
+# import to PostgreSQL (PG_DSN is not defined). Constraints will then be
 # checked at the end of the transaction. This directive can also be enabled 
 # if you want to force all foreign keys to be created as deferrable and
 # initially deferred during schema export (TABLE export type).
 DEFER_FKEY	0
 
 # If deferring foreign keys is not possible du to the amount of data in a
-# single transaction or you've not exported foreign keys as deferrable
-# you can use the DROP_FKEY directive. It will drop all foreign keys before
-# data import and recreate them at the end.
+# single transaction, you've not exported foreign keys as deferrable or you
+# are using direct import to PostgreSQL, you can use the DROP_FKEY directive.
+# It will drop all foreign keys before all data import and recreate them at
+# the end of the import.
 DROP_FKEY	0
 
 

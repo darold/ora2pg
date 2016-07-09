@@ -35,7 +35,7 @@ my $VERSION = '17.4';
 
 $| = 1;
 
-my $CONFIG_FILE = '/etc/ora2pg/ora2pg.conf';
+my $CONFIG_FILE = "/etc/ora2pg/ora2pg.conf";
 my $FILE_CONF = '';
 my $DEBUG = 0;
 my $QUIET = 0;
