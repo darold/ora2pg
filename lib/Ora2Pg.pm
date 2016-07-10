@@ -8989,7 +8989,11 @@ sub format_data_type
 		} elsif ($cond->{isbytea}) {
 			$col = $self->_escape_lob($col, $cond->{raw} ? 'RAW' : 'BLOB', $cond);
 		} elsif ($cond->{istext}) {
-			$cond->{clob} ? $col = $self->_escape_lob($col, 'CLOB', $cond) : $col = $self->escape_insert($col);
+			if ($cond->{clob}) {
+				$col = $self->_escape_lob($col, 'CLOB', $cond);
+			} elsif (!$sprep) {
+				$col = $self->escape_insert($col);
+			}
 		} elsif ($cond->{isbit}) {
 			$col = "B'$col'";
 		} elsif ($cond->{isdate}) {
