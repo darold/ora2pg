@@ -1037,7 +1037,10 @@ sub _init
 	# Set user defined data type translation
 	if ($self->{data_type}) {
 		my @transl = split(/[,;]/, uc($self->{data_type}));
+		# Set default type conversion
 		%{$self->{data_type}} = %TYPE;
+		# then set custom type conversion from the DATA_TYPE
+		# configuration directive 
 		foreach my $t (@transl) {
 			my ($typ, $val) = split(/:/, $t);
 			$typ =~ s/^\s+//;
@@ -1047,6 +1050,7 @@ sub _init
 			$self->{data_type}{$typ} = lc($val) if ($val);
 		}
 	} else {
+		# Set default type conversion
 		%{$self->{data_type}} = %TYPE;
 	}
 
@@ -10195,10 +10199,11 @@ sub _extract_data
 
 		# Look for user defined type
 		if (!$self->{is_mysql}) {
-			for (my $idx = 0; $idx < scalar(@$tt); $idx++) {
-				my $data_type = $tt->[$idx] || '';
+			for (my $idx = 0; $idx < scalar(@$stt); $idx++) {
+				my $data_type = uc($stt->[$idx]) || '';
+				$data_type =~ s/\(.*//; # remove any precision
 				my $custom_type = '';
-				if (!exists $self->{data_type}{$stt->[$idx]}) {
+				if (!exists $self->{data_type}{$data_type}) {
 					$self->logit("Data type $stt->[$idx] is not native, searching on custom types.\n", 1);
 					$custom_type = $self->_get_types($dbh, $stt->[$idx]);
 					foreach my $tpe (sort {length($a->{name}) <=> length($b->{name}) } @{$custom_type}) {
@@ -10231,10 +10236,11 @@ sub _extract_data
 
 		# Look for user defined type
 		if (!$self->{is_mysql}) {
-			for (my $idx = 0; $idx < scalar(@$tt); $idx++) {
-				my $data_type = $tt->[$idx] || '';
+			for (my $idx = 0; $idx < scalar(@$stt); $idx++) {
+				my $data_type = uc($stt->[$idx]) || '';
+				$data_type =~ s/\(.*//; # remove any precision
 				my $custom_type = '';
-				if (!exists $self->{data_type}{$stt->[$idx]}) {
+				if (!exists $self->{data_type}{$data_type}) {
 					$self->logit("Data type $stt->[$idx] is not native, searching on custom types.\n", 1);
 					$custom_type = $self->_get_types($self->{dbh}, $stt->[$idx]);
 					foreach my $tpe (sort {length($a->{name}) <=> length($b->{name}) } @{$custom_type}) {
