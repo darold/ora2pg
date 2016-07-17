@@ -2092,6 +2092,7 @@ sub read_schema_from_file
 			$c =~ s/(PRIMARY KEY.*)NOT NULL/$1/i;
 			# Rewrite some parts for easiest/generic parsing
 			$c =~ s/^(PRIMARY KEY|UNIQUE)/CONSTRAINT ora2pg_ukey_$tb_name $1/i;
+			$c =~ s/^(CHECK[^,;]+)DEFERRABLE\s+INITIALLY\s+DEFERRED/$1/i;
 			$c =~ s/^CHECK\b/CONSTRAINT ora2pg_ckey_$tb_name CHECK/i;
 			$c =~ s/^FOREIGN KEY/CONSTRAINT ora2pg_fkey_$tb_name FOREIGN KEY/i;
 			# Get column name
@@ -2189,6 +2190,7 @@ sub read_schema_from_file
 		$tb_name =~ s/"//g;
 		my $tb_def = $2;
 		$tb_def =~ s/\s+/ /g;
+		$tb_def =~ s/(CHECK[^,;]+)\s+DEFERRABLE\s+INITIALLY\s+DEFERRED/$1/i;
 		if ( $self->{use_tablespace} && ($tb_def =~ /USING\s+INDEX\s+TABLESPACE\s+([^\s]+)/) ) {
 			my $tbspace = $1;
 			$tb_def =~ /\s+CONSTRAINT\s+([^\s]+)\s+/;
