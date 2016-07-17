@@ -5796,9 +5796,11 @@ sub _create_indexes
 		}
 
 		# Add parentheses to index column definition when a space is found
-		for ($i = 0; $i <= $#{$indexes{$idx}}; $i++) {
-			if ( ($indexes{$idx}->[$i] =~ /\s/) && ($indexes{$idx}->[$i] !~ /^[^\.\s]+\s+DESC$/i) ) {
-				$indexes{$idx}->[$i] = '(' . $indexes{$idx}->[$i] . ')';
+		if (!$self->{input_file}) {
+			for ($i = 0; $i <= $#{$indexes{$idx}}; $i++) {
+				if ( ($indexes{$idx}->[$i] =~ /\s/) && ($indexes{$idx}->[$i] !~ /^[^\.\s]+\s+DESC$/i) ) {
+					$indexes{$idx}->[$i] = '(' . $indexes{$idx}->[$i] . ')';
+				}
 			}
 		}
 		my $columns = join(',', @{$indexes{$idx}});
