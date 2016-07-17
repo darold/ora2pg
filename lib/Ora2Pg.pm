@@ -2269,21 +2269,21 @@ sub read_comment_from_file
 
 	my $tid = 0; 
 
-	while ($content =~ s/COMMENT\s+ON\s+TABLE\s+([^\s]+)\s*IS\s*'([^;]+);//i) {
+	while ($content =~ s/COMMENT\s+ON\s+TABLE\s+([^\s]+)\s+IS\s+'([^;]+);//is) {
 		my $tb_name = $1;
 		my $tb_comment = $2;
 		$tb_name =~ s/"//g;
-		$tb_comment =~ s/'$//g;
+		$tb_comment =~ s/'\s*$//g;
 		if (exists $self->{tables}{$tb_name}) {
 			$self->{tables}{$tb_name}{table_info}{comment} = $tb_comment;
 		}
 	}
 
-	while ($content =~ s/COMMENT\s+ON\s+COLUMN\s+([^\s]+)\s*IS\s*'([^;]+);//i) {
+	while ($content =~ s/COMMENT\s+ON\s+COLUMN\s+([^\s]+)\s+IS\s+'([^;]+);//is) {
 		my $tb_name = $1;
 		my $tb_comment = $2;
 		$tb_name =~ s/"//g;
-		$tb_comment =~ s/'$//g;
+		$tb_comment =~ s/'\s*$//g;
 		if ($tb_name =~ s/\.([^\.]+)$//) {
 			if (exists $self->{tables}{$tb_name}) {
 					$self->{tables}{$tb_name}{column_comments}{"\L$1\E"} = $tb_comment;
