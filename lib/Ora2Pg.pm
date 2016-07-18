@@ -3769,7 +3769,7 @@ LANGUAGE plpgsql ;
 			@allqueries = ();
 			# remove comments
 			$self->_remove_comments(\$content);
-			$content =~  s/ORA2PG_COMMENT\d+\%//gs;
+			$content =~  s/\%ORA2PG_COMMENT\d+\%//gs;
 			foreach my $l (split(/\n/, $content)) {
 				chomp($l);
 				next if ($l =~ /^\s*$/);
@@ -3872,7 +3872,7 @@ LANGUAGE plpgsql ;
 			}
 		} else {
 			foreach my $q (keys %{$self->{queries}}) {
-				$self->{queries}{$q} =~ s/ORA2PG_COMMENT\d+\%//gs;
+				$self->{queries}{$q} =~ s/\%ORA2PG_COMMENT\d+\%//gs;
 			}
 		}
 		foreach my $q (keys %{$self->{queries}}) {
@@ -9485,33 +9485,33 @@ sub _remove_comments
 
 	my %comments = ();
 
-	while ($$content =~ s/(\/\*(.*?)\*\/)/ORA2PG_COMMENT$self->{idxcomment}\%/s) {
-		$comments{"ORA2PG_COMMENT$self->{idxcomment}%"} = $1;
+	while ($$content =~ s/(\/\*(.*?)\*\/)/\%ORA2PG_COMMENT$self->{idxcomment}\%/s) {
+		$comments{"\%ORA2PG_COMMENT$self->{idxcomment}\%"} = $1;
 		$self->{idxcomment}++;
 	}
 
-	while ($$content =~ s/(\'[^\'\n\r]+\b(PROCEDURE|FUNCTION)\s+[^\'\n\r]+\')/ORA2PG_COMMENT$self->{idxcomment}\%/is) {
-		$comments{"ORA2PG_COMMENT$self->{idxcomment}%"} = $1;
+	while ($$content =~ s/(\'[^\'\n\r]+\b(PROCEDURE|FUNCTION)\s+[^\'\n\r]+\')/\%ORA2PG_COMMENT$self->{idxcomment}\%/is) {
+		$comments{"\%ORA2PG_COMMENT$self->{idxcomment}\%"} = $1;
 		$self->{idxcomment}++;
 	}
 	my @lines = split(/\n/, $$content);
 	for (my $j = 0; $j <= $#lines; $j++) {
 		if (!$self->{is_mysql}) {
-			if ($lines[$j] =~ s/(\s*\-\-.*)$/ORA2PG_COMMENT$self->{idxcomment}\%/) {
-				$comments{"ORA2PG_COMMENT$self->{idxcomment}%"} = $1;
-				chomp($comments{"ORA2PG_COMMENT$self->{idxcomment}%"});
+			if ($lines[$j] =~ s/(\s*\-\-.*)$/\%ORA2PG_COMMENT$self->{idxcomment}\%/) {
+				$comments{"\%ORA2PG_COMMENT$self->{idxcomment}\%"} = $1;
+				chomp($comments{"\%ORA2PG_COMMENT$self->{idxcomment}\%"});
 				$self->{idxcomment}++;
 			}
 		} else {
 			# Mysql supports differents kinds of comment's starter
-			if ( ($lines[$j] =~ s/(\s*COMMENT\s+'.*)$/ORA2PG_COMMENT$self->{idxcomment}\%/) ||
-			($lines[$j] =~ s/(\s*\-\- .*)$/ORA2PG_COMMENT$self->{idxcomment}\%/) ||
-			($lines[$j] =~ s/(\s*\# .*)$/ORA2PG_COMMENT$self->{idxcomment}\%/) ) {
-				$comments{"ORA2PG_COMMENT$self->{idxcomment}%"} = $1;
-				chomp($comments{"ORA2PG_COMMENT$self->{idxcomment}%"});
+			if ( ($lines[$j] =~ s/(\s*COMMENT\s+'.*)$/\%ORA2PG_COMMENT$self->{idxcomment}\%/) ||
+			($lines[$j] =~ s/(\s*\-\- .*)$/\%ORA2PG_COMMENT$self->{idxcomment}\%/) ||
+			($lines[$j] =~ s/(\s*\# .*)$/\%ORA2PG_COMMENT$self->{idxcomment}\%/) ) {
+				$comments{"\%ORA2PG_COMMENT$self->{idxcomment}\%"} = $1;
+				chomp($comments{"\%ORA2PG_COMMENT$self->{idxcomment}\%"});
 				# Normalize start of comment
-				$comments{"ORA2PG_COMMENT$self->{idxcomment}%"} =~ s/^(\s*)COMMENT/$1\-\- /;
-				$comments{"ORA2PG_COMMENT$self->{idxcomment}%"} =~ s/^(\s*)\#/$1\-\- /;
+				$comments{"\%ORA2PG_COMMENT$self->{idxcomment}\%"} =~ s/^(\s*)COMMENT/$1\-\- /;
+				$comments{"\%ORA2PG_COMMENT$self->{idxcomment}\%"} =~ s/^(\s*)\#/$1\-\- /;
 				$self->{idxcomment}++;
 			}
 		}
@@ -9792,7 +9792,7 @@ sub _convert_declare
 
 	return if (!$declare);
 
-	my @allwithcomments = split(/(ORA2PG_COMMENT\d+\%\n*)/s, $declare);
+	my @allwithcomments = split(/(\%ORA2PG_COMMENT\d+\%\n*)/s, $declare);
 	for (my $i = 0; $i <= $#allwithcomments; $i++) {
 		next if ($allwithcomments[$i] =~ /ORA2PG_COMMENT/);
 		my @pg_declare = ();
