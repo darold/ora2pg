@@ -224,8 +224,8 @@ our %TYPE = (
 	'DEC' => 'decimal',
 	'DECIMAL' => 'decimal',
 	'DOUBLE PRECISION' => 'double precision',
-	'INT' => 'integer',
-	'INTEGER' => 'integer',
+	'INT' => 'numeric',
+	'INTEGER' => 'numeric',
 	'BINARY_INTEGER' => 'integer',
 	'PLS_INTEGER' => 'integer',
 	'REAL' => 'real',
@@ -6719,6 +6719,8 @@ sub _sql_type
         # Overide the length
 	if ( ($type eq 'NUMBER') && $precision ) {
 		$len = $precision;
+	} elsif ( ($type eq 'NUMBER') && ($len == 38) ) {
+		$precision = $len;
 	}
 
         if (exists $self->{data_type}{uc($type)}) {
@@ -6742,8 +6744,10 @@ sub _sql_type
 								return 'smallint';
 							} elsif ($precision <= 9) {
 								return 'integer'; # The speediest in PG
-							} else {
+							} elsif ($precision <= 19) {
 								return 'bigint';
+							} else {
+								return 'numeric';
 							}
 						}
 						return "numeric($precision)";
@@ -6867,6 +6871,12 @@ END
 
 		if ($#{$row} == 9) {
 			$row->[2] = $row->[7] if $row->[1] =~ /char/i;
+		}
+
+		# Seems that for a NUMBER with a DATA_SCALE to 0, no DATA_PRECISION and a DATA_LENGTH of 22
+		# Oracle use a NUMBER(38) instead
+		if ( ($row->[1] eq 'NUMBER') && ($row->[6] eq '0') && ($row->[5] eq '') && ($row->[2] == 22) ) {
+			$row->[2] = 38;
 		}
 
 		my $tmptable = $row->[-2];
@@ -11426,7 +11436,6 @@ sub _show_infos
 					# COLUMN_NAME,DATA_TYPE,DATA_LENGTH,NULLABLE,DATA_DEFAULT,DATA_PRECISION,DATA_SCALE,CHAR_LENGTH,TABLE_NAME,OWNER,POSITION,SDO_DIM,SDO_GTYPE,SRID
 					my $d = $self->{tables}{$t}{column_info}{$k};
 					$d->[2] =~ s/\D//g;
-
 					my $type = $self->_sql_type($d->[1], $d->[2], $d->[5], $d->[6]);
 					$type = "$d->[1], $d->[2]" if (!$type);
 
