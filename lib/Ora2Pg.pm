@@ -10236,7 +10236,7 @@ sub _extract_data
 
 		# prepare the query before execution
 		if (!$self->{is_mysql}) {
-			$sth = $dbh->prepare($query,{ora_auto_lob => $self->{no_lob_locator},ora_exe_mode=>OCI_STMT_SCROLLABLE_READONLY, ora_check_sql => 1}) or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
+			$sth = $dbh->prepare($query,{($self->{no_lob_locator} ? 'ora_pers_lob' : 'ora_auto_lob') => $self->{no_lob_locator},ora_exe_mode=>OCI_STMT_SCROLLABLE_READONLY, ora_check_sql => 1}) or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
 			foreach (@{$sth->{NAME}}) {
 				push(@{$self->{data_cols}{$table}}, $_);
 			}
@@ -10269,11 +10269,11 @@ sub _extract_data
 		$self->{dbh}->{RowCacheSize} = int($self->{data_limit}/10);
 		if (exists $self->{local_data_limit}{$table}) {
 			$self->{dbh}->{RowCacheSize} = $self->{local_data_limit}{$table};
-		}
+		} 
 
 		# prepare the query before execution
 		if (!$self->{is_mysql}) {
-			$sth = $self->{dbh}->prepare($query,{ora_auto_lob => $self->{no_lob_locator},ora_exe_mode=>OCI_STMT_SCROLLABLE_READONLY, ora_check_sql => 1}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+			$sth = $self->{dbh}->prepare($query,{($self->{no_lob_locator} ? 'ora_pers_lob' : 'ora_auto_lob') => $self->{no_lob_locator},ora_exe_mode=>OCI_STMT_SCROLLABLE_READONLY, ora_check_sql => 1}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 			foreach (@{$sth->{NAME}}) {
 				push(@{$self->{data_cols}{$table}}, $_);
 			}
@@ -14118,16 +14118,25 @@ sub escape_copy
 	if ($self->{has_utf8_fct}) {
 		utf8::encode($col) if (!utf8::valid($col));
 	}
-	$col =~ s/\0//gs;
-	$col =~ s/\\/\\\\/gs;
-	$col =~ s/\r/\\r/gs;
-	$col =~ s/\n/\\n/gs;
-	$col =~ s/\t/\\t/gs;
+	my $replacements = {
+		"\0" => "",
+		"\\" => "\\\\",
+		"\r" => "\\r",
+		"\n" => "\\n",
+		"\t" => "\\t",
+	};
+#	$col =~ s/\0//gs;
+#	$col =~ s/\\/\\\\/gs;
+#	$col =~ s/\r/\\r/gs;
+#	$col =~ s/\n/\\n/gs;
+#	$col =~ s/\t/\\t/gs;
+	$col =~ s/(\0|\\|\r|\n|\t)/$replacements->{$1}/egs;
 	if (!$self->{noescape}) {
 		$col =~ s/\f/\\f/gs;
-		$col =~ s/([\1-\10])/sprintf("\\%03o", ord($1))/egs;
-		$col =~ s/([\13-\14])/sprintf("\\%03o", ord($1))/egs;
-		$col =~ s/([\16-\37])/sprintf("\\%03o", ord($1))/egs;
+		$col =~ s/([\1-\10\13-\14\16-\37])/sprintf("\\%03o", ord($1))/egs;
+#		$col =~ s/([\1-\10])/sprintf("\\%03o", ord($1))/egs;
+#		$col =~ s/([\13-\14])/sprintf("\\%03o", ord($1))/egs;
+#		$col =~ s/([\16-\37])/sprintf("\\%03o", ord($1))/egs;
 	}
 	return $col;
 }
