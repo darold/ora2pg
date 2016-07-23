@@ -6363,6 +6363,8 @@ sub _extract_sequence_info
 	} else {
 		$sql .= " WHERE SEQUENCE_OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
 	}
+	$sql .= $self->limit_to_objects('SEQUENCE','SEQUENCE_NAME');
+
 	my @script = ();
 
 	my $sth = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr ."\n", 0, 1);
