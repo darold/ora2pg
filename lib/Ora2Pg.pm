@@ -1993,7 +1993,7 @@ sub _parse_constraint
 
 sub _get_dml_from_file
 {
-	my $self = shift;
+	my ($self, $text_values) = @_;
 
 	# Load file in a single string
 	if (not open(INFILE, $self->{input_file})) {
@@ -2015,6 +2015,13 @@ sub _get_dml_from_file
 	$content =~ s/CREATE\s+EDITIONABLE/CREATE/g;
 	$content =~ s/CREATE\s+NONEDITIONABLE/CREATE/g;
 
+	if (defined $text_values) {
+		my $j = 0;
+		while ($content =~ s/'([^']+)'/\%TEXTVALUE-$j\%/s) {
+			push(@$text_values, $1);
+			$j++;
+		}
+	}
 	return $content;
 }
 
@@ -2303,7 +2310,8 @@ sub read_view_from_file
 	my $self = shift;
 
 	# Load file in a single string
-	my $content = $self->_get_dml_from_file();
+	my @text_values = ();
+	my $content = $self->_get_dml_from_file(\@text_values);
 
 	my $tid = 0; 
 
@@ -2321,6 +2329,7 @@ sub read_view_from_file
 		$tid++;
 	        $self->{views}{$v_name}{text} = $v_def;
 	        $self->{views}{$v_name}{iter} = $tid;
+		$self->{views}{$v_name}{text} =~ s/\%TEXTVALUE-(\d+)\%/'$text_values[$1]'/gs;
 		# Remove constraint
 		while ($v_alias =~ s/(,[^,\(]+\(.*)$//) {};
 		my @aliases = split(/\s*,\s*/, $v_alias);
@@ -2337,6 +2346,7 @@ sub read_view_from_file
 		$v_def =~ s/\s+/ /g;
 		$tid++;
 	        $self->{views}{$v_name}{text} = $v_def;
+		$self->{views}{$v_name}{text} =~ s/\%TEXTVALUE-(\d+)\%/'$text_values[$1]'/gs;
 	}
 
 	# Extract comments
@@ -2376,10 +2386,10 @@ sub read_trigger_from_file
 	my $self = shift;
 
 	# Load file in a single string
-	my $content = $self->_get_dml_from_file();
+	my @text_values = ();
+	my $content = $self->_get_dml_from_file(\@text_values);
 
 	my $tid = 0; 
-
 	my $doloop = 1;
 	do {
 		if ($content =~ s/CREATE(?: OR REPLACE)?\s+TRIGGER\s+([^\s]+)\s+(BEFORE|AFTER|INSTEAD\s+OF)\s+(.*?)\s+ON\s+([^\s]+)\s+(.*?)(END\s*(?!IF|LOOP|CASE|INTO|FROM|,)[a-z0-9_]*;)//i) {
@@ -2417,6 +2427,7 @@ sub read_trigger_from_file
 
 			# TRIGGER_NAME, TRIGGER_TYPE, TRIGGERING_EVENT, TABLE_NAME, TRIGGER_BODY, WHEN_CLAUSE, DESCRIPTION,ACTION_TYPE
 			$trigger =~ s/END\s+[^\s]+\s+$/END/is;
+			$trigger =~ s/\%TEXTVALUE-(\d+)\%/'$text_values[$1]'/gs;
 			push(@{$self->{triggers}}, [($t_name, $t_pos, $t_event, $tb_name, $trigger, $t_when_cond, '', $t_type)]);
 
 		} else {
