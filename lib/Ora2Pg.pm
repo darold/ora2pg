@@ -11049,14 +11049,17 @@ sub _show_infos
 					my $r = is_reserved_words($t);
 					if (($r > 0) && ($r != 3)) {
 						$table_detail{'reserved words in table name'}++;
+						$report_info{'Objects'}{$typ}{'cost_value'} += 12; # one hour to solve reserved keyword might be enough
 					}
 					# Get fields informations
 					foreach my $k (sort {$self->{tables}{$t}{column_info}{$a}[10] <=> $self->{tables}{$t}{column_info}{$a}[10]} keys %{$self->{tables}{$t}{column_info}}) {
 						$r = is_reserved_words($self->{tables}{$t}{column_info}{$k}[0]);
 						if (($r > 0) && ($r != 3)) {
 							$table_detail{'reserved words in column name'}++;
+							$report_info{'Objects'}{$typ}{'cost_value'} += 12; # one hour to solve reserved keyword might be enough
 						} elsif ($r == 3) {
 							$table_detail{'system columns in column name'}++;
+							$report_info{'Objects'}{$typ}{'cost_value'} += 12; # one hour to solve reserved keyword might be enough
 						}
 						$self->{tables}{$t}{column_info}{$k}[1] =~ s/TIMESTAMP\(\d+\)/TIMESTAMP/i;
 						if (!$self->{is_mysql}) {
