@@ -2964,11 +2964,13 @@ sub _get_sql_data
 				$self->logit("Dumping to one file per view : ${view}_$self->{output}\n", 1);
 				$fhdl = $self->open_export_file("${view}_$self->{output}");
 			}
-			if ($self->{pg_supports_checkoption} && ($self->{views}{$view}{text} =~ /\bCHECK\s+OPTION\b/i)) {
-				$self->{views}{$view}{text} =~ s/\s*\bWITH\b\s+.*$/ WITH CHECK OPTION/s;
-			} else {	
-				$self->{views}{$view}{text} =~ s/\s*\bWITH\b\s+.*$//s;
+			if (!$self->{pg_supports_checkoption}) {
+				$self->{views}{$view}{text} =~ s/\s*WITH\s+CHECK\s+OPTION//is;
 			}
+			# Remove unsupported definitions from the ddl statement
+			$self->{views}{$view}{text} =~ s/\s*WITH\s+READ\s+ONLY//is;
+			$self->{views}{$view}{text} =~ s/\s*OF\s+([^\s]+)\s+(WITH|UNDER)\s+[^\)]+\)//is;
+			$self->{views}{$view}{text} =~ s/\s*OF\s+XMLTYPE\s+[^\)]+\)//is;
 			$self->{views}{$view}{text} = $self->_format_view($self->{views}{$view}{text});
 			my $tmpv = $view;
 			if (exists $self->{replaced_tables}{"\L$tmpv\E"} && $self->{replaced_tables}{"\L$tmpv\E"}) {
