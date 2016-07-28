@@ -1696,8 +1696,8 @@ directive is disabled the INSTEAD OF triggers will be rewritten as Pg rules.
 
 =item PG_SUPPORTS_CHECKOPTION
 
-If enabled, export views with CHECK OPTION. Enable it if you have PostgreSQL
-version 9.4 or higher. Default: 0, disabled.
+When enabled, export views with CHECK OPTION. Disable it if you have PostgreSQL
+version prior to 9.4. Default: 1, enabled.
 
 =item PG_SUPPORTS_IFEXISTS
 

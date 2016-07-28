@@ -786,8 +786,8 @@ PG_SUPPORTS_INSTEADOF	1
 # the view.
 PG_SUPPORTS_MVIEW	1
 
-# If enabled, export view with CHECK OPTION. Enable it if you have PostgreSQL
-# version 9.4 or higher. Default, disabled
+# If enabled, export view with CHECK OPTION. Disable it if you have PostgreSQL
+# version prior 9.4. Default, enabled
 PG_SUPPORTS_CHECKOPTION	1
 
 # PostgreSQL versions below 9.x do not support IF EXISTS in DDL statements.

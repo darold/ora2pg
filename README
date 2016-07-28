@@ -1642,8 +1642,8 @@ CONFIGURATION
         rewritten as Pg rules.
 
     PG_SUPPORTS_CHECKOPTION
-        If enabled, export views with CHECK OPTION. Enable it if you have
-        PostgreSQL version 9.4 or higher. Default: 0, disabled.
+        When enabled, export views with CHECK OPTION. Disable it if you have
+        PostgreSQL version prior to 9.4. Default: 1, enabled.
 
     PG_SUPPORTS_IFEXISTS
         If disabled, do not export object with IF EXISTS statements. Enabled
