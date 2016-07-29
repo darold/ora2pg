@@ -41,7 +41,7 @@ use File::Temp qw/ tempfile /;
 #set locale to LC_NUMERIC C
 setlocale(LC_NUMERIC,"C");
 
-$VERSION = '17.4';
+$VERSION = '17.5b';
 $PSQL = $ENV{PLSQL} || 'psql';
 
 $| = 1;
@@ -6280,9 +6280,30 @@ sub _create_foreign_keys
 		foreach my $desttable (keys %{$self->{tables}{$tbsaved}{foreign_link}{$fkname}{remote}}) {
 			push(@done, $fkname);
 			my $str = '';
+			# Add double quote to column name
 			map { $_ = '"' . $_ . '"' } @{$self->{tables}{$tbsaved}{foreign_link}{$fkname}{local}};
 			map { $_ = '"' . $_ . '"' } @{$self->{tables}{$tbsaved}{foreign_link}{$fkname}{remote}{$desttable}};
+
+			# Extract all attributes if the foreign key definition
+			my $state;
+			foreach my $h (@{$self->{tables}{$tbsaved}{foreign_key}}) {
+				if ($h->[0] eq $fkname) {
+					push(@$state, @$h);
+					last;
+				}
+			}
+			# Get the name of the foreign table after replacement if any
 			my $subsdesttable = $self->get_replaced_tbname($desttable);
+			# Prefix the table name with the schema name if owner of
+			# remote table is not the same as local one
+			if ($self->{schema} && (lc($state->[6]) ne lc($state->[8]))) {
+				if (!$self->{preserve_case}) {
+					$subsdesttable = lc($state->[6]) . '.' . $subsdesttable;
+				} else {
+					$subsdesttable = "\"$state->[6]\"" . '.' . $subsdesttable;
+				}
+			}
+			
 			my @lfkeys = ();
 			push(@lfkeys, @{$self->{tables}{$tbsaved}{foreign_link}{$fkname}{local}});
 			if (exists $self->{replaced_cols}{"\L$tbsaved\E"} && $self->{replaced_cols}{"\L$tbsaved\E"}) {
@@ -6308,13 +6329,7 @@ sub _create_foreign_keys
 				map { $_ = $self->quote_reserved_words($_) } @lfkeys;
 				map { $_ = $self->quote_reserved_words($_) } @rfkeys;
 			}
-			my $state;
-			foreach my $h (@{$self->{tables}{$tbsaved}{foreign_key}}) {
-				if ($h->[0] eq $fkname) {
-					push(@$state, @$h);
-					last;
-				}
-			}
+
 			if (!$self->{preserve_case}) {
 					$fkname = lc($fkname);
 			}
@@ -7240,7 +7255,7 @@ Just like this:
 
 =cut
 
-sub _foreign_key
+sub _foreign_key_old
 {
 	my ($self, $table, $owner) = @_;
 
@@ -7326,6 +7341,66 @@ END
 					push(@done, "$r->[2]$r->[0]");
 				}
 			}
+		}
+	}
+
+	return \%link, \%data;
+}
+
+
+sub _foreign_key
+{
+	my ($self, $table, $owner) = @_;
+
+	return Ora2Pg::MySQL::_foreign_key($self,$table,$owner) if ($self->{is_mysql});
+
+	my $condition = '';
+	$condition .= "AND UC.TABLE_NAME='$table' " if ($table);
+	if ($owner) {
+		$condition .= "AND UC.OWNER = '$owner' ";
+	} else {
+		$condition .= "AND UC.OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "') ";
+	}
+	$condition .= $self->limit_to_objects('FKEY|TABLE','UCC2.CONSTRAINT_NAME|UC.TABLE_NAME');
+
+	my $deferrable = $self->{fkey_deferrable} ? "'DEFERRABLE' AS DEFERRABLE" : "DEFERRABLE";
+	my $defer = $self->{fkey_deferrable} ? "'DEFERRABLE' AS DEFERRABLE" : "UC.DEFERRABLE";
+
+	my $sql = <<END;
+SELECT UC.TABLE_NAME,
+       UCC2.CONSTRAINT_NAME,
+       UCC2.COLUMN_NAME,
+       UCC.TABLE_NAME,
+       UC.R_CONSTRAINT_NAME,
+       UCC.COLUMN_NAME,
+       UC.SEARCH_CONDITION,UC.DELETE_RULE,$defer,UC.DEFERRED,UC.OWNER,UC.R_OWNER
+   FROM (SELECT TABLE_NAME,CONSTRAINT_NAME,R_CONSTRAINT_NAME,CONSTRAINT_TYPE,SEARCH_CONDITION,DELETE_RULE,$deferrable,DEFERRED,OWNER,R_OWNER,STATUS FROM $self->{prefix}_CONSTRAINTS) UC,
+        (SELECT TABLE_NAME, COLUMN_NAME, CONSTRAINT_NAME FROM $self->{prefix}_CONS_COLUMNS) UCC,
+        (SELECT TABLE_NAME, COLUMN_NAME, CONSTRAINT_NAME FROM $self->{prefix}_CONS_COLUMNS) UCC2
+   WHERE UC.R_CONSTRAINT_NAME = UCC.CONSTRAINT_NAME
+     AND UC.CONSTRAINT_NAME = UCC2.CONSTRAINT_NAME
+     AND UC.CONSTRAINT_TYPE = 'R'
+     AND UC.STATUS='ENABLED'
+     $condition
+   ORDER BY 1,2,3,4
+END
+	my $sth = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute or $self->logit("FATAL: " . $sth->errstr . "\n", 0, 1);
+
+	my %data = ();
+	my %link = ();
+	#my @tab_done = ();
+	while (my $row = $sth->fetch) {
+		if (!$self->{schema} && $self->{export_schema}) {
+			push(@{$data{"$row->[10].$row->[0]"}}, [ ($row->[1],$row->[4],$row->[6],$row->[7],$row->[8],$row->[9],$row->[11],$row->[0],$row->[10]) ]);
+			push(@{$link{"$row->[10].$row->[0]"}{$row->[1]}{local}}, $row->[2]);
+			push(@{$link{"$row->[10].$row->[0]"}{$row->[1]}{remote}{"$row->[11].$row->[3]"}}, $row->[5]);
+		} else {
+			push(@{$data{$row->[0]}}, [ ($row->[1],$row->[4],$row->[6],$row->[7],$row->[8],$row->[9],$row->[11],$row->[0],$row->[10]) ]);
+			#            TABLENAME  CONSTNAME           COLNAME
+			push(@{$link{$row->[0]}{$row->[1]}{local}}, $row->[2]);
+			#            TABLE     CONSTNAME          TABLENAME   COLNAME
+			push(@{$link{$row->[0]}{$row->[1]}{remote}{$row->[3]}}, $row->[5]);
 		}
 	}
 
