@@ -6742,10 +6742,10 @@ sub _sql_type
 		$type = uc($type); # Force uppercase
 		if ($len) {
 
-			if ( ($type eq "CHAR") || ($type =~ /VARCHAR/) ) {
+			if ( ($type eq "CHAR") || ($type eq "NCHAR") || ($type =~ /VARCHAR/) ) {
 				# Type CHAR have default length set to 1
 				# Type VARCHAR(2) must have a specified length
-				$len = 1 if (!$len && ($type eq "CHAR"));
+				$len = 1 if (!$len && (($type eq "CHAR") || ($type eq "NCHAR")) );
                 		return "$self->{data_type}{$type}($len)";
 			} elsif ($type eq "NUMBER") {
 				# This is an integer
