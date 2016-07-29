@@ -5257,6 +5257,22 @@ CREATE TRIGGER ${table}_trigger_insert
 			}
 		}
 		$sql_output .= "\n";
+	} elsif ($self->{export_schema}) {
+		if ($self->{create_schema}) {
+			my $current_schema = '';
+			foreach my $table (sort keys %{$self->{tables}}) {
+				if ($table =~ /^([^\.]+)\..*/) {
+					if ($1 ne $current_schema) {
+						$current_schema = $1;
+						if (!$self->{preserve_case}) {
+							$sql_output .= "CREATE SCHEMA \L$1\E;\n";
+						} else {
+							$sql_output .= "CREATE SCHEMA \"$1\";\n";
+						}
+					}
+				}
+			}
+		}
 	}
 	$sql_output .= $self->set_search_path();
 
