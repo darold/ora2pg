@@ -3689,7 +3689,14 @@ LANGUAGE plpgsql ;
 				}
 				if ($self->{pg_supports_when} && $trig->[5]) {
 					if (!$self->{preserve_case}) {
+						my @text_values = ();
+						my $j = 0;
+						while ($trig->[4] =~ s/'([^']+)'/\%TEXTVALUE-$j\%/s) {
+							push(@text_values, $1);
+							$j++;
+						}
 						$trig->[4] =~ s/"([^"]+)"/\L$1\E/gs;
+						$trig->[4] =~ s/\%TEXTVALUE-(\d+)\%/'$text_values[$1]'/gs;
 						$trig->[4] =~ s/ALTER TRIGGER\s+[^\s]+\s+ENABLE(;)?//;
 					}
 					$sql_output .= "CREATE OR REPLACE FUNCTION trigger_fct_\L$trig->[0]\E() RETURNS trigger AS \$BODY\$\n$trig->[4]\n\$BODY\$\n LANGUAGE 'plpgsql'$security;\n$revoke\n";
@@ -3705,8 +3712,23 @@ LANGUAGE plpgsql ;
 					$trig->[6] =~ s/\n+$//s;
 					$trig->[6] =~ s/^[^\.\s]+\.//;
 					if (!$self->{preserve_case}) {
+						my @text_values = ();
+						my $j = 0;
+						while ($trig->[6] =~ s/'([^']+)'/\%TEXTVALUE-$j\%/s) {
+							push(@text_values, $1);
+							$j++;
+						}
 						$trig->[6] =~ s/"([^"]+)"/\L$1\E/gs;
+						$trig->[6] =~ s/\%TEXTVALUE-(\d+)\%/'$text_values[$1]'/gs;
+
+						@text_values = ();
+						$j = 0;
+						while ($trig->[5] =~ s/'([^']+)'/\%TEXTVALUE-$j\%/s) {
+							push(@text_values, $1);
+							$j++;
+						}
 						$trig->[5] =~ s/"([^"]+)"/\L$1\E/gs;
+						$trig->[5] =~ s/\%TEXTVALUE-(\d+)\%/'$text_values[$1]'/gs;
 					}
 					chomp($trig->[6]);
 					# Remove referencing clause, not supported by PostgreSQL
@@ -3721,7 +3743,14 @@ LANGUAGE plpgsql ;
 					$sql_output .= "\tEXECUTE PROCEDURE trigger_fct_\L$trig->[0]\E();\n\n";
 				} else {
 					if (!$self->{preserve_case}) {
+						my @text_values = ();
+						my $j = 0;
+						while ($trig->[4] =~ s/'([^']+)'/\%TEXTVALUE-$j\%/s) {
+							push(@text_values, $1);
+							$j++;
+						}
 						$trig->[4] =~ s/"([^"]+)"/\L$1\E/gs;
+						$trig->[4] =~ s/\%TEXTVALUE-(\d+)\%/'$text_values[$1]'/gs;
 						$trig->[4] =~ s/ALTER TRIGGER\s+[^\s]+\s+ENABLE(;)?//;
 					}
 					$sql_output .= "CREATE OR REPLACE FUNCTION trigger_fct_\L$trig->[0]\E() RETURNS trigger AS \$BODY\$\n$trig->[4]\n\$BODY\$\n LANGUAGE 'plpgsql'$security;\n$revoke\n";
