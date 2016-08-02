@@ -2392,8 +2392,9 @@ sub read_trigger_from_file
 
 	my $tid = 0; 
 	my $doloop = 1;
-	do {
-		if ($content =~ s/CREATE(?:\s+OR\s+REPLACE)?\s+TRIGGER\s+([^\s]+)\s+(BEFORE|AFTER|INSTEAD\s+OF)\s+(.*?)\s+ON\s+([^\s]+)\s+(.*?)(END\s*(?!IF|LOOP|CASE|INTO|FROM|,)[a-z0-9_]*;)//is) {
+	my @triggers_decl = split(/CREATE(?:\s+OR\s+REPLACE)?\s+TRIGGER\s+/, $content);
+	foreach $content (@triggers_decl) {
+		if ($content =~ s/^([^\s]+)\s+(BEFORE|AFTER|INSTEAD\s+OF)\s+(.*?)\s+ON\s+([^\s]+)\s+(.*)(END\s*(?!IF|LOOP|CASE|INTO|FROM|,)[a-z0-9_]*;)//is) {
 			my $t_name = $1;
 			$t_name =~ s/"//g;
 			my $t_pos = $2;
@@ -2429,10 +2430,8 @@ sub read_trigger_from_file
 			$trigger =~ s/\%TEXTVALUE-(\d+)\%/'$text_values[$1]'/gs;
 			push(@{$self->{triggers}}, [($t_name, $t_pos, $t_event, $tb_name, $trigger, $t_when_cond, '', $t_type)]);
 
-		} else {
-			$doloop = 0;
 		}
-	} while ($doloop);
+	};
 
 }
 
@@ -3657,7 +3656,7 @@ LANGUAGE plpgsql ;
 						# When an exception statement is used enclosed everything
 						# in a block before returning NEW
 						if ($trig->[4] =~ /EXCEPTION(.*?)\b(END[;]*)[\s\/]*$/is) {
-							$trig->[4] =~ s/^\s*BEGIN/BEGIN\n  BEGIN/is;
+							$trig->[4] =~ s/^\s*BEGIN/BEGIN\n  BEGIN/ism;
 							$trig->[4] =~ s/\b(END[;]*)[\s\/]*$/  END;\n$1/is;
 						}
 						# Add return statement.
