@@ -3652,12 +3652,18 @@ LANGUAGE plpgsql ;
 						if ($trig->[4] !~ /\bBEGIN\b/i) {
 							chomp($trig->[4]);
 							$trig->[4] .= ';' if ($trig->[4] !~ /;$/);
-							$trig->[4] = "BEGIN\n$trig->[4]\nEND;";
+							$trig->[4] = "BEGIN\n$trig->[4]\n$ret_kind\nEND;";
 						}
 						$trig->[4] = Ora2Pg::PLSQL::plsql_to_plpgsql($self, $trig->[4]);
-						if ($trig->[4] !~ s/\b(EXCEPTION\s+WHEN)(.*?)\b(END[;]*)[\s\/]*$/$ret_kind\n$1$2$3/igs) {
-							$trig->[4] =~ s/\b(END[;]*)[\s\/]*$/$ret_kind\n$1/igs;
+						# When an exception statement is used enclosed everything
+						# in a block before returning NEW
+						if ($trig->[4] =~ /EXCEPTION(.*?)\b(END[;]*)[\s\/]*$/is) {
+							$trig->[4] =~ s/^\s*BEGIN/BEGIN\n  BEGIN/is;
+							$trig->[4] =~ s/\b(END[;]*)[\s\/]*$/  END;\n$1/is;
 						}
+						# Add return statement.
+						$trig->[4] =~ s/\b(END[;]*)[\s\/]*$/$ret_kind\n$1/igs;
+						# Look at function header to convert sql type
 						my @parts = split(/BEGIN/i, $trig->[4]);
 						if ($#parts > 0) {
 							if (!$self->{is_mysql}) {
