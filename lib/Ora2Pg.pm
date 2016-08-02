@@ -6793,7 +6793,7 @@ sub _sql_type
 							} elsif ($precision <= 19) {
 								return 'bigint';
 							} else {
-								return 'numeric';
+								return "numeric($precision)";
 							}
 						}
 						return "numeric($precision)";
