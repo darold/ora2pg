@@ -1993,7 +1993,7 @@ sub _parse_constraint
 
 sub _get_dml_from_file
 {
-	my ($self, $text_values) = @_;
+	my ($self, $text_values, $keep_new_line) = @_;
 
 	# Load file in a single string
 	if (not open(INFILE, $self->{input_file})) {
@@ -2001,19 +2001,20 @@ sub _get_dml_from_file
 	}
 	my $content = '';
 	while (my $l = <INFILE>) {
-		chomp($l);
-		$l =~ s/\r//g;
-		$l =~ s/\t+/ /g;
-		$content =~ s/\-\-.*//;
+		chomp($l) if (!$keep_new_line);
+		$l =~ s/\r//gs;
+		$l =~ s/\t+/ /gs;
+		$l =~ s/\-\-.*// if (!$keep_new_line);
 		next if (!$l);
-		$content .= $l . ' ';
+		$content .= $l;
+		$content .= (!$keep_new_line) ? ' ' : '';
 	}
 	close(INFILE);
 
-	$content =~ s/\/\*(.*?)\*\// /g;
-	$content =~ s/CREATE\s+OR\s+REPLACE/CREATE/g;
-	$content =~ s/CREATE\s+EDITIONABLE/CREATE/g;
-	$content =~ s/CREATE\s+NONEDITIONABLE/CREATE/g;
+	$content =~ s/\/\*(.*?)\*\// /gs;
+	$content =~ s/CREATE\s+OR\s+REPLACE/CREATE/gs;
+	$content =~ s/CREATE\s+EDITIONABLE/CREATE/gs;
+	$content =~ s/CREATE\s+NONEDITIONABLE/CREATE/gs;
 
 	if (defined $text_values) {
 		my $j = 0;
@@ -2387,12 +2388,12 @@ sub read_trigger_from_file
 
 	# Load file in a single string
 	my @text_values = ();
-	my $content = $self->_get_dml_from_file(\@text_values);
+	my $content = $self->_get_dml_from_file(\@text_values, 1);
 
 	my $tid = 0; 
 	my $doloop = 1;
 	do {
-		if ($content =~ s/CREATE(?: OR REPLACE)?\s+TRIGGER\s+([^\s]+)\s+(BEFORE|AFTER|INSTEAD\s+OF)\s+(.*?)\s+ON\s+([^\s]+)\s+(.*?)(END\s*(?!IF|LOOP|CASE|INTO|FROM|,)[a-z0-9_]*;)//i) {
+		if ($content =~ s/CREATE(?:\s+OR\s+REPLACE)?\s+TRIGGER\s+([^\s]+)\s+(BEFORE|AFTER|INSTEAD\s+OF)\s+(.*?)\s+ON\s+([^\s]+)\s+(.*?)(END\s*(?!IF|LOOP|CASE|INTO|FROM|,)[a-z0-9_]*;)//is) {
 			my $t_name = $1;
 			$t_name =~ s/"//g;
 			my $t_pos = $2;
@@ -2400,16 +2401,14 @@ sub read_trigger_from_file
 			my $tb_name = $4;
 			my $trigger = $5 . $6;
 			my $t_type = '';
-
 			# Remove referencing clause, not supported by PostgreSQL
 			$trigger =~ s/REFERENCING\s+(.*?)(FOR\s+EACH\s+)/$2/is;
 
 			if ($trigger =~ s/^\s*(FOR\s+EACH\s+)(ROW|STATEMENT)\s*//is) {
 				$t_type = $1 . $2;
 			}
-
 			my $t_when_cond = '';
-			if ($trigger =~ s/^\s*WHEN\s+(.*?)\s+((?:BEGIN|DECLARE|CALL).*)//i) {
+			if ($trigger =~ s/^\s*WHEN\s+(.*?)\s+((?:BEGIN|DECLARE|CALL).*)//is) {
 				$t_when_cond = $1;
 				$trigger = $2;
 				if ($trigger =~ /^(BEGIN|DECLARE)/) {
