@@ -590,7 +590,8 @@ sub plsql_to_plpgsql
 	$str =~ s/\s*(<>|\!=)\s*NULL/ IS NOT NULL/igs;
 	#  Convert all x = NULL clauses to x IS NULL.
 	$str =~ s/(?!:)(.)=\s*NULL/$1 IS NULL/igs;
-	while ($str =~ s/(UPDATE.*)\s+IS NULL(\s*(?!WHERE)([^;]+))/$1 = NULL$2/is) {};
+	# Revert changes on update queries in the column setting part of the query
+	while ($str =~ s/(\bUPDATE\b[^;]+)\s+IS NULL(\s*(?!WHERE)([^;]+))/$1 = NULL$2/is) {};
 
 	# Rewrite all IF ... IS NULL with coalesce because for Oracle empty and NULL is the same
 	if ($class->{null_equal_empty}) {
