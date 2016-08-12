@@ -308,20 +308,20 @@ CONFIGURATION
     configuration file and a script to export all objects from the Oracle
     database. Here a sample of the command usage:
 
-        ora2pg --project_base /home/git/tmp --init_project test_project
-
+            ora2pg --project_base /app/migration/ --init_project test_project
             Creating project test_project.
-            /home/git/tmp/test_project/
+            /app/migration/test_project/
                     schema/
-                            fdws/
+                            dblinks/
+                            directories/
                             functions/
                             grants/
-                            kettles/
                             mviews/
                             packages/
                             partitions/
                             procedures/
                             sequences/
+                            synonyms/
                             tables/
                             tablespaces/
                             triggers/
@@ -338,11 +338,11 @@ CONFIGURATION
                             views/
                     data/
                     config/
-                            ora2pg.conf
                     reports/
 
             Generating generic configuration file
             Creating script export_schema.sh to automate all exports.
+            Creating script import_all.sh to automate all imports.
 
     It create a generic config file where you just have to define the Oracle
     database connection and a shell script called export_schema.sh. The
@@ -354,6 +354,17 @@ CONFIGURATION
     give the path to that file. Rename it with .dist suffix if you want
     ora2pg to apply the generic configuration values otherwise, the
     configuration file will be copied untouched.
+
+    Once you have set the connection to the Oracle Database you can execute
+    the script export_schema.sh that will export all object type from your
+    Oracle database and output DDL files into the schema's subdirectories.
+    At end of the export it will give you the command to export data later
+    when the import of the schema will be done and verified.
+
+    You can choose to load by yourself the DDL files generated or use the
+    second script import_all.sh to import those file interactively. If this
+    kind of migration is not something current for you I really recommend
+    you to use those scripts.
 
   Oracle database connection
     There's 5 configuration directives to control the access to the Oracle

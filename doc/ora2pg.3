@@ -124,7 +124,7 @@
 .\" ========================================================================
 .\"
 .IX Title "ORA2PG 1"
-.TH ORA2PG 1 "2016-07-28" "perl v5.14.2" "User Contributed Perl Documentation"
+.TH ORA2PG 1 "2016-08-05" "perl v5.14.2" "User Contributed Perl Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -443,21 +443,21 @@ that he has to create a project template with a work tree, a configuration
 file and a script to export all objects from the Oracle database. Here a sample
 of the command usage:
 .PP
-.Vb 1
-\&    ora2pg \-\-project_base /home/git/tmp \-\-init_project test_project
-\&
+.Vb 10
+\&        ora2pg \-\-project_base /app/migration/ \-\-init_project test_project
 \&        Creating project test_project.
-\&        /home/git/tmp/test_project/
+\&        /app/migration/test_project/
 \&                schema/
-\&                        fdws/
+\&                        dblinks/
+\&                        directories/
 \&                        functions/
 \&                        grants/
-\&                        kettles/
 \&                        mviews/
 \&                        packages/
 \&                        partitions/
 \&                        procedures/
 \&                        sequences/
+\&                        synonyms/
 \&                        tables/
 \&                        tablespaces/
 \&                        triggers/
@@ -474,11 +474,11 @@ of the command usage:
 \&                        views/
 \&                data/
 \&                config/
-\&                        ora2pg.conf
 \&                reports/
 \&
 \&        Generating generic configuration file
 \&        Creating script export_schema.sh to automate all exports.
+\&        Creating script import_all.sh to automate all imports.
 .Ve
 .PP
 It create a generic config file where you just have to define the Oracle
@@ -491,6 +491,17 @@ If you want to use your own default config file, use the \-c option to give
 the path to that file. Rename it with .dist suffix if you want ora2pg to
 apply the generic configuration values otherwise, the configuration file
 will be copied untouched.
+.PP
+Once you have set the connection to the Oracle Database you can execute the
+script export_schema.sh that will export all object type from your Oracle
+database and output \s-1DDL\s0 files into the schema's subdirectories. At end of the
+export it will give you the command to export data later when the import of
+the schema will be done and verified.
+.PP
+You can choose to load by yourself the \s-1DDL\s0 files generated or use the second
+script import_all.sh to import those file interactively. If this kind of
+migration is not something current for you I really recommend you to use those
+scripts.
 .SS "Oracle database connection"
 .IX Subsection "Oracle database connection"
 There's 5 configuration directives to control the access to the Oracle database.
