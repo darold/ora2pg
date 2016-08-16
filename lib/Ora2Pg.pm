@@ -8397,9 +8397,9 @@ sub _get_packages
 		my $sth2 = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 		$sth2->execute or $self->logit("FATAL: " . $sth2->errstr . "\n", 0, 1);
 		while (my $r = $sth2->fetch) {
-			$packages{"$row->[0]"}{text} .= $r->[0];
+			$packages{$row->[0]}{text} .= $r->[0];
 		}
-		$packages{"$row->[0]"}{owner} = $row->[1];
+		$packages{$row->[0]}{owner} = $row->[1];
 	}
 
 	return \%packages;
@@ -9516,11 +9516,81 @@ sub _convert_package
 
 	my $dirprefix = '';
 	$dirprefix = "$self->{output_dir}/" if ($self->{output_dir});
-	my $content = '';
+	my $content = "-- PostgreSQL does not recognize PACKAGES, using package_name_function_name() instead.\n";
+	if ($self->{package_as_schema}) {
+		$content = "-- PostgreSQL does not recognize PACKAGES, using SCHEMA instead.\n";
+	}
+	if ($self->{package_as_schema} && ($plsql =~ /PACKAGE\s+BODY\s*[^\s]+\s*(AS|IS)\s*/is)) {
+		if (!$self->{preserve_case}) {
+			$content .= "DROP SCHEMA $self->{pg_supports_ifexists} $pname CASCADE;\n";
+			$content .= "CREATE SCHEMA $pname;\n";
+		} else {
+			$content .= "DROP SCHEMA $self->{pg_supports_ifexists} \"$pname\" CASCADE;\n";
+			$content .= "CREATE SCHEMA \"$pname\";\n";
+		}
+		if ($self->{force_owner}) {
+			$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
+			if ($owner) {
+				if (!$self->{preserve_case}) {
+					$content .= "ALTER SCHEMA \L$pname\E OWNER TO \L$owner\E;\n";
+				} else {
+					$content .= "ALTER SCHEMA \"$pname\" OWNER TO \"$owner\";\n";
+				}
+			}
+		}
+	}
+
+	# Convert type from the package header
+	if ($plsql =~ s/PACKAGE\s+BODY\s*PACKAGE\s+([^\s]+)\s+(AS|IS)\s+TYPE\s+([^\s]+)\s+(AS|IS)\s+(.*;?)\s*PACKAGE BODY/PACKAGE BODY/is) {
+		my $pname = $1;
+		my $type = $3;
+		my $params = $5;
+		$params =~ s/(PROCEDURE|FUNCTION)\s+(.*?);//gis;
+		$params =~ s/\s+END[^;]*;\s*$//is;
+		$params =~ s/CREATE TYPE/TYPE/gis;
+		while ($params =~ s/TYPE\s+([^\s\.]+\s+)/CREATE TYPE $pname.$1/is) {
+			$self->{pkg_type}{$1} = "$pname.$1";
+		}
+		$params =~ s/\b$type\b/$pname.$type/gis;
+		$self->logit("Dumping type $type from package $pname...\n", 1);
+		$params = "CREATE TYPE $pname.$type AS $params\n";
+		my @alltype = split(/CREATE /, $params);
+		my $typnm = '';
+		my $code = '';
+		my $i = 1;
+		foreach my $l (@alltype) {
+			chomp($l);
+			next if ($l =~ /^\s*$/);
+			$code .= $l . "\n";
+			if ($code =~ /^TYPE\s+([^\s\(]+)/is) {
+				$typnm = $1;
+			}
+			next if (!$typnm);
+			if ($code =~ /;/s) {
+				push(@{$self->{types}}, { ('name' => $typnm, 'code' => $code, 'pos' => $i) });
+				$typnm = '';
+				$code = '';
+				$i++;
+			}
+		}
+		$i = 1;
+		foreach my $tpe (sort {$a->{pos} <=> $b->{pos}} @{$self->{types}}) {
+			$self->logit("Dumping type $tpe->{name}...\n", 1);
+			if ($self->{plsql_pgsql}) {
+				$tpe->{code} = $self->_convert_type($tpe->{code}, $tpe->{owner});
+			} else {
+				$tpe->{code} = "CREATE OR REPLACE $tpe->{code}\n";
+			}
+			$content .= $tpe->{code} . "\n";
+			$i++;
+		}
+	}
+
+	# Convert the package body part
 	if ($plsql =~ /PACKAGE\s+BODY\s*([^\s]+)\s*(AS|IS)\s*(.*)/is) {
 		my $pname = $1;
 		my $type = $2;
-		$content = $3;
+		my $ctt = $3;
 		$pname =~ s/"//g;
 		$pname =~ s/^.*\.//g;
 		$self->logit("Dumping package $pname...\n", 1);
@@ -9536,30 +9606,9 @@ sub _convert_package
 			}
 		}
 		$self->{idxcomment} = 0;
-		$content =~ s/END[^;]*;$//is;
-		my %comments = $self->_remove_comments(\$content);
-		my @functions = $self->_extract_functions($content);
-		$content = "-- PostgreSQL does not recognize PACKAGES, using package_name_function_name() instead.\n";
-		if ($self->{package_as_schema}) {
-			$content = "-- PostgreSQL does not recognize PACKAGES, using SCHEMA instead.\n";
-			if (!$self->{preserve_case}) {
-				$content .= "DROP SCHEMA $self->{pg_supports_ifexists} $pname CASCADE;\n";
-				$content .= "CREATE SCHEMA $pname;\n";
-			} else {
-				$content .= "DROP SCHEMA $self->{pg_supports_ifexists} \"$pname\" CASCADE;\n";
-				$content .= "CREATE SCHEMA \"$pname\";\n";
-			}
-			if ($self->{force_owner}) {
-				$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
-				if ($owner) {
-					if (!$self->{preserve_case}) {
-						$content .= "ALTER SCHEMA \L$pname\E OWNER TO \L$owner\E;\n";
-					} else {
-						$content .= "ALTER SCHEMA \"$pname\" OWNER TO \"$owner\";\n";
-					}
-				}
-			}
-		}
+		$ctt =~ s/END[^;]*;$//is;
+		my %comments = $self->_remove_comments(\$ctt);
+		my @functions = $self->_extract_functions($ctt);
 
 		# Try to detect local function
 		for (my $i = 0; $i <= $#functions; $i++) {
@@ -10140,7 +10189,7 @@ sub _convert_type
 		$self->{type_of_type}{'Type Boby'}++;
 		$self->logit("WARNING: TYPE BODY are not supported, skipping type $1\n", 1);
 		return "${unsupported}CREATE OR REPLACE $plsql";
-	} elsif ($plsql =~ /TYPE\s+([^\s]+)\s+(AS|IS)\s*OBJECT\s*\((.*)\)([^\)]*)/is) {
+	} elsif ($plsql =~ /TYPE\s+([^\s]+)\s+(AS|IS)\s*(?:OBJECT|RECORD)\s*\((.*)\)([^\)]*)/is) {
 		$type_name = $1;
 		my $description = $3;
 		my $notfinal = $4;
