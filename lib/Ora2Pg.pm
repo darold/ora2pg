@@ -9729,30 +9729,16 @@ sub _convert_function
 	}
 
 	if ($fct_detail{hasreturn}) {
+		# Returns the right type
 		$func_return = " RETURNS$fct_detail{setof} $fct_detail{func_ret_type} AS \$body\$\n";
 	} else {
 		my @nout = $fct_detail{args} =~ /\bOUT /igs;
 		my @ninout = $fct_detail{args} =~ /\bINOUT /igs;
-		if ($#nout > 0) {
-			$func_return = " RETURNS$fct_detail{setof} RECORD AS \$body\$\n";
-		} elsif ($#nout == 0) {
-			if ($fct_detail{args} =~ /\s*OUT\s+([^\s]+)\s+([^,\)]+)/is) {
-				$func_return = " RETURNS$fct_detail{setof} $2 AS \$body\$\n";
-			} elsif ($fct_detail{args} =~ /\s*([^\s]+)\s+OUT\s+([^,\)]+)/is) {
-				$func_return = " RETURNS$fct_detail{setof} $2 AS \$body\$\n";
-			} else {
-				$func_return = " RETURNS$fct_detail{setof} PLEASE_CHECK_RETURNED_TYPE AS \$body\$\n";
-			}
-		} elsif ($#ninout == 0) {
-			if ($fct_detail{args} =~ /\s*INOUT\s+([^\s]+)\s+([^,\)]+)/is) {
-				$func_return = " RETURNS$fct_detail{setof} $2 AS \$body\$\n";
-			} elsif ($fct_detail{args} =~ /\s*([^\s]+)\s+INOUT\s+([^,\)]+)/is) {
-				$func_return = " RETURNS$fct_detail{setof} $2 AS \$body\$\n";
-			} else {
-				$func_return = " RETURNS$fct_detail{setof} PLEASE_CHECK_RETURNED_TYPE AS \$body\$\n";
-			}
-		} else {
+		# Return void when there's no out parameters
+		if (($#nout < 0) && ($#ninout < 0)) {
 			$func_return = " RETURNS VOID AS \$body\$\n";
+		} else {
+			$func_return = " AS \$body\$\n";
 		}
 	}
 
