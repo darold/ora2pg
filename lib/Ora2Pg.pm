@@ -6514,14 +6514,8 @@ sub _howto_get_data
 				$name->[$k]->[0] = '`' . $name->[$k]->[0] . '`';
 			}
 		}
-		if (!$self->{is_mysql} && $src_type->[$k] =~ /date/i) {
-			$str .= "to_char($name->[$k]->[0], '$dateformat'),";
-		} elsif ( ( $src_type->[$k] =~ /^char/i) && ($type->[$k] =~ /(varchar|text)/i)) {
+		if ( ( $src_type->[$k] =~ /^char/i) && ($type->[$k] =~ /(varchar|text)/i)) {
 			$str .= "trim($self->{trim_type} '$self->{trim_char}' FROM $name->[$k]->[0]) AS $name->[$k]->[0],";
-		} elsif (!$self->{is_mysql} &&  $src_type->[$k] =~ /timestamp.*with time zone/i) {
-			$str .= "to_char($name->[$k]->[0], '$timeformat_tz'),";
-		} elsif (!$self->{is_mysql} &&  $src_type->[$k] =~ /timestamp/i) {
-			$str .= "to_char($name->[$k]->[0], '$timeformat'),";
 		} elsif ($self->{is_mysql} && $src_type->[$k] =~ /bit/i) {
 			$str .= "BIN($name->[$k]->[0]),";
 		# If dest type is bytea the content of the file is exported as bytea
