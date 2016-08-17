@@ -4289,49 +4289,39 @@ LANGUAGE plpgsql ;
 			$self->logit("Reading input code from file $self->{input_file}...\n", 1);
 			sleep(1);
 			open(IN, "$self->{input_file}");
-			my @allpkg = <IN>;
+			my $content = '';
+			while (my $l = <IN>) {
+				$l =~ s/\r//g;
+				next if ($l =~ /^\/$/);
+				$content .= $l;
+			};
 			close(IN);
 			my $pknm = '';
 			my $before = '';
 			my $old_line = '';
 			my $skip_pkg_header = 0;
+			$self->{idxcomment} = 0;
+			my %comments = $self->_remove_comments(\$content);
+			$content =~ s/(?:CREATE|CREATE OR REPLACE)?\s*(?:EDITABLE|NONEDITABLE)?\s*PACKAGE\s+/CREATE PACKAGE /igs;
+			my @allpkg = split(/(CREATE PACKAGE\s+)/, $content);
+			$content = '';
 			foreach my $l (@allpkg) {
-				chomp($l);
-				$l =~ s/\r//g;
-				next if ($l =~ /^\/$/);
-				next if ($l =~ /^\s*$/);
-				if ($old_line) {
-					$l = $old_line .= ' ' . $l;
+				if (!$old_line && ($l =~ /(CREATE PACKAGE\s+)/)) {
+					$old_line = $1;
+					next;
+				} elsif ($old_line) {
+					if ($l =~ s/^BODY\s+([^\s]+)\s+//is) {
+						$self->{packages}{"\L$1\E"}{text} .= "PACKAGE BODY $1 $l\n";
+					} elsif ($l =~ /^([^\s]+)\s+/s) {
+						my $pname = lc($1);
+						$l =~ s/[\s;]+\s*$/;/gs;
+						$self->{packages}{$pname}{text} .= "PACKAGE $l\n";
+					}
 					$old_line = '';
 				}
-				if ($skip_pkg_header) {
-					if ( $l =~ /^\s*END[^;]*;/) {
-						$skip_pkg_header = 0;
-					}
-					next;
-				}
-				$l =~ s/^\s*((?:EDITABLE|NONEDITABLE)?\s*PACKAGE\s+)/CREATE OR REPLACE $1/;
-				if ($l =~ /^(?:CREATE|CREATE OR REPLACE)?\s*(?:EDITABLE|NONEDITABLE)?\s*PACKAGE\s+(?!BODY)/i) {
-					$skip_pkg_header = 1;
-				}
-				if ($l =~ /^\s*CREATE\s*(?:OR REPLACE)?\s*$/i) {
-					$old_line = $l;
-					next;
-				}
-				if ($l =~ /^(?:CREATE|CREATE OR REPLACE)?\s*(?:EDITABLE|NONEDITABLE)?\s*PACKAGE\s*(?:BODY\s*)?$/i) {
-					$old_line = $l;
-					next;
-				}
-				if ($l =~ /^(?:CREATE|CREATE OR REPLACE)?\s*(?:EDITABLE|NONEDITABLE)?\s*PACKAGE\s+(?:BODY\s+)?([^\s]+)\s*$/is) {
-					$old_line = $l;
-					next;
-				}
-				if ($l =~ /^(?:CREATE|CREATE OR REPLACE)?\s*(?:EDITABLE|NONEDITABLE)?\s*PACKAGE\s+(?:BODY\s+)?([^\s]+)\s*(AS|IS)/is) {
-					$pknm = lc($1);
-				}
-				if ($pknm) {
-					$self->{packages}{$pknm}{text} .= "$l\n";
-				}
+			}
+			foreach my $pkg (sort keys %{$self->{packages}}) {
+				$self->_restore_comments(\$self->{packages}{$pkg}{text}, \%comments);
 			}
 		}
 		#--------------------------------------------------------
@@ -4340,7 +4330,6 @@ LANGUAGE plpgsql ;
 		my $i = 1;
 		my $num_total_package = scalar keys %{$self->{packages}};
 		foreach my $pkg (sort keys %{$self->{packages}}) {
-
 			my $total_size = 0;
 			my $total_size_no_comment = 0;
 			my $cost_value = 0;
@@ -9539,6 +9528,7 @@ sub _convert_package
 			}
 		}
 	}
+
 
 	# Convert type from the package header
 	if ($plsql =~ s/PACKAGE\s+BODY\s*PACKAGE\s+([^\s]+)\s+(AS|IS)\s+TYPE\s+([^\s]+)\s+(AS|IS)\s+(.*;?)\s*PACKAGE BODY/PACKAGE BODY/is) {
