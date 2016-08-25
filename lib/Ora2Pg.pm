@@ -1102,6 +1102,9 @@ sub _init
 	} else {
 		$self->{pg_supports_ifexists} = '';
 	}
+	if ($self->{pg_background} eq '') {
+		$self->{pg_background} = 1;
+	}
 
 	# Backward compatibility with LongTrunkOk with typo
 	if ($self->{longtrunkok} && not defined $self->{longtruncok}) {
@@ -7409,14 +7412,14 @@ END
 	while (my $row = $sth->fetch) {
 		if (!$self->{schema} && $self->{export_schema}) {
 			push(@{$data{"$row->[10].$row->[0]"}}, [ ($row->[1],$row->[4],$row->[6],$row->[7],$row->[8],$row->[9],$row->[11],$row->[0],$row->[10]) ]);
-			push(@{$link{"$row->[10].$row->[0]"}{$row->[1]}{local}}, $row->[2]);
-			push(@{$link{"$row->[10].$row->[0]"}{$row->[1]}{remote}{"$row->[11].$row->[3]"}}, $row->[5]);
+			push(@{$link{"$row->[10].$row->[0]"}{$row->[1]}{local}}, $row->[2]) if (!grep(/^$row->[2]$/, @{$link{"$row->[10].$row->[0]"}{$row->[1]}{local}}));
+			push(@{$link{"$row->[10].$row->[0]"}{$row->[1]}{remote}{"$row->[11].$row->[3]"}}, $row->[5]) if (!grep(/^$row->[5]$/, @{$link{"$row->[10].$row->[0]"}{$row->[1]}{remote}{"$row->[11].$row->[3]"}}));
 		} else {
 			push(@{$data{$row->[0]}}, [ ($row->[1],$row->[4],$row->[6],$row->[7],$row->[8],$row->[9],$row->[11],$row->[0],$row->[10]) ]);
 			#            TABLENAME  CONSTNAME           COLNAME
-			push(@{$link{$row->[0]}{$row->[1]}{local}}, $row->[2]);
+			push(@{$link{$row->[0]}{$row->[1]}{local}}, $row->[2]) if (!grep(/^$row->[2]$/, @{$link{$row->[0]}{$row->[1]}{local}}));
 			#            TABLE     CONSTNAME          TABLENAME   COLNAME
-			push(@{$link{$row->[0]}{$row->[1]}{remote}{$row->[3]}}, $row->[5]);
+			push(@{$link{$row->[0]}{$row->[1]}{remote}{$row->[3]}}, $row->[5]) if (!grep(/^$row->[5]$/, @{$link{$row->[0]}{$row->[1]}{remote}{$row->[3]}}));
 		}
 	}
 
@@ -9829,7 +9832,7 @@ sub _convert_function
 
 	# Create a wrapper for the function if we found an autonomous transaction
 	my $at_wrapper = '';
-	if ($at_suffix) {
+	if ($at_suffix && !$self->{pg_background}) {
 		$at_wrapper = qq{
 $search_path
 --
@@ -9844,7 +9847,6 @@ $search_path
 		map { s/(.*)/quote_nullable($1)/; }  @{$fct_detail{at_args}};
 		my $params = join(" || ',' || ", @{$fct_detail{at_args}});
 		$params = " '' " if (!$params);
-		my $q_str = "SELECT $fname$at_suffix ($params)";
 		$at_wrapper .= qq{
 DECLARE
 	-- Change this to reflect the dblink connection string
@@ -9871,6 +9873,48 @@ BEGIN
 END;
 \$body\$ LANGUAGE plpgsql SECURITY DEFINER;
 };
+
+	} elsif ($at_suffix && $self->{pg_background}) {
+		$at_wrapper = qq{
+$search_path
+--
+-- pg_background wrapper to call function $name as an autonomous transaction
+--
+};
+		if (!$fct_detail{hasreturn}) {
+			$at_wrapper .= "CREATE OR REPLACE FUNCTION $name $fct_detail{args} RETURNS VOID AS \$body\$";
+		} else {
+			$at_wrapper .= "CREATE OR REPLACE FUNCTION $name $fct_detail{args} $func_return";
+		}
+		map { s/(.*)/quote_nullable($1)/; }  @{$fct_detail{at_args}};
+		my $params = join(" || ',' || ", @{$fct_detail{at_args}});
+		$params = " '' " if (!$params);
+		$at_wrapper .= qq{
+DECLARE
+	v_query     text;
+};
+		if (!$fct_detail{hasreturn}) {
+			$at_wrapper .= qq{
+BEGIN
+	v_query := 'SELECT true FROM $fname$at_suffix ( ' || $params || ' )';
+	PERFORM * FROM pg_background_result(pg_background_launch(v_query)) AS p (ret boolean);
+};
+		} elsif ($#at_ret_param == 0) {
+			my $prm = join(',', @at_ret_param);
+			$at_wrapper .= qq{
+	v_ret	$at_ret_type[0];
+BEGIN
+	v_query := 'SELECT * FROM $fname$at_suffix ( ' || $params || ' )';
+	SELECT * INTO v_ret FROM pg_background_result(pg_background_launch(v_query)) AS p ($at_ret_param[0]);
+	RETURN v_ret;
+};
+		}
+		$at_wrapper .= qq{
+END;
+\$body\$ LANGUAGE plpgsql SECURITY DEFINER;
+};
+
+
 	}
 
 	# Add the return part of the function declaration
