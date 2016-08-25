@@ -6360,7 +6360,11 @@ sub _create_foreign_keys
 			}
 			$str .= "ALTER TABLE $table ADD CONSTRAINT $fkname FOREIGN KEY (" . join(',', @lfkeys) . ") REFERENCES $subsdesttable(" . join(',', @rfkeys) . ")";
 			$str .= " MATCH $state->[2]" if ($state->[2]);
-			$str .= " ON DELETE $state->[3]" if ($state->[3]);
+			if ($state->[3]) {
+				$str .= " ON DELETE $state->[3]";
+			} else {
+				$str .= " ON DELETE NO ACTION";
+			}
 			if ($self->{is_mysql}) {
 				$str .= " ON UPDATE $state->[9]" if ($state->[9]);
 			} else {
