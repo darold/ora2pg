@@ -5021,10 +5021,16 @@ BEGIN
 						if ($self->{partitions}{$table}{$pos}{$part}[$i]->{type} eq 'LIST') {
 							$check_cond .= "\t$self->{partitions}{$table}{$pos}{$part}[$i]->{column} IN ($self->{partitions}{$table}{$pos}{$part}[$i]->{value})";
 						} else {
-							if ($old_part eq '') {
-								$check_cond .= "\t$self->{partitions}{$table}{$pos}{$part}[$i]->{column} < " . Ora2Pg::PLSQL::plsql_to_plpgsql($self, $self->{partitions}{$table}{$pos}{$part}[$i]->{value});
+							if ($#{$self->{partitions}{$table}{$pos}{$part}} == 0) {
+								if ($old_part eq '') {
+									$check_cond .= "\t$self->{partitions}{$table}{$pos}{$part}[$i]->{column} < " . Ora2Pg::PLSQL::plsql_to_plpgsql($self, $self->{partitions}{$table}{$pos}{$part}[$i]->{value});
+								} else {
+									$check_cond .= "\t$self->{partitions}{$table}{$pos}{$part}[$i]->{column} >= " . Ora2Pg::PLSQL::plsql_to_plpgsql($self, $self->{partitions}{$table}{$old_pos}{$old_part}[$i]->{value}) . " AND $self->{partitions}{$table}{$pos}{$part}[$i]->{column} < " . Ora2Pg::PLSQL::plsql_to_plpgsql($self, $self->{partitions}{$table}{$pos}{$part}[$i]->{value});
+								}
 							} else {
-								$check_cond .= "\t$self->{partitions}{$table}{$pos}{$part}[$i]->{column} >= " . Ora2Pg::PLSQL::plsql_to_plpgsql($self, $self->{partitions}{$table}{$old_pos}{$old_part}[$i]->{value}) . " AND $self->{partitions}{$table}{$pos}{$part}[$i]->{column} < " . Ora2Pg::PLSQL::plsql_to_plpgsql($self, $self->{partitions}{$table}{$pos}{$part}[$i]->{value});
+								my @values = split(/,\s/, Ora2Pg::PLSQL::plsql_to_plpgsql($self, $self->{partitions}{$table}{$pos}{$part}[$i]->{value}));
+								# multicolumn partitioning
+								$check_cond .= "\t$self->{partitions}{$table}{$pos}{$part}[$i]->{column} < " .  $values[$i];
 							}
 						}
 						$check_cond .= " AND" if ($i < $#{$self->{partitions}{$table}{$pos}{$part}});
@@ -5085,10 +5091,16 @@ BEGIN
 									if ($self->{subpartitions}{$table}{$p}{$subpart}[$i]->{type} eq 'LIST') {
 										$sub_check_cond .= "$self->{subpartitions}{$table}{$p}{$subpart}[$i]->{column} IN ($self->{subpartitions}{$table}{$p}{$subpart}[$i]->{value})";
 									} else {
-										if ($sub_old_part eq '') {
-											$sub_check_cond .= "$self->{subpartitions}{$table}{$p}{$subpart}[$i]->{column} < " . Ora2Pg::PLSQL::plsql_to_plpgsql($self, $self->{subpartitions}{$table}{$p}{$subpart}[$i]->{value});
+										if ($#{$self->{subpartitions}{$table}{$p}{$subpart}} == 0) {
+											if ($sub_old_part eq '') {
+												$sub_check_cond .= "$self->{subpartitions}{$table}{$p}{$subpart}[$i]->{column} < " . Ora2Pg::PLSQL::plsql_to_plpgsql($self, $self->{subpartitions}{$table}{$p}{$subpart}[$i]->{value});
+											} else {
+												$sub_check_cond .= "$self->{subpartitions}{$table}{$p}{$subpart}[$i]->{column} >= " . Ora2Pg::PLSQL::plsql_to_plpgsql($self, $self->{subpartitions}{$table}{$old_pos}{$sub_old_part}[$i]->{value}) . " AND $self->{subpartitions}{$table}{$p}{$subpart}[$i]->{column} < " . Ora2Pg::PLSQL::plsql_to_plpgsql($self, $self->{subpartitions}{$table}{$p}{$subpart}[$i]->{value});
+											}
 										} else {
-											$sub_check_cond .= "$self->{subpartitions}{$table}{$p}{$subpart}[$i]->{column} >= " . Ora2Pg::PLSQL::plsql_to_plpgsql($self, $self->{subpartitions}{$table}{$old_pos}{$sub_old_part}[$i]->{value}) . " AND $self->{subpartitions}{$table}{$p}{$subpart}[$i]->{column} < " . Ora2Pg::PLSQL::plsql_to_plpgsql($self, $self->{subpartitions}{$table}{$p}{$subpart}[$i]->{value});
+											my @values = split(/,\s/, Ora2Pg::PLSQL::plsql_to_plpgsql($self, $self->{subpartitions}{$table}{$p}{$subpart}[$i]->{value}));
+											# multicolumn partitioning
+											$sub_check_cond .= "\t$self->{subpartitions}{$table}{$p}{$subpart}[$i]->{column} < " .  $values[$i];
 										}
 									}
 									$sub_check_cond .= " AND " if ($i < $#{$self->{subpartitions}{$table}{$p}{$subpart}});
