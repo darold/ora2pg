@@ -7398,6 +7398,16 @@ sub _foreign_key
 	}
 	$condition .= $self->limit_to_objects('FKEY|TABLE','UCC2.CONSTRAINT_NAME|UC.TABLE_NAME');
 
+	my $condition2 = '';
+	$condition2 .= "AND TABLE_NAME='$table' " if ($table);
+	if ($owner) {
+		$condition2 .= "OWNER = '$owner' ";
+	} else {
+		$condition2 .= "AND OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "') ";
+	}
+	$condition2 .= $self->limit_to_objects('TABLE','TABLE_NAME');
+	$condition2 =~ s/^AND //;
+
 	my $deferrable = $self->{fkey_deferrable} ? "'DEFERRABLE' AS DEFERRABLE" : "DEFERRABLE";
 	my $defer = $self->{fkey_deferrable} ? "'DEFERRABLE' AS DEFERRABLE" : "UC.DEFERRABLE";
 
@@ -7408,17 +7418,19 @@ SELECT UC.TABLE_NAME,
        UCC.TABLE_NAME,
        UC.R_CONSTRAINT_NAME,
        UCC.COLUMN_NAME,
-       UC.SEARCH_CONDITION,UC.DELETE_RULE,$defer,UC.DEFERRED,UC.OWNER,UC.R_OWNER
+       UC.SEARCH_CONDITION,UC.DELETE_RULE,$defer,UC.DEFERRED,UC.OWNER,UC.R_OWNER,UCC.POSITION,UCC2.POSITION
    FROM (SELECT TABLE_NAME,CONSTRAINT_NAME,R_CONSTRAINT_NAME,CONSTRAINT_TYPE,SEARCH_CONDITION,DELETE_RULE,$deferrable,DEFERRED,OWNER,R_OWNER,STATUS FROM $self->{prefix}_CONSTRAINTS) UC,
-        (SELECT TABLE_NAME, COLUMN_NAME, CONSTRAINT_NAME FROM $self->{prefix}_CONS_COLUMNS) UCC,
-        (SELECT TABLE_NAME, COLUMN_NAME, CONSTRAINT_NAME FROM $self->{prefix}_CONS_COLUMNS) UCC2
+        (SELECT TABLE_NAME, COLUMN_NAME, CONSTRAINT_NAME, POSITION FROM $self->{prefix}_CONS_COLUMNS) UCC,
+        (SELECT TABLE_NAME, COLUMN_NAME, CONSTRAINT_NAME, POSITION FROM $self->{prefix}_CONS_COLUMNS) UCC2
    WHERE UC.R_CONSTRAINT_NAME = UCC.CONSTRAINT_NAME
      AND UC.CONSTRAINT_NAME = UCC2.CONSTRAINT_NAME
      AND UC.CONSTRAINT_TYPE = 'R'
      AND UC.STATUS='ENABLED'
+     AND UCC.POSITION = UCC2.POSITION
      $condition
-   ORDER BY 1,2,3,4
+   ORDER BY 1,2,3,4,13,14
 END
+
 	my $sth = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute or $self->logit("FATAL: " . $sth->errstr . "\n", 0, 1);
 
