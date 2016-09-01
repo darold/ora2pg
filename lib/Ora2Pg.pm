@@ -10609,6 +10609,10 @@ sub _extract_data
 						if ( ($self->{parallel_tables} > 1) || (($self->{oracle_copies} > 1) && $self->{defined_pk}{"\L$table\E"}) ) {
 							while (1) {
 								my $lobdata = $dbh->ora_lob_read($row[$j], $offset, $self->{chunk_size} );
+								if ($dbh->errstr) {
+									$self->logit("ERROR: " . $dbh->errstr . "\n", 0, 0);
+									last;
+								}
 								last unless (defined $lobdata && length $lobdata);
 								$offset += $self->{chunk_size};
 								$lob_content .= $lobdata;
@@ -10616,6 +10620,10 @@ sub _extract_data
 						} else {
 							while (1) {
 								my $lobdata = $self->{dbh}->ora_lob_read($row[$j], $offset, $self->{chunk_size} );
+								if ($self->{dbh}->errstr) {
+									$self->logit("ERROR: " . $self->{dbh}->errstr . "\n", 0, 0);
+									last;
+								}
 								last unless (defined $lobdata && length $lobdata);
 								$offset += $self->{chunk_size};
 								$lob_content .= $lobdata;
