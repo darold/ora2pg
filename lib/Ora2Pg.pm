@@ -7391,7 +7391,6 @@ END
 	return \%link, \%data;
 }
 
-
 sub _foreign_key
 {
 	my ($self, $table, $owner) = @_;
@@ -7399,13 +7398,13 @@ sub _foreign_key
 	return Ora2Pg::MySQL::_foreign_key($self,$table,$owner) if ($self->{is_mysql});
 
 	my $condition = '';
-	$condition .= "AND UC.TABLE_NAME='$table' " if ($table);
+	$condition .= "AND CONS.TABLE_NAME='$table' " if ($table);
 	if ($owner) {
-		$condition .= "AND UC.OWNER = '$owner' ";
+		$condition .= "AND CONS.OWNER = '$owner' ";
 	} else {
-		$condition .= "AND UC.OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "') ";
+		$condition .= "AND CONS.OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "') ";
 	}
-	$condition .= $self->limit_to_objects('FKEY|TABLE','UCC2.CONSTRAINT_NAME|UC.TABLE_NAME');
+	$condition .= $self->limit_to_objects('FKEY|TABLE','CONS.CONSTRAINT_NAME|CONS.TABLE_NAME');
 
 	my $condition2 = '';
 	$condition2 .= "AND TABLE_NAME='$table' " if ($table);
@@ -7418,26 +7417,23 @@ sub _foreign_key
 	$condition2 =~ s/^AND //;
 
 	my $deferrable = $self->{fkey_deferrable} ? "'DEFERRABLE' AS DEFERRABLE" : "DEFERRABLE";
-	my $defer = $self->{fkey_deferrable} ? "'DEFERRABLE' AS DEFERRABLE" : "UC.DEFERRABLE";
+	my $defer = $self->{fkey_deferrable} ? "'DEFERRABLE' AS DEFERRABLE" : "CONS.DEFERRABLE";
 
 	my $sql = <<END;
-SELECT UC.TABLE_NAME,
-       UCC2.CONSTRAINT_NAME,
-       UCC2.COLUMN_NAME,
-       UCC.TABLE_NAME,
-       UC.R_CONSTRAINT_NAME,
-       UCC.COLUMN_NAME,
-       UC.SEARCH_CONDITION,UC.DELETE_RULE,$defer,UC.DEFERRED,UC.OWNER,UC.R_OWNER,UCC.POSITION,UCC2.POSITION
-   FROM (SELECT TABLE_NAME,CONSTRAINT_NAME,R_CONSTRAINT_NAME,CONSTRAINT_TYPE,SEARCH_CONDITION,DELETE_RULE,$deferrable,DEFERRED,OWNER,R_OWNER,STATUS FROM $self->{prefix}_CONSTRAINTS) UC,
-        (SELECT TABLE_NAME, COLUMN_NAME, CONSTRAINT_NAME, POSITION FROM $self->{prefix}_CONS_COLUMNS ORDER BY POSITION) UCC,
-        (SELECT TABLE_NAME, COLUMN_NAME, CONSTRAINT_NAME, POSITION FROM $self->{prefix}_CONS_COLUMNS ORDER BY POSITION) UCC2
-   WHERE UC.R_CONSTRAINT_NAME = UCC.CONSTRAINT_NAME
-     AND UC.CONSTRAINT_NAME = UCC2.CONSTRAINT_NAME
-     AND UC.CONSTRAINT_TYPE = 'R'
-     AND UC.STATUS='ENABLED'
-     AND UCC.POSITION = UCC2.POSITION
-     $condition
-   ORDER BY 1,2,3,4
+SELECT
+    CONS.TABLE_NAME,
+    CONS.CONSTRAINT_NAME,
+    COLS.COLUMN_NAME,
+    CONS_R.TABLE_NAME R_TABLE_NAME,
+    CONS.R_CONSTRAINT_NAME,
+    COLS_R.COLUMN_NAME R_COLUMN_NAME,
+    CONS.SEARCH_CONDITION,CONS.DELETE_RULE,$defer,CONS.DEFERRED,CONS.OWNER,CONS.R_OWNER,COLS.POSITION,COLS_R.POSITION
+FROM USER_CONSTRAINTS CONS
+    LEFT JOIN USER_CONS_COLUMNS COLS ON COLS.CONSTRAINT_NAME = CONS.CONSTRAINT_NAME
+    LEFT JOIN USER_CONSTRAINTS CONS_R ON CONS_R.CONSTRAINT_NAME = CONS.R_CONSTRAINT_NAME
+    LEFT JOIN USER_CONS_COLUMNS COLS_R ON COLS_R.CONSTRAINT_NAME = CONS.R_CONSTRAINT_NAME
+WHERE CONS.CONSTRAINT_TYPE = 'R'
+ORDER BY CONS.TABLE_NAME, CONS.CONSTRAINT_NAME, COLS.COLUMN_NAME, R_COLUMN_NAME
 END
 
 	my $sth = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -7462,6 +7458,7 @@ END
 
 	return \%link, \%data;
 }
+
 
 =head2 _get_privilege
 
