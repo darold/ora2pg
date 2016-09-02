@@ -2911,6 +2911,12 @@ sub _export_table_data
  		$local_dbh->disconnect();
  	}
 
+	# Rename temporary output file
+	if (-e "${dirprefix}tmp_${table}_$self->{output}") {
+		$self->logit("Renaming temporary file ${dirprefix}tmp_${table}_$self->{output} into ${dirprefix}${table}_$self->{output}\n", 1);
+		rename("${dirprefix}tmp_${table}_$self->{output}", "${dirprefix}${table}_$self->{output}");
+	}
+
 	return $total_record;
 }
 
@@ -4652,7 +4658,10 @@ LANGUAGE plpgsql ;
 
 			# Remove main table partition (for MySQL "SELECT * FROM emp PARTITION (p1);" is supported from 5.6)
 			delete $self->{partitions}{$table} if (exists $self->{partitions}{$table} && $self->{is_mysql} && ($self->{db_version} =~ /^5\.[012345]/));
-
+			if (-e "${dirprefix}tmp_${table}_$self->{output}") {
+				$self->logit("Removing incomplete export file ${dirprefix}tmp_${table}_$self->{output}\n", 1);
+				unlink("${dirprefix}tmp_${table}_$self->{output}");
+			}
 			# Rename table and double-quote it if required
 			my $tmptb = $self->get_replaced_tbname($table);
 
@@ -7420,15 +7429,15 @@ SELECT UC.TABLE_NAME,
        UCC.COLUMN_NAME,
        UC.SEARCH_CONDITION,UC.DELETE_RULE,$defer,UC.DEFERRED,UC.OWNER,UC.R_OWNER,UCC.POSITION,UCC2.POSITION
    FROM (SELECT TABLE_NAME,CONSTRAINT_NAME,R_CONSTRAINT_NAME,CONSTRAINT_TYPE,SEARCH_CONDITION,DELETE_RULE,$deferrable,DEFERRED,OWNER,R_OWNER,STATUS FROM $self->{prefix}_CONSTRAINTS) UC,
-        (SELECT TABLE_NAME, COLUMN_NAME, CONSTRAINT_NAME, POSITION FROM $self->{prefix}_CONS_COLUMNS) UCC,
-        (SELECT TABLE_NAME, COLUMN_NAME, CONSTRAINT_NAME, POSITION FROM $self->{prefix}_CONS_COLUMNS) UCC2
+        (SELECT TABLE_NAME, COLUMN_NAME, CONSTRAINT_NAME, POSITION FROM $self->{prefix}_CONS_COLUMNS ORDER BY POSITION) UCC,
+        (SELECT TABLE_NAME, COLUMN_NAME, CONSTRAINT_NAME, POSITION FROM $self->{prefix}_CONS_COLUMNS ORDER BY POSITION) UCC2
    WHERE UC.R_CONSTRAINT_NAME = UCC.CONSTRAINT_NAME
      AND UC.CONSTRAINT_NAME = UCC2.CONSTRAINT_NAME
      AND UC.CONSTRAINT_TYPE = 'R'
      AND UC.STATUS='ENABLED'
      AND UCC.POSITION = UCC2.POSITION
      $condition
-   ORDER BY 1,2,3,4,13,14
+   ORDER BY 1,2,3,4
 END
 
 	my $sth = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -9296,9 +9305,12 @@ sub data_dump
 	my $filename = $self->{output};
 	my $rname = $pname || $tname;
 	if ($self->{file_per_table}) {
-		$self->logit("Dumping data from $rname to file: $dirprefix${rname}_$self->{output}\n", 1);
 		$filename = "${rname}_$self->{output}";
+		$filename = "tmp_$filename";
 	}
+	# Set file temporary until the table export is done
+	$self->logit("Dumping data from $rname to file: $dirprefix${rname}_$self->{output}\n", 1);
+
 	if ( ($self->{jobs} > 1) || ($self->{oracle_copies} > 1) ) {
 		$self->{fhout}->close() if (defined $self->{fhout} && !$self->{file_per_table} && !$self->{pg_dsn});
 		my $fh = $self->append_export_file($filename);
@@ -10985,6 +10997,12 @@ sub _dump_to_pg
 	my $tt_record = @$rows;
 	$dbhdest->disconnect() if ($dbhdest);
 
+        # Set file temporary until the table export is done
+        my $filename = $self->{output};
+        if ($self->{file_per_table}) {
+                $filename = "${rname}_$self->{output}";
+        }
+ 
 	my $end_time = time();
 	my $dt = $end_time - $ora_start_time;
 	my $rps = int($glob_total_record / ($dt||1));
