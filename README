@@ -1666,6 +1666,12 @@ CONFIGURATION
         btree_gin; Default is to create GIN index, when disabled, a btree
         index will be created
 
+    PG_BACKGROUND
+        Use pg_background extension to create an autonomous transaction
+        instead of using a dblink wrapper. With pg >= 9.5 only. Default is
+        to use dblink. See https://github.com/vibhorkum/pg_background about
+        this extension.
+
     LONGREADLEN
         Use this directive to set the database handle's 'LongReadLen'
         attribute to a value that will be the larger than the expected size

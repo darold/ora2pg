@@ -797,10 +797,13 @@ PG_SUPPORTS_IFEXISTS	1
 
 # Use btree_gin extenstion to create bitmap like index with pg >= 9.4
 # You will need to create the extension by yourself:
-# 	create extension btree_gin;
-# Default is to create GIN index, when disabled, a btree index will be created
+#	create extension btree_gin;
+# Default is to create GIN index, when disabled, a btree index will be created
 BITMAP_AS_GIN		1
 
+# Use pg_background extension to create an autonomous transaction instead
+# of using a dblink wrapper. With pg >= 9.5 only, default is to use dblink.
+PG_BACKGROUND		0
 
 #------------------------------------------------------------------------------
 # SPATIAL SECTION (Control spatial geometry export)

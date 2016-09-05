@@ -1102,9 +1102,7 @@ sub _init
 	} else {
 		$self->{pg_supports_ifexists} = '';
 	}
-	if ($self->{pg_background} eq '') {
-		$self->{pg_background} = 1;
-	}
+	$self->{pg_background} ||= 0;
 
 	# Backward compatibility with LongTrunkOk with typo
 	if ($self->{longtrunkok} && not defined $self->{longtruncok}) {
