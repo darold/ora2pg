@@ -1036,6 +1036,7 @@ sub _init
 
 	# Set user defined data type translation
 	if ($self->{data_type}) {
+		$self->{data_type} =~ s/\\,/#NOSEP#/gs;
 		my @transl = split(/[,;]/, uc($self->{data_type}));
 		# Set default type conversion
 		%{$self->{data_type}} = %TYPE;
@@ -1047,6 +1048,8 @@ sub _init
 			$typ =~ s/\s+$//;
 			$val =~ s/^\s+//;
 			$val =~ s/\s+$//;
+			$typ =~ s/#NOSEP#/,/g;
+			$val =~ s/#NOSEP#/,/g;
 			$self->{data_type}{$typ} = lc($val) if ($val);
 		}
 	} else {
