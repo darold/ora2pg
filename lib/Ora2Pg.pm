@@ -7437,9 +7437,9 @@ SELECT
 FROM USER_CONSTRAINTS CONS
     LEFT JOIN USER_CONS_COLUMNS COLS ON COLS.CONSTRAINT_NAME = CONS.CONSTRAINT_NAME
     LEFT JOIN USER_CONSTRAINTS CONS_R ON CONS_R.CONSTRAINT_NAME = CONS.R_CONSTRAINT_NAME
-    LEFT JOIN USER_CONS_COLUMNS COLS_R ON COLS_R.CONSTRAINT_NAME = CONS.R_CONSTRAINT_NAME
+    LEFT JOIN USER_CONS_COLUMNS COLS_R ON COLS_R.CONSTRAINT_NAME = CONS.R_CONSTRAINT_NAME AND COLS_R.POSITION=COLS.POSITION
 WHERE CONS.CONSTRAINT_TYPE = 'R'
-ORDER BY CONS.TABLE_NAME, CONS.CONSTRAINT_NAME, COLS.COLUMN_NAME, R_COLUMN_NAME
+ORDER BY CONS.TABLE_NAME, CONS.CONSTRAINT_NAME, COLS.POSITION
 END
 
 	my $sth = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -7451,14 +7451,14 @@ END
 	while (my $row = $sth->fetch) {
 		if (!$self->{schema} && $self->{export_schema}) {
 			push(@{$data{"$row->[10].$row->[0]"}}, [ ($row->[1],$row->[4],$row->[6],$row->[7],$row->[8],$row->[9],$row->[11],$row->[0],$row->[10]) ]);
-			push(@{$link{"$row->[10].$row->[0]"}{$row->[1]}{local}}, $row->[2]) if (!grep(/^$row->[2]$/, @{$link{"$row->[10].$row->[0]"}{$row->[1]}{local}}));
-			push(@{$link{"$row->[10].$row->[0]"}{$row->[1]}{remote}{"$row->[11].$row->[3]"}}, $row->[5]) if (!grep(/^$row->[5]$/, @{$link{"$row->[10].$row->[0]"}{$row->[1]}{remote}{"$row->[11].$row->[3]"}}));
+			push(@{$link{"$row->[10].$row->[0]"}{$row->[1]}{local}}, $row->[2]);
+			push(@{$link{"$row->[10].$row->[0]"}{$row->[1]}{remote}{"$row->[11].$row->[3]"}}, $row->[5]);
 		} else {
 			push(@{$data{$row->[0]}}, [ ($row->[1],$row->[4],$row->[6],$row->[7],$row->[8],$row->[9],$row->[11],$row->[0],$row->[10]) ]);
 			#            TABLENAME  CONSTNAME           COLNAME
-			push(@{$link{$row->[0]}{$row->[1]}{local}}, $row->[2]) if (!grep(/^$row->[2]$/, @{$link{$row->[0]}{$row->[1]}{local}}));
+			push(@{$link{$row->[0]}{$row->[1]}{local}}, $row->[2]);
 			#            TABLE     CONSTNAME          TABLENAME   COLNAME
-			push(@{$link{$row->[0]}{$row->[1]}{remote}{$row->[3]}}, $row->[5]) if (!grep(/^$row->[5]$/, @{$link{$row->[0]}{$row->[1]}{remote}{$row->[3]}}));
+			push(@{$link{$row->[0]}{$row->[1]}{remote}{$row->[3]}}, $row->[5]);
 		}
 	}
 
