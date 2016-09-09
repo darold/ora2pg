@@ -6835,7 +6835,7 @@ sub _sql_type
 						if (exists $self->{data_type}{"$type($precision)"}) {
 							return $self->{data_type}{"$type($precision)"};
 						}
-						if ($self->{pg_integer_type}) {
+						if ($self->{pg_integer_type} && ($scale ne '0')) {
 							if ($precision < 5) {
 								return 'smallint';
 							} elsif ($precision <= 9) {
@@ -6855,16 +6855,14 @@ sub _sql_type
 					if (exists $self->{data_type}{"$type($precision,$scale)"}) {
 						return $self->{data_type}{"$type($precision,$scale)"};
 					}
-					if ($precision) {
-						if ($self->{pg_numeric_type}) {
-							if ($precision <= 6) {
-								return 'real';
-							} else {
-								return 'double precision';
-							}
+					if ($self->{pg_numeric_type}) {
+						if ($precision <= 6) {
+							return 'real';
+						} elsif ($precision <= 15) {
+							return 'double precision';
 						}
-						return "decimal($precision,$scale)";
 					}
+					return "decimal($precision,$scale)";
 				}
 			}
 			return "$self->{data_type}{$type}";
