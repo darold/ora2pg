@@ -3819,6 +3819,7 @@ LANGUAGE plpgsql ;
 		# Load a file containing SQL code to load into PostgreSQL
 		#---------------------------------------------------------
 		my %comments = ();
+		my @settings = ();
 		if ($self->{input_file}) {
 			$self->{functions} = ();
 			$self->logit("Reading input SQL orders from file $self->{input_file}...\n", 1);
@@ -3835,7 +3836,13 @@ LANGUAGE plpgsql ;
 				chomp($l);
 				next if ($l =~ /^\s*$/);
 				# do not parse interactive or session command
-				next if ($l =~ /^(SET|\\set|\\pset|\\i)/is);
+				next if ($l =~ /^(\\set|\\pset|\\i)/is);
+				# Put setting change in header to apply them on all parallel session
+				# This will help to set a special search_path or encoding
+				if ($l =~ /^SET\s+/i) {
+					push(@settings, $l);
+					next;
+				}
 				if ($old_line) {
 					$l = $old_line .= ' ' . $l;
 					$old_line = '';
@@ -3855,6 +3862,7 @@ LANGUAGE plpgsql ;
 		$self->{child_count} = 0;
 		foreach my $q (sort {$a <=> $b} keys %{$self->{queries}}) {
 			chomp($self->{queries}{$q});
+			next if (!$self->{queries}{$q});
 			while ($self->{child_count} >= $self->{jobs}) {
 				my $kid = waitpid(-1, WNOHANG);
 				if ($kid > 0) {
@@ -3864,7 +3872,7 @@ LANGUAGE plpgsql ;
 				usleep(50000);
 			}
 			spawn sub {
-				$self->_pload_to_pg($q, $self->{queries}{$q});
+				$self->_pload_to_pg($q, $self->{queries}{$q}, @settings);
 			};
 			$self->{child_count}++;
 			if (!$self->{quiet} && !$self->{debug}) {
@@ -11029,7 +11037,7 @@ sub _dump_to_pg
 
 sub _pload_to_pg
 {
-	my ($self, $idx, $query) = @_;
+	my ($self, $idx, $query, @settings) = @_;
 
 	if (!$self->{pg_dsn}) {
 		$self->logit("FATAL: No connection to PostgreSQL database set, aborting...\n", 0, 1);
@@ -11047,7 +11055,22 @@ sub _pload_to_pg
 	# Connect to PostgreSQL if direct import is enabled
 	my $dbhdest = $self->_send_to_pgdb();
 	$self->logit("Loading query #$idx: $query\n", 1);
-	$dbhdest->do( "SET client_encoding TO '\U$self->{client_encoding}\E';") or $self->logit("FATAL: " . $dbhdest->errstr . "\n", 0, 1);
+	if ($#settings == -1) {
+		$self->logit("Applying settings from configuration\n", 1);
+		# Apply setting from configuration
+		$dbhdest->do( "SET client_encoding TO '\U$self->{client_encoding}\E';") or $self->logit("FATAL: " . $dbhdest->errstr . "\n", 0, 1);
+		my $search_path = $self->set_search_path();
+		if ($search_path) {
+			$dbhdest->do($search_path) or $self->logit("FATAL: " . $dbhdest->errstr . "\n", 0, 1);
+		}
+	} else {
+		$self->logit("Applying settings from input file\n", 1);
+		# Apply setting from source file
+		foreach my $set (@settings) {
+			$dbhdest->do($set) or $self->logit("FATAL: " . $dbhdest->errstr . "\n", 0, 1);
+		}
+	}
+	# Execute query
 	$dbhdest->do("$query") or $self->logit("FATAL: " . $dbhdest->errstr . "\n", 0, 1);
 	$dbhdest->disconnect() if ($dbhdest);
 
