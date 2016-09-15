@@ -6335,8 +6335,16 @@ sub _create_foreign_keys
 	# Add constraint definition
 	my @done = ();
 	foreach my $fkname (keys %{$self->{tables}{$tbsaved}{foreign_link}}) {
-
 		next if (grep(/^$fkname$/, @done));
+
+		# Extract all attributes if the foreign key definition
+		my $state;
+		foreach my $h (@{$self->{tables}{$tbsaved}{foreign_key}}) {
+			if (lc($h->[0]) eq lc($fkname)) {
+				push(@$state, @$h);
+				last;
+			}
+		}
 		foreach my $desttable (keys %{$self->{tables}{$tbsaved}{foreign_link}{$fkname}{remote}}) {
 			push(@done, $fkname);
 			my $str = '';
@@ -6344,14 +6352,6 @@ sub _create_foreign_keys
 			map { $_ = '"' . $_ . '"' } @{$self->{tables}{$tbsaved}{foreign_link}{$fkname}{local}};
 			map { $_ = '"' . $_ . '"' } @{$self->{tables}{$tbsaved}{foreign_link}{$fkname}{remote}{$desttable}};
 
-			# Extract all attributes if the foreign key definition
-			my $state;
-			foreach my $h (@{$self->{tables}{$tbsaved}{foreign_key}}) {
-				if ($h->[0] eq $fkname) {
-					push(@$state, @$h);
-					last;
-				}
-			}
 			# Get the name of the foreign table after replacement if any
 			my $subsdesttable = $self->get_replaced_tbname($desttable);
 			# Prefix the table name with the schema name if owner of
@@ -7311,98 +7311,6 @@ Just like this:
 
 =cut
 
-sub _foreign_key_old
-{
-	my ($self, $table, $owner) = @_;
-
-	return Ora2Pg::MySQL::_foreign_key($self,$table,$owner) if ($self->{is_mysql});
-
-	my $condition = '';
-	$condition .= "AND TABLE_NAME='$table' " if ($table);
-	if ($owner) {
-		$condition .= "AND OWNER = '$owner' ";
-	} else {
-		$condition .= "AND OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "') ";
-	}
-	$condition .= $self->limit_to_objects('FKEY','CONSTRAINT_NAME');
-
-	my $sql = "SELECT DISTINCT COLUMN_NAME,POSITION,TABLE_NAME,OWNER,CONSTRAINT_NAME FROM $self->{prefix}_CONS_COLUMNS";
-	if ($owner) {
-		$sql .= " WHERE OWNER='$owner'";
-	} else {
-		$sql .= " WHERE OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "') ";
-	}
-	$sql .= " ORDER BY POSITION";
-	my $sth2 = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-	$sth2->execute or $self->logit("FATAL: " . $sth2->errstr . "\n", 0, 1);
-	my @cons_columns = ();
-	while (my $r = $sth2->fetch) {
-		push(@cons_columns, [ @$r ]);
-	}
-
-	my $deferrable = $self->{fkey_deferrable} ? "'DEFERRABLE' AS DEFERRABLE" : "DEFERRABLE";
-	my $sth = $self->{dbh}->prepare(<<END) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-SELECT CONSTRAINT_NAME,R_CONSTRAINT_NAME,SEARCH_CONDITION,DELETE_RULE,$deferrable,DEFERRED,R_OWNER,TABLE_NAME,OWNER
-FROM $self->{prefix}_CONSTRAINTS
-WHERE CONSTRAINT_TYPE='R' $condition
-AND STATUS='ENABLED'
-END
-	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-
-	my %data = ();
-	my %link = ();
-	my @tab_done = ();
-	while (my $row = $sth->fetch) {
-		if (!$self->{schema} && $self->{export_schema}) {
-			next if (grep(/^$row->[8]$row->[7]$row->[0]$/, @tab_done));
-			push(@{$data{"$row->[8].$row->[7]"}}, [ @$row ]);
-			push(@tab_done, "$row->[8]$row->[7]$row->[0]");
-		} else {
-			next if (grep(/^$row->[7]$row->[0]$/, @tab_done));
-			push(@{$data{$row->[7]}}, [ @$row ]);
-			push(@tab_done, "$row->[7]$row->[0]");
-		}
-		my @done = ();
-		foreach my $r (@cons_columns) {
-			# Skip it if tablename and owner are not the same
-			next if (($r->[2] ne $row->[7]) && ($r->[3] ne $row->[8]));
-			# If the names of the constraints are the same set the local column of the foreign keys
-			if ($r->[4] eq $row->[0]) {
-				if (!grep(/^$r->[2]$r->[0]$/, @done)) {
-					if (!$self->{schema} && $self->{export_schema}) {
-						push(@{$link{"$row->[8].$row->[7]"}{$row->[0]}{local}}, $r->[0]);
-					} else {
-						#            TABLENAME  CONSTNAME           COLNAME
-						push(@{$link{$row->[7]}{$row->[0]}{local}}, $r->[0]);
-					}
-					push(@done, "$r->[2]$r->[0]");
-				}
-			}
-		}
-		@done = ();
-
-		foreach my $r (@cons_columns) {
-			# Skip it if tablename and owner are not the same
-			next if (($r->[2] ne $row->[7]) && ($r->[3] ne $row->[8]));
-			# If the names of the constraints are the same as the unique constraint definition for
-			# the referenced table set the remote part of the foreign keys
-			if ($r->[4] eq $row->[1]) {
-				if (!grep(/^$r->[2]$r->[0]$/, @done)) {
-					if (!$self->{schema} && $self->{export_schema}) {
-						push(@{$link{"$row->[8].$row->[7]"}{$row->[0]}{remote}{"$r->[3].$r->[2]"}}, $r->[0]);
-					} else {
-						#            TABLE     CONSTNAME          TABLENAME   COLNAME
-						push(@{$link{$row->[7]}{$row->[0]}{remote}{$r->[2]}}, $r->[0]);
-					}
-					push(@done, "$r->[2]$r->[0]");
-				}
-			}
-		}
-	}
-
-	return \%link, \%data;
-}
-
 sub _foreign_key
 {
 	my ($self, $table, $owner) = @_;
@@ -7455,17 +7363,17 @@ END
 	my %link = ();
 	#my @tab_done = ();
 	while (my $row = $sth->fetch) {
+		my $local_table = $row->[0];
+		my $remote_table = $row->[3];
 		if (!$self->{schema} && $self->{export_schema}) {
-			push(@{$data{"$row->[10].$row->[0]"}}, [ ($row->[1],$row->[4],$row->[6],$row->[7],$row->[8],$row->[9],$row->[11],$row->[0],$row->[10]) ]);
-			push(@{$link{"$row->[10].$row->[0]"}{$row->[1]}{local}}, $row->[2]);
-			push(@{$link{"$row->[10].$row->[0]"}{$row->[1]}{remote}{"$row->[11].$row->[3]"}}, $row->[5]);
-		} else {
-			push(@{$data{$row->[0]}}, [ ($row->[1],$row->[4],$row->[6],$row->[7],$row->[8],$row->[9],$row->[11],$row->[0],$row->[10]) ]);
-			#            TABLENAME  CONSTNAME           COLNAME
-			push(@{$link{$row->[0]}{$row->[1]}{local}}, $row->[2]);
-			#            TABLE     CONSTNAME          TABLENAME   COLNAME
-			push(@{$link{$row->[0]}{$row->[1]}{remote}{$row->[3]}}, $row->[5]);
+			$local_table = "$row->[10].$row->[0]";
+			$remote_table = "$row->[11].$row->[3]";
 		}
+		push(@{$data{$local_table}}, [ ($row->[1],$row->[4],$row->[6],$row->[7],$row->[8],$row->[9],$row->[11],$row->[0],$row->[10]) ]);
+		#            TABLENAME     CONSTNAME           COLNAME
+		push(@{$link{$local_table}{$row->[1]}{local}}, $row->[2]);
+		#            TABLENAME     CONSTNAME          TABLENAME        COLNAME
+		push(@{$link{$local_table}{$row->[1]}{remote}{$remote_table}}, $row->[5]);
 	}
 
 	return \%link, \%data;
