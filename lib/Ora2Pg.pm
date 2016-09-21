@@ -6532,6 +6532,9 @@ sub _howto_get_data
 		$realtable = "\`$realtable\`";
 	}
 
+	my %column_infos = $self->_column_attributes($table, $self->{schema}, 'TABLE');
+	delete $self->{nullable}{$table};
+
 	my $alias = 'a';
 	my $str = "SELECT ";
 	if ($self->{tables}{$table}{table_info}{nested} eq 'YES') {
@@ -6548,6 +6551,7 @@ sub _howto_get_data
 	for my $k (0 .. $#{$name}) {
 		my $realcolname = $name->[$k]->[0];
 		my $spatial_srid = '';
+		$self->{nullable}{$table}{$k} = $column_infos{$table}{$realcolname}{nullable};
 		if ($name->[$k]->[0] !~ /"/) {
 			# Do not use double quote with mysql
 			if (!$self->{is_mysql}) {
@@ -6647,7 +6651,6 @@ sub _howto_get_data
 			} else {
 				$str .= "$name->[$k]->[0],";
 			}
-
 		} else {
 
 			$str .= "$name->[$k]->[0],";
@@ -6660,7 +6663,7 @@ sub _howto_get_data
 				$self->{local_data_limit}{$table} = int($self->{data_limit}/10);
 				while ($self->{local_data_limit}{$table} > 1000) {
 					$self->{local_data_limit}{$table} = int($self->{local_data_limit}{$table}/10);
-				}
+			}
 			} else {
 				$self->{local_data_limit}{$table} = $self->{data_limit};
 			}
@@ -7286,7 +7289,6 @@ END
 
 	return %data;
 }
-
 
 =head2 _foreign_key TABLE OWNER
 
@@ -9080,7 +9082,11 @@ sub format_data_type
 	# Preparing data for output
 	if ($action ne 'COPY') {
 		if (!defined $col) {
-			$col = 'NULL' if (!$sprep);
+			if (!$cond->{isnotnull} || ($self->{empty_lob_null} && ($cond->{clob} || $cond->{isbytea}))) {
+				$col = 'NULL' if (!$sprep);
+			} else {
+				$col = "''";
+			}
 		} elsif ( ($src_type =~ /geometry/i) && ($self->{geometry_extract_type} eq 'WKB') ) {
 			$col = "St_GeomFromWKB('\\x" . unpack('H*', $col) . "', $self->{spatial_srid}{$table}->[$idx])";
 		} elsif ($cond->{isbytea}) {
@@ -9117,7 +9123,11 @@ sub format_data_type
 		}
 	} else {
 		if (!defined $col) {
-			$col = '\N';
+			if (!$cond->{isnotnull} || ($self->{empty_lob_null} && ($cond->{clob} || $cond->{isbytea}))) {
+				$col = '\N';
+			} else {
+				$col = '';
+			}
 		} elsif ( $cond->{geometry} && ($self->{geometry_extract_type} eq 'WKB') ) {
 			$col = 'SRID=' . $self->{spatial_srid}{$table}->[$idx] . ';' . unpack('H*', $col);
 		} elsif ($data_type eq 'boolean') {
@@ -9147,7 +9157,7 @@ sub format_data_type
 
 sub hs_cond
 {
-	my ($data_types,$src_data_types) = @_;
+	my ($self, $data_types, $src_data_types, $table) = @_;
 
 	my $col_cond = [];
 	for (my $idx = 0; $idx < scalar(@$data_types); $idx++) {
@@ -9160,7 +9170,11 @@ sub hs_cond
 		$hs->{istext} = $data_types->[$idx] =~ /(char|text|xml)/i ? 1 : 0;
 		$hs->{isbytea} = $data_types->[$idx] =~ /bytea/i ? 1 : 0;
 		$hs->{isbit} = $data_types->[$idx] =~ /bit/i ? 1 : 0;
-		push @$col_cond,$hs;
+		$hs->{isnotnull} = 0;
+		if ($self->{nullable}{$table}{$idx} =~ /^N/) {
+			$hs->{isnotnull} = 1;
+		}
+		push @$col_cond, $hs;
 	}
 	return $col_cond;
 }
@@ -9169,7 +9183,7 @@ sub format_data
 {
 	my ($self, $rows, $data_types, $action, $src_data_types, $custom_types, $table) = @_;
 
-	my $col_cond = hs_cond($data_types,$src_data_types);
+	my $col_cond = $self->hs_cond($data_types,$src_data_types, $table);
 	foreach my $row (@$rows) {
 		$self->format_data_row($row,$data_types,$action,$src_data_types,$custom_types,$table,$col_cond);
 	}
@@ -10870,7 +10884,7 @@ sub _dump_to_pg
 					}
 				}
 				$self->logit("DEBUG: Sending INSERT bulk output directly to PostgreSQL backend\n", 1);
-				my $col_cond = hs_cond($tt,$stt);
+				my $col_cond = $self->hs_cond($tt, $stt, $table);
 				foreach my $row (@$rows) {
 					# Even with prepared statement we need to replace zero date
 					foreach my $j (@date_cols) {
