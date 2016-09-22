@@ -1449,7 +1449,8 @@ sub _init_environment
 
 	# Force Perl to use utf8 output encoding by default
 	if ( !$self->{'binmode'} || ($self->{nls_lang} =~ /UTF8/i) ) {
-			$self->{'binmode'} = ':utf8';
+		$self->{'binmode'} = ':utf8';
+		use open ':encoding(utf8)';
 	}
 	# Set default PostgreSQL client encoding to UTF8
 	if (!$self->{client_encoding} || ($self->{nls_lang} =~ /UTF8/) ) {
