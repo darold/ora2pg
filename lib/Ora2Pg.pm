@@ -460,7 +460,6 @@ sub open_export_file
 		} else {
 			$filehdl = new IO::File;
 			$filehdl->open(">$outfile") or $self->logit("FATAL: Can't open $outfile: $!\n", 0, 1);
-			binmode($filehdl, $self->{'binmode'});
 		}
 		$filehdl->autoflush(1) if (defined $filehdl && !$self->{compress});
 	}
@@ -501,7 +500,6 @@ sub create_export_file
 		} else {
 			$self->{fhout} = new IO::File;
 			$self->{fhout}->open(">>$outfile") or $self->logit("FATAL: Can't open $outfile: $!\n", 0, 1);
-			binmode($self->{fhout},$self->{'binmode'});
 		}
 		if ( $self->{compress} && (($self->{jobs} > 1) || ($self->{oracle_copies} > 1)) ) {
 			die "FATAL: you can't use compressed output with parallel dump\n";
@@ -551,7 +549,6 @@ sub append_export_file
 		} else {
 			$filehdl = new IO::File;
 			$filehdl->open(">>$outfile") or $self->logit("FATAL: Can't open $outfile: $!\n", 0, 1);
-			binmode($filehdl, $self->{'binmode'});
 			$filehdl->autoflush(1);
 		}
 	}
@@ -1018,8 +1015,6 @@ sub _init
 
 	# Set Oracle, Perl and PostgreSQL encoding that will be used
 	$self->_init_environment();
-	$self->{binmode} =~ s/^://;
-	$self->{binmode} = ':' . lc($self->{binmode});
 
 	# Multiple Oracle connection
 	$self->{oracle_copies} ||= 0;
@@ -1447,10 +1442,17 @@ sub _init_environment
 	$ENV{NLS_LANG} = $self->{nls_lang};
 	$ENV{NLS_NCHAR} = $self->{nls_nchar};
 
-	# Force Perl to use utf8 output encoding by default
+	# Force Perl to use utf8 I/O encoding by default or the
+	# encoding given in the BINMODE configuration directive.
+	# See http://perldoc.perl.org/5.14.2/open.html for values
+	# that can be used. Default is :utf8
 	if ( !$self->{'binmode'} || ($self->{nls_lang} =~ /UTF8/i) ) {
+		use open ':utf8';
 		$self->{'binmode'} = ':utf8';
-		use open ':encoding(utf8)';
+	} elsif ($self->{'binmode'} =~ /^:/) {
+		eval "use open '$self->{binmode}';" or die "FATAL: can't use open layer $self->{binmode}\n";
+	} elsif ($self->{'binmode'}) {
+		eval "use open 'encoding($self->{binmode})';" or die "FATAL: can't use open layer :encoding($self->{binmode})\n";
 	}
 	# Set default PostgreSQL client encoding to UTF8
 	if (!$self->{client_encoding} || ($self->{nls_lang} =~ /UTF8/) ) {
@@ -10719,7 +10721,6 @@ sub log_error_copy
 	$outfile .= $table . '_error.log';
 
 	open(OUTERROR, ">>$outfile") or $self->logit("FATAL: can not write to $outfile, $!\n", 0, 1);
-	binmode(OUTERROR, $self->{'binmode'});
 	print OUTERROR "$s_out";
 	foreach my $row (@$rows) {
 		print OUTERROR join("\t", @$row), "\n";
@@ -10740,7 +10741,6 @@ sub log_error_insert
 	$outfile .= $table . '_error.log';
 
 	open(OUTERROR, ">>$outfile") or $self->logit("FATAL: can not write to $outfile, $!\n", 0, 1);
-	binmode(OUTERROR, $self->{'binmode'});
 	print OUTERROR "$sql_out\n";
 	close(OUTERROR);
 
@@ -11063,7 +11063,7 @@ sub _show_infos
 			$self->logit("\tMySQL database and client encoding: $self->{nls_lang}\n", 0);
 			$self->logit("\tMySQL collation encoding: $self->{nls_nchar}\n", 0);
 			$self->logit("\tPostgreSQL CLIENT_ENCODING $self->{client_encoding}\n", 0);
-			$self->logit("\tPerl output encoding $self->{binmode}\n", 0);
+			$self->logit("\tPerl output encoding '$self->{binmode}'\n", 0);
 			my ($my_encoding, $my_client, $pg_encoding, $my_timestamp_format, $my_date_format) = &Ora2Pg::MySQL::_get_encoding($self, $self->{dbh});
 			$self->logit("Showing current MySQL encoding and possible PostgreSQL client encoding:\n", 0);
 			$self->logit("\tMySQL database and client encoding: $my_encoding\n", 0);
@@ -11081,7 +11081,7 @@ sub _show_infos
 			}
 			$self->logit("\tOracle NLS_DATE_FORMAT YYYY-MM-DD HH24:MI:SS\n", 0);
 			$self->logit("\tPostgreSQL CLIENT_ENCODING $self->{client_encoding}\n", 0);
-			$self->logit("\tPerl output encoding $self->{binmode}\n", 0);
+			$self->logit("\tPerl output encoding '$self->{binmode}'\n", 0);
 
 			my ($ora_encoding, $ora_charset, $pg_encoding, $nls_timestamp_format, $nls_date_format) = $self->_get_encoding($self->{dbh});
 			$self->logit("Showing current Oracle encoding and possible PostgreSQL client encoding:\n", 0);

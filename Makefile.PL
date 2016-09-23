@@ -460,12 +460,20 @@ FILE_PER_TABLE	0
 # export type.
 FILE_PER_FUNCTION	0
 
-# Enforce perl to use binary mode for output using the given encoding. This
-# must be used if you experience the perl message: "Wide character in print"
-# The warning happens when you output a Unicode string to a non-unicode
-# file handle. If you set it to 'utf8' as follow, it will force printing
-# like this: binmode OUTFH, ":utf8"; This is normally autodetected when
-# the NLS_LANG use an unicode encoding.
+# By default Ora2Pg will force Perl to use utf8 I/O encoding. This is done through
+# a call to the Perl pragma:
+#
+#    use open ':utf8';
+#
+# You can override this encoding by using the BINMODE directive, for example you
+# can set it to :locale to use your locale or iso-8859-7, it will respectively use
+# 
+#    use open ':locale';
+#    use open ':encoding(iso-8859-7)';
+# 
+# If you have change the NLS_LANG in non UTF8 encoding, you might want to set this
+# directive. See http://perldoc.perl.org/5.14.2/open.html for more information.
+# Most of the time, you might leave this directive commented.
 #BINMODE		utf8
 
 # Set it to 0 to not include the call to \\set ON_ERROR_STOP ON in all SQL

@@ -1818,9 +1818,20 @@ $ENV{NLS_LANG} and $ENV{NLS_NCHAR}.
 
 =item BINMODE
 
-By default Ora2Pg will force Perl output to be Unicode. It will force printing
-to file like this: binmode OUTFH, ":utf8"; If you have change the NLS_LANG
-value you might want to set it to raw.
+By default Ora2Pg will force Perl to use utf8 I/O encoding. This is done through
+a call to the Perl pragma:
+
+	use open ':utf8';
+
+You can override this encoding by using the BINMODE directive, for example you
+can set it to :locale to use your locale or iso-8859-7, it will respectively use
+
+	use open ':locale';
+	use open ':encoding(iso-8859-7)';
+
+If you have change the NLS_LANG in non UTF8 encoding, you might want to set this
+directive. See http://perldoc.perl.org/5.14.2/open.html for more information.
+Most of the time, leave this directive commented.
 
 =item CLIENT_ENCODING
 
