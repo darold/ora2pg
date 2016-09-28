@@ -10412,7 +10412,16 @@ sub _extract_data
 
 		# prepare the query before execution
 		if (!$self->{is_mysql}) {
-			$sth = $dbh->prepare($query,{($self->{no_lob_locator} ? 'ora_pers_lob' : 'ora_auto_lob') => $self->{no_lob_locator},ora_exe_mode=>OCI_STMT_SCROLLABLE_READONLY, ora_check_sql => 1}) or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
+			# $sth = $dbh->prepare($query,{($self->{no_lob_locator} ? 'ora_pers_lob' : 'ora_auto_lob') => $self->{no_lob_locator},ora_exe_mode=>OCI_STMT_SCROLLABLE_READONLY, ora_check_sql => 1}) or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
+			if ($self->{no_lob_locator}) {
+				if ($self->{ora_piece_lob})
+					$sth = $dbh->prepare($query,{ora_piece_lob => 1, ora_piece_size => ($self->{ora_piece_size} ? $self->{ora_piece_size} : 5*1024*1024), ora_exe_mode=>OCI_STMT_SCROLLABLE_READONLY, ora_check_sql => 1}) or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
+				} else {
+					$sth = $dbh->prepare($query,{ora_pers_lob => 1,ora_exe_mode=>OCI_STMT_SCROLLABLE_READONLY, ora_check_sql => 1}) or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
+				}
+			} else {
+				$sth = $dbh->prepare($query,{ora_auto_lob => 0, ora_exe_mode=>OCI_STMT_SCROLLABLE_READONLY, ora_check_sql => 1}) or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
+			}
 			foreach (@{$sth->{NAME}}) {
 				push(@{$self->{data_cols}{$table}}, $_);
 			}
