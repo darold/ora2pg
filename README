@@ -1707,7 +1707,16 @@ CONFIGURATION
         http://search.cpan.org/~pythian/DBD-Oracle-1.74/lib/DBD/Oracle.pm#Da
         ta_Interface_for_LOB_Locators Default is enabled, it will not use
         LOB locators for backward compatibility.
+		
+	ORA_PIECE_LOB
+		Enable this if you want to use "Piecewise Fetch with Polling" method 
+		for loading full contect of BLOB and CLOB. Default is disabled, it will
+		use "Simple Fetch for CLOBs and BLOBs" method.
 
+    ORA_PIECE_SIZE
+        This is the max piece size for the "Piecewise Fetch with Polling" 
+		method, in chars for CLOBS, and bytes for BLOBS. Default is 5*1014*1024.
+		
     XML_PRETTY
         Force the use getStringVal() instead of getClobVal() for XML data
         export. Default is 1, enabled for backward compatibility. Set it to
