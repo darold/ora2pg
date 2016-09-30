@@ -2860,10 +2860,10 @@ sub _export_table_data
 	if ($self->{truncate_table} && !$self->{global_delete} && !exists $self->{delete}{"\L$table\E"}) {
 		# Set search path
 		my $search_path = $self->set_search_path();
-		if ($search_path) {
-			$self->{dbhdest}->do($search_path) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
-		}
 		if ($self->{pg_dsn}) {
+			if ($search_path) {
+				$local_dbh->do($search_path) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
+			}
 			$self->logit("Truncating table $table...\n", 1);
 			my $s = $local_dbh->do("TRUNCATE TABLE $tmptb;") or $self->logit("FATAL: " . $local_dbh->errstr . "\n", 0, 1);
 		} else {
