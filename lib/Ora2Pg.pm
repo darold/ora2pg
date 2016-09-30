@@ -2862,7 +2862,7 @@ sub _export_table_data
 		my $search_path = $self->set_search_path();
 		if ($self->{pg_dsn}) {
 			if ($search_path) {
-				$local_dbh->do($search_path) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
+				$local_dbh->do($search_path) or $self->logit("FATAL: " . $local_dbh->errstr . "\n", 0, 1);
 			}
 			$self->logit("Truncating table $table...\n", 1);
 			my $s = $local_dbh->do("TRUNCATE TABLE $tmptb;") or $self->logit("FATAL: " . $local_dbh->errstr . "\n", 0, 1);
