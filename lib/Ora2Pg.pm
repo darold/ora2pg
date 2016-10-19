@@ -1196,8 +1196,6 @@ sub _init
 
 			$self->{is_mysql} = 1;
 
-			use Ora2Pg::MySQL;
-
 			# Get the Oracle version
 			$self->{db_version} = $self->_get_version();
 
@@ -1370,6 +1368,8 @@ sub _oracle_connection
 sub _mysql_connection
 {
 	my ($self, $quiet) = @_;
+
+	use Ora2Pg::MySQL;
 
 	$self->logit("Trying to connect to database: $self->{oracle_dsn}\n", 1) if (!$quiet);
 
@@ -2824,7 +2824,7 @@ sub _export_table_data
 		$self->{copy_freeze} = '';
 	}
 
-	# Open a new connection with parallel table export 
+	# Open a new connection to PostgreSQL destination with parallel table export 
 	my $local_dbh = undef;
 	if (($self->{parallel_tables} > 1) && $self->{pg_dsn}) {
 		$local_dbh = $self->_send_to_pgdb();
@@ -2897,9 +2897,12 @@ sub _export_table_data
 			if (!$self->{allow_partition} || grep($_ =~ /^$self->{partitions_default}{$table}$/i, @{$self->{allow_partition}})) {
 				if ($self->{file_per_table} && !$self->{pg_dsn}) {
 					# Do not dump data again if the file already exists
-					next if ($self->file_exists("$dirprefix$self->{partitions_default}{$table}_$self->{output}"));
+					if (!$self->file_exists("$dirprefix$self->{partitions_default}{$table}_$self->{output}")) {
+						$total_record = $self->_dump_table($dirprefix, $sql_header, $table, $self->{partitions_default}{$table});
+					}
+				} else {
+					$total_record = $self->_dump_table($dirprefix, $sql_header, $table, $self->{partitions_default}{$table});
 				}
-				$total_record = $self->_dump_table($dirprefix, $sql_header, $table, $self->{partitions_default}{$table});
 			}
 		}
 	} else {
@@ -4829,13 +4832,18 @@ LANGUAGE plpgsql ;
 		}
 		foreach my $table (@ordered_tables) {
 
-			# Set global count
-			$global_count += $self->{tables}{$table}{table_info}{num_rows};
-
 			if ($self->{file_per_table} && !$self->{pg_dsn}) {
 				# Do not dump data again if the file already exists
 				next if ($self->file_exists("$dirprefix${table}_$self->{output}"));
 			}
+
+			# Set global count
+			$global_count += $self->{tables}{$table}{table_info}{num_rows};
+
+			# Extract all column information used to determine data export.
+			# This hash will be used in function _howto_get_data()
+			%{$self->{colinfo}} = $self->_column_attributes($table, $self->{schema}, 'TABLE');
+
 			my $total_record = 0;
 			if ($self->{parallel_tables} > 1) {
 				spawn sub {
@@ -4868,10 +4876,16 @@ LANGUAGE plpgsql ;
 					my $dt = $last_end_time - $first_start_time;
 					$dt ||= 1;
 					my $rps = int(($total_record || $global_count) / $dt);
-					print STDERR $self->progress_bar(($total_record || $global_count), $global_rows, 25, '=', 'rows', "on total estimated data ($dt sec., avg: $rps recs/sec)"), "\n";
+					print STDERR $self->progress_bar(($total_record || $global_count), $global_rows, 25, '=', 'rows', "on total estimated data ($dt sec., avg: $rps recs/sec)"), "\r";
 				}
 			}
 		}
+		if (!$self->{quiet} && !$self->{debug}) {
+			if ( ($self->{jobs} <= 1) && ($self->{oracle_copies} <= 1) && ($self->{parallel_tables} <= 1) ) {
+				print "\n";
+			}
+		}
+
 		# Wait for all child die
 		if ( ($self->{oracle_copies} > 1) || ($self->{parallel_tables} > 1) ){
 			# Wait for all child dies less the logger
@@ -4889,6 +4903,7 @@ LANGUAGE plpgsql ;
 				kill(10, $k);
 				%RUNNING_PIDS = ();
 			}
+			# Reopen a new database handler
 			$self->{dbh}->disconnect() if (defined $self->{dbh});
 			if ($self->{oracle_dsn} =~ /dbi:mysql/i) {
 				$self->{dbh} = $self->_mysql_connection();
@@ -6535,7 +6550,6 @@ sub _howto_get_data
 		$realtable = "\`$realtable\`";
 	}
 
-	my %column_infos = $self->_column_attributes($table, $self->{schema}, 'TABLE');
 	delete $self->{nullable}{$table};
 
 	my $alias = 'a';
@@ -6554,7 +6568,7 @@ sub _howto_get_data
 	for my $k (0 .. $#{$name}) {
 		my $realcolname = $name->[$k]->[0];
 		my $spatial_srid = '';
-		$self->{nullable}{$table}{$k} = $column_infos{$table}{$realcolname}{nullable};
+		$self->{nullable}{$table}{$k} = $self->{colinfo}->{$table}{$realcolname}{nullable};
 		if ($name->[$k]->[0] !~ /"/) {
 			# Do not use double quote with mysql
 			if (!$self->{is_mysql}) {
@@ -6589,35 +6603,9 @@ sub _howto_get_data
 
 			# Set SQL query to get the SRID of the column
 			if ($self->{convert_srid} > 1) {
-
 				$spatial_srid = $self->{convert_srid};
-
 			} else {
-
-				$spatial_srid = "SELECT COALESCE(SRID, $self->{default_srid}) FROM ALL_SDO_GEOM_METADATA WHERE TABLE_NAME='\U$table\E' AND COLUMN_NAME='\U$realcolname\E' AND OWNER='\U$self->{tables}{$table}{table_info}{owner}\E'";
-				if ($self->{convert_srid} == 1) {
-					$spatial_srid = "SELECT COALESCE(sdo_cs.map_oracle_srid_to_epsg(SRID), $self->{default_srid}) FROM ALL_SDO_GEOM_METADATA WHERE TABLE_NAME='\U$table\E' AND COLUMN_NAME='\U$realcolname\E' AND OWNER='\U$self->{tables}{$table}{table_info}{owner}\E'";
-				}
-
-				my $sth2 = $self->{dbh}->prepare($spatial_srid);
-				if (!$sth2) {
-					if ($self->{dbh}->errstr !~ /ORA-01741/) {
-						$self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-					} else {
-						# No SRID defined, use default one
-						$spatial_srid = $self->{default_srid} || '0';
-						$self->logit("WARNING: Error retreiving SRID, no matter default SRID will be used: $spatial_srid\n", 0);
-					}
-				} else {
-					$sth2->execute() or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-					my @result = ();
-					while (my $r = $sth2->fetch) {
-						push(@result, $r->[0]) if ($r->[0] =~ /\d+/);
-					}
-					$sth2->finish();
-					$spatial_srid = $result[0] || $self->{default_srid} || '0';
-				}
-
+				$spatial_srid = $self->{colinfo}->{$table}{$realcolname}{spatial_srid};
 			}
 
 			# With INSERT statement we always use WKT
@@ -6676,9 +6664,10 @@ sub _howto_get_data
 	$str =~ s/,$//;
 
 	# If we have a BFILE that might be exported as text we need to create a function
+	my $file_function = '';
 	if ($self->{bfile_found} eq 'text') {
 		$self->logit("Creating function ora2pg_get_bfilename( p_bfile IN BFILE ) to retrieve path from BFILE.\n", 1);
-		my $bfile_function = qq{
+		$file_function = qq{
 CREATE OR REPLACE FUNCTION ora2pg_get_bfilename( p_bfile IN BFILE ) RETURN 
 VARCHAR2
   AS
@@ -6696,13 +6685,12 @@ VARCHAR2
   END IF;
   END;
 };
-		my $sth2 = $self->{dbh}->do($bfile_function);
 	# If we have a BFILE that might be exported as efile we need to create a function
 	} elsif ($self->{bfile_found} eq 'efile') {
 		$self->logit("Creating function ora2pg_get_efile( p_bfile IN BFILE ) to retrieve EFILE from BFILE.\n", 1);
 		my $quote = '';
 		$quote = "''" if ($self->{type} eq 'INSERT');
-		my $efile_function = qq{
+		$file_function = qq{
 CREATE OR REPLACE FUNCTION ora2pg_get_efile( p_bfile IN BFILE ) RETURN 
 VARCHAR2
   AS
@@ -6717,9 +6705,12 @@ VARCHAR2
   END IF;
   END;
 };
-		my $sth2 = $self->{dbh}->do($efile_function);
+	}
 
-
+	if ($bfile_function) {
+		my $local_dbh = $self->_oracle_connection();
+		my $sth2 =  $local_dbh->do($bfile_function);
+		$local_dbh->disconnect() if ($local_dbh);
 	}
 
 	# Fix empty column list with nested table
@@ -7146,6 +7137,35 @@ END
 		} else {
 			$data{$row->[3]}{"$row->[0]"}{nullable} = $row->[1];
 			$data{$row->[3]}{"$row->[0]"}{default} = $row->[2];
+		}
+		my $f = $self->{tables}{"$table"}{column_info}{"$row->[0]"};
+		if ( ($f->[1] =~ /GEOMETRY/i) && ($self->{convert_srid} <= 1) ) {
+			$spatial_srid = "SELECT COALESCE(SRID, $self->{default_srid}) FROM ALL_SDO_GEOM_METADATA WHERE TABLE_NAME='\U$table\E' AND COLUMN_NAME='$row->[0]' AND OWNER='\U$self->{tables}{$table}{table_info}{owner}\E'";
+			if ($self->{convert_srid} == 1) {
+				$spatial_srid = "SELECT COALESCE(sdo_cs.map_oracle_srid_to_epsg(SRID), $self->{default_srid}) FROM ALL_SDO_GEOM_METADATA WHERE TABLE_NAME='\U$table\E' AND COLUMN_NAME='$row->[0]' AND OWNER='\U$self->{tables}{$table}{table_info}{owner}\E'";
+			}
+			my $sth2 = $self->{dbh}->prepare($spatial_srid);
+			if (!$sth2) {
+				if ($self->{dbh}->errstr !~ /ORA-01741/) {
+					$self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+				} else {
+					# No SRID defined, use default one
+					$spatial_srid = $self->{default_srid} || '0';
+					$self->logit("WARNING: Error retreiving SRID, no matter default SRID will be used: $spatial_srid\n", 0);
+				}
+			} else {
+				$sth2->execute() or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+				my @result = ();
+				while (my $r = $sth2->fetch) {
+					push(@result, $r->[0]) if ($r->[0] =~ /\d+/);
+				}
+				$sth2->finish();
+				if ($self->{export_schema} && !$self->{schema}) {
+					  $data{"$row->[4].$row->[3]"}{"$row->[0]"}{spatial_srid} = $result[0] || $self->{default_srid} || '0';
+				} else {
+					  $data{$row->[3]}{"$row->[0]"}{spatial_srid} = $result[0] || $self->{default_srid} || '0';
+				}
+			}
 		}
 	}
 
@@ -10412,7 +10432,11 @@ sub _extract_data
 
 		# prepare the query before execution
 		if (!$self->{is_mysql}) {
-			$sth = $dbh->prepare($query,{($self->{no_lob_locator} ? 'ora_pers_lob' : 'ora_auto_lob') => $self->{no_lob_locator},ora_exe_mode=>OCI_STMT_SCROLLABLE_READONLY, ora_check_sql => 1}) or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
+			if ($self->{no_lob_locator}) {
+				$sth = $dbh->prepare($query,{ora_piece_lob => 1, ora_piece_size => $self->{longreadlen}, ora_exe_mode=>OCI_STMT_SCROLLABLE_READONLY, ora_check_sql => 1}) or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
+			} else {
+				$sth = $dbh->prepare($query,{'ora_auto_lob' => 0, ora_exe_mode=>OCI_STMT_SCROLLABLE_READONLY, ora_check_sql => 1}) or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
+			}
 			foreach (@{$sth->{NAME}}) {
 				push(@{$self->{data_cols}{$table}}, $_);
 			}
@@ -10449,7 +10473,11 @@ sub _extract_data
 
 		# prepare the query before execution
 		if (!$self->{is_mysql}) {
-			$sth = $self->{dbh}->prepare($query,{($self->{no_lob_locator} ? 'ora_pers_lob' : 'ora_auto_lob') => $self->{no_lob_locator},ora_exe_mode=>OCI_STMT_SCROLLABLE_READONLY, ora_check_sql => 1}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+			if ($self->{no_lob_locator}) {
+				$sth = $self->{dbh}->prepare($query,{ora_piece_lob => 1, ora_piece_size => $self->{longreadlen}, ora_exe_mode=>OCI_STMT_SCROLLABLE_READONLY, ora_check_sql => 1}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+			} else {
+				$sth = $self->{dbh}->prepare($query,{'ora_auto_lob' => 0, ora_exe_mode=>OCI_STMT_SCROLLABLE_READONLY, ora_check_sql => 1}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+			}
 			foreach (@{$sth->{NAME}}) {
 				push(@{$self->{data_cols}{$table}}, $_);
 			}
@@ -10936,6 +10964,7 @@ sub _dump_to_pg
         }
  
 	my $end_time = time();
+	$ora_start_time = $end_time if (!$ora_start_time);
 	my $dt = $end_time - $ora_start_time;
 	my $rps = int($glob_total_record / ($dt||1));
 	if (!$self->{quiet} && !$self->{debug}) {
@@ -10943,7 +10972,6 @@ sub _dump_to_pg
 		if (defined $pipe) {
 			$pipe->print("CHUNK $$ DUMPED: $table, time: $end_time, rows $tt_record\n");
 		} else {
-			$rps = int($glob_total_record / ($dt||1));
 			print STDERR $self->progress_bar($glob_total_record, $total_row, 25, '=', 'rows', "Table $table ($rps recs/sec)"), "\r";
 		}
 	} elsif ($self->{debug}) {
@@ -12952,6 +12980,7 @@ sub multiprocess_progressbar
 		} elsif ($r =~ /TABLE EXPORT ENDED: (.*?), end: (\d+), rows (\d+)/) {
 			$table_progress{$1}{end} = $2;
 			$table_progress{$1}{rows} = $3;
+			$table_progress{$1}{start} = $table_progress{$1}{end} if (!$table_progress{$1}{start});
 			my $dt = $table_progress{$1}{end} - $table_progress{$1}{start};
 			my $rps = int($table_progress{$1}{progress}/ ($dt||1));
 			print STDERR $self->progress_bar($table_progress{$1}{progress}, $table_progress{$1}{rows}, 25, '=', 'rows', "Table $1 ($dt sec., $rps recs/sec)") . "\n";
