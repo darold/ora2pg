@@ -1,4 +1,206 @@
-2016 04 21 - v17.4
+2016 10 20 - v17.5
+
+This is a maintenance release to fix several issues reported by users.
+There is also some major improvement and new feature.
+
+There is a new configuration directive or change default behavior:
+
+  * Fix export of CLOBs and NCLOB that was truncated to 64 Kb.
+  * PG_BACKGROUND : when enabled autonomous transactions will be
+    built using Robert Haas extension pg_background instead of dblink.
+    Default is to still used dblink as pg_background is available
+    only for PostgreSQL >= 9.5.
+  * All Perl I/O now use the open pragma instead of calling method
+    binmode(). This will force input and output to utf8 using the
+    Perl pragma:
+	use open ':encoding(utf8)';
+    when configuration directive BINMODE is not set or NLS_LANG is
+    set to UTF8.
+  * Ora2Pg will now export empty lob as empty string instead of NULL
+    when the source column has NOT NULL constraint and that directive
+    EMPTY_LOB_NULL is not activated.
+  * Improve and fix progress bar especially when using JOBS/-J option.
+  * Allow LOAD action to apply all settings defined in the input file
+    on each opened session, this allow to use LOAD with export schema
+    enabled. If settings are not set in the input file encoding and
+    search_path is set from the ora2pg configuration settings.
+  * NUMBER(*,0) is now exported as numeric(38) as well as a NUMBER
+    with DATA_SCALE set to 0, no DATA_PRECISION and a DATA_LENGTH
+    of 22. The last correspond to Oracle type INTEGER or INT.
+  * Allow conversion of type with precision in DATA_TYPE directive.
+    For example it is possible to transform all NUMBER(12,2) only
+    into numeric(12,2) by escaping the comma. Example:
+    	DATA_TYPE	NUMBER(12\,2):numeric(12\,2);...
+  * Write data exported into temporary files (prefixed by tmp_) and
+    renamed them at end of the export to be able to detect incomplete
+    export and override it at next export.
+  * Add export of type created in package declaration.
+  * Export foreign key when the referenced table is not in the
+    same schema.
+  * Enabled by default PG_SUPPORTS_CHECKOPTION assuming that your Pg
+    destination database is at least a 9.4 version.
+  * Add 12 units to migration assessment report per table/column
+    conflicting with a reserved word in PostgreSQL to reflect the
+    need of code rewriting.
+  * Output a warning when a column has the same name than a system
+    column (xmin,xmax,ctid,etc.)
+  * Replace SYSDATE by a call to clock_timestamp() instead of a call
+    to LOCALTIMESTAMP in plpgsql code.
+  * Add missing documentation about DISABLE_PARTITION directive used
+    to not reproduce partitioning into PostgreSQL and only export
+    partitioned data into the main table.
+
+Here is the complete list of other changes:
+
+  - Fix broken parallel table export (-P option).
+  - Fix export of CLOBs and NCLOB that was truncated to 64Kb. Thanks
+    to Paul Mzko for the patch.
+  - Fix database handle in error report.
+  - Fix use of wrong database handle to set search_path. Thanks to
+    Paul Mzko for the report.
+  - Ora2pg doesn't export schema ForeignKey constraint when connected
+    as different DBA user. Thanks to Paul Mzko for the patch.
+  - Fix Perl I/O encoding using open pragma instead of calling method
+    binmode(). Thanks to Gary Evans for the report.
+  - Force input to utf8 using Perl pragma: use open ':encoding(utf8)';
+    when BINMODE is not set or NLS_LANG is UTF8.
+  - Force ora2pg to export empty lob as empty string instead of NULL
+    when the source column has a NOT NULL constraint and directive
+    EMPTY_LOB_NULL is not activated. Thanks to Valeriy for the report.
+  - Fix missing CASCADE attribute on fkey creation during data export
+    when DROP_FKEY was enabled. Thanks to ilya makarov for the report.
+  - Fix issue on converting NUMBER(*,0) to numeric, should be ported
+    to numeric(38). Thanks to ilya makarov for the report.
+  - Correct query for ForeignKey export from oracle. Thanks to ilya
+    makarov for the patch.
+  - Fix schema change in direct import of data to PostgreSQL.
+  - Change query for foreign key extraction to keep the column order.
+    Thanks to ilya makarov for the report.
+  - Write data exported into temporary files (prefixed by tmp_) and
+    renamed them at end of the export to be able to detect incomplete
+    export and override it at next export. Thanks to Paul Mkzo for
+    the feature request.
+  - Fix infinite loop in blob extraction when error ORA-25408 occurs
+    during ora_lob_read() call. Thanks to Paul Mzko for the report.
+  - Fix order of columns in foreign keys definition. Thanks to ilya
+    makarov for the report.
+  - Fix export of partition by range on multicolumn. Thanks to Rupesh
+    Admane for the report.
+  - Update reserved keywords list. Thanks to Nicolas Gollet for the
+    report.
+  - Add ON DELETE NO ACTION on foreign key creation (DROP_FKEY) to
+    obtain the same output than during constraints export.
+  - Fix export of foreign key that was duplicating the columns in both
+    part, local and foreign. Thanks to ilya makarov for the report.
+  - Remove call to to_char(datecol, format) when exporting date and
+    timestamp. This formating is no more needed as we are now forcing
+    NLS_DATE_FORMAT and NLS_TIMESTAMP_FORMAT when opening a connection
+    to Oracle using:
+    	ALTER SESSION SET NLS_DATE_FORMAT='YYYY-MM-DD HH24:MI:SS
+    and
+    	ALTER SESSION SET NLS_TIMESTAMP_FORMAT='YYYY-MM-DD HH24:MI:SS
+    This may result on some speed improvment during data export.
+  - Fix parsing of packages from input file.
+  - Add export of type created in package declaration. Thanks to
+    dezdechado  for the report.
+  - Fix converting of procedures with out arguments. Thanks to
+    dezdechado for the report.
+  - Update documentation about project management.
+  - Fix replacement of = NULL by IS NULL in update statement.
+    Thanks to dezdechado for the report.
+  - Fix parsing of trigger from file that was broken and new line
+    removed. Thanks to dezdechado for the report.
+  - Fix erasing of quotes from text in triggers. Thanks to dezdechado
+    for the report.
+  - Fix "return new" on trigger function when there is exception.
+    Thanks to dezdechado for the report and solution.
+  - Fix conversion of INTEGER and INT into numeric(38) instead of
+    numeric without precision. Thanks to dezdechado for the report.
+  - Fix export of foreign key when the referenced table is not in the
+    same schema. Thanks to Juju for the report.
+  - Fix ddl create schema when EXPORT_SCHEMA and CREATE_SCHEMA are
+    enabled but no schema is specified.
+  - Fix export of NCHAR that was converted as char but was loosing its
+    length definition. Thanks to lgerlandsen for the report.
+  - Fix parsing of views using WITH statements. Thank to dezdechado
+    for the report.
+  - Fix case that breaks views/triggers definition when a semicolon
+    is encountered in a string value when reading definition from
+    file. Thanks to dezdechado for the report.
+  - Fix included/excluded of sequences when using ALLOW/EXCLUDE
+    directives. Thanks to Roman Sindelar for the report.
+  - prepare options modified with some escaping improvements. Thanks
+    to ioxgrey for the patch.
+  - It seems that for a NUMBER with a DATA_SCALE set to 0, no
+    DATA_PRECISION and a DATA_LENGTH of 22 in ALL_TAB_COLUMNS, Oracle
+    use a NUMBER(38) instead. This correspond to Oracle type INTEGER
+    or INT. I don't really understand the reason of this behavior,
+    why not just using a data length of 38? ALL_TAB_COLUMNS and Ora2Pg
+    reports a data length of 22, now Ora2Pg will report NUMBER(38) like
+    the resulting type of the DESC command.
+    
+    The following Oracle table:
+    
+    	CREATE TABLE TEST_TABLE ( FIELD_1 INTEGER, FIELD_2 NUMBER );
+    
+    will be exported as follow by Ora2Pg:
+    
+    [1] TABLE TEST_TABLE (owner: HR, 0 rows)
+    	FIELD_1 : NUMBER(38) => numeric
+    	FIELD_2 : NUMBER(22) => bigint
+    
+    Oracle data type INTEGER and INT will be exported as numeric by
+    default instead of an integer.
+  - Fix parsing of function/procedure from file with comments after
+    BEGIN statement.
+  - Remove DEFERRABLE INITIALLY DEFERRED from CHECK constraints when
+    parsed from file. Thanks to Felipe Lavoura for the report.
+  - Fix double parenthesis in index definition when parsing index
+    creation from file. Thanks to Felipe Lavoura for the report.
+  - Fix parsing of COMMENT from file.
+  - Fix undetected native Oracle type bug. Thanks to kvnema for the
+    report.
+  - Fix unwanted text formatting with bind value in INSERT action
+    with direct import to PostgreSQL. Thanks to Oleg for the report.
+  - Fix inversion of UPDATE_RULE and DELETE_RULE in foreign key
+    creation for MySQL export. Thanks to Sebastian Albert for the
+    report.
+  - Update documentation about DEFER_FKEY and DROP_FKEY to report
+    the new behavior.
+  - Remove call to SET CONSTRAINTS ALL DEFERRED with direct import.
+  - Fix use of NULL value in bind parameter that should be undefined
+    (INSERT export mode only). Thanks to Oleg barabaka for the report.
+  - Remove replacement of direct call to functions with PERFORM, there
+    is too much false positive. Thanks to dezdechado for the reports.
+  - Fix a typo in SYSDATE replacement. Thank to dezdechado for report.
+  - Remove rewrite of concatenation in RAISE EXCEPTION. Thanks to
+    dezdechado for the report.
+  - Fix replacement of raise_application_error() when first argument
+    is a variable. Thanks to dezdechado for the report.
+  - Fix wrong insertion of PERFORM before some function calls. Thanks
+    to dezdechado for the report.
+  - Replace SYSDATE by a call to clock_timestamp() instead of call to
+    LOCALTIMESTAMP in plpgsql code. Thanks to aleksaan for the report.
+  - Allow use of comma for object name list separator instead of space
+    as workaround on Window OS.
+  - Fix documentation about MODIFY_TYPE. Thanks to Nicolas Gollet for
+    the report.
+  - Add missing documentation about DISABLE_PARTITION directive used
+    to not reproduce partitioning into PostgreSQL and only export
+    partitioned data into the main table. Thanks to Nicolas Gollet
+    for the report.
+  - Add information about how to export LONG RAW data type. They need
+    to be exported as BLOB before into Oracle to be exported as BYTEA.
+  - Fix case where select was wrongly replaced by perform in INSERT
+    INTO with SELECT statement. Thanks to dezdechado for the report.
+  - Fix links to ora2pg presentation. Thanks to Daniel Lenski for the
+    patch.
+  - Fix input parameters after one with a default value must also have
+    defaults. Thanks to v.agapov fot the patch.
+  - Fix debug mode that was interromping the last running table dump.
+    Thanks to calbiston for the report.
+
+2016 04 21 - v17.5
 
 Errata in first release attempt.
 
@@ -30,7 +232,7 @@ Here is the complete list of other changes:
     import. Thanks to Guillaume Lelarge for the report.
   - Fix Makefile.PL to used with latest spec file from Devrim Gündüz
     and following the advice of calbiston.
-  - Update spec file to v17.4 and latest change to Makefile.PL
+  - Update spec file to v17.5 and latest change to Makefile.PL
   - Replace ora2pg.spec by postgressql.org spec file by Devrim Gunduz.
   - Generate man page to avoids rpmbuild error.
   - Fix Windows install. Thanks to Lorena Figueredo for the report.
