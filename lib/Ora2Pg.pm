@@ -4784,7 +4784,7 @@ LANGUAGE plpgsql ;
 		####
 
 		# Set total number of rows
-		my $global_rows = 0;
+		$self->{global_rows} = 0;
 		foreach my $table (keys %{$self->{tables}}) {
                         if ($self->{global_where}) {
                                 if ($self->{is_mysql} && ($self->{global_where} =~ /\s+LIMIT\s+\d+,(\d+)/)) {
@@ -4799,7 +4799,7 @@ LANGUAGE plpgsql ;
 					$self->{tables}{$table}{table_info}{num_rows} = $1 if ($i < $self->{tables}{$table}{table_info}{num_rows});
                                 }
                         }
-			$global_rows += $self->{tables}{$table}{table_info}{num_rows};
+			$self->{global_rows} += $self->{tables}{$table}{table_info}{num_rows};
 		}
 
 		# Open a pipe for interprocess communication
@@ -4828,8 +4828,9 @@ LANGUAGE plpgsql ;
 		if (defined $pipe) {
 			$pipe->writer();
 			$pipe->print("GLOBAL EXPORT START TIME: $first_start_time\n");
-			$pipe->print("GLOBAL EXPORT ROW NUMBER: $global_rows\n");
+			$pipe->print("GLOBAL EXPORT ROW NUMBER: $self->{global_rows}\n");
 		}
+		$self->{global_start_time} = time();
 		foreach my $table (@ordered_tables) {
 
 			if ($self->{file_per_table} && !$self->{pg_dsn}) {
@@ -4876,7 +4877,7 @@ LANGUAGE plpgsql ;
 					my $dt = $last_end_time - $first_start_time;
 					$dt ||= 1;
 					my $rps = int(($total_record || $global_count) / $dt);
-					print STDERR $self->progress_bar(($total_record || $global_count), $global_rows, 25, '=', 'rows', "on total estimated data ($dt sec., avg: $rps recs/sec)"), "\r";
+					print STDERR $self->progress_bar(($total_record || $global_count), $self->{global_rows}, 25, '=', 'rows', "on total estimated data ($dt sec., avg: $rps recs/sec)"), "\r";
 				}
 			}
 		}
@@ -10352,6 +10353,10 @@ sub ask_for_data
 			}
 			usleep(500000);
 		}
+		if (defined $pipe) {
+			my $t_time = time();
+			$pipe->print("TABLE EXPORT ENDED: $table, end: $t_time, report all parts\n");
+		}
 	} else {
 		my $total_record = $self->_extract_data($query, $table, $cmd_head, $cmd_foot, $s_out, $nn, $tt, $sprep, $stt, $part_name);
 		# Only useful for single process
@@ -10498,7 +10503,11 @@ sub _extract_data
 
 	# Send current table in progress
 	if (defined $pipe) {
-		$pipe->print("TABLE EXPORT IN PROGESS: $table, start: $start_time, rows $total_row\n");
+		if ($proc ne '') {
+			$pipe->print("TABLE EXPORT IN PROGESS: $table-part-$proc, start: $start_time, rows $total_row\n");
+		} else {
+			$pipe->print("TABLE EXPORT IN PROGESS: $table, start: $start_time, rows $total_row\n");
+		}
 	}
 
 	my @params = ();
@@ -10521,6 +10530,7 @@ sub _extract_data
 		}
 		my $has_blob = 0;
 		$has_blob = 1 if (grep(/LOB/, @$stt));
+
 		if (!$has_blob || $self->{no_lob_locator}) {
 
 			while ( my $rows = $sth->fetchall_arrayref(undef,$data_limit)) {
@@ -10536,6 +10546,7 @@ sub _extract_data
 				}
 
 				$total_record += @$rows;
+				$self->{current_total_row} += @$rows;
 
 				if ( ($self->{jobs} > 1) || ($self->{oracle_copies} > 1) ) {
 					while ($self->{child_count} >= $self->{jobs}) {
@@ -10547,12 +10558,13 @@ sub _extract_data
 						usleep(50000);
 					}
 					spawn sub {
-						$self->_dump_to_pg($rows, $table, $cmd_head, $cmd_foot, $s_out, $tt, $sprep, $stt, $start_time, $part_name, $total_record, %user_type);
+						$self->_dump_to_pg($proc, $rows, $table, $cmd_head, $cmd_foot, $s_out, $tt, $sprep, $stt, $start_time, $part_name, $total_record, %user_type);
 					};
 					$self->{child_count}++;
 				} else {
-					$self->_dump_to_pg($rows, $table, $cmd_head, $cmd_foot, $s_out, $tt, $sprep, $stt, $start_time, $part_name, $total_record, %user_type);
+					$self->_dump_to_pg($proc, $rows, $table, $cmd_head, $cmd_foot, $s_out, $tt, $sprep, $stt, $start_time, $part_name, $total_record, %user_type);
 				}
+
 
 			}
 
@@ -10616,6 +10628,7 @@ sub _extract_data
 				}
 				push(@rows, [@row]);
 				$total_record++;
+				$self->{current_total_row}++;
 
 				if ($#rows == $data_limit) {
 					if ( ($self->{jobs} > 1) || ($self->{oracle_copies} > 1) ) {
@@ -10628,11 +10641,11 @@ sub _extract_data
 							usleep(50000);
 						}
 						spawn sub {
-							$self->_dump_to_pg(\@rows, $table, $cmd_head, $cmd_foot, $s_out, $tt, $sprep, $stt, $start_time, $part_name, $total_record, %user_type);
+							$self->_dump_to_pg($proc, \@rows, $table, $cmd_head, $cmd_foot, $s_out, $tt, $sprep, $stt, $start_time, $part_name, $total_record, %user_type);
 						};
 						$self->{child_count}++;
 					} else {
-						$self->_dump_to_pg(\@rows, $table, $cmd_head, $cmd_foot, $s_out, $tt, $sprep, $stt, $start_time, $part_name, $total_record, %user_type);
+						$self->_dump_to_pg($proc, \@rows, $table, $cmd_head, $cmd_foot, $s_out, $tt, $sprep, $stt, $start_time, $part_name, $total_record, %user_type);
 					}
 					@rows = ();
 				}
@@ -10647,11 +10660,11 @@ sub _extract_data
 					usleep(50000);
 				}
 				spawn sub {
-					$self->_dump_to_pg(\@rows, $table, $cmd_head, $cmd_foot, $s_out, $tt, $sprep, $stt, $start_time, $part_name, $total_record, %user_type);
+					$self->_dump_to_pg($proc, \@rows, $table, $cmd_head, $cmd_foot, $s_out, $tt, $sprep, $stt, $start_time, $part_name, $total_record, %user_type);
 				};
 				$self->{child_count}++;
 			} else {
-				$self->_dump_to_pg(\@rows, $table, $cmd_head, $cmd_foot, $s_out, $tt, $sprep, $stt, $start_time, $part_name, $total_record, %user_type);
+				$self->_dump_to_pg($proc, \@rows, $table, $cmd_head, $cmd_foot, $s_out, $tt, $sprep, $stt, $start_time, $part_name, $total_record, %user_type);
 			}
 			@rows = ();
 
@@ -10667,6 +10680,7 @@ sub _extract_data
 			if ($num_row == $self->{data_limit}) {
 				$num_row  = 0;
 				$total_record += @rows;
+				$self->{current_total_row} += @rows;
 				if ( ($self->{parallel_tables} > 1) || (($self->{oracle_copies} > 1) && $self->{defined_pk}{"\L$table\E"}) ) {
 					my $max_jobs = $self->{jobs};
 					while ($self->{child_count} >= $max_jobs) {
@@ -10678,11 +10692,11 @@ sub _extract_data
 						usleep(50000);
 					}
 					spawn sub {
-						$self->_dump_to_pg(\@rows, $table, $cmd_head, $cmd_foot, $s_out, $tt, $sprep, $stt, $start_time, $part_name, $total_record, %user_type);
+						$self->_dump_to_pg($proc, \@rows, $table, $cmd_head, $cmd_foot, $s_out, $tt, $sprep, $stt, $start_time, $part_name, $total_record, %user_type);
 					};
 					$self->{child_count}++;
 				} else {
-					$self->_dump_to_pg(\@rows, $table, $cmd_head, $cmd_foot, $s_out, $tt, $sprep, $stt, $start_time, $part_name, $total_record, %user_type);
+					$self->_dump_to_pg($proc, \@rows, $table, $cmd_head, $cmd_foot, $s_out, $tt, $sprep, $stt, $start_time, $part_name, $total_record, %user_type);
 				}
 				@rows = ();
 			}
@@ -10690,6 +10704,7 @@ sub _extract_data
 
 		if (@rows) {
 			$total_record += @rows;
+			$self->{current_total_row} += @rows;
 			if ( ($self->{parallel_tables} > 1) || (($self->{oracle_copies} > 1) && $self->{defined_pk}{"\L$table\E"}) ) {
 				my $max_jobs = $self->{jobs};
 				while ($self->{child_count} >= $max_jobs) {
@@ -10701,11 +10716,11 @@ sub _extract_data
 					usleep(50000);
 				}
 				spawn sub {
-					$self->_dump_to_pg(\@rows, $table, $cmd_head, $cmd_foot, $s_out, $tt, $sprep, $stt, $start_time, $part_name, $total_record, %user_type);
+					$self->_dump_to_pg($proc, \@rows, $table, $cmd_head, $cmd_foot, $s_out, $tt, $sprep, $stt, $start_time, $part_name, $total_record, %user_type);
 				};
 				$self->{child_count}++;
 			} else {
-				$self->_dump_to_pg( \@rows, $table, $cmd_head, $cmd_foot, $s_out, $tt, $sprep, $stt, $start_time, $part_name, $total_record, %user_type);
+				$self->_dump_to_pg($proc, \@rows, $table, $cmd_head, $cmd_foot, $s_out, $tt, $sprep, $stt, $start_time, $part_name, $total_record, %user_type);
 			}
 
 		}
@@ -10714,7 +10729,11 @@ sub _extract_data
 	$sth->finish();
 
 	if ( ($self->{jobs} <= 1) && ($self->{oracle_copies} <= 1) && ($self->{parallel_tables} <= 1)) {
+		my $end_time = time();
+		my $dt = $end_time - $self->{global_start_time};
+		my $rps = int($self->{current_total_row} / ($dt||1));
 		print STDERR "\n";
+		print STDERR $self->progress_bar($self->{current_total_row}, $self->{global_rows}, 25, '=', 'total rows', "- ($dt sec., avg: $rps recs/sec).") . "\n";
 	}
 
 	# Wait for all child end
@@ -10729,7 +10748,11 @@ sub _extract_data
 
 	if (defined $pipe) {
 		my $t_time = time();
-		$pipe->print("TABLE EXPORT ENDED: $table, end: $t_time, rows $total_record\n");
+		if ($proc ne '') {
+			$pipe->print("TABLE EXPORT ENDED: $table-part-$proc, end: $t_time, rows $total_record\n");
+		} else {
+			$pipe->print("TABLE EXPORT ENDED: $table, end: $t_time, rows $total_record\n");
+		}
 	}
 
 	$dbh->disconnect() if ($dbh);
@@ -10777,7 +10800,7 @@ sub log_error_insert
 
 sub _dump_to_pg
 {
-	my ($self, $rows, $table, $cmd_head, $cmd_foot, $s_out, $tt, $sprep, $stt, $ora_start_time, $part_name, $glob_total_record, %user_type) = @_;
+	my ($self, $procnum, $rows, $table, $cmd_head, $cmd_foot, $s_out, $tt, $sprep, $stt, $ora_start_time, $part_name, $glob_total_record, %user_type) = @_;
 
 	my @tempfiles = ();
 
@@ -10970,7 +10993,11 @@ sub _dump_to_pg
 	if (!$self->{quiet} && !$self->{debug}) {
 		# Send current table in progress
 		if (defined $pipe) {
-			$pipe->print("CHUNK $$ DUMPED: $table, time: $end_time, rows $tt_record\n");
+			if ($procnum ne '') {
+				$pipe->print("CHUNK $$ DUMPED: $table-part-$procnum, time: $end_time, rows $tt_record\n");
+			} else {
+				$pipe->print("CHUNK $$ DUMPED: $table, time: $end_time, rows $tt_record\n");
+			}
 		} else {
 			print STDERR $self->progress_bar($glob_total_record, $total_row, 25, '=', 'rows', "Table $table ($rps recs/sec)"), "\r";
 		}
@@ -12954,7 +12981,6 @@ sub multiprocess_progressbar
 
 	# Terminate the process when we doesn't read the complete file but must exit
 	local $SIG{USR1} = sub {
-		print STDERR "\n";
 		if ($global_line_counter) {
 			my $end_time = time();
 			my $dt = $end_time - $global_start_time;
@@ -12970,47 +12996,88 @@ sub multiprocess_progressbar
 		chomp($r);
 		# When quit is received, then exit immediatly
 		last if ($r eq 'quit');
+
+		# Store data export start time
 		if ($r =~ /^GLOBAL EXPORT START TIME: (\d+)/) {
+
 			$global_start_time = $1;
+
+		# Store total number of tuples exported
 		} elsif ($r =~ /^GLOBAL EXPORT ROW NUMBER: (\d+)/) {
+
 			$total_rows = $1;
+
+		# A table export is starting (can be called multiple time with -J option)
 		} elsif ($r =~ /TABLE EXPORT IN PROGESS: (.*?), start: (\d+), rows (\d+)/) {
-			$table_progress{$1}{start} = $2;
-			$table_progress{$1}{rows} = $3;
+
+			$table_progress{$1}{start} = $2 if (!exists $table_progress{$1}{start});
+			$table_progress{$1}{rows} = $3  if (!exists $table_progress{$1}{rows});
+
+		# A table export is ending
 		} elsif ($r =~ /TABLE EXPORT ENDED: (.*?), end: (\d+), rows (\d+)/) {
+			# Store timestamp at end of table export
 			$table_progress{$1}{end} = $2;
-			$table_progress{$1}{rows} = $3;
-			$table_progress{$1}{start} = $table_progress{$1}{end} if (!$table_progress{$1}{start});
+
+			# Stores total number of rows exported when we do not used chunk of data
+			if (!exists $table_progress{$1}{progress}) {
+				$table_progress{$1}{progress} = $3;
+				$global_line_counter += $3;
+			}
+
+			# Display table progression
 			my $dt = $table_progress{$1}{end} - $table_progress{$1}{start};
 			my $rps = int($table_progress{$1}{progress}/ ($dt||1));
 			print STDERR $self->progress_bar($table_progress{$1}{progress}, $table_progress{$1}{rows}, 25, '=', 'rows', "Table $1 ($dt sec., $rps recs/sec)") . "\n";
-			delete $table_progress{$1};
+			# Display global export progression
 			my $cur_time = time();
-			$dt = $cur_time - $last_refresh;
-			$rps = int($refresh_rows/ ($dt || 1));
+			$dt = $cur_time - $global_start_time;
+			$rps = int($global_line_counter/ ($dt || 1));
+			print STDERR $self->progress_bar($global_line_counter, $total_rows, 25, '=', 'total rows', "- ($dt sec., avg: $rps recs/sec), $1 in progress.") . "\r";
 			$last_refresh = $cur_time;
-			$refresh_rows = 0;
-			print STDERR $self->progress_bar($global_line_counter, $total_rows, 25, '=', 'rows', "on total estimated data ($rps recs/sec)") . "\r";
+
+		# A chunk of DATA_LIMIT row is exported
 		} elsif ($r =~ /CHUNK \d+ DUMPED: (.*?), time: (\d+), rows (\d+)/) {
+
 			$table_progress{$1}{progress} += $3;
-			$refresh_rows +=  $3;
-			#$table_progress{$1}{chunk}{end} = $2;
 			$global_line_counter += $3;
 			my $cur_time = time();
 			if ($cur_time >= ($last_refresh + $refresh_time)) {
-				my $dt = $cur_time - $last_refresh;
-				my $rps = int($refresh_rows/ ($dt || 1));
+				my $dt = $cur_time - $global_start_time;
+				my $rps = int($global_line_counter/ ($dt || 1));
+				print STDERR $self->progress_bar($global_line_counter, $total_rows, 25, '=', 'total rows', "- ($dt sec., avg: $rps recs/sec), $1 in progress.") . "\r";
 				$last_refresh = $cur_time;
-				$refresh_rows = 0;
-				print STDERR $self->progress_bar($global_line_counter, $total_rows, 25, '=', 'rows', "on total estimated data ($rps recs/sec)") . "\r";
 			}
+
+		# A table export is ending
+		} elsif ($r =~ /TABLE EXPORT ENDED: (.*?), end: (\d+), report all parts/) {
+
+			# Store timestamp at end of table export
+			$table_progress{$1}{end} = $2;
+
+			# Get all statistics from multiple Oracle query
+			for (my $i = 0; $i < $self->{oracle_copies}; $i++) {
+				$table_progress{$1}{start} = $table_progress{"$1-part-$i"}{start} if (!exists $table_progress{$1}{start});
+				$table_progress{$1}{rows} += $table_progress{"$1-part-$i"}{rows};
+				delete $table_progress{"$1-part-$i"};
+			}
+
+			# Stores total number of rows exported when we do not used chunk of data
+			if (!exists $table_progress{$1}{progress}) {
+				$table_progress{$1}{progress} = $3;
+				$global_line_counter += $3;
+			}
+
+			# Display table progression
+			my $dt = $table_progress{$1}{end} - $table_progress{$1}{start};
+			my $rps = int($table_progress{$1}{rows}/ ($dt||1));
+			print STDERR $self->progress_bar($table_progress{$1}{rows}, $table_progress{$1}{rows}, 25, '=', 'rows', "Table $1 ($dt sec., $rps recs/sec)") . "\n";
+
 		} else {
 			print "PROGRESS BAR ERROR (unrecognized line sent to pipe): $r\n";
 		}
 
 	}
 
-	print STDERR "\n";
 	if ($global_line_counter) {
 		my $end_time = time();
 		my $dt = $end_time - $global_start_time;
