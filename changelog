@@ -49,6 +49,7 @@ There is a new configuration directive or change default behavior:
   * Add missing documentation about DISABLE_PARTITION directive used
     to not reproduce partitioning into PostgreSQL and only export
     partitioned data into the main table.
+  * Show partition name in progress bar instead of main table name.
 
 Here is the complete list of other changes:
 
