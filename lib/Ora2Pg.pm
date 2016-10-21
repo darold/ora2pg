@@ -41,7 +41,7 @@ use File::Temp qw/ tempfile /;
 #set locale to LC_NUMERIC C
 setlocale(LC_NUMERIC,"C");
 
-$VERSION = '17.5';
+$VERSION = '17.5b';
 $PSQL = $ENV{PLSQL} || 'psql';
 
 $| = 1;
@@ -2906,6 +2906,7 @@ sub _export_table_data
 			}
 		}
 	} else {
+
 		$total_record = $self->_dump_table($dirprefix, $sql_header, $table);
 	}
 
@@ -10354,8 +10355,9 @@ sub ask_for_data
 			usleep(500000);
 		}
 		if (defined $pipe) {
+			my $t_name = $part_name || $table;
 			my $t_time = time();
-			$pipe->print("TABLE EXPORT ENDED: $table, end: $t_time, report all parts\n");
+			$pipe->print("TABLE EXPORT ENDED: $t_name, end: $t_time, report all parts\n");
 		}
 	} else {
 		my $total_record = $self->_extract_data($query, $table, $cmd_head, $cmd_foot, $s_out, $nn, $tt, $sprep, $stt, $part_name);
@@ -10503,10 +10505,11 @@ sub _extract_data
 
 	# Send current table in progress
 	if (defined $pipe) {
+		my $t_name = $part_name || $table;
 		if ($proc ne '') {
-			$pipe->print("TABLE EXPORT IN PROGESS: $table-part-$proc, start: $start_time, rows $total_row\n");
+			$pipe->print("TABLE EXPORT IN PROGESS: $t_name-part-$proc, start: $start_time, rows $total_row\n");
 		} else {
-			$pipe->print("TABLE EXPORT IN PROGESS: $table, start: $start_time, rows $total_row\n");
+			$pipe->print("TABLE EXPORT IN PROGESS: $t_name, start: $start_time, rows $total_row\n");
 		}
 	}
 
@@ -10747,11 +10750,12 @@ sub _extract_data
 	}
 
 	if (defined $pipe) {
+		my $t_name = $part_name || $table;
 		my $t_time = time();
 		if ($proc ne '') {
-			$pipe->print("TABLE EXPORT ENDED: $table-part-$proc, end: $t_time, rows $total_record\n");
+			$pipe->print("TABLE EXPORT ENDED: $t_name-part-$proc, end: $t_time, rows $total_record\n");
 		} else {
-			$pipe->print("TABLE EXPORT ENDED: $table, end: $t_time, rows $total_record\n");
+			$pipe->print("TABLE EXPORT ENDED: $t_name, end: $t_time, rows $total_record\n");
 		}
 	}
 
@@ -10990,19 +10994,20 @@ sub _dump_to_pg
 	$ora_start_time = $end_time if (!$ora_start_time);
 	my $dt = $end_time - $ora_start_time;
 	my $rps = int($glob_total_record / ($dt||1));
+	my $t_name = $part_name || $table;
 	if (!$self->{quiet} && !$self->{debug}) {
 		# Send current table in progress
 		if (defined $pipe) {
 			if ($procnum ne '') {
-				$pipe->print("CHUNK $$ DUMPED: $table-part-$procnum, time: $end_time, rows $tt_record\n");
+				$pipe->print("CHUNK $$ DUMPED: $t_name-part-$procnum, time: $end_time, rows $tt_record\n");
 			} else {
-				$pipe->print("CHUNK $$ DUMPED: $table, time: $end_time, rows $tt_record\n");
+				$pipe->print("CHUNK $$ DUMPED: $t_name, time: $end_time, rows $tt_record\n");
 			}
 		} else {
-			print STDERR $self->progress_bar($glob_total_record, $total_row, 25, '=', 'rows', "Table $table ($rps recs/sec)"), "\r";
+			print STDERR $self->progress_bar($glob_total_record, $total_row, 25, '=', 'rows', "Table $t_name ($rps recs/sec)"), "\r";
 		}
 	} elsif ($self->{debug}) {
-		$self->logit("Extracted records from table $table: total_records = $glob_total_record (avg: $rps recs/sec)\n", 1);
+		$self->logit("Extracted records from table $t_name: total_records = $glob_total_record (avg: $rps recs/sec)\n", 1);
 	}
 
 	if ($^O !~ /MSWin32|dos/i) {
@@ -13015,6 +13020,7 @@ sub multiprocess_progressbar
 
 		# A table export is ending
 		} elsif ($r =~ /TABLE EXPORT ENDED: (.*?), end: (\d+), rows (\d+)/) {
+
 			# Store timestamp at end of table export
 			$table_progress{$1}{end} = $2;
 
