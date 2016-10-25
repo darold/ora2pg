@@ -5570,7 +5570,7 @@ CREATE TRIGGER ${table}_trigger_insert
 				}
 			} elsif ( grep(/^$table$/i, keys %{$self->{external_table}}) ) {
 				$sql_output .= ") SERVER \L$self->{external_table}{$table}{directory}\E OPTIONS(filename '$self->{external_table}{$table}{directory_path}$self->{external_table}{$table}{location}', format 'csv', delimiter '$self->{external_table}{$table}{delimiter}');\n";
-			} elsif ($self->{is_mysql} && $self->{tables}{$table}{table_info}{connection}) {
+			} elsif ($self->{is_mysql}) {
 				my $schem = "dbname '$self->{schema}'," if ($self->{schema});
 				my $r_server = $self->{fdw_server};
 				my $r_table = $table;
