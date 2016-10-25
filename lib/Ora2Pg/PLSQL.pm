@@ -668,6 +668,7 @@ sub replace_decode
 			$case_str .= 'END';
 			$str_decode[-1] = $case_str;
 		}
+		$decode_idx++;
 	}
 	while ($str =~ /DECODE%(\d+)%/) {
 		$decode_idx = $1;
