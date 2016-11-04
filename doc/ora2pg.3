@@ -124,7 +124,7 @@
 .\" ========================================================================
 .\"
 .IX Title "ORA2PG 1"
-.TH ORA2PG 1 "2016-09-23" "perl v5.14.2" "User Contributed Perl Documentation"
+.TH ORA2PG 1 "2016-11-04" "perl v5.14.2" "User Contributed Perl Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -1273,6 +1273,20 @@ Enable this directive to rename all indexes using tablename_columns_names.
 Could be very useful for database that have multiple time the same index name
 or that use the same name than a table, which is not allowed by PostgreSQL
 Disabled by default.
+.IP "\s-1USE_INDEX_OPCLASS\s0" 4
+.IX Item "USE_INDEX_OPCLASS"
+Operator classes text_pattern_ops, varchar_pattern_ops, and bpchar_pattern_ops
+support B\-tree indexes on the corresponding types. The difference from the
+default operator classes is that the values are compared strictly character by
+character rather than according to the locale-specific collation rules. This
+makes these operator classes suitable for use by queries involving pattern
+matching expressions (\s-1LIKE\s0 or \s-1POSIX\s0 regular expressions) when the database
+does not use the standard \*(L"C\*(R" locale. If you enable, with value 1, this will
+force Ora2Pg to export all indexes defined on \fIvarchar2()\fR and \fIchar()\fR columns
+using those operators. If you set it to a value greater than 1 it will only
+change indexes on columns where the charactere limit is greater or equal than
+this value. For example, set it to 128 to create these kind of indexes on
+columns of type varchar2(N) where N >= 128.
 .IP "\s-1PREFIX_PARTITION\s0" 4
 .IX Item "PREFIX_PARTITION"
 Enable this directive if you want that your partition table name will be

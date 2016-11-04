@@ -1136,6 +1136,21 @@ Could be very useful for database that have multiple time the same index name
 or that use the same name than a table, which is not allowed by PostgreSQL
 Disabled by default.
 
+=item USE_INDEX_OPCLASS
+
+Operator classes text_pattern_ops, varchar_pattern_ops, and bpchar_pattern_ops
+support B-tree indexes on the corresponding types. The difference from the
+default operator classes is that the values are compared strictly character by
+character rather than according to the locale-specific collation rules. This
+makes these operator classes suitable for use by queries involving pattern
+matching expressions (LIKE or POSIX regular expressions) when the database
+does not use the standard "C" locale. If you enable, with value 1, this will
+force Ora2Pg to export all indexes defined on varchar2() and char() columns
+using those operators. If you set it to a value greater than 1 it will only
+change indexes on columns where the charactere limit is greater or equal than
+this value. For example, set it to 128 to create these kind of indexes on
+columns of type varchar2(N) where N >= 128.
+
 =item PREFIX_PARTITION
 
 Enable this directive if you want that your partition table name will be

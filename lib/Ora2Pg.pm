@@ -41,7 +41,7 @@ use File::Temp qw/ tempfile /;
 #set locale to LC_NUMERIC C
 setlocale(LC_NUMERIC,"C");
 
-$VERSION = '17.5b';
+$VERSION = '17.6b';
 $PSQL = $ENV{PLSQL} || 'psql';
 
 $| = 1;
@@ -870,6 +870,8 @@ sub _init
 	if (not defined $self->{indexes_renaming} || $self->{indexes_renaming} != 0) {
 		$self->{indexes_renaming} = 1;
 	}
+	# Don't use *_pattern_ops with indexes by default
+	$self->{use_index_opclass} ||= 0;
 
 	# Autodetect spatial type
 	$self->{autodetect_spatial_type} ||= 0;
@@ -5906,6 +5908,29 @@ sub _create_indexes
 			}
 		}
 
+		# Add index opclass if required and type allow it
+		my %opclass_type = ();
+		if ($self->{use_index_opclass}) {
+			my $i = 0;
+			for (my $j = 0; $j <= $#{$indexes{$idx}}; $j++) {
+				if (exists $self->{tables}{$tbsaved}{column_info}{uc($indexes{$idx}->[$j])}) {
+					my $d = $self->{tables}{$tbsaved}{column_info}{uc($indexes{$idx}->[$j])};
+					$d->[2] =~ s/\D//g;
+					if ( (($self->{use_index_opclass} == 1) || ($self->{use_index_opclass} <= $d->[2])) && ($d->[1] =~ /VARCHAR/)) {
+						my $typ = $self->_sql_type($d->[1], $d->[2], $d->[5], $d->[6]);
+						$typ =~ s/\(.*//;
+						if ($typ =~ /varchar/) {
+							$typ = ' varchar_pattern_ops';
+						} elsif ($typ =~ /text/) {
+							$typ = ' text_pattern_ops';
+						} elsif ($typ =~ /char/) {
+							$typ = ' bpchar_pattern_ops';
+						}
+						$opclass_type{$indexes{$idx}->[$j]} = "$indexes{$idx}->[$j] $typ";
+					}
+				}
+			}
+		}
 		# Add parentheses to index column definition when a space is found
 		if (!$self->{input_file}) {
 			for ($i = 0; $i <= $#{$indexes{$idx}}; $i++) {
@@ -5914,7 +5939,12 @@ sub _create_indexes
 				}
 			}
 		}
-		my $columns = join(',', @{$indexes{$idx}});
+		my $columns = '';
+		foreach (@{$indexes{$idx}}) {
+			$columns .= ((exists $opclass_type{$_}) ? $opclass_type{$_} : $_) . ", ";
+		}
+		$columns =~ s/, $//;
+		$columns =~ s/\s+/ /g;
 		my $colscompare = $columns;
 		$colscompare =~ s/"//gs;
 		my $columnlist = '';
@@ -5961,17 +5991,16 @@ sub _create_indexes
 			}
 			$idxname = $self->quote_object_name($idxname);
 			if ($self->{indexes_renaming}) {
-				map { s/"//g; } @{$indexes{$idx}};
 				if ($table =~ /^([^\.]+)\.(.*)$/) {
 					$schm = $1;
 					$idxname = $2;
 				} else {
 					$idxname = $table;
 				}
-				my @collist = @{$indexes{$idx}};
-				# Remove DESC and parenthesys
-				map { s/\s*(.*?)\s+DESC\s*/$1/i; } @collist;
 				$idxname =~ s/"//g;
+				my @collist = @{$indexes{$idx}};
+				# Remove double quote, DESC and parenthesys
+				map { s/"//g; s/.*\(([^\)]+)\).*/$1/; s/\s+DESC//i; } @collist;
 				$idxname = $self->quote_object_name($idxname . '_' . join('_', @collist));
 				$idxname =~ s/\s+//g;
 				if ($self->{indexes_suffix}) {
