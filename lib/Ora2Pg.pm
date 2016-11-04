@@ -6014,10 +6014,10 @@ sub _create_indexes
 				$str .= "CREATE INDEX$concurrently \L$idxname$self->{indexes_suffix}\E ON $table USING gist($columns)";
 			} elsif ($self->{bitmap_as_gin} && $self->{tables}{$tbsaved}{idx_type}{$idx}{type_name} eq 'BITMAP') {
 				$str .= "CREATE INDEX$concurrently \L$idxname$self->{indexes_suffix}\E ON $table USING gin($columns)";
-			} elsif ($self->{tables}{$tbsaved}{idx_type}{$idx}{type_name} =~ /FULLTEXT/) {
+			} elsif ($self->{tables}{$tbsaved}{idx_type}{$idx}{type_name} =~ /FULLTEXT|CONTEXT/) {
 				map { s/"//g; } @{$indexes{$idx}};
 				my $newcolname = $self->quote_object_name(join('_', @{$indexes{$idx}}));
-				$str .= "ALTER TABLE $table ADD COLUMN tsv_" . substr($newcolname,0,59) . " tsvector;\n";
+				$str .= "\nALTER TABLE $table ADD COLUMN tsv_" . substr($newcolname,0,59) . " tsvector;\n";
 				my $fctname = $self->quote_object_name($table.'_' . join('_', @{$indexes{$idx}}));
 				$fctname = "tsv_${table}_" . substr($newcolname,0,59-(length($table)+1));
 				my $trig_name = "trig_tsv_${table}_" . substr($newcolname,0,54-(length($table)+1));
@@ -6026,16 +6026,23 @@ sub _create_indexes
 				my $weight = 'A';
 				foreach my $col (@{$indexes{$idx}}) {
 					$contruct_vector .= "\t\tsetweight(to_tsvector('pg_catalog.english', coalesce(new.$col,'')), '$weight') ||\n";
-					$update_vector .= " setweight(to_tsvector('pg_catalog.english', coalesce(new.$col,'')), '$weight') ||";
+					$update_vector .= " setweight(to_tsvector('pg_catalog.english', coalesce($col,'')), '$weight') ||";
 					$weight++;
 				}
 				$contruct_vector =~ s/\|\|$/;/s;
 				$update_vector =~ s/\|\|$/;/s;
 
-				$str .= qq{CREATE FUNCTION $fctname() RETURNS trigger AS \$\$
+				$str .= qq{
+-- When the data migration is done without trigger, create tsvector data for all the existing records
+UPDATE $table SET tsv_$newcolname = $update_vector
+
+-- Trigger used to keep fts field up to date
+CREATE FUNCTION $fctname() RETURNS trigger AS \$\$
 BEGIN
-	new.$newcolname :=
+	IF TG_OP = 'INSERT' OR new.$newcolname != old.$newcolname THEN
+		new.tsv_$newcolname :=
 $contruct_vector
+	END IF;
 	return new;
 END
 \$\$ LANGUAGE plpgsql;
@@ -6043,9 +6050,6 @@ END
 CREATE TRIGGER $trig_name BEFORE INSERT OR UPDATE
   ON $table
   FOR EACH ROW EXECUTE PROCEDURE $fctname();
-
--- When the data migration is done without trigger, create tsvector data for all the existing records
--- UPDATE $table SET $newcolname = $update_vector
 
 };
 				$str .= "CREATE$unique INDEX$concurrently \L$idxname$self->{indexes_suffix}\E ON $table USING gin(tsv_$newcolname)";
@@ -7662,7 +7666,7 @@ END
 	} else {
 		# an 8i database.
 		$sth = $self->{dbh}->prepare(<<END) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-SELECT DISTINCT A.INDEX_NAME,A.COLUMN_NAME,B.UNIQUENESS,A.COLUMN_POSITION,B.INDEX_TYPE,B.TABLE_TYPE,B.GENERATED,A.TABLE_NAME,A.INDEX_OWNER,B.TABLESPACE_NAME,B.ITYP_NAME,B.PARAMETERS,A.DESCEND
+SELECT DISTINCT A.INDEX_NAME,A.COLUMN_NAME,B.UNIQUENESS,A.COLUMN_POSITION,B.INDEX_TYPE,B.TABLE_TYPE,B.GENERATED, A.TABLE_NAME,A.INDEX_OWNER,B.TABLESPACE_NAME,B.ITYP_NAME,B.PARAMETERS,A.DESCEND
 FROM $self->{prefix}_IND_COLUMNS A, $self->{prefix}_INDEXES B
 WHERE B.INDEX_NAME=A.INDEX_NAME $condition
 AND$generated B.TEMPORARY <> 'Y'
@@ -7671,6 +7675,7 @@ END
 	}
 
 	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+
 	my $idxnc = qq{SELECT IE.COLUMN_EXPRESSION FROM $self->{prefix}_IND_EXPRESSIONS IE, $self->{prefix}_IND_COLUMNS IC
 WHERE  IE.INDEX_OWNER = IC.INDEX_OWNER
 AND    IE.INDEX_NAME = IC.INDEX_NAME
@@ -7726,6 +7731,7 @@ AND    IC.TABLE_OWNER = ?
 			$row->[4] =~ s/FUNCTION-BASED\s*//;
 		}
 
+		$idx_type{$row->[-6]}{$row->[0]}{type_name} = $row->[-3];
 		if (($#{$row} > 6) && ($row->[7] eq 'Y')) {
 			$idx_type{$row->[-6]}{$row->[0]}{type} = $row->[4] . ' JOIN';
 		} else {
@@ -7733,7 +7739,6 @@ AND    IC.TABLE_OWNER = ?
 		}
 		if ($row->[-3] =~ /SPATIAL_INDEX/) {
 			$idx_type{$row->[-6]}{$row->[0]}{type} = 'SPATIAL INDEX';
-			$idx_type{$row->[-6]}{$row->[0]}{type_name} = $row->[-3];
 			if ($row->[-2] =~ /layer_gtype=([^\s,]+)/i) {
 				$idx_type{$row->[-5]}{$row->[0]}{type_constraint} = uc($1);
 			}
@@ -7743,7 +7748,6 @@ AND    IC.TABLE_OWNER = ?
 		}
 		if ($row->[4] eq 'BITMAP') {
 			$idx_type{$row->[-6]}{$row->[0]}{type} = $row->[4];
-			$idx_type{$row->[-6]}{$row->[0]}{type_name} = $row->[4];
 		}
 		push(@{$data{$row->[-6]}{$row->[0]}}, $row->[1]);
 		$index_tablespace{$row->[-6]}{$row->[0]} = $row->[-4];
