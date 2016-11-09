@@ -6022,7 +6022,7 @@ sub _create_indexes
 				$fctname = "tsv_${table}_" . substr($newcolname,0,59-(length($table)+1));
 				my $trig_name = "trig_tsv_${table}_" . substr($newcolname,0,54-(length($table)+1));
 				my $contruct_vector =  '';
-				my $uptdate_vector =  '';
+				my $update_vector =  '';
 				my $weight = 'A';
 				foreach my $col (@{$indexes{$idx}}) {
 					$contruct_vector .= "\t\tsetweight(to_tsvector('pg_catalog.english', coalesce(new.$col,'')), '$weight') ||\n";
@@ -7394,7 +7394,7 @@ sub _foreign_key
 		$condition2 .= "AND OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "') ";
 	}
 	$condition2 .= $self->limit_to_objects('TABLE','TABLE_NAME');
-	$condition2 =~ s/^AND //;
+	#$condition2 =~ s/^AND //;
 
 	my $deferrable = $self->{fkey_deferrable} ? "'DEFERRABLE' AS DEFERRABLE" : "DEFERRABLE";
 	my $defer = $self->{fkey_deferrable} ? "'DEFERRABLE' AS DEFERRABLE" : "CONS.DEFERRABLE";
@@ -7409,9 +7409,9 @@ SELECT
     COLS_R.COLUMN_NAME R_COLUMN_NAME,
     CONS.SEARCH_CONDITION,CONS.DELETE_RULE,$defer,CONS.DEFERRED,CONS.OWNER,CONS.R_OWNER,COLS.POSITION,COLS_R.POSITION
 FROM $self->{prefix}_CONSTRAINTS CONS
-    LEFT JOIN $self->{prefix}_CONS_COLUMNS COLS ON COLS.CONSTRAINT_NAME = CONS.CONSTRAINT_NAME
-    LEFT JOIN $self->{prefix}_CONSTRAINTS CONS_R ON CONS_R.CONSTRAINT_NAME = CONS.R_CONSTRAINT_NAME
-    LEFT JOIN $self->{prefix}_CONS_COLUMNS COLS_R ON COLS_R.CONSTRAINT_NAME = CONS.R_CONSTRAINT_NAME AND COLS_R.POSITION=COLS.POSITION
+    LEFT JOIN $self->{prefix}_CONS_COLUMNS COLS ON (COLS.CONSTRAINT_NAME = CONS.CONSTRAINT_NAME AND COLS.OWNER = CONS.OWNER AND COLS.TABLE_NAME = CONS.TABLE_NAME)
+    LEFT JOIN $self->{prefix}_CONSTRAINTS CONS_R ON (CONS_R.CONSTRAINT_NAME = CONS.R_CONSTRAINT_NAME AND CONS_R.OWNER = CONS.OWNER)
+    LEFT JOIN $self->{prefix}_CONS_COLUMNS COLS_R ON (COLS_R.CONSTRAINT_NAME = CONS.R_CONSTRAINT_NAME AND COLS_R.POSITION=COLS.POSITION AND COLS_R.OWNER = COLS.OWNER)
 WHERE CONS.CONSTRAINT_TYPE = 'R' $condition
 ORDER BY CONS.TABLE_NAME, CONS.CONSTRAINT_NAME, COLS.POSITION
 END
@@ -7641,7 +7641,7 @@ sub _get_indexes
 
 	my $sub_owner = '';
 	if ($owner) {
-		$sub_owner = "AND OWNER=B.TABLE_OWNER";
+		$sub_owner = "AND A.INDEX_OWNER=B.TABLE_OWNER";
 	}
 
 	my $condition = '';
@@ -7659,7 +7659,7 @@ sub _get_indexes
 		$sth = $self->{dbh}->prepare(<<END) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 SELECT DISTINCT A.INDEX_NAME,A.COLUMN_NAME,B.UNIQUENESS,A.COLUMN_POSITION,B.INDEX_TYPE,B.TABLE_TYPE,B.GENERATED,B.JOIN_INDEX,A.TABLE_NAME,A.INDEX_OWNER,B.TABLESPACE_NAME,B.ITYP_NAME,B.PARAMETERS,A.DESCEND
 FROM $self->{prefix}_IND_COLUMNS A
-JOIN $self->{prefix}_INDEXES B ON (B.INDEX_NAME=A.INDEX_NAME)
+JOIN $self->{prefix}_INDEXES B ON (B.INDEX_NAME=A.INDEX_NAME AND B.OWNER=A.INDEX_OWNER)
 WHERE$generated B.TEMPORARY <> 'Y' $condition
 ORDER BY A.COLUMN_POSITION
 END
@@ -7668,7 +7668,7 @@ END
 		$sth = $self->{dbh}->prepare(<<END) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 SELECT DISTINCT A.INDEX_NAME,A.COLUMN_NAME,B.UNIQUENESS,A.COLUMN_POSITION,B.INDEX_TYPE,B.TABLE_TYPE,B.GENERATED, A.TABLE_NAME,A.INDEX_OWNER,B.TABLESPACE_NAME,B.ITYP_NAME,B.PARAMETERS,A.DESCEND
 FROM $self->{prefix}_IND_COLUMNS A, $self->{prefix}_INDEXES B
-WHERE B.INDEX_NAME=A.INDEX_NAME $condition
+WHERE B.INDEX_NAME=A.INDEX_NAME AND B.OWNER=A.INDEX_OWNER $condition
 AND$generated B.TEMPORARY <> 'Y'
 ORDER BY $self->{prefix}_IND_COLUMNS.COLUMN_POSITION
 END
