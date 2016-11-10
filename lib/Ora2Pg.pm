@@ -2711,6 +2711,17 @@ sub _materialized_views
 		$i++;
 	}
 
+	# Retrieve index informations
+	my ($uniqueness, $indexes, $idx_type, $idx_tbsp) = $self->_get_indexes('',$self->{schema});
+	foreach my $tb (keys %{$indexes}) {
+		next if (!exists $self->{materialized_views}{$tb});
+		%{$self->{materialized_views}{$tb}{indexes}} = %{$indexes->{$tb}};
+	}
+	foreach my $tb (keys %{$idx_type}) {
+		next if (!exists $self->{materialized_views}{$tb});
+		%{$self->{materialized_views}{$tb}{idx_type}} = %{$idx_type->{$tb}};
+	}
+
 }
 
 =head2 _tablespaces
@@ -3278,7 +3289,10 @@ LANGUAGE plpgsql ;
 					if ($self->{materialized_views}{$view}{build_mode} eq 'DEFERRED') {
 						$sql_output .= " WITH NO DATA";
 					}
-					$sql_output .= ";\n\n";
+					$sql_output .= ";\n";
+					# Set the index definition
+                                        $sql_output .= $self->_create_indexes($view, %{$self->{materialized_views}{$view}{indexes}});
+					$sql_output .= "\n\n";
 				}
 			}
 			if ($self->{force_owner}) {
