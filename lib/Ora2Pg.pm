@@ -8912,6 +8912,7 @@ sub _get_synonyms
 
 	my %synonyms = ();
 	while (my $row = $sth->fetch) {
+		next if ($row->[1] =~ /^\//); # Some not fully deleted synonym start with a slash
 		if (!$self->{schema} && $self->{export_schema}) {
 			$row->[1] = "$row->[0].$row->[1]";
 		}
