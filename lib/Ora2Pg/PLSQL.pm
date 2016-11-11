@@ -401,26 +401,6 @@ sub plsql_to_plpgsql
 	$str =~ s/\braise_application_error\s*\(\s*[^,]+\s*,\s*(.*?)\);/RAISE EXCEPTION '%', $1;/igs;
 	$str =~ s/DBMS_STANDARD\.RAISE EXCEPTION/RAISE EXCEPTION/igs;
 
-	# and then rewrite RAISE EXCEPTION concatenations
-#	while ($str =~ /RAISE EXCEPTION\s*([^;\|]+?)(\|\|)([^;]*);/) {
-#		my @ctt = split(/\|\|/, "$1$2$3");
-#		my $sbt = '';
-#		my @args = '';
-#		for (my $i = 0; $i <= $#ctt; $i++) {
-#			if (($ctt[$i] =~ s/^\s*'//s) && ($ctt[$i] =~ s/'\s*$//s)) {
-#				$sbt .= "$ctt[$i]";
-#			} else {
-#				$sbt .= '%';
-#				push(@args, $ctt[$i]);
-#			}
-#		}
-#		$sbt = "'$sbt'";
-#		if ($#args >= 0) {
-#			$sbt = $sbt . join(',', @args);
-#		}
-#		$str =~ s/RAISE EXCEPTION\s*([^;\|]+?)(\|\|)([^;]*);/RAISE EXCEPTION $sbt;/is
-#	};
-
 	# Remove IN information from cursor declaration
 	while ($str =~ s/(\bCURSOR\b[^\(]+)\(([^\)]+\bIN\b[^\)]+)\)/$1\(\%\%CURSORREPLACE\%\%\)/is) {
 		my $args = $2;
@@ -618,14 +598,6 @@ sub plsql_to_plpgsql
 	$str =~ s/\%\%XMLELEMENT(\d+)\%\%/$xmlelt[$1]/igs;
 	@xmlelt = ();
 
-	####
-	# Search direct call to function to add PERFORM before
-	####
-#	foreach my $f (@{$class->{function_list}}) {
-#		$str =~ s/(?<!=|,)([;\s]+)$f\s*\(/$1PERFORM \L$f\E\(/igs;
-#		$str =~ s/(SELECT|PERFORM)(\s+)PERFORM/$1$2/igs;
-#	}
-
 	##############
 	# Replace package.function call by package_function
 	##############
@@ -641,6 +613,9 @@ sub plsql_to_plpgsql
 		}
 		$str =~ s/\%TEXTVALUE-(\d+)\%/'$text_values[$1]'/gs;
 	}
+
+	# Replace call to trim into btrim
+	$str =~ s/\bTRIM\(([^\(\)]+)\)/btrim($1)/igs;
 
 	return $str;
 }
