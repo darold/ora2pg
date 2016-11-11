@@ -3291,8 +3291,8 @@ LANGUAGE plpgsql ;
 					}
 					$sql_output .= ";\n";
 					# Set the index definition
-                                        $sql_output .= $self->_create_indexes($view, %{$self->{materialized_views}{$view}{indexes}});
-					$sql_output .= "\n\n";
+                                        my ($idx, $fts_idx) = $self->_create_indexes($view, 0, %{$self->{materialized_views}{$view}{indexes}});
+					$sql_output .= "$idx$fts_idx\n\n";
 				}
 			}
 			if ($self->{force_owner}) {
@@ -4987,7 +4987,7 @@ LANGUAGE plpgsql ;
 			if ($self->{drop_indexes}) {
 				my @create_all = ();
 				$self->logit("Restoring indexes of table $table...\n", 1);
-				push(@create_all, $self->_create_indexes($table, %{$self->{tables}{$table}{indexes}}));
+				push(@create_all, $self->_create_indexes($table, 1, %{$self->{tables}{$table}{indexes}}));
 				if ($#create_all >= 0) {
 					foreach my $str (@create_all) {
 						chomp($str);
@@ -5382,8 +5382,10 @@ CREATE TRIGGER ${table}_trigger_insert
 		$constraints .= $self->set_search_path();
 	}
 	my $indices = '';
+	my $fts_indices = '';
 	if ($self->{file_per_index}) {
 		$indices .= $self->set_search_path();
+		$fts_indices .= $self->set_search_path();
 	}
 
 	# Find first the total number of tables
@@ -5662,11 +5664,15 @@ CREATE TRIGGER ${table}_trigger_insert
 				$constraints = '';
 			}
 
-			# Set the index definition
-			$indices .= $self->_create_indexes($table, %{$self->{tables}{$table}{indexes}}) . "\n";
+			# Set the indexes definition
+			my ($idx, $fts_idx) = $self->_create_indexes($table, 0, %{$self->{tables}{$table}{indexes}});
+			$indices .= "$idx\n" if ($idx);
+			$fts_indices .= "$fts_idx\n" if ($fts_idx);
 			if (!$self->{file_per_index}) {
 				$sql_output .= $indices;
 				$indices = '';
+				$sql_output .= $fts_indices;
+				$fts_indices = '';
 			}
 		}
 		$ib++;
@@ -5680,9 +5686,19 @@ CREATE TRIGGER ${table}_trigger_insert
 		$self->logit("Dumping indexes to one separate file : INDEXES_$self->{output}\n", 1);
 		$fhdl = $self->open_export_file("INDEXES_$self->{output}");
 		$indices = "-- Nothing found of type indexes\n" if (!$indices);
+		$indices =~ s/\n+/\n/gs;
 		$self->dump($sql_header . $indices, $fhdl);
 		$self->close_export_file($fhdl);
 		$indices = '';
+		if ($fts_indices) {
+			$fts_indices =~ s/\n+/\n/gs;
+			# FTS TRIGGERS are exported in a separated file to be able to parallelyze index creation
+			$self->logit("Dumping triggers for FTS indexes to one separate file : FTS_TRIGGERS_$self->{output}\n", 1);
+			$fhdl = $self->open_export_file("FTS_TRIGGERS_$self->{output}");
+			$self->dump($sql_header . $fts_indices, $fhdl);
+			$self->close_export_file($fhdl);
+			$fts_indices = '';
+		}
 	}
 
 	# Dumping foreign key constraints
@@ -5886,16 +5902,18 @@ sub _column_comments
 =head2 _create_indexes
 
 This function return SQL code to create indexes of a table
+and triggers to create for FTS indexes.
 
 =cut
 sub _create_indexes
 {
-	my ($self, $table, %indexes) = @_;
+	my ($self, $table, $indexonly, %indexes) = @_;
 
 	my $tbsaved = $table;
 
 	$table = $self->get_replaced_tbname($table);
 	my @out = ();
+	my @fts_out = ();
 	# Set the index definition
 	foreach my $idx (keys %indexes) {
 
@@ -5987,6 +6005,7 @@ sub _create_indexes
 			my $unique = '';
 			$unique = ' UNIQUE' if ($self->{tables}{$tbsaved}{uniqueness}{$idx} eq 'UNIQUE');
 			my $str = '';
+			my $fts_str = '';
 			my $concurrently = '';
 			if ($self->{tables}{$tbsaved}{concurrently}{$idx}) {
 				$concurrently = ' CONCURRENTLY';
@@ -6031,7 +6050,7 @@ sub _create_indexes
 			} elsif ($self->{tables}{$tbsaved}{idx_type}{$idx}{type_name} =~ /FULLTEXT|CONTEXT/) {
 				map { s/"//g; } @{$indexes{$idx}};
 				my $newcolname = $self->quote_object_name(join('_', @{$indexes{$idx}}));
-				$str .= "\nALTER TABLE $table ADD COLUMN tsv_" . substr($newcolname,0,59) . " tsvector;\n";
+				$fts_str .= "\nALTER TABLE $table ADD COLUMN tsv_" . substr($newcolname,0,59) . " tsvector;\n";
 				my $fctname = $self->quote_object_name($table.'_' . join('_', @{$indexes{$idx}}));
 				$fctname = "tsv_${table}_" . substr($newcolname,0,59-(length($table)+1));
 				my $trig_name = "trig_tsv_${table}_" . substr($newcolname,0,54-(length($table)+1));
@@ -6046,7 +6065,7 @@ sub _create_indexes
 				$contruct_vector =~ s/\|\|$/;/s;
 				$update_vector =~ s/\|\|$/;/s;
 
-				$str .= qq{
+				$fts_str .= qq{
 -- When the data migration is done without trigger, create tsvector data for all the existing records
 UPDATE $table SET tsv_$newcolname = $update_vector
 
@@ -6065,7 +6084,7 @@ CREATE TRIGGER $trig_name BEFORE INSERT OR UPDATE
   ON $table
   FOR EACH ROW EXECUTE PROCEDURE $fctname();
 
-};
+} if (!$indexonly);
 				$str .= "CREATE$unique INDEX$concurrently \L$idxname$self->{indexes_suffix}\E ON $table USING gin(tsv_$newcolname)";
 			} elsif ($self->{tables}{$tbsaved}{idx_type}{$idx}{type} =~ /DOMAIN/i && $self->{tables}{$tbsaved}{idx_type}{$idx}{type_name} !~ /SPATIAL_INDEX/) {
 				$str .= "-- Was declared as DOMAIN index, please check for FTS adaptation if require\n";
@@ -6078,10 +6097,11 @@ CREATE TRIGGER $trig_name BEFORE INSERT OR UPDATE
 			}
 			$str .= ";";
 			push(@out, $str);
+			push(@fts_out, $fts_str);
 		}
 	}
 
-	return wantarray ? @out : join("\n", @out);
+	return $indexonly ? (@out,@fts_out) : (join("\n", @out), join("\n", @fts_out));
 }
 
 =head2 _drop_indexes
