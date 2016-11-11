@@ -6047,7 +6047,7 @@ sub _create_indexes
 				$str .= "CREATE INDEX$concurrently \L$idxname$self->{indexes_suffix}\E ON $table USING gist($columns)";
 			} elsif ($self->{bitmap_as_gin} && $self->{tables}{$tbsaved}{idx_type}{$idx}{type_name} eq 'BITMAP') {
 				$str .= "CREATE INDEX$concurrently \L$idxname$self->{indexes_suffix}\E ON $table USING gin($columns)";
-			} elsif ($self->{tables}{$tbsaved}{idx_type}{$idx}{type_name} =~ /FULLTEXT|CONTEXT/) {
+			} elsif ($self->{tables}{$tbsaved}{idx_type}{$idx}{type_name} =~ /FULLTEXT|CONTEXT|CTXCAT/) {
 				map { s/"//g; } @{$indexes{$idx}};
 				my $newcolname = $self->quote_object_name(join('_', @{$indexes{$idx}}));
 				$fts_str .= "\nALTER TABLE $table ADD COLUMN tsv_" . substr($newcolname,0,59) . " tsvector;\n";
