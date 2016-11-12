@@ -5693,8 +5693,8 @@ CREATE TRIGGER ${table}_trigger_insert
 		if ($fts_indices) {
 			$fts_indices =~ s/\n+/\n/gs;
 			# FTS TRIGGERS are exported in a separated file to be able to parallelyze index creation
-			$self->logit("Dumping triggers for FTS indexes to one separate file : FTS_TRIGGERS_$self->{output}\n", 1);
-			$fhdl = $self->open_export_file("FTS_TRIGGERS_$self->{output}");
+			$self->logit("Dumping triggers for FTS indexes to one separate file : FTS_INDEXES_$self->{output}\n", 1);
+			$fhdl = $self->open_export_file("FTS_INDEXES_$self->{output}");
 			$self->dump($sql_header . $fts_indices, $fhdl);
 			$self->close_export_file($fhdl);
 			$fts_indices = '';
@@ -6047,9 +6047,17 @@ sub _create_indexes
 				$str .= "CREATE INDEX$concurrently \L$idxname$self->{indexes_suffix}\E ON $table USING gist($columns)";
 			} elsif ($self->{bitmap_as_gin} && $self->{tables}{$tbsaved}{idx_type}{$idx}{type_name} eq 'BITMAP') {
 				$str .= "CREATE INDEX$concurrently \L$idxname$self->{indexes_suffix}\E ON $table USING gin($columns)";
-			} elsif ($self->{tables}{$tbsaved}{idx_type}{$idx}{type_name} =~ /FULLTEXT|CONTEXT|CTXCAT/) {
+			} elsif ($self->{tables}{$tbsaved}{idx_type}{$idx}{type_name} =~ /CTXCAT/) {
+				# use pg_trgm
+				my @cols = split(/\s*,\s*/, $columns);
+				$columns = join(" gin_trgm_ops, ", @cols);
+				$columns .= " gin_trgm_ops";
+				$str .= "CREATE INDEX$concurrently \L$idxname$self->{indexes_suffix}\E ON $table USING gin($columns)";
+			} elsif ($self->{tables}{$tbsaved}{idx_type}{$idx}{type_name} =~ /FULLTEXT|CONTEXT/) {
+				# use Full text search, then create dedicated column and trigger before the index.
 				map { s/"//g; } @{$indexes{$idx}};
 				my $newcolname = $self->quote_object_name(join('_', @{$indexes{$idx}}));
+				$fts_str .= "\n-- Append the FTS column to the table\n";
 				$fts_str .= "\nALTER TABLE $table ADD COLUMN tsv_" . substr($newcolname,0,59) . " tsvector;\n";
 				my $fctname = $self->quote_object_name($table.'_' . join('_', @{$indexes{$idx}}));
 				$fctname = "tsv_${table}_" . substr($newcolname,0,59-(length($table)+1));
