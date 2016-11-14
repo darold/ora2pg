@@ -460,6 +460,13 @@ sub open_export_file
 		} else {
 			$filehdl = new IO::File;
 			$filehdl->open(">$outfile") or $self->logit("FATAL: Can't open $outfile: $!\n", 0, 1);
+			# Force Perl to use utf8 I/O encoding by default
+			if ( !$self->{'binmode'} || ($self->{nls_lang} =~ /UTF8/i) ) {
+				use open ':utf8';
+				$filehdl->binmode(':utf8');
+			} elsif ($self->{'binmode'} =~ /^:/) {
+				$filehdl->binmode($self->{binmode}) or die "FATAL: can't use open layer $self->{binmode} in append_export_file()\n";
+			}
 		}
 		$filehdl->autoflush(1) if (defined $filehdl && !$self->{compress});
 	}
@@ -500,6 +507,13 @@ sub create_export_file
 		} else {
 			$self->{fhout} = new IO::File;
 			$self->{fhout}->open(">>$outfile") or $self->logit("FATAL: Can't open $outfile: $!\n", 0, 1);
+			# Force Perl to use utf8 I/O encoding by default
+			if ( !$self->{'binmode'} || ($self->{nls_lang} =~ /UTF8/i) ) {
+				use open ':utf8';
+				$self->{fhout}->binmode(':utf8');
+			} elsif ($self->{'binmode'} =~ /^:/) {
+				$self->{fhout}->binmode($self->{binmode}) or die "FATAL: can't use open layer $self->{binmode} in append_export_file()\n";
+			}
 		}
 		if ( $self->{compress} && (($self->{jobs} > 1) || ($self->{oracle_copies} > 1)) ) {
 			die "FATAL: you can't use compressed output with parallel dump\n";
@@ -550,6 +564,13 @@ sub append_export_file
 			$filehdl = new IO::File;
 			$filehdl->open(">>$outfile") or $self->logit("FATAL: Can't open $outfile: $!\n", 0, 1);
 			$filehdl->autoflush(1);
+			# Force Perl to use utf8 I/O encoding by default
+			if ( !$self->{'binmode'} || ($self->{nls_lang} =~ /UTF8/i) ) {
+				use open ':utf8';
+				$filehdl->binmode(':utf8');
+			} elsif ($self->{'binmode'} =~ /^:/) {
+				$filehdl->binmode($self->{binmode}) or die "FATAL: can't use open layer $self->{binmode} in append_export_file()\n";
+			}
 		}
 	}
 
