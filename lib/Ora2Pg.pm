@@ -1702,13 +1702,9 @@ sub _tables
 
 	# Retrieve tables informations
 	my %tables_infos = $self->_table_info();
-	if ( (($self->{type} eq 'TABLE') || ($self->{type} eq 'SHOW_REPORT')) && !$self->{skip_indices} && !$self->{skip_indexes}) {
+	if ( grep(/^$self->{type}$/, 'TABLE','SHOW_REPORT') && !$self->{skip_indices} && !$self->{skip_indexes}) {
 
 		my ($uniqueness, $indexes, $idx_type, $idx_tbsp) = $self->_get_indexes('',$self->{schema});
-		foreach my $tb (keys %{$uniqueness}) {
-			next if (!exists $tables_infos{$tb});
-			%{$self->{tables}{$tb}{uniqueness}} = %{$uniqueness->{$tb}};
-		}
 		foreach my $tb (keys %{$indexes}) {
 			next if (!exists $tables_infos{$tb});
 			%{$self->{tables}{$tb}{indexes}} = %{$indexes->{$tb}};
@@ -1717,11 +1713,16 @@ sub _tables
 			next if (!exists $tables_infos{$tb});
 			%{$self->{tables}{$tb}{idx_type}} = %{$idx_type->{$tb}};
 		}
-		foreach my $tb (keys %{$idx_tbsp}) {
-			next if (!exists $tables_infos{$tb});
-			%{$self->{tables}{$tb}{idx_tbsp}} = %{$idx_tbsp->{$tb}};
+		if (!$autogen) {
+			foreach my $tb (keys %{$idx_tbsp}) {
+				next if (!exists $tables_infos{$tb});
+				%{$self->{tables}{$tb}{idx_tbsp}} = %{$idx_tbsp->{$tb}};
+			}
+			foreach my $tb (keys %{$uniqueness}) {
+				next if (!exists $tables_infos{$tb});
+				%{$self->{tables}{$tb}{uniqueness}} = %{$uniqueness->{$tb}};
+			}
 		}
-
 	}
 
 	# Get detailed informations on each tables
@@ -4742,6 +4743,7 @@ LANGUAGE plpgsql ;
 
 			# Drop indexes if required
 			if ($self->{drop_indexes}) {
+
 				$self->logit("Dropping indexes of table $table...\n", 1);
 				my @drop_all = $self->_drop_indexes($table, %{$self->{tables}{$table}{indexes}}) . "\n";
 				foreach my $str (@drop_all) {
@@ -5559,7 +5561,7 @@ CREATE TRIGGER ${table}_trigger_insert
 				} else {
 					$sql_output .= "\t\"$fname\" $type";
 				}
-				if ($foreign && $self->is_primary_key($table, $f->[0])) {
+				if ($foreign && $self->is_primary_key_column($table, $f->[0])) {
 					 $sql_output .= " OPTIONS (key 'true')";
 				}
 				if (!$f->[3] || ($f->[3] =~ /^N/)) {
@@ -5932,6 +5934,16 @@ sub _create_indexes
 
 	my $tbsaved = $table;
 
+	my %pkcollist = ();
+	# Save the list of column for PK to check unique index that must be removed
+	foreach my $consname (keys %{$self->{tables}{$tbsaved}{unique_key}}) {
+		next if ($self->{tables}{$tbsaved}{unique_key}->{$consname}{type} ne 'P');
+		my @conscols = @{$self->{tables}{$tbsaved}{unique_key}->{$consname}{columns}};
+		# save the list of column for PK to check unique index that must be removed
+		$pkcollist{$tbsaved} = join(", ", @conscols);
+	}
+	$pkcollist{$tbsaved} =~ s/\s+/ /g;
+
 	$table = $self->get_replaced_tbname($table);
 	my @out = ();
 	my @fts_out = ();
@@ -6002,6 +6014,7 @@ sub _create_indexes
 		$colscompare =~ s/"//gs;
 		my $columnlist = '';
 		my $skip_index_creation = 0;
+
 		foreach my $consname (keys %{$self->{tables}{$tbsaved}{unique_key}}) {
 			my $constype =  $self->{tables}{$tbsaved}{unique_key}->{$consname}{type};
 			next if (($constype ne 'P') && ($constype ne 'U'));
@@ -6021,6 +6034,7 @@ sub _create_indexes
 		}
 
 		# Do not create the index if there already a constraint on the same column list
+		# or there a primary key defined on the same columns as a unique index, in both cases
 		# the index will be automatically created by PostgreSQL at constraint import time.
 		if (!$skip_index_creation) {
 			my $unique = '';
@@ -6031,6 +6045,9 @@ sub _create_indexes
 			if ($self->{tables}{$tbsaved}{concurrently}{$idx}) {
 				$concurrently = ' CONCURRENTLY';
 			}
+
+			next if ( lc($columns) eq lc($pkcollist{$tbsaved}) );
+
 			$columns = lc($columns) if (!$self->{preserve_case});
 			for ($i = 0; $i <= $#strings; $i++) {
 				$columns =~ s/\%\%string$i\%\%/'$strings[$i]'/;
@@ -6148,6 +6165,7 @@ sub _drop_indexes
 	my @out = ();
 	# Set the index definition
 	foreach my $idx (keys %indexes) {
+
 		# Cluster, bitmap join, reversed and IOT indexes will not be exported at all
 		next if ($self->{tables}{$table}{idx_type}{$idx}{type} =~ /JOIN|IOT|CLUSTER|REV/i);
 
@@ -6252,12 +6270,12 @@ sub _exportable_indexes
 }
 
 
-=head2 is_primary_key
+=head2 is_primary_key_column
 
-This function return 1 the the given column is a primary key
+This function return 1 when the specified column is a primary key
 
 =cut
-sub is_primary_key
+sub is_primary_key_column
 {
 	my ($self, $table, $col) = @_;
 
@@ -6353,6 +6371,9 @@ sub _create_unique_keys
 		my $constgen =   $unique_key->{$consname}{generated};
 		my $index_name = $unique_key->{$consname}{index_name};
 		my @conscols = @{$unique_key->{$consname}{columns}};
+		# Exclude unique index used in PK when column list is the same
+		next if (($constype eq 'U') && exists $pkcollist{$table} && ($pkcollist{$table} eq join(",", @conscols)));
+
 		my %constypenames = ('U' => 'UNIQUE', 'P' => 'PRIMARY KEY');
 		my $constypename = $constypenames{$constype};
 		for (my $i = 0; $i <= $#conscols; $i++) {
@@ -6371,6 +6392,7 @@ sub _create_unique_keys
 		if (!$self->{preserve_case}) {
 			$columnlist = lc($columnlist);
 		}
+
 		if ($columnlist) {
 			if (!$self->{keep_pkey_names} || ($constgen eq 'GENERATED NAME')) {
 				$out .= "ALTER TABLE $table ADD $constypename ($columnlist)";
@@ -7754,7 +7776,6 @@ AND    IC.TABLE_OWNER = ?
 	my %unique = ();
 	my %idx_type = ();
 	while (my $row = $sth->fetch) {
-
 		my $save_tb = $row->[-6];
 		if (!$self->{schema} && $self->{export_schema}) {
 			$row->[-6] = "$row->[-5].$row->[-6]";
@@ -11709,7 +11730,7 @@ sub _show_infos
 			}
 			%columns_infos = ();
 
-			# Retrieve index informations to look at geometry constraint
+			# Retrieve index informations
 			my ($uniqueness, $indexes, $idx_type, $idx_tbsp) = $self->_get_indexes('',$self->{schema});
 			foreach my $tb (keys %{$indexes}) {
 				next if (!exists $tables_infos{$tb});
