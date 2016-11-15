@@ -5559,6 +5559,9 @@ CREATE TRIGGER ${table}_trigger_insert
 				} else {
 					$sql_output .= "\t\"$fname\" $type";
 				}
+				if ($foreign && $self->is_primary_key($table, $f->[0])) {
+					 $sql_output .= " OPTIONS (key 'true')";
+				}
 				if (!$f->[3] || ($f->[3] =~ /^N/)) {
 					# smallserial, serial and bigserial use a NOT NULL sequence as default value,
 					# so we don't need to add it here
@@ -5589,9 +5592,6 @@ CREATE TRIGGER ${table}_trigger_insert
 							$sql_output .= " DEFAULT $f->[4]";
 						}
 					}
-				}
-				if ($foreign) {
-					 $sql_output .= " OPTIONS (key 'true')" if ($self->is_primary_key($table, $f->[0]));
 				}
 				$sql_output .= ",\n";
 			}
