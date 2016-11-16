@@ -6168,7 +6168,7 @@ sub _drop_indexes
 	my ($self, $table, %indexes) = @_;
 
 	my $tbsaved = $table;
-	$table = $self->{replaced_tables}{"\L$table\E"} if (exists $self->{replaced_tables}{"\L$table\E"});
+	$table = $self->get_replaced_tbname($table);
 
 	my @out = ();
 	# Set the index definition
