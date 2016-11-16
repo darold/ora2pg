@@ -1706,9 +1706,12 @@ sub _tables
 
 	# Retrieve tables informations
 	my %tables_infos = $self->_table_info();
-	if ( grep(/^$self->{type}$/, 'TABLE','SHOW_REPORT') && !$self->{skip_indices} && !$self->{skip_indexes}) {
+	if ( grep(/^$self->{type}$/, 'TABLE','SHOW_REPORT','COPY','INSERT') && !$self->{skip_indices} && !$self->{skip_indexes}) {
 
-		my ($uniqueness, $indexes, $idx_type, $idx_tbsp) = $self->_get_indexes('',$self->{schema});
+		my $autogen = 0;
+		$autogen = 1 if (grep(/^$self->{type}$/, 'COPY','INSERT'));
+
+		my ($uniqueness, $indexes, $idx_type, $idx_tbsp) = $self->_get_indexes('',$self->{schema}, $autogen);
 		foreach my $tb (keys %{$indexes}) {
 			next if (!exists $tables_infos{$tb});
 			%{$self->{tables}{$tb}{indexes}} = %{$indexes->{$tb}};
@@ -6090,7 +6093,7 @@ sub _create_indexes
 			} elsif ($self->{bitmap_as_gin} && $self->{tables}{$tbsaved}{idx_type}{$idx}{type_name} eq 'BITMAP') {
 				$str .= "CREATE INDEX$concurrently \L$idxname$self->{indexes_suffix}\E ON $table USING gin($columns)";
 			} elsif ( ($self->{tables}{$tbsaved}{idx_type}{$idx}{type_name} =~ /CTXCAT/) ||
-				($self->{context_as_trgm} && ($self->{tables}{$tbsaved}{idx_type}{$idx}{type_name} =~ /FULLTEXT|CONTEXT/)) {
+				($self->{context_as_trgm} && ($self->{tables}{$tbsaved}{idx_type}{$idx}{type_name} =~ /FULLTEXT|CONTEXT/)) ) {
 				# use pg_trgm
 				my @cols = split(/\s*,\s*/, $columns);
 				$columns = join(" gin_trgm_ops, ", @cols);
@@ -6165,14 +6168,14 @@ sub _drop_indexes
 	my ($self, $table, %indexes) = @_;
 
 	my $tbsaved = $table;
-	$table = $self->{replaced_tables}{"\L$table\E"};
+	$table = $self->{replaced_tables}{"\L$table\E"} if (exists $self->{replaced_tables}{"\L$table\E"});
 
 	my @out = ();
 	# Set the index definition
 	foreach my $idx (keys %indexes) {
 
 		# Cluster, bitmap join, reversed and IOT indexes will not be exported at all
-		next if ($self->{tables}{$table}{idx_type}{$idx}{type} =~ /JOIN|IOT|CLUSTER|REV/i);
+		next if ($self->{tables}{$tbsaved}{idx_type}{$idx}{type} =~ /JOIN|IOT|CLUSTER|REV/i);
 
 		map { if ($_ !~ /\(.*\)/) { s/^/"/; s/$/"/; } } @{$indexes{$idx}};
 		if (exists $self->{replaced_cols}{"\L$tbsaved\E"} && $self->{replaced_cols}{"\L$tbsaved\E"}) {
@@ -6192,8 +6195,12 @@ sub _drop_indexes
 		my $columnlist = '';
 		my $skip_index_creation = 0;
 		foreach my $consname (keys %{$self->{tables}{$table}{unique_key}}) {
+			next if ($consname ne $idx);
 			my $constype =   $self->{tables}{$table}{unique_key}->{$consname}{type};
-			next if (($constype ne 'P') && ($constype ne 'U'));
+			if ($constype eq 'P') {
+				$skip_index_creation = 1;
+				last;
+			}
 			my @conscols = @{$self->{tables}{$table}{unique_key}->{$consname}{columns}};
 			for (my $i = 0; $i <= $#conscols; $i++) {
 				# Change column names
