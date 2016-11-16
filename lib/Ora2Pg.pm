@@ -1244,6 +1244,7 @@ sub _init
 	} else {
 
 		$self->{plsql_pgsql} = 1;
+
 		if (grep(/^$self->{type}$/, 'TABLE', 'SEQUENCE', 'GRANT', 'TABLESPACE', 'VIEW', 'TRIGGER', 'QUERY', 'FUNCTION','PROCEDURE','PACKAGE','TYPE','SYNONYM', 'DIRECTORY', 'DBLINK','LOAD')) {
 			if ($self->{type} eq 'LOAD') {
 				if (!$self->{pg_dsn}) {
@@ -1713,15 +1714,13 @@ sub _tables
 			next if (!exists $tables_infos{$tb});
 			%{$self->{tables}{$tb}{idx_type}} = %{$idx_type->{$tb}};
 		}
-		if (!$autogen) {
-			foreach my $tb (keys %{$idx_tbsp}) {
-				next if (!exists $tables_infos{$tb});
-				%{$self->{tables}{$tb}{idx_tbsp}} = %{$idx_tbsp->{$tb}};
-			}
-			foreach my $tb (keys %{$uniqueness}) {
-				next if (!exists $tables_infos{$tb});
-				%{$self->{tables}{$tb}{uniqueness}} = %{$uniqueness->{$tb}};
-			}
+		foreach my $tb (keys %{$idx_tbsp}) {
+			next if (!exists $tables_infos{$tb});
+			%{$self->{tables}{$tb}{idx_tbsp}} = %{$idx_tbsp->{$tb}};
+		}
+		foreach my $tb (keys %{$uniqueness}) {
+			next if (!exists $tables_infos{$tb});
+			%{$self->{tables}{$tb}{uniqueness}} = %{$uniqueness->{$tb}};
 		}
 	}
 
@@ -3946,7 +3945,6 @@ LANGUAGE plpgsql ;
 		return;
 	}
 
-
 	# Process queries only
 	if ($self->{type} eq 'QUERY') {
 		$self->logit("Parse queries definition...\n", 1);
@@ -4086,6 +4084,7 @@ LANGUAGE plpgsql ;
 				$l =~ s/^\s*(?:EDITABLE|NONEDITABLE)?\s*(FUNCTION|PROCEDURE)/$1/i;
 				if ($l =~ /^(FUNCTION|PROCEDURE)\s+([^\s\(]+)/i) {
 					$fcnm = $2;
+					$fcnm =~ s/"//g;
 				}
 				next if (!$fcnm);
 				if ($l =~ /LANGUAGE\s+([^\s="'><\!\(\)]+)/is) {
@@ -4237,6 +4236,7 @@ LANGUAGE plpgsql ;
 				$l =~ s/^\s*(?:EDITABLE|NONEDITABLE)?\s*(FUNCTION|PROCEDURE)/$1/i;
 				if ($l =~ /^(FUNCTION|PROCEDURE)\s+([^\s\(]+)/i) {
 					$fcnm = $2;
+					$fcnm =~ s/"//g;
 				}
 				next if (!$fcnm);
 				if ($l =~ /LANGUAGE\s+([^\s="'><\!\(\)]+)/is) {
@@ -4382,6 +4382,7 @@ LANGUAGE plpgsql ;
 						$self->{packages}{"\L$1\E"}{text} .= "PACKAGE BODY $1 $l\n";
 					} elsif ($l =~ /^([^\s]+)\s+/s) {
 						my $pname = lc($1);
+						$pname =~ s/"//g;
 						$l =~ s/[\s;]+\s*$/;/gs;
 						$self->{packages}{$pname}{text} .= "PACKAGE $l\n";
 					}
