@@ -829,6 +829,9 @@ sub _init
 	# Disable copy freeze by default
 	$self->{copy_freeze} = '';
 
+	# Use FTS index to convert CONTEXT Oracle's indexes by default
+	$self->{context_as_trgm} = 0;
+
 	# Initialyze following configuration file
 	foreach my $k (sort keys %AConfig) {
 		if (lc($k) eq 'allow') {
@@ -6086,7 +6089,8 @@ sub _create_indexes
 				$str .= "CREATE INDEX$concurrently \L$idxname$self->{indexes_suffix}\E ON $table USING gist($columns)";
 			} elsif ($self->{bitmap_as_gin} && $self->{tables}{$tbsaved}{idx_type}{$idx}{type_name} eq 'BITMAP') {
 				$str .= "CREATE INDEX$concurrently \L$idxname$self->{indexes_suffix}\E ON $table USING gin($columns)";
-			} elsif ($self->{tables}{$tbsaved}{idx_type}{$idx}{type_name} =~ /CTXCAT/) {
+			} elsif ( ($self->{tables}{$tbsaved}{idx_type}{$idx}{type_name} =~ /CTXCAT/) ||
+				($self->{context_as_trgm} && ($self->{tables}{$tbsaved}{idx_type}{$idx}{type_name} =~ /FULLTEXT|CONTEXT/)) {
 				# use pg_trgm
 				my @cols = split(/\s*,\s*/, $columns);
 				$columns = join(" gin_trgm_ops, ", @cols);

@@ -260,6 +260,11 @@ REORDERING_COLUMNS	0
 # define multiple REPLACE_QUERY lines.
 #REPLACE_QUERY	EMPLOYEES[SELECT e.id,e.fisrtname,lastname FROM EMPLOYEES e JOIN EMP_UPDT u ON (e.id=u.id AND u.cdate>'2014-08-01 00:00:00')]
 
+# Force Ora2Pg to translate Oracle Text indexes into PostgreSQL indexes using
+# pg_trgm extension. Default is to translate CONTEXT indexes into FTS indexes
+# and CTXCAT indexes using pg_trgm. Most of the time using pg_trgm is enough,
+# this is why this directive stand for.
+CONTEXT_AS_TRGM		0
 
 #------------------------------------------------------------------------------
 # CONSTRAINT SECTION (Control constraints export and import behaviors)

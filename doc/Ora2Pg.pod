@@ -1013,6 +1013,13 @@ define multiple REPLACE_QUERY lines.
 
 	REPLACE_QUERY	EMPLOYEES[SELECT e.id,e.fisrtname,lastname FROM EMPLOYEES e JOIN EMP_UPDT u ON (e.id=u.id AND u.cdate>'2014-08-01 00:00:00')]
 
+=item CONTEXT_AS_TRGM
+
+Force Ora2Pg to translate Oracle Text indexes into PostgreSQL indexes using
+pg_trgm extension. Default is to translate CONTEXT indexes into FTS indexes
+and CTXCAT indexes using pg_trgm. Most of the time using pg_trgm is enough,
+this is why this directive stand for.
+
 =back
 
 =head2 Modifying object structure
@@ -1506,10 +1513,10 @@ the end of the import.
 
 =item DROP_INDEXES
 
-This direction is also introduce since version 7.0 and allow you to gain lot of
-speed improvement during data import by removing all indexes that are not an
-automatic index (ex: indexes of primary keys) and recreate them at the end of
-data import.
+This directive allow you to gain lot of speed improvement during data import
+by removing all indexes that are not an automatic index (indexes of primary
+keys) and recreate them at the end of data import. Of course it is far better
+to not import indexes and constraints before having imported all data.
 
 =item DISABLE_TRIGGERS
 
