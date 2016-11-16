@@ -2748,7 +2748,6 @@ sub _materialized_views
 		next if (!exists $self->{materialized_views}{$tb});
 		%{$self->{materialized_views}{$tb}{idx_type}} = %{$idx_type->{$tb}};
 	}
-
 }
 
 =head2 _tablespaces
@@ -3286,6 +3285,9 @@ LANGUAGE plpgsql ;
 				$sql_output .= " USING NO INDEX" if (!$self->{materialized_views}{$view}{no_index});
 				$sql_output .= ";\n\n";
 
+				# Set the index definition
+				my ($idx, $fts_idx) = $self->_create_indexes($view, 0, %{$self->{materialized_views}{$view}{indexes}});
+				$sql_output .= "$idx$fts_idx\n\n";
 			} else {
 				$self->{materialized_views}{$view}{text} = $self->_format_view($self->{materialized_views}{$view}{text});
 				if (!$self->{preserve_case}) {
@@ -5941,11 +5943,17 @@ sub _create_indexes
 
 	my $tbsaved = $table;
 
+	# The %indexes hash can be passed from table or materialized views definition
+	my $objtyp = 'tables';
+	if (!exists $self->{tables}{$tbsaved} && exists $self->{materialized_views}{$tbsaved}) {
+		$objtyp = 'materialized_views';
+	}
+
 	my %pkcollist = ();
 	# Save the list of column for PK to check unique index that must be removed
-	foreach my $consname (keys %{$self->{tables}{$tbsaved}{unique_key}}) {
-		next if ($self->{tables}{$tbsaved}{unique_key}->{$consname}{type} ne 'P');
-		my @conscols = @{$self->{tables}{$tbsaved}{unique_key}->{$consname}{columns}};
+	foreach my $consname (keys %{$self->{$objtyp}{$tbsaved}{unique_key}}) {
+		next if ($self->{$objtyp}{$tbsaved}{unique_key}->{$consname}{type} ne 'P');
+		my @conscols = @{$self->{$objtyp}{$tbsaved}{unique_key}->{$consname}{columns}};
 		# save the list of column for PK to check unique index that must be removed
 		$pkcollist{$tbsaved} = join(", ", @conscols);
 	}
@@ -5959,7 +5967,7 @@ sub _create_indexes
 
 		# Cluster, bitmap join, reversed and IOT indexes will not be exported at all
 		# Hash indexes will be exported as btree
-		next if ($self->{tables}{$tbsaved}{idx_type}{$idx}{type} =~ /JOIN|IOT|CLUSTER|REV/i);
+		next if ($self->{$objtyp}{$tbsaved}{idx_type}{$idx}{type} =~ /JOIN|IOT|CLUSTER|REV/i);
 
 		if (exists $self->{replaced_cols}{"\L$tbsaved\E"} && $self->{replaced_cols}{"\L$tbsaved\E"}) {
 			foreach my $c (keys %{$self->{replaced_cols}{"\L$tbsaved\E"}}) {
@@ -5985,8 +5993,8 @@ sub _create_indexes
 		if ($self->{use_index_opclass}) {
 			my $i = 0;
 			for (my $j = 0; $j <= $#{$indexes{$idx}}; $j++) {
-				if (exists $self->{tables}{$tbsaved}{column_info}{uc($indexes{$idx}->[$j])}) {
-					my $d = $self->{tables}{$tbsaved}{column_info}{uc($indexes{$idx}->[$j])};
+				if (exists $self->{$objtyp}{$tbsaved}{column_info}{uc($indexes{$idx}->[$j])}) {
+					my $d = $self->{$objtyp}{$tbsaved}{column_info}{uc($indexes{$idx}->[$j])};
 					$d->[2] =~ s/\D//g;
 					if ( (($self->{use_index_opclass} == 1) || ($self->{use_index_opclass} <= $d->[2])) && ($d->[1] =~ /VARCHAR/)) {
 						my $typ = $self->_sql_type($d->[1], $d->[2], $d->[5], $d->[6]);
@@ -6022,10 +6030,10 @@ sub _create_indexes
 		my $columnlist = '';
 		my $skip_index_creation = 0;
 
-		foreach my $consname (keys %{$self->{tables}{$tbsaved}{unique_key}}) {
-			my $constype =  $self->{tables}{$tbsaved}{unique_key}->{$consname}{type};
+		foreach my $consname (keys %{$self->{$objtyp}{$tbsaved}{unique_key}}) {
+			my $constype =  $self->{$objtyp}{$tbsaved}{unique_key}->{$consname}{type};
 			next if (($constype ne 'P') && ($constype ne 'U'));
-			my @conscols = @{$self->{tables}{$tbsaved}{unique_key}->{$consname}{columns}};
+			my @conscols = @{$self->{$objtyp}{$tbsaved}{unique_key}->{$consname}{columns}};
 			for ($i = 0; $i <= $#conscols; $i++) {
 				# Change column names
 				if (exists $self->{replaced_cols}{"\L$tbsaved\E"}{"\L$conscols[$i]\E"} && $self->{replaced_cols}{"\L$tbsaved\E"}{"\L$conscols[$i]\E"}) {
@@ -6045,11 +6053,11 @@ sub _create_indexes
 		# the index will be automatically created by PostgreSQL at constraint import time.
 		if (!$skip_index_creation) {
 			my $unique = '';
-			$unique = ' UNIQUE' if ($self->{tables}{$tbsaved}{uniqueness}{$idx} eq 'UNIQUE');
+			$unique = ' UNIQUE' if ($self->{$objtyp}{$tbsaved}{uniqueness}{$idx} eq 'UNIQUE');
 			my $str = '';
 			my $fts_str = '';
 			my $concurrently = '';
-			if ($self->{tables}{$tbsaved}{concurrently}{$idx}) {
+			if ($self->{$objtyp}{$tbsaved}{concurrently}{$idx}) {
 				$concurrently = ' CONCURRENTLY';
 			}
 
@@ -6088,18 +6096,18 @@ sub _create_indexes
 				}
 			}
 			$idxname = $schm . '.' . $idxname if ($schm);
-			if ($self->{tables}{$tbsaved}{idx_type}{$idx}{type_name} =~ /SPATIAL_INDEX/) {
+			if ($self->{$objtyp}{$tbsaved}{idx_type}{$idx}{type_name} =~ /SPATIAL_INDEX/) {
 				$str .= "CREATE INDEX$concurrently \L$idxname$self->{indexes_suffix}\E ON $table USING gist($columns)";
-			} elsif ($self->{bitmap_as_gin} && $self->{tables}{$tbsaved}{idx_type}{$idx}{type_name} eq 'BITMAP') {
+			} elsif ($self->{bitmap_as_gin} && $self->{$objtyp}{$tbsaved}{idx_type}{$idx}{type_name} eq 'BITMAP') {
 				$str .= "CREATE INDEX$concurrently \L$idxname$self->{indexes_suffix}\E ON $table USING gin($columns)";
-			} elsif ( ($self->{tables}{$tbsaved}{idx_type}{$idx}{type_name} =~ /CTXCAT/) ||
-				($self->{context_as_trgm} && ($self->{tables}{$tbsaved}{idx_type}{$idx}{type_name} =~ /FULLTEXT|CONTEXT/)) ) {
+			} elsif ( ($self->{$objtyp}{$tbsaved}{idx_type}{$idx}{type_name} =~ /CTXCAT/) ||
+				($self->{context_as_trgm} && ($self->{$objtyp}{$tbsaved}{idx_type}{$idx}{type_name} =~ /FULLTEXT|CONTEXT/)) ) {
 				# use pg_trgm
 				my @cols = split(/\s*,\s*/, $columns);
 				$columns = join(" gin_trgm_ops, ", @cols);
 				$columns .= " gin_trgm_ops";
 				$str .= "CREATE INDEX$concurrently \L$idxname$self->{indexes_suffix}\E ON $table USING gin($columns)";
-			} elsif ($self->{tables}{$tbsaved}{idx_type}{$idx}{type_name} =~ /FULLTEXT|CONTEXT/) {
+			} elsif ($self->{$objtyp}{$tbsaved}{idx_type}{$idx}{type_name} =~ /FULLTEXT|CONTEXT/) {
 				# use Full text search, then create dedicated column and trigger before the index.
 				map { s/"//g; } @{$indexes{$idx}};
 				my $newcolname = $self->quote_object_name(join('_', @{$indexes{$idx}}));
@@ -6139,15 +6147,19 @@ CREATE TRIGGER $trig_name BEFORE INSERT OR UPDATE
   FOR EACH ROW EXECUTE PROCEDURE $fctname();
 
 } if (!$indexonly);
-				$str .= "CREATE$unique INDEX$concurrently \L$idxname$self->{indexes_suffix}\E ON $table USING gin(tsv_$newcolname)";
-			} elsif ($self->{tables}{$tbsaved}{idx_type}{$idx}{type} =~ /DOMAIN/i && $self->{tables}{$tbsaved}{idx_type}{$idx}{type_name} !~ /SPATIAL_INDEX/) {
+				if ($objtyp eq 'tables') {
+					$str .= "CREATE$unique INDEX$concurrently \L$idxname$self->{indexes_suffix}\E ON $table USING gin(tsv_$newcolname)";
+				} else {
+					$fts_str .= "CREATE$unique INDEX$concurrently \L$idxname$self->{indexes_suffix}\E ON $table USING gin(tsv_$newcolname)";
+				}
+			} elsif ($self->{$objtyp}{$tbsaved}{idx_type}{$idx}{type} =~ /DOMAIN/i && $self->{$objtyp}{$tbsaved}{idx_type}{$idx}{type_name} !~ /SPATIAL_INDEX/) {
 				$str .= "-- Was declared as DOMAIN index, please check for FTS adaptation if require\n";
 				$str .= "-- CREATE$unique INDEX$concurrently \L$idxname$self->{indexes_suffix}\E ON $table ($columns)";
 			} else {
 				$str .= "CREATE$unique INDEX$concurrently \L$idxname$self->{indexes_suffix}\E ON $table ($columns)";
 			}
-			if ($self->{use_tablespace} && $self->{tables}{$tbsaved}{idx_tbsp}{$idx} && !grep(/^$self->{tables}{$tbsaved}{idx_tbsp}{$idx}$/i, @{$self->{default_tablespaces}})) {
-				$str .= " TABLESPACE $self->{tables}{$tbsaved}{idx_tbsp}{$idx}";
+			if ($self->{use_tablespace} && $self->{$objtyp}{$tbsaved}{idx_tbsp}{$idx} && !grep(/^$self->{$objtyp}{$tbsaved}{idx_tbsp}{$idx}$/i, @{$self->{default_tablespaces}})) {
+				$str .= " TABLESPACE $self->{$objtyp}{$tbsaved}{idx_tbsp}{$idx}";
 			}
 			$str .= ";";
 			push(@out, $str);
