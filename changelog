@@ -1,3 +1,70 @@
+2016 11 17 - v17.6
+
+This release adds several new features:
+
+  * Adds export of Oracle Text Indexes into FTS or pg_trgm
+    based indexes,
+  * Add export of indexes defined on materialized views
+  * Allow export of materialized views as foreign tables
+    when export type is FDW.
+  * Add replacement of trim() by btrim().
+
+Two new configuration directives have been added:
+
+  * USE_INDEX_OPCLASS: when value is set to 1, this will force
+    Ora2Pg to export all indexes defined on varchar2() and char()
+    columns using *_pattern_ops operators. If you set it to a value
+    greater than 1 it will only change indexes on columns where the
+    character limit is greater or equal than this value.
+
+  * CONTEXT_AS_TRGM: when enabled it forces Ora2Pg to translate
+    Oracle Text indexes into PostgreSQL indexes using pg_trgm
+    extension. Default is to translate CONTEXT indexes into FTS
+    indexes and CTXCAT indexes using pg_trgm. Some time using
+    pg_trgm based indexes is enough.
+
+There's also some fixes of issues reported by users, here is the
+complete list of changes:
+
+  - Fixed non-use of custom temp_dir (-T). Thanks to Sebastian
+    Albert for the patch.
+  - Make export of FTS indexes from materialized view work as
+    for tables.
+  - Fix drop of indexes during export of data when DROP_INDEXES
+    is enabled.
+  - Remove double quote in function and procedure name from an input
+    file to avoid creating a file with double quote in its name.
+  - Fix export of unique index associated to a primary key.
+  - Move OPTION (key "yes") of FDW table before NOT NUL constraint
+    and default clause.
+  - Fix some encoding issue during data export into file.
+  - Rename FTS indexes prefix output file into FTS_INDEXES and
+    export CTXCAT Oracle indexes as GIN pg_trgm indexes instead of
+    FTS indexes.
+  - Add export of indexes of type CTXCAT as FTS indexes.
+  - Export triggers and update order for FTS indexes to separate file
+    prefixed with FTS_INDEXES.
+  - Exclude from export synonyms starting with a slash that correspond
+    to incomplete deleted synonyms. Thanks to Nouredine Mallem for the
+    report.
+  - Add export of indexes defined on materialized views. Thanks to
+    Nouredine Mallem for the report.
+  - Fix export of foreign key and FTS indexes when looking at dba_*
+    tables and multiple different schemas have the same fk or context
+    indexes definition. Thanks to Nouredine Mallemfor the patch.
+  - Fix export of CONTEXT or FULLTEXT Oracle index into PostgreSQL
+    FTS with trigger and initial update statement.
+  - Add configuration directive USE_INDEX_OPCLASS to force Ora2Pg to
+    export all indexes defined on varchar2() and char() columns using
+    those operators. A value greater than 1 will only change indexes
+    on columns where the character limit is greater or equal than
+    this value.
+  - Fix FDW export of mysql tables. Thanks to yafeishi for the report.
+  - Fix decode() rewrite. Thanks to Jean-Yves Julliot for the report.
+  - Fix regression introduced into the export of NUMBER to integer
+    like PG types.
+  - Show partition name in progress bar instead of main table name.
+
 2016 10 20 - v17.5
 
 This is a maintenance release to fix several issues reported by users.
@@ -201,7 +268,7 @@ Here is the complete list of other changes:
   - Fix debug mode that was interromping the last running table dump.
     Thanks to calbiston for the report.
 
-2016 04 21 - v17.5
+2016 04 21 - v17.6
 
 Errata in first release attempt.
 
@@ -233,7 +300,7 @@ Here is the complete list of other changes:
     import. Thanks to Guillaume Lelarge for the report.
   - Fix Makefile.PL to used with latest spec file from Devrim Gündüz
     and following the advice of calbiston.
-  - Update spec file to v17.5 and latest change to Makefile.PL
+  - Update spec file to v17.6 and latest change to Makefile.PL
   - Replace ora2pg.spec by postgressql.org spec file by Devrim Gunduz.
   - Generate man page to avoids rpmbuild error.
   - Fix Windows install. Thanks to Lorena Figueredo for the report.

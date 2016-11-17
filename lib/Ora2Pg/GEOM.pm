@@ -40,7 +40,7 @@ use vars qw($VERSION);
 
 use strict;
 
-$VERSION = '17.5';
+$VERSION = '17.6';
 
 # SDO_ETYPE
 # Second element of triplet in SDO_ELEM_INFO

@@ -31,7 +31,7 @@ use POSIX qw(locale_h);
 setlocale(LC_NUMERIC,"C");
 
 
-$VERSION = '17.5';
+$VERSION = '17.6';
 
 #----------------------------------------------------
 # Cost scores used when converting PLSQL to PLPGSQL
