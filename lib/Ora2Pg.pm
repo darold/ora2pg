@@ -774,6 +774,9 @@ sub _init
 {
 	my ($self, %options) = @_;
 
+	# Use custom temp directory if specified
+	$TMP_DIR = $options{temp_dir} || $TMP_DIR;
+
 	# Read configuration file
 	$self->read_config($options{config}) if ($options{config});
 
