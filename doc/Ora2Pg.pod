@@ -1020,6 +1020,19 @@ pg_trgm extension. Default is to translate CONTEXT indexes into FTS indexes
 and CTXCAT indexes using pg_trgm. Most of the time using pg_trgm is enough,
 this is why this directive stand for.
 
+=item FTS_INDEX_ONLY
+
+By default Ora2Pg creates an extra tsvector column with a dedicated triggers
+for FTS indexes. Enable this directive if you just want a function-based
+index like:
+
+	CREATE INDEX ON t_document USING gin(to_tsvector('pg_catalog.english', title));
+
+=item FTS_CONFIG
+
+Use this directive to change default text search config: pg_catalog.english
+used with FTS to_tsvector() function. For example, set it to pg_catalog.french
+
 =back
 
 =head2 Modifying object structure

@@ -834,6 +834,8 @@ sub _init
 
 	# Use FTS index to convert CONTEXT Oracle's indexes by default
 	$self->{context_as_trgm} = 0;
+	$self->{fts_index_only}  = 0;
+	$self->{fts_config}      = 'pg_catalog.english';
 
 	# Initialyze following configuration file
 	foreach my $k (sort keys %AConfig) {
@@ -6110,7 +6112,12 @@ sub _create_indexes
 				$columns = join(" gin_trgm_ops, ", @cols);
 				$columns .= " gin_trgm_ops";
 				$str .= "CREATE INDEX$concurrently \L$idxname$self->{indexes_suffix}\E ON $table USING gin($columns)";
-			} elsif ($self->{$objtyp}{$tbsaved}{idx_type}{$idx}{type_name} =~ /FULLTEXT|CONTEXT/) {
+			} elsif (($self->{$objtyp}{$tbsaved}{idx_type}{$idx}{type_name} =~ /FULLTEXT|CONTEXT/) && $self->{fts_index_only}) {
+				# use function-based index
+				my @cols = split(/\s*,\s*/, $columns);
+				$columns = "to_tsvector('$self->{fts_config}', " . join("||' '||", @cols) . ")";
+				$fts_str .= "CREATE INDEX$concurrently \L$idxname$self->{indexes_suffix}\E ON $table USING gin($columns);\n";
+			} elsif (($self->{$objtyp}{$tbsaved}{idx_type}{$idx}{type_name} =~ /FULLTEXT|CONTEXT/) && !$self->{fts_index_only}) {
 				# use Full text search, then create dedicated column and trigger before the index.
 				map { s/"//g; } @{$indexes{$idx}};
 				my $newcolname = $self->quote_object_name(join('_', @{$indexes{$idx}}));
@@ -6123,8 +6130,8 @@ sub _create_indexes
 				my $update_vector =  '';
 				my $weight = 'A';
 				foreach my $col (@{$indexes{$idx}}) {
-					$contruct_vector .= "\t\tsetweight(to_tsvector('pg_catalog.english', coalesce(new.$col,'')), '$weight') ||\n";
-					$update_vector .= " setweight(to_tsvector('pg_catalog.english', coalesce($col,'')), '$weight') ||";
+					$contruct_vector .= "\t\tsetweight(to_tsvector('$self->{fts_config}', coalesce(new.$col,'')), '$weight') ||\n";
+					$update_vector .= " setweight(to_tsvector('$self->{fts_config}', coalesce($col,'')), '$weight') ||";
 					$weight++;
 				}
 				$contruct_vector =~ s/\|\|$/;/s;
