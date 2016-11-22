@@ -460,13 +460,6 @@ sub open_export_file
 		} else {
 			$filehdl = new IO::File;
 			$filehdl->open(">$outfile") or $self->logit("FATAL: Can't open $outfile: $!\n", 0, 1);
-			# Force Perl to use utf8 I/O encoding by default
-			if ( !$self->{'binmode'} || ($self->{nls_lang} =~ /UTF8/i) ) {
-				use open ':utf8';
-				$filehdl->binmode(':utf8');
-			} elsif ($self->{'binmode'} =~ /^:/) {
-				$filehdl->binmode($self->{binmode}) or die "FATAL: can't use open layer $self->{binmode} in append_export_file()\n";
-			}
 		}
 		$filehdl->autoflush(1) if (defined $filehdl && !$self->{compress});
 	}
@@ -507,13 +500,6 @@ sub create_export_file
 		} else {
 			$self->{fhout} = new IO::File;
 			$self->{fhout}->open(">>$outfile") or $self->logit("FATAL: Can't open $outfile: $!\n", 0, 1);
-			# Force Perl to use utf8 I/O encoding by default
-			if ( !$self->{'binmode'} || ($self->{nls_lang} =~ /UTF8/i) ) {
-				use open ':utf8';
-				$self->{fhout}->binmode(':utf8');
-			} elsif ($self->{'binmode'} =~ /^:/) {
-				$self->{fhout}->binmode($self->{binmode}) or die "FATAL: can't use open layer $self->{binmode} in append_export_file()\n";
-			}
 		}
 		if ( $self->{compress} && (($self->{jobs} > 1) || ($self->{oracle_copies} > 1)) ) {
 			die "FATAL: you can't use compressed output with parallel dump\n";
@@ -564,13 +550,6 @@ sub append_export_file
 			$filehdl = new IO::File;
 			$filehdl->open(">>$outfile") or $self->logit("FATAL: Can't open $outfile: $!\n", 0, 1);
 			$filehdl->autoflush(1);
-			# Force Perl to use utf8 I/O encoding by default
-			if ( !$self->{'binmode'} || ($self->{nls_lang} =~ /UTF8/i) ) {
-				use open ':utf8';
-				$filehdl->binmode(':utf8');
-			} elsif ($self->{'binmode'} =~ /^:/) {
-				$filehdl->binmode($self->{binmode}) or die "FATAL: can't use open layer $self->{binmode} in append_export_file()\n";
-			}
 		}
 	}
 
@@ -10927,13 +10906,14 @@ sub log_error_copy
 	}
 	$outfile .= $table . '_error.log';
 
-	open(OUTERROR, ">>$outfile") or $self->logit("FATAL: can not write to $outfile, $!\n", 0, 1);
-	print OUTERROR "$s_out";
+	my $filehdl = new IO::File;
+	$filehdl->open(">>$outfile") or $self->logit("FATAL: Can't write to $outfile: $!\n", 0, 1);
+	$filehdl->print($s_out);
 	foreach my $row (@$rows) {
-		print OUTERROR join("\t", @$row), "\n";
+		$filehdl->print(join("\t", @$row) . "\n");
 	}
-	print OUTERROR "\\.\n";
-	close(OUTERROR);
+	$filehdl->print("\\.\n");
+	$filehdl->close();
 
 }
 
@@ -10947,9 +10927,10 @@ sub log_error_insert
 	}
 	$outfile .= $table . '_error.log';
 
-	open(OUTERROR, ">>$outfile") or $self->logit("FATAL: can not write to $outfile, $!\n", 0, 1);
-	print OUTERROR "$sql_out\n";
-	close(OUTERROR);
+	my $filehdl = new IO::File;
+	$filehdl->open(">>$outfile") or $self->logit("FATAL: Can't write to $outfile: $!\n", 0, 1);
+	$filehdl->print("$sql_out\n");
+	$filehdl->close();
 
 }
 
