@@ -108,7 +108,7 @@ INSTALLATION
     to a host with the psql client installed. If you prefer to load export
     'on the fly', the perl module DBD::Pg is required.
 
-    Ora2Pg allow to dump all output int a compressed gzip file, to do that
+    Ora2Pg allow to dump all output in a compressed gzip file, to do that
     you need the Compress::Zlib Perl module or if you prefer using bzip2
     compression, the program bzip2 must be available in your PATH.
 
@@ -1888,7 +1888,7 @@ CONFIGURATION
             CREATE VIEW mviewname_mview AS
             SELECT ... FROM ...;
 
-            SELECT create_materialized_view('mviewname','mviewname_mview', change with the name of the colum to used for the index);
+            SELECT create_materialized_view('mviewname','mviewname_mview', change with the name of the column to used for the index);
 
     The first argument is the name of the materialized view, the second the
     name of the view on which the materialized view is based and the third
@@ -2246,7 +2246,7 @@ CONFIGURATION
 
     need to be "translated" into a table using BLOB as follow:
 
-            CREATE TABLE test_blob (id NUMNER, c1 BLOB);
+            CREATE TABLE test_blob (id NUMBER, c1 BLOB);
 
     And then copy the data with the following INSERT query:
 

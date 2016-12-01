@@ -234,7 +234,7 @@ host running Ora2Pg you can always transfer these files to a host with the psql
 client installed. If you prefer to load export 'on the fly', the perl module
 DBD::Pg is required.
 .PP
-Ora2Pg allow to dump all output int a compressed gzip file, to do that you need
+Ora2Pg allow to dump all output in a compressed gzip file, to do that you need
 the Compress::Zlib Perl module or if you prefer using bzip2 compression, the
 program bzip2 must be available in your \s-1PATH\s0.
 .SS "Installing Ora2Pg"
@@ -2027,7 +2027,7 @@ then it adds the \s-1SQL\s0 code to create the view and the materialized view:
 \&        CREATE VIEW mviewname_mview AS
 \&        SELECT ... FROM ...;
 \&
-\&        SELECT create_materialized_view(\*(Aqmviewname\*(Aq,\*(Aqmviewname_mview\*(Aq, change with the name of the colum to used for the index);
+\&        SELECT create_materialized_view(\*(Aqmviewname\*(Aq,\*(Aqmviewname_mview\*(Aq, change with the name of the column to used for the index);
 .Ve
 .PP
 The first argument is the name of the materialized view, the second the name of the view on which the materialized view is based
@@ -2405,7 +2405,7 @@ Oracle table:
 need to be \*(L"translated\*(R" into a table using \s-1BLOB\s0 as follow:
 .PP
 .Vb 1
-\&        CREATE TABLE test_blob (id NUMNER, c1 BLOB);
+\&        CREATE TABLE test_blob (id NUMBER, c1 BLOB);
 .Ve
 .PP
 And then copy the data with the following \s-1INSERT\s0 query:
