@@ -21,7 +21,7 @@ database.
 
 Ora2Pg consist of a Perl script (ora2pg) and a Perl module (Ora2Pg.pm), the
 only thing you have to modify is the configuration file ora2pg.conf by setting
-the DSN to the Oracle database and optionaly the name of a schema. Once that's
+the DSN to the Oracle database and optionally the name of a schema. Once that's
 done you just have to set the type of export you want: TABLE with constraints,
 VIEW, MVIEW, TABLESPACE, SEQUENCE, INDEXES, TRIGGER, GRANT, FUNCTION, PROCEDURE,
 PACKAGE, PARTITION, TYPE, INSERT or COPY, FDW, QUERY, KETTLE, SYNONYM.
@@ -66,7 +66,7 @@ Features included:
 Ora2Pg do its best to automatically convert your Oracle database to PostgreSQL
 but there's still manual works to do. The Oracle specific PL/SQL code generated
 for functions, procedures, packages and triggers has to be reviewed to match
-the PostgreSQL syntax. You will find some useful recommandations on porting
+the PostgreSQL syntax. You will find some useful recommendations on porting
 Oracle PL/SQL code to PostgreSQL PL/PGSQL at "Converting from other Databases
 to PostgreSQL", section: Oracle (http://wiki.postgresql.org/wiki/Main_Page).
 
@@ -109,7 +109,7 @@ host running Ora2Pg you can always transfer these files to a host with the psql
 client installed. If you prefer to load export 'on the fly', the perl module
 DBD::Pg is required.
 
-Ora2Pg allow to dump all output int a compressed gzip file, to do that you need
+Ora2Pg allow to dump all output in a compressed gzip file, to do that you need
 the Compress::Zlib Perl module or if you prefer using bzip2 compression, the
 program bzip2 must be available in your PATH.
 
@@ -193,7 +193,7 @@ There's no specific order to place the configuration directives, they are
 set at the time they are read in the configuration file.
 
 For configuration directives that just take a single value, you can use them
-multiple time in the configuration file but only the last occurence found
+multiple time in the configuration file but only the last occurrence found
 in the file will be used. For configuration directives that allow a list
 of value, you can use it multiple time, the values will be appended to the
 list. If you use the IMPORT directive to load a custom configuration file,
@@ -298,7 +298,7 @@ process have been interrupted and you've got the warning message:
     "WARNING: an error occurs during data export. Please check what's happen."
 Most of the time this is an OOM issue, you might first reduce DATA_LIMIT value.
 
-For developpers, it is possible to add your own custom option(s) in the Perl
+For developers, it is possible to add your own custom option(s) in the Perl
 script ora2pg as any configuration directive from ora2pg.conf can be passed
 in lower case to the new Ora2Pg object instance. See ora2pg code on how to
 add your own option.
@@ -434,7 +434,7 @@ This directive did not control the Oracle database connection or unless it
 purely disable the use of any Oracle database by accepting a file as argument.
 Set this directive to a file containing PL/SQL Oracle Code like function,
 procedure or full package body to prevent Ora2Pg from connecting to an
-Oracle database and just apply his convertion tool to the content of the
+Oracle database and just apply his conversion tool to the content of the
 file. This can be used with the most of export types: TABLE, TRIGGER, PROCEDURE,
 VIEW, FUNCTION or PACKAGE, etc.
 
@@ -486,7 +486,7 @@ an ORA-XXX error, that mean that you DSN or login information are wrong, check
 the error and your settings and try again. The perl script says nothing and the
 output file is empty: the user has not enough right to extract something from
 the database. Try to connect Oracle as super user or take a look at directive
-USER_GRANTS above and at next section, especiallly the SCHEMA directive.
+USER_GRANTS above and at next section, especially the SCHEMA directive.
 
 =over 4
 
@@ -670,7 +670,7 @@ the new PostgreSQL database design.
 Note that you can chained multiple export by giving to the TYPE directive a
 comma-separated list of export type.
 
-Ora2Pg will convert Oracle partition using table inheritence, trigger and
+Ora2Pg will convert Oracle partition using table inheritance, trigger and
 functions. See document at Pg site:
 http://www.postgresql.org/docs/current/interactive/ddl-partitioning.html
 
@@ -729,7 +729,7 @@ Now you can use the table like a regular PostgreSQL table.
 See http://pgxn.org/dist/oracle_fdw/ for more information on this foreign data
 wrapper.
 
-Release 10 adds a new export type destinated to evaluate the content of the
+Release 10 adds a new export type destined to evaluate the content of the
 database to migrate, in terms of objects and cost to end the migration:
 
 	SHOW_REPORT  : show a detailled report of the Oracle database content.
@@ -743,8 +743,8 @@ about Migration Cost Evaluation.
 
 Activate the migration cost evaluation. Must only be used with SHOW_REPORT,
 FUNCTION, PROCEDURE, PACKAGE and QUERY export type. Default is disabled.
-You may wat to use the --estimate_cost command line option instead to activate
-this functionnality. Note that enabling this directive will force PLSQL_PGSQL
+You may want to use the --estimate_cost command line option instead to activate
+this functionality. Note that enabling this directive will force PLSQL_PGSQL
 activation.
 
 =item COST_UNIT_VALUE
@@ -873,7 +873,7 @@ valid regex into the list. For example:
 
 	ALLOW		EMPLOYEES SALE_.* COUNTRIES .*_GEOM_SEQ
 
-will export objects with name EMPLOYEES, COUNTRIES, all objects begining with
+will export objects with name EMPLOYEES, COUNTRIES, all objects beginning with
 'SALE_' and all objects with a name ending by '_GEOM_SEQ'. The object depends
 of the export type. Note that regex will not works with 8i database, you must
 use the % placeholder instead, Ora2Pg will use the LIKE operator.
@@ -895,13 +895,13 @@ Or a more complex form:
 		-e 'INDEX[emp_.*];CKEY[emp_salary_min]'
 
 This command will export the definition of the employee table but will exclude
-all index begining with 'emp_' and the CHECK contraint called 'emp_salary_min'.
+all index beginning with 'emp_' and the CHECK constraint called 'emp_salary_min'.
 
 When exporting partition you can exclude some partition tables by using
 
 	ora2pg -p -c ora2pg.conf -t PARTITION -e 'PARTITION[PART_199.* PART_198.*]'
 
-This will exclude partitionned tables for year 1980 to 1999 from the export but
+This will exclude partitioned tables for year 1980 to 1999 from the export but
 not the main partition table. The trigger will also be adapted to exclude those
 table.
 
@@ -929,7 +929,7 @@ include valid regex into the list. For example:
 
 	EXCLUDE		EMPLOYEES TMP_.* COUNTRIES
 
-will exclude object with name EMPLOYEES, COUNTRIES and all tables begining with
+will exclude object with name EMPLOYEES, COUNTRIES and all tables beginning with
 'tmp_'.
 
 For example, you can ban from export some unwanted function with this directive:
@@ -937,7 +937,7 @@ For example, you can ban from export some unwanted function with this directive:
 	EXCLUDE		write_to_.* send_mail_.*
 
 this example will exclude all functions, procedures or functions in a package
-with the name begining with those regex. Note that regex will not works with
+with the name beginning with those regex. Note that regex will not works with
 8i database, you must use the % placeholder instead, Ora2Pg will use the NOT
 LIKE operator.
 
@@ -1006,7 +1006,7 @@ import on error.
 
 Sometime you may want to extract data from an Oracle table but you need a
 a custom query for that. Not just a "SELECT * FROM table" like Ora2Pg do
-but a more complexe query. This directive allow you to overwrite the query
+but a more complex query. This directive allow you to overwrite the query
 used by Ora2Pg to extract data. The format is TABLENAME[SQL_QUERY].
 If you have multiple table to extract by replacing the Ora2Pg query, you can
 define multiple REPLACE_QUERY lines.
@@ -1019,6 +1019,19 @@ Force Ora2Pg to translate Oracle Text indexes into PostgreSQL indexes using
 pg_trgm extension. Default is to translate CONTEXT indexes into FTS indexes
 and CTXCAT indexes using pg_trgm. Most of the time using pg_trgm is enough,
 this is why this directive stand for.
+
+=item FTS_INDEX_ONLY
+
+By default Ora2Pg creates an extra tsvector column with a dedicated triggers
+for FTS indexes. Enable this directive if you just want a function-based
+index like:
+
+	CREATE INDEX ON t_document USING gin(to_tsvector('pg_catalog.english', title));
+
+=item FTS_CONFIG
+
+Use this directive to change default text search config: pg_catalog.english
+used with FTS to_tsvector() function. For example, set it to pg_catalog.french
 
 =back
 
@@ -1059,7 +1072,7 @@ or INSERT export.
 Some time you need to force the destination type, for example a column
 exported as timestamp by Ora2Pg can be forced into type date. Value is
 a comma-separated list of TABLE:COLUMN:TYPE structure. If you need to use
-comma or space inside type definition you will have to backslach them.
+comma or space inside type definition you will have to backslash them.
 
 	MODIFY_TYPE	TABLE1:COL3:varchar,TABLE1:COL4:decimal(9\,6)
 
@@ -1078,7 +1091,7 @@ DEST_TBNAME1 and DEST_TBNAME2
 =item REPLACE_COLS
 
 Like table name, the name of the column can be remapped to a different name
-using the following syntaxe:
+using the following syntax:
 
 	REPLACE_COLS	ORIG_TBNAME(ORIG_COLNAME1:NEW_COLNAME1,ORIG_COLNAME2:NEW_COLNAME2)
 
@@ -1154,7 +1167,7 @@ matching expressions (LIKE or POSIX regular expressions) when the database
 does not use the standard "C" locale. If you enable, with value 1, this will
 force Ora2Pg to export all indexes defined on varchar2() and char() columns
 using those operators. If you set it to a value greater than 1 it will only
-change indexes on columns where the charactere limit is greater or equal than
+change indexes on columns where the character limit is greater or equal than
 this value. For example, set it to 128 to create these kind of indexes on
 columns of type varchar2(N) where N >= 128.
 
@@ -1163,15 +1176,15 @@ columns of type varchar2(N) where N >= 128.
 Enable this directive if you want that your partition table name will be
 exported using the parent table name. Disabled by default. If you have
 multiple partitioned table, when exported to PostgreSQL some partitions
-could have the same name but dfferent parent tables. This is not allowed,
+could have the same name but different parent tables. This is not allowed,
 table name must be unique.
 
 =item DISABLE_PARTITION
 
 If you don't want to reproduce the partitioning like in Oracle and want to
-export all partitionned Oracle data into the main single table in PostgreSQL
+export all partitioned Oracle data into the main single table in PostgreSQL
 enable this directive. Ora2Pg will export all data into the main table name.
-Default is to use partitionning, Ora2Pg will export data from each partition
+Default is to use partitioning, Ora2Pg will export data from each partition
 and import them into the PostgreSQL dedicated partition table.
 
 =back
@@ -1216,7 +1229,7 @@ with a two or three dimensional polygon.
 
 =item CONVERT_SRID
 
-This directive allow you to control the automatically convertion of Oracle
+This directive allow you to control the automatically conversion of Oracle
 SRID to standard EPSG. If enabled, Ora2Pg will use the Oracle function
 sdo_cs.map_oracle_srid_to_epsg() to convert all SRID. Enabled by default.
 
@@ -1243,7 +1256,7 @@ This directive can take three values: WKT (default), WKB and INTERNAL.
 When it is set to WKT, Ora2Pg will use SDO_UTIL.TO_WKTGEOMETRY() to
 extract the geometry data. When it is set to WKB, Ora2Pg will use the
 binary output using SDO_UTIL.TO_WKBGEOMETRY(). If those two extract type
-are calles at Oracle side, they are slow and you can easily reach Out Of
+are calls at Oracle side, they are slow and you can easily reach Out Of
 Memory when you have lot of rows. Also WKB is not able to export 3D geometry
 and some geometries like CURVEPOLYGON. In this case you may use the INTERNAL
 extraction type. It will use a Pure Perl library to convert the SDO_GEOMETRY
@@ -1284,7 +1297,7 @@ default: 10000
 When Ora2Pg detect a table with some BLOB it will automatically reduce the
 value of this directive by dividing it by 10 until his value is below 1000.
 You can control this value by setting BLOB_LIMIT. Exporting BLOB use lot of
-ressources, setting it to a too high value can produce OOM.
+resources, setting it to a too high value can produce OOM.
 
 =item OUTPUT
 
@@ -1296,7 +1309,7 @@ is installed for the .bz2 extension.
 
 =item OUTPUT_DIR
 
-Since release 7.0, you can define a base directory where wfile will be written.
+Since release 7.0, you can define a base directory where the file will be written.
 The directory must exists.
 
 =item BZIP2
@@ -1384,7 +1397,7 @@ These DELETE clauses might be useful with regular "updates".
 
 Set this parameter to 0 to not include the call to \set ON_ERROR_STOP ON in
 all SQL scripts generated by Ora2Pg. By default this order is always present
-so that the script will immediatly abort when an error is encountered.
+so that the script will immediately abort when an error is encountered.
 
 =item COPY_FREEZE
 
@@ -1432,7 +1445,7 @@ set this directive to 1, ora2pg will not  try to change the setting.
 
 =head2 Taking export under control
 
-The following other configuration directives interact directly with the export process and give you fine granuality in database export control.
+The following other configuration directives interact directly with the export process and give you fine granularity in database export control.
 
 =over 4
 
@@ -1504,7 +1517,7 @@ to be created as deferrable and initially deferred during schema export
 
 =item DROP_FKEY
 
-If deferring foreign keys is not possible du to the amount of data in a
+If deferring foreign keys is not possible due to the amount of data in a
 single transaction, you've not exported foreign keys as deferrable or you
 are using direct import to PostgreSQL, you can use the DROP_FKEY directive.
 
@@ -1593,7 +1606,7 @@ destination type to BYTEA, the default, Ora2Pg will export the content of the
 BFILE as bytea. The third case is when you set the destination type to EFILE,
 in this case, Ora2Pg will export it as an EFILE record: (DIRECTORY, FILENAME).
 Use the DIRECTORY export type to export the existing directories as well as
-priviledge on those directories.
+privileges on those directories.
 
 
 There's no SQL function available to retrieve the path to the BFILE, then Ora2Pg
@@ -1648,23 +1661,23 @@ This is a port of the BFILE Oracle type to PostgreSQL.
 
 If you want to convert CHAR(n) from Oracle into varchar(n) or text on PostgreSQL
 using directive DATA_TYPE, you might want to do some triming on the data. By
-default Ora2Pg will auto-detect this conversion and remove any withspace at both
+default Ora2Pg will auto-detect this conversion and remove any whitespace at both
 leading and trailing position. If you just want to remove the leadings character
 set the value to LEADING. If you just want to remove the trailing character, set
 the value to TRAILING. Default value is BOTH.
 
 =item TRIM_CHAR
 
-The default triming character is space, use this directive if you need to
+The default trimming character is space, use this directive if you need to
 change the character that will be removed. For example, set it to - if you
-have leading - in the char(n) field. To use space as triming charger, comment
+have leading - in the char(n) field. To use space as trimming charger, comment
 this directive, this is the default value.
 
 =item PRESERVE_CASE
 
 If you want to preserve the case of Oracle object name set this directive to 1.
 By default Ora2Pg will convert all Oracle object names to lower case.  I do not
-recommand to enable this unless you will always have to double-quote object
+recommend to enable this unless you will always have to double-quote object
 names on all your SQL scripts.
 
 =item ORA_RESERVED_WORDS
@@ -1693,7 +1706,7 @@ to use the old style with table and a set of function, you should disable it.
 
 PostgreSQL version below 9.x do not support IF EXISTS in DDL statements.
 Disabling the directive with value 0 will prevent Ora2Pg to add those
-keywords in all generated statments. Default value is 1, enabled.
+keywords in all generated statements. Default value is 1, enabled.
 
 =item PG_SUPPORTS_ROLE (Deprecated)
 
@@ -1739,7 +1752,7 @@ Enabled by default.
 
 =item BITMAP_AS_GIN
 
-Use btree_gin extenstion to create bitmap like index with pg >= 9.4
+Use btree_gin extension to create bitmap like index with pg >= 9.4
 You will need to create the extension by yourself:
       create extension btree_gin;
 Default is to create GIN index, when disabled, a btree index will be created
@@ -1776,7 +1789,7 @@ enough.
 =item NO_LOB_LOCATOR
 
 Disable this if you don't want to load full content of BLOB and CLOB and use
-LOB locators instead. This is usefull to not having to set LONGREADLEN. Note
+LOB locators instead. This is useful to not having to set LONGREADLEN. Note
 that this will not improve speed of BLOB export as most of the time is always
 consumed by the bytea escaping and in this case data will be processed line
 by line and not by chunk of DATA_LIMIT rows. For more information on how it
@@ -1867,7 +1880,7 @@ You can take a look at the PostgreSQL supported character sets here: http://www.
 
 =head2 PLSQL to PLPSQL convertion
 
-Automatic code convertion from Oracle PLSQL to PostgreSQL PLPGSQL is a work in
+Automatic code conversion from Oracle PLSQL to PostgreSQL PLPGSQL is a work in
 progress in Ora2Pg and surely you will always have manual work. The Perl code
 used for automatic conversion is all stored in a specific Perl Module named
 Ora2Pg/PLSQL.pm feel free to modify/add you own code and send me patches. The
@@ -1878,7 +1891,7 @@ parameters rewrite.
 
 =item PLSQL_PGSQL
 
-Enable/disable PLSQL to PLPSQL convertion. Enabled by default.
+Enable/disable PLSQL to PLPSQL conversion. Enabled by default.
 
 =item NULL_EQUAL_EMPTY
 
@@ -1944,11 +1957,11 @@ then it adds the SQL code to create the view and the materialized view:
 	CREATE VIEW mviewname_mview AS
 	SELECT ... FROM ...;
 
-	SELECT create_materialized_view('mviewname','mviewname_mview', change with the name of the colum to used for the index);
+	SELECT create_materialized_view('mviewname','mviewname_mview', change with the name of the column to used for the index);
 
-The first argument is the name of the materializd view, the second the name of the view on which the materialized view is based
+The first argument is the name of the materialized view, the second the name of the view on which the materialized view is based
 and the third is the column name on which the index should be build (aka most od the time the primary key). This column is not
-automatically deduced so you need to repace its name.
+automatically deduced so you need to replace its name.
 
 As said above Ora2Pg only supports snapshot materialized views so the table will be entirely refreshed by issuing first a truncate
 of the table and then by load again all data from the view:
@@ -2205,10 +2218,10 @@ Migration level: B-5
         5 = difficult: stored functions and/or triggers with code rewriting
 
 This assessment consist in a letter A or B to specify if the migration needs
-manual rewritting or not. And a number from 1 up to 5 to give you a technical
+manual rewriting or not. And a number from 1 up to 5 to give you a technical
 difficulty level. You have an additional option --human_days_limit to specify
 the number of human-days limit where the migration level should be set to C
-to indicate that it need a huge amount of work and a full project managment
+to indicate that it need a huge amount of work and a full project management
 with migration support. Default is 10 human-days. You can use the configuration
 directive HUMAN_DAYS_LIMIT to change this default value permanently.
 
@@ -2247,7 +2260,7 @@ Usage: ora2pg_scanner -l CSVFILE [-o OUTDIR]
    The CSV field separator must be a comma.
 
 It will generate a CSV file with the assessment result, one line per schema or
-database and a detailled HTML report for each database scanned.
+database and a detailed HTML report for each database scanned.
 
 Hint: Use the -t | --test option before to test all your connections in your
 CSV file.
@@ -2264,7 +2277,7 @@ The number of migration units associated to each PL/SQL code difficulties can be
 in the same Perl library lib/Ora2Pg/PLSQL.pm in the hash %UNCOVERED_SCORE initialization.
 
 This assessment method is a work in progress so I'm expecting feedbacks on migration
-experiences to polish the scores/units attribued in those variables.
+experiences to polish the scores/units attributed in those variables.
 
 =head2 Improving indexes and constraints creation speed
 
@@ -2295,7 +2308,7 @@ Oracle table:
 
 need to be "translated" into a table using BLOB as follow:
 
-	CREATE TABLE test_blob (id NUMNER, c1 BLOB);
+	CREATE TABLE test_blob (id NUMBER, c1 BLOB);
 
 And then copy the data with the following INSERT query:
 
@@ -2445,5 +2458,5 @@ Copyright (c) 2000-2016 Gilles Darold - All rights reserved.
 
 =head1 ACKNOWLEDGEMENT
 
-I must thanks a lot all the great contributors, see changelog for all acknowledgements.
+I must thanks a lot all the great contributors, see changelog for all acknowledgments.
 

@@ -266,6 +266,16 @@ REORDERING_COLUMNS	0
 # this is why this directive stand for.
 CONTEXT_AS_TRGM		0
 
+# By default Ora2Pg creates an extra tsvector column with a dedicated triggers
+# for FTS indexes. Enable this directive if you just want a function-based
+# index like:
+#    CREATE INDEX ON t_document USING gin(to_tsvector('pg_catalog.english', title));
+FTS_INDEX_ONLY	0
+
+# Use this directive to change default text search config: pg_catalog.english
+# used with FTS to_tsvector() function. For example, set it to pg_catalog.french
+FTS_CONFIG	pg_catalog.english
+
 #------------------------------------------------------------------------------
 # CONSTRAINT SECTION (Control constraints export and import behaviors)
 #------------------------------------------------------------------------------
