@@ -13417,7 +13417,7 @@ sub limit_to_objects
 		}
 
 		# Always exclude unwanted tables
-		if (!$self->{is_mysql} && !$has_limitation && ($arr_type[$i] =~ /TABLE|SEQUENCE|VIEW|TRIGGER/)) {
+		if (!$self->{is_mysql} && !$has_limitation && ($arr_type[$i] =~ /TABLE|SEQUENCE|VIEW|TRIGGER|TYPE/)) {
 			if ($self->{db_version} =~ /Release [89]/) {
 				$str .= ' AND (';
 				foreach my $t (@EXCLUDED_TABLES_8I) {
