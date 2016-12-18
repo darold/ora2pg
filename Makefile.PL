@@ -941,7 +941,7 @@ WriteMakefile(
     'DESTDIR'      => $PREFIX,
     'INSTALLDIRS'  => $ENV{INSTALLDIRS},
     'clean'        => {FILES => "$DEST_CONF_FILE lib/blib/"},
-    'PREREQ_PM'    => { DBI => 0, DBD::Oracle },
+    'PREREQ_PM'    => {DBI => 0},
     'META_MERGE'   => {
 	resources  => {
 		homepage => 'http://ora2pg.darold.net/',

@@ -1200,6 +1200,9 @@ sub _init
 		if ($self->{type} eq 'LOAD') {
 			$self->logit("FATAL: with LOAD you must provide an input file\n", 0, 1);
 		}
+		if (!$self->{oracle_dsn} || ($self->{oracle_dsn} =~ /;sid=SIDNAME/)) {
+			$self->logit("FATAL: you must set ORACLE_DSN in ora2pg.conf or use a DDL input file.\n", 0, 1);
+		}
 		# Connect the database
 		if ($self->{oracle_dsn} =~ /dbi:mysql/i) {
 			$self->{dbh} = $self->_mysql_connection();
@@ -1342,7 +1345,14 @@ sub _oracle_connection
 
 	$self->logit("Trying to connect to database: $self->{oracle_dsn}\n", 1) if (!$quiet);
 
-	my $dbh = DBI->connect($self->{oracle_dsn}, $self->{oracle_user}, $self->{oracle_pwd}, {ora_envhp => 0, LongReadLen=>$self->{longreadlen}, LongTruncOk=>$self->{longtruncok}, AutoInactiveDestroy => 1});
+	my $dbh = DBI->connect($self->{oracle_dsn}, $self->{oracle_user}, $self->{oracle_pwd},
+		{
+			ora_envhp => 0,
+			LongReadLen=>$self->{longreadlen},
+			LongTruncOk=>$self->{longtruncok},
+			AutoInactiveDestroy => 1
+		}
+	);
 
 	# Check for connection failure
 	if (!$dbh) {
