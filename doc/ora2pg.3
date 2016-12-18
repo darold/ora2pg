@@ -1154,16 +1154,55 @@ define multiple \s-1REPLACE_QUERY\s0 lines.
 Force Ora2Pg to translate Oracle Text indexes into PostgreSQL indexes using
 pg_trgm extension. Default is to translate \s-1CONTEXT\s0 indexes into \s-1FTS\s0 indexes
 and \s-1CTXCAT\s0 indexes using pg_trgm. Most of the time using pg_trgm is enough,
-this is why this directive stand for.
-.IP "\s-1FTS_INDEX_ONLY\s0" 4
-.IX Item "FTS_INDEX_ONLY"
-By default Ora2Pg creates an extra tsvector column with a dedicated triggers
-for \s-1FTS\s0 indexes. Enable this directive if you just want a function-based
-index like:
+this is why this directive stand for. You need to create the pg_trgm extension
+into the destination database before importing the objects:
 .Sp
 .Vb 1
-\&        CREATE INDEX ON t_document USING gin(to_tsvector(\*(Aqpg_catalog.english\*(Aq, title));
+\&        CREATE EXTENSION pg_trgm;
 .Ve
+.IP "\s-1FTS_INDEX_ONLY\s0" 4
+.IX Item "FTS_INDEX_ONLY"
+By default Ora2Pg creates a function-based index to translate Oracle Text
+indexes.
+.Sp
+.Vb 2
+\&        CREATE INDEX ON t_document
+\&                USING gin(to_tsvector(\*(Aqpg_catalog.english\*(Aq, title));
+.Ve
+.Sp
+You will have to rewrite the \s-1\fICONTAIN\s0()\fR clause using \fIto_tsvector()\fR, example:
+.Sp
+.Vb 2
+\&        SELECT id,title FROM t_document
+\&                WHERE to_tsvector(title)) @@ to_tsquery(\*(Aqsearch_word\*(Aq);
+.Ve
+.Sp
+To force Ora2Pg to create an extra tsvector column with a dedicated triggers
+for \s-1FTS\s0 indexes, disable this directive. In this case, Ora2Pg will add the
+column as follow: \s-1ALTER\s0 \s-1TABLE\s0 t_document \s-1ADD\s0 \s-1COLUMN\s0 tsv_title tsvector;
+Then update the column to compute \s-1FTS\s0 vectors if data have been loaded before
+	    \s-1UPDATE\s0 t_document \s-1SET\s0 tsv_title =
+		to_tsvector('pg_catalog.english', coalesce(title,''));
+To automatically update the column when a modification in the title column
+appears, Ora2Pg adds the following trigger:
+.Sp
+.Vb 12
+\&        CREATE FUNCTION tsv_t_document_title() RETURNS trigger AS $$
+\&        BEGIN
+\&               IF TG_OP = \*(AqINSERT\*(Aq OR new.title != old.title THEN
+\&                       new.tsv_title :=
+\&                       to_tsvector(\*(Aqpg_catalog.english\*(Aq, coalesce(new.title,\*(Aq\*(Aq));
+\&               END IF;
+\&               return new;
+\&        END
+\&        $$ LANGUAGE plpgsql;
+\&        CREATE TRIGGER trig_tsv_t_document_title BEFORE INSERT OR UPDATE
+\&         ON t_document
+\&         FOR EACH ROW EXECUTE PROCEDURE tsv_t_document_title();
+.Ve
+.Sp
+When the Oracle text index is defined over multiple column, Ora2Pg will use
+\&\fIsetweight()\fR to set a weight in the order of the column declaration.
 .IP "\s-1FTS_CONFIG\s0" 4
 .IX Item "FTS_CONFIG"
 Use this directive to change default text search config: pg_catalog.english

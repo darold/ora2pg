@@ -266,11 +266,40 @@ REORDERING_COLUMNS	0
 # this is why this directive stand for.
 CONTEXT_AS_TRGM		0
 
-# By default Ora2Pg creates an extra tsvector column with a dedicated triggers
-# for FTS indexes. Enable this directive if you just want a function-based
-# index like:
-#    CREATE INDEX ON t_document USING gin(to_tsvector('pg_catalog.english', title));
-FTS_INDEX_ONLY	0
+# By default Ora2Pg creates a function-based index to translate Oracle Text
+# indexes. 
+#    CREATE INDEX ON t_document
+#                 USING gin(to_tsvector('pg_catalog.english', title));
+# You will have to rewrite the CONTAIN() clause using to_tsvector(), example:
+#    SELECT id,title FROM t_document
+#                    WHERE to_tsvector(title)) @@ to_tsquery('search_word');
+#
+# To force Ora2Pg to create an extra tsvector column with a dedicated triggers
+# for FTS indexes, disable this directive. In this case, Ora2Pg will add the
+# column as follow: ALTER TABLE t_document ADD COLUMN tsv_title tsvector;
+# Then update the column to compute FTS vectors if data have been loaded before
+#     UPDATE t_document SET tsv_title =
+#                       to_tsvector('pg_catalog.english', coalesce(title,''));
+# To automatically update the column when a modification in the title column
+# appears, Ora2Pg adds the following trigger:
+#
+# CREATE FUNCTION tsv_t_document_title() RETURNS trigger AS $$
+# BEGIN
+#        IF TG_OP = 'INSERT' OR new.title != old.title THEN
+#                new.tsv_title :=
+#                to_tsvector('pg_catalog.english', coalesce(new.title,''));
+#        END IF;
+#        return new;
+# END
+# $$ LANGUAGE plpgsql;
+# CREATE TRIGGER trig_tsv_t_document_title BEFORE INSERT OR UPDATE
+#  ON t_document
+#  FOR EACH ROW EXECUTE PROCEDURE tsv_t_document_title();
+#
+# When the Oracle text index is defined over multiple column, Ora2Pg will use
+# setweight() to set a weight in the order of the column declaration.
+#
+FTS_INDEX_ONLY	1
 
 # Use this directive to change default text search config: pg_catalog.english
 # used with FTS to_tsvector() function. For example, set it to pg_catalog.french

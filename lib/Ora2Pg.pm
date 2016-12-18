@@ -813,7 +813,7 @@ sub _init
 
 	# Use FTS index to convert CONTEXT Oracle's indexes by default
 	$self->{context_as_trgm} = 0;
-	$self->{fts_index_only}  = 0;
+	$self->{fts_index_only}  = 1;
 	$self->{fts_config}      = 'pg_catalog.english';
 
 	# Initialyze following configuration file
@@ -6118,13 +6118,18 @@ sub _create_indexes
 				my $contruct_vector =  '';
 				my $update_vector =  '';
 				my $weight = 'A';
-				foreach my $col (@{$indexes{$idx}}) {
-					$contruct_vector .= "\t\tsetweight(to_tsvector('$self->{fts_config}', coalesce(new.$col,'')), '$weight') ||\n";
-					$update_vector .= " setweight(to_tsvector('$self->{fts_config}', coalesce($col,'')), '$weight') ||";
-					$weight++;
+				if ($#{$indexes{$idx}} > 0) {
+					foreach my $col (@{$indexes{$idx}}) {
+						$contruct_vector .= "\t\tsetweight(to_tsvector('$self->{fts_config}', coalesce(new.$col,'')), '$weight') ||\n";
+						$update_vector .= " setweight(to_tsvector('$self->{fts_config}', coalesce($col,'')), '$weight') ||";
+						$weight++;
+					}
+					$contruct_vector =~ s/\|\|$/;/s;
+					$update_vector =~ s/\|\|$/;/s;
+				} else {
+					$contruct_vector = "\t\tto_tsvector('$self->{fts_config}', coalesce(new.$col,''))\n";
+					$update_vector = " to_tsvector('$self->{fts_config}', coalesce($col,''))";
 				}
-				$contruct_vector =~ s/\|\|$/;/s;
-				$update_vector =~ s/\|\|$/;/s;
 
 				$fts_str .= qq{
 -- When the data migration is done without trigger, create tsvector data for all the existing records
