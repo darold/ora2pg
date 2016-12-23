@@ -815,6 +815,8 @@ sub _init
 	$self->{context_as_trgm} = 0;
 	$self->{fts_index_only}  = 1;
 	$self->{fts_config}      = 'pg_catalog.english';
+	$self->{use_unaccent}    = 1;
+	$self->{use_lower_unaccent} = 1;
 
 	# Initialyze following configuration file
 	foreach my $k (sort keys %AConfig) {
@@ -5718,10 +5720,31 @@ CREATE TRIGGER ${table}_trigger_insert
 		$indices = '';
 		if ($fts_indices) {
 			$fts_indices =~ s/\n+/\n/gs;
+			my $unaccent = '';
+			if ($self->{use_lower_unaccent}) {
+				$unaccent = qq{
+CREATE OR REPLACE FUNCTION unaccent_immutable(text)
+RETURNS text AS
+\$\$
+  SELECT lower(public.unaccent('public.unaccent', \$1));
+\$\$ LANGUAGE sql IMMUTABLE;
+
+};
+			} elsif ($self->{use_unaccent}) {
+				$unaccent = qq{
+CREATE OR REPLACE FUNCTION unaccent_immutable(text)
+RETURNS text AS
+\$\$
+  SELECT public.unaccent('public.unaccent', \$1);
+\$\$ LANGUAGE sql IMMUTABLE;
+
+};
+			}
+
 			# FTS TRIGGERS are exported in a separated file to be able to parallelyze index creation
 			$self->logit("Dumping triggers for FTS indexes to one separate file : FTS_INDEXES_$self->{output}\n", 1);
 			$fhdl = $self->open_export_file("FTS_INDEXES_$self->{output}");
-			$self->dump($sql_header . $fts_indices, $fhdl);
+			$self->dump($sql_header . $unaccent . $fts_indices, $fhdl);
 			$self->close_export_file($fhdl);
 			$fts_indices = '';
 		}
@@ -6098,6 +6121,7 @@ sub _create_indexes
 				($self->{context_as_trgm} && ($self->{$objtyp}{$tbsaved}{idx_type}{$idx}{type_name} =~ /FULLTEXT|CONTEXT/)) ) {
 				# use pg_trgm
 				my @cols = split(/\s*,\s*/, $columns);
+				map { s/^(.*)$/unaccent_immutable($1)/; } @cols;
 				$columns = join(" gin_trgm_ops, ", @cols);
 				$columns .= " gin_trgm_ops";
 				$str .= "CREATE INDEX$concurrently \L$idxname$self->{indexes_suffix}\E ON $table USING gin($columns)";
@@ -6127,8 +6151,8 @@ sub _create_indexes
 					$contruct_vector =~ s/\|\|$/;/s;
 					$update_vector =~ s/\|\|$/;/s;
 				} else {
-					$contruct_vector = "\t\tto_tsvector('$self->{fts_config}', coalesce(new.$col,''))\n";
-					$update_vector = " to_tsvector('$self->{fts_config}', coalesce($col,''))";
+					$contruct_vector = "\t\tto_tsvector('$self->{fts_config}', coalesce(new.$indexes{$idx}->[0],''))\n";
+					$update_vector = " to_tsvector('$self->{fts_config}', coalesce($indexes{$idx}->[0],''))";
 				}
 
 				$fts_str .= qq{

@@ -1149,6 +1149,12 @@ define multiple \s-1REPLACE_QUERY\s0 lines.
 .Vb 1
 \&        REPLACE_QUERY   EMPLOYEES[SELECT e.id,e.fisrtname,lastname FROM EMPLOYEES e JOIN EMP_UPDT u ON (e.id=u.id AND u.cdate>\*(Aq2014\-08\-01 00:00:00\*(Aq)]
 .Ve
+.SS "Controm of Full Text Search export"
+.IX Subsection "Controm of Full Text Search export"
+Several directives can be used to control the way Ora2Pg will export the
+Oracle's Text search indexes. By default \s-1CONTEXT\s0 indexes will be exported
+to PostgreSQL \s-1FTS\s0 indexes but \s-1CTXCAT\s0 indexes wikk be exported as indexes
+using the pg_trgm extension.
 .IP "\s-1CONTEXT_AS_TRGM\s0" 4
 .IX Item "CONTEXT_AS_TRGM"
 Force Ora2Pg to translate Oracle Text indexes into PostgreSQL indexes using
@@ -1207,6 +1213,56 @@ When the Oracle text index is defined over multiple column, Ora2Pg will use
 .IX Item "FTS_CONFIG"
 Use this directive to change default text search config: pg_catalog.english
 used with \s-1FTS\s0 \fIto_tsvector()\fR function. For example, set it to pg_catalog.french
+.IP "\s-1USE_UNACCENT\s0" 4
+.IX Item "USE_UNACCENT"
+If you want to perform your text search in an accent insensitive way, enable
+this directive. Ora2Pg will create an helper function over \fIunaccent()\fR and
+creates the pg_trgm indexes using this function. With \s-1FTS\s0 you just need to
+redefine your text search configuration, for example:
+.Sp
+.Vb 3
+\&      CREATE TEXT SEARCH CONFIGURATION fr (COPY = french); 
+\&      ALTER TEXT SEARCH CONFIGURATION fr
+\&              ALTER MAPPING FOR hword, hword_part, word WITH unaccent, french_stem;
+.Ve
+.Sp
+then set the \s-1FTS_CONFIG\s0 ora2pg.conf directive to fr instead of pg_catalog.english.
+.Sp
+When enabled, Ora2pg will create the wrapper function:
+.Sp
+.Vb 5
+\&      CREATE OR REPLACE FUNCTION unaccent_immutable(text)
+\&      RETURNS text AS
+\&      $$
+\&          SELECT public.unaccent(\*(Aqpublic.unaccent\*(Aq, $1);
+\&      $$ LANGUAGE sql IMMUTABLE;
+.Ve
+.Sp
+the indexes are exported as follow:
+.Sp
+.Vb 2
+\&      CREATE INDEX t_document_title_unaccent_trgm_idx ON t_document 
+\&          USING gin (unaccent_immutable(title) gin_trgm_ops);
+.Ve
+.Sp
+In your queries you will need to use the same function in the search to
+be able to use the function-based index. Example:
+.Sp
+.Vb 2
+\&        SELECT * FROM t_document
+\&                WHERE unaccent_immutable(title) LIKE \*(Aq%donnees%\*(Aq;
+.Ve
+.IP "\s-1USE_LOWER_UNACCENT\s0" 4
+.IX Item "USE_LOWER_UNACCENT"
+Same as above but call \fIlower()\fR in the \fIunaccent_immutable()\fR function:
+.Sp
+.Vb 5
+\&      CREATE OR REPLACE FUNCTION unaccent_immutable(text)
+\&      RETURNS text AS
+\&      $$
+\&          SELECT lower(public.unaccent(\*(Aqpublic.unaccent\*(Aq, $1));
+\&      $$ LANGUAGE sql IMMUTABLE;
+.Ve
 .SS "Modifying object structure"
 .IX Subsection "Modifying object structure"
 One of the great usage of Ora2Pg is its flexibility to replicate Oracle database

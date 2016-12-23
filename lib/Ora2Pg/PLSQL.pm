@@ -120,6 +120,11 @@ $QUERY_TEST_SCORE = 0.1;
 	'MDSYS' => 1,
 	'MERGE INTO' => 3,
 	'COMMIT' => 3,
+	'CONTAINS' => 1,
+	'SCORE' => 1,
+	'FUZZY' => 2,
+	'ABOUT' => 3,
+	'NEAR' => 1,
 );
 
 @ORA_FUNCTIONS = qw(
@@ -1066,6 +1071,17 @@ sub estimate_cost
 	$cost_details{'MDSYS'} += $n;
 	$n = () = $str =~ m/MERGE\sINTO/igs;
 	$cost_details{'MERGE'} += $n;
+	$n = () = $str =~ m/\bCONTAINS\(/igs;
+	$cost_details{'CONTAINS'} += $n;
+	$n = () = $str =~ m/\bSCORE\((?:.*)?\bCONTAINS\(/igs;
+	$cost_details{'SCORE'} += $n;
+	$n = () = $str =~ m/CONTAINS\((?:.*)?\bABOUT\(/igs;
+	$cost_details{'ABOUT'} += $n;
+	$n = () = $str =~ m/CONTAINS\((?:.*)?\bFUZZY\(/igs;
+	$cost_details{'FUZZY'} += $n;
+	$n = () = $str =~ m/CONTAINS\((?:.*)?\bNEAR\(/igs;
+	$cost_details{'NEAR'} += $n;
+
 
 	foreach my $f (@ORA_FUNCTIONS) {
 		if ($str =~ /\b$f\b/igs) {

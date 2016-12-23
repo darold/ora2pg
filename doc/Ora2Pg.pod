@@ -1017,6 +1017,17 @@ define multiple REPLACE_QUERY lines.
 
 	REPLACE_QUERY	EMPLOYEES[SELECT e.id,e.fisrtname,lastname FROM EMPLOYEES e JOIN EMP_UPDT u ON (e.id=u.id AND u.cdate>'2014-08-01 00:00:00')]
 
+=back
+
+=head2 Controm of Full Text Search export
+
+Several directives can be used to control the way Ora2Pg will export the
+Oracle's Text search indexes. By default CONTEXT indexes will be exported
+to PostgreSQL FTS indexes but CTXCAT indexes wikk be exported as indexes
+using the pg_trgm extension.
+
+=over 4
+
 =item CONTEXT_AS_TRGM
 
 Force Ora2Pg to translate Oracle Text indexes into PostgreSQL indexes using
@@ -1069,6 +1080,49 @@ setweight() to set a weight in the order of the column declaration.
 
 Use this directive to change default text search config: pg_catalog.english
 used with FTS to_tsvector() function. For example, set it to pg_catalog.french
+
+=item USE_UNACCENT
+
+If you want to perform your text search in an accent insensitive way, enable
+this directive. Ora2Pg will create an helper function over unaccent() and
+creates the pg_trgm indexes using this function. With FTS you just need to
+redefine your text search configuration, for example:
+
+      CREATE TEXT SEARCH CONFIGURATION fr (COPY = french); 
+      ALTER TEXT SEARCH CONFIGURATION fr
+              ALTER MAPPING FOR hword, hword_part, word WITH unaccent, french_stem;
+
+then set the FTS_CONFIG ora2pg.conf directive to fr instead of pg_catalog.english.
+
+When enabled, Ora2pg will create the wrapper function:
+
+      CREATE OR REPLACE FUNCTION unaccent_immutable(text)
+      RETURNS text AS
+      $$
+          SELECT public.unaccent('public.unaccent', $1);
+      $$ LANGUAGE sql IMMUTABLE;
+
+the indexes are exported as follow:
+
+      CREATE INDEX t_document_title_unaccent_trgm_idx ON t_document 
+          USING gin (unaccent_immutable(title) gin_trgm_ops);
+
+In your queries you will need to use the same function in the search to
+be able to use the function-based index. Example:
+
+	SELECT * FROM t_document
+		WHERE unaccent_immutable(title) LIKE '%donnees%';
+
+=item USE_LOWER_UNACCENT
+
+Same as above but call lower() in the unaccent_immutable() function:
+
+      CREATE OR REPLACE FUNCTION unaccent_immutable(text)
+      RETURNS text AS
+      $$
+          SELECT lower(public.unaccent('public.unaccent', $1));
+      $$ LANGUAGE sql IMMUTABLE;
+
 
 =back
 
