@@ -3042,7 +3042,14 @@ sub _get_sql_data
 					$tmpv =~ s/\./"."/;
 					$sql_output .= "CREATE OR REPLACE VIEW \"$tmpv\" AS ";
 				}
-				$sql_output .= $self->{views}{$view}{text} . ";\n\n";
+				$sql_output .= $self->{views}{$view}{text} . ";\n";
+				if ($self->{estimate_cost}) {
+					my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($self, $self->{views}{$view}{text}, 'VIEW');
+					$cost += $Ora2Pg::PLSQL::OBJECT_SCORE{'VIEW'};
+					$cost_value += $cost;
+					$sql_output .= "\n-- Estimed cost of view [ $view ]: " . sprintf("%2.2f", $cost);
+				}
+				$sql_output .= "\n";
 			} else {
 				if (!$self->{preserve_case}) {
 					$sql_output .= "CREATE OR REPLACE VIEW \L$tmpv\E (";
@@ -3077,7 +3084,14 @@ sub _get_sql_data
 						$self->{views}{$view}{text} =~ s/SELECT[^\s]*(.*?)\bFROM\b/SELECT $clause FROM/is;
 					}
 				}
-				$sql_output .= ") AS " . $self->{views}{$view}{text} . ";\n\n";
+				$sql_output .= ") AS " . $self->{views}{$view}{text} . ";\n";
+				if ($self->{estimate_cost}) {
+					my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($self, $self->{views}{$view}{text}, 'VIEW');
+					$cost += $Ora2Pg::PLSQL::OBJECT_SCORE{'VIEW'};
+					$cost_value += $cost;
+					$sql_output .= "\n-- Estimed cost of view [ $view ]: " . sprintf("%2.2f", $cost);
+				}
+				$sql_output .= "\n";
 			}
 
 			if ($self->{force_owner}) {
@@ -5741,12 +5755,14 @@ RETURNS text AS
 };
 			}
 
-			# FTS TRIGGERS are exported in a separated file to be able to parallelyze index creation
-			$self->logit("Dumping triggers for FTS indexes to one separate file : FTS_INDEXES_$self->{output}\n", 1);
-			$fhdl = $self->open_export_file("FTS_INDEXES_$self->{output}");
-			$self->dump($sql_header . $unaccent . $fts_indices, $fhdl);
-			$self->close_export_file($fhdl);
-			$fts_indices = '';
+			# FTS TRIGGERS are exported in a separated file to be able to parallelize index creation
+			if ($fts_indices) {
+				$self->logit("Dumping triggers for FTS indexes to one separate file : FTS_INDEXES_$self->{output}\n", 1);
+				$fhdl = $self->open_export_file("FTS_INDEXES_$self->{output}");
+				$self->dump($sql_header . $unaccent . $fts_indices, $fhdl);
+				$self->close_export_file($fhdl);
+				$fts_indices = '';
+			}
 		}
 	}
 
@@ -9672,7 +9688,9 @@ sub _convert_package
 	if ($self->{package_as_schema}) {
 		$content = "-- PostgreSQL does not recognize PACKAGES, using SCHEMA instead.\n";
 	}
-	if ($self->{package_as_schema} && ($plsql =~ /PACKAGE\s+BODY\s*[^\s]+\s*(AS|IS)\s*/is)) {
+	if ($self->{package_as_schema} && ($plsql =~ /PACKAGE\s+BODY\s*([^\s]+)\s*(AS|IS)\s*/is)) {
+		my $pname = $1;
+		$pname =~ s/"//g;
 		if (!$self->{preserve_case}) {
 			$content .= "DROP SCHEMA $self->{pg_supports_ifexists} $pname CASCADE;\n";
 			$content .= "CREATE SCHEMA $pname;\n";
@@ -11682,14 +11700,19 @@ sub _show_infos
 			} elsif ($typ eq 'VIEW') {
 				my %view_infos = $self->_get_views();
 				foreach my $view (sort keys %view_infos) {
+
+					# Remove unsupported definitions from the ddl statement
+					$view_infos{$view}{text} =~ s/\s*WITH\s+READ\s+ONLY//is;
+					$view_infos{$view}{text} =~ s/\s*OF\s+([^\s]+)\s+(WITH|UNDER)\s+[^\)]+\)//is;
+					$view_infos{$view}{text} =~ s/\s*OF\s+XMLTYPE\s+[^\)]+\)//is;
+					$view_infos{$view}{text} = $self->_format_view($view_infos{$view}{text});
+
 					if ($self->{estimate_cost}) {
-						my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($self, $view_infos{$view}{text});
-						next if ($cost <= ($cost_detail{SIZE}+$cost_detail{TEST}));
-						$cost -= ($cost_detail{SIZE} + $cost_detail{TEST});
-						$cost = sprintf("%.1f", $cost);
-						delete $cost_detail{SIZE};
-						delete $cost_detail{TEST};
+						my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($self, $view_infos{$view}{text}, 'VIEW');
 						$report_info{'Objects'}{$typ}{'cost_value'} += $cost;
+						# Do not show view that just have to be tested
+						next if (!$cost);
+						# Show detail about views that might need manual rewritting
 						$report_info{'Objects'}{$typ}{'detail'} .= "\L$view: $cost\E\n";
 						$report_info{full_view_details}{"\L$view\E"}{count} = $cost;
 						foreach my $d (sort { $cost_detail{$b} <=> $cost_detail{$a} } keys %cost_detail) {
@@ -11697,7 +11720,7 @@ sub _show_infos
 							$report_info{full_view_details}{"\L$view\E"}{info} .= "\t$d => $cost_detail{$d}";
 							$report_info{full_view_details}{"\L$view\E"}{info} .= " (cost: ${$uncovered_score}{$d})" if (${$uncovered_score}{$d});
 							$report_info{full_view_details}{"\L$view\E"}{info} .= "\n";
-							push(@{$report_info{full_view_details}{"\L$view\E"}{keywords}}, $d) if (($d ne 'SIZE') && ($d ne 'TEST')); 
+							push(@{$report_info{full_view_details}{"\L$view\E"}{keywords}}, $d); 
 						}
 					}
 				}
