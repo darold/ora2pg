@@ -124,7 +124,7 @@
 .\" ========================================================================
 .\"
 .IX Title "ORA2PG 1"
-.TH ORA2PG 1 "2016-12-18" "perl v5.14.2" "User Contributed Perl Documentation"
+.TH ORA2PG 1 "2016-12-25" "perl v5.14.2" "User Contributed Perl Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -2516,6 +2516,32 @@ And then copy the data with the following \s-1INSERT\s0 query:
 Then you just have to exclude the original table from the export (see \s-1EXCLUDE\s0
 directive) and to renamed the new temporary table on the fly using the
 \&\s-1REPLACE_TABLES\s0 configuration directive.
+.SS "Global variables"
+.IX Subsection "Global variables"
+Oracle allow the use of global variables defined in packages. Ora2Pg will
+export these variables for PostgreSQL as user defined custom variables
+available in a session. Oracle variables assignement are exported as
+call to:
+.PP
+.Vb 1
+\&    PERFORM set_config(\*(Aqpkgname.varname\*(Aq, value, false);
+.Ve
+.PP
+Use of these variables in the code is replaced by:
+.PP
+.Vb 1
+\&    current_setting(\*(Aqpkgname.varname\*(Aq)::global_variables_type;
+.Ve
+.PP
+where global_variables_type is the type of the variable extracted from
+the package definition.
+.PP
+If the variable is a constant or have a default value assigned at
+declaration, ora2pg will create a file global_variables.conf with
+the definition to include in the postgresql.conf file so that their
+values will already be set at database connection. Note that the
+value can always modified by the user so you can not have exactly
+a constant.
 .SS "Hints"
 .IX Subsection "Hints"
 Converting your queries with Oracle style outer join (+) syntax to \s-1ANSI\s0 standard \s-1SQL\s0 at
