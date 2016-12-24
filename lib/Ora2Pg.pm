@@ -4506,6 +4506,23 @@ LANGUAGE plpgsql ;
 		}
 		$self->dump($sql_output);
 		$self->{packages} = ();
+		$sql_output = '';
+		# Create script to replace global variable calls
+		if (scalar keys %{$self->{global_variables}}) {
+			my $default_vars = '';
+			foreach my $n (keys %{$self->{global_variables}}) {
+				my $str = $n;
+				if (exists $self->{global_variables}{$n}{constant} || exists $self->{global_variables}{$n}{default}) {
+					$default_vars .= "$n = '$self->{global_variables}{$n}{default}\n";
+				}
+			}
+			if ($default_vars) {
+				open(OUT, ">$self->{output_dir}/global_variables.conf");
+				print OUT "-- Global variables with default values used in packages.\n";
+				print OUT $default_vars;
+				close(OUT);
+			}
+		}
 		return;
 	}
 
@@ -9781,9 +9798,10 @@ sub _convert_package
 		my %comments = $self->_remove_comments(\$ctt);
 		my @functions = $self->_extract_functions($ctt);
 
+
 		# Try to detect local function
 		for (my $i = 0; $i <= $#functions; $i++) {
-			my %fct_detail = $self->_lookup_function($functions[$i]);
+			my %fct_detail = $self->_lookup_function($functions[$i], $pname);
 			if (!exists $fct_detail{name}) {
 				$functions[$i] = '';
 				next;
@@ -9820,6 +9838,7 @@ sub _convert_package
 		if ($self->{estimate_cost}) {
 			$self->{total_pkgcost} += $self->{pkgcost} || 0;
 		}
+
 	}
 	return $content;
 }
@@ -9907,7 +9926,7 @@ sub _convert_function
 
 	my %fct_detail = ();
 	if (!$self->{is_mysql}) {
-		%fct_detail = $self->_lookup_function($plsql);
+		%fct_detail = $self->_lookup_function($plsql, $pname);
 	} else {
 		%fct_detail = $self->_lookup_function($pname);
 		$pname = '';
@@ -11712,6 +11731,7 @@ sub _show_infos
 						$report_info{'Objects'}{$typ}{'cost_value'} += $cost;
 						# Do not show view that just have to be tested
 						next if (!$cost);
+						$cost += $Ora2Pg::PLSQL::OBJECT_SCORE{'VIEW'};
 						# Show detail about views that might need manual rewritting
 						$report_info{'Objects'}{$typ}{'detail'} .= "\L$view: $cost\E\n";
 						$report_info{full_view_details}{"\L$view\E"}{count} = $cost;
@@ -13595,7 +13615,7 @@ sub _lookup_package
 		my @functions = $self->_extract_functions($content);
 		foreach my $f (@functions) {
 			next if (!$f);
-			my %fct_detail = $self->_lookup_function($f);
+			my %fct_detail = $self->_lookup_function($f, $pname);
 			next if (!exists $fct_detail{name});
 			$fct_detail{name} =~ s/^.*\.//;
 			$fct_detail{name} =~ s/"//g;
@@ -13618,13 +13638,13 @@ Return a hast with the details of the function
 
 sub _lookup_function
 {
-	my ($self, $plsql) = @_;
+	my ($self, $plsql, $pname) = @_;
 
 	if ($self->{is_mysql}) {
 		if ($self->{type} eq 'FUNCTION') {
-			return Ora2Pg::MySQL::_lookup_function($self, $plsql);
+			return Ora2Pg::MySQL::_lookup_function($self, $plsql, $pname);
 		} else {
-			return Ora2Pg::MySQL::_lookup_procedure($self, $plsql);
+			return Ora2Pg::MySQL::_lookup_procedure($self, $plsql, $pname);
 		}
 	}
 
@@ -13643,7 +13663,9 @@ sub _lookup_function
 		$fct_detail{type} = uc($2);
 		$fct_detail{name} = $3;
 		$fct_detail{args} = $4;
-
+		if ($fct_detail{before}) {
+			$fct_detail{before} = $self->register_global_variable($pname, $fct_detail{before});
+		}
 		if ($fct_detail{args} =~ /\b(RETURN|IS|AS)\b/is) {
 			$fct_detail{args} = '()';
 		}
@@ -13706,6 +13728,14 @@ sub _lookup_function
 		$fct_detail{code} = $plsql;
 	}
 
+	# Replace call to global variables declared in this package
+	foreach my $n (keys %{$self->{global_variables}}) {
+		next if ($pname && (uc($n) !~ /^\U$pname\E\./));
+		$fct_detail{code} =~ s/\b$n\s*:=\s*([^;]+)\s*;/PERFORM set_config('$n', $1, false);/isg;
+		$fct_detail{code} =~ s/([^\.]*)\b$self->{global_variables}{$n}{name}\s*:=\s*([^;]+)/$1PERFORM set_config('$n', $2, false)/igs;
+		$fct_detail{code} =~ s/([^']+)\b$n\s*(?!:=)\s*/$1current_setting('$n')::$self->{global_variables}{$n}{type}/igs;
+		$fct_detail{code} =~ s/([^\.']+)\b$self->{global_variables}{$n}{name}\s*(?!:=)\s*/$1current_setting('$n')::$self->{global_variables}{$n}{type}/igs;
+	}
 	return %fct_detail;
 }
 
@@ -14662,6 +14692,40 @@ sub escape_insert
 		$col = "E'$col'";
 	}
 	return $col;
+}
+
+sub register_global_variable
+{
+	my ($self, $pname, $glob_vars) = @_;
+
+	$glob_vars = Ora2Pg::PLSQL::replace_sql_type($glob_vars, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type});
+
+	# Replace PL/SQL code into PL/PGSQL similar code
+	$glob_vars = Ora2Pg::PLSQL::plsql_to_plpgsql($self, $glob_vars);
+
+	my @vars = split(/\s*;\s*/, $glob_vars);
+	map { s/^\s+//; s/\s+$//; } @vars;
+	my $ret = '';
+	foreach my $l (@vars) {
+		$ret .= $l, next if ($l =~ /^--/);
+		my ($n, $type, @others) = split(/\s+/, $l);
+		$ret .= $l, next if (!$type);
+		$ret .= $l, next if (uc($type) eq 'EXCEPTION');
+		next if (!$pname);
+		my $v = $pname . '.' . $n;
+		$self->{global_variables}{$v}{name} = $n;
+		if (uc($type) eq 'CONSTANT') {
+			$self->{global_variables}{$v}{constant} = 1;
+			$type = shift(@others);
+		}
+		if ($#others > 0 && $others[0] eq ':=') {
+			shift(@others);
+			$self->{global_variables}{$v}{default} = join(' ', @others);
+		}
+		$self->{global_variables}{$v}{type} = $type;
+	}
+
+	return $ret;
 }
 
 1;

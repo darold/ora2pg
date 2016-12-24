@@ -1656,9 +1656,9 @@ sub replace_right_outer_join
 	my $nbouter = $str =~ /(\(\+\)\s*(?:!=|<>|>=|<=|=|>|<|NOT LIKE|LIKE))/igs;
 	if ($nbouter >= 1 && $str !~ /(?:!=|<>|>=|<=|=|>|<|NOT LIKE|LIKE)\s*[^\s]+\s*\(\+\)/i) {
 		# Extract the FROM clause
-		$str =~ s/\bFROM([^\(]+?)\bWHERE/FROM FROM_CLAUSE WHERE/is;
-		my $from_clause = $1;
-#print STDERR "FROM_CLAUSE: $1\n";
+		$str =~ s/(.*)\bFROM\s+(.*?)\s+WHERE\s+(.*?)$/$1FROM FROM_CLAUSE WHERE $3/is;
+		my $from_clause = $2;
+#print STDERR "FROM_CLAUSE: $from_clause\n";
 		$from_clause =~ s/"//gs;
 		my @tables = split(/\s*,\s*/, $from_clause);
 		# Set a hash for alias to table mapping
@@ -1716,7 +1716,7 @@ sub replace_right_outer_join
 		my %keys_outer_join = ();
 		for (my $i = 0; $i <= $#outer_clauses; $i++) {
 			if ($outer_clauses[$i]->[1] !~ /^[^\.]+\.[^\s]+$/) {
-				$str =~ s/WHERE_CLAUSE$i /$outer_clauses[$i]->[0] $outer_clauses[$i]->[2] $outer_clauses[$i]->[1]/;
+				$str =~ s/WHERE_CLAUSE$i / $outer_clauses[$i]->[0] $outer_clauses[$i]->[2] $outer_clauses[$i]->[1]/;
 			} else {
 				$outer_clauses[$i]->[0] =~ /^([^\.]+)\.[^\s]+$/;
 				my $l = $1;
@@ -1726,12 +1726,20 @@ sub replace_right_outer_join
 				$str =~ s/\s*(AND\s+)?WHERE_CLAUSE$i / /i;
 			}
 		}
+		$str =~ s/WHERE\s+(AND|OR)\s+/WHERE /is;
+
 		$from_clause = shift(@final_from_clause);
 		for (my $i = 0; $i <= $#tmp_from_list; $i++) {
 			$from_clause .= ' ' . $final_from_clause[$i] . ' ON (' .
 				join(') AND (', @{$keys_outer_join{"$tmp_from_list[$i]"}}) . ')';
 		}
-#print STDERR "FINAL FROM CLAUSE: ", join(', ', @final_from_clause), "\n";
+		# Append tables to from clause that was not involved into an outer join
+		foreach my $a (keys %from_clause_list) {
+			if ($from_clause !~ / $a\b/) {
+				$from_clause = "$from_clause_list{$a} $a, " . $from_clause;
+			}
+		}
+#print STDERR "FINAL FROM CLAUSE: $from_clause\n";
 		$str =~ s/FROM FROM_CLAUSE/FROM $from_clause/s;
 	}
 
