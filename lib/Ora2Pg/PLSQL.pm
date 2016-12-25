@@ -60,7 +60,7 @@ $VERSION = '17.6';
 	'DIMENSION' => 0, # Not supported and no equivalent
 	'JOB' => 2, # read/adapt
 	'SYNONYM' => 0.1, # read/adapt
-	'QUERY' => 0.02, # read/adapt
+	'QUERY' => 0.2, # read/adapt
 );
 
 # Scores following the number of characters: 1000 chars for one unit.
@@ -77,7 +77,7 @@ $QUERY_TEST_SCORE = 0.1;
 	'TRUNC' => 0.1,
 	'DECODE' => 1,
 	'IS TABLE OF' => 4,
-	'OUTER JOIN' => 1,
+	'OUTER JOIN' => 2,
 	'CONNECT BY' => 4,
 	'BULK COLLECT' => 3,
 	'GOTO' => 2,
@@ -111,7 +111,7 @@ $QUERY_TEST_SCORE = 0.1;
 	'PLVLEX' => 2,
 	'PLUNIT' => 2,
 	'ADD_MONTHS' => 0.1,
-	'LAST_DATE' => 1,
+	'LAST_DAY' => 1,
 	'NEXT_DAY' => 1,
 	'MONTHS_BETWEEN' => 1,
 	'NVL2' => 1,
@@ -120,6 +120,12 @@ $QUERY_TEST_SCORE = 0.1;
 	'MDSYS' => 1,
 	'MERGE INTO' => 3,
 	'COMMIT' => 3,
+	'CONTAINS' => 1,
+	'SCORE' => 1,
+	'FUZZY' => 2,
+	'ABOUT' => 3,
+	'NEAR' => 1,
+	'TO_CHAR' => 0.1,
 );
 
 @ORA_FUNCTIONS = qw(
@@ -331,6 +337,7 @@ sub plsql_to_plpgsql
 	$str =~ s/SYSTIMESTAMP/CURRENT_TIMESTAMP/igs;
 	# remove FROM DUAL
 	$str =~ s/FROM DUAL//igs;
+	$str =~ s/FROM SYS\.DUAL//igs;
 
 	# There's no such things in PostgreSQL
 	$str =~ s/PRAGMA RESTRICT_REFERENCES[^;]+;//igs;
@@ -432,11 +439,14 @@ sub plsql_to_plpgsql
 	# Cast round() call as numeric => Remove because most of the time this may not be necessary
 	#$str =~ s/round\s*\((.*?),([\s\d]+)\)/round\($1::numeric,$2\)/igs;
 
+	# Replace call to trim into btrim
+	$str =~ s/\bTRIM\(([^\(\)]+)\)/btrim($1)/igs;
+
 	# Change trunc() to date_trunc('day', field)
 	# Trunc is replaced with date_trunc if we find date in the name of
 	# the value because Oracle have the same trunc function on number
 	# and date type
-	my %date_trunc = ();
+	my @date_trunc = ();
 	my $di = 0;
 	while ($str =~ s/\bTRUNC\($date_field\)/\%\%DATETRUNC$di\%\%/is) {
 		push(@date_trunc, "date_trunc('day', $1)");
@@ -444,6 +454,55 @@ sub plsql_to_plpgsql
 	}
 	while ($str =~ s/\bTRUNC\($date_field,$field\)/\%\%DATETRUNC$di\%\%/is) {
 		push(@date_trunc, "date_trunc($2, $1)");
+		$di++;
+	}
+
+	my @sign = ();
+	$di = 0;
+	while ($str =~ s/\bsign\(([^\)]+)\)/\%\%SIGN$di\%\%/is) {
+		push(@sign, "sign($1)");
+		$di++;
+	}
+	my @length = ();
+	$di = 0;
+	while ($str =~ s/\blength\(([^\)]+)\)/\%\%LENGTH$di\%\%/is) {
+		push(@length, "length($1)");
+		$di++;
+	}
+	my @least = ();
+	$di = 0;
+	while ($str =~ s/\bleast\(([^\)]+)\)/\%\%LEAST$di\%\%/is) {
+		push(@least, "least($1)");
+		$di++;
+	}
+	my @greatest = ();
+	$di = 0;
+	while ($str =~ s/\bgreatest\(([^\)]+)\)/\%\%GREATEST$di\%\%/is) {
+		push(@greatest, "greatest($1)");
+		$di++;
+	}
+	my @btrim = ();
+	$di = 0;
+	while ($str =~ s/\bbtrim\(([^\)]+)\)/\%\%BTRIM$di\%\%/is) {
+		push(@btrim, "btrim($1)");
+		$di++;
+	}
+	my @rtrim = ();
+	$di = 0;
+	while ($str =~ s/\brtrim\(([^\)]+)\)/\%\%RTRIM$di\%\%/is) {
+		push(@rtrim, "rtrim($1)");
+		$di++;
+	}
+	my @ltrim = ();
+	$di = 0;
+	while ($str =~ s/\bltrim\(([^\)]+)\)/\%\%LTRIM$di\%\%/is) {
+		push(@ltrim, "ltrim($1)");
+		$di++;
+	}
+	my @coalesce = ();
+	$di = 0;
+	while ($str =~ s/\bcoalesce\(([^\)]+)\)/\%\%COALESCE$di\%\%/is) {
+		push(@coalesce, "coalesce($1)");
 		$di++;
 	}
 
@@ -458,11 +517,6 @@ sub plsql_to_plpgsql
 	$str =~ s/ADD_YEARS\s*\(\s*TO_CHAR\(\s*([^,]+)(.*?),\s*([^,\(\)]+)\s*\)/$1 + $3*'1 year'::interval/gsi;
 	$str =~ s/ADD_YEARS\s*\((.*?),\s*(\d+)\s*\)/$1 + '$2 year'::interval/gsi;
 	$str =~ s/ADD_YEARS\s*\((.*?),\s*([^,\(\)]+)\s*\)/$1 + $2*' year'::interval/gsi;
-
-	# Restore DATETRUNC call
-	$str =~ s/\%\%DATETRUNC(\d+)\%\%/$date_trunc[$1]/igs;
-	@date_trunc = ();
-	$str =~ s/date_trunc\('MM'/date_trunc('month'/igs;
 
 	# Add STRICT keyword when select...into and an exception with NO_DATA_FOUND/TOO_MANY_ROW is present
 	if ($str !~ s/\b(SELECT\b[^;]*?INTO)(.*?)(EXCEPTION.*?NO_DATA_FOUND)/$1 STRICT $2 $3/igs) {
@@ -562,6 +616,28 @@ sub plsql_to_plpgsql
 	# Replace Spatial Operator to the postgis equivalent
 	$str = &replace_sdo_operator($str);
 
+	# Rewrite replace(a,b) with three argument
+	my @replace = ();
+	$di = 0;
+	while ($str =~ s/REPLACE\s*\($field,$field\)/\%\%REPLACE$di\%\%/is) {
+		push(@replace, "replace($1, $2, '')");
+		$di++;
+	}
+
+	# Replace Oracle substr(string, start_position, length) with
+	# PostgreSQL substring(string from start_position for length)
+	my @substring = ();
+	$di = 0;
+	while ($str =~ s/substr\s*\($field,$field,$field\)/\%\%SUBSTRING$di\%\%/is) {
+		push(@substring, "substring($1 from $2 for $3)");
+		$di++;
+	}
+	while ($str =~ s/substr\s*\($field,$field\)/\%\%SUBSTRING$di\%\%/is) {
+		push(@substring, "substring($1 from $2)");
+		$di++;
+	}
+
+
 	# Replace decode("user_status",'active',"username",null)
 	# PostgreSQL (CASE WHEN "user_status"='ACTIVE' THEN "username" ELSE NULL END)
 	$str = replace_decode($str);
@@ -582,14 +658,6 @@ sub plsql_to_plpgsql
 		$str =~ s/([a-z0-9_\."]+\s*\([^\)]*\))\s*IS NULL/coalesce($1::text, '') = ''/igs;
 		$str =~ s/([a-z0-9_\."]+\s*\([^\)]*\))\s*IS NOT NULL/($1 IS NOT NULL AND ($1)::text <> '')/igs;
 	}
-
-	# Rewrite replace(a,b) with three argument
-	$str =~ s/REPLACE\s*\($field,$field\)/replace\($1, $2, ''\)/igs;
-
-	# Replace Oracle substr(string, start_position, length) with
-	# PostgreSQL substring(string from start_position for length)
-	$str =~ s/substr\s*\($field,$field,$field\)/substring($1 from $2 for $3)/igs;
-	$str =~ s/substr\s*\($field,$field\)/substring($1 from $2)/igs;
 
 	# Remove any call to MDSYS schema in the code
 	$str =~ s/MDSYS\.//igs;
@@ -614,8 +682,39 @@ sub plsql_to_plpgsql
 		$str =~ s/\%TEXTVALUE-(\d+)\%/'$text_values[$1]'/gs;
 	}
 
-	# Replace call to trim into btrim
-	$str =~ s/\bTRIM\(([^\(\)]+)\)/btrim($1)/igs;
+	# Restore call to simple function
+	$str =~ s/\%\%DATETRUNC(\d+)\%\%/$date_trunc[$1]/igs;
+	$str =~ s/date_trunc\('MM'/date_trunc('month'/igs;
+	$str =~ s/\%\%REPLACE(\d+)\%\%/$replace[$1]/igs;
+	$str =~ s/\%\%SUBSTRING(\d+)\%\%/$substring[$1]/igs;
+	$str =~ s/\%\%GREATEST(\d+)\%\%/$greatest[$1]/igs;
+	$str =~ s/\%\%LEAST(\d+)\%\%/$least[$1]/igs;
+	$str =~ s/\%\%SIGN(\d+)\%\%/$sign[$1]/igs;
+	$str =~ s/\%\%LENGTH(\d+)\%\%/$length[$1]/igs;
+	$str =~ s/\%\%LTRIM(\d+)\%\%/$ltrim[$1]/igs;
+	$str =~ s/\%\%RTRIM(\d+)\%\%/$rtrim[$1]/igs;
+	$str =~ s/\%\%BTRIM(\d+)\%\%/$btrim[$1]/igs;
+	$str =~ s/\%\%COALESCE(\d+)\%\%/$coalesce[$1]/igs;
+
+	# Replace call to right outer join obsolete syntax
+	$str = &replace_right_outer_join($str);
+
+	# Replace pending decode()
+	$str = replace_decode($str);
+
+	# Restore call to simple function again if some have not already been replaced
+	$str =~ s/\%\%DATETRUNC(\d+)\%\%/$date_trunc[$1]/igs;
+	$str =~ s/date_trunc\('MM'/date_trunc('month'/igs;
+	$str =~ s/\%\%REPLACE(\d+)\%\%/$replace[$1]/igs;
+	$str =~ s/\%\%SUBSTRING(\d+)\%\%/$substring[$1]/igs;
+	$str =~ s/\%\%GREATEST(\d+)\%\%/$greatest[$1]/igs;
+	$str =~ s/\%\%LEAST(\d+)\%\%/$least[$1]/igs;
+	$str =~ s/\%\%SIGN(\d+)\%\%/$sign[$1]/igs;
+	$str =~ s/\%\%LENGTH(\d+)\%\%/$length[$1]/igs;
+	$str =~ s/\%\%LTRIM(\d+)\%\%/$ltrim[$1]/igs;
+	$str =~ s/\%\%RTRIM(\d+)\%\%/$rtrim[$1]/igs;
+	$str =~ s/\%\%BTRIM(\d+)\%\%/$btrim[$1]/igs;
+	$str =~ s/\%\%COALESCE(\d+)\%\%/$coalesce[$1]/igs;
 
 	return $str;
 }
@@ -626,6 +725,7 @@ sub replace_decode
 
 	my $decode_idx = 0;
 	my @str_decode = ();
+
 	while ($str =~ s/DECODE\s*\(([^\(\)]+)\)/DECODE%$decode_idx%/is) {
 		push(@str_decode, $1);
 		# When there is no potential subquery in the decode statement
@@ -952,7 +1052,7 @@ sub estimate_cost
 	# Default cost is testing that mean it at least must be tested
 	my $cost = $FCT_TEST_SCORE;
 	# When evaluating queries size must not be included here
-	if ($type eq 'QUERY') {
+	if ($type eq 'QUERY' || $type eq 'VIEW') {
 		$cost = 0;
 	}
 	$cost_details{'TEST'} = $cost;
@@ -960,7 +1060,7 @@ sub estimate_cost
 	# Set cost following code length
 	my $cost_size = int(length($str)/$SIZE_SCORE) || 1;
 	# When evaluating queries size must not be included here
-	if ($type eq 'QUERY') {
+	if ($type eq 'QUERY' || $type eq 'VIEW') {
 		$cost_size = 0;
 	}
 	$cost += $cost_size;
@@ -1049,8 +1149,8 @@ sub estimate_cost
 	$cost_details{'PLUNIT'} += $n;
 	$n = () = $str =~ m/ADD_MONTHS/igs;
 	$cost_details{'ADD_MONTHS'} += $n;
-	$n = () = $str =~ m/LAST_DATE/igs;
-	$cost_details{'LAST_DATE'} += $n;
+	$n = () = $str =~ m/LAST_DAY/igs;
+	$cost_details{'LAST_DAY'} += $n;
 	$n = () = $str =~ m/NEXT_DAY/igs;
 	$cost_details{'NEXT_DAY'} += $n;
 	$n = () = $str =~ m/MONTHS_BETWEEN/igs;
@@ -1066,6 +1166,19 @@ sub estimate_cost
 	$cost_details{'MDSYS'} += $n;
 	$n = () = $str =~ m/MERGE\sINTO/igs;
 	$cost_details{'MERGE'} += $n;
+	$n = () = $str =~ m/\bCONTAINS\(/igs;
+	$cost_details{'CONTAINS'} += $n;
+	$n = () = $str =~ m/\bSCORE\((?:.*)?\bCONTAINS\(/igs;
+	$cost_details{'SCORE'} += $n;
+	$n = () = $str =~ m/CONTAINS\((?:.*)?\bABOUT\(/igs;
+	$cost_details{'ABOUT'} += $n;
+	$n = () = $str =~ m/CONTAINS\((?:.*)?\bFUZZY\(/igs;
+	$cost_details{'FUZZY'} += $n;
+	$n = () = $str =~ m/CONTAINS\((?:.*)?\bNEAR\(/igs;
+	$cost_details{'NEAR'} += $n;
+	$n = () = $str =~ m/TO_CHAR\([^,\)]+\)/igs;
+	$cost_details{'TO_CHAR'} += $n;
+
 
 	foreach my $f (@ORA_FUNCTIONS) {
 		if ($str =~ /\b$f\b/igs) {
@@ -1533,6 +1646,104 @@ sub mysql_estimate_cost
 	}
 
 	return $cost, %cost_details;
+}
+
+sub replace_right_outer_join
+{
+	my $str = shift;
+
+	# process simple form of outer join
+	my $nbouter = $str =~ /(\(\+\)\s*(?:!=|<>|>=|<=|=|>|<|NOT LIKE|LIKE))/igs;
+	if ($nbouter >= 1 && $str !~ /(?:!=|<>|>=|<=|=|>|<|NOT LIKE|LIKE)\s*[^\s]+\s*\(\+\)/i) {
+		# Extract the FROM clause
+		$str =~ s/(.*)\bFROM\s+(.*?)\s+WHERE\s+(.*?)$/$1FROM FROM_CLAUSE WHERE $3/is;
+		my $from_clause = $2;
+#print STDERR "FROM_CLAUSE: $from_clause\n";
+		$from_clause =~ s/"//gs;
+		my @tables = split(/\s*,\s*/, $from_clause);
+		# Set a hash for alias to table mapping
+		my %from_clause_list = ();
+		my %main_from_tables = ();
+		foreach my $table (@tables) {
+			$table =~ s/^\s+//s;
+			$table =~ s/\s+$//s;
+			my ($t, $alias) = split(/\s+/, lc($table));
+			$alias = $t if (!$alias);
+			$from_clause_list{$alias} = $t;
+		}
+
+		# Extract all Oracle's outer join syntax from the where clause
+		my @outer_clauses = ();
+		my @final_from_clause = ();
+		my @tmp_from_list = ();
+		my $start_query = '';
+		my $end_query = '';
+		if ($str =~ s/^(.*FROM FROM_CLAUSE WHERE)//is) {
+			$start_query = $1;
+		}
+		if ($str =~ s/\s+((?:GROUP BY|ORDER BY).*)$//is) {
+			$end_query = $1;
+		}
+		my @predicat = split(/\s+(AND|OR)\s+/i, $str);
+		my $id = 0;
+		for (my $i = 0; $i <= $#predicat; $i+=2) {
+			next if ($predicat[$i] !~ /\(\+\)/);
+			$predicat[$i] =~ s/(.*)/WHERE_CLAUSE$id /is;
+			my $where_clause = $1;
+#print STDERR "WHERE_CLAUSE$id: $1\n";
+			$id++;
+			$where_clause =~ s/"//gs;
+			$where_clause =~ s/\s*\(\+\)//gs;
+			my ($l, $o, $r) = split(/\s*(=|LIKE)\s*/i, lc($where_clause));
+			push(@outer_clauses, [ $l , $r , $o]);
+			# set the table in the FROM clause
+			if ($l =~ s/^([^\.]+)\..*/$1/) {
+				if ($#final_from_clause < 0) {
+					push(@final_from_clause, "$from_clause_list{$l} $l");
+				}
+				if ($r =~ s/^([^\.]+)\..*/$1/) {
+					if (!grep(/\Q$from_clause_list{$r} $r\E/, @final_from_clause)) {
+						push(@final_from_clause, 'RIGHT OUTER JOIN ' . "$from_clause_list{$r} $r");
+					} elsif (!grep(/\Q$from_clause_list{$l} $l\E/, @final_from_clause)) {
+						push(@final_from_clause, 'RIGHT OUTER JOIN ' . "$from_clause_list{$l} $l");
+					}
+					push(@tmp_from_list, "$l$r") if (!grep(/^\Q$l$r\E$/, @tmp_from_list));
+				}
+			}
+		}
+		$str = $start_query . join(' ', @predicat) . ' ' . $end_query;
+
+		my %keys_outer_join = ();
+		for (my $i = 0; $i <= $#outer_clauses; $i++) {
+			if ($outer_clauses[$i]->[1] !~ /^[^\.]+\.[^\s]+$/) {
+				$str =~ s/WHERE_CLAUSE$i / $outer_clauses[$i]->[0] $outer_clauses[$i]->[2] $outer_clauses[$i]->[1]/;
+			} else {
+				$outer_clauses[$i]->[0] =~ /^([^\.]+)\.[^\s]+$/;
+				my $l = $1;
+				$outer_clauses[$i]->[1] =~ /^([^\.]+)\.[^\s]+$/;
+				my $r = $1;
+				push(@{$keys_outer_join{"$l$r"}}, "$outer_clauses[$i]->[0] $outer_clauses[$i]->[2] $outer_clauses[$i]->[1]");
+				$str =~ s/\s*(AND\s+)?WHERE_CLAUSE$i / /i;
+			}
+		}
+		$str =~ s/WHERE\s+(AND|OR)\s+/WHERE /is;
+
+		$from_clause = shift(@final_from_clause);
+		for (my $i = 0; $i <= $#tmp_from_list; $i++) {
+			$from_clause .= ' ' . $final_from_clause[$i] . ' ON (' .
+				join(') AND (', @{$keys_outer_join{"$tmp_from_list[$i]"}}) . ')';
+		}
+		# Append tables to from clause that was not involved into an outer join
+		foreach my $a (keys %from_clause_list) {
+			if ($from_clause !~ / $a\b/) {
+				$from_clause = "$from_clause_list{$a} $a, " . $from_clause;
+			}
+		}
+#print STDERR "FINAL FROM CLAUSE: $from_clause\n";
+		$str =~ s/FROM FROM_CLAUSE/FROM $from_clause/s;
+	}
+
+	return $str;
 }
 
 1;

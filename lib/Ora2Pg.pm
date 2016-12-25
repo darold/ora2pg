@@ -813,8 +813,10 @@ sub _init
 
 	# Use FTS index to convert CONTEXT Oracle's indexes by default
 	$self->{context_as_trgm} = 0;
-	$self->{fts_index_only}  = 0;
+	$self->{fts_index_only}  = 1;
 	$self->{fts_config}      = 'pg_catalog.english';
+	$self->{use_unaccent}    = 1;
+	$self->{use_lower_unaccent} = 1;
 
 	# Initialyze following configuration file
 	foreach my $k (sort keys %AConfig) {
@@ -1200,6 +1202,9 @@ sub _init
 		if ($self->{type} eq 'LOAD') {
 			$self->logit("FATAL: with LOAD you must provide an input file\n", 0, 1);
 		}
+		if (!$self->{oracle_dsn} || ($self->{oracle_dsn} =~ /;sid=SIDNAME/)) {
+			$self->logit("FATAL: you must set ORACLE_DSN in ora2pg.conf or use a DDL input file.\n", 0, 1);
+		}
 		# Connect the database
 		if ($self->{oracle_dsn} =~ /dbi:mysql/i) {
 			$self->{dbh} = $self->_mysql_connection();
@@ -1342,7 +1347,14 @@ sub _oracle_connection
 
 	$self->logit("Trying to connect to database: $self->{oracle_dsn}\n", 1) if (!$quiet);
 
-	my $dbh = DBI->connect($self->{oracle_dsn}, $self->{oracle_user}, $self->{oracle_pwd}, {ora_envhp => 0, LongReadLen=>$self->{longreadlen}, LongTruncOk=>$self->{longtruncok}, AutoInactiveDestroy => 1});
+	my $dbh = DBI->connect($self->{oracle_dsn}, $self->{oracle_user}, $self->{oracle_pwd},
+		{
+			ora_envhp => 0,
+			LongReadLen=>$self->{longreadlen},
+			LongTruncOk=>$self->{longtruncok},
+			AutoInactiveDestroy => 1
+		}
+	);
 
 	# Check for connection failure
 	if (!$dbh) {
@@ -3030,7 +3042,14 @@ sub _get_sql_data
 					$tmpv =~ s/\./"."/;
 					$sql_output .= "CREATE OR REPLACE VIEW \"$tmpv\" AS ";
 				}
-				$sql_output .= $self->{views}{$view}{text} . ";\n\n";
+				$sql_output .= $self->{views}{$view}{text} . ";\n";
+				if ($self->{estimate_cost}) {
+					my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($self, $self->{views}{$view}{text}, 'VIEW');
+					$cost += $Ora2Pg::PLSQL::OBJECT_SCORE{'VIEW'};
+					$cost_value += $cost;
+					$sql_output .= "\n-- Estimed cost of view [ $view ]: " . sprintf("%2.2f", $cost);
+				}
+				$sql_output .= "\n";
 			} else {
 				if (!$self->{preserve_case}) {
 					$sql_output .= "CREATE OR REPLACE VIEW \L$tmpv\E (";
@@ -3065,7 +3084,14 @@ sub _get_sql_data
 						$self->{views}{$view}{text} =~ s/SELECT[^\s]*(.*?)\bFROM\b/SELECT $clause FROM/is;
 					}
 				}
-				$sql_output .= ") AS " . $self->{views}{$view}{text} . ";\n\n";
+				$sql_output .= ") AS " . $self->{views}{$view}{text} . ";\n";
+				if ($self->{estimate_cost}) {
+					my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($self, $self->{views}{$view}{text}, 'VIEW');
+					$cost += $Ora2Pg::PLSQL::OBJECT_SCORE{'VIEW'};
+					$cost_value += $cost;
+					$sql_output .= "\n-- Estimed cost of view [ $view ]: " . sprintf("%2.2f", $cost);
+				}
+				$sql_output .= "\n";
 			}
 
 			if ($self->{force_owner}) {
@@ -4480,6 +4506,23 @@ LANGUAGE plpgsql ;
 		}
 		$self->dump($sql_output);
 		$self->{packages} = ();
+		$sql_output = '';
+		# Create script to replace global variable calls
+		if (scalar keys %{$self->{global_variables}}) {
+			my $default_vars = '';
+			foreach my $n (keys %{$self->{global_variables}}) {
+				my $str = $n;
+				if (exists $self->{global_variables}{$n}{constant} || exists $self->{global_variables}{$n}{default}) {
+					$default_vars .= "$n = '$self->{global_variables}{$n}{default}\n";
+				}
+			}
+			if ($default_vars) {
+				open(OUT, ">$self->{output_dir}/global_variables.conf");
+				print OUT "-- Global variables with default values used in packages.\n";
+				print OUT $default_vars;
+				close(OUT);
+			}
+		}
 		return;
 	}
 
@@ -5708,12 +5751,35 @@ CREATE TRIGGER ${table}_trigger_insert
 		$indices = '';
 		if ($fts_indices) {
 			$fts_indices =~ s/\n+/\n/gs;
-			# FTS TRIGGERS are exported in a separated file to be able to parallelyze index creation
-			$self->logit("Dumping triggers for FTS indexes to one separate file : FTS_INDEXES_$self->{output}\n", 1);
-			$fhdl = $self->open_export_file("FTS_INDEXES_$self->{output}");
-			$self->dump($sql_header . $fts_indices, $fhdl);
-			$self->close_export_file($fhdl);
-			$fts_indices = '';
+			my $unaccent = '';
+			if ($self->{use_lower_unaccent}) {
+				$unaccent = qq{
+CREATE OR REPLACE FUNCTION unaccent_immutable(text)
+RETURNS text AS
+\$\$
+  SELECT lower(public.unaccent('public.unaccent', \$1));
+\$\$ LANGUAGE sql IMMUTABLE;
+
+};
+			} elsif ($self->{use_unaccent}) {
+				$unaccent = qq{
+CREATE OR REPLACE FUNCTION unaccent_immutable(text)
+RETURNS text AS
+\$\$
+  SELECT public.unaccent('public.unaccent', \$1);
+\$\$ LANGUAGE sql IMMUTABLE;
+
+};
+			}
+
+			# FTS TRIGGERS are exported in a separated file to be able to parallelize index creation
+			if ($fts_indices) {
+				$self->logit("Dumping triggers for FTS indexes to one separate file : FTS_INDEXES_$self->{output}\n", 1);
+				$fhdl = $self->open_export_file("FTS_INDEXES_$self->{output}");
+				$self->dump($sql_header . $unaccent . $fts_indices, $fhdl);
+				$self->close_export_file($fhdl);
+				$fts_indices = '';
+			}
 		}
 	}
 
@@ -6088,6 +6154,7 @@ sub _create_indexes
 				($self->{context_as_trgm} && ($self->{$objtyp}{$tbsaved}{idx_type}{$idx}{type_name} =~ /FULLTEXT|CONTEXT/)) ) {
 				# use pg_trgm
 				my @cols = split(/\s*,\s*/, $columns);
+				map { s/^(.*)$/unaccent_immutable($1)/; } @cols;
 				$columns = join(" gin_trgm_ops, ", @cols);
 				$columns .= " gin_trgm_ops";
 				$str .= "CREATE INDEX$concurrently \L$idxname$self->{indexes_suffix}\E ON $table USING gin($columns)";
@@ -6108,13 +6175,18 @@ sub _create_indexes
 				my $contruct_vector =  '';
 				my $update_vector =  '';
 				my $weight = 'A';
-				foreach my $col (@{$indexes{$idx}}) {
-					$contruct_vector .= "\t\tsetweight(to_tsvector('$self->{fts_config}', coalesce(new.$col,'')), '$weight') ||\n";
-					$update_vector .= " setweight(to_tsvector('$self->{fts_config}', coalesce($col,'')), '$weight') ||";
-					$weight++;
+				if ($#{$indexes{$idx}} > 0) {
+					foreach my $col (@{$indexes{$idx}}) {
+						$contruct_vector .= "\t\tsetweight(to_tsvector('$self->{fts_config}', coalesce(new.$col,'')), '$weight') ||\n";
+						$update_vector .= " setweight(to_tsvector('$self->{fts_config}', coalesce($col,'')), '$weight') ||";
+						$weight++;
+					}
+					$contruct_vector =~ s/\|\|$/;/s;
+					$update_vector =~ s/\|\|$/;/s;
+				} else {
+					$contruct_vector = "\t\tto_tsvector('$self->{fts_config}', coalesce(new.$indexes{$idx}->[0],''))\n";
+					$update_vector = " to_tsvector('$self->{fts_config}', coalesce($indexes{$idx}->[0],''))";
 				}
-				$contruct_vector =~ s/\|\|$/;/s;
-				$update_vector =~ s/\|\|$/;/s;
 
 				$fts_str .= qq{
 -- When the data migration is done without trigger, create tsvector data for all the existing records
@@ -9633,7 +9705,9 @@ sub _convert_package
 	if ($self->{package_as_schema}) {
 		$content = "-- PostgreSQL does not recognize PACKAGES, using SCHEMA instead.\n";
 	}
-	if ($self->{package_as_schema} && ($plsql =~ /PACKAGE\s+BODY\s*[^\s]+\s*(AS|IS)\s*/is)) {
+	if ($self->{package_as_schema} && ($plsql =~ /PACKAGE\s+BODY\s*([^\s]+)\s*(AS|IS)\s*/is)) {
+		my $pname = $1;
+		$pname =~ s/"//g;
 		if (!$self->{preserve_case}) {
 			$content .= "DROP SCHEMA $self->{pg_supports_ifexists} $pname CASCADE;\n";
 			$content .= "CREATE SCHEMA $pname;\n";
@@ -9724,9 +9798,10 @@ sub _convert_package
 		my %comments = $self->_remove_comments(\$ctt);
 		my @functions = $self->_extract_functions($ctt);
 
+
 		# Try to detect local function
 		for (my $i = 0; $i <= $#functions; $i++) {
-			my %fct_detail = $self->_lookup_function($functions[$i]);
+			my %fct_detail = $self->_lookup_function($functions[$i], $pname);
 			if (!exists $fct_detail{name}) {
 				$functions[$i] = '';
 				next;
@@ -9763,6 +9838,7 @@ sub _convert_package
 		if ($self->{estimate_cost}) {
 			$self->{total_pkgcost} += $self->{pkgcost} || 0;
 		}
+
 	}
 	return $content;
 }
@@ -9850,7 +9926,7 @@ sub _convert_function
 
 	my %fct_detail = ();
 	if (!$self->{is_mysql}) {
-		%fct_detail = $self->_lookup_function($plsql);
+		%fct_detail = $self->_lookup_function($plsql, $pname);
 	} else {
 		%fct_detail = $self->_lookup_function($pname);
 		$pname = '';
@@ -11643,14 +11719,20 @@ sub _show_infos
 			} elsif ($typ eq 'VIEW') {
 				my %view_infos = $self->_get_views();
 				foreach my $view (sort keys %view_infos) {
+
+					# Remove unsupported definitions from the ddl statement
+					$view_infos{$view}{text} =~ s/\s*WITH\s+READ\s+ONLY//is;
+					$view_infos{$view}{text} =~ s/\s*OF\s+([^\s]+)\s+(WITH|UNDER)\s+[^\)]+\)//is;
+					$view_infos{$view}{text} =~ s/\s*OF\s+XMLTYPE\s+[^\)]+\)//is;
+					$view_infos{$view}{text} = $self->_format_view($view_infos{$view}{text});
+
 					if ($self->{estimate_cost}) {
-						my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($self, $view_infos{$view}{text});
-						next if ($cost <= ($cost_detail{SIZE}+$cost_detail{TEST}));
-						$cost -= ($cost_detail{SIZE} + $cost_detail{TEST});
-						$cost = sprintf("%.1f", $cost);
-						delete $cost_detail{SIZE};
-						delete $cost_detail{TEST};
+						my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($self, $view_infos{$view}{text}, 'VIEW');
 						$report_info{'Objects'}{$typ}{'cost_value'} += $cost;
+						# Do not show view that just have to be tested
+						next if (!$cost);
+						$cost += $Ora2Pg::PLSQL::OBJECT_SCORE{'VIEW'};
+						# Show detail about views that might need manual rewritting
 						$report_info{'Objects'}{$typ}{'detail'} .= "\L$view: $cost\E\n";
 						$report_info{full_view_details}{"\L$view\E"}{count} = $cost;
 						foreach my $d (sort { $cost_detail{$b} <=> $cost_detail{$a} } keys %cost_detail) {
@@ -11658,7 +11740,7 @@ sub _show_infos
 							$report_info{full_view_details}{"\L$view\E"}{info} .= "\t$d => $cost_detail{$d}";
 							$report_info{full_view_details}{"\L$view\E"}{info} .= " (cost: ${$uncovered_score}{$d})" if (${$uncovered_score}{$d});
 							$report_info{full_view_details}{"\L$view\E"}{info} .= "\n";
-							push(@{$report_info{full_view_details}{"\L$view\E"}{keywords}}, $d) if (($d ne 'SIZE') && ($d ne 'TEST')); 
+							push(@{$report_info{full_view_details}{"\L$view\E"}{keywords}}, $d); 
 						}
 					}
 				}
@@ -13533,7 +13615,7 @@ sub _lookup_package
 		my @functions = $self->_extract_functions($content);
 		foreach my $f (@functions) {
 			next if (!$f);
-			my %fct_detail = $self->_lookup_function($f);
+			my %fct_detail = $self->_lookup_function($f, $pname);
 			next if (!exists $fct_detail{name});
 			$fct_detail{name} =~ s/^.*\.//;
 			$fct_detail{name} =~ s/"//g;
@@ -13556,13 +13638,13 @@ Return a hast with the details of the function
 
 sub _lookup_function
 {
-	my ($self, $plsql) = @_;
+	my ($self, $plsql, $pname) = @_;
 
 	if ($self->{is_mysql}) {
 		if ($self->{type} eq 'FUNCTION') {
-			return Ora2Pg::MySQL::_lookup_function($self, $plsql);
+			return Ora2Pg::MySQL::_lookup_function($self, $plsql, $pname);
 		} else {
-			return Ora2Pg::MySQL::_lookup_procedure($self, $plsql);
+			return Ora2Pg::MySQL::_lookup_procedure($self, $plsql, $pname);
 		}
 	}
 
@@ -13581,7 +13663,9 @@ sub _lookup_function
 		$fct_detail{type} = uc($2);
 		$fct_detail{name} = $3;
 		$fct_detail{args} = $4;
-
+		if ($fct_detail{before}) {
+			$fct_detail{before} = $self->register_global_variable($pname, $fct_detail{before});
+		}
 		if ($fct_detail{args} =~ /\b(RETURN|IS|AS)\b/is) {
 			$fct_detail{args} = '()';
 		}
@@ -13644,6 +13728,14 @@ sub _lookup_function
 		$fct_detail{code} = $plsql;
 	}
 
+	# Replace call to global variables declared in this package
+	foreach my $n (keys %{$self->{global_variables}}) {
+		next if ($pname && (uc($n) !~ /^\U$pname\E\./));
+		$fct_detail{code} =~ s/\b$n\s*:=\s*([^;]+)\s*;/PERFORM set_config('$n', $1, false);/isg;
+		$fct_detail{code} =~ s/([^\.]*)\b$self->{global_variables}{$n}{name}\s*:=\s*([^;]+)/$1PERFORM set_config('$n', $2, false)/igs;
+		$fct_detail{code} =~ s/([^']+)\b$n\s*(?!:=)\s*/$1current_setting('$n')::$self->{global_variables}{$n}{type}/igs;
+		$fct_detail{code} =~ s/([^\.']+)\b$self->{global_variables}{$n}{name}\s*(?!:=)\s*/$1current_setting('$n')::$self->{global_variables}{$n}{type}/igs;
+	}
 	return %fct_detail;
 }
 
@@ -14600,6 +14692,40 @@ sub escape_insert
 		$col = "E'$col'";
 	}
 	return $col;
+}
+
+sub register_global_variable
+{
+	my ($self, $pname, $glob_vars) = @_;
+
+	$glob_vars = Ora2Pg::PLSQL::replace_sql_type($glob_vars, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type});
+
+	# Replace PL/SQL code into PL/PGSQL similar code
+	$glob_vars = Ora2Pg::PLSQL::plsql_to_plpgsql($self, $glob_vars);
+
+	my @vars = split(/\s*;\s*/, $glob_vars);
+	map { s/^\s+//; s/\s+$//; } @vars;
+	my $ret = '';
+	foreach my $l (@vars) {
+		$ret .= $l, next if ($l =~ /^--/);
+		my ($n, $type, @others) = split(/\s+/, $l);
+		$ret .= $l, next if (!$type);
+		$ret .= $l, next if (uc($type) eq 'EXCEPTION');
+		next if (!$pname);
+		my $v = $pname . '.' . $n;
+		$self->{global_variables}{$v}{name} = $n;
+		if (uc($type) eq 'CONSTANT') {
+			$self->{global_variables}{$v}{constant} = 1;
+			$type = shift(@others);
+		}
+		if ($#others > 0 && $others[0] eq ':=') {
+			shift(@others);
+			$self->{global_variables}{$v}{default} = join(' ', @others);
+		}
+		$self->{global_variables}{$v}{type} = $type;
+	}
+
+	return $ret;
 }
 
 1;

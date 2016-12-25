@@ -124,7 +124,7 @@
 .\" ========================================================================
 .\"
 .IX Title "ORA2PG 1"
-.TH ORA2PG 1 "2016-12-01" "perl v5.14.2" "User Contributed Perl Documentation"
+.TH ORA2PG 1 "2016-12-25" "perl v5.14.2" "User Contributed Perl Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -216,11 +216,15 @@ Perl (http://www.activestate.com/activeperl) could help as they seems to have
 an already packaged DBD::Oracle easy to install.
 .SS "Requirement"
 .IX Subsection "Requirement"
-You need a modern Perl distribution (perl 5.10 and more), the \s-1DBI\s0 > 1.614 and
-DBD::Oracle Perl modules to be installed. These are used to connect to the
-Oracle database. To install DBD::Oracle and have it working you need to have
-the Oracle client libraries installed and the \s-1ORACLE_HOME\s0 environment variable
-must be defined.
+You need a modern Perl distribution (perl 5.10 and more). To connect to a
+database and proceed to his migration you need the \s-1DBI\s0 Perl module > 1.614.
+To migrate an Oracle database you need the DBD::Oracle Perl modules to be
+installed. To migrate a MySQL database you need the DBD::MySQL Perl modules.
+These modules are used to connect to the database but they are not mandatory
+if you want to migrate \s-1DDL\s0 input files.
+.PP
+To install DBD::Oracle and have it working you need to have the Oracle client
+libraries installed and the \s-1ORACLE_HOME\s0 environment variable must be defined.
 .PP
 If you plan to export a MySQL database you need to install the Perl module
 DBD::mysql which require that the mysql client libraries are installed.
@@ -242,8 +246,8 @@ program bzip2 must be available in your \s-1PATH\s0.
 Like any other Perl Module Ora2Pg can be installed with the following commands:
 .PP
 .Vb 4
-\&        tar xzf ora2pg\-10.x.tar.gz
-\&        cd ora2pg\-10.x/
+\&        tar xzf ora2pg\-x.x.tar.gz
+\&        cd ora2pg\-x.x/
 \&        perl Makefile.PL
 \&        make && make install
 .Ve
@@ -1145,25 +1149,120 @@ define multiple \s-1REPLACE_QUERY\s0 lines.
 .Vb 1
 \&        REPLACE_QUERY   EMPLOYEES[SELECT e.id,e.fisrtname,lastname FROM EMPLOYEES e JOIN EMP_UPDT u ON (e.id=u.id AND u.cdate>\*(Aq2014\-08\-01 00:00:00\*(Aq)]
 .Ve
+.SS "Controm of Full Text Search export"
+.IX Subsection "Controm of Full Text Search export"
+Several directives can be used to control the way Ora2Pg will export the
+Oracle's Text search indexes. By default \s-1CONTEXT\s0 indexes will be exported
+to PostgreSQL \s-1FTS\s0 indexes but \s-1CTXCAT\s0 indexes wikk be exported as indexes
+using the pg_trgm extension.
 .IP "\s-1CONTEXT_AS_TRGM\s0" 4
 .IX Item "CONTEXT_AS_TRGM"
 Force Ora2Pg to translate Oracle Text indexes into PostgreSQL indexes using
 pg_trgm extension. Default is to translate \s-1CONTEXT\s0 indexes into \s-1FTS\s0 indexes
 and \s-1CTXCAT\s0 indexes using pg_trgm. Most of the time using pg_trgm is enough,
-this is why this directive stand for.
-.IP "\s-1FTS_INDEX_ONLY\s0" 4
-.IX Item "FTS_INDEX_ONLY"
-By default Ora2Pg creates an extra tsvector column with a dedicated triggers
-for \s-1FTS\s0 indexes. Enable this directive if you just want a function-based
-index like:
+this is why this directive stand for. You need to create the pg_trgm extension
+into the destination database before importing the objects:
 .Sp
 .Vb 1
-\&        CREATE INDEX ON t_document USING gin(to_tsvector(\*(Aqpg_catalog.english\*(Aq, title));
+\&        CREATE EXTENSION pg_trgm;
 .Ve
+.IP "\s-1FTS_INDEX_ONLY\s0" 4
+.IX Item "FTS_INDEX_ONLY"
+By default Ora2Pg creates a function-based index to translate Oracle Text
+indexes.
+.Sp
+.Vb 2
+\&        CREATE INDEX ON t_document
+\&                USING gin(to_tsvector(\*(Aqpg_catalog.english\*(Aq, title));
+.Ve
+.Sp
+You will have to rewrite the \s-1\fICONTAIN\s0()\fR clause using \fIto_tsvector()\fR, example:
+.Sp
+.Vb 2
+\&        SELECT id,title FROM t_document
+\&                WHERE to_tsvector(title)) @@ to_tsquery(\*(Aqsearch_word\*(Aq);
+.Ve
+.Sp
+To force Ora2Pg to create an extra tsvector column with a dedicated triggers
+for \s-1FTS\s0 indexes, disable this directive. In this case, Ora2Pg will add the
+column as follow: \s-1ALTER\s0 \s-1TABLE\s0 t_document \s-1ADD\s0 \s-1COLUMN\s0 tsv_title tsvector;
+Then update the column to compute \s-1FTS\s0 vectors if data have been loaded before
+	    \s-1UPDATE\s0 t_document \s-1SET\s0 tsv_title =
+		to_tsvector('pg_catalog.english', coalesce(title,''));
+To automatically update the column when a modification in the title column
+appears, Ora2Pg adds the following trigger:
+.Sp
+.Vb 12
+\&        CREATE FUNCTION tsv_t_document_title() RETURNS trigger AS $$
+\&        BEGIN
+\&               IF TG_OP = \*(AqINSERT\*(Aq OR new.title != old.title THEN
+\&                       new.tsv_title :=
+\&                       to_tsvector(\*(Aqpg_catalog.english\*(Aq, coalesce(new.title,\*(Aq\*(Aq));
+\&               END IF;
+\&               return new;
+\&        END
+\&        $$ LANGUAGE plpgsql;
+\&        CREATE TRIGGER trig_tsv_t_document_title BEFORE INSERT OR UPDATE
+\&         ON t_document
+\&         FOR EACH ROW EXECUTE PROCEDURE tsv_t_document_title();
+.Ve
+.Sp
+When the Oracle text index is defined over multiple column, Ora2Pg will use
+\&\fIsetweight()\fR to set a weight in the order of the column declaration.
 .IP "\s-1FTS_CONFIG\s0" 4
 .IX Item "FTS_CONFIG"
 Use this directive to change default text search config: pg_catalog.english
 used with \s-1FTS\s0 \fIto_tsvector()\fR function. For example, set it to pg_catalog.french
+.IP "\s-1USE_UNACCENT\s0" 4
+.IX Item "USE_UNACCENT"
+If you want to perform your text search in an accent insensitive way, enable
+this directive. Ora2Pg will create an helper function over \fIunaccent()\fR and
+creates the pg_trgm indexes using this function. With \s-1FTS\s0 you just need to
+redefine your text search configuration, for example:
+.Sp
+.Vb 3
+\&      CREATE TEXT SEARCH CONFIGURATION fr (COPY = french); 
+\&      ALTER TEXT SEARCH CONFIGURATION fr
+\&              ALTER MAPPING FOR hword, hword_part, word WITH unaccent, french_stem;
+.Ve
+.Sp
+then set the \s-1FTS_CONFIG\s0 ora2pg.conf directive to fr instead of pg_catalog.english.
+.Sp
+When enabled, Ora2pg will create the wrapper function:
+.Sp
+.Vb 5
+\&      CREATE OR REPLACE FUNCTION unaccent_immutable(text)
+\&      RETURNS text AS
+\&      $$
+\&          SELECT public.unaccent(\*(Aqpublic.unaccent\*(Aq, $1);
+\&      $$ LANGUAGE sql IMMUTABLE;
+.Ve
+.Sp
+the indexes are exported as follow:
+.Sp
+.Vb 2
+\&      CREATE INDEX t_document_title_unaccent_trgm_idx ON t_document 
+\&          USING gin (unaccent_immutable(title) gin_trgm_ops);
+.Ve
+.Sp
+In your queries you will need to use the same function in the search to
+be able to use the function-based index. Example:
+.Sp
+.Vb 2
+\&        SELECT * FROM t_document
+\&                WHERE unaccent_immutable(title) LIKE \*(Aq%donnees%\*(Aq;
+.Ve
+.IP "\s-1USE_LOWER_UNACCENT\s0" 4
+.IX Item "USE_LOWER_UNACCENT"
+Same as above but call \fIlower()\fR in the \fIunaccent_immutable()\fR function:
+.Sp
+.Vb 5
+\&      CREATE OR REPLACE FUNCTION unaccent_immutable(text)
+\&      RETURNS text AS
+\&      $$
+\&          SELECT lower(public.unaccent(\*(Aqpublic.unaccent\*(Aq, $1));
+\&      $$ LANGUAGE sql IMMUTABLE;
+.Ve
 .SS "Modifying object structure"
 .IX Subsection "Modifying object structure"
 One of the great usage of Ora2Pg is its flexibility to replicate Oracle database
@@ -2417,6 +2516,32 @@ And then copy the data with the following \s-1INSERT\s0 query:
 Then you just have to exclude the original table from the export (see \s-1EXCLUDE\s0
 directive) and to renamed the new temporary table on the fly using the
 \&\s-1REPLACE_TABLES\s0 configuration directive.
+.SS "Global variables"
+.IX Subsection "Global variables"
+Oracle allow the use of global variables defined in packages. Ora2Pg will
+export these variables for PostgreSQL as user defined custom variables
+available in a session. Oracle variables assignement are exported as
+call to:
+.PP
+.Vb 1
+\&    PERFORM set_config(\*(Aqpkgname.varname\*(Aq, value, false);
+.Ve
+.PP
+Use of these variables in the code is replaced by:
+.PP
+.Vb 1
+\&    current_setting(\*(Aqpkgname.varname\*(Aq)::global_variables_type;
+.Ve
+.PP
+where global_variables_type is the type of the variable extracted from
+the package definition.
+.PP
+If the variable is a constant or have a default value assigned at
+declaration, ora2pg will create a file global_variables.conf with
+the definition to include in the postgresql.conf file so that their
+values will already be set at database connection. Note that the
+value can always modified by the user so you can not have exactly
+a constant.
 .SS "Hints"
 .IX Subsection "Hints"
 Converting your queries with Oracle style outer join (+) syntax to \s-1ANSI\s0 standard \s-1SQL\s0 at

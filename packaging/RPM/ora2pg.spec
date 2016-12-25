@@ -11,7 +11,7 @@ BuildArch:	noarch
 
 BuildRequires:	perl
 Requires:	perl(DBD::Oracle)
-Requires:	perl-DBD-MySQL perl(DBI) perl(String::Random) perl(IO::Compress::Base)
+Requires:	perl-DBD-MySQL perl(DBI) perl(IO::Compress::Base)
 
 %description
 This package contains a Perl module and a companion script to convert an

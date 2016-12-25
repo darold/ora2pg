@@ -260,21 +260,96 @@ REORDERING_COLUMNS	0
 # define multiple REPLACE_QUERY lines.
 #REPLACE_QUERY	EMPLOYEES[SELECT e.id,e.fisrtname,lastname FROM EMPLOYEES e JOIN EMP_UPDT u ON (e.id=u.id AND u.cdate>'2014-08-01 00:00:00')]
 
+#------------------------------------------------------------------------------
+# FULL TEXT SEARCH SECTION (Control full text search export behaviors)
+#------------------------------------------------------------------------------
+
 # Force Ora2Pg to translate Oracle Text indexes into PostgreSQL indexes using
 # pg_trgm extension. Default is to translate CONTEXT indexes into FTS indexes
 # and CTXCAT indexes using pg_trgm. Most of the time using pg_trgm is enough,
 # this is why this directive stand for.
 CONTEXT_AS_TRGM		0
 
-# By default Ora2Pg creates an extra tsvector column with a dedicated triggers
-# for FTS indexes. Enable this directive if you just want a function-based
-# index like:
-#    CREATE INDEX ON t_document USING gin(to_tsvector('pg_catalog.english', title));
-FTS_INDEX_ONLY	0
+# By default Ora2Pg creates a function-based index to translate Oracle Text
+# indexes. 
+#    CREATE INDEX ON t_document
+#                 USING gin(to_tsvector('pg_catalog.english', title));
+# You will have to rewrite the CONTAIN() clause using to_tsvector(), example:
+#    SELECT id,title FROM t_document
+#                    WHERE to_tsvector(title)) @@ to_tsquery('search_word');
+#
+# To force Ora2Pg to create an extra tsvector column with a dedicated triggers
+# for FTS indexes, disable this directive. In this case, Ora2Pg will add the
+# column as follow: ALTER TABLE t_document ADD COLUMN tsv_title tsvector;
+# Then update the column to compute FTS vectors if data have been loaded before
+#     UPDATE t_document SET tsv_title =
+#                       to_tsvector('pg_catalog.english', coalesce(title,''));
+# To automatically update the column when a modification in the title column
+# appears, Ora2Pg adds the following trigger:
+#
+# CREATE FUNCTION tsv_t_document_title() RETURNS trigger AS $$
+# BEGIN
+#        IF TG_OP = 'INSERT' OR new.title != old.title THEN
+#                new.tsv_title :=
+#                to_tsvector('pg_catalog.english', coalesce(new.title,''));
+#        END IF;
+#        return new;
+# END
+# $$ LANGUAGE plpgsql;
+# CREATE TRIGGER trig_tsv_t_document_title BEFORE INSERT OR UPDATE
+#  ON t_document
+#  FOR EACH ROW EXECUTE PROCEDURE tsv_t_document_title();
+#
+# When the Oracle text index is defined over multiple column, Ora2Pg will use
+# setweight() to set a weight in the order of the column declaration.
+#
+FTS_INDEX_ONLY	1
 
 # Use this directive to change default text search config: pg_catalog.english
 # used with FTS to_tsvector() function. For example, set it to pg_catalog.french
 FTS_CONFIG	pg_catalog.english
+
+# If you want to perform your text search in an accent insensitive way, enable
+# this directive. Ora2Pg will create an helper function over unaccent() and
+# creates the pg_trgm indexes using this function. With FTS you just need to
+# redefine your text search configuration, for example:
+#
+#	CREATE TEXT SEARCH CONFIGURATION fr (COPY = french); 
+#	ALTER TEXT SEARCH CONFIGURATION fr
+#		ALTER MAPPING FOR hword, hword_part, word WITH unaccent, french_stem;
+#
+# then set the FTS_CONFIG ora2pg.conf directive to fr instead of pg_catalog.english.
+#
+# When enabled, Ora2pg will create the wrapper function:
+#
+#	CREATE OR REPLACE FUNCTION unaccent_immutable(text)
+#	RETURNS text AS
+#	$$
+#		SELECT public.unaccent('public.unaccent', $1)
+#	$$  LANGUAGE sql IMMUTABLE;
+#
+# the indexes are exported as follow:
+#
+#	CREATE INDEX t_document_title_unaccent_trgm_idx ON t_document 
+#        	USING gin (unaccent_immutable(title) gin_trgm_ops);
+#
+# In your queries you will need to use the same function in the search to
+# be able to use the function-based index. Example:
+#
+#	SELECT * FROM t_document
+#		WHERE unaccent_immutable(title) LIKE '%donnees%';
+#
+USE_UNACCENT		0
+
+# Same as above but call lower() in the unaccent_immutable() function:
+#
+#      CREATE OR REPLACE FUNCTION unaccent_immutable(text)
+#      RETURNS text AS
+#      $$
+#          SELECT lower(public.unaccent('public.unaccent', $1));
+#      $$ LANGUAGE sql IMMUTABLE;
+#
+USE_LOWER_UNACCENT	0
 
 #------------------------------------------------------------------------------
 # CONSTRAINT SECTION (Control constraints export and import behaviors)
@@ -941,7 +1016,7 @@ WriteMakefile(
     'DESTDIR'      => $PREFIX,
     'INSTALLDIRS'  => $ENV{INSTALLDIRS},
     'clean'        => {FILES => "$DEST_CONF_FILE lib/blib/"},
-    'PREREQ_PM'    => { DBI => 0, DBD::Oracle },
+    'PREREQ_PM'    => {DBI => 0},
     'META_MERGE'   => {
 	resources  => {
 		homepage => 'http://ora2pg.darold.net/',

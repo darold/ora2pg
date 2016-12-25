@@ -90,11 +90,15 @@ an already packaged DBD::Oracle easy to install.
 
 =head2 Requirement
 
-You need a modern Perl distribution (perl 5.10 and more), the DBI > 1.614 and
-DBD::Oracle Perl modules to be installed. These are used to connect to the
-Oracle database. To install DBD::Oracle and have it working you need to have
-the Oracle client libraries installed and the ORACLE_HOME environment variable
-must be defined.
+You need a modern Perl distribution (perl 5.10 and more). To connect to a
+database and proceed to his migration you need the DBI Perl module > 1.614.
+To migrate an Oracle database you need the DBD::Oracle Perl modules to be
+installed. To migrate a MySQL database you need the DBD::MySQL Perl modules.
+These modules are used to connect to the database but they are not mandatory
+if you want to migrate DDL input files.
+
+To install DBD::Oracle and have it working you need to have the Oracle client
+libraries installed and the ORACLE_HOME environment variable must be defined.
 
 If you plan to export a MySQL database you need to install the Perl module
 DBD::mysql which require that the mysql client libraries are installed.
@@ -117,8 +121,8 @@ program bzip2 must be available in your PATH.
 
 Like any other Perl Module Ora2Pg can be installed with the following commands:
 
-	tar xzf ora2pg-10.x.tar.gz
-	cd ora2pg-10.x/
+	tar xzf ora2pg-x.x.tar.gz
+	cd ora2pg-x.x/
 	perl Makefile.PL
 	make && make install
 
@@ -1013,25 +1017,112 @@ define multiple REPLACE_QUERY lines.
 
 	REPLACE_QUERY	EMPLOYEES[SELECT e.id,e.fisrtname,lastname FROM EMPLOYEES e JOIN EMP_UPDT u ON (e.id=u.id AND u.cdate>'2014-08-01 00:00:00')]
 
+=back
+
+=head2 Controm of Full Text Search export
+
+Several directives can be used to control the way Ora2Pg will export the
+Oracle's Text search indexes. By default CONTEXT indexes will be exported
+to PostgreSQL FTS indexes but CTXCAT indexes wikk be exported as indexes
+using the pg_trgm extension.
+
+=over 4
+
 =item CONTEXT_AS_TRGM
 
 Force Ora2Pg to translate Oracle Text indexes into PostgreSQL indexes using
 pg_trgm extension. Default is to translate CONTEXT indexes into FTS indexes
 and CTXCAT indexes using pg_trgm. Most of the time using pg_trgm is enough,
-this is why this directive stand for.
+this is why this directive stand for. You need to create the pg_trgm extension
+into the destination database before importing the objects:
+
+	CREATE EXTENSION pg_trgm;
 
 =item FTS_INDEX_ONLY
 
-By default Ora2Pg creates an extra tsvector column with a dedicated triggers
-for FTS indexes. Enable this directive if you just want a function-based
-index like:
+By default Ora2Pg creates a function-based index to translate Oracle Text
+indexes. 
 
-	CREATE INDEX ON t_document USING gin(to_tsvector('pg_catalog.english', title));
+	CREATE INDEX ON t_document
+		USING gin(to_tsvector('pg_catalog.english', title));
+
+You will have to rewrite the CONTAIN() clause using to_tsvector(), example:
+
+	SELECT id,title FROM t_document
+		WHERE to_tsvector(title)) @@ to_tsquery('search_word');
+
+To force Ora2Pg to create an extra tsvector column with a dedicated triggers
+for FTS indexes, disable this directive. In this case, Ora2Pg will add the
+column as follow: ALTER TABLE t_document ADD COLUMN tsv_title tsvector;
+Then update the column to compute FTS vectors if data have been loaded before
+	    UPDATE t_document SET tsv_title =
+		to_tsvector('pg_catalog.english', coalesce(title,''));
+To automatically update the column when a modification in the title column
+appears, Ora2Pg adds the following trigger:
+
+	CREATE FUNCTION tsv_t_document_title() RETURNS trigger AS $$
+	BEGIN
+	       IF TG_OP = 'INSERT' OR new.title != old.title THEN
+		       new.tsv_title :=
+		       to_tsvector('pg_catalog.english', coalesce(new.title,''));
+	       END IF;
+	       return new;
+	END
+	$$ LANGUAGE plpgsql;
+	CREATE TRIGGER trig_tsv_t_document_title BEFORE INSERT OR UPDATE
+	 ON t_document
+	 FOR EACH ROW EXECUTE PROCEDURE tsv_t_document_title();
+
+When the Oracle text index is defined over multiple column, Ora2Pg will use
+setweight() to set a weight in the order of the column declaration.
 
 =item FTS_CONFIG
 
 Use this directive to change default text search config: pg_catalog.english
 used with FTS to_tsvector() function. For example, set it to pg_catalog.french
+
+=item USE_UNACCENT
+
+If you want to perform your text search in an accent insensitive way, enable
+this directive. Ora2Pg will create an helper function over unaccent() and
+creates the pg_trgm indexes using this function. With FTS you just need to
+redefine your text search configuration, for example:
+
+      CREATE TEXT SEARCH CONFIGURATION fr (COPY = french); 
+      ALTER TEXT SEARCH CONFIGURATION fr
+              ALTER MAPPING FOR hword, hword_part, word WITH unaccent, french_stem;
+
+then set the FTS_CONFIG ora2pg.conf directive to fr instead of pg_catalog.english.
+
+When enabled, Ora2pg will create the wrapper function:
+
+      CREATE OR REPLACE FUNCTION unaccent_immutable(text)
+      RETURNS text AS
+      $$
+          SELECT public.unaccent('public.unaccent', $1);
+      $$ LANGUAGE sql IMMUTABLE;
+
+the indexes are exported as follow:
+
+      CREATE INDEX t_document_title_unaccent_trgm_idx ON t_document 
+          USING gin (unaccent_immutable(title) gin_trgm_ops);
+
+In your queries you will need to use the same function in the search to
+be able to use the function-based index. Example:
+
+	SELECT * FROM t_document
+		WHERE unaccent_immutable(title) LIKE '%donnees%';
+
+=item USE_LOWER_UNACCENT
+
+Same as above but call lower() in the unaccent_immutable() function:
+
+      CREATE OR REPLACE FUNCTION unaccent_immutable(text)
+      RETURNS text AS
+      $$
+          SELECT lower(public.unaccent('public.unaccent', $1));
+      $$ LANGUAGE sql IMMUTABLE;
+
 
 =back
 
@@ -2317,6 +2408,29 @@ And then copy the data with the following INSERT query:
 Then you just have to exclude the original table from the export (see EXCLUDE
 directive) and to renamed the new temporary table on the fly using the
 REPLACE_TABLES configuration directive.
+
+=head2 Global variables
+
+Oracle allow the use of global variables defined in packages. Ora2Pg will
+export these variables for PostgreSQL as user defined custom variables
+available in a session. Oracle variables assignement are exported as
+call to:
+
+    PERFORM set_config('pkgname.varname', value, false);
+
+Use of these variables in the code is replaced by:
+
+    current_setting('pkgname.varname')::global_variables_type;
+
+where global_variables_type is the type of the variable extracted from
+the package definition.
+
+If the variable is a constant or have a default value assigned at
+declaration, ora2pg will create a file global_variables.conf with
+the definition to include in the postgresql.conf file so that their
+values will already be set at database connection. Note that the
+value can always modified by the user so you can not have exactly
+a constant.
 
 =head2 Hints
 
