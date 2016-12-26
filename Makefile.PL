@@ -439,12 +439,6 @@ DISABLE_TRIGGERS 0
 # Modify output from the following tables(fields separate by space or comma)
 #MODIFY_STRUCT	TABLE_TEST(dico,dossier)
 
-# Some time you need to force the destination type, for example a column
-# exported as timestamp by Ora2Pg can be forced into type date. Value is
-# a comma-separated list of TABLE:COLUMN:TYPE structure. If you need to use
-# comma or space inside type definition you will have to backslash them.
-#MODIFY_TYPE     TABLE1:COL3:varchar,TABLE1:COL4:decimal(9\,6)
-
 # You may wish to change table names during data extraction, especally for
 # replication use. Give a list of tables separate by space as follow.
 #REPLACE_TABLES	ORIG_TB_NAME1:NEW_TB_NAME1 ORIG_TB_NAME2:NEW_TB_NAME2 
@@ -643,6 +637,12 @@ ENABLE_MICROSECOND      1
 # date that will be used instead. You can also use -INFINITY if you don't want
 # to use a fake date.
 #REPLACE_ZERO_DATE	1970-01-01 00:00:00
+
+# Some time you need to force the destination type, for example a column
+# exported as timestamp by Ora2Pg can be forced into type date. Value is
+# a comma-separated list of TABLE:COLUMN:TYPE structure. If you need to use
+# comma or space inside type definition you will have to backslash them.
+#MODIFY_TYPE     TABLE1:COL3:varchar,TABLE1:COL4:decimal(9\,6)
 
 #------------------------------------------------------------------------------
 # GRANT SECTION (Control priviledge and owner export)

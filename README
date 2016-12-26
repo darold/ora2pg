@@ -1127,18 +1127,6 @@ CONFIGURATION
         and columns 'id' and 'fichier' from the T_TEST2 table. This
         directive is only used with COPY or INSERT export.
 
-    MODIFY_TYPE
-        Some time you need to force the destination type, for example a
-        column exported as timestamp by Ora2Pg can be forced into type date.
-        Value is a comma-separated list of TABLE:COLUMN:TYPE structure. If
-        you need to use comma or space inside type definition you will have
-        to backslash them.
-
-                MODIFY_TYPE     TABLE1:COL3:varchar,TABLE1:COL4:decimal(9\,6)
-
-        Type of table1.col3 will be replaced by a varchar and table1.col4 by
-        a decimal with precision.
-
     REPLACE_TABLES
         This directive allow you to remap a list of Oracle table name to a
         PostgreSQL table name during export. The value is a list of
@@ -1487,6 +1475,114 @@ CONFIGURATION
         in this set this directive to 1, ora2pg will not try to change the
         setting.
 
+  Column tytpe control
+    PG_NUMERIC_TYPE
+        If set to 1 replace portable numeric type into PostgreSQL internal
+        type. Oracle data type NUMBER(p,s) is approximatively converted to
+        real and float PostgreSQL data type. If you have monetary fields or
+        don't want rounding issues with the extra decimals you should
+        preserve the same numeric(p,s) PostgreSQL data type. Do that only if
+        you need very good precision because using numeric(p,s) is slower
+        than using real or double.
+
+    PG_INTEGER_TYPE
+        If set to 1 replace portable numeric type into PostgreSQL internal
+        type. Oracle data type NUMBER(p) or NUMBER are converted to
+        smallint, integer or bigint PostgreSQL data type following the
+        length of the precision. If NUMBER without precision are set to
+        DEFAULT_NUMERIC (see bellow).
+
+    DEFAULT_NUMERIC
+        NUMBER without precision are converted by default to bigint only if
+        PG_INTEGER_TYPE is true. You can overwrite this value to any PG
+        type, like integer or float.
+
+    DATA_TYPE
+        If you're experiencing any problem in data type schema conversion
+        with this directive you can take full control of the correspondence
+        between Oracle and PostgreSQL types to redefine data type
+        translation used in Ora2pg. The syntax is a comma-separated list of
+        "Oracle datatype:Postgresql datatype". Here are the default list
+        used:
+
+                DATA_TYPE       DATE:timestamp,LONG:text,LONG RAW:bytea,CLOB:text,NCLOB:text,BLOB:bytea,BFILE:bytea,RAW:bytea,ROWID:oid,FLOAT:double precision,DEC:decimal,DECIMAL:decimal,DOUBLE PRECISION:double precision,INT:numeric,INTEGER:numeric,REAL:real,SMALLINT:smallint,BINARY_FLOAT:double precision,BINARY_DOUBLE:double precision,TIMESTAMP:timestamp,XMLTYPE:xml,BINARY_INTEGER:integer,PLS_INTEGER:integer,TIMESTAMP WITH TIME ZONE:timestamp with time zone,TIMESTAMP WITH LOCAL TIME ZONE:timestamp with time zone
+
+        Note that the directive and the list definition must be a single
+        line.
+
+        There's a special case with BFILE when they are converted to type
+        TEXT, they will just contains the full path to the external file. If
+        you set the destination type to BYTEA, the default, Ora2Pg will
+        export the content of the BFILE as bytea. The third case is when you
+        set the destination type to EFILE, in this case, Ora2Pg will export
+        it as an EFILE record: (DIRECTORY, FILENAME). Use the DIRECTORY
+        export type to export the existing directories as well as privileges
+        on those directories.
+
+        There's no SQL function available to retrieve the path to the BFILE,
+        then Ora2Pg have to create one using the DBMS_LOB package.
+
+                CREATE OR REPLACE FUNCTION ora2pg_get_bfilename( p_bfile IN BFILE )
+                RETURN VARCHAR2
+                  AS
+                    l_dir   VARCHAR2(4000);
+                    l_fname VARCHAR2(4000);
+                    l_path  VARCHAR2(4000);
+                  BEGIN
+                    dbms_lob.FILEGETNAME( p_bfile, l_dir, l_fname );
+                    SELECT directory_path INTO l_path FROM all_directories
+                        WHERE directory_name = l_dir;
+                    l_dir := rtrim(l_path,'/');
+                    RETURN l_dir || '/' || l_fname;
+                  END;
+
+        This function is only created if Ora2Pg found a table with a BFILE
+        column and that the destination type is TEXT. The function is
+        dropped at the end of the export. This concern both, COPY and INSERT
+        export type.
+
+        There's no SQL function available to retrieve BFILE as an EFILE
+        record, then Ora2Pg have to create one using the DBMS_LOB package.
+
+                CREATE OR REPLACE FUNCTION ora2pg_get_efile( p_bfile IN BFILE )
+                RETURN VARCHAR2
+                  AS
+                    l_dir   VARCHAR2(4000);
+                    l_fname VARCHAR2(4000);
+                  BEGIN
+                    dbms_lob.FILEGETNAME( p_bfile, l_dir, l_fname );
+                    RETURN '(' || l_dir || ',' || l_fnamei || ')';
+                  END;
+
+        This function is only created if Ora2Pg found a table with a BFILE
+        column and that the destination type is EFILE. The function is
+        dropped at the end of the export. This concern both, COPY and INSERT
+        export type.
+
+        To set the destination type, use the DATA_TYPE configuration
+        directive:
+
+                DATA_TYPE       BFILE:EFILE
+
+        for example.
+
+        The EFILE type is a user defined type created by the PostgreSQL
+        extension external_file that can be found here:
+        https://github.com/darold/external_file This is a port of the BFILE
+        Oracle type to PostgreSQL.
+
+    MODIFY_TYPE
+        Some time you need to force the destination type, for example a
+        column exported as timestamp by Ora2Pg can be forced into type date.
+        Value is a comma-separated list of TABLE:COLUMN:TYPE structure. If
+        you need to use comma or space inside type definition you will have
+        to backslash them.
+
+                MODIFY_TYPE     TABLE1:COL3:varchar,TABLE1:COL4:decimal(9\,6)
+
+        Type of table1.col3 will be replaced by a varchar and table1.col4 by
+        a decimal with precision.
+
   Taking export under control
     The following other configuration directives interact directly with the
     export process and give you fine granularity in database export control.
@@ -1603,101 +1699,6 @@ CONFIGURATION
         behavior of the same option in PostgreSQL. This directive is only
         used during data export to build INSERT statements. See NOESCAPE for
         enabling/disabling escape in COPY statements.
-
-    PG_NUMERIC_TYPE
-        If set to 1 replace portable numeric type into PostgreSQL internal
-        type. Oracle data type NUMBER(p,s) is approximatively converted to
-        real and float PostgreSQL data type. If you have monetary fields or
-        don't want rounding issues with the extra decimals you should
-        preserve the same numeric(p,s) PostgreSQL data type. Do that only if
-        you need very good precision because using numeric(p,s) is slower
-        than using real or double.
-
-    PG_INTEGER_TYPE
-        If set to 1 replace portable numeric type into PostgreSQL internal
-        type. Oracle data type NUMBER(p) or NUMBER are converted to
-        smallint, integer or bigint PostgreSQL data type following the
-        length of the precision. If NUMBER without precision are set to
-        DEFAULT_NUMERIC (see bellow).
-
-    DEFAULT_NUMERIC
-        NUMBER without precision are converted by default to bigint only if
-        PG_INTEGER_TYPE is true. You can overwrite this value to any PG
-        type, like integer or float.
-
-    DATA_TYPE
-        If you're experiencing any problem in data type schema conversion
-        with this directive you can take full control of the correspondence
-        between Oracle and PostgreSQL types to redefine data type
-        translation used in Ora2pg. The syntax is a comma-separated list of
-        "Oracle datatype:Postgresql datatype". Here are the default list
-        used:
-
-                DATA_TYPE       DATE:timestamp,LONG:text,LONG RAW:bytea,CLOB:text,NCLOB:text,BLOB:bytea,BFILE:bytea,RAW:bytea,ROWID:oid,FLOAT:double precision,DEC:decimal,DECIMAL:decimal,DOUBLE PRECISION:double precision,INT:numeric,INTEGER:numeric,REAL:real,SMALLINT:smallint,BINARY_FLOAT:double precision,BINARY_DOUBLE:double precision,TIMESTAMP:timestamp,XMLTYPE:xml,BINARY_INTEGER:integer,PLS_INTEGER:integer,TIMESTAMP WITH TIME ZONE:timestamp with time zone,TIMESTAMP WITH LOCAL TIME ZONE:timestamp with time zone
-
-        Note that the directive and the list definition must be a single
-        line.
-
-        There's a special case with BFILE when they are converted to type
-        TEXT, they will just contains the full path to the external file. If
-        you set the destination type to BYTEA, the default, Ora2Pg will
-        export the content of the BFILE as bytea. The third case is when you
-        set the destination type to EFILE, in this case, Ora2Pg will export
-        it as an EFILE record: (DIRECTORY, FILENAME). Use the DIRECTORY
-        export type to export the existing directories as well as privileges
-        on those directories.
-
-        There's no SQL function available to retrieve the path to the BFILE,
-        then Ora2Pg have to create one using the DBMS_LOB package.
-
-                CREATE OR REPLACE FUNCTION ora2pg_get_bfilename( p_bfile IN BFILE )
-                RETURN VARCHAR2
-                  AS
-                    l_dir   VARCHAR2(4000);
-                    l_fname VARCHAR2(4000);
-                    l_path  VARCHAR2(4000);
-                  BEGIN
-                    dbms_lob.FILEGETNAME( p_bfile, l_dir, l_fname );
-                    SELECT directory_path INTO l_path FROM all_directories
-                        WHERE directory_name = l_dir;
-                    l_dir := rtrim(l_path,'/');
-                    RETURN l_dir || '/' || l_fname;
-                  END;
-
-        This function is only created if Ora2Pg found a table with a BFILE
-        column and that the destination type is TEXT. The function is
-        dropped at the end of the export. This concern both, COPY and INSERT
-        export type.
-
-        There's no SQL function available to retrieve BFILE as an EFILE
-        record, then Ora2Pg have to create one using the DBMS_LOB package.
-
-                CREATE OR REPLACE FUNCTION ora2pg_get_efile( p_bfile IN BFILE )
-                RETURN VARCHAR2
-                  AS
-                    l_dir   VARCHAR2(4000);
-                    l_fname VARCHAR2(4000);
-                  BEGIN
-                    dbms_lob.FILEGETNAME( p_bfile, l_dir, l_fname );
-                    RETURN '(' || l_dir || ',' || l_fnamei || ')';
-                  END;
-
-        This function is only created if Ora2Pg found a table with a BFILE
-        column and that the destination type is EFILE. The function is
-        dropped at the end of the export. This concern both, COPY and INSERT
-        export type.
-
-        To set the destination type, use the DATA_TYPE configuration
-        directive:
-
-                DATA_TYPE       BFILE:EFILE
-
-        for example.
-
-        The EFILE type is a user defined type created by the PostgreSQL
-        extension external_file that can be found here:
-        https://github.com/darold/external_file This is a port of the BFILE
-        Oracle type to PostgreSQL.
 
     TRIM_TYPE
         If you want to convert CHAR(n) from Oracle into varchar(n) or text
