@@ -9468,7 +9468,7 @@ sub data_dump
 		$filename = "tmp_$filename";
 	}
 	# Set file temporary until the table export is done
-	$self->logit("Dumping data from $rname to file: $dirprefix${rname}_$self->{output}\n", 1);
+	$self->logit("Dumping data from $rname to file: $filename\n", 1);
 
 	if ( ($self->{jobs} > 1) || ($self->{oracle_copies} > 1) ) {
 		$self->{fhout}->close() if (defined $self->{fhout} && !$self->{file_per_table} && !$self->{pg_dsn});
@@ -9493,8 +9493,15 @@ sub data_dump
 				$self->{cfhout}->print($data);
 			}
 		}
+
 	} else {
 		$self->dump($data);
+	}
+
+	# Rename temporary output file
+	if ($self->{file_per_table} && -e "$dirprefix$filename") {
+		$self->logit("Renaming temporary file $dirprefix$filename into ${dirprefix}${rname}_$self->{output}\n", 1);
+		rename("$dirprefix$filename", "${dirprefix}${rname}_$self->{output}");
 	}
 
 }
