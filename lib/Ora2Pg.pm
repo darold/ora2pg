@@ -5393,12 +5393,12 @@ CREATE TRIGGER ${table}_trigger_insert
 
 	# DATABASE DESIGN - type 'TABLE'
 	# Dump the database structure: tables, constraints, indexes, etc.
-	if ($self->{export_schema} && $self->{schema}) {
+	if ($self->{export_schema} && ($self->{schema} || $self->{pg_schema})) {
 		if ($self->{create_schema}) {
 			if (!$self->{preserve_case}) {
-				$sql_output .= "CREATE SCHEMA \L$self->{schema}\E;\n";
+				$sql_output .= "CREATE SCHEMA " . lc($self->{pg_schema} || $self->{schema}) . ";\n";
 			} else {
-				$sql_output .= "CREATE SCHEMA \"$self->{schema}\";\n";
+				$sql_output .= "CREATE SCHEMA \"" . ($self->{pg_schema} || $self->{schema}) . "\";\n";
 			}
 		}
 		my $owner = '';
@@ -5406,9 +5406,9 @@ CREATE TRIGGER ${table}_trigger_insert
 		$owner ||= $self->{schema};
 		if ($owner && $self->{create_schema}) {
 			if (!$self->{preserve_case}) {
-				$sql_output .= "ALTER SCHEMA \L$self->{schema}\E OWNER TO \L$owner\E;\n";
+				$sql_output .= "ALTER SCHEMA " . lc($self->{pg_schema} || $self->{schema}) . " OWNER TO \L$owner\E;\n";
 			} else {
-				$sql_output .= "ALTER SCHEMA \"$self->{schema}\" OWNER TO \"$owner\";\n";
+				$sql_output .= "ALTER SCHEMA \"" . ($self->{pg_schema} || $self->{schema}) . "\" OWNER TO \"$owner\";\n";
 			}
 		}
 		$sql_output .= "\n";
