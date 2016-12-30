@@ -901,7 +901,7 @@ sub _init
 	# Overwrite configuration with all given parameters
 	# and try to preserve backward compatibility
 	foreach my $k (keys %options) {
-		if ((lc($k) eq 'allow') && $options{allow}) {
+		if (($k eq 'allow') && $options{allow}) {
 			$self->{limited} = ();
 			# Syntax: TABLE[regex1 regex2 ...];VIEW[regex1 regex2 ...];glob_regex1 glob_regex2 ...
 			my @allow_vlist = split(/\s*;\s*/, $options{allow});
@@ -912,7 +912,7 @@ sub _init
 					push(@{$self->{limited}{ALL}}, split(/[\s,]+/, $a) );
 				}
 			}
-		} elsif ((lc($k) eq 'exclude') && $options{exclude}) {
+		} elsif (($k eq 'exclude') && $options{exclude}) {
 			$self->{excluded} = ();
 			# Syntax: TABLE[regex1 regex2 ...];VIEW[regex1 regex2 ...];glob_regex1 glob_regex2 ...
 			my @exclude_vlist = split(/\s*;\s*/, $options{exclude});
@@ -923,16 +923,16 @@ sub _init
 					push(@{$self->{excluded}{ALL}}, split(/[\s,]+/, $a) );
 				}
 			}
-		} elsif ((lc($k) eq 'view_as_table') && $options{view_as_table}) {
+		} elsif (($k eq 'view_as_table') && $options{view_as_table}) {
 			$self->{view_as_table} = ();
 			push(@{$self->{view_as_table}}, split(/[\s;,]+/, $options{view_as_table}) );
-		} elsif ((lc($k) eq 'datasource') && $options{datasource}) {
+		} elsif (($k eq 'datasource') && $options{datasource}) {
 			$self->{oracle_dsn} = $options{datasource};
-		} elsif ((lc($k) eq 'user') && $options{user}) {
+		} elsif (($k eq 'user') && $options{user}) {
 			$self->{oracle_user} = $options{user};
-		} elsif ((lc($k) eq 'password') && $options{password}) {
+		} elsif (($k eq 'password') && $options{password}) {
 			$self->{oracle_pwd} = $options{password};
-		} elsif ((lc($k) eq 'mysql') && $options{mysql}) {
+		} elsif (($k eq 'mysql') && $options{mysql}) {
 			$self->{is_mysql} = $options{is_mysql};
 		} elsif ($options{$k} ne '') {
 			$self->{"\L$k\E"} = $options{$k};
