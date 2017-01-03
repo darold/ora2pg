@@ -7000,6 +7000,8 @@ sub _sql_type
 {
         my ($self, $type, $len, $precision, $scale) = @_;
 
+	$type = uc($type); # Force uppercase
+
 	if ($self->{is_mysql}) {
 		return Ora2Pg::MySQL::_sql_type($self, $type, $len, $precision, $scale);
 	}
@@ -7007,17 +7009,17 @@ sub _sql_type
 	my $data_type = '';
 
 	# Simplify timestamp type
-	$type =~ s/TIMESTAMP\(\d+\)/TIMESTAMP/i;
+	$type =~ s/TIMESTAMP\(\d+\)/TIMESTAMP/;
 
 	# Interval precision for year/month/day is not supported by PostgreSQL
-	if ($type =~ /INTERVAL/i) {
-		$type =~ s/(INTERVAL\s+YEAR)\s*\(\d+\)/$1/i;
-		$type =~ s/(INTERVAL\s+YEAR\s+TO\s+MONTH)\s*\(\d+\)/$1/i;
-		$type =~ s/(INTERVAL\s+DAY)\s*\(\d+\)/$1/i;
+	if ($type =~ /INTERVAL/) {
+		$type =~ s/(INTERVAL\s+YEAR)\s*\(\d+\)/$1/;
+		$type =~ s/(INTERVAL\s+YEAR\s+TO\s+MONTH)\s*\(\d+\)/$1/;
+		$type =~ s/(INTERVAL\s+DAY)\s*\(\d+\)/$1/;
 		# maximum precision allowed for seconds is 6
 		if ($type =~ /INTERVAL\s+DAY\s+TO\s+SECOND\s*\((\d+)\)/) {
 			if ($1 > 6) {
-				$type =~ s/(INTERVAL\s+DAY\s+TO\s+SECOND)\s*\(\d+\)/$1(6)/i;
+				$type =~ s/(INTERVAL\s+DAY\s+TO\s+SECOND)\s*\(\d+\)/$1(6)/;
 			}
 		}
 	}
@@ -7027,10 +7029,11 @@ sub _sql_type
 		$len = $precision;
 	} elsif ( ($type eq 'NUMBER') && ($len == 38) ) {
 		$precision = $len;
+	} elsif ( $type =~ /CHAR/ && $len && exists $self->{data_type}{"$type($len)"}) {
+		return $self->{data_type}{"$type($len)"};
 	}
 
-        if (exists $self->{data_type}{uc($type)}) {
-		$type = uc($type); # Force uppercase
+        if (exists $self->{data_type}{$type}) {
 		if ($len) {
 
 			if ( ($type eq "CHAR") || ($type eq "NCHAR") || ($type =~ /VARCHAR/) ) {
