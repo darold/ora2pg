@@ -126,6 +126,7 @@ $QUERY_TEST_SCORE = 0.1;
 	'ABOUT' => 3,
 	'NEAR' => 1,
 	'TO_CHAR' => 0.1,
+	'ANYDATA' => 2,
 );
 
 @ORA_FUNCTIONS = qw(
@@ -1178,6 +1179,8 @@ sub estimate_cost
 	$cost_details{'NEAR'} += $n;
 	$n = () = $str =~ m/TO_CHAR\([^,\)]+\)/igs;
 	$cost_details{'TO_CHAR'} += $n;
+	$n = () = $str =~ m/\s+ANYDATA/igs;
+	$cost_details{'ANYDATA'} += $n;
 
 
 	foreach my $f (@ORA_FUNCTIONS) {
