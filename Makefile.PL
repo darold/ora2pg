@@ -268,12 +268,13 @@ REORDERING_COLUMNS	0
 # pg_trgm extension. Default is to translate CONTEXT indexes into FTS indexes
 # and CTXCAT indexes using pg_trgm. Most of the time using pg_trgm is enough,
 # this is why this directive stand for.
+#
 CONTEXT_AS_TRGM		0
 
 # By default Ora2Pg creates a function-based index to translate Oracle Text
 # indexes. 
 #    CREATE INDEX ON t_document
-#                 USING gin(to_tsvector('pg_catalog.english', title));
+#                 USING gin(to_tsvector('french', title));
 # You will have to rewrite the CONTAIN() clause using to_tsvector(), example:
 #    SELECT id,title FROM t_document
 #                    WHERE to_tsvector(title)) @@ to_tsquery('search_word');
@@ -283,7 +284,7 @@ CONTEXT_AS_TRGM		0
 # column as follow: ALTER TABLE t_document ADD COLUMN tsv_title tsvector;
 # Then update the column to compute FTS vectors if data have been loaded before
 #     UPDATE t_document SET tsv_title =
-#                       to_tsvector('pg_catalog.english', coalesce(title,''));
+#                       to_tsvector('french', coalesce(title,''));
 # To automatically update the column when a modification in the title column
 # appears, Ora2Pg adds the following trigger:
 #
@@ -291,7 +292,7 @@ CONTEXT_AS_TRGM		0
 # BEGIN
 #        IF TG_OP = 'INSERT' OR new.title != old.title THEN
 #                new.tsv_title :=
-#                to_tsvector('pg_catalog.english', coalesce(new.title,''));
+#                to_tsvector('french', coalesce(new.title,''));
 #        END IF;
 #        return new;
 # END
@@ -305,20 +306,20 @@ CONTEXT_AS_TRGM		0
 #
 FTS_INDEX_ONLY	1
 
-# Use this directive to change default text search config: pg_catalog.english
-# used with FTS to_tsvector() function. For example, set it to pg_catalog.french
-FTS_CONFIG	pg_catalog.english
+# Use this directive to force text search configuration to use. When it is not
+# set, Ora2Pg will autodetect the stemmer used by Oracle for each index and
+# pg_catalog.english if nothing is found. 
+# 
+#FTS_CONFIG	pg_catalog.french
 
 # If you want to perform your text search in an accent insensitive way, enable
 # this directive. Ora2Pg will create an helper function over unaccent() and
-# creates the pg_trgm indexes using this function. With FTS you just need to
+# creates the pg_trgm indexes using this function. With FTS Ora2Pg will
 # redefine your text search configuration, for example:
 #
-#	CREATE TEXT SEARCH CONFIGURATION fr (COPY = french); 
+#	CREATE TEXT SEARCH CONFIGURATION fr (COPY = pg_catalog.french); 
 #	ALTER TEXT SEARCH CONFIGURATION fr
 #		ALTER MAPPING FOR hword, hword_part, word WITH unaccent, french_stem;
-#
-# then set the FTS_CONFIG ora2pg.conf directive to fr instead of pg_catalog.english.
 #
 # When enabled, Ora2pg will create the wrapper function:
 #
@@ -326,9 +327,10 @@ FTS_CONFIG	pg_catalog.english
 #	RETURNS text AS
 #	$$
 #		SELECT public.unaccent('public.unaccent', $1)
-#	$$  LANGUAGE sql IMMUTABLE;
+#	$$  LANGUAGE sql IMMUTABLE
+#	    COST 1;
 #
-# the indexes are exported as follow:
+# indexes are exported as follow:
 #
 #	CREATE INDEX t_document_title_unaccent_trgm_idx ON t_document 
 #        	USING gin (unaccent_immutable(title) gin_trgm_ops);

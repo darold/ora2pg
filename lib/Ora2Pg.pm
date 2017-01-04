@@ -814,7 +814,7 @@ sub _init
 	# Use FTS index to convert CONTEXT Oracle's indexes by default
 	$self->{context_as_trgm} = 0;
 	$self->{fts_index_only}  = 1;
-	$self->{fts_config}      = 'pg_catalog.english';
+	$self->{fts_config}      = '';
 	$self->{use_unaccent}    = 1;
 	$self->{use_lower_unaccent} = 1;
 
@@ -6159,9 +6159,20 @@ sub _create_indexes
 				$columns .= " gin_trgm_ops";
 				$str .= "CREATE INDEX$concurrently \L$idxname$self->{indexes_suffix}\E ON $table USING gin($columns)";
 			} elsif (($self->{$objtyp}{$tbsaved}{idx_type}{$idx}{type_name} =~ /FULLTEXT|CONTEXT/) && $self->{fts_index_only}) {
+				my $stemmer = $self->{fts_config} || lc($self->{$objtyp}{$tbsaved}{idx_type}{$idx}{stemmer}) || 'pg_catalog.english';
+				my $dico = $stemmer;
+				$dico =~ s/^pg_catalog\.//;
+				if ($self->{use_unaccent}) {
+					$dico =~ s/^(..).*/$1/;
+					if ($fts_str !~ /CREATE TEXT SEARCH CONFIGURATION $dico (COPY = $stemmer);/s) {
+						$fts_str .= "CREATE TEXT SEARCH CONFIGURATION $dico (COPY = $stemmer);\n";
+						$stemmer =~ s/pg_catalog\.//;
+						$fts_str .= "ALTER TEXT SEARCH CONFIGURATION $dico ALTER MAPPING FOR hword, hword_part, word WITH unaccent, ${stemmer}_stem;\n\n";
+					}
+				}
 				# use function-based index
 				my @cols = split(/\s*,\s*/, $columns);
-				$columns = "to_tsvector('$self->{fts_config}', " . join("||' '||", @cols) . ")";
+				$columns = "to_tsvector('$dico', " . join("||' '||", @cols) . ")";
 				$fts_str .= "CREATE INDEX$concurrently \L$idxname$self->{indexes_suffix}\E ON $table USING gin($columns);\n";
 			} elsif (($self->{$objtyp}{$tbsaved}{idx_type}{$idx}{type_name} =~ /FULLTEXT|CONTEXT/) && !$self->{fts_index_only}) {
 				# use Full text search, then create dedicated column and trigger before the index.
@@ -6175,17 +6186,28 @@ sub _create_indexes
 				my $contruct_vector =  '';
 				my $update_vector =  '';
 				my $weight = 'A';
+				my $stemmer = $self->{fts_config} || lc($self->{$objtyp}{$tbsaved}{idx_type}{$idx}{stemmer}) || 'pg_catalog.english';
+				my $dico = $stemmer;
+				$dico =~ s/^pg_catalog\.//;
+				if ($self->{use_unaccent}) {
+					$dico =~ s/^(..).*/$1/;
+					if ($fts_str !~ /CREATE TEXT SEARCH CONFIGURATION $dico (COPY = $stemmer);/s) {
+						$fts_str .= "CREATE TEXT SEARCH CONFIGURATION $dico (COPY = $stemmer);\n";
+						$stemmer =~ s/pg_catalog\.//;
+						$fts_str .= "ALTER TEXT SEARCH CONFIGURATION $dico ALTER MAPPING FOR hword, hword_part, word WITH unaccent, ${stemmer}_stem;\n\n";
+					}
+				}
 				if ($#{$indexes{$idx}} > 0) {
 					foreach my $col (@{$indexes{$idx}}) {
-						$contruct_vector .= "\t\tsetweight(to_tsvector('$self->{fts_config}', coalesce(new.$col,'')), '$weight') ||\n";
-						$update_vector .= " setweight(to_tsvector('$self->{fts_config}', coalesce($col,'')), '$weight') ||";
+						$contruct_vector .= "\t\tsetweight(to_tsvector('$dico', coalesce(new.$col,'')), '$weight') ||\n";
+						$update_vector .= " setweight(to_tsvector('$dico', coalesce($col,'')), '$weight') ||";
 						$weight++;
 					}
 					$contruct_vector =~ s/\|\|$/;/s;
 					$update_vector =~ s/\|\|$/;/s;
 				} else {
-					$contruct_vector = "\t\tto_tsvector('$self->{fts_config}', coalesce(new.$indexes{$idx}->[0],''))\n";
-					$update_vector = " to_tsvector('$self->{fts_config}', coalesce($indexes{$idx}->[0],''))";
+					$contruct_vector = "\t\tto_tsvector('$dico', coalesce(new.$indexes{$idx}->[0],''))\n";
+					$update_vector = " to_tsvector('$dico', coalesce($indexes{$idx}->[0],''))";
 				}
 
 				$fts_str .= qq{
@@ -7812,6 +7834,9 @@ sub _get_indexes
 
 	return Ora2Pg::MySQL::_get_indexes($self,$table,$owner) if ($self->{is_mysql});
 
+	# Retrieve FTS indexes information before.
+	my %idx_info = $self->_get_fts_indexes_info($owner);
+
 	my $sub_owner = '';
 	if ($owner) {
 		$sub_owner = "AND A.INDEX_OWNER=B.TABLE_OWNER";
@@ -7909,6 +7934,13 @@ AND    IC.TABLE_OWNER = ?
 		} else {
 			$idx_type{$row->[-6]}{$row->[0]}{type} = $row->[4];
 		}
+		my $idx_name = $row->[0];
+		if (!$self->{schema} && $self->{export_schema}) {
+			$idx_name = "$row->[-5].$row->[0]";
+		}
+		if (exists $idx_info{$idx_name}) {
+			$idx_type{$row->[-6]}{$row->[0]}{stemmer} = $idx_info{$idx_name}{stemmer};
+		}
 		if ($row->[-3] =~ /SPATIAL_INDEX/) {
 			$idx_type{$row->[-6]}{$row->[0]}{type} = 'SPATIAL INDEX';
 			if ($row->[-2] =~ /layer_gtype=([^\s,]+)/i) {
@@ -7925,9 +7957,49 @@ AND    IC.TABLE_OWNER = ?
 		$index_tablespace{$row->[-6]}{$row->[0]} = $row->[-4];
 
 	}
+	$sth->finish();
+	$sth2->finish();
 
 	return \%unique, \%data, \%idx_type, \%index_tablespace;
 }
+
+=head2 _get_fts_indexes_info
+
+This function retrieve FTS index attributes informations
+
+Returns a hash of containing all useful attribute values for all FTS indexes
+
+=cut
+
+sub _get_fts_indexes_info
+{
+	my ($self, $owner) = @_;
+
+	my $condition = '';
+	$condition .= "AND IXV_INDEX_OWNER='$owner' " if ($owner);
+	$condition .= $self->limit_to_objects('INDEX', "IXV_INDEX_NAME");
+
+	# Retrieve all indexes informations
+	my $sth = $self->{dbh}->prepare(<<END) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+SELECT DISTINCT IXV_INDEX_OWNER,IXV_INDEX_NAME,IXV_CLASS,IXV_ATTRIBUTE,IXV_VALUE
+FROM CTXSYS.CTX_INDEX_VALUES
+WHERE (IXV_CLASS='WORDLIST' AND IXV_ATTRIBUTE='STEMMER') $condition
+ORDER BY IXV_INDEX_NAME
+END
+
+	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	my %indexes_info = ();
+	while (my $row = $sth->fetch) {
+		my $save_idx = $row->[1];
+		if (!$self->{schema} && $self->{export_schema}) {
+			$row->[1] = "$row->[0].$row->[1]";
+		}
+		$indexes_info{$row->[1]}{"\L$row->[3]\E"} = $row->[4];
+	}
+
+	return %indexes_info;
+}
+
 
 
 =head2 _get_sequences
@@ -13905,7 +13977,6 @@ sub _show_report
 # Other object type
 #CLUSTER
 #CONSUMER GROUP
-#CONTEXT
 #DESTINATION
 #DIMENSION
 #EDITION
