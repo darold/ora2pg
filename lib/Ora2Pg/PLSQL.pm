@@ -697,7 +697,7 @@ sub plsql_to_plpgsql
 	$str =~ s/\%\%COALESCE(\d+)\%\%/$coalesce[$1]/igs;
 
 	# Replace call to right outer join obsolete syntax
-	$str = &replace_right_outer_join($str);
+	$str = &replace_right_outer_join($str) if ($class->{rewrite_outer_join});
 
 	# Replace pending decode()
 	$str = replace_decode($str);

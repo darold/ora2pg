@@ -818,6 +818,9 @@ sub _init
 	$self->{use_unaccent}    = 1;
 	$self->{use_lower_unaccent} = 1;
 
+	# rewrite oracle outer join syntax into ansi syntax
+	$self->{rewrite_outer_join} = 1;
+
 	# Initialyze following configuration file
 	foreach my $k (sort keys %AConfig) {
 		if (lc($k) eq 'allow') {

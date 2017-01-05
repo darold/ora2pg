@@ -812,7 +812,7 @@ SYNCHRONOUS_COMMIT	0
 
 
 #------------------------------------------------------------------------------
-# PLSQL SECTION (Control PL/SQL to PLPGSQL rewriting behaviors)
+# PLSQL SECTION (Control SQL and PL/SQL to PLPGSQL rewriting behaviors)
 #------------------------------------------------------------------------------
 
 # If the above configuration directive is not enough to validate your PL/SQL code
@@ -848,6 +848,11 @@ EMPTY_LOB_NULL		0
 # is to use a schema to emulate package.
 PACKAGE_AS_SCHEMA	1
 
+# Enable this directive if the rewrite of Oracle native syntax (+) of
+# OUTER JOIN is broken. This will force Ora2Pg to not rewrite such code,
+# default is to try to rewrite simple form of rigth outer join for the
+# moment.
+REWRITE_OUTER_JOIN	1
 
 #------------------------------------------------------------------------------
 # ASSESSMENT SECTION (Control migration assessment behaviors)

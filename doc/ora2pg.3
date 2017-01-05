@@ -124,7 +124,7 @@
 .\" ========================================================================
 .\"
 .IX Title "ORA2PG 1"
-.TH ORA2PG 1 "2017-01-04" "perl v5.14.2" "User Contributed Perl Documentation"
+.TH ORA2PG 1 "2017-01-05" "perl v5.14.2" "User Contributed Perl Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -2096,6 +2096,12 @@ is to use a schema to emulate package.
 The replacement will be done in all kind of \s-1DDL\s0 or code that is parsed by
 the \s-1PLSQL\s0 to \s-1PLPGSQL\s0 converter. \s-1PLSQL_PGSQL\s0 must be enabled or \-p used in
 command line.
+.IP "\s-1REWRITE_OUTER_JOIN\s0" 4
+.IX Item "REWRITE_OUTER_JOIN"
+Enable this directive if the rewrite of Oracle native syntax (+) of
+\&\s-1OUTER\s0 \s-1JOIN\s0 is broken. This will force Ora2Pg to not rewrite such code,
+default is to try to rewrite simple form of rigth outer join for the
+moment.
 .SS "Materialized view"
 .IX Subsection "Materialized view"
 Since PostgreSQL 9.3, materialized view are supported with the \s-1CREATE\s0 \s-1MATERIALIZED\s0 \s-1VIEW\s0 syntax,

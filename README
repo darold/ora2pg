@@ -1948,6 +1948,12 @@ CONFIGURATION
         parsed by the PLSQL to PLPGSQL converter. PLSQL_PGSQL must be
         enabled or -p used in command line.
 
+    REWRITE_OUTER_JOIN
+        Enable this directive if the rewrite of Oracle native syntax (+) of
+        OUTER JOIN is broken. This will force Ora2Pg to not rewrite such
+        code, default is to try to rewrite simple form of rigth outer join
+        for the moment.
+
   Materialized view
     Since PostgreSQL 9.3, materialized view are supported with the CREATE
     MATERIALIZED VIEW syntax, to force Ora2Pg to use the native PostgreSQL

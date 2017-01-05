@@ -2025,6 +2025,13 @@ is to use a schema to emulate package.
 The replacement will be done in all kind of DDL or code that is parsed by
 the PLSQL to PLPGSQL converter. PLSQL_PGSQL must be enabled or -p used in
 command line.
+
+=item REWRITE_OUTER_JOIN
+
+Enable this directive if the rewrite of Oracle native syntax (+) of
+OUTER JOIN is broken. This will force Ora2Pg to not rewrite such code,
+default is to try to rewrite simple form of rigth outer join for the
+moment.
  
 =back
 
