@@ -818,9 +818,6 @@ sub _init
 	$self->{use_unaccent}    = 1;
 	$self->{use_lower_unaccent} = 1;
 
-	# rewrite oracle outer join syntax into ansi syntax
-	$self->{rewrite_outer_join} = 1;
-
 	# Initialyze following configuration file
 	foreach my $k (sort keys %AConfig) {
 		if (lc($k) eq 'allow') {
@@ -4474,7 +4471,11 @@ LANGUAGE plpgsql ;
 					$fct_cost .= "-- Total estimated cost for package $pkg: $cost_value units, " . $self->_get_human_cost($cost_value) . "\n";
 				}
 				foreach my $txt (@codes) {
-					$pkgbody .= $self->_convert_package("CREATE OR REPLACE PACKAGE BODY$txt", $self->{packages}{$pkg}{owner});
+					$self->{idxcomment} = 0;
+					my %comments = $self->_remove_comments(\$txt);
+					$txt = $self->_convert_package("CREATE OR REPLACE PACKAGE BODY$txt", $self->{packages}{$pkg}{owner}, \%comments);
+					$self->_restore_comments(\$txt, \%comments);
+					$pkgbody .= $txt;
 					$pkgbody =~ s/[\r\n]*END;\s*$//is;
 					$pkgbody =~ s/(\s*;)\s*$/$1/is;
 				}
@@ -9782,7 +9783,7 @@ is set to 1.
 
 sub _convert_package
 {
-	my ($self, $plsql, $owner) = @_;
+	my ($self, $plsql, $owner, $hrefcomment) = @_;
 
 	my $dirprefix = '';
 	$dirprefix = "$self->{output_dir}/" if ($self->{output_dir});
@@ -9912,9 +9913,7 @@ sub _convert_package
 				}
 			}
 		}
-		$self->{idxcomment} = 0;
 		$ctt =~ s/END[^;]*;$//is;
-		my %comments = $self->_remove_comments(\$ctt);
 		my @functions = $self->_extract_functions($ctt);
 
 
@@ -9951,14 +9950,14 @@ sub _convert_package
 		$self->{pkgcost} = 0;
 		foreach my $f (@functions) {
 			next if (!$f);
-			$content .= $self->_convert_function($owner, $f, $pname, \%comments);
+			$content .= $self->_convert_function($owner, $f, $pname, $hrefcomment);
 		}
-		$self->_restore_comments(\$content, \%comments);
 		if ($self->{estimate_cost}) {
 			$self->{total_pkgcost} += $self->{pkgcost} || 0;
 		}
 
 	}
+
 	return $content;
 }
 
@@ -13851,14 +13850,17 @@ sub _lookup_function
 		delete $fct_detail{declare};
 		$fct_detail{code} = $plsql;
 	}
-
 	# Replace call to global variables declared in this package
 	foreach my $n (keys %{$self->{global_variables}}) {
 		next if ($pname && (uc($n) !~ /^\U$pname\E\./));
-		while ($fct_detail{code} =~ s/\b$n\s*:=\s*([^;]+)\s*;/PERFORM set_config('$n', $1, false);/is) {};
-		while ($fct_detail{code} =~ s/([^\.]+)\b$self->{global_variables}{$n}{name}\s*:=\s*([^;]+);/$1PERFORM set_config('$n', $2, false);/is) {};
-		while ($fct_detail{code} =~ s/([^']+)\b$n\b([^']+)/$1current_setting('$n')::$self->{global_variables}{$n}{type}$2/is) {};
-		while ($fct_detail{code} =~ s/([^\.']+)\b$self->{global_variables}{$n}{name}\b([^']+)/$1current_setting('$n')::$self->{global_variables}{$n}{type}$2/is) {};
+		my $i = 0;
+		while ($fct_detail{code} =~ s/\b$n\s*:=\s*([^;]+)\s*;/PERFORM set_config('$n', $1, false);/is) { last if ($i++ > 100); };
+		$i = 0;
+		while ($fct_detail{code} =~ s/([^\.]+)\b$self->{global_variables}{$n}{name}\s*:=\s*([^;]+);/$1PERFORM set_config('$n', $2, false);/is) { last if ($i++ > 100); };
+		$i = 0;
+		while ($fct_detail{code} =~ s/([^']+)\b$n\b([^']+)/$1current_setting('$n')::$self->{global_variables}{$n}{type}$2/is) { last if ($i++ > 100); };
+		$i = 0;
+		while ($fct_detail{code} =~ s/([^\.']+)\b$self->{global_variables}{$n}{name}\b([^']+)/$1current_setting('$n')::$self->{global_variables}{$n}{type}$2/is) { last if ($i++ > 100); };
 	}
 	return %fct_detail;
 }
@@ -14839,7 +14841,7 @@ sub register_global_variable
 		$ret .= $l, next if (!$type);
 		if (!$n) {
 			$n = $type;
-			$type = $other[0] || '';
+			$type = $others[0] || '';
 		}
 		$ret .= $l, next if (uc($type) eq 'EXCEPTION');
 		next if (!$pname);
