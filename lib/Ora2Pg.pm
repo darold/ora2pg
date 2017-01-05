@@ -4507,7 +4507,7 @@ LANGUAGE plpgsql ;
 		$self->dump($sql_output);
 		$self->{packages} = ();
 		$sql_output = '';
-		# Create script to replace global variable calls
+		# Create file to load custom variable initialization into postgresql.conf
 		if (scalar keys %{$self->{global_variables}}) {
 			my $default_vars = '';
 			foreach my $n (keys %{$self->{global_variables}}) {
@@ -9809,7 +9809,6 @@ sub _convert_package
 		}
 	}
 
-
 	# Convert type from the package header
 	if ($plsql =~ s/PACKAGE\s+BODY\s*PACKAGE\s+([^\s]+)\s+(AS|IS)\s+TYPE\s+([^\s]+)\s+(AS|IS)\s+(.*;?)\s*PACKAGE BODY/PACKAGE BODY/is) {
 		my $pname = $1;
@@ -9843,7 +9842,6 @@ sub _convert_package
 				$i++;
 			}
 		}
-		$i = 1;
 		foreach my $tpe (sort {$a->{pos} <=> $b->{pos}} @{$self->{types}}) {
 			$self->logit("Dumping type $tpe->{name}...\n", 1);
 			if ($self->{plsql_pgsql}) {
@@ -9852,18 +9850,54 @@ sub _convert_package
 				$tpe->{code} = "CREATE OR REPLACE $tpe->{code}\n";
 			}
 			$content .= $tpe->{code} . "\n";
-			$i++;
 		}
 	}
 
 	# Convert the package body part
 	if ($plsql =~ /PACKAGE\s+BODY\s*([^\s]+)\s*(AS|IS)\s*(.*)/is) {
+
 		my $pname = $1;
 		my $type = $2;
 		my $ctt = $3;
+		my $glob_declare = $`;
+
 		$pname =~ s/"//g;
 		$pname =~ s/^.*\.//g;
 		$self->logit("Dumping package $pname...\n", 1);
+
+		# Process package spec to extract global variables
+		if ($glob_declare) {
+			# Remove header of the package decalaration
+			$glob_declare =~ s/^CREATE(.*?)\s+AS\s+//;
+			# Remove all function declaration
+			$glob_declare =~ s/(PROCEDURE|FUNCTION)[^;]+;//gis;
+			# Remove end of the package decalaration
+			$glob_declare =~ s/\s+END[^;]*;\s*$//is;
+			my @cursors = ();
+			while ($glob_declare =~ s/(CURSOR\s+[^;]+\s+RETURN\s+[^;]+;)//) {
+				push(@cursors, $1);
+			}
+			# Extract TYPE declaration
+			my $i = 0;
+			while ($glob_declare =~ s/TYPE\s+([^\s]+)\s+(AS|IS)\s+([^;]+;)//) {
+				$self->{pkg_type}{$1} = "$pname.$1";
+				my $code = "TYPE $self->{pkg_type}{$1} AS $3";
+				push(@{$self->{types}}, { ('name' => $1, 'code' => $code, 'pos' => $i++) });
+			}
+			# Then dump custom type
+			foreach my $tpe (sort {$a->{pos} <=> $b->{pos}} @{$self->{types}}) {
+				$self->logit("Dumping type $tpe->{name}...\n", 1);
+				if ($self->{plsql_pgsql}) {
+					$tpe->{code} = $self->_convert_type($tpe->{code}, $tpe->{owner});
+				} else {
+					$tpe->{code} = "CREATE OR REPLACE $tpe->{code}\n";
+				}
+				$content .= $tpe->{code} . "\n";
+				$i++;
+			}
+			$content .= join("\n", @cursors) . "\n";
+			$glob_declare = $self->register_global_variable($pname, $glob_declare);
+		}
 		if ($self->{file_per_function}) {
 			my $dir = lc("$dirprefix$pname");
 			if (!-d "$dir") {
@@ -13746,7 +13780,12 @@ sub _lookup_function
 		$fct_detail{name} = $3;
 		$fct_detail{args} = $4;
 		if ($fct_detail{before}) {
+			my @cursors = ();
+			while ($fct_detail{before} =~ s/(CURSOR\s+[^;]+\s+RETURN\s+[^;]+;)//) {
+				push(@cursors, $1);
+			}
 			$fct_detail{before} = $self->register_global_variable($pname, $fct_detail{before});
+			$fct_detail{before} = join("\n", @cursors) . "\n" . $fct_detail{before};
 		}
 		if ($fct_detail{args} =~ /\b(RETURN|IS|AS)\b/is) {
 			$fct_detail{args} = '()';
@@ -13813,10 +13852,10 @@ sub _lookup_function
 	# Replace call to global variables declared in this package
 	foreach my $n (keys %{$self->{global_variables}}) {
 		next if ($pname && (uc($n) !~ /^\U$pname\E\./));
-		$fct_detail{code} =~ s/\b$n\s*:=\s*([^;]+)\s*;/PERFORM set_config('$n', $1, false);/isg;
-		$fct_detail{code} =~ s/([^\.]*)\b$self->{global_variables}{$n}{name}\s*:=\s*([^;]+)/$1PERFORM set_config('$n', $2, false)/igs;
-		$fct_detail{code} =~ s/([^']+)\b$n\s*(?!:=)\s*/$1current_setting('$n')::$self->{global_variables}{$n}{type}/igs;
-		$fct_detail{code} =~ s/([^\.']+)\b$self->{global_variables}{$n}{name}\s*(?!:=)\s*/$1current_setting('$n')::$self->{global_variables}{$n}{type}/igs;
+		while ($fct_detail{code} =~ s/\b$n\s*:=\s*([^;]+)\s*;/PERFORM set_config('$n', $1, false);/is) {};
+		while ($fct_detail{code} =~ s/([^\.]+)\b$self->{global_variables}{$n}{name}\s*:=\s*([^;]+);/$1PERFORM set_config('$n', $2, false);/is) {};
+		while ($fct_detail{code} =~ s/([^']+)\b$n\b([^']+)/$1current_setting('$n')::$self->{global_variables}{$n}{type}$2/is) {};
+		while ($fct_detail{code} =~ s/([^\.']+)\b$self->{global_variables}{$n}{name}\b([^']+)/$1current_setting('$n')::$self->{global_variables}{$n}{type}$2/is) {};
 	}
 	return %fct_detail;
 }
@@ -14784,13 +14823,21 @@ sub register_global_variable
 	# Replace PL/SQL code into PL/PGSQL similar code
 	$glob_vars = Ora2Pg::PLSQL::plsql_to_plpgsql($self, $glob_vars);
 
-	my @vars = split(/\s*;\s*/, $glob_vars);
+	my @vars = split(/\s*(\%ORA2PG_COMMENT\d+\%|;)\s*/, $glob_vars);
 	map { s/^\s+//; s/\s+$//; } @vars;
 	my $ret = '';
 	foreach my $l (@vars) {
-		$ret .= $l, next if ($l =~ /^--/);
+		if ($l eq ';' || $l =~ /ORA2PG_COMMENT/) {
+			$ret .= $l if ($l ne ';');
+			next;
+		}
+		$l =~ s/\-\-[^\r\n]+//sg;
 		my ($n, $type, @others) = split(/\s+/, $l);
 		$ret .= $l, next if (!$type);
+		if (!$n) {
+			$n = $type;
+			$type = $other[0] || '';
+		}
 		$ret .= $l, next if (uc($type) eq 'EXCEPTION');
 		next if (!$pname);
 		my $v = $pname . '.' . $n;
