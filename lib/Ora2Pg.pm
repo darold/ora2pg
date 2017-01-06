@@ -4424,6 +4424,10 @@ LANGUAGE plpgsql ;
 				print STDERR $self->progress_bar($i, $num_total_package, 25, '=', 'packages', "generating $pkg" ), "\r";
 			}
 			$i++, next if (!$self->{packages}{$pkg}{text});
+
+			# Cleanup previous global variables defined in other package
+			%{$self->{global_variables}} = ();
+
 			my $pkgbody = '';
 			my $fct_cost = '';
 			if (!$self->{plsql_pgsql}) {
