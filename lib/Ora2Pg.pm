@@ -2011,9 +2011,12 @@ sub _parse_constraint
 			columns => ()
 		) };
 		push(@{$self->{tables}{$tb_name}{unique_key}{$1}{columns}}, split(/\s*,\s*/, $3));
-	} elsif ($c =~ /^([^\s]+) CHECK\s*\(([^\)]+)\)/i) {
+	} elsif ($c =~ /^([^\s]+) CHECK\s*\((.*)\)/i) {
 		my %tmp = ($1 => $2);
-		$self->{tables}{$tb_name}{check_constraint}{constraint}{$1} = $2;
+		$self->{tables}{$tb_name}{check_constraint}{constraint}{$1}{condition} = $2;
+		if ($c =~ /NOVALIDATE/i) {
+			$self->{tables}{$tb_name}{check_constraint}{constraint}{$1}{validate} = 'NOT VALIDATED';
+		}
 	} elsif ($c =~ /^([^\s]+) FOREIGN KEY (\([^\)]+\))?\s*REFERENCES ([^\(]+)\(([^\)]+)\)/i) {
 		my $c_name = $1;
 		if ($2) {
@@ -2035,8 +2038,10 @@ sub _parse_constraint
 		$deferrable = 'DEFERRABLE' if ($c =~ /DEFERRABLE/);
 		my $deferred = '';
 		$deferred = 'DEFERRED' if ($c =~ /INITIALLY DEFERRED/);
-		# CONSTRAINT_NAME,R_CONSTRAINT_NAME,SEARCH_CONDITION,DELETE_RULE,$deferrable,DEFERRED,R_OWNER,TABLE_NAME,OWNER
-		push(@{$self->{tables}{$tb_name}{foreign_key}}, [ ($c_name,'','','',$deferrable,$deferred,'',$tb_name,'') ]);
+		my $novalidate = '';
+		$novalidate = 'NOT VALIDATED' if ($c =~ /NOVALIDATE/);
+		# CONSTRAINT_NAME,R_CONSTRAINT_NAME,SEARCH_CONDITION,DELETE_RULE,$deferrable,DEFERRED,R_OWNER,TABLE_NAME,OWNER,UPDATE_RULE,VALIDATED
+		push(@{$self->{tables}{$tb_name}{foreign_key}}, [ ($c_name,'','','',$deferrable,$deferred,'',$tb_name,'','',$novalidate) ]);
 	}
 }
 
@@ -2093,7 +2098,7 @@ sub read_schema_from_file
 		$content =~ s/'ALTER\s+TABLE\s*([^']+)'//is;
 		if ($content =~ s/TRUNCATE TABLE\s+([^\s;]+)([^;]*);//is) {
 			my $tb_name = $1;
-			$tb_name =~ s/"//g;
+			$tb_name =~ s/"//gs;
 			if (!exists $self->{tables}{$tb_name}{table_info}{type}) {
 				$self->{tables}{$tb_name}{table_info}{type} = 'TABLE';
 				$self->{tables}{$tb_name}{table_info}{num_rows} = 0;
@@ -2103,9 +2108,9 @@ sub read_schema_from_file
 			$self->{tables}{$tb_name}{truncate_table} = 1;
 		} elsif ($content =~ s/CREATE\s+(GLOBAL)?\s*(TEMPORARY)?\s*TABLE[\s]+([^\s]+)\s+AS\s+([^;]+);//is) {
 			my $tb_name = $3;
-			$tb_name =~ s/"//g;
+			$tb_name =~ s/"//gs;
 			my $tb_def = $4;
-			$tb_def =~ s/\s+/ /g;
+			$tb_def =~ s/\s+/ /gs;
 			$self->{tables}{$tb_name}{table_info}{type} = 'TEMPORARY ' if ($2);
 			$self->{tables}{$tb_name}{table_info}{type} .= 'TABLE';
 			$self->{tables}{$tb_name}{table_info}{num_rows} = 0;
@@ -2116,7 +2121,7 @@ sub read_schema_from_file
 			my $tb_name = $3;
 			my $tb_def  = $4;
 			my $tb_param  = '';
-			$tb_name =~ s/"//g;
+			$tb_name =~ s/"//gs;
 			$self->{tables}{$tb_name}{table_info}{type} = 'TEMPORARY ' if ($2);
 			$self->{tables}{$tb_name}{table_info}{type} .= 'TABLE';
 			$self->{tables}{$tb_name}{table_info}{num_rows} = 0;
@@ -2145,41 +2150,41 @@ sub read_schema_from_file
 			foreach my $c (@column_defs) {
 				next if (!$c);
 				# Remove things that are not possible with postgres
-				$c =~ s/(PRIMARY KEY.*)NOT NULL/$1/i;
+				$c =~ s/(PRIMARY KEY.*)NOT NULL/$1/is;
 				# Rewrite some parts for easiest/generic parsing
-				$c =~ s/^(PRIMARY KEY|UNIQUE)/CONSTRAINT ora2pg_ukey_$tb_name $1/i;
-				$c =~ s/^(CHECK[^,;]+)DEFERRABLE\s+INITIALLY\s+DEFERRED/$1/i;
-				$c =~ s/^CHECK\b/CONSTRAINT ora2pg_ckey_$tb_name CHECK/i;
-				$c =~ s/^FOREIGN KEY/CONSTRAINT ora2pg_fkey_$tb_name FOREIGN KEY/i;
+				$c =~ s/^(PRIMARY KEY|UNIQUE)/CONSTRAINT ora2pg_ukey_$tb_name $1/is;
+				$c =~ s/^(CHECK[^,;]+)DEFERRABLE\s+INITIALLY\s+DEFERRED/$1/is;
+				$c =~ s/^CHECK\b/CONSTRAINT ora2pg_ckey_$tb_name CHECK/is;
+				$c =~ s/^FOREIGN KEY/CONSTRAINT ora2pg_fkey_$tb_name FOREIGN KEY/is;
 				# Get column name
-				if ($c =~ s/^\s*([^\s]+)\s*//) {
+				if ($c =~ s/^\s*([^\s]+)\s*//s) {
 					my $c_name = $1;
 					$c_name =~ s/"//g;
 					# Retrieve all columns information
 					if (uc($c_name) ne 'CONSTRAINT') {
 						$cur_c_name = $c_name;
 						my $c_type = '';
-						if ($c =~ s/^([^\s\(]+)\s*//) {
+						if ($c =~ s/^([^\s\(]+)\s*//s) {
 							$c_type = $1;
 						} else {
 							next;
 						}
 						my $c_length = '';
 						my $c_scale = '';
-						if ($c =~ s/^\(([^\)]+)\)\s*//) {
+						if ($c =~ s/^\(([^\)]+)\)\s*//s) {
 							$c_length = $1;
-							if ($c_length =~ s/\s*,\s*(\d+)\s*//) {
+							if ($c_length =~ s/\s*,\s*(\d+)\s*//s) {
 								$c_scale = $1;
 							}
 						}
 						my $c_nullable = 1;
-						if ($c =~ s/CONSTRAINT\s*([^\s]+)?\s*NOT NULL//) {
+						if ($c =~ s/CONSTRAINT\s*([^\s]+)?\s*NOT NULL//s) {
 							$c_nullable = 0;
 						} elsif ($c =~ s/NOT NULL//) {
 							$c_nullable = 0;
 						}
 
-						if (($c =~ s/(UNIQUE|PRIMARY KEY)\s*\(([^\)]+)\)//i) || ($c =~ s/(UNIQUE|PRIMARY KEY)\s*//i)) {
+						if (($c =~ s/(UNIQUE|PRIMARY KEY)\s*\(([^\)]+)\)//is) || ($c =~ s/(UNIQUE|PRIMARY KEY)\s*//is)) {
 							my $pk_name = 'ora2pg_ukey_' . $c_name; 
 							my $cols = $c_name;
 							if ($2) {
@@ -2187,7 +2192,7 @@ sub read_schema_from_file
 							}
 							$self->_parse_constraint($tb_name, $c_name, "$pk_name $1 ($cols)");
 
-						} elsif ( ($c =~ s/CONSTRAINT\s([^\s]+)\sCHECK\s*\(([^\)]+)\)//i) || ($c =~ s/CHECK\s*\(([^\)]+)\)//i) ) {
+						} elsif ( ($c =~ s/CONSTRAINT\s([^\s]+)\sCHECK\s*\(([^\)]+)\)//is) || ($c =~ s/CHECK\s*\(([^\)]+)\)//is) ) {
 							my $pk_name = 'ora2pg_ckey_' . $c_name; 
 							my $chk_search = $1;
 							if ($2) {
@@ -2196,21 +2201,21 @@ sub read_schema_from_file
 							}
 							$self->_parse_constraint($tb_name, $c_name, "$pk_name CHECK ($chk_search)");
 
-						} elsif ($c =~ s/REFERENCES\s+([^\(]+)\(([^\)]+)\)//i) {
+						} elsif ($c =~ s/REFERENCES\s+([^\(]+)\(([^\)]+)\)//is) {
 
 							my $pk_name = 'ora2pg_fkey_' . $c_name; 
 							my $chk_search = $1 . "($2)";
-							$chk_search =~ s/\s+//g;
+							$chk_search =~ s/\s+//gs;
 							$self->_parse_constraint($tb_name, $c_name, "$pk_name FOREIGN KEY ($c_name) REFERENCES $chk_search");
 						}
 
 						my $auto_incr = 0;
-						if ($c =~ s/\s*AUTO_INCREMENT\s*//i) {
+						if ($c =~ s/\s*AUTO_INCREMENT\s*//is) {
 							$auto_incr = 1;
 						}
 
 						my $c_default = '';
-						if ($c =~ s/DEFAULT\s+([^\s]+)\s*//) {
+						if ($c =~ s/DEFAULT\s+([^\s]+)\s*//is) {
 							if (!$self->{plsql_pgsql}) {
 								$c_default = $1;
 							} else {
@@ -2227,14 +2232,14 @@ sub read_schema_from_file
 			}
 			map {s/^/\t/; s/$/,\n/; } @column_defs;
 			# look for storage information
-			if ($tb_param =~ /TABLESPACE[\s]+([^\s]+)/i) {
+			if ($tb_param =~ /TABLESPACE[\s]+([^\s]+)/is) {
 				$self->{tables}{$tb_name}{table_info}{tablespace} = $1;
-				$self->{tables}{$tb_name}{table_info}{tablespace} =~ s/"//g;
+				$self->{tables}{$tb_name}{table_info}{tablespace} =~ s/"//gs;
 			}
-			if ($tb_param =~ /PCTFREE\s+(\d+)/i) {
+			if ($tb_param =~ /PCTFREE\s+(\d+)/is) {
 				$self->{tables}{$tb_name}{table_info}{fillfactor} = $1;
 			}
-			if ($tb_param =~ /\bNOLOGGING\b/i) {
+			if ($tb_param =~ /\bNOLOGGING\b/is) {
 				$self->{tables}{$tb_name}{table_info}{nologging} = 1;
 			}
 
@@ -2243,32 +2248,32 @@ sub read_schema_from_file
 			my $idx_name = $2;
 			my $tb_name = $3;
 			my $idx_def = $4;
-			$idx_name =~ s/"//g;
-			$tb_name =~ s/\s+/ /g;
-			$idx_def =~ s/\s+/ /g;
-			$idx_def =~ s/\s*nologging//i;
-			$idx_def =~ s/STORAGE\s*\([^\)]+\)\s*//i;
-			$idx_def =~ s/COMPRESS(\s+\d+)?\s*//i;
+			$idx_name =~ s/"//gs;
+			$tb_name =~ s/\s+/ /gs;
+			$idx_def =~ s/\s+/ /gs;
+			$idx_def =~ s/\s*nologging//is;
+			$idx_def =~ s/STORAGE\s*\([^\)]+\)\s*//is;
+			$idx_def =~ s/COMPRESS(\s+\d+)?\s*//is;
 			# look for storage information
-			if ($idx_def =~ s/TABLESPACE\s*([^\s]+)\s*//i) {
+			if ($idx_def =~ s/TABLESPACE\s*([^\s]+)\s*//is) {
 				$self->{tables}{$tb_name}{idx_tbsp}{$idx_name} = $1;
-				$self->{tables}{$tb_name}{idx_tbsp}{$idx_name} =~ s/"//g;
+				$self->{tables}{$tb_name}{idx_tbsp}{$idx_name} =~ s/"//gs;
 			}
-			if ($idx_def =~ s/ONLINE\s*//i) {
+			if ($idx_def =~ s/ONLINE\s*//is) {
 				$self->{tables}{$tb_name}{concurrently}{$idx_name} = 1;
 			}
-			if ($idx_def =~ s/INDEXTYPE\s+IS\s+.*SPATIAL_INDEX//i) {
+			if ($idx_def =~ s/INDEXTYPE\s+IS\s+.*SPATIAL_INDEX//is) {
 				$self->{tables}{$tb_name}{spatial}{$idx_name} = 1;
 				$self->{tables}{$tb_name}{idx_type}{$idx_name}{type} = 'SPATIAL INDEX';
 				$self->{tables}{$tb_name}{idx_type}{$idx_name}{type_name} = 'SPATIAL_INDEX';
 			}
-			if ($idx_def =~ s/layer_gtype=([^\s,]+)//i) {
+			if ($idx_def =~ s/layer_gtype=([^\s,]+)//is) {
 				$self->{tables}{$tb_name}{idx_type}{$idx_name}{type_constraint} = uc($1);
 			}
-			if ($idx_def =~ s/sdo_indx_dims=(\d)//i) {
+			if ($idx_def =~ s/sdo_indx_dims=(\d)//is) {
 				$self->{tables}{$tb_name}{idx_type}{$idx_name}{type_dims} = $1;
 			}
-			$idx_def =~ s/\)[^\)]*$//;
+			$idx_def =~ s/\)[^\)]*$//s;
 			if ($is_unique eq 'BITMAP') {
 				$is_unique = '';
 				$self->{tables}{$tb_name}{idx_type}{$idx_name}{type_name} = 'BITMAP';
@@ -2277,7 +2282,7 @@ sub read_schema_from_file
 			$idx_def =~ s/SYS_EXTRACT_UTC\s*\(([^\)]+)\)/$1/isg;
 			push(@{$self->{tables}{$tb_name}{indexes}{$idx_name}}, $idx_def);
 			$self->{tables}{$tb_name}{idx_type}{$idx_name}{type} = 'NORMAL';
-			if ($idx_def =~ /\(/) {
+			if ($idx_def =~ /\(/s) {
 				$self->{tables}{$tb_name}{idx_type}{$idx_name}{type} = 'FUNCTION-BASED';
 			}
 
@@ -2288,14 +2293,16 @@ sub read_schema_from_file
 				$self->{tables}{$tb_name}{internal_id} = $tid;
 			}
 
-		} elsif ($content =~ s/ALTER\s+TABLE\s+([^\s]+)\s+ADD\s*\(*\s*(.*)//i) {
+		} elsif ($content =~ s/ALTER\s+TABLE\s+([^\s]+)\s+ADD\s*\(*\s*(.*)//is) {
 			my $tb_name = $1;
 			$tb_name =~ s/"//g;
 			my $tb_def = $2;
 			#$tb_def =~ s/\s+/ /g;
 			# Oracle allow multiple constraints declaration inside a single ALTER TABLE
-			while ($tb_def =~ s/CONSTRAINT\s+([^\s]+)\s+CHECK\s*(\(.*?\))\s+(ENABLE|VALIDATE|DEFERRABLE|INITIALLY|DEFERRED|USING\s+INDEX|\s+)+([^,]*)//is) {
+			while ($tb_def =~ s/CONSTRAINT\s+([^\s]+)\s+CHECK\s*(\(.*?\))\s+(ENABLE|DISABLE|VALIDATE|NOVALIDATE|DEFERRABLE|INITIALLY|DEFERRED|USING\s+INDEX|\s+)+([^,]*)//is) {
 				my $constname = $1;
+				my $code = $2;
+				my $states = $3;
 				$tbspace_move = $4;
 				if (!exists $self->{tables}{$tb_name}{table_info}{type}) {
 					$self->{tables}{$tb_name}{table_info}{type} = 'TABLE';
@@ -2303,10 +2310,12 @@ sub read_schema_from_file
 					$tid++;
 					$self->{tables}{$tb_name}{internal_id} = $tid;
 				}
-				push(@{$self->{tables}{$tb_name}{alter_table}}, "ADD CONSTRAINT \L$constname\E CHECK $2");
-				if ( $tbspace_move =~ /USING\s+INDEX\s+TABLESPACE\s+([^\s]+)/) {
+				my $validate = '';
+				$validate = ' NOT VALID' if ( $states =~ /NOVALIDATE/is);
+				push(@{$self->{tables}{$tb_name}{alter_table}}, "ADD CONSTRAINT \L$constname\E CHECK $code$validate");
+				if ( $tbspace_move =~ /USING\s+INDEX\s+TABLESPACE\s+([^\s]+)/is) {
 					$tbspace_move = "ALTER INDEX $constname SET TABLESPACE " . lc($1) if ($self->{use_tablespace});
-				} elsif ($tbspace_move =~ /USING\s+INDEX\s+([^\s]+)/) {
+				} elsif ($tbspace_move =~ /USING\s+INDEX\s+([^\s]+)/is) {
 					$self->{tables}{$tb_name}{alter_table}[-1] .= " USING INDEX " . lc($1);
 				}
 				push(@{$self->{tables}{$tb_name}{alter_index}}, $tbspace_move) if ($tbspace_move);
@@ -2322,14 +2331,16 @@ sub read_schema_from_file
 					$self->{tables}{$tb_name}{internal_id} = $tid;
 				}
 				push(@{$self->{tables}{$tb_name}{alter_table}}, "ADD CONSTRAINT \L$constname\E FOREIGN KEY $2");
-				if ($other_def =~ /(ON\s+DELETE\s+(?:NO ACTION|RESTRICT|CASCADE|SET NULL))/) {
+				if ($other_def =~ /(ON\s+DELETE\s+(?:NO ACTION|RESTRICT|CASCADE|SET NULL))/is) {
 					$self->{tables}{$tb_name}{alter_table}[-1] .= " $1";
 				}
-				if ($other_def =~ /(ON\s+UPDATE\s+(?:NO ACTION|RESTRICT|CASCADE|SET NULL))/) {
+				if ($other_def =~ /(ON\s+UPDATE\s+(?:NO ACTION|RESTRICT|CASCADE|SET NULL))/is) {
 					$self->{tables}{$tb_name}{alter_table}[-1] .= " $1";
 				}
+				my $validate = '';
+				$validate = ' NOT VALID' if ( $other_def =~ /NOVALIDATE/is);
+				$self->{tables}{$tb_name}{alter_table}[-1] .= $validate;
 				push(@{$self->{tables}{$tb_name}{alter_index}}, $tbspace_move) if ($tbspace_move);
-				
 			}
 
 			# We can just have one primary key constraint
@@ -6613,7 +6624,9 @@ sub _create_check_constraint
 	my $out = '';
 	# Set the check constraint definition 
 	foreach my $k (keys %{$check_constraint->{constraint}}) {
-		my $chkconstraint = $check_constraint->{constraint}->{$k};
+		my $chkconstraint = $check_constraint->{constraint}->{$k}{condition};
+		my $validate = '';
+		$validate = ' NOT VALID' if ($check_constraint->{constraint}->{$k}{validate} eq 'NOT VALIDATED');
 		next if (!$chkconstraint);
 		my $skip_create = 0;
 		if (exists $check_constraint->{notnull}) {
@@ -6639,7 +6652,7 @@ sub _create_check_constraint
 				}
 				$k = lc($k);
 			}
-			$out .= "ALTER TABLE $table ADD CONSTRAINT $k CHECK ($chkconstraint);\n";
+			$out .= "ALTER TABLE $table ADD CONSTRAINT $k CHECK ($chkconstraint)$validate;\n";
 		}
 	}
 
@@ -6669,6 +6682,7 @@ sub _create_foreign_keys
 		my $state;
 		foreach my $h (@{$self->{tables}{$tbsaved}{foreign_key}}) {
 			if (lc($h->[0]) eq lc($fkname)) {
+				# @$h : CONSTRAINT_NAME,R_CONSTRAINT_NAME,SEARCH_CONDITION,DELETE_RULE,$deferrable,DEFERRED,R_OWNER,TABLE_NAME,OWNER,UPDATE_RULE,VALIDATED
 				push(@$state, @$h);
 				last;
 			}
@@ -6741,10 +6755,12 @@ sub _create_foreign_keys
 				$str .= (($self->{'defer_fkey'} ) ? ' DEFERRABLE' : " $state->[4]") if ($state->[4]);
 				$state->[5] = 'DEFERRED' if ($state->[5] =~ /^Y/);
 				$state->[5] ||= 'IMMEDIATE';
-				$str .= " INITIALLY " . ( ($self->{'defer_fkey'} ) ? 'DEFERRED' : $state->[5] ) . ";\n";
-			} else {
-				$str .= ";\n";
+				$str .= " INITIALLY " . ( ($self->{'defer_fkey'} ) ? 'DEFERRED' : $state->[5] );
+				if ($state->[9] eq 'NOT VALIDATED') {
+					$str .= " NOT VALID";
+				}
 			}
+			$str .= ";\n";
 			push(@out, $str);
 		}
 	}
@@ -7607,7 +7623,7 @@ sub _check_constraint
 	$condition .= $self->limit_to_objects('CKEY', 'CONSTRAINT_NAME');
 
 	my $sth = $self->{dbh}->prepare(<<END) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-SELECT CONSTRAINT_NAME,R_CONSTRAINT_NAME,SEARCH_CONDITION,DELETE_RULE,DEFERRABLE,DEFERRED,R_OWNER,TABLE_NAME,OWNER
+SELECT CONSTRAINT_NAME,R_CONSTRAINT_NAME,SEARCH_CONDITION,DELETE_RULE,DEFERRABLE,DEFERRED,R_OWNER,TABLE_NAME,OWNER,VALIDATED
 FROM $self->{prefix}_CONSTRAINTS
 WHERE CONSTRAINT_TYPE='C' $condition
 AND STATUS='ENABLED'
@@ -7620,7 +7636,8 @@ END
 		if ($self->{export_schema} && !$self->{schema}) {
 			$row->[7] = "$row->[8].$row->[7]";
 		}
-		$data{$row->[7]}{constraint}{$row->[0]} = $row->[2];
+		$data{$row->[7]}{constraint}{$row->[0]}{condition} = $row->[2];
+		$data{$row->[7]}{constraint}{$row->[0]}{validate}  = $row->[9];
 	}
 
 	return %data;
@@ -7685,11 +7702,14 @@ SELECT
     CONS_R.TABLE_NAME R_TABLE_NAME,
     CONS.R_CONSTRAINT_NAME,
     COLS_R.COLUMN_NAME R_COLUMN_NAME,
-    CONS.SEARCH_CONDITION,CONS.DELETE_RULE,$defer,CONS.DEFERRED,CONS.OWNER,CONS.R_OWNER,COLS.POSITION,COLS_R.POSITION
+    CONS.SEARCH_CONDITION,CONS.DELETE_RULE,$defer,CONS.DEFERRED,
+    CONS.OWNER,CONS.R_OWNER,
+    COLS.POSITION,COLS_R.POSITION,
+    CONS.VALIDATED
 FROM $self->{prefix}_CONSTRAINTS CONS
     LEFT JOIN $self->{prefix}_CONS_COLUMNS COLS ON (COLS.CONSTRAINT_NAME = CONS.CONSTRAINT_NAME AND COLS.OWNER = CONS.OWNER AND COLS.TABLE_NAME = CONS.TABLE_NAME)
-    LEFT JOIN $self->{prefix}_CONSTRAINTS CONS_R ON (CONS_R.CONSTRAINT_NAME = CONS.R_CONSTRAINT_NAME AND CONS_R.OWNER = CONS.OWNER)
-    LEFT JOIN $self->{prefix}_CONS_COLUMNS COLS_R ON (COLS_R.CONSTRAINT_NAME = CONS.R_CONSTRAINT_NAME AND COLS_R.POSITION=COLS.POSITION AND COLS_R.OWNER = COLS.OWNER)
+    LEFT JOIN $self->{prefix}_CONSTRAINTS CONS_R ON (CONS_R.CONSTRAINT_NAME = CONS.R_CONSTRAINT_NAME AND CONS_R.OWNER = CONS.R_OWNER)
+    LEFT JOIN $self->{prefix}_CONS_COLUMNS COLS_R ON (COLS_R.CONSTRAINT_NAME = CONS.R_CONSTRAINT_NAME AND COLS_R.POSITION=COLS.POSITION AND COLS_R.OWNER = CONS.R_OWNER)
 WHERE CONS.CONSTRAINT_TYPE = 'R' $condition
 ORDER BY CONS.TABLE_NAME, CONS.CONSTRAINT_NAME, COLS.POSITION
 END
@@ -7707,7 +7727,7 @@ END
 			$local_table = "$row->[10].$row->[0]";
 			$remote_table = "$row->[11].$row->[3]";
 		}
-		push(@{$data{$local_table}}, [ ($row->[1],$row->[4],$row->[6],$row->[7],$row->[8],$row->[9],$row->[11],$row->[0],$row->[10]) ]);
+		push(@{$data{$local_table}}, [ ($row->[1],$row->[4],$row->[6],$row->[7],$row->[8],$row->[9],$row->[11],$row->[0],$row->[10],$row->[14]) ]);
 		#            TABLENAME     CONSTNAME           COLNAME
 		push(@{$link{$local_table}{$row->[1]}{local}}, $row->[2]);
 		#            TABLENAME     CONSTNAME          TABLENAME        COLNAME
@@ -12510,7 +12530,7 @@ $schema_cond
 			next if (!exists $tables_infos{$t});
 			my $nbcheck = 0;
 			foreach my $cn (keys %{$check_constraints{$t}{constraint}}) {
-				$nbcheck++ if ($check_constraints{$t}{constraint}{$cn} !~ /IS NOT NULL$/);
+				$nbcheck++ if ($check_constraints{$t}{constraint}{$cn}{condition} !~ /IS NOT NULL$/);
 			}
 			print "$lbl:$t:$nbcheck\n";
 			if ($self->{pg_dsn}) {
@@ -13768,7 +13788,7 @@ sub _lookup_check_constraint
 
 	# Set the check constraint definition 
 	foreach my $k (keys %{$check_constraint->{constraint}}) {
-		my $chkconstraint = $check_constraint->{constraint}->{$k};
+		my $chkconstraint = $check_constraint->{constraint}->{$k}{condition};
 		next if (!$chkconstraint);
 		my $skip_create = 0;
 		if (exists $check_constraint->{notnull}) {
@@ -13796,7 +13816,9 @@ sub _lookup_check_constraint
 				}
 				$k = lc($k);
 			}
-			push(@chk_constr,  "ALTER TABLE $table ADD CONSTRAINT $k CHECK ($chkconstraint);\n");
+			my $validate = '';
+			$validate = ' NOT VALID' if ($check_constraint->{constraint}->{$k}{validate} eq 'NOT VALIDATED');
+			push(@chk_constr,  "ALTER TABLE $table ADD CONSTRAINT $k CHECK ($chkconstraint)$validate;\n");
 		}
 	}
 
