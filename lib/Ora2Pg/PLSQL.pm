@@ -300,6 +300,68 @@ PSQL - Oracle to PostgreSQL procedural language converter
 	configuration option to 1.
 =cut
 
+=head2 convert_plsql_code
+
+Main function used to convert Oracle SQL and PL/SQL code into PostgreSQL
+compatible code
+
+=cut
+
+sub convert_plsql_code
+{
+        my ($class, $str) = @_;
+
+	%{$class->{single_fct_call}} = ();
+
+	# Extract all block from the code by splitting it on the semi-comma
+	# character and replace all necessary function call
+	my @code_parts = split(/;/, $str);
+	for (my $i = 0; $i <= $#code_parts; $i++) {
+		next if (!$code_parts[$i]);
+		%{$class->{single_fct_call}} = ();
+		$code_parts[$i] = extract_function_code($class, $code_parts[$i], 0);
+		foreach my $k (keys %{$class->{single_fct_call}}) {
+			$class->{single_fct_call}{$k} = replace_oracle_function($class, $class->{single_fct_call}{$k});
+		};
+		while ($code_parts[$i] =~ s/\%\%REPLACEFCT(\d+)\%\%/$class->{single_fct_call}{$1}/) {};
+	}
+	$str = join(';', @code_parts);
+	$str =~ s/[;]+/;/gs;
+
+	# Apply code rewrite on other part of the code
+	$str = plsql_to_plpgsql($class, $str);
+
+	return $str;
+
+}
+
+=head2 extract_function_code
+
+Recursive function used to extract call to function in Oracle SQL
+and PL/SQL code
+
+=cut
+
+sub extract_function_code
+{
+        my ($class, $code, $idx) = @_;
+
+        # Look for a function call that do not have an other function
+        # call inside, replace content with a marker and store the
+        # replaced string into a hask to rewritten later to convert pl/sql
+        if ($code =~ s/\b([a-zA-Z\.\_]+)\s*\(([^\(\)]+)\)/\%\%REPLACEFCT$idx\%\%/s) {
+		my $fct_name = $1;
+		my $fct_code = $2;
+		my $space = '';
+		$space = ' ' if (grep (/^$fct_name$/i, 'FROM', 'AS', 'VALUES', 'DEFAULT'));
+                # recursively replace function
+                $class->{single_fct_call}{$idx} = $fct_name . $space . '(' . $fct_code . ')';
+                $code = extract_function_code($class, $code, ++$idx);
+        }
+
+        return $code;
+}
+
 =head2 plsql_to_plpgsql
 
 This function return a PLSQL code translated to PLPGSQL code
@@ -312,7 +374,6 @@ sub plsql_to_plpgsql
 
 	return mysql_to_plpgsql($class, $str) if ($class->{is_mysql});
 
-	my @xmlelt = ();
 	my $field = '\s*([^\(\),]+)\s*';
 	my $num_field = '\s*([\d\.]+)\s*';
 	my $date_field = '\s*([^,\)\(]*(?:date|time)[^,\)\(]*)\s*';
@@ -321,8 +382,6 @@ sub plsql_to_plpgsql
 	# PL/SQL to PL/PGSQL code conversion
 	# Feel free to add your contribution here.
 	#--------------------------------------------
-	# Change NVL to COALESCE
-	$str =~ s/NVL\s*\(/coalesce(/igs;
 	my $conv_current_time = 'clock_timestamp()';
 	if (!grep(/$class->{type}/i, 'FUNCTION', 'PROCEDURE', 'PACKAGE')) {
 		$conv_current_time = 'LOCALTIMESTAMP';
@@ -370,10 +429,17 @@ sub plsql_to_plpgsql
 
 	# SELECT without INTO should be PERFORM. Exclude select of view when prefixed with AS ot IS
 	if ( ($class->{type} ne 'QUERY') && ($class->{type} ne 'VIEW') ) {
+		my @text_values = ();
+		my $j = 0;
+		while ($str =~ s/'([^']+)'/\%TEXTVALUE-$j\%/s) {
+			push(@text_values, $1);
+			$j++;
+		}
 		$str =~ s/(\s+)(?<!AS|IS)(\s+)SELECT((?![^;]+\bINTO\b)[^;]+;)/$1$2PERFORM$3/isg;
 		$str =~ s/\bSELECT\b((?![^;]+\bINTO\b)[^;]+;)/PERFORM$1/isg;
 		$str =~ s/(AS|IS|FOR|UNION ALL|UNION|MINUS|\()(\s*)(ORA2PG_COMMENT\d+\%)?(\s*)PERFORM/$1$2$3$4SELECT/isg;
 		$str =~ s/(INSERT\s+INTO\s+[^;]+\s+)PERFORM/$1SELECT/isg;
+		$str =~ s/\%TEXTVALUE-(\d+)\%/'$text_values[$1]'/gs;
 	}
 
 	# Change nextval on sequence
@@ -385,18 +451,12 @@ sub plsql_to_plpgsql
 	$str =~ s/\bMINUS\b/EXCEPT/igs;
 	# Comment DBMS_OUTPUT.ENABLE calls
 	$str =~ s/(DBMS_OUTPUT.ENABLE[^;]+;)/-- $1/isg;
-	# Raise information to the client
-	$str =~ s/DBMS_OUTPUT\.(put_line|put|new_line)\s*\((.*?)\);/&raise_output($2)/igse;
-
-	# Substitution to replace type of sql variable in PLSQL code
-#	foreach my $t (keys %Ora2Pg::TYPE) {
-#		$str =~ s/\b$t\b/$Ora2Pg::TYPE{$t}/igs;
-#	}
 
 	# Procedure are the same as function in PG
 	$str =~ s/\bPROCEDURE\b/FUNCTION/igs;
 	# Simply remove this as not supported
 	$str =~ s/\bDEFAULT\s+NULL\b//igs;
+
 	# Replace DEFAULT empty_blob() and empty_clob()
 	$str =~ s/(empty_blob|empty_clob)\(\s*\)//igs;
 	$str =~ s/(empty_blob|empty_clob)\b//igs;
@@ -430,101 +490,17 @@ sub plsql_to_plpgsql
 	# Replace CURSOR (param) IS SELECT by CURSOR FOR SELECT
 	$str =~ s/\bCURSOR(\s*\([^\)]+\)\s*)IS(\s*)SELECT/CURSOR$1FOR$2SELECT/isg;
 
-	# Rewrite TO_DATE formating call
-	$str =~ s/TO_DATE\s*\(\s*('[^\']+'),\s*('[^\']+')[^\)]*\)/to_date($1,$2)/igs;
-
 	# Normalize HAVING ... GROUP BY into GROUP BY ... HAVING clause	
 	$str =~ s/\bHAVING\b(.*?)\bGROUP BY\b(.*?)((?=UNION|ORDER BY|LIMIT|INTO |FOR UPDATE|PROCEDURE)|$)/GROUP BY$2 HAVING$1/gis;
 
 	# Cast round() call as numeric => Remove because most of the time this may not be necessary
 	#$str =~ s/round\s*\((.*?),([\s\d]+)\)/round\($1::numeric,$2\)/igs;
 
-	# Replace call to trim into btrim
-	$str =~ s/\bTRIM\(([^\(\)]+)\)/btrim($1)/igs;
-
-	# Change trunc() to date_trunc('day', field)
-	# Trunc is replaced with date_trunc if we find date in the name of
-	# the value because Oracle have the same trunc function on number
-	# and date type
-	my @date_trunc = ();
-	my $di = 0;
-	while ($str =~ s/\bTRUNC\($date_field\)/\%\%DATETRUNC$di\%\%/is) {
-		push(@date_trunc, "date_trunc('day', $1)");
-		$di++;
-	}
-	while ($str =~ s/\bTRUNC\($date_field,$field\)/\%\%DATETRUNC$di\%\%/is) {
-		push(@date_trunc, "date_trunc($2, $1)");
-		$di++;
-	}
-
-	my @sign = ();
-	$di = 0;
-	while ($str =~ s/\bsign\(([^\)]+)\)/\%\%SIGN$di\%\%/is) {
-		push(@sign, "sign($1)");
-		$di++;
-	}
-	my @length = ();
-	$di = 0;
-	while ($str =~ s/\blength\(([^\)]+)\)/\%\%LENGTH$di\%\%/is) {
-		push(@length, "length($1)");
-		$di++;
-	}
-	my @least = ();
-	$di = 0;
-	while ($str =~ s/\bleast\(([^\)]+)\)/\%\%LEAST$di\%\%/is) {
-		push(@least, "least($1)");
-		$di++;
-	}
-	my @greatest = ();
-	$di = 0;
-	while ($str =~ s/\bgreatest\(([^\)]+)\)/\%\%GREATEST$di\%\%/is) {
-		push(@greatest, "greatest($1)");
-		$di++;
-	}
-	my @btrim = ();
-	$di = 0;
-	while ($str =~ s/\bbtrim\(([^\)]+)\)/\%\%BTRIM$di\%\%/is) {
-		push(@btrim, "btrim($1)");
-		$di++;
-	}
-	my @rtrim = ();
-	$di = 0;
-	while ($str =~ s/\brtrim\(([^\)]+)\)/\%\%RTRIM$di\%\%/is) {
-		push(@rtrim, "rtrim($1)");
-		$di++;
-	}
-	my @ltrim = ();
-	$di = 0;
-	while ($str =~ s/\bltrim\(([^\)]+)\)/\%\%LTRIM$di\%\%/is) {
-		push(@ltrim, "ltrim($1)");
-		$di++;
-	}
-	my @coalesce = ();
-	$di = 0;
-	while ($str =~ s/\bcoalesce\(([^\)]+)\)/\%\%COALESCE$di\%\%/is) {
-		push(@coalesce, "coalesce($1)");
-		$di++;
-	}
-
-	# Convert the call to the Oracle function add_months() into Pg syntax
-	$str =~ s/ADD_MONTHS\s*\(\s*TO_CHAR\(\s*([^,]+)(.*?),\s*(\d+)\s*\)/$1 + '$3 month'::interval/gsi;
-	$str =~ s/ADD_MONTHS\s*\(\s*TO_CHAR\(\s*([^,]+)(.*?),\s*([^,\(\)]+)\s*\)/$1 + $3*'1 month'::interval/gsi;
-	$str =~ s/ADD_MONTHS\s*\((.*?),\s*(\d+)\s*\)/$1 + '$2 month'::interval/gsi;
-	$str =~ s/ADD_MONTHS\s*\((.*?),\s*([^,\(\)]+)\s*\)/$1 + $2*'1 month'::interval/gsi;
-
-	# Convert the call to the Oracle function add_years() into Pg syntax
-	$str =~ s/ADD_YEARS\s*\(\s*TO_CHAR\(\s*([^,]+)(.*?),\s*(\d+)\s*\)/$1 + '$3 year'::interval/gsi;
-	$str =~ s/ADD_YEARS\s*\(\s*TO_CHAR\(\s*([^,]+)(.*?),\s*([^,\(\)]+)\s*\)/$1 + $3*'1 year'::interval/gsi;
-	$str =~ s/ADD_YEARS\s*\((.*?),\s*(\d+)\s*\)/$1 + '$2 year'::interval/gsi;
-	$str =~ s/ADD_YEARS\s*\((.*?),\s*([^,\(\)]+)\s*\)/$1 + $2*' year'::interval/gsi;
-
 	# Add STRICT keyword when select...into and an exception with NO_DATA_FOUND/TOO_MANY_ROW is present
-	if ($str !~ s/\b(SELECT\b[^;]*?INTO)(.*?)(EXCEPTION.*?NO_DATA_FOUND)/$1 STRICT $2 $3/igs) {
-		$str =~ s/\b(SELECT\b[^;]*?INTO)(.*?)(EXCEPTION.*?TOO_MANY_ROW)/$1 STRICT $2 $3/igs;
-	}
+	$str !~ s/\b(SELECT\b[^;]*?INTO)(.*?)(EXCEPTION.*?(?:NO_DATA_FOUND|TOO_MANY_ROW))/$1 STRICT $2 $3/igs;
 
 	# Remove the function name repetion at end
-	$str =~ s/END\s+(?!IF|LOOP|CASE|INTO|FROM|,)[a-z0-9_"]+\s*([;]*)\s*$/END$1/igs;
+	$str =~ s/END\s+(?!IF|LOOP|CASE|INTO|FROM|END|,)[a-z0-9_"]+(\s*[;]?)/END$1$2/igs;
 
 	# Replace ending ROWNUM with LIMIT
         $str =~ s/(WHERE|AND)\s*ROWNUM\s*=\s*(\d+)/'LIMIT 1 OFFSET ' . ($2-1)/iges;
@@ -541,12 +517,6 @@ sub plsql_to_plpgsql
 
 	# Replace SQLCODE by SQLSTATE
 	$str =~ s/\bSQLCODE\b/SQLSTATE/igs;
-
-	# Replace some way of extracting date part of a date
-	$str =~ s/TO_NUMBER\s*\(\s*TO_CHAR\s*\(([^,]+),\s*('[^']+')\s*\)\s*\)/to_char($1, $2)::integer/igs;
-
-	# Replace the UTC convertion with the PG syntaxe
-	$str =~ s/SYS_EXTRACT_UTC\s*\(([^\)]+)\)/($1 AT TIME ZONE 'UTC')/isg;
 
 	# Revert order in FOR IN REVERSE
 	$str =~ s/FOR(.*?)IN\s+REVERSE\s+([^\.\s]+)\s*\.\.\s*([^\s]+)/FOR$1IN REVERSE $3..$2/isg;
@@ -579,68 +549,9 @@ sub plsql_to_plpgsql
 	$str =~ s/([\-]*)BINARY_(FLOAT|DOUBLE)_INFINITY/'$1Infinity'/igs;
 	$str =~ s/'([\-]*)Inf'/'$1Infinity'/igs;
 
-	# REGEX_LIKE( string, pattern ) => string ~ pattern
-	$str =~ s/REGEXP_LIKE\s*\(\s*([^,]+)\s*,\s*('[^\']+')\s*\)/$1 \~ $2/igs;
-
-	# Remove call to XMLCDATA, there's no such function with PostgreSQL
-	$str =~ s/XMLCDATA\s*\(([^\)]+)\)/'<![CDATA[' || $1 || ']]>'/igs;
-	# Remove call to getClobVal() or getStringVal, no need of that
-	$str =~ s/\.(getClobVal|getStringVal)\(\s*\)//igs;
-	# Add the name keyword to XMLELEMENT
-	$str =~ s/XMLELEMENT\s*\(\s*/XMLELEMENT(name /igs;
-
-	# Store XML element into memory and replace it by a placeholder to be
-	# able to use it into function call and not break decode replacement
-	my $i = 0;
-	while ($str =~ s/(XMLELEMENT\s*\([^\)]+\))/%%XMLELEMENT$i%%/is) {
-		my $tmpstr = replace_decode($1);
-		push(@xmlelt, $tmpstr);
-		$i++;
-	}
-
 	# Replace PIPE ROW by RETURN NEXT
 	$str =~ s/PIPE\s+ROW\s*/RETURN NEXT /igs;
 	$str =~ s/(RETURN NEXT )\(([^\)]+)\)/$1$2/igs;
-
-	# The to_number() function reclaim a second argument under postgres which is the format.
-	# By default we use '99999999999999999999D99999999999999999999' that may allow bigint
-	# and double precision number. Feel free to modify it
-	$str =~ s/TO_NUMBER\s*\(([^,\(\)]+)\s*\)/to_number\($1,'99999999999999999999D99999999999999999999'\)/igs;
-
-	# Replace sys_context call to the postgresql equivalent
-	$str = &replace_sys_context($str);
-
-	# Replace SDO_GEOM to the postgis equivalent
-	$str = &replace_sdo_function($str);
-
-	# Replace Spatial Operator to the postgis equivalent
-	$str = &replace_sdo_operator($str);
-
-	# Rewrite replace(a,b) with three argument
-	my @replace = ();
-	$di = 0;
-	while ($str =~ s/REPLACE\s*\($field,$field\)/\%\%REPLACE$di\%\%/is) {
-		push(@replace, "replace($1, $2, '')");
-		$di++;
-	}
-
-	# Replace Oracle substr(string, start_position, length) with
-	# PostgreSQL substring(string from start_position for length)
-	my @substring = ();
-	$di = 0;
-	while ($str =~ s/substr\s*\($field,$field,$field\)/\%\%SUBSTRING$di\%\%/is) {
-		push(@substring, "substring($1 from $2 for $3)");
-		$di++;
-	}
-	while ($str =~ s/substr\s*\($field,$field\)/\%\%SUBSTRING$di\%\%/is) {
-		push(@substring, "substring($1 from $2)");
-		$di++;
-	}
-
-
-	# Replace decode("user_status",'active',"username",null)
-	# PostgreSQL (CASE WHEN "user_status"='ACTIVE' THEN "username" ELSE NULL END)
-	$str = replace_decode($str);
 
 	#  Convert all x <> NULL or x != NULL clauses to x IS NOT NULL.
 	$str =~ s/\s*(<>|\!=)\s*NULL/ IS NOT NULL/igs;
@@ -659,12 +570,104 @@ sub plsql_to_plpgsql
 		$str =~ s/([a-z0-9_\."]+\s*\([^\)]*\))\s*IS NOT NULL/($1 IS NOT NULL AND ($1)::text <> '')/igs;
 	}
 
+	# Replace type in sub block
+	$str =~ s/(DECLARE\s+)(.*?)(\s+BEGIN)/$1 . &replace_sql_type($2, $class->{pg_numeric_type}, $class->{default_numeric}, $class->{pg_integer_type}) . $3/iges;
+
 	# Remove any call to MDSYS schema in the code
 	$str =~ s/MDSYS\.//igs;
 
-	# Restore XMLELEMENT call
-	$str =~ s/\%\%XMLELEMENT(\d+)\%\%/$xmlelt[$1]/igs;
-	@xmlelt = ();
+	# Replace call to right outer join obsolete syntax
+	$str = replace_right_outer_join($str);
+
+	return $str;
+}
+
+sub replace_oracle_function
+{
+        my ($class, $str) = @_;
+
+	my @xmlelt = ();
+	my $field = '\s*([^\(\),]+)\s*';
+	my $num_field = '\s*([\d\.]+)\s*';
+	my $date_field = '\s*([^,\)\(]*(?:date|time)[^,\)\(]*)\s*';
+
+	#--------------------------------------------
+	# PL/SQL to PL/PGSQL code conversion
+	# Feel free to add your contribution here.
+	#--------------------------------------------
+	# Change NVL to COALESCE
+	$str =~ s/NVL\s*\(/coalesce(/is;
+
+	# Raise information to the client
+	$str =~ s/DBMS_OUTPUT\.(put_line|put|new_line)\s*\((.*)\)/&raise_output($2)/ise;
+
+	# Replace DEFAULT empty_blob() and empty_clob()
+	$str =~ s/(empty_blob|empty_clob)\s*\(\s*\)//is;
+	$str =~ s/(empty_blob|empty_clob)\b//is;
+
+	# Rewrite TO_DATE formating call
+	$str =~ s/TO_DATE\s*\(\s*('[^\']+'),\s*('[^\']+')[^\)]*\)/to_date($1,$2)/is;
+
+	# Replace call to trim into btrim
+	$str =~ s/\bTRIM\s*\(([^\(\)]+)\)/btrim($1)/is;
+
+	# Change trunc() to date_trunc('day', field)
+	# Trunc is replaced with date_trunc if we find date in the name of
+	# the value because Oracle have the same trunc function on number
+	# and date type
+	$str =~ s/\bTRUNC\s*\($date_field\)/date_trunc('day', $1)/is;
+	$str =~ s/\bTRUNC\s*\($date_field,$field\)/date_trunc($2, $1)/is;
+	$str =~ s/date_trunc\('MM'/date_trunc('month'/is;
+
+	# Convert the call to the Oracle function add_months() into Pg syntax
+	$str =~ s/ADD_MONTHS\s*\(([^,]+),\s*(\d+)\s*\)/$1 + '$2 month'::interval/si;
+	$str =~ s/ADD_MONTHS\s*\(([^,]+),\s*([^,\(\)]+)\s*\)/$1 + $2*'1 month'::interval/si;
+
+	# Convert the call to the Oracle function add_years() into Pg syntax
+	$str =~ s/ADD_YEARS\s*\(([^,]+),\s*(\d+)\s*\)/$1 + '$2 year'::interval/si;
+	$str =~ s/ADD_YEARS\s*\(([^,]+),\s*([^,\(\)]+)\s*\)/$1 + $2*' year'::interval/si;
+
+	# Replace INSTR by POSITION
+	$str =~ s/INSTR\s*\(\s*([^,]+),\s*('[^']+')\s*\)/POSITION($2 in $1)/is;
+
+	# Replace some way of extracting date part of a date
+	$str =~ s/TO_NUMBER\s*\(\s*([^\)\(]+)\s*\)/($1)::integer/is;
+
+	# Replace the UTC convertion with the PG syntaxe
+	$str =~ s/SYS_EXTRACT_UTC\s*\(([^\)]+)\)/($1 AT TIME ZONE 'UTC')/is;
+
+	# REGEX_LIKE( string, pattern ) => string ~ pattern
+	$str =~ s/REGEXP_LIKE\s*\(\s*([^,]+)\s*,\s*('[^\']+')\s*\)/$1 \~ $2/is;
+
+	# Remove call to XMLCDATA, there's no such function with PostgreSQL
+	$str =~ s/XMLCDATA\s*\(([^\)]+)\)/'<![CDATA[' || $1 || ']]>'/is;
+	# Remove call to getClobVal() or getStringVal, no need of that
+	$str =~ s/\.(getClobVal|getStringVal)\s*\(\s*\)//is;
+	# Add the name keyword to XMLELEMENT
+	$str =~ s/XMLELEMENT\s*\(\s*/XMLELEMENT(name /is;
+
+	# The to_number() function reclaim a second argument under postgres which is the format.
+	# By default we use '99999999999999999999D99999999999999999999' that may allow bigint
+	# and double precision number. Feel free to modify it
+	$str =~ s/TO_NUMBER\s*\(([^,\(\)]+)\s*\)/to_number\($1,'99999999999999999999D99999999999999999999'\)/is;
+
+	# Replace SDO_GEOM to the postgis equivalent
+	$str = &replace_sdo_function($str);
+
+	# Replace Spatial Operator to the postgis equivalent
+	$str = &replace_sdo_operator($str);
+
+	# Rewrite replace(a,b) with three argument
+	$str =~ s/REPLACE\s*\($field,$field\)/replace($1, $2, '')/is;
+
+	# Replace Oracle substr(string, start_position, length) with
+	# PostgreSQL substring(string from start_position for length)
+	$str =~ s/substr\s*\($field,$field,$field\)/substring($1 from $2 for $3)/is;
+	$str =~ s/substr\s*\($field,$field\)/substring($1 from $2)/is;
+
+	# Replace decode("user_status",'active',"username",null)
+	# PostgreSQL (CASE WHEN "user_status"='ACTIVE' THEN "username" ELSE NULL END)
+	$str = replace_decode($str);
 
 	##############
 	# Replace package.function call by package_function
@@ -682,42 +685,12 @@ sub plsql_to_plpgsql
 		$str =~ s/\%TEXTVALUE-(\d+)\%/'$text_values[$1]'/gs;
 	}
 
-	# Restore call to simple function
-	$str =~ s/\%\%DATETRUNC(\d+)\%\%/$date_trunc[$1]/igs;
-	$str =~ s/date_trunc\('MM'/date_trunc('month'/igs;
-	$str =~ s/\%\%REPLACE(\d+)\%\%/$replace[$1]/igs;
-	$str =~ s/\%\%SUBSTRING(\d+)\%\%/$substring[$1]/igs;
-	$str =~ s/\%\%GREATEST(\d+)\%\%/$greatest[$1]/igs;
-	$str =~ s/\%\%LEAST(\d+)\%\%/$least[$1]/igs;
-	$str =~ s/\%\%SIGN(\d+)\%\%/$sign[$1]/igs;
-	$str =~ s/\%\%LENGTH(\d+)\%\%/$length[$1]/igs;
-	$str =~ s/\%\%LTRIM(\d+)\%\%/$ltrim[$1]/igs;
-	$str =~ s/\%\%RTRIM(\d+)\%\%/$rtrim[$1]/igs;
-	$str =~ s/\%\%BTRIM(\d+)\%\%/$btrim[$1]/igs;
-	$str =~ s/\%\%COALESCE(\d+)\%\%/$coalesce[$1]/igs;
-
-	# Replace call to right outer join obsolete syntax
-	$str = &replace_right_outer_join($str) if ($class->{rewrite_outer_join});
-
-	# Replace pending decode()
-	$str = replace_decode($str);
-
-	# Restore call to simple function again if some have not already been replaced
-	$str =~ s/\%\%DATETRUNC(\d+)\%\%/$date_trunc[$1]/igs;
-	$str =~ s/date_trunc\('MM'/date_trunc('month'/igs;
-	$str =~ s/\%\%REPLACE(\d+)\%\%/$replace[$1]/igs;
-	$str =~ s/\%\%SUBSTRING(\d+)\%\%/$substring[$1]/igs;
-	$str =~ s/\%\%GREATEST(\d+)\%\%/$greatest[$1]/igs;
-	$str =~ s/\%\%LEAST(\d+)\%\%/$least[$1]/igs;
-	$str =~ s/\%\%SIGN(\d+)\%\%/$sign[$1]/igs;
-	$str =~ s/\%\%LENGTH(\d+)\%\%/$length[$1]/igs;
-	$str =~ s/\%\%LTRIM(\d+)\%\%/$ltrim[$1]/igs;
-	$str =~ s/\%\%RTRIM(\d+)\%\%/$rtrim[$1]/igs;
-	$str =~ s/\%\%BTRIM(\d+)\%\%/$btrim[$1]/igs;
-	$str =~ s/\%\%COALESCE(\d+)\%\%/$coalesce[$1]/igs;
+	# Replace some sys_context call to the postgresql equivalent
+	replace_sys_context($str);
 
 	return $str;
 }
+
 
 sub replace_decode
 {
@@ -726,33 +699,24 @@ sub replace_decode
 	my $decode_idx = 0;
 	my @str_decode = ();
 
-	while ($str =~ s/DECODE\s*\(([^\(\)]+)\)/DECODE%$decode_idx%/is) {
+	if ($str =~ s/DECODE\s*\(([^\(\)]+)\)/DECODE\%\%/is) {
 		push(@str_decode, $1);
-		# When there is no potential subquery in the decode statement
-		if ($str_decode[-1] !~ /(\(|\))/) {
-			# Create an array with all parameter of the decode function
-			my @fields = split(/\s*,\s*/s, $str_decode[-1]);
-			my $case_str = 'CASE ';
-			for (my $i = 1; $i <= $#fields; $i+=2) {
-				if ($i < $#fields) {
-					$case_str .= "WHEN $fields[0]=$fields[$i] THEN $fields[$i+1] ";
-				} else {
-					$case_str .= " ELSE $fields[$i] ";
-				}
+		# Create an array with all parameter of the decode function
+		my @fields = split(/\s*,\s*/s, $str_decode[-1]);
+		my $case_str = 'CASE ';
+		for (my $i = 1; $i <= $#fields; $i+=2) {
+			if ($i < $#fields) {
+				$case_str .= "WHEN $fields[0]=$fields[$i] THEN $fields[$i+1] ";
+			} else {
+				$case_str .= " ELSE $fields[$i] ";
 			}
-			$case_str .= 'END';
-			$str_decode[-1] = $case_str;
 		}
-		$decode_idx++;
-	}
-	while ($str =~ /DECODE%(\d+)%/) {
-		$decode_idx = $1;
-		$str =~ s/DECODE%$decode_idx%/$str_decode[$decode_idx]/s;
+		$case_str .= 'END';
+		$str =~ s/DECODE\%\%/$case_str/s;
 	}
 
 	return $str;
 }
-
 
 # Function to replace call to SYS_CONTECT('USERENV', ...)
 # List of Oracle environment variables: http://docs.oracle.com/cd/B28359_01/server.111/b28286/functions172.htm
@@ -761,14 +725,14 @@ sub replace_sys_context
 {
 	my $str = shift;
 
-	$str =~ s/SYS_CONTEXT\s*\(\s*'USERENV'\s*,\s*'(OS_USER|SESSION_USER|AUTHENTICATED_IDENTITY)'\s*\)/session_user/igs;
-	$str =~ s/SYS_CONTEXT\s*\(\s*'USERENV'\s*,\s*'BG_JOB_ID'\s*\)/pg_backend_pid()/igs;
-	$str =~ s/SYS_CONTEXT\s*\(\s*'USERENV'\s*,\s*'(CLIENT_IDENTIFIER|PROXY_USER)'\s*\)/session_user/igs;
-	$str =~ s/SYS_CONTEXT\s*\(\s*'USERENV'\s*,\s*'CURRENT_SCHEMA'\s*\)/current_schema/igs;
-	$str =~ s/SYS_CONTEXT\s*\(\s*'USERENV'\s*,\s*'CURRENT_USER'\s*\)/current_user/igs;
-	$str =~ s/SYS_CONTEXT\s*\(\s*'USERENV'\s*,\s*'(DB_NAME|DB_UNIQUE_NAME)'\s*\)/current_database/igs;
-	$str =~ s/SYS_CONTEXT\s*\(\s*'USERENV'\s*,\s*'(HOST|IP_ADDRESS)'\s*\)/inet_client_addr()/igs;
-	$str =~ s/SYS_CONTEXT\s*\(\s*'USERENV'\s*,\s*'SERVER_HOST'\s*\)/inet_server_addr()/igs;
+	$str =~ s/SYS_CONTEXT\s*\(\s*'USERENV'\s*,\s*'(OS_USER|SESSION_USER|AUTHENTICATED_IDENTITY)'\s*\)/session_user/is;
+	$str =~ s/SYS_CONTEXT\s*\(\s*'USERENV'\s*,\s*'BG_JOB_ID'\s*\)/pg_backend_pid()/is;
+	$str =~ s/SYS_CONTEXT\s*\(\s*'USERENV'\s*,\s*'(CLIENT_IDENTIFIER|PROXY_USER)'\s*\)/session_user/is;
+	$str =~ s/SYS_CONTEXT\s*\(\s*'USERENV'\s*,\s*'CURRENT_SCHEMA'\s*\)/current_schema/is;
+	$str =~ s/SYS_CONTEXT\s*\(\s*'USERENV'\s*,\s*'CURRENT_USER'\s*\)/current_user/is;
+	$str =~ s/SYS_CONTEXT\s*\(\s*'USERENV'\s*,\s*'(DB_NAME|DB_UNIQUE_NAME)'\s*\)/current_database/is;
+	$str =~ s/SYS_CONTEXT\s*\(\s*'USERENV'\s*,\s*'(HOST|IP_ADDRESS)'\s*\)/inet_client_addr()/is;
+	$str =~ s/SYS_CONTEXT\s*\(\s*'USERENV'\s*,\s*'SERVER_HOST'\s*\)/inet_server_addr()/is;
 
 	return $str;
 }
@@ -803,55 +767,55 @@ sub replace_sdo_function
 	my $num_field = '\s*[\d\.]+\s*';
 
 	# SDO_GEOM.RELATE(geom1 IN SDO_GEOMETRY,mask IN VARCHAR2,geom2 IN SDO_GEOMETRY,tol IN NUMBER)
-	$str =~ s/(ST_Relate\s*\($field),$field,($field),($field)\)/$1,$2\)/igs;
+	$str =~ s/(ST_Relate\s*\($field),$field,($field),($field)\)/$1,$2\)/is;
 	# SDO_GEOM.RELATE(geom1 IN SDO_GEOMETRY,dim1 IN SDO_DIM_ARRAY,mask IN VARCHAR2,geom2 IN SDO_GEOMETRY,dim2 IN SDO_DIM_ARRAY)
-	$str =~ s/(ST_Relate\s*\($field),$field,$field,($field),$field\)/$1,$2\)/igs;
+	$str =~ s/(ST_Relate\s*\($field),$field,$field,($field),$field\)/$1,$2\)/is;
 	# SDO_GEOM.SDO_AREA(geom IN SDO_GEOMETRY, tol IN NUMBER [, unit IN VARCHAR2])
 	# SDO_GEOM.SDO_AREA(geom IN SDO_GEOMETRY,dim IN SDO_DIM_ARRAY [, unit IN VARCHAR2])
-	$str =~ s/(ST_Area\s*\($field),[^\)]+\)/$1\)/igs;
+	$str =~ s/(ST_Area\s*\($field),[^\)]+\)/$1\)/is;
 	# SDO_GEOM.SDO_BUFFER(geom IN SDO_GEOMETRY,dist IN NUMBER, tol IN NUMBER [, params IN VARCHAR2])
-	$str =~ s/(ST_Buffer\s*\($field,$num_field),[^\)]+\)/$1\)/igs;
+	$str =~ s/(ST_Buffer\s*\($field,$num_field),[^\)]+\)/$1\)/is;
 	# SDO_GEOM.SDO_BUFFER(geom IN SDO_GEOMETRY,dim IN SDO_DIM_ARRAY,dist IN NUMBER [, params IN VARCHAR2])
-	$str =~ s/(ST_Buffer\s*\($field),$field,($num_field)[^\)]*\)/$1,$2\)/igs;
+	$str =~ s/(ST_Buffer\s*\($field),$field,($num_field)[^\)]*\)/$1,$2\)/is;
 	# SDO_GEOM.SDO_CENTROID(geom1 IN SDO_GEOMETRY,tol IN NUMBER)
 	# SDO_GEOM.SDO_CENTROID(geom1 IN SDO_GEOMETRY,dim1 IN SDO_DIM_ARRAY)
-	$str =~ s/(ST_Centroid\s*\($field),$field\)/$1\)/igs;
+	$str =~ s/(ST_Centroid\s*\($field),$field\)/$1\)/is;
 	# SDO_GEOM.SDO_CONVEXHULL(geom1 IN SDO_GEOMETRY,tol IN NUMBER)
 	# SDO_GEOM.SDO_CONVEXHULL(geom1 IN SDO_GEOMETRY,dim1 IN SDO_DIM_ARRAY)
-	$str =~ s/(ST_ConvexHull\s*\($field),$field\)/$1\)/igs;
+	$str =~ s/(ST_ConvexHull\s*\($field),$field\)/$1\)/is;
 	# SDO_GEOM.SDO_DIFFERENCE(geom1 IN SDO_GEOMETRY,geom2 IN SDO_GEOMETRY,tol IN NUMBER)
-	$str =~ s/(ST_Difference\s*\($field,$field),$field\)/$1\)/igs;
+	$str =~ s/(ST_Difference\s*\($field,$field),$field\)/$1\)/is;
 	# SDO_GEOM.SDO_DIFFERENCE(geom1 IN SDO_GEOMETRY,dim1 IN SDO_DIM_ARRAY,geom2 IN SDO_GEOMETRY,dim2 IN SDO_DIM_ARRAY)
-	$str =~ s/(ST_Difference\s*\($field),$field,($field),$field\)/$1,$2\)/igs;
+	$str =~ s/(ST_Difference\s*\($field),$field,($field),$field\)/$1,$2\)/is;
 	# SDO_GEOM.SDO_DISTANCE(geom1 IN SDO_GEOMETRY,geom2 IN SDO_GEOMETRY,tol IN NUMBER [, unit IN VARCHAR2])
-	$str =~ s/(ST_Distance\s*\($field,$field),($num_field)[^\)]*\)/$1\)/igs;
+	$str =~ s/(ST_Distance\s*\($field,$field),($num_field)[^\)]*\)/$1\)/is;
 	# SDO_GEOM.SDO_DISTANCE(geom1 IN SDO_GEOMETRY,dim1 IN SDO_DIM_ARRAY,geom2 IN SDO_GEOMETRY,dim2 IN SDO_DIM_ARRAY [, unit IN VARCHAR2])
-	$str =~ s/(ST_Distance\s*\($field),$field,($field),($field)[^\)]*\)/$1,$2\)/igs;
+	$str =~ s/(ST_Distance\s*\($field),$field,($field),($field)[^\)]*\)/$1,$2\)/is;
 	# SDO_GEOM.SDO_INTERSECTION(geom1 IN SDO_GEOMETRY,geom2 IN SDO_GEOMETRY,tol IN NUMBER)
-	$str =~ s/(ST_Intersection\s*\($field,$field),$field\)/$1\)/igs;
+	$str =~ s/(ST_Intersection\s*\($field,$field),$field\)/$1\)/is;
 	# SDO_GEOM.SDO_INTERSECTION(geom1 IN SDO_GEOMETRY,dim1 IN SDO_DIM_ARRAY,geom2 IN SDO_GEOMETRY,dim2 IN SDO_DIM_ARRAY)
-	$str =~ s/(ST_Intersection\s*\($field),$field,($field),$field\)/$1,$2\)/igs;
+	$str =~ s/(ST_Intersection\s*\($field),$field,($field),$field\)/$1,$2\)/is;
 	# SDO_GEOM.SDO_LENGTH(geom IN SDO_GEOMETRY, dim IN SDO_DIM_ARRAY [, unit IN VARCHAR2])
 	# SDO_GEOM.SDO_LENGTH(geom IN SDO_GEOMETRY, tol IN NUMBER [, unit IN VARCHAR2])
-	$str =~ s/(ST_Length\s*\($field),($field)[^\)]*\)/$1\)/igs;
+	$str =~ s/(ST_Length\s*\($field),($field)[^\)]*\)/$1\)/is;
 	# SDO_GEOM.SDO_POINTONSURFACE(geom1 IN SDO_GEOMETRY, tol IN NUMBER)
 	# SDO_GEOM.SDO_POINTONSURFACE(geom1 IN SDO_GEOMETRY, dim1 IN SDO_DIM_ARRAY)
-	$str =~ s/(ST_PointOnSurface\s*\($field),$field\)/$1\)/igs;
+	$str =~ s/(ST_PointOnSurface\s*\($field),$field\)/$1\)/is;
 	# SDO_GEOM.SDO_UNION(geom1 IN SDO_GEOMETRY, geom2 IN SDO_GEOMETRY, tol IN NUMBER)
-	$str =~ s/(ST_Union\s*\($field,$field),$field\)/$1\)/igs;
+	$str =~ s/(ST_Union\s*\($field,$field),$field\)/$1\)/is;
 	# SDO_GEOM.SDO_UNION(geom1 IN SDO_GEOMETRY,dim1 IN SDO_DIM_ARRAY,geom2 IN SDO_GEOMETRY,dim2 IN SDO_DIM_ARRAY)
-	$str =~ s/(ST_Union\s*\($field),$field,($field),$field\)/$1,$2\)/igs;
+	$str =~ s/(ST_Union\s*\($field),$field,($field),$field\)/$1,$2\)/is;
 	# SDO_GEOM.SDO_XOR(geom1 IN SDO_GEOMETRY,geom2 IN SDO_GEOMETRY, tol IN NUMBER)
-	$str =~ s/(ST_SymDifference\s*\($field,$field),$field\)/$1\)/igs;
+	$str =~ s/(ST_SymDifference\s*\($field,$field),$field\)/$1\)/is;
 	# SDO_GEOM.SDO_XOR(geom1 IN SDO_GEOMETRY,dim1 IN SDO_DIM_ARRAY,geom2 IN SDO_GEOMETRY,dim2 IN SDO_DIM_ARRAY)
-	$str =~ s/(ST_SymDifference\s*\($field),$field,($field),$field\)/$1,$2\)/igs;
+	$str =~ s/(ST_SymDifference\s*\($field),$field,($field),$field\)/$1,$2\)/is;
 	# SDO_GEOM.VALIDATE_GEOMETRY_WITH_CONTEXT(geom1 IN SDO_GEOMETRY, tol IN NUMBER)
 	# SDO_GEOM.VALIDATE_GEOMETRY_WITH_CONTEXT(geom1 IN SDO_GEOMETRY, dim1 IN SDO_DIM_ARRAY)
-	$str =~ s/(ST_IsValidReason\s*\($field),$field\)/$1\)/igs;
+	$str =~ s/(ST_IsValidReason\s*\($field),$field\)/$1\)/is;
 	# SDO_GEOM.WITHIN_DISTANCE(geom1 IN SDO_GEOMETRY,dim1 IN SDO_DIM_ARRAY,dist IN NUMBER,geom2 IN SDO_GEOMETRY,dim2 IN SDO_DIM_ARRAY [, units IN VARCHAR2])
-	$str =~ s/(ST_DWithin\s*\($field),$field,($field),($field),($field)[^\)]*\)/$1,$3,$2\)/igsgs;
+	$str =~ s/(ST_DWithin\s*\($field),$field,($field),($field),($field)[^\)]*\)/$1,$3,$2\)/is;
 	# SDO_GEOM.WITHIN_DISTANCE(geom1 IN SDO_GEOMETRY,dist IN NUMBER,geom2 IN SDO_GEOMETRY, tol IN NUMBER [, units IN VARCHAR2])
-	$str =~ s/(ST_DWithin\s*\($field)(,$field)(,$field),($field)[^\)]*\)/$1$3$2\)/igs;
+	$str =~ s/(ST_DWithin\s*\($field)(,$field)(,$field),($field)[^\)]*\)/$1$3$2\)/is;
 
 	return $str;
 }
@@ -861,45 +825,45 @@ sub replace_sdo_operator
 	my $str = shift;
 
 	# SDO_CONTAINS(geometry1, geometry2) = 'TRUE'
-	$str =~ s/SDO_CONTAINS\s*\((.*?)\)\s*=\s*[']+TRUE[']+/ST_Contains($1)/igs;
-	$str =~ s/SDO_CONTAINS\s*\((.*?)\)\s*=\s*[']+FALSE[']+/NOT ST_Contains($1)/igs;
-	$str =~ s/SDO_CONTAINS\s*\(([^\)]+)\)/ST_Contains($1)/igs;
+	$str =~ s/SDO_CONTAINS\s*\((.*?)\)\s*=\s*[']+TRUE[']+/ST_Contains($1)/is;
+	$str =~ s/SDO_CONTAINS\s*\((.*?)\)\s*=\s*[']+FALSE[']+/NOT ST_Contains($1)/is;
+	$str =~ s/SDO_CONTAINS\s*\(([^\)]+)\)/ST_Contains($1)/is;
 	# SDO_RELATE(geometry1, geometry2, param) = 'TRUE'
-	$str =~ s/SDO_RELATE\s*\((.*?)\)\s*=\s*[']+TRUE[']+/ST_Relate($1)/igs;
-	$str =~ s/SDO_RELATE\s*\((.*?)\)\s*=\s*[']+FALSE[']+/NOT ST_Relate($1)/igs;
-	$str =~ s/SDO_RELATE\s*\(([^\)]+)\)/ST_Relate($1)/igs;
+	$str =~ s/SDO_RELATE\s*\((.*?)\)\s*=\s*[']+TRUE[']+/ST_Relate($1)/is;
+	$str =~ s/SDO_RELATE\s*\((.*?)\)\s*=\s*[']+FALSE[']+/NOT ST_Relate($1)/is;
+	$str =~ s/SDO_RELATE\s*\(([^\)]+)\)/ST_Relate($1)/is;
 	# SDO_WITHIN_DISTANCE(geometry1, aGeom, params) = 'TRUE'
-	$str =~ s/SDO_WITHIN_DISTANCE\s*\((.*?)\)\s*=\s*[']+TRUE[']+/ST_DWithin($1)/igs;
-	$str =~ s/SDO_WITHIN_DISTANCE\s*\((.*?)\)\s*=\s*[']+FALSE[']+/NOT ST_DWithin($1)/igs;
-	$str =~ s/SDO_WITHIN_DISTANCE\s*\(([^\)]+)\)/ST_DWithin($1)/igs;
+	$str =~ s/SDO_WITHIN_DISTANCE\s*\((.*?)\)\s*=\s*[']+TRUE[']+/ST_DWithin($1)/is;
+	$str =~ s/SDO_WITHIN_DISTANCE\s*\((.*?)\)\s*=\s*[']+FALSE[']+/NOT ST_DWithin($1)/is;
+	$str =~ s/SDO_WITHIN_DISTANCE\s*\(([^\)]+)\)/ST_DWithin($1)/is;
 	# SDO_TOUCH(geometry1, geometry2) = 'TRUE'
-	$str =~ s/SDO_TOUCH\s*\((.*?)\)\s*=\s*[']+TRUE[']+/ST_Touches($1)/igs;
-	$str =~ s/SDO_TOUCH\s*\((.*?)\)\s*=\s*[']+FALSE[']+/NOT ST_Touches($1)/igs;
-	$str =~ s/SDO_TOUCH\s*\(([^\)]+)\)/ST_Touches($1)/igs;
+	$str =~ s/SDO_TOUCH\s*\((.*?)\)\s*=\s*[']+TRUE[']+/ST_Touches($1)/is;
+	$str =~ s/SDO_TOUCH\s*\((.*?)\)\s*=\s*[']+FALSE[']+/NOT ST_Touches($1)/is;
+	$str =~ s/SDO_TOUCH\s*\(([^\)]+)\)/ST_Touches($1)/is;
 	# SDO_OVERLAPS(geometry1, geometry2) = 'TRUE'
-	$str =~ s/SDO_OVERLAPS\s*\((.*?)\)\s*=\s*[']+TRUE[']+/ST_Overlaps($1)/igs;
-	$str =~ s/SDO_OVERLAPS\s*\((.*?)\)\s*=\s*[']+FALSE[']+/NOT ST_Overlaps($1)/igs;
-	$str =~ s/SDO_OVERLAPS\s*\(([^\)]+)\)/ST_Overlaps($1)/igs;
+	$str =~ s/SDO_OVERLAPS\s*\((.*?)\)\s*=\s*[']+TRUE[']+/ST_Overlaps($1)/is;
+	$str =~ s/SDO_OVERLAPS\s*\((.*?)\)\s*=\s*[']+FALSE[']+/NOT ST_Overlaps($1)/is;
+	$str =~ s/SDO_OVERLAPS\s*\(([^\)]+)\)/ST_Overlaps($1)/is;
 	# SDO_INSIDE(geometry1, geometry2) = 'TRUE'
-	$str =~ s/SDO_INSIDE\s*\((.*?)\)\s*=\s*[']+TRUE[']+/ST_Within($1)/igs;
-	$str =~ s/SDO_INSIDE\s*\((.*?)\)\s*=\s*[']+FALSE[']+/NOT ST_Within($1)/igs;
-	$str =~ s/SDO_INSIDE\s*\(([^\)]+)\)/ST_Within($1)/igs;
+	$str =~ s/SDO_INSIDE\s*\((.*?)\)\s*=\s*[']+TRUE[']+/ST_Within($1)/is;
+	$str =~ s/SDO_INSIDE\s*\((.*?)\)\s*=\s*[']+FALSE[']+/NOT ST_Within($1)/is;
+	$str =~ s/SDO_INSIDE\s*\(([^\)]+)\)/ST_Within($1)/is;
 	# SDO_EQUAL(geometry1, geometry2) = 'TRUE'
-	$str =~ s/SDO_EQUAL\s*\((.*?)\)\s*=\s*[']+TRUE[']+/ST_Equals($1)/igs;
-	$str =~ s/SDO_EQUAL\s*\((.*?)\)\s*=\s*[']+FALSE[']+/NOT ST_Equals($1)/igs;
-	$str =~ s/SDO_EQUAL\s*\(([^\)]+)\)/ST_Equals($1)/igs;
+	$str =~ s/SDO_EQUAL\s*\((.*?)\)\s*=\s*[']+TRUE[']+/ST_Equals($1)/is;
+	$str =~ s/SDO_EQUAL\s*\((.*?)\)\s*=\s*[']+FALSE[']+/NOT ST_Equals($1)/is;
+	$str =~ s/SDO_EQUAL\s*\(([^\)]+)\)/ST_Equals($1)/is;
 	# SDO_COVERS(geometry1, geometry2) = 'TRUE'
-	$str =~ s/SDO_COVERS\s*\((.*?)\)\s*=\s*[']+TRUE[']+/ST_Covers($1)/igs;
-	$str =~ s/SDO_COVERS\s*\((.*?)\)\s*=\s*[']+FALSE[']+/NOT ST_Covers($1)/igs;
-	$str =~ s/SDO_COVERS\s*\(([^\)]+)\)/ST_Covers($1)/igs;
+	$str =~ s/SDO_COVERS\s*\((.*?)\)\s*=\s*[']+TRUE[']+/ST_Covers($1)/is;
+	$str =~ s/SDO_COVERS\s*\((.*?)\)\s*=\s*[']+FALSE[']+/NOT ST_Covers($1)/is;
+	$str =~ s/SDO_COVERS\s*\(([^\)]+)\)/ST_Covers($1)/is;
 	# SDO_COVEREDBY(geometry1, geometry2) = 'TRUE'
-	$str =~ s/SDO_COVEREDBY\s*\((.*?)\)\s*=\s*[']+TRUE[']+/ST_CoveredBy($1)/igs;
-	$str =~ s/SDO_COVEREDBY\s*\((.*?)\)\s*=\s*[']+FALSE[']+/NOT ST_CoveredBy($1)/igs;
-	$str =~ s/SDO_COVEREDBY\s*\(([^\)]+)\)/ST_CoveredBy($1)/igs;
+	$str =~ s/SDO_COVEREDBY\s*\((.*?)\)\s*=\s*[']+TRUE[']+/ST_CoveredBy($1)/is;
+	$str =~ s/SDO_COVEREDBY\s*\((.*?)\)\s*=\s*[']+FALSE[']+/NOT ST_CoveredBy($1)/is;
+	$str =~ s/SDO_COVEREDBY\s*\(([^\)]+)\)/ST_CoveredBy($1)/is;
 	# SDO_ANYINTERACT(geometry1, geometry2) = 'TRUE'
-	$str =~ s/SDO_ANYINTERACT\s*\((.*?)\)\s*=\s*[']+TRUE[']+/ST_Intersects($1)/igs;
-	$str =~ s/SDO_ANYINTERACT\s*\((.*?)\)\s*=\s*[']+FALSE[']+/NOT ST_Intersects($1)/igs;
-	$str =~ s/SDO_ANYINTERACT\s*\(([^\)]+)\)/ST_Intersects($1)/igs;
+	$str =~ s/SDO_ANYINTERACT\s*\((.*?)\)\s*=\s*[']+TRUE[']+/ST_Intersects($1)/is;
+	$str =~ s/SDO_ANYINTERACT\s*\((.*?)\)\s*=\s*[']+FALSE[']+/NOT ST_Intersects($1)/is;
+	$str =~ s/SDO_ANYINTERACT\s*\(([^\)]+)\)/ST_Intersects($1)/is;
 
 	return $str;
 }
@@ -910,7 +874,7 @@ sub raise_output
 {
 	my $str = shift;
 
-	my @strings = split(/\|\|/s, $str);
+	my @strings = split(/\s*\|\|\s*/s, $str);
 
 	my @params = ();
 	my $pattern = '';
