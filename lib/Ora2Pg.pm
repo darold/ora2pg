@@ -9622,7 +9622,6 @@ sub dump
 	} else {
 		 $self->{fhout}->print($data);
 	}
-
 }
 
 
@@ -9673,8 +9672,8 @@ sub data_dump
 				set_binmode($self->{cfhout});
 				$self->{cfhout}->print($data);
 			}
+			$self->{cfhout}->close();
 		}
-
 	} else {
 		$self->dump($data);
 	}
@@ -9684,7 +9683,6 @@ sub data_dump
 		$self->logit("Renaming temporary file $dirprefix$filename into ${dirprefix}${rname}_$self->{output}\n", 1);
 		rename("$dirprefix$filename", "${dirprefix}${rname}_$self->{output}");
 	}
-
 }
 
 =head2 read_config
@@ -11427,12 +11425,6 @@ sub _dump_to_pg
 	my $tt_record = @$rows;
 	$dbhdest->disconnect() if ($dbhdest);
 
-        # Set file temporary until the table export is done
-        my $filename = $self->{output};
-        if ($self->{file_per_table}) {
-                $filename = "${rname}_$self->{output}";
-        }
- 
 	my $end_time = time();
 	$ora_start_time = $end_time if (!$ora_start_time);
 	my $dt = $end_time - $ora_start_time;
