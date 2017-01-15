@@ -7938,7 +7938,8 @@ sub _get_indexes
 	return Ora2Pg::MySQL::_get_indexes($self,$table,$owner) if ($self->{is_mysql});
 
 	# Retrieve FTS indexes information before.
-	my %idx_info = $self->_get_fts_indexes_info($owner);
+	my %idx_info = ();
+	%idx_info = $self->_get_fts_indexes_info($owner) if ($self->_table_exists('CTXSYS', 'CTX_INDEX_VALUES'));
 
 	my $sub_owner = '';
 	if ($owner) {
@@ -13206,6 +13207,32 @@ sub _schema_list
         $sth->execute or return undef;
         $sth;
 }
+
+=head2 _table_exists
+
+This function return the table name if the given table exists
+else returns a empty string.
+
+=cut
+
+sub _table_exists
+{
+	my ($self, $schema, $table) = @_;
+
+	return Ora2Pg::MySQL::_table_exists($self, $schema, $table) if ($self->{is_mysql});
+
+	my $ret = '';
+
+	my $sql = "SELECT TABLE_NAME FROM ALL_TABLES WHERE OWNER = '$schema' AND TABLE_NAME = '$table'";
+        my $sth = $self->{dbh}->prepare( $sql ) or return undef;
+        $sth->execute or return undef;
+	while ( my @row = $sth->fetchrow()) {
+		$ret = $row[0];
+	}
+        $sth->finish();
+	return $ret;
+}
+
 
 
 =head2 _get_largest_tables

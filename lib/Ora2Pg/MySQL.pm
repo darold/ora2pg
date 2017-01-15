@@ -82,6 +82,25 @@ sub _schema_list
 	$sth;
 }
 
+sub _table_exists
+{
+	my ($self, $schema, $table) = @_;
+
+	my $ret = '';
+
+	my $sql = "SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE='BASE TABLE' AND TABLE_SCHEMA = '$schema' AND TABLE_NAME = '$table'";
+
+	my $sth = $self->{dbh}->prepare( $sql ) or return undef;
+	$sth->execute or return undef;
+	while ( my @row = $sth->fetchrow()) {
+		$ret = $row[0];
+	}
+	$sth->finish();
+
+	return $ret;
+}
+
+
 
 =head2 _get_encoding
 
