@@ -353,7 +353,7 @@ sub extract_function_code
 		my $fct_name = $1;
 		my $fct_code = $2;
 		my $space = '';
-		$space = ' ' if (grep (/^$fct_name$/i, 'FROM', 'AS', 'VALUES', 'DEFAULT'));
+		$space = ' ' if (grep (/^$fct_name$/i, 'FROM', 'AS', 'VALUES', 'DEFAULT', 'OR', 'AND'));
                 # recursively replace function
                 $class->{single_fct_call}{$idx} = $fct_name . $space . '(' . $fct_code . ')';
                 $code = extract_function_code($class, $code, ++$idx);
@@ -431,7 +431,7 @@ sub plsql_to_plpgsql
 	if ( ($class->{type} ne 'QUERY') && ($class->{type} ne 'VIEW') ) {
 		my @text_values = ();
 		my $j = 0;
-		while ($str =~ s/'([^']+)'/\%TEXTVALUE-$j\%/s) {
+		while ($str =~ s/'([^']*)'/\%TEXTVALUE-$j\%/s) {
 			push(@text_values, $1);
 			$j++;
 		}
@@ -675,7 +675,7 @@ sub replace_oracle_function
 	if (scalar keys %{$class->{package_functions}}) {
 		my @text_values = ();
 		my $j = 0;
-		while ($str =~ s/'([^']+)'/\%TEXTVALUE-$j\%/s) {
+		while ($str =~ s/'([^']*)'/\%TEXTVALUE-$j\%/s) {
 			push(@text_values, $1);
 			$j++;
 		}
