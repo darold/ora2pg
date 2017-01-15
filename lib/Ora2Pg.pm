@@ -9691,7 +9691,6 @@ sub data_dump
 				set_binmode($self->{cfhout});
 				$self->{cfhout}->print($data);
 			}
-			$self->{cfhout}->close();
 		}
 	} else {
 		$self->dump($data);
