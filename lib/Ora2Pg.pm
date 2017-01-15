@@ -1974,13 +1974,13 @@ sub _get_plsql_code
 	my $str = shift();
 
 	my $ct = '';
-	my @parts = split(/(BEGIN|DECLARE|END\s*(?!IF|LOOP|CASE|INTO|FROM|,)[^;\s]*\s*;)/, $str);
+	my @parts = split(/\b(BEGIN|DECLARE|END\s*(?!IF|LOOP|CASE|INTO|FROM|,)[^;\s]*\s*;)/, $str);
 	my $code = '';
 	my $other = '';
 	my $i = 0;
 	for (; $i <= $#parts; $i++) {
 		$ct++ if ($parts[$i] =~ /\bBEGIN\b/);
-		$ct-- if ($parts[$i] =~ /END\s*(?!IF|LOOP|CASE|INTO|FROM|,)[^;\s]*\s*;/);
+		$ct-- if ($parts[$i] =~ /\bEND\s*(?!IF|LOOP|CASE|INTO|FROM|,)[^;\s]*\s*;/);
 		if ( ($ct ne '') && ($ct == 0) ) {
 			$code .= $parts[$i];
 			last;
@@ -2495,7 +2495,7 @@ sub read_trigger_from_file
 	my $doloop = 1;
 	my @triggers_decl = split(/CREATE(?:\s+OR\s+REPLACE)?\s+TRIGGER\s+/, $content);
 	foreach $content (@triggers_decl) {
-		if ($content =~ s/^([^\s]+)\s+(BEFORE|AFTER|INSTEAD\s+OF)\s+(.*?)\s+ON\s+([^\s]+)\s+(.*)(END\s*(?!IF|LOOP|CASE|INTO|FROM|,)[a-z0-9_]*;)//is) {
+		if ($content =~ s/^([^\s]+)\s+(BEFORE|AFTER|INSTEAD\s+OF)\s+(.*?)\s+ON\s+([^\s]+)\s+(.*)(\bEND\s*(?!IF|LOOP|CASE|INTO|FROM|,)[a-z0-9_]*;)//is) {
 			my $t_name = $1;
 			$t_name =~ s/"//g;
 			my $t_pos = $2;
@@ -2527,7 +2527,7 @@ sub read_trigger_from_file
 			$tid++;
 
 			# TRIGGER_NAME, TRIGGER_TYPE, TRIGGERING_EVENT, TABLE_NAME, TRIGGER_BODY, WHEN_CLAUSE, DESCRIPTION,ACTION_TYPE
-			$trigger =~ s/END\s+[^\s]+\s+$/END/is;
+			$trigger =~ s/\bEND\s+[^\s]+\s+$/END/is;
 			$trigger =~ s/\%TEXTVALUE-(\d+)\%/'$text_values[$1]'/gs;
 			push(@{$self->{triggers}}, [($t_name, $t_pos, $t_event, $tb_name, $trigger, $t_when_cond, '', $t_type)]);
 
@@ -4565,7 +4565,7 @@ LANGUAGE plpgsql ;
 					$txt = $self->_convert_package("CREATE OR REPLACE PACKAGE BODY$txt", $self->{packages}{$pkg}{owner}, \%comments);
 					$self->_restore_comments(\$txt, \%comments);
 					$pkgbody .= $txt;
-					$pkgbody =~ s/[\r\n]*END;\s*$//is;
+					$pkgbody =~ s/[\r\n]*\bEND;\s*$//is;
 					$pkgbody =~ s/(\s*;)\s*$/$1/is;
 				}
 			}
@@ -9868,7 +9868,7 @@ sub _extract_functions
 	}
 	#push(@functions, "$before\n") if ($before);
 
-	map { s/END\s+(?!IF|LOOP|CASE|INTO|FROM|,)[a-z0-9_]+\s*;/END;/igs; } @functions;
+	map { s/\bEND\s+(?!IF|LOOP|CASE|INTO|FROM|,)[a-z0-9_]+\s*;/END;/igs; } @functions;
 
 	return @functions;
 }
@@ -10013,7 +10013,7 @@ sub _convert_package
 				}
 			}
 		}
-		$ctt =~ s/END[^;]*;$//is;
+		$ctt =~ s/\bEND[^;]*;$//is;
 		my @functions = $self->_extract_functions($ctt);
 
 
@@ -13838,7 +13838,7 @@ sub _lookup_package
 		$pname =~ s/"//g;
 		$self->logit("Looking at package $pname...\n", 1);
 		$self->{idxcomment} = 0;
-		$content =~ s/END[^;]*;$//is;
+		$content =~ s/\bEND[^;]*;$//is;
 		my %comments = $self->_remove_comments(\$content);
 		my @functions = $self->_extract_functions($content);
 		foreach my $f (@functions) {

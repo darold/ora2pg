@@ -500,7 +500,7 @@ sub plsql_to_plpgsql
 	$str =~ s/\b(SELECT\b[^;]*?INTO)(.*?)(EXCEPTION.*?(?:NO_DATA_FOUND|TOO_MANY_ROW))/$1 STRICT $2 $3/igs;
 
 	# Remove the function name repetion at end
-	$str =~ s/END\s+(?!IF|LOOP|CASE|INTO|FROM|END|,)[a-z0-9_"]+(\s*[;]?)/END$1$2/igs;
+	$str =~ s/\bEND\s+(?!IF|LOOP|CASE|INTO|FROM|END|,)[a-z0-9_"]+(\s*[;]?)/END$1$2/igs;
 
 	# Replace ending ROWNUM with LIMIT
         $str =~ s/(WHERE|AND)\s*ROWNUM\s*=\s*(\d+)/'LIMIT 1 OFFSET ' . ($2-1)/iges;
@@ -1388,13 +1388,13 @@ sub mysql_to_plpgsql
 	$str =~ s/\bIFNULL\(\s*([^,]+)\s*,\s*([^\)]+\s*)\)/COALESCE($1, $2)/igs;
 
 	# Rewrite while loop
-	$str =~ s/\bWHILE\s+(.*?)END WHILE\s*;/WHILE $1END LOOP;/igs;
+	$str =~ s/\bWHILE\s+(.*?)\bEND WHILE\s*;/WHILE $1END LOOP;/igs;
 	$str =~ s/\bWHILE\s+(.*?)DO\b/WHILE $1LOOP/igs;
 
 	# Rewrite REPEAT loop
 	my %repl_repeat = ();
 	$i = 0;
-	while ($str =~ s/\bREPEAT\s+(.*?)END REPEAT\s*;/%REPREPEATLBL$i%/igs) {
+	while ($str =~ s/\bREPEAT\s+(.*?)\bEND REPEAT\s*;/%REPREPEATLBL$i%/igs) {
 		my $code = $1;
 		$code =~ s/\bUNTIL(.*)//;
 		$repl_repeat{$i} = "LOOP ${code}EXIT WHEN $1;\nEND LOOP;";
