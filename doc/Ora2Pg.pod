@@ -1563,6 +1563,15 @@ the default list used:
 
 Note that the directive and the list definition must be a single line.
 
+If you want to replace a type with a precision and scale you need to escape
+the coma with a backslash. For example, if you want to replace all NUMBER(*,0)
+into bigint instead of numeric(38) add the following:
+
+       DATA_TYPE       NUMBER(*\,0):bigint
+
+You don't have to recopy all default type conversion but just the one you want
+to rewrite.
+
 There's a special case with BFILE when they are converted to type TEXT, they
 will just contains the full path to the external file. If you set the
 destination type to BYTEA, the default, Ora2Pg will export the content of the

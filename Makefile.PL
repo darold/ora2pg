@@ -595,7 +595,13 @@ COPY_FREEZE		0
 # If you're experiencing problems in data type export, the following directive
 # will help you to redefine data type translation used in Ora2pg. The syntax is
 # a comma separated list of "Oracle datatype:Postgresql data type". Here are the
-# data type that can be redefined and their default value.
+# data type that can be redefined and their default value. If you want to
+# replace a type with a precision and scale you need to escape the coma with
+# a backslash. For example, if you want to replace all NUMBER(*,0) into bigint
+# instead of numeric(38)add the following:
+# 	DATA_TYPE	NUMBER(*\,0):bigint
+# Here is the default replacement for all Oracle's types. You don't have to
+# recopy all type conversion but just the one you want to rewrite.
 #DATA_TYPE	DATE:timestamp,LONG:text,LONG RAW:bytea,CLOB:text,NCLOB:text,BLOB:bytea,BFILE:bytea,RAW:bytea,ROWID:oid,FLOAT:double precision,DEC:decimal,DECIMAL:decimal,DOUBLE PRECISION:double precision,INT:numeric,INTEGER:numeric,REAL:real,SMALLINT:smallint,BINARY_FLOAT:double precision,BINARY_DOUBLE:double precision,TIMESTAMP:timestamp,XMLTYPE:xml,BINARY_INTEGER:integer,PLS_INTEGER:integer,TIMESTAMP WITH TIME ZONE:timestamp with time zone,TIMESTAMP WITH LOCAL TIME ZONE:timestamp with time zone
 
 # If set to 1 replace portable numeric type into PostgreSQL internal type.

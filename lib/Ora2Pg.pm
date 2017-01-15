@@ -7163,6 +7163,10 @@ sub _sql_type
 	if ( ($type eq 'NUMBER') && $precision ) {
 		$len = $precision;
 	} elsif ( ($type eq 'NUMBER') && ($len == 38) ) {
+		if ($scale eq '0' && $precision eq '') {
+			# Allow custom type rewrite for NUMBER(*,0)
+			return $self->{data_type}{'NUMBER(*,0)'} if (exists $self->{data_type}{'NUMBER(*,0)'});
+		}
 		$precision = $len;
 	} elsif ( $type =~ /CHAR/ && $len && exists $self->{data_type}{"$type($len)"}) {
 		return $self->{data_type}{"$type($len)"};
