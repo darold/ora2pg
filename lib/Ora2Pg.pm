@@ -5554,6 +5554,9 @@ CREATE TRIGGER ${table}_trigger_insert
 	# Find first the total number of tables
 	my $num_total_table = scalar keys %{$self->{tables}};
 
+	# Hash that will contains virtual column information to build triggers
+	my %virtual_trigger_info = ();
+
 	# Dump all table/index/constraints SQL definitions
 	my $ib = 1;
 	foreach my $table (sort { $self->{tables}{$a}{internal_id} <=> $self->{tables}{$b}{internal_id} } keys %{$self->{tables}}) {
@@ -5718,20 +5721,30 @@ CREATE TRIGGER ${table}_trigger_insert
 					if ($self->{plsql_pgsql}) {
 						$f->[4] = Ora2Pg::PLSQL::convert_plsql_code($self, $f->[4]);
 					}
-					if (($f->[4] ne '') && ($self->{type} ne 'FDW')) {
-						if (($type eq 'boolean') && exists $self->{ora_boolean_values}{lc($f->[4])}) {
-							$sql_output .= " DEFAULT '" . $self->{ora_boolean_values}{lc($f->[4])} . "'";
-						} else {
-							if (($f->[4] !~ /^'/) && ($f->[4] =~ /[^\d\.]/)) {
-								if ($type =~ /CHAR|TEXT|ENUM/i) {
-									$f->[4] = "'$f->[4]'";
-								} elsif ($type =~ /DATE|TIME/i) {
-									# do not use REPLACE_ZERO_DATE in default value, cause it can be NULL
-									$f->[4] =~ s/^0000-00-00.*/1970-01-01 00:00:00/;
-									$f->[4] = "'$f->[4]'" if ($f->[4] =~ /^\d+/);
+					# Check if this is a virtual column before proceeding to default value export
+					if ($self->{tables}{$table}{column_info}{$k}[10] eq 'YES') {
+						$virtual_trigger_info{$table}{$k} = $f->[4];
+						$virtual_trigger_info{$table}{$k} =~ s/"//gs;
+						foreach my $c (keys %{$self->{tables}{$table}{column_info}}) {
+							$virtual_trigger_info{$table}{$k} =~ s/\b$c\b/NEW.$c/gs;
+						}
+					} else {
+						# Set default value if any
+						if (($f->[4] ne '') && ($self->{type} ne 'FDW')) {
+							if (($type eq 'boolean') && exists $self->{ora_boolean_values}{lc($f->[4])}) {
+								$sql_output .= " DEFAULT '" . $self->{ora_boolean_values}{lc($f->[4])} . "'";
+							} else {
+								if (($f->[4] !~ /^'/) && ($f->[4] =~ /[^\d\.]/)) {
+									if ($type =~ /CHAR|TEXT|ENUM/i) {
+										$f->[4] = "'$f->[4]'";
+									} elsif ($type =~ /DATE|TIME/i) {
+										# do not use REPLACE_ZERO_DATE in default value, cause it can be NULL
+										$f->[4] =~ s/^0000-00-00.*/1970-01-01 00:00:00/;
+										$f->[4] = "'$f->[4]'" if ($f->[4] =~ /^\d+/);
+									}
 								}
+								$sql_output .= " DEFAULT $f->[4]";
 							}
-							$sql_output .= " DEFAULT $f->[4]";
 						}
 					}
 				}
@@ -5924,6 +5937,39 @@ RETURNS text AS
 	}
 
 	$self->dump($sql_header . $sql_output);
+
+	# Some virtual column have been found
+	if (scalar keys %virtual_trigger_info > 0) {
+		my $trig_out = '';
+		foreach my $tb (keys %virtual_trigger_info) {
+			$trig_out .= qq{
+DROP TRIGGER IF EXISTS virt_col_${tb}_trigger ON $tb CASCADE;
+
+CREATE OR REPLACE FUNCTION fct_virt_col_${tb}_trigger() RETURNS trigger AS \$BODY\$
+BEGIN
+};
+			foreach my $c (keys %{$virtual_trigger_info{$tb}}) {
+				$trig_out .= "\tNEW.$c = $virtual_trigger_info{$tb}{$c};\n";
+			}
+			$trig_out .= qq{
+RETURN NEW;
+end
+\$BODY\$
+ LANGUAGE 'plpgsql' SECURITY DEFINER;
+
+CREATE TRIGGER virt_col_${tb}_trigger
+        BEFORE INSERT OR UPDATE ON $tb FOR EACH ROW
+        EXECUTE PROCEDURE fct_virt_col_${tb}_trigger();
+
+};
+		}
+		my $fhdl = undef;
+		$self->logit("Dumping virtual column triggers to one separate file : VIRTUAL_COLUMNS_$self->{output}\n", 1);
+		$fhdl = $self->open_export_file("VIRTUAL_COLUMNS_$self->{output}");
+		set_binmode($fhdl);
+		$self->dump($sql_header . $trig_out, $fhdl);
+		$self->close_export_file($fhdl);
+	}
 }
 
 sub file_exists
