@@ -493,9 +493,6 @@ sub plsql_to_plpgsql
 	# Normalize HAVING ... GROUP BY into GROUP BY ... HAVING clause	
 	$str =~ s/\bHAVING\b(.*?)\bGROUP BY\b(.*?)((?=UNION|ORDER BY|LIMIT|INTO |FOR UPDATE|PROCEDURE)|$)/GROUP BY$2 HAVING$1/gis;
 
-	# Cast round() call as numeric => Remove because most of the time this may not be necessary
-	#$str =~ s/round\s*\((.*?),([\s\d]+)\)/round\($1::numeric,$2\)/igs;
-
 	# Add STRICT keyword when select...into and an exception with NO_DATA_FOUND/TOO_MANY_ROW is present
 	$str =~ s/\b(SELECT\b[^;]*?INTO)(.*?)(EXCEPTION.*?(?:NO_DATA_FOUND|TOO_MANY_ROW))/$1 STRICT $2 $3/igs;
 
@@ -647,6 +644,9 @@ sub replace_oracle_function
 	# By default we use '99999999999999999999D99999999999999999999' that may allow bigint
 	# and double precision number. Feel free to modify it
 	$str =~ s/TO_NUMBER\s*\(([^,\(\)]+)\s*\)/to_number\($1,'99999999999999999999D99999999999999999999'\)/is;
+
+	# Cast round() call as numeric
+	$str =~ s/round\s*\(([^,]+),([\s\d]+)\)/round\(($1)::numeric,$2\)/igs;
 
 	# Replace SDO_GEOM to the postgis equivalent
 	$str = &replace_sdo_function($str);
