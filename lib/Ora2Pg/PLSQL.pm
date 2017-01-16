@@ -512,9 +512,6 @@ sub plsql_to_plpgsql
 	# Rewrite comment in CASE between WHEN and THEN
 	$str =~ s/(\s*)(WHEN\s+[^\s]+\s*)(ORA2PG_COMMENT\d+\%)(\s*THEN)/$1$3$1$2$4/igs;
 
-	# Replace INSTR by POSITION
-	$str =~ s/INSTR\s*\(\s*([^,]+),\s*('[^']+')\s*\)/POSITION($2 in $1)/igs;
-
 	# Replace SQLCODE by SQLSTATE
 	$str =~ s/\bSQLCODE\b/SQLSTATE/igs;
 
@@ -628,7 +625,7 @@ sub replace_oracle_function
 	$str =~ s/ADD_YEARS\s*\(([^,]+),\s*([^,\(\)]+)\s*\)/$1 + $2*' year'::interval/si;
 
 	# Replace INSTR by POSITION
-	$str =~ s/INSTR\s*\(\s*([^,]+),\s*('[^']+')\s*\)/POSITION($2 in $1)/is;
+	$str =~ s/\bINSTR\s*\(\s*([^,]+),\s*('[^']+')\s*\)/POSITION($2 in $1)/is;
 
 	# Replace some way of extracting date part of a date
 	$str =~ s/TO_NUMBER\s*\(\s*([^\)\(]+)\s*\)/($1)::integer/is;
