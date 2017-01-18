@@ -416,8 +416,8 @@ sub plsql_to_plpgsql
 	$str =~ s/EXEC(\s+)/SELECT$1/igs;
 
 	# Remove leading : on Oracle variable
-	$str =~ s/([^\w]+):(\d+)/$1\$$2/igs;
-	$str =~ s/([^\w]+):(\w+)/$1$2/igs;
+	$str =~ s/([^\w:]+):(\d+)/$1\$$2/igs;
+	$str =~ s/([^\w:]+):(\w+)/$1$2/igs;
 
 	# INSERTING|DELETING|UPDATING -> TG_OP = 'INSERT'|'DELETE'|'UPDATE'
 	$str =~ s/\bINSERTING\b/TG_OP = 'INSERT'/igs;
@@ -624,8 +624,13 @@ sub replace_oracle_function
 	# Replace INSTR by POSITION
 	$str =~ s/\bINSTR\s*\(\s*([^,]+),\s*('[^']+')\s*\)/POSITION($2 in $1)/is;
 
-	# Replace some way of extracting date part of a date
-	$str =~ s/TO_NUMBER\s*\(\s*([^\)\(]+)\s*\)/($1)::integer/is;
+	# The to_number() function reclaim a second argument under postgres which is the format.
+	# By default we use '99999999999999999999D99999999999999999999' that may allow bigint
+	# and double precision number. Feel free to modify it
+	#$str =~ s/TO_NUMBER\s*\(([^,\)]+)\)/to_number\($1,'99999999999999999999D99999999999999999999'\)/is;
+
+	# Replace to_number with a cast
+	$str =~ s/TO_NUMBER\s*\(\s*([^\)]+)\s*\)/($1)\:\:integer/is;
 
 	# Replace the UTC convertion with the PG syntaxe
 	$str =~ s/SYS_EXTRACT_UTC\s*\(([^\)]+)\)/($1 AT TIME ZONE 'UTC')/is;
@@ -639,11 +644,6 @@ sub replace_oracle_function
 	$str =~ s/\.(getClobVal|getStringVal)\s*\(\s*\)//is;
 	# Add the name keyword to XMLELEMENT
 	$str =~ s/XMLELEMENT\s*\(\s*/XMLELEMENT(name /is;
-
-	# The to_number() function reclaim a second argument under postgres which is the format.
-	# By default we use '99999999999999999999D99999999999999999999' that may allow bigint
-	# and double precision number. Feel free to modify it
-	$str =~ s/TO_NUMBER\s*\(([^,\(\)]+)\s*\)/to_number\($1,'99999999999999999999D99999999999999999999'\)/is;
 
 	# Cast round() call as numeric
 	$str =~ s/round\s*\(([^,]+),([\s\d]+)\)/round\(($1)::numeric,$2\)/igs;
