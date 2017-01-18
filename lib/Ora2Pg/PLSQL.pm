@@ -353,7 +353,7 @@ sub extract_function_code
 		my $fct_name = $1;
 		my $fct_code = $2;
 		my $space = '';
-		$space = ' ' if (grep (/^$fct_name$/i, 'FROM', 'AS', 'VALUES', 'DEFAULT', 'OR', 'AND'));
+		$space = ' ' if (grep (/^$fct_name$/i, 'FROM', 'AS', 'VALUES', 'DEFAULT', 'OR', 'AND', 'IN'));
                 # recursively replace function
                 $class->{single_fct_call}{$idx} = $fct_name . $space . '(' . $fct_code . ')';
                 $code = extract_function_code($class, $code, ++$idx);
