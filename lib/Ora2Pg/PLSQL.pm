@@ -489,6 +489,9 @@ sub plsql_to_plpgsql
 	$str =~ s/\bCURSOR(\s*)IS(\s*)SELECT/CURSOR$1FOR$2SELECT/isg;
 	# Replace CURSOR (param) IS SELECT by CURSOR FOR SELECT
 	$str =~ s/\bCURSOR(\s*\([^\)]+\)\s*)IS(\s*)SELECT/CURSOR$1FOR$2SELECT/isg;
+	# Replace OPEN cursor FOR dynamic query
+	$str =~ s/(OPEN\s+(?:.*?)\s+FOR)((?:.*?)USING)/$1 EXECUTE$2/isg;
+	$str =~ s/(OPEN\s+(?:.*?)\s+FOR)\s+((?!EXECUTE)(?:.*?)\|\|)/$1 EXECUTE $2/isg;
 
 	# Normalize HAVING ... GROUP BY into GROUP BY ... HAVING clause	
 	$str =~ s/\bHAVING\b(.*?)\bGROUP BY\b(.*?)((?=UNION|ORDER BY|LIMIT|INTO |FOR UPDATE|PROCEDURE)|$)/GROUP BY$2 HAVING$1/gis;
