@@ -9591,11 +9591,11 @@ sub hs_cond
 	for (my $idx = 0; $idx < scalar(@$data_types); $idx++) {
 		my $hs={};
 		$hs->{geometry} = $src_data_types->[$idx] =~ /GEOMETRY/i ? 1 : 0;
-		$hs->{isnum} =    $data_types->[$idx] !~ /^(char|varchar|date|time|text|bytea|xml)/i ? 1 :0;
+		$hs->{isnum} =    $data_types->[$idx] !~ /^(char|varchar|date|time|text|bytea|xml|uuid)/i ? 1 :0;
 		$hs->{isdate} =  $data_types->[$idx] =~ /^(date|time)/i ? 1 : 0;
 		$hs->{raw} = $src_data_types->[$idx] =~ /RAW/i ? 1 : 0;
 		$hs->{clob} = $src_data_types->[$idx] =~ /CLOB/i ? 1 : 0;
-		$hs->{istext} = $data_types->[$idx] =~ /(char|text|xml)/i ? 1 : 0;
+		$hs->{istext} = $data_types->[$idx] =~ /(char|text|xml|uuid)/i ? 1 : 0;
 		$hs->{isbytea} = $data_types->[$idx] =~ /bytea/i ? 1 : 0;
 		$hs->{isbit} = $data_types->[$idx] =~ /bit/i ? 1 : 0;
 		$hs->{isnotnull} = 0;
@@ -13998,7 +13998,7 @@ sub _lookup_function
 		# Sometime variable used in FOR ... IN loop is not declared
 		# Append its RECORD declaration in the DECLARE section.
 		my $tmp_code = $fct_detail{code};
-		while ($tmp_code =~ s/FOR\s+([^\s]+)\s+IN//) {
+		while ($tmp_code =~ s/FOR\s+([^\s]+)\s+IN//is) {
 			my $varname = $1;
 			if ($fct_detail{declare} !~ /\b$varname\s+/) {
 				$fct_detail{declare} .= "  $varname RECORD;\n";
