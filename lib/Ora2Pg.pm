@@ -10206,12 +10206,23 @@ sub _convert_function
 		$search_path = $self->set_search_path($owner);
 	}
 
+	my @nout = $fct_detail{args} =~ /\bOUT\s+([^,\)]+)/igs;
+	my @ninout = $fct_detail{args} =~ /\bINOUT\s+([^,\)]+)/igs;
 	if ($fct_detail{hasreturn}) {
-		# Returns the right type
-		$func_return = " RETURNS$fct_detail{setof} $fct_detail{func_ret_type} AS \$body\$\n";
+		my $nbout = $#nout+1 + $#ninout+1;
+		if ($nbout > 1) {
+			# Return record type 
+			$func_return = " RETURNS RECORD AS \$body\$\n";
+		} elsif ($nbout == 1) {
+			my $typout = $nout[0] || $ninout[0];
+			$typout = $self->_sql_type($typout) || $typout;
+			# Return record type 
+			$func_return = " RETURNS $typout AS \$body\$\n";
+		} else {
+			# Returns the right type
+			$func_return = " RETURNS$fct_detail{setof} $fct_detail{func_ret_type} AS \$body\$\n";
+		}
 	} else {
-		my @nout = $fct_detail{args} =~ /\bOUT /igs;
-		my @ninout = $fct_detail{args} =~ /\bINOUT /igs;
 		# Return void when there's no out parameters
 		if (($#nout < 0) && ($#ninout < 0)) {
 			$func_return = " RETURNS VOID AS \$body\$\n";
