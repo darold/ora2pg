@@ -5696,7 +5696,6 @@ CREATE TRIGGER ${table}_trigger_insert
 					}
 					$type .= ")";
 				}
-
 				$type = $self->{'modify_type'}{"\L$table\E"}{"\L$f->[0]\E"} if (exists $self->{'modify_type'}{"\L$table\E"}{"\L$f->[0]\E"});
 				if (!$self->{preserve_case}) {
 					$fname = $self->quote_reserved_words($fname);
@@ -5727,7 +5726,7 @@ CREATE TRIGGER ${table}_trigger_insert
 						} else {
 							if (($f->[4] !~ /^'/) && ($f->[4] =~ /[^\d\.]/)) {
 								if ($type =~ /CHAR|TEXT|ENUM/i) {
-									$f->[4] = "'$f->[4]'";
+									$f->[4] = "'$f->[4]'" if ($f->[4] !~ /'/);
 								} elsif ($type =~ /DATE|TIME/i) {
 									# do not use REPLACE_ZERO_DATE in default value, cause it can be NULL
 									$f->[4] =~ s/^0000-00-00.*/1970-01-01 00:00:00/;
