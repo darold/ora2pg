@@ -503,12 +503,15 @@ sub plsql_to_plpgsql
 	# Remove the function name repetion at end
 	$str =~ s/\bEND\s+(?!IF|LOOP|CASE|INTO|FROM|END|,)[a-z0-9_"]+(\s*[;]?)/END$1$2/igs;
 
+	####
 	# Replace ending ROWNUM with LIMIT
-        $str =~ s/\s+(WHERE|AND)\s+ROWNUM\s*=\s*(\d+)([^;]+)/$3 . ' LIMIT 1 OFFSET ' . ($2-1)/iges;
-        $str =~ s/\s+(WHERE|AND)\s+ROWNUM\s*<=\s*(\d+)([^;]+)/$3 LIMIT $2/igs;
-        $str =~ s/\s+(WHERE|AND)\s+ROWNUM\s*>=\s*(\d+)([^;]+)/$3 . ' LIMIT ALL OFFSET ' . ($2-1)/iges;
-        $str =~ s/\s+(WHERE|AND)\s+ROWNUM\s*<\s*(\d+)([^;]+)/$3 . ' LIMIT ' . ($2-1)/iges;
-        $str =~ s/\s+(WHERE|AND)\s+ROWNUM\s*>\s*(\d+)([^;]+)/$3 LIMIT ALL OFFSET $2/igs;
+	####
+	# Catch potential subquery first
+	my %subqueries = ();
+	my $j = 0;
+	($str, %subqueries) = extract_subqueries($str, \$j);
+	$str = replace_rownum_with_limit($str);
+	$str =~ s/\%SUBQUERY(\d+)\%/\($subqueries{$1}\)/gs;
 
 	# Rewrite comment in CASE between WHEN and THEN
 	$str =~ s/(\s*)(WHEN\s+[^\s]+\s*)(ORA2PG_COMMENT\d+\%)(\s*THEN)/$1$3$1$2$4/igs;
@@ -576,6 +579,45 @@ sub plsql_to_plpgsql
 
 	# Replace call to right outer join obsolete syntax
 	$str = replace_right_outer_join($str);
+
+	return $str;
+}
+
+sub extract_subqueries
+{
+	my ($query, $pos) = @_;
+
+	my %queries = ();
+	my $out_query = '';
+	my $idx = 0;
+	my $sub_query = '';
+	foreach my $c (split(//, $query)) {
+		$idx++ if ($c eq '(');
+		$idx-- if ($c eq ')');
+		if ($idx > 0) {
+			$sub_query .= $c;
+		} elsif ($sub_query && $c eq ')') {
+			$sub_query =~ s/^\(//;
+			$queries{$$pos} = replace_rownum_with_limit($sub_query);
+			$out_query .= "\%SUBQUERY$$pos\%";
+			$sub_query = '';
+			$$pos++;
+		} else {
+			$out_query .= $c;
+		}
+	}
+	return $out_query, %queries;
+}
+
+sub replace_rownum_with_limit
+{
+	my $str = shift;
+
+        $str =~ s/\s+(WHERE|AND)\s+ROWNUM\s*=\s*(\d+)([^;]*)/$3 . ' LIMIT 1 OFFSET ' . ($2-1)/iges;
+        $str =~ s/\s+(WHERE|AND)\s+ROWNUM\s*<=\s*(\d+)([^;]*)/$3 LIMIT $2/igs;
+        $str =~ s/\s+(WHERE|AND)\s+ROWNUM\s*>=\s*(\d+)([^;]*)/$3 . ' LIMIT ALL OFFSET ' . ($2-1)/iges;
+        $str =~ s/\s+(WHERE|AND)\s+ROWNUM\s*<\s*(\d+)([^;]*)/$3 . ' LIMIT ' . ($2-1)/iges;
+        $str =~ s/\s+(WHERE|AND)\s+ROWNUM\s*>\s*(\d+)([^;]*)/$3 LIMIT ALL OFFSET $2/igs;
 
 	return $str;
 }
