@@ -6131,8 +6131,7 @@ sub _create_indexes
 
 		if (exists $self->{replaced_cols}{"\L$tbsaved\E"} && $self->{replaced_cols}{"\L$tbsaved\E"}) {
 			foreach my $c (keys %{$self->{replaced_cols}{"\L$tbsaved\E"}}) {
-				map { s/^"$c"$/"$self->{replaced_cols}{"\L$tbsaved\E"}{$c}"/i } @{$indexes{$idx}};
-				map { s/^$c$/$self->{replaced_cols}{"\L$tbsaved\E"}{$c}/i } @{$indexes{$idx}};
+				map { s/\b$c\b/$self->{replaced_cols}{"\L$tbsaved\E"}{$c}/i } @{$indexes{$idx}};
 			}
 		}
 
@@ -6382,15 +6381,14 @@ sub _drop_indexes
 		# Cluster, bitmap join, reversed and IOT indexes will not be exported at all
 		next if ($self->{tables}{$tbsaved}{idx_type}{$idx}{type} =~ /JOIN|IOT|CLUSTER|REV/i);
 
-		map { if ($_ !~ /\(.*\)/) { s/^/"/; s/$/"/; } } @{$indexes{$idx}};
 		if (exists $self->{replaced_cols}{"\L$tbsaved\E"} && $self->{replaced_cols}{"\L$tbsaved\E"}) {
 			foreach my $c (keys %{$self->{replaced_cols}{"\L$tbsaved\E"}}) {
-				map { s/"$c"/"$self->{replaced_cols}{"\L$tbsaved\E"}{$c}"/i } @{$indexes{$idx}};
+				map { s/\b$c\b/$self->{replaced_cols}{"\L$tbsaved\E"}{$c}/i } @{$indexes{$idx}};
 			}
 		}
 		map { s/"//gs } @{$indexes{$idx}};
 		if (!$self->{preserve_case}) {
-			map { $_ = $self->quote_reserved_words($_) } @{$indexes{$idx}};
+			map { if ($_ !~ /\(.*\)/) { $_ = $self->quote_reserved_words($_) } } @{$indexes{$idx}};
 		} else {
 			map { if ($_ !~ /\(.*\)/) { s/^/"/; s/$/"/; } } @{$indexes{$idx}};
 		}
@@ -8043,10 +8041,10 @@ AND    IC.TABLE_OWNER = ?
 
 		if ($self->{preserve_case}) {
 			if (($row->[1] !~ /".*"/) && ($row->[1] !~ /\(.*\)/)) {
-				$row->[1] =~ s/^/"/;
-				$row->[1] =~ s/$/"/;
+				$row->[1] = "\"$row->[1]\"";
 			}
 		}
+
 		# Index with DESC are declared as FUNCTION-BASED, fix that
 		if (($row->[4] =~ /FUNCTION-BASED/i) && ($row->[1] !~ /\(.*\)/)) {
 			$row->[4] =~ s/FUNCTION-BASED\s*//;
