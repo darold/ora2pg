@@ -77,6 +77,7 @@ my $PG_DSN = '';
 my $PG_USER = '';
 my $PG_PWD = '';
 my $COUNT_ROWS = 0;
+my $DATA_TYPE = '';
 
 my @SCHEMA_ARRAY  = qw( TABLE PACKAGE VIEW GRANT SEQUENCE TRIGGER FUNCTION PROCEDURE TABLESPACE PARTITION TYPE MVIEW DBLINK SYNONYM DIRECTORY );
 my @EXTERNAL_ARRAY  = qw( KETTLE FDW );
@@ -97,6 +98,7 @@ GetOptions (
         'b|basedir=s' => \$OUTDIR,
         'c|conf=s' => \$FILE_CONF,
         'd|debug!' => \$DEBUG,
+        'D|data_type=s' => \$DATA_TYPE,
 	'e|exclude=s' => \$EXCLUDE,
         'h|help!' => \$HELP,
 	'i|input_file=s' => \$INPUT_FILE,
@@ -271,6 +273,7 @@ my $schema = new Ora2Pg (
 	pg_user => $PG_USER,
 	pg_pwd => $PG_PWD,
 	count_rows => $COUNT_ROWS,
+	data_type => $DATA_TYPE,
 );
 
 
@@ -309,6 +312,7 @@ Usage: ora2pg [-dhpqv --estimate_cost --dump_as_html] [--option value]
     -c | --conf file  : Used to set an alternate configuration file than the
 			default /etc/ora2pg/ora2pg.conf.
     -d | --debug      : Enable verbose output.
+    -D | --data_type STR : Allow custom type replacement at command line.
     -e | --exclude str: coma separated list of objects to exclude from export.
 			Can be used with SHOW_COLUMN too.
     -h | --help       : Print this short help.

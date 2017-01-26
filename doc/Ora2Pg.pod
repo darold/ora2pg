@@ -234,6 +234,7 @@ Usage: ora2pg [-dhpqv --estimate_cost --dump_as_html] [--option value]
     -c | --conf file  : Used to set an alternate configuration file than the
 			default /etc/ora2pg/ora2pg.conf.
     -d | --debug      : Enable verbose output.
+    -D | --data_type STR : Allow custom type replacement at command line.
     -e | --exclude str: coma separated list of objects to exclude from export.
 			Can be used with SHOW_COLUMN too.
     -h | --help       : Print this short help.
