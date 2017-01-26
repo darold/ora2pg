@@ -613,7 +613,7 @@ sub replace_rownum_with_limit
 {
 	my $str = shift;
 
-        $str =~ s/\s+(WHERE|AND)\s+ROWNUM\s*=\s*(\d+)([^;]*)/' ' . $1 . $3 . ' LIMIT 1 OFFSET ' . ($2-1)/igeiges;
+        $str =~ s/\s+(WHERE|AND)\s+ROWNUM\s*=\s*(\d+)([^;]*)/' ' . $1 . $3 . ' LIMIT 1 OFFSET ' . ($2-1)/iges;
         $str =~ s/\s+(WHERE|AND)\s+ROWNUM\s*<=\s*(\d+)([^;]*)/ $1 $3 LIMIT $2/igs;
         $str =~ s/\s+(WHERE|AND)\s+ROWNUM\s*>=\s*(\d+)([^;]*)/' ' . $1 . ' ' . $3 . ' LIMIT ALL OFFSET ' . ($2-1)/iges;
         $str =~ s/\s+(WHERE|AND)\s+ROWNUM\s*<\s*(\d+)([^;]*)/' ' . $1 . ' ' . $3 . ' LIMIT ' . ($2-1)/iges;
