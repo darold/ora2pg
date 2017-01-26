@@ -349,7 +349,7 @@ sub extract_function_code
         # Look for a function call that do not have an other function
         # call inside, replace content with a marker and store the
         # replaced string into a hask to rewritten later to convert pl/sql
-        if ($code =~ s/\b([a-zA-Z\.\_]+)\s*\(([^\(\)]+)\)/\%\%REPLACEFCT$idx\%\%/s) {
+        if ($code =~ s/\b([a-zA-Z\.\_]+)\s*\(([^\(\)]*)\)/\%\%REPLACEFCT$idx\%\%/s) {
 		my $fct_name = $1;
 		my $fct_code = $2;
 		my $space = '';
@@ -647,6 +647,10 @@ sub replace_oracle_function
 	# Replace DEFAULT empty_blob() and empty_clob()
 	$str =~ s/(empty_blob|empty_clob)\s*\(\s*\)//is;
 	$str =~ s/(empty_blob|empty_clob)\b//is;
+
+	# Replace call to SYS_GUID() function
+	$str =~ s/\bSYS_GUID\s*\(\s*\)/uuid_generate_v4()/is;
+	$str =~ s/\bSYS_GUID\b/uuid_generate_v4()/is;
 
 	# Rewrite TO_DATE formating call
 	$str =~ s/TO_DATE\s*\(\s*('[^\']+'),\s*('[^\']+')[^\)]*\)/to_date($1,$2)/is;

@@ -7170,6 +7170,8 @@ sub _sql_type
 		$precision = $len;
 	} elsif ( $type =~ /CHAR/ && $len && exists $self->{data_type}{"$type($len)"}) {
 		return $self->{data_type}{"$type($len)"};
+	} elsif ( $type =~ /RAW/ && $len && exists $self->{data_type}{"$type($len)"}) {
+		return $self->{data_type}{"$type($len)"};
 	}
 
         if (exists $self->{data_type}{$type}) {
