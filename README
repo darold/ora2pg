@@ -1965,6 +1965,13 @@ CONFIGURATION
         code, default is to try to rewrite simple form of rigth outer join
         for the moment.
 
+    UUID_FUNCTION
+        By default Ora2Pg will convert call to SYS_GUID() Oracle function
+        with a call to uuid_generate_v4 from uuid-ossp extension. You can
+        redefined it to use the gen_random_uuid function from pgcrypto
+        extension by changing the function name. Default to
+        uuid_generate_v4.
+
   Materialized view
     Since PostgreSQL 9.3, materialized view are supported with the CREATE
     MATERIALIZED VIEW syntax, to force Ora2Pg to use the native PostgreSQL

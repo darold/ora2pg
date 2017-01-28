@@ -895,6 +895,12 @@ HUMAN_DAYS_LIMIT	5
 # is given at input using the -i option or INPUT directive.
 #AUDIT_USER	USERNAME1,USERNAME2
 
+# By default Ora2Pg will convert call to SYS_GUID() Oracle function
+# with a call to uuid_generate_v4() from uuid-ossp extension. You can
+# redefined it to use the gen_random_uuid() function from pgcrypto
+# extension by changing the function name below.
+#UUID_FUNCTION	uuid_generate_v4
+
 #------------------------------------------------------------------------------
 # POSTGRESQL FEATURE SECTION (Control which PostgreSQL features are available)
 #------------------------------------------------------------------------------

@@ -859,6 +859,9 @@ sub _init
 		$self->{transaction} = 'SET TRANSACTION ISOLATION LEVEL SERIALIZABLE';
 	}
 
+	# Set default function to use for uuid generation
+	$self->{uuid_function} ||= 'uuid_generate_v4';
+
 	# Initial command to execute at Oracle connexion
 	$self->{ora_initial_command} ||= '';
 

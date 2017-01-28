@@ -652,8 +652,8 @@ sub replace_oracle_function
 	$str =~ s/(empty_blob|empty_clob)\b//is;
 
 	# Replace call to SYS_GUID() function
-	$str =~ s/\bSYS_GUID\s*\(\s*\)/uuid_generate_v4()/is;
-	$str =~ s/\bSYS_GUID\b/uuid_generate_v4()/is;
+	$str =~ s/\bSYS_GUID\s*\(\s*\)/$class->{uuid_function}()/is;
+	$str =~ s/\bSYS_GUID\b/$class->{uuid_function}()/is;
 
 	# Rewrite TO_DATE formating call
 	$str =~ s/TO_DATE\s*\(\s*('[^\']+'),\s*('[^\']+')[^\)]*\)/to_date($1,$2)/is;
@@ -1429,7 +1429,7 @@ sub mysql_to_plpgsql
 	$str =~ s/\bRLIKE/REGEXP/igs;
 	$str =~ s/\bSTD\(/STDDEV_POP\(/igs;
 	$str =~ s/\bSTDDEV\(/STDDEV_POP\(/igs;
-	$str =~ s/\bUUID\(/uuid_generate_v1\(/igs;
+	$str =~ s/\bUUID\(/$class->{uuid_function}\(/igs;
 	$str =~ s/\bNOT REGEXP BINARY/\!\~/igs;
 	$str =~ s/\bREGEXP BINARY/\~/igs;
 	$str =~ s/\bNOT REGEXP/\!\~\*/igs;
