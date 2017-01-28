@@ -580,6 +580,9 @@ sub plsql_to_plpgsql
 	# Replace call to right outer join obsolete syntax
 	$str = replace_right_outer_join($str);
 
+	# Replace call to left outer join obsolete syntax
+	$str = replace_left_outer_join($str);
+
 	return $str;
 }
 
@@ -1759,6 +1762,7 @@ sub replace_right_outer_join
 		$str =~ s/\s*(AND\s+)?WHERE_CLAUSE\d+ / /igs;
 		$str =~ s/WHERE\s+(AND|OR)\s+/WHERE /is;
 		$str =~ s/WHERE[\s;]+$/;/i;
+		$str =~ s/(\s+)WHERE\s+(ORDER|GROUP)\s+BY/$1$2 BY/is;
 
 		foreach my $t (sort { $final_from_clause{$a}{position} <=> $final_from_clause{$b}{position} } keys %final_from_clause) {
 			foreach my $j (sort keys %{$final_from_clause{$t}{clause}}) {
@@ -1781,6 +1785,121 @@ sub replace_right_outer_join
 
 	return $str;
 }
+
+sub replace_left_outer_join
+{
+	my $str = shift;
+
+	# process simple form of outer join
+	my $nbouter = $str =~ /((?:!=|<>|>=|<=|=|>|<|NOT LIKE|LIKE)\s*[^\s]+\s*\(\+\))/igs;
+	# Check that we don't have right outer join too
+	if ($nbouter >= 1 && $str !~ /\(\+\)\s*(?:!=|<>|>=|<=|=|>|<|NOT LIKE|LIKE)/i) {
+		# Extract the FROM clause
+		$str =~ s/(.*)\bFROM\s+(.*?)\s+WHERE\s+(.*?)$/$1FROM FROM_CLAUSE WHERE $3/is;
+		my $from_clause = $2;
+		$from_clause =~ s/"//gs;
+
+		my @tables = split(/\s*,\s*/, $from_clause);
+		# Set a hash for alias to table mapping
+		my %from_clause_list = ();
+		my %main_from_tables = ();
+		foreach my $table (@tables) {
+			$table =~ s/^\s+//s;
+			$table =~ s/\s+$//s;
+			my ($t, $alias) = split(/\s+/, lc($table));
+			$alias = $t if (!$alias);
+			$from_clause_list{$alias} = $t;
+		}
+
+		# Extract all Oracle's outer join syntax from the where clause
+		my @outer_clauses = ();
+		my %final_from_clause = ();
+		my @tmp_from_list = ();
+		my $start_query = '';
+		my $end_query = '';
+		if ($str =~ s/^(.*FROM FROM_CLAUSE WHERE)//is) {
+			$start_query = $1;
+		}
+		if ($str =~ s/\s+((?:GROUP BY|ORDER BY).*)$//is) {
+			$end_query = $1;
+		}
+		my @predicat = split(/\s+(AND|OR)\s+/i, $str);
+		my $id = 0;
+		# Process only predicat with a obsolete join syntax (+) for now
+		for (my $i = 0; $i <= $#predicat; $i+=2) {
+			next if ($predicat[$i] !~ /\(\+\)/);
+			$predicat[$i] =~ s/(.*)/WHERE_CLAUSE$id /is;
+			my $where_clause = $1;
+			$id++;
+			$where_clause =~ s/"//gs;
+			$where_clause =~ s/^\s+//s;
+			$where_clause =~ s/[\s;]+$//s;
+			$where_clause =~ s/\s*\(\+\)//gs;
+			# Split the predicat to retrieve left part, operator and right part
+			my ($l, $o, $r) = split(/\s*(=|LIKE)\s*/i, lc($where_clause));
+			# When the part of the clause are not single fields move them
+			# at their places in the WHERE clause and go to next predicat
+			if (($l !~ /^[^\.]+\.[^\s]+$/) || ($r !~ /^[^\.]+\.[^\s]+$/)) {
+				$str =~ s/WHERE_CLAUSE$i / $l $o $r /;
+				next;
+			}
+			# Extract the tablename part of the left clause
+			my $lbl1 = '';
+			my $table_decl1 = $l;
+			if ($l =~ /^([^\.]+)\..*/) {
+				$lbl1 = $1;
+				$table_decl1 = $from_clause_list{$1};
+				$table_decl1 .= " $1" if ($1 ne $from_clause_list{$1});
+			}
+			# Extract the tablename part of the right clause
+			my $lbl2 = '';
+			my $table_decl2 = $r;
+			if ($r =~ /^([^\.]+)\..*/) {
+				$lbl2 = $1;
+				$table_decl2 = $from_clause_list{$1};
+				$table_decl2 .= " $1" if ($1 ne $from_clause_list{$1});
+			}
+			# When this is the first join parse add the left tablename
+			# first then the outer join with the right table
+			if (scalar keys %final_from_clause == 0) {
+				$from_clause = $table_decl1;
+				$final_from_clause{"$lbl1;$lbl2"}{position} = $i;
+				push(@{$final_from_clause{"$lbl1;$lbl2"}{clause}{$table_decl2}}, "$l $o $r");
+			} else {
+				$final_from_clause{"$lbl1;$lbl2"}{position} = $i;
+				push(@{$final_from_clause{"$lbl1;$lbl2"}{clause}{$table_decl1}}, "$l $o $r");
+			}
+		}
+		$str = $start_query . join(' ', @predicat) . ' ' . $end_query;
+
+		# Remove part from the WHERE clause that will be moved into the FROM clause
+		$str =~ s/\s*(AND\s+)?WHERE_CLAUSE\d+ / /igs;
+		$str =~ s/WHERE\s+(AND|OR)\s+/WHERE /is;
+		$str =~ s/WHERE[\s;]+$/;/i;
+		$str =~ s/(\s+)WHERE\s+(ORDER|GROUP)\s+BY/$1$2 BY/is;
+
+		foreach my $t (sort { $final_from_clause{$a}{position} <=> $final_from_clause{$b}{position} } keys %final_from_clause) {
+			foreach my $j (sort keys %{$final_from_clause{$t}{clause}}) {
+				$from_clause .= " LEFT OUTER JOIN $j ON (" .  join(' AND ', @{$final_from_clause{$t}{clause}{$j}}) . ")"; 
+			}
+		}
+
+		# Append tables to from clause that was not involved into an outer join
+		foreach my $a (keys %from_clause_list) {
+			my $table_decl = "$from_clause_list{$a}";
+			$table_decl .= " $a" if ($a ne $from_clause_list{$a});
+			if ($from_clause !~ /\b$table_decl\b/) {
+				#$from_clause = "$table_decl, " . $from_clause;
+			}
+		}
+
+		$str =~ s/FROM FROM_CLAUSE/FROM $from_clause/s;
+	}
+	$str =~ s/[;]*\s*$/;/;
+
+	return $str;
+}
+
 
 1;
 
