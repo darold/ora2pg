@@ -577,11 +577,13 @@ sub plsql_to_plpgsql
 	# Remove any call to MDSYS schema in the code
 	$str =~ s/MDSYS\.//igs;
 
-	# Replace call to right outer join obsolete syntax
-	$str = replace_right_outer_join($str);
+	if ($class->{rewrite_outer_join}) {
+		# Replace call to right outer join obsolete syntax
+		$str = replace_right_outer_join($str);
 
-	# Replace call to left outer join obsolete syntax
-	$str = replace_left_outer_join($str);
+		# Replace call to left outer join obsolete syntax
+		$str = replace_left_outer_join($str);
+	}
 
 	return $str;
 }
