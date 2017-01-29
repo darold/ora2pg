@@ -1,3 +1,266 @@
+2017 01 29 - v18.0
+
+This new major release adds several new useful features and lot of
+improvements.
+
+  * Automatic rewrite of simple form of (+) outer join Oracle's
+    syntax. This major feature makes Ora2Pg become the first free
+    tool that is able to rewrite automatically (+) outer join in
+    command line mode. This works with simple form of outer join
+    but this is a beginning.
+  * Add export of Oracle's virtual column using a real column and
+    a trigger.
+  * Allow conversion of RAW/CHAR/VARCHAR2 type with precision in
+    DATA_TYPE directive. Useful for example to transform all RAW(32)
+    or VARCHAR2(32) columns into PostgreSQL special type uuid.
+  * Add export NOT VALIDATED state from Oracle foreign keys and check
+    constraints into NOT VALID constraints in PostgreSQL.
+  * Replace call to SYS_GUID() with uuid_generate_v4() by default.
+  * Add "CREATE EXTENSION IF NOT EXISTS dblink;" before an autonomous
+    transaction or "CREATE EXTENSION IF NOT EXISTS pg_background;".
+  * Major rewrite of the way Ora2Pg parse PL/SQL to rewrite function
+    calls and other PL/SQL to plpgsql replacement. There should not
+    be any limitation in rewriting when a function contains a sub
+    query or an other function call inside his parameters.
+  * Refactoring of ora2pg to not requires any dependency other than
+    the Perl DBI module by default. All DBD drivers are now optionals
+    and ora2pg will expect an Oracle DDL file as input by default.
+  * Add export of Oracle's global variables defined in package. They
+    are exported as user defined custom variables and available in
+    a session. If the variable is a constant or have a default value
+    assigned at declaration, ora2pg will create a new file with the
+    declaration (global_variables.conf) to be included in the main
+    configuration file postgresql.conf file.
+  * Create full text search configuration when USE_UNACCENT directive
+    is enabled using the auto detected stemmer or the one defined in
+    FTS_CONFIG. For example:
+  	CREATE TEXT SEARCH CONFIGURATION fr (COPY = french);
+    	ALTER TEXT SEARCH CONFIGURATION fr ALTER MAPPING FOR
+    		hword, hword_part, word WITH unaccent, french_stem;
+    	CREATE INDEX place_notes_cidx ON places
+    			USING gin(to_tsvector('fr', place_notes));
+    
+Changes and incompatibilities from previous release:
+
+  * FTS_INDEX_ONLY is now enabled by default because the addition of
+    a column is not always possible and not always necessary where a
+    simple function-based index is enough.
+  * Remove use to setweigth() on single column FTS based indexes.
+  * Change default behaviour of Ora2Pg in Full Text Search index
+    export.
+
+A new command line option and some configuration directive have
+been added:
+
+  * Option -D | --data_type to allow custom data type replacement
+    at command line like in configuration file with DATA_TYPE.
+  * UUID_FUNCTION to be able to redefined the function called to
+    replace SYS_GUID() Oracle function. Default to uuid_generate_v4.
+  * REWRITE_OUTER_JOIN to be able to disable the rewriting of Oracle
+    native syntax (+) into OUTER JOIN if rewritten code is broken.
+  * USE_UNACCENT and USE_LOWER_UNACCENT configuration directives to
+    use the unaccent extension with pg_trgm with the FTS indexes.
+  * FTS_INDEX_ONLY, by default Ora2Pg creates an extra tsvector column
+    with a dedicated triggers for FTS indexes. Enable this directive
+    if you just want a function-based index like:
+	CREATE INDEX ON t_document USING
+		gin(to_tsvector('pg_catalog.english', title));
+  * FTS_CONFIG, use this directive to force the text search stemmer
+    used with the to_tsvector() function. Default is to auto detect
+    the Oracle FTS stemmer. For example, setting FTS_CONFIG to
+    pg_catalog.english or pg_catalog.french will override the auto
+    detected stemmer.
+
+There's also lot fixes of issues reported by users from the past two
+months, here is the complete list of changes:
+
+  - Fix return type in function with a single inout parameter and a
+    returned type.
+  - Prevent wrong rewrite of empty as null when a function is used.
+    Thanks to Pavel Stehule for the report.
+  - Add the UUID_FUNCTION configuration directive. By default Ora2Pg
+    will convert call to SYS_GUID() Oracle function with a call to
+    uuid_generate_v4 from uuid-ossp extension. You can redefined it
+    to use the gen_random_uuid function from pgcrypto extension by
+    changing the function name. Default to uuid_generate_v4. Thanks
+    to sjimmerson for the feature request.
+  - Add rewrite of queries with simple form of left outer join syntax
+    (+) into the ansi form.
+  - Add new command line option -D | --data_type to allow custom data
+    type replacement at command line like in configuration file with
+    DATA_TYPE.
+  - Fix type in ROWNUM replacement expression. Thanks to Pavel Stehule
+    for the report.
+  - Add replacement of SYS_GUID by uuid_generate_v4 and allow custom
+    rewriting of RAW type. Thanks to Nicolas Martin for the report.
+  - Fix missing WHERE clause in ROWNUM replacement with previous patch
+    thanks to Pavel Stehule for the report.
+  - Fix ROWNUM replacement when e sub select is used. Thanks to Pavel
+    Stehule for the report.
+  - Fix wrong syntax in index creation with DROP_INDEXES enabled.
+    Thanks to Pave Stehule for the report.
+  - Remove replacement of substr() by substring() as PostgreSQL have
+    the substr() function too. Thanks to Pavel Stehule for the report.
+  - Move LIMIT replacement for ROWNUM to the end of the query. Thanks
+    to Pavel Stehule for the report.
+  - Fix text default value between parenthesis in table declaration.
+    Thanks to Pavel Stehule for the report.
+  - Fix return type when a function have IN/OUT parameter. Thanks to
+    Pavel Stehule for the report.
+  - Mark uuid type to be exported as text. Thanks to sjimmerson for
+    the report.
+  - Add EXECUTE to open cursor with like "OPEN var1 FOR var2;". Thanks
+    to Pavel Stehule for the report.
+  - Fix replacement of local type ref cursor. Thanks to Pavel Stehule
+    for the report.
+  - Add EXECUTE keyword to OPEN CURSOR ... FOR with dynamic query.
+    Thanks to Pavel Stehule for the report.
+  - Fix case sensitivity issue in FOR .. IN variable declaration
+    replacement. Thanks to Pavel Stehule for the report.
+  - Fix wrong replacement of cast syntax ::. Thanks to Pavel Stehule
+    for the report.
+  - Reactivate numeric cast in call to round(value,n).
+  - Close main output data file at end of export.
+  - Add virtual column state in column info report, first stage to
+    export those columns as columns with associated trigger.
+  - Fix unwanted replacement of REGEXP_INSTR. Thanks to Bernard
+    Bielecki for the report.
+  - Allow rewrite of NUMBER(*, 0) into bigint or other type instead
+    numeric(38), just set DATA_TYPE to NUMBER(*\,0):bigint. Thanks to
+    kuzmaka for the feature request.
+  - Export partitions indexes into PARTITION_INDEXES_....sql separate
+    file named. Thanks to Nicolas Martin for the feature request.
+  - Fix fatal error when schema CTXSYS does not exists. Thanks to
+    Bernard Bielecki for the report.
+  - Fix missing text value replacement. Thanks to Bernard Bielecki
+    for the report.
+  - Fix type replacement in declare section when the keyword END was
+    present into a variable name.
+  - Export NOT VALIDATED Oracle foreign key and check constraint as
+    NOT VALID in PostgreSQL. Thanks to Alexey for the feature request.
+  - Add object matching of regex 'SYS_.*\$' to the default exclusion
+    list.
+  - Fix UTF8 output to file as the open pragma "use open ':utf8';"
+    doesn't works in a global context. binmode(':encoding(...)') is
+    used on each file descriptor for data output.
+  - Improve parsing of tables/indexes/constraints/tablespaces DDL from
+    file.
+  - Improve parsing of sequences DDL from file.
+  - Improve parsing of user defined types DDL from file.
+  - Export Oracle's TYPE REF CURSOR with a warning as not supported.
+  - Replace call to plsql_to_plpgsql() in Ora2Pg.pm by a call to new
+    function convert_plsql_code().
+  - Move export of constraints after indexes to be able to use USING
+    index in constraint creation without error complaining that index
+    does not exists.
+  - Add "CREATE EXTENSION IF NOT EXISTS dblink;" before an autonomous
+    transaction or "CREATE EXTENSION IF NOT EXISTS pg_background;".
+  - Improve parsing of packages DDL from file.
+  - When a variable in "FOR varname IN" statement is not found in the
+    DECLARE bloc, Ora2Pg will automatically add the variable to this
+    bloc declared as a RECORD. Thanks to Pavel Stehule for the report.
+  - Major rewrite of the way Ora2Pg parse PL/SQL to rewrite function
+    calls and other PL/SQL to plpgsql replacement. There should not
+    be limitation in rewriting when a function contains a sub query
+    or an other function call inside his parameters.
+  - Fix unwanted SELECT to PERFORM transformation inside literal
+    strings. Thanks to Pavel Stehule for the report.
+  - Fix bug in DEFAULT value rewriting. Thanks to Pavel Stehule for
+    the report.
+  - Fix replacement of DBMS_OUTPUT.put_line with RAISE NOTICE.
+  - Reset global variable storage for each package.
+  - Improve comment parsing in packages and prevent possible infinite
+    loop in global variable replacement.
+  - Add the REWRITE_OUTER_JOIN configuration directive to be able to
+    disable the rewriting of Oracle native syntax (+) into OUTER JOIN
+    if it is broken.  Default is to try to rewrite simple form of
+    right outer join for the moment.
+  - Export types and cursors declared as global objects in package
+    spec header into the main output file for package export. Types
+    and cursors declared into the package body are exported into the
+    output file of the first function declared in this package.
+  - Globals variables declared into the package spec header are now
+    identified and replaced into the package code with the call to
+    user defined custom variable. It works just like globals variables
+    declared into the package body.
+  - Add auto detection of Oracle FTS stemmer and disable FTS_CONFIG
+    configuration directive per default. When FTS_CONFIG is set its
+    value will overwrite the auto detected value.
+  - Create full text search configuration when USE_UNACCENT directive
+    is enabled using the auto detected stemmer or the one defined in
+    FTS_CONFIG. For example:
+  	CREATE TEXT SEARCH CONFIGURATION fr (COPY = french);
+    	ALTER TEXT SEARCH CONFIGURATION fr ALTER MAPPING FOR
+    		hword, hword_part, word WITH unaccent, french_stem;
+    	CREATE INDEX place_notes_cidx ON places
+    			USING gin(to_tsvector('fr', place_notes));
+  - Remove CONTAINS(ABOUT()) from the migration assessment, there no
+    additional difficulty to CONTAINS rewrite.
+  - Add ANYDATA to the migration assessment keyword to detect.
+  - Allow conversion of CHAR/VARCHAR2 type with precision in DATA_TYPE
+    directive. For example it's possible to transform all VARCHAR2(32)
+    columns only into PostgreSQL special type uuid by setting:
+        DATA_TYPE	VARCHAR2(32):uuid
+    Thanks to sjimmerson for the feature request.
+  - Update year in copyrights
+  - Fix creation of schema when CREATE_SCHEMA+PG_SCHEMA are defined.
+  - Fix renaming of temporary file when exporting partitions.
+  - Move MODIFY_TYPE to the type section
+  - Update documentation about globals variables.
+  - Add export of Oracle's global variables defined in package. They
+    are exported as user defined custom variables and available in
+    a session. Oracle variables assignment are exported as call to:
+            PERFORM set_config('pkgname.varname', value, false);
+    Use of these variable in the code is replaced by:
+            current_setting('pkgname.varname')::global_variables_type;
+    the variable type is extracted from the pacjkage definition. If
+    the variable is a constant or have a default value assigned at
+    declaration, ora2pg will create file global_variables.conf with
+    the definition to include in postgresql.conf file so that their
+    values will already be set at database connection. Note that the
+    value can always modified by the user so you can not have exactly
+    a constant.
+  - Fix migration assessment of view.
+  - Remove call to FROM SYS.DUAL, only FROM DUAL was replaced.
+  - Replace call to trim into btrim.
+  - Improve rewrite of DECODE when there is function call inside.
+  - Add function replace_right_outer_join() to rewrite Oracle (+)
+    right outer join.
+  - Improve view migration assessment.
+  - Create a FTS section in the configuration file dedicated to FTS
+    control.
+  - Add USE_UNACCENT and USE_LOWER_UNACCENT configuration directives
+    to use the unaccent extension with pg_trgm.
+  - Do not create FTS_INDEXES_* file when there is no Oracle Text
+    indexes.
+  - Update query test score when CONTAINS, SCORE, FUZZY, ABOUT, NEAR
+    keyword are found.
+  - Remove use to setweigth() on single column FTS based indexes.
+    Thanks to Adrien Nayrat for the report.
+  - Update documentation on FTS_INDEX_ONLY with full explanation on
+    the Ora2Pg transformation.
+  - Refactoring ora2pg to not requires any dependency other than the
+    Perl DBI module by default. All DBD drivers are now optionals and
+    ora2pg will expect to received an Oracle DDL file as input by
+    default. This makes easiest packaging or for any distribution that
+    can not build a package because of the DBD::Oracle requirement.
+    DBD::Oracle, DBD::MySQL and DBD::Pg are still required if you want
+    Ora2Pg to migrate your database "on-line" but they are optional
+    because Ora2Pg can also convert input DDL file, this is the
+    default now. Thanks to Gustavo Panizzo for the feature request and
+    the work on Debian packaging.
+  - Remove String::Random dependency in rpm spec file, it is no used
+    even if it was mentioned into a comment.
+  - Exclude internal Oracle Streams AQ JMS types from the export.
+    Thanks to Joanna Xu for the report.
+  - Fix some other spelling issues. Thanks to Gustavo Panizzo for the
+    patch.
+  - Fix some spelling errors. Thanks to Gustavo Panizzo for the patch.
+  - Revert patch 697f09d that was breaking encoding with input file
+    (-i). Thanks to Gary Evans for the report.
+  - Add two new configuration directive to control FTS settings,
+    FTS_INDEX_ONLY and FTS_CONFIG.
+   
 2016 11 17 - v17.6
 
 This release adds several new features:
@@ -268,7 +531,7 @@ Here is the complete list of other changes:
   - Fix debug mode that was interromping the last running table dump.
     Thanks to calbiston for the report.
 
-2016 04 21 - v17.6
+2016 04 21 - v17.4
 
 Errata in first release attempt.
 
