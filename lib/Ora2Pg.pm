@@ -859,9 +859,6 @@ sub _init
 		$self->{transaction} = 'SET TRANSACTION ISOLATION LEVEL SERIALIZABLE';
 	}
 
-	# Set default function to use for uuid generation
-	$self->{uuid_function} ||= 'uuid_generate_v4';
-
 	# Initial command to execute at Oracle connexion
 	$self->{ora_initial_command} ||= '';
 
@@ -7173,8 +7170,6 @@ sub _sql_type
 		$precision = $len;
 	} elsif ( $type =~ /CHAR/ && $len && exists $self->{data_type}{"$type($len)"}) {
 		return $self->{data_type}{"$type($len)"};
-	} elsif ( $type =~ /RAW/ && $len && exists $self->{data_type}{"$type($len)"}) {
-		return $self->{data_type}{"$type($len)"};
 	}
 
         if (exists $self->{data_type}{$type}) {
@@ -10215,8 +10210,8 @@ sub _convert_function
 		if ($nbout > 1) {
 			# Return record type 
 			$func_return = " RETURNS RECORD AS \$body\$\n";
-		} elsif ($nbout == 1) {
-			my $typout = $nout[0] || $ninout[0];
+		} elsif ($nbout == 1 && $#nout == 0) {
+			my $typout = $nout[0];
 			$typout = $self->_sql_type($typout) || $typout;
 			# Return record type 
 			$func_return = " RETURNS $typout AS \$body\$\n";
