@@ -10215,10 +10215,10 @@ sub _convert_function
 		if ($nbout > 1) {
 			# Return record type 
 			$func_return = " RETURNS RECORD AS \$body\$\n";
-		} elsif ($nbout == 1) {
-			my $typout = $nout[0] || $ninout[0];
+		} elsif ($nbout == 1 && $#nout == 0) {
+			my $typout = $nout[0];
 			$typout = $self->_sql_type($typout) || $typout;
-			# Return record type 
+			# Return type returned by the function
 			$func_return = " RETURNS $typout AS \$body\$\n";
 		} else {
 			# Returns the right type
