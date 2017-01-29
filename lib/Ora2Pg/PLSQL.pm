@@ -567,8 +567,8 @@ sub plsql_to_plpgsql
 		$str =~ s/([a-z0-9_\."]+)\s*IS NULL/coalesce($1::text, '') = ''/igs;
 		$str =~ s/([a-z0-9_\."]+)\s*IS NOT NULL/($1 IS NOT NULL AND $1::text <> '')/igs;
 		# Form: fct(expression) IS NULL
-		$str =~ s/([a-z0-9_\."]+\s*\([^\)]*\))\s*IS NULL/coalesce($1::text, '') = ''/igs;
-		$str =~ s/([a-z0-9_\."]+\s*\([^\)]*\))\s*IS NOT NULL/($1 IS NOT NULL AND ($1)::text <> '')/igs;
+		$str =~ s/([a-z0-9_\."]+\s*\([^\)\(]*\))\s*IS NULL/coalesce($1::text, '') = ''/igs;
+		$str =~ s/([a-z0-9_\."]+\s*\([^\)\(]*\))\s*IS NOT NULL/($1 IS NOT NULL AND ($1)::text <> '')/igs;
 	}
 
 	# Replace type in sub block
