@@ -1718,7 +1718,6 @@ sub replace_right_outer_join
 			next if ($predicat[$i] !~ /\(\+\)/);
 			$predicat[$i] =~ s/(.*)/WHERE_CLAUSE$id /is;
 			my $where_clause = $1;
-			$id++;
 			$where_clause =~ s/"//gs;
 			$where_clause =~ s/^\s+//s;
 			$where_clause =~ s/[\s;]+$//s;
@@ -1728,9 +1727,10 @@ sub replace_right_outer_join
 			# When the part of the clause are not single fields move them
 			# at their places in the WHERE clause and go to next predicat
 			if (($l !~ /^[^\.]+\.[^\s]+$/) || ($r !~ /^[^\.]+\.[^\s]+$/)) {
-				$str =~ s/WHERE_CLAUSE$i / $l $o $r /;
+				$predicat[$i] =~ s/WHERE_CLAUSE$id / $l $o $r /s;
 				next;
 			}
+			$id++;
 			# Extract the tablename part of the left clause
 			my $lbl1 = '';
 			my $table_decl1 = $l;
@@ -1832,7 +1832,6 @@ sub replace_left_outer_join
 			next if ($predicat[$i] !~ /\(\+\)/);
 			$predicat[$i] =~ s/(.*)/WHERE_CLAUSE$id /is;
 			my $where_clause = $1;
-			$id++;
 			$where_clause =~ s/"//gs;
 			$where_clause =~ s/^\s+//s;
 			$where_clause =~ s/[\s;]+$//s;
@@ -1842,9 +1841,10 @@ sub replace_left_outer_join
 			# When the part of the clause are not single fields move them
 			# at their places in the WHERE clause and go to next predicat
 			if (($l !~ /^[^\.]+\.[^\s]+$/) || ($r !~ /^[^\.]+\.[^\s]+$/)) {
-				$str =~ s/WHERE_CLAUSE$i / $l $o $r /;
+				$predicat[$i] =~ s/WHERE_CLAUSE$id / $l $o $r /s;
 				next;
 			}
+			$id++;
 			# Extract the tablename part of the left clause
 			my $lbl1 = '';
 			my $table_decl1 = $l;
