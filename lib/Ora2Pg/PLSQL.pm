@@ -1782,8 +1782,8 @@ sub replace_right_outer_join
 		}
 
 		$str =~ s/FROM FROM_CLAUSE/FROM $from_clause/s;
+		$str =~ s/[;]*\s*$/;/s;
 	}
-	$str =~ s/[;]*\s*$/;/;
 
 	return $str;
 }
@@ -1896,8 +1896,8 @@ sub replace_left_outer_join
 		}
 
 		$str =~ s/FROM FROM_CLAUSE/FROM $from_clause/s;
+		$str =~ s/[;]*\s*$/;/s;
 	}
-	$str =~ s/[;]*\s*$/;/;
 
 	return $str;
 }
