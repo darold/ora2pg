@@ -300,6 +300,32 @@ PSQL - Oracle to PostgreSQL procedural language converter
 	configuration option to 1.
 =cut
 
+sub remove_text_constant_part
+{
+	my ($class, $str) = @_;
+
+	$str =~ s/\\'/ORA2PG_ESCAPE1_QUOTE/gs;
+	while ($str =~ s/''/ORA2PG_ESCAPE2_QUOTE/gs) {}
+
+	my $j = 0;
+	while ($str =~ s/('[^']+')/\%TEXTVALUE$j\%/s) {
+		$class->{text_values}{$j} = $1;
+		$j++;
+	}
+	return $str;
+}
+
+sub restore_text_constant_part
+{
+	my ($class, $str) = @_;
+
+	$str =~ s/\%TEXTVALUE(\d+)\%/$class->{text_values}{$1}/gs;
+	$str =~ s/ORA2PG_ESCAPE2_QUOTE/''/gs;
+	$str =~ s/ORA2PG_ESCAPE1_QUOTE/\\'/gs;
+
+	return $str;
+}
+
 =head2 convert_plsql_code
 
 Main function used to convert Oracle SQL and PL/SQL code into PostgreSQL
@@ -311,11 +337,16 @@ sub convert_plsql_code
 {
         my ($class, $str) = @_;
 
+	# Replace all text constant part to prevent a split on a ; inside a text
+	$class->{text_values} = ();
+	$str = remove_text_constant_part($class, $str);
+
 	%{$class->{single_fct_call}} = ();
 
 	# Extract all block from the code by splitting it on the semi-comma
 	# character and replace all necessary function call
 	my @code_parts = split(/;/, $str);
+	map { $_ = restore_text_constant_part($class, $_) } @code_parts;
 	for (my $i = 0; $i <= $#code_parts; $i++) {
 		next if (!$code_parts[$i]);
 		%{$class->{single_fct_call}} = ();
@@ -325,14 +356,16 @@ sub convert_plsql_code
 		};
 		while ($code_parts[$i] =~ s/\%\%REPLACEFCT(\d+)\%\%/$class->{single_fct_call}{$1}/) {};
 	}
+	$class->{text_values} = ();
 	$str = join(';', @code_parts);
 	$str =~ s/[;]+/;/gs;
 
 	# Apply code rewrite on other part of the code
+	$str = remove_text_constant_part($class, $str);
 	$str = plsql_to_plpgsql($class, $str);
+	$str = restore_text_constant_part($class, $str);
 
 	return $str;
-
 }
 
 =head2 extract_function_code

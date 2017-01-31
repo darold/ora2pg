@@ -14041,7 +14041,8 @@ sub _lookup_function
 		while ($tmp_code =~ s/FOR\s+([^\s]+)\s+IN//is) {
 			my $varname = $1;
 			if ($fct_detail{declare} !~ /\b$varname\s+/) {
-				$fct_detail{declare} .= "  $varname RECORD;\n";
+				chomp($fct_detail{declare});
+				$fct_detail{declare} .= "\n  $varname RECORD;\n";
 			}
 		}
 		# Set parameters for AUTONOMOUS TRANSACTION
