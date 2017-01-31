@@ -506,12 +506,19 @@ sub plsql_to_plpgsql
 	####
 	# Replace ending ROWNUM with LIMIT
 	####
-	# Catch potential subquery first
-	my %subqueries = ();
-	my $j = 0;
-	($str, %subqueries) = extract_subqueries($str, \$j);
-	$str = replace_rownum_with_limit($str);
-	$str =~ s/\%SUBQUERY(\d+)\%/\($subqueries{$1}\)/gs;
+	# Catch potential subquery first and replace rownum in subqueries
+	my @statements = split(/;/, $str);
+	for ( my $i = 0; $i <= $#statements; $i++ ) {
+		my %subqueries = ();
+		my $limit = '';
+		my $j = 0;
+		($statements[$i], %subqueries) = extract_subqueries($statements[$i], \$j);
+		($statements[$i], $limit) = replace_rownum_with_limit($statements[$i]);
+		$statements[$i] =~ s/\%SUBQUERY(\d+)\%/$subqueries{$1}/gs;
+		$statements[$i] .= $limit;
+		$statements[$i] =~ s/\s+(?:WHERE|AND)(\s+LIMIT\s+)/$1/is;
+	}
+	$str = join(';', @statements);
 
 	# Rewrite comment in CASE between WHEN and THEN
 	$str =~ s/(\s*)(WHEN\s+[^\s]+\s*)(ORA2PG_COMMENT\d+\%)(\s*THEN)/$1$3$1$2$4/igs;
@@ -577,6 +584,9 @@ sub plsql_to_plpgsql
 	# Remove any call to MDSYS schema in the code
 	$str =~ s/MDSYS\.//igs;
 
+	# Remove any unecessary parenthesis in code
+	$str = remove_unnecessary_parenthesis($str);
+
 	if ($class->{rewrite_outer_join}) {
 		# Replace call to right outer join obsolete syntax
 		$str = replace_right_outer_join($str);
@@ -584,6 +594,16 @@ sub plsql_to_plpgsql
 		# Replace call to left outer join obsolete syntax
 		$str = replace_left_outer_join($str);
 	}
+
+	return $str;
+}
+
+sub remove_unnecessary_parenthesis
+{
+	my $str = shift;
+
+	while ($str =~ s/\(\s*\(([^\(\)]+)\)\s*\)/($1)/gs) {};
+	while ($str =~ s/\(\s*\(\s*\(([^\(\)]+\)[^\(\)]+\([^\(\)]+)\)\s*\)\s*\)/(($1))/gs) {};
 
 	return $str;
 }
@@ -596,38 +616,87 @@ sub extract_subqueries
 	my $out_query = '';
 	my $idx = 0;
 	my $sub_query = '';
+	my $out_limit = '';
 	foreach my $c (split(//, $query)) {
 		$idx++ if ($c eq '(');
 		$idx-- if ($c eq ')');
 		if ($idx > 0) {
 			$sub_query .= $c;
-		} elsif ($sub_query && $c eq ')') {
+		} elsif ($sub_query && $c eq ')' && $idx == 0) {
 			$sub_query =~ s/^\(//;
-			$queries{$$pos} = replace_rownum_with_limit($sub_query);
-			$out_query .= "\%SUBQUERY$$pos\%";
+			my $limit = '';
+			($queries{$$pos},  $limit) = replace_rownum_with_limit($sub_query);
+			if ($limit) {
+				if ($sub_query =~ /\bSELECT\b/is) {
+					$queries{$$pos} .= $limit;
+				} else {
+					$out_limit = $limit;
+				}
+			}
+			$out_query .= "(\%SUBQUERY$$pos\%)";
 			$sub_query = '';
 			$$pos++;
 		} else {
 			$out_query .= $c;
 		}
 	}
-	return $out_query, %queries;
+	$out_query =~ s/\s*$/$out_limit/;
+
+	return $out_query , %queries;
 }
 
 sub replace_rownum_with_limit
 {
 	my $str = shift;
 
-        $str =~ s/\s+(WHERE|AND)\s+ROWNUM\s*=\s*(\d+)([^;]*)/' ' . $1 . $3 . ' LIMIT 1 OFFSET ' . ($2-1)/iges;
-        $str =~ s/\s+(WHERE|AND)\s+ROWNUM\s*<=\s*(\d+)([^;]*)/ $1 $3 LIMIT $2/igs;
-        $str =~ s/\s+(WHERE|AND)\s+ROWNUM\s*>=\s*(\d+)([^;]*)/' ' . $1 . ' ' . $3 . ' LIMIT ALL OFFSET ' . ($2-1)/iges;
-        $str =~ s/\s+(WHERE|AND)\s+ROWNUM\s*<\s*(\d+)([^;]*)/' ' . $1 . ' ' . $3 . ' LIMIT ' . ($2-1)/iges;
-        $str =~ s/\s+(WHERE|AND)\s+ROWNUM\s*>\s*(\d+)([^;]*)/ $1 $3 LIMIT ALL OFFSET $2/igs;
+	my $limit_clause = '';
 
-	$str =~ s/(where)\s+and/$1/igs;
-	$str =~ s/\s+(?:where|and)(\s+LIMIT\s+)/$1/igs;
+        if ($str =~ s/\s+(WHERE)\s+(?:\(\s*)?ROWNUM\s*=\s*(\d+)(?:\s*\)\s*)?([^;]*)/ $1 $3/is) {
+		$limit_clause = ' LIMIT 1 OFFSET ' . ($2-1);
+		
+        }
+	if ($str =~ s/\s+AND\s+(?:\(\s*)?ROWNUM\s*=\s*(\d+)(?:\s*\)\s*)?([^;]*)/ $2/is) {
+		$limit_clause = ' LIMIT 1 OFFSET ' . ($1-1);
+        }
 
-	return $str;
+	if ($str =~ s/\s+(WHERE)\s+(?:\(\s*)?ROWNUM\s*>=\s*(\d+)(?:\s*\)\s*)?([^;]*)/ $1 $3/is) {
+		$limit_clause = ' LIMIT ALL OFFSET ' . ($2-1);
+        }
+	if ($str =~ s/\s+(WHERE)\s+(?:\(\s*)?ROWNUM\s*>\s*(\d+)(?:\s*\)\s*)?([^;]*)/ $1 $3/is) {
+		$limit_clause = ' LIMIT ALL OFFSET ' . $2;
+	}
+	if ($str =~ s/\s+AND\s+(?:\(\s*)?ROWNUM\s*>=\s*(\d+)(?:\s*\)\s*)?([^;]*)/ $2/is) {
+		$limit_clause = ' LIMIT ALL OFFSET ' . ($1-1);
+        }
+	if ($str =~ s/\s+AND\s+(?:\(\s*)?ROWNUM\s*>\s*(\d+)(?:\s*\)\s*)?([^;]*)/ $2/is) {
+		$limit_clause = ' LIMIT ALL OFFSET ' . $1;
+	}
+
+	my $tmp_val = '';
+	if ($str =~ s/\s+(WHERE)\s+(?:\(\s*)?ROWNUM\s*<=\s*(\d+)(?:\s*\)\s*)?([^;]*)/ $1 $3/is) {
+		$tmp_val = $2;
+	}
+	if ($str =~ s/\s+(WHERE)\s+(?:\(\s*)?ROWNUM\s*<\s*(\d+)(?:\s*\)\s*)?([^;]*)/ $1 $3/is) {
+		$tmp_val = $2 - 1;
+        }
+	if ($str =~ s/\s+AND\s+(?:\(\s*)?ROWNUM\s*<=\s*(\d+)(?:\s*\)\s*)?([^;]*)/ $2/is) {
+		$tmp_val = $1;
+        }
+	if ($str =~ s/\s+AND\s+(?:\(\s*)?ROWNUM\s*<\s*(\d+)(?:\s*\)\s*)?([^;]*)/ $2/is) {
+		$tmp_val = $1 - 1;
+        }
+	if ($tmp_val) {
+		if ($limit_clause =~ /LIMIT ALL OFFSET (\d+)/is) {
+			$tmp_val -= $1;
+			$limit_clause =~ s/LIMIT ALL/LIMIT $tmp_val/is;
+		} else {
+			$limit_clause = ' LIMIT ' . $tmp_val;
+		}
+	}
+
+	$str =~ s/(WHERE)\s+AND/$1/igs;
+
+	return ($str, $limit_clause);
 }
 
 sub replace_oracle_function
