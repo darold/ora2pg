@@ -585,7 +585,7 @@ sub plsql_to_plpgsql
 	$str =~ s/MDSYS\.//igs;
 
 	# Remove any unecessary parenthesis in code
-	$str = remove_unnecessary_parenthesis($str);
+	$str = remove_extra_parenthesis($str);
 
 	if ($class->{rewrite_outer_join}) {
 		# Replace call to right outer join obsolete syntax
@@ -598,11 +598,12 @@ sub plsql_to_plpgsql
 	return $str;
 }
 
-sub remove_unnecessary_parenthesis
+sub remove_extra_parenthesis
 {
 	my $str = shift;
 
 	while ($str =~ s/\(\s*\(([^\(\)]+)\)\s*\)/($1)/gs) {};
+	while ($str =~ s/\(\s*\(([^\(\)]+)\)\s*AND\s*\(([^\(\)]+)\)\s*\)/($1 AND $2)/igs) {};
 	while ($str =~ s/\(\s*\(\s*\(([^\(\)]+\)[^\(\)]+\([^\(\)]+)\)\s*\)\s*\)/(($1))/gs) {};
 
 	return $str;
