@@ -124,7 +124,7 @@
 .\" ========================================================================
 .\"
 .IX Title "ORA2PG 1"
-.TH ORA2PG 1 "2017-01-29" "perl v5.14.2" "User Contributed Perl Documentation"
+.TH ORA2PG 1 "2017-01-31" "perl v5.14.2" "User Contributed Perl Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -372,6 +372,8 @@ Usage: ora2pg [\-dhpqv \-\-estimate_cost \-\-dump_as_html] [\-\-option value]
 \&    \-e | \-\-exclude str: coma separated list of objects to exclude from export.
 \&                        Can be used with SHOW_COLUMN too.
 \&    \-h | \-\-help       : Print this short help.
+\&    \-g | \-\-grant_object type : extract privilege from the given object type.
+\&                        See possible values with GRANT_OBJECT configuration.
 \&    \-i | \-\-input file : File containing Oracle PL/SQL code to convert with
 \&                        no Oracle database connection initiated.
 \&    \-j | \-\-jobs num   : number of parallel process to send data to PostgreSQL.
@@ -1087,6 +1089,17 @@ statement. If export type is \s-1COPY\s0 or \s-1INSERT\s0, the corresponding dat
 exported.
 .Sp
 See chapter \*(L"Exporting views as PostgreSQL table\*(R" for more details.
+.IP "\s-1GRANT_OBJECT\s0" 4
+.IX Item "GRANT_OBJECT"
+When exporting GRANTs you can specify a comma separated  list of objects
+for which privilege will be exported. Default is export for all objects.
+Here are the possibles values \s-1TABLE\s0, \s-1VIEW\s0, \s-1MATERIALIZED\s0 \s-1VIEW\s0, \s-1SEQUENCE\s0,
+\&\s-1PROCEDURE\s0, \s-1FUNCTION\s0, \s-1PACKAGE\s0 \s-1BODY\s0, \s-1TYPE\s0, \s-1SYNONYM\s0, \s-1DIRECTORY\s0. Only one object
+type is allowed at a time. For example set it to \s-1TABLE\s0 if youA\*^\ just want to
+export privilege on tables. You can use the \-g option to overwrite it.
+.Sp
+When used this directive prevent the export of users unless it is set to \s-1USER\s0.
+In this case only users definitions are exported.
 .IP "\s-1WHERE\s0" 4
 .IX Item "WHERE"
 This directive allow you to specify a \s-1WHERE\s0 clause filter when dumping the

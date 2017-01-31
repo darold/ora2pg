@@ -238,6 +238,8 @@ Usage: ora2pg [-dhpqv --estimate_cost --dump_as_html] [--option value]
     -e | --exclude str: coma separated list of objects to exclude from export.
 			Can be used with SHOW_COLUMN too.
     -h | --help       : Print this short help.
+    -g | --grant_object type : extract privilege from the given object type.
+                        See possible values with GRANT_OBJECT configuration.
     -i | --input file : File containing Oracle PL/SQL code to convert with
 			no Oracle database connection initiated.
     -j | --jobs num   : number of parallel process to send data to PostgreSQL.
@@ -958,6 +960,18 @@ statement. If export type is COPY or INSERT, the corresponding data will be
 exported.
 
 See chapter "Exporting views as PostgreSQL table" for more details.
+
+=item GRANT_OBJECT
+
+When exporting GRANTs you can specify a comma separated  list of objects
+for which privilege will be exported. Default is export for all objects.
+Here are the possibles values TABLE, VIEW, MATERIALIZED VIEW, SEQUENCE,
+PROCEDURE, FUNCTION, PACKAGE BODY, TYPE, SYNONYM, DIRECTORY. Only one object
+type is allowed at a time. For example set it to TABLE if you just want to
+export privilege on tables. You can use the -g option to overwrite it.
+
+When used this directive prevent the export of users unless it is set to USER.
+In this case only users definitions are exported.
 
 =item WHERE
 

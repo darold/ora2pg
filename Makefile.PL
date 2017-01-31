@@ -209,6 +209,16 @@ DISABLE_COMMENT         0
 # If export type is COPY or INSERT, the corresponding data will be exported.
 #VIEW_AS_TABLE	VIEW_NAME
 
+# When exporting GRANTs you can specify a comma separated  list of objects
+# for which privilege will be exported. Default is export for all objects.
+# Here are the possibles values TABLE, VIEW, MATERIALIZED VIEW, SEQUENCE,
+# PROCEDURE, FUNCTION, PACKAGE BODY, TYPE, SYNONYM, DIRECTORY. Only one object
+# type is allowed at a time. For example set it to TABLE if you just want to
+# export privilege on tables. You can use the -g option to overwrite it.
+# When used this directive prevent the export of users unless it is set to
+# USER. In this case only users definitions are exported.
+#GRANT_OBJECT    TABLE
+
 # By default Ora2Pg will export your external table as file_fdw tables. If
 # you don't want to export those tables at all, set the directive to 0.
 EXTERNAL_TO_FDW		1

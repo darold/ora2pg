@@ -788,8 +788,11 @@ sub _init
 	$self->{idxcomment} = 0;
 	$self->{standard_conforming_strings} = 1;
 	$self->{create_schema} = 1;
+
+	# Init some arrays
 	$self->{external_table} = ();
 	$self->{function_list} = ();
+	$self->{grant_object} = '';
 
 	# Used to precise if we need to prefix partition tablename with main tablename
 	$self->{prefix_partition} = 0;
@@ -828,8 +831,6 @@ sub _init
 			$self->{limited} = $AConfig{ALLOW};
 		} elsif (lc($k) eq 'exclude') {
 			$self->{excluded} = $AConfig{EXCLUDE};
-		} elsif (lc($k) eq 'view_as_table') {
-			$self->{view_as_table} = $AConfig{VIEW_AS_TABLE};
 		} else {
 			$self->{lc($k)} = $AConfig{$k};
 		}
@@ -841,6 +842,11 @@ sub _init
 
 	# Set default tablespace to exclude when using USE_TABLESPACE
 	push(@{$self->{default_tablespaces}}, 'TEMP', 'USERS','SYSTEM');
+
+	# Verify grant objects
+	if ($self->{type} eq 'GRANT' && $self->{grant_object}) {
+		die "FATAL: wrong object type in GRANT_OBJECTS directive.\n" if (!grep(/^$self->{grant_object}$/, 'USER', 'TABLE', 'VIEW', 'MATERIALIZED VIEW', 'SEQUENCE', 'PROCEDURE', 'FUNCTION', 'PACKAGE BODY', 'TYPE', 'SYNONYM', 'DIRECTORY'));
+	}
 
 	# Default boolean values
 	foreach my $k (keys %BOOLEAN_MAP) {
@@ -3459,6 +3465,10 @@ LANGUAGE plpgsql ;
 		if ($self->{input_file}) {
 			$self->read_grant_from_file();
 		}
+		
+		# Do not create privilege defintiion if object type is USER
+		delete $self->{grants} if ($self->{grant_object} && $self->{grant_object} eq 'USER');
+
 		# Add privilege definition
 		foreach my $table (sort {"$self->{grants}{$a}{type}.$a" cmp "$self->{grants}{$b}{type}.$b" } keys %{$self->{grants}}) {
 			my $realtable = lc($table);
@@ -3525,7 +3535,7 @@ LANGUAGE plpgsql ;
 					$usr = "\"$usr\"";
 				}
 				if ($self->{grants}{$table}{type} ne 'PACKAGE BODY') {
-					if (grep(/^$self->{grants}{$table}{type}$/, 'FUNCTION', 'SEQUENCE','SCHEMA','TABLESPACE')) {
+					if (grep(/^$self->{grants}{$table}{type}$/, 'FUNCTION', 'SEQUENCE','SCHEMA','TABLESPACE', 'TYPE')) {
 						$grants .= "GRANT $agrants ON $obj $realtable TO $usr$wgrantoption;\n";
 					} else {
 						$grants .= "GRANT $agrants ON $realtable TO $usr$wgrantoption;\n";
@@ -3537,6 +3547,9 @@ LANGUAGE plpgsql ;
 			}
 			$grants .= "\n";
 		}
+
+		# Do not create user when privilege on an object type is asked
+		delete $self->{roles} if ($self->{grant_object} && $self->{grant_object} ne 'USER');
 
 		foreach my $r (@{$self->{roles}{owner}}, @{$self->{roles}{grantee}}) {
 			my $secret = 'change_my_secret';
@@ -7794,7 +7807,12 @@ sub _get_privilege
 	} else {
 		$str .= " WHERE b.GRANTOR NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
 	}
-	$str .= " AND b.TABLE_NAME=a.OBJECT_NAME AND a.OWNER=b.GRANTOR AND a.OBJECT_TYPE <> 'TYPE'";
+	$str .= " AND b.TABLE_NAME=a.OBJECT_NAME AND a.OWNER=b.GRANTOR";
+	if ($self->{grant_object} && $self->{grant_object} ne 'USER') {
+		$str .= " AND a.OBJECT_TYPE = '\U$self->{grant_object}\E'"; 
+	} else {
+		$str .= " AND a.OBJECT_TYPE <> 'TYPE'";
+	}
 	$str .= " " . $self->limit_to_objects('GRANT|TABLE|VIEW|FUNCTION|PROCEDURE|SEQUENCE', 'b.GRANTEE|b.TABLE_NAME|b.TABLE_NAME|b.TABLE_NAME|b.TABLE_NAME|b.TABLE_NAME');
 	
 	if (!$self->{export_invalid}) {
@@ -7830,6 +7848,11 @@ sub _get_privilege
 		$str .= " AND a.STATUS='VALID'";
 	}
 	$str .= " AND b.TABLE_NAME=a.OBJECT_NAME AND a.OWNER=b.GRANTOR AND a.OBJECT_TYPE <> 'TYPE'";
+	if ($self->{grant_object} && $self->{grant_object} ne 'USER') {
+		$str .= " AND a.OBJECT_TYPE = '\U$self->{grant_object}\E'"; 
+	} else {
+		$str .= " AND a.OBJECT_TYPE <> 'TYPE'";
+	}
 	$str .= " " . $self->limit_to_objects('GRANT|TABLE|VIEW|FUNCTION|PROCEDURE|SEQUENCE', 'b.GRANTEE|b.TABLE_NAME|b.TABLE_NAME|b.TABLE_NAME|b.TABLE_NAME|b.TABLE_NAME');
 
 	$sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -9746,6 +9769,7 @@ sub read_config
 					$AConfig{"skip_\L$s\E"} = 1;
 				}
 			}
+		# Should be a else statement but keep the list up to date to memorize the directives full list
 		} elsif (!grep(/^$var$/, 'TABLES', 'ALLOW', 'MODIFY_STRUCT', 'REPLACE_TABLES', 'REPLACE_COLS', 'WHERE', 'EXCLUDE','VIEW_AS_TABLE','ORA_RESERVED_WORDS','SYSUSERS','REPLACE_AS_BOOLEAN','BOOLEAN_VALUES','MODIFY_TYPE','DEFINED_PK', 'ALLOW_PARTITION','REPLACE_QUERY','FKEY_ADD_UPDATE','DELETE')) {
 			$AConfig{$var} = $val;
 		} elsif ($var eq 'VIEW_AS_TABLE') {

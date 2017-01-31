@@ -78,6 +78,7 @@ my $PG_USER = '';
 my $PG_PWD = '';
 my $COUNT_ROWS = 0;
 my $DATA_TYPE = '';
+my $GRANT_OBJECT = '';
 
 my @SCHEMA_ARRAY  = qw( TABLE PACKAGE VIEW GRANT SEQUENCE TRIGGER FUNCTION PROCEDURE TABLESPACE PARTITION TYPE MVIEW DBLINK SYNONYM DIRECTORY );
 my @EXTERNAL_ARRAY  = qw( KETTLE FDW );
@@ -90,6 +91,8 @@ my @CAPABILITIES  = qw( QUERY LOAD );
 my @MYSQL_SCHEMA_ARRAY  = qw( TABLE VIEW GRANT TRIGGER FUNCTION PROCEDURE PARTITION DBLINK );
 my @MYSQL_SOURCES_ARRAY = qw( VIEW TRIGGER FUNCTION PROCEDURE PARTITION );
 
+my @GRANT_OBJECTS_ARRAY = ('USER','TABLE','VIEW','MATERIALIZED VIEW','SEQUENCE','PROCEDURE','FUNCTION','PACKAGE BODY','TYPE','SYNONYM','DIRECTORY');
+
 my $TMP_DIR      = File::Spec->tmpdir() || '/tmp';
 
 # Collect command line arguments
@@ -100,6 +103,7 @@ GetOptions (
         'd|debug!' => \$DEBUG,
         'D|data_type=s' => \$DATA_TYPE,
 	'e|exclude=s' => \$EXCLUDE,
+	'g|grant_object=s' => \$GRANT_OBJECT,
         'h|help!' => \$HELP,
 	'i|input_file=s' => \$INPUT_FILE,
 	'j|jobs=i' => \$THREAD_COUNT,
@@ -163,6 +167,14 @@ if ($CREATE_PROJECT) {
 	print STDERR "Creating project $CREATE_PROJECT.\n";
 	&create_project($CREATE_PROJECT, $PROJECT_BASE);
 	exit 0;
+}
+
+if ($GRANT_OBJECT && !grep(/^$GRANT_OBJECT$/, @GRANT_OBJECTS_ARRAY)) {
+	print "FATAL: invalid grant object type in -g option. See GRAND_OBJECT configuration directive.\n";
+	exit 1;
+} elsif ($GRANT_OBJECT && uc($EXPORT_TYPE) ne 'GRANT') {
+	print "FATAL: option -g can only be used with GRANT action.\n";
+	exit 1;
 }
 
 # Clean temporary files
@@ -274,6 +286,7 @@ my $schema = new Ora2Pg (
 	pg_pwd => $PG_PWD,
 	count_rows => $COUNT_ROWS,
 	data_type => $DATA_TYPE,
+	grant_object => $GRANT_OBJECT,
 );
 
 
@@ -316,6 +329,8 @@ Usage: ora2pg [-dhpqv --estimate_cost --dump_as_html] [--option value]
     -e | --exclude str: coma separated list of objects to exclude from export.
 			Can be used with SHOW_COLUMN too.
     -h | --help       : Print this short help.
+    -g | --grant_object type : extract privilege from the given object type.
+			See possible values with GRANT_OBJECT configuration.
     -i | --input file : File containing Oracle PL/SQL code to convert with
 			no Oracle database connection initiated.
     -j | --jobs num   : number of parallel process to send data to PostgreSQL.
