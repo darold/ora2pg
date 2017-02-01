@@ -5616,6 +5616,7 @@ CREATE TRIGGER ${table}_trigger_insert
 		}
 		my $serial_sequence = '';
 		my $enum_str = '';
+		my @skip_column_check = ();
 		if (exists $self->{tables}{$table}{column_info}) {
 			$sql_output .= "\nCREATE$foreign $obj_type $tbname (\n";
 
@@ -5690,11 +5691,12 @@ CREATE TRIGGER ${table}_trigger_insert
 				$typlen ||= $f->[2];
 				if (grep(/^$f->[0]$/i, @{$self->{'replace_as_boolean'}{uc($table)}})) {
 					$type = 'boolean';
+					push(@skip_column_check, $fname);
 				# Check if this column should be replaced by a boolean following type/precision
 				} elsif (exists $self->{'replace_as_boolean'}{uc($f->[1])} && ($self->{'replace_as_boolean'}{uc($f->[1])}[0] == $typlen)) {
 					$type = 'boolean';
+					push(@skip_column_check, $fname);
 				}
-
 				if ($f->[1] =~ /SDO_GEOMETRY/) {
 					# Set the dimension, array is (srid, dims, gtype)
 					my $suffix = '';
@@ -5847,7 +5849,7 @@ CREATE TRIGGER ${table}_trigger_insert
 			# Set the unique (and primary) key definition 
 			$constraints .= $self->_create_unique_keys($table, $self->{tables}{$table}{unique_key});
 			# Set the check constraint definition 
-			$constraints .= $self->_create_check_constraint($table, $self->{tables}{$table}{check_constraint},$self->{tables}{$table}{field_name});
+			$constraints .= $self->_create_check_constraint($table, $self->{tables}{$table}{check_constraint},$self->{tables}{$table}{field_name}, @skip_column_check);
 			if (!$self->{file_per_constraint}) {
 				$sql_output .= $constraints;
 				$constraints = '';
@@ -6649,7 +6651,7 @@ This function return SQL code to create the check constraints of a table
 =cut
 sub _create_check_constraint
 {
-	my ($self, $table, $check_constraint, $field_name) = @_;
+	my ($self, $table, $check_constraint, $field_name, @skip_column_check) = @_;
 
 	my $tbsaved = $table;
 	$table = $self->get_replaced_tbname($table);
@@ -6685,7 +6687,17 @@ sub _create_check_constraint
 				}
 				$k = lc($k);
 			}
-			$out .= "ALTER TABLE $table ADD CONSTRAINT $k CHECK ($chkconstraint)$validate;\n";
+
+			# If the column has been converted as a boolean do not export the constraint
+			my $converted_as_boolean = 0;
+			foreach my $c (@$field_name) {
+				if (grep(/^$c$/i, @skip_column_check) && $chkconstraint =~ /\b$c\b/i) {
+					$converted_as_boolean = 1;
+				}
+			}
+			if (!$converted_as_boolean) {
+				$out .= "ALTER TABLE $table ADD CONSTRAINT $k CHECK ($chkconstraint)$validate;\n";
+			}
 		}
 	}
 
