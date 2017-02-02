@@ -387,6 +387,7 @@ sub extract_function_code
 		my $fct_code = $2;
 		my $space = '';
 		$space = ' ' if (grep (/^$fct_name$/i, 'FROM', 'AS', 'VALUES', 'DEFAULT', 'OR', 'AND', 'IN'));
+
                 # recursively replace function
                 $class->{single_fct_call}{$idx} = $fct_name . $space . '(' . $fct_code . ')';
                 $code = extract_function_code($class, $code, ++$idx);
@@ -1861,10 +1862,14 @@ sub replace_right_outer_join
 			if (scalar keys %final_from_clause == 0) {
 				$from_clause = $table_decl1;
 				$final_from_clause{"$lbl1;$lbl2"}{position} = $i;
-				push(@{$final_from_clause{"$lbl1;$lbl2"}{clause}{$table_decl2}}, "$l $o $r");
+				push(@{$final_from_clause{"$lbl1;$lbl2"}{clause}{$table_decl2}{predicat}}, "$l $o $r");
 			} else {
 				$final_from_clause{"$lbl1;$lbl2"}{position} = $i;
-				push(@{$final_from_clause{"$lbl1;$lbl2"}{clause}{$table_decl1}}, "$l $o $r");
+				push(@{$final_from_clause{"$lbl1;$lbl2"}{clause}{$table_decl1}{predicat}}, "$l $o $r");
+                                if (!exists $final_from_clause{"$lbl1;$lbl2"}{clause}{$table_decl1}{right}) {
+                                        $final_from_clause{"$lbl1;$lbl2"}{clause}{$table_decl1}{right} = $table_decl2;
+                                }
+
 			}
 		}
 		$str = $start_query . join(' ', @predicat) . ' ' . $end_query;
@@ -1874,10 +1879,14 @@ sub replace_right_outer_join
 		$str =~ s/WHERE\s+(AND|OR)\s+/WHERE /is;
 		$str =~ s/WHERE[\s;]+$//i;
 		$str =~ s/(\s+)WHERE\s+(ORDER|GROUP)\s+BY/$1$2 BY/is;
+		$str =~ s/\s+WHERE(\s+)/\nWHERE$1/igs;
 
 		foreach my $t (sort { $final_from_clause{$a}{position} <=> $final_from_clause{$b}{position} } keys %final_from_clause) {
 			foreach my $j (sort keys %{$final_from_clause{$t}{clause}}) {
-				$from_clause .= " RIGHT OUTER JOIN $j ON (" .  join(' AND ', @{$final_from_clause{$t}{clause}{$j}}) . ")"; 
+				if ($from_clause !~ /\b$final_from_clause{$t}{clause}{$j}{right}\b/) {
+					$from_clause .= "\n,$final_from_clause{$t}{clause}{$j}{right}";
+				}
+				$from_clause .= "\nRIGHT OUTER JOIN $j ON (" .  join(' AND ', @{$final_from_clause{$t}{clause}{$j}{predicat}}) . ")"; 
 			}
 		}
 
@@ -1886,7 +1895,7 @@ sub replace_right_outer_join
 			my $table_decl = "$from_clause_list{$a}";
 			$table_decl .= " $a" if ($a ne $from_clause_list{$a});
 			if ($from_clause !~ /\b$table_decl\b/) {
-				#$from_clause = "$table_decl, " . $from_clause;
+				$from_clause = "$table_decl, " . $from_clause;
 			}
 		}
 
@@ -1976,10 +1985,13 @@ sub replace_left_outer_join
 			if (scalar keys %final_from_clause == 0) {
 				$from_clause = $table_decl1;
 				$final_from_clause{"$lbl1;$lbl2"}{position} = $i;
-				push(@{$final_from_clause{"$lbl1;$lbl2"}{clause}{$table_decl2}}, "$l $o $r");
+				push(@{$final_from_clause{"$lbl1;$lbl2"}{clause}{$table_decl2}{predicat}}, "$l $o $r");
 			} else {
 				$final_from_clause{"$lbl1;$lbl2"}{position} = $i;
-				push(@{$final_from_clause{"$lbl1;$lbl2"}{clause}{$table_decl2}}, "$l $o $r");
+				push(@{$final_from_clause{"$lbl1;$lbl2"}{clause}{$table_decl2}{predicat}}, "$l $o $r");
+				if (!exists $final_from_clause{"$lbl1;$lbl2"}{clause}{$table_decl2}{left}) {
+					$final_from_clause{"$lbl1;$lbl2"}{clause}{$table_decl2}{left} = $table_decl1;
+				}
 			}
 		}
 		$str = $start_query . join(' ', @predicat) . ' ' . $end_query;
@@ -1989,10 +2001,14 @@ sub replace_left_outer_join
 		$str =~ s/WHERE\s+(AND|OR)\s+/WHERE /is;
 		$str =~ s/WHERE[\s;]+$//i;
 		$str =~ s/(\s+)WHERE\s+(ORDER|GROUP)\s+BY/$1$2 BY/is;
+		$str =~ s/\s+WHERE(\s+)/\nWHERE$1/igs;
 
 		foreach my $t (sort { $final_from_clause{$a}{position} <=> $final_from_clause{$b}{position} } keys %final_from_clause) {
 			foreach my $j (sort keys %{$final_from_clause{$t}{clause}}) {
-				$from_clause .= " LEFT OUTER JOIN $j ON (" .  join(' AND ', @{$final_from_clause{$t}{clause}{$j}}) . ")"; 
+				if ($from_clause !~ /\b$final_from_clause{$t}{clause}{$j}{left}\b/) {
+					$from_clause .= "\n,$final_from_clause{$t}{clause}{$j}{left}";
+				}
+				$from_clause .= "\nLEFT OUTER JOIN $j ON (" .  join(' AND ', @{$final_from_clause{$t}{clause}{$j}{predicat}}) . ")"; 
 			}
 		}
 
@@ -2001,7 +2017,7 @@ sub replace_left_outer_join
 			my $table_decl = "$from_clause_list{$a}";
 			$table_decl .= " $a" if ($a ne $from_clause_list{$a});
 			if ($from_clause !~ /\b$table_decl\b/) {
-				#$from_clause = "$table_decl, " . $from_clause;
+				$from_clause = "$table_decl, " . $from_clause;
 			}
 		}
 
