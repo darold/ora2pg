@@ -871,7 +871,7 @@ sub replace_decode
 			}
 		}
 		$case_str .= 'END';
-		$str =~ s/DECODE\%\%/$case_str/s;
+		$str =~ s/DECODE\%\%/$case_str /s;
 	}
 
 	return $str;
