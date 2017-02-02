@@ -621,11 +621,17 @@ sub plsql_to_plpgsql
 	$str = remove_extra_parenthesis($str);
 
 	if ($class->{rewrite_outer_join}) {
-		# Replace call to right outer join obsolete syntax
-		$str = replace_right_outer_join($str);
+		my @queries = split(/\b(UNION\s+ALL|UNION)\b/i, $str);
+		for (my $i = 0; $i <= $#queries; $i+=2) {
+			# Replace call to right outer join obsolete syntax
+			$queries[$i] = replace_right_outer_join($queries[$i]);
 
-		# Replace call to left outer join obsolete syntax
-		$str = replace_left_outer_join($str);
+			# Replace call to left outer join obsolete syntax
+			$queries[$i] = replace_left_outer_join($queries[$i]);
+
+		}
+		$str = join("\n", @queries);
+		$str .= ';' if ($str !~ /;\s*$/)
 	}
 
 	return $str;
@@ -1866,7 +1872,7 @@ sub replace_right_outer_join
 		# Remove part from the WHERE clause that will be moved into the FROM clause
 		$str =~ s/\s*(AND\s+)?WHERE_CLAUSE\d+ / /igs;
 		$str =~ s/WHERE\s+(AND|OR)\s+/WHERE /is;
-		$str =~ s/WHERE[\s;]+$/;/i;
+		$str =~ s/WHERE[\s;]+$//i;
 		$str =~ s/(\s+)WHERE\s+(ORDER|GROUP)\s+BY/$1$2 BY/is;
 
 		foreach my $t (sort { $final_from_clause{$a}{position} <=> $final_from_clause{$b}{position} } keys %final_from_clause) {
@@ -1885,7 +1891,6 @@ sub replace_right_outer_join
 		}
 
 		$str =~ s/FROM FROM_CLAUSE/FROM $from_clause/s;
-		$str =~ s/[;]*\s*$/;/s;
 	}
 
 	return $str;
@@ -1897,10 +1902,12 @@ sub replace_left_outer_join
 
 	# process simple form of outer join
 	my $nbouter = $str =~ /((?:!=|<>|>=|<=|=|>|<|NOT LIKE|LIKE)\s*[^\s]+\s*\(\+\))/igs;
+
 	# Check that we don't have right outer join too
 	if ($nbouter >= 1 && $str !~ /\(\+\)\s*(?:!=|<>|>=|<=|=|>|<|NOT LIKE|LIKE)/i) {
 		# Extract the FROM clause
 		$str =~ s/(.*)\bFROM\s+(.*?)\s+WHERE\s+(.*?)$/$1FROM FROM_CLAUSE WHERE $3/is;
+
 		my $from_clause = $2;
 		$from_clause =~ s/"//gs;
 
@@ -1972,7 +1979,7 @@ sub replace_left_outer_join
 				push(@{$final_from_clause{"$lbl1;$lbl2"}{clause}{$table_decl2}}, "$l $o $r");
 			} else {
 				$final_from_clause{"$lbl1;$lbl2"}{position} = $i;
-				push(@{$final_from_clause{"$lbl1;$lbl2"}{clause}{$table_decl1}}, "$l $o $r");
+				push(@{$final_from_clause{"$lbl1;$lbl2"}{clause}{$table_decl2}}, "$l $o $r");
 			}
 		}
 		$str = $start_query . join(' ', @predicat) . ' ' . $end_query;
@@ -1980,7 +1987,7 @@ sub replace_left_outer_join
 		# Remove part from the WHERE clause that will be moved into the FROM clause
 		$str =~ s/\s*(AND\s+)?WHERE_CLAUSE\d+ / /igs;
 		$str =~ s/WHERE\s+(AND|OR)\s+/WHERE /is;
-		$str =~ s/WHERE[\s;]+$/;/i;
+		$str =~ s/WHERE[\s;]+$//i;
 		$str =~ s/(\s+)WHERE\s+(ORDER|GROUP)\s+BY/$1$2 BY/is;
 
 		foreach my $t (sort { $final_from_clause{$a}{position} <=> $final_from_clause{$b}{position} } keys %final_from_clause) {
@@ -1999,7 +2006,6 @@ sub replace_left_outer_join
 		}
 
 		$str =~ s/FROM FROM_CLAUSE/FROM $from_clause/s;
-		$str =~ s/[;]*\s*$/;/s;
 	}
 
 	return $str;
