@@ -672,6 +672,10 @@ sub extract_subqueries
 		} elsif ($sub_query && $c eq ')' && $idx == 0) {
 			$sub_query =~ s/^\(//;
 
+			my %sub_queries = ();
+			($sub_query, %sub_queries) = extract_subqueries($sub_query, $pos);
+			$sub_query =~ s/\%SUBQUERY(\d+)\%/$sub_queries{$1}/gs;
+
 			# Replace call to right outer join obsolete syntax
 			$sub_query = replace_right_outer_join($sub_query);
 
