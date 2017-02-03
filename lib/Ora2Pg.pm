@@ -10417,8 +10417,12 @@ END;
 
 	# Add the return part of the function declaration
 	$function .= $func_return;
-
-	$fct_detail{immutable} = ' IMMUTABLE' if ($fct_detail{immutable});
+	if ($fct_detail{immutable}) {
+		$fct_detail{immutable} = ' IMMUTABLE';
+	} elsif ($plsql =~  /^FUNCTION/) {
+		# Oracle function can't modify data so always mark them as stable
+		$fct_detail{immutable} = ' STABLE';
+	}
 	if ($language && ($language !~ /SQL/i)) {
 		$function .= "AS '$fct_detail{library}', '$fct_detail{library_fct}'\nLANGUAGE $language$fct_detail{immutable};\n";
 		$function =~ s/AS \$body\$//;
