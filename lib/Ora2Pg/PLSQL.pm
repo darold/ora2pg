@@ -614,9 +614,9 @@ sub plsql_to_plpgsql
 		my @queries = split(/\b(UNION\s+ALL|UNION)\b/i, $statements[$i]);
 		for (my $j = 0; $j <= $#queries; $j+=2) {
 			my %subqueries = ();
-			my $limit = '';
+			$class->{limit_clause} = '';
 			my $x = 0;
-			($queries[$j], %subqueries) = extract_subqueries($queries[$j], \$x);
+			($queries[$j], %subqueries) = extract_subqueries($class, $queries[$j], \$x);
 
 			# Restore (+) outer join syntax
 			foreach my $k (keys %subqueries) {
@@ -631,12 +631,13 @@ sub plsql_to_plpgsql
 			$queries[$j] = replace_left_outer_join($queries[$j]);
 
 			# Replace LIMIT into the main query
-			($queries[$j], $limit) = replace_rownum_with_limit($queries[$j]);
+			$queries[$j] = replace_rownum_with_limit($class, $queries[$j]);
 
 			$queries[$j] =~ s/\%SUBQUERY(\d+)\%/$subqueries{$1}/gs;
-			$queries[$j] .= $limit;
+			$queries[$j] .= $class->{limit_clause};
 			$queries[$j] =~ s/\s+(?:WHERE|AND)(\s+LIMIT\s+)/$1/is;
 		}
+		map { s/\s+$//; } @queries;
 		$statements[$i] = join("\n", @queries);
 	}
 	$str = join(';', @statements);
@@ -657,7 +658,7 @@ sub remove_extra_parenthesis
 
 sub extract_subqueries
 {
-	my ($query, $pos) = @_;
+	my ($class, $query, $pos) = @_;
 
 	my %queries = ();
 	my $out_query = '';
@@ -673,7 +674,7 @@ sub extract_subqueries
 			$sub_query =~ s/^\(//;
 
 			my %sub_queries = ();
-			($sub_query, %sub_queries) = extract_subqueries($sub_query, $pos);
+			($sub_query, %sub_queries) = extract_subqueries($class, $sub_query, $pos);
 			$sub_query =~ s/\%SUBQUERY(\d+)\%/$sub_queries{$1}/gs;
 
 			# Replace call to right outer join obsolete syntax
@@ -682,14 +683,12 @@ sub extract_subqueries
 			# Replace call to left outer join obsolete syntax
 			$sub_query = replace_left_outer_join($sub_query);
 
-			my $limit = '';
-			($queries{$$pos},  $limit) = replace_rownum_with_limit($sub_query);
-			if ($limit) {
-				if ($sub_query =~ /\bSELECT\b/is) {
-					$queries{$$pos} .= $limit;
-				} else {
-					$out_limit = $limit;
-				}
+			# Replace LIMIT into the sub query if this is a select query
+			# otherwise the limit clause is forwarded to the parent call
+			$queries{$$pos} = replace_rownum_with_limit($class, $sub_query);
+			if ($class->{limit_clause} && $sub_query =~ /\bSELECT\b/is) {
+				$queries{$$pos} .= $class->{limit_clause};
+				$class->{limit_clause} = '';
 			}
 			$out_query .= "(\%SUBQUERY$$pos\%)";
 			$sub_query = '';
@@ -707,49 +706,44 @@ sub extract_subqueries
 		# Replace call to left outer join obsolete syntax
 		$sub_query = replace_left_outer_join($sub_query);
 
-		my $limit = '';
-		($queries{$$pos},  $limit) = replace_rownum_with_limit($sub_query);
-		if ($limit) {
-			if ($sub_query =~ /\bSELECT\b/is) {
-				$queries{$$pos} .= $limit;
-			} else {
-				$out_limit = $limit;
-			}
+		# Replace LIMIT into the sub query if this is a select query
+		# otherwise the limit clause is forwarded to the parent call
+		$queries{$$pos} = replace_rownum_with_limit($class, $sub_query);
+		if ($class->{limit_clause} && $sub_query =~ /\bSELECT\b/is) {
+			$queries{$$pos} .= $class->{limit_clause};
+			$class->{limit_clause} = '';
 		}
 		$out_query .= "(\%SUBQUERY$$pos\%";
 		$sub_query = '';
 		$$pos++;
 	}
-	$out_query =~ s/\s*$/$out_limit/;
 
-	return $out_query , %queries;
+	return $out_query, %queries;
 }
 
 sub replace_rownum_with_limit
 {
-	my $str = shift;
-
-	my $limit_clause = '';
+	my ($class, $str) = @_;
 
         if ($str =~ s/\s+(WHERE)\s+(?:\(\s*)?ROWNUM\s*=\s*(\d+)(\s*\)\s*)?([^;]*)/ $1 $3$4/is) {
-		$limit_clause = ' LIMIT 1 OFFSET ' . ($2-1);
+		$class->{limit_clause} = ' LIMIT 1 OFFSET ' . ($2-1);
 		
         }
 	if ($str =~ s/\s+AND\s+(?:\(\s*)?ROWNUM\s*=\s*(\d+)(\s*\)\s*)?([^;]*)/ $2$3/is) {
-		$limit_clause = ' LIMIT 1 OFFSET ' . ($1-1);
+		$class->{limit_clause} = ' LIMIT 1 OFFSET ' . ($1-1);
         }
 
 	if ($str =~ s/\s+(WHERE)\s+(?:\(\s*)?ROWNUM\s*>=\s*(\d+)(\s*\)\s*)?([^;]*)/ $1 $3$4/is) {
-		$limit_clause = ' LIMIT ALL OFFSET ' . ($2-1);
+		$class->{limit_clause} = ' LIMIT ALL OFFSET ' . ($2-1);
         }
 	if ($str =~ s/\s+(WHERE)\s+(?:\(\s*)?ROWNUM\s*>\s*(\d+)(\s*\)\s*)?([^;]*)/ $1 $3$4/is) {
-		$limit_clause = ' LIMIT ALL OFFSET ' . $2;
+		$class->{limit_clause} = ' LIMIT ALL OFFSET ' . $2;
 	}
 	if ($str =~ s/\s+AND\s+(?:\(\s*)?ROWNUM\s*>=\s*(\d+)(\s*\)\s*)?([^;]*)/ $2$3/is) {
-		$limit_clause = ' LIMIT ALL OFFSET ' . ($1-1);
+		$class->{limit_clause} = ' LIMIT ALL OFFSET ' . ($1-1);
         }
 	if ($str =~ s/\s+AND\s+(?:\(\s*)?ROWNUM\s*>\s*(\d+)(\s*\)\s*)?([^;]*)/ $2$3/is) {
-		$limit_clause = ' LIMIT ALL OFFSET ' . $1;
+		$class->{limit_clause} = ' LIMIT ALL OFFSET ' . $1;
 	}
 
 	my $tmp_val = '';
@@ -766,17 +760,17 @@ sub replace_rownum_with_limit
 		$tmp_val = $1 - 1;
         }
 	if ($tmp_val) {
-		if ($limit_clause =~ /LIMIT ALL OFFSET (\d+)/is) {
+		if ($class->{limit_clause} =~ /LIMIT ALL OFFSET (\d+)/is) {
 			$tmp_val -= $1;
-			$limit_clause =~ s/LIMIT ALL/LIMIT $tmp_val/is;
+			$class->{limit_clause} =~ s/LIMIT ALL/LIMIT $tmp_val/is;
 		} else {
-			$limit_clause = ' LIMIT ' . $tmp_val;
+			$class->{limit_clause} = ' LIMIT ' . $tmp_val;
 		}
 	}
 
 	$str =~ s/(WHERE)\s+AND/$1/igs;
 
-	return ($str, $limit_clause);
+	return $str;
 }
 
 sub replace_oracle_function
@@ -1860,7 +1854,7 @@ sub replace_right_outer_join
 		if ($str =~ s/\s+((?:GROUP BY|ORDER BY).*)$//is) {
 			$end_query = $1;
 		}
-		my @predicat = split(/\s+(AND|OR)\s+/i, $str);
+		my @predicat = split(/\s*\b(AND|OR)\b\s*/i, $str);
 		my $id = 0;
 		# Process only predicat with a obsolete join syntax (+) for now
 		for (my $i = 0; $i <= $#predicat; $i+=2) {
@@ -1872,7 +1866,7 @@ sub replace_right_outer_join
 			$where_clause =~ s/[\s;]+$//s;
 			$where_clause =~ s/\s*\(\+\)//gs;
 			# Split the predicat to retrieve left part, operator and right part
-			my ($l, $o, $r) = split(/\s*(=|LIKE)\s*/i, lc($where_clause));
+			my ($l, $o, $r) = split(/\s*(=|LIKE)\s*/i, $where_clause);
 			# When the part of the clause are not single fields move them
 			# at their places in the WHERE clause and go to next predicat
 			if (($l !~ /^[^\.]+\.[^\s]+$/) || ($r !~ /^[^\.]+\.[^\s]+$/)) {
@@ -1884,17 +1878,17 @@ sub replace_right_outer_join
 			my $lbl1 = '';
 			my $table_decl1 = $l;
 			if ($l =~ /^([^\.]+)\..*/) {
-				$lbl1 = $1;
-				$table_decl1 = $from_clause_list{$1};
-				$table_decl1 .= " $1" if ($1 ne $from_clause_list{$1});
+				$lbl1 = lc($1);
+				$table_decl1 = $from_clause_list{$lbl1};
+				$table_decl1 .= " $lbl1" if ($lbl1 ne $from_clause_list{$lbl1});
 			}
 			# Extract the tablename part of the right clause
 			my $lbl2 = '';
 			my $table_decl2 = $r;
 			if ($r =~ /^([^\.]+)\..*/) {
-				$lbl2 = $1;
-				$table_decl2 = $from_clause_list{$1};
-				$table_decl2 .= " $1" if ($1 ne $from_clause_list{$1});
+				$lbl2 = lc($1);
+				$table_decl2 = $from_clause_list{$lbl2};
+				$table_decl2 .= " $lbl2" if ($lbl2 ne $from_clause_list{$lbl2});
 			}
 			# When this is the first join parse add the left tablename
 			# first then the outer join with the right table
@@ -1983,7 +1977,7 @@ sub replace_left_outer_join
 		if ($str =~ s/\s+((?:GROUP BY|ORDER BY).*)$//is) {
 			$end_query = $1;
 		}
-		my @predicat = split(/\s+(AND|OR)\s+/i, $str);
+		my @predicat = split(/\s*\b(AND|OR)\b\s*/i, $str);
 		my $id = 0;
 		# Process only predicat with a obsolete join syntax (+) for now
 		for (my $i = 0; $i <= $#predicat; $i+=2) {
@@ -1995,10 +1989,10 @@ sub replace_left_outer_join
 			$where_clause =~ s/[\s;]+$//s;
 			$where_clause =~ s/\s*\(\+\)//gs;
 			# Split the predicat to retrieve left part, operator and right part
-			my ($l, $o, $r) = split(/\s*(=|LIKE)\s*/i, lc($where_clause));
+			my ($l, $o, $r) = split(/\s*(=|LIKE)\s*/i, $where_clause);
 			# When the part of the clause are not single fields move them
 			# at their places in the WHERE clause and go to next predicat
-			if (($l !~ /^[^\.]+\.[^\s]+$/) || ($r !~ /^[^\.]+\.[^\s]+$/)) {
+			if (($l !~ /^[^\.]+\.[^\s]+$/s) || ($r !~ /^[^\.]+\.[^\s]+$/s)) {
 				$predicat[$i] =~ s/WHERE_CLAUSE$id / $l $o $r /s;
 				next;
 			}
@@ -2007,18 +2001,19 @@ sub replace_left_outer_join
 			my $lbl1 = '';
 			my $table_decl1 = $l;
 			if ($l =~ /^([^\.]+)\..*/) {
-				$lbl1 = $1;
-				$table_decl1 = $from_clause_list{$1};
-				$table_decl1 .= " $1" if ($1 ne $from_clause_list{$1});
+				$lbl1 = lc($1);
+				$table_decl1 = $from_clause_list{$lbl1};
+				$table_decl1 .= " $lbl1" if ($lbl1 ne $from_clause_list{$1});
 			}
 			# Extract the tablename part of the right clause
 			my $lbl2 = '';
 			my $table_decl2 = $r;
 			if ($r =~ /^([^\.]+)\..*/) {
-				$lbl2 = $1;
-				$table_decl2 = $from_clause_list{$1};
-				$table_decl2 .= " $1" if ($1 ne $from_clause_list{$1});
+				$lbl2 = lc($1);
+				$table_decl2 = $from_clause_list{$lbl2};
+				$table_decl2 .= " $lbl2" if ($lbl2 ne $from_clause_list{$1});
 			}
+
 			# When this is the first join parse add the left tablename
 			# first then the outer join with the right table
 			if (scalar keys %final_from_clause == 0) {
