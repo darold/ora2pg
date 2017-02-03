@@ -537,23 +537,6 @@ sub plsql_to_plpgsql
 	# Remove the function name repetion at end
 	$str =~ s/\bEND\s+(?!IF|LOOP|CASE|INTO|FROM|END|,)[a-z0-9_"]+(\s*[;]?)/END$1$2/igs;
 
-	####
-	# Replace ending ROWNUM with LIMIT
-	####
-	# Catch potential subquery first and replace rownum in subqueries
-	my @statements = split(/;/, $str);
-	for ( my $i = 0; $i <= $#statements; $i++ ) {
-		my %subqueries = ();
-		my $limit = '';
-		my $j = 0;
-		($statements[$i], %subqueries) = extract_subqueries($statements[$i], \$j);
-		($statements[$i], $limit) = replace_rownum_with_limit($statements[$i]);
-		$statements[$i] =~ s/\%SUBQUERY(\d+)\%/$subqueries{$1}/gs;
-		$statements[$i] .= $limit;
-		$statements[$i] =~ s/\s+(?:WHERE|AND)(\s+LIMIT\s+)/$1/is;
-	}
-	$str = join(';', @statements);
-
 	# Rewrite comment in CASE between WHEN and THEN
 	$str =~ s/(\s*)(WHEN\s+[^\s]+\s*)(ORA2PG_COMMENT\d+\%)(\s*THEN)/$1$3$1$2$4/igs;
 
@@ -621,19 +604,42 @@ sub plsql_to_plpgsql
 	# Remove any unecessary parenthesis in code
 	$str = remove_extra_parenthesis($str);
 
-	if ($class->{rewrite_outer_join}) {
-		my @queries = split(/\b(UNION\s+ALL|UNION)\b/i, $str);
-		for (my $i = 0; $i <= $#queries; $i+=2) {
+	####
+	# Replace ending ROWNUM with LIMIT and (+) outer join
+	####
+	# Catch potential subquery first and replace rownum in subqueries
+	my @statements = split(/;/, $str);
+	for ( my $i = 0; $i <= $#statements; $i++ ) {
+		# Divise code into UNION or other keyword marking a new query level
+		my @queries = split(/\b(UNION\s+ALL|UNION)\b/i, $statements[$i]);
+		for (my $j = 0; $j <= $#queries; $j+=2) {
+			my %subqueries = ();
+			my $limit = '';
+			my $x = 0;
+			($queries[$j], %subqueries) = extract_subqueries($queries[$j], \$x);
+
+			# Restore (+) outer join syntax
+			foreach my $k (keys %subqueries) {
+				next if ($subqueries{$k} ne '+');
+				$queries[$j] =~ s/\%SUBQUERY$k\%/$subqueries{$k}/s;
+			}
+
 			# Replace call to right outer join obsolete syntax
-			$queries[$i] = replace_right_outer_join($queries[$i]);
+			$queries[$j] = replace_right_outer_join($queries[$j]);
 
 			# Replace call to left outer join obsolete syntax
-			$queries[$i] = replace_left_outer_join($queries[$i]);
+			$queries[$j] = replace_left_outer_join($queries[$j]);
 
+			# Replace LIMIT into the main query
+			($queries[$j], $limit) = replace_rownum_with_limit($queries[$j]);
+
+			$queries[$j] =~ s/\%SUBQUERY(\d+)\%/$subqueries{$1}/gs;
+			$queries[$j] .= $limit;
+			$queries[$j] =~ s/\s+(?:WHERE|AND)(\s+LIMIT\s+)/$1/is;
 		}
-		$str = join("\n", @queries);
-		$str .= ';' if ($str !~ /;\s*$/)
+		$statements[$i] = join("\n", @queries);
 	}
+	$str = join(';', @statements);
 
 	return $str;
 }
@@ -665,6 +671,13 @@ sub extract_subqueries
 			$sub_query .= $c;
 		} elsif ($sub_query && $c eq ')' && $idx == 0) {
 			$sub_query =~ s/^\(//;
+
+			# Replace call to right outer join obsolete syntax
+			$sub_query = replace_right_outer_join($sub_query);
+
+			# Replace call to left outer join obsolete syntax
+			$sub_query = replace_left_outer_join($sub_query);
+
 			my $limit = '';
 			($queries{$$pos},  $limit) = replace_rownum_with_limit($sub_query);
 			if ($limit) {
@@ -681,6 +694,28 @@ sub extract_subqueries
 			$out_query .= $c;
 		}
 	}
+	if ($sub_query &&  $idx > 0) {
+		$sub_query =~ s/^\(//;
+
+		# Replace call to right outer join obsolete syntax
+		$sub_query = replace_right_outer_join($sub_query);
+
+		# Replace call to left outer join obsolete syntax
+		$sub_query = replace_left_outer_join($sub_query);
+
+		my $limit = '';
+		($queries{$$pos},  $limit) = replace_rownum_with_limit($sub_query);
+		if ($limit) {
+			if ($sub_query =~ /\bSELECT\b/is) {
+				$queries{$$pos} .= $limit;
+			} else {
+				$out_limit = $limit;
+			}
+		}
+		$out_query .= "(\%SUBQUERY$$pos\%";
+		$sub_query = '';
+		$$pos++;
+	}
 	$out_query =~ s/\s*$/$out_limit/;
 
 	return $out_query , %queries;
@@ -692,38 +727,38 @@ sub replace_rownum_with_limit
 
 	my $limit_clause = '';
 
-        if ($str =~ s/\s+(WHERE)\s+(?:\(\s*)?ROWNUM\s*=\s*(\d+)(?:\s*\)\s*)?([^;]*)/ $1 $3/is) {
+        if ($str =~ s/\s+(WHERE)\s+(?:\(\s*)?ROWNUM\s*=\s*(\d+)(\s*\)\s*)?([^;]*)/ $1 $3$4/is) {
 		$limit_clause = ' LIMIT 1 OFFSET ' . ($2-1);
 		
         }
-	if ($str =~ s/\s+AND\s+(?:\(\s*)?ROWNUM\s*=\s*(\d+)(?:\s*\)\s*)?([^;]*)/ $2/is) {
+	if ($str =~ s/\s+AND\s+(?:\(\s*)?ROWNUM\s*=\s*(\d+)(\s*\)\s*)?([^;]*)/ $2$3/is) {
 		$limit_clause = ' LIMIT 1 OFFSET ' . ($1-1);
         }
 
-	if ($str =~ s/\s+(WHERE)\s+(?:\(\s*)?ROWNUM\s*>=\s*(\d+)(?:\s*\)\s*)?([^;]*)/ $1 $3/is) {
+	if ($str =~ s/\s+(WHERE)\s+(?:\(\s*)?ROWNUM\s*>=\s*(\d+)(\s*\)\s*)?([^;]*)/ $1 $3$4/is) {
 		$limit_clause = ' LIMIT ALL OFFSET ' . ($2-1);
         }
-	if ($str =~ s/\s+(WHERE)\s+(?:\(\s*)?ROWNUM\s*>\s*(\d+)(?:\s*\)\s*)?([^;]*)/ $1 $3/is) {
+	if ($str =~ s/\s+(WHERE)\s+(?:\(\s*)?ROWNUM\s*>\s*(\d+)(\s*\)\s*)?([^;]*)/ $1 $3$4/is) {
 		$limit_clause = ' LIMIT ALL OFFSET ' . $2;
 	}
-	if ($str =~ s/\s+AND\s+(?:\(\s*)?ROWNUM\s*>=\s*(\d+)(?:\s*\)\s*)?([^;]*)/ $2/is) {
+	if ($str =~ s/\s+AND\s+(?:\(\s*)?ROWNUM\s*>=\s*(\d+)(\s*\)\s*)?([^;]*)/ $2$3/is) {
 		$limit_clause = ' LIMIT ALL OFFSET ' . ($1-1);
         }
-	if ($str =~ s/\s+AND\s+(?:\(\s*)?ROWNUM\s*>\s*(\d+)(?:\s*\)\s*)?([^;]*)/ $2/is) {
+	if ($str =~ s/\s+AND\s+(?:\(\s*)?ROWNUM\s*>\s*(\d+)(\s*\)\s*)?([^;]*)/ $2$3/is) {
 		$limit_clause = ' LIMIT ALL OFFSET ' . $1;
 	}
 
 	my $tmp_val = '';
-	if ($str =~ s/\s+(WHERE)\s+(?:\(\s*)?ROWNUM\s*<=\s*(\d+)(?:\s*\)\s*)?([^;]*)/ $1 $3/is) {
+	if ($str =~ s/\s+(WHERE)\s+(?:\(\s*)?ROWNUM\s*<=\s*(\d+)(\s*\)\s*)?([^;]*)/ $1 $3$4/is) {
 		$tmp_val = $2;
 	}
-	if ($str =~ s/\s+(WHERE)\s+(?:\(\s*)?ROWNUM\s*<\s*(\d+)(?:\s*\)\s*)?([^;]*)/ $1 $3/is) {
+	if ($str =~ s/\s+(WHERE)\s+(?:\(\s*)?ROWNUM\s*<\s*(\d+)(\s*\)\s*)?([^;]*)/ $1 $3$4/is) {
 		$tmp_val = $2 - 1;
         }
-	if ($str =~ s/\s+AND\s+(?:\(\s*)?ROWNUM\s*<=\s*(\d+)(?:\s*\)\s*)?([^;]*)/ $2/is) {
+	if ($str =~ s/\s+AND\s+(?:\(\s*)?ROWNUM\s*<=\s*(\d+)(\s*\)\s*)?([^;]*)/ $2$3/is) {
 		$tmp_val = $1;
         }
-	if ($str =~ s/\s+AND\s+(?:\(\s*)?ROWNUM\s*<\s*(\d+)(?:\s*\)\s*)?([^;]*)/ $2/is) {
+	if ($str =~ s/\s+AND\s+(?:\(\s*)?ROWNUM\s*<\s*(\d+)(\s*\)\s*)?([^;]*)/ $2$3/is) {
 		$tmp_val = $1 - 1;
         }
 	if ($tmp_val) {
