@@ -870,6 +870,10 @@ PACKAGE_AS_SCHEMA	1
 # moment.
 REWRITE_OUTER_JOIN	1
 
+# By default Ora2pg rewrite add_month(), add_year() and date_trunc() functions
+# set it to 0 to not translate those functions if it breaks code. 
+DATE_FUNCTION_REWRITE	1
+
 #------------------------------------------------------------------------------
 # ASSESSMENT SECTION (Control migration assessment behaviors)
 #------------------------------------------------------------------------------

@@ -825,6 +825,9 @@ sub _init
 	# Enable rewrite of outer join by default.
 	$self->{rewrite_outer_join} = 1;
 
+	# Default to rewrite add_month(), add_year() and date_trunc()
+	$self->{date_function_rewrite} = 1;
+
 	# Initialyze following configuration file
 	foreach my $k (sort keys %AConfig) {
 		if (lc($k) eq 'allow') {

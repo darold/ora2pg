@@ -806,21 +806,23 @@ sub replace_oracle_function
 	# Replace call to trim into btrim
 	$str =~ s/\bTRIM\s*\(([^\(\)]+)\)/btrim($1)/is;
 
-	# Change trunc() to date_trunc('day', field)
-	# Trunc is replaced with date_trunc if we find date in the name of
-	# the value because Oracle have the same trunc function on number
-	# and date type
-	$str =~ s/\bTRUNC\s*\($date_field\)/date_trunc('day', $1)/is;
-	$str =~ s/\bTRUNC\s*\($date_field,$field\)/date_trunc($2, $1)/is;
-	$str =~ s/date_trunc\('MM'/date_trunc('month'/is;
+	if ($class->{date_function_rewrite}) {
+		# Change trunc() to date_trunc('day', field)
+		# Trunc is replaced with date_trunc if we find date in the name of
+		# the value because Oracle have the same trunc function on number
+		# and date type
+		$str =~ s/\bTRUNC\s*\($date_field\)/date_trunc('day', $1)/is;
+		$str =~ s/\bTRUNC\s*\($date_field,$field\)/date_trunc($2, $1)/is;
+		$str =~ s/date_trunc\('MM'/date_trunc('month'/is;
 
-	# Convert the call to the Oracle function add_months() into Pg syntax
-	$str =~ s/ADD_MONTHS\s*\(([^,]+),\s*(\d+)\s*\)/$1 + '$2 month'::interval/si;
-	$str =~ s/ADD_MONTHS\s*\(([^,]+),\s*([^,\(\)]+)\s*\)/$1 + $2*'1 month'::interval/si;
+		# Convert the call to the Oracle function add_months() into Pg syntax
+		$str =~ s/ADD_MONTHS\s*\(([^,]+),\s*(\d+)\s*\)/$1 + '$2 month'::interval/si;
+		$str =~ s/ADD_MONTHS\s*\(([^,]+),\s*([^,\(\)]+)\s*\)/$1 + $2*'1 month'::interval/si;
 
-	# Convert the call to the Oracle function add_years() into Pg syntax
-	$str =~ s/ADD_YEARS\s*\(([^,]+),\s*(\d+)\s*\)/$1 + '$2 year'::interval/si;
-	$str =~ s/ADD_YEARS\s*\(([^,]+),\s*([^,\(\)]+)\s*\)/$1 + $2*' year'::interval/si;
+		# Convert the call to the Oracle function add_years() into Pg syntax
+		$str =~ s/ADD_YEARS\s*\(([^,]+),\s*(\d+)\s*\)/$1 + '$2 year'::interval/si;
+		$str =~ s/ADD_YEARS\s*\(([^,]+),\s*([^,\(\)]+)\s*\)/$1 + $2*' year'::interval/si;
+	}
 
 	# Replace INSTR by POSITION
 	$str =~ s/\bINSTR\s*\(\s*([^,]+),\s*('[^']+')\s*\)/POSITION($2 in $1)/is;

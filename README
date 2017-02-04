@@ -945,7 +945,7 @@ CONFIGURATION
         all objects. Here are the possibles values TABLE, VIEW, MATERIALIZED
         VIEW, SEQUENCE, PROCEDURE, FUNCTION, PACKAGE BODY, TYPE, SYNONYM,
         DIRECTORY. Only one object type is allowed at a time. For example
-        set it to TABLE if youÂ just want to export privilege on tables. You
+        set it to TABLE if you just want to export privilege on tables. You
         can use the -g option to overwrite it.
 
         When used this directive prevent the export of users unless it is
@@ -1985,6 +1985,11 @@ CONFIGURATION
         redefined it to use the gen_random_uuid function from pgcrypto
         extension by changing the function name. Default to
         uuid_generate_v4.
+
+    DATE_FUNCTION_REWRITE
+        By default Ora2pg rewrite add_month(), add_year() and date_trunc()
+        functions set it to 0 to force Ora2Pg to not translate those
+        functions if it breaks code.
 
   Materialized view
     Since PostgreSQL 9.3, materialized view are supported with the CREATE

@@ -967,7 +967,7 @@ When exporting GRANTs you can specify a comma separated  list of objects
 for which privilege will be exported. Default is export for all objects.
 Here are the possibles values TABLE, VIEW, MATERIALIZED VIEW, SEQUENCE,
 PROCEDURE, FUNCTION, PACKAGE BODY, TYPE, SYNONYM, DIRECTORY. Only one object
-type is allowed at a time. For example set it to TABLE if you just want to
+type is allowed at a time. For example set it to TABLE if you just want to
 export privilege on tables. You can use the -g option to overwrite it.
 
 When used this directive prevent the export of users unless it is set to USER.
@@ -2063,6 +2063,11 @@ By default Ora2Pg will convert call to SYS_GUID() Oracle function
 with a call to uuid_generate_v4 from uuid-ossp extension. You can
 redefined it to use the gen_random_uuid function from pgcrypto
 extension by changing the function name. Default to uuid_generate_v4.
+
+=item DATE_FUNCTION_REWRITE
+
+By default Ora2pg rewrite add_month(), add_year() and date_trunc() functions
+set it to 0 to force Ora2Pg to not translate those functions if it breaks code.
  
 =back
 
