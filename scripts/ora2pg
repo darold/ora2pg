@@ -172,9 +172,6 @@ if ($CREATE_PROJECT) {
 if ($GRANT_OBJECT && !grep(/^$GRANT_OBJECT$/, @GRANT_OBJECTS_ARRAY)) {
 	print "FATAL: invalid grant object type in -g option. See GRAND_OBJECT configuration directive.\n";
 	exit 1;
-} elsif ($GRANT_OBJECT && uc($EXPORT_TYPE) ne 'GRANT') {
-	print "FATAL: option -g can only be used with GRANT action.\n";
-	exit 1;
 }
 
 # Clean temporary files
