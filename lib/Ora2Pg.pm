@@ -10419,7 +10419,7 @@ END;
 	$function .= $func_return;
 	if ($fct_detail{immutable}) {
 		$fct_detail{immutable} = ' IMMUTABLE';
-	} elsif ($plsql =~  /^FUNCTION/) {
+	} elsif ($plsql =~  /^FUNCTION/i) {
 		# Oracle function can't modify data so always mark them as stable
 		$fct_detail{immutable} = ' STABLE';
 	}
