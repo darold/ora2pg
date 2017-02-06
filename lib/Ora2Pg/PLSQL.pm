@@ -1882,7 +1882,11 @@ sub replace_right_outer_join
 			if ($l =~ /^([^\.]+)\..*/) {
 				$lbl1 = lc($1);
 				$table_decl1 = $from_clause_list{$lbl1};
-				$table_decl1 .= " $lbl1" if ($lbl1 ne $from_clause_list{$lbl1});
+				if ($from_clause_list{$lbl1} !~ /\%SUBQUERY\d+\%/i) {
+					$table_decl1 .= " $lbl1" if ($lbl1 ne $from_clause_list{$lbl1});
+				} else {
+					$table_decl1 = $lbl1;
+				}
 			}
 			# Extract the tablename part of the right clause
 			my $lbl2 = '';
@@ -1890,7 +1894,11 @@ sub replace_right_outer_join
 			if ($r =~ /^([^\.]+)\..*/) {
 				$lbl2 = lc($1);
 				$table_decl2 = $from_clause_list{$lbl2};
-				$table_decl2 .= " $lbl2" if ($lbl2 ne $from_clause_list{$lbl2});
+				if ($from_clause_list{$lbl1} !~ /\%SUBQUERY\d+\%/i) {
+					$table_decl2 .= " $lbl2" if ($lbl2 ne $from_clause_list{$lbl2});
+				} else {
+					$table_decl1 = $lbl1;
+				}
 			}
 			# When this is the first join parse add the left tablename
 			# first then the outer join with the right table
@@ -2005,7 +2013,11 @@ sub replace_left_outer_join
 			if ($l =~ /^([^\.]+)\..*/) {
 				$lbl1 = lc($1);
 				$table_decl1 = $from_clause_list{$lbl1};
-				$table_decl1 .= " $lbl1" if ($lbl1 ne $from_clause_list{$1});
+				if ($from_clause_list{$lbl1} !~ /\%SUBQUERY\d+\%/i) {
+					$table_decl1 .= " $lbl1" if ($lbl1 ne $from_clause_list{$lbl1});
+				} else {
+					$table_decl1 = $lbl1;
+				}
 			}
 			# Extract the tablename part of the right clause
 			my $lbl2 = '';
@@ -2013,7 +2025,11 @@ sub replace_left_outer_join
 			if ($r =~ /^([^\.]+)\..*/) {
 				$lbl2 = lc($1);
 				$table_decl2 = $from_clause_list{$lbl2};
-				$table_decl2 .= " $lbl2" if ($lbl2 ne $from_clause_list{$1});
+				if ($from_clause_list{$lbl2} !~ /\%SUBQUERY\d+\%/i) {
+					$table_decl2 .= " $lbl2" if ($lbl2 ne $from_clause_list{$1});
+				} else {
+					$table_decl2 = $lbl2;
+				}
 			}
 
 			# When this is the first join parse add the left tablename
