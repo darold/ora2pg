@@ -621,7 +621,7 @@ sub plsql_to_plpgsql
 			# Restore (+) outer join syntax
 			foreach my $k (keys %subqueries) {
 				next if ($subqueries{$k} ne '+');
-				$queries[$j] =~ s/\%SUBQUERY$k\%/$subqueries{$k}/s;
+				$queries[$j] =~ s/\%SUBQUERY$k\%/$subqueries{$k}/is;
 			}
 
 			# Replace call to right outer join obsolete syntax
@@ -633,7 +633,7 @@ sub plsql_to_plpgsql
 			# Replace LIMIT into the main query
 			$queries[$j] = replace_rownum_with_limit($class, $queries[$j]);
 
-			$queries[$j] =~ s/\%SUBQUERY(\d+)\%/$subqueries{$1}/gs;
+			$queries[$j] =~ s/\%SUBQUERY(\d+)\%/$subqueries{$1}/igs;
 			$queries[$j] .= $class->{limit_clause};
 			$queries[$j] =~ s/\s+(?:WHERE|AND)(\s+LIMIT\s+)/$1/is;
 		}
@@ -675,7 +675,7 @@ sub extract_subqueries
 
 			my %sub_queries = ();
 			($sub_query, %sub_queries) = extract_subqueries($class, $sub_query, $pos);
-			$sub_query =~ s/\%SUBQUERY(\d+)\%/$sub_queries{$1}/gs;
+			$sub_query =~ s/\%SUBQUERY(\d+)\%/$sub_queries{$1}/igs;
 
 			# Replace call to right outer join obsolete syntax
 			$sub_query = replace_right_outer_join($sub_query);
