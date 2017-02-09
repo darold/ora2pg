@@ -1930,7 +1930,7 @@ sub replace_right_outer_join
 			my $table_decl = "$from_clause_list{$a}";
 			$table_decl .= " $a" if ($a ne $from_clause_list{$a});
 			if ($table_decl !~ /\(\%SUBQUERY\d+\%\)/i && $from_clause !~ /\b$table_decl\b/) {
-				$from_clause = "$table_decl, " . $from_clause;
+				$from_clause = "$table_decl,\n" . $from_clause;
 			}
 		}
 
@@ -2053,7 +2053,7 @@ sub replace_left_outer_join
 			my $table_decl = "$from_clause_list{$a}";
 			$table_decl .= " $a" if ($a ne $from_clause_list{$a});
 			if ($table_decl !~ /\(\%SUBQUERY\d+\%\)/i && $from_clause !~ /\b$table_decl\b/) {
-				$from_clause = "$table_decl, " . $from_clause;
+				$from_clause = "$table_decl,\n" . $from_clause;
 			}
 		}
 
