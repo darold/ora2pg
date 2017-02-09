@@ -1895,7 +1895,7 @@ sub replace_right_outer_join
 			# When this is the first join parse add the left tablename
 			# first then the outer join with the right table
 			if (scalar keys %final_from_clause == 0) {
-				$from_clause = $table_decl1;
+				$from_clause = "\n" . $table_decl1;
 				$final_from_clause{"$lbl1;$lbl2"}{position} = $i;
 				push(@{$final_from_clause{"$lbl1;$lbl2"}{clause}{$table_decl2}{predicat}}, "$l $o $r");
 			} else {
@@ -1930,7 +1930,7 @@ sub replace_right_outer_join
 			my $table_decl = "$from_clause_list{$a}";
 			$table_decl .= " $a" if ($a ne $from_clause_list{$a});
 			if ($table_decl !~ /\(\%SUBQUERY\d+\%\)/i && $from_clause !~ /\b$table_decl\b/) {
-				$from_clause = "$table_decl,\n" . $from_clause;
+				$from_clause = "\n$table_decl, " . $from_clause;
 			}
 		}
 
@@ -2019,7 +2019,7 @@ sub replace_left_outer_join
 			# When this is the first join parse add the left tablename
 			# first then the outer join with the right table
 			if (scalar keys %final_from_clause == 0) {
-				$from_clause = $table_decl1;
+				$from_clause = "\n" . $table_decl1;
 				$final_from_clause{"$lbl1;$lbl2"}{position} = $i;
 				push(@{$final_from_clause{"$lbl1;$lbl2"}{clause}{$table_decl2}{predicat}}, "$l $o $r");
 			} else {
@@ -2053,7 +2053,7 @@ sub replace_left_outer_join
 			my $table_decl = "$from_clause_list{$a}";
 			$table_decl .= " $a" if ($a ne $from_clause_list{$a});
 			if ($table_decl !~ /\(\%SUBQUERY\d+\%\)/i && $from_clause !~ /\b$table_decl\b/) {
-				$from_clause = "$table_decl,\n" . $from_clause;
+				$from_clause = "\n$table_decl, " . $from_clause;
 			}
 		}
 
