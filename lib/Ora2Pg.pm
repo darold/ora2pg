@@ -2236,6 +2236,7 @@ sub read_schema_from_file
 							} else {
 								$c_default = Ora2Pg::PLSQL::convert_plsql_code($self, $1);
 							}
+							$c_default =~ s/,$//;
 						}
 						#COLUMN_NAME, DATA_TYPE, DATA_LENGTH, NULLABLE, DATA_DEFAULT, DATA_PRECISION, DATA_SCALE, CHAR_LENGTH, TABLE_NAME, OWNER
 						push(@{$self->{tables}{$tb_name}{column_info}{$c_name}}, ($c_name, $c_type, $c_length, $c_nullable, $c_default, $c_length, $c_scale, $c_length, $tb_name, '', $pos, $auto_incr));
