@@ -1847,7 +1847,8 @@ sub replace_right_outer_join
 		my @tables = split(/\s*,\s*/, $from_clause);
 		# Set a hash for alias to table mapping
 		my %from_clause_list = ();
-		my %main_from_tables = ();
+		my %from_order = ();
+		my $fidx = 0;
 		foreach my $table (@tables) {
 			$table =~ s/^\s+//s;
 			$table =~ s/\s+$//s;
@@ -1858,6 +1859,7 @@ sub replace_right_outer_join
 			my ($t, $alias, @others) = split(/\s+/, lc($table));
 			$alias = "$cmt$t" if (!$alias);
 			$from_clause_list{$alias} = "$cmt$t";
+			$from_order{$alias} = $fidx++;
 		}
 
 		# Extract all Oracle's outer join syntax from the where clause
@@ -1912,16 +1914,18 @@ sub replace_right_outer_join
 			# first then the outer join with the right table
 			if (scalar keys %final_from_clause == 0) {
 				$from_clause = $table_decl1;
+				push(@outer_clauses, (split(/\s/, $table_decl1))[1] || $table_decl1);
 				$final_from_clause{"$lbl1;$lbl2"}{position} = $i;
 				push(@{$final_from_clause{"$lbl1;$lbl2"}{clause}{$table_decl2}{predicat}}, "$l $o $r");
 			} else {
 				$final_from_clause{"$lbl1;$lbl2"}{position} = $i;
-				push(@{$final_from_clause{"$lbl1;$lbl2"}{clause}{$table_decl1}{predicat}}, "$l $o $r");
-                                if (!exists $final_from_clause{"$lbl1;$lbl2"}{clause}{$table_decl1}{right}) {
-                                        $final_from_clause{"$lbl1;$lbl2"}{clause}{$table_decl1}{right} = $table_decl2;
+				push(@{$final_from_clause{"$lbl1;$lbl2"}{clause}{$table_decl2}{predicat}}, "$l $o $r");
+                                if (!exists $final_from_clause{"$lbl1;$lbl2"}{clause}{$table_decl2}{right}) {
+                                        $final_from_clause{"$lbl1;$lbl2"}{clause}{$table_decl2}{right} = $table_decl1;
                                 }
 
 			}
+			$final_from_clause{"$lbl1;$lbl2"}{clause}{$table_decl1}{position} = $i;
 		}
 		$str = $start_query . join(' ', @predicat) . ' ' . $end_query;
 
@@ -1934,14 +1938,52 @@ sub replace_right_outer_join
 
 		foreach my $t (sort { $final_from_clause{$a}{position} <=> $final_from_clause{$b}{position} } keys %final_from_clause) {
 			foreach my $j (sort keys %{$final_from_clause{$t}{clause}}) {
+				next if ($#{$final_from_clause{$t}{clause}{$j}{predicat}} < 0);
 				if ($j !~ /\(\%SUBQUERY\d+\%\)/i && $from_clause !~ /\b$final_from_clause{$t}{clause}{$j}{right}\b/) {
 					$from_clause .= ",$final_from_clause{$t}{clause}{$j}{right}";
+					push(@outer_clauses, (split(/\s/, $final_from_clause{$t}{clause}{$j}{right}))[1] || $final_from_clause{$t}{clause}{$j}{right});
 				}
 				my $tbl = $j;
 				$tbl =~ s/\%ORA2PG_COMMENT\d+\%\s*//is;
 				$from_clause .= "\nRIGHT OUTER JOIN $tbl ON (" .  join(' AND ', @{$final_from_clause{$t}{clause}{$j}{predicat}}) . ")"; 
+				my ($l,$r) = split(/;/, $t);
+				push(@{$final_outer_clauses{$l}{join}},  "RIGHT OUTER JOIN $tbl ON (" .  join(' AND ', @{$final_from_clause{$t}{clause}{$j}{predicat}}) . ")");
+				push(@{$final_outer_clauses{$l}{position}},  $final_from_clause{$t}{clause}{$j}{position});
+				push(@{$associated_clause{$l}}, $r);
 			}
 		}
+
+		$from_clause = '';
+		foreach my $c (sort { $from_order{$a} <=> $from_order{$b} } keys %from_order) {
+			next if (!grep(/^$c$/i, @outer_clauses));
+			$from_clause .= "\n, $from_clause_list{$c}";
+			$from_clause .= " $c" if ($from_clause_list{$c} ne $c);
+			my %output = ();
+			for (my $j = 0; $j <= $#{$final_outer_clauses{$c}{join}}; $j++) {
+				$output{$final_outer_clauses{$c}{position}[$j]} = $final_outer_clauses{$c}{join}[$j];
+			}
+			foreach my $f (@{$associated_clause{$c}}) {
+				for (my $j = 0; $j <= $#{$final_outer_clauses{$f}{join}}; $j++) {
+					$output{$final_outer_clauses{$f}{position}[$j]} = $final_outer_clauses{$f}{join}[$j];
+				}
+				if (exists $associated_clause{$f}) {
+					foreach my $s (@{$associated_clause{$f}}) {
+						for (my $z = 0; $z <= $#{$final_outer_clauses{$s}{join}}; $z++) {
+							$output{$final_outer_clauses{$s}{position}[$z]} = $final_outer_clauses{$s}{join}[$z];
+						}
+						delete $final_outer_clauses{$s};
+					}
+				}
+				delete $final_outer_clauses{$f};
+			}
+			foreach my $p (sort { $a <=> $b} keys %output) {
+				$from_clause .= "\n" . $output{$p};
+			}
+			delete $from_order{$c};
+			delete $final_outer_clauses{$c};
+			delete $associated_clause{$c};
+		}
+		$from_clause =~ s/^\s*,\s*//s;
 
 		# Append tables to from clause that was not involved into an outer join
 		foreach my $a (keys %from_clause_list) {
@@ -1975,7 +2017,8 @@ sub replace_left_outer_join
 		my @tables = split(/\s*,\s*/, $from_clause);
 		# Set a hash for alias to table mapping
 		my %from_clause_list = ();
-		my %main_from_tables = ();
+		my %from_order = ();
+		my $fidx = 0;
 		foreach my $table (@tables) {
 			$table =~ s/^\s+//s;
 			$table =~ s/\s+$//s;
@@ -1986,10 +2029,12 @@ sub replace_left_outer_join
 			my ($t, $alias, @others) = split(/\s+/, lc($table));
 			$alias = "$cmt$t" if (!$alias);
 			$from_clause_list{$alias} = "$cmt$t";
+			$from_order{$alias} = $fidx++;
 		}
 
 		# Extract all Oracle's outer join syntax from the where clause
 		my @outer_clauses = ();
+		my %final_outer_clauses = ();
 		my %final_from_clause = ();
 		my @tmp_from_list = ();
 		my $start_query = '';
@@ -2041,6 +2086,7 @@ sub replace_left_outer_join
 			# first then the outer join with the right table
 			if (scalar keys %final_from_clause == 0) {
 				$from_clause = $table_decl1;
+				push(@outer_clauses, (split(/\s/, $table_decl1))[1] || $table_decl1);
 				$final_from_clause{"$lbl1;$lbl2"}{position} = $i;
 				push(@{$final_from_clause{"$lbl1;$lbl2"}{clause}{$table_decl2}{predicat}}, "$l $o $r");
 			} else {
@@ -2050,6 +2096,7 @@ sub replace_left_outer_join
 					$final_from_clause{"$lbl1;$lbl2"}{clause}{$table_decl2}{left} = $table_decl1;
 				}
 			}
+			$final_from_clause{"$lbl1;$lbl2"}{clause}{$table_decl2}{position} = $i;
 		}
 		$str = $start_query . join(' ', @predicat) . ' ' . $end_query;
 
@@ -2060,16 +2107,55 @@ sub replace_left_outer_join
 		$str =~ s/(\s+)WHERE\s+(ORDER|GROUP)\s+BY/$1$2 BY/is;
 		$str =~ s/\s+WHERE(\s+)/\nWHERE$1/igs;
 
+		my %associated_clause = ();
 		foreach my $t (sort { $final_from_clause{$a}{position} <=> $final_from_clause{$b}{position} } keys %final_from_clause) {
-			foreach my $j (sort keys %{$final_from_clause{$t}{clause}}) {
+			foreach my $j (sort { $final_from_clause{$t}{clause}{$a}{position} <=> $final_from_clause{$t}{clause}{$b}{position} } keys %{$final_from_clause{$t}{clause}}) {
+				next if ($#{$final_from_clause{$t}{clause}{$j}{predicat}} < 0);
 				if ($j !~ /\(\%SUBQUERY\d+\%\)/i && $from_clause !~ /\b\Q$final_from_clause{$t}{clause}{$j}{left}\E\b/) {
 					$from_clause .= ",$final_from_clause{$t}{clause}{$j}{left}";
+					push(@outer_clauses, (split(/\s/, $final_from_clause{$t}{clause}{$j}{left}))[1] || $final_from_clause{$t}{clause}{$j}{left});
 				}
 				my $tbl = $j;
 				$tbl =~ s/\%ORA2PG_COMMENT\d+\%\s*//is;
-				$from_clause .= "\nLEFT OUTER JOIN $tbl ON (" .  join(' AND ', @{$final_from_clause{$t}{clause}{$j}{predicat}}) . ")"; 
+				$from_clause .= "\nLEFT OUTER JOIN $tbl ON (" .  join(' AND ', @{$final_from_clause{$t}{clause}{$j}{predicat}}) . ")";
+				my ($l,$r) = split(/;/, $t);
+				push(@{$final_outer_clauses{$l}{join}},  "LEFT OUTER JOIN $tbl ON (" .  join(' AND ', @{$final_from_clause{$t}{clause}{$j}{predicat}}) . ")");
+				push(@{$final_outer_clauses{$l}{position}},  $final_from_clause{$t}{clause}{$j}{position});
+				push(@{$associated_clause{$l}}, $r);
 			}
 		}
+
+		$from_clause = '';
+		foreach my $c (sort { $from_order{$a} <=> $from_order{$b} } keys %from_order) {
+			next if (!grep(/^$c$/i, @outer_clauses));
+			$from_clause .= "\n, $from_clause_list{$c}";
+			$from_clause .= " $c" if ($c ne $from_clause_list{$c});
+			my %output = ();
+			for (my $j = 0; $j <= $#{$final_outer_clauses{$c}{join}}; $j++) {
+				$output{$final_outer_clauses{$c}{position}[$j]} = $final_outer_clauses{$c}{join}[$j];
+			}
+			foreach my $f (@{$associated_clause{$c}}) {
+				for (my $j = 0; $j <= $#{$final_outer_clauses{$f}{join}}; $j++) {
+					$output{$final_outer_clauses{$f}{position}[$j]} = $final_outer_clauses{$f}{join}[$j];
+				}
+				if (exists $associated_clause{$f}) {
+					foreach my $s (@{$associated_clause{$f}}) {
+						for (my $z = 0; $z <= $#{$final_outer_clauses{$s}{join}}; $z++) {
+							$output{$final_outer_clauses{$s}{position}[$z]} = $final_outer_clauses{$s}{join}[$z];
+						}
+						delete $final_outer_clauses{$s};
+					}
+				}
+				delete $final_outer_clauses{$f};
+			}
+			foreach my $p (sort { $a <=> $b} keys %output) { 
+				$from_clause .= "\n" . $output{$p};
+			}
+			delete $from_order{$c};
+			delete $final_outer_clauses{$c};
+			delete $associated_clause{$c};
+		}
+		$from_clause =~ s/^\s*,\s*//s;
 
 		# Append tables to from clause that was not involved into an outer join
 		foreach my $a (keys %from_clause_list) {
