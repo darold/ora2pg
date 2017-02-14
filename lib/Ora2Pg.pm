@@ -2319,7 +2319,7 @@ sub read_schema_from_file
 				my $constname = $1;
 				my $code = $2;
 				my $states = $3;
-				$tbspace_move = $4;
+				my $tbspace_move = $4;
 				if (!exists $self->{tables}{$tb_name}{table_info}{type}) {
 					$self->{tables}{$tb_name}{table_info}{type} = 'TABLE';
 					$self->{tables}{$tb_name}{table_info}{num_rows} = 0;
@@ -2330,11 +2330,13 @@ sub read_schema_from_file
 				$validate = ' NOT VALID' if ( $states =~ /NOVALIDATE/is);
 				push(@{$self->{tables}{$tb_name}{alter_table}}, "ADD CONSTRAINT \L$constname\E CHECK $code$validate");
 				if ( $tbspace_move =~ /USING\s+INDEX\s+TABLESPACE\s+([^\s]+)/is) {
-					$tbspace_move = "ALTER INDEX $constname SET TABLESPACE " . lc($1) if ($self->{use_tablespace});
+					if ($self->{use_tablespace}) {
+						$tbspace_move = "ALTER INDEX $constname SET TABLESPACE " . lc($1);
+						push(@{$self->{tables}{$tb_name}{alter_index}}, $tbspace_move);
+					}
 				} elsif ($tbspace_move =~ /USING\s+INDEX\s+([^\s]+)/is) {
 					$self->{tables}{$tb_name}{alter_table}[-1] .= " USING INDEX " . lc($1);
 				}
-				push(@{$self->{tables}{$tb_name}{alter_index}}, $tbspace_move) if ($tbspace_move);
 				
 			}
 			while ($tb_def =~ s/CONSTRAINT\s+([^\s]+)\s+FOREIGN\s+KEY\s*(\(.*?\)\s+REFERENCES\s+[^\s]+\s*\(.*?\))\s+([^,\)]+)//is) {
@@ -2356,7 +2358,6 @@ sub read_schema_from_file
 				my $validate = '';
 				$validate = ' NOT VALID' if ( $other_def =~ /NOVALIDATE/is);
 				$self->{tables}{$tb_name}{alter_table}[-1] .= $validate;
-				push(@{$self->{tables}{$tb_name}{alter_index}}, $tbspace_move) if ($tbspace_move);
 			}
 
 			# We can just have one primary key constraint
@@ -2364,7 +2365,10 @@ sub read_schema_from_file
 				my $constname = $1;
 				$tb_def =~ s/^[^\(]+//;
 				if ( $tb_def =~ s/USING\s+INDEX\s+TABLESPACE\s+([^\s]+).*//s) {
-					$tbspace_move = "ALTER INDEX $constname SET TABLESPACE $1" if ($self->{use_tablespace});
+					if ($self->{use_tablespace}) {
+						my $tbspace_move = "ALTER INDEX $constname SET TABLESPACE $1";
+						push(@{$self->{tables}{$tb_name}{alter_index}}, $tbspace_move);
+					}
 				} elsif ($tb_def =~ s/USING\s+INDEX\s+([^\s]+).*//s) {
 					push(@{$self->{tables}{$tb_name}{alter_table}}, "ADD PRIMARY KEY " . lc($tb_def));
 					$self->{tables}{$tb_name}{alter_table}[-1] .= " USING INDEX " . lc($1);
@@ -2377,7 +2381,6 @@ sub read_schema_from_file
 					$tid++;
 					$self->{tables}{$tb_name}{internal_id} = $tid;
 				}
-				push(@{$self->{tables}{$tb_name}{alter_index}}, $tbspace_move) if ($tbspace_move);
 			}
 		}
 
@@ -3136,7 +3139,9 @@ sub _get_sql_data
 					$tmpv =~ s/\./"."/;
 					$sql_output .= "CREATE OR REPLACE VIEW \"$tmpv\" AS ";
 				}
-				$sql_output .= $self->{views}{$view}{text} . ";\n";
+				$sql_output .= $self->{views}{$view}{text};
+				$sql_output .= ';' if ($sql_output !~ /;\s*$/s);
+				$sql_output .= "\n";
 				if ($self->{estimate_cost}) {
 					my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($self, $self->{views}{$view}{text}, 'VIEW');
 					$cost += $Ora2Pg::PLSQL::OBJECT_SCORE{'VIEW'};
@@ -3178,7 +3183,9 @@ sub _get_sql_data
 						$self->{views}{$view}{text} =~ s/SELECT[^\s]*(.*?)\bFROM\b/SELECT $clause FROM/is;
 					}
 				}
-				$sql_output .= ") AS " . $self->{views}{$view}{text} . ";\n";
+				$sql_output .= ") AS " . $self->{views}{$view}{text};
+				$sql_output .= ';' if ($sql_output !~ /;\s*$/s);
+				$sql_output .= "\n";
 				if ($self->{estimate_cost}) {
 					my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($self, $self->{views}{$view}{text}, 'VIEW');
 					$cost += $Ora2Pg::PLSQL::OBJECT_SCORE{'VIEW'};
@@ -3831,7 +3838,7 @@ LANGUAGE plpgsql ;
 						# Add a semi colon if none
 						if ($trig->[4] !~ /\bBEGIN\b/i) {
 							chomp($trig->[4]);
-							$trig->[4] .= ';' if ($trig->[4] !~ /;$/);
+							$trig->[4] .= ';' if ($trig->[4] !~ /;\s*$/s);
 							$trig->[4] = "BEGIN\n$trig->[4]\n$ret_kind\nEND;";
 						}
 						$trig->[4] = Ora2Pg::PLSQL::convert_plsql_code($self, $trig->[4]);
@@ -4130,6 +4137,7 @@ LANGUAGE plpgsql ;
 			if ($self->{plsql_pgsql}) {
 				my $sql_q = Ora2Pg::PLSQL::convert_plsql_code($self, $self->{queries}{$q});
 				$sql_output .= $sql_q;
+				$sql_output .= ';' if ($sql_q !~ /;\s*$/);
 				if ($self->{estimate_cost}) {
 					my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($self, $sql_q, 'QUERY');
 					$cost += $Ora2Pg::PLSQL::OBJECT_SCORE{'QUERY'};
@@ -5833,8 +5841,9 @@ CREATE TRIGGER ${table}_trigger_insert
 				$sql_output .= "ALTER $self->{tables}{$table}{table_info}{type} $tbname OWNER TO \"$owner\";\n";
 			}
 		}
-		if (exists $self->{tables}{$table}{alter_index}) {
+		if (exists $self->{tables}{$table}{alter_index} && $self->{tables}{$table}{alter_index}) {
 			foreach (@{$self->{tables}{$table}{alter_index}}) {
+print STDERR "EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE [$_]\n";
 				$sql_output .= "$_;\n";
 			}
 		}
@@ -10139,7 +10148,7 @@ sub _restore_comments
 	my ($self, $content, $comments) = @_;
 
 	foreach my $k (keys %$comments) {
-		$$content =~ s/$k[\n]?/$comments->{$k}\n/s;
+		$$content =~ s/$k[\n]?/$comments->{$k}\n/is;
 	}
 
 }
@@ -10279,7 +10288,7 @@ sub _convert_function
 	my @at_ret_param = ();
 	my @at_ret_type = ();
 	my $at_suffix = '';
-	if ($fct_detail{declare} =~ s/\s*PRAGMA\s+AUTONOMOUS_TRANSACTION\s*;//is) {
+	if ($fct_detail{declare} =~ s/\s*PRAGMA\s+AUTONOMOUS_TRANSACTION[\s;]*//is) {
 		$at_suffix = '_atx';
 		# COMMIT is not allowed in PLPGSQL function
 		$fct_detail{code} =~ s/\bCOMMIT\s*;//;
@@ -10438,6 +10447,7 @@ END;
 		$fct_detail{declare} =~ s/^\s*DECLARE//;
 		$function .= "DECLARE\n$fct_detail{declare}\n" if ($fct_detail{declare});
 		$function .= $fct_detail{code};
+		$function .= ';' if ($function !~ /END\s*;\s*$/is);
 		$function .= "\n\$body\$\nLANGUAGE PLPGSQL\n";
 		$revoke = "-- REVOKE ALL ON FUNCTION $name $fct_detail{args} FROM PUBLIC;";
 		$revoke =~ s/[\n\r]+\s*/ /gs;
@@ -14052,9 +14062,11 @@ sub _lookup_function
 
 		# Replace PL/SQL code into PL/PGSQL similar code
 		$fct_detail{declare} = Ora2Pg::PLSQL::convert_plsql_code($self, $fct_detail{declare});
+		$fct_detail{declare} .= ';' if ($fct_detail{declare} && $fct_detail{declare} !~ /;\s*$/);
 		if ($fct_detail{code}) {
 			$fct_detail{code} = Ora2Pg::PLSQL::convert_plsql_code($self, "BEGIN".$fct_detail{code});
 		}
+
 		# Sometime variable used in FOR ... IN loop is not declared
 		# Append its RECORD declaration in the DECLARE section.
 		my $tmp_code = $fct_detail{code};

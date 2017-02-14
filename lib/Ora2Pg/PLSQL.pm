@@ -337,6 +337,12 @@ sub convert_plsql_code
 {
         my ($class, $str) = @_;
 
+	return if ($str eq '');
+
+	# Replace comment with a placeholder
+	$class->{idxcomment} = 0;
+	my %comments = $class->_remove_comments(\$str);
+
 	# Replace all text constant part to prevent a split on a ; inside a text
 	$class->{text_values} = ();
 	$str = remove_text_constant_part($class, $str);
@@ -358,12 +364,13 @@ sub convert_plsql_code
 	}
 	$class->{text_values} = ();
 	$str = join(';', @code_parts);
-	$str =~ s/[;]+/;/gs;
 
 	# Apply code rewrite on other part of the code
 	$str = remove_text_constant_part($class, $str);
 	$str = plsql_to_plpgsql($class, $str);
 	$str = restore_text_constant_part($class, $str);
+
+	$class->_restore_comments(\$str, \%comments);
 
 	return $str;
 }
@@ -405,6 +412,8 @@ This function return a PLSQL code translated to PLPGSQL code
 sub plsql_to_plpgsql
 {
         my ($class, $str) = @_;
+
+	return if ($str eq '');
 
 	return mysql_to_plpgsql($class, $str) if ($class->{is_mysql});
 
@@ -770,6 +779,9 @@ sub replace_rownum_with_limit
 
 	$str =~ s/(WHERE)\s+AND/$1/igs;
 
+	# Remove unnecessary offset to position 0 which is the default
+	$str =~ s/\s+OFFSET 0//igs;
+
 	return $str;
 }
 
@@ -1086,7 +1098,7 @@ sub raise_output
 		$ret .= ', ' . join(', ', @params);
 	}
 
-	return $ret . ';';
+	return $ret;
 }
 
 sub replace_sql_type
@@ -1839,9 +1851,13 @@ sub replace_right_outer_join
 		foreach my $table (@tables) {
 			$table =~ s/^\s+//s;
 			$table =~ s/\s+$//s;
-			my ($t, $alias) = split(/\s+/, lc($table));
-			$alias = $t if (!$alias);
-			$from_clause_list{$alias} = $t;
+			my $cmt = '';
+			if ($table =~ s/(\%ORA2PG_COMMENT\d+\%\s*)//is) {
+				$cmt = $1;
+			}
+			my ($t, $alias, @others) = split(/\s+/, lc($table));
+			$alias = "$cmt$t" if (!$alias);
+			$from_clause_list{$alias} = "$cmt$t";
 		}
 
 		# Extract all Oracle's outer join syntax from the where clause
@@ -1895,7 +1911,7 @@ sub replace_right_outer_join
 			# When this is the first join parse add the left tablename
 			# first then the outer join with the right table
 			if (scalar keys %final_from_clause == 0) {
-				$from_clause = "\n" . $table_decl1;
+				$from_clause = $table_decl1;
 				$final_from_clause{"$lbl1;$lbl2"}{position} = $i;
 				push(@{$final_from_clause{"$lbl1;$lbl2"}{clause}{$table_decl2}{predicat}}, "$l $o $r");
 			} else {
@@ -1919,9 +1935,11 @@ sub replace_right_outer_join
 		foreach my $t (sort { $final_from_clause{$a}{position} <=> $final_from_clause{$b}{position} } keys %final_from_clause) {
 			foreach my $j (sort keys %{$final_from_clause{$t}{clause}}) {
 				if ($j !~ /\(\%SUBQUERY\d+\%\)/i && $from_clause !~ /\b$final_from_clause{$t}{clause}{$j}{right}\b/) {
-					$from_clause .= "\n,$final_from_clause{$t}{clause}{$j}{right}";
+					$from_clause .= ",$final_from_clause{$t}{clause}{$j}{right}";
 				}
-				$from_clause .= "\nRIGHT OUTER JOIN $j ON (" .  join(' AND ', @{$final_from_clause{$t}{clause}{$j}{predicat}}) . ")"; 
+				my $tbl = $j;
+				$tbl =~ s/\%ORA2PG_COMMENT\d+\%\s*//is;
+				$from_clause .= "\nRIGHT OUTER JOIN $tbl ON (" .  join(' AND ', @{$final_from_clause{$t}{clause}{$j}{predicat}}) . ")"; 
 			}
 		}
 
@@ -1930,7 +1948,7 @@ sub replace_right_outer_join
 			my $table_decl = "$from_clause_list{$a}";
 			$table_decl .= " $a" if ($a ne $from_clause_list{$a});
 			if ($table_decl !~ /\(\%SUBQUERY\d+\%\)/i && $from_clause !~ /\b$table_decl\b/) {
-				$from_clause = "\n$table_decl, " . $from_clause;
+				$from_clause = "$table_decl, " . $from_clause;
 			}
 		}
 
@@ -1954,7 +1972,6 @@ sub replace_left_outer_join
 
 		my $from_clause = $2;
 		$from_clause =~ s/"//gs;
-
 		my @tables = split(/\s*,\s*/, $from_clause);
 		# Set a hash for alias to table mapping
 		my %from_clause_list = ();
@@ -1962,9 +1979,13 @@ sub replace_left_outer_join
 		foreach my $table (@tables) {
 			$table =~ s/^\s+//s;
 			$table =~ s/\s+$//s;
-			my ($t, $alias) = split(/\s+/, lc($table));
-			$alias = $t if (!$alias);
-			$from_clause_list{$alias} = $t;
+			my $cmt = '';
+			if ($table =~ s/(\%ORA2PG_COMMENT\d+\%\s*)//is) {
+				$cmt = $1;
+			}
+			my ($t, $alias, @others) = split(/\s+/, lc($table));
+			$alias = "$cmt$t" if (!$alias);
+			$from_clause_list{$alias} = "$cmt$t";
 		}
 
 		# Extract all Oracle's outer join syntax from the where clause
@@ -2019,7 +2040,7 @@ sub replace_left_outer_join
 			# When this is the first join parse add the left tablename
 			# first then the outer join with the right table
 			if (scalar keys %final_from_clause == 0) {
-				$from_clause = "\n" . $table_decl1;
+				$from_clause = $table_decl1;
 				$final_from_clause{"$lbl1;$lbl2"}{position} = $i;
 				push(@{$final_from_clause{"$lbl1;$lbl2"}{clause}{$table_decl2}{predicat}}, "$l $o $r");
 			} else {
@@ -2042,9 +2063,11 @@ sub replace_left_outer_join
 		foreach my $t (sort { $final_from_clause{$a}{position} <=> $final_from_clause{$b}{position} } keys %final_from_clause) {
 			foreach my $j (sort keys %{$final_from_clause{$t}{clause}}) {
 				if ($j !~ /\(\%SUBQUERY\d+\%\)/i && $from_clause !~ /\b\Q$final_from_clause{$t}{clause}{$j}{left}\E\b/) {
-					$from_clause .= "\n,$final_from_clause{$t}{clause}{$j}{left}";
+					$from_clause .= ",$final_from_clause{$t}{clause}{$j}{left}";
 				}
-				$from_clause .= "\nLEFT OUTER JOIN $j ON (" .  join(' AND ', @{$final_from_clause{$t}{clause}{$j}{predicat}}) . ")"; 
+				my $tbl = $j;
+				$tbl =~ s/\%ORA2PG_COMMENT\d+\%\s*//is;
+				$from_clause .= "\nLEFT OUTER JOIN $tbl ON (" .  join(' AND ', @{$final_from_clause{$t}{clause}{$j}{predicat}}) . ")"; 
 			}
 		}
 
@@ -2053,7 +2076,7 @@ sub replace_left_outer_join
 			my $table_decl = "$from_clause_list{$a}";
 			$table_decl .= " $a" if ($a ne $from_clause_list{$a});
 			if ($table_decl !~ /\(\%SUBQUERY\d+\%\)/i && $from_clause !~ /\b$table_decl\b/) {
-				$from_clause = "\n$table_decl, " . $from_clause;
+				$from_clause = "$table_decl, " . $from_clause;
 			}
 		}
 
