@@ -2106,6 +2106,8 @@ sub read_schema_from_file
 
 	my @statements = split(/\s*;\s*/, $content);
 
+	$self->{virtual_column} = ();
+
 	foreach $content (@statements) {
 		$content .= ';';
 		# Remove potential dynamic table creation before parsing
@@ -2178,9 +2180,27 @@ sub read_schema_from_file
 					# Retrieve all columns information
 					if (uc($c_name) ne 'CONSTRAINT') {
 						$cur_c_name = $c_name;
+						my $c_default = '';
+						my $virt_col = 'NO';
+						if ($c =~ s/\b(GENERATED ALWAYS AS|AS)\s+([^\n]+),//is) {
+							$virt_col = 'YES';
+							$c_default = $2;
+							$c_default =~ s/\s+VIRTUAL//is;
+						}
 						my $c_type = '';
 						if ($c =~ s/^([^\s\(]+)\s*//s) {
 							$c_type = $1;
+						} elsif ($c_default) {
+							# Try to guess a type the virtual column was declared without one,
+							# but always default to text and always display a warning.
+							if ($c_default =~ /ROUND\s*\(/is) {
+								$c_type = 'bigint';
+							} elsif ($c_default =~ /TO_DATE\s\(/is) {
+								$c_type = 'timestamp';
+							} else {
+								$c_type = 'text';
+							}
+							print STDERR "Virtual column $tb_name.$cur_c_name has no data type defined, using $c_type but you need to check that this is the right type.\n";
 						} else {
 							next;
 						}
@@ -2229,7 +2249,6 @@ sub read_schema_from_file
 							$auto_incr = 1;
 						}
 
-						my $c_default = '';
 						if ($c =~ s/DEFAULT\s+([^\s]+)\s*//is) {
 							if (!$self->{plsql_pgsql}) {
 								$c_default = $1;
@@ -2238,8 +2257,8 @@ sub read_schema_from_file
 							}
 							$c_default =~ s/,$//;
 						}
-						#COLUMN_NAME, DATA_TYPE, DATA_LENGTH, NULLABLE, DATA_DEFAULT, DATA_PRECISION, DATA_SCALE, CHAR_LENGTH, TABLE_NAME, OWNER
-						push(@{$self->{tables}{$tb_name}{column_info}{$c_name}}, ($c_name, $c_type, $c_length, $c_nullable, $c_default, $c_length, $c_scale, $c_length, $tb_name, '', $pos, $auto_incr));
+						#COLUMN_NAME, DATA_TYPE, DATA_LENGTH, NULLABLE, DATA_DEFAULT, DATA_PRECISION, DATA_SCALE, CHAR_LENGTH, TABLE_NAME, OWNER, VIRTUAL_COLUMN
+						push(@{$self->{tables}{$tb_name}{column_info}{$c_name}}, ($c_name, $c_type, $c_length, $c_nullable, $c_default, $c_length, $c_scale, $c_length, $tb_name, '', $virt_col, $pos, $auto_incr));
 					} else {
 						$self->_parse_constraint($tb_name, $cur_c_name, $c);
 					}
@@ -5999,12 +6018,16 @@ CREATE TRIGGER virt_col_${tb}_trigger
 
 };
 		}
-		my $fhdl = undef;
-		$self->logit("Dumping virtual column triggers to one separate file : VIRTUAL_COLUMNS_$self->{output}\n", 1);
-		$fhdl = $self->open_export_file("VIRTUAL_COLUMNS_$self->{output}");
-		set_binmode($fhdl);
-		$self->dump($sql_header . $trig_out, $fhdl);
-		$self->close_export_file($fhdl);
+		if (!$self->{file_per_constraint}) {
+			$self->dump($trig_out);
+		} else {
+			my $fhdl = undef;
+			$self->logit("Dumping virtual column triggers to one separate file : VIRTUAL_COLUMNS_$self->{output}\n", 1);
+			$fhdl = $self->open_export_file("VIRTUAL_COLUMNS_$self->{output}");
+			set_binmode($fhdl);
+			$self->dump($sql_header . $trig_out, $fhdl);
+			$self->close_export_file($fhdl);
+		}
 	}
 }
 
