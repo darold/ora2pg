@@ -5588,6 +5588,9 @@ CREATE TRIGGER ${table}_trigger_insert
 	# Find first the total number of tables
 	my $num_total_table = scalar keys %{$self->{tables}};
 
+	# Hash that will contains virtual column information to build triggers
+	my %virtual_trigger_info = ();
+
 	# Dump all table/index/constraints SQL definitions
 	my $ib = 1;
 	foreach my $table (sort { $self->{tables}{$a}{internal_id} <=> $self->{tables}{$b}{internal_id} } keys %{$self->{tables}}) {
@@ -5635,7 +5638,7 @@ CREATE TRIGGER ${table}_trigger_insert
 			# Extract column information following the Oracle position order
 			foreach my $k (sort { 
 					if (!$self->{reordering_columns}) {
-						$self->{tables}{$table}{column_info}{$a}[10] <=> $self->{tables}{$table}{column_info}{$b}[10];
+						$self->{tables}{$table}{column_info}{$a}[11] <=> $self->{tables}{$table}{column_info}{$b}[11];
 					} else {
 						my $tmpa = $self->{tables}{$table}{column_info}{$a};
 						$tmpa->[2] =~ s/\D//g;
@@ -5649,6 +5652,7 @@ CREATE TRIGGER ${table}_trigger_insert
 					}
 				} keys %{$self->{tables}{$table}{column_info}}) {
 
+				# COLUMN_NAME,DATA_TYPE,DATA_LENGTH,NULLABLE,DATA_DEFAULT,DATA_PRECISION,DATA_SCALE,CHAR_LENGTH,TABLE_NAME,OWNER,VIRTUAL_COLUMN,POSITION,SRID,SDO_DIM,SDO_GTYPE
 				my $f = $self->{tables}{$table}{column_info}{$k};
 				$f->[2] =~ s/\D//g;
 				my $type = $self->_sql_type($f->[1], $f->[2], $f->[5], $f->[6]);
@@ -5710,22 +5714,23 @@ CREATE TRIGGER ${table}_trigger_insert
 					push(@skip_column_check, $fname);
 				}
 				if ($f->[1] =~ /SDO_GEOMETRY/) {
+					# 12:SRID,13:SDO_DIM,14:SDO_GTYPE
 					# Set the dimension, array is (srid, dims, gtype)
 					my $suffix = '';
-					if ($f->[12] == 3) {
+					if ($f->[13] == 3) {
 						$suffix = 'Z';
-					} elsif ($f->[12] == 4) {
+					} elsif ($f->[13] == 4) {
 						$suffix = 'ZM';
 					}
 					my $gtypes = '';
-					if (!$f->[13] || ($f->[13] =~  /,/) ) {
+					if (!$f->[14] || ($f->[14] =~  /,/) ) {
 						$gtypes = $ORA2PG_SDO_GTYPE{0};
 					} else {
-						$gtypes = $f->[13];
+						$gtypes = $f->[14];
 					}
 					$type = "geometry($gtypes$suffix";
-					if ($f->[11]) {
-						$type .= ",$f->[11]";
+					if ($f->[12]) {
+						$type .= ",$f->[12]";
 					}
 					$type .= ")";
 				}
@@ -5753,20 +5758,29 @@ CREATE TRIGGER ${table}_trigger_insert
 					if ($self->{plsql_pgsql}) {
 						$f->[4] = Ora2Pg::PLSQL::convert_plsql_code($self, $f->[4]);
 					}
-					if (($f->[4] ne '') && ($self->{type} ne 'FDW')) {
-						if (($type eq 'boolean') && exists $self->{ora_boolean_values}{lc($f->[4])}) {
-							$sql_output .= " DEFAULT '" . $self->{ora_boolean_values}{lc($f->[4])} . "'";
-						} else {
-							if (($f->[4] !~ /^'/) && ($f->[4] =~ /[^\d\.]/)) {
-								if ($type =~ /CHAR|TEXT|ENUM/i) {
-									$f->[4] = "'$f->[4]'" if ($f->[4] !~ /'/);
-								} elsif ($type =~ /DATE|TIME/i) {
-									# do not use REPLACE_ZERO_DATE in default value, cause it can be NULL
-									$f->[4] =~ s/^0000-00-00.*/1970-01-01 00:00:00/;
-									$f->[4] = "'$f->[4]'" if ($f->[4] =~ /^\d+/);
+					# Check if this is a virtual column before proceeding to default value export
+					if ($self->{tables}{$table}{column_info}{$k}[10] eq 'YES') {
+						$virtual_trigger_info{$table}{$k} = $f->[4];
+						$virtual_trigger_info{$table}{$k} =~ s/"//gs;
+						foreach my $c (keys %{$self->{tables}{$table}{column_info}}) {
+							$virtual_trigger_info{$table}{$k} =~ s/\b$c\b/NEW.$c/gs;
+						}
+					} else {
+						if (($f->[4] ne '') && ($self->{type} ne 'FDW')) {
+							if (($type eq 'boolean') && exists $self->{ora_boolean_values}{lc($f->[4])}) {
+								$sql_output .= " DEFAULT '" . $self->{ora_boolean_values}{lc($f->[4])} . "'";
+							} else {
+								if (($f->[4] !~ /^'/) && ($f->[4] =~ /[^\d\.]/)) {
+									if ($type =~ /CHAR|TEXT|ENUM/i) {
+										$f->[4] = "'$f->[4]'" if ($f->[4] !~ /'/);
+									} elsif ($type =~ /DATE|TIME/i) {
+										# do not use REPLACE_ZERO_DATE in default value, cause it can be NULL
+										$f->[4] =~ s/^0000-00-00.*/1970-01-01 00:00:00/;
+										$f->[4] = "'$f->[4]'" if ($f->[4] =~ /^\d+/);
+									}
 								}
+								$sql_output .= " DEFAULT $f->[4]";
 							}
-							$sql_output .= " DEFAULT $f->[4]";
 						}
 					}
 				}
@@ -5843,7 +5857,6 @@ CREATE TRIGGER ${table}_trigger_insert
 		}
 		if (exists $self->{tables}{$table}{alter_index} && $self->{tables}{$table}{alter_index}) {
 			foreach (@{$self->{tables}{$table}{alter_index}}) {
-print STDERR "EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE [$_]\n";
 				$sql_output .= "$_;\n";
 			}
 		}
@@ -5960,6 +5973,39 @@ RETURNS text AS
 	}
 
 	$self->dump($sql_header . $sql_output);
+
+	# Some virtual column have been found
+	if (scalar keys %virtual_trigger_info > 0) {
+		my $trig_out = '';
+		foreach my $tb (keys %virtual_trigger_info) {
+			$trig_out .= qq{
+DROP TRIGGER IF EXISTS virt_col_${tb}_trigger ON $tb CASCADE;
+
+CREATE OR REPLACE FUNCTION fct_virt_col_${tb}_trigger() RETURNS trigger AS \$BODY\$
+BEGIN
+};
+			foreach my $c (keys %{$virtual_trigger_info{$tb}}) {
+				$trig_out .= "\tNEW.$c = $virtual_trigger_info{$tb}{$c};\n";
+			}
+			$trig_out .= qq{
+RETURN NEW;
+end
+\$BODY\$
+ LANGUAGE 'plpgsql' SECURITY DEFINER;
+
+CREATE TRIGGER virt_col_${tb}_trigger
+        BEFORE INSERT OR UPDATE ON $tb FOR EACH ROW
+        EXECUTE PROCEDURE fct_virt_col_${tb}_trigger();
+
+};
+		}
+		my $fhdl = undef;
+		$self->logit("Dumping virtual column triggers to one separate file : VIRTUAL_COLUMNS_$self->{output}\n", 1);
+		$fhdl = $self->open_export_file("VIRTUAL_COLUMNS_$self->{output}");
+		set_binmode($fhdl);
+		$self->dump($sql_header . $trig_out, $fhdl);
+		$self->close_export_file($fhdl);
+	}
 }
 
 sub file_exists
@@ -7311,8 +7357,11 @@ sub _column_info
 	my $sth = '';
 	if ($self->{db_version} !~ /Release 8/) {
 		$sth = $self->{dbh}->prepare(<<END);
-SELECT A.COLUMN_NAME, A.DATA_TYPE, A.DATA_LENGTH, A.NULLABLE, A.DATA_DEFAULT, A.DATA_PRECISION, A.DATA_SCALE, A.CHAR_LENGTH, A.TABLE_NAME, A.OWNER
-FROM $self->{prefix}_TAB_COLUMNS A, ALL_OBJECTS O WHERE A.OWNER=O.OWNER and A.TABLE_NAME=O.OBJECT_NAME and O.OBJECT_TYPE='$objtype' $condition
+SELECT A.COLUMN_NAME, A.DATA_TYPE, A.DATA_LENGTH, A.NULLABLE, A.DATA_DEFAULT,
+    A.DATA_PRECISION, A.DATA_SCALE, A.CHAR_LENGTH, A.TABLE_NAME, A.OWNER, V.VIRTUAL_COLUMN
+FROM $self->{prefix}_TAB_COLUMNS A, ALL_OBJECTS O, ALL_TAB_COLS V
+WHERE A.OWNER=O.OWNER and A.TABLE_NAME=O.OBJECT_NAME and O.OBJECT_TYPE='$objtype'
+    AND A.OWNER=V.OWNER AND A.TABLE_NAME=V.TABLE_NAME AND A.COLUMN_NAME=V.COLUMN_NAME $condition
 ORDER BY A.COLUMN_ID
 END
 		if (!$sth) {
@@ -7327,8 +7376,11 @@ END
 	} else {
 		# an 8i database.
 		$sth = $self->{dbh}->prepare(<<END);
-SELECT A.COLUMN_NAME, A.DATA_TYPE, A.DATA_LENGTH, A.NULLABLE, A.DATA_DEFAULT, A.DATA_PRECISION, A.DATA_SCALE, A.DATA_LENGTH, A.TABLE_NAME, A.OWNER
-FROM $self->{prefix}_TAB_COLUMNS A, ALL_OBJECTS O WHERE A.OWNER=O.OWNER and A.TABLE_NAME=O.OBJECT_NAME and O.OBJECT_TYPE='$objtype' $condition
+SELECT A.COLUMN_NAME, A.DATA_TYPE, A.DATA_LENGTH, A.NULLABLE, A.DATA_DEFAULT,
+    A.DATA_PRECISION, A.DATA_SCALE, A.DATA_LENGTH, A.TABLE_NAME, A.OWNER, V.VIRTUAL_COLUMN
+FROM $self->{prefix}_TAB_COLUMNS A, ALL_OBJECTS O, ALL_TAB_COLS V
+WHERE A.OWNER=O.OWNER and A.TABLE_NAME=O.OBJECT_NAME and O.OBJECT_TYPE='$objtype'
+    AND A.OWNER=V.OWNER AND A.TABLE_NAME=V.TABLE_NAME AND A.COLUMN_NAME=V.COLUMN_NAME $condition
 ORDER BY A.COLUMN_ID
 END
 		if (!$sth) {
@@ -7371,9 +7423,9 @@ END
 			$row->[2] = 38;
 		}
 
-		my $tmptable = $row->[-2];
+		my $tmptable = $row->[8];
 		if ($self->{export_schema} && !$self->{schema}) {
-			$tmptable = "$row->[-1].$row->[-2]";
+			$tmptable = "$row->[9].$row->[8]";
 		}
 
 		# check if this is a spatial column (srid, dim, gtype)
@@ -7394,7 +7446,7 @@ END
 						$self->logit("WARNING: Error retreiving SRID, no matter default SRID will be used: $spatial_srid\n", 0);
 					}
 				} else {
-					$sth2->execute($row->[-2],$row->[0],$row->[-1]) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+					$sth2->execute($row->[8],$row->[0],$row->[9]) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 					while (my $r = $sth2->fetch) {
 						push(@result, $r->[0]) if ($r->[0] =~ /\d+/);
 					}
@@ -7432,7 +7484,7 @@ END
 				if (!$sth2) {
 					$self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 				}
-				$sth2->execute($row->[-2],$row->[0],$row->[-1]) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+				$sth2->execute($row->[8],$row->[0],$row->[9]) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 				my $count = 0;
 				while (my $r = $sth2->fetch) {
 					$count++;
@@ -7447,7 +7499,7 @@ END
 			if (!$found_contraint && $self->{autodetect_spatial_type}) {
 
 				# Get spatial information
-				my $colname = $row->[-1] . "." . $row->[-2];
+				my $colname = $row->[9] . "." . $row->[8];
 				my $squery = sprintf($spatial_gtype, $row->[0], $colname);
 				my $sth2 = $self->{dbh}->prepare($squery);
 				if (!$sth2) {
@@ -7477,7 +7529,7 @@ END
 		if (!$self->{schema} && $self->{export_schema}) {
 			push(@{$data{$tmptable}{"$row->[0]"}}, (@$row, $pos, @geom_inf));
 		} else {
-			push(@{$data{"$row->[-2]"}{"$row->[0]"}}, (@$row, $pos, @geom_inf));
+			push(@{$data{"$row->[8]"}{"$row->[0]"}}, (@$row, $pos, @geom_inf));
 		}
 
 		$pos++;
@@ -11839,7 +11891,7 @@ sub _show_infos
 						$report_info{'Objects'}{$typ}{'cost_value'} += 12; # one hour to solve reserved keyword might be enough
 					}
 					# Get fields informations
-					foreach my $k (sort {$self->{tables}{$t}{column_info}{$a}[10] <=> $self->{tables}{$t}{column_info}{$a}[10]} keys %{$self->{tables}{$t}{column_info}}) {
+					foreach my $k (sort {$self->{tables}{$t}{column_info}{$a}[11] <=> $self->{tables}{$t}{column_info}{$a}[11]} keys %{$self->{tables}{$t}{column_info}}) {
 						$r = is_reserved_words($self->{tables}{$t}{column_info}{$k}[0]);
 						if (($r > 0) && ($r != 3)) {
 							$table_detail{'reserved words in column name'}++;
@@ -12218,7 +12270,7 @@ sub _show_infos
 				# Collect column's details for the current table with attempt to preserve column declaration order
 				foreach my $k (sort { 
 						if (!$self->{reordering_columns}) {
-							$self->{tables}{$t}{column_info}{$a}[10] <=> $self->{tables}{$t}{column_info}{$b}[10];
+							$self->{tables}{$t}{column_info}{$a}[11] <=> $self->{tables}{$t}{column_info}{$b}[11];
 						} else {
 							my $tmpa = $self->{tables}{$t}{column_info}{$a};
 							$tmpa->[2] =~ s/\D//g;
@@ -12231,7 +12283,7 @@ sub _show_infos
 							$TYPALIGN{$typb} <=> $TYPALIGN{$typa};
 						}
 					} keys %{$self->{tables}{$t}{column_info}}) {
-					# COLUMN_NAME,DATA_TYPE,DATA_LENGTH,NULLABLE,DATA_DEFAULT,DATA_PRECISION,DATA_SCALE,CHAR_LENGTH,TABLE_NAME,OWNER,POSITION,SDO_DIM,SDO_GTYPE,SRID
+					# COLUMN_NAME,DATA_TYPE,DATA_LENGTH,NULLABLE,DATA_DEFAULT,DATA_PRECISION,DATA_SCALE,CHAR_LENGTH,TABLE_NAME,OWNER,VIRTUAL_COLUMN,POSITION,SRID,SDO_DIM,SDO_GTYPE
 					my $d = $self->{tables}{$t}{column_info}{$k};
 					$d->[2] =~ s/\D//g;
 					my $type = $self->_sql_type($d->[1], $d->[2], $d->[5], $d->[6]);
@@ -12270,26 +12322,26 @@ sub _show_infos
 							$align = " - typalign: $TYPALIGN{$typ}";
 						}
 					} else {
-
+						# 12:SRID,13:SDO_DIM,14:SDO_GTYPE
 						# Set the dimension, array is (srid, dims, gtype)
 						my $suffix = '';
-						if ($d->[12] == 3) {
+						if ($d->[13] == 3) {
 							$suffix = 'Z';
-						} elsif ($d->[12] == 4) {
+						} elsif ($d->[13] == 4) {
 							$suffix = 'ZM';
 						}
 						my $gtypes = '';
-						if (!$d->[13] || ($d->[13] =~  /,/) ) {
+						if (!$d->[14] || ($d->[14] =~  /,/) ) {
 							$gtypes = $ORA2PG_SDO_GTYPE{0};
 						} else {
-							$gtypes = $d->[13];
+							$gtypes = $d->[14];
 						}
 						$type = "geometry($gtypes$suffix";
-						if ($d->[11]) {
-							$type .= ",$d->[11]";
+						if ($d->[12]) {
+							$type .= ",$d->[12]";
 						}
 						$type .= ")";
-						$type .= " - $d->[13]" if ($d->[13] =~  /,/);
+						$type .= " - $d->[14]" if ($d->[14] =~  /,/);
 						
 					}
 					my $ret = &is_reserved_words($d->[0]);
@@ -12309,7 +12361,9 @@ sub _show_infos
 					} elsif (exists $self->{'replace_as_boolean'}{uc($d->[1])} && ($self->{'replace_as_boolean'}{uc($d->[1])}[0] == $typlen)) {
 						$type = 'boolean';
 					}
-					$self->logit(" => $type$warning$align\n");
+					my $virtual = '';
+					$virtual = " [virtual column]" if ($d->[10] eq 'YES');
+					$self->logit(" => $type$warning$align$virtual\n");
 				}
 			}
 			$i++;
