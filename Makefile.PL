@@ -298,7 +298,7 @@ CONTEXT_AS_TRGM		0
 # To automatically update the column when a modification in the title column
 # appears, Ora2Pg adds the following trigger:
 #
-# CREATE FUNCTION tsv_t_document_title() RETURNS trigger AS $$
+# CREATE FUNCTION tsv_t_document_title() RETURNS trigger AS \$\$
 # BEGIN
 #        IF TG_OP = 'INSERT' OR new.title != old.title THEN
 #                new.tsv_title :=
@@ -306,7 +306,7 @@ CONTEXT_AS_TRGM		0
 #        END IF;
 #        return new;
 # END
-# $$ LANGUAGE plpgsql;
+# \$\$ LANGUAGE plpgsql;
 # CREATE TRIGGER trig_tsv_t_document_title BEFORE INSERT OR UPDATE
 #  ON t_document
 #  FOR EACH ROW EXECUTE PROCEDURE tsv_t_document_title();
@@ -335,9 +335,9 @@ FTS_INDEX_ONLY	1
 #
 #	CREATE OR REPLACE FUNCTION unaccent_immutable(text)
 #	RETURNS text AS
-#	$$
+#	\$\$
 #		SELECT public.unaccent('public.unaccent', $1)
-#	$$  LANGUAGE sql IMMUTABLE
+#	\$\$  LANGUAGE sql IMMUTABLE
 #	    COST 1;
 #
 # indexes are exported as follow:
@@ -357,9 +357,9 @@ USE_UNACCENT		0
 #
 #      CREATE OR REPLACE FUNCTION unaccent_immutable(text)
 #      RETURNS text AS
-#      $$
+#      \$\$
 #          SELECT lower(public.unaccent('public.unaccent', $1));
-#      $$ LANGUAGE sql IMMUTABLE;
+#      \$\$ LANGUAGE sql IMMUTABLE;
 #
 USE_LOWER_UNACCENT	0
 
