@@ -2200,7 +2200,7 @@ sub read_schema_from_file
 							} else {
 								$c_type = 'text';
 							}
-							print STDERR "Virtual column $tb_name.$cur_c_name has no data type defined, using $c_type but you need to check that this is the right type.\n";
+							print STDERR "WARNING: Virtual column $tb_name.$cur_c_name has no data type defined, using $c_type but you need to check that this is the right type.\n";
 						} else {
 							next;
 						}
