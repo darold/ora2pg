@@ -1874,7 +1874,7 @@ sub replace_right_outer_join
 		if ($str =~ s/\s+((?:GROUP BY|ORDER BY).*)$//is) {
 			$end_query = $1;
 		}
-		my @predicat = split(/\s*\b(AND|OR)\b\s*/i, $str);
+		my @predicat = split(/\s*(\bAND\b|\bOR\b|\%ORA2PG_COMMENT\d+\%)\s*/i, $str);
 		my $id = 0;
 		# Process only predicat with a obsolete join syntax (+) for now
 		for (my $i = 0; $i <= $#predicat; $i+=2) {
@@ -1989,8 +1989,16 @@ sub replace_right_outer_join
 		foreach my $a (keys %from_clause_list) {
 			my $table_decl = "$from_clause_list{$a}";
 			$table_decl .= " $a" if ($a ne $from_clause_list{$a});
-			if ($table_decl !~ /\(\%SUBQUERY\d+\%\)/i && $from_clause !~ /\b$table_decl\b/) {
+			# Remove comment before searching it inside the from clause
+			my $tmp_tbl = $table_decl;
+			my $comment = '';
+			while ($tmp_tbl =~ s/(\s*\%ORA2PG_COMMENT\d+\%\s*)//is) {
+				$comment .= $1;
+			}
+			if ($table_decl !~ /\(\%SUBQUERY\d+\%\)/i && $from_clause !~ /\b\Q$tmp_tbl\E\b/) {
 				$from_clause = "$table_decl, " . $from_clause;
+			} elsif ($comment) {
+				 $from_clause = "$comment " . $from_clause;
 			}
 		}
 
@@ -2045,10 +2053,10 @@ sub replace_left_outer_join
 		if ($str =~ s/\s+((?:GROUP BY|ORDER BY).*)$//is) {
 			$end_query = $1;
 		}
-		my @predicat = split(/\s*\b(AND|OR)\b\s*/i, $str);
+		my @predicat = split(/\s*(\bAND\b|\bOR\b|\%ORA2PG_COMMENT\d+\%)\s*/i, $str);
 		my $id = 0;
 		# Process only predicat with a obsolete join syntax (+) for now
-		for (my $i = 0; $i <= $#predicat; $i+=2) {
+		for (my $i = 0; $i <= $#predicat; $i++) {
 			next if ($predicat[$i] !~ /\(\+\)/);
 			$predicat[$i] =~ s/(.*)/WHERE_CLAUSE$id /is;
 			my $where_clause = $1;
@@ -2058,6 +2066,7 @@ sub replace_left_outer_join
 			$where_clause =~ s/\s*\(\+\)//gs;
 			# Split the predicat to retrieve left part, operator and right part
 			my ($l, $o, $r) = split(/\s*(=|LIKE)\s*/i, $where_clause);
+
 			# When the part of the clause are not single fields move them
 			# at their places in the WHERE clause and go to next predicat
 			if (($l !~ /^[^\.]+\.[^\s]+$/s) || ($r !~ /^[^\.]+\.[^\s]+$/s)) {
@@ -2116,7 +2125,7 @@ sub replace_left_outer_join
 					push(@outer_clauses, (split(/\s/, $final_from_clause{$t}{clause}{$j}{left}))[1] || $final_from_clause{$t}{clause}{$j}{left});
 				}
 				my $tbl = $j;
-				$tbl =~ s/\%ORA2PG_COMMENT\d+\%\s*//is;
+				$tbl =~ s/\s*\%ORA2PG_COMMENT\d+\%\s*//isg;
 				$from_clause .= "\nLEFT OUTER JOIN $tbl ON (" .  join(' AND ', @{$final_from_clause{$t}{clause}{$j}{predicat}}) . ")";
 				my ($l,$r) = split(/;/, $t);
 				push(@{$final_outer_clauses{$l}{join}},  "LEFT OUTER JOIN $tbl ON (" .  join(' AND ', @{$final_from_clause{$t}{clause}{$j}{predicat}}) . ")");
@@ -2128,6 +2137,7 @@ sub replace_left_outer_join
 		$from_clause = '';
 		foreach my $c (sort { $from_order{$a} <=> $from_order{$b} } keys %from_order) {
 			next if (!grep(/^$c$/i, @outer_clauses));
+
 			$from_clause .= "\n, $from_clause_list{$c}";
 			$from_clause .= " $c" if ($c ne $from_clause_list{$c});
 			my %output = ();
@@ -2161,8 +2171,16 @@ sub replace_left_outer_join
 		foreach my $a (keys %from_clause_list) {
 			my $table_decl = "$from_clause_list{$a}";
 			$table_decl .= " $a" if ($a ne $from_clause_list{$a});
-			if ($table_decl !~ /\(\%SUBQUERY\d+\%\)/i && $from_clause !~ /\b$table_decl\b/) {
+			# Remove comment before searching it inside the from clause
+			my $tmp_tbl = $table_decl;
+			my $comment = '';
+			while ($tmp_tbl =~ s/(\s*\%ORA2PG_COMMENT\d+\%\s*)//is) {
+				$comment .= $1;
+			}
+			if ($table_decl !~ /\(\%SUBQUERY\d+\%\)/i && $from_clause !~ /\b\Q$tmp_tbl\E\b/) {
 				$from_clause = "$table_decl, " . $from_clause;
+			} elsif ($comment) {
+				 $from_clause = "$comment " . $from_clause;
 			}
 		}
 
