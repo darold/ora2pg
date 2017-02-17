@@ -644,8 +644,8 @@ sub plsql_to_plpgsql
 			# Try to append aliases of subqueries in the from clause
 			if ($queries[$j] =~ s/\b(FROM\s+)(.*\%SUBQUERY.*)(\s+WHERE)\b/$1\%FROM_CLAUSE\%$3/is) {
 				my $from_clause = $2;
-				$from_clause =~ s/\(\%SUBQUERY(\d+)\%\)(\s*,)/\(\%SUBQUERY$1\%\) alias$1$2/igs;
-				$from_clause =~ s/\(\%SUBQUERY(\d+)\%\)(\s*)$/\(\%SUBQUERY$1\%\) alias$1$2/is;
+				$from_clause =~ s/(?<!USING|[\s,]ONLY)\(\%SUBQUERY(\d+)\%\)(\s*,)/\(\%SUBQUERY$1\%\) alias$1$2/igs;
+				$from_clause =~ s/(?<!USING|[\s,]ONLY)\(\%SUBQUERY(\d+)\%\)(\s*)$/\(\%SUBQUERY$1\%\) alias$1$2/is;
 				$queries[$j] =~ s/\%FROM_CLAUSE\%/$from_clause/s;
 				
 			}
