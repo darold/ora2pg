@@ -347,6 +347,14 @@ sub convert_plsql_code
 	$class->{text_values} = ();
 	$str = remove_text_constant_part($class, $str);
 
+	# Replace decode("user_status",'active',"username",null)
+	# PostgreSQL (CASE WHEN "user_status"='ACTIVE' THEN "username" ELSE NULL END)
+	%{$class->{decode_str}} = ();
+	my $idxd = 0;
+	$str = replace_decode($class, $str, \$idxd);
+	while ($str =~ s/\%DECODE(\d+)\%/$class->{decode_str}{$1}/gs) {};
+	delete $class->{decode_str};
+
 	%{$class->{single_fct_call}} = ();
 
 	# Extract all block from the code by splitting it on the semi-comma
@@ -544,7 +552,7 @@ sub plsql_to_plpgsql
 	$str =~ s/\b(SELECT\b[^;]*?INTO)(.*?)(EXCEPTION.*?(?:NO_DATA_FOUND|TOO_MANY_ROW))/$1 STRICT $2 $3/igs;
 
 	# Remove the function name repetion at end
-	$str =~ s/\bEND\s+(?!IF|LOOP|CASE|INTO|FROM|END|,)[a-z0-9_"]+(\s*[;]?)/END$1$2/igs;
+	$str =~ s/\bEND\s+(?!IF|LOOP|CASE|INTO|FROM|END|ELSE|,)[a-z0-9_"]+(\s*[;]?)/END$1$2/igs;
 
 	# Rewrite comment in CASE between WHEN and THEN
 	$str =~ s/(\s*)(WHEN\s+[^\s]+\s*)(ORA2PG_COMMENT\d+\%)(\s*THEN)/$1$3$1$2$4/igs;
@@ -881,10 +889,6 @@ sub replace_oracle_function
 	# Rewrite replace(a,b) with three argument
 	$str =~ s/REPLACE\s*\($field,$field\)/replace($1, $2, '')/is;
 
-	# Replace decode("user_status",'active',"username",null)
-	# PostgreSQL (CASE WHEN "user_status"='ACTIVE' THEN "username" ELSE NULL END)
-	$str = replace_decode($str);
-
 	##############
 	# Replace package.function call by package_function
 	##############
@@ -910,15 +914,11 @@ sub replace_oracle_function
 
 sub replace_decode
 {
-	my $str = shift;
+	my ($class, $str, $idx) = @_;
 
-	my $decode_idx = 0;
-	my @str_decode = ();
-
-	if ($str =~ s/DECODE\s*\(([^\(\)]+)\)/DECODE\%\%/is) {
-		push(@str_decode, $1);
+	if ($str =~ s/DECODE\s*\(([^\(\)]+)\)\s*/\%DECODE$$idx\%/is) {
 		# Create an array with all parameter of the decode function
-		my @fields = split(/\s*,\s*/s, $str_decode[-1]);
+		my @fields = split(/\s*,\s*/s, $1);
 		my $case_str = 'CASE ';
 		for (my $i = 1; $i <= $#fields; $i+=2) {
 			if ($i < $#fields) {
@@ -927,8 +927,10 @@ sub replace_decode
 				$case_str .= " ELSE $fields[$i] ";
 			}
 		}
-		$case_str .= 'END';
-		$str =~ s/DECODE\%\%/$case_str /s;
+		$case_str .= 'END ';
+		$class->{decode_str}{$$idx} = $case_str;
+		$$idx++;
+		$str = replace_decode($class, $str, $idx);
 	}
 
 	return $str;
