@@ -26,7 +26,7 @@ Oracle database to a PostgreSQL database.
 %{__perl} Makefile.PL \
     INSTALLDIRS=vendor \
     QUIET=1 \
-    CONFDIR=%{_sysconfdir}/%{name} \
+    CONFDIR=%{_sysconfdir} \
     DOCDIR=%{_docdir}/%{name}-%{version} \
     DESTDIR=%{buildroot}
 %{__make}
@@ -36,8 +36,9 @@ Oracle database to a PostgreSQL database.
 %{__make} install DESTDIR=%{buildroot}
 
 # Remove unpackaged files.
-%{__rm} -f `find %{buildroot}/%{_libdir}/perl*/ -name perllocal.pod -type f`
 %{__rm} -f `find %{buildroot}/%{_libdir}/perl*/ -name .packlist -type f`
+%{__rm} -f `find %{buildroot}/%{_libdir}/perl*/ -name perllocal.pod -type f`
+
 
 %clean
 %{__rm} -rf %{buildroot}
@@ -47,7 +48,8 @@ Oracle database to a PostgreSQL database.
 %attr(0755,root,root) %{_bindir}/%{name}
 %attr(0755,root,root) %{_bindir}/%{name}_scanner
 %attr(0644,root,root) %{_mandir}/man3/%{name}.3.gz
-%config(noreplace) %{_sysconfdir}/%{name}/%{name}.conf.dist
+%config(noreplace) %{_sysconfdir}/%{name}.conf.dist
+#%config(noreplace) %{_sysconfdir}/%{name}/%{name}.conf.dist
 %{perl_vendorlib}/Ora2Pg/MySQL.pm
 %{perl_vendorlib}/Ora2Pg/PLSQL.pm
 %{perl_vendorlib}/Ora2Pg/GEOM.pm
@@ -55,9 +57,17 @@ Oracle database to a PostgreSQL database.
 %{_docdir}/%{name}-%{version}/*
 
 %changelog
-* Sat Apr  9 2016 Gilles Darold <gilles@darold.net> 18.0
+* Tue Jan 31 2017 Devrim Gündüz <devrim@gunduz.org> 18.0-1
 - Update to 18.0
-- Append %{name} to CONFDIR and %{version} to DOCDIR in %files section
+
+* Mon Nov 21 2016 Devrim Gündüz <devrim@gunduz.org> 17.6-1
+- Update to 17.6
+
+* Fri Oct 21 2016 Devrim Gündüz <devrim@gunduz.org> 17.5-1
+- Update to 17.5
+
+* Mon Apr 18 2016 Devrim Gündüz <devrim@gunduz.org> 17.3-1
+- Update to 17.3
 
 * Fri Mar 25 2016 Devrim Gündüz <devrim@gunduz.org> 17.2-1
 - Update to 17.2
