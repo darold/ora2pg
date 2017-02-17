@@ -609,7 +609,7 @@ COPY_FREEZE		0
 # replace a type with a precision and scale you need to escape the coma with
 # a backslash. For example, if you want to replace all NUMBER(*,0) into bigint
 # instead of numeric(38)add the following:
-# 	DATA_TYPE	NUMBER(*\,0):bigint
+# 	DATA_TYPE	NUMBER(*\\,0):bigint
 # Here is the default replacement for all Oracle's types. You don't have to
 # recopy all type conversion but just the one you want to rewrite.
 #DATA_TYPE	DATE:timestamp,LONG:text,LONG RAW:bytea,CLOB:text,NCLOB:text,BLOB:bytea,BFILE:bytea,RAW:bytea,ROWID:oid,FLOAT:double precision,DEC:decimal,DECIMAL:decimal,DOUBLE PRECISION:double precision,INT:numeric,INTEGER:numeric,REAL:real,SMALLINT:smallint,BINARY_FLOAT:double precision,BINARY_DOUBLE:double precision,TIMESTAMP:timestamp,XMLTYPE:xml,BINARY_INTEGER:integer,PLS_INTEGER:integer,TIMESTAMP WITH TIME ZONE:timestamp with time zone,TIMESTAMP WITH LOCAL TIME ZONE:timestamp with time zone
@@ -660,7 +660,7 @@ ENABLE_MICROSECOND      1
 # exported as timestamp by Ora2Pg can be forced into type date. Value is
 # a comma-separated list of TABLE:COLUMN:TYPE structure. If you need to use
 # comma or space inside type definition you will have to backslash them.
-#MODIFY_TYPE     TABLE1:COL3:varchar,TABLE1:COL4:decimal(9\,6)
+#MODIFY_TYPE     TABLE1:COL3:varchar,TABLE1:COL4:decimal(9\\,6)
 
 #------------------------------------------------------------------------------
 # GRANT SECTION (Control priviledge and owner export)
