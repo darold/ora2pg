@@ -1,3 +1,102 @@
+2017 02 17 - v18.1
+
+This release fix several issues reported on outer join translation
+thanks to the help of Pavel Stehule and reapply the commit on virtual
+column export that was accidentally removed from v18.1. It also adds
+several new features:
+
+  - Remove CHECK constraints for columns converted into boolean using
+    REPLACE_AS_BOOLEAN column.
+  - Oracle function are now marked as stable by default as they can
+    not modify data.
+
+Two new configuration directives have been added:
+
+  - DATE_FUNCTION_REWRITE: by default Ora2pg rewrite add_month(),
+    add_year() and date_trunc() functions set it to 0 to force Ora2Pg
+    to not translate those functions if translated code is broken.
+  - GRANT_OBJECT: when exporting GRANT you can now specify a comma
+    separated list of objects which privileges must be exported.
+    Default is to export privileges for all objects. For example
+    set it to TABLE if you just want to export privilege on tables.
+
+and a new command line option:
+
+  - Add -g | --grant_object command line option to ora2pg to be able
+    to extract privilege from the given object type. See possible values
+    with GRANT_OBJECT configuration directive.
+
+Here is the complete list of changes:
+
+  - Remove empty output.sql file in current directory with direct data
+    import. Thanks to kuzmaka for the report.
+  - Fix shell replacement of $$ in function definition in Makefile.PL
+    embedded configuration file. Thanks to kuzmaka for the report.
+  - Fix shell replacement of backslash in Makefile.PL embedded
+    configuration file. Thanks to kuzmaka for the report.
+  - Add warning level to virtual column notice.
+  - Fix comment in where clause breaking the outer join association.
+    Thanks to Pavel Stehule for the report.
+  - Add parsing and support of virtual column from DDL file.
+  - Reapply commit on virtual column export that was accidentally
+    removed in commit d5866c9. Thanks to Alexey for the report.
+  - Fix mix of inner join and outer join not translated correctly.
+    Thanks to Pavel Stehule for the help to solve this issue.
+  - Fix additional comma in column DEFAULT value from DDL input file.
+    Thanks to Cynthia Shang for the report.
+  - Fix comments inside FROM clause breaking translation to ANSI outer
+    joins. Thanks to Pavel Stehule for the report.
+  - Fix replacement of sdo_geometry type into function. Thanks to
+    Saber Chaabane for the report.
+  - Fix subquery in outer join clause. Thanks to Saber Chaabane for
+    the report.
+  - Fix duplicated subqueries placeholder in the from clause.
+    Thanks to Saber Chaabane for the report.
+  - Fix replacement of subquery place older during outer join rewrite.
+    Thanks to Saber Chaabane for the report.
+  - Add DATE_FUNCTION_REWRITE configuration directive. By default
+    Ora2pg rewrite add_month(), add_year() and date_trunc() functions
+    set it to 0 to force Ora2Pg to not translate those functions if
+    translated code is broken. Thanks to Pavel Stehule for the feature
+    request.
+  - Do not report error when -g is used but action is not GRANT.
+    Thanks to Shane Jimmerson for the report.
+  - Oracle function can not modify data, only procedure can do that,
+    so mark them as stable. Thanks to Pavel Stehule for the report.
+  - Missed some obvious combination like upper/lower case or no space
+    after AND/OR on outer join parsing and some other issues.
+  - Add missing call to extract_subqueries() recursively. Thanks to
+    Pavel Stehule for the report.
+  - Add full support of outer join translation in sub queries.
+  - Add translation of mixed inner join and Oracle outer join. Thanks
+    to Pavel Stehule for the report.
+  - Fix missing space between keyword AS and END from the decode()
+    transformation. Thanks to Pavel Stehule for the report.
+  - Fix parsing of outer join with UNION and translation to left join.
+    Thanks to Pavel Stehule for the report.
+  - Remove CHECK constraints for columns converted into boolean using
+    REPLACE_AS_BOOLEAN column. Thanks to Shane Jimmerson for the
+    feature request.
+  - Fix regression on SQL and PLSQL rewrite when a text constant
+    contained a semi-comma.
+  - Add the GRANT_OBJECT configuration directive. When exporting GRANT
+    you can specify a comma separated list of objects for which the
+    privileges will be exported. Default is export for all objects.
+    Here are the possibles values TABLE, VIEW, MATERIALIZED VIEW,
+    SEQUENCE, PROCEDURE, FUNCTION, PACKAGE BODY, TYPE, SYNONYM and
+    DIRECTORY. Only one object type is allowed at a time. For example
+    set it to TABLE if you just want to export privilege on tables.
+    You can use the -g option to overwrite it.  
+    When used this directive prevent the export of users unless it is
+    set to USER. In this case only users definitions are exported.
+  - Add the -g | --grant_object command line option to ora2pg to be able
+    to extract privilege from the given object type. See possible values
+    with GRANT_OBJECT configuration directive.
+  - Improve replacement of ROWNUM by LIMIT+OFFSET clause.
+  - Fix extra semi-colon at end of statement.
+  - Override ora2pg.spec with Devrim's one but with String::Random
+    removing as it is no more used.
+
 2017 01 29 - v18.0
 
 This new major release adds several new useful features and lot of
