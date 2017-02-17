@@ -478,6 +478,11 @@ sub create_export_file
 {
 	my ($self, $outfile) = @_;
 
+	# Do not create the default export file with direct data export
+	if (($self->{type} eq 'INSERT') || ($self->{type} eq 'COPY')) {
+		return if ($self->{pg_dsn});
+	}
+
 	# Init with configuration OUTPUT filename
 	$outfile ||= $self->{output};
 	if ($self->{input_file} && ($outfile eq $self->{input_file})) {
@@ -5225,7 +5230,7 @@ LANGUAGE plpgsql ;
 		$self->dump("\n$footer") if (!$self->{pg_dsn} && $footer);
 
 		# Close main data output file
-		$self->{fhout}->close();
+		$self->{fhout}->close() if (!$self->{pg_dsn});
 
 		# Disconnect from the database
 		$self->{dbh}->disconnect() if ($self->{dbh});
