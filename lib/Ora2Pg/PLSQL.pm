@@ -411,6 +411,21 @@ sub extract_function_code
         return $code;
 }
 
+sub append_alias_clause
+{
+	my $str = shift;
+
+
+	if ($str =~ s/\b(FROM\s+)(.*\%SUBQUERY.*)(\s+WHERE)\b/$1\%FROM_CLAUSE\%$3/is) {
+		my $from_clause = $2;
+		$from_clause =~ s/(?<!USING|[\s,]ONLY)\(\%SUBQUERY(\d+)\%\)(\s*,)/\(\%SUBQUERY$1\%\) alias$1$2/igs;
+		$from_clause =~ s/(?<!USING|[\s,]ONLY)\(\%SUBQUERY(\d+)\%\)(\s*)$/\(\%SUBQUERY$1\%\) alias$1$2/is;
+		$str =~ s/\%FROM_CLAUSE\%/$from_clause/s;
+	}
+
+	return $str;
+}
+
 =head2 plsql_to_plpgsql
 
 This function return a PLSQL code translated to PLPGSQL code
@@ -642,12 +657,9 @@ sub plsql_to_plpgsql
 			}
 
 			# Try to append aliases of subqueries in the from clause
-			if ($queries[$j] =~ s/\b(FROM\s+)(.*\%SUBQUERY.*)(\s+WHERE)\b/$1\%FROM_CLAUSE\%$3/is) {
-				my $from_clause = $2;
-				$from_clause =~ s/(?<!USING|[\s,]ONLY)\(\%SUBQUERY(\d+)\%\)(\s*,)/\(\%SUBQUERY$1\%\) alias$1$2/igs;
-				$from_clause =~ s/(?<!USING|[\s,]ONLY)\(\%SUBQUERY(\d+)\%\)(\s*)$/\(\%SUBQUERY$1\%\) alias$1$2/is;
-				$queries[$j] =~ s/\%FROM_CLAUSE\%/$from_clause/s;
-				
+			$queries[$j] = 	append_alias_clause($queries[$j]);
+			foreach my $k (keys %subqueries) {
+				$subqueries{$k} = append_alias_clause($subqueries{$k});
 			}
 
 			# Replace call to right outer join obsolete syntax
@@ -701,6 +713,11 @@ sub extract_subqueries
 
 			my %sub_queries = ();
 			($sub_query, %sub_queries) = extract_subqueries($class, $sub_query, $pos);
+
+			# Try to append aliases of subqueries in the from clause
+			$sub_query = append_alias_clause($sub_query);
+
+			# Restore content of subqueries to proceed to outer join translation
 			$sub_query =~ s/\%SUBQUERY(\d+)\%/$sub_queries{$1}/igs;
 
 			# Replace call to right outer join obsolete syntax
