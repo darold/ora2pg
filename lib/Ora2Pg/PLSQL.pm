@@ -2181,32 +2181,36 @@ sub replace_left_outer_join
 		}
 
 		$from_clause = '';
+		my @clause_done = ();
 		foreach my $c (sort { $from_order{$a} <=> $from_order{$b} } keys %from_order) {
 			next if (!grep(/^$c$/i, @outer_clauses));
 
-			$from_clause .= "\n, $from_clause_list{$c}";
-			$from_clause .= " $c" if ($c ne $from_clause_list{$c});
-			my %output = ();
+			my @output = ();
 			for (my $j = 0; $j <= $#{$final_outer_clauses{$c}{join}}; $j++) {
-				$output{$final_outer_clauses{$c}{position}[$j]} = $final_outer_clauses{$c}{join}[$j];
+				push(@output, $final_outer_clauses{$c}{join}[$j]);
 			}
 			foreach my $f (@{$associated_clause{$c}}) {
 				for (my $j = 0; $j <= $#{$final_outer_clauses{$f}{join}}; $j++) {
-					$output{$final_outer_clauses{$f}{position}[$j]} = $final_outer_clauses{$f}{join}[$j];
+					push(@output, $final_outer_clauses{$f}{join}[$j]);
 				}
 				if (exists $associated_clause{$f}) {
 					foreach my $s (@{$associated_clause{$f}}) {
 						for (my $z = 0; $z <= $#{$final_outer_clauses{$s}{join}}; $z++) {
-							$output{$final_outer_clauses{$s}{position}[$z]} = $final_outer_clauses{$s}{join}[$z];
+							push(@output, $final_outer_clauses{$s}{join}[$z]);
 						}
 						delete $final_outer_clauses{$s};
 					}
 				}
 				delete $final_outer_clauses{$f};
 			}
-			foreach my $p (sort { $a <=> $b} keys %output) { 
-				$from_clause .= "\n" . $output{$p};
+			if (!grep(/JOIN $from_clause_list{$c} $c /is, @clause_done)) {
+				$from_clause .= "\n, $from_clause_list{$c}";
+				$from_clause .= " $c" if ($c ne $from_clause_list{$c});
 			}
+			foreach (@output) { 
+				$from_clause .= "\n" . $_;
+			}
+			push(@clause_done, @output);
 			delete $from_order{$c};
 			delete $final_outer_clauses{$c};
 			delete $associated_clause{$c};
