@@ -415,13 +415,19 @@ sub append_alias_clause
 {
 	my $str = shift;
 
-
-	if ($str =~ s/\b(FROM\s+)(.*\%SUBQUERY.*)(\s+WHERE)\b/$1\%FROM_CLAUSE\%$3/is) {
-		my $from_clause = $2;
-		$from_clause =~ s/(?<!USING|[\s,]ONLY)\(\%SUBQUERY(\d+)\%\)(\s*,)/\(\%SUBQUERY$1\%\) alias$1$2/igs;
-		$from_clause =~ s/(?<!USING|[\s,]ONLY)\(\%SUBQUERY(\d+)\%\)(\s*)$/\(\%SUBQUERY$1\%\) alias$1$2/is;
-		$str =~ s/\%FROM_CLAUSE\%/$from_clause/s;
+	# Divise code through UNION keyword marking a new query level
+	my @q = split(/\b(UNION\s+ALL|UNION)\b/i, $str);
+	for (my $j = 0; $j <= $#q; $j+=2) {
+		if ($q[$j] =~ s/\b(FROM\s+)(.*\%SUBQUERY.*?)(\s*)(WHERE|ORDER\s+BY|GROUP\s+BY|LIMIT|$)/$1\%FROM_CLAUSE\%$3$4/is) {
+			my $from_clause = $2;
+			my @parts = split(/\b(WHERE|ORDER\s+BY|GROUP\s+BY|LIMIT)\b/i, $from_clause);
+			$parts[0] =~ s/(?<!USING|[\s,]ONLY|[\s,]JOIN)\(\%SUBQUERY(\d+)\%\)(\s*,)/\(\%SUBQUERY$1\%\) alias$1$2/igs;
+			$parts[0] =~ s/(?<!USING|[\s,]ONLY|[\s,]JOIN)\(\%SUBQUERY(\d+)\%\)(\s*)$/\(\%SUBQUERY$1\%\) alias$1$2/is;
+			$from_clause = join('', @parts);
+			$q[$j] =~ s/\%FROM_CLAUSE\%/$from_clause/s;
+		}
 	}
+	$str = join('', @q);
 
 	return $str;
 }
@@ -642,42 +648,46 @@ sub plsql_to_plpgsql
 	# Catch potential subquery first and replace rownum in subqueries
 	my @statements = split(/;/, $str);
 	for ( my $i = 0; $i <= $#statements; $i++ ) {
-		# Divise code into UNION or other keyword marking a new query level
-		my @queries = split(/\b(UNION\s+ALL|UNION)\b/i, $statements[$i]);
-		for (my $j = 0; $j <= $#queries; $j+=2) {
-			my %subqueries = ();
-			$class->{limit_clause} = '';
-			my $x = 0;
-			($queries[$j], %subqueries) = extract_subqueries($class, $queries[$j], \$x);
+		my %subqueries = ();
+		$class->{limit_clause} = '';
+		my $x = 0;
+		($statements[$i], %subqueries) = extract_subqueries($class, $statements[$i], \$x);
 
-			# Restore (+) outer join syntax
-			foreach my $k (keys %subqueries) {
-				next if ($subqueries{$k} ne '+');
-				$queries[$j] =~ s/\%SUBQUERY$k\%/$subqueries{$k}/is;
-			}
+		# Try to append aliases of subqueries in the from clause
+		$statements[$i] = append_alias_clause($statements[$i]);
+		foreach my $k (keys %subqueries) {
+			$subqueries{$k} = append_alias_clause($subqueries{$k});
+		}
 
-			# Try to append aliases of subqueries in the from clause
-			$queries[$j] = 	append_alias_clause($queries[$j]);
-			foreach my $k (keys %subqueries) {
-				$subqueries{$k} = append_alias_clause($subqueries{$k});
-			}
+		# Restore (+) outer join syntax
+		foreach my $k (keys %subqueries) {
+			next if ($subqueries{$k} ne '+');
+			$statements[$i] =~ s/\%SUBQUERY$k\%/$subqueries{$k}/is;
+		}
+
+		# Divise code through UNION keyword marking a new query level
+		my @q = split(/\b(UNION\s+ALL|UNION)\b/i, $statements[$i]);
+		for (my $j = 0; $j <= $#q; $j++) {
+			next if ($q[$j] eq '+');
 
 			# Replace call to right outer join obsolete syntax
-			$queries[$j] = replace_right_outer_join($queries[$j]);
+			$q[$j] = replace_right_outer_join($q[$j]);
 
 			# Replace call to left outer join obsolete syntax
-			$queries[$j] = replace_left_outer_join($queries[$j]);
+			$q[$j] = replace_left_outer_join($q[$j]);
 
 			# Replace LIMIT into the main query
-			$queries[$j] = replace_rownum_with_limit($class, $queries[$j]);
+			$q[$j] = replace_rownum_with_limit($class, $q[$j]);
 
-			$queries[$j] =~ s/\%SUBQUERY(\d+)\%/$subqueries{$1}/igs;
-			$queries[$j] .= $class->{limit_clause};
-			$queries[$j] =~ s/\s+(?:WHERE|AND)(\s+LIMIT\s+)/$1/is;
 		}
-		map { s/\s+$//; } @queries;
-		$statements[$i] = join("\n", @queries);
+		$statements[$i] = join("\n", @q);
+
+		$statements[$i] =~ s/\%SUBQUERY(\d+)\%/$subqueries{$1}/igs;
+		$statements[$i] .= $class->{limit_clause};
+		$statements[$i] =~ s/\s+(?:WHERE|AND)\s+(LIMIT\s+)/ $1/igs;
 	}
+	map { s/[ ]+([\r\n]+)/$1/s; } @statements;
+	map { s/[ ]+$//; } @statements;
 	$str = join(';', @statements);
 
 	return $str;
@@ -720,15 +730,23 @@ sub extract_subqueries
 			# Restore content of subqueries to proceed to outer join translation
 			$sub_query =~ s/\%SUBQUERY(\d+)\%/$sub_queries{$1}/igs;
 
-			# Replace call to right outer join obsolete syntax
-			$sub_query = replace_right_outer_join($sub_query);
+			# Divise code through UNION keyword marking a new query level
+			my @q = split(/\b(UNION\s+ALL|UNION)\b/i, $sub_query);
+			for (my $j = 0; $j <= $#q; $j++) {
+				next if ($q[$j] eq '+');
 
-			# Replace call to left outer join obsolete syntax
-			$sub_query = replace_left_outer_join($sub_query);
+				# Replace call to right outer join obsolete syntax
+				$q[$j] = replace_right_outer_join($q[$j]);
 
-			# Replace LIMIT into the sub query if this is a select query
-			# otherwise the limit clause is forwarded to the parent call
-			$queries{$$pos} = replace_rownum_with_limit($class, $sub_query);
+				# Replace call to left outer join obsolete syntax
+				$q[$j] = replace_left_outer_join($q[$j]);
+
+				# Replace LIMIT into the sub query if this is a select query
+				# otherwise the limit clause is forwarded to the parent call
+				$q[$j] = replace_rownum_with_limit($class, $q[$j]);
+			}
+			$queries{$$pos} = join("\n", @q);
+
 			if ($class->{limit_clause} && $sub_query =~ /\bSELECT\b/is) {
 				$queries{$$pos} .= $class->{limit_clause};
 				$class->{limit_clause} = '';
