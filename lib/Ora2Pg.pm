@@ -2463,9 +2463,9 @@ sub read_view_from_file
 	$content =~ s/\s+NO\s+FORCE\s+/ /gs;
 	$content =~ s/\s+FORCE\s+/ /gs;
 	$content =~ s/\s+OR\s+REPLACE\s+/ /gs;
-	$content =~ s/CREATE VIEW[\s]+([^\s]+)\s+OF\s+(.*?)\s+AS\s+/CREATE VIEW $1 AS /g;
+	$content =~ s/CREATE\s+VIEW\s+([^\s]+)\s+OF\s+(.*?)\s+AS\s+/CREATE VIEW $1 AS /sg;
 	# Views with aliases
-	while ($content =~ s/CREATE\sVIEW[\s]+([^\s]+)\s*\((.*?)\)\s+AS\s+([^;]+);//i) {
+	while ($content =~ s/CREATE\s+VIEW\s+([^\s]+)\s*\((.*?)\)\s+AS\s+([^;]+)(;|$)//is) {
 		my $v_name = $1;
 		my $v_alias = $2;
 		my $v_def = $3;
