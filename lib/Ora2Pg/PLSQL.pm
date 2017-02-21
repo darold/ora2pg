@@ -73,7 +73,6 @@ $QUERY_TEST_SCORE = 0.1;
 
 # Scores associated to each code difficulties.
 %UNCOVERED_SCORE = (
-	'FROM' => 1,
 	'TRUNC' => 0.1,
 	'DECODE' => 1,
 	'IS TABLE OF' => 4,
@@ -401,7 +400,7 @@ sub extract_function_code
 		my $fct_name = $1;
 		my $fct_code = $2;
 		my $space = '';
-		$space = ' ' if (grep (/^$fct_name$/i, 'FROM', 'AS', 'VALUES', 'DEFAULT', 'OR', 'AND', 'IN'));
+		$space = ' ' if (grep (/^$fct_name$/i, 'FROM', 'AS', 'VALUES', 'DEFAULT', 'OR', 'AND', 'IN', 'SELECT'));
 
                 # recursively replace function
                 $class->{single_fct_call}{$idx} = $fct_name . $space . '(' . $fct_code . ')';
@@ -1297,9 +1296,7 @@ sub estimate_cost
 	$cost_details{'SIZE'} = $cost_size;
 
 	# Try to figure out the manual work
-	my $n = () = $str =~ m/\bFROM\s*\(/igs;
-	$cost_details{'FROM'} += $n;
-	$n = () = $str =~ m/\bTRUNC\s*\(/igs;
+	my $n = () = $str =~ m/\bTRUNC\s*\(/igs;
 	$cost_details{'TRUNC'} += $n;
 	$n = () = $str =~ m/\bDECODE\s*\(/igs;
 	$cost_details{'DECODE'} += $n;
