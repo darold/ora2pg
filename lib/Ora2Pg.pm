@@ -2479,6 +2479,8 @@ sub read_view_from_file
 		while ($v_alias =~ s/(,[^,\(]+\(.*)$//) {};
 		my @aliases = split(/\s*,\s*/, $v_alias);
 		foreach (@aliases) {
+			s/^\s+//;
+			s/\s+$//;
 			my @tmp = split(/\s+/);
 			push(@{$self->{views}{$v_name}{alias}}, \@tmp);
 		}
