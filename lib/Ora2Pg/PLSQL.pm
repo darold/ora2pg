@@ -299,32 +299,6 @@ PSQL - Oracle to PostgreSQL procedural language converter
 	configuration option to 1.
 =cut
 
-sub remove_text_constant_part
-{
-	my ($class, $str) = @_;
-
-	$str =~ s/\\'/ORA2PG_ESCAPE1_QUOTE/gs;
-	while ($str =~ s/''/ORA2PG_ESCAPE2_QUOTE/gs) {}
-
-	my $j = 0;
-	while ($str =~ s/('[^']+')/\%TEXTVALUE$j\%/s) {
-		$class->{text_values}{$j} = $1;
-		$j++;
-	}
-	return $str;
-}
-
-sub restore_text_constant_part
-{
-	my ($class, $str) = @_;
-
-	$str =~ s/\%TEXTVALUE(\d+)\%/$class->{text_values}{$1}/gs;
-	$str =~ s/ORA2PG_ESCAPE2_QUOTE/''/gs;
-	$str =~ s/ORA2PG_ESCAPE1_QUOTE/\\'/gs;
-
-	return $str;
-}
-
 =head2 convert_plsql_code
 
 Main function used to convert Oracle SQL and PL/SQL code into PostgreSQL
@@ -344,7 +318,7 @@ sub convert_plsql_code
 
 	# Replace all text constant part to prevent a split on a ; inside a text
 	$class->{text_values} = ();
-	$str = remove_text_constant_part($class, $str);
+	$str = $class->remove_text_constant_part($str);
 
 	# Replace decode("user_status",'active',"username",null)
 	# PostgreSQL (CASE WHEN "user_status"='ACTIVE' THEN "username" ELSE NULL END)
@@ -359,7 +333,7 @@ sub convert_plsql_code
 	# Extract all block from the code by splitting it on the semi-comma
 	# character and replace all necessary function call
 	my @code_parts = split(/;/, $str);
-	map { $_ = restore_text_constant_part($class, $_) } @code_parts;
+	map { $_ = $class->restore_text_constant_part($_) } @code_parts;
 	for (my $i = 0; $i <= $#code_parts; $i++) {
 		next if (!$code_parts[$i]);
 		%{$class->{single_fct_call}} = ();
@@ -380,9 +354,9 @@ sub convert_plsql_code
 	$str = join(';', @code_parts);
 
 	# Apply code rewrite on other part of the code
-	$str = remove_text_constant_part($class, $str);
+	$str = $class->remove_text_constant_part($str);
 	$str = plsql_to_plpgsql($class, $str);
-	$str = restore_text_constant_part($class, $str);
+	$str = $class->restore_text_constant_part($str);
 
 	$class->_restore_comments(\$str, \%comments);
 
@@ -407,7 +381,7 @@ sub extract_function_code
 		my $fct_name = $1;
 		my $fct_code = $2;
 		my $space = '';
-		$space = ' ' if (grep (/^$fct_name$/i, 'FROM', 'AS', 'VALUES', 'DEFAULT', 'OR', 'AND', 'IN', 'SELECT', 'OVER'));
+		$space = ' ' if (grep (/^$fct_name$/i, 'FROM', 'AS', 'VALUES', 'DEFAULT', 'OR', 'AND', 'IN', 'SELECT', 'OVER', 'WHERE', 'THEN'));
 
                 # recursively replace function
                 $class->{single_fct_call}{$idx} = $fct_name . $space . '(' . $fct_code . ')';
@@ -507,17 +481,12 @@ sub plsql_to_plpgsql
 
 	# SELECT without INTO should be PERFORM. Exclude select of view when prefixed with AS ot IS
 	if ( ($class->{type} ne 'QUERY') && ($class->{type} ne 'VIEW') ) {
-		my @text_values = ();
-		my $j = 0;
-		while ($str =~ s/'([^']*)'/\%TEXTVALUE-$j\%/s) {
-			push(@text_values, $1);
-			$j++;
-		}
+		$str = $class->remove_text_constant_part($str);
 		$str =~ s/(\s+)(?<!AS|IS)(\s+)SELECT((?![^;]+\bINTO\b)[^;]+;)/$1$2PERFORM$3/isg;
 		$str =~ s/\bSELECT\b((?![^;]+\bINTO\b)[^;]+;)/PERFORM$1/isg;
 		$str =~ s/(AS|IS|FOR|UNION ALL|UNION|MINUS|\()(\s*)(ORA2PG_COMMENT\d+\%)?(\s*)PERFORM/$1$2$3$4SELECT/isg;
 		$str =~ s/(INSERT\s+INTO\s+[^;]+\s+)PERFORM/$1SELECT/isg;
-		$str =~ s/\%TEXTVALUE-(\d+)\%/'$text_values[$1]'/gs;
+		$str = $class->restore_text_constant_part($str);
 	}
 
 	# Change nextval on sequence
@@ -645,11 +614,14 @@ sub plsql_to_plpgsql
 	# Remove any call to MDSYS schema in the code
 	$str =~ s/MDSYS\.//igs;
 
+	# Replace outer join sign (+) with a placeholder
+	$str =~ s/\(\+\)/\%OUTERJOIN\%/gs;
+
 	# Remove any unecessary parenthesis in code
 	$str = remove_extra_parenthesis($str);
 
 	####
-	# Replace ending ROWNUM with LIMIT and (+) outer join
+	# Replace ending ROWNUM with LIMIT and replace (+) outer join
 	####
 	# Catch potential subquery first and replace rownum in subqueries
 	my @statements = split(/;/, $str);
@@ -667,14 +639,12 @@ sub plsql_to_plpgsql
 
 		# Restore (+) outer join syntax
 		foreach my $k (keys %subqueries) {
-			next if ($subqueries{$k} ne '+');
 			$statements[$i] =~ s/\%SUBQUERY$k\%/$subqueries{$k}/is;
 		}
 
 		# Divise code through UNION keyword marking a new query level
 		my @q = split(/\b(UNION\s+ALL|UNION)\b/i, $statements[$i]);
 		for (my $j = 0; $j <= $#q; $j++) {
-			next if ($q[$j] eq '+');
 
 			# Replace call to right outer join obsolete syntax
 			$q[$j] = replace_right_outer_join($q[$j]);
@@ -684,10 +654,14 @@ sub plsql_to_plpgsql
 
 			# Replace LIMIT into the main query
 			$q[$j] = replace_rownum_with_limit($class, $q[$j]);
-
 		}
 		$statements[$i] = join("\n", @q);
 
+		# Cleanup empty where clauses forwarded to join clauses
+		$statements[$i] =~ s/(\s+AND)+\b/ AND/igs;
+		$statements[$i] =~ s/WHERE\s+AND\s+/WHERE /igs;
+
+		# Replace subqueries placeholder by their real values
 		$statements[$i] =~ s/\%SUBQUERY(\d+)\%/$subqueries{$1}/igs;
 		$statements[$i] .= $class->{limit_clause};
 		$statements[$i] =~ s/\s+(?:WHERE|AND)\s+(LIMIT\s+)/ $1/igs;
@@ -695,6 +669,9 @@ sub plsql_to_plpgsql
 	map { s/[ ]+([\r\n]+)/$1/s; } @statements;
 	map { s/[ ]+$//; } @statements;
 	$str = join(';', @statements);
+
+	# Replace outer join sign (+) with a placeholder
+	$str =~ s/\%OUTERJOIN\%/\(\+\)/igs;
 
 	return $str;
 }
@@ -739,7 +716,6 @@ sub extract_subqueries
 			# Divise code through UNION keyword marking a new query level
 			my @q = split(/\b(UNION\s+ALL|UNION)\b/i, $sub_query);
 			for (my $j = 0; $j <= $#q; $j++) {
-				next if ($q[$j] eq '+');
 
 				# Replace call to right outer join obsolete syntax
 				$q[$j] = replace_right_outer_join($q[$j]);
@@ -750,6 +726,8 @@ sub extract_subqueries
 				# Replace LIMIT into the sub query if this is a select query
 				# otherwise the limit clause is forwarded to the parent call
 				$q[$j] = replace_rownum_with_limit($class, $q[$j]);
+
+				$q[$j] = '' if ($q[$j] =~ /^\s*$/);
 			}
 			$queries{$$pos} = join("\n", @q);
 
@@ -757,7 +735,9 @@ sub extract_subqueries
 				$queries{$$pos} .= $class->{limit_clause};
 				$class->{limit_clause} = '';
 			}
-			$out_query .= "(\%SUBQUERY$$pos\%)";
+			if ($queries{$$pos} || $out_query !~ /\b(AND|WHERE)\s*$/) {
+				$out_query .= "(\%SUBQUERY$$pos\%)";
+			}
 			$sub_query = '';
 			$$pos++;
 		} else {
@@ -776,11 +756,12 @@ sub extract_subqueries
 		# Replace LIMIT into the sub query if this is a select query
 		# otherwise the limit clause is forwarded to the parent call
 		$queries{$$pos} = replace_rownum_with_limit($class, $sub_query);
+		$queries{$$pos} = '' if ($queries{$$pos} =~ /^\s*$/);
 		if ($class->{limit_clause} && $sub_query =~ /\bSELECT\b/is) {
 			$queries{$$pos} .= $class->{limit_clause};
 			$class->{limit_clause} = '';
 		}
-		$out_query .= "(\%SUBQUERY$$pos\%";
+		$out_query .= "(\%SUBQUERY$$pos\%" if ($queries{$$pos});
 		$sub_query = '';
 		$$pos++;
 	}
@@ -934,16 +915,11 @@ sub replace_oracle_function
 	# Replace package.function call by package_function
 	##############
 	if (scalar keys %{$class->{package_functions}}) {
-		my @text_values = ();
-		my $j = 0;
-		while ($str =~ s/'([^']*)'/\%TEXTVALUE-$j\%/s) {
-			push(@text_values, $1);
-			$j++;
-		}
+		$str = $class->remove_text_constant_part($str);
 		foreach my $k (keys %{$class->{package_functions}}) {
 			$str =~ s/($class->{package_functions}->{$k}{package}\.)?\b$k\s*\(/$class->{package_functions}->{$k}{name}\(/igs;
 		}
-		$str =~ s/\%TEXTVALUE-(\d+)\%/'$text_values[$1]'/gs;
+		$str = $class->restore_text_constant_part($str);
 	}
 
 	# Replace some sys_context call to the postgresql equivalent
@@ -1887,9 +1863,9 @@ sub replace_right_outer_join
 	my $str = shift;
 
 	# process simple form of outer join
-	my $nbouter = $str =~ /(\(\+\)\s*(?:!=|<>|>=|<=|=|>|<|NOT LIKE|LIKE))/igs;
+	my $nbouter = $str =~ /(\%OUTERJOIN\%\s*(?:!=|<>|>=|<=|=|>|<|NOT LIKE|LIKE))/igs;
 	# Check that we don't have left outer join too
-	if ($nbouter >= 1 && $str !~ /(?:!=|<>|>=|<=|=|>|<|NOT LIKE|LIKE)\s*[^\s]+\s*\(\+\)/i) {
+	if ($nbouter >= 1 && $str !~ /(?:!=|<>|>=|<=|=|>|<|NOT LIKE|LIKE)\s*[^\s]+\s*\%OUTERJOIN\%/i) {
 		# Extract the FROM clause
 		$str =~ s/(.*)\bFROM\s+(.*?)\s+WHERE\s+(.*?)$/$1FROM FROM_CLAUSE WHERE $3/is;
 		my $from_clause = $2;
@@ -1928,13 +1904,13 @@ sub replace_right_outer_join
 		my $id = 0;
 		# Process only predicat with a obsolete join syntax (+) for now
 		for (my $i = 0; $i <= $#predicat; $i+=2) {
-			next if ($predicat[$i] !~ /\(\+\)/);
+			next if ($predicat[$i] !~ /\%OUTERJOIN\%/i);
 			$predicat[$i] =~ s/(.*)/WHERE_CLAUSE$id /is;
 			my $where_clause = $1;
 			$where_clause =~ s/"//gs;
 			$where_clause =~ s/^\s+//s;
 			$where_clause =~ s/[\s;]+$//s;
-			$where_clause =~ s/\s*\(\+\)//gs;
+			$where_clause =~ s/\s*\%OUTERJOIN\%//igs;
 			# Split the predicat to retrieve left part, operator and right part
 			my ($l, $o, $r) = split(/\s*(=|LIKE)\s*/i, $where_clause);
 			# When the part of the clause are not single fields move them
@@ -2063,10 +2039,10 @@ sub replace_left_outer_join
 	my $str = shift;
 
 	# process simple form of outer join
-	my $nbouter = $str =~ /((?:!=|<>|>=|<=|=|>|<|NOT LIKE|LIKE)\s*[^\s]+\s*\(\+\))/igs;
+	my $nbouter = $str =~ /((?:!=|<>|>=|<=|=|>|<|NOT LIKE|LIKE)\s*[^\s]+\s*\%OUTERJOIN\%)/igs;
 
 	# Check that we don't have right outer join too
-	if ($nbouter >= 1 && $str !~ /\(\+\)\s*(?:!=|<>|>=|<=|=|>|<|NOT LIKE|LIKE)/i) {
+	if ($nbouter >= 1 && $str !~ /\%OUTERJOIN\%\s*(?:!=|<>|>=|<=|=|>|<|NOT LIKE|LIKE)/i) {
 		# Extract the FROM clause
 		$str =~ s/(.*)\bFROM\s+(.*?)\s+WHERE\s+(.*?)$/$1FROM FROM_CLAUSE WHERE $3/is;
 		my $from_clause = $2;
@@ -2106,13 +2082,13 @@ sub replace_left_outer_join
 		my $id = 0;
 		# Process only predicat with a obsolete join syntax (+) for now
 		for (my $i = 0; $i <= $#predicat; $i++) {
-			next if ($predicat[$i] !~ /\(\+\)/);
+			next if ($predicat[$i] !~ /\%OUTERJOIN\%/i);
 			$predicat[$i] =~ s/(.*)/WHERE_CLAUSE$id /is;
 			my $where_clause = $1;
 			$where_clause =~ s/"//gs;
 			$where_clause =~ s/^\s+//s;
 			$where_clause =~ s/[\s;]+$//s;
-			$where_clause =~ s/\s*\(\+\)//gs;
+			$where_clause =~ s/\s*\%OUTERJOIN\%//gs;
 			# Split the predicat to retrieve left part, operator and right part
 			my ($l, $o, $r) = split(/\s*(=|LIKE)\s*/i, $where_clause);
 
