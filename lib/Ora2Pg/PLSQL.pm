@@ -400,7 +400,7 @@ sub extract_function_code
 		my $fct_name = $1;
 		my $fct_code = $2;
 		my $space = '';
-		$space = ' ' if (grep (/^$fct_name$/i, 'FROM', 'AS', 'VALUES', 'DEFAULT', 'OR', 'AND', 'IN', 'SELECT'));
+		$space = ' ' if (grep (/^$fct_name$/i, 'FROM', 'AS', 'VALUES', 'DEFAULT', 'OR', 'AND', 'IN', 'SELECT', 'OVER'));
 
                 # recursively replace function
                 $class->{single_fct_call}{$idx} = $fct_name . $space . '(' . $fct_code . ')';
@@ -696,7 +696,7 @@ sub remove_extra_parenthesis
 {
 	my $str = shift;
 
-	while ($str =~ s/\(\s*\(([^\(\)]+)\)\s*\)/($1)/gs) {};
+	while ($str =~ s/\(\s*\(((?!\s*SELECT)[^\(\)]+)\)\s*\)/($1)/gs) {};
 	while ($str =~ s/\(\s*\(([^\(\)]+)\)\s*AND\s*\(([^\(\)]+)\)\s*\)/($1 AND $2)/igs) {};
 	while ($str =~ s/\(\s*\(\s*\(([^\(\)]+\)[^\(\)]+\([^\(\)]+)\)\s*\)\s*\)/(($1))/gs) {};
 
@@ -2062,7 +2062,6 @@ sub replace_left_outer_join
 	if ($nbouter >= 1 && $str !~ /\(\+\)\s*(?:!=|<>|>=|<=|=|>|<|NOT LIKE|LIKE)/i) {
 		# Extract the FROM clause
 		$str =~ s/(.*)\bFROM\s+(.*?)\s+WHERE\s+(.*?)$/$1FROM FROM_CLAUSE WHERE $3/is;
-
 		my $from_clause = $2;
 		$from_clause =~ s/"//gs;
 		my @tables = split(/\s*,\s*/, $from_clause);
@@ -2236,7 +2235,6 @@ sub replace_left_outer_join
 
 	return $str;
 }
-
 
 1;
 
