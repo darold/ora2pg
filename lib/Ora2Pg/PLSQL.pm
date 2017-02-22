@@ -366,6 +366,13 @@ sub convert_plsql_code
 		$code_parts[$i] = extract_function_code($class, $code_parts[$i], 0);
 		foreach my $k (keys %{$class->{single_fct_call}}) {
 			$class->{single_fct_call}{$k} = replace_oracle_function($class, $class->{single_fct_call}{$k});
+
+			# Replace decode("user_status",'active',"username",null)
+			# PostgreSQL (CASE WHEN "user_status"='ACTIVE' THEN "username" ELSE NULL END)
+			$idxd = 0;
+			$class->{single_fct_call}{$k} = replace_decode($class, $class->{single_fct_call}{$k}, \$idxd);
+			while ($class->{single_fct_call}{$k} =~ s/\%DECODE(\d+)\%/$class->{decode_str}{$1}/gs) {};
+			delete $class->{decode_str};
 		};
 		while ($code_parts[$i] =~ s/\%\%REPLACEFCT(\d+)\%\%/$class->{single_fct_call}{$1}/) {};
 	}
@@ -572,7 +579,7 @@ sub plsql_to_plpgsql
 	$str =~ s/\b(SELECT\b[^;]*?INTO)(.*?)(EXCEPTION.*?(?:NO_DATA_FOUND|TOO_MANY_ROW))/$1 STRICT $2 $3/igs;
 
 	# Remove the function name repetion at end
-	$str =~ s/\bEND\s+(?!IF|LOOP|CASE|INTO|FROM|END|ELSE|,)[a-z0-9_"]+(\s*[;]?)/END$1$2/igs;
+	$str =~ s/\bEND\s+(?!IF|LOOP|CASE|INTO|FROM|END|ELSE|AND|OR|,)[a-z0-9_"]+(\s*[;]?)/END$1$2/igs;
 
 	# Rewrite comment in CASE between WHEN and THEN
 	$str =~ s/(\s*)(WHEN\s+[^\s]+\s*)(ORA2PG_COMMENT\d+\%)(\s*THEN)/$1$3$1$2$4/igs;
