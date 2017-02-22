@@ -833,6 +833,10 @@ sub _init
 	# Default to rewrite add_month(), add_year() and date_trunc()
 	$self->{date_function_rewrite} = 1;
 
+	# Init text constantes storage variables
+	$self->{text_values} = ();
+	$self->{text_values_pos} = 0;
+
 	# Initialyze following configuration file
 	foreach my $k (sort keys %AConfig) {
 		if (lc($k) eq 'allow') {
@@ -2065,6 +2069,31 @@ sub _parse_constraint
 	}
 }
 
+sub remove_text_constant_part
+{
+	my ($self, $str) = @_;
+
+	$str =~ s/\\'/ORA2PG_ESCAPE1_QUOTE/gs;
+	while ($str =~ s/''/ORA2PG_ESCAPE2_QUOTE/gs) {}
+
+	while ($str =~ s/('[^']+')/\%TEXTVALUE$self->{text_values_pos}\%/s) {
+		$self->{text_values}{$self->{text_values_pos}} = $1;
+		$self->{text_values_pos}++;
+	}
+	return $str;
+}
+
+sub restore_text_constant_part
+{
+	my ($self, $str) = @_;
+
+	$str =~ s/\%TEXTVALUE(\d+)\%/$self->{text_values}{$1}/gs;
+	$str =~ s/ORA2PG_ESCAPE2_QUOTE/''/gs;
+	$str =~ s/ORA2PG_ESCAPE1_QUOTE/\\'/gs;
+
+	return $str;
+}
+
 sub _get_dml_from_file
 {
 	my ($self, $text_values, $keep_new_line) = @_;
@@ -2091,11 +2120,7 @@ sub _get_dml_from_file
 	$content =~ s/CREATE\s+NONEDITIONABLE/CREATE/gs;
 
 	if (defined $text_values) {
-		my $j = 0;
-		while ($content =~ s/'([^']+)'/\%TEXTVALUE-$j\%/s) {
-			push(@$text_values, $1);
-			$j++;
-		}
+		$content = $self->remove_text_constant_part($content);
 	}
 	return $content;
 }
@@ -2474,7 +2499,7 @@ sub read_view_from_file
 		$tid++;
 	        $self->{views}{$v_name}{text} = $v_def;
 	        $self->{views}{$v_name}{iter} = $tid;
-		$self->{views}{$v_name}{text} =~ s/\%TEXTVALUE-(\d+)\%/'$text_values[$1]'/gs;
+		$self->{views}{$v_name}{text} = $self->restore_text_constant_part($self->{views}{$v_name}{text});
 		# Remove constraint
 		while ($v_alias =~ s/(,[^,\(]+\(.*)$//) {};
 		my @aliases = split(/\s*,\s*/, $v_alias);
@@ -2493,7 +2518,7 @@ sub read_view_from_file
 		$v_def =~ s/\s+/ /g;
 		$tid++;
 	        $self->{views}{$v_name}{text} = $v_def;
-		$self->{views}{$v_name}{text} =~ s/\%TEXTVALUE-(\d+)\%/'$text_values[$1]'/gs;
+		$self->{views}{$v_name}{text} = $self->restore_text_constant_part($self->{views}{$v_name}{text});
 	}
 
 	# Extract comments
@@ -2573,7 +2598,7 @@ sub read_trigger_from_file
 
 			# TRIGGER_NAME, TRIGGER_TYPE, TRIGGERING_EVENT, TABLE_NAME, TRIGGER_BODY, WHEN_CLAUSE, DESCRIPTION,ACTION_TYPE
 			$trigger =~ s/\bEND\s+[^\s]+\s+$/END/is;
-			$trigger =~ s/\%TEXTVALUE-(\d+)\%/'$text_values[$1]'/gs;
+			$trigger = $self->restore_text_constant_part($trigger);
 			push(@{$self->{triggers}}, [($t_name, $t_pos, $t_event, $tb_name, $trigger, $t_when_cond, '', $t_type)]);
 
 		}
@@ -3902,14 +3927,9 @@ LANGUAGE plpgsql ;
 				}
 				if ($self->{pg_supports_when} && $trig->[5]) {
 					if (!$self->{preserve_case}) {
-						my @text_values = ();
-						my $j = 0;
-						while ($trig->[4] =~ s/'([^']+)'/\%TEXTVALUE-$j\%/s) {
-							push(@text_values, $1);
-							$j++;
-						}
+						$trig->[4] = $self->remove_text_constant_part($trig->[4]);
 						$trig->[4] =~ s/"([^"]+)"/\L$1\E/gs;
-						$trig->[4] =~ s/\%TEXTVALUE-(\d+)\%/'$text_values[$1]'/gs;
+						$trig->[4] = $self->restore_text_constant_part($trig->[4]);
 						$trig->[4] =~ s/ALTER TRIGGER\s+[^\s]+\s+ENABLE(;)?//;
 					}
 					$sql_output .= "CREATE OR REPLACE FUNCTION trigger_fct_\L$trig->[0]\E() RETURNS trigger AS \$BODY\$\n$trig->[4]\n\$BODY\$\n LANGUAGE 'plpgsql'$security;\n$revoke\n";
@@ -3925,23 +3945,13 @@ LANGUAGE plpgsql ;
 					$trig->[6] =~ s/\n+$//s;
 					$trig->[6] =~ s/^[^\.\s]+\.//;
 					if (!$self->{preserve_case}) {
-						my @text_values = ();
-						my $j = 0;
-						while ($trig->[6] =~ s/'([^']+)'/\%TEXTVALUE-$j\%/s) {
-							push(@text_values, $1);
-							$j++;
-						}
+						$trig->[6] = $self->remove_text_constant_part($trig->[6]);
 						$trig->[6] =~ s/"([^"]+)"/\L$1\E/gs;
-						$trig->[6] =~ s/\%TEXTVALUE-(\d+)\%/'$text_values[$1]'/gs;
+						$trig->[6] = $self->restore_text_constant_part($trig->[6]);
 
-						@text_values = ();
-						$j = 0;
-						while ($trig->[5] =~ s/'([^']+)'/\%TEXTVALUE-$j\%/s) {
-							push(@text_values, $1);
-							$j++;
-						}
+						$trig->[5] = $self->remove_text_constant_part($trig->[5]);
 						$trig->[5] =~ s/"([^"]+)"/\L$1\E/gs;
-						$trig->[5] =~ s/\%TEXTVALUE-(\d+)\%/'$text_values[$1]'/gs;
+						$trig->[5] = $self->restore_text_constant_part($trig->[5]);
 					}
 					chomp($trig->[6]);
 					# Remove referencing clause, not supported by PostgreSQL
@@ -3956,14 +3966,9 @@ LANGUAGE plpgsql ;
 					$sql_output .= "\tEXECUTE PROCEDURE trigger_fct_\L$trig->[0]\E();\n\n";
 				} else {
 					if (!$self->{preserve_case}) {
-						my @text_values = ();
-						my $j = 0;
-						while ($trig->[4] =~ s/'([^']+)'/\%TEXTVALUE-$j\%/s) {
-							push(@text_values, $1);
-							$j++;
-						}
+						$trig->[4] = $self->remove_text_constant_part($trig->[4]);
 						$trig->[4] =~ s/"([^"]+)"/\L$1\E/gs;
-						$trig->[4] =~ s/\%TEXTVALUE-(\d+)\%/'$text_values[$1]'/gs;
+						$trig->[4] = $self->restore_text_constant_part($trig->[4]);
 						$trig->[4] =~ s/ALTER TRIGGER\s+[^\s]+\s+ENABLE(;)?//;
 					}
 					$sql_output .= "CREATE OR REPLACE FUNCTION trigger_fct_\L$trig->[0]\E() RETURNS trigger AS \$BODY\$\n$trig->[4]\n\$BODY\$\n LANGUAGE 'plpgsql'$security;\n$revoke\n";
