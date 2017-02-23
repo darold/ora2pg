@@ -5449,7 +5449,6 @@ BEGIN
                 RAISE EXCEPTION 'Value out of range. Fix the ${table}_insert_trigger() function!';
 };
 			}
-			$function = Ora2Pg::PLSQL::convert_plsql_code($self, $function);
 			$function .= qq{
         END IF;
         RETURN NULL;
@@ -5457,6 +5456,7 @@ END;
 \$\$
 LANGUAGE plpgsql;
 };
+			$function = Ora2Pg::PLSQL::convert_plsql_code($self, $function);
 
 			$partition_indexes .= qq{
 -- Create indexes on each partition table
@@ -7773,7 +7773,7 @@ sub _check_constraint
 	} else {
 		$condition .= "AND OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "') ";
 	}
-	$condition .= $self->limit_to_objects('CKEY', 'CONSTRAINT_NAME');
+	$condition .= $self->limit_to_objects('CKEY|TABLE', 'CONSTRAINT_NAME|TABLE_NAME');
 
 	my $sth = $self->{dbh}->prepare(<<END) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 SELECT CONSTRAINT_NAME,R_CONSTRAINT_NAME,SEARCH_CONDITION,DELETE_RULE,DEFERRABLE,DEFERRED,R_OWNER,TABLE_NAME,OWNER,VALIDATED
