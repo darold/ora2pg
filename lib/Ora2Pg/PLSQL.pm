@@ -74,7 +74,6 @@ $QUERY_TEST_SCORE = 0.1;
 # Scores associated to each code difficulties.
 %UNCOVERED_SCORE = (
 	'TRUNC' => 0.1,
-	'DECODE' => 1,
 	'IS TABLE OF' => 4,
 	'OUTER JOIN' => 2,
 	'CONNECT BY' => 4,
@@ -320,15 +319,11 @@ sub convert_plsql_code
 	$class->{text_values} = ();
 	$str = $class->remove_text_constant_part($str);
 
-	# Replace decode("user_status",'active',"username",null)
-	# PostgreSQL (CASE WHEN "user_status"='ACTIVE' THEN "username" ELSE NULL END)
-	%{$class->{decode_str}} = ();
-	my $idxd = 0;
-	$str = replace_decode($class, $str, \$idxd);
-	while ($str =~ s/\%DECODE(\d+)\%/$class->{decode_str}{$1}/gs) {};
-	delete $class->{decode_str};
-
+	# Do some initialization iof variables used in recursive functions
 	%{$class->{single_fct_call}} = ();
+
+	# Rewrite all decode() call before
+	$str = replace_decode($str);
 
 	# Extract all block from the code by splitting it on the semi-comma
 	# character and replace all necessary function call
@@ -338,26 +333,22 @@ sub convert_plsql_code
 		next if (!$code_parts[$i]);
 		%{$class->{single_fct_call}} = ();
 		$code_parts[$i] = extract_function_code($class, $code_parts[$i], 0);
+
 		foreach my $k (keys %{$class->{single_fct_call}}) {
 			$class->{single_fct_call}{$k} = replace_oracle_function($class, $class->{single_fct_call}{$k});
-
-			# Replace decode("user_status",'active',"username",null)
-			# PostgreSQL (CASE WHEN "user_status"='ACTIVE' THEN "username" ELSE NULL END)
-			$idxd = 0;
-			$class->{single_fct_call}{$k} = replace_decode($class, $class->{single_fct_call}{$k}, \$idxd);
-			while ($class->{single_fct_call}{$k} =~ s/\%DECODE(\d+)\%/$class->{decode_str}{$1}/gs) {};
-			delete $class->{decode_str};
-		};
+		}
 		while ($code_parts[$i] =~ s/\%\%REPLACEFCT(\d+)\%\%/$class->{single_fct_call}{$1}/) {};
 	}
 	push(@code_parts, ' ') if ($str =~ /;\s*$/s);
-	$class->{text_values} = ();
 	$str = join(';', @code_parts);
+	$str = $class->restore_text_constant_part($str);
+	$class->{text_values} = ();
 
 	# Apply code rewrite on other part of the code
 	$str = $class->remove_text_constant_part($str);
 	$str = plsql_to_plpgsql($class, $str);
 	$str = $class->restore_text_constant_part($str);
+	$class->{text_values} = ();
 
 	$class->_restore_comments(\$str, \%comments);
 
@@ -386,6 +377,7 @@ sub extract_function_code
 
                 # recursively replace function
                 $class->{single_fct_call}{$idx} = $fct_name . $space . '(' . $fct_code . ')';
+
                 $code = extract_function_code($class, $code, ++$idx);
         }
 
@@ -930,25 +922,49 @@ sub replace_oracle_function
 }
 
 
+# Replace decode("user_status",'active',"username",null)
+# PostgreSQL (CASE WHEN "user_status"='ACTIVE' THEN "username" ELSE NULL END)
 sub replace_decode
 {
-	my ($class, $str, $idx) = @_;
+	my $str = shift;
 
-	if ($str =~ s/DECODE\s*\(([^\(\)]+)\)\s*/\%DECODE$$idx\%/is) {
-		# Create an array with all parameter of the decode function
-		my @fields = split(/\s*,\s*/s, $1);
+	while ($str =~ s/\bDECODE\s*\((.*)$/\%DECODE\%/is) {
+		my @decode_params = ('');
+		my $stop_learning = 0;
+		my $idx = 1;
+		foreach my $c (split(//, $1)) {
+			$idx++ if (!$stop_learning && $c eq '(');
+			$idx-- if (!$stop_learning && $c eq ')');
+		
+			if ($idx == 0) {
+				# Do not copy last parenthesis in the output string
+				$c = '' if (!$stop_learning);
+				# Inform the loop that we don't want to process any charater anymore
+				$stop_learning = 1;
+				# We have reach the end of the decode() parameter
+				# next character must be restored to the final string.
+				$str .= $c;
+			} elsif ($idx > 0) {
+				# We are parsing the decode() parameter part, append
+				# the caracter to the right part of the param array.
+				if ($c eq ',' && ($idx - 1) == 0) {
+					# we are switching to a new parameter
+					push(@decode_params, '');
+				} else {
+					$decode_params[-1] .= $c;
+				}
+			}
+		}
 		my $case_str = 'CASE ';
-		for (my $i = 1; $i <= $#fields; $i+=2) {
-			if ($i < $#fields) {
-				$case_str .= "WHEN $fields[0]=$fields[$i] THEN $fields[$i+1] ";
+		for (my $i = 1; $i <= $#decode_params; $i+=2) {
+			if ($i < $#decode_params) {
+				$case_str .= "WHEN $decode_params[0]=$decode_params[$i] THEN $decode_params[$i+1] ";
 			} else {
-				$case_str .= " ELSE $fields[$i] ";
+				$case_str .= " ELSE $decode_params[$i] ";
 			}
 		}
 		$case_str .= 'END ';
-		$class->{decode_str}{$$idx} = $case_str;
-		$$idx++;
-		$str = replace_decode($class, $str, $idx);
+		$str =~ s/\%DECODE\%/$case_str/s;
 	}
 
 	return $str;
@@ -1282,8 +1298,6 @@ sub estimate_cost
 	# Try to figure out the manual work
 	my $n = () = $str =~ m/\bTRUNC\s*\(/igs;
 	$cost_details{'TRUNC'} += $n;
-	$n = () = $str =~ m/\bDECODE\s*\(/igs;
-	$cost_details{'DECODE'} += $n;
 	$n = () = $str =~ m/\bIS\s+TABLE\s+OF\b/igs;
 	$cost_details{'IS TABLE OF'} += $n;
 	$n = () = $str =~ m/\(\+\)/igs;
