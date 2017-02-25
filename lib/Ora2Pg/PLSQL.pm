@@ -373,7 +373,7 @@ sub extract_function_code
 		my $fct_name = $1;
 		my $fct_code = $2;
 		my $space = '';
-		$space = ' ' if (grep (/^$fct_name$/i, 'FROM', 'AS', 'VALUES', 'DEFAULT', 'OR', 'AND', 'IN', 'SELECT', 'OVER', 'WHERE', 'THEN', 'IF', 'ELSIF'));
+		$space = ' ' if (grep (/^$fct_name$/i, 'FROM', 'AS', 'VALUES', 'DEFAULT', 'OR', 'AND', 'IN', 'SELECT', 'OVER', 'WHERE', 'THEN', 'IF', 'ELSIF','EXISTS'));
 
                 # recursively replace function
                 $class->{single_fct_call}{$idx} = $fct_name . $space . '(' . $fct_code . ')';
@@ -394,8 +394,8 @@ sub append_alias_clause
 		if ($q[$j] =~ s/\b(FROM\s+)(.*\%SUBQUERY.*?)(\s*)(WHERE|ORDER\s+BY|GROUP\s+BY|LIMIT|$)/$1\%FROM_CLAUSE\%$3$4/is) {
 			my $from_clause = $2;
 			my @parts = split(/\b(WHERE|ORDER\s+BY|GROUP\s+BY|LIMIT)\b/i, $from_clause);
-			$parts[0] =~ s/(?<!USING|[\s,]ONLY|[\s,]JOIN)\(\%SUBQUERY(\d+)\%\)(\s*,)/\(\%SUBQUERY$1\%\) alias$1$2/igs;
-			$parts[0] =~ s/(?<!USING|[\s,]ONLY|[\s,]JOIN)\(\%SUBQUERY(\d+)\%\)(\s*)$/\(\%SUBQUERY$1\%\) alias$1$2/is;
+			$parts[0] =~ s/(?<!USING|[\s,]ONLY|[\s,]JOIN)\%SUBQUERY(\d+)\%(\s*,)/\%SUBQUERY$1\% alias$1$2/igs;
+			$parts[0] =~ s/(?<!USING|[\s,]ONLY|[\s,]JOIN)\%SUBQUERY(\d+)\%(\s*)$/\%SUBQUERY$1\% alias$1$2/is;
 			$from_clause = join('', @parts);
 			$q[$j] =~ s/\%FROM_CLAUSE\%/$from_clause/s;
 		}
@@ -610,8 +610,9 @@ sub plsql_to_plpgsql
 	# Replace outer join sign (+) with a placeholder
 	$str =~ s/\(\+\)/\%OUTERJOIN\%/gs;
 
-	# Remove any unecessary parenthesis in code
-	$str = remove_extra_parenthesis($str);
+
+	$class->{sub_queries} = ();
+	$class->{sub_queries_idx} = 0;
 
 	####
 	# Replace ending ROWNUM with LIMIT and replace (+) outer join
@@ -619,55 +620,105 @@ sub plsql_to_plpgsql
 	# Catch potential subquery first and replace rownum in subqueries
 	my @statements = split(/;/, $str);
 	for ( my $i = 0; $i <= $#statements; $i++ ) {
-		my %subqueries = ();
-		$class->{limit_clause} = '';
-		my $x = 0;
-		($statements[$i], %subqueries) = extract_subqueries($class, $statements[$i], \$x);
+
+		# Remove any unecessary parenthesis in code
+		$statements[$i] = remove_extra_parenthesis($statements[$i]);
+
+		$class->{sub_parts} = ();
+		$class->{sub_parts_idx} = 0;
+		extract_subpart($class, \$statements[$i]);
+
+		# Translate all sub parts of the query before applying translation on the main query
+		foreach my $z (sort {$a <=> $b } keys %{$class->{sub_parts}}) {
+			if ($class->{sub_parts}{$z} =~ /\S/is) { 
+				$class->{sub_parts}{$z} = translate_statement($class, $class->{sub_parts}{$z}, 1);
+				if ($class->{sub_parts}{$z} =~ /SELECT/is) {
+					$class->{sub_parts}{$z} .= $class->{limit_clause};
+					$class->{limit_clause} = '';
+				}
+				# Try to append aliases of subqueries in the from clause
+				$class->{sub_parts}{$z} = append_alias_clause($class->{sub_parts}{$z});
+			}
+			# If subpart is not empty after transformation
+			if ($class->{sub_parts}{$z} =~ /\S/is) { 
+				# add open and closed parenthesis 
+				$class->{sub_parts}{$z} = '(' . $class->{sub_parts}{$z} . ')';
+			} elsif ($statements[$i] !~ /\s+(WHERE|AND|OR)\s*\%SUBQUERY$z\%/is) {
+				# otherwise do not report the empty parenthesis when this is not a function
+				$class->{sub_parts}{$z} = '(' . $class->{sub_parts}{$z} . ')';
+			}
+		}
 
 		# Try to append aliases of subqueries in the from clause
 		$statements[$i] = append_alias_clause($statements[$i]);
-		foreach my $k (keys %subqueries) {
-			$subqueries{$k} = append_alias_clause($subqueries{$k});
-		}
 
-		# Restore (+) outer join syntax
-		foreach my $k (keys %subqueries) {
-			$statements[$i] =~ s/\%SUBQUERY$k\%/$subqueries{$k}/is;
-		}
-
-		# Divise code through UNION keyword marking a new query level
-		my @q = split(/\b(UNION\s+ALL|UNION)\b/i, $statements[$i]);
-		for (my $j = 0; $j <= $#q; $j++) {
-
-			# Replace call to right outer join obsolete syntax
-			$q[$j] = replace_right_outer_join($q[$j]);
-
-			# Replace call to left outer join obsolete syntax
-			$q[$j] = replace_left_outer_join($q[$j]);
-
-			# Replace LIMIT into the main query
-			$q[$j] = replace_rownum_with_limit($class, $q[$j]);
-		}
-		$statements[$i] = join("\n", @q);
-
-		# Cleanup empty where clauses forwarded to join clauses
-		$statements[$i] =~ s/(\s+AND)+\b/ AND/igs;
-		$statements[$i] =~ s/WHERE\s+AND\s+/WHERE /igs;
-
-		# Replace subqueries placeholder by their real values
-		$statements[$i] =~ s/\%SUBQUERY(\d+)\%/$subqueries{$1}/igs;
 		$statements[$i] .= $class->{limit_clause};
-		$statements[$i] =~ s/\s+(?:WHERE|AND)\s+(LIMIT\s+)/ $1/igs;
+		$class->{limit_clause} = '';
+
+		# Apply translation on the full query
+		$statements[$i] = translate_statement($class, $statements[$i]);
+
+		$statements[$i] .= $class->{limit_clause};
+		$class->{limit_clause} = '';
+
+		# then restore subqueries code into the main query
+		while ($statements[$i] =~ s/\%SUBQUERY(\d+)\%/$class->{sub_parts}{$1}/is) {};
+
+		# Remove unnecessary offset to position 0 which is the default
+		$statements[$i] =~ s/\s+OFFSET 0//igs;
+
 	}
+
 	map { s/[ ]+([\r\n]+)/$1/s; } @statements;
 	map { s/[ ]+$//; } @statements;
 	$str = join(';', @statements);
+
+	# Rewrite some garbadged resulting from the transformation
+	while ($str =~ s/(\s+AND)\s+AND\b/$1/is) {};
+	while ($str =~ s/(\s+OR)\s+OR\b/$1/is) {};
+	$str =~ s/(\s+WHERE)\s+(AND|OR)\b/$1/igs;
 
 	# Replace outer join sign (+) with a placeholder
 	$str =~ s/\%OUTERJOIN\%/\(\+\)/igs;
 
 	return $str;
 }
+
+sub translate_statement
+{
+	my ($class, $stmt, $is_subpart) = @_;
+
+	# Divise code through UNION keyword marking a new query level
+	my @q = split(/\b(UNION\s+ALL|UNION)\b/i, $stmt);
+	for (my $j = 0; $j <= $#q; $j++) {
+		next if ($q[$j] =~ /^UNION/);
+
+		# Replace call to right outer join obsolete syntax
+		$q[$j] = replace_right_outer_join($q[$j]);
+
+		# Replace call to left outer join obsolete syntax
+		$q[$j] = replace_left_outer_join($q[$j]);
+
+		# Replace LIMIT into the main query
+		$q[$j] = replace_rownum_with_limit($class, $q[$j]);
+
+	}
+	$stmt = join("\n", @q);
+
+	# Rewrite some invalid ending form after rewriting
+	$stmt =~ s/(\s+WHERE)\s+AND/$1/igs;
+
+	$stmt =~ s/(\s+)(?:WHERE|AND)\s+(LIMIT\s+)/$1$2/igs;
+	$stmt =~ s/\s+WHERE\s*$//is;
+	$stmt =~ s/\s+WHERE\s*\)/\)/is;
+
+	# Remove unnecessary offset to position 0 which is the default
+	$stmt =~ s/\s+OFFSET 0//igs;
+
+	return $stmt;
+}
+
+
 
 sub remove_extra_parenthesis
 {
@@ -680,87 +731,57 @@ sub remove_extra_parenthesis
 	return $str;
 }
 
+sub extract_subpart
+{
+	my ($class, $str) = @_;
+
+	while ($$str =~ s/\(([^\(\)]*)\)/\%SUBQUERY$class->{sub_parts_idx}\%/is) {
+		$class->{sub_parts}{$class->{sub_parts_idx}} = $1;
+		$class->{sub_parts_idx}++;
+	}
+
+}
+
+
 sub extract_subqueries
 {
-	my ($class, $query, $pos) = @_;
+	my ($class, $str) = @_;
 
-	my %queries = ();
-	my $out_query = '';
-	my $idx = 0;
-	my $sub_query = '';
-	my $out_limit = '';
-	foreach my $c (split(//, $query)) {
-		$idx++ if ($c eq '(');
-		$idx-- if ($c eq ')');
-		if ($idx > 0) {
-			$sub_query .= $c;
-		} elsif ($sub_query && $c eq ')' && $idx == 0) {
-			$sub_query =~ s/^\(//;
+	return if ($class->{sub_queries_idx} == 100);
 
-			my %sub_queries = ();
-			($sub_query, %sub_queries) = extract_subqueries($class, $sub_query, $pos);
-
-			# Try to append aliases of subqueries in the from clause
-			$sub_query = append_alias_clause($sub_query);
-
-			# Restore content of subqueries to proceed to outer join translation
-			$sub_query =~ s/\%SUBQUERY(\d+)\%/$sub_queries{$1}/igs;
-
-			# Divise code through UNION keyword marking a new query level
-			my @q = split(/\b(UNION\s+ALL|UNION)\b/i, $sub_query);
-			for (my $j = 0; $j <= $#q; $j++) {
-
-				# Replace call to right outer join obsolete syntax
-				$q[$j] = replace_right_outer_join($q[$j]);
-
-				# Replace call to left outer join obsolete syntax
-				$q[$j] = replace_left_outer_join($q[$j]);
-
-				# Replace LIMIT into the sub query if this is a select query
-				# otherwise the limit clause is forwarded to the parent call
-				$q[$j] = replace_rownum_with_limit($class, $q[$j]);
-
-				$q[$j] = '' if ($q[$j] =~ /^\s*$/);
+	my $cur_idx =  $class->{sub_queries_idx};
+	if ($$str =~ s/\((\s*(?:SELECT|WITH).*)/\%SUBQUERY$class->{sub_queries_idx}\%/is) {
+		my $stop_learning = 0;
+		my $idx = 1;
+		my $sub_query = '';
+		foreach my $c (split(//, $1)) {
+			$idx++ if (!$stop_learning && $c eq '(');
+			$idx-- if (!$stop_learning && $c eq ')');
+			if ($idx == 0) {
+				# Do not copy last parenthesis in the output string
+				$c = '' if (!$stop_learning);
+				# Increment storage position for the next subquery
+				$class->{sub_queries_idx}++ if (!$stop_learning);
+				# Inform the loop that we don't want to process any charater anymore
+				$stop_learning = 1;
+				# We have reach the end of the subquery all next
+				# characters must be restored to the final string.
+				$$str .= $c;
+			} elsif ($idx > 0) {
+				# Append character to the current substring storage
+				$class->{sub_queries}{$class->{sub_queries_idx}} .= $c;
 			}
-			$queries{$$pos} = join("\n", @q);
+		}
 
-			if ($class->{limit_clause} && $sub_query =~ /\bSELECT\b/is) {
-				$queries{$$pos} .= $class->{limit_clause};
-				$class->{limit_clause} = '';
-			}
-			if ($queries{$$pos} || $out_query !~ /\b(AND|WHERE)\s*$/) {
-				$out_query .= "(\%SUBQUERY$$pos\%)";
-			}
-			$sub_query = '';
-			$$pos++;
-		} else {
-			$out_query .= $c;
+		# Each subquery could have subqueries too, so call the
+		# function recursively on each extracted subquery
+		if ($class->{sub_queries}{$class->{sub_queries_idx}-1} =~ /\(\s*(?:SELECT|WITH)/is) {
+				extract_subqueries($class, \$class->{sub_queries}{$class->{sub_queries_idx}-1});
 		}
 	}
-	if ($sub_query &&  $idx > 0) {
-		$sub_query =~ s/^\(//;
 
-		# Replace call to right outer join obsolete syntax
-		$sub_query = replace_right_outer_join($sub_query);
-
-		# Replace call to left outer join obsolete syntax
-		$sub_query = replace_left_outer_join($sub_query);
-
-		# Replace LIMIT into the sub query if this is a select query
-		# otherwise the limit clause is forwarded to the parent call
-		$queries{$$pos} = replace_rownum_with_limit($class, $sub_query);
-		$queries{$$pos} = '' if ($queries{$$pos} =~ /^\s*$/);
-		if ($class->{limit_clause} && $sub_query =~ /\bSELECT\b/is) {
-			$queries{$$pos} .= $class->{limit_clause};
-			$class->{limit_clause} = '';
-		}
-		$out_query .= "(\%SUBQUERY$$pos\%" if ($queries{$$pos});
-		$sub_query = '';
-		$$pos++;
-	}
-
-	return $out_query, %queries;
 }
+
 
 sub replace_rownum_with_limit
 {
@@ -809,7 +830,10 @@ sub replace_rownum_with_limit
 		}
 	}
 
-	$str =~ s/(WHERE)\s+AND/$1/igs;
+	# Rewrite some invalid ending form after rewriting
+	$str =~ s/(\s+WHERE)\s+AND/$1/igs;
+	$str =~ s/\s+WHERE\s*$//is;
+	$str =~ s/\s+WHERE\s*\)/\)/is;
 
 	# Remove unnecessary offset to position 0 which is the default
 	$str =~ s/\s+OFFSET 0//igs;
@@ -2058,6 +2082,7 @@ sub replace_left_outer_join
 
 	# Check that we don't have right outer join too
 	if ($nbouter >= 1 && $str !~ /\%OUTERJOIN\%\s*(?:!=|<>|>=|<=|=|>|<|NOT LIKE|LIKE)/i) {
+
 		# Extract the FROM clause
 		$str =~ s/(.*)\bFROM\s+(.*?)\s+WHERE\s+(.*?)$/$1FROM FROM_CLAUSE WHERE $3/is;
 		my $from_clause = $2;
@@ -2104,6 +2129,7 @@ sub replace_left_outer_join
 			$where_clause =~ s/^\s+//s;
 			$where_clause =~ s/[\s;]+$//s;
 			$where_clause =~ s/\s*\%OUTERJOIN\%//gs;
+
 			# Split the predicat to retrieve left part, operator and right part
 			my ($l, $o, $r) = split(/\s*(=|LIKE)\s*/i, $where_clause);
 
