@@ -694,10 +694,10 @@ sub translate_statement
 		next if ($q[$j] =~ /^UNION/);
 
 		# Replace call to right outer join obsolete syntax
-		$q[$j] = replace_right_outer_join($q[$j]);
+		$q[$j] = replace_outer_join($q[$j], 'right');
 
 		# Replace call to left outer join obsolete syntax
-		$q[$j] = replace_left_outer_join($q[$j]);
+		$q[$j] = replace_outer_join($q[$j], 'left');
 
 		# Replace LIMIT into the main query
 		$q[$j] = replace_rownum_with_limit($class, $q[$j]);
@@ -1897,186 +1897,27 @@ sub mysql_estimate_cost
 	return $cost, %cost_details;
 }
 
-sub replace_right_outer_join
+sub replace_outer_join
 {
-	my $str = shift;
+	my ($str, $type) = @_;
 
-	# process simple form of outer join
-	my $nbouter = $str =~ /(\%OUTERJOIN\%\s*(?:!=|<>|>=|<=|=|>|<|NOT LIKE|LIKE))/igs;
-	# Check that we don't have left outer join too
-	if ($nbouter >= 1 && $str !~ /(?:!=|<>|>=|<=|=|>|<|NOT LIKE|LIKE)\s*[^\s]+\s*\%OUTERJOIN\%/i) {
-		# Extract the FROM clause
-		$str =~ s/(.*)\bFROM\s+(.*?)\s+WHERE\s+(.*?)$/$1FROM FROM_CLAUSE WHERE $3/is;
-		my $from_clause = $2;
-		$from_clause =~ s/"//gs;
-		my @tables = split(/\s*,\s*/, $from_clause);
-		# Set a hash for alias to table mapping
-		my %from_clause_list = ();
-		my %from_order = ();
-		my $fidx = 0;
-		foreach my $table (@tables) {
-			$table =~ s/^\s+//s;
-			$table =~ s/\s+$//s;
-			my $cmt = '';
-			if ($table =~ s/(\%ORA2PG_COMMENT\d+\%\s*)//is) {
-				$cmt = $1;
-			}
-			my ($t, $alias, @others) = split(/\s+/, lc($table));
-			$alias = "$cmt$t" if (!$alias);
-			$from_clause_list{$alias} = "$cmt$t";
-			$from_order{$alias} = $fidx++;
-		}
-
-		# Extract all Oracle's outer join syntax from the where clause
-		my @outer_clauses = ();
-		my %final_from_clause = ();
-		my @tmp_from_list = ();
-		my $start_query = '';
-		my $end_query = '';
-		if ($str =~ s/^(.*FROM FROM_CLAUSE WHERE)//is) {
-			$start_query = $1;
-		}
-		if ($str =~ s/\s+((?:GROUP BY|ORDER BY).*)$//is) {
-			$end_query = $1;
-		}
-		my @predicat = split(/\s*(\bAND\b|\bOR\b|\%ORA2PG_COMMENT\d+\%)\s*/i, $str);
-		my $id = 0;
-		# Process only predicat with a obsolete join syntax (+) for now
-		for (my $i = 0; $i <= $#predicat; $i+=2) {
-			next if ($predicat[$i] !~ /\%OUTERJOIN\%/i);
-			$predicat[$i] =~ s/(.*)/WHERE_CLAUSE$id /is;
-			my $where_clause = $1;
-			$where_clause =~ s/"//gs;
-			$where_clause =~ s/^\s+//s;
-			$where_clause =~ s/[\s;]+$//s;
-			$where_clause =~ s/\s*\%OUTERJOIN\%//igs;
-			# Split the predicat to retrieve left part, operator and right part
-			my ($l, $o, $r) = split(/\s*(=|LIKE)\s*/i, $where_clause);
-			# When the part of the clause are not single fields move them
-			# at their places in the WHERE clause and go to next predicat
-			if (($l !~ /^[^\.]+\.[^\s]+$/) || ($r !~ /^[^\.]+\.[^\s]+$/)) {
-				$predicat[$i] =~ s/WHERE_CLAUSE$id / $l $o $r /s;
-				next;
-			}
-			$id++;
-			# Extract the tablename part of the left clause
-			my $lbl1 = '';
-			my $table_decl1 = $l;
-			if ($l =~ /^([^\.]+)\..*/) {
-				$lbl1 = lc($1);
-				$table_decl1 = $from_clause_list{$lbl1};
-				$table_decl1 .= " $lbl1" if ($lbl1 ne $from_clause_list{$lbl1});
-			}
-			# Extract the tablename part of the right clause
-			my $lbl2 = '';
-			my $table_decl2 = $r;
-			if ($r =~ /^([^\.]+)\..*/) {
-				$lbl2 = lc($1);
-				$table_decl2 = $from_clause_list{$lbl2};
-				$table_decl2 .= " $lbl2" if ($lbl2 ne $from_clause_list{$lbl2});
-			}
-			# When this is the first join parse add the left tablename
-			# first then the outer join with the right table
-			if (scalar keys %final_from_clause == 0) {
-				$from_clause = $table_decl1;
-				push(@outer_clauses, (split(/\s/, $table_decl1))[1] || $table_decl1);
-				$final_from_clause{"$lbl1;$lbl2"}{position} = $i;
-				push(@{$final_from_clause{"$lbl1;$lbl2"}{clause}{$table_decl2}{predicat}}, "$l $o $r");
-			} else {
-				$final_from_clause{"$lbl1;$lbl2"}{position} = $i;
-				push(@{$final_from_clause{"$lbl1;$lbl2"}{clause}{$table_decl2}{predicat}}, "$l $o $r");
-                                if (!exists $final_from_clause{"$lbl1;$lbl2"}{clause}{$table_decl2}{right}) {
-                                        $final_from_clause{"$lbl1;$lbl2"}{clause}{$table_decl2}{right} = $table_decl1;
-                                }
-
-			}
-			$final_from_clause{"$lbl1;$lbl2"}{clause}{$table_decl1}{position} = $i;
-		}
-		$str = $start_query . join(' ', @predicat) . ' ' . $end_query;
-
-		# Remove part from the WHERE clause that will be moved into the FROM clause
-		$str =~ s/\s*(AND\s+)?WHERE_CLAUSE\d+ / /igs;
-		$str =~ s/WHERE\s+(AND|OR)\s+/WHERE /is;
-		$str =~ s/WHERE[\s;]+$//i;
-		$str =~ s/(\s+)WHERE\s+(ORDER|GROUP)\s+BY/$1$2 BY/is;
-		$str =~ s/\s+WHERE(\s+)/\nWHERE$1/igs;
-
-		foreach my $t (sort { $final_from_clause{$a}{position} <=> $final_from_clause{$b}{position} } keys %final_from_clause) {
-			foreach my $j (sort keys %{$final_from_clause{$t}{clause}}) {
-				next if ($#{$final_from_clause{$t}{clause}{$j}{predicat}} < 0);
-				if ($j !~ /\(\%SUBQUERY\d+\%\)/i && $from_clause !~ /\b$final_from_clause{$t}{clause}{$j}{right}\b/) {
-					$from_clause .= ",$final_from_clause{$t}{clause}{$j}{right}";
-					push(@outer_clauses, (split(/\s/, $final_from_clause{$t}{clause}{$j}{right}))[1] || $final_from_clause{$t}{clause}{$j}{right});
-				}
-				my $tbl = $j;
-				$tbl =~ s/\%ORA2PG_COMMENT\d+\%\s*//is;
-				$from_clause .= "\nRIGHT OUTER JOIN $tbl ON (" .  join(' AND ', @{$final_from_clause{$t}{clause}{$j}{predicat}}) . ")"; 
-				my ($l,$r) = split(/;/, $t);
-				push(@{$final_outer_clauses{$l}{join}},  "RIGHT OUTER JOIN $tbl ON (" .  join(' AND ', @{$final_from_clause{$t}{clause}{$j}{predicat}}) . ")");
-				push(@{$final_outer_clauses{$l}{position}},  $final_from_clause{$t}{clause}{$j}{position});
-				push(@{$associated_clause{$l}}, $r);
-			}
-		}
-
-		$from_clause = '';
-		my @clause_done = ();
-		foreach my $c (sort { $from_order{$a} <=> $from_order{$b} } keys %from_order) {
-			next if (!grep(/^$c$/i, @outer_clauses));
-			$from_clause .= "\n, $from_clause_list{$c}";
-			$from_clause .= " $c" if ($from_clause_list{$c} ne $c);
-			my %output = ();
-			for (my $j = 0; $j <= $#{$final_outer_clauses{$c}{join}}; $j++) {
-				$output{$final_outer_clauses{$c}{position}[$j]} = $final_outer_clauses{$c}{join}[$j];
-			}
-
-			find_associated_clauses($c, \@output, \%associated_clause, \%final_outer_clauses);
-
-			if (!grep(/JOIN $from_clause_list{$c} $c /is, @clause_done)) {
-				$from_clause .= "\n, $from_clause_list{$c}";
-				$from_clause .= " $c" if ($c ne $from_clause_list{$c});
-			}
-			foreach (@output) { 
-				$from_clause .= "\n" . $_;
-			}
-			push(@clause_done, @output);
-			delete $from_order{$c};
-			delete $final_outer_clauses{$c};
-			delete $associated_clause{$c};
-		}
-		$from_clause =~ s/^\s*,\s*//s;
-
-		# Append tables to from clause that was not involved into an outer join
-		foreach my $a (keys %from_clause_list) {
-			my $table_decl = "$from_clause_list{$a}";
-			$table_decl .= " $a" if ($a ne $from_clause_list{$a});
-			# Remove comment before searching it inside the from clause
-			my $tmp_tbl = $table_decl;
-			my $comment = '';
-			while ($tmp_tbl =~ s/(\s*\%ORA2PG_COMMENT\d+\%\s*)//is) {
-				$comment .= $1;
-			}
-			if ($table_decl !~ /\(\%SUBQUERY\d+\%\)/i && $from_clause !~ /\b\Q$tmp_tbl\E\b/) {
-				$from_clause = "$table_decl, " . $from_clause;
-			} elsif ($comment) {
-				 $from_clause = "$comment " . $from_clause;
-			}
-		}
-
-		$str =~ s/FROM FROM_CLAUSE/FROM $from_clause/s;
+	if (!grep(/^$type$/, 'left', 'right')) {
+		die "FATAL: outer join type must be 'left' or 'right' in call to replace_outer_join().\n";
 	}
 
-	return $str;
-}
+	my $regexp1 = qr/(\%OUTERJOIN\%\s*(?:!=|<>|>=|<=|=|>|<|NOT LIKE|LIKE))/is;
+	my $regexp2 = qr/(?:!=|<>|>=|<=|=|>|<|NOT LIKE|LIKE)\s*[^\s]+\s*\%OUTERJOIN\%/is;
 
-sub replace_left_outer_join
-{
-	my $str = shift;
+	if ($type eq 'left') {
+		$regexp1 = qr/((?:!=|<>|>=|<=|=|>|<|NOT LIKE|LIKE)\s*[^\s]+\s*\%OUTERJOIN\%)/is;
+		$regexp2 = qr/\%OUTERJOIN\%\s*(?:!=|<>|>=|<=|=|>|<|NOT LIKE|LIKE)/is;
+	}
 
 	# process simple form of outer join
-	my $nbouter = $str =~ /((?:!=|<>|>=|<=|=|>|<|NOT LIKE|LIKE)\s*[^\s]+\s*\%OUTERJOIN\%)/igs;
+	my $nbouter = $str =~ $regexp1;
 
 	# Check that we don't have right outer join too
-	if ($nbouter >= 1 && $str !~ /\%OUTERJOIN\%\s*(?:!=|<>|>=|<=|=|>|<|NOT LIKE|LIKE)/i) {
+	if ($nbouter >= 1 && $str !~ $regexp2) {
 
 		# Extract the FROM clause
 		$str =~ s/(.*)\bFROM\s+(.*?)\s+WHERE\s+(.*?)$/$1FROM FROM_CLAUSE WHERE $3/is;
@@ -2091,8 +1932,8 @@ sub replace_left_outer_join
 			$table =~ s/^\s+//s;
 			$table =~ s/\s+$//s;
 			my $cmt = '';
-			if ($table =~ s/(\%ORA2PG_COMMENT\d+\%\s*)//is) {
-				$cmt = $1;
+			while ($table =~ s/(\s*\%ORA2PG_COMMENT\d+\%\s*)//is) {
+				$cmt .= $1;
 			}
 			my ($t, $alias, @others) = split(/\s+/, lc($table));
 			$alias = "$cmt$t" if (!$alias);
@@ -2162,11 +2003,15 @@ sub replace_left_outer_join
 			} else {
 				$final_from_clause{"$lbl1;$lbl2"}{position} = $i;
 				push(@{$final_from_clause{"$lbl1;$lbl2"}{clause}{$table_decl2}{predicat}}, "$l $o $r");
-				if (!exists $final_from_clause{"$lbl1;$lbl2"}{clause}{$table_decl2}{left}) {
-					$final_from_clause{"$lbl1;$lbl2"}{clause}{$table_decl2}{left} = $table_decl1;
+				if (!exists $final_from_clause{"$lbl1;$lbl2"}{clause}{$table_decl2}{$type}) {
+					$final_from_clause{"$lbl1;$lbl2"}{clause}{$table_decl2}{$type} = $table_decl1;
 				}
 			}
-			$final_from_clause{"$lbl1;$lbl2"}{clause}{$table_decl2}{position} = $i;
+			if ($type eq 'left') {
+				$final_from_clause{"$lbl1;$lbl2"}{clause}{$table_decl2}{position} = $i;
+			} else {
+				$final_from_clause{"$lbl1;$lbl2"}{clause}{$table_decl1}{position} = $i;
+			}
 		}
 		$str = $start_query . join(' ', @predicat) . ' ' . $end_query;
 
@@ -2181,15 +2026,15 @@ sub replace_left_outer_join
 		foreach my $t (sort { $final_from_clause{$a}{position} <=> $final_from_clause{$b}{position} } keys %final_from_clause) {
 			foreach my $j (sort { $final_from_clause{$t}{clause}{$a}{position} <=> $final_from_clause{$t}{clause}{$b}{position} } keys %{$final_from_clause{$t}{clause}}) {
 				next if ($#{$final_from_clause{$t}{clause}{$j}{predicat}} < 0);
-				if ($j !~ /\(\%SUBQUERY\d+\%\)/i && $from_clause !~ /\b\Q$final_from_clause{$t}{clause}{$j}{left}\E\b/) {
-					$from_clause .= ",$final_from_clause{$t}{clause}{$j}{left}";
-					push(@outer_clauses, (split(/\s/, $final_from_clause{$t}{clause}{$j}{left}))[1] || $final_from_clause{$t}{clause}{$j}{left});
+				if ($j !~ /\(\%SUBQUERY\d+\%\)/i && $from_clause !~ /\b\Q$final_from_clause{$t}{clause}{$j}{$type}\E\b/) {
+					$from_clause .= ",$final_from_clause{$t}{clause}{$j}{$type}";
+					push(@outer_clauses, (split(/\s/, $final_from_clause{$t}{clause}{$j}{$type}))[1] || $final_from_clause{$t}{clause}{$j}{$type});
 				}
 				my $tbl = $j;
 				$tbl =~ s/\s*\%ORA2PG_COMMENT\d+\%\s*//isg;
-				$from_clause .= "\nLEFT OUTER JOIN $tbl ON (" .  join(' AND ', @{$final_from_clause{$t}{clause}{$j}{predicat}}) . ")";
+				$from_clause .= "\n\U$type\E OUTER JOIN $tbl ON (" .  join(' AND ', @{$final_from_clause{$t}{clause}{$j}{predicat}}) . ")";
 				my ($l,$r) = split(/;/, $t);
-				push(@{$final_outer_clauses{$l}{join}},  "LEFT OUTER JOIN $tbl ON (" .  join(' AND ', @{$final_from_clause{$t}{clause}{$j}{predicat}}) . ")");
+				push(@{$final_outer_clauses{$l}{join}},  "\U$type\E OUTER JOIN $tbl ON (" .  join(' AND ', @{$final_from_clause{$t}{clause}{$j}{predicat}}) . ")");
 				push(@{$final_outer_clauses{$l}{position}},  $final_from_clause{$t}{clause}{$j}{position});
 				push(@{$associated_clause{$l}}, $r);
 			}
