@@ -676,7 +676,10 @@ sub plsql_to_plpgsql
 	# Rewrite some garbadged resulting from the transformation
 	while ($str =~ s/(\s+AND)\s+AND\b/$1/is) {};
 	while ($str =~ s/(\s+OR)\s+OR\b/$1/is) {};
+	while ($str =~ s/\s+AND(\s+\%ORA2PG_COMMENT\d+\%\s+)+(AND)\b/$1$2/is) {};
+	while ($str =~ s/\s+OR(\s+\%ORA2PG_COMMENT\d+\%\s+)+(OR)\b/$1$2/is) {};
 	$str =~ s/(\s+WHERE)\s+(AND|OR)\b/$1/igs;
+	$str =~ s/(\s+WHERE)(\s+\%ORA2PG_COMMENT\d+\%\s+)+(AND|OR)\b/$1$2/igs;
 
 	# Replace outer join sign (+) with a placeholder
 	$str =~ s/\%OUTERJOIN\%/\(\+\)/igs;
