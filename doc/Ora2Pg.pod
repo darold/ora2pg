@@ -2068,6 +2068,13 @@ extension by changing the function name. Default to uuid_generate_v4.
 
 By default Ora2pg rewrite add_month(), add_year() and date_trunc() functions
 set it to 0 to force Ora2Pg to not translate those functions if it breaks code.
+
+=item FUNCTION_STABLE
+
+By default Oracle functions are marked as STABLE as they can not modify data
+unless when used in PL/SQL with variable assignment or as conditional
+expression. You can force Ora2Pg to create these function as VOLATILE by
+disabling this configuration directive.
  
 =back
 

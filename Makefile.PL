@@ -874,6 +874,12 @@ REWRITE_OUTER_JOIN	1
 # set it to 0 to not translate those functions if it breaks code. 
 DATE_FUNCTION_REWRITE	1
 
+# By default Oracle functions are marked as STABLE as they can not modify data
+# unless when used in PL/SQL with variable assignment or as conditional
+# expression. You can force Ora2Pg to create these function as VOLATILE by
+# disabling the following configuration directive.
+FUNCTION_STABLE		1
+
 #------------------------------------------------------------------------------
 # ASSESSMENT SECTION (Control migration assessment behaviors)
 #------------------------------------------------------------------------------

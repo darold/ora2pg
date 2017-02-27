@@ -901,6 +901,11 @@ sub _init
 	# Disable synchronous commit for pg data load
 	$self->{synchronous_commit} ||= 0;
 
+	# Mark function as STABLE by default
+	if (not defined $self->{function_stable} || $self->{function_stable} != 0) {
+		$self->{function_stable} = 1;
+	}
+
 	# Initialize rewriting of index name
 	if (not defined $self->{indexes_renaming} || $self->{indexes_renaming} != 0) {
 		$self->{indexes_renaming} = 1;
@@ -10523,7 +10528,9 @@ END;
 		$fct_detail{immutable} = ' IMMUTABLE';
 	} elsif ($plsql =~  /^FUNCTION/i) {
 		# Oracle function can't modify data so always mark them as stable
-		$fct_detail{immutable} = ' STABLE';
+		if ($self->{function_stable}) {
+			$fct_detail{immutable} = ' STABLE';
+		}
 	}
 	if ($language && ($language !~ /SQL/i)) {
 		$function .= "AS '$fct_detail{library}', '$fct_detail{library_fct}'\nLANGUAGE $language$fct_detail{immutable};\n";
