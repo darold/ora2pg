@@ -10543,7 +10543,7 @@ END;
 		$fct_detail{declare} =~ s/^\s*DECLARE//;
 		$function .= "DECLARE\n$fct_detail{declare}\n" if ($fct_detail{declare});
 		$function .= $fct_detail{code};
-		$function .= ';' if ($function !~ /END\s*;\s*$/is);
+		$function .= ';' if ($function !~ /END\s*;\s*$/is && $fct_detail{code} !~ /\%ORA2PG_COMMENT\d+\%\s*$/);
 		$function .= "\n\$body\$\nLANGUAGE PLPGSQL\n";
 		$revoke = "-- REVOKE ALL ON FUNCTION $name $fct_detail{args} FROM PUBLIC;";
 		$revoke =~ s/[\n\r]+\s*/ /gs;
@@ -10560,6 +10560,7 @@ END;
 		$function .= "$fct_detail{immutable};\n";
 		$function = "\n$fct_detail{before}$function";
 	}
+
 	if ($self->{force_owner}) {
 		$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
 		if ($owner) {
