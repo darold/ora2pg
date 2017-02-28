@@ -524,6 +524,8 @@ sub plsql_to_plpgsql
 	foreach my $c (@cursor_names) {
 		$str =~ s/\b$c\%ROWTYPE/RECORD/isg;
 	}
+	# Then remove %ROWTYPE in other prototype declaration
+	$str =~ s/\%ROWTYPE//isg;
 
 	# Replace CURSOR IS SELECT by CURSOR FOR SELECT
 	$str =~ s/\bCURSOR(\s+)IS(\s+)SELECT/CURSOR$1FOR$2SELECT/isg;
