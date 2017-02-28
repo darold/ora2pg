@@ -541,7 +541,7 @@ sub plsql_to_plpgsql
 	$str =~ s/\b(SELECT\b[^;]*?INTO)(.*?)(EXCEPTION.*?(?:NO_DATA_FOUND|TOO_MANY_ROW))/$1 STRICT $2 $3/igs;
 
 	# Remove the function name repetion at end
-	$str =~ s/\bEND\s+(?!IF|LOOP|CASE|INTO|FROM|END|ELSE|AND|OR|,)[a-z0-9_"]+(\s*[;]?)/END$1$2/igs;
+	$str =~ s/\bEND\s+(?!IF|LOOP|CASE|INTO|FROM|END|ELSE|AND|OR|WHEN|,)[a-z0-9_"]+(\s*[;]?)/END$1$2/igs;
 
 	# Rewrite comment in CASE between WHEN and THEN
 	$str =~ s/(\s*)(WHEN\s+[^\s]+\s*)(ORA2PG_COMMENT\d+\%)(\s*THEN)/$1$3$1$2$4/igs;
