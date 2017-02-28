@@ -14160,7 +14160,7 @@ sub _lookup_function
 
 		# Replace PL/SQL code into PL/PGSQL similar code
 		$fct_detail{declare} = Ora2Pg::PLSQL::convert_plsql_code($self, $fct_detail{declare});
-		$fct_detail{declare} .= ';' if ($fct_detail{declare} && $fct_detail{declare} !~ /;\s*$/);
+		$fct_detail{declare} .= ';' if ($fct_detail{declare} && $fct_detail{declare} !~ /;\s*$/ && $fct_detail{declare} !~ /\%ORA2PG_COMMENT\d+\%\s*$/);
 		if ($fct_detail{code}) {
 			$fct_detail{code} = Ora2Pg::PLSQL::convert_plsql_code($self, "BEGIN".$fct_detail{code});
 		}
