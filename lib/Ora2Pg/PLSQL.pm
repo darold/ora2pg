@@ -2084,7 +2084,8 @@ sub replace_outer_join
 			while ($tmp_tbl =~ s/(\s*\%ORA2PG_COMMENT\d+\%\s*)//is) {
 				$comment .= $1;
 			}
-			if ($table_decl !~ /\(\%SUBQUERY\d+\%\)/i && $from_clause !~ /\b\Q$tmp_tbl\E\b/) {
+
+			if ($tmp_tbl !~ /\(*\%SUBQUERY\d+\%\)*/is && $from_clause !~ /\b\Q$tmp_tbl\E\b/is) {
 				$from_clause = "$table_decl, " . $from_clause;
 			} elsif ($comment) {
 				 $from_clause = "$comment " . $from_clause;
