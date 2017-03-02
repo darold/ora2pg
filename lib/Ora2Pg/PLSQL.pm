@@ -339,7 +339,6 @@ sub convert_plsql_code
 		}
 		while ($code_parts[$i] =~ s/\%\%REPLACEFCT(\d+)\%\%/$class->{single_fct_call}{$1}/) {};
 	}
-	push(@code_parts, ' ') if ($str =~ /;\s*$/s);
 	$str = join(';', @code_parts);
 	$str = $class->restore_text_constant_part($str);
 	$class->{text_values} = ();
