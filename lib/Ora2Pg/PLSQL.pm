@@ -1293,6 +1293,7 @@ sub replace_sql_type
 		$i++;
 	}
 	$str =~ s/\%LOCALTYPE(\d+)\%/$localtype{$1}/gs;
+	$str =~ s/\%ROWTYPE//gs;
 
         return $str;
 }
