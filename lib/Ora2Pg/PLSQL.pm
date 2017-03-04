@@ -706,6 +706,9 @@ sub translate_statement
 		# Replace call to left outer join obsolete syntax
 		$q[$j] = replace_outer_join($q[$j], 'left');
 
+		# Replacement of connect by with CTE
+		$q[$j] = replace_connect_by($class, $q[$j]);
+
 		# Replace LIMIT into the main query
 		$q[$j] = replace_rownum_with_limit($class, $q[$j]);
 
@@ -2112,6 +2115,127 @@ sub find_associated_clauses
 	delete $associated_clause->{$c};
 }
 
+
+sub replace_connect_by
+{
+	my ($class, $str) = @_;
+
+	my $level = 0;
+
+	my $final_query = "WITH RECURSIVE cte AS (\n";
+
+	# Extract the starting node or level of the tree 
+	my $start_with = '';
+	if ($str =~ s/WHERE\s+(.*?)\s+START\s+WITH\s+(.*?)\s+CONNECT BY\s+//is) {
+		$start_with = $1 . ' AND ' . $2;
+	} elsif ($str =~ s/START\s+WITH\s+(.*?)\s+CONNECT BY\s+//is) {
+		$start_with = $1;
+	} else {
+		return $str;
+	}
+	# Extract the CONNECT BY clause in the hierarchical query
+	my @prior_clause = '';
+	if ($str =~ s/(?:NOCYLCLE\s*)?(\s+PRIOR\s+.*)//is) {
+		@prior_clause = split(/\s+PRIOR\s+/i, $1);
+		$prior_clause[-1] =~ s/\s*;\s*//s;
+		shift(@prior_clause);
+		map { s/[^\.]+\.//s; } @prior_clause;
+	}
+	my $bkup_query = $str;
+	# Cosntruct the initialization query
+	my $has_level = 0;
+	$str =~ s/(SELECT\s+)(.*?)(\s+FROM)/$1COLUMN_ALIAS$3/is;
+	my @columns = split(/\s*,\s*/, $2);
+	my @tabalias = ();
+	my %connect_by_path = ();
+	for (my $i = 0; $i <= $#columns; $i++) {
+		my $found = 0;
+		while ($columns[$i] =~ s/\%SUBQUERY(\d+)\%/$class->{sub_parts}{$1}/is) {
+			# Get out of here next run when a call to SYS_CONNECT_BY_PATH is found
+			# This will prevent opening too much subquery in the function parameters
+			last if ($found);
+			$found = 1 if ($columns[$i]=~ /SYS_CONNECT_BY_PATH/is);
+		};
+		# Replace LEVEL call by a counter, there is no direct equivalent in PostgreSQL
+		if (lc($columns[$i]) eq 'level') {
+			$columns[$i] = "1 as level";
+			$has_level = 1;
+		} elsif ($columns[$i] =~ /\bLEVEL\b/is) {
+			$columns[$i] =~ s/\bLEVEL\b/1/is;
+			$has_level = 1;
+		}
+		# Replace call to SYS_CONNECT_BY_PATH by the right concatenation string
+		if ($columns[$i] =~ s/SYS_CONNECT_BY_PATH\s*[\(]*\s*([^,]+),\s*([^\)]+)\s*\)/$1/is) {
+			my $col = $1;
+			$connect_by_path{$col}{sep} = $2;
+			# get the column alias
+			$columns[$i] =~ /\s+([^\s]+)\s*$/s;
+			$connect_by_path{$col}{alias} = $1;
+		}
+		if ($columns[$i] =~ s/([^\.]+)\.//s) {
+			push(@tabalias, $1) if (!grep(/^$1$/i, @tabalias));
+		}
+		extract_subpart($class, $columns[$i]);
+	}
+
+	# Extraction of the table aliases in the FROM clause
+	my $cols = join(',', @columns);
+	$str =~ s/COLUMN_ALIAS/$cols/s;
+	if ($str =~ s/(\s+FROM\s+)(.*)/$1FROM_CLAUSE/is) {
+		my $from_clause = $2;
+		foreach my $t (@tabalias) {
+			$from_clause =~ s/\s+$t\b//gs;
+			$from_clause =~ s/\b$t\.//gs;
+		}
+		$str =~ s/FROM_CLAUSE/$from_clause/;
+	}
+
+	foreach my $t (@tabalias) {
+		$start_with =~ s/\b$t\.//gs;
+	}
+
+	# Now append the UNION ALL query that will be called recursively
+	$final_query .= $str . ' WHERE ' . $start_with . "\n";
+	$final_query .= "  UNION ALL\n";
+	$bkup_query =~ s/(SELECT\s+)(.*?)(\s+FROM)/$1COLUMN_ALIAS$3/is;
+	@columns = split(/\s*,\s*/, $2);
+	for (my $i = 0; $i <= $#columns; $i++) {
+		my $found = 0;
+		while ($columns[$i] =~ s/\%SUBQUERY(\d+)\%/$class->{sub_parts}{$1}/is) {
+			# Get out of here when a call to SYS_CONNECT_BY_PATH is found
+			# This will prevent opening subquery in the function parameters
+			last if ($found);
+			$found = 1 if ($columns[$i]=~ /SYS_CONNECT_BY_PATH/is);
+		};
+		if ($columns[$i] =~ s/SYS_CONNECT_BY_PATH\s*[\(]*\s*([^,]+),\s*([^\)]+)\s*\)/e\.$1/is) {
+			$columns[$i] = "c.$connect_by_path{$1}{alias} || $connect_by_path{$1}{sep} || " . $columns[$i];
+		} elsif ($columns[$i] !~ s/^[^\.]+\.(.*)$/e\.$1/s) {
+			$columns[$i] =~ s/^(.*)$/e\.$1/s;
+		}
+		if ($columns[$i] !~ s/\be\.LEVEL\b/(c.level+1)/igs) {
+			$columns[$i] =~ s/\bLEVEL\b/(c.level+1)/igs;
+		}
+		extract_subpart($class, $columns[$i]);
+	}
+	$cols = join(',', @columns);
+	$bkup_query =~ s/COLUMN_ALIAS/$cols/s;
+	if ($bkup_query =~ s/(\s+FROM\s+)(.*)/$1FROM_CLAUSE/is) {
+		my $from_clause = $2;
+		foreach my $t (@tabalias) {
+			$from_clause =~ s/\s+$t\b//gs;
+			$from_clause =~ s/\b$t\.//gs;
+		}
+		$bkup_query =~ s/FROM_CLAUSE/$from_clause/;
+	}
+
+	# Remove last subquery alias in the from clause to put our own 
+	$bkup_query =~ s/(\%SUBQUERY\d+\%)\s+[^\s]+\s*$/$1/is;
+	$final_query .= $bkup_query . ' e';
+	map { s/^\s*(.*?)(=\s*)(.*)/c\.$1$2e\.$3/s; } @prior_clause;
+	$final_query .= " JOIN cte c ON (" . join(' AND ', @prior_clause) . ")\n";
+
+	$final_query .= "\n) SELECT * FROM cte;\n";
+}
 
 1;
 
