@@ -14168,16 +14168,26 @@ sub _lookup_function
 			$fct_detail{code} = Ora2Pg::PLSQL::convert_plsql_code($self, "BEGIN".$fct_detail{code});
 		}
 
-		# Sometime variable used in FOR ... IN loop is not declared
+		# Sometime variable used in FOR ... IN SELECT loop is not declared
 		# Append its RECORD declaration in the DECLARE section.
 		my $tmp_code = $fct_detail{code};
-		while ($tmp_code =~ s/FOR\s+([^\s]+)\s+IN//is) {
+		while ($tmp_code =~ s/FOR\s+([^\s]+)\s+IN(.*?)LOOP//is) {
 			my $varname = $1;
-			if ($fct_detail{declare} !~ /\b$varname\s+/) {
+			my $clause = $2;
+			if ($fct_detail{declare} !~ /\b$varname\s+/is) {
 				chomp($fct_detail{declare});
-				$fct_detail{declare} .= "\n  $varname RECORD;\n";
+				# When the cursor is refereing to a statement, declare
+				# it as record otherwise it don't need to be replaced
+				if ($clause =~ /\bSELECT\b/is) {
+					$fct_detail{declare} .= "\n  $varname RECORD;\n";
+				} else {
+					# Declare it as a integer even if it might not need
+					# to be declared when it is limited to the loop scope.
+					$fct_detail{declare} .= "\n  $varname int;\n";
+				}
 			}
 		}
+
 		# Set parameters for AUTONOMOUS TRANSACTION
 		$fct_detail{args} =~ s/\s+/ /gs;
 		push(@{$fct_detail{at_args}}, split(/\s*,\s*/, $fct_detail{args}));
