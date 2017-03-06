@@ -311,10 +311,6 @@ sub convert_plsql_code
 
 	return if ($str eq '');
 
-	# Replace comment with a placeholder
-	$class->{idxcomment} = 0;
-	my %comments = $class->_remove_comments(\$str);
-
 	# Replace all text constant part to prevent a split on a ; inside a text
 	$class->{text_values} = ();
 	$str = $class->remove_text_constant_part($str);
@@ -349,8 +345,6 @@ sub convert_plsql_code
 	$str = $class->restore_text_constant_part($str);
 	$class->{text_values} = ();
 
-	$class->_restore_comments(\$str, \%comments);
-
 	return $str;
 }
 
@@ -372,7 +366,7 @@ sub extract_function_code
 		my $fct_name = $1;
 		my $fct_code = $2;
 		my $space = '';
-		$space = ' ' if (grep (/^$fct_name$/i, 'FROM', 'AS', 'VALUES', 'DEFAULT', 'OR', 'AND', 'IN', 'SELECT', 'OVER', 'WHERE', 'THEN', 'IF', 'ELSIF','EXISTS'));
+		$space = ' ' if (grep (/^$fct_name$/i, 'FROM', 'AS', 'VALUES', 'DEFAULT', 'OR', 'AND', 'IN', 'SELECT', 'OVER', 'WHERE', 'THEN', 'IF', 'ELSIF', 'ELSE', 'EXISTS'));
 
                 # recursively replace function
                 $class->{single_fct_call}{$idx} = $fct_name . $space . '(' . $fct_code . ')';
@@ -476,7 +470,7 @@ sub plsql_to_plpgsql
 		$str = $class->remove_text_constant_part($str);
 		$str =~ s/(\s+)(?<!AS|IS)(\s+)SELECT((?![^;]+\bINTO\b)[^;]+;)/$1$2PERFORM$3/isg;
 		$str =~ s/\bSELECT\b((?![^;]+\bINTO\b)[^;]+;)/PERFORM$1/isg;
-		$str =~ s/(AS|IS|FOR|UNION ALL|UNION|MINUS|\()(\s*)(ORA2PG_COMMENT\d+\%)?(\s*)PERFORM/$1$2$3$4SELECT/isg;
+		$str =~ s/(AS|IS|FOR|UNION ALL|UNION|MINUS|\()(\s*)(\%ORA2PG_COMMENT\d+\%)?(\s*)PERFORM/$1$2$3$4SELECT/isg;
 		$str =~ s/(INSERT\s+INTO\s+[^;]+\s+)PERFORM/$1SELECT/isg;
 		$str = $class->restore_text_constant_part($str);
 	}
@@ -545,7 +539,7 @@ sub plsql_to_plpgsql
 	$str =~ s/\bEND\s+(?!IF|LOOP|CASE|INTO|FROM|END|ELSE|AND|OR|WHEN|,)[a-z0-9_"]+(\s*[;]?)/END$1$2/igs;
 
 	# Rewrite comment in CASE between WHEN and THEN
-	$str =~ s/(\s*)(WHEN\s+[^\s]+\s*)(ORA2PG_COMMENT\d+\%)(\s*THEN)/$1$3$1$2$4/igs;
+	$str =~ s/(\s*)(WHEN\s+[^\s]+\s*)(\%ORA2PG_COMMENT\d+\%)(\s*THEN)/$1$3$1$2$4/igs;
 
 	# Replace SQLCODE by SQLSTATE
 	$str =~ s/\bSQLCODE\b/SQLSTATE/igs;
@@ -1186,7 +1180,7 @@ sub replace_sql_type
 
 
 	$str =~ s/with local time zone/with time zone/igs;
-	$str =~ s/([A-Z])ORA2PG_COMMENT/$1 ORA2PG_COMMENT/igs;
+	$str =~ s/([A-Z])\%ORA2PG_COMMENT/$1 \%ORA2PG_COMMENT/igs;
 
 	# Replace type with precision
 	my $oratype_regex = join('|', keys %Ora2Pg::TYPE);
@@ -1929,7 +1923,6 @@ sub replace_outer_join
 
 	# Check that we don't have right outer join too
 	if ($nbouter >= 1 && $str !~ $regexp2) {
-
 		# Extract the FROM clause
 		$str =~ s/(.*)\bFROM\s+(.*?)\s+WHERE\s+(.*?)$/$1FROM FROM_CLAUSE WHERE $3/is;
 		my $from_clause = $2;
@@ -1947,7 +1940,7 @@ sub replace_outer_join
 				$cmt .= $1;
 			}
 			my ($t, $alias, @others) = split(/\s+/, lc($table));
-			$alias = "$cmt$t" if (!$alias);
+			$alias = "$t" if (!$alias);
 			$from_clause_list{$alias} = "$cmt$t";
 			$from_order{$alias} = $fidx++;
 		}
@@ -2008,6 +2001,7 @@ sub replace_outer_join
 			# first then the outer join with the right table
 			if (scalar keys %final_from_clause == 0) {
 				$from_clause = $table_decl1;
+				$table_decl1 =~ s/\s*\%ORA2PG_COMMENT\d+\%\s*//igs;
 				push(@outer_clauses, (split(/\s/, $table_decl1))[1] || $table_decl1);
 				$final_from_clause{"$lbl1;$lbl2"}{position} = $i;
 				push(@{$final_from_clause{"$lbl1;$lbl2"}{clause}{$table_decl2}{predicat}}, "$l $o $r");
@@ -2037,7 +2031,8 @@ sub replace_outer_join
 		foreach my $t (sort { $final_from_clause{$a}{position} <=> $final_from_clause{$b}{position} } keys %final_from_clause) {
 			foreach my $j (sort { $final_from_clause{$t}{clause}{$a}{position} <=> $final_from_clause{$t}{clause}{$b}{position} } keys %{$final_from_clause{$t}{clause}}) {
 				next if ($#{$final_from_clause{$t}{clause}{$j}{predicat}} < 0);
-				if ($j !~ /\(\%SUBQUERY\d+\%\)/i && $from_clause !~ /\b\Q$final_from_clause{$t}{clause}{$j}{$type}\E\b/) {
+
+				if (exists $final_from_clause{$t}{clause}{$j}{$type} && $j !~ /\(\%SUBQUERY\d+\%\)/i && $from_clause !~ /\b\Q$final_from_clause{$t}{clause}{$j}{$type}\E\b/) {
 					$from_clause .= ",$final_from_clause{$t}{clause}{$j}{$type}";
 					push(@outer_clauses, (split(/\s/, $final_from_clause{$t}{clause}{$j}{$type}))[1] || $final_from_clause{$t}{clause}{$j}{$type});
 				}

@@ -4122,7 +4122,6 @@ LANGUAGE plpgsql ;
 		# Code to use to find queries parser issues, it load a file
 		# containing the untouched SQL code from Oracle queries
 		#---------------------------------------------------------
-		my %comments = ();
 		if ($self->{input_file}) {
 			$self->{functions} = ();
 			$self->logit("Reading input code from file $self->{input_file}...\n", 1);
@@ -4133,7 +4132,7 @@ LANGUAGE plpgsql ;
 			my $content = join('', @allqueries);
 			@allqueries = ();
 			$self->{idxcomment} = 0;
-			%comments = $self->_remove_comments(\$content);
+			my %comments = $self->_remove_comments(\$content);
 			foreach my $l (split(/\n/, $content)) {
 				chomp($l);
 				next if ($l =~ /^\s*$/);
@@ -4148,30 +4147,30 @@ LANGUAGE plpgsql ;
 					$self->{queries}{$query} .= "$l\n";
 				}
 			}
-		} else {
+			$content = '';
 			foreach my $q (keys %{$self->{queries}}) {
-				$self->{queries}{$q} =~ s/\%ORA2PG_COMMENT\d+\%//gs;
+				$self->_restore_comments(\$self->{queries}{$q}, \%comments);
 			}
 		}
 		foreach my $q (keys %{$self->{queries}}) {
 			if ($self->{queries}{$q} !~ /(SELECT|UPDATE|DELETE|INSERT)/is) {
 				delete $self->{queries}{$q};
-			} else {
-				$self->_restore_comments(\$self->{queries}{$q}, \%comments);
 			}
 		}
+
 		#--------------------------------------------------------
 
 		my $total_size = 0;
 		my $cost_value = 0;
 		foreach my $q (sort {$a <=> $b} keys %{$self->{queries}}) {
-			$self->{idxcomment} = 0;
-			my %comments = $self->_remove_comments($self->{queries}{$q});
 			$total_size += length($self->{queries}{$q});
 			$self->logit("Dumping query $q...\n", 1);
 			my $fhdl = undef;
 			if ($self->{plsql_pgsql}) {
+				$self->{idxcomment} = 0;
+				my %comments = $self->_remove_comments(\$self->{queries}{$q});
 				my $sql_q = Ora2Pg::PLSQL::convert_plsql_code($self, $self->{queries}{$q});
+				$self->_restore_comments(\$sql_q, \%comments);
 				$sql_output .= $sql_q;
 				$sql_output .= ';' if ($sql_q !~ /;\s*$/);
 				if ($self->{estimate_cost}) {
@@ -4184,7 +4183,6 @@ LANGUAGE plpgsql ;
 				$sql_output .= $self->{queries}{$q};
 			}
 			$sql_output .= "\n\n";
-			$self->_restore_comments(\$sql_output, \%comments);
 			$nothing++;
 		}
 		if ($self->{estimate_cost}) {
@@ -10243,9 +10241,16 @@ sub _restore_comments
 {
 	my ($self, $content, $comments) = @_;
 
-	foreach my $k (keys %$comments) {
-		$$content =~ s/$k[\n]?/$comments->{$k}\n/is;
+	my $no_infinite = 0;
+	while (scalar keys %$comments > 0  && $$content =~ /\%ORA2PG_COMMENT\d+\%/ && $no_infinite < 10000) {
+		foreach my $k (sort { $b <=> $a } keys %$comments) {
+			if ($$content =~ s/$k[\n]?/$comments->{$k}\n/is) {
+				delete $comments->{$k};
+			}
+		}
+		$no_infinite++;
 	}
+	$$content =~ s/\%ORA2PG_COMMENT\d+\%//gs;
 
 }
 
@@ -10294,6 +10299,12 @@ sub _remove_comments
 		}
 	}
 	$$content = join("\n", @lines);
+
+	# Replace subsequent comment by a single one
+	while ($$content =~ s/(\%ORA2PG_COMMENT\d+\%\s*\%ORA2PG_COMMENT\d+\%)/\%ORA2PG_COMMENT$self->{idxcomment}\%/s) {
+		$comments{"\%ORA2PG_COMMENT$self->{idxcomment}\%"} = $1;
+		$self->{idxcomment}++;
+	}
 
 	return %comments;
 }
