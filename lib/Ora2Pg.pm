@@ -2078,7 +2078,7 @@ sub remove_text_constant_part
 {
 	my ($self, $str) = @_;
 
-	$str =~ s/\\'/ORA2PG_ESCAPE1_QUOTE/gs;
+	$str =~ s/\\'/ORA2PG_ESCAPE1_QUOTE'/gs;
 	while ($str =~ s/''/ORA2PG_ESCAPE2_QUOTE/gs) {}
 
 	while ($str =~ s/('[^']+')/\%TEXTVALUE$self->{text_values_pos}\%/s) {
@@ -2094,7 +2094,7 @@ sub restore_text_constant_part
 
 	$str =~ s/\%TEXTVALUE(\d+)\%/$self->{text_values}{$1}/gs;
 	$str =~ s/ORA2PG_ESCAPE2_QUOTE/''/gs;
-	$str =~ s/ORA2PG_ESCAPE1_QUOTE/\\'/gs;
+	$str =~ s/ORA2PG_ESCAPE1_QUOTE'/\\'/gs;
 
 	return $str;
 }
