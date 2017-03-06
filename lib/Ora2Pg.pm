@@ -14180,10 +14180,6 @@ sub _lookup_function
 				# it as record otherwise it don't need to be replaced
 				if ($clause =~ /\bSELECT\b/is) {
 					$fct_detail{declare} .= "\n  $varname RECORD;\n";
-				} else {
-					# Declare it as a integer even if it might not need
-					# to be declared when it is limited to the loop scope.
-					$fct_detail{declare} .= "\n  $varname int;\n";
 				}
 			}
 		}
