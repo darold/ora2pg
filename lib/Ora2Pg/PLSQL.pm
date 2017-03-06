@@ -485,6 +485,9 @@ sub plsql_to_plpgsql
 	# Comment DBMS_OUTPUT.ENABLE calls
 	$str =~ s/(DBMS_OUTPUT.ENABLE[^;]+;)/-- $1/isg;
 
+	# Raise information to the client
+	$str =~ s/DBMS_OUTPUT\.(put_line|put|new_line)\s*\((.*?)\)\s*;/&raise_output($class, $2) . ';'/isge;
+
 	# Procedure are the same as function in PG
 	$str =~ s/\bPROCEDURE\b/FUNCTION/igs;
 	# Simply remove this as not supported
@@ -861,9 +864,6 @@ sub replace_oracle_function
 	# Change NVL to COALESCE
 	$str =~ s/NVL\s*\(/coalesce(/is;
 
-	# Raise information to the client
-	$str =~ s/DBMS_OUTPUT\.(put_line|put|new_line)\s*\((.*)\)/&raise_output($2)/ise;
-
 	# Replace DEFAULT empty_blob() and empty_clob()
 	$str =~ s/(empty_blob|empty_clob)\s*\(\s*\)//is;
 	$str =~ s/(empty_blob|empty_clob)\b//is;
@@ -1152,13 +1152,14 @@ sub replace_sdo_operator
 # dbms_output.new_line by a plpgsql code
 sub raise_output
 {
-	my $str = shift;
+	my ($class, $str) = @_;
 
 	my @strings = split(/\s*\|\|\s*/s, $str);
 
 	my @params = ();
 	my $pattern = '';
 	foreach my $el (@strings) {
+		$el = $class->restore_text_constant_part($el);
 		if ($el =~ /^'(.*)'$/s) {
 			$pattern .= $1;
 		} else {
@@ -1170,6 +1171,7 @@ sub raise_output
 	if ($#params >= 0) {
 		$ret .= ', ' . join(', ', @params);
 	}
+	$ret = $class->remove_text_constant_part($ret);
 
 	return $ret;
 }
