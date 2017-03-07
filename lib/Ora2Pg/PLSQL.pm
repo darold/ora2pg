@@ -366,7 +366,7 @@ sub extract_function_code
 		my $fct_name = $1;
 		my $fct_code = $2;
 		my $space = '';
-		$space = ' ' if (grep (/^$fct_name$/i, 'FROM', 'AS', 'VALUES', 'DEFAULT', 'OR', 'AND', 'IN', 'SELECT', 'OVER', 'WHERE', 'THEN', 'IF', 'ELSIF', 'ELSE', 'EXISTS'));
+		$space = ' ' if (grep (/^$fct_name$/i, 'FROM', 'AS', 'VALUES', 'DEFAULT', 'OR', 'AND', 'IN', 'SELECT', 'OVER', 'WHERE', 'THEN', 'IF', 'ELSIF', 'ELSE', 'EXISTS', 'ON'));
 
                 # recursively replace function
                 $class->{single_fct_call}{$idx} = $fct_name . $space . '(' . $fct_code . ')';
@@ -387,8 +387,8 @@ sub append_alias_clause
 		if ($q[$j] =~ s/\b(FROM\s+)(.*\%SUBQUERY.*?)(\s*)(WHERE|ORDER\s+BY|GROUP\s+BY|LIMIT|$)/$1\%FROM_CLAUSE\%$3$4/is) {
 			my $from_clause = $2;
 			my @parts = split(/\b(WHERE|ORDER\s+BY|GROUP\s+BY|LIMIT)\b/i, $from_clause);
-			$parts[0] =~ s/(?<!USING|[\s,]ONLY|[\s,]JOIN)\%SUBQUERY(\d+)\%(\s*,)/\%SUBQUERY$1\% alias$1$2/igs;
-			$parts[0] =~ s/(?<!USING|[\s,]ONLY|[\s,]JOIN)\%SUBQUERY(\d+)\%(\s*)$/\%SUBQUERY$1\% alias$1$2/is;
+			$parts[0] =~ s/(?<!USING|[\s,]ONLY|[\s,]JOIN|..\sON)\%SUBQUERY(\d+)\%(\s*,)/\%SUBQUERY$1\% alias$1$2/igs;
+			$parts[0] =~ s/(?<!USING|[\s,]ONLY|[\s,]JOIN|.\sON\s)\%SUBQUERY(\d+)\%(\s*)$/\%SUBQUERY$1\% alias$1$2/is;
 			$from_clause = join('', @parts);
 			$q[$j] =~ s/\%FROM_CLAUSE\%/$from_clause/s;
 		}
