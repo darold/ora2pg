@@ -15195,6 +15195,7 @@ sub register_global_variable
 			next;
 		}
 		$l =~ s/\-\-[^\r\n]+//sg;
+		$l =~ s/\s*:=\s*/ := /igs;
 		my ($n, $type, @others) = split(/\s+/, $l);
 		$ret .= $l, next if (!$type);
 		if (!$n) {
