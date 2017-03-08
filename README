@@ -1824,6 +1824,16 @@ CONFIGURATION
         to use dblink. See https://github.com/vibhorkum/pg_background about
         this extension.
 
+    DBLINK_CONN
+        By default if you have an autonomous transaction translated using
+        dblink extension instead of pg_background the connection is defined
+        using the values set with PG_DSN, PG_USER and PG_PWD. If you want to
+        fully override the connection string use this directive as follow to
+        set the connection in the autonomous transaction wrapper function.
+        For example:
+
+                DBLINK_CONN    port=5432 dbname=pgdb host=localhost user=pguser password=pgpass
+
     LONGREADLEN
         Use this directive to set the database handle's 'LongReadLen'
         attribute to a value that will be the larger than the expected size

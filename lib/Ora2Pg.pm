@@ -1228,6 +1228,10 @@ sub _init
 	# Replace ; or space by comma in the audit user list
 	$self->{audit_user} =~ s/[;\s]+/,/g;
 
+	# Set the PostgreSQL connection information for data import or to
+	# defined the dblink connection to use in autonomous transaction
+	$self->set_pg_conn_details();
+
 	if (!$self->{input_file}) {
 		if ($self->{type} eq 'LOAD') {
 			$self->logit("FATAL: with LOAD you must provide an input file\n", 0, 1);
@@ -1282,7 +1286,7 @@ sub _init
 		return;
 	}
 
-	# Retreive all table informations
+	# Retreive all table information
         foreach my $t (@{$self->{export_type}}) {
                 $self->{type} = $t;
 		if (($self->{type} eq 'TABLE') || ($self->{type} eq 'FDW') || ($self->{type} eq 'INSERT') || ($self->{type} eq 'COPY') || ($self->{type} eq 'KETTLE')) {
@@ -1542,7 +1546,29 @@ sub DESTROY
 }
 
 
-=head2 _send_to_pgdb DEST_DATASRC DEST_USER DEST_PASSWD
+sub set_pg_conn_details
+{
+	my $self = shift;
+
+	# Init connection details with configuration options
+	$self->{pg_dsn} ||= '';
+	
+	$self->{pg_dsn} =~ /dbname=([^;]*)/;
+	$self->{dbname} = $1 || 'testdb';
+	$self->{pg_dsn} =~ /host=([^;]*)/;
+	$self->{dbhost} = $1 || 'localhost';
+	$self->{pg_dsn} =~ /port=([^;]*)/;
+	$self->{dbport} = $1 || 5432;
+	$self->{dbuser} = $self->{pg_user} || 'pguser';
+	$self->{dbpwd} = $self->{pg_pwd} || 'pgpwd';
+
+	if (!$self->{dblink_conn}) {
+		$self->{dblink_conn} = "port=$self->{dbport} dbname=$self->{dbname} host=$self->{dbhost} user=$self->{dbuser} password=$self->{dbpwd}";
+	}
+}
+
+
+=head2 _send_to_pgdb
 
 Open a DB handle to a PostgreSQL database
 
@@ -1550,28 +1576,12 @@ Open a DB handle to a PostgreSQL database
 
 sub _send_to_pgdb
 {
-	my ($self, $destsrc, $destuser, $destpasswd) = @_;
+	my ($self) = @_;
 
 	eval("use DBD::Pg qw(:pg_types);");
 
-	# Init with configuration options if no parameters
-	$destsrc ||= $self->{pg_dsn};
-	$destuser ||= $self->{pg_user};
-	$destpasswd ||= $self->{pg_pwd};
-
-        # Then connect the destination database
-        my $dbhdest = DBI->connect($destsrc, $destuser, $destpasswd, {AutoInactiveDestroy => 1});
-
-	$destsrc =~ /dbname=([^;]*)/;
-	$self->{dbname} = $1;
-	$destsrc =~ /host=([^;]*)/;
-	$self->{dbhost} = $1;
-	$self->{dbhost} = 'localhost' if (!$self->{dbhost});
-	$destsrc =~ /port=([^;]*)/;
-	$self->{dbport} = $1;
-	$self->{dbport} = 5432 if (!$self->{dbport});
-	$self->{dbuser} = $destuser;
-	$self->{dbpwd} = $destpasswd;
+        # Connect the destination database
+        my $dbhdest = DBI->connect($self->{pg_dsn}, $self->{pg_user}, $self->{pg_pwd}, {AutoInactiveDestroy => 1});
 
         # Check for connection failure
         if (!$dbhdest) {
@@ -1584,7 +1594,7 @@ sub _send_to_pgdb
 # Backward Compatibility
 sub send_to_pgdb
 {
-	return &_send_to_pgdb(@_);
+	return &_send_to_pgdb();
 
 }
 
@@ -10465,10 +10475,11 @@ CREATE EXTENSION IF NOT EXISTS dblink;
 			map { s/(.+)/quote_nullable($1)/; }  @{$fct_detail{at_args}};
 			$params = " ' || " . join(" || ',' || ", @{$fct_detail{at_args}}) . " || ' ";
 		}
+		my $dblink_conn = $self->{dblink_conn} || 'port=5432 dbname=testdb host=localhost user=pguser password=pgpass';
 		$at_wrapper .= qq{
 DECLARE
 	-- Change this to reflect the dblink connection string
-	v_conn_str  text := 'port=5432 dbname=testdb host=localhost user=pguser password=pgpass';
+	v_conn_str  text := '$dblink_conn';
 	v_query     text;
 };
 		if (!$fct_detail{hasreturn}) {

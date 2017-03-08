@@ -955,6 +955,13 @@ BITMAP_AS_GIN		1
 # of using a dblink wrapper. With pg >= 9.5 only, default is to use dblink.
 PG_BACKGROUND		0
 
+# By default if you have an autonomous transaction translated using dblink
+# extension instead of pg_background the connection is defined using the
+# values set with PG_DSN, PG_USER and PG_PWD. If you want to fully override
+# the connection string use this directive as follow to set the connection
+# in the autonomous transaction wrapper function.
+#DBLINK_CONN	port=5432 dbname=pgdb host=localhost user=pguser password=pgpass
+
 #------------------------------------------------------------------------------
 # SPATIAL SECTION (Control spatial geometry export)
 #------------------------------------------------------------------------------
