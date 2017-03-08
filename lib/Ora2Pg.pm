@@ -10460,9 +10460,11 @@ CREATE EXTENSION IF NOT EXISTS dblink;
 		} else {
 			$at_wrapper .= "CREATE OR REPLACE FUNCTION $name $fct_detail{args} $func_return";
 		}
-		map { s/(.*)/quote_nullable($1)/; }  @{$fct_detail{at_args}};
-		my $params = join(" || ',' || ", @{$fct_detail{at_args}});
-		$params = " '' " if (!$params);
+		my $param = '';
+		if ($#{$fct_detail{at_args}} >= 0) {
+			map { s/(.+)/quote_nullable($1)/; }  @{$fct_detail{at_args}};
+			$params = " ' || " . join(" || ',' || ", @{$fct_detail{at_args}}) . " || ' ";
+		}
 		$at_wrapper .= qq{
 DECLARE
 	-- Change this to reflect the dblink connection string
@@ -10472,7 +10474,7 @@ DECLARE
 		if (!$fct_detail{hasreturn}) {
 			$at_wrapper .= qq{
 BEGIN
-	v_query := 'SELECT true FROM $fname$at_suffix ( ' || $params || ' )';
+	v_query := 'SELECT true FROM $fname$at_suffix ($params)';
 	PERFORM * FROM dblink(v_conn_str, v_query) AS p (ret boolean);
 };
 		} elsif ($#at_ret_param == 0) {
@@ -10480,7 +10482,7 @@ BEGIN
 			$at_wrapper .= qq{
 	v_ret	$at_ret_type[0];
 BEGIN
-	v_query := 'SELECT * FROM $fname$at_suffix ( ' || $params || ' )';
+	v_query := 'SELECT * FROM $fname$at_suffix ($params)';
 	SELECT * INTO v_ret FROM dblink(v_conn_str, v_query) AS p ($at_ret_param[0]);
 	RETURN v_ret;
 };
@@ -10504,9 +10506,12 @@ CREATE EXTENSION IF NOT EXISTS pg_background;
 		} else {
 			$at_wrapper .= "CREATE OR REPLACE FUNCTION $name $fct_detail{args} $func_return";
 		}
-		map { s/(.*)/quote_nullable($1)/; }  @{$fct_detail{at_args}};
-		my $params = join(" || ',' || ", @{$fct_detail{at_args}});
-		$params = " '' " if (!$params);
+		my $param = '';
+		if ($#{$fct_detail{at_args}} >= 0) {
+			map { s/(.+)/quote_nullable($1)/; }  @{$fct_detail{at_args}};
+			$params = " ' || " . join(" || ',' || ", @{$fct_detail{at_args}}) . " || ' ";
+		}
+
 		$at_wrapper .= qq{
 DECLARE
 	v_query     text;
@@ -10514,7 +10519,7 @@ DECLARE
 		if (!$fct_detail{hasreturn}) {
 			$at_wrapper .= qq{
 BEGIN
-	v_query := 'SELECT true FROM $fname$at_suffix ( ' || $params || ' )';
+	v_query := 'SELECT true FROM $fname$at_suffix ($params)';
 	PERFORM * FROM pg_background_result(pg_background_launch(v_query)) AS p (ret boolean);
 };
 		} elsif ($#at_ret_param == 0) {
@@ -10522,7 +10527,7 @@ BEGIN
 			$at_wrapper .= qq{
 	v_ret	$at_ret_type[0];
 BEGIN
-	v_query := 'SELECT * FROM $fname$at_suffix ( ' || $params || ' )';
+	v_query := 'SELECT * FROM $fname$at_suffix ($params)';
 	SELECT * INTO v_ret FROM pg_background_result(pg_background_launch(v_query)) AS p ($at_ret_param[0]);
 	RETURN v_ret;
 };
@@ -14203,6 +14208,8 @@ sub _lookup_function
 		map { s/^\(//; } @{$fct_detail{at_args}};
 		map { s/^\s+//; } @{$fct_detail{at_args}};
 		map { s/\s.*//; } @{$fct_detail{at_args}};
+		map { s/\)$//; } @{$fct_detail{at_args}};
+		@{$fct_detail{at_args}} = grep(/^.+$/, @{$fct_detail{at_args}});
 	} else {
 		delete $fct_detail{func_ret_type};
 		delete $fct_detail{declare};
