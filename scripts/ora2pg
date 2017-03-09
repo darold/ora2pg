@@ -286,6 +286,25 @@ my $schema = new Ora2Pg (
 	grant_object => $GRANT_OBJECT,
 );
 
+# Look at configuration file if an input file is defined
+if (!$INPUT_FILE) {
+	my $cf_file = $FILE_CONF || $CONFIG_FILE;
+	my $fh = new IO::File;
+	$fh->open($cf_file) or die "FATAL: can't read configuration file $cf_file, $!\n";
+	while (my $l = <$fh>) {
+		chomp($l);
+		$l =~ s/\r//gs;
+		$l =~ s/^\s*\#.*$//g;
+		next if (!$l || ($l =~ /^\s+$/));
+		$l =~ s/^\s*//; $l =~ s/\s*$//;
+		my ($var, $val) = split(/\s+/, $l, 2);
+		$var = uc($var);
+		if ($var eq 'INPUT_FILE' && $val) {
+			$INPUT_FILE = $val;
+		}
+	}
+	$fh->close();
+}
 
 # Proceed to Oracle DB extraction following
 # configuration file definitions.
