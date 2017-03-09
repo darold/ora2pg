@@ -10470,7 +10470,7 @@ CREATE EXTENSION IF NOT EXISTS dblink;
 		} else {
 			$at_wrapper .= "CREATE OR REPLACE FUNCTION $name $fct_detail{args} $func_return";
 		}
-		my $param = '';
+		my $params = '';
 		if ($#{$fct_detail{at_args}} >= 0) {
 			map { s/(.+)/quote_nullable($1)/; }  @{$fct_detail{at_args}};
 			$params = " ' || " . join(" || ',' || ", @{$fct_detail{at_args}}) . " || ' ";
@@ -10517,7 +10517,7 @@ CREATE EXTENSION IF NOT EXISTS pg_background;
 		} else {
 			$at_wrapper .= "CREATE OR REPLACE FUNCTION $name $fct_detail{args} $func_return";
 		}
-		my $param = '';
+		my $params = '';
 		if ($#{$fct_detail{at_args}} >= 0) {
 			map { s/(.+)/quote_nullable($1)/; }  @{$fct_detail{at_args}};
 			$params = " ' || " . join(" || ',' || ", @{$fct_detail{at_args}}) . " || ' ";
