@@ -7039,7 +7039,7 @@ sub _howto_get_data
 	my $dateformat = 'YYYY-MM-DD HH24:MI:SS';
 	my $timeformat = $dateformat;
 	if ($self->{enable_microsecond}) {
-		$timeformat = 'YYYY-MM-DD HH24:MI:SS.FF';
+		$timeformat = 'YYYY-MM-DD HH24:MI:SS.FF6';
 	}
 	my $timeformat_tz = $timeformat . ' TZH:TZM';
 	# Lookup through columns information
@@ -11787,7 +11787,7 @@ sub _show_infos
 			$self->logit("\tOracle NLS_LANG $self->{nls_lang}\n", 0);
 			$self->logit("\tOracle NLS_NCHAR $self->{nls_nchar}\n", 0);
 			if ($self->{enable_microsecond}) {
-				$self->logit("\tOracle NLS_TIMESTAMP_FORMAT YYYY-MM-DD HH24:MI:SS.FF\n", 0);
+				$self->logit("\tOracle NLS_TIMESTAMP_FORMAT YYYY-MM-DD HH24:MI:SS.FF6\n", 0);
 			} else {
 				$self->logit("\tOracle NLS_TIMESTAMP_FORMAT YYYY-MM-DD HH24:MI:SS\n", 0);
 			}
@@ -13605,7 +13605,7 @@ sub _datetime_format
 	$dbh = $self->{dbh} if (!$dbh);
 
 	if ($self->{enable_microsecond}) {
-		my $sth = $dbh->do("ALTER SESSION SET NLS_TIMESTAMP_FORMAT='YYYY-MM-DD HH24:MI:SS.FF'") or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
+		my $sth = $dbh->do("ALTER SESSION SET NLS_TIMESTAMP_FORMAT='YYYY-MM-DD HH24:MI:SS.FF6'") or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
 	} else {
 		my $sth = $dbh->do("ALTER SESSION SET NLS_TIMESTAMP_FORMAT='YYYY-MM-DD HH24:MI:SS'") or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
 	}
@@ -13613,7 +13613,7 @@ sub _datetime_format
 	if ($self->{enable_microsecond}) {
 		$sth = $dbh->do("ALTER SESSION SET NLS_TIMESTAMP_TZ_FORMAT='YYYY-MM-DD HH24:MI:SS TZH:TZM'") or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
 	} else {
-		$sth = $dbh->do("ALTER SESSION SET NLS_TIMESTAMP_TZ_FORMAT='YYYY-MM-DD HH24:MI:SS.FF TZH:TZM'") or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
+		$sth = $dbh->do("ALTER SESSION SET NLS_TIMESTAMP_TZ_FORMAT='YYYY-MM-DD HH24:MI:SS.FF6 TZH:TZM'") or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
 	}
 }
 
