@@ -848,6 +848,27 @@ sub replace_rownum_with_limit
 	return $str;
 }
 
+sub convert_date_format
+{
+	my $fields = shift;
+
+	# Truncate time to microsecond
+	$fields =~ s/(\d{2}:\d{2}:\d{2}[,\.]\d{6})\d{3}/$1/s;
+
+	# Replace round year with two digit year format.
+	$fields =~ s/RR/YY/sg;
+
+	# Convert fractional seconds to milli (MS) or micro (US) seconds
+	$fields =~ s/FF[123]/MS/s;
+	$fields =~ s/FF\d*/US/s;
+
+	# Remove any timezone format
+	$fields =~ s/TZ[DHMR]//gs;
+
+	return $fields;
+}
+
+
 sub replace_oracle_function
 {
         my ($class, $str) = @_;
@@ -874,6 +895,9 @@ sub replace_oracle_function
 
 	# Rewrite TO_DATE formating call
 	$str =~ s/TO_DATE\s*\(\s*('[^\']+'),\s*('[^\']+')[^\)]*\)/to_date($1,$2)/is;
+
+	# Translate to_timestamp_tz Oracle function
+	$str =~ s/TO_TIMESTAMP_TZ\s*\((.*)\)/'to_timestamp(' . &convert_date_format($1) . ')'/ies;
 
 	# Replace call to trim into btrim
 	$str =~ s/\bTRIM\s*\(([^\(\)]+)\)/btrim($1)/is;
@@ -921,7 +945,7 @@ sub replace_oracle_function
 	$str =~ s/XMLELEMENT\s*\(\s*/XMLELEMENT(name /is;
 
 	# Cast round() call as numeric
-	$str =~ s/round\s*\(([^,]+),([\s\d]+)\)/round\(($1)::numeric,$2\)/igs;
+	$str =~ s/round\s*\(([^,]+),([\s\d]+)\)/round\(($1)::numeric,$2\)/is;
 
 	# Replace SDO_GEOM to the postgis equivalent
 	$str = &replace_sdo_function($str);
