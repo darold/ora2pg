@@ -307,7 +307,7 @@ compatible code
 
 sub convert_plsql_code
 {
-        my ($class, $str) = @_;
+        my ($class, $str, %data_type) = @_;
 
 	return if ($str eq '');
 
@@ -341,7 +341,7 @@ sub convert_plsql_code
 
 	# Apply code rewrite on other part of the code
 	$str = $class->remove_text_constant_part($str);
-	$str = plsql_to_plpgsql($class, $str);
+	$str = plsql_to_plpgsql($class, $str, %data_type);
 	$str = $class->restore_text_constant_part($str);
 	$class->{text_values} = ();
 
@@ -406,7 +406,7 @@ This function return a PLSQL code translated to PLPGSQL code
 
 sub plsql_to_plpgsql
 {
-        my ($class, $str) = @_;
+        my ($class, $str, %data_type) = @_;
 
 	return if ($str eq '');
 
@@ -600,7 +600,7 @@ sub plsql_to_plpgsql
 	}
 
 	# Replace type in sub block
-	$str =~ s/(DECLARE\s+)(.*?)(\s+BEGIN)/$1 . &replace_sql_type($2, $class->{pg_numeric_type}, $class->{default_numeric}, $class->{pg_integer_type}) . $3/iges;
+	$str =~ s/(DECLARE\s+)(.*?)(\s+BEGIN)/$1 . &replace_sql_type($2, $class->{pg_numeric_type}, $class->{default_numeric}, $class->{pg_integer_type}, %data_type) . $3/iges;
 
 	# Remove any call to MDSYS schema in the code
 	$str =~ s/MDSYS\.//igs;
@@ -1178,14 +1178,15 @@ sub raise_output
 
 sub replace_sql_type
 {
-        my ($str, $pg_numeric_type, $default_numeric, $pg_integer_type) = @_;
+        my ($str, $pg_numeric_type, $default_numeric, $pg_integer_type, %data_type) = @_;
 
 
 	$str =~ s/with local time zone/with time zone/igs;
 	$str =~ s/([A-Z])\%ORA2PG_COMMENT/$1 \%ORA2PG_COMMENT/igs;
 
 	# Replace type with precision
-	my $oratype_regex = join('|', keys %Ora2Pg::TYPE);
+	my $oratype_regex = join('|', keys %data_type);
+
 	while ($str =~ /(.*)\b($oratype_regex)\s*\(([^\)]+)\)/i) {
 		my $backstr = $1;
 		my $type = uc($2);
@@ -1205,7 +1206,7 @@ sub replace_sql_type
 			# Type CHAR have default length set to 1
 			# Type VARCHAR(2) must have a specified length
 			$len = 1 if (!$len && (($type eq "CHAR") || ($type eq "NCHAR")));
-			$str =~ s/\b$type\b\s*\([^\)]+\)/$Ora2Pg::TYPE{$type}\%\|$len\%\|\%/is;
+			$str =~ s/\b$type\b\s*\([^\)]+\)/$data_type{$type}\%\|$len\%\|\%/is;
 		} elsif ($type =~ /TIMESTAMP/i) {
 			$len = 6 if ($len > 6);
 			$str =~ s/\b$type\b\s*\([^\)]+\)/timestamp\%\|$len%\|\%/is;
@@ -1266,7 +1267,7 @@ sub replace_sql_type
 	$str =~ s/\%\|/\(/gs;
 
         # Replace datatype without precision
-	my $number = $Ora2Pg::TYPE{'NUMBER'};
+	my $number = $data_type{'NUMBER'};
 	$number = $default_numeric if ($pg_integer_type);
 	$str =~ s/\bNUMBER\b/$number/igs;
 
@@ -1276,7 +1277,7 @@ sub replace_sql_type
 	$str =~ s/\bVARCHAR(\s*(?!\())/text$1/igs;
 
 	foreach my $t ('DATE','LONG RAW','LONG','NCLOB','CLOB','BLOB','BFILE','RAW','ROWID','FLOAT','DOUBLE PRECISION','INTEGER','INT','REAL','SMALLINT','BINARY_FLOAT','BINARY_DOUBLE','BINARY_INTEGER','BOOLEAN','XMLTYPE','SDO_GEOMETRY') {
-		$str =~ s/\b$t\b/$Ora2Pg::TYPE{$t}/igs;
+		$str =~ s/\b$t\b/$data_type{$t}/igs;
 	}
 
 	# Replace local type ref cursor
