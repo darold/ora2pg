@@ -5479,9 +5479,11 @@ $create_table{$table}{'index'}
 			$sql_output .= qq{
 $create_table{$table}{table}
 };
+			my $defname = $self->{partitions_default}{$table};
+			$defname = $table . '_' .  $defname if ($self->{prefix_partition});
 			$sql_output .= qq{
 -- Create default table, where datas are inserted if no condition match
-CREATE TABLE $self->{partitions_default}{$table} () INHERITS ($table);
+CREATE TABLE $defname () INHERITS ($table);
 } if ($self->{partitions_default}{$table});
 			$sql_output .= qq{
 
