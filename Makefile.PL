@@ -15,8 +15,10 @@ my $CONFDIR = $ENV{CONFDIR} || '/etc/ora2pg';
 my $RPM_CONFDIR = $CONFDIR;
 my $DOCDIR  = $ENV{DOCDIR} || '/usr/local/share/doc/ora2pg';
 my $DEST_CONF_FILE = 'ora2pg.conf.dist';
+my $DATA_LIMIT_DEFAULT = 10000;
 if ($^O =~ /MSWin32|dos/i) {
 	$DEST_CONF_FILE = 'ora2pg_dist.conf';
+	$DATA_LIMIT_DEFAULT = 2000;
 }
 
 my $PREFIX = $ENV{DESTDIR} || $ENV{PREFIX} || $ENV{INSTALL_BASE} ||  '';
@@ -684,7 +686,7 @@ FORCE_OWNER	0
 
 # Extract data by bulk of DATA_LIMIT tuples at once. Default 10000. If you set
 # a high value be sure to have enough memory if you have million of rows.
-DATA_LIMIT	10000
+DATA_LIMIT	$DATA_LIMIT_DEFAULT
 
 
 # When Ora2Pg detect a table with some BLOB it will automatically reduce the
