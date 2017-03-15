@@ -13920,17 +13920,27 @@ sub limit_to_objects
 		next if (grep(/^$colname$/, @done) && ! exists $self->{limited}{$arr_type[$i]});
 		push(@done, $colname);
 
+		my $have_lookahead = 0;
 		if ($#{$self->{limited}{$arr_type[$i]}} >= 0) {
 			$str .= ' AND (';
 			if ($self->{db_version} =~ /Release [89]/) {
 				for (my $j = 0; $j <= $#{$self->{limited}{$arr_type[$i]}}; $j++) {
+					if ($self->{limited}{$arr_type[$i]}->[$j] =~ /^\!/) {
+						$have_lookahead = 1;
+						next;
+					}
 					$str .= "upper($colname) LIKE \U'$self->{limited}{$arr_type[$i]}->[$j]'\E";
 					if ($j < $#{$self->{limited}{$arr_type[$i]}}) {
 						$str .= " OR ";
 					}
 				}
+				$str =~ s/ OR $//;
 			} else {
 				for (my $j = 0; $j <= $#{$self->{limited}{$arr_type[$i]}}; $j++) {
+					if ($self->{limited}{$arr_type[$i]}->[$j] =~ /^\!/) {
+						$have_lookahead = 1;
+						next;
+					}
 					if ($self->{is_mysql}) {
 						$str .= "upper($colname) RLIKE '\^$self->{limited}{$arr_type[$i]}->[$j]\$'" ;
 					} else {
@@ -13940,8 +13950,30 @@ sub limit_to_objects
 						$str .= " OR ";
 					}
 				}
+				$str =~ s/ OR $//;
 			}
 			$str .= ')';
+			$str =~ s/ AND \(\)//;
+
+			if ($have_lookahead) {
+
+				if ($self->{db_version} =~ /Release [89]/) {
+					for (my $j = 0; $j <= $#{$self->{limited}{$arr_type[$i]}}; $j++) {
+						next if ($self->{limited}{$arr_type[$i]}->[$j] !~ /^\!(.+)/);
+						$str .= " AND upper($colname) NOT LIKE \U'$1'\E";
+					}
+				} else {
+					for (my $j = 0; $j <= $#{$self->{limited}{$arr_type[$i]}}; $j++) {
+						next if ($self->{limited}{$arr_type[$i]}->[$j] !~ /^\!(.+)/);
+						if ($self->{is_mysql}) {
+							$str .= " AND upper($colname) NOT RLIKE '\^$1\$'" ;
+						} else {
+							$str .= " AND NOT REGEXP_LIKE(upper($colname),'\^$1\$')" ;
+						}
+					}
+				}
+
+			}
 			$has_limitation = 1;
 
 		} elsif ($#{$self->{excluded}{$arr_type[$i]}} >= 0) {

@@ -907,6 +907,22 @@ CONFIGURATION
 
         Advanced filters may need some learning.
 
+        Oracle doesn't allow the use of lookahead expression so you may want
+        to exclude some object that match the ALLOW regexp you have defined.
+        For example if you want to export all table starting with E but not
+        those starting with EXP it is not possible to do that in a single
+        expression. This is why you can start a regular expression with the
+        ! character to exclude object matching the regexp given just after.
+        Our previous example can be written as follow:
+
+                ALLOW   E.* !EXP.*
+
+        it will be translated into:
+
+                 REGEXP_LIKE(..., '^E.*$') AND NOT REGEXP_LIKE(..., '^EXP.*$')
+
+        in the object search expression.
+
     EXCLUDE
         This directive is the opposite of the previous, it allow you to
         define a space or comma-separated list of object name to exclude
