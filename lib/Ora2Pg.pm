@@ -5309,7 +5309,7 @@ LANGUAGE plpgsql ;
 		$self->dump("\n$footer") if (!$self->{pg_dsn} && $footer);
 
 		# Close main data output file
-		$self->{fhout}->close() if (!$self->{pg_dsn});
+		$self->{fhout}->close() if (!$self->{pg_dsn} && defined $self->{fhout});
 
 		# Disconnect from the database
 		$self->{dbh}->disconnect() if ($self->{dbh});
