@@ -5511,7 +5511,7 @@ BEGIN
 					if ($self->{subpartitions_default}{$table}{$part}) {
 						my $deftb = '';
 						$deftb = "${table}_" if ($self->{prefix_partition});
-						$funct_cond .= "\t\tELSE INSERT INTO $deftb$self->{subpartitions_default}{$table}{$part} VALUES (NEW.*);\n";
+						$funct_cond .= "\t\tELSE INSERT INTO $deftb$self->{subpartitions_default}{$table}{$part} VALUES (NEW.*);\n\t\tEND IF;\n";
 						$create_table{$table}{table} .= "CREATE TABLE $deftb$self->{subpartitions_default}{$table}{$part} () INHERITS ($table);\n";
 						$create_table{$table}{'index'} .= "CREATE INDEX $deftb$self->{subpartitions_default}{$table}{$part}_$pos ON $deftb$self->{subpartitions_default}{$table}{$part} ($cindx);\n";
 					} else {
