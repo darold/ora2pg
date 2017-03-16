@@ -3086,7 +3086,7 @@ sub _export_table_data
 					next if ($self->{allow_partition} && !grep($_ =~ /^$subpart$/i, @{$self->{allow_partition}}));
 					my $sub_tb_name = $subpart;
 					$sub_tb_name =~ s/^[^\.]+\.//; # remove schema part if any
-					$sub_tb_name = "${tb_name}_$sub_tb_name";
+					$sub_tb_name = "${table}_$sub_tb_name" if ($self->{prefix_partition});
 					if ($self->{file_per_table} && !$self->{pg_dsn}) {
 						# Do not dump data again if the file already exists
 						next if ($self->file_exists("$dirprefix${sub_tb_name}_$self->{output}"));
@@ -5022,7 +5022,7 @@ LANGUAGE plpgsql ;
 							next if ($self->{allow_partition} && !grep($_ =~ /^$subpart$/i, @{$self->{allow_partition}}));
 							my $sub_tb_name = $subpart;
 							$sub_tb_name =~ s/^[^\.]+\.//; # remove schema part if any
-							$sub_tb_name = "${tb_name}$sub_tb_name";
+							$sub_tb_name = "${tb_name}$sub_tb_name" if ($self->{prefix_partition});
 							if ($self->{file_per_table} && !$self->{pg_dsn}) {
 								my $file_name = "$dirprefix${sub_tb_name}_$self->{output}";
 								$file_name =~ s/\.(gz|bz2)$//;
@@ -5034,7 +5034,7 @@ LANGUAGE plpgsql ;
 							if (!$self->{allow_partition} || grep($_ =~ /^$self->{subpartitions_default}{$table}{$part_name}$/i, @{$self->{allow_partition}})) {
 								if ($self->{file_per_table} && !$self->{pg_dsn}) {
 									my $part_name = $self->{subpartitions_default}{$table}{$part_name};
-									$part_name = $table . '_' . $part_name if ($self->{prefix_partition});
+									$part_name = "${tb_name}$part_name" if ($self->{prefix_partition});
 									my $file_name = "$dirprefix${part_name}_$self->{output}";
 									$file_name =~ s/\.(gz|bz2)$//;
 									$load_file .=  "\\i $file_name\n";
@@ -5043,7 +5043,7 @@ LANGUAGE plpgsql ;
 						}
 					} else {
 						if ($self->{file_per_table} && !$self->{pg_dsn}) {
-							my $file_name = "$dirprefix${part_name}_$self->{output}";
+							my $file_name = "$dirprefix${tb_name}_$self->{output}";
 							$file_name =~ s/\.(gz|bz2)$//;
 							$load_file .=  "\\i $file_name\n";
 						}
@@ -5394,12 +5394,12 @@ BEGIN
 					if (!exists $self->{subpartitions}{$table}{$part}) {
 						$create_table{$table}{'index'} .= "CREATE INDEX ${tb_name}_$colname ON $tb_name ($cindx);\n";
 					}
-					if ($self->{partitions_default}{$table} && ($create_table{$table}{'index'} !~ /ON $self->{partitions_default}{$table} /)) {
+					my $deftb = '';
+					$deftb = "${table}_" if ($self->{prefix_partition});
+					if ($self->{partitions_default}{$table} && ($create_table{$table}{'index'} !~ /ON $deftb$self->{partitions_default}{$table} /)) {
 						$cindx = $self->{partitions}{$table}{$pos}{info}[$i]->{column} || '';
 						$cindx = Ora2Pg::PLSQL::convert_plsql_code($self, $cindx, %{$self->{data_type}});
-						if (!exists $self->{subpartitions}{$table}{$part}) {
-							$create_table{$table}{'index'} .= "CREATE INDEX $self->{partitions_default}{$table}_$colname ON $self->{partitions_default}{$table} ($cindx);\n";
-						}
+						$create_table{$table}{'index'} .= "CREATE INDEX $deftb$self->{partitions_default}{$table}_$colname ON $deftb$self->{partitions_default}{$table} ($cindx);\n";
 					}
 					push(@ind_col, $self->{partitions}{$table}{$pos}{info}[$i]->{column}) if (!grep(/^$self->{partitions}{$table}{$pos}{info}[$i]->{column}$/, @ind_col));
 					if ($self->{partitions}{$table}{$pos}{info}[$i]->{type} eq 'LIST') {
