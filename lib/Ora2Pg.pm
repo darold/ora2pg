@@ -13708,11 +13708,13 @@ sub _get_largest_tables
 	if ($self->{db_version} =~ /Release 8/) {
 		$sql = "SELECT * FROM ( SELECT A.SEGMENT_NAME, ROUND(A.BYTES/1024/1024) SIZE_MB FROM ${prefix}_SEGMENTS A WHERE A.SEGMENT_TYPE LIKE 'TABLE%'";
 	}
-        if ($self->{schema}) {
-                $sql .= " AND A.OWNER='$self->{schema}'";
-        } else {
-                $sql .= " AND A.OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
-        }
+	if ($self->{db_version} !~ /Release 8/ || !$self->{user_grants}) {
+		if ($self->{schema}) {
+			$sql .= " AND A.OWNER='$self->{schema}'";
+		} else {
+			$sql .= " AND A.OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
+		}
+	}
 	if ($self->{db_version} =~ /Release 8/) {
 		$sql .= $self->limit_to_objects('TABLE', 'A.SEGMENT_NAME');
 	} else {
