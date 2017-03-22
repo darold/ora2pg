@@ -13706,7 +13706,7 @@ sub _get_largest_tables
 
 	my $sql = "SELECT * FROM ( SELECT S.SEGMENT_NAME, ROUND(S.BYTES/1024/1024) SIZE_MB FROM ${prefix}_SEGMENTS S JOIN ALL_TABLES A ON (S.SEGMENT_NAME=A.TABLE_NAME$owner_segment) WHERE S.SEGMENT_TYPE LIKE 'TABLE%' AND A.SECONDARY = 'N'";
 	if ($self->{db_version} =~ /Release 8/) {
-		$sql = "SELECT * FROM ( SELECT S.SEGMENT_NAME, ROUND(S.BYTES/1024/1024) SIZE_MB FROM ${prefix}_SEGMENTS A WHERE A.SEGMENT_TYPE LIKE 'TABLE%'";
+		$sql = "SELECT * FROM ( SELECT A.SEGMENT_NAME, ROUND(A.BYTES/1024/1024) SIZE_MB FROM ${prefix}_SEGMENTS A WHERE A.SEGMENT_TYPE LIKE 'TABLE%'";
 	}
         if ($self->{schema}) {
                 $sql .= " AND A.OWNER='$self->{schema}'";
@@ -13719,7 +13719,11 @@ sub _get_largest_tables
 		$sql .= $self->limit_to_objects('TABLE', 'A.TABLE_NAME');
 	}
 
-	$sql .= " ORDER BY S.BYTES,S.SEGMENT_NAME DESC) WHERE ROWNUM <= $self->{top_max}";
+	if ($self->{db_version} =~ /Release 8/) {
+		$sql .= " ORDER BY A.BYTES,A.SEGMENT_NAME DESC) WHERE ROWNUM <= $self->{top_max}";
+	} else {
+		$sql .= " ORDER BY S.BYTES,S.SEGMENT_NAME DESC) WHERE ROWNUM <= $self->{top_max}";
+	}
 
         my $sth = $self->{dbh}->prepare( $sql ) or return undef;
         $sth->execute or return undef;
