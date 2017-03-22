@@ -7123,7 +7123,9 @@ sub _howto_get_data
 	my $dateformat = 'YYYY-MM-DD HH24:MI:SS';
 	my $timeformat = $dateformat;
 	if ($self->{enable_microsecond}) {
-		$timeformat = 'YYYY-MM-DD HH24:MI:SS.FF6';
+		my $dim = 6;
+		$dim = '' if ($self->{db_version} =~ /Release 8/);
+		$timeformat = "YYYY-MM-DD HH24:MI:SS.FF$dim";
 	}
 	my $timeformat_tz = $timeformat . ' TZH:TZM';
 	# Lookup through columns information
@@ -12002,7 +12004,9 @@ sub _show_infos
 			$self->logit("\tOracle NLS_LANG $self->{nls_lang}\n", 0);
 			$self->logit("\tOracle NLS_NCHAR $self->{nls_nchar}\n", 0);
 			if ($self->{enable_microsecond}) {
-				$self->logit("\tOracle NLS_TIMESTAMP_FORMAT YYYY-MM-DD HH24:MI:SS.FF6\n", 0);
+				my $dim = 6;
+				$dim = '' if ($self->{db_version} =~ /Release 8/);
+				$self->logit("\tOracle NLS_TIMESTAMP_FORMAT YYYY-MM-DD HH24:MI:SS.FF$dim\n", 0);
 			} else {
 				$self->logit("\tOracle NLS_TIMESTAMP_FORMAT YYYY-MM-DD HH24:MI:SS\n", 0);
 			}
@@ -13830,7 +13834,9 @@ sub _datetime_format
 	$dbh = $self->{dbh} if (!$dbh);
 
 	if ($self->{enable_microsecond}) {
-		my $sth = $dbh->do("ALTER SESSION SET NLS_TIMESTAMP_FORMAT='YYYY-MM-DD HH24:MI:SS.FF6'") or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
+		my $dim = 6;
+		$dim = '' if ($self->{db_version} =~ /Release 8/);
+		my $sth = $dbh->do("ALTER SESSION SET NLS_TIMESTAMP_FORMAT='YYYY-MM-DD HH24:MI:SS.FF$dim'") or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
 	} else {
 		my $sth = $dbh->do("ALTER SESSION SET NLS_TIMESTAMP_FORMAT='YYYY-MM-DD HH24:MI:SS'") or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
 	}
@@ -13838,7 +13844,9 @@ sub _datetime_format
 	if ($self->{enable_microsecond}) {
 		$sth = $dbh->do("ALTER SESSION SET NLS_TIMESTAMP_TZ_FORMAT='YYYY-MM-DD HH24:MI:SS TZH:TZM'") or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
 	} else {
-		$sth = $dbh->do("ALTER SESSION SET NLS_TIMESTAMP_TZ_FORMAT='YYYY-MM-DD HH24:MI:SS.FF6 TZH:TZM'") or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
+		my $dim = 6;
+		$dim = '' if ($self->{db_version} =~ /Release 8/);
+		$sth = $dbh->do("ALTER SESSION SET NLS_TIMESTAMP_TZ_FORMAT='YYYY-MM-DD HH24:MI:SS.FF$dim TZH:TZM'") or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
 	}
 }
 
