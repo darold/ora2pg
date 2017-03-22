@@ -12506,7 +12506,7 @@ sub _show_infos
 
                 # Look for external tables
                 my %externals = ();
-		if (!$self->{is_mysql}) {
+		if (!$self->{is_mysql} && ($self->{db_version} !~ /Release 8/)) {
 			%externals = $self->_get_external_tables();
 		}
 
