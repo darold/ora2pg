@@ -7970,6 +7970,27 @@ WHERE CONS.CONSTRAINT_TYPE = 'R' $condition
 ORDER BY CONS.TABLE_NAME, CONS.CONSTRAINT_NAME, COLS.POSITION
 END
 
+	if ($self->{db_version} =~ /Release 8/) {
+		$sql = <<END;
+SELECT
+    CONS.TABLE_NAME,
+    CONS.CONSTRAINT_NAME,
+    COLS.COLUMN_NAME,
+    CONS_R.TABLE_NAME R_TABLE_NAME,
+    CONS.R_CONSTRAINT_NAME,
+    COLS_R.COLUMN_NAME R_COLUMN_NAME,
+    CONS.SEARCH_CONDITION,CONS.DELETE_RULE,$defer,CONS.DEFERRED,
+    CONS.OWNER,CONS.R_OWNER,
+    COLS.POSITION,COLS_R.POSITION,
+    CONS.VALIDATED
+FROM $self->{prefix}_CONSTRAINTS CONS,  $self->{prefix}_CONS_COLUMNS COLS, $self->{prefix}_CONSTRAINTS CONS_R, $self->{prefix}_CONS_COLUMNS COLS_R
+WHERE CONS_R.CONSTRAINT_NAME = CONS.R_CONSTRAINT_NAME AND CONS_R.OWNER = CONS.R_OWNER
+    AND COLS.CONSTRAINT_NAME = CONS.CONSTRAINT_NAME AND COLS.OWNER = CONS.OWNER AND COLS.TABLE_NAME = CONS.TABLE_NAME
+    AND COLS_R.CONSTRAINT_NAME = CONS.R_CONSTRAINT_NAME AND COLS_R.POSITION=COLS.POSITION AND COLS_R.OWNER = CONS.R_OWNER
+    AND CONS.CONSTRAINT_TYPE = 'R' $condition
+ORDER BY CONS.TABLE_NAME, CONS.CONSTRAINT_NAME, COLS.POSITION
+END
+	}
 	my $sth = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute or $self->logit("FATAL: " . $sth->errstr . "\n", 0, 1);
 
@@ -13576,6 +13597,16 @@ SELECT p.owner,p.object_name,p.procedure_name,o.object_type
    AND o.TEMPORARY='N' AND o.GENERATED='N' AND o.SECONDARY='N'
    AND o.STATUS = 'VALID'
 };
+	if ($self->{db_version} =~ /Release 8/) {
+		$sql = qq{
+SELECT p.owner,p.object_name,p.procedure_name,o.object_type
+  FROM $self->{prefix}_PROCEDURES p, $self->{prefix}_OBJECTS o
+ WHERE o.object_type IN ('PROCEDURE','PACKAGE','FUNCTION')
+   AND p.owner = o.owner AND p.object_name = o.object_name
+   AND o.TEMPORARY='N' AND o.GENERATED='N' AND o.SECONDARY='N'
+   AND o.STATUS = 'VALID'
+};
+	}
         if ($self->{schema}) {
                 $sql .= " AND p.OWNER='$self->{schema}'";
         } else {
