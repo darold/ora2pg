@@ -796,7 +796,7 @@ sub _init
 
 	# Init some arrays
 	$self->{external_table} = ();
-	$self->{function_list} = ();
+	$self->{function_metadata} = ();
 	$self->{grant_object} = '';
 
 	# Used to precise if we need to prefix partition tablename with main tablename
@@ -1261,9 +1261,10 @@ sub _init
 				}
 				$self->_compile_schema($self->{dbh}, uc($self->{compile_schema}));
 			}
-
-			$self->_get_pkg_functions() if (!$self->{package_as_schema} && (!grep(/^$self->{type}$/, 'COPY', 'INSERT', 'SEQUENCE', 'GRANT', 'TABLESPACE', 'QUERY', 'SYNONYM', 'FDW', 'KETTLE', 'DBLINK', 'DIRECTORY')));
-			@{$self->{function_list}} = $self->_list_all_funtions() if ($self->{plsql_pgsql} && (!grep(/^$self->{type}$/, 'COPY', 'INSERT', 'SEQUENCE', 'GRANT', 'TABLESPACE', 'QUERY', 'SYNONYM', 'FDW', 'KETTLE', 'DBLINK', 'DIRECTORY')));
+			if (!grep(/^$self->{type}$/, 'COPY', 'INSERT', 'SEQUENCE', 'GRANT', 'TABLESPACE', 'QUERY', 'SYNONYM', 'FDW', 'KETTLE', 'DBLINK', 'DIRECTORY')) {
+				#$self->_get_pkg_functions() if (!$self->{package_as_schema});
+				$self->{function_metadata} = $self->_get_plsql_metadata() if ($self->{plsql_pgsql});
+			}
 			$self->{security} = $self->_get_security_definer($self->{type}) if (grep(/^$self->{type}$/, 'TRIGGER', 'FUNCTION','PROCEDURE','PACKAGE'));
 		}
 
@@ -8878,6 +8879,108 @@ sub _list_triggers
 
 
 
+=head2 _get_plsql_metadata
+
+This function retrieve all metadata on Oracle store procedure.
+
+Returns a hash of all function names with their metadata
+information (arguments, return type, etc.).
+
+=cut
+
+sub _get_plsql_metadata
+{
+	my $self = shift;
+
+	return Ora2Pg::MySQL::_get_plsql_metadata($self) if ($self->{is_mysql});
+
+	# Retrieve all functions 
+	my $str = "SELECT DISTINCT OBJECT_NAME,OWNER,OBJECT_TYPE FROM $self->{prefix}_OBJECTS WHERE (OBJECT_TYPE = 'FUNCTION' OR OBJECT_TYPE = 'PROCEDURE' OR  OBJECT_TYPE = 'PACKAGE BODY')";
+	$str .= " AND STATUS='VALID'" if (!$self->{export_invalid});
+	if (!$self->{schema}) {
+		$str .= " AND OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
+	} else {
+		$str .= " AND OWNER = '$self->{schema}'";
+	}
+	$str .= " " . $self->limit_to_objects('FUNCTION|PROCEDURE|PACKAGE','OBJECT_NAME|OBJECT_NAME|OBJECT_NAME');
+	$str .= " ORDER BY OBJECT_NAME";
+	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+
+	my %functions = ();
+	my @fct_done = ();
+	push(@fct_done, @EXCLUDED_FUNCTION);
+	while (my $row = $sth->fetch) {
+
+		if ($row->[2] ne 'PACKAGE BODY') {
+			my $sql = "SELECT TEXT FROM $self->{prefix}_SOURCE WHERE OWNER='$row->[1]' AND NAME='$row->[0]' ORDER BY LINE";
+
+			if (!$self->{schema} && $self->{export_schema}) {
+				$row->[0] = "$row->[1].$row->[0]";
+			}
+			next if (grep(/^$row->[0]$/i, @fct_done));
+			push(@fct_done, $row->[0]);
+
+			$functions{"$row->[0]"}{owner} .= $row->[1];
+			my $sth2 = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+			$sth2->execute or $self->logit("FATAL: " . $sth2->errstr . "\n", 0, 1);
+			while (my $r = $sth2->fetch) {
+				$functions{$row->[0]}{text} .= $r->[0];
+			}
+
+			foreach my $f (keys %functions) {
+				my %fct_detail = $self->_lookup_function($functions{$f}{text});
+				if (!exists $fct_detail{name}) {
+					delete $functions{$f};
+					next;
+				}
+				delete $fct_detail{code};
+				delete $fct_detail{before};
+				%{$functions{$f}{metadata}} = %fct_detail;
+				delete $functions{$f}{text};
+			}
+
+		} else {
+
+			next if (grep(/^$row->[0]$/i, @fct_done));
+			push(@fct_done, $row->[0]);
+
+			my $sql = "SELECT TEXT FROM $self->{prefix}_SOURCE WHERE OWNER='$row->[1]' AND NAME='$row->[0]' AND TYPE='PACKAGE BODY' ORDER BY LINE";
+			my $sth2 = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+			$sth2->execute or $self->logit("FATAL: " . $sth2->errstr . "\n", 0, 1);
+			my %pkg_txt = ();
+			while (my $r = $sth2->fetch) {
+				$pkg_txt{$row->[0]} .= $r->[0];
+			}
+			foreach my $p (keys %pkg_txt) {
+				my %infos = $self->_lookup_package($pkg_txt{$p});
+				foreach my $f (sort keys %infos) {
+					next if (!$f);
+					my $name = lc($f);
+					delete $infos{$f}{code};
+					delete $infos{$f}{before};
+					%{$functions{$name}{metadata}} = %{$infos{$f}};
+					if (!$self->{package_as_schema}) {
+						my $int_name = $f;
+						my $res_name = $f;
+						$res_name =~ s/\./_/g;
+						$res_name =~ s/"_"/_/g;
+						if (!$self->{preserve_case}) {
+							$self->{package_functions}{"\L$f\E"}{name} = lc($res_name);
+						} else {
+							$self->{package_functions}{"\L$f\E"}{name} = $res_name;
+						}
+						$self->{package_functions}{"\L$f\E"}{package} = $p;
+					}
+				}
+			}
+		}
+	}
+
+	return \%functions;
+}
+
+
 =head2 _get_functions
 
 This function implements an Oracle-native functions information.
@@ -14215,8 +14318,9 @@ sub _lookup_package
 			next if (!exists $fct_detail{name});
 			$fct_detail{name} =~ s/^.*\.//;
 			$fct_detail{name} =~ s/"//g;
-			$infos{"$pname.$fct_detail{name}"}{name} = $f if ($fct_detail{name});
-			$infos{"$pname.$fct_detail{name}"}{type} = $fct_detail{type} if ($fct_detail{type});
+			#$infos{"$pname.$fct_detail{name}"}{name} = $f if ($fct_detail{name});
+			#$infos{"$pname.$fct_detail{name}"}{type} = $fct_detail{type} if ($fct_detail{type});
+			%{$infos{"$pname.$fct_detail{name}"}} = %fct_detail;
 		}
 	}
 
