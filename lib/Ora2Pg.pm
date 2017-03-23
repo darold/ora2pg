@@ -4308,6 +4308,18 @@ LANGUAGE plpgsql ;
 					}
 				}
 			}
+			# Get all metadata from all functions when we are
+			# reading a file, otherwise it has already been done
+			foreach my $fct (sort keys %{$self->{functions}}) {
+					my %fct_detail = $self->_lookup_function($self->{functions}{$fct}{text});
+					if (!exists $fct_detail{name}) {
+						delete $self->{functions}{$fct};
+						next;
+					}
+					delete $fct_detail{code};
+					delete $fct_detail{before};
+					%{$self->{functions}{$fct}{metadata}} = %fct_detail;
+			}
 		}
 		#--------------------------------------------------------
 
@@ -4323,7 +4335,7 @@ LANGUAGE plpgsql ;
 			}
 			$self->{idxcomment} = 0;
 			my %comments = $self->_remove_comments(\$self->{functions}{$fct}{text});
-			$total_size += length($self->{functions}->{$fct}{text});
+			$total_size += length($self->{functions}{$fct}{text});
 			$self->logit("Dumping function $fct...\n", 1);
 			my $fhdl = undef;
 			if ($self->{file_per_function}) {
@@ -4459,6 +4471,18 @@ LANGUAGE plpgsql ;
 						$language = '';
 					}
 				}
+			}
+			# Get all metadata from all procedures when we are
+			# reading a file, otherwise it has already been done
+			foreach my $fct (sort keys %{$self->{procedures}}) {
+					my %fct_detail = $self->_lookup_function($self->{procedures}{$fct}{text});
+					if (!exists $fct_detail{name}) {
+						delete $self->{procedures}{$fct};
+						next;
+					}
+					delete $fct_detail{code};
+					delete $fct_detail{before};
+					%{$self->{procedures}{$fct}{metadata}} = %fct_detail;
 			}
 		}
 		#--------------------------------------------------------
@@ -4597,6 +4621,18 @@ LANGUAGE plpgsql ;
 				}
 			}
 			foreach my $pkg (sort keys %{$self->{packages}}) {
+				# Get all metadata from all procedures/function when we are
+				# reading from a file, otherwise it has already been done
+				my $tmp_txt = $self->{packages}{$pkg}{text};
+				$tmp_txt =~ s/^.*PACKAGE BODY/PACKAGE BODY/s;
+				my %infos = $self->_lookup_package($tmp_txt);
+				foreach my $f (sort keys %infos) {
+					next if (!$f);
+					my $name = lc($f);
+					delete $infos{$f}{code};
+					delete $infos{$f}{before};
+					%{$self->{functions}{$name}{metadata}} = %{$infos{$f}};
+				}
 				$self->_restore_comments(\$self->{packages}{$pkg}{text}, \%comments);
 			}
 		}
@@ -14432,6 +14468,7 @@ sub _lookup_function
 		$fct_detail{type} = uc($2);
 		$fct_detail{name} = $3;
 		$fct_detail{args} = $4;
+
 		if ($fct_detail{before}) {
 			my @cursors = ();
 			while ($fct_detail{before} =~ s/(CURSOR\s+[^;]+\s+RETURN\s+[^;]+;)//) {
@@ -14463,6 +14500,8 @@ sub _lookup_function
 			$fct_detail{args} .= $1 if (!$fct_detail{hasreturn});
 			$clause = $2;
 		}
+		$fct_detail{args} =~ s/;.*//s;
+
 		if ($fct_detail{declare} =~ /LANGUAGE\s+([^\s="'><\!\(\)]+)/is) {
 			$fct_detail{language} = $1;
 			if ($fct_detail{declare} =~ /LIBRARY\s+([^\s="'><\!\(\)]+)/is) {
