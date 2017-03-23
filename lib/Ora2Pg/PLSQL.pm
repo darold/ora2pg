@@ -696,6 +696,24 @@ sub plsql_to_plpgsql
 		$str = $class->restore_text_constant_part($str);
 	}
 
+	# Replace call to function with out parameters
+	if (scalar keys %{$class->{functions}}) {
+		$str = $class->remove_text_constant_part($str);
+		foreach my $k (keys %{$class->{functions}}) {
+			if (!$class->{functions}{$k}{metadata}{inout}) {
+				# Look if we need to use PERFORM to call the function
+				my $fct_name = $k;
+				if ($str !~ /$k/is) {
+					# Remove pacakge name
+					$fct_name =~ s/^[^\.]+\.//;
+				}
+				$str =~ s/(BEGIN|THEN|LOOP|;)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($fct_name\s*\()/$1$2PERFORM $3/igs;
+			}
+		}
+		$str = $class->restore_text_constant_part($str);
+	}
+
+
 	return $str;
 }
 
