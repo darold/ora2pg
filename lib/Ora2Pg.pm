@@ -13514,6 +13514,7 @@ sub _get_version
 	}
 	$sth->finish();
 
+	chomp($oraver);
 	$oraver =~ s/ \- .*//;
 
 	return $oraver;
