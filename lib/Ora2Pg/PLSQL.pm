@@ -696,7 +696,6 @@ sub plsql_to_plpgsql
 		$str = $class->restore_text_constant_part($str);
 	}
 
-
 	return $str;
 }
 
@@ -975,6 +974,48 @@ sub replace_oracle_function
 		$str = $class->remove_text_constant_part($str);
 		foreach my $k (keys %{$class->{package_functions}}) {
 			$str =~ s/($class->{package_functions}->{$k}{package}\.)?\b$k\s*\(/$class->{package_functions}->{$k}{name}\(/igs;
+		}
+		$str = $class->restore_text_constant_part($str);
+	}
+
+	# Replace call to function with out parameters
+	if (scalar keys %{$class->{functions}}) {
+		$str = $class->remove_text_constant_part($str);
+		foreach my $k (keys %{$class->{functions}}) {
+			if ($class->{functions}{$k}{metadata}{inout}) {
+				my $fct_name = $k;
+				if ($str !~ /$k/is) {
+					# Remove pacakge name
+					$fct_name =~ s/^[^\.]+\.//;
+				}
+				my %replace_out_param = ();
+				my $idx = 0;
+				while ($str =~ s/($fct_name)\s*\(([^\)]+)\)/\%FCTINOUTPARAM$idx\%/is) {
+					my $fname = $1;
+					my $fparam = $2;
+					$replace_out_param{$idx} = "$fname($fparam)";
+					# Extract position of out parameters
+					my @params = split(/,/, $class->{functions}{$k}{metadata}{args});
+					my @out_pos = ();
+					for (my $i = 0; $i <= $#params; $i++) {
+						if ($params[$i] =~ /\s(OUT|INOUT)\s/is) {
+							push(@out_pos, $i);
+						}
+					}
+					my @fct_param = split(/\s*,\s*/, $fparam);
+					my @out_param = ();
+					foreach my $i (@out_pos) {
+						push(@out_param, $fct_param[$i]);
+					}
+					if ($#out_param == 0) {
+						$replace_out_param{$idx} = "$out_param[0] := $replace_out_param{$idx}";
+					} else {
+						$replace_out_param{$idx} = "SELECT $replace_out_param{$idx} INTO (" . join(',', @out_param) . ")";
+					}
+					$idx++;
+				}
+				$str =~ s/\%FCTINOUTPARAM(\d+)\%/$replace_out_param{$1}/gs;
+			}
 		}
 		$str = $class->restore_text_constant_part($str);
 	}

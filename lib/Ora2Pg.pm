@@ -14561,6 +14561,15 @@ sub _lookup_function
 		delete $fct_detail{declare};
 		$fct_detail{code} = $plsql;
 	}
+
+	# Mark the function as havinf out parameters if any
+	if (!$fct_detail{hasreturn}) {
+		my @nout = $fct_detail{args} =~ /\bOUT\s+([^,\)]+)/igs;
+		my @ninout = $fct_detail{args} =~ /\bINOUT\s+([^,\)]+)/igs;
+		my $nbout = $#nout+1 + $#ninout+1;
+		$fct_detail{inout} = 1 if ($nbout > 0);
+	}
+
 	# Replace call to global variables declared in this package
 	foreach my $n (keys %{$self->{global_variables}}) {
 		next if ($pname && (uc($n) !~ /^\U$pname\E\./));
