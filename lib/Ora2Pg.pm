@@ -13848,11 +13848,11 @@ sub _datetime_format
 	}
 	my $sth = $dbh->do("ALTER SESSION SET NLS_DATE_FORMAT='YYYY-MM-DD HH24:MI:SS'") or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
 	if ($self->{enable_microsecond}) {
-		$sth = $dbh->do("ALTER SESSION SET NLS_TIMESTAMP_TZ_FORMAT='YYYY-MM-DD HH24:MI:SS TZH:TZM'") or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
-	} else {
 		my $dim = 6;
 		$dim = '' if ($self->{db_version} =~ /Release 8/);
 		$sth = $dbh->do("ALTER SESSION SET NLS_TIMESTAMP_TZ_FORMAT='YYYY-MM-DD HH24:MI:SS.FF$dim TZH:TZM'") or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
+	} else {
+		$sth = $dbh->do("ALTER SESSION SET NLS_TIMESTAMP_TZ_FORMAT='YYYY-MM-DD HH24:MI:SS TZH:TZM'") or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
 	}
 }
 
