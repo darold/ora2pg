@@ -685,6 +685,18 @@ sub plsql_to_plpgsql
 	# Replace outer join sign (+) with a placeholder
 	$str =~ s/\%OUTERJOIN\%/\(\+\)/igs;
 
+	##############
+	# Replace package.function call by package_function
+	##############
+	if (scalar keys %{$class->{package_functions}}) {
+		$str = $class->remove_text_constant_part($str);
+		foreach my $k (keys %{$class->{package_functions}}) {
+			$str =~ s/($class->{package_functions}->{$k}{package}\.)?\b$k\s*\(/$class->{package_functions}->{$k}{name}\(/igs;
+		}
+		$str = $class->restore_text_constant_part($str);
+	}
+
+
 	return $str;
 }
 

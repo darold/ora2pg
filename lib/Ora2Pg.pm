@@ -8983,18 +8983,20 @@ sub _get_plsql_metadata
 					delete $infos{$f}{code};
 					delete $infos{$f}{before};
 					%{$functions{$name}{metadata}} = %{$infos{$f}};
-					if (!$self->{package_as_schema}) {
-						my $int_name = $f;
-						my $res_name = $f;
-						$res_name =~ s/\./_/g;
-						$res_name =~ s/"_"/_/g;
-						if (!$self->{preserve_case}) {
-							$self->{package_functions}{"\L$f\E"}{name} = lc($res_name);
-						} else {
-							$self->{package_functions}{"\L$f\E"}{name} = $res_name;
-						}
-						$self->{package_functions}{"\L$f\E"}{package} = $p;
+
+					my $res_name = $f;
+					if ($self->{package_as_schema}) {
+						$res_name = $pname . '.' . $res_name;
+					} else {
+						$res_name = $pname . '_' . $res_name;
 					}
+					$res_name =~ s/"_"/_/g;
+					if (!$self->{preserve_case}) {
+						$self->{package_functions}{"\L$f\E"}{name} = lc($res_name);
+					} else {
+						$self->{package_functions}{"\L$f\E"}{name} = $res_name;
+					}
+					$self->{package_functions}{"\L$f\E"}{package} = $p;
 				}
 			}
 		}
@@ -13494,9 +13496,12 @@ sub _get_pkg_functions
 			my %infos = $self->_lookup_package("CREATE OR REPLACE PACKAGE BODY$txt");
 			foreach my $f (sort keys %infos) {
 				next if (!$f);
-				my $int_name = $f;
 				my $res_name = $f;
-				$res_name =~ s/\./_/g;
+				if ($self->{package_as_schema}) {
+					$res_name = $pname . '.' . $res_name;
+				} else {
+					$res_name = $pname . '_' . $res_name;
+				}
 				$res_name =~ s/"_"/_/g;
 				if (!$self->{preserve_case}) {
 					$self->{package_functions}{"\L$f\E"}{name} = lc($res_name);
