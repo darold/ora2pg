@@ -10504,6 +10504,24 @@ sub _remove_comments
 	my @lines = split(/\n/, $$content);
 	for (my $j = 0; $j <= $#lines; $j++) {
 		if (!$self->{is_mysql}) {
+			# Extract multiline comments as a single placeholder
+			my $old_j = $j;
+			my $cmt = '';
+			while ($lines[$j] =~ /^(\s*\-\-.*)$/) {
+				$cmt .= "$1\n";
+				$j++;
+			}
+			if ( $j > $old_j ) {
+				chomp($cmt);
+				$lines[$old_j] =~ s/^(\s*\-\-.*)$/\%ORA2PG_COMMENT$self->{idxcomment}\%/;
+				$comments{"\%ORA2PG_COMMENT$self->{idxcomment}\%"} = $cmt;
+				$self->{idxcomment}++;
+				$j--;
+				while ($j > $old_j) {
+					delete $lines[$j];
+					$j--;
+				}
+			}
 			if ($lines[$j] =~ s/(\s*\-\-.*)$/\%ORA2PG_COMMENT$self->{idxcomment}\%/) {
 				$comments{"\%ORA2PG_COMMENT$self->{idxcomment}\%"} = $1;
 				chomp($comments{"\%ORA2PG_COMMENT$self->{idxcomment}\%"});
