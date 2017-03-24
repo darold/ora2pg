@@ -4080,6 +4080,7 @@ LANGUAGE plpgsql ;
 			my $content = join('', @allqueries);
 			@allqueries = ();
 			# remove comments
+			$self->{idxcomment} = 0;
 			$self->_remove_comments(\$content);
 			$content =~  s/\%ORA2PG_COMMENT\d+\%//gs;
 			foreach my $l (split(/\n/, $content)) {
@@ -4259,8 +4260,16 @@ LANGUAGE plpgsql ;
 			$self->{functions} = ();
 			$self->logit("Reading input code from file $self->{input_file}...\n", 1);
 			open(IN, "$self->{input_file}");
-			my @allfct = <IN>;
+			my $content = '';
+			while (my $l = <IN>) {
+				$l =~ s/\r//g;
+				next if ($l =~ /^\/$/);
+				$content .= $l;
+			};
 			close(IN);
+			$self->{idxcomment} = 0;
+			my %comments = $self->_remove_comments(\$content);
+			my @allfct = split(/\n/, $content);
 			my $fcnm = '';
 			my $old_line = '';
 			my $language = '';
@@ -4311,14 +4320,15 @@ LANGUAGE plpgsql ;
 			# Get all metadata from all functions when we are
 			# reading a file, otherwise it has already been done
 			foreach my $fct (sort keys %{$self->{functions}}) {
-					my %fct_detail = $self->_lookup_function($self->{functions}{$fct}{text});
-					if (!exists $fct_detail{name}) {
-						delete $self->{functions}{$fct};
-						next;
-					}
-					delete $fct_detail{code};
-					delete $fct_detail{before};
-					%{$self->{functions}{$fct}{metadata}} = %fct_detail;
+				my %fct_detail = $self->_lookup_function($self->{functions}{$fct}{text});
+				if (!exists $fct_detail{name}) {
+					delete $self->{functions}{$fct};
+					next;
+				}
+				delete $fct_detail{code};
+				delete $fct_detail{before};
+				%{$self->{functions}{$fct}{metadata}} = %fct_detail;
+				$self->_restore_comments(\$self->{functions}{$fct}{text}, \%comments);
 			}
 		}
 		#--------------------------------------------------------
@@ -4424,13 +4434,20 @@ LANGUAGE plpgsql ;
 			$self->{procedures} = ();
 			$self->logit("Reading input code from file $self->{input_file}...\n", 1);
 			open(IN, "$self->{input_file}");
-			my @allfct = <IN>;
+			my $content = '';
+			while (my $l = <IN>) {
+				$l =~ s/\r//g;
+				next if ($l =~ /^\/$/);
+				$content .= $l;
+			};
 			close(IN);
+			$self->{idxcomment} = 0;
+			my %comments = $self->_remove_comments(\$content);
+			my @allfct = split(/\n/, $content);
 			my $fcnm = '';
 			my $old_line = '';
 			my $language = '';
 			foreach my $l (@allfct) {
-				chomp($l);
 				$l =~ s/\r//g;
 				next if ($l =~ /^\/$/);
 				next if ($l =~ /^\s*$/);
@@ -4472,17 +4489,19 @@ LANGUAGE plpgsql ;
 					}
 				}
 			}
+
 			# Get all metadata from all procedures when we are
 			# reading a file, otherwise it has already been done
 			foreach my $fct (sort keys %{$self->{procedures}}) {
-					my %fct_detail = $self->_lookup_function($self->{procedures}{$fct}{text});
-					if (!exists $fct_detail{name}) {
-						delete $self->{procedures}{$fct};
-						next;
-					}
-					delete $fct_detail{code};
-					delete $fct_detail{before};
-					%{$self->{procedures}{$fct}{metadata}} = %fct_detail;
+				my %fct_detail = $self->_lookup_function($self->{procedures}{$fct}{text});
+				if (!exists $fct_detail{name}) {
+					delete $self->{procedures}{$fct};
+					next;
+				}
+				delete $fct_detail{code};
+				delete $fct_detail{before};
+				%{$self->{procedures}{$fct}{metadata}} = %fct_detail;
+				$self->_restore_comments(\$self->{procedures}{$fct}{text}, \%comments);
 			}
 		}
 		#--------------------------------------------------------
@@ -4672,14 +4691,14 @@ LANGUAGE plpgsql ;
 				if ($self->{estimate_cost}) {
 					$total_size += length($self->{packages}->{$pkg}{text});
 					foreach my $txt (@codes) {
+						$self->{idxcomment} = 0;
+						my %comments = $self->_remove_comments(\$text);
+						$text =~  s/\%ORA2PG_COMMENT\d+\%//gs;
 						my %infos = $self->_lookup_package("CREATE OR REPLACE PACKAGE BODY$txt");
 						foreach my $f (sort keys %infos) {
 							next if (!$f);
-							$self->{idxcomment} = 0;
-							my %comments = $self->_remove_comments(\$infos{$f}{name});
 							$total_size_no_comment += (length($infos{$f}{name}) - (17 * $self->{idxcomment}));
 							my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($self, $infos{$f}{name});
-							$self->_restore_comments(\$infos{$f}{name}, \%comments);
 							$cost += $Ora2Pg::PLSQL::OBJECT_SCORE{'FUNCTION'};
 							$self->logit("Function $f estimated cost: $cost\n", 1);
 							$cost_value += $cost;
@@ -8988,6 +9007,9 @@ sub _get_plsql_metadata
 			}
 
 			foreach my $f (keys %functions) {
+				$self->{idxcomment} = 0;
+				my %comments = $self->_remove_comments(\$functions{$f}{text});
+				$functions{$f}{text} =~  s/\%ORA2PG_COMMENT\d+\%//gs;
 				my %fct_detail = $self->_lookup_function($functions{$f}{text});
 				if (!exists $fct_detail{name}) {
 					delete $functions{$f};
@@ -9012,6 +9034,9 @@ sub _get_plsql_metadata
 				$pkg_txt{$row->[0]} .= $r->[0];
 			}
 			foreach my $p (keys %pkg_txt) {
+				$self->{idxcomment} = 0;
+				my %comments = $self->_remove_comments(\$pkg_txt{$p});
+				$pkg_txt{$p} =~  s/\%ORA2PG_COMMENT\d+\%//gs;
 				my %infos = $self->_lookup_package($pkg_txt{$p});
 				foreach my $f (sort keys %infos) {
 					next if (!$f);
@@ -9369,7 +9394,9 @@ sub _get_audit_queries
 
 	my %tmp_queries = ();
 	while (my $row = $sth->fetch) {
+		$self->{idxcomment} = 0;
 		$self->_remove_comments(\$row->[0]);
+		$row->[0] =~  s/\%ORA2PG_COMMENT\d+\%//gs;
 		$row->[0] =  $self->normalize_query($row->[0]);
 		$tmp_queries{$row->[0]}++;
 		$self->logit(".",1);
@@ -10506,16 +10533,7 @@ sub _restore_comments
 {
 	my ($self, $content, $comments) = @_;
 
-	my $no_infinite = 0;
-	while (scalar keys %$comments > 0  && $$content =~ /\%ORA2PG_COMMENT\d+\%/ && $no_infinite < 10000) {
-		foreach my $k (sort { $b <=> $a } keys %$comments) {
-			if ($$content =~ s/$k[\n]?/$comments->{$k}\n/is) {
-				delete $comments->{$k};
-			}
-		}
-		$no_infinite++;
-	}
-	$$content =~ s/\%ORA2PG_COMMENT\d+\%//gs;
+	while ($$content =~ s/(\%ORA2PG_COMMENT\d+\%)[\n]*/$comments->{$1}\n/s) { delete $comments->{$1}; };
 
 }
 
@@ -14416,8 +14434,8 @@ sub _lookup_package
 		$content = $3;
 		$pname =~ s/"//g;
 		$self->logit("Looking at package $pname...\n", 1);
-		$self->{idxcomment} = 0;
 		$content =~ s/\bEND[^;]*;$//is;
+		$self->{idxcomment} = 0;
 		my %comments = $self->_remove_comments(\$content);
 		my @functions = $self->_extract_functions($content);
 		foreach my $f (@functions) {
@@ -14426,8 +14444,6 @@ sub _lookup_package
 			next if (!exists $fct_detail{name});
 			$fct_detail{name} =~ s/^.*\.//;
 			$fct_detail{name} =~ s/"//g;
-			#$infos{"$pname.$fct_detail{name}"}{name} = $f if ($fct_detail{name});
-			#$infos{"$pname.$fct_detail{name}"}{type} = $fct_detail{type} if ($fct_detail{type});
 			%{$infos{"$pname.$fct_detail{name}"}} = %fct_detail;
 		}
 	}
