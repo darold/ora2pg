@@ -9021,10 +9021,11 @@ sub _get_plsql_metadata
 					%{$functions{$name}{metadata}} = %{$infos{$f}};
 
 					my $res_name = $f;
+					$res_name =~ s/^[^\.]+\.//;
 					if ($self->{package_as_schema}) {
-						$res_name = $pname . '.' . $res_name;
+						$res_name = $p . '.' . $res_name;
 					} else {
-						$res_name = $pname . '_' . $res_name;
+						$res_name = $p . '_' . $res_name;
 					}
 					$res_name =~ s/"_"/_/g;
 					if (!$self->{preserve_case}) {
@@ -10464,6 +10465,7 @@ sub _convert_package
 			}
 			if (!exists $self->{package_functions}{$fct_detail{name}}) {
 				my $res_name = $fct_detail{name};
+				$res_name =~ s/^[^\.]+\.//;
 				if ($self->{package_as_schema}) {
 					$res_name = $pname . '.' . $res_name;
 				} else {
@@ -13533,10 +13535,11 @@ sub _get_pkg_functions
 			foreach my $f (sort keys %infos) {
 				next if (!$f);
 				my $res_name = $f;
+				$res_name =~ s/^[^\.]+\.//;
 				if ($self->{package_as_schema}) {
-					$res_name = $pname . '.' . $res_name;
+					$res_name = $pkg . '.' . $res_name;
 				} else {
-					$res_name = $pname . '_' . $res_name;
+					$res_name = $pkg . '_' . $res_name;
 				}
 				$res_name =~ s/"_"/_/g;
 				if (!$self->{preserve_case}) {
