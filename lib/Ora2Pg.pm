@@ -15571,10 +15571,11 @@ sub register_global_variable
 	map { s/^\s+//; s/\s+$//; } @vars;
 	my $ret = '';
 	foreach my $l (@vars) {
-		if ($l eq ';' || $l =~ /ORA2PG_COMMENT/) {
+		if ($l eq ';' || $l =~ /ORA2PG_COMMENT/ || $l =~ /^CREATE\s+/i) {
 			$ret .= $l if ($l ne ';');
 			next;
 		}
+		next if (!$l);
 		$l =~ s/\-\-[^\r\n]+//sg;
 		$l =~ s/\s*:=\s*/ := /igs;
 		my ($n, $type, @others) = split(/\s+/, $l);
@@ -15588,14 +15589,25 @@ sub register_global_variable
 		my $v = $pname . '.' . $n;
 		$self->{global_variables}{$v}{name} = $n;
 		if (uc($type) eq 'CONSTANT') {
+			$type = '';
 			$self->{global_variables}{$v}{constant} = 1;
-			$type = shift(@others);
+			while ($others[0] ne ':=') {
+				$type .= shift(@others);
+			}
 		}
 		if ($#others > 0 && $others[0] eq ':=') {
 			shift(@others);
 			$self->{global_variables}{$v}{default} = join(' ', @others);
 		}
 		$self->{global_variables}{$v}{type} = $type;
+		# Handle Oracle user defined error code
+		if ($self->{global_variables}{$v}{constant} && ($type =~ /bigint|int|numeric|double/)
+			&& $self->{global_variables}{$v}{default} <= -20000 && $self->{global_variables}{$v}{default} >= -20999) {
+			# Change the type into char(5) for SQLSTATE type
+			$self->{global_variables}{$v}{type} = 'char(5)';
+			# Transform the value to match PostgreSQL user defined exceptions starting with 45
+			$self->{global_variables}{$v}{default} =~ s/^-20/45/;
+		}
 	}
 
 	return $ret;

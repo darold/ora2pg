@@ -501,7 +501,9 @@ sub plsql_to_plpgsql
 	$str =~ s/\bdup_val_on_index\b/unique_violation/igs;
 
 	# Replace raise_application_error by PG standard RAISE EXCEPTION
-	$str =~ s/\braise_application_error\s*\(\s*[^,]+\s*,\s*([^;]+)\)\s*;/RAISE EXCEPTION '%', $1;/igs;
+	$str =~ s/\braise_application_error\s*\(\s*([^,]+)\s*,\s*([^;]+),\s*(true|false)\s*\)\s*;/RAISE EXCEPTION '%', $2 USING ERRCODE = $1;/igs;
+	$str =~ s/\braise_application_error\s*\(\s*([^,]+)\s*,\s*([^;]+)\)\s*;/RAISE EXCEPTION '%', $2 USING ERRCODE = $1;/igs;
+	$str =~ s/(RAISE EXCEPTION .* USING ERRCODE = )-20(...)\s*;/$1'45$2'/igs;
 	$str =~ s/DBMS_STANDARD\.RAISE EXCEPTION/RAISE EXCEPTION/igs;
 
 	# Remove IN information from cursor declaration
@@ -1280,12 +1282,15 @@ sub replace_sql_type
 	$str =~ s/([A-Z])\%ORA2PG_COMMENT/$1 \%ORA2PG_COMMENT/igs;
 
 	# Replace type with precision
-	my $oratype_regex = join('|', keys %data_type);
+	my @ora_type = keys %data_type;
+	map { s/\(/\\\(/; s/\)/\\\)/; } @ora_type;
+	my $oratype_regex = join('|', @ora_type);
 
 	while ($str =~ /(.*)\b($oratype_regex)\s*\(([^\)]+)\)/i) {
 		my $backstr = $1;
 		my $type = uc($2);
 		my $args = $3;
+
 		# Remove extra CHAR or BYTE information from column type
 		$args =~ s/\s*(CHAR|BYTE)\s*$//i;
 		if ($backstr =~ /_$/) {
