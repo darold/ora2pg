@@ -4620,30 +4620,37 @@ LANGUAGE plpgsql ;
 			my $skip_pkg_header = 0;
 			$self->{idxcomment} = 0;
 			my %comments = $self->_remove_comments(\$content);
-			$content =~ s/(?:CREATE|CREATE OR REPLACE)?\s*(?:EDITABLE|NONEDITABLE)?\s*PACKAGE\s+/CREATE PACKAGE /igs;
-			my @allpkg = split(/(CREATE PACKAGE\s+)/, $content);
-			$content = '';
-			foreach my $l (@allpkg) {
-				if (!$old_line && ($l =~ /(CREATE PACKAGE\s+)/)) {
-					$old_line = $1;
-					next;
-				} elsif ($old_line) {
-					if ($l =~ s/^BODY\s+([^\s]+)\s+//is) {
-						$self->{packages}{"\L$1\E"}{text} .= "PACKAGE BODY $1 $l\n";
-					} elsif ($l =~ /^([^\s]+)\s+/s) {
-						my $pname = lc($1);
-						$pname =~ s/"//g;
-						$l =~ s/[\s;]+\s*$/;/gs;
-						$self->{packages}{$pname}{text} .= "PACKAGE $l\n";
-					}
-					$old_line = '';
-				}
+			$content =~ s/(?:CREATE|CREATE OR REPLACE)?\s*(?:EDITABLE|NONEDITABLE)?\s*PACKAGE\s+/CREATE OR REPLACE PACKAGE /igs;
+			while ($content =~ s/(CREATE OR REPLACE PACKAGE\s+([^\s]+)\s+.*?CREATE OR REPLACE PACKAGE BODY\s+([^\s]+)\s+.*?END[^;]*;\s*)(.*?CREATE PACKAGE )/$4/is) {
+				my $pname = lc($2);
+				my $text = $1;
+				$pname =~ s/"//g;
+				$self->{packages}{$pname}{text} = $text;
 			}
+			while ($content =~ s/(CREATE OR REPLACE PACKAGE\s+([^\s]+)\s+.*?CREATE OR REPLACE PACKAGE BODY\s+([^\s]+)\s+.*?END[^;]*;\s*.*)//is) {
+				my $pname = lc($2);
+				my $text = $1;
+				$pname =~ s/"//g;
+				$self->{packages}{$pname}{text} = $text;
+			}
+			while ($content =~ s/(CREATE OR REPLACE PACKAGE BODY\s+([^\s]+)\s+.*?END[^;]*;\s*)(.*?CREATE OR REPLACE PACKAGE )/$3/is) {
+				my $pname = lc($2);
+				my $text = $1;
+				$pname =~ s/"//g;
+				$self->{packages}{$pname}{text} = $text;
+			}
+			while ($content =~ s/(CREATE OR REPLACE PACKAGE BODY\s+([^\s]+)\s+.*?END[^;]*;\s*.*)//is) {
+				my $pname = lc($2);
+				my $text = $1;
+				$pname =~ s/"//g;
+				$self->{packages}{$pname}{text} = $text;
+			}
+
 			foreach my $pkg (sort keys %{$self->{packages}}) {
 				# Get all metadata from all procedures/function when we are
 				# reading from a file, otherwise it has already been done
 				my $tmp_txt = $self->{packages}{$pkg}{text};
-				$tmp_txt =~ s/^.*PACKAGE BODY/PACKAGE BODY/s;
+				$tmp_txt =~ s/^(.*)CREATE OR REPLACE PACKAGE BODY/CREATE OR REPLACE PACKAGE BODY/s;
 				my %infos = $self->_lookup_package($tmp_txt);
 				foreach my $f (sort keys %infos) {
 					next if (!$f);
@@ -4687,14 +4694,14 @@ LANGUAGE plpgsql ;
 				}
 
 			} else {
-				my @codes = split(/CREATE(?: OR REPLACE)?(?: EDITABLE| NONEDITABLE)? PACKAGE BODY/i, $self->{packages}{$pkg}{text});
+				$self->{idxcomment} = 0;
+				my %comments = $self->_remove_comments(\$self->{packages}{$pkg}{text});
+				my @codes = split(/CREATE(?: OR REPLACE)?(?: EDITABLE| NONEDITABLE)? PACKAGE\s+/i, $self->{packages}{$pkg}{text});
 				if ($self->{estimate_cost}) {
 					$total_size += length($self->{packages}->{$pkg}{text});
 					foreach my $txt (@codes) {
-						$self->{idxcomment} = 0;
-						my %comments = $self->_remove_comments(\$text);
-						$text =~  s/\%ORA2PG_COMMENT\d+\%//gs;
-						my %infos = $self->_lookup_package("CREATE OR REPLACE PACKAGE BODY$txt");
+						next if ($txt !~ /^BODY\s+/is);
+						my %infos = $self->_lookup_package("CREATE OR REPLACE PACKAGE $txt");
 						foreach my $f (sort keys %infos) {
 							next if (!$f);
 							$total_size_no_comment += (length($infos{$f}{name}) - (17 * $self->{idxcomment}));
@@ -4715,14 +4722,13 @@ LANGUAGE plpgsql ;
 								$fct_cost .= "\n";
 							}
 						}
-						$cost_value += $Ora2Pg::PLSQL::OBJECT_SCORE{'PACKAGE BODY'};
+						$cost_value += $Ora2Pg::PLSQL::OBJECT_SCORE{'PACKAGE BODY'} if ($txt =~ /^BODY/is);
 					}
 					$fct_cost .= "-- Total estimated cost for package $pkg: $cost_value units, " . $self->_get_human_cost($cost_value) . "\n";
 				}
 				foreach my $txt (@codes) {
-					$self->{idxcomment} = 0;
-					my %comments = $self->_remove_comments(\$txt);
-					$txt = $self->_convert_package("CREATE OR REPLACE PACKAGE BODY$txt", $self->{packages}{$pkg}{owner}, \%comments);
+					next if (!$txt);
+					$txt = $self->_convert_package("CREATE OR REPLACE PACKAGE $txt", $self->{packages}{$pkg}{owner}, \%comments);
 					$self->_restore_comments(\$txt, \%comments);
 					$pkgbody .= $txt;
 					$pkgbody =~ s/[\r\n]*\bEND;\s*$//is;
@@ -4764,9 +4770,8 @@ LANGUAGE plpgsql ;
 		if (scalar keys %{$self->{global_variables}}) {
 			my $default_vars = '';
 			foreach my $n (keys %{$self->{global_variables}}) {
-				my $str = $n;
 				if (exists $self->{global_variables}{$n}{constant} || exists $self->{global_variables}{$n}{default}) {
-					$default_vars .= "$n = '$self->{global_variables}{$n}{default}\n";
+					$default_vars .= "$n = '$self->{global_variables}{$n}{default}'\n";
 				}
 			}
 			if ($default_vars) {
@@ -9177,7 +9182,7 @@ sub _get_packages
 	my ($self) = @_;
 
 	# Retrieve all indexes 
-	my $str = "SELECT DISTINCT OBJECT_NAME,OWNER FROM $self->{prefix}_OBJECTS WHERE OBJECT_TYPE LIKE 'PACKAGE%'";
+	my $str = "SELECT DISTINCT OBJECT_NAME,OWNER FROM $self->{prefix}_OBJECTS WHERE OBJECT_TYPE = 'PACKAGE BODY'";
 	$str .= " AND STATUS='VALID'" if (!$self->{export_invalid});
 	if (!$self->{schema}) {
 		$str .= " AND OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
@@ -9196,10 +9201,22 @@ sub _get_packages
 		$self->logit("\tFound Package: $row->[0]\n", 1);
 		next if (grep(/^$row->[0]$/, @fct_done));
 		push(@fct_done, $row->[0]);
-		my $sql = "SELECT TEXT FROM $self->{prefix}_SOURCE WHERE OWNER='$row->[1]' AND NAME='$row->[0]' AND (TYPE='PACKAGE' OR TYPE='PACKAGE BODY') ORDER BY TYPE, LINE";
+		# Get package definition first
+		my $sql = "SELECT TEXT FROM $self->{prefix}_SOURCE WHERE OWNER='$row->[1]' AND NAME='$row->[0]' AND TYPE='PACKAGE' ORDER BY LINE";
 		my $sth2 = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 		$sth2->execute or $self->logit("FATAL: " . $sth2->errstr . "\n", 0, 1);
 		while (my $r = $sth2->fetch) {
+			$packages{$row->[0]}{text} .= 'CREATE OR REPLACE ' if ($r->[0] =~ /^PACKAGE\s+/is);
+			$packages{$row->[0]}{text} .= $r->[0];
+		}
+		$sth2->finish();
+		$packages{$row->[0]}{text} .= "\n" if (exists $packages{$row->[0]});
+		# Then package body code
+		$sql = "SELECT TEXT FROM $self->{prefix}_SOURCE WHERE OWNER='$row->[1]' AND NAME='$row->[0]' AND TYPE='PACKAGE BODY' ORDER BY LINE";
+		$sth2 = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+		$sth2->execute or $self->logit("FATAL: " . $sth2->errstr . "\n", 0, 1);
+		while (my $r = $sth2->fetch) {
+			$packages{$row->[0]}{text} .= 'CREATE OR REPLACE ' if ($r->[0] =~ /^PACKAGE\s+/is);
 			$packages{$row->[0]}{text} .= $r->[0];
 		}
 		$packages{$row->[0]}{owner} = $row->[1];
@@ -10347,11 +10364,13 @@ sub _convert_package
 
 	my $dirprefix = '';
 	$dirprefix = "$self->{output_dir}/" if ($self->{output_dir});
-	my $content = "-- PostgreSQL does not recognize PACKAGES, using package_name_function_name() instead.\n";
-	if ($self->{package_as_schema}) {
-		$content = "-- PostgreSQL does not recognize PACKAGES, using SCHEMA instead.\n";
-	}
+	my $content = '';
+
 	if ($self->{package_as_schema} && ($plsql =~ /PACKAGE\s+BODY\s*([^\s]+)\s*(AS|IS)\s*/is)) {
+		$content = "\n\n-- PostgreSQL does not recognize PACKAGES, using package_name_function_name() instead.\n";
+		if ($self->{package_as_schema}) {
+			$content = "\n\n-- PostgreSQL does not recognize PACKAGES, using SCHEMA instead.\n";
+		}
 		my $pname = $1;
 		$pname =~ s/"//g;
 		if (!$self->{preserve_case}) {
@@ -10373,52 +10392,8 @@ sub _convert_package
 		}
 	}
 
-	# Convert type from the package header
-	if ($plsql =~ s/(?:CREATE\s+OR\s+REPLACE\s+)?PACKAGE\s+BODY\s*PACKAGE\s+([^\s]+)\s+(AS|IS)\s+TYPE\s+([^\s]+)\s+(AS|IS)\s+(.*;?)\s*PACKAGE BODY/PACKAGE BODY/is) {
-		my $pname = $1;
-		my $type = $3;
-		my $params = $5;
-		$params =~ s/(PROCEDURE|FUNCTION)\s+(.*?);//gis;
-		$params =~ s/\s+END[^;]*;\s*$//is;
-		$params =~ s/CREATE TYPE/TYPE/gis;
-		while ($params =~ s/(?<!\%)TYPE\s+([^\s\.]+\s+)/CREATE TYPE $pname.$1/is) {
-			$self->{pkg_type}{$1} = "$pname.$1";
-		}
-		$params =~ s/\b$type\b/$pname.$type/gis;
-		$self->logit("Dumping type $type from package $pname...\n", 1);
-		$params = "CREATE TYPE $pname.$type AS $params\n";
-		my @alltype = split(/CREATE /, $params);
-		my $typnm = '';
-		my $code = '';
-		my $i = 1;
-		foreach my $l (@alltype) {
-			chomp($l);
-			next if ($l =~ /^\s*$/);
-			$code .= $l . "\n";
-			if ($code =~ /^TYPE\s+([^\s\(]+)/is) {
-				$typnm = $1;
-			}
-			next if (!$typnm);
-			if ($code =~ /;/s) {
-				push(@{$self->{types}}, { ('name' => $typnm, 'code' => $code, 'pos' => $i) });
-				$typnm = '';
-				$code = '';
-				$i++;
-			}
-		}
-		foreach my $tpe (sort {$a->{pos} <=> $b->{pos}} @{$self->{types}}) {
-			$self->logit("Dumping type $tpe->{name}...\n", 1);
-			if ($self->{plsql_pgsql}) {
-				$tpe->{code} = $self->_convert_type($tpe->{code}, $tpe->{owner});
-			} else {
-				$tpe->{code} = "CREATE OR REPLACE $tpe->{code}\n";
-			}
-			$content .= $tpe->{code} . "\n";
-		}
-	}
-
 	# Convert the package body part
-	if ($plsql =~ /PACKAGE\s+BODY\s*([^\s]+)\s*(AS|IS)\s*(.*)/is) {
+	if ($plsql =~ /CREATE OR REPLACE PACKAGE\s+BODY\s*([^\s]+)\s*(AS|IS)\s*(.*)/is) {
 
 		my $pname = $1;
 		my $type = $2;
@@ -10452,7 +10427,7 @@ sub _convert_package
 			foreach my $tpe (sort {$a->{pos} <=> $b->{pos}} @{$self->{types}}) {
 				$self->logit("Dumping type $tpe->{name}...\n", 1);
 				if ($self->{plsql_pgsql}) {
-					$tpe->{code} = $self->_convert_type($tpe->{code}, $tpe->{owner});
+					$tpe->{code} = $self->_convert_type($tpe->{code}, $tpe->{owner}, %{$self->{pkg_type}});
 				} else {
 					$tpe->{code} = "CREATE OR REPLACE $tpe->{code}\n";
 				}
@@ -10517,6 +10492,48 @@ sub _convert_package
 			$self->{total_pkgcost} += $self->{pkgcost} || 0;
 		}
 
+	# Grab global declaration from the package header
+	} elsif ($plsql =~ /CREATE OR REPLACE PACKAGE\s+([^\s]+)\s*(AS|IS)\s*(.*)/is) {
+
+		my $pname = $1;
+		my $type = $2;
+		my $glob_declare = $3;
+
+		$pname =~ s/"//g;
+		$pname =~ s/^.*\.//g;
+		$self->logit("Looking global declaration in package $pname...\n", 1);
+
+		# Process package spec to extract global variables
+		if ($glob_declare) {
+			# Remove all function declaration
+			$glob_declare =~ s/(PROCEDURE|FUNCTION)[^;]+;//gis;
+			# Remove end of the package decalaration
+			$glob_declare =~ s/\s+END[^;]*;\s*$//is;
+			my @cursors = ();
+			while ($glob_declare =~ s/(CURSOR\s+[^;]+\s+RETURN\s+[^;]+;)//) {
+				push(@cursors, $1);
+			}
+			# Extract TYPE declaration
+			my $i = 0;
+			while ($glob_declare =~ s/TYPE\s+([^\s]+)\s+(AS|IS)\s+([^;]+;)//is) {
+				$self->{pkg_type}{$1} = "$pname.$1";
+				my $code = "TYPE $self->{pkg_type}{$1} AS $3";
+				push(@{$self->{types}}, { ('name' => $1, 'code' => $code, 'pos' => $i++) });
+			}
+			# Then dump custom type
+			foreach my $tpe (sort {$a->{pos} <=> $b->{pos}} @{$self->{types}}) {
+				$self->logit("Dumping type $tpe->{name}...\n", 1);
+				if ($self->{plsql_pgsql}) {
+					$tpe->{code} = $self->_convert_type($tpe->{code}, $tpe->{owner}, %{$self->{pkg_type}});
+				} else {
+					$tpe->{code} = "CREATE OR REPLACE $tpe->{code}\n";
+				}
+				$content .= $tpe->{code} . "\n";
+				$i++;
+			}
+			$content .= join("\n", @cursors) . "\n";
+			$glob_declare = $self->register_global_variable($pname, $glob_declare);
+		}
 	}
 
 	return $content;
@@ -11125,7 +11142,7 @@ is set to 1.
 
 sub _convert_type
 {
-	my ($self, $plsql, $owner) = @_;
+	my ($self, $plsql, $owner, %pkg_type) = @_;
 
 	my $unsupported = "-- Unsupported, please edit to match PostgreSQL syntax\n";
 	my $content = '';
@@ -11244,6 +11261,11 @@ CREATE TYPE \L$type_name\E AS ($type_name $declar\[$size\]);
 				$content .= "ALTER TYPE $type_name OWNER TO \"$owner\";\n";
 			}
 		}
+	}
+
+	# Prefix type with their own package name
+	foreach my $t (keys %pkg_type) {
+		$content =~ s/(\s+)($t)\b/$1$pkg_type{$2}/igs;
 	}
 
 	return $content;
@@ -12408,9 +12430,10 @@ sub _show_infos
 					next if (!$packages->{$pkg}{text});
 					$number_pkg++;
 					$total_size += length($packages->{$pkg}{text});
-					my @codes = split(/CREATE(?: OR REPLACE)?(?: NONEDITABLE| EDITABLE)? PACKAGE BODY/, $packages->{$pkg}{text});
+					my @codes = split(/CREATE(?: OR REPLACE)?(?: NONEDITABLE| EDITABLE)? PACKAGE/, $packages->{$pkg}{text});
 					foreach my $txt (@codes) {
-						my %infos = $self->_lookup_package("CREATE OR REPLACE PACKAGE BODY$txt");
+						next if ($txt !~ /^BODY\s+/is);
+						my %infos = $self->_lookup_package("CREATE OR REPLACE PACKAGE$txt");
 						foreach my $f (sort keys %infos) {
 							next if (!$f);
 							if ($self->{estimate_cost}) {
@@ -13547,9 +13570,10 @@ sub _get_pkg_functions
 	my $packages = $self->_get_packages();
 	foreach my $pkg (keys %{$packages}) {
 		next if (!$packages->{$pkg}{text});
-		my @codes = split(/CREATE(?: OR REPLACE)?(?: NONEDITABLE| EDITABLE)? PACKAGE BODY/, $packages->{$pkg}{text});
+		my @codes = split(/CREATE(?: OR REPLACE)?(?: NONEDITABLE| EDITABLE)? PACKAGE/, $packages->{$pkg}{text});
 		foreach my $txt (@codes) {
-			my %infos = $self->_lookup_package("CREATE OR REPLACE PACKAGE BODY$txt");
+			next if ($txt !~ /^BODY\s+/is);
+			my %infos = $self->_lookup_package("CREATE OR REPLACE PACKAGE $txt");
 			foreach my $f (sort keys %infos) {
 				next if (!$f);
 				my $res_name = $f;
@@ -14428,7 +14452,7 @@ sub _lookup_package
 
 	my $content = '';
 	my %infos = ();
-	if ($plsql =~ /PACKAGE\s+BODY\s*([^\s]+)\s*(AS|IS)\s*(.*)/is) {
+	if ($plsql =~ /CREATE OR REPLACE PACKAGE\s+BODY\s*([^\s]+)\s*(AS|IS)\s*(.*)/is) {
 		my $pname = $1;
 		my $type = $2;
 		$content = $3;
@@ -15586,8 +15610,8 @@ sub register_global_variable
 		}
 		$ret .= $l, next if (uc($type) eq 'EXCEPTION');
 		next if (!$pname);
-		my $v = $pname . '.' . $n;
-		$self->{global_variables}{$v}{name} = $n;
+		my $v = lc($pname . '.' . $n);
+		$self->{global_variables}{$v}{name} = lc($n);
 		if (uc($type) eq 'CONSTANT') {
 			$type = '';
 			$self->{global_variables}{$v}{constant} = 1;
@@ -15598,6 +15622,8 @@ sub register_global_variable
 		if ($#others > 0 && $others[0] eq ':=') {
 			shift(@others);
 			$self->{global_variables}{$v}{default} = join(' ', @others);
+			$self->{global_variables}{$v}{default} =~ s/^'//s;
+			$self->{global_variables}{$v}{default} =~ s/'$//s;
 		}
 		$self->{global_variables}{$v}{type} = $type;
 		# Handle Oracle user defined error code
