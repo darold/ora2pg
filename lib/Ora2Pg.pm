@@ -1262,7 +1262,6 @@ sub _init
 				$self->_compile_schema($self->{dbh}, uc($self->{compile_schema}));
 			}
 			if (!grep(/^$self->{type}$/, 'COPY', 'INSERT', 'SEQUENCE', 'GRANT', 'TABLESPACE', 'QUERY', 'SYNONYM', 'FDW', 'KETTLE', 'DBLINK', 'DIRECTORY')) {
-				#$self->_get_pkg_functions() if (!$self->{package_as_schema});
 				$self->{function_metadata} = $self->_get_plsql_metadata() if ($self->{plsql_pgsql});
 			}
 			$self->{security} = $self->_get_security_definer($self->{type}) if (grep(/^$self->{type}$/, 'TRIGGER', 'FUNCTION','PROCEDURE','PACKAGE'));
@@ -12422,18 +12421,18 @@ sub _show_infos
 				}
 				$report_info{'Objects'}{$typ}{'comment'} = "Total size of procedure code: $total_size bytes.";
 			} elsif ($typ eq 'PACKAGE BODY') {
-				my $packages = $self->_get_packages();
+				$self->{packages} = $self->_get_packages();
 				my $total_size = 0;
 				my $number_fct = 0;
 				my $number_pkg = 0;
-				foreach my $pkg (keys %{$packages}) {
-					next if (!$packages->{$pkg}{text});
+				foreach my $pkg (sort keys %{$self->{packages}}) {
+					next if (!$self->{packages}{$pkg}{text});
 					$number_pkg++;
-					$total_size += length($packages->{$pkg}{text});
-					my @codes = split(/CREATE(?: OR REPLACE)?(?: NONEDITABLE| EDITABLE)? PACKAGE/, $packages->{$pkg}{text});
+					$total_size += length($self->{packages}{$pkg}{text});
+					my @codes = split(/CREATE(?: OR REPLACE)?(?: EDITABLE| NONEDITABLE)? PACKAGE\s+/i, $self->{packages}{$pkg}{text});
 					foreach my $txt (@codes) {
 						next if ($txt !~ /^BODY\s+/is);
-						my %infos = $self->_lookup_package("CREATE OR REPLACE PACKAGE$txt");
+						my %infos = $self->_lookup_package("CREATE OR REPLACE PACKAGE $txt");
 						foreach my $f (sort keys %infos) {
 							next if (!$f);
 							if ($self->{estimate_cost}) {
@@ -13553,46 +13552,6 @@ WHERE t.typname <> 'trigger'
 	$self->show_test_errors('FUNCTION', @errors);
 	@errors = ();
 	print "\n";
-}
-
-
-=head2 _get_pkg_functions
-
-This function retrieves the Oracle package list and the replacement
-value to use when the schema replacement to package is not created
-
-=cut
-
-sub _get_pkg_functions
-{
-	my $self = shift;
-
-	my $packages = $self->_get_packages();
-	foreach my $pkg (keys %{$packages}) {
-		next if (!$packages->{$pkg}{text});
-		my @codes = split(/CREATE(?: OR REPLACE)?(?: NONEDITABLE| EDITABLE)? PACKAGE/, $packages->{$pkg}{text});
-		foreach my $txt (@codes) {
-			next if ($txt !~ /^BODY\s+/is);
-			my %infos = $self->_lookup_package("CREATE OR REPLACE PACKAGE $txt");
-			foreach my $f (sort keys %infos) {
-				next if (!$f);
-				my $res_name = $f;
-				$res_name =~ s/^[^\.]+\.//;
-				if ($self->{package_as_schema}) {
-					$res_name = $pkg . '.' . $res_name;
-				} else {
-					$res_name = $pkg . '_' . $res_name;
-				}
-				$res_name =~ s/"_"/_/g;
-				if (!$self->{preserve_case}) {
-					$self->{package_functions}{"\L$f\E"}{name} = lc($res_name);
-				} else {
-					$self->{package_functions}{"\L$f\E"}{name} = $res_name;
-				}
-				$self->{package_functions}{"\L$f\E"}{package} = $pkg;
-			}
-		}
-	}
 }
 
 =head2 _get_version
