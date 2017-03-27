@@ -4694,18 +4694,20 @@ LANGUAGE plpgsql ;
 
 			} else {
 				$self->{idxcomment} = 0;
+				if ($self->{estimate_cost}) {
+					$total_size += length($self->{packages}->{$pkg}{text});
+				}
 				my %comments = $self->_remove_comments(\$self->{packages}{$pkg}{text});
 				my @codes = split(/CREATE(?: OR REPLACE)?(?: EDITABLE| NONEDITABLE)? PACKAGE\s+/i, $self->{packages}{$pkg}{text});
 				if ($self->{estimate_cost}) {
-					$total_size += length($self->{packages}->{$pkg}{text});
 					foreach my $txt (@codes) {
 						next if ($txt !~ /^BODY\s+/is);
 						my %infos = $self->_lookup_package("CREATE OR REPLACE PACKAGE $txt");
 						foreach my $f (sort keys %infos) {
 							next if (!$f);
-							$total_size_no_comment += (length($infos{$f}{name}) - (17 * $self->{idxcomment}));
-							my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($self, $infos{$f}{name});
-							$cost += $Ora2Pg::PLSQL::OBJECT_SCORE{'FUNCTION'};
+							my @cnt = $infos{$f}{code} =~ /(\%ORA2PG_COMMENT\d+\%)/i;
+							$total_size_no_comment += (length($infos{$f}{code}) - (17 * length(join('', @cnt))));
+							my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($self, $infos{$f}{code});
 							$self->logit("Function $f estimated cost: $cost\n", 1);
 							$cost_value += $cost;
 							$number_fct++;
@@ -4721,7 +4723,7 @@ LANGUAGE plpgsql ;
 								$fct_cost .= "\n";
 							}
 						}
-						$cost_value += $Ora2Pg::PLSQL::OBJECT_SCORE{'PACKAGE BODY'} if ($txt =~ /^BODY/is);
+						$cost_value += $Ora2Pg::PLSQL::OBJECT_SCORE{'PACKAGE BODY'};
 					}
 					$fct_cost .= "-- Total estimated cost for package $pkg: $cost_value units, " . $self->_get_human_cost($cost_value) . "\n";
 				}
@@ -4736,18 +4738,16 @@ LANGUAGE plpgsql ;
 			}
 			if ($self->{estimate_cost}) {
 				$self->logit("Total size of package code: $total_size bytes.\n", 1);
-				$self->logit("Total size of package code without comments: $total_size_no_comment bytes.\n", 1);
-				$self->logit("Total number of functions found inside those packages: $number_fct.\n", 1);
+				$self->logit("Total size of package code without comments and header: $total_size_no_comment bytes.\n", 1);
 				$self->logit("Total estimated cost for package $pkg: $cost_value units, " . $self->_get_human_cost($cost_value) . ".\n", 1);
 			}
 			if ($pkgbody && ($pkgbody =~ /[a-z]/is)) {
-				$sql_output .= "-- Oracle package '$pkg' declaration, please edit to match PostgreSQL syntax.\n";
+				$sql_output .= "\n\n-- Oracle package '$pkg' declaration, please edit to match PostgreSQL syntax.\n";
 				$sql_output .= $pkgbody . "\n";
 				$sql_output .= "-- End of Oracle package '$pkg' declaration\n\n";
 				if ($self->{estimate_cost}) {
 					$sql_output .= "-- Total size of package code: $total_size bytes.\n";
-					$sql_output .= "-- Total size of package code without comments: $total_size_no_comment bytes.\n";
-					$sql_output .= "-- Total number of functions found inside those packages: $number_fct.\n";
+					$sql_output .= "-- Total size of package code without comments and header: $total_size_no_comment bytes.\n";
 					$sql_output .= "-- Detailed cost per function:\n" . $fct_cost;
 				}
 				$nothing++;
@@ -4755,6 +4755,9 @@ LANGUAGE plpgsql ;
 			$self->{total_pkgcost} += ($number_fct*$Ora2Pg::PLSQL::OBJECT_SCORE{'FUNCTION'});
 			$self->{total_pkgcost} += $Ora2Pg::PLSQL::OBJECT_SCORE{'PACKAGE BODY'};
 			$i++;
+		}
+		if ($self->{estimate_cost} && $number_fct) {
+			$self->logit("Total number of functions found inside all packages: $number_fct.\n", 1);
 		}
 		if (!$self->{quiet} && !$self->{debug}) {
 			print STDERR $self->progress_bar($i - 1, $num_total_package, 25, '=', 'packages', 'end of output.'), "\n";
@@ -10366,10 +10369,6 @@ sub _convert_package
 	my $content = '';
 
 	if ($self->{package_as_schema} && ($plsql =~ /PACKAGE\s+BODY\s*([^\s]+)\s*(AS|IS)\s*/is)) {
-		$content = "\n\n-- PostgreSQL does not recognize PACKAGES, using package_name_function_name() instead.\n";
-		if ($self->{package_as_schema}) {
-			$content = "\n\n-- PostgreSQL does not recognize PACKAGES, using SCHEMA instead.\n";
-		}
 		my $pname = $1;
 		$pname =~ s/"//g;
 		if (!$self->{preserve_case}) {
@@ -12429,6 +12428,7 @@ sub _show_infos
 					next if (!$self->{packages}{$pkg}{text});
 					$number_pkg++;
 					$total_size += length($self->{packages}{$pkg}{text});
+					$self->_remove_comments(\$self->{packages}{$pkg}{text});
 					my @codes = split(/CREATE(?: OR REPLACE)?(?: EDITABLE| NONEDITABLE)? PACKAGE\s+/i, $self->{packages}{$pkg}{text});
 					foreach my $txt (@codes) {
 						next if ($txt !~ /^BODY\s+/is);
@@ -12436,7 +12436,7 @@ sub _show_infos
 						foreach my $f (sort keys %infos) {
 							next if (!$f);
 							if ($self->{estimate_cost}) {
-								my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($self, $infos{$f}{name});
+								my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($self, $infos{$f}{code});
 								$report_info{'Objects'}{$typ}{'cost_value'} += $cost;
 								$report_info{'Objects'}{$typ}{'detail'} .= "\L$f: $cost\E\n";
 								$report_info{full_function_details}{"\L$f\E"}{count} = $cost;
@@ -12452,8 +12452,8 @@ sub _show_infos
 						}
 					}
 				}
+				$self->{packages} = ();
 				if ($self->{estimate_cost}) {
-					$report_info{'Objects'}{$typ}{'cost_value'} += ($number_fct*$Ora2Pg::PLSQL::OBJECT_SCORE{'FUNCTION'});
 					$report_info{'Objects'}{$typ}{'cost_value'} += ($number_pkg*$Ora2Pg::PLSQL::OBJECT_SCORE{'PACKAGE BODY'});
 				}
 				$report_info{'Objects'}{$typ}{'comment'} = "Total size of package code: $total_size bytes. Number of procedures and functions found inside those packages: $number_fct.";
