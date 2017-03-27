@@ -10048,11 +10048,11 @@ sub hs_cond
 	for (my $idx = 0; $idx < scalar(@$data_types); $idx++) {
 		my $hs={};
 		$hs->{geometry} = $src_data_types->[$idx] =~ /GEOMETRY/i ? 1 : 0;
-		$hs->{isnum} =    $data_types->[$idx] !~ /^(char|varchar|date|time|text|bytea|xml|uuid)/i ? 1 :0;
+		$hs->{isnum} =    $data_types->[$idx] !~ /^(char|varchar|date|time|text|bytea|xml|uuid|citext)/i ? 1 :0;
 		$hs->{isdate} =  $data_types->[$idx] =~ /^(date|time)/i ? 1 : 0;
 		$hs->{raw} = $src_data_types->[$idx] =~ /RAW/i ? 1 : 0;
 		$hs->{clob} = $src_data_types->[$idx] =~ /CLOB/i ? 1 : 0;
-		$hs->{istext} = $data_types->[$idx] =~ /(char|text|xml|uuid)/i ? 1 : 0;
+		$hs->{istext} = $data_types->[$idx] =~ /(char|text|xml|uuid|citext)/i ? 1 : 0;
 		$hs->{isbytea} = $data_types->[$idx] =~ /bytea/i ? 1 : 0;
 		$hs->{isbit} = $data_types->[$idx] =~ /bit/i ? 1 : 0;
 		$hs->{isnotnull} = 0;
