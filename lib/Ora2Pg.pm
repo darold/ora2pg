@@ -10372,10 +10372,10 @@ sub _convert_package
 		my $pname = $1;
 		$pname =~ s/"//g;
 		if (!$self->{preserve_case}) {
-			$content .= "DROP SCHEMA $self->{pg_supports_ifexists} $pname CASCADE;\n";
+			$content .= "\nDROP SCHEMA $self->{pg_supports_ifexists} $pname CASCADE;\n";
 			$content .= "CREATE SCHEMA $pname;\n";
 		} else {
-			$content .= "DROP SCHEMA $self->{pg_supports_ifexists} \"$pname\" CASCADE;\n";
+			$content .= "\nDROP SCHEMA $self->{pg_supports_ifexists} \"$pname\" CASCADE;\n";
 			$content .= "CREATE SCHEMA \"$pname\";\n";
 		}
 		if ($self->{force_owner}) {
