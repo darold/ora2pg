@@ -963,7 +963,7 @@ sub replace_oracle_function
 	#$str =~ s/TO_NUMBER\s*\(([^,\)]+)\)/to_number\($1,'99999999999999999999D99999999999999999999'\)/is;
 
 	# Replace to_number with a cast
-	$str =~ s/TO_NUMBER\s*\(\s*([^\)]+)\s*\)/($1)\:\:integer/is;
+	$str =~ s/TO_NUMBER\s*\(\s*([^\)]+)\s*\)\s?/($1)\:\:integer /is;
 
 	# Replace the UTC convertion with the PG syntaxe
 	$str =~ s/SYS_EXTRACT_UTC\s*\(([^\)]+)\)/($1 AT TIME ZONE 'UTC')/is;
