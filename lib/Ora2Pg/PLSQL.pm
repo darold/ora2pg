@@ -1078,13 +1078,15 @@ sub replace_decode
 				if ($c eq ',' && ($idx - 1) == 0) {
 					# we are switching to a new parameter
 					push(@decode_params, '');
-				} else {
+				} elsif ($c ne "\n") {
 					$decode_params[-1] .= $c;
 				}
 			}
 		}
 		my $case_str = 'CASE ';
 		for (my $i = 1; $i <= $#decode_params; $i+=2) {
+			$decode_params[$i] =~ s/^\s+//gs;
+			$decode_params[$i] =~ s/\s+$//gs;
 			if ($i < $#decode_params) {
 				$case_str .= "WHEN $decode_params[0]=$decode_params[$i] THEN $decode_params[$i+1] ";
 			} else {

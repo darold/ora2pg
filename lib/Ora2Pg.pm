@@ -2119,24 +2119,24 @@ sub _get_dml_from_file
 	}
 	my $content = '';
 	while (my $l = <INFILE>) {
-		chomp($l) if (!$keep_new_line);
-		$l =~ s/\r//gs;
-		$l =~ s/\t+/ /gs;
-		$l =~ s/\-\-.*// if (!$keep_new_line);
-		next if (!$l);
+		chomp($l);
+		$l =~ s/\r//g;
+		#$l =~ s/\-\-.*// if (!$keep_new_line);
+		#next if (!$l);
 		$content .= $l;
-		$content .= (!$keep_new_line) ? ' ' : '';
+		#$content .= (!$keep_new_line) ? ' ' : "\n";
+		$content .= "\n";
 	}
 	close(INFILE);
-
-	$content =~ s/\/\*(.*?)\*\// /gs;
+	#$content =~ s/\/\*(.*?)\*\// /gs;
 	$content =~ s/CREATE\s+OR\s+REPLACE/CREATE/gs;
 	$content =~ s/CREATE\s+EDITIONABLE/CREATE/gs;
 	$content =~ s/CREATE\s+NONEDITIONABLE/CREATE/gs;
 
-	if (defined $text_values) {
+	if ($text_values) {
 		$content = $self->remove_text_constant_part($content);
 	}
+
 	return $content;
 }
 
@@ -2146,6 +2146,11 @@ sub read_schema_from_file
 
 	# Load file in a single string
 	my $content = $self->_get_dml_from_file();
+
+	# Remove all comments from this kind of file, too complex to preserve
+	$self->{idxcomment} = 0;
+	my %comments = $self->_remove_comments(\$content);
+	$content =~  s/\%ORA2PG_COMMENT\d+\%//gs;
 
 	my $tid = 0; 
 
@@ -2495,8 +2500,7 @@ sub read_view_from_file
 	my $self = shift;
 
 	# Load file in a single string
-	my @text_values = ();
-	my $content = $self->_get_dml_from_file(\@text_values);
+	my $content = $self->_get_dml_from_file(1);
 
 	my $tid = 0; 
 
@@ -2510,7 +2514,6 @@ sub read_view_from_file
 		my $v_alias = $2;
 		my $v_def = $3;
 		$v_name =~ s/"//g;
-		$v_def =~ s/\s+/ /g;
 		$tid++;
 	        $self->{views}{$v_name}{text} = $v_def;
 	        $self->{views}{$v_name}{iter} = $tid;
@@ -2530,7 +2533,6 @@ sub read_view_from_file
 		my $v_name = $1;
 		my $v_def = $2;
 		$v_name =~ s/"//g;
-		$v_def =~ s/\s+/ /g;
 		$tid++;
 	        $self->{views}{$v_name}{text} = $v_def;
 		$self->{views}{$v_name}{text} = $self->restore_text_constant_part($self->{views}{$v_name}{text});
@@ -2573,8 +2575,7 @@ sub read_trigger_from_file
 	my $self = shift;
 
 	# Load file in a single string
-	my @text_values = ();
-	my $content = $self->_get_dml_from_file(\@text_values, 1);
+	my $content = $self->_get_dml_from_file(1, 1);
 
 	my $tid = 0; 
 	my $doloop = 1;
@@ -11010,11 +11011,14 @@ sub _format_view
 {
 	my ($self, $sqlstr) = @_;
 
+	$self->{idxcomment} = 0;
+	my %comments = $self->_remove_comments(\$sqlstr);
 
 	my @tbs = ();
 	# Retrieve all tbs names used in view if possible
 	if ($sqlstr =~ /\bFROM\b(.*)/is) {
 		my $tmp = $1;
+		$tmp =~  s/\%ORA2PG_COMMENT\d+\%//gs;
 		$tmp =~ s/\s+/ /gs;
 		$tmp =~ s/\bWHERE.*//is;
 		# Remove all SQL reserved words of FROM STATEMENT
@@ -11039,15 +11043,11 @@ sub _format_view
 			$sqlstr =~ s/["']*\b$regextb\b["']*\.["']*([A-Z_0-9\$]+)["']*(,?)/\L$tb\E.\L$1\E$2/igs;
 			# Escape table name
 			$sqlstr =~ s/(^=\s?)["']*\b$regextb\b["']*/\L$tb\E/igs;
-			# Escape AS names
-			#$sqlstr =~ s/(\bAS\s*)["']*([A-Z_0-9]+)["']*/$1\L$2\E/igs;
 		} else {
 			# Escape column name
 			$sqlstr =~ s/["']*\b${regextb}["']*\.["']*([A-Z_0-9\$]+)["']*(,?)/"$tb"."$1"$2/igs;
 			# Escape table name
 			$sqlstr =~ s/(^=\s?)["']*\b$regextb\b["']*/"$tb"/igs;
-			# Escape AS names
-			#$sqlstr =~ s/(\bAS\s*)["']*([A-Z_0-9]+)["']*/$1"$2"/igs;
 			if ($tb =~ /(.*)\.(.*)/) {
 				my $prefx = $1;
 				my $sufx = $2;
@@ -11058,6 +11058,8 @@ sub _format_view
 	if ($self->{plsql_pgsql}) {
 			$sqlstr = Ora2Pg::PLSQL::convert_plsql_code($self, $sqlstr, %{$self->{data_type}});
 	}
+
+	$self->_restore_comments(\$sqlstr, \%comments);
 
 	return $sqlstr;
 }
