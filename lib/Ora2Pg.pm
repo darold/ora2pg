@@ -1262,7 +1262,7 @@ sub _init
 				$self->_compile_schema($self->{dbh}, uc($self->{compile_schema}));
 			}
 			if (!grep(/^$self->{type}$/, 'COPY', 'INSERT', 'SEQUENCE', 'GRANT', 'TABLESPACE', 'QUERY', 'SYNONYM', 'FDW', 'KETTLE', 'DBLINK', 'DIRECTORY')) {
-				$self->{function_metadata} = $self->_get_plsql_metadata() if ($self->{plsql_pgsql});
+				$self->_get_plsql_metadata() if ($self->{plsql_pgsql});
 			}
 			$self->{security} = $self->_get_security_definer($self->{type}) if (grep(/^$self->{type}$/, 'TRIGGER', 'FUNCTION','PROCEDURE','PACKAGE'));
 		}
@@ -1659,6 +1659,7 @@ sub _functions
 
 	$self->logit("Retrieving functions information...\n", 1);
 	$self->{functions} = $self->_get_functions();
+
 }
 
 =head2 _procedures
@@ -1674,6 +1675,7 @@ sub _procedures
 	$self->logit("Retrieving procedures information...\n", 1);
 
 	$self->{procedures} = $self->_get_procedures();
+
 }
 
 
@@ -4327,7 +4329,7 @@ LANGUAGE plpgsql ;
 				}
 				delete $fct_detail{code};
 				delete $fct_detail{before};
-				%{$self->{functions}{$fct}{metadata}} = %fct_detail;
+				%{$self->{function_metadata}{$fct}{metadata}} = %fct_detail;
 				$self->_restore_comments(\$self->{functions}{$fct}{text}, \%comments);
 			}
 		}
@@ -4500,7 +4502,7 @@ LANGUAGE plpgsql ;
 				}
 				delete $fct_detail{code};
 				delete $fct_detail{before};
-				%{$self->{procedures}{$fct}{metadata}} = %fct_detail;
+				%{$self->{fonction_metadata}{$fct}{metadata}} = %fct_detail;
 				$self->_restore_comments(\$self->{procedures}{$fct}{text}, \%comments);
 			}
 		}
@@ -4657,7 +4659,7 @@ LANGUAGE plpgsql ;
 					my $name = lc($f);
 					delete $infos{$f}{code};
 					delete $infos{$f}{before};
-					%{$self->{functions}{$name}{metadata}} = %{$infos{$f}};
+					%{$self->{function_metadata}{$name}{metadata}} = %{$infos{$f}};
 				}
 				$self->_restore_comments(\$self->{packages}{$pkg}{text}, \%comments);
 			}
@@ -9007,27 +9009,26 @@ sub _get_plsql_metadata
 			next if (grep(/^$row->[0]$/i, @fct_done));
 			push(@fct_done, $row->[0]);
 
-			$functions{"$row->[0]"}{owner} .= $row->[1];
+			$self->{function_metadata}{"$row->[0]"}{owner} .= $row->[1];
 			my $sth2 = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 			$sth2->execute or $self->logit("FATAL: " . $sth2->errstr . "\n", 0, 1);
 			while (my $r = $sth2->fetch) {
-				$functions{$row->[0]}{text} .= $r->[0];
+				$self->{function_metadata}{$row->[0]}{text} .= $r->[0];
 			}
 
-			foreach my $f (keys %functions) {
-				$self->{idxcomment} = 0;
-				my %comments = $self->_remove_comments(\$functions{$f}{text});
-				$functions{$f}{text} =~  s/\%ORA2PG_COMMENT\d+\%//gs;
-				my %fct_detail = $self->_lookup_function($functions{$f}{text});
-				if (!exists $fct_detail{name}) {
-					delete $functions{$f};
-					next;
-				}
-				delete $fct_detail{code};
-				delete $fct_detail{before};
-				%{$functions{$f}{metadata}} = %fct_detail;
-				delete $functions{$f}{text};
+			# Retrieve metadata for this function
+			$self->{idxcomment} = 0;
+			my %comments = $self->_remove_comments(\$self->{function_metadata}{$row->[0]}{text});
+			$self->{function_metadata}{$row->[0]}{text} =~  s/\%ORA2PG_COMMENT\d+\%//gs;
+			my %fct_detail = $self->_lookup_function($self->{function_metadata}{$row->[0]}{text}, undef, 1);
+			if (!exists $fct_detail{name}) {
+				delete $self->{function_metadata}{$row->[0]};
+				next;
 			}
+			delete $fct_detail{code};
+			delete $fct_detail{before};
+			%{$self->{function_metadata}{$row->[0]}{metadata}} = %fct_detail;
+			delete $self->{function_metadata}{$row->[0]}{text};
 
 		} else {
 
@@ -9051,7 +9052,7 @@ sub _get_plsql_metadata
 					my $name = lc($f);
 					delete $infos{$f}{code};
 					delete $infos{$f}{before};
-					%{$functions{$name}{metadata}} = %{$infos{$f}};
+					%{$self->{function_metadata}{$name}{metadata}} = %{$infos{$f}};
 
 					my $res_name = $f;
 					$res_name =~ s/^[^\.]+\.//;
@@ -9072,7 +9073,6 @@ sub _get_plsql_metadata
 		}
 	}
 
-	return \%functions;
 }
 
 
@@ -14447,7 +14447,7 @@ Return a hast with the details of the function
 
 sub _lookup_function
 {
-	my ($self, $plsql, $pname) = @_;
+	my ($self, $plsql, $pname, $no_plpgsql) = @_;
 
 	if ($self->{is_mysql}) {
 		if ($self->{type} eq 'FUNCTION') {
@@ -14528,10 +14528,12 @@ sub _lookup_function
 		$fct_detail{declare} = Ora2Pg::PLSQL::replace_sql_type($fct_detail{declare}, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type}, %{$self->{data_type}});
 
 		# Replace PL/SQL code into PL/PGSQL similar code
-		$fct_detail{declare} = Ora2Pg::PLSQL::convert_plsql_code($self, $fct_detail{declare}, %{$self->{data_type}});
-		$fct_detail{declare} .= ';' if ($fct_detail{declare} && $fct_detail{declare} !~ /;\s*$/s && $fct_detail{declare} !~ /\%ORA2PG_COMMENT\d+\%\s*$/s);
-		if ($fct_detail{code}) {
-			$fct_detail{code} = Ora2Pg::PLSQL::convert_plsql_code($self, "BEGIN".$fct_detail{code}, %{$self->{data_type}});
+		if (!$no_plpgsql) {
+			$fct_detail{declare} = Ora2Pg::PLSQL::convert_plsql_code($self, $fct_detail{declare}, %{$self->{data_type}});
+			$fct_detail{declare} .= ';' if ($fct_detail{declare} && $fct_detail{declare} !~ /;\s*$/s && $fct_detail{declare} !~ /\%ORA2PG_COMMENT\d+\%\s*$/s);
+			if ($fct_detail{code}) {
+				$fct_detail{code} = Ora2Pg::PLSQL::convert_plsql_code($self, "BEGIN".$fct_detail{code}, %{$self->{data_type}});
+			}
 		}
 
 		# Sometime variable used in FOR ... IN SELECT loop is not declared

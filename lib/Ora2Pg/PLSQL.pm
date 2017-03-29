@@ -691,32 +691,36 @@ sub plsql_to_plpgsql
 	$str =~ s/\%OUTERJOIN\%/\(\+\)/igs;
 
 	##############
+	# Rewrite direct call to function with out parameters using PERFORM
+	##############
+	if (scalar keys %{$class->{function_metadata}}) {
+		$str = $class->remove_text_constant_part($str);
+		if (scalar keys %{$class->{function_metadata}}) {
+			foreach my $k (keys %{$class->{function_metadata}}) {
+				if (!$class->{function_metadata}{$k}{metadata}{inout}) {
+					# Look if we need to use PERFORM to call the function
+					$str =~ s/(BEGIN|THEN|LOOP|;)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($k\s*\()/$1$2PERFORM $3/igs;
+					# Remove package name and try to replace call to function name only
+					if ($k =~ s/^[^\.]+\.//) {
+						$str =~ s/(BEGIN|THEN|LOOP|;)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($k\s*\()/$1$2PERFORM $3/igs;
+					}
+				}
+			}
+		}
+		$str = $class->restore_text_constant_part($str);
+	}
+
+	##############
 	# Replace package.function call by package_function
 	##############
 	if (scalar keys %{$class->{package_functions}}) {
 		$str = $class->remove_text_constant_part($str);
 		foreach my $k (keys %{$class->{package_functions}}) {
-			$str =~ s/($class->{package_functions}->{$k}{package}\.)?\b$k\s*\(/$class->{package_functions}->{$k}{name}\(/igs;
+			$str =~ s/($class->{package_functions}{$k}{package}\.)?\b$k\s*\(/$class->{package_functions}{$k}{name}\(/igs;
 		}
 		$str = $class->restore_text_constant_part($str);
 	}
 
-	# Replace call to function with out parameters
-	if (scalar keys %{$class->{functions}}) {
-		$str = $class->remove_text_constant_part($str);
-		foreach my $k (keys %{$class->{functions}}) {
-			if (!$class->{functions}{$k}{metadata}{inout}) {
-				# Look if we need to use PERFORM to call the function
-				my $fct_name = $k;
-				if ($str !~ /$k/is) {
-					# Remove pacakge name
-					$fct_name =~ s/^[^\.]+\.//;
-				}
-				$str =~ s/(BEGIN|THEN|LOOP|;)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($fct_name\s*\()/$1$2PERFORM $3/igs;
-			}
-		}
-		$str = $class->restore_text_constant_part($str);
-	}
 
 
 	return $str;
@@ -1024,11 +1028,11 @@ sub replace_oracle_function
 	# Replace call to function with out parameters
 	if (scalar keys %{$class->{functions}}) {
 		$str = $class->remove_text_constant_part($str);
-		foreach my $k (keys %{$class->{functions}}) {
-			if ($class->{functions}{$k}{metadata}{inout}) {
+		foreach my $k (keys %{$class->{function_metadata}}) {
+			if ($class->{function_metadata}{$k}{metadata}{inout}) {
 				my $fct_name = $k;
 				if ($str !~ /$k/is) {
-					# Remove pacakge name
+					# Remove package name
 					$fct_name =~ s/^[^\.]+\.//;
 				}
 				my %replace_out_param = ();
@@ -1038,7 +1042,7 @@ sub replace_oracle_function
 					my $fparam = $2;
 					$replace_out_param{$idx} = "$fname($fparam)";
 					# Extract position of out parameters
-					my @params = split(/,/, $class->{functions}{$k}{metadata}{args});
+					my @params = split(/,/, $class->{function_metadata}{$k}{metadata}{args});
 					my @out_pos = ();
 					for (my $i = 0; $i <= $#params; $i++) {
 						if ($params[$i] =~ /\s(OUT|INOUT)\s/is) {
