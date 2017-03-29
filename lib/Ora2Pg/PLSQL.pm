@@ -828,45 +828,65 @@ sub replace_rownum_with_limit
 {
 	my ($class, $str) = @_;
 
-        if ($str =~ s/\s+(WHERE)\s+(?:\(\s*)?ROWNUM\s*=\s*(\d+)(\s*\)\s*)?([^;]*)/ $1 $3$4/is) {
-		$class->{limit_clause} = ' LIMIT 1 OFFSET ' . ($2-1);
+	my $offset = '';
+        if ($str =~ s/\s+(WHERE)\s+(?:\(\s*)?ROWNUM\s*=\s*([^\s\)]+)(\s*\)\s*)?([^;]*)/ $1 $3$4/is) {
+		$offset = $2;
+		($offset =~ /[^0-9]/) ? $offset = "($offset)" : $offset -= 1;
+		$class->{limit_clause} = ' LIMIT 1 OFFSET ' . $offset;
 		
         }
-	if ($str =~ s/\s+AND\s+(?:\(\s*)?ROWNUM\s*=\s*(\d+)(\s*\)\s*)?([^;]*)/ $2$3/is) {
-		$class->{limit_clause} = ' LIMIT 1 OFFSET ' . ($1-1);
+	if ($str =~ s/\s+AND\s+(?:\(\s*)?ROWNUM\s*=\s*([^\s\)]+)(\s*\)\s*)?([^;]*)/ $2$3/is) {
+		$offset = $1;
+		($offset =~ /[^0-9]/) ? $offset = "($offset)" : $offset -= 1;
+		$class->{limit_clause} = ' LIMIT 1 OFFSET ' . $offset;
         }
 
-	if ($str =~ s/\s+(WHERE)\s+(?:\(\s*)?ROWNUM\s*>=\s*(\d+)(\s*\)\s*)?([^;]*)/ $1 $3$4/is) {
-		$class->{limit_clause} = ' LIMIT ALL OFFSET ' . ($2-1);
+	if ($str =~ s/\s+(WHERE)\s+(?:\(\s*)?ROWNUM\s*>=\s*([^\s\)]+)(\s*\)\s*)?([^;]*)/ $1 $3$4/is) {
+		$offset = $2;
+		($offset =~ /[^0-9]/) ? $offset = "($offset)" : $offset -= 1;
+		$class->{limit_clause} = ' LIMIT ALL OFFSET ' . $offset;
         }
-	if ($str =~ s/\s+(WHERE)\s+(?:\(\s*)?ROWNUM\s*>\s*(\d+)(\s*\)\s*)?([^;]*)/ $1 $3$4/is) {
-		$class->{limit_clause} = ' LIMIT ALL OFFSET ' . $2;
+	if ($str =~ s/\s+(WHERE)\s+(?:\(\s*)?ROWNUM\s*>\s*([^\s\)]+)(\s*\)\s*)?([^;]*)/ $1 $3$4/is) {
+		$offset = $2;
+		$offset = "($offset)" if ($offset =~ /[^0-9]/);
+		$class->{limit_clause} = ' LIMIT ALL OFFSET ' . $offset;
 	}
-	if ($str =~ s/\s+AND\s+(?:\(\s*)?ROWNUM\s*>=\s*(\d+)(\s*\)\s*)?([^;]*)/ $2$3/is) {
-		$class->{limit_clause} = ' LIMIT ALL OFFSET ' . ($1-1);
+	if ($str =~ s/\s+AND\s+(?:\(\s*)?ROWNUM\s*>=\s*([^\s\)]+)(\s*\)\s*)?([^;]*)/ $2$3/is) {
+		$offset = $1;
+		($offset =~ /[^0-9]/) ? $offset = "($offset)" : $offset -= 1;
+		$class->{limit_clause} = ' LIMIT ALL OFFSET ' . $offset;
         }
-	if ($str =~ s/\s+AND\s+(?:\(\s*)?ROWNUM\s*>\s*(\d+)(\s*\)\s*)?([^;]*)/ $2$3/is) {
-		$class->{limit_clause} = ' LIMIT ALL OFFSET ' . $1;
+	if ($str =~ s/\s+AND\s+(?:\(\s*)?ROWNUM\s*>\s*([^\s\)]+)(\s*\)\s*)?([^;]*)/ $2$3/is) {
+		$offset = $1;
+		$offset = "($offset)" if ($offset =~ /[^0-9]/);
+		$class->{limit_clause} = ' LIMIT ALL OFFSET ' . $offset;
 	}
 
 	my $tmp_val = '';
-	if ($str =~ s/\s+(WHERE)\s+(?:\(\s*)?ROWNUM\s*<=\s*(\d+)(\s*\)\s*)?([^;]*)/ $1 $3$4/is) {
+	if ($str =~ s/\s+(WHERE)\s+(?:\(\s*)?ROWNUM\s*<=\s*([^\s\)]+)(\s*\)\s*)?([^;]*)/ $1 $3$4/is) {
 		$tmp_val = $2;
 	}
-	if ($str =~ s/\s+(WHERE)\s+(?:\(\s*)?ROWNUM\s*<\s*(\d+)(\s*\)\s*)?([^;]*)/ $1 $3$4/is) {
+	if ($str =~ s/\s+(WHERE)\s+(?:\(\s*)?ROWNUM\s*<\s*([^\s\)]+)(\s*\)\s*)?([^;]*)/ $1 $3$4/is) {
 		$tmp_val = $2 - 1;
         }
-	if ($str =~ s/\s+AND\s+(?:\(\s*)?ROWNUM\s*<=\s*(\d+)(\s*\)\s*)?([^;]*)/ $2$3/is) {
+	if ($str =~ s/\s+AND\s+(?:\(\s*)?ROWNUM\s*<=\s*([^\s\)]+)(\s*\)\s*)?([^;]*)/ $2$3/is) {
 		$tmp_val = $1;
         }
-	if ($str =~ s/\s+AND\s+(?:\(\s*)?ROWNUM\s*<\s*(\d+)(\s*\)\s*)?([^;]*)/ $2$3/is) {
+	if ($str =~ s/\s+AND\s+(?:\(\s*)?ROWNUM\s*<\s*([^\s\)]+)(\s*\)\s*)?([^;]*)/ $2$3/is) {
 		$tmp_val = $1 - 1;
         }
+
 	if ($tmp_val) {
-		if ($class->{limit_clause} =~ /LIMIT ALL OFFSET (\d+)/is) {
-			$tmp_val -= $1;
+		if ($class->{limit_clause} =~ /LIMIT ALL OFFSET ([^\s]+)/is) {
+			my $tmp_offset = $1;
+			if ($tmp_offset !~ /[^0-9]/ && $tmp_val !~ /[^0-9]/) {
+				$tmp_val -= $tmp_offset;
+			} else {
+				$tmp_val = "($tmp_val - $tmp_offset)";
+			}
 			$class->{limit_clause} =~ s/LIMIT ALL/LIMIT $tmp_val/is;
 		} else {
+			$tmp_val = "($tmp_val)" if ($tmp_val =~ /[^0-9]/);
 			$class->{limit_clause} = ' LIMIT ' . $tmp_val;
 		}
 	}
