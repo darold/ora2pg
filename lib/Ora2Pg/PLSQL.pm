@@ -506,7 +506,7 @@ sub plsql_to_plpgsql
 	# Replace raise_application_error by PG standard RAISE EXCEPTION
 	$str =~ s/\braise_application_error\s*\(\s*([^,]+)\s*,\s*([^;]+),\s*(true|false)\s*\)\s*;/RAISE EXCEPTION '%', $2 USING ERRCODE = $1;/igs;
 	$str =~ s/\braise_application_error\s*\(\s*([^,]+)\s*,\s*([^;]+)\)\s*;/RAISE EXCEPTION '%', $2 USING ERRCODE = $1;/igs;
-	$str =~ s/(RAISE EXCEPTION .* USING ERRCODE = )-20(...)\s*;/$1'45$2'/igs;
+	$str =~ s/(RAISE EXCEPTION .* USING ERRCODE = )-20(...)\s*;/$1'45$2';/igs;
 	$str =~ s/DBMS_STANDARD\.RAISE EXCEPTION/RAISE EXCEPTION/igs;
 
 	# Remove IN information from cursor declaration
