@@ -365,6 +365,52 @@ USE_UNACCENT		0
 #
 USE_LOWER_UNACCENT	0
 
+
+#------------------------------------------------------------------------------
+# DATA DIFF SECTION (only delete and insert actually changed rows)
+#------------------------------------------------------------------------------
+
+# EXPERIMENTAL! Not yet working correctly with partitioned tables, parallelism,
+# and direct postgres connection! Test before using in production!
+# This feature affects SQL output for data (INSERT or COPY).
+# The deletion and (re-)importing of data is redirected to temporary tables
+# (with configurable suffix) and matching entries (i.e. quadi-unchanged rows)
+# eliminated before actual application of the DELETE and INSERT.
+# Optional functions can be specified that are called before or after the
+# actual DELETE and INSERT per table, or after all tables have been processed.
+#
+# Enable DATADIFF functionality
+DATADIFF	0
+# Suffix for temporary tables holding rows to be deleted and to be inserted.
+# Pay attention to your tables names:
+# 1) There better be no two tables with names such that name1 + suffix = name2
+# 2) length(suffix) + length(tablename) < NAMEDATALEN (usually 64)
+DATADIFF_DEL_SUFFIX _del
+DATADIFF_INS_SUFFIX _ins
+
+# The following are names of functions that will be called (via SELECT)
+# after the temporary tables have been reduced (by removing matching rows)
+# and right before or right after the actual DELETE and INSERT are performed.
+# They must take three arguments, which should ideally be of type "regclass",
+# representing the real table, the "deletions" and the "insertions" temp table
+# names, respectively. They are called before re-activation of triggers,
+# indexes, etc. (if configured).
+#DATADIFF_BEFORE   my_datadiff_handler_function
+#DATADIFF_AFTER    my_datadiff_handler_function
+
+# Another function can be called (via SELECT) right before the entire COMMIT
+# (i.e., after re-activation of indexes, triggers, etc.), which will be
+# passed in Postgres ARRAYs of the table names of the real tables, the
+# "deletions" and the "insertions" temp tables, respectively, with
+# same array index positions belonging together. So this function should
+# take three arguments of type regclass[]
+#DATADIFF_AFTER_ALL    my_datadiff_bunch_handler_function
+# If in doubt, use schema-qualified function names here.
+# The search_path will have been set to PG_SCHEMA if EXPORT_SCHEMA == 1
+# (as defined by you in those config parameters, see above),
+# i.e., the "public" schema is not contained if EXPORT_SCHEMA == 1
+
+
 #------------------------------------------------------------------------------
 # CONSTRAINT SECTION (Control constraints export and import behaviors)
 #------------------------------------------------------------------------------
