@@ -14539,7 +14539,7 @@ sub _lookup_function
 		# Sometime variable used in FOR ... IN SELECT loop is not declared
 		# Append its RECORD declaration in the DECLARE section.
 		my $tmp_code = $fct_detail{code};
-		while ($tmp_code =~ s/FOR\s+([^\s]+)\s+IN(.*?)LOOP//is) {
+		while ($tmp_code =~ s/\bFOR\s+([^\s]+)\s+IN(.*?)LOOP//is) {
 			my $varname = $1;
 			my $clause = $2;
 			if ($fct_detail{declare} !~ /\b$varname\s+/is) {

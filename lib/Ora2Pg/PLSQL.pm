@@ -690,6 +690,21 @@ sub plsql_to_plpgsql
 	# Replace outer join sign (+) with a placeholder
 	$str =~ s/\%OUTERJOIN\%/\(\+\)/igs;
 
+	# Sometime variable used in FOR ... IN SELECT loop is not declared
+	# Append its RECORD declaration in the DECLARE section.
+	my $tmp_code = $str;
+	while ($tmp_code =~ s/\bFOR\s+([^\s]+)\s+IN(.*?)LOOP//is) {
+		my $varname = $1;
+		my $clause = $2;
+		if ($str !~ /\bDECLARE\b(.*?)\b$varname\s+(.*?)BEGIN/is) {
+			# When the cursor is refereing to a statement, declare
+			# it as record otherwise it don't need to be replaced
+			if ($clause =~ /\bSELECT\b/is) {
+				$str =~ s/\bDECLARE\b/DECLARE\n  $varname RECORD;/is;
+			}
+		}
+	}
+
 	##############
 	# Rewrite direct call to function without out parameters using PERFORM
 	##############
