@@ -691,7 +691,7 @@ sub plsql_to_plpgsql
 	$str =~ s/\%OUTERJOIN\%/\(\+\)/igs;
 
 	##############
-	# Rewrite direct call to function with out parameters using PERFORM
+	# Rewrite direct call to function without out parameters using PERFORM
 	##############
 	if (scalar keys %{$class->{function_metadata}}) {
 		$str = $class->remove_text_constant_part($str);
@@ -1030,7 +1030,7 @@ sub replace_oracle_function
 	}
 
 	# Replace call to function with out parameters
-	if (scalar keys %{$class->{functions}}) {
+	if (scalar keys %{$class->{function_metadata}}) {
 		$str = $class->remove_text_constant_part($str);
 		foreach my $k (keys %{$class->{function_metadata}}) {
 			if ($class->{function_metadata}{$k}{metadata}{inout}) {
