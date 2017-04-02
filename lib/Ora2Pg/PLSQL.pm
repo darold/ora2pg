@@ -311,10 +311,6 @@ sub convert_plsql_code
 
 	return if ($str eq '');
 
-	# Replace all text constant part to prevent a split on a ; inside a text
-	$class->{text_values} = ();
-	$str = $class->remove_text_constant_part($str);
-
 	# Do some initialization iof variables used in recursive functions
 	%{$class->{single_fct_call}} = ();
 
@@ -324,7 +320,6 @@ sub convert_plsql_code
 	# Extract all block from the code by splitting it on the semi-comma
 	# character and replace all necessary function call
 	my @code_parts = split(/;/, $str);
-	map { $_ = $class->restore_text_constant_part($_) } @code_parts;
 	for (my $i = 0; $i <= $#code_parts; $i++) {
 		next if (!$code_parts[$i]);
 		%{$class->{single_fct_call}} = ();
@@ -339,14 +334,9 @@ sub convert_plsql_code
 		while ($code_parts[$i] =~ s/\%\%REPLACEFCT(\d+)\%\%/$class->{single_fct_call}{$1}/) {};
 	}
 	$str = join(';', @code_parts);
-	$str = $class->restore_text_constant_part($str);
-	$class->{text_values} = ();
 
 	# Apply code rewrite on other part of the code
-	$str = $class->remove_text_constant_part($str);
 	$str = plsql_to_plpgsql($class, $str, %data_type);
-	$str = $class->restore_text_constant_part($str);
-	$class->{text_values} = ();
 
 	return $str;
 }
@@ -470,12 +460,10 @@ sub plsql_to_plpgsql
 
 	# SELECT without INTO should be PERFORM. Exclude select of view when prefixed with AS ot IS
 	if ( ($class->{type} ne 'QUERY') && ($class->{type} ne 'VIEW') ) {
-		$str = $class->remove_text_constant_part($str);
 		$str =~ s/(\s+)(?<!AS|IS)(\s+)SELECT((?![^;]+\bINTO\b)[^;]+;)/$1$2PERFORM$3/isg;
 		$str =~ s/\bSELECT\b((?![^;]+\bINTO\b)[^;]+;)/PERFORM$1/isg;
 		$str =~ s/(AS|IS|FOR|UNION ALL|UNION|MINUS|\()(\s*)(\%ORA2PG_COMMENT\d+\%)?(\s*)PERFORM/$1$2$3$4SELECT/isg;
 		$str =~ s/(INSERT\s+INTO\s+[^;]+\s+)PERFORM/$1SELECT/isg;
-		$str = $class->restore_text_constant_part($str);
 	}
 
 	# Change nextval on sequence
@@ -709,7 +697,6 @@ sub plsql_to_plpgsql
 	# Rewrite direct call to function without out parameters using PERFORM
 	##############
 	if (scalar keys %{$class->{function_metadata}}) {
-		$str = $class->remove_text_constant_part($str);
 		if (scalar keys %{$class->{function_metadata}}) {
 			foreach my $k (keys %{$class->{function_metadata}}) {
 				if (!$class->{function_metadata}{$k}{metadata}{inout}) {
@@ -726,21 +713,16 @@ sub plsql_to_plpgsql
 				}
 			}
 		}
-		$str = $class->restore_text_constant_part($str);
 	}
 
 	##############
 	# Replace package.function call by package_function
 	##############
 	if (scalar keys %{$class->{package_functions}}) {
-		$str = $class->remove_text_constant_part($str);
 		foreach my $k (keys %{$class->{package_functions}}) {
 			$str =~ s/($class->{package_functions}{$k}{package}\.)?\b$k\s*\(/$class->{package_functions}{$k}{name}\(/igs;
 		}
-		$str = $class->restore_text_constant_part($str);
 	}
-
-
 
 	return $str;
 }
@@ -1037,16 +1019,13 @@ sub replace_oracle_function
 	# Replace package.function call by package_function
 	##############
 	if (scalar keys %{$class->{package_functions}}) {
-		$str = $class->remove_text_constant_part($str);
 		foreach my $k (keys %{$class->{package_functions}}) {
 			$str =~ s/($class->{package_functions}->{$k}{package}\.)?\b$k\s*\(/$class->{package_functions}->{$k}{name}\(/igs;
 		}
-		$str = $class->restore_text_constant_part($str);
 	}
 
 	# Replace call to function with out parameters
 	if (scalar keys %{$class->{function_metadata}}) {
-		$str = $class->remove_text_constant_part($str);
 		foreach my $k (keys %{$class->{function_metadata}}) {
 			if ($class->{function_metadata}{$k}{metadata}{inout}) {
 				my $fct_name = $k;
@@ -1083,7 +1062,6 @@ sub replace_oracle_function
 				$str =~ s/\%FCTINOUTPARAM(\d+)\%/$replace_out_param{$1}/gs;
 			}
 		}
-		$str = $class->restore_text_constant_part($str);
 	}
 
 	# Replace some sys_context call to the postgresql equivalent
@@ -1304,19 +1282,28 @@ sub raise_output
 	my @params = ();
 	my $pattern = '';
 	foreach my $el (@strings) {
-		$el = $class->restore_text_constant_part($el);
+		$el =~ s/\?TEXTVALUE(\d+)\?/$class->{text_values}{$1}/gs;
+		$el =~ s/ORA2PG_ESCAPE2_QUOTE/''/gs;
+		$el =~ s/ORA2PG_ESCAPE1_QUOTE'/\\'/gs;
 		if ($el =~ /^'(.*)'$/s) {
 			$pattern .= $1;
 		} else {
 			$pattern .= '%';
 			push(@params, $el);
 		}
+
+		$el =~ s/\\'/ORA2PG_ESCAPE1_QUOTE'/gs;
+		while ($el =~ s/''/ORA2PG_ESCAPE2_QUOTE/gs) {}
+
+		while ($el =~ s/('[^']+')/\?TEXTVALUE$class->{text_values_pos}\?/s) {
+			$class->{text_values}{$class->{text_values_pos}} = $1;
+			$class->{text_values_pos}++;
+		}
 	}
 	my $ret = "RAISE NOTICE '$pattern'";
 	if ($#params >= 0) {
 		$ret .= ', ' . join(', ', @params);
 	}
-	$ret = $class->remove_text_constant_part($ret);
 
 	return $ret;
 }

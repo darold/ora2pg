@@ -790,7 +790,6 @@ sub _init
 
 	# Init PostgreSQL DB handle
 	$self->{dbhdest} = undef;
-	$self->{idxcomment} = 0;
 	$self->{standard_conforming_strings} = 1;
 	$self->{create_schema} = 1;
 
@@ -833,7 +832,9 @@ sub _init
 	# Default to rewrite add_month(), add_year() and date_trunc()
 	$self->{date_function_rewrite} = 1;
 
-	# Init text constantes storage variables
+	# Init comment and text constant storage variables
+	$self->{idxcomment} = 0;
+	$self->{comment_values} = ();
 	$self->{text_values} = ();
 	$self->{text_values_pos} = 0;
 
@@ -2086,34 +2087,40 @@ sub _parse_constraint
 	}
 }
 
-sub remove_text_constant_part
+sub _remove_text_constant_part
 {
 	my ($self, $str) = @_;
 
-	$str =~ s/\\'/ORA2PG_ESCAPE1_QUOTE'/gs;
-	while ($str =~ s/''/ORA2PG_ESCAPE2_QUOTE/gs) {}
+	$$str =~ s/\\'/ORA2PG_ESCAPE1_QUOTE'/gs;
+	while ($$str =~ s/''/ORA2PG_ESCAPE2_QUOTE/gs) {}
 
-	while ($str =~ s/('[^']+')/\%TEXTVALUE$self->{text_values_pos}\%/s) {
+	while ($$str =~ s/('[^']+')/\?TEXTVALUE$self->{text_values_pos}\?/s) {
 		$self->{text_values}{$self->{text_values_pos}} = $1;
 		$self->{text_values_pos}++;
 	}
-	return $str;
 }
 
-sub restore_text_constant_part
+sub _restore_text_constant_part
 {
 	my ($self, $str) = @_;
 
-	$str =~ s/\%TEXTVALUE(\d+)\%/$self->{text_values}{$1}/gs;
-	$str =~ s/ORA2PG_ESCAPE2_QUOTE/''/gs;
-	$str =~ s/ORA2PG_ESCAPE1_QUOTE'/\\'/gs;
+	# First replace function with package.function in potential dynamic query
+	if (scalar keys %{$self->{package_functions}}) {
+		foreach my $k (keys %{$self->{package_functions}}) {
+			map { $self->{text_values}{$_} =~ s/($self->{package_functions}{$k}{package}\.)?\b$k\s*\(/$self->{package_functions}{$k}{name}\(/igs } keys %{$self->{text_values}};
+		}
+	}
 
-	return $str;
+
+	$$str =~ s/\?TEXTVALUE(\d+)\?/$self->{text_values}{$1}/gs;
+	$$str =~ s/ORA2PG_ESCAPE2_QUOTE/''/gs;
+	$$str =~ s/ORA2PG_ESCAPE1_QUOTE'/\\'/gs;
+
 }
 
 sub _get_dml_from_file
 {
-	my ($self, $text_values, $keep_new_line) = @_;
+	my $self = shift;
 
 	# Load file in a single string
 	if (not open(INFILE, $self->{input_file})) {
@@ -2123,21 +2130,14 @@ sub _get_dml_from_file
 	while (my $l = <INFILE>) {
 		chomp($l);
 		$l =~ s/\r//g;
-		#$l =~ s/\-\-.*// if (!$keep_new_line);
-		#next if (!$l);
 		$content .= $l;
-		#$content .= (!$keep_new_line) ? ' ' : "\n";
 		$content .= "\n";
 	}
 	close(INFILE);
-	#$content =~ s/\/\*(.*?)\*\// /gs;
+
 	$content =~ s/CREATE\s+OR\s+REPLACE/CREATE/gs;
 	$content =~ s/CREATE\s+EDITIONABLE/CREATE/gs;
 	$content =~ s/CREATE\s+NONEDITIONABLE/CREATE/gs;
-
-	if ($text_values) {
-		$content = $self->remove_text_constant_part($content);
-	}
 
 	return $content;
 }
@@ -2149,9 +2149,8 @@ sub read_schema_from_file
 	# Load file in a single string
 	my $content = $self->_get_dml_from_file();
 
-	# Remove all comments from this kind of file, too complex to preserve
-	$self->{idxcomment} = 0;
-	my %comments = $self->_remove_comments(\$content);
+	# Clear content from comment and text constant for better parsing
+	$self->_remove_comments(\$content, 1);
 	$content =~  s/\%ORA2PG_COMMENT\d+\%//gs;
 
 	my $tid = 0; 
@@ -2384,7 +2383,6 @@ sub read_schema_from_file
 			my $tb_name = $1;
 			$tb_name =~ s/"//g;
 			my $tb_def = $2;
-			#$tb_def =~ s/\s+/ /g;
 			# Oracle allow multiple constraints declaration inside a single ALTER TABLE
 			while ($tb_def =~ s/CONSTRAINT\s+([^\s]+)\s+CHECK\s*(\(.*?\))\s+(ENABLE|DISABLE|VALIDATE|NOVALIDATE|DEFERRABLE|INITIALLY|DEFERRED|USING\s+INDEX|\s+)+([^,]*)//is) {
 				my $constname = $1;
@@ -2496,13 +2494,15 @@ sub read_comment_from_file
 
 }
 
-
 sub read_view_from_file
 {
 	my $self = shift;
 
 	# Load file in a single string
-	my $content = $self->_get_dml_from_file(1);
+	my $content = $self->_get_dml_from_file();
+
+	# Clear content from comment and text constant for better parsing
+	$self->_remove_comments(\$content);
 
 	my $tid = 0; 
 
@@ -2519,7 +2519,6 @@ sub read_view_from_file
 		$tid++;
 	        $self->{views}{$v_name}{text} = $v_def;
 	        $self->{views}{$v_name}{iter} = $tid;
-		$self->{views}{$v_name}{text} = $self->restore_text_constant_part($self->{views}{$v_name}{text});
 		# Remove constraint
 		while ($v_alias =~ s/(,[^,\(]+\(.*)$//) {};
 		my @aliases = split(/\s*,\s*/, $v_alias);
@@ -2537,7 +2536,6 @@ sub read_view_from_file
 		$v_name =~ s/"//g;
 		$tid++;
 	        $self->{views}{$v_name}{text} = $v_def;
-		$self->{views}{$v_name}{text} = $self->restore_text_constant_part($self->{views}{$v_name}{text});
 	}
 
 	# Extract comments
@@ -2550,6 +2548,9 @@ sub read_grant_from_file
 
 	# Load file in a single string
 	my $content = $self->_get_dml_from_file();
+
+	# Clear content from comment and text constant for better parsing
+	$self->_remove_comments(\$content);
 
 	my $tid = 0; 
 
@@ -2570,6 +2571,7 @@ sub read_grant_from_file
 			$self->{grants}{$table}{type} = 'TABLE';
 		}
 	}
+
 }
 
 sub read_trigger_from_file
@@ -2577,7 +2579,10 @@ sub read_trigger_from_file
 	my $self = shift;
 
 	# Load file in a single string
-	my $content = $self->_get_dml_from_file(1, 1);
+	my $content = $self->_get_dml_from_file();
+
+	# Clear content from comment and text constant for better parsing
+	$self->_remove_comments(\$content);
 
 	my $tid = 0; 
 	my $doloop = 1;
@@ -2616,7 +2621,6 @@ sub read_trigger_from_file
 
 			# TRIGGER_NAME, TRIGGER_TYPE, TRIGGERING_EVENT, TABLE_NAME, TRIGGER_BODY, WHEN_CLAUSE, DESCRIPTION,ACTION_TYPE
 			$trigger =~ s/\bEND\s+[^\s]+\s+$/END/is;
-			$trigger = $self->restore_text_constant_part($trigger);
 			push(@{$self->{triggers}}, [($t_name, $t_pos, $t_event, $tb_name, $trigger, $t_when_cond, '', $t_type)]);
 
 		}
@@ -3214,6 +3218,7 @@ sub _get_sql_data
 				$fhdl = $self->open_export_file("${view}_$self->{output}");
 				set_binmode($fhdl);
 			}
+			$self->_remove_comments(\$self->{views}{$view}{text});
 			if (!$self->{pg_supports_checkoption}) {
 				$self->{views}{$view}{text} =~ s/\s*WITH\s+CHECK\s+OPTION//is;
 			}
@@ -3336,6 +3341,7 @@ sub _get_sql_data
 
 			if ($self->{file_per_table}) {
 				$self->dump($sql_header . $sql_output, $fhdl);
+				$self->_restore_comments(\$sql_output);
 				$self->close_export_file($fhdl);
 				$sql_output = '';
 			}
@@ -3685,6 +3691,7 @@ LANGUAGE plpgsql ;
 
 		$sql_output .= "\n" . $grants . "\n";
 
+		$self->_restore_comments(\$grants);
 		$self->dump($sql_header . $sql_output);
 
 		return;
@@ -3903,7 +3910,11 @@ LANGUAGE plpgsql ;
 				$sql_output .= $self->set_search_path($trig->[8]) . "\n";
 			}
 			# Check if it's like a pg rule
+			$self->_remove_comments(\$trig->[4]);
 			if (!$self->{pg_supports_insteadof} && $trig->[1] =~ /INSTEAD OF/) {
+				if ($self->{plsql_pgsql}) {
+					$trig->[4] = Ora2Pg::PLSQL::convert_plsql_code($self, $trig->[4], %{$self->{data_type}});
+				}
 				if (!$self->{preserve_case}) {
 					$sql_output .= "CREATE OR REPLACE RULE \L$trig->[0]\E AS\n\tON $trig->[2] TO $tbname\n\tDO INSTEAD\n(\n\t$trig->[4]\n);\n\n";
 				} else {
@@ -3974,9 +3985,7 @@ LANGUAGE plpgsql ;
 				}
 				if ($self->{pg_supports_when} && $trig->[5]) {
 					if (!$self->{preserve_case}) {
-						$trig->[4] = $self->remove_text_constant_part($trig->[4]);
 						$trig->[4] =~ s/"([^"]+)"/\L$1\E/gs;
-						$trig->[4] = $self->restore_text_constant_part($trig->[4]);
 						$trig->[4] =~ s/ALTER TRIGGER\s+[^\s]+\s+ENABLE(;)?//;
 					}
 					$sql_output .= "CREATE OR REPLACE FUNCTION trigger_fct_\L$trig->[0]\E() RETURNS trigger AS \$BODY\$\n$trig->[4]\n\$BODY\$\n LANGUAGE 'plpgsql'$security;\n$revoke\n";
@@ -3989,22 +3998,20 @@ LANGUAGE plpgsql ;
 							$sql_output .= "ALTER FUNCTION trigger_fct_\L$trig->[0]\E() OWNER TO \"$owner\";\n\n";
 						}
 					}
+					$self->_remove_comments(\$trig->[6]);
 					$trig->[6] =~ s/\n+$//s;
 					$trig->[6] =~ s/^[^\.\s]+\.//;
 					if (!$self->{preserve_case}) {
-						$trig->[6] = $self->remove_text_constant_part($trig->[6]);
 						$trig->[6] =~ s/"([^"]+)"/\L$1\E/gs;
-						$trig->[6] = $self->restore_text_constant_part($trig->[6]);
 
-						$trig->[5] = $self->remove_text_constant_part($trig->[5]);
-						$trig->[5] =~ s/"([^"]+)"/\L$1\E/gs;
-						$trig->[5] = $self->restore_text_constant_part($trig->[5]);
 					}
 					chomp($trig->[6]);
 					# Remove referencing clause, not supported by PostgreSQL
 					$trig->[6] =~ s/REFERENCING\s+(.*?)(FOR\s+EACH\s+)/$2/is;
 					$sql_output .= "CREATE TRIGGER $trig->[6]\n";
 					if ($trig->[5]) {
+						$self->_remove_comments(\$trig->[5]);
+						$trig->[5] =~ s/"([^"]+)"/\L$1\E/gs if (!$self->{preserve_case});
 						if ($self->{plsql_pgsql}) {
 							$trig->[5] = Ora2Pg::PLSQL::convert_plsql_code($self, $trig->[5], %{$self->{data_type}});
 						}
@@ -4013,9 +4020,7 @@ LANGUAGE plpgsql ;
 					$sql_output .= "\tEXECUTE PROCEDURE trigger_fct_\L$trig->[0]\E();\n\n";
 				} else {
 					if (!$self->{preserve_case}) {
-						$trig->[4] = $self->remove_text_constant_part($trig->[4]);
 						$trig->[4] =~ s/"([^"]+)"/\L$1\E/gs;
-						$trig->[4] = $self->restore_text_constant_part($trig->[4]);
 						$trig->[4] =~ s/ALTER TRIGGER\s+[^\s]+\s+ENABLE(;)?//;
 					}
 					$sql_output .= "CREATE OR REPLACE FUNCTION trigger_fct_\L$trig->[0]\E() RETURNS trigger AS \$BODY\$\n$trig->[4]\n\$BODY\$\n LANGUAGE 'plpgsql'$security;\n$revoke\n";
@@ -4044,6 +4049,7 @@ LANGUAGE plpgsql ;
 					$sql_output .= "\tEXECUTE PROCEDURE trigger_fct_\L$trig->[0]\E();\n\n";
 				}
 			}
+			$self->_restore_comments(\$sql_output);
 			if ($self->{file_per_function}) {
 				$self->dump($sql_header . $sql_output, $fhdl);
 				$self->close_export_file($fhdl);
@@ -4081,9 +4087,8 @@ LANGUAGE plpgsql ;
 			my $query = 1;
 			my $content = join('', @allqueries);
 			@allqueries = ();
-			# remove comments
-			$self->{idxcomment} = 0;
-			$self->_remove_comments(\$content);
+			# remove comments only, text constants are preserved
+			$self->_remove_comments(\$content, 1);
 			$content =~  s/\%ORA2PG_COMMENT\d+\%//gs;
 			foreach my $l (split(/\n/, $content)) {
 				chomp($l);
@@ -4174,8 +4179,7 @@ LANGUAGE plpgsql ;
 			my $query = 1;
 			my $content = join('', @allqueries);
 			@allqueries = ();
-			$self->{idxcomment} = 0;
-			my %comments = $self->_remove_comments(\$content);
+			$self->_remove_comments(\$content);
 			foreach my $l (split(/\n/, $content)) {
 				chomp($l);
 				next if ($l =~ /^\s*$/);
@@ -4192,7 +4196,7 @@ LANGUAGE plpgsql ;
 			}
 			$content = '';
 			foreach my $q (keys %{$self->{queries}}) {
-				$self->_restore_comments(\$self->{queries}{$q}, \%comments);
+				$self->_restore_comments(\$self->{queries}{$q});
 			}
 		}
 		foreach my $q (keys %{$self->{queries}}) {
@@ -4210,18 +4214,19 @@ LANGUAGE plpgsql ;
 			$self->logit("Dumping query $q...\n", 1);
 			my $fhdl = undef;
 			if ($self->{plsql_pgsql}) {
-				$self->{idxcomment} = 0;
-				my %comments = $self->_remove_comments(\$self->{queries}{$q});
+				$self->_remove_comments(\$self->{queries}{$q});
 				my $sql_q = Ora2Pg::PLSQL::convert_plsql_code($self, $self->{queries}{$q}, %{$self->{data_type}});
-				$self->_restore_comments(\$sql_q, \%comments);
-				$sql_output .= $sql_q;
-				$sql_output .= ';' if ($sql_q !~ /;\s*$/);
+				my $estimate = '';
 				if ($self->{estimate_cost}) {
 					my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($self, $sql_q, 'QUERY');
 					$cost += $Ora2Pg::PLSQL::OBJECT_SCORE{'QUERY'};
 					$cost_value += $cost;
-					$sql_output .= "\n-- Estimed cost of query [ $q ]: " . sprintf("%2.2f", $cost);
+					$estimate = "\n-- Estimed cost of query [ $q ]: " . sprintf("%2.2f", $cost);
 				}
+				$self->_restore_comments(\$sql_q);
+				$sql_output .= $sql_q;
+				$sql_output .= ';' if ($sql_q !~ /;\s*$/);
+				$sql_output .= $estimate;
 			} else {
 				$sql_output .= $self->{queries}{$q};
 			}
@@ -4269,8 +4274,7 @@ LANGUAGE plpgsql ;
 				$content .= $l;
 			};
 			close(IN);
-			$self->{idxcomment} = 0;
-			my %comments = $self->_remove_comments(\$content);
+			$self->_remove_comments(\$content);
 			my @allfct = split(/\n/, $content);
 			my $fcnm = '';
 			my $old_line = '';
@@ -4330,7 +4334,7 @@ LANGUAGE plpgsql ;
 				delete $fct_detail{code};
 				delete $fct_detail{before};
 				%{$self->{function_metadata}{$fct}{metadata}} = %fct_detail;
-				$self->_restore_comments(\$self->{functions}{$fct}{text}, \%comments);
+				$self->_restore_comments(\$self->{functions}{$fct}{text});
 			}
 		}
 		#--------------------------------------------------------
@@ -4345,8 +4349,7 @@ LANGUAGE plpgsql ;
 			if (!$self->{quiet} && !$self->{debug}) {
 				print STDERR $self->progress_bar($i, $num_total_function, 25, '=', 'functions', "generating $fct" ), "\r";
 			}
-			$self->{idxcomment} = 0;
-			my %comments = $self->_remove_comments(\$self->{functions}{$fct}{text});
+			$self->_remove_comments(\$self->{functions}{$fct}{text});
 			$total_size += length($self->{functions}{$fct}{text});
 			$self->logit("Dumping function $fct...\n", 1);
 			my $fhdl = undef;
@@ -4388,7 +4391,7 @@ LANGUAGE plpgsql ;
 			} else {
 				$sql_output .= $self->{functions}{$fct}{text} . "\n\n";
 			}
-			$self->_restore_comments(\$sql_output, \%comments);
+			$self->_restore_comments(\$sql_output);
 
 			if ($self->{file_per_function}) {
 				$self->dump($sql_header . $sql_output, $fhdl);
@@ -4443,8 +4446,7 @@ LANGUAGE plpgsql ;
 				$content .= $l;
 			};
 			close(IN);
-			$self->{idxcomment} = 0;
-			my %comments = $self->_remove_comments(\$content);
+			$self->_remove_comments(\$content);
 			my @allfct = split(/\n/, $content);
 			my $fcnm = '';
 			my $old_line = '';
@@ -4503,7 +4505,7 @@ LANGUAGE plpgsql ;
 				delete $fct_detail{code};
 				delete $fct_detail{before};
 				%{$self->{fonction_metadata}{$fct}{metadata}} = %fct_detail;
-				$self->_restore_comments(\$self->{procedures}{$fct}{text}, \%comments);
+				$self->_restore_comments(\$self->{procedures}{$fct}{text});
 			}
 		}
 		#--------------------------------------------------------
@@ -4517,8 +4519,7 @@ LANGUAGE plpgsql ;
 			if (!$self->{quiet} && !$self->{debug}) {
 				print STDERR $self->progress_bar($i, $num_total_procedure, 25, '=', 'procedures', "generating $fct" ), "\r";
 			}
-			$self->{idxcomment} = 0;
-			my %comments = $self->_remove_comments(\$self->{procedures}{$fct}{text});
+			$self->_remove_comments(\$self->{procedures}{$fct}{text});
 			$total_size += length($self->{procedures}->{$fct}{text});
 
 			$self->logit("Dumping procedure $fct...\n", 1);
@@ -4559,7 +4560,7 @@ LANGUAGE plpgsql ;
 			} else {
 				$sql_output .= $self->{procedures}{$fct}{text} . "\n\n";
 			}
-			$self->_restore_comments(\$sql_output, \%comments);
+			$self->_restore_comments(\$sql_output);
 			$sql_output .= $fct_cost;
 			if ($self->{file_per_function}) {
 				$self->dump($sql_header . $sql_output, $fhdl);
@@ -4620,8 +4621,7 @@ LANGUAGE plpgsql ;
 			my $before = '';
 			my $old_line = '';
 			my $skip_pkg_header = 0;
-			$self->{idxcomment} = 0;
-			my %comments = $self->_remove_comments(\$content);
+			$self->_remove_comments(\$content);
 			$content =~ s/(?:CREATE|CREATE OR REPLACE)?\s*(?:EDITABLE|NONEDITABLE)?\s*PACKAGE\s+/CREATE OR REPLACE PACKAGE /igs;
 			while ($content =~ s/(CREATE OR REPLACE PACKAGE\s+([^\s]+)\s+.*?CREATE OR REPLACE PACKAGE BODY\s+([^\s]+)\s+.*?END[^;]*;\s*)(.*?CREATE PACKAGE )/$4/is) {
 				my $pname = lc($2);
@@ -4661,7 +4661,7 @@ LANGUAGE plpgsql ;
 					delete $infos{$f}{before};
 					%{$self->{function_metadata}{$name}{metadata}} = %{$infos{$f}};
 				}
-				$self->_restore_comments(\$self->{packages}{$pkg}{text}, \%comments);
+				$self->_restore_comments(\$self->{packages}{$pkg}{text});
 			}
 		}
 		#--------------------------------------------------------
@@ -4696,11 +4696,10 @@ LANGUAGE plpgsql ;
 				}
 
 			} else {
-				$self->{idxcomment} = 0;
 				if ($self->{estimate_cost}) {
 					$total_size += length($self->{packages}->{$pkg}{text});
 				}
-				my %comments = $self->_remove_comments(\$self->{packages}{$pkg}{text});
+				$self->_remove_comments(\$self->{packages}{$pkg}{text});
 				my @codes = split(/CREATE(?: OR REPLACE)?(?: EDITABLE| NONEDITABLE)? PACKAGE\s+/i, $self->{packages}{$pkg}{text});
 				if ($self->{estimate_cost}) {
 					foreach my $txt (@codes) {
@@ -4732,8 +4731,8 @@ LANGUAGE plpgsql ;
 				}
 				foreach my $txt (@codes) {
 					next if (!$txt);
-					$txt = $self->_convert_package("CREATE OR REPLACE PACKAGE $txt", $self->{packages}{$pkg}{owner}, \%comments);
-					$self->_restore_comments(\$txt, \%comments);
+					$txt = $self->_convert_package("CREATE OR REPLACE PACKAGE $txt", $self->{packages}{$pkg}{owner});
+					$self->_restore_comments(\$txt);
 					$pkgbody .= $txt;
 					$pkgbody =~ s/[\r\n]*\bEND;\s*$//is;
 					$pkgbody =~ s/(\s*;)\s*$/$1/is;
@@ -6095,6 +6094,7 @@ CREATE TRIGGER ${table}_trigger_insert
 		set_binmode($fhdl);
 		$indices = "-- Nothing found of type indexes\n" if (!$indices);
 		$indices =~ s/\n+/\n/gs;
+		$self->_restore_comments(\$indices);
 		$self->dump($sql_header . $indices, $fhdl);
 		$self->close_export_file($fhdl);
 		$indices = '';
@@ -6126,6 +6126,7 @@ RETURNS text AS
 				$self->logit("Dumping triggers for FTS indexes to one separate file : FTS_INDEXES_$self->{output}\n", 1);
 				$fhdl = $self->open_export_file("FTS_INDEXES_$self->{output}");
 				set_binmode($fhdl);
+				$self->_restore_comments(\$fts_indices);
 				$self->dump($sql_header . $unaccent . $fts_indices, $fhdl);
 				$self->close_export_file($fhdl);
 				$fts_indices = '';
@@ -6156,6 +6157,7 @@ RETURNS text AS
 		$fhdl = $self->open_export_file("CONSTRAINTS_$self->{output}");
 		set_binmode($fhdl);
 		$constraints = "-- Nothing found of type constraints\n" if (!$constraints);
+		$self->_restore_comments(\$constraints);
 		$self->dump($sql_header . $constraints, $fhdl);
 		$self->close_export_file($fhdl);
 		$constraints = '';
@@ -6163,6 +6165,8 @@ RETURNS text AS
 
 	if (!$sql_output) {
 		$sql_output = "-- Nothing found of type TABLE\n";
+	} else {
+		$self->_restore_comments(\$sql_output);
 	}
 
 	$self->dump($sql_header . $sql_output);
@@ -6192,6 +6196,7 @@ CREATE TRIGGER virt_col_${tb}_trigger
 
 };
 		}
+		$self->_restore_comments(\$trig_out);
 		if (!$self->{file_per_constraint}) {
 			$self->dump($trig_out);
 		} else {
@@ -9016,9 +9021,9 @@ sub _get_plsql_metadata
 				$self->{function_metadata}{$row->[0]}{text} .= $r->[0];
 			}
 
-			# Retrieve metadata for this function
-			$self->{idxcomment} = 0;
-			my %comments = $self->_remove_comments(\$self->{function_metadata}{$row->[0]}{text});
+			# Retrieve metadata for this function after removing comments
+			$self->_remove_comments(\$self->{function_metadata}{$row->[0]}{text}, 1);
+			$self->{commet_values} = ();
 			$self->{function_metadata}{$row->[0]}{text} =~  s/\%ORA2PG_COMMENT\d+\%//gs;
 			my %fct_detail = $self->_lookup_function($self->{function_metadata}{$row->[0]}{text}, undef, 1);
 			if (!exists $fct_detail{name}) {
@@ -9043,8 +9048,8 @@ sub _get_plsql_metadata
 				$pkg_txt{$row->[0]} .= $r->[0];
 			}
 			foreach my $p (keys %pkg_txt) {
-				$self->{idxcomment} = 0;
-				my %comments = $self->_remove_comments(\$pkg_txt{$p});
+				$self->_remove_comments(\$pkg_txt{$p}, 1);
+				$self->{comment_values} = ();
 				$pkg_txt{$p} =~  s/\%ORA2PG_COMMENT\d+\%//gs;
 				my %infos = $self->_lookup_package($pkg_txt{$p});
 				foreach my $f (sort keys %infos) {
@@ -9414,8 +9419,8 @@ sub _get_audit_queries
 
 	my %tmp_queries = ();
 	while (my $row = $sth->fetch) {
-		$self->{idxcomment} = 0;
-		$self->_remove_comments(\$row->[0]);
+		$self->_remove_comments(\$row->[0], 1);
+		$self->{comment_values} = ();
 		$row->[0] =~  s/\%ORA2PG_COMMENT\d+\%//gs;
 		$row->[0] =  $self->normalize_query($row->[0]);
 		$tmp_queries{$row->[0]}++;
@@ -10363,7 +10368,7 @@ is set to 1.
 
 sub _convert_package
 {
-	my ($self, $plsql, $owner, $hrefcomment) = @_;
+	my ($self, $plsql, $owner) = @_;
 
 	my $dirprefix = '';
 	$dirprefix = "$self->{output_dir}/" if ($self->{output_dir});
@@ -10485,7 +10490,7 @@ sub _convert_package
 		$self->{pkgcost} = 0;
 		foreach my $f (@functions) {
 			next if (!$f);
-			$content .= $self->_convert_function($owner, $f, $pname, $hrefcomment);
+			$content .= $self->_convert_function($owner, $f, $pname);
 		}
 		if ($self->{estimate_cost}) {
 			$self->{total_pkgcost} += $self->{pkgcost} || 0;
@@ -10547,9 +10552,11 @@ remove for easy parsing
 
 sub _restore_comments
 {
-	my ($self, $content, $comments) = @_;
+	my ($self, $content) = @_;
 
-	while ($$content =~ s/(\%ORA2PG_COMMENT\d+\%)[\n]*/$comments->{$1}\n/s) { delete $comments->{$1}; };
+	$self->_restore_text_constant_part($content);
+
+	while ($$content =~ s/(\%ORA2PG_COMMENT\d+\%)[\n]*/$self->{comment_values}{$1}\n/is) { delete $self->{comment_values}{$1}; };
 
 }
 
@@ -10562,17 +10569,15 @@ to allow easy parsing
 
 sub _remove_comments
 {
-	my ($self, $content) = @_;
-
-	my %comments = ();
+	my ($self, $content, $no_constant) = @_;
 
 	while ($$content =~ s/(\/\*(.*?)\*\/)/\%ORA2PG_COMMENT$self->{idxcomment}\%/s) {
-		$comments{"\%ORA2PG_COMMENT$self->{idxcomment}\%"} = $1;
+		$self->{comment_values}{"\%ORA2PG_COMMENT$self->{idxcomment}\%"} = $1;
 		$self->{idxcomment}++;
 	}
 
 	while ($$content =~ s/(\'[^\'\n\r]+\b(PROCEDURE|FUNCTION)\s+[^\'\n\r]+\')/\%ORA2PG_COMMENT$self->{idxcomment}\%/is) {
-		$comments{"\%ORA2PG_COMMENT$self->{idxcomment}\%"} = $1;
+		$self->{comment_values}{"\%ORA2PG_COMMENT$self->{idxcomment}\%"} = $1;
 		$self->{idxcomment}++;
 	}
 	my @lines = split(/\n/, $$content);
@@ -10588,7 +10593,7 @@ sub _remove_comments
 			if ( $j > $old_j ) {
 				chomp($cmt);
 				$lines[$old_j] =~ s/^(\s*\-\-.*)$/\%ORA2PG_COMMENT$self->{idxcomment}\%/;
-				$comments{"\%ORA2PG_COMMENT$self->{idxcomment}\%"} = $cmt;
+				$self->{comment_values}{"\%ORA2PG_COMMENT$self->{idxcomment}\%"} = $cmt;
 				$self->{idxcomment}++;
 				$j--;
 				while ($j > $old_j) {
@@ -10596,21 +10601,26 @@ sub _remove_comments
 					$j--;
 				}
 			}
+			my $nocomment = '';
+			if ($lines[$j] =~ s/^([^']*)('[^\-\']*\-\-[^\-\']*')/$1\%NO_COMMENT\%/) {
+				$nocomment = $2;
+			}
 			if ($lines[$j] =~ s/(\s*\-\-.*)$/\%ORA2PG_COMMENT$self->{idxcomment}\%/) {
-				$comments{"\%ORA2PG_COMMENT$self->{idxcomment}\%"} = $1;
-				chomp($comments{"\%ORA2PG_COMMENT$self->{idxcomment}\%"});
+				$self->{comment_values}{"\%ORA2PG_COMMENT$self->{idxcomment}\%"} = $1;
+				chomp($self->{comment_values}{"\%ORA2PG_COMMENT$self->{idxcomment}\%"});
 				$self->{idxcomment}++;
 			}
+			$lines[$j] =~ s/\%NO_COMMENT\%/$nocomment/;
 		} else {
 			# Mysql supports differents kinds of comment's starter
 			if ( ($lines[$j] =~ s/(\s*COMMENT\s+'.*)$/\%ORA2PG_COMMENT$self->{idxcomment}\%/) ||
 			($lines[$j] =~ s/(\s*\-\- .*)$/\%ORA2PG_COMMENT$self->{idxcomment}\%/) ||
 			($lines[$j] =~ s/(\s*\# .*)$/\%ORA2PG_COMMENT$self->{idxcomment}\%/) ) {
-				$comments{"\%ORA2PG_COMMENT$self->{idxcomment}\%"} = $1;
-				chomp($comments{"\%ORA2PG_COMMENT$self->{idxcomment}\%"});
+				$self->{comment_values}{"\%ORA2PG_COMMENT$self->{idxcomment}\%"} = $1;
+				chomp($self->{comment_values}{"\%ORA2PG_COMMENT$self->{idxcomment}\%"});
 				# Normalize start of comment
-				$comments{"\%ORA2PG_COMMENT$self->{idxcomment}\%"} =~ s/^(\s*)COMMENT/$1\-\- /;
-				$comments{"\%ORA2PG_COMMENT$self->{idxcomment}\%"} =~ s/^(\s*)\#/$1\-\- /;
+				$self->{comment_values}{"\%ORA2PG_COMMENT$self->{idxcomment}\%"} =~ s/^(\s*)COMMENT/$1\-\- /;
+				$self->{comment_values}{"\%ORA2PG_COMMENT$self->{idxcomment}\%"} =~ s/^(\s*)\#/$1\-\- /;
 				$self->{idxcomment}++;
 			}
 		}
@@ -10619,11 +10629,15 @@ sub _remove_comments
 
 	# Replace subsequent comment by a single one
 	while ($$content =~ s/(\%ORA2PG_COMMENT\d+\%\s*\%ORA2PG_COMMENT\d+\%)/\%ORA2PG_COMMENT$self->{idxcomment}\%/s) {
-		$comments{"\%ORA2PG_COMMENT$self->{idxcomment}\%"} = $1;
+		$self->{comment_values}{"\%ORA2PG_COMMENT$self->{idxcomment}\%"} = $1;
 		$self->{idxcomment}++;
 	}
 
-	return %comments;
+	# Then replace text constant part to prevent a split on a ; or -- inside a text
+	if (!$no_constant) {
+		$self->_remove_text_constant_part($content);
+	}
+
 }
 
 =head2 _convert_function
@@ -10636,7 +10650,7 @@ is set to 1.
 
 sub _convert_function
 {
-	my ($self, $owner, $plsql, $pname, $hrefcomments) = @_;
+	my ($self, $owner, $plsql, $pname) = @_;
 
 	my $dirprefix = '';
 	$dirprefix = "$self->{output_dir}/" if ($self->{output_dir});
@@ -10925,7 +10939,7 @@ END;
 
 		my $fhdl = $self->open_export_file("$dirprefix\L$pname/$fname\E_$self->{output}", 1);
 		set_binmode($fhdl);
-		$self->_restore_comments(\$function, $hrefcomments);
+		$self->_restore_comments(\$function);
 		$self->dump($sql_header . $function, $fhdl);
 		$self->close_export_file($fhdl);
 		$function = "\\i $dirprefix\L$pname/$fname\E_$self->{output}\n";
@@ -11011,8 +11025,7 @@ sub _format_view
 {
 	my ($self, $sqlstr) = @_;
 
-	$self->{idxcomment} = 0;
-	my %comments = $self->_remove_comments(\$sqlstr);
+	$self->_remove_comments(\$sqlstr);
 
 	my @tbs = ();
 	# Retrieve all tbs names used in view if possible
@@ -11059,7 +11072,7 @@ sub _format_view
 			$sqlstr = Ora2Pg::PLSQL::convert_plsql_code($self, $sqlstr, %{$self->{data_type}});
 	}
 
-	$self->_restore_comments(\$sqlstr, \%comments);
+	$self->_restore_comments(\$sqlstr);
 
 	return $sqlstr;
 }
@@ -12430,7 +12443,10 @@ sub _show_infos
 					next if (!$self->{packages}{$pkg}{text});
 					$number_pkg++;
 					$total_size += length($self->{packages}{$pkg}{text});
+					# Remove comment and text constant, they are not useful in assessment
 					$self->_remove_comments(\$self->{packages}{$pkg}{text});
+					$self->{comment_values} = ();
+					$self->{text_values} = ();
 					my @codes = split(/CREATE(?: OR REPLACE)?(?: EDITABLE| NONEDITABLE)? PACKAGE\s+/i, $self->{packages}{$pkg}{text});
 					foreach my $txt (@codes) {
 						next if ($txt !~ /^BODY\s+/is);
@@ -14420,8 +14436,6 @@ sub _lookup_package
 		$pname =~ s/"//g;
 		$self->logit("Looking at package $pname...\n", 1);
 		$content =~ s/\bEND[^;]*;$//is;
-		$self->{idxcomment} = 0;
-		my %comments = $self->_remove_comments(\$content);
 		my @functions = $self->_extract_functions($content);
 		foreach my $f (@functions) {
 			next if (!$f);
