@@ -5344,8 +5344,8 @@ LANGUAGE plpgsql ;
 				$footer .= "WITH del AS (SELECT t, row_number() OVER (PARTITION BY t.*) rownum, ctid FROM $tmptb_del t), ";
 				$footer .= "ins AS (SELECT t, row_number() OVER (PARTITION BY t.*) rownum, ctid FROM $tmptb_ins t), ";
 				$footer .= "paired AS (SELECT del.ctid ctid1, ins.ctid ctid2 FROM del JOIN ins ON del.t IS NOT DISTINCT FROM ins.t AND del.rownum = ins.rownum), ";
-				$footer .= "del_del AS (DELETE FROM $tmptb_del WHERE ctid IN (SELECT ctid1 FROM paired)), ";
-				$footer .= "del_ins AS (DELETE FROM $tmptb_ins WHERE ctid IN (SELECT ctid2 FROM paired)) ";
+				$footer .= "del_del AS (DELETE FROM $tmptb_del WHERE ctid = ANY(ARRAY(SELECT ctid1 FROM paired))), ";
+				$footer .= "del_ins AS (DELETE FROM $tmptb_ins WHERE ctid = ANY(ARRAY(SELECT ctid2 FROM paired))) ";
 				$footer .= "SELECT 1;\n";
 				# call optional function specified in config to be called before actual deletion/insertion
 				$footer .= "SELECT " . $self->{datadiff_before} . "('" . $tmptb . "', '" . $tmptb_del . "', '" . $tmptb_ins . "');\n" if ($self->{datadiff_before});
