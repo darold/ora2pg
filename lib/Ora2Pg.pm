@@ -5359,7 +5359,14 @@ LANGUAGE plpgsql ;
 				# do actual delete
 				$footer .= "WITH tbl AS (SELECT t, row_number() OVER (PARTITION BY t.*) rownum, ctid FROM $tmptb t), ";
 				$footer .= "del AS (SELECT t, row_number() OVER (PARTITION BY t.*) rownum FROM $tmptb_del t) ";
-				$footer .= "DELETE FROM $tmptb WHERE ctid IN (SELECT tbl.ctid FROM tbl JOIN del ON tbl.t IS NOT DISTINCT FROM del.t AND tbl.rownum = del.rownum);\n";
+				$footer .= "DELETE FROM $tmptb WHERE ctid = ANY(ARRAY(SELECT tbl.ctid FROM tbl JOIN del ON tbl.t IS NOT DISTINCT FROM del.t ";
+				foreach my $col (@{$self->{tables}{$table}{pg_colnames_nullable}}) {
+					$footer .= "AND (((del.t).$col IS NULL AND (tbl.t).$col IS NULL) OR ((del.t).$col = (tbl.t).$col)) ";
+				}
+				foreach my $col (@{$self->{tables}{$table}{pg_colnames_notnull}}) {
+					$footer .= "AND ((del.t).$col = (tbl.t).$col) ";
+				}
+				$footer .= " AND tbl.rownum = del.rownum));\n";
 				# do actual insert
 				$footer .= "INSERT INTO $tmptb SELECT * FROM $tmptb_ins;\n";
 				# call optional function specified in config to be called after actual deletion/insertion
