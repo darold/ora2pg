@@ -6398,9 +6398,9 @@ sub _dump_table
 		} else {
 			$col_list .= "\"$colname\",";
 			if ($f->[3] =~ m/^Y/) {
-				push @pg_colnames_nullable, "\L$colname\E";
+				push @pg_colnames_nullable, "\"$colname\"";
 			} else {
-				push @pg_colnames_notnull, "\L$colname\E";
+				push @pg_colnames_notnull, "\"$colname\"";
 			}
 		}
 	}
