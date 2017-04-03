@@ -5343,7 +5343,11 @@ LANGUAGE plpgsql ;
 				# reduce by deleting matching (i.e. quasi "unchanged") entries from $tmptb_del and $tmptb_ins
 				$footer .= "WITH del AS (SELECT t, row_number() OVER (PARTITION BY t.*) rownum, ctid FROM $tmptb_del t), ";
 				$footer .= "ins AS (SELECT t, row_number() OVER (PARTITION BY t.*) rownum, ctid FROM $tmptb_ins t), ";
-				$footer .= "paired AS (SELECT del.ctid ctid1, ins.ctid ctid2 FROM del JOIN ins ON del.t IS NOT DISTINCT FROM ins.t AND del.rownum = ins.rownum), ";
+				$footer .= "paired AS (SELECT del.ctid ctid1, ins.ctid ctid2 FROM del JOIN ins ON del.t IS NOT DISTINCT FROM ins.t ";
+				foreach my $col (@{$self->{tables}{$table}{pg_colnames}}) {
+					$footer .= "AND (((del.t).$col IS NULL AND (ins.t).$col IS NULL) OR ((del.t).$col = (ins.t).$col)) ";
+				}
+				$footer .= "AND del.rownum = ins.rownum), ";
 				$footer .= "del_del AS (DELETE FROM $tmptb_del WHERE ctid = ANY(ARRAY(SELECT ctid1 FROM paired))), ";
 				$footer .= "del_ins AS (DELETE FROM $tmptb_ins WHERE ctid = ANY(ARRAY(SELECT ctid2 FROM paired))) ";
 				$footer .= "SELECT 1;\n";
@@ -5351,7 +5355,7 @@ LANGUAGE plpgsql ;
 				$footer .= "SELECT " . $self->{datadiff_before} . "('" . $tmptb . "', '" . $tmptb_del . "', '" . $tmptb_ins . "');\n" if ($self->{datadiff_before});
 				# do actual delete
 				$footer .= "WITH tbl AS (SELECT t, row_number() OVER (PARTITION BY t.*) rownum, ctid FROM $tmptb t), ";
-				$footer .= "del AS (SELECT t, row_number() OVER (PARTITION BY t.*) rownum FROM $tmptb_del t)";
+				$footer .= "del AS (SELECT t, row_number() OVER (PARTITION BY t.*) rownum FROM $tmptb_del t) ";
 				$footer .= "DELETE FROM $tmptb WHERE ctid IN (SELECT tbl.ctid FROM tbl JOIN del ON tbl.t IS NOT DISTINCT FROM del.t AND tbl.rownum = del.rownum);\n";
 				# do actual insert
 				$footer .= "INSERT INTO $tmptb SELECT * FROM $tmptb_ins;\n";
@@ -6326,6 +6330,7 @@ sub _dump_table
 
 	# Extract column information following the Oracle position order
 	my @fname = ();
+	my @pg_colnames;
 	foreach my $i ( 0 .. $#{$self->{tables}{$table}{field_name}} ) {
 		my $fieldname = ${$self->{tables}{$table}{field_name}}[$i];
 		if (!$self->{preserve_case}) {
@@ -6369,11 +6374,14 @@ sub _dump_table
 		if (!$self->{preserve_case}) {
 			$colname = $self->quote_reserved_words($colname);
 			$col_list .= "\L$colname\E,";
+			push @pg_colnames, "\L$colname\E";
 		} else {
 			$col_list .= "\"$colname\",";
+			push @pg_colnames, "\"$colname\"";
 		}
 	}
 	$col_list =~ s/,$//;
+	$self->{tables}{$table}{pg_colnames} = \@pg_colnames;
 
 	my $s_out = "INSERT INTO $tmptb ($col_list";
 	if ($self->{type} eq 'COPY') {
