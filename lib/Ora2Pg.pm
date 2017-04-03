@@ -5344,8 +5344,11 @@ LANGUAGE plpgsql ;
 				$footer .= "WITH del AS (SELECT t, row_number() OVER (PARTITION BY t.*) rownum, ctid FROM $tmptb_del t), ";
 				$footer .= "ins AS (SELECT t, row_number() OVER (PARTITION BY t.*) rownum, ctid FROM $tmptb_ins t), ";
 				$footer .= "paired AS (SELECT del.ctid ctid1, ins.ctid ctid2 FROM del JOIN ins ON del.t IS NOT DISTINCT FROM ins.t ";
-				foreach my $col (@{$self->{tables}{$table}{pg_colnames}}) {
+				foreach my $col (@{$self->{tables}{$table}{pg_colnames_nullable}}) {
 					$footer .= "AND (((del.t).$col IS NULL AND (ins.t).$col IS NULL) OR ((del.t).$col = (ins.t).$col)) ";
+				}
+				foreach my $col (@{$self->{tables}{$table}{pg_colnames_notnull}}) {
+					$footer .= "AND ((del.t).$col = (ins.t).$col) ";
 				}
 				$footer .= "AND del.rownum = ins.rownum), ";
 				$footer .= "del_del AS (DELETE FROM $tmptb_del WHERE ctid = ANY(ARRAY(SELECT ctid1 FROM paired))), ";
@@ -6330,7 +6333,7 @@ sub _dump_table
 
 	# Extract column information following the Oracle position order
 	my @fname = ();
-	my @pg_colnames;
+	my @pg_colnames_nullable, @pg_colnames_notnull;
 	foreach my $i ( 0 .. $#{$self->{tables}{$table}{field_name}} ) {
 		my $fieldname = ${$self->{tables}{$table}{field_name}}[$i];
 		if (!$self->{preserve_case}) {
@@ -6374,14 +6377,23 @@ sub _dump_table
 		if (!$self->{preserve_case}) {
 			$colname = $self->quote_reserved_words($colname);
 			$col_list .= "\L$colname\E,";
-			push @pg_colnames, "\L$colname\E";
+			if ($f->[3] =~ m/^Y/) {
+				push @pg_colnames_nullable, "\L$colname\E";
+			} else {
+				push @pg_colnames_notnull, "\L$colname\E";
+			}
 		} else {
 			$col_list .= "\"$colname\",";
-			push @pg_colnames, "\"$colname\"";
+			if ($f->[3] =~ m/^Y/) {
+				push @pg_colnames_nullable, "\L$colname\E";
+			} else {
+				push @pg_colnames_notnull, "\L$colname\E";
+			}
 		}
 	}
 	$col_list =~ s/,$//;
-	$self->{tables}{$table}{pg_colnames} = \@pg_colnames;
+	$self->{tables}{$table}{pg_colnames_nullable} = \@pg_colnames_nullable;
+	$self->{tables}{$table}{pg_colnames_notnull} = \@pg_colnames_notnull;
 
 	my $s_out = "INSERT INTO $tmptb ($col_list";
 	if ($self->{type} eq 'COPY') {
