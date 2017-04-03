@@ -5151,6 +5151,12 @@ LANGUAGE plpgsql ;
 
 			# Create temporary tables for DATADIFF
 			if ($self->{datadiff}) {
+				if ($self->{datadiff_work_mem}) {
+					$first_header .= "SET work_mem TO '" . $self->{datadiff_work_mem} . "';\n";
+				}
+				if ($self->{datadiff_temp_buffers}) {
+					$first_header .= "SET temp_buffers TO '" . $self->{datadiff_temp_buffers} . "';\n";
+				}
 				$first_header .= "CREATE TEMPORARY TABLE " . $self->get_tbname_with_suffix($tmptb, $self->{datadiff_del_suffix});
 				$first_header .= " (LIKE " . $tmptb . " INCLUDING DEFAULTS INCLUDING CONSTRAINTS INCLUDING INDEXES)";
 				$first_header .= " ON COMMIT DROP;\n";

@@ -387,6 +387,11 @@ DATADIFF	0
 # 2) length(suffix) + length(tablename) < NAMEDATALEN (usually 64)
 DATADIFF_DEL_SUFFIX _del
 DATADIFF_INS_SUFFIX _ins
+# Allow setting the work_mem and temp_buffers parameters
+# to keep temp tables in memory and have efficient sorting, etc.
+DATADIFF_WORK_MEM	256 MB
+DATADIFF_TEMP_BUFFERS	512 MB
+
 
 # The following are names of functions that will be called (via SELECT)
 # after the temporary tables have been reduced (by removing matching rows)
