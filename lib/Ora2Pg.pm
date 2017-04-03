@@ -5336,7 +5336,7 @@ LANGUAGE plpgsql ;
 
 		#### Set SQL commands that must be executed after data loading
 		my $footer = '';
-		my @datadiff_tbl, @datadiff_del, @datadiff_ins;
+		my (@datadiff_tbl, @datadiff_del, @datadiff_ins);
 		foreach my $table (@ordered_tables) {
 
 			# Rename table and double-quote it if required
@@ -6346,7 +6346,7 @@ sub _dump_table
 
 	# Extract column information following the Oracle position order
 	my @fname = ();
-	my @pg_colnames_nullable, @pg_colnames_notnull;
+	my (@pg_colnames_nullable, @pg_colnames_notnull);
 	foreach my $i ( 0 .. $#{$self->{tables}{$table}{field_name}} ) {
 		my $fieldname = ${$self->{tables}{$table}{field_name}}[$i];
 		if (!$self->{preserve_case}) {
