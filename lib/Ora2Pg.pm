@@ -5834,11 +5834,11 @@ CREATE TRIGGER ${table}_trigger_insert
 					} else {
 						my $tmpa = $self->{tables}{$table}{column_info}{$a};
 						$tmpa->[2] =~ s/\D//g;
-						my $typa = $self->_sql_type($tmpa->[1], $tmpa->[2], $tmpa->[5], $tmpa->[6]);
+						my $typa = $self->_sql_type($tmpa->[1], $tmpa->[2], $tmpa->[5], $tmpa->[6], $tmpa->[4]);
 						$typa =~ s/\(.*//;
 						my $tmpb = $self->{tables}{$table}{column_info}{$b};
 						$tmpb->[2] =~ s/\D//g;
-						my $typb = $self->_sql_type($tmpb->[1], $tmpb->[2], $tmpb->[5], $tmpb->[6]);
+						my $typb = $self->_sql_type($tmpb->[1], $tmpb->[2], $tmpb->[5], $tmpb->[6], $tmpb->[4]);
 						$typb =~ s/\(.*//;
 						$TYPALIGN{$typb} <=> $TYPALIGN{$typa};
 					}
@@ -5847,7 +5847,7 @@ CREATE TRIGGER ${table}_trigger_insert
 				# COLUMN_NAME,DATA_TYPE,DATA_LENGTH,NULLABLE,DATA_DEFAULT,DATA_PRECISION,DATA_SCALE,CHAR_LENGTH,TABLE_NAME,OWNER,VIRTUAL_COLUMN,POSITION,SRID,SDO_DIM,SDO_GTYPE
 				my $f = $self->{tables}{$table}{column_info}{$k};
 				$f->[2] =~ s/\D//g;
-				my $type = $self->_sql_type($f->[1], $f->[2], $f->[5], $f->[6]);
+				my $type = $self->_sql_type($f->[1], $f->[2], $f->[5], $f->[6], $f->[4]);
 				$type = "$f->[1], $f->[2]" if (!$type);
 				# Change column names
 				my $fname = $f->[0];
@@ -6282,7 +6282,7 @@ sub _dump_table
 			$self->{local_type} = $self->{type} if (!$self->{local_type});
 		}
 
-		my $type = $self->_sql_type($f->[1], $f->[2], $f->[5], $f->[6]);
+		my $type = $self->_sql_type($f->[1], $f->[2], $f->[5], $f->[6], $f->[4]);
 		$type = "$f->[1], $f->[2]" if (!$type);
 
 		if (uc($f->[1]) eq 'ENUM') {
@@ -6438,7 +6438,7 @@ sub _create_indexes
 					my $d = $self->{$objtyp}{$tbsaved}{column_info}{uc($indexes{$idx}->[$j])};
 					$d->[2] =~ s/\D//g;
 					if ( (($self->{use_index_opclass} == 1) || ($self->{use_index_opclass} <= $d->[2])) && ($d->[1] =~ /VARCHAR/)) {
-						my $typ = $self->_sql_type($d->[1], $d->[2], $d->[5], $d->[6]);
+						my $typ = $self->_sql_type($d->[1], $d->[2], $d->[5], $d->[6], $f->[4]);
 						$typ =~ s/\(.*//;
 						if ($typ =~ /varchar/) {
 							$typ = ' varchar_pattern_ops';
@@ -7431,7 +7431,7 @@ Oracle data type.
 
 sub _sql_type
 {
-        my ($self, $type, $len, $precision, $scale) = @_;
+        my ($self, $type, $len, $precision, $scale, $default) = @_;
 
 	$type = uc($type); # Force uppercase
 
@@ -7470,6 +7470,8 @@ sub _sql_type
 		return $self->{data_type}{"$type($len)"};
 	} elsif ( $type =~ /RAW/ && $len && exists $self->{data_type}{"$type($len)"}) {
 		return $self->{data_type}{"$type($len)"};
+	} elsif ( $type =~ /RAW/ && $len && $default =~ /sys_guid/i) {
+		return 'uuid';
 	}
 
         if (exists $self->{data_type}{$type}) {
@@ -10997,7 +10999,7 @@ sub _convert_declare
 						my $len = $prec;
 						$prec = 0 if (!$scale);
 						$len =~ s/\D//g;
-						$tmp_type = $self->_sql_type($type_name,$len,$prec,$scale);
+						$tmp_type = $self->_sql_type($type_name,$len,$prec,$scale,$tmp_assign);
 					} else {
 						$tmp_type = $self->_sql_type($tmp_type);
 					}
@@ -12683,11 +12685,11 @@ sub _show_infos
 						} else {
 							my $tmpa = $self->{tables}{$t}{column_info}{$a};
 							$tmpa->[2] =~ s/\D//g;
-							my $typa = $self->_sql_type($tmpa->[1], $tmpa->[2], $tmpa->[5], $tmpa->[6]);
+							my $typa = $self->_sql_type($tmpa->[1], $tmpa->[2], $tmpa->[5], $tmpa->[6], $tmpa->[4]);
 							$typa =~ s/\(.*//;
 							my $tmpb = $self->{tables}{$t}{column_info}{$b};
 							$tmpb->[2] =~ s/\D//g;
-							my $typb = $self->_sql_type($tmpb->[1], $tmpb->[2], $tmpb->[5], $tmpb->[6]);
+							my $typb = $self->_sql_type($tmpb->[1], $tmpb->[2], $tmpb->[5], $tmpb->[6], $tmpb->[4]);
 							$typb =~ s/\(.*//;
 							$TYPALIGN{$typb} <=> $TYPALIGN{$typa};
 						}
@@ -12695,7 +12697,7 @@ sub _show_infos
 					# COLUMN_NAME,DATA_TYPE,DATA_LENGTH,NULLABLE,DATA_DEFAULT,DATA_PRECISION,DATA_SCALE,CHAR_LENGTH,TABLE_NAME,OWNER,VIRTUAL_COLUMN,POSITION,SRID,SDO_DIM,SDO_GTYPE
 					my $d = $self->{tables}{$t}{column_info}{$k};
 					$d->[2] =~ s/\D//g;
-					my $type = $self->_sql_type($d->[1], $d->[2], $d->[5], $d->[6]);
+					my $type = $self->_sql_type($d->[1], $d->[2], $d->[5], $d->[6], $d->[4]);
 					$type = "$d->[1], $d->[2]" if (!$type);
 
 					# Check if we need auto increment
