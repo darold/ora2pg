@@ -7625,9 +7625,7 @@ END
 	my $pos = 0;
 	while (my $row = $sth->fetch) {
 
-		if ($#{$row} == 9) {
-			$row->[2] = $row->[7] if $row->[1] =~ /char/i;
-		}
+        $row->[2] = $row->[7] if $row->[1] =~ /char/i;
 
 		# Seems that for a NUMBER with a DATA_SCALE to 0, no DATA_PRECISION and a DATA_LENGTH of 22
 		# Oracle use a NUMBER(38) instead
