@@ -605,33 +605,6 @@ sub modify_struct
 
 }
 
-=head2 quote_reserved_words
-
-Return a quoted object named if it is a PostgreSQL reserved word
-
-=cut
-
-sub quote_reserved_words
-{
-	my ($self, $obj_name) = @_;
-
-	return $obj_name if ($obj_name =~ /^SYS_NC\d+/);
-
-	if ($self->{use_reserved_words}) {
-		if ($obj_name && grep(/^$obj_name$/i, @KEYWORDS)) {
-			return '"' . $obj_name . '"';
-		}
-	}
-	if (!$self->{preserve_case}) {
-		$obj_name = lc($obj_name);
-		if ( ($obj_name =~ /^\d+/) || ($obj_name =~ /[^a-zA-Z0-9\_\.]/) ) {
-			return '"' . $obj_name . '"';
-		}
-	}
-
-	return $obj_name;
-}
-
 =head2 is_reserved_words
 
 Returns 1 if the given object name is a PostgreSQL reserved word
@@ -644,10 +617,12 @@ sub is_reserved_words
 {
 	my ($obj_name) = @_;
 
+	return 0 if (!$self->{use_reserved_words});
+
 	if ($obj_name && grep(/^$obj_name$/i, @KEYWORDS)) {
 		return 1;
 	}
-	if ($obj_name =~ /^\d+$/) {
+	if ($obj_name =~ /^\d+/) {
 		return 2;
 	}
 	if ($obj_name && grep(/^$obj_name$/i, @SYSTEM_FIELDS)) {
@@ -657,23 +632,45 @@ sub is_reserved_words
 	return 0;
 }
 
+=head2 quote_object_name
+
+Return a quoted object named when needed:
+	- PostgreSQL reserved word
+	- unsupported character
+	- start with a digit or digit only
+=cut
+
+
 sub quote_object_name
 {
 	my ($self, $obj_name) = @_;
 
+	return if ($obj_name =~ /^SYS_NC\d+/);
+
+	# Start by removing any double quote
+	$obj_name =~ s/"//g;
+
+	# When PRESERVE_CASE is not enabled set object name to lower case
 	if (!$self->{preserve_case}) {
 		$obj_name = lc($obj_name);
-		if ($obj_name =~ /[^a-zA-Z0-9\_]/) {
-			return '"' . $obj_name . '"';
+		# then if there is non alphanumeric or the object name is a reserved word
+		if ($obj_name =~ /[^a-z0-9\_\.]/ || &is_reserved_words($obj_name)) {
+			# Add double quote to [schema.] object name 
+			if ($obj_name !~ /^[^\.]+\.[^\.]+$/) {
+				$obj_name = '"' . $obj_name . '"';
+			} else {
+				$obj_name =~ s/^([^\.]+)\.([^\.]+)$/"$1"\."$2"/;
+			}
 		}
+	# Add double quote to [schema.] object name 
+	} elsif ($obj_name !~ /^[^\.]+\.[^\.]+$/) {
+		$obj_name = "\"$obj_name\"";
 	} else {
-		return '"' . $obj_name . '"';
+		$obj_name =~ s/^([^\.]+)\.([^\.]+)$/"$1"\."$2"/;
 	}
 
 	return $obj_name;
 }
-
-
 
 =head2 replace_tables HASH
 
@@ -2993,13 +2990,8 @@ sub get_replaced_tbname
 		$self->logit("\tReplacing table $tmptb as " . $self->{replaced_tables}{lc($tmptb)} . "...\n", 1);
 		$tmptb = $self->{replaced_tables}{lc($tmptb)};
 	}
-	if (!$self->{preserve_case}) {
-		$tmptb = lc($tmptb);
-		$tmptb =~ s/"//g;
-	} elsif ($tmptb !~ /"/) {
-		$tmptb = '"' . $tmptb . '"';
-	}
-	$tmptb = $self->quote_reserved_words($tmptb);
+
+	$tmptb = $self->quote_object_name($tmptb);
 
 	return $tmptb; 
 }
@@ -3235,13 +3227,9 @@ sub _get_sql_data
 			if ($self->{export_schema} && !$self->{schema} && ($tmpv =~ /^([^\.]+)\./) ) {
 				$sql_output .= $self->set_search_path($1) . "\n";
 			}
+			$tmpv = $self->quote_object_name($tmpv);
 			if (!@{$self->{views}{$view}{alias}}) {
-				if (!$self->{preserve_case}) {
-					$sql_output .= "CREATE OR REPLACE VIEW \L$tmpv\E AS ";
-				} else {
-					$tmpv =~ s/\./"."/;
-					$sql_output .= "CREATE OR REPLACE VIEW \"$tmpv\" AS ";
-				}
+				$sql_output .= "CREATE OR REPLACE VIEW $tmpv AS ";
 				$sql_output .= $self->{views}{$view}{text};
 				$sql_output .= ';' if ($sql_output !~ /;\s*$/s);
 				$sql_output .= "\n";
@@ -3253,12 +3241,7 @@ sub _get_sql_data
 				}
 				$sql_output .= "\n";
 			} else {
-				if (!$self->{preserve_case}) {
-					$sql_output .= "CREATE OR REPLACE VIEW \L$tmpv\E (";
-				} else {
-					$tmpv =~ s/\./"."/;
-					$sql_output .= "CREATE OR REPLACE VIEW \"$tmpv\" (";
-				}
+				$sql_output .= "CREATE OR REPLACE VIEW $tmpv (";
 				my $count = 0;
 				foreach my $d (@{$self->{views}{$view}{alias}}) {
 					if ($count == 0) {
@@ -3272,19 +3255,12 @@ sub _get_sql_data
 						$self->logit("\tReplacing column \L$d->[0]\E as " . $self->{replaced_cols}{"\L$view\E"}{"\L$fname\E"} . "...\n", 1);
 						$fname = $self->{replaced_cols}{"\L$view\E"}{"\L$fname\E"};
 					}
-					if (!$self->{preserve_case}) {
-						$sql_output .= "\L$fname\E";
-					} else {
-						$sql_output .= "\"$fname\"";
-					}
+					$sql_output .= $self->quote_object_name($fname);
 				}
 
-				if (!$self->{preserve_case}) {
-					if ($self->{views}{$view}{text} =~ /SELECT[^\s]*(.*?)\bFROM\b/is) {
-						my $clause = $1;
-						$clause =~ s/"([^"]+)"/"\L$1\E"/gs;
-						$self->{views}{$view}{text} =~ s/SELECT[^\s]*(.*?)\bFROM\b/SELECT $clause FROM/is;
-					}
+				if ($self->{views}{$view}{text} =~ /SELECT[^\s]*(.*?)\bFROM\b/is) {
+					my $clause = $1;
+					$self->{views}{$view}{text} =~ s/SELECT[^\s]*(.*?)\bFROM\b/SELECT $clause FROM/is;
 				}
 				$sql_output .= ") AS " . $self->{views}{$view}{text};
 				$sql_output .= ';' if ($sql_output !~ /;\s*$/s);
@@ -3301,22 +3277,14 @@ sub _get_sql_data
 			if ($self->{force_owner}) {
 				my $owner = $self->{views}{$view}{owner};
 				$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
-				if (!$self->{preserve_case}) {
-					$sql_output .= "ALTER VIEW \L$tmpv\E OWNER TO \L$owner\E;\n";
-				} else {
-					$sql_output .= "ALTER VIEW \"$tmpv\" OWNER TO \"$owner\";\n";
-				}
+				$sql_output .= "ALTER VIEW $tmpv OWNER TO " . $self->quote_object_name($owner) . ";\n";
 			}
 
 			# Add comments on view and columns
 			if (!$self->{disable_comment}) {
 
 				if ($self->{views}{$view}{comment}) {
-					if (!$self->{preserve_case}) {
-						$sql_output .= "COMMENT ON VIEW \L$tmpv\E ";
-					} else {
-						$sql_output .= "COMMENT ON VIEW \"$tmpv\" ";
-					}
+					$sql_output .= "COMMENT ON VIEW $tmpv ";
 					$self->{views}{$view}{comment} =~ s/'/''/gs;
 					$sql_output .= " IS E'" . $self->{views}{$view}{comment} . "';\n\n";
 				}
@@ -3329,13 +3297,8 @@ sub _get_sql_data
 					if (exists $self->{replaced_cols}{"\L$view\E"}{"\L$f\E"} && $self->{replaced_cols}{"\L$view\E"}{"\L$f\E"}) {
 						$fname = $self->{replaced_cols}{"\L$view\E"}{"\L$f\E"};
 					}
-					if (!$self->{preserve_case}) {
-						$sql_output .= "COMMENT ON COLUMN \L$tmpv.$fname\E IS E'" . $self->{views}{$view}{column_comments}{$f} .  "';\n";
-					} else {
-						my $vname = $tmpv;
-						$vname =~ s/\./"."/;
-						$sql_output .= "COMMENT ON COLUMN \"$vname\".\"$fname\" IS E'" . $self->{views}{$view}{column_comments}{$f} .  "';\n";
-					}
+					$sql_output .= "COMMENT ON COLUMN " . $self->quote_object_name("$tmpv.$fname")
+							. " IS E'" . $self->{views}{$view}{column_comments}{$f} .  "';\n";
 				}
 			}
 
@@ -3522,11 +3485,8 @@ LANGUAGE plpgsql ;
 					if ($self->{force_owner}) {
 						my $owner = $self->{materialized_views}{$view}{owner};
 						$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
-						if (!$self->{preserve_case}) {
-							$sql_output .= "ALTER VIEW \L$view\E_mview OWNER TO \L$owner\E;\n";
-						} else {
-							$sql_output .= "ALTER VIEW \L$view\E_mview OWNER TO \"$owner\";\n";
-						}
+						$sql_output .= "ALTER VIEW " . $self->quote_object_name($view . '_mview')
+									. " OWNER TO " . $self->quote_object_name($owner) . ";\n";
 					}
 				} else {
 					$sql_output .= "CREATE MATERIALIZED VIEW \L$view\E AS\n";
@@ -3543,11 +3503,8 @@ LANGUAGE plpgsql ;
 			if ($self->{force_owner}) {
 				my $owner = $self->{materialized_views}{$view}{owner};
 				$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
-				if (!$self->{preserve_case}) {
-					$sql_output .= "ALTER MATERIALIZED VIEW \L$view\E OWNER TO \L$owner\E;\n\n";
-				} else {
-					$sql_output .= "ALTER MATERIALIZED VIEW \"$view\" OWNER TO \"$owner\";\n\n";
-				}
+				$sql_output .= "ALTER MATERIALIZED VIEW " . $self->quote_object_name($view)
+							. " OWNER TO " . $self->quote_object_name($owner) . ";\n";
 			}
 
 			if ($self->{file_per_table} && !$self->{pg_dsn}) {
@@ -3589,22 +3546,14 @@ LANGUAGE plpgsql ;
 			my $realtable = lc($table);
 			my $obj = $self->{grants}{$table}{type} || 'TABLE';
 			if ($self->{export_schema} && $self->{schema}) {
-				if (!$self->{preserve_case}) {
-					$realtable =  "\L$self->{schema}.$table\E";
-				} else {
-					$realtable =  "\"$self->{schema}\".\"$table\"";
-				}
+				$realtable = $self->quote_object_name("$self->{schema}.$table");
 			} elsif ($self->{preserve_case}) {
-				$realtable =  "\"$table\"";
+				$realtable =  $self->quote_object_name($table);
 			}
 			$grants .= "-- Set priviledge on $self->{grants}{$table}{type} $table\n";
 
-			my $ownee = $self->{grants}{$table}{owner};
-			if (!$self->{preserve_case}) {
-				$ownee = lc($self->{grants}{$table}{owner});
-			} else {
-				$ownee = "\"$self->{grants}{$table}{owner}\"";
-			}
+			my $ownee = $self->quote_object_name($self->{grants}{$table}{owner});
+
 			my $wgrantoption = '';
 			if ($self->{grants}{$table}{grantable}) {
 				$wgrantoption = ' WITH GRANT OPTION';
@@ -3644,11 +3593,7 @@ LANGUAGE plpgsql ;
 					$agrants .= "$g," if (grep(/^$g$/i, @{$self->{grants}{$table}{privilege}{$usr}}));
 				}
 				$agrants =~ s/,$//;
-				if (!$self->{preserve_case}) {
-					$usr = lc($usr);
-				} else {
-					$usr = "\"$usr\"";
-				}
+				$usr = $self->quote_object_name($usr);
 				if ($self->{grants}{$table}{type} ne 'PACKAGE BODY') {
 					if (grep(/^$self->{grants}{$table}{type}$/, 'FUNCTION', 'SEQUENCE','SCHEMA','TABLESPACE', 'TYPE')) {
 						$grants .= "GRANT $agrants ON $obj $realtable TO $usr$wgrantoption;\n";
@@ -3718,12 +3663,7 @@ LANGUAGE plpgsql ;
 			if ($self->{export_schema} && !$self->{schema}) {
 				$seq->[0] = $seq->[7] . '.' . $seq->[0];
 			}
-			if (!$self->{preserve_case}) {
-				$sql_output .= "CREATE SEQUENCE \L$seq->[0]\E INCREMENT $seq->[3]";
-			} else {
-				$seq->[0] =~ s/\./"."/;
-				$sql_output .= "CREATE SEQUENCE \"$seq->[0]\" INCREMENT $seq->[3]";
-			}
+			$sql_output .= "CREATE SEQUENCE " . $self->quote_object_name($seq->[0]) . " INCREMENT $seq->[3]";
 			if ($seq->[1] eq '' || $seq->[1] < (-2**63-1)) {
 				$sql_output .= " NO MINVALUE";
 			} else {
@@ -3745,11 +3685,8 @@ LANGUAGE plpgsql ;
 			if ($self->{force_owner}) {
 				my $owner = $seq->[7];
 				$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
-				if (!$self->{preserve_case}) {
-					$sql_output .= "ALTER SEQUENCE \L$seq->[0]\E OWNER TO \L$owner\E;\n";
-				} else {
-					$sql_output .= "ALTER SEQUENCE \"$seq->[0]\" OWNER TO \"$owner\";\n";
-				}
+				$sql_output .= "ALTER SEQUENCE " . $self->quote_object_name($seq->[0])
+							. " OWNER TO " . $self->quote_object_name($owner) . ";\n";
 			}
 			$i++;
 		}
@@ -3779,11 +3716,7 @@ LANGUAGE plpgsql ;
 			if (!$self->{quiet} && !$self->{debug}) {
 				print STDERR $self->progress_bar($i, $num_total_dblink, 25, '=', 'dblink', "generating $db" ), "\r";
 			}
-			if (!$self->{preserve_case}) {
-				$sql_output .= "CREATE SERVER \L$db\E";
-			} else {
-				$sql_output .= "CREATE SERVER \"$db\"";
-			}
+			$sql_output .= "CREATE SERVER " . $self->quote_object_name($db);
 			if (!$self->{is_mysql}) {
 				$sql_output .= " FOREIGN DATA WRAPPER oracle_fdw OPTIONS (dbserver '$self->{dblink}{$db}{host}');\n";
 			} else {
@@ -3797,21 +3730,17 @@ LANGUAGE plpgsql ;
 			}
 			$self->{dblink}{$db}{user} ||= $self->{dblink}{$db}{username};
 			if ($self->{dblink}{$db}{username}) {
-				if (!$self->{preserve_case}) {
-					$sql_output .= "CREATE USER MAPPING FOR \L$self->{dblink}{$db}{username}\E SERVER \L$db\E OPTIONS (user '\L$self->{dblink}{$db}{user}\E' $self->{dblink}{$db}{password});\n";
-				} else {
-					$sql_output .= "CREATE USER MAPPING FOR \"$self->{dblink}{$db}{username}\" SERVER \"$db\" OPTIONS (user '$self->{dblink}{$db}{user}' $self->{dblink}{$db}{password});\n";
-				}
+				$sql_output .= "CREATE USER MAPPING FOR " . $self->quote_object_name($self->{dblink}{$db}{username})
+							. " SERVER " . $self->quote_object_name($db)
+							. " OPTIONS (user '" . $self->quote_object_name($self->{dblink}{$db}{user})
+							. "' $self->{dblink}{$db}{password});\n";
 			}
 			
 			if ($self->{force_owner}) {
 				my $owner = $self->{dblink}{$db}{owner};
 				$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
-				if (!$self->{preserve_case}) {
-					$sql_output .= "ALTER FOREIGN DATA WRAPPER \L$db\E OWNER TO \L$owner\E;\n";
-				} else {
-					$sql_output .= "ALTER FOREIGN DATA WRAPPER \"$db\" OWNER TO \"$owner\";\n";
-				}
+				$sql_output .= "ALTER FOREIGN DATA WRAPPER " . $self->quote_object_name($db)
+							. " OWNER TO " . $self->quote_object_name($owner) . ";\n";
 			}
 			$i++;
 		}
@@ -3845,11 +3774,7 @@ LANGUAGE plpgsql ;
 			foreach my $owner (keys %{$self->{directory}{$db}{grantee}}) {
 				my $write = 'false';
 				$write = 'true' if ($self->{directory}{$db}{grantee}{$owner} =~ /write/i);
-				if (!$self->{preserve_case}) {
-					$sql_output .= "INSERT INTO external_file.directory_roles(directory_name,directory_role,directory_read,directory_write) VALUES ('$db','\L$owner\E', true, $write);\n";
-				} else {
-					$sql_output .= "INSERT INTO external_file.directory_roles(directory_name,directory_role,directory_read,directory_write) VALUES ('$db','$owner', true, $write);\n";
-				}
+				$sql_output .= "INSERT INTO external_file.directory_roles(directory_name,directory_role,directory_read,directory_write) VALUES ('$db','" . $self->quote_object_name($owner) . "', true, $write);\n";
 			}
 			$i++;
 		}
@@ -3902,7 +3827,7 @@ LANGUAGE plpgsql ;
 				foreach my $coln (sort keys %{$self->{replaced_cols}{"\L$trig->[3]\E"}}) {
 					$self->logit("\tReplacing column \L$coln\E as " . $self->{replaced_cols}{"\L$trig->[3]\E"}{"\L$coln\E"} . "...\n", 1);
 					my $cname = $self->{replaced_cols}{"\L$trig->[3]\E"}{"\L$coln\E"};
-					$cname = lc($cname) if (!$self->{preserve_case});
+					$cname = $self->quote_object_name($cname);
 					$trig->[4] =~ s/(OLD|NEW)\.$coln\b/$1\.$cname/igs;
 				}
 			}
@@ -3915,19 +3840,15 @@ LANGUAGE plpgsql ;
 				if ($self->{plsql_pgsql}) {
 					$trig->[4] = Ora2Pg::PLSQL::convert_plsql_code($self, $trig->[4], %{$self->{data_type}});
 				}
-				if (!$self->{preserve_case}) {
-					$sql_output .= "CREATE OR REPLACE RULE \L$trig->[0]\E AS\n\tON $trig->[2] TO $tbname\n\tDO INSTEAD\n(\n\t$trig->[4]\n);\n\n";
-				} else {
-					$sql_output .= "CREATE OR REPLACE RULE \L$trig->[0]\E AS\n\tON $trig->[2] TO $tbname\n\tDO INSTEAD\n(\n\t$trig->[4]\n);\n\n";
-				}
+				$sql_output .= "CREATE OR REPLACE RULE " . $self->quote_object_name($trig->[0])
+							. " AS\n\tON " . $self->quote_object_name($trig->[2])
+							. " TO " . $self->quote_object_name($tbname)
+							. "\n\tDO INSTEAD\n(\n\t$trig->[4]\n);\n\n";
 				if ($self->{force_owner}) {
 					my $owner = $trig->[8];
 					$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
-					if (!$self->{preserve_case}) {
-						$sql_output .= "ALTER RULE \L$trig->[0]\E OWNER TO \L$owner\E;\n";
-					} else {
-						$sql_output .= "ALTER RULE \"$trig->[0]\" OWNER TO \"$owner\";\n";
-					}
+					$sql_output .= "ALTER RULE " . $self->quote_object_name($trig->[0])
+								. " OWNER TO " . $self->quote_object_name($owner) . ";\n";
 				}
 			} else {
 				# Replace direct call of a stored procedure in triggers
@@ -3972,11 +3893,8 @@ LANGUAGE plpgsql ;
 						$trig->[4] =~ s/\bRETURN\s*;/$ret_kind/igs;
 					}
 				}
-				if (!$self->{preserve_case}) {
-					$sql_output .= "DROP TRIGGER $self->{pg_supports_ifexists} \L$trig->[0]\E ON $tbname CASCADE;\n";
-				} else {
-					$sql_output .= "DROP TRIGGER $self->{pg_supports_ifexists} \"$trig->[0]\" ON $tbname CASCADE;\n";
-				}
+				$sql_output .= "DROP TRIGGER $self->{pg_supports_ifexists} " . $self->quote_object_name($trig->[0])
+							. " ON " . $self->quote_object_name($tbname) . " CASCADE;\n";
 				my $security = '';
 				my $revoke = '';
 				if ($self->{security}{"\U$trig->[0]\E"}{security} eq 'DEFINER') {
@@ -3992,11 +3910,7 @@ LANGUAGE plpgsql ;
 					if ($self->{force_owner}) {
 						my $owner = $trig->[8];
 						$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
-						if (!$self->{preserve_case}) {
-							$sql_output .= "ALTER FUNCTION trigger_fct_\L$trig->[0]\E() OWNER TO \L$owner\E;\n\n";
-						} else {
-							$sql_output .= "ALTER FUNCTION trigger_fct_\L$trig->[0]\E() OWNER TO \"$owner\";\n\n";
-						}
+						$sql_output .= "ALTER FUNCTION trigger_fct_\L$trig->[0]\E() OWNER TO " . $self->quote_object_name($owner) . ";\n\n";
 					}
 					$self->_remove_comments(\$trig->[6]);
 					$trig->[6] =~ s/\n+$//s;
@@ -4027,20 +3941,12 @@ LANGUAGE plpgsql ;
 					if ($self->{force_owner}) {
 						my $owner = $trig->[8];
 						$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
-						if (!$self->{preserve_case}) {
-							$sql_output .= "ALTER FUNCTION trigger_fct_\L$trig->[0]\E() OWNER TO \L$owner\E;\n\n";
-						} else {
-							$sql_output .= "ALTER FUNCTION trigger_fct_\L$trig->[0]\E() OWNER TO \"$owner\";\n\n";
-						}
+						$sql_output .= "ALTER FUNCTION trigger_fct_\L$trig->[0]\E() OWNER TO " . $self->quote_object_name($owner) . ";\n\n";
 					}
 					$sql_output .= "CREATE TRIGGER \L$trig->[0]\E\n\t";
 					my $statement = 0;
 					$statement = 1 if ($trig->[1] =~ s/ STATEMENT//);
-					if (!$self->{preserve_case}) {
-						$sql_output .= "$trig->[1] $trig->[2] ON $tbname ";
-					} else {
-						$sql_output .= "$trig->[1] $trig->[2] ON $tbname ";
-					}
+					$sql_output .= "$trig->[1] $trig->[2] ON " . $self->quote_object_name($tbname) . " ";
 					if ($statement) {
 						$sql_output .= "FOR EACH STATEMENT\n";
 					} else {
@@ -4867,21 +4773,15 @@ LANGUAGE plpgsql ;
 						my $owner = $self->{list_tablespaces}{$tb_name}{owner} || '';
 						$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
 						if ($owner) {
-							if (!$self->{preserve_case}) {
-								$create_tb .= "ALTER TABLESPACE \L$tb_name\E OWNER TO \L$owner\E;\n";
-							} else {
-								$create_tb .= "ALTER TABLESPACE \"$tb_name\" OWNER TO \"$owner\";\n";
-							}
+							$create_tb .= "ALTER TABLESPACE " . $self->quote_object_name($tb_name)
+									. " OWNER TO " . $self->quote_object_name($owner) . ";\n";
 						}
 					}
 					push(@done, $tb_name);
 					foreach my $obj (@{$self->{tablespaces}{$tb_type}{$tb_name}{$tb_path}}) {
 						next if ($self->{file_per_index} && ($tb_type eq 'INDEX'));
-						if (!$self->{preserve_case} || ($tb_type eq 'INDEX')) {
-							$sql_output .= "ALTER $tb_type \L$obj\E SET TABLESPACE \L$tb_name\E;\n";
-						} else {
-							$sql_output .= "ALTER $tb_type \"$obj\" SET TABLESPACE \L$tb_name\E;\n";
-						}
+						$sql_output .= "ALTER $tb_type " . $self->quote_object_name($obj)
+								. " SET TABLESPACE " . $self->quote_object_name($tb_name) . ";\n";
 					}
 				}
 			}
@@ -5425,7 +5325,8 @@ BEGIN
 							$tb_name =  $1 . '.' . $tb_name;
 						}
 					}
-					$create_table{$table}{table} .= "CREATE TABLE $tb_name ( CHECK (\n";
+					$create_table{$table}{table} .= "CREATE TABLE " . $self->quote_object_name($tb_name)
+										. " ( CHECK (\n";
 				} else {
 					 $tb_name = $table . "_" if ($self->{prefix_partition});
 				}
@@ -5438,9 +5339,13 @@ BEGIN
 					} else {
 						if ($#{$self->{partitions}{$table}{$pos}{info}} == 0) {
 							if ($old_part eq '') {
-								$check_cond .= "\t$self->{partitions}{$table}{$pos}{info}[$i]->{column} < " . Ora2Pg::PLSQL::convert_plsql_code($self, $self->{partitions}{$table}{$pos}{info}[$i]->{value}, %{$self->{data_type}});
+								$check_cond .= "\t$self->{partitions}{$table}{$pos}{info}[$i]->{column} < "
+									. Ora2Pg::PLSQL::convert_plsql_code($self, $self->{partitions}{$table}{$pos}{info}[$i]->{value}, %{$self->{data_type}});
 							} else {
-								$check_cond .= "\t$self->{partitions}{$table}{$pos}{info}[$i]->{column} >= " . Ora2Pg::PLSQL::convert_plsql_code($self, $self->{partitions}{$table}{$old_pos}{info}[$i]->{value}, %{$self->{data_type}}) . " AND $self->{partitions}{$table}{$pos}{info}[$i]->{column} < " . Ora2Pg::PLSQL::convert_plsql_code($self, $self->{partitions}{$table}{$pos}{info}[$i]->{value}, %{$self->{data_type}});
+								$check_cond .= "\t$self->{partitions}{$table}{$pos}{info}[$i]->{column} >= "
+									. Ora2Pg::PLSQL::convert_plsql_code($self, $self->{partitions}{$table}{$old_pos}{info}[$i]->{value}, %{$self->{data_type}})
+									. " AND $self->{partitions}{$table}{$pos}{info}[$i]->{column} < "
+									. Ora2Pg::PLSQL::convert_plsql_code($self, $self->{partitions}{$table}{$pos}{info}[$i]->{value}, %{$self->{data_type}});
 							}
 						} else {
 							my @values = split(/,\s/, Ora2Pg::PLSQL::convert_plsql_code($self, $self->{partitions}{$table}{$pos}{info}[$i]->{value}, %{$self->{data_type}}));
@@ -5455,14 +5360,18 @@ BEGIN
 						$fct = $1;
 					}
 					my $cindx = $self->{partitions}{$table}{$pos}{info}[$i]->{column} || '';
+					$cindx = lc($cindx) if (!$self->{preserve_case});
 					$cindx = Ora2Pg::PLSQL::convert_plsql_code($self, $cindx, %{$self->{data_type}});
 					if (!exists $self->{subpartitions}{$table}{$part}) {
-						$create_table{$table}{'index'} .= "CREATE INDEX ${tb_name}_$colname ON $tb_name ($cindx);\n";
+						$create_table{$table}{'index'} .= "CREATE INDEX "
+									. $self->quote_object_name("${tb_name}_$colname")
+									. " ON $tb_name ($cindx);\n";
 					}
 					my $deftb = '';
 					$deftb = "${table}_" if ($self->{prefix_partition});
 					if ($self->{partitions_default}{$table} && ($create_table{$table}{'index'} !~ /ON $deftb$self->{partitions_default}{$table} /)) {
 						$cindx = $self->{partitions}{$table}{$pos}{info}[$i]->{column} || '';
+						$cindx = lc($cindx) if (!$self->{preserve_case});
 						$cindx = Ora2Pg::PLSQL::convert_plsql_code($self, $cindx, %{$self->{data_type}});
 						$create_table{$table}{'index'} .= "CREATE INDEX $deftb$self->{partitions_default}{$table}_$colname ON $deftb$self->{partitions_default}{$table} ($cindx);\n";
 					}
@@ -5488,11 +5397,8 @@ BEGIN
 					$create_table{$table}{table} .= "\n) ) INHERITS ($table);\n";
 					$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
 					if ($owner) {
-						if (!$self->{preserve_case}) {
-							$create_table{$table}{table} .= "ALTER TABLE \L$tb_name\E OWNER TO \L$owner\E;\n";
-						} else {
-							$create_table{$table}{table}.= "ALTER TABLE \"$tb_name\" OWNER TO \"$owner\";\n";
-						}
+						$create_table{$table}{table} .= "ALTER TABLE " . $self->quote_object_name($tb_name)
+											. " OWNER TO " . $self->quote_object_name($owner) . ";\n";
 					}
 				}
 
@@ -5505,7 +5411,8 @@ BEGIN
 						my $subpart = $self->{subpartitions}{$table}{$part}{$p}{name};
 						my $sub_tb_name = $subpart;
 						$sub_tb_name =~ s/^[^\.]+\.//; # remove schema part if any
-						$create_table{$table}{table} .= "CREATE TABLE ${tb_name}$sub_tb_name ( CHECK (\n";
+						$create_table{$table}{table} .= "CREATE TABLE " . $self->quote_object_name("${tb_name}$sub_tb_name")
+											. " ( CHECK (\n";
 						my $sub_check_cond = '';
 						my @subcondition = ();
 						for (my $i = 0; $i <= $#{$self->{subpartitions}{$table}{$part}{$p}{info}}; $i++) {
@@ -5514,9 +5421,13 @@ BEGIN
 							} else {
 								if ($#{$self->{subpartitions}{$table}{$part}{$p}{info}} == 0) {
 									if ($sub_old_part eq '') {
-										$sub_check_cond .= "$self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{column} < " . Ora2Pg::PLSQL::convert_plsql_code($self, $self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{value}, %{$self->{data_type}});
+										$sub_check_cond .= "$self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{column} < "
+											. Ora2Pg::PLSQL::convert_plsql_code($self, $self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{value}, %{$self->{data_type}});
 									} else {
-										$sub_check_cond .= "$self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{column} >= " . Ora2Pg::PLSQL::convert_plsql_code($self, $self->{subpartitions}{$table}{$part}{$sub_old_pos}{info}[$i]->{value}, %{$self->{data_type}}) . " AND $self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{column} < " . Ora2Pg::PLSQL::convert_plsql_code($self, $self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{value}, %{$self->{data_type}});
+										$sub_check_cond .= "$self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{column} >= "
+											. Ora2Pg::PLSQL::convert_plsql_code($self, $self->{subpartitions}{$table}{$part}{$sub_old_pos}{info}[$i]->{value}, %{$self->{data_type}})
+											. " AND $self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{column} < "
+											. Ora2Pg::PLSQL::convert_plsql_code($self, $self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{value}, %{$self->{data_type}});
 									}
 								} else {
 									my @values = split(/,\s/, Ora2Pg::PLSQL::convert_plsql_code($self, $self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{value}, %{$self->{data_type}}));
@@ -5532,8 +5443,10 @@ BEGIN
 								$fct = $1;
 							}
 							$cindx = join(',', @ind_col);
+							$cindx = lc($cindx) if (!$self->{preserve_case});
 							$cindx = Ora2Pg::PLSQL::convert_plsql_code($self, $cindx, %{$self->{data_type}});
-							$create_table{$table}{'index'} .= "CREATE INDEX ${tb_name}${sub_tb_name}_$colname ON ${tb_name}$sub_tb_name ($cindx);\n";
+							$create_table{$table}{'index'} .= "CREATE INDEX " . $self->quote_object_name("${tb_name}${sub_tb_name}_$colname")
+												 . " ON ${tb_name}$sub_tb_name ($cindx);\n";
 							if ($self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{type} eq 'LIST') {
 								if (!$fct) {
 									push(@subcondition, "NEW.$self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{column} IN (" . Ora2Pg::PLSQL::convert_plsql_code($self, $self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{value}, %{$self->{data_type}}) . ")");
@@ -5554,13 +5467,11 @@ BEGIN
 						$create_table{$table}{table} .= "\n) ) INHERITS ($table);\n";
 						$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
 						if ($owner) {
-							if (!$self->{preserve_case}) {
-								$create_table{$table}{table} .= "ALTER TABLE \L${tb_name}$sub_tb_name\E OWNER TO \L$owner\E;\n";
-							} else {
-								$create_table{$table}{table}.= "ALTER TABLE \"${tb_name}$sub_tb_name\" OWNER TO \"$owner\";\n";
-							}
+							$create_table{$table}{table} .= "ALTER TABLE " . $self->quote_object_name("${tb_name}$sub_tb_name")
+											. " OWNER TO " . $self->quote_object_name($owner) . ";\n";
 						}
-						$sub_funct_cond .= "\t\t$sub_cond ( " . join(' AND ', @subcondition) . " ) THEN INSERT INTO ${tb_name}$sub_tb_name VALUES (NEW.*);\n";
+						$sub_funct_cond .= "\t\t$sub_cond ( " . join(' AND ', @subcondition) . " ) THEN INSERT INTO "
+									. $self->quote_object_name("${tb_name}$sub_tb_name") . " VALUES (NEW.*);\n";
 						$sub_cond = 'ELSIF';
 						$sub_old_part = $part;
 						$sub_old_pos = $p;
@@ -5576,9 +5487,12 @@ BEGIN
 					if ($self->{subpartitions_default}{$table}{$part}) {
 						my $deftb = '';
 						$deftb = "${table}_" if ($self->{prefix_partition});
-						$funct_cond .= "\t\tELSE INSERT INTO $deftb$self->{subpartitions_default}{$table}{$part} VALUES (NEW.*);\n\t\tEND IF;\n";
-						$create_table{$table}{table} .= "CREATE TABLE $deftb$self->{subpartitions_default}{$table}{$part} () INHERITS ($table);\n";
-						$create_table{$table}{'index'} .= "CREATE INDEX $deftb$self->{subpartitions_default}{$table}{$part}_$pos ON $deftb$self->{subpartitions_default}{$table}{$part} ($cindx);\n";
+						$funct_cond .= "\t\tELSE INSERT INTO " . $self->quote_object_name("$deftb$self->{subpartitions_default}{$table}{$part}")
+									. " VALUES (NEW.*);\n\t\tEND IF;\n";
+						$create_table{$table}{table} .= "CREATE TABLE " . $self->quote_object_name("$deftb$self->{subpartitions_default}{$table}{$part}")
+									. " () INHERITS ($table);\n";
+						$create_table{$table}{'index'} .= "CREATE INDEX " . $self->quote_object_name("$deftb$self->{subpartitions_default}{$table}{$part}_$pos")
+									. " ON $deftb$self->{subpartitions_default}{$table}{$part} ($cindx);\n";
 					} else {
 						$funct_cond .= qq{		ELSE
 			-- Raise an exception
@@ -5597,8 +5511,9 @@ BEGIN
 			if ($self->{partitions_default}{$table}) {
 				my $deftb = '';
 				$deftb = "${table}_" if ($self->{prefix_partition});
+				my $pname = $self->quote_object_name("$deftb$self->{partitions_default}{$table}");
 				$function .= $funct_cond . qq{	ELSE
-                INSERT INTO $deftb$self->{partitions_default}{$table} VALUES (NEW.*);
+                INSERT INTO $pname VALUES (NEW.*);
 };
 			} else {
 				$function .= $funct_cond . qq{	ELSE
@@ -5623,11 +5538,14 @@ $create_table{$table}{'index'}
 			$sql_output .= qq{
 $create_table{$table}{table}
 };
+			my $tb = $self->quote_object_name($table);
+			my $trg = $self->quote_object_name("${table}_insert_trigger");
 			my $defname = $self->{partitions_default}{$table};
 			$defname = $table . '_' .  $defname if ($self->{prefix_partition});
+			$defname = $self->quote_object_name($defname);
 			$sql_output .= qq{
 -- Create default table, where datas are inserted if no condition match
-CREATE TABLE $defname () INHERITS ($table);
+CREATE TABLE $defname () INHERITS ($tb);
 } if ($self->{partitions_default}{$table});
 			$sql_output .= qq{
 
@@ -5635,20 +5553,18 @@ $function
 
 CREATE TRIGGER ${table}_trigger_insert
     BEFORE INSERT ON $table
-    FOR EACH ROW EXECUTE PROCEDURE ${table}_insert_trigger();
+    FOR EACH ROW EXECUTE PROCEDURE $trg();
 
 -------------------------------------------------------------------------------
 };
 
 			$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
 			if ($owner) {
-				if (!$self->{preserve_case}) {
-					$sql_output .= "ALTER TABLE \L$self->{partitions_default}{$table}\E OWNER TO \L$owner\E;\n"if ($self->{partitions_default}{$table});
-					$sql_output .= "ALTER FUNCTION \L${table}_insert_trigger\E() OWNER TO \L$owner\E;\n";
-				} else {
-					$sql_output .= "ALTER TABLE \"$self->{partitions_default}{$table}\"() OWNER TO \"$owner\";\n"if ($self->{partitions_default}{$table});
-					$sql_output .= "ALTER FUNCTION \"${table}_insert_trigger\"() OWNER TO \"$owner\";\n";
-				}
+				$sql_output .= "ALTER TABLE " . $self->quote_object_name($self->{partitions_default}{$table})
+							. " OWNER TO " . $self->quote_object_name($owner) . ";\n"
+					if ($self->{partitions_default}{$table});
+				$sql_output .= "ALTER FUNCTION " . $self->quote_object_name("${table}_insert_trigger")
+							. "() OWNER TO " . $self->quote_object_name($owner) . ";\n";
 			}
 		}
 
@@ -5693,21 +5609,14 @@ CREATE TRIGGER ${table}_trigger_insert
 			if ($self->{synonyms}{$syn}{dblink}) {
 				$sql_output .= "-- You need to create foreign table $self->{synonyms}{$syn}{table_owner}.$self->{synonyms}{$syn}{table_name} using foreign server: $self->{synonyms}{$syn}{dblink} (see DBLINK and FDW export type)\n";
 			}
-			if (!$self->{preserve_case}) {
-				$sql_output .= "CREATE VIEW \L$self->{synonyms}{$syn}{owner}.$syn\E AS SELECT * FROM \L$self->{synonyms}{$syn}{table_owner}.$self->{synonyms}{$syn}{table_name}\E;\n";
-			} else {
-				$sql_output .= "CREATE VIEW \"$self->{synonyms}{$syn}{owner}\".\"$syn\" AS SELECT * FROM \"$self->{synonyms}{$syn}{table_owner}\".\"$self->{synonyms}{$syn}{table_name}\";\n";
-			}
-
+			$sql_output .= "CREATE VIEW " . $self->quote_object_name("$self->{synonyms}{$syn}{owner}.$syn")
+				. " AS SELECT * FROM " . $self->quote_object_name("$self->{synonyms}{$syn}{table_owner}.$self->{synonyms}{$syn}{table_name}") . ";\n";
 			my $owner = $self->{synonyms}{$syn}{table_owner};
 			$owner = $self->{force_owner} if ($self->{force_owner} && ($self->{force_owner} ne "1"));
-			if (!$self->{preserve_case}) {
-				$sql_output .= "ALTER VIEW \L$self->{synonyms}{$syn}{owner}.$syn\E OWNER TO \L$owner\E;\n";
-				$sql_output .= "GRANT ALL ON \L$self->{synonyms}{$syn}{owner}.$syn\E TO $self->{synonyms}{$syn}{owner};\n\n";
-			} else {
-				$sql_output .= "ALTER VIEW \"$self->{synonyms}{$syn}{owner}\".\"$syn\" OWNER TO \"$owner\";\n";
-				$sql_output .= "GRANT ALL ON \"$self->{synonyms}{$syn}{owner}\".\"$syn\" TO \"$self->{synonyms}{$syn}{owner}\";\n\n";
-			}
+			$sql_output .= "ALTER VIEW " . $self->quote_object_name("$self->{synonyms}{$syn}{owner}.$syn")
+						. " OWNER TO " . $self->quote_object_name($owner) . ";\n";
+			$sql_output .= "GRANT ALL ON " . $self->quote_object_name("$self->{synonyms}{$syn}{owner}.$syn")
+						. " TO " . $self->quote_object_name($self->{synonyms}{$syn}{owner}) . ";\n\n";
 			$i++;
 		}
 		if (!$self->{quiet} && !$self->{debug}) {
@@ -5725,21 +5634,13 @@ CREATE TRIGGER ${table}_trigger_insert
 	# Dump the database structure: tables, constraints, indexes, etc.
 	if ($self->{export_schema} && ($self->{schema} || $self->{pg_schema})) {
 		if ($self->{create_schema}) {
-			if (!$self->{preserve_case}) {
-				$sql_output .= "CREATE SCHEMA " . lc($self->{pg_schema} || $self->{schema}) . ";\n";
-			} else {
-				$sql_output .= "CREATE SCHEMA \"" . ($self->{pg_schema} || $self->{schema}) . "\";\n";
-			}
+			$sql_output .= "CREATE SCHEMA " . $self->quote_object_name($self->{pg_schema} || $self->{schema}) . ";\n";
 		}
 		my $owner = '';
 		$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
 		$owner ||= $self->{schema};
 		if ($owner && $self->{create_schema}) {
-			if (!$self->{preserve_case}) {
-				$sql_output .= "ALTER SCHEMA " . lc($self->{pg_schema} || $self->{schema}) . " OWNER TO \L$owner\E;\n";
-			} else {
-				$sql_output .= "ALTER SCHEMA \"" . ($self->{pg_schema} || $self->{schema}) . "\" OWNER TO \"$owner\";\n";
-			}
+			$sql_output .= "ALTER SCHEMA " . $self->quote_object_name($self->{pg_schema} || $self->{schema}) . " OWNER TO \L$owner\E;\n";
 		}
 		$sql_output .= "\n";
 	} elsif ($self->{export_schema}) {
@@ -5749,11 +5650,7 @@ CREATE TRIGGER ${table}_trigger_insert
 				if ($table =~ /^([^\.]+)\..*/) {
 					if ($1 ne $current_schema) {
 						$current_schema = $1;
-						if (!$self->{preserve_case}) {
-							$sql_output .= "CREATE SCHEMA \L$1\E;\n";
-						} else {
-							$sql_output .= "CREATE SCHEMA \"$1\";\n";
-						}
+						$sql_output .= "CREATE SCHEMA " . $self->quote_object_name($1) . ";\n";
 					}
 				}
 			}
@@ -5927,12 +5824,8 @@ CREATE TRIGGER ${table}_trigger_insert
 					$type .= ")";
 				}
 				$type = $self->{'modify_type'}{"\L$table\E"}{"\L$f->[0]\E"} if (exists $self->{'modify_type'}{"\L$table\E"}{"\L$f->[0]\E"});
-				if (!$self->{preserve_case}) {
-					$fname = $self->quote_reserved_words($fname);
-					$sql_output .= "\t\L$fname\E $type";
-				} else {
-					$sql_output .= "\t\"$fname\" $type";
-				}
+				$fname = $self->quote_object_name($fname);
+				$sql_output .= "\t$fname $type";
 				if ($foreign && $self->is_primary_key_column($table, $f->[0])) {
 					 $sql_output .= " OPTIONS (key 'true')";
 				}
@@ -6028,12 +5921,7 @@ CREATE TRIGGER ${table}_trigger_insert
 					$self->logit("\tReplacing column $f as " . $self->{replaced_cols}{"\L$table\E"}{lc($fname)} . "...\n", 1);
 					$fname = $self->{replaced_cols}{"\L$table\E"}{lc($fname)};
 				}
-				if (!$self->{preserve_case}) {
-					$sql_output .= "COMMENT ON COLUMN \L$tbname.$fname\E IS E'" . $self->{tables}{$table}{column_comments}{$f} .  "';\n";
-				} else {
-					$sql_output .= "COMMENT ON COLUMN $tbname.\"$fname\" IS E'" . $self->{tables}{$table}{column_comments}{$f} .  "';\n";
-				}
-
+				$sql_output .= "COMMENT ON COLUMN " .  $self->quote_object_name("$tbname.$fname") . " IS E'" . $self->{tables}{$table}{column_comments}{$f} .  "';\n";
 			}
 		}
 
@@ -6041,11 +5929,8 @@ CREATE TRIGGER ${table}_trigger_insert
 		if ($self->{force_owner}) {
 			my $owner = $self->{tables}{$table}{table_info}{owner};
 			$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
-			if (!$self->{preserve_case}) {
-				$sql_output .= "ALTER $self->{tables}{$table}{table_info}{type} $tbname OWNER TO \L$owner\E;\n";
-			} else {
-				$sql_output .= "ALTER $self->{tables}{$table}{table_info}{type} $tbname OWNER TO \"$owner\";\n";
-			}
+			$sql_output .= "ALTER $self->{tables}{$table}{table_info}{type} " .  $self->quote_object_name($tbname)
+						. " OWNER TO " .  $self->quote_object_name($owner) . ";\n";
 		}
 		if (exists $self->{tables}{$table}{alter_index} && $self->{tables}{$table}{alter_index}) {
 			foreach (@{$self->{tables}{$table}{alter_index}}) {
@@ -6174,25 +6059,29 @@ RETURNS text AS
 	# Some virtual column have been found
 	if (scalar keys %virtual_trigger_info > 0) {
 		my $trig_out = '';
-		foreach my $tb (keys %virtual_trigger_info) {
-			$trig_out .= qq{
-DROP TRIGGER IF EXISTS virt_col_${tb}_trigger ON $tb CASCADE;
-
-CREATE OR REPLACE FUNCTION fct_virt_col_${tb}_trigger() RETURNS trigger AS \$BODY\$
-BEGIN
-};
-			foreach my $c (keys %{$virtual_trigger_info{$tb}}) {
+		foreach my $tb (sort keys %virtual_trigger_info) {
+			my $tname = "virt_col_${tb}_trigger";
+			$tname =~ s/\./_/g;
+			$tname = $self->quote_object_name($tname);
+			my $fname = "fct_virt_col_${tb}_trigger";
+			$fname =~ s/\./_/g;
+			$fname = $self->quote_object_name($fname);
+			$trig_out .= "DROP TRIGGER IF EXISTS $tname ON " . $self->quote_object_name($tb) . " CASCADE;\n\n";
+			$trig_out .= "CREATE OR REPLACE FUNCTION $fname() RETURNS trigger AS \$BODY\$\n";
+			$trig_out .= "BEGIN\n";
+			foreach my $c (sort keys %{$virtual_trigger_info{$tb}}) {
 				$trig_out .= "\tNEW.$c = $virtual_trigger_info{$tb}{$c};\n";
 			}
+			$tb = $self->quote_object_name($tb);
 			$trig_out .= qq{
 RETURN NEW;
 end
 \$BODY\$
  LANGUAGE 'plpgsql' SECURITY DEFINER;
 
-CREATE TRIGGER virt_col_${tb}_trigger
+CREATE TRIGGER $tname
         BEFORE INSERT OR UPDATE ON $tb FOR EACH ROW
-        EXECUTE PROCEDURE fct_virt_col_${tb}_trigger();
+        EXECUTE PROCEDURE $fname();
 
 };
 		}
@@ -6297,13 +6186,8 @@ sub _dump_table
 			$self->logit("\tReplacing column $f->[0] as " . $self->{replaced_cols}{lc($table)}{lc($f->[0])} . "...\n", 1);
 			$colname = $self->{replaced_cols}{lc($table)}{lc($f->[0])};
 		}
-		$colname =~ s/"//g;
-		if (!$self->{preserve_case}) {
-			$colname = $self->quote_reserved_words($colname);
-			$col_list .= "\L$colname\E,";
-		} else {
-			$col_list .= "\"$colname\",";
-		}
+		$colname = $self->quote_object_name($colname);
+		$col_list .= "$colname,";
 	}
 	$col_list =~ s/,$//;
 
@@ -6501,10 +6385,9 @@ sub _create_indexes
 			if ($self->{$objtyp}{$tbsaved}{concurrently}{$idx}) {
 				$concurrently = ' CONCURRENTLY';
 			}
-
+			$columns = lc($columns) if (!$self->{preserve_case});
 			next if ( lc($columns) eq lc($pkcollist{$tbsaved}) );
 
-			$columns = lc($columns) if (!$self->{preserve_case});
 			for ($i = 0; $i <= $#strings; $i++) {
 				$columns =~ s/\%\%string$i\%\%/'$strings[$i]'/;
 			}
@@ -6516,7 +6399,6 @@ sub _create_indexes
 			} else {
 				$idxname = $idx;
 			}
-			$idxname = $self->quote_object_name($idxname);
 			if ($self->{indexes_renaming}) {
 				if ($table =~ /^([^\.]+)\.(.*)$/) {
 					$schm = $1;
@@ -6528,7 +6410,7 @@ sub _create_indexes
 				my @collist = @{$indexes{$idx}};
 				# Remove double quote, DESC and parenthesys
 				map { s/"//g; s/.*\(([^\)]+)\).*/$1/; s/\s+DESC//i; } @collist;
-				$idxname = $self->quote_object_name($idxname . '_' . join('_', @collist));
+				$idxname = $idxname . '_' . join('_', @collist);
 				$idxname =~ s/\s+//g;
 				if ($self->{indexes_suffix}) {
 					$idxname = substr($idxname,0,59);
@@ -6537,10 +6419,14 @@ sub _create_indexes
 				}
 			}
 			$idxname = $schm . '.' . $idxname if ($schm);
+			$idxname = $self->quote_object_name($idxname);
+			my $tb = $self->quote_object_name($table);
 			if ($self->{$objtyp}{$tbsaved}{idx_type}{$idx}{type_name} =~ /SPATIAL_INDEX/) {
-				$str .= "CREATE INDEX$concurrently \L$idxname$self->{indexes_suffix}\E ON $table USING gist($columns)";
+				$str .= "CREATE INDEX$concurrently " . $self->quote_object_name("$idxname$self->{indexes_suffix}")
+						. " ON $tb USING gist($columns)";
 			} elsif ($self->{bitmap_as_gin} && $self->{$objtyp}{$tbsaved}{idx_type}{$idx}{type_name} eq 'BITMAP') {
-				$str .= "CREATE INDEX$concurrently \L$idxname$self->{indexes_suffix}\E ON $table USING gin($columns)";
+				$str .= "CREATE INDEX$concurrently " . $self->quote_object_name("$idxname$self->{indexes_suffix}")
+						. " ON $tb USING gin($columns)";
 			} elsif ( ($self->{$objtyp}{$tbsaved}{idx_type}{$idx}{type_name} =~ /CTXCAT/) ||
 				($self->{context_as_trgm} && ($self->{$objtyp}{$tbsaved}{idx_type}{$idx}{type_name} =~ /FULLTEXT|CONTEXT/)) ) {
 				# use pg_trgm
@@ -6548,7 +6434,8 @@ sub _create_indexes
 				map { s/^(.*)$/unaccent_immutable($1)/; } @cols;
 				$columns = join(" gin_trgm_ops, ", @cols);
 				$columns .= " gin_trgm_ops";
-				$str .= "CREATE INDEX$concurrently \L$idxname$self->{indexes_suffix}\E ON $table USING gin($columns)";
+				$str .= "CREATE INDEX$concurrently " . $self->quote_object_name("$idxname$self->{indexes_suffix}")
+						. " ON $tb USING gin($columns)";
 			} elsif (($self->{$objtyp}{$tbsaved}{idx_type}{$idx}{type_name} =~ /FULLTEXT|CONTEXT/) && $self->{fts_index_only}) {
 				my $stemmer = $self->{fts_config} || lc($self->{$objtyp}{$tbsaved}{idx_type}{$idx}{stemmer}) || 'pg_catalog.english';
 				my $dico = $stemmer;
@@ -6561,18 +6448,18 @@ sub _create_indexes
 						$fts_str .= "ALTER TEXT SEARCH CONFIGURATION $dico ALTER MAPPING FOR hword, hword_part, word WITH unaccent, ${stemmer}_stem;\n\n";
 					}
 				}
-				# use function-based index
+				# use function-based index"
 				my @cols = split(/\s*,\s*/, $columns);
 				$columns = "to_tsvector('$dico', " . join("||' '||", @cols) . ")";
-				$fts_str .= "CREATE INDEX$concurrently \L$idxname$self->{indexes_suffix}\E ON $table USING gin($columns);\n";
+				$fts_str .= "CREATE INDEX$concurrently " . $self->quote_object_name("$idxname$self->{indexes_suffix}")
+						. " ON $tb USING gin($columns);\n";
 			} elsif (($self->{$objtyp}{$tbsaved}{idx_type}{$idx}{type_name} =~ /FULLTEXT|CONTEXT/) && !$self->{fts_index_only}) {
 				# use Full text search, then create dedicated column and trigger before the index.
 				map { s/"//g; } @{$indexes{$idx}};
-				my $newcolname = $self->quote_object_name(join('_', @{$indexes{$idx}}));
+				my $newcolname = join('_', @{$indexes{$idx}});
 				$fts_str .= "\n-- Append the FTS column to the table\n";
-				$fts_str .= "\nALTER TABLE $table ADD COLUMN tsv_" . substr($newcolname,0,59) . " tsvector;\n";
-				my $fctname = $self->quote_object_name($table.'_' . join('_', @{$indexes{$idx}}));
-				$fctname = "tsv_${table}_" . substr($newcolname,0,59-(length($table)+1));
+				$fts_str .= "\nALTER TABLE $tb ADD COLUMN tsv_" . substr($newcolname,0,59) . " tsvector;\n";
+				my $fctname = "tsv_${table}_" . substr($newcolname,0,59-(length($table)+1));
 				my $trig_name = "trig_tsv_${table}_" . substr($newcolname,0,54-(length($table)+1));
 				my $contruct_vector =  '';
 				my $update_vector =  '';
@@ -6603,7 +6490,7 @@ sub _create_indexes
 
 				$fts_str .= qq{
 -- When the data migration is done without trigger, create tsvector data for all the existing records
-UPDATE $table SET tsv_$newcolname = $update_vector
+UPDATE $tb SET tsv_$newcolname = $update_vector
 
 -- Trigger used to keep fts field up to date
 CREATE FUNCTION $fctname() RETURNS trigger AS \$\$
@@ -6617,20 +6504,24 @@ END
 \$\$ LANGUAGE plpgsql;
 
 CREATE TRIGGER $trig_name BEFORE INSERT OR UPDATE
-  ON $table
+  ON $tb
   FOR EACH ROW EXECUTE PROCEDURE $fctname();
 
 } if (!$indexonly);
 				if ($objtyp eq 'tables') {
-					$str .= "CREATE$unique INDEX$concurrently \L$idxname$self->{indexes_suffix}\E ON $table USING gin(tsv_$newcolname)";
+					$str .= "CREATE$unique INDEX$concurrently " . $self->quote_object_name("$idxname$self->{indexes_suffix}")
+						 . " ON $table USING gin(tsv_$newcolname)";
 				} else {
-					$fts_str .= "CREATE$unique INDEX$concurrently \L$idxname$self->{indexes_suffix}\E ON $table USING gin(tsv_$newcolname)";
+					$fts_str .= "CREATE$unique INDEX$concurrently " . $self->quote_object_name("$idxname$self->{indexes_suffix}")
+						. " ON $table USING gin(tsv_$newcolname)";
 				}
 			} elsif ($self->{$objtyp}{$tbsaved}{idx_type}{$idx}{type} =~ /DOMAIN/i && $self->{$objtyp}{$tbsaved}{idx_type}{$idx}{type_name} !~ /SPATIAL_INDEX/) {
 				$str .= "-- Was declared as DOMAIN index, please check for FTS adaptation if require\n";
-				$str .= "-- CREATE$unique INDEX$concurrently \L$idxname$self->{indexes_suffix}\E ON $table ($columns)";
+				$str .= "-- CREATE$unique INDEX$concurrently " . $self->quote_object_name("$idxname$self->{indexes_suffix}")
+						. " ON $table ($columns)";
 			} else {
-				$str .= "CREATE$unique INDEX$concurrently \L$idxname$self->{indexes_suffix}\E ON $table ($columns)";
+				$str .= "CREATE$unique INDEX$concurrently " . $self->quote_object_name("$idxname$self->{indexes_suffix}")
+						. " ON $table ($columns)";
 			}
 			if ($self->{use_tablespace} && $self->{$objtyp}{$tbsaved}{idx_tbsp}{$idx} && !grep(/^$self->{$objtyp}{$tbsaved}{idx_tbsp}{$idx}$/i, @{$self->{default_tablespaces}})) {
 				$str .= " TABLESPACE $self->{$objtyp}{$tbsaved}{idx_tbsp}{$idx}";
@@ -6668,12 +6559,8 @@ sub _drop_indexes
 				map { s/\b$c\b/$self->{replaced_cols}{"\L$tbsaved\E"}{$c}/i } @{$indexes{$idx}};
 			}
 		}
-		map { s/"//gs } @{$indexes{$idx}};
-		if (!$self->{preserve_case}) {
-			map { if ($_ !~ /\(.*\)/) { $_ = $self->quote_reserved_words($_) } } @{$indexes{$idx}};
-		} else {
-			map { if ($_ !~ /\(.*\)/) { s/^/"/; s/$/"/; } } @{$indexes{$idx}};
-		}
+		map { if ($_ !~ /\(.*\)/) { $_ = $self->quote_object_name($_) } } @{$indexes{$idx}};
+
 		my $columns = join(',', @{$indexes{$idx}});
 		my $colscompare = $columns;
 		$colscompare =~ s/"//gs;
@@ -6817,25 +6704,18 @@ sub _get_primary_keys
 				$conscols[$i] = $self->{replaced_cols}{"\L$table\E"}{"\L$conscols[$i]\E"};
 			}
 		}
-		map { s/"//gs } @conscols;
-		if (!$self->{preserve_case}) {
-			map { $_ = $self->quote_reserved_words($_) } @conscols;
-		} else {
-			map { s/^/"/; s/$/"/; } @conscols;
-		}
+		map { $_ = $self->quote_object_name($_) } @conscols;
+
 		my $columnlist = join(',', @conscols);
-		if (!$self->{preserve_case}) {
-			$columnlist = lc($columnlist);
-		}
 		if ($columnlist) {
 			if ($self->{pkey_in_create}) {
 				if (!$self->{keep_pkey_names} || ($constgen eq 'GENERATED NAME')) {
 					$out .= "\tPRIMARY KEY ($columnlist)";
 				} else {
-					$out .= "\tCONSTRAINT \L$consname\E PRIMARY KEY ($columnlist)";
+					$out .= "\tCONSTRAINT " .  $self->quote_object_name($consname) . " PRIMARY KEY ($columnlist)";
 				}
 				if ($self->{use_tablespace} && $self->{tables}{$table}{idx_tbsp}{$index_name} && !grep(/^$self->{tables}{$table}{idx_tbsp}{$index_name}$/i, @{$self->{default_tablespaces}})) {
-					$out .= " USING INDEX TABLESPACE $self->{tables}{$table}{idx_tbsp}{$index_name}";
+					$out .= " USING INDEX TABLESPACE " .  $self->quote_object_name($self->{tables}{$table}{idx_tbsp}{$index_name});
 				}
 				$out .= ",\n";
 			}
@@ -6879,17 +6759,9 @@ sub _create_unique_keys
 				$conscols[$i] = $self->{replaced_cols}{"$tbsaved"}{"\L$conscols[$i]\E"};
 			}
 		}
-		map { s/"//gs } @conscols;
-		if (!$self->{preserve_case}) {
-			map { $_ = $self->quote_reserved_words($_) } @conscols;
-		} else {
-			map { s/^/"/; s/$/"/; } @conscols;
-		}
-		my $columnlist = join(',', @conscols);
-		if (!$self->{preserve_case}) {
-			$columnlist = lc($columnlist);
-		}
+		map { $_ = $self->quote_object_name($_) } @conscols;
 
+		my $columnlist = join(',', @conscols);
 		if ($columnlist) {
 			if (!$self->{keep_pkey_names} || ($constgen eq 'GENERATED NAME')) {
 				$out .= "ALTER TABLE $table ADD $constypename ($columnlist)";
@@ -6940,14 +6812,12 @@ sub _create_check_constraint
 			if ($self->{plsql_pgsql}) {
 				$chkconstraint = Ora2Pg::PLSQL::convert_plsql_code($self, $chkconstraint, %{$self->{data_type}});
 			}
-			if (!$self->{preserve_case}) {
-				foreach my $c (@$field_name) {
-					# Force lower case
-					my $ret = $self->quote_reserved_words($c);
-					$chkconstraint =~ s/"$c"/\L$ret\E/igs;
-				}
-				$k = lc($k);
+			foreach my $c (@$field_name) {
+				# Force lower case
+				my $ret = $self->quote_object_name($c);
+				$chkconstraint =~ s/"$c"/$ret/igs;
 			}
+			$k = $self->quote_object_name($k);
 
 			# If the column has been converted as a boolean do not export the constraint
 			my $converted_as_boolean = 0;
@@ -7005,11 +6875,7 @@ sub _create_foreign_keys
 			# Prefix the table name with the schema name if owner of
 			# remote table is not the same as local one
 			if ($self->{schema} && (lc($state->[6]) ne lc($state->[8]))) {
-				if (!$self->{preserve_case}) {
-					$subsdesttable = lc($state->[6]) . '.' . $subsdesttable;
-				} else {
-					$subsdesttable = "\"$state->[6]\"" . '.' . $subsdesttable;
-				}
+				$subsdesttable =  $self->quote_object_name($state->[6]) . '.' . $subsdesttable;
 			}
 			
 			my @lfkeys = ();
@@ -7026,21 +6892,9 @@ sub _create_foreign_keys
 					map { s/"$c"/"$self->{replaced_cols}{"\L$desttable\E"}{$c}"/i } @rfkeys;
 				}
 			}
-			if ($self->{preserve_case}) {
-				map { s/["]+/"/g; } @rfkeys;
-				map { s/["]+/"/g; } @lfkeys;
-			} else {
-				map { s/["]+//g; } @rfkeys;
-				map { s/["]+//g; } @lfkeys;
-			}
-			if (!$self->{preserve_case}) {
-				map { $_ = $self->quote_reserved_words($_) } @lfkeys;
-				map { $_ = $self->quote_reserved_words($_) } @rfkeys;
-			}
-
-			if (!$self->{preserve_case}) {
-					$fkname = lc($fkname);
-			}
+			map { $_ = $self->quote_object_name($_) } @lfkeys;
+			map { $_ = $self->quote_object_name($_) } @rfkeys;
+			$fkname = $self->quote_object_name($fkname);
 			$str .= "ALTER TABLE $table ADD CONSTRAINT $fkname FOREIGN KEY (" . join(',', @lfkeys) . ") REFERENCES $subsdesttable(" . join(',', @rfkeys) . ")";
 			$str .= " MATCH $state->[2]" if ($state->[2]);
 			if ($state->[3]) {
@@ -7093,7 +6947,7 @@ sub _drop_foreign_keys
 		next if (grep(/^$h->[0]$/, @done));
 		push(@done, $h->[0]);
 		my $str = '';
-		$h->[0] = lc($h->[0]) if (!$self->{preserve_case});
+		$h->[0] =  $self->quote_object_name($h->[0]);
 		$str .= "ALTER TABLE $table DROP CONSTRAINT $self->{pg_supports_ifexists} $h->[0];";
 		push(@out, $str);
 	}
@@ -7136,11 +6990,7 @@ sub _extract_sequence_info
 		}
 
 		my $nextvalue = $seq_info->{LAST_NUMBER} + $seq_info->{INCREMENT_BY};
-		my $alter ="ALTER SEQUENCE $self->{pg_supports_ifexists} \L$seqname\E RESTART WITH $nextvalue;";
-		if ($self->{preserve_case}) {
-			$seqname =~ s/\./"."/;
-			$alter = "ALTER SEQUENCE $self->{pg_supports_ifexists} \"$seqname\" RESTART WITH $nextvalue;";
-		}
+		my $alter = "ALTER SEQUENCE $self->{pg_supports_ifexists} " .  $self->quote_object_name($seqname) . " RESTART WITH $nextvalue;";
 		push(@script, $alter);
 		$self->logit("Extracted sequence information for sequence \"$seqname\"\n", 1);
 	}
@@ -8364,8 +8214,6 @@ AND    IC.TABLE_OWNER = ?
 
 		# Save original column name
 		my $colname = $row->[1];
-		# Enclose with double quote if required
-		$row->[1] = $self->quote_reserved_words($row->[1]);
 
 		# Replace function based index type
 		if ( ($row->[4] =~ /FUNCTION-BASED/i) && ($colname =~ /^SYS_NC\d+\$$/) ) {
@@ -8380,10 +8228,9 @@ AND    IC.TABLE_OWNER = ?
 
 		$row->[1] =~ s/SYS_EXTRACT_UTC\s*\(([^\)]+)\)/$1/isg;
 
-		if ($self->{preserve_case}) {
-			if (($row->[1] !~ /".*"/) && ($row->[1] !~ /\(.*\)/)) {
-				$row->[1] = "\"$row->[1]\"";
-			}
+		if (($row->[1] !~ /".*"/) && ($row->[1] !~ /\(.*\)/)) {
+			# Enclose with double quote if required
+			$row->[1] = $self->quote_object_name($row->[1]);
 		}
 
 		# Index with DESC are declared as FUNCTION-BASED, fix that
@@ -9067,11 +8914,7 @@ sub _get_plsql_metadata
 						$res_name = $p . '_' . $res_name;
 					}
 					$res_name =~ s/"_"/_/g;
-					if (!$self->{preserve_case}) {
-						$self->{package_functions}{"\L$f\E"}{name} = lc($res_name);
-					} else {
-						$self->{package_functions}{"\L$f\E"}{name} = $res_name;
-					}
+					$self->{package_functions}{"\L$f\E"}{name} =  $self->quote_object_name($res_name);
 					$self->{package_functions}{"\L$f\E"}{package} = $p;
 				}
 			}
@@ -10375,23 +10218,13 @@ sub _convert_package
 	my $content = '';
 
 	if ($self->{package_as_schema} && ($plsql =~ /PACKAGE\s+BODY\s*([^\s]+)\s*(AS|IS)\s*/is)) {
-		my $pname = $1;
-		$pname =~ s/"//g;
-		if (!$self->{preserve_case}) {
-			$content .= "\nDROP SCHEMA $self->{pg_supports_ifexists} $pname CASCADE;\n";
-			$content .= "CREATE SCHEMA $pname;\n";
-		} else {
-			$content .= "\nDROP SCHEMA $self->{pg_supports_ifexists} \"$pname\" CASCADE;\n";
-			$content .= "CREATE SCHEMA \"$pname\";\n";
-		}
+		my $pname =  $self->quote_object_name($1);
+		$content .= "\nDROP SCHEMA $self->{pg_supports_ifexists} $pname CASCADE;\n";
+		$content .= "CREATE SCHEMA $pname;\n";
 		if ($self->{force_owner}) {
 			$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
 			if ($owner) {
-				if (!$self->{preserve_case}) {
-					$content .= "ALTER SCHEMA \L$pname\E OWNER TO \L$owner\E;\n";
-				} else {
-					$content .= "ALTER SCHEMA \"$pname\" OWNER TO \"$owner\";\n";
-				}
+				$content .= "ALTER SCHEMA \L$pname\E OWNER TO " .  $self->quote_object_name($owner) . ";\n";
 			}
 		}
 	}
@@ -10466,9 +10299,7 @@ sub _convert_package
 			$fct_detail{name} =~ s/^.*\.//;
 			$fct_detail{name} =~ s/"//g;
 			next if (!$fct_detail{name});
-			if (!$self->{preserve_case}) {
-				$fct_detail{name} = lc($fct_detail{name});
-			}
+			$fct_detail{name} =  lc($fct_detail{name});
 			if (!exists $self->{package_functions}{$fct_detail{name}}) {
 				my $res_name = $fct_detail{name};
 				$res_name =~ s/^[^\.]+\.//;
@@ -10478,11 +10309,7 @@ sub _convert_package
 					$res_name = $pname . '_' . $res_name;
 				}
 				$res_name =~ s/"_"/_/g;
-				if (!$self->{preserve_case}) {
-					$self->{package_functions}{"\L$fct_detail{name}\E"}{name} = lc($res_name);
-				} else {
-					$self->{package_functions}{"\L$fct_detail{name}\E"}{name} = $res_name;
-				}
+				$self->{package_functions}{"\L$fct_detail{name}\E"}{name} =  $self->quote_object_name($res_name);
 				$self->{package_functions}{"\L$fct_detail{name}\E"}{package} = $pname;
 			}
 		}
@@ -10669,14 +10496,8 @@ sub _convert_function
 
 	my $sep = '.';
 	$sep = '_' if (!$self->{package_as_schema});
-	my $fname = $fct_detail{name};
-	if ($self->{preserve_case}) {
-		$fname = "\"$fname\"";
-		$fname = "\"$pname\"" . $sep . $fname if ($pname && !$self->{is_mysql});
-	} else {
-		$fname = lc($fname);
-		$fname = $pname . $sep . $fname if ($pname && !$self->{is_mysql});
-	}
+	my $fname =  $self->quote_object_name($fct_detail{name});
+	$fname =  $self->quote_object_name("$pname$sep$fct_detail{name}") if ($pname && !$self->{is_mysql});
 	$fname =~ s/"_"/_/g;
 
 	$fct_detail{args} =~ s/\s+IN\s+/ /ig; # Remove default IN keyword
@@ -10751,25 +10572,13 @@ sub _convert_function
 	my $function = "\nCREATE OR REPLACE FUNCTION $fname$at_suffix $fct_detail{args}";
 	if (!$pname || !$self->{package_as_schema}) {
 		if ($self->{export_schema} && !$self->{schema}) {
-			if (!$self->{preserve_case}) {
-				$function = "\nCREATE OR REPLACE FUNCTION \L$owner\.$fname\E $fct_detail{args}";
-				$name =  "\L$owner\.$fname\E";
-				$self->logit("Parsing function \L$owner\.$fname\E...\n", 1);
-			} else {
-				$function = "\nCREATE OR REPLACE FUNCTION \"$owner\"\.$fname $fct_detail{args}";
-				$name = "\"$owner\"\.$fname";
-				$self->logit("Parsing function \"$owner\"\.$fname...\n", 1);
-			}
+			$function = "\nCREATE OR REPLACE FUNCTION " . $self->quote_object_name("$owner.$fname") . " $fct_detail{args}";
+			$name =  $self->quote_object_name("$owner.$fname");
+			$self->logit("Parsing function " . $self->quote_object_name("$owner.$fname") . "...\n", 1);
 		} elsif ($self->{export_schema} && $self->{schema}) {
-			if (!$self->{preserve_case}) {
-				$function = "\nCREATE OR REPLACE FUNCTION $self->{schema}\.$fname $fct_detail{args}";
-				$name =  "$self->{schema}\.$fname";
-				$self->logit("Parsing function $self->{schema}\.$fname...\n", 1);
-			} else {
-				$function = "\nCREATE OR REPLACE FUNCTION \"$self->{schema}\"\.$fname $fct_detail{args}";
-				$name = "\"$self->{schema}\"\.$fname";
-				$self->logit("Parsing function \"$self->{schema}\"\.$fname...\n", 1);
-			}
+			$function = "\nCREATE OR REPLACE FUNCTION " . $self->quote_object_name("$self->{schema}.$fname") . " $fct_detail{args}";
+			$name =  $self->quote_object_name("$self->{schema}.$fname");
+			$self->logit("Parsing function " . $self->quote_object_name("$self->{schema}.$fname") . "...\n", 1);
 		}
 	} else {
 		$self->logit("Parsing function $fname...\n", 1);
@@ -10915,11 +10724,7 @@ END;
 		$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
 		if ($owner) {
 			$function .= "ALTER FUNCTION $fname $fct_detail{args} OWNER TO";
-			if (!$self->{preserve_case}) {
-				$function .= " \L$owner\E;\n";
-			} else {
-				$function .= " \"$owner\";\n";
-			}
+			$function .= " " . $self->quote_object_name($owner) . ";\n";
 		}
 	}
 	$function .= $revoke;
@@ -11268,11 +11073,8 @@ CREATE TYPE \L$type_name\E AS ($type_name $declar\[$size\]);
 	if ($self->{force_owner}) {
 		$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
 		if ($owner) {
-			if (!$self->{preserve_case}) {
-				$content .= "ALTER TYPE $type_name OWNER TO \L$owner\E;\n";
-			} else {
-				$content .= "ALTER TYPE $type_name OWNER TO \"$owner\";\n";
-			}
+			$content .= "ALTER TYPE " . $self->quote_object_name($type_name)
+					. " OWNER TO " . $self->quote_object_name($owner) . ";\n";
 		}
 	}
 
@@ -14397,15 +14199,13 @@ sub _lookup_check_constraint
 				$chkconstraint = Ora2Pg::PLSQL::convert_plsql_code($self, $chkconstraint, %{$self->{data_type}});
 			}
 			next if ($nonotnull && ($chkconstraint =~ /IS NOT NULL/));
-			if (!$self->{preserve_case}) {
-				foreach my $c (@$field_name) {
-					# Force lower case
-					my $ret = $self->quote_reserved_words($c);
-					$chkconstraint =~ s/"$c"/$ret/igs;
-					$chkconstraint =~ s/\b$c\b/$ret/gsi;
-				}
-				$k = lc($k);
+			foreach my $c (@$field_name) {
+				# Force lower case
+				my $ret = $self->quote_object_name($c);
+				$chkconstraint =~ s/"$c"/$ret/igs;
+				$chkconstraint =~ s/\b$c\b/$ret/igs;
 			}
+			$k = $self->quote_object_name($k);
 			my $validate = '';
 			$validate = ' NOT VALID' if ($check_constraint->{constraint}->{$k}{validate} eq 'NOT VALIDATED');
 			push(@chk_constr,  "ALTER TABLE $table ADD CONSTRAINT $k CHECK ($chkconstraint)$validate;\n");
@@ -14615,11 +14415,7 @@ sub set_search_path
 
 	my $local_path = '';
 	if ($self->{postgis_schema}) {
-		if (!$self->{preserve_case}) {
-			$local_path = ', ' . lc($self->{postgis_schema});
-		} else {
-			$local_path = ', "' . $self->{postgis_schema} . '"';
-		}
+		$local_path = ', ' . $self->quote_object_name($self->{postgis_schema});
 	}
 	if ($self->{data_type}{BFILE} eq 'efile') {
 			$local_path .= ', external_file';
@@ -14627,24 +14423,12 @@ sub set_search_path
 	
 	my $search_path = '';
 	if (!$self->{schema} && $self->{export_schema} && $owner) {
-		if (!$self->{preserve_case}) {
-			$search_path = "SET search_path = \L$owner\E$local_path;";
-		} else {
-			$search_path = "SET search_path = \"$owner\"$local_path;";
-		}
+		$search_path = "SET search_path = " . $self->quote_object_name($owner) . "$local_path;";
 	} elsif ($self->{export_schema} && !$owner) {
 		if ($self->{pg_schema}) {
-			if (!$self->{preserve_case}) {
-				$search_path = "SET search_path = \L$self->{pg_schema}\E$local_path;";
-			} else {
-				$search_path = "SET search_path = \"$self->{pg_schema}\"$local_path;";
-			}
+			$search_path = "SET search_path = " . $self->quote_object_name($self->{pg_schema}) . "$local_path;";
 		} elsif ($self->{schema}) {
-			if (!$self->{preserve_case}) {
-				$search_path = "SET search_path = \L$self->{schema}\E$local_path, pg_catalog;";
-			} else {
-				$search_path = "SET search_path = \"$self->{schema}\"$local_path, pg_catalog;";
-			}
+			$search_path = "SET search_path = " . $self->quote_object_name($self->{schema}) . "$local_path, pg_catalog;";
 		}
 	}
 
