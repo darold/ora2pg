@@ -701,15 +701,18 @@ sub plsql_to_plpgsql
 			foreach my $k (keys %{$class->{function_metadata}}) {
 				if (!$class->{function_metadata}{$k}{metadata}{inout}) {
 					# Look if we need to use PERFORM to call the function
-					$str =~ s/(BEGIN|LOOP|;)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($k\s*\()/$1$2PERFORM $3/igs;
-					$str =~ s/(IF(?:(?!CASE).)*?THEN)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($k\s*\()/$1$2PERFORM $3/isg;
-					$str =~ s/(IF(?:(?!CASE).)*?ELSE)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($k\s*\()/$1$2PERFORM $3/isg;
+					$str =~ s/(BEGIN|LOOP|;)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($k\s*[\(;])/$1$2PERFORM $3/igs;
+					$str =~ s/(EXCEPTION(?:(?!CASE).)*?THEN)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($k\s*[\(;])/$1$2PERFORM $3/isg;
+					$str =~ s/(IF(?:(?!CASE).)*?THEN)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($k\s*[\(;])/$1$2PERFORM $3/isg;
+					$str =~ s/(IF(?:(?!CASE).)*?ELSE)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($k\s*[\(;])/$1$2PERFORM $3/isg;
 					# Remove package name and try to replace call to function name only
 					if ($k =~ s/^[^\.]+\.//) {
-						$str =~ s/(BEGIN|LOOP|;)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($k\s*\()/$1$2PERFORM $3/igs;
-						$str =~ s/(IF(?:(?!CASE).)*?THEN)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($k\s*\()/$1$2PERFORM $3/isg;
-						$str =~ s/(IF(?:(?!CASE).)*?ELSE)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($k\s*\()/$1$2PERFORM $3/isg;
+						$str =~ s/(BEGIN|LOOP|;)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($k\s*[\(;])/$1$2PERFORM $3/igs;
+						$str =~ s/(EXCEPTION(?:(?!CASE).)*?THEN)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($k\s*[\(;])/$1$2PERFORM $3/isg;
+						$str =~ s/(IF(?:(?!CASE).)*?THEN)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($k\s*[\(;])/$1$2PERFORM $3/isg;
+						$str =~ s/(IF(?:(?!CASE).)*?ELSE)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($k\s*[\(;])/$1$2PERFORM $3/isg;
 					}
+					$str =~ s/(PERFORM $k);/$1\(\);/igs;
 				}
 			}
 		}
