@@ -1058,7 +1058,7 @@ sub replace_oracle_function
 					if ($#out_param == 0) {
 						$replace_out_param{$idx} = "$out_param[0] := $replace_out_param{$idx}";
 					} else {
-						$replace_out_param{$idx} = "SELECT $replace_out_param{$idx} INTO (" . join(',', @out_param) . ")";
+						$replace_out_param{$idx} = "SELECT * FROM $replace_out_param{$idx} INTO " . join(',', @out_param);
 					}
 					$idx++;
 				}
