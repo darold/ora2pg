@@ -697,23 +697,21 @@ sub plsql_to_plpgsql
 	# Rewrite direct call to function without out parameters using PERFORM
 	##############
 	if (scalar keys %{$class->{function_metadata}}) {
-		if (scalar keys %{$class->{function_metadata}}) {
-			foreach my $k (keys %{$class->{function_metadata}}) {
-				if (!$class->{function_metadata}{$k}{metadata}{inout}) {
-					# Look if we need to use PERFORM to call the function
+		foreach my $k (keys %{$class->{function_metadata}}) {
+			if (!$class->{function_metadata}{$k}{metadata}{inout}) {
+				# Look if we need to use PERFORM to call the function
+				$str =~ s/(BEGIN|LOOP|;)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($k\s*[\(;])/$1$2PERFORM $3/igs;
+				$str =~ s/(EXCEPTION(?:(?!CASE).)*?THEN)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($k\s*[\(;])/$1$2PERFORM $3/isg;
+				$str =~ s/(IF(?:(?!CASE).)*?THEN)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($k\s*[\(;])/$1$2PERFORM $3/isg;
+				$str =~ s/(IF(?:(?!CASE).)*?ELSE)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($k\s*[\(;])/$1$2PERFORM $3/isg;
+				# Remove package name and try to replace call to function name only
+				if ($k =~ s/^[^\.]+\.//) {
 					$str =~ s/(BEGIN|LOOP|;)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($k\s*[\(;])/$1$2PERFORM $3/igs;
 					$str =~ s/(EXCEPTION(?:(?!CASE).)*?THEN)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($k\s*[\(;])/$1$2PERFORM $3/isg;
 					$str =~ s/(IF(?:(?!CASE).)*?THEN)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($k\s*[\(;])/$1$2PERFORM $3/isg;
 					$str =~ s/(IF(?:(?!CASE).)*?ELSE)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($k\s*[\(;])/$1$2PERFORM $3/isg;
-					# Remove package name and try to replace call to function name only
-					if ($k =~ s/^[^\.]+\.//) {
-						$str =~ s/(BEGIN|LOOP|;)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($k\s*[\(;])/$1$2PERFORM $3/igs;
-						$str =~ s/(EXCEPTION(?:(?!CASE).)*?THEN)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($k\s*[\(;])/$1$2PERFORM $3/isg;
-						$str =~ s/(IF(?:(?!CASE).)*?THEN)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($k\s*[\(;])/$1$2PERFORM $3/isg;
-						$str =~ s/(IF(?:(?!CASE).)*?ELSE)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($k\s*[\(;])/$1$2PERFORM $3/isg;
-					}
-					$str =~ s/(PERFORM $k);/$1\(\);/igs;
 				}
+				$str =~ s/(PERFORM $k);/$1\(\);/igs;
 			}
 		}
 	}
@@ -723,7 +721,10 @@ sub plsql_to_plpgsql
 	##############
 	if (scalar keys %{$class->{package_functions}}) {
 		foreach my $k (keys %{$class->{package_functions}}) {
-			$str =~ s/($class->{package_functions}{$k}{package}\.)?\b$k\s*\(/$class->{package_functions}{$k}{name}\(/igs;
+			my $fname = $k;
+			$fname =~ s/^[^\.]+\.//;
+			$str =~ s/([^\.])$fname\s*([\(;])/$1$class->{package_functions}{$k}{name}$2/igs;
+			$str =~ s/\b$class->{package_functions}{$k}{package}\.$fname\s*([\(;])/$class->{package_functions}{$k}{name}$1/igs;
 		}
 	}
 
@@ -1023,7 +1024,10 @@ sub replace_oracle_function
 	##############
 	if (scalar keys %{$class->{package_functions}}) {
 		foreach my $k (keys %{$class->{package_functions}}) {
-			$str =~ s/($class->{package_functions}->{$k}{package}\.)?\b$k\s*\(/$class->{package_functions}->{$k}{name}\(/igs;
+			my $fname = $k;
+			$fname =~ s/^[^\.]+\.//;
+			$str =~ s/([^\.])$fname\s*([\(;])/$1$class->{package_functions}{$k}{name}$2/igs;
+			$str =~ s/\b$class->{package_functions}{$k}{package}\.$fname\s*([\(;])/$class->{package_functions}{$k}{name}$1/igs;
 		}
 	}
 

@@ -4410,7 +4410,7 @@ LANGUAGE plpgsql ;
 				}
 				delete $fct_detail{code};
 				delete $fct_detail{before};
-				%{$self->{fonction_metadata}{$fct}{metadata}} = %fct_detail;
+				%{$self->{function_metadata}{$fct}{metadata}} = %fct_detail;
 				$self->_restore_comments(\$self->{procedures}{$fct}{text});
 			}
 		}
@@ -8905,7 +8905,6 @@ sub _get_plsql_metadata
 					delete $infos{$f}{code};
 					delete $infos{$f}{before};
 					%{$self->{function_metadata}{$name}{metadata}} = %{$infos{$f}};
-
 					my $res_name = $f;
 					$res_name =~ s/^[^\.]+\.//;
 					if ($self->{package_as_schema}) {
@@ -14229,7 +14228,7 @@ sub _lookup_package
 
 	my $content = '';
 	my %infos = ();
-	if ($plsql =~ /CREATE OR REPLACE PACKAGE\s+BODY\s*([^\s]+)\s*(AS|IS)\s*(.*)/is) {
+	if ($plsql =~ /(?:CREATE|CREATE OR REPLACE)?\s*(?:EDITABLE|NONEDITABLE)?\s*PACKAGE\s+BODY\s*([^\s]+)\s*(AS|IS)\s*(.*)/is) {
 		my $pname = $1;
 		my $type = $2;
 		$content = $3;
