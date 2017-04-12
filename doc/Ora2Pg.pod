@@ -2089,6 +2089,10 @@ with a call to uuid_generate_v4 from uuid-ossp extension. You can
 redefined it to use the gen_random_uuid function from pgcrypto
 extension by changing the function name. Default to uuid_generate_v4.
 
+Note that when a RAW(n) column has "SYS_GUID()" as default value
+Ora2Pg will automatically translate the type of the column into uuid
+which might be the right translation in most of the case.
+
 =item DATE_FUNCTION_REWRITE
 
 By default Ora2pg rewrite add_month(), add_year() and date_trunc() functions

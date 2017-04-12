@@ -311,10 +311,6 @@ sub convert_plsql_code
 
 	return if ($str eq '');
 
-	# Replace all text constant part to prevent a split on a ; inside a text
-	$class->{text_values} = ();
-	$str = $class->remove_text_constant_part($str);
-
 	# Do some initialization iof variables used in recursive functions
 	%{$class->{single_fct_call}} = ();
 
@@ -324,7 +320,6 @@ sub convert_plsql_code
 	# Extract all block from the code by splitting it on the semi-comma
 	# character and replace all necessary function call
 	my @code_parts = split(/;/, $str);
-	map { $_ = $class->restore_text_constant_part($_) } @code_parts;
 	for (my $i = 0; $i <= $#code_parts; $i++) {
 		next if (!$code_parts[$i]);
 		%{$class->{single_fct_call}} = ();
@@ -339,14 +334,9 @@ sub convert_plsql_code
 		while ($code_parts[$i] =~ s/\%\%REPLACEFCT(\d+)\%\%/$class->{single_fct_call}{$1}/) {};
 	}
 	$str = join(';', @code_parts);
-	$str = $class->restore_text_constant_part($str);
-	$class->{text_values} = ();
 
 	# Apply code rewrite on other part of the code
-	$str = $class->remove_text_constant_part($str);
 	$str = plsql_to_plpgsql($class, $str, %data_type);
-	$str = $class->restore_text_constant_part($str);
-	$class->{text_values} = ();
 
 	return $str;
 }
@@ -470,12 +460,10 @@ sub plsql_to_plpgsql
 
 	# SELECT without INTO should be PERFORM. Exclude select of view when prefixed with AS ot IS
 	if ( ($class->{type} ne 'QUERY') && ($class->{type} ne 'VIEW') ) {
-		$str = $class->remove_text_constant_part($str);
 		$str =~ s/(\s+)(?<!AS|IS)(\s+)SELECT((?![^;]+\bINTO\b)[^;]+;)/$1$2PERFORM$3/isg;
 		$str =~ s/\bSELECT\b((?![^;]+\bINTO\b)[^;]+;)/PERFORM$1/isg;
 		$str =~ s/(AS|IS|FOR|UNION ALL|UNION|MINUS|\()(\s*)(\%ORA2PG_COMMENT\d+\%)?(\s*)PERFORM/$1$2$3$4SELECT/isg;
 		$str =~ s/(INSERT\s+INTO\s+[^;]+\s+)PERFORM/$1SELECT/isg;
-		$str = $class->restore_text_constant_part($str);
 	}
 
 	# Change nextval on sequence
@@ -506,7 +494,7 @@ sub plsql_to_plpgsql
 	# Replace raise_application_error by PG standard RAISE EXCEPTION
 	$str =~ s/\braise_application_error\s*\(\s*([^,]+)\s*,\s*([^;]+),\s*(true|false)\s*\)\s*;/RAISE EXCEPTION '%', $2 USING ERRCODE = $1;/igs;
 	$str =~ s/\braise_application_error\s*\(\s*([^,]+)\s*,\s*([^;]+)\)\s*;/RAISE EXCEPTION '%', $2 USING ERRCODE = $1;/igs;
-	$str =~ s/(RAISE EXCEPTION .* USING ERRCODE = )-20(...)\s*;/$1'45$2'/igs;
+	$str =~ s/(RAISE EXCEPTION .* USING ERRCODE = )-20(...)\s*;/$1'45$2';/igs;
 	$str =~ s/DBMS_STANDARD\.RAISE EXCEPTION/RAISE EXCEPTION/igs;
 
 	# Remove IN information from cursor declaration
@@ -690,34 +678,55 @@ sub plsql_to_plpgsql
 	# Replace outer join sign (+) with a placeholder
 	$str =~ s/\%OUTERJOIN\%/\(\+\)/igs;
 
+	# Sometime variable used in FOR ... IN SELECT loop is not declared
+	# Append its RECORD declaration in the DECLARE section.
+	my $tmp_code = $str;
+	while ($tmp_code =~ s/\bFOR\s+([^\s]+)\s+IN(.*?)LOOP//is) {
+		my $varname = $1;
+		my $clause = $2;
+		if ($str !~ /\bDECLARE\b(.*?)\b$varname\s+(.*?)BEGIN/is) {
+			# When the cursor is refereing to a statement, declare
+			# it as record otherwise it don't need to be replaced
+			if ($clause =~ /\bSELECT\b/is) {
+				$str =~ s/\bDECLARE\b/DECLARE\n  $varname RECORD;/is;
+			}
+		}
+	}
+
+	##############
+	# Rewrite direct call to function without out parameters using PERFORM
+	##############
+	if (scalar keys %{$class->{function_metadata}}) {
+		foreach my $k (keys %{$class->{function_metadata}}) {
+			if (!$class->{function_metadata}{$k}{metadata}{inout}) {
+				# Look if we need to use PERFORM to call the function
+				$str =~ s/(BEGIN|LOOP|;)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($k\s*[\(;])/$1$2PERFORM $3/igs;
+				$str =~ s/(EXCEPTION(?:(?!CASE).)*?THEN)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($k\s*[\(;])/$1$2PERFORM $3/isg;
+				$str =~ s/(IF(?:(?!CASE).)*?THEN)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($k\s*[\(;])/$1$2PERFORM $3/isg;
+				$str =~ s/(IF(?:(?!CASE).)*?ELSE)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($k\s*[\(;])/$1$2PERFORM $3/isg;
+				# Remove package name and try to replace call to function name only
+				if ($k =~ s/^[^\.]+\.//) {
+					$str =~ s/(BEGIN|LOOP|;)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($k\s*[\(;])/$1$2PERFORM $3/igs;
+					$str =~ s/(EXCEPTION(?:(?!CASE).)*?THEN)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($k\s*[\(;])/$1$2PERFORM $3/isg;
+					$str =~ s/(IF(?:(?!CASE).)*?THEN)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($k\s*[\(;])/$1$2PERFORM $3/isg;
+					$str =~ s/(IF(?:(?!CASE).)*?ELSE)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($k\s*[\(;])/$1$2PERFORM $3/isg;
+				}
+				$str =~ s/(PERFORM $k);/$1\(\);/igs;
+			}
+		}
+	}
+
 	##############
 	# Replace package.function call by package_function
 	##############
 	if (scalar keys %{$class->{package_functions}}) {
-		$str = $class->remove_text_constant_part($str);
 		foreach my $k (keys %{$class->{package_functions}}) {
-			$str =~ s/($class->{package_functions}->{$k}{package}\.)?\b$k\s*\(/$class->{package_functions}->{$k}{name}\(/igs;
+			my $fname = $k;
+			$fname =~ s/^[^\.]+\.//;
+			$str =~ s/([^\.])$fname\s*([\(;])/$1$class->{package_functions}{$k}{name}$2/igs;
+			$str =~ s/\b$class->{package_functions}{$k}{package}\.$fname\s*([\(;])/$class->{package_functions}{$k}{name}$1/igs;
 		}
-		$str = $class->restore_text_constant_part($str);
 	}
-
-	# Replace call to function with out parameters
-	if (scalar keys %{$class->{functions}}) {
-		$str = $class->remove_text_constant_part($str);
-		foreach my $k (keys %{$class->{functions}}) {
-			if (!$class->{functions}{$k}{metadata}{inout}) {
-				# Look if we need to use PERFORM to call the function
-				my $fct_name = $k;
-				if ($str !~ /$k/is) {
-					# Remove pacakge name
-					$fct_name =~ s/^[^\.]+\.//;
-				}
-				$str =~ s/(BEGIN|THEN|LOOP|;)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($fct_name\s*\()/$1$2PERFORM $3/igs;
-			}
-		}
-		$str = $class->restore_text_constant_part($str);
-	}
-
 
 	return $str;
 }
@@ -828,45 +837,65 @@ sub replace_rownum_with_limit
 {
 	my ($class, $str) = @_;
 
-        if ($str =~ s/\s+(WHERE)\s+(?:\(\s*)?ROWNUM\s*=\s*(\d+)(\s*\)\s*)?([^;]*)/ $1 $3$4/is) {
-		$class->{limit_clause} = ' LIMIT 1 OFFSET ' . ($2-1);
+	my $offset = '';
+        if ($str =~ s/\s+(WHERE)\s+(?:\(\s*)?ROWNUM\s*=\s*([^\s\)]+)(\s*\)\s*)?([^;]*)/ $1 $3$4/is) {
+		$offset = $2;
+		($offset =~ /[^0-9]/) ? $offset = "($offset)" : $offset -= 1;
+		$class->{limit_clause} = ' LIMIT 1 OFFSET ' . $offset;
 		
         }
-	if ($str =~ s/\s+AND\s+(?:\(\s*)?ROWNUM\s*=\s*(\d+)(\s*\)\s*)?([^;]*)/ $2$3/is) {
-		$class->{limit_clause} = ' LIMIT 1 OFFSET ' . ($1-1);
+	if ($str =~ s/\s+AND\s+(?:\(\s*)?ROWNUM\s*=\s*([^\s\)]+)(\s*\)\s*)?([^;]*)/ $2$3/is) {
+		$offset = $1;
+		($offset =~ /[^0-9]/) ? $offset = "($offset)" : $offset -= 1;
+		$class->{limit_clause} = ' LIMIT 1 OFFSET ' . $offset;
         }
 
-	if ($str =~ s/\s+(WHERE)\s+(?:\(\s*)?ROWNUM\s*>=\s*(\d+)(\s*\)\s*)?([^;]*)/ $1 $3$4/is) {
-		$class->{limit_clause} = ' LIMIT ALL OFFSET ' . ($2-1);
+	if ($str =~ s/\s+(WHERE)\s+(?:\(\s*)?ROWNUM\s*>=\s*([^\s\)]+)(\s*\)\s*)?([^;]*)/ $1 $3$4/is) {
+		$offset = $2;
+		($offset =~ /[^0-9]/) ? $offset = "($offset)" : $offset -= 1;
+		$class->{limit_clause} = ' LIMIT ALL OFFSET ' . $offset;
         }
-	if ($str =~ s/\s+(WHERE)\s+(?:\(\s*)?ROWNUM\s*>\s*(\d+)(\s*\)\s*)?([^;]*)/ $1 $3$4/is) {
-		$class->{limit_clause} = ' LIMIT ALL OFFSET ' . $2;
+	if ($str =~ s/\s+(WHERE)\s+(?:\(\s*)?ROWNUM\s*>\s*([^\s\)]+)(\s*\)\s*)?([^;]*)/ $1 $3$4/is) {
+		$offset = $2;
+		$offset = "($offset)" if ($offset =~ /[^0-9]/);
+		$class->{limit_clause} = ' LIMIT ALL OFFSET ' . $offset;
 	}
-	if ($str =~ s/\s+AND\s+(?:\(\s*)?ROWNUM\s*>=\s*(\d+)(\s*\)\s*)?([^;]*)/ $2$3/is) {
-		$class->{limit_clause} = ' LIMIT ALL OFFSET ' . ($1-1);
+	if ($str =~ s/\s+AND\s+(?:\(\s*)?ROWNUM\s*>=\s*([^\s\)]+)(\s*\)\s*)?([^;]*)/ $2$3/is) {
+		$offset = $1;
+		($offset =~ /[^0-9]/) ? $offset = "($offset)" : $offset -= 1;
+		$class->{limit_clause} = ' LIMIT ALL OFFSET ' . $offset;
         }
-	if ($str =~ s/\s+AND\s+(?:\(\s*)?ROWNUM\s*>\s*(\d+)(\s*\)\s*)?([^;]*)/ $2$3/is) {
-		$class->{limit_clause} = ' LIMIT ALL OFFSET ' . $1;
+	if ($str =~ s/\s+AND\s+(?:\(\s*)?ROWNUM\s*>\s*([^\s\)]+)(\s*\)\s*)?([^;]*)/ $2$3/is) {
+		$offset = $1;
+		$offset = "($offset)" if ($offset =~ /[^0-9]/);
+		$class->{limit_clause} = ' LIMIT ALL OFFSET ' . $offset;
 	}
 
 	my $tmp_val = '';
-	if ($str =~ s/\s+(WHERE)\s+(?:\(\s*)?ROWNUM\s*<=\s*(\d+)(\s*\)\s*)?([^;]*)/ $1 $3$4/is) {
+	if ($str =~ s/\s+(WHERE)\s+(?:\(\s*)?ROWNUM\s*<=\s*([^\s\)]+)(\s*\)\s*)?([^;]*)/ $1 $3$4/is) {
 		$tmp_val = $2;
 	}
-	if ($str =~ s/\s+(WHERE)\s+(?:\(\s*)?ROWNUM\s*<\s*(\d+)(\s*\)\s*)?([^;]*)/ $1 $3$4/is) {
+	if ($str =~ s/\s+(WHERE)\s+(?:\(\s*)?ROWNUM\s*<\s*([^\s\)]+)(\s*\)\s*)?([^;]*)/ $1 $3$4/is) {
 		$tmp_val = $2 - 1;
         }
-	if ($str =~ s/\s+AND\s+(?:\(\s*)?ROWNUM\s*<=\s*(\d+)(\s*\)\s*)?([^;]*)/ $2$3/is) {
+	if ($str =~ s/\s+AND\s+(?:\(\s*)?ROWNUM\s*<=\s*([^\s\)]+)(\s*\)\s*)?([^;]*)/ $2$3/is) {
 		$tmp_val = $1;
         }
-	if ($str =~ s/\s+AND\s+(?:\(\s*)?ROWNUM\s*<\s*(\d+)(\s*\)\s*)?([^;]*)/ $2$3/is) {
+	if ($str =~ s/\s+AND\s+(?:\(\s*)?ROWNUM\s*<\s*([^\s\)]+)(\s*\)\s*)?([^;]*)/ $2$3/is) {
 		$tmp_val = $1 - 1;
         }
+
 	if ($tmp_val) {
-		if ($class->{limit_clause} =~ /LIMIT ALL OFFSET (\d+)/is) {
-			$tmp_val -= $1;
+		if ($class->{limit_clause} =~ /LIMIT ALL OFFSET ([^\s]+)/is) {
+			my $tmp_offset = $1;
+			if ($tmp_offset !~ /[^0-9]/ && $tmp_val !~ /[^0-9]/) {
+				$tmp_val -= $tmp_offset;
+			} else {
+				$tmp_val = "($tmp_val - $tmp_offset)";
+			}
 			$class->{limit_clause} =~ s/LIMIT ALL/LIMIT $tmp_val/is;
 		} else {
+			$tmp_val = "($tmp_val)" if ($tmp_val =~ /[^0-9]/);
 			$class->{limit_clause} = ' LIMIT ' . $tmp_val;
 		}
 	}
@@ -963,7 +992,7 @@ sub replace_oracle_function
 	#$str =~ s/TO_NUMBER\s*\(([^,\)]+)\)/to_number\($1,'99999999999999999999D99999999999999999999'\)/is;
 
 	# Replace to_number with a cast
-	$str =~ s/TO_NUMBER\s*\(\s*([^\)]+)\s*\)/($1)\:\:integer/is;
+	$str =~ s/TO_NUMBER\s*\(\s*([^\)]+)\s*\)\s?/($1)\:\:integer /is;
 
 	# Replace the UTC convertion with the PG syntaxe
 	$str =~ s/SYS_EXTRACT_UTC\s*\(([^\)]+)\)/($1 AT TIME ZONE 'UTC')/is;
@@ -994,21 +1023,21 @@ sub replace_oracle_function
 	# Replace package.function call by package_function
 	##############
 	if (scalar keys %{$class->{package_functions}}) {
-		$str = $class->remove_text_constant_part($str);
 		foreach my $k (keys %{$class->{package_functions}}) {
-			$str =~ s/($class->{package_functions}->{$k}{package}\.)?\b$k\s*\(/$class->{package_functions}->{$k}{name}\(/igs;
+			my $fname = $k;
+			$fname =~ s/^[^\.]+\.//;
+			$str =~ s/([^\.])$fname\s*([\(;])/$1$class->{package_functions}{$k}{name}$2/igs;
+			$str =~ s/\b$class->{package_functions}{$k}{package}\.$fname\s*([\(;])/$class->{package_functions}{$k}{name}$1/igs;
 		}
-		$str = $class->restore_text_constant_part($str);
 	}
 
 	# Replace call to function with out parameters
-	if (scalar keys %{$class->{functions}}) {
-		$str = $class->remove_text_constant_part($str);
-		foreach my $k (keys %{$class->{functions}}) {
-			if ($class->{functions}{$k}{metadata}{inout}) {
+	if (scalar keys %{$class->{function_metadata}}) {
+		foreach my $k (keys %{$class->{function_metadata}}) {
+			if ($class->{function_metadata}{$k}{metadata}{inout}) {
 				my $fct_name = $k;
 				if ($str !~ /$k/is) {
-					# Remove pacakge name
+					# Remove package name
 					$fct_name =~ s/^[^\.]+\.//;
 				}
 				my %replace_out_param = ();
@@ -1018,7 +1047,7 @@ sub replace_oracle_function
 					my $fparam = $2;
 					$replace_out_param{$idx} = "$fname($fparam)";
 					# Extract position of out parameters
-					my @params = split(/,/, $class->{functions}{$k}{metadata}{args});
+					my @params = split(/,/, $class->{function_metadata}{$k}{metadata}{args});
 					my @out_pos = ();
 					for (my $i = 0; $i <= $#params; $i++) {
 						if ($params[$i] =~ /\s(OUT|INOUT)\s/is) {
@@ -1033,14 +1062,13 @@ sub replace_oracle_function
 					if ($#out_param == 0) {
 						$replace_out_param{$idx} = "$out_param[0] := $replace_out_param{$idx}";
 					} else {
-						$replace_out_param{$idx} = "SELECT $replace_out_param{$idx} INTO (" . join(',', @out_param) . ")";
+						$replace_out_param{$idx} = "SELECT * FROM $replace_out_param{$idx} INTO " . join(',', @out_param);
 					}
 					$idx++;
 				}
 				$str =~ s/\%FCTINOUTPARAM(\d+)\%/$replace_out_param{$1}/gs;
 			}
 		}
-		$str = $class->restore_text_constant_part($str);
 	}
 
 	# Replace some sys_context call to the postgresql equivalent
@@ -1078,13 +1106,15 @@ sub replace_decode
 				if ($c eq ',' && ($idx - 1) == 0) {
 					# we are switching to a new parameter
 					push(@decode_params, '');
-				} else {
+				} elsif ($c ne "\n") {
 					$decode_params[-1] .= $c;
 				}
 			}
 		}
 		my $case_str = 'CASE ';
 		for (my $i = 1; $i <= $#decode_params; $i+=2) {
+			$decode_params[$i] =~ s/^\s+//gs;
+			$decode_params[$i] =~ s/\s+$//gs;
 			if ($i < $#decode_params) {
 				$case_str .= "WHEN $decode_params[0]=$decode_params[$i] THEN $decode_params[$i+1] ";
 			} else {
@@ -1259,19 +1289,28 @@ sub raise_output
 	my @params = ();
 	my $pattern = '';
 	foreach my $el (@strings) {
-		$el = $class->restore_text_constant_part($el);
+		$el =~ s/\?TEXTVALUE(\d+)\?/$class->{text_values}{$1}/gs;
+		$el =~ s/ORA2PG_ESCAPE2_QUOTE/''/gs;
+		$el =~ s/ORA2PG_ESCAPE1_QUOTE'/\\'/gs;
 		if ($el =~ /^'(.*)'$/s) {
 			$pattern .= $1;
 		} else {
 			$pattern .= '%';
 			push(@params, $el);
 		}
+
+		$el =~ s/\\'/ORA2PG_ESCAPE1_QUOTE'/gs;
+		while ($el =~ s/''/ORA2PG_ESCAPE2_QUOTE/gs) {}
+
+		while ($el =~ s/('[^']+')/\?TEXTVALUE$class->{text_values_pos}\?/s) {
+			$class->{text_values}{$class->{text_values_pos}} = $1;
+			$class->{text_values_pos}++;
+		}
 	}
 	my $ret = "RAISE NOTICE '$pattern'";
 	if ($#params >= 0) {
 		$ret .= ', ' . join(', ', @params);
 	}
-	$ret = $class->remove_text_constant_part($ret);
 
 	return $ret;
 }
