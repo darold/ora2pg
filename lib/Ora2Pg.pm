@@ -4298,6 +4298,7 @@ LANGUAGE plpgsql ;
 				$sql_output .= $self->{functions}{$fct}{text} . "\n\n";
 			}
 			$self->_restore_comments(\$sql_output);
+			$sql_output =~ s/(-- REVOKE ALL ON FUNCTION [^;]+ FROM PUBLIC;)/&remove_newline($1)/sge;
 
 			if ($self->{file_per_function}) {
 				$self->dump($sql_header . $sql_output, $fhdl);
@@ -4467,6 +4468,7 @@ LANGUAGE plpgsql ;
 				$sql_output .= $self->{procedures}{$fct}{text} . "\n\n";
 			}
 			$self->_restore_comments(\$sql_output);
+			$sql_output =~ s/(-- REVOKE ALL ON FUNCTION [^;]+ FROM PUBLIC;)/&remove_newline($1)/sge;
 			$sql_output .= $fct_cost;
 			if ($self->{file_per_function}) {
 				$self->dump($sql_header . $sql_output, $fhdl);
@@ -4639,6 +4641,7 @@ LANGUAGE plpgsql ;
 					next if (!$txt);
 					$txt = $self->_convert_package("CREATE OR REPLACE PACKAGE $txt", $self->{packages}{$pkg}{owner});
 					$self->_restore_comments(\$txt);
+					$txt =~ s/(-- REVOKE ALL ON FUNCTION [^;]+ FROM PUBLIC;)/&remove_newline($1)/sge;
 					$pkgbody .= $txt;
 					$pkgbody =~ s/[\r\n]*\bEND;\s*$//is;
 					$pkgbody =~ s/(\s*;)\s*$/$1/is;
@@ -10744,6 +10747,7 @@ END;
 		my $fhdl = $self->open_export_file("$dirprefix\L$pname/$fname\E_$self->{output}", 1);
 		set_binmode($fhdl);
 		$self->_restore_comments(\$function);
+		$function =~ s/(-- REVOKE ALL ON FUNCTION [^;]+ FROM PUBLIC;)/&remove_newline($1)/sge;
 		$self->dump($sql_header . $function, $fhdl);
 		$self->close_export_file($fhdl);
 		$function = "\\i $dirprefix\L$pname/$fname\E_$self->{output}\n";
@@ -15397,6 +15401,15 @@ sub register_global_variable
 	}
 
 	return $ret;
+}
+
+sub remove_newline
+{
+	my $str = shift;
+
+	$str =~ s/[\n\r]+\s*/ /gs;
+
+	return $str;
 }
 
 1;
