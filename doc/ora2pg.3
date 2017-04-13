@@ -124,7 +124,7 @@
 .\" ========================================================================
 .\"
 .IX Title "ORA2PG 1"
-.TH ORA2PG 1 "2017-04-07" "perl v5.14.2" "User Contributed Perl Documentation"
+.TH ORA2PG 1 "2017-04-13" "perl v5.14.2" "User Contributed Perl Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -443,6 +443,16 @@ For developers, it is possible to add your own custom option(s) in the Perl
 script ora2pg as any configuration directive from ora2pg.conf can be passed
 in lower case to the new Ora2Pg object instance. See ora2pg code on how to
 add your own option.
+.PP
+Note that performance might be improved by updating stats on oracle:
+.PP
+.Vb 5
+\&        BEGIN
+\&        DBMS_STATS.GATHER_SCHEMA_STATS
+\&        DBMS_STATS.GATHER_DATABASE_STATS 
+\&        DBMS_STATS.GATHER_DICTIONARY_STATS
+\&        END;
+.Ve
 .SS "Generate a migration template"
 .IX Subsection "Generate a migration template"
 The two options \-\-project_base and \-\-init_project when used indicate to ora2pg
@@ -2108,8 +2118,8 @@ encoding issue. If you have changed the value of \s-1NLS_LANG\s0 you might have 
 change  the encoding of the PostgreSQL client.
 .Sp
 You can take a look at the PostgreSQL supported character sets here: http://www.postgresql.org/docs/9.0/static/multibyte.html
-.SS "\s-1PLSQL\s0 to \s-1PLPSQL\s0 convertion"
-.IX Subsection "PLSQL to PLPSQL convertion"
+.SS "\s-1PLSQL\s0 to \s-1PLPSQL\s0 conversion"
+.IX Subsection "PLSQL to PLPSQL conversion"
 Automatic code conversion from Oracle \s-1PLSQL\s0 to PostgreSQL \s-1PLPGSQL\s0 is a work in
 progress in Ora2Pg and surely you will always have manual work. The Perl code
 used for automatic conversion is all stored in a specific Perl Module named

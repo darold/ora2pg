@@ -311,6 +311,14 @@ CONFIGURATION
     be passed in lower case to the new Ora2Pg object instance. See ora2pg
     code on how to add your own option.
 
+    Note that performance might be improved by updating stats on oracle:
+
+            BEGIN
+            DBMS_STATS.GATHER_SCHEMA_STATS
+            DBMS_STATS.GATHER_DATABASE_STATS 
+            DBMS_STATS.GATHER_DICTIONARY_STATS
+            END;
+
   Generate a migration template
     The two options --project_base and --init_project when used indicate to
     ora2pg that he has to create a project template with a work tree, a
@@ -1956,7 +1964,7 @@ CONFIGURATION
         You can take a look at the PostgreSQL supported character sets here:
         http://www.postgresql.org/docs/9.0/static/multibyte.html
 
-  PLSQL to PLPSQL convertion
+  PLSQL to PLPSQL conversion
     Automatic code conversion from Oracle PLSQL to PostgreSQL PLPGSQL is a
     work in progress in Ora2Pg and surely you will always have manual work.
     The Perl code used for automatic conversion is all stored in a specific
