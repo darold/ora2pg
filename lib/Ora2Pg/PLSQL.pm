@@ -1010,11 +1010,13 @@ sub replace_oracle_function
 	# Cast round() call as numeric
 	$str =~ s/round\s*\(([^,]+),([\s\d]+)\)/round\(($1)::numeric,$2\)/is;
 
-	# Replace SDO_GEOM to the postgis equivalent
-	$str = &replace_sdo_function($str);
+	if ($str =~ /SDO_/is) {
+		# Replace SDO_GEOM to the postgis equivalent
+		$str = &replace_sdo_function($str);
 
-	# Replace Spatial Operator to the postgis equivalent
-	$str = &replace_sdo_operator($str);
+		# Replace Spatial Operator to the postgis equivalent
+		$str = &replace_sdo_operator($str);
+	}
 
 	# Rewrite replace(a,b) with three argument
 	$str =~ s/REPLACE\s*\($field,$field\)/replace($1, $2, '')/is;
@@ -1072,7 +1074,9 @@ sub replace_oracle_function
 	}
 
 	# Replace some sys_context call to the postgresql equivalent
-	replace_sys_context($str);
+	if ($str =~ /SYS_CONTEXT/is) {
+		replace_sys_context($str);
+	}
 
 	return $str;
 }
