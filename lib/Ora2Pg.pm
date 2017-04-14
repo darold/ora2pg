@@ -10525,14 +10525,10 @@ sub _convert_function
 	my @ninout = $fct_detail{args} =~ /\bINOUT\s+([^,\)]+)/igs;
 	if ($fct_detail{hasreturn}) {
 		my $nbout = $#nout+1 + $#ninout+1;
-		if ($nbout > 1) {
-			# Return record type 
-			$func_return = " RETURNS RECORD AS \$body\$\n";
-		} elsif ($nbout == 1 && $#nout == 0) {
-			my $typout = $nout[0];
-			$typout = $self->_sql_type($typout) || $typout;
-			# Return type returned by the function
-			$func_return = " RETURNS $typout AS \$body\$\n";
+		# When there is one or more out parameter, let PostgreSQL
+		# choose the right type with not using a RETURNS clause.
+		if ($nbout > 0) {
+			$func_return = " AS \$body\$\n";
 		} else {
 			# Returns the right type
 			$func_return = " RETURNS$fct_detail{setof} $fct_detail{func_ret_type} AS \$body\$\n";
@@ -10542,6 +10538,8 @@ sub _convert_function
 		if (($#nout < 0) && ($#ninout < 0)) {
 			$func_return = " RETURNS VOID AS \$body\$\n";
 		} else {
+			# When there is one or more out parameter, let PostgreSQL
+			# choose the right type with not using a RETURNS clause.
 			$func_return = " AS \$body\$\n";
 		}
 	}
@@ -10706,6 +10704,10 @@ END;
 		$function .= $fct_detail{code};
 		$function .= ';' if ($function !~ /END\s*;\s*$/is && $fct_detail{code} !~ /\%ORA2PG_COMMENT\d+\%\s*$/);
 		$function .= "\n\$body\$\nLANGUAGE PLPGSQL\n";
+		# Remove parameters to RETURN call when the function has no RETURNS clause
+		if ($function !~ /\s+RETURNS\s+/s || $function =~ /\s+RETURNS VOID\s+/s) {
+			$function =~ s/(RETURN)\s+[^;]+;/$1;/igs;
+		}
 		$revoke = "-- REVOKE ALL ON FUNCTION $name $fct_detail{args} FROM PUBLIC;";
 		$revoke =~ s/[\n\r]+\s*/ /gs;
 		$revoke .= "\n";
