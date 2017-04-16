@@ -1115,6 +1115,7 @@ sub _init
 	$self->{datadiff} ||= 0;
 	$self->{datadiff_del_suffix} ||= '_del';
 	$self->{datadiff_ins_suffix} ||= '_ins';
+	$self->{datadiff_upd_suffix} ||= '_upd';
 
 	# Internal date boundary. Date below will be added to 2000, others will used 1900
 	$self->{internal_date_max} ||= 49;
@@ -5050,18 +5051,26 @@ LANGUAGE plpgsql ;
 
 			# Create temporary tables for DATADIFF
 			if ($self->{datadiff}) {
+				my $tmptb_del = $self->get_tbname_with_suffix($tmptb, $self->{datadiff_del_suffix});
+				my $tmptb_ins = $self->get_tbname_with_suffix($tmptb, $self->{datadiff_ins_suffix});
+				my $tmptb_upd = $self->get_tbname_with_suffix($tmptb, $self->{datadiff_upd_suffix});
 				if ($self->{datadiff_work_mem}) {
 					$first_header .= "SET work_mem TO '" . $self->{datadiff_work_mem} . "';\n";
 				}
 				if ($self->{datadiff_temp_buffers}) {
 					$first_header .= "SET temp_buffers TO '" . $self->{datadiff_temp_buffers} . "';\n";
 				}
-				$first_header .= "CREATE TEMPORARY TABLE " . $self->get_tbname_with_suffix($tmptb, $self->{datadiff_del_suffix});
-				$first_header .= " (LIKE " . $tmptb . " INCLUDING DEFAULTS INCLUDING CONSTRAINTS INCLUDING INDEXES)";
+				$first_header .= "LOCK TABLE $tmptb IN EXCLUSIVE MODE;\n";
+				$first_header .= "CREATE TEMPORARY TABLE $tmptb_del";
+				$first_header .= " (LIKE $tmptb INCLUDING DEFAULTS INCLUDING CONSTRAINTS INCLUDING INDEXES)";
 				$first_header .= " ON COMMIT DROP;\n";
-				$first_header .= "CREATE TEMPORARY TABLE " . $self->get_tbname_with_suffix($tmptb, $self->{datadiff_ins_suffix});
-				$first_header .= " (LIKE " . $tmptb . " INCLUDING DEFAULTS INCLUDING CONSTRAINTS INCLUDING INDEXES)";
+				$first_header .= "CREATE TEMPORARY TABLE $tmptb_ins";
+				$first_header .= " (LIKE $tmptb INCLUDING DEFAULTS INCLUDING CONSTRAINTS INCLUDING INDEXES)";
 				$first_header .= " ON COMMIT DROP;\n";
+				$first_header .= "CREATE TEMPORARY TABLE $tmptb_upd";
+				$first_header .= " (old $tmptb_del, new $tmptb_ins, changed_columns TEXT[])";
+				$first_header .= " ON COMMIT DROP;\n";
+
 			}
 
 		}
@@ -5235,7 +5244,7 @@ LANGUAGE plpgsql ;
 
 		#### Set SQL commands that must be executed after data loading
 		my $footer = '';
-		my (@datadiff_tbl, @datadiff_del, @datadiff_ins);
+		my (@datadiff_tbl, @datadiff_del, @datadiff_upd, @datadiff_ins);
 		foreach my $table (@ordered_tables) {
 
 			# Rename table and double-quote it if required
@@ -5244,41 +5253,70 @@ LANGUAGE plpgsql ;
 			# DATADIFF reduction (annihilate identical deletions and insertions) and execution
 			if ($self->{datadiff}) {
 				my $tmptb_del = $self->get_tbname_with_suffix($tmptb, $self->{datadiff_del_suffix});
+				my $tmptb_upd = $self->get_tbname_with_suffix($tmptb, $self->{datadiff_upd_suffix});
 				my $tmptb_ins = $self->get_tbname_with_suffix($tmptb, $self->{datadiff_ins_suffix});
+				my @pg_colnames_nullable = @{$self->{tables}{$table}{pg_colnames_nullable}};
+				my @pg_colnames_notnull = @{$self->{tables}{$table}{pg_colnames_notnull}};
+				my @pg_colnames_pkey = @{$self->{tables}{$table}{pg_colnames_pkey}};
 				# reduce by deleting matching (i.e. quasi "unchanged") entries from $tmptb_del and $tmptb_ins
 				$footer .= "WITH del AS (SELECT t, row_number() OVER (PARTITION BY t.*) rownum, ctid FROM $tmptb_del t), ";
 				$footer .= "ins AS (SELECT t, row_number() OVER (PARTITION BY t.*) rownum, ctid FROM $tmptb_ins t), ";
 				$footer .= "paired AS (SELECT del.ctid ctid1, ins.ctid ctid2 FROM del JOIN ins ON del.t IS NOT DISTINCT FROM ins.t ";
-				foreach my $col (@{$self->{tables}{$table}{pg_colnames_nullable}}) {
+				foreach my $col (@pg_colnames_nullable) {
 					$footer .= "AND (((del.t).$col IS NULL AND (ins.t).$col IS NULL) OR ((del.t).$col = (ins.t).$col)) ";
 				}
-				foreach my $col (@{$self->{tables}{$table}{pg_colnames_notnull}}) {
+				foreach my $col (@pg_colnames_notnull, @pg_colnames_pkey) {
 					$footer .= "AND ((del.t).$col = (ins.t).$col) ";
 				}
 				$footer .= "AND del.rownum = ins.rownum), ";
 				$footer .= "del_del AS (DELETE FROM $tmptb_del WHERE ctid = ANY(ARRAY(SELECT ctid1 FROM paired))), ";
 				$footer .= "del_ins AS (DELETE FROM $tmptb_ins WHERE ctid = ANY(ARRAY(SELECT ctid2 FROM paired))) ";
 				$footer .= "SELECT 1;\n";
+				# convert matching delete+insert into update if configured and primary key exists
+				if ($self->{datadiff_update_by_pkey} && $#pg_colnames_pkey >= 0) {
+					$footer .= "WITH upd AS (SELECT old, new, old.ctid ctid1, new.ctid ctid2, ARRAY(";
+					for my $col (@pg_colnames_notnull) {
+						$footer .= "SELECT '$col'::TEXT WHERE old.$col <> new.$col UNION ALL "; 
+					}
+					for my $col (@pg_colnames_nullable) {
+						$footer .= "SELECT '$col'::TEXT WHERE old.$col <> new.$col OR ((old.$col IS NULL) <> (new.$col IS NULL)) UNION ALL "; 
+					}
+					$footer .= "SELECT '' WHERE FALSE) changed_columns FROM $tmptb_del old JOIN $tmptb_ins new USING (" . join(', ', @pg_colnames_pkey) . ")), ";
+					$footer .= "del_del AS (DELETE FROM $tmptb_del WHERE ctid = ANY(ARRAY(SELECT ctid1 FROM upd))), ";
+					$footer .= "del_ins AS (DELETE FROM $tmptb_ins WHERE ctid = ANY(ARRAY(SELECT ctid2 FROM upd))) ";
+					$footer .= "INSERT INTO $tmptb_upd (old, new, changed_columns) SELECT old, new, changed_columns FROM upd;\n";
+				}
 				# call optional function specified in config to be called before actual deletion/insertion
-				$footer .= "SELECT " . $self->{datadiff_before} . "('" . $tmptb . "', '" . $tmptb_del . "', '" . $tmptb_ins . "');\n" if ($self->{datadiff_before});
+				$footer .= "SELECT " . $self->{datadiff_before} . "('" . $tmptb . "', '" . $tmptb_del . "', '" . $tmptb_upd . "', '" . $tmptb_ins . "');\n"
+					if ($self->{datadiff_before});
 				# do actual delete
 				$footer .= "WITH tbl AS (SELECT t, row_number() OVER (PARTITION BY t.*) rownum, ctid FROM $tmptb t), ";
 				$footer .= "del AS (SELECT t, row_number() OVER (PARTITION BY t.*) rownum FROM $tmptb_del t) ";
 				$footer .= "DELETE FROM $tmptb WHERE ctid = ANY(ARRAY(SELECT tbl.ctid FROM tbl JOIN del ON tbl.t IS NOT DISTINCT FROM del.t ";
-				foreach my $col (@{$self->{tables}{$table}{pg_colnames_nullable}}) {
+				foreach my $col (@pg_colnames_nullable) {
 					$footer .= "AND (((del.t).$col IS NULL AND (tbl.t).$col IS NULL) OR ((del.t).$col = (tbl.t).$col)) ";
 				}
-				foreach my $col (@{$self->{tables}{$table}{pg_colnames_notnull}}) {
+				foreach my $col (@pg_colnames_notnull, @pg_colnames_pkey) {
 					$footer .= "AND ((del.t).$col = (tbl.t).$col) ";
 				}
 				$footer .= " AND tbl.rownum = del.rownum));\n";
+				# do actual update
+				if ($self->{datadiff_update_by_pkey} && $#pg_colnames_pkey >= 0 && ($#pg_colnames_nullable >= 0 || $#pg_colnames_notnull >= 0)) {
+					$footer .= "UPDATE $tmptb SET ";
+					$footer .= join(', ', map { $_ . ' = (upd.new).' . $_ } @pg_colnames_notnull, @pg_colnames_nullable);
+					$footer .= " FROM $tmptb_upd upd WHERE ";
+					$footer .= join(' AND ', map { $_ . ' = (upd.old).' . $_ } @pg_colnames_pkey);
+					$footer .= ";\n";
+				}
 				# do actual insert
 				$footer .= "INSERT INTO $tmptb SELECT * FROM $tmptb_ins;\n";
 				# call optional function specified in config to be called after actual deletion/insertion
-				$footer .= "SELECT " . $self->{datadiff_after} . "('" . $tmptb . "', '" . $tmptb_del . "', '" . $tmptb_ins . "');\n" if ($self->{datadiff_after});
+				$footer .= "SELECT " . $self->{datadiff_after} . "('" . $tmptb . "', '" . $tmptb_del . "', '" . $tmptb_upd . "', '" . $tmptb_ins . "');\n"
+					if ($self->{datadiff_after});
 				# push table names in array for bunch function call in the end
 				push @datadiff_tbl, $tmptb;
 				push @datadiff_del, $tmptb_del;
+				push @datadiff_upd, $tmptb_upd;
 				push @datadiff_ins, $tmptb_ins;
 			}
 			
@@ -5348,6 +5386,7 @@ LANGUAGE plpgsql ;
 			$footer .= "SELECT " . $self->{datadiff_after_all} . "(ARRAY['";
 			$footer .= join("', '", @datadiff_tbl) . "'], ARRAY['";
 			$footer .= join("', '", @datadiff_del) . "'], ARRAY['";
+			$footer .= join("', '", @datadiff_upd) . "'], ARRAY['";
 			$footer .= join("', '", @datadiff_ins) . "']);\n";
 		}
 
@@ -6240,7 +6279,7 @@ sub _dump_table
 
 	# Extract column information following the Oracle position order
 	my @fname = ();
-	my (@pg_colnames_nullable, @pg_colnames_notnull);
+	my (@pg_colnames_nullable, @pg_colnames_notnull, @pg_colnames_pkey);
 	foreach my $i ( 0 .. $#{$self->{tables}{$table}{field_name}} ) {
 		my $fieldname = ${$self->{tables}{$table}{field_name}}[$i];
 		if (!$self->{preserve_case}) {
@@ -6282,7 +6321,9 @@ sub _dump_table
 		}
 		$colname = $self->quote_object_name($colname);
 		$col_list .= "$colname,";
-		if ($f->[3] =~ m/^Y/) {
+		if ($self->is_primary_key_column($table, $fieldname)) {
+			push @pg_colnames_pkey, "$colname";
+		} elsif ($f->[3] =~ m/^Y/) {
 			push @pg_colnames_nullable, "$colname";
 		} else {
 			push @pg_colnames_notnull, "$colname";
@@ -6291,6 +6332,7 @@ sub _dump_table
 	$col_list =~ s/,$//;
 	$self->{tables}{$table}{pg_colnames_nullable} = \@pg_colnames_nullable;
 	$self->{tables}{$table}{pg_colnames_notnull} = \@pg_colnames_notnull;
+	$self->{tables}{$table}{pg_colnames_pkey} = \@pg_colnames_pkey;
 
 	my $s_out = "INSERT INTO $tmptb ($col_list";
 	if ($self->{type} eq 'COPY') {
