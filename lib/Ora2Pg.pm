@@ -5284,7 +5284,8 @@ LANGUAGE plpgsql ;
 					for my $col (@pg_colnames_nullable) {
 						$footer .= "SELECT '$col'::TEXT WHERE old.$col <> new.$col OR ((old.$col IS NULL) <> (new.$col IS NULL)) UNION ALL "; 
 					}
-					$footer .= "SELECT '' WHERE FALSE) changed_columns FROM $tmptb_del old JOIN $tmptb_ins new USING (" . join(', ', @pg_colnames_pkey) . ")), ";
+					$footer .= "SELECT ''::TEXT WHERE FALSE) changed_columns FROM $tmptb_del old ";
+					$footer .= "JOIN $tmptb_ins new USING (" . join(', ', @pg_colnames_pkey) . ")), ";
 					$footer .= "del_del AS (DELETE FROM $tmptb_del WHERE ctid = ANY(ARRAY(SELECT ctid1 FROM upd))), ";
 					$footer .= "del_ins AS (DELETE FROM $tmptb_ins WHERE ctid = ANY(ARRAY(SELECT ctid2 FROM upd))) ";
 					$footer .= "INSERT INTO $tmptb_upd (old, new, changed_columns) SELECT old, new, changed_columns FROM upd;\n";
