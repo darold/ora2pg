@@ -5637,6 +5637,9 @@ CREATE TRIGGER ${table}_trigger_insert
 	# Dump the database structure: tables, constraints, indexes, etc.
 	if ($self->{export_schema} && ($self->{schema} || $self->{pg_schema})) {
 		if ($self->{create_schema}) {
+			if ($self->{pg_schema} && $self->{pg_schema} =~ /,/) {
+				$self->logit("FATAL: with export type TABLE you can not set multiple schema to PG_SCHEMA when EXPORT_SCHEMA is enabled.\n", 0, 1);
+			}
 			$sql_output .= "CREATE SCHEMA " . $self->quote_object_name($self->{pg_schema} || $self->{schema}) . ";\n";
 		}
 		my $owner = '';
