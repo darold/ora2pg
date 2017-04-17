@@ -1372,6 +1372,9 @@ sub _init
 			if ($self->{datadiff} && $self->{pg_dsn}) {
 				$self->logit("FATAL: DATADIFF can not be used with direct import to PostgreSQL because direct import may load data in several transactions.\n", 0, 1);
 			}
+			if ($self->{datadiff} && !$self->{pg_supports_lateral}) {
+				$self->logit("FATAL: DATADIFF requires LATERAL support (Pg version 9.3 and above; see config parameter PG_SUPPORTS_LATERAL)\n", 0, 1);
+			}
 			$self->{dbhdest} = $self->_send_to_pgdb() if ($self->{pg_dsn} && !$self->{dbhdest});
 		}
 	}

@@ -1790,6 +1790,11 @@ CONFIGURATION
         to add those keywords in all generated statements. Default value is
         1, enabled.
 
+    PG_SUPPORTS_LATERAL
+        PostgreSQL version prior to 9.3 do not support the LATERAL keyword.
+        This is required for the DATADIFF feature. Default value is
+        1, enabled.
+
     PG_SUPPORTS_ROLE (Deprecated)
         This option is deprecated since Ora2Pg release v7.3.
 

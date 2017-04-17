@@ -1003,6 +1003,10 @@ PG_SUPPORTS_CHECKOPTION	1
 # keywords in all generated statements.
 PG_SUPPORTS_IFEXISTS	1
 
+# PostgreSQL versions prior to 9.3 do not support the LATERAL keyword.
+# This is required for the DATADIFF feature.
+PG_SUPPORTS_LATERAL	1
+
 # Use btree_gin extenstion to create bitmap like index with pg >= 9.4
 # You will need to create the extension by yourself:
 #	create extension btree_gin;
