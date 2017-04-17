@@ -124,7 +124,7 @@
 .\" ========================================================================
 .\"
 .IX Title "ORA2PG 1"
-.TH ORA2PG 1 "2017-04-13" "perl v5.14.2" "User Contributed Perl Documentation"
+.TH ORA2PG 1 "2017-04-17" "perl v5.14.2" "User Contributed Perl Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -687,28 +687,30 @@ it is marked as invalid. The '\s-1VALID\s0' or '\s-1INVALID\s0' status applies t
 procedures, packages and user defined types.
 .IP "\s-1PG_SCHEMA\s0" 4
 .IX Item "PG_SCHEMA"
-Allow you to defined/force the PostgreSQL schema to use. The value can be a
-comma delimited list of schema name. By default if you set \s-1EXPORT_SCHEMA\s0 to 1,
-the PostgreSQL schema search_path will be set to the schema name set as value of
-the \s-1SCHEMA\s0 directive plus the default pg_catalog schema as follow:
+Allow you to defined/force the PostgreSQL schema to use. By default if you set
+\&\s-1EXPORT_SCHEMA\s0 to 1 the PostgreSQL search_path will be set to the schema name
+exported set as value of the \s-1SCHEMA\s0 directive.
 .Sp
-.Vb 1
-\&        SET search_path = $SCHEMA, pg_catalog;
-.Ve
-.Sp
-If you set \s-1PG_SCHEMA\s0 to something like \*(L"user_schema, public\*(R" for example the
-search path will be set like this:
+The value can be a comma delimited list of schema name but not when using \s-1TABLE\s0
+export type because in this case it will generate the \s-1CREATE\s0 \s-1SCHEMA\s0 statement
+and it doesn't support multiple schema name. For example, if you set \s-1PG_SCHEMA\s0
+to something like \*(L"user_schema, public\*(R", the search path will be set like this:
 .Sp
 .Vb 1
 \&        SET search_path = user_schema, public;
 .Ve
 .Sp
-This will force to use an other schema than the one from Oracle schema and set
-in the \s-1SCHEMA\s0 directive.
+forcing the use of an other schema (here user_schema) than the one from Oracle
+schema set in the \s-1SCHEMA\s0 directive.
 .Sp
-You can also set the default search_path for the connected PostgreSQL user by
-using:
-	\s-1ALTER\s0 \s-1ROLE\s0 username \s-1SET\s0 search_path \s-1TO\s0 user_schema, public, pg_catalog;
+You can also set the default search_path for the PostgreSQL user you are using
+to connect to the destination database by using:
+.Sp
+.Vb 1
+\&        ALTER ROLE username SET search_path TO user_schema, public;
+.Ve
+.Sp
+in this case you don't have to set \s-1PG_SCHEMA\s0.
 .IP "\s-1SYSUSERS\s0" 4
 .IX Item "SYSUSERS"
 Without explicit schema, Ora2Pg will export all objects that not belongs to

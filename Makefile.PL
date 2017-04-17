@@ -120,10 +120,21 @@ CREATE_SCHEMA	1
 # command: DBMS_UTILITY.compile_schema(schema => 'schemaname');
 COMPILE_SCHEMA	0
 
-# PostreSQL search path schema to use. Can be a comma delimited list,
-# for example: users_schema,public will result in the following PostgreSQL 
-# schema path: SET search_path = users_schema,public;
-# The default is the value defined for the connection user in PostgreSQL.
+# By default if you set EXPORT_SCHEMA to 1 the PostgreSQL search_path will be
+# set to the schema name exported set as value of the SCHEMA directive. You can
+# defined/force the PostgreSQL schema to use by using this directive.
+#
+# The value can be a comma delimited list of schema but not when using TABLE
+# export type because in this case it will generate the CREATE SCHEMA statement
+# and it doesn't support multiple schema name. For example, if you set PG_SCHEMA
+# to something like "user_schema, public", the search path will be set like this
+#        SET search_path = user_schema, public;
+# forcing the use of an other schema (here user_schema) than the one from Oracle
+# schema set in the SCHEMA directive. You can also set the default search_path
+# for the PostgreSQL user you are using to connect to the destination database
+# by using:
+#        ALTER ROLE username SET search_path TO user_schema, public;
+#in this case you don't have to set PG_SCHEMA.
 #PG_SCHEMA	
 
 # Use this directive to add a specific schema to the search path to look

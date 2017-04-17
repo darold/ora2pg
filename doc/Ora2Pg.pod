@@ -569,24 +569,26 @@ procedures, packages and user defined types.
 
 =item PG_SCHEMA
 
-Allow you to defined/force the PostgreSQL schema to use. The value can be a
-comma delimited list of schema name. By default if you set EXPORT_SCHEMA to 1,
-the PostgreSQL schema search_path will be set to the schema name set as value of
-the SCHEMA directive plus the default pg_catalog schema as follow:
+Allow you to defined/force the PostgreSQL schema to use. By default if you set
+EXPORT_SCHEMA to 1 the PostgreSQL search_path will be set to the schema name
+exported set as value of the SCHEMA directive. 
 
-	SET search_path = $SCHEMA, pg_catalog;
-
-If you set PG_SCHEMA to something like "user_schema, public" for example the
-search path will be set like this:
+The value can be a comma delimited list of schema name but not when using TABLE
+export type because in this case it will generate the CREATE SCHEMA statement
+and it doesn't support multiple schema name. For example, if you set PG_SCHEMA
+to something like "user_schema, public", the search path will be set like this:
 
 	SET search_path = user_schema, public;
 
-This will force to use an other schema than the one from Oracle schema and set
-in the SCHEMA directive.
+forcing the use of an other schema (here user_schema) than the one from Oracle
+schema set in the SCHEMA directive.
 
-You can also set the default search_path for the connected PostgreSQL user by
-using:
-	ALTER ROLE username SET search_path TO user_schema, public, pg_catalog; 
+You can also set the default search_path for the PostgreSQL user you are using
+to connect to the destination database by using:
+
+	ALTER ROLE username SET search_path TO user_schema, public;
+
+in this case you don't have to set PG_SCHEMA.
 
 =item SYSUSERS
 
