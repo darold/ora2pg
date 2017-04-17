@@ -5290,16 +5290,16 @@ LANGUAGE plpgsql ;
 				$footer .= "SELECT " . $self->{datadiff_before} . "('" . $tmptb . "', '" . $tmptb_del . "', '" . $tmptb_upd . "', '" . $tmptb_ins . "');\n"
 					if ($self->{datadiff_before});
 				# do actual delete
-				$footer .= "WITH tbl AS (SELECT t, row_number() OVER (PARTITION BY t.*) rownum, ctid FROM $tmptb t), ";
-				$footer .= "del AS (SELECT t, row_number() OVER (PARTITION BY t.*) rownum FROM $tmptb_del t) ";
-				$footer .= "DELETE FROM $tmptb WHERE ctid = ANY(ARRAY(SELECT tbl.ctid FROM tbl JOIN del ON tbl.t IS NOT DISTINCT FROM del.t ";
+				$footer .= "WITH del AS (SELECT d.delctid FROM (SELECT t, COUNT(*) c FROM $tmptb_del t GROUP BY t) s ";
+				$footer .= "LEFT JOIN LATERAL (SELECT ctid delctid FROM $tmptb tbl WHERE tbl IS NOT DISTINCT FROM s.t ";
 				foreach my $col (@pg_colnames_nullable) {
-					$footer .= "AND (((del.t).$col IS NULL AND (tbl.t).$col IS NULL) OR ((del.t).$col = (tbl.t).$col)) ";
+					$footer .= "AND (((s.t).$col IS NULL AND tbl.$col IS NULL) OR ((s.t).$col = tbl.$col)) ";
 				}
 				foreach my $col (@pg_colnames_notnull, @pg_colnames_pkey) {
-					$footer .= "AND ((del.t).$col = (tbl.t).$col) ";
+					$footer .= "AND ((s.t).$col = tbl.$col) ";
 				}
-				$footer .= " AND tbl.rownum = del.rownum));\n";
+				$footer .= "LIMIT s.c) d ON TRUE) ";
+				$footer .= "DELETE FROM $tmptb WHERE ctid = ANY(ARRAY(SELECT delctid FROM del));\n";
 				# do actual update
 				if ($self->{datadiff_update_by_pkey} && $#pg_colnames_pkey >= 0 && ($#pg_colnames_nullable >= 0 || $#pg_colnames_notnull >= 0)) {
 					$footer .= "UPDATE $tmptb SET ";
