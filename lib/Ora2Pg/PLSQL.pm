@@ -593,7 +593,7 @@ sub plsql_to_plpgsql
 	}
 
 	# Replace type in sub block
-	$str =~ s/(DECLARE\s+)(.*?)(\s+BEGIN)/$1 . &replace_sql_type($2, $class->{pg_numeric_type}, $class->{default_numeric}, $class->{pg_integer_type}, %data_type) . $3/iges;
+	$str =~ s/(BEGIN.*?DECLARE\s+)(.*?)(\s+BEGIN)/$1 . &replace_sql_type($2, $class->{pg_numeric_type}, $class->{default_numeric}, $class->{pg_integer_type}, %data_type) . $3/iges;
 
 	# Remove any call to MDSYS schema in the code
 	$str =~ s/\bMDSYS\.//igs;

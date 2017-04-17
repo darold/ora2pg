@@ -10701,10 +10701,11 @@ END;
 		$fct_detail{declare} = '' if ($fct_detail{declare} !~ /[a-z]/is);
 		$fct_detail{declare} =~ s/^\s*DECLARE//;
 		$fct_detail{declare} .= ';' if ($fct_detail{declare} && $fct_detail{declare} !~ /;\s*$/s && $fct_detail{declare} !~ /\%ORA2PG_COMMENT\d+\%\s*$/s);
-		$function .= "DECLARE\n$fct_detail{declare}\n" if ($fct_detail{declare});
+		my $code_part = '';
+		$code_part .= "DECLARE\n$fct_detail{declare}\n" if ($fct_detail{declare});
+		$code_part .= "BEGIN".$fct_detail{code};
 		# Replace PL/SQL code into PL/PGSQL similar code
-		$fct_detail{code} = Ora2Pg::PLSQL::convert_plsql_code($self, "BEGIN".$fct_detail{code}, %{$self->{data_type}});
-		$function .= $fct_detail{code};
+		$function .= Ora2Pg::PLSQL::convert_plsql_code($self, $code_part, %{$self->{data_type}});
 		$function .= ';' if ($function !~ /END\s*;\s*$/is && $fct_detail{code} !~ /\%ORA2PG_COMMENT\d+\%\s*$/);
 		$function .= "\n\$body\$\nLANGUAGE PLPGSQL\n";
 
