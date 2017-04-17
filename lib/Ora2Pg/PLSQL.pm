@@ -722,7 +722,7 @@ sub plsql_to_plpgsql
 		foreach my $k (keys %{$class->{package_functions}}) {
 			my $fname = $k;
 			$fname =~ s/^[^\.]+\.//;
-			$str =~ s/([^\.])$fname\s*([\(;])/$1$class->{package_functions}{$k}{name}$2/igs;
+			$str =~ s/([^\.])\b$fname\s*([\(;])/$1$class->{package_functions}{$k}{name}$2/igs;
 			$str =~ s/\b$class->{package_functions}{$k}{package}\.$fname\s*([\(;])/$class->{package_functions}{$k}{name}$1/igs;
 		}
 	}
