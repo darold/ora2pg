@@ -418,13 +418,13 @@ sub plsql_to_plpgsql
 		$conv_current_time = 'LOCALTIMESTAMP';
 	}
 	# Replace sysdate +/- N by localtimestamp - 1 day intervel
-	$str =~ s/SYSDATE\s*(\+|\-)\s*(\d+)/$conv_current_time $1 interval '$2 days'/igs;
+	$str =~ s/\bSYSDATE\s*(\+|\-)\s*(\d+)/$conv_current_time $1 interval '$2 days'/igs;
 	# Change SYSDATE to 'now' or current timestamp.
-	$str =~ s/SYSDATE\s*\(\s*\)/$conv_current_time/igs;
-	$str =~ s/SYSDATE/$conv_current_time/igs;
+	$str =~ s/\bSYSDATE\s*\(\s*\)/$conv_current_time/igs;
+	$str =~ s/\bSYSDATE\b/$conv_current_time/igs;
 
 	# Replace SYSTIMESTAMP 
-	$str =~ s/SYSTIMESTAMP/CURRENT_TIMESTAMP/igs;
+	$str =~ s/\bSYSTIMESTAMP\b/CURRENT_TIMESTAMP/igs;
 	# remove FROM DUAL
 	$str =~ s/FROM DUAL//igs;
 	$str =~ s/FROM SYS\.DUAL//igs;
@@ -441,10 +441,10 @@ sub plsql_to_plpgsql
 	$str =~ s/([^\w]+):old\./$1OLD\./igs;
 
 	# Replace EXEC function into variable, ex: EXEC :a := test(:r,1,2,3);
-	$str =~ s/EXEC\s+:([^\s:]+)\s*:=/SELECT INTO $2/igs;
+	$str =~ s/\bEXEC\s+:([^\s:]+)\s*:=/SELECT INTO $2/igs;
 
 	# Replace simple EXEC function call by SELECT function
-	$str =~ s/EXEC(\s+)/SELECT$1/igs;
+	$str =~ s/\bEXEC(\s+)/SELECT$1/igs;
 
 	# Remove leading : on Oracle variable
 	$str =~ s/([^\w:]+):(\d+)/$1\$$2/igs;
@@ -541,7 +541,7 @@ sub plsql_to_plpgsql
 	$str =~ s/\bSQLCODE\b/SQLSTATE/igs;
 
 	# Revert order in FOR IN REVERSE
-	$str =~ s/FOR(.*?)IN\s+REVERSE\s+([^\.\s]+)\s*\.\.\s*([^\s]+)/FOR$1IN REVERSE $3..$2/isg;
+	$str =~ s/\bFOR(.*?)IN\s+REVERSE\s+([^\.\s]+)\s*\.\.\s*([^\s]+)/FOR$1IN REVERSE $3..$2/isg;
 
 	# Replace exit at end of cursor
 	$str =~ s/EXIT WHEN ([^\%]+)\%NOTFOUND\s*;/IF NOT FOUND THEN EXIT; END IF; -- apply on $1/isg;
@@ -557,7 +557,7 @@ sub plsql_to_plpgsql
 	$str =~ s/\bREF\s+CURSOR/REFCURSOR/isg;
 
 	# Replace SYS_REFCURSOR as Pg REFCURSOR
-	$str =~ s/SYS_REFCURSOR/REFCURSOR/isg;
+	$str =~ s/\bSYS_REFCURSOR\b/REFCURSOR/isg;
 
 	# Replace known EXCEPTION equivalent ERROR code
 	$str =~ s/\bINVALID_CURSOR\b/INVALID_CURSOR_STATE/igs;
@@ -596,7 +596,7 @@ sub plsql_to_plpgsql
 	$str =~ s/(DECLARE\s+)(.*?)(\s+BEGIN)/$1 . &replace_sql_type($2, $class->{pg_numeric_type}, $class->{default_numeric}, $class->{pg_integer_type}, %data_type) . $3/iges;
 
 	# Remove any call to MDSYS schema in the code
-	$str =~ s/MDSYS\.//igs;
+	$str =~ s/\bMDSYS\.//igs;
 
 	# Replace outer join sign (+) with a placeholder
 	$str =~ s/\(\+\)/\%OUTERJOIN\%/gs;
@@ -1439,6 +1439,15 @@ sub replace_sql_type
 	}
 	$str =~ s/\%LOCALTYPE(\d+)\%/$localtype{$1}/gs;
 	$str =~ s/\%ROWTYPE//gs;
+
+	# Replace REF CURSOR as Pg REFCURSOR
+	$str =~ s/\bIS(\s*)REF\s+CURSOR/REFCURSOR/isg;
+	$str =~ s/\bREF\s+CURSOR/REFCURSOR/isg;
+
+	# Replace SYS_REFCURSOR as Pg REFCURSOR
+	$str =~ s/\bSYS_REFCURSOR\b/REFCURSOR/isg;
+
+	$str =~ s/;[ ]+/;/gs;
 
         return $str;
 }
