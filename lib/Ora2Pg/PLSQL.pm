@@ -983,7 +983,7 @@ sub replace_oracle_function
 	}
 
 	# Replace INSTR by POSITION
-	$str =~ s/\bINSTR\s*\(\s*([^,]+),\s*('[^']+')\s*\)/POSITION($2 in $1)/is;
+	$str =~ s/\bINSTR\s*\(\s*([^,]+),\s*([^\)]+)\s*\)/POSITION($2 in $1)/is;
 
 	# The to_number() function reclaim a second argument under postgres which is the format.
 	# By default we use '99999999999999999999D99999999999999999999' that may allow bigint
