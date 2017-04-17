@@ -10700,10 +10700,15 @@ END;
 	if ($fct_detail{code}) {
 		$fct_detail{declare} = '' if ($fct_detail{declare} !~ /[a-z]/is);
 		$fct_detail{declare} =~ s/^\s*DECLARE//;
+		$fct_detail{declare} .= ';' if ($fct_detail{declare} && $fct_detail{declare} !~ /;\s*$/s && $fct_detail{declare} !~ /\%ORA2PG_COMMENT\d+\%\s*$/s);
 		$function .= "DECLARE\n$fct_detail{declare}\n" if ($fct_detail{declare});
+		# Replace PL/SQL code into PL/PGSQL similar code
+		$fct_detail{code} = Ora2Pg::PLSQL::convert_plsql_code($self, "BEGIN".$fct_detail{code}, %{$self->{data_type}});
 		$function .= $fct_detail{code};
 		$function .= ';' if ($function !~ /END\s*;\s*$/is && $fct_detail{code} !~ /\%ORA2PG_COMMENT\d+\%\s*$/);
 		$function .= "\n\$body\$\nLANGUAGE PLPGSQL\n";
+
+
 		# Remove parameters to RETURN call when the function has no RETURNS clause
 		if ($function !~ /\s+RETURNS\s+/s || $function =~ /\s+RETURNS VOID\s+/s) {
 			$function =~ s/(RETURN)\s+[^;]+;/$1;/igs;
@@ -14345,15 +14350,6 @@ sub _lookup_function
 		# Now convert types
 		$fct_detail{args} = Ora2Pg::PLSQL::replace_sql_type($fct_detail{args}, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type}, %{$self->{data_type}});
 		$fct_detail{declare} = Ora2Pg::PLSQL::replace_sql_type($fct_detail{declare}, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type}, %{$self->{data_type}});
-
-		# Replace PL/SQL code into PL/PGSQL similar code
-		if (!$no_plpgsql) {
-			$fct_detail{declare} = Ora2Pg::PLSQL::convert_plsql_code($self, $fct_detail{declare}, %{$self->{data_type}});
-			$fct_detail{declare} .= ';' if ($fct_detail{declare} && $fct_detail{declare} !~ /;\s*$/s && $fct_detail{declare} !~ /\%ORA2PG_COMMENT\d+\%\s*$/s);
-			if ($fct_detail{code}) {
-				$fct_detail{code} = Ora2Pg::PLSQL::convert_plsql_code($self, "BEGIN".$fct_detail{code}, %{$self->{data_type}});
-			}
-		}
 
 		# Sometime variable used in FOR ... IN SELECT loop is not declared
 		# Append its RECORD declaration in the DECLARE section.
