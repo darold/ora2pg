@@ -793,11 +793,15 @@ INTERNAL_DATE_MAX	49
 # PERFORMANCES SECTION (Control export/import performances)
 #------------------------------------------------------------------------------
 
-# Multiprocess support. This directive replace the obsolete THREAD_COUNT
-# variable. Ora2Pg now use fork() to do parallel process instead of Perl
-# threads. This directive should defined the number of parallel connection
-# to PostgreSQL for direct data migration. The limit is the number of cores
-# on your machine. This is useful if PostgreSQL is the bottleneck. COPIES
+# This configuration directive adds multiprocess support to COPY, FUNCTION 
+# and PROCEDURE export type, the value is the number of process to use.
+# Default is to not use multiprocess. This directive is used to set the number
+# of cores to used to parallelize data import into PostgreSQL. During FUNCTION
+# or PROCEDURE export type each function will be translated to plpgsql using a
+# new process, the performances gain can be very important when you have tons
+# of function to convert. There's no more limitation in parallel processing
+# than the number of cores and the PostgreSQL I/O performance capabilities.
+# Doesn't works under Windows Operating System, it is simply disabled.
 JOBS		1
 
 # Multiprocess support. This directive should defined the number of parallel

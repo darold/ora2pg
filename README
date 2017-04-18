@@ -764,15 +764,15 @@ CONFIGURATION
         set to 10 human-days.
 
     JOBS
-        This configuration directive adds multiprocess support to data
-        export type, the value is the number of process to use. Default is
-        multiprocess disable.
+        This configuration directive adds multiprocess support to COPY,
+        FUNCTION and PROCEDURE export type, the value is the number of
+        process to use. Default is multiprocess disable.
 
         This directive is used to set the number of cores to used to
-        parallelize data import into PostgreSQL. It replace the old code
-        based on Perl Threads activated with the obsolete THREAD_COUNT
-        configuration directive that was not very useful and is now replaced
-        with fork() calls.
+        parallelize data import into PostgreSQL. During FUNCTION or
+        PROCEDURE export type each function will be translated to plpgsql
+        using a new process, the performances gain can be very important
+        when you have tons of function to convert.
 
         There's no more limitation in parallel processing than the number of
         cores and the PostgreSQL I/O performance capabilities.
