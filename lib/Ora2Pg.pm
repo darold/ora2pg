@@ -1232,6 +1232,8 @@ sub _init
 	}
 	if ($self->{parallel_tables} > 1) {
 		$self->{file_per_table} = 1;
+	}
+	if ($self->{jobs} > 1) {
 		$self->{file_per_function} = 1;
 	}
 
