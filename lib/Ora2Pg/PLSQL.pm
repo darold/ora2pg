@@ -698,7 +698,7 @@ sub plsql_to_plpgsql
 	##############
 	if (scalar keys %{$class->{function_metadata}}) {
 		foreach my $k (keys %{$class->{function_metadata}}) {
-			if (!$class->{function_metadata}{$k}{metadata}{inout}) {
+			if (!$class->{function_metadata}{$k}{metadata}{inout} && $str =~ /\b$k\b/is) {
 				# Look if we need to use PERFORM to call the function
 				$str =~ s/(BEGIN|LOOP|;)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($k\s*[\(;])/$1$2PERFORM $3/igs;
 				$str =~ s/(EXCEPTION(?:(?!CASE).)*?THEN)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($k\s*[\(;])/$1$2PERFORM $3/isg;
