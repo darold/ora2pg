@@ -37,6 +37,7 @@ use IO::Pipe;
 use File::Basename;
 use File::Spec qw/ tmpdir /;
 use File::Temp qw/ tempfile /;
+use Benchmark;
 
 #set locale to LC_NUMERIC C
 setlocale(LC_NUMERIC,"C");
@@ -889,8 +890,14 @@ sub _init
 		$self->{transaction} = 'SET TRANSACTION READ WRITE';
 	} elsif ($self->{transaction} eq 'committed') {
 		$self->{transaction} = 'SET TRANSACTION ISOLATION LEVEL READ COMMITTED';
-	} else {
+	} elsif ($self->{transaction} eq 'serializable') {
 		$self->{transaction} = 'SET TRANSACTION ISOLATION LEVEL SERIALIZABLE';
+	} else {
+		if (grep(/^$self->{type}$/, 'COPY', 'INSERT')) {
+			$self->{transaction} = 'SET TRANSACTION ISOLATION LEVEL SERIALIZABLE';
+		} else {
+			$self->{transaction} = 'SET TRANSACTION ISOLATION LEVEL READ COMMITTED';
+		}
 	}
 
 	# Set default function to use for uuid generation
@@ -3178,7 +3185,7 @@ sub _export_table_data
 
 sub translate_function
 {
-	my ($self, $fct, $owner, $fct_code) = @_;
+	my ($self, $i, $num_total_function, %functions) = @_;
 
 	my $dirprefix = '';
 	$dirprefix = "$self->{output_dir}/" if ($self->{output_dir});
@@ -3189,76 +3196,96 @@ sub translate_function
 		$self->{procedures} = (); 
 	}
 
+	my $t0 = Benchmark->new;
+
 	my $sql_output = '';
-	my $fhdl = undef;
 	my $lsize = 0;
 	my $lcost = 0;
+	my $fct_count = 0;
+	foreach my $fct (keys %functions) {
 
-	$self->_remove_comments(\$fct_code);
-	$lsize = length($fct_code);
+		$fct_count++;
 
-	if ($self->{file_per_function}) {
-		$self->logit("Dumping to one file per function : ${fct}_$self->{output}\n", 1);
-		$fhdl = $self->open_export_file("${fct}_$self->{output}");
-		set_binmode($fhdl);
-	}
-	if ($self->{plsql_pgsql}) {
-		my $sql_f = '';
-		if ($self->{is_mysql}) {
-			$sql_f = $self->_convert_function($owner, $fct_code, $fct);
-		} else {
-			$sql_f = $self->_convert_function($owner, $fct_code);
+		if (!$self->{quiet} && !$self->{debug}) {
+			print STDERR $self->progress_bar($i+1, $num_total_function, 25, '=', 'functions', "generating $fct" ), "\r";
 		}
-		if ( $sql_f ) {
-			$sql_output .= $sql_f . "\n\n";
-			if ($self->{estimate_cost}) {
-				my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($self, $sql_f);
-				$cost += $Ora2Pg::PLSQL::OBJECT_SCORE{'FUNCTION'};
-				$lcost += $cost;
-				$self->logit("Function $fct estimated cost: $cost\n", 1);
-				$sql_output .= "-- Function $fct estimated cost: $cost\n";
-				foreach (sort { $cost_detail{$b} <=> $cost_detail{$a} } keys %cost_detail) {
-					next if (!$cost_detail{$_});
-					$sql_output .= "\t-- $_ => $cost_detail{$_}";
-					if (!$self->{is_mysql}) {
-						$sql_output .= " (cost: $Ora2Pg::PLSQL::UNCOVERED_SCORE{$_})" if ($Ora2Pg::PLSQL::UNCOVERED_SCORE{$_});
-					} else {
-						$sql_output .= " (cost: $Ora2Pg::PLSQL::UNCOVERED_MYSQL_SCORE{$_})" if ($Ora2Pg::PLSQL::UNCOVERED_MYSQL_SCORE{$_});
+		$self->logit("Dumping function $fct...\n", 1);
+		if ($self->{file_per_function}) {
+			$self->dump("\\i $dirprefix${fct}_$self->{output}\n");
+		}
+
+		my $fhdl = undef;
+
+		$self->_remove_comments(\$functions{$fct}{text});
+		$lsize = length($functions{$fct}{text});
+
+		if ($self->{file_per_function}) {
+			$self->logit("Dumping to one file per function : ${fct}_$self->{output}\n", 1);
+			$fhdl = $self->open_export_file("${fct}_$self->{output}");
+			set_binmode($fhdl);
+		}
+		if ($self->{plsql_pgsql}) {
+			my $sql_f = '';
+			if ($self->{is_mysql}) {
+				$sql_f = $self->_convert_function($functions{$fct}{owner}, $functions{$fct}{text}, ${fct});
+			} else {
+				$sql_f = $self->_convert_function($functions{$fct}{owner}, $functions{$fct}{text});
+			}
+			if ( $sql_f ) {
+				$sql_output .= $sql_f . "\n\n";
+				if ($self->{estimate_cost}) {
+					my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($self, $sql_f);
+					$cost += $Ora2Pg::PLSQL::OBJECT_SCORE{'FUNCTION'};
+					$lcost += $cost;
+					$self->logit("Function ${fct} estimated cost: $cost\n", 1);
+					$sql_output .= "-- Function ${fct} estimated cost: $cost\n";
+					foreach (sort { $cost_detail{$b} <=> $cost_detail{$a} } keys %cost_detail) {
+						next if (!$cost_detail{$_});
+						$sql_output .= "\t-- $_ => $cost_detail{$_}";
+						if (!$self->{is_mysql}) {
+							$sql_output .= " (cost: $Ora2Pg::PLSQL::UNCOVERED_SCORE{$_})" if ($Ora2Pg::PLSQL::UNCOVERED_SCORE{$_});
+						} else {
+							$sql_output .= " (cost: $Ora2Pg::PLSQL::UNCOVERED_MYSQL_SCORE{$_})" if ($Ora2Pg::PLSQL::UNCOVERED_MYSQL_SCORE{$_});
+						}
+						$sql_output .= "\n";
 					}
-					$sql_output .= "\n";
-				}
-				if ($self->{jobs} > 1) {
-					my $tfh = $self->append_export_file($dirprefix . 'temp_cost_file.dat', 1);
-					flock($tfh, 2) || die "FATAL: can't lock file temp_cost_file.dat\n";
-					$tfh->print("$fct:$lsize:$lcost\n");
-					$tfh->close();
+					if ($self->{jobs} > 1) {
+						my $tfh = $self->append_export_file($dirprefix . 'temp_cost_file.dat', 1);
+						flock($tfh, 2) || die "FATAL: can't lock file temp_cost_file.dat\n";
+						$tfh->print("${fct}:$lsize:$lcost\n");
+						$tfh->close();
+					}
 				}
 			}
+		} else {
+			$sql_output .= $functions{$fct}{text} . "\n\n";
 		}
-	} else {
-		$sql_output .= $fct_code . "\n\n";
-	}
-	$self->_restore_comments(\$sql_output);
-	if ($self->{plsql_pgsql}) {
-		$sql_output =~ s/(-- REVOKE ALL ON FUNCTION [^;]+ FROM PUBLIC;)/&remove_newline($1)/sge;
+		$self->_restore_comments(\$sql_output);
+		if ($self->{plsql_pgsql}) {
+			$sql_output =~ s/(-- REVOKE ALL ON FUNCTION [^;]+ FROM PUBLIC;)/&remove_newline($1)/sge;
+		}
+
+		my $sql_header = "-- Generated by Ora2Pg, the Oracle database Schema converter, version $VERSION\n";
+		$sql_header .= "-- Copyright 2000-2017 Gilles DAROLD. All rights reserved.\n";
+		$sql_header .= "-- DATASOURCE: $self->{oracle_dsn}\n\n";
+		if ($self->{client_encoding}) {
+			$sql_header .= "SET client_encoding TO '\U$self->{client_encoding}\E';\n\n";
+		}
+		if ($self->{type} ne 'TABLE') {
+			$sql_header .= $self->set_search_path();
+		}
+		$sql_header .= "\\set ON_ERROR_STOP ON\n\n" if ($self->{stop_on_error});
+
+		if ($self->{file_per_function}) {
+			$self->dump($sql_header . $sql_output, $fhdl);
+			$self->close_export_file($fhdl);
+			$sql_output = '';
+		}
 	}
 
-	my $sql_header = "-- Generated by Ora2Pg, the Oracle database Schema converter, version $VERSION\n";
-	$sql_header .= "-- Copyright 2000-2017 Gilles DAROLD. All rights reserved.\n";
-	$sql_header .= "-- DATASOURCE: $self->{oracle_dsn}\n\n";
-	if ($self->{client_encoding}) {
-		$sql_header .= "SET client_encoding TO '\U$self->{client_encoding}\E';\n\n";
-	}
-	if ($self->{type} ne 'TABLE') {
-		$sql_header .= $self->set_search_path();
-	}
-	$sql_header .= "\\set ON_ERROR_STOP ON\n\n" if ($self->{stop_on_error});
-
-	if ($self->{file_per_function}) {
-		$self->dump($sql_header . $sql_output, $fhdl);
-		$self->close_export_file($fhdl);
-		$sql_output = '';
-	}
+	my $t1 = Benchmark->new;
+	my $td = timediff($t1, $t0);
+	$self->logit("Translating of $fct_count functions took: " . timestr($td) . "\n", 1);
 
 	return ($sql_output, $lsize, $lcost);
 }
@@ -4351,44 +4378,36 @@ LANGUAGE plpgsql ;
 		#--------------------------------------------------------
 		my $total_size = 0;
 		my $cost_value = 0;
-                my $i = 1;
                 my $num_total_function = scalar keys %{$self->{functions}};
 		my $fct_cost = '';
 		my $parallel_fct_count = 0;
 		unlink($dirprefix . 'temp_cost_file.dat') if ($self->{parallel_tables} > 1 && $self->{estimate_cost});
-		foreach my $fct (sort keys %{$self->{functions}}) {
 
-			if (!$self->{quiet} && !$self->{debug}) {
-				print STDERR $self->progress_bar($i, $num_total_function, 25, '=', 'functions', "generating $fct" ), "\r";
-			}
-			$self->logit("Dumping function $fct...\n", 1);
-			if ($self->{file_per_function}) {
-				$self->dump("\\i $dirprefix${fct}_$self->{output}\n");
-			}
+		my $t0 = Benchmark->new;
+
+		# Group functions by chunk in multiprocess mode
+		my $num_chunk = $self->{jobs} || 1;
+		my @fct_group = ();
+		my $i = 0;
+		foreach my $key ( keys %{$self->{functions}} ) {
+			$fct_group[$i++]{$key} = $self->{functions}{$key};
+			$i = 0 if ($i == $num_chunk);
+		}
+		for ($i = 0; $i <= $#fct_group; $i++) {
+
 			if ($self->{jobs} > 1) {
-				$self->logit("Translating function $fct in a new process...\n", 1);
+				$self->logit("Creating a new process to translate functions...\n", 1);
 				spawn sub {
-					$self->translate_function($fct, $self->{functions}{$fct}{owner}, $self->{functions}{$fct}{text});
+					$self->translate_function($i, $num_total_function, %{$fct_group[$i]});
 				};
 				$parallel_fct_count++;
-
-				# Wait for oracle connection terminaison
-				while ($parallel_fct_count > $self->{jobs}) {
-					my $kid = waitpid(-1, WNOHANG);
-					if ($kid > 0) {
-						$parallel_fct_count--;
-						delete $RUNNING_PIDS{$kid};
-					}
-					usleep(500000);
-				}
 			} else {
-				my ($code, $lsize, $lcost) = $self->translate_function($fct, $self->{functions}{$fct}{owner}, $self->{functions}{$fct}{text});
+				my ($code, $lsize, $lcost) = $self->translate_function($i, $num_total_function, %{$fct_group[$i]});
 				$sql_output .= $code;
 				$total_size += $lsize;
 				$cost_value += $lcost;
 			}
 			$nothing++;
-			$i++;
 		}
 		# Wait for all oracle connection terminaison
 		if ($self->{jobs} > 1) {
@@ -4414,7 +4433,7 @@ LANGUAGE plpgsql ;
 			}
 		}
 		if (!$self->{quiet} && !$self->{debug}) {
-			print STDERR $self->progress_bar($i - 1, $num_total_function, 25, '=', 'functions', 'end of output.'), "\n";
+			print STDERR $self->progress_bar($num_total_function, $num_total_function, 25, '=', 'functions', 'end of output.'), "\n";
 		}
 		if ($self->{estimate_cost}) {
 			my @infos = ( "Total number of functions: ".(scalar keys %{$self->{functions}}).".",
@@ -4431,6 +4450,11 @@ LANGUAGE plpgsql ;
 		}
 		$self->dump($sql_output);
 		$self->{functions} = ();
+
+		my $t1 = Benchmark->new;
+		my $td = timediff($t1, $t0);
+		$self->logit("Total time to translate all functions with $num_chunk process: " . timestr($td) . "\n", 1);
+
 		return;
 	}
 
@@ -4520,49 +4544,42 @@ LANGUAGE plpgsql ;
 				$self->_restore_comments(\$self->{procedures}{$fct}{text});
 			}
 		}
+
 		#--------------------------------------------------------
                 my $total_size = 0;
                 my $cost_value = 0;
-		my $i = 1;
 		my $num_total_procedure = scalar keys %{$self->{procedures}};
 		my $fct_cost = '';
 		my $parallel_fct_count = 0;
 		unlink($dirprefix . 'temp_cost_file.dat') if ($self->{parallel_tables} > 1 && $self->{estimate_cost});
-		foreach my $fct (sort keys %{$self->{procedures}}) {
 
-			if (!$self->{quiet} && !$self->{debug}) {
-				print STDERR $self->progress_bar($i, $num_total_procedure, 25, '=', 'procedures', "generating $fct" ), "\r";
-			}
-			$self->logit("Dumping procedure $fct...\n", 1);
-			my $fhdl = undef;
-			if ($self->{file_per_function}) {
-				$self->dump("\\i $dirprefix${fct}_$self->{output}\n");
-			}
+		my $t0 = Benchmark->new;
+
+		# Group functions by chunk in multiprocess mode
+		my $num_chunk = $self->{jobs} || 1;
+		my @fct_group = ();
+		my $i = 0;
+		foreach my $key ( keys %{$self->{procedures}} ) {
+			$fct_group[$i++]{$key} = $self->{procedures}{$key};
+			$i = 0 if ($i == $num_chunk);
+		}
+		for ($i = 0; $i <= $#fct_group; $i++) {
+
 			if ($self->{jobs} > 1) {
-				$self->logit("Translating procedure $fct in a new process...\n", 1);
+				$self->logit("Creating a new process to translate procedures...\n", 1);
 				spawn sub {
-					$self->translate_function($fct, $self->{procedures}{$fct}{owner}, $self->{procedures}{$fct}{text});
+					$self->translate_function($i, $num_total_function, %{$fct_group[$i]});
 				};
 				$parallel_fct_count++;
-
-				# Wait for oracle connection terminaison
-				while ($parallel_fct_count > $self->{jobs}) {
-					my $kid = waitpid(-1, WNOHANG);
-					if ($kid > 0) {
-						$parallel_fct_count--;
-						delete $RUNNING_PIDS{$kid};
-					}
-					usleep(500000);
-				}
 			} else {
-				my ($code, $lsize, $lcost) = $self->translate_function($fct, $self->{procedures}{$fct}{owner}, $self->{procedures}{$fct}{text});
+				my ($code, $lsize, $lcost) = $self->translate_function($i, $num_total_function, %{$fct_group[$i]});
 				$sql_output .= $code;
 				$total_size += $lsize;
 				$cost_value += $lcost;
 			}
 			$nothing++;
-			$i++;
 		}
+
 		# Wait for all oracle connection terminaison
 		if ($self->{jobs} > 1) {
 			while ($parallel_fct_count) {
@@ -4606,6 +4623,10 @@ LANGUAGE plpgsql ;
 		}
 		$self->dump($sql_output);
 		$self->{procedures} = ();
+
+                my $t1 = Benchmark->new;
+                my $td = timediff($t1, $t0);
+                $self->logit("Total time to translate all functions with $num_chunk process: " . timestr($td) . "\n", 1);
 
 		return;
 	}
@@ -8966,76 +8987,79 @@ sub _get_plsql_metadata
 	my %functions = ();
 	my @fct_done = ();
 	push(@fct_done, @EXCLUDED_FUNCTION);
+        while (my $row = $sth->fetch) {
+                if (!$self->{schema} && $self->{export_schema}) {
+                        $row->[0] = "$row->[1].$row->[0]";
+                }
+                next if (grep(/^$row->[0]$/i, @fct_done));
+                push(@fct_done, $row->[0]);
+                $self->{function_metadata}{$row->[0]}{owner} = $row->[1];
+                $self->{function_metadata}{$row->[0]}{type} = $row->[2];
+        }
+        $sth->finish();
+
+	# Get content of package body
+	my $sql = "SELECT NAME, OWNER, TYPE, TEXT FROM $self->{prefix}_SOURCE";
+	if (!$self->{schema}) {
+		$sql .= " WHERE OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
+	} else {
+		$sql .= " WHERE OWNER = '$self->{schema}'";
+	}
+	$sql .= " " . $self->limit_to_objects('FUNCTION|PROCEDURE|PACKAGE','NAME|NAME|NAME');
+	$sql .= " ORDER BY OWNER, NAME, LINE";
+	my $sth = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute or $self->logit("FATAL: " . $sth->errstr . "\n", 0, 1);
 	while (my $row = $sth->fetch) {
+		if (!$self->{schema} && $self->{export_schema}) {
+			$row->[0] = "$row->[1].$row->[0]";
+		}
+		next if (!exists $self->{function_metadata}{$row->[0]});
+		$self->{function_metadata}{$row->[0]}{text} .= $row->[3];
+	}
+        $sth->finish();
 
-		if ($row->[2] ne 'PACKAGE BODY') {
-			my $sql = "SELECT TEXT FROM $self->{prefix}_SOURCE WHERE OWNER='$row->[1]' AND NAME='$row->[0]' ORDER BY LINE";
-
-			if (!$self->{schema} && $self->{export_schema}) {
-				$row->[0] = "$row->[1].$row->[0]";
-			}
-			next if (grep(/^$row->[0]$/i, @fct_done));
-			push(@fct_done, $row->[0]);
-
-			$self->{function_metadata}{"$row->[0]"}{owner} .= $row->[1];
-			my $sth2 = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-			$sth2->execute or $self->logit("FATAL: " . $sth2->errstr . "\n", 0, 1);
-			while (my $r = $sth2->fetch) {
-				$self->{function_metadata}{$row->[0]}{text} .= $r->[0];
-			}
-
+	foreach my $name (keys %{$self->{function_metadata}}) {
+		if ($self->{function_metadata}{$name}{type} ne 'PACKAGE BODY') {
 			# Retrieve metadata for this function after removing comments
-			$self->_remove_comments(\$self->{function_metadata}{$row->[0]}{text}, 1);
+			$self->_remove_comments(\$self->{function_metadata}{$name}{text}, 1);
 			$self->{commet_values} = ();
-			$self->{function_metadata}{$row->[0]}{text} =~  s/\%ORA2PG_COMMENT\d+\%//gs;
-			my %fct_detail = $self->_lookup_function($self->{function_metadata}{$row->[0]}{text}, undef, 1);
+			$self->{function_metadata}{$name}{text} =~  s/\%ORA2PG_COMMENT\d+\%//gs;
+			my %fct_detail = $self->_lookup_function($self->{function_metadata}{$name}{text}, undef, 1);
 			if (!exists $fct_detail{name}) {
-				delete $self->{function_metadata}{$row->[0]};
+				delete $self->{function_metadata}{$name};
 				next;
 			}
 			delete $fct_detail{code};
 			delete $fct_detail{before};
-			%{$self->{function_metadata}{$row->[0]}{metadata}} = %fct_detail;
-			delete $self->{function_metadata}{$row->[0]}{text};
-
+			%{$self->{function_metadata}{$name}{metadata}} = %fct_detail;
+			delete $self->{function_metadata}{$name}{text};
 		} else {
-
-			next if (grep(/^$row->[0]$/i, @fct_done));
-			push(@fct_done, $row->[0]);
-
-			my $sql = "SELECT TEXT FROM $self->{prefix}_SOURCE WHERE OWNER='$row->[1]' AND NAME='$row->[0]' AND TYPE='PACKAGE BODY' ORDER BY LINE";
-			my $sth2 = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-			$sth2->execute or $self->logit("FATAL: " . $sth2->errstr . "\n", 0, 1);
 			my %pkg_txt = ();
-			while (my $r = $sth2->fetch) {
-				$pkg_txt{$row->[0]} .= $r->[0];
-			}
-			foreach my $p (keys %pkg_txt) {
-				$self->_remove_comments(\$pkg_txt{$p}, 1);
-				$self->{comment_values} = ();
-				$pkg_txt{$p} =~  s/\%ORA2PG_COMMENT\d+\%//gs;
-				my %infos = $self->_lookup_package($pkg_txt{$p});
-				foreach my $f (sort keys %infos) {
-					next if (!$f);
-					my $name = lc($f);
-					delete $infos{$f}{code};
-					delete $infos{$f}{before};
-					%{$self->{function_metadata}{$name}{metadata}} = %{$infos{$f}};
-					my $res_name = $f;
-					$res_name =~ s/^[^\.]+\.//;
-					if ($self->{package_as_schema}) {
-						$res_name = $p . '.' . $res_name;
-					} else {
-						$res_name = $p . '_' . $res_name;
-					}
-					$res_name =~ s/"_"/_/g;
-					$self->{package_functions}{"\L$f\E"}{name} =  $self->quote_object_name($res_name);
-					$self->{package_functions}{"\L$f\E"}{package} = $p;
+			$pkg_txt{$name} = %{$self->{function_metadata}{$name}};
+			$self->_remove_comments(\$self->{function_metadata}{$name}{text}, 1);
+			$self->{comment_values} = ();
+			$self->{function_metadata}{$name}{text} =~  s/\%ORA2PG_COMMENT\d+\%//gs;
+			my %infos = $self->_lookup_package($self->{function_metadata}{$name}{text});
+			delete $self->{function_metadata}{$name};
+			foreach my $f (sort keys %infos) {
+				next if (!$f);
+				my $fn = lc($f);
+				delete $infos{$f}{code};
+				delete $infos{$f}{before};
+				%{$self->{function_metadata}{$fn}{metadata}} = %{$infos{$f}};
+				my $res_name = $f;
+				$res_name =~ s/^[^\.]+\.//;
+				if ($self->{package_as_schema}) {
+					$res_name = $p . '.' . $res_name;
+				} else {
+					$res_name = $p . '_' . $res_name;
 				}
+				$res_name =~ s/"_"/_/g;
+				$self->{package_functions}{"\L$f\E"}{name} =  $self->quote_object_name($res_name);
+				$self->{package_functions}{"\L$f\E"}{package} = $p;
 			}
 		}
 	}
-
 }
 
 
@@ -9048,6 +9072,53 @@ Returns a hash of all function names with their PLSQL code.
 =cut
 
 sub _get_functions
+{
+	my $self = shift;
+
+	return Ora2Pg::MySQL::_get_functions($self) if ($self->{is_mysql});
+
+	# Retrieve all functions 
+	my $str = "SELECT DISTINCT OBJECT_NAME,OWNER FROM $self->{prefix}_OBJECTS WHERE OBJECT_TYPE='FUNCTION'";
+	$str .= " AND STATUS='VALID'" if (!$self->{export_invalid});
+	if (!$self->{schema}) {
+		$str .= " AND OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
+	} else {
+		$str .= " AND OWNER = '$self->{schema}'";
+	}
+	$str .= " " . $self->limit_to_objects('FUNCTION','OBJECT_NAME');
+	$str .= " ORDER BY OBJECT_NAME";
+	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+
+	my %functions = ();
+	my @fct_done = ();
+	push(@fct_done, @EXCLUDED_FUNCTION);
+	while (my $row = $sth->fetch) {
+		if (!$self->{schema} && $self->{export_schema}) {
+			$row->[0] = "$row->[1].$row->[0]";
+		}
+		next if (grep(/^$row->[0]$/i, @fct_done));
+		push(@fct_done, $row->[0]);
+		$functions{"$row->[0]"}{owner} = $row->[1];
+	}
+	$sth->finish();
+
+	my $sql = "SELECT NAME,OWNER,TEXT FROM $self->{prefix}_SOURCE ORDER BY OWNER,NAME,LINE";
+	$sth = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute or $self->logit("FATAL: " . $sth->errstr . "\n", 0, 1);
+	while (my $row = $sth->fetch) {
+		if (!$self->{schema} && $self->{export_schema}) {
+			$row->[0] = "$row->[1].$row->[0]";
+		}
+		if (exists $functions{"$row->[0]"}) {
+			$functions{"$row->[0]"}{text} .= $row->[2];
+		}
+	}
+
+	return \%functions;
+}
+
+sub _get_functions2
 {
 	my $self = shift;
 
@@ -9096,6 +9167,54 @@ Returns a hash of all procedure names with their PLSQL code.
 =cut
 
 sub _get_procedures
+{
+	my $self = shift;
+
+	return Ora2Pg::MySQL::_get_functions($self) if ($self->{is_mysql});
+
+	# Retrieve all functions 
+	my $str = "SELECT DISTINCT OBJECT_NAME,OWNER FROM $self->{prefix}_OBJECTS WHERE OBJECT_TYPE='PROCEDURE'";
+	$str .= " AND STATUS='VALID'" if (!$self->{export_invalid});
+	if (!$self->{schema}) {
+		$str .= " AND OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
+	} else {
+		$str .= " AND OWNER = '$self->{schema}'";
+	}
+	$str .= " " . $self->limit_to_objects('PROCEDURE','OBJECT_NAME');
+	$str .= " ORDER BY OBJECT_NAME";
+	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+
+	my %procedures = ();
+	my @fct_done = ();
+	push(@fct_done, @EXCLUDED_FUNCTION);
+	while (my $row = $sth->fetch) {
+		if (!$self->{schema} && $self->{export_schema}) {
+			$row->[0] = "$row->[1].$row->[0]";
+		}
+		next if (grep(/^$row->[0]$/i, @fct_done));
+		push(@fct_done, $row->[0]);
+		$procedures{"$row->[0]"}{owner} = $row->[1];
+	}
+	$sth->finish();
+
+	my $sql = "SELECT NAME,OWNER,TEXT FROM $self->{prefix}_SOURCE ORDER BY OWNER,NAME,LINE";
+	$sth = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute or $self->logit("FATAL: " . $sth->errstr . "\n", 0, 1);
+	while (my $row = $sth->fetch) {
+		if (!$self->{schema} && $self->{export_schema}) {
+			$row->[0] = "$row->[1].$row->[0]";
+		}
+		if (exists $procedures{"$row->[0]"}) {
+			$procedures{"$row->[0]"}{text} .= $row->[2];
+		}
+	}
+
+	return \%procedures;
+}
+
+
+sub _get_procedures2
 {
 	my $self = shift;
 
