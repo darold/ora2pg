@@ -2129,7 +2129,13 @@ sub _restore_text_constant_part
 	# First replace function with package.function in potential dynamic query
 	if (scalar keys %{$self->{package_functions}}) {
 		foreach my $k (keys %{$self->{package_functions}}) {
-			map { $self->{text_values}{$_} =~ s/($self->{package_functions}{$k}{package}\.)?\b$k\s*\(/$self->{package_functions}{$k}{name}\(/igs } keys %{$self->{text_values}};
+			if (exists $self->{package_functions}{$k}{package}) {
+				next if (!$self->{package_functions}{$k}{package});
+				my $pkname =  $self->{package_functions}{$k}{package} . '.';
+				map {
+					$self->{text_values}{$_} =~ s/($pkname)?\b$k\s*\(/$self->{package_functions}{$k}{name}\(/igs;
+				} keys %{$self->{text_values}};
+			}
 		}
 	}
 
@@ -4389,24 +4395,26 @@ LANGUAGE plpgsql ;
 		my $num_chunk = $self->{jobs} || 1;
 		my @fct_group = ();
 		my $i = 0;
-		foreach my $key ( keys %{$self->{functions}} ) {
+		foreach my $key ( sort keys %{$self->{functions}} ) {
 			$fct_group[$i++]{$key} = $self->{functions}{$key};
 			$i = 0 if ($i == $num_chunk);
 		}
+		my $num_cur_fct = 0;
 		for ($i = 0; $i <= $#fct_group; $i++) {
 
 			if ($self->{jobs} > 1) {
 				$self->logit("Creating a new process to translate functions...\n", 1);
 				spawn sub {
-					$self->translate_function($i, $num_total_function, %{$fct_group[$i]});
+					$self->translate_function($num_cur_fct, $num_total_function, %{$fct_group[$i]});
 				};
 				$parallel_fct_count++;
 			} else {
-				my ($code, $lsize, $lcost) = $self->translate_function($i, $num_total_function, %{$fct_group[$i]});
+				my ($code, $lsize, $lcost) = $self->translate_function($num_cur_fct, $num_total_function, %{$fct_group[$i]});
 				$sql_output .= $code;
 				$total_size += $lsize;
 				$cost_value += $lcost;
 			}
+			$num_cur_fct += scalar keys %{$fct_group[$i]};
 			$nothing++;
 		}
 		# Wait for all oracle connection terminaison
@@ -4433,7 +4441,7 @@ LANGUAGE plpgsql ;
 			}
 		}
 		if (!$self->{quiet} && !$self->{debug}) {
-			print STDERR $self->progress_bar($num_total_function, $num_total_function, 25, '=', 'functions', 'end of output.'), "\n";
+			print STDERR $self->progress_bar($num_cur_fct, $num_total_function, 25, '=', 'functions', 'end of functions export.'), "\n";
 		}
 		if ($self->{estimate_cost}) {
 			my @infos = ( "Total number of functions: ".(scalar keys %{$self->{functions}}).".",
@@ -4548,7 +4556,7 @@ LANGUAGE plpgsql ;
 		#--------------------------------------------------------
                 my $total_size = 0;
                 my $cost_value = 0;
-		my $num_total_procedure = scalar keys %{$self->{procedures}};
+		my $num_total_function = scalar keys %{$self->{procedures}};
 		my $fct_cost = '';
 		my $parallel_fct_count = 0;
 		unlink($dirprefix . 'temp_cost_file.dat') if ($self->{parallel_tables} > 1 && $self->{estimate_cost});
@@ -4559,24 +4567,25 @@ LANGUAGE plpgsql ;
 		my $num_chunk = $self->{jobs} || 1;
 		my @fct_group = ();
 		my $i = 0;
-		foreach my $key ( keys %{$self->{procedures}} ) {
+		foreach my $key (sort keys %{$self->{procedures}} ) {
 			$fct_group[$i++]{$key} = $self->{procedures}{$key};
 			$i = 0 if ($i == $num_chunk);
 		}
+		my $num_cur_fct = 0;
 		for ($i = 0; $i <= $#fct_group; $i++) {
-
 			if ($self->{jobs} > 1) {
 				$self->logit("Creating a new process to translate procedures...\n", 1);
 				spawn sub {
-					$self->translate_function($i, $num_total_function, %{$fct_group[$i]});
+					$self->translate_function($num_cur_fct, $num_total_function, %{$fct_group[$i]});
 				};
 				$parallel_fct_count++;
 			} else {
-				my ($code, $lsize, $lcost) = $self->translate_function($i, $num_total_function, %{$fct_group[$i]});
+				my ($code, $lsize, $lcost) = $self->translate_function($num_cur_fct, $num_total_function, %{$fct_group[$i]});
 				$sql_output .= $code;
-				$total_size += $lsize;
+				$total_size += $lsize;;
 				$cost_value += $lcost;
 			}
+			$num_cur_fct += scalar keys %{$fct_group[$i]};
 			$nothing++;
 		}
 
@@ -4606,7 +4615,7 @@ LANGUAGE plpgsql ;
 			}
 		}
 		if (!$self->{quiet} && !$self->{debug}) {
-			print STDERR $self->progress_bar($i - 1, $num_total_procedure, 25, '=', 'procedures', 'end of output.'), "\n";
+			print STDERR $self->progress_bar($num_cur_fct, $num_total_function, 25, '=', 'procedures', 'end of procedures export.'), "\n";
 		}
 		if ($self->{estimate_cost}) {
 			my @infos = ( "Total number of procedures: ".(scalar keys %{$self->{procedures}}).".",
@@ -4813,7 +4822,7 @@ LANGUAGE plpgsql ;
 		# Create file to load custom variable initialization into postgresql.conf
 		if (scalar keys %{$self->{global_variables}}) {
 			my $default_vars = '';
-			foreach my $n (keys %{$self->{global_variables}}) {
+			foreach my $n (sort keys %{$self->{global_variables}}) {
 				if (exists $self->{global_variables}{$n}{constant} || exists $self->{global_variables}{$n}{default}) {
 					$default_vars .= "$n = '$self->{global_variables}{$n}{default}'\n";
 				}
@@ -10573,7 +10582,9 @@ sub _convert_package
 			# Remove all function declaration
 			$glob_declare =~ s/(PROCEDURE|FUNCTION)[^;]+;//gis;
 			# Remove end of the package decalaration
-			$glob_declare =~ s/\s+END[^;]*;\s*$//is;
+			$glob_declare =~ s/\s+END[^;]*;.*//is;
+			$glob_declare =~ s/\%ORA2PG_COMMENT\d+\%//igs;
+			$glob_declare =~ s/[\r\n]+/\n/isg;
 			my @cursors = ();
 			while ($glob_declare =~ s/(CURSOR\s+[^;]+\s+RETURN\s+[^;]+;)//) {
 				push(@cursors, $1);
@@ -14529,14 +14540,6 @@ sub _lookup_function
 		$fct_detail{name} = $3;
 		$fct_detail{args} = $4;
 
-		if ($fct_detail{before}) {
-			my @cursors = ();
-			while ($fct_detail{before} =~ s/(CURSOR\s+[^;]+\s+RETURN\s+[^;]+;)//) {
-				push(@cursors, $1);
-			}
-			$fct_detail{before} = $self->register_global_variable($pname, $fct_detail{before});
-			$fct_detail{before} = join("\n", @cursors) . "\n" . $fct_detail{before};
-		}
 		if ($fct_detail{args} =~ /\b(RETURN|IS|AS)\b/is) {
 			$fct_detail{args} = '()';
 		}
