@@ -15616,6 +15616,9 @@ sub register_global_variable
 		if ($#others > 0 && $others[0] eq ':=') {
 			shift(@others);
 			$self->{global_variables}{$v}{default} = join(' ', @others);
+		}
+		if (exists $self->{global_variables}{$v}{default}) {
+			$self->_restore_text_constant_part(\$self->{global_variables}{$v}{default});
 			$self->{global_variables}{$v}{default} =~ s/^'//s;
 			$self->{global_variables}{$v}{default} =~ s/'$//s;
 		}
