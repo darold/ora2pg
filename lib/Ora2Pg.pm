@@ -988,6 +988,8 @@ sub _init
 			$self->{"\L$k\E"} = $options{$k};
 		}
 	}
+	# When pg_schema is set at command line enable export_schema
+	$self->{export_schema} = 1 if ($options{pg_schema});
 
 	# Global regex will be applied to the export type only
 	foreach my $i (@{$self->{limited}{ALL}}) {

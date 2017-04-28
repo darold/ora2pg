@@ -250,6 +250,7 @@ CONFIGURATION
                             memory before writing, default: 10000.
         -m | --mysql      : Export a MySQL database instead of an Oracle schema.
         -n | --namespace schema : Used to set the Oracle schema to extract from.
+        -N | --pg_schema schema : Used to set PostgreSQL's search_path.
         -o | --out file   : Used to set the path to the output file where SQL will
                             be written. Default: output.sql in running directory.
         -p | --plsql      : Enable PLSQL to PLPSQL code conversion.

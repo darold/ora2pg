@@ -79,6 +79,7 @@ my $PG_PWD = '';
 my $COUNT_ROWS = 0;
 my $DATA_TYPE = '';
 my $GRANT_OBJECT = '';
+my $PG_SCHEMA = '';
 
 my @SCHEMA_ARRAY  = qw( TABLE PACKAGE VIEW GRANT SEQUENCE TRIGGER FUNCTION PROCEDURE TABLESPACE PARTITION TYPE MVIEW DBLINK SYNONYM DIRECTORY );
 my @EXTERNAL_ARRAY  = qw( KETTLE FDW );
@@ -122,6 +123,7 @@ GetOptions (
 	'u|user=s' => \$DBUSER,
 	'w|password=s' => \$DBPWD,
 	'n|namespace=s' => \$SCHEMA,
+	'N|pg_schema=s' => \$PG_SCHEMA,
 	'x|xtable=s' => \$TABLEONLY, # Obsolete
 	'forceowner=s' => \$FORCEOWNER,
 	'nls_lang=s' => \$ORA_ENCODING,
@@ -256,6 +258,7 @@ my $schema = new Ora2Pg (
         user => $DBUSER || $ENV{ORA2PG_USER},
         password => $DBPWD || $ENV{ORA2PG_PASSWD},
 	schema => $SCHEMA,
+	pg_schema => $PG_SCHEMA,
 	force_owner => $FORCEOWNER,
         nls_lang => $ORA_ENCODING,
         client_encoding => $PG_ENCODING,
@@ -356,6 +359,7 @@ Usage: ora2pg [-dhpqv --estimate_cost --dump_as_html] [--option value]
 			memory before writing, default: 10000.
     -m | --mysql      : Export a MySQL database instead of an Oracle schema.
     -n | --namespace schema : Used to set the Oracle schema to extract from.
+    -N | --pg_schema schema : Used to set PostgreSQL's search_path.
     -o | --out file   : Used to set the path to the output file where SQL will
 			be written. Default: output.sql in running directory.
     -p | --plsql      : Enable PLSQL to PLPSQL code conversion.
