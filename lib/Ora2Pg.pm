@@ -13923,7 +13923,7 @@ sub _compile_schema
 
 	my $qcomp = '';
 
-	if ($schema || ($schema =~ /[a-z]/i)) {
+	if ($schema and ($schema =~ /[a-z]/i)) {
 		$qcomp = qq{begin
 DBMS_UTILITY.compile_schema(schema => '$schema');
 end;
