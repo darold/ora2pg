@@ -9018,7 +9018,7 @@ sub _get_plsql_metadata
 	}
 	$sql .= " " . $self->limit_to_objects('FUNCTION|PROCEDURE|PACKAGE','NAME|NAME|NAME');
 	$sql .= " ORDER BY OWNER, NAME, LINE";
-	my $sth = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute or $self->logit("FATAL: " . $sth->errstr . "\n", 0, 1);
 	while (my $row = $sth->fetch) {
 		if (!$self->{schema} && $self->{export_schema}) {
@@ -9114,7 +9114,14 @@ sub _get_functions
 	}
 	$sth->finish();
 
-	my $sql = "SELECT NAME,OWNER,TEXT FROM $self->{prefix}_SOURCE ORDER BY OWNER,NAME,LINE";
+	my $sql = "SELECT NAME,OWNER,TEXT FROM $self->{prefix}_SOURCE";
+	if (!$self->{schema}) {
+		$sql .= " WHERE OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
+	} else {
+		$sql .= " WHERE OWNER = '$self->{schema}'";
+	}
+	$sql .= " " . $self->limit_to_objects('FUNCTION','NAME');
+	$sql .= " ORDER BY OWNER,NAME,LINE";
 	$sth = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute or $self->logit("FATAL: " . $sth->errstr . "\n", 0, 1);
 	while (my $row = $sth->fetch) {
@@ -9209,7 +9216,14 @@ sub _get_procedures
 	}
 	$sth->finish();
 
-	my $sql = "SELECT NAME,OWNER,TEXT FROM $self->{prefix}_SOURCE ORDER BY OWNER,NAME,LINE";
+	my $sql = "SELECT NAME,OWNER,TEXT FROM $self->{prefix}_SOURCE";
+	if (!$self->{schema}) {
+		$sql .= " WHERE OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
+	} else {
+		$sql .= " WHERE OWNER = '$self->{schema}'";
+	}
+	$sql .= " " . $self->limit_to_objects('PROCEDURE','NAME');
+	$sql .= " ORDER BY OWNER,NAME,LINE";
 	$sth = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute or $self->logit("FATAL: " . $sth->errstr . "\n", 0, 1);
 	while (my $row = $sth->fetch) {
@@ -9223,47 +9237,6 @@ sub _get_procedures
 
 	return \%procedures;
 }
-
-
-sub _get_procedures2
-{
-	my $self = shift;
-
-	return Ora2Pg::MySQL::_get_functions($self) if ($self->{is_mysql});
-
-	# Retrieve all procedures 
-	my $str = "SELECT DISTINCT OBJECT_NAME,OWNER FROM $self->{prefix}_OBJECTS WHERE OBJECT_TYPE='PROCEDURE'";
-	$str .= " AND STATUS='VALID'" if (!$self->{export_invalid});
-	if (!$self->{schema}) {
-		$str .= " AND OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
-	} else {
-		$str .= " AND OWNER = '$self->{schema}'";
-	}
-	$str .= " " . $self->limit_to_objects('PROCEDURE','OBJECT_NAME');
-	$str .= " ORDER BY OBJECT_NAME";
-	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-
-	my %procedures = ();
-	my @fct_done = ();
-	while (my $row = $sth->fetch) {
-		my $sql = "SELECT TEXT FROM $self->{prefix}_SOURCE WHERE OWNER='$row->[1]' AND NAME='$row->[0]' ORDER BY LINE";
-		if (!$self->{schema} && $self->{export_schema}) {
-			$row->[0] = "$row->[1].$row->[0]";
-		}
-		next if (grep(/^$row->[0]$/, @fct_done));
-		push(@fct_done, $row->[0]);
-		my $sth2 = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-		$sth2->execute or $self->logit("FATAL: " . $sth2->errstr . "\n", 0, 1);
-		while (my $r = $sth2->fetch) {
-			$procedures{"$row->[0]"}{text} .= $r->[0];
-		}
-		$procedures{"$row->[0]"}{owner} = $row->[1];
-	}
-
-	return \%procedures;
-}
-
 
 =head2 _get_packages
 
