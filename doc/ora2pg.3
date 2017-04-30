@@ -756,6 +756,16 @@ tablespace that are not \s-1TEMP\s0, \s-1USERS\s0 and \s-1SYSTEM\s0.
 .IX Item "WITH_OID"
 Activating this directive will force Ora2Pg to add \s-1WITH\s0 (\s-1OIDS\s0) when creating
 tables or views as tables. Default is same as PostgreSQL, disabled.
+.IP "\s-1LOOK_FORWARD_FUNCTION\s0" 4
+.IX Item "LOOK_FORWARD_FUNCTION"
+List of schema to get functions/procedures meta information that are used
+in the current schema export. When replacing call to function with \s-1OUT\s0
+parameters, if a function is declared in an other package then the function
+call rewriting can not be done because Ora2Pg only know about functions
+declared in the current schema. By setting a comma separated list of schema
+as value of this directive, Ora2Pg will look forward in these packages for
+all functions/procedures/packages declaration before proceeding to current
+schema export.
 .SS "Export type"
 .IX Subsection "Export type"
 The export action is perform following a single configuration directive '\s-1TYPE\s0',

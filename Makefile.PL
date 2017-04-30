@@ -157,6 +157,17 @@ COMPILE_SCHEMA	0
 #SYSUSERS	OE,HR
 
 
+# List of schema to get functions/procedures meta information that are used
+# in the current schema export. When replacing call to function with OUT
+# parameters, if a function is declared in an other package then the function
+# call rewriting can not be done because Ora2Pg only know about functions
+# declared in the current schema. By setting a comma separated list of schema
+# as value of this directive, Ora2Pg will look forward in these packages for
+# all functions/procedures/packages declaration before proceeding to current
+# schema export.
+#LOOK_FORWARD_FUNCTION	SCOTT,OE
+
+
 #------------------------------------------------------------------------------
 # ENCODING SECTION (Define client encoding at Oracle and PostgreSQL side)
 #------------------------------------------------------------------------------

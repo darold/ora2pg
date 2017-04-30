@@ -800,6 +800,7 @@ sub _init
 	$self->{defined_pk} = ();
 	$self->{allow_partition} = ();
 	$self->{empty_lob_null} = 0;
+	$self->{look_forward_function} = ();
 
 	# Init PostgreSQL DB handle
 	$self->{dbhdest} = undef;
@@ -1284,7 +1285,17 @@ sub _init
 				$self->_compile_schema(uc($self->{compile_schema}));
 			}
 			if (!grep(/^$self->{type}$/, 'COPY', 'INSERT', 'SEQUENCE', 'GRANT', 'TABLESPACE', 'QUERY', 'SYNONYM', 'FDW', 'KETTLE', 'DBLINK', 'DIRECTORY')) {
-				$self->_get_plsql_metadata() if ($self->{plsql_pgsql});
+				if ($self->{plsql_pgsql}) {
+					my @done = ();
+					if ($#{ $self->{look_forward_function} } >= 0) {
+						foreach my $o (@{ $self->{look_forward_function} }) {
+							next if (grep(/^$o$/i, @done) || uc($o) eq uc($self->{schema}));
+							push(@done, $o);
+							$self->_get_plsql_metadata($o);
+						}
+					}
+					$self->_get_plsql_metadata();
+				}
 			}
 			$self->{security} = $self->_get_security_definer($self->{type}) if (grep(/^$self->{type}$/, 'TRIGGER', 'FUNCTION','PROCEDURE','PACKAGE'));
 		}
@@ -8976,18 +8987,24 @@ information (arguments, return type, etc.).
 sub _get_plsql_metadata
 {
 	my $self = shift;
+	my $owner = shift;
 
-	return Ora2Pg::MySQL::_get_plsql_metadata($self) if ($self->{is_mysql});
+	return Ora2Pg::MySQL::_get_plsql_metadata($self, $owner) if ($self->{is_mysql});
 
 	# Retrieve all functions 
 	my $str = "SELECT DISTINCT OBJECT_NAME,OWNER,OBJECT_TYPE FROM $self->{prefix}_OBJECTS WHERE (OBJECT_TYPE = 'FUNCTION' OR OBJECT_TYPE = 'PROCEDURE' OR  OBJECT_TYPE = 'PACKAGE BODY')";
 	$str .= " AND STATUS='VALID'" if (!$self->{export_invalid});
-	if (!$self->{schema}) {
+	if ($owner) {
+		$str .= " AND OWNER = '$owner'";
+		$self->logit("Looking forward functions declaration in schema $owner.\n", 1) if (!$quiet);
+	} elsif (!$self->{schema}) {
 		$str .= " AND OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
+		$self->logit("Looking forward functions declaration in all schema.\n", 1) if (!$quiet);
 	} else {
 		$str .= " AND OWNER = '$self->{schema}'";
+		$self->logit("Looking forward functions declaration in schema $self->{schema}.\n", 1) if (!$quiet);
 	}
-	$str .= " " . $self->limit_to_objects('FUNCTION|PROCEDURE|PACKAGE','OBJECT_NAME|OBJECT_NAME|OBJECT_NAME');
+	#$str .= " " . $self->limit_to_objects('FUNCTION|PROCEDURE|PACKAGE','OBJECT_NAME|OBJECT_NAME|OBJECT_NAME');
 	$str .= " ORDER BY OBJECT_NAME";
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -9008,12 +9025,14 @@ sub _get_plsql_metadata
 
 	# Get content of package body
 	my $sql = "SELECT NAME, OWNER, TYPE, TEXT FROM $self->{prefix}_SOURCE";
-	if (!$self->{schema}) {
+	if ($owner) {
+		$str .= " AND OWNER = '$owner'";
+	} elsif (!$self->{schema}) {
 		$sql .= " WHERE OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
 	} else {
 		$sql .= " WHERE OWNER = '$self->{schema}'";
 	}
-	$sql .= " " . $self->limit_to_objects('FUNCTION|PROCEDURE|PACKAGE','NAME|NAME|NAME');
+	#$sql .= " " . $self->limit_to_objects('FUNCTION|PROCEDURE|PACKAGE','NAME|NAME|NAME');
 	$sql .= " ORDER BY OWNER, NAME, LINE";
 	$sth = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute or $self->logit("FATAL: " . $sth->errstr . "\n", 0, 1);
@@ -9030,7 +9049,7 @@ sub _get_plsql_metadata
 		if ($self->{function_metadata}{$name}{type} ne 'PACKAGE BODY') {
 			# Retrieve metadata for this function after removing comments
 			$self->_remove_comments(\$self->{function_metadata}{$name}{text}, 1);
-			$self->{commet_values} = ();
+			$self->{comment_values} = ();
 			$self->{function_metadata}{$name}{text} =~  s/\%ORA2PG_COMMENT\d+\%//gs;
 			my %fct_detail = $self->_lookup_function($self->{function_metadata}{$name}{text}, undef, 1);
 			if (!exists $fct_detail{name}) {
@@ -10263,9 +10282,11 @@ sub read_config
 				}
 			}
 		# Should be a else statement but keep the list up to date to memorize the directives full list
-		} elsif (!grep(/^$var$/, 'TABLES', 'ALLOW', 'MODIFY_STRUCT', 'REPLACE_TABLES', 'REPLACE_COLS', 'WHERE', 'EXCLUDE','VIEW_AS_TABLE','ORA_RESERVED_WORDS','SYSUSERS','REPLACE_AS_BOOLEAN','BOOLEAN_VALUES','MODIFY_TYPE','DEFINED_PK', 'ALLOW_PARTITION','REPLACE_QUERY','FKEY_ADD_UPDATE','DELETE')) {
+		} elsif (!grep(/^$var$/, 'TABLES', 'ALLOW', 'MODIFY_STRUCT', 'REPLACE_TABLES', 'REPLACE_COLS', 'WHERE', 'EXCLUDE','VIEW_AS_TABLE','ORA_RESERVED_WORDS','SYSUSERS','REPLACE_AS_BOOLEAN','BOOLEAN_VALUES','MODIFY_TYPE','DEFINED_PK', 'ALLOW_PARTITION','REPLACE_QUERY','FKEY_ADD_UPDATE','DELETE','LOOK_FORWARD_FUNCTION')) {
 			$AConfig{$var} = $val;
 		} elsif ($var eq 'VIEW_AS_TABLE') {
+			push(@{$AConfig{$var}}, split(/[\s;,]+/, $val) );
+		} elsif ($var eq 'LOOK_FORWARD_FUNCTION') {
 			push(@{$AConfig{$var}}, split(/[\s;,]+/, $val) );
 		} elsif ( ($var eq 'TABLES') || ($var eq 'ALLOW') || ($var eq 'EXCLUDE') || ($var eq 'ALLOW_PARTITION') ) {
 			$var = 'ALLOW' if ($var eq 'TABLES');
