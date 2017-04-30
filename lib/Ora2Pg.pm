@@ -10762,6 +10762,7 @@ sub _convert_function
 	my @at_ret_param = ();
 	my @at_ret_type = ();
 	my $at_suffix = '';
+	my $at_inout = 0;
 	if ($fct_detail{declare} =~ s/\s*PRAGMA\s+AUTONOMOUS_TRANSACTION[\s;]*//is) {
 		$at_suffix = '_atx';
 		# COMMIT is not allowed in PLPGSQL function
@@ -10769,9 +10770,11 @@ sub _convert_function
 		my @tmp = split(',', $fct_detail{args});
 		foreach my $p (@tmp) {
 			if ($p =~ s/\s*OUT\s+//) {
+				$at_inout++;
 				push(@at_ret_param, $p);
 				push(@at_ret_type, $p);
 			} elsif ($p =~ s/\s*INOUT\s+//) {
+				$at_inout++;
 				push(@at_ret_param, $p);
 				push(@at_ret_type, $p);
 			}
@@ -10810,10 +10813,14 @@ $search_path
 CREATE EXTENSION IF NOT EXISTS dblink;
 
 };
-		if (!$fct_detail{hasreturn}) {
-			$at_wrapper .= "CREATE OR REPLACE FUNCTION $name $fct_detail{args} RETURNS VOID AS \$body\$";
+		if (!$at_inout) {
+			if (!$fct_detail{hasreturn}) {
+				$at_wrapper .= "CREATE OR REPLACE FUNCTION $name $fct_detail{args} RETURNS VOID AS \$body\$";
+			} else {
+				$at_wrapper .= "CREATE OR REPLACE FUNCTION $name $fct_detail{args} $func_return";
+			}
 		} else {
-			$at_wrapper .= "CREATE OR REPLACE FUNCTION $name $fct_detail{args} $func_return";
+			$at_wrapper .= "CREATE OR REPLACE FUNCTION $name $fct_detail{args}";
 		}
 		my $params = '';
 		if ($#{$fct_detail{at_args}} >= 0) {
