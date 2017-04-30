@@ -553,13 +553,14 @@ compile again the invalidated code to get a chance to have it obtain the valid
 status and then be able to export it.
 
 Enable this directive to force Oracle to compile schema before exporting code.
+When this directive is enabled and SCHEMA is set to a specific schema name,
+only invalid objects in this schema will be recompiled. If SCHEMA is not set
+then all schema will be recompiled. To force recompile invalid object in a
+specific schema, set COMPILE_SCHEMA to the schema name you want to recompile.
+
 This will ask to Oracle to validate the PL/SQL that could have been invalidate
-after a export/import for example. If you set the value to 1 it will exec:
-DBMS_UTILITY.compile_schema(schema => sys_context('USERENV', 'SESSION_USER'));
-but if you provide the name of a particular schema it will use the following
-command: DBMS_UTILITY.compile_schema(schema => 'schemaname');
-The 'VALID' or 'INVALID' status applies to functions, procedures, packages and
-user defined types.
+after a export/import for example. The 'VALID' or 'INVALID' status applies to
+functions, procedures, packages and user defined types.
 
 =item EXPORT_INVALID
 

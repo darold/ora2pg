@@ -113,11 +113,13 @@ EXPORT_SCHEMA	0
 CREATE_SCHEMA	1
 
 # Enable this directive to force Oracle to compile schema before exporting code.
+# When this directive is enabled and SCHEMA is set to a specific schema name, 
+# only invalid objects in this schema will be recompiled. If SCHEMA is not set
+# then all schema will be recompiled. To force recompile invalid object in a
+# specific schema, set COMPILE_SCHEMA to the schema name you want to recompile.
 # This will ask to Oracle to validate the PL/SQL that could have been invalidate
-# after a export/import for example. If the value is 1 ora2pg will execute:
-# DBMS_UTILITY.compile_schema(schema => sys_context('USERENV', 'SESSION_USER'));
-# but if you provide the name of a particular schema it will use the following
-# command: DBMS_UTILITY.compile_schema(schema => 'schemaname');
+# after a export/import for example. The 'VALID' or 'INVALID' status applies to
+# functions, procedures, packages and user defined types.
 COMPILE_SCHEMA	0
 
 # By default if you set EXPORT_SCHEMA to 1 the PostgreSQL search_path will be

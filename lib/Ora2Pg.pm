@@ -1281,10 +1281,7 @@ sub _init
 
 			# Compile again all objects in the schema
 			if ($self->{compile_schema}) {
-				if ($self->{debug} && $self->{compile_schema}) {
-					$self->logit("Force Oracle to compile schema before code extraction\n", 1);
-				}
-				$self->_compile_schema($self->{dbh}, uc($self->{compile_schema}));
+				$self->_compile_schema(uc($self->{compile_schema}));
 			}
 			if (!grep(/^$self->{type}$/, 'COPY', 'INSERT', 'SEQUENCE', 'GRANT', 'TABLESPACE', 'QUERY', 'SYNONYM', 'FDW', 'KETTLE', 'DBLINK', 'DIRECTORY')) {
 				$self->_get_plsql_metadata() if ($self->{plsql_pgsql});
@@ -13912,28 +13909,39 @@ sub _get_encoding
 =head2 _compile_schema
 
 This function force Oracle database to compile a schema and validate or
-invalidate PL/SQL code
+invalidate PL/SQL code.
+
+When parameter $schema is the name of a schema, only this schema is recompiled
+When parameter $schema is equal to 1 and SCHEMA directive is set, only this schema is recompiled
+When parameter $schema is equal to 1 and SCHEMA directive is unset, all schema will be recompiled
 
 =cut
 
 
 sub _compile_schema
 {
-	my ($self, $dbh, $schema) = @_;
+	my ($self, $schema) = @_;
 
-	my $qcomp = '';
+	my @to_compile = ();
 
 	if ($schema and ($schema =~ /[a-z]/i)) {
-		$qcomp = qq{begin
-DBMS_UTILITY.compile_schema(schema => '$schema');
-end;
-};
+		push(@to_compile, $schema);
+	} elsif ($schema and $self->{schema}) {
+		push(@to_compile, $self->{schema});
 	} elsif ($schema) {
-		$qcomp = "EXEC DBMS_UTILITY.compile_schema(schema => sys_context('USERENV', 'SESSION_USER'));";
+		my $sth = $self->_schema_list() or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+		while ( my @row = $sth->fetchrow()) {
+			push(@to_compile, $row[0]);
+		}
+		$sth->finish();
 	}
-	if ($qcomp) {
-		my $sth = $dbh->do($qcomp) or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
-		$sth = undef;
+
+	if ($#to_compile >= 0) {
+		foreach my $schm (@to_compile) {
+			$self->logit("Force Oracle to compile schema $schm before code extraction\n", 1);
+			my $sth = $self->{dbh}->do("BEGIN\nDBMS_UTILITY.compile_schema(schema => '$schm');\nEND;")
+						or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+		}
 	}
 
 }

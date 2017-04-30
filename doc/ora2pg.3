@@ -124,7 +124,7 @@
 .\" ========================================================================
 .\"
 .IX Title "ORA2PG 1"
-.TH ORA2PG 1 "2017-04-28" "perl v5.14.2" "User Contributed Perl Documentation"
+.TH ORA2PG 1 "2017-04-30" "perl v5.14.2" "User Contributed Perl Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -673,13 +673,14 @@ compile again the invalidated code to get a chance to have it obtain the valid
 status and then be able to export it.
 .Sp
 Enable this directive to force Oracle to compile schema before exporting code.
+When this directive is enabled and \s-1SCHEMA\s0 is set to a specific schema name,
+only invalid objects in this schema will be recompiled. If \s-1SCHEMA\s0 is not set
+then all schema will be recompiled. To force recompile invalid object in a
+specific schema, set \s-1COMPILE_SCHEMA\s0 to the schema name you want to recompile.
+.Sp
 This will ask to Oracle to validate the \s-1PL/SQL\s0 that could have been invalidate
-after a export/import for example. If you set the value to 1 it will exec:
-\&\s-1DBMS_UTILITY\s0.compile_schema(schema => sys_context('\s-1USERENV\s0', '\s-1SESSION_USER\s0'));
-but if you provide the name of a particular schema it will use the following
-command: \s-1DBMS_UTILITY\s0.compile_schema(schema => 'schemaname');
-The '\s-1VALID\s0' or '\s-1INVALID\s0' status applies to functions, procedures, packages and
-user defined types.
+after a export/import for example. The '\s-1VALID\s0' or '\s-1INVALID\s0' status applies to
+functions, procedures, packages and user defined types.
 .IP "\s-1EXPORT_INVALID\s0" 4
 .IX Item "EXPORT_INVALID"
 If the above configuration directive is not enough to validate your \s-1PL/SQL\s0 code
