@@ -10709,19 +10709,19 @@ sub _convert_function
 	return if (!exists $fct_detail{name});
 
 	$fct_detail{name} =~ s/^.*\.//;
-	$fct_detail{name} =~ s/"//g;
+	$fct_detail{name} =~ s/"//gs;
 
 	my $sep = '.';
 	$sep = '_' if (!$self->{package_as_schema});
 	my $fname =  $self->quote_object_name($fct_detail{name});
 	$fname =  $self->quote_object_name("$pname$sep$fct_detail{name}") if ($pname && !$self->{is_mysql});
-	$fname =~ s/"_"/_/g;
+	$fname =~ s/"_"/_/gs;
 
-	$fct_detail{args} =~ s/\s+IN\s+/ /ig; # Remove default IN keyword
+	$fct_detail{args} =~ s/\s+IN\s+/ /igs; # Remove default IN keyword
 
 	# Input parameters after one with a default value must also have defaults
 	# and we need to sort the arguments so the ones with default values will be on the bottom
-	$fct_detail{args} =~ s/^\(|\)\s*$//g;
+	$fct_detail{args} =~ s/^\((.*)\)(\s*\%ORA2PG_COMMENT\d+\%)*\s*$/$1$2/gs;
 	my @args_sorted;
 	push(@args_sorted, grep {!/\sdefault\s/i} split ',', $fct_detail{args});
 	push(@args_sorted, grep {/\sdefault\s/i} split ',', $fct_detail{args});
