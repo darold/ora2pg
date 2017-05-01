@@ -10834,23 +10834,14 @@ $search_path
 CREATE EXTENSION IF NOT EXISTS dblink;
 
 };
-		if (!$at_inout) {
-			if (!$fct_detail{hasreturn}) {
-				$at_wrapper .= "CREATE OR REPLACE FUNCTION $name $fct_detail{args} RETURNS VOID AS \$body\$";
-			} else {
-				$at_wrapper .= "CREATE OR REPLACE FUNCTION $name $fct_detail{args} $func_return";
-			}
-		} else {
-			$at_wrapper .= "CREATE OR REPLACE FUNCTION $name $fct_detail{args}";
-		}
+		$at_wrapper .= "CREATE OR REPLACE FUNCTION $name $fct_detail{args}$func_return";
 		my $params = '';
 		if ($#{$fct_detail{at_args}} >= 0) {
 			map { s/(.+)/quote_nullable($1)/; }  @{$fct_detail{at_args}};
 			$params = " ' || " . join(" || ',' || ", @{$fct_detail{at_args}}) . " || ' ";
 		}
 		my $dblink_conn = $self->{dblink_conn} || 'port=5432 dbname=testdb host=localhost user=pguser password=pgpass';
-		$at_wrapper .= qq{
-DECLARE
+		$at_wrapper .= qq{DECLARE
 	-- Change this to reflect the dblink connection string
 	v_conn_str  text := '$dblink_conn';
 	v_query     text;
@@ -10885,11 +10876,7 @@ $search_path
 CREATE EXTENSION IF NOT EXISTS pg_background;
 
 };
-		if (!$fct_detail{hasreturn}) {
-			$at_wrapper .= "CREATE OR REPLACE FUNCTION $name $fct_detail{args} RETURNS VOID AS \$body\$";
-		} else {
-			$at_wrapper .= "CREATE OR REPLACE FUNCTION $name $fct_detail{args} $func_return";
-		}
+		$at_wrapper .= "CREATE OR REPLACE FUNCTION $name $fct_detail{args}$func_return";
 		my $params = '';
 		if ($#{$fct_detail{at_args}} >= 0) {
 			map { s/(.+)/quote_nullable($1)/; }  @{$fct_detail{at_args}};
