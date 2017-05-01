@@ -601,6 +601,9 @@ sub plsql_to_plpgsql
 	# Replace outer join sign (+) with a placeholder
 	$str =~ s/\(\+\)/\%OUTERJOIN\%/gs;
 
+	# Oracle doesn't require parenthesis after VALUES, PostgreSQL has
+	# similar proprietary syntax but parenthesis are mandatory
+	$str =~ s/(INSERT\s+INTO\s+(?:.*?)\s+VALUES\s+)([^\(\)\s]+)\s*;/$1\($2.*\);/igs;
 
 	$class->{sub_queries} = ();
 	$class->{sub_queries_idx} = 0;
