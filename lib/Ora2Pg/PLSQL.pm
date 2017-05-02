@@ -1026,6 +1026,54 @@ sub replace_oracle_function
 	$str =~ s/REPLACE\s*\($field,$field\)/replace($1, $2, '')/is;
 
 	##############
+	# Replace call to function with out parameters
+	##############
+	if (scalar keys %{$class->{function_metadata}}) {
+		foreach my $k (keys %{$class->{function_metadata}}) {
+			if ($class->{function_metadata}{$k}{metadata}{inout}) {
+				my $fct_name = $k;
+				if ($str !~ /$k/is) {
+					# Remove package name
+					$fct_name =~ s/^[^\.]+\.//;
+				}
+				my %replace_out_param = ();
+				my $idx = 0;
+				while ($str =~ s/((?:[^\s\.]+\.)?$fct_name)\s*\(([^\)]+)\)/\%FCTINOUTPARAM$idx\%/is) {
+					my $fname = $1;
+					my $fparam = $2;
+					$replace_out_param{$idx} = "$fname(";
+					# Extract position of out parameters
+					my @params = split(/,/, $class->{function_metadata}{$k}{metadata}{args});
+					my @cparams = split(/\s*,\s*/, $fparam);
+					my $call_params = '';
+					my @out_pos = ();
+					for (my $i = 0; $i <= $#params; $i++) {
+						if ($params[$i] =~ /\s*([^\s]+)\s+(OUT|INOUT)\s/is) {
+							push(@out_pos, $i);
+							$call_params .= "$cparams[$i], " if ($params[$i] =~ /\bINOUT\b/is);
+						} else {
+							$call_params .= "$cparams[$i], ";
+						}
+					}
+					$call_params =~ s/, $//;
+					$replace_out_param{$idx} .= "$call_params)";
+					my @out_param = ();
+					foreach my $i (@out_pos) {
+						push(@out_param, $cparams[$i]);
+					}
+					if ($#out_param == 0) {
+						$replace_out_param{$idx} = "$out_param[0] := $replace_out_param{$idx}";
+					} else {
+						$replace_out_param{$idx} = "SELECT * FROM $replace_out_param{$idx} INTO " . join(', ', @out_param);
+					}
+					$idx++;
+				}
+				$str =~ s/\%FCTINOUTPARAM(\d+)\%/$replace_out_param{$1}/gs;
+			}
+		}
+	}
+
+	##############
 	# Replace package.function call by package_function
 	##############
 	if (scalar keys %{$class->{package_functions}}) {
@@ -1037,45 +1085,6 @@ sub replace_oracle_function
 		}
 	}
 
-	# Replace call to function with out parameters
-	if (scalar keys %{$class->{function_metadata}}) {
-		foreach my $k (keys %{$class->{function_metadata}}) {
-			if ($class->{function_metadata}{$k}{metadata}{inout}) {
-				my $fct_name = $k;
-				if ($str !~ /$k/is) {
-					# Remove package name
-					$fct_name =~ s/^[^\.]+\.//;
-				}
-				my %replace_out_param = ();
-				my $idx = 0;
-				while ($str =~ s/($fct_name)\s*\(([^\)]+)\)/\%FCTINOUTPARAM$idx\%/is) {
-					my $fname = $1;
-					my $fparam = $2;
-					$replace_out_param{$idx} = "$fname($fparam)";
-					# Extract position of out parameters
-					my @params = split(/,/, $class->{function_metadata}{$k}{metadata}{args});
-					my @out_pos = ();
-					for (my $i = 0; $i <= $#params; $i++) {
-						if ($params[$i] =~ /\s(OUT|INOUT)\s/is) {
-							push(@out_pos, $i);
-						}
-					}
-					my @fct_param = split(/\s*,\s*/, $fparam);
-					my @out_param = ();
-					foreach my $i (@out_pos) {
-						push(@out_param, $fct_param[$i]);
-					}
-					if ($#out_param == 0) {
-						$replace_out_param{$idx} = "$out_param[0] := $replace_out_param{$idx}";
-					} else {
-						$replace_out_param{$idx} = "SELECT * FROM $replace_out_param{$idx} INTO " . join(',', @out_param);
-					}
-					$idx++;
-				}
-				$str =~ s/\%FCTINOUTPARAM(\d+)\%/$replace_out_param{$1}/gs;
-			}
-		}
-	}
 
 	# Replace some sys_context call to the postgresql equivalent
 	if ($str =~ /SYS_CONTEXT/is) {

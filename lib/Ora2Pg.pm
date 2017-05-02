@@ -9004,7 +9004,6 @@ sub _get_plsql_metadata
 		$str .= " AND OWNER = '$self->{schema}'";
 		$self->logit("Looking forward functions declaration in schema $self->{schema}.\n", 1) if (!$quiet);
 	}
-	#$str .= " " . $self->limit_to_objects('FUNCTION|PROCEDURE|PACKAGE','OBJECT_NAME|OBJECT_NAME|OBJECT_NAME');
 	$str .= " ORDER BY OBJECT_NAME";
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -9032,7 +9031,6 @@ sub _get_plsql_metadata
 	} else {
 		$sql .= " WHERE OWNER = '$self->{schema}'";
 	}
-	#$sql .= " " . $self->limit_to_objects('FUNCTION|PROCEDURE|PACKAGE','NAME|NAME|NAME');
 	$sql .= " ORDER BY OWNER, NAME, LINE";
 	$sth = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute or $self->logit("FATAL: " . $sth->errstr . "\n", 0, 1);
@@ -14616,13 +14614,11 @@ sub _lookup_function
 		$fct_detail{code} = $plsql;
 	}
 
-	# Mark the function as havinf out parameters if any
-	if (!$fct_detail{hasreturn}) {
-		my @nout = $fct_detail{args} =~ /\bOUT\s+([^,\)]+)/igs;
-		my @ninout = $fct_detail{args} =~ /\bINOUT\s+([^,\)]+)/igs;
-		my $nbout = $#nout+1 + $#ninout+1;
-		$fct_detail{inout} = 1 if ($nbout > 0);
-	}
+	# Mark the function as having out parameters if any
+	my @nout = $fct_detail{args} =~ /\bOUT\s+([^,\)]+)/igs;
+	my @ninout = $fct_detail{args} =~ /\bINOUT\s+([^,\)]+)/igs;
+	my $nbout = $#nout+1 + $#ninout+1;
+	$fct_detail{inout} = 1 if ($nbout > 0);
 
 	# Replace call to global variables declared in this package
 	foreach my $n (keys %{$self->{global_variables}}) {
