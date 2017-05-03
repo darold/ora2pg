@@ -4386,7 +4386,12 @@ LANGUAGE plpgsql ;
 				}
 				delete $fct_detail{code};
 				delete $fct_detail{before};
-				%{$self->{function_metadata}{$fct}{metadata}} = %fct_detail;
+				my $sch = 'unknow';
+				my $fname = $fct;
+				if ($fname =~ s/^([^\.\s]+)\.([^\s]+)$/$2/is) {
+					$sch = $1;
+				}
+				%{$self->{function_metadata}{$sch}{$fname}{metadata}} = %fct_detail;
 				$self->_restore_comments(\$self->{functions}{$fct}{text});
 			}
 		}
@@ -4558,7 +4563,12 @@ LANGUAGE plpgsql ;
 				}
 				delete $fct_detail{code};
 				delete $fct_detail{before};
-				%{$self->{function_metadata}{$fct}{metadata}} = %fct_detail;
+				my $sch = 'unknow';
+				my $fname = $fct;
+				if ($fname =~ s/^([^\.\s]+)\.([^\s]+)$/$2/is) {
+					$sch = $1;
+				}
+				%{$self->{function_metadata}{$sch}{$fname}{metadata}} = %fct_detail;
 				$self->_restore_comments(\$self->{procedures}{$fct}{text});
 			}
 		}
@@ -4712,12 +4722,17 @@ LANGUAGE plpgsql ;
 				my $tmp_txt = $self->{packages}{$pkg}{text};
 				$tmp_txt =~ s/^(.*)CREATE OR REPLACE PACKAGE BODY/CREATE OR REPLACE PACKAGE BODY/s;
 				my %infos = $self->_lookup_package($tmp_txt);
+				my $sch = 'unknow';
+				my $pname = $pkg;
+				if ($pname =~ s/^([^\.\s]+)\.([^\s]+)$/$2/is) {
+					$sch = $1;
+				}
 				foreach my $f (sort keys %infos) {
 					next if (!$f);
 					my $name = lc($f);
 					delete $infos{$f}{code};
 					delete $infos{$f}{before};
-					%{$self->{function_metadata}{$name}{metadata}} = %{$infos{$f}};
+					%{$self->{function_metadata}{$sch}{$name}{metadata}} = %{$infos{$f}};
 				}
 				$self->_restore_comments(\$self->{packages}{$pkg}{text});
 			}
@@ -9012,13 +9027,9 @@ sub _get_plsql_metadata
 	my @fct_done = ();
 	push(@fct_done, @EXCLUDED_FUNCTION);
         while (my $row = $sth->fetch) {
-                if (!$self->{schema} && $self->{export_schema}) {
-                        $row->[0] = "$row->[1].$row->[0]";
-                }
-                next if (grep(/^$row->[0]$/i, @fct_done));
-                push(@fct_done, $row->[0]);
-                $self->{function_metadata}{$row->[0]}{owner} = $row->[1];
-                $self->{function_metadata}{$row->[0]}{type} = $row->[2];
+                next if (grep(/^$row->[1].$row->[0]$/i, @fct_done));
+                push(@fct_done, "$row->[1].$row->[0]");
+                $self->{function_metadata}{$row->[1]}{$row->[0]}{type} = $row->[2];
         }
         $sth->finish();
 
@@ -9035,56 +9046,57 @@ sub _get_plsql_metadata
 	$sth = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute or $self->logit("FATAL: " . $sth->errstr . "\n", 0, 1);
 	while (my $row = $sth->fetch) {
-		if (!$self->{schema} && $self->{export_schema}) {
-			$row->[0] = "$row->[1].$row->[0]";
-		}
-		next if (!exists $self->{function_metadata}{$row->[0]});
-		$self->{function_metadata}{$row->[0]}{text} .= $row->[3];
+		next if (!exists $self->{function_metadata}{$row->[1]}{$row->[0]});
+		$self->{function_metadata}{$row->[1]}{$row->[0]}{text} .= $row->[3];
 	}
         $sth->finish();
 
-	foreach my $name (keys %{$self->{function_metadata}}) {
-		if ($self->{function_metadata}{$name}{type} ne 'PACKAGE BODY') {
-			# Retrieve metadata for this function after removing comments
-			$self->_remove_comments(\$self->{function_metadata}{$name}{text}, 1);
-			$self->{comment_values} = ();
-			$self->{function_metadata}{$name}{text} =~  s/\%ORA2PG_COMMENT\d+\%//gs;
-			my %fct_detail = $self->_lookup_function($self->{function_metadata}{$name}{text}, undef, 1);
-			if (!exists $fct_detail{name}) {
-				delete $self->{function_metadata}{$name};
-				next;
-			}
-			delete $fct_detail{code};
-			delete $fct_detail{before};
-			%{$self->{function_metadata}{$name}{metadata}} = %fct_detail;
-			delete $self->{function_metadata}{$name}{text};
-		} else {
-			my %pkg_txt = ();
-			$pkg_txt{$name} = %{$self->{function_metadata}{$name}};
-			$self->_remove_comments(\$self->{function_metadata}{$name}{text}, 1);
-			$self->{comment_values} = ();
-			$self->{function_metadata}{$name}{text} =~  s/\%ORA2PG_COMMENT\d+\%//gs;
-			my %infos = $self->_lookup_package($self->{function_metadata}{$name}{text});
-			delete $self->{function_metadata}{$name};
-			foreach my $f (sort keys %infos) {
-				next if (!$f);
-				my $fn = lc($f);
-				delete $infos{$f}{code};
-				delete $infos{$f}{before};
-				%{$self->{function_metadata}{$fn}{metadata}} = %{$infos{$f}};
-				my $res_name = $f;
-				$res_name =~ s/^[^\.]+\.//;
-				if ($self->{package_as_schema}) {
-					$res_name = $p . '.' . $res_name;
-				} else {
-					$res_name = $p . '_' . $res_name;
+	foreach my $sch (sort keys %{ $self->{function_metadata} }) {
+		next if ( ($owner && ($sch ne $owner)) || (!$owner && $self->{schema} && ($sch ne $self->{schema})) );
+		foreach my $name (sort keys %{$self->{function_metadata}{$sch}}) {
+			if ($self->{function_metadata}{$sch}{$name}{type} ne 'PACKAGE BODY') {
+				# Retrieve metadata for this function after removing comments
+				$self->_remove_comments(\$self->{function_metadata}{$sch}{$name}{text}, 1);
+				$self->{comment_values} = ();
+				$self->{function_metadata}{$sch}{$name}{text} =~  s/\%ORA2PG_COMMENT\d+\%//gs;
+				my %fct_detail = $self->_lookup_function($self->{function_metadata}{$sch}{$name}{text}, undef, 1);
+				if (!exists $fct_detail{name}) {
+					delete $self->{function_metadata}{$sch}{$name};
+					next;
 				}
-				$res_name =~ s/"_"/_/g;
-				$self->{package_functions}{"\L$f\E"}{name} =  $self->quote_object_name($res_name);
-				$self->{package_functions}{"\L$f\E"}{package} = $p;
+				delete $fct_detail{code};
+				delete $fct_detail{before};
+				%{$self->{function_metadata}{$sch}{$name}{metadata}} = %fct_detail;
+				delete $self->{function_metadata}{$sch}{$name}{text};
+			} else {
+				my %pkg_txt = ();
+				$pkg_txt{$sch}{$name} = %{$self->{function_metadata}{$sch}{$name}};
+				$self->_remove_comments(\$self->{function_metadata}{$sch}{$name}{text}, 1);
+				$self->{comment_values} = ();
+				$self->{function_metadata}{$sch}{$name}{text} =~  s/\%ORA2PG_COMMENT\d+\%//gs;
+				my %infos = $self->_lookup_package($self->{function_metadata}{$sch}{$name}{text});
+				delete $self->{function_metadata}{$sch}{$name};
+				foreach my $f (sort keys %infos) {
+					next if (!$f);
+					my $fn = lc($f);
+					delete $infos{$f}{code};
+					delete $infos{$f}{before};
+					%{$self->{function_metadata}{$sch}{$fn}{metadata}} = %{$infos{$f}};
+					my $res_name = $f;
+					$res_name =~ s/^[^\.]+\.//;
+					if ($self->{package_as_schema}) {
+						$res_name = $p . '.' . $res_name;
+					} else {
+						$res_name = $p . '_' . $res_name;
+					}
+					$res_name =~ s/"_"/_/g;
+					$self->{package_functions}{"\L$f\E"}{name} =  $self->quote_object_name($res_name);
+					$self->{package_functions}{"\L$f\E"}{package} = $p;
+				}
 			}
 		}
 	}
+
 }
 
 
