@@ -544,11 +544,11 @@ sub plsql_to_plpgsql
 	$str =~ s/\bFOR(.*?)IN\s+REVERSE\s+([^\.\s]+)\s*\.\.\s*([^\s]+)/FOR$1IN REVERSE $3..$2/isg;
 
 	# Replace exit at end of cursor
-	$str =~ s/EXIT WHEN ([^\%]+)\%NOTFOUND\s*;/IF NOT FOUND THEN EXIT; END IF; -- apply on $1/isg;
-	$str =~ s/EXIT WHEN \(\s*([^\%]+)\%NOTFOUND\s*\)\s*;/IF NOT FOUND THEN EXIT; END IF; -- apply on $1/isg;
+	$str =~ s/EXIT WHEN ([^\%]+)\%NOTFOUND\s*;/EXIT WHEN NOT FOUND; -- apply on $1/isg;
+	$str =~ s/EXIT WHEN \(\s*([^\%]+)\%NOTFOUND\s*\)\s*;/EXIT WHEN NOT FOUND; -- apply on $1/isg;
 	# Same but with additional conditions
-	$str =~ s/EXIT WHEN ([^\%]+)\%NOTFOUND\s+([;]+);/IF NOT FOUND $2 THEN EXIT; END IF; -- apply on $1/isg;
-	$str =~ s/EXIT WHEN \(\s*([^\%]+)\%NOTFOUND\s+([\)]+)\)\s*;/IF NOT FOUND $2 THEN EXIT; END IF; -- apply on $1/isg;
+	$str =~ s/EXIT WHEN ([^\%]+)\%NOTFOUND\s+([^;]+);/IF NOT FOUND $2 THEN EXIT; END IF; -- apply on $1/isg;
+	$str =~ s/EXIT WHEN \(\s*([^\%]+)\%NOTFOUND\s+([^\)]+)\)\s*;/IF NOT FOUND $2 THEN EXIT; END IF; -- apply on $1/isg;
 	# Replacle call to SQL%NOTFOUND
 	$str =~ s/SQL\%NOTFOUND/NOT FOUND/isg;
 
