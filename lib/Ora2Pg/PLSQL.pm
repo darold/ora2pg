@@ -718,6 +718,16 @@ sub plsql_to_plpgsql
 						$str =~ s/(IF(?:(?!CASE).)*?ELSE)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($k\s*[\(;])/$1$2PERFORM $3/isg;
 						$str =~ s/(PERFORM $k);/$1\(\);/igs;
 					}
+				} else {
+					# Recover call to function with OUT parameter with double affectation
+					my $fct_name = $k;
+					if ($str !~ /$k/is) {
+						# Remove package name
+						$fct_name =~ s/^[^\.]+\.//;
+					}
+					my %replace_out_param = ();
+					my $idx = 0;
+					$str =~ s/([^:\s]+\s*:=\s*)[^:\s]+\s*:=\s*((?:[^\s\.]+\.)?\b$fct_name\s*\()/$1$2/isg;
 				}
 				# Remove package name and try to replace call to function name only
 				if ($k =~ s/^[^\.]+\.//) {
@@ -1058,7 +1068,7 @@ sub replace_oracle_function
 					}
 					my %replace_out_param = ();
 					my $idx = 0;
-					while ($str =~ s/((?:[^\s\.]+\.)?$fct_name)\s*\(([^\)]+)\)/\%FCTINOUTPARAM$idx\%/is) {
+					while ($str =~ s/((?:[^\s\.]+\.)?\b$fct_name)\s*\(([^\)]+)\)/\%FCTINOUTPARAM$idx\%/is) {
 						my $fname = $1;
 						my $fparam = $2;
 						$replace_out_param{$idx} = "$fname(";
