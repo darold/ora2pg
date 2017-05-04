@@ -355,7 +355,7 @@ sub extract_function_code
         # Look for a function call that do not have an other function
         # call inside, replace content with a marker and store the
         # replaced string into a hask to rewritten later to convert pl/sql
-        if ($code =~ s/\b([a-zA-Z\.\_]+)\s*\(([^\(\)]*)\)/\%\%REPLACEFCT$idx\%\%/s) {
+        if ($code =~ s/\b([a-zA-Z0-9\.\_]+)\s*\(([^\(\)]*)\)/\%\%REPLACEFCT$idx\%\%/s) {
 		my $fct_name = $1;
 		my $fct_code = $2;
 		my $space = '';
