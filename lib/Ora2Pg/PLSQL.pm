@@ -544,11 +544,11 @@ sub plsql_to_plpgsql
 	$str =~ s/\bFOR(.*?)IN\s+REVERSE\s+([^\.\s]+)\s*\.\.\s*([^\s]+)/FOR$1IN REVERSE $3..$2/isg;
 
 	# Replace exit at end of cursor
-	$str =~ s/EXIT WHEN ([^\%]+)\%NOTFOUND\s*;/EXIT WHEN NOT FOUND; -- apply on $1/isg;
-	$str =~ s/EXIT WHEN \(\s*([^\%]+)\%NOTFOUND\s*\)\s*;/EXIT WHEN NOT FOUND; -- apply on $1/isg;
+	$str =~ s/EXIT WHEN ([^\%]+)\%NOTFOUND\s*;/EXIT WHEN NOT FOUND; \/\* apply on $1 \*\//isg;
+	$str =~ s/EXIT WHEN \(\s*([^\%]+)\%NOTFOUND\s*\)\s*;/EXIT WHEN NOT FOUND;  \/\* apply on $1 \*\//isg;
 	# Same but with additional conditions
-	$str =~ s/EXIT WHEN ([^\%]+)\%NOTFOUND\s+([^;]+);/IF NOT FOUND $2 THEN EXIT; END IF; -- apply on $1/isg;
-	$str =~ s/EXIT WHEN \(\s*([^\%]+)\%NOTFOUND\s+([^\)]+)\)\s*;/IF NOT FOUND $2 THEN EXIT; END IF; -- apply on $1/isg;
+	$str =~ s/EXIT WHEN ([^\%]+)\%NOTFOUND\s+([^;]+);/IF NOT FOUND $2 THEN EXIT; END IF;  \/\* apply on $1 \*\//isg;
+	$str =~ s/EXIT WHEN \(\s*([^\%]+)\%NOTFOUND\s+([^\)]+)\)\s*;/IF NOT FOUND $2 THEN EXIT; END IF;  \/\* apply on $1 \*\//isg;
 	# Replacle call to SQL%NOTFOUND
 	$str =~ s/SQL\%NOTFOUND/NOT FOUND/isg;
 
@@ -705,14 +705,14 @@ sub plsql_to_plpgsql
 				if (!$class->{function_metadata}{$sch}{$k}{metadata}{inout}) {
 					if ($sch ne 'unknow' and $str =~ /\b$sch.$k\b/is) {
 						# Look if we need to use PERFORM to call the function
-						$str =~ s/(BEGIN|LOOP|;)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($sch\.$k\s*[\(;])/$1$2PERFORM $3/igs;
+						$str =~ s/(BEGIN|LOOP|;)((?:\s*%ORA2PG_COMMENT\d+\%\s*|\s*\/\*(?:.*?)\*\/\s*)*\s*)($sch\.$k\s*[\(;])/$1$2PERFORM $3/igs;
 						$str =~ s/(EXCEPTION(?:(?!CASE).)*?THEN)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($sch\.$k\s*[\(;])/$1$2PERFORM $3/isg;
 						$str =~ s/(IF(?:(?!CASE).)*?THEN)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($sch\.$k\s*[\(;])/$1$2PERFORM $3/isg;
 						$str =~ s/(IF(?:(?!CASE).)*?ELSE)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($sch\.$k\s*[\(;])/$1$2PERFORM $3/isg;
 						$str =~ s/(PERFORM $sch\.$k);/$1\(\);/igs;
 					} elsif ($str =~ /\b$k\b/is) {
 						# Look if we need to use PERFORM to call the function
-						$str =~ s/(BEGIN|LOOP|;)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($k\s*[\(;])/$1$2PERFORM $3/igs;
+						$str =~ s/(BEGIN|LOOP|;)((?:\s*%ORA2PG_COMMENT\d+\%\s*|\s*\/\*(?:.*?)\*\/\s*)*\s*)($k\s*[\(;])/$1$2PERFORM $3/igs;
 						$str =~ s/(EXCEPTION(?:(?!CASE).)*?THEN)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($k\s*[\(;])/$1$2PERFORM $3/isg;
 						$str =~ s/(IF(?:(?!CASE).)*?THEN)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($k\s*[\(;])/$1$2PERFORM $3/isg;
 						$str =~ s/(IF(?:(?!CASE).)*?ELSE)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($k\s*[\(;])/$1$2PERFORM $3/isg;
@@ -732,13 +732,13 @@ sub plsql_to_plpgsql
 				# Remove package name and try to replace call to function name only
 				if ($k =~ s/^[^\.]+\.//) {
 					if ($sch ne 'unknow' and $str =~ /\b$sch\.$k\b/is) {
-						$str =~ s/(BEGIN|LOOP|;)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($sch\.$k\s*[\(;])/$1$2PERFORM $3/igs;
+						$str =~ s/(BEGIN|LOOP|;)((?:\s*%ORA2PG_COMMENT\d+\%\s*|\s*\/\*(?:.*?)\*\/\s*)*\s*)($sch\.$k\s*[\(;])/$1$2PERFORM $3/igs;
 						$str =~ s/(EXCEPTION(?:(?!CASE).)*?THEN)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($sch\.$k\s*[\(;])/$1$2PERFORM $3/isg;
 						$str =~ s/(IF(?:(?!CASE).)*?THEN)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($sch\.$k\s*[\(;])/$1$2PERFORM $3/isg;
 						$str =~ s/(IF(?:(?!CASE).)*?ELSE)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($sch\.$k\s*[\(;])/$1$2PERFORM $3/isg;
 						$str =~ s/(PERFORM $sch\.$k);/$1\(\);/igs;
 					} elsif ($str =~ /\b$k\b/is) {
-						$str =~ s/(BEGIN|LOOP|;)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($k\s*[\(;])/$1$2PERFORM $3/igs;
+						$str =~ s/(BEGIN|LOOP|;)((?:\s*%ORA2PG_COMMENT\d+\%\s*|\s*\/\*(?:.*?)\*\/\s*)*\s*)($k\s*[\(;])/$1$2PERFORM $3/igs;
 						$str =~ s/(EXCEPTION(?:(?!CASE).)*?THEN)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($k\s*[\(;])/$1$2PERFORM $3/isg;
 						$str =~ s/(IF(?:(?!CASE).)*?THEN)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($k\s*[\(;])/$1$2PERFORM $3/isg;
 						$str =~ s/(IF(?:(?!CASE).)*?ELSE)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($k\s*[\(;])/$1$2PERFORM $3/isg;
