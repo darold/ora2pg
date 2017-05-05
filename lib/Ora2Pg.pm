@@ -14764,11 +14764,20 @@ sub set_search_path
 	my $search_path = '';
 	if (!$self->{schema} && $self->{export_schema} && $owner) {
 		$search_path = "SET search_path = " . $self->quote_object_name($owner) . "$local_path;";
-	} elsif ($self->{export_schema} && !$owner) {
+	} elsif (!$owner) {
+		my @pathes = ();
+		# When PG_SCHEMA is set, always take the value as search path
 		if ($self->{pg_schema}) {
-			$search_path = "SET search_path = " . $self->quote_object_name($self->{pg_schema}) . "$local_path;";
-		} elsif ($self->{schema}) {
-			$search_path = "SET search_path = " . $self->quote_object_name($self->{schema}) . "$local_path, pg_catalog;";
+			@pathes = split(/\s*,\s*/, $self->{pg_schema});
+		} elsif ($self->{export_schema} && $self->{schema}) {
+			# When EXPORT_SCHEMA is enable and we are working on a specific schema
+			# set it as default search_path. Useful when object are not prefixed
+			# with their destination schema.
+			push(@pathes, $self->{schema});
+		}
+		if ($#pathes >= 0) {
+			map { $_ =  $self->quote_object_name($_); } @pathes;
+			$search_path = "SET search_path = " . join(',', @pathes) . "$local_path;";
 		}
 	}
 
