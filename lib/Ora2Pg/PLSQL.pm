@@ -391,6 +391,17 @@ sub append_alias_clause
 	return $str;
 }
 
+sub remove_fct_name
+{
+	my $str = shift;
+
+	if ($str !~ /(END\b\s*)(IF\b|LOOP\b|CASE\b|INTO\b|FROM\b|END\b|ELSE\b|AND\b|OR\b|WHEN\b|AS\b|,|\)|\(|\|)/is) {
+		$str =~ s/(END\b\s*).*[;]?$/$1;/is;
+	}
+
+	return $str;
+}
+
 =head2 plsql_to_plpgsql
 
 This function return a PLSQL code translated to PLPGSQL code
@@ -532,7 +543,7 @@ sub plsql_to_plpgsql
 	$str =~ s/\b(SELECT\b[^;]*?INTO)(.*?)(EXCEPTION.*?(?:NO_DATA_FOUND|TOO_MANY_ROW))/$1 STRICT $2 $3/igs;
 
 	# Remove the function name repetion at end
-	$str =~ s/\bEND\s+(?!IF|LOOP|CASE|INTO|FROM|END|ELSE|AND|OR|WHEN|AS|,)[a-z0-9_"]+(\s*[;]?)/END$1$2/igs;
+	$str =~ s/\b(END\s*[^;\s]+[;]?)/remove_fct_name($1)/iegs;
 
 	# Rewrite comment in CASE between WHEN and THEN
 	$str =~ s/(\s*)(WHEN\s+[^\s]+\s*)(\%ORA2PG_COMMENT\d+\%)(\s*THEN)/$1$3$1$2$4/igs;
