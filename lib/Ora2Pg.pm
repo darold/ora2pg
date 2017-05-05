@@ -852,6 +852,9 @@ sub _init
 	$self->{text_values} = ();
 	$self->{text_values_pos} = 0;
 
+	# Keep commit/rollback in converted pl/sql code by default
+	$self->{comment_commit_rollback} = 0;
+
 	# Initialyze following configuration file
 	foreach my $k (sort keys %AConfig) {
 		if (lc($k) eq 'allow') {

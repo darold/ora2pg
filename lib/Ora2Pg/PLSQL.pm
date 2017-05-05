@@ -554,6 +554,11 @@ sub plsql_to_plpgsql
 	# Revert order in FOR IN REVERSE
 	$str =~ s/\bFOR(.*?)IN\s+REVERSE\s+([^\.\s]+)\s*\.\.\s*([^\s]+)/FOR$1IN REVERSE $3..$2/isg;
 
+	# Comment call to COMMIT or ROLLBACK in the code if allowed
+	if ($class->{comment_commit_rollback}) {
+		$str =~ s/\b(COMMIT|ROLLBACK)\s*;/-- $1;/igs;
+	}
+
 	# Replace exit at end of cursor
 	$str =~ s/EXIT WHEN ([^\%]+)\%NOTFOUND\s*;/EXIT WHEN NOT FOUND; \/\* apply on $1 \*\//isg;
 	$str =~ s/EXIT WHEN \(\s*([^\%]+)\%NOTFOUND\s*\)\s*;/EXIT WHEN NOT FOUND;  \/\* apply on $1 \*\//isg;
