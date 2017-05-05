@@ -949,6 +949,9 @@ sub _init
 		die "FATAL: wrong format in REPLACE_ZERO_DATE value, should be YYYY-MM-DD HH:MM:SS or -INFINITY\n";
 	}
 
+	# Defined default value for to_number translation
+	$self->{to_number_conversion} ||= 'numeric';
+
 	# Overwrite configuration with all given parameters
 	# and try to preserve backward compatibility
 	foreach my $k (keys %options) {

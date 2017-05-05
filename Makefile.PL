@@ -688,6 +688,18 @@ ENABLE_MICROSECOND      1
 # comma or space inside type definition you will have to backslash them.
 #MODIFY_TYPE     TABLE1:COL3:varchar,TABLE1:COL4:decimal(9\\,6)
 
+# By default Oracle call to function TO_NUMBER will be translated as a cast
+# into numeric. For example, TO_NUMBER('10.1234') is converted into PostgreSQL
+# call to_number('10.1234')::numeric. If you want you can cast the call to integer
+# or bigint by changing the value of the configuration directive. If you need
+# better control of the format, just set it as value, for example:
+# 	TO_NUMBER_CONVERSION	99999999999999999999.9999999999
+# will convert the code above as:
+#	TO_NUMBER('10.1234', '99999999999999999999.9999999999')
+# Any value of the directive that it is not numeric, integer or bigint will
+# be taken as a mask format. If set to none, no conversion will be done.
+TO_NUMBER_CONVERSION	numeric
+
 #------------------------------------------------------------------------------
 # GRANT SECTION (Control priviledge and owner export)
 #------------------------------------------------------------------------------

@@ -1031,12 +1031,15 @@ sub replace_oracle_function
 	$str =~ s/\bINSTR\s*\(\s*([^,]+),\s*([^\)]+)\s*\)/POSITION($2 in $1)/is;
 
 	# The to_number() function reclaim a second argument under postgres which is the format.
-	# By default we use '99999999999999999999D99999999999999999999' that may allow bigint
-	# and double precision number. Feel free to modify it
-	#$str =~ s/TO_NUMBER\s*\(([^,\)]+)\)/to_number\($1,'99999999999999999999D99999999999999999999'\)/is;
-
-	# Replace to_number with a cast
-	$str =~ s/TO_NUMBER\s*\(\s*([^\)]+)\s*\)\s?/($1)\:\:numeric /is;
+	# Replace to_number with a cast when no specific format is given
+	if (lc($class->{to_number_conversion}) ne 'none') {
+		if ($class->{to_number_conversion} =~ /(numeric|bigint|integer|int)/i) {
+			my $cast = lc($1);
+			$str =~ s/TO_NUMBER\s*\(\s*([^,\)]+)\s*\)\s?/($1)\:\:$cast /is;
+		} else {
+			$str =~ s/TO_NUMBER\s*\(\s*([^,\)]+)\s*\)/to_number\($1,'$class->{to_number_conversion}'\)/is;
+		}
+	}
 
 	# Replace the UTC convertion with the PG syntaxe
 	$str =~ s/SYS_EXTRACT_UTC\s*\(([^\)]+)\)/($1 AT TIME ZONE 'UTC')/is;
