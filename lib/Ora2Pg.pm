@@ -9079,8 +9079,6 @@ sub _get_plsql_metadata
 				%{$self->{function_metadata}{$sch}{$name}{metadata}} = %fct_detail;
 				delete $self->{function_metadata}{$sch}{$name}{text};
 			} else {
-				my %pkg_txt = ();
-				$pkg_txt{$sch}{$name} = %{$self->{function_metadata}{$sch}{$name}};
 				$self->_remove_comments(\$self->{function_metadata}{$sch}{$name}{text}, 1);
 				$self->{comment_values} = ();
 				$self->{function_metadata}{$sch}{$name}{text} =~  s/\%ORA2PG_COMMENT\d+\%//gs;
@@ -9095,13 +9093,13 @@ sub _get_plsql_metadata
 					my $res_name = $f;
 					$res_name =~ s/^[^\.]+\.//;
 					if ($self->{package_as_schema}) {
-						$res_name = $p . '.' . $res_name;
+						$res_name = $name . '.' . $res_name;
 					} else {
-						$res_name = $p . '_' . $res_name;
+						$res_name = $name . '_' . $res_name;
 					}
 					$res_name =~ s/"_"/_/g;
 					$self->{package_functions}{"\L$f\E"}{name} =  $self->quote_object_name($res_name);
-					$self->{package_functions}{"\L$f\E"}{package} = $p;
+					$self->{package_functions}{"\L$f\E"}{package} = $name;
 				}
 			}
 		}
@@ -9173,7 +9171,6 @@ sub _get_package_function_list
 	foreach my $sch (sort keys %function_metadata) {
 		next if ( ($owner && ($sch ne $owner)) || (!$owner && $self->{schema} && ($sch ne $self->{schema})) );
 		foreach my $name (sort keys %{$function_metadata{$sch}}) {
-			my %pkg_txt = ();
 			$self->_remove_comments(\$function_metadata{$sch}{$name}{text}, 1);
 			$self->{comment_values} = ();
 			$function_metadata{$sch}{$name}{text} =~  s/\%ORA2PG_COMMENT\d+\%//gs;
@@ -9185,13 +9182,13 @@ sub _get_package_function_list
 				my $res_name = $f;
 				$res_name =~ s/^[^\.]+\.//;
 				if ($self->{package_as_schema}) {
-					$res_name = $p . '.' . $res_name;
+					$res_name = $name . '.' . $res_name;
 				} else {
-					$res_name = $p . '_' . $res_name;
+					$res_name = $name . '_' . $res_name;
 				}
 				$res_name =~ s/"_"/_/g;
 				$self->{package_functions}{"\L$f\E"}{name} =  $self->quote_object_name($res_name);
-				$self->{package_functions}{"\L$f\E"}{package} = $p;
+				$self->{package_functions}{"\L$f\E"}{package} = $name;
 			}
 		}
 	}
