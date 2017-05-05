@@ -1291,10 +1291,22 @@ sub _init
 						foreach my $o (@{ $self->{look_forward_function} }) {
 							next if (grep(/^$o$/i, @done) || uc($o) eq uc($self->{schema}));
 							push(@done, $o);
-							$self->_get_plsql_metadata($o);
+							if ($self->{type} eq 'VIEW') {
+								# Limit to package lookup with WIEW export type
+								$self->_get_package_function_list($o);
+							} else {
+								# Extract all package/function/procedure meta information
+								$self->_get_plsql_metadata($o);
+							}
 						}
 					}
-					$self->_get_plsql_metadata();
+					if ($self->{type} eq 'VIEW') {
+						# Limit to package lookup with WIEW export type
+						$self->_get_package_function_list();
+					} else {
+						# Extract all package/function/procedure meta information
+						$self->_get_plsql_metadata();
+					}
 				}
 			}
 			$self->{security} = $self->_get_security_definer($self->{type}) if (grep(/^$self->{type}$/, 'TRIGGER', 'FUNCTION','PROCEDURE','PACKAGE'));
@@ -8988,8 +9000,6 @@ sub _list_triggers
 	return %triggers;
 }
 
-
-
 =head2 _get_plsql_metadata
 
 This function retrieve all metadata on Oracle store procedure.
@@ -9036,7 +9046,7 @@ sub _get_plsql_metadata
 	# Get content of package body
 	my $sql = "SELECT NAME, OWNER, TYPE, TEXT FROM $self->{prefix}_SOURCE";
 	if ($owner) {
-		$str .= " AND OWNER = '$owner'";
+		$sql .= " WHERE OWNER = '$owner'";
 	} elsif (!$self->{schema}) {
 		$sql .= " WHERE OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
 	} else {
@@ -9099,6 +9109,93 @@ sub _get_plsql_metadata
 
 }
 
+=head2 _get_package_function_list
+
+This function retrieve all function and procedure
+defined on Oracle store procedure PACKAGE.
+
+Returns a hash of all package function names
+
+=cut
+
+sub _get_package_function_list
+{
+	my $self = shift;
+	my $owner = shift;
+
+	return Ora2Pg::MySQL::_get_package_function_list($self, $owner) if ($self->{is_mysql});
+
+	# Retrieve all package information
+	my $str = "SELECT DISTINCT OBJECT_NAME,OWNER FROM $self->{prefix}_OBJECTS WHERE OBJECT_TYPE = 'PACKAGE BODY'";
+	$str .= " AND STATUS='VALID'" if (!$self->{export_invalid});
+	if ($owner) {
+		$str .= " AND OWNER = '$owner'";
+		$self->logit("Looking forward functions declaration in schema $owner.\n", 1) if (!$quiet);
+	} elsif (!$self->{schema}) {
+		$str .= " AND OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
+		$self->logit("Looking forward functions declaration in all schema.\n", 1) if (!$quiet);
+	} else {
+		$str .= " AND OWNER = '$self->{schema}'";
+		$self->logit("Looking forward functions declaration in schema $self->{schema}.\n", 1) if (!$quiet);
+	}
+	$str .= " ORDER BY OBJECT_NAME";
+	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+
+	my @packages = ();
+        while (my $row = $sth->fetch) {
+                next if (grep(/^$row->[0]$/i, @packages));
+                push(@packages, $row->[0]);
+        }
+        $sth->finish();
+
+	# Get content of all packages definition
+	my $sql = "SELECT NAME, OWNER, TYPE, TEXT FROM $self->{prefix}_SOURCE";
+	if ($owner) {
+		$sql .= " WHERE OWNER = '$owner'";
+	} elsif (!$self->{schema}) {
+		$sql .= " WHERE OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
+	} else {
+		$sql .= " WHERE OWNER = '$self->{schema}'";
+	}
+	$sql .= " AND NAME IN ('" . join("','", @packages) . "')" if ($#packages >= 0);
+	$sql .= " ORDER BY OWNER, NAME, LINE";
+	$sth = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute or $self->logit("FATAL: " . $sth->errstr . "\n", 0, 1);
+	my %function_metadata = ();
+	while (my $row = $sth->fetch) {
+		$function_metadata{$row->[1]}{$row->[0]}{text} .= $row->[3];
+	}
+        $sth->finish();
+
+	my @fct_done = ();
+	push(@fct_done, @EXCLUDED_FUNCTION);
+	foreach my $sch (sort keys %function_metadata) {
+		next if ( ($owner && ($sch ne $owner)) || (!$owner && $self->{schema} && ($sch ne $self->{schema})) );
+		foreach my $name (sort keys %{$function_metadata{$sch}}) {
+			my %pkg_txt = ();
+			$self->_remove_comments(\$function_metadata{$sch}{$name}{text}, 1);
+			$self->{comment_values} = ();
+			$function_metadata{$sch}{$name}{text} =~  s/\%ORA2PG_COMMENT\d+\%//gs;
+			my %infos = $self->_lookup_package($function_metadata{$sch}{$name}{text});
+			delete $function_metadata{$sch}{$name};
+			foreach my $f (sort keys %infos) {
+				next if (!$f);
+				my $fn = lc($f);
+				my $res_name = $f;
+				$res_name =~ s/^[^\.]+\.//;
+				if ($self->{package_as_schema}) {
+					$res_name = $p . '.' . $res_name;
+				} else {
+					$res_name = $p . '_' . $res_name;
+				}
+				$res_name =~ s/"_"/_/g;
+				$self->{package_functions}{"\L$f\E"}{name} =  $self->quote_object_name($res_name);
+				$self->{package_functions}{"\L$f\E"}{package} = $p;
+			}
+		}
+	}
+}
 
 =head2 _get_functions
 
@@ -9412,7 +9509,8 @@ sub _table_info
 	$sth->finish();
 
 	$sql = "SELECT A.OWNER,A.TABLE_NAME,NVL(num_rows,1) NUMBER_ROWS,A.TABLESPACE_NAME,A.NESTED,A.LOGGING FROM ALL_TABLES A, ALL_OBJECTS O WHERE A.OWNER=O.OWNER AND A.TABLE_NAME=O.OBJECT_NAME AND O.OBJECT_TYPE='TABLE' $owner";
-	$sql .= " AND A.TEMPORARY='N' AND (A.NESTED != 'YES' OR A.LOGGING != 'YES') AND A.SECONDARY = 'N'";
+	#$sql .= " AND A.TEMPORARY='N' AND (A.NESTED != 'YES' OR A.LOGGING != 'YES') AND A.SECONDARY = 'N'";
+	$sql .= " AND A.TEMPORARY='N' AND A.NESTED != 'YES' AND A.SECONDARY = 'N'";
 	if ($self->{db_version} !~ /Release [89]/) {
 		$sql .= " AND (A.DROPPED IS NULL OR A.DROPPED = 'NO')";
 	}
