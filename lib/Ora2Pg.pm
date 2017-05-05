@@ -9052,6 +9052,7 @@ sub _get_plsql_metadata
 	} else {
 		$sql .= " WHERE OWNER = '$self->{schema}'";
 	}
+	$sql .= " AND TYPE <> 'PACKAGE'";
 	$sql .= " ORDER BY OWNER, NAME, LINE";
 	$sth = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute or $self->logit("FATAL: " . $sth->errstr . "\n", 0, 1);
@@ -9156,6 +9157,7 @@ sub _get_package_function_list
 	} else {
 		$sql .= " WHERE OWNER = '$self->{schema}'";
 	}
+	$sql .= " AND TYPE <> 'PACKAGE'";
 	$sql .= " AND NAME IN ('" . join("','", @packages) . "')" if ($#packages >= 0);
 	$sql .= " ORDER BY OWNER, NAME, LINE";
 	$sth = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -10848,7 +10850,7 @@ sub _convert_function
 	# Input parameters after one with a default value must also have defaults
 	# and we need to sort the arguments so the ones with default values will be on the bottom
 	$fct_detail{args} =~ s/^\((.*)\)(\s*\%ORA2PG_COMMENT\d+\%)*\s*$/$1$2/gs;
-	my @args_sorted;
+	my @args_sorted = ();
 	push(@args_sorted, grep {!/\sdefault\s/i} split ',', $fct_detail{args});
 	push(@args_sorted, grep {/\sdefault\s/i} split ',', $fct_detail{args});
 	$fct_detail{args} = '(' . join(',', @args_sorted) . ')';
@@ -14642,6 +14644,7 @@ sub _lookup_function
 		$fct_detail{type} = uc($2);
 		$fct_detail{name} = $3;
 		$fct_detail{args} = $4;
+
 
 		if ($fct_detail{args} =~ /\b(RETURN|IS|AS)\b/is) {
 			$fct_detail{args} = '()';
