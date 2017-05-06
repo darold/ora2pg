@@ -1929,6 +1929,7 @@ sub _tables
 		$self->{tables}{$t}{table_info}{size} = $tables_infos{$t}{size};
 		$self->{tables}{$t}{table_info}{auto_increment} = $tables_infos{$t}{auto_increment};
 		$self->{tables}{$t}{table_info}{connection} = $tables_infos{$t}{connection};
+		$self->{tables}{$t}{table_info}{nologging} = $tables_infos{$t}{nologging};
 
 		# Set the fields information
 		my $tmp_tbname = $t;
@@ -9512,8 +9513,7 @@ sub _table_info
 	$sth->finish();
 
 	$sql = "SELECT A.OWNER,A.TABLE_NAME,NVL(num_rows,1) NUMBER_ROWS,A.TABLESPACE_NAME,A.NESTED,A.LOGGING FROM ALL_TABLES A, ALL_OBJECTS O WHERE A.OWNER=O.OWNER AND A.TABLE_NAME=O.OBJECT_NAME AND O.OBJECT_TYPE='TABLE' $owner";
-	#$sql .= " AND A.TEMPORARY='N' AND (A.NESTED != 'YES' OR A.LOGGING != 'YES') AND A.SECONDARY = 'N'";
-	$sql .= " AND A.TEMPORARY='N' AND A.NESTED != 'YES' AND A.SECONDARY = 'N'";
+	$sql .= " AND A.TEMPORARY='N' AND (A.NESTED != 'YES' OR A.LOGGING != 'YES') AND A.SECONDARY = 'N'";
 	if ($self->{db_version} !~ /Release [89]/) {
 		$sql .= " AND (A.DROPPED IS NULL OR A.DROPPED = 'NO')";
 	}
@@ -9536,6 +9536,12 @@ sub _table_info
 		$tables_infos{$row->[1]}{comment} =  $comments{$row->[1]}{comment} || '';
 		$tables_infos{$row->[1]}{type} =  $comments{$row->[1]}{table_type} || '';
 		$tables_infos{$row->[1]}{nested} = $row->[4] || '';
+		if ($row->[5] eq 'NO') {
+			$tables_infos{$row->[1]}{nologging} = 1;
+		} else {
+			$tables_infos{$row->[1]}{nologging} = 0;
+		}
+
 		if ($do_real_row_count) {
 			$self->logit("DEBUG: looking for real row count for table ($row->[0]) $row->[1] (aka using count(*))...\n", 1);
 			$sql = "SELECT COUNT(*) FROM $row->[1]";
@@ -12817,6 +12823,9 @@ sub _show_infos
 			}
 			if (exists $externals{$t}) {
 				$kind = ' EXTERNAL';
+			}
+			if ($tables_infos{$t}{nologging}) {
+				$kind .= ' UNLOGGED';
 			}
 			my $tname = $t;
 			if (!$self->{is_mysql}) {
