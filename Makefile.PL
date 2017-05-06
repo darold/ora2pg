@@ -144,7 +144,7 @@ COMPILE_SCHEMA	0
 #POSTGIS_SCHEMA		
 
 # Allow to add a comma separated list of system user to exclude from 
-# from Oracle extraction. Oracle have many of them following the modules
+# Oracle extraction. Oracle have many of them following the modules
 # installed. By default it will suppress all object owned by the following
 # system users:
 #        CTXSYS,DBSNMP,EXFSYS,LBACSYS,MDSYS,MGMT_VIEW,OLAPSYS,ORDDATA,OWBSYS,
