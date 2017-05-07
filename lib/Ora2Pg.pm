@@ -6485,7 +6485,7 @@ sub _create_indexes
 
 		if (exists $self->{replaced_cols}{"\L$tbsaved\E"} && $self->{replaced_cols}{"\L$tbsaved\E"}) {
 			foreach my $c (keys %{$self->{replaced_cols}{"\L$tbsaved\E"}}) {
-				map { s/\b$c\b/$self->{replaced_cols}{"\L$tbsaved\E"}{$c}/i } @{$indexes{$idx}};
+				map { s/\b$c\b/$self->{replaced_cols}{"\L$tbsaved\E"}{"\L$c\E"}/i } @{$indexes{$idx}};
 			}
 		}
 
@@ -6744,7 +6744,7 @@ sub _drop_indexes
 
 		if (exists $self->{replaced_cols}{"\L$tbsaved\E"} && $self->{replaced_cols}{"\L$tbsaved\E"}) {
 			foreach my $c (keys %{$self->{replaced_cols}{"\L$tbsaved\E"}}) {
-				map { s/\b$c\b/$self->{replaced_cols}{"\L$tbsaved\E"}{$c}/i } @{$indexes{$idx}};
+				map { s/\b$c\b/$self->{replaced_cols}{"\L$tbsaved\E"}{"\L$c\E"}/i } @{$indexes{$idx}};
 			}
 		}
 		map { if ($_ !~ /\(.*\)/) { $_ = $self->quote_object_name($_) } } @{$indexes{$idx}};
@@ -6943,8 +6943,8 @@ sub _create_unique_keys
 		my $constypename = $constypenames{$constype};
 		for (my $i = 0; $i <= $#conscols; $i++) {
 			# Change column names
-			if (exists $self->{replaced_cols}{"$tbsaved"}{"\L$conscols[$i]\E"} && $self->{replaced_cols}{"$tbsaved"}{"\L$conscols[$i]\E"}) {
-				$conscols[$i] = $self->{replaced_cols}{"$tbsaved"}{"\L$conscols[$i]\E"};
+			if (exists $self->{replaced_cols}{"\L$tbsaved\E"}{"\L$conscols[$i]\E"} && $self->{replaced_cols}{"\L$tbsaved\L"}{"\L$conscols[$i]\E"}) {
+				$conscols[$i] = $self->{replaced_cols}{"\L$tbsaved\E"}{"\L$conscols[$i]\E"};
 			}
 		}
 		map { $_ = $self->quote_object_name($_) } @conscols;
@@ -6991,10 +6991,10 @@ sub _create_check_constraint
 			}
 		}
 		if (!$skip_create) {
-			if (exists $self->{replaced_cols}{"$tbsaved"} && $self->{replaced_cols}{"$tbsaved"}) {
-				foreach my $c (keys %{$self->{replaced_cols}{"$tbsaved"}}) {
-					$chkconstraint =~ s/"$c"/"$self->{replaced_cols}{"$tbsaved"}{$c}"/gsi;
-					$chkconstraint =~ s/\b$c\b/$self->{replaced_cols}{"$tbsaved"}{$c}/gsi;
+			if (exists $self->{replaced_cols}{"\L$tbsaved\E"} && $self->{replaced_cols}{"\L$tbsaved\E"}) {
+				foreach my $c (keys %{$self->{replaced_cols}{"\L$tbsaved\E"}}) {
+					$chkconstraint =~ s/"$c"/"$self->{replaced_cols}{"\L$tbsaved\E"}{"\L$c\E"}"/gsi;
+					$chkconstraint =~ s/\b$c\b/$self->{replaced_cols}{"\L$tbsaved\E"}{"\L$c\E"}/gsi;
 				}
 			}
 			if ($self->{plsql_pgsql}) {
@@ -7070,14 +7070,14 @@ sub _create_foreign_keys
 			push(@lfkeys, @{$self->{tables}{$tbsaved}{foreign_link}{$fkname}{local}});
 			if (exists $self->{replaced_cols}{"\L$tbsaved\E"} && $self->{replaced_cols}{"\L$tbsaved\E"}) {
 				foreach my $c (keys %{$self->{replaced_cols}{"\L$tbsaved\E"}}) {
-					map { s/"$c"/"$self->{replaced_cols}{"\L$tbsaved\E"}{$c}"/i } @lfkeys;
+					map { s/"$c"/"$self->{replaced_cols}{"\L$tbsaved\E"}{"\L$c\E"}"/i } @lfkeys;
 				}
 			}
 			my @rfkeys = ();
 			push(@rfkeys, @{$self->{tables}{$tbsaved}{foreign_link}{$fkname}{remote}{$desttable}});
 			if (exists $self->{replaced_cols}{"\L$desttable\E"} && $self->{replaced_cols}{"\L$desttable\E"}) {
 				foreach my $c (keys %{$self->{replaced_cols}{"\L$desttable\E"}}) {
-					map { s/"$c"/"$self->{replaced_cols}{"\L$desttable\E"}{$c}"/i } @rfkeys;
+					map { s/"$c"/"$self->{replaced_cols}{"\L$desttable\E"}{"\L$c\E"}"/i } @rfkeys;
 				}
 			}
 			map { $_ = $self->quote_object_name($_) } @lfkeys;
@@ -14562,8 +14562,8 @@ sub _lookup_check_constraint
 		if (!$skip_create) {
 			if (exists $self->{replaced_cols}{"\L$tbsaved\E"} && $self->{replaced_cols}{"\L$tbsaved\E"}) {
 				foreach my $c (keys %{$self->{replaced_cols}{"\L$tbsaved\E"}}) {
-					$chkconstraint =~ s/"$c"/"$self->{replaced_cols}{"\L$tbsaved\E"}{$c}"/gsi;
-					$chkconstraint =~ s/\b$c\b/$self->{replaced_cols}{"\L$tbsaved\E"}{$c}/gsi;
+					$chkconstraint =~ s/"$c"/"$self->{replaced_cols}{"\L$tbsaved\E"}{"\L$c\E"}"/gsi;
+					$chkconstraint =~ s/\b$c\b/$self->{replaced_cols}{"\L$tbsaved\E"}{"\L$c\E"}/gsi;
 				}
 			}
 			if ($self->{plsql_pgsql}) {
