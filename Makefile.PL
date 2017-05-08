@@ -389,6 +389,62 @@ USE_UNACCENT		0
 #
 USE_LOWER_UNACCENT	0
 
+
+#------------------------------------------------------------------------------
+# DATA DIFF SECTION (only delete and insert actually changed rows)
+#------------------------------------------------------------------------------
+
+# EXPERIMENTAL! Not yet working correctly with partitioned tables, parallelism,
+# and direct Postgres connection! Test before using in production!
+# This feature affects SQL output for data (INSERT or COPY).
+# The deletion and (re-)importing of data is redirected to temporary tables
+# (with configurable suffix) and matching entries (i.e. quasi-unchanged rows)
+# eliminated before actual application of the DELETE, UPDATE and INSERT.
+# Optional functions can be specified that are called before or after the
+# actual DELETE, UPDATE and INSERT per table, or after all tables have been
+# processed.
+#
+# Enable DATADIFF functionality
+DATADIFF	0
+# Use UPDATE where changed columns can be matched by the primary key
+# (otherwise rows are DELETEd and re-INSERTed, which may interfere with
+# inverse foreign keys relationships!)
+DATADIFF_UPDATE_BY_PKEY	0
+# Suffix for temporary tables holding rows to be deleted and to be inserted.
+# Pay attention to your tables names:
+# 1) There better be no two tables with names such that name1 + suffix = name2
+# 2) length(suffix) + length(tablename) < NAMEDATALEN (usually 64)
+DATADIFF_DEL_SUFFIX _del
+DATADIFF_UPD_SUFFIX _upd
+DATADIFF_INS_SUFFIX _ins
+# Allow setting the work_mem and temp_buffers parameters
+# to keep temp tables in memory and have efficient sorting, etc.
+DATADIFF_WORK_MEM	256 MB
+DATADIFF_TEMP_BUFFERS	512 MB
+
+# The following are names of functions that will be called (via SELECT)
+# after the temporary tables have been reduced (by removing matching rows)
+# and right before or right after the actual DELETE and INSERT are performed.
+# They must take four arguments, which should ideally be of type "regclass",
+# representing the real table, the "deletions", the "updates", and the
+# "insertions" temp table names, respectively. They are called before
+# re-activation of triggers, indexes, etc. (if configured).
+#DATADIFF_BEFORE   my_datadiff_handler_function
+#DATADIFF_AFTER    my_datadiff_handler_function
+
+# Another function can be called (via SELECT) right before the entire COMMIT
+# (i.e., after re-activation of indexes, triggers, etc.), which will be
+# passed in Postgres ARRAYs of the table names of the real tables, the
+# "deletions", the "updates" and the "insertions" temp tables, respectively,
+# with same array index positions belonging together. So this function should
+# take four arguments of type regclass[]
+#DATADIFF_AFTER_ALL    my_datadiff_bunch_handler_function
+# If in doubt, use schema-qualified function names here.
+# The search_path will have been set to PG_SCHEMA if EXPORT_SCHEMA == 1
+# (as defined by you in those config parameters, see above),
+# i.e., the "public" schema is not contained if EXPORT_SCHEMA == 1
+
+
 #------------------------------------------------------------------------------
 # CONSTRAINT SECTION (Control constraints export and import behaviors)
 #------------------------------------------------------------------------------
@@ -991,6 +1047,10 @@ PG_SUPPORTS_CHECKOPTION	1
 # Disabling the directive with value 0 will prevent Ora2Pg to add those
 # keywords in all generated statements.
 PG_SUPPORTS_IFEXISTS	1
+
+# PostgreSQL versions prior to 9.3 do not support the LATERAL keyword.
+# This is required for the DATADIFF feature.
+PG_SUPPORTS_LATERAL	1
 
 # Use btree_gin extenstion to create bitmap like index with pg >= 9.4
 # You will need to create the extension by yourself:
