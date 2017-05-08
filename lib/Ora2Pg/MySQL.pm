@@ -359,7 +359,7 @@ sub _get_indexes
 			# Save original column name
 			my $colname = $row->[4];
 			# Enclose with double quote if required
-			$row->[4] = $self->quote_reserved_words($row->[4]);
+			$row->[4] = $self->quote_object_name($row->[4]);
 
 			if ($self->{preserve_case}) {
 				if (($row->[4] !~ /".*"/) && ($row->[4] !~ /\(.*\)/)) {
