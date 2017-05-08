@@ -8761,7 +8761,7 @@ sub _get_views
 		$str .= " AND a.OBJECT_TYPE='VIEW' AND a.STATUS='VALID' AND v.VIEW_NAME=a.OBJECT_NAME AND a.OWNER=v.OWNER";
 	}
 	$str .= $self->limit_to_objects('VIEW', 'v.VIEW_NAME');
-	$str .= " ORDER BY v.VIEW_NAME";
+	$str .= " ORDER BY v.OWNER,v.VIEW_NAME";
 
 
 	# Compute view order, where depended view appear before using view
