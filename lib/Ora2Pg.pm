@@ -2367,7 +2367,7 @@ sub read_schema_from_file
 							$auto_incr = 1;
 						}
 
-						if ($c =~ s/DEFAULT\s+([^\s]+)\s*//is) {
+						if ($c =~ s/\bDEFAULT\s+([^\s]+)\s*//is) {
 							if (!$self->{plsql_pgsql}) {
 								$c_default = $1;
 							} else {
@@ -14815,7 +14815,7 @@ sub _lookup_function
 
 		$fct_detail{immutable} = 1 if ($fct_detail{declare} =~ s/\bDETERMINISTIC\b//is);
 		$fct_detail{setof} = 1 if ($fct_detail{declare} =~ s/\bPIPELINED\b//is);
-		$fct_detail{declare} =~ s/DEFAULT/:=/igs;
+		$fct_detail{declare} =~ s/\bDEFAULT/:=/igs;
 		if ($fct_detail{declare} =~ s/(.*?)RETURN\s+self\s+AS RESULT IS//is) {
 			$fct_detail{args} .= $1;
 			$fct_detail{hasreturn} = 1;
