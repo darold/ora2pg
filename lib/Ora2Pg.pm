@@ -4760,7 +4760,7 @@ LANGUAGE plpgsql ;
 			foreach my $pkg (sort keys %{$self->{packages}}) {
 				# Get all metadata from all procedures/function when we are
 				# reading from a file, otherwise it has already been done
-				my $tmp_txt = $self->{packages}{$pkg}{text};
+				my $tmp_txt = "$self->{packages}{$pkg}{text}";
 				$tmp_txt =~ s/^(.*)CREATE OR REPLACE PACKAGE BODY/CREATE OR REPLACE PACKAGE BODY/s;
 				my %infos = $self->_lookup_package($tmp_txt);
 				my $sch = 'unknow';
@@ -6224,8 +6224,6 @@ CREATE TRIGGER ${table}_trigger_insert
 		# Add comments on table
 		if (!$self->{disable_comment} && $self->{tables}{$table}{table_info}{comment}) {
 			$self->{tables}{$table}{table_info}{comment} =~ s/'/''/gs;
-			my $foreign = '';
-			$foreign = ' FOREIGN' if ($self->{type} eq 'FDW');
 			$sql_output .= "COMMENT ON$foreign TABLE $tbname IS E'$self->{tables}{$table}{table_info}{comment}';\n";
 		}
 
@@ -6248,7 +6246,7 @@ CREATE TRIGGER ${table}_trigger_insert
 		if ($self->{force_owner}) {
 			my $owner = $self->{tables}{$table}{table_info}{owner};
 			$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
-			$sql_output .= "ALTER $self->{tables}{$table}{table_info}{type} " .  $self->quote_object_name($tbname)
+			$sql_output .= "ALTER$foreign $self->{tables}{$table}{table_info}{type} " .  $self->quote_object_name($tbname)
 						. " OWNER TO " .  $self->quote_object_name($owner) . ";\n";
 		}
 		if (exists $self->{tables}{$table}{alter_index} && $self->{tables}{$table}{alter_index}) {
@@ -10735,7 +10733,7 @@ sub _convert_package
 		my $pname = $1;
 		my $type = $2;
 		my $ctt = $3;
-		my $glob_declare = $`;
+		my $glob_declare = $3;
 
 		$pname =~ s/"//g;
 		$pname =~ s/^.*\.//g;
@@ -10743,12 +10741,12 @@ sub _convert_package
 
 		# Process package spec to extract global variables
 		if ($glob_declare) {
-			# Remove header of the package decalaration
-			$glob_declare =~ s/^CREATE(.*?)\s+AS\s+//;
-			# Remove all function declaration
-			$glob_declare =~ s/(PROCEDURE|FUNCTION)[^;]+;//gis;
+			# Remove all function/procedure declaration
+			while ($glob_declare =~ s/(PROCEDURE|FUNCTION).*?(PROCEDURE|FUNCTION)/$2/igs) {};
+			$glob_declare =~ s/(PROCEDURE|FUNCTION).*END[^;]*;//is;
 			# Remove end of the package decalaration
-			$glob_declare =~ s/\s+END[^;]*;\s*$//is;
+			$glob_declare =~ s/\s+END[^;]*;\s*$//igs;
+			$glob_declare =~ s/\s+END[^;]*;//igs;
 			my @cursors = ();
 			while ($glob_declare =~ s/(CURSOR\s+[^;]+\s+RETURN\s+[^;]+;)//) {
 				push(@cursors, $1);
@@ -14805,6 +14803,17 @@ sub _lookup_function
 		$fct_detail{name} = $3;
 		$fct_detail{args} = $4;
 
+		# When the function comes from a package remove global declaration
+		# outside comments. They have already been extracted before.
+		if ($pname && $fct_detail{before}) {
+			$self->_remove_comments(\$fct_detail{before});
+			my $cmt = '';
+			while ($fct_detail{before} =~ s/(\s*\%ORA2PG_COMMENT\d+\%\s*)//is) {
+				# only keep comment
+				$cmt .= $1;
+			}
+			$fct_detail{before} = $cmt;
+		}
 
 		if ($fct_detail{args} =~ /\b(RETURN|IS|AS)\b/is) {
 			$fct_detail{args} = '()';
