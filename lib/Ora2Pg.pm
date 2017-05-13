@@ -10739,6 +10739,12 @@ sub _convert_package
 		$pname =~ s/^.*\.//g;
 		$self->logit("Dumping package $pname...\n", 1);
 
+		# Append globals package declarations
+		if (exists $self->{pkg_content}{$pname}) {
+			$content .= $self->{pkg_content}{$pname};
+			delete $self->{pkg_content}{$pname};
+		}
+
 		# Process package spec to extract global variables
 		if ($glob_declare) {
 			# Remove all function/procedure declaration
@@ -10784,8 +10790,8 @@ sub _convert_package
 			}
 		}
 		$ctt =~ s/\bEND[^;]*;$//is;
-		my @functions = $self->_extract_functions($ctt);
 
+		my @functions = $self->_extract_functions($ctt);
 
 		# Try to detect local function
 		for (my $i = 0; $i <= $#functions; $i++) {
@@ -10859,11 +10865,12 @@ sub _convert_package
 				} else {
 					$tpe->{code} = "CREATE OR REPLACE $tpe->{code}\n";
 				}
-				$content .= $tpe->{code} . "\n";
+				$self->{pkg_content}{$pname} .= $tpe->{code} . "\n";
 				$i++;
 			}
-			$content .= join("\n", @cursors) . "\n";
+			$self->{pkg_content}{$pname} .= join("\n", @cursors) . "\n";
 			$glob_declare = $self->register_global_variable($pname, $glob_declare);
+			@{$self->{types}} = ();
 		}
 	}
 
@@ -11200,7 +11207,6 @@ END;
 		$function .= Ora2Pg::PLSQL::convert_plsql_code($self, $code_part, %{$self->{data_type}});
 		$function .= ';' if ($function !~ /END\s*;\s*$/is && $fct_detail{code} !~ /\%ORA2PG_COMMENT\d+\%\s*$/);
 		$function .= "\n\$body\$\nLANGUAGE PLPGSQL\n";
-
 
 		# Remove parameters to RETURN call when the function has no RETURNS clause
 		if ($function !~ /\s+RETURNS\s+/s || $function =~ /\s+RETURNS VOID\s+/s) {
