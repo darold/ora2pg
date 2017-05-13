@@ -2095,9 +2095,6 @@ sub _get_plsql_code
 		$other .= $parts[$i];
 	}
 
-	$code =~ s/\s+/ /g;
-	$other =~ s/\s+/ /g;
-
 	return ($code, $other);
 }
 
@@ -2663,6 +2660,7 @@ sub read_trigger_from_file
 			my $tb_name = $4;
 			my $trigger = $5 . $6;
 			my $t_type = '';
+
 			# Remove referencing clause, not supported by PostgreSQL
 			$trigger =~ s/REFERENCING\s+(.*?)(FOR\s+EACH\s+)/$2/is;
 
@@ -3347,6 +3345,30 @@ sub translate_function
 	return ($sql_output, $lsize, $lcost);
 }
 
+sub _replace_cycle_var
+{
+	my ($self, $code) = @_;
+
+	# Sometime variable used in FOR ... IN SELECT loop is not declared
+	# Append its RECORD declaration in the DECLARE section.
+	my $tmp_code = $$code;
+	my $declare = '';
+	while ($tmp_code =~ s/\bFOR\s+([^\s]+)\s+IN(.*?)LOOP//is) {
+		my $varname = $1;
+		my $clause = $2;
+		# When the cursor is refereing to a statement, declare
+		# it as record otherwise it don't need to be replaced
+		if ($clause =~ /\bSELECT\b/is) {
+			$declare .= "\n  $varname RECORD;\n" if ($declare !~ /\b$varname RECORD;/);
+		}
+	}
+	if ($declare) {
+		if ($$code !~ s/(\s+DECLARE\s+)/$1$declare/is) {
+			$$code =~ s/(\s*BEGIN\s+)/DECLARE\n$declare$1/is;
+		}
+	}
+}
+
 =head2 _get_sql_data
 
 Returns a string containing the PostgreSQL compatible SQL Schema
@@ -4027,6 +4049,7 @@ LANGUAGE plpgsql ;
 			if (!$self->{pg_supports_insteadof} && $trig->[1] =~ /INSTEAD OF/) {
 				if ($self->{plsql_pgsql}) {
 					$trig->[4] = Ora2Pg::PLSQL::convert_plsql_code($self, $trig->[4], %{$self->{data_type}});
+					$self->_replace_cycle_var(\$trig->[4]);
 				}
 				$sql_output .= "CREATE OR REPLACE RULE " . $self->quote_object_name($trig->[0])
 							. " AS\n\tON " . $self->quote_object_name($trig->[2])
@@ -4043,6 +4066,7 @@ LANGUAGE plpgsql ;
 				if ($trig->[7] eq 'CALL') {
 					if ($self->{plsql_pgsql}) {
 						$trig->[4] = Ora2Pg::PLSQL::convert_plsql_code($self, $trig->[4], %{$self->{data_type}});
+						$self->_replace_cycle_var(\$trig->[4]);
 					}
 					$trig->[4] = "BEGIN\nPERFORM $trig->[4];\nEND;";
 				} else {
@@ -4060,6 +4084,8 @@ LANGUAGE plpgsql ;
 							$trig->[4] = "BEGIN\n$trig->[4]\n$ret_kind\nEND;";
 						}
 						$trig->[4] = Ora2Pg::PLSQL::convert_plsql_code($self, $trig->[4], %{$self->{data_type}});
+						$self->_replace_cycle_var(\$trig->[4]);
+
 						# When an exception statement is used enclosed everything
 						# in a block before returning NEW
 						if ($trig->[4] =~ /EXCEPTION(.*?)\b(END[;]*)[\s\/]*$/is) {
@@ -4116,6 +4142,7 @@ LANGUAGE plpgsql ;
 						$trig->[5] =~ s/"([^"]+)"/\L$1\E/gs if (!$self->{preserve_case});
 						if ($self->{plsql_pgsql}) {
 							$trig->[5] = Ora2Pg::PLSQL::convert_plsql_code($self, $trig->[5], %{$self->{data_type}});
+							$self->_replace_cycle_var(\$trig->[5]);
 						}
 						$sql_output .= "\tWHEN ($trig->[5])\n";
 					}
