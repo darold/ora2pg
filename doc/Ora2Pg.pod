@@ -1540,12 +1540,18 @@ so that the script will immediately abort when an error is encountered.
 Enable this directive to use COPY FREEZE instead of a simple COPY to
 export data with rows already frozen. This is intended as a performance
 option for initial data loading. Rows will be frozen only if the table
-being loaded has been created or truncated in the current subtransaction.
+being loaded has been created or truncated in the current sub-transaction.
 This will only works with export to file and when -J or ORACLE_COPIES is
 not set or default to 1. It can be used with direct import into PostgreSQL
 under the same condition but -j or JOBS must also be unset or default to 1.
 
 =back
+
+When using Ora2Pg export type INSERT or COPY to dump data to file and that
+FILE_PER_TABLE is enabled, you will be warned that Ora2Pg will not export
+data again if the file already exists. This is to prevent downloading twice
+table with huge amount of data. To force the download of data from these tables
+you have to remove the existing output file first.
 
 If you want to import data on the fly to the PostgreSQL database you have three
 configuration directives to set the PostgreSQL database connection. This is only
