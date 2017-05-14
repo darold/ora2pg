@@ -3308,7 +3308,7 @@ sub translate_function
 						my $tfh = $self->append_export_file($dirprefix . 'temp_cost_file.dat', 1);
 						flock($tfh, 2) || die "FATAL: can't lock file temp_cost_file.dat\n";
 						$tfh->print("${fct}:$lsize:$lcost\n");
-						$tfh->close();
+						$self->close_export_file($tfh);
 					}
 				}
 			}
@@ -4519,7 +4519,7 @@ LANGUAGE plpgsql ;
 					$total_size += $fsize;
 					$cost_value += $fcost;
 				}
-				$tfh->close();
+				$self->close_export_file($tfh);
 				unlink($dirprefix . 'temp_cost_file.dat');
 			}
 		}
@@ -4697,7 +4697,7 @@ LANGUAGE plpgsql ;
 						$total_size += $fsize;
 						$cost_value += $fcost;
 					}
-					$tfh->close();
+					$self->close_export_file($tfh);
 				}
 				unlink($dirprefix . 'temp_cost_file.dat');
 			}
@@ -5617,7 +5617,7 @@ LANGUAGE plpgsql ;
 		$self->dump("\n$footer") if (!$self->{pg_dsn} && $footer);
 
 		# Close main data output file
-		$self->{fhout}->close() if (!$self->{pg_dsn} && defined $self->{fhout});
+		$self->close_export_file($self->{fhout}) if (!$self->{pg_dsn} && defined $self->{fhout});
 
 		# Disconnect from the database
 		$self->{dbh}->disconnect() if ($self->{dbh});
@@ -5918,7 +5918,7 @@ CREATE TRIGGER ${table}_trigger_insert
 			$sql_output = "-- Nothing found of type $self->{type}\n";
 		}
 		$self->dump($sql_header . $sql_output);
-		$self->{fhout}->close() if (defined $self->{fhout});
+		$self->close_export_file($self->{fhout}) if (defined $self->{fhout});
 
 		if ($partition_indexes) {
 			my $fhdl = undef;
@@ -10513,7 +10513,7 @@ sub data_dump
 	$self->logit("Dumping data from $rname to file: $filename\n", 1);
 
 	if ( ($self->{jobs} > 1) || ($self->{oracle_copies} > 1) ) {
-		$self->{fhout}->close() if (defined $self->{fhout} && !$self->{file_per_table} && !$self->{pg_dsn});
+		$self->close_export_file($self->{fhout}) if (defined $self->{fhout} && !$self->{file_per_table} && !$self->{pg_dsn});
 		my $fh = $self->append_export_file($filename);
 		set_binmode($fh);
 		flock($fh, 2) || die "FATAL: can't lock file $dirprefix$filename\n";
@@ -10703,7 +10703,7 @@ sub read_config
 			}
 		}
 	}
-	$fh->close();
+	$self->close_export_file($fh);
 }
 
 sub _extract_functions
@@ -11492,7 +11492,7 @@ sub logit
 				print "$message\n";
 			}
 		}
-		$self->{fhlog}->close() if (defined $self->{fhlog});
+		$self->close_export_file($self->{fhlog}) if (defined $self->{fhlog});
 		$self->{dbh}->disconnect() if ($self->{dbh});
 		$self->{dbhdest}->disconnect() if ($self->{dbhdest});
 		die "Aborting export...\n";
@@ -12117,7 +12117,7 @@ sub log_error_copy
 		$filehdl->print(join("\t", @$row) . "\n");
 	}
 	$filehdl->print("\\.\n");
-	$filehdl->close();
+	$self->close_export_file($filehdl);
 
 }
 
@@ -12134,7 +12134,7 @@ sub log_error_insert
 	my $filehdl = new IO::File;
 	$filehdl->open(">>$outfile") or $self->logit("FATAL: Can't write to $outfile: $!\n", 0, 1);
 	$filehdl->print("$sql_out\n");
-	$filehdl->close();
+	$self->close_export_file($filehdl);
 
 }
 
@@ -15781,7 +15781,7 @@ sub create_kettle_output
 	my $fh = new IO::File;
 	$fh->open(">$output_dir$table.ktr") or $self->logit("FATAL: can't write to $output_dir$table.ktr, $!\n", 0, 1);
 	$fh->print($xml);
-	$fh->close();
+	$self->close_export_file($fh);
 
 	return "JAVAMAXMEM=4096 ./pan.sh -file \$KETTLE_TEMPLATE_PATH/$output_dir$table.ktr -level Detailed\n";
 }
