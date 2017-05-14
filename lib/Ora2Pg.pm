@@ -6015,10 +6015,6 @@ CREATE TRIGGER ${table}_trigger_insert
 	}
 	my $indices = '';
 	my $fts_indices = '';
-	if ($self->{file_per_index}) {
-		$indices .= $self->set_search_path();
-		$fts_indices .= $self->set_search_path();
-	}
 
 	# Find first the total number of tables
 	my $num_total_table = scalar keys %{$self->{tables}};
@@ -6038,7 +6034,7 @@ CREATE TRIGGER ${table}_trigger_insert
 		# Create FDW server if required
 		if ($self->{external_to_fdw}) {
 			if ( grep(/^$table$/i, keys %{$self->{external_table}}) ) {
-					$sql_header .= "CREATE EXTENSION file_fdw;\n\n" if ($sql_header !~ /CREATE EXTENSION file_fdw;/is);
+					$sql_header .= "CREATE EXTENSION IF NOT EXISTS file_fdw;\n\n" if ($sql_header !~ /CREATE EXTENSION .* file_fdw;/is);
 					$sql_header .= "CREATE SERVER \L$self->{external_table}{$table}{directory}\E FOREIGN DATA WRAPPER file_fdw;\n\n" if ($sql_header !~ /CREATE SERVER $self->{external_table}{$table}{directory} FOREIGN DATA WRAPPER file_fdw;/is);
 			}
 		}
@@ -6324,6 +6320,7 @@ CREATE TRIGGER ${table}_trigger_insert
 		$indices = "-- Nothing found of type indexes\n" if (!$indices);
 		$indices =~ s/\n+/\n/gs;
 		$self->_restore_comments(\$indices);
+		$indices = $self->set_search_path() . $indices;
 		$self->dump($sql_header . $indices, $fhdl);
 		$self->close_export_file($fhdl);
 		$indices = '';
@@ -6332,6 +6329,7 @@ CREATE TRIGGER ${table}_trigger_insert
 			my $unaccent = '';
 			if ($self->{use_lower_unaccent}) {
 				$unaccent = qq{
+CREATE EXTENSION IF NOT EXISTS unaccent;
 CREATE OR REPLACE FUNCTION unaccent_immutable(text)
 RETURNS text AS
 \$\$
@@ -6341,6 +6339,7 @@ RETURNS text AS
 };
 			} elsif ($self->{use_unaccent}) {
 				$unaccent = qq{
+CREATE EXTENSION IF NOT EXISTS unaccent;
 CREATE OR REPLACE FUNCTION unaccent_immutable(text)
 RETURNS text AS
 \$\$
@@ -6349,17 +6348,15 @@ RETURNS text AS
 
 };
 			}
-
 			# FTS TRIGGERS are exported in a separated file to be able to parallelize index creation
-			if ($fts_indices) {
-				$self->logit("Dumping triggers for FTS indexes to one separate file : FTS_INDEXES_$self->{output}\n", 1);
-				$fhdl = $self->open_export_file("FTS_INDEXES_$self->{output}");
-				set_binmode($fhdl);
-				$self->_restore_comments(\$fts_indices);
-				$self->dump($sql_header . $unaccent . $fts_indices, $fhdl);
-				$self->close_export_file($fhdl);
-				$fts_indices = '';
-			}
+			$self->logit("Dumping triggers for FTS indexes to one separate file : FTS_INDEXES_$self->{output}\n", 1);
+			$fhdl = $self->open_export_file("FTS_INDEXES_$self->{output}");
+			set_binmode($fhdl);
+			$self->_restore_comments(\$fts_indices);
+			$fts_indices = $self->set_search_path() . $fts_indices;
+			$self->dump($sql_header. $unaccent . $fts_indices, $fhdl);
+			$self->close_export_file($fhdl);
+			$fts_indices = '';
 		}
 	}
 
