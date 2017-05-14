@@ -6361,6 +6361,7 @@ RETURNS text AS
 	}
 
 	# Dumping foreign key constraints
+	my $fkeys = '';
 	foreach my $table (keys %{$self->{tables}}) {
 		next if ($#{$self->{tables}{$table}{foreign_key}} < 0);
 		$self->logit("Dumping RI $table...\n", 1);
@@ -6368,10 +6369,14 @@ RETURNS text AS
 		if ($self->{type} ne 'FDW') {
 			my $create_all = $self->_create_foreign_keys($table);
 			if ($create_all) {
-				if ($self->{file_per_constraint}) {
-					$constraints .= $create_all;
+				if ($self->{file_per_fkeys}) {
+					$fkeys .= $create_all;
 				} else {
-					$sql_output .= $create_all;
+					if ($self->{file_per_constraint}) {
+						$constraints .= $create_all;
+					} else {
+						$sql_output .= $create_all;
+					}
 				}
 			}
 		}
@@ -6387,6 +6392,18 @@ RETURNS text AS
 		$self->dump($sql_header . $constraints, $fhdl);
 		$self->close_export_file($fhdl);
 		$constraints = '';
+	}
+
+	if ($fkeys) {
+		my $fhdl = undef;
+		$self->logit("Dumping foreign keys to one separate file : FKEYS_$self->{output}\n", 1);
+		$fhdl = $self->open_export_file("FKEYS_$self->{output}");
+		set_binmode($fhdl);
+		$fkeys = "-- Nothing found of type foreign keys\n" if (!$fkeys);
+		$self->_restore_comments(\$fkeys);
+		$self->dump($sql_header . $fkeys, $fhdl);
+		$self->close_export_file($fhdl);
+		$fkeys = '';
 	}
 
 	if (!$sql_output) {

@@ -636,6 +636,12 @@ FILE_PER_CONSTRAINT	0
 # migration after the indexes creation to move the indexes.
 FILE_PER_INDEX		0
 
+# Allow foreign key decalration to be saved in a separate file during
+# schema export. By default foreign keys will be exported into the main
+# output file or in the CONSTRAINT_output.sql file. If enabled foreign
+# keys will be exported into a file named FKEYS_output.sql
+FILE_PER_FKEYS		0
+
 # Allow data export to be saved in one file per table/view. The files
 # will be named as tablename_OUTPUT. Where OUTPUT is the value of the
 # corresponding configuration directive. You can use .gz xor .bz2
