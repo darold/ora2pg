@@ -121,7 +121,7 @@ program bzip2 must be available in your PATH.
 
 Like any other Perl Module Ora2Pg can be installed with the following commands:
 
-	tar xzf ora2pg-x.x.tar.gz
+	tar xjf ora2pg-x.x.tar.bz2
 	cd ora2pg-x.x/
 	perl Makefile.PL
 	make && make install
