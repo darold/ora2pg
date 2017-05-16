@@ -824,7 +824,7 @@ fi
 if [ $DATA_ONLY -eq 0 ]; then
 	if [ $NO_DBCHECK  -eq 0 ]; then
 		# Create owner user
-		user_exists=`psql$DB_HOST$DB_PORT$DB_USER -Atc "select usename from pg_user where usename='$DB_OWNER';"`
+    user_exists=`psql -d $DB_NAME$DB_HOST$DB_PORT$DB_USER -Atc "select usename from pg_user where usename='$DB_OWNER';"`
 		if [ "a$user_exists" = "a" ]; then
 			if confirm "Would you like to create the owner of the database $DB_OWNER?" ; then
 				echo "Running: createuser$DB_HOST$DB_PORT$DB_USER --no-superuser --no-createrole --no-createdb $DB_OWNER"
@@ -843,7 +843,7 @@ if [ $DATA_ONLY -eq 0 ]; then
 		if [ "a$DB_ENCODING" = "a" ]; then
 			DB_ENCODING=" -E UTF8"
 		fi
-		db_exists=`psql$DB_HOST$DB_PORT$DB_USER -Atc "select datname from pg_database where datname='$DB_NAME';"`
+    db_exists=`psql -d $DB_NAME$DB_HOST$DB_PORT$DB_USER -Atc "select datname from pg_database where datname='$DB_NAME';"`
 		if [ "a$db_exists" = "a" ]; then
 			if confirm "Would you like to create the database $DB_NAME?" ; then
 				echo "Running: createdb$DB_HOST$DB_PORT$DB_USER$DB_ENCODING --owner $DB_OWNER $DB_NAME"
@@ -987,8 +987,9 @@ if [ $SCHEMA_ONLY -eq 0 ]; then
 		if [ "a$DB_HOST" != "a" ]; then
 			pgdsn_defined="dbi:Pg:dbname=$DB_NAME;host=$DB_HOST"
 		else
-			pgdsn_defined="dbi:Pg:dbname=$DB_NAME;host=localhost"
-		fi
+      #default to unix socket
+      pgdsn_defined="dbi:Pg:dbname=$DB_NAME;"
+    fi
 		if [ "a$DB_PORT" != "a" ]; then
 			pgdsn_defined="$pgdsn_defined;port=$DB_PORT"
 		else
