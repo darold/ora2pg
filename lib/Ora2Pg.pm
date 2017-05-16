@@ -2164,13 +2164,15 @@ sub _restore_text_constant_part
 
 	# First replace function with package.function in potential dynamic query
 	if (scalar keys %{$self->{package_functions}}) {
-		foreach my $k (keys %{$self->{package_functions}}) {
-			if (exists $self->{package_functions}{$k}{package}) {
-				next if (!$self->{package_functions}{$k}{package});
-				my $pkname =  $self->{package_functions}{$k}{package} . '.';
-				map {
-					$self->{text_values}{$_} =~ s/($pkname)?\b$k\s*\(/$self->{package_functions}{$k}{name}\(/igs;
-				} keys %{$self->{text_values}};
+		foreach my $p (keys %{$self->{package_functions}}) {
+			foreach my $k (keys %{$self->{package_functions}{$p}}) {
+				if (exists $self->{package_functions}{$p}{$k}{package}) {
+					next if (!$self->{package_functions}{$p}{$k}{package});
+					my $pkname =  $self->{package_functions}{$p}{$k}{package} . '.';
+					map {
+						$self->{text_values}{$_} =~ s/($pkname)?\b$k\s*\(/$self->{package_functions}{$p}{$k}{name}\(/igs;
+					} keys %{$self->{text_values}};
+				}
 			}
 		}
 	}
@@ -4459,7 +4461,7 @@ LANGUAGE plpgsql ;
 				if ($fname =~ s/^([^\.\s]+)\.([^\s]+)$/$2/is) {
 					$sch = $1;
 				}
-				%{$self->{function_metadata}{$sch}{$fname}{metadata}} = %fct_detail;
+				%{$self->{function_metadata}{$sch}{'none'}{$fname}{metadata}} = %fct_detail;
 				$self->_restore_comments(\$self->{functions}{$fct}{text});
 			}
 		}
@@ -4636,7 +4638,7 @@ LANGUAGE plpgsql ;
 				if ($fname =~ s/^([^\.\s]+)\.([^\s]+)$/$2/is) {
 					$sch = $1;
 				}
-				%{$self->{function_metadata}{$sch}{$fname}{metadata}} = %fct_detail;
+				%{$self->{function_metadata}{$sch}{'none'}{$fname}{metadata}} = %fct_detail;
 				$self->_restore_comments(\$self->{procedures}{$fct}{text});
 			}
 		}
@@ -4730,6 +4732,7 @@ LANGUAGE plpgsql ;
 
 	# Process packages only
 	if ($self->{type} eq 'PACKAGE') {
+		$self->{current_package} = '';
 		$self->logit("Add packages definition...\n", 1);
 		my $nothing = 0;
 		my $dirprefix = '';
@@ -4800,7 +4803,7 @@ LANGUAGE plpgsql ;
 					my $name = lc($f);
 					delete $infos{$f}{code};
 					delete $infos{$f}{before};
-					%{$self->{function_metadata}{$sch}{$name}{metadata}} = %{$infos{$f}};
+					%{$self->{function_metadata}{$sch}{$pname}{$name}{metadata}} = %{$infos{$f}};
 				}
 				$self->_restore_comments(\$self->{packages}{$pkg}{text});
 			}
@@ -4837,6 +4840,7 @@ LANGUAGE plpgsql ;
 				}
 
 			} else {
+				$self->{current_package} = $pkg;
 				if ($self->{estimate_cost}) {
 					$total_size += length($self->{packages}->{$pkg}{text});
 				}
@@ -9230,7 +9234,7 @@ sub _get_plsql_metadata
         while (my $row = $sth->fetch) {
                 next if (grep(/^$row->[1].$row->[0]$/i, @fct_done));
                 push(@fct_done, "$row->[1].$row->[0]");
-                $self->{function_metadata}{$row->[1]}{$row->[0]}{type} = $row->[2];
+		$self->{function_metadata}{$row->[1]}{'none'}{$row->[0]}{type} = $row->[2];
         }
         $sth->finish();
 
@@ -9248,40 +9252,40 @@ sub _get_plsql_metadata
 	$sth = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute or $self->logit("FATAL: " . $sth->errstr . "\n", 0, 1);
 	while (my $row = $sth->fetch) {
-		next if (!exists $self->{function_metadata}{$row->[1]}{$row->[0]});
-		$self->{function_metadata}{$row->[1]}{$row->[0]}{text} .= $row->[3];
+		next if (!exists $self->{function_metadata}{$row->[1]}{'none'}{$row->[0]});
+		$self->{function_metadata}{$row->[1]}{'none'}{$row->[0]}{text} .= $row->[3];
 	}
         $sth->finish();
 
 	foreach my $sch (sort keys %{ $self->{function_metadata} }) {
 		next if ( ($owner && ($sch ne $owner)) || (!$owner && $self->{schema} && ($sch ne $self->{schema})) );
-		foreach my $name (sort keys %{$self->{function_metadata}{$sch}}) {
-			if ($self->{function_metadata}{$sch}{$name}{type} ne 'PACKAGE BODY') {
+		foreach my $name (sort keys %{$self->{function_metadata}{$sch}{'none'}}) {
+			if ($self->{function_metadata}{$sch}{'none'}{$name}{type} ne 'PACKAGE BODY') {
 				# Retrieve metadata for this function after removing comments
-				$self->_remove_comments(\$self->{function_metadata}{$sch}{$name}{text}, 1);
+				$self->_remove_comments(\$self->{function_metadata}{$sch}{'none'}{$name}{text}, 1);
 				$self->{comment_values} = ();
-				$self->{function_metadata}{$sch}{$name}{text} =~  s/\%ORA2PG_COMMENT\d+\%//gs;
-				my %fct_detail = $self->_lookup_function($self->{function_metadata}{$sch}{$name}{text}, undef, 1);
+				$self->{function_metadata}{$sch}{'none'}{$name}{text} =~  s/\%ORA2PG_COMMENT\d+\%//gs;
+				my %fct_detail = $self->_lookup_function($self->{function_metadata}{$sch}{'none'}{$name}{text}, undef, 1);
 				if (!exists $fct_detail{name}) {
-					delete $self->{function_metadata}{$sch}{$name};
+					delete $self->{function_metadata}{$sch}{'none'}{$name};
 					next;
 				}
 				delete $fct_detail{code};
 				delete $fct_detail{before};
-				%{$self->{function_metadata}{$sch}{$name}{metadata}} = %fct_detail;
-				delete $self->{function_metadata}{$sch}{$name}{text};
+				%{$self->{function_metadata}{$sch}{'none'}{$name}{metadata}} = %fct_detail;
+				delete $self->{function_metadata}{$sch}{'none'}{$name}{text};
 			} else {
-				$self->_remove_comments(\$self->{function_metadata}{$sch}{$name}{text}, 1);
+				$self->_remove_comments(\$self->{function_metadata}{$sch}{'none'}{$name}{text}, 1);
 				$self->{comment_values} = ();
-				$self->{function_metadata}{$sch}{$name}{text} =~  s/\%ORA2PG_COMMENT\d+\%//gs;
-				my %infos = $self->_lookup_package($self->{function_metadata}{$sch}{$name}{text});
-				delete $self->{function_metadata}{$sch}{$name};
+				$self->{function_metadata}{$sch}{'none'}{$name}{text} =~  s/\%ORA2PG_COMMENT\d+\%//gs;
+				my %infos = $self->_lookup_package($self->{function_metadata}{$sch}{'none'}{$name}{text});
+				delete $self->{function_metadata}{$sch}{'none'}{$name};
 				foreach my $f (sort keys %infos) {
 					next if (!$f);
 					my $fn = lc($f);
 					delete $infos{$f}{code};
 					delete $infos{$f}{before};
-					%{$self->{function_metadata}{$sch}{$fn}{metadata}} = %{$infos{$f}};
+					%{$self->{function_metadata}{$sch}{$name}{$fn}{metadata}} = %{$infos{$f}};
 					my $res_name = $f;
 					$res_name =~ s/^[^\.]+\.//;
 					if ($self->{package_as_schema}) {
@@ -9290,13 +9294,12 @@ sub _get_plsql_metadata
 						$res_name = $name . '_' . $res_name;
 					}
 					$res_name =~ s/"_"/_/g;
-					$self->{package_functions}{"\L$f\E"}{name} =  $self->quote_object_name($res_name);
-					$self->{package_functions}{"\L$f\E"}{package} = $name;
+					$self->{package_functions}{"\L$name\E"}{"\L$f\E"}{name}    = $self->quote_object_name($res_name);
+					$self->{package_functions}{"\L$name\E"}{"\L$f\E"}{package} = $name;
 				}
 			}
 		}
 	}
-
 }
 
 =head2 _get_package_function_list
@@ -9380,8 +9383,8 @@ sub _get_package_function_list
 					$res_name = $name . '_' . $res_name;
 				}
 				$res_name =~ s/"_"/_/g;
-				$self->{package_functions}{"\L$f\E"}{name} =  $self->quote_object_name($res_name);
-				$self->{package_functions}{"\L$f\E"}{package} = $name;
+				$self->{package_functions}{"\L$name\E"}{"\L$f\E"}{name}    = $self->quote_object_name($res_name);
+				$self->{package_functions}{"\L$name\E"}{"\L$f\E"}{package} = $name;
 			}
 		}
 	}
@@ -10845,7 +10848,7 @@ sub _convert_package
 			$fct_detail{name} =~ s/"//g;
 			next if (!$fct_detail{name});
 			$fct_detail{name} =  lc($fct_detail{name});
-			if (!exists $self->{package_functions}{$fct_detail{name}}) {
+			if (!exists $self->{package_functions}{"\L$pname\E"}{$fct_detail{name}}) {
 				my $res_name = $fct_detail{name};
 				$res_name =~ s/^[^\.]+\.//;
 				if ($self->{package_as_schema}) {
@@ -10854,8 +10857,8 @@ sub _convert_package
 					$res_name = $pname . '_' . $res_name;
 				}
 				$res_name =~ s/"_"/_/g;
-				$self->{package_functions}{"\L$fct_detail{name}\E"}{name} =  $self->quote_object_name($res_name);
-				$self->{package_functions}{"\L$fct_detail{name}\E"}{package} = $pname;
+				$self->{package_functions}{"\L$pname\E"}{"\L$fct_detail{name}\E"}{name}    = $self->quote_object_name($res_name);
+				$self->{package_functions}{"\L$pname\E"}{"\L$fct_detail{name}\E"}{package} = $pname;
 			}
 		}
 

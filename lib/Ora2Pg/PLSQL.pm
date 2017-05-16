@@ -734,63 +734,83 @@ sub plsql_to_plpgsql
 	##############
 	if (uc($class->{type}) =~ /^(PACKAGE|FUNCTION|PROCEDURE|TRIGGER)$/) {
 		foreach my $sch ( keys %{ $class->{function_metadata} }) {
-			foreach my $k (keys %{$class->{function_metadata}{$sch}}) {
-				if (!$class->{function_metadata}{$sch}{$k}{metadata}{inout}) {
-					if ($sch ne 'unknow' and $str =~ /\b$sch.$k\b/is) {
-						# Look if we need to use PERFORM to call the function
-						$str =~ s/(BEGIN|LOOP|;)((?:\s*%ORA2PG_COMMENT\d+\%\s*|\s*\/\*(?:.*?)\*\/\s*)*\s*)($sch\.$k\s*[\(;])/$1$2PERFORM $3/igs;
-						$str =~ s/(EXCEPTION(?:(?!CASE|THEN).)*?THEN)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($sch\.$k\s*[\(;])/$1$2PERFORM $3/isg;
-						$str =~ s/(IF(?:(?!CASE|THEN).)*?THEN)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($sch\.$k\s*[\(;])/$1$2PERFORM $3/isg;
-						$str =~ s/(IF(?:(?!CASE|ELSE).)*?ELSE)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($sch\.$k\s*[\(;])/$1$2PERFORM $3/isg;
-						$str =~ s/(PERFORM $sch\.$k);/$1\(\);/igs;
-					} elsif ($str =~ /\b$k\b/is) {
-						# Look if we need to use PERFORM to call the function
-						$str =~ s/(BEGIN|LOOP|;)((?:\s*%ORA2PG_COMMENT\d+\%\s*|\s*\/\*(?:.*?)\*\/\s*)*\s*)($k\s*[\(;])/$1$2PERFORM $3/igs;
-						$str =~ s/(EXCEPTION(?:(?!CASE|THEN).)*?THEN)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($k\s*[\(;])/$1$2PERFORM $3/isg;
-						$str =~ s/(IF(?:(?!CASE|THEN).)*?THEN)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($k\s*[\(;])/$1$2PERFORM $3/isg;
-						$str =~ s/(IF(?:(?!CASE|ELSE).)*?ELSE)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($k\s*[\(;])/$1$2PERFORM $3/isg;
-						$str =~ s/(PERFORM $k);/$1\(\);/igs;
+			foreach my $p ( keys %{ $class->{function_metadata}{$sch} }) {
+				foreach my $k (keys %{$class->{function_metadata}{$sch}{$p}}) {
+					if (!$class->{function_metadata}{$sch}{$p}{$k}{metadata}{inout}) {
+						if ($sch ne 'unknow' and $str =~ /\b$sch.$k\b/is) {
+							# Look if we need to use PERFORM to call the function
+							$str =~ s/(BEGIN|LOOP|;)((?:\s*%ORA2PG_COMMENT\d+\%\s*|\s*\/\*(?:.*?)\*\/\s*)*\s*)($sch\.$k\s*[\(;])/$1$2PERFORM $3/igs;
+							$str =~ s/(EXCEPTION(?:(?!CASE|THEN).)*?THEN)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($sch\.$k\s*[\(;])/$1$2PERFORM $3/isg;
+							$str =~ s/(IF(?:(?!CASE|THEN).)*?THEN)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($sch\.$k\s*[\(;])/$1$2PERFORM $3/isg;
+							$str =~ s/(IF(?:(?!CASE|ELSE).)*?ELSE)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($sch\.$k\s*[\(;])/$1$2PERFORM $3/isg;
+							$str =~ s/(PERFORM $sch\.$k);/$1\(\);/igs;
+						} elsif ($str =~ /\b$k\b/is) {
+							# Look if we need to use PERFORM to call the function
+							$str =~ s/(BEGIN|LOOP|;)((?:\s*%ORA2PG_COMMENT\d+\%\s*|\s*\/\*(?:.*?)\*\/\s*)*\s*)($k\s*[\(;])/$1$2PERFORM $3/igs;
+							$str =~ s/(EXCEPTION(?:(?!CASE|THEN).)*?THEN)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($k\s*[\(;])/$1$2PERFORM $3/isg;
+							$str =~ s/(IF(?:(?!CASE|THEN).)*?THEN)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($k\s*[\(;])/$1$2PERFORM $3/isg;
+							$str =~ s/(IF(?:(?!CASE|ELSE).)*?ELSE)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($k\s*[\(;])/$1$2PERFORM $3/isg;
+							$str =~ s/(PERFORM $k);/$1\(\);/igs;
+						}
+					} else {
+						# Recover call to function with OUT parameter with double affectation
+						my $fct_name = $k;
+						if ($str !~ /$k/is) {
+							# Remove package name
+							$fct_name =~ s/^[^\.]+\.//;
+						}
+						my %replace_out_param = ();
+						$str =~ s/([^:\s]+\s*:=\s*)[^:\s]+\s*:=\s*((?:[^\s\.]+\.)?\b$fct_name\s*\()/$1$2/isg;
 					}
-				} else {
-					# Recover call to function with OUT parameter with double affectation
-					my $fct_name = $k;
-					if ($str !~ /$k/is) {
-						# Remove package name
-						$fct_name =~ s/^[^\.]+\.//;
-					}
-					my %replace_out_param = ();
-					my $idx = 0;
-					$str =~ s/([^:\s]+\s*:=\s*)[^:\s]+\s*:=\s*((?:[^\s\.]+\.)?\b$fct_name\s*\()/$1$2/isg;
-				}
-				# Remove package name and try to replace call to function name only
-				if ($k =~ s/^[^\.]+\.//) {
-					if ($sch ne 'unknow' and $str =~ /\b$sch\.$k\b/is) {
-						$str =~ s/(BEGIN|LOOP|;)((?:\s*%ORA2PG_COMMENT\d+\%\s*|\s*\/\*(?:.*?)\*\/\s*)*\s*)($sch\.$k\s*[\(;])/$1$2PERFORM $3/igs;
-						$str =~ s/(EXCEPTION(?:(?!CASE|THEN).)*?THEN)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($sch\.$k\s*[\(;])/$1$2PERFORM $3/isg;
-						$str =~ s/(IF(?:(?!CASE|THEN).)*?THEN)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($sch\.$k\s*[\(;])/$1$2PERFORM $3/isg;
-						$str =~ s/(IF(?:(?!CASE|ELSE).)*?ELSE)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($sch\.$k\s*[\(;])/$1$2PERFORM $3/isg;
-						$str =~ s/(PERFORM $sch\.$k);/$1\(\);/igs;
-					} elsif ($str =~ /\b$k\b/is) {
-						$str =~ s/(BEGIN|LOOP|;)((?:\s*%ORA2PG_COMMENT\d+\%\s*|\s*\/\*(?:.*?)\*\/\s*)*\s*)($k\s*[\(;])/$1$2PERFORM $3/igs;
-						$str =~ s/(EXCEPTION(?:(?!CASE|THEN).)*?THEN)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($k\s*[\(;])/$1$2PERFORM $3/isg;
-						$str =~ s/(IF(?:(?!CASE|THEN).)*?THEN)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($k\s*[\(;])/$1$2PERFORM $3/isg;
-						$str =~ s/(IF(?:(?!CASE|ELSE).)*?ELSE)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($k\s*[\(;])/$1$2PERFORM $3/isg;
-						$str =~ s/(PERFORM $k);/$1\(\);/igs;
+					# Remove package name and try to replace call to function name only
+					if ($k =~ s/^[^\.]+\.//) {
+						if ($sch ne 'unknow' and $str =~ /\b$sch\.$k\b/is) {
+							$str =~ s/(BEGIN|LOOP|;)((?:\s*%ORA2PG_COMMENT\d+\%\s*|\s*\/\*(?:.*?)\*\/\s*)*\s*)($sch\.$k\s*[\(;])/$1$2PERFORM $3/igs;
+							$str =~ s/(EXCEPTION(?:(?!CASE|THEN).)*?THEN)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($sch\.$k\s*[\(;])/$1$2PERFORM $3/isg;
+							$str =~ s/(IF(?:(?!CASE|THEN).)*?THEN)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($sch\.$k\s*[\(;])/$1$2PERFORM $3/isg;
+							$str =~ s/(IF(?:(?!CASE|ELSE).)*?ELSE)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($sch\.$k\s*[\(;])/$1$2PERFORM $3/isg;
+							$str =~ s/(PERFORM $sch\.$k);/$1\(\);/igs;
+						} elsif ($str =~ /\b$k\b/is) {
+							$str =~ s/(BEGIN|LOOP|;)((?:\s*%ORA2PG_COMMENT\d+\%\s*|\s*\/\*(?:.*?)\*\/\s*)*\s*)($k\s*[\(;])/$1$2PERFORM $3/igs;
+							$str =~ s/(EXCEPTION(?:(?!CASE|THEN).)*?THEN)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($k\s*[\(;])/$1$2PERFORM $3/isg;
+							$str =~ s/(IF(?:(?!CASE|THEN).)*?THEN)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($k\s*[\(;])/$1$2PERFORM $3/isg;
+							$str =~ s/(IF(?:(?!CASE|ELSE).)*?ELSE)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($k\s*[\(;])/$1$2PERFORM $3/isg;
+							$str =~ s/(PERFORM $k);/$1\(\);/igs;
+						}
 					}
 				}
 			}
 		}
 	}
 
+
 	##############
 	# Replace package.function call by package_function
 	##############
 	if (scalar keys %{$class->{package_functions}}) {
-		foreach my $k (keys %{$class->{package_functions}}) {
-			my $fname = $k;
-			$fname =~ s/^[^\.]+\.//;
-			$str =~ s/([^\.])\b$fname\s*([\(;])/$1$class->{package_functions}{$k}{name}$2/igs;
-			$str =~ s/\b$class->{package_functions}{$k}{package}\.$fname\s*([\(;])/$class->{package_functions}{$k}{name}$1/igs;
+		foreach my $p (keys %{$class->{package_functions}}) {
+			foreach my $k (keys %{$class->{package_functions}{$p}}) {
+				if (!exists $class->{package_functions}{$p}{$k}{name}) {
+					my $fname = $k;
+					$fname =~ s/^[^\.]+\.//;
+					if (exists $class->{package_functions}{$p}{$fname}{name} && $p ne lc($class->{current_package})) {
+						$str =~ s/([^\.])\b$fname\s*([\(;])/$1$class->{package_functions}{$p}{$k}{name}$2/igs;
+					} else {
+						$str =~ s/([^\.])\b$k\s*([\(;])/$1$class->{package_functions}{$p}{$k}{name}$2/igs;
+						$str =~ s/\b$class->{package_functions}{$p}{$k}{package}\.$fname\s*([\(;])/$class->{package_functions}{$p}{$k}{name}$1/igs;
+					}
+				} elsif ($p ne lc($class->{current_package})) {
+					my $fname = $k;
+					$fname =~ s/^[^\.]+\.//;
+					if (lc($class->{package_functions}{$p}{$k}{name}) ne lc($fname)) {
+						$str =~ s/([^\.])\b$fname\s*([\(;])/$1$class->{package_functions}{$p}{$k}{name}$2/igs;
+					} else {
+						$str =~ s/([^\.])\b($fname\s*[\(;])/$1$class->{package_functions}{$p}{$k}{package}\.$2/igs;
+					}
+				} elsif ($k !~ /\./) {
+					$str =~ s/([^\.])\b($k\s*[\(;])/$1\L$class->{package_functions}{$p}{$k}{package}\.$2\E/igs;
+				}
+			}
 		}
 	}
 
@@ -833,8 +853,6 @@ sub translate_statement
 
 	return $stmt;
 }
-
-
 
 sub remove_extra_parenthesis
 {
@@ -1144,11 +1162,13 @@ sub replace_oracle_function
 	# Replace package.function call by package_function
 	##############
 	if (scalar keys %{$class->{package_functions}}) {
-		foreach my $k (keys %{$class->{package_functions}}) {
-			my $fname = $k;
-			$fname =~ s/^[^\.]+\.//;
-			$str =~ s/([^\.])\b$fname\s*([\(;])/$1$class->{package_functions}{$k}{name}$2/igs;
-			$str =~ s/\b$class->{package_functions}{$k}{package}\.$fname\s*([\(;])/$class->{package_functions}{$k}{name}$1/igs;
+		foreach my $p (keys %{$class->{package_functions}}) {
+			foreach my $k (keys %{$class->{package_functions}{$p}}) {
+				my $fname = $k;
+				$fname =~ s/^[^\.]+\.//;
+				$str =~ s/([^\.])\b$fname\s*([\(;])/$1$class->{package_functions}{$p}{$k}{name}$2/igs;
+				$str =~ s/\b$class->{package_functions}{$p}{$k}{package}\.$fname\s*([\(;])/$class->{package_functions}{$p}{$k}{name}$1/igs;
+			}
 		}
 	}
 
