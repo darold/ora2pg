@@ -591,6 +591,7 @@ sub make_config_generic
 		$conf_arr->[$i] =~ s/^PLSQL_PGSQL.*1/PLSQL_PGSQL\t0/;
 		$conf_arr->[$i] =~ s/^FILE_PER_CONSTRAINT.*0/FILE_PER_CONSTRAINT\t1/;
 		$conf_arr->[$i] =~ s/^FILE_PER_INDEX.*0/FILE_PER_INDEX\t1/;
+		$conf_arr->[$i] =~ s/^FILE_PER_FKEYS.*0/FILE_PER_FKEYS\t1/;
 		$conf_arr->[$i] =~ s/^FILE_PER_TABLE.*0/FILE_PER_TABLE\t1/;
 		$conf_arr->[$i] =~ s/^FILE_PER_FUNCTION.*0/FILE_PER_FUNCTION\t1/;
 		$conf_arr->[$i] =~ s/^TRUNCATE_TABLE.*0/TRUNCATE_TABLE\t1/;
@@ -743,6 +744,28 @@ import_constraints () {
 					ora2pg$IMPORT_JOBS -c config/ora2pg.conf -t LOAD -i $NAMESPACE/schema/tables/CONSTRAINTS_table.sql
 					if [ $? -ne 0 ]; then
 						die "can not import constraints."
+					fi
+				fi
+			fi
+		fi
+	fi
+
+	if [ -r "$NAMESPACE/schema/tables/FKEYS_table.sql" ]; then
+		if confirm "Would you like to import foreign keys from $NAMESPACE/schema/tables/FKEYS_table.sql?" ; then
+			if [ -z "$IMPORT_JOBS" ]; then
+				echo "Running: psql$DB_HOST$DB_PORT -U $DB_OWNER -d $DB_NAME -f $NAMESPACE/schema/tables/FKEYS_table.sql"
+				if [ $DEBUG -eq 0 ]; then
+					psql$DB_HOST$DB_PORT -U $DB_OWNER -d $DB_NAME -f $NAMESPACE/schema/tables/FKEYS_table.sql
+					if [ $? -ne 0 ]; then
+						die "can not import foreign keys."
+					fi
+				fi
+			else
+				echo "Running: ora2pg$IMPORT_JOBS -c config/ora2pg.conf -t LOAD -i $NAMESPACE/schema/tables/FKEYS_table.sql"
+				if [ $DEBUG -eq 0 ]; then
+					ora2pg$IMPORT_JOBS -c config/ora2pg.conf -t LOAD -i $NAMESPACE/schema/tables/FKEYS_table.sql
+					if [ $? -ne 0 ]; then
+						die "can not import foreign keys."
 					fi
 				fi
 			fi
