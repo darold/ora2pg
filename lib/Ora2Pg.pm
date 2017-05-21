@@ -3108,8 +3108,8 @@ sub _export_table_data
 
 	if ($self->{global_delete} || exists $self->{delete}{"\L$table\E"}) {
 		my $delete_clause = '';
-        my $delete_clause_start = "DELETE";
-        if ($self->{datadiff}) {
+		my $delete_clause_start = "DELETE";
+		if ($self->{datadiff}) {
 			$delete_clause_start = "INSERT INTO " . $self->get_tbname_with_suffix($tmptb, $self->{datadiff_del_suffix}) . " SELECT *";
 		}
 		if (exists $self->{delete}{"\L$table\E"} && $self->{delete}{"\L$table\E"}) {
@@ -4461,6 +4461,7 @@ LANGUAGE plpgsql ;
 				if ($fname =~ s/^([^\.\s]+)\.([^\s]+)$/$2/is) {
 					$sch = $1;
 				}
+				$fname =~ s/"//g;
 				%{$self->{function_metadata}{$sch}{'none'}{$fname}{metadata}} = %fct_detail;
 				$self->_restore_comments(\$self->{functions}{$fct}{text});
 			}
@@ -4638,6 +4639,7 @@ LANGUAGE plpgsql ;
 				if ($fname =~ s/^([^\.\s]+)\.([^\s]+)$/$2/is) {
 					$sch = $1;
 				}
+				$fname =~ s/"//g;
 				%{$self->{function_metadata}{$sch}{'none'}{$fname}{metadata}} = %fct_detail;
 				$self->_restore_comments(\$self->{procedures}{$fct}{text});
 			}
@@ -4762,30 +4764,20 @@ LANGUAGE plpgsql ;
 			my $skip_pkg_header = 0;
 			$self->_remove_comments(\$content);
 			$content =~ s/(?:CREATE|CREATE OR REPLACE)?\s*(?:EDITABLE|NONEDITABLE)?\s*PACKAGE\s+/CREATE OR REPLACE PACKAGE /igs;
-			while ($content =~ s/(CREATE OR REPLACE PACKAGE\s+([^\s]+)\s+.*?CREATE OR REPLACE PACKAGE BODY\s+([^\s]+)\s+.*?END[^;]*;\s*)(.*?CREATE PACKAGE )/$4/is) {
-				my $pname = lc($2);
-				my $text = $1;
-				$pname =~ s/"//g;
-				$self->{packages}{$pname}{text} = $text;
+			my @pkg_content = split(/CREATE OR REPLACE PACKAGE BODY\s+/i, $content);
+			for (my $i = 0; $i <= $#pkg_content; $i++) {
+				if ($pkg_content[$i] !~ /^CREATE/) {
+					if ($pkg_content[$i] =~ /^([^\s]+)/) {
+						my $pname = lc($1);
+						$pname =~ s/"//g;
+						if ($i > 0 && $pkg_content[$i-1] =~ /CREATE OR REPLACE PACKAGE/is) {
+							$self->{packages}{$pname}{text} = $pkg_content[$i-1];
+						}
+						$self->{packages}{$pname}{text} .= 'CREATE OR REPLACE PACKAGE BODY ' . $pkg_content[$i];
+					}
+				}
 			}
-			while ($content =~ s/(CREATE OR REPLACE PACKAGE\s+([^\s]+)\s+.*?CREATE OR REPLACE PACKAGE BODY\s+([^\s]+)\s+.*?END[^;]*;\s*.*)//is) {
-				my $pname = lc($2);
-				my $text = $1;
-				$pname =~ s/"//g;
-				$self->{packages}{$pname}{text} = $text;
-			}
-			while ($content =~ s/(CREATE OR REPLACE PACKAGE BODY\s+([^\s]+)\s+.*?END[^;]*;\s*)(.*?CREATE OR REPLACE PACKAGE )/$3/is) {
-				my $pname = lc($2);
-				my $text = $1;
-				$pname =~ s/"//g;
-				$self->{packages}{$pname}{text} = $text;
-			}
-			while ($content =~ s/(CREATE OR REPLACE PACKAGE BODY\s+([^\s]+)\s+.*?END[^;]*;\s*.*)//is) {
-				my $pname = lc($2);
-				my $text = $1;
-				$pname =~ s/"//g;
-				$self->{packages}{$pname}{text} = $text;
-			}
+			@pkg_content = ();
 
 			foreach my $pkg (sort keys %{$self->{packages}}) {
 				# Get all metadata from all procedures/function when we are
@@ -4803,6 +4795,8 @@ LANGUAGE plpgsql ;
 					my $name = lc($f);
 					delete $infos{$f}{code};
 					delete $infos{$f}{before};
+					$pname =~ s/"//g;
+					$name =~ s/"//g;
 					%{$self->{function_metadata}{$sch}{$pname}{$name}{metadata}} = %{$infos{$f}};
 				}
 				$self->_restore_comments(\$self->{packages}{$pkg}{text});
@@ -9285,6 +9279,7 @@ sub _get_plsql_metadata
 					my $fn = lc($f);
 					delete $infos{$f}{code};
 					delete $infos{$f}{before};
+					$name =~ s/"//g;
 					%{$self->{function_metadata}{$sch}{$name}{$fn}{metadata}} = %{$infos{$f}};
 					my $res_name = $f;
 					$res_name =~ s/^[^\.]+\.//;
@@ -9294,6 +9289,7 @@ sub _get_plsql_metadata
 						$res_name = $name . '_' . $res_name;
 					}
 					$res_name =~ s/"_"/_/g;
+					$f =~ s/"//g;
 					$self->{package_functions}{"\L$name\E"}{"\L$f\E"}{name}    = $self->quote_object_name($res_name);
 					$self->{package_functions}{"\L$name\E"}{"\L$f\E"}{package} = $name;
 				}
@@ -9383,6 +9379,7 @@ sub _get_package_function_list
 					$res_name = $name . '_' . $res_name;
 				}
 				$res_name =~ s/"_"/_/g;
+				$f =~ s/"//gs;
 				$self->{package_functions}{"\L$name\E"}{"\L$f\E"}{name}    = $self->quote_object_name($res_name);
 				$self->{package_functions}{"\L$name\E"}{"\L$f\E"}{package} = $name;
 			}

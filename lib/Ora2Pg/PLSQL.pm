@@ -763,7 +763,7 @@ sub plsql_to_plpgsql
 						$str =~ s/([^:\s]+\s*:=\s*)[^:\s]+\s*:=\s*((?:[^\s\.]+\.)?\b$fct_name\s*\()/$1$2/isg;
 					}
 					# Remove package name and try to replace call to function name only
-					if ( $k =~ s/^[^\.]+\.// && $p eq lc($class->{current_package}) ) {
+					if (!$class->{function_metadata}{$sch}{$p}{$k}{metadata}{inout} && $k =~ s/^[^\.]+\.// && $p eq lc($class->{current_package}) ) {
 						if ($sch ne 'unknow' and $str =~ /\b$sch\.$k\b/is) {
 							$str =~ s/(BEGIN|LOOP|;)((?:\s*%ORA2PG_COMMENT\d+\%\s*|\s*\/\*(?:.*?)\*\/\s*)*\s*)($sch\.$k\s*[\(;])/$1$2PERFORM $3/igs;
 							$str =~ s/(EXCEPTION(?:(?!CASE|THEN).)*?THEN)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($sch\.$k\s*[\(;])/$1$2PERFORM $3/isg;
@@ -790,6 +790,7 @@ sub plsql_to_plpgsql
 	if (scalar keys %{$class->{package_functions}}) {
 		foreach my $p (keys %{$class->{package_functions}}) {
 			foreach my $k (keys %{$class->{package_functions}{$p}}) {
+
 				if (!exists $class->{package_functions}{$p}{$k}{name}) {
 					my $fname = $k;
 					$fname =~ s/^[^\.]+\.//;
@@ -1129,6 +1130,10 @@ sub replace_oracle_function
 						while ($str =~ s/((?:[^\s\.]+\.)?\b$fct_name)\s*\(([^\)]+)\)/\%FCTINOUTPARAM$idx\%/is) {
 							my $fname = $1;
 							my $fparam = $2;
+							if ($fname =~ /\./ && lc($fname) ne lc($k)) {
+								$replace_out_param{$idx} = "$fname($fparam)";
+								next;
+							}
 							$replace_out_param{$idx} = "$fname(";
 							# Extract position of out parameters
 							my @params = split(/,/, $class->{function_metadata}{$sch}{$p}{$k}{metadata}{args});
