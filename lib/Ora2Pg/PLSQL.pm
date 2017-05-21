@@ -1122,7 +1122,7 @@ sub replace_oracle_function
 							# Remove package name
 							if ($fct_name =~ s/^([^\.]+)\.//) {
 								my $pkgname = $1;
-								next if (lc($pkgname) ne $p);
+								next if (lc($pkgname) ne lc($p));
 							}
 						}
 						my %replace_out_param = ();
