@@ -10756,7 +10756,7 @@ sub _convert_package
 	$dirprefix = "$self->{output_dir}/" if ($self->{output_dir});
 	my $content = '';
 
-	if ($self->{package_as_schema} && ($plsql =~ /PACKAGE\s+BODY\s*([^\s]+)\s*(AS|IS)\s*/is)) {
+	if ($self->{package_as_schema} && ($plsql =~ /PACKAGE\s+BODY\s*([^\s]+)(?:\s*\%ORA2PG_COMMENT\d+\%)*\s*(AS|IS)\s*/is)) {
 		my $pname =  $self->quote_object_name($1);
 		$content .= "\nDROP SCHEMA $self->{pg_supports_ifexists} $pname CASCADE;\n";
 		$content .= "CREATE SCHEMA $pname;\n";
@@ -10769,7 +10769,7 @@ sub _convert_package
 	}
 
 	# Convert the package body part
-	if ($plsql =~ /CREATE OR REPLACE PACKAGE\s+BODY\s*([^\s]+)\s*(AS|IS)\s*(.*)/is) {
+	if ($plsql =~ /CREATE OR REPLACE PACKAGE\s+BODY\s*([^\s]+)(?:\s*\%ORA2PG_COMMENT\d+\%)*\s*(AS|IS)\s*(.*)/is) {
 
 		my $pname = $1;
 		my $type = $2;
@@ -10869,7 +10869,7 @@ sub _convert_package
 		}
 
 	# Grab global declaration from the package header
-	} elsif ($plsql =~ /CREATE OR REPLACE PACKAGE\s+([^\s]+)\s*(AS|IS)\s*(.*)/is) {
+	} elsif ($plsql =~ /CREATE OR REPLACE PACKAGE\s+([^\s]+)(?:\s*\%ORA2PG_COMMENT\d+\%)*\s*(AS|IS)\s*(.*)/is) {
 
 		my $pname = $1;
 		my $type = $2;
@@ -14792,7 +14792,7 @@ sub _lookup_package
 
 	my $content = '';
 	my %infos = ();
-	if ($plsql =~ /(?:CREATE|CREATE OR REPLACE)?\s*(?:EDITABLE|NONEDITABLE)?\s*PACKAGE\s+BODY\s*([^\s]+)\s*(AS|IS)\s*(.*)/is) {
+	if ($plsql =~ /(?:CREATE|CREATE OR REPLACE)?\s*(?:EDITABLE|NONEDITABLE)?\s*PACKAGE\s+BODY\s*([^\s]+)((?:\s*\%ORA2PG_COMMENT\d+\%)*\s*AS|IS)\s*(.*)/is) {
 		my $pname = $1;
 		my $type = $2;
 		$content = $3;
