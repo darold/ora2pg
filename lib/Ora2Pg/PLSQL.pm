@@ -62,6 +62,7 @@ $VERSION = '18.1';
 	'JOB' => 2, # read/adapt
 	'SYNONYM' => 0.1, # read/adapt
 	'QUERY' => 0.2, # read/adapt
+	'ENCRYPTED COLUMN' => 20, ## adapt using pg_crypto
 );
 
 # Scores following the number of characters: 1000 chars for one unit.

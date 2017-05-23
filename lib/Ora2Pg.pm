@@ -8049,6 +8049,42 @@ END
 	return %data;	
 }
 
+sub _encrypted_columns
+{
+	my ($self, $table, $owner) = @_;
+
+	return Ora2Pg::MySQL::_encrypted_columns($self,'',$owner) if ($self->{is_mysql});
+
+	my $condition = '';
+	$condition .= "AND A.TABLE_NAME='$table' " if ($table);
+	$condition .= "AND A.OWNER='$owner' " if ($owner);
+	$condition .= $self->limit_to_objects('TABLE', 'A.TABLE_NAME') if (!$table);
+	$condition =~ s/^\s*AND /WHERE /s;
+
+	my $sth = $self->{dbh}->prepare(<<END);
+SELECT A.COLUMN_NAME, A.TABLE_NAME, A.OWNER, A.ENCRYPTION_ALG
+FROM $self->{prefix}_ENCRYPTED_COLUMNS A
+$condition
+ORDER BY A.OWNER, A.TABLE_NAME, A.COLUMN_NAME
+END
+	if (!$sth) {
+		$self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	}
+	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+
+	my %data = ();
+	while (my $row = $sth->fetch) {
+		if ($self->{export_schema} && !$self->{schema}) {
+			$data{"$row->[2].$row->[1].$row->[0]"} = $row->[3];
+		} else {
+			$data{"$row->[1].$row->[0]"} = $row->[3];
+		}
+	}
+
+	return %data;	
+}
+
+
 
 =head2 _unique_key TABLE OWNER
 
@@ -12613,6 +12649,8 @@ sub _show_infos
 		# Get all global temporary tables
 		my %global_tables = $self->_global_temp_table_info();
 		$objects{'GLOBAL TEMPORARY TABLE'} = scalar keys %global_tables;
+		# Look for encrypted columns
+		my %encrypted_column = $self->_encrypted_columns('',$self->{schema});
 
 		# Look at all database objects to compute report
 		my %report_info = ();
@@ -12789,6 +12827,16 @@ sub _show_infos
 				}
 				$comment = "Nothing particular." if (!$comment);
 				$report_info{'Objects'}{$typ}{'cost_value'} =~ s/(\.\d).*$/$1/;
+				if (scalar keys %encrypted_column > 0) {
+					$report_info{'Objects'}{$typ}{'comment'} .= "\n" . (scalar keys %encrypted_column) . " encrypted column(s).\n";
+					foreach my $k (sort keys %encrypted_column) {
+						$report_info{'Objects'}{$typ}{'comment'} .= "\L$k\E ($encrypted_column{$k})\n";
+					}
+					$report_info{'Objects'}{$typ}{'comment'} .= ". You must use the pg_crypto extension to use encryption.\n";
+					if ($self->{estimate_cost}) {
+						$report_info{'Objects'}{$typ}{'cost_value'} += (scalar keys %encrypted_column) * $Ora2Pg::PLSQL::OBJECT_SCORE{'ENCRYPTED COLUMN'};
+					}
+				}
 			} elsif ($typ eq 'TYPE') {
 				my $total_type = 0;
 				foreach my $t (sort keys %{$self->{type_of_type}}) {
@@ -13037,6 +13085,9 @@ sub _show_infos
 			}
 			%columns_infos = ();
 
+			# Look for encrypted columns
+			%{$self->{encrypted_column}} = $self->_encrypted_columns('',$self->{schema});
+
 			# Retrieve index informations
 			my ($uniqueness, $indexes, $idx_type, $idx_tbsp) = $self->_get_indexes('',$self->{schema});
 			foreach my $tb (keys %{$indexes}) {
@@ -13205,9 +13256,11 @@ sub _show_infos
 					} elsif (exists $self->{'replace_as_boolean'}{uc($d->[1])} && ($self->{'replace_as_boolean'}{uc($d->[1])}[0] == $typlen)) {
 						$type = 'boolean';
 					}
+					my $encrypted = '';
+					$encrypted = " [encrypted]" if (exists $self->{encrypted_column}{"$t.$k"});
 					my $virtual = '';
 					$virtual = " [virtual column]" if ($d->[10] eq 'YES');
-					$self->logit(" => $type$warning$align$virtual\n");
+					$self->logit(" => $type$warning$align$virtuali$encrypted\n");
 				}
 			}
 			$i++;
