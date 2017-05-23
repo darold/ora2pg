@@ -12661,6 +12661,7 @@ sub _show_infos
 		my $num_total_obj = scalar keys %objects;
 		foreach my $typ (sort keys %objects) {
 			$idx++;
+			next if ($typ eq 'EVALUATION CONTEXT'); # Do not care about rule evaluation context
 			next if ($self->{is_mysql} && ($typ eq 'SYNONYM')); # Package are scanned with PACKAGE BODY not PACKAGE objects
 			next if ($typ eq 'PACKAGE'); # Package are scanned with PACKAGE BODY not PACKAGE objects
 			if (!$self->{quiet} && !$self->{debug}) {
