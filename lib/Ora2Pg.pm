@@ -7520,10 +7520,10 @@ sub _howto_get_data
 	$str =~ s/,$//;
 
 	# If we have a BFILE that might be exported as text we need to create a function
-	my $file_function = '';
+	my $bfile_function = '';
 	if ($self->{bfile_found} eq 'text') {
 		$self->logit("Creating function ora2pg_get_bfilename( p_bfile IN BFILE ) to retrieve path from BFILE.\n", 1);
-		$file_function = qq{
+		$bfile_function = qq{
 CREATE OR REPLACE FUNCTION ora2pg_get_bfilename( p_bfile IN BFILE ) RETURN 
 VARCHAR2
   AS
@@ -7546,7 +7546,7 @@ VARCHAR2
 		$self->logit("Creating function ora2pg_get_efile( p_bfile IN BFILE ) to retrieve EFILE from BFILE.\n", 1);
 		my $quote = '';
 		$quote = "''" if ($self->{type} eq 'INSERT');
-		$file_function = qq{
+		$bfile_function = qq{
 CREATE OR REPLACE FUNCTION ora2pg_get_efile( p_bfile IN BFILE ) RETURN 
 VARCHAR2
   AS
