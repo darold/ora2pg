@@ -4766,7 +4766,7 @@ LANGUAGE plpgsql ;
 			$content =~ s/(?:CREATE|CREATE OR REPLACE)?\s*(?:EDITABLE|NONEDITABLE)?\s*PACKAGE\s+/CREATE OR REPLACE PACKAGE /igs;
 			my @pkg_content = split(/CREATE OR REPLACE PACKAGE BODY\s+/i, $content);
 			for (my $i = 0; $i <= $#pkg_content; $i++) {
-				if ($pkg_content[$i] !~ /^CREATE/) {
+				if ($pkg_content[$i] !~ /^(?:\s*\%ORA2PG_COMMENT\d+\%\s*)?CREATE/is) {
 					if ($pkg_content[$i] =~ /^([^\s]+)/) {
 						my $pname = lc($1);
 						$pname =~ s/"//g;
@@ -14792,7 +14792,7 @@ sub _lookup_package
 
 	my $content = '';
 	my %infos = ();
-	if ($plsql =~ /(?:CREATE|CREATE OR REPLACE)?\s*(?:EDITABLE|NONEDITABLE)?\s*PACKAGE\s+BODY\s*([^\s]+)((?:\s*\%ORA2PG_COMMENT\d+\%)*\s*AS|IS)\s*(.*)/is) {
+	if ($plsql =~ /(?:CREATE|CREATE OR REPLACE)?\s*(?:EDITABLE|NONEDITABLE)?\s*PACKAGE\s+BODY\s*([^\s]+)((?:\s*\%ORA2PG_COMMENT\d+\%)*\s*(?:AS|IS))\s*(.*)/is) {
 		my $pname = $1;
 		my $type = $2;
 		$content = $3;
