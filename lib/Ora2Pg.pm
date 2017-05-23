@@ -9746,6 +9746,78 @@ sub _table_info
 	return %tables_infos;
 }
 
+=head2 _global_temp_table_info
+
+This function retrieves all Oracle-native global temporary tables information.
+
+Returns a handle to a DB query statement.
+
+=cut
+
+sub _global_temp_table_info
+{
+	my $self = shift;
+
+	return Ora2Pg::MySQL::_global_temp_table_info($self) if ($self->{is_mysql});
+
+	my $owner = '';
+	if ($self->{schema}) {
+		$owner .= "AND A.OWNER='$self->{schema}' ";
+	} else {
+            $owner .= "AND A.OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "') ";
+	}
+
+	my %comments = ();
+	my $sql = "SELECT A.TABLE_NAME,A.COMMENTS,A.TABLE_TYPE,A.OWNER FROM ALL_TAB_COMMENTS A, ALL_OBJECTS O WHERE A.OWNER=O.OWNER and A.TABLE_NAME=O.OBJECT_NAME and O.OBJECT_TYPE='TABLE' $owner";
+	if ($self->{db_version} !~ /Release 8/) {
+		$sql .= " AND (A.OWNER, A.TABLE_NAME) NOT IN (SELECT OWNER, MVIEW_NAME FROM ALL_MVIEWS UNION ALL SELECT LOG_OWNER, LOG_TABLE FROM ALL_MVIEW_LOGS)" if ($self->{type} ne 'FDW');
+	}
+	$sql .= $self->limit_to_objects('TABLE', 'A.TABLE_NAME');
+	my $sth = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	while (my $row = $sth->fetch) {
+		if (!$self->{schema} && $self->{export_schema}) {
+			$row->[0] = "$row->[3].$row->[0]";
+		}
+		$comments{$row->[0]}{comment} = $row->[1];
+		$comments{$row->[0]}{table_type} = $row->[2];
+	}
+	$sth->finish();
+
+	$sql = "SELECT A.OWNER,A.TABLE_NAME,NVL(num_rows,1) NUMBER_ROWS,A.TABLESPACE_NAME,A.NESTED,A.LOGGING FROM ALL_TABLES A, ALL_OBJECTS O WHERE A.OWNER=O.OWNER AND A.TABLE_NAME=O.OBJECT_NAME AND O.OBJECT_TYPE='TABLE' $owner";
+	$sql .= " AND A.TEMPORARY='Y'";
+	if ($self->{db_version} !~ /Release [89]/) {
+		$sql .= " AND (A.DROPPED IS NULL OR A.DROPPED = 'NO')";
+	}
+	$sql .= $self->limit_to_objects('TABLE', 'A.TABLE_NAME');
+        $sql .= " AND (A.IOT_TYPE IS NULL OR A.IOT_TYPE = 'IOT') ORDER BY A.OWNER, A.TABLE_NAME";
+
+        $sth = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+        $sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	my %tables_infos = ();
+	while (my $row = $sth->fetch) {
+		if (!$self->{schema} && $self->{export_schema}) {
+			$row->[1] = "$row->[0].$row->[1]";
+		}
+		$tables_infos{$row->[1]}{owner} = $row->[0] || '';
+		$tables_infos{$row->[1]}{num_rows} = $row->[2] || 0;
+		$tables_infos{$row->[1]}{tablespace} = $row->[3] || 0;
+		$tables_infos{$row->[1]}{comment} =  $comments{$row->[1]}{comment} || '';
+		$tables_infos{$row->[1]}{type} =  $comments{$row->[1]}{table_type} || '';
+		$tables_infos{$row->[1]}{nested} = $row->[4] || '';
+		if ($row->[5] eq 'NO') {
+			$tables_infos{$row->[1]}{nologging} = 1;
+		} else {
+			$tables_infos{$row->[1]}{nologging} = 0;
+		}
+		$tables_infos{$row->[1]}{num_rows} = 0;
+	}
+	$sth->finish();
+
+	return %tables_infos;
+}
+
+
 =head2 _queries
 
 This function is used to retrieve all Oracle queries from DBA_AUDIT_TRAIL
@@ -12538,6 +12610,10 @@ sub _show_infos
 		# Get synonym inforamtion
 		my %synonyms = $self->_synonyms();
 		$objects{'SYNONYM'} = scalar keys %synonyms;	
+		# Get all global temporary tables
+		my %global_tables = $self->_global_temp_table_info();
+		$objects{'GLOBAL TEMPORARY TABLE'} = scalar keys %global_tables;
+
 		# Look at all database objects to compute report
 		my %report_info = ();
 		$report_info{'Version'} = $ver || 'Unknown';
@@ -12554,7 +12630,7 @@ sub _show_infos
 			}
 			$report_info{'Objects'}{$typ}{'number'} = 0;
 			$report_info{'Objects'}{$typ}{'invalid'} = 0;
-			if (!grep(/^$typ$/, 'DATABASE LINK', 'JOB', 'TABLE', 'INDEX','SYNONYM')) {
+			if (!grep(/^$typ$/, 'DATABASE LINK', 'JOB', 'TABLE', 'INDEX','SYNONYM','GLOBAL TEMPORARY TABLE')) {
 				for (my $i = 0; $i <= $#{$objects{$typ}}; $i++) {
 					$report_info{'Objects'}{$typ}{'number'}++;
 					$report_info{'Objects'}{$typ}{'invalid'}++ if ($objects{$typ}[$i]->{invalid});
@@ -12843,6 +12919,11 @@ sub _show_infos
 					$report_info{'Objects'}{$typ}{'detail'} .= "\L$partitions{$t} $t\E partitions\n";
 				}
 				$report_info{'Objects'}{$typ}{'comment'} = "Partitions are exported using table inheritance and check constraint. Hash and Key partitions are not supported by PostgreSQL and will not be exported.";
+			} elsif ($typ eq 'GLOBAL TEMPORARY TABLE') {
+				$report_info{'Objects'}{$typ}{'comment'} = "Global temporary table are not supported by PostgreSQL and will not be exported. You will have to rewrite some application code to match the PostgreSQL temporary table behavior.";
+				foreach my $t (sort keys %global_tables) {
+					$report_info{'Objects'}{$typ}{'detail'} .= "\L$t\E\n";
+				}
 			} elsif ($typ eq 'CLUSTER') {
 				$report_info{'Objects'}{$typ}{'comment'} = "Clusters are not supported by PostgreSQL and will not be exported.";
 			} elsif ($typ eq 'VIEW') {
