@@ -8101,14 +8101,18 @@ Returns a hash of hashes in the following form:
 
 sub _unique_key
 {
-	my($self, $table, $owner) = @_;
+	my ($self, $table, $owner, $type) = @_;
 
 	return Ora2Pg::MySQL::_unique_key($self,$table,$owner) if ($self->{is_mysql});
 
 	my %result = ();
         my @accepted_constraint_types = ();
-        push @accepted_constraint_types, "'P'" unless($self->{skip_pkeys});
-        push @accepted_constraint_types, "'U'" unless($self->{skip_ukeys});
+	if ($type) {
+		push @accepted_constraint_types, "'$type'";
+	} else {
+		push @accepted_constraint_types, "'P'" unless($self->{skip_pkeys});
+		push @accepted_constraint_types, "'U'" unless($self->{skip_ukeys});
+	}
         return %result unless(@accepted_constraint_types);
 
         my $cons_types = '('. join(',', @accepted_constraint_types) .')';
@@ -13449,22 +13453,22 @@ sub _test_table
 	@errors = ();
 
 	####
-	# Test unique constraints (including primary keys)
+	# Test unique constraints (excluding primary keys)
 	####
 	print "\n";
 	print "[TEST UNIQUE CONSTRAINTS COUNT]\n";
-	my %unique_keys = $self->_unique_key('',$self->{schema});
+	my %unique_keys = $self->_unique_key('',$self->{schema},'U');
 	my $schema_cond = $self->get_schema_condition('pg_indexes.schemaname');
 	my $sql = qq{
 SELECT count(*)
-FROM pg_class
-  JOIN pg_index ON (pg_index.indexrelid=pg_class.relfilenode)
-  JOIN pg_indexes ON (pg_class.relname=pg_indexes.indexname)
-WHERE pg_class.relkind = 'i'
-  AND pg_index.indisunique 
-  AND pg_indexes.tablename=?
+FROM pg_indexes
+JOIN pg_class ON (pg_class.relname=pg_indexes.indexname)
+JOIN pg_constraint ON (pg_constraint.conname=pg_class.relname AND pg_constraint.connamespace=pg_class.relnamespace)
+WHERE pg_indexes.tablename=?
+AND pg_constraint.contype IN ('u')
  $schema_cond
 };
+
 	my $s = undef;
 	if ($self->{pg_dsn}) {
 		$s = $self->{dbhdest}->prepare($sql) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
@@ -13499,15 +13503,15 @@ WHERE pg_class.relkind = 'i'
 	####
 	print "\n";
 	print "[TEST PRIMARY KEYS COUNT]\n";
+	%unique_keys = $self->_unique_key('',$self->{schema},'P');
 	$schema_cond = $self->get_schema_condition('pg_indexes.schemaname');
 	$sql = qq{
 SELECT count(*)
-FROM pg_class
-  JOIN pg_index ON (pg_index.indexrelid=pg_class.relfilenode)
-  JOIN pg_indexes ON (pg_class.relname=pg_indexes.indexname)
-WHERE pg_class.relkind = 'i'
-  AND pg_index.indisprimary
-  AND pg_indexes.tablename=?
+FROM pg_indexes
+JOIN pg_class ON (pg_class.relname=pg_indexes.indexname)
+JOIN pg_constraint ON (pg_constraint.conname=pg_class.relname AND pg_constraint.connamespace=pg_class.relnamespace)
+WHERE pg_indexes.tablename=?
+AND pg_constraint.contype IN ('p')
  $schema_cond
 };
 	if ($self->{pg_dsn}) {
