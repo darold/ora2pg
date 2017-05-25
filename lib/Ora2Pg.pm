@@ -2225,9 +2225,6 @@ sub read_schema_from_file
 
 	foreach $content (@statements) {
 		$content .= ';';
-		# Remove potential dynamic table creation before parsing
-		$content =~ s/'(TRUNCATE|CREATE)\s+(GLOBAL|UNIQUE)?\s*(TEMPORARY)?\s*(TABLE|INDEX)([^']+)'//is;
-		$content =~ s/'ALTER\s+TABLE\s*([^']+)'//is;
 		if ($content =~ s/TRUNCATE TABLE\s+([^\s;]+)([^;]*);//is) {
 			my $tb_name = $1;
 			$tb_name =~ s/"//gs;
@@ -2472,7 +2469,7 @@ sub read_schema_from_file
 				}
 				
 			}
-			while ($tb_def =~ s/CONSTRAINT\s+([^\s]+)\s+FOREIGN\s+KEY\s*(\(.*?\)\s+REFERENCES\s+[^\s]+\s*\(.*?\))\s+([^,\)]+)//is) {
+			while ($tb_def =~ s/CONSTRAINT\s+([^\s]+)\s+FOREIGN\s+KEY\s*(\(.*?\)\s+REFERENCES\s+[^\s]+\s*\(.*?\))\s*([^,\)]+|$)//is) {
 				my $constname = $1;
 				my $other_def = $3;
 				if (!exists $self->{tables}{$tb_name}{table_info}{type}) {
