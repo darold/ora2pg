@@ -2489,21 +2489,22 @@ sub read_schema_from_file
 				$validate = ' NOT VALID' if ( $other_def =~ /NOVALIDATE/is);
 				$self->{tables}{$tb_name}{alter_table}[-1] .= $validate;
 			}
-
 			# We can just have one primary key constraint
 			if ($tb_def =~ s/CONSTRAINT\s+([^\s]+)\s+PRIMARY KEY//is) {
-				my $constname = $1;
+				my $constname = lc($1);
 				$tb_def =~ s/^[^\(]+//;
 				if ( $tb_def =~ s/USING\s+INDEX\s+TABLESPACE\s+([^\s]+).*//s) {
+					$tb_def =~ s/\s+$//;
 					if ($self->{use_tablespace}) {
 						my $tbspace_move = "ALTER INDEX $constname SET TABLESPACE $1";
 						push(@{$self->{tables}{$tb_name}{alter_index}}, $tbspace_move);
 					}
+					push(@{$self->{tables}{$tb_name}{alter_table}}, "ADD PRIMARY KEY $constname " . lc($tb_def));
 				} elsif ($tb_def =~ s/USING\s+INDEX\s+([^\s]+).*//s) {
 					push(@{$self->{tables}{$tb_name}{alter_table}}, "ADD PRIMARY KEY " . lc($tb_def));
 					$self->{tables}{$tb_name}{alter_table}[-1] .= " USING INDEX " . lc($1);
 				} elsif ($tb_def) {
-					push(@{$self->{tables}{$tb_name}{alter_table}}, "ADD PRIMARY KEY " . lc($tb_def));
+					push(@{$self->{tables}{$tb_name}{alter_table}}, "ADD PRIMARY KEY $constname " . lc($tb_def));
 				}
 				if (!exists $self->{tables}{$tb_name}{table_info}{type}) {
 					$self->{tables}{$tb_name}{table_info}{type} = 'TABLE';
