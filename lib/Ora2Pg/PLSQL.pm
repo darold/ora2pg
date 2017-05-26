@@ -2319,7 +2319,7 @@ sub replace_outer_join
 		$from_clause = '';
 		my @clause_done = ();
 		foreach my $c (sort { $from_order{$a} <=> $from_order{$b} } keys %from_order) {
-			next if (!grep(/^$c$/i, @outer_clauses));
+			next if (!grep(/^\Q$c\E$/i, @outer_clauses));
 
 			my @output = ();
 			for (my $j = 0; $j <= $#{$final_outer_clauses{$c}{join}}; $j++) {
@@ -2328,7 +2328,7 @@ sub replace_outer_join
 
 			find_associated_clauses($c, \@output, \%associated_clause, \%final_outer_clauses);
 
-			if (!grep(/JOIN $from_clause_list{$c} $c /is, @clause_done)) {
+			if (!grep(/\QJOIN $from_clause_list{$c} $c \E/is, @clause_done)) {
 				$from_clause .= "\n, $from_clause_list{$c}";
 				$from_clause .= " $c" if ($c ne $from_clause_list{$c});
 			}
