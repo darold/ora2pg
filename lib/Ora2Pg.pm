@@ -2306,7 +2306,7 @@ sub read_schema_from_file
 							# Try to guess a type the virtual column was declared without one,
 							# but always default to text and always display a warning.
 							if ($c_default =~ /ROUND\s*\(/is) {
-								$c_type = 'bigint';
+								$c_type = 'numeric';
 							} elsif ($c_default =~ /TO_DATE\s\(/is) {
 								$c_type = 'timestamp';
 							} else {
