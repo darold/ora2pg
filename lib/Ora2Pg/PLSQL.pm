@@ -412,7 +412,7 @@ sub remove_fct_name
 {
 	my $str = shift;
 
-	if ($str !~ /(END\b\s*)(IF\b|LOOP\b|CASE\b|INTO\b|FROM\b|END\b|ELSE\b|AND\b|OR\b|WHEN\b|AS\b|,|\)|\(|\|)/is) {
+	if ($str !~ /(END\b\s*)(IF\b|LOOP\b|CASE\b|INTO\b|FROM\b|END\b|ELSE\b|AND\b|OR\b|WHEN\b|AS\b|,|\)|\(|\||[<>=]|NOT LIKE|LIKE)/is) {
 		$str =~ s/(END\b\s*).*[;]*$/$1;/is;
 	}
 
