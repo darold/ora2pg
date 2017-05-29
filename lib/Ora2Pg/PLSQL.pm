@@ -317,7 +317,7 @@ sub convert_plsql_code
 	%{$class->{single_fct_call}} = ();
 
 	# Rewrite all decode() call before
-	$str = replace_decode($str);
+	$str = replace_decode($str) if (uc($class->{type}) ne 'SHOW_REPORT');
 
 	# Extract all block from the code by splitting it on the semi-comma
 	# character and replace all necessary function call
@@ -790,29 +790,31 @@ sub plsql_to_plpgsql
 	##############
 	# Replace package.function call by package_function
 	##############
-	if (scalar keys %{$class->{package_functions}}) {
-		foreach my $p (keys %{$class->{package_functions}}) {
-			foreach my $k (keys %{$class->{package_functions}{$p}}) {
+	if (uc($class->{type}) ne 'SHOW_REPORT') {
+		if (scalar keys %{$class->{package_functions}}) {
+			foreach my $p (keys %{$class->{package_functions}}) {
+				foreach my $k (keys %{$class->{package_functions}{$p}}) {
 
-				if (!exists $class->{package_functions}{$p}{$k}{name}) {
-					my $fname = $k;
-					$fname =~ s/^[^\.]+\.//;
-					if (exists $class->{package_functions}{$p}{$fname}{name} && $p ne lc($class->{current_package})) {
-						$str =~ s/([^\.])\b$fname\s*([\(;])/$1$class->{package_functions}{$p}{$k}{name}$2/igs;
-					} else {
-						$str =~ s/([^\.])\b$k\s*([\(;])/$1$class->{package_functions}{$p}{$k}{name}$2/igs;
-						$str =~ s/\b$class->{package_functions}{$p}{$k}{package}\.$fname\s*([\(;])/$class->{package_functions}{$p}{$k}{name}$1/igs;
+					if (!exists $class->{package_functions}{$p}{$k}{name}) {
+						my $fname = $k;
+						$fname =~ s/^[^\.]+\.//;
+						if (exists $class->{package_functions}{$p}{$fname}{name} && $p ne lc($class->{current_package})) {
+							$str =~ s/([^\.])\b$fname\s*([\(;])/$1$class->{package_functions}{$p}{$k}{name}$2/igs;
+						} else {
+							$str =~ s/([^\.])\b$k\s*([\(;])/$1$class->{package_functions}{$p}{$k}{name}$2/igs;
+							$str =~ s/\b$class->{package_functions}{$p}{$k}{package}\.$fname\s*([\(;])/$class->{package_functions}{$p}{$k}{name}$1/igs;
+						}
+					} elsif ($p ne lc($class->{current_package})) {
+						my $fname = $k;
+						$fname =~ s/^[^\.]+\.//;
+						if (lc($class->{package_functions}{$p}{$k}{name}) ne lc($fname)) {
+							$str =~ s/([^\.])\b$fname\s*([\(;])/$1$class->{package_functions}{$p}{$k}{name}$2/igs;
+						} else {
+							$str =~ s/([^\.])\b($fname\s*[\(;])/$1$class->{package_functions}{$p}{$k}{package}\.$2/igs;
+						}
+					} elsif ($k !~ /\./) {
+						$str =~ s/([^\.])\b($k\s*[\(;])/$1\L$class->{package_functions}{$p}{$k}{package}\.$2\E/igs;
 					}
-				} elsif ($p ne lc($class->{current_package})) {
-					my $fname = $k;
-					$fname =~ s/^[^\.]+\.//;
-					if (lc($class->{package_functions}{$p}{$k}{name}) ne lc($fname)) {
-						$str =~ s/([^\.])\b$fname\s*([\(;])/$1$class->{package_functions}{$p}{$k}{name}$2/igs;
-					} else {
-						$str =~ s/([^\.])\b($fname\s*[\(;])/$1$class->{package_functions}{$p}{$k}{package}\.$2/igs;
-					}
-				} elsif ($k !~ /\./) {
-					$str =~ s/([^\.])\b($k\s*[\(;])/$1\L$class->{package_functions}{$p}{$k}{package}\.$2\E/igs;
 				}
 			}
 		}
@@ -1174,17 +1176,18 @@ sub replace_oracle_function
 	##############
 	# Replace package.function call by package_function
 	##############
-	if (scalar keys %{$class->{package_functions}}) {
-		foreach my $p (keys %{$class->{package_functions}}) {
-			foreach my $k (keys %{$class->{package_functions}{$p}}) {
-				my $fname = $k;
-				$fname =~ s/^[^\.]+\.//;
-				$str =~ s/([^\.])\b$fname\s*([\(;])/$1$class->{package_functions}{$p}{$k}{name}$2/igs;
-				$str =~ s/\b$class->{package_functions}{$p}{$k}{package}\.$fname\s*([\(;])/$class->{package_functions}{$p}{$k}{name}$1/igs;
+	if (uc($class->{type}) ne 'SHOW_REPORT') {
+		if (scalar keys %{$class->{package_functions}}) {
+			foreach my $p (keys %{$class->{package_functions}}) {
+				foreach my $k (keys %{$class->{package_functions}{$p}}) {
+					my $fname = $k;
+					$fname =~ s/^[^\.]+\.//;
+					$str =~ s/([^\.])\b$fname\s*([\(;])/$1$class->{package_functions}{$p}{$k}{name}$2/igs;
+					$str =~ s/\b$class->{package_functions}{$p}{$k}{package}\.$fname\s*([\(;])/$class->{package_functions}{$p}{$k}{name}$1/igs;
+				}
 			}
 		}
 	}
-
 
 	# Replace some sys_context call to the postgresql equivalent
 	if ($str =~ /SYS_CONTEXT/is) {
