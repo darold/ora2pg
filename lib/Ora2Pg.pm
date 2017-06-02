@@ -1819,81 +1819,84 @@ sub _tables
 
 	# Retrieve tables informations
 	my %tables_infos = $self->_table_info();
-	if ( grep(/^$self->{type}$/, 'TABLE','SHOW_REPORT','COPY','INSERT') && !$self->{skip_indices} && !$self->{skip_indexes}) {
 
-		my $autogen = 0;
-		$autogen = 1 if (grep(/^$self->{type}$/, 'COPY','INSERT'));
+	if (scalar keys %tables_infos > 0) {
+		if ( grep(/^$self->{type}$/, 'TABLE','SHOW_REPORT','COPY','INSERT') && !$self->{skip_indices} && !$self->{skip_indexes}) {
 
-		my ($uniqueness, $indexes, $idx_type, $idx_tbsp) = $self->_get_indexes('',$self->{schema}, $autogen);
-		foreach my $tb (keys %{$indexes}) {
-			next if (!exists $tables_infos{$tb});
-			%{$self->{tables}{$tb}{indexes}} = %{$indexes->{$tb}};
-		}
-		foreach my $tb (keys %{$idx_type}) {
-			next if (!exists $tables_infos{$tb});
-			%{$self->{tables}{$tb}{idx_type}} = %{$idx_type->{$tb}};
-		}
-		foreach my $tb (keys %{$idx_tbsp}) {
-			next if (!exists $tables_infos{$tb});
-			%{$self->{tables}{$tb}{idx_tbsp}} = %{$idx_tbsp->{$tb}};
-		}
-		foreach my $tb (keys %{$uniqueness}) {
-			next if (!exists $tables_infos{$tb});
-			%{$self->{tables}{$tb}{uniqueness}} = %{$uniqueness->{$tb}};
-		}
-	}
+			my $autogen = 0;
+			$autogen = 1 if (grep(/^$self->{type}$/, 'COPY','INSERT'));
 
-	# Get detailed informations on each tables
-	if (!$nodetail) {
-		# Retrieve all column's details
-		my %columns_infos = $self->_column_info('',$self->{schema}, 'TABLE');
-		foreach my $tb (keys %columns_infos) {
-			next if (!exists $tables_infos{$tb});
-			foreach my $c (keys %{$columns_infos{$tb}}) {
-				push(@{$self->{tables}{$tb}{column_info}{$c}}, @{$columns_infos{$tb}{$c}});
-			}
-		}
-		%columns_infos = ();
-
-		# Retrieve comment of each columns
-		my %columns_comments = $self->_column_comments();
-		foreach my $tb (keys %columns_comments) {
-			next if (!exists $tables_infos{$tb});
-			foreach my $c (keys %{$columns_comments{$tb}}) {
-				$self->{tables}{$tb}{column_comments}{$c} = $columns_comments{$tb}{$c};
-			}
-		}
-
-		# Extract foreign keys informations
-		if (!$self->{skip_fkeys}) {
-			my ($foreign_link, $foreign_key) = $self->_foreign_key('',$self->{schema});
-			foreach my $tb (keys %{$foreign_link}) {
+			my ($uniqueness, $indexes, $idx_type, $idx_tbsp) = $self->_get_indexes('',$self->{schema}, $autogen);
+			foreach my $tb (keys %{$indexes}) {
 				next if (!exists $tables_infos{$tb});
-				%{$self->{tables}{$tb}{foreign_link}} =  %{$foreign_link->{$tb}};
+				%{$self->{tables}{$tb}{indexes}} = %{$indexes->{$tb}};
 			}
-			foreach my $tb (keys %{$foreign_key}) {
+			foreach my $tb (keys %{$idx_type}) {
 				next if (!exists $tables_infos{$tb});
-				push(@{$self->{tables}{$tb}{foreign_key}}, @{$foreign_key->{$tb}});
+				%{$self->{tables}{$tb}{idx_type}} = %{$idx_type->{$tb}};
+			}
+			foreach my $tb (keys %{$idx_tbsp}) {
+				next if (!exists $tables_infos{$tb});
+				%{$self->{tables}{$tb}{idx_tbsp}} = %{$idx_tbsp->{$tb}};
+			}
+			foreach my $tb (keys %{$uniqueness}) {
+				next if (!exists $tables_infos{$tb});
+				%{$self->{tables}{$tb}{uniqueness}} = %{$uniqueness->{$tb}};
 			}
 		}
-	}
 
-	# Retrieve all unique keys informations
-	my %unique_keys = $self->_unique_key('',$self->{schema});
-	foreach my $tb (keys %unique_keys) {
-		next if (!exists $tables_infos{$tb});
-		foreach my $c (keys %{$unique_keys{$tb}}) {
-			$self->{tables}{$tb}{unique_key}{$c} = $unique_keys{$tb}{$c};
+		# Get detailed informations on each tables
+		if (!$nodetail) {
+			# Retrieve all column's details
+			my %columns_infos = $self->_column_info('',$self->{schema}, 'TABLE');
+			foreach my $tb (keys %columns_infos) {
+				next if (!exists $tables_infos{$tb});
+				foreach my $c (keys %{$columns_infos{$tb}}) {
+					push(@{$self->{tables}{$tb}{column_info}{$c}}, @{$columns_infos{$tb}{$c}});
+				}
+			}
+			%columns_infos = ();
+
+			# Retrieve comment of each columns
+			my %columns_comments = $self->_column_comments();
+			foreach my $tb (keys %columns_comments) {
+				next if (!exists $tables_infos{$tb});
+				foreach my $c (keys %{$columns_comments{$tb}}) {
+					$self->{tables}{$tb}{column_comments}{$c} = $columns_comments{$tb}{$c};
+				}
+			}
+
+			# Extract foreign keys informations
+			if (!$self->{skip_fkeys}) {
+				my ($foreign_link, $foreign_key) = $self->_foreign_key('',$self->{schema});
+				foreach my $tb (keys %{$foreign_link}) {
+					next if (!exists $tables_infos{$tb});
+					%{$self->{tables}{$tb}{foreign_link}} =  %{$foreign_link->{$tb}};
+				}
+				foreach my $tb (keys %{$foreign_key}) {
+					next if (!exists $tables_infos{$tb});
+					push(@{$self->{tables}{$tb}{foreign_key}}, @{$foreign_key->{$tb}});
+				}
+			}
 		}
-	}
-	%unique_keys = ();
 
-	# Retrieve check constraints
-	if (!$self->{skip_checks} && !$self->{is_mysql}) {
-		my %check_constraints = $self->_check_constraint('',$self->{schema});
-		foreach my $tb (keys %check_constraints) {
+		# Retrieve all unique keys informations
+		my %unique_keys = $self->_unique_key('',$self->{schema});
+		foreach my $tb (keys %unique_keys) {
 			next if (!exists $tables_infos{$tb});
-			%{$self->{tables}{$tb}{check_constraint}} = ( %{$check_constraints{$tb}});
+			foreach my $c (keys %{$unique_keys{$tb}}) {
+				$self->{tables}{$tb}{unique_key}{$c} = $unique_keys{$tb}{$c};
+			}
+		}
+		%unique_keys = ();
+
+		# Retrieve check constraints
+		if (!$self->{skip_checks} && !$self->{is_mysql}) {
+			my %check_constraints = $self->_check_constraint('',$self->{schema});
+			foreach my $tb (keys %check_constraints) {
+				next if (!exists $tables_infos{$tb});
+				%{$self->{tables}{$tb}{check_constraint}} = ( %{$check_constraints{$tb}});
+			}
 		}
 	}
 
@@ -11757,6 +11760,10 @@ sub ask_for_data
 		$self->logit("Looking how to retrieve data from $table partition $part_name...\n", 1);
 	}
 	my $query = $self->_howto_get_data($table, $nn, $tt, $stt, $part_name, $is_subpart);
+
+	# Query with no column 
+	if ($query =~ /SELECT\s+FROM/) {
+	}
 
 	# Check for boolean rewritting
 	for (my $i = 0; $i <= $#{$nn}; $i++) {
