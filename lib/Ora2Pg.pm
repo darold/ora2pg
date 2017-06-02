@@ -11062,6 +11062,10 @@ sub _remove_comments
 {
 	my ($self, $content, $no_constant) = @_;
 
+	# First remove hints they are not supported in PostgreSQL
+	$$content =~ s/\/\*\+(.*?)\*\///gs;
+
+	# Replace /* */ comments by a placeholder and save the comment
 	while ($$content =~ s/(\/\*(.*?)\*\/)/\%ORA2PG_COMMENT$self->{idxcomment}\%/s) {
 		$self->{comment_values}{"\%ORA2PG_COMMENT$self->{idxcomment}\%"} = $1;
 		$self->{idxcomment}++;
