@@ -800,6 +800,10 @@ sub _init
 	$self->{empty_lob_null} = 0;
 	$self->{look_forward_function} = ();
 
+	# To register user defined exception
+	$self->{custom_exception} = ();
+	$self->{exception_id} = 50001;
+
 	# Init PostgreSQL DB handle
 	$self->{dbhdest} = undef;
 	$self->{standard_conforming_strings} = 1;
@@ -15089,9 +15093,18 @@ sub _lookup_function
 	my $nbout = $#nout+1 + $#ninout+1;
 	$fct_detail{inout} = 1 if ($nbout > 0);
 
+	# Collect user defined function
+	while ($fct_detail{declare} =~ s/\b([^\s]+)\s+EXCEPTION\s*;//) {
+		my $e = lc($1);
+		if (!exists $self->{custom_exception}{$e}) {
+			$self->{custom_exception}{$e} = $self->{exception_id}++;
+		}
+	}
+
 	# Replace call to global variables declared in this package
 	foreach my $n (keys %{$self->{global_variables}}) {
 		next if ($pname && (uc($n) !~ /^\U$pname\E\./));
+		next if (!$n || $fct_detail{code} !~ /\b$n\b/is);
 		my $i = 0;
 		while ($fct_detail{code} =~ s/\b$n\s*:=\s*([^;]+)\s*;/PERFORM set_config('$n', $1, false);/is) { last if ($i++ > 100); };
 		$i = 0;
@@ -15101,6 +15114,13 @@ sub _lookup_function
 		$i = 0;
 		while ($fct_detail{code} =~ s/([^\.']+)\b$self->{global_variables}{$n}{name}\b([^']+)/$1current_setting('$n')::$self->{global_variables}{$n}{type}$2/is) { last if ($i++ > 100); };
 	}
+
+	# Replace call to raise exception
+	foreach my $e (keys %{$self->{custom_exception}}) {
+		$fct_detail{code} =~ s/\bRAISE\s+$e\b/RAISE EXCEPTION '$e' USING ERRCODE '$self->{custom_exception}{$e}'/igs;
+		$fct_detail{code} =~ s/\s+WHEN\s+$e\s+/WHEN SQLSTATE '$self->{custom_exception}{$e}' /igs;
+	}
+
 	return %fct_detail;
 }
 
@@ -16077,7 +16097,13 @@ sub register_global_variable
 			$n = $type;
 			$type = $others[0] || '';
 		}
-		$ret .= $l, next if (uc($type) eq 'EXCEPTION');
+		if (uc($type) eq 'EXCEPTION') {
+			$n = lc($n);
+			if (!exists $self->{custom_exception}{$n}) {
+				$self->{custom_exception}{$n} = $self->{exception_id}++;
+			}
+			next;
+		}
 		next if (!$pname);
 		my $v = lc($pname . '.' . $n);
 		$self->{global_variables}{$v}{name} = lc($n);
