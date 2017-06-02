@@ -10066,6 +10066,10 @@ WHERE
 	(b.partitioning_type = 'RANGE' OR b.partitioning_type = 'LIST')
 	AND a.table_name = c.name
 };
+
+	if ($self->{db_version} !~ /Release 8/) {
+		$str .= " AND (A.TABLE_OWNER, A.TABLE_NAME) NOT IN (SELECT OWNER, MVIEW_NAME FROM ALL_MVIEWS UNION ALL SELECT LOG_OWNER, LOG_TABLE FROM ALL_MVIEW_LOGS)" if ($self->{type} ne 'FDW');
+	}
 	$str .= $self->limit_to_objects('TABLE|PARTITION', 'A.TABLE_NAME|A.PARTITION_NAME');
 
 	if ($self->{prefix} ne 'USER') {
@@ -10269,6 +10273,9 @@ SELECT
 FROM $self->{prefix}_TAB_PARTITIONS A, $self->{prefix}_PART_TABLES B
 WHERE A.TABLE_NAME = B.TABLE_NAME
 };
+	if ($self->{db_version} !~ /Release 8/) {
+		$str .= " AND (A.TABLE_OWNER, A.TABLE_NAME) NOT IN (SELECT OWNER, MVIEW_NAME FROM ALL_MVIEWS UNION ALL SELECT LOG_OWNER, LOG_TABLE FROM ALL_MVIEW_LOGS)" if ($self->{type} ne 'FDW');
+	}
 	$str .= $self->limit_to_objects('TABLE|PARTITION','A.TABLE_NAME|A.PARTITION_NAME');
 
 	if ($self->{prefix} ne 'USER') {
