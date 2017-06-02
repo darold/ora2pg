@@ -6395,6 +6395,7 @@ RETURNS text AS
 		set_binmode($fhdl);
 		$fkeys = "-- Nothing found of type foreign keys\n" if (!$fkeys);
 		$self->_restore_comments(\$fkeys);
+		$fkeys = $self->set_search_path() . $fkeys;
 		$self->dump($sql_header . $fkeys, $fhdl);
 		$self->close_export_file($fhdl);
 		$fkeys = '';
