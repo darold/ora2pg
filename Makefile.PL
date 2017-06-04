@@ -1058,6 +1058,10 @@ PG_SUPPORTS_IFEXISTS	1
 # This is required for the DATADIFF feature.
 PG_SUPPORTS_LATERAL	1
 
+# PostgreSQL version prior to 10.0 do not have native partitioning.
+# Enable this directive if you want to use declarative partitioning.
+PG_SUPPORTS_PARTITION	0
+
 # Use btree_gin extenstion to create bitmap like index with pg >= 9.4
 # You will need to create the extension by yourself:
 #	create extension btree_gin;

@@ -1926,6 +1926,12 @@ version prior to 9.4. Default: 1, enabled.
 If disabled, do not export object with IF EXISTS statements.
 Enabled by default.
 
+=item PG_SUPPORTS_PARTITION
+
+PostgreSQL version prior to 10.0 do not have native partitioning.
+Enable this directive if you want to use declarative partitioning.
+Disable by default.
+
 =item BITMAP_AS_GIN
 
 Use btree_gin extension to create bitmap like index with pg >= 9.4

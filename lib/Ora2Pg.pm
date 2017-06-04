@@ -1178,6 +1178,7 @@ sub _init
 		$self->{pg_supports_ifexists} = '';
 	}
 	$self->{pg_background} ||= 0;
+	$self->{pg_supports_partition} ||= 0;
 
 	# Backward compatibility with LongTrunkOk with typo
 	if ($self->{longtrunkok} && not defined $self->{longtruncok}) {
@@ -1902,6 +1903,9 @@ sub _tables
 				%{$self->{tables}{$tb}{check_constraint}} = ( %{$check_constraints{$tb}});
 			}
 		}
+		# Get partition list to mark tables with partition.
+		%{ $self->{partitions_list} } = $self->_get_partitioned_table();
+
 	}
 
 	my @done = ();
@@ -1947,6 +1951,7 @@ sub _tables
 		$self->{tables}{$t}{table_info}{auto_increment} = $tables_infos{$t}{auto_increment};
 		$self->{tables}{$t}{table_info}{connection} = $tables_infos{$t}{connection};
 		$self->{tables}{$t}{table_info}{nologging} = $tables_infos{$t}{nologging};
+		$self->{tables}{$t}{table_info}{partitioned} = $tables_infos{$t}{partitioned};
 
 		# Set the fields information
 		my $tmp_tbname = $t;
@@ -3018,6 +3023,9 @@ sub _partitions
 	$self->logit("Retrieving partitions information...\n", 1);
 	($self->{partitions}, $self->{partitions_default}) = $self->_get_partitions();
 	($self->{subpartitions}, $self->{subpartitions_default}) = $self->_get_subpartitions();
+
+	# Get partition list meta information
+	%{ $self->{partitions_list} } = $self->_get_partitioned_table();
 }
 
 =head2 _dblinks
@@ -5632,20 +5640,22 @@ LANGUAGE plpgsql ;
 		$self->logit("Add partitions definition...\n", 1);
 		$sql_header .= "-- Oracle partitions export.\n";
 		$sql_header .= "-- Please take a look at the export to see if order and default table match your need\n";
+
 		my $total_partition = 0;
-		foreach my $table (sort keys %{$self->{partitions}}) {
-			foreach my $pos (keys %{$self->{partitions}{$table}}) {
-				$total_partition += scalar keys %{$self->{partitions}{$table}{$pos}};
-			}
+		foreach my $t (sort keys %{ $self->{partitions_list} }) {
+			$total_partition += $self->{partitions_list}{$t}{count};
 		}
+
 		my $i = 1;
 		my $partition_indexes = ();
 		foreach my $table (sort keys %{$self->{partitions}}) {
-			my $function = qq{
+			my $function = '';
+			$function = qq{
 CREATE OR REPLACE FUNCTION ${table}_insert_trigger()
 RETURNS TRIGGER AS \$\$
 BEGIN
-};
+} if (!$self->{pg_supports_partition});
+
 			my $cond = 'IF';
 			my $funct_cond = '';
 			my %create_table = ();
@@ -5669,8 +5679,14 @@ BEGIN
 							$tb_name =  $1 . '.' . $tb_name;
 						}
 					}
-					$create_table{$table}{table} .= "CREATE TABLE " . $self->quote_object_name($tb_name)
+					if (!$self->{pg_supports_partition}) {
+						$create_table{$table}{table} .= "CREATE TABLE " . $self->quote_object_name($tb_name)
 										. " ( CHECK (\n";
+					} else {
+						$create_table{$table}{table} .= "CREATE TABLE " . $self->quote_object_name($tb_name)
+										. " PARTITION OF $table\n";
+						$create_table{$table}{table} .= "FOR VALUES";
+					}
 				} else {
 					 $tb_name = $table . "_" if ($self->{prefix_partition});
 				}
@@ -5679,22 +5695,43 @@ BEGIN
 				my @ind_col = ();
 				for (my $i = 0; $i <= $#{$self->{partitions}{$table}{$pos}{info}}; $i++) {
 					if ($self->{partitions}{$table}{$pos}{info}[$i]->{type} eq 'LIST') {
-						$check_cond .= "\t$self->{partitions}{$table}{$pos}{info}[$i]->{column} IN ($self->{partitions}{$table}{$pos}{info}[$i]->{value})";
+						if (!$self->{pg_supports_partition}) {
+							$check_cond .= "\t$self->{partitions}{$table}{$pos}{info}[$i]->{column} IN ($self->{partitions}{$table}{$pos}{info}[$i]->{value})";
+						} else {
+							$check_cond .= " IN ($self->{partitions}{$table}{$pos}{info}[$i]->{value})";
+						}
 					} else {
 						if ($#{$self->{partitions}{$table}{$pos}{info}} == 0) {
-							if ($old_part eq '') {
-								$check_cond .= "\t$self->{partitions}{$table}{$pos}{info}[$i]->{column} < "
-									. Ora2Pg::PLSQL::convert_plsql_code($self, $self->{partitions}{$table}{$pos}{info}[$i]->{value}, %{$self->{data_type}});
+							if (!$self->{pg_supports_partition}) {
+								if ($old_part eq '') {
+									$check_cond .= "\t$self->{partitions}{$table}{$pos}{info}[$i]->{column} < "
+										. Ora2Pg::PLSQL::convert_plsql_code($self, $self->{partitions}{$table}{$pos}{info}[$i]->{value}, %{$self->{data_type}});
+								} else {
+									$check_cond .= "\t$self->{partitions}{$table}{$pos}{info}[$i]->{column} >= "
+										. Ora2Pg::PLSQL::convert_plsql_code($self, $self->{partitions}{$table}{$old_pos}{info}[$i]->{value}, %{$self->{data_type}})
+										. " AND $self->{partitions}{$table}{$pos}{info}[$i]->{column} < "
+										. Ora2Pg::PLSQL::convert_plsql_code($self, $self->{partitions}{$table}{$pos}{info}[$i]->{value}, %{$self->{data_type}});
+								}
 							} else {
-								$check_cond .= "\t$self->{partitions}{$table}{$pos}{info}[$i]->{column} >= "
-									. Ora2Pg::PLSQL::convert_plsql_code($self, $self->{partitions}{$table}{$old_pos}{info}[$i]->{value}, %{$self->{data_type}})
-									. " AND $self->{partitions}{$table}{$pos}{info}[$i]->{column} < "
-									. Ora2Pg::PLSQL::convert_plsql_code($self, $self->{partitions}{$table}{$pos}{info}[$i]->{value}, %{$self->{data_type}});
+								if ($old_part eq '') {
+									$check_cond .= " FROM (unbounded) TO ("
+										. Ora2Pg::PLSQL::convert_plsql_code($self, $self->{partitions}{$table}{$pos}{info}[$i]->{value}, %{$self->{data_type}}) . ")";
+								} else {
+									$check_cond .= " FROM ("
+										. Ora2Pg::PLSQL::convert_plsql_code($self, $self->{partitions}{$table}{$old_pos}{info}[$i]->{value}, %{$self->{data_type}})
+										. ") TO ("
+										. Ora2Pg::PLSQL::convert_plsql_code($self, $self->{partitions}{$table}{$pos}{info}[$i]->{value}, %{$self->{data_type}})
+										.")";
+								}
 							}
 						} else {
 							my @values = split(/,\s/, Ora2Pg::PLSQL::convert_plsql_code($self, $self->{partitions}{$table}{$pos}{info}[$i]->{value}, %{$self->{data_type}}));
-							# multicolumn partitioning
-							$check_cond .= "\t$self->{partitions}{$table}{$pos}{info}[$i]->{column} < " .  $values[$i];
+							if (!$self->{pg_supports_partition}) {
+								# multicolumn partitioning
+								$check_cond .= "\t$self->{partitions}{$table}{$pos}{info}[$i]->{column} < " .  $values[$i];
+							} else {
+								$check_cond .= " FROM (unbounded) TO (" .  $values[$i] . ")";
+							}
 						}
 					}
 					$check_cond .= " AND" if ($i < $#{$self->{partitions}{$table}{$pos}{info}});
@@ -5736,9 +5773,10 @@ BEGIN
 					$owner = $self->{partitions}{$table}{$pos}{info}[$i]->{owner} || '';
 				}
 				if (!exists $self->{subpartitions}{$table}{$part}) {
-					$check_cond = Ora2Pg::PLSQL::convert_plsql_code($self, $check_cond, %{$self->{data_type}});
-					$create_table{$table}{table} .= $check_cond;
-					$create_table{$table}{table} .= "\n) ) INHERITS ($table);\n";
+					#$check_cond = Ora2Pg::PLSQL::convert_plsql_code($self, $check_cond, %{$self->{data_type}});
+					$check_cond .= ';' if ($self->{pg_supports_partition});
+					$create_table{$table}{table} .= $check_cond . "\n";
+					$create_table{$table}{table} .= ") ) INHERITS ($table);\n" if (!$self->{pg_supports_partition});
 					$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
 					if ($owner) {
 						$create_table{$table}{table} .= "ALTER TABLE " . $self->quote_object_name($tb_name)
@@ -5806,9 +5844,10 @@ BEGIN
 							}
 							$owner = $self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{owner} || '';
 						}
-						$sub_check_cond = Ora2Pg::PLSQL::convert_plsql_code($self, $sub_check_cond, %{$self->{data_type}});
+						#$sub_check_cond = Ora2Pg::PLSQL::convert_plsql_code($self, $sub_check_cond, %{$self->{data_type}});
+						$sub_check_cond .= ';' if ($self->{pg_supports_partition});
 						$create_table{$table}{table} .= "$check_cond AND $sub_check_cond";
-						$create_table{$table}{table} .= "\n) ) INHERITS ($table);\n";
+						$create_table{$table}{table} .= "\n) ) INHERITS ($table);\n" if (!$self->{pg_supports_partition});
 						$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
 						if ($owner) {
 							$create_table{$table}{table} .= "ALTER TABLE " . $self->quote_object_name("${tb_name}$sub_tb_name")
@@ -5852,27 +5891,29 @@ BEGIN
 				$i++;
 				$old_pos = $pos;
 			}
-			if ($self->{partitions_default}{$table}) {
-				my $deftb = '';
-				$deftb = "${table}_" if ($self->{prefix_partition});
-				my $pname = $self->quote_object_name("$deftb$self->{partitions_default}{$table}");
+			if (!$self->{pg_supports_partition}) {
+				if ($self->{partitions_default}{$table}) {
+					my $deftb = '';
+					$deftb = "${table}_" if ($self->{prefix_partition});
+					my $pname = $self->quote_object_name("$deftb$self->{partitions_default}{$table}");
 				$function .= $funct_cond . qq{	ELSE
                 INSERT INTO $pname VALUES (NEW.*);
 };
-			} else {
-				$function .= $funct_cond . qq{	ELSE
+				} else {
+					$function .= $funct_cond . qq{	ELSE
                 -- Raise an exception
                 RAISE EXCEPTION 'Value out of range in partition. Fix the ${table}_insert_trigger() function!';
 };
-			}
-			$function .= qq{
+				}
+				$function .= qq{
         END IF;
         RETURN NULL;
 END;
 \$\$
 LANGUAGE plpgsql;
 };
-			$function = Ora2Pg::PLSQL::convert_plsql_code($self, $function, %{$self->{data_type}});
+				$function = Ora2Pg::PLSQL::convert_plsql_code($self, $function, %{$self->{data_type}});
+			}
 
 			$partition_indexes .= qq{
 -- Create indexes on each partition table
@@ -5887,11 +5928,12 @@ $create_table{$table}{table}
 			my $defname = $self->{partitions_default}{$table};
 			$defname = $table . '_' .  $defname if ($self->{prefix_partition});
 			$defname = $self->quote_object_name($defname);
-			$sql_output .= qq{
+			if (!$self->{pg_supports_partition}) {
+				$sql_output .= qq{
 -- Create default table, where datas are inserted if no condition match
 CREATE TABLE $defname () INHERITS ($tb);
 } if ($self->{partitions_default}{$table});
-			$sql_output .= qq{
+				$sql_output .= qq{
 
 $function
 
@@ -5902,13 +5944,14 @@ CREATE TRIGGER ${table}_trigger_insert
 -------------------------------------------------------------------------------
 };
 
-			$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
-			if ($owner) {
-				$sql_output .= "ALTER TABLE " . $self->quote_object_name($self->{partitions_default}{$table})
-							. " OWNER TO " . $self->quote_object_name($owner) . ";\n"
-					if ($self->{partitions_default}{$table});
-				$sql_output .= "ALTER FUNCTION " . $self->quote_object_name("${table}_insert_trigger")
-							. "() OWNER TO " . $self->quote_object_name($owner) . ";\n";
+				$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
+				if ($owner) {
+					$sql_output .= "ALTER TABLE " . $self->quote_object_name($self->{partitions_default}{$table})
+								. " OWNER TO " . $self->quote_object_name($owner) . ";\n"
+						if ($self->{partitions_default}{$table});
+					$sql_output .= "ALTER FUNCTION " . $self->quote_object_name("${table}_insert_trigger")
+								. "() OWNER TO " . $self->quote_object_name($owner) . ";\n";
+				}
 			}
 		}
 
@@ -6218,16 +6261,20 @@ CREATE TRIGGER ${table}_trigger_insert
 				$sql_output .= $self->_get_primary_keys($table, $self->{tables}{$table}{unique_key});
 			}
 			$sql_output =~ s/,$//;
+			$sql_output .= ')';
+			if ($self->{tables}{$table}{table_info}{partitioned} && $self->{pg_supports_partition}) {
+				$sql_output .= ' PARTITION BY ' . $self->{partitions_list}{"\L$table\E"}{type} . " (" . lc(join(',', @{$self->{partitions_list}{"\L$table\E"}{columns}})) . ")";
+			}
 			if ( ($self->{type} ne 'FDW') && (!$self->{external_to_fdw} || (!grep(/^$table$/i, keys %{$self->{external_table}}) && !$self->{tables}{$table}{table_info}{connection})) ) {
 				my $withoid = '';
 				$withoid = 'WITH (OIDS)' if ($self->{with_oid});
 				if ($self->{use_tablespace} && $self->{tables}{$table}{table_info}{tablespace} && !grep(/^$self->{tables}{$table}{table_info}{tablespace}$/i, @{$self->{default_tablespaces}})) {
-					$sql_output .= ") $withoid TABLESPACE $self->{tables}{$table}{table_info}{tablespace};\n";
+					$sql_output .= " $withoid TABLESPACE $self->{tables}{$table}{table_info}{tablespace};\n";
 				} else {
-					$sql_output .= ") $withoid;\n";
+					$sql_output .= " $withoid;\n";
 				}
 			} elsif ( grep(/^$table$/i, keys %{$self->{external_table}}) ) {
-				$sql_output .= ") SERVER \L$self->{external_table}{$table}{directory}\E OPTIONS(filename '$self->{external_table}{$table}{directory_path}$self->{external_table}{$table}{location}', format 'csv', delimiter '$self->{external_table}{$table}{delimiter}');\n";
+				$sql_output .= " SERVER \L$self->{external_table}{$table}{directory}\E OPTIONS(filename '$self->{external_table}{$table}{directory_path}$self->{external_table}{$table}{location}', format 'csv', delimiter '$self->{external_table}{$table}{delimiter}');\n";
 			} elsif ($self->{is_mysql}) {
 				my $schem = "dbname '$self->{schema}'," if ($self->{schema});
 				my $r_server = $self->{fdw_server};
@@ -6236,10 +6283,10 @@ CREATE TRIGGER ${table}_trigger_insert
 					$r_server = $1;
 					$r_table = $2;
 				}
-				$sql_output .= ") SERVER $r_server OPTIONS($schem table_name '$r_table');\n";
+				$sql_output .= " SERVER $r_server OPTIONS($schem table_name '$r_table');\n";
 			} else {
 				my $schem = "schema '$self->{schema}'," if ($self->{schema});
-				$sql_output .= ") SERVER $self->{fdw_server} OPTIONS($schem table '$table');\n";
+				$sql_output .= " SERVER $self->{fdw_server} OPTIONS($schem table '$table');\n";
 			}
 		}
 		$sql_output .= $serial_sequence;
@@ -9742,7 +9789,7 @@ sub _table_info
 	}
 	$sth->finish();
 
-	$sql = "SELECT A.OWNER,A.TABLE_NAME,NVL(num_rows,1) NUMBER_ROWS,A.TABLESPACE_NAME,A.NESTED,A.LOGGING FROM ALL_TABLES A, ALL_OBJECTS O WHERE A.OWNER=O.OWNER AND A.TABLE_NAME=O.OBJECT_NAME AND O.OBJECT_TYPE='TABLE' $owner";
+	$sql = "SELECT A.OWNER,A.TABLE_NAME,NVL(num_rows,1) NUMBER_ROWS,A.TABLESPACE_NAME,A.NESTED,A.LOGGING,A.PARTITIONED FROM ALL_TABLES A, ALL_OBJECTS O WHERE A.OWNER=O.OWNER AND A.TABLE_NAME=O.OBJECT_NAME AND O.OBJECT_TYPE='TABLE' $owner";
 	$sql .= " AND A.TEMPORARY='N' AND (A.NESTED != 'YES' OR A.LOGGING != 'YES') AND A.SECONDARY = 'N'";
 	if ($self->{db_version} !~ /Release [89]/) {
 		$sql .= " AND (A.DROPPED IS NULL OR A.DROPPED = 'NO')";
@@ -9771,7 +9818,11 @@ sub _table_info
 		} else {
 			$tables_infos{$row->[1]}{nologging} = 0;
 		}
-
+		if ($row->[6] eq 'NO') {
+			$tables_infos{$row->[1]}{partitioned} = 0;
+		} else {
+			$tables_infos{$row->[1]}{partitioned} = 1;
+		}
 		if ($do_real_row_count) {
 			$self->logit("DEBUG: looking for real row count for table ($row->[0]) $row->[1] (aka using count(*))...\n", 1);
 			$sql = "SELECT COUNT(*) FROM $row->[1]";
@@ -10318,26 +10369,25 @@ sub _get_partitioned_table
 	# Retrieve all partitions.
 	my $str = qq{
 SELECT
-	A.TABLE_NAME,
-	A.PARTITION_POSITION,
-	A.PARTITION_NAME,
-	$highvalue,
-	A.TABLESPACE_NAME,
+	B.TABLE_NAME,
 	B.PARTITIONING_TYPE,
-	A.TABLE_OWNER
-FROM $self->{prefix}_TAB_PARTITIONS A, $self->{prefix}_PART_TABLES B
-WHERE A.TABLE_NAME = B.TABLE_NAME
+	B.OWNER,
+	B.PARTITION_COUNT,
+	C.COLUMN_NAME,
+	C.COLUMN_POSITION
+FROM $self->{prefix}_PART_TABLES B, $self->{prefix}_PART_KEY_COLUMNS C
+WHERE B.TABLE_NAME = C.NAME AND B.OWNER = C.OWNER AND C.OBJECT_TYPE='TABLE'
 };
-	$str .= $self->limit_to_objects('TABLE|PARTITION','A.TABLE_NAME|A.PARTITION_NAME');
+	$str .= $self->limit_to_objects('TABLE','B.TABLE_NAME');
 
 	if ($self->{prefix} ne 'USER') {
 		if ($self->{schema}) {
-			$str .= "\tAND A.TABLE_OWNER ='$self->{schema}'\n";
+			$str .= "\tAND B.OWNER ='$self->{schema}'\n";
 		} else {
-			$str .= "\tAND A.TABLE_OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "')\n";
+			$str .= "\tAND B.OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "')\n";
 		}
 	}
-	$str .= "ORDER BY A.TABLE_NAME\n";
+	$str .= "ORDER BY B.OWNER,B.TABLE_NAME,C.COLUMN_POSITION\n";
 
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -10347,7 +10397,9 @@ WHERE A.TABLE_NAME = B.TABLE_NAME
 		if (!$self->{schema} && $self->{export_schema}) {
 			$row->[0] = "$row->[6].$row->[0]";
 		}
-		$parts{$row->[0]}++ if ($row->[2]);
+		$parts{"\L$row->[0]\E"}{count} = $row->[3];
+		$parts{"\L$row->[0]\E"}{type} = $row->[1] if (!exists $parts{"\L$row->[0]\E"}{type});
+		push(@{ $parts{"\L$row->[0]\E"}{columns} }, $row->[4]);
 	}
 	$sth->finish;
 
@@ -12988,7 +13040,7 @@ sub _show_infos
 			} elsif ($typ eq 'TABLE PARTITION') {
 				my %partitions = $self->_get_partitions_list();
 				foreach my $t (sort keys %partitions) {
-					$report_info{'Objects'}{$typ}{'detail'} .= "\L$partitions{$t} $t\E partitions\n";
+					$report_info{'Objects'}{$typ}{'detail'} .= " $partitions{$t} $t partitions.\n";
 				}
 				$report_info{'Objects'}{$typ}{'comment'} = "Partitions are exported using table inheritance and check constraint. Hash and Key partitions are not supported by PostgreSQL and will not be exported.";
 			} elsif ($typ eq 'GLOBAL TEMPORARY TABLE') {
@@ -13150,7 +13202,7 @@ sub _show_infos
 
 			# Set the number of partition if any
 			if (exists $partitions{"\L$t\E"}) {
-				$warning .= " - $partitions{$t} partitions";
+				$warning .= " - " . $partitions{"\L$t\E"}{count} . " partitions";
 			}
 
 			# Search for reserved keywords
@@ -13166,7 +13218,7 @@ sub _show_infos
 			# Show table information
 			my $kind = '';
 			$kind = ' FOREIGN'  if ($tables_infos{$t}{connection});
-			if (exists $partitions{$t}) {
+			if ($tables_infos{$t}{partitioned}) {
 				$kind = ' PARTITIONED';
 			}
 			if (exists $externals{$t}) {
@@ -13842,15 +13894,15 @@ GROUP BY
 	}
 	foreach my $t (keys %partitions) {
 		next if (!exists $tables_infos{$t});
-		print "$lbl:$t:$partitions{$t}\n";
+		print "$lbl:$t:", $partitions{"\L$t\E"}{count}, "\n";
 		my ($tbmod, $orig, $schema, $both) = $self->set_pg_relation_name($t);
 		if (exists $pg_part{$tbmod}) {
 			print "POSTGRES:$tbmod$orig:$pg_part{$tbmod}\n";
-			if ($pg_part{$tbmod} != $partitions{$t}) {
-				push(@errors, "Table $tbmod$orig doesn't have the same number of partitions in source database ($partitions{$t}) and in PostgreSQL ($pg_part{$tbmod}).");
+			if ($pg_part{$tbmod} != $partitions{"\L$t\E"}{count}) {
+				push(@errors, "Table $tbmod$orig doesn't have the same number of partitions in source database (" . $partitions{"\L$t\E"}{count} . ") and in PostgreSQL ($pg_part{$tbmod}).");
 			}
 		} else {
-			push(@errors, "Table $tbmod$orig doesn't have the same number of partitions in source database ($partitions{$t}) and in PostgreSQL (0).");
+			push(@errors, "Table $tbmod$orig doesn't have the same number of partitions in source database (" . $partitions{"\L$t\E"}{count} . ") and in PostgreSQL (0).");
 		}
 	}
 	$self->show_test_errors('PARTITION', @errors);
