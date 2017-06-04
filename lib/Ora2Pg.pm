@@ -3026,6 +3026,7 @@ sub _partitions
 
 	# Get partition list meta information
 	%{ $self->{partitions_list} } = $self->_get_partitioned_table();
+	%{ $self->{subpartitions_list} } = $self->_get_subpartitioned_table();
 }
 
 =head2 _dblinks
@@ -5670,25 +5671,31 @@ BEGIN
 					print STDERR $self->progress_bar($i, $total_partition, 25, '=', 'partitions', "generating $part" ), "\r";
 				}
 				my $tb_name = '';
-				if (!exists $self->{subpartitions}{$table}{$part}) {
-					$tb_name = $part;
-					if ($self->{prefix_partition}) {
-						$tb_name = $table . "_" . $tb_name;
+				if ($self->{prefix_partition}) {
+					$tb_name = $table . "_" . $part;
+				} else {
+					if ($self->{export_schema} && !$self->{schema} && ($table =~ /^([^\.]+)\./)) {
+						$tb_name =  $1 . '.' . $part;
 					} else {
-						if ($self->{export_schema} && !$self->{schema} && ($table =~ /^([^\.]+)\./)) {
-							$tb_name =  $1 . '.' . $tb_name;
-						}
+						$tb_name =  $part;
 					}
+				}
+				if (!exists $self->{subpartitions}{$table}{$part}) {
 					if (!$self->{pg_supports_partition}) {
 						$create_table{$table}{table} .= "CREATE TABLE " . $self->quote_object_name($tb_name)
 										. " ( CHECK (\n";
 					} else {
 						$create_table{$table}{table} .= "CREATE TABLE " . $self->quote_object_name($tb_name)
-										. " PARTITION OF $table\n";
+										. " PARTITION OF \L$table\E\n";
 						$create_table{$table}{table} .= "FOR VALUES";
 					}
 				} else {
-					 $tb_name = $table . "_" if ($self->{prefix_partition});
+					if ($self->{pg_supports_partition}) {
+						$create_table{$table}{table} .= "CREATE TABLE " . $self->quote_object_name($tb_name)
+										. " PARTITION OF \L$table\E\n";
+						$create_table{$table}{table} .= "FOR VALUES";
+					}
+					$tb_name = $table . "_" if ($self->{prefix_partition});
 				}
 				my $check_cond = '';
 				my @condition = ();
@@ -5734,7 +5741,9 @@ BEGIN
 							}
 						}
 					}
-					$check_cond .= " AND" if ($i < $#{$self->{partitions}{$table}{$pos}{info}});
+					if (!$self->{pg_supports_partition}) {
+						$check_cond .= " AND" if ($i < $#{$self->{partitions}{$table}{$pos}{info}});
+					}
 					my $fct = '';
 					my $colname = $self->{partitions}{$table}{$pos}{info}[$i]->{column};
 					if ($colname =~ s/([^\(]+)\(([^\)]+)\)/$2/) {
@@ -5782,8 +5791,10 @@ BEGIN
 						$create_table{$table}{table} .= "ALTER TABLE " . $self->quote_object_name($tb_name)
 											. " OWNER TO " . $self->quote_object_name($owner) . ";\n";
 					}
+				} elsif ($self->{pg_supports_partition}) {
+					$create_table{$table}{table} .= $check_cond . "\n";
+					$create_table{$table}{table} .= "PARTITION BY " . $self->{subpartitions_list}{"\L$table\E"}{"\L$part\E"}{type} . " (" . lc(join(',', @{$self->{subpartitions_list}{"\L$table\E"}{"\L$part\E"}{columns}})) . ");\n";
 				}
-
 				# Add subpartition if any defined on Oracle
 				my $sub_funct_cond = '';
 				my $sub_old_part = '';
@@ -5793,31 +5804,60 @@ BEGIN
 						my $subpart = $self->{subpartitions}{$table}{$part}{$p}{name};
 						my $sub_tb_name = $subpart;
 						$sub_tb_name =~ s/^[^\.]+\.//; # remove schema part if any
-						$create_table{$table}{table} .= "CREATE TABLE " . $self->quote_object_name("${tb_name}$sub_tb_name")
-											. " ( CHECK (\n";
+						$tb_name .= '_' if ($tb_name && $tb_name !~ /_$/);
+						$sub_tb_name = $tb_name . $sub_tb_name if ($sub_tb_name !~ /^$tb_name/i);
+						$create_table{$table}{table} .= "CREATE TABLE " . $self->quote_object_name($sub_tb_name);
+						if (!$self->{pg_supports_partition}) {
+							$create_table{$table}{table} .= " ( CHECK (\n";
+						} else {
+							$create_table{$table}{table} .= " PARTITION OF \L$part\E\n";
+							$create_table{$table}{table} .= "FOR VALUES";
+						}
 						my $sub_check_cond = '';
 						my @subcondition = ();
 						for (my $i = 0; $i <= $#{$self->{subpartitions}{$table}{$part}{$p}{info}}; $i++) {
 							if ($self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{type} eq 'LIST') {
-								$sub_check_cond .= "$self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{column} IN ($self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{value})";
+								if (!$self->{pg_supports_partition}) {
+									$sub_check_cond .= "$self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{column} IN ($self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{value})";
+								} else {
+									$sub_check_cond .= " IN ($self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{value})";
+								}
 							} else {
 								if ($#{$self->{subpartitions}{$table}{$part}{$p}{info}} == 0) {
-									if ($sub_old_part eq '') {
-										$sub_check_cond .= "$self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{column} < "
-											. Ora2Pg::PLSQL::convert_plsql_code($self, $self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{value}, %{$self->{data_type}});
+									if (!$self->{pg_supports_partition}) {
+										if ($sub_old_part eq '') {
+											$sub_check_cond .= "$self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{column} < "
+												. Ora2Pg::PLSQL::convert_plsql_code($self, $self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{value}, %{$self->{data_type}});
+										} else {
+											$sub_check_cond .= "$self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{column} >= "
+												. Ora2Pg::PLSQL::convert_plsql_code($self, $self->{subpartitions}{$table}{$part}{$sub_old_pos}{info}[$i]->{value}, %{$self->{data_type}})
+												. " AND $self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{column} < "
+												. Ora2Pg::PLSQL::convert_plsql_code($self, $self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{value}, %{$self->{data_type}});
+										}
 									} else {
-										$sub_check_cond .= "$self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{column} >= "
-											. Ora2Pg::PLSQL::convert_plsql_code($self, $self->{subpartitions}{$table}{$part}{$sub_old_pos}{info}[$i]->{value}, %{$self->{data_type}})
-											. " AND $self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{column} < "
-											. Ora2Pg::PLSQL::convert_plsql_code($self, $self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{value}, %{$self->{data_type}});
+										if ($sub_old_part eq '') {
+											$sub_check_cond .= " FROM (unbounded) TO ("
+												. Ora2Pg::PLSQL::convert_plsql_code($self, $self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{value}, %{$self->{data_type}}) . ")";
+										} else {
+											$sub_check_cond .= " FROM ("
+												. Ora2Pg::PLSQL::convert_plsql_code($self, $self->{subpartitions}{$table}{$part}{$sub_old_pos}{info}[$i]->{value}, %{$self->{data_type}});
+											$sub_check_cond .= ") TO ("
+												. Ora2Pg::PLSQL::convert_plsql_code($self, $self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{value}, %{$self->{data_type}}) . ")";
+										}
 									}
 								} else {
 									my @values = split(/,\s/, Ora2Pg::PLSQL::convert_plsql_code($self, $self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{value}, %{$self->{data_type}}));
-									# multicolumn partitioning
-									$sub_check_cond .= "\t$self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{column} < " .  $values[$i];
+									if (!$self->{pg_supports_partition}) {
+										# multicolumn partitioning
+										$sub_check_cond .= "\t$self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{column} < " .  $values[$i];
+									} else {
+										$sub_check_cond .= " FROM (unbounded) TO (" .  $values[$i] . ")";
+									}
 								}
 							}
-							$sub_check_cond .= " AND " if ($i < $#{$self->{subpartitions}{$table}{$part}{$p}{info}});
+							if (!$self->{pg_supports_partition}) {
+								$sub_check_cond .= " AND " if ($i < $#{$self->{subpartitions}{$table}{$part}{$p}{info}});
+							}
 							push(@ind_col, $self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{column}) if (!grep(/^$self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{column}$/, @ind_col));
 							my $fct = '';
 							my $colname = $self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{column};
@@ -5845,9 +5885,13 @@ BEGIN
 							$owner = $self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{owner} || '';
 						}
 						#$sub_check_cond = Ora2Pg::PLSQL::convert_plsql_code($self, $sub_check_cond, %{$self->{data_type}});
-						$sub_check_cond .= ';' if ($self->{pg_supports_partition});
-						$create_table{$table}{table} .= "$check_cond AND $sub_check_cond";
-						$create_table{$table}{table} .= "\n) ) INHERITS ($table);\n" if (!$self->{pg_supports_partition});
+						if ($self->{pg_supports_partition}) {
+							$sub_check_cond .= ';';
+							$create_table{$table}{table} .= "$sub_check_cond\n";
+						} else {
+							$create_table{$table}{table} .= "$check_cond AND $sub_check_cond";
+							$create_table{$table}{table} .= "\n) ) INHERITS ($table);\n";
+						}
 						$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
 						if ($owner) {
 							$create_table{$table}{table} .= "ALTER TABLE " . $self->quote_object_name("${tb_name}$sub_tb_name")
@@ -10376,15 +10420,16 @@ SELECT
 	C.COLUMN_NAME,
 	C.COLUMN_POSITION
 FROM $self->{prefix}_PART_TABLES B, $self->{prefix}_PART_KEY_COLUMNS C
-WHERE B.TABLE_NAME = C.NAME AND B.OWNER = C.OWNER AND C.OBJECT_TYPE='TABLE'
+WHERE B.TABLE_NAME = C.NAME
+	AND (b.partitioning_type = 'RANGE' OR b.partitioning_type = 'LIST')
 };
 	$str .= $self->limit_to_objects('TABLE','B.TABLE_NAME');
 
 	if ($self->{prefix} ne 'USER') {
 		if ($self->{schema}) {
-			$str .= "\tAND B.OWNER ='$self->{schema}'\n";
+			$str .= "\tAND B.OWNER ='$self->{schema}' AND C.OWNER=B.OWNER\n";
 		} else {
-			$str .= "\tAND B.OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "')\n";
+			$str .= "\tAND B.OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "') AND B.OWNER=C.OWNER\n";
 		}
 	}
 	$str .= "ORDER BY B.OWNER,B.TABLE_NAME,C.COLUMN_POSITION\n";
@@ -10395,7 +10440,7 @@ WHERE B.TABLE_NAME = C.NAME AND B.OWNER = C.OWNER AND C.OBJECT_TYPE='TABLE'
 	my %parts = ();
 	while (my $row = $sth->fetch) {
 		if (!$self->{schema} && $self->{export_schema}) {
-			$row->[0] = "$row->[6].$row->[0]";
+			$row->[0] = "$row->[2].$row->[0]";
 		}
 		$parts{"\L$row->[0]\E"}{count} = $row->[3];
 		$parts{"\L$row->[0]\E"}{type} = $row->[1] if (!exists $parts{"\L$row->[0]\E"}{type});
@@ -10406,6 +10451,67 @@ WHERE B.TABLE_NAME = C.NAME AND B.OWNER = C.OWNER AND C.OBJECT_TYPE='TABLE'
 	return %parts;
 }
 
+=head2 _get_subpartitioned_table
+
+Return a hash of the partitioned table list with the number of partition.
+
+=cut
+
+sub _get_subpartitioned_table
+{
+	my($self) = @_;
+
+	return Ora2Pg::MySQL::_get_subpartitioned_table($self) if ($self->{is_mysql});
+
+	my $highvalue = 'A.HIGH_VALUE';
+	if ($self->{db_version} =~ /Release 8/) {
+		$highvalue = "'' AS HIGH_VALUE";
+	}
+	# Retrieve all partitions.
+	my $str = qq{
+SELECT
+	A.TABLE_NAME,
+	A.PARTITION_NAME,
+	A.SUBPARTITION_NAME,
+	A.SUBPARTITION_POSITION,
+	B.SUBPARTITIONING_TYPE,
+	A.TABLE_OWNER,
+	B.PARTITION_COUNT,
+	C.COLUMN_NAME,
+	C.COLUMN_POSITION
+FROM $self->{prefix}_TAB_SUBPARTITIONS A, $self->{prefix}_PART_TABLES B, $self->{prefix}_SUBPART_KEY_COLUMNS C
+WHERE 
+        a.table_name = b.table_name AND
+        (b.subpartitioning_type = 'RANGE' OR b.subpartitioning_type = 'LIST')
+        AND a.table_name = c.name
+
+};
+	$str .= $self->limit_to_objects('TABLE|PARTITION','A.TABLE_NAME|A.PARTITION_NAME');
+
+	if ($self->{prefix} ne 'USER') {
+		if ($self->{schema}) {
+			$str .= "\tAND A.TABLE_OWNER ='$self->{schema}' AND B.OWNER=A.TABLE_OWNER AND C.OWNER=A.TABLE_OWNER\n";
+		} else {
+			$str .= "\tAND A.TABLE_OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "') AND B.OWNER=A.TABLE_OWNER AND C.OWNER=A.TABLE_OWNER\n";
+		}
+	}
+	$str .= "ORDER BY A.TABLE_OWNER,A.TABLE_NAME,A.PARTITION_NAME,A.SUBPARTITION_POSITION,C.COLUMN_POSITION\n";
+
+	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+
+	my %parts = ();
+	while (my $row = $sth->fetch) {
+		if (!$self->{schema} && $self->{export_schema}) {
+			$row->[0] = "$row->[5].$row->[0]";
+		}
+		$parts{"\L$row->[0]\E"}{"\L$row->[1]\E"}{type} = $row->[4] if (!exists $parts{"\L$row->[0]\E"}{"\L$row->[1]\E"}{type});
+		push(@{ $parts{"\L$row->[0]\E"}{"\L$row->[1]\E"}{columns} }, $row->[7]) if (!grep(/^$row->[7]$/, @{ $parts{"\L$row->[0]\E"}{"\L$row->[1]\E"}{columns} }));
+	}
+	$sth->finish;
+
+	return %parts;
+}
 
 sub _get_custom_types
 {
