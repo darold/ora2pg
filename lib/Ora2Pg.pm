@@ -1180,6 +1180,11 @@ sub _init
 	$self->{pg_background} ||= 0;
 	$self->{pg_supports_partition} ||= 0;
 
+	# PostgreSQL 10 doesn't allow direct import to partition
+	if ($self->{pg_supports_partition} && grep(/^$self->{type}$/i, 'COPY', 'INSERT', 'DATA')) {
+		$self->{disable_partition} = 1;
+	}
+
 	# Backward compatibility with LongTrunkOk with typo
 	if ($self->{longtrunkok} && not defined $self->{longtruncok}) {
 		$self->{longtruncok} = $self->{longtrunkok};
@@ -1904,7 +1909,7 @@ sub _tables
 			}
 		}
 		# Get partition list to mark tables with partition.
-		%{ $self->{partitions_list} } = $self->_get_partitioned_table();
+		%{ $self->{partitions_list} } = $self->_get_partitioned_table() if (!$self->{disable_partition});
 
 	}
 
