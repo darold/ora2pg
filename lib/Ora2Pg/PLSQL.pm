@@ -396,10 +396,12 @@ sub append_alias_clause
 	for (my $j = 0; $j <= $#q; $j+=2) {
 		if ($q[$j] =~ s/\b(FROM\s+)(.*\%SUBQUERY.*?)(\s*)(WHERE|ORDER\s+BY|GROUP\s+BY|LIMIT|$)/$1\%FROM_CLAUSE\%$3$4/is) {
 			my $from_clause = $2;
-			my @parts = split(/\b(WHERE|ORDER\s+BY|GROUP\s+BY|LIMIT)\b/i, $from_clause);
-			$parts[0] =~ s/(?<!USING|[\s,]ONLY|[\s,]JOIN|..\sON)\%SUBQUERY(\d+)\%(\s*,)/\%SUBQUERY$1\% alias$1$2/igs;
-			$parts[0] =~ s/(?<!USING|[\s,]ONLY|[\s,]JOIN|.\sON\s)\%SUBQUERY(\d+)\%(\s*)$/\%SUBQUERY$1\% alias$1$2/is;
-			$from_clause = join('', @parts);
+			if ($q[$j] !~ /\b(YEAR|MONTH|DAY|HOUR|MINUTE|SECOND|TIMEZONE_HOUR|TIMEZONE_MINUTE|TIMEZONE_ABBR|TIMEZONE_REGION|TIMEZONE_OFFSET)\s+FROM/is) {
+				my @parts = split(/\b(WHERE|ORDER\s+BY|GROUP\s+BY|LIMIT)\b/i, $from_clause);
+				$parts[0] =~ s/(?<!USING|[\s,]ONLY|[\s,]JOIN|..\sON)\%SUBQUERY(\d+)\%(\s*,)/\%SUBQUERY$1\% alias$1$2/igs;
+				$parts[0] =~ s/(?<!USING|[\s,]ONLY|[\s,]JOIN|.\sON\s)\%SUBQUERY(\d+)\%(\s*)$/\%SUBQUERY$1\% alias$1$2/is;
+				$from_clause = join('', @parts);
+			}
 			$q[$j] =~ s/\%FROM_CLAUSE\%/$from_clause/s;
 		}
 	}
