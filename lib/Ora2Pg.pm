@@ -2379,10 +2379,10 @@ sub read_schema_from_file
 						}
 
 						if ($c =~ s/\bDEFAULT\s+([^\s]+)\s*//is) {
-							if (!$self->{plsql_pgsql}) {
-								$c_default = $1;
-							} else {
-								$c_default = Ora2Pg::PLSQL::convert_plsql_code($self, $1, %{$self->{data_type}});
+							$c_default = $1;
+							$c_default =~ s/"//gs;
+							if ($self->{plsql_pgsql}) {
+								$c_default = Ora2Pg::PLSQL::convert_plsql_code($self, $c_default, %{$self->{data_type}});
 							}
 							$c_default =~ s/,$//;
 						}
@@ -6272,9 +6272,11 @@ CREATE TRIGGER ${table}_trigger_insert
 						$sql_output .= " NOT NULL";
 					}
 				}
+				# Default value
 				if ($f->[4] ne "") {
 					$f->[4] =~ s/^\s+//;
 					$f->[4] =~ s/\s+$//;
+					$f->[4] =~ s/"//gs;
 					if ($self->{plsql_pgsql}) {
 						$f->[4] = Ora2Pg::PLSQL::convert_plsql_code($self, $f->[4], %{$self->{data_type}});
 					}
