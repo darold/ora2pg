@@ -4130,20 +4130,21 @@ LANGUAGE plpgsql ;
 							. " ON " . $self->quote_object_name($tbname) . " CASCADE;\n";
 				my $security = '';
 				my $revoke = '';
+				my $trig_fctname = $self->quote_object_name("trigger_fct_\L$trig->[0]\E");
 				if ($self->{security}{"\U$trig->[0]\E"}{security} eq 'DEFINER') {
 					$security = " SECURITY DEFINER";
-					$revoke = "-- REVOKE ALL ON FUNCTION trigger_fct_\L$trig->[0]()\E FROM PUBLIC;\n";
+					$revoke = "-- REVOKE ALL ON FUNCTION $trig_fctname() FROM PUBLIC;\n";
 				}
 				if ($self->{pg_supports_when} && $trig->[5]) {
 					if (!$self->{preserve_case}) {
 						$trig->[4] =~ s/"([^"]+)"/\L$1\E/gs;
 						$trig->[4] =~ s/ALTER TRIGGER\s+[^\s]+\s+ENABLE(;)?//;
 					}
-					$sql_output .= "CREATE OR REPLACE FUNCTION trigger_fct_\L$trig->[0]\E() RETURNS trigger AS \$BODY\$\n$trig->[4]\n\$BODY\$\n LANGUAGE 'plpgsql'$security;\n$revoke\n";
+					$sql_output .= "CREATE OR REPLACE FUNCTION $trig_fctname() RETURNS trigger AS \$BODY\$\n$trig->[4]\n\$BODY\$\n LANGUAGE 'plpgsql'$security;\n$revoke\n";
 					if ($self->{force_owner}) {
 						my $owner = $trig->[8];
 						$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
-						$sql_output .= "ALTER FUNCTION trigger_fct_\L$trig->[0]\E() OWNER TO " . $self->quote_object_name($owner) . ";\n\n";
+						$sql_output .= "ALTER FUNCTION $trig_fctname() OWNER TO " . $self->quote_object_name($owner) . ";\n\n";
 					}
 					$self->_remove_comments(\$trig->[6]);
 					$trig->[6] =~ s/\n+$//s;
@@ -4155,7 +4156,7 @@ LANGUAGE plpgsql ;
 					chomp($trig->[6]);
 					# Remove referencing clause, not supported by PostgreSQL
 					$trig->[6] =~ s/REFERENCING\s+(.*?)(FOR\s+EACH\s+)/$2/is;
-					$sql_output .= "CREATE TRIGGER $trig->[6]\n";
+					$sql_output .= "CREATE TRIGGER " . $self->quote_object_name($trig->[6]) . "\n";
 					if ($trig->[5]) {
 						$self->_remove_comments(\$trig->[5]);
 						$trig->[5] =~ s/"([^"]+)"/\L$1\E/gs if (!$self->{preserve_case});
@@ -4165,19 +4166,19 @@ LANGUAGE plpgsql ;
 						}
 						$sql_output .= "\tWHEN ($trig->[5])\n";
 					}
-					$sql_output .= "\tEXECUTE PROCEDURE trigger_fct_\L$trig->[0]\E();\n\n";
+					$sql_output .= "\tEXECUTE PROCEDURE $trig_fctname();\n\n";
 				} else {
 					if (!$self->{preserve_case}) {
 						$trig->[4] =~ s/"([^"]+)"/\L$1\E/gs;
 						$trig->[4] =~ s/ALTER TRIGGER\s+[^\s]+\s+ENABLE(;)?//;
 					}
-					$sql_output .= "CREATE OR REPLACE FUNCTION trigger_fct_\L$trig->[0]\E() RETURNS trigger AS \$BODY\$\n$trig->[4]\n\$BODY\$\n LANGUAGE 'plpgsql'$security;\n$revoke\n";
+					$sql_output .= "CREATE OR REPLACE FUNCTION $trig_fctname() RETURNS trigger AS \$BODY\$\n$trig->[4]\n\$BODY\$\n LANGUAGE 'plpgsql'$security;\n$revoke\n";
 					if ($self->{force_owner}) {
 						my $owner = $trig->[8];
 						$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
-						$sql_output .= "ALTER FUNCTION trigger_fct_\L$trig->[0]\E() OWNER TO " . $self->quote_object_name($owner) . ";\n\n";
+						$sql_output .= "ALTER FUNCTION $trig_fctname() OWNER TO " . $self->quote_object_name($owner) . ";\n\n";
 					}
-					$sql_output .= "CREATE TRIGGER \L$trig->[0]\E\n\t";
+					$sql_output .= "CREATE TRIGGER " . $self->quote_object_name($trig->[0]) . "\n\t";
 					my $statement = 0;
 					$statement = 1 if ($trig->[1] =~ s/ STATEMENT//);
 					$sql_output .= "$trig->[1] $trig->[2] ON " . $self->quote_object_name($tbname) . " ";
@@ -4186,7 +4187,7 @@ LANGUAGE plpgsql ;
 					} else {
 						$sql_output .= "FOR EACH ROW\n";
 					}
-					$sql_output .= "\tEXECUTE PROCEDURE trigger_fct_\L$trig->[0]\E();\n\n";
+					$sql_output .= "\tEXECUTE PROCEDURE $trig_fctname();\n\n";
 				}
 			}
 			$self->_restore_comments(\$sql_output);
