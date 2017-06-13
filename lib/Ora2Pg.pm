@@ -9584,6 +9584,8 @@ sub _get_functions
 		if (!$self->{schema} && $self->{export_schema}) {
 			$row->[0] = "$row->[1].$row->[0]";
 		}
+		# Remove some bargage when migrating from 8i
+		$row->[2] =~ s/\bAUTHID\s+[^\s]+\s+//is;
 		if (exists $functions{"$row->[0]"}) {
 			$functions{"$row->[0]"}{text} .= $row->[2];
 		}
@@ -9686,6 +9688,8 @@ sub _get_procedures
 		if (!$self->{schema} && $self->{export_schema}) {
 			$row->[0] = "$row->[1].$row->[0]";
 		}
+		# Remove some bargage when migrating from 8i
+		$row->[2] =~ s/\bAUTHID\s+[^\s]+\s+//is;
 		if (exists $procedures{"$row->[0]"}) {
 			$procedures{"$row->[0]"}{text} .= $row->[2];
 		}
