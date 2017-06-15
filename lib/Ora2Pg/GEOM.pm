@@ -784,7 +784,7 @@ sub createPoint
 	my $start = ($sOffset - 1) / $self->{geometry}{dim};
 	my $eOffset = $self->get_start_offset($elemIndex + 1); # -1 for end
 	my $end = ($eOffset != -1) ? (($eOffset - 1) / $self->{geometry}{dim}) : ($#{$coords} + 1);
-	my $point = "POINT$self->{geometry}{suffix} (" . $self->setCoordicates($coords, $start, $end) . ')';
+	my $point = "POINT$self->{geometry}{suffix} (" . $self->setCoordicates($coords, $start+1, $end) . ')';
 
 	return $point;
 }
