@@ -1549,7 +1549,7 @@ sub replace_sql_type
 	# Replace local type ref cursor
 	my %locatype = ();
 	my $i = 0;
-	while ($str =~ s/\bTYPE\s+([^\s]+)\s+IS\s+REF\s+CURSOR\s*;/\%LOCALTYPE$i\%/is) {
+	while ($str =~ s/\bTYPE\s+([^\s]+)\s+(IS\s+REF\s+CURSOR|REFCURSOR)\s*;/\%LOCALTYPE$i\%/is) {
 		$localtype{$i} = "TYPE $1 IS REF CURSOR;";
 		my $local_type = $1;
 		if ($str =~ s/\b([^\s]+)\s+$local_type\s*;/$1 REFCURSOR;/igs) {
