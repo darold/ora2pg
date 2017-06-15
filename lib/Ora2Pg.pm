@@ -4937,7 +4937,9 @@ LANGUAGE plpgsql ;
 				}
 			}
 			if ($default_vars) {
-				open(OUT, ">$self->{output_dir}/global_variables.conf");
+				my $dirprefix = '';
+				$dirprefix = "$self->{output_dir}/" if ($self->{output_dir});
+				open(OUT, ">${dirprefix}global_variables.conf");
 				print OUT "-- Global variables with default values used in packages.\n";
 				print OUT $default_vars;
 				close(OUT);
@@ -15284,8 +15286,10 @@ sub _lookup_function
 
 	# Replace call to global variables declared in this package
 	foreach my $n (keys %{$self->{global_variables}}) {
-		next if ($pname && (uc($n) !~ /^\U$pname\E\./));
-		next if (!$n || $fct_detail{code} !~ /\b$n\b/is);
+		next if (!$n || ($pname && (uc($n) !~ /^\U$pname\E\./)));
+		my $tmpname = $n;
+		$tmpname =~ s/^$pname\.//i;
+		next if ($fct_detail{code} !~ /\b$tmpname\b/is);
 		my $i = 0;
 		while ($fct_detail{code} =~ s/\b$n\s*:=\s*([^;]+)\s*;/PERFORM set_config('$n', $1, false);/is) { last if ($i++ > 100); };
 		$i = 0;
