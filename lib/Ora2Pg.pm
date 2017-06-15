@@ -3382,7 +3382,7 @@ sub _replace_cycle_var
 		}
 	}
 	if ($declare) {
-		if ($$code !~ s/(\s+DECLARE\s+)/$1$declare/is) {
+		if ($$code !~ s/(\s*\bDECLARE\s+)/$1$declare/is) {
 			$$code =~ s/(\s*BEGIN\s+)/DECLARE\n$declare$1/is;
 		}
 	}
@@ -4068,7 +4068,7 @@ LANGUAGE plpgsql ;
 			if (!$self->{pg_supports_insteadof} && $trig->[1] =~ /INSTEAD OF/) {
 				if ($self->{plsql_pgsql}) {
 					$trig->[4] = Ora2Pg::PLSQL::convert_plsql_code($self, $trig->[4], %{$self->{data_type}});
-					$self->_replace_cycle_var(\$trig->[4]);
+					#$self->_replace_cycle_var(\$trig->[4]);
 				}
 				$sql_output .= "CREATE OR REPLACE RULE " . $self->quote_object_name($trig->[0])
 							. " AS\n\tON " . $self->quote_object_name($trig->[2])
@@ -4085,7 +4085,7 @@ LANGUAGE plpgsql ;
 				if ($trig->[7] eq 'CALL') {
 					if ($self->{plsql_pgsql}) {
 						$trig->[4] = Ora2Pg::PLSQL::convert_plsql_code($self, $trig->[4], %{$self->{data_type}});
-						$self->_replace_cycle_var(\$trig->[4]);
+						#$self->_replace_cycle_var(\$trig->[4]);
 					}
 					$trig->[4] = "BEGIN\nPERFORM $trig->[4];\nEND;";
 				} else {
@@ -4103,7 +4103,7 @@ LANGUAGE plpgsql ;
 							$trig->[4] = "BEGIN\n$trig->[4]\n$ret_kind\nEND;";
 						}
 						$trig->[4] = Ora2Pg::PLSQL::convert_plsql_code($self, $trig->[4], %{$self->{data_type}});
-						$self->_replace_cycle_var(\$trig->[4]);
+						#$self->_replace_cycle_var(\$trig->[4]);
 
 						# When an exception statement is used enclosed everything
 						# in a block before returning NEW
@@ -4162,7 +4162,7 @@ LANGUAGE plpgsql ;
 						$trig->[5] =~ s/"([^"]+)"/\L$1\E/gs if (!$self->{preserve_case});
 						if ($self->{plsql_pgsql}) {
 							$trig->[5] = Ora2Pg::PLSQL::convert_plsql_code($self, $trig->[5], %{$self->{data_type}});
-							$self->_replace_cycle_var(\$trig->[5]);
+							#$self->_replace_cycle_var(\$trig->[5]);
 						}
 						$sql_output .= "\tWHEN ($trig->[5])\n";
 					}
