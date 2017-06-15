@@ -537,9 +537,8 @@ DISABLE_TRIGGERS 0
 # replication use. Give a list of tables separate by space as follow.
 #REPLACE_TABLES	ORIG_TB_NAME1:NEW_TB_NAME1 ORIG_TB_NAME2:NEW_TB_NAME2 
 
-# You may wish to change column names during data extraction, especially for
-# replication use. Give a list of tables and columns separate by space as
-# follow.
+# You may wish to change column names during export. Give a list of tables
+# and columns separate by space as follow.
 #REPLACE_COLS	TB_NAME(ORIG_COLNAME1:NEW_COLNAME1,ORIG_COLNAME2:NEW_COLNAME2)
 
 # By default all object names are converted to lower case, if you
