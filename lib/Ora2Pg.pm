@@ -7951,7 +7951,7 @@ END
 	my $pos = 0;
 	while (my $row = $sth->fetch) {
 
-        $row->[2] = $row->[7] if $row->[1] =~ /char/i;
+		$row->[2] = $row->[7] if $row->[1] =~ /char/i;
 
 		# Seems that for a NUMBER with a DATA_SCALE to 0, no DATA_PRECISION and a DATA_LENGTH of 22
 		# Oracle use a NUMBER(38) instead
@@ -7997,7 +7997,7 @@ END
 				}
 			}
 
-			# Grad constraint type and dimensions from index definition
+			# Grab constraint type and dimensions from index definition
 			my $found_contraint = 0;
 			foreach my $idx (keys %{$self->{tables}{$tmptable}{idx_type}}) {
 				if (exists $self->{tables}{$tmptable}{idx_type}{$idx}{type_constraint}) {
