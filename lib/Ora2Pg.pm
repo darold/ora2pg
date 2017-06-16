@@ -9405,8 +9405,10 @@ sub _get_plsql_metadata
 	}
         $sth->finish();
 
+	# For each schema in the Oracle instance
 	foreach my $sch (sort keys %{ $self->{function_metadata} }) {
 		next if ( ($owner && ($sch ne $owner)) || (!$owner && $self->{schema} && ($sch ne $self->{schema})) );
+		# Look for functions/procedures
 		foreach my $name (sort keys %{$self->{function_metadata}{$sch}{'none'}}) {
 			if ($self->{function_metadata}{$sch}{'none'}{$name}{type} ne 'PACKAGE BODY') {
 				# Retrieve metadata for this function after removing comments
@@ -9428,15 +9430,16 @@ sub _get_plsql_metadata
 				$self->{function_metadata}{$sch}{'none'}{$name}{text} =~  s/\%ORA2PG_COMMENT\d+\%//gs;
 				my %infos = $self->_lookup_package($self->{function_metadata}{$sch}{'none'}{$name}{text});
 				delete $self->{function_metadata}{$sch}{'none'}{$name};
+				$name =~ s/"//g;
 				foreach my $f (sort keys %infos) {
 					next if (!$f);
 					my $fn = lc($f);
 					delete $infos{$f}{code};
 					delete $infos{$f}{before};
-					$name =~ s/"//g;
 					%{$self->{function_metadata}{$sch}{$name}{$fn}{metadata}} = %{$infos{$f}};
 					my $res_name = $f;
-					$res_name =~ s/^[^\.]+\.//;
+					$res_name =~ s/^([^\.]+)\.//;
+					$f =~ s/^([^\.]+)\.//;
 					if ($self->{package_as_schema}) {
 						$res_name = $name . '.' . $res_name;
 					} else {
@@ -9444,10 +9447,8 @@ sub _get_plsql_metadata
 					}
 					$res_name =~ s/"_"/_/g;
 					$f =~ s/"//g;
-					if ($res_name) {
-						$self->{package_functions}{"\L$name\E"}{"\L$f\E"}{name}    = $self->quote_object_name($res_name);
-						$self->{package_functions}{"\L$name\E"}{"\L$f\E"}{package} = $name;
-					}
+					$self->{package_functions}{"\L$name\E"}{"\L$f\E"}{name}    = $self->quote_object_name($res_name);
+					$self->{package_functions}{"\L$name\E"}{"\L$f\E"}{package} = $name;
 				}
 			}
 		}
@@ -9528,7 +9529,9 @@ sub _get_package_function_list
 				next if (!$f);
 				my $fn = lc($f);
 				my $res_name = $f;
-				$res_name =~ s/^[^\.]+\.//;
+				if ($res_name =~ s/^([^\.]+)\.//) {
+					next if (lc($1) ne lc($name));
+				}
 				if ($self->{package_as_schema}) {
 					$res_name = $name . '.' . $res_name;
 				} else {
@@ -11179,6 +11182,7 @@ sub _convert_package
 			if (!exists $self->{package_functions}{"\L$pname\E"}{$fct_detail{name}}) {
 				my $res_name = $fct_detail{name};
 				$res_name =~ s/^[^\.]+\.//;
+				$fct_detail{name} =~ s/^([^\.]+)\.//;
 				if ($self->{package_as_schema}) {
 					$res_name = $pname . '.' . $res_name;
 				} else {
