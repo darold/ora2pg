@@ -10672,6 +10672,13 @@ sub format_data_type
 		$src_type = 'internal timestamp';
 	}
 
+	# Workaround for a bug in DBD::Oracle with the ora_piece_lob option
+	# (used when no_lob_locator is enabled) where null values fetch as
+	# empty string for certain types.
+	if ($self->{no_lob_locator} and ($cond->{clob} or $cond->{blob} or $cond->{long})) {
+		$col = undef if (!length($col));
+	}
+
 	# Preparing data for output
 	if ($action ne 'COPY') {
 		if (!defined $col) {
@@ -10760,6 +10767,8 @@ sub hs_cond
 		$hs->{isdate} =  $data_types->[$idx] =~ /^(date|time)/i ? 1 : 0;
 		$hs->{raw} = $src_data_types->[$idx] =~ /RAW/i ? 1 : 0;
 		$hs->{clob} = $src_data_types->[$idx] =~ /CLOB/i ? 1 : 0;
+		$hs->{blob} = $src_data_types->[$idx] =~ /BLOB/i ? 1 : 0;
+		$hs->{long} = $src_data_types->[$idx] =~ /LONG/i ? 1 : 0;
 		$hs->{istext} = $data_types->[$idx] =~ /(char|text|xml|uuid|citext)/i ? 1 : 0;
 		$hs->{isbytea} = $data_types->[$idx] =~ /bytea/i ? 1 : 0;
 		$hs->{isbit} = $data_types->[$idx] =~ /bit/i ? 1 : 0;
@@ -12213,16 +12222,6 @@ sub _extract_data
 		if (!$has_blob || $self->{no_lob_locator}) {
 
 			while ( my $rows = $sth->fetchall_arrayref(undef,$data_limit)) {
-
-				my $lob_idxs = [grep { $stt->[$_] =~ /(LOB|LONG)/ } (0 .. $#$stt)];
-				if (@$lob_idxs) {
-					for my $row (@$rows) {
-						for my $i (@$lob_idxs) {
-							$row->[$i] = undef if (!length($row->[$i]));
-						}
-					}
-				}
-
 				if ( ($self->{parallel_tables} > 1) || (($self->{oracle_copies} > 1) && $self->{defined_pk}{"\L$table\E"}) ) {
 					if ($dbh->errstr) {
 						$self->logit("ERROR: " . $dbh->errstr . "\n", 0, 0);
