@@ -7901,8 +7901,8 @@ sub _column_info
 
 	my $sth = '';
 	if ($self->{db_version} !~ /Release 8/) {
-		my $exclude_mview = '';
-		$exclude_mview = " AND (A.OWNER, A.TABLE_NAME) NOT IN (SELECT OWNER, MVIEW_NAME FROM ALL_MVIEWS UNION ALL SELECT LOG_OWNER, LOG_TABLE FROM ALL_MVIEW_LOGS)" if ($self->{type} ne 'FDW');
+		my $exclude_mview = " AND (A.OWNER, A.TABLE_NAME) NOT IN (SELECT OWNER, TABLE_NAME FROM ALL_OBJECT_TABLES)";
+		$exclude_mview .= " AND (A.OWNER, A.TABLE_NAME) NOT IN (SELECT OWNER, MVIEW_NAME FROM ALL_MVIEWS UNION ALL SELECT LOG_OWNER, LOG_TABLE FROM ALL_MVIEW_LOGS)" if ($self->{type} ne 'FDW');
 		$sth = $self->{dbh}->prepare(<<END);
 SELECT A.COLUMN_NAME, A.DATA_TYPE, A.DATA_LENGTH, A.NULLABLE, A.DATA_DEFAULT,
     A.DATA_PRECISION, A.DATA_SCALE, A.CHAR_LENGTH, A.TABLE_NAME, A.OWNER, V.VIRTUAL_COLUMN
@@ -9844,34 +9844,38 @@ sub _table_info
 	}
 
 	my %comments = ();
-	my $sql = "SELECT A.TABLE_NAME,A.COMMENTS,A.TABLE_TYPE,A.OWNER FROM ALL_TAB_COMMENTS A, ALL_OBJECTS O WHERE A.OWNER=O.OWNER and A.TABLE_NAME=O.OBJECT_NAME and O.OBJECT_TYPE='TABLE' $owner";
-	if ($self->{db_version} !~ /Release 8/) {
-		$sql .= " AND (A.OWNER, A.TABLE_NAME) NOT IN (SELECT OWNER, MVIEW_NAME FROM ALL_MVIEWS UNION ALL SELECT LOG_OWNER, LOG_TABLE FROM ALL_MVIEW_LOGS)" if ($self->{type} ne 'FDW');
-	}
-	$sql .= $self->limit_to_objects('TABLE', 'A.TABLE_NAME');
-	my $sth = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-	while (my $row = $sth->fetch) {
-		if (!$self->{schema} && $self->{export_schema}) {
-			$row->[0] = "$row->[3].$row->[0]";
+	if ($self->{type} eq 'TABLE') {
+		my $sql = "SELECT A.TABLE_NAME,A.COMMENTS,A.TABLE_TYPE,A.OWNER FROM ALL_TAB_COMMENTS A, ALL_OBJECTS O WHERE A.OWNER=O.OWNER and A.TABLE_NAME=O.OBJECT_NAME and O.OBJECT_TYPE='TABLE' $owner";
+		if ($self->{db_version} !~ /Release 8/) {
+			$sql .= " AND (A.OWNER, A.TABLE_NAME) NOT IN (SELECT OWNER, MVIEW_NAME FROM ALL_MVIEWS UNION ALL SELECT LOG_OWNER, LOG_TABLE FROM ALL_MVIEW_LOGS)" if ($self->{type} ne 'FDW');
+			$sql .= " AND (A.OWNER, A.TABLE_NAME) NOT IN (SELECT OWNER, TABLE_NAME FROM ALL_OBJECT_TABLES)";
 		}
-		$comments{$row->[0]}{comment} = $row->[1];
-		$comments{$row->[0]}{table_type} = $row->[2];
+		$sql .= $self->limit_to_objects('TABLE', 'A.TABLE_NAME');
+		my $sth = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+		$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+		while (my $row = $sth->fetch) {
+			if (!$self->{schema} && $self->{export_schema}) {
+				$row->[0] = "$row->[3].$row->[0]";
+			}
+			$comments{$row->[0]}{comment} = $row->[1];
+			$comments{$row->[0]}{table_type} = $row->[2];
+		}
+		$sth->finish();
 	}
-	$sth->finish();
 
-	$sql = "SELECT A.OWNER,A.TABLE_NAME,NVL(num_rows,1) NUMBER_ROWS,A.TABLESPACE_NAME,A.NESTED,A.LOGGING,A.PARTITIONED FROM ALL_TABLES A, ALL_OBJECTS O WHERE A.OWNER=O.OWNER AND A.TABLE_NAME=O.OBJECT_NAME AND O.OBJECT_TYPE='TABLE' $owner";
+	my $sql = "SELECT A.OWNER,A.TABLE_NAME,NVL(num_rows,1) NUMBER_ROWS,A.TABLESPACE_NAME,A.NESTED,A.LOGGING,A.PARTITIONED FROM ALL_TABLES A, ALL_OBJECTS O WHERE A.OWNER=O.OWNER AND A.TABLE_NAME=O.OBJECT_NAME AND O.OBJECT_TYPE='TABLE' $owner";
 	$sql .= " AND A.TEMPORARY='N' AND (A.NESTED != 'YES' OR A.LOGGING != 'YES') AND A.SECONDARY = 'N'";
 	if ($self->{db_version} !~ /Release [89]/) {
 		$sql .= " AND (A.DROPPED IS NULL OR A.DROPPED = 'NO')";
 	}
 	if ($self->{db_version} !~ /Release 8/) {
 		$sql .= " AND (A.OWNER, A.TABLE_NAME) NOT IN (SELECT OWNER, MVIEW_NAME FROM ALL_MVIEWS UNION ALL SELECT LOG_OWNER, LOG_TABLE FROM ALL_MVIEW_LOGS)" if ($self->{type} ne 'FDW');
+		$sql .= " AND (A.OWNER, A.TABLE_NAME) NOT IN (SELECT OWNER, TABLE_NAME FROM ALL_OBJECT_TABLES)";
 	}
 	$sql .= $self->limit_to_objects('TABLE', 'A.TABLE_NAME');
         $sql .= " AND (A.IOT_TYPE IS NULL OR A.IOT_TYPE = 'IOT') ORDER BY A.OWNER, A.TABLE_NAME";
 
-        $sth = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+        my $sth = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
         $sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	my %tables_infos = ();
 	while (my $row = $sth->fetch) {
@@ -9937,6 +9941,7 @@ sub _global_temp_table_info
 	my $sql = "SELECT A.TABLE_NAME,A.COMMENTS,A.TABLE_TYPE,A.OWNER FROM ALL_TAB_COMMENTS A, ALL_OBJECTS O WHERE A.OWNER=O.OWNER and A.TABLE_NAME=O.OBJECT_NAME and O.OBJECT_TYPE='TABLE' $owner";
 	if ($self->{db_version} !~ /Release 8/) {
 		$sql .= " AND (A.OWNER, A.TABLE_NAME) NOT IN (SELECT OWNER, MVIEW_NAME FROM ALL_MVIEWS UNION ALL SELECT LOG_OWNER, LOG_TABLE FROM ALL_MVIEW_LOGS)";
+		$sql .= " AND (A.OWNER, A.TABLE_NAME) NOT IN (SELECT OWNER, TABLE_NAME FROM ALL_OBJECT_TABLES)";
 	}
 	$sql .= $self->limit_to_objects('TABLE', 'A.TABLE_NAME');
 	my $sth = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -12152,7 +12157,7 @@ sub _extract_data
 				 $self->logit("WARNING: table $table is not yet physically created and has no data.\n", 0, 0);
 
 				# Only useful for single process
-				return $total_record;
+				return 0;
 			} elsif ($self->{dbh}->errstr) {
 				 $self->logit("FATAL: _extract_data() " . $self->{dbh}->errstr . "\n", 1, 1);
 			}
