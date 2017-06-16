@@ -12209,6 +12209,15 @@ sub _extract_data
 
 			while ( my $rows = $sth->fetchall_arrayref(undef,$data_limit)) {
 
+				my $lob_idxs = [grep { $stt->[$_] =~ /(LOB|LONG)/ } (0 .. $#$stt)];
+				if (@$lob_idxs) {
+					for my $row (@$rows) {
+						for my $i (@$lob_idxs) {
+							$row->[$i] = undef if (!length($row->[$i]));
+						}
+					}
+				}
+
 				if ( ($self->{parallel_tables} > 1) || (($self->{oracle_copies} > 1) && $self->{defined_pk}{"\L$table\E"}) ) {
 					if ($dbh->errstr) {
 						$self->logit("ERROR: " . $dbh->errstr . "\n", 0, 0);
