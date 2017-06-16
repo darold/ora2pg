@@ -744,7 +744,7 @@ sub plsql_to_plpgsql
 			foreach my $p ( keys %{ $class->{function_metadata}{$sch} }) {
 				foreach my $k (keys %{$class->{function_metadata}{$sch}{$p}}) {
 					if (!$class->{function_metadata}{$sch}{$p}{$k}{metadata}{inout}) {
-						if ($sch ne 'unknow' and $str =~ /\b$sch.$k\b/is) {
+						if ($sch ne 'unknown' and $str =~ /\b$sch.$k\b/is) {
 							# Look if we need to use PERFORM to call the function
 							$str =~ s/(BEGIN|LOOP|;)((?:\s*%ORA2PG_COMMENT\d+\%\s*|\s*\/\*(?:.*?)\*\/\s*)*\s*)($sch\.$k\s*[\(;])/$1$2PERFORM $3/igs;
 							$str =~ s/(EXCEPTION(?:(?!CASE|THEN).)*?THEN)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($sch\.$k\s*[\(;])/$1$2PERFORM $3/isg;
@@ -758,6 +758,19 @@ sub plsql_to_plpgsql
 							$str =~ s/(IF(?:(?!CASE|THEN).)*?THEN)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($k\s*[\(;])/$1$2PERFORM $3/isg;
 							$str =~ s/(IF(?:(?!CASE|ELSE).)*?ELSE)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($k\s*[\(;])/$1$2PERFORM $3/isg;
 							$str =~ s/(PERFORM $k);/$1\(\);/igs;
+						} else {
+							my $fct_name = $k;
+							my $pkg_name = '';
+							# Remove package name
+							if ($fct_name =~ s/^([^\.]+)\.//) {
+								$pkg_name = $1;
+							}
+							# Look if we need to use PERFORM to call the function
+							$str =~ s/(BEGIN|LOOP|;)((?:\s*%ORA2PG_COMMENT\d+\%\s*|\s*\/\*(?:.*?)\*\/\s*)*\s*)($fct_name\s*[\(;])/$1$2PERFORM $3/igs;
+							$str =~ s/(EXCEPTION(?:(?!CASE|THEN).)*?THEN)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($fct_name\s*[\(;])/$1$2PERFORM $3/isg;
+							$str =~ s/(IF(?:(?!CASE|THEN).)*?THEN)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($fct_name\s*[\(;])/$1$2PERFORM $3/isg;
+							$str =~ s/(IF(?:(?!CASE|ELSE).)*?ELSE)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($fct_name\s*[\(;])/$1$2PERFORM $3/isg;
+							$str =~ s/(PERFORM $fct_name);/$1\(\);/igs;
 						}
 					} else {
 						# Recover call to function with OUT parameter with double affectation
@@ -771,7 +784,7 @@ sub plsql_to_plpgsql
 					}
 					# Remove package name and try to replace call to function name only
 					if (!$class->{function_metadata}{$sch}{$p}{$k}{metadata}{inout} && $k =~ s/^[^\.]+\.// && $p eq lc($class->{current_package}) ) {
-						if ($sch ne 'unknow' and $str =~ /\b$sch\.$k\b/is) {
+						if ($sch ne 'unknown' and $str =~ /\b$sch\.$k\b/is) {
 							$str =~ s/(BEGIN|LOOP|;)((?:\s*%ORA2PG_COMMENT\d+\%\s*|\s*\/\*(?:.*?)\*\/\s*)*\s*)($sch\.$k\s*[\(;])/$1$2PERFORM $3/igs;
 							$str =~ s/(EXCEPTION(?:(?!CASE|THEN).)*?THEN)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($sch\.$k\s*[\(;])/$1$2PERFORM $3/isg;
 							$str =~ s/(IF(?:(?!CASE|THEN).)*?THEN)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($sch\.$k\s*[\(;])/$1$2PERFORM $3/isg;
@@ -790,33 +803,51 @@ sub plsql_to_plpgsql
 		}
 	}
 
-
 	##############
 	# Replace package.function call by package_function
 	##############
+	my $cur_pkg = lc($class->{current_package});
 	if (uc($class->{type}) ne 'SHOW_REPORT') {
 		if (scalar keys %{$class->{package_functions}}) {
 			foreach my $p (keys %{$class->{package_functions}}) {
 				foreach my $k (keys %{$class->{package_functions}{$p}}) {
-
 					if (!exists $class->{package_functions}{$p}{$k}{name}) {
 						my $fname = $k;
-						$fname =~ s/^[^\.]+\.//;
-						if (exists $class->{package_functions}{$p}{$fname}{name} && $p ne lc($class->{current_package})) {
-							$str =~ s/([^\.])\b$fname\s*([\(;])/$1$class->{package_functions}{$p}{$k}{name}$2/igs;
+						if ($fname =~ s/^([^\.]+)\.//) {
+							$class->{package_functions}{$p}{$k}{package} = $1;
 						} else {
-							$str =~ s/([^\.])\b$k\s*([\(;])/$1$class->{package_functions}{$p}{$k}{name}$2/igs;
-							$str =~ s/\b$class->{package_functions}{$p}{$k}{package}\.$fname\s*([\(;])/$class->{package_functions}{$p}{$k}{name}$1/igs;
+							$class->{package_functions}{$p}{$k}{package} = $p;
 						}
-					} elsif ($p ne lc($class->{current_package})) {
+						$class->{package_functions}{$p}{$k}{name} = $k;
+					}
+					# foreach function declared in a package 
+					# When this is a function from the current package
+					# if the package of the function is not the current package being parsed
+					if ($p ne $cur_pkg) {
 						my $fname = $k;
 						$fname =~ s/^[^\.]+\.//;
-						if (lc($class->{package_functions}{$p}{$k}{name}) ne lc($fname)) {
-							$str =~ s/([^\.])\b$fname\s*([\(;])/$1$class->{package_functions}{$p}{$k}{name}$2/igs;
+						# let's prefix the name of the function by the package name if there
+						# is no such function name in the current package being parsed
+						if (!exists $class->{package_functions}{$cur_pkg}{$fname}{name} && !exists $class->{package_functions}{$cur_pkg}{$k}{name}) {
+							# If the package is already prefixed to the function name in the hash take it from here
+							if (lc($class->{package_functions}{$p}{$k}{name}) ne lc($fname)) {
+								$str =~ s/([^\.])\b$fname\s*([\(;])/$1$class->{package_functions}{$p}{$k}{name}$2/igs;
+							} elsif (exists $class->{package_functions}{$p}{$k}{package}) {
+								# otherwise use the package name from the hash and the function name from the string
+								$str =~ s/([^\.])\b($fname\s*[\(;])/$1$class->{package_functions}{$p}{$k}{package}\.$2/igs;
+							}
 						} else {
-							$str =~ s/([^\.])\b($fname\s*[\(;])/$1$class->{package_functions}{$p}{$k}{package}\.$2/igs;
+							# the function is also defined in the current package being parse, it takes precedence
+							if (lc($class->{package_functions}{$cur_pkg}{$k}{name}) ne lc($fname)) {
+								$str =~ s/([^\.])\b$fname\s*([\(;])/$1$class->{package_functions}{$cur_pkg}{$k}{name}$2/igs;
+							} elsif (exists $class->{package_functions}{$cur_pkg}{$k}{package}) {
+								# otherwise use the package name from the hash and the function name from the string
+								$str =~ s/([^\.])\b($fname\s*[\(;])/$1$class->{package_functions}{$cur_pkg}{$k}{package}\.$2/igs;
+							}
 						}
-					} elsif ($k !~ /\./) {
+					# If this is the same package and the function name is not prefixed by the package name
+					} elsif ($k !~ /\./ && exists $class->{package_functions}{$p}{$k}{package}) {
+						# prefix its call by the package name
 						$str =~ s/([^\.])\b($k\s*[\(;])/$1\L$class->{package_functions}{$p}{$k}{package}\.$2\E/igs;
 					}
 				}
@@ -1184,10 +1215,13 @@ sub replace_oracle_function
 		if (scalar keys %{$class->{package_functions}}) {
 			foreach my $p (keys %{$class->{package_functions}}) {
 				foreach my $k (keys %{$class->{package_functions}{$p}}) {
+					next if (!exists $class->{package_functions}{$p}{$k}{name});
 					my $fname = $k;
 					$fname =~ s/^[^\.]+\.//;
 					$str =~ s/([^\.])\b$fname\s*([\(;])/$1$class->{package_functions}{$p}{$k}{name}$2/igs;
-					$str =~ s/\b$class->{package_functions}{$p}{$k}{package}\.$fname\s*([\(;])/$class->{package_functions}{$p}{$k}{name}$1/igs;
+					if (exists $class->{package_functions}{$p}{$k}{package}) {
+						$str =~ s/\b$class->{package_functions}{$p}{$k}{package}\.$fname\s*([\(;])/$class->{package_functions}{$p}{$k}{name}$1/igs;
+					}
 				}
 			}
 		}

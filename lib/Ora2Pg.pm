@@ -2182,7 +2182,7 @@ sub _restore_text_constant_part
 		foreach my $p (keys %{$self->{package_functions}}) {
 			foreach my $k (keys %{$self->{package_functions}{$p}}) {
 				if (exists $self->{package_functions}{$p}{$k}{package}) {
-					next if (!$self->{package_functions}{$p}{$k}{package});
+					next if (!exists $self->{package_functions}{$p}{$k}{package} || !$self->{package_functions}{$p}{$k}{package});
 					my $pkname =  $self->{package_functions}{$p}{$k}{package} . '.';
 					map {
 						$self->{text_values}{$_} =~ s/($pkname)?\b$k\s*\(/$self->{package_functions}{$p}{$k}{name}\(/igs;
@@ -4473,7 +4473,7 @@ LANGUAGE plpgsql ;
 				}
 				delete $fct_detail{code};
 				delete $fct_detail{before};
-				my $sch = 'unknow';
+				my $sch = 'unknown';
 				my $fname = $fct;
 				if ($fname =~ s/^([^\.\s]+)\.([^\s]+)$/$2/is) {
 					$sch = $1;
@@ -4651,7 +4651,7 @@ LANGUAGE plpgsql ;
 				}
 				delete $fct_detail{code};
 				delete $fct_detail{before};
-				my $sch = 'unknow';
+				my $sch = 'unknown';
 				my $fname = $fct;
 				if ($fname =~ s/^([^\.\s]+)\.([^\s]+)$/$2/is) {
 					$sch = $1;
@@ -4802,7 +4802,7 @@ LANGUAGE plpgsql ;
 				my $tmp_txt = "$self->{packages}{$pkg}{text}";
 				$tmp_txt =~ s/^(.*)CREATE OR REPLACE PACKAGE BODY/CREATE OR REPLACE PACKAGE BODY/s;
 				my %infos = $self->_lookup_package($tmp_txt);
-				my $sch = 'unknow';
+				my $sch = 'unknown';
 				my $pname = $pkg;
 				if ($pname =~ s/^([^\.\s]+)\.([^\s]+)$/$2/is) {
 					$sch = $1;
@@ -9434,8 +9434,10 @@ sub _get_plsql_metadata
 					}
 					$res_name =~ s/"_"/_/g;
 					$f =~ s/"//g;
-					$self->{package_functions}{"\L$name\E"}{"\L$f\E"}{name}    = $self->quote_object_name($res_name);
-					$self->{package_functions}{"\L$name\E"}{"\L$f\E"}{package} = $name;
+					if ($res_name) {
+						$self->{package_functions}{"\L$name\E"}{"\L$f\E"}{name}    = $self->quote_object_name($res_name);
+						$self->{package_functions}{"\L$name\E"}{"\L$f\E"}{package} = $name;
+					}
 				}
 			}
 		}
@@ -9524,8 +9526,10 @@ sub _get_package_function_list
 				}
 				$res_name =~ s/"_"/_/g;
 				$f =~ s/"//gs;
-				$self->{package_functions}{"\L$name\E"}{"\L$f\E"}{name}    = $self->quote_object_name($res_name);
-				$self->{package_functions}{"\L$name\E"}{"\L$f\E"}{package} = $name;
+				if ($res_name) {
+					$self->{package_functions}{"\L$name\E"}{"\L$f\E"}{name}    = $self->quote_object_name($res_name);
+					$self->{package_functions}{"\L$name\E"}{"\L$f\E"}{package} = $name;
+				}
 			}
 		}
 	}
