@@ -7500,9 +7500,11 @@ sub _howto_get_data
 		} else {
 			$realtable = "\"$realtable\"";
 			my $owner  = $self->{tables}{$table}{table_info}{owner} || $self->{tables}{$table}{owner} || '';
-			$owner =~ s/\"//g;
-			$owner = "\"$owner\"";
-			$realtable = "$owner.$realtable";
+			if ($owner) {
+				$owner =~ s/\"//g;
+				$owner = "\"$owner\"";
+				$realtable = "$owner.$realtable";
+			}
 		}
 	} else {
 		$realtable = "\`$realtable\`";
@@ -7525,103 +7527,108 @@ sub _howto_get_data
 	}
 	my $timeformat_tz = $timeformat . ' TZH:TZM';
 	# Lookup through columns information
-	for my $k (0 .. $#{$name}) {
-		my $realcolname = $name->[$k]->[0];
-		my $spatial_srid = '';
-		$self->{nullable}{$table}{$k} = $self->{colinfo}->{$table}{$realcolname}{nullable};
-		if ($name->[$k]->[0] !~ /"/) {
-			# Do not use double quote with mysql
-			if (!$self->{is_mysql}) {
-				$name->[$k]->[0] = '"' . $name->[$k]->[0] . '"';
-			} else {
-				$name->[$k]->[0] = '`' . $name->[$k]->[0] . '`';
-			}
-		}
-		if ( ( $src_type->[$k] =~ /^char/i) && ($type->[$k] =~ /(varchar|text)/i)) {
-			$str .= "trim($self->{trim_type} '$self->{trim_char}' FROM $name->[$k]->[0]) AS $name->[$k]->[0],";
-		} elsif ($self->{is_mysql} && $src_type->[$k] =~ /bit/i) {
-			$str .= "BIN($name->[$k]->[0]),";
-		# If dest type is bytea the content of the file is exported as bytea
-		} elsif ( ($src_type->[$k] =~ /bfile/i) && ($type->[$k] =~ /bytea/i) ) {
-			$self->{bfile_found} = 'bytea';
-			$str .= "$name->[$k]->[0],";
-		# If dest type is efile the content of the file is exported to use the efile extension
-		} elsif ( ($src_type->[$k] =~ /bfile/i) && ($type->[$k] =~ /efile/i) ) {
-			$self->{bfile_found} = 'efile';
-			$str .= "ora2pg_get_efile($name->[$k]->[0]),";
-		# Only extract path to the bfile if dest type is text.
-		} elsif ( ($src_type->[$k] =~ /bfile/i) && ($type->[$k] =~ /text/i) ) {
-			$self->{bfile_found} = 'text';
-			$str .= "ora2pg_get_bfilename($name->[$k]->[0]),";
-		} elsif ( $src_type->[$k] =~ /xmltype/i) {
-			if ($self->{xml_pretty}) {
-				$str .= "$alias.$name->[$k]->[0].extract('/').getStringVal(),";
-			} else {
-				$str .= "$alias.$name->[$k]->[0].extract('/').getClobVal(),";
-			}
-		} elsif ( !$self->{is_mysql} && $src_type->[$k] =~ /geometry/i) {
-
-			# Set SQL query to get the SRID of the column
-			if ($self->{convert_srid} > 1) {
-				$spatial_srid = $self->{convert_srid};
-			} else {
-				$spatial_srid = $self->{colinfo}->{$table}{$realcolname}{spatial_srid};
-			}
-
-			# With INSERT statement we always use WKT
-			if ($self->{type} eq 'INSERT') {
-				if ($self->{geometry_extract_type} eq 'WKB') {
-					$str .= "CASE WHEN $name->[$k]->[0] IS NOT NULL THEN SDO_UTIL.TO_WKBGEOMETRY($name->[$k]->[0]) ELSE NULL END,";
-				} elsif ($self->{geometry_extract_type} eq 'INTERNAL') {
-					$str .= "CASE WHEN $name->[$k]->[0] IS NOT NULL THEN $name->[$k]->[0] ELSE NULL END,";
+	if ($#{$name} < 0) {
+		# There a problem whe can't find any column in this table
+		return '';
+	} else {
+		for my $k (0 .. $#{$name}) {
+			my $realcolname = $name->[$k]->[0];
+			my $spatial_srid = '';
+			$self->{nullable}{$table}{$k} = $self->{colinfo}->{$table}{$realcolname}{nullable};
+			if ($name->[$k]->[0] !~ /"/) {
+				# Do not use double quote with mysql
+				if (!$self->{is_mysql}) {
+					$name->[$k]->[0] = '"' . $name->[$k]->[0] . '"';
 				} else {
-					$str .= "CASE WHEN $name->[$k]->[0] IS NOT NULL THEN 'ST_GeomFromText('''||SDO_UTIL.TO_WKTGEOMETRY($name->[$k]->[0])||''','||($spatial_srid)||')' ELSE NULL END,";
-				}
-			} else {
-				if ($self->{geometry_extract_type} eq 'WKB') {
-					$str .= "CASE WHEN $name->[$k]->[0] IS NOT NULL THEN SDO_UTIL.TO_WKBGEOMETRY($name->[$k]->[0]) ELSE NULL END,";
-				} elsif ($self->{geometry_extract_type} eq 'INTERNAL') {
-					$str .= "CASE WHEN $name->[$k]->[0] IS NOT NULL THEN $name->[$k]->[0] ELSE NULL END,";
-				} else {
-					$str .= "CASE WHEN $name->[$k]->[0] IS NOT NULL THEN SDO_UTIL.TO_WKTGEOMETRY($name->[$k]->[0]) ELSE NULL END,";
+					$name->[$k]->[0] = '`' . $name->[$k]->[0] . '`';
 				}
 			}
-
-		} elsif ( $self->{is_mysql} && $src_type->[$k] =~ /geometry/i) {
-
-			if ($self->{geometry_extract_type} eq 'WKB') {
-				$str .= "CASE WHEN $name->[$k]->[0] IS NOT NULL THEN CONCAT('SRID=',SRID($name->[$k]->[0]),';', AsBinary($name->[$k]->[0])) ELSE NULL END,";
-			} else {
-				$str .= "CASE WHEN $name->[$k]->[0] IS NOT NULL THEN CONCAT('SRID=',SRID($name->[$k]->[0]),';',AsText($name->[$k]->[0])) ELSE NULL END,";
-			}
-
-		} elsif ( !$self->{is_mysql} && (($src_type->[$k] =~ /clob/i) || ($src_type->[$k] =~ /blob/i)) ) {
-
-			if ($self->{empty_lob_null}) {
-				$str .= "CASE WHEN dbms_lob.getlength($name->[$k]->[0]) = 0 THEN NULL ELSE $name->[$k]->[0] END,";
-			} else {
+			if ( ( $src_type->[$k] =~ /^char/i) && ($type->[$k] =~ /(varchar|text)/i)) {
+				$str .= "trim($self->{trim_type} '$self->{trim_char}' FROM $name->[$k]->[0]) AS $name->[$k]->[0],";
+			} elsif ($self->{is_mysql} && $src_type->[$k] =~ /bit/i) {
+				$str .= "BIN($name->[$k]->[0]),";
+			# If dest type is bytea the content of the file is exported as bytea
+			} elsif ( ($src_type->[$k] =~ /bfile/i) && ($type->[$k] =~ /bytea/i) ) {
+				$self->{bfile_found} = 'bytea';
 				$str .= "$name->[$k]->[0],";
-			}
-		} else {
+			# If dest type is efile the content of the file is exported to use the efile extension
+			} elsif ( ($src_type->[$k] =~ /bfile/i) && ($type->[$k] =~ /efile/i) ) {
+				$self->{bfile_found} = 'efile';
+				$str .= "ora2pg_get_efile($name->[$k]->[0]),";
+			# Only extract path to the bfile if dest type is text.
+			} elsif ( ($src_type->[$k] =~ /bfile/i) && ($type->[$k] =~ /text/i) ) {
+				$self->{bfile_found} = 'text';
+				$str .= "ora2pg_get_bfilename($name->[$k]->[0]),";
+			} elsif ( $src_type->[$k] =~ /xmltype/i) {
+				if ($self->{xml_pretty}) {
+					$str .= "$alias.$name->[$k]->[0].extract('/').getStringVal(),";
+				} else {
+					$str .= "$alias.$name->[$k]->[0].extract('/').getClobVal(),";
+				}
+			} elsif ( !$self->{is_mysql} && $src_type->[$k] =~ /geometry/i) {
 
-			$str .= "$name->[$k]->[0],";
+				# Set SQL query to get the SRID of the column
+				if ($self->{convert_srid} > 1) {
+					$spatial_srid = $self->{convert_srid};
+				} else {
+					$spatial_srid = $self->{colinfo}->{$table}{$realcolname}{spatial_srid};
+				}
 
-		}
-		push(@{$self->{spatial_srid}{$table}}, $spatial_srid);
-		
-		if ($type->[$k] =~ /bytea/i) {
-			if ($self->{data_limit} >= 1000) {
-				$self->{local_data_limit}{$table} = int($self->{data_limit}/10);
-				while ($self->{local_data_limit}{$table} > 1000) {
-					$self->{local_data_limit}{$table} = int($self->{local_data_limit}{$table}/10);
+				# With INSERT statement we always use WKT
+				if ($self->{type} eq 'INSERT') {
+					if ($self->{geometry_extract_type} eq 'WKB') {
+						$str .= "CASE WHEN $name->[$k]->[0] IS NOT NULL THEN SDO_UTIL.TO_WKBGEOMETRY($name->[$k]->[0]) ELSE NULL END,";
+					} elsif ($self->{geometry_extract_type} eq 'INTERNAL') {
+						$str .= "CASE WHEN $name->[$k]->[0] IS NOT NULL THEN $name->[$k]->[0] ELSE NULL END,";
+					} else {
+						$str .= "CASE WHEN $name->[$k]->[0] IS NOT NULL THEN 'ST_GeomFromText('''||SDO_UTIL.TO_WKTGEOMETRY($name->[$k]->[0])||''','||($spatial_srid)||')' ELSE NULL END,";
+					}
+				} else {
+					if ($self->{geometry_extract_type} eq 'WKB') {
+						$str .= "CASE WHEN $name->[$k]->[0] IS NOT NULL THEN SDO_UTIL.TO_WKBGEOMETRY($name->[$k]->[0]) ELSE NULL END,";
+					} elsif ($self->{geometry_extract_type} eq 'INTERNAL') {
+						$str .= "CASE WHEN $name->[$k]->[0] IS NOT NULL THEN $name->[$k]->[0] ELSE NULL END,";
+					} else {
+						$str .= "CASE WHEN $name->[$k]->[0] IS NOT NULL THEN SDO_UTIL.TO_WKTGEOMETRY($name->[$k]->[0]) ELSE NULL END,";
+					}
+				}
+
+			} elsif ( $self->{is_mysql} && $src_type->[$k] =~ /geometry/i) {
+
+				if ($self->{geometry_extract_type} eq 'WKB') {
+					$str .= "CASE WHEN $name->[$k]->[0] IS NOT NULL THEN CONCAT('SRID=',SRID($name->[$k]->[0]),';', AsBinary($name->[$k]->[0])) ELSE NULL END,";
+				} else {
+					$str .= "CASE WHEN $name->[$k]->[0] IS NOT NULL THEN CONCAT('SRID=',SRID($name->[$k]->[0]),';',AsText($name->[$k]->[0])) ELSE NULL END,";
+				}
+
+			} elsif ( !$self->{is_mysql} && (($src_type->[$k] =~ /clob/i) || ($src_type->[$k] =~ /blob/i)) ) {
+
+				if ($self->{empty_lob_null}) {
+					$str .= "CASE WHEN dbms_lob.getlength($name->[$k]->[0]) = 0 THEN NULL ELSE $name->[$k]->[0] END,";
+				} else {
+					$str .= "$name->[$k]->[0],";
 				}
 			} else {
-				$self->{local_data_limit}{$table} = $self->{data_limit};
+
+				$str .= "$name->[$k]->[0],";
+
 			}
-			$self->{local_data_limit}{$table} = $self->{blob_limit} if ($self->{blob_limit});
+			push(@{$self->{spatial_srid}{$table}}, $spatial_srid);
+			
+			if ($type->[$k] =~ /bytea/i) {
+				if ($self->{data_limit} >= 1000) {
+					$self->{local_data_limit}{$table} = int($self->{data_limit}/10);
+					while ($self->{local_data_limit}{$table} > 1000) {
+						$self->{local_data_limit}{$table} = int($self->{local_data_limit}{$table}/10);
+					}
+				} else {
+					$self->{local_data_limit}{$table} = $self->{data_limit};
+				}
+				$self->{local_data_limit}{$table} = $self->{blob_limit} if ($self->{blob_limit});
+			}
 		}
+		$str =~ s/,$//;
 	}
-	$str =~ s/,$//;
 
 	# If we have a BFILE that might be exported as text we need to create a function
 	my $bfile_function = '';
@@ -7894,12 +7901,15 @@ sub _column_info
 
 	my $sth = '';
 	if ($self->{db_version} !~ /Release 8/) {
+		my $exclude_mview = '';
+		$exclude_mview = " AND (A.OWNER, A.TABLE_NAME) NOT IN (SELECT OWNER, MVIEW_NAME FROM ALL_MVIEWS UNION ALL SELECT LOG_OWNER, LOG_TABLE FROM ALL_MVIEW_LOGS)" if ($self->{type} ne 'FDW');
 		$sth = $self->{dbh}->prepare(<<END);
 SELECT A.COLUMN_NAME, A.DATA_TYPE, A.DATA_LENGTH, A.NULLABLE, A.DATA_DEFAULT,
     A.DATA_PRECISION, A.DATA_SCALE, A.CHAR_LENGTH, A.TABLE_NAME, A.OWNER, V.VIRTUAL_COLUMN
 FROM $self->{prefix}_TAB_COLUMNS A, ALL_OBJECTS O, ALL_TAB_COLS V
 WHERE A.OWNER=O.OWNER and A.TABLE_NAME=O.OBJECT_NAME and O.OBJECT_TYPE='$objtype'
     AND A.OWNER=V.OWNER AND A.TABLE_NAME=V.TABLE_NAME AND A.COLUMN_NAME=V.COLUMN_NAME $condition
+    $exclude_mview
 ORDER BY A.COLUMN_ID
 END
 		if (!$sth) {
@@ -7909,7 +7919,7 @@ END
 				$self->{prefix} = 'ALL';
 				return $self->_column_info($table, $owner, $objtype, 1);
 			}
-			$self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+			$self->logit("FATAL: _column_info() " . $self->{dbh}->errstr . "\n", 0, 1);
 		}
 	} else {
 		# an 8i database.
@@ -7928,10 +7938,10 @@ END
 				$self->{prefix} = 'ALL';
 				return $self->_column_info($table, $owner, $objtype, 1);
 			}
-			$self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+			$self->logit("FATAL: _column_info() " . $self->{dbh}->errstr . "\n", 0, 1);
 		}
 	}
-	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute or $self->logit("FATAL: _column_info() " . $self->{dbh}->errstr . "\n", 0, 1);
 
 	# Default number of line to scan to grab the geometry type of the column.
 	# If it not limited, the query will scan the entire table which may take a very long time.
@@ -7976,7 +7986,7 @@ END
 				my $sth2 = $self->{dbh}->prepare($spatial_srid);
 				if (!$sth2) {
 					if ($self->{dbh}->errstr !~ /ORA-01741/) {
-						$self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+						$self->logit("FATAL: _column_info() " . $self->{dbh}->errstr . "\n", 0, 1);
 					} else {
 						# No SRID defined, use default one
 						$self->logit("WARNING: Error retreiving SRID, no matter default SRID will be used: $spatial_srid\n", 0);
@@ -8018,7 +8028,7 @@ END
 			if (!$found_dims) {
 				$sth2 = $self->{dbh}->prepare($spatial_dim);
 				if (!$sth2) {
-					$self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+					$self->logit("FATAL: _column_info() " . $self->{dbh}->errstr . "\n", 0, 1);
 				}
 				$sth2->execute($row->[8],$row->[0],$row->[9]) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 				my $count = 0;
@@ -8039,9 +8049,9 @@ END
 				my $squery = sprintf($spatial_gtype, $row->[0], $colname);
 				my $sth2 = $self->{dbh}->prepare($squery);
 				if (!$sth2) {
-					$self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+					$self->logit("FATAL: _column_info() " . $self->{dbh}->errstr . "\n", 0, 1);
 				}
-				$sth2->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+				$sth2->execute or $self->logit("FATAL: _column_info() " . $self->{dbh}->errstr . "\n", 0, 1);
 				my @result = ();
 				while (my $r = $sth2->fetch) {
 					if ($r->[0] =~ /(\d)$/) {
@@ -8095,7 +8105,7 @@ FROM $self->{prefix}_TAB_COLUMNS A, ALL_OBJECTS O WHERE A.OWNER=O.OWNER and A.TA
 ORDER BY A.COLUMN_ID
 END
 		if (!$sth) {
-			$self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+			$self->logit("FATAL: _column_attributes() " . $self->{dbh}->errstr . "\n", 0, 1);
 		}
 	} else {
 		# an 8i database.
@@ -8105,10 +8115,10 @@ FROM $self->{prefix}_TAB_COLUMNS A, ALL_OBJECTS O WHERE A.OWNER=O.OWNER and A.TA
 ORDER BY A.COLUMN_ID
 END
 		if (!$sth) {
-			$self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+			$self->logit("FATAL: _column_attributes() " . $self->{dbh}->errstr . "\n", 0, 1);
 		}
 	}
-	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute or $self->logit("FATAL: _column_attributes() " . $self->{dbh}->errstr . "\n", 0, 1);
 
 	my %data = ();
 	while (my $row = $sth->fetch) {
@@ -9926,7 +9936,7 @@ sub _global_temp_table_info
 	my %comments = ();
 	my $sql = "SELECT A.TABLE_NAME,A.COMMENTS,A.TABLE_TYPE,A.OWNER FROM ALL_TAB_COMMENTS A, ALL_OBJECTS O WHERE A.OWNER=O.OWNER and A.TABLE_NAME=O.OBJECT_NAME and O.OBJECT_TYPE='TABLE' $owner";
 	if ($self->{db_version} !~ /Release 8/) {
-		$sql .= " AND (A.OWNER, A.TABLE_NAME) NOT IN (SELECT OWNER, MVIEW_NAME FROM ALL_MVIEWS UNION ALL SELECT LOG_OWNER, LOG_TABLE FROM ALL_MVIEW_LOGS)" if ($self->{type} ne 'FDW');
+		$sql .= " AND (A.OWNER, A.TABLE_NAME) NOT IN (SELECT OWNER, MVIEW_NAME FROM ALL_MVIEWS UNION ALL SELECT LOG_OWNER, LOG_TABLE FROM ALL_MVIEW_LOGS)";
 	}
 	$sql .= $self->limit_to_objects('TABLE', 'A.TABLE_NAME');
 	my $sth = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -10180,7 +10190,7 @@ WHERE
 };
 
 	if ($self->{db_version} !~ /Release 8/) {
-		$str .= " AND (A.TABLE_OWNER, A.TABLE_NAME) NOT IN (SELECT OWNER, MVIEW_NAME FROM ALL_MVIEWS UNION ALL SELECT LOG_OWNER, LOG_TABLE FROM ALL_MVIEW_LOGS)" if ($self->{type} ne 'FDW');
+		$str .= " AND (A.TABLE_OWNER, A.TABLE_NAME) NOT IN (SELECT OWNER, MVIEW_NAME FROM ALL_MVIEWS UNION ALL SELECT LOG_OWNER, LOG_TABLE FROM ALL_MVIEW_LOGS)";
 	}
 	$str .= $self->limit_to_objects('TABLE|PARTITION', 'A.TABLE_NAME|A.PARTITION_NAME');
 
@@ -10260,6 +10270,9 @@ WHERE
 		} else {
 			$str .= "\tAND A.TABLE_OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "') AND B.OWNER=A.TABLE_OWNER AND C.OWNER=A.TABLE_OWNER\n";
 		}
+	}
+	if ($self->{db_version} !~ /Release 8/) {
+		$str .= " AND (A.TABLE_OWNER, A.TABLE_NAME) NOT IN (SELECT OWNER, MVIEW_NAME FROM ALL_MVIEWS UNION ALL SELECT LOG_OWNER, LOG_TABLE FROM ALL_MVIEW_LOGS)";
 	}
 	$str .= "ORDER BY A.TABLE_OWNER,A.TABLE_NAME,A.PARTITION_NAME,A.SUBPARTITION_POSITION,C.COLUMN_POSITION\n";
 
@@ -10386,7 +10399,7 @@ FROM $self->{prefix}_TAB_PARTITIONS A, $self->{prefix}_PART_TABLES B
 WHERE A.TABLE_NAME = B.TABLE_NAME
 };
 	if ($self->{db_version} !~ /Release 8/) {
-		$str .= " AND (A.TABLE_OWNER, A.TABLE_NAME) NOT IN (SELECT OWNER, MVIEW_NAME FROM ALL_MVIEWS UNION ALL SELECT LOG_OWNER, LOG_TABLE FROM ALL_MVIEW_LOGS)" if ($self->{type} ne 'FDW');
+		$str .= " AND (A.TABLE_OWNER, A.TABLE_NAME) NOT IN (SELECT OWNER, MVIEW_NAME FROM ALL_MVIEWS UNION ALL SELECT LOG_OWNER, LOG_TABLE FROM ALL_MVIEW_LOGS)";
 	}
 	$str .= $self->limit_to_objects('TABLE|PARTITION','A.TABLE_NAME|A.PARTITION_NAME');
 
@@ -10448,6 +10461,9 @@ WHERE B.TABLE_NAME = C.NAME
 		} else {
 			$str .= "\tAND B.OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "') AND B.OWNER=C.OWNER\n";
 		}
+	}
+	if ($self->{db_version} !~ /Release 8/) {
+		$str .= " AND (B.OWNER, B.TABLE_NAME) NOT IN (SELECT OWNER, MVIEW_NAME FROM ALL_MVIEWS UNION ALL SELECT LOG_OWNER, LOG_TABLE FROM ALL_MVIEW_LOGS)"  if ($self->{type} ne 'FDW');
 	}
 	$str .= "ORDER BY B.OWNER,B.TABLE_NAME,C.COLUMN_POSITION\n";
 
@@ -10511,6 +10527,9 @@ WHERE
 		} else {
 			$str .= "\tAND A.TABLE_OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "') AND B.OWNER=A.TABLE_OWNER AND C.OWNER=A.TABLE_OWNER\n";
 		}
+	}
+	if ($self->{db_version} !~ /Release 8/) {
+		$str .= " AND (A.TABLE_OWNER, A.TABLE_NAME) NOT IN (SELECT OWNER, MVIEW_NAME FROM ALL_MVIEWS UNION ALL SELECT LOG_OWNER, LOG_TABLE FROM ALL_MVIEW_LOGS)";
 	}
 	$str .= "ORDER BY A.TABLE_OWNER,A.TABLE_NAME,A.PARTITION_NAME,A.SUBPARTITION_POSITION,C.COLUMN_POSITION\n";
 
@@ -11952,7 +11971,9 @@ sub ask_for_data
 	my $query = $self->_howto_get_data($table, $nn, $tt, $stt, $part_name, $is_subpart);
 
 	# Query with no column 
-	if ($query =~ /SELECT\s+FROM/) {
+	if (!$query) {
+		$self->logit("WARNING: can not extract data from $table, no column found...\n", 0);
+		return 0;
 	}
 
 	# Check for boolean rewritting
@@ -12122,9 +12143,18 @@ sub _extract_data
 		# prepare the query before execution
 		if (!$self->{is_mysql}) {
 			if ($self->{no_lob_locator}) {
-				$sth = $self->{dbh}->prepare($query,{ora_piece_lob => 1, ora_piece_size => $self->{longreadlen}, ora_exe_mode=>OCI_STMT_SCROLLABLE_READONLY, ora_check_sql => 1}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+				$sth = $self->{dbh}->prepare($query,{ora_piece_lob => 1, ora_piece_size => $self->{longreadlen}, ora_exe_mode=>OCI_STMT_SCROLLABLE_READONLY, ora_check_sql => 1});
 			} else {
-				$sth = $self->{dbh}->prepare($query,{'ora_auto_lob' => 0, ora_exe_mode=>OCI_STMT_SCROLLABLE_READONLY, ora_check_sql => 1}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+				$sth = $self->{dbh}->prepare($query,{'ora_auto_lob' => 0, ora_exe_mode=>OCI_STMT_SCROLLABLE_READONLY, ora_check_sql => 1});
+			}
+
+			if ($self->{dbh}->errstr =~ /ORA-00942/) {
+				 $self->logit("WARNING: table $table is not yet physically created and has no data.\n", 0, 0);
+
+				# Only useful for single process
+				return $total_record;
+			} elsif ($self->{dbh}->errstr) {
+				 $self->logit("FATAL: _extract_data() " . $self->{dbh}->errstr . "\n", 1, 1);
 			}
 			foreach (@{$sth->{NAME}}) {
 				push(@{$self->{data_cols}{$table}}, $_);
