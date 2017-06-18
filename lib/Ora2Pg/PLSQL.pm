@@ -727,7 +727,8 @@ sub plsql_to_plpgsql
 	while ($tmp_code =~ s/\bFOR\s+([^\s]+)\s+IN(.*?)LOOP//is) {
 		my $varname = $1;
 		my $clause = $2;
-		if ($str !~ /\bDECLARE\b(.*?)\b$varname\s+(.*?)BEGIN/is) {
+		my @code = split(/\bBEGIN\b/, $str);
+		if ($code[0] !~ /\bDECLARE\s+.*\b$varname\s+/is) {
 			# When the cursor is refereing to a statement, declare
 			# it as record otherwise it don't need to be replaced
 			if ($clause =~ /\bSELECT\b/is) {
@@ -812,7 +813,6 @@ sub plsql_to_plpgsql
 			foreach my $p (keys %{$class->{package_functions}}) {
 				foreach my $k (keys %{$class->{package_functions}{$p}}) {
 					if (!exists $class->{package_functions}{$p}{$k}{name}) {
-print STDERR "UUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUU $p :: $k\n";
 						my $fname = $k;
 						if ($fname =~ s/^([^\.]+)\.//) {
 							$class->{package_functions}{$p}{$k}{package} = $1;
