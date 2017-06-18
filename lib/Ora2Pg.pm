@@ -4047,7 +4047,7 @@ LANGUAGE plpgsql ;
 			}
 			$trig->[1] =~ s/\s*EACH ROW//is;
 			chomp($trig->[4]);
-			$trig->[4] =~ s/[;\/]$//;
+			$trig->[4] =~ s/([^\*])[;\/]$/$1/;
 			$self->logit("\tDumping trigger $trig->[0] defined on table $trig->[3]...\n", 1);
 			my $tbname = $self->get_replaced_tbname($trig->[3]);
 			# Replace column name in function code
