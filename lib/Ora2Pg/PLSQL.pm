@@ -727,7 +727,7 @@ sub plsql_to_plpgsql
 	while ($tmp_code =~ s/\bFOR\s+([^\s]+)\s+IN(.*?)LOOP//is) {
 		my $varname = $1;
 		my $clause = $2;
-		my @code = split(/\bBEGIN\b/, $str);
+		my @code = split(/\bBEGIN\b/i, $str);
 		if ($code[0] !~ /\bDECLARE\s+.*\b$varname\s+/is) {
 			# When the cursor is refereing to a statement, declare
 			# it as record otherwise it don't need to be replaced
