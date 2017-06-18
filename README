@@ -864,6 +864,15 @@ CONFIGURATION
         when a file is given at input using the -i option or INPUT
         directive.
 
+    FUNCTION_CHECK
+        Disable this directive if you want to disable check_function_bodies.
+
+                SET check_function_bodies = false;
+
+        It disables validation of the function body string during CREATE
+        FUNCTION. Default is to use de postgresql.conf setting that enable
+        it by default.
+
   Limiting object to export
     You may want to export only a part of an Oracle database, here are a set
     of configuration directives that will allow you to control what parts of

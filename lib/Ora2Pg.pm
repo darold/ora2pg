@@ -905,6 +905,7 @@ sub _init
 			$self->{transaction} = 'SET TRANSACTION ISOLATION LEVEL READ COMMITTED';
 		}
 	}
+	$self->{function_check} = 1 if (not defined $self->{function_check} || $self->{function_check} eq '');
 
 	# Set default function to use for uuid generation
 	$self->{uuid_function} ||= 'uuid_generate_v4';
@@ -3348,6 +3349,7 @@ sub translate_function
 			$sql_header .= $self->set_search_path();
 		}
 		$sql_header .= "\\set ON_ERROR_STOP ON\n\n" if ($self->{stop_on_error});
+		$sql_header .= "SET check_function_bodies = false;\n\n" if (!$self->{function_check});
 
 		if ($self->{file_per_function}) {
 			$self->dump($sql_header . $sql_output, $fhdl);
@@ -11629,6 +11631,7 @@ END;
 			$sql_header .= "SET client_encoding TO '\U$self->{client_encoding}\E';\n";
 		}
 		$sql_header .= $self->set_search_path();
+		$sql_header .= "SET check_function_bodies = false;\n\n" if (!$self->{function_check});
 
 		my $fhdl = $self->open_export_file("$dirprefix\L$pname/$fname\E_$self->{output}", 1);
 		set_binmode($fhdl);

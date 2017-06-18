@@ -885,6 +885,15 @@ SHOW_REPORT and QUERY export type with no input file for queries.
 Note that queries will be normalized before output unlike when a file
 is given at input using the -i option or INPUT directive.
 
+=item FUNCTION_CHECK
+
+Disable this directive if you want to disable check_function_bodies.
+
+	SET check_function_bodies = false;
+
+It disables validation of the function body string during CREATE FUNCTION.
+Default is to use de postgresql.conf setting that enable it by default.
+ 
 =back
 
 =head2 Limiting object to export

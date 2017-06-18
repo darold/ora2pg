@@ -875,6 +875,14 @@ TRIM_TYPE		BOTH
 # this is only relevant if you have user defined type with a column timestamp.
 INTERNAL_DATE_MAX	49
 
+# Disable this directive if you want to disable check_function_bodies.
+#
+#        SET check_function_bodies = false;
+#
+# It disables validation of the function body string during CREATE FUNCTION.
+# Default is to use de postgresql.conf setting that enable it by default.
+FUNCTION_CHECK		1
+
 #------------------------------------------------------------------------------
 # PERFORMANCES SECTION (Control export/import performances)
 #------------------------------------------------------------------------------
