@@ -2666,7 +2666,7 @@ sub read_trigger_from_file
 
 	my $tid = 0; 
 	my $doloop = 1;
-	my @triggers_decl = split(/(?:CREATE)?(?:\s+OR\s+REPLACE)?\s+TRIGGER\s+/, $content);
+	my @triggers_decl = split(/(?:CREATE)?(?:\s+OR\s+REPLACE)?\s*\bTRIGGER\s+/is, $content);
 	foreach $content (@triggers_decl) {
 		if ($content =~ s/^([^\s]+)\s+(BEFORE|AFTER|INSTEAD\s+OF)\s+(.*?)\s+ON\s+([^\s]+)\s+(.*)(\bEND\s*(?!IF|LOOP|CASE|INTO|FROM|,)[a-z0-9_]*;)//is) {
 			my $t_name = $1;

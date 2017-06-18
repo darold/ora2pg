@@ -732,7 +732,11 @@ sub plsql_to_plpgsql
 			# When the cursor is refereing to a statement, declare
 			# it as record otherwise it don't need to be replaced
 			if ($clause =~ /\bSELECT\b/is) {
-				$str =~ s/\bDECLARE\b/DECLARE\n  $varname RECORD;/is;
+				# append variable declaration to declare section
+				if ($str !~ s/\bDECLARE\b/DECLARE\n  $varname RECORD;/is) {
+					# No declare section
+					$str = "DECLARE\n  $varname RECORD;\n" . $str;
+				}
 			}
 		}
 	}
