@@ -1350,6 +1350,13 @@ sub _init
 		return;
 	}
 
+	# Register export structure modification
+	if ($self->{type} =~ /^(INSERT|COPY|TABLE)$/) {
+		for my $t (keys %{$self->{'modify_struct'}}) {
+			$self->modify_struct($t, @{$self->{'modify_struct'}{$t}});
+		}
+	}
+
 	# Retreive all table information
         foreach my $t (@{$self->{export_type}}) {
                 $self->{type} = $t;
@@ -1409,12 +1416,6 @@ sub _init
 			exit 0;
 		} else {
 			warn "type option must be (TABLE, VIEW, GRANT, SEQUENCE, TRIGGER, PACKAGE, FUNCTION, PROCEDURE, PARTITION, TYPE, INSERT, COPY, TABLESPACE, SHOW_REPORT, SHOW_VERSION, SHOW_SCHEMA, SHOW_TABLE, SHOW_COLUMN, SHOW_ENCODING, FDW, MVIEW, QUERY, KETTLE, DBLINK, SYNONYM, DIRECTORY, LOAD, TEST), unknown $self->{type}\n";
-		}
-		# Mofify export structure if required
-		if ($self->{type} =~ /^(INSERT|COPY)$/) {
-			for my $t (keys %{$self->{'modify_struct'}}) {
-				$self->modify_struct($t, @{$self->{'modify_struct'}{$t}});
-			}
 		}
 		$self->replace_tables(%{$self->{'replace_tables'}});
 		$self->replace_cols(%{$self->{'replace_cols'}});
@@ -6726,10 +6727,14 @@ sub _column_comments
 	my %data = ();
 	while (my $row = $sth->fetch) {
 		if (!$self->{schema} && $self->{export_schema}) {
-			$data{"$row->[3].$row->[2]"}{$row->[0]} = $row->[1];
-		} else {
-			$data{$row->[2]}{$row->[0]} = $row->[1];
+			$row->[2] = "$row->[3].$row->[2]";
 		}
+		if (!$self->{preserve_case}) {
+			next if (exists $self->{modify}{"\L$row->[2]\E"} && !grep(/^$row->[0]$/i, @{$self->{modify}{"\L$row->[2]\E"}}));
+		} else {
+			next if (exists $self->{modify}{$row->[2]} && !grep(/^$row->[0]$/i, @{$self->{modify}{$row->[2]}}));
+		}
+		$data{$row->[2]}{$row->[0]} = $row->[1];
 	}
 
 	return %data;
@@ -8075,8 +8080,14 @@ END
 		}
 
 		if (!$self->{schema} && $self->{export_schema}) {
+			next if (exists $self->{modify}{"\L$tmptable\E"} && !grep(/^$row->[0]$/i, @{$self->{modify}{"\L$tmptable\E"}}));
 			push(@{$data{$tmptable}{"$row->[0]"}}, (@$row, $pos, @geom_inf));
 		} else {
+			if (!$self->{preserve_case}) {
+				next if (exists $self->{modify}{"\L$row->[8]\E"} && !grep(/^$row->[0]$/i, @{$self->{modify}{"\L$row->[8]\E"}}));
+			} else {
+				next if (exists $self->{modify}{$row->[8]} && !grep(/^$row->[0]$/i, @{$self->{modify}{$row->[8]}}));
+			}
 			push(@{$data{"$row->[8]"}{"$row->[0]"}}, (@$row, $pos, @geom_inf));
 		}
 
@@ -8454,6 +8465,13 @@ END
 			$local_table = "$row->[10].$row->[0]";
 			$remote_table = "$row->[11].$row->[3]";
 		}
+		if (!$self->{preserve_case}) {
+			next if (exists $self->{modify}{"\L$local_table\E"} && !grep(/^$row->[2]$/i, @{$self->{modify}{"\L$local_table\E"}}));
+			next if (exists $self->{modify}{"\L$remote_table\E"} && !grep(/^$row->[5]$/i, @{$self->{modify}{"\L$remote_table\E"}}));
+		} else {
+			next if (exists $self->{modify}{$local_table} && !grep(/^$row->[2]$/i, @{$self->{modify}{$local_table}}));
+			next if (exists $self->{modify}{$remote_table} && !grep(/^$row->[5]$/i, @{$self->{modify}{$remote_table}}));
+		}
 		push(@{$data{$local_table}}, [ ($row->[1],$row->[4],$row->[6],$row->[7],$row->[8],$row->[9],$row->[11],$row->[0],$row->[10],$row->[14]) ]);
 		#            TABLENAME     CONSTNAME           COLNAME
 		push(@{$link{$local_table}{$row->[1]}{local}}, $row->[2]);
@@ -8733,6 +8751,11 @@ AND    IC.TABLE_OWNER = ?
 		my $save_tb = $row->[-6];
 		if (!$self->{schema} && $self->{export_schema}) {
 			$row->[-6] = "$row->[-5].$row->[-6]";
+		}
+		if (!$self->{preserve_case}) {
+			next if (exists $self->{modify}{"\L$row->[-6]\E"} && !grep(/^$row->[1]$/i, @{$self->{modify}{"\L$row->[-6]\E"}}));
+		} else {
+			next if (exists $self->{modify}{$row->[-6]} && !grep(/^$row->[1]$/i, @{$self->{modify}{$row->[-6]}}));
 		}
 		# Show a warning when an index has the same name as the table
 		if ( !$self->{indexes_renaming} && !$self->{indexes_suffix} && (lc($row->[0]) eq lc($table)) ) {

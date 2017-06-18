@@ -1221,8 +1221,11 @@ for example:
 	MODIFY_STRUCT	T_TEST1(id,dossier) T_TEST2(id,fichier)
 
 This will only extract columns 'id' and 'dossier' from table T_TEST1 and columns
-'id' and 'fichier' from the T_TEST2 table. This directive is only used with COPY
-or INSERT export.
+'id' and 'fichier' from the T_TEST2 table. This directive can only be used with
+TABLE, COPY or INSERT export. With TABLE export create table DDL will respect
+the new list of columns and all indexes or foreign key pointing to or from a
+column removed will not be exported.
+
 
 =item REPLACE_TABLES
 
