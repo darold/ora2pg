@@ -15230,6 +15230,9 @@ sub _lookup_function
 		$fct_detail{name} = $3;
 		$fct_detail{args} = $4;
 
+		$fct_detail{fct_name} = $3;
+		$fct_detail{fct_name} =~ s/^[^\.]+\.//;
+
 		# When the function comes from a package remove global declaration
 		# outside comments. They have already been extracted before.
 		if ($pname && $fct_detail{before}) {

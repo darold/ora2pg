@@ -744,6 +744,8 @@ sub plsql_to_plpgsql
 		foreach my $sch ( keys %{ $class->{function_metadata} }) {
 			foreach my $p ( keys %{ $class->{function_metadata}{$sch} }) {
 				foreach my $k (keys %{$class->{function_metadata}{$sch}{$p}}) {
+					my $fct_name = $class->{function_metadata}{$sch}{$p}{$k}{metadata}{fct_name} || '';
+					next if (!$fct_name || $str !~ /\b$fct_name\b/is);
 					if (!$class->{function_metadata}{$sch}{$p}{$k}{metadata}{inout}) {
 						if ($sch ne 'unknown' and $str =~ /\b$sch.$k\b/is) {
 							# Look if we need to use PERFORM to call the function
@@ -760,12 +762,6 @@ sub plsql_to_plpgsql
 							$str =~ s/(IF(?:(?!CASE|ELSE).)*?ELSE)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($k\s*[\(;])/$1$2PERFORM $3/isg;
 							$str =~ s/(PERFORM $k);/$1\(\);/igs;
 						} else {
-							my $fct_name = $k;
-							my $pkg_name = '';
-							# Remove package name
-							if ($fct_name =~ s/^([^\.]+)\.//) {
-								$pkg_name = $1;
-							}
 							# Look if we need to use PERFORM to call the function
 							$str =~ s/(BEGIN|LOOP|;)((?:\s*%ORA2PG_COMMENT\d+\%\s*|\s*\/\*(?:.*?)\*\/\s*)*\s*)($fct_name\s*[\(;])/$1$2PERFORM $3/igs;
 							$str =~ s/(EXCEPTION(?:(?!CASE|THEN).)*?THEN)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($fct_name\s*[\(;])/$1$2PERFORM $3/isg;
@@ -775,11 +771,6 @@ sub plsql_to_plpgsql
 						}
 					} else {
 						# Recover call to function with OUT parameter with double affectation
-						my $fct_name = $k;
-						if ($str !~ /$k/is) {
-							# Remove package name
-							$fct_name =~ s/^[^\.]+\.//;
-						}
 						my %replace_out_param = ();
 						$str =~ s/([^:\s]+\s*:=\s*)[^:\s]+\s*:=\s*((?:[^\s\.]+\.)?\b$fct_name\s*\()/$1$2/isg;
 					}
@@ -812,13 +803,9 @@ sub plsql_to_plpgsql
 		if (scalar keys %{$class->{package_functions}}) {
 			foreach my $p (keys %{$class->{package_functions}}) {
 				foreach my $k (keys %{$class->{package_functions}{$p}}) {
+					next if ($str !~ /\b$k\b/is);
 					if (!exists $class->{package_functions}{$p}{$k}{name}) {
-						my $fname = $k;
-						if ($fname =~ s/^([^\.]+)\.//) {
-							$class->{package_functions}{$p}{$k}{package} = $1;
-						} else {
-							$class->{package_functions}{$p}{$k}{package} = $p;
-						}
+						$class->{package_functions}{$p}{$k}{package} = $p;
 						$class->{package_functions}{$p}{$k}{name} = $k;
 					}
 					# foreach function declared in a package 
@@ -1156,14 +1143,8 @@ sub replace_oracle_function
 			foreach my $p (sort keys %{$class->{function_metadata}{$sch}}) {
 				foreach my $k (sort keys %{$class->{function_metadata}{$sch}{$p}}) {
 					if ($class->{function_metadata}{$sch}{$p}{$k}{metadata}{inout}) {
-						my $fct_name = $k;
-						if ($str !~ /$k/is) {
-							# Remove package name
-							if ($fct_name =~ s/^([^\.]+)\.//) {
-								my $pkgname = $1;
-								next if (lc($pkgname) ne lc($p));
-							}
-						}
+						my $fct_name = $class->{function_metadata}{$sch}{$p}{$k}{metadata}{fct_name} || '';
+						next if (!$fct_name || $str !~ /\b$fct_name\b/is);
 						my %replace_out_param = ();
 						my $idx = 0;
 						while ($str =~ s/((?:[^\s\.]+\.)?\b$fct_name)\s*\(([^\)]+)\)/\%FCTINOUTPARAM$idx\%/is) {
@@ -1214,7 +1195,7 @@ sub replace_oracle_function
 		if (scalar keys %{$class->{package_functions}}) {
 			foreach my $p (keys %{$class->{package_functions}}) {
 				foreach my $k (keys %{$class->{package_functions}{$p}}) {
-					next if (!exists $class->{package_functions}{$p}{$k}{name});
+					next if ($str !~ /\b$k\b/is || !exists $class->{package_functions}{$p}{$k}{name});
 					$str =~ s/([^\.])\b$k\s*([\(;])/$1$class->{package_functions}{$p}{$k}{name}$2/igs;
 					if (exists $class->{package_functions}{$p}{$k}{package}) {
 						$str =~ s/\b$class->{package_functions}{$p}{$k}{package}\.$k\s*([\(;])/$class->{package_functions}{$p}{$k}{name}$1/igs;
