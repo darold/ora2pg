@@ -685,6 +685,12 @@ STOP_ON_ERROR		1
 # under the same condition but -j or JOBS must also be unset or default to 1.
 COPY_FREEZE		0
 
+# By default Ora2Pg use CREATE OR REPLACE in function DDL, if you need not
+# to override existing functions disable this configuration directive,
+# DDL will not include OR REPLACE.
+CREATE_OR_REPLACE	1
+
+
 #------------------------------------------------------------------------------
 # TYPE SECTION (Control type behaviors and redefinitions)
 #------------------------------------------------------------------------------

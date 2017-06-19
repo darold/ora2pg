@@ -1054,6 +1054,13 @@ sub _init
 	%options = ();
 	%AConfig = ();
 
+	# Enable create or replace by default
+	if ($self->{create_or_replace} || not defined $self->{create_or_replace}) {
+		$self->{create_or_replace} = ' OR REPLACE';
+	} else {
+		$self->{create_or_replace} = '';
+	}
+
 	$self->{copy_freeze} = ' FREEZE' if ($self->{copy_freeze});
 	# Prevent use of COPY FREEZE with some incompatible case
 	if ($self->{copy_freeze}) {
@@ -3461,7 +3468,7 @@ sub _get_sql_data
 			}
 			$tmpv = $self->quote_object_name($tmpv);
 			if (!@{$self->{views}{$view}{alias}}) {
-				$sql_output .= "CREATE OR REPLACE VIEW $tmpv AS ";
+				$sql_output .= "CREATE$self->{create_or_replace} VIEW $tmpv AS ";
 				$sql_output .= $self->{views}{$view}{text};
 				$sql_output .= ';' if ($sql_output !~ /;\s*$/s);
 				$sql_output .= "\n";
@@ -3473,7 +3480,7 @@ sub _get_sql_data
 				}
 				$sql_output .= "\n";
 			} else {
-				$sql_output .= "CREATE OR REPLACE VIEW $tmpv (";
+				$sql_output .= "CREATE$self->{create_or_replace} VIEW $tmpv (";
 				my $count = 0;
 				foreach my $d (@{$self->{views}{$view}{alias}}) {
 					if ($count == 0) {
@@ -4072,7 +4079,7 @@ LANGUAGE plpgsql ;
 					$trig->[4] = Ora2Pg::PLSQL::convert_plsql_code($self, $trig->[4], %{$self->{data_type}});
 					#$self->_replace_cycle_var(\$trig->[4]);
 				}
-				$sql_output .= "CREATE OR REPLACE RULE " . $self->quote_object_name($trig->[0])
+				$sql_output .= "CREATE$self->{create_or_replace} RULE " . $self->quote_object_name($trig->[0])
 							. " AS\n\tON " . $self->quote_object_name($trig->[2])
 							. " TO " . $self->quote_object_name($tbname)
 							. "\n\tDO INSTEAD\n(\n\t$trig->[4]\n);\n\n";
@@ -4142,7 +4149,7 @@ LANGUAGE plpgsql ;
 						$trig->[4] =~ s/"([^"]+)"/\L$1\E/gs;
 						$trig->[4] =~ s/ALTER TRIGGER\s+[^\s]+\s+ENABLE(;)?//;
 					}
-					$sql_output .= "CREATE OR REPLACE FUNCTION $trig_fctname() RETURNS trigger AS \$BODY\$\n$trig->[4]\n\$BODY\$\n LANGUAGE 'plpgsql'$security;\n$revoke\n";
+					$sql_output .= "CREATE$self->{create_or_replace} FUNCTION $trig_fctname() RETURNS trigger AS \$BODY\$\n$trig->[4]\n\$BODY\$\n LANGUAGE 'plpgsql'$security;\n$revoke\n";
 					if ($self->{force_owner}) {
 						my $owner = $trig->[8];
 						$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
@@ -4174,7 +4181,7 @@ LANGUAGE plpgsql ;
 						$trig->[4] =~ s/"([^"]+)"/\L$1\E/gs;
 						$trig->[4] =~ s/ALTER TRIGGER\s+[^\s]+\s+ENABLE(;)?//;
 					}
-					$sql_output .= "CREATE OR REPLACE FUNCTION $trig_fctname() RETURNS trigger AS \$BODY\$\n$trig->[4]\n\$BODY\$\n LANGUAGE 'plpgsql'$security;\n$revoke\n";
+					$sql_output .= "CREATE$self->{create_or_replace} FUNCTION $trig_fctname() RETURNS trigger AS \$BODY\$\n$trig->[4]\n\$BODY\$\n LANGUAGE 'plpgsql'$security;\n$revoke\n";
 					if ($self->{force_owner}) {
 						my $owner = $trig->[8];
 						$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
@@ -4987,7 +4994,7 @@ LANGUAGE plpgsql ;
 			if ($self->{plsql_pgsql}) {
 				$tpe->{code} = $self->_convert_type($tpe->{code}, $tpe->{owner});
 			} else {
-				$tpe->{code} = "CREATE OR REPLACE $tpe->{code}\n";
+				$tpe->{code} = "CREATE$self->{create_or_replace} $tpe->{code}\n";
 			}
 			$sql_output .= $tpe->{code} . "\n";
 			$i++;
@@ -5662,7 +5669,7 @@ LANGUAGE plpgsql ;
 		foreach my $table (sort keys %{$self->{partitions}}) {
 			my $function = '';
 			$function = qq{
-CREATE OR REPLACE FUNCTION ${table}_insert_trigger()
+CREATE$self->{create_or_replace} FUNCTION ${table}_insert_trigger()
 RETURNS TRIGGER AS \$\$
 BEGIN
 } if (!$self->{pg_supports_partition});
@@ -6530,7 +6537,7 @@ RETURNS text AS
 			$fname =~ s/\./_/g;
 			$fname = $self->quote_object_name($fname);
 			$trig_out .= "DROP TRIGGER IF EXISTS $tname ON " . $self->quote_object_name($tb) . " CASCADE;\n\n";
-			$trig_out .= "CREATE OR REPLACE FUNCTION $fname() RETURNS trigger AS \$BODY\$\n";
+			$trig_out .= "CREATE$self->{create_or_replace} FUNCTION $fname() RETURNS trigger AS \$BODY\$\n";
 			$trig_out .= "BEGIN\n";
 			foreach my $c (sort keys %{$virtual_trigger_info{$tb}}) {
 				$trig_out .= "\tNEW.$c = $virtual_trigger_info{$tb}{$c};\n";
@@ -11170,7 +11177,7 @@ sub _convert_package
 				if ($self->{plsql_pgsql}) {
 					$tpe->{code} = $self->_convert_type($tpe->{code}, $tpe->{owner}, %{$self->{pkg_type}});
 				} else {
-					$tpe->{code} = "CREATE OR REPLACE $tpe->{code}\n";
+					$tpe->{code} = "CREATE$self->{create_or_replace} $tpe->{code}\n";
 				}
 				$content .= $tpe->{code} . "\n";
 				$i++;
@@ -11264,7 +11271,7 @@ sub _convert_package
 				if ($self->{plsql_pgsql}) {
 					$tpe->{code} = $self->_convert_type($tpe->{code}, $tpe->{owner}, %{$self->{pkg_type}});
 				} else {
-					$tpe->{code} = "CREATE OR REPLACE $tpe->{code}\n";
+					$tpe->{code} = "CREATE$self->{create_or_replace} $tpe->{code}\n";
 				}
 				$self->{pkg_content}{$pname} .= $tpe->{code} . "\n";
 				$i++;
@@ -11482,14 +11489,14 @@ sub _convert_function
 	}
 
 	my $name = $fname;
-	my $function = "\nCREATE OR REPLACE FUNCTION $fname$at_suffix $fct_detail{args}";
+	my $function = "\nCREATE$self->{create_or_replace} FUNCTION $fname$at_suffix $fct_detail{args}";
 	if (!$pname || !$self->{package_as_schema}) {
 		if ($self->{export_schema} && !$self->{schema}) {
-			$function = "\nCREATE OR REPLACE FUNCTION " . $self->quote_object_name("$owner.$fname") . " $fct_detail{args}";
+			$function = "\nCREATE$self->{create_or_replace} FUNCTION " . $self->quote_object_name("$owner.$fname") . " $fct_detail{args}";
 			$name =  $self->quote_object_name("$owner.$fname");
 			$self->logit("Parsing function " . $self->quote_object_name("$owner.$fname") . "...\n", 1);
 		} elsif ($self->{export_schema} && $self->{schema}) {
-			$function = "\nCREATE OR REPLACE FUNCTION " . $self->quote_object_name("$self->{schema}.$fname") . " $fct_detail{args}";
+			$function = "\nCREATE$self->{create_or_replace} FUNCTION " . $self->quote_object_name("$self->{schema}.$fname") . " $fct_detail{args}";
 			$name =  $self->quote_object_name("$self->{schema}.$fname");
 			$self->logit("Parsing function " . $self->quote_object_name("$self->{schema}.$fname") . "...\n", 1);
 		}
@@ -11508,7 +11515,7 @@ $search_path
 CREATE EXTENSION IF NOT EXISTS dblink;
 
 };
-		$at_wrapper .= "CREATE OR REPLACE FUNCTION $name $fct_detail{args}$func_return";
+		$at_wrapper .= "CREATE$self->{create_or_replace} FUNCTION $name $fct_detail{args}$func_return";
 		my $params = '';
 		if ($#{$fct_detail{at_args}} >= 0) {
 			map { s/(.+)/quote_nullable($1)/; }  @{$fct_detail{at_args}};
@@ -11550,7 +11557,7 @@ $search_path
 CREATE EXTENSION IF NOT EXISTS pg_background;
 
 };
-		$at_wrapper .= "CREATE OR REPLACE FUNCTION $name $fct_detail{args}$func_return";
+		$at_wrapper .= "CREATE$self->{create_or_replace} FUNCTION $name $fct_detail{args}$func_return";
 		my $params = '';
 		if ($#{$fct_detail{at_args}} >= 0) {
 			map { s/(.+)/quote_nullable($1)/; }  @{$fct_detail{at_args}};
@@ -11897,17 +11904,17 @@ sub _convert_type
 		} else {
 			$self->{type_of_type}{'Associative Arrays'}++;
 			$self->logit("WARNING: this kind of Nested Tables are not supported, skipping type $1\n", 1);
-			return "${unsupported}CREATE OR REPLACE $plsql";
+			return "${unsupported}CREATE$self->{create_or_replace} $plsql";
 		}
 	} elsif ($plsql =~ /TYPE\s+([^\s]+)\s+(AS|IS)\s*REF\s+CURSOR/is) {
 		$self->logit("WARNING: TYPE REF CURSOR are not supported, skipping type $1\n", 1);
 		$plsql =~ s/\bREF\s+CURSOR/REFCURSOR/is;
 		$self->{type_of_type}{'Type Ref Cursor'}++;
-		return "${unsupported}CREATE OR REPLACE $plsql";
+		return "${unsupported}CREATE$self->{create_or_replace} $plsql";
 	} elsif ($plsql =~ /TYPE\s+([^\s]+)\s+(AS|IS)\s*OBJECT\s*\((.*?)(TYPE BODY.*)/is) {
 		$self->{type_of_type}{'Type Boby'}++;
 		$self->logit("WARNING: TYPE BODY are not supported, skipping type $1\n", 1);
-		return "${unsupported}CREATE OR REPLACE $plsql";
+		return "${unsupported}CREATE$self->{create_or_replace} $plsql";
 	} elsif ($plsql =~ /TYPE\s+([^\s]+)\s+(AS|IS)\s*(?:OBJECT|RECORD)\s*\((.*)\)([^\)]*)/is) {
 		$type_name = $1;
 		my $description = $3;
@@ -11919,7 +11926,7 @@ sub _convert_type
 		if ($description =~ /\s*(MAP MEMBER|MEMBER|CONSTRUCTOR)\s+(FUNCTION|PROCEDURE).*/is) {
 			$self->{type_of_type}{'Type with member method'}++;
 			$self->logit("WARNING: TYPE with CONSTRUCTOR and MEMBER FUNCTION are not supported, skipping type $type_name\n", 1);
-			return "${unsupported}CREATE OR REPLACE $plsql";
+			return "${unsupported}CREATE$self->{create_or_replace} $plsql";
 		}
 		$description =~ s/^\s+//s;
 		my $declar = Ora2Pg::PLSQL::replace_sql_type($description, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type}, %{$self->{data_type}});
@@ -11950,7 +11957,7 @@ $declar
 		if ($description =~ /\s*(MAP MEMBER|MEMBER|CONSTRUCTOR)\s+(FUNCTION|PROCEDURE).*/is) {
 			$self->logit("WARNING: TYPE with CONSTRUCTOR and MEMBER FUNCTION are not supported, skipping type $type_name\n", 1);
 			$self->{type_of_type}{'Type with member method'}++;
-			return "${unsupported}CREATE OR REPLACE $plsql";
+			return "${unsupported}CREATE$self->{create_or_replace} $plsql";
 		}
 		$description =~ s/^\s+//s;
 		my $declar = Ora2Pg::PLSQL::replace_sql_type($description, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type}, %{$self->{data_type}});
@@ -11981,7 +11988,7 @@ CREATE TYPE \L$type_name\E AS ($type_name $declar\[$size\]);
 	} else {
 		$self->{type_of_type}{Unknown}++;
 		$plsql =~ s/;$//s;
-		$content = "${unsupported}CREATE OR REPLACE $plsql;"
+		$content = "${unsupported}CREATE$self->{create_or_replace} $plsql;"
 	}
 
 	if ($self->{force_owner}) {

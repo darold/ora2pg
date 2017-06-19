@@ -1571,6 +1571,12 @@ This will only works with export to file and when -J or ORACLE_COPIES is
 not set or default to 1. It can be used with direct import into PostgreSQL
 under the same condition but -j or JOBS must also be unset or default to 1.
 
+=item CREATE_OR_REPLACE
+
+By default Ora2Pg use CREATE OR REPLACE in function DDL, if you need not
+to override existing functions disable this configuration directive,
+DDL will not include OR REPLACE.
+
 =back
 
 When using Ora2Pg export type INSERT or COPY to dump data to file and that
