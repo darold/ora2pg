@@ -15318,7 +15318,7 @@ sub _lookup_function
 		# NOCOPY not supported
 		$fct_detail{args} =~ s/\s*NOCOPY//igs;
 		# IN OUT should be INOUT
-		$fct_detail{args} =~ s/IN\s+OUT/INOUT/igs;
+		$fct_detail{args} =~ s/\bIN\s+OUT/INOUT/igs;
 
 		# Now convert types
 		$fct_detail{args} = Ora2Pg::PLSQL::replace_sql_type($fct_detail{args}, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type}, %{$self->{data_type}});
