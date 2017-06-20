@@ -599,6 +599,9 @@ sub plsql_to_plpgsql
 	# Replace SYS_REFCURSOR as Pg REFCURSOR
 	$str =~ s/\bSYS_REFCURSOR\b/REFCURSOR/isg;
 
+	# Replace UTL_MATH function by fuzzymatch function
+	$str =~ s/UTL_MATCH.EDIT_DISTANCE/levenshtein/igs
+
 	# Replace known EXCEPTION equivalent ERROR code
 	$str =~ s/\bINVALID_CURSOR\b/INVALID_CURSOR_STATE/igs;
 	$str =~ s/\bZERO_DIVIDE\b/DIVISION_BY_ZERO/igs;
