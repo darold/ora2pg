@@ -401,7 +401,7 @@ by the DBD::Oracle Perl module.
 This directive is used to set the data source name in the form standard DBI DSN.
 For example:
 
-	dbi:Oracle:host=oradb_host.myhost.com;sid=DB_SID
+	dbi:Oracle:host=oradb_host.myhost.com;sid=DB_SID;port=1521
 
 or
 

@@ -81,7 +81,7 @@ unless(open(OUTCFG, ">$DEST_CONF_FILE")) {
 ORACLE_HOME	$oracle_home
 
 # Set Oracle database connection (datasource, user, password)
-ORACLE_DSN	dbi:Oracle:host=mydb.mydom.fr;sid=SIDNAME
+ORACLE_DSN	dbi:Oracle:host=mydb.mydom.fr;sid=SIDNAME;port=1521
 ORACLE_USER	system
 ORACLE_PWD	manager
 
