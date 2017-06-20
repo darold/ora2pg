@@ -484,6 +484,8 @@ sub plsql_to_plpgsql
 	$str =~ s/\bINSERTING\b/TG_OP = 'INSERT'/igs;
 	$str =~ s/\bDELETING\b/TG_OP = 'DELETE'/igs;
 	$str =~ s/\bUPDATING\b/TG_OP = 'UPDATE'/igs;
+	# Replace Oracle call to column in trigger event
+	$str =~ s/TG_OP = '([^']+)'\s*\(\s*([^\)]+)\s*\)/TG_OP = '$1' AND NEW.$2 IS DISTINCT FROM OLD.$2/igs;
 
 	# EXECUTE IMMEDIATE => EXECUTE
 	$str =~ s/EXECUTE IMMEDIATE/EXECUTE/igs;
@@ -600,7 +602,7 @@ sub plsql_to_plpgsql
 	$str =~ s/\bSYS_REFCURSOR\b/REFCURSOR/isg;
 
 	# Replace UTL_MATH function by fuzzymatch function
-	$str =~ s/UTL_MATCH.EDIT_DISTANCE/levenshtein/igs
+	$str =~ s/UTL_MATCH.EDIT_DISTANCE/levenshtein/igs;
 
 	# Replace known EXCEPTION equivalent ERROR code
 	$str =~ s/\bINVALID_CURSOR\b/INVALID_CURSOR_STATE/igs;
