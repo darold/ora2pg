@@ -15385,6 +15385,7 @@ sub _lookup_function
 			$self->{custom_exception}{$e} = $self->{exception_id}++;
 		}
 	}
+	$fct_detail{declare} =~ s/PRAGMA\s+EXCEPTION_INIT[^;]*;//igs;
 
 	# Replace call to global variables declared in this package
 	foreach my $n (keys %{$self->{global_variables}}) {
