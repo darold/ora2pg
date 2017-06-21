@@ -11313,8 +11313,20 @@ sub _remove_comments
 {
 	my ($self, $content, $no_constant) = @_;
 
-	# First remove hints they are not supported in PostgreSQL
+	# First remove hints they are not supported in PostgreSQL and it break the parser
 	$$content =~ s/\/\*\+(.*?)\*\///gs;
+
+	# Replace some other cases that are breaking the parser (presence of -- in constant string)
+	my @lines = split(/([\n\r]+)/, $$content);
+	for (my $i = 0; $i <= $#lines; $i++) {
+	      # ex: var1 := SUBSTR(var2,1,28) || ' -- ' || var3 || ' --  ' || SUBSTR(var4,1,26) ;
+		while ($lines[$i] =~ s/('[^']+\-\-[^']+')/\?TEXTVALUE$self->{text_values_pos}\?/) {
+			$self->{text_values}{$self->{text_values_pos}} = $1;
+			$self->{text_values_pos}++;
+		}
+	}
+	$$content =join('', @lines);
+
 
 	# Replace /* */ comments by a placeholder and save the comment
 	while ($$content =~ s/(\/\*(.*?)\*\/)/\%ORA2PG_COMMENT$self->{idxcomment}\%/s) {
@@ -11326,7 +11338,7 @@ sub _remove_comments
 		$self->{comment_values}{"\%ORA2PG_COMMENT$self->{idxcomment}\%"} = $1;
 		$self->{idxcomment}++;
 	}
-	my @lines = split(/\n/, $$content);
+	@lines = split(/\n/, $$content);
 	for (my $j = 0; $j <= $#lines; $j++) {
 		if (!$self->{is_mysql}) {
 			# Extract multiline comments as a single placeholder
@@ -11377,6 +11389,10 @@ sub _remove_comments
 	while ($$content =~ s/(\%ORA2PG_COMMENT\d+\%\s*\%ORA2PG_COMMENT\d+\%)/\%ORA2PG_COMMENT$self->{idxcomment}\%/s) {
 		$self->{comment_values}{"\%ORA2PG_COMMENT$self->{idxcomment}\%"} = $1;
 		$self->{idxcomment}++;
+	}
+
+	foreach my $k (keys %{ $self->{comment_values} } ) { 
+		$self->{comment_values}{$k} =~ s/\?TEXTVALUE(\d+)\?/$self->{text_values}{$1}/gs;
 	}
 
 	# Then replace text constant part to prevent a split on a ; or -- inside a text
