@@ -11320,7 +11320,7 @@ sub _remove_comments
 	my @lines = split(/([\n\r]+)/, $$content);
 	for (my $i = 0; $i <= $#lines; $i++) {
 	      # ex: var1 := SUBSTR(var2,1,28) || ' -- ' || var3 || ' --  ' || SUBSTR(var4,1,26) ;
-		while ($lines[$i] =~ s/('[^']+\-\-[^']+')/\?TEXTVALUE$self->{text_values_pos}\?/) {
+		while ($lines[$i] =~ s/('[^']*\-\-[^']*')/\?TEXTVALUE$self->{text_values_pos}\?/) {
 			$self->{text_values}{$self->{text_values_pos}} = $1;
 			$self->{text_values_pos}++;
 		}
