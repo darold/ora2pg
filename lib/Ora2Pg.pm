@@ -3418,6 +3418,7 @@ sub _get_sql_data
 		$sql_header .= $self->set_search_path();
 	}
 	$sql_header .= "\\set ON_ERROR_STOP ON\n\n" if ($self->{stop_on_error});
+	$sql_header .= "SET check_function_bodies = false;\n\n" if (!$self->{function_check});
 
 	my $sql_output = "";
 
