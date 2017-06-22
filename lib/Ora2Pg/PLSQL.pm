@@ -863,10 +863,10 @@ sub translate_statement
 		next if ($q[$j] =~ /^UNION/);
 
 		# Replace call to right outer join obsolete syntax
-		$q[$j] = replace_outer_join($q[$j], 'right');
+		$q[$j] = replace_outer_join($class, $q[$j], 'right');
 
 		# Replace call to left outer join obsolete syntax
-		$q[$j] = replace_outer_join($q[$j], 'left');
+		$q[$j] = replace_outer_join($class, $q[$j], 'left');
 
 		# Replacement of connect by with CTE
 		$q[$j] = replace_connect_by($class, $q[$j]);
@@ -2203,7 +2203,7 @@ sub mysql_estimate_cost
 
 sub replace_outer_join
 {
-	my ($str, $type) = @_;
+	my ($class, $str, $type) = @_;
 
 	if (!grep(/^$type$/, 'left', 'right')) {
 		die "FATAL: outer join type must be 'left' or 'right' in call to replace_outer_join().\n";
@@ -2220,13 +2220,22 @@ sub replace_outer_join
 	# process simple form of outer join
 	my $nbouter = $str =~ $regexp1;
 
+
 	# Check that we don't have right outer join too
 	if ($nbouter >= 1 && $str !~ $regexp2) {
-		# Extract the FROM clause
+		# Extract tables in the FROM clause
 		$str =~ s/(.*)\bFROM\s+(.*?)\s+WHERE\s+(.*?)$/$1FROM FROM_CLAUSE WHERE $3/is;
 		my $from_clause = $2;
 		$from_clause =~ s/"//gs;
 		my @tables = split(/\s*,\s*/, $from_clause);
+
+		# When parsing a trigger, prefix NEW/OLD by the trigger table
+		if ($class->{current_trigger_table}) {
+			foreach my $k ('NEW', 'OLD') {
+				push(@tables, $k) if ($str =~ /\b$k\./is);
+			}
+		}
+
 		# Set a hash for alias to table mapping
 		my %from_clause_list = ();
 		my %from_order = ();
@@ -2388,7 +2397,7 @@ sub replace_outer_join
 				 $from_clause = "$comment " . $from_clause;
 			}
 		}
-
+		$from_clause =~ s/\b(new|old)\b/\U$1\E/gs;
 		$str =~ s/FROM FROM_CLAUSE/FROM $from_clause/s;
 	}
 

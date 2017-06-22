@@ -4059,9 +4059,14 @@ LANGUAGE plpgsql ;
 			}
 			$trig->[1] =~ s/\s*EACH ROW//is;
 			chomp($trig->[4]);
+
 			$trig->[4] =~ s/([^\*])[;\/]$/$1/;
 			$self->logit("\tDumping trigger $trig->[0] defined on table $trig->[3]...\n", 1);
 			my $tbname = $self->get_replaced_tbname($trig->[3]);
+
+			# Store current trigger table name for possible use in outer join translation
+			$self->{current_trigger_table} = $trig->[3];
+
 			# Replace column name in function code
 			if (exists $self->{replaced_cols}{"\L$trig->[3]\E"}) {
 				foreach my $coln (sort keys %{$self->{replaced_cols}{"\L$trig->[3]\E"}}) {
@@ -4210,6 +4215,8 @@ LANGUAGE plpgsql ;
 			$nothing++;
 			$i++;
 		}
+		delete $self->{current_trigger_table};
+
 		if (!$self->{quiet} && !$self->{debug}) {
 			print STDERR $self->progress_bar($i - 1, $num_total_trigger, 25, '=', 'triggers', 'end of output.'), "\n";
 		}
