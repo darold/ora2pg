@@ -2223,13 +2223,6 @@ sub replace_outer_join
 		$from_clause =~ s/"//gs;
 		my @tables = split(/\s*,\s*/, $from_clause);
 
-		# When parsing a trigger, prefix NEW/OLD by the trigger table
-		if ($class->{current_trigger_table}) {
-			foreach my $k ('NEW', 'OLD') {
-				push(@tables, $k) if ($str =~ /\b$k\./is);
-			}
-		}
-
 		# Set a hash for alias to table mapping
 		my %from_clause_list = ();
 		my %from_order = ();
@@ -2281,7 +2274,12 @@ sub replace_outer_join
 				$predicat[$i] =~ s/WHERE_CLAUSE$id / $l $o $r /s;
 				next;
 			}
+			if ($l =~ /^(NEW|OLD)\./is) {
+				$predicat[$i] =~ s/WHERE_CLAUSE$id / $l $o $r /s;
+				next;
+			}
 			$id++;
+
 			# Extract the tablename part of the left clause
 			my $lbl1 = '';
 			my $table_decl1 = $l;
