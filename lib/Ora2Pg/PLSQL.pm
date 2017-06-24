@@ -1432,32 +1432,26 @@ sub raise_output
 	my @strings = split(/\s*\|\|\s*/s, $str);
 
 	my @params = ();
-	my $pattern = '';
+	my @pattern = ();
 	foreach my $el (@strings) {
 		$el =~ s/\?TEXTVALUE(\d+)\?/$class->{text_values}{$1}/gs;
 		$el =~ s/ORA2PG_ESCAPE2_QUOTE/''/gs;
 		$el =~ s/ORA2PG_ESCAPE1_QUOTE'/\\'/gs;
-		if ($el =~ /^'(.*)'$/s) {
-			$pattern .= $1;
+		if ($el =~ /^\s*'(.*)'\s*$/s) {
+			push(@pattern, $1);
 		} else {
-			$pattern .= '%';
+			push(@pattern, '%');
 			push(@params, $el);
 		}
-
-		$el =~ s/\\'/ORA2PG_ESCAPE1_QUOTE'/gs;
-		while ($el =~ s/''/ORA2PG_ESCAPE2_QUOTE/gs) {}
-
-		while ($el =~ s/('[^']+')/\?TEXTVALUE$class->{text_values_pos}\?/s) {
-			$class->{text_values}{$class->{text_values_pos}} = $1;
-			$class->{text_values_pos}++;
-		}
 	}
-	my $ret = "RAISE NOTICE '$pattern'";
+	#my $ret = "RAISE NOTICE '$pattern'";
+	my $ret = "'" . join('', @pattern) . "'";
+	$ret =~ s/\%\%/\% \%/gs;
 	if ($#params >= 0) {
 		$ret .= ', ' . join(', ', @params);
 	}
 
-	return $ret;
+	return 'RAISE NOTICE ' . $ret;
 }
 
 sub replace_sql_type
