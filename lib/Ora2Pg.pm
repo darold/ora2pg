@@ -2101,13 +2101,13 @@ sub _get_plsql_code
 	my $str = shift();
 
 	my $ct = '';
-	my @parts = split(/\b(BEGIN|DECLARE|END\s*(?!IF|LOOP|CASE|INTO|FROM|,)[^;\s]*\s*;)/, $str);
+	my @parts = split(/\b(BEGIN|DECLARE|END\s*(?!IF|LOOP|CASE|INTO|FROM|,)[^;\s]*\s*;)/i, $str);
 	my $code = '';
 	my $other = '';
 	my $i = 0;
 	for (; $i <= $#parts; $i++) {
-		$ct++ if ($parts[$i] =~ /\bBEGIN\b/);
-		$ct-- if ($parts[$i] =~ /\bEND\s*(?!IF|LOOP|CASE|INTO|FROM|,)[^;\s]*\s*;/);
+		$ct++ if ($parts[$i] =~ /\bBEGIN\b/i);
+		$ct-- if ($parts[$i] =~ /\bEND\s*(?!IF|LOOP|CASE|INTO|FROM|,)[^;\s]*\s*;/i);
 		if ( ($ct ne '') && ($ct == 0) ) {
 			$code .= $parts[$i];
 			last;
@@ -2694,14 +2694,14 @@ sub read_trigger_from_file
 			if ($trigger =~ s/^\s*WHEN\s+(.*?)\s+((?:BEGIN|DECLARE|CALL).*)//is) {
 				$t_when_cond = $1;
 				$trigger = $2;
-				if ($trigger =~ /^(BEGIN|DECLARE)/) {
+				if ($trigger =~ /^(BEGIN|DECLARE)/i) {
 					($trigger, $content) = &_get_plsql_code($trigger);
 				} else {
 					$trigger =~ s/([^;]+;)\s*(.*)/$1/;
 					$content = $2;
 				}
 			} else {
-				if ($trigger =~ /^(BEGIN|DECLARE)/) {
+				if ($trigger =~ /^(BEGIN|DECLARE)/i) {
 					($trigger, $content) = &_get_plsql_code($trigger);
 				}
 			}
@@ -3380,7 +3380,7 @@ sub _replace_declare_var
 	if ($$code =~ s/\b(DECLARE\s+(?:.*?)\s+BEGIN)/\%DECLARE\%/is) {
 		my $declare = $1;
 		# Collect user defined function
-		while ($declare =~ s/\b([^\s]+)\s+EXCEPTION\s*;//) {
+		while ($declare =~ s/\b([^\s]+)\s+EXCEPTION\s*;//i) {
 			my $e = lc($1);
 			if (!exists $self->{custom_exception}{$e}) {
 				$self->{custom_exception}{$e} = $self->{exception_id}++;
@@ -11635,7 +11635,7 @@ END;
 	my $revoke = '';
 	if ($fct_detail{code}) {
 		$fct_detail{declare} = '' if ($fct_detail{declare} !~ /[a-z]/is);
-		$fct_detail{declare} =~ s/^\s*DECLARE//;
+		$fct_detail{declare} =~ s/^\s*DECLARE//i;
 		$fct_detail{declare} .= ';' if ($fct_detail{declare} && $fct_detail{declare} !~ /;\s*$/s && $fct_detail{declare} !~ /\%ORA2PG_COMMENT\d+\%\s*$/s);
 		my $code_part = '';
 		$code_part .= "DECLARE\n$fct_detail{declare}\n" if ($fct_detail{declare});
@@ -15281,6 +15281,7 @@ sub _lookup_function
 
 	return if (!$fct_detail{code});
 
+	@{$fct_detail{param_types}} = ();
 	if ( ($fct_detail{declare} =~ s/(.*?)\b(FUNCTION|PROCEDURE)\s+([^\s\(]+)\s*(\([^\)]*\))//is) || 
 	($fct_detail{declare} =~ s/(.*?)\b(FUNCTION|PROCEDURE)\s+([^\s\(]+)\s+(RETURN|IS|AS)/$4/is) ) {
 		$fct_detail{before} = $1;
@@ -15365,17 +15366,22 @@ sub _lookup_function
 				}
 			}
 		}
-
 		# Set parameters for AUTONOMOUS TRANSACTION
 		$fct_detail{args} =~ s/\s+/ /gs;
 		push(@{$fct_detail{at_args}}, split(/\s*,\s*/, $fct_detail{args}));
 		# Remove type parts to only get parameter's name
 		map { s/\s(IN|OUT|INOUT)\s/ /i; } @{$fct_detail{at_args}};
+		push(@{$fct_detail{param_types}}, @{$fct_detail{at_args}});
 		map { s/^\(//; } @{$fct_detail{at_args}};
 		map { s/^\s+//; } @{$fct_detail{at_args}};
 		map { s/\s.*//; } @{$fct_detail{at_args}};
 		map { s/\)$//; } @{$fct_detail{at_args}};
 		@{$fct_detail{at_args}} = grep(/^.+$/, @{$fct_detail{at_args}});
+		# Store type used in parameter list to lookup later for custom types
+		map { s/^\(//; } @{$fct_detail{param_types}};
+		map { s/\)$//; } @{$fct_detail{param_types}};
+		map { s/\%ORA2PG_COMMENT\d+\%//gs; }  @{$fct_detail{param_types}};
+		map { s/^\s*[^\s]+\s+//; s/\s.*$//; s/\(.*//; s/\)$//; } @{$fct_detail{param_types}};
 	} else {
 		delete $fct_detail{func_ret_type};
 		delete $fct_detail{declare};
@@ -15387,6 +15393,19 @@ sub _lookup_function
 	my @ninout = $fct_detail{args} =~ /\bINOUT\s+([^,\)]+)/igs;
 	my $nbout = $#nout+1 + $#ninout+1;
 	$fct_detail{inout} = 1 if ($nbout > 0);
+
+	# Mark function as having custom type in parameter list
+	if ($fct_detail{inout}) {
+		foreach my $t (@{$fct_detail{param_types}}) {
+			# Consider column type reference to never be a composite type this
+			# is clearly not right but the false positive case might be very low
+			next if ($t =~ /\%TYPE/i);
+			# Mark out parameter as using composite type
+			if (!grep(/^$t$/i, 'int', 'bigint', values %TYPE, values %ORA2PG_SDO_GTYPE)) {
+				$fct_detail{inout}++;
+			}
+		}
+	}
 
 	# Collect user defined function
 	while ($fct_detail{declare} =~ s/\b([^\s]+)\s+EXCEPTION\s*;//) {

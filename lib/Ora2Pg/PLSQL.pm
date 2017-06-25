@@ -313,8 +313,10 @@ sub convert_plsql_code
 
 	return if ($str eq '');
 
-	# Do some initialization iof variables used in recursive functions
+	# Do some initialization of variables
 	%{$class->{single_fct_call}} = ();
+	$class->{replace_out_param} = ();
+	$class->{rop_idx} = 0;
 
 	# Rewrite all decode() call before
 	$str = replace_decode($str) if (uc($class->{type}) ne 'SHOW_REPORT');
@@ -351,6 +353,12 @@ sub convert_plsql_code
 
 	}
 	$str = join(';', @code_parts);
+
+	foreach my $i (keys %{ $class->{replace_out_param} }) {
+		if ($str !~ s/\b(DECLARE\s+)/$1$class->{replace_out_param}{$class->{rop_idx}}\n/is) {
+			$str =~ s/\b(BEGIN\s+)/DECLARE\n$class->{replace_out_param}{$class->{rop_idx}}\n$1/is;
+		}
+	}
 
 	# Apply code rewrite on other part of the code
 	$str = plsql_to_plpgsql($class, $str, %data_type);
@@ -1169,24 +1177,38 @@ sub replace_oracle_function
 							my @cparams = split(/\s*,\s*/, $fparam);
 							my $call_params = '';
 							my @out_pos = ();
+							my @out_fields = ();
 							for (my $i = 0; $i <= $#params; $i++) {
 								if ($params[$i] =~ /\s*([^\s]+)\s+(OUT|INOUT)\s/is) {
+									push(@out_fields, $1);
 									push(@out_pos, $i);
 									$call_params .= "$cparams[$i], " if ($params[$i] =~ /\bINOUT\b/is);
 								} else {
 									$call_params .= "$cparams[$i], ";
 								}
 							}
+							map { s/^\(//; } @out_fields;
 							$call_params =~ s/, $//;
 							$replace_out_param{$idx} .= "$call_params)";
 							my @out_param = ();
 							foreach my $i (@out_pos) {
 								push(@out_param, $cparams[$i]);
 							}
-							if ($#out_param == 0) {
-								$replace_out_param{$idx} = "$out_param[0] := $replace_out_param{$idx}";
-							} else {
-								$replace_out_param{$idx} = "SELECT * FROM $replace_out_param{$idx} INTO " . join(', ', @out_param);
+							if ($class->{function_metadata}{$sch}{$p}{$k}{metadata}{inout} == 1) {
+								if ($#out_param == 0) {
+									$replace_out_param{$idx} = "$out_param[0] := $replace_out_param{$idx}";
+								} else {
+									$replace_out_param{$idx} = "SELECT * FROM $replace_out_param{$idx} INTO " . join(', ', @out_param);
+								}
+							} elsif ($class->{function_metadata}{$sch}{$p}{$k}{metadata}{inout} > 1) {
+								$class->{rop_idx}++;
+								$class->{replace_out_param}{$class->{rop_idx}} = "_ora2pg_r$class->{rop_idx} RECORD;";
+								$replace_out_param{$idx} = "SELECT * FROM $replace_out_param{$idx} INTO _ora2pg_r$class->{rop_idx};";
+								my $out_field_pos = 0;
+								foreach $param (@out_param) {
+									$replace_out_param{$idx} .= " $param := _ora2pg_r$class->{rop_idx}.$out_fields[$out_field_pos++];";
+								}
+								$replace_out_param{$idx} =~ s/;$//s;
 							}
 							$idx++;
 						}
