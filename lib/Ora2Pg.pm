@@ -857,6 +857,9 @@ sub _init
 	# Keep commit/rollback in converted pl/sql code by default
 	$self->{comment_commit_rollback} = 0;
 
+	# Storage of string constant placeholder regexp
+	$self->{string_constant_regexp} = ();
+
 	# Initialyze following configuration file
 	foreach my $k (sort keys %AConfig) {
 		if (lc($k) eq 'allow') {
@@ -957,6 +960,10 @@ sub _init
 
 	# Defined default value for to_number translation
 	$self->{to_number_conversion} ||= 'numeric';
+
+	if ($AConfig{STRING_CONSTANT_REGEXP}) {
+		push(@{ $self->{string_constant_regexp} } , split(/;/, $AConfig{STRING_CONSTANT_REGEXP}));
+	}
 
 	# Overwrite configuration with all given parameters
 	# and try to preserve backward compatibility
@@ -2179,6 +2186,13 @@ sub _remove_text_constant_part
 	while ($$str =~ s/('[^']+')/\?TEXTVALUE$self->{text_values_pos}\?/s) {
 		$self->{text_values}{$self->{text_values_pos}} = $1;
 		$self->{text_values_pos}++;
+	}
+
+	for (my $i = 0; $i <= $#{$self->{string_constant_regexp}}; $i++) {
+		while ($$str =~ s/($self->{string_constant_regexp}[$i])/\?TEXTVALUE$self->{text_values_pos}\?/s) {
+			$self->{text_values}{$self->{text_values_pos}} = $1;
+			$self->{text_values_pos}++;
+		}
 	}
 }
 
