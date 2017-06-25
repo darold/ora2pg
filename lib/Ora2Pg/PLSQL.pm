@@ -315,8 +315,7 @@ sub convert_plsql_code
 
 	# Do some initialization of variables
 	%{$class->{single_fct_call}} = ();
-	$class->{replace_out_param} = ();
-	$class->{rop_idx} = 0;
+	$class->{replace_out_param} = '';
 
 	# Rewrite all decode() call before
 	$str = replace_decode($str) if (uc($class->{type}) ne 'SHOW_REPORT');
@@ -354,9 +353,9 @@ sub convert_plsql_code
 	}
 	$str = join(';', @code_parts);
 
-	foreach my $i (keys %{ $class->{replace_out_param} }) {
-		if ($str !~ s/\b(DECLARE\s+)/$1$class->{replace_out_param}{$class->{rop_idx}}\n/is) {
-			$str =~ s/\b(BEGIN\s+)/DECLARE\n$class->{replace_out_param}{$class->{rop_idx}}\n$1/is;
+	if ($class->{replace_out_param}) {
+		if ($str !~ s/\b(DECLARE\s+)/$1$class->{replace_out_param}\n/is) {
+			$str =~ s/\b(BEGIN\s+)/DECLARE\n$class->{replace_out_param}\n$1/is;
 		}
 	}
 
@@ -1201,12 +1200,11 @@ sub replace_oracle_function
 									$replace_out_param{$idx} = "SELECT * FROM $replace_out_param{$idx} INTO " . join(', ', @out_param);
 								}
 							} elsif ($class->{function_metadata}{$sch}{$p}{$k}{metadata}{inout} > 1) {
-								$class->{rop_idx}++;
-								$class->{replace_out_param}{$class->{rop_idx}} = "_ora2pg_r$class->{rop_idx} RECORD;";
-								$replace_out_param{$idx} = "SELECT * FROM $replace_out_param{$idx} INTO _ora2pg_r$class->{rop_idx};";
+								$class->{replace_out_param} = "_ora2pg_r RECORD;" if (!$class->{replace_out_param});
+								$replace_out_param{$idx} = "SELECT * FROM $replace_out_param{$idx} INTO _ora2pg_r;";
 								my $out_field_pos = 0;
 								foreach $param (@out_param) {
-									$replace_out_param{$idx} .= " $param := _ora2pg_r$class->{rop_idx}.$out_fields[$out_field_pos++];";
+									$replace_out_param{$idx} .= " $param := _ora2pg_r.$out_fields[$out_field_pos++];";
 								}
 								$replace_out_param{$idx} =~ s/;$//s;
 							}
