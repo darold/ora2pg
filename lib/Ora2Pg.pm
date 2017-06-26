@@ -441,12 +441,14 @@ sub open_export_file
 
 	my $filehdl = undef;
 
-	if ($outfile) {
-		if ($self->{input_file} && ($outfile eq $self->{input_file})) {
-			$self->logit("FATAL: input file is the same as output file: $outfile, can not overwrite it.\n",0,1);
-		}
-		if ($self->{output_dir} && !$noprefix) {
-			$outfile = $self->{output_dir} . '/' . $outfile;
+	if ($outfile && $outfile ne '-') {
+		if ($outfile ne '-') {
+			if ($self->{input_file} && ($outfile eq $self->{input_file})) {
+				$self->logit("FATAL: input file is the same as output file: $outfile, can not overwrite it.\n",0,1);
+			}
+			if ($self->{output_dir} && !$noprefix) {
+				$outfile = $self->{output_dir} . '/' . $outfile;
+			}
 		}
 		# If user request data compression
 		if ($outfile =~ /\.gz$/i) {
@@ -486,12 +488,14 @@ sub create_export_file
 
 	# Init with configuration OUTPUT filename
 	$outfile ||= $self->{output};
-	if ($self->{input_file} && ($outfile eq $self->{input_file})) {
-		$self->logit("FATAL: input file is the same as output file: $outfile, can not overwrite it.\n",0,1);
-	}
 	if ($outfile) {
-		if ($self->{output_dir} && $outfile) {
-			$outfile = $self->{output_dir} . "/" . $outfile;
+		if ($outfile ne '-') {
+			if ($self->{input_file} && ($outfile eq $self->{input_file})) {
+				$self->logit("FATAL: input file is the same as output file: $outfile, can not overwrite it.\n",0,1);
+			}
+			if ($self->{output_dir} && $outfile) {
+				$outfile = $self->{output_dir} . "/" . $outfile;
+			}
 		}
 		# Send output to the specified file
 		if ($outfile =~ /\.gz$/) {
@@ -522,10 +526,10 @@ sub remove_export_file
 
 	# Init with configuration OUTPUT filename
 	$outfile ||= $self->{output};
-	if ($self->{input_file} && ($outfile eq $self->{input_file})) {
-		$self->logit("FATAL: input file is the same as output file: $outfile, can not overwrite it.\n",0,1);
-	}
-	if ($outfile) {
+	if ($outfile && $outfile ne '-') {
+		if ($self->{input_file} && ($outfile eq $self->{input_file})) {
+			$self->logit("FATAL: input file is the same as output file: $outfile, can not overwrite it.\n",0,1);
+		}
 		if ($self->{output_dir} && $outfile) {
 			$outfile = $self->{output_dir} . "/" . $outfile;
 		}
@@ -3372,6 +3376,7 @@ sub translate_function
 		}
 		$sql_header .= "\\set ON_ERROR_STOP ON\n\n" if ($self->{stop_on_error});
 		$sql_header .= "SET check_function_bodies = false;\n\n" if (!$self->{function_check});
+		$sql_header = '' if ($self->{no_header});
 
 		if ($self->{file_per_function}) {
 			$self->dump($sql_header . $sql_output, $fhdl);
@@ -3434,6 +3439,7 @@ sub _get_sql_data
 	}
 	$sql_header .= "\\set ON_ERROR_STOP ON\n\n" if ($self->{stop_on_error});
 	$sql_header .= "SET check_function_bodies = false;\n\n" if (!$self->{function_check});
+	$sql_header = '' if ($self->{no_header});
 
 	my $sql_output = "";
 
@@ -3574,7 +3580,7 @@ sub _get_sql_data
 		}
 
 		if (!$nothing) {
-			$sql_output = "-- Nothing found of type $self->{type}\n";
+			$sql_output = "-- Nothing found of type $self->{type}\n" if (!$self->{no_header});
 		} else {
 			$sql_output .= "\n";
 		}
@@ -3774,7 +3780,7 @@ LANGUAGE plpgsql ;
 			print STDERR $self->progress_bar($i - 1, $num_total_mview, 25, '=', 'materialized views', 'end of output.'), "\n";
 		}
 		if (!$nothing) {
-			$sql_output = "-- Nothing found of type $self->{type}\n";
+			$sql_output = "-- Nothing found of type $self->{type}\n" if (!$self->{no_header});
 		}
 
 		$self->dump($sql_output);
@@ -3886,10 +3892,10 @@ LANGUAGE plpgsql ;
 			$sql_header .= ";\n";
 		}
 		if (!$grants) {
-			$grants = "-- Nothing found of type $self->{type}\n";
+			$grants = "-- Nothing found of type $self->{type}\n" if (!$self->{no_header});
 		}
 
-		$sql_output .= "\n" . $grants . "\n";
+		$sql_output .= "\n" . $grants . "\n" if ($grants);
 
 		$self->_restore_comments(\$grants);
 		$self->dump($sql_header . $sql_output);
@@ -3949,7 +3955,7 @@ LANGUAGE plpgsql ;
 			print STDERR $self->progress_bar($i - 1, $num_total_sequence, 25, '=', 'sequences', 'end of output.'), "\n";
 		}
 		if (!$sql_output) {
-			$sql_output = "-- Nothing found of type $self->{type}\n";
+			$sql_output = "-- Nothing found of type $self->{type}\n" if (!$self->{no_header});
 		}
 
 		$self->dump($sql_header . $sql_output);
@@ -4003,7 +4009,7 @@ LANGUAGE plpgsql ;
 			print STDERR $self->progress_bar($i - 1, $num_total_dblink, 25, '=', 'dblink', 'end of output.'), "\n";
 		}
 		if (!$sql_output) {
-			$sql_output = "-- Nothing found of type $self->{type}\n";
+			$sql_output = "-- Nothing found of type $self->{type}\n" if (!$self->{no_header});
 		}
 
 		$self->dump($sql_header . $sql_output);
@@ -4037,7 +4043,7 @@ LANGUAGE plpgsql ;
 			print STDERR $self->progress_bar($i - 1, $num_total_directory, 25, '=', 'directory', 'end of output.'), "\n";
 		}
 		if (!$sql_output) {
-			$sql_output = "-- Nothing found of type $self->{type}\n";
+			$sql_output = "-- Nothing found of type $self->{type}\n" if (!$self->{no_header});
 		}
 
 		$self->dump($sql_header . $sql_output);
@@ -4235,7 +4241,7 @@ LANGUAGE plpgsql ;
 			print STDERR $self->progress_bar($i - 1, $num_total_trigger, 25, '=', 'triggers', 'end of output.'), "\n";
 		}
 		if (!$nothing) {
-			$sql_output = "-- Nothing found of type $self->{type}\n";
+			$sql_output = "-- Nothing found of type $self->{type}\n" if (!$self->{no_header});
 		}
 
 		$self->dump($sql_output);
@@ -4417,7 +4423,7 @@ LANGUAGE plpgsql ;
 			$sql_output .= join("\n", @infos);
 		}
 		if (!$nothing) {
-			$sql_output = "-- Nothing found of type $self->{type}\n";
+			$sql_output = "-- Nothing found of type $self->{type}\n" if (!$self->{no_header});
 		}
 		$self->dump($sql_output);
 		$self->{queries} = ();
@@ -4590,7 +4596,7 @@ LANGUAGE plpgsql ;
 			$sql_output .= "\n" . $fct_cost;
 		}
 		if (!$nothing) {
-			$sql_output = "-- Nothing found of type $self->{type}\n";
+			$sql_output = "-- Nothing found of type $self->{type}\n" if (!$self->{no_header});
 		}
 		$self->dump($sql_output);
 		$self->{functions} = ();
@@ -4770,7 +4776,7 @@ LANGUAGE plpgsql ;
 			$sql_output .= "\n" . $fct_cost;
 		}
 		if (!$nothing) {
-			$sql_output = "-- Nothing found of type $self->{type}\n";
+			$sql_output = "-- Nothing found of type $self->{type}\n" if (!$self->{no_header});
 		}
 		$self->dump($sql_output);
 		$self->{procedures} = ();
@@ -4955,7 +4961,7 @@ LANGUAGE plpgsql ;
 			print STDERR $self->progress_bar($i - 1, $num_total_package, 25, '=', 'packages', 'end of output.'), "\n";
 		}
 		if (!$nothing) {
-			$sql_output = "-- Nothing found of type $self->{type}\n";
+			$sql_output = "-- Nothing found of type $self->{type}\n" if (!$self->{no_header});
 		}
 		$self->dump($sql_output);
 		$self->{packages} = ();
@@ -5027,7 +5033,7 @@ LANGUAGE plpgsql ;
 			print STDERR $self->progress_bar($i - 1, $#{$self->{types}}+1, 25, '=', 'types', 'end of output.'), "\n";
 		}
 		if (!$sql_output) {
-			$sql_output = "-- Nothing found of type $self->{type}\n";
+			$sql_output = "-- Nothing found of type $self->{type}\n" if (!$self->{no_header});
 		}
 		$self->dump($sql_header . $sql_output);
 		return;
@@ -5073,10 +5079,12 @@ LANGUAGE plpgsql ;
 			}
 		}
 
+		$sql_output = "$create_tb\n" . $sql_output if ($create_tb);
 		if (!$sql_output) {
-			$sql_output = "-- Nothing found of type $self->{type}\n";
+			$sql_output = "-- Nothing found of type $self->{type}\n" if (!$self->{no_header});
 		}
-		$self->dump($sql_header . "$create_tb\n" . $sql_output);
+		
+		$self->dump($sql_header . $sql_output);
 
 		
 		if ($self->{file_per_index} && (scalar keys %{$self->{tablespaces}} > 0)) {
@@ -5100,7 +5108,7 @@ LANGUAGE plpgsql ;
 					}
 				}
 			}
-			$sql_output = "-- Nothing found of type $self->{type}\n" if (!$sql_output);
+			$sql_output = "-- Nothing found of type $self->{type}\n" if (!$sql_output && !$self->{no_header});
 			$self->dump($sql_header . $sql_output, $fhdl);
 			$self->close_export_file($fhdl);
 		}
@@ -6043,7 +6051,7 @@ CREATE TRIGGER ${table}_trigger_insert
 			print STDERR $self->progress_bar($i - 1, $total_partition, 25, '=', 'partitions', 'end of output.'), "\n";
 		}
 		if (!$sql_output) {
-			$sql_output = "-- Nothing found of type $self->{type}\n";
+			$sql_output = "-- Nothing found of type $self->{type}\n" if (!$self->{no_header});
 		}
 		$self->dump($sql_header . $sql_output);
 		$self->close_export_file($self->{fhout}) if (defined $self->{fhout});
@@ -6054,6 +6062,7 @@ CREATE TRIGGER ${table}_trigger_insert
 			$sql_header = "-- Generated by Ora2Pg, the Oracle database Schema converter, version $VERSION\n";
 			$sql_header .= "-- Copyright 2000-2017 Gilles DAROLD. All rights reserved.\n";
 			$sql_header .= "-- DATASOURCE: $self->{oracle_dsn}\n\n";
+			$sql_header = ''  if ($self->{no_header});
 			$fhdl = $self->open_export_file("PARTITION_INDEXES_$self->{output}");
 			set_binmode($fhdl);
 			$self->dump($sql_header . $partition_indexes, $fhdl);
@@ -6094,7 +6103,7 @@ CREATE TRIGGER ${table}_trigger_insert
 			print STDERR $self->progress_bar($i - 1, $num_total_synonym, 25, '=', 'synonyms', 'end of output.'), "\n";
 		}
 		if (!$sql_output) {
-			$sql_output = "-- Nothing found of type $self->{type}\n";
+			$sql_output = "-- Nothing found of type $self->{type}\n" if (!$self->{no_header});
 		}
 
 		$self->dump($sql_header . $sql_output);
@@ -6451,7 +6460,7 @@ CREATE TRIGGER ${table}_trigger_insert
 		$self->logit("Dumping indexes to one separate file : INDEXES_$self->{output}\n", 1);
 		$fhdl = $self->open_export_file("INDEXES_$self->{output}");
 		set_binmode($fhdl);
-		$indices = "-- Nothing found of type indexes\n" if (!$indices);
+		$indices = "-- Nothing found of type indexes\n" if (!$indices && !$self->{no_header});
 		$indices =~ s/\n+/\n/gs;
 		$self->_restore_comments(\$indices);
 		$indices = $self->set_search_path() . $indices;
@@ -6521,7 +6530,7 @@ RETURNS text AS
 		$self->logit("Dumping constraints to one separate file : CONSTRAINTS_$self->{output}\n", 1);
 		$fhdl = $self->open_export_file("CONSTRAINTS_$self->{output}");
 		set_binmode($fhdl);
-		$constraints = "-- Nothing found of type constraints\n" if (!$constraints);
+		$constraints = "-- Nothing found of type constraints\n" if (!$constraints && !$self->{no_header});
 		$self->_restore_comments(\$constraints);
 		$self->dump($sql_header . $constraints, $fhdl);
 		$self->close_export_file($fhdl);
@@ -6533,7 +6542,7 @@ RETURNS text AS
 		$self->logit("Dumping foreign keys to one separate file : FKEYS_$self->{output}\n", 1);
 		$fhdl = $self->open_export_file("FKEYS_$self->{output}");
 		set_binmode($fhdl);
-		$fkeys = "-- Nothing found of type foreign keys\n" if (!$fkeys);
+		$fkeys = "-- Nothing found of type foreign keys\n" if (!$fkeys && !$self->{no_header});
 		$self->_restore_comments(\$fkeys);
 		$fkeys = $self->set_search_path() . $fkeys;
 		$self->dump($sql_header . $fkeys, $fhdl);
@@ -6542,7 +6551,7 @@ RETURNS text AS
 	}
 
 	if (!$sql_output) {
-		$sql_output = "-- Nothing found of type TABLE\n";
+		$sql_output = "-- Nothing found of type TABLE\n" if (!$self->{no_header});
 	} else {
 		$self->_restore_comments(\$sql_output);
 	}
@@ -11701,6 +11710,7 @@ END;
 		}
 		$sql_header .= $self->set_search_path();
 		$sql_header .= "SET check_function_bodies = false;\n\n" if (!$self->{function_check});
+		$sql_header = '' if ($self->{no_header});
 
 		my $fhdl = $self->open_export_file("$dirprefix\L$pname/$fname\E_$self->{output}", 1);
 		set_binmode($fhdl);
