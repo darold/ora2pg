@@ -313,8 +313,9 @@ sub convert_plsql_code
 
 	return if ($str eq '');
 
-	# Do some initialization iof variables used in recursive functions
+	# Do some initialization of variables
 	%{$class->{single_fct_call}} = ();
+	$class->{replace_out_param} = '';
 
 	# Rewrite all decode() call before
 	$str = replace_decode($str) if (uc($class->{type}) ne 'SHOW_REPORT');
@@ -351,6 +352,12 @@ sub convert_plsql_code
 
 	}
 	$str = join(';', @code_parts);
+
+	if ($class->{replace_out_param}) {
+		if ($str !~ s/\b(DECLARE\s+)/$1$class->{replace_out_param}\n/is) {
+			$str =~ s/\b(BEGIN\s+)/DECLARE\n$class->{replace_out_param}\n$1/is;
+		}
+	}
 
 	# Apply code rewrite on other part of the code
 	$str = plsql_to_plpgsql($class, $str, %data_type);
@@ -1169,24 +1176,37 @@ sub replace_oracle_function
 							my @cparams = split(/\s*,\s*/, $fparam);
 							my $call_params = '';
 							my @out_pos = ();
+							my @out_fields = ();
 							for (my $i = 0; $i <= $#params; $i++) {
 								if ($params[$i] =~ /\s*([^\s]+)\s+(OUT|INOUT)\s/is) {
+									push(@out_fields, $1);
 									push(@out_pos, $i);
 									$call_params .= "$cparams[$i], " if ($params[$i] =~ /\bINOUT\b/is);
 								} else {
 									$call_params .= "$cparams[$i], ";
 								}
 							}
+							map { s/^\(//; } @out_fields;
 							$call_params =~ s/, $//;
 							$replace_out_param{$idx} .= "$call_params)";
 							my @out_param = ();
 							foreach my $i (@out_pos) {
 								push(@out_param, $cparams[$i]);
 							}
-							if ($#out_param == 0) {
-								$replace_out_param{$idx} = "$out_param[0] := $replace_out_param{$idx}";
-							} else {
-								$replace_out_param{$idx} = "SELECT * FROM $replace_out_param{$idx} INTO " . join(', ', @out_param);
+							if ($class->{function_metadata}{$sch}{$p}{$k}{metadata}{inout} == 1) {
+								if ($#out_param == 0) {
+									$replace_out_param{$idx} = "$out_param[0] := $replace_out_param{$idx}";
+								} else {
+									$replace_out_param{$idx} = "SELECT * FROM $replace_out_param{$idx} INTO " . join(', ', @out_param);
+								}
+							} elsif ($class->{function_metadata}{$sch}{$p}{$k}{metadata}{inout} > 1) {
+								$class->{replace_out_param} = "_ora2pg_r RECORD;" if (!$class->{replace_out_param});
+								$replace_out_param{$idx} = "SELECT * FROM $replace_out_param{$idx} INTO _ora2pg_r;";
+								my $out_field_pos = 0;
+								foreach $param (@out_param) {
+									$replace_out_param{$idx} .= " $param := _ora2pg_r.$out_fields[$out_field_pos++];";
+								}
+								$replace_out_param{$idx} =~ s/;$//s;
 							}
 							$idx++;
 						}
@@ -1432,32 +1452,26 @@ sub raise_output
 	my @strings = split(/\s*\|\|\s*/s, $str);
 
 	my @params = ();
-	my $pattern = '';
+	my @pattern = ();
 	foreach my $el (@strings) {
 		$el =~ s/\?TEXTVALUE(\d+)\?/$class->{text_values}{$1}/gs;
 		$el =~ s/ORA2PG_ESCAPE2_QUOTE/''/gs;
 		$el =~ s/ORA2PG_ESCAPE1_QUOTE'/\\'/gs;
-		if ($el =~ /^'(.*)'$/s) {
-			$pattern .= $1;
+		if ($el =~ /^\s*'(.*)'\s*$/s) {
+			push(@pattern, $1);
 		} else {
-			$pattern .= '%';
+			push(@pattern, '%');
 			push(@params, $el);
 		}
-
-		$el =~ s/\\'/ORA2PG_ESCAPE1_QUOTE'/gs;
-		while ($el =~ s/''/ORA2PG_ESCAPE2_QUOTE/gs) {}
-
-		while ($el =~ s/('[^']+')/\?TEXTVALUE$class->{text_values_pos}\?/s) {
-			$class->{text_values}{$class->{text_values_pos}} = $1;
-			$class->{text_values_pos}++;
-		}
 	}
-	my $ret = "RAISE NOTICE '$pattern'";
+	#my $ret = "RAISE NOTICE '$pattern'";
+	my $ret = "'" . join('', @pattern) . "'";
+	$ret =~ s/\%\%/\% \%/gs;
 	if ($#params >= 0) {
 		$ret .= ', ' . join(', ', @params);
 	}
 
-	return $ret;
+	return 'RAISE NOTICE ' . $ret;
 }
 
 sub replace_sql_type
@@ -2229,13 +2243,6 @@ sub replace_outer_join
 		$from_clause =~ s/"//gs;
 		my @tables = split(/\s*,\s*/, $from_clause);
 
-		# When parsing a trigger, prefix NEW/OLD by the trigger table
-		if ($class->{current_trigger_table}) {
-			foreach my $k ('NEW', 'OLD') {
-				push(@tables, $k) if ($str =~ /\b$k\./is);
-			}
-		}
-
 		# Set a hash for alias to table mapping
 		my %from_clause_list = ();
 		my %from_order = ();
@@ -2287,7 +2294,12 @@ sub replace_outer_join
 				$predicat[$i] =~ s/WHERE_CLAUSE$id / $l $o $r /s;
 				next;
 			}
+			if ($l =~ /^(NEW|OLD)\./is) {
+				$predicat[$i] =~ s/WHERE_CLAUSE$id / $l $o $r /s;
+				next;
+			}
 			$id++;
+
 			# Extract the tablename part of the left clause
 			my $lbl1 = '';
 			my $table_decl1 = $l;

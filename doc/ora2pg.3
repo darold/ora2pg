@@ -133,7 +133,7 @@
 .\" ========================================================================
 .\"
 .IX Title "ORA2PG 1"
-.TH ORA2PG 1 "2017-06-20" "perl v5.18.2" "User Contributed Perl Documentation"
+.TH ORA2PG 1 "2017-06-25" "perl v5.18.2" "User Contributed Perl Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -2253,6 +2253,23 @@ By default Oracle functions are marked as \s-1STABLE\s0 as they can not modify d
 unless when used in \s-1PL/SQL\s0 with variable assignment or as conditional
 expression. You can force Ora2Pg to create these function as \s-1VOLATILE\s0 by
 disabling this configuration directive.
+.IP "\s-1COMMENT_COMMIT_ROLLBACK\s0" 4
+.IX Item "COMMENT_COMMIT_ROLLBACK"
+By default call to \s-1COMMIT/ROLLBACK\s0 are kept untouched by Ora2Pg to force
+the user to review the logic of the function. Once it is fixed in Oracle
+source code or you want to comment this calls enable the following directive.
+.IP "\s-1STRING_CONSTANT_REGEXP\s0" 4
+.IX Item "STRING_CONSTANT_REGEXP"
+Ora2Pg replace all string constant during the pl/sql to plpgsql translation,
+string constant are all text include between single quote. If you have some
+string placeholder used in dynamic call to queries you can set a list of
+regexp to be temporary replaced to not break the parser. For exemple:
+.Sp
+.Vb 1
+\&        STRING_CONSTANT_REGEXP         <placeholder value=".*">
+.Ve
+.Sp
+The list of regexp must use the semi colon as separator.
 .SS "Materialized view"
 .IX Subsection "Materialized view"
 Since PostgreSQL 9.3, materialized view are supported with the \s-1CREATE MATERIALIZED VIEW\s0 syntax,

@@ -997,10 +997,17 @@ DATE_FUNCTION_REWRITE	1
 # disabling the following configuration directive.
 FUNCTION_STABLE		1
 
-# By default call to COMMIT/ROLLBACK are kept untouched byt Ora2Pg to force
+# By default call to COMMIT/ROLLBACK are kept untouched by Ora2Pg to force
 # the user to review the logic of the function. Once it is fixed in Oracle
 # source code or you want to comment this calls enable the following directive
 COMMENT_COMMIT_ROLLBACK	0
+
+# Ora2Pg replace all string constant during the pl/sql to plpgsql translation,
+# string constant are all text include between single quote. If you have some
+# string placeholder used in dynamic call to queries you can set a list of
+# regexp to be temporary replaced to not break the parser.The list of regexp
+# must use the semi colon as separator. For exemple:
+#STRING_CONSTANT_REGEXP		<placeholder value=".*">
 
 #------------------------------------------------------------------------------
 # ASSESSMENT SECTION (Control migration assessment behaviors)
