@@ -637,13 +637,13 @@ sub is_reserved_words
 {
 	my ($obj_name) = @_;
 
-	if ($obj_name && grep(/^$obj_name$/i, @KEYWORDS)) {
+	if ($obj_name && grep(/^\Q$obj_name\E$/i, @KEYWORDS)) {
 		return 1;
 	}
 	if ($obj_name =~ /^\d+/) {
 		return 2;
 	}
-	if ($obj_name && grep(/^$obj_name$/i, @SYSTEM_FIELDS)) {
+	if ($obj_name && grep(/^\Q$obj_name\E$/i, @SYSTEM_FIELDS)) {
 		return 3;
 	}
 
