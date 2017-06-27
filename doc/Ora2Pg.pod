@@ -252,7 +252,7 @@ Usage: ora2pg [-dhpqv --estimate_cost --dump_as_html] [--option value]
     -N | --pg_schema schema : Used to set PostgreSQL's search_path.
     -o | --out file   : Used to set the path to the output file where SQL will
 			be written. Default: output.sql in running directory.
-    -p | --plsql      : Enable PLSQL to PLPSQL code conversion.
+    -p | --plsql      : Enable PLSQL to PLPGSQL code conversion.
     -P | --parallel num: Number of parallel tables to extract at the same time.
     -q | --quiet      : disable progress bar.
     -s | --source DSN : Allow to set the Oracle DBI datasource.
@@ -2095,7 +2095,7 @@ You can take a look at the PostgreSQL supported character sets here: http://www.
 
 =back
 
-=head2 PLSQL to PLPSQL conversion
+=head2 PLSQL to PLPGSQL conversion
 
 Automatic code conversion from Oracle PLSQL to PostgreSQL PLPGSQL is a work in
 progress in Ora2Pg and surely you will always have manual work. The Perl code
@@ -2108,7 +2108,7 @@ parameters rewrite.
 
 =item PLSQL_PGSQL
 
-Enable/disable PLSQL to PLPSQL conversion. Enabled by default.
+Enable/disable PLSQL to PLPGSQL conversion. Enabled by default.
 
 =item NULL_EQUAL_EMPTY
 

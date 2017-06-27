@@ -133,7 +133,7 @@
 .\" ========================================================================
 .\"
 .IX Title "ORA2PG 1"
-.TH ORA2PG 1 "2017-06-25" "perl v5.18.2" "User Contributed Perl Documentation"
+.TH ORA2PG 1 "2017-06-27" "perl v5.18.2" "User Contributed Perl Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -395,7 +395,7 @@ Usage: ora2pg [\-dhpqv \-\-estimate_cost \-\-dump_as_html] [\-\-option value]
 \&    \-N | \-\-pg_schema schema : Used to set PostgreSQL\*(Aqs search_path.
 \&    \-o | \-\-out file   : Used to set the path to the output file where SQL will
 \&                        be written. Default: output.sql in running directory.
-\&    \-p | \-\-plsql      : Enable PLSQL to PLPSQL code conversion.
+\&    \-p | \-\-plsql      : Enable PLSQL to PLPGSQL code conversion.
 \&    \-P | \-\-parallel num: Number of parallel tables to extract at the same time.
 \&    \-q | \-\-quiet      : disable progress bar.
 \&    \-s | \-\-source DSN : Allow to set the Oracle DBI datasource.
@@ -2184,8 +2184,8 @@ encoding issue. If you have changed the value of \s-1NLS_LANG\s0 you might have 
 change  the encoding of the PostgreSQL client.
 .Sp
 You can take a look at the PostgreSQL supported character sets here: http://www.postgresql.org/docs/9.0/static/multibyte.html
-.SS "\s-1PLSQL\s0 to \s-1PLPSQL\s0 conversion"
-.IX Subsection "PLSQL to PLPSQL conversion"
+.SS "\s-1PLSQL\s0 to \s-1PLPGSQL\s0 conversion"
+.IX Subsection "PLSQL to PLPGSQL conversion"
 Automatic code conversion from Oracle \s-1PLSQL\s0 to PostgreSQL \s-1PLPGSQL\s0 is a work in
 progress in Ora2Pg and surely you will always have manual work. The Perl code
 used for automatic conversion is all stored in a specific Perl Module named
@@ -2194,7 +2194,7 @@ main work in on function, procedure, package and package body headers and
 parameters rewrite.
 .IP "\s-1PLSQL_PGSQL\s0" 4
 .IX Item "PLSQL_PGSQL"
-Enable/disable \s-1PLSQL\s0 to \s-1PLPSQL\s0 conversion. Enabled by default.
+Enable/disable \s-1PLSQL\s0 to \s-1PLPGSQL\s0 conversion. Enabled by default.
 .IP "\s-1NULL_EQUAL_EMPTY\s0" 4
 .IX Item "NULL_EQUAL_EMPTY"
 Ora2Pg can replace all conditions with a test on \s-1NULL\s0 by a call to the
