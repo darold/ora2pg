@@ -15425,7 +15425,7 @@ sub _lookup_function
 			# is clearly not right but the false positive case might be very low
 			next if ($t =~ /\%TYPE/i || ($t !~ s/^(OUT|INOUT)\s+//i));
 			# Mark out parameter as using composite type
-			if (!grep(/^$t$/i, 'int', 'bigint', values %TYPE, values %ORA2PG_SDO_GTYPE)) {
+			if (!grep(/^\Q$t\E$/i, 'int', 'bigint', values %TYPE, values %ORA2PG_SDO_GTYPE)) {
 				$fct_detail{inout}++;
 			}
 		}
