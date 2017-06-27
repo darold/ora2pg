@@ -15394,8 +15394,8 @@ sub _lookup_function
 		$fct_detail{args} =~ s/\s+/ /gs;
 		push(@{$fct_detail{at_args}}, split(/\s*,\s*/, $fct_detail{args}));
 		# Remove type parts to only get parameter's name
-		map { s/\s(IN|OUT|INOUT)\s/ /i; } @{$fct_detail{at_args}};
 		push(@{$fct_detail{param_types}}, @{$fct_detail{at_args}});
+		map { s/\s(IN|OUT|INOUT)\s/ /i; } @{$fct_detail{at_args}};
 		map { s/^\(//; } @{$fct_detail{at_args}};
 		map { s/^\s+//; } @{$fct_detail{at_args}};
 		map { s/\s.*//; } @{$fct_detail{at_args}};
@@ -15405,7 +15405,7 @@ sub _lookup_function
 		map { s/^\(//; } @{$fct_detail{param_types}};
 		map { s/\)$//; } @{$fct_detail{param_types}};
 		map { s/\%ORA2PG_COMMENT\d+\%//gs; }  @{$fct_detail{param_types}};
-		map { s/^\s*[^\s]+\s+//; s/\s.*$//; s/\(.*//; s/\)$//; } @{$fct_detail{param_types}};
+		map { s/^\s*[^\s]+\s+(IN|OUT|INOUT)/$1/; s/^((?:IN|OUT|INOUT)\s+[^\s]+)\s+[^\s]*$/$1/; s/\(.*//; s/\)$//; } @{$fct_detail{param_types}};
 	} else {
 		delete $fct_detail{func_ret_type};
 		delete $fct_detail{declare};
@@ -15423,7 +15423,8 @@ sub _lookup_function
 		foreach my $t (@{$fct_detail{param_types}}) {
 			# Consider column type reference to never be a composite type this
 			# is clearly not right but the false positive case might be very low
-			next if ($t =~ /\%TYPE/i);
+			next if ($t =~ /\%TYPE/i || ($t !~ s/^(OUT|INOUT)\s+//i));
+print STDERR "UUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUU $fct_detail{name} :: $t\n";
 			# Mark out parameter as using composite type
 			if (!grep(/^$t$/i, 'int', 'bigint', values %TYPE, values %ORA2PG_SDO_GTYPE)) {
 				$fct_detail{inout}++;
