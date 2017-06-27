@@ -15424,7 +15424,6 @@ sub _lookup_function
 			# Consider column type reference to never be a composite type this
 			# is clearly not right but the false positive case might be very low
 			next if ($t =~ /\%TYPE/i || ($t !~ s/^(OUT|INOUT)\s+//i));
-print STDERR "UUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUU $fct_detail{name} :: $t\n";
 			# Mark out parameter as using composite type
 			if (!grep(/^$t$/i, 'int', 'bigint', values %TYPE, values %ORA2PG_SDO_GTYPE)) {
 				$fct_detail{inout}++;
