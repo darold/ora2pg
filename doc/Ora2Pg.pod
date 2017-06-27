@@ -296,7 +296,7 @@ Usage: ora2pg [-dhpqv --estimate_cost --dump_as_html] [--option value]
    --pg_user name     : set the PostgreSQL user to use.
    --pg_pwd password  : set the PostgreSQL password to use.
    --count_rows       : force ora2pg to perform a real row count in TEST action.
-
+   --no_header        : do not append Ora2Pg header to output file
 
 See full documentation at http://ora2pg.darold.net/ for more help or see
 manpage with 'man ora2pg'.
@@ -1576,6 +1576,11 @@ under the same condition but -j or JOBS must also be unset or default to 1.
 By default Ora2Pg use CREATE OR REPLACE in function DDL, if you need not
 to override existing functions disable this configuration directive,
 DDL will not include OR REPLACE.
+
+=item NO_HEADER
+
+Enabling this directive will prevent Ora2Pg to print his header into
+output files. Only the translated code will be written.
 
 =back
 
