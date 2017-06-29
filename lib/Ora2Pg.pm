@@ -8011,7 +8011,6 @@ END
 	while (my $row = $sth->fetch) {
 
 		$row->[2] = $row->[7] if $row->[1] =~ /char/i;
-
 		# Seems that for a NUMBER with a DATA_SCALE to 0, no DATA_PRECISION and a DATA_LENGTH of 22
 		# Oracle use a NUMBER(38) instead
 		if ( ($row->[1] eq 'NUMBER') && ($row->[6] eq '0') && ($row->[5] eq '') && ($row->[2] == 22) ) {
@@ -13995,7 +13994,7 @@ WHERE e.relname = ? AND a.attnum > 0 AND NOT a.attisdropped
 		next if (!exists $tables_infos{$t});
 		my $nbdefault = 0;
 		foreach my $cn (keys %{$column_infos{$t}}) {
-			if ($column_infos{$t}{$cn}{default} ne '') {
+			if ($column_infos{$t}{$cn}{default} ne '' && lc($column_infos{$t}{$cn}{default}) ne 'NULL') {
 				$nbdefault++;
 			}
 		}
