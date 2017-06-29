@@ -6320,7 +6320,7 @@ CREATE TRIGGER ${table}_trigger_insert
 					}
 				}
 				# Default value
-				if ($f->[4] ne "") {
+				if ($f->[4] ne "" && uc($f->[4]) ne 'NULL') {
 					$f->[4] =~ s/^\s+//;
 					$f->[4] =~ s/\s+$//;
 					$f->[4] =~ s/"//gs;
