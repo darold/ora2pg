@@ -11818,11 +11818,9 @@ sub _format_view
 		$tmp =~ s/\bON\b[A-Z_\.\s]*=[A-Z_\.\s]*//igs;
 		# Sub , with whitespace
 		$tmp =~ s/,/ /g;
-		if ($tmp =~ /[\(\)]/) {
-			my @tmp_tbs = split(/\s+/, $tmp);
-			foreach my $p (@tmp_tbs) {
-				 push(@tbs, $p) if ($p =~ /^[A-Z_0-9\$]+$/i);
-			}
+		my @tmp_tbs = split(/\s+/, $tmp);
+		foreach my $p (@tmp_tbs) {
+			 push(@tbs, $p) if ($p =~ /^[A-Z_0-9\$]+$/i);
 		}
 	}
 	foreach my $tb (@tbs) {
@@ -11831,9 +11829,9 @@ sub _format_view
 		$regextb =~ s/\$/\\\$/g;
 		if (!$self->{preserve_case}) {
 			# Escape column name
-			$sqlstr =~ s/["']*\b$regextb\b["']*\.["']*([A-Z_0-9\$]+)["']*(,?)/\L$tb\E.\L$1\E$2/igs;
+			$sqlstr =~ s/["']*\b$regextb\b["']*\.["']*([A-Z_0-9\$]+)["']*(,?)/$tb.$1$2/igs;
 			# Escape table name
-			$sqlstr =~ s/(^=\s?)["']*\b$regextb\b["']*/\L$tb\E/igs;
+			$sqlstr =~ s/(^=\s?)["']*\b$regextb\b["']*/$tb/igs;
 		} else {
 			# Escape column name
 			$sqlstr =~ s/["']*\b${regextb}["']*\.["']*([A-Z_0-9\$]+)["']*(,?)/"$tb"."$1"$2/igs;
