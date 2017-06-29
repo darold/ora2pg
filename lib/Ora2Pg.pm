@@ -2224,6 +2224,9 @@ sub _restore_text_constant_part
 	$$str =~ s/ORA2PG_ESCAPE2_QUOTE/''/gs;
 	$$str =~ s/ORA2PG_ESCAPE1_QUOTE'/\\'/gs;
 
+ 	if ($self->{type} eq 'TRIGGER') {
+ 		$$str =~ s/(\s+)(NEW|OLD)\.'([^']+)'/$1$2\.$3/igs;
+ 	}
 }
 
 sub _get_dml_from_file
@@ -10941,10 +10944,10 @@ sub data_dump
 	}
 
 	# Rename temporary output file
-	if ($self->{file_per_table} && -e "$dirprefix$filename") {
-		$self->logit("Renaming temporary file $dirprefix$filename into ${dirprefix}${rname}_$self->{output}\n", 1);
-		rename("$dirprefix$filename", "${dirprefix}${rname}_$self->{output}");
-	}
+#	if ($self->{file_per_table} && -e "$dirprefix$filename") {
+#		$self->logit("Renaming temporary file $dirprefix$filename into ${dirprefix}${rname}_$self->{output}\n", 1);
+#		rename("$dirprefix$filename", "${dirprefix}${rname}_$self->{output}");
+#	}
 }
 
 =head2 read_config
