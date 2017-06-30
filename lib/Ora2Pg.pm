@@ -15419,7 +15419,7 @@ sub _lookup_function
 	$fct_detail{inout} = 1 if ($nbout > 0);
 
 	# Mark function as having custom type in parameter list
-	if ($fct_detail{inout}) {
+	if ($fct_detail{inout} and $nbout > 1) {
 		foreach my $t (@{$fct_detail{param_types}}) {
 			# Consider column type reference to never be a composite type this
 			# is clearly not right but the false positive case might be very low
