@@ -15405,7 +15405,7 @@ sub _lookup_function
 		map { s/^\(//; } @{$fct_detail{param_types}};
 		map { s/\)$//; } @{$fct_detail{param_types}};
 		map { s/\%ORA2PG_COMMENT\d+\%//gs; }  @{$fct_detail{param_types}};
-		map { s/^\s*[^\s]+\s+(IN|OUT|INOUT)/$1/i; s/^((?:IN|OUT|INOUT)\s+[^\s]+)\s+[^\s]*$/$1/i; s/\(.*//; s/\s*\)\s*$//; } @{$fct_detail{param_types}};
+		map { s/^\s*[^\s]+\s+(IN|OUT|INOUT)/$1/i; s/^((?:IN|OUT|INOUT)\s+[^\s]+)\s+[^\s]*$/$1/i; s/\(.*//; s/\s*\)\s*$//; s/\s+$//; } @{$fct_detail{param_types}};
 	} else {
 		delete $fct_detail{func_ret_type};
 		delete $fct_detail{declare};
