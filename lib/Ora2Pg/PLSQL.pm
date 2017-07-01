@@ -1128,7 +1128,7 @@ sub replace_oracle_function
 	$str =~ s/SYS_EXTRACT_UTC\s*\(([^\)]+)\)/($1 AT TIME ZONE 'UTC')/is;
 
 	# REGEX_LIKE( string, pattern ) => string ~ pattern
-	$str =~ s/REGEXP_LIKE\s*\(\s*([^,]+)\s*,\s*([^\)]+)\s*\)/$1 \~ $2/is;
+	$str =~ s/REGEXP_LIKE\s*\(\s*([^,]+)\s*,\s*('[^\']+')\s*\)/$1 \~ $2/is;
 
 	# Remove call to XMLCDATA, there's no such function with PostgreSQL
 	$str =~ s/XMLCDATA\s*\(([^\)]+)\)/'<![CDATA[' || $1 || ']]>'/is;
@@ -2410,6 +2410,7 @@ sub replace_outer_join
 			}
 		}
 		$from_clause =~ s/\b(new|old)\b/\U$1\E/gs;
+		$from_clause =~ s/,\s*$/ /s;
 		$str =~ s/FROM FROM_CLAUSE/FROM $from_clause/s;
 	}
 
