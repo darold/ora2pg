@@ -2224,9 +2224,6 @@ sub _restore_text_constant_part
 	$$str =~ s/ORA2PG_ESCAPE2_QUOTE/''/gs;
 	$$str =~ s/ORA2PG_ESCAPE1_QUOTE'/\\'/gs;
 
- 	if ($self->{type} eq 'TRIGGER') {
- 		$$str =~ s/(\s+)(NEW|OLD)\.'([^']+)'/$1$2\.$3/igs;
- 	}
 }
 
 sub _get_dml_from_file
@@ -6320,7 +6317,7 @@ CREATE TRIGGER ${table}_trigger_insert
 					}
 				}
 				# Default value
-				if ($f->[4] ne "" && uc($f->[4]) ne 'NULL') {
+				if ($f->[4] ne "") {
 					$f->[4] =~ s/^\s+//;
 					$f->[4] =~ s/\s+$//;
 					$f->[4] =~ s/"//gs;
@@ -8011,6 +8008,7 @@ END
 	while (my $row = $sth->fetch) {
 
 		$row->[2] = $row->[7] if $row->[1] =~ /char/i;
+
 		# Seems that for a NUMBER with a DATA_SCALE to 0, no DATA_PRECISION and a DATA_LENGTH of 22
 		# Oracle use a NUMBER(38) instead
 		if ( ($row->[1] eq 'NUMBER') && ($row->[6] eq '0') && ($row->[5] eq '') && ($row->[2] == 22) ) {
@@ -10943,10 +10941,10 @@ sub data_dump
 	}
 
 	# Rename temporary output file
-#	if ($self->{file_per_table} && -e "$dirprefix$filename") {
-#		$self->logit("Renaming temporary file $dirprefix$filename into ${dirprefix}${rname}_$self->{output}\n", 1);
-#		rename("$dirprefix$filename", "${dirprefix}${rname}_$self->{output}");
-#	}
+	if ($self->{file_per_table} && -e "$dirprefix$filename") {
+		$self->logit("Renaming temporary file $dirprefix$filename into ${dirprefix}${rname}_$self->{output}\n", 1);
+		rename("$dirprefix$filename", "${dirprefix}${rname}_$self->{output}");
+	}
 }
 
 =head2 read_config
@@ -11817,9 +11815,11 @@ sub _format_view
 		$tmp =~ s/\bON\b[A-Z_\.\s]*=[A-Z_\.\s]*//igs;
 		# Sub , with whitespace
 		$tmp =~ s/,/ /g;
-		my @tmp_tbs = split(/\s+/, $tmp);
-		foreach my $p (@tmp_tbs) {
-			 push(@tbs, $p) if ($p =~ /^[A-Z_0-9\$]+$/i);
+		if ($tmp =~ /[\(\)]/) {
+			my @tmp_tbs = split(/\s+/, $tmp);
+			foreach my $p (@tmp_tbs) {
+				 push(@tbs, $p) if ($p =~ /^[A-Z_0-9\$]+$/i);
+			}
 		}
 	}
 	foreach my $tb (@tbs) {
@@ -11828,9 +11828,9 @@ sub _format_view
 		$regextb =~ s/\$/\\\$/g;
 		if (!$self->{preserve_case}) {
 			# Escape column name
-			$sqlstr =~ s/["']*\b$regextb\b["']*\.["']*([A-Z_0-9\$]+)["']*(,?)/$tb.$1$2/igs;
+			$sqlstr =~ s/["']*\b$regextb\b["']*\.["']*([A-Z_0-9\$]+)["']*(,?)/\L$tb\E.\L$1\E$2/igs;
 			# Escape table name
-			$sqlstr =~ s/(^=\s?)["']*\b$regextb\b["']*/$tb/igs;
+			$sqlstr =~ s/(^=\s?)["']*\b$regextb\b["']*/\L$tb\E/igs;
 		} else {
 			# Escape column name
 			$sqlstr =~ s/["']*\b${regextb}["']*\.["']*([A-Z_0-9\$]+)["']*(,?)/"$tb"."$1"$2/igs;
@@ -11939,17 +11939,19 @@ sub _convert_type
 	$plsql =~ s/\s*INDEX\s+BY\s+([^\s;]+)//is;
 	if ($plsql =~ /TYPE\s+([^\s]+)\s+(IS|AS)\s*TABLE\s*OF\s+(.*)/is) {
 		$type_name = $1;
+		my $internal_name = $1;
 		my $type_of = $3;
 		if ($self->{export_schema} && !$self->{schema} && $owner) {
 			$type_name = "$owner.$type_name";
 		}
+		$internal_name  =~ s/^[^\.]+\.//;
 		$type_of =~ s/\s*NOT[\t\s]+NULL//is;
 		$type_of =~ s/\s*;$//s;
 		$type_of =~ s/^\s+//s;
 		if ($type_of !~ /\s/s) { 
 			$type_of = Ora2Pg::PLSQL::replace_sql_type($type_of, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type}, %{$self->{data_type}});
 			$self->{type_of_type}{'Nested Tables'}++;
-			$content = "CREATE TYPE \L$type_name\E AS (\L$type_name\E $type_of\[\]);\n";
+			$content = "CREATE TYPE \L$type_name\E AS (\L$internal_name\E $type_of\[\]);\n";
 		} else {
 			$self->{type_of_type}{'Associative Arrays'}++;
 			$self->logit("WARNING: this kind of Nested Tables are not supported, skipping type $1\n", 1);
@@ -12024,14 +12026,16 @@ $declar
 		my $tbname = $5;
 		$type_name =~ s/"//g;
 		$tbname =~ s/;//g;
+		my $internal_name = $type_name;
 		chomp($tbname);
 		if ($self->{export_schema} && !$self->{schema} && $owner) {
 			$type_name = "$owner.$type_name";
 		}
+		$internal_name  =~ s/^[^\.]+\.//;
 		my $declar = Ora2Pg::PLSQL::replace_sql_type($tbname, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type}, %{$self->{data_type}});
 		$declar =~ s/[\n\r]+//s;
 		$content = qq{
-CREATE TYPE \L$type_name\E AS ($type_name $declar\[$size\]);
+CREATE TYPE \L$type_name\E AS ($internal_name $declar\[$size\]);
 };
 		$self->{type_of_type}{Varrays}++;
 	} else {
@@ -13994,7 +13998,7 @@ WHERE e.relname = ? AND a.attnum > 0 AND NOT a.attisdropped
 		next if (!exists $tables_infos{$t});
 		my $nbdefault = 0;
 		foreach my $cn (keys %{$column_infos{$t}}) {
-			if ($column_infos{$t}{$cn}{default} ne '' && lc($column_infos{$t}{$cn}{default}) ne 'NULL') {
+			if ($column_infos{$t}{$cn}{default} ne '') {
 				$nbdefault++;
 			}
 		}
@@ -15405,7 +15409,7 @@ sub _lookup_function
 		map { s/^\(//; } @{$fct_detail{param_types}};
 		map { s/\)$//; } @{$fct_detail{param_types}};
 		map { s/\%ORA2PG_COMMENT\d+\%//gs; }  @{$fct_detail{param_types}};
-		map { s/^\s*[^\s]+\s+(IN|OUT|INOUT)/$1/i; s/^((?:IN|OUT|INOUT)\s+[^\s]+)\s+[^\s]*$/$1/i; s/\(.*//; s/\s*\)\s*$//; s/\s+$//; } @{$fct_detail{param_types}};
+		map { s/^\s*[^\s]+\s+(IN|OUT|INOUT)/$1/i; s/^((?:IN|OUT|INOUT)\s+[^\s]+)\s+[^\s]*$/$1/i; s/\(.*//; s/\s*\)\s*$//; } @{$fct_detail{param_types}};
 	} else {
 		delete $fct_detail{func_ret_type};
 		delete $fct_detail{declare};
@@ -15419,13 +15423,13 @@ sub _lookup_function
 	$fct_detail{inout} = 1 if ($nbout > 0);
 
 	# Mark function as having custom type in parameter list
-	if ($fct_detail{inout} and $nbout > 1) {
+	if ($fct_detail{inout}) {
 		foreach my $t (@{$fct_detail{param_types}}) {
 			# Consider column type reference to never be a composite type this
 			# is clearly not right but the false positive case might be very low
 			next if ($t =~ /\%TYPE/i || ($t !~ s/^(OUT|INOUT)\s+//i));
 			# Mark out parameter as using composite type
-			if (!grep(/^\Q$t\E$/i, 'int', 'bigint', 'date', values %TYPE, values %ORA2PG_SDO_GTYPE)) {
+			if (!grep(/^\Q$t\E$/i, 'int', 'bigint', values %TYPE, values %ORA2PG_SDO_GTYPE)) {
 				$fct_detail{inout}++;
 			}
 		}
