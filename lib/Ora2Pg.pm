@@ -13998,7 +13998,7 @@ WHERE e.relname = ? AND a.attnum > 0 AND NOT a.attisdropped
 		next if (!exists $tables_infos{$t});
 		my $nbdefault = 0;
 		foreach my $cn (keys %{$column_infos{$t}}) {
-			if ($column_infos{$t}{$cn}{default} ne '') {
+			if ($column_infos{$t}{$cn}{default} ne '' && lc($column_infos{$t}{$cn}{default}) ne 'NULL') {
 				$nbdefault++;
 			}
 		}
