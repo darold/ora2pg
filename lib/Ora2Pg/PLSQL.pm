@@ -357,10 +357,18 @@ sub convert_plsql_code
 		if ($str !~ s/\b(DECLARE\s+)/$1$class->{replace_out_param}\n/is) {
 			$str =~ s/\b(BEGIN\s+)/DECLARE\n$class->{replace_out_param}\n$1/is;
 		}
+		$class->{replace_out_param} = '';
 	}
 
 	# Apply code rewrite on other part of the code
 	$str = plsql_to_plpgsql($class, $str, %data_type);
+
+	if ($class->{get_diagnostics}) {
+		if ($str !~ s/\b(DECLARE\s+)/$1$class->{get_diagnostics}\n/is) {
+			$str =~ s/\b(BEGIN\s+)/DECLARE\n$class->{get_diagnostics}\n$1/is;
+		}
+		$class->{get_diagnostics} = '';
+	}
 
 	return $str;
 }
@@ -733,6 +741,12 @@ sub plsql_to_plpgsql
 
 	# Replace outer join sign (+) with a placeholder
 	$str =~ s/\%OUTERJOIN\%/\(\+\)/igs;
+
+	# Replace call to SQL%ROWCOUNT
+	$str =~ s/([^\s]+)\s*:=\s*SQL\%ROWCOUNT/GET DIAGNOSTICS $1 = ROW_COUNT/igs;
+	if ($str =~ s/(IF\s+)SQL\%ROWCOUNT/GET DIAGNOSTICS ora2pg_rowcount = ROW_COUNT;\n$1ora2pg_rowcount/igs) {
+		$class->{get_diagnostics} = 'ora2pg_rowcount int;';
+	}
 
 	# Sometime variable used in FOR ... IN SELECT loop is not declared
 	# Append its RECORD declaration in the DECLARE section.
@@ -1698,9 +1712,9 @@ sub estimate_cost
 	$cost_details{'SAVEPOINT'} += $n;
 	$n = () = $str =~ m/(FROM|EXEC)((?!WHERE).)*\b[\w\_]+\@[\w\_]+\b/igs;
 	$cost_details{'DBLINK'} += $n;
-	$n = () = $str =~ m/%ISOPEN\b/igs;
+	$n = () = $str =~ m/\%ISOPEN\b/igs;
 	$cost_details{'ISOPEN'} += $n;
-	$n = () = $str =~ m/%ROWCOUNT\b/igs;
+	$n = () = $str =~ m/\%ROWCOUNT\b/igs;
 	$cost_details{'ROWCOUNT'} += $n;
 
 	$n = () = $str =~ m/PLVDATE/igs;
