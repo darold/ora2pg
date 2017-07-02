@@ -1126,7 +1126,8 @@ sub replace_oracle_function
 	}
 
 	# Replace INSTR by POSITION
-	$str =~ s/\bINSTR\s*\(\s*([^,]+),\s*([^\)]+)\s*\)/POSITION($2 in $1)/is;
+	$str =~ s/\bINSTR\s*\(\s*([^,]+),\s*([^\),]+)\s*\)/position($2 in $1)/is;
+	$str =~ s/\bINSTR\s*\(\s*([^,]+),\s*([^,]+)\s*,\s*1\s*\)/position($2 in $1)/is;
 
 	# The to_number() function reclaim a second argument under postgres which is the format.
 	# Replace to_number with a cast when no specific format is given
