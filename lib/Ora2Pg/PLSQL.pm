@@ -598,8 +598,9 @@ sub plsql_to_plpgsql
 	# Same but with additional conditions
 	$str =~ s/EXIT WHEN ([^\%;]+)\%NOTFOUND\s+([^;]+);/EXIT WHEN NOT FOUND $2;  \/\* apply on $1 \*\//isg;
 	$str =~ s/EXIT WHEN \(\s*([^\%;]+)\%NOTFOUND\s+([^\)]+)\)\s*;/EXIT WHEN NOT FOUND $2;  \/\* apply on $1 \*\//isg;
-	# Replacle call to SQL%NOTFOUND
+	# Replacle call to SQL%NOTFOUND and SQL%FOUND
 	$str =~ s/SQL\%NOTFOUND/NOT FOUND/isg;
+	$str =~ s/SQL\%FOUND/FOUND/isg;
 
 	# Replace REF CURSOR as Pg REFCURSOR
 	$str =~ s/\bIS(\s*)REF\s+CURSOR/REFCURSOR/isg;
