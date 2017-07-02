@@ -867,6 +867,8 @@ sub plsql_to_plpgsql
 						# prefix its call by the package name
 						$str =~ s/([^\.])\b($k\s*[\(;])/$1\L$class->{package_functions}{$p}{$k}{package}\.$2\E/igs;
 					}
+					# Append parenthesis to functions without parameters
+					$str =~ s/\b($class->{package_functions}{$p}{$k}{package}\.$k)(\s*[^\(])/$1()$2/igs;
 				}
 			}
 		}
@@ -1245,6 +1247,8 @@ sub replace_oracle_function
 					if (exists $class->{package_functions}{$p}{$k}{package}) {
 						$str =~ s/\b$class->{package_functions}{$p}{$k}{package}\.$k\s*([\(;])/$class->{package_functions}{$p}{$k}{name}$1/igs;
 					}
+					# Append parenthesis to functions without parameters
+					$str =~ s/\b($class->{package_functions}{$p}{$k}{package}\.$k)(\s*[^\(])/$1()$2/igs;
 				}
 			}
 		}
