@@ -34,8 +34,6 @@ my $DRYRUN = 0;
 my $INPUT_FILE = '';
 my $HELP = 0;
 
-my $sid;
-
 # Collect command line arguments
 GetOptions (
 	'l|list=s'   => \$INPUT_FILE,
@@ -61,6 +59,10 @@ while (my $l = <IN>) {
 	$l =~ s/\r//;
 	next if ($l !~ /^["]*(MYSQL|ORACLE)["]*,/i);
 	$l =~ s/"//gs;
+	my @data = split(/,/, $l);
+	if ($#data < 4) {
+		 die "FATAL: wrong number of field at line: $l\n";
+	}
 	my ($type, $schema, $dsn, $user, $passwd, $audit_user) = split(/,/, $l);
 	push(@DB_DNS, { (
 				'type' => uc($type),
@@ -69,6 +71,7 @@ while (my $l = <IN>) {
 				'user' => $user,
 				'pwd' => $passwd,
 				'audit_user' => $audit_user,
+				'sid' => ''
 			)
 		}
 	);
@@ -97,45 +100,44 @@ for (my $i = 0; $i < @DB_DNS; $i++) {
 	$typ = ' -m' if ($DB_DNS[$i]->{type} eq 'MYSQL');
 	my $audit = '';
 	$audit = " --audit_user \"$DB_DNS[$i]->{audit_user}\"" if ($DB_DNS[$i]->{audit_user});
-	# extract SID or db name
+	# Extract SID or db name from the DSN
 	# dbi:Oracle:host=foobar;sid=ORCL;port=1521
-	($sid) = ( $DB_DNS[$i]->{dsn} =~ m/sid=([^;]+)/ );
-	goto SID_PARSED if $sid ne '';
 	# dbi:Oracle:DB
-	($sid) = ( $DB_DNS[$i]->{dsn} =~ m/dbi:Oracle:([\w]+)$/ );
-	goto SID_PARSED if $sid ne '';
 	# dbi:Oracle://192.168.1.10:1521/XE
-	($sid) = ( $DB_DNS[$i]->{dsn} =~ m/dbi:Oracle:\/\/[\da-z\.-]+:\d+\/([\w]+)/ );
-	goto SID_PARSED if $sid ne '';
 	# DBI:mysql:database=$db;host=$host
-	($sid) = ( $DB_DNS[$i]->{dsn} =~ m/database=([^;]+)/ );
-	goto SID_PARSED if $sid ne '';
-	print "WARNING: couldn't determine database name for DSN ". $DB_DNS[$i]->{dsn} ."\n";
-SID_PARSED:
+	if ($DB_DNS[$i]->{dsn} =~ m/(?:sid|database)=([^;]+)/ || $DB_DNS[$i]->{dsn} =~ m/dbi:Oracle:([\w]+)$/ || $DB_DNS[$i]->{dsn} =~ m/dbi:Oracle:\/\/[^\/]+\/([\w]+)/) {
+		$DB_DNS[$i]->{sid} = $1;
+	} elsif (!$DB_DNS[$i]->{schema}) {
+		print "WARNING: couldn't determine sid/database name for DSN ". $DB_DNS[$i]->{dsn} .", without explicit schema can not processed this entry. Skiping.\n";
+		next;
+	} else {
+		$DB_DNS[$i]->{sid} = 'schema';
 	}
 
+	# When no schema or database is set, let Ora2Pg autodetect the list of available schema
 	if ($DB_DNS[$i]->{schema} eq '') {
+		print "Running: ora2pg$typ -t SHOW_SCHEMA -s '$DB_DNS[$i]->{dsn}'\n" if ($DRYRUN);
 		my @schema_list = `ora2pg$typ -t SHOW_SCHEMA -s '$DB_DNS[$i]->{dsn}'`;
-		if (!$DRYRUN) {
-			foreach my $line (@schema_list) {
-				my ($type, $schemaname) = split(/\s+/, $line);
-				print "Analyzing schema $schemaname\n";
-				$DB_DNS[$i]->{schema} = $schemaname;
+		foreach my $line (@schema_list) {
+			my ($type, $schemaname) = split(/\s+/, $line);
+			$DB_DNS[$i]->{schema} = $schemaname;
+			if (!$DRYRUN) {
 				print "Running: ora2pg$typ -t SHOW_REPORT --dump_as_sheet --estimate_cost$header$audit -s '$DB_DNS[$i]->{dsn}' -n $DB_DNS[$i]->{schema} >> $OUTDIR/dbs_scan.csv\n";
 				`ora2pg$typ -t SHOW_REPORT --dump_as_sheet --estimate_cost$header$audit -s '$DB_DNS[$i]->{dsn}' -n $DB_DNS[$i]->{schema} >> $OUTDIR/dbs_scan.csv`;
-				print "Running: ora2pg$typ -t SHOW_REPORT --dump_as_html --estimate_cost$audit -s '$DB_DNS[$i]->{dsn}' -n $DB_DNS[$i]->{schema} >> $OUTDIR/${sid}_$DB_DNS[$i]->{schema}-report.html\n";
-				`ora2pg$typ -t SHOW_REPORT --dump_as_html --estimate_cost$audit -s '$DB_DNS[$i]->{dsn}' -n $DB_DNS[$i]->{schema} >> $OUTDIR/${sid}_$DB_DNS[$i]->{schema}-report.html`;
+				print "Running: ora2pg$typ -t SHOW_REPORT --dump_as_html --estimate_cost$audit -s '$DB_DNS[$i]->{dsn}' -n $DB_DNS[$i]->{schema} >> $OUTDIR/$DB_DNS[$i]->{sid}_$DB_DNS[$i]->{schema}-report.html\n";
+				`ora2pg$typ -t SHOW_REPORT --dump_as_html --estimate_cost$audit -s '$DB_DNS[$i]->{dsn}' -n $DB_DNS[$i]->{schema} >> $OUTDIR/$DB_DNS[$i]->{sid}_$DB_DNS[$i]->{schema}-report.html`;
+				$header = '';
+			} else {
+				print "Running: ora2pg$typ -t SHOW_SCHEMA -s '$DB_DNS[$i]->{dsn}' -n $DB_DNS[$i]->{schema} | grep -i \"$DB_DNS[$i]->{schema}\"\n";
+				print `ora2pg$typ -t SHOW_SCHEMA -s '$DB_DNS[$i]->{dsn}' -n $DB_DNS[$i]->{schema} | grep -i "$DB_DNS[$i]->{schema}"`;
 			}
-		} else {
-			print "Running: ora2pg$typ -t SHOW_SCHEMA -s '$DB_DNS[$i]->{dsn}' | grep -i \"$DB_DNS[$i]->{schema}\"\n";
-			print `ora2pg$typ -t SHOW_SCHEMA -s '$DB_DNS[$i]->{dsn}' | grep -i "$DB_DNS[$i]->{schema}"`;
 		}
 	} else {
 		if (!$DRYRUN) {
 			print "Running: ora2pg$typ -t SHOW_REPORT --dump_as_sheet --estimate_cost$header$audit -s '$DB_DNS[$i]->{dsn}' -n $DB_DNS[$i]->{schema} >> $OUTDIR/dbs_scan.csv\n";
 			`ora2pg$typ -t SHOW_REPORT --dump_as_sheet --estimate_cost$header$audit -s '$DB_DNS[$i]->{dsn}' -n $DB_DNS[$i]->{schema} >> $OUTDIR/dbs_scan.csv`;
-			print "Running: ora2pg$typ -t SHOW_REPORT --dump_as_html --estimate_cost$audit -s '$DB_DNS[$i]->{dsn}' -n $DB_DNS[$i]->{schema} >> $OUTDIR/${sid}_$DB_DNS[$i]->{schema}-report.html\n";
-			`ora2pg$typ -t SHOW_REPORT --dump_as_html --estimate_cost$audit -s '$DB_DNS[$i]->{dsn}' -n $DB_DNS[$i]->{schema} >> $OUTDIR/${sid}_$DB_DNS[$i]->{schema}-report.html`;
+			print "Running: ora2pg$typ -t SHOW_REPORT --dump_as_html --estimate_cost$audit -s '$DB_DNS[$i]->{dsn}' -n $DB_DNS[$i]->{schema} >> $OUTDIR/$DB_DNS[$i]->{sid}_$DB_DNS[$i]->{schema}-report.html\n";
+			`ora2pg$typ -t SHOW_REPORT --dump_as_html --estimate_cost$audit -s '$DB_DNS[$i]->{dsn}' -n $DB_DNS[$i]->{schema} >> $OUTDIR/$DB_DNS[$i]->{sid}_$DB_DNS[$i]->{schema}-report.html`;
 		} else {
 			print "Running: ora2pg$typ -t SHOW_SCHEMA -s '$DB_DNS[$i]->{dsn}' -n $DB_DNS[$i]->{schema} | grep -i \"$DB_DNS[$i]->{schema}\"\n";
 			print `ora2pg$typ -t SHOW_SCHEMA -s '$DB_DNS[$i]->{dsn}' -n $DB_DNS[$i]->{schema} | grep -i "$DB_DNS[$i]->{schema}"`;
@@ -176,6 +178,16 @@ Usage: ora2pg_scanner -l CSVFILE [-o OUTDIR]
 	"ORACLE","HR","dbi:Oracle:host=192.168.1.10;sid=XE;port=1521","system","manager"
 
    The CSV field separator must be a comma.
+
+   Note that if you want to scan all schema from an Oracle instance you just
+   have to leave the schema field empty, Ora2Pg will automatically detect all
+   available schema and generate a report for each one. Of course you need to
+   use a connection user with enough privilege to be able to scan all schema.
+   For example:
+
+	"ORACLE","","dbi:Oracle:host=192.168.1.10;sid=XE;port=1521","system","manager"
+
+   will generate a report for all schema in the XE instance.
 
 };
 	exit 1;
