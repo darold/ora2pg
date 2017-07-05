@@ -193,12 +193,18 @@ foreach (@files) {
 }
 
 # Check configuration file
+my $GOES_WITH_DEFAULT = 0;
 if ($FILE_CONF && ! -e $FILE_CONF) {
 	print "FATAL: can't find configuration file $FILE_CONF\n";
 	&usage();
 } elsif (!$FILE_CONF && ! -e $CONFIG_FILE) {
-	print "FATAL: can't find configuration file $CONFIG_FILE\n";
-	&usage();
+	# At least we need configuration to connect to Oracle
+	if (!$DSN || (!$DBUSER && !$ENV{ORA2PG_USER}) || (!$DBPWD && !$ENV{ORA2PG_PASSWD})) {
+		print "FATAL: can't find configuration file $CONFIG_FILE\n";
+		&usage();
+	}
+	$CONFIG_FILE = '';
+	$GOES_WITH_DEFAULT = 1;
 }
 
 push(@CAPABILITIES, @SCHEMA_ARRAY, @REPORT_ARRAY, @DATA_ARRAY, @EXTERNAL_ARRAY, @TEST_ARRAY);
@@ -293,7 +299,7 @@ my $schema = new Ora2Pg (
 );
 
 # Look at configuration file if an input file is defined
-if (!$INPUT_FILE) {
+if (!$INPUT_FILE && !$GOES_WITH_DEFAULT) {
 	my $cf_file = $FILE_CONF || $CONFIG_FILE;
 	my $fh = new IO::File;
 	$fh->open($cf_file) or die "FATAL: can't read configuration file $cf_file, $!\n";
