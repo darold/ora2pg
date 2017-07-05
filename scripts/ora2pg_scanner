@@ -34,6 +34,8 @@ my $DRYRUN = 0;
 my $INPUT_FILE = '';
 my $HELP = 0;
 
+my $sid;
+
 # Collect command line arguments
 GetOptions (
 	'l|list=s'   => \$INPUT_FILE,
@@ -95,14 +97,49 @@ for (my $i = 0; $i < @DB_DNS; $i++) {
 	$typ = ' -m' if ($DB_DNS[$i]->{type} eq 'MYSQL');
 	my $audit = '';
 	$audit = " --audit_user \"$DB_DNS[$i]->{audit_user}\"" if ($DB_DNS[$i]->{audit_user});
-	if (!$DRYRUN) {
-		print "Running: ora2pg$typ -t SHOW_REPORT --dump_as_sheet --estimate_cost$header$audit -s '$DB_DNS[$i]->{dsn}' -n $DB_DNS[$i]->{schema} >> $OUTDIR/dbs_scan.csv\n";
-		`ora2pg$typ -t SHOW_REPORT --dump_as_sheet --estimate_cost$header$audit -s '$DB_DNS[$i]->{dsn}' -n $DB_DNS[$i]->{schema} >> $OUTDIR/dbs_scan.csv`;
-		print "Running: ora2pg$typ -t SHOW_REPORT --dump_as_html --estimate_cost$audit -s '$DB_DNS[$i]->{dsn}' -n $DB_DNS[$i]->{schema} >> $OUTDIR/$DB_DNS[$i]->{schema}-report.html\n";
-		`ora2pg$typ -t SHOW_REPORT --dump_as_html --estimate_cost$audit -s '$DB_DNS[$i]->{dsn}' -n $DB_DNS[$i]->{schema} >> $OUTDIR/$DB_DNS[$i]->{schema}-report.html`;
+	# extract SID or db name
+	# dbi:Oracle:host=foobar;sid=ORCL;port=1521
+	($sid) = ( $DB_DNS[$i]->{dsn} =~ m/sid=([^;]+)/ );
+	goto SID_PARSED if $sid ne '';
+	# dbi:Oracle:DB
+	($sid) = ( $DB_DNS[$i]->{dsn} =~ m/dbi:Oracle:([\w]+)$/ );
+	goto SID_PARSED if $sid ne '';
+	# dbi:Oracle://192.168.1.10:1521/XE
+	($sid) = ( $DB_DNS[$i]->{dsn} =~ m/dbi:Oracle:\/\/[\da-z\.-]+:\d+\/([\w]+)/ );
+	goto SID_PARSED if $sid ne '';
+	# DBI:mysql:database=$db;host=$host
+	($sid) = ( $DB_DNS[$i]->{dsn} =~ m/database=([^;]+)/ );
+	goto SID_PARSED if $sid ne '';
+	print "WARNING: couldn't determine database name for DSN ". $DB_DNS[$i]->{dsn} ."\n";
+SID_PARSED:
+	}
+
+	if ($DB_DNS[$i]->{schema} eq '') {
+		my @schema_list = `ora2pg$typ -t SHOW_SCHEMA -s '$DB_DNS[$i]->{dsn}'`;
+		if (!$DRYRUN) {
+			foreach my $line (@schema_list) {
+				my ($type, $schemaname) = split(/\s+/, $line);
+				print "Analyzing schema $schemaname\n";
+				$DB_DNS[$i]->{schema} = $schemaname;
+				print "Running: ora2pg$typ -t SHOW_REPORT --dump_as_sheet --estimate_cost$header$audit -s '$DB_DNS[$i]->{dsn}' -n $DB_DNS[$i]->{schema} >> $OUTDIR/dbs_scan.csv\n";
+				`ora2pg$typ -t SHOW_REPORT --dump_as_sheet --estimate_cost$header$audit -s '$DB_DNS[$i]->{dsn}' -n $DB_DNS[$i]->{schema} >> $OUTDIR/dbs_scan.csv`;
+				print "Running: ora2pg$typ -t SHOW_REPORT --dump_as_html --estimate_cost$audit -s '$DB_DNS[$i]->{dsn}' -n $DB_DNS[$i]->{schema} >> $OUTDIR/${sid}_$DB_DNS[$i]->{schema}-report.html\n";
+				`ora2pg$typ -t SHOW_REPORT --dump_as_html --estimate_cost$audit -s '$DB_DNS[$i]->{dsn}' -n $DB_DNS[$i]->{schema} >> $OUTDIR/${sid}_$DB_DNS[$i]->{schema}-report.html`;
+			}
+		} else {
+			print "Running: ora2pg$typ -t SHOW_SCHEMA -s '$DB_DNS[$i]->{dsn}' | grep -i \"$DB_DNS[$i]->{schema}\"\n";
+			print `ora2pg$typ -t SHOW_SCHEMA -s '$DB_DNS[$i]->{dsn}' | grep -i "$DB_DNS[$i]->{schema}"`;
+		}
 	} else {
-		print "Running: ora2pg$typ -t SHOW_SCHEMA -s '$DB_DNS[$i]->{dsn}' -n $DB_DNS[$i]->{schema} | grep -i \"$DB_DNS[$i]->{schema}\"\n";
-		print `ora2pg$typ -t SHOW_SCHEMA -s '$DB_DNS[$i]->{dsn}' -n $DB_DNS[$i]->{schema} | grep -i "$DB_DNS[$i]->{schema}"`;
+		if (!$DRYRUN) {
+			print "Running: ora2pg$typ -t SHOW_REPORT --dump_as_sheet --estimate_cost$header$audit -s '$DB_DNS[$i]->{dsn}' -n $DB_DNS[$i]->{schema} >> $OUTDIR/dbs_scan.csv\n";
+			`ora2pg$typ -t SHOW_REPORT --dump_as_sheet --estimate_cost$header$audit -s '$DB_DNS[$i]->{dsn}' -n $DB_DNS[$i]->{schema} >> $OUTDIR/dbs_scan.csv`;
+			print "Running: ora2pg$typ -t SHOW_REPORT --dump_as_html --estimate_cost$audit -s '$DB_DNS[$i]->{dsn}' -n $DB_DNS[$i]->{schema} >> $OUTDIR/${sid}_$DB_DNS[$i]->{schema}-report.html\n";
+			`ora2pg$typ -t SHOW_REPORT --dump_as_html --estimate_cost$audit -s '$DB_DNS[$i]->{dsn}' -n $DB_DNS[$i]->{schema} >> $OUTDIR/${sid}_$DB_DNS[$i]->{schema}-report.html`;
+		} else {
+			print "Running: ora2pg$typ -t SHOW_SCHEMA -s '$DB_DNS[$i]->{dsn}' -n $DB_DNS[$i]->{schema} | grep -i \"$DB_DNS[$i]->{schema}\"\n";
+			print `ora2pg$typ -t SHOW_SCHEMA -s '$DB_DNS[$i]->{dsn}' -n $DB_DNS[$i]->{schema} | grep -i "$DB_DNS[$i]->{schema}"`;
+		}
 	}
 }
 
