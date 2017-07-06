@@ -71,7 +71,8 @@ while (my $l = <IN>) {
 				'user' => $user,
 				'pwd' => $passwd,
 				'audit_user' => $audit_user,
-				'sid' => ''
+				'sid' => '',
+				'host' => ''
 			)
 		}
 	);
@@ -113,6 +114,12 @@ for (my $i = 0; $i < @DB_DNS; $i++) {
 	} else {
 		$DB_DNS[$i]->{sid} = 'schema';
 	}
+	# Extract host
+	if ($DB_DNS[$i]->{dsn} =~ m/host=([^;]+)/ || $DB_DNS[$i]->{dsn} =~ m/dbi:Oracle:\/\/([^\/]+)/) {
+		$DB_DNS[$i]->{host} = $1;
+		$DB_DNS[$i]->{host} =~ s/:\d$+//;
+		$DB_DNS[$i]->{host} .= '_';
+	}
 
 	# When no schema or database is set, let Ora2Pg autodetect the list of available schema
 	if ($DB_DNS[$i]->{schema} eq '') {
@@ -124,8 +131,8 @@ for (my $i = 0; $i < @DB_DNS; $i++) {
 			if (!$DRYRUN) {
 				print "Running: ora2pg$typ -t SHOW_REPORT --dump_as_sheet --estimate_cost$header$audit -s '$DB_DNS[$i]->{dsn}' -n $DB_DNS[$i]->{schema} >> $OUTDIR/dbs_scan.csv\n";
 				`ora2pg$typ -t SHOW_REPORT --dump_as_sheet --estimate_cost$header$audit -s '$DB_DNS[$i]->{dsn}' -n $DB_DNS[$i]->{schema} >> $OUTDIR/dbs_scan.csv`;
-				print "Running: ora2pg$typ -t SHOW_REPORT --dump_as_html --estimate_cost$audit -s '$DB_DNS[$i]->{dsn}' -n $DB_DNS[$i]->{schema} >> $OUTDIR/$DB_DNS[$i]->{sid}_$DB_DNS[$i]->{schema}-report.html\n";
-				`ora2pg$typ -t SHOW_REPORT --dump_as_html --estimate_cost$audit -s '$DB_DNS[$i]->{dsn}' -n $DB_DNS[$i]->{schema} >> $OUTDIR/$DB_DNS[$i]->{sid}_$DB_DNS[$i]->{schema}-report.html`;
+				print "Running: ora2pg$typ -t SHOW_REPORT --dump_as_html --estimate_cost$audit -s '$DB_DNS[$i]->{dsn}' -n $DB_DNS[$i]->{schema} >> $OUTDIR/$DB_DNS[$i]->{host}$DB_DNS[$i]->{sid}_$DB_DNS[$i]->{schema}-report.html\n";
+				`ora2pg$typ -t SHOW_REPORT --dump_as_html --estimate_cost$audit -s '$DB_DNS[$i]->{dsn}' -n $DB_DNS[$i]->{schema} >> $OUTDIR/$DB_DNS[$i]->{host}$DB_DNS[$i]->{sid}_$DB_DNS[$i]->{schema}-report.html`;
 				$header = '';
 			} else {
 				print "Running: ora2pg$typ -t SHOW_SCHEMA -s '$DB_DNS[$i]->{dsn}' -n $DB_DNS[$i]->{schema} | grep -i \"$DB_DNS[$i]->{schema}\"\n";
