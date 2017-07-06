@@ -7,11 +7,11 @@ DESCRIPTION
     automatically and extracts its structure or data, then generates SQL
     scripts that you can load into your PostgreSQL database.
 
-    Ora2Pg can be used for anything from reverse engineering Oracle database to huge
-    enterprise database migration or simply replicating some Oracle data
-    into a PostgreSQL database. It is really easy to use and doesn't require
-    any Oracle database knowledge other than providing the parameters needed to
-    connect to the Oracle database.
+    Ora2Pg can be used for anything from reverse engineering Oracle database
+    to huge enterprise database migration or simply replicating some Oracle
+    data into a PostgreSQL database. It is really easy to use and doesn't
+    require any Oracle database knowledge other than providing the
+    parameters needed to connect to the Oracle database.
 
 FEATURES
     Ora2Pg consist of a Perl script (ora2pg) and a Perl module (Ora2Pg.pm),
@@ -61,7 +61,7 @@ FEATURES
             - Perform a diff between Oracle and PostgreSQL database for test purpose.
 
     Ora2Pg does its best to automatically convert your Oracle database to
-    PostgreSQL but there's still manual work to do. The Oracle specific
+    PostgreSQL but there's still manual workxs to do. The Oracle specific
     PL/SQL code generated for functions, procedures, packages and triggers
     has to be reviewed to match the PostgreSQL syntax. You will find some
     useful recommendations on porting Oracle PL/SQL code to PostgreSQL
@@ -114,9 +114,9 @@ INSTALLATION
     to a host with the psql client installed. If you prefer to load export
     'on the fly', the perl module DBD::Pg is required.
 
-    Ora2Pg allows you to dump all output in a compressed gzip file, to do that
-    you need the Compress::Zlib Perl module or if you prefer using bzip2
-    compression, the program bzip2 must be available in your PATH.
+    Ora2Pg allows you to dump all output in a compressed gzip file, to do
+    that you need the Compress::Zlib Perl module or if you prefer using
+    bzip2 compression, the program bzip2 must be available in your PATH.
 
   Installing Ora2Pg
     Like any other Perl Module Ora2Pg can be installed with the following
@@ -142,11 +142,11 @@ INSTALLATION
   Packaging
     If you want to build the binary package for your preferred Linux
     distribution take a look at the packaging/ directory of the source
-    tarball. There's everything to build RPM, Slackware and Debian packages.
-    See README file in that directory.
+    tarball. There is everything to build RPM, Slackware and Debian
+    packages. See README file in that directory.
 
   Installing DBD::Oracle
-    Ora2Pg needs the perl module DBD::Oracle for connectivity to an Oracle
+    Ora2Pg needs the Perl module DBD::Oracle for connectivity to an Oracle
     database from perl DBI. To get DBD::Oracle get it from CPAN a perl
     module repository.
 
@@ -157,10 +157,10 @@ INSTALLATION
             export ORACLE_HOME=/usr/lib/oracle/11.2/client64/
             perl -MCPAN -e 'install DBD::Oracle'
 
-    If you are running for the first time it will ask many questions;
-    you can keep defaults by pressing ENTER key, but you need to give
-    one appropriate mirror site for CPAN to download the modules. Install
-	through CPAN manually if the above doesn't work:
+    If you are running for the first time it will ask many questions; you
+    can keep defaults by pressing ENTER key, but you need to give one
+    appropriate mirror site for CPAN to download the modules. Install
+    through CPAN manually if the above doesn't work:
 
             #perl -MCPAN -e shell
             cpan> get DBD::Oracle
@@ -239,24 +239,24 @@ CONFIGURATION
         -e | --exclude str: Comma separated list of objects to exclude from export.
                             Can be used with SHOW_COLUMN too.
         -h | --help       : Print this short help.
-        -g | --grant_object type : extract privilege from the given object type.
+        -g | --grant_object type : Extract privilege from the given object type.
                             See possible values with GRANT_OBJECT configuration.
         -i | --input file : File containing Oracle PL/SQL code to convert with
                             no Oracle database connection initiated.
         -j | --jobs num   : Number of parallel process to send data to PostgreSQL.
-        -J | --copies num : Number of parallel connection to extract data from Oracle.
+        -J | --copies num : number of parallel connection to extract data from Oracle.
         -l | --log file   : Set a log file. Default is stdout.
-        -L | --limit num  : number of tuples extracted from Oracle and stored in
+        -L | --limit num  : Number of tuples extracted from Oracle and stored in
                             memory before writing, default: 10000.
         -m | --mysql      : Export a MySQL database instead of an Oracle schema.
-        -n | --namespace schema : Used to set the Oracle schema to extract from.
-        -N | --pg_schema schema : Used to set PostgreSQL's search_path.
-        -o | --out file   : Used to set the path to the output file where SQL will
+        -n | --namespace schema : Set the Oracle schema to extract from.
+        -N | --pg_schema schema : Set PostgreSQL's search_path.
+        -o | --out file   : Set the path to the output file where SQL will
                             be written. Default: output.sql in running directory.
         -p | --plsql      : Enable PLSQL to PLPGSQL code conversion.
         -P | --parallel num: Number of parallel tables to extract at the same time.
-        -q | --quiet      : disable progress bar.
-        -s | --source DSN : Set the Oracle DBI datasource.
+        -q | --quiet      : Disable progress bar.
+        -s | --source DSN : Allow to set the Oracle DBI datasource.
         -t | --type export: Set the export type. It will override the one
                             given in the configuration file (TYPE).
         -T | --temp_dir DIR: Set a distinct temporary directory when two
@@ -266,9 +266,9 @@ CONFIGURATION
         -v | --version    : Show Ora2Pg Version and exit.
         -w | --password pwd : Set the password of the Oracle database user.
                             ORA2PG_PASSWD environment variable can be used instead.
-        --forceowner: if set to 1 force ora2pg to set tables and sequences owner
-                      like in Oracle database. If the value is set to a username this
-                      one will be used as the objects owner. By default it's the user
+        --forceowner      : Force ora2pg to set tables and sequences owner like in
+                      Oracle database. If the value is set to a username this one
+                      will be used as the objects owner. By default it's the user
                       used to connect to the Pg database that will be the owner.
         --nls_lang code: Set the Oracle NLS_LANG client encoding.
         --client_encoding code: Set the PostgreSQL client encoding.
@@ -281,7 +281,7 @@ CONFIGURATION
                             SHOW_REPORT. Default is to dump report as simple text.
        --dump_as_csv      : As above but force ora2pg to dump report in CSV.
        --dump_as_sheet    : Report migration assessment one CSV line per database.
-       --init_project NAME: initialise a typical ora2pg project tree. Top directory
+       --init_project NAME: Initialise a typical ora2pg project tree. Top directory
                             will be created under project base dir.
        --project_base DIR : Define the base dir for ora2pg project trees. Default
                             is current directory.
@@ -303,10 +303,10 @@ CONFIGURATION
     manpage with 'man ora2pg'.
 
     ora2pg will return 0 on success, 1 on error. It will return 2 when a
-    child process has been interrupted and you've gotten the warning message:
-    "WARNING: an error occurs during data export. Please check what's
-    happen." Most of the time this is an OOM issue, first try reducing
-    DATA_LIMIT value.
+    child process has been interrupted and you've gotten the warning
+    message: "WARNING: an error occurs during data export. Please check
+    what's happen." Most of the time this is an OOM issue, first try
+    reducing DATA_LIMIT value.
 
     For developers, it is possible to add your own custom option(s) in the
     Perl script ora2pg as any configuration directive from ora2pg.conf can
@@ -383,7 +383,7 @@ CONFIGURATION
     You can choose to load the DDL files generated manually or use the
     second script import_all.sh to import those file interactively. If this
     kind of migration is not something current for you it's recommended you
-	use those scripts.
+    to use those scripts.
 
   Oracle database connection
     There's 5 configuration directives to control the access to the Oracle
@@ -480,8 +480,8 @@ CONFIGURATION
 
             ora2pg -t SHOW_VERSION -c config/ora2pg.conf
 
-    will show the Oracle database server version. Take some time here to test
-    your installation as most problems take place here, the other
+    will show the Oracle database server version. Take some time here to
+    test your installation as most problems take place here, the other
     configuration steps are more technical.
 
   Troubleshooting
@@ -489,15 +489,15 @@ CONFIGURATION
     transaction header and footer there's two possible reasons. The perl
     script ora2pg dump an ORA-XXX error, that mean that your DSN or login
     information are wrong, check the error and your settings and try again.
-    The perl script says nothing and the output file is empty: the user lacks 
-	permission to extract something from the database. Try to connect to
-    Oracle as super user or take a look at directive USER_GRANTS above and
-    at next section, especially the SCHEMA directive.
+    The perl script says nothing and the output file is empty: the user
+    lacks permission to extract something from the database. Try to connect
+    to Oracle as super user or take a look at directive USER_GRANTS above
+    and at next section, especially the SCHEMA directive.
 
     LOGFILE
-        By default all messages are sent to the standard output. If you give
-        a file path to that directive, all output will be appended to this
-        file.
+        By default all messageis are sent to the standard output. If you
+        give a file path to that directive, all output will be appended to
+        this file.
 
   Oracle schema to export
     The Oracle database export can be limited to a specific Schema or
@@ -880,7 +880,7 @@ CONFIGURATION
     the database should be exported.
 
     ALLOW
-        This directive allow you to set a list of objects on witch the
+        This directive allows you to set a list of objects on witch the
         export must be limited, excluding all other objects in the same type
         of export. The value is a space or comma-separated list of objects
         name to export. You can include valid regex into the list. For
@@ -1003,7 +1003,7 @@ CONFIGURATION
 
     WHERE
         This directive allows you to specify a WHERE clause filter when
-        dumping the contents of tables. Value is constructed as follows:
+        dumping the contents of tables. Value is constructs as follows:
         TABLE_NAME[WHERE_CLAUSE], or if you have only one where clause for
         each table just put the where clause as the value. Both are possible
         too. Here are some examples:
@@ -1053,8 +1053,8 @@ CONFIGURATION
     REPLACE_QUERY
         Sometime you may want to extract data from an Oracle table but you
         need a a custom query for that. Not just a "SELECT * FROM table"
-        like Ora2Pg do but a more complex query. This directive allow you to
-        overwrite the query used by Ora2Pg to extract data. The format is
+        like Ora2Pg do but a more complex query. This directive allows you
+        to overwrite the query used by Ora2Pg to extract data. The format is
         TABLENAME[SQL_QUERY]. If you have multiple table to extract by
         replacing the Ora2Pg query, you can define multiple REPLACE_QUERY
         lines.
@@ -1179,9 +1179,9 @@ CONFIGURATION
         export.
 
     MODIFY_STRUCT
-        This directive allow you to limit the columns to extract for a given
-        table. The value consist in a space-separated list of table name
-        with a set of column between parenthesis as follow:
+        This directive allows you to limit the columns to extract for a
+        given table. The value consist in a space-separated list of table
+        name with a set of column between parenthesis as follow:
 
                 MODIFY_STRUCT   NOM_TABLE(nomcol1,nomcol2,...) ...
 
@@ -1197,7 +1197,7 @@ CONFIGURATION
         will not be exported.
 
     REPLACE_TABLES
-        This directive allow you to remap a list of Oracle table name to a
+        This directive allows you to remap a list of Oracle table name to a
         PostgreSQL table name during export. The value is a list of
         space-separated values with the following structure:
 
@@ -1323,7 +1323,7 @@ CONFIGURATION
         to export those columns as generic type GEOMETRY to be able to
         receive any spatial type.
 
-        The AUTODETECT_SPATIAL_TYPE directive allow to force Ora2Pg to
+        The AUTODETECT_SPATIAL_TYPE directive allows to force Ora2Pg to
         autodetect the real spatial type and dimension used in a spatial
         column otherwise a non- constrained "geometry" type is used.
         Enabling this feature will force Ora2Pg to scan a sample of 50000
@@ -1345,7 +1345,7 @@ CONFIGURATION
         with a two or three dimensional polygon.
 
     CONVERT_SRID
-        This directive allow you to control the automatically conversion of
+        This directive allows you to control the automatically conversion of
         Oracle SRID to standard EPSG. If enabled, Ora2Pg will use the Oracle
         function sdo_cs.map_oracle_srid_to_epsg() to convert all SRID.
         Enabled by default.
@@ -1425,7 +1425,7 @@ CONFIGURATION
         will be written. The directory must exists.
 
     BZIP2
-        This directive allow you to specify the full path to the bzip2
+        This directive allows you to specify the full path to the bzip2
         program if it can not be found in the PATH environment variable.
 
     FILE_PER_CONSTRAINT
@@ -1697,7 +1697,7 @@ CONFIGURATION
 
     SKIP
         For TABLE export you may not want to export all schema constraints,
-        the SKIP configuration directive allow you to specify a
+        the SKIP configuration directive allows you to specify a
         space-separated list of constraints that should not be exported.
         Possible values are:
 
@@ -1727,7 +1727,7 @@ CONFIGURATION
         option to 1.
 
     FKEY_ADD_UPDATE
-        This directive allow you to add an ON UPDATE CASCADE option to a
+        This directive allows you to add an ON UPDATE CASCADE option to a
         foreign key when a ON DELETE CASCADE is defined or always. Oracle do
         not support this feature, you have to use trigger to operate the ON
         UPDATE CASCADE. As PostgreSQL has this feature, you can choose how
@@ -1770,7 +1770,7 @@ CONFIGURATION
         them at the end of the import.
 
     DROP_INDEXES
-        This directive allow you to gain lot of speed improvement during
+        This directive allows you to gain lot of speed improvement during
         data import by removing all indexes that are not an automatic index
         (indexes of primary keys) and recreate them at the end of data
         import. Of course it is far better to not import indexes and
