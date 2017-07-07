@@ -13677,7 +13677,7 @@ sub get_schema_condition
 	}
 
 	my $cond = '';
-	if ($visible) {
+	if ($visible && !$self->{pg_schema}) {
 		$cond = " AND $visible";
 	}
 	$cond .= " AND $attrname <> 'pg_catalog' AND $attrname <> 'information_schema' AND $attrname !~ '^pg_toast'";
@@ -13994,7 +13994,7 @@ WHERE e.relname = ? AND a.attnum > 0 AND NOT a.attisdropped
 		next if (!exists $tables_infos{$t});
 		my $nbdefault = 0;
 		foreach my $cn (keys %{$column_infos{$t}}) {
-			if ($column_infos{$t}{$cn}{default} ne '' && lc($column_infos{$t}{$cn}{default}) ne 'NULL') {
+			if ($column_infos{$t}{$cn}{default} ne '' && uc($column_infos{$t}{$cn}{default}) ne 'NULL') {
 				$nbdefault++;
 			}
 		}
@@ -14355,6 +14355,7 @@ FROM pg_catalog.pg_proc p
 WHERE t.typname <> 'trigger'
  $schema_clause
 };
+
 	my $nbobj = $#fct_infos + 1;
 	print "$lbl:FUNCTION:$nbobj\n";
 	if ($self->{pg_dsn}) {
@@ -14368,9 +14369,9 @@ WHERE t.typname <> 'trigger'
 		while ( my @row = $s->fetchrow()) {
 			$pgfct++;
 			my $fname = $row[1];
-#			if ($row[0] ne 'public') {
-#				$fname = $row[0] . '.' . $row[1];
-#			}
+			if ($row[0] ne 'public') {
+				$fname = $row[0] . '.' . $row[1];
+			}
 			$pg_function{lc($fname)} = 1;
 		}
 		print "POSTGRES:FUNCTION:$pgfct\n";
