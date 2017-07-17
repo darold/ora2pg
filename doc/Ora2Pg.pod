@@ -459,7 +459,8 @@ VIEW, FUNCTION or PACKAGE, etc.
 =item ORA_INITIAL_COMMAND
 
 This directive can be used to send an initial command to Oracle, just after
-the connection. For example to unlock a policy before reading objects.
+the connection. For example to unlock a policy before reading objects or
+to set some session parameters. This directive can be used multiple time.
 
 =back
 
@@ -1622,6 +1623,12 @@ This is only used when you load data directly to PostgreSQL, the default is
 off to disable synchronous commit to gain speed at writing data. Some modified
 version of PostgreSQL, like greenplum, do not have this setting, so in this
 set this directive to 1, ora2pg will not  try to change the setting.
+
+=item PG_INITIAL_COMMAND
+
+This directive can be used to send an initial command to PostgreSQL, just after
+the connection. For example to set some session parameters. This directive can
+be used multiple time.
 
 =back
 

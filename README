@@ -449,7 +449,8 @@ CONFIGURATION
     ORA_INITIAL_COMMAND
         This directive can be used to send an initial command to Oracle,
         just after the connection. For example to unlock a policy before
-        reading objects.
+        reading objects or to set some session parameters. This directive
+        can be used multiple time.
 
   Data encryption with Oracle server
     If your Oracle Client config file already includes the encryption
@@ -1572,6 +1573,11 @@ CONFIGURATION
         version of PostgreSQL, like greenplum, do not have this setting, so
         in this set this directive to 1, ora2pg will not try to change the
         setting.
+
+    PG_INITIAL_COMMAND
+        This directive can be used to send an initial command to PostgreSQL,
+        just after the connection. For example to set some session
+        parameters. This directive can be used multiple time.
 
   Column tytpe control
     PG_NUMERIC_TYPE

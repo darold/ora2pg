@@ -94,8 +94,9 @@ USER_GRANTS     0
 DEBUG		0
 
 # This directive can be used to send an initial command to Oracle, just after
-# the connection. For example to unlock a policy before reading objects.
-ORA_INITIAL_COMMAND
+# the connection. For example to unlock a policy before reading objects or
+# to set some session parameters. This directive can be used multiple time.
+#ORA_INITIAL_COMMAND
 
 
 #------------------------------------------------------------------------------
@@ -689,6 +690,12 @@ COPY_FREEZE		0
 # to override existing functions disable this configuration directive,
 # DDL will not include OR REPLACE.
 CREATE_OR_REPLACE	1
+
+# This directive can be used to send an initial command to PostgreSQL, just
+# after the connection. For example to set some session parameters. This
+# directive can be used multiple time.
+#PG_INITIAL_COMMAND
+
 
 
 #------------------------------------------------------------------------------
