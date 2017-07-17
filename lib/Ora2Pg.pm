@@ -804,6 +804,10 @@ sub _init
 	$self->{empty_lob_null} = 0;
 	$self->{look_forward_function} = ();
 
+	# Initial command to execute at Oracle and PostgreSQL connexion
+	$self->{ora_initial_command} = ();
+	$self->{pg_initial_command} = ();
+
 	# To register user defined exception
 	$self->{custom_exception} = ();
 	$self->{exception_id} = 50001;
@@ -916,9 +920,6 @@ sub _init
 
 	# Set default function to use for uuid generation
 	$self->{uuid_function} ||= 'uuid_generate_v4';
-
-	# Initial command to execute at Oracle connexion
-	$self->{ora_initial_command} ||= '';
 
 	# Set default cost unit value to 5 minutes
 	$self->{cost_unit_value} ||= 5;
@@ -1432,8 +1433,13 @@ sub _init
 			}
 			$self->{dbh}->disconnect() if ($self->{dbh}); 
 			exit 0;
+		} elsif ($self->{type} eq 'TEST_VIEW') {
+			$self->{dbhdest} = $self->_send_to_pgdb() if ($self->{pg_dsn} && !$self->{dbhdest});
+			$self->_unitary_test_views();
+			$self->{dbh}->disconnect() if ($self->{dbh}); 
+			exit 0;
 		} else {
-			warn "type option must be (TABLE, VIEW, GRANT, SEQUENCE, TRIGGER, PACKAGE, FUNCTION, PROCEDURE, PARTITION, TYPE, INSERT, COPY, TABLESPACE, SHOW_REPORT, SHOW_VERSION, SHOW_SCHEMA, SHOW_TABLE, SHOW_COLUMN, SHOW_ENCODING, FDW, MVIEW, QUERY, KETTLE, DBLINK, SYNONYM, DIRECTORY, LOAD, TEST), unknown $self->{type}\n";
+			warn "type option must be (TABLE, VIEW, GRANT, SEQUENCE, TRIGGER, PACKAGE, FUNCTION, PROCEDURE, PARTITION, TYPE, INSERT, COPY, TABLESPACE, SHOW_REPORT, SHOW_VERSION, SHOW_SCHEMA, SHOW_TABLE, SHOW_COLUMN, SHOW_ENCODING, FDW, MVIEW, QUERY, KETTLE, DBLINK, SYNONYM, DIRECTORY, LOAD, TEST, TEST_VIEW), unknown $self->{type}\n";
 		}
 		$self->replace_tables(%{$self->{'replace_tables'}});
 		$self->replace_cols(%{$self->{'replace_cols'}});
@@ -1475,7 +1481,7 @@ sub _oracle_connection
 			ora_envhp => 0,
 			LongReadLen=>$self->{longreadlen},
 			LongTruncOk=>$self->{longtruncok},
-			AutoInactiveDestroy => 1
+			AutoInactiveDestroy => 1,
 		}
 	);
 
@@ -1506,7 +1512,7 @@ sub _oracle_connection
 	$sth->finish;
 
 	# Force execution of initial command
-	$self->_initial_command($dbh);
+	$self->_ora_initial_command($dbh);
 
 	return $dbh;
 }
@@ -1553,7 +1559,7 @@ sub _mysql_connection
 		$sth->finish;
 	}
 	# Force execution of initial command
-	$self->_initial_command($dbh);
+	$self->_ora_initial_command($dbh);
 
 	if ($self->{mysql_mode} =~ /PIPES_AS_CONCAT/) {
 		$self->{mysql_pipes_as_concat} = 1;
@@ -1677,14 +1683,10 @@ sub _send_to_pgdb
 		$self->logit("FATAL: $DBI::err ... $DBI::errstr\n", 0, 1);
 	}
 
+	# Force execution of initial command
+	$self->_pg_initial_command($dbhdest);
+
 	return $dbhdest;
-}
-
-# Backward Compatibility
-sub send_to_pgdb
-{
-	return &_send_to_pgdb();
-
 }
 
 =head2 _grants
@@ -10980,7 +10982,7 @@ sub read_config
 				}
 			}
 		# Should be a else statement but keep the list up to date to memorize the directives full list
-		} elsif (!grep(/^$var$/, 'TABLES', 'ALLOW', 'MODIFY_STRUCT', 'REPLACE_TABLES', 'REPLACE_COLS', 'WHERE', 'EXCLUDE','VIEW_AS_TABLE','ORA_RESERVED_WORDS','SYSUSERS','REPLACE_AS_BOOLEAN','BOOLEAN_VALUES','MODIFY_TYPE','DEFINED_PK', 'ALLOW_PARTITION','REPLACE_QUERY','FKEY_ADD_UPDATE','DELETE','LOOK_FORWARD_FUNCTION')) {
+		} elsif (!grep(/^$var$/, 'TABLES', 'ALLOW', 'MODIFY_STRUCT', 'REPLACE_TABLES', 'REPLACE_COLS', 'WHERE', 'EXCLUDE','VIEW_AS_TABLE','ORA_RESERVED_WORDS','SYSUSERS','REPLACE_AS_BOOLEAN','BOOLEAN_VALUES','MODIFY_TYPE','DEFINED_PK', 'ALLOW_PARTITION','REPLACE_QUERY','FKEY_ADD_UPDATE','DELETE','LOOK_FORWARD_FUNCTION','ORA_INITIAL_COMMAND', 'PG_INITIAL_COMMAND')) {
 			$AConfig{$var} = $val;
 		} elsif ($var eq 'VIEW_AS_TABLE') {
 			push(@{$AConfig{$var}}, split(/[\s;,]+/, $val) );
@@ -11003,6 +11005,8 @@ sub read_config
 					}
 				}
 			}
+		} elsif ( $var =~ /_INITIAL_COMMAND/ ) {
+			push(@{$AConfig{$var}}, $val);
 		} elsif ( $var eq 'SYSUSERS' ) {
 			push(@{$AConfig{$var}}, split(/[\s;,]+/, $val) );
 		} elsif ( $var eq 'ORA_RESERVED_WORDS' ) {
@@ -14227,6 +14231,63 @@ WHERE (NOT t.tgisinternal OR (t.tgisinternal AND t.tgenabled = 'D'))
 
 }
 
+sub _unitary_test_views
+{
+	my $self = shift;
+
+	# Get all tables information specified by the DBI method table_info
+	$self->logit("Unitary test of views between source database and PostgreSQL...\n", 1);
+
+	# First of all extract all views from PostgreSQL database
+	my $schema_clause = $self->get_schema_condition();
+	my $sql = qq{
+SELECT c.relname,n.nspname
+FROM pg_catalog.pg_class c
+     LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+WHERE c.relkind IN ('v','')
+      $schema_clause
+};
+	my %list_views  = ();
+	if ($self->{pg_dsn}) {
+		my $s = $self->{dbhdest}->prepare($sql) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
+		if (not $s->execute()) {
+			push(@errors, "Can not extract information from catalog about views.");
+			next;
+		}
+		while ( my @row = $s->fetchrow()) {
+			$list_views{$row[0]} = $row[1];
+		}
+		$s->finish();
+	}
+
+	my $lbl = 'ORACLEDB';
+	$lbl    = 'MYSQL_DB' if ($self->{is_mysql});
+
+	print "[UNITARY TEST OF VIEWS]\n";
+	foreach my $v (sort keys %list_views) {
+		# Execute init settings if any
+		# Count rows returned by all view on the source database
+		$sql = "SELECT count(*) FROM $v";
+		my $sth = $self->{dbh}->prepare($sql)  or $self->logit("ERROR: " . $self->{dbh}->errstr . "\n", 0, 0);
+		$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 0);
+		my @row = $sth->fetchrow();
+		my $ora_ct = $row[0];
+		print "$lbl:$v:", join('|', @row), "\n";
+		$sth->finish;
+		# Execute view in the PostgreSQL database
+		$sql = "SELECT count(*) FROM $v;";
+		$sth = $self->{dbhdest}->prepare($sql)  or $self->logit("ERROR: " . $self->{dbhdest}->errstr . "\n", 0, 0);
+		$sth->execute or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 0);
+		@row = $sth->fetchrow();
+		$sth->finish;
+		my $pg_ct = $row[0];
+		print "POSTGRES:$v:", join('|', @row), "\n";
+		if ($pg_ct != $ora_ct) {
+			print "ERROR: view $v returns different row count [oracle: $ora_ct, postgresql: $pg_ct]\n";
+		}
+	}
+}
+
 sub _count_object
 {
 	my $self = shift;
@@ -14775,18 +14836,40 @@ sub _numeric_format
 	my $sth = $dbh->do("ALTER SESSION SET NLS_NUMERIC_CHARACTERS = '.,'") or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
 }
 
-sub _initial_command
+sub _ora_initial_command
 {
 	my ($self, $dbh) = @_;
 
-	return if (!$self->{ora_initial_command});
+	return if ($#{ $self->{ora_initial_command} } < 0);
 
 	$dbh = $self->{dbh} if (!$dbh);
 
-	$self->logit("DEBUG: executing initial command to Oracle\n", 1);
 
-	my $sth = $dbh->do($self->{ora_initial_command}) or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
+	# Lookup if the user have provided some sessions settings
+	foreach my $q (@{$self->{ora_initial_command}}) {
+		next if (!$q);
+		$self->logit("DEBUG: executing initial command to Oracle: $q\n", 1);
+		my $sth = $dbh->do($q) or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
+	}
+
 }
+
+sub _pg_initial_command
+{
+	my ($self, $dbh) = @_;
+
+	return if ($#{ $self->{pg_initial_command} } < 0);
+
+	$dbh = $self->{dbhdest} if (!$dbh);
+
+	# Lookup if the user have provided some sessions settings
+	foreach my $q (@{$self->{pg_initial_command}}) {
+		$self->logit("DEBUG: executing initial command to PostgreSQL: $q\n", 1);
+		my $sth = $dbh->do($q) or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
+	}
+
+}
+
 
 
 =head2 multiprocess_progressbar
