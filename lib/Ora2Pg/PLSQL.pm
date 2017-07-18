@@ -2246,17 +2246,20 @@ sub replace_outer_join
 		die "FATAL: outer join type must be 'left' or 'right' in call to replace_outer_join().\n";
 	}
 
-	my $regexp1 = qr/(\%OUTERJOIN\%\s*(?:!=|<>|>=|<=|=|>|<|NOT LIKE|LIKE))/is;
-	my $regexp2 = qr/(?:!=|<>|>=|<=|=|>|<|NOT LIKE|LIKE)\s*[^\s]+\s*\%OUTERJOIN\%/is;
-
-	if ($type eq 'left') {
-		$regexp1 = qr/((?:!=|<>|>=|<=|=|>|<|NOT LIKE|LIKE)\s*[^\s]+\s*\%OUTERJOIN\%)/is;
-		$regexp2 = qr/\%OUTERJOIN\%\s*(?:!=|<>|>=|<=|=|>|<|NOT LIKE|LIKE)/is;
+	# When we have a right outer join, just rewrite it as a left join to simplify the translation work
+	if ($type eq 'right') {
+		$str =~ s/(\s+)([^\s]+)\s*(\%OUTERJOIN\%)\s*(!=|<>|>=|<=|=|>|<|NOT LIKE|LIKE)\s*([^\s]+)/$1$5 $4 $2$3/isg;
+		return $str;
 	}
+
+	#my $regexp1 = qr/(\%OUTERJOIN\%\s*(?:!=|<>|>=|<=|=|>|<|NOT LIKE|LIKE))/is;
+	#my $regexp2 = qr/(?:!=|<>|>=|<=|=|>|<|NOT LIKE|LIKE)\s*[^\s]+\s*\%OUTERJOIN\%/is;
+
+	my $regexp1 = qr/((?:!=|<>|>=|<=|=|>|<|NOT LIKE|LIKE)\s*[^\s]+\s*\%OUTERJOIN\%)/is;
+	my $regexp2 = qr/\%OUTERJOIN\%\s*(?:!=|<>|>=|<=|=|>|<|NOT LIKE|LIKE)/is;
 
 	# process simple form of outer join
 	my $nbouter = $str =~ $regexp1;
-
 
 	# Check that we don't have right outer join too
 	if ($nbouter >= 1 && $str !~ $regexp2) {
