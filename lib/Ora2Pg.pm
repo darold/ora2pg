@@ -1196,6 +1196,10 @@ sub _init
 	} else {
 		$self->{pg_supports_ifexists} = '';
 	}
+	if ($self->{pg_supports_substr} eq '') {
+		$self->{pg_supports_substr} = 1;
+	}
+
 	$self->{pg_background} ||= 0;
 	$self->{pg_supports_partition} ||= 0;
 

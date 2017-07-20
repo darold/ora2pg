@@ -1172,6 +1172,13 @@ sub replace_oracle_function
 	# Rewrite replace(a,b) with three argument
 	$str =~ s/REPLACE\s*\($field,$field\)/replace($1, $2, '')/is;
 
+	# Replace Oracle substr(string, start_position, length) with
+	# PostgreSQL substring(string from start_position for length)
+	if (!$class->{pg_supports_substr}) {
+		$str =~ s/substr\s*\($field,$field,$field\)/substring($1 from $2 for $3)/is;
+		$str =~ s/substr\s*\($field,$field\)/substring($1 from $2)/is;
+	}
+
 	##############
 	# Replace call to function with out parameters
 	##############
@@ -1977,10 +1984,15 @@ sub mysql_to_plpgsql
 	$str =~ s/\bFROM_BASE64\(\s*([^\(\),]+)\s*\)/decode(($1)::bytea, 'base64')/igs;
 	$str =~ s/\bHEX\(\s*([^\(\),]+)\s*\)/upper(encode($1::bytea, 'hex'))/igs;
 	$str =~ s/\bINSTR\s*\(\s*([^,]+),\s*('[^']+')\s*\)/position($2 in $1)/igs;
-	$str =~ s/\bLOCATE\(\s*([^\(\),]+)\s*,\s*([^\(\),]+)\s*,\s*([^\(\),]+)\s*\)/position($1 in substr($2, $3)) + $3 - 1/igs;
+	if (!$class->{pg_supports_substr}) {
+		$str =~ s/\bLOCATE\(\s*([^\(\),]+)\s*,\s*([^\(\),]+)\s*,\s*([^\(\),]+)\s*\)/position($1 in substring ($2 from $3)) + $3 - 1/igs;
+		$str =~ s/\bMID\(/substring\(/igs;
+	} else {
+		$str =~ s/\bLOCATE\(\s*([^\(\),]+)\s*,\s*([^\(\),]+)\s*,\s*([^\(\),]+)\s*\)/position($1 in substr($2, $3)) + $3 - 1/igs;
+		$str =~ s/\bMID\(/substr\(/igs;
+	}
 	$str =~ s/\bLOCATE\(\s*([^\(\),]+)\s*,\s*([^\(\),]+)\s*\)/position($1 in $2)/igs;
 	$str =~ s/\bLCASE\(/lower\(/igs;
-	$str =~ s/\bMID\(/substr\(/igs;
 	$str =~ s/\bORD\(/ascii\(/igs;
 	$str =~ s/\bQUOTE\(/quote_literal\(/igs;
 	$str =~ s/\bSPACE\(\s*([^\(\),]+)\s*\)/repeat(' ', $1)/igs;

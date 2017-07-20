@@ -1099,6 +1099,11 @@ PG_BACKGROUND		0
 # in the autonomous transaction wrapper function.
 #DBLINK_CONN	port=5432 dbname=pgdb host=localhost user=pguser password=pgpass
 
+# Some versions of PostgreSQL like Redshift doesn't support substr()
+# and it need to be replaced by a call to substring(). In this case,
+# disable it.
+PG_SUPPORTS_SUBSTR		1
+
 #------------------------------------------------------------------------------
 # SPATIAL SECTION (Control spatial geometry export)
 #------------------------------------------------------------------------------
