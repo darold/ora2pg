@@ -1905,6 +1905,11 @@ CONFIGURATION
         Enable this directive if you want to use declarative partitioning.
         Disable by default.
 
+    PG_SUPPORTS_SUBSTR
+        Some versions of PostgreSQL like Redshift doesn't support substr()
+        and it need to be replaced by a call to substring(). In this case,
+        disable it.
+
     BITMAP_AS_GIN
         Use btree_gin extension to create bitmap like index with pg >= 9.4
         You will need to create the extension by yourself: create extension
