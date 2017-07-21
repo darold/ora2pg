@@ -12172,7 +12172,7 @@ sub _extract_data
 		$dbh = $self->{dbh}->clone();
 
 		# Force execution of initial command
-		$self->_initial_command($dbh);
+		$self->_ora_initial_command($dbh);
 		if (!$self->{is_mysql}) {
 			# Force numeric format into the cloned session
 			$self->_numeric_format($dbh);
