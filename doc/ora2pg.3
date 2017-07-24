@@ -124,7 +124,7 @@
 .\" ========================================================================
 .\"
 .IX Title "ORA2PG 1"
-.TH ORA2PG 1 "2017-07-22" "perl v5.14.2" "User Contributed Perl Documentation"
+.TH ORA2PG 1 "2017-07-24" "perl v5.14.2" "User Contributed Perl Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -2070,6 +2070,11 @@ Disable by default.
 Some versions of PostgreSQL like Redshift doesn't support \fIsubstr()\fR
 and it need to be replaced by a call to \fIsubstring()\fR. In this case,
 disable it.
+.IP "\s-1PG_SUPPORTS_NAMED_OPERATOR\s0" 4
+.IX Item "PG_SUPPORTS_NAMED_OPERATOR"
+Disable this directive if you are using \s-1PG\s0 < 9.5, \s-1PL/SQL\s0 operator used in
+named parameter => will be replaced by PostgreSQL proprietary operator :=
+Enable by default.
 .IP "\s-1BITMAP_AS_GIN\s0" 4
 .IX Item "BITMAP_AS_GIN"
 Use btree_gin extension to create bitmap like index with pg >= 9.4

@@ -1200,6 +1200,9 @@ sub _init
 	if ($self->{pg_supports_substr} eq '') {
 		$self->{pg_supports_substr} = 1;
 	}
+	if ($self->{pg_supports_named_operator} eq '') {
+		$self->{pg_supports_named_operator} = 1;
+	}
 
 	$self->{pg_background} ||= 0;
 	$self->{pg_supports_partition} ||= 0;

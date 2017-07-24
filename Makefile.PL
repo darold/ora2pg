@@ -1111,6 +1111,10 @@ PG_BACKGROUND		0
 # disable it.
 PG_SUPPORTS_SUBSTR		1
 
+# Disable this directive if you are using PG < 9.5, PL/SQL operator used in
+# named parameter => will be replaced by PostgreSQL proprietary operator :=
+PG_SUPPORTS_NAMED_OPERATOR		1
+
 #------------------------------------------------------------------------------
 # SPATIAL SECTION (Control spatial geometry export)
 #------------------------------------------------------------------------------

@@ -1910,6 +1910,11 @@ CONFIGURATION
         and it need to be replaced by a call to substring(). In this case,
         disable it.
 
+    PG_SUPPORTS_NAMED_OPERATOR
+        Disable this directive if you are using PG < 9.5, PL/SQL operator
+        used in named parameter => will be replaced by PostgreSQL
+        proprietary operator := Enable by default.
+
     BITMAP_AS_GIN
         Use btree_gin extension to create bitmap like index with pg >= 9.4
         You will need to create the extension by yourself: create extension

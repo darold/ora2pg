@@ -475,7 +475,9 @@ sub plsql_to_plpgsql
 	$str =~ s/FROM SYS\.DUAL//igs;
 
 	# replace operator for named parameters in function calls
-	$str =~ s/([^<])=>/$1:=/gs;
+	if (!$class->{pg_supports_named_operator}) {
+		$str =~ s/([^<])=>/$1:=/gs;
+	}
 
 	# There's no such things in PostgreSQL
 	$str =~ s/PRAGMA RESTRICT_REFERENCES[^;]+;//igs;
