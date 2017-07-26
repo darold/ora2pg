@@ -454,10 +454,6 @@ sub plsql_to_plpgsql
 	my $num_field = '\s*([\d\.]+)\s*';
 	my $date_field = '\s*([^,\)\(]*(?:date|time)[^,\)\(]*)\s*';
 
-	#--------------------------------------------
-	# PL/SQL to PL/PGSQL code conversion
-	# Feel free to add your contribution here.
-	#--------------------------------------------
 	my $conv_current_time = 'clock_timestamp()';
 	if (!grep(/$class->{type}/i, 'FUNCTION', 'PROCEDURE', 'PACKAGE')) {
 		$conv_current_time = 'LOCALTIMESTAMP';
@@ -473,6 +469,15 @@ sub plsql_to_plpgsql
 	# remove FROM DUAL
 	$str =~ s/FROM DUAL//igs;
 	$str =~ s/FROM SYS\.DUAL//igs;
+
+	# Remove space between operators
+	$str =~ s/=\s+>/=>/gs;
+	$str =~ s/<\s+=/<=/gs;
+	$str =~ s/>\s+=/>=/gs;
+	$str =~ s/!\s+=/!=/gs;
+	$str =~ s/<\s+>/<>/gs;
+	$str =~ s/:\s+=/:=/gs;
+	$str =~ s/\|\s+\|/\|\|/gs;
 
 	# replace operator for named parameters in function calls
 	if (!$class->{pg_supports_named_operator}) {
