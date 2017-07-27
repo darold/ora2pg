@@ -1131,6 +1131,8 @@ sub replace_oracle_function
 		$str =~ s/\bTRUNC\s*\($date_field\)/date_trunc('day', $1)/is;
 		$str =~ s/\bTRUNC\s*\($date_field,$field\)/date_trunc($2, $1)/is;
 		$str =~ s/date_trunc\('MM'/date_trunc('month'/is;
+		# Case where the parameters are obfuscated by function and string placeholders
+		$str =~ s/\bTRUNC\((\%\%REPLACEFCT\d+\%\%)\s*,\s*(\?TEXTVALUE\d+\?)\)/date_trunc($2, $1)/is;
 
 		# Convert the call to the Oracle function add_months() into Pg syntax
 		$str =~ s/ADD_MONTHS\s*\(([^,]+),\s*(\d+)\s*\)/$1 + '$2 month'::interval/si;
