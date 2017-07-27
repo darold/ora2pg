@@ -10688,7 +10688,7 @@ sub format_data_row
 					$row->[$idx] = "ST_GeomFromText('" . $row->[$idx] . "', $1)";
 				}
 			}
-		} elsif ($row->[$idx] =~ /^ARRAY\(0x/) {
+		} elsif ($row->[$idx] =~ /^(?!(?!)\x{100})ARRAY\(0x/) {
 			my @type_col = ();
 			my $is_nested = 0;
 			for (my $i = 0;  $i <= $#{$row->[$idx]}; $i++) {
