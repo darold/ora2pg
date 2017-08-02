@@ -13027,6 +13027,9 @@ sub _show_infos
 			}
 			if ($self->{estimate_cost}) {
 				$report_info{'Objects'}{$typ}{'cost_value'} = ($report_info{'Objects'}{$typ}{'real_number'}*$Ora2Pg::PLSQL::OBJECT_SCORE{$typ});
+				# Minimal unit is 1
+				$report_info{'Objects'}{$typ}{'cost_value'} = 1 if ($report_info{'Objects'}{$typ}{'cost_value'} =~ /^0\./);
+				# For some object's type do not set migration unit upper than 2 days.
 				if (grep(/^$typ$/, 'TABLE', 'INDEX', 'TABLE PARTITION', 'GLOBAL TEMPORARY TABLE', 'SYNONYM')) {
 					$report_info{'Objects'}{$typ}{'cost_value'} = 288 if ($report_info{'Objects'}{$typ}{'cost_value'} > 288);
 				}
