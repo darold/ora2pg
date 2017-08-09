@@ -13030,8 +13030,10 @@ sub _show_infos
 				# Minimal unit is 1
 				$report_info{'Objects'}{$typ}{'cost_value'} = 1 if ($report_info{'Objects'}{$typ}{'cost_value'} =~ /^0\./);
 				# For some object's type do not set migration unit upper than 2 days.
-				if (grep(/^$typ$/, 'TABLE', 'INDEX', 'TABLE PARTITION', 'GLOBAL TEMPORARY TABLE', 'SYNONYM')) {
-					$report_info{'Objects'}{$typ}{'cost_value'} = 288 if ($report_info{'Objects'}{$typ}{'cost_value'} > 288);
+				if (grep(/^$typ$/, 'TABLE PARTITION', 'GLOBAL TEMPORARY TABLE')) {
+					$report_info{'Objects'}{$typ}{'cost_value'} = 168 if ($report_info{'Objects'}{$typ}{'cost_value'} > 168);
+				} elsif (grep(/^$typ$/, 'TABLE', 'INDEX', 'SYNONYM')) {
+					$report_info{'Objects'}{$typ}{'cost_value'} = 84 if ($report_info{'Objects'}{$typ}{'cost_value'} > 84);
 				}
 			}
 			if ($typ eq 'INDEX') {
