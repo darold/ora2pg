@@ -489,6 +489,9 @@ sub plsql_to_plpgsql
         $str =~ s/PRAGMA SERIALLY_REUSABLE[^;]*;//igs;
         $str =~ s/PRAGMA INLINE[^;]+;//igs;
 
+	# Replace listagg() call
+	$str =~ s/\bLISTAGG\s*\((.*?)\)\s+WITHIN\s+GROUP\s*\((.*?)\)/string_agg($1 $2)/ig;
+
 	# Converting triggers
 	#       :new. -> NEW.
 	$str =~ s/([^\w]+):new\./$1NEW\./igs;
