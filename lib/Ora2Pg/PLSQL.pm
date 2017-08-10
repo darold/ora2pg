@@ -169,7 +169,6 @@ $QUERY_TEST_SCORE = 0.1;
 	New_Time
 	SessionTimeZone
 	Tz_Offset
-	SysTimestamp
 	Get_Env
 );
 
