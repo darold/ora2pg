@@ -413,8 +413,8 @@ sub append_alias_clause
 			my $from_clause = $2;
 			if ($q[$j] !~ /\b(YEAR|MONTH|DAY|HOUR|MINUTE|SECOND|TIMEZONE_HOUR|TIMEZONE_MINUTE|TIMEZONE_ABBR|TIMEZONE_REGION|TIMEZONE_OFFSET)\s+FROM/is) {
 				my @parts = split(/\b(WHERE|ORDER\s+BY|GROUP\s+BY|LIMIT)\b/i, $from_clause);
-				$parts[0] =~ s/(?<!USING|[\s,]ONLY|[\s,]JOIN|..\sON)\%SUBQUERY(\d+)\%(\s*,)/\%SUBQUERY$1\% alias$1$2/igs;
-				$parts[0] =~ s/(?<!USING|[\s,]ONLY|[\s,]JOIN|.\sON\s)\%SUBQUERY(\d+)\%(\s*)$/\%SUBQUERY$1\% alias$1$2/is;
+				$parts[0] =~ s/(?<!USING|[\s,]ONLY|[\s,]JOIN|..\sON|.\sAND|..\sOR)\%SUBQUERY(\d+)\%(\s*,)/\%SUBQUERY$1\% alias$1$2/igs;
+				$parts[0] =~ s/(?<!USING|[\s,]ONLY|[\s,]JOIN|.\sON\s|\sAND\s|.\sOR\s)\%SUBQUERY(\d+)\%(\s*)$/\%SUBQUERY$1\% alias$1$2/is;
 				$from_clause = join('', @parts);
 			}
 			$q[$j] =~ s/\%FROM_CLAUSE\%/$from_clause/s;
