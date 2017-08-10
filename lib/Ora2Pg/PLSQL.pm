@@ -2404,7 +2404,7 @@ sub replace_outer_join
 			foreach my $j (sort { $final_from_clause{$t}{clause}{$a}{position} <=> $final_from_clause{$t}{clause}{$b}{position} } keys %{$final_from_clause{$t}{clause}}) {
 				next if ($#{$final_from_clause{$t}{clause}{$j}{predicat}} < 0);
 
-				if (exists $final_from_clause{$t}{clause}{$j}{$type} && $j !~ /\(\%SUBQUERY\d+\%\)/i && $from_clause !~ /\b\Q$final_from_clause{$t}{clause}{$j}{$type}\E\b/) {
+				if (exists $final_from_clause{$t}{clause}{$j}{$type} && $j !~ /\%SUBQUERY\d+\%/i && $from_clause !~ /\b\Q$final_from_clause{$t}{clause}{$j}{$type}\E\b/) {
 					$from_clause .= ",$final_from_clause{$t}{clause}{$j}{$type}";
 					push(@outer_clauses, (split(/\s/, $final_from_clause{$t}{clause}{$j}{$type}))[1] || $final_from_clause{$t}{clause}{$j}{$type});
 				}
@@ -2455,7 +2455,8 @@ sub replace_outer_join
 				$comment .= $1;
 			}
 
-			if ($tmp_tbl !~ /\(*\%SUBQUERY\d+\%\)*/is && $from_clause !~ /\b\Q$tmp_tbl\E\b/is) {
+			#if ($tmp_tbl !~ /\%SUBQUERY\d+\%/is && $from_clause !~ /\b\Q$tmp_tbl\E\b/is) {
+			if ($from_clause !~ /\b\Q$tmp_tbl\E\b/is) {
 				$from_clause = "$table_decl, " . $from_clause;
 			} elsif ($comment) {
 				 $from_clause = "$comment " . $from_clause;
