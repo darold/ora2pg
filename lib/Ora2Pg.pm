@@ -5781,7 +5781,7 @@ BEGIN
 								}
 							} else {
 								if ($old_part eq '') {
-									$check_cond .= " FROM (unbounded) TO ("
+									$check_cond .= " FROM (MINVALUE) TO ("
 										. Ora2Pg::PLSQL::convert_plsql_code($self, $self->{partitions}{$table}{$pos}{info}[$i]->{value}, %{$self->{data_type}}) . ")";
 								} else {
 									$check_cond .= " FROM ("
@@ -5797,7 +5797,7 @@ BEGIN
 								# multicolumn partitioning
 								$check_cond .= "\t$self->{partitions}{$table}{$pos}{info}[$i]->{column} < " .  $values[$i];
 							} else {
-								$check_cond .= " FROM (unbounded) TO (" .  $values[$i] . ")";
+								$check_cond .= " FROM (MINVALUE) TO (" .  $values[$i] . ")";
 							}
 						}
 					}
@@ -5896,7 +5896,7 @@ BEGIN
 										}
 									} else {
 										if ($sub_old_part eq '') {
-											$sub_check_cond .= " FROM (unbounded) TO ("
+											$sub_check_cond .= " FROM (MINVALUE) TO ("
 												. Ora2Pg::PLSQL::convert_plsql_code($self, $self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{value}, %{$self->{data_type}}) . ")";
 										} else {
 											$sub_check_cond .= " FROM ("
@@ -5911,7 +5911,7 @@ BEGIN
 										# multicolumn partitioning
 										$sub_check_cond .= "\t$self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{column} < " .  $values[$i];
 									} else {
-										$sub_check_cond .= " FROM (unbounded) TO (" .  $values[$i] . ")";
+										$sub_check_cond .= " FROM (MINVALUE) TO (" .  $values[$i] . ")";
 									}
 								}
 							}
@@ -13030,7 +13030,7 @@ sub _show_infos
 				# Minimal unit is 1
 				$report_info{'Objects'}{$typ}{'cost_value'} = 1 if ($report_info{'Objects'}{$typ}{'cost_value'} =~ /^0\./);
 				# For some object's type do not set migration unit upper than 2 days.
-				if (grep(/^$typ$/, 'TABLE PARTITION', 'GLOBAL TEMPORARY TABLE')) {
+				if (grep(/^$typ$/, 'TABLE PARTITION', 'GLOBAL TEMPORARY TABLE', 'TRIGGER', 'VIEW')) {
 					$report_info{'Objects'}{$typ}{'cost_value'} = 168 if ($report_info{'Objects'}{$typ}{'cost_value'} > 168);
 				} elsif (grep(/^$typ$/, 'TABLE', 'INDEX', 'SYNONYM')) {
 					$report_info{'Objects'}{$typ}{'cost_value'} = 84 if ($report_info{'Objects'}{$typ}{'cost_value'} > 84);
