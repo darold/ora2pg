@@ -341,6 +341,9 @@ sub convert_plsql_code
 		%{$class->{single_fct_call}} = ();
 		$code_parts[$i] = extract_function_code($class, $code_parts[$i], 0);
 
+		# Things that must ne done when functions are replaced with placeholder
+		$code_parts[$i] = replace_without_function($class, $code_parts[$i]);
+
 		foreach my $k (keys %{$class->{single_fct_call}}) {
 			$class->{single_fct_call}{$k} = replace_oracle_function($class, $class->{single_fct_call}{$k});
 			if ($class->{single_fct_call}{$k} =~ /^CAST\s*\(.*\%\%REPLACEFCT(\d+)\%\%/i) {
@@ -484,13 +487,13 @@ sub plsql_to_plpgsql
 		$str =~ s/([^<])=>/$1:=/gs;
 	}
 
+	# Replace listagg() call
+	$str =~ s/\bLISTAGG\s*\((.*?)\)\s+WITHIN\s+GROUP\s*\((.*?)\)/string_agg($1 $2)/ig;
+
 	# There's no such things in PostgreSQL
 	$str =~ s/PRAGMA RESTRICT_REFERENCES[^;]+;//igs;
         $str =~ s/PRAGMA SERIALLY_REUSABLE[^;]*;//igs;
         $str =~ s/PRAGMA INLINE[^;]+;//igs;
-
-	# Replace listagg() call
-	$str =~ s/\bLISTAGG\s*\((.*?)\)\s+WITHIN\s+GROUP\s*\((.*?)\)/string_agg($1 $2)/ig;
 
 	# Converting triggers
 	#       :new. -> NEW.
@@ -908,9 +911,6 @@ sub translate_statement
 		# Replace call to left outer join obsolete syntax
 		$q[$j] = replace_outer_join($class, $q[$j], 'left');
 
-		# Replacement of connect by with CTE
-		$q[$j] = replace_connect_by($class, $q[$j]);
-
 		# Replace LIMIT into the main query
 		$q[$j] = replace_rownum_with_limit($class, $q[$j]);
 
@@ -926,6 +926,9 @@ sub translate_statement
 
 	# Remove unnecessary offset to position 0 which is the default
 	$stmt =~ s/\s+OFFSET 0//igs;
+
+	# Replacement of connect by with CTE
+	$stmt = replace_connect_by($class, $stmt);
 
 	return $stmt;
 }
@@ -2325,7 +2328,7 @@ sub replace_outer_join
 		if ($str =~ s/^(.*FROM FROM_CLAUSE WHERE)//is) {
 			$start_query = $1;
 		}
-		if ($str =~ s/\s+((?:GROUP BY|ORDER BY).*)$//is) {
+		if ($str =~ s/\s+((?:START WITH|CONNECT BY|ORDER SIBLINGS BY|GROUP BY|ORDER BY).*)$//is) {
 			$end_query = $1;
 		}
 		my @predicat = split(/\s*(\bAND\b|\bOR\b|\%ORA2PG_COMMENT\d+\%)\s*/i, $str);
@@ -2458,7 +2461,6 @@ sub replace_outer_join
 				$comment .= $1;
 			}
 
-			#if ($tmp_tbl !~ /\%SUBQUERY\d+\%/is && $from_clause !~ /\b\Q$tmp_tbl\E\b/is) {
 			if ($from_clause !~ /\b\Q$tmp_tbl\E\b/is) {
 				$from_clause = "$table_decl, " . $from_clause;
 			} elsif ($comment) {
@@ -2492,29 +2494,76 @@ sub replace_connect_by
 {
 	my ($class, $str) = @_;
 
+	return $str if ($str !~ /\bCONNECT\s+BY\b/is);
+
 	my $level = 0;
 
 	my $final_query = "WITH RECURSIVE cte AS (\n";
 
 	# Extract the starting node or level of the tree 
+	my $where_clause = '';
 	my $start_with = '';
-	if ($str =~ s/WHERE\s+(.*?)\s+START\s+WITH\s+(.*?)\s+CONNECT BY\s+//is) {
-		$start_with = $1 . ' AND ' . $2;
-	} elsif ($str =~ s/START\s+WITH\s+(.*?)\s+CONNECT BY\s+//is) {
+	if ($str =~ s/WHERE\s+(.*?)\s+START\s+WITH\s*(.*?)\s+CONNECT BY\s*//is) {
+		$where_clause = " WHERE $1";
+		$start_with = $2;
+	} elsif ($str =~ s/START\s+WITH\s*(.*?)\s+CONNECT BY\s*//is) {
 		$start_with = $1;
 	} else {
 		return $str;
 	}
+	# Remove NOCYCLE
+	$str =~ s/\s+NOCYCLE//is;
+	my $siblings = 0;
+	# Remove SIBLINGS and enable siblings rewrite 
+	if ($str =~ s/\s+SIBLINGS//is) {
+		$siblings = 1;
+	}
+	# remove alias from where clause
+	#$where_clause =~ s/\b[^\.]\.([^\s]+)\b/$1/gs;
+
+	# Extract order by to past it to the query at end
+	my $order_by = '';
+	if ($str =~ s/\s+ORDER BY(.*)//is) {
+		$order_by = $1;
+	}
+
 	# Extract the CONNECT BY clause in the hierarchical query
 	my @prior_clause = '';
-	if ($str =~ s/(?:NOCYLCLE\s*)?(\s+PRIOR\s+.*)//is) {
-		@prior_clause = split(/\s+PRIOR\s+/i, $1);
+	if ($str =~ s/(?:NOCYLCLE\s*)?(\s*PRIOR\s+.*)//is) {
+		@prior_clause = split(/\s*PRIOR\s+/i, $1);
 		$prior_clause[-1] =~ s/\s*;\s*//s;
 		shift(@prior_clause);
+		if ($siblings) {
+			$siblings = $prior_clause[-1];
+			# Keep only the last part
+			$siblings =~ s/^.*\s+//;
+		}
 		map { s/[^\.]+\.//s; } @prior_clause;
+	} else {
+		$str =~ s/NOCYLCLE\s*//is;
+		my $tmp = $str;
+		while ($tmp =~ s/\%SUBQUERY(\d+)\%//is) {
+			my $id = $1;
+			my $subquery = $class->{sub_parts}{$id};
+			$subquery =~ s/^\(//s;
+			$subquery =~ s/\)$//s;
+			if ($subquery =~ /(\s*PRIOR\s+.*)/is) {
+				@prior_clause = split(/\s*PRIOR\s+/i, $1);
+				$prior_clause[-1] =~ s/\s*;\s*//s;
+				shift(@prior_clause);
+				if ($siblings) {
+					$siblings = $prior_clause[-1];
+					# Keep only the last part
+					$siblings =~ s/^.*\s+//;
+				}
+				map { s/[^\.]+\.//s; } @prior_clause;
+				$str =~ s/\%SUBQUERY$id\%//is;
+				last;
+			}
+		}
 	}
 	my $bkup_query = $str;
-	# Cosntruct the initialization query
+	# Construct the initialization query
 	my $has_level = 0;
 	$str =~ s/(SELECT\s+)(.*?)(\s+FROM)/$1COLUMN_ALIAS$3/is;
 	my @columns = split(/\s*,\s*/, $2);
@@ -2541,13 +2590,27 @@ sub replace_connect_by
 			my $col = $1;
 			$connect_by_path{$col}{sep} = $2;
 			# get the column alias
-			$columns[$i] =~ /\s+([^\s]+)\s*$/s;
-			$connect_by_path{$col}{alias} = $1;
+			if ($columns[$i] =~ /\s+([^\s]+)\s*$/s) {
+				$connect_by_path{$col}{alias} = $1;
+			}
 		}
-		if ($columns[$i] =~ s/([^\.]+)\.//s) {
-			push(@tabalias, $1) if (!grep(/^$1$/i, @tabalias));
+		if ($columns[$i] =~ /([^\.]+)\./s) {
+			push(@tabalias, $1) if (!grep(/^\Q$1\E$/i, @tabalias));
 		}
-		extract_subpart($class, $columns[$i]);
+		extract_subpart($class, \$columns[$i]);
+
+		# Append parenthesis on new subqueries values
+		foreach my $z (sort {$a <=> $b } keys %{$class->{sub_parts}}) {
+			next if ($class->{sub_parts}{$z} =~ /^\(/);
+			# If subpart is not empty after transformation
+			if ($class->{sub_parts}{$z} =~ /\S/is) { 
+				# add open and closed parenthesis 
+				$class->{sub_parts}{$z} = '(' . $class->{sub_parts}{$z} . ')';
+			} elsif ($statements[$i] !~ /\s+(WHERE|AND|OR)\s*\%SUBQUERY$z\%/is) {
+				# otherwise do not report the empty parenthesis when this is not a function
+				$class->{sub_parts}{$z} = '(' . $class->{sub_parts}{$z} . ')';
+			}
+		}
 	}
 
 	# Extraction of the table aliases in the FROM clause
@@ -2555,20 +2618,19 @@ sub replace_connect_by
 	$str =~ s/COLUMN_ALIAS/$cols/s;
 	if ($str =~ s/(\s+FROM\s+)(.*)/$1FROM_CLAUSE/is) {
 		my $from_clause = $2;
-		foreach my $t (@tabalias) {
-			$from_clause =~ s/\s+$t\b//gs;
-			$from_clause =~ s/\b$t\.//gs;
-		}
 		$str =~ s/FROM_CLAUSE/$from_clause/;
-	}
-
-	foreach my $t (@tabalias) {
-		$start_with =~ s/\b$t\.//gs;
 	}
 
 	# Now append the UNION ALL query that will be called recursively
 	$final_query .= $str . ' WHERE ' . $start_with . "\n";
+	$where_clause =~ s/^\s*WHERE\s+/ AND /is;
+	$final_query .= $where_clause . "\n";
 	$final_query .= "  UNION ALL\n";
+	if ($siblings && !$order_by) {
+		$final_query =~ s/(\s+FROM\s+)/,ARRAY[ row_number() OVER (ORDER BY $siblings) ] as hierarchy$1/is;
+	} elsif ($siblings) {
+		$final_query =~ s/(\s+FROM\s+)/,ARRAY[ row_number() OVER (ORDER BY $order_by) ] as hierarchy$1/is;
+	}
 	$bkup_query =~ s/(SELECT\s+)(.*?)(\s+FROM)/$1COLUMN_ALIAS$3/is;
 	@columns = split(/\s*,\s*/, $2);
 	for (my $i = 0; $i <= $#columns; $i++) {
@@ -2579,34 +2641,79 @@ sub replace_connect_by
 			last if ($found);
 			$found = 1 if ($columns[$i]=~ /SYS_CONNECT_BY_PATH/is);
 		};
-		if ($columns[$i] =~ s/SYS_CONNECT_BY_PATH\s*[\(]*\s*([^,]+),\s*([^\)]+)\s*\)/e\.$1/is) {
+		if ($columns[$i] =~ s/SYS_CONNECT_BY_PATH\s*[\(]*\s*([^,]+),\s*([^\)]+)\s*\)/$1/is) {
 			$columns[$i] = "c.$connect_by_path{$1}{alias} || $connect_by_path{$1}{sep} || " . $columns[$i];
-		} elsif ($columns[$i] !~ s/^[^\.]+\.(.*)$/e\.$1/s) {
-			$columns[$i] =~ s/^(.*)$/e\.$1/s;
 		}
-		if ($columns[$i] !~ s/\be\.LEVEL\b/(c.level+1)/igs) {
+		if ($columns[$i] !~ s/\b[^\.]+\.LEVEL\b/(c.level+1)/igs) {
 			$columns[$i] =~ s/\bLEVEL\b/(c.level+1)/igs;
 		}
-		extract_subpart($class, $columns[$i]);
+		extract_subpart($class, \$columns[$i]);
+
+		# Append parenthesis on new subqueries values
+		foreach my $z (sort {$a <=> $b } keys %{$class->{sub_parts}}) {
+			next if ($class->{sub_parts}{$z} =~ /^\(/);
+			# If subpart is not empty after transformation
+			if ($class->{sub_parts}{$z} =~ /\S/is) { 
+				# add open and closed parenthesis 
+				$class->{sub_parts}{$z} = '(' . $class->{sub_parts}{$z} . ')';
+			} elsif ($statements[$i] !~ /\s+(WHERE|AND|OR)\s*\%SUBQUERY$z\%/is) {
+				# otherwise do not report the empty parenthesis when this is not a function
+				$class->{sub_parts}{$z} = '(' . $class->{sub_parts}{$z} . ')';
+			}
+		}
 	}
 	$cols = join(',', @columns);
 	$bkup_query =~ s/COLUMN_ALIAS/$cols/s;
+	my $prior_alias = '';
 	if ($bkup_query =~ s/(\s+FROM\s+)(.*)/$1FROM_CLAUSE/is) {
 		my $from_clause = $2;
-		foreach my $t (@tabalias) {
-			$from_clause =~ s/\s+$t\b//gs;
-			$from_clause =~ s/\b$t\.//gs;
+		if ($from_clause =~ /\b[^\s]+\s+(?:AS\s+)?([^\s]+)\b/) {
+			my $a = $1;
+			$prior_alias = "$a." if (!grep(/\b$a\.[^\s]+$/, @prior_clause));
 		}
 		$bkup_query =~ s/FROM_CLAUSE/$from_clause/;
 	}
 
 	# Remove last subquery alias in the from clause to put our own 
 	$bkup_query =~ s/(\%SUBQUERY\d+\%)\s+[^\s]+\s*$/$1/is;
-	$final_query .= $bkup_query . ' e';
-	map { s/^\s*(.*?)(=\s*)(.*)/c\.$1$2e\.$3/s; } @prior_clause;
-	$final_query .= " JOIN cte c ON (" . join(' AND ', @prior_clause) . ")\n";
+	if ($siblings && $order_by) {
+		$bkup_query =~ s/(\s+FROM\s+)/, array_append(c.hierarchy, row_number() OVER (ORDER BY $order_by))  as hierarchy$1/is;
+	} elsif ($siblings) {
+		$bkup_query =~ s/(\s+FROM\s+)/, array_append(c.hierarchy, row_number() OVER (ORDER BY $siblings))  as hierarchy$1/is;
+	}
+	$final_query .= $bkup_query;
+	map { s/^\s*(.*?)(=\s*)(.*)/c\.$1$2$prior_alias$3/s; } @prior_clause;
+	$where_clause =~ s/^\s*AND\s*/ WHERE /is;
+	$final_query .= " JOIN cte c ON (" . join(' AND ', @prior_clause) . ")$where_clause\n";
+	if ($siblings) {
+		$order_by = " ORDER BY hierarchy";
+	} elsif ($order_by) {
+		$order_by =~ s/^, //s;
+		$order_by = " ORDER BY $order_by";
+	}
+	$final_query .= "\n) SELECT * FROM cte$order_by;\n";
 
-	$final_query .= "\n) SELECT * FROM cte;\n";
+	return $final_query;
+}
+
+sub replace_without_function
+{
+	my ($class, $str) = @_;
+
+	# Code disabled because it break other complex GROUP BY clauses
+	# Keeping it just in case some light help me to solve this problem
+	# Reported in issue #496
+	# Remove text constant in GROUP BY clause, this is not allowed
+	# GROUP BY ?TEXTVALUE10?, %%REPLACEFCT1%%, DDI.LEGAL_ENTITY_ID
+	#if ($str =~ s/(\s+GROUP\s+BY\s+)(.*?)((?:(?=\bUNION\b|\bORDER\s+BY\b|\bLIMIT\b|\bINTO\s+|\bFOR\s+UPDATE\b|\bPROCEDURE\b).)+|$)/$1\%GROUPBY\% $3/is) {
+	#	my $tmp = $2;
+	#	$tmp =~ s/\?TEXTVALUE\d+\?[,]*\s*//gs;
+	#	$tmp =~ s/(\s*,\s*),\s*/$1/gs;
+	#	$tmp =~ s/\s*,\s*$//s;
+	#	$str =~ s/\%GROUPBY\%/$tmp/s;
+	#}
+
+	return $str;
 }
 
 1;
