@@ -13032,6 +13032,9 @@ sub _show_infos
 				# For some object's type do not set migration unit upper than 2 days.
 				if (grep(/^$typ$/, 'TABLE PARTITION', 'GLOBAL TEMPORARY TABLE', 'TRIGGER', 'VIEW')) {
 					$report_info{'Objects'}{$typ}{'cost_value'} = 168 if ($report_info{'Objects'}{$typ}{'cost_value'} > 168);
+					if (grep(/^$typ$/, 'TRIGGER', 'VIEW') && $report_info{'Objects'}{$typ}{'real_number'} > 500) {
+						$report_info{'Objects'}{$typ}{'cost_value'} += 84 * int(($report_info{'Objects'}{$typ}{'real_number'} - 500) / 500);
+					}
 				} elsif (grep(/^$typ$/, 'TABLE', 'INDEX', 'SYNONYM')) {
 					$report_info{'Objects'}{$typ}{'cost_value'} = 84 if ($report_info{'Objects'}{$typ}{'cost_value'} > 84);
 				}
