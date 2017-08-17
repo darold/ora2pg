@@ -10640,13 +10640,14 @@ sub _get_custom_types
 	my %all_types = %TYPE;
 	$all_types{'DOUBLE'} = $all_types{'DOUBLE PRECISION'};
 	delete $all_types{'DOUBLE PRECISION'};
-	my @types_found = ();
+	my %types_found = ();
 	while ($str =~ s/(\w+)//s) {
 		if (exists $all_types{$1}) {
-			push(@types_found, $all_types{$1});
+			push(@{$types_found{pg_types}}, $all_types{$1});
+			push(@{$types_found{src_types}}, $1);
 		}
 	}
-        return @types_found;
+        return %types_found;
 }
 
 sub format_data_row
@@ -10691,12 +10692,14 @@ sub format_data_row
 		} elsif ($row->[$idx] =~ /^(?!(?!)\x{100})ARRAY\(0x/) {
 			my @type_col = ();
 			my $is_nested = 0;
+			my $col_cond = $self->hs_cond(\@{$custom_types->{$data_type}{pg_types}},\@{$custom_types->{$data_type}{src_types}}, $table);
 			for (my $i = 0;  $i <= $#{$row->[$idx]}; $i++) {
-				if ($custom_types->{$data_type}[$i] eq '') {
-					$custom_types->{$data_type}[$i] = $custom_types->{$data_type}[0];
+				if ($custom_types->{$data_type}{pg_types}[$i] eq '') {
+					$custom_types->{$data_type}{pg_types}[$i] = $custom_types->{$data_type}{src_types}[$i];
 					$is_nested = 1;
 				}
-				push(@type_col, $self->format_data_type($row->[$idx][$i], $custom_types->{$data_type}[$i], $action, $table, $idx, $colcond->[$idx]));
+				push(@type_col, $self->format_data_type($row->[$idx][$i], $custom_types->{$data_type}{pg_types}[$i],
+ $action, $table, $custom_types->{$data_type}{src_types}[$i], $i, $col_cond->[$i]));
 			}
 			if (!$is_nested) {
 				if ($action eq 'COPY') {
@@ -12198,7 +12201,10 @@ sub _extract_data
 					$custom_type = $self->_get_types($dbh, $stt->[$idx]);
 					foreach my $tpe (sort {length($a->{name}) <=> length($b->{name}) } @{$custom_type}) {
 						$self->logit("Looking inside custom type $tpe->{name} to extract values...\n", 1);
-						push(@{$user_type{$data_type}}, &_get_custom_types($tpe->{code}));
+						my %types_def = &_get_custom_types($tpe->{code});
+						$self->logit("\tfound type description: $tpe->{name}(" . join(',', @{$types_def{pg_types}}) . ")\n", 1);
+						push(@{$user_type{$data_type}{pg_types}}, @{$types_def{pg_types}});
+						push(@{$user_type{$data_type}{src_types}}, @{$types_def{src_types}});
 					}
 				}
 			}
@@ -12239,7 +12245,10 @@ sub _extract_data
 					$custom_type = $self->_get_types($self->{dbh}, $stt->[$idx]);
 					foreach my $tpe (sort {length($a->{name}) <=> length($b->{name}) } @{$custom_type}) {
 						$self->logit("Looking inside custom type $tpe->{name} to extract values...\n", 1);
-						push(@{$user_type{$data_type}}, &_get_custom_types($tpe->{code}));
+						my %types_def = &_get_custom_types($tpe->{code});
+						$self->logit("\tfound type description: $tpe->{name}(" . join(',', @{$types_def{pg_types}}) . ")\n", 1);
+						push(@{$user_type{$data_type}{pg_types}}, @{$types_def{pg_types}});
+						push(@{$user_type{$data_type}{src_types}}, @{$types_def{src_types}});
 					}
 				}
 			}
