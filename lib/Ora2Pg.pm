@@ -10692,14 +10692,16 @@ sub format_data_row
 		} elsif ($row->[$idx] =~ /^(?!(?!)\x{100})ARRAY\(0x/) {
 			my @type_col = ();
 			my $is_nested = 0;
-			my $col_cond = $self->hs_cond(\@{$custom_types->{$data_type}{pg_types}},\@{$custom_types->{$data_type}{src_types}}, $table);
 			for (my $i = 0;  $i <= $#{$row->[$idx]}; $i++) {
 				if ($custom_types->{$data_type}{pg_types}[$i] eq '') {
-					$custom_types->{$data_type}{pg_types}[$i] = $custom_types->{$data_type}{src_types}[$i];
+					$custom_types->{$data_type}{pg_types}[$i] = $custom_types->{$data_type}{pg_types}[0];
+					$custom_types->{$data_type}{src_types}[$i] = $custom_types->{$data_type}{src_types}[0];
 					$is_nested = 1;
 				}
-				push(@type_col, $self->format_data_type($row->[$idx][$i], $custom_types->{$data_type}{pg_types}[$i],
- $action, $table, $custom_types->{$data_type}{src_types}[$i], $i, $col_cond->[$i]));
+			}
+			my $col_cond = $self->hs_cond(\@{$custom_types->{$data_type}{pg_types}},\@{$custom_types->{$data_type}{src_types}}, $table);
+			for (my $i = 0;  $i <= $#{$row->[$idx]}; $i++) {
+				push(@type_col, $self->format_data_type($row->[$idx][$i], $custom_types->{$data_type}{pg_types}[$i], $action, $table, $custom_types->{$data_type}{src_types}[$i], $i, $col_cond->[$i], undef, $is_nested));
 			}
 			if (!$is_nested) {
 				if ($action eq 'COPY') {
@@ -10709,17 +10711,15 @@ sub format_data_row
 					$row->[$idx] =  "ROW(" . join(',', @type_col) . ")";
 				}
 			} else {
-				@type_col = '';
-				for (my $i = 0;  $i <= $#{$row->[$idx]}; $i++) {
-					push(@type_col, $row->[$idx][$i]);
-				}
 				if ($action eq 'COPY') {
 					map { s/^\\N$//; } @type_col; # \N for NULL is not allowed
-					map{ if (/,/) { s/^/""/; s/$/""/; }; } @type_col;
+					# This is a nested column we need to double double quote
+					# if the value contains a comma and escape double quote
+					map{ s/"/\\\\\\\\""/igs; } @type_col;
+					map{ if (/[,"]/) { s/^/""/; s/$/""/; }; } @type_col;
 					$row->[$idx] =  '("{' . join(',', @type_col) . '}")';
 				} else {
-					map{ if (/,/) { s/^/""/; s/$/""/; }; } @type_col;
-					$row->[$idx] =  "'(\"{" . join(',', @type_col) . "}\")'";
+					$row->[$idx] =  "ROW('{" . join(',', @type_col) . "}')";
 				}
 			}
 		} else {
@@ -10730,7 +10730,10 @@ sub format_data_row
 
 sub format_data_type
 {
-	my ($self, $col, $data_type, $action, $table, $src_type, $idx, $cond, $sprep) = @_;
+	my ($self, $col, $data_type, $action, $table, $src_type, $idx, $cond, $sprep, $isnested) = @_;
+
+	my $q = "'";
+	$q = '"' if ($isnested);
 
 	# Internal timestamp retrieves from custom type is as follow: 01-JAN-77 12.00.00.000000 AM (internal_date_max)
 	if (($data_type eq 'char') && $col =~ /^(\d{2})-([A-Z]{3})-(\d{2}) (\d{2})\.(\d{2})\.(\d{2}\.\d+) (AM|PM)$/ ) {
@@ -10767,31 +10770,31 @@ sub format_data_type
 			if (!$cond->{isnotnull} || ($self->{empty_lob_null} && ($cond->{clob} || $cond->{isbytea}))) {
 				$col = 'NULL' if (!$sprep);
 			} else {
-				$col = "''";
+				$col = "$q$q";
 			}
 		} elsif ( ($src_type =~ /geometry/i) && ($self->{geometry_extract_type} eq 'WKB') ) {
-			$col = "St_GeomFromWKB('\\x" . unpack('H*', $col) . "', $self->{spatial_srid}{$table}->[$idx])";
+			$col = "St_GeomFromWKB($q\\x" . unpack('H*', $col) . "$q, $self->{spatial_srid}{$table}->[$idx])";
 		} elsif ($cond->{isbytea}) {
-			$col = $self->_escape_lob($col, $cond->{raw} ? 'RAW' : 'BLOB', $cond);
+			$col = $self->_escape_lob($col, $cond->{raw} ? 'RAW' : 'BLOB', $cond, $q);
 		} elsif ($cond->{istext}) {
 			if ($cond->{clob}) {
-				$col = $self->_escape_lob($col, 'CLOB', $cond);
+				$col = $self->_escape_lob($col, 'CLOB', $cond, $q);
 			} elsif (!$sprep) {
-				$col = $self->escape_insert($col);
+				$col = $self->escape_insert($col, $q);
 			}
 		} elsif ($cond->{isbit}) {
-			$col = "B'$col'";
+			$col = "B$q" . $col . "$q";
 		} elsif ($cond->{isdate}) {
 			if ($col =~ /^0000-00-00/) {
-				$col = $self->{replace_zero_date} ?  "'$self->{replace_zero_date}'" : 'NULL';
+				$col = $self->{replace_zero_date} ?  "$q$self->{replace_zero_date}$q" : 'NULL';
 			} elsif ($col =~ /^(\d+-\d+-\d+ \d+:\d+:\d+)\.$/) {
-				$col = "'$1'";
+				$col = "$q$1$q";
 			} else {
-				$col = "'$col'";
+				$col = "$q$col$q";
 			}
 		} elsif ($data_type eq 'boolean') {
 			if (exists $self->{ora_boolean_values}{lc($col)}) {
-				$col = "'" . $self->{ora_boolean_values}{lc($col)} . "'";
+				$col = $q . $self->{ora_boolean_values}{lc($col)} . $q;
 			}
 		} else {
 			# covered now by the call to _numeric_format()
@@ -10821,9 +10824,9 @@ sub format_data_type
 			$col =~ s/\~/inf/;
 			$col = '\N' if ($col eq '');
 		} elsif ($cond->{isbytea}) {
-			$col = $self->_escape_lob($col, $cond->{raw} ? 'RAW' : 'BLOB', $cond);
+			$col = $self->_escape_lob($col, $cond->{raw} ? 'RAW' : 'BLOB', $cond, $q);
 		} elsif ($cond->{istext}) {
-			$cond->{clob} ? $col = $self->_escape_lob($col, 'CLOB', $cond) : $col = $self->escape_copy($col);
+			$cond->{clob} ? $col = $self->_escape_lob($col, 'CLOB', $cond, $q) : $col = $self->escape_copy($col, $q);
 		} elsif ($cond->{isdate}) {
 			if ($col =~ /^0000-00-00/) {
 				$col = $self->{replace_zero_date} || '\N';
@@ -11339,10 +11342,14 @@ sub _restore_comments
 {
 	my ($self, $content) = @_;
 
+	# Replace text values that was replaced in code
 	$self->_restore_text_constant_part($content);
 
+	# Restore comments
 	while ($$content =~ s/(\%ORA2PG_COMMENT\d+\%)[\n]*/$self->{comment_values}{$1}\n/is) { delete $self->{comment_values}{$1}; };
 
+	# Replace potential text values that was replaced in comments
+	$self->_restore_text_constant_part($content);
 }
 
 =head2 _remove_comments
@@ -16441,7 +16448,7 @@ sub normalize_query
 
 sub _escape_lob
 {
-	my ($self, $col, $generic_type, $cond) = @_;
+	my ($self, $col, $generic_type, $cond, $q) = @_;
 
 	if ($self->{type} eq 'COPY') {
 		if ( ($generic_type eq 'BLOB') || ($generic_type eq 'RAW') ) {
@@ -16450,7 +16457,7 @@ sub _escape_lob
 			$col = unpack("H*",$col) if ($generic_type ne 'RAW');
 			$col = '\\\\x' . $col;
 		} elsif (($generic_type eq 'CLOB') || $cond->{istext}) {
-			$col = $self->escape_copy($col);
+			$col = $self->escape_copy($col, $q);
 		}
 	} else {
 		if ( ($generic_type eq 'BLOB') || ($generic_type eq 'RAW') ) {
@@ -16464,7 +16471,7 @@ sub _escape_lob
 			}
 			$col = "decode($col, 'hex')";
 		} elsif (($generic_type eq 'CLOB') || $cond->{istext}) {
-			$col = $self->escape_insert($col);
+			$col = $self->escape_insert($col, $q);
 		}
 	}
 
@@ -16473,7 +16480,10 @@ sub _escape_lob
 
 sub escape_copy
 {
-	my ($self, $col) = @_;
+	my ($self, $col, $q) = @_;
+
+	$q ||= "'";
+
 	if ($self->{has_utf8_fct}) {
 		utf8::encode($col) if (!utf8::valid($col));
 	}
@@ -16484,38 +16494,42 @@ sub escape_copy
 		"\n" => "\\n",
 		"\t" => "\\t",
 	};
-#	$col =~ s/\0//gs;
-#	$col =~ s/\\/\\\\/gs;
-#	$col =~ s/\r/\\r/gs;
-#	$col =~ s/\n/\\n/gs;
-#	$col =~ s/\t/\\t/gs;
 	$col =~ s/(\0|\\|\r|\n|\t)/$replacements->{$1}/egs;
 	if (!$self->{noescape}) {
 		$col =~ s/\f/\\f/gs;
 		$col =~ s/([\1-\10\13-\14\16-\37])/sprintf("\\%03o", ord($1))/egs;
-#		$col =~ s/([\1-\10])/sprintf("\\%03o", ord($1))/egs;
-#		$col =~ s/([\13-\14])/sprintf("\\%03o", ord($1))/egs;
-#		$col =~ s/([\16-\37])/sprintf("\\%03o", ord($1))/egs;
 	}
+
 	return $col;
 }
 
 sub escape_insert
 {
-	my ($self, $col) = @_;
+	my ($self, $col, $q) = @_;
+
+	$q ||= "'";
 
 	if (!$self->{standard_conforming_strings}) {
 		$col =~ s/'/''/gs; # double single quote
+		if ($q eq '"') {
+			$col =~ s/"/\\"/gs; # escape double quote
+		}
 		$col =~ s/\\/\\\\/gs;
 		$col =~ s/\0//gs;
-		$col = "'$col'";
+		$col = "$q$col$q";
 	} else {
 		$col =~ s/\0//gs;
 		$col =~ s/\\/\\\\/gs;
-		$col =~ s/'/\\'/gs; # escape single quote
 		$col =~ s/\r/\\r/gs;
 		$col =~ s/\n/\\n/gs;
-		$col = "E'$col'";
+		if ($q eq '"') {
+			$col =~ s/'/''/gs; # double single quote
+			$col =~ s/"/\\"/gs; # escape double quote
+			$col = "$q$col$q";
+		} else {
+			$col =~ s/'/\\'/gs; # escape single quote
+			$col = "E'$col'";
+		}
 	}
 	return $col;
 }
