@@ -2736,6 +2736,7 @@ sub replace_connect_by
 	}
 	# remove alias from where clause
 	#$where_clause =~ s/\b[^\.]\.([^\s]+)\b/$1/gs;
+	$where_clause =~ s/\b[^\.]\.([^\s]+)\b/$1/gs;
 
 	# Extract order by to past it to the query at end
 	my $order_by = '';
@@ -2839,8 +2840,8 @@ sub replace_connect_by
 
 	# Now append the UNION ALL query that will be called recursively
 	$final_query .= $str . ' WHERE ' . $start_with . "\n";
-	$where_clause =~ s/^\s*WHERE\s+/ AND /is;
-	$final_query .= $where_clause . "\n";
+	#$where_clause =~ s/^\s*WHERE\s+/ AND /is;
+	#$final_query .= $where_clause . "\n";
 	$final_query .= "  UNION ALL\n";
 	if ($siblings && !$order_by) {
 		$final_query =~ s/(\s+FROM\s+)/,ARRAY[ row_number() OVER (ORDER BY $siblings) ] as hierarchy$1/is;
@@ -2899,15 +2900,17 @@ sub replace_connect_by
 	}
 	$final_query .= $bkup_query;
 	map { s/^\s*(.*?)(=\s*)(.*)/c\.$1$2$prior_alias$3/s; } @prior_clause;
-	$where_clause =~ s/^\s*AND\s*/ WHERE /is;
-	$final_query .= " JOIN cte c ON (" . join(' AND ', @prior_clause) . ")$where_clause\n";
+	#$where_clause =~ s/^\s*AND\s*/ WHERE /is;
+	#$final_query .= " JOIN cte c ON (" . join(' AND ', @prior_clause) . ")$where_clause\n";
+	$final_query .= " JOIN cte c ON (" . join(' AND ', @prior_clause) . ")\n";
 	if ($siblings) {
 		$order_by = " ORDER BY hierarchy";
 	} elsif ($order_by) {
 		$order_by =~ s/^, //s;
 		$order_by = " ORDER BY $order_by";
 	}
-	$final_query .= "\n) SELECT * FROM cte$order_by;\n";
+	#$final_query .= "\n) SELECT * FROM cte$order_by;\n";
+	$final_query .= "\n) SELECT * FROM cte$where_clause$order_by;\n";
 
 	return $final_query;
 }
