@@ -10692,16 +10692,21 @@ sub format_data_row
 		} elsif ($row->[$idx] =~ /^(?!(?!)\x{100})ARRAY\(0x/) {
 			my @type_col = ();
 			my $is_nested = 0;
+			my @src_type = ();
+			my @dst_type = ();
 			for (my $i = 0;  $i <= $#{$row->[$idx]}; $i++) {
 				if ($custom_types->{$data_type}{pg_types}[$i] eq '') {
-					$custom_types->{$data_type}{pg_types}[$i] = $custom_types->{$data_type}{pg_types}[0];
-					$custom_types->{$data_type}{src_types}[$i] = $custom_types->{$data_type}{src_types}[0];
+					push(@dst_type, $custom_types->{$data_type}{pg_types}[0]);
+					push(@src_type, $custom_types->{$data_type}{src_types}[0]);
 					$is_nested = 1;
+				} else {
+					push(@dst_type, $custom_types->{$data_type}{pg_types}[$i]);
+					push(@src_type, $custom_types->{$data_type}{src_types}[$i]);
 				}
 			}
-			my $col_cond = $self->hs_cond(\@{$custom_types->{$data_type}{pg_types}},\@{$custom_types->{$data_type}{src_types}}, $table);
+			my $col_cond = $self->hs_cond(\@dst_type,\@src_type, $table);
 			for (my $i = 0;  $i <= $#{$row->[$idx]}; $i++) {
-				push(@type_col, $self->format_data_type($row->[$idx][$i], $custom_types->{$data_type}{pg_types}[$i], $action, $table, $custom_types->{$data_type}{src_types}[$i], $i, $col_cond->[$i], undef, $is_nested));
+				push(@type_col, $self->format_data_type($row->[$idx][$i], $dst_type[$i], $action, $table, $src_type[$i], $i, $col_cond->[$i], undef, $is_nested));
 			}
 			if (!$is_nested) {
 				if ($action eq 'COPY') {
@@ -10713,13 +10718,32 @@ sub format_data_row
 			} else {
 				if ($action eq 'COPY') {
 					map { s/^\\N$//; } @type_col; # \N for NULL is not allowed
-					# This is a nested column we need to double double quote
-					# if the value contains a comma and escape double quote
-					map{ s/"/\\\\\\\\""/igs; } @type_col;
-					map{ if (/[,"]/) { s/^/""/; s/$/""/; }; } @type_col;
-					$row->[$idx] =  '("{' . join(',', @type_col) . '}")';
+					# Want to export the user defined type as charaters array
+					if ($data_types->[$idx] =~ /(text|char|varying)\[\d*\]$/i) {
+						map{ s/"/\\\\"/igs; } @type_col;
+						map{ if (/[,"]/) { s/^/"/; s/$/"/; }; } @type_col;
+						$row->[$idx] =  '{' . join(',', @type_col) . '}';
+					# Data must be exported as an array of numeric types
+					} elsif ($data_types->[$idx] =~ /\[\d*\]$/i) {
+						$row->[$idx] =  '{' . join(',', @type_col) . '}';
+					} else {
+						map{ s/"/\\\\\\\\""/igs; } @type_col;
+						map{ if (/[,"]/) { s/^/""/; s/$/""/; }; } @type_col;
+						$row->[$idx] =  '("{' . join(',', @type_col) . '}")';
+					}
 				} else {
-					$row->[$idx] =  "ROW('{" . join(',', @type_col) . "}')";
+					# Want to export the user defined type as array
+					if ($data_types->[$idx] =~ /(text|char|varying)\[\d*\]$/i) {
+						map{ s/"/\\"/igs; } @type_col;
+						map{ s/'/''/igs; } @type_col;
+						map{ if (/[,"]/) { s/^/"/; s/$/"/; }; } @type_col;
+						$row->[$idx] =  "'{" . join(',', @type_col) . "}'";
+					# Data must be exported as an array of numeric types
+					} elsif ($data_types->[$idx] =~ /\[\d*\]$/i) {
+						$row->[$idx] =  "'{" . join(',', @type_col) . "}'";
+					} else {
+						$row->[$idx] =  "ROW('{" . join(',', @type_col) . "}')";
+					}
 				}
 			}
 		} else {
@@ -10775,12 +10799,12 @@ sub format_data_type
 		} elsif ( ($src_type =~ /geometry/i) && ($self->{geometry_extract_type} eq 'WKB') ) {
 			$col = "St_GeomFromWKB($q\\x" . unpack('H*', $col) . "$q, $self->{spatial_srid}{$table}->[$idx])";
 		} elsif ($cond->{isbytea}) {
-			$col = $self->_escape_lob($col, $cond->{raw} ? 'RAW' : 'BLOB', $cond, $q);
+			$col = $self->_escape_lob($col, $cond->{raw} ? 'RAW' : 'BLOB', $cond, $isnested);
 		} elsif ($cond->{istext}) {
 			if ($cond->{clob}) {
-				$col = $self->_escape_lob($col, 'CLOB', $cond, $q);
+				$col = $self->_escape_lob($col, 'CLOB', $cond, $isnested);
 			} elsif (!$sprep) {
-				$col = $self->escape_insert($col, $q);
+				$col = $self->escape_insert($col, $isnested);
 			}
 		} elsif ($cond->{isbit}) {
 			$col = "B$q" . $col . "$q";
@@ -10824,9 +10848,9 @@ sub format_data_type
 			$col =~ s/\~/inf/;
 			$col = '\N' if ($col eq '');
 		} elsif ($cond->{isbytea}) {
-			$col = $self->_escape_lob($col, $cond->{raw} ? 'RAW' : 'BLOB', $cond, $q);
+			$col = $self->_escape_lob($col, $cond->{raw} ? 'RAW' : 'BLOB', $cond, $isnested);
 		} elsif ($cond->{istext}) {
-			$cond->{clob} ? $col = $self->_escape_lob($col, 'CLOB', $cond, $q) : $col = $self->escape_copy($col, $q);
+			$cond->{clob} ? $col = $self->_escape_lob($col, 'CLOB', $cond, $isnested) : $col = $self->escape_copy($col, $isnested);
 		} elsif ($cond->{isdate}) {
 			if ($col =~ /^0000-00-00/) {
 				$col = $self->{replace_zero_date} || '\N';
@@ -16448,7 +16472,7 @@ sub normalize_query
 
 sub _escape_lob
 {
-	my ($self, $col, $generic_type, $cond, $q) = @_;
+	my ($self, $col, $generic_type, $cond, $isnested) = @_;
 
 	if ($self->{type} eq 'COPY') {
 		if ( ($generic_type eq 'BLOB') || ($generic_type eq 'RAW') ) {
@@ -16457,7 +16481,7 @@ sub _escape_lob
 			$col = unpack("H*",$col) if ($generic_type ne 'RAW');
 			$col = '\\\\x' . $col;
 		} elsif (($generic_type eq 'CLOB') || $cond->{istext}) {
-			$col = $self->escape_copy($col, $q);
+			$col = $self->escape_copy($col, $isnested);
 		}
 	} else {
 		if ( ($generic_type eq 'BLOB') || ($generic_type eq 'RAW') ) {
@@ -16471,7 +16495,7 @@ sub _escape_lob
 			}
 			$col = "decode($col, 'hex')";
 		} elsif (($generic_type eq 'CLOB') || $cond->{istext}) {
-			$col = $self->escape_insert($col, $q);
+			$col = $self->escape_insert($col, $isnested);
 		}
 	}
 
@@ -16480,9 +16504,10 @@ sub _escape_lob
 
 sub escape_copy
 {
-	my ($self, $col, $q) = @_;
+	my ($self, $col, $isnested) = @_;
 
-	$q ||= "'";
+	my $q = "'";
+	$q = '"' if ($isnested);
 
 	if ($self->{has_utf8_fct}) {
 		utf8::encode($col) if (!utf8::valid($col));
@@ -16505,13 +16530,14 @@ sub escape_copy
 
 sub escape_insert
 {
-	my ($self, $col, $q) = @_;
+	my ($self, $col, $isnested) = @_;
 
-	$q ||= "'";
+	my $q = "'";
+	$q = '"' if ($isnested);
 
 	if (!$self->{standard_conforming_strings}) {
 		$col =~ s/'/''/gs; # double single quote
-		if ($q eq '"') {
+		if ($isnested) {
 			$col =~ s/"/\\"/gs; # escape double quote
 		}
 		$col =~ s/\\/\\\\/gs;
@@ -16522,7 +16548,7 @@ sub escape_insert
 		$col =~ s/\\/\\\\/gs;
 		$col =~ s/\r/\\r/gs;
 		$col =~ s/\n/\\n/gs;
-		if ($q eq '"') {
+		if ($isnested) {
 			$col =~ s/'/''/gs; # double single quote
 			$col =~ s/"/\\"/gs; # escape double quote
 			$col = "$q$col$q";

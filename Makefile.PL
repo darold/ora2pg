@@ -760,7 +760,46 @@ ENABLE_MICROSECOND      1
 # exported as timestamp by Ora2Pg can be forced into type date. Value is
 # a comma-separated list of TABLE:COLUMN:TYPE structure. If you need to use
 # comma or space inside type definition you will have to backslash them.
-#MODIFY_TYPE     TABLE1:COL3:varchar,TABLE1:COL4:decimal(9\\,6)
+# 
+#         MODIFY_TYPE     TABLE1:COL3:varchar,TABLE1:COL4:decimal(9\,6)
+# 
+# Type of table1.col3 will be replaced by a varchar and table1.col4 by
+# a decimal with precision.
+# 
+# If the column's type is a user defined type Ora2Pg will autodetect the
+# composite type and will export its data using ROW(). Some Oracle user
+# defined types are just array of a native type, in this case you may want
+# to transform this column in simple array of a PostgreSQL native type.
+# To do so, just redefine the destination type as wanted and Ora2Pg will
+# also transform the data as an array. For example, with the following
+# definition in Oracle:
+# 
+#         CREATE OR REPLACE TYPE mem_type IS VARRAY(10) of VARCHAR2(15);
+#         CREATE TABLE club (Name VARCHAR2(10),
+#                 Address VARCHAR2(20),
+#                 City VARCHAR2(20),
+#                 Phone VARCHAR2(8),
+#                 Members mem_type
+#         );
+# 
+# custom type "mem_type" is just a string array and can be translated into
+# the following in PostgreSQL:
+# 
+#         CREATE TABLE club (
+#                 name varchar(10),
+#                 address varchar(20),
+#                 city varchar(20),
+#                 phone varchar(8),
+#                 members text[]
+#         ) ;
+# 
+# To do so, just use the directive as follow:
+# 
+#         MODIFY_TYPE     CLUB:MEMBERS:text[]
+# 
+# Ora2Pg will take care to transform all data of this column in the correct
+# format. Only arrays of characters and numerics types are supported.
+#MODIFY_TYPE     
 
 # By default Oracle call to function TO_NUMBER will be translated as a cast
 # into numeric. For example, TO_NUMBER('10.1234') is converted into PostgreSQL
