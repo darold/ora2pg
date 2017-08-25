@@ -4871,6 +4871,7 @@ LANGUAGE plpgsql ;
 			}
 		}
 		#--------------------------------------------------------
+		my $default_global_vars = '';
 
 		my $number_fct = 0;
 		my $i = 1;
@@ -4884,7 +4885,14 @@ LANGUAGE plpgsql ;
 			}
 			$i++, next if (!$self->{packages}{$pkg}{text});
 
-			# Cleanup previous global variables defined in other package
+			# Save and cleanup previous global variables defined in other package
+			if (scalar keys %{$self->{global_variables}}) {
+				foreach my $n (sort keys %{$self->{global_variables}}) {
+					if (exists $self->{global_variables}{$n}{constant} || exists $self->{global_variables}{$n}{default}) {
+						$default_global_vars .= "$n = '$self->{global_variables}{$n}{default}'\n";
+					}
+				}
+			}
 			%{$self->{global_variables}} = ();
 
 			my $pkgbody = '';
@@ -4980,21 +4988,24 @@ LANGUAGE plpgsql ;
 		$sql_output = '';
 		# Create file to load custom variable initialization into postgresql.conf
 		if (scalar keys %{$self->{global_variables}}) {
-			my $default_vars = '';
 			foreach my $n (sort keys %{$self->{global_variables}}) {
 				if (exists $self->{global_variables}{$n}{constant} || exists $self->{global_variables}{$n}{default}) {
-					$default_vars .= "$n = '$self->{global_variables}{$n}{default}'\n";
+					$default_global_vars .= "$n = '$self->{global_variables}{$n}{default}'\n";
 				}
 			}
-			if ($default_vars) {
-				my $dirprefix = '';
-				$dirprefix = "$self->{output_dir}/" if ($self->{output_dir});
-				open(OUT, ">${dirprefix}global_variables.conf");
-				print OUT "-- Global variables with default values used in packages.\n";
-				print OUT $default_vars;
-				close(OUT);
-			}
 		}
+		%{$self->{global_variables}} = ();
+
+		# Save global variable that need to be initialized at startup
+		if ($default_global_vars) {
+			my $dirprefix = '';
+			$dirprefix = "$self->{output_dir}/" if ($self->{output_dir});
+			open(OUT, ">${dirprefix}global_variables.conf");
+			print OUT "-- Global variables with default values used in packages.\n";
+			print OUT $default_global_vars;
+			close(OUT);
+		}
+
 		return;
 	}
 
