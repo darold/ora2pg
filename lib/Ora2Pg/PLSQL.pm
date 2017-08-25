@@ -1192,6 +1192,7 @@ sub replace_oracle_function
 
 	# Replace Oracle substr(string, start_position, length) with
 	# PostgreSQL substring(string from start_position for length)
+	$str =~ s/\bsubstrb\s*\(/substr\(/igs;
 	if (!$class->{pg_supports_substr}) {
 		$str =~ s/\bsubstr\s*\($field,$field,$field\)/substring($1 from $2 for $3)/is;
 		$str =~ s/\bsubstr\s*\($field,$field\)/substring($1 from $2)/is;
