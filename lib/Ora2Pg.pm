@@ -11404,8 +11404,10 @@ sub _remove_comments
 	# Replace some other cases that are breaking the parser (presence of -- in constant string)
 	my @lines = split(/([\n\r]+)/, $$content);
 	for (my $i = 0; $i <= $#lines; $i++) {
+		next if ($lines[$i] !~ /\S/);
 		# ex:       ---/* REN 16.12.2010 ZKOUSKA TEST NA KOLURC
-		if ($lines[$i] =~ s/^(\s*)(--.*)/\?TEXTVALUE$self->{text_values_pos}\?/) {
+		if ($lines[$i] =~ s/^(\s*)(--.*)/$1\?TEXTVALUE$self->{text_values_pos}\?/) {
+			$self->{text_values}{$self->{text_values_pos}} = $2;
 			$self->{text_values_pos}++;
 		}
 		# ex: var1 := SUBSTR(var2,1,28) || ' -- ' || var3 || ' --  ' || SUBSTR(var4,1,26) ;
