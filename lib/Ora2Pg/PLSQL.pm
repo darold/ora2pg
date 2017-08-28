@@ -1151,7 +1151,7 @@ sub replace_oracle_function
 				$class->{text_values}{$k} =~ s/'(HH|HH12|HH24)'/'hour'/is;
 				$class->{text_values}{$k} =~ s/'MI'/'minute'/is;
 			}
-		}       
+		}
 
 		# Convert the call to the Oracle function add_months() into Pg syntax
 		$str =~ s/ADD_MONTHS\s*\(([^,]+),\s*(\d+)\s*\)/$1 + '$2 month'::interval/si;
