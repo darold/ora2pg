@@ -1137,10 +1137,21 @@ sub replace_oracle_function
 		# the value because Oracle have the same trunc function on number
 		# and date type
 		$str =~ s/\bTRUNC\s*\($date_field\)/date_trunc('day', $1)/is;
-		$str =~ s/\bTRUNC\s*\($date_field,$field\)/date_trunc($2, $1)/is;
-		$str =~ s/date_trunc\('MM'/date_trunc('month'/is;
-		# Case where the parameters are obfuscated by function and string placeholders
-		$str =~ s/\bTRUNC\((\%\%REPLACEFCT\d+\%\%)\s*,\s*(\?TEXTVALUE\d+\?)\)/date_trunc($2, $1)/is;
+		if ($str =~ s/\bTRUNC\s*\($date_field,$field\)/date_trunc($2, $1)/is ||
+		    # Case where the parameters are obfuscated by function and string placeholders
+		    $str =~ s/\bTRUNC\((\%\%REPLACEFCT\d+\%\%)\s*,\s*(\?TEXTVALUE\d+\?)\)/date_trunc($2, $1)/is
+		) {
+			if ($str =~ /date_trunc\(\?TEXTVALUE(\d+)\?/) {
+				my $k = $1;
+				$class->{text_values}{$k} =~ s/'(SYYYY|SYEAR|YEAR|[Y]+)'/'year'/is;
+				$class->{text_values}{$k} =~ s/'Q'/'quarter'/is;
+				$class->{text_values}{$k} =~ s/'(MONTH|MON|MM|RM)'/'month'/is;
+				$class->{text_values}{$k} =~ s/'(IW|DAY|DY|D)'/'week'/is;
+				$class->{text_values}{$k} =~ s/'(DDD|DD|J)'/'day'/is;
+				$class->{text_values}{$k} =~ s/'(HH|HH12|HH24)'/'hour'/is;
+				$class->{text_values}{$k} =~ s/'MI'/'minute'/is;
+			}
+		}       
 
 		# Convert the call to the Oracle function add_months() into Pg syntax
 		$str =~ s/ADD_MONTHS\s*\(([^,]+),\s*(\d+)\s*\)/$1 + '$2 month'::interval/si;
