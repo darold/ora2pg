@@ -6674,6 +6674,7 @@ sub _dump_table
 	my @stt = ();
 	my @nn = ();
 	my $col_list = '';
+	my $has_geometry = 0;
 
 	# Extract column information following the Oracle position order
 	my @fname = ();
@@ -6700,6 +6701,7 @@ sub _dump_table
 
 		if ($f->[1] =~ /GEOMETRY/i) {
 			$self->{local_type} = $self->{type} if (!$self->{local_type});
+			$has_geometry = 1;
 		}
 
 		my $type = $self->_sql_type($f->[1], $f->[2], $f->[5], $f->[6], $f->[4]);
@@ -6743,6 +6745,12 @@ sub _dump_table
 		$s_out .= ") VALUES (";
 	}
 
+	# Prepare statements might work in binary mode but not WKT
+	# and INTERNAL because they use the call to ST_GeomFromText()
+	$has_geometry = 0 if ($self->{geometry_extract_type} eq 'WKB');
+
+	# Use prepared statement in INSERT mode and only if
+	# we are not exporting a row with a spatial column
 	my $sprep = '';
 	if ($self->{pg_dsn}) {
 		if ($self->{type} ne 'COPY') {
@@ -12759,10 +12767,10 @@ sub _dump_to_pg
 		if ($self->{type} ne 'COPY') {
 			if (!$sprep) {
 				$self->logit("DEBUG: Sending INSERT output directly to PostgreSQL backend\n", 1);
-				unless($dbhdest->do($sql_out)) {
+				unless($dbhdest->do("BEGIN;\n" . $sql_out . "COMMIT;\n")) {
 					if ($self->{log_on_error}) {
 						$self->logit("WARNING (log error enabled): " . $dbhdest->errstr . "\n", 0, 0);
-						$self->log_error_insert($table, $sql_out);
+						$self->log_error_insert($table, "BEGIN;\n" . $sql_out . "COMMIT;\n");
 					} else {
 						$self->logit("FATAL: " . $dbhdest->errstr . "\n", 0, 1);
 					}
