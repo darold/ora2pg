@@ -853,9 +853,6 @@ sub _init
 	# Enable rewrite of outer join by default.
 	$self->{rewrite_outer_join} = 1;
 
-	# Default to rewrite add_month(), add_year() and date_trunc()
-	$self->{date_function_rewrite} = 1;
-
 	# Init comment and text constant storage variables
 	$self->{idxcomment} = 0;
 	$self->{comment_values} = ();
@@ -1061,6 +1058,9 @@ sub _init
 	$self->{trim_type} = 'BOTH' if (!$self->{trim_type} || !grep(/^$self->{trim_type}/, 'BOTH', 'LEADING', 'TRAILING')); 
 	# Default triming character is space
 	$self->{trim_char} = ' ' if ($self->{trim_char} eq ''); 
+
+	# Disable the use of orafce library by default
+	$self->{use_orafce} ||= 0;
 
 	# Free some memory
 	%options = ();

@@ -1128,10 +1128,10 @@ sub replace_oracle_function
 	# Replace call to trim into btrim
 	$str =~ s/\bTRIM\s*\(([^\(\)]+)\)/btrim($1)/is;
 
-	# Replace to_char() without format by a simple cast to text
-	$str =~ s/\bTO_CHAR\s*\($field\)/$1::varchar/is;
-
-	if ($class->{date_function_rewrite}) {
+	# Do some transformation when Orafce is not used
+	if (!$class->{use_orafce}) {
+		# Replace to_char() without format by a simple cast to text
+		$str =~ s/\bTO_CHAR\s*\($field\)/$1::varchar/is;
 		# Change trunc() to date_trunc('day', field)
 		# Trunc is replaced with date_trunc if we find date in the name of
 		# the value because Oracle have the same trunc function on number

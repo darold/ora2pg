@@ -1033,10 +1033,6 @@ PACKAGE_AS_SCHEMA	1
 # moment.
 REWRITE_OUTER_JOIN	1
 
-# By default Ora2pg rewrite add_month(), add_year() and date_trunc() functions
-# set it to 0 to not translate those functions if it breaks code. 
-DATE_FUNCTION_REWRITE	1
-
 # By default Oracle functions are marked as STABLE as they can not modify data
 # unless when used in PL/SQL with variable assignment or as conditional
 # expression. You can force Ora2Pg to create these function as VOLATILE by
@@ -1054,6 +1050,14 @@ COMMENT_COMMIT_ROLLBACK	0
 # regexp to be temporary replaced to not break the parser.The list of regexp
 # must use the semi colon as separator. For exemple:
 #STRING_CONSTANT_REGEXP		<placeholder value=".*">
+
+# If you want to use functions defined in the Orafce library and prevent
+# Ora2Pg to translate call to these function, enable this directive.
+# The Orafce library can be found here: https://github.com/orafce/orafce
+# By default Ora2pg rewrite add_month(), add_year(), date_trunc() and
+# to_char() functions, but you may prefer to use the orafce version of
+# these function that do not need any code transformation.
+USE_ORAFCE	0
 
 #------------------------------------------------------------------------------
 # ASSESSMENT SECTION (Control migration assessment behaviors)

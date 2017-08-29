@@ -124,7 +124,7 @@
 .\" ========================================================================
 .\"
 .IX Title "ORA2PG 1"
-.TH ORA2PG 1 "2017-08-21" "perl v5.14.2" "User Contributed Perl Documentation"
+.TH ORA2PG 1 "2017-08-29" "perl v5.14.2" "User Contributed Perl Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -2298,10 +2298,6 @@ extension by changing the function name. Default to uuid_generate_v4.
 Note that when a \s-1RAW\s0(n) column has \*(L"\s-1\fISYS_GUID\s0()\fR\*(R" as default value
 Ora2Pg will automatically translate the type of the column into uuid
 which might be the right translation in most of the case.
-.IP "\s-1DATE_FUNCTION_REWRITE\s0" 4
-.IX Item "DATE_FUNCTION_REWRITE"
-By default Ora2pg rewrite \fIadd_month()\fR, \fIadd_year()\fR and \fIdate_trunc()\fR functions
-set it to 0 to force Ora2Pg to not translate those functions if it breaks code.
 .IP "\s-1FUNCTION_STABLE\s0" 4
 .IX Item "FUNCTION_STABLE"
 By default Oracle functions are marked as \s-1STABLE\s0 as they can not modify data
@@ -2325,6 +2321,15 @@ regexp to be temporary replaced to not break the parser. For exemple:
 .Ve
 .Sp
 The list of regexp must use the semi colon as separator.
+.IP "\s-1USE_ORAFCE\s0" 4
+.IX Item "USE_ORAFCE"
+If you want to use functions defined in the Orafce library and prevent
+Ora2Pg to translate call to these functions, enable this directive.
+The Orafce library can be found here: https://github.com/orafce/orafce
+.Sp
+By default Ora2pg rewrite \fIadd_month()\fR, \fIadd_year()\fR, \fIdate_trunc()\fR and
+\&\fIto_char()\fR functions, but you may prefer to use the orafce version of
+these function that do not need any code transformation.
 .SS "Materialized view"
 .IX Subsection "Materialized view"
 Since PostgreSQL 9.3, materialized view are supported with the \s-1CREATE\s0 \s-1MATERIALIZED\s0 \s-1VIEW\s0 syntax,
