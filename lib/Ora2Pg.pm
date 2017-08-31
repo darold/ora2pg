@@ -11543,6 +11543,25 @@ sub _convert_function
 	my @args_sorted = ();
 	push(@args_sorted, grep {!/\sdefault\s/i} split ',', $fct_detail{args});
 	push(@args_sorted, grep {/\sdefault\s/i} split ',', $fct_detail{args});
+	my @orig_args = split(',', $fct_detail{args});
+
+	# Show a warning when there is parameters reordering
+	my $fct_warning = '';
+	for (my $i = 0; $i <= $#args_sorted; $i++) {
+		if ($args_sorted[$i] ne $orig_args[$i]) {
+			my $str = $fct_detail{args};
+			$str =~ s/\%ORA2PG_COMMENT\d+\%//sg;
+			$str =~ s/[\n\r]+//gs;
+			$str =~ s/\s+/ /g;
+			$fct_warning = "\n-- WARNING: parameters order has been changed by Ora2Pg to move parameters with default values at end\n";
+			$fct_warning .= "-- Original order was: $fname($str)\n";
+			$fct_warning .= "-- You will need to manually reorder parameters in the function calls";
+			print STDERR $fct_warning, "\n";
+			last;
+		}
+	}
+
+        # Apply parameter list with reordering if needed
 	$fct_detail{args} = '(' . join(',', @args_sorted) . ')';
 
 	# Set the return part
