@@ -11391,8 +11391,6 @@ sub _restore_comments
 	# Restore comments
 	while ($$content =~ s/(\%ORA2PG_COMMENT\d+\%)[\n]*/$self->{comment_values}{$1}\n/is) { delete $self->{comment_values}{$1}; };
 
-	# Replace potential text values that was replaced in comments
-	$self->_restore_text_constant_part($content);
 }
 
 =head2 _remove_comments
