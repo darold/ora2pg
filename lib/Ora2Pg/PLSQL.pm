@@ -346,9 +346,7 @@ sub convert_plsql_code
 
 		foreach my $k (keys %{$class->{single_fct_call}}) {
 			$class->{single_fct_call}{$k} = replace_oracle_function($class, $class->{single_fct_call}{$k});
-			if ($class->{single_fct_call}{$k} =~ /^CAST\s*\(.*\%\%REPLACEFCT(\d+)\%\%/i) {
-				$class->{single_fct_call}{$1} = replace_sql_type($class->{single_fct_call}{$1}, $class->{pg_numeric_type}, $class->{default_numeric}, $class->{pg_integer_type}, %data_type);
-			} elsif ($class->{single_fct_call}{$k} =~ /^CAST\s*\(/i) {
+			if ($class->{single_fct_call}{$k} =~ /^CAST\s*\(/i) {
 				$class->{single_fct_call}{$k} = replace_sql_type($class->{single_fct_call}{$k}, $class->{pg_numeric_type}, $class->{default_numeric}, $class->{pg_integer_type}, %data_type);
 			}
 		}
