@@ -1,8 +1,728 @@
+2017 09 01 - v18.2
+
+This release fix several issues reported during the last six months.
+It also adds several new features and configuration directives:
+
+  - Add translation of SUBSTRB into substr.
+  - Allow use of array in MODIFY_TYPE to export Oracle user defined
+    type that are just array of some data type. For example:
+      CREATE OR REPLACE TYPE mem_type IS VARRAY(10) of VARCHAR2(15);
+    can be directly translated into text[] or varchar[]. In this case
+    use the directive as follow: MODIFY_TYPE	CLUB:MEMBERS:text[]
+    Ora2Pg will take care to transform all data of this column into
+    the correct format. Only arrays of characters and numerics types
+    are supported.
+  - Add translation of Oracle function LISTAGG() into string_agg().
+  - Add TEST_VIEW action to perform a simple count of rows returned by
+    views on both database.
+  - Translate SQL%ROWCOUNT into GET DIAGNOSTICS rowcount = ROW_COUNT
+    and add translation of SQL%FOUND.
+  - Add translation of column in trigger event test with IS DISTINCT,
+    for example: IF updating('ID') THEN ... will be translated into:
+    IF TG_OP = 'UPDATE' AND NEW.'ID' IS DISTINCT FROM OLD.'ID' then...
+  - Replace UTL_MATH.EDIT_DISTANCE function by fuzzymatch levenshtein.
+  - Allow use of MODIFY_STRUCT with TABLE export. Table creation DDL
+    will respect the new list of columns and all indexes or foreign
+    key pointing to or from a column removed will not be exported.
+  - Add export of partition and subpartition using PostgreSQL native
+    partitioning.
+  - Auto detect encrypted columns and report them into the assessment.
+    SHOW_COLUMN will also mark columns as encrypted.
+  - Add information to global temporary tables in migration assessment.
+  - Add experimental DATADIFF functionality.
+  - Allow use of multiprocess with -j option or JOBS to FUNCTION and
+    PROCEDURE export. Useful if you have thousands of these objects.
+  - Force RAW(N) type with default value set to sys_guid() as UUID
+    on PostgreSQL.
+  - Replace function with out parameter using select into. For example
+    a call to:       get_item_attr( attr_name, p_value );
+    where p_value is an INOUT parameter, will be rewritten as
+    
+    	p_value := get_item_attr( attr_name, p_value );
+    
+    If there is multiple OUT parameters, Ora2Pg will use syntax:
+    
+    	SELECT get_item_attr( attr_name, p_value )
+		INTO (attr_name, p_value);
+
+  - Add translation of CONNECT BY using PostgreSQL CTE equivalent.
+    This translation also include a replacement of LEVEL and
+    SYS_CONNECT_BY_PATH native Oracle features. On complex queries
+    there could still be manual editing but all the main work is done.
+  - Add support to user defined exception, errcode affected to each
+    custom exception start from 50001.
+  - Translate call to to_char() with a single parameter into a cast
+    to varchar. Can be disabled using USE_ORAFCE directive.
+  - Improve ora2pg_scanner to automatically generates migration
+    assessment reports for all schema on an Oracle instance. Before
+    the schema name to audit was mandatory, now, when the schema
+    is not set Ora2Pg will scan all schema. The connexion user need
+    to have DBA privilege. Ora2Pg will also add the hostname and SID
+    as prefix in the filename of the report. This last changee forbids
+    ora2pg_scanner to overwrite a report if the same schema name is
+    found in several databases.
+
+Several new configuration directives have been added:
+
+  - Add USE_ORAFCE configuration directive that can be enabled if you
+    want to use functions defined in the Orafce library and prevent
+    Ora2Pg to translate call to these functions. The Orafce library
+    can be found here: https://github.com/orafce/orafce
+    By default Ora2pg rewrite add_month(), add_year(), date_trunc()
+    and to_char() functions, but you may prefer to use the Orafce
+    functions that do not need any code transformation. Directive
+    DATE_FUNCTION_REWRITE has been removed as it was also used to
+    disable replacement of add_month(), add_year() and date_trunc()
+    when Orafce is used, useless now.
+  - Add FILE_PER_FKEYS configuration directive to allow foreign key
+    declaration to be saved in a separate file during schema export.
+    By default foreign keys are exported into the main output file or
+    in the CONSTRAINT_output.sql file. If enabled foreign keys will be
+    exported into a file named FKEYS_output.sql
+  - Add new COMMENT_COMMIT_ROLLBACK configuration directive. Call to
+    COMMIT/ROLLBACK in PL/SQL code are kept untouched by Ora2Pg to
+    force the user to review the logic of the function. Once it is
+    fixed in Oracle source code or you want to comment this calls
+    enable the directive.
+  - Add CREATE_OR_REPLACE configuration directive. By default Ora2Pg
+    use CREATE OR REPLACE in function DDL, if you need not to override
+    existing functions disable this configuration directive, DDL will
+    not include OR REPLACE.
+  - Add FUNCTION_CHECK configuration directive. Disable this directive
+    if you want to disable check_function_bodies.
+    
+    	SET check_function_bodies = false;
+    
+    It disables validation of the function body string during CREATE
+    FUNCTION. Default is to use de postgresql.conf setting that enable
+    it by default.
+  - Add PG_SUPPORTS_PARTITION directive, disabled by default.
+    PostgreSQL version prior to 10.0 do not have native partitioning.
+    Enable this directive if you want to use PostgreSQL declarative
+    partitioning instead of the old style check constraint and trigger.
+  - Add PG_SUPPORTS_SUBSTR configuration directive to replace substr()
+    call with substring() on old PostgreSQL versions or some fork
+    like Redshift.
+  - Add PG_INITIAL_COMMAND to send some statements at session startup.
+    This directive is the equivalent used for Oracle connection,
+    ORA_INITIAL_COMMAND. Both can now be used multiple time now.
+  - Add DBLINK_CONN configuration directive. By default if you have
+    an autonomous transaction translated using dblink extension the
+    connection is defined using the values set with PG_DSN, PG_USER
+    and PG_PWD. If you want to fully override the connection string
+    use this directive to set the connection in the autonomous
+    transaction wrapper function. For example:
+    
+        DBLINK_CONN    port=5432 dbname=pgdb host=localhost user=pguser password=pgpass
+    
+  - Add STRING_CONSTANT_REGEXP configuration directive. Ora2Pg replace
+    all string constant during the pl/sql to plpgsql translation,
+    string constant are all text include between single quote. If you
+    have some string placeholder used in dynamic call to queries you
+    can set a list of regexp to be temporary replaced to not break the
+    parser. For example:
+    
+    	STRING_CONSTANT_REGEXP         <cfqueryparam value=".*">
+    
+    The list of regexp must use the semi colon as separator.
+  - Add FUNCTION_STABLE configuration directive. By default Oracle
+    functions are marked as STABLE as they can not modify data unless
+    when used in PL/SQL with variable assignment or as conditional
+    expression. You can force Ora2Pg to create these function as
+    VOLATILE by disabling this configuration directive.
+  - Add new TO_NUMBER_CONVERSION configuration directive to control
+    TO_NUMBER translation behavior. By default Oracle call to function
+    TO_NUMBER will be translated as a cast into numeric. For example,
+    TO_NUMBER('10.1234') is converted into PostgreSQL call:
+        to_number('10.1234')::numeric.
+    If you want you can cast the call to integer or bigint by changing
+    the value of the configuration directive. If you need better
+    control of the format, just set it as value, for example:
+           TO_NUMBER_CONVERSION    99999999999999999999D9999999999
+    will convert the code above as:
+          TO_NUMBER('10.1234', '99999999999999999999D9999999999')
+    Any value of the directive that it is not numeric, integer or
+    bigint will be taken as a mask format. If set to none, then no
+    conversion will be done.
+  - Add LOOK_FORWARD_FUNCTION configuration directive which takes a
+    list of schema to get functions/procedures meta information that
+    are used in the current schema export. When replacing call to
+    function with OUT or INOUT parameters, if a function is declared
+    in an other package then the function call rewriting can not be
+    done because Ora2Pg only knows about functions declared in the
+    current schema. By setting a comma separated list of schema as
+    value of the directive, Ora2Pg will look forward in these packages
+    for all functions, procedures and packages declaration before
+    proceeding to current schema export.
+  - Add PG_SUPPORTS_NAMED_OPERATOR to control the replacement of the
+    PL/SQL operator used in named parameter => with the PostgreSQL
+    proprietary operator := Disable this directive if you are using
+    PG < 9.5
+  - Add a warning when Ora2Pg reorder the parameters of a function
+    following the PostgreSQL rule that all input parameters following
+    a parameter with a default value must have default values as well.
+    In this case, Ora2Pg extracts all parameters with default values
+    and put them at end of the parameter list. This is to warn you
+    that a manual rewrite is required on calls to this function.
+
+New command line options have been added:
+
+  - Add -N | --pg_schema command line option to be able to override
+    the PG_SCHEMA configuration directive. When this option is set
+    at command line, EXPORT_SCHEMA is automatically activated.
+  - Add --no_header option with equivalent NO_HEADER configuration
+    directive to output the Ora2Pg header but just the translated
+    code.
+
+There is also some behavior changes from previous release:
+
+  - Remove SysTimestamp() from the list of not translated function,
+    it is replaced with CURRENT_TIMESTAMP for a long time now.
+  - Change migration assessment cost to 84 units (1 day) for type
+    TABLE, INDEX and SYNONYM and to 168 units (2 days) for TABLE
+    PARTITION and GLOBAL TEMPORARY TABLE, this is more realistic.
+  - Set minimum assessment unit to 1 when an object exists.
+    Improve PL/SQL code translation speed.
+  - Change behavior of COMPILE_SCHEMA directive used to force Oracle
+    to compile schema before exporting code. When this directive is
+    enabled and SCHEMA is set to a specific schema name, only invalid
+    objects in this schema will be recompiled. When SCHEMA is not set
+    then all schema will be recompiled. To force recompile invalid
+    object in a specific schema, set COMPILE_SCHEMA to the schema name
+    you want to recompile. This will ask to Oracle to validate the
+    PL/SQL that could have been invalidate after a export/import for
+    example. The 'VALID' or 'INVALID' status applies to functions,
+    procedures, packages and user defined types.
+  - Default transaction isolation level is now set to READ COMMITTED
+    for all action excluding data export.
+  - Oracle doesn't allow the use of lookahead expression but you may
+    want to exclude some objects that match the ALLOW regexp you have
+    defined. For example if you want to export all table starting
+    with E but not those starting with EXP it is not possible to do
+    that in a single expression.
+    Now you can start a regular expression with the ! character to
+    exclude all objects matching the regexp given just after. Our
+    previous example can be written as follow:   ALLOW   E.* !EXP.*
+    it will be translated into
+    
+    	 REGEXP_LIKE(..., '^E.*$') AND NOT REGEXP_LIKE(..., '^EXP.*$')
+    
+    in the object search expression.
+  - Fix quoting of PG_SCHEMA with multiple schema in search path. The
+    definition of the search path now follow the following behavior:
+      * when PG_SCHEMA is define, always set search_path to its value.
+      * when EXPORT_SCHEMA is enabled and SCHEMA is set, the search_path
+        is set the name of the schema.
+  - Remove forcing of export_schema when pg_schema is set at command
+    line. This could change the behavior of some previous use of these
+    variables and the resulting value of the search_path but it seems
+    much better understandable.
+  - Rewrite translation of raise_application_error to use RAISE
+    EXCEPTION with a message and the SQLSTATE code. Oracle user
+    defined code -20000 to -20999 are translated to PostgreSQL 
+    user define code from 45000 to 45999. Call to
+  	raise_application_error(mySQLCODE, myErrmsg);
+    will be translated into
+   	RAISE EXCEPTION '%', myErrmsg USING ERRCODE = mySQLCODE;
+  - Remove migration assessment cost for TG_OP and NOT_FOUND they
+    might be fully covered now.
+
+Here is the complete list of changes:
+
+  - Fix bad inversion of HAVING/GROUP BY clauses. Thanks to bhoot929
+    for the report.
+  - Fix case of non translation of type in CAST() function. Thanks to
+    Keshavkumbham for the report.
+  - Fix spatial data export when using direct import into PostgreSQL
+    and WKT or INTERNAL format. This can still be improved. Thanks to
+    Valeria El-Samra for the report.
+  - Improve translation of trunc() into date_trunc. Thanks to bhoot929
+    for the report.
+  - Translate to_char() without format into a simple cast to varchar.
+    Thanks to bhoot929 for the report.
+  - Fix line comment which does not disable multi-line comment.
+    Thanks to Pavel Stehule for the report.
+  - Fix overridden of output file global_variables.conf with
+    multiple packages. Thanks to Oliver Del Rosario for the report.
+  - Fix export of data stored in a nested user defined type. Thanks
+    to lupynos for the report.
+  - Fix data export from Oracle user defined types, where output of
+    ROW(...) does not distinguish numeric from string or other types
+    that need to be formatted. Thanks to Petr Silhak for the report.
+  - Fix broken replacement of package procedure name. Thanks to Pavel
+    Stehule for the report.
+  - Add FLOWS_010600 to the objects exclusion listr.
+  - Improve view/trigger migration assessment accuracy.
+  - Fix OUTER JOIN (+) translation, all join filters with constant
+    was written into the WHERE clause by default. Write them into the
+    JOIN clause.
+  - Fix weight of the number of triggers and views in the report with
+    a limit of 2 man-days, of course SQL difficulties are still add
+    after this limit.
+  - Fix alias added to condition which is not a sub query. Thanks to
+    nitinmverma for the report.
+  - Fix wrong translation of OUTER JOIN with subquery in FROM clause.
+    Thanks to nitinmverma for the report.
+  - Fix typo preventing exclusion of system SYNONYM.
+  - Fix an other case of bad translation of END fct_name. Thanks to
+    nitinmverma for the report.
+  - Fix unwanted translation of REGEXP_SUBSTR() in REGEXP_SUBSTRING().
+    Thanks to nitinmverma for the report.
+  - Fix broken translation of decode(). Thanks to nitinmverma for the
+    report.
+  - Fix error "Malformed UTF-8 character (unexpected continuation byte
+    0xbf, with no preceding start byte) in pattern match" by including
+    an arbitrary non-byte character into the pattern. Thanks to Bob
+    Sislow for the report.
+  - Fix missing translation of trunc() with date_trunc(). Thanks to
+    nitinmverma for the report.
+  - Add migration assessment weight to concatenation.
+  - Fix space between operator, ex: a < = 15 must be translated as
+    a <= 15. Thanks to nitinmverma for the report.
+  - Handle translation of named parameters in function calls. Thanks
+    to Julien Rouhaud for the patch.
+  - Fix missing renaming of _initial_command() method.
+  - Fix right outer join translation by converting them to left outer
+    join first. Thanks to Julien Rouhaud for the hint.
+  - Fix TEST on default value count and functions belonging to others
+    than public schema, especially functions of packages.
+  - Fix default number of man-days in migration assessment. Thanks to
+    Nate Fitzgerald for the report.
+  - Add host information into the filename of the report to prevent
+    some additional case of report overriding. Thanks to Aurelien
+    Robin for the report.
+  - Prevent ora2pg script to complain if no ora2pg.conf file is found
+    when a DSN is passed at command line and that user connection is
+    set in the environment variables.
+  - Do not declare a function stable if there is update/insert/delete
+    statement inside.
+  - Improve ora2pg_scanner to generate report of each instance schema
+    when the schema to audit is not set. Thanks to Thomas Reiss for
+    the patch.
+  - Fix parser failure with quote in comments. Thanks to Eric Delanoe
+    for the report.
+  - Fix case where NVL is not replaced by COALESCE.
+  - Add parenthesis to simple package.function call without parameter.
+  - Fix replacement of INSTR() with optional parameters. Thanks to
+    Pavel Stehule for the report.
+  - Translate SQL%ROWCOUNT to GET DIAGNOSTICS rowcount = ROW_COUNT.
+    Thanks to Pavel Stehule for the report.
+  - Add translation of SQL%FOUND. Thanks to Pavel Stehule.
+  - Remove qualifier in create type, "CREATE TYPE fusion.mytable AS
+    (fusion.mytable fusion.finalrecord[]);" becomes "CREATE TYPE
+    fusion.mytable AS (mytable fusion.finalrecord[]);". Thanks to
+    Julien Rouhaud for the report.
+  - Fix extra comma in FROM clause of triggers in outer join
+    translation. Thanks to Pavel Stehule fora the report.
+  - Use record for out parameters replacement only where there is more
+    than one out parameter. Thanks to Pavel Stehule for the patch.
+  - Add date type to the inout type array. Thanks to Pavel Stehule for
+    the report.
+  - Remove possible last spaces in inout type detection.
+  - Fix REGEXP_LIKE translation.
+  - Fix count of default values during test action.
+  - Fix removing of double quote over column name in view declaration.
+  - Do not set default value if it is NULL, this is already the case.
+  - Fix data export that was truncated to the last DATA_LIMIT lines.
+    Thanks to Michael Vitale for the report.
+  - Fix an other bug in rewriting call to function with OUT parameter.
+    Thanks to Pavel Stehule for the report.
+  - Fix autodetection of composite out parameters.
+  - Merge typo on PLPGSQL
+  - Fix typo to PLPGSQL keyword. Thanks to Vinayak Pokale.
+  - Fix regexp failure in is_reserved_words() method. Thanks to
+    Patrick Hajek for the patch.
+  - Use only one declaration of ora2pg_r RECORD, it is reusable.
+  - Fix transformation of procedure CALL with OUT parameter that can't
+    works when procedure/function has minimally one OUT parameter is
+    of composite type. Thanks to Pavel Stehule for the patch.
+  - Second attempt to fix outer join translation in triggers. Thanks
+    to Pavel Stehule for precious help.
+  - Fix RAISE NOTICE replacement with double % placeholder. Thanks to
+    Pavel Stehule for the report.
+  - Fix call to function replacement for function registered with
+    double quote. Thanks to Pavel Stehule for the report.
+  - Change assessment score of TG_OP.
+  - Fix replacement of outer join in triggers by adding pseudo tables
+    NEW and OLD to the list of tables. Thanks to Pavel Stehule for the
+    report.
+  - Handle custom exception in declare section of triggers.
+  - Fix FUNCTION_CHECK option, it will be set in all file header.
+    Thanks to Pavel Stehule for the report.
+  - Replace call to ALL_TABLES to USER_TABLES when USER_GRANTS is
+    enabled. Thanks to Bob Sislow.
+  - Removed PRAGMA EXCEPTION_INIT() from declare section. Thanks to
+    Pavel Stehule for the report.
+  - Fix constant string that was breaking the parser. Thanks to Pavel
+    Stehule for the report.
+  - Fix missing space between EXCEPTION and WHEN. Thanks to Pavel
+    Stehule for the report.
+  - Fix broken function header resulting in missing space before OUT
+    keyword. Thanks to Pave Stehule for the report.
+  - Fix invalid RAISE command. Thanks to Pavel Stehule for the report.
+  - Add port information to ORACLE_DSN in documentation and config
+    file. Thanks to Bob Sislow for the report.
+  - Fix broken declaration in triggers related to FOR cycle control
+    variable when there is no declare section. Thanks to Pavel
+    Stehule for the report.
+  - Fix broken declaration in triggers related to FOR cycle control
+    variable. Thanks to Pavel Stehule for the report.
+  - Fix unterminated C style comment in trigger. Thanks to Pavel
+    Stehule for the report.
+  - Fix bug in package+function precedence replacement. Thanks to
+    Eric Delanoe for the report.
+  - Fix unwanted and broken export of tables created with CREATE TABLE
+    tablename OF objType. Thanks to threenotrump for the report.
+  - Add explanation on using REPLACE_AS_BOOLEAN when REPLACE_TABLES or
+    REPLACE_COLS is also used on the same object. Thanks to Brendan
+    Le Ny for the report.
+  - Fix unwanted data export of materialized view. Thanks to Michael
+    Vitale for the report. Fix ORA-00942 with table that are not yet
+    physically created and has no data.
+  - Fix calling functions with same name declared in several packages.
+    The one declared in current package now takes precedence. Thanks
+    to Eric Delanoe for the report.
+  - Change zero-length lob/long to undef workaround for a bug in
+    DBD::Oracle with the ora_piece_lob option (used when no_lob_locator
+    is enabled) where null values fetch as empty string for certain
+    types. Thanks to Alice Maz for the patch.
+  - Fix createPoint() spatial method issue. Thanks to jwl920919.
+  - Fix comment on REPLACE_COLS directive.
+  - Fix an other issue in transformation of TYPE x IS REF CURSOR.
+    Thanks to Pavel Stehule for the report.
+  - Fix an other case of broken declaration in triggers related to FOR
+    cycle control variables. Thanks to Pavel Stehule for the report.
+  - Fix broken declaration in triggers related to FOR cycle control
+    variables with empty DECLARE section.
+  - Fix other case of replacement by EXIT WHEN NOT FOUND.
+  - Fix output of global_variables.conf file when OUTPUT_DIR is not
+    set. Fix non replacement of global variables.
+  - Remove some AUTHID garbage in procedure declaration generated by
+    a migration.
+  - Fix trigger name quoting with non supported character. Thanks to
+    Michael Vitale for the report.
+  - Fix use of nextval() in default value.
+  - Fix alias append in from clause of the extract() function. Thanks
+    to Narayanamoorthys for the report.
+  - Disable direct export to partition for PostgreSQL 10 if directive
+    PG_SUPPORTS_PARTITION is enabled, import must be done in the main
+    table.
+  - Do not export partitions of a materialized view. Thanks to Michael
+    Vitale for the report.
+  - Fix wrong replacement of keyword after END. Thanks to Pavel
+    Stehule for the report.
+  - Remove Oracle hints from queries, they are not supported and can
+    break comments. Thanks to Pavel Stehule for the report.
+  - Fix unstable transformation of TYPE x IS REF CURSOR. Thanks to
+    Pavel Stehule for the report.
+  - Fix data export failure when no table match the ALLOW/EXCLUDE
+    filter. Thanks to threenotrump for the report.
+  - Add missing search_path to FKEY dedicated file. Thanks to Michael
+    Vitale for the report.
+  - Apply default oject name exclusion to synonym.
+  - Skip some PL/SQL translation in migration assessment mode.
+  - Change default type for virtual column whit round() function.
+    Thanks to Julien Rouhaud for the report.
+  - Fix bug with EXIT WHEN command. Thanks to Pavel Stehule.
+  - Fix an other wrong replacement of DECODE in UPDATE statement.
+    Thanks to Pavel Stehule for the report.
+  - Fix wrong replacement of DECODE. Thanks to Pavel Stehule.
+  - Fix unwanted replacement of INTO STRICT when this is an INSERT
+    statement. Thanks to Pavel Stehule for the report.
+  - Fix potential regexp error with special character in outer join
+    filters. Thanks to Adrian Boangiu for the report.
+  - Fix parsing of PK from file. Thanks to Julien Rouhaud.
+  - Fix parsing of FK from file. Thanks to Julien Rouhaud.
+  - Fix count of unique and primary key in TEST export. Thanks to
+    Liem for the report.
+  - Fix reserved keyword rewrite using double quote when directive
+    USE_RESERVED_WORDS is enabled. Thanks to Michael Vitale.
+  - Remove EVALUATION CONTEXT object type from migration assessment.
+  - Add QUEST_SL_% pattern to the list of table that must be excluded
+    from export.
+  - Fix data export when BFILE are translated as text. Thanks to
+    Michael Vitale for the report.
+  - Fix export of package when a comment is placed just before the
+    AS/IS keyword. Thanks to Michael Vitale for the report.
+  - Fix other cases of function call replacement when they are
+    declared in different packages and one with OUT parameter and
+    the other one with only IN parameters. Thanks to Eric Delanoe.
+  - Fix inconsistent behavior of import_all script with -h and -d
+    Under Linux: When -h not specified, script defaults to unix domain
+    sockets for psql and localhost for perl (which may error depending
+    on pg_hba.conf). Now defaults to more performing sockets. -d
+    wasn't passing DB name to some psql calls where it's necessary.
+    Thanks to BracketDevs for the patch.
+  - Fix file handle close when compression is enabled. Thanks to
+    Sebastian Albert for the report.
+  - Add information about ora2pg behavior during data export to files
+    when files already exists. Thanks to Michael Vitale.
+  - Update readme to provide tar command for bzip2 file. Thanks to
+    Tom Pollard for the patch
+  - Fix unwanted FTS_INDEXES empty file and append unaccent extension
+    creation if not exists. Thanks to Michael Vitale for the report.
+  - Fix missing explicitly declared variable for cycle in trigger.
+    Thanks to Pavel Stehule for the report.
+  - Fix global type/cursor declaration doubled in package export.
+  - Always translate Oracle SELECT ... INTO to SELECT ... INTO STRICT
+    in plpgsql as Oracle seems to always throw an exception. Thanks
+    to Pavel Stehule for the report.
+  - Fix too much semicolons on end of function. Thanks to Pavel
+    Stehule for the report.
+  - Fix ALTER TABLE to set the owner when table is a foreign table.
+    Thanks to Narayanamoorthys for the report.
+  - Fix case of untranslated procedure call when there was parenthesis
+    in the parameters clause. Thanks to Pavel Stehule for the report.
+  - Fix broken variable declaration with name containing DEFAULT.
+    Thanks to Pavel Stehule for the report.
+  - Change query ORDER BY clause to view export query.
+  - Fix missing replacement of quote_reserved_words function by new
+    quote_object_name. Thanks to Sebastian Albert for the report.
+  - Fix REPLACE_COLS replacement of column name in UNIQUE constraint
+    definition. Thanks to Bernard Bielecki for the report.
+  - Fix export of Oracle unlogged table that was exported as normal
+    tables.
+  - Fix regression in package function calls rewrite leading to append
+    unwanted comma when replacing out parameters. Thanks to Pavel
+    Stehule and Eric Delanoe for the report.
+  - Fix removing of function name after END keyword. Thanks to Pavel
+    Stehule for the report.
+  - Fix bug in package function extraction.
+  - Improve VIEW export by only looking for package function name and
+    fix a bug that was including unwanted "system" package definition.
+    Also fix a potential bad rewriting of function call. Thanks to
+    Eric Delanoe for the report.
+  - Fix an other case of missing PERFORM replacement. Thanks to Pavel
+    Stehule for the report.
+  - Fix remplacement of "EXIT WHEN cursor%NOTFOUND". Thanks to Pavel
+    Stehule for the report.
+  - Fix missing conversion of type in cast function. Thanks to Michael
+    Vitale for the report.
+  - Fix TO_NUMBER that is now translated as a cast to numeric to
+    correspond to the default behavior in Oracle. Thanks to Pavel
+    Stehule for the report.
+  - Fix replacement of function call from different schema, especially
+    in overloaded cases.
+  - Remove OUT parameter from the argument list of function call.
+    Thanks to Pavel Stehule for the report.
+  - Fix wrong replacement in FOR ... IN loop inserting EXCLUDE in the
+    statement. Thanks to Pavel Stehule for the report.
+  - Translate Oracle proprietary VALUES without parenthesis with the
+    proprietary syntax of POstgreSQL. Thanks to Pavel Stehule for the
+    report.
+  - Fix function header translation when a comment is present between
+    closing parenthesis  and the IS keyword. Thanks to Pavel Stehule
+    for the report.
+  - Fix RETURNS in autonomous transaction call when there is OUT
+    parameters. Thanks to Pavel Stehule for the report.
+  - Fix call to BMS_UTILITY.compile_schema() when COMPILE_SCHEMA is
+    enable. Thanks to PAvel Stehule for the report.
+  - Fix export of function and procedure with same name in different
+    schema. Thanks to Pavel Stehule for the report.
+  - Fix detection and replacement of global variable in package that
+    was producing invalid code export. Fix progress bar on procedure
+    export.
+  - Fix regression in global variables default value export.
+  - Rewrite multiprocess for procedure and function export to solve
+    some performances issues.
+  - Do not waste time trying to replace function call when it is not
+    found in the current code.
+  - Fix default value for FILE_PER_FUNCTION when parallel mode is
+    enabled.
+  - Output a fatal error with export type TABLE and multiple schema set
+    to PG_SCHEMA when EXPORT_SCHEMA is enabled.
+  - Fix replacement of function name with package prefix.
+  - Fix documentation of PG_SCHEMA directive, especially on the use of
+    a schema list. Thanks to Michael Vitale for the report.
+  - Fix translation of INSTR() function.
+  - Improve speed in function translation by not calling twice
+    Ora2Pg::PLSQL::convert_plsql_code() on declare and code section.
+    Thanks to Pavel Stehule for the profiling.
+  - Fix unwanted replacement of SYSDATE, SYSTIMESTAMP and some other
+    when they are part of variable or object name. Add rewrite of
+    REF CURSOR during type translation.
+  - Require support of LATERAL keyword for DATADIFF (Pg >= 9.3).
+    Patch from Sebastian Albert.
+  - Do not call replace_sdo_function(), replace_sdo_operator() and
+    replace_sys_context() if the string SDO_ or SYSCONTEXT is not
+    found. This might save some performances.
+  - Remove the RETURNS clause when there is an OUT parameter
+    PostgreSQL choose correct type by self. Thanks to Pavel Stehule
+    for the report.
+  - Add a note about performance improvement by updating stats on
+    Oracle. Thanks to Michael Vitale for the report.
+  - Remove newline characters in REVOKE statement when embedded in
+    a comment. Thanks to Pavel Stehule for the report.
+  - Fix replacement with PERFORM into package extracted from an
+    Oracle database. Thanks to Eric Delanoe for the report.
+  - Fix translation of call to function with out parameters.
+    Thanks to Pavel Stehule for the report.
+  - Fix case where call to procedure without parameter was not
+    prefixed by PERFORM or when called in a exception statement.
+    Thanks to Eric Delanoe for the report.
+  - Add function quote_object_name to handle all cases where object
+    name need to be double quoted (PRESERVE_CASE to 1, PostgreSQL
+    keyword, digit in front or digit only and non supported character.
+    Thanks to liemdt1811 for the report.
+  - Add a note about RAW(n) column with "SYS_GUID()" as default value
+    that is automatically translated to type of the column 'uuid'
+    by Ora2Pg.
+  - Remove old column count check to use char_length. Thanks to
+    Alice Maz for the patch.
+  - Fix some raise_application_error that was not replaced with a
+    global rewrite of remove comments and text constants to solve
+    some other issues like rewriting of package function call in
+    dynamic queries. Thanks to PAvel Stehule for the report.
+  - Fix cycle variable not generated for LOOP IN SELECT in trigger.
+    Thanks to Pavel Stehule for the report.
+  - Fix procedures with OUT parameters not processed in triggers.
+    Thanks to Pavel Stehule for the report.
+  - Remove other case where PERFORM must be or must not be inserted.
+  - Remove case where PERFORM can be inserted. Thanks to Pavel
+    Stehule and Eric Delanoe for the report.
+  - Fix missing ; in some raise_application_error translation. Thanks
+    to Pavel Stehule for the report.
+  - Fix missing PERFORM in front of direct call to function and the
+    rewrite of direct call to function with out parameters. Thanks
+    to Eric Delanoe for the report.
+  - Fix translation of rownum when the value is not a number. Thanks
+    to Pavel Stehule for the report.
+  - Fix missing space between cast and AS keyword. Thanks to Pavel
+    Stehule for the report.
+  - Fix translation of views and add support to comment inside views.
+    Thanks to Pavel Stehule for the report.
+  - Fix removing of AS after END keyword. Thanks to Pavel Stehule for
+    the report.
+  - Fix type in CAST clause not translated to PostgreSQL type. Thanks
+    to Pavel Stehule for the report.
+  - Treat citext type as text. Thanks to Tomasz Wrobel for the patch.
+  - Fix packages migration assessment that was broken with parser
+    rewriting on package extraction.
+  - Rewrite parsing of PL/SQL packages to better handle package
+    specification and especially types and global variables from this
+    section.
+  - Fix raise_application_error translation by removing extra boolean
+    parameter.
+  - Improve comments processing.
+  - Fix package function name replacement adding a dot before package
+    name. Thanks to Eric Delanoe for the report.
+  - Add collect of functions/procedures metadata when reading DDL
+    from file.
+  - Fix replacement of function prefixed with their schema name.
+    Thanks to Eric Delanoe for the report.
+  - Try to minimized comment placeholders by aggregating multiline
+    comments.
+  - Remove new line character from _get_version() output.
+  - Fix ENABLE_MICROSECOND test condition on NLS_TIMESTAMP_TZ_FORMAT
+    setting. Thanks to Didier Sterbecq for the report.
+  - Fix another issue with Oracle 8i and table size extraction.
+  - Fix query to show column information on Oracle 8i
+  - Fix query to look for virtual column on Oracle 8i
+  - Fix query to list all table by size on Oracle 8i
+  - Prevent ora2pg to look for external table definition in Oracle 8i.
+  - Fix a regression on timestamp format setting for Oracle 8i.
+  - Fix some regression on queries with Oracle 8i. Thanks to Didier
+    Sterbecq  for the report.
+  - Add a function to collect metadata of all functions.
+  - Don't create empty partition index file when there's no partition.
+  - Fix wrong translation in OPEN ... FOR statement. Thanks to Eric
+    Delanoe for the report.
+  - Fix call of method close() on an undefined value. Thanks to Eric
+    Delanoe for the report.
+  - Fix partition data export issues introduced with previous patches.
+  - Fix unterminated IF / ELSIF block in subpartition export.
+  - Fix subpartition export. Thanks to Maurizio De Giorgi for the
+    report.
+  - Force DATA_LIMIT default value to 2000 on Windows OS instead of
+    10000 to try to prevent constant OOM error. Thanks to Eric Delanoe
+    for the report.
+  - Fix default partition table that was not used PREFIX_PARTITION.
+    Thanks to ssayyadi for the report.
+  - Limit datetime microsecond format to micro second (.FF6) as the
+    format can be FF[0..9] and PostgreSQL just have FF[0..6]
+  - Add to_timestamp_tz Oracle function translation. Thanks to Eric
+    Delanoe for the feature request.
+  - Fix custom data type replacement in function code. Thanks to Pavel
+    Stehule for the report.
+  - Fix non working INPUT_FILE configuration directive when action is
+    QUERY. Thanks to Eric Delanoe for the report.
+  - Fix unwanted global variable implicit declaration to handle
+    autonomous transaction parameters. Thanks to Eric Delanoe for the
+    report.
+  - Fix call to dblink in function with PRAGMA AUTONOMOUS_TRANSACTION
+    and no arguments. Thanks to Eric Delanoe for the report.
+  - Fix package constant translation. Thanks to Eric Delanoe.
+  - Fix unwanted alias on join syntax. Thanks to Eric Delanoe
+    for the report.
+  - Fix regression on dbms_output.put* translation. Thanks to Eric
+    Delanoe for the report.
+  - Fix handling of comments in statements to try to preserve them at
+    maximum in the outer join rewriting.
+  - Do not declare variable when it is an implicit range cursor, it
+    do not need to be declared.
+  - Export implicit variable in FOR ... IN ... LOOP as an integer if
+    it don't use a select statement and export it as a RECORD when a
+    statement is found. Thanks to Eric Delanoe and Pavel Stehule for
+    the report.
+  - Reduce migration assessment weight for CONNECT BY.
+  - Fix derived table pasted two times in from clause. Thanks to Pavel
+    Stehule for the report.
+  - Fix some other unexpected ";" in function code. Thanks to Pavel
+    Stehule for the report.
+  - Remove %ROWTYPE in return type of function. Thanks to Pavel
+    Stehule for the report.
+  - Fix doubled AND in expression when a parenthesis is in front after
+    rewriting. Thanks to Eric Delanoe for the report.
+  - Fix unexpected ";" in function after post-body END when a comment
+    is present. Thanks to Eric Delanoe for the report.
+  - Fix unexpected ";" in some function variable declaration when a
+    comment is at end of the declare section. Thanks to Eric Delanoe
+    for the report.
+  - Remove %ROWTYPE in function that have not been replaced with RECORD
+    for cursor declaration. Thanks to Eric Delanoe for the report.
+  - Fix removing of WHEN keyword after END. Thanks to Pavel Stehule for
+    the report.
+  - Fix missing table name with alias in from clause due to comments in
+    the clause. I have also merge right and left outer join translation
+    function into a single one, most of the code was the same.
+  - Fix output order of outer join. Thanks to Pavel Stehule for the
+    report.
+  - Fix untranslated outer join in nested sub query. Thanks to Pavel
+    Stehule for the report.
+  - Rewrite again the decode() translation as a single function call
+    for all replacement before any other translation.
+  - Append table filter to check constraints extraction. Thanks to
+    danghb for the report.
+  - Fix issue with parenthesis around outer join clause. Thanks to
+    Pavel Stehule for the report.
+  - Move remove_text_constant_part() and restore_text_constant_part()
+    function into the main module.
+  - Include decode() replacement in recursive function call. Thanks
+    to Pavel Stehule for the report.
+  - Prevent removing of parenthesis on a sub select. Thanks to Pavel
+    Stehule for the report.
+  - Fix missing table exclusion/inclusion in column constraint export.
+    Thanks to danghb for the report.
+  - Fix an alias issue in view parsed from file.
+  - Fix parsing of view from file when no semi comma is found.
+  - Remove FROM clause without alias from migration assessment.
+  - Fix order of outer join during translation. Thanks to Pavel
+    Stehule for the report.
+  - Fix case of missing alias on subquery in FROM clause. Thanks to
+    Pavel Stehule for the report.
+  - Fix missing alias replacement in nested subqueries. Thanks to
+    Pavel Stehule for the report.
+  - Fix wrong addition of aliases to using() in join clause
+  - Fix nested decode replacement producing invalid CASE expression.
+    Thanks to Pavel Stehule for the report.
+  - Append aliases to subqueries in the from clause that do not have
+    one. Thanks to Pavel Stehule for the report.
+
 2017 02 17 - v18.1
 
 This release fix several issues reported on outer join translation
 thanks to the help of Pavel Stehule and reapply the commit on virtual
-column export that was accidentally removed from v18.1. It also adds
+column export that was accidentally removed from v18.0. It also adds
 several new features:
 
   - Remove CHECK constraints for columns converted into boolean using
