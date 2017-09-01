@@ -349,6 +349,9 @@ sub convert_plsql_code
 			if ($class->{single_fct_call}{$k} =~ /^CAST\s*\(/i) {
 				$class->{single_fct_call}{$k} = replace_sql_type($class->{single_fct_call}{$k}, $class->{pg_numeric_type}, $class->{default_numeric}, $class->{pg_integer_type}, %data_type);
 			}
+			if ($class->{single_fct_call}{$k} =~ /^CAST\s*\(.*\%\%REPLACEFCT(\d+)\%\%/i) {
+				$class->{single_fct_call}{$1} = replace_sql_type($class->{single_fct_call}{$1}, $class->{pg_numeric_type}, $class->{default_numeric}, $class->{pg_integer_type}, %data_type);
+			}
 		}
 		while ($code_parts[$i] =~ s/\%\%REPLACEFCT(\d+)\%\%/$class->{single_fct_call}{$1}/) {};
 		$code_parts[$i] =~ s/\%SUBPARAMS(\d+)\%/$subparams{$1}/igs;
