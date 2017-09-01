@@ -590,9 +590,8 @@ sub createPolygon
 	}
 
 	my $poly = '';
-	if (($interpretation == 2) || ($interpretation == 4)) {
+	if ($interpretation > 1) {
 		if ($self->{geometry}{sdo_elem_info}->[1] == $SDO_ETYPE{COMPOUND_POLYGON_EXTERIOR}) {
-			$rings[0] =~ s/^CIRCULARSTRING$self->{geometry}{suffix} //;
 			$poly = "CURVEPOLYGON$self->{geometry}{suffix} (COMPOUNDCURVE$self->{geometry}{suffix} (" . join(', ', @rings) . '))';
 		} else {
 			$poly = "CURVEPOLYGON$self->{geometry}{suffix} (" . join(', ', @rings) . ')';
@@ -659,7 +658,7 @@ sub createLinearRing
 		}
 		if ($interpretation == 2) {
 			if ( ($etype == $SDO_ETYPE{LINESTRING}) || ($etype == $SDO_ETYPE{POLYGON_EXTERIOR}) || ($etype == $SDO_ETYPE{POLYGON_INTERIOR}) ) {
-				$end++;
+				#$end++;
 			}
 		}
 		if ( ($self->{geometry}{sdo_elem_info}->[1] == $SDO_ETYPE{COMPOUND_POLYGON_INTERIOR}) || ($self->{geometry}{sdo_elem_info}->[1] == $SDO_ETYPE{COMPOUND_POLYGON_EXTERIOR}) ) {
@@ -673,14 +672,16 @@ sub createLinearRing
 	}
 
 	if (($etype == $SDO_ETYPE{POLYGON_EXTERIOR}) && ($interpretation == 2)) {
-		return "CIRCULARSTRING$self->{geometry}{suffix} (" . $ring . ')';
+		$ring = "CIRCULARSTRING$self->{geometry}{suffix} (" . $ring . ')';
 	} elsif (($etype == $SDO_ETYPE{COMPOUND_POLYGON_EXTERIOR}) && ($interpretation == 2)) {
-		return "COMPOUNDCURVE$self->{geometry}{suffix} (" . $ring . ')';
-	} elsif ( $etype == $SDO_ETYPE{LINESTRING}) {
-		return "CIRCULARSTRING$self->{geometry}{suffix} (" . $ring . ')';
+		$ring = "COMPOUNDCURVE$self->{geometry}{suffix} (" . $ring . ')';
+	} elsif ( $etype == $SDO_ETYPE{LINESTRING} && ($interpretation == 2)) {
+		$ring = "CIRCULARSTRING$self->{geometry}{suffix} (" . $ring . ')';
+	} else {
+		$ring = '(' . $ring . ')';
 	}
 
-	return '(' . $ring . ')';
+	return $ring;
 }
 
 # Create CompoundLineString
