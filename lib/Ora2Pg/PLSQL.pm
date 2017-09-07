@@ -1080,7 +1080,12 @@ sub replace_rownum_with_limit
 
 sub convert_date_format
 {
-	my $fields = shift;
+	my ($class, $fields) = @_;
+
+	# Restore constant string to look into date format
+	while ($fields =~ s/\?TEXTVALUE(\d+)\?/$class->{text_values}{$1}/is) {
+		delete $class->{text_values}{$1};
+	}
 
 	# Truncate time to microsecond
 	$fields =~ s/(\d{2}:\d{2}:\d{2}[,\.]\d{6})\d{3}/$1/s;
@@ -1093,8 +1098,13 @@ sub convert_date_format
 	$fields =~ s/FF\d*/US/s;
 
 	# Remove any timezone format
-	$fields =~ s/TZ[DHMR]//gs;
+	$fields =~ s/\s*TZ[DHMR]//gs;
 
+	# Replace constant strings
+	while ($str =~ s/('[^']+')/\?TEXTVALUE$class->{text_values_pos}\?/s) {
+		$class->{text_values}{$class->{text_values_pos}} = $1;
+		$class->{text_values_pos}++;
+	}
 	return $fields;
 }
 
@@ -1127,7 +1137,7 @@ sub replace_oracle_function
 	$str =~ s/TO_DATE\s*\(\s*('[^\']+'),\s*('[^\']+')[^\)]*\)/to_date($1,$2)/is;
 
 	# Translate to_timestamp_tz Oracle function
-	$str =~ s/TO_TIMESTAMP_TZ\s*\((.*)\)/'to_timestamp(' . &convert_date_format($1) . ')'/ies;
+	$str =~ s/TO_TIMESTAMP_TZ\s*\((.*)\)/'to_timestamp(' . convert_date_format($class, $1) . ')'/ies;
 
 	# Replace call to trim into btrim
 	$str =~ s/\bTRIM\s*\(([^\(\)]+)\)/btrim($1)/is;
