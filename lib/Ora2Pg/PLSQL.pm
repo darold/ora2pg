@@ -662,6 +662,7 @@ sub plsql_to_plpgsql
 	$str =~ s/\s*(<>|\!=)\s*NULL/ IS NOT NULL/igs;
 	#  Convert all x = NULL clauses to x IS NULL.
 	$str =~ s/(?!:)(.)=\s*NULL/$1 IS NULL/igs;
+
 	# Revert changes on update queries in the column setting part of the query
 	while ($str =~ s/\b(UPDATE\s+[^;]+)\s+IS NULL(\s*(?!WHERE)([^;]*))/$1 = NULL$2/is) {};
 
@@ -2488,7 +2489,7 @@ sub replace_outer_join
 				$comment .= $1;
 			}
 
-			if ($from_clause !~ /\b\Q$tmp_tbl\E\b/is) {
+			if ($from_clause !~ /(^|\s|,)\Q$tmp_tbl\E\b/is) {
 				$from_clause = "$table_decl, " . $from_clause;
 			} elsif ($comment) {
 				 $from_clause = "$comment " . $from_clause;
