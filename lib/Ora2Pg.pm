@@ -8842,17 +8842,17 @@ AND    IC.TABLE_OWNER = ?
 			my $nc = $sth2->fetch();
 			$row->[1] = $nc->[0];
 			$row->[1] =~ s/"//g;
+			# Enclose with double quote if required when is is not an index function
+			if ($row->[1] !~ /\(.*\)/) {
+				$row->[1] = $self->quote_object_name($row->[1]);
+			}
+			# Append DESC sort order when not default to ASC
 			if ($row->[-1] eq 'DESC') {
 				$row->[1] .= " DESC";
 			}
 		}
 
 		$row->[1] =~ s/SYS_EXTRACT_UTC\s*\(([^\)]+)\)/$1/isg;
-
-		if (($row->[1] !~ /".*"/) && ($row->[1] !~ /\(.*\)/)) {
-			# Enclose with double quote if required
-			$row->[1] = $self->quote_object_name($row->[1]);
-		}
 
 		# Index with DESC are declared as FUNCTION-BASED, fix that
 		if (($row->[4] =~ /FUNCTION-BASED/i) && ($row->[1] !~ /\(.*\)/)) {
