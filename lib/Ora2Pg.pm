@@ -7079,8 +7079,10 @@ CREATE TRIGGER $trig_name BEFORE INSERT OR UPDATE
 			if ($self->{use_tablespace} && $self->{$objtyp}{$tbsaved}{idx_tbsp}{$idx} && !grep(/^$self->{$objtyp}{$tbsaved}{idx_tbsp}{$idx}$/i, @{$self->{default_tablespaces}})) {
 				$str .= " TABLESPACE $self->{$objtyp}{$tbsaved}{idx_tbsp}{$idx}";
 			}
-			$str .= ";";
-			push(@out, $str);
+			if ($str) {
+				$str .= ";";
+				push(@out, $str);
+			}
 			push(@fts_out, $fts_str) if ($fts_str);
 		}
 	}
