@@ -1585,5 +1585,26 @@ sub _list_triggers
 	return %triggers;
 }
 
+sub _global_temp_table_info
+{
+        my($self) = @_;
+
+	return;
+}
+
+sub _encrypted_columns
+{
+        my($self) = @_;
+
+	return;
+}
+
+sub _get_subpartitioned_table
+{
+        my($self) = @_;
+
+	return;
+}
+
 1;
 
