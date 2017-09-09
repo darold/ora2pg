@@ -452,7 +452,9 @@ sub set_error_code
 {
 	my $code = shift;
 
-	$code =~ s/-20(...)/'45$1'/;
+	$code =~ s/-20(\d{3})/'45$1'/;
+	$code =~ s/-20(\d{2})/'450$1'/;
+	$code =~ s/-20(\d{1})/'4500$1'/;
 
 	return $code;
 }
