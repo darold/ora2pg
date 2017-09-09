@@ -442,6 +442,22 @@ sub remove_fct_name
 	return $str;
 }
 
+=head2 set_error_code
+
+Transform custom exception code by replacing the leading -20 by 45
+
+=cut
+
+sub set_error_code
+{
+	my $code = shift;
+
+	$code =~ s/-20(...)/'45$1'/;
+
+	return $code;
+}
+
+
 =head2 plsql_to_plpgsql
 
 This function return a PLSQL code translated to PLPGSQL code
@@ -563,9 +579,8 @@ sub plsql_to_plpgsql
 	$str =~ s/\bdup_val_on_index\b/unique_violation/igs;
 
 	# Replace raise_application_error by PG standard RAISE EXCEPTION
-	$str =~ s/\braise_application_error\s*\(\s*([^,]+)\s*,\s*([^;]+),\s*(true|false)\s*\)\s*;/RAISE EXCEPTION '%', $2 USING ERRCODE = $1;/igs;
-	$str =~ s/\braise_application_error\s*\(\s*([^,]+)\s*,\s*([^;]+)\)\s*;/RAISE EXCEPTION '%', $2 USING ERRCODE = $1;/igs;
-	$str =~ s/(RAISE EXCEPTION .* USING ERRCODE = )-20(...)\s*;/$1'45$2';/igs;
+	$str =~ s/\braise_application_error\s*\(\s*([^,]+)\s*,\s*([^;]+),\s*(true|false)\s*\)\s*;/"RAISE EXCEPTION '%', $2 USING ERRCODE = " . set_error_code($1) . ";"/iegs;
+	$str =~ s/\braise_application_error\s*\(\s*([^,]+)\s*,\s*([^;]+)\)\s*;/"RAISE EXCEPTION '%', $2 USING ERRCODE = " . set_error_code($1) . ";"/iegs;
 	$str =~ s/DBMS_STANDARD\.RAISE EXCEPTION/RAISE EXCEPTION/igs;
 
 	# Remove IN information from cursor declaration
