@@ -452,9 +452,13 @@ sub set_error_code
 {
 	my $code = shift;
 
+	my $orig_code = $code;
+
 	$code =~ s/-20(\d{3})/'45$1'/;
-	$code =~ s/-20(\d{2})/'450$1'/;
-	$code =~ s/-20(\d{1})/'4500$1'/;
+	if ($code =~ s/-20(\d{2})/'450$1'/ ||  $code =~ s/-20(\d{1})/'4500$1'/) {
+		print STDERR "WARNING: exception code has less than 5 digit, proceeding to automatic adjustement.\n";
+		$code .= " /* code was: $orig_code */";
+	}
 
 	return $code;
 }
