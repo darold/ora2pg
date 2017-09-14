@@ -137,7 +137,6 @@ $QUERY_TEST_SCORE = 0.1;
 	VSize
 	Bin_To_Num
 	CharToRowid
-	From_Tz
 	HexToRaw
 	NumToDSInterval
 	NumToYMInterval
@@ -165,11 +164,11 @@ $QUERY_TEST_SCORE = 0.1;
 	Sinh
 	Tanh
 	DbTimeZone
-	From_Tz
 	New_Time
 	SessionTimeZone
 	Tz_Offset
 	Get_Env
+	From_Tz
 );
 
 @MYSQL_SPATIAL_FCT = (
@@ -1099,6 +1098,36 @@ sub replace_rownum_with_limit
 	return $str;
 }
 
+sub convert_from_tz
+{
+	my ($class, $date) = @_;
+
+	# Restore constant string to look into date format
+	while ($date =~ s/\?TEXTVALUE(\d+)\?/$class->{text_values}{$1}/is) {
+		delete $class->{text_values}{$1};
+	}
+
+	my $tz = '00:00';
+	if ($date =~ /^[^']*'([^']+)'\s*,\s*'([^']+)'/) {
+		$date = $1;
+		$tz = $2;
+		$date = $date . ' ';
+		if ($tz =~ /^\d+:\d+$/) {
+			$date .= '+' . $tz;
+		} else {
+			$date .= $tz;
+		}
+	}
+
+	# Replace constant strings
+	while ($date =~ s/('[^']+')/\?TEXTVALUE$class->{text_values_pos}\?/s) {
+		$class->{text_values}{$class->{text_values_pos}} = $1;
+		$class->{text_values_pos}++;
+	}
+
+	return "'$date'";
+}
+
 sub convert_date_format
 {
 	my ($class, $fields) = @_;
@@ -1155,10 +1184,13 @@ sub replace_oracle_function
 	$str =~ s/\bSYS_GUID\b/$class->{uuid_function}()/is;
 
 	# Rewrite TO_DATE formating call
-	$str =~ s/TO_DATE\s*\(\s*('[^\']+'),\s*('[^\']+')[^\)]*\)/to_date($1,$2)/is;
+	$str =~ s/TO_DATE\s*\(\s*('[^\']+')\s*,\s*('[^\']+')[^\)]*\)/to_date($1,$2)/is;
 
 	# Translate to_timestamp_tz Oracle function
 	$str =~ s/TO_TIMESTAMP_TZ\s*\((.*)\)/'to_timestamp(' . convert_date_format($class, $1) . ')'/ies;
+
+	# Translate from_tz Oracle function
+	$str =~ s/FROM_TZ\s*\(\s*([^\)]+)\s*\)/'(' . convert_from_tz($class,$1) . ')::timestamp with time zone'/ies;
 
 	# Replace call to trim into btrim
 	$str =~ s/\bTRIM\s*\(([^\(\)]+)\)/btrim($1)/is;
