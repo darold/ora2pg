@@ -421,6 +421,8 @@ sub append_alias_clause
 				my @parts = split(/\b(WHERE|ORDER\s+BY|GROUP\s+BY|LIMIT)\b/i, $from_clause);
 				$parts[0] =~ s/(?<!USING|[\s,]ONLY|[\s,]JOIN|..\sON|.\sAND|..\sOR)\%SUBQUERY(\d+)\%(\s*,)/\%SUBQUERY$1\% alias$1$2/igs;
 				$parts[0] =~ s/(?<!USING|[\s,]ONLY|[\s,]JOIN|.\sON\s|\sAND\s|.\sOR\s)\%SUBQUERY(\d+)\%(\s*)$/\%SUBQUERY$1\% alias$1$2/is;
+				# Remove unwanted alias appended with the REGEXP_SUBSTR translation
+				$parts[0] =~ s/(\%SUBQUERY\d+\%\s+AS\s+[^\s]+)\s+alias\d+/$1/g;
 				$from_clause = join('', @parts);
 			}
 			$q[$j] =~ s/\%FROM_CLAUSE\%/$from_clause/s;
@@ -1099,6 +1101,37 @@ sub replace_rownum_with_limit
 	return $str;
 }
 
+# Translation of REGEX_SUBSTR( string, pattern, [pos], [nth]) converted into
+# (SELECT array_to_string(a, '') FROM regexp_matches(substr(string, pos), pattern, 'g') AS foo(a) LIMIT 1 OFFSET (nth - 1))";
+# Optional fith parameter of match_parameter is appended to 'g' when present
+sub convert_regex_substr
+{
+	($class, $str) = @_;
+
+	my @params = split(/\s*,\s*/, $str);
+	my $mod = '';
+	if ($#params == 4) {
+		# Restore constant string to look into date format
+		while ($params[4] =~ s/\?TEXTVALUE(\d+)\?/$class->{text_values}{$1}/is) {
+			delete $class->{text_values}{$1};
+		}
+		$params[4] =~ s/'//g;
+		$mod = $params[4] if ($params[4] ne 'g');
+	}
+	if ($#params < 2) {
+		push(@params, 1, 1);
+	} elsif ($#params < 3) {
+		push(@params, 1);
+	}
+	if ($params[2] == 1) {
+		$str = "(SELECT array_to_string(a, '') FROM regexp_matches($params[0], $params[1], 'g$mod') AS foo(a) LIMIT 1 OFFSET ($params[3] - 1))";
+	} else {
+		$str = "(SELECT array_to_string(a, '') FROM regexp_matches(substr($params[0], $params[2]), $params[1], 'g$mod') AS foo(a) LIMIT 1 OFFSET ($params[3] - 1))";
+	}
+
+	return $str;
+}
+
 sub convert_from_tz
 {
 	my ($class, $date) = @_;
@@ -1250,6 +1283,9 @@ sub replace_oracle_function
 
 	# REGEX_LIKE( string, pattern ) => string ~ pattern
 	$str =~ s/REGEXP_LIKE\s*\(\s*([^,]+)\s*,\s*([^\)]+)\s*\)/$1 \~ $2/is;
+
+	# REGEX_SUBSTR( string, pattern, pos, num ) translation
+	$str =~ s/REGEXP_SUBSTR\s*\(s*([^\)]+)\s*\)/convert_regex_substr($class, $1)/iegs;
 
 	# Remove call to XMLCDATA, there's no such function with PostgreSQL
 	$str =~ s/XMLCDATA\s*\(([^\)]+)\)/'<![CDATA[' || $1 || ']]>'/is;
