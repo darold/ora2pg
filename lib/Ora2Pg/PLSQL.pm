@@ -98,6 +98,7 @@ $QUERY_TEST_SCORE = 0.1;
 	'EXCEPTION' => 2,
 	'TO_NUMBER' => 0.1,
 	'REGEXP_LIKE' => 0.1,
+	'REGEXP_SUBSTR' => 0.1,
 	'TG_OP' => 0,
 	'CURSOR' => 0.2,
 	'PIPE ROW' => 1,
@@ -1817,6 +1818,8 @@ sub estimate_cost
 	$cost_details{'EXCEPTION'} += $n;
 	$n = () = $str =~ m/REGEXP_LIKE/igs;
 	$cost_details{'REGEXP_LIKE'} += $n;
+	$n = () = $str =~ m/REGEXP_SUBSTR/igs;
+	$cost_details{'REGEXP_SUBSTR'} += $n;
 	$n = () = $str =~ m/\b(INSERTING|DELETING|UPDATING)\b/igs;
 	$cost_details{'TG_OP'} += $n;
 	$n = () = $str =~ m/CURSOR/igs;
