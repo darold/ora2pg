@@ -11806,7 +11806,8 @@ END;
 		$function =~ s/(-- REVOKE ALL ON FUNCTION [^;]+ FROM PUBLIC;)/&remove_newline($1)/sge;
 		$self->dump($sql_header . $function, $fhdl);
 		$self->close_export_file($fhdl);
-		return;
+		$function = "\\i $dirprefix\L$pname/$fname\E_$self->{output}\n";
+		return $function;
 	}
 
 	$function =~ s/\r//gs;
