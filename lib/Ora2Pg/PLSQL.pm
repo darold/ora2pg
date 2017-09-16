@@ -1151,6 +1151,14 @@ sub convert_from_tz
 		} else {
 			$date .= $tz;
 		}
+		$date = "'$date'";
+	} elsif ($date =~ /^(.*),\s*'([^']+)'$/) {
+		$date = $1;
+		$tz = $2;
+		if ($tz =~ /^\d+:\d+$/) {
+			$tz .= '+' . $tz;
+		}
+		$date = $date . ' AT TIME ZONE ' . "'$tz'";
 	}
 
 	# Replace constant strings
@@ -1159,7 +1167,7 @@ sub convert_from_tz
 		$class->{text_values_pos}++;
 	}
 
-	return "'$date'";
+	return $date;
 }
 
 sub convert_date_format
