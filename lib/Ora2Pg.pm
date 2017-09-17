@@ -11891,6 +11891,13 @@ sub _format_view
 
 	$self->_remove_comments(\$sqlstr);
 
+	# Retrieve the column part of the view to remove double quotes
+	if (!$self->{preserve_case} && $sqlstr =~ s/^(.*?)\bFROM\b/FROM/is) {
+		my $tmp = $1;
+		$tmp =~ s/"//gs;
+		$sqlstr = $tmp . $sqlstr;
+	}
+	
 	my @tbs = ();
 	# Retrieve all tbs names used in view if possible
 	if ($sqlstr =~ /\bFROM\b(.*)/is) {
