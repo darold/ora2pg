@@ -493,6 +493,8 @@ sub plsql_to_plpgsql
 	# Change SYSDATE to 'now' or current timestamp.
 	$str =~ s/\bSYSDATE\s*\(\s*\)/$conv_current_time/igs;
 	$str =~ s/\bSYSDATE\b/$conv_current_time/igs;
+	# Cast call to to_date with localtimestamp 
+	$str =~ s/(TO_DATE\($conv_current_time)\s*,/$1::text,/igs;
 
 	# Replace SYSTIMESTAMP 
 	$str =~ s/\bSYSTIMESTAMP\b/CURRENT_TIMESTAMP/igs;
@@ -2460,6 +2462,8 @@ sub replace_outer_join
 		if ($str =~ s/\s+((?:START WITH|CONNECT BY|ORDER SIBLINGS BY|GROUP BY|ORDER BY).*)$//is) {
 			$end_query = $1;
 		}
+
+		# Extract predicat from the WHERE clause
 		my @predicat = split(/\s*(\bAND\b|\bOR\b|\%ORA2PG_COMMENT\d+\%)\s*/i, $str);
 		my $id = 0;
 		my %other_join_clause = ();
@@ -2566,7 +2570,6 @@ sub replace_outer_join
 		my @clause_done = ();
 		foreach my $c (sort { $from_order{$a} <=> $from_order{$b} } keys %from_order) {
 			next if (!grep(/^\Q$c\E$/i, @outer_clauses));
-
 			my @output = ();
 			for (my $j = 0; $j <= $#{$final_outer_clauses{$c}{join}}; $j++) {
 				push(@output, $final_outer_clauses{$c}{join}[$j]);
