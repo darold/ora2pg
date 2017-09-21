@@ -963,6 +963,7 @@ sub _init
 	# Defined default value for to_number translation
 	$self->{to_number_conversion} ||= 'numeric';
 
+	# Set regexp to detect parts of statements that need to be considered as text
 	if ($AConfig{STRING_CONSTANT_REGEXP}) {
 		push(@{ $self->{string_constant_regexp} } , split(/;/, $AConfig{STRING_CONSTANT_REGEXP}));
 	}
@@ -6752,7 +6753,7 @@ sub _dump_table
 	# Use prepared statement in INSERT mode and only if
 	# we are not exporting a row with a spatial column
 	my $sprep = '';
-	if ($self->{pg_dsn}) {
+	if ($self->{pg_dsn} && !$has_geometry) {
 		if ($self->{type} ne 'COPY') {
 			$s_out .= '?,' foreach (@fname);
 			$s_out =~ s/,$//;
@@ -11420,7 +11421,7 @@ sub _remove_comments
 		}
 
 		# ex: var1 := SUBSTR(var2,1,28) || ' -- ' || var3 || ' --  ' || SUBSTR(var4,1,26) ;
-		while ($lines[$i] =~ s/('[^;'\n\r]*\-\-[^']*')/\?TEXTVALUE$self->{text_values_pos}\?/) {
+		while ($lines[$i] =~ s/('[^;']*\-\-[^']*')/\?TEXTVALUE$self->{text_values_pos}\?/) {
 			$self->{text_values}{$self->{text_values_pos}} = $1;
 			$self->{text_values_pos}++;
 		}
@@ -11561,7 +11562,7 @@ sub _convert_function
 		}
 	}
 
-        # Apply parameter list with reordering if needed
+	# Apply parameter list with reordering if needed
 	$fct_detail{args} = '(' . join(',', @args_sorted) . ')';
 
 	# Set the return part
