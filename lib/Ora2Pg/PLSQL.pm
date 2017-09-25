@@ -648,6 +648,11 @@ sub plsql_to_plpgsql
 		$str =~ s/(ROLLBACK\s+TO\s+[^;]+);/-- $1;/igs;
 	}
 
+	# Comment call to SAVEPOINT in the code if allowed
+	if ($class->{comment_savepoint}) {
+		$str =~ s/(SAVEPOINT\s+[^;]+);/-- $1;/igs;
+	}
+
 	# Replace exit at end of cursor
 	$str =~ s/EXIT WHEN ([^\%;]+)\%NOTFOUND\s*;/EXIT WHEN NOT FOUND; \/\* apply on $1 \*\//isg;
 	$str =~ s/EXIT WHEN \(\s*([^\%;]+)\%NOTFOUND\s*\)\s*;/EXIT WHEN NOT FOUND;  \/\* apply on $1 \*\//isg;

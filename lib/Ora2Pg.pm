@@ -862,6 +862,9 @@ sub _init
 	# Keep commit/rollback in converted pl/sql code by default
 	$self->{comment_commit_rollback} = 0;
 
+	# Keep savepoint in converted pl/sql code by default
+	$self->{comment_savepoint} = 0;
+
 	# Storage of string constant placeholder regexp
 	$self->{string_constant_regexp} = ();
 
