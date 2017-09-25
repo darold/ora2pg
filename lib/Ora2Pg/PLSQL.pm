@@ -120,7 +120,7 @@ $QUERY_TEST_SCORE = 0.1;
 	'PRAGMA' => 3,
 	'MDSYS' => 1,
 	'MERGE INTO' => 3,
-	'COMMIT' => 3,
+	'COMMIT' => 1,
 	'CONTAINS' => 1,
 	'SCORE' => 1,
 	'FUZZY' => 1,
@@ -645,6 +645,7 @@ sub plsql_to_plpgsql
 	# Comment call to COMMIT or ROLLBACK in the code if allowed
 	if ($class->{comment_commit_rollback}) {
 		$str =~ s/\b(COMMIT|ROLLBACK)\s*;/-- $1;/igs;
+		$str =~ s/(ROLLBACK\s+TO\s+[^;]+);/-- $1;/igs;
 	}
 
 	# Replace exit at end of cursor
