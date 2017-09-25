@@ -1044,6 +1044,11 @@ FUNCTION_STABLE		1
 # source code or you want to comment this calls enable the following directive
 COMMENT_COMMIT_ROLLBACK	0
 
+# It is common to see SAVEPOINT call inside PL/SQL procedure together with
+# a ROLLBACK TO savepoint_name. When COMMENT_COMMIT_ROLLBACK is enabled you
+# may want to also comment SAVEPOINT calls, in this case enable it.
+COMMENT_SAVEPOINT	0
+
 # Ora2Pg replace all string constant during the pl/sql to plpgsql translation,
 # string constant are all text include between single quote. If you have some
 # string placeholder used in dynamic call to queries you can set a list of

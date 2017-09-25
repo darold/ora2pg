@@ -124,7 +124,7 @@
 .\" ========================================================================
 .\"
 .IX Title "ORA2PG 1"
-.TH ORA2PG 1 "2017-08-29" "perl v5.14.2" "User Contributed Perl Documentation"
+.TH ORA2PG 1 "2017-09-25" "perl v5.14.2" "User Contributed Perl Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -2309,6 +2309,11 @@ disabling this configuration directive.
 By default call to \s-1COMMIT/ROLLBACK\s0 are kept untouched by Ora2Pg to force
 the user to review the logic of the function. Once it is fixed in Oracle
 source code or you want to comment this calls enable the following directive.
+.IP "\s-1COMMENT_SAVEPOINT\s0" 4
+.IX Item "COMMENT_SAVEPOINT"
+It is common to see \s-1SAVEPOINT\s0 call inside \s-1PL/SQL\s0 procedure together with
+a \s-1ROLLBACK\s0 \s-1TO\s0 savepoint_name. When \s-1COMMENT_COMMIT_ROLLBACK\s0 is enabled you
+may want to also comment \s-1SAVEPOINT\s0 calls, in this case enable it.
 .IP "\s-1STRING_CONSTANT_REGEXP\s0" 4
 .IX Item "STRING_CONSTANT_REGEXP"
 Ora2Pg replace all string constant during the pl/sql to plpgsql translation,
