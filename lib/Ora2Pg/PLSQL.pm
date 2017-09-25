@@ -650,7 +650,7 @@ sub plsql_to_plpgsql
 
 	# Comment call to SAVEPOINT in the code if allowed
 	if ($class->{comment_savepoint}) {
-		$str =~ s/\b(SAVEPOINT)\s*;/-- $1;/igs;
+		$str =~ s/(SAVEPOINT\s+[^;]+);/-- $1;/igs;
 	}
 
 	# Replace exit at end of cursor
