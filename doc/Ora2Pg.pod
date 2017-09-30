@@ -2235,6 +2235,12 @@ By default call to COMMIT/ROLLBACK are kept untouched by Ora2Pg to force
 the user to review the logic of the function. Once it is fixed in Oracle
 source code or you want to comment this calls enable the following directive.
 
+=item COMMENT_SAVEPOINT
+
+It is common to see SAVEPOINT call inside PL/SQL procedure together with
+a ROLLBACK TO savepoint_name. When COMMENT_COMMIT_ROLLBACK is enabled you
+may want to also comment SAVEPOINT calls, in this case enable it.
+
 =item STRING_CONSTANT_REGEXP
 
 Ora2Pg replace all string constant during the pl/sql to plpgsql translation,

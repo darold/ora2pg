@@ -862,6 +862,9 @@ sub _init
 	# Keep commit/rollback in converted pl/sql code by default
 	$self->{comment_commit_rollback} = 0;
 
+	# Keep savepoint in converted pl/sql code by default
+	$self->{comment_savepoint} = 0;
+
 	# Storage of string constant placeholder regexp
 	$self->{string_constant_regexp} = ();
 
@@ -11393,6 +11396,11 @@ sub _restore_comments
 
 	# Restore comments
 	while ($$content =~ s/(\%ORA2PG_COMMENT\d+\%)[\n]*/$self->{comment_values}{$1}\n/is) { delete $self->{comment_values}{$1}; };
+
+	if ($self->{string_constant_regexp}) {
+		# Replace potential text values that was replaced in comments
+		$self->_restore_text_constant_part($content);
+	}
 
 }
 
