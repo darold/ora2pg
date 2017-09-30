@@ -899,7 +899,7 @@ sub plsql_to_plpgsql
 					if ($p ne $cur_pkg) {
 						# let's prefix the name of the function by the package name if there
 						# is no such function name in the current package being parsed
-						if (!exists $class->{package_functions}{$cur_pkg}{$k} && !exists $class->{package_functions}{$cur_pkg}{$k}) {
+						if (!exists $class->{package_functions}{$cur_pkg}{$k}) {
 							# If the package is already prefixed to the function name in the hash take it from here
 							if (lc($class->{package_functions}{$p}{$k}{name}) ne lc($k)) {
 								$str =~ s/([^\.])\b$k\s*([\(;])/$1$class->{package_functions}{$p}{$k}{name}$2/igs;
