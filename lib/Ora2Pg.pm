@@ -7306,6 +7306,8 @@ sub _create_unique_keys
 		my $constype =   $unique_key->{$consname}{type};
 		my $constgen =   $unique_key->{$consname}{generated};
 		my $index_name = $unique_key->{$consname}{index_name};
+		my $deferrable = $unique_key->{$consname}{deferrable};
+		my $deferred = $unique_key->{$consname}{deferred};
 		my @conscols = @{$unique_key->{$consname}{columns}};
 		# Exclude unique index used in PK when column list is the same
 		next if (($constype eq 'U') && exists $pkcollist{$table} && ($pkcollist{$table} eq join(",", @conscols)));
@@ -7330,6 +7332,12 @@ sub _create_unique_keys
 			if ($self->{use_tablespace} && $self->{tables}{$tbsaved}{idx_tbsp}{$index_name} && !grep(/^$self->{tables}{$tbsaved}{idx_tbsp}{$index_name}$/i, @{$self->{default_tablespaces}})) {
 				$out .= " USING INDEX TABLESPACE $self->{tables}{$tbsaved}{idx_tbsp}{$index_name}";
 			}
+			if ($deferrable eq "DEFERRABLE") {
+				$out .= " DEFERRABLE";
+				if ($deferred eq "DEFERRED") {
+					$out .= " INITIALLY DEFERRED"
+				}       
+			}			
 			$out .= ";\n";
 		}
 	}
@@ -8369,7 +8377,7 @@ END
 
 	while (my $row = $sth->fetch) {
 
-		my %constraint = (type => $row->[7], 'generated' => $row->[8], 'index_name' => $row->[11], columns => ());
+		my %constraint = (type => $row->[7], 'generated' => $row->[8], 'index_name' => $row->[11], 'deferrable' => $row->[4], 'deferred' => $row->[5], columns => ());
 		my @done = ();
 		foreach my $r (@cons_columns) {
 			# Skip constraints on system internal columns
