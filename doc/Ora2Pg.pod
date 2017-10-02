@@ -702,7 +702,8 @@ SYNONYM you may ensure that the object's owners and schemas correspond to
 the new PostgreSQL database design.
 
 Note that you can chained multiple export by giving to the TYPE directive a
-comma-separated list of export type.
+comma-separated list of export type, but in this case you must not use COPY
+or INSERT with other export type.
 
 Ora2Pg will convert Oracle partition using table inheritance, trigger and
 functions. See document at Pg site:
