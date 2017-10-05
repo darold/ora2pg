@@ -2852,31 +2852,16 @@ sub replace_connect_by
 
 	return $str if ($str !~ /\bCONNECT\s+BY\b/is);
 
-	my $level = 0;
-
 	my $final_query = "WITH RECURSIVE cte AS (\n";
 
-	# Extract the starting node or level of the tree 
-	my $where_clause = '';
-	my $start_with = '';
-	if ($str =~ s/WHERE\s+(.*?)\s+START\s+WITH\s*(.*?)\s+CONNECT BY\s*//is) {
-		$where_clause = " WHERE $1";
-		$start_with = $2;
-	} elsif ($str =~ s/START\s+WITH\s*(.*?)\s+CONNECT BY\s*//is) {
-		$start_with = $1;
-	} else {
-		return $str;
-	}
-	# Remove NOCYCLE
+	# Remove NOCYCLE, not supported at now
 	$str =~ s/\s+NOCYCLE//is;
+
+	# Remove SIBLINGS keywords and enable siblings rewrite 
 	my $siblings = 0;
-	# Remove SIBLINGS and enable siblings rewrite 
 	if ($str =~ s/\s+SIBLINGS//is) {
 		$siblings = 1;
 	}
-	# remove alias from where clause
-	#$where_clause =~ s/\b[^\.]\.([^\s]+)\b/$1/gs;
-	$where_clause =~ s/\b[^\.]\.([^\s]+)\b/$1/gs;
 
 	# Extract order by to past it to the query at end
 	my $order_by = '';
@@ -2884,46 +2869,84 @@ sub replace_connect_by
 		$order_by = $1;
 	}
 
-	# Extract the CONNECT BY clause in the hierarchical query
-	my @prior_clause = '';
-	if ($str =~ s/(?:NOCYLCLE\s*)?(\s*PRIOR\s+.*)//is) {
-		@prior_clause = split(/\s*PRIOR\s+/i, $1);
-		$prior_clause[-1] =~ s/\s*;\s*//s;
-		shift(@prior_clause);
-		if ($siblings) {
-			$siblings = $prior_clause[-1];
-			# Keep only the last part
-			$siblings =~ s/^.*\s+//;
-		}
-		map { s/[^\.]+\.//s; } @prior_clause;
+	# Extract group by to past it to the query at end
+	my $group_by = '';
+	if ($str =~ s/(\s+GROUP BY.*)//is) {
+		$group_by = $1;
+	}
+
+	# Extract the starting node or level of the tree 
+	my $where_clause = '';
+	my $start_with = '';
+	if ($str =~ s/WHERE\s+(.*?)\s+START\s+WITH\s*(.*?)\s+CONNECT BY\s*//is) {
+		$where_clause = " WHERE $1";
+		$start_with = $2;
+	} elsif ($str =~ s/WHERE\s+(.*?)\s+CONNECT BY\s+(.*?)\s+START\s+WITH\s*(.*)/$2/is) {
+		$where_clause = " WHERE $1";
+		$start_with = $3;
+	} elsif ($str =~ s/START\s+WITH\s*(.*?)\s+CONNECT BY\s*//is) {
+		$start_with = $1;
+	} elsif ($str =~ s/\s+CONNECT BY\s+(.*?)\s+START\s+WITH\s*(.*)/ $1 /is) {
+		$start_with = $2;
 	} else {
-		$str =~ s/NOCYLCLE\s*//is;
-		my $tmp = $str;
-		while ($tmp =~ s/\%SUBQUERY(\d+)\%//is) {
-			my $id = $1;
-			my $subquery = $class->{sub_parts}{$id};
-			$subquery =~ s/^\(//s;
-			$subquery =~ s/\)$//s;
-			if ($subquery =~ /(\s*PRIOR\s+.*)/is) {
-				@prior_clause = split(/\s*PRIOR\s+/i, $1);
-				$prior_clause[-1] =~ s/\s*;\s*//s;
-				shift(@prior_clause);
-				if ($siblings) {
-					$siblings = $prior_clause[-1];
-					# Keep only the last part
-					$siblings =~ s/^.*\s+//;
-				}
-				map { s/[^\.]+\.//s; } @prior_clause;
-				$str =~ s/\%SUBQUERY$id\%//is;
-				last;
+		$str =~ s/CONNECT BY\s*//is;
+	}
+
+	# remove alias from where clause
+	$where_clause =~ s/\b[^\.]\.([^\s]+)\b/$1/gs;
+
+	# Extract the CONNECT BY clause in the hierarchical query
+	my $prior_str = '';
+	my @prior_clause = '';
+	if ($str =~ s/([^\s]+\s*=\s*PRIOR\s+.*)//is) {
+		$prior_str =  $1;
+	} elsif ($str =~ s/(\s*PRIOR\s+.*)//is) {
+		$prior_str =  $1;
+	}
+	if ($prior_str) {
+		# Try to extract the prior clauses
+		my @tmp_prior = split(/\s*AND\s*/, $prior_str);
+		$tmp_prior[-1] =~ s/\s*;\s*//s;
+		my @tmp_prior2 = ();
+		foreach my $p (@tmp_prior) {
+			if ($p =~ /\bPRIOR\b/is) {
+				push(@prior_clause, split(/\s*=\s*/i, $p));
+			} else {
+				$where_clause .= " AND $p";
 			}
 		}
+		if ($siblings) {
+			if ($prior_clause[-1] !~ /PRIOR/i) {
+				$siblings = $prior_clause[-1];
+			} else {
+				$siblings = $prior_clause[-2];
+			}
+			$siblings =~ s/\s+//g;
+		}
+		shift(@prior_clause) if ($prior_clause[0] eq '');
+		my @rebuild_prior = ();
+		# Place PRIOR in the left part if necessary
+		for (my $i = 0; $i < $#prior_clause; $i+=2) {
+			if ($prior_clause[$i+1] =~ /PRIOR\s+/i) {
+				my $tmp = $prior_clause[$i];
+				$prior_clause[$i] = $prior_clause[$i+1];
+				$prior_clause[$i+1] = $tmp;
+			}
+			push(@rebuild_prior, "$prior_clause[$i] = $prior_clause[$i+1]");
+		}
+		@prior_clause = @rebuild_prior;
+		# Remove table aliases from prior clause
+		map { s/\s*PRIOR\s*//s; s/[^\.]+\.//s; } @prior_clause;
 	}
 	my $bkup_query = $str;
 	# Construct the initialization query
-	my $has_level = 0;
 	$str =~ s/(SELECT\s+)(.*?)(\s+FROM)/$1COLUMN_ALIAS$3/is;
 	my @columns = split(/\s*,\s*/, $2);
+	# When the pseudo column LEVEL is used in the where clause
+	# and not used in columns list, add the pseudo column
+	if ($where_clause =~ /\bLEVEL\b/is && !grep(/\bLEVEL\b/i, @columns)) {
+		push(@columns, 'level');
+	}
 	my @tabalias = ();
 	my %connect_by_path = ();
 	for (my $i = 0; $i <= $#columns; $i++) {
@@ -2937,10 +2960,8 @@ sub replace_connect_by
 		# Replace LEVEL call by a counter, there is no direct equivalent in PostgreSQL
 		if (lc($columns[$i]) eq 'level') {
 			$columns[$i] = "1 as level";
-			$has_level = 1;
 		} elsif ($columns[$i] =~ /\bLEVEL\b/is) {
 			$columns[$i] =~ s/\bLEVEL\b/1/is;
-			$has_level = 1;
 		}
 		# Replace call to SYS_CONNECT_BY_PATH by the right concatenation string
 		if ($columns[$i] =~ s/SYS_CONNECT_BY_PATH\s*[\(]*\s*([^,]+),\s*([^\)]+)\s*\)/$1/is) {
@@ -2979,17 +3000,24 @@ sub replace_connect_by
 	}
 
 	# Now append the UNION ALL query that will be called recursively
-	$final_query .= $str . ' WHERE ' . $start_with . "\n";
+	$final_query .= $str;
+	$final_query .= ' WHERE ' . $start_with . "\n" if ($start_with);
 	#$where_clause =~ s/^\s*WHERE\s+/ AND /is;
 	#$final_query .= $where_clause . "\n";
 	$final_query .= "  UNION ALL\n";
 	if ($siblings && !$order_by) {
 		$final_query =~ s/(\s+FROM\s+)/,ARRAY[ row_number() OVER (ORDER BY $siblings) ] as hierarchy$1/is;
 	} elsif ($siblings) {
+
 		$final_query =~ s/(\s+FROM\s+)/,ARRAY[ row_number() OVER (ORDER BY $order_by) ] as hierarchy$1/is;
 	}
 	$bkup_query =~ s/(SELECT\s+)(.*?)(\s+FROM)/$1COLUMN_ALIAS$3/is;
 	@columns = split(/\s*,\s*/, $2);
+	# When the pseudo column LEVEL is used in the where clause
+	# and not used in columns list, add the pseudo column
+	if ($where_clause =~ /\bLEVEL\b/is && !grep(/\bLEVEL\b/i, @columns)) {
+		push(@columns, 'level');
+	}
 	for (my $i = 0; $i <= $#columns; $i++) {
 		my $found = 0;
 		while ($columns[$i] =~ s/\%SUBQUERY(\d+)\%/$class->{sub_parts}{$1}/is) {
@@ -3040,8 +3068,6 @@ sub replace_connect_by
 	}
 	$final_query .= $bkup_query;
 	map { s/^\s*(.*?)(=\s*)(.*)/c\.$1$2$prior_alias$3/s; } @prior_clause;
-	#$where_clause =~ s/^\s*AND\s*/ WHERE /is;
-	#$final_query .= " JOIN cte c ON (" . join(' AND ', @prior_clause) . ")$where_clause\n";
 	$final_query .= " JOIN cte c ON (" . join(' AND ', @prior_clause) . ")\n";
 	if ($siblings) {
 		$order_by = " ORDER BY hierarchy";
@@ -3049,8 +3075,7 @@ sub replace_connect_by
 		$order_by =~ s/^, //s;
 		$order_by = " ORDER BY $order_by";
 	}
-	#$final_query .= "\n) SELECT * FROM cte$order_by;\n";
-	$final_query .= "\n) SELECT * FROM cte$where_clause$order_by;\n";
+	$final_query .= "\n) SELECT * FROM cte$where_clause$group_by$order_by;\n";
 
 	return $final_query;
 }
