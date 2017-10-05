@@ -6228,6 +6228,7 @@ CREATE TRIGGER ${table}_trigger_insert
 		my $enum_str = '';
 		my @skip_column_check = ();
 		if (exists $self->{tables}{$table}{column_info}) {
+			my $schem = '';
 			$sql_output .= "\nCREATE$foreign $obj_type $tbname (\n";
 
 			# Extract column information following the Oracle position order
@@ -6398,7 +6399,7 @@ CREATE TRIGGER ${table}_trigger_insert
 			} elsif ( grep(/^$table$/i, keys %{$self->{external_table}}) ) {
 				$sql_output .= " SERVER \L$self->{external_table}{$table}{directory}\E OPTIONS(filename '$self->{external_table}{$table}{directory_path}$self->{external_table}{$table}{location}', format 'csv', delimiter '$self->{external_table}{$table}{delimiter}');\n";
 			} elsif ($self->{is_mysql}) {
-				my $schem = "dbname '$self->{schema}'," if ($self->{schema});
+				$schem = "dbname '$self->{schema}'," if ($self->{schema});
 				my $r_server = $self->{fdw_server};
 				my $r_table = $table;
 				if ($self->{tables}{$table}{table_info}{connection} =~ /([^'\/]+)\/([^']+)/) {
@@ -6407,8 +6408,13 @@ CREATE TRIGGER ${table}_trigger_insert
 				}
 				$sql_output .= " SERVER $r_server OPTIONS($schem table_name '$r_table');\n";
 			} else {
-				my $schem = "schema '$self->{schema}'," if ($self->{schema});
-				$sql_output .= " SERVER $self->{fdw_server} OPTIONS($schem table '$table');\n";
+				my $tmptb = $table;
+				if ($self->{schema}) {
+					$schem = "schema '$self->{schema}',";
+				} elsif ($tmptb =~ s/^([^\.]+)\.//) {
+					$schem = "schema '$1',";
+				}
+				$sql_output .= " SERVER $self->{fdw_server} OPTIONS($schem table '$tmptb');\n";
 			}
 		}
 		$sql_output .= $serial_sequence;
