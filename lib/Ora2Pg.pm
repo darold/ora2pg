@@ -4164,7 +4164,7 @@ LANGUAGE plpgsql ;
 							$trig->[4] =~ s/\b(END[;]*)[\s\/]*$/  END;\n$1/is;
 						}
 						# Add return statement.
-						$trig->[4] =~ s/\b(END[;]*)[\s\/]*$/$ret_kind\n$1/igs;
+						$trig->[4] =~ s/\b(END[;]*)(\s*\%ORA2PG_COMMENT\d+\%\s*)?[\s\/]*$/$ret_kind\n$1$2/igs;
 						# Look at function header to convert sql type
 						my @parts = split(/BEGIN/i, $trig->[4]);
 						if ($#parts > 0) {
