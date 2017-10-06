@@ -7341,7 +7341,7 @@ sub _create_unique_keys
 			if ($deferrable eq "DEFERRABLE") {
 				$out .= " DEFERRABLE";
 				if ($deferred eq "DEFERRED") {
-					$out .= " INITIALLY DEFERRED"
+					$out .= " INITIALLY DEFERRED";
 				}       
 			}			
 			$out .= ";\n";
