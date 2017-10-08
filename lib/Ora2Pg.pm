@@ -1669,7 +1669,10 @@ sub set_pg_conn_details
 	$self->{dbpwd} = $self->{pg_pwd} || 'pgpwd';
 
 	if (!$self->{dblink_conn}) {
-		$self->{dblink_conn} = "port=$self->{dbport} dbname=$self->{dbname} host=$self->{dbhost} user=$self->{dbuser} password=$self->{dbpwd}";
+		#$self->{dblink_conn} = "port=$self->{dbport} dbname=$self->{dbname} host=$self->{dbhost} user=$self->{dbuser} password=$self->{dbpwd}";
+		# Use a more generic connection string, the password must be
+		# set in .pgpass. Default is to use unix socket to connect.
+		$self->{dblink_conn} = "format('port=%s dbname=%s user=%', current_setting('port'), current_database(), current_user)";
 	}
 }
 
@@ -11679,10 +11682,10 @@ CREATE EXTENSION IF NOT EXISTS dblink;
 			map { s/(.+)/quote_nullable($1)/; }  @{$fct_detail{at_args}};
 			$params = " ' || " . join(" || ',' || ", @{$fct_detail{at_args}}) . " || ' ";
 		}
-		my $dblink_conn = $self->{dblink_conn} || 'port=5432 dbname=testdb host=localhost user=pguser password=pgpass';
+		my $dblink_conn = $self->{dblink_conn} || "'port=5432 dbname=testdb host=localhost user=pguser password=pgpass'";
 		$at_wrapper .= qq{DECLARE
 	-- Change this to reflect the dblink connection string
-	v_conn_str  text := '$dblink_conn';
+	v_conn_str  text := $dblink_conn;
 	v_query     text;
 };
 		if (!$fct_detail{hasreturn}) {
