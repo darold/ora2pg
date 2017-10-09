@@ -88,10 +88,22 @@ INSTALLATION
     an already packaged DBD::Oracle easy to install.
 
   Requirement
-    You need a modern Perl distribution (perl 5.10 and more). To connect to
-    a database and proceed to his migration you need the DBI Perl module >
-    1.614. To migrate an Oracle database you need the DBD::Oracle Perl
-    modules to be installed. To migrate a MySQL database you need the
+    The Oracle Instant Client or a full Oracle instaaltion must be installed
+    on the system. You can download the RPM from Oracle download center:
+
+        rpm -ivh oracle-instantclient12.2-basic-12.2.0.1.0-1.x86_64.rpm
+        rpm -ivh oracle-instantclient12.2-devel-12.2.0.1.0-1.x86_64.rpm
+        rpm -ivh oracle-instantclient12.2-jdbc-12.2.0.1.0-1.x86_64.rpm
+        rpm -ivh oracle-instantclient12.2-sqlplus-12.2.0.1.0-1.x86_64.rpm
+
+    or simply download the corresponding ZIP archives from Oracle download
+    center and install them where you want, for example:
+    /opt/oracle/instantclient_12_2/
+
+    You also need a modern Perl distribution (perl 5.10 and more). To
+    connect to a database and proceed to his migration you need the DBI Perl
+    module > 1.614. To migrate an Oracle database you need the DBD::Oracle
+    Perl modules to be installed. To migrate a MySQL database you need the
     DBD::MySQL Perl modules. These modules are used to connect to the
     database but they are not mandatory if you want to migrate DDL input
     files.
@@ -153,8 +165,8 @@ INSTALLATION
     After setting ORACLE_HOME and LD_LIBRARY_PATH environment variables as
     root user, install DBD::Oracle. Proceed as follow:
 
-            export LD_LIBRARY_PATH=/usr/lib/oracle/11.2/client64/lib
-            export ORACLE_HOME=/usr/lib/oracle/11.2/client64/
+            export LD_LIBRARY_PATH=/usr/lib/oracle/12.2/client64/lib
+            export ORACLE_HOME=/usr/lib/oracle/12.2/client64/lib
             perl -MCPAN -e 'install DBD::Oracle'
 
     If you are running for the first time it will ask many questions; you
@@ -167,7 +179,7 @@ INSTALLATION
             cpan> quit
             cd ~/.cpan/build/DBD-Oracle*
             export LD_LIBRARY_PATH=/usr/lib/oracle/11.2/client64/lib
-            export ORACLE_HOME=/usr/lib/oracle/11.2/client64/
+            export ORACLE_HOME=/usr/lib/oracle/11.2/client64/lib
             perl Makefile.PL
             make
             make install
@@ -175,6 +187,11 @@ INSTALLATION
     Installing DBD::Oracle require that the three Oracle packages:
     instant-client, SDK and SQLplus are installed as well as the libaio1
     library.
+
+    If you are using Instant Client from ZIP archives, the LD_LIBRARY_PATH
+    and ORACLE_HOME will be the same and muist be set to the directory where
+    you have installed the files. For example:
+    /opt/oracle/instantclient_12_2/
 
 CONFIGURATION
     Ora2Pg configuration can be as simple as choosing the Oracle database to
