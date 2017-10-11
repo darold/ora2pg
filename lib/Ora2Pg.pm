@@ -1672,7 +1672,7 @@ sub set_pg_conn_details
 		#$self->{dblink_conn} = "port=$self->{dbport} dbname=$self->{dbname} host=$self->{dbhost} user=$self->{dbuser} password=$self->{dbpwd}";
 		# Use a more generic connection string, the password must be
 		# set in .pgpass. Default is to use unix socket to connect.
-		$self->{dblink_conn} = "format('port=%s dbname=%s user=%', current_setting('port'), current_database(), current_user)";
+		$self->{dblink_conn} = "format('port=%s dbname=%s user=%s', current_setting('port'), current_database(), current_user)";
 	}
 }
 
