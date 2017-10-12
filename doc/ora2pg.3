@@ -124,7 +124,7 @@
 .\" ========================================================================
 .\"
 .IX Title "ORA2PG 1"
-.TH ORA2PG 1 "2017-10-09" "perl v5.14.2" "User Contributed Perl Documentation"
+.TH ORA2PG 1 "2017-10-12" "perl v5.14.2" "User Contributed Perl Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -565,6 +565,14 @@ or
 for the second notation the \s-1SID\s0 should be declared in the well known file
 \&\f(CW$ORACLE_HOME\fR/network/admin/tnsnames.ora or in the path given to the \s-1TNS_ADMIN\s0
 environment variable.
+.Sp
+For MySQL the \s-1DSN\s0 will lool like this:
+.Sp
+.Vb 1
+\&        dbi:mysql:host=192.168.1.10;database=sakila;port=3306
+.Ve
+.Sp
+the 'sid' part is replaced by 'database'.
 .IP "\s-1ORACLE_USER\s0 et \s-1ORACLE_PWD\s0" 4
 .IX Item "ORACLE_USER et ORACLE_PWD"
 These two directives are used to define the user and password for the Oracle

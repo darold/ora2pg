@@ -424,6 +424,12 @@ CONFIGURATION
         file $ORACLE_HOME/network/admin/tnsnames.ora or in the path given to
         the TNS_ADMIN environment variable.
 
+        For MySQL the DSN will lool like this:
+
+                dbi:mysql:host=192.168.1.10;database=sakila;port=3306
+
+        the 'sid' part is replaced by 'database'.
+
     ORACLE_USER et ORACLE_PWD
         These two directives are used to define the user and password for
         the Oracle database connection. Note that if you can it is better to
