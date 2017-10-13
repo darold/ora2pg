@@ -11963,6 +11963,7 @@ sub _format_view
 			}
 		}
 	}
+
 	if ($self->{plsql_pgsql}) {
 			$sqlstr = Ora2Pg::PLSQL::convert_plsql_code($self, $sqlstr, %{$self->{data_type}});
 	}
@@ -12042,9 +12043,7 @@ sub logit
 
 =head2 _convert_type
 
-This function is used to rewrite Oracle PACKAGE code to
-PostgreSQL SCHEMA. Called only if PLSQL_PGSQL configuration directive
-is set to 1.
+This function is used to rewrite Oracle TYPE DDL
 
 =cut
 
