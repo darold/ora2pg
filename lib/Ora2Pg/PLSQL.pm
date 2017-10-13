@@ -1306,9 +1306,9 @@ sub replace_oracle_function
 	if (lc($class->{to_number_conversion}) ne 'none') {
 		if ($class->{to_number_conversion} =~ /(numeric|bigint|integer|int)/i) {
 			my $cast = lc($1);
-			$str =~ s/TO_NUMBER\s*\(\s*([^,\)]+)\s*\)\s?/($1)\:\:$cast /is;
+			$str =~ s/\bTO_NUMBER\s*\(\s*([^,\)]+)\s*\)\s?/($1)\:\:$cast /is;
 		} else {
-			$str =~ s/TO_NUMBER\s*\(\s*([^,\)]+)\s*\)/to_number\($1,'$class->{to_number_conversion}'\)/is;
+			$str =~ s/\bTO_NUMBER\s*\(\s*([^,\)]+)\s*\)/to_number\($1,'$class->{to_number_conversion}'\)/is;
 		}
 	}
 
