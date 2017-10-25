@@ -321,7 +321,7 @@ sub convert_plsql_code
 	$str = replace_decode($str) if (uc($class->{type}) ne 'SHOW_REPORT');
 
 	# Replace array syntax arr(i).x into arr[i].x
-	$str =~ s/\b([a-z0-9_]+)\(([^\)]+)\)(\.[a-z0-9_]+)/$1\[$2\]$3/igs;
+	$str =~ s/\b([a-z0-9_]+)\(([^\(\)]+)\)(\.[a-z0-9_]+)/$1\[$2\]$3/igs;
 
 	# Extract all block from the code by splitting it on the semi-comma
 	# character and replace all necessary function call
