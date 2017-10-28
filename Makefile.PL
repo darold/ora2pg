@@ -1064,6 +1064,12 @@ COMMENT_SAVEPOINT	0
 # these function that do not need any code transformation.
 USE_ORAFCE	0
 
+# Enable translation of autonomous transactions into a wrapper function
+# using dblink or pg_background extension. If you don't want to use this
+# translation and just want the function to be exported as a normal one
+# without the pragma call, disable this directive.
+AUTONOMOUS_TRANSACTION	1
+
 #------------------------------------------------------------------------------
 # ASSESSMENT SECTION (Control migration assessment behaviors)
 #------------------------------------------------------------------------------

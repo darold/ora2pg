@@ -937,14 +937,20 @@ sub _init
 	$self->{synchronous_commit} ||= 0;
 
 	# Mark function as STABLE by default
-	if (not defined $self->{function_stable} || $self->{function_stable} != 0) {
+	if (not defined $self->{function_stable} || $self->{function_stable} ne '0') {
 		$self->{function_stable} = 1;
 	}
 
 	# Initialize rewriting of index name
-	if (not defined $self->{indexes_renaming} || $self->{indexes_renaming} != 0) {
+	if (not defined $self->{indexes_renaming} || $self->{indexes_renaming} ne '0') {
 		$self->{indexes_renaming} = 1;
 	}
+
+	# Enable autonomous transaction conversion. Default is enable it.
+	if (!exists $self->{autonomous_transaction} || $self->{autonomous_transaction} ne '0') {
+		$self->{autonomous_transaction} = 1;
+	}
+
 	# Don't use *_pattern_ops with indexes by default
 	$self->{use_index_opclass} ||= 0;
 
@@ -11626,7 +11632,7 @@ sub _convert_function
 	my @at_ret_type = ();
 	my $at_suffix = '';
 	my $at_inout = 0;
-	if ($fct_detail{declare} =~ s/\s*PRAGMA\s+AUTONOMOUS_TRANSACTION[\s;]*//is) {
+	if ($fct_detail{declare} =~ s/\s*PRAGMA\s+AUTONOMOUS_TRANSACTION[\s;]*//is && $self->{autonomous_transaction}) {
 		$at_suffix = '_atx';
 		# COMMIT is not allowed in PLPGSQL function
 		$fct_detail{code} =~ s/\bCOMMIT\s*;//;

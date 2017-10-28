@@ -2284,6 +2284,13 @@ By default Ora2pg rewrite add_month(), add_year(), date_trunc() and
 to_char() functions, but you may prefer to use the orafce version of
 these function that do not need any code transformation.
 
+=item AUTONOMOUS_TRANSACTION
+
+Enable translation of autonomous transactions into a wrapper function
+using dblink or pg_background extension. If you don't want to use this
+translation and just want the function to be exported as a normal one
+without the pragma call, disable this directive.
+
 =back
 
 =head2 Materialized view
