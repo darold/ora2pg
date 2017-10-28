@@ -2226,9 +2226,9 @@ sub _restore_text_constant_part
 			foreach my $k (keys %{$self->{package_functions}{$p}}) {
 				if (exists $self->{package_functions}{$p}{$k}{package}) {
 					next if (!exists $self->{package_functions}{$p}{$k}{package} || !$self->{package_functions}{$p}{$k}{package});
-					my $pkname =  $self->{package_functions}{$p}{$k}{package} . '.';
+					my $pkname =  $self->{package_functions}{$p}{$k}{package} . '\.';
 					map {
-						$self->{text_values}{$_} =~ s/($pkname)?\b$k\s*\(/$self->{package_functions}{$p}{$k}{name}\(/igs;
+						$self->{text_values}{$_} =~ s/\b($pkname)?$k\s*\(/$self->{package_functions}{$p}{$k}{name}\(/igs;
 					} keys %{$self->{text_values}};
 				}
 			}
