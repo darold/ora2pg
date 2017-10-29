@@ -629,8 +629,8 @@ sub plsql_to_plpgsql
 
 	# Add STRICT keyword when select...into and an exception with NO_DATA_FOUND/TOO_MANY_ROW is present
 	#$str =~ s/\b(SELECT\b[^;]*?INTO)(.*?)(EXCEPTION.*?(?:NO_DATA_FOUND|TOO_MANY_ROW))/$1 STRICT $2 $3/igs;
-	# Add STRICT keyword when SELECT...INTO even if there's not EXCEPTION block
-	$str =~ s/\b(SELECT\s+[^;]*?\s+INTO)(\s+(?!STRICT))/$1 STRICT$2/igs;
+	# Add STRICT keyword when SELECT...INTO or EXECUTE ... INTO even if there's not EXCEPTION block
+	$str =~ s/\b((?:SELECT|EXECUTE)\s+[^;]*?\s+INTO)(\s+(?!STRICT))/$1 STRICT$2/igs;
 	$str =~ s/(INSERT\s+INTO\s+)STRICT\s+/$1/igs;
 
 	# Remove the function name repetion at end
