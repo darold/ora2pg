@@ -991,11 +991,27 @@ sub remove_extra_parenthesis
 	my $str = shift;
 
 	while ($str =~ s/\(\s*\(((?!\s*SELECT)[^\(\)]+)\)\s*\)/($1)/gs) {};
-	while ($str =~ s/\(\s*\(([^\(\)]+)\)\s*AND\s*\(([^\(\)]+)\)\s*\)/($1 AND $2)/igs) {};
+	while ($str =~ s/\(\s*\(([^\(\)]+)\)\s*AND\s*\(([^\(\)]+)\)\s*\)/find_or_parenthesis($1, $2)/iges) {};
 	while ($str =~ s/\(\s*\(\s*\(([^\(\)]+\)[^\(\)]+\([^\(\)]+)\)\s*\)\s*\)/(($1))/gs) {};
 
 	return $str;
 }
+
+# When the statement include OR keep parenthesisœ
+sub find_or_parenthesis
+{
+	my ($left, $right) = @_;
+
+	if ($left =~ /\s+OR\s+/i) {
+		$left = "($left)";
+	}
+	if ($right =~ /\s+OR\s+/i) {
+		$right = "($right)";
+	}
+
+	return "($left AND $right)";
+}
+
 
 sub extract_subpart
 {
