@@ -11632,10 +11632,12 @@ sub _convert_function
 	my @at_ret_type = ();
 	my $at_suffix = '';
 	my $at_inout = 0;
-	if ($fct_detail{declare} =~ s/\s*PRAGMA\s+AUTONOMOUS_TRANSACTION[\s;]*//is && $self->{autonomous_transaction}) {
+	if ($fct_detail{declare} =~ s/\s*(PRAGMA\s+AUTONOMOUS_TRANSACTION[\s;]*)/-- $1/is && $self->{autonomous_transaction}) {
 		$at_suffix = '_atx';
 		# COMMIT is not allowed in PLPGSQL function
 		$fct_detail{code} =~ s/\bCOMMIT\s*;//;
+		# Remove the pragma when a conversion is done
+		$fct_detail{declare} =~ s/--\s+PRAGMA\s+AUTONOMOUS_TRANSACTION[\s;]*//is;
 		my @tmp = split(',', $fct_detail{args});
 		foreach my $p (@tmp) {
 			if ($p =~ s/\s*OUT\s+//) {
