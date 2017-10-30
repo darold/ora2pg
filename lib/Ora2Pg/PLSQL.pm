@@ -1334,7 +1334,7 @@ sub replace_oracle_function
 	$str =~ s/REGEXP_LIKE\s*\(\s*([^,]+)\s*,\s*([^\)]+)\s*\)/$1 \~ $2/is;
 
 	# REGEX_SUBSTR( string, pattern, pos, num ) translation
-	$str =~ s/REGEXP_SUBSTR\s*\(s*([^\)]+)\s*\)/convert_regex_substr($class, $1)/iegs;
+	$str =~ s/REGEXP_SUBSTR\s*\(\s*([^\)]+)\s*\)/convert_regex_substr($class, $1)/iegs;
 
 	# Remove call to XMLCDATA, there's no such function with PostgreSQL
 	$str =~ s/XMLCDATA\s*\(([^\)]+)\)/'<![CDATA[' || $1 || ']]>'/is;
