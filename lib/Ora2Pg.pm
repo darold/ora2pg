@@ -6281,10 +6281,14 @@ CREATE TRIGGER ${table}_trigger_insert
 					}
 					if ($type =~ /serial/) {
 						my $seqname = lc($tbname) . '_' . lc($fname) . '_seq';
+						if ($self->{preserve_case}) {
+							$seqname = $tbname . '_' . $fname . '_seq';
+						}
 						my $tobequoted = 0;
 						if ($seqname =~ s/"//g) {
 							$tobequoted = 1;
 						}
+						
 						if (length($seqname) > 63) {
 							if (length($tbname) > 29) {
 								$seqname = substr(lc($tbname), 0, 29);
