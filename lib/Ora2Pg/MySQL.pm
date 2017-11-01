@@ -1606,5 +1606,45 @@ sub _get_subpartitioned_table
 	return;
 }
 
+# Replace IF("user_status"=0,"username",NULL)
+# PostgreSQL (CASE WHEN "user_status"=0 THEN "username" ELSE NULL END)
+sub replace_if
+{
+	my $str = shift;
+
+	while ($str =~ s/\bIF\s*\((.*)$/\%IF\%/is) {
+		my @if_params = ('');
+		my $stop_learning = 0;
+		my $idx = 1;
+		foreach my $c (split(//, $1)) {
+			$idx++ if (!$stop_learning && $c eq '(');
+			$idx-- if (!$stop_learning && $c eq ')');
+		
+			if ($idx == 0) {
+				# Do not copy last parenthesis in the output string
+				$c = '' if (!$stop_learning);
+				# Inform the loop that we don't want to process any charater anymore
+				$stop_learning = 1;
+				# We have reach the end of the if() parameter
+				# next character must be restored to the final string.
+				$str .= $c;
+			} elsif ($idx > 0) {
+				# We are parsing the if() parameter part, append
+				# the caracter to the right part of the param array.
+				if ($c eq ',' && ($idx - 1) == 0) {
+					# we are switching to a new parameter
+					push(@if_params, '');
+				} elsif ($c ne "\n") {
+					$if_params[-1] .= $c;
+				}
+			}
+		}
+		my $case_str = "CASE WHEN $if_params[0] THEN $if_params[1] ELSE $if_params[2] END ";
+		$str =~ s/\%IF\%/$case_str/s;
+	}
+
+	return $str;
+}
+
 1;
 
