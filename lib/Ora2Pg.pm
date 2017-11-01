@@ -2433,7 +2433,6 @@ sub read_schema_from_file
 						if ($c =~ s/\s*AUTO_INCREMENT\s*//is) {
 							$auto_incr = 1;
 						}
-
 						if ($c =~ s/\bDEFAULT\s+([^\s]+)\s*//is) {
 							$c_default = $1;
 							$c_default =~ s/"//gs;
@@ -2442,10 +2441,10 @@ sub read_schema_from_file
 							}
 							$c_default =~ s/,$//;
 						}
-						#COLUMN_NAME, DATA_TYPE, DATA_LENGTH, NULLABLE, DATA_DEFAULT, DATA_PRECISION, DATA_SCALE, CHAR_LENGTH, TABLE_NAME, OWNER, VIRTUAL_COLUMN
+						# COLUMN_NAME,DATA_TYPE,DATA_LENGTH,NULLABLE,DATA_DEFAULT,DATA_PRECISION,DATA_SCALE,CHAR_LENGTH,TABLE_NAME,OWNER,VIRTUAL_COLUMN,POSITION,AUTO_INCREMENT,SRID,SDO_DIM,SDO_GTYPE
 						push(@{$self->{tables}{$tb_name}{column_info}{$c_name}}, ($c_name, $c_type, $c_length, $c_nullable, $c_default, $c_length, $c_scale, $c_length, $tb_name, '', $virt_col, $pos, $auto_incr));
 					} else {
-						$self->_parse_constraint($tb_name, $cur_c_name, $c);
+						$self->_parse_constraint($tb_name, $cur_c_name, $c);uto_incr
 					}
 				}
 				$pos++;
@@ -6261,7 +6260,7 @@ CREATE TRIGGER ${table}_trigger_insert
 					}
 				} keys %{$self->{tables}{$table}{column_info}}) {
 
-				# COLUMN_NAME,DATA_TYPE,DATA_LENGTH,NULLABLE,DATA_DEFAULT,DATA_PRECISION,DATA_SCALE,CHAR_LENGTH,TABLE_NAME,OWNER,VIRTUAL_COLUMN,POSITION,SRID,SDO_DIM,SDO_GTYPE
+				# COLUMN_NAME,DATA_TYPE,DATA_LENGTH,NULLABLE,DATA_DEFAULT,DATA_PRECISION,DATA_SCALE,CHAR_LENGTH,TABLE_NAME,OWNER,VIRTUAL_COLUMN,POSITION,AUTO_INCREMENT,SRID,SDO_DIM,SDO_GTYPE
 				my $f = $self->{tables}{$table}{column_info}{$k};
 				$f->[2] =~ s/\D//g;
 				my $type = $self->_sql_type($f->[1], $f->[2], $f->[5], $f->[6], $f->[4]);
@@ -6272,8 +6271,9 @@ CREATE TRIGGER ${table}_trigger_insert
 					$self->logit("\tReplacing column \L$f->[0]\E as " . $self->{replaced_cols}{"\L$table\E"}{"\L$fname\E"} . "...\n", 1);
 					$fname = $self->{replaced_cols}{"\L$table\E"}{"\L$fname\E"};
 				}
+
 				# Check if we need auto increment
-				if ($f->[12] eq 'auto_increment') {
+				if ($f->[12] eq 'auto_increment' || $f->[12] eq '1') {
 					if ($type !~ s/bigint/bigserial/) {
 						if ($type !~ s/smallint/smallserial/) {
 							$type =~ s/integer/serial/;
@@ -13659,7 +13659,7 @@ sub _show_infos
 							$TYPALIGN{$typb} <=> $TYPALIGN{$typa};
 						}
 					} keys %{$self->{tables}{$t}{column_info}}) {
-					# COLUMN_NAME,DATA_TYPE,DATA_LENGTH,NULLABLE,DATA_DEFAULT,DATA_PRECISION,DATA_SCALE,CHAR_LENGTH,TABLE_NAME,OWNER,VIRTUAL_COLUMN,POSITION,SRID,SDO_DIM,SDO_GTYPE
+					# COLUMN_NAME,DATA_TYPE,DATA_LENGTH,NULLABLE,DATA_DEFAULT,DATA_PRECISION,DATA_SCALE,CHAR_LENGTH,TABLE_NAME,OWNER,VIRTUAL_COLUMN,POSITION,AUTO_INCREMENT,SRID,SDO_DIM,SDO_GTYPE
 					my $d = $self->{tables}{$t}{column_info}{$k};
 					$d->[2] =~ s/\D//g;
 					my $type = $self->_sql_type($d->[1], $d->[2], $d->[5], $d->[6], $d->[4]);
@@ -13667,7 +13667,7 @@ sub _show_infos
 
 					# Check if we need auto increment
 					$warning = '';
-					if ($d->[12] eq 'auto_increment') {
+					if ($d->[12] eq 'auto_increment' || $d->[12] eq '1') {
 						if ($type !~ s/bigint/bigserial/) {
 							if ($type !~ s/smallint/smallserial/) {
 								$type =~ s/integer/serial/;
