@@ -2031,6 +2031,8 @@ sub mysql_to_plpgsql
 	# Replace now() with CURRENT_TIMESTAMP even if this is the same
 	# because parenthesis can break the following regular expressions
 	$str =~ s/\bNOW\(\s*\)/CURRENT_TIMESTAMP/igs;
+	# Replace call to CURRENT_TIMESTAMP() to special variable
+	$str =~ s/\bCURRENT_TIMESTAMP\s*\(\)/CURRENT_TIMESTAMP/igs;
 
 	# Replace EXTRACT() with unit not supported by PostgreSQL
 	if ($class->{mysql_internal_extract_format}) {
