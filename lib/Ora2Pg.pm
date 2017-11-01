@@ -2272,6 +2272,10 @@ sub _get_dml_from_file
 	$content =~ s/CREATE\s+EDITIONABLE/CREATE/gs;
 	$content =~ s/CREATE\s+NONEDITIONABLE/CREATE/gs;
 
+	if ($self->{is_mysql}) {
+		$content =~ s/`/"/gs;
+	}
+
 	return $content;
 }
 
