@@ -487,7 +487,7 @@ sub createMultiLine
 		}
 	}
 
-	if ($interpretation > 1) {
+	if ($interpretation > 1 || grep(/CIRCULARSTRING/, @list)) {
 		return "MULTICURVE$self->{geometry}{suffix} (" . join(', ', @list) . ')';
 	}
 
