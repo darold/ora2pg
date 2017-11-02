@@ -474,11 +474,14 @@ sub createMultiLine
 	my @list = ();
 	my $cont = 1;
 	for (my $i = $elemIndex; $cont && $i < $endTriplet && ($etype = $self->eType($i)) != -1 ; $i++) {
+
 		# Exclude type 0 (zero) element
 		next if ($etype == 0);
 
 		if ($etype == $SDO_ETYPE{LINESTRING}) {
 			push(@list, $self->createLine($i, $coords));
+		} elsif ($etype == $SDO_ETYPE{COMPOUNDCURVE}) {
+			push(@list, $self->createCompoundLine(1, $coords, -1));
 		} else { # not a LineString - get out of here
 			$cont = 0;
 		}
