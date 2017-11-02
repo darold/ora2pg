@@ -2330,6 +2330,12 @@ sub read_schema_from_file
 			$tid++;
 			$self->{tables}{$tb_name}{internal_id} = $tid;
 
+			my %enum_placeholder = ();
+			my $i = 0;
+			while ($tb_def =~ s/(ENUM\s*\([^\(\)]+\))/\%\%ENUM$i\%\%/is) {
+				$enum_placeholder{$i} = $1;
+				$i++;
+			};
 			($tb_def, $tb_param) = &_split_table_definition($tb_def);
 			my @column_defs = split(/\s*,\s*/, $tb_def);
 			map { s/^\s+//; s/\s+$//; } @column_defs;
@@ -2351,6 +2357,12 @@ sub read_schema_from_file
 			my $cur_c_name = '';
 			foreach my $c (@column_defs) {
 				next if (!$c);
+
+				# Replace ENUM() temporary substitution
+				$c =~ s/\%\%ENUM(\d+)\%\%/$enum_placeholder{$1}/is;
+
+				# Mysql unique key embedded definition, transform it to special parsing 
+				$c =~ s/^UNIQUE KEY/INDEX UNIQUE/is;
 				# Remove things that are not possible with postgres
 				$c =~ s/(PRIMARY KEY.*)NOT NULL/$1/is;
 				# Rewrite some parts for easiest/generic parsing
@@ -2363,7 +2375,7 @@ sub read_schema_from_file
 					my $c_name = $1;
 					$c_name =~ s/"//g;
 					# Retrieve all columns information
-					if (uc($c_name) ne 'CONSTRAINT') {
+					if (!grep(/^$c_name$/i, 'CONSTRAINT','INDEX')) {
 						$cur_c_name = $c_name;
 						my $c_default = '';
 						my $virt_col = 'NO';
@@ -2373,7 +2385,11 @@ sub read_schema_from_file
 							$c_default =~ s/\s+VIRTUAL//is;
 						}
 						my $c_type = '';
-						if ($c =~ s/^([^\s\(]+)\s*//s) {
+						if ($c =~ s/^ENUM\s*(\([^\(\)]+\))\s*//is) {
+							$c_type = 'varchar';
+							my $ck_name = 'ora2pg_ckey_' . $c_name;
+							$self->_parse_constraint($tb_name, $c_name, "$ck_name CHECK ($c_name IN $1)");
+						} elsif ($c =~ s/^([^\s\(]+)\s*//s) {
 							$c_type = $1;
 						} elsif ($c_default) {
 							# Try to guess a type the virtual column was declared without one,
@@ -2443,8 +2459,25 @@ sub read_schema_from_file
 						}
 						# COLUMN_NAME,DATA_TYPE,DATA_LENGTH,NULLABLE,DATA_DEFAULT,DATA_PRECISION,DATA_SCALE,CHAR_LENGTH,TABLE_NAME,OWNER,VIRTUAL_COLUMN,POSITION,AUTO_INCREMENT,SRID,SDO_DIM,SDO_GTYPE
 						push(@{$self->{tables}{$tb_name}{column_info}{$c_name}}, ($c_name, $c_type, $c_length, $c_nullable, $c_default, $c_length, $c_scale, $c_length, $tb_name, '', $virt_col, $pos, $auto_incr));
-					} else {
-						$self->_parse_constraint($tb_name, $cur_c_name, $c);uto_incr
+					} elsif (uc($c_name) eq 'CONSTRAINT') {
+						$self->_parse_constraint($tb_name, $cur_c_name, $c);
+					} elsif (uc($c_name) eq 'INDEX') {
+						if ($c =~ /^\s*UNIQUE\s+([^\s]+)\s+\(([^\)]+)\)/) {
+							my $idx_name = $1;
+							my @cols = ();
+							push(@cols, split(/\s*,\s*/, $2));
+							map { s/^"//; s/"$//; } @cols;
+							$self->{tables}{$tb_name}{unique_key}->{$idx_name}{type} = 'U';
+							$self->{tables}{$tb_name}{unique_key}->{$idx_name}{generated} = 0;
+							$self->{tables}{$tb_name}{unique_key}->{$idx_name}{index_name} = $idx_name;
+							push(@{$self->{tables}{$tb_name}{unique_key}->{$idx_name}{columns}}, @cols);
+						} elsif ($c =~ /^\s*([^\s]+)\s+\(([^\)]+)\)/) {
+							my $idx_name = $1;
+							my @cols = ();
+							push(@cols, split(/\s*,\s*/, $2));
+							map { s/^"//; s/"$//; } @cols;
+							push(@{$self->{tables}{$tb_name}{indexes}{$idx_name}}, @cols); 
+						}
 					}
 				}
 				$pos++;
@@ -6305,7 +6338,7 @@ CREATE TRIGGER ${table}_trigger_insert
 						if ($tobequoted) {
 							$seqname = '"' . $seqname . '"';
 						}
-						$serial_sequence .= "ALTER SEQUENCE $seqname RESTART WITH $self->{tables}{$table}{table_info}{auto_increment};\n";
+						$serial_sequence .= "ALTER SEQUENCE $seqname RESTART WITH $self->{tables}{$table}{table_info}{auto_increment};\n" if (exists $self->{tables}{$table}{table_info}{auto_increment});
 					}
 				}
 

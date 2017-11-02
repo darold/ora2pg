@@ -905,7 +905,7 @@ sub _sql_type
 
 sub replace_sql_type
 {
-        my ($str, $pg_numeric_type, $default_numeric, $pg_integer_typei, %data_type) = @_;
+        my ($str, $pg_numeric_type, $default_numeric, $pg_integer_type, %data_type) = @_;
 
 	$str =~ s/with local time zone/with time zone/igs;
 	$str =~ s/([A-Z])ORA2PG_COMMENT/$1 ORA2PG_COMMENT/igs;
