@@ -11826,6 +11826,7 @@ END;
 		$fct_detail{declare} .= ';' if ($fct_detail{declare} && $fct_detail{declare} !~ /;\s*$/s && $fct_detail{declare} !~ /\%ORA2PG_COMMENT\d+\%\s*$/s);
 		my $code_part = '';
 		$code_part .= "DECLARE\n$fct_detail{declare}\n" if ($fct_detail{declare});
+		$fct_detail{code} =~ s/^BEGIN\b//is;
 		$code_part .= "BEGIN".$fct_detail{code};
 		# Replace PL/SQL code into PL/PGSQL similar code
 		$function .= Ora2Pg::PLSQL::convert_plsql_code($self, $code_part, %{$self->{data_type}});
