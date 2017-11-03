@@ -1624,7 +1624,7 @@ sub replace_if
 		$in_clauses{$j} = $1;
 		$j++;
 	}
-	while ($str =~ s/\bIF\s*\((.*)$/\%IF\%/is) {
+	while ($str =~ s/\bIF\s*\(((?:(?!\)\s*THEN).)*)$/\%IF\%/is) {
 		my @if_params = ('');
 		my $stop_learning = 0;
 		my $idx = 1;
