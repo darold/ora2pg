@@ -284,7 +284,7 @@ sub _column_info
 	# COLUMN_COMMENT           | varchar(1024)       | NO   |     |         |       |
 
 	my $sth = $self->{dbh}->prepare(<<END);
-SELECT COLUMN_NAME, DATA_TYPE, CHARACTER_MAXIMUM_LENGTH, IS_NULLABLE, COLUMN_DEFAULT, NUMERIC_PRECISION, NUMERIC_SCALE, CHARACTER_OCTET_LENGTH, TABLE_NAME, '' AS OWNER, '' AS VIRTUAL_COLUMN, ORDINAL_POSITION, EXTRA
+SELECT COLUMN_NAME, DATA_TYPE, CHARACTER_MAXIMUM_LENGTH, IS_NULLABLE, COLUMN_DEFAULT, NUMERIC_PRECISION, NUMERIC_SCALE, CHARACTER_OCTET_LENGTH, TABLE_NAME, '' AS OWNER, '' AS VIRTUAL_COLUMN, ORDINAL_POSITION, EXTRA, COLUMN_TYPE
 FROM INFORMATION_SCHEMA.COLUMNS
 $condition
 ORDER BY ORDINAL_POSITION
@@ -295,13 +295,17 @@ END
 	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
 	# Expected columns information stored in hash 
-	# COLUMN_NAME,DATA_TYPE,DATA_LENGTH,NULLABLE,DATA_DEFAULT,DATA_PRECISION,DATA_SCALE,CHAR_LENGTH,TABLE_NAME,OWNER,VIRTUAL_COLUMN,POSITION,AUTO_INCREMENT,SRID,SDO_DIM,SDO_GTYPE
+	# COLUMN_NAME,DATA_TYPE,DATA_LENGTH,NULLABLE,DATA_DEFAULT,DATA_PRECISION,DATA_SCALE,CHAR_LENGTH,TABLE_NAME,OWNER,VIRTUAL_COLUMN,POSITION,AUTO_INCREMENT,ENUM_INFO
 	my %data = ();
 	my $pos = 0;
 	while (my $row = $sth->fetch) {
+		if ($row->[1] eq 'enum') {
+			$row->[1] = $row->[-1];
+		}
 		$row->[2] = $row->[7] if $row->[1] =~ /char/i;
 		$row->[10] = $pos;
 		push(@{$data{"$row->[8]"}{"$row->[0]"}}, @$row);
+		pop(@{$data{"$row->[8]"}{"$row->[0]"}});
 		$pos++;
 	}
 

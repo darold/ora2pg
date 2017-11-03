@@ -6343,11 +6343,13 @@ CREATE TRIGGER ${table}_trigger_insert
 				}
 
 				# Check if this column should be replaced by a boolean following table/column name
-				if (uc($f->[1]) eq 'ENUM') {
-					$f->[11] =~ s/^enum\(//i;
-					$f->[11] =~ s/\)$//;
+				if ($f->[1] =~ /ENUM/i) {
+					$f->[1] =~ s/^ENUM\(//i;
+					$f->[1] =~ s/\)$//;
 					my $keyname = $tbname . '_' . $fname . '_chk';
-					$enum_str .= "ALTER TABLE $tbname ADD CONSTRAINT $keyname CHECK ($fname IN ($f->[11]));\n";
+					$keyname =~ s/(.*)"(_${fname}_chk)/$1$2"/; # used when preserve_case is enable
+					$enum_str .= "ALTER TABLE $tbname ADD CONSTRAINT $keyname CHECK ($fname IN ($f->[1]));\n";
+					$type = 'varchar';
 				}
 				my $typlen = $f->[5];
 				$typlen ||= $f->[2];
