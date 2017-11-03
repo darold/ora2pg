@@ -1617,6 +1617,13 @@ sub replace_if
 {
 	my $str = shift;
 
+	# First remove all IN (...) before processing
+	my %in_clauses = ();
+	my $j = 0;
+	while ($str =~ s/\b(IN\s*\([^\(\)]+\))/,\%INCLAUSE$j\%/is) {
+		$in_clauses{$j} = $1;
+		$j++;
+	}
 	while ($str =~ s/\bIF\s*\((.*)$/\%IF\%/is) {
 		my @if_params = ('');
 		my $stop_learning = 0;
@@ -1644,9 +1651,25 @@ sub replace_if
 				}
 			}
 		}
-		my $case_str = "CASE WHEN $if_params[0] THEN $if_params[1] ELSE $if_params[2] END ";
+		my $case_str = 'CASE ';
+		for (my $i = 1; $i <= $#if_params; $i+=2) {
+			$if_params[$i] =~ s/^\s+//gs;
+			$if_params[$i] =~ s/\s+$//gs;
+			if ($i < $#if_params) {
+				if ($if_params[$i] !~ /INCLAUSE/) {
+					$case_str .= "WHEN $if_params[0] THEN $if_params[$i] ELSE $if_params[$i+1] ";
+				} else {
+					$case_str .= "WHEN $if_params[0] $if_params[$i] THEN $if_params[$i+1] ";
+				}
+			} else {
+				$case_str .= " ELSE $if_params[$i] ";
+			}
+		}
+		$case_str .= 'END ';
+
 		$str =~ s/\%IF\%/$case_str/s;
 	}
+	$str =~ s/\%INCLAUSE(\d+)\%/$in_clauses{$1}/gs;
 
 	return $str;
 }

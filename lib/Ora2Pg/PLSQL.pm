@@ -320,7 +320,7 @@ sub convert_plsql_code
 	# Rewrite all decode() call before
 	$str = replace_decode($str) if (uc($class->{type}) ne 'SHOW_REPORT');
 	# For mysql also replace if() statements in queries or views.
- 	$str = Ora2Pg::MySQL::replace_if($str) if ($class->{is_mysql} && grep(/^$class->{type}$/i, 'VIEW', 'QUERY'));		
+ 	$str = Ora2Pg::MySQL::replace_if($str) if ($class->{is_mysql} && grep(/^$class->{type}$/i, 'VIEW', 'QUERY', 'FUNCTION'));
 
 	# Replace array syntax arr(i).x into arr[i].x
 	$str =~ s/\b([a-z0-9_]+)\(([^\(\)]+)\)(\.[a-z0-9_]+)/$1\[$2\]$3/igs;
@@ -1018,7 +1018,7 @@ sub extract_subpart
 {
 	my ($class, $str) = @_;
 
-	while ($$str =~ s/\(([^\(\)]*)\)/\%SUBQUERY$class->{sub_parts_idx}\%/is) {
+	while ($$str =~ s/\(([^\(\)]*)\)/\%SUBQUERY$class->{sub_parts_idx}\%/s) {
 		$class->{sub_parts}{$class->{sub_parts_idx}} = $1;
 		$class->{sub_parts_idx}++;
 	}
@@ -2207,8 +2207,7 @@ sub mysql_to_plpgsql
 	$str =~ s/GROUP_CONCAT\((.*?)\s+ORDER\s+BY\s+([^\s]+)\s+SEPARATOR\s+'([^']+)'\s*\)/array_to_string(array_agg($1 ORDER BY $2 ASC), '$3')/igs;
 	$str =~ s/GROUP_CONCAT\((.*?)\s+SEPARATOR\s+'([^']+)'\s*\)/array_to_string(array_agg($1), '$2')/igs;
 
-	# Replace IF() function in a query
-	$str =~ s/\bIF\(\s*([^,]+)\s*,\s*([^,]+)\s*,\s*([^\)]+\s*)\)/(CASE WHEN $1 THEN $2 ELSE $3 END)/igs;
+	# Replace IFNULL() MySQL function in a query
 	$str =~ s/\bIFNULL\(\s*([^,]+)\s*,\s*([^\)]+\s*)\)/COALESCE($1, $2)/igs;
 
 	# Rewrite while loop
