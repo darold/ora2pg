@@ -1022,6 +1022,16 @@ sub extract_subpart
 		$class->{sub_parts}{$class->{sub_parts_idx}} = $1;
 		$class->{sub_parts_idx}++;
 	}
+	my @done = ();
+	foreach my $k (sort { $b <=> $a } %{$class->{sub_parts}}) {
+		if ($class->{sub_parts}{$k} =~ /\%OUTERJOIN\%/ && $class->{sub_parts}{$k} !~ /\b(SELECT|FROM|WHERE)\b/i) {
+			$$str =~ s/\%SUBQUERY$k\%/$class->{sub_parts}{$k}/s;
+			push(@done, $k);
+		}
+	}
+	foreach (@done) {
+		delete $class->{sub_parts}{$_};
+	}
 
 }
 
@@ -1381,7 +1391,7 @@ sub replace_oracle_function
 						next if ($p eq 'none' && $str !~ /\b$fct_name\b/is);
 
 						# Prevent replacement with same function name from an other package
-						next if ($str =~ /(^|[^\.])\b$fct_name\b/is && lc($p) ne lc($class->{current_package}));
+						next if ($class->{current_package} && lc($p) ne lc($class->{current_package}) && $str =~ /(^|[^\.])\b$fct_name\b/is);
 
 						my %replace_out_parm = ();
 						my $idx = 0;
@@ -2504,12 +2514,13 @@ sub replace_outer_join
 		# Process only predicat with a obsolete join syntax (+) for now
 		for (my $i = 0; $i <= $#predicat; $i++) {
 			next if ($predicat[$i] !~ /\%OUTERJOIN\%/i);
-			$predicat[$i] =~ s/(.*)/WHERE_CLAUSE$id /is;
-			my $where_clause = $1;
+			my $where_clause = $predicat[$i];
 			$where_clause =~ s/"//gs;
 			$where_clause =~ s/^\s+//s;
 			$where_clause =~ s/[\s;]+$//s;
 			$where_clause =~ s/\s*\%OUTERJOIN\%//gs;
+
+			$predicat[$i] = "WHERE_CLAUSE$id ";
 
 			# Split the predicat to retrieve left part, operator and right part
 			my ($l, $o, $r) = split(/\s*(!=|>=|<=|=|<>|<|>|NOT LIKE|LIKE)\s*/i, $where_clause);
@@ -2928,6 +2939,22 @@ sub replace_connect_by
 		$prior_str =  $1;
 	} elsif ($str =~ s/(\s*PRIOR\s+.*)//is) {
 		$prior_str =  $1;
+	} else {
+		# look inside subqueries if we have a prior clause
+		my @ids = $str =~ /\%SUBQUERY(\d+)\%/g;
+		my $sub_prior_str = '';
+		foreach my $i (@ids) {
+			if ($class->{sub_parts}{$i} =~ s/([^\s]+\s*=\s*PRIOR\s+.*)//is) {
+				$sub_prior_str =  $1;
+				$str =~ s/\%SUBQUERY$i\%//;
+			} elsif ($class->{sub_parts}{$i} =~ s/(\s*PRIOR\s+.*)//is) {
+				$sub_prior_str =  $1;
+				$str =~ s/\%SUBQUERY$i\%//;
+			}
+			$sub_prior_str =~ s/^\(//;
+			$sub_prior_str =~ s/\)$//;
+			($prior_str ne '' || $sub_prior_str eq '') ? $prior_str .= ' ' . $sub_prior_str : $prior_str = $sub_prior_str;
+		}
 	}
 	if ($prior_str) {
 		# Try to extract the prior clauses
