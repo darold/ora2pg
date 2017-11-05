@@ -992,7 +992,13 @@ sub remove_extra_parenthesis
 	my $str = shift;
 
 	while ($str =~ s/\(\s*\(((?!\s*SELECT)[^\(\)]+)\)\s*\)/($1)/gs) {};
-	while ($str =~ s/\(\s*\(([^\(\)]+)\)\s*AND\s*\(([^\(\)]+)\)\s*\)/find_or_parenthesis($1, $2)/iges) {};
+	my %store_clause = ();
+	my $i = 0;
+	while ($str =~ s/\(\s*\(([^\(\)]+)\)\s*AND\s*\(([^\(\)]+)\)\s*\)/\%PARENTHESIS$i\%/is) {
+		$store_clause{$i} = find_or_parenthesis($1, $2);
+		$i++
+	}
+	$str =~ s/\%PARENTHESIS(\d+)\%/$store_clause{$1}/gs;
 	while ($str =~ s/\(\s*\(\s*\(([^\(\)]+\)[^\(\)]+\([^\(\)]+)\)\s*\)\s*\)/(($1))/gs) {};
 
 	return $str;
