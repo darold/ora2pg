@@ -1347,18 +1347,18 @@ sub _init
 					foreach my $o (@{ $self->{look_forward_function} }) {
 						next if (grep(/^$o$/i, @done) || uc($o) eq uc($self->{schema}));
 						push(@done, $o);
-						if (!$self->{is_mysql} && $self->{type} eq 'VIEW') {
+						if ($self->{type} eq 'VIEW') {
 							# Limit to package lookup with VIEW export type
-							$self->_get_package_function_list($o);
+							$self->_get_package_function_list($o) if (!$self->{is_mysql});
 						} else {
 							# Extract all package/function/procedure meta information
 							$self->_get_plsql_metadata($o);
 						}
 					}
 				}
-				if (!$self->{is_mysql} && $self->{type} eq 'VIEW') {
+				if ($self->{type} eq 'VIEW') {
 					# Limit to package lookup with WIEW export type
-					$self->_get_package_function_list();
+					$self->_get_package_function_list() if (!$self->{is_mysql});
 				} else {
 					# Extract all package/function/procedure meta information
 					$self->_get_plsql_metadata();
