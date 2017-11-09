@@ -1347,8 +1347,8 @@ sub _init
 					foreach my $o (@{ $self->{look_forward_function} }) {
 						next if (grep(/^$o$/i, @done) || uc($o) eq uc($self->{schema}));
 						push(@done, $o);
-						if ($self->{type} eq 'VIEW') {
-							# Limit to package lookup with WIEW export type
+						if (!$self->{is_mysql} && $self->{type} eq 'VIEW') {
+							# Limit to package lookup with VIEW export type
 							$self->_get_package_function_list($o);
 						} else {
 							# Extract all package/function/procedure meta information
@@ -1356,7 +1356,7 @@ sub _init
 						}
 					}
 				}
-				if ($self->{type} eq 'VIEW') {
+				if (!$self->{is_mysql} && $self->{type} eq 'VIEW') {
 					# Limit to package lookup with WIEW export type
 					$self->_get_package_function_list();
 				} else {
