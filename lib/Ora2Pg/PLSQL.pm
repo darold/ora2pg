@@ -504,8 +504,8 @@ sub plsql_to_plpgsql
 	# Replace SYSTIMESTAMP 
 	$str =~ s/\bSYSTIMESTAMP\b/CURRENT_TIMESTAMP/igs;
 	# remove FROM DUAL
-	$str =~ s/FROM DUAL//igs;
-	$str =~ s/FROM SYS\.DUAL//igs;
+	$str =~ s/FROM\s+DUAL//igs;
+	$str =~ s/FROM\s+SYS\.DUAL//igs;
 
 	# Remove space between operators
 	$str =~ s/=\s+>/=>/gs;
@@ -827,9 +827,24 @@ sub plsql_to_plpgsql
 		}
 	}
 
-	##############
 	# Rewrite direct call to function without out parameters using PERFORM
-	##############
+	$str = perform_replacement($class, $str);
+
+	# Rewrite function call if necessary
+	if (uc($class->{type}) ne 'SHOW_REPORT') {
+		$str = normalize_function_call($class, $str);
+	}
+
+	return $str;
+}
+
+##############
+# Rewrite direct call to function without out parameters using PERFORM
+##############
+sub perform_replacement
+{
+	my ($class, $str) = @_;
+
 	if (uc($class->{type}) =~ /^(PACKAGE|FUNCTION|PROCEDURE|TRIGGER)$/) {
 		foreach my $sch ( keys %{ $class->{function_metadata} }) {
 			foreach my $p ( keys %{ $class->{function_metadata}{$sch} }) {
@@ -848,7 +863,7 @@ sub plsql_to_plpgsql
 							$str =~ s/(PERFORM $sch\.$k);/$1\(\);/igs;
 						} elsif ($str =~ /\b$k\b/is) {
 							# Look if we need to use PERFORM to call the function
-							$str =~ s/(BEGIN|LOOP|;)((?:\s*%ORA2PG_COMMENT\d+\%\s*|\s*\/\*(?:.*?)\*\/\s*)*\s*)($k\s*[\(;])/$1$2PERFORM $3/igs;
+							$str =~ s/(BEGIN|LOOP|CALL|;)((?:\s*%ORA2PG_COMMENT\d+\%\s*|\s*\/\*(?:.*?)\*\/\s*)*\s*)($k\s*[\(;])/$1$2PERFORM $3/igs;
 							$str =~ s/(EXCEPTION(?:(?!CASE|THEN).)*?THEN)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($k\s*[\(;])/$1$2PERFORM $3/isg;
 							$str =~ s/(IF(?:(?!CASE|THEN).)*?THEN)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($k\s*[\(;])/$1$2PERFORM $3/isg;
 							$str =~ s/(IF(?:(?!CASE|ELSE).)*?ELSE)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($k\s*[\(;])/$1$2PERFORM $3/isg;
@@ -874,7 +889,7 @@ sub plsql_to_plpgsql
 							$str =~ s/(IF(?:(?!CASE|ELSE).)*?ELSE)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($sch\.$k\s*[\(;])/$1$2PERFORM $3/isg;
 							$str =~ s/(PERFORM $sch\.$k);/$1\(\);/igs;
 						} elsif ($str =~ /\b$k\b/is) {
-							$str =~ s/(BEGIN|LOOP|;)((?:\s*%ORA2PG_COMMENT\d+\%\s*|\s*\/\*(?:.*?)\*\/\s*)*\s*)($k\s*[\(;])/$1$2PERFORM $3/igs;
+							$str =~ s/(BEGIN|LOOP|CALL|;)((?:\s*%ORA2PG_COMMENT\d+\%\s*|\s*\/\*(?:.*?)\*\/\s*)*\s*)($k\s*[\(;])/$1$2PERFORM $3/igs;
 							$str =~ s/(EXCEPTION(?:(?!CASE|THEN).)*?THEN)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($k\s*[\(;])/$1$2PERFORM $3/isg;
 							$str =~ s/(IF(?:(?!CASE|THEN).)*?THEN)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($k\s*[\(;])/$1$2PERFORM $3/isg;
 							$str =~ s/(IF(?:(?!CASE|ELSE).)*?ELSE)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($k\s*[\(;])/$1$2PERFORM $3/isg;
@@ -885,11 +900,7 @@ sub plsql_to_plpgsql
 			}
 		}
 	}
-
-	# Rewrite function call if necessary
-	if (uc($class->{type}) ne 'SHOW_REPORT') {
-		$str = normalize_function_call($class, $str);
-	}
+	$str =~ s/\bCALL\s+PERFORM/PERFORM/igs;
 
 	return $str;
 }
@@ -1383,9 +1394,29 @@ sub replace_oracle_function
 		$str =~ s/\bsubstr\s*\($field,$field\)/substring($1 from $2)/is;
 	}
 
-	##############
 	# Replace call to function with out parameters
-	##############
+	$str = replace_out_param_call($class, $str);
+
+	# Rewrite function calls if necessary
+	if (uc($class->{type}) ne 'SHOW_REPORT') {
+		$str = normalize_function_call($class, $str);
+	}
+
+	# Replace some sys_context call to the postgresql equivalent
+	if ($str =~ /SYS_CONTEXT/is) {
+		replace_sys_context($str);
+	}
+
+	return $str;
+}
+
+##############
+# Replace call to function with out parameters
+##############
+sub replace_out_param_call
+{
+	my ($class, $str) = @_;
+
 	if (uc($class->{type}) =~ /^(PACKAGE|FUNCTION|PROCEDURE|TRIGGER)$/) {
 		foreach my $sch (sort keys %{$class->{function_metadata}}) {
 			foreach my $p (sort keys %{$class->{function_metadata}{$sch}}) {
@@ -1416,8 +1447,12 @@ sub replace_oracle_function
 							my @out_pos = ();
 							my @out_fields = ();
 							for (my $i = 0; $i <= $#params; $i++) {
-								if ($params[$i] =~ /\s*([^\s]+)\s+(OUT|INOUT)\s/is) {
+								if (!$class->{is_mysql} && $params[$i] =~ /\s*([^\s]+)\s+(OUT|INOUT)\s/is) {
 									push(@out_fields, $1);
+									push(@out_pos, $i);
+									$call_params .= "$cparams[$i], " if ($params[$i] =~ /\bINOUT\b/is);
+								} elsif ($class->{is_mysql} && $params[$i] =~ /\s*(OUT|INOUT)\s+([^\s]+)\s/is) {
+									push(@out_fields, $2);
 									push(@out_pos, $i);
 									$call_params .= "$cparams[$i], " if ($params[$i] =~ /\bINOUT\b/is);
 								} else {
@@ -1454,20 +1489,8 @@ sub replace_oracle_function
 			}
 		}
 	}
-
-	# Rewrite function calls if necessary
-	if (uc($class->{type}) ne 'SHOW_REPORT') {
-		$str = normalize_function_call($class, $str);
-	}
-
-	# Replace some sys_context call to the postgresql equivalent
-	if ($str =~ /SYS_CONTEXT/is) {
-		replace_sys_context($str);
-	}
-
 	return $str;
 }
-
 
 # Replace decode("user_status",'active',"username",null)
 # PostgreSQL (CASE WHEN "user_status"='ACTIVE' THEN "username" ELSE NULL END)
@@ -2000,7 +2023,9 @@ sub mysql_to_plpgsql
 {
         my ($class, $str) = @_;
 
-	#--------------------------------------------
+	# remove FROM DUAL
+	$str =~ s/FROM\s+DUAL//igs;
+
 	# Procedure are functions returning void
 	$str =~ s/\bPROCEDURE\b/FUNCTION/igs;
 
@@ -2250,6 +2275,12 @@ sub mysql_to_plpgsql
 
 	# Replace spatial related lines
 	$str = replace_mysql_spatial($str);
+
+	# Rewrite direct call to function without out parameters using PERFORM
+	$str = perform_replacement($class, $str);
+
+	# Remove CALL from all statement
+	$str =~ s/\bCALL\s+/$1/igs;
 
 	return $str;
 }

@@ -1241,7 +1241,7 @@ sub _init
 	if ($self->{oracle_dsn} =~ /:mysql:.*database=([^;]+)/i) {
 		if ($self->{schema} ne $1) {
 			$self->{schema} = $1;
-			$self->logit("WARNING: setting SCHEMA to MySQL database name $1.\n", 0);
+			#$self->logit("WARNING: setting SCHEMA to MySQL database name $1.\n", 0);
 		}
 		if (!$self->{schema}) {
 			$self->logit("FATAL: cannot find a valid mysql database in DSN, $self->{oracle_dsn}.\n", 0, 1);
@@ -1339,31 +1339,32 @@ sub _init
 			if ($self->{compile_schema}) {
 				$self->_compile_schema(uc($self->{compile_schema}));
 			}
-			if (!grep(/^$self->{type}$/, 'COPY', 'INSERT', 'SEQUENCE', 'GRANT', 'TABLESPACE', 'QUERY', 'SYNONYM', 'FDW', 'KETTLE', 'DBLINK', 'DIRECTORY')) {
-				if ($self->{plsql_pgsql}) {
-					my @done = ();
-					if ($#{ $self->{look_forward_function} } >= 0) {
-						foreach my $o (@{ $self->{look_forward_function} }) {
-							next if (grep(/^$o$/i, @done) || uc($o) eq uc($self->{schema}));
-							push(@done, $o);
-							if ($self->{type} eq 'VIEW') {
-								# Limit to package lookup with WIEW export type
-								$self->_get_package_function_list($o);
-							} else {
-								# Extract all package/function/procedure meta information
-								$self->_get_plsql_metadata($o);
-							}
+		}
+		if (!grep(/^$self->{type}$/, 'COPY', 'INSERT', 'SEQUENCE', 'GRANT', 'TABLESPACE', 'QUERY', 'SYNONYM', 'FDW', 'KETTLE', 'DBLINK', 'DIRECTORY')) {
+			if ($self->{plsql_pgsql}) {
+				my @done = ();
+				if ($#{ $self->{look_forward_function} } >= 0) {
+					foreach my $o (@{ $self->{look_forward_function} }) {
+						next if (grep(/^$o$/i, @done) || uc($o) eq uc($self->{schema}));
+						push(@done, $o);
+						if ($self->{type} eq 'VIEW') {
+							# Limit to package lookup with WIEW export type
+							$self->_get_package_function_list($o);
+						} else {
+							# Extract all package/function/procedure meta information
+							$self->_get_plsql_metadata($o);
 						}
 					}
-					if ($self->{type} eq 'VIEW') {
-						# Limit to package lookup with WIEW export type
-						$self->_get_package_function_list();
-					} else {
-						# Extract all package/function/procedure meta information
-						$self->_get_plsql_metadata();
-					}
+				}
+				if ($self->{type} eq 'VIEW') {
+					# Limit to package lookup with WIEW export type
+					$self->_get_package_function_list();
+				} else {
+					# Extract all package/function/procedure meta information
+					$self->_get_plsql_metadata();
 				}
 			}
+
 			$self->{security} = $self->_get_security_definer($self->{type}) if (grep(/^$self->{type}$/, 'TRIGGER', 'FUNCTION','PROCEDURE','PACKAGE'));
 		}
 
@@ -4566,7 +4567,7 @@ LANGUAGE plpgsql ;
 			# Get all metadata from all functions when we are
 			# reading a file, otherwise it has already been done
 			foreach my $fct (sort keys %{$self->{functions}}) {
-				my %fct_detail = $self->_lookup_function($self->{functions}{$fct}{text});
+				my %fct_detail = $self->_lookup_function($self->{functions}{$fct}{text}, ($self->{is_mysql}) ? $fct : undef);
 				if (!exists $fct_detail{name}) {
 					delete $self->{functions}{$fct};
 					next;
@@ -4744,7 +4745,7 @@ LANGUAGE plpgsql ;
 			# Get all metadata from all procedures when we are
 			# reading a file, otherwise it has already been done
 			foreach my $fct (sort keys %{$self->{procedures}}) {
-				my %fct_detail = $self->_lookup_function($self->{procedures}{$fct}{text});
+				my %fct_detail = $self->_lookup_function($self->{procedures}{$fct}{text}, ($self->{is_mysql}) ? $fct : undef);
 				if (!exists $fct_detail{name}) {
 					delete $self->{procedures}{$fct};
 					next;
@@ -8779,6 +8780,8 @@ sub _get_security_definer
 {
 	my ($self, $type) = @_;
 
+	return Ora2Pg::MySQL::_get_security_definer($self, $type) if ($self->{is_mysql});
+
 	my %security = ();
 
 	# This table does not exists before 10g
@@ -9582,7 +9585,7 @@ sub _get_plsql_metadata
 				$self->_remove_comments(\$self->{function_metadata}{$sch}{'none'}{$name}{text}, 1);
 				$self->{comment_values} = ();
 				$self->{function_metadata}{$sch}{'none'}{$name}{text} =~  s/\%ORA2PG_COMMENT\d+\%//gs;
-				my %fct_detail = $self->_lookup_function($self->{function_metadata}{$sch}{'none'}{$name}{text}, undef, 1);
+				my %fct_detail = $self->_lookup_function($self->{function_metadata}{$sch}{'none'}{$name}{text});
 				if (!exists $fct_detail{name}) {
 					delete $self->{function_metadata}{$sch}{'none'}{$name};
 					next;
@@ -9621,6 +9624,7 @@ sub _get_plsql_metadata
 		}
 	}
 }
+
 
 =head2 _get_package_function_list
 
@@ -11592,11 +11596,8 @@ sub _convert_function
 	my $dirprefix = '';
 	$dirprefix = "$self->{output_dir}/" if ($self->{output_dir});
 
-	my %fct_detail = ();
-	if (!$self->{is_mysql}) {
-		%fct_detail = $self->_lookup_function($plsql, $pname);
-	} else {
-		%fct_detail = $self->_lookup_function($pname);
+	my %fct_detail = $self->_lookup_function($plsql, $pname);
+	if ($self->{is_mysql}) {
 		$pname = '';
 	}
 	return if (!exists $fct_detail{name});
@@ -13083,7 +13084,7 @@ sub _show_infos
 			$self->logit("\tOracle NLS_NCHAR $self->{nls_nchar}\n", 0);
 			if ($self->{enable_microsecond}) {
 				my $dim = 6;
-				$dim = '' if ($self->{db_version} =~ /Release [89]/);
+				$dim = '' if ($self->{db_version} =~ /Release  [89]/);
 				$self->logit("\tOracle NLS_TIMESTAMP_FORMAT YYYY-MM-DD HH24:MI:SS.FF$dim\n", 0);
 			} else {
 				$self->logit("\tOracle NLS_TIMESTAMP_FORMAT YYYY-MM-DD HH24:MI:SS\n", 0);
@@ -13160,7 +13161,7 @@ sub _show_infos
 		# Look for encrypted columns
 		my %encrypted_column = ();
 		if ($self->{db_version} !~ /Release [89]/) {
-			%encrypted_column = $self->_encrypted_columns('',$self->{schema});
+			$self->_encrypted_columns('',$self->{schema});
 		}
 
 		# Look at all database objects to compute report
@@ -15558,14 +15559,10 @@ Return a hast with the details of the function
 
 sub _lookup_function
 {
-	my ($self, $plsql, $pname, $no_plpgsql) = @_;
+	my ($self, $plsql, $pname) = @_;
 
 	if ($self->{is_mysql}) {
-		if ($self->{type} eq 'FUNCTION') {
-			return Ora2Pg::MySQL::_lookup_function($self, $plsql, $pname);
-		} else {
-			return Ora2Pg::MySQL::_lookup_procedure($self, $plsql, $pname);
-		}
+		return Ora2Pg::MySQL::_lookup_function($self, $plsql, $pname);
 	}
 
 	my %fct_detail = ();

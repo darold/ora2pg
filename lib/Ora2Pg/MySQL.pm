@@ -11,6 +11,9 @@ setlocale(LC_NUMERIC,"C");
 
 $VERSION = '18.2';
 
+# Some function might be excluded from export and assessment.
+our @EXCLUDED_FUNCTION = ('SQUIRREL_GET_ERROR_OFFSET');
+
 # These definitions can be overriden from configuration file
 our %MYSQL_TYPE = (
 	'TINYINT' => 'smallint', # 1 byte
@@ -712,97 +715,102 @@ sub _get_functions
 
 sub _lookup_function
 {
-	my ($self, $fctname) = @_;
+	my ($self, $code, $fctname) = @_;
+
+	my $type = lc($self->{type}) . 's';
+
+	# replace backquote with double quote
+	$code =~ s/`/"/g;
+	# Remove some unused code
+	$code =~ s/\s+READS SQL DATA//igs;
+	$code =~ s/\s+UNSIGNED\b//igs;
 
         my %fct_detail = ();
-	$fct_detail{name} = $fctname;
         $fct_detail{func_ret_type} = 'OPAQUE';
 
-	# Split data into declarative and code part
-	while ($self->{functions}{$fctname}{definition} =~ s/\s*DECLARE ([^;]+;)//im) {
-		$fct_detail{declare} .= "$1\n";
-	}
-	$fct_detail{code} = $self->{functions}{$fctname}{definition};
-	# Remove any label before the main block
-	$fct_detail{code} =~ s/^[^\s\:]+:\s*BEGIN/BEGIN/;
-	# Remove first BEGIN
-	$fct_detail{code} =~ s/BEGIN//;
-
+        # Split data into declarative and code part
+        ($fct_detail{declare}, $fct_detail{code}) = split(/\bBEGIN\b/i, $code, 2);
 	return if (!$fct_detail{code});
 
-	if ($self->{functions}{$fctname}{return}) {
-		$fct_detail{hasreturn} = 1;
-		$fct_detail{func_ret_type} = $self->_sql_type($self->{functions}{$fctname}{return});
+	# Remove any label that was before the main BEGIN block
+	$fct_detail{declare} =~ s/\s+[^\s\:]+:\s*$//gs;
+
+        @{$fct_detail{param_types}} = ();
+        if ( ($fct_detail{declare} =~ s/(.*?)\b(FUNCTION|PROCEDURE)\s+([^\s\(]+)\s*(\(.*\))\s+RETURNS\s+(.*)//is) ||
+        ($fct_detail{declare} =~ s/(.*?)\b(FUNCTION|PROCEDURE)\s+([^\s\(]+)\s*(\(.*\))//is) ) {
+                $fct_detail{before} = $1;
+                $fct_detail{type} = uc($2);
+                $fct_detail{name} = $3;
+                $fct_detail{args} = $4;
+		my $tmp_returned = $5;
+
+		$fct_detail{before} = ''; # There is only garbage for the moment
+
+                $fct_detail{name} =~ s/"//g;
+                $fct_detail{fct_name} = $fct_detail{name};
+		if (!$fct_detail{args}) {
+			$fct_detail{args} = '()';
+		}
+
+		$fctname = $fct_detail{name} || $fctname;
+		if ($type eq 'functions' && exists $self->{$type}{$fctname}{return} && $self->{$type}{$fctname}{return}) {
+			$fct_detail{hasreturn} = 1;
+			$fct_detail{func_ret_type} = $self->_sql_type($self->{$type}{$fctname}{return});
+		} elsif ($type eq 'functions' && !exists $self->{$type}{$fctname}{return} && $tmp_returned) {
+			$tmp_returned =~ s/\s+CHARSET.*//is;
+			$fct_detail{func_ret_type} = $self->_sql_type($tmp_returned);
+			$fct_detail{hasreturn} = 1;
+		}
+		$fct_detail{language} = $self->{$type}{$fctname}{language};
+		$fct_detail{immutable} = 1 if ($self->{$type}{$fctname}{immutable} eq 'YES');
+		$fct_detail{security} = $self->{$type}{$fctname}{security};
+
+		# Procedure that have out parameters are functions with PG
+		if ($type eq 'procedures' && $fct_detail{args} =~ /\b(OUT|INOUT)\b/) {
+			# set return type to empty to avoid returning void later
+			$fct_detail{func_ret_type} = ' ';
+		}
+		# IN OUT should be INOUT
+		$fct_detail{args} =~ s/\bIN\s+OUT/INOUT/igs;
+
+		# Move the DECLARE statement from code to the declare section.
+		$fct_detail{declare} = '';
+		while ($fct_detail{code} =~ s/DECLARE\s+([^;]+;)//is) {
+				$fct_detail{declare} .= "\n$1";
+		}
+		# Now convert types
+		if ($fct_detail{args}) {
+			$fct_detail{args} = replace_sql_type($fct_detail{args}, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type});
+		}
+		if ($fct_detail{declare}) {
+			$fct_detail{declare} = replace_sql_type($fct_detail{declare}, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type});
+
+			# Replace PL/SQL code into PL/PGSQL similar code
+			$fct_detail{declare} = Ora2Pg::PLSQL::mysql_to_plpgsql($self, $fct_detail{declare});
+		}
+		if ($fct_detail{code}) {
+			$fct_detail{code} = Ora2Pg::PLSQL::mysql_to_plpgsql($self, "BEGIN".$fct_detail{code});
+		}
+
+		$fct_detail{args} =~ s/\s+/ /gs;
+		push(@{$fct_detail{param_types}}, split(/\s*,\s*/, $fct_detail{args}));
+		# Store type used in parameter list to lookup later for custom types
+		map { s/^\(//; } @{$fct_detail{param_types}};
+		map { s/\)$//; } @{$fct_detail{param_types}};
+		map { s/\%ORA2PG_COMMENT\d+\%//gs; }  @{$fct_detail{param_types}};
+		map { s/^\s*[^\s]+\s+(IN|OUT|INOUT)/$1/i; s/^((?:IN|OUT|INOUT)\s+[^\s]+)\s+[^\s]*$/$1/i; s/\(.*//; s/\s*\)\s*$//; s/\s+$//; } @{$fct_detail{param_types}};
+
+	} else {
+                delete $fct_detail{func_ret_type};
+                delete $fct_detail{declare};
+                $fct_detail{code} = $code;
 	}
-	$fct_detail{language} = $self->{functions}{$fctname}{language};
-	$fct_detail{immutable} = 1 if ($self->{functions}{$fctname}{immutable} eq 'YES');
-	$fct_detail{security} = $self->{functions}{$fctname}{security};
 
-	# Extract arguments from the create statement
-	$self->{functions}{$fctname}{text} =~ /FUNCTION \`$fctname\`(\(.*?\)) RETURNS/i;
-	$fct_detail{args} = $1 || '';
-
-	if ($self->{functions}{$fctname}{text} =~ /RETURNS (.*?) CHARSET/) {
-		$fct_detail{func_ret_type} = $self->_sql_type($1);
-	}
-
-	# Now convert types
-	$fct_detail{args} = replace_sql_type($fct_detail{args}, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type});
-	$fct_detail{declare} = replace_sql_type($fct_detail{declare}, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type});
-
-	# Replace PL/SQL code into PL/PGSQL similar code
-	$fct_detail{declare} = Ora2Pg::PLSQL::mysql_to_plpgsql($self, $fct_detail{declare});
-	if ($fct_detail{code}) {
-		$fct_detail{code} = Ora2Pg::PLSQL::mysql_to_plpgsql($self, "BEGIN".$fct_detail{code});
-	}
-
-	return %fct_detail;
-}
-
-sub _lookup_procedure
-{
-	my ($self, $fctname) = @_;
-
-        my %fct_detail = ();
-	$fct_detail{name} = $fctname;
-        $fct_detail{func_ret_type} = 'OPAQUE';
-
-	# Split data into declarative and code part
-	while ($self->{procedures}{$fctname}{definition} =~ s/\s*DECLARE\s+([^;]+;)//is) {
-		$fct_detail{declare} .= "$1\n";
-	}
-	$fct_detail{code} = $self->{procedures}{$fctname}{definition};
-	# Remove any label before the main block
-	$fct_detail{code} =~ s/^[^\s\:]+:\s*BEGIN/BEGIN/;
-	# Remove first BEGIN
-	$fct_detail{code} =~ s/^BEGIN//;
-
-	return if (!$fct_detail{code});
-
-	$fct_detail{language} = $self->{procedures}{$fctname}{language};
-	$fct_detail{immutable} = 1 if ($self->{procedures}{$fctname}{immutable} eq 'YES');
-	$fct_detail{security} = $self->{procedures}{$fctname}{security};
-
-	# Extract arguments from the create statement
-	$self->{procedures}{$fctname}{text} =~ /PROCEDURE \`$fctname\`(\(.*?)BEGIN/is;
-	$fct_detail{args} = $1 || '';
-	$fct_detail{args} =~ s/\)[^\)]+$/\)/;
-
-	# Procedure that have out parameters are functions with PG
-	if ($fct_detail{args} =~ /\b(OUT|INOUT)\b/) {
-		# set return type to empty to avoid returning void later
-		$fct_detail{func_ret_type} = ' ';
-	}
-
-	# Now convert types
-	$fct_detail{args} = replace_sql_type($fct_detail{args}, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type});
-	$fct_detail{declare} = replace_sql_type($fct_detail{declare}, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type});
-
-	# Replace PL/SQL code into PL/PGSQL similar code
-	$fct_detail{declare} = Ora2Pg::PLSQL::mysql_to_plpgsql($self, $fct_detail{declare});
-	if ($fct_detail{code}) {
-		$fct_detail{code} = Ora2Pg::PLSQL::mysql_to_plpgsql($self, "BEGIN".$fct_detail{code});
-	}
+	# Mark the function as having out parameters if any
+	my @nout = $fct_detail{args} =~ /\bOUT\s+([^,\)]+)/igs;
+	my @ninout = $fct_detail{args} =~ /\bINOUT\s+([^,\)]+)/igs;
+	my $nbout = $#nout+1 + $#ninout+1;
+	$fct_detail{inout} = 1 if ($nbout > 0);
 
 	return %fct_detail;
 }
@@ -1672,6 +1680,84 @@ sub replace_if
 	$str =~ s/\%INCLAUSE(\d+)\%/$in_clauses{$1}/gs;
 
 	return $str;
+}
+
+sub _get_plsql_metadata
+{
+        my $self = shift;
+        my $owner = shift;
+
+	# Retrieve all functions
+	my $str = "SELECT ROUTINE_NAME,ROUTINE_SCHEMA,ROUTINE_TYPE,ROUTINE_DEFINITION FROM INFORMATION_SCHEMA.ROUTINES";
+	if ($self->{schema}) {
+		$str .= " WHERE ROUTINE_SCHEMA = '$self->{schema}'";
+	}
+	$str .= " ORDER BY ROUTINE_NAME";
+	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+
+	my %functions = ();
+	my @fct_done = ();
+	push(@fct_done, @EXCLUDED_FUNCTION);
+	while (my $row = $sth->fetch) {
+		next if (grep(/^$row->[0]$/i, @fct_done));
+		push(@fct_done, "$row->[0]");
+		$self->{function_metadata}{'unknown'}{'none'}{$row->[0]}{type} = $row->[2];
+		$self->{function_metadata}{'unknown'}{'none'}{$row->[0]}{text} = $row->[3];
+		my $sth2 = $self->{dbh}->prepare("SHOW CREATE $row->[2] $row->[0]") or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+		$sth2->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+		while (my $r = $sth2->fetch) {
+			$self->{function_metadata}{'unknown'}{'none'}{$row->[0]}{text} = $r->[2];
+			last;
+		}
+		$sth2->finish();
+	}
+	$sth->finish();
+
+	# Look for functions/procedures
+	foreach my $name (sort keys %{$self->{function_metadata}{'unknown'}{'none'}}) {
+		# Retrieve metadata for this function after removing comments
+		$self->_remove_comments(\$self->{function_metadata}{'unknown'}{'none'}{$name}{text}, 1);
+		$self->{comment_values} = ();
+		$self->{function_metadata}{'unknown'}{'none'}{$name}{text} =~ s/\%ORA2PG_COMMENT\d+\%//gs;
+		my %fct_detail = $self->_lookup_function($self->{function_metadata}{'unknown'}{'none'}{$name}{text}, $name);
+		if (!exists $fct_detail{name}) {
+			delete $self->{function_metadata}{'unknown'}{'none'}{$name};
+			next;
+		}
+		delete $fct_detail{code};
+		delete $fct_detail{before};
+		%{$self->{function_metadata}{'unknown'}{'none'}{$name}{metadata}} = %fct_detail;
+		delete $self->{function_metadata}{'unknown'}{'none'}{$name}{text};
+	}
+
+}
+
+sub _get_security_definer
+{
+	my ($self, $type) = @_;
+
+	my %security = ();
+
+	# Retrieve all functions security information
+	my $str = "SELECT ROUTINE_NAME,ROUTINE_SCHEMA,SECURITY_TYPE,DEFINER FROM INFORMATION_SCHEMA.ROUTINES";
+	if ($self->{schema}) {
+		$str .= " WHERE ROUTINE_SCHEMA = '$self->{schema}'";
+	}
+	$str .= " " . $self->limit_to_objects('FUNCTION|PROCEDURE', 'ROUTINE_NAME|ROUTINE_NAME');
+	$str .= " ORDER BY ROUTINE_NAME";
+
+	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+
+	while (my $row = $sth->fetch) {
+		next if (!$row->[0]);
+		$security{$row->[0]}{security} = $row->[2];
+		$security{$row->[0]}{owner} = $row->[3];
+	}
+	$sth->finish();
+
+	return (\%security);
 }
 
 1;
