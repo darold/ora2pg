@@ -7671,7 +7671,7 @@ sub _howto_get_data
 	my $timeformat = $dateformat;
 	if ($self->{enable_microsecond}) {
 		my $dim = 6;
-		$dim = '' if ($self->{db_version} =~ /Release 8/);
+	
 		$timeformat = "YYYY-MM-DD HH24:MI:SS.FF$dim";
 	}
 	my $timeformat_tz = $timeformat . ' TZH:TZM';
@@ -13083,7 +13083,7 @@ sub _show_infos
 			$self->logit("\tOracle NLS_NCHAR $self->{nls_nchar}\n", 0);
 			if ($self->{enable_microsecond}) {
 				my $dim = 6;
-				$dim = '' if ($self->{db_version} =~ /Release 8/);
+				$dim = '' if ($self->{db_version} =~ /Release [89]/);
 				$self->logit("\tOracle NLS_TIMESTAMP_FORMAT YYYY-MM-DD HH24:MI:SS.FF$dim\n", 0);
 			} else {
 				$self->logit("\tOracle NLS_TIMESTAMP_FORMAT YYYY-MM-DD HH24:MI:SS\n", 0);
@@ -15000,7 +15000,7 @@ sub _datetime_format
 
 	if ($self->{enable_microsecond}) {
 		my $dim = 6;
-		$dim = '' if ($self->{db_version} =~ /Release 8/);
+		$dim = '' if ($self->{db_version} =~ /Release [89]/);
 		my $sth = $dbh->do("ALTER SESSION SET NLS_TIMESTAMP_FORMAT='YYYY-MM-DD HH24:MI:SS.FF$dim'") or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
 	} else {
 		my $sth = $dbh->do("ALTER SESSION SET NLS_TIMESTAMP_FORMAT='YYYY-MM-DD HH24:MI:SS'") or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
@@ -15008,7 +15008,7 @@ sub _datetime_format
 	my $sth = $dbh->do("ALTER SESSION SET NLS_DATE_FORMAT='YYYY-MM-DD HH24:MI:SS'") or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
 	if ($self->{enable_microsecond}) {
 		my $dim = 6;
-		$dim = '' if ($self->{db_version} =~ /Release 8/);
+		$dim = '' if ($self->{db_version} =~ /Release [89]/);
 		$sth = $dbh->do("ALTER SESSION SET NLS_TIMESTAMP_TZ_FORMAT='YYYY-MM-DD HH24:MI:SS.FF$dim TZH:TZM'") or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
 	} else {
 		$sth = $dbh->do("ALTER SESSION SET NLS_TIMESTAMP_TZ_FORMAT='YYYY-MM-DD HH24:MI:SS TZH:TZM'") or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
