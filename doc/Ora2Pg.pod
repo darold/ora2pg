@@ -2601,6 +2601,8 @@ number of instances and schema to scan for migration assessment.
 
 Usage: ora2pg_scanner -l CSVFILE [-o OUTDIR]
 
+   -c | --config FILE : set custom configuration file to use otherwise ora2pg
+		will use the default: /etc/ora2pg/ora2pg.conf.
    -l | --list FILE : CSV file containing a list of database to scan with
 		all requiered information. The first line of the file
 		can contains the following header that describe the
@@ -2623,6 +2625,17 @@ Usage: ora2pg_scanner -l CSVFILE [-o OUTDIR]
 	"ORACLE","HR","dbi:Oracle:host=192.168.1.10;sid=XE;port=1521","system","manager"
 
    The CSV field separator must be a comma.
+
+   Note that if you want to scan all schema from an Oracle instance you just
+   have to leave the schema field empty, Ora2Pg will automatically detect all
+   available schema and generate a report for each one. Of course you need to
+   use a connection user with enough privilege to be able to scan all schema.
+   For example:
+
+	"ORACLE","","dbi:Oracle:host=192.168.1.10;sid=XE;port=1521","system","manager"
+
+   will generate a report for all schema in the XE instance. Note that in this
+   case the SCHEMA directive in ora2pg.conf must not be set.
 
 It will generate a CSV file with the assessment result, one line per schema or
 database and a detailed HTML report for each database scanned.
