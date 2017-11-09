@@ -13158,7 +13158,10 @@ sub _show_infos
 		my %global_tables = $self->_global_temp_table_info();
 		$objects{'GLOBAL TEMPORARY TABLE'} = scalar keys %global_tables;
 		# Look for encrypted columns
-		my %encrypted_column = $self->_encrypted_columns('',$self->{schema});
+		my %encrypted_column = ();
+		if ($self->{db_version} !~ /Release [89]/) {
+			%encrypted_column = $self->_encrypted_columns('',$self->{schema});
+		}
 
 		# Look at all database objects to compute report
 		my %report_info = ();
