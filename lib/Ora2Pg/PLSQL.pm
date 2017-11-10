@@ -2276,7 +2276,14 @@ sub mysql_to_plpgsql
 	$str =~ s/\bCHARSET(\s+)/COLLATE$1/igs;
 
 	# Remove call to start transaction
-	$str =~ s/\s+START\s+TRANSACTION\s*;//igs;
+	$str =~ s/\sSTART\s+TRANSACTION\s*;/-- START TRANSACTION;/igs;
+
+	# Comment call to COMMIT or ROLLBACK in the code if allowed
+	if ($class->{comment_commit_rollback}) {
+		$str =~ s/\b(COMMIT|ROLLBACK)\s*;/-- $1;/igs;
+		$str =~ s/(ROLLBACK\s+TO\s+[^;]+);/-- $1;/igs;
+	}
+
 	# Replace spatial related lines
 	$str = replace_mysql_spatial($str);
 
