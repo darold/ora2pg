@@ -956,7 +956,21 @@ sub replace_sql_type
 			$str =~ s/\b$type\b\s*\([^\)]+\)/$MYSQL_TYPE{$type}\%\|$len\%\|\%/is;
 		} elsif ($precision && ($type =~ /(BIT|TINYINT|SMALLINT|MEDIUMINT|INTEGER|BIGINT|INT|REAL|DOUBLE|FLOAT|DECIMAL|NUMERIC)/)) {
 			if (!$scale) {
-				$str =~ s/\b$type\b\s*\([^\)]+\)/$MYSQL_TYPE{$type}\%\|$precision\%\|\%/is;
+				if ($type =~ /(BIT|TINYINT|SMALLINT|MEDIUMINT|INTEGER|BIGINT|INT)/) {
+					if ($pg_integer_type) {
+						if ($precision < 5) {
+							$str =~ s/\b$type\b\s*\([^\)]+\)/smallint/is;
+						} elsif ($precision <= 9) {
+							$str =~ s/\b$type\b\s*\([^\)]+\)/integer/is;
+						} else {
+							$str =~ s/\b$type\b\s*\([^\)]+\)/bigint/is;
+						}
+					} else {
+						$str =~ s/\b$type\b\s*\([^\)]+\)/numeric\%\|$precision\%\|\%/i;
+					}
+				} else {
+					$str =~ s/\b$type\b\s*\([^\)]+\)/$MYSQL_TYPE{$type}\%\|$precision\%\|\%/is;
+				}
 			} else {
 				$str =~ s/\b$type\b\s*\([^\)]+\)/$MYSQL_TYPE{$type}\%\|$args\%\|\%/is;
 			}
