@@ -2275,6 +2275,8 @@ sub mysql_to_plpgsql
 	#$str =~ s/COLLATE "UTF8"/COLLATE "C.UTF-8"/gs;
 	$str =~ s/\bCHARSET(\s+)/COLLATE$1/igs;
 
+	# Remove call to start transaction
+	$str =~ s/\s+START\s+TRANSACTION\s*;//igs;
 	# Replace spatial related lines
 	$str = replace_mysql_spatial($str);
 
