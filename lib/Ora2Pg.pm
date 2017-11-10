@@ -1543,7 +1543,7 @@ sub _mysql_connection
 
 	$self->logit("Trying to connect to database: $self->{oracle_dsn}\n", 1) if (!$quiet);
 
-	my $dbh = DBI->connect("$self->{oracle_dsn}", $self->{oracle_user}, $self->{oracle_pwd}, { 'RaiseError' => 1, AutoInactiveDestroy => 1});
+	my $dbh = DBI->connect("$self->{oracle_dsn}", $self->{oracle_user}, $self->{oracle_pwd}, { 'RaiseError' => 1, AutoInactiveDestroy => 1, mysql_enable_utf8 => 1});
 	# Check for connection failure
 	if (!$dbh) {
 		$self->logit("FATAL: $DBI::err ... $DBI::errstr\n", 0, 1);
