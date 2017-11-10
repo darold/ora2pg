@@ -11550,8 +11550,8 @@ sub _remove_comments
 			$lines[$j] =~ s/\%NO_COMMENT\%/$nocomment/;
 		} else {
 			# Mysql supports differents kinds of comment's starter
-			if ( ($lines[$j] =~ s/(\s*COMMENT\s+'.*)$/\%ORA2PG_COMMENT$self->{idxcomment}\%/) ||
-			($lines[$j] =~ s/(\s*\-\- .*)$/\%ORA2PG_COMMENT$self->{idxcomment}\%/) ||
+			if ( ($lines[$j] =~ s/(\s*\-\- .*)$/\%ORA2PG_COMMENT$self->{idxcomment}\%/) ||
+			(!grep(/^$self->{type}$/, 'FUNCTION', 'PROCEDURE') && $lines[$j] =~ s/(\s*COMMENT\s+'.*)$/\%ORA2PG_COMMENT$self->{idxcomment}\%/) ||
 			($lines[$j] =~ s/(\s*\# .*)$/\%ORA2PG_COMMENT$self->{idxcomment}\%/) ) {
 				$self->{comment_values}{"\%ORA2PG_COMMENT$self->{idxcomment}\%"} = $1;
 				chomp($self->{comment_values}{"\%ORA2PG_COMMENT$self->{idxcomment}\%"});
@@ -11862,6 +11862,7 @@ END;
 			$function .= " " . $self->quote_object_name($owner) . ";\n";
 		}
 	}
+	$function .= "\nCOMMENT ON FUNCTION $fname$at_suffix $fct_detail{args} IS $fct_detail{comment};\n" if ($fct_detail{comment});
 	$function .= $revoke;
 	$function = $at_wrapper . $function;
 

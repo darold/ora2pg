@@ -744,6 +744,10 @@ sub _lookup_function
                 $fct_detail{args} = $4;
 		my $tmp_returned = $5;
 
+		if ($fct_detail{declare} =~ s/\s*COMMENT\s+(\?TEXTVALUE\d+\?|'[^\']+')//) {
+			$fct_detail{comment} = $1;
+		}
+		$fct_detail{immutable} = 1 if ($fct_detail{declare} =~ s/\bDETERMINISTIC\b//is);
 		$fct_detail{before} = ''; # There is only garbage for the moment
 
                 $fct_detail{name} =~ s/"//g;
