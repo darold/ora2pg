@@ -2244,9 +2244,11 @@ sub mysql_to_plpgsql
 	$str =~ s/\bRELEASE_LOCK/pg_advisory_unlock/igs;
 
 	# GROUP_CONCAT doesn't exist, it must be replaced by calls to array_to_string() and array_agg() functions
-	$str =~ s/GROUP_CONCAT\((.*?)\s+ORDER\s+BY\s+([^\s]+)\s+(ASC|DESC)\s+SEPARATOR\s+'([^']+)'\s*\)/array_to_string(array_agg($1 ORDER BY $2 $3), '$4')/igs;
-	$str =~ s/GROUP_CONCAT\((.*?)\s+ORDER\s+BY\s+([^\s]+)\s+SEPARATOR\s+'([^']+)'\s*\)/array_to_string(array_agg($1 ORDER BY $2 ASC), '$3')/igs;
-	$str =~ s/GROUP_CONCAT\((.*?)\s+SEPARATOR\s+'([^']+)'\s*\)/array_to_string(array_agg($1), '$2')/igs;
+	$str =~ s/GROUP_CONCAT\((.*?)\s+ORDER\s+BY\s+([^\s]+)\s+(ASC|DESC)\s+SEPARATOR\s+(\?TEXTVALUE\d+\?|'[^']+')\s*\)/array_to_string(array_agg($1 ORDER BY $2 $3), $4)/igs;
+	$str =~ s/GROUP_CONCAT\((.*?)\s+ORDER\s+BY\s+([^\s]+)\s+SEPARATOR\s+(\?TEXTVALUE\d+\?|'[^']+')\s*\)/array_to_string(array_agg($1 ORDER BY $2 ASC), $3)/igs;
+	$str =~ s/GROUP_CONCAT\((.*?)\s+SEPARATOR\s+(\?TEXTVALUE\d+\?|'[^']+')\s*\)/array_to_string(array_agg($1), $2)/igs;
+	$str =~ s/GROUP_CONCAT\((.*?)\s+ORDER\s+BY\s+([^\s]+)\s+(ASC|DESC)\s*\)/array_to_string(array_agg($1 ORDER BY $2 $3), ',')/igs;
+	$str =~ s/GROUP_CONCAT\((.*?)\s+ORDER\s+BY\s+([^\s]+)\s*\)/array_to_string(array_agg($1 ORDER BY $2), ',')/igs;
 
 	# Replace IFNULL() MySQL function in a query
 	$str =~ s/\bIFNULL\(\s*([^,]+)\s*,\s*([^\)]+\s*)\)/COALESCE($1, $2)/igs;
