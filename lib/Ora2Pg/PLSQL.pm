@@ -2272,7 +2272,9 @@ sub mysql_to_plpgsql
 
 	# Fix some charset encoding call in cast function
 	#$str =~ s/(CAST\s*\((?:.*?)\s+AS\s+(?:[^\s]+)\s+)CHARSET\s+([^\s\)]+)\)/$1) COLLATE "\U$2\E"/igs;
-	$str =~ s/(CAST\s*\((?:.*?)\s+AS\s+(?:[^\s]+)\s+)CHARSET\s+([^\s\)]+)\)/$1)/igs;
+	$str =~ s/(CAST\s*\((?:.*?)\s+AS\s+(?:[^\s]+)\s+)(CHARSET|CHARACTER\s+SET)\s+([^\s\)]+)\)/$1)/igs;
+	$str =~ s/CONVERT\s*(\((?:[^,]+)\s+,\s+(?:[^\s]+)\s+)(CHARSET|CHARACTER\s+SET)\s+([^\s\)]+)\)/CAST$1)/igs;
+	$str =~ s/CONVERT\s*\((.*?)\s+USING\s+([^\s\)]+)\)/CAST($1 AS text)/igs;
 	# Set default UTF8 collation to postgreSQL equivalent C.UTF-8
 	#$str =~ s/COLLATE "UTF8"/COLLATE "C.UTF-8"/gs;
 	$str =~ s/\bCHARSET(\s+)/COLLATE$1/igs;
