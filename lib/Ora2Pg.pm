@@ -4224,9 +4224,7 @@ LANGUAGE plpgsql ;
 						$trig->[4] =~ s/\bRETURN\s*;/$ret_kind/igs;
 					}
 				}
-				my $ifexists = '';
-				$ifexists = ' IF EXISTS' if ($self->{pg_supports_ifexists});
-				$sql_output .= "DROP TRIGGER$ifexists $self->{pg_supports_ifexists} " . $self->quote_object_name($trig->[0])
+				$sql_output .= "DROP TRIGGER $self->{pg_supports_ifexists} " . $self->quote_object_name($trig->[0])
 							. " ON " . $self->quote_object_name($tbname) . " CASCADE;\n";
 				my $security = '';
 				my $revoke = '';
@@ -6649,8 +6647,6 @@ RETURNS text AS
 	# Some virtual column have been found
 	if (scalar keys %virtual_trigger_info > 0) {
 		my $trig_out = '';
-		my $ifexists = '';
-		$ifexists = ' IF EXISTS' if ($self->{pg_supports_ifexists});
 		foreach my $tb (sort keys %virtual_trigger_info) {
 			my $tname = "virt_col_${tb}_trigger";
 			$tname =~ s/\./_/g;
@@ -6658,7 +6654,7 @@ RETURNS text AS
 			my $fname = "fct_virt_col_${tb}_trigger";
 			$fname =~ s/\./_/g;
 			$fname = $self->quote_object_name($fname);
-			$trig_out .= "DROP TRIGGER$ifexists $tname ON " . $self->quote_object_name($tb) . " CASCADE;\n\n";
+			$trig_out .= "DROP TRIGGER IF EXISTS $tname ON " . $self->quote_object_name($tb) . " CASCADE;\n\n";
 			$trig_out .= "CREATE$self->{create_or_replace} FUNCTION $fname() RETURNS trigger AS \$BODY\$\n";
 			$trig_out .= "BEGIN\n";
 			foreach my $c (sort keys %{$virtual_trigger_info{$tb}}) {
