@@ -6654,7 +6654,7 @@ RETURNS text AS
 			my $fname = "fct_virt_col_${tb}_trigger";
 			$fname =~ s/\./_/g;
 			$fname = $self->quote_object_name($fname);
-			$trig_out .= "DROP TRIGGER IF EXISTS $tname ON " . $self->quote_object_name($tb) . " CASCADE;\n\n";
+			$trig_out .= "DROP TRIGGER $self->{pg_supports_ifexists} $tname ON " . $self->quote_object_name($tb) . " CASCADE;\n\n";
 			$trig_out .= "CREATE$self->{create_or_replace} FUNCTION $fname() RETURNS trigger AS \$BODY\$\n";
 			$trig_out .= "BEGIN\n";
 			foreach my $c (sort keys %{$virtual_trigger_info{$tb}}) {
