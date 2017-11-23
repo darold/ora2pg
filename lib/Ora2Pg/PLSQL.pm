@@ -537,6 +537,7 @@ sub plsql_to_plpgsql
 
 	# Change NVL to COALESCE
 	$str =~ s/NVL\s*\(/coalesce(/is;
+	$str =~ s/NVL2\s*\($field,$field,$field\)/coalesce($1,$3)/is;
 
 	# Replace EXEC function into variable, ex: EXEC :a := test(:r,1,2,3);
 	$str =~ s/\bEXEC\s+:([^\s:]+)\s*:=/SELECT INTO $2/igs;
@@ -1286,6 +1287,7 @@ sub replace_oracle_function
 	#--------------------------------------------
 	# Change NVL to COALESCE
 	$str =~ s/NVL\s*\(/coalesce(/is;
+	$str =~ s/NVL2\s*\($field,$field,$field\)/coalesce($1,$3)/is;
 
 	# Replace DEFAULT empty_blob() and empty_clob()
 	$str =~ s/(empty_blob|empty_clob)\s*\(\s*\)//is;
