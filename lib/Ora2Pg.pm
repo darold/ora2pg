@@ -2496,6 +2496,22 @@ sub read_schema_from_file
 				$self->{tables}{$tb_name}{table_info}{nologging} = 1;
 			}
 
+			if ($tb_param =~ /ORGANIZATION EXTERNAL/is) {
+				if ($tb_param =~ /DEFAULT DIRECTORY ([^\s]+)/is) {
+					$self->{external_table}{$tb_name}{director} = $1;
+				}
+				$self->{external_table}{$tb_name}{delimiter} = ',';
+				if ($tb_param =~ /FIELDS TERMINATED BY '(.)'/is) {
+					$self->{external_table}{$tb_name}{delimiter} = $1;
+				}
+				if ($tb_param =~ /PREPROCESSOR EXECDIR\s*:\s*'([^']+)'/is) {
+					$self->{external_table}{$tb_name}{program} = $1;
+				}
+				if ($tb_param =~ /LOCATION\s*\(\s*'([^']+)'\s*\)/is) {
+					$self->{external_table}{$tb_name}{location} = $1;
+				}
+			}
+
 		} elsif ($content =~ s/CREATE\s+(UNIQUE|BITMAP)?\s*INDEX\s+([^\s]+)\s+ON\s+([^\s\(]+)\s*\((.*)\)//is) {
 			my $is_unique = $1;
 			my $idx_name = $2;
@@ -6450,7 +6466,9 @@ CREATE TRIGGER ${table}_trigger_insert
 					$sql_output .= " $withoid;\n";
 				}
 			} elsif ( grep(/^$table$/i, keys %{$self->{external_table}}) ) {
-				$sql_output .= " SERVER \L$self->{external_table}{$table}{directory}\E OPTIONS(filename '$self->{external_table}{$table}{directory_path}$self->{external_table}{$table}{location}', format 'csv', delimiter '$self->{external_table}{$table}{delimiter}');\n";
+				my $program = '';
+				$program = ", program '$self->{external_table}{$table}{program}'" if ($self->{external_table}{$table}{program});
+				$sql_output .= " SERVER \L$self->{external_table}{$table}{directory}\E OPTIONS(filename '$self->{external_table}{$table}{directory_path}$self->{external_table}{$table}{location}', format 'csv', delimiter '$self->{external_table}{$table}{delimiter}'$program);\n";
 			} elsif ($self->{is_mysql}) {
 				$schem = "dbname '$self->{schema}'," if ($self->{schema});
 				my $r_server = $self->{fdw_server};
@@ -9073,7 +9091,6 @@ sub _get_external_tables
 	
 	my %data = ();
 	while (my $row = $sth->fetch) {
-
 		if (!$self->{schema} && $self->{export_schema}) {
 			$row->[1] = "$row->[0].$row->[1]";
 		}
@@ -9084,8 +9101,11 @@ sub _get_external_tables
 		}
 		$data{$row->[1]}{location} = $row->[11];
 		$data{$row->[1]}{delimiter} = ',';
-		if ($row->[8] =~ /FIELDS TERMINATED BY '(.)'/) {
+		if ($row->[8] =~ /FIELDS TERMINATED BY '(.)'/is) {
 			$data{$row->[1]}{delimiter} = $1;
+		}
+		if ($row->[8] =~ /PREPROCESSOR EXECDIR\s*:\s*'([^']+)'/is) {
+			$data{$row->[1]}{program} = $1;
 		}
 	}
 	$sth->finish();
