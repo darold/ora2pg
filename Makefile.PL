@@ -828,6 +828,10 @@ GEN_USER_PWD	0
 # the directive value # to that username. 
 FORCE_OWNER	0
 
+# Ora2Pg use the function's security privileges set in Oracle and it is often
+# defined as SECURITY DEFINER. If you want to override those security privileges
+# for all functions and use SECURITY DEFINER instead, enable this directive.
+FORCE_SECURITY_INVOKER	0
 
 #------------------------------------------------------------------------------
 # DATA SECTION (Control data export behaviors)

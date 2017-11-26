@@ -4249,6 +4249,7 @@ LANGUAGE plpgsql ;
 					$security = " SECURITY DEFINER";
 					$revoke = "-- REVOKE ALL ON FUNCTION $trig_fctname() FROM PUBLIC;\n";
 				}
+				$security = " SECURITY INVOKER" if ($self->{force_security_invoker});
 				if ($self->{pg_supports_when} && $trig->[5]) {
 					if (!$self->{preserve_case}) {
 						$trig->[4] =~ s/"([^"]+)"/\L$1\E/gs;
@@ -11861,14 +11862,18 @@ END;
 		$revoke = "-- REVOKE ALL ON FUNCTION $name $fct_detail{args} FROM PUBLIC;";
 		$revoke =~ s/[\n\r]+\s*/ /gs;
 		$revoke .= "\n";
-		if ($self->{type} ne 'PACKAGE') {
-			if (!$self->{is_mysql}) {
-				$function .= "SECURITY DEFINER\n" if ($self->{security}{"\U$fct_detail{name}\E"}{security} eq 'DEFINER');
-			} else  {
-				$function .= "SECURITY DEFINER\n" if ($fct_detail{security} eq 'DEFINER');
-			}
+		if ($self->{force_security_invoker}) {
+			$function .= "SECURITY INVOKER\n";
 		} else {
-			$function .= "SECURITY DEFINER\n" if ($self->{security}{"\U$pname\E"}{security} eq 'DEFINER');
+			if ($self->{type} ne 'PACKAGE') {
+				if (!$self->{is_mysql}) {
+					$function .= "SECURITY DEFINER\n" if ($self->{security}{"\U$fct_detail{name}\E"}{security} eq 'DEFINER');
+				} else  {
+					$function .= "SECURITY DEFINER\n" if ($fct_detail{security} eq 'DEFINER');
+				}
+			} else {
+				$function .= "SECURITY DEFINER\n" if ($self->{security}{"\U$pname\E"}{security} eq 'DEFINER');
+			}
 		}
 		$fct_detail{immutable} = '' if ($fct_detail{code} =~ /\b(UPDATE|INSERT|DELETE)\b/is);
 		$function .= "$fct_detail{immutable};\n";

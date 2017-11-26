@@ -649,6 +649,12 @@ you can force Ora2Pg to set the object owner to be the one used in the Oracle da
 by setting the directive to 1, or to a completely different username by setting the
 directive value to that username. 
 
+=item FORCE_SECURITY_INVOKER
+
+Ora2Pg use the function's security privileges set in Oracle and it is often
+defined as SECURITY DEFINER. If you want to override those security privileges
+for all functions and use SECURITY DEFINER instead, enable this directive.
+
 =item USE_TABLESPACE
 
 When enabled this directive force ora2pg to export all tables, indexes constraint and
