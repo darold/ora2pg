@@ -845,7 +845,7 @@ sub replace_mysql_variables
 		my $type = 'integer';
 		$type = 'varchar' if ($v =~ /'[^']*'/);
 		$type = 'timestamp' if ($n =~ /date|time/i);
-		$declare .= "$n $type;\n";
+		$declare .= "$n $type;\n" if ($declare !~ /\b$n $type;/s);
 		# Fix other call to the same variable in the code
 		$code =~ s/\@$n\b/$n/gs;
 	}
