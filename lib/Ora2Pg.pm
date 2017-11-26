@@ -2770,9 +2770,9 @@ sub read_trigger_from_file
 
 	my $tid = 0; 
 	my $doloop = 1;
-	my @triggers_decl = split(/(?:CREATE)?(?:\s+OR\s+REPLACE)?\s*\bTRIGGER\s+/is, $content);
+	my @triggers_decl = split(/(?:CREATE)?(?:\s+OR\s+REPLACE)?\s*(?:DEFINER=[^\s]+)?\s*TRIGGER(\s+|$)/is, $content);
 	foreach $content (@triggers_decl) {
-		if ($content =~ s/^([^\s]+)\s+(BEFORE|AFTER|INSTEAD\s+OF)\s+(.*?)\s+ON\s+([^\s]+)\s+(.*)(\bEND\s*(?!IF|LOOP|CASE|INTO|FROM|,)[a-z0-9_]*;)//is) {
+		if ($content =~ s/^([^\s]+)\s+(BEFORE|AFTER|INSTEAD\s+OF)\s+(.*?)\s+ON\s+([^\s]+)\s+(.*)(\bEND\s*(?!IF|LOOP|CASE|INTO|FROM|,)[a-z0-9_]*(?:;|$))//is) {
 			my $t_name = $1;
 			my $t_pos = $2;
 			my $t_event = $3;
@@ -3484,7 +3484,13 @@ sub _replace_declare_var
 			}
 		}
 		$declare =~ s/PRAGMA\s+EXCEPTION_INIT[^;]*;//igs;
+		if ($self->{is_mysql}) {
+			($$code, $declare) = Ora2Pg::MySQL::replace_mysql_variables($self, $$code, $declare);
+		}
 		$$code =~ s/\%DECLARE\%/$declare/is;
+	} elsif ($self->{is_mysql}) {
+		($$code, $declare) = Ora2Pg::MySQL::replace_mysql_variables($self, $$code, $declare);
+		$$code = "DECLARE\n" . $declare . "\n" . $$code if ($declare);
 	}
 
 	# Replace call to raise exception
@@ -4546,19 +4552,19 @@ LANGUAGE plpgsql ;
 					$l = $old_line .= ' ' . $l;
 					$old_line = '';
 				}
-				if ($l =~ /^\s*CREATE\s*(?:OR REPLACE)?\s*(?:EDITABLE|NONEDITABLE)?\s*$/i) {
+				if ($l =~ /^\s*CREATE\s*(?:OR REPLACE)?\s*(?:EDITABLE|NONEDITABLE|DEFINER=[^\s]+)?\s*$/i) {
 					$old_line = $l;
 					next;
 				}
-				if ($l =~ /^\s*(?:EDITABLE|NONEDITABLE)?\s*(FUNCTION|PROCEDURE)$/i) {
+				if ($l =~ /^\s*(?:EDITABLE|NONEDITABLE|DEFINER=[^\s]+)?\s*(FUNCTION|PROCEDURE)$/i) {
 					$old_line = $l;
 					next;
 				}
-				if ($l =~ /^\s*CREATE\s*(?:OR REPLACE)?\s*(?:EDITABLE|NONEDITABLE)?\s*(FUNCTION|PROCEDURE)\s*$/i) {
+				if ($l =~ /^\s*CREATE\s*(?:OR REPLACE)?\s*(?:EDITABLE|NONEDITABLE|DEFINER=[^\s]+)?\s*(FUNCTION|PROCEDURE)\s*$/i) {
 					$old_line = $l;
 					next;
 				}
-				$l =~ s/^\s*CREATE (?:OR REPLACE)?\s*(?:EDITABLE|NONEDITABLE)?\s*(FUNCTION|PROCEDURE)/$1/i;
+				$l =~ s/^\s*CREATE (?:OR REPLACE)?\s*(?:EDITABLE|NONEDITABLE|DEFINER=[^\s]+)?\s*(FUNCTION|PROCEDURE)/$1/i;
 				$l =~ s/^\s*(?:EDITABLE|NONEDITABLE)?\s*(FUNCTION|PROCEDURE)/$1/i;
 				if ($l =~ /^(FUNCTION|PROCEDURE)\s+([^\s\(]+)/i) {
 					$fcnm = $2;
@@ -15685,6 +15691,7 @@ sub _lookup_function
 				}
 			}
 		}
+
 		# Set parameters for AUTONOMOUS TRANSACTION
 		$fct_detail{args} =~ s/\s+/ /gs;
 		push(@{$fct_detail{at_args}}, split(/\s*,\s*/, $fct_detail{args}));

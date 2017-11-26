@@ -816,7 +816,41 @@ sub _lookup_function
 	my $nbout = $#nout+1 + $#ninout+1;
 	$fct_detail{inout} = 1 if ($nbout > 0);
 
+	($fct_detail{code}, $fct_detail{declare}) = replace_mysql_variables($self, $fct_detail{code}, $fct_detail{declare});
+
 	return %fct_detail;
+}
+
+sub replace_mysql_variables
+{
+	my ($self, $code, $declare) = @_;
+
+	# Look for mysql global variables and add them to the custom variable list
+	while ($code =~ s/\b(?:SET\s+)?\@\@(?:SESSION\.)?([^\s]+)\s*:=\s*([^;]+);/PERFORM set_config('$1', $2, false);/is) {
+		my $n = $1;
+		my $v = $2;
+		$self->{global_variables}{$n}{name} = lc($n);
+		# Try to set a default type for the variable
+		$self->{global_variables}{$n}{type} = 'bigint';
+		if ($v =~ /'[^\']*'/) {
+			$self->{global_variables}{$n}{type} = 'varchar';
+		}
+		$self->{global_variables}{$n}{type} = 'timestamp' if ($n =~ /date|time/i);
+	}
+	# Look for local variable definition and append them to the declare section
+	while ($code =~ s/\bSET\s+\@([^\s]+)\s*:=\s*([^;]+);/SET $1 := $2;/is) {
+		my $n = $1;
+		my $v = $2;
+		# Try to set a default type for the variable
+		my $type = 'integer';
+		$type = 'varchar' if ($v =~ /'[^']*'/);
+		$type = 'timestamp' if ($n =~ /date|time/i);
+		$declare .= "$n $type;\n";
+		# Fix other call to the same variable in the code
+		$code =~ s/\@$n\b/$n/gs;
+	}
+
+	return ($code, $declare);
 }
 
 sub _list_all_funtions
