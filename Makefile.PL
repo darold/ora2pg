@@ -95,7 +95,7 @@ DEBUG		0
 
 # This directive can be used to send an initial command to Oracle, just after
 # the connection. For example to unlock a policy before reading objects or
-# to set some session parameters. This directive can be used multiple time.
+# to set some session parameters. This directive can be used multiple time.
 #ORA_INITIAL_COMMAND
 
 
@@ -124,8 +124,8 @@ CREATE_SCHEMA	1
 COMPILE_SCHEMA	0
 
 # By default if you set EXPORT_SCHEMA to 1 the PostgreSQL search_path will be
-# set to the schema name exported set as value of the SCHEMA directive. You can
-# defined/force the PostgreSQL schema to use by using this directive.
+# set to the schema name exported set as value of the SCHEMA directive. You can
+# defined/force the PostgreSQL schema to use by using this directive.
 #
 # The value can be a comma delimited list of schema but not when using TABLE
 # export type because in this case it will generate the CREATE SCHEMA statement
@@ -134,8 +134,8 @@ COMPILE_SCHEMA	0
 #        SET search_path = user_schema, public;
 # forcing the use of an other schema (here user_schema) than the one from Oracle
 # schema set in the SCHEMA directive. You can also set the default search_path
-# for the PostgreSQL user you are using to connect to the destination database
-# by using:
+# for the PostgreSQL user you are using to connect to the destination database
+# by using:
 #        ALTER ROLE username SET search_path TO user_schema, public;
 #in this case you don't have to set PG_SCHEMA.
 #PG_SCHEMA	
@@ -226,7 +226,7 @@ DISABLE_COMMENT         0
 # Set which object to exclude from export process. By default none. Value
 # must be a list of object name or regexp separated by space. Note that regex
 # will not works with 8i database, use % placeholder instead Ora2Pg will use
-# the NOT LIKE operator. There is also some extended use of this directive,
+# the NOT LIKE operator. There is also some extended use of this directive,
 # see chapter "Limiting object to export" in documentation.
 #EXCLUDE	OTHER_TABLES
 
@@ -240,7 +240,7 @@ DISABLE_COMMENT         0
 # for which privilege will be exported. Default is export for all objects.
 # Here are the possibles values TABLE, VIEW, MATERIALIZED VIEW, SEQUENCE,
 # PROCEDURE, FUNCTION, PACKAGE BODY, TYPE, SYNONYM, DIRECTORY. Only one object
-# type is allowed at a time. For example set it to TABLE if you just want to
+# type is allowed at a time. For example set it to TABLE if you just want to
 # export privilege on tables. You can use the -g option to overwrite it.
 # When used this directive prevent the export of users unless it is set to
 # USER. In this case only users definitions are exported.
@@ -273,10 +273,10 @@ TRUNCATE_TABLE	0
 # This works only with tablespaces that are not TEMP, USERS and SYSTEM.
 USE_TABLESPACE		0
 
-# Enable this directive to reorder columns and minimized the footprint
+# Enable this directive to reorder columns and minimized the footprint
 # on disk, so that more rows fit on a data page, which is the most important
 # factor for speed. Default is same order than in Oracle table definition, 
-# that should be enough for most usage.
+# that should be enough for most usage.
 REORDERING_COLUMNS	0
 
 # Support for include a WHERE clause filter when dumping the contents
@@ -308,8 +308,8 @@ REORDERING_COLUMNS	0
 #
 CONTEXT_AS_TRGM		0
 
-# By default Ora2Pg creates a function-based index to translate Oracle Text
-# indexes. 
+# By default Ora2Pg creates a function-based index to translate Oracle Text
+# indexes. 
 #    CREATE INDEX ON t_document
 #                 USING gin(to_tsvector('french', title));
 # You will have to rewrite the CONTAIN() clause using to_tsvector(), example:
@@ -319,7 +319,7 @@ CONTEXT_AS_TRGM		0
 # To force Ora2Pg to create an extra tsvector column with a dedicated triggers
 # for FTS indexes, disable this directive. In this case, Ora2Pg will add the
 # column as follow: ALTER TABLE t_document ADD COLUMN tsv_title tsvector;
-# Then update the column to compute FTS vectors if data have been loaded before
+# Then update the column to compute FTS vectors if data have been loaded before
 #     UPDATE t_document SET tsv_title =
 #                       to_tsvector('french', coalesce(title,''));
 # To automatically update the column when a modification in the title column
@@ -339,14 +339,14 @@ CONTEXT_AS_TRGM		0
 #  FOR EACH ROW EXECUTE PROCEDURE tsv_t_document_title();
 #
 # When the Oracle text index is defined over multiple column, Ora2Pg will use
-# setweight() to set a weight in the order of the column declaration.
+# setweight() to set a weight in the order of the column declaration.
 #
 FTS_INDEX_ONLY	1
 
 # Use this directive to force text search configuration to use. When it is not
 # set, Ora2Pg will autodetect the stemmer used by Oracle for each index and
-# pg_catalog.english if nothing is found. 
-# 
+# pg_catalog.english if nothing is found. 
+#
 #FTS_CONFIG	pg_catalog.french
 
 # If you want to perform your text search in an accent insensitive way, enable
@@ -496,8 +496,8 @@ FKEY_DEFERRABLE	0
 # foreign keys have been exported as deferrable and you are not using direct
 # import to PostgreSQL (PG_DSN is not defined). Constraints will then be
 # checked at the end of the transaction. This directive can also be enabled 
-# if you want to force all foreign keys to be created as deferrable and
-# initially deferred during schema export (TABLE export type).
+# if you want to force all foreign keys to be created as deferrable and
+# initially deferred during schema export (TABLE export type).
 DEFER_FKEY	0
 
 # If deferring foreign keys is not possible du to the amount of data in a
@@ -547,7 +547,7 @@ DISABLE_TRIGGERS 0
 # unless you always quote all tables and columns on all your scripts.
 PRESERVE_CASE	0
 
-# Add the given value as suffix to index names. Useful if you have indexes
+# Add the given value as suffix to index names. Useful if you have indexes
 # with same name as tables. Not so common but it can help.
 #INDEXES_SUFFIX		_idx
 
@@ -558,13 +558,13 @@ PRESERVE_CASE	0
 INDEXES_RENAMING	0
 
 # Operator classes text_pattern_ops, varchar_pattern_ops, and bpchar_pattern_ops
-# support B-tree indexes on the corresponding types. The difference from the
+# support B-tree indexes on the corresponding types. The difference from the
 # default operator classes is that the values are compared strictly character by
-# character rather than according to the locale-specific collation rules. This
+# character rather than according to the locale-specific collation rules. This
 # makes these operator classes suitable for use by queries involving pattern
 # matching expressions (LIKE or POSIX regular expressions) when the database
 # does not use the standard "C" locale. If you enable, with value 1, this will
-# force Ora2Pg to export all indexes defined on varchar2() and char() columns
+# force Ora2Pg to export all indexes defined on varchar2() and char() columns
 # using those operators. If you set it to a value greater than 1 it will only
 # change indexes on columns where the charactere limit is greater or equal than
 # this value. For example, set it to 128 to create these kind of indexes on
@@ -580,13 +580,13 @@ PREFIX_PARTITION	0
 
 # If you don't want to reproduce the partitioning like in Oracle and want to
 # export all partitionned Oracle data into the main single table in PostgreSQL
-# enable this directive. Ora2Pg will export all data into the main table name.
+# enable this directive. Ora2Pg will export all data into the main table name.
 # Default is to use partitionning, Ora2Pg will export data from each partition
 # and import them into the PostgreSQL dedicated partition table.
 DISABLE_PARTITION	0
 
 # Activating this directive will force Ora2Pg to add WITH (OIDS) when creating
-# tables or views as tables. Default is same as PostgreSQL, disabled.
+# tables or views as tables. Default is same as PostgreSQL, disabled.
 WITH_OID		0
 
 # Allow escaping of column name using Oracle reserved words.
@@ -693,7 +693,7 @@ CREATE_OR_REPLACE	1
 
 # This directive can be used to send an initial command to PostgreSQL, just
 # after the connection. For example to set some session parameters. This
-# directive can be used multiple time.
+# directive can be used multiple time.
 #PG_INITIAL_COMMAND
 
 
@@ -803,14 +803,14 @@ ENABLE_MICROSECOND      1
 
 # By default Oracle call to function TO_NUMBER will be translated as a cast
 # into numeric. For example, TO_NUMBER('10.1234') is converted into PostgreSQL
-# call to_number('10.1234')::numeric. If you want you can cast the call to integer
+# call to_number('10.1234')::numeric. If you want you can cast the call to integer
 # or bigint by changing the value of the configuration directive. If you need
 # better control of the format, just set it as value, for example:
-# 	TO_NUMBER_CONVERSION	99999999999999999999.9999999999
+#	TO_NUMBER_CONVERSION	99999999999999999999.9999999999
 # will convert the code above as:
 #	TO_NUMBER('10.1234', '99999999999999999999.9999999999')
 # Any value of the directive that it is not numeric, integer or bigint will
-# be taken as a mask format. If set to none, no conversion will be done.
+# be taken as a mask format. If set to none, no conversion will be done.
 TO_NUMBER_CONVERSION	numeric
 
 #------------------------------------------------------------------------------
@@ -890,10 +890,10 @@ STANDARD_CONFORMING_STRINGS	1
 #LONGTRUNCOK	0
 
 # Disable this if you don't want to load full content of BLOB and CLOB and use
-# LOB locators instead. This is usefull to not having to set LONGREADLEN. Note
+# LOB locators instead. This is usefull to not having to set LONGREADLEN. Note
 # that this will not improve speed of BLOB export as most of the time is always
-# consumed by the bytea escaping and in this case export is done line by line
-# and not by chunk of DATA_LIMIT rows. For more information on how it works, see
+# consumed by the bytea escaping and in this case export is done line by line
+# and not by chunk of DATA_LIMIT rows. For more information on how it works, see
 # http://search.cpan.org/~pythian/DBD-Oracle-1.74/lib/DBD/Oracle.pm#Data_Interface_for_LOB_Locators
 # Default is enabled, it will not use LOB locators for backward compatibility.
 NO_LOB_LOCATOR  1
@@ -906,13 +906,13 @@ XML_PRETTY	0
 # When Ora2Pg receives an error in the COPY or INSERT statement from PostgreSQL
 # it will log the statement to a file called TABLENAME_error.log in the output
 # directory and continue to next bulk of data. Like this you can try to fix the
-# statement and manually reload the error log file. Default is disabled: abort
+# statement and manually reload the error log file. Default is disabled: abort
 # import on error.
 LOG_ON_ERROR		0
 
-# If you want to convert CHAR(n) from Oracle into varchar(n) or text under
+# If you want to convert CHAR(n) from Oracle into varchar(n) or text under
 # PostgreSQL, you might want to do some triming on the data. By default
-# Ora2Pg will auto-detect this conversion and remove any withspace at both
+# Ora2Pg will auto-detect this conversion and remove any withspace at both
 # leading and trailing position. If you just want to remove the leadings
 # character, set the value to LEADING. If you just want to remove the trailing
 # character, set the value to TRAILING. Default value is BOTH.
@@ -968,13 +968,13 @@ ORACLE_COPIES	1
 # the FILE_PER_TABLE directive if your are exporting to files.
 PARALLEL_TABLES	1
 
-# Multiprocess support. This directive is used to split the select queries
+# Multiprocess support. This directive is used to split the select queries
 # between the different connections to Oracle if ORA_COPIES is used. Ora2Pg
 # will extract data with the following prepare statement:
 # 	SELECT * FROM TABLE WHERE MOD(COLUMN, \$ORA_COPIES) = ?
 # Where \$ORA_COPIES is the total number of cores used to extract data and set
 # with ORA_COPIES directive, and ? is the current core used at execution time.
-# This means that Ora2Pg needs to know the numeric column to use in this query.
+# This means that Ora2Pg needs to know the numeric column to use in this query.
 # If this column is a real, float, numeric or decimal, you must add the ROUND()
 # function with the column to round the value to the nearest integer.
 #DEFINED_PK	TABLE:COLUMN TABLE:ROUND(COLUMN)
@@ -988,9 +988,9 @@ DROP_INDEXES	0
 # to disk before the command returns a "success" indication to the client. This
 # is the equivalent to set synchronous_commit directive of postgresql.conf file.
 # This is only used when you load data directly to PostgreSQL, the default is
-# off to disable synchronous commit to gain speed at writing data. Some modified
+# off to disable synchronous commit to gain speed at writing data. Some modified
 # versions of PostgreSQL, like Greenplum, do not have this setting, so in this
-# case set this directive to 1, ora2pg will not try to change the setting.
+# case set this directive to 1, ora2pg will not try to change the setting.
 SYNCHRONOUS_COMMIT	0
 
 
@@ -1013,9 +1013,9 @@ PLSQL_PGSQL	1
 # coalesce() function to mimic the Oracle behavior where empty field are
 # considered equal to NULL. Ex: (field1 IS NULL) and (field2 IS NOT NULL) will
 # be replaced by (coalesce(field1::text, '') = '') and (field2 IS NOT NULL AND
-# field2::text <> ''). You might want this replacement to be sure that your
+# field2::text <> ''). You might want this replacement to be sure that your
 # application will have the same behavior but if you have control on you app
-# a better way is to change it to transform empty string into NULL because
+# a better way is to change it to transform empty string into NULL because
 # PostgreSQL makes the difference.
 NULL_EQUAL_EMPTY	0
 
@@ -1032,25 +1032,25 @@ EMPTY_LOB_NULL		0
 PACKAGE_AS_SCHEMA	1
 
 # Enable this directive if the rewrite of Oracle native syntax (+) of
-# OUTER JOIN is broken. This will force Ora2Pg to not rewrite such code,
+# OUTER JOIN is broken. This will force Ora2Pg to not rewrite such code,
 # default is to try to rewrite simple form of rigth outer join for the
 # moment.
 REWRITE_OUTER_JOIN	1
 
 # By default Oracle functions are marked as STABLE as they can not modify data
-# unless when used in PL/SQL with variable assignment or as conditional
-# expression. You can force Ora2Pg to create these function as VOLATILE by
+# unless when used in PL/SQL with variable assignment or as conditional
+# expression. You can force Ora2Pg to create these function as VOLATILE by
 # disabling the following configuration directive.
 FUNCTION_STABLE		1
 
-# By default call to COMMIT/ROLLBACK are kept untouched by Ora2Pg to force
-# the user to review the logic of the function. Once it is fixed in Oracle
+# By default call to COMMIT/ROLLBACK are kept untouched by Ora2Pg to force
+# the user to review the logic of the function. Once it is fixed in Oracle
 # source code or you want to comment this calls enable the following directive
 COMMENT_COMMIT_ROLLBACK	0
 
-# It is common to see SAVEPOINT call inside PL/SQL procedure together with
+# It is common to see SAVEPOINT call inside PL/SQL procedure together with
 # a ROLLBACK TO savepoint_name. When COMMENT_COMMIT_ROLLBACK is enabled you
-# may want to also comment SAVEPOINT calls, in this case enable it.
+# may want to also comment SAVEPOINT calls, in this case enable it.
 COMMENT_SAVEPOINT	0
 
 # Ora2Pg replace all string constant during the pl/sql to plpgsql translation,
@@ -1065,7 +1065,7 @@ COMMENT_SAVEPOINT	0
 # The Orafce library can be found here: https://github.com/orafce/orafce
 # By default Ora2pg rewrite add_month(), add_year(), date_trunc() and
 # to_char() functions, but you may prefer to use the orafce version of
-# these function that do not need any code transformation.
+# these function that do not need any code transformation.
 USE_ORAFCE	0
 
 # Enable translation of autonomous transactions into a wrapper function
@@ -1097,8 +1097,8 @@ DUMP_AS_HTML		0
 TOP_MAX			10
 
 # Use this directive to redefined the number of human-days limit where the
-# migration assessment level must switch from B to C. Default is set to 10
-# human-days.
+# migration assessment level must switch from B to C. Default is set to 10
+# human-days.
 HUMAN_DAYS_LIMIT	5
 
 # Set the comma separated list of username that must be used to filter
@@ -1131,12 +1131,12 @@ PG_SUPPORTS_INSTEADOF	1
 PG_SUPPORTS_MVIEW	1
 
 # If enabled, export view with CHECK OPTION. Disable it if you have PostgreSQL
-# version prior 9.4. Default, enabled
+# version prior 9.4. Default, enabled
 PG_SUPPORTS_CHECKOPTION	1
 
 # PostgreSQL versions below 9.x do not support IF EXISTS in DDL statements.
-# Disabling the directive with value 0 will prevent Ora2Pg to add those
-# keywords in all generated statements.
+# Disabling the directive with value 0 will prevent Ora2Pg to add those
+# keywords in all generated statements.
 PG_SUPPORTS_IFEXISTS	1
 
 # PostgreSQL versions prior to 9.3 do not support the LATERAL keyword.
@@ -1186,15 +1186,15 @@ PG_SUPPORTS_NAMED_OPERATOR		1
 # the value of AUTODETECT_SPATIAL_TYPE to the desired number of line.
 AUTODETECT_SPATIAL_TYPE	1
 
-# Disable this directive if you don't want to automatically convert SRID to
-# EPSG using the sdo_cs.map_oracle_srid_to_epsg() function. Default: enabled
+# Disable this directive if you don't want to automatically convert SRID to
+# EPSG using the sdo_cs.map_oracle_srid_to_epsg() function. Default: enabled
 # If the SDO_SRID returned by Oracle is NULL, it will be replaced by the
 # default value 8307 converted to its EPSG value: 4326 (see DEFAULT_SRID)
 # If the value is upper than 1, all SRID will be forced to this value, in
 # this case DEFAULT_SRID will not be used when Oracle returns a null value
 # and the value will be forced to CONVERT_SRID.
 # Note that it is also possible to set the EPSG value on Oracle side when
-# sdo_cs.map_oracle_srid_to_epsg() return NULL if your want to force the value:
+# sdo_cs.map_oracle_srid_to_epsg() return NULL if your want to force the value:
 # Ex: system> UPDATE sdo_coord_ref_sys SET legacy_code=41014 WHERE srid = 27572;
 CONVERT_SRID		1
 
@@ -1208,7 +1208,7 @@ DEFAULT_SRID		4326
 # binary output using SDO_UTIL.TO_WKBGEOMETRY(). If those two extract type
 # are called at Oracle side, they are slow and you can easily reach Out Of
 # Memory when you have lot of rows. Also WKB is not able to export 3D geometry
-# and some geometries like CURVEPOLYGON. In this case you may use the INTERNAL
+# and some geometries like CURVEPOLYGON. In this case you may use the INTERNAL
 # extraction type. It will use a pure Perl library to convert the SDO_GEOMETRY
 # data into a WKT representation, the translation is done on Ora2Pg side.
 # This is a work in progress, please validate your exported data geometries
