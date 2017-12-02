@@ -3380,7 +3380,7 @@ sub translate_function
 	my $lsize = 0;
 	my $lcost = 0;
 	my $fct_count = 0;
-	foreach my $fct (keys %functions) {
+	foreach my $fct (sort keys %functions) {
 
 		$fct_count++;
 
