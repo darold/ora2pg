@@ -838,7 +838,7 @@ sub replace_mysql_variables
 		$self->{global_variables}{$n}{type} = 'timestamp' if ($n =~ /date|time/i);
 	}
 	# Look for local variable definition and append them to the declare section
-	while ($code =~ s/\bSET\s+\@([^\s]+)\s*:=\s*([^;]+);/SET $1 := $2;/is) {
+	while ($code =~ s/\bSET\s+\@([^\s]+)\s*:=\s*([^;]+);/SET $1 = $2;/is) {
 		my $n = $1;
 		my $v = $2;
 		# Try to set a default type for the variable
