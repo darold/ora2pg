@@ -898,8 +898,9 @@ STANDARD_CONFORMING_STRINGS	1
 # Default is enabled, it will not use LOB locators for backward compatibility.
 NO_LOB_LOCATOR  1
 
-# Use getStringVal() instead of getClobVal() for XML data export. Default is
-# enabled for backward compatibility.
+# Force the use of getStringVal() instead of getClobVal() for XML data export.
+# Default is 1, enabled for backward compatibility. Set here to 0 to use extract
+# method a la CLOB and export the XML code as it was stored.
 XML_PRETTY	0
 
 # Enable this directive if you want to continue direct data import on error.
