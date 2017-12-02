@@ -2034,8 +2034,8 @@ sub mysql_to_plpgsql
 	# Simply remove this as not supported
 	$str =~ s/\bDEFAULT\s+NULL\b//igs;
 
-	# Change mysql varaible affectation 
-	$str =~ s/\bSET\s+([^\s]+\s*)=([^;\n]+;)/$1:=$2/igs;
+	# Change mysql variable affectation 
+	$str =~ s/\bSET\s+([^\s:=]+\s*)=([^;\n]+;)/$1:=$2/igs;
 
 	# remove declared handler
 	$str =~ s/[^\s]+\s+HANDLER\s+FOR\s+[^;]+;//igs;

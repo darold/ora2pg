@@ -826,7 +826,7 @@ sub replace_mysql_variables
 	my ($self, $code, $declare) = @_;
 
 	# Look for mysql global variables and add them to the custom variable list
-	while ($code =~ s/\b(?:SET\s+)?\@\@(?:SESSION\.)?([^\s]+)\s*:=\s*([^;]+);/PERFORM set_config('$1', $2, false);/is) {
+	while ($code =~ s/\b(?:SET\s+)?\@\@(?:SESSION\.)?([^\s:=]+)\s*:=\s*([^;]+);/PERFORM set_config('$1', $2, false);/is) {
 		my $n = $1;
 		my $v = $2;
 		$self->{global_variables}{$n}{name} = lc($n);
@@ -837,8 +837,9 @@ sub replace_mysql_variables
 		}
 		$self->{global_variables}{$n}{type} = 'timestamp' if ($n =~ /date|time/i);
 	}
+
 	# Look for local variable definition and append them to the declare section
-	while ($code =~ s/\bSET\s+\@([^\s]+)\s*:=\s*([^;]+);/SET $1 = $2;/is) {
+	while ($code =~ s/\bSET\s+\@([^\s:]+)\s*:=\s*([^;]+);/SET $1 = $2;/is) {
 		my $n = $1;
 		my $v = $2;
 		# Try to set a default type for the variable
@@ -847,7 +848,7 @@ sub replace_mysql_variables
 		$type = 'timestamp' if ($n =~ /date|time/i);
 		$declare .= "$n $type;\n" if ($declare !~ /\b$n $type;/s);
 		# Fix other call to the same variable in the code
-		$code =~ s/\@$n\b/$n/gs;
+		$code =~ s/\@$n(\s*[^:])/$n$1/gs;
 	}
 
 	return ($code, $declare);
