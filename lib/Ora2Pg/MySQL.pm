@@ -1731,6 +1731,7 @@ sub replace_if
 		$str =~ s/\%IF\%/$case_str/s;
 	}
 	$str =~ s/\%INCLAUSE(\d+)\%/$in_clauses{$1}/gs;
+	$str =~ s/\s*,\s*IN\s*\(/ IN \(/gs;
 
 	return $str;
 }
