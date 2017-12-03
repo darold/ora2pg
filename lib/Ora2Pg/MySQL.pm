@@ -851,6 +851,30 @@ sub replace_mysql_variables
 		$code =~ s/\@$n(\s*[^:])/$n$1/gs;
 	}
 
+	# Look for local variable definition and append them to the declare section
+	while ($code =~ s/(\s+)\@([^\s:=]+)\s*:=\s*([^;]+);/$1$2 := $3;/is) {
+		my $n = $2;
+		my $v = $3;
+		# Try to set a default type for the variable
+		my $type = 'integer';
+		$type = 'varchar' if ($v =~ /'[^']*'/);
+		$type = 'timestamp' if ($n =~ /date|time/i);
+		$declare .= "$n $type;\n" if ($declare !~ /\b$n $type;/s);
+		# Fix other call to the same variable in the code
+		$code =~ s/\@$n(\s*[^:])/$n$1/gs;
+	}
+
+	# Look for local variable definition and append them to the declare section
+	while ($code =~ s/\@([a-z0-9_]+)/$1/is) {
+		my $n = $1;
+		# Try to set a default type for the variable
+		my $type = 'varchar';
+		$type = 'timestamp' if ($n =~ /date|time/i);
+		$declare .= "$n $type;\n" if ($declare !~ /\b$n $type;/s);
+		# Fix other call to the same variable in the code
+		$code =~ s/\@$n\b/$n/gs;
+	}
+
 	return ($code, $declare);
 }
 
