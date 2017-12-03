@@ -319,8 +319,6 @@ sub convert_plsql_code
 
 	# Rewrite all decode() call before
 	$str = replace_decode($str) if (uc($class->{type}) ne 'SHOW_REPORT');
-	# For mysql also replace if() statements in queries or views.
- 	$str = Ora2Pg::MySQL::replace_if($str) if ($class->{is_mysql} && grep(/^$class->{type}$/i, 'VIEW', 'QUERY', 'FUNCTION', 'PROCEDURE'));
 
 	# Replace array syntax arr(i).x into arr[i].x
 	$str =~ s/\b([a-z0-9_]+)\(([^\(\)]+)\)(\.[a-z0-9_]+)/$1\[$2\]$3/igs;
@@ -330,6 +328,11 @@ sub convert_plsql_code
 	my @code_parts = split(/;/, $str);
 	for (my $i = 0; $i <= $#code_parts; $i++) {
 		next if (!$code_parts[$i]);
+
+		# For mysql also replace if() statements in queries or views.
+		if ($class->{is_mysql} && grep(/^$class->{type}$/i, 'VIEW', 'QUERY', 'FUNCTION', 'PROCEDURE')) {
+			$code_parts[$i] = Ora2Pg::MySQL::replace_if($code_parts[$i]);
+		}
 
 		# Remove parenthesis from funtion parameters when they not belong to a function call
 		my %subparams = ();
