@@ -598,8 +598,8 @@ sub plsql_to_plpgsql
 	$str =~ s/\bdup_val_on_index\b/unique_violation/igs;
 
 	# Replace raise_application_error by PG standard RAISE EXCEPTION
-	$str =~ s/\braise_application_error\s*\(\s*([^,]+)\s*,\s*([^;]+),\s*(true|false)\s*\)\s*;/"RAISE EXCEPTION '%', $2 USING ERRCODE = " . set_error_code($1) . ";"/iegs;
-	$str =~ s/\braise_application_error\s*\(\s*([^,]+)\s*,\s*([^;]+)\)\s*;/"RAISE EXCEPTION '%', $2 USING ERRCODE = " . set_error_code($1) . ";"/iegs;
+	$str =~ s/\braise_application_error\s*\(\s*([^,]+)\s*,\s*([^;]+),\s*(true|false)\s*\)\s*;/"RAISE EXCEPTION '%', $2 USING ERRCODE = " . set_error_code($1) . ";"/iges;
+	$str =~ s/\braise_application_error\s*\(\s*([^,]+)\s*,\s*([^;]+)\)\s*;/"RAISE EXCEPTION '%', $2 USING ERRCODE = " . set_error_code($1) . ";"/iges;
 	$str =~ s/DBMS_STANDARD\.RAISE EXCEPTION/RAISE EXCEPTION/igs;
 
 	# Remove IN information from cursor declaration
@@ -640,7 +640,7 @@ sub plsql_to_plpgsql
 	$str =~ s/(INSERT\s+INTO\s+)STRICT\s+/$1/igs;
 
 	# Remove the function name repetion at end
-	$str =~ s/\b(END\s*[^;\s]+\s*(?:;|$))/remove_fct_name($1)/iegs;
+	$str =~ s/\b(END\s*[^;\s]+\s*(?:;|$))/remove_fct_name($1)/iges;
 
 	# Rewrite comment in CASE between WHEN and THEN
 	$str =~ s/(\s*)(WHEN\s+[^\s]+\s*)(\%ORA2PG_COMMENT\d+\%)(\s*THEN)/$1$3$1$2$4/igs;
@@ -1368,7 +1368,7 @@ sub replace_oracle_function
 	$str =~ s/REGEXP_LIKE\s*\(\s*([^,]+)\s*,\s*([^\)]+)\s*\)/$1 \~ $2/is;
 
 	# REGEX_SUBSTR( string, pattern, pos, num ) translation
-	$str =~ s/REGEXP_SUBSTR\s*\(\s*([^\)]+)\s*\)/convert_regex_substr($class, $1)/iegs;
+	$str =~ s/REGEXP_SUBSTR\s*\(\s*([^\)]+)\s*\)/convert_regex_substr($class, $1)/iges;
 
 	# Remove call to XMLCDATA, there's no such function with PostgreSQL
 	$str =~ s/XMLCDATA\s*\(([^\)]+)\)/'<![CDATA[' || $1 || ']]>'/is;
@@ -2153,15 +2153,15 @@ sub mysql_to_plpgsql
 	$str =~ s/\bUTC_TIME\(\s*\)/(CURRENT_TIMESTAMP AT TIME ZONE 'UTC')::time(0)/igs;
 	$str =~ s/\bUTC_TIMESTAMP\(\s*\)/(CURRENT_TIMESTAMP AT TIME ZONE 'UTC')::timestamp(0)/igs;
 
-	# Replace some function with different name and format
-	$str =~ s/\b(ADDDATE|DATE_ADD)\(\s*([^,]+)\s*,\s*INTERVAL\s+(\d+)\s+([^\(\),\s]+)\s*\)/($2)::timestamp + $3*interval '1 $4'/igs;
-	$str =~ s/\b(ADDDATE|DATE_ADD)\(\s*([^,]+)\s*,\s*INTERVAL\s+([^\s]+)\s+([^\(\),\s]+)\s*\)/($2)::timestamp + $3*interval '1 $4'/igs;
-	$str =~ s/\b(ADDDATE|DATE_ADD)\(\s*([^,]+)\s*,\s*INTERVAL ([^\(\),]+)\s*\)/($2)::timestamp + interval '$3'/igs;
-	$str =~ s/\bADDDATE\(\s*([^,]+)\s*,\s*(\d+)\s*\)/($1)::timestamp + ($2 * interval '1 day')/igs;
-	$str =~ s/\bADDTIME\(\s*([^,]+)\s*,\s*([^\(\)]+)\s*\)/($1)::timestamp + ($2)::interval/igs;
 	$str =~ s/\bCONVERT_TZ\(\s*([^,]+)\s*,\s*([^,]+)\s*,\s*([^\(\),]+)\s*\)/(($1)::timestamp without time zone AT TIME ZONE ($2)::text) AT TIME ZONE ($3)::text/igs;
 	$str =~ s/\bDATEDIFF\(\s*([^,]+)\s*,\s*([^\(\)]+)\s*\)/extract(day from (date_trunc('day', ($1)::timestamp) - date_trunc('day', ($2)::timestamp)))/igs;
-	$str =~ s/\bDATE_FORMAT\(\s*(.*?)\s*,\s*('[^\(\)]+')\s*\)/_mysql_dateformat_to_pgsql($1, $2)/eigs;
+	$str =~ s/\bDATE_FORMAT\(\s*([^,]+)\s*,\s*('[^'\(\)]+'|\?TEXTVALUE\d+\?)\s*\)/_mysql_dateformat_to_pgsql($class, $1, $2)/iges;
+
+	$str =~ s/\b(?:ADDDATE|DATE_ADD)\(\s*(.*?)\s*,\s*INTERVAL\s*([^\(\),]+)\s*\)/"($1)::timestamp " . _replace_dateadd($2)/iges;
+	$str =~ s/\bADDDATE\(\s*([^,]+)\s*,\s*(\d+)\s*\)/($1)::timestamp + ($2 * interval '1 day')/igs;
+	$str =~ s/\bADDTIME\(\s*([^,]+)\s*,\s*([^\(\)]+)\s*\)/($1)::timestamp + ($2)::interval/igs;
+
+
 	$str =~ s/\b(DAY|DAYOFMONTH)\(\s*([^\(\)]+)\s*\)/extract(day from date($1))::integer/igs;
 	$str =~ s/\bDAYNAME\(\s*([^\(\)]+)\s*\)/to_char(($1)::date, 'FMDay')/igs;
 	$str =~ s/\bDAYOFWEEK\(\s*([^\(\)]+)\s*\)/extract(dow from date($1))::integer + 1/igs; # start on sunday = 1
@@ -2169,8 +2169,8 @@ sub mysql_to_plpgsql
 	$str =~ s/\bFORMAT\(\s*([^,]+)\s*,\s*([^\(\)]+)\s*\)/to_char(round($1, $2), 'FM999,999,999,999,999,999,990'||case when $2 > 0 then '.'||repeat('0', $2) else '' end)/igs;
 	$str =~ s/\bFROM_DAYS\(\s*([^\(\)]+)\s*\)/'0001-01-01bc'::date + ($1)::integer/igs;
 	$str =~ s/\bFROM_UNIXTIME\(\s*([^\(\),]+)\s*\)/to_timestamp($1)::timestamp without time zone/igs;
-	$str =~ s/\bFROM_UNIXTIME\(\s*(.*?)\s*,\s*('[^\(\)]+')\s*\)/FROM_UNIXTIME2(to_timestamp($1), $2)/igs;
-	$str =~ s/\bFROM_UNIXTIME2\(\s*(.*?)\s*,\s*('[^\)]+')\s*\)/_mysql_dateformat_to_pgsql($1, $2)/eigs;
+	$str =~ s/\bFROM_UNIXTIME\(\s*(.*?)\s*,\s*('[^\(\)]+'|\?TEXTVALUE\d+\?)\s*\)/FROM_UNIXTIME2(to_timestamp($1), $2)/igs;
+	$str =~ s/\bFROM_UNIXTIME2\(\s*(.*?)\s*,\s*('[^'\(\)]+'|\?TEXTVALUE\d+\?)\s*\)/_mysql_dateformat_to_pgsql($class, $1, $2)/eigs;
 	$str =~ s/\bGET_FORMAT\(\s*([^,]+)\s*,\s*([^\(\)]+)\s*\)/_mysql_getformat_to_pgsql($1, $2)/eigs;
 	$str =~ s/\bHOUR\(\s*([^\(\)]+)\s*\)/extract(hour from ($1)::interval)::integer/igs;
 	$str =~ s/\bLAST_DAY\(\s*([^\(\)]+)\s*\)/(date_trunc('month',($1)::timestamp + interval '1 month'))::date - 1/igs;
@@ -2183,7 +2183,7 @@ sub mysql_to_plpgsql
 	$str =~ s/\bQUARTER\(\s*([^\(\)]+)\s*\)/extract(quarter from date($1))::integer/igs;
 	$str =~ s/\bSECOND\(\s*([^\(\)]+)\s*\)/extract(second from ($1)::interval)::integer/igs;
 	$str =~ s/\bSEC_TO_TIME\(\s*([^\(\)]+)\s*\)/($1 * interval '1 second')/igs;
-	$str =~ s/\bSTR_TO_DATE\(\s*(.*?)\s*,\s*('[^\(\),]+')\s*\)/_mysql_strtodate_to_pgsql($1, $2)/eigs;
+	$str =~ s/\bSTR_TO_DATE\(\s*(.*?)\s*,\s*('[^'\(\),]+'|\?TEXTVALUE\d+\?)\s*\)/_mysql_strtodate_to_pgsql($class, $1, $2)/eigs;
 	$str =~ s/\b(SUBDATE|DATE_SUB)\(\s*([^,]+)\s*,\s*INTERVAL ([^\(\)]+)\s*\)/($2)::timestamp - interval '$3'/igs;
 	$str =~ s/\bSUBDATE\(\s*([^,]+)\s*,\s*(\d+)\s*\)/($1)::timestamp - ($2 * interval '1 day')/igs;
 	$str =~ s/\bSUBTIME\(\s*([^,]+)\s*,\s*([^\(\)]+)\s*\)/($1)::timestamp - ($2)::interval/igs;
@@ -2199,7 +2199,7 @@ sub mysql_to_plpgsql
 	$str =~ s/\bTIMESTAMPDIFF\(\s*HOUR\s*,\s*([^,]+)\s*,\s*([^\(\),]+)\s*\)/floor(extract(epoch from ( ($2)::timestamp - ($1)::timestamp))\/3600)/igs;
 	$str =~ s/\bTIMESTAMPDIFF\(\s*MINUTE\s*,\s*([^,]+)\s*,\s*([^\(\),]+)\s*\)/floor(extract(epoch from ( ($2)::timestamp - ($1)::timestamp))\/60)/igs;
 	$str =~ s/\bTIMESTAMPDIFF\(\s*SECOND\s*,\s*([^,]+)\s*,\s*([^\(\),]+)\s*\)/extract(epoch from ($2)::timestamp) - extract(epoch from ($1)::timestamp))/igs;
-	$str =~ s/\bTIME_FORMAT\(\s*(.*?)\s*,\s*('[^\(\),]+')\s*\)/_mysql_timeformat_to_pgsql($1, $2)/eigs;
+	$str =~ s/\bTIME_FORMAT\(\s*(.*?)\s*,\s*('[^'\(\),]+'|\?TEXTVALUE\d+\?)\s*\)/_mysql_timeformat_to_pgsql($class, $1, $2)/eigs;
 	$str =~ s/\bTIME_TO_SEC\(\s*([^\(\)]+)\s*\)/(extract(hours from ($1)::time)*3600 + extract(minutes from ($1)::time)*60 + extract(seconds from ($1)::time))::bigint/igs;
 	$str =~ s/\bTO_DAYS\(\s*([^\(\)]+)\s*\)/(($1)::date - '0001-01-01bc')::integer/igs;
 	$str =~ s/\bWEEK(\([^\(\)]+\))/extract(week from date($1)) - 1/igs;
@@ -2258,11 +2258,11 @@ sub mysql_to_plpgsql
 	$str =~ s/GROUP_CONCAT\((.*?)\s+ORDER\s+BY\s+([^\s]+)\s*\)/array_to_string(array_agg($1 ORDER BY $2), ',')/igs;
 
 	# Replace IFNULL() MySQL function in a query
-	$str =~ s/\bIFNULL\(\s*([^,]+)\s*,\s*([^\)]+\s*)\)/COALESCE($1, $2)/igs;
+	while ($str =~ s/\bIFNULL\(\s*([^,]+)\s*,\s*([^\)]+\s*)\)/COALESCE($1, $2)/is) {};
 
 	# Rewrite while loop
-	$str =~ s/\bWHILE\s+(.*?)\bEND WHILE\s*;/WHILE $1END LOOP;/igs;
-	$str =~ s/\bWHILE\s+(.*?)DO\b/WHILE $1LOOP/igs;
+	$str =~ s/\bWHILE\b(.*?)\bEND\s+WHILE\s*;/WHILE $1END LOOP;/igs;
+	$str =~ s/\bWHILE\b(.*?)\bDO\b/WHILE $1LOOP/igs;
 
 	# Rewrite REPEAT loop
 	my %repl_repeat = ();
@@ -2306,6 +2306,27 @@ sub mysql_to_plpgsql
 
 	return $str;
 }
+
+sub _replace_dateadd
+{
+	my $str = shift;
+	my $dd = shift;
+
+	my $op = '+';
+	if ($str =~ s/^\-[\s]*//) {
+		$op = '-';
+	}
+	if ($str =~ s/^(\d+)\s+([^\(\),\s]+)$/ $op $1*interval '1 $2'/s) {
+		return $str;
+	} elsif ($str =~ s/^([^\s]+)\s+([^\(\),\s]+)$/ $op $1*interval '1 $2'/s) {
+		return $str;
+	} elsif ($str =~ s/^([^\(\),]+)$/ $op interval '$1'/s) {
+		return $str;
+	}
+
+	return $str;
+}
+
 
 sub replace_mysql_spatial
 {
@@ -2389,18 +2410,18 @@ sub _mysql_getformat_to_pgsql
 
 sub _mysql_strtodate_to_pgsql
 {
-	my ($datetime, $format) = @_;
+	my ($class, $datetime, $format) = @_;
 
-	my $str = _mysql_dateformat_to_pgsql($datetime, $format, 1);
+	my $str = _mysql_dateformat_to_pgsql($class, $datetime, $format, 1);
 
 	return $str;
 }
 
 sub _mysql_timeformat_to_pgsql
 {
-	my ($datetime, $format) = @_;
+	my ($class, $datetime, $format) = @_;
 
-	my $str = _mysql_dateformat_to_pgsql($datetime, $format, 0, 1);
+	my $str = _mysql_dateformat_to_pgsql($class, $datetime, $format, 0, 1);
 
 	return $str;
 }
@@ -2408,15 +2429,19 @@ sub _mysql_timeformat_to_pgsql
 
 sub _mysql_dateformat_to_pgsql
 {
-	my ($datetime, $format, $todate, $totime) = @_;
+	my ($class, $datetime, $format, $todate, $totime) = @_;
 
 # Not supported:
 # %X	Year for the week where Sunday is the first day of the week, numeric, four digits; used with %V
 
+	if ($format =~ s/\?TEXTVALUE(\d+)\?/$class->{text_values}{$1}/) {
+		delete $class->{text_values}{$1};
+	}
+
 	$format =~ s/\%a/Dy/g;
 	$format =~ s/\%b/Mon/g;
 	$format =~ s/\%c/FMMM/g;
-	$format =~ s/\%d/DD/g;
+	$format =~ s/\%(d|01)/DD/g;
 	$format =~ s/\%D/FMDDth/g;
 	$format =~ s/\%e/FMDD/g;
 	$format =~ s/\%f/US/g;
@@ -2443,6 +2468,12 @@ sub _mysql_dateformat_to_pgsql
 	$format =~ s/\%y/YY/g;
 	$format =~ s/\%W/Day/g;
 	$format =~ s/\%M/Month/g;
+
+	# Replace constant strings
+	if ($format =~ s/('[^']+')/\?TEXTVALUE$class->{text_values_pos}\?/s) {
+		$class->{text_values}{$class->{text_values_pos}} = $1;
+		$class->{text_values_pos}++;
+	}
 
 	if ($todate) {
 		return "to_date($datetime, $format)";

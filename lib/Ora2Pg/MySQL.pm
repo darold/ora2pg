@@ -788,13 +788,12 @@ sub _lookup_function
 		}
 		if ($fct_detail{declare}) {
 			$fct_detail{declare} = replace_sql_type($fct_detail{declare}, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type});
-
 			# Replace PL/SQL code into PL/PGSQL similar code
-			$fct_detail{declare} = Ora2Pg::PLSQL::mysql_to_plpgsql($self, $fct_detail{declare});
+			#$fct_detail{declare} = Ora2Pg::PLSQL::mysql_to_plpgsql($self, $fct_detail{declare});
 		}
-		if ($fct_detail{code}) {
-			$fct_detail{code} = Ora2Pg::PLSQL::mysql_to_plpgsql($self, "BEGIN".$fct_detail{code});
-		}
+		#if ($fct_detail{code}) {
+			#$fct_detail{code} = Ora2Pg::PLSQL::mysql_to_plpgsql($self, "BEGIN".$fct_detail{code});
+		#}
 
 		$fct_detail{args} =~ s/\s+/ /gs;
 		push(@{$fct_detail{param_types}}, split(/\s*,\s*/, $fct_detail{args}));
