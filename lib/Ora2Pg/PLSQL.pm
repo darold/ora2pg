@@ -2155,8 +2155,7 @@ sub mysql_to_plpgsql
 
 	$str =~ s/\bCONVERT_TZ\(\s*([^,]+)\s*,\s*([^,]+)\s*,\s*([^\(\),]+)\s*\)/(($1)::timestamp without time zone AT TIME ZONE ($2)::text) AT TIME ZONE ($3)::text/igs;
 	$str =~ s/\bDATEDIFF\(\s*([^,]+)\s*,\s*([^\(\)]+)\s*\)/extract(day from (date_trunc('day', ($1)::timestamp) - date_trunc('day', ($2)::timestamp)))/igs;
-	$str =~ s/\bDATE_FORMAT\(\s*([^,]+)\s*,\s*('[^'\(\)]+'|\?TEXTVALUE\d+\?)\s*\)/_mysql_dateformat_to_pgsql($class, $1, $2)/iges;
-
+	$str =~ s/\bDATE_FORMAT\(\s*(.*?)\s*,\s*('[^'\(\)]+'|\?TEXTVALUE\d+\?)\s*\)/_mysql_dateformat_to_pgsql($class, $1, $2)/iges;
 	$str =~ s/\b(?:ADDDATE|DATE_ADD)\(\s*(.*?)\s*,\s*INTERVAL\s*([^\(\),]+)\s*\)/"($1)::timestamp " . _replace_dateadd($2)/iges;
 	$str =~ s/\bADDDATE\(\s*([^,]+)\s*,\s*(\d+)\s*\)/($1)::timestamp + ($2 * interval '1 day')/igs;
 	$str =~ s/\bADDTIME\(\s*([^,]+)\s*,\s*([^\(\)]+)\s*\)/($1)::timestamp + ($2)::interval/igs;
