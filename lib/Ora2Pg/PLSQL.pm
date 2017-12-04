@@ -2441,7 +2441,6 @@ sub _mysql_dateformat_to_pgsql
 	$format =~ s/\%a/Dy/g;
 	$format =~ s/\%b/Mon/g;
 	$format =~ s/\%c/FMMM/g;
-	$format =~ s/\%(d|01)/DD/g;
 	$format =~ s/\%D/FMDDth/g;
 	$format =~ s/\%e/FMDD/g;
 	$format =~ s/\%f/US/g;
@@ -2468,6 +2467,7 @@ sub _mysql_dateformat_to_pgsql
 	$format =~ s/\%y/YY/g;
 	$format =~ s/\%W/Day/g;
 	$format =~ s/\%M/Month/g;
+	$format =~ s/\%(\d+)/$1/g;
 
 	# Replace constant strings
 	if ($format =~ s/('[^']+')/\?TEXTVALUE$class->{text_values_pos}\?/s) {
