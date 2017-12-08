@@ -426,6 +426,10 @@ sub export_schema
 		$self->_get_sql_data();
 	}
 
+	# Try to requalify function call
+	$self->fix_function_call();
+
+
 }
 
 
@@ -510,7 +514,7 @@ sub create_export_file
 		} else {
 			$self->{fhout} = new IO::File;
 			$self->{fhout}->open(">>$outfile") or $self->logit("FATAL: Can't open $outfile: $!\n", 0, 1);
-			set_binmode($self->{fhout});
+			$self->set_binmode($self->{fhout});
 		}
 		if ( $self->{compress} && (($self->{jobs} > 1) || ($self->{oracle_copies} > 1)) ) {
 			die "FATAL: you can't use compressed output with parallel dump\n";
@@ -1616,7 +1620,7 @@ sub _init_environment
 	# encoding given in the BINMODE configuration directive.
 	# See http://perldoc.perl.org/5.14.2/open.html for values
 	# that can be used. Default is :utf8
-	set_binmode();
+	$self->set_binmode();
 
 	# Set default PostgreSQL client encoding to UTF8
 	if (!$self->{client_encoding} || ($self->{nls_lang} =~ /UTF8/) ) {
@@ -1627,16 +1631,17 @@ sub _init_environment
 
 sub set_binmode
 {
+	my $self = shift;
 
-        if ( !$self->{'binmode'} || ($self->{nls_lang} =~ /UTF8/i) ) {
+        if ( !$self->{input_file} && (!$self->{'binmode'} || $self->{nls_lang} =~ /UTF8/i) ) {
                 use open ':utf8';
         } elsif ($self->{'binmode'} =~ /^:/) {
-                eval "use open '$self->{binmode}';" or die "FATAL: can't use open layer $self->{binmode}\n";
+                eval "use open '$self->{'binmode'}';" or die "FATAL: can't use open layer $self->{'binmode'}\n";
         } elsif ($self->{'binmode'}) {
-                eval "use open 'encoding($self->{binmode})';" or die "FATAL: can't use open layer :encoding($self->{binmode})\n";
+                eval "use open 'encoding($self->{'binmode'})';" or die "FATAL: can't use open layer :encoding($self->{'binmode'})\n";
         }
         # Set default PostgreSQL client encoding to UTF8
-        if (!$self->{client_encoding} || ($self->{nls_lang} =~ /UTF8/) ) {
+        if (!$self->{client_encoding} || ($self->{nls_lang} =~ /UTF8/ && !$self->{input_file}) ) {
                 $self->{client_encoding} = 'UTF8';
         }
 
@@ -1646,6 +1651,24 @@ sub set_binmode
 		binmode($_[0], ":encoding($enc)");
 	}
 
+}
+
+sub _is_utf8_file
+{
+
+	my $file = shift();
+
+	my $utf8 = 0;
+	if (open(my $f, '<', $file)) {
+		local $/;
+		my $data = <$f>;
+		close($f);
+		if (utf8::decode($data)) {
+			$utf8 = 1
+		}
+	}
+
+	return $utf8;
 }
 
 # We provide a DESTROY method so that the autoloader doesn't
@@ -2227,22 +2250,6 @@ sub _restore_text_constant_part
 {
 	my ($self, $str) = @_;
 
-	# First replace function with package.function in potential dynamic query
-	if (scalar keys %{$self->{package_functions}}) {
-		foreach my $p (keys %{$self->{package_functions}}) {
-			foreach my $k (keys %{$self->{package_functions}{$p}}) {
-				if (exists $self->{package_functions}{$p}{$k}{package}) {
-					next if (!exists $self->{package_functions}{$p}{$k}{package} || !$self->{package_functions}{$p}{$k}{package});
-					my $pkname =  $self->{package_functions}{$p}{$k}{package} . '\.';
-					map {
-						$self->{text_values}{$_} =~ s/\b($pkname)?$k\s*\(/$self->{package_functions}{$p}{$k}{name}\(/igs;
-					} keys %{$self->{text_values}};
-				}
-			}
-		}
-	}
-
-
 	$$str =~ s/\?TEXTVALUE(\d+)\?/$self->{text_values}{$1}/gs;
 	$$str =~ s/ORA2PG_ESCAPE2_QUOTE/''/gs;
 	$$str =~ s/ORA2PG_ESCAPE1_QUOTE'/\\'/gs;
@@ -2257,17 +2264,7 @@ sub _get_dml_from_file
 	my $self = shift;
 
 	# Load file in a single string
-	if (not open(INFILE, $self->{input_file})) {
-		die "FATAL: can't read file $self->{input_file}, $!\n";
-	}
-	my $content = '';
-	while (my $l = <INFILE>) {
-		chomp($l);
-		$l =~ s/\r//g;
-		$content .= $l;
-		$content .= "\n";
-	}
-	close(INFILE);
+	my $content = $self->read_input_file($self->{input_file});
 
 	$content =~ s/CREATE\s+OR\s+REPLACE/CREATE/gs;
 	$content =~ s/CREATE\s+EDITIONABLE/CREATE/gs;
@@ -3390,6 +3387,9 @@ sub translate_function
 		$self->logit("Dumping function $fct...\n", 1);
 		if ($self->{file_per_function}) {
 			$self->dump("\\i $dirprefix${fct}_$self->{output}\n");
+			$self->{file_to_update}{"ORA2PG_$self->{type}"}{lc($fct)} = "$dirprefix${fct}_$self->{output}";
+		} else {
+			$self->{file_to_update}{"ORA2PG_$self->{type}"}{lc($fct)} = "$dirprefix$self->{output}";
 		}
 
 		my $fhdl = undef;
@@ -3400,7 +3400,7 @@ sub translate_function
 		if ($self->{file_per_function}) {
 			$self->logit("Dumping to one file per function : ${fct}_$self->{output}\n", 1);
 			$fhdl = $self->open_export_file("${fct}_$self->{output}");
-			set_binmode($fhdl);
+			$self->set_binmode($fhdl);
 		}
 		if ($self->{plsql_pgsql}) {
 			my $sql_f = '';
@@ -3553,7 +3553,10 @@ sub _get_sql_data
 				$self->dump("\\i $file_name\n");
 				$self->logit("Dumping to one file per view : ${view}_$self->{output}\n", 1);
 				$fhdl = $self->open_export_file("${view}_$self->{output}");
-				set_binmode($fhdl);
+				$self->set_binmode($fhdl);
+				$self->{file_to_update}{"ORA2PG_$self->{type}"}{lc($view)} = $file_name;
+			} else {
+				$self->{file_to_update}{"ORA2PG_$self->{type}"}{lc($view)} = "$dirprefix$self->{output}";
 			}
 			$self->_remove_comments(\$self->{views}{$view}{text});
 			if (!$self->{pg_supports_checkoption}) {
@@ -3797,7 +3800,10 @@ LANGUAGE plpgsql ;
 				$self->dump("\\i $file_name\n");
 				$self->logit("Dumping to one file per materialized view : ${view}_$self->{output}\n", 1);
 				$fhdl = $self->open_export_file("${view}_$self->{output}");
-				set_binmode($fhdl);
+				$self->set_binmode($fhdl);
+				$self->{file_to_update}{"ORA2PG_$self->{type}"}{lc($view)} = $file_name;
+			} else {
+				$self->{file_to_update}{"ORA2PG_$self->{type}"}{lc($view)} = "$dirprefix$self->{output}";
 			}
 			if (!$self->{plsql_pgsql}) {
 				$sql_output .= "CREATE MATERIALIZED VIEW $view\n";
@@ -4159,7 +4165,10 @@ LANGUAGE plpgsql ;
 				$self->dump("\\i $dirprefix$trig->[0]_$self->{output}\n");
 				$self->logit("Dumping to one file per trigger : $trig->[0]_$self->{output}\n", 1);
 				$fhdl = $self->open_export_file("$trig->[0]_$self->{output}");
-				set_binmode($fhdl);
+				$self->set_binmode($fhdl);
+				$self->{file_to_update}{"ORA2PG_$self->{type}"}{lc($trig->[0])} = "$dirprefix$trig->[0]_$self->{output}";
+			} else {
+				$self->{file_to_update}{"ORA2PG_$self->{type}"}{lc($trig->[0])} = "$dirprefix$self->{output}";
 			}
 			$trig->[1] =~ s/\s*EACH ROW//is;
 			chomp($trig->[4]);
@@ -4345,15 +4354,11 @@ LANGUAGE plpgsql ;
 		if ($self->{input_file}) {
 			$self->{functions} = ();
 			$self->logit("Reading input SQL orders from file $self->{input_file}...\n", 1);
-			open(IN, "$self->{input_file}");
-			my @allqueries = <IN>;
-			close(IN);
-			my $query = 1;
-			my $content = join('', @allqueries);
-			@allqueries = ();
+			my $content = $self->read_input_file($self->{input_file});
 			# remove comments only, text constants are preserved
 			$self->_remove_comments(\$content, 1);
 			$content =~  s/\%ORA2PG_COMMENT\d+\%//gs;
+			my $query = 1;
 			foreach my $l (split(/\n/, $content)) {
 				chomp($l);
 				next if ($l =~ /^\s*$/);
@@ -4369,7 +4374,7 @@ LANGUAGE plpgsql ;
 					$l = $old_line .= ' ' . $l;
 					$old_line = '';
 				}
-				if ( ($l =~ s/^\/$/;/) || ($l =~ /;\s*$/) ) {
+				if ($l =~ /;\s*$/) {
 						$self->{queries}{$query} .= "$l\n";
 						$query++;
 				} else {
@@ -4437,33 +4442,22 @@ LANGUAGE plpgsql ;
 		if ($self->{input_file}) {
 			$self->{functions} = ();
 			$self->logit("Reading input code from file $self->{input_file}...\n", 1);
-			open(IN, "$self->{input_file}");
-			my @allqueries = <IN>;
-			close(IN);
-			my $query = 1;
-			my $content = join('', @allqueries);
-			@allqueries = ();
+			my $content = $self->read_input_file($self->{input_file});
 			$self->_remove_comments(\$content);
-			foreach my $l (split(/\n/, $content)) {
+			my $query = 1;
+			foreach my $l (split(/(?:^\/$|;\s*$)/m, $content)) {
 				chomp($l);
-				next if ($l =~ /^\s*$/);
-				if ($old_line) {
-					$l = $old_line .= ' ' . $l;
-					$old_line = '';
-				}
-				if ( ($l =~ s/^\/$/;/) || ($l =~ /;\s*$/) ) {
-						$self->{queries}{$query} .= "$l\n";
-						$query++;
-				} else {
-					$self->{queries}{$query} .= "$l\n";
-				}
+				next if ($l =~ /^\s*$/s);
+				$self->{queries}{$query} = "$l\n";
+				$query++;
 			}
 			$content = '';
 			foreach my $q (keys %{$self->{queries}}) {
 				$self->_restore_comments(\$self->{queries}{$q});
 			}
 		}
-		foreach my $q (keys %{$self->{queries}}) {
+		
+		foreach my $q (sort { $a <=> $b } keys %{$self->{queries}}) {
 			if ($self->{queries}{$q} !~ /(SELECT|UPDATE|DELETE|INSERT)/is) {
 				delete $self->{queries}{$q};
 			}
@@ -4530,14 +4524,7 @@ LANGUAGE plpgsql ;
 		if ($self->{input_file}) {
 			$self->{functions} = ();
 			$self->logit("Reading input code from file $self->{input_file}...\n", 1);
-			open(IN, "$self->{input_file}");
-			my $content = '';
-			while (my $l = <IN>) {
-				$l =~ s/\r//g;
-				next if ($l =~ /^\/$/);
-				$content .= $l;
-			};
-			close(IN);
+			my $content = $self->read_input_file($self->{input_file});
 			$self->_remove_comments(\$content);
 			my @allfct = split(/\n/, $content);
 			my $fcnm = '';
@@ -4546,7 +4533,6 @@ LANGUAGE plpgsql ;
 			foreach my $l (@allfct) {
 				chomp($l);
 				$l =~ s/\r//g;
-				next if ($l =~ /^\/$/);
 				next if ($l =~ /^\s*$/);
 				if ($old_line) {
 					$l = $old_line .= ' ' . $l;
@@ -4709,14 +4695,7 @@ LANGUAGE plpgsql ;
 		if ($self->{input_file}) {
 			$self->{procedures} = ();
 			$self->logit("Reading input code from file $self->{input_file}...\n", 1);
-			open(IN, "$self->{input_file}");
-			my $content = '';
-			while (my $l = <IN>) {
-				$l =~ s/\r//g;
-				next if ($l =~ /^\/$/);
-				$content .= $l;
-			};
-			close(IN);
+			my $content = $self->read_input_file($self->{input_file});
 			$self->_remove_comments(\$content);
 			my @allfct = split(/\n/, $content);
 			my $fcnm = '';
@@ -4891,14 +4870,7 @@ LANGUAGE plpgsql ;
 			$self->{packages} = ();
 			$self->logit("Reading input code from file $self->{input_file}...\n", 1);
 			sleep(1);
-			open(IN, "$self->{input_file}");
-			my $content = '';
-			while (my $l = <IN>) {
-				$l =~ s/\r//g;
-				next if ($l =~ /^\/$/);
-				$content .= $l;
-			};
-			close(IN);
+			my $content = $self->read_input_file($self->{input_file});
 			my $pknm = '';
 			my $before = '';
 			my $old_line = '';
@@ -4975,7 +4947,7 @@ LANGUAGE plpgsql ;
 				if ($self->{file_per_function}) {
 					$pkgbody = "\\i $dirprefix\L${pkg}\E_$self->{output}\n";
 					my $fhdl = $self->open_export_file("$dirprefix\L${pkg}\E_$self->{output}", 1);
-					set_binmode($fhdl);
+					$self->set_binmode($fhdl);
 					$self->dump($sql_header . $self->{packages}{$pkg}{text}, $fhdl);
 					$self->close_export_file($fhdl);
 				} else {
@@ -5020,7 +4992,7 @@ LANGUAGE plpgsql ;
 				foreach my $txt (@codes) {
 					next if (!$txt);
 					$txt = $self->_convert_package("CREATE OR REPLACE PACKAGE $txt", $self->{packages}{$pkg}{owner});
-					$self->_restore_comments(\$txt);
+					$self->_restore_comments(\$txt) if ($self->{input_file});
 					$txt =~ s/(-- REVOKE ALL ON FUNCTION [^;]+ FROM PUBLIC;)/&remove_newline($1)/sge;
 					$pkgbody .= $txt;
 					$pkgbody =~ s/[\r\n]*\bEND;\s*$//is;
@@ -5092,14 +5064,8 @@ LANGUAGE plpgsql ;
 		if ($self->{input_file}) {
 			$self->{types} = ();
 			$self->logit("Reading input code from file $self->{input_file}...\n", 1);
-			my $old_sep = $|;
-			$/ = undef;
-			open(IN, "$self->{input_file}");
-			my $content = <IN>;
-			close(IN);
-			$/ = $old_sep;
-			my @alltype = split(/;/, $content);
-			foreach my $l (@alltype) {
+			my $content = $self->read_input_file($self->{input_file});
+			foreach my $l (split(/;/, $content)) {
 				chomp($l);
 				next if ($l =~ /^[\s\/]*$/s);
 				$l =~ s/^.*CREATE\s+(?:OR REPLACE)?\s*(?:NONEDITABLE|EDITABLE)?\s*//is;
@@ -5187,7 +5153,7 @@ LANGUAGE plpgsql ;
 			my $fhdl = undef;
 			$self->logit("Dumping tablespace alter indexes to one separate file : TBSP_INDEXES_$self->{output}\n", 1);
 			$fhdl = $self->open_export_file("TBSP_INDEXES_$self->{output}");
-			set_binmode($fhdl);
+			$self->set_binmode($fhdl);
 			$sql_output = '';
 			foreach my $tb_type (sort keys %{$self->{tablespaces}}) {
 				# TYPE - TABLESPACE_NAME - FILEPATH - OBJECT_NAME
@@ -6160,7 +6126,7 @@ CREATE TRIGGER ${table}_trigger_insert
 			$sql_header .= "-- DATASOURCE: $self->{oracle_dsn}\n\n";
 			$sql_header = ''  if ($self->{no_header});
 			$fhdl = $self->open_export_file("PARTITION_INDEXES_$self->{output}");
-			set_binmode($fhdl);
+			$self->set_binmode($fhdl);
 			$self->dump($sql_header . $partition_indexes, $fhdl);
 			$self->close_export_file($fhdl);
 		}
@@ -6570,7 +6536,7 @@ CREATE TRIGGER ${table}_trigger_insert
 		my $fhdl = undef;
 		$self->logit("Dumping indexes to one separate file : INDEXES_$self->{output}\n", 1);
 		$fhdl = $self->open_export_file("INDEXES_$self->{output}");
-		set_binmode($fhdl);
+		$self->set_binmode($fhdl);
 		$indices = "-- Nothing found of type indexes\n" if (!$indices && !$self->{no_header});
 		$indices =~ s/\n+/\n/gs;
 		$self->_restore_comments(\$indices);
@@ -6605,7 +6571,7 @@ RETURNS text AS
 			# FTS TRIGGERS are exported in a separated file to be able to parallelize index creation
 			$self->logit("Dumping triggers for FTS indexes to one separate file : FTS_INDEXES_$self->{output}\n", 1);
 			$fhdl = $self->open_export_file("FTS_INDEXES_$self->{output}");
-			set_binmode($fhdl);
+			$self->set_binmode($fhdl);
 			$self->_restore_comments(\$fts_indices);
 			$fts_indices = $self->set_search_path() . $fts_indices;
 			$self->dump($sql_header. $unaccent . $fts_indices, $fhdl);
@@ -6640,7 +6606,7 @@ RETURNS text AS
 		my $fhdl = undef;
 		$self->logit("Dumping constraints to one separate file : CONSTRAINTS_$self->{output}\n", 1);
 		$fhdl = $self->open_export_file("CONSTRAINTS_$self->{output}");
-		set_binmode($fhdl);
+		$self->set_binmode($fhdl);
 		$constraints = "-- Nothing found of type constraints\n" if (!$constraints && !$self->{no_header});
 		$self->_restore_comments(\$constraints);
 		$self->dump($sql_header . $constraints, $fhdl);
@@ -6652,7 +6618,7 @@ RETURNS text AS
 		my $fhdl = undef;
 		$self->logit("Dumping foreign keys to one separate file : FKEYS_$self->{output}\n", 1);
 		$fhdl = $self->open_export_file("FKEYS_$self->{output}");
-		set_binmode($fhdl);
+		$self->set_binmode($fhdl);
 		$fkeys = "-- Nothing found of type foreign keys\n" if (!$fkeys && !$self->{no_header});
 		$self->_restore_comments(\$fkeys);
 		$fkeys = $self->set_search_path() . $fkeys;
@@ -6705,11 +6671,73 @@ CREATE TRIGGER $tname
 			my $fhdl = undef;
 			$self->logit("Dumping virtual column triggers to one separate file : VIRTUAL_COLUMNS_$self->{output}\n", 1);
 			$fhdl = $self->open_export_file("VIRTUAL_COLUMNS_$self->{output}");
-			set_binmode($fhdl);
+			$self->set_binmode($fhdl);
 			$self->dump($sql_header . $trig_out, $fhdl);
 			$self->close_export_file($fhdl);
 		}
 	}
+}
+
+sub fix_function_call
+{
+	my ($self) = @_;
+
+
+	$self->logit("Fixing function call in output files...\n", 0);
+
+	# Fix call to package function in files
+	foreach my $pname (sort keys %{ $self->{file_to_update} } ) {
+		$self->{current_package} = $pname if ($pname !~ /^ORA2PG_/);
+		foreach my $fname (sort keys %{ $self->{file_to_update}{$pname} } ) {
+			if (open(my $fh, '<', $self->{file_to_update}{$pname}{$fname})) {
+				$self->set_binmode($fh);
+				my $content = '';
+				while (<$fh>) { $content .= $_; };
+				close($f);
+				my $txt = $self->normalize_function_call($content);
+				if (open(my $fh, '>', $self->{file_to_update}{$pname}{$fname})) {
+					$self->set_binmode($fh);
+					print $fh $txt;
+					close($fh);
+				} else {
+					print STDERR "ERROR: can't write to $self->{file_to_update}{$pname}{$fname}, $!\n";
+					next;
+				}
+			} else {
+				print STDERR "ERROR: can't read file $self->{file_to_update}{$pname}{$fname}, $!\n";
+				next;
+			}
+		}
+	}
+
+	$self->{current_package} = '';
+}
+
+# Routine used to read input file and return content as string,
+# Character / is replaces by a ; and \r are removed
+sub read_input_file
+{
+	my ($self, $file) = @_;
+
+			
+	my $content = '';
+	if (open(my $fin, '<', $file)) {
+		$self->set_binmode($fin) if (_is_utf8_file( $file));
+		while (<$fin>) { $content .= $_; };
+		close($fin);
+	} else {
+		die "FATAL: can't read file $file, $!\n";
+	}
+
+	$content =~ s/[\r\n]\/([\r\n]|$)/;$2/gs;
+	$content =~ s/\r//gs;
+	$content =~ s/[\r\n]SHOW\s+(?:ERRORS|ERR|BTITLE|BTI|LNO|PNO|RECYCLEBIN|RECYC|RELEASE|REL|REPFOOTER|REPF|REPHEADER|REPH|SPOOL|SPOO|SGA|SQLCODE|TTITLE|TTI|USER|XQUERY|SPPARAMETERS|PARAMETERS)[^\r\n]*([\r\n]|$)/;$2/igs;
+
+        if ($self->{is_mysql}) {
+                $content =~ s/`/"/gs;
+        }
+
+	return $content;
 }
 
 sub file_exists
@@ -11077,7 +11105,7 @@ sub data_dump
 	if ( ($self->{jobs} > 1) || ($self->{oracle_copies} > 1) ) {
 		$self->close_export_file($self->{fhout}) if (defined $self->{fhout} && !$self->{file_per_table} && !$self->{pg_dsn});
 		my $fh = $self->append_export_file($filename);
-		set_binmode($fh);
+		$self->set_binmode($fh);
 		flock($fh, 2) || die "FATAL: can't lock file $dirprefix$filename\n";
 		$fh->print($data);
 		$self->close_export_file($fh);
@@ -11087,7 +11115,7 @@ sub data_dump
 	} elsif ($self->{file_per_table}) {
 		if ($self->{file_per_table} && $pname) {
 			my $fh = $self->append_export_file($filename);
-			set_binmode($fh);
+			$self->set_binmode($fh);
 			$fh->print($data);
 			$self->close_export_file($fh);
 			$self->logit("Written " . length($data) . " bytes to $dirprefix$filename\n", 1);
@@ -11096,7 +11124,7 @@ sub data_dump
 			if ($self->{compress} eq 'Zlib') {
 				$self->{cfhout}->gzwrite($data) or $self->logit("FATAL: error writing compressed data\n", 0, 1);
 			} else {
-				set_binmode($self->{cfhout});
+				$self->set_binmode($self->{cfhout});
 				$self->{cfhout}->print($data);
 			}
 		}
@@ -11513,7 +11541,10 @@ sub _remove_comments
 	my ($self, $content, $no_constant) = @_;
 
 	# First remove hints they are not supported in PostgreSQL and it break the parser
-	$$content =~ s/\/\*\+(.*?)\*\///gs;
+	while ($$content =~ s/(\/\*\+(?:.*?)\*\/)/\%ORA2PG_COMMENT$self->{idxcomment}\%/s) {
+		$self->{comment_values}{"\%ORA2PG_COMMENT$self->{idxcomment}\%"} = $1;
+		$self->{idxcomment}++;
+	}
 
 	# Replace some other cases that are breaking the parser (presence of -- in constant string)
 	my @lines = split(/([\n\r]+)/, $$content);
@@ -11656,6 +11687,7 @@ sub _convert_function
 			$str =~ s/\%ORA2PG_COMMENT\d+\%//sg;
 			$str =~ s/[\n\r]+//gs;
 			$str =~ s/\s+/ /g;
+			$self->_restore_text_constant_part(\$str);
 			$fct_warning = "\n-- WARNING: parameters order has been changed by Ora2Pg to move parameters with default values at end\n";
 			$fct_warning .= "-- Original order was: $fname($str)\n";
 			$fct_warning .= "-- You will need to manually reorder parameters in the function calls";
@@ -11897,9 +11929,9 @@ END;
 	$function .= $revoke;
 	$function = $at_wrapper . $function;
 
+	$fname =~ s/"//g; # Remove case sensitivity quoting
+	$fname =~ s/^$pname\.//i; # remove package name
 	if ($pname && $self->{file_per_function}) {
-		$fname =~ s/^"*$pname"*\.//i;
-		$fname =~ s/"//g; # Remove case sensitivity quoting
 		$self->logit("\tDumping to one file per function: $dirprefix\L$pname/$fname\E_$self->{output}\n", 1);
 		my $sql_header = "-- Generated by Ora2Pg, the Oracle database Schema converter, version $VERSION\n";
 		$sql_header .= "-- Copyright 2000-2017 Gilles DAROLD. All rights reserved.\n";
@@ -11912,13 +11944,16 @@ END;
 		$sql_header = '' if ($self->{no_header});
 
 		my $fhdl = $self->open_export_file("$dirprefix\L$pname/$fname\E_$self->{output}", 1);
-		set_binmode($fhdl);
+		$self->set_binmode($fhdl);
 		$self->_restore_comments(\$function);
 		$function =~ s/(-- REVOKE ALL ON FUNCTION [^;]+ FROM PUBLIC;)/&remove_newline($1)/sge;
 		$self->dump($sql_header . $function, $fhdl);
 		$self->close_export_file($fhdl);
 		$function = "\\i $dirprefix\L$pname/$fname\E_$self->{output}\n";
+		$self->{file_to_update}{lc($pname)}{lc($fname)} = "$dirprefix\L$pname/$fname\E_$self->{output}";
 		return $function;
+	} elsif ($pname) {
+		$self->{file_to_update}{lc($pname)}{lc($fname)} = "$dirprefix$self->{output}";
 	}
 
 	$function =~ s/\r//gs;
@@ -16794,6 +16829,63 @@ sub remove_newline
 	my $str = shift;
 
 	$str =~ s/[\n\r]+\s*/ /gs;
+
+	return $str;
+}
+
+##############
+# Replace function and package.function calls to a normalized form. Normalized
+# mean with double quoted if necessary or with an undescore instead of a dot
+# when PACKAGE_AS_SCHEMA is disabled. The function is prefixed by its package.
+##############
+sub normalize_function_call
+{
+	my ($self, $str) = @_;
+
+	my $cur_pkg = lc($self->{current_package});
+	if (scalar keys %{$self->{package_functions}}) {
+		foreach my $p (keys %{$self->{package_functions}}) {
+			foreach my $k (keys %{$self->{package_functions}{$p}}) {
+				next if ($str !~ /\b$k\b/is);
+				if (!exists $self->{package_functions}{$p}{$k}{name}) {
+					$self->{package_functions}{$p}{$k}{package} = $p;
+					$self->{package_functions}{$p}{$k}{name} = $k;
+				}
+				# foreach function declared in a package 
+				# When this is a function from the current package
+				# if the package of the function is not the current package being parsed
+				if ($p ne $cur_pkg) {
+					# let's prefix the name of the function by the package name if there
+					# is no such function name in the current package being parsed
+					if (!exists $self->{package_functions}{$cur_pkg}{$k}) {
+						# If the package is already prefixed to the function name in the hash take it from here
+						if (lc($self->{package_functions}{$p}{$k}{name}) ne lc($k)) {
+							$str =~ s/([^\.])\b$k\s*([\(;])/$1$self->{package_functions}{$p}{$k}{name}$2/igs;
+						} elsif (exists $self->{package_functions}{$p}{$k}{package}) {
+							# otherwise use the package name from the hash and the function name from the string
+							$str =~ s/([^\.])\b($k\s*[\(;])/$1$self->{package_functions}{$p}{$k}{package}\.$2/igs;
+						}
+					} else {
+						# the function is also defined in the current package being parsed, it takes precedence
+						if (lc($self->{package_functions}{$cur_pkg}{$k}{name}) ne lc($k)) {
+							$str =~ s/([^\.])\b$k\s*([\(;])/$1$self->{package_functions}{$cur_pkg}{$k}{name}$2/igs;
+						} elsif (exists $self->{package_functions}{$cur_pkg}{$k}{package}) {
+							# otherwise use the package name from the hash and the function name from the string
+							$str =~ s/([^\.])\b($k\s*[\(;])/$1$self->{package_functions}{$cur_pkg}{$k}{package}\.$2/igs;
+						}
+					}
+				# If this is the same package and the function name is not prefixed by the package name
+				} elsif (exists $self->{package_functions}{$p}{$k}{package}) {
+					# prefix its call by the package name
+					$str =~ s/([^\.])\b($k\s*[\(;])/$1\L$self->{package_functions}{$p}{$k}{package}\.$2\E/igs;
+				}
+				# Append parenthesis to functions without parameters
+				$str =~ s/\b($self->{package_functions}{$p}{$k}{package}\.$k)\b((?!\s*\())/$1()$2/igs;
+			}
+		}
+	}
+	# Fix unwanted double parenthesis
+	#$str =~ s/\(\)\s*(\()/ $1/gs;
 
 	return $str;
 }
