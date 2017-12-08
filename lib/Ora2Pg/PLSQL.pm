@@ -834,11 +834,6 @@ sub plsql_to_plpgsql
 	# Rewrite direct call to function without out parameters using PERFORM
 	$str = perform_replacement($class, $str);
 
-	# Rewrite function call if necessary
-	if (uc($class->{type}) ne 'SHOW_REPORT') {
-		$str = normalize_function_call($class, $str);
-	}
-
 	return $str;
 }
 
@@ -908,62 +903,6 @@ sub perform_replacement
 
 	return $str;
 }
-
-##############
-# Replace function and package.function calls to a normalized form. Normalized
-# mean with double quoted if necessary or with an undescore instead of a dot
-# when PACKAGE_AS_SCHEMA is disabled. The function is prefixed by its package.
-##############
-sub normalize_function_call
-{
-	my ($class, $str) = @_;
-
-	my $cur_pkg = lc($class->{current_package});
-	if (scalar keys %{$class->{package_functions}}) {
-		foreach my $p (keys %{$class->{package_functions}}) {
-			foreach my $k (keys %{$class->{package_functions}{$p}}) {
-				next if ($str !~ /\b$k\b/is);
-				if (!exists $class->{package_functions}{$p}{$k}{name}) {
-					$class->{package_functions}{$p}{$k}{package} = $p;
-					$class->{package_functions}{$p}{$k}{name} = $k;
-				}
-				# foreach function declared in a package 
-				# When this is a function from the current package
-				# if the package of the function is not the current package being parsed
-				if ($p ne $cur_pkg) {
-					# let's prefix the name of the function by the package name if there
-					# is no such function name in the current package being parsed
-					if (!exists $class->{package_functions}{$cur_pkg}{$k}) {
-						# If the package is already prefixed to the function name in the hash take it from here
-						if (lc($class->{package_functions}{$p}{$k}{name}) ne lc($k)) {
-							$str =~ s/([^\.])\b$k\s*([\(;])/$1$class->{package_functions}{$p}{$k}{name}$2/igs;
-						} elsif (exists $class->{package_functions}{$p}{$k}{package}) {
-							# otherwise use the package name from the hash and the function name from the string
-							$str =~ s/([^\.])\b($k\s*[\(;])/$1$class->{package_functions}{$p}{$k}{package}\.$2/igs;
-						}
-					} else {
-						# the function is also defined in the current package being parsed, it takes precedence
-						if (lc($class->{package_functions}{$cur_pkg}{$k}{name}) ne lc($k)) {
-							$str =~ s/([^\.])\b$k\s*([\(;])/$1$class->{package_functions}{$cur_pkg}{$k}{name}$2/igs;
-						} elsif (exists $class->{package_functions}{$cur_pkg}{$k}{package}) {
-							# otherwise use the package name from the hash and the function name from the string
-							$str =~ s/([^\.])\b($k\s*[\(;])/$1$class->{package_functions}{$cur_pkg}{$k}{package}\.$2/igs;
-						}
-					}
-				# If this is the same package and the function name is not prefixed by the package name
-				} elsif (exists $class->{package_functions}{$p}{$k}{package}) {
-					# prefix its call by the package name
-					$str =~ s/([^\.])\b($k\s*[\(;])/$1\L$class->{package_functions}{$p}{$k}{package}\.$2\E/igs;
-				}
-				# Append parenthesis to functions without parameters
-				$str =~ s/\b($class->{package_functions}{$p}{$k}{package}\.$k)\b(\s*[^\(])/$1()$2/igs;
-			}
-		}
-	}
-
-	return $str;
-}
-
 
 sub translate_statement
 {
@@ -1401,11 +1340,6 @@ sub replace_oracle_function
 
 	# Replace call to function with out parameters
 	$str = replace_out_param_call($class, $str);
-
-	# Rewrite function calls if necessary
-	if (uc($class->{type}) ne 'SHOW_REPORT') {
-		$str = normalize_function_call($class, $str);
-	}
 
 	# Replace some sys_context call to the postgresql equivalent
 	if ($str =~ /SYS_CONTEXT/is) {
@@ -2292,6 +2226,15 @@ sub mysql_to_plpgsql
 	if ($class->{comment_commit_rollback}) {
 		$str =~ s/\b(COMMIT|ROLLBACK)\s*;/-- $1;/igs;
 		$str =~ s/(ROLLBACK\s+TO\s+[^;]+);/-- $1;/igs;
+	}
+
+	# Translate call to CREATE TABLE ... SELECT
+	$str =~ s/(CREATE(?:\s+TEMPORARY)?\s+TABLE\s+[^\s]+)(\s+SELECT)/$1 AS $2/igs;
+
+	# Remove @ from variables and rewrite SET assignement in QUERY mode
+	if ($class->{type} eq 'QUERY') {
+		$str =~ s/\@([^\s]+)\b/$1/gs;
+		$str =~ s/:=/=/gs;
 	}
 
 	# Replace spatial related lines
