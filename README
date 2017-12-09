@@ -905,6 +905,14 @@ CONFIGURATION
         FUNCTION. Default is to use de postgresql.conf setting that enable
         it by default.
 
+    QUALIFY_FUNCTION
+        This directive is used to control the second pass done on output
+        files to requalify all function call to prefix them with the
+        package/schema name. Function calls fctname() will be translated to
+        package.fctname(). Enable by default, disable it if you are sure
+        that all function calls are well qualified with their package/schema
+        name. Disable it can speed up export if you have lot of objects.
+
   Limiting objects to export
     You may want to export only a part of an Oracle database, here are a set
     of configuration directives that will allow you to control what parts of

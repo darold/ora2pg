@@ -994,6 +994,13 @@ DROP_INDEXES	0
 # case set this directive to 1, ora2pg will not try to change the setting.
 SYNCHRONOUS_COMMIT	0
 
+# This directive is used to control the second pass done on output files to
+# requalify all function call to prefix them with the package/schema name.
+# Function calls fctname() will be translated to package.fctname(). Enable
+# by default, disable it if you are sure that all function calls are well
+# qualified with their package/schema name. Disable it can speed up export
+# if you have lot of objects.
+QUALIFY_FUNCTION	1
 
 #------------------------------------------------------------------------------
 # PLSQL SECTION (Control SQL and PL/SQL to PLPGSQL rewriting behaviors)
