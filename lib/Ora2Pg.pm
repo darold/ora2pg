@@ -923,6 +923,7 @@ sub _init
 		}
 	}
 	$self->{function_check} = 1 if (not defined $self->{function_check} || $self->{function_check} eq '');
+	$self->{qualify_function} = 1 if (!exists $self->{qualify_function});
 
 	# Set default function to use for uuid generation
 	$self->{uuid_function} ||= 'uuid_generate_v4';
