@@ -427,7 +427,9 @@ sub export_schema
 	}
 
 	# Try to requalify function call
-	$self->fix_function_call();
+	if (grep(/^$self->{type}$/, 'VIEW', 'TRIGGER', 'QUERY', 'FUNCTION','PROCEDURE','PACKAGE')) {
+		$self->fix_function_call();
+	}
 
 
 }
