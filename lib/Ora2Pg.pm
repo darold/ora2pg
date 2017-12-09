@@ -6700,14 +6700,16 @@ sub fix_function_call
 				my $content = '';
 				while (<$fh>) { $content .= $_; };
 				close($f);
-				my $txt = $self->normalize_function_call($content);
-				if (open(my $fh, '>', $self->{file_to_update}{$pname}{$fname})) {
-					$self->set_binmode($fh);
-					print $fh $txt;
-					close($fh);
-				} else {
-					print STDERR "ERROR: can't write to $self->{file_to_update}{$pname}{$fname}, $!\n";
-					next;
+				if ($content =~ /\b$fname\b/is) {
+					my $txt = $self->normalize_function_call($content);
+					if (open(my $fh, '>', $self->{file_to_update}{$pname}{$fname})) {
+						$self->set_binmode($fh);
+						print $fh $txt;
+						close($fh);
+					} else {
+						print STDERR "ERROR: can't write to $self->{file_to_update}{$pname}{$fname}, $!\n";
+						next;
+					}
 				}
 			} else {
 				print STDERR "ERROR: can't read file $self->{file_to_update}{$pname}{$fname}, $!\n";
