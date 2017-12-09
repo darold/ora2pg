@@ -2274,6 +2274,9 @@ sub _get_dml_from_file
 	$content =~ s/CREATE\s+NONEDITIONABLE/CREATE/gs;
 
 	if ($self->{is_mysql}) {
+		$content =~ s/CREATE\s+ALGORITHM=[^\s]+/CREATE/gs;
+		$content =~ s/CREATE\s+DEFINER=[^\s]+/CREATE/gs;
+		$content =~ s/SQL SECURITY DEFINER VIEW/VIEW/gs;
 		$content =~ s/`/"/gs;
 	}
 
