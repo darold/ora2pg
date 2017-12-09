@@ -608,7 +608,6 @@ sub close_export_file
 	} else {
 		$filehdl->close();
 	}
-
 }
 
 =head2 modify_struct TABLE_NAME ARRAYOF_FIELDNAME
@@ -3679,6 +3678,7 @@ sub _get_sql_data
 		}
 
 		$self->dump($sql_output);
+		$self->close_export_file($self->{fhout}) if (defined $self->{fhout});
 
 		return;
 	}
@@ -3880,6 +3880,7 @@ LANGUAGE plpgsql ;
 		}
 
 		$self->dump($sql_output);
+		$self->close_export_file($self->{fhout}) if (defined $self->{fhout});
 
 		return;
 	}
@@ -3995,6 +3996,7 @@ LANGUAGE plpgsql ;
 
 		$self->_restore_comments(\$grants);
 		$self->dump($sql_header . $sql_output);
+		$self->close_export_file($self->{fhout}) if (defined $self->{fhout});
 
 		return;
 	}
@@ -4055,6 +4057,8 @@ LANGUAGE plpgsql ;
 		}
 
 		$self->dump($sql_header . $sql_output);
+		$self->close_export_file($self->{fhout}) if (defined $self->{fhout});
+
 		return;
 	}
 
@@ -4109,6 +4113,8 @@ LANGUAGE plpgsql ;
 		}
 
 		$self->dump($sql_header . $sql_output);
+		$self->close_export_file($self->{fhout}) if (defined $self->{fhout});
+
 		return;
 	}
 
@@ -4143,6 +4149,8 @@ LANGUAGE plpgsql ;
 		}
 
 		$self->dump($sql_header . $sql_output);
+		$self->close_export_file($self->{fhout}) if (defined $self->{fhout});
+
 		return;
 	}
 
@@ -4345,6 +4353,8 @@ LANGUAGE plpgsql ;
 		}
 
 		$self->dump($sql_output);
+		$self->close_export_file($self->{fhout}) if (defined $self->{fhout});
+
 		return;
 	}
 
@@ -4510,7 +4520,10 @@ LANGUAGE plpgsql ;
 		if (!$nothing) {
 			$sql_output = "-- Nothing found of type $self->{type}\n" if (!$self->{no_header});
 		}
+
 		$self->dump($sql_output);
+		$self->close_export_file($self->{fhout}) if (defined $self->{fhout});
+
 		$self->{queries} = ();
 		return;
 	}
@@ -4675,7 +4688,10 @@ LANGUAGE plpgsql ;
 		if (!$nothing) {
 			$sql_output = "-- Nothing found of type $self->{type}\n" if (!$self->{no_header});
 		}
+
 		$self->dump($sql_output);
+		$self->close_export_file($self->{fhout}) if (defined $self->{fhout});
+
 		$self->{functions} = ();
 
 		my $t1 = Benchmark->new;
@@ -4848,7 +4864,10 @@ LANGUAGE plpgsql ;
 		if (!$nothing) {
 			$sql_output = "-- Nothing found of type $self->{type}\n" if (!$self->{no_header});
 		}
+
 		$self->dump($sql_output);
+		$self->close_export_file($self->{fhout}) if (defined $self->{fhout});
+
 		$self->{procedures} = ();
 
                 my $t1 = Benchmark->new;
@@ -5034,7 +5053,10 @@ LANGUAGE plpgsql ;
 		if (!$nothing) {
 			$sql_output = "-- Nothing found of type $self->{type}\n" if (!$self->{no_header});
 		}
+
 		$self->dump($sql_output);
+		$self->close_export_file($self->{fhout}) if (defined $self->{fhout});
+
 		$self->{packages} = ();
 		$sql_output = '';
 		# Create file to load custom variable initialization into postgresql.conf
@@ -5104,6 +5126,8 @@ LANGUAGE plpgsql ;
 			$sql_output = "-- Nothing found of type $self->{type}\n" if (!$self->{no_header});
 		}
 		$self->dump($sql_header . $sql_output);
+		$self->close_export_file($self->{fhout}) if (defined $self->{fhout});
+
 		return;
 	}
 
@@ -5153,6 +5177,7 @@ LANGUAGE plpgsql ;
 		}
 		
 		$self->dump($sql_header . $sql_output);
+		$self->close_export_file($self->{fhout}) if (defined $self->{fhout});
 
 		
 		if ($self->{file_per_index} && (scalar keys %{$self->{tablespaces}} > 0)) {
