@@ -4464,18 +4464,20 @@ LANGUAGE plpgsql ;
 			foreach my $l (split(/(?:^\/$|;\s*$)/m, $content)) {
 				chomp($l);
 				next if ($l =~ /^\s*$/s);
-				$self->{queries}{$query} = "$l\n";
+				$self->{queries}{$query}{code} = "$l\n";
 				$query++;
 			}
 			$content = '';
 			foreach my $q (keys %{$self->{queries}}) {
-				$self->_restore_comments(\$self->{queries}{$q});
+				$self->_restore_comments(\$self->{queries}{$q}{code});
 			}
 		}
 		
 		foreach my $q (sort { $a <=> $b } keys %{$self->{queries}}) {
-			if ($self->{queries}{$q} !~ /(SELECT|UPDATE|DELETE|INSERT)/is) {
-				delete $self->{queries}{$q};
+			if ($self->{queries}{$q}{code} !~ /(SELECT|UPDATE|DELETE|INSERT)/is) {
+				$self->{queries}{$q}{to_be_parsed} = 0;
+			} else {
+				$self->{queries}{$q}{to_be_parsed} = 1;
 			}
 		}
 
@@ -4484,27 +4486,31 @@ LANGUAGE plpgsql ;
 		my $total_size = 0;
 		my $cost_value = 0;
 		foreach my $q (sort {$a <=> $b} keys %{$self->{queries}}) {
-			$total_size += length($self->{queries}{$q});
+			$total_size += length($self->{queries}{$q}{code});
 			$self->logit("Dumping query $q...\n", 1);
-			my $fhdl = undef;
-			if ($self->{plsql_pgsql}) {
-				$self->_remove_comments(\$self->{queries}{$q});
-				my $sql_q = Ora2Pg::PLSQL::convert_plsql_code($self, $self->{queries}{$q}, %{$self->{data_type}});
-				my $estimate = '';
-				if ($self->{estimate_cost}) {
-					my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($self, $sql_q, 'QUERY');
-					$cost += $Ora2Pg::PLSQL::OBJECT_SCORE{'QUERY'};
-					$cost_value += $cost;
-					$estimate = "\n-- Estimed cost of query [ $q ]: " . sprintf("%2.2f", $cost);
+			if ($self->{queries}{$q}{to_be_parsed}) {
+				if ($self->{plsql_pgsql}) {
+					$self->_remove_comments(\$self->{queries}{$q}{code});
+					my $sql_q = Ora2Pg::PLSQL::convert_plsql_code($self, $self->{queries}{$q}{code}, %{$self->{data_type}});
+					my $estimate = '';
+					if ($self->{estimate_cost}) {
+						my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($self, $sql_q, 'QUERY');
+						$cost += $Ora2Pg::PLSQL::OBJECT_SCORE{'QUERY'};
+						$cost_value += $cost;
+						$estimate = "\n-- Estimed cost of query [ $q ]: " . sprintf("%2.2f", $cost);
+					}
+					$self->_restore_comments(\$sql_q);
+					$sql_output .= $sql_q;
+					$sql_output .= ';' if ($sql_q !~ /;\s*$/);
+					$sql_output .= $estimate;
+				} else {
+					$sql_output .= $self->{queries}{$q}{code};
 				}
-				$self->_restore_comments(\$sql_q);
-				$sql_output .= $sql_q;
-				$sql_output .= ';' if ($sql_q !~ /;\s*$/);
-				$sql_output .= $estimate;
 			} else {
-				$sql_output .= $self->{queries}{$q};
+				$sql_output .= $self->{queries}{$q}{code};
+				$sql_output .= ';' if ($self->{queries}{$q}{code} !~ /;\s*$/);
 			}
-			$sql_output .= "\n\n";
+			$sql_output .= "\n";
 			$nothing++;
 		}
 		if ($self->{estimate_cost}) {
