@@ -6764,7 +6764,8 @@ sub fix_function_call
 	my $child_count = 0;
 	# Fix call to package function in files
 	foreach my $pname (sort keys %file_to_update ) {
-		$self->{current_package} = $pname if ($pname !~ /^ORA2PG_/);
+		next if ($pname =~ /^ORA2PG_/);
+		$self->{current_package} = $pname;
 		foreach my $fname (sort keys %{ $file_to_update{$pname} } ) {
 			if ($self->{jobs} > 1) {
 				while ($child_count >= $self->{jobs}) {
