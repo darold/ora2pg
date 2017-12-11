@@ -426,12 +426,13 @@ sub export_schema
 		$self->_get_sql_data();
 	}
 
-	# Try to requalify function call
-	if ($self->{qualify_function} && grep(/^$self->{type}$/, 'VIEW', 'TRIGGER', 'QUERY', 'FUNCTION','PROCEDURE','PACKAGE')) {
+	# Try to requalify package function call
+	if (!$self->{package_as_schema}) {
 		$self->fix_function_call();
 	}
-
-
+	my $dirprefix = '';
+	$dirprefix = "$self->{output_dir}/" if ($self->{output_dir});
+	unlink($dirprefix . 'temp_pass2_file.dat');
 }
 
 
@@ -6758,14 +6759,11 @@ sub fix_function_call
 		$file_to_update{$pname}{$fname} = $file_name;
 	}
 	close($tfh);
-	unlink($dirprefix . 'temp_pass2_file.dat');
 
-		#--------------------------------------------------------
 	my $child_count = 0;
 	# Fix call to package function in files
 	foreach my $pname (sort keys %file_to_update ) {
 		next if ($pname =~ /^ORA2PG_/);
-		$self->{current_package} = $pname;
 		foreach my $fname (sort keys %{ $file_to_update{$pname} } ) {
 			if ($self->{jobs} > 1) {
 				while ($child_count >= $self->{jobs}) {
@@ -6777,15 +6775,14 @@ sub fix_function_call
 					usleep(50000);
 				}
 				spawn sub {
-					$self->requalify_functions($pname, $fname, $file_to_update{$pname}{$fname});
+					$self->requalify_package_functions($file_to_update{$pname}{$fname});
 				};
 				$child_count++;
 			} else {
-				$self->requalify_functions($pname, $fname, $file_to_update{$pname}{$fname});
+				$self->requalify_package_functions($file_to_update{$pname}{$fname});
 			}
 		}
 	}
-	$self->{current_package} = '';
 
 	# Wait for all child end
 	while ($child_count > 0) {
@@ -6798,28 +6795,28 @@ sub fix_function_call
 	}
 }
 
-sub requalify_functions
+# Requalify function call by using double quoted if necessary and by replacing
+# dot with an undescore when PACKAGE_AS_SCHEMA is disabled.
+sub requalify_package_functions
 {
-	my ($self, $pname, $fname, $filename) = @_;
-	
+	my ($self, $filename) = @_;
+
 	if (open(my $fh, '<', $filename)) {
 		$self->set_binmode($fh);
 		my $content = '';
 		while (<$fh>) { $content .= $_; };
 		close($f);
-		if ($content =~ /\b$fname\b/is) {
-			my $txt = $self->normalize_function_call($content);
-			if (open(my $fh, '>', $filename)) {
-				$self->set_binmode($fh);
-				print $fh $txt;
-				close($fh);
-			} else {
-				print STDERR "ERROR: requalify_functions can't write to $filename, $!\n";
-				return;
-			}
+		$self->requalify_function_call(\$content);
+		if (open(my $fh, '>', $filename)) {
+			$self->set_binmode($fh);
+			print $fh $content;
+			close($fh);
+		} else {
+			print STDERR "ERROR: requalify package functions can't write to $filename, $!\n";
+			return;
 		}
 	} else {
-		print STDERR "ERROR: requalify_functions can't read file $filename, $!\n";
+		print STDERR "ERROR: requalify package functions can't read file $filename, $!\n";
 		return;
 	}
 }
@@ -12057,6 +12054,7 @@ END;
 		my $fhdl = $self->open_export_file("$dirprefix\L$pname/$fname\E_$self->{output}", 1);
 		$self->set_binmode($fhdl);
 		$self->_restore_comments(\$function);
+		$self->normalize_function_call(\$function);
 		$function =~ s/(-- REVOKE ALL ON FUNCTION [^;]+ FROM PUBLIC;)/&remove_newline($1)/sge;
 		$self->dump($sql_header . $function, $fhdl);
 		$self->close_export_file($fhdl);
@@ -16945,60 +16943,50 @@ sub remove_newline
 }
 
 ##############
-# Replace function and package.function calls to a normalized form. Normalized
-# mean with double quoted if necessary or with an undescore instead of a dot
-# when PACKAGE_AS_SCHEMA is disabled. The function is prefixed by its package.
+# Prefix function calls with their package name when necessary
 ##############
 sub normalize_function_call
 {
 	my ($self, $str) = @_;
 
-	my $cur_pkg = lc($self->{current_package});
-	if (scalar keys %{$self->{package_functions}}) {
-		foreach my $p (keys %{$self->{package_functions}}) {
-			foreach my $k (keys %{$self->{package_functions}{$p}}) {
-				if (!exists $self->{package_functions}{$p}{$k}{name}) {
-					$self->{package_functions}{$p}{$k}{package} = $p;
-					$self->{package_functions}{$p}{$k}{name} = $k;
-				}
-				# foreach function declared in a package 
-				# When this is a function from the current package
-				# if the package of the function is not the current package being parsed
-				if ($p ne $cur_pkg) {
-					# let's prefix the name of the function by the package name if there
-					# is no such function name in the current package being parsed
-					if (!exists $self->{package_functions}{$cur_pkg}{$k}) {
-						# If the package is already prefixed to the function name in the hash take it from here
-						if (lc($self->{package_functions}{$p}{$k}{name}) ne lc($k)) {
-							$str =~ s/([^\.])\b$k\s*([\(;])/$1$self->{package_functions}{$p}{$k}{name}$2/igs;
-						} elsif (exists $self->{package_functions}{$p}{$k}{package}) {
-							# otherwise use the package name from the hash and the function name from the string
-							$str =~ s/([^\.])\b($k\s*[\(;])/$1$self->{package_functions}{$p}{$k}{package}\.$2/igs;
-						}
-					} else {
-						# the function is also defined in the current package being parsed, it takes precedence
-						if (lc($self->{package_functions}{$cur_pkg}{$k}{name}) ne lc($k)) {
-							$str =~ s/([^\.])\b$k\s*([\(;])/$1$self->{package_functions}{$cur_pkg}{$k}{name}$2/igs;
-						} elsif (exists $self->{package_functions}{$cur_pkg}{$k}{package}) {
-							# otherwise use the package name from the hash and the function name from the string
-							$str =~ s/([^\.])\b($k\s*[\(;])/$1$self->{package_functions}{$cur_pkg}{$k}{package}\.$2/igs;
-						}
-					}
-				# If this is the same package and the function name is not prefixed by the package name
-				} elsif (exists $self->{package_functions}{$p}{$k}{package}) {
-					# prefix its call by the package name
-					$str =~ s/([^\.])\b($k\s*[\(;])/$1\L$self->{package_functions}{$p}{$k}{package}\.$2\E/igs;
-				}
-				# Append parenthesis to functions without parameters
-				$str =~ s/\b($self->{package_functions}{$p}{$k}{package}\.$k)\b((?!\s*\())/$1()$2/igs;
-			}
+	return if (!$self->{current_package});
+
+	my $p = lc($self->{current_package});
+
+	# foreach function declared in a package qualify its callis with the package name
+	foreach my $f (keys %{$self->{package_functions}{$p}}) {
+		# If the package is already prefixed to the function name in the hash take it from here
+		if (lc($self->{package_functions}{$p}{$f}{name}) ne lc($f)) {
+			$$str =~ s/([^\.])\b$f\s*([\(;])/$1$self->{package_functions}{$p}{$f}{name}$2/igs;
+		} elsif (exists $self->{package_functions}{$p}{$f}{package}) {
+			# otherwise use the package name from the hash and the function name from the string
+			$$str =~ s/([^\.])\b($f\s*[\(;])/$1$self->{package_functions}{$p}{$f}{package}\.$2/igs;
 		}
+
+		# Append parenthesis to functions without parameters
+		$$str =~ s/\b($self->{package_functions}{$p}{$f}{package}\.$f)\b((?!\s*\())/$1()$2/igs;
 	}
 	# Fix unwanted double parenthesis
-	#$str =~ s/\(\)\s*(\()/ $1/gs;
+	#$$str =~ s/\(\)\s*(\()/ $1/gs;
 
-	return $str;
 }
+
+##############
+# Requalify function calls
+##############
+sub requalify_function_call
+{
+	my ($self, $str) = @_;
+
+	# Loop through package 
+	foreach my $p (keys %{$self->{package_functions}}) {
+		# foreach function declared in a package qualify its callis with the package name
+		foreach my $f (keys %{$self->{package_functions}{$p}}) {
+			$$str =~ s/\b$p\.$f\s*([\(;])/$self->{package_functions}{$p}{$f}{name}$1/igs;
+		}
+	}
+}
+
 
 1;
 
