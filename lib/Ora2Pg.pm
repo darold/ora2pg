@@ -1049,6 +1049,13 @@ sub _init
 		$self->{fdw_server} = 'orcl';
 	}
 
+
+	# Clean potential remaining temporary files
+	my $dirprefix = '';
+	$dirprefix = "$self->{output_dir}/" if ($self->{output_dir});
+	unlink($dirprefix . 'temp_pass2_file.dat');
+	unlink($dirprefix . 'temp_cost_file.dat');
+
 	# Log file handle
 	$self->{fhlog} = undef;
 	if ($self->{logfile}) {
@@ -3392,9 +3399,9 @@ sub translate_function
 		$self->logit("Dumping function $fct...\n", 1);
 		if ($self->{file_per_function}) {
 			$self->dump("\\i $dirprefix${fct}_$self->{output}\n");
-			$self->{file_to_update}{"ORA2PG_$self->{type}"}{lc($fct)} = "$dirprefix${fct}_$self->{output}";
+			$self->save_filetoupdate_list("ORA2PG_$self->{type}", lc($fct), "$dirprefix${fct}_$self->{output}");
 		} else {
-			$self->{file_to_update}{"ORA2PG_$self->{type}"}{lc($fct)} = "$dirprefix$self->{output}";
+			$self->save_filetoupdate_list("ORA2PG_$self->{type}", lc($fct), "$dirprefix$self->{output}");
 		}
 
 		my $fhdl = undef;
@@ -3506,6 +3513,20 @@ sub _replace_declare_var
 
 }
 
+# Routine used to save the file to update in pass2 of translation
+sub save_filetoupdate_list
+{
+	my ($self, $pname, $ftcname, $file_name) = @_;
+
+	my $dirprefix = '';
+	$dirprefix = "$self->{output_dir}/" if ($self->{output_dir});
+
+	my $tfh = $self->append_export_file($dirprefix . 'temp_pass2_file.dat', 1);
+	flock($tfh, 2) || die "FATAL: can't lock file temp_pass2_file.dat\n";
+	$tfh->print("${pname}:${ftcname}:$file_name\n");
+	$self->close_export_file($tfh);
+}
+
 =head2 _get_sql_data
 
 Returns a string containing the PostgreSQL compatible SQL Schema
@@ -3559,9 +3580,9 @@ sub _get_sql_data
 				$self->logit("Dumping to one file per view : ${view}_$self->{output}\n", 1);
 				$fhdl = $self->open_export_file("${view}_$self->{output}");
 				$self->set_binmode($fhdl);
-				$self->{file_to_update}{"ORA2PG_$self->{type}"}{lc($view)} = $file_name;
+				$self->save_filetoupdate_list("ORA2PG_$self->{type}", lc($view), $file_name);
 			} else {
-				$self->{file_to_update}{"ORA2PG_$self->{type}"}{lc($view)} = "$dirprefix$self->{output}";
+				$self->save_filetoupdate_list("ORA2PG_$self->{type}", lc($view), "$dirprefix$self->{output}");
 			}
 			$self->_remove_comments(\$self->{views}{$view}{text});
 			if (!$self->{pg_supports_checkoption}) {
@@ -3807,9 +3828,9 @@ LANGUAGE plpgsql ;
 				$self->logit("Dumping to one file per materialized view : ${view}_$self->{output}\n", 1);
 				$fhdl = $self->open_export_file("${view}_$self->{output}");
 				$self->set_binmode($fhdl);
-				$self->{file_to_update}{"ORA2PG_$self->{type}"}{lc($view)} = $file_name;
+				$self->save_filetoupdate_list("ORA2PG_$self->{type}", lc($view), $file_name);
 			} else {
-				$self->{file_to_update}{"ORA2PG_$self->{type}"}{lc($view)} = "$dirprefix$self->{output}";
+				$self->save_filetoupdate_list("ORA2PG_$self->{type}", lc($view), "$dirprefix$self->{output}");
 			}
 			if (!$self->{plsql_pgsql}) {
 				$sql_output .= "CREATE MATERIALIZED VIEW $view\n";
@@ -4180,9 +4201,9 @@ LANGUAGE plpgsql ;
 				$self->logit("Dumping to one file per trigger : $trig->[0]_$self->{output}\n", 1);
 				$fhdl = $self->open_export_file("$trig->[0]_$self->{output}");
 				$self->set_binmode($fhdl);
-				$self->{file_to_update}{"ORA2PG_$self->{type}"}{lc($trig->[0])} = "$dirprefix$trig->[0]_$self->{output}";
+				$self->save_filetoupdate_list("ORA2PG_$self->{type}", lc($trig->[0]), "$dirprefix$trig->[0]_$self->{output}");
 			} else {
-				$self->{file_to_update}{"ORA2PG_$self->{type}"}{lc($trig->[0])} = "$dirprefix$self->{output}";
+				$self->save_filetoupdate_list("ORA2PG_$self->{type}", lc($trig->[0]), "$dirprefix$self->{output}");
 			}
 			$trig->[1] =~ s/\s*EACH ROW//is;
 			chomp($trig->[4]);
@@ -4400,24 +4421,29 @@ LANGUAGE plpgsql ;
 		} else {
 			$self->logit("No input file, aborting...\n", 0, 1);
 		}
+
 		#--------------------------------------------------------
 		my $total_queries = scalar keys %{$self->{queries}};
 		$self->{child_count} = 0;
 		foreach my $q (sort {$a <=> $b} keys %{$self->{queries}}) {
 			chomp($self->{queries}{$q});
 			next if (!$self->{queries}{$q});
-			while ($self->{child_count} >= $self->{jobs}) {
-				my $kid = waitpid(-1, WNOHANG);
-				if ($kid > 0) {
-					$self->{child_count}--;
-					delete $RUNNING_PIDS{$kid};
+			if ($self->{jobs} > 1) {
+				while ($self->{child_count} >= $self->{jobs}) {
+					my $kid = waitpid(-1, WNOHANG);
+					if ($kid > 0) {
+						$self->{child_count}--;
+						delete $RUNNING_PIDS{$kid};
+					}
+					usleep(50000);
 				}
-				usleep(50000);
-			}
-			spawn sub {
+				spawn sub {
+					$self->_pload_to_pg($q, $self->{queries}{$q}, @settings);
+				};
+				$self->{child_count}++;
+			} else {
 				$self->_pload_to_pg($q, $self->{queries}{$q}, @settings);
-			};
-			$self->{child_count}++;
+			}
 			if (!$self->{quiet} && !$self->{debug}) {
 				print STDERR $self->progress_bar($q, $total_queries, 25, '=', 'queries', "dispatching query #$q" ), "\r";
 			}
@@ -6717,39 +6743,84 @@ CREATE TRIGGER $tname
 
 sub fix_function_call
 {
-	my ($self) = @_;
+	my $self = shift;
 
 
-	$self->logit("Fixing function call in output files...\n", 0);
+	$self->logit("Fixing function calls in output files...\n", 0);
 
+	my $dirprefix = '';
+	$dirprefix = "$self->{output_dir}/" if ($self->{output_dir});
+
+	return unless(open(my $tfh, '<', $dirprefix . 'temp_pass2_file.dat'));
+	while (my $l = <$tfh>) {
+		chomp($l);
+		my ($pname, $fname, $file_name) = split(/:/, $l);
+		$file_to_update{$pname}{$fname} = $file_name;
+	}
+	close($tfh);
+	unlink($dirprefix . 'temp_pass2_file.dat');
+
+		#--------------------------------------------------------
+	my $child_count = 0;
 	# Fix call to package function in files
-	foreach my $pname (sort keys %{ $self->{file_to_update} } ) {
+	foreach my $pname (sort keys %file_to_update ) {
 		$self->{current_package} = $pname if ($pname !~ /^ORA2PG_/);
-		foreach my $fname (sort keys %{ $self->{file_to_update}{$pname} } ) {
-			if (open(my $fh, '<', $self->{file_to_update}{$pname}{$fname})) {
-				$self->set_binmode($fh);
-				my $content = '';
-				while (<$fh>) { $content .= $_; };
-				close($f);
-				if ($content =~ /\b$fname\b/is) {
-					my $txt = $self->normalize_function_call($content);
-					if (open(my $fh, '>', $self->{file_to_update}{$pname}{$fname})) {
-						$self->set_binmode($fh);
-						print $fh $txt;
-						close($fh);
-					} else {
-						print STDERR "ERROR: can't write to $self->{file_to_update}{$pname}{$fname}, $!\n";
-						next;
+		foreach my $fname (sort keys %{ $file_to_update{$pname} } ) {
+			if ($self->{jobs} > 1) {
+				while ($child_count >= $self->{jobs}) {
+					my $kid = waitpid(-1, WNOHANG);
+					if ($kid > 0) {
+						$child_count--;
+						delete $RUNNING_PIDS{$kid};
 					}
+					usleep(50000);
 				}
+				spawn sub {
+					$self->requalify_functions($pname, $fname, $file_to_update{$pname}{$fname});
+				};
+				$child_count++;
 			} else {
-				print STDERR "ERROR: can't read file $self->{file_to_update}{$pname}{$fname}, $!\n";
-				next;
+				$self->requalify_functions($pname, $fname, $file_to_update{$pname}{$fname});
 			}
 		}
 	}
-
 	$self->{current_package} = '';
+
+	# Wait for all child end
+	while ($child_count > 0) {
+		my $kid = waitpid(-1, WNOHANG);
+		if ($kid > 0) {
+			$child_count--;
+			delete $RUNNING_PIDS{$kid};
+		}
+		usleep(500000);
+	}
+}
+
+sub requalify_functions
+{
+	my ($self, $pname, $fname, $filename) = @_;
+	
+	if (open(my $fh, '<', $filename)) {
+		$self->set_binmode($fh);
+		my $content = '';
+		while (<$fh>) { $content .= $_; };
+		close($f);
+		if ($content =~ /\b$fname\b/is) {
+			my $txt = $self->normalize_function_call($content);
+			if (open(my $fh, '>', $filename)) {
+				$self->set_binmode($fh);
+				print $fh $txt;
+				close($fh);
+			} else {
+				print STDERR "ERROR: requalify_functions can't write to $filename, $!\n";
+				return;
+			}
+		}
+	} else {
+		print STDERR "ERROR: requalify_functions can't read file $filename, $!\n";
+		return;
+	}
 }
 
 # Routine used to read input file and return content as string,
@@ -11989,10 +12060,10 @@ END;
 		$self->dump($sql_header . $function, $fhdl);
 		$self->close_export_file($fhdl);
 		$function = "\\i $dirprefix\L$pname/$fname\E_$self->{output}\n";
-		$self->{file_to_update}{lc($pname)}{lc($fname)} = "$dirprefix\L$pname/$fname\E_$self->{output}";
+		$self->save_filetoupdate_list(lc($pname), lc($fname), "$dirprefix\L$pname/$fname\E_$self->{output}");
 		return $function;
 	} elsif ($pname) {
-		$self->{file_to_update}{lc($pname)}{lc($fname)} = "$dirprefix$self->{output}";
+		$self->save_filetoupdate_list(lc($pname), lc($fname), "$dirprefix$self->{output}");
 	}
 
 	$function =~ s/\r//gs;
@@ -16885,7 +16956,6 @@ sub normalize_function_call
 	if (scalar keys %{$self->{package_functions}}) {
 		foreach my $p (keys %{$self->{package_functions}}) {
 			foreach my $k (keys %{$self->{package_functions}{$p}}) {
-				next if ($str !~ /\b$k\b/is);
 				if (!exists $self->{package_functions}{$p}{$k}{name}) {
 					$self->{package_functions}{$p}{$k}{package} = $p;
 					$self->{package_functions}{$p}{$k}{name} = $k;
