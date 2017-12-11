@@ -133,7 +133,7 @@
 .\" ========================================================================
 .\"
 .IX Title "ORA2PG 1"
-.TH ORA2PG 1 "2017-12-09" "perl v5.18.2" "User Contributed Perl Documentation"
+.TH ORA2PG 1 "2017-12-11" "perl v5.18.2" "User Contributed Perl Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -1058,14 +1058,6 @@ Disable this directive if you want to disable check_function_bodies.
 .Sp
 It disables validation of the function body string during \s-1CREATE FUNCTION.\s0
 Default is to use de postgresql.conf setting that enable it by default.
-.IP "\s-1QUALIFY_FUNCTION\s0" 4
-.IX Item "QUALIFY_FUNCTION"
-This directive is used to control the second pass done on output files to
-requalify all function call to prefix them with the package/schema name.
-Function calls \fIfctname()\fR will be translated to package.\fIfctname()\fR. Enabled
-by default, disable it if you are sure that all function calls are well
-qualified with their package/schema name. Disable it can speed up export
-if you have lot of objects.
 .SS "Limiting objects to export"
 .IX Subsection "Limiting objects to export"
 You may want to export only a part of an Oracle database, here are a set of
