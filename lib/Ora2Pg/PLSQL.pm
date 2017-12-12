@@ -2189,6 +2189,7 @@ sub mysql_to_plpgsql
 	$str =~ s/GROUP_CONCAT\((.*?)\s+SEPARATOR\s+(\?TEXTVALUE\d+\?|'[^']+')\s*\)/array_to_string(array_agg($1), $2)/igs;
 	$str =~ s/GROUP_CONCAT\((.*?)\s+ORDER\s+BY\s+([^\s]+)\s+(ASC|DESC)\s*\)/array_to_string(array_agg($1 ORDER BY $2 $3), ',')/igs;
 	$str =~ s/GROUP_CONCAT\((.*?)\s+ORDER\s+BY\s+([^\s]+)\s*\)/array_to_string(array_agg($1 ORDER BY $2), ',')/igs;
+	$str =~ s/GROUP_CONCAT\(([^\)]+)\)/array_to_string(array_agg($1), ',')/igs;
 
 	# Replace IFNULL() MySQL function in a query
 	while ($str =~ s/\bIFNULL\(\s*([^,]+)\s*,\s*([^\)]+\s*)\)/COALESCE($1, $2)/is) {};
