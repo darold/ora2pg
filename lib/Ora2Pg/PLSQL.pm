@@ -1227,6 +1227,11 @@ sub replace_oracle_function
 	# PL/SQL to PL/PGSQL code conversion
 	# Feel free to add your contribution here.
 	#--------------------------------------------
+
+	if ($class->{is_mysql}) {
+		$str = mysql_to_plpgsql($class, $str);
+	}
+
 	# Change NVL to COALESCE
 	$str =~ s/NVL\s*\(/coalesce(/is;
 	$str =~ s/NVL2\s*\($field,$field,$field\)/coalesce($1,$3)/is;
