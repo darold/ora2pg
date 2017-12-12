@@ -5050,8 +5050,11 @@ LANGUAGE plpgsql ;
 				foreach my $txt (@codes) {
 					next if (!$txt);
 					$txt = $self->_convert_package("CREATE OR REPLACE PACKAGE $txt", $self->{packages}{$pkg}{owner});
-					$self->_restore_comments(\$txt) if ($self->{input_file});
+					$self->_restore_comments(\$txt) if (!$self->{file_per_function});
 					$txt =~ s/(-- REVOKE ALL ON FUNCTION [^;]+ FROM PUBLIC;)/&remove_newline($1)/sge;
+					if (!$self->{file_per_function}) {
+						$self->normalize_function_call(\$txt);
+					}
 					$pkgbody .= $txt;
 					$pkgbody =~ s/[\r\n]*\bEND;\s*$//is;
 					$pkgbody =~ s/(\s*;)\s*$/$1/is;
@@ -11608,6 +11611,7 @@ sub _convert_package
 			$glob_declare = $self->register_global_variable($pname, $glob_declare);
 			@{$self->{types}} = ();
 		}
+		return;
 	}
 
 	return $content;
