@@ -534,9 +534,9 @@ sub plsql_to_plpgsql
 
 	# Converting triggers
 	#       :new. -> NEW.
-	$str =~ s/([^\w]+):new\./$1NEW\./igs;
+	$str =~ s/:new\./NEW\./igs;
 	#       :old. -> OLD.
-	$str =~ s/([^\w]+):old\./$1OLD\./igs;
+	$str =~ s/:old\./OLD\./igs;
 
 	# Change NVL to COALESCE
 	$str =~ s/NVL\s*\(/coalesce(/is;
