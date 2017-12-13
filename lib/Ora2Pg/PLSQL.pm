@@ -877,7 +877,7 @@ sub perform_replacement
 						}
 					} else {
 						# Recover call to function with OUT parameter with double affectation
-						$str =~ s/([^:\s]+\s*:=\s*)[^:\s]+\s*:=\s*((?:[^\s\.]+\.)?\b$fct_name\s*\()/$1$2/isg;
+						$str =~ s/([^:\s]+\s*:=\s*)[^:\s]*\s+:=\s*((?:[^\s\.]+\.)?\b$fct_name\s*\()/$1$2/isg;
 					}
 					# Remove package name and try to replace call to function name only
 					if (!$class->{function_metadata}{$sch}{$p}{$k}{metadata}{inout} && $k =~ s/^[^\.]+\.// && lc($p) eq lc($class->{current_package}) ) {
@@ -1368,8 +1368,8 @@ sub replace_out_param_call
 					if ($class->{function_metadata}{$sch}{$p}{$k}{metadata}{inout}) {
 						my $fct_name = $class->{function_metadata}{$sch}{$p}{$k}{metadata}{fct_name} || '';
 						next if (!$fct_name);
-						next if ($p ne 'none' && $str !~ /\b$p\.$fct_name\b/is && $str !~ /(^|[^\.])\b$fct_name\b/is);
 						next if ($p eq 'none' && $str !~ /\b$fct_name\b/is);
+						next if ($p ne 'none' && $str !~ /\b$p\.$fct_name\b/is && $str !~ /(^|[^\.])\b$fct_name\b/is);
 
 						# Prevent replacement with same function name from an other package
 						next if ($class->{current_package} && lc($p) ne lc($class->{current_package}) && $str =~ /(^|[^\.])\b$fct_name\b/is);
