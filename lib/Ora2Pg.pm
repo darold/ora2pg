@@ -3306,6 +3306,10 @@ sub _export_table_data
 
 					$self->logit("Dumping sub partition table $table ($subpart)...\n", 1);
 					$total_record = $self->_dump_table($dirprefix, $sql_header, $table, $subpart, 1);
+					if (-e "${dirprefix}tmp_${subpart}_$self->{output}") {
+						$self->logit("Renaming temporary file ${dirprefix}tmp_${subpart}_$self->{output} into ${dirprefix}${subpart}_$self->{output}\n", 1);
+						rename("${dirprefix}tmp_${subpart}_$self->{output}", "${dirprefix}${subpart}_$self->{output}");
+					}
 				}
 				# Now load content of the default subpartition table
 				if ($self->{subpartitions_default}{$table}{$part_name}) {
@@ -3328,6 +3332,10 @@ sub _export_table_data
 
 				$self->logit("Dumping partition table $table ($part_name)...\n", 1);
 				$total_record = $self->_dump_table($dirprefix, $sql_header, $table, $part_name);
+				if (-e "${dirprefix}tmp_${part_name}_$self->{output}") {
+					$self->logit("Renaming temporary file ${dirprefix}tmp_${part_name}_$self->{output} into ${dirprefix}${part_name}_$self->{output}\n", 1);
+					rename("${dirprefix}tmp_${part_name}_$self->{output}", "${dirprefix}${part_name}_$self->{output}");
+				}
 			}
 		}
 		# Now load content of the default partition table
@@ -3340,6 +3348,10 @@ sub _export_table_data
 					}
 				} else {
 					$total_record = $self->_dump_table($dirprefix, $sql_header, $table, $self->{partitions_default}{$table});
+				}
+				if (-e "${dirprefix}tmp_$self->{partitions_default}{$table}_$self->{output}") {
+					$self->logit("Renaming temporary file ${dirprefix}tmp_$self->{partitions_default}{$table}_$self->{output} into ${dirprefix}$self->{partitions_default}{$table}_$self->{output}\n", 1);
+					rename("${dirprefix}tmp_$self->{partitions_default}{$table}_$self->{output}", "${dirprefix}$self->{partitions_default}{$table}_$self->{output}");
 				}
 			}
 		}
@@ -3362,7 +3374,6 @@ sub _export_table_data
  		$local_dbh->disconnect();
  	}
 
-	# Rename temporary output file
 	if (-e "${dirprefix}tmp_${table}_$self->{output}") {
 		$self->logit("Renaming temporary file ${dirprefix}tmp_${table}_$self->{output} into ${dirprefix}${table}_$self->{output}\n", 1);
 		rename("${dirprefix}tmp_${table}_$self->{output}", "${dirprefix}${table}_$self->{output}");
@@ -12699,8 +12710,6 @@ sub _extract_data
 				} else {
 					$self->_dump_to_pg($proc, $rows, $table, $cmd_head, $cmd_foot, $s_out, $tt, $sprep, $stt, $start_time, $part_name, $total_record, %user_type);
 				}
-
-
 			}
 
 		} else {
