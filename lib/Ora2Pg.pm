@@ -13019,6 +13019,7 @@ sub _dump_to_pg
 	if ($self->{type} eq 'COPY') {
 		if ($self->{pg_dsn}) {
 			$sql_out =~ s/;$//;
+			$sql_out =~ s/,primary,/,"primary",/;
 			$self->logit("DEBUG: Sending COPY bulk output directly to PostgreSQL backend\n", 1);
 			my $s = $dbhdest->do($sql_out) or $self->logit("FATAL: " . $dbhdest->errstr . "\n", 0, 1);
 			$sql_out = '';
