@@ -11655,7 +11655,14 @@ sub _restore_comments
 	$self->_restore_text_constant_part($content);
 
 	# Restore comments
-	while ($$content =~ s/(\%ORA2PG_COMMENT\d+\%)[\n]*/$self->{comment_values}{$1}\n/is) { delete $self->{comment_values}{$1}; };
+	while ($$content =~ /(\%ORA2PG_COMMENT\d+\%)[\n]*/is) {
+		my $id = $1;
+		my $sep = "\n";
+		# Do not append newline if this is a hint
+		$sep = '' if ($self->{comment_values}{$id} =~ /\/\*+/);
+		$$content =~ s/$id[\n]*/$self->{comment_values}{$id}$sep/is;
+		delete $self->{comment_values}{$id};
+	};
 
 	if ($self->{string_constant_regexp}) {
 		# Replace potential text values that was replaced in comments
