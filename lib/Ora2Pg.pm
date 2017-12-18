@@ -2293,7 +2293,6 @@ sub _get_dml_from_file
 		$content =~ s/CREATE\s+ALGORITHM=[^\s]+/CREATE/gs;
 		$content =~ s/CREATE\s+DEFINER=[^\s]+/CREATE/gs;
 		$content =~ s/SQL SECURITY DEFINER VIEW/VIEW/gs;
-		$content =~ s/`/"/gs;
 	}
 
 	return $content;
@@ -6865,6 +6864,7 @@ sub read_input_file
 	$content =~ s/[\r\n]SHOW\s+(?:ERRORS|ERR|BTITLE|BTI|LNO|PNO|RECYCLEBIN|RECYC|RELEASE|REL|REPFOOTER|REPF|REPHEADER|REPH|SPOOL|SPOO|SGA|SQLCODE|TTITLE|TTI|USER|XQUERY|SPPARAMETERS|PARAMETERS)[^\r\n]*([\r\n]|$)/;$2/igs;
 
         if ($self->{is_mysql}) {
+                $content =~ s/"/'/gs;
                 $content =~ s/`/"/gs;
         }
 

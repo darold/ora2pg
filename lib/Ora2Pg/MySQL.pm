@@ -508,6 +508,7 @@ sub _get_views
 	while (my $row = $sth->fetch) {
 		$row->[1] =~ s/`$self->{schema}`\.//g;
 		$row->[1] =~ s/`([^\s`,]+)`/$1/g;
+		$row->[1] =~ s/"/'/g;
 		$row->[1] =~ s/`/"/g;
 		$data{$row->[0]}{text} = $row->[1];
 		$data{$row->[0]}{owner} = '';
@@ -720,6 +721,8 @@ sub _lookup_function
 
 	my $type = lc($self->{type}) . 's';
 
+	# Replace all double quote with single quote
+	$code =~ s/"/'/g;
 	# replace backquote with double quote
 	$code =~ s/`/"/g;
 	# Remove some unused code
@@ -789,12 +792,7 @@ sub _lookup_function
 		}
 		if ($fct_detail{declare}) {
 			$fct_detail{declare} = replace_sql_type($fct_detail{declare}, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type});
-			# Replace PL/SQL code into PL/PGSQL similar code
-			#$fct_detail{declare} = Ora2Pg::PLSQL::mysql_to_plpgsql($self, $fct_detail{declare});
 		}
-		#if ($fct_detail{code}) {
-			#$fct_detail{code} = Ora2Pg::PLSQL::mysql_to_plpgsql($self, "BEGIN".$fct_detail{code});
-		#}
 
 		$fct_detail{args} =~ s/\s+/ /gs;
 		push(@{$fct_detail{param_types}}, split(/\s*,\s*/, $fct_detail{args}));
