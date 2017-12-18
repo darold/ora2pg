@@ -1987,6 +1987,10 @@ sub mysql_to_plpgsql
 	$str =~ s/UNSIGNED\sINT/bigint/g;
 	$str =~ s/UNSIGNED/bigint/g;
 
+	# Remove extra parenthesis in join in some possible cases
+	# ... INNER JOIN(services s) ON ...
+	$str =~ s/\bJOIN\s*\(([^\s]+\s+[^\s]+)\)/JOIN $1/igs;
+
 	# Try to replace LEAVE label by EXIT label
 	my %repl_leave = ();
 	my $i = 0;
