@@ -52,6 +52,7 @@ our %MYSQL_TYPE = (
 	'YEAR' => 'smallint',
 	'MULTIPOLYGON' => 'geometry',
 	'BIT' => 'bit varying',
+	'UNSIGNED' => 'bigint',
 );
 
 sub _get_version
@@ -723,7 +724,7 @@ sub _lookup_function
 	$code =~ s/`/"/g;
 	# Remove some unused code
 	$code =~ s/\s+READS SQL DATA//igs;
-	$code =~ s/\s+UNSIGNED\b//igs;
+	$code =~ s/\s+UNSIGNED\b((?:.*?)\bFUNCTION\b)/$1/igs;
 
         my %fct_detail = ();
         $fct_detail{func_ret_type} = 'OPAQUE';

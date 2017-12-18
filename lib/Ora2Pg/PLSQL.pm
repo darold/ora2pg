@@ -1982,6 +1982,11 @@ sub mysql_to_plpgsql
 	# remove declared handler
 	$str =~ s/[^\s]+\s+HANDLER\s+FOR\s+[^;]+;//igs;
 
+	# Fix call to unsigned
+	$str =~ s/UNSIGNED\sINTEGER/bigint/g;
+	$str =~ s/UNSIGNED\sINT/bigint/g;
+	$str =~ s/UNSIGNED/bigint/g;
+
 	# Try to replace LEAVE label by EXIT label
 	my %repl_leave = ();
 	my $i = 0;
