@@ -874,6 +874,9 @@ sub replace_mysql_variables
 		$code =~ s/\@$n\b/$n/gs;
 	}
 
+	# Look for variable definition with SELECT statement
+	$code =~ s/\bSET\s+([^\s=]+)\s*=\s*([^;]+\bSELECT\b[^;]+);/$1 = $2;/igs;
+
 	return ($code, $declare);
 }
 
