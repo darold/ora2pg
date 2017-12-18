@@ -11659,7 +11659,7 @@ sub _restore_comments
 		my $id = $1;
 		my $sep = "\n";
 		# Do not append newline if this is a hint
-		$sep = '' if ($self->{comment_values}{$id} =~ /\/\*+/);
+		$sep = '' if ($self->{comment_values}{$id} =~ /^\/\*\+/);
 		$$content =~ s/$id[\n]*/$self->{comment_values}{$id}$sep/is;
 		delete $self->{comment_values}{$id};
 	};
