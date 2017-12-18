@@ -838,6 +838,7 @@ sub replace_mysql_variables
 		$self->{global_variables}{$n}{type} = 'timestamp' if ($n =~ /date|time/i);
 	}
 
+	my @to_be_replaced = ();
 	# Look for local variable definition and append them to the declare section
 	while ($code =~ s/SET\s+\@([^\s:]+)\s*:=\s*([^;]+);/SET $1 = $2;/is) {
 		my $n = $1;
@@ -847,8 +848,7 @@ sub replace_mysql_variables
 		$type = 'varchar' if ($v =~ /'[^']*'/);
 		$type = 'timestamp' if ($n =~ /date|time/i);
 		$declare .= "$n $type;\n" if ($declare !~ /\b$n $type;/s);
-		# Fix other call to the same variable in the code
-		$code =~ s/\@$n\b(\s*[^:])/$n$1/gs;
+		push(@to_be_replaced, $n);
 	}
 
 	# Look for local variable definition and append them to the declare section
@@ -860,7 +860,11 @@ sub replace_mysql_variables
 		$type = 'varchar' if ($v =~ /'[^']*'/);
 		$type = 'timestamp' if ($n =~ /date|time/i);
 		$declare .= "$n $type;\n" if ($declare !~ /\b$n $type;/s);
-		# Fix other call to the same variable in the code
+		push(@to_be_replaced, $n);
+	}
+
+	# Fix other call to the same variable in the code
+	foreach my $n (@to_be_replaced) {
 		$code =~ s/\@$n\b(\s*[^:])/$n$1/gs;
 	}
 
