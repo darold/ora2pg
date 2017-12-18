@@ -1716,7 +1716,7 @@ sub replace_if
 		$in_clauses{$j} = $1;
 		$j++;
 	}
-	while ($str =~ s/\bIF\s*\(((?:(?!\)\s*THEN|\bIF\s*\().)*)$/\%IF\%$2/is) {
+	while ($str =~ s/\bIF\s*\(((?:(?!\)\s*THEN|\bIF\s*\().)*)$/\%IF\%$2/is || $str =~ s/\bIF\s*\(([^\(\)]+)\)(\s+AS\s+)/(\%IF\%)$2/is) {
 		my @if_params = ('');
 		my $stop_learning = 0;
 		my $idx = 1;
