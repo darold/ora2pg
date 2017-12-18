@@ -287,18 +287,27 @@ our %INDEX_TYPE = (
 	'SPATIAL INDEX' => 'spatial index',
 );
 
+# Reserved keywords in PostgreSQL
 our @KEYWORDS = qw(
-	ALL ANALYSE ANALYZE AND ANY ARRAY AS ASC ASYMMETRIC AUTHORIZATION BINARY BOTH CASE
-	CAST CHECK COLLATE COLLATION COLUMN CONCURRENTLY CONSTRAINT CREATE CROSS
-	CURRENT_CATALOG CURRENT_DATE CURRENT_ROLE CURRENT_SCHEMA CURRENT_TIME
-	CURRENT_TIMESTAMP CURRENT_USER DEFAULT DEFERRABLE DESC DISTINCT DO ELSE
-	END EXCEPT FALSE FETCH FOR FOREIGN FREEZE FROM FULL GRANT GROUP HAVING
-	ILIKE IN INNER INITIALLY INTERSECT INTO IS ISNULL JOIN LATERAL LEADING LEFT LIKE
-	LIMIT LOCALTIME LOCALTIMESTAMP NATURAL NOT NOTNULL NULL OFFSET ON ONLY
-	OR ORDER OUTER OVER OVERLAPS PLACING PRIMARY REFERENCES RETURNING RIGHT
-	SELECT SESSION_USER SIMILAR SOME SYMMETRIC TABLE TABLESAMPLE THEN TO TRAILING TRUE
-	UNION UNIQUE USER USING VARIADIC VERBOSE WHEN WHERE WINDOW WITH
+	ALL ANALYSE ANALYZE AND ANY ARRAY AS ASC ASYMMETRIC AUTHORIZATION BINARY
+	BOTH CASE CAST CHECK COLLATE COLLATION COLUMN CONCURRENTLY CONSTRAINT CREATE
+	CROSS CURRENT_CATALOG CURRENT_DATE CURRENT_ROLE CURRENT_SCHEMA CURRENT_TIME
+	CURRENT_TIMESTAMP CURRENT_USER DEFAULT DEFERRABLE DESC DISTINCT DO ELSE END
+	EXCEPT FALSE FETCH FOR FOREIGN FREEZE FROM FULL GRANT GROUP HAVING ILIKE IN
+	INITIALLY INNER INTERSECT INTO IS ISNULL JOIN LATERAL LEADING LEFT LIKE LIMIT
+	LOCALTIME LOCALTIMESTAMP NATURAL NOT NOTNULL NULL OFFSET ON ONLY OR ORDER OUTER
+	OVERLAPS PLACING PRIMARY REFERENCES RETURNING RIGHT SELECT SESSION_USER SIMILAR
+	SOME SYMMETRIC TABLE TABLESAMPLE THEN TO TRAILING TRUE UNION UNIQUE USER USING
+	VARIADIC VERBOSE WHEN WHERE WINDOW WITH
 );
+
+# Reserved keywords that can be used in PostgreSQL as function or type name
+our @FCT_TYPE_KEYWORDS = qw(
+	AUTHORIZATION BINARY COLLATION CONCURRENTLY CROSS CURRENT_SCHEMA FREEZE
+	FULL ILIKE INNER IS ISNULL JOIN LEFT LIKE NATURAL NOTNULL OUTER OVERLAPS
+	RIGHT SIMILAR TABLESAMPLE VERBOSE
+);
+
 
 our @SYSTEM_FIELDS = qw(oid tableoid xmin xmin cmin xmax cmax ctid);
 our %BOOLEAN_MAP = (
@@ -641,10 +650,10 @@ Returns 3 if the object name is a system column
 
 sub is_reserved_words
 {
-	my ($obj_name) = @_;
+	my ($self, $obj_name) = @_;
 
 	if ($obj_name && grep(/^\Q$obj_name\E$/i, @KEYWORDS)) {
-		return 1;
+		return 1 if (!grep(/^$self->{type}/, 'FUNCTION', 'PACKAGE', 'PROCEDURE') || grep(/^\Q$obj_name\E$/i, @FCT_TYPE_KEYWORDS));
 	}
 	if ($obj_name =~ /^\d+/) {
 		return 2;
@@ -678,7 +687,7 @@ sub quote_object_name
 	if (!$self->{preserve_case}) {
 		$obj_name = lc($obj_name);
 		# then if there is non alphanumeric or the object name is a reserved word
-		if ($obj_name =~ /[^a-z0-9\_\.]/ || ($self->{use_reserved_words} && &is_reserved_words($obj_name))) {
+		if ($obj_name =~ /[^a-z0-9\_\.]/ || ($self->{use_reserved_words} && $self->is_reserved_words($obj_name))) {
 			# Add double quote to [schema.] object name 
 			if ($obj_name !~ /^[^\.]+\.[^\.]+$/) {
 				$obj_name = '"' . $obj_name . '"';
@@ -6958,6 +6967,9 @@ sub _dump_table
 			$colname = $self->{replaced_cols}{lc($table)}{lc($f->[0])};
 		}
 		$colname = $self->quote_object_name($colname);
+		if ($colname !~ /"/ && $self->is_reserved_words($colname)) {
+			$colname = '"' . $colname . '"';
+		}
 		$col_list .= "$colname,";
 		if ($self->is_primary_key_column($table, $fieldname)) {
 			push @pg_colnames_pkey, "$colname";
@@ -13464,14 +13476,14 @@ sub _show_infos
 					$total_row_num += $self->{tables}{$t}{table_info}{num_rows};
 
 					# Look at reserved words if tablename is found
-					my $r = is_reserved_words($t);
+					my $r = $self->is_reserved_words($t);
 					if (($r > 0) && ($r != 3)) {
 						$table_detail{'reserved words in table name'}++;
 						$report_info{'Objects'}{$typ}{'cost_value'} += 12; # one hour to solve reserved keyword might be enough
 					}
 					# Get fields informations
 					foreach my $k (sort {$self->{tables}{$t}{column_info}{$a}[11] <=> $self->{tables}{$t}{column_info}{$a}[11]} keys %{$self->{tables}{$t}{column_info}}) {
-						$r = is_reserved_words($self->{tables}{$t}{column_info}{$k}[0]);
+						$r = $self->is_reserved_words($self->{tables}{$t}{column_info}{$k}[0]);
 						if (($r > 0) && ($r != 3)) {
 							$table_detail{'reserved words in column name'}++;
 							$report_info{'Objects'}{$typ}{'cost_value'} += 12; # one hour to solve reserved keyword might be enough
@@ -13763,7 +13775,7 @@ sub _show_infos
 		my $sth = $self->_schema_list() or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 		while ( my @row = $sth->fetchrow()) {
 			my $warning = '';
-			my $ret = &is_reserved_words($row[0]);
+			my $ret = $self->is_reserved_words($row[0]);
 			if ($ret == 1) {
 				$warning = " (Warning: '$row[0]' is a reserved word in PostgreSQL)";
 			} elsif ($ret == 2) {
@@ -13840,7 +13852,7 @@ sub _show_infos
 			}
 
 			# Search for reserved keywords
-			my $ret = &is_reserved_words($t);
+			my $ret = $self->is_reserved_words($t);
 			if ($ret == 1) {
 				$warning .= " (Warning: '$t' is a reserved word in PostgreSQL)";
 			} elsif ($ret == 2) {
@@ -13949,7 +13961,7 @@ sub _show_infos
 						$type .= " - $d->[14]" if ($d->[14] =~  /,/);
 						
 					}
-					my $ret = &is_reserved_words($d->[0]);
+					my $ret = $self->is_reserved_words($d->[0]);
 					if ($ret == 1) {
 						$warning .= " (Warning: '$d->[0]' is a reserved word in PostgreSQL)";
 					} elsif ($ret == 2) {
