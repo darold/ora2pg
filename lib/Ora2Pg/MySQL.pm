@@ -28,7 +28,7 @@ our %MYSQL_TYPE = (
 	'FLOAT' => 'double precision',
 	'REAL' => 'real',
 	'DOUBLE PRECISION' => 'double precision',
-	'DOUBLE' => 'decimal',
+	'DOUBLE' => 'double precision',
 	'BOOLEAN' => 'boolean',
 	'BOOL' => 'boolean',
 	'CHAR' => 'char',
@@ -940,7 +940,7 @@ sub _sql_type
 				} else {
 					return $MYSQL_TYPE{$type};
 				}
-			} elsif ($type =~ /^(TINYINT|SMALLINT|MEDIUMINT|INTEGER|BIGINT|INT|REAL|DOUBLE|FLOAT|DECIMAL|NUMERIC)$/i) {
+			} elsif ($type =~ /(TINYINT|SMALLINT|MEDIUMINT|INTEGER|BIGINT|INT|REAL|DOUBLE|FLOAT|DECIMAL|NUMERIC)/i) {
 				# This is an integer
 				if (!$scale) {
 					if ($precision) {
@@ -960,7 +960,7 @@ sub _sql_type
 					}
 				} else {
 					if ($precision) {
-						if ($self->{pg_numeric_type}) {
+						if ($type !~ /DOUBLE/ && $self->{pg_numeric_type}) {
 							if ($precision <= 6) {
 								return 'real';
 							} else {
@@ -1037,7 +1037,11 @@ sub replace_sql_type
 					$str =~ s/\b$type\b\s*\([^\)]+\)/$MYSQL_TYPE{$type}\%\|$precision\%\|\%/is;
 				}
 			} else {
-				$str =~ s/\b$type\b\s*\([^\)]+\)/$MYSQL_TYPE{$type}\%\|$args\%\|\%/is;
+				if ($type =~ /DOUBLE/) {
+					$str =~ s/\b$type\b\s*\([^\)]+\)/decimal\%\|$args\%\|\%/is;
+				} else {
+					$str =~ s/\b$type\b\s*\([^\)]+\)/$MYSQL_TYPE{$type}\%\|$args\%\|\%/is;
+				}
 			}
 		} else {
 			# Prevent from infinit loop
