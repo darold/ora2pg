@@ -1675,6 +1675,9 @@ sub replace_sql_type
 	$str =~ s/with local time zone/with time zone/igs;
 	$str =~ s/([A-Z])\%ORA2PG_COMMENT/$1 \%ORA2PG_COMMENT/igs;
 
+	# Replace MySQL type UNSIGNED in cast
+	$str =~ s/UNSIGNED\s*\)/bigint)/is;
+
 	# Replace type with precision
 	my @ora_type = keys %data_type;
 	map { s/\(/\\\(/; s/\)/\\\)/; } @ora_type;
