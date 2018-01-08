@@ -2022,11 +2022,13 @@ sub _tables
 			next;
 		}
 		# Try to respect order specified in the TABLES limited extraction array
-		$self->{tables}{$t}{internal_id} = 0;
-		for (my $j = 0; $j <= $#{$self->{limited}{TABLE}}; $j++) {
-			if (uc($self->{limited}{TABLE}->[$j]) eq uc($t)) {
-				$self->{tables}{$t}{internal_id} = $j;
-				last;
+		if ($#{$self->{limited}{TABLE}} > 0) {
+			$self->{tables}{$t}{internal_id} = 0;
+			for (my $j = 0; $j <= $#{$self->{limited}{TABLE}}; $j++) {
+				if (uc($self->{limited}{TABLE}->[$j]) eq uc($t)) {
+					$self->{tables}{$t}{internal_id} = $j;
+					last;
+				}
 			}
 		}
 
@@ -6309,7 +6311,13 @@ CREATE TRIGGER ${table}_trigger_insert
 
 	# Dump all table/index/constraints SQL definitions
 	my $ib = 1;
-	foreach my $table (sort { $self->{tables}{$a}{internal_id} <=> $self->{tables}{$b}{internal_id} } keys %{$self->{tables}}) {
+	foreach my $table (sort {
+			if (exists $self->{tables}{$a}{internal_id}) {
+				$self->{tables}{$a}{internal_id} <=> $self->{tables}{$b}{internal_id};
+			} else {
+				$a cmp $b;
+			}
+		} keys %{$self->{tables}}) {
 
 		$self->logit("Dumping table $table...\n", 1);
 
