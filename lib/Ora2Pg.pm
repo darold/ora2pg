@@ -8315,7 +8315,8 @@ END
 		}
 		
 		# Right trim Oracle default values
-		# A default text value is escaped with single quotes by Oracle, so a default value of whitespace(s) is not trimmed
+		# A default text value is escaped with single quotes by Oracle, so a whitespace default is kept, e.g. "' ' " -> "' '".
+		# An explicitly unset default value is returned as "NULL " by Oracle and is trimmed to "NULL".
 		$row->[4] =~ s/\s+$//;
 
 		my $tmptable = $row->[8];
