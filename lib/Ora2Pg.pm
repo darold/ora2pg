@@ -1531,6 +1531,17 @@ sub _oracle_connection
 		$self->logit("FATAL: $DBI::err ... $DBI::errstr\n", 0, 1);
 	}
 
+	# Get Oracle version, needed to set date/time format
+	my $sth = $dbh->prepare( "SELECT BANNER FROM v\$version" ) or return undef;
+	$sth->execute or return undef;
+	while ( my @row = $sth->fetchrow()) {
+		$self->{db_version} = $row[0];
+		last;
+	}
+	$sth->finish();
+	chomp($self->{db_version});
+	$self->{db_version} =~ s/ \- .*//;
+
 	# Fix a problem when exporting type LONG and LOB
 	$dbh->{'LongReadLen'} = $self->{longreadlen};
 	$dbh->{'LongTruncOk'} = $self->{longtruncok};
