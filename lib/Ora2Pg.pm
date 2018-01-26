@@ -1559,7 +1559,7 @@ sub _oracle_connection
 	if ($self->{debug} && !$quiet) {
 		$self->logit("Isolation level: $self->{transaction}\n", 1);
 	}
-	my $sth = $dbh->prepare($self->{transaction}) or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
+	$sth = $dbh->prepare($self->{transaction}) or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
 	$sth->execute or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
 	$sth->finish;
 
@@ -3327,10 +3327,8 @@ sub _export_table_data
 
 					$self->logit("Dumping sub partition table $table ($subpart)...\n", 1);
 					$total_record = $self->_dump_table($dirprefix, $sql_header, $table, $subpart, 1);
-					if (-e "${dirprefix}tmp_${subpart}_$self->{output}") {
-						$self->logit("Renaming temporary file ${dirprefix}tmp_${subpart}_$self->{output} into ${dirprefix}${subpart}_$self->{output}\n", 1);
-						rename("${dirprefix}tmp_${subpart}_$self->{output}", "${dirprefix}${subpart}_$self->{output}");
-					}
+					# Rename temporary filename into final name
+					$self->rename_dump_partfile($dirprefix, $sub_tb_name);
 				}
 				# Now load content of the default subpartition table
 				if ($self->{subpartitions_default}{$table}{$part_name}) {
@@ -3344,6 +3342,8 @@ sub _export_table_data
 							$total_record = $self->_dump_table($dirprefix, $sql_header, $table, $self->{subpartitions_default}{$table}{$part_name}, 1);
 						}
 					}
+					# Rename temporary filename into final name
+					$self->rename_dump_partfile($dirprefix, $self->{subpartitions_default}{$table}{$part_name}, $table);
 				}
 			} else {
 				if ($self->{file_per_table} && !$self->{pg_dsn}) {
@@ -3353,10 +3353,9 @@ sub _export_table_data
 
 				$self->logit("Dumping partition table $table ($part_name)...\n", 1);
 				$total_record = $self->_dump_table($dirprefix, $sql_header, $table, $part_name);
-				if (-e "${dirprefix}tmp_${part_name}_$self->{output}") {
-					$self->logit("Renaming temporary file ${dirprefix}tmp_${part_name}_$self->{output} into ${dirprefix}${part_name}_$self->{output}\n", 1);
-					rename("${dirprefix}tmp_${part_name}_$self->{output}", "${dirprefix}${part_name}_$self->{output}");
-				}
+
+				# Rename temporary filename into final name
+				$self->rename_dump_partfile($dirprefix, $part_name, $table);
 			}
 		}
 		# Now load content of the default partition table
@@ -3370,10 +3369,8 @@ sub _export_table_data
 				} else {
 					$total_record = $self->_dump_table($dirprefix, $sql_header, $table, $self->{partitions_default}{$table});
 				}
-				if (-e "${dirprefix}tmp_$self->{partitions_default}{$table}_$self->{output}") {
-					$self->logit("Renaming temporary file ${dirprefix}tmp_$self->{partitions_default}{$table}_$self->{output} into ${dirprefix}$self->{partitions_default}{$table}_$self->{output}\n", 1);
-					rename("${dirprefix}tmp_$self->{partitions_default}{$table}_$self->{output}", "${dirprefix}$self->{partitions_default}{$table}_$self->{output}");
-				}
+				# Rename temporary filename into final name
+				$self->rename_dump_partfile($dirprefix, $self->{partitions_default}{$table}, $table);
 			}
 		}
 	} else {
@@ -3395,12 +3392,26 @@ sub _export_table_data
  		$local_dbh->disconnect();
  	}
 
-	if (-e "${dirprefix}tmp_${table}_$self->{output}") {
-		$self->logit("Renaming temporary file ${dirprefix}tmp_${table}_$self->{output} into ${dirprefix}${table}_$self->{output}\n", 1);
-		rename("${dirprefix}tmp_${table}_$self->{output}", "${dirprefix}${table}_$self->{output}");
-	}
+	# Rename temporary filename into final name
+	$self->rename_dump_partfile($dirprefix, $table);
 
 	return $total_record;
+}
+
+sub rename_dump_partfile
+{
+	my ($self, $dirprefix, $partname, $tbl) = @_;
+
+	my $filename = "${dirprefix}tmp_${partname}_$self->{output}";
+	my $filedest = "${dirprefix}${partname}_$self->{output}";
+	if ($tbl && $self->{prefix_partition}) {
+		$filename = "${dirprefix}tmp_${tbl}_${partname}_$self->{output}";
+		$filedest = "${dirprefix}${tbl}_${partname}_$self->{output}";
+	}
+	if (-e $filename) {
+		$self->logit("Renaming temporary file $filename into $filedest\n", 1);
+		rename($filename, $filedest);
+	}
 }
 
 sub translate_function
