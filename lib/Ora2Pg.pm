@@ -6520,6 +6520,7 @@ CREATE TRIGGER ${table}_trigger_insert
 										$f->[4] = "'$f->[4]'" if ($f->[4] =~ /^\d+/);
 									}
 								}
+								$f->[4] = 'NULL' if ($f->[4] eq "''" && $type =~ /int|double|numeric/i);
 								$sql_output .= " DEFAULT $f->[4]";
 							}
 						}
