@@ -38,6 +38,7 @@ use File::Basename;
 use File::Spec qw/ tmpdir /;
 use File::Temp qw/ tempfile /;
 use Benchmark;
+use bignum;
 
 #set locale to LC_NUMERIC C
 setlocale(LC_NUMERIC,"C");
@@ -3353,7 +3354,6 @@ sub _export_table_data
 
 				$self->logit("Dumping partition table $table ($part_name)...\n", 1);
 				$total_record = $self->_dump_table($dirprefix, $sql_header, $table, $part_name);
-
 				# Rename temporary filename into final name
 				$self->rename_dump_partfile($dirprefix, $part_name, $table);
 			}
@@ -10950,18 +10950,44 @@ WHERE
 
 sub _get_custom_types
 {
-        my $str = uc(shift);
+        my ($self, $str, $parent) = @_;
 
+	# Copy the type translation hash
 	my %all_types = %TYPE;
+	# replace type double precision by single word double
 	$all_types{'DOUBLE'} = $all_types{'DOUBLE PRECISION'};
 	delete $all_types{'DOUBLE PRECISION'};
+	# Remove any parenthesis after a type
+	foreach my $t (keys %all_types) {
+		$str =~ s/$t\s*\([^\)]+\)/$t/igs;
+	}
+	$str =~ s/^[^\(]+\(//s;
+	$str =~ s/\s*\)\s*;$//s;
+	$str =~ s/\/\*(.*?)\*\///gs;
+	$str =~ s/\s*--[^\r\n]+//gs;
 	my %types_found = ();
-	while ($str =~ s/(\w+)//s) {
-		if (exists $all_types{$1}) {
-			push(@{$types_found{pg_types}}, $all_types{$1});
-			push(@{$types_found{src_types}}, $1);
+	my @type_def = split(/\s*,\s*/, $str);
+	foreach my $s (@type_def) {
+		$s =~ /^\s*([^\s]+)\s+([^\s]+)/;
+		my $cur_type = $2;
+		push(@{$types_found{src_types}}, $cur_type);
+		if (exists $all_types{$cur_type}) {
+			push(@{$types_found{pg_types}}, $all_types{$cur_type});
+		} else {
+			my $custom_type = $self->_get_types($self->{dbh}, $cur_type);
+			foreach my $tpe (sort {length($a->{name}) <=> length($b->{name}) } @{$custom_type}) {
+				last if (uc($tpe->{name}) eq $cur_type); # prevent infinit loop
+				$self->logit("\tLooking inside nested custom type $tpe->{name} to extract values...\n", 1);
+				my %types_def = $self->_get_custom_types($tpe->{code}, $cur_type);
+				if ($#{$types_def{pg_types}} >= 0) {
+					$self->logit("\t\tfound subtype description: $tpe->{name}(" . join(',', @{$types_def{pg_types}}) . ")\n", 1);
+					push(@{$types_found{pg_types}}, \@{$types_def{pg_types}});
+					push(@{$types_found{src_types}}, \@{$types_def{src_types}});
+				}
+			}
 		}
 	}
+
         return %types_found;
 }
 
@@ -11004,67 +11030,142 @@ sub format_data_row
 					$row->[$idx] = "ST_GeomFromText('" . $row->[$idx] . "', $1)";
 				}
 			}
+
 		} elsif ($row->[$idx] =~ /^(?!(?!)\x{100})ARRAY\(0x/) {
-			my @type_col = ();
-			my $is_nested = 0;
-			my @src_type = ();
-			my @dst_type = ();
-			for (my $i = 0;  $i <= $#{$row->[$idx]}; $i++) {
-				if ($custom_types->{$data_type}{pg_types}[$i] eq '') {
-					push(@dst_type, $custom_types->{$data_type}{pg_types}[0]);
-					push(@src_type, $custom_types->{$data_type}{src_types}[0]);
-					$is_nested = 1;
+
+			print STDERR "/!\\ WARNING /!\\: we should not be there !!!\n";
+			#$row->[$idx] =  $self->set_custom_type_value($row, $idx, $data_types, $action, $src_data_types, $custom_types, $table, $colcond, $sprep);
+
+		} else {
+
+			$row->[$idx] = $self->format_data_type($row->[$idx], $data_type, $action, $table, $src_data_types->[$idx], $idx, $colcond->[$idx], $sprep);
+
+		}
+	}
+}
+
+sub set_custom_type_value
+{
+	my ($self, $data_type, $user_type, $col_ref, $dest_type, $no_quote) = @_;
+
+	my $has_array = 0;
+	my @type_col = ();
+	my $result = '';
+
+	for (my $i = 0; $i <= $#{$col_ref}; $i++) {
+
+		if ($col_ref->[$i] !~ /^ARRAY\(0x/) {
+
+			if ($self->{type} eq 'COPY') {
+				# Want to export the user defined type as a single array, not composite type
+				if ($dest_type =~ /(text|char|varying)\[\d*\]$/i) {
+					$has_array = 1;
+					$col_ref->[$i] =~ s/"/\\\\"/gs;
+					if ($col_ref->[$i] =~ /[,"]/) {
+						$col_ref->[$i] = '"' . $col_ref->[$i] . '"';
+					};
+				# Data must be exported as an array of numeric types
+				} elsif ($dest_type =~ /\[\d*\]$/) {
+					$has_array = 1;
 				} else {
-					push(@dst_type, $custom_types->{$data_type}{pg_types}[$i]);
-					push(@src_type, $custom_types->{$data_type}{src_types}[$i]);
-				}
-			}
-			my $col_cond = $self->hs_cond(\@dst_type,\@src_type, $table);
-			for (my $i = 0;  $i <= $#{$row->[$idx]}; $i++) {
-				push(@type_col, $self->format_data_type($row->[$idx][$i], $dst_type[$i], $action, $table, $src_type[$i], $i, $col_cond->[$i], undef, $is_nested));
-			}
-			if (!$is_nested) {
-				if ($action eq 'COPY') {
-					map { s/^\\N$//; } @type_col; # \N for NULL is not allowed
-					$row->[$idx] =  "(" . join(',', @type_col) . ")";
-				} else {
-					$row->[$idx] =  "ROW(" . join(',', @type_col) . ")";
+					$col_ref->[$i] =~ s/"/\\\\\\\\""/igs;
+					if ($col_ref->[$i] =~ /[,"]/) {
+						$col_ref->[$i] = '""' . $col_ref->[$i] . '""';
+					};
 				}
 			} else {
-				if ($action eq 'COPY') {
-					map { s/^\\N$//; } @type_col; # \N for NULL is not allowed
-					# Want to export the user defined type as charaters array
-					if ($data_types->[$idx] =~ /(text|char|varying)\[\d*\]$/i) {
-						map{ s/"/\\\\"/igs; } @type_col;
-						map{ if (/[,"]/) { s/^/"/; s/$/"/; }; } @type_col;
-						$row->[$idx] =  '{' . join(',', @type_col) . '}';
-					# Data must be exported as an array of numeric types
-					} elsif ($data_types->[$idx] =~ /\[\d*\]$/i) {
-						$row->[$idx] =  '{' . join(',', @type_col) . '}';
+				# Want to export the user defined type as a single array, not composite type
+				if ($dest_type =~ /(text|char|varying)\[\d*\]$/i) {
+					$has_array = 1;
+					$col_ref->[$i] =~ s/"/\\"/gs;
+					$col_ref->[$i] =~ s/'/''/gs;
+					if ($col_ref->[$i] =~ /[,"]/) {
+						$col_ref->[$i] = '"' . $col_ref->[$i] . '"';
+					};
+				# Data must be exported as a simple array of numeric types
+				} elsif ($dest_type =~ /\[\d*\]$/i) {
+					$has_array = 1;
+				} elsif ($dest_type =~ /(char|text)/) {
+					$col_ref->[$i] = "'" . $col_ref->[$i] . "'" if ($col_ref->[0][$i] ne '');
+				}
+			}
+			push(@type_col, $col_ref->[$i]);
+
+		} else {
+
+			my @arr_col = ();
+			for (my $j = 0; $j <= $#{$col_ref->[$i]}; $j++) {
+
+				# Look for data based on custom type to replace the reference by the value
+				if ($col_ref->[$i][$j] =~ /^(?!(?!)\x{100})ARRAY\(0x/) {
+					my $dtype = uc($user_type->{src_types}[$i][$j]) || '';
+					$dtype =~ s/\(.*//; # remove any precision
+					my $utype = {};
+					%{$utype} = $self->custom_type_definition($dtype);
+					$col_ref->[$i][$j] =  $self->set_custom_type_value($dtype, $utype, $col_ref->[$i][$j], $user_type->{pg_types}[$i][$j], 1);
+					if ($self->{type} ne 'COPY') {
+						$col_ref->[$i][$j] =~ s/"/\\\\""/gs;
 					} else {
-						map{ s/"/\\\\\\\\""/igs; } @type_col;
-						map{ if (/[,"]/) { s/^/""/; s/$/""/; }; } @type_col;
-						$row->[$idx] =  '("{' . join(',', @type_col) . '}")';
+						$col_ref->[$i][$j] =~ s/"/\\\\\\\\""/gs;
+					}
+				}
+
+				if ($self->{type} eq 'COPY') {
+					# Want to export the user defined type as charaters array
+					if ($dest_type =~ /(text|char|varying)\[\d*\]$/i) {
+						$has_array = 1;
+						$col_ref->[$i][$j] =~ s/"/\\\\"/gs;
+						if ($col_ref->[$i][$j] =~ /[,"]/) {
+							$col_ref->[$i][$j] = '"' . $col_ref->[$i][$j] . '"';
+						};
+					# Data must be exported as an array of numeric types
+					} elsif ($dest_type =~ /\[\d*\]$/) {
+						$has_array = 1;
 					}
 				} else {
 					# Want to export the user defined type as array
-					if ($data_types->[$idx] =~ /(text|char|varying)\[\d*\]$/i) {
-						map{ s/"/\\"/igs; } @type_col;
-						map{ s/'/''/igs; } @type_col;
-						map{ if (/[,"]/) { s/^/"/; s/$/"/; }; } @type_col;
-						$row->[$idx] =  "'{" . join(',', @type_col) . "}'";
+					if ($dest_type =~ /(text|char|varying)\[\d*\]$/i) {
+						$has_array = 1;
+						$col_ref->[$i][$j] =~ s/"/\\"/gs;
+						$col_ref->[$i][$j] =~ s/'/''/gs;
+						if ($col_ref->[$i][$j] =~ /[,"]/) {
+							$col_ref->[$i][$j] = '"' . $col_ref->[$i][$j] . '"';
+						};
 					# Data must be exported as an array of numeric types
-					} elsif ($data_types->[$idx] =~ /\[\d*\]$/i) {
-						$row->[$idx] =  "'{" . join(',', @type_col) . "}'";
-					} else {
-						$row->[$idx] =  "ROW('{" . join(',', @type_col) . "}')";
+					} elsif ($dest_type =~ /\[\d*\]$/) {
+						$has_array = 1;
 					}
 				}
+				if ($col_ref->[$i][$j] =~ /[\(\)]/ && $col_ref->[$i][$j] !~ /^[\\]+""/) {
+					if ($self->{type} ne 'COPY') {
+						$col_ref->[$i][$j] = "\\\\\"\"" . $col_ref->[$i][$j] . "\\\\\"\"";
+					} else {
+						$col_ref->[$i][$j] = "\\\\\\\\\"\"" . $col_ref->[$i][$j] . "\\\\\\\\\"\"";
+					}
+				}
+				push(@arr_col, $col_ref->[$i][$j]);
 			}
-		} else {
-			$row->[$idx] = $self->format_data_type($row->[$idx], $data_type, $action, $table, $src_data_types->[$idx], $idx, $colcond->[$idx], $sprep);
+			push(@type_col, '(' . join(',', @arr_col) . ')');
 		}
 	}
+
+	if ($has_array) {
+		$result =  '{' . join(',', @type_col) . '}';
+	} else {
+		if (!$no_quote) {
+			#map { s/^$/NULL/; } @type_col;
+			#$result = 'ROW(ARRAY[ROW(' . join(',', @type_col) . ')])';
+			$result =  "(\"{\"\"" . join('"",""', @type_col) . "\"\"}\")";
+		} else {
+			$result =  "\"(" . join(',', @type_col) . ")\"";
+		}
+	}
+	if (!$no_quote && $self->{type} ne 'COPY') {
+		$result =  "'$result'";
+	}
+	while ($result =~ s/,"""",/,NULL,/gs) {};
+
+	return $result;
 }
 
 sub format_data_type
@@ -11073,6 +11174,10 @@ sub format_data_type
 
 	my $q = "'";
 	$q = '"' if ($isnested);
+
+	# Skip data type formatting when it has already been done in
+	# set_custom_type_value(), aka when the data type is an array.
+	next if ($data_type =~ /\[\d*\]/); 
 
 	# Internal timestamp retrieves from custom type is as follow: 01-JAN-77 12.00.00.000000 AM (internal_date_max)
 	if (($data_type eq 'char') && $col =~ /^(\d{2})-([A-Z]{3})-(\d{2}) (\d{2})\.(\d{2})\.(\d{2}\.\d+) (AM|PM)$/ ) {
@@ -12547,6 +12652,46 @@ sub ask_for_data
 	return;
 }
 
+sub custom_type_definition
+{
+	my ($self, $custom_type, $parent, $is_nested) = @_;
+
+	my %user_type = ();
+	my $orig = $custom_type;
+
+	my $data_type = uc($custom_type) || '';
+	$data_type =~ s/\(.*//; # remove any precision
+	if (!exists $self->{data_type}{$data_type}) {
+		if (!$is_nested) {
+			$self->logit("Data type $custom_type is not native, searching on custom types.\n", 1);
+		} else {
+			$self->logit("\tData type $custom_type nested from type $parent is not native, searching on custom types.\n", 1);
+		}
+		$custom_type = $self->_get_types($self->{dbh}, $custom_type);
+		foreach my $tpe (sort {length($a->{name}) <=> length($b->{name}) } @{$custom_type}) {
+			$self->logit("\tLooking inside custom type $tpe->{name} to extract values...\n", 1);
+			my %types_def = $self->_get_custom_types($tpe->{code});
+			if ($#{$types_def{pg_types}} >= 0) {
+				$self->logit("\tfound type description: $tpe->{name}(" . join(',', @{$types_def{pg_types}}) . ")\n", 1);
+				push(@{$user_type{pg_types}} , \@{$types_def{pg_types}});
+				push(@{$user_type{src_types}}, \@{$types_def{src_types}});
+			} else {
+				if ($tpe->{code} =~ /AS\s+VARRAY\s*(.*?)\s+OF\s+([^\s;]+);/is) {
+					return $self->custom_type_definition(uc($2), $orig, 1);
+				} elsif ($tpe->{code} =~ /\s+([^\s]+)\s+AS\s+TABLE\s+OF\s+([^;]+);/is) {
+					%types_def = $self->_get_custom_types("varname $2");
+					push(@{$user_type{pg_types}} , \@{$types_def{pg_types}});
+					push(@{$user_type{src_types}}, \@{$types_def{src_types}});
+				} else {
+					$self->logit("\tCan not found subtype for $tpe->{name} into code: $tpe->{code}\n", 1);
+				}
+			}
+		}
+	}
+
+	return %user_type;
+}
+
 sub _extract_data
 {
 	my ($self, $query, $table, $cmd_head, $cmd_foot, $s_out, $nn, $tt, $sprep, $stt, $part_name, $proc) = @_;
@@ -12570,12 +12715,26 @@ sub _extract_data
 	my $rname = $part_name || $table;
 	my $dbh = 0;
 	my $sth = 0;
+	my @has_custom_type = ();
 	$self->{data_cols}{$table} = ();
 
 	if ($self->{is_mysql}) {
 		my %col_info = Ora2Pg::MySQL::_column_info($self, $rname);
 		foreach my $col (keys %{$col_info{$rname}}) {
 			push(@{$self->{data_cols}{$table}}, $col);
+		}
+	}
+
+	# Look for user defined type
+	if (!$self->{is_mysql}) {
+		for (my $idx = 0; $idx < scalar(@$stt); $idx++) {
+			my $data_type = uc($stt->[$idx]) || '';
+			$data_type =~ s/\(.*//; # remove any precision
+			# in case of user defined type try to gather the underlying base types
+			if (!exists $self->{data_type}{$data_type}) {
+				push(@has_custom_type, $idx);
+				%{$user_type{$idx}} = $self->custom_type_definition($stt->[$idx]);
+			}
 		}
 	}
 
@@ -12591,26 +12750,6 @@ sub _extract_data
 			$self->_numeric_format($dbh);
 			# Force datetime format into the cloned session
 			$self->_datetime_format($dbh);
-		}
-
-		# Look for user defined type
-		if (!$self->{is_mysql}) {
-			for (my $idx = 0; $idx < scalar(@$stt); $idx++) {
-				my $data_type = uc($stt->[$idx]) || '';
-				$data_type =~ s/\(.*//; # remove any precision
-				my $custom_type = '';
-				if (!exists $self->{data_type}{$data_type}) {
-					$self->logit("Data type $stt->[$idx] is not native, searching on custom types.\n", 1);
-					$custom_type = $self->_get_types($dbh, $stt->[$idx]);
-					foreach my $tpe (sort {length($a->{name}) <=> length($b->{name}) } @{$custom_type}) {
-						$self->logit("Looking inside custom type $tpe->{name} to extract values...\n", 1);
-						my %types_def = &_get_custom_types($tpe->{code});
-						$self->logit("\tfound type description: $tpe->{name}(" . join(',', @{$types_def{pg_types}}) . ")\n", 1);
-						push(@{$user_type{$data_type}{pg_types}}, @{$types_def{pg_types}});
-						push(@{$user_type{$data_type}{src_types}}, @{$types_def{src_types}});
-					}
-				}
-			}
 		}
 
 		# Set row cache size
@@ -12636,26 +12775,6 @@ sub _extract_data
 		}
 
 	} else {
-
-		# Look for user defined type
-		if (!$self->{is_mysql}) {
-			for (my $idx = 0; $idx < scalar(@$stt); $idx++) {
-				my $data_type = uc($stt->[$idx]) || '';
-				$data_type =~ s/\(.*//; # remove any precision
-				my $custom_type = '';
-				if (!exists $self->{data_type}{$data_type}) {
-					$self->logit("Data type $stt->[$idx] is not native, searching on custom types.\n", 1);
-					$custom_type = $self->_get_types($self->{dbh}, $stt->[$idx]);
-					foreach my $tpe (sort {length($a->{name}) <=> length($b->{name}) } @{$custom_type}) {
-						$self->logit("Looking inside custom type $tpe->{name} to extract values...\n", 1);
-						my %types_def = &_get_custom_types($tpe->{code});
-						$self->logit("\tfound type description: $tpe->{name}(" . join(',', @{$types_def{pg_types}}) . ")\n", 1);
-						push(@{$user_type{$data_type}{pg_types}}, @{$types_def{pg_types}});
-						push(@{$user_type{$data_type}{src_types}}, @{$types_def{src_types}});
-					}
-				}
-			}
-		}
 
 		# Set row cache size
 		$self->{dbh}->{RowCacheSize} = int($self->{data_limit}/10);
@@ -12718,6 +12837,8 @@ sub _extract_data
 		$sth->execute(@params) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	}
 
+	my $col_cond = $self->hs_cond($tt,$stt, $table);
+
 	# Oracle allow direct retreiving of bchunk of data 
 	if (!$self->{is_mysql}) {
 
@@ -12728,7 +12849,8 @@ sub _extract_data
 		my $has_blob = 0;
 		$has_blob = 1 if (grep(/LOB/, @$stt));
 
-		if (!$has_blob || $self->{no_lob_locator}) {
+		# With rows that not have custom type nor blob unless the user doesn't want to use lob locator
+		if (($#has_custom_type == -1) && (!$has_blob || $self->{no_lob_locator})) {
 
 			while ( my $rows = $sth->fetchall_arrayref(undef,$data_limit)) {
 				if ( ($self->{parallel_tables} > 1) || (($self->{oracle_copies} > 1) && $self->{defined_pk}{"\L$table\E"}) ) {
@@ -12743,6 +12865,7 @@ sub _extract_data
 
 				$total_record += @$rows;
 				$self->{current_total_row} += @$rows;
+				$self->logit("DEBUG: number of rows $total_record extracted from table $table\n", 1);
 
 				if ( ($self->{jobs} > 1) || ($self->{oracle_copies} > 1) ) {
 					while ($self->{child_count} >= $self->{jobs}) {
@@ -12777,13 +12900,21 @@ sub _extract_data
 					last;
 				}
 
-
 				# Retrieve LOB data from locator
 				$self->{chunk_size} = 8192;
 				# Then foreach row use the returned lob locator to retrieve data
 				# and all column with a LOB data type, extract data by chunk
 				for (my $j = 0; $j <= $#$stt; $j++) {
-					if (($stt->[$j] =~ /LOB/) && $row[$j]) {
+
+					# Look for data based on custom type to replace the reference by the value
+					if ($row[$j] =~ /^(?!(?!)\x{100})ARRAY\(0x/) {
+
+						my $data_type = uc($stt->[$j]) || '';
+						$data_type =~ s/\(.*//; # remove any precision
+						$row[$j] =  $self->set_custom_type_value($data_type, $user_type{$j}, $row[$j], $tt->[$j]);
+
+					} elsif (($stt->[$j] =~ /LOB/) && $row[$j]) {
+
 						my $lob_content = '';
 						my $offset = 1;   # Offsets start at 1, not 0
 						if ( ($self->{parallel_tables} > 1) || (($self->{oracle_copies} > 1) && $self->{defined_pk}{"\L$table\E"}) ) {
@@ -12814,13 +12945,14 @@ sub _extract_data
 						} else {
 							$row[$j] = undef;
 						}
+
 					} elsif (($stt->[$j] =~ /LOB/) && !$row[$j]) {
 						# This might handle case where the LOB is NULL and might prevent error:
 						# DBD::Oracle::db::ora_lob_read: locator is not of type OCILobLocatorPtr
 						$row[$j] = undef;
 					}
 				}
-				push(@rows, [@row]);
+				push(@rows, [ @row ] );
 				$total_record++;
 				$self->{current_total_row}++;
 
@@ -12844,6 +12976,7 @@ sub _extract_data
 					@rows = ();
 				}
 			}
+			# Flush last extracted data
 			if ( ($self->{jobs} > 1) || ($self->{oracle_copies} > 1) ) {
 				while ($self->{child_count} >= $self->{jobs}) {
 					my $kid = waitpid(-1, WNOHANG);
@@ -13048,12 +13181,13 @@ sub _dump_to_pg
 	}
 
 	# Preparing data for output
-	if (!$sprep) {
+	if ( !$sprep && ($#{$rows} >= 0) ) {
 		my $data_limit = $self->{data_limit};
 		if (exists $self->{local_data_limit}{$table}) {
 			$data_limit = $self->{local_data_limit}{$table};
 		}
-		$self->logit("DEBUG: Formatting bulk of $data_limit data for PostgreSQL.\n", 1);
+		my $len = @$rows;
+		$self->logit("DEBUG: Formatting bulk of $data_limit data (real: $len rows) for PostgreSQL.\n", 1);
 		$self->format_data($rows, $tt, $self->{type}, $stt, \%user_type, $table);
 	}
 
