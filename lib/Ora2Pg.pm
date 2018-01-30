@@ -3092,7 +3092,7 @@ database and values are the text definitions of the views.
 
 It then sets the main hash as follows:
 
-    # Definition of the matérialized view
+    # Definition of the materialized view
     $self->{materialized_views}{text} = $mview_infos{$view};
 
 =cut
@@ -13547,7 +13547,7 @@ sub _show_infos
 		# Get Jobs
 		my %jobs = $self->_get_job();
 		$objects{'JOB'} = scalar keys %jobs;
-		# Get synonym inforamtion
+		# Get synonym information
 		my %synonyms = $self->_synonyms();
 		$objects{'SYNONYM'} = scalar keys %synonyms;	
 		# Get all global temporary tables
