@@ -9401,6 +9401,8 @@ sub _get_dblink
 
 This function implements an Oracle-native job information.
 
+Reads together from view [ALL|DBA]_JOBS and from view [ALL|DBA]_SCHEDULER_JOBS.
+
 Returns a hash of job number with the connection they are based on.
 
 =cut
@@ -9426,6 +9428,26 @@ sub _get_job
 
 	my %data = ();
 	while (my $row = $sth->fetch) {
+		if (!$self->{schema} && $self->{export_schema}) {
+			$row->[0] = "$row->[3].$row->[0]";
+		}
+		$data{$row->[0]}{what} = $row->[1];
+		$data{$row->[0]}{interval} = $row->[2];
+	}
+
+	# Retrieve all database jobs from view [ALL|DBA]_SCHEDULER_JOBS
+	$str = "SELECT job_name AS JOB, job_action AS WHAT, repeat_interval AS INTERVAL, owner AS SCHEMA_USER";
+	$str .= " FROM $self->{prefix}_SCHEDULER_JOBS";
+	$str .= " WHERE repeat_interval IS NOT NULL";
+	$str .= " AND client_id IS NULL";
+	if (!$self->{schema}) {
+		$str .= " AND owner NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
+	} else {
+		$str .= " AND owner = '$self->{schema}'";
+	}
+	$sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	while ($row = $sth->fetch) {
 		if (!$self->{schema} && $self->{export_schema}) {
 			$row->[0] = "$row->[3].$row->[0]";
 		}
