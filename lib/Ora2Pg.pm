@@ -38,7 +38,6 @@ use File::Basename;
 use File::Spec qw/ tmpdir /;
 use File::Temp qw/ tempfile /;
 use Benchmark;
-use bignum;
 
 #set locale to LC_NUMERIC C
 setlocale(LC_NUMERIC,"C");
