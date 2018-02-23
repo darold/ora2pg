@@ -676,33 +676,40 @@ Return a quoted object named when needed:
 
 sub quote_object_name
 {
-	my ($self, $obj_name) = @_;
+	my ($self, @obj_list) = @_;
 
-	return if ($obj_name =~ /^SYS_NC\d+/);
+	my @ret = ();
 
-	# Start by removing any double quote
-	$obj_name =~ s/"//g;
+	foreach my $obj_name (@obj_list) {
+		next if ($obj_name =~ /^SYS_NC\d+/);
 
-	# When PRESERVE_CASE is not enabled set object name to lower case
-	if (!$self->{preserve_case}) {
-		$obj_name = lc($obj_name);
-		# then if there is non alphanumeric or the object name is a reserved word
-		if ($obj_name =~ /[^a-z0-9\_\.]/ || ($self->{use_reserved_words} && $self->is_reserved_words($obj_name))) {
-			# Add double quote to [schema.] object name 
-			if ($obj_name !~ /^[^\.]+\.[^\.]+$/) {
-				$obj_name = '"' . $obj_name . '"';
-			} else {
-				$obj_name =~ s/^([^\.]+)\.([^\.]+)$/"$1"\."$2"/;
+		# Start by removing any double quote and extra space
+		$obj_name =~ s/"//g;
+		$obj_name =~ s/^\s+//;
+		$obj_name =~ s/\s+$//;
+
+		# When PRESERVE_CASE is not enabled set object name to lower case
+		if (!$self->{preserve_case}) {
+			$obj_name = lc($obj_name);
+			# then if there is non alphanumeric or the object name is a reserved word
+			if ($obj_name =~ /[^a-z0-9\_\.]/ || ($self->{use_reserved_words} && $self->is_reserved_words($obj_name))) {
+				# Add double quote to [schema.] object name 
+				if ($obj_name !~ /^[^\.]+\.[^\.]+$/) {
+					$obj_name = '"' . $obj_name . '"';
+				} else {
+					$obj_name =~ s/^([^\.]+)\.([^\.]+)$/"$1"\."$2"/;
+				}
 			}
+		# Add double quote to [schema.] object name 
+		} elsif ($obj_name !~ /^[^\.]+\.[^\.]+$/) {
+			$obj_name = "\"$obj_name\"";
+		} else {
+			$obj_name =~ s/^([^\.]+)\.([^\.]+)$/"$1"\."$2"/;
 		}
-	# Add double quote to [schema.] object name 
-	} elsif ($obj_name !~ /^[^\.]+\.[^\.]+$/) {
-		$obj_name = "\"$obj_name\"";
-	} else {
-		$obj_name =~ s/^([^\.]+)\.([^\.]+)$/"$1"\."$2"/;
+		push(@ret, $obj_name);
 	}
 
-	return $obj_name;
+	return join(',', @ret);
 }
 
 =head2 replace_tables HASH
@@ -2157,34 +2164,6 @@ sub _tables
 
 }
 
-sub _split_table_definition
-{
-	my $str = shift();
-
-	my $ct = '';
-	my @parts = split(/([\(\)])/, $str);
-	my $def = '';
-	my $param = '';
-	my $i = 0;
-	for (; $i <= $#parts; $i++) {
-		$ct++ if ($parts[$i] =~ /\(/);
-		$ct-- if ($parts[$i] =~ /\)/);
-		if ( ($def ne '') && ($ct == 0) ) {
-			last;
-		}
-		$def .= $parts[$i] if ($def || ($parts[$i] ne '('));
-	}
-	$i++;
-	for (; $i <= $#parts; $i++) {
-		$param .= $parts[$i];
-	}
-
-	$def =~ s/\s+/ /g;
-	$param =~ s/\s+/ /g;
-
-	return ($def, $param);
-}
-
 sub _get_plsql_code
 {
 	my $str = shift();
@@ -2211,12 +2190,11 @@ sub _get_plsql_code
 	return ($code, $other);
 }
 
-
 sub _parse_constraint
 {
 	my ($self, $tb_name, $cur_col_name, $c) = @_;
 
-	if ($c =~ /^([^\s]+) (UNIQUE|PRIMARY KEY)\s*\(([^\)]+)\)/i) {
+	if ($c =~ /^([^\s]+)\s+(UNIQUE|PRIMARY KEY)\s*\(([^\)]+)\)/is) {
 		my $tp = 'U';
 		$tp = 'P' if ($2 eq 'PRIMARY KEY');
 		$self->{tables}{$tb_name}{unique_key}{$1} = { (
@@ -2224,13 +2202,13 @@ sub _parse_constraint
 			columns => ()
 		) };
 		push(@{$self->{tables}{$tb_name}{unique_key}{$1}{columns}}, split(/\s*,\s*/, $3));
-	} elsif ($c =~ /^([^\s]+) CHECK\s*\((.*)\)/i) {
+	} elsif ($c =~ /^([^\s]+)\s+CHECK\s*\((.*)\)/is) {
 		my %tmp = ($1 => $2);
 		$self->{tables}{$tb_name}{check_constraint}{constraint}{$1}{condition} = $2;
-		if ($c =~ /NOVALIDATE/i) {
+		if ($c =~ /NOVALIDATE/is) {
 			$self->{tables}{$tb_name}{check_constraint}{constraint}{$1}{validate} = 'NOT VALIDATED';
 		}
-	} elsif ($c =~ /^([^\s]+) FOREIGN KEY (\([^\)]+\))?\s*REFERENCES ([^\(]+)\(([^\)]+)\)/i) {
+	} elsif ($c =~ /^([^\s]+)\s+FOREIGN KEY (\([^\)]+\))?\s*REFERENCES ([^\(\s]+)\s*\(([^\)]+)\)/is) {
 		my $c_name = $1;
 		if ($2) {
 			$cur_col_name = $2;
@@ -2362,55 +2340,54 @@ sub read_schema_from_file
 			$tid++;
 			$self->{tables}{$tb_name}{internal_id} = $tid;
 
-			my %enum_placeholder = ();
+			$tb_def =~ s/^\(//;
+			my %fct_placeholder = ();
 			my $i = 0;
-			while ($tb_def =~ s/(ENUM\s*\([^\(\)]+\))/\%\%ENUM$i\%\%/is) {
-				$enum_placeholder{$i} = $1;
+			#while ($tb_def =~ s/((?:ENUM|IN|TO_DATE|TO_CHAR|UPPER|LOWER|NVL)\s*\([^\(\)]+\))/\%\%FCT$i\%\%/is) {
+			while ($tb_def =~ s/(\([^\(\)]+\))/\%\%FCT$i\%\%/is) {
+				$fct_placeholder{$i} = $1;
 				$i++;
 			};
-			($tb_def, $tb_param) = &_split_table_definition($tb_def);
+			($tb_def, $tb_param) = split(/\s*\)\s*/, $tb_def);
 			my @column_defs = split(/\s*,\s*/, $tb_def);
 			map { s/^\s+//; s/\s+$//; } @column_defs;
-			# Fix split on scale comma, for example NUMBER(9,4)
-			for (my $i = 0; $i <= $#column_defs; $i++) {
-				if ($column_defs[$i] =~ /^\d+/) {
-					$column_defs[$i-1] .= ",$column_defs[$i]";
-					$column_defs[$i] = '';
-				}
-			}
-			# Fix split on multicolumn's constraints, ex: UNIQUE (last_name,first_name) 
-			for (my $i = $#column_defs; $i >= 0; $i--) {
-				if ( ($column_defs[$i] !~ /\s/) || ($column_defs[$i] =~ /^[^\(]+\) REFERENCES/i) || ($column_defs[$i] =~ /^[^\(]+\) USING INDEX/ii)) {
-					$column_defs[$i-1] .= ",$column_defs[$i]";
-					$column_defs[$i] = '';
-				}
-			}
 			my $pos = 0;
 			my $cur_c_name = '';
 			foreach my $c (@column_defs) {
 				next if (!$c);
 
-				# Replace ENUM() temporary substitution
-				$c =~ s/\%\%ENUM(\d+)\%\%/$enum_placeholder{$1}/is;
-
+				# Replace temporary substitution
+				while ($c =~ s/\%\%FCT(\d+)\%\%/$fct_placeholder{$1}/is) {
+					delete $fct_placeholder{$1};
+				}
 				# Mysql unique key embedded definition, transform it to special parsing 
 				$c =~ s/^UNIQUE KEY/INDEX UNIQUE/is;
 				# Remove things that are not possible with postgres
 				$c =~ s/(PRIMARY KEY.*)NOT NULL/$1/is;
 				# Rewrite some parts for easiest/generic parsing
-				$c =~ s/^(PRIMARY KEY|UNIQUE)/CONSTRAINT ora2pg_ukey_$tb_name $1/is;
+				my $tbn = $tb_name;
+				$tbn =~ s/\./_/gs;
+				$c =~ s/^(PRIMARY KEY|UNIQUE)/CONSTRAINT ora2pg_ukey_$tbn $1/is;
 				$c =~ s/^(CHECK[^,;]+)DEFERRABLE\s+INITIALLY\s+DEFERRED/$1/is;
-				$c =~ s/^CHECK\b/CONSTRAINT ora2pg_ckey_$tb_name CHECK/is;
-				$c =~ s/^FOREIGN KEY/CONSTRAINT ora2pg_fkey_$tb_name FOREIGN KEY/is;
+				$c =~ s/^CHECK\b/CONSTRAINT ora2pg_ckey_$tbn CHECK/is;
+				$c =~ s/^FOREIGN KEY/CONSTRAINT ora2pg_fkey_$tbn FOREIGN KEY/is;
+
+				if (!$self->{preserve_case}) {
+					$c =~ s/"//gs;
+				}
+				$c =~ s/\(\s+/\(/gs;
+
 				# Get column name
 				if ($c =~ s/^\s*([^\s]+)\s*//s) {
 					my $c_name = $1;
 					$c_name =~ s/"//g;
 					# Retrieve all columns information
-					if (!grep(/^$c_name$/i, 'CONSTRAINT','INDEX')) {
+					if (!grep(/^\Q$c_name\E$/i, 'CONSTRAINT','INDEX')) {
 						$cur_c_name = $c_name;
+						$c_name =~ s/\./_/gs;
 						my $c_default = '';
 						my $virt_col = 'NO';
+						$c =~ s/\s+ENABLE//is;
 						if ($c =~ s/\b(GENERATED ALWAYS AS|AS)\s+([^\n]+),//is) {
 							$virt_col = 'YES';
 							$c_default = $2;
@@ -2453,6 +2430,7 @@ sub read_schema_from_file
 						}
 
 						if (($c =~ s/(UNIQUE|PRIMARY KEY)\s*\(([^\)]+)\)//is) || ($c =~ s/(UNIQUE|PRIMARY KEY)\s*//is)) {
+							$c_name =~ s/\./_/gs;
 							my $pk_name = 'ora2pg_ukey_' . $c_name; 
 							my $cols = $c_name;
 							if ($2) {
@@ -2461,6 +2439,7 @@ sub read_schema_from_file
 							$self->_parse_constraint($tb_name, $c_name, "$pk_name $1 ($cols)");
 
 						} elsif ( ($c =~ s/CONSTRAINT\s([^\s]+)\sCHECK\s*\(([^\)]+)\)//is) || ($c =~ s/CHECK\s*\(([^\)]+)\)//is) ) {
+							$c_name =~ s/\./_/gs;
 							my $pk_name = 'ora2pg_ckey_' . $c_name; 
 							my $chk_search = $1;
 							if ($2) {
@@ -2469,8 +2448,9 @@ sub read_schema_from_file
 							}
 							$self->_parse_constraint($tb_name, $c_name, "$pk_name CHECK ($chk_search)");
 
-						} elsif ($c =~ s/REFERENCES\s+([^\(]+)\(([^\)]+)\)//is) {
+						} elsif ($c =~ s/REFERENCES\s+([^\(\s]+)\s*\(([^\)]+)\)//is) {
 
+							$c_name =~ s/\./_/gs;
 							my $pk_name = 'ora2pg_fkey_' . $c_name; 
 							my $chk_search = $1 . "($2)";
 							$chk_search =~ s/\s+//gs;
@@ -2481,13 +2461,16 @@ sub read_schema_from_file
 						if ($c =~ s/\s*AUTO_INCREMENT\s*//is) {
 							$auto_incr = 1;
 						}
-						if ($c =~ s/\bDEFAULT\s+([^\s]+)\s*//is) {
-							$c_default = $1;
+						if ($c =~ /\bDEFAULT\s+/is) {
+							if ($c =~ s/\bDEFAULT\s+('[^']+')\s*//is) {
+								$c_default = $1;
+							} elsif ($c =~ s/\bDEFAULT\s+([^\s]+)\s*//is) {
+								$c_default = $1;
+							}
 							$c_default =~ s/"//gs;
 							if ($self->{plsql_pgsql}) {
 								$c_default = Ora2Pg::PLSQL::convert_plsql_code($self, $c_default, %{$self->{data_type}});
 							}
-							$c_default =~ s/,$//;
 						}
 						# COLUMN_NAME,DATA_TYPE,DATA_LENGTH,NULLABLE,DATA_DEFAULT,DATA_PRECISION,DATA_SCALE,CHAR_LENGTH,TABLE_NAME,OWNER,VIRTUAL_COLUMN,POSITION,AUTO_INCREMENT,SRID,SDO_DIM,SDO_GTYPE
 						push(@{$self->{tables}{$tb_name}{column_info}{$c_name}}, ($c_name, $c_type, $c_length, $c_nullable, $c_default, $c_length, $c_scale, $c_length, $tb_name, '', $virt_col, $pos, $auto_incr));
@@ -7735,8 +7718,12 @@ sub _create_foreign_keys
 					map { s/"$c"/"$self->{replaced_cols}{"\L$desttable\E"}{"\L$c\E"}"/i } @rfkeys;
 				}
 			}
-			map { $_ = $self->quote_object_name($_) } @lfkeys;
-			map { $_ = $self->quote_object_name($_) } @rfkeys;
+			for (my $i = 0; $i <= $#lfkeys; $i++) {
+				$lfkeys[$i] = $self->quote_object_name(split(/\s*,\s*/, $lfkeys[$i]));
+			}
+			for (my $i = 0; $i <= $#rfkeys; $i++) {
+				$rfkeys[$i] = $self->quote_object_name(split(/\s*,\s*/, $rfkeys[$i]));
+			}
 			$fkname = $self->quote_object_name($fkname);
 			$str .= "ALTER TABLE $table ADD CONSTRAINT $fkname FOREIGN KEY (" . join(',', @lfkeys) . ") REFERENCES $subsdesttable(" . join(',', @rfkeys) . ")";
 			$str .= " MATCH $state->[2]" if ($state->[2]);
