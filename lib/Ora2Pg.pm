@@ -53,6 +53,9 @@ our $pipe = undef;
 our $TMP_DIR = File::Spec->tmpdir() || '/tmp';
 our %ordered_views = ();
 
+# Character that must be escaped in COPY statement
+my $ESCAPE_COPY = { "\0" => "", "\\" => "\\\\", "\r" => "\\r", "\n" => "\\n", "\t" => "\\t"};
+
 # Oracle internal timestamp month equivalent
 our %ORACLE_MONTHS = ('JAN'=>'01', 'FEB'=>'02','MAR'=>'03','APR'=>'04','MAY'=>'05','JUN'=>'06','JUL'=>'07','AUG'=>'08','SEP'=>'09','OCT'=>10,'NOV'=>11,'DEC'=>12);
 
@@ -17024,14 +17027,8 @@ sub escape_copy
 	if ($self->{has_utf8_fct}) {
 		utf8::encode($col) if (!utf8::valid($col));
 	}
-	my $replacements = {
-		"\0" => "",
-		"\\" => "\\\\",
-		"\r" => "\\r",
-		"\n" => "\\n",
-		"\t" => "\\t",
-	};
-	$col =~ s/(\0|\\|\r|\n|\t)/$replacements->{$1}/egs;
+	# Escape some character for COPY output
+	$col =~ s/(\0|\\|\r|\n|\t)/$ESCAPE_COPY->{$1}/gs;
 	if (!$self->{noescape}) {
 		$col =~ s/\f/\\f/gs;
 		$col =~ s/([\1-\10\13-\14\16-\37])/sprintf("\\%03o", ord($1))/egs;
