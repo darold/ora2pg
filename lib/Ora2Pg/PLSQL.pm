@@ -1288,6 +1288,10 @@ sub replace_oracle_function
 		# Convert the call to the Oracle function add_years() into Pg syntax
 		$str =~ s/ADD_YEARS\s*\(([^,]+),\s*(\d+)\s*\)/$1 + '$2 year'::interval/si;
 		$str =~ s/ADD_YEARS\s*\(([^,]+),\s*([^,\(\)]+)\s*\)/$1 + $2*' year'::interval/si;
+
+		# Translate numtodsinterval Oracle function
+		$str =~ s/NUMTODSINTERVAL\s*\(\s*([^,]+)\s*,\s*([^\)]+)\s*\)/($1 * ('1'||$2)::interval)/is;
+
 	}
 
 	# Replace INSTR by POSITION
