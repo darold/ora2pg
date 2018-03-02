@@ -1290,7 +1290,7 @@ sub replace_oracle_function
 		$str =~ s/ADD_YEARS\s*\(([^,]+),\s*([^,\(\)]+)\s*\)/$1 + $2*' year'::interval/si;
 
 		# Translate numtodsinterval Oracle function
-		$str =~ s/NUMTODSINTERVAL\s*\(\s*([^,]+)\s*,\s*([^\)]+)\s*\)/($1 * ('1'||$2)::interval)/is;
+		$str =~ s/(?:NUMTODSINTERVAL|NUMTOYMINTERVAL)\s*\(\s*([^,]+)\s*,\s*([^\)]+)\s*\)/($1 * ('1'||$2)::interval)/is;
 
 	}
 
