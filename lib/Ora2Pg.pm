@@ -903,7 +903,7 @@ sub _init
 
 	# Set default system user/schema to not export. Most of them are extracted from this doc:
 	# http://docs.oracle.com/cd/E11882_01/server.112/e10575/tdpsg_user_accounts.htm#TDPSG20030
-	push(@{$self->{sysusers}},'SYSTEM','CTXSYS','DBSNMP','EXFSYS','LBACSYS','MDSYS','MGMT_VIEW','OLAPSYS','ORDDATA','OWBSYS','ORDPLUGINS','ORDSYS','OUTLN','SI_INFORMTN_SCHEMA','SYS','SYSMAN','WK_TEST','WKSYS','WKPROXY','WMSYS','XDB','APEX_PUBLIC_USER','DIP','FLOWS_020100','FLOWS_030000','FLOWS_040100','FLOWS_010600','FLOWS_FILES','MDDATA','ORACLE_OCM','SPATIAL_CSW_ADMIN_USR','SPATIAL_WFS_ADMIN_USR','XS$NULL','PERFSTAT','SQLTXPLAIN','DMSYS','TSMSYS','WKSYS','APEX_040200','DVSYS','OJVMSYS','GSMADMIN_INTERNAL','APPQOSSYS','DVSYS','DVF','AUDSYS','APEX_030200','MGMT_VIEW','ODM','ODM_MTR','TRACESRV','MTMSYS','OWBSYS_AUDIT','WEBSYS','WK_PROXY','OSE$HTTP$ADMIN','AURORA$JIS$UTILITY$','AURORA$ORB$UNAUTHENTICATED','DBMS_PRIVILEGE_CAPTURE');
+	push(@{$self->{sysusers}},'SYSTEM','CTXSYS','DBSNMP','EXFSYS','LBACSYS','MDSYS','MGMT_VIEW','OLAPSYS','ORDDATA','OWBSYS','ORDPLUGINS','ORDSYS','OUTLN','SI_INFORMTN_SCHEMA','SYS','SYSMAN','WK_TEST','WKSYS','WKPROXY','WMSYS','XDB','APEX_PUBLIC_USER','DIP','FLOWS_020100','FLOWS_030000','FLOWS_040100','FLOWS_010600','FLOWS_FILES','MDDATA','ORACLE_OCM','SPATIAL_CSW_ADMIN_USR','SPATIAL_WFS_ADMIN_USR','XS$NULL','PERFSTAT','SQLTXPLAIN','DMSYS','TSMSYS','WKSYS','APEX_040200','DVSYS','OJVMSYS','GSMADMIN_INTERNAL','APPQOSSYS','DVSYS','DVF','AUDSYS','APEX_030200','MGMT_VIEW','ODM','ODM_MTR','TRACESRV','MTMSYS','OWBSYS_AUDIT','WEBSYS','WK_PROXY','OSE$HTTP$ADMIN','AURORA$JIS$UTILITY$','AURORA$ORB$UNAUTHENTICATED','DBMS_PRIVILEGE_CAPTURE','CSMIG');
 
 	# Set default tablespace to exclude when using USE_TABLESPACE
 	push(@{$self->{default_tablespaces}}, 'TEMP', 'USERS','SYSTEM');
@@ -3074,7 +3074,7 @@ database and values are the text definitions of the views.
 
 It then sets the main hash as follows:
 
-    # Definition of the matérialized view
+    # Definition of the materialized view
     $self->{materialized_views}{text} = $mview_infos{$view};
 
 =cut
@@ -9387,6 +9387,8 @@ sub _get_dblink
 
 This function implements an Oracle-native job information.
 
+Reads together from view [ALL|DBA]_JOBS and from view [ALL|DBA]_SCHEDULER_JOBS.
+
 Returns a hash of job number with the connection they are based on.
 
 =cut
@@ -9412,6 +9414,26 @@ sub _get_job
 
 	my %data = ();
 	while (my $row = $sth->fetch) {
+		if (!$self->{schema} && $self->{export_schema}) {
+			$row->[0] = "$row->[3].$row->[0]";
+		}
+		$data{$row->[0]}{what} = $row->[1];
+		$data{$row->[0]}{interval} = $row->[2];
+	}
+
+	# Retrieve all database jobs from view [ALL|DBA]_SCHEDULER_JOBS
+	$str = "SELECT job_name AS JOB, job_action AS WHAT, repeat_interval AS INTERVAL, owner AS SCHEMA_USER";
+	$str .= " FROM $self->{prefix}_SCHEDULER_JOBS";
+	$str .= " WHERE repeat_interval IS NOT NULL";
+	$str .= " AND client_id IS NULL";
+	if (!$self->{schema}) {
+		$str .= " AND owner NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
+	} else {
+		$str .= " AND owner = '$self->{schema}'";
+	}
+	$sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	while ($row = $sth->fetch) {
 		if (!$self->{schema} && $self->{export_schema}) {
 			$row->[0] = "$row->[3].$row->[0]";
 		}
@@ -13511,7 +13533,7 @@ sub _show_infos
 		# Get Jobs
 		my %jobs = $self->_get_job();
 		$objects{'JOB'} = scalar keys %jobs;
-		# Get synonym inforamtion
+		# Get synonym information
 		my %synonyms = $self->_synonyms();
 		$objects{'SYNONYM'} = scalar keys %synonyms;	
 		# Get all global temporary tables
