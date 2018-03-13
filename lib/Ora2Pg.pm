@@ -1037,7 +1037,7 @@ sub _init
 			$self->{oracle_user} = $options{user};
 		} elsif (($k eq 'password') && $options{password}) {
 			$self->{oracle_pwd} = $options{password};
-		} elsif (($k eq 'mysql') && $options{mysql}) {
+		} elsif (($k eq 'is_mysql') && $options{is_mysql}) {
 			$self->{is_mysql} = $options{is_mysql};
 		} elsif ($options{$k} ne '') {
 			$self->{"\L$k\E"} = $options{$k};
@@ -1169,6 +1169,9 @@ sub _init
 		my @transl = split(/[,;]/, uc($self->{data_type}));
 		# Set default type conversion
 		%{$self->{data_type}} = %TYPE;
+		if ($self->{is_mysql}) {
+			%{$self->{data_type}} = %Ora2Pg::MySQL::MYSQL_TYPE;
+		}
 		# then set custom type conversion from the DATA_TYPE
 		# configuration directive 
 		foreach my $t (@transl) {
@@ -1184,6 +1187,9 @@ sub _init
 	} else {
 		# Set default type conversion
 		%{$self->{data_type}} = %TYPE;
+		if ($self->{is_mysql}) {
+			%{$self->{data_type}} = %Ora2Pg::MySQL::MYSQL_TYPE;
+		}
 	}
 
 	# Set some default

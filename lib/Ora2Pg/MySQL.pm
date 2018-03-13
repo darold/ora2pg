@@ -929,19 +929,19 @@ sub _sql_type
 
         # Overide the length
         $len = $precision if ( ((uc($type) eq 'NUMBER') || (uc($type) eq 'BIT')) && $precision );
-        if (exists $MYSQL_TYPE{uc($type)}) {
+        if (exists $self->{data_type}{uc($type)}) {
 		$type = uc($type); # Force uppercase
 		if ($len) {
 			if ( ($type eq "CHAR") || ($type =~ /VARCHAR/) ) {
 				# Type CHAR have default length set to 1
 				# Type VARCHAR(2) must have a specified length
 				$len = 1 if (!$len && ($type eq "CHAR"));
-                		return "$MYSQL_TYPE{$type}($len)";
+                		return "$self->{data_type}{$type}($len)";
 			} elsif ($type eq 'BIT') {
 				if ($precision) {
-					return "$MYSQL_TYPE{$type}($precision)";
+					return "$self->{data_type}{$type}($precision)";
 				} else {
-					return $MYSQL_TYPE{$type};
+					return $self->{data_type}{$type};
 				}
 			} elsif ($type =~ /(TINYINT|SMALLINT|MEDIUMINT|INTEGER|BIGINT|INT|REAL|DOUBLE|FLOAT|DECIMAL|NUMERIC)/i) {
 				# This is an integer
@@ -959,7 +959,7 @@ sub _sql_type
 						return "numeric($precision)";
 					} else {
 						# Most of the time interger should be enought?
-						return $MYSQL_TYPE{$type};
+						return $self->{data_type}{$type};
 					}
 				} else {
 					if ($precision) {
@@ -974,9 +974,9 @@ sub _sql_type
 					}
 				}
 			}
-			return $MYSQL_TYPE{$type};
+			return $self->{data_type}{$type};
 		} else {
-			return $MYSQL_TYPE{$type};
+			return $self->{data_type}{$type};
 		}
         }
 
@@ -997,7 +997,7 @@ sub replace_sql_type
 	$str =~ s/(CHAR|TEXT) BINARY/$1/gis;
 
 	# Replace type with precision
-	my $mysqltype_regex = join('|', keys %MYSQL_TYPE);
+	my $mysqltype_regex = join('|', keys %data_type);
 	while ($str =~ /(.*)\b($mysqltype_regex)\s*\(([^\)]+)\)/i) {
 		my $backstr = $1;
 		my $type = uc($2);
@@ -1021,7 +1021,7 @@ sub replace_sql_type
 			# Type CHAR have default length set to 1
 			# Type VARCHAR must have a specified length
 			$len = 1 if (!$len && ($type eq "CHAR"));
-			$str =~ s/\b$type\b\s*\([^\)]+\)/$MYSQL_TYPE{$type}\%\|$len\%\|\%/is;
+			$str =~ s/\b$type\b\s*\([^\)]+\)/$data_type{$type}\%\|$len\%\|\%/is;
 		} elsif ($precision && ($type =~ /(BIT|TINYINT|SMALLINT|MEDIUMINT|INTEGER|BIGINT|INT|REAL|DOUBLE|FLOAT|DECIMAL|NUMERIC)/)) {
 			if (!$scale) {
 				if ($type =~ /(BIT|TINYINT|SMALLINT|MEDIUMINT|INTEGER|BIGINT|INT)/) {
@@ -1037,13 +1037,13 @@ sub replace_sql_type
 						$str =~ s/\b$type\b\s*\([^\)]+\)/numeric\%\|$precision\%\|\%/i;
 					}
 				} else {
-					$str =~ s/\b$type\b\s*\([^\)]+\)/$MYSQL_TYPE{$type}\%\|$precision\%\|\%/is;
+					$str =~ s/\b$type\b\s*\([^\)]+\)/$data_type{$type}\%\|$precision\%\|\%/is;
 				}
 			} else {
 				if ($type =~ /DOUBLE/) {
 					$str =~ s/\b$type\b\s*\([^\)]+\)/decimal\%\|$args\%\|\%/is;
 				} else {
-					$str =~ s/\b$type\b\s*\([^\)]+\)/$MYSQL_TYPE{$type}\%\|$args\%\|\%/is;
+					$str =~ s/\b$type\b\s*\([^\)]+\)/$data_type{$type}\%\|$args\%\|\%/is;
 				}
 			}
 		} else {
@@ -1058,11 +1058,11 @@ sub replace_sql_type
 	# Replace datatype even without precision
 	my %recover_type = ();
 	my $i = 0;
-	foreach my $type (sort { length($b) <=> length($a) } keys %MYSQL_TYPE) {
+	foreach my $type (sort { length($b) <=> length($a) } keys %data_type) {
 		# Keep enum as declared, we are not in table definition
 		next if (uc($type) eq 'ENUM');
 		while ($str =~ s/\b$type\b/%%RECOVER_TYPE$i%%/is) {
-			$recover_type{$i} = $MYSQL_TYPE{$type};
+			$recover_type{$i} = $data_type{$type};
 			$i++;
 		}
 	}
