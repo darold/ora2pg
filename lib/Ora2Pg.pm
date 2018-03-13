@@ -2484,6 +2484,13 @@ sub read_schema_from_file
 								$c_default = Ora2Pg::PLSQL::convert_plsql_code($self, $c_default, %{$self->{data_type}});
 							}
 						}
+						if ($c_type =~ /date|timestamp/i && $c_default =~ /'0000-00-00/) {
+							if ($self->{replace_zero_date}) {
+								$c_default = $self->{replace_zero_date};
+							} else {
+								$c_default =~ s/^'0000-00-00/'1970-01-01/;
+							}
+						}
 						# COLUMN_NAME,DATA_TYPE,DATA_LENGTH,NULLABLE,DATA_DEFAULT,DATA_PRECISION,DATA_SCALE,CHAR_LENGTH,TABLE_NAME,OWNER,VIRTUAL_COLUMN,POSITION,AUTO_INCREMENT,SRID,SDO_DIM,SDO_GTYPE
 						push(@{$self->{tables}{$tb_name}{column_info}{$c_name}}, ($c_name, $c_type, $c_length, $c_nullable, $c_default, $c_length, $c_scale, $c_length, $tb_name, '', $virt_col, $pos, $auto_incr));
 					} elsif (uc($c_name) eq 'CONSTRAINT') {
@@ -6520,8 +6527,13 @@ CREATE TRIGGER ${table}_trigger_insert
 									if ($type =~ /CHAR|TEXT|ENUM/i) {
 										$f->[4] = "'$f->[4]'" if ($f->[4] !~ /'/);
 									} elsif ($type =~ /DATE|TIME/i) {
-										# do not use REPLACE_ZERO_DATE in default value, cause it can be NULL
-										$f->[4] =~ s/^0000-00-00.*/1970-01-01 00:00:00/;
+										if ($f->[4] =~ /0000-00-00/) {
+											if ($self->{replace_zero_date}) {
+												$f->[4] = $self->{replace_zero_date};
+											} else {
+												$f->[4] =~ s/^0000-00-00/1970-01-01/;
+											}
+										}
 										$f->[4] = "'$f->[4]'" if ($f->[4] =~ /^\d+/);
 									}
 								}
