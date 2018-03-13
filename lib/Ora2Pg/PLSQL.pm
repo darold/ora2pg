@@ -355,10 +355,18 @@ sub convert_plsql_code
 		foreach my $k (keys %{$class->{single_fct_call}}) {
 			$class->{single_fct_call}{$k} = replace_oracle_function($class, $class->{single_fct_call}{$k});
 			if ($class->{single_fct_call}{$k} =~ /^CAST\s*\(/i) {
-				$class->{single_fct_call}{$k} = replace_sql_type($class->{single_fct_call}{$k}, $class->{pg_numeric_type}, $class->{default_numeric}, $class->{pg_integer_type}, %data_type);
+				if (!$class->{is_mysql}) {
+					$class->{single_fct_call}{$k} = Ora2Pg::PLSQL::replace_sql_type($class->{single_fct_call}{$k}, $class->{pg_numeric_type}, $class->{default_numeric}, $class->{pg_integer_type}, %data_type);
+				} else {
+					$class->{single_fct_call}{$k} = Ora2Pg::MySQL::replace_sql_type($class->{single_fct_call}{$k}, $class->{pg_numeric_type}, $class->{default_numeric}, $class->{pg_integer_type}, %data_type);
+				}
 			}
 			if ($class->{single_fct_call}{$k} =~ /^CAST\s*\(.*\%\%REPLACEFCT(\d+)\%\%/i) {
-				$class->{single_fct_call}{$1} = replace_sql_type($class->{single_fct_call}{$1}, $class->{pg_numeric_type}, $class->{default_numeric}, $class->{pg_integer_type}, %data_type);
+				if (!$class->{is_mysql}) {
+					$class->{single_fct_call}{$1} = Ora2Pg::PLSQL::replace_sql_type($class->{single_fct_call}{$1}, $class->{pg_numeric_type}, $class->{default_numeric}, $class->{pg_integer_type}, %data_type);
+				} else {
+					$class->{single_fct_call}{$1} = Ora2Pg::MySQL::replace_sql_type($class->{single_fct_call}{$1}, $class->{pg_numeric_type}, $class->{default_numeric}, $class->{pg_integer_type}, %data_type);
+				}
 			}
 		}
 		while ($code_parts[$i] =~ s/\%\%REPLACEFCT(\d+)\%\%/$class->{single_fct_call}{$1}/) {};
@@ -717,7 +725,11 @@ sub plsql_to_plpgsql
 	}
 
 	# Replace type in sub block
-	$str =~ s/(BEGIN.*?DECLARE\s+)(.*?)(\s+BEGIN)/$1 . &replace_sql_type($2, $class->{pg_numeric_type}, $class->{default_numeric}, $class->{pg_integer_type}, %data_type) . $3/iges;
+	if (!$class->{is_mysql}) {
+		$str =~ s/(BEGIN.*?DECLARE\s+)(.*?)(\s+BEGIN)/$1 . Ora2Pg::PLSQL::replace_sql_type($2, $class->{pg_numeric_type}, $class->{default_numeric}, $class->{pg_integer_type}, %data_type) . $3/iges;
+	} else {
+		$str =~ s/(BEGIN.*?DECLARE\s+)(.*?)(\s+BEGIN)/$1 . Ora2Pg::MySQL::replace_sql_type($2, $class->{pg_numeric_type}, $class->{default_numeric}, $class->{pg_integer_type}, %data_type) . $3/iges;
+	}
 
 	# Remove any call to MDSYS schema in the code
 	$str =~ s/\bMDSYS\.//igs;
