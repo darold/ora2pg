@@ -2348,7 +2348,10 @@ sub read_schema_from_file
 			$self->{tables}{$tb_name}{table_info}{num_rows} = 0;
 			$tid++;
 			$self->{tables}{$tb_name}{internal_id} = $tid;
-
+			# Get table embedded comment
+			if ($tb_def =~ s/COMMENT=["']([^"']+)["']//is) {
+				$self->{tables}{$tb_name}{table_info}{comment} = $1;
+			}
 			$tb_def =~ s/^\(//;
 			my %fct_placeholder = ();
 			my $i = 0;
