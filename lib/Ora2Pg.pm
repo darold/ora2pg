@@ -1167,6 +1167,7 @@ sub _init
 	if ($self->{data_type}) {
 		$self->{data_type} =~ s/\\,/#NOSEP#/gs;
 		my @transl = split(/[,;]/, uc($self->{data_type}));
+		$self->{data_type} = ();
 		# Set default type conversion
 		%{$self->{data_type}} = %TYPE;
 		if ($self->{is_mysql}) {
