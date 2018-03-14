@@ -6521,8 +6521,12 @@ CREATE TRIGGER ${table}_trigger_insert
 						}
 					} else {
 						if (($f->[4] ne '') && ($self->{type} ne 'FDW')) {
-							if (($type eq 'boolean') && exists $self->{ora_boolean_values}{lc($f->[4])}) {
-								$sql_output .= " DEFAULT '" . $self->{ora_boolean_values}{lc($f->[4])} . "'";
+							if ($type eq 'boolean') {
+								foreach my $k (sort {$b cmp $a} %{ $self->{ora_boolean_values} }) {
+									if ($f->[4] =~ /\b$k\b/i) {
+										$sql_output .= " DEFAULT '" . $self->{ora_boolean_values}{$k} . "'";
+									}
+								}
 							} else {
 								if (($f->[4] !~ /^'/) && ($f->[4] =~ /[^\d\.]/)) {
 									if ($type =~ /CHAR|TEXT|ENUM/i) {
