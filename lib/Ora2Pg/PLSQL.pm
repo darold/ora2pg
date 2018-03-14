@@ -512,6 +512,9 @@ sub plsql_to_plpgsql
 	# Cast call to to_date with localtimestamp 
 	$str =~ s/(TO_DATE\($conv_current_time)\s*,/$1::text,/igs;
 
+	# Drop temporary doesn't exist in PostgreSQL
+	$str =~ s/DROP\s+TEMPORARY/DROP/gs;
+
 	# Replace SYSTIMESTAMP 
 	$str =~ s/\bSYSTIMESTAMP\b/CURRENT_TIMESTAMP/igs;
 	# remove FROM DUAL
@@ -2005,6 +2008,9 @@ sub mysql_to_plpgsql
 	$str =~ s/UNSIGNED\sINTEGER/bigint/g;
 	$str =~ s/UNSIGNED\sINT/bigint/g;
 	$str =~ s/UNSIGNED/bigint/g;
+
+	# Drop temporary doesn't exist in PostgreSQL
+	$str =~ s/DROP\s+TEMPORARY/DROP/gs;
 
 	# Remove extra parenthesis in join in some possible cases
 	# ... INNER JOIN(services s) ON ...
