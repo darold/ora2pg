@@ -740,6 +740,7 @@ sub _lookup_function
 	$fct_detail{declare} =~ s/\s+[^\s\:]+:\s*$//gs;
 
         @{$fct_detail{param_types}} = ();
+
         if ( ($fct_detail{declare} =~ s/(.*?)\b(FUNCTION|PROCEDURE)\s+([^\s\(]+)\s*(\(.*\))\s+RETURNS\s+(.*)//is) ||
         ($fct_detail{declare} =~ s/(.*?)\b(FUNCTION|PROCEDURE)\s+([^\s\(]+)\s*(\(.*\))//is) ) {
                 $fct_detail{before} = $1;
@@ -747,7 +748,9 @@ sub _lookup_function
                 $fct_detail{name} = $3;
                 $fct_detail{args} = $4;
 		my $tmp_returned = $5;
-
+		if ($tmp_returned =~ s/\b(DECLARE\b.*)//is) {
+			$fct_detail{code} = $1 . $fct_detail{code};
+		}
 		if ($fct_detail{declare} =~ s/\s*COMMENT\s+(\?TEXTVALUE\d+\?|'[^\']+')//) {
 			$fct_detail{comment} = $1;
 		}
