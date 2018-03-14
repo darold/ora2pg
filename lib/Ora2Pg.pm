@@ -8351,6 +8351,11 @@ END
 		if ( ($row->[1] eq 'NUMBER') && ($row->[6] eq '0') && ($row->[5] eq '') && ($row->[2] == 22) ) {
 			$row->[2] = 38;
 		}
+		
+		# Right trim Oracle default values
+		# A default text value is escaped with single quotes by Oracle, so a whitespace default is kept, e.g. "' ' " -> "' '".
+		# An explicitly unset default value is returned as "NULL " by Oracle and is trimmed to "NULL".
+		$row->[4] =~ s/\s+$//;
 
 		my $tmptable = $row->[8];
 		if ($self->{export_schema} && !$self->{schema}) {
