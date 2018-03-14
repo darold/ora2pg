@@ -836,7 +836,13 @@ sub replace_mysql_variables
 		if ($v =~ /'[^\']*'/) {
 			$self->{global_variables}{$n}{type} = 'varchar';
 		}
-		$self->{global_variables}{$n}{type} = 'timestamp' if ($n =~ /date|time/i);
+		if ($n =~ /datetime/i) {
+			$self->{global_variables}{$n}{type} = 'timestamp';
+		} elsif ($n =~ /time/i) {
+			$self->{global_variables}{$n}{type} = 'time';
+		} elsif ($n =~ /date/i) {
+			$self->{global_variables}{$n}{type} = 'date';
+		} 
 	}
 
 	my @to_be_replaced = ();
@@ -847,7 +853,13 @@ sub replace_mysql_variables
 		# Try to set a default type for the variable
 		my $type = 'integer';
 		$type = 'varchar' if ($v =~ /'[^']*'/);
-		$type = 'timestamp' if ($n =~ /date|time/i);
+		if ($n =~ /datetime/i) {
+			$type = 'timestamp';
+		} elsif ($n =~ /time/i) {
+			$type = 'time';
+		} elsif ($n =~ /date/i) {
+			$type = 'date';
+		} 
 		$declare .= "$n $type;\n" if ($declare !~ /\b$n $type;/s);
 		push(@to_be_replaced, $n);
 	}
@@ -859,7 +871,13 @@ sub replace_mysql_variables
 		# Try to set a default type for the variable
 		my $type = 'integer';
 		$type = 'varchar' if ($v =~ /'[^']*'/);
-		$type = 'timestamp' if ($n =~ /date|time/i);
+		if ($n =~ /datetime/i) {
+			$type = 'timestamp';
+		} elsif ($n =~ /time/i) {
+			$type = 'time';
+		} elsif ($n =~ /date/i) {
+			$type = 'date';
+		} 
 		$declare .= "$n $type;\n" if ($declare !~ /\b$n $type;/s);
 		push(@to_be_replaced, $n);
 	}
@@ -874,7 +892,13 @@ sub replace_mysql_variables
 		my $n = $1;
 		# Try to set a default type for the variable
 		my $type = 'varchar';
-		$type = 'timestamp' if ($n =~ /date|time/i);
+		if ($n =~ /datetime/i) {
+			$type = 'timestamp';
+		} elsif ($n =~ /time/i) {
+			$type = 'time';
+		} elsif ($n =~ /date/i) {
+			$type = 'date';
+		} 
 		$declare .= "$n $type;\n" if ($declare !~ /\b$n $type;/s);
 		# Fix other call to the same variable in the code
 		$code =~ s/\@$n\b/$n/gs;
