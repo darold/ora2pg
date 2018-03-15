@@ -2320,6 +2320,10 @@ sub read_schema_from_file
 
 	foreach $content (@statements) {
 		$content .= ';';
+
+		# Remove some unwanted and unused keywords from the statements
+		$content =~ s/\s+(PARALLEL|COMPRESS)\b//igs;
+
 		if ($content =~ s/TRUNCATE TABLE\s+([^\s;]+)([^;]*);//is) {
 			my $tb_name = $1;
 			$tb_name =~ s/"//gs;
@@ -2403,7 +2407,7 @@ sub read_schema_from_file
 						my $c_default = '';
 						my $virt_col = 'NO';
 						$c =~ s/\s+ENABLE//is;
-						if ($c =~ s/\b(GENERATED ALWAYS AS|AS)\s+([^\n]+),//is) {
+						if ($c =~ s/\b(GENERATED ALWAYS AS|AS)\s+(.*)//is) {
 							$virt_col = 'YES';
 							$c_default = $2;
 							$c_default =~ s/\s+VIRTUAL//is;
