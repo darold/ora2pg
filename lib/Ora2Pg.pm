@@ -224,6 +224,7 @@ our %TYPE = (
 	# use blob (large object)
 	'RAW' => 'bytea',
 	'ROWID' => 'oid',
+	'UROWID' => 'oid',
 	'FLOAT' => 'double precision',
 	'DEC' => 'decimal',
 	'DECIMAL' => 'decimal',

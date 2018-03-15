@@ -87,6 +87,7 @@ $QUERY_TEST_SCORE = 0.1;
 	'ISOPEN' => 1,
 	'ROWCOUNT' => 1,
 	'ROWID' => 2,
+	'UROWID' => 2,
 	'IS RECORD' => 1,
 	'SQLCODE' => 1,
 	'TABLE' => 2,
@@ -1792,7 +1793,7 @@ sub replace_sql_type
 	$str =~ s/\bSTRING\b/VARCHAR/igs;
 	$str =~ s/\bVARCHAR(\s*(?!\())/text$1/igs;
 
-	foreach my $t ('DATE','LONG RAW','LONG','NCLOB','CLOB','BLOB','BFILE','RAW','ROWID','FLOAT','DOUBLE PRECISION','INTEGER','INT','REAL','SMALLINT','BINARY_FLOAT','BINARY_DOUBLE','BINARY_INTEGER','BOOLEAN','XMLTYPE','SDO_GEOMETRY') {
+	foreach my $t ('DATE','LONG RAW','LONG','NCLOB','CLOB','BLOB','BFILE','RAW','ROWID','UROWID','FLOAT','DOUBLE PRECISION','INTEGER','INT','REAL','SMALLINT','BINARY_FLOAT','BINARY_DOUBLE','BINARY_INTEGER','BOOLEAN','XMLTYPE','SDO_GEOMETRY') {
 		$str =~ s/\b$t\b/$data_type{$t}/igs;
 	}
 
@@ -1873,6 +1874,8 @@ sub estimate_cost
 	$cost_details{'NOTFOUND'} += $n;
 	$n = () = $str =~ m/\bROWID\b/igs;
 	$cost_details{'ROWID'} += $n;
+	$n = () = $str =~ m/\bUROWID\b/igs;
+	$cost_details{'UROWID'} += $n;
 	$n = () = $str =~ m/\bSQLSTATE\b/igs;
 	$cost_details{'SQLCODE'} += $n;
 	$n = () = $str =~ m/\bIS RECORD\b/igs;
