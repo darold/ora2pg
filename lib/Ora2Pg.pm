@@ -2357,7 +2357,7 @@ sub read_schema_from_file
 			my %fct_placeholder = ();
 			my $i = 0;
 			#while ($tb_def =~ s/((?:ENUM|IN|TO_DATE|TO_CHAR|UPPER|LOWER|NVL)\s*\([^\(\)]+\))/\%\%FCT$i\%\%/is) {
-			while ($tb_def =~ s/(\([^\(\)]+\))/\%\%FCT$i\%\%/is) {
+			while ($tb_def =~ s/(\([^\(\)]*\))/\%\%FCT$i\%\%/is) {
 				$fct_placeholder{$i} = $1;
 				$i++;
 			};
