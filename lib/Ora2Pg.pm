@@ -11664,6 +11664,7 @@ sub _convert_package
 
 	if ($self->{package_as_schema} && ($plsql =~ /PACKAGE\s+BODY\s*([^\s]+)(?:\s*\%ORA2PG_COMMENT\d+\%)*\s*(AS|IS)\s*/is)) {
 		my $pname =  $self->quote_object_name($1);
+		$pname =~ s/^[^\.]+\.//;
 		$content .= "\nDROP SCHEMA $self->{pg_supports_ifexists} $pname CASCADE;\n";
 		$content .= "CREATE SCHEMA $pname;\n";
 		if ($self->{force_owner}) {
