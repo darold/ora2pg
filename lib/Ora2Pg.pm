@@ -324,6 +324,8 @@ our %BOOLEAN_MAP = (
 	'false' => 'f',
 	'enabled'=> 't',
 	'disabled'=> 'f',
+	't' => 't',
+	'f' => 'f',
 );
 
 our @GRANTS = (
@@ -6519,14 +6521,20 @@ CREATE TRIGGER ${table}_trigger_insert
 						foreach my $c (keys %{$self->{tables}{$table}{column_info}}) {
 							$virtual_trigger_info{$table}{$k} =~ s/\b$c\b/NEW.$c/gs;
 						}
+
 					} else {
+
 						if (($f->[4] ne '') && ($self->{type} ne 'FDW')) {
 							if ($type eq 'boolean') {
+								my $found = 0;
 								foreach my $k (sort {$b cmp $a} %{ $self->{ora_boolean_values} }) {
 									if ($f->[4] =~ /\b$k\b/i) {
 										$sql_output .= " DEFAULT '" . $self->{ora_boolean_values}{$k} . "'";
+										$found = 1;
+										last;
 									}
 								}
+								 $sql_output .= " DEFAULT " . $f->[4] if (!$found);
 							} else {
 								if (($f->[4] !~ /^'/) && ($f->[4] =~ /[^\d\.]/)) {
 									if ($type =~ /CHAR|TEXT|ENUM/i) {
