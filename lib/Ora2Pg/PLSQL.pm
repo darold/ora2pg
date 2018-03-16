@@ -2727,7 +2727,7 @@ sub replace_outer_join
 		$from_clause =~ s/^\s*,\s*//s;
 
 		# Append tables to from clause that was not involved into an outer join
-		foreach my $a (keys %from_clause_list) {
+		foreach my $a (sort keys %from_clause_list) {
 			my $table_decl = "$from_clause_list{$a}";
 			$table_decl .= " $a" if ($a ne $from_clause_list{$a});
 			# Remove comment before searching it inside the from clause
