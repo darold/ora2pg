@@ -3716,7 +3716,7 @@ sub _get_sql_data
 					$sql_output .= " IS E'" . $self->{views}{$view}{comment} . "';\n\n";
 				}
 
-				foreach $f (keys %{$self->{views}{$view}{column_comments}}) {
+				foreach $f (sort keys %{$self->{views}{$view}{column_comments}}) {
 					next unless $self->{views}{$view}{column_comments}{$f};
 					$self->{views}{$view}{column_comments}{$f} =~ s/'/''/gs;
 					# Change column names
@@ -6613,7 +6613,7 @@ CREATE TRIGGER ${table}_trigger_insert
 
 		# Add comments on columns
 		if (!$self->{disable_comment}) {
-			foreach $f (keys %{$self->{tables}{$table}{column_comments}}) {
+			foreach $f (sort keys %{$self->{tables}{$table}{column_comments}}) {
 				next unless $self->{tables}{$table}{column_comments}{$f};
 				$self->{tables}{$table}{column_comments}{$f} =~ s/'/''/gs;
 				# Change column names
@@ -7147,7 +7147,7 @@ sub _create_indexes
 	my @out = ();
 	my @fts_out = ();
 	# Set the index definition
-	foreach my $idx (keys %indexes) {
+	foreach my $idx (sort keys %indexes) {
 
 		# Cluster, bitmap join, reversed and IOT indexes will not be exported at all
 		# Hash indexes will be exported as btree
@@ -7213,7 +7213,7 @@ sub _create_indexes
 		my $columnlist = '';
 		my $skip_index_creation = 0;
 
-		foreach my $consname (keys %{$self->{$objtyp}{$tbsaved}{unique_key}}) {
+		foreach my $consname (sort keys %{$self->{$objtyp}{$tbsaved}{unique_key}}) {
 			my $constype =  $self->{$objtyp}{$tbsaved}{unique_key}->{$consname}{type};
 			next if (($constype ne 'P') && ($constype ne 'U'));
 			my @conscols = @{$self->{$objtyp}{$tbsaved}{unique_key}->{$consname}{columns}};
