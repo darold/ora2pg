@@ -2623,6 +2623,11 @@ sub replace_outer_join
 			my $table_decl1 = $l;
 			if ($l =~ /^([^\.]+)\..*/) {
 				$lbl1 = lc($1);
+				# If the table/alias is not part of the from clause
+				if (!exists $from_clause_list{$lbl1}) {
+					$from_clause_list{$lbl1} = $lbl1;
+					$from_order{$lbl1} = $fidx++;
+				}
 				$table_decl1 = $from_clause_list{$lbl1};
 				$table_decl1 .= " $lbl1" if ($lbl1 ne $from_clause_list{$lbl1});
 			}
@@ -2634,6 +2639,11 @@ sub replace_outer_join
 				if (!$lbl1) {
 					push(@{$other_join_clause{$lbl2}}, "$l $o $r");
 					next;
+				}
+				# If the table/alias is not part of the from clause
+				if (!exists $from_clause_list{$lbl2}) {
+					$from_clause_list{$lbl2} = $lbl2;
+					$from_order{$lbl2} = $fidx++;
 				}
 				$table_decl2 = $from_clause_list{$lbl2};
 				$table_decl2 .= " $lbl2" if ($lbl2 ne $from_clause_list{$lbl2});
