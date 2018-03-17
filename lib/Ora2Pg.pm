@@ -969,7 +969,7 @@ sub _init
 	$self->{synchronous_commit} ||= 0;
 
 	# Disallow NOLOGGING / UNLOGGED table creation
-	$self->{disable_nologging} ||= 0;
+	$self->{disable_unlogged} ||= 0;
 
 	# Mark function as STABLE by default
 	if (not defined $self->{function_stable} || $self->{function_stable} ne '0') {
@@ -6374,10 +6374,12 @@ CREATE TRIGGER ${table}_trigger_insert
 		if ( ($self->{type} eq 'FDW') || ($self->{external_to_fdw} && (grep(/^$table$/i, keys %{$self->{external_table}}) || $self->{tables}{$table}{table_info}{connection})) ) {
 			$foreign = ' FOREIGN';
 		}
+
 		my $obj_type = $self->{tables}{$table}{table_info}{type} || 'TABLE';
-		if ( ($obj_type eq 'TABLE') && $self->{tables}{$table}{table_info}{nologging} && !$self->{disable_nologging} ) {
+		if ( ($obj_type eq 'TABLE') && $self->{tables}{$table}{table_info}{nologging} && !$self->{disable_unlogged} ) {
 			$obj_type = 'UNLOGGED ' . $obj_type;
 		}
+
 		if (exists $self->{tables}{$table}{table_as}) {
 			if ($self->{plsql_pgsql}) {
 				$self->{tables}{$table}{table_as} = Ora2Pg::PLSQL::convert_plsql_code($self, $self->{tables}{$table}{table_as}, %{$self->{data_type}});
@@ -14099,7 +14101,7 @@ sub _show_infos
 			if (exists $externals{$t}) {
 				$kind = ' EXTERNAL';
 			}
-			if ($tables_infos{$t}{nologging} && !$self->{disable_nologging}) {
+			if ($tables_infos{$t}{nologging} && !$self->{disable_unlogged}) {
 				$kind .= ' UNLOGGED';
 			}
 			my $tname = $t;
