@@ -896,6 +896,9 @@ sub _init
 	# Storage of string constant placeholder regexp
 	$self->{string_constant_regexp} = ();
 
+	# Counter for outer join replacement
+	$self->{outerjoin_idx} = 0;
+
 	# Initialyze following configuration file
 	foreach my $k (sort keys %AConfig) {
 		if (lc($k) eq 'allow') {
@@ -964,6 +967,9 @@ sub _init
 
 	# Disable synchronous commit for pg data load
 	$self->{synchronous_commit} ||= 0;
+
+	# Disallow NOLOGGING / UNLOGGED table creation
+	$self->{disable_nologging} ||= 0;
 
 	# Mark function as STABLE by default
 	if (not defined $self->{function_stable} || $self->{function_stable} ne '0') {
@@ -6369,7 +6375,7 @@ CREATE TRIGGER ${table}_trigger_insert
 			$foreign = ' FOREIGN';
 		}
 		my $obj_type = $self->{tables}{$table}{table_info}{type} || 'TABLE';
-		if ( ($obj_type eq 'TABLE') && $self->{tables}{$table}{table_info}{nologging}) {
+		if ( ($obj_type eq 'TABLE') && $self->{tables}{$table}{table_info}{nologging} && !$self->{disable_nologging} ) {
 			$obj_type = 'UNLOGGED ' . $obj_type;
 		}
 		if (exists $self->{tables}{$table}{table_as}) {
@@ -14093,7 +14099,7 @@ sub _show_infos
 			if (exists $externals{$t}) {
 				$kind = ' EXTERNAL';
 			}
-			if ($tables_infos{$t}{nologging}) {
+			if ($tables_infos{$t}{nologging} && !$self->{disable_nologging}) {
 				$kind .= ' UNLOGGED';
 			}
 			my $tname = $t;

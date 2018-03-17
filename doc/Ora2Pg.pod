@@ -1374,6 +1374,13 @@ enable this directive. Ora2Pg will export all data into the main table name.
 Default is to use partitioning, Ora2Pg will export data from each partition
 and import them into the PostgreSQL dedicated partition table.
 
+=item DISABLE_UNLOGGED
+
+By default Ora2Pg export Oracle tables with the NOLOGGING attribute as
+UNLOGGED tables. You may want to fully disable this feature because
+you will lost all data from unlogged table in case of PostgreSQL crash.
+Set it to 1 to export all tables as normal table.
+
 =back
 
 =head2 Oracle Spatial to PostGis

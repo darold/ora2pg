@@ -613,6 +613,7 @@ sub make_config_generic
 		$conf_arr->[$i] =~ s/^AUTODETECT_SPATIAL_TYPE.*0/AUTODETECT_SPATIAL_TYPE\t1/;
 		$conf_arr->[$i] =~ s/^NO_LOB_LOCATOR.*/NO_LOB_LOCATOR\t0/;
 		$conf_arr->[$i] =~ s/^FTS_INDEX_ONLY.*0/FTS_INDEX_ONLY\t1/;
+		$conf_arr->[$i] =~ s/^DISABLE_UNLOGGED.*0/DISABLE_UNLOGGED\t1/;
 		if ($DSN) {
 			$conf_arr->[$i] =~ s/^ORACLE_DSN.*/ORACLE_DSN\t$DSN/;
 		}

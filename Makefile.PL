@@ -596,6 +596,12 @@ ORA_RESERVED_WORDS	audit,comment
 # word for PostgreSQL. Ora2Pg will double quote the name of the object. 
 USE_RESERVED_WORDS	0
 
+# By default Ora2Pg export Oracle tables with the NOLOGGING attribute as
+# UNLOGGED tables. You may want to fully disable this feature because
+# you will lost all data from unlogged table in case of PostgreSQL crash.
+# Set it to 1 to export all tables as normal table.
+DISABLE_UNLOGGED	0
+
 #------------------------------------------------------------------------------
 # OUTPUT SECTION (Control output to file or PostgreSQL database)
 #------------------------------------------------------------------------------
