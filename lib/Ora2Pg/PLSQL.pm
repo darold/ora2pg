@@ -314,6 +314,12 @@ sub convert_plsql_code
 
 	return if ($str eq '');
 
+	# Replace outer join sign (+) with a placeholder
+	$class->{outerjoin_idx} //= 0;
+	while ( $str =~ s/\(\+\)/\%OUTERJOIN$class->{outerjoin_idx}\%/s ) {
+		$class->{outerjoin_idx}++;
+	}
+
 	# Do some initialization of variables
 	%{$class->{single_fct_call}} = ();
 	$class->{replace_out_params} = '';
@@ -335,7 +341,7 @@ sub convert_plsql_code
 			$code_parts[$i] = Ora2Pg::MySQL::replace_if($code_parts[$i]);
 		}
 
-		# Remove parenthesis from funtion parameters when they not belong to a function call
+		# Remove parenthesis from function parameters when they not belong to a function call
 		my %subparams = ();
 		my $p = 0;
 		while ($code_parts[$i] =~ s/(\(\s*)(\([^\(\)]*\))(\s*,)/$1\%SUBPARAMS$p\%$3/is) {
@@ -345,6 +351,23 @@ sub convert_plsql_code
 		while ($code_parts[$i] =~ s/(,\s*)(\([^\(\)]*\))(\s*[\),])/$1\%SUBPARAMS$p\%$3/is) {
 			$subparams{$p} = $2;
 			$p++;
+		}
+
+		# Remove some noisy parenthesis for outer join replacement
+		if ($code_parts[$i] =~ /\%OUTERJOIN\d+\%/) {
+			my %tmp_ph = ();
+			my $idx = 0;
+			while ($code_parts[$i] =~ s/\(([^\(\)]*\%OUTERJOIN\d+\%[^\(\)]*)\)/\%SUBPART$idx\%/s) {
+				$tmp_ph{$idx} = $1;
+				$idx++;
+			}
+			foreach my $k (keys %tmp_ph) {
+				if ($tmp_ph{$k} =~ /^\s*[^\s]+\s*(=|NOT LIKE|LIKE)\s*[^\s]+\s*$/i) {
+					$code_parts[$i] =~ s/\%SUBPART$k\%/$tmp_ph{$k}/s;
+				} else {
+					$code_parts[$i] =~ s/\%SUBPART$k\%/\($tmp_ph{$k}\)/s;
+				}
+			}
 		}
 
 		%{$class->{single_fct_call}} = ();
@@ -416,11 +439,20 @@ sub extract_function_code
 		my $space = '';
 		$space = ' ' if (grep (/^$fct_name$/i, 'FROM', 'AS', 'VALUES', 'DEFAULT', 'OR', 'AND', 'IN', 'SELECT', 'OVER', 'WHERE', 'THEN', 'IF', 'ELSIF', 'ELSE', 'EXISTS', 'ON'));
 
+		# Move up any outer join inside a function otherwise it will not be detected
+		my $outerjoin = '';
+		if ($fct_code =~ /\%OUTERJOIN(\d+)\%/s) {
+			my $idx_join = $1;
+			# only if the placeholder content is a function not a predicate
+			if ($fct_code !~ /(=|>|<|LIKE|NULL|BETWEEN)/i) {
+				$fct_code =~ s/\%OUTERJOIN$idx_join\%//s;
+				$outerjoin = "\%OUTERJOIN$idx_join\%";
+			}
+		}
                 # recursively replace function
-                $class->{single_fct_call}{$idx} = $fct_name . $space . '(' . $fct_code . ')';
+                $class->{single_fct_call}{$idx} = $fct_name . $space . '(' . $fct_code . ')' . $outerjoin;
                 $code = extract_function_code($class, $code, ++$idx);
         }
-
 
         return $code;
 }
@@ -738,9 +770,6 @@ sub plsql_to_plpgsql
 	# Remove any call to MDSYS schema in the code
 	$str =~ s/\bMDSYS\.//igs;
 
-	# Replace outer join sign (+) with a placeholder
-	$str =~ s/\(\+\)/\%OUTERJOIN\%/gs;
-
 	# Oracle doesn't require parenthesis after VALUES, PostgreSQL has
 	# similar proprietary syntax but parenthesis are mandatory
 	$str =~ s/(INSERT\s+INTO\s+(?:.*?)\s+VALUES\s+)([^\(\)\s]+)\s*;/$1\($2.*\);/igs;
@@ -818,8 +847,8 @@ sub plsql_to_plpgsql
 
 	$str = remove_extra_parenthesis($str);
 
-	# Replace outer join sign (+) with a placeholder
-	$str =~ s/\%OUTERJOIN\%/\(\+\)/igs;
+	# Restore non converted outer join
+	#$str =~ s/\%OUTERJOIN\d+\%/\(\+\)/igs;
 
 	# Replace call to SQL%ROWCOUNT
 	$str =~ s/([^\s]+)\s*:=\s*SQL\%ROWCOUNT/GET DIAGNOSTICS $1 = ROW_COUNT/igs;
@@ -1000,15 +1029,14 @@ sub extract_subpart
 	}
 	my @done = ();
 	foreach my $k (sort { $b <=> $a } %{$class->{sub_parts}}) {
-		if ($class->{sub_parts}{$k} =~ /\%OUTERJOIN\%/ && $class->{sub_parts}{$k} !~ /\b(SELECT|FROM|WHERE)\b/i) {
-			$$str =~ s/\%SUBQUERY$k\%/$class->{sub_parts}{$k}/s;
+		if ($class->{sub_parts}{$k} =~ /\%OUTERJOIN\d+\%/ && $class->{sub_parts}{$k} !~ /\b(SELECT|FROM|WHERE)\b/i) {
+			$$str =~ s/\%SUBQUERY$k\%/\($class->{sub_parts}{$k}\)/s;
 			push(@done, $k);
 		}
 	}
 	foreach (@done) {
 		delete $class->{sub_parts}{$_};
 	}
-
 }
 
 
@@ -2535,15 +2563,12 @@ sub replace_outer_join
 
 	# When we have a right outer join, just rewrite it as a left join to simplify the translation work
 	if ($type eq 'right') {
-		$str =~ s/(\s+)([^\s]+)\s*(\%OUTERJOIN\%)\s*(!=|<>|>=|<=|=|>|<|NOT LIKE|LIKE)\s*([^\s]+)/$1$5 $4 $2$3/isg;
+		$str =~ s/(\s+)([^\s]+)\s*(\%OUTERJOIN\d+\%)\s*(!=|<>|>=|<=|=|>|<|NOT LIKE|LIKE)\s*([^\s]+)/$1$5 $4 $2$3/isg;
 		return $str;
 	}
 
-	#my $regexp1 = qr/(\%OUTERJOIN\%\s*(?:!=|<>|>=|<=|=|>|<|NOT LIKE|LIKE))/is;
-	#my $regexp2 = qr/(?:!=|<>|>=|<=|=|>|<|NOT LIKE|LIKE)\s*[^\s]+\s*\%OUTERJOIN\%/is;
-
-	my $regexp1 = qr/((?:!=|<>|>=|<=|=|>|<|NOT LIKE|LIKE)\s*[^\s]+\s*\%OUTERJOIN\%)/is;
-	my $regexp2 = qr/\%OUTERJOIN\%\s*(?:!=|<>|>=|<=|=|>|<|NOT LIKE|LIKE)/is;
+	my $regexp1 = qr/((?:!=|<>|>=|<=|=|>|<|NOT LIKE|LIKE)\s*[^\s]+\s*\%OUTERJOIN\d+\%)/is;
+	my $regexp2 = qr/\%OUTERJOIN\d+\%\s*(?:!=|<>|>=|<=|=|>|<|NOT LIKE|LIKE)/is;
 
 	# process simple form of outer join
 	my $nbouter = $str =~ $regexp1;
@@ -2593,23 +2618,18 @@ sub replace_outer_join
 		my %other_join_clause = ();
 		# Process only predicat with a obsolete join syntax (+) for now
 		for (my $i = 0; $i <= $#predicat; $i++) {
-			next if ($predicat[$i] !~ /\%OUTERJOIN\%/i);
+			next if ($predicat[$i] !~ /\%OUTERJOIN\d+\%/i);
 			my $where_clause = $predicat[$i];
 			$where_clause =~ s/"//gs;
 			$where_clause =~ s/^\s+//s;
 			$where_clause =~ s/[\s;]+$//s;
-			$where_clause =~ s/\s*\%OUTERJOIN\%//gs;
+			$where_clause =~ s/\s*(\%OUTERJOIN\d+\%)//gs;
 
 			$predicat[$i] = "WHERE_CLAUSE$id ";
 
 			# Split the predicat to retrieve left part, operator and right part
 			my ($l, $o, $r) = split(/\s*(!=|>=|<=|=|<>|<|>|NOT LIKE|LIKE)\s*/i, $where_clause);
-			# When the part of the clause are not single fields move them
-			# at their places in the WHERE clause and go to next predicat
-			#if (($l !~ /^[^\.]+\.[^\s]+$/s) || ($r !~ /^[^\.]+\.[^\s]+$/s)) {
-			#	$predicat[$i] =~ s/WHERE_CLAUSE$id / $l $o $r /s;
-			#	next;
-			#}
+
 			# NEW / OLD pseudo table in triggers can not be part of a join
 			# clause. Move them int to the WHERE clause.
 			if ($l =~ /^(NEW|OLD)\./is) {
@@ -2630,6 +2650,22 @@ sub replace_outer_join
 				}
 				$table_decl1 = $from_clause_list{$lbl1};
 				$table_decl1 .= " $lbl1" if ($lbl1 ne $from_clause_list{$lbl1});
+			} elsif ($l =~ /\%SUBQUERY(\d+)\%/) {
+				# Search for table.column in the subquery or function code
+				my $tmp_str = $l;
+				while ($tmp_str =~ s/\%SUBQUERY(\d+)\%/$class->{sub_parts}{$1}/is) {
+					if ($tmp_str =~ /\b(\w+)\.\w+/) {
+						$lbl1 = lc($1);
+						# If the table/alias is not part of the from clause
+						if (!exists $from_clause_list{$lbl1}) {
+							$from_clause_list{$lbl1} = $lbl1;
+							$from_order{$lbl1} = $fidx++;
+						}
+						$table_decl1 = $from_clause_list{$lbl1};
+						$table_decl1 .= " $lbl1" if ($lbl1 ne $from_clause_list{$lbl1});
+						last;
+					}
+				}
 			}
 			# Extract the tablename part of the right clause
 			my $lbl2 = '';
@@ -2648,8 +2684,24 @@ sub replace_outer_join
 				$table_decl2 = $from_clause_list{$lbl2};
 				$table_decl2 .= " $lbl2" if ($lbl2 ne $from_clause_list{$lbl2});
 			} elsif ($lbl1) {
-				push(@{$other_join_clause{$lbl1}}, "$l $o $r");
-				next;
+				# Search for table.column in the subquery or function code
+				my $tmp_str = $r;
+				while ($tmp_str =~ s/\%SUBQUERY(\d+)\%/$class->{sub_parts}{$1}/is) {
+					if ($tmp_str =~ /\b(\w+)\.\w+/) {
+						$lbl2 = lc($1);
+						# If the table/alias is not part of the from clause
+						if (!exists $from_clause_list{$lbl2}) {
+							$from_clause_list{$lbl2} = $lbl2;
+							$from_order{$lbl2} = $fidx++;
+						}
+						$table_decl2 = $from_clause_list{$lbl2};
+						$table_decl2 .= " $lbl2" if ($lbl2 ne $from_clause_list{$lbl2});
+					}
+				}
+				if (!$lbl2 ) {
+					push(@{$other_join_clause{$lbl1}}, "$l $o $r");
+					next;
+				}
 			}
 
 			# When this is the first join parse add the left tablename
