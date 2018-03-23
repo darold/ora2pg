@@ -2924,7 +2924,7 @@ sub replace_connect_by
 		}
 		@prior_clause = @rebuild_prior;
 		# Remove table aliases from prior clause
-		map { s/\s*PRIOR\s*//s; s/[^\.]+\.//s; } @prior_clause;
+		map { s/\s*PRIOR\s*//s; s/[^\s\.=<>!]+\.//s; } @prior_clause;
 	}
 	my $bkup_query = $str;
 	# Construct the initialization query
