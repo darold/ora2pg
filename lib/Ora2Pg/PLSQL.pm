@@ -2835,6 +2835,12 @@ sub replace_connect_by
 		$siblings = 1;
 	}
 
+	# Extract UNION part of the query to past it at end
+	my $union = '';
+	if ($str =~ s/(CONNECT BY.*)(\s+UNION\s+.*)/$1/is) {
+		$union = $2;
+	}
+	
 	# Extract order by to past it to the query at end
 	my $order_by = '';
 	if ($str =~ s/\s+ORDER BY(.*)//is) {
@@ -3063,7 +3069,7 @@ sub replace_connect_by
 		$order_by =~ s/^, //s;
 		$order_by = " ORDER BY $order_by";
 	}
-	$final_query .= "\n) SELECT * FROM cte$where_clause$group_by$order_by;\n";
+	$final_query .= "\n) SELECT * FROM cte$where_clause$union$group_by$order_by;\n";
 
 	return $final_query;
 }
