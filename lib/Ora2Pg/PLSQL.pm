@@ -1437,7 +1437,7 @@ sub replace_out_param_call
 							}
 							$replace_out_parm{$idx} = "$fname(";
 							# Extract position of out parameters
-							my @params = split(/,/, $class->{function_metadata}{$sch}{$p}{$k}{metadata}{args});
+							my @params = split(/\s*,\s*/, $class->{function_metadata}{$sch}{$p}{$k}{metadata}{args});
 							my @cparams = split(/\s*,\s*/, $fparam);
 							my $call_params = '';
 							my @out_pos = ();
@@ -1446,17 +1446,19 @@ sub replace_out_param_call
 								if (!$class->{is_mysql} && $params[$i] =~ /\s*([^\s]+)\s+(OUT|INOUT)\s/is) {
 									push(@out_fields, $1);
 									push(@out_pos, $i);
-									$call_params .= "$cparams[$i], " if ($params[$i] =~ /\bINOUT\b/is);
+									$call_params .= $cparams[$i] if ($params[$i] =~ /\bINOUT\b/is);
 								} elsif ($class->{is_mysql} && $params[$i] =~ /\s*(OUT|INOUT)\s+([^\s]+)\s/is) {
 									push(@out_fields, $2);
 									push(@out_pos, $i);
-									$call_params .= "$cparams[$i], " if ($params[$i] =~ /\bINOUT\b/is);
+									$call_params .= $cparams[$i] if ($params[$i] =~ /\bINOUT\b/is);
 								} else {
-									$call_params .= "$cparams[$i], ";
+									$call_params .= $cparams[$i];
 								}
+								$call_params .= ", " if ($i < $#params);
 							}
 							map { s/^\(//; } @out_fields;
-							$call_params =~ s/, $//;
+							$call_params =~ s/(\s*,\s*)+$//s;
+							while ($call_params =~ s/\s*,\s*,\s*/, /s) {};
 							$replace_out_parm{$idx} .= "$call_params)";
 							my @out_param = ();
 							foreach my $i (@out_pos) {
