@@ -15781,6 +15781,7 @@ sub limit_to_objects
 						next;
 					}
 					$str .= "upper($colname) LIKE \U'$self->{limited}{$arr_type[$i]}->[$j]'\E";
+					$str .= "\n" if ($j % 4 == 0);
 					if ($j < $#{$self->{limited}{$arr_type[$i]}}) {
 						$str .= " OR ";
 					}
@@ -15797,6 +15798,7 @@ sub limit_to_objects
 					} else {
 						$str .= "REGEXP_LIKE(upper($colname),'\^$self->{limited}{$arr_type[$i]}->[$j]\$')" ;
 					}
+					$str .= "\n" if ($j % 4 == 0);
 					if ($j < $#{$self->{limited}{$arr_type[$i]}}) {
 						$str .= " OR ";
 					}
@@ -15812,6 +15814,7 @@ sub limit_to_objects
 					for (my $j = 0; $j <= $#{$self->{limited}{$arr_type[$i]}}; $j++) {
 						next if ($self->{limited}{$arr_type[$i]}->[$j] !~ /^\!(.+)/);
 						$str .= " AND upper($colname) NOT LIKE \U'$1'\E";
+						$str .= "\n" if ($j % 4 == 0);
 					}
 				} else {
 					for (my $j = 0; $j <= $#{$self->{limited}{$arr_type[$i]}}; $j++) {
@@ -15821,6 +15824,7 @@ sub limit_to_objects
 						} else {
 							$str .= " AND NOT REGEXP_LIKE(upper($colname),'\^$1\$')" ;
 						}
+						$str .= "\n" if ($j % 4 == 0);
 					}
 				}
 
@@ -15833,6 +15837,7 @@ sub limit_to_objects
 				$str .= ' AND (';
 				for (my $j = 0; $j <= $#{$self->{excluded}{$arr_type[$i]}}; $j++) {
 					$str .= "upper($colname) NOT LIKE \U'$self->{excluded}{$arr_type[$i]}->[$j]'\E" ;
+					$str .= "\n" if ($j % 4 == 0);
 					if ($j < $#{$self->{excluded}{$arr_type[$i]}}) {
 						$str .= " AND ";
 					}
@@ -15846,6 +15851,7 @@ sub limit_to_objects
 					} else {
 						$str .= "NOT REGEXP_LIKE(upper($colname),'\^$self->{excluded}{$arr_type[$i]}->[$j]\$')" ;
 					}
+					$str .= "\n" if ($j % 4 == 0);
 					if ($j < $#{$self->{excluded}{$arr_type[$i]}}) {
 						$str .= " AND ";
 					}
@@ -15858,8 +15864,9 @@ sub limit_to_objects
 		if (!$self->{is_mysql} && !$has_limitation && ($arr_type[$i] =~ /TABLE|SEQUENCE|VIEW|TRIGGER|TYPE|SYNONYM/)) {
 			if ($self->{db_version} =~ /Release [89]/) {
 				$str .= ' AND (';
-				foreach my $t (@EXCLUDED_TABLES_8I) {
-					$str .= " AND upper($colname) NOT LIKE \U'$t'\E";
+				for (my $j = 0; $j <= $#EXCLUDED_TABLES_8I; $j++) {
+					$str .= " AND upper($colname) NOT LIKE \U'$EXCLUDED_TABLES_8I[$j]'\E";
+					$str .= "\n" if ($j % 4 == 0);
 				}
 				$str .= ')';
 			} else {
@@ -15870,6 +15877,7 @@ sub limit_to_objects
 					} else {
 						$str .= " NOT REGEXP_LIKE(upper($colname),'\^$EXCLUDED_TABLES[$j]\$')" ;
 					}
+					$str .= "\n" if ($j % 4 == 0);
 					if ($j < $#EXCLUDED_TABLES){
 						$str .= " AND ";
 					}
