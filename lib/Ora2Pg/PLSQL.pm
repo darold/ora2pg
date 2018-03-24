@@ -845,11 +845,12 @@ sub plsql_to_plpgsql
 	$str =~ s/(\s+WHERE)\s+(AND|OR)\b/$1/igs;
 	$str =~ s/(\s+WHERE)(\s+\%ORA2PG_COMMENT\d+\%\s+)+(AND|OR)\b/$1$2/igs;
 
+	# Attempt to remove some extra parenthesis in simple case only
 	$str = remove_extra_parenthesis($str);
 
-	# Restore non converted outer join
-	#$str =~ s/\%OUTERJOIN\d+\%/\(\+\)/igs;
-
+	# Replace cast in partition range
+	$str =~ s/TIMESTAMP\s*('[^']+')/$1::timestamp/igs;
+	
 	# Replace call to SQL%ROWCOUNT
 	$str =~ s/([^\s]+)\s*:=\s*SQL\%ROWCOUNT/GET DIAGNOSTICS $1 = ROW_COUNT/igs;
 	if ($str =~ s/(IF\s+)SQL\%ROWCOUNT/GET DIAGNOSTICS ora2pg_rowcount = ROW_COUNT;\n$1ora2pg_rowcount/igs) {
@@ -878,6 +879,9 @@ sub plsql_to_plpgsql
 
 	# Rewrite direct call to function without out parameters using PERFORM
 	$str = perform_replacement($class, $str);
+
+	# Restore non converted outer join
+	$str =~ s/\%OUTERJOIN\d+\%/\(\+\)/igs;
 
 	return $str;
 }
