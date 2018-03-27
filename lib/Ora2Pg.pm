@@ -2002,10 +2002,16 @@ sub _tables
 			if (!$self->{skip_fkeys}) {
 				my ($foreign_link, $foreign_key) = $self->_foreign_key('',$self->{schema});
 				foreach my $tb (keys %{$foreign_link}) {
+					if ($self->{drop_fkey} && ($self->{type} eq 'COPY' || $self->{type} eq 'INSERT')) {
+						%{$self->{foreign_link}{$tb}} =  %{$foreign_link->{$tb}};
+					}
 					next if (!exists $tables_infos{$tb});
 					%{$self->{tables}{$tb}{foreign_link}} =  %{$foreign_link->{$tb}};
 				}
 				foreach my $tb (keys %{$foreign_key}) {
+					if ($self->{drop_fkey} && ($self->{type} eq 'COPY' || $self->{type} eq 'INSERT')) {
+						push(@{$self->{foreign_key}{$tb}}, @{$foreign_key->{$tb}});
+					}
 					next if (!exists $tables_infos{$tb});
 					push(@{$self->{tables}{$tb}{foreign_key}}, @{$foreign_key->{$tb}});
 				}
@@ -5406,6 +5412,18 @@ LANGUAGE plpgsql ;
 			if ($self->{drop_fkey}) {
 				$self->logit("Dropping foreign keys of table $table...\n", 1);
 				my @drop_all = $self->_drop_foreign_keys($table, @{$self->{tables}{$table}{foreign_key}});
+				$self->logit("Dropping foreign keys pointing to remote table $table...\n", 1);
+				foreach my $t (keys %{$self->{foreign_link}}) {
+					next if ($t eq $table);
+					my $tbsave = $self->get_replaced_tbname($t);
+					foreach my $fkname (keys %{$self->{foreign_link}{$t}}) {
+						foreach my $desttable (keys %{$self->{foreign_link}{$t}{$fkname}{remote}}) {
+							next if (exists $self->{tables}{$t} || $desttable ne $table);
+							push(@drop_all, "ALTER TABLE " . $self->quote_object_name($tbsave) . " DROP CONSTRAINT $self->{pg_supports_ifexists} " . $self->quote_object_name($fkname) . ";");
+						}
+					}
+				}
+
 				foreach my $str (@drop_all) {
 					chomp($str);
 					next if (!$str);
@@ -5799,6 +5817,80 @@ LANGUAGE plpgsql ;
 				my @create_all = ();
 				$self->logit("Restoring foreign keys of table $table...\n", 1);
 				push(@create_all, $self->_create_foreign_keys($table));
+				$self->logit("Restoring foreign keys pointing to remote table $table...\n", 1);
+				foreach my $t (keys %{$self->{foreign_link}}) {
+					next if ($t eq $table);
+					my $tbsaved = $t;
+					$t = $self->get_replaced_tbname($t);
+					foreach my $fkname (keys %{$self->{foreign_link}{$tbsaved}}) {
+						foreach my $desttable (keys %{$self->{foreign_link}{$tbsaved}{$fkname}{remote}}) {
+							next if (exists $self->{tables}{$tbsaved} || $desttable ne $table);
+
+							my $str = '';
+							# Add double quote to column name
+							map { $_ = '"' . $_ . '"' } @{$self->{foreign_link}{$tbsaved}{$fkname}{local}};
+							map { $_ = '"' . $_ . '"' } @{$self->{foreign_link}{$tbsaved}{$fkname}{remote}{$desttable}};
+
+							# Get the name of the foreign table after replacement if any
+							my $subsdesttable = $self->get_replaced_tbname($desttable);
+							# Prefix the table name with the schema name if owner of
+							# remote table is not the same as local one
+							if ($self->{schema} && (lc($state->[6]) ne lc($state->[8]))) {
+								$subsdesttable =  $self->quote_object_name($state->[6]) . '.' . $subsdesttable;
+							}
+							
+							my @lfkeys = ();
+							push(@lfkeys, @{$self->{foreign_link}{$tbsaved}{$fkname}{local}});
+							if (exists $self->{replaced_cols}{"\L$t\E"} && $self->{replaced_cols}{"\L$t\E"}) {
+								foreach my $c (keys %{$self->{replaced_cols}{"\L$t\E"}}) {
+									map { s/"$c"/"$self->{replaced_cols}{"\L$t\E"}{"\L$c\E"}"/i } @lfkeys;
+								}
+							}
+							my @rfkeys = ();
+							push(@rfkeys, @{$self->{foreign_link}{$tbsaved}{$fkname}{remote}{$desttable}});
+							if (exists $self->{replaced_cols}{"\L$desttable\E"} && $self->{replaced_cols}{"\L$desttable\E"}) {
+								foreach my $c (keys %{$self->{replaced_cols}{"\L$desttable\E"}}) {
+									map { s/"$c"/"$self->{replaced_cols}{"\L$desttable\E"}{"\L$c\E"}"/i } @rfkeys;
+								}
+							}
+							for (my $i = 0; $i <= $#lfkeys; $i++) {
+								$lfkeys[$i] = $self->quote_object_name(split(/\s*,\s*/, $lfkeys[$i]));
+							}
+							for (my $i = 0; $i <= $#rfkeys; $i++) {
+								$rfkeys[$i] = $self->quote_object_name(split(/\s*,\s*/, $rfkeys[$i]));
+							}
+							$fkname = $self->quote_object_name($fkname);
+							$str .= "ALTER TABLE $t ADD CONSTRAINT $fkname FOREIGN KEY (" . join(',', @lfkeys) . ") REFERENCES $subsdesttable(" . join(',', @rfkeys) . ")";
+							$str .= " MATCH $state->[2]" if ($state->[2]);
+							if ($state->[3]) {
+								$str .= " ON DELETE $state->[3]";
+							} else {
+								$str .= " ON DELETE NO ACTION";
+							}
+							if ($self->{is_mysql}) {
+								$str .= " ON UPDATE $state->[9]" if ($state->[9]);
+							} else {
+								if ( ($self->{fkey_add_update} eq 'ALWAYS') || ( ($self->{fkey_add_update} eq 'DELETE') && ($str =~ /ON DELETE CASCADE/) ) ) {
+									$str .= " ON UPDATE CASCADE";
+								}
+							}
+							# if DEFER_FKEY is enabled, force constraint to be
+							# deferrable and defer it initially.
+							if (!$self->{is_mysql}) {
+								$str .= (($self->{'defer_fkey'} ) ? ' DEFERRABLE' : " $state->[4]") if ($state->[4]);
+								$state->[5] = 'DEFERRED' if ($state->[5] =~ /^Y/);
+								$state->[5] ||= 'IMMEDIATE';
+								$str .= " INITIALLY " . ( ($self->{'defer_fkey'} ) ? 'DEFERRED' : $state->[5] );
+								if ($state->[9] eq 'NOT VALIDATED') {
+									$str .= " NOT VALID";
+								}
+							}
+							$str .= ";\n";
+							push(@create_all, $str);
+						}
+					}
+				}
+
 				foreach my $str (@create_all) {
 					chomp($str);
 					next if (!$str);
@@ -7718,7 +7810,7 @@ This function return SQL code to create the foreign keys of a table
 =cut
 sub _create_foreign_keys
 {
-	my ($self, $table) = @_;
+	my ($self, $table, $remote) = @_;
 
 	my @out = ();
 
@@ -7739,6 +7831,7 @@ sub _create_foreign_keys
 				last;
 			}
 		}
+
 		foreach my $desttable (keys %{$self->{tables}{$tbsaved}{foreign_link}{$fkname}{remote}}) {
 			push(@done, $fkname);
 			my $str = '';
@@ -8793,17 +8886,9 @@ sub _foreign_key
 	} else {
 		$condition .= "AND CONS.OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "') ";
 	}
-	$condition .= $self->limit_to_objects('FKEY|TABLE','CONS.CONSTRAINT_NAME|CONS.TABLE_NAME');
-
-	my $condition2 = '';
-	$condition2 .= "AND TABLE_NAME='$table' " if ($table);
-	if ($owner) {
-		$condition2 .= "OWNER = '$owner' ";
-	} else {
-		$condition2 .= "AND OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "') ";
+	if (!$self->{drop_fkey} || ($self->{type} ne 'COPY' && $self->{type} ne 'INSERT')) {
+		$condition .= $self->limit_to_objects('FKEY|TABLE','CONS_R.CONSTRAINT_NAME|CONS.TABLE_NAME');
 	}
-	$condition2 .= $self->limit_to_objects('TABLE','TABLE_NAME');
-	#$condition2 =~ s/^AND //;
 
 	my $deferrable = $self->{fkey_deferrable} ? "'DEFERRABLE' AS DEFERRABLE" : "DEFERRABLE";
 	my $defer = $self->{fkey_deferrable} ? "'DEFERRABLE' AS DEFERRABLE" : "CONS.DEFERRABLE";
