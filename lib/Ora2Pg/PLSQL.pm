@@ -1459,6 +1459,7 @@ sub replace_out_param_call
 							map { s/^\(//; } @out_fields;
 							$call_params =~ s/(\s*,\s*)+$//s;
 							while ($call_params =~ s/\s*,\s*,\s*/, /s) {};
+							$call_params =~ s/^(\s*,\s*)+//s;
 							$replace_out_parm{$idx} .= "$call_params)";
 							my @out_param = ();
 							foreach my $i (@out_pos) {
