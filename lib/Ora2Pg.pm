@@ -896,9 +896,6 @@ sub _init
 	# Storage of string constant placeholder regexp
 	$self->{string_constant_regexp} = ();
 
-	# Counter for outer join replacement
-	$self->{outerjoin_idx} = 0;
-
 	# Initialyze following configuration file
 	foreach my $k (sort keys %AConfig) {
 		if (lc($k) eq 'allow') {
@@ -967,9 +964,6 @@ sub _init
 
 	# Disable synchronous commit for pg data load
 	$self->{synchronous_commit} ||= 0;
-
-	# Disallow NOLOGGING / UNLOGGED table creation
-	$self->{disable_unlogged} ||= 0;
 
 	# Mark function as STABLE by default
 	if (not defined $self->{function_stable} || $self->{function_stable} ne '0') {
@@ -2002,16 +1996,10 @@ sub _tables
 			if (!$self->{skip_fkeys}) {
 				my ($foreign_link, $foreign_key) = $self->_foreign_key('',$self->{schema});
 				foreach my $tb (keys %{$foreign_link}) {
-					if ($self->{drop_fkey} && ($self->{type} eq 'COPY' || $self->{type} eq 'INSERT')) {
-						%{$self->{foreign_link}{$tb}} =  %{$foreign_link->{$tb}};
-					}
 					next if (!exists $tables_infos{$tb});
 					%{$self->{tables}{$tb}{foreign_link}} =  %{$foreign_link->{$tb}};
 				}
 				foreach my $tb (keys %{$foreign_key}) {
-					if ($self->{drop_fkey} && ($self->{type} eq 'COPY' || $self->{type} eq 'INSERT')) {
-						push(@{$self->{foreign_key}{$tb}}, @{$foreign_key->{$tb}});
-					}
 					next if (!exists $tables_infos{$tb});
 					push(@{$self->{tables}{$tb}{foreign_key}}, @{$foreign_key->{$tb}});
 				}
@@ -2509,6 +2497,9 @@ sub read_schema_from_file
 								$c_default = $self->{replace_zero_date};
 							} else {
 								$c_default =~ s/^'0000-00-00/'1970-01-01/;
+							}
+							if ($c_default =~ /^[\-]*INFINITY$/) {
+								$c_default .= "::$ctype";
 							}
 						}
 						# COLUMN_NAME,DATA_TYPE,DATA_LENGTH,NULLABLE,DATA_DEFAULT,DATA_PRECISION,DATA_SCALE,CHAR_LENGTH,TABLE_NAME,OWNER,VIRTUAL_COLUMN,POSITION,AUTO_INCREMENT,SRID,SDO_DIM,SDO_GTYPE
@@ -3728,7 +3719,7 @@ sub _get_sql_data
 					$sql_output .= " IS E'" . $self->{views}{$view}{comment} . "';\n\n";
 				}
 
-				foreach $f (sort keys %{$self->{views}{$view}{column_comments}}) {
+				foreach $f (keys %{$self->{views}{$view}{column_comments}}) {
 					next unless $self->{views}{$view}{column_comments}{$f};
 					$self->{views}{$view}{column_comments}{$f} =~ s/'/''/gs;
 					# Change column names
@@ -5412,18 +5403,6 @@ LANGUAGE plpgsql ;
 			if ($self->{drop_fkey}) {
 				$self->logit("Dropping foreign keys of table $table...\n", 1);
 				my @drop_all = $self->_drop_foreign_keys($table, @{$self->{tables}{$table}{foreign_key}});
-				$self->logit("Dropping foreign keys pointing to remote table $table...\n", 1);
-				foreach my $t (keys %{$self->{foreign_link}}) {
-					next if ($t eq $table);
-					my $tbsave = $self->get_replaced_tbname($t);
-					foreach my $fkname (keys %{$self->{foreign_link}{$t}}) {
-						foreach my $desttable (keys %{$self->{foreign_link}{$t}{$fkname}{remote}}) {
-							next if (exists $self->{tables}{$t} || $desttable ne $table);
-							push(@drop_all, "ALTER TABLE " . $self->quote_object_name($tbsave) . " DROP CONSTRAINT $self->{pg_supports_ifexists} " . $self->quote_object_name($fkname) . ";");
-						}
-					}
-				}
-
 				foreach my $str (@drop_all) {
 					chomp($str);
 					next if (!$str);
@@ -5817,80 +5796,6 @@ LANGUAGE plpgsql ;
 				my @create_all = ();
 				$self->logit("Restoring foreign keys of table $table...\n", 1);
 				push(@create_all, $self->_create_foreign_keys($table));
-				$self->logit("Restoring foreign keys pointing to remote table $table...\n", 1);
-				foreach my $t (keys %{$self->{foreign_link}}) {
-					next if ($t eq $table);
-					my $tbsaved = $t;
-					$t = $self->get_replaced_tbname($t);
-					foreach my $fkname (keys %{$self->{foreign_link}{$tbsaved}}) {
-						foreach my $desttable (keys %{$self->{foreign_link}{$tbsaved}{$fkname}{remote}}) {
-							next if (exists $self->{tables}{$tbsaved} || $desttable ne $table);
-
-							my $str = '';
-							# Add double quote to column name
-							map { $_ = '"' . $_ . '"' } @{$self->{foreign_link}{$tbsaved}{$fkname}{local}};
-							map { $_ = '"' . $_ . '"' } @{$self->{foreign_link}{$tbsaved}{$fkname}{remote}{$desttable}};
-
-							# Get the name of the foreign table after replacement if any
-							my $subsdesttable = $self->get_replaced_tbname($desttable);
-							# Prefix the table name with the schema name if owner of
-							# remote table is not the same as local one
-							if ($self->{schema} && (lc($state->[6]) ne lc($state->[8]))) {
-								$subsdesttable =  $self->quote_object_name($state->[6]) . '.' . $subsdesttable;
-							}
-							
-							my @lfkeys = ();
-							push(@lfkeys, @{$self->{foreign_link}{$tbsaved}{$fkname}{local}});
-							if (exists $self->{replaced_cols}{"\L$t\E"} && $self->{replaced_cols}{"\L$t\E"}) {
-								foreach my $c (keys %{$self->{replaced_cols}{"\L$t\E"}}) {
-									map { s/"$c"/"$self->{replaced_cols}{"\L$t\E"}{"\L$c\E"}"/i } @lfkeys;
-								}
-							}
-							my @rfkeys = ();
-							push(@rfkeys, @{$self->{foreign_link}{$tbsaved}{$fkname}{remote}{$desttable}});
-							if (exists $self->{replaced_cols}{"\L$desttable\E"} && $self->{replaced_cols}{"\L$desttable\E"}) {
-								foreach my $c (keys %{$self->{replaced_cols}{"\L$desttable\E"}}) {
-									map { s/"$c"/"$self->{replaced_cols}{"\L$desttable\E"}{"\L$c\E"}"/i } @rfkeys;
-								}
-							}
-							for (my $i = 0; $i <= $#lfkeys; $i++) {
-								$lfkeys[$i] = $self->quote_object_name(split(/\s*,\s*/, $lfkeys[$i]));
-							}
-							for (my $i = 0; $i <= $#rfkeys; $i++) {
-								$rfkeys[$i] = $self->quote_object_name(split(/\s*,\s*/, $rfkeys[$i]));
-							}
-							$fkname = $self->quote_object_name($fkname);
-							$str .= "ALTER TABLE $t ADD CONSTRAINT $fkname FOREIGN KEY (" . join(',', @lfkeys) . ") REFERENCES $subsdesttable(" . join(',', @rfkeys) . ")";
-							$str .= " MATCH $state->[2]" if ($state->[2]);
-							if ($state->[3]) {
-								$str .= " ON DELETE $state->[3]";
-							} else {
-								$str .= " ON DELETE NO ACTION";
-							}
-							if ($self->{is_mysql}) {
-								$str .= " ON UPDATE $state->[9]" if ($state->[9]);
-							} else {
-								if ( ($self->{fkey_add_update} eq 'ALWAYS') || ( ($self->{fkey_add_update} eq 'DELETE') && ($str =~ /ON DELETE CASCADE/) ) ) {
-									$str .= " ON UPDATE CASCADE";
-								}
-							}
-							# if DEFER_FKEY is enabled, force constraint to be
-							# deferrable and defer it initially.
-							if (!$self->{is_mysql}) {
-								$str .= (($self->{'defer_fkey'} ) ? ' DEFERRABLE' : " $state->[4]") if ($state->[4]);
-								$state->[5] = 'DEFERRED' if ($state->[5] =~ /^Y/);
-								$state->[5] ||= 'IMMEDIATE';
-								$str .= " INITIALLY " . ( ($self->{'defer_fkey'} ) ? 'DEFERRED' : $state->[5] );
-								if ($state->[9] eq 'NOT VALIDATED') {
-									$str .= " NOT VALID";
-								}
-							}
-							$str .= ";\n";
-							push(@create_all, $str);
-						}
-					}
-				}
-
 				foreach my $str (@create_all) {
 					chomp($str);
 					next if (!$str);
@@ -6466,12 +6371,10 @@ CREATE TRIGGER ${table}_trigger_insert
 		if ( ($self->{type} eq 'FDW') || ($self->{external_to_fdw} && (grep(/^$table$/i, keys %{$self->{external_table}}) || $self->{tables}{$table}{table_info}{connection})) ) {
 			$foreign = ' FOREIGN';
 		}
-
 		my $obj_type = $self->{tables}{$table}{table_info}{type} || 'TABLE';
-		if ( ($obj_type eq 'TABLE') && $self->{tables}{$table}{table_info}{nologging} && !$self->{disable_unlogged} ) {
+		if ( ($obj_type eq 'TABLE') && $self->{tables}{$table}{table_info}{nologging}) {
 			$obj_type = 'UNLOGGED ' . $obj_type;
 		}
-
 		if (exists $self->{tables}{$table}{table_as}) {
 			if ($self->{plsql_pgsql}) {
 				$self->{tables}{$table}{table_as} = Ora2Pg::PLSQL::convert_plsql_code($self, $self->{tables}{$table}{table_as}, %{$self->{data_type}});
@@ -6653,6 +6556,9 @@ CREATE TRIGGER ${table}_trigger_insert
 											}
 										}
 										$f->[4] = "'$f->[4]'" if ($f->[4] =~ /^\d+/);
+										if ($f->[4] =~ /^[\-]*INFINITY$/) {
+											$f->[4] = "'$f->[4]'::$type";
+										}
 									}
 								}
 								$f->[4] = 'NULL' if ($f->[4] eq "''" && $type =~ /int|double|numeric/i);
@@ -6713,7 +6619,7 @@ CREATE TRIGGER ${table}_trigger_insert
 
 		# Add comments on columns
 		if (!$self->{disable_comment}) {
-			foreach $f (sort keys %{$self->{tables}{$table}{column_comments}}) {
+			foreach $f (keys %{$self->{tables}{$table}{column_comments}}) {
 				next unless $self->{tables}{$table}{column_comments}{$f};
 				$self->{tables}{$table}{column_comments}{$f} =~ s/'/''/gs;
 				# Change column names
@@ -7247,7 +7153,7 @@ sub _create_indexes
 	my @out = ();
 	my @fts_out = ();
 	# Set the index definition
-	foreach my $idx (sort keys %indexes) {
+	foreach my $idx (keys %indexes) {
 
 		# Cluster, bitmap join, reversed and IOT indexes will not be exported at all
 		# Hash indexes will be exported as btree
@@ -7313,7 +7219,7 @@ sub _create_indexes
 		my $columnlist = '';
 		my $skip_index_creation = 0;
 
-		foreach my $consname (sort keys %{$self->{$objtyp}{$tbsaved}{unique_key}}) {
+		foreach my $consname (keys %{$self->{$objtyp}{$tbsaved}{unique_key}}) {
 			my $constype =  $self->{$objtyp}{$tbsaved}{unique_key}->{$consname}{type};
 			next if (($constype ne 'P') && ($constype ne 'U'));
 			my @conscols = @{$self->{$objtyp}{$tbsaved}{unique_key}->{$consname}{columns}};
@@ -7810,7 +7716,7 @@ This function return SQL code to create the foreign keys of a table
 =cut
 sub _create_foreign_keys
 {
-	my ($self, $table, $remote) = @_;
+	my ($self, $table) = @_;
 
 	my @out = ();
 
@@ -7831,7 +7737,6 @@ sub _create_foreign_keys
 				last;
 			}
 		}
-
 		foreach my $desttable (keys %{$self->{tables}{$tbsaved}{foreign_link}{$fkname}{remote}}) {
 			push(@done, $fkname);
 			my $str = '';
@@ -8886,9 +8791,17 @@ sub _foreign_key
 	} else {
 		$condition .= "AND CONS.OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "') ";
 	}
-	if (!$self->{drop_fkey} || ($self->{type} ne 'COPY' && $self->{type} ne 'INSERT')) {
-		$condition .= $self->limit_to_objects('FKEY|TABLE','CONS_R.CONSTRAINT_NAME|CONS.TABLE_NAME');
+	$condition .= $self->limit_to_objects('FKEY|TABLE','CONS.CONSTRAINT_NAME|CONS.TABLE_NAME');
+
+	my $condition2 = '';
+	$condition2 .= "AND TABLE_NAME='$table' " if ($table);
+	if ($owner) {
+		$condition2 .= "OWNER = '$owner' ";
+	} else {
+		$condition2 .= "AND OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "') ";
 	}
+	$condition2 .= $self->limit_to_objects('TABLE','TABLE_NAME');
+	#$condition2 =~ s/^AND //;
 
 	my $deferrable = $self->{fkey_deferrable} ? "'DEFERRABLE' AS DEFERRABLE" : "DEFERRABLE";
 	my $defer = $self->{fkey_deferrable} ? "'DEFERRABLE' AS DEFERRABLE" : "CONS.DEFERRABLE";
@@ -14186,7 +14099,7 @@ sub _show_infos
 			if (exists $externals{$t}) {
 				$kind = ' EXTERNAL';
 			}
-			if ($tables_infos{$t}{nologging} && !$self->{disable_unlogged}) {
+			if ($tables_infos{$t}{nologging}) {
 				$kind .= ' UNLOGGED';
 			}
 			my $tname = $t;
@@ -15866,7 +15779,6 @@ sub limit_to_objects
 						next;
 					}
 					$str .= "upper($colname) LIKE \U'$self->{limited}{$arr_type[$i]}->[$j]'\E";
-					$str .= "\n" if ($j % 4 == 0);
 					if ($j < $#{$self->{limited}{$arr_type[$i]}}) {
 						$str .= " OR ";
 					}
@@ -15883,7 +15795,6 @@ sub limit_to_objects
 					} else {
 						$str .= "REGEXP_LIKE(upper($colname),'\^$self->{limited}{$arr_type[$i]}->[$j]\$')" ;
 					}
-					$str .= "\n" if ($j % 4 == 0);
 					if ($j < $#{$self->{limited}{$arr_type[$i]}}) {
 						$str .= " OR ";
 					}
@@ -15899,7 +15810,6 @@ sub limit_to_objects
 					for (my $j = 0; $j <= $#{$self->{limited}{$arr_type[$i]}}; $j++) {
 						next if ($self->{limited}{$arr_type[$i]}->[$j] !~ /^\!(.+)/);
 						$str .= " AND upper($colname) NOT LIKE \U'$1'\E";
-						$str .= "\n" if ($j % 4 == 0);
 					}
 				} else {
 					for (my $j = 0; $j <= $#{$self->{limited}{$arr_type[$i]}}; $j++) {
@@ -15909,7 +15819,6 @@ sub limit_to_objects
 						} else {
 							$str .= " AND NOT REGEXP_LIKE(upper($colname),'\^$1\$')" ;
 						}
-						$str .= "\n" if ($j % 4 == 0);
 					}
 				}
 
@@ -15922,7 +15831,6 @@ sub limit_to_objects
 				$str .= ' AND (';
 				for (my $j = 0; $j <= $#{$self->{excluded}{$arr_type[$i]}}; $j++) {
 					$str .= "upper($colname) NOT LIKE \U'$self->{excluded}{$arr_type[$i]}->[$j]'\E" ;
-					$str .= "\n" if ($j % 4 == 0);
 					if ($j < $#{$self->{excluded}{$arr_type[$i]}}) {
 						$str .= " AND ";
 					}
@@ -15936,7 +15844,6 @@ sub limit_to_objects
 					} else {
 						$str .= "NOT REGEXP_LIKE(upper($colname),'\^$self->{excluded}{$arr_type[$i]}->[$j]\$')" ;
 					}
-					$str .= "\n" if ($j % 4 == 0);
 					if ($j < $#{$self->{excluded}{$arr_type[$i]}}) {
 						$str .= " AND ";
 					}
@@ -15949,9 +15856,8 @@ sub limit_to_objects
 		if (!$self->{is_mysql} && !$has_limitation && ($arr_type[$i] =~ /TABLE|SEQUENCE|VIEW|TRIGGER|TYPE|SYNONYM/)) {
 			if ($self->{db_version} =~ /Release [89]/) {
 				$str .= ' AND (';
-				for (my $j = 0; $j <= $#EXCLUDED_TABLES_8I; $j++) {
-					$str .= " AND upper($colname) NOT LIKE \U'$EXCLUDED_TABLES_8I[$j]'\E";
-					$str .= "\n" if ($j % 4 == 0);
+				foreach my $t (@EXCLUDED_TABLES_8I) {
+					$str .= " AND upper($colname) NOT LIKE \U'$t'\E";
 				}
 				$str .= ')';
 			} else {
@@ -15962,7 +15868,6 @@ sub limit_to_objects
 					} else {
 						$str .= " NOT REGEXP_LIKE(upper($colname),'\^$EXCLUDED_TABLES[$j]\$')" ;
 					}
-					$str .= "\n" if ($j % 4 == 0);
 					if ($j < $#EXCLUDED_TABLES){
 						$str .= " AND ";
 					}
