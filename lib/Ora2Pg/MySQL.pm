@@ -755,7 +755,7 @@ sub _lookup_function
 		if ($fct_detail{declare} =~ s/\s*COMMENT\s+(\?TEXTVALUE\d+\?|'[^\']+')//) {
 			$fct_detail{comment} = $1;
 		}
-		$fct_detail{immutable} = 1 if ($fct_detail{declare} =~ s/\bDETERMINISTIC\b//is);
+		$fct_detail{immutable} = 1 if ($fct_detail{declare} =~ s/\s*\bDETERMINISTIC\b//is);
 		$fct_detail{before} = ''; # There is only garbage for the moment
 
                 $fct_detail{name} =~ s/['"]//g;
@@ -763,6 +763,8 @@ sub _lookup_function
 		if (!$fct_detail{args}) {
 			$fct_detail{args} = '()';
 		}
+		$fct_detail{immutable} = 1 if ($fct_detail{return} =~ s/\s*\bDETERMINISTIC\b//is);
+		$fct_detail{immutable} = 1 if ($tmp_returned =~ s/\s*\bDETERMINISTIC\b//is);
 
 		$fctname = $fct_detail{name} || $fctname;
 		if ($type eq 'functions' && exists $self->{$type}{$fctname}{return} && $self->{$type}{$fctname}{return}) {
@@ -1036,7 +1038,11 @@ sub replace_sql_type
 	$str =~ s/(CHAR|TEXT)\s+BINARY/$1/gis;
 
 	# Replace type with precision
-	my $mysqltype_regex = join('|', keys %data_type);
+	my $mysqltype_regex = '';
+	foreach (keys %data_type) {
+		$mysqltype_regex .= quotemeta($_) . '|';
+	}
+	$mysqltype_regex =~ s/\|$//;
 	while ($str =~ /(.*)\b($mysqltype_regex)\s*\(([^\)]+)\)/i) {
 		my $backstr = $1;
 		my $type = uc($2);
@@ -1045,6 +1051,10 @@ sub replace_sql_type
 			# Prevent from infinit loop
 			$str =~ s/\(/\%\|/s;
 			$str =~ s/\)/\%\|\%/s;
+			next;
+		}
+		if (exists $data_type{"$type($args)"}) {
+			$str =~ s/\b$type\($args\)/$data_type{"$type($args)"}/igs;
 			next;
 		}
 		if ($backstr =~ /_$/) {
