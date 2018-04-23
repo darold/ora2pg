@@ -748,6 +748,7 @@ sub _lookup_function
                 $fct_detail{name} = $3;
                 $fct_detail{args} = $4;
 		my $tmp_returned = $5;
+		chomp($tmp_returned);
 		if ($tmp_returned =~ s/\b(DECLARE\b.*)//is) {
 			$fct_detail{code} = $1 . $fct_detail{code};
 		}
@@ -757,7 +758,7 @@ sub _lookup_function
 		$fct_detail{immutable} = 1 if ($fct_detail{declare} =~ s/\bDETERMINISTIC\b//is);
 		$fct_detail{before} = ''; # There is only garbage for the moment
 
-                $fct_detail{name} =~ s/"//g;
+                $fct_detail{name} =~ s/['"]//g;
                 $fct_detail{fct_name} = $fct_detail{name};
 		if (!$fct_detail{args}) {
 			$fct_detail{args} = '()';
@@ -791,10 +792,10 @@ sub _lookup_function
 		}
 		# Now convert types
 		if ($fct_detail{args}) {
-			$fct_detail{args} = replace_sql_type($fct_detail{args}, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type});
+			$fct_detail{args} = replace_sql_type($fct_detail{args}, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type}, %{ $self->{data_type} });
 		}
 		if ($fct_detail{declare}) {
-			$fct_detail{declare} = replace_sql_type($fct_detail{declare}, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type});
+			$fct_detail{declare} = replace_sql_type($fct_detail{declare}, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type}, %{ $self->{data_type} });
 		}
 
 		$fct_detail{args} =~ s/\s+/ /gs;
@@ -945,16 +946,27 @@ sub _sql_type
         my ($self, $type, $len, $precision, $scale) = @_;
 
 	my $data_type = '';
-	
-	# Simplify timestamp type
-	$type =~ s/TIMESTAMP\(\d+\)/TIMESTAMP/i;
-	$type =~ s/TIME\(\d+\)/TIME/i;
-	$type =~ s/DATE\(\d+\)/DATE/i;
-	# Remove BINARY from CHAR(n) BINARY, TEXT(n) BINARY, VARCHAR(n) BINARY ...
-	$type =~ s/(CHAR|TEXT)(\(\d+\)) BINARY/$1$2/i;
-	$type =~ s/(CHAR|TEXT) BINARY/$1/i;
 
-        # Overide the length
+	# Simplify timestamp type
+	$type =~ s/TIMESTAMP\s*\(\s*\d+\s*\)/TIMESTAMP/i;
+	$type =~ s/TIME\s*\(\s*\d+\s*\)/TIME/i;
+	$type =~ s/DATE\s*\(\s*\d+\s*\)/DATE/i;
+	# Remove BINARY from CHAR(n) BINARY, TEXT(n) BINARY, VARCHAR(n) BINARY ...
+	$type =~ s/(CHAR|TEXT)\s*(\(\s*\d+\s*\)) BINARY/$1$2/i;
+	$type =~ s/(CHAR|TEXT)\s+BINARY/$1/i;
+
+	# Some length and scale may have not been extracted before
+	if ($type =~ s/\(\s*(\d+)\s*\)//) {
+		$len   = $1;
+	} elsif ($type =~ s/\(\s*(\d+)\s*,\s*(\d+)\s*\)//) {
+		$len   = $1;
+		$scale = $2;
+	}
+	if ($type !~ /CHAR/i) {
+		$precision = $len if (!$precision);
+	}
+
+        # Override the length
         $len = $precision if ( ((uc($type) eq 'NUMBER') || (uc($type) eq 'BIT')) && $precision );
         if (exists $self->{data_type}{uc($type)}) {
 		$type = uc($type); # Force uppercase
@@ -1020,8 +1032,8 @@ sub replace_sql_type
 	# Remove any reference to UNSIGNED AND ZEROFILL
 	$str =~ s/\b(UNSIGNED|ZEROFILL)\b//gis;
 	# Remove BINARY from CHAR(n) BINARY and VARCHAR(n) BINARY
-	$str =~ s/(CHAR|TEXT)(\(\d+\)) BINARY/$1$2/gis;
-	$str =~ s/(CHAR|TEXT) BINARY/$1/gis;
+	$str =~ s/(CHAR|TEXT)\s*(\(\s*\d+\s*\))\s+BINARY/$1$2/gis;
+	$str =~ s/(CHAR|TEXT)\s+BINARY/$1/gis;
 
 	# Replace type with precision
 	my $mysqltype_regex = join('|', keys %data_type);
