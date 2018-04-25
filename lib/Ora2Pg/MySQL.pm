@@ -166,6 +166,15 @@ sub _table_info
 {
 	my $self = shift;
 
+	# First register all tablespace/table in memory from this database
+	my %tbspname = ();
+	my $sth = $self->{dbh}->prepare("SELECT DISTINCT TABLE_NAME, TABLESPACE_NAME FROM INFORMATION_SCHEMA.FILES WHERE table_schema = '$self->{schema}' AND TABLE_NAME IS NOT NULL") or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0);
+	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	while (my $r = $sth->fetch) {
+		$tbspname{$r->[0]} = $r->[1];
+	}
+	$sth->finish();
+
 	# Table: information_schema.tables
 	# TABLE_CATALOG   | varchar(512)        | NO   |     |         |       |
 	# TABLE_SCHEMA    | varchar(64)         | NO   |     |         |       |
@@ -191,9 +200,9 @@ sub _table_info
 
 	my %tables_infos = ();
 	my %comments = ();
-	my $sql = "SELECT TABLE_NAME,TABLE_COMMENT,TABLE_TYPE,TABLE_ROWS,ROUND( ( data_length + index_length) / 1024 / 1024, 2 ) AS \"Total Size Mb\", AUTO_INCREMENT FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE='BASE TABLE' AND TABLE_SCHEMA = '$self->{schema}'";
+	my $sql = "SELECT TABLE_NAME,TABLE_COMMENT,TABLE_TYPE,TABLE_ROWS,ROUND( ( data_length + index_length) / 1024 / 1024, 2 ) AS \"Total Size Mb\", AUTO_INCREMENT, ENGINE FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE='BASE TABLE' AND TABLE_SCHEMA = '$self->{schema}'";
 	$sql .= $self->limit_to_objects('TABLE', 'TABLE_NAME');
-	my $sth = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	while (my $row = $sth->fetch) {
 		$row->[2] =~ s/^BASE //;
@@ -207,23 +216,20 @@ sub _table_info
 		$tables_infos{$row->[0]}{size} = $row->[4] || 0;
 		$tables_infos{$row->[0]}{tablespace} = 0;
 		$tables_infos{$row->[0]}{auto_increment} = $row->[5] || 0;
-		my $sth2 = $self->{dbh}->prepare("SELECT DISTINCT TABLESPACE_NAME FROM INFORMATION_SCHEMA.FILES WHERE TABLE_NAME = '$row->[0]' AND table_schema = '$self->{schema}'") or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0);
-		$sth2->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-		while (my $r = $sth2->fetch) {
-			$tables_infos{$row->[0]}{tablespace} = $r->[0];
-			last;
-		}
-		$sth2->finish();
+		$tables_infos{$row->[0]}{tablespace} = $tbspname{$row->[0]} || '';
+
 		# Get creation option unavailable in information_schema
-		$sth2 = $self->{dbh}->prepare("SHOW CREATE TABLE $row->[0]") or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0);
-		$sth2->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-		while (my $r = $sth2->fetch) {
-			if ($r->[1] =~ /CONNECTION='([^']+)'/) {
-				$tables_infos{$row->[0]}{connection} = $1;
+		if ($row->[6] eq 'FEDERATED') {
+			my $sth2 = $self->{dbh}->prepare("SHOW CREATE TABLE $row->[0]") or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0);
+			$sth2->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+			while (my $r = $sth2->fetch) {
+				if ($r->[1] =~ /CONNECTION='([^']+)'/) {
+					$tables_infos{$row->[0]}{connection} = $1;
+				}
+				last;
 			}
-			last;
+			$sth2->finish();
 		}
-		$sth2->finish();
 	}
 	$sth->finish();
 
