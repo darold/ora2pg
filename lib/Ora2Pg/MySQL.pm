@@ -52,7 +52,7 @@ our %MYSQL_TYPE = (
 	'YEAR' => 'smallint',
 	'MULTIPOLYGON' => 'geometry',
 	'BIT' => 'bit varying',
-	'UNSIGNED' => 'bigint',
+	'UNSIGNED' => 'bigint'
 );
 
 sub _get_version
@@ -1031,7 +1031,10 @@ sub replace_sql_type
 	$str =~ s/([A-Z])ORA2PG_COMMENT/$1 ORA2PG_COMMENT/igs;
 
 	# Remove any reference to UNSIGNED AND ZEROFILL
+	# but translate CAST( ... AS unsigned) before.
+	$str =~ s/(\s+AS\s+)UNSIGNED/$1$data_type{'UNSIGNED'}/gis;
 	$str =~ s/\b(UNSIGNED|ZEROFILL)\b//gis;
+
 	# Remove BINARY from CHAR(n) BINARY and VARCHAR(n) BINARY
 	$str =~ s/(CHAR|TEXT)\s*(\(\s*\d+\s*\))\s+BINARY/$1$2/gis;
 	$str =~ s/(CHAR|TEXT)\s+BINARY/$1/gis;
