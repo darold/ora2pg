@@ -306,7 +306,6 @@ END
 		if ($row->[1] eq 'enum') {
 			$row->[1] = $row->[-1];
 		}
-		$row->[2] = $row->[7] if $row->[1] =~ /char/i;
 		$row->[10] = $pos;
 		push(@{$data{"$row->[8]"}{"$row->[0]"}}, @$row);
 		pop(@{$data{"$row->[8]"}{"$row->[0]"}});
