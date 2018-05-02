@@ -2814,7 +2814,7 @@ sub read_trigger_from_file
 
 	my $tid = 0; 
 	my $doloop = 1;
-	my @triggers_decl = split(/(?:CREATE)?(?:\s+OR\s+REPLACE)?\s*(?:DEFINER=[^\s]+)?\s*TRIGGER(\s+|$)/is, $content);
+	my @triggers_decl = split(/(?:CREATE)?(?:\s+OR\s+REPLACE)?\s*(?:DEFINER=[^\s]+)?\s*\bTRIGGER(\s+|$)/is, $content);
 	foreach $content (@triggers_decl) {
 		if ($content =~ s/^([^\s]+)\s+(BEFORE|AFTER|INSTEAD\s+OF)\s+(.*?)\s+ON\s+([^\s]+)\s+(.*)(\bEND\s*(?!IF|LOOP|CASE|INTO|FROM|,)[a-z0-9_]*(?:;|$))//is) {
 			my $t_name = $1;
@@ -3547,7 +3547,7 @@ sub _replace_declare_var
 		# Collect user defined function
 		while ($declare =~ s/\b([^\s]+)\s+EXCEPTION\s*;//i) {
 			my $e = lc($1);
-			if (!exists $self->{custom_exception}{$e}) {
+			if (!exists $Ora2Pg::PLSQL::EXCEPTION_MAP{"\U$e\L"} && !grep(/^$e$/, values %Ora2Pg::PLSQL::EXCEPTION_MAP) && !exists $self->{custom_exception}{$e}) {
 				$self->{custom_exception}{$e} = $self->{exception_id}++;
 			}
 		}

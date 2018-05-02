@@ -24,7 +24,7 @@ package Ora2Pg::PLSQL;
 # 
 #------------------------------------------------------------------------------
 
-use vars qw($VERSION %OBJECT_SCORE $SIZE_SCORE $FCT_TEST_SCORE $QUERY_TEST_SCORE %UNCOVERED_SCORE %UNCOVERED_MYSQL_SCORE @ORA_FUNCTIONS @MYSQL_SPATIAL_FCT @MYSQL_FUNCTIONS);
+use vars qw($VERSION %OBJECT_SCORE $SIZE_SCORE $FCT_TEST_SCORE $QUERY_TEST_SCORE %UNCOVERED_SCORE %UNCOVERED_MYSQL_SCORE @ORA_FUNCTIONS @MYSQL_SPATIAL_FCT @MYSQL_FUNCTIONS %EXCEPTION_MAP);
 use POSIX qw(locale_h);
 
 #set locale to LC_NUMERIC C
@@ -284,6 +284,14 @@ $QUERY_TEST_SCORE = 0.1;
 	'@VAR' => 0.1,
 );
 
+%EXCEPTION_MAP = (
+	'INVALID_CURSOR' => 'invalid_cursor_state',
+	'ZERO_DIVIDE' => 'division_by_zero',
+	'STORAGE_ERROR' => 'out_of_memory',
+	'INTEGRITY_ERROR' => 'integrity_constraint_violation',
+	# 'PROGRAM_ERROR' => 'INTERNAL ERROR',
+	# 'ROWTYPE_MISMATCH' => 'DATATYPE MISMATCH'
+);
 
 
 =head1 NAME
@@ -729,11 +737,9 @@ sub plsql_to_plpgsql
 	$str =~ s/UTL_MATCH.EDIT_DISTANCE/levenshtein/igs;
 
 	# Replace known EXCEPTION equivalent ERROR code
-	$str =~ s/\bINVALID_CURSOR\b/INVALID_CURSOR_STATE/igs;
-	$str =~ s/\bZERO_DIVIDE\b/DIVISION_BY_ZERO/igs;
-	$str =~ s/\bSTORAGE_ERROR\b/OUT_OF_MEMORY/igs;
-	# PROGRAM_ERROR => INTERNAL ERROR ?
-	# ROWTYPE_MISMATCH => DATATYPE MISMATCH ?
+	foreach my $e (keys %EXCEPTION_MAP) {
+		$str =~ s/\b$e\b/$EXCEPTION_MAP{"\U$e\L"}/igs;
+	}
 
 	# Replace special IEEE 754 values for not a number and infinity
 	$str =~ s/BINARY_(FLOAT|DOUBLE)_NAN/'NaN'/igs;
