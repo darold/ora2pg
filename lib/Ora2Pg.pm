@@ -2499,7 +2499,7 @@ sub read_schema_from_file
 								$c_default =~ s/^'0000-00-00/'1970-01-01/;
 							}
 							if ($c_default =~ /^[\-]*INFINITY$/) {
-								$c_default .= "::$ctype";
+								$c_default .= "::$c_type";
 							}
 						}
 						# COLUMN_NAME,DATA_TYPE,DATA_LENGTH,NULLABLE,DATA_DEFAULT,DATA_PRECISION,DATA_SCALE,CHAR_LENGTH,TABLE_NAME,OWNER,VIRTUAL_COLUMN,POSITION,AUTO_INCREMENT,SRID,SDO_DIM,SDO_GTYPE
