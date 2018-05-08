@@ -12461,6 +12461,23 @@ sub randpattern
 	return $string;
 }
 
+sub gettime { 
+    $_ = shift; 
+    my $t = shift; 
+    (!$t) and ($t = time); 
+    my ($sec,$min,$hour,$mday,$mon,$year,$wday,$yday,$isdst) = localtime($t); 
+    $year += 1900; 
+    my $yy = substr $year,2,2; 
+    $mon++; 
+    s/yyyy/$year/gi; 
+    s/yy/$yy/gi; 
+    if ($mon < 10)  { s/mm/0$mon/gi;  } else { s/mm/$mon/gi; } 
+    if ($mday < 10) { s/dd/0$mday/gi; } else { s/dd/$mday/gi; } 
+    if ($hour < 10) { s/hh/0$hour/gi; } else { s/hh/$hour/gi; } 
+    if ($min < 10)  { s/mi/0$min/gi;  } else { s/mi/$min/gi; } 
+    if ($sec < 10)  { s/ss/0$sec/gi;  } else { s/ss/$sec/gi; } 
+    $_; 
+}
 =head2 logit
 
 This function log information to STDOUT or to a logfile
@@ -12479,7 +12496,8 @@ sub logit
 		if (defined $self->{fhlog}) {
 			$self->{fhlog}->print($message);
 		} else {
-			print $message;
+			#print $message;
+			print "[".gettime("yyyy-mm-dd hh:mi:ss")."]"." $message\n";
 		}
 	}
 	if ($critical) {
@@ -12487,10 +12505,10 @@ sub logit
 			if (defined $self->{fhlog}) {
 				$self->{fhlog}->print($message);
 			} else {
-				print "$message\n";
+				print "[".gettime("yyyy-mm-dd hh:mi:ss")."]"." $message\n";
 			}
 		}
-		$self->close_export_file($self->{fhlog}) if (defined $self->{fhlog});
+		$self->{fhlog}->close() if (defined $self->{fhlog});
 		$self->{dbh}->disconnect() if ($self->{dbh});
 		$self->{dbhdest}->disconnect() if ($self->{dbhdest});
 		die "Aborting export...\n";
