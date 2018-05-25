@@ -9448,6 +9448,9 @@ sub _get_job
 
 	return Ora2Pg::MySQL::_get_job($self) if ($self->{is_mysql});
 
+	# Jobs appears in version 10 only
+	return if ($self->{db_version} =~ /Release [8|9]/);
+
 	# Retrieve all database job from user_jobs table
 	my $str = "SELECT JOB,WHAT,INTERVAL,SCHEMA_USER FROM $self->{prefix}_JOBS";
 	if (!$self->{schema}) {
