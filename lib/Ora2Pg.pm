@@ -8640,6 +8640,9 @@ sub _encrypted_columns
 
 	return Ora2Pg::MySQL::_encrypted_columns($self,'',$owner) if ($self->{is_mysql});
 
+	# Encryption appears in version 10 only
+	return if ($self->{db_version} =~ /Release [8|9]/);
+
 	my $condition = '';
 	$condition .= "AND A.TABLE_NAME='$table' " if ($table);
 	$condition .= "AND A.OWNER='$owner' " if ($owner);
