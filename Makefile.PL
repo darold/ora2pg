@@ -1179,6 +1179,23 @@ PG_SUPPORTS_SUBSTR		1
 # named parameter => will be replaced by PostgreSQL proprietary operator :=
 PG_SUPPORTS_NAMED_OPERATOR		1
 
+# Enable this directive if you have PostgreSQL >= 10 to use IDENTITY columns
+# instead of serial or bigserial data type. If PG_SUPPORTS_IDENTITY is disabled
+# and there is IDENTITY column in the Oracle table, they are exported as serial
+# or bigserial columns. When it is enabled they are exported as IDENTITY columns
+# like:
+#	CREATE TABLE identity_test_tab (
+#		id bigint GENERATED ALWAYS AS IDENTITY,
+#		description varchar(30)
+#	) ;
+# If there is non default sequence options set in Oracle, they will be appended
+# after the IDENTITY keyword.
+# Additionally in both cases, Ora2Pg will create a file AUTOINCREMENT_output.sql
+# with a embedded function to update the associated sequences with a restart
+# value set to "SELECT max(colname)+1 FROM tablename". Of course this file must
+# be imported after data import otherwise sequence will be kept to start value.
+PG_SUPPORTS_IDENTITY	0
+
 #------------------------------------------------------------------------------
 # SPATIAL SECTION (Control spatial geometry export)
 #------------------------------------------------------------------------------

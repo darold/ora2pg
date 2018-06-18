@@ -1256,9 +1256,10 @@ sub _init
 	if ($self->{pg_supports_named_operator} eq '') {
 		$self->{pg_supports_named_operator} = 1;
 	}
+	$self->{pg_supports_partition} ||= 0;
+	$self->{pg_supports_identity}  ||= 0;
 
 	$self->{pg_background} ||= 0;
-	$self->{pg_supports_partition} ||= 0;
 
 	# PostgreSQL 10 doesn't allow direct import to partition
 	if ($self->{pg_supports_partition} && grep(/^$self->{type}$/i, 'COPY', 'INSERT', 'DATA')) {
@@ -1945,6 +1946,9 @@ sub _tables
 
 	# Retrieve tables informations
 	my %tables_infos = $self->_table_info();
+
+	# Retrieve column identity information
+	%{ $self->{identity_info} } = $self->_get_identities();
 
 	if (scalar keys %tables_infos > 0) {
 		if ( grep(/^$self->{type}$/, 'TABLE','SHOW_REPORT','COPY','INSERT') && !$self->{skip_indices} && !$self->{skip_indexes}) {
@@ -6343,6 +6347,9 @@ CREATE TRIGGER ${table}_trigger_insert
 	# Hash that will contains virtual column information to build triggers
 	my %virtual_trigger_info = ();
 
+	# Stores DDL to restart autoincrement sequences
+	my $sequence_output = '';
+
 	# Dump all table/index/constraints SQL definitions
 	my $ib = 1;
 	foreach my $table (sort {
@@ -6514,6 +6521,25 @@ CREATE TRIGGER ${table}_trigger_insert
 						$sql_output .= " NOT NULL";
 					}
 				}
+
+				# Autoincremented columns
+				if (!$self->{schema} && $self->{export_schema}) {
+					$f->[8] = "$f->[9].$f->[8]";
+				}
+				if (exists $self->{identity_info}{$f->[8]}{$f->[0]}) {
+					$sql_output =~ s/ NOT NULL\s*$//s; # IDENTITY or serial column are NOT NULL by default
+					if ($self->{pg_supports_identity}) {
+						$sql_output .= " GENERATED $self->{identity_info}{$f->[8]}{$f->[0]}{generation} AS IDENTITY";
+						$sql_output .= " " . $self->{identity_info}{$f->[8]}{$f->[0]}{options} if (exists $self->{identity_info}{$f->[8]}{$f->[0]}{options});
+					} else {
+						$sql_output =~ s/bigint\s*$/bigserial/s;
+						$sql_output =~ s/(integer|int)\s*$/serial/s;
+					}
+					$sql_output .= ",\n";
+					$sequence_output .= "SELECT ora2pg_upd_autoincrement_seq('$f->[8]','$f->[0]');\n";
+					next;
+				}
+
 				# Default value
 				if ($f->[4] ne "" && uc($f->[4]) ne 'NULL') {
 					$f->[4] =~ s/^\s+//;
@@ -6677,6 +6703,43 @@ CREATE TRIGGER ${table}_trigger_insert
 	}
 	if (!$self->{quiet} && !$self->{debug}) {
 		print STDERR $self->progress_bar($ib - 1, $num_total_table, 25, '=', 'tables', 'end of table export.'), "\n";
+	}
+
+	if ($sequence_output) {
+		my $fhdl = undef;
+		$sequence_output = qq{
+CREATE OR REPLACE FUNCTION ora2pg_upd_autoincrement_seq (tbname text, colname text) RETURNS VOID AS \$body\$
+DECLARE
+        query text;
+        maxval bigint;
+        seqname text;
+BEGIN
+        query := 'SELECT max(' || colname || ')+1 FROM ' || tbname;
+        EXECUTE query INTO maxval;
+        IF (maxval IS NOT NULL) THEN
+                query := \$\$SELECT (string_to_array(adsrc,''''))[2] FROM pg_attrdef WHERE adrelid = '\$\$
+                        || tbname || \$\$'::regclass AND adnum = (SELECT attnum FROM pg_attribute WHERE attrelid = '\$\$
+                        || tbname || \$\$'::regclass AND attname = '\$\$ || colname || \$\$') AND adsrc LIKE 'nextval%'\$\$;
+                EXECUTE query INTO seqname;
+                IF (seqname IS NOT NULL) THEN
+                        query := 'ALTER SEQUENCE ' || seqname || ' RESTART WITH ' || maxval;
+                        EXECUTE query;
+                END IF;
+        ELSE
+                RAISE NOTICE 'Table % is empty, you must load the AUTOINCREMENT file after data import.', tbname;
+        END IF;
+END;
+\$body\$
+LANGUAGE PLPGSQL;
+
+} . $sequence_output;
+		$sequence_output .= "DROP FUNCTION ora2pg_upd_autoincrement_seq(text, text);\n";
+		$self->logit("Dumping DDL to restart autoincrement sequences into separate file : AUTOINCREMENT_$self->{output}\n", 1);
+		$fhdl = $self->open_export_file("AUTOINCREMENT_$self->{output}");
+		$self->set_binmode($fhdl);
+		$sequence_output = $self->set_search_path() . $sequence_output;
+		$self->dump($sql_header . $sequence_output, $fhdl);
+		$self->close_export_file($fhdl);
 	}
 
 	if ($self->{file_per_index} && ($self->{type} ne 'FDW')) {
@@ -9296,6 +9359,60 @@ sub _get_sequences
 	}
 
 	return \@seqs;
+}
+
+=head2 _get_identities
+
+This function retrieve information about IDENTITY columns that must be
+exported as PostgreSQL serial.
+
+=cut
+
+sub _get_identities
+{
+	my ($self) = @_;
+
+	return Ora2Pg::MySQL::_get_identities($self) if ($self->{is_mysql});
+
+	# Retrieve all indexes 
+	my $str = "SELECT OWNER, TABLE_NAME, COLUMN_NAME, GENERATION_TYPE, IDENTITY_OPTIONS FROM $self->{prefix}_TAB_IDENTITY_COLS";
+	if (!$self->{schema}) {
+		$str .= " WHERE OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
+	} else {
+		$str .= " WHERE OWNER = '$self->{schema}'";
+	}
+	$str .= $self->limit_to_objects('TABLE', 'TABLE_NAME');
+	$str .= " ORDER BY OWNER, TABLE_NAME, COLUMN_NAME";
+
+	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+
+	my %seqs = ();
+	while (my $row = $sth->fetch) {
+		if (!$self->{schema} && $self->{export_schema}) {
+			$row->[1] = "$row->[0].$row->[1]";
+		}
+		# GENERATION_TYPE can be ALWAYS, BY DEFAULT and BY DEFAULT ON NULL
+		$seqs{$row->[1]}{$row->[2]}{generation} = $row->[3];
+		# SEQUENCE options
+		$seqs{$row->[1]}{$row->[2]}{options} = $row->[4];
+		$seqs{$row->[1]}{$row->[2]}{options} =~ s/(START WITH):/$1/;
+		$seqs{$row->[1]}{$row->[2]}{options} =~ s/(INCREMENT BY):/$1/;
+		$seqs{$row->[1]}{$row->[2]}{options} =~ s/MAX_VALUE:/MAXVALUE/;
+		$seqs{$row->[1]}{$row->[2]}{options} =~ s/MIN_VALUE:/MINVALUE/;
+		$seqs{$row->[1]}{$row->[2]}{options} =~ s/CYCLE_FLAG: N/NO CYCLE/;
+		$seqs{$row->[1]}{$row->[2]}{options} =~ s/CYCLE_FLAG: Y/CYCLE/;
+		$seqs{$row->[1]}{$row->[2]}{options} =~ s/CACHE_SIZE:/CACHE/;
+		$seqs{$row->[1]}{$row->[2]}{options} =~ s/CACHE_SIZE:/CACHE/;
+		$seqs{$row->[1]}{$row->[2]}{options} =~ s/ORDER_FLAG: .//;
+		$seqs{$row->[1]}{$row->[2]}{options} =~ s/,//g;
+		$seqs{$row->[1]}{$row->[2]}{options} =~ s/\s$//;
+		if ( $seqs{$row->[1]}{$row->[2]}{options} eq 'START WITH 1 INCREMENT BY 1 MAXVALUE 9999999999999999999999999999 MINVALUE 1 NO CYCLE CACHE 20') {
+			delete $seqs{$row->[1]}{$row->[2]}{options};
+		}
+	}
+
+	return %seqs;
 }
 
 =head2 _get_external_tables
@@ -14029,6 +14146,9 @@ sub _show_infos
 		# Retrieve tables informations
 		my %tables_infos = $self->_table_info();
 
+		# Retrieve column identity information
+		%{ $self->{identity_info} } = $self->_get_identities();
+
 		# Retrieve all columns information
 		my %columns_infos = ();
 		if ($type eq 'SHOW_COLUMN') {
@@ -14211,6 +14331,21 @@ sub _show_infos
 					} elsif (exists $self->{'replace_as_boolean'}{uc($d->[1])} && ($self->{'replace_as_boolean'}{uc($d->[1])}[0] == $typlen)) {
 						$type = 'boolean';
 					}
+
+					# Autoincremented columns
+					if (!$self->{schema} && $self->{export_schema}) {
+						$d->[8] = "$d->[9].$d->[8]";
+					}
+					if (exists $self->{identity_info}{$d->[8]}{$d->[0]}) {
+						if ($self->{pg_supports_identity}) {
+							$type .= " GENERATED $self->{identity_info}{$d->[8]}{$d->[0]}{generation} AS IDENTITY";
+							$type .= " " . $self->{identity_info}{$d->[8]}{$d->[0]}{options} if (exists $self->{identity_info}{$d->[8]}{$d->[0]}{options});
+						} else {
+							$type =~ s/bigint$/bigserial/;
+							$type =~ s/(integer|int)$/serial/;
+						}
+					}
+
 					my $encrypted = '';
 					$encrypted = " [encrypted]" if (exists $self->{encrypted_column}{"$t.$k"});
 					my $virtual = '';
