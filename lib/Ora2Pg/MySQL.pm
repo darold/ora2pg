@@ -1904,5 +1904,20 @@ sub _get_security_definer
 	return (\%security);
 }
 
+=head2 _get_identities
+
+This function retrieve information about IDENTITY columns that must be
+exported as PostgreSQL serial.
+
+=cut
+
+sub _get_identities
+{
+	my ($self) = @_;
+
+	# nothing to do, AUTO_INCREMENT column are converted to serial/bigserial
+	return;
+}
+
 1;
 

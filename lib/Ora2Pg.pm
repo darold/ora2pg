@@ -6533,6 +6533,7 @@ CREATE TRIGGER ${table}_trigger_insert
 						$sql_output .= " " . $self->{identity_info}{$f->[8]}{$f->[0]}{options} if (exists $self->{identity_info}{$f->[8]}{$f->[0]}{options});
 					} else {
 						$sql_output =~ s/bigint\s*$/bigserial/s;
+						$sql_output =~ s/smallint\s*$/smallserial/s;
 						$sql_output =~ s/(integer|int)\s*$/serial/s;
 					}
 					$sql_output .= ",\n";
@@ -14345,6 +14346,7 @@ sub _show_infos
 							$type .= " " . $self->{identity_info}{$d->[8]}{$d->[0]}{options} if (exists $self->{identity_info}{$d->[8]}{$d->[0]}{options});
 						} else {
 							$type =~ s/bigint$/bigserial/;
+							$type =~ s/smallint/smallserial/;
 							$type =~ s/(integer|int)$/serial/;
 						}
 					}
