@@ -2321,8 +2321,6 @@ sub read_schema_from_file
 
 	my @statements = split(/\s*;\s*/, $content);
 
-	$self->{virtual_column} = ();
-
 	foreach $content (@statements) {
 		$content .= ';';
 
@@ -2367,7 +2365,6 @@ sub read_schema_from_file
 			$tb_def =~ s/^\(//;
 			my %fct_placeholder = ();
 			my $i = 0;
-			#while ($tb_def =~ s/((?:ENUM|IN|TO_DATE|TO_CHAR|UPPER|LOWER|NVL)\s*\([^\(\)]+\))/\%\%FCT$i\%\%/is) {
 			while ($tb_def =~ s/(\([^\(\)]*\))/\%\%FCT$i\%\%/is) {
 				$fct_placeholder{$i} = $1;
 				$i++;
@@ -2412,7 +2409,24 @@ sub read_schema_from_file
 						my $c_default = '';
 						my $virt_col = 'NO';
 						$c =~ s/\s+ENABLE//is;
-						if ($c =~ s/\b(GENERATED ALWAYS AS|AS)\s+(.*)//is) {
+						if ($c =~ s/\bGENERATED\s+(ALWAYS|BY\s+DEFAULT)\s+(ON\s+NULL\s+)?AS\s+IDENTITY\s*(.*)//is) {
+							$self->{identity_info}{$tb_name}{$c_name}{generation} = $1;
+							my $options = $3;
+							$self->{identity_info}{$tb_name}{$c_name}{options} = $3;
+
+							$self->{identity_info}{$tb_name}{$c_name}{options} =~ s/(START WITH):/$1/;
+							$self->{identity_info}{$tb_name}{$c_name}{options} =~ s/(INCREMENT BY):/$1/;
+							$self->{identity_info}{$tb_name}{$c_name}{options} =~ s/MAX_VALUE:/MAXVALUE/;
+							$self->{identity_info}{$tb_name}{$c_name}{options} =~ s/MIN_VALUE:/MINVALUE/;
+							$self->{identity_info}{$tb_name}{$c_name}{options} =~ s/CYCLE_FLAG: N/NO CYCLE/;
+							$self->{identity_info}{$tb_name}{$c_name}{options} =~ s/CYCLE_FLAG: Y/CYCLE/;
+							$self->{identity_info}{$tb_name}{$c_name}{options} =~ s/CACHE_SIZE:/CACHE/;
+							$self->{identity_info}{$tb_name}{$c_name}{options} =~ s/CACHE_SIZE:/CACHE/;
+							$self->{identity_info}{$tb_name}{$c_name}{options} =~ s/ORDER_FLAG: .//;
+							$self->{identity_info}{$tb_name}{$c_name}{options} =~ s/,//g;
+							$self->{identity_info}{$tb_name}{$c_name}{options} =~ s/\s$//;
+
+						} elsif ($c =~ s/\b(GENERATED ALWAYS AS|AS)\s+(.*)//is) {
 							$virt_col = 'YES';
 							$c_default = $2;
 							$c_default =~ s/\s+VIRTUAL//is;
