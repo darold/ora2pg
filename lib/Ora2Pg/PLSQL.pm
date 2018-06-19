@@ -434,9 +434,28 @@ and PL/SQL code
 
 =cut
 
+sub clear_parenthesis
+{
+	my $str = shift;
+
+	# Keep parenthesys with sub queries
+	if ($str =~ /\bSELECT\b/i) {
+		$str = '((' . $str . '))';
+	} else {
+		$str =~ s/^\s+//s;
+		$str =~ s/\s+$//s;
+		$str = '(' . $str . ')';
+	}
+
+	return $str;
+}
+
 sub extract_function_code
 {
         my ($class, $code, $idx) = @_;
+
+	# Remove some extra parenthesis for better parsing
+        $code =~ s/\(\s*\(([^\(\)]*)\)\s*\)/clear_parenthesis($1)/iges;
 
         # Look for a function call that do not have an other function
         # call inside, replace content with a marker and store the
@@ -1315,8 +1334,11 @@ sub replace_oracle_function
 
 	# Do some transformation when Orafce is not used
 	if (!$class->{use_orafce}) {
+
 		# Replace to_char() without format by a simple cast to text
-		$str =~ s/\bTO_CHAR\s*\($field\)/$1::varchar/is;
+		$str =~ s/\bTO_CHAR\s*\(\s*([^,\)]+)\)/($1)::varchar/is;
+		$str =~ s/\(([^\s]+)\)(::varchar)/$1$2/igs;
+
 		# Change trunc() to date_trunc('day', field)
 		# Trunc is replaced with date_trunc if we find date in the name of
 		# the value because Oracle have the same trunc function on number
