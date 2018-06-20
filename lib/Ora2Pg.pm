@@ -2425,6 +2425,7 @@ sub read_schema_from_file
 							$self->{identity_info}{$tb_name}{$c_name}{options} =~ s/ORDER_FLAG: .//;
 							$self->{identity_info}{$tb_name}{$c_name}{options} =~ s/,//g;
 							$self->{identity_info}{$tb_name}{$c_name}{options} =~ s/\s$//;
+							$self->{identity_info}{$tb_name}{$c_name}{options} =~ s/CACHE\s+0/CACHE 1/;
 
 						} elsif ($c =~ s/\b(GENERATED ALWAYS AS|AS)\s+(.*)//is) {
 							$virt_col = 'YES';
@@ -6544,7 +6545,7 @@ CREATE TRIGGER ${table}_trigger_insert
 					$sql_output =~ s/ NOT NULL\s*$//s; # IDENTITY or serial column are NOT NULL by default
 					if ($self->{pg_supports_identity}) {
 						$sql_output .= " GENERATED $self->{identity_info}{$f->[8]}{$f->[0]}{generation} AS IDENTITY";
-						$sql_output .= " " . $self->{identity_info}{$f->[8]}{$f->[0]}{options} if (exists $self->{identity_info}{$f->[8]}{$f->[0]}{options});
+						$sql_output .= " (" . $self->{identity_info}{$f->[8]}{$f->[0]}{options} . ')' if (exists $self->{identity_info}{$f->[8]}{$f->[0]}{options});
 					} else {
 						$sql_output =~ s/bigint\s*$/bigserial/s;
 						$sql_output =~ s/smallint\s*$/smallserial/s;
@@ -9425,6 +9426,7 @@ sub _get_identities
 		$seqs{$row->[1]}{$row->[2]}{options} =~ s/ORDER_FLAG: .//;
 		$seqs{$row->[1]}{$row->[2]}{options} =~ s/,//g;
 		$seqs{$row->[1]}{$row->[2]}{options} =~ s/\s$//;
+		$seqs{$row->[1]}{$row->[2]}{options} =~ s/CACHE\s+0/CACHE 1/;
 		if ( $seqs{$row->[1]}{$row->[2]}{options} eq 'START WITH 1 INCREMENT BY 1 MAXVALUE 9999999999999999999999999999 MINVALUE 1 NO CYCLE CACHE 20') {
 			delete $seqs{$row->[1]}{$row->[2]}{options};
 		}
@@ -14357,7 +14359,7 @@ sub _show_infos
 					if (exists $self->{identity_info}{$d->[8]}{$d->[0]}) {
 						if ($self->{pg_supports_identity}) {
 							$type .= " GENERATED $self->{identity_info}{$d->[8]}{$d->[0]}{generation} AS IDENTITY";
-							$type .= " " . $self->{identity_info}{$d->[8]}{$d->[0]}{options} if (exists $self->{identity_info}{$d->[8]}{$d->[0]}{options});
+							$type .= " (" . $self->{identity_info}{$d->[8]}{$d->[0]}{options} . ')' if (exists $self->{identity_info}{$d->[8]}{$d->[0]}{options});
 						} else {
 							$type =~ s/bigint$/bigserial/;
 							$type =~ s/smallint/smallserial/;
