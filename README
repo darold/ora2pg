@@ -867,6 +867,12 @@ CONFIGURATION
         automatically enable the FILE_PER_TABLE directive if your are
         exporting to files.
 
+    DEFAULT_PARALLELISM_DEGREE
+        You can force Ora2Pg to use /*+ PARALLEL(tbname, degree) */ hint in
+        each query used to export data from Oracle by setting a value upper
+        than 1 to this directive. A value of 0 or 1 disable the use of
+        parallel hint. Default is disabled.
+
     FDW_SERVER
         This directive is used to set the name of the foreign data server
         that is used in the "CREATE SERVER name FOREIGN DATA WRAPPER

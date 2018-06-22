@@ -976,6 +976,12 @@ ORACLE_COPIES	1
 # the FILE_PER_TABLE directive if your are exporting to files.
 PARALLEL_TABLES	1
 
+# You can force Ora2Pg to use /*+ PARALLEL(tbname, degree) */ hint in each
+# query used to export data from Oracle by setting a value upper than 1 to
+# this directive. A value of 0 or 1 disable the use of parallel hint.
+# Default is disabled.
+DEFAULT_PARALLELISM_DEGREE	0
+
 # Multiprocess support. This directive is used to split the select queries
 # between the different connections to Oracle if ORA_COPIES is used. Ora2Pg
 # will extract data with the following prepare statement:

@@ -887,6 +887,13 @@ so the real number of process that will be used is PARALLEL_TABLES * JOBS.
 Note that this directive when set upper that 1 will also automatically enable
 the FILE_PER_TABLE directive if your are exporting to files.
 
+=item DEFAULT_PARALLELISM_DEGREE
+
+You can force Ora2Pg to use /*+ PARALLEL(tbname, degree) */ hint in each
+query used to export data from Oracle by setting a value upper than 1 to
+this directive. A value of 0 or 1 disable the use of parallel hint.
+Default is disabled.
+
 =item FDW_SERVER
 
 This directive is used to set the name of the foreign data server that is used

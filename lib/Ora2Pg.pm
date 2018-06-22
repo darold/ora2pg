@@ -966,8 +966,8 @@ sub _init
 	$self->{synchronous_commit} ||= 0;
 
 	# Default degree for Oracle parallelism
-	if ($self->{default_parallelism_degre} eq '') {
-		$self->{default_parallelism_degre} = 35;
+	if ($self->{default_parallelism_degree} eq '') {
+		$self->{default_parallelism_degree} = 0;
 	}
 
 	# Mark function as STABLE by default
@@ -8177,13 +8177,13 @@ VARCHAR2
 			$alias = "PARTITION($part_name)";
 		}
 		# Force parallelism on Oracle side
-		if ($self->{default_parallelism_degre}) {
+		if ($self->{default_parallelism_degree} > 1) {
 			$str ~= s#^SELECT #SELECT /*+ FULL($part_name) PARALLEL($part_name, $self->{default_parallelism_degree}) */ #;
 		}
 	} else {
 		$alias = 'a';
 		# Force parallelism on Oracle side
-		if ($self->{default_parallelism_degre}) {
+		if ($self->{default_parallelism_degre} > 1) {
 			$str ~= s#^SELECT #SELECT /*+ FULL($a) PARALLEL($a, $self->{default_parallelism_degree}) */ #;
 		}
 	}
