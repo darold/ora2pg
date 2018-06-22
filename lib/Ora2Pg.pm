@@ -965,6 +965,11 @@ sub _init
 	# Disable synchronous commit for pg data load
 	$self->{synchronous_commit} ||= 0;
 
+	# Default degree for Oracle parallelism
+	if ($self->{default_parallelism_degre} eq '') {
+		$self->{default_parallelism_degre} = 35;
+	}
+
 	# Mark function as STABLE by default
 	if (not defined $self->{function_stable} || $self->{function_stable} ne '0') {
 		$self->{function_stable} = 1;
@@ -7998,6 +8003,7 @@ sub _howto_get_data
 	if ($self->{tables}{$table}{table_info}{nested} eq 'YES') {
 		$str = "SELECT /*+ nested_table_get_refs */ ";
 	}
+
 	my $extraStr = "";
 	my $dateformat = 'YYYY-MM-DD HH24:MI:SS';
 	my $timeformat = $dateformat;
@@ -8170,10 +8176,19 @@ VARCHAR2
 		} else {
 			$alias = "PARTITION($part_name)";
 		}
+		# Force parallelism on Oracle side
+		if ($self->{default_parallelism_degre}) {
+			$str ~= s#^SELECT #SELECT /*+ FULL($part_name) PARALLEL($part_name, $self->{default_parallelism_degree}) */ #;
+		}
 	} else {
 		$alias = 'a';
+		# Force parallelism on Oracle side
+		if ($self->{default_parallelism_degre}) {
+			$str ~= s#^SELECT #SELECT /*+ FULL($a) PARALLEL($a, $self->{default_parallelism_degree}) */ #;
+		}
 	}
 	$str .= " FROM $realtable $alias";
+
 	if (exists $self->{where}{"\L$table\E"} && $self->{where}{"\L$table\E"}) {
 
 		($str =~ / WHERE /) ? $str .= ' AND ' : $str .= ' WHERE ';
