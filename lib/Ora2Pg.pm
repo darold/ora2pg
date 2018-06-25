@@ -8178,13 +8178,13 @@ VARCHAR2
 		}
 		# Force parallelism on Oracle side
 		if ($self->{default_parallelism_degree} > 1) {
-			$str ~= s#^SELECT #SELECT /*+ FULL($part_name) PARALLEL($part_name, $self->{default_parallelism_degree}) */ #;
+			$str =~ s#^SELECT #SELECT /*+ FULL($part_name) PARALLEL($part_name, $self->{default_parallelism_degree}) */ #;
 		}
 	} else {
 		$alias = 'a';
 		# Force parallelism on Oracle side
 		if ($self->{default_parallelism_degre} > 1) {
-			$str ~= s#^SELECT #SELECT /*+ FULL($a) PARALLEL($a, $self->{default_parallelism_degree}) */ #;
+			$str =~ s#^SELECT #SELECT /*+ FULL($a) PARALLEL($a, $self->{default_parallelism_degree}) */ #;
 		}
 	}
 	$str .= " FROM $realtable $alias";
