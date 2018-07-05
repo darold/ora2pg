@@ -9267,7 +9267,7 @@ AND    IC.TABLE_OWNER = ?
 			$row->[1] = $nc->[0];
 			$row->[1] =~ s/"//g;
 			# Enclose with double quote if required when is is not an index function
-			if ($row->[1] !~ /\(.*\)/) {
+			if ($row->[1] !~ /\(.*\)/ && $row->[4] !~ /FUNCTION-BASED/i) {
 				$row->[1] = $self->quote_object_name($row->[1]);
 			}
 			# Append DESC sort order when not default to ASC
