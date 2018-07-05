@@ -8289,6 +8289,7 @@ sub _sql_type
         # Overide the length
 	if ( ($type eq 'NUMBER') && $precision ) {
 		$len = $precision;
+		return $self->{data_type}{'NUMBER(*)'} if ($scale eq '0' && exists $self->{data_type}{'NUMBER(*)'});
 	} elsif ( ($type eq 'NUMBER') && ($len == 38) ) {
 		if ($scale eq '0' && $precision eq '') {
 			# Allow custom type rewrite for NUMBER(*,0)
