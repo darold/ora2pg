@@ -5006,7 +5006,6 @@ LANGUAGE plpgsql ;
 			$self->{plsql_pgsql} = 1;
 			$self->{packages} = ();
 			$self->logit("Reading input code from file $self->{input_file}...\n", 1);
-			sleep(1);
 			my $content = $self->read_input_file($self->{input_file});
 			my $pknm = '';
 			my $before = '';
