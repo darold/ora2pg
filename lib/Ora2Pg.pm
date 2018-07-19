@@ -9408,6 +9408,9 @@ sub _get_identities
 
 	return Ora2Pg::MySQL::_get_identities($self) if ($self->{is_mysql});
 
+	# Identity column appears in version 12 only
+	return if ($self->{db_version} =~ /Release (8|9|10|11)/);
+
 	# Retrieve all indexes 
 	my $str = "SELECT OWNER, TABLE_NAME, COLUMN_NAME, GENERATION_TYPE, IDENTITY_OPTIONS FROM $self->{prefix}_TAB_IDENTITY_COLS";
 	if (!$self->{schema}) {
