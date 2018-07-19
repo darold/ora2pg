@@ -12031,6 +12031,9 @@ sub _remove_comments
 {
 	my ($self, $content, $no_constant) = @_;
 
+	# Fix unterminated comment at end of the code
+	$$content =~ s/(\/\*(?:(?!\*\/).)*)$/$1 \*\//s;
+
 	# First remove hints they are not supported in PostgreSQL and it break the parser
 	while ($$content =~ s/(\/\*\+(?:.*?)\*\/)/\%ORA2PG_COMMENT$self->{idxcomment}\%/s) {
 		$self->{comment_values}{"\%ORA2PG_COMMENT$self->{idxcomment}\%"} = $1;
@@ -12042,7 +12045,7 @@ sub _remove_comments
 	for (my $i = 0; $i <= $#lines; $i++) {
 		next if ($lines[$i] !~ /\S/);
 		# ex:       ---/* REN 16.12.2010 ZKOUSKA TEST NA KOLURC
-		if ($lines[$i] =~ s/^(\s*)(\-\-.*)/$1\%ORA2PG_COMMENT$self->{idxcomment}\%/) {
+		if ($lines[$i] =~ s/^(\s*)(\-\-(?:(?!\*\/\s*$).)*)$/$1\%ORA2PG_COMMENT$self->{idxcomment}\%/) {
 			$self->{comment_values}{"\%ORA2PG_COMMENT$self->{idxcomment}\%"} = $2;
 			$self->{idxcomment}++;
 		}
@@ -12054,7 +12057,6 @@ sub _remove_comments
 		}
 	}
 	$$content =join('', @lines);
-
 
 	# Replace /* */ comments by a placeholder and save the comment
 	while ($$content =~ s/(\/\*(.*?)\*\/)/\%ORA2PG_COMMENT$self->{idxcomment}\%/s) {
