@@ -774,6 +774,9 @@ sub plsql_to_plpgsql
 	#  Convert all x = NULL clauses to x IS NULL.
 	$str =~ s/(?!:)(.)=\s*NULL/$1 IS NULL/igs;
 
+	# Add missing FROM clause in DELETE statements minus MERGE and FK ON DELETE
+	$str =~ s/(\bDELETE\s+)(?!FROM|WHERE|RESTRICT|CASCADE|NO ACTION)\b/$1FROM /igs;
+
 	# Revert changes on update queries in the column setting part of the query
 	while ($str =~ s/\b(UPDATE\s+[^;]+)\s+IS NULL(\s*(?!WHERE)([^;]*))/$1 = NULL$2/is) {};
 
