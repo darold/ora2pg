@@ -12682,7 +12682,7 @@ sub _convert_type
 		}
 		$internal_name  =~ s/^[^\.]+\.//;
 		$type_of =~ s/\s*NOT[\t\s]+NULL//is;
-		$type_of =~ s/\s*;$//s;
+		$type_of =~ s/\s*;\s*$//s;
 		$type_of =~ s/^\s+//s;
 		if ($type_of !~ /\s/s) { 
 			$type_of = Ora2Pg::PLSQL::replace_sql_type($type_of, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type}, %{$self->{data_type}});
