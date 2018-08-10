@@ -602,6 +602,10 @@ sub plsql_to_plpgsql
 	$str =~ s/PRAGMA RESTRICT_REFERENCES[^;]+;//igs;
         $str =~ s/PRAGMA SERIALLY_REUSABLE[^;]*;//igs;
         $str =~ s/PRAGMA INLINE[^;]+;//igs;
+	
+	# Remove the extra TRUNCATE clauses not available in PostgreSQL
+	$str =~ s/TRUNCATE\s+TABLE\s+(.*?)\s+(REUSE|DROP)\s+STORAGE/TRUNCATE TABLE $1/igs;
+	$str =~ s/TRUNCATE\s+TABLE\s+(.*?)\s+(PRESERVE|PURGE)\s+MATERIALIZED\s+VIEW\s+LOG/TRUNCATE TABLE $1/igs;
 
 	# Converting triggers
 	#       :new. -> NEW.

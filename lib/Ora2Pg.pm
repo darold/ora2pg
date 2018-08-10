@@ -4580,7 +4580,7 @@ LANGUAGE plpgsql ;
 		}
 		
 		foreach my $q (sort { $a <=> $b } keys %{$self->{queries}}) {
-			if ($self->{queries}{$q}{code} !~ /(SELECT|UPDATE|DELETE|INSERT|DROP)/is) {
+			if ($self->{queries}{$q}{code} !~ /(SELECT|UPDATE|DELETE|INSERT|DROP|TRUNCATE)/is) {
 				$self->{queries}{$q}{to_be_parsed} = 0;
 			} else {
 				$self->{queries}{$q}{to_be_parsed} = 1;
