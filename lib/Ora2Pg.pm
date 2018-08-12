@@ -38,6 +38,7 @@ use File::Basename;
 use File::Spec qw/ tmpdir /;
 use File::Temp qw/ tempfile /;
 use Benchmark;
+use List::Util qw/ min /;
 
 #set locale to LC_NUMERIC C
 setlocale(LC_NUMERIC,"C");
@@ -2084,6 +2085,9 @@ sub _tables
 		$self->{tables}{$t}{table_info}{connection} = $tables_infos{$t}{connection};
 		$self->{tables}{$t}{table_info}{nologging} = $tables_infos{$t}{nologging};
 		$self->{tables}{$t}{table_info}{partitioned} = $tables_infos{$t}{partitioned};
+		if (exists $tables_infos{$t}{fillfactor}) {
+		    $self->{tables}{$t}{table_info}{fillfactor} = $tables_infos{$t}{fillfactor};
+		}
 
 		# Set the fields information
 		my $tmp_tbname = $t;
@@ -2558,7 +2562,7 @@ sub read_schema_from_file
 				$self->{tables}{$tb_name}{table_info}{tablespace} =~ s/"//gs;
 			}
 			if ($tb_param =~ /PCTFREE\s+(\d+)/is) {
-				$self->{tables}{$tb_name}{table_info}{fillfactor} = $1;
+				$self->{tables}{$tb_name}{table_info}{fillfactor} = 100 - min(90, $1);
 			}
 			if ($tb_param =~ /\bNOLOGGING\b/is) {
 				$self->{tables}{$tb_name}{table_info}{nologging} = 1;
@@ -6405,8 +6409,7 @@ CREATE TRIGGER ${table}_trigger_insert
 			if ($self->{plsql_pgsql}) {
 				$self->{tables}{$table}{table_as} = Ora2Pg::PLSQL::convert_plsql_code($self, $self->{tables}{$table}{table_as}, %{$self->{data_type}});
 			}
-			my $withoid = '';
-			$withoid = 'WITH (OIDS)' if ($self->{with_oid});
+			my $withoid = _make_WITH($self->{with_oid}, $self->{tables}{$tbname}{table_info});
 			$sql_output .= "\nCREATE $obj_type $tbname $withoid AS $self->{tables}{$table}{table_as};\n";
 			next;
 		}
@@ -6624,8 +6627,7 @@ CREATE TRIGGER ${table}_trigger_insert
 				$sql_output .= ' PARTITION BY ' . $self->{partitions_list}{"\L$table\E"}{type} . " (" . lc(join(',', @{$self->{partitions_list}{"\L$table\E"}{columns}})) . ")";
 			}
 			if ( ($self->{type} ne 'FDW') && (!$self->{external_to_fdw} || (!grep(/^$table$/i, keys %{$self->{external_table}}) && !$self->{tables}{$table}{table_info}{connection})) ) {
-				my $withoid = '';
-				$withoid = 'WITH (OIDS)' if ($self->{with_oid});
+				my $withoid = _make_WITH($self->{with_oid}, $self->{tables}{$table}{table_info});
 				if ($self->{use_tablespace} && $self->{tables}{$table}{table_info}{tablespace} && !grep(/^$self->{tables}{$table}{table_info}{tablespace}$/i, @{$self->{default_tablespaces}})) {
 					$sql_output .= " $withoid TABLESPACE $self->{tables}{$table}{table_info}{tablespace};\n";
 				} else {
@@ -10471,7 +10473,7 @@ sub _table_info
 		$sth->finish();
 	}
 
-	my $sql = "SELECT A.OWNER,A.TABLE_NAME,NVL(num_rows,1) NUMBER_ROWS,A.TABLESPACE_NAME,A.NESTED,A.LOGGING,A.PARTITIONED FROM $self->{prefix}_TABLES A, ALL_OBJECTS O WHERE A.OWNER=O.OWNER AND A.TABLE_NAME=O.OBJECT_NAME AND O.OBJECT_TYPE='TABLE' $owner";
+	my $sql = "SELECT A.OWNER,A.TABLE_NAME,NVL(num_rows,1) NUMBER_ROWS,A.TABLESPACE_NAME,A.NESTED,A.LOGGING,A.PARTITIONED,A.PCT_FREE FROM $self->{prefix}_TABLES A, ALL_OBJECTS O WHERE A.OWNER=O.OWNER AND A.TABLE_NAME=O.OBJECT_NAME AND O.OBJECT_TYPE='TABLE' $owner";
 	$sql .= " AND A.TEMPORARY='N' AND (A.NESTED != 'YES' OR A.LOGGING != 'YES') AND A.SECONDARY = 'N'";
 	if ($self->{db_version} !~ /Release [89]/) {
 		$sql .= " AND (A.DROPPED IS NULL OR A.DROPPED = 'NO')";
@@ -10505,6 +10507,9 @@ sub _table_info
 			$tables_infos{$row->[1]}{partitioned} = 0;
 		} else {
 			$tables_infos{$row->[1]}{partitioned} = 1;
+		}
+		if (($row->[7] || 0) > 0) {
+			$tables_infos{$row->[1]}{fillfactor} = 100 - min(90, $row->[7]);
 		}
 		if ($do_real_row_count) {
 			$self->logit("DEBUG: looking for real row count for table ($row->[0]) $row->[1] (aka using count(*))...\n", 1);
@@ -17415,6 +17420,19 @@ sub requalify_function_call
 	}
 }
 
+
+sub _make_WITH
+{
+    my ($with_oid, $table_info) = @_;
+    my @withs =();
+    push @withs, 'OIDS' if ($with_oid);
+    push @withs, 'fillfactor=' . $table_info->{fillfactor} if (exists $table_info->{fillfactor});
+    my $WITH='';
+    if (@withs>0) {
+	$WITH .= 'WITH (' . join(",",@withs) . ')';
+    }
+    return $WITH;
+}
 
 1;
 
