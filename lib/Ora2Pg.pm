@@ -7003,7 +7003,7 @@ sub read_input_file
 	my $content = '';
 	if (open(my $fin, '<', $file)) {
 		$self->set_binmode($fin) if (_is_utf8_file( $file));
-		while (<$fin>) { $content .= $_; };
+		while (<$fin>) { next if /^\/$/; $content .= $_; };
 		close($fin);
 	} else {
 		die "FATAL: can't read file $file, $!\n";
