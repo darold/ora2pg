@@ -2562,7 +2562,11 @@ sub read_schema_from_file
 				$self->{tables}{$tb_name}{table_info}{tablespace} =~ s/"//gs;
 			}
 			if ($tb_param =~ /PCTFREE\s+(\d+)/is) {
-				$self->{tables}{$tb_name}{table_info}{fillfactor} = 100 - min(90, $1);
+				# We only take care of pctfree upper than the default
+				if ($1 > 10) {
+					# fillfactor must be >= 10
+					$self->{tables}{$tb_name}{table_info}{fillfactor} = 100 - min(90, $1);
+				}
 			}
 			if ($tb_param =~ /\bNOLOGGING\b/is) {
 				$self->{tables}{$tb_name}{table_info}{nologging} = 1;
@@ -10508,7 +10512,8 @@ sub _table_info
 		} else {
 			$tables_infos{$row->[1]}{partitioned} = 1;
 		}
-		if (($row->[7] || 0) > 0) {
+		# Only take care of PCTFREE upper than the Oracle default value
+		if (($row->[7] || 0) > 10) {
 			$tables_infos{$row->[1]}{fillfactor} = 100 - min(90, $row->[7]);
 		}
 		if ($do_real_row_count) {
