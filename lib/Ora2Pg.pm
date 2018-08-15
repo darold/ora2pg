@@ -12056,6 +12056,13 @@ sub _remove_comments
 	my @lines = split(/([\n\r]+)/, $$content);
 	for (my $i = 0; $i <= $#lines; $i++) {
 		next if ($lines[$i] !~ /\S/);
+
+		# ex:		v := 'literal'    -- commentaire avec un ' guillemet
+		if ($lines[$i] =~ s/^([^']+'[^']*'\s*)(\-\-.*)$/$1\%ORA2PG_COMMENT$self->{idxcomment}\%/) {
+			$self->{comment_values}{"\%ORA2PG_COMMENT$self->{idxcomment}\%"} = $2;
+			$self->{idxcomment}++;
+		}
+
 		# ex:       ---/* REN 16.12.2010 ZKOUSKA TEST NA KOLURC
 		if ($lines[$i] =~ s/^(\s*)(\-\-(?:(?!\*\/\s*$).)*)$/$1\%ORA2PG_COMMENT$self->{idxcomment}\%/) {
 			$self->{comment_values}{"\%ORA2PG_COMMENT$self->{idxcomment}\%"} = $2;
