@@ -3751,7 +3751,7 @@ sub _get_sql_data
 					$sql_output .= " IS E'" . $self->{views}{$view}{comment} . "';\n\n";
 				}
 
-				foreach $f (keys %{$self->{views}{$view}{column_comments}}) {
+				foreach $f (sort keys %{$self->{views}{$view}{column_comments}}) {
 					next unless $self->{views}{$view}{column_comments}{$f};
 					$self->{views}{$view}{column_comments}{$f} =~ s/'/''/gs;
 					# Change column names
@@ -5020,27 +5020,46 @@ LANGUAGE plpgsql ;
 			my $old_line = '';
 			my $skip_pkg_header = 0;
 			$self->_remove_comments(\$content);
-			$content =~ s/(?:CREATE|CREATE OR REPLACE)?\s*(?:EDITABLE|NONEDITABLE)?\s*PACKAGE\s+/CREATE OR REPLACE PACKAGE /igs;
-			my @pkg_content = split(/CREATE OR REPLACE PACKAGE BODY\s+/i, $content);
+			# Normalise start of package declaration
+			$content =~ s/(?:CREATE|CREATE\s+OR\s+REPLACE)?(?:\s+EDITABLE|\s+NONEDITABLE)?\s+PACKAGE\s+/CREATE OR REPLACE PACKAGE /igs;
+			# Preserve hearder
+			$content =~ s/^(.*?)(CREATE OR REPLACE PACKAGE)/$2/s;
+			my $start = $1 || '';
+			my @pkg_content = split(/CREATE OR REPLACE PACKAGE\s+/is, $content);
 			for (my $i = 0; $i <= $#pkg_content; $i++) {
-				if ($pkg_content[$i] !~ /^(?:\s*\%ORA2PG_COMMENT\d+\%\s*)?CREATE/is) {
-					if ($pkg_content[$i] =~ /^([^\s]+)/) {
+				# package declaration
+				if ($pkg_content[$i] !~ /^BODY\s+/is) {
+					if ($pkg_content[$i] =~ /^([^\s]+)/is) {
 						my $pname = lc($1);
 						$pname =~ s/"//g;
-						if ($i > 0 && $pkg_content[$i-1] =~ /CREATE OR REPLACE PACKAGE/is) {
-							$self->{packages}{$pname}{text} = $pkg_content[$i-1];
-						}
-						$self->{packages}{$pname}{text} .= 'CREATE OR REPLACE PACKAGE BODY ' . $pkg_content[$i];
+						$pname =~ s/^[^\.]+\.//g;
+						$self->{packages}{$pname}{desc} = 'CREATE OR REPLACE PACKAGE ' . $pkg_content[$i];
+						$self->{packages}{$pname}{text} =  $start if ($start);
+						$start = '';
+					}
+				} else {
+					if ($pkg_content[$i] =~ /^BODY\s+([^\s]+)\s+/is) {
+						my $pname = lc($1);
+						$pname =~ s/"//g;
+						$pname =~ s/^[^\.]+\.//g;
+						$self->{packages}{$pname}{text} .= 'CREATE OR REPLACE PACKAGE ' . $pkg_content[$i];
 					}
 				}
 			}
 			@pkg_content = ();
 
 			foreach my $pkg (sort keys %{$self->{packages}}) {
+				my $tmp_txt = '';
+				if (exists $self->{packages}{$pkg}{desc}) {
+					# Move commentis at end of package declaration before package definition
+					while ($self->{packages}{$pkg}{desc} =~ s/(\%ORA2PG_COMMENT\d+\%\s*)$//) {
+						$self->{packages}{$pkg}{text} = $1 . $self->{packages}{$pkg}{text};
+					}
+				}
 				# Get all metadata from all procedures/function when we are
 				# reading from a file, otherwise it has already been done
-				my $tmp_txt = "$self->{packages}{$pkg}{text}";
-				$tmp_txt =~ s/^(.*)CREATE OR REPLACE PACKAGE BODY/CREATE OR REPLACE PACKAGE BODY/s;
+				$tmp_txt = $self->{packages}{$pkg}{text};
+				$tmp_txt =~ s/^.*CREATE OR REPLACE PACKAGE\s+/CREATE OR REPLACE PACKAGE /s;
 				my %infos = $self->_lookup_package($tmp_txt);
 				my $sch = 'unknown';
 				my $pname = $pkg;
@@ -5059,6 +5078,7 @@ LANGUAGE plpgsql ;
 				$self->_restore_comments(\$self->{packages}{$pkg}{text});
 			}
 		}
+
 		#--------------------------------------------------------
 		my $default_global_vars = '';
 
@@ -5079,11 +5099,12 @@ LANGUAGE plpgsql ;
 				foreach my $n (sort keys %{$self->{global_variables}}) {
 					if (exists $self->{global_variables}{$n}{constant} || exists $self->{global_variables}{$n}{default}) {
 						$default_global_vars .= "$n = '$self->{global_variables}{$n}{default}'\n";
+					} else {
+						$default_global_vars .= "$n = ''\n";
 					}
 				}
 			}
 			%{$self->{global_variables}} = ();
-
 			my $pkgbody = '';
 			my $fct_cost = '';
 			if (!$self->{plsql_pgsql}) {
@@ -5104,47 +5125,43 @@ LANGUAGE plpgsql ;
 					$total_size += length($self->{packages}->{$pkg}{text});
 				}
 				$self->_remove_comments(\$self->{packages}{$pkg}{text});
-				my @codes = split(/CREATE(?: OR REPLACE)?(?: EDITABLE| NONEDITABLE)? PACKAGE\s+/i, $self->{packages}{$pkg}{text});
+
+				# Normalyse package creation call
+				$self->{packages}{$pkg}{text} =~ s/CREATE(?:\s+OR\s+REPLACE)?(?:\s+EDITABLE|\s+NONEDITABLE)?\s+PACKAGE\s+/CREATE OR REPLACE PACKAGE /is;
 				if ($self->{estimate_cost}) {
-					foreach my $txt (@codes) {
-						next if ($txt !~ /^BODY\s+/is);
-						my %infos = $self->_lookup_package("CREATE OR REPLACE PACKAGE $txt");
-						foreach my $f (sort keys %infos) {
-							next if (!$f);
-							my @cnt = $infos{$f}{code} =~ /(\%ORA2PG_COMMENT\d+\%)/i;
-							$total_size_no_comment += (length($infos{$f}{code}) - (17 * length(join('', @cnt))));
-							my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($self, $infos{$f}{code});
-							$self->logit("Function $f estimated cost: $cost\n", 1);
-							$cost_value += $cost;
-							$number_fct++;
-							$fct_cost .= "\t-- Function $f total estimated cost: $cost\n";
-							foreach (sort { $cost_detail{$b} <=> $cost_detail{$a} } keys %cost_detail) {
-								next if (!$cost_detail{$_});
-								$fct_cost .= "\t\t-- $_ => $cost_detail{$_}";
-								if (!$self->{is_mysql}) {
-									$fct_cost .= " (cost: $Ora2Pg::PLSQL::UNCOVERED_SCORE{$_})" if ($Ora2Pg::PLSQL::UNCOVERED_SCORE{$_});
-								} else {
-									$fct_cost .= " (cost: $Ora2Pg::PLSQL::UNCOVERED_MYSQL_SCORE{$_})" if ($Ora2Pg::PLSQL::UNCOVERED_MYSQL_SCORE{$_});
-								}
-								$fct_cost .= "\n";
+					my %infos = $self->_lookup_package($self->{packages}{$pkg}{text});
+					foreach my $f (sort keys %infos) {
+						next if (!$f);
+						my @cnt = $infos{$f}{code} =~ /(\%ORA2PG_COMMENT\d+\%)/i;
+						$total_size_no_comment += (length($infos{$f}{code}) - (17 * length(join('', @cnt))));
+						my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($self, $infos{$f}{code});
+						$self->logit("Function $f estimated cost: $cost\n", 1);
+						$cost_value += $cost;
+						$number_fct++;
+						$fct_cost .= "\t-- Function $f total estimated cost: $cost\n";
+						foreach (sort { $cost_detail{$b} <=> $cost_detail{$a} } keys %cost_detail) {
+							next if (!$cost_detail{$_});
+							$fct_cost .= "\t\t-- $_ => $cost_detail{$_}";
+							if (!$self->{is_mysql}) {
+								$fct_cost .= " (cost: $Ora2Pg::PLSQL::UNCOVERED_SCORE{$_})" if ($Ora2Pg::PLSQL::UNCOVERED_SCORE{$_});
+							} else {
+								$fct_cost .= " (cost: $Ora2Pg::PLSQL::UNCOVERED_MYSQL_SCORE{$_})" if ($Ora2Pg::PLSQL::UNCOVERED_MYSQL_SCORE{$_});
 							}
+							$fct_cost .= "\n";
 						}
-						$cost_value += $Ora2Pg::PLSQL::OBJECT_SCORE{'PACKAGE BODY'};
 					}
+					$cost_value += $Ora2Pg::PLSQL::OBJECT_SCORE{'PACKAGE BODY'};
 					$fct_cost .= "-- Total estimated cost for package $pkg: $cost_value units, " . $self->_get_human_cost($cost_value) . "\n";
 				}
-				foreach my $txt (@codes) {
-					next if (!$txt);
-					$txt = $self->_convert_package("CREATE OR REPLACE PACKAGE $txt", $self->{packages}{$pkg}{owner});
-					$self->_restore_comments(\$txt) if (!$self->{file_per_function});
-					$txt =~ s/(-- REVOKE ALL ON FUNCTION [^;]+ FROM PUBLIC;)/&remove_newline($1)/sge;
-					if (!$self->{file_per_function}) {
-						$self->normalize_function_call(\$txt);
-					}
-					$pkgbody .= $txt;
-					$pkgbody =~ s/[\r\n]*\bEND;\s*$//is;
-					$pkgbody =~ s/(\s*;)\s*$/$1/is;
+				$txt = $self->_convert_package($pkg);
+				$self->_restore_comments(\$txt) if (!$self->{file_per_function});
+				$txt =~ s/(-- REVOKE ALL ON FUNCTION [^;]+ FROM PUBLIC;)/&remove_newline($1)/sge;
+				if (!$self->{file_per_function}) {
+					$self->normalize_function_call(\$txt);
 				}
+				$pkgbody .= $txt;
+				$pkgbody =~ s/[\r\n]*\bEND;\s*$//is;
+				$pkgbody =~ s/(\s*;)\s*$/$1/is;
 			}
 			if ($self->{estimate_cost}) {
 				$self->logit("Total size of package code: $total_size bytes.\n", 1);
@@ -5186,6 +5203,8 @@ LANGUAGE plpgsql ;
 			foreach my $n (sort keys %{$self->{global_variables}}) {
 				if (exists $self->{global_variables}{$n}{constant} || exists $self->{global_variables}{$n}{default}) {
 					$default_global_vars .= "$n = '$self->{global_variables}{$n}{default}'\n";
+				} else {
+					$default_global_vars .= "$n = ''\n";
 				}
 			}
 		}
@@ -7242,7 +7261,7 @@ sub _create_indexes
 	my @out = ();
 	my @fts_out = ();
 	# Set the index definition
-	foreach my $idx (keys %indexes) {
+	foreach my $idx (sort keys %indexes) {
 
 		# Cluster, bitmap join, reversed and IOT indexes will not be exported at all
 		# Hash indexes will be exported as btree
@@ -11830,14 +11849,18 @@ is set to 1.
 
 sub _convert_package
 {
-	my ($self, $plsql, $owner) = @_;
+	my ($self, $pkg) = @_;
+
+	return if (!$pkg || !exists $self->{packages}{$pkg}{text});
+
+	my $owner = $self->{packages}{$pkg}{owner} || '';
 
 	my $dirprefix = '';
 	$dirprefix = "$self->{output_dir}/" if ($self->{output_dir});
 	my $content = '';
 
-	if ($self->{package_as_schema} && ($plsql =~ /PACKAGE\s+BODY\s*([^\s]+)(?:\s*\%ORA2PG_COMMENT\d+\%)*\s*(AS|IS)\s*/is)) {
-		my $pname =  $self->quote_object_name($1);
+	if ($self->{package_as_schema}) {
+		my $pname =  $self->quote_object_name($pkg);
 		$pname =~ s/^[^\.]+\.//;
 		$content .= "\nDROP SCHEMA $self->{pg_supports_ifexists} $pname CASCADE;\n";
 		$content .= "CREATE SCHEMA $pname;\n";
@@ -11849,8 +11872,40 @@ sub _convert_package
 		}
 	}
 
+	# Grab global declaration from the package header
+	if ($self->{packages}{$pkg}{desc} =~ /CREATE OR REPLACE PACKAGE\s+([^\s]+)(?:\s*\%ORA2PG_COMMENT\d+\%)*\s*(AS|IS)\s*(.*)/is) {
+
+		my $pname = $1;
+		my $type = $2;
+		my $glob_declare = $3;
+
+		$pname =~ s/"//g;
+		$pname =~ s/^.*\.//g;
+		$self->logit("Looking global declaration in package $pname...\n", 1);
+
+		# Process package spec to extract global variables
+		if ($glob_declare) {
+			my @cursors = ();
+			($glob_declare, @cursors) = $self->clear_global_declaration($pname, $glob_declare, 0);
+			# Then dump custom type
+			foreach my $tpe (sort {$a->{pos} <=> $b->{pos}} @{$self->{types}}) {
+				$self->logit("Dumping type $tpe->{name}...\n", 1);
+				if ($self->{plsql_pgsql}) {
+					$tpe->{code} = $self->_convert_type($tpe->{code}, $tpe->{owner}, %{$self->{pkg_type}{$pname}});
+				} else {
+					$tpe->{code} = "CREATE$self->{create_or_replace} $tpe->{code}\n";
+				}
+				$content .= $tpe->{code} . "\n";
+				$i++;
+			}
+			$content .= join("\n", @cursors) . "\n";
+			$glob_declare = $self->register_global_variable($pname, $glob_declare);
+		}
+		@{$self->{types}} = ();
+	}
+
 	# Convert the package body part
-	if ($plsql =~ /CREATE OR REPLACE PACKAGE\s+BODY\s*([^\s]+)(?:\s*\%ORA2PG_COMMENT\d+\%)*\s*(AS|IS)\s*(.*)/is) {
+	if ($self->{packages}{$pkg}{text} =~ /CREATE OR REPLACE PACKAGE\s+BODY\s*([^\s]+)(?:\s*\%ORA2PG_COMMENT\d+\%)*\s*(AS|IS)\s*(.*)/is) {
 
 		my $pname = $1;
 		my $type = $2;
@@ -11861,36 +11916,16 @@ sub _convert_package
 		$pname =~ s/^.*\.//g;
 		$self->logit("Dumping package $pname...\n", 1);
 
-		# Append globals package declarations
-		if (exists $self->{pkg_content}{$pname}) {
-			$content .= $self->{pkg_content}{$pname};
-			delete $self->{pkg_content}{$pname};
-		}
-
 		# Process package spec to extract global variables
 		if ($glob_declare) {
-			# Remove all function/procedure declaration
-			while ($glob_declare =~ s/(PROCEDURE|FUNCTION).*?(PROCEDURE|FUNCTION)/$2/igs) {};
-			$glob_declare =~ s/(PROCEDURE|FUNCTION).*END[^;]*;//is;
-			# Remove end of the package decalaration
-			$glob_declare =~ s/\s+END[^;]*;\s*$//igs;
-			$glob_declare =~ s/\s+END[^;]*;//igs;
 			my @cursors = ();
-			while ($glob_declare =~ s/(CURSOR\s+[^;]+\s+RETURN\s+[^;]+;)//) {
-				push(@cursors, $1);
-			}
-			# Extract TYPE declaration
-			my $i = 0;
-			while ($glob_declare =~ s/TYPE\s+([^\s]+)\s+(AS|IS)\s+([^;]+;)//) {
-				$self->{pkg_type}{$1} = "$pname.$1";
-				my $code = "TYPE $self->{pkg_type}{$1} AS $3";
-				push(@{$self->{types}}, { ('name' => $1, 'code' => $code, 'pos' => $i++) });
-			}
+			($glob_declare, @cursors) = $self->clear_global_declaration($pname, $glob_declare, 1);
 			# Then dump custom type
 			foreach my $tpe (sort {$a->{pos} <=> $b->{pos}} @{$self->{types}}) {
+				next if (!exists $self->{pkg_type}{$pname}{$tpe->{name}});
 				$self->logit("Dumping type $tpe->{name}...\n", 1);
 				if ($self->{plsql_pgsql}) {
-					$tpe->{code} = $self->_convert_type($tpe->{code}, $tpe->{owner}, %{$self->{pkg_type}});
+					$tpe->{code} = $self->_convert_type($tpe->{code}, $tpe->{owner}, %{$self->{pkg_type}{$pname}});
 				} else {
 					$tpe->{code} = "CREATE$self->{create_or_replace} $tpe->{code}\n";
 				}
@@ -11950,53 +11985,9 @@ sub _convert_package
 			$self->{total_pkgcost} += $self->{pkgcost} || 0;
 		}
 
-	# Grab global declaration from the package header
-	} elsif ($plsql =~ /CREATE OR REPLACE PACKAGE\s+([^\s]+)(?:\s*\%ORA2PG_COMMENT\d+\%)*\s*(AS|IS)\s*(.*)/is) {
-
-		my $pname = $1;
-		my $type = $2;
-		my $glob_declare = $3;
-
-		$pname =~ s/"//g;
-		$pname =~ s/^.*\.//g;
-		$self->logit("Looking global declaration in package $pname...\n", 1);
-
-		# Process package spec to extract global variables
-		if ($glob_declare) {
-			# Remove all function declaration
-			$glob_declare =~ s/(PROCEDURE|FUNCTION)[^;]+;//gis;
-			# Remove end of the package decalaration
-			$glob_declare =~ s/\s+END[^;]*;.*//is;
-			$glob_declare =~ s/\%ORA2PG_COMMENT\d+\%//igs;
-			$glob_declare =~ s/[\r\n]+/\n/isg;
-			my @cursors = ();
-			while ($glob_declare =~ s/(CURSOR\s+[^;]+\s+RETURN\s+[^;]+;)//) {
-				push(@cursors, $1);
-			}
-			# Extract TYPE declaration
-			my $i = 0;
-			while ($glob_declare =~ s/TYPE\s+([^\s]+)\s+(AS|IS)\s+([^;]+;)//is) {
-				$self->{pkg_type}{$1} = "$pname.$1";
-				my $code = "TYPE $self->{pkg_type}{$1} AS $3";
-				push(@{$self->{types}}, { ('name' => $1, 'code' => $code, 'pos' => $i++) });
-			}
-			# Then dump custom type
-			foreach my $tpe (sort {$a->{pos} <=> $b->{pos}} @{$self->{types}}) {
-				$self->logit("Dumping type $tpe->{name}...\n", 1);
-				if ($self->{plsql_pgsql}) {
-					$tpe->{code} = $self->_convert_type($tpe->{code}, $tpe->{owner}, %{$self->{pkg_type}});
-				} else {
-					$tpe->{code} = "CREATE$self->{create_or_replace} $tpe->{code}\n";
-				}
-				$self->{pkg_content}{$pname} .= $tpe->{code} . "\n";
-				$i++;
-			}
-			$self->{pkg_content}{$pname} .= join("\n", @cursors) . "\n";
-			$glob_declare = $self->register_global_variable($pname, $glob_declare);
-			@{$self->{types}} = ();
-		}
-		return;
 	}
+
+	@{$self->{types}} = ();
 
 	return $content;
 }
@@ -17311,6 +17302,42 @@ sub escape_insert
 	}
 	return $col;
 }
+
+sub clear_global_declaration
+{
+	my ($self, $pname, $str, $is_pkg_body) = @_;
+
+	# Remove comment
+	$str =~ s/\%ORA2PG_COMMENT\d+\%//igs;
+
+	# Remove all function/procedure declaration from the content
+	if (!$is_pkg_body) {
+		$str =~ s/\b(PROCEDURE|FUNCTION)\s+[^;]+;//igs;
+	} else {
+		while ($str =~ s/\b(PROCEDURE|FUNCTION)\s+.*?END[^;]*;((?:(?!\bEND\b).)*\s+(?:PROCEDURE|FUNCTION)\s+)/$2/is) {
+		};
+		$str =~ s/(PROCEDURE|FUNCTION).*END[^;]*;//is;
+	}
+	# Remove end of the package declaration
+	$str =~ s/\s+END[^;]*;\s*$//igs;
+	# Eliminate extra newline
+	$str =~ s/[\r\n]+/\n/isg;
+
+	my @cursors = ();
+	while ($str =~ s/(CURSOR\s+[^;]+\s+RETURN\s+[^;]+;)//is) {
+		push(@cursors, $1);
+	}
+	# Extract TYPE declaration
+	my $i = 0;
+	while ($str =~ s/TYPE\s+([^\s]+)\s+(AS|IS)\s+([^;]+;)//is) {
+		$self->{pkg_type}{$pname}{$1} = "$pname.$1";
+		my $code = "TYPE $self->{pkg_type}{$pname}{$1} AS $3";
+		push(@{$self->{types}}, { ('name' => $1, 'code' => $code, 'pos' => $i++) });
+	}
+
+	return ($str, @cursors);
+}
+
 
 sub register_global_variable
 {
