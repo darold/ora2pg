@@ -1771,6 +1771,9 @@ sub replace_sql_type
 	# Replace MySQL type UNSIGNED in cast
 	$str =~ s/UNSIGNED\s*\)/bigint)/is;
 
+	# Remove precision for RAW|BLOB as type modifier is not allowed for type "bytea"
+	$str =~ s/\b(RAW|BLOB)\s*\(\s*\d+\s*\)/$1/igs;
+
 	# Replace type with precision
 	my @ora_type = keys %data_type;
 	map { s/\(/\\\(/; s/\)/\\\)/; } @ora_type;
