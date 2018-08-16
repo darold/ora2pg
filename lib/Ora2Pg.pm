@@ -7376,6 +7376,10 @@ sub _create_indexes
 			for ($i = 0; $i <= $#strings; $i++) {
 				$columns =~ s/\%\%string$i\%\%/'$strings[$i]'/;
 			}
+
+			# Replace call of schema.package.function() into package.function()
+			$columns =~ s/\b[^\s\.]+\.([^\s\.]+\.[^\s\.]+)\s*\(/$1\(/is;
+
 			my $schm = '';
 			my $idxname = '';
 			if ($idx =~ /^([^\.]+)\.(.*)$/) {
