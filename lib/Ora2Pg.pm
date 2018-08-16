@@ -4297,6 +4297,7 @@ LANGUAGE plpgsql ;
 			chomp($trig->[4]);
 
 			$trig->[4] =~ s/([^\*])[;\/]$/$1/;
+
 			$self->logit("\tDumping trigger $trig->[0] defined on table $trig->[3]...\n", 1);
 			my $tbname = $self->get_replaced_tbname($trig->[3]);
 
@@ -4310,8 +4311,20 @@ LANGUAGE plpgsql ;
 					my $cname = $self->{replaced_cols}{"\L$trig->[3]\E"}{"\L$coln\E"};
 					$cname = $self->quote_object_name($cname);
 					$trig->[4] =~ s/(OLD|NEW)\.$coln\b/$1\.$cname/igs;
+					$trig->[6] =~ s/\b$coln\b/$self->{replaced_cols}{"\L$trig->[3]\E"}{"\L$coln\E"}/is;
 				}
 			}
+			# Extract columns specified in the UPDATE OF ... ON clause
+			my $cols = '';
+			if ($trig->[2] eq 'UPDATE' && $trig->[6] =~ /UPDATE\s+OF\s+(.*?)\s+ON/i) {
+				my @defs = split(/\s*,\s*/, $1);
+				$cols = ' OF ';
+				foreach my $c (@defs) {
+					$cols .= $self->quote_object_name($c) . ',';
+				}
+				$cols =~ s/,$//;
+			}
+
 			if ($self->{export_schema} && !$self->{schema}) {
 				$sql_output .= $self->set_search_path($trig->[8]) . "\n";
 			}
@@ -4434,7 +4447,7 @@ LANGUAGE plpgsql ;
 					$sql_output .= "CREATE TRIGGER " . $self->quote_object_name($trig->[0]) . "\n\t";
 					my $statement = 0;
 					$statement = 1 if ($trig->[1] =~ s/ STATEMENT//);
-					$sql_output .= "$trig->[1] $trig->[2] ON " . $self->quote_object_name($tbname) . " ";
+					$sql_output .= "$trig->[1] $trig->[2]$cols ON " . $self->quote_object_name($tbname) . " ";
 					if ($statement) {
 						$sql_output .= "FOR EACH STATEMENT\n";
 					} else {
