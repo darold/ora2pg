@@ -6016,7 +6016,7 @@ BEGIN
 						} else {
 							$check_cond .= " IN ($self->{partitions}{$table}{$pos}{info}[$i]->{value})";
 						}
-					} else {
+					} elsif ($self->{partitions}{$table}{$pos}{info}[$i]->{type} eq 'RANGE') {
 						if ($#{$self->{partitions}{$table}{$pos}{info}} == 0) {
 							if (!$self->{pg_supports_partition}) {
 								if ($old_part eq '') {
@@ -6049,6 +6049,16 @@ BEGIN
 								$check_cond .= " FROM (MINVALUE) TO (" .  $values[$i] . ")";
 							}
 						}
+					} elsif ($self->{partitions}{$table}{$pos}{info}[$i]->{type} eq 'HASH') {
+						if (!$self->{pg_supports_partition}) {
+							print STDERR "WARNING: Hash partitioning not supported, skipping partitioning of table $table\n";
+							next;
+						} else {
+							$check_cond .= " WITH (MODULUS " . (scalar keys %{$self->{partitions}{$table}}) . ", REMAINDER " . ($pos-1) . ")";
+						}
+					} else {
+						print STDERR "WARNING: Unknown partitioning type $self->{partitions}{$table}{$pos}{info}[$i]->{type}, skipping partitioning of table $table\n";
+						next;
 					}
 					if (!$self->{pg_supports_partition}) {
 						$check_cond .= " AND" if ($i < $#{$self->{partitions}{$table}{$pos}{info}});
@@ -6081,12 +6091,22 @@ BEGIN
 						} else {
 							push(@condition, "$fct(NEW.$colname) IN (" . Ora2Pg::PLSQL::convert_plsql_code($self, $self->{partitions}{$table}{$pos}{info}[$i]->{value}, %{$self->{data_type}}) . ")");
 						}
-					} else {
+					} elsif ($self->{partitions}{$table}{$pos}{info}[$i]->{type} eq 'RANGE') {
 						if (!$fct) {
 							push(@condition, "NEW.$self->{partitions}{$table}{$pos}{info}[$i]->{column} < " . Ora2Pg::PLSQL::convert_plsql_code($self, $self->{partitions}{$table}{$pos}{info}[$i]->{value}, %{$self->{data_type}}));
 						} else {
 							push(@condition, "$fct(NEW.$colname) < " . Ora2Pg::PLSQL::convert_plsql_code($self, $self->{partitions}{$table}{$pos}{info}[$i]->{value}, %{$self->{data_type}}));
 						}
+					} elsif ($self->{partitions}{$table}{$pos}{info}[$i]->{type} eq 'HASH') {
+						if (!$self->{pg_supports_partition}) {
+							print STDERR "WARNING: Hash partitioning not supported, skipping partitioning of table $table\n";
+							next;
+						} else {
+							# Nothing to do here with HASH partitioning
+						}
+					} else {
+						print STDERR "WARNING: Unknown partitioning type $self->{partitions}{$table}{$pos}{info}[$i]->{type}, skipping partitioning of table $table\n";
+						next;
 					}
 					$owner = $self->{partitions}{$table}{$pos}{info}[$i]->{owner} || '';
 				}
@@ -6131,7 +6151,7 @@ BEGIN
 								} else {
 									$sub_check_cond .= " IN ($self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{value})";
 								}
-							} else {
+							} elsif ($self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{type} eq 'RANGE') {
 								if ($#{$self->{subpartitions}{$table}{$part}{$p}{info}} == 0) {
 									if (!$self->{pg_supports_partition}) {
 										if ($sub_old_part eq '') {
@@ -6163,6 +6183,16 @@ BEGIN
 										$sub_check_cond .= " FROM (MINVALUE) TO (" .  $values[$i] . ")";
 									}
 								}
+							} elsif ($self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{type} eq 'HASH') {
+								if (!$self->{pg_supports_partition}) {
+									print STDERR "WARNING: Hash partitioning not supported, skipping subpartitioning of table $table\n";
+									next;
+								} else {
+									$sub_check_cond .= " WITH (MODULUS " . (scalar keys %{$self->{subpartitions}{$table}}) . ", REMAINDER i" . ($p-1) . ")";
+								}
+							} else {
+								print STDERR "WARNING: Unknown partitioning type $self->{partitions}{$table}{$pos}{info}[$i]->{type}, skipping partitioning of table $table\n";
+								next;
 							}
 							if (!$self->{pg_supports_partition}) {
 								$sub_check_cond .= " AND " if ($i < $#{$self->{subpartitions}{$table}{$part}{$p}{info}});
@@ -6184,12 +6214,22 @@ BEGIN
 								} else {
 									push(@subcondition, "$fct(NEW.$colname) IN (" . Ora2Pg::PLSQL::convert_plsql_code($self, $self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{value}, %{$self->{data_type}}) . ")");
 								}
-							} else {
+							} elsif ($self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{type} eq 'RANGE') {
 								if (!$fct) {
 									push(@subcondition, "NEW.$self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{column} < " . Ora2Pg::PLSQL::convert_plsql_code($self, $self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{value}, %{$self->{data_type}}));
 								} else {
 									push(@subcondition, "$fct(NEW.$colname) < " . Ora2Pg::PLSQL::convert_plsql_code($self, $self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{value}, %{$self->{data_type}}));
 								}
+							} elsif ($self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{type} eq 'HASH') {
+								if (!$self->{pg_supports_partition}) {
+									print STDERR "WARNING: Hash partitioning not supported, skipping subpartitioning of table $table\n";
+									next;
+								} else {
+									# Nothing to do here with HASH partitioning
+								}
+							} else {
+								print STDERR "WARNING: Unknown partitioning type $self->{partitions}{$table}{$pos}{info}[$i]->{type}, skipping partitioning of table $table\n";
+								next;
 							}
 							$owner = $self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{owner} || '';
 						}
@@ -10859,7 +10899,7 @@ SELECT
 FROM $self->{prefix}_TAB_PARTITIONS A, $self->{prefix}_PART_TABLES B, $self->{prefix}_PART_KEY_COLUMNS C
 WHERE
 	a.table_name = b.table_name AND
-	(b.partitioning_type = 'RANGE' OR b.partitioning_type = 'LIST')
+	(b.partitioning_type = 'RANGE' OR b.partitioning_type = 'LIST' OR b.partitioning_type = 'HASH')
 	AND a.table_name = c.name
 };
 
@@ -10904,6 +10944,7 @@ WHERE
 
 This function implements an Oracle-native subpartitions information.
 Return two hash ref with partition details and partition default.
+
 =cut
 
 sub _get_subpartitions
@@ -10933,7 +10974,7 @@ SELECT
 FROM $self->{prefix}_tab_subpartitions A, $self->{prefix}_part_tables B, $self->{prefix}_subpart_key_columns C
 WHERE
 	a.table_name = b.table_name AND
-	(b.subpartitioning_type = 'RANGE' OR b.subpartitioning_type = 'LIST')
+	(b.subpartitioning_type = 'RANGE' OR b.subpartitioning_type = 'LIST' OR b.subpartitioning_type = 'HASH')
 	AND a.table_name = c.name
 };
 	$str .= $self->limit_to_objects('TABLE|PARTITION', 'A.TABLE_NAME|A.SUBPARTITION_NAME');
@@ -11125,7 +11166,7 @@ SELECT
 	C.COLUMN_POSITION
 FROM $self->{prefix}_PART_TABLES B, $self->{prefix}_PART_KEY_COLUMNS C
 WHERE B.TABLE_NAME = C.NAME
-	AND (b.partitioning_type = 'RANGE' OR b.partitioning_type = 'LIST')
+	AND (b.partitioning_type = 'RANGE' OR b.partitioning_type = 'LIST' OR b.partitioning_type = 'HASH')
 };
 	$str .= $self->limit_to_objects('TABLE','B.TABLE_NAME');
 
@@ -11189,7 +11230,7 @@ SELECT
 FROM $self->{prefix}_TAB_SUBPARTITIONS A, $self->{prefix}_PART_TABLES B, $self->{prefix}_SUBPART_KEY_COLUMNS C
 WHERE 
         a.table_name = b.table_name AND
-        (b.subpartitioning_type = 'RANGE' OR b.subpartitioning_type = 'LIST')
+        (b.subpartitioning_type = 'RANGE' OR b.subpartitioning_type = 'LIST' OR b.subpartitioning_type = 'HASH')
         AND a.table_name = c.name
 
 };
