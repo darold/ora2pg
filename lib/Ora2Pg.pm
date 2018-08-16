@@ -7279,7 +7279,7 @@ sub _column_comments
 
 	my $sth = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
-	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	my %data = ();
 	while (my $row = $sth->fetch) {
 		if (!$self->{schema} && $self->{export_schema}) {
@@ -8037,7 +8037,7 @@ sub _extract_sequence_info
 	my @script = ();
 
 	my $sth = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr ."\n", 0, 1);
-	$sth->execute() or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
 	while (my $seq_info = $sth->fetchrow_hashref) {
 
@@ -8533,7 +8533,7 @@ END
 			$self->logit("FATAL: _column_info() " . $self->{dbh}->errstr . "\n", 0, 1);
 		}
 	}
-	$sth->execute or $self->logit("FATAL: _column_info() " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: _column_info() " . $self->{dbh}->errstr . "\n", 0, 1);
 
 	# Default number of line to scan to grab the geometry type of the column.
 	# If it not limited, the query will scan the entire table which may take a very long time.
@@ -8716,7 +8716,7 @@ END
 			$self->logit("FATAL: _column_attributes() " . $self->{dbh}->errstr . "\n", 0, 1);
 		}
 	}
-	$sth->execute or $self->logit("FATAL: _column_attributes() " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: _column_attributes() " . $self->{dbh}->errstr . "\n", 0, 1);
 
 	my %data = ();
 	while (my $row = $sth->fetch) {
@@ -8785,7 +8785,7 @@ END
 	if (!$sth) {
 		$self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	}
-	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
 	my %data = ();
 	while (my $row = $sth->fetch) {
@@ -8843,13 +8843,14 @@ sub _unique_key
 	$sql .= $self->limit_to_objects('TABLE', 'TABLE_NAME');
 	$sql .=  " ORDER BY POSITION";
 	my $sth = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-	$sth->execute or $self->logit("FATAL: " . $sth->errstr . "\n", 0, 1);
+	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $sth->errstr . "\n", 0, 1);
 	my @cons_columns = ();
 	while (my $r = $sth->fetch) {
 		push(@cons_columns, [ @$r ]);
 	}
 	$sth->finish;
 
+	my @tmpparams = ();
 	my $condition = '';
 	$condition .= "AND TABLE_NAME='$table' " if ($table);
 	if ($owner) {
@@ -8858,7 +8859,9 @@ sub _unique_key
 		$condition .= "AND OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "') ";
 	}
 	$condition .= $self->limit_to_objects('UKEY|TABLE', 'CONSTRAINT_NAME|TABLE_NAME');
+	push(@tmpparams, @{$self->{query_bind_params}});
 	$condition .= $self->limit_to_objects('UKEY', 'CONSTRAINT_NAME');
+	push(@tmpparams, @{$self->{query_bind_params}});
 
 	if ($self->{db_version} !~ /Release 8/) {
 		$sth = $self->{dbh}->prepare(<<END) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -8877,7 +8880,7 @@ AND STATUS='ENABLED'
 $condition
 END
 	}
-	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute(@tmpparams) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
 	while (my $row = $sth->fetch) {
 
@@ -8934,7 +8937,7 @@ WHERE CONSTRAINT_TYPE='C' $condition
 AND STATUS='ENABLED'
 END
 
-	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
 	my %data = ();
 	while (my $row = $sth->fetch) {
@@ -8977,6 +8980,7 @@ sub _foreign_key
 
 	return Ora2Pg::MySQL::_foreign_key($self,$table,$owner) if ($self->{is_mysql});
 
+	my @tmpparams = ();
 	my $condition = '';
 	$condition .= "AND CONS.TABLE_NAME='$table' " if ($table);
 	if ($owner) {
@@ -8985,16 +8989,6 @@ sub _foreign_key
 		$condition .= "AND CONS.OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "') ";
 	}
 	$condition .= $self->limit_to_objects('FKEY|TABLE','CONS.CONSTRAINT_NAME|CONS.TABLE_NAME');
-
-	my $condition2 = '';
-	$condition2 .= "AND TABLE_NAME='$table' " if ($table);
-	if ($owner) {
-		$condition2 .= "OWNER = '$owner' ";
-	} else {
-		$condition2 .= "AND OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "') ";
-	}
-	$condition2 .= $self->limit_to_objects('TABLE','TABLE_NAME');
-	#$condition2 =~ s/^AND //;
 
 	my $deferrable = $self->{fkey_deferrable} ? "'DEFERRABLE' AS DEFERRABLE" : "DEFERRABLE";
 	my $defer = $self->{fkey_deferrable} ? "'DEFERRABLE' AS DEFERRABLE" : "CONS.DEFERRABLE";
@@ -9041,7 +9035,7 @@ ORDER BY CONS.TABLE_NAME, CONS.CONSTRAINT_NAME, COLS.POSITION
 END
 	}
 	my $sth = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-	$sth->execute or $self->logit("FATAL: " . $sth->errstr . "\n", 0, 1);
+	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $sth->errstr . "\n", 0, 1);
 
 	my %data = ();
 	my %link = ();
@@ -9114,7 +9108,7 @@ sub _get_privilege
 	}
 	$str .= " ORDER BY b.TABLE_NAME, b.GRANTEE";
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	while (my $row = $sth->fetch) {
 		next if ($row->[0] eq 'PUBLIC');
 		if (!$self->{schema} && $self->{export_schema}) {
@@ -9150,7 +9144,7 @@ sub _get_privilege
 	$str .= " " . $self->limit_to_objects('GRANT|TABLE|VIEW|FUNCTION|PROCEDURE|SEQUENCE', 'b.GRANTEE|b.TABLE_NAME|b.TABLE_NAME|b.TABLE_NAME|b.TABLE_NAME|b.TABLE_NAME');
 
 	$sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	while (my $row = $sth->fetch) {
 		if (!$self->{schema} && $self->{export_schema}) {
 			$row->[2] = "$row->[1].$row->[2]";
@@ -9172,7 +9166,7 @@ sub _get_privilege
 		$str .= " " . $self->limit_to_objects('GRANT', 'GRANTEE');
 		$str .= " ORDER BY PRIVILEGE";
 		$sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-		$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+		$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 		while (my $row = $sth->fetch) {
 			push(@{$roles{admin}{$r}{privilege}}, $row->[0]);
 			push(@{$roles{admin}{$r}{admin_option}}, $row->[1]);
@@ -9185,7 +9179,7 @@ sub _get_privilege
 		$str .= " " . $self->limit_to_objects('GRANT', 'GRANTEE');
 		$str .= " ORDER BY GRANTED_ROLE";
 		$sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-		$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+		$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 		while (my $row = $sth->fetch) {
 			push(@{$roles{role}{$u}}, $row->[0]);
 		}
@@ -9193,7 +9187,7 @@ sub _get_privilege
 		$str .= " " . $self->limit_to_objects('GRANT', 'USERNAME');
 		$str .= " ORDER BY USERNAME";
 		$sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-		$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+		$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 		while (my $row = $sth->fetch) {
 			$roles{type}{$u} = 'USER';
 		}
@@ -9202,7 +9196,7 @@ sub _get_privilege
 		$str .= " " . $self->limit_to_objects('GRANT', 'ROLE');
 		$str .= " ORDER BY ROLE";
 		$sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-		$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+		$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 		while (my $row = $sth->fetch) {
 			$roles{type}{$u} = 'ROLE';
 			$roles{password_required}{$u} = $row->[1];
@@ -9250,7 +9244,7 @@ sub _get_security_definer
 	$str .= " ORDER BY OBJECT_NAME";
 
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	while (my $row = $sth->fetch) {
 		next if (!$row->[0]);
 		if (!$self->{schema} && $self->{export_schema}) {
@@ -9321,7 +9315,7 @@ ORDER BY A.COLUMN_POSITION
 END
 	}
 
-	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
 	my $idxnc = qq{SELECT IE.COLUMN_EXPRESSION FROM $self->{prefix}_IND_EXPRESSIONS IE, $self->{prefix}_IND_COLUMNS IC
 WHERE  IE.INDEX_OWNER = IC.INDEX_OWNER
@@ -9438,7 +9432,7 @@ WHERE (IXV_CLASS='WORDLIST' AND IXV_ATTRIBUTE='STEMMER') $condition
 ORDER BY IXV_INDEX_NAME
 END
 
-	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	my %indexes_info = ();
 	while (my $row = $sth->fetch) {
 		my $save_idx = $row->[1];
@@ -9480,7 +9474,7 @@ sub _get_sequences
 
 
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
 	my @seqs = ();
 	while (my $row = $sth->fetch) {
@@ -9518,7 +9512,7 @@ sub _get_identities
 	$str .= " ORDER BY OWNER, TABLE_NAME, COLUMN_NAME";
 
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
 	my %seqs = ();
 	while (my $row = $sth->fetch) {
@@ -9572,7 +9566,7 @@ sub _get_external_tables
 	$str .= $self->limit_to_objects('TABLE', 'a.TABLE_NAME');
 	$str .= " ORDER BY a.TABLE_NAME";
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	
 	my %data = ();
 	while (my $row = $sth->fetch) {
@@ -9622,7 +9616,7 @@ sub _get_directory
 	$str .= " ORDER BY d.DIRECTORY_NAME";
 
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	
 	my %data = ();
 	while (my $row = $sth->fetch) {
@@ -9667,7 +9661,7 @@ sub _get_dblink
 	$str .= " ORDER BY DB_LINK";
 
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
 	my %data = ();
 	while (my $row = $sth->fetch) {
@@ -9712,7 +9706,7 @@ sub _get_job
 	$str .= $self->limit_to_objects('JOB', 'JOB');
 	$str .= " ORDER BY JOB";
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
 	my %data = ();
 	while (my $row = $sth->fetch) {
@@ -9773,7 +9767,7 @@ sub _get_views
 	my $sql = "SELECT A.TABLE_NAME,A.COMMENTS,A.TABLE_TYPE,A.OWNER FROM ALL_TAB_COMMENTS A, ALL_OBJECTS O WHERE A.OWNER=O.OWNER and A.TABLE_NAME=O.OBJECT_NAME and O.OBJECT_TYPE='VIEW' $owner";
 	$sql .= $self->limit_to_objects('VIEW', 'A.TABLE_NAME');
 	my $sth = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	while (my $row = $sth->fetch) {
 		if (!$self->{schema} && $self->{export_schema}) {
 			$row->[0] = "$row->[0].$row->[3]";
@@ -9834,7 +9828,7 @@ ORDER BY ITER ASC, 2, 3
 	}
 
 	$sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
 	my %data = ();
 	while (my $row = $sth->fetch) {
@@ -9881,7 +9875,7 @@ sub _get_materialized_views
 	if (not defined $sth) {
 		$self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	}
-	if (not $sth->execute) {
+	if (not $sth->execute(@{$self->{query_bind_params}})) {
 		$self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 		return ();
 	}
@@ -9921,7 +9915,7 @@ sub _get_materialized_view_names
 	if (not defined $sth) {
 		$self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	}
-	if (not $sth->execute) {
+	if (not $sth->execute(@{$self->{query_bind_params}})) {
 		$self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	}
 
@@ -10002,7 +9996,7 @@ sub _get_triggers
 
 	$str .= " ORDER BY TABLE_NAME, TRIGGER_NAME";
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
 	my @triggers = ();
 	while (my $row = $sth->fetch) {
@@ -10029,7 +10023,7 @@ sub _list_triggers
 
 	$str .= " ORDER BY TABLE_NAME, TRIGGER_NAME";
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
 	my %triggers = ();
 	while (my $row = $sth->fetch) {
@@ -10274,7 +10268,7 @@ sub _get_functions
 	$str .= " " . $self->limit_to_objects('FUNCTION','OBJECT_NAME');
 	$str .= " ORDER BY OBJECT_NAME";
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
 	my %functions = ();
 	my @fct_done = ();
@@ -10298,7 +10292,7 @@ sub _get_functions
 	$sql .= " " . $self->limit_to_objects('FUNCTION','NAME');
 	$sql .= " ORDER BY OWNER,NAME,LINE";
 	$sth = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-	$sth->execute or $self->logit("FATAL: " . $sth->errstr . "\n", 0, 1);
+	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $sth->errstr . "\n", 0, 1);
 	while (my $row = $sth->fetch) {
 		if (!$self->{schema} && $self->{export_schema}) {
 			$row->[0] = "$row->[1].$row->[0]";
@@ -10330,7 +10324,7 @@ sub _get_functions2
 	$str .= " " . $self->limit_to_objects('FUNCTION','OBJECT_NAME');
 	$str .= " ORDER BY OBJECT_NAME";
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
 	my %functions = ();
 	my @fct_done = ();
@@ -10378,7 +10372,7 @@ sub _get_procedures
 	$str .= " " . $self->limit_to_objects('PROCEDURE','OBJECT_NAME');
 	$str .= " ORDER BY OBJECT_NAME";
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
 	my %procedures = ();
 	my @fct_done = ();
@@ -10402,7 +10396,7 @@ sub _get_procedures
 	$sql .= " " . $self->limit_to_objects('PROCEDURE','NAME');
 	$sql .= " ORDER BY OWNER,NAME,LINE";
 	$sth = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-	$sth->execute or $self->logit("FATAL: " . $sth->errstr . "\n", 0, 1);
+	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $sth->errstr . "\n", 0, 1);
 	while (my $row = $sth->fetch) {
 		if (!$self->{schema} && $self->{export_schema}) {
 			$row->[0] = "$row->[1].$row->[0]";
@@ -10441,7 +10435,7 @@ sub _get_packages
 	$str .= " ORDER BY OBJECT_NAME";
 
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
 	my %packages = ();
 	my @fct_done = ();
@@ -10499,7 +10493,7 @@ sub _get_types
 	$str .= " ORDER BY OBJECT_NAME";
 
 	my $sth = $dbh->prepare($str) or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
-	$sth->execute or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
+	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
 
 	my @types = ();
 	my @fct_done = ();
@@ -10557,7 +10551,7 @@ sub _table_info
 		}
 		$sql .= $self->limit_to_objects('TABLE', 'A.TABLE_NAME');
 		my $sth = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-		$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+		$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 		while (my $row = $sth->fetch) {
 			if (!$self->{schema} && $self->{export_schema}) {
 				$row->[0] = "$row->[3].$row->[0]";
@@ -10581,7 +10575,7 @@ sub _table_info
         $sql .= " AND (A.IOT_TYPE IS NULL OR A.IOT_TYPE = 'IOT') ORDER BY A.OWNER, A.TABLE_NAME";
 
         my $sth = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-        $sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+        $sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	my %tables_infos = ();
 	while (my $row = $sth->fetch) {
 		if (!$self->{schema} && $self->{export_schema}) {
@@ -10654,7 +10648,7 @@ sub _global_temp_table_info
 	}
 	$sql .= $self->limit_to_objects('TABLE', 'A.TABLE_NAME');
 	my $sth = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	while (my $row = $sth->fetch) {
 		if (!$self->{schema} && $self->{export_schema}) {
 			$row->[0] = "$row->[3].$row->[0]";
@@ -10673,7 +10667,7 @@ sub _global_temp_table_info
         $sql .= " AND (A.IOT_TYPE IS NULL OR A.IOT_TYPE = 'IOT') ORDER BY A.OWNER, A.TABLE_NAME";
 
         $sth = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-        $sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+        $sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	my %tables_infos = ();
 	while (my $row = $sth->fetch) {
 		if (!$self->{schema} && $self->{export_schema}) {
@@ -10810,7 +10804,7 @@ AND a.TABLESPACE_NAME = c.TABLESPACE_NAME
 	$str .= $self->limit_to_objects('TABLESPACE|TABLE', 'a.TABLESPACE_NAME|a.SEGMENT_NAME');
 	$str .= " ORDER BY TABLESPACE_NAME";
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
 	my %tbs = ();
 	while (my $row = $sth->fetch) {
@@ -10852,7 +10846,7 @@ WHERE a.TABLESPACE_NAME = c.TABLESPACE_NAME
 	$str .= $self->limit_to_objects('TABLESPACE', 'c.TABLESPACE_NAME');
 	$str .= " ORDER BY c.TABLESPACE_NAME";
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
 	my %tbs = ();
 	while (my $row = $sth->fetch) {
@@ -10918,7 +10912,7 @@ WHERE
 	$str .= "ORDER BY A.TABLE_OWNER,A.TABLE_NAME,A.PARTITION_POSITION,C.COLUMN_POSITION\n";
 
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
 	my %parts = ();
 	my %default = ();
@@ -10992,7 +10986,7 @@ WHERE
 	$str .= "ORDER BY A.TABLE_OWNER,A.TABLE_NAME,A.PARTITION_NAME,A.SUBPARTITION_POSITION,C.COLUMN_POSITION\n";
 
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
 	my %subparts = ();
 	my %default = ();
@@ -11066,7 +11060,7 @@ sub _get_synonyms
 
 
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
 	my %synonyms = ();
 	while (my $row = $sth->fetch) {
@@ -11128,7 +11122,7 @@ WHERE A.TABLE_NAME = B.TABLE_NAME
 	$str .= "ORDER BY A.TABLE_NAME\n";
 
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
 	my %parts = ();
 	while (my $row = $sth->fetch) {
@@ -11183,7 +11177,7 @@ WHERE B.TABLE_NAME = C.NAME
 	$str .= "ORDER BY B.OWNER,B.TABLE_NAME,C.COLUMN_POSITION\n";
 
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
 	my %parts = ();
 	while (my $row = $sth->fetch) {
@@ -11249,7 +11243,7 @@ WHERE
 	$str .= "ORDER BY A.TABLE_OWNER,A.TABLE_NAME,A.PARTITION_NAME,A.SUBPARTITION_POSITION,C.COLUMN_POSITION\n";
 
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
 	my %parts = ();
 	while (my $row = $sth->fetch) {
@@ -15582,7 +15576,7 @@ sub _get_largest_tables
 	}
 
         my $sth = $self->{dbh}->prepare( $sql ) or return undef;
-        $sth->execute or return undef;
+        $sth->execute(@{$self->{query_bind_params}}) or return undef;
 	while ( my @row = $sth->fetchrow()) {
 		$table_size{$row[0]} = $row[1];
 	}
@@ -16023,6 +16017,10 @@ return 0;
 	return $found;
 }
 
+# Construct a query to exclude or only include some object wanted by the user
+# following the ALLOW and EXCLUDE configuration directive. The filter returned
+# must be used with the bind parameters stored in the @{$self->{query_bind_params}}
+# when calling the execute() function after the call of prepare().
 sub limit_to_objects
 {
 	my ($self, $obj_type, $column) = @_;
@@ -16035,6 +16033,7 @@ sub limit_to_objects
 	my @arr_type = split(/\|/, $obj_type);
 	my @done = ();
 	my $has_limitation = 0;
+	$self->{query_bind_params} = ();
 	for (my $i = 0; $i <= $#arr_type; $i++) {
 
 		my $colname = $cols[0];
@@ -16053,7 +16052,8 @@ sub limit_to_objects
 						$have_lookahead = 1;
 						next;
 					}
-					$str .= "upper($colname) LIKE \U'$self->{limited}{$arr_type[$i]}->[$j]'\E";
+					$str .= "upper($colname) LIKE ?";
+					push(@{$self->{query_bind_params}}, uc($self->{limited}{$arr_type[$i]}->[$j]));
 					if ($j < $#{$self->{limited}{$arr_type[$i]}}) {
 						$str .= " OR ";
 					}
@@ -16066,10 +16066,11 @@ sub limit_to_objects
 						next;
 					}
 					if ($self->{is_mysql}) {
-						$str .= "upper($colname) RLIKE '\^$self->{limited}{$arr_type[$i]}->[$j]\$'" ;
+						$str .= "upper($colname) RLIKE ?" ;
 					} else {
-						$str .= "REGEXP_LIKE(upper($colname),'\^$self->{limited}{$arr_type[$i]}->[$j]\$')" ;
+						$str .= "REGEXP_LIKE(upper($colname), ?)" ;
 					}
+					push(@{$self->{query_bind_params}}, uc("\^$self->{limited}{$arr_type[$i]}->[$j]\$"));
 					if ($j < $#{$self->{limited}{$arr_type[$i]}}) {
 						$str .= " OR ";
 					}
@@ -16084,16 +16085,18 @@ sub limit_to_objects
 				if ($self->{db_version} =~ /Release [89]/) {
 					for (my $j = 0; $j <= $#{$self->{limited}{$arr_type[$i]}}; $j++) {
 						next if ($self->{limited}{$arr_type[$i]}->[$j] !~ /^\!(.+)/);
-						$str .= " AND upper($colname) NOT LIKE \U'$1'\E";
+						$str .= " AND upper($colname) NOT LIKE ?";
+						push(@{$self->{query_bind_params}}, uc($1));
 					}
 				} else {
 					for (my $j = 0; $j <= $#{$self->{limited}{$arr_type[$i]}}; $j++) {
 						next if ($self->{limited}{$arr_type[$i]}->[$j] !~ /^\!(.+)/);
 						if ($self->{is_mysql}) {
-							$str .= " AND upper($colname) NOT RLIKE '\^$1\$'" ;
+							$str .= " AND upper($colname) NOT RLIKE ?" ;
 						} else {
-							$str .= " AND NOT REGEXP_LIKE(upper($colname),'\^$1\$')" ;
+							$str .= " AND NOT REGEXP_LIKE(upper($colname), ?)" ;
 						}
+						push(@{$self->{query_bind_params}}, uc("\^$1\$"));
 					}
 				}
 
@@ -16105,7 +16108,8 @@ sub limit_to_objects
 			if ($self->{db_version} =~ /Release [89]/) {
 				$str .= ' AND (';
 				for (my $j = 0; $j <= $#{$self->{excluded}{$arr_type[$i]}}; $j++) {
-					$str .= "upper($colname) NOT LIKE \U'$self->{excluded}{$arr_type[$i]}->[$j]'\E" ;
+					$str .= "upper($colname) NOT LIKE ?" ;
+					push(@{$self->{query_bind_params}}, uc($self->{excluded}{$arr_type[$i]}->[$j]));
 					if ($j < $#{$self->{excluded}{$arr_type[$i]}}) {
 						$str .= " AND ";
 					}
@@ -16115,10 +16119,11 @@ sub limit_to_objects
 				$str .= ' AND (';
 				for (my $j = 0; $j <= $#{$self->{excluded}{$arr_type[$i]}}; $j++) {
 					if ($self->{is_mysql}) {
-						$str .= "upper($colname) NOT RLIKE '\^$self->{excluded}{$arr_type[$i]}->[$j]\$'" ;
+						$str .= "upper($colname) NOT RLIKE ?" ;
 					} else {
-						$str .= "NOT REGEXP_LIKE(upper($colname),'\^$self->{excluded}{$arr_type[$i]}->[$j]\$')" ;
+						$str .= "NOT REGEXP_LIKE(upper($colname), ?)" ;
 					}
+					push(@{$self->{query_bind_params}}, uc("\^$self->{excluded}{$arr_type[$i]}->[$j]\$"));
 					if ($j < $#{$self->{excluded}{$arr_type[$i]}}) {
 						$str .= " AND ";
 					}
@@ -16132,17 +16137,19 @@ sub limit_to_objects
 			if ($self->{db_version} =~ /Release [89]/) {
 				$str .= ' AND (';
 				foreach my $t (@EXCLUDED_TABLES_8I) {
-					$str .= " AND upper($colname) NOT LIKE \U'$t'\E";
+					$str .= " AND upper($colname) NOT LIKE ?";
+					push(@{$self->{query_bind_params}}, uc($t));
 				}
 				$str .= ')';
 			} else {
 				$str .= ' AND ( ';
 				for (my $j = 0; $j <= $#EXCLUDED_TABLES; $j++) {
 					if ($self->{is_mysql}) {
-						$str .= " upper($colname) NOT RLIKE '\^$EXCLUDED_TABLES[$j]\$'" ;
+						$str .= " upper($colname) NOT RLIKE ?" ;
 					} else {
-						$str .= " NOT REGEXP_LIKE(upper($colname),'\^$EXCLUDED_TABLES[$j]\$')" ;
+						$str .= " NOT REGEXP_LIKE(upper($colname), ?)" ;
 					}
+					push(@{$self->{query_bind_params}}, uc("\^$EXCLUDED_TABLES[$j]\$"));
 					if ($j < $#EXCLUDED_TABLES){
 						$str .= " AND ";
 					}
