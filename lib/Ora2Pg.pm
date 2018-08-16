@@ -5247,13 +5247,22 @@ LANGUAGE plpgsql ;
 			$self->{types} = ();
 			$self->logit("Reading input code from file $self->{input_file}...\n", 1);
 			my $content = $self->read_input_file($self->{input_file});
+			$self->_remove_comments(\$content);
 			foreach my $l (split(/;/, $content)) {
 				chomp($l);
 				next if ($l =~ /^[\s\/]*$/s);
-				$l =~ s/^.*CREATE\s+(?:OR REPLACE)?\s*(?:NONEDITABLE|EDITABLE)?\s*//is;
+				my $cmt = '';
+				while ($l =~ s/(\%ORA2PG_COMMENT\d+\%)//s) {
+					$cmt .= "$1";
+				}
+				$self->_restore_comments(\$cmt);
+				$l =~ s/^\s+//;
+				$l =~ s/^CREATE\s+(?:OR REPLACE)?\s*(?:NONEDITABLE|EDITABLE)?\s*//is;
 				$l .= ";\n";
 				if ($l =~ /^TYPE\s+([^\s\(]+)/is) {
-					push(@{$self->{types}}, { ('name' => $1, 'code' => $l) });
+					push(@{$self->{types}}, { ('name' => $1, 'code' => $l, 'comment' => $cmt) });
+				} elsif ($l =~ /^SUBTYPE\s+([^\s\(]+)/is) {
+					push(@{$self->{subtypes}}, { ('name' => $1, 'code' => $l, 'comment' => $cmt) });
 				}
 			}
 		}
@@ -5262,19 +5271,34 @@ LANGUAGE plpgsql ;
 		foreach my $tpe (sort {length($a->{name}) <=> length($b->{name}) } @{$self->{types}}) {
 			$self->logit("Dumping type $tpe->{name}...\n", 1);
 			if (!$self->{quiet} && !$self->{debug}) {
-				print STDERR $self->progress_bar($i, $#{$self->{types}}+1, 25, '=', 'types', "generating $tpe->{name}" ), "\r";
+				print STDERR $self->progress_bar($i, @{$self->{subtypes}}+@{$self->{types}}, 25, '=', 'types', "generating $tpe->{name}" ), "\r";
 			}
 			if ($self->{plsql_pgsql}) {
 				$tpe->{code} = $self->_convert_type($tpe->{code}, $tpe->{owner});
 			} else {
 				$tpe->{code} = "CREATE$self->{create_or_replace} $tpe->{code}\n";
 			}
-			$sql_output .= $tpe->{code} . "\n";
+			$sql_output .= $tpe->{comment} . $tpe->{code} . "\n";
 			$i++;
 		}
+		foreach my $tpe (sort {length($a->{name}) <=> length($b->{name}) } @{$self->{subtypes}}) {
+			$self->logit("Dumping type $tpe->{name}...\n", 1);
+			if (!$self->{quiet} && !$self->{debug}) {
+				print STDERR $self->progress_bar($i, @{$self->{subtypes}}+@{$self->{types}}, 25, '=', 'types', "generating $tpe->{name}" ), "\r";
+			}
+			if ($self->{plsql_pgsql}) {
+				$tpe->{code} = $self->_convert_subtype($tpe->{code}, $tpe->{owner});
+			} else {
+				$tpe->{code} = "CREATE$self->{create_or_replace} $tpe->{code}\n";
+			}
+			$sql_output .= $tpe->{comment} . $tpe->{code} . "\n";
+			$i++;
+		}
+		$self->_restore_comments(\$sql_output);
+		$self->{comment_values} = ();
 
 		if (!$self->{quiet} && !$self->{debug}) {
-			print STDERR $self->progress_bar($i - 1, $#{$self->{types}}+1, 25, '=', 'types', 'end of output.'), "\n";
+			print STDERR $self->progress_bar($i - 1, @{$self->{subtypes}}+@{$self->{types}}, 25, '=', 'types', 'end of output.'), "\n";
 		}
 		if (!$sql_output) {
 			$sql_output = "-- Nothing found of type $self->{type}\n" if (!$self->{no_header});
@@ -12682,6 +12706,25 @@ sub logit
 		die "Aborting export...\n";
 	}
 }
+
+=head2 _convert_subtype
+
+This function is used to rewrite Oracle SUBTYPE DDL into DOMAIN
+
+=cut
+
+sub _convert_subtype
+{
+	my ($self, $plsql, $owner, %pkg_type) = @_;
+
+	$plsql =~ s/^SUBTYPE\s+/DOMAIN /;
+	$plsql =~ s/\s+IS\s+/ AS /;
+	$plsql = Ora2Pg::PLSQL::replace_sql_type($plsql, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type}, %{$self->{data_type}});
+	$plsql = "CREATE $plsql";
+
+	return $plsql;
+}
+
 
 =head2 _convert_type
 
