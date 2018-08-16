@@ -5034,7 +5034,7 @@ LANGUAGE plpgsql ;
 			my $skip_pkg_header = 0;
 			$self->_remove_comments(\$content);
 			# Normalise start of package declaration
-			$content =~ s/(?:CREATE|CREATE\s+OR\s+REPLACE)?(?:\s+EDITABLE|\s+NONEDITABLE)?\s+PACKAGE\s+/CREATE OR REPLACE PACKAGE /igs;
+			$content =~ s/CREATE(?:\s+OR\s+REPLACE)?(?:\s+EDITABLE|\s+NONEDITABLE)?\s+PACKAGE\s+/CREATE OR REPLACE PACKAGE /igs;
 			# Preserve hearder
 			$content =~ s/^(.*?)(CREATE OR REPLACE PACKAGE)/$2/s;
 			my $start = $1 || '';
@@ -5064,7 +5064,7 @@ LANGUAGE plpgsql ;
 			foreach my $pkg (sort keys %{$self->{packages}}) {
 				my $tmp_txt = '';
 				if (exists $self->{packages}{$pkg}{desc}) {
-					# Move commentis at end of package declaration before package definition
+					# Move comments at end of package declaration before package definition
 					while ($self->{packages}{$pkg}{desc} =~ s/(\%ORA2PG_COMMENT\d+\%\s*)$//) {
 						$self->{packages}{$pkg}{text} = $1 . $self->{packages}{$pkg}{text};
 					}
@@ -5248,6 +5248,7 @@ LANGUAGE plpgsql ;
 			$self->logit("Reading input code from file $self->{input_file}...\n", 1);
 			my $content = $self->read_input_file($self->{input_file});
 			$self->_remove_comments(\$content);
+			my $i = 0;
 			foreach my $l (split(/;/, $content)) {
 				chomp($l);
 				next if ($l =~ /^[\s\/]*$/s);
@@ -5259,38 +5260,27 @@ LANGUAGE plpgsql ;
 				$l =~ s/^\s+//;
 				$l =~ s/^CREATE\s+(?:OR REPLACE)?\s*(?:NONEDITABLE|EDITABLE)?\s*//is;
 				$l .= ";\n";
-				if ($l =~ /^TYPE\s+([^\s\(]+)/is) {
-					push(@{$self->{types}}, { ('name' => $1, 'code' => $l, 'comment' => $cmt) });
-				} elsif ($l =~ /^SUBTYPE\s+([^\s\(]+)/is) {
-					push(@{$self->{subtypes}}, { ('name' => $1, 'code' => $l, 'comment' => $cmt) });
+				if ($l =~ /^(SUBTYPE|TYPE)\s+([^\s\(]+)/is) {
+					push(@{$self->{types}}, { ('name' => $2, 'code' => $l, 'comment' => $cmt, 'pos' => $i) });
 				}
+				$i++;
 			}
 		}
 		#--------------------------------------------------------
 		my $i = 1;
-		foreach my $tpe (sort {length($a->{name}) <=> length($b->{name}) } @{$self->{types}}) {
+		foreach my $tpe (sort {$a->{pos} <=> $b->{pos} } @{$self->{types}}) {
 			$self->logit("Dumping type $tpe->{name}...\n", 1);
 			if (!$self->{quiet} && !$self->{debug}) {
-				print STDERR $self->progress_bar($i, @{$self->{subtypes}}+@{$self->{types}}, 25, '=', 'types', "generating $tpe->{name}" ), "\r";
+				print STDERR $self->progress_bar($i, $#{$self->{types}}+1, 25, '=', 'types', "generating $tpe->{name}" ), "\r";
 			}
 			if ($self->{plsql_pgsql}) {
 				$tpe->{code} = $self->_convert_type($tpe->{code}, $tpe->{owner});
 			} else {
-				$tpe->{code} = "CREATE$self->{create_or_replace} $tpe->{code}\n";
+				if ($tpe->{code} !~ /^SUBTYPE\s+/) {
+					$tpe->{code} = "CREATE$self->{create_or_replace} $tpe->{code}\n";
+				}
 			}
-			$sql_output .= $tpe->{comment} . $tpe->{code} . "\n";
-			$i++;
-		}
-		foreach my $tpe (sort {length($a->{name}) <=> length($b->{name}) } @{$self->{subtypes}}) {
-			$self->logit("Dumping type $tpe->{name}...\n", 1);
-			if (!$self->{quiet} && !$self->{debug}) {
-				print STDERR $self->progress_bar($i, @{$self->{subtypes}}+@{$self->{types}}, 25, '=', 'types', "generating $tpe->{name}" ), "\r";
-			}
-			if ($self->{plsql_pgsql}) {
-				$tpe->{code} = $self->_convert_subtype($tpe->{code}, $tpe->{owner});
-			} else {
-				$tpe->{code} = "CREATE$self->{create_or_replace} $tpe->{code}\n";
-			}
+			$tpe->{code} =~ s/REPLACE type/REPLACE TYPE/;
 			$sql_output .= $tpe->{comment} . $tpe->{code} . "\n";
 			$i++;
 		}
@@ -5298,7 +5288,7 @@ LANGUAGE plpgsql ;
 		$self->{comment_values} = ();
 
 		if (!$self->{quiet} && !$self->{debug}) {
-			print STDERR $self->progress_bar($i - 1, @{$self->{subtypes}}+@{$self->{types}}, 25, '=', 'types', 'end of output.'), "\n";
+			print STDERR $self->progress_bar($i - 1, $#{$self->{types}}+1, 25, '=', 'types', 'end of output.'), "\n";
 		}
 		if (!$sql_output) {
 			$sql_output = "-- Nothing found of type $self->{type}\n" if (!$self->{no_header});
@@ -10456,7 +10446,7 @@ sub _get_types
 	my ($self, $dbh, $name) = @_;
 
 	# Retrieve all user defined types
-	my $str = "SELECT DISTINCT OBJECT_NAME,OWNER FROM $self->{prefix}_OBJECTS WHERE OBJECT_TYPE='TYPE'";
+	my $str = "SELECT DISTINCT OBJECT_NAME,OWNER,OBJECT_ID FROM $self->{prefix}_OBJECTS WHERE OBJECT_TYPE='TYPE'";
 	$str .= " AND STATUS='VALID'" if (!$self->{export_invalid});
 	$str .= " AND OBJECT_NAME='$name'" if ($name);
 	$str .= " AND GENERATED='N'";
@@ -10489,6 +10479,7 @@ sub _get_types
 		}
 		$tmp{name} = $row->[0];
 		$tmp{owner} = $row->[1];
+		$tmp{pos} = $row->[2];
 		push(@types, \%tmp);
 	}
 
@@ -11912,7 +11903,6 @@ sub _convert_package
 			}
 		}
 	}
-
 	# Grab global declaration from the package header
 	if ($self->{packages}{$pkg}{desc} =~ /CREATE OR REPLACE PACKAGE\s+([^\s]+)(?:\s*\%ORA2PG_COMMENT\d+\%)*\s*(AS|IS)\s*(.*)/is) {
 
@@ -11934,8 +11924,11 @@ sub _convert_package
 				if ($self->{plsql_pgsql}) {
 					$tpe->{code} = $self->_convert_type($tpe->{code}, $tpe->{owner}, %{$self->{pkg_type}{$pname}});
 				} else {
-					$tpe->{code} = "CREATE$self->{create_or_replace} $tpe->{code}\n";
+					if ($tpe->{code} !~ /^SUBTYPE\s+/i) {
+						$tpe->{code} = "CREATE$self->{create_or_replace} $tpe->{code}\n";
+					}
 				}
+				$tpe->{code} =~ s/REPLACE type/REPLACE TYPE/;
 				$content .= $tpe->{code} . "\n";
 				$i++;
 			}
@@ -11968,8 +11961,11 @@ sub _convert_package
 				if ($self->{plsql_pgsql}) {
 					$tpe->{code} = $self->_convert_type($tpe->{code}, $tpe->{owner}, %{$self->{pkg_type}{$pname}});
 				} else {
-					$tpe->{code} = "CREATE$self->{create_or_replace} $tpe->{code}\n";
+					if ($tpe->{code} !~ /^SUBTYPE\s+/i) {
+						$tpe->{code} = "CREATE$self->{create_or_replace} $tpe->{code}\n";
+					}
 				}
+				$tpe->{code} =~ s/REPLACE type/REPLACE TYPE/;
 				$content .= $tpe->{code} . "\n";
 				$i++;
 			}
@@ -12707,25 +12703,6 @@ sub logit
 	}
 }
 
-=head2 _convert_subtype
-
-This function is used to rewrite Oracle SUBTYPE DDL into DOMAIN
-
-=cut
-
-sub _convert_subtype
-{
-	my ($self, $plsql, $owner, %pkg_type) = @_;
-
-	$plsql =~ s/^SUBTYPE\s+/DOMAIN /;
-	$plsql =~ s/\s+IS\s+/ AS /;
-	$plsql = Ora2Pg::PLSQL::replace_sql_type($plsql, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type}, %{$self->{data_type}});
-	$plsql = "CREATE $plsql";
-
-	return $plsql;
-}
-
-
 =head2 _convert_type
 
 This function is used to rewrite Oracle TYPE DDL
@@ -12739,6 +12716,13 @@ sub _convert_type
 	my $unsupported = "-- Unsupported, please edit to match PostgreSQL syntax\n";
 	my $content = '';
 	my $type_name = '';
+
+	# Replace SUBTYPE declaration into DOMAIN declaration
+        if ($plsql =~ s/SUBTYPE\s+/CREATE DOMAIN /i) {
+		$plsql =~ s/\s+IS\s+/ AS /;
+		$plsql = Ora2Pg::PLSQL::replace_sql_type($plsql, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type}, %{$self->{data_type}});
+		return $plsql;
+	}
 
 	$plsql =~ s/\s*INDEX\s+BY\s+([^\s;]+)//is;
 	if ($plsql =~ /TYPE\s+([^\s]+)\s+(IS|AS)\s*TABLE\s*OF\s+(.*)/is) {
@@ -13801,7 +13785,9 @@ sub _show_infos
 		# Convert Oracle user defined type to PostgreSQL
 		if (!$self->{is_mysql}) {
 			$self->_types();
-			foreach my $tpe (sort {length($a->{name}) <=> length($b->{name}) } @{$self->{types}}) {
+			foreach my $tpe (sort { $a->{pos} <=> $b->{pos} } @{$self->{types}}) {
+				# We dont want the result but only the array @{$self->{types}}
+				# define in the _convert_type() function
 				$self->_convert_type($tpe->{code}, $tpe->{owner});
 			}
 		}
@@ -17387,12 +17373,12 @@ sub clear_global_declaration
 	while ($str =~ s/(CURSOR\s+[^;]+\s+RETURN\s+[^;]+;)//is) {
 		push(@cursors, $1);
 	}
-	# Extract TYPE declaration
+	# Extract TYPE/SUBTYPE declaration
 	my $i = 0;
-	while ($str =~ s/TYPE\s+([^\s]+)\s+(AS|IS)\s+([^;]+;)//is) {
-		$self->{pkg_type}{$pname}{$1} = "$pname.$1";
-		my $code = "TYPE $self->{pkg_type}{$pname}{$1} AS $3";
-		push(@{$self->{types}}, { ('name' => $1, 'code' => $code, 'pos' => $i++) });
+	while ($str =~ s/(SUBTYPE|TYPE)\s+([^\s]+)\s+(AS|IS)\s+([^;]+;)//is) {
+		$self->{pkg_type}{$pname}{$2} = "$pname.$2";
+		my $code = "$1 $self->{pkg_type}{$pname}{$2} AS $4";
+		push(@{$self->{types}}, { ('name' => $2, 'code' => $code, 'pos' => $i++) });
 	}
 
 	return ($str, @cursors);
