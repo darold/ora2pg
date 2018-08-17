@@ -808,6 +808,9 @@ sub plsql_to_plpgsql
 	# similar proprietary syntax but parenthesis are mandatory
 	$str =~ s/(INSERT\s+INTO\s+(?:.*?)\s+VALUES\s+)([^\(\)\s]+)\s*;/$1\($2.*\);/igs;
 
+	# Replace some windows function issues with KEEP (DENSE_RANK FIRST ORDER BY ...)
+	$str =~ s/\b(MIN|MAX|SUM|AVG|COUNT|VARIANCE|STDDEV)\s*\(([^\)]+)\)\s+KEEP\s*\(DENSE_RANK\s+(FIRST|LAST)\s+(ORDER\s+BY\s+[^\)]+)\)\s*(OVER\s*\(PARTITION\s+BY\s+[^\)]+)\)/$3_VALUE($2) $5 $4)/igs;
+
 	$class->{sub_queries} = ();
 	$class->{sub_queries_idx} = 0;
 
