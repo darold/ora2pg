@@ -7275,7 +7275,11 @@ sub _column_comments
 		$sql .= " WHERE OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
 	}
 	$sql .= "AND TABLE_NAME='$table' " if ($table);
-	$sql .= $self->limit_to_objects('TABLE','TABLE_NAME') if (!$table);
+	if (!$table) {
+		$sql .= $self->limit_to_objects('TABLE','TABLE_NAME');
+	} else {
+		@{$self->{query_bind_params}} = ();
+	}
 
 	my $sth = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
@@ -8489,7 +8493,11 @@ sub _column_info
 	my $condition = '';
 	$condition .= "AND A.TABLE_NAME='$table' " if ($table);
 	$condition .= "AND A.OWNER='$owner' " if ($owner);
-	$condition .= $self->limit_to_objects('TABLE', 'A.TABLE_NAME') if (!$table);
+	if (!$table) {
+		$condition .= $self->limit_to_objects('TABLE', 'A.TABLE_NAME');
+	} else {
+		@{$self->{query_bind_params}} = ();
+	}
 
 	my $sth = '';
 	if ($self->{db_version} !~ /Release 8/) {
@@ -8693,7 +8701,11 @@ sub _column_attributes
 	my $condition = '';
 	$condition .= "AND A.TABLE_NAME='$table' " if ($table);
 	$condition .= "AND A.OWNER='$owner' " if ($owner);
-	$condition .= $self->limit_to_objects('TABLE', 'A.TABLE_NAME') if (!$table);
+	if (!$table) {
+		$condition .= $self->limit_to_objects('TABLE', 'A.TABLE_NAME');
+	} else {
+		@{$self->{query_bind_params}} = ();
+	}
 
 	my $sth = '';
 	if ($self->{db_version} !~ /Release 8/) {
@@ -8773,7 +8785,11 @@ sub _encrypted_columns
 	my $condition = '';
 	$condition .= "AND A.TABLE_NAME='$table' " if ($table);
 	$condition .= "AND A.OWNER='$owner' " if ($owner);
-	$condition .= $self->limit_to_objects('TABLE', 'A.TABLE_NAME') if (!$table);
+	if (!$table) {
+		$condition .= $self->limit_to_objects('TABLE', 'A.TABLE_NAME');
+	} else {
+		@{$self->{query_bind_params}} = ();
+	}
 	$condition =~ s/^\s*AND /WHERE /s;
 
 	my $sth = $self->{dbh}->prepare(<<END);
@@ -9288,7 +9304,11 @@ sub _get_indexes
 	my $condition = '';
 	$condition .= "AND A.TABLE_NAME='$table' " if ($table);
 	$condition .= "AND A.INDEX_OWNER='$owner' AND B.OWNER='$owner' " if ($owner);
-	$condition .= $self->limit_to_objects('TABLE|INDEX', "A.TABLE_NAME|A.INDEX_NAME") if (!$table);
+	if (!$table) {
+		$condition .= $self->limit_to_objects('TABLE|INDEX', "A.TABLE_NAME|A.INDEX_NAME");
+	} else {
+		@{$self->{query_bind_params}} = ();
+	}
 
 	# When comparing number of index we need to retrieve generated index (mostly PK)
         my $generated = '';
@@ -10489,7 +10509,11 @@ sub _get_types
 	} else {
 		$str .= "AND OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "') ";
 	}
-	$str .= $self->limit_to_objects('TYPE', 'OBJECT_NAME') if (!$name);
+	if (!$name) {
+		$str .= $self->limit_to_objects('TYPE', 'OBJECT_NAME');
+	} else {
+		@{$self->{query_bind_params}} = ();
+	}
 	$str .= " ORDER BY OBJECT_NAME";
 
 	my $sth = $dbh->prepare($str) or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
@@ -16034,6 +16058,7 @@ sub limit_to_objects
 	my @done = ();
 	my $has_limitation = 0;
 	$self->{query_bind_params} = ();
+
 	for (my $i = 0; $i <= $#arr_type; $i++) {
 
 		my $colname = $cols[0];
