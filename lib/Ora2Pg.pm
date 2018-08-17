@@ -12341,22 +12341,28 @@ sub _convert_function
 		# Remove the pragma when a conversion is done
 		$fct_detail{declare} =~ s/--\s+PRAGMA\s+AUTONOMOUS_TRANSACTION[\s;]*//is;
 		my @tmp = split(',', $fct_detail{args});
+		$tmp[0] =~ s/^\(//;
+		$tmp[-1] =~ s/\)$//;
 		foreach my $p (@tmp) {
-			if ($p =~ s/\s*OUT\s+//) {
+			if ($p =~ s/\bOUT\s+//) {
 				$at_inout++;
 				push(@at_ret_param, $p);
 				push(@at_ret_type, $p);
-			} elsif ($p =~ s/\s*INOUT\s+//) {
+			} elsif ($p =~ s/\bINOUT\s+//) {
 				$at_inout++;
 				push(@at_ret_param, $p);
 				push(@at_ret_type, $p);
 			}
 		}
 		map { s/^(.*?) //; } @at_ret_type;
-		if ($#at_ret_param < 0) {
+		if ($fct_detail{hasreturn} && $#at_ret_param < 0) {
 			push(@at_ret_param, 'ret ' . $fct_detail{func_ret_type});
 			push(@at_ret_type, $fct_detail{func_ret_type});
 		}
+		map { s/^\s+//; } @at_ret_param;
+		map { s/\s+$//; } @at_ret_param;
+		map { s/^\s+//; } @at_ret_type;
+		map { s/\s+$//; } @at_ret_type;
 	}
 
 	my $name = $fname;
@@ -12398,21 +12404,67 @@ CREATE EXTENSION IF NOT EXISTS dblink;
 	v_conn_str  text := $dblink_conn;
 	v_query     text;
 };
-		if (!$fct_detail{hasreturn}) {
-			$at_wrapper .= qq{
+		if ($#at_ret_param == 0) {
+			my $varname = $at_ret_param[0];
+			$varname =~ s/\s+.*//;
+			my $vartype = $at_ret_type[0];
+			$vartype =~ s/.*\s+//;
+			if (!$fct_detail{hasreturn}) {
+				$at_wrapper .= qq{
 BEGIN
-	v_query := 'SELECT true FROM $fname$at_suffix ($params)';
-	PERFORM * FROM dblink(v_conn_str, v_query) AS p (ret boolean);
+	v_query := 'SELECT * FROM $fname$at_suffix ($params)';
+	SELECT v_ret INTO $varname FROM dblink(v_conn_str, v_query) AS p (v_ret $vartype);
 };
-		} elsif ($#at_ret_param == 0) {
-			my $prm = join(',', @at_ret_param);
-			$at_wrapper .= qq{
+			} else {
+				$at_ret_type[0] = $fct_detail{func_ret_type};
+				$at_ret_param[0] = 'ret ' . $fct_detail{func_ret_type};
+				$at_wrapper .= qq{
 	v_ret	$at_ret_type[0];
 BEGIN
 	v_query := 'SELECT * FROM $fname$at_suffix ($params)';
 	SELECT * INTO v_ret FROM dblink(v_conn_str, v_query) AS p ($at_ret_param[0]);
 	RETURN v_ret;
 };
+			}
+		} elsif ($#at_ret_param > 0) {
+			my $varnames = '';
+			my $vartypes = '';
+			for (my $i = 0; $i <= $#at_ret_param; $i++) {
+				my $v = $at_ret_param[$i];
+				$v =~ s/\s+.*//;
+				$varnames .= "$v, ";
+				$vartypes .= "v_ret$i ";
+				my $t = $at_ret_type[$i];
+				$t =~ s/.*\s+//;
+				$vartypes .= "$t, ";
+			}
+			$varnames =~ s/, $//;
+			$vartypes =~ s/, $//;
+			if (!$fct_detail{hasreturn}) {
+				$at_wrapper .= qq{
+BEGIN
+	v_query := 'SELECT * FROM $fname$at_suffix ($params)';
+	SELECT * FROM dblink(v_conn_str, v_query) AS p ($vartypes) INTO $varnames;
+};
+			} else {
+				$at_ret_type[0] = $fct_detail{func_ret_type};
+				$at_ret_param[0] = 'ret ' . $fct_detail{func_ret_type};
+				$at_wrapper .= qq{
+	v_ret	$at_ret_type[0];
+BEGIN
+	v_query := 'SELECT * FROM $fname$at_suffix ($params)';
+	SELECT * INTO v_ret FROM dblink(v_conn_str, v_query) AS p ($at_ret_param[0]);
+	RETURN v_ret;
+};
+			}
+		} elsif (!$fct_detail{hasreturn}) {
+			$at_wrapper .= qq{
+BEGIN
+	v_query := 'SELECT true FROM $fname$at_suffix ($params)';
+	PERFORM * FROM dblink(v_conn_str, v_query) AS p (ret boolean);
+};
+		} else {
+			print STDERR "WARNING: we should not be there, please send the Oracle code of the $self->{type} to the author for debuging.\n";
 		}
 		$at_wrapper .= qq{
 END;
