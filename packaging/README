@@ -32,6 +32,12 @@ slackbuild/
 
 		installpkg /tmp/build/ora2pg-18.2-i386-1gda.tgz
 
+	or
+
+		installpkg /tmp/build/ora2pg-18.2-x86_64-1gda.tgz
+
+	following the architecture.
+
 
 debian/
 	Holds all files to build debian package.
