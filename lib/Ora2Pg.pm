@@ -4727,6 +4727,7 @@ LANGUAGE plpgsql ;
 			# Get all metadata from all functions when we are
 			# reading a file, otherwise it has already been done
 			foreach my $fct (sort keys %{$self->{functions}}) {
+				$self->{functions}{$fct}{text} =~ s/(.*?\b(?:FUNCTION|PROCEDURE)\s+(?:[^\s\(]+))(\s*\%ORA2PG_COMMENT\d+\%\s*)+/$2$1 /is;
 				my %fct_detail = $self->_lookup_function($self->{functions}{$fct}{text}, ($self->{is_mysql}) ? $fct : undef);
 				if (!exists $fct_detail{name}) {
 					delete $self->{functions}{$fct};
@@ -4901,6 +4902,7 @@ LANGUAGE plpgsql ;
 			# Get all metadata from all procedures when we are
 			# reading a file, otherwise it has already been done
 			foreach my $fct (sort keys %{$self->{procedures}}) {
+				$self->{procedures}{$fct}{text} =~ s/(.*?\b(?:FUNCTION|PROCEDURE)\s+(?:[^\s\(]+))(\s*\%ORA2PG_COMMENT\d+\%\s*)+/$2$1 /is;
 				my %fct_detail = $self->_lookup_function($self->{procedures}{$fct}{text}, ($self->{is_mysql}) ? $fct : undef);
 				if (!exists $fct_detail{name}) {
 					delete $self->{procedures}{$fct};
@@ -16363,8 +16365,8 @@ sub _lookup_function
 	return if (!$fct_detail{code});
 
 	@{$fct_detail{param_types}} = ();
-	if ( ($fct_detail{declare} =~ s/(.*?)\b(FUNCTION|PROCEDURE)\s+([^\s\(]+)\s*(\([^\)]*\))//is) || 
-	($fct_detail{declare} =~ s/(.*?)\b(FUNCTION|PROCEDURE)\s+([^\s\(]+)\s+(RETURN|IS|AS)/$4/is) ) {
+	if ( ($fct_detail{declare} =~ s/(.*?)\b(FUNCTION|PROCEDURE)\s+([^\s\(]+)(?:\s*\%ORA2PG_COMMENT\d+\%)*\s*(\([^\)]*\))//is) || 
+	($fct_detail{declare} =~ s/(.*?)\b(FUNCTION|PROCEDURE)\s+([^\s\(]+)(?:\s*\%ORA2PG_COMMENT\d+\%)*\s+(RETURN|IS|AS)/$4/is) ) {
 		$fct_detail{before} = $1;
 		$fct_detail{type} = uc($2);
 		$fct_detail{name} = $3;
