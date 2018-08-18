@@ -43,7 +43,7 @@ use List::Util qw/ min /;
 #set locale to LC_NUMERIC C
 setlocale(LC_NUMERIC,"C");
 
-$VERSION = '18.2';
+$VERSION = '19.0';
 $PSQL = $ENV{PLSQL} || 'psql';
 
 $| = 1;

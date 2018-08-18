@@ -26,7 +26,7 @@ use strict;
 
 use Getopt::Long qw(:config no_ignore_case bundling);
 
-my $VERSION = '18.2';
+my $VERSION = '19.0';
 
 my @DB_DNS = ();
 my $OUTDIR = '';

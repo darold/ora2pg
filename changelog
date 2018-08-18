@@ -1,3 +1,524 @@
+2017 08 18 - v19.0
+
+This major release fix several issues reported by users during last
+year. It also adds several new features and configuration directives.
+
+New features:
+
+  - Add export of Oracle HASH partitioning when PG_SUPPORTS_PARTITION
+    is enabled. This is a PostgreSQL 11 feature.
+  - Add SUBTYPE translation into DOMAIN with TYPE and PACKAGE export.
+  - Add automatic translation of
+      KEEP (DENSE_RANK FIRST|LAST ORDER BY ...) OVER (PARTITION BY ...)
+    into
+      FIRST|LAST_VALUE(...) OVER (PARTITION BY ... ORDER BY ...).
+   - Add PCTFREE to FILLFACTOR conversion when PCTFREE is upper than
+     the default value: 10. 
+  - Replace DELETE clause not followed with FROM (optional in Oracle).
+  - Remove Oracle extra clauses in TRUNCATE command.
+  - Allow use of NUMBER(*) in DATA_TYPE directive to convert all
+    NUMBER(*) into the given type whatever is the length. Ex:
+        DATA_TYPE    NUMBER(*):bigint.
+  - Add a PARALLEL hint to all Oracle queries used to migrate data.
+  - Add export of Identity Columns from Oracle Database 12c.
+  - Add translation of UROWID datatype and information in documentation
+    about why default corresponding type OID will fail at data import.
+  - Remove unwanted and unused keywords from CREATE TABLE statements:
+    PARALLEL and COMPRESS.
+  - Remove TEMPORARY in DROP statements.
+  - Improve speed of escape_copy() function used for data export.
+  - Add translation of Oracle functions NUMTOYMINTERVAL() and
+    NUMTODSINTERVAL().
+  - Add counting of jobs defined in Oracle scheduler in the migration
+    assessment feature. 
+  - Add CSMIG in the list of Oracle default system schema
+  - Fully rewrite data export for table with nested user defined types
+    DBD::Oracle fetchall_arrayref() is not able to associate complex
+    custom types to the returned arrays, changed this call to use
+    fetchrow_array() also used to export BLOB.
+  - QUERY export will now output translated queries as well as
+    untranslated ones. This break backward compatibility, previously
+    only translated query was dumped.
+  - Auto detect UTF-8 input files to automatically use utf8 encoding.
+  - Support translation of MySQL global variables.
+  - Add translation of preprocessor in Oracle external table into
+    program in foreign table definition. Allow translation of external
+    table from file.
+  - Add translation to NVL2() Oracle function.
+  - Translate CONVERT() MySQL function.
+  - Translate some form of GROUP_CONCAT() that was not translated.
+  - Remove call to CHARSET in cast() function, replace it by COLLATE
+    every where else. This must cover most of the cases but some
+    specials use might not, so please reports any issue with this
+    behavior.
+  - Add -c | --config command line option to ora2pg_scanner to set
+    custom configuration file to be used instead of ora2pg default:
+    /etc/ora2pg/ora2pg.conf
+  - Improve CONNECT BY and OUTER JOIN translation.
+  - And lot of MySQL to PostgreSQL improvements.
+
+Several new configuration directives have been added:
+
+  - Add DEFAULT_PARALLELISM_DEGREE to control PARALLEL hint use
+    when exporting data from Oracle. Default is disabled.
+  - Make documentation about KEEP_PKEY_NAMES more explicit about
+    kind of constraints affected by this directive.
+  - Add PG_SUPPORTS_IDENTITY configuration directive to enable
+    export of Oracle identity columns into PostgreSQL 10 feature.
+    If PG_SUPPORTS_IDENTITY is disabled and there is IDENTITY column
+    in the Oracle table, they are exported as serial or bigserial
+    columns. When it is enabled they are exported as IDENTITY columns
+    like:
+    
+          CREATE TABLE identity_test_tab (
+                  id bigint GENERATED ALWAYS AS IDENTITY,
+                  description varchar(30)
+          ) ;
+    
+    If there is non default sequence option set in Oracle, they will
+    be appended after the IDENTITY keyword. Additionally in both cases
+    Ora2Pg will create a file AUTOINCREMENT_output.sql with a function
+    to update the associated sequences with the restart value set to 
+    "SELECT max(colname)+1 FROM tablename". Of course this file must
+    be imported after data import otherwise sequence will be kept to
+    start value.
+  - Add DISABLE_UNLOGGED configuration directive. By default Ora2Pg
+    export Oracle tables with the NOLOGGING attribute into UNLOGGED
+    tables. You may want to fully disable this feature because you
+    will lost all data from unlogged table in case of PostgreSQL crash.
+    Set it to 1 to export all tables as normal table. When creating a
+    new migration project using --init_project, this directive is
+    activated by default. This is not the case in the default
+    configuration file for backward compatibility.
+  - Add FORCE_SECURITY_INVOKER configuration directive. Ora2Pg use
+    the function's security privileges set in Oracle and it is often
+    defined as SECURITY DEFINER. To override those security privileges
+    for all functions and use SECURITY DEFINER instead, enable this
+    directive.
+  - Add AUTONOMOUS_TRANSACTION in configuration to enable translation
+    of autonomous transactions into a wrapper function using dblink
+    or pg_background extension. If you don't want to use this feature
+    and just want to export the function as a normal one without the
+    pragma call, disable this directive.
+  - Add documentation about COMMENT_SAVEPOINT configuration directive.
+  - Major rewrite in PACKAGE parser to better support global variables
+    detection. Global variable that have no default values are now
+    always initialized to empty string in file global_variables.conf
+    so that we see that they exists. This might not change the global
+    behavior.
+
+I especially want to thank Pavel Stehule and Eric Delanoe who spent
+lot of time this year to help me to improve the PL/SQL to plpgsql
+translation and also Krasiyan Andreev who help a lot to finalize
+the MySQL to PostgreSQL migration features.
+
+Here is a complete list of changes and acknowledgments:
+
+  - Fix translation of "varname cursor%ROWTYPE;". Thanks to Philippe
+    Beaudoin for the report.
+  - Fix return of autonomous transaction dblink call when function has
+    OUT parameter. Thanks to Pavel Stehule for the report.
+  - Add Oracle to PostgreSQL translation of windows functions 
+    KEEP (DENSE_RANK FIRST|LAST ORDER BY ...) OVER (PARTITION BY ...)
+    Thanks to Swapnil bhoot929 for the feature request.
+  - Fix "ORA-03113: end-of-file on communication channel" that what
+    generated by a too long query send to Oracle. The size of queries
+    sent to Oracle to retrieve object information depend of the ALLOW
+    and EXCLUDE directives. If you have lot of objects to filter you
+    can experience this kind of non explicit error. Now Ora2pg use
+    bind parameter to pass the filters values to reduce the size of
+    the prepared query. Thanks to Stephane Tachoire for the report.
+  - Add SUBTYPE translation into DOMAIN with TYPE and PACKAGE export.
+    Thanks to Francesco Loreti for the feature request.
+  - Fix PLS_INTEGER replacement.
+  - Remove precision for RAW|BLOB as type modifier is not allowed for
+    type "bytea".
+  - Fix call of schema.pckg.function() in indexes with a replacement
+    with pckg.function(). Thanks to w0pr for the report.
+  - Fix translation of UPDATE trigger based on columns:
+        "BEFORE UPDATE OF col1,col2 ON table".
+    Thanks to Eric Delanoe for the report.
+  - Remove single / from input file that was causing a double END in
+    some case. Thanks to Philippe Beaudoin for the report.
+  - Limit translation of PCTFREE into FILLFACTOR when PCTFREE is upper
+    than the Oracle default value: 10. With PostgreSQL 100 (complete
+    packing) is the default.
+  - Add PCTFREE to FILLFACTOR conversion. Thanks to Maxim Zakharov
+    for the patch.
+  - Remove TRUNCATE extra clauses. Thanks to e7e6 for the patch.
+  - Fix type conversion when extra \n added after ;. Thanks to
+    Maxim Zakharov for the patch.
+  - Fix DELETE clause not followed with FROM (optional in Oracle).
+    Thanks to Philippe Beaudoin for the patch.
+  - Limit call to ALL_TAB_IDENTITY_COLS to version 12+. Thanks to
+    Andy Garfield for the report.
+  - Fix comment parsing. Thanks to Philippe Beaudoin for the report.
+  - Allow use of NUMBER(*) in DATA_TYPE directive to convert all
+    NUMBER(*) into the given type whatever is the length.
+    Thanks to lingeshpes for the feature request.
+  - Fix bug in function-based index export. Thanks to apol1234 for
+    the report.
+  - Add PARALLEL hint to all data export queries. Thanks to jacks33
+    for the report.
+  - Make documentation about KEEP_PKEY_NAMES more explicit about kind
+    of constraints affected by this directive.
+  - Fix export of identity columns by enclosing options between
+    parenthesis and replacing CACHE 0 by CACHE 1. Thanks to swmcguffin
+    devtech for the report.
+  - Add parsing of identity columns from file.
+  - Fix unwanted replacement of IF () in MySQL code. Thanks to
+    Krasiyan Andreev for the report.
+  - Fix to_char() translation, thanks to Eric Delanoe for the report.
+  - Fix untranslated PERFORM into exception. Thanks to Pavel Stehule
+    for the report.
+  - Add _get_entities() function to MySQL export. It returns nothing,
+    AUTO_INCREMENT column are translated with corresponding types,
+    smallserial/serial/bigserial.
+  - Fix look at encrypted column on Oracle prior to 10. Thanks to
+    Stephane Tachoires for the patch.
+  - Add export of Identity Columns from Oracle Database 12c. Thanks
+    to swmcguffin-devtech for the feature request.
+  - Prevent Ora2Pg to scan ALL_SCHEDULER_JOBS for version prior to 10
+    Thanks to Stephane Tachoires for the patch.
+  - Fix pull request #648 to log date only when debug is enabled and
+    use POSIX strftime instead of custom gettime function.
+  - Add system time to debug log info. Thanks to danghb for the patch.
+  - Fix parsing of trigger from file and exception.
+  - Fix very slow export of mysql tablespace when number of table is
+    large. Thanks to yafeishi for the report.
+  - Fix translation of CAST( AS unsigned). Thanks to Krasiyan Andreev.
+  - Fix MySQL character length to use character_maximum_length
+    instead of equal character_octet_length. Thanks to yafeishi for
+    the report.
+  - Fix custom replacement of MySQL data type. Thanks to Krasiyan
+    Andreev for the report.
+  - Fix replacement of call to open cursor with empty parenthesis.
+    Thanks to Philippe Beaudoin for the report.
+  - Fix MySQL data type conversion in function declaration. Thanks to
+    Krasiyan Andreev for the report.
+  - Fix error with -INFINITY as default value for date or timestamp
+    columns.
+  - Fix procedure call rewrite with unwanted comma on begin of
+    parameter list. Thanks to Pavel Stehule for the report.
+  - Fix handling of foreign keys when exporting data and DROP_FKEYS
+    is enabled and ALLOW/EXCLUDE directive is set. Now Ora2Pg will
+    first drop all foreign keys of a table in the export list and all
+    foreign keys of other tables pointing to the table. After data
+    import, it will recreate all of these foreign keys. Thanks to
+    Eric Delanoe for the report.
+  - Fix broken transformation of procedure call with default parameter
+    Thanks to Pavel Stehule for the report.
+  - Translate call to TIMESTAMP in partition range values into a cast.
+    Thanks to markiech for the report.
+  - Fix CONNECT BY translation when the query contain an UNION. Thanks
+    to mohammed-a-wadod for the report.
+  - Fix CONNECT BY with PRIOR on the right side of the predicat.
+  - Fix outer join translation when the (+) was in a function, ex:
+        WHERE UPPER(trim(VW.FRIDAY))= UPPER(trim(FRIDAY.NAME(+))).
+  - Order outer join pending tables in from clause.
+  - Order by object name comments and indexes export.
+  - Fix outer join translation when the table is not in the from
+    clause. Thanks to Cyrille Lintz for the report.
+  - Try to fix potential Oracle schema prefixing PostgreSQL schema
+    name in CREATE SCHEMA. Thanks to Cyrille Lintz for the report.
+  - Fix error in TRIM() translation. Thanks to Cyrille Lintz for the
+    report.
+  - Add translation of UROWID datatype and information in documentation
+    about why default corresponding type OID will fail at data import.
+    Thanks to Cyrille Lintz for the report.
+  - Fix bug in exporting boolean default values in column definition.
+  - Fix bug in column parsing in CREATE TABLE.
+  - Adapt default value for data type changed to boolean.
+  - Fix bad handling of -D (data_type) option.
+  - Change behavior in the attempt to set MySQL global variable type.
+    Now variable type will be timestamp if the variable name contains
+    datetime, time if the name contains only time and date for date.
+    Thanks to Krasiyan Andreev for the report.
+  - Fix function replacement in MySQL declare section. Thanks to
+    Krasiyan Andreev fr the report.
+  - Apply REPLACE_ZERO_DATE to default value in table declaration.
+    Thanks to Krasiyan Andreev for the report.
+  - Add support to embedded comment in table DDL.
+  - Fix replacement of data type for MySQL code. Thanks to Krasiyan
+    Andreev for the report.
+  - Fix MySQL type replacement in function. Thanks to Krasiyan Andreev
+    for the report.
+  - Improve speed of escape_copy() function used for data export.
+    Thanks to pgnickb for the profiling.
+  - Add translation of Oracle functions NUMTOYMINTERVAL() and
+    NUMTODSINTERVAL(). Thanks to Pavel Stehule for the report.
+  - Counting jobs defined in Oracle scheduler. Thanks to slfbovey
+    for the patch.
+  - Fix several issue in create table DDL parser:
+      - remove double quote of object name when a list of column is
+        entered
+      - split of table definition to extract column and constraint
+        parts is now more efficient
+      - remove dot in auto generated constraint name when a schema
+        is given in table name
+      - fix default values with space that was breaking the parser
+  - Remove use of bignum perl module that reports error on some
+    installation. Thanks to Cyrille Lintz for the report.
+  - Fix a typo preventing perldoc to complete. Thanks to slfbovey
+    for the patch.
+  - Fully rewrite data export for table with nested user defined types
+    DBD::Oracle fetchall_arrayref() is not able to associate complex
+    custom types to the returned arrays, changed this call to use
+    fetchrow_array() also used to export BLOB. Thanks to lupynos for
+    the report.
+  - Fix renaming of temporary files during partitions data export.
+  - Fix Oracle use of empty string as default value for integers.
+    Oracle allow such declaration: SOP NUMBER(5) DEFAULT '' which
+    PostgreSQL does not support. Ora2Pg now detect this syntax and
+    replace empty string with NULL. Thanks to ricdba for the report.
+  - Add detection of Oracle version before setting datetime format,
+    needed for Oracle 8i compatibility.
+  - Export of tables from Oracle database are now ordered by name by
+    default. Thanks to Markus Roth for the report.
+  - Fix an other case of missing translation of UNSIGNED into bigint.
+    Thanks to Krasiyan Andreev for the report.
+  - Force replacement of double quote into single quote for MySQL view
+    and function code.
+  - Fix case when SET @varname := ... is used multiple time in the
+    same function. Thanks to Krasiyan Andreev for the report.
+  - Fix case where SET @varname := ... was not translated. Thanks to
+    Krasiyan Andreev for the report.
+  - Adjust the regex pattern of last patch.
+  - Fix unwanted newline after hint replacement that could break
+    comments. Thanks to Pavel Stehule for the report.
+  - Fix if() replacement in query. Thanks to Krasiyan Andreev for the
+    report.
+  - Remove extra parenthesis in some form of JOIN. Thanks to Krasiyan
+    Andreev for the report.
+  - Fix untranslated call to UNSIGNED, now translated as bigint.
+  - Thanks to Krasiyan Andreev for the report.
+  - Fix translation of double(p,s) into decimal(p,s).
+  - Remove use of SET when an assignment is done through a SELECT
+    statement. Thanks to Krasiyan Andreev for the report.
+  - Fix non-quoted reserved keywords in INSERT / COPY statements when
+    exporting data. Thanks to Pavel Stehule for the report.
+  - Fix partition data export to file, temporary files for partition
+    output was not renamed at export end then data was not loaded.
+  - Fix double operator := during function with out param rewrite.
+  - Fix commit f1166e5 to apply changes when FILE_PER_FUNCTION is
+    disable or when an input file is given.
+  - Fix translation of LOCATE(). Thanks to Krasiyan Andreev for the
+    report.
+  - Fix case where MySQL GROUP_CONCAT() function was not translated.
+    Thanks to Krasiyan Andreev for the report.
+  - Fix :new and :old translation in triggers.
+  - Fully rewrite function call qualification process, the second pass
+    now is only use to requalify call to pkg.fct into pkg_ftc when
+    PACKAGE_AS_SCHEMA is disable. The replacement of all function
+    calls using double quote when a non supported character is used or
+    when PRESERVE_CASE is enabled has been completely removed as this
+    takes too much time to process for just very few case. So by
+    default now Ora2Pg will not go through the second pass. This can
+    change in the future especially if this is more performant to
+    process PERFORM replacement. Thanks a lot to Eric Delanoe for his
+    help on this part.
+  - Exclude function and procedure not from package to be used in
+    requalify call. Thanks to Eric Delanoe for the report.
+  - Fix function name qualification in multiprocess mode.
+  - Fix unqualified function call due to unclose file handle.
+  - Prevent try to requalify function call if the function is
+    not found in the file content.
+  - Remove ALGORITHM=.*, DEFINER=.* and SQL SECURITY DEFINER from
+    MySQL DDL code.
+  - An other missing change to previous commit on qualifying function
+    call.
+  - Limit function requalification to export type: VIEW, TRIGGER,
+    QUERY, FUNCTION, PROCEDURE and PACKAGE.
+  - Auto detect UTF-8 input files to automatically use utf8 encoding.
+  - Remove all SHOW ERRORS and other call to SHOW in Oracle package
+    source as they was badly interpreted as global variable.
+  - Fix MySQL CREATE TABLE ... SELECT statement.
+  - Fix pending translation issue on some DATE_FORMAT() case.
+    Thanks to Krasiyan Andreev for the report.
+  - Fix translation of IN (..) in MySQL view. Thanks to Krasiyan
+    Andreev for the report.
+  - Fix MySQL date format with digit.
+  - Fix DATE_FORMAT, WHILE and IFNULL translation issues.
+  - Fix not translated MySQL IF() function.
+  - Fix other MySQL translation issues for @variable. Thanks to
+    Krasiyan Andreev for the report.
+  - Fix issue in MySQL IF translation with IN clause. Thanks to
+    Krasiyan Andreev for the report.
+  - Clarify comment about XML_PRETTY directive. Thanks to TWAC
+    for the report.
+  - Fix remaining MySQL translation issues for @variable reported
+    in issue #590.
+  - Fix no translated := in SET statement.
+  - Fix output order of translated function.
+  - Fix non printable character or special characters that make
+    file encoding to ISO-8859 instead of utf8. Thanks to twac for
+    the report.
+  - Prevent MySQL global variable to be declared twice. Thanks to
+    Krasiyan Andreev for the report.
+  - Support translation of MySQL global variables. Session variable
+    @@varname are translated to PostgreSQL GUC variable and global
+    variable @varname are translated to local variable defined in a
+    DECLARE section. Ora2Pg tries to gather the data type by using
+    integer by default, varchar if there is a constant string ('...')
+    in the value and a timestamp if the variable name have the keyword
+    date or time inside. Thanks to Krasiyan Andreev for the feature
+    request.
+  - Fix DATE_ADD() translation.
+  - Add translation of preprocessor in Oracle external table into
+    program in foreign table definition. Thanks to Thomas Reiss for
+    the report. Allow translation of external table from file.
+  - Fix case where IF EXISTS might not be append when it is not
+    supported by PG.
+  - Translate CONVERT() MySQL function. Thanks to Krasiyan Andreev
+    for the report.
+  - Translate some form of GROUP_CONCAT() that was not translated.
+    Thanks to Krasiyan Andreev for the report.
+  - Apply same principe with COMMIT in MySQL function code than in
+    Oracle code. It is kept untouched to be able to detect a possible
+    change of code logic. It can be automatically commented if
+    COMMENT_COMMIT_ROLLBACK is enabled. Also I have kept the START
+    TRANSACTION call but it is automatically commented.
+  - Add mysql_enable_utf8 => 1 to MySQL connection to avoid issues
+    with encoding. Thanks to Krasiyan Andreev for the report.
+  - Prevent removing of comment on MySQL function and add a "COMMENT
+    ON FUNCTION" statement at end of the function declaration. Thanks
+    to Krasiyan Andreev for the report.
+  - Fix translation of types in MySQL function parameter. Thanks to
+    Krasiyan Andreev for the report.
+  - Remove START TRANSACTION from MySQL function code. Thanks to
+    Krasiyan Andreev for the report.
+  - Fix previous patch, we do not need to look forward for function
+    or procedure definition in VIEW export and there is no package
+    with MySQL. Thanks to Krasiyan Andreev for the report.
+  - Fix call to useless function for MySQL function.
+  - Add rewrite of MySQL function call in function or procedure code
+    translation and some other translation related to MySQL code.
+  - Fix ora2pg_scanner when exporting schema with $ in its name.
+    Thanks to Aurelien Robin for the report.
+  - Disable number of microsecond digit for Oracle version 9. Thanks
+    to Aurelien Robin for the report.
+  - Do not look at encrypted column for DB version < 10. Thanks to
+    Aurelien Robin for the report.
+  - Fix MySQL call to charset in cast function. MySQL charset "utf8"
+    is also set to COLLATE "C.UTF-8". Thanks to Krasiyan Andreev for
+    the report.
+  - Fix two bug in CONNECT BY and OUTER JOIN translation.
+  - Forgot to handle exception to standard call to IF in MySQL IF()
+    translation. Thanks to Krasiyan Andreev for the report.
+  - Forgot to apply previous changes to procedure.
+  - Fix IF() MySQL replacement when nested and when containing an
+    IN (...) clause. Thanks to  Krasiyan Andreev for the report.
+  - Fix double BEGIN on MySQL function export. Thanks to Krasiyan
+    Andreev for the report.
+  - Fix enum check constraint name when PRESERVE_CASE is enabled.
+  - Fix case where object with LINESTRING and CIRCULARSTRING was
+    exported as MULTILINESTRING instead of MULTICURVE.
+  - Fix export of MULTICURVE with COMPOUNDCURVE. Thanks to Petr Silhak
+    for the report.
+  - Fix several issue in MySQL table DDL export. Thanks to Krasiyan
+    Andreev for the report.
+  - Fix MySQL auto_increment data type translation and columns export
+    order.
+  - Fix translation of MySQL function CURRENT_TIMESTAMP(). Thanks to
+    Krasiyan Andreev for the report.
+  - Fix export of MySQL alter sequence name when exporting auto
+    increment column. Thanks to Krasiyan Andreev for the report.
+  - Replace IF() call with CASE ... END in VIEW and QUERY export for
+    MySQL. Thanks to Krasiyan Andreev for the feature request.
+  - Replace backquote with double quote on mysql statements when read
+    from file.
+  - Fix bug in REGEXP_SUBSTR replacement.
+  - Prevent replacement with same function name from an other package.
+    Thanks to Eric Delanoe for the report.
+  - Apply same STRICT rule for SELECT INTO to EXECUTE INTO. Thanks to
+    Pavel Stehule for the report.
+  - Fix extra parenthesis removing when a OR clause is present. Thanks
+    to Pavel Stehule for the report.
+  - Keep autonomous pragma commented when conversion is desactivated
+    to be able to identify functions using this pragma.
+  - Fix bug in replacement of package function in string constant.
+  - Fix malformed replacement of array element calls. Thanks to Eric
+    Delanoe for the report.
+  - Fix unwanted replacement of TO_NUMBER function. Thanks to Torquem
+    for the report.
+  - Add an example of DSN for MySQL in ORACLE_DSN documentation.
+    Thanks to François Honore for the report.
+  - Fix typo in default dblink connection string. Thanks to Pavel
+    Stehule for the report.
+  - Add information about Oracle Instant Client installation. Thanks
+    to Jan Birk for the report.
+  - Replace Oracle array syntax arr(i).x into arr[i].x into PL/SQL
+    code. Thanks to Eric Delanoe for the report.
+  - Use a more generic connection string for DBLINK. It will use
+    unix socket by default to connect and the password must be set
+    in .pgpass. This will result in the following connection string:
+        format('port=%s dbname=%s user=%', current_setting('port'),
+		current_database(), current_user)
+    If you want to redefine this connection string use DBLINK_CONN
+    configuration directive. Thanks to Pavel Stehule for the feature
+    request.
+  - Fix missing RETURN NEW in some trigger translation. Thanks to
+    Pavel Stehule for the report.
+  - Fix a missing but non mandatory semi-comma.
+  - Keep PKs/unique constraints which are deferrable in Oracle also
+    deferrable in PostgreSQL. Thank to Sverre Boschman for the patch.
+  - Fix parsing and translation of CONNECT BY. Thanks to bhoot929
+    for the report.
+  - Fix FDW export when exporting all schema. Thanks to Laurenz Albe
+    for the report.
+  - Add a note about multiple value in export type that can not
+    include COPY or INSERT together with others export type.
+  - Fix duplicate condition. Thanks to Eric Delanoe for the report.
+  - Fix unwanted translation into PERFORM after INTERSECT.
+  - Comment savepoint in code. Thanks to Pavel Stehule for the patch.
+  - Fix "ROLLBACK TO" that was not commented. Thanks to Pavel Stehule
+    for the report.
+  - Fix restore of constant string when additional string constant
+    regex are defined in configuration file.
+  - Fix translation of nextval with sequence name prefixed with their
+    schema.
+  - Cast call to TO_DATE(LOCALTIMESTAMP,...) translated into
+    TO_DATE(LOCALTIMESTAMP::text,...). Thanks to Keshav kumbham
+    for the report.
+  - Remove double quote added automatically by Oracle on view
+    definition when PRESERVE_CASE is not enable. Thanks to JeeIPI for
+    the report.
+  - Fix translation of FROM_TZ with a call to function as first 
+    parameter. Thanks to TrungPhan for the report.
+  - Fix package export when FILE_PER_FUNCTION is set. Thanks to
+    Julien Rouhaud for the report.
+  - Add translation of REGEXP_SUBSTR() with the following rules:
+    Translation of REGEX_SUBSTR( string, pattern, [pos], [nth])
+    converted into
+        SELECT array_to_string(a, '')
+          FROM regexp_matches(substr(string, pos), pattern, 'g')
+               AS foo(a)
+          LIMIT 1 OFFSET (nth - 1);
+    Optional fifth parameter of match_parameter is appended to 'g'
+    when present.  Thanks to bhoot929 for the feature request.
+  - Add count of REGEX_SUBSTR to migration assessment cost.
+  - Add translation support of FROM_TZ() Oracle function. Thanks
+    to trPhan for the feature request.
+  - Forces ora2pg to output a message when a custom exception code
+    has less than 5 digit.
+  - Fix errcode when Oracle custom exception number have less than
+    five digit. Thanks to Pavel Stehule for the report.
+  - Fix case where custom errcode are not converted. Thanks to Pavel
+    Stehule for the report.
+  - Fix print of single semicolon with empty line in index export.
+  - Fix problem with TO_TIMESTAMP_TZ conversion. Thanks to Keshav-
+    kumbham for the report.
+  - Fix unwanted double quote in index column with DESC sorting.
+    Thanks to JeeIPI for the report.
+  - Fix non detection case of tables in from clause for outer join
+    translation. Thanks to Keshav for the report.
+  - Fix unwanted replacement of = NULL into IS NULL in update
+    statement. Thanks to Pavel Stehule for the report.
+  - Force schema name used in TEST action to lowercase. Thanks to
+    venkatabn for the report.
+  - Fix export of spatial geometries with CURVEPOLYGON + COMPOUNDCURVE
+    Thanks to kabog for the report.
+
 2017 09 01 - v18.2
 
 This release fix several issues reported during the last six months.

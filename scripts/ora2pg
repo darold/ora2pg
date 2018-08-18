@@ -31,7 +31,7 @@ use POSIX qw(locale_h sys_wait_h _exit);
 setlocale(LC_NUMERIC, '');
 setlocale(LC_ALL,     'C');
 
-my $VERSION = '18.2';
+my $VERSION = '19.0';
 
 $| = 1;
 
