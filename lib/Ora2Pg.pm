@@ -16365,8 +16365,11 @@ sub _lookup_function
 	return if (!$fct_detail{code});
 
 	@{$fct_detail{param_types}} = ();
-	if ( ($fct_detail{declare} =~ s/(.*?)\b(FUNCTION|PROCEDURE)\s+([^\s\(]+)(?:\s*\%ORA2PG_COMMENT\d+\%)*\s*(\([^\)]*\))//is) || 
-	($fct_detail{declare} =~ s/(.*?)\b(FUNCTION|PROCEDURE)\s+([^\s\(]+)(?:\s*\%ORA2PG_COMMENT\d+\%)*\s+(RETURN|IS|AS)/$4/is) ) {
+	$fct_detail{declare} =~ s/(\b(?:FUNCTION|PROCEDURE)\s+(?:[^\s\(]+))(\s*\%ORA2PG_COMMENT\d+\%\s*)+/$2$1 /is;
+	#if ( ($fct_detail{declare} =~ s/(.*?)\b(FUNCTION|PROCEDURE)\s+([^\s\(]+)(?:\s*\%ORA2PG_COMMENT\d+\%)*\s*(\([^\)]*\))//is) || 
+	#($fct_detail{declare} =~ s/(.*?)\b(FUNCTION|PROCEDURE)\s+([^\s\(]+)(?:\s*\%ORA2PG_COMMENT\d+\%)*\s+(RETURN|IS|AS)/$4/is) ) {
+	if ( ($fct_detail{declare} =~ s/(.*?)\b(FUNCTION|PROCEDURE)\s+([^\s\(]+)\s*(\([^\)]*\))//is) || 
+	($fct_detail{declare} =~ s/(.*?)\b(FUNCTION|PROCEDURE)\s+([^\s\(]+)\s+(RETURN|IS|AS)/$4/is) ) {
 		$fct_detail{before} = $1;
 		$fct_detail{type} = uc($2);
 		$fct_detail{name} = $3;
