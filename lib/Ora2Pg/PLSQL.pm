@@ -677,35 +677,11 @@ sub plsql_to_plpgsql
 	$str =~ s/\braise_application_error\s*\(\s*([^,]+)\s*,\s*([^;]+)\)\s*;/"RAISE EXCEPTION '%', $2 USING ERRCODE = " . set_error_code($1) . ";"/iges;
 	$str =~ s/DBMS_STANDARD\.RAISE EXCEPTION/RAISE EXCEPTION/igs;
 
-	# Remove IN information from cursor declaration
-	while ($str =~ s/(\bCURSOR\b[^\(]+)\(([^\)]+\bIN\b[^\)]+)\)/$1\(\%\%CURSORREPLACE\%\%\)/is) {
-		my $args = $2;
-		$args =~ s/\bIN\b//igs;
-		$str =~ s/\%\%CURSORREPLACE\%\%/$args/is;
-	}
+	# Translate cursor declaration
+	$str = replace_cursor_def($str);
 
-	# Retrieve cursor names
-	my @cursor_names = $str =~ /\bCURSOR\b\s*([A-Z0-9_\$]+)/isg;
-	# Reorder cursor declaration
-	$str =~ s/\bCURSOR\b\s*([A-Z0-9_\$]+)/$1 CURSOR/isg;
-
-	# Replace call to cursor type if any
-	foreach my $c (@cursor_names) {
-		$str =~ s/\b$c\%ROWTYPE/RECORD/isg;
-	}
-	# Then remove %ROWTYPE in other prototype declaration
+	# Remove remaining %ROWTYPE in other prototype declaration
 	$str =~ s/\%ROWTYPE//isg;
-
-	# Replace CURSOR IS SELECT by CURSOR FOR SELECT
-	$str =~ s/\bCURSOR(\s+)IS(\s+)SELECT/CURSOR$1FOR$2SELECT/isg;
-	# Replace CURSOR (param) IS SELECT by CURSOR FOR SELECT
-	$str =~ s/\bCURSOR(\s*\([^\)]+\)\s*)IS(\s*)SELECT/CURSOR$1FOR$2SELECT/isg;
-	# Replace OPEN cursor FOR with dynamic query
-	$str =~ s/(OPEN\s+(?:[^;]+?)\s+FOR)((?:[^;]+?)USING)/$1 EXECUTE$2/isg;
-	$str =~ s/(OPEN\s+(?:[^;]+?)\s+FOR)\s+((?!EXECUTE)(?:[^;]+?)\|\|)/$1 EXECUTE $2/isg;
-	$str =~ s/(OPEN\s+(?:[^;]+?)\s+FOR)\s+([^\s]+\s*;)/$1 EXECUTE $2/isg;
-	# Remove empty parenthesis after an open cursor
-	$str =~ s/(OPEN\s+[^\(\s;]+)\s*\(\s*\)/$1/isg;
 
 	# Normalize HAVING ... GROUP BY into GROUP BY ... HAVING clause	
 	$str =~ s/\bHAVING\b((?:(?!SELECT|INSERT|UPDATE|DELETE).)*?)\bGROUP BY\b((?:(?!SELECT|INSERT|UPDATE|DELETE|WHERE).)*?)((?=UNION|ORDER BY|LIMIT|INTO |FOR UPDATE|PROCEDURE|\)\s+(?:AS)*[a-z0-9_]+\s+)|$)/GROUP BY$2 HAVING$1/gis;
@@ -748,13 +724,6 @@ sub plsql_to_plpgsql
 	# Replacle call to SQL%NOTFOUND and SQL%FOUND
 	$str =~ s/SQL\%NOTFOUND/NOT FOUND/isg;
 	$str =~ s/SQL\%FOUND/FOUND/isg;
-
-	# Replace REF CURSOR as Pg REFCURSOR
-	$str =~ s/\bIS(\s*)REF\s+CURSOR/REFCURSOR/isg;
-	$str =~ s/\bREF\s+CURSOR/REFCURSOR/isg;
-
-	# Replace SYS_REFCURSOR as Pg REFCURSOR
-	$str =~ s/\bSYS_REFCURSOR\b/REFCURSOR/isg;
 
 	# Replace UTL_MATH function by fuzzymatch function
 	$str =~ s/UTL_MATCH.EDIT_DISTANCE/levenshtein/igs;
@@ -1876,6 +1845,28 @@ sub replace_sql_type
 		$str =~ s/\b$t\b/$data_type{$t}/igs;
 	}
 
+	# Translate cursor declaration
+	$str = replace_cursor_def($str);
+
+	# Remove remaining %ROWTYPE in other prototype declaration
+	$str =~ s/\%ROWTYPE//isg;
+
+	$str =~ s/;[ ]+/;/gs;
+
+        return $str;
+}
+
+sub replace_cursor_def
+{
+	my $str = shift;
+
+	# Remove IN information from cursor declaration
+	while ($str =~ s/(\bCURSOR\b[^\(]+)\(([^\)]+\bIN\b[^\)]+)\)/$1\(\%\%CURSORREPLACE\%\%\)/is) {
+		my $args = $2;
+		$args =~ s/\bIN\b//igs;
+		$str =~ s/\%\%CURSORREPLACE\%\%/$args/is;
+	}
+
 	# Replace local type ref cursor
 	my %locatype = ();
 	my $i = 0;
@@ -1888,7 +1879,16 @@ sub replace_sql_type
 		$i++;
 	}
 	$str =~ s/\%LOCALTYPE(\d+)\%/$localtype{$1}/gs;
-	$str =~ s/\%ROWTYPE//gs;
+
+	# Retrieve cursor names
+	my @cursor_names = $str =~ /\bCURSOR\b\s*([A-Z0-9_\$]+)/isg;
+	# Reorder cursor declaration
+	$str =~ s/\bCURSOR\b\s*([A-Z0-9_\$]+)/$1 CURSOR/isg;
+
+	# Replace call to cursor type if any
+	foreach my $c (@cursor_names) {
+		$str =~ s/\b$c\%ROWTYPE/RECORD/isg;
+	}
 
 	# Replace REF CURSOR as Pg REFCURSOR
 	$str =~ s/\bIS(\s*)REF\s+CURSOR/REFCURSOR/isg;
@@ -1897,7 +1897,27 @@ sub replace_sql_type
 	# Replace SYS_REFCURSOR as Pg REFCURSOR
 	$str =~ s/\bSYS_REFCURSOR\b/REFCURSOR/isg;
 
-	$str =~ s/;[ ]+/;/gs;
+	# Replace CURSOR IS SELECT by CURSOR FOR SELECT
+	$str =~ s/\bCURSOR(\s+)IS(\s+)SELECT/CURSOR$1FOR$2SELECT/isg;
+	# Replace CURSOR (param) IS SELECT by CURSOR FOR SELECT
+	$str =~ s/\bCURSOR(\s*\([^\)]+\)\s*)IS(\s*)SELECT/CURSOR$1FOR$2SELECT/isg;
+
+	# Replace REF CURSOR as Pg REFCURSOR
+	$str =~ s/\bIS(\s*)REF\s+CURSOR/REFCURSOR/isg;
+	$str =~ s/\bREF\s+CURSOR/REFCURSOR/isg;
+
+	# Replace SYS_REFCURSOR as Pg REFCURSOR
+	$str =~ s/\bSYS_REFCURSOR\b/REFCURSOR/isg;
+
+	# Replace OPEN cursor FOR with dynamic query
+	$str =~ s/(OPEN\s+(?:[^;]+?)\s+FOR)((?:[^;]+?)USING)/$1 EXECUTE$2/isg;
+	$str =~ s/(OPEN\s+(?:[^;]+?)\s+FOR)\s+((?!EXECUTE)(?:[^;]+?)\|\|)/$1 EXECUTE $2/isg;
+	$str =~ s/(OPEN\s+(?:[^;]+?)\s+FOR)\s+([^\s]+\s*;)/$1 EXECUTE $2/isg;
+	# Remove empty parenthesis after an open cursor
+	$str =~ s/(OPEN\s+[^\(\s;]+)\s*\(\s*\)/$1/isg;
+
+	# Invert FOR CURSOR call
+	$str =~ s/\bFOR\s+CURSOR(\s+)/CURSOR FOR$1/igs;
 
         return $str;
 }
