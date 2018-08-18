@@ -38,7 +38,6 @@ use File::Basename;
 use File::Spec qw/ tmpdir /;
 use File::Temp qw/ tempfile /;
 use Benchmark;
-use List::Util qw/ min /;
 
 #set locale to LC_NUMERIC C
 setlocale(LC_NUMERIC,"C");
@@ -17642,6 +17641,13 @@ sub _make_WITH
 	$WITH .= 'WITH (' . join(",",@withs) . ')';
     }
     return $WITH;
+}
+
+sub min
+{
+	return $_[0] if ($_[0] < $_[1]);
+
+	return $_[1];
 }
 
 1;
