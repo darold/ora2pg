@@ -6189,7 +6189,7 @@ BEGIN
 									print STDERR "WARNING: Hash partitioning not supported, skipping subpartitioning of table $table\n";
 									next;
 								} else {
-									$sub_check_cond .= " WITH (MODULUS " . (scalar keys %{$self->{subpartitions}{$table}}) . ", REMAINDER " . ($p-1) . ")";
+									$sub_check_cond .= " WITH (MODULUS " . (scalar keys %{$self->{subpartitions}{$table}{$part}}) . ", REMAINDER " . ($p-1) . ")";
 								}
 							} else {
 								print STDERR "WARNING: Unknown partitioning type $self->{partitions}{$table}{$pos}{info}[$i]->{type}, skipping partitioning of table $table\n";
