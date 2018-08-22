@@ -5957,7 +5957,7 @@ LANGUAGE plpgsql ;
 			$total_partition += $self->{partitions_list}{$t}{count};
 		}
 
-		my $i = 1;
+		my $ipos = 1;
 		my $partition_indexes = ();
 		foreach my $table (sort keys %{$self->{partitions}}) {
 			my $function = '';
@@ -5978,7 +5978,7 @@ BEGIN
 				next if (!$self->{partitions}{$table}{$pos}{name});
 				my $part = $self->{partitions}{$table}{$pos}{name};
 				if (!$self->{quiet} && !$self->{debug}) {
-					print STDERR $self->progress_bar($i, $total_partition, 25, '=', 'partitions', "generating $part" ), "\r";
+					print STDERR $self->progress_bar($ipos, $total_partition, 25, '=', 'partitions', "generating $part" ), "\r";
 				}
 				my $tb_name = '';
 				if ($self->{prefix_partition}) {
@@ -6282,7 +6282,7 @@ BEGIN
 				}
 				$cond = 'ELSIF';
 				$old_part = $part;
-				$i++;
+				$ipos++;
 				$old_pos = $pos;
 			}
 			if (!$self->{pg_supports_partition}) {
@@ -6350,7 +6350,7 @@ CREATE TRIGGER ${table}_trigger_insert
 		}
 
 		if (!$self->{quiet} && !$self->{debug}) {
-			print STDERR $self->progress_bar($i - 1, $total_partition, 25, '=', 'partitions', 'end of output.'), "\n";
+			print STDERR $self->progress_bar($ipos - 1, $total_partition, 25, '=', 'partitions', 'end of output.'), "\n";
 		}
 		if (!$sql_output) {
 			$sql_output = "-- Nothing found of type $self->{type}\n" if (!$self->{no_header});
@@ -11182,7 +11182,9 @@ SELECT
 	B.OWNER,
 	B.PARTITION_COUNT,
 	C.COLUMN_NAME,
-	C.COLUMN_POSITION
+	C.COLUMN_POSITION,
+	B.DEF_SUBPARTITION_COUNT,
+	B.SUBPARTITIONING_TYPE
 FROM $self->{prefix}_PART_TABLES B, $self->{prefix}_PART_KEY_COLUMNS C
 WHERE B.TABLE_NAME = C.NAME
 	AND (b.partitioning_type = 'RANGE' OR b.partitioning_type = 'LIST' OR b.partitioning_type = 'HASH')
@@ -11206,6 +11208,7 @@ WHERE B.TABLE_NAME = C.NAME
 
 	my %parts = ();
 	while (my $row = $sth->fetch) {
+		next if ($row->[7] ne 'NONE');
 		if (!$self->{schema} && $self->{export_schema}) {
 			$row->[0] = "$row->[2].$row->[0]";
 		}
