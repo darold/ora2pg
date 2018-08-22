@@ -5977,6 +5977,8 @@ BEGIN
 			foreach my $pos (sort {$a <=> $b} keys %{$self->{partitions}{$table}}) {
 				next if (!$self->{partitions}{$table}{$pos}{name});
 				my $part = $self->{partitions}{$table}{$pos}{name};
+				my $create_table_tmp = '';
+				my $create_table_index_tmp = '';
 				if (!$self->{quiet} && !$self->{debug}) {
 					print STDERR $self->progress_bar($ipos, $total_partition, 25, '=', 'partitions', "generating $part" ), "\r";
 				}
@@ -5990,23 +5992,17 @@ BEGIN
 						$tb_name =  $part;
 					}
 				}
-				if (!exists $self->{subpartitions}{$table}{$part}) {
-					if (!$self->{pg_supports_partition}) {
-						$create_table{$table}{table} .= "CREATE TABLE " . $self->quote_object_name($tb_name)
-										. " ( CHECK (\n";
-					} else {
-						$create_table{$table}{table} .= "CREATE TABLE " . $self->quote_object_name($tb_name)
-										. " PARTITION OF \L$table\E\n";
-						$create_table{$table}{table} .= "FOR VALUES";
-					}
+				if (!$self->{pg_supports_partition}) {
+					$create_table_tmp .= "CREATE TABLE " . $self->quote_object_name($tb_name)
+									. " ( CHECK (\n";
 				} else {
-					if ($self->{pg_supports_partition}) {
-						$create_table{$table}{table} .= "CREATE TABLE " . $self->quote_object_name($tb_name)
-										. " PARTITION OF \L$table\E\n";
-						$create_table{$table}{table} .= "FOR VALUES";
-					}
-					$tb_name = $table . "_" if ($self->{prefix_partition});
+					$create_table_tmp .= "CREATE TABLE " . $self->quote_object_name($tb_name)
+									. " PARTITION OF \L$table\E\n";
+					$create_table_tmp .= "FOR VALUES";
 				}
+
+				$tb_name = $table . "_" if ($self->{prefix_partition});
+
 				my $check_cond = '';
 				my @condition = ();
 				my @ind_col = ();
@@ -6053,12 +6049,16 @@ BEGIN
 					} elsif ($self->{partitions}{$table}{$pos}{info}[$i]->{type} eq 'HASH') {
 						if (!$self->{pg_supports_partition}) {
 							print STDERR "WARNING: Hash partitioning not supported, skipping partitioning of table $table\n";
+							$create_table_tmp = '';
+							$create_table_index_tmp = '';
 							next;
 						} else {
 							$check_cond .= " WITH (MODULUS " . (scalar keys %{$self->{partitions}{$table}}) . ", REMAINDER " . ($pos-1) . ")";
 						}
 					} else {
 						print STDERR "WARNING: Unknown partitioning type $self->{partitions}{$table}{$pos}{info}[$i]->{type}, skipping partitioning of table $table\n";
+						$create_table_tmp = '';
+						$create_table_index_tmp = '';
 						next;
 					}
 					if (!$self->{pg_supports_partition}) {
@@ -6072,18 +6072,28 @@ BEGIN
 					my $cindx = $self->{partitions}{$table}{$pos}{info}[$i]->{column} || '';
 					$cindx = lc($cindx) if (!$self->{preserve_case});
 					$cindx = Ora2Pg::PLSQL::convert_plsql_code($self, $cindx, %{$self->{data_type}});
-					if (!exists $self->{subpartitions}{$table}{$part}) {
-						$create_table{$table}{'index'} .= "CREATE INDEX "
+					my $has_hash_subpartition = 0;
+					foreach my $p (sort {$a <=> $b} keys %{$self->{subpartitions}{$table}{$part}}) {
+						for (my $j = 0; $j <= $#{$self->{subpartitions}{$table}{$part}{$p}{info}}; $j++) {
+							if ($self->{subpartitions}{$table}{$part}{$p}{info}[$j]->{type} eq 'HASH') {
+								$has_hash_subpartition = 1;
+								last;
+							}
+						}
+						last if ($has_hash_subpartition);
+					}
+					if (!exists $self->{subpartitions}{$table}{$part} || (!$self->{pg_supports_partition} && $has_hash_subpartition)) {
+						$create_table_index_tmp .= "CREATE INDEX "
 									. $self->quote_object_name("${tb_name}_$colname")
 									. " ON $tb_name ($cindx);\n";
 					}
 					my $deftb = '';
 					$deftb = "${table}_" if ($self->{prefix_partition});
-					if ($self->{partitions_default}{$table} && ($create_table{$table}{'index'} !~ /ON $deftb$self->{partitions_default}{$table} /)) {
+					if ($self->{partitions_default}{$table} && ($create_table{$table}{index} !~ /ON $deftb$self->{partitions_default}{$table} /)) {
 						$cindx = $self->{partitions}{$table}{$pos}{info}[$i]->{column} || '';
 						$cindx = lc($cindx) if (!$self->{preserve_case});
 						$cindx = Ora2Pg::PLSQL::convert_plsql_code($self, $cindx, %{$self->{data_type}});
-						$create_table{$table}{'index'} .= "CREATE INDEX $deftb$self->{partitions_default}{$table}_$colname ON $deftb$self->{partitions_default}{$table} ($cindx);\n";
+						$create_table_index_tmp .= "CREATE INDEX $deftb$self->{partitions_default}{$table}_$colname ON $deftb$self->{partitions_default}{$table} ($cindx);\n";
 					}
 					push(@ind_col, $self->{partitions}{$table}{$pos}{info}[$i]->{column}) if (!grep(/^$self->{partitions}{$table}{$pos}{info}[$i]->{column}$/, @ind_col));
 					if ($self->{partitions}{$table}{$pos}{info}[$i]->{type} eq 'LIST') {
@@ -6098,80 +6108,84 @@ BEGIN
 						} else {
 							push(@condition, "$fct(NEW.$colname) < " . Ora2Pg::PLSQL::convert_plsql_code($self, $self->{partitions}{$table}{$pos}{info}[$i]->{value}, %{$self->{data_type}}));
 						}
-					} elsif ($self->{partitions}{$table}{$pos}{info}[$i]->{type} eq 'HASH') {
-						if (!$self->{pg_supports_partition}) {
-							print STDERR "WARNING: Hash partitioning not supported, skipping partitioning of table $table\n";
-							next;
-						} else {
-							# Nothing to do here with HASH partitioning
-						}
-					} else {
-						print STDERR "WARNING: Unknown partitioning type $self->{partitions}{$table}{$pos}{info}[$i]->{type}, skipping partitioning of table $table\n";
-						next;
 					}
 					$owner = $self->{partitions}{$table}{$pos}{info}[$i]->{owner} || '';
 				}
-				if (!exists $self->{subpartitions}{$table}{$part}) {
+				# Go to next partition if this one is of type HASH partitioning
+				if (!$create_table_tmp) {
+					$old_part = $part;
+					$ipos++;
+					$old_pos = $pos;
+					next;
+				}
+
+				if (!$self->{pg_supports_partition}) {
 					#$check_cond = Ora2Pg::PLSQL::convert_plsql_code($self, $check_cond, %{$self->{data_type}});
-					$check_cond .= ';' if ($self->{pg_supports_partition});
-					$create_table{$table}{table} .= $check_cond . "\n";
-					$create_table{$table}{table} .= ") ) INHERITS ($table);\n" if (!$self->{pg_supports_partition});
+					if (!exists $self->{subpartitions}{$table}{$part}) {
+						$check_cond .= ';' if ($self->{pg_supports_partition});
+						$create_table_tmp .= $check_cond . "\n";
+						$create_table_tmp .= ") ) INHERITS ($table);\n" if (!$self->{pg_supports_partition});
+					}
 					$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
 					if ($owner) {
-						$create_table{$table}{table} .= "ALTER TABLE " . $self->quote_object_name($tb_name)
+						$create_table_tmp .= "ALTER TABLE " . $self->quote_object_name($tb_name)
 											. " OWNER TO " . $self->quote_object_name($owner) . ";\n";
 					}
-				} elsif ($self->{pg_supports_partition}) {
-					$create_table{$table}{table} .= $check_cond . "\n";
-					$create_table{$table}{table} .= "PARTITION BY " . $self->{subpartitions_list}{"\L$table\E"}{"\L$part\E"}{type} . " (" . lc(join(',', @{$self->{subpartitions_list}{"\L$table\E"}{"\L$part\E"}{columns}})) . ");\n";
+				} else {
+					$create_table_tmp .= $check_cond;
+					$create_table_tmp .= "\nPARTITION BY " . $self->{subpartitions_list}{"\L$table\E"}{"\L$part\E"}{type} . " (" . lc(join(',', @{$self->{subpartitions_list}{"\L$table\E"}{"\L$part\E"}{columns}})) . ")" if (exists $self->{subpartitions_list}{"\L$table\E"}{"\L$part\E"}{type});
+					$create_table_tmp .= ";\n";
 				}
 				# Add subpartition if any defined on Oracle
 				my $sub_funct_cond = '';
 				my $sub_old_part = '';
 				if (exists $self->{subpartitions}{$table}{$part}) {
 					my $sub_cond = 'IF';
+					my $sub_funct_cond_tmp = '';
+					my $create_subtable_tmp = '';
+					my $sub_check_cond_tmp = '';
 					foreach my $p (sort {$a <=> $b} keys %{$self->{subpartitions}{$table}{$part}}) {
 						my $subpart = $self->{subpartitions}{$table}{$part}{$p}{name};
 						my $sub_tb_name = $subpart;
 						$sub_tb_name =~ s/^[^\.]+\.//; # remove schema part if any
 						$tb_name .= '_' if ($tb_name && $tb_name !~ /_$/);
 						$sub_tb_name = $tb_name . $sub_tb_name if ($sub_tb_name !~ /^$tb_name/i);
-						$create_table{$table}{table} .= "CREATE TABLE " . $self->quote_object_name($sub_tb_name);
+						$create_subtable_tmp .= "CREATE TABLE " . $self->quote_object_name($sub_tb_name);
 						if (!$self->{pg_supports_partition}) {
-							$create_table{$table}{table} .= " ( CHECK (\n";
+							$create_subtable_tmp .= " ( CHECK (\n";
 						} else {
-							$create_table{$table}{table} .= " PARTITION OF \L$part\E\n";
-							$create_table{$table}{table} .= "FOR VALUES";
+							$create_subtable_tmp .= " PARTITION OF \L$part\E\n";
+							$create_subtable_tmp .= "FOR VALUES";
 						}
-						my $sub_check_cond = '';
+						my $sub_check_cond_tmp = '';
 						my @subcondition = ();
 						for (my $i = 0; $i <= $#{$self->{subpartitions}{$table}{$part}{$p}{info}}; $i++) {
 							if ($self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{type} eq 'LIST') {
 								if (!$self->{pg_supports_partition}) {
-									$sub_check_cond .= "$self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{column} IN ($self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{value})";
+									$sub_check_cond_tmp .= "$self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{column} IN ($self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{value})";
 								} else {
-									$sub_check_cond .= " IN ($self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{value})";
+									$sub_check_cond_tmp .= " IN ($self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{value})";
 								}
 							} elsif ($self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{type} eq 'RANGE') {
 								if ($#{$self->{subpartitions}{$table}{$part}{$p}{info}} == 0) {
 									if (!$self->{pg_supports_partition}) {
 										if ($sub_old_part eq '') {
-											$sub_check_cond .= "$self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{column} < "
+											$sub_check_cond_tmp .= "$self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{column} < "
 												. Ora2Pg::PLSQL::convert_plsql_code($self, $self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{value}, %{$self->{data_type}});
 										} else {
-											$sub_check_cond .= "$self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{column} >= "
+											$sub_check_cond_tmp .= "$self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{column} >= "
 												. Ora2Pg::PLSQL::convert_plsql_code($self, $self->{subpartitions}{$table}{$part}{$sub_old_pos}{info}[$i]->{value}, %{$self->{data_type}})
 												. " AND $self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{column} < "
 												. Ora2Pg::PLSQL::convert_plsql_code($self, $self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{value}, %{$self->{data_type}});
 										}
 									} else {
 										if ($sub_old_part eq '') {
-											$sub_check_cond .= " FROM (MINVALUE) TO ("
+											$sub_check_cond_tmp .= " FROM (MINVALUE) TO ("
 												. Ora2Pg::PLSQL::convert_plsql_code($self, $self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{value}, %{$self->{data_type}}) . ")";
 										} else {
-											$sub_check_cond .= " FROM ("
+											$sub_check_cond_tmp .= " FROM ("
 												. Ora2Pg::PLSQL::convert_plsql_code($self, $self->{subpartitions}{$table}{$part}{$sub_old_pos}{info}[$i]->{value}, %{$self->{data_type}});
-											$sub_check_cond .= ") TO ("
+											$sub_check_cond_tmp .= ") TO ("
 												. Ora2Pg::PLSQL::convert_plsql_code($self, $self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{value}, %{$self->{data_type}}) . ")";
 										}
 									}
@@ -6179,24 +6193,28 @@ BEGIN
 									my @values = split(/,\s/, Ora2Pg::PLSQL::convert_plsql_code($self, $self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{value}, %{$self->{data_type}}));
 									if (!$self->{pg_supports_partition}) {
 										# multicolumn partitioning
-										$sub_check_cond .= "\t$self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{column} < " .  $values[$i];
+										$sub_check_cond_tmp .= "\t$self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{column} < " .  $values[$i];
 									} else {
-										$sub_check_cond .= " FROM (MINVALUE) TO (" .  $values[$i] . ")";
+										$sub_check_cond_tmp .= " FROM (MINVALUE) TO (" .  $values[$i] . ")";
 									}
 								}
 							} elsif ($self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{type} eq 'HASH') {
 								if (!$self->{pg_supports_partition}) {
 									print STDERR "WARNING: Hash partitioning not supported, skipping subpartitioning of table $table\n";
+									$create_subtable_tmp = '';
+									$sub_funct_cond_tmp = '';
 									next;
 								} else {
-									$sub_check_cond .= " WITH (MODULUS " . (scalar keys %{$self->{subpartitions}{$table}{$part}}) . ", REMAINDER " . ($p-1) . ")";
+									$sub_check_cond_tmp .= " WITH (MODULUS " . (scalar keys %{$self->{subpartitions}{$table}{$part}}) . ", REMAINDER " . ($p-1) . ")";
 								}
 							} else {
 								print STDERR "WARNING: Unknown partitioning type $self->{partitions}{$table}{$pos}{info}[$i]->{type}, skipping partitioning of table $table\n";
+								$create_subtable_tmp = '';
+								$sub_funct_cond_tmp = '';
 								next;
 							}
 							if (!$self->{pg_supports_partition}) {
-								$sub_check_cond .= " AND " if ($i < $#{$self->{subpartitions}{$table}{$part}{$p}{info}});
+								$sub_check_cond_tmp .= " AND " if ($i < $#{$self->{subpartitions}{$table}{$part}{$p}{info}});
 							}
 							push(@ind_col, $self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{column}) if (!grep(/^$self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{column}$/, @ind_col));
 							my $fct = '';
@@ -6207,7 +6225,7 @@ BEGIN
 							$cindx = join(',', @ind_col);
 							$cindx = lc($cindx) if (!$self->{preserve_case});
 							$cindx = Ora2Pg::PLSQL::convert_plsql_code($self, $cindx, %{$self->{data_type}});
-							$create_table{$table}{'index'} .= "CREATE INDEX " . $self->quote_object_name("${tb_name}${sub_tb_name}_$colname")
+							$create_table_index_tmp .= "CREATE INDEX " . $self->quote_object_name("${tb_name}${sub_tb_name}_$colname")
 												 . " ON ${tb_name}$sub_tb_name ($cindx);\n";
 							if ($self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{type} eq 'LIST') {
 								if (!$fct) {
@@ -6221,37 +6239,35 @@ BEGIN
 								} else {
 									push(@subcondition, "$fct(NEW.$colname) < " . Ora2Pg::PLSQL::convert_plsql_code($self, $self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{value}, %{$self->{data_type}}));
 								}
-							} elsif ($self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{type} eq 'HASH') {
-								if (!$self->{pg_supports_partition}) {
-									print STDERR "WARNING: Hash partitioning not supported, skipping subpartitioning of table $table\n";
-									next;
-								} else {
-									# Nothing to do here with HASH partitioning
-								}
-							} else {
-								print STDERR "WARNING: Unknown partitioning type $self->{partitions}{$table}{$pos}{info}[$i]->{type}, skipping partitioning of table $table\n";
-								next;
 							}
 							$owner = $self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{owner} || '';
 						}
-						#$sub_check_cond = Ora2Pg::PLSQL::convert_plsql_code($self, $sub_check_cond, %{$self->{data_type}});
+						#$sub_check_cond_tmp = Ora2Pg::PLSQL::convert_plsql_code($self, $sub_check_cond_tmp, %{$self->{data_type}});
 						if ($self->{pg_supports_partition}) {
-							$sub_check_cond .= ';';
-							$create_table{$table}{table} .= "$sub_check_cond\n";
+							$sub_check_cond_tmp .= ';';
+							$create_subtable_tmp .= "$sub_check_cond_tmp\n";
 						} else {
-							$create_table{$table}{table} .= "$check_cond AND $sub_check_cond";
-							$create_table{$table}{table} .= "\n) ) INHERITS ($table);\n";
+							$create_subtable_tmp .= $check_cond;
+							$create_subtable_tmp .= " AND $sub_check_cond_tmp" if ($sub_check_cond_tmp);
+							$create_subtable_tmp .= "\n) ) INHERITS ($table);\n";
 						}
 						$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
 						if ($owner) {
-							$create_table{$table}{table} .= "ALTER TABLE " . $self->quote_object_name("${tb_name}$sub_tb_name")
+							$create_subtable_tmp .= "ALTER TABLE " . $self->quote_object_name("${tb_name}$sub_tb_name")
 											. " OWNER TO " . $self->quote_object_name($owner) . ";\n";
 						}
-						$sub_funct_cond .= "\t\t$sub_cond ( " . join(' AND ', @subcondition) . " ) THEN INSERT INTO "
-									. $self->quote_object_name("${tb_name}$sub_tb_name") . " VALUES (NEW.*);\n";
-						$sub_cond = 'ELSIF';
+						if ($#subcondition >= 0) {
+							$sub_funct_cond_tmp .= "\t\t$sub_cond ( " . join(' AND ', @subcondition) . " ) THEN INSERT INTO "
+										. $self->quote_object_name("${tb_name}$sub_tb_name") . " VALUES (NEW.*);\n";
+							$sub_cond = 'ELSIF';
+						}
 						$sub_old_part = $part;
 						$sub_old_pos = $p;
+					}
+					if ($create_subtable_tmp) {
+						$create_table_tmp .= $create_subtable_tmp;
+						$sub_funct_cond = $sub_funct_cond_tmp;
+						$sub_check_cond = $sub_check_cond_tmp;
 					}
 				}
 
@@ -6266,9 +6282,9 @@ BEGIN
 						$deftb = "${table}_" if ($self->{prefix_partition});
 						$funct_cond .= "\t\tELSE INSERT INTO " . $self->quote_object_name("$deftb$self->{subpartitions_default}{$table}{$part}")
 									. " VALUES (NEW.*);\n\t\tEND IF;\n";
-						$create_table{$table}{table} .= "CREATE TABLE " . $self->quote_object_name("$deftb$self->{subpartitions_default}{$table}{$part}")
+						$create_table_tmp .= "CREATE TABLE " . $self->quote_object_name("$deftb$self->{subpartitions_default}{$table}{$part}")
 									. " () INHERITS ($table);\n";
-						$create_table{$table}{'index'} .= "CREATE INDEX " . $self->quote_object_name("$deftb$self->{subpartitions_default}{$table}{$part}_$pos")
+						$create_table_index_tmp .= "CREATE INDEX " . $self->quote_object_name("$deftb$self->{subpartitions_default}{$table}{$part}_$pos")
 									. " ON $deftb$self->{subpartitions_default}{$table}{$part} ($cindx);\n";
 					} else {
 						$funct_cond .= qq{		ELSE
@@ -6277,15 +6293,17 @@ BEGIN
 };
 						$funct_cond .= "\t\tEND IF;\n";
 					}
-					if ($self->{subpartitions_default}{$table}{$part} && ($create_table{$table}{'index'} !~ /ON $self->{subpartitions_default}{$table}{$part} /)) {
+					if ($self->{subpartitions_default}{$table}{$part} && ($create_table{$table}{index} !~ /ON $self->{subpartitions_default}{$table}{$part} /)) {
 					}
 				}
 				$cond = 'ELSIF';
 				$old_part = $part;
 				$ipos++;
 				$old_pos = $pos;
+				$create_table{$table}{table} .= $create_table_tmp;
+				$create_table{$table}{index} .= $create_table_index_tmp;
 			}
-			if (!$self->{pg_supports_partition}) {
+			if (!$self->{pg_supports_partition} && exists $create_table{$table}) {
 				if ($self->{partitions_default}{$table}) {
 					my $deftb = '';
 					$deftb = "${table}_" if ($self->{prefix_partition});
@@ -6309,25 +6327,26 @@ LANGUAGE plpgsql;
 				$function = Ora2Pg::PLSQL::convert_plsql_code($self, $function, %{$self->{data_type}});
 			}
 
-			$partition_indexes .= qq{
--- Create indexes on each partition table
+			if (exists $create_table{$table} && $create_table{$table}{'index'}) {
+				$partition_indexes .= qq{
+-- Create indexes on each partition of table $table
 $create_table{$table}{'index'}
 
 };
-			$sql_output .= qq{
+				$sql_output .= qq{
 $create_table{$table}{table}
 };
-			my $tb = $self->quote_object_name($table);
-			my $trg = $self->quote_object_name("${table}_insert_trigger");
-			my $defname = $self->{partitions_default}{$table};
-			$defname = $table . '_' .  $defname if ($self->{prefix_partition});
-			$defname = $self->quote_object_name($defname);
-			if (!$self->{pg_supports_partition}) {
-				$sql_output .= qq{
+				my $tb = $self->quote_object_name($table);
+				my $trg = $self->quote_object_name("${table}_insert_trigger");
+				my $defname = $self->{partitions_default}{$table};
+				$defname = $table . '_' .  $defname if ($self->{prefix_partition});
+				$defname = $self->quote_object_name($defname);
+				if (!$self->{pg_supports_partition}) {
+					$sql_output .= qq{
 -- Create default table, where datas are inserted if no condition match
 CREATE TABLE $defname () INHERITS ($tb);
 } if ($self->{partitions_default}{$table});
-				$sql_output .= qq{
+					$sql_output .= qq{
 
 $function
 
@@ -6338,13 +6357,14 @@ CREATE TRIGGER ${table}_trigger_insert
 -------------------------------------------------------------------------------
 };
 
-				$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
-				if ($owner) {
-					$sql_output .= "ALTER TABLE " . $self->quote_object_name($self->{partitions_default}{$table})
-								. " OWNER TO " . $self->quote_object_name($owner) . ";\n"
-						if ($self->{partitions_default}{$table});
-					$sql_output .= "ALTER FUNCTION " . $self->quote_object_name("${table}_insert_trigger")
-								. "() OWNER TO " . $self->quote_object_name($owner) . ";\n";
+					$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
+					if ($owner) {
+						$sql_output .= "ALTER TABLE " . $self->quote_object_name($self->{partitions_default}{$table})
+									. " OWNER TO " . $self->quote_object_name($owner) . ";\n"
+							if ($self->{partitions_default}{$table});
+						$sql_output .= "ALTER FUNCTION " . $self->quote_object_name("${table}_insert_trigger")
+									. "() OWNER TO " . $self->quote_object_name($owner) . ";\n";
+					}
 				}
 			}
 		}
