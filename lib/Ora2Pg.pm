@@ -8292,20 +8292,14 @@ VARCHAR2
 
 	if ($part_name) {
 		if ($is_subpart) {
-			$alias = "SUBPARTITION($part_name)";
+			$alias = "SUBPARTITION($part_name) a";
 		} else {
-			$alias = "PARTITION($part_name)";
+			$alias = "PARTITION($part_name) a";
 		}
-		# Force parallelism on Oracle side
-		if ($self->{default_parallelism_degree} > 1) {
-			$str =~ s#^SELECT #SELECT /*+ FULL($part_name) PARALLEL($part_name, $self->{default_parallelism_degree}) */ #;
-		}
-	} else {
-		$alias = 'a';
-		# Force parallelism on Oracle side
-		if ($self->{default_parallelism_degre} > 1) {
-			$str =~ s#^SELECT #SELECT /*+ FULL($a) PARALLEL($a, $self->{default_parallelism_degree}) */ #;
-		}
+	}
+	# Force parallelism on Oracle side
+	if ($self->{default_parallelism_degree} > 1) {
+		$str =~ s#^SELECT #SELECT /*+ FULL(a) PARALLEL(a, $self->{default_parallelism_degree}) */ #;
 	}
 	$str .= " FROM $realtable $alias";
 
