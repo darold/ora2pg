@@ -3211,6 +3211,29 @@ sub _partitions
 	# Get partition list meta information
 	%{ $self->{partitions_list} } = $self->_get_partitioned_table();
 	%{ $self->{subpartitions_list} } = $self->_get_subpartitioned_table();
+
+	# Look for main table indexes to reproduce them on partition
+	my ($uniqueness, $indexes, $idx_type, $idx_tbsp) = $self->_get_indexes('',$self->{schema}, 0);
+	foreach my $tb (keys %{$indexes}) {
+		%{$self->{tables}{$tb}{indexes}} = %{$indexes->{$tb}};
+	}
+	foreach my $tb (keys %{$idx_type}) {
+		%{$self->{tables}{$tb}{idx_type}} = %{$idx_type->{$tb}};
+	}
+	foreach my $tb (keys %{$idx_tbsp}) {
+		%{$self->{tables}{$tb}{idx_tbsp}} = %{$idx_tbsp->{$tb}};
+	}
+	foreach my $tb (keys %{$uniqueness}) {
+		%{$self->{tables}{$tb}{uniqueness}} = %{$uniqueness->{$tb}};
+	}
+
+	# Retrieve all unique keys informations
+	my %unique_keys = $self->_unique_key('',$self->{schema});
+	foreach my $tb (keys %unique_keys) {
+		foreach my $c (keys %{$unique_keys{$tb}}) {
+			$self->{tables}{$tb}{unique_key}{$c} = $unique_keys{$tb}{$c};
+		}
+	}
 }
 
 =head2 _dblinks
@@ -5957,8 +5980,9 @@ LANGUAGE plpgsql ;
 			$total_partition += $self->{partitions_list}{$t}{count};
 		}
 
+		# Extract partition definition
 		my $ipos = 1;
-		my $partition_indexes = ();
+		my $partition_indexes = '';
 		foreach my $table (sort keys %{$self->{partitions}}) {
 			my $function = '';
 			$function = qq{
@@ -6073,19 +6097,39 @@ BEGIN
 					$cindx = lc($cindx) if (!$self->{preserve_case});
 					$cindx = Ora2Pg::PLSQL::convert_plsql_code($self, $cindx, %{$self->{data_type}});
 					my $has_hash_subpartition = 0;
-					foreach my $p (sort {$a <=> $b} keys %{$self->{subpartitions}{$table}{$part}}) {
-						for (my $j = 0; $j <= $#{$self->{subpartitions}{$table}{$part}{$p}{info}}; $j++) {
-							if ($self->{subpartitions}{$table}{$part}{$p}{info}[$j]->{type} eq 'HASH') {
-								$has_hash_subpartition = 1;
-								last;
+					if (exists $self->{subpartitions}{$table}{$part}) {
+						foreach my $p (sort {$a <=> $b} keys %{$self->{subpartitions}{$table}{$part}}) {
+							for (my $j = 0; $j <= $#{$self->{subpartitions}{$table}{$part}{$p}{info}}; $j++) {
+								if ($self->{subpartitions}{$table}{$part}{$p}{info}[$j]->{type} eq 'HASH') {
+									$has_hash_subpartition = 1;
+									last;
+								}
 							}
+							last if ($has_hash_subpartition);
 						}
-						last if ($has_hash_subpartition);
 					}
 					if (!exists $self->{subpartitions}{$table}{$part} || (!$self->{pg_supports_partition} && $has_hash_subpartition)) {
 						$create_table_index_tmp .= "CREATE INDEX "
 									. $self->quote_object_name("${tb_name}_$colname")
 									. " ON $tb_name ($cindx);\n";
+						my $tb_name2 = $self->quote_object_name($tb_name);
+						# Reproduce indexes definition from the main table
+						my ($idx, $fts_idx) = $self->_create_indexes($table, 0, %{$self->{tables}{$table}{indexes}});
+						if ($idx || $fts_idx) {
+							$idx =~ s/$table/$tb_name2/igs;
+							$fts_idx =~ s/$table/$tb_name2/igs;
+							$create_table_index_tmp .= "-- Reproduce indexes that was defined on the parent table\n";
+							$create_table_index_tmp .= "$idx\n" if ($idx);
+							$create_table_index_tmp .= "$fts_idx\n" if ($fts_idx);
+						}
+
+						# Set the unique (and primary) key definition 
+						$idx = $self->_create_unique_keys($table, $self->{tables}{$table}{unique_key});
+						if ($idx) {
+							$create_table_index_tmp .= "-- Reproduce unique indexes / pk that was defined on the parent table\n";
+							$idx =~ s/$table/$tb_name2/igs;
+							$create_table_index_tmp .= "$idx\n" if ($idx);
+						}
 					}
 					my $deftb = '';
 					$deftb = "${table}_" if ($self->{prefix_partition});
@@ -6227,6 +6271,24 @@ BEGIN
 							$cindx = Ora2Pg::PLSQL::convert_plsql_code($self, $cindx, %{$self->{data_type}});
 							$create_table_index_tmp .= "CREATE INDEX " . $self->quote_object_name("${tb_name}${sub_tb_name}_$colname")
 												 . " ON ${tb_name}$sub_tb_name ($cindx);\n";
+							my $tb_name2 = $self->quote_object_name("${tb_name}$sub_tb_name");
+							# Reproduce indexes definition from the main table
+							my ($idx, $fts_idx) = $self->_create_indexes($table, 0, %{$self->{tables}{$table}{indexes}});
+							if ($idx || $fts_idx) {
+								$idx =~ s/$table/$tb_name2/igs;
+								$fts_idx =~ s/$table/$tb_name2/igs;
+								$create_table_index_tmp .= "-- Reproduce indexes that was defined on the parent table\n";
+								$create_table_index_tmp .= "$idx\n" if ($idx);
+								$create_table_index_tmp .= "$fts_idx\n" if ($fts_idx);
+							}
+
+							# Set the unique (and primary) key definition 
+							$idx = $self->_create_unique_keys($table, $self->{tables}{$table}{unique_key});
+							if ($idx) {
+								$create_table_index_tmp .= "-- Reproduce unique indexes / pk that was defined on the parent table\n";
+								$idx =~ s/$table/$tb_name2/igs;
+								$create_table_index_tmp .= "$idx\n" if ($idx);
+							}
 							if ($self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{type} eq 'LIST') {
 								if (!$fct) {
 									push(@subcondition, "NEW.$self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{column} IN (" . Ora2Pg::PLSQL::convert_plsql_code($self, $self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{value}, %{$self->{data_type}}) . ")");
@@ -6303,36 +6365,39 @@ BEGIN
 				$create_table{$table}{table} .= $create_table_tmp;
 				$create_table{$table}{index} .= $create_table_index_tmp;
 			}
-			if (!$self->{pg_supports_partition} && exists $create_table{$table}) {
-				if ($self->{partitions_default}{$table}) {
-					my $deftb = '';
-					$deftb = "${table}_" if ($self->{prefix_partition});
-					my $pname = $self->quote_object_name("$deftb$self->{partitions_default}{$table}");
-				$function .= $funct_cond . qq{	ELSE
+			if (exists $create_table{$table}) {
+
+				if (!$self->{pg_supports_partition}) {
+					if ($self->{partitions_default}{$table}) {
+						my $deftb = '';
+						$deftb = "${table}_" if ($self->{prefix_partition});
+						my $pname = $self->quote_object_name("$deftb$self->{partitions_default}{$table}");
+						$function .= $funct_cond . qq{	ELSE
                 INSERT INTO $pname VALUES (NEW.*);
 };
-				} else {
-					$function .= $funct_cond . qq{	ELSE
+					} else {
+						$function .= $funct_cond . qq{	ELSE
                 -- Raise an exception
                 RAISE EXCEPTION 'Value out of range in partition. Fix the ${table}_insert_trigger() function!';
 };
-				}
-				$function .= qq{
+					}
+					$function .= qq{
         END IF;
         RETURN NULL;
 END;
 \$\$
 LANGUAGE plpgsql;
 };
-				$function = Ora2Pg::PLSQL::convert_plsql_code($self, $function, %{$self->{data_type}});
+					$function = Ora2Pg::PLSQL::convert_plsql_code($self, $function, %{$self->{data_type}});
+				}
 			}
 
-			if (exists $create_table{$table} && $create_table{$table}{'index'}) {
+			if (exists $create_table{$table}) {
 				$partition_indexes .= qq{
 -- Create indexes on each partition of table $table
 $create_table{$table}{'index'}
 
-};
+} if ($create_table{$table}{'index'});
 				$sql_output .= qq{
 $create_table{$table}{table}
 };
@@ -6735,7 +6800,7 @@ CREATE TRIGGER ${table}_trigger_insert
 			$sql_output =~ s/,$//;
 			$sql_output .= ')';
 			if ($self->{tables}{$table}{table_info}{partitioned} && $self->{pg_supports_partition}) {
-				$sql_output .= ' PARTITION BY ' . $self->{partitions_list}{"\L$table\E"}{type} . " (" . lc(join(',', @{$self->{partitions_list}{"\L$table\E"}{columns}})) . ")";
+				$sql_output .= " PARTITION BY " . $self->{partitions_list}{"\L$table\E"}{type} . " (" . lc(join(',', @{$self->{partitions_list}{"\L$table\E"}{columns}})) . ")";
 			}
 			if ( ($self->{type} ne 'FDW') && (!$self->{external_to_fdw} || (!grep(/^$table$/i, keys %{$self->{external_table}}) && !$self->{tables}{$table}{table_info}{connection})) ) {
 				my $withoid = _make_WITH($self->{with_oid}, $self->{tables}{$table}{table_info});
@@ -6803,7 +6868,7 @@ CREATE TRIGGER ${table}_trigger_insert
 				$sql_output .= "$_;\n";
 			}
 		}
-		if ($self->{type} ne 'FDW') {
+		if (!$self->{tables}{$table}{table_info}{partitioned} && $self->{type} ne 'FDW') {
 			# Set the indexes definition
 			my ($idx, $fts_idx) = $self->_create_indexes($table, 0, %{$self->{tables}{$table}{indexes}});
 			$indices .= "$idx\n" if ($idx);
@@ -11222,11 +11287,10 @@ WHERE B.TABLE_NAME = C.NAME
 
 	my %parts = ();
 	while (my $row = $sth->fetch) {
-		next if ($row->[7] ne 'NONE');
 		if (!$self->{schema} && $self->{export_schema}) {
 			$row->[0] = "$row->[2].$row->[0]";
 		}
-		$parts{"\L$row->[0]\E"}{count} = $row->[3];
+		$parts{"\L$row->[0]\E"}{count} = ($row->[7] eq 'NONE') ? $row->[3] : 0;
 		$parts{"\L$row->[0]\E"}{type} = $row->[1] if (!exists $parts{"\L$row->[0]\E"}{type});
 		push(@{ $parts{"\L$row->[0]\E"}{columns} }, $row->[4]);
 	}
