@@ -7408,7 +7408,7 @@ sub _create_indexes
 	# Save the list of column for PK to check unique index that must be removed
 	foreach my $consname (keys %{$self->{$objtyp}{$tbsaved}{unique_key}}) {
 		next if ($self->{$objtyp}{$tbsaved}{unique_key}->{$consname}{type} ne 'P');
-		my @conscols = @{$self->{$objtyp}{$tbsaved}{unique_key}->{$consname}{columns}};
+		my @conscols = grep(!/^\d+$/, @{$self->{$objtyp}{$tbsaved}{unique_key}->{$consname}{columns}});
 		# save the list of column for PK to check unique index that must be removed
 		$pkcollist{$tbsaved} = join(", ", @conscols);
 	}
@@ -7419,6 +7419,9 @@ sub _create_indexes
 	my @fts_out = ();
 	# Set the index definition
 	foreach my $idx (sort keys %indexes) {
+
+		# Remove cols than have only digit as name
+		@{$indexes{$idx}} = grep(!/^\d+$/, @{$indexes{$idx}});
 
 		# Cluster, bitmap join, reversed and IOT indexes will not be exported at all
 		# Hash indexes will be exported as btree
@@ -7487,7 +7490,7 @@ sub _create_indexes
 		foreach my $consname (keys %{$self->{$objtyp}{$tbsaved}{unique_key}}) {
 			my $constype =  $self->{$objtyp}{$tbsaved}{unique_key}->{$consname}{type};
 			next if (($constype ne 'P') && ($constype ne 'U'));
-			my @conscols = @{$self->{$objtyp}{$tbsaved}{unique_key}->{$consname}{columns}};
+			my @conscols = grep(!/^\d+$/, @{$self->{$objtyp}{$tbsaved}{unique_key}->{$consname}{columns}});
 			for ($i = 0; $i <= $#conscols; $i++) {
 				# Change column names
 				if (exists $self->{replaced_cols}{"\L$tbsaved\E"}{"\L$conscols[$i]\E"} && $self->{replaced_cols}{"\L$tbsaved\E"}{"\L$conscols[$i]\E"}) {
