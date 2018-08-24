@@ -5976,8 +5976,13 @@ LANGUAGE plpgsql ;
 		$sql_header .= "-- Please take a look at the export to see if order and default table match your need\n";
 
 		my $total_partition = 0;
-		foreach my $t (sort keys %{ $self->{partitions_list} }) {
-			$total_partition += $self->{partitions_list}{$t}{count};
+		foreach my $t (sort keys %{ $self->{partitions} }) {
+			$total_partition += scalar keys %{$self->{partitions}{$t}};
+		}
+		foreach my $t (sort keys %{ $self->{subpartitions_list} }) {
+			foreach my $p (sort keys %{ $self->{subpartitions_list}{$t} }) {
+				$total_partition += $self->{subpartitions_list}{$t}{$p}{count};
+			}
 		}
 
 		# Extract partition definition
@@ -6001,11 +6006,11 @@ BEGIN
 			foreach my $pos (sort {$a <=> $b} keys %{$self->{partitions}{$table}}) {
 				next if (!$self->{partitions}{$table}{$pos}{name});
 				my $part = $self->{partitions}{$table}{$pos}{name};
+				if (!$self->{quiet} && !$self->{debug}) {
+					print STDERR $self->progress_bar($ipos++, $total_partition, 25, '=', 'partitions', "generating $table/$part" ), "\r";
+				}
 				my $create_table_tmp = '';
 				my $create_table_index_tmp = '';
-				if (!$self->{quiet} && !$self->{debug}) {
-					print STDERR $self->progress_bar($ipos, $total_partition, 25, '=', 'partitions', "generating $part" ), "\r";
-				}
 				my $tb_name = '';
 				if ($self->{prefix_partition}) {
 					$tb_name = $table . "_" . $part;
@@ -6158,7 +6163,6 @@ BEGIN
 				# Go to next partition if this one is of type HASH partitioning
 				if (!$create_table_tmp) {
 					$old_part = $part;
-					$ipos++;
 					$old_pos = $pos;
 					next;
 				}
@@ -6190,6 +6194,9 @@ BEGIN
 					my $sub_check_cond_tmp = '';
 					foreach my $p (sort {$a <=> $b} keys %{$self->{subpartitions}{$table}{$part}}) {
 						my $subpart = $self->{subpartitions}{$table}{$part}{$p}{name};
+						if (!$self->{quiet} && !$self->{debug}) {
+							print STDERR $self->progress_bar($ipos++, $total_partition, 25, '=', 'subpartitions', "generating $table/$part/$subpart" ), "\r";
+						}
 						my $sub_tb_name = $subpart;
 						$sub_tb_name =~ s/^[^\.]+\.//; # remove schema part if any
 						$tb_name .= '_' if ($tb_name && $tb_name !~ /_$/);
@@ -6249,7 +6256,7 @@ BEGIN
 									$sub_funct_cond_tmp = '';
 									next;
 								} else {
-									$sub_check_cond_tmp .= " WITH (MODULUS " . (scalar keys %{$self->{subpartitions}{$table}{$part}}) . ", REMAINDER " . ($p-1) . ")";
+									$sub_check_cond_tmp .= " WITH (MODULUS " . $self->{subpartitions_list}{"\L$table\E"}{"\L$part\E"}{count} . ", REMAINDER " . ($p-1) . ")";
 								}
 							} else {
 								print STDERR "WARNING: Unknown partitioning type $self->{partitions}{$table}{$pos}{info}[$i]->{type}, skipping partitioning of table $table\n";
@@ -6360,7 +6367,6 @@ BEGIN
 				}
 				$cond = 'ELSIF';
 				$old_part = $part;
-				$ipos++;
 				$old_pos = $pos;
 				$create_table{$table}{table} .= $create_table_tmp;
 				$create_table{$table}{index} .= $create_table_index_tmp;
@@ -11329,7 +11335,8 @@ SELECT
 	A.TABLE_OWNER,
 	B.PARTITION_COUNT,
 	C.COLUMN_NAME,
-	C.COLUMN_POSITION
+	C.COLUMN_POSITION,
+	B.DEF_SUBPARTITION_COUNT
 FROM $self->{prefix}_TAB_SUBPARTITIONS A, $self->{prefix}_PART_TABLES B, $self->{prefix}_SUBPART_KEY_COLUMNS C
 WHERE 
         a.table_name = b.table_name AND
@@ -11361,6 +11368,35 @@ WHERE
 		}
 		$parts{"\L$row->[0]\E"}{"\L$row->[1]\E"}{type} = $row->[4] if (!exists $parts{"\L$row->[0]\E"}{"\L$row->[1]\E"}{type});
 		push(@{ $parts{"\L$row->[0]\E"}{"\L$row->[1]\E"}{columns} }, $row->[7]) if (!grep(/^$row->[7]$/, @{ $parts{"\L$row->[0]\E"}{"\L$row->[1]\E"}{columns} }));
+	}
+	$sth->finish;
+
+	# Get number of subpartition
+	$str = qq{
+SELECT
+        A.TABLE_OWNER,
+	A.TABLE_NAME,
+	A.PARTITION_NAME,
+	A.SUBPARTITION_COUNT
+FROM $self->{prefix}_TAB_PARTITIONS A
+};
+	if ($self->{prefix} ne 'USER') {
+		if ($self->{schema}) {
+			$str .= " WHERE A.TABLE_OWNER ='$self->{schema}'\n";
+		} else {
+			$str .= " WHERE A.TABLE_OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "')\n";
+		}
+	}
+	$str .= "ORDER BY A.TABLE_OWNER,A.TABLE_NAME,A.PARTITION_NAME\n";
+
+	$sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute() or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+
+	while (my $row = $sth->fetch) {
+		if (!$self->{schema} && $self->{export_schema}) {
+			$row->[1] = "$row->[0].$row->[1]";
+		}
+		$parts{"\L$row->[1]\E"}{"\L$row->[2]\E"}{count} = $row->[3] if (exists $parts{"\L$row->[1]\E"}{"\L$row->[2]\E"});
 	}
 	$sth->finish;
 
