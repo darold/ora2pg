@@ -1269,11 +1269,6 @@ sub _init
 
 	$self->{pg_background} ||= 0;
 
-	# PostgreSQL 10 doesn't allow direct import to partition
-	if ($self->{pg_supports_partition} && grep(/^$self->{type}$/i, 'COPY', 'INSERT', 'DATA')) {
-		$self->{disable_partition} = 1;
-	}
-
 	# Backward compatibility with LongTrunkOk with typo
 	if ($self->{longtrunkok} && not defined $self->{longtruncok}) {
 		$self->{longtruncok} = $self->{longtrunkok};
@@ -6339,7 +6334,6 @@ BEGIN
 					if ($create_subtable_tmp) {
 						$create_table_tmp .= $create_subtable_tmp;
 						$sub_funct_cond = $sub_funct_cond_tmp;
-						$sub_check_cond = $sub_check_cond_tmp;
 					}
 				}
 
@@ -7234,11 +7228,14 @@ sub _dump_table
 	# Rename table and double-quote it if required
 	my $tmptb = '';
 
-	# Prefix partition name with tablename
-	if ($part_name && $self->{prefix_partition}) {
+	# Prefix partition name with tablename, if pg_supports_partition is enabled
+	# direct import to partition is not allowed so import to main table.
+	if (!$self->{pg_supports_partition} && $part_name && $self->{prefix_partition}) {
 		$tmptb = $self->get_replaced_tbname($table . '_' . $part_name);
-	} else {
+	} elsif (!$self->{pg_supports_partition} && $part_name) {
 		$tmptb = $self->get_replaced_tbname($part_name || $table);
+	} else {
+		$tmptb = $self->get_replaced_tbname($table);
 	}
 	
 	# Replace Tablename by temporary table for DATADIFF (data will be inserted in real table at the end)
@@ -13647,20 +13644,23 @@ sub _dump_to_pg
 		push(@tempfiles, [ tempfile('tmp_ora2pgXXXXXX', SUFFIX => '', DIR => $TMP_DIR, UNLINK => 1 ) ]);
 	}
 
-	# Open a connection to the postgreSQL database if required
+	# Oracle source table or partition
 	my $rname = $part_name || $table;
+	# Destination PostgreSQL table (direct import to partition is not allowed with native partitioning)
+	my $dname = $table;
+	$dname = $part_name if (!$self->{pg_supports_partition});
 
 	if ($self->{pg_dsn}) {
-		$0 = "ora2pg - sending data to PostgreSQL table $rname";
+		$0 = "ora2pg - sending data from table $rname to table $dname";
 	} else {
-		$0 = "ora2pg - sending data from table $rname to file";
+		$0 = "ora2pg - writing to file data from table $rname to table $dname";
 	}
 
 	# Connect to PostgreSQL if direct import is enabled
 	my $dbhdest = undef;
 	if ($self->{pg_dsn}) {
 		$dbhdest = $self->_send_to_pgdb();
-		$self->logit("Dumping data from table $rname into PostgreSQL...\n", 1);
+		$self->logit("Dumping data from table $rname into PostgreSQL table $dname...\n", 1);
 		$self->logit("Setting client_encoding to $self->{client_encoding}...\n", 1);
 		my $s = $dbhdest->do( "SET client_encoding TO '\U$self->{client_encoding}\E';") or $self->logit("FATAL: " . $dbhdest->errstr . "\n", 0, 1);
 		if (!$self->{synchronous_commit}) {
