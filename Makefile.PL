@@ -982,6 +982,11 @@ PARALLEL_TABLES	1
 # Default is disabled.
 DEFAULT_PARALLELISM_DEGREE	0
 
+# Parallel mode will not be activated if the table have less rows than
+# this directive. This prevent fork of Oracle process when it is not
+# necessary. Default is 100K rows.
+PARALLEL_MIN_ROWS		100000
+
 # Multiprocess support. This directive is used to split the select queries
 # between the different connections to Oracle if ORA_COPIES is used. Ora2Pg
 # will extract data with the following prepare statement:

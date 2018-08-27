@@ -997,6 +997,9 @@ sub _init
 	# Create tables with OIDs or not, default to not create OIDs
 	$self->{with_oid} ||= 0;
 
+	# Minimum of lines required in a table to use parallelism
+	$self->{parallel_min_rows} ||= 100000;
+
 	# Should we replace zero date with something else than NULL
 	$self->{replace_zero_date} ||= '';
 	if ($self->{replace_zero_date} && (uc($self->{replace_zero_date}) ne '-INFINITY') && ($self->{replace_zero_date} !~ /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/)) {
@@ -8373,7 +8376,11 @@ VARCHAR2
 	}
 	# Force parallelism on Oracle side
 	if ($self->{default_parallelism_degree} > 1) {
-		$str =~ s#^SELECT #SELECT /*+ FULL(a) PARALLEL(a, $self->{default_parallelism_degree}) */ #;
+		# Only if the number of rows is upper than PARALLEL_MIN_ROWS
+		$self->{tables}{$table}{table_info}{num_rows} ||= 0;
+		if ($self->{tables}{"\L$table\E"}{table_info}{num_rows} > $self->{parallel_min_rows}) {
+			$str =~ s#^SELECT #SELECT /*+ FULL(a) PARALLEL(a, $self->{default_parallelism_degree}) */ #;
+		}
 	}
 	$str .= " FROM $realtable $alias";
 
