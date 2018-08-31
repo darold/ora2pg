@@ -16568,7 +16568,7 @@ sub _lookup_function
 		# Append its RECORD declaration in the DECLARE section.
 		my $tmp_code = $fct_detail{code};
 		while ($tmp_code =~ s/\bFOR\s+([^\s]+)\s+IN(.*?)LOOP//is) {
-			my $varname = $1;
+			my $varname = quotemeta($1);
 			my $clause = $2;
 			if ($fct_detail{declare} !~ /\b$varname\s+/is) {
 				chomp($fct_detail{declare});
