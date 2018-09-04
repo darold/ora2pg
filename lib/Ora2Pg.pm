@@ -1447,6 +1447,11 @@ sub _init
 		if (($self->{type} eq 'TABLE') || ($self->{type} eq 'FDW') || ($self->{type} eq 'INSERT') || ($self->{type} eq 'COPY') || ($self->{type} eq 'KETTLE')) {
 			$self->{plsql_pgsql} = 1;
 			$self->_tables();
+			# Partitionned table do not accept NOT VALID constraint
+			if ($self->{pg_supports_partition} && $self->{type} eq 'TABLE') {
+				# Get the list of partition
+				$self->{partitions} = $self->_get_partitions_list();
+			}
 		} elsif ($self->{type} eq 'VIEW') {
 			$self->_views();
 		} elsif ($self->{type} eq 'SYNONYM') {
@@ -5803,6 +5808,9 @@ LANGUAGE plpgsql ;
 		my (@datadiff_tbl, @datadiff_del, @datadiff_upd, @datadiff_ins);
 		foreach my $table (@ordered_tables) {
 
+			my $novalid = 0;
+			$novalid = 1 if ($self->{pg_supports_partition} && exists $self->{partitions}{$table});
+
 			# Rename table and double-quote it if required
 			my $tmptb = $self->get_replaced_tbname($table);
 			
@@ -5894,7 +5902,7 @@ LANGUAGE plpgsql ;
 			if ($self->{drop_fkey}) {
 				my @create_all = ();
 				$self->logit("Restoring foreign keys of table $table...\n", 1);
-				push(@create_all, $self->_create_foreign_keys($table));
+				push(@create_all, $self->_create_foreign_keys($table, $novalid));
 				foreach my $str (@create_all) {
 					chomp($str);
 					next if (!$str);
@@ -6567,6 +6575,7 @@ CREATE TRIGGER ${table}_trigger_insert
 		if (!$self->{quiet} && !$self->{debug}) {
 			print STDERR $self->progress_bar($ib, $num_total_table, 25, '=', 'tables', "exporting $table" ), "\r";
 		}
+
 		# Create FDW server if required
 		if ($self->{external_to_fdw}) {
 			if ( grep(/^$table$/i, keys %{$self->{external_table}}) ) {
@@ -6998,7 +7007,11 @@ RETURNS text AS
 		$self->logit("Dumping RI $table...\n", 1);
 		# Add constraint definition
 		if ($self->{type} ne 'FDW') {
-			my $create_all = $self->_create_foreign_keys($table);
+			# Does foreign key constraint do not support NO VALID?
+			my $novalid = 0;
+			$novalid = 1 if ($self->{pg_supports_partition} && exists $self->{partitions}{$table});
+
+			my $create_all = $self->_create_foreign_keys($table, $novalid);
 			if ($create_all) {
 				if ($self->{file_per_fkeys}) {
 					$fkeys .= $create_all;
@@ -7994,10 +8007,10 @@ This function return SQL code to create the foreign keys of a table
 =cut
 sub _create_foreign_keys
 {
-	my ($self, $table) = @_;
+	my ($self, $table, $novalid) = @_;
 
 	my @out = ();
-
+	
 	my $tbsaved = $table;
 	$table = $self->get_replaced_tbname($table);
 
@@ -8072,7 +8085,7 @@ sub _create_foreign_keys
 				$state->[5] = 'DEFERRED' if ($state->[5] =~ /^Y/);
 				$state->[5] ||= 'IMMEDIATE';
 				$str .= " INITIALLY " . ( ($self->{'defer_fkey'} ) ? 'DEFERRED' : $state->[5] );
-				if ($state->[9] eq 'NOT VALIDATED') {
+				if (!$novalid && $state->[9] eq 'NOT VALIDATED') {
 					$str .= " NOT VALID";
 				}
 			}
