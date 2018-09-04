@@ -9795,6 +9795,7 @@ sub _get_dblink
 			$row->[1] = "$row->[0].$row->[1]";
 		}
 		$data{$row->[1]}{owner} = $row->[0];
+		$data{$row->[1]}{user} = $row->[2];
 		$data{$row->[1]}{username} = $self->{pg_user} || $row->[2];
 		$data{$row->[1]}{host} = $row->[3];
 	}
