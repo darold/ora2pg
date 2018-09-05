@@ -1223,6 +1223,13 @@ sub _init
 	$self->{estimate_cost} = 1 if ($self->{dump_as_sheet});
 	$self->{count_rows} ||= 0;
 
+	# Enforce preservation of primary and unique keys
+	# when USE_TABLESPACE is enabled
+	if ($self->{use_tablespace} && !$self->{keep_pkey_names}) {
+	    print STDERR "WARNING: Enforcing KEEP_PKEY_NAMES to 1 as USE_TABLESPACE is enabled.\n";
+	    $self->{keep_pkey_names} = 1;
+	}
+
 	# DATADIFF defaults
 	$self->{datadiff} ||= 0;
 	$self->{datadiff_del_suffix} ||= '_del';
