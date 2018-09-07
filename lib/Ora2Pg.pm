@@ -1170,6 +1170,15 @@ sub _init
 	$self->{parallel_tables} ||= 0;
 	$self->{no_lob_locator} = 1 if ($self->{no_lob_locator} ne '0');
 
+	# Transformation and output during data export
+	$self->{oracle_speed} ||= 0;
+	$self->{ora2pg_speed} ||= 0;
+	if (($self->{oracle_speed} || $self->{ora2pg_speed}) && !grep(/^$self->{type}$/, 'COPY', 'INSERT', 'DATA')) {
+		# No output is only available for data export.
+		die "FATAL: --oracle_speed or --ora2pg_speed can only be use with data export.\n";
+	}
+	$self->{oracle_speed} = 1 if ($self->{ora2pg_speed});
+
 	# Shall we prefix function with a schema name to emulate a package?
 	$self->{package_as_schema} = 1 if (not exists $self->{package_as_schema} || ($self->{package_as_schema} eq ''));
 	$self->{package_functions} = ();
@@ -1777,6 +1786,8 @@ sub _send_to_pgdb
 	my ($self) = @_;
 
 	eval("use DBD::Pg qw(:pg_types);");
+
+	return if ($self->{oracle_speed});
 
         # Connect the destination database
         my $dbhdest = DBI->connect($self->{pg_dsn}, $self->{pg_user}, $self->{pg_pwd}, {AutoInactiveDestroy => 1});
@@ -3360,7 +3371,7 @@ sub _export_table_data
 	if ($self->{truncate_table} && !$self->{global_delete} && !exists $self->{delete}{"\L$table\E"}) {
 		# Set search path
 		my $search_path = $self->set_search_path();
-		if ($self->{pg_dsn}) {
+		if ($self->{pg_dsn} && !$self->{oracle_speed}) {
 			if ($search_path) {
 				$local_dbh->do($search_path) or $self->logit("FATAL: " . $local_dbh->errstr . "\n", 0, 1);
 			}
@@ -3458,11 +3469,11 @@ sub _export_table_data
 
  	# close the connection with parallel table export
  	if (($self->{parallel_tables} > 1) && $self->{pg_dsn}) {
- 		$local_dbh->disconnect();
+ 		$local_dbh->disconnect() if (defined $local_dbh);
  	}
 
 	# Rename temporary filename into final name
-	$self->rename_dump_partfile($dirprefix, $table);
+	$self->rename_dump_partfile($dirprefix, $table) if (!$self->{oracle_speed});
 
 	return $total_record;
 }
@@ -4587,7 +4598,7 @@ LANGUAGE plpgsql ;
 					$self->{child_count}--;
 					delete $RUNNING_PIDS{$kid};
 				}
-				usleep(500000);
+				usleep(50000);
 			}
 			if (!$self->{quiet} && !$self->{debug}) {
 				print STDERR "\n";
@@ -4816,7 +4827,7 @@ LANGUAGE plpgsql ;
 					$parallel_fct_count--;
 					delete $RUNNING_PIDS{$kid};
 				}
-				usleep(500000);
+				usleep(50000);
 			}
 			if ($self->{estimate_cost}) {
 				my $tfh = $self->read_export_file($dirprefix . 'temp_cost_file.dat');
@@ -4991,7 +5002,7 @@ LANGUAGE plpgsql ;
 					$parallel_fct_count--;
 					delete $RUNNING_PIDS{$kid};
 				}
-				usleep(500000);
+				usleep(50000);
 			}
 			if ($self->{estimate_cost}) {
 				my $tfh = $self->read_export_file($dirprefix . 'temp_cost_file.dat');
@@ -5480,7 +5491,7 @@ LANGUAGE plpgsql ;
 			if ($self->{defer_fkey}) {
 				$first_header .= "SET CONSTRAINTS ALL DEFERRED;\n\n";
 			}
-		} else {
+		} elsif (!$self->{oracle_speed}) {
 			# Set search path
 			if ($search_path) {
 				$self->{dbhdest}->do($search_path) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
@@ -5535,7 +5546,7 @@ LANGUAGE plpgsql ;
 			}
 
 			# Disable triggers of current table if requested
-			if ($self->{disable_triggers}) {
+			if ($self->{disable_triggers} && !$self->{oracle_speed}) {
 				my $trig_type = 'USER';
 				$trig_type = 'ALL' if (uc($self->{disable_triggers}) eq 'ALL');
 				if ($self->{pg_dsn}) {
@@ -5647,7 +5658,7 @@ LANGUAGE plpgsql ;
 		}
 
 		# Commit transaction
-		if ($self->{pg_dsn}) {
+		if ($self->{pg_dsn} && !$self->{oracle_speed}) {
 			my $s = $self->{dbhdest}->do("COMMIT;") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
 		}
 
@@ -5732,7 +5743,7 @@ LANGUAGE plpgsql ;
 						$parallel_tables_count--;
 						delete $RUNNING_PIDS{$kid};
 					}
-					usleep(500000);
+					usleep(50000);
 				}
 			} else {
 				$total_record = $self->_export_table_data($table, $dirprefix, $sql_header);
@@ -5769,7 +5780,7 @@ LANGUAGE plpgsql ;
 				if ($kid > 0) {
 					delete $RUNNING_PIDS{$kid};
 				}
-				usleep(500000);
+				usleep(50000);
 			}
 			# Terminate the process logger
 			foreach my $k (keys %RUNNING_PIDS) {
@@ -5787,7 +5798,7 @@ LANGUAGE plpgsql ;
 		}
 		
 		# Start a new transaction
-		if ($self->{pg_dsn}) {
+		if ($self->{pg_dsn} && !$self->{oracle_speed}) {
 			my $s = $self->{dbhdest}->do("BEGIN;") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
 
 		}
@@ -5887,7 +5898,7 @@ LANGUAGE plpgsql ;
 			
 
 			# disable triggers of current table if requested
-			if ($self->{disable_triggers}) {
+			if ($self->{disable_triggers} && !$self->{oracle_speed}) {
 				my $trig_type = 'USER';
 				$trig_type = 'ALL' if (uc($self->{disable_triggers}) eq 'ALL');
 				my $str = "ALTER TABLE $tmptb ENABLE TRIGGER $trig_type;";
@@ -5899,7 +5910,7 @@ LANGUAGE plpgsql ;
 			}
 
 			# Recreate all foreign keys of the concerned tables
-			if ($self->{drop_fkey}) {
+			if ($self->{drop_fkey} && !$self->{oracle_speed}) {
 				my @create_all = ();
 				$self->logit("Restoring foreign keys of table $table...\n", 1);
 				push(@create_all, $self->_create_foreign_keys($table, $novalid));
@@ -5915,7 +5926,7 @@ LANGUAGE plpgsql ;
 			}
 
 			# Recreate all indexes
-			if ($self->{drop_indexes}) {
+			if ($self->{drop_indexes} && !$self->{oracle_speed}) {
 				my @create_all = ();
 				$self->logit("Restoring indexes of table $table...\n", 1);
 				push(@create_all, $self->_create_indexes($table, 1, %{$self->{tables}{$table}{indexes}}));
@@ -5934,7 +5945,7 @@ LANGUAGE plpgsql ;
 		}
 
 		# Insert restart sequences orders
-		if (($#ordered_tables >= 0) && !$self->{disable_sequence}) {
+		if (($#ordered_tables >= 0) && !$self->{disable_sequence} && !$self->{oracle_speed}) {
 			$self->logit("Restarting sequences\n", 1);
 			my @restart_sequence = $self->_extract_sequence_info();
 			foreach my $str (@restart_sequence) {
@@ -5956,7 +5967,7 @@ LANGUAGE plpgsql ;
 		}
 
 		# Commit transaction
-		if ($self->{pg_dsn}) {
+		if ($self->{pg_dsn} && !$self->{oracle_speed}) {
 			my $s = $self->{dbhdest}->do("COMMIT;") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
 		} else {
 			$footer .= "COMMIT;\n\n";
@@ -7175,7 +7186,7 @@ sub fix_function_call
 			$child_count--;
 			delete $RUNNING_PIDS{$kid};
 		}
-		usleep(500000);
+		usleep(50000);
 	}
 }
 
@@ -7236,6 +7247,8 @@ sub read_input_file
 sub file_exists
 {
 	my ($self, $file) = @_;
+
+	return 0 if ($self->{oracle_speed});
 
 	if ($self->{file_per_table} && !$self->{pg_dsn}) {
 		if (-e "$file") {
@@ -8477,6 +8490,8 @@ VARCHAR2
 			}
 		}
 	}
+
+	$self->logit("DEGUG: Query sent to Oracle: $str\n", 1);
 
 	return $str;
 }
@@ -11860,6 +11875,8 @@ sub data_dump
 {
 	my ($self, $data, $tname, $pname) = @_;
 
+	return if ($self->{oracle_speed});
+
 	my $dirprefix = '';
 	$dirprefix = "$self->{output_dir}/" if ($self->{output_dir});
 	my $filename = $self->{output};
@@ -13182,7 +13199,7 @@ sub ask_for_data
 				$self->{ora_conn_count}--;
 				delete $RUNNING_PIDS{$kid};
 			}
-			usleep(500000);
+			usleep(50000);
 		}
 		if (defined $pipe) {
 			my $t_name = $part_name || $table;
@@ -13413,6 +13430,9 @@ sub _extract_data
 				$self->{current_total_row} += @$rows;
 				$self->logit("DEBUG: number of rows $total_record extracted from table $table\n", 1);
 
+				# Do we just want to test Oracle output speed
+				next if ($self->{oracle_speed} && !$self->{ora2pg_speed});
+
 				if ( ($self->{jobs} > 1) || ($self->{oracle_copies} > 1) ) {
 					while ($self->{child_count} >= $self->{jobs}) {
 						my $kid = waitpid(-1, WNOHANG);
@@ -13502,6 +13522,9 @@ sub _extract_data
 				$total_record++;
 				$self->{current_total_row}++;
 
+				# Do we just want to test Oracle output speed
+				next if ($self->{oracle_speed} && !$self->{ora2pg_speed});
+
 				if ($#rows == $data_limit) {
 					if ( ($self->{jobs} > 1) || ($self->{oracle_copies} > 1) ) {
 						while ($self->{child_count} >= $self->{jobs}) {
@@ -13522,6 +13545,10 @@ sub _extract_data
 					@rows = ();
 				}
 			}
+
+			# Do we just want to test Oracle output speed
+			next if ($self->{oracle_speed} && !$self->{ora2pg_speed});
+
 			# Flush last extracted data
 			if ( ($self->{jobs} > 1) || ($self->{oracle_copies} > 1) ) {
 				while ($self->{child_count} >= $self->{jobs}) {
@@ -13554,6 +13581,8 @@ sub _extract_data
 				$num_row  = 0;
 				$total_record += @rows;
 				$self->{current_total_row} += @rows;
+				# Do we just want to test Oracle output speed
+				next if ($self->{oracle_speed} && !$self->{ora2pg_speed});
 				if ( ($self->{parallel_tables} > 1) || (($self->{oracle_copies} > 1) && $self->{defined_pk}{"\L$table\E"}) ) {
 					my $max_jobs = $self->{jobs};
 					while ($self->{child_count} >= $max_jobs) {
@@ -13575,7 +13604,7 @@ sub _extract_data
 			}
 		}
 
-		if (@rows) {
+		if (@rows && (!$self->{oracle_speed} || $self->{ora2pg_speed})) {
 			$total_record += @rows;
 			$self->{current_total_row} += @rows;
 			if ( ($self->{parallel_tables} > 1) || (($self->{oracle_copies} > 1) && $self->{defined_pk}{"\L$table\E"}) ) {
@@ -13595,7 +13624,6 @@ sub _extract_data
 			} else {
 				$self->_dump_to_pg($proc, \@rows, $table, $cmd_head, $cmd_foot, $s_out, $tt, $sprep, $stt, $start_time, $part_name, $total_record, %user_type);
 			}
-
 		}
 	}
 
@@ -13616,7 +13644,7 @@ sub _extract_data
 			$self->{child_count}--;
 			delete $RUNNING_PIDS{$kid};
 		}
-		usleep(500000);
+		usleep(50000);
 	}
 
 	if (defined $pipe) {
@@ -13698,7 +13726,7 @@ sub _dump_to_pg
 
 	# Connect to PostgreSQL if direct import is enabled
 	my $dbhdest = undef;
-	if ($self->{pg_dsn}) {
+	if ($self->{pg_dsn} && !$self->{oracle_speed}) {
 		$dbhdest = $self->_send_to_pgdb();
 		$self->logit("Dumping data from table $rname into PostgreSQL table $dname...\n", 1);
 		$self->logit("Setting client_encoding to $self->{client_encoding}...\n", 1);
@@ -13712,7 +13740,7 @@ sub _dump_to_pg
 	# Build header of the file
 	my $h_towrite = '';
 	foreach my $cmd (@$cmd_head) {
-		if ($self->{pg_dsn}) {
+		if ($self->{pg_dsn} && !$self->{oracle_speed}) {
 			my $s = $dbhdest->do("$cmd") or $self->logit("FATAL: " . $dbhdest->errstr . "\n", 0, 1);
 		} else {
 			$h_towrite .= "$cmd\n";
@@ -13722,7 +13750,7 @@ sub _dump_to_pg
 	# Build footer of the file
 	my $e_towrite = '';
 	foreach my $cmd (@$cmd_foot) {
-		if ($self->{pg_dsn}) {
+		if ($self->{pg_dsn} && !$self->{oracle_speed}) {
 			my $s = $dbhdest->do("$cmd") or $self->logit("FATAL: " . $dbhdest->errstr . "\n", 0, 1);
 		} else {
 			$e_towrite .= "$cmd\n";
@@ -13752,28 +13780,34 @@ sub _dump_to_pg
 	if ($self->{type} eq 'COPY') {
 		if ($self->{pg_dsn}) {
 			$sql_out =~ s/;$//;
-			$self->logit("DEBUG: Sending COPY bulk output directly to PostgreSQL backend\n", 1);
-			my $s = $dbhdest->do($sql_out) or $self->logit("FATAL: " . $dbhdest->errstr . "\n", 0, 1);
-			$sql_out = '';
-			my $skip_end = 0;
-			foreach my $row (@$rows) {
-				unless($dbhdest->pg_putcopydata(join("\t", @$row) . "\n")) {
+			if (!$self->{oracle_speed}) {
+				$self->logit("DEBUG: Sending COPY bulk output directly to PostgreSQL backend\n", 1);
+				$dbhdest->do($sql_out) or $self->logit("FATAL: " . $dbhdest->errstr . "\n", 0, 1);
+				$sql_out = '';
+				my $skip_end = 0;
+				foreach my $row (@$rows) {
+					unless($dbhdest->pg_putcopydata(join("\t", @$row) . "\n")) {
+						if ($self->{log_on_error}) {
+							$self->logit("ERROR (log error enabled): " . $dbhdest->errstr . "\n", 0, 0);
+							$self->log_error_copy($table, $s_out, $rows);
+							$skip_end = 1;
+							last;
+						} else {
+							$self->logit("FATAL: " . $dbhdest->errstr . "\n", 0, 1);
+						}
+					}
+				}
+				unless ($dbhdest->pg_putcopyend()) {
 					if ($self->{log_on_error}) {
 						$self->logit("ERROR (log error enabled): " . $dbhdest->errstr . "\n", 0, 0);
-						$self->log_error_copy($table, $s_out, $rows);
-						$skip_end = 1;
-						last;
+						$self->log_error_copy($table, $s_out, $rows) if (!$skip_end);
 					} else {
 						$self->logit("FATAL: " . $dbhdest->errstr . "\n", 0, 1);
 					}
 				}
-			}
-			unless ($dbhdest->pg_putcopyend()) {
-				if ($self->{log_on_error}) {
-					$self->logit("ERROR (log error enabled): " . $dbhdest->errstr . "\n", 0, 0);
-					$self->log_error_copy($table, $s_out, $rows) if (!$skip_end);
-				} else {
-					$self->logit("FATAL: " . $dbhdest->errstr . "\n", 0, 1);
+			} else {
+				foreach my $row (@$rows) {
+					# do nothing, just add loop time nothing must be sent to PG
 				}
 			}
 		} else {
@@ -13792,7 +13826,7 @@ sub _dump_to_pg
 	# Insert data if we are in online processing mode
 	if ($self->{pg_dsn}) {
 		if ($self->{type} ne 'COPY') {
-			if (!$sprep) {
+			if (!$sprep && !$self->{oracle_speed}) {
 				$self->logit("DEBUG: Sending INSERT output directly to PostgreSQL backend\n", 1);
 				unless($dbhdest->do("BEGIN;\n" . $sql_out . "COMMIT;\n")) {
 					if ($self->{log_on_error}) {
@@ -13803,12 +13837,17 @@ sub _dump_to_pg
 					}
 				}
 			} else {
-				my $ps = $dbhdest->prepare($sprep) or $self->logit("FATAL: " . $dbhdest->errstr . "\n", 0, 1);
+				my $ps = undef;
+				if (!$self->{oracle_speed}) {
+					$ps = $dbhdest->prepare($sprep) or $self->logit("FATAL: " . $dbhdest->errstr . "\n", 0, 1);
+				}
 				my @date_cols = ();
 				my @bool_cols = ();
 				for (my $i = 0; $i <= $#{$tt}; $i++) {
 					if ($tt->[$i] eq 'bytea') {
-						$ps->bind_param($i+1, undef, { pg_type => DBD::Pg::PG_BYTEA });
+						if (!$self->{oracle_speed}) {
+							$ps->bind_param($i+1, undef, { pg_type => DBD::Pg::PG_BYTEA });
+						}
 					} elsif ($tt->[$i] eq 'boolean') {
 						push(@bool_cols, $i);
 					} elsif ($tt->[$i] =~ /(date|time)/i) {
@@ -13835,25 +13874,32 @@ sub _dump_to_pg
 						($row->[$j] eq "'f'") ? $row->[$j] = 0 : $row->[$j] = 1;
 					}
 					# Apply bind parmeters
-					unless ($ps->execute(@$row) ) {
-						if ($self->{log_on_error}) {
-							$self->logit("ERROR (log error enabled): " . $ps->errstr . "\n", 0, 0);
-							$s_out =~ s/\([,\?]+\)/\(/;
-							$self->format_data_row($row,$tt,'INSERT', $stt, \%user_type, $table, $col_cond);
-							$self->log_error_insert($table, $s_out . join(',', @$row) . ");\n");
-						} else {
-							$self->logit("FATAL: " . $ps->errstr . "\n", 0, 1);
+					if (!$self->{oracle_speed}) {
+						unless ($ps->execute(@$row) ) {
+							if ($self->{log_on_error}) {
+								$self->logit("ERROR (log error enabled): " . $ps->errstr . "\n", 0, 0);
+								$s_out =~ s/\([,\?]+\)/\(/;
+								$self->format_data_row($row,$tt,'INSERT', $stt, \%user_type, $table, $col_cond);
+								$self->log_error_insert($table, $s_out . join(',', @$row) . ");\n");
+							} else {
+								$self->logit("FATAL: " . $ps->errstr . "\n", 0, 1);
+							}
 						}
 					}
 				}
-				$ps->finish();
+				if (!$self->{oracle_speed}) {
+					$ps->finish();
+				}
 			}
 		}
 	} else {
 		if ($part_name && $self->{prefix_partition})  {
 			$part_name = $table . '_' . $part_name;
 		}
-		$self->data_dump($h_towrite . $sql_out . $e_towrite, $table, $part_name);
+		$sql_out = $h_towrite . $sql_out . $e_towrite;
+		if (!$self->{oracle_speed}) {
+			$self->data_dump($sql_out, $table, $part_name);
+		}
 	}
 
 	my $total_row = $self->{tables}{$table}{table_info}{num_rows};

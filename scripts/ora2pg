@@ -81,6 +81,8 @@ my $DATA_TYPE = '';
 my $GRANT_OBJECT = '';
 my $PG_SCHEMA = '';
 my $NO_HEADER = 0;
+my $ORACLE_SPEED = 0;
+my $ORA2PG_SPEED = 0;
 
 my @SCHEMA_ARRAY  = qw( TABLE PACKAGE VIEW GRANT SEQUENCE TRIGGER FUNCTION PROCEDURE TABLESPACE PARTITION TYPE MVIEW DBLINK SYNONYM DIRECTORY );
 my @EXTERNAL_ARRAY  = qw( KETTLE FDW );
@@ -113,18 +115,18 @@ GetOptions (
         'l|log=s' => \$LOGFILE,
 	'L|limit=i' => \$DATA_LIMIT,
 	'm|mysql!' => \$IS_MYSQL,
+	'n|namespace=s' => \$SCHEMA,
+	'N|pg_schema=s' => \$PG_SCHEMA,
         'o|out=s' => \$OUTFILE,
 	'p|plsql!' => \$PLSQL,
 	'P|parallel=i' =>\$PARALLEL_TABLES,
 	'q|quiet!' => \$QUIET,
+	's|source=s' => \$DSN,
         't|type=s' => \$EXPORT_TYPE,
         'T|temp_dir=s' => \$TMP_DIR,
-	'v|version!' => \$SHOW_VER,
-	's|source=s' => \$DSN,
 	'u|user=s' => \$DBUSER,
+	'v|version!' => \$SHOW_VER,
 	'w|password=s' => \$DBPWD,
-	'n|namespace=s' => \$SCHEMA,
-	'N|pg_schema=s' => \$PG_SCHEMA,
 	'x|xtable=s' => \$TABLEONLY, # Obsolete
 	'forceowner=s' => \$FORCEOWNER,
 	'nls_lang=s' => \$ORA_ENCODING,
@@ -145,6 +147,8 @@ GetOptions (
 	'pg_pwd=s' => \$PG_PWD,
 	'count_rows!' => \$COUNT_ROWS,
 	'no_header!' => \$NO_HEADER,
+	'oracle_speed!' => \$ORACLE_SPEED,
+	'ora2pg_speed!' => \$ORA2PG_SPEED,
 );
 
 # Check command line parameters
@@ -296,6 +300,8 @@ my $schema = new Ora2Pg (
 	data_type => $DATA_TYPE,
 	grant_object => $GRANT_OBJECT,
 	no_header => $NO_HEADER,
+	oracle_speed => $ORACLE_SPEED,
+	ora2pg_speed => $ORA2PG_SPEED,
 );
 
 # Look at configuration file if an input file is defined
@@ -416,6 +422,10 @@ Usage: ora2pg [-dhpqv --estimate_cost --dump_as_html] [--option value]
    --pg_pwd password  : Set the PostgreSQL password to use.
    --count_rows       : Force ora2pg to perform a real row count in TEST action.
    --no_header        : Do not append Ora2Pg header to output file
+   --oracle_speed     : use to know at which full speed Oracle is able to send
+                        data. No data will be processed and nothing written.
+   --ora2pg_speed     : use to know at which full speed Ora2Pg is able to send
+                        transformed data. Nothing will be written.
 
 See full documentation at http://ora2pg.darold.net/ for more help or see
 manpage with 'man ora2pg'.

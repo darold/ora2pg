@@ -315,6 +315,10 @@ CONFIGURATION
        --pg_pwd password  : Set the PostgreSQL password to use.
        --count_rows       : Force ora2pg to perform a real row count in TEST action.
        --no_header        : Do not append Ora2Pg header to output file
+       --oracle_speed     : use to know at which full speed Oracle is able to send
+                            data. No data will be processed and nothing written.
+       --ora2pg_speed     : use to know at which full speed Ora2Pg is able to send
+                            transformed data. Nothing will be written.
 
     See full documentation at http://ora2pg.darold.net/ for more help or see
     manpage with 'man ora2pg'.
