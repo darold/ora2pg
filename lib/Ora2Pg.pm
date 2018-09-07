@@ -6201,6 +6201,7 @@ BEGIN
 						$check_cond .= ';' if ($self->{pg_supports_partition});
 						$create_table_tmp .= $check_cond . "\n";
 						$create_table_tmp .= ") ) INHERITS ($table);\n" if (!$self->{pg_supports_partition});
+						$check_cond = '';
 					}
 					$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
 					if ($owner) {
@@ -6211,6 +6212,7 @@ BEGIN
 					$create_table_tmp .= $check_cond;
 					$create_table_tmp .= "\nPARTITION BY " . $self->{subpartitions_list}{"\L$table\E"}{"\L$part\E"}{type} . " (" . lc(join(',', @{$self->{subpartitions_list}{"\L$table\E"}{"\L$part\E"}{columns}})) . ")" if (exists $self->{subpartitions_list}{"\L$table\E"}{"\L$part\E"}{type});
 					$create_table_tmp .= ";\n";
+					$check_cond = '';
 				}
 				# Add subpartition if any defined on Oracle
 				my $sub_funct_cond = '';
@@ -6219,7 +6221,6 @@ BEGIN
 					my $sub_cond = 'IF';
 					my $sub_funct_cond_tmp = '';
 					my $create_subtable_tmp = '';
-					my $sub_check_cond_tmp = '';
 					foreach my $p (sort {$a <=> $b} keys %{$self->{subpartitions}{$table}{$part}}) {
 						my $subpart = $self->{subpartitions}{$table}{$part}{$p}{name};
 						if (!$self->{quiet} && !$self->{debug}) {
@@ -6227,12 +6228,11 @@ BEGIN
 						}
 						my $sub_tb_name = $subpart;
 						$sub_tb_name =~ s/^[^\.]+\.//; # remove schema part if any
-						$tb_name .= '_' if ($tb_name && $tb_name !~ /_$/);
 						$create_subtable_tmp .= "CREATE TABLE " . $self->quote_object_name($sub_tb_name);
 						if (!$self->{pg_supports_partition}) {
 							$create_subtable_tmp .= " ( CHECK (\n";
 						} else {
-							$create_subtable_tmp .= " PARTITION OF \L$part\E\n";
+							$create_subtable_tmp .= " PARTITION OF " . $self->quote_object_name($tb_name) . "\n";
 							$create_subtable_tmp .= "FOR VALUES";
 						}
 						my $sub_check_cond_tmp = '';
@@ -6303,9 +6303,9 @@ BEGIN
 							$cindx = join(',', @ind_col);
 							$cindx = lc($cindx) if (!$self->{preserve_case});
 							$cindx = Ora2Pg::PLSQL::convert_plsql_code($self, $cindx, %{$self->{data_type}});
-							$create_table_index_tmp .= "CREATE INDEX " . $self->quote_object_name("${tb_name}${sub_tb_name}_$colname")
-												 . " ON " . $self->quote_object_name("${tb_name}$sub_tb_name") . " ($cindx);\n";
-							my $tb_name2 = $self->quote_object_name("${tb_name}$sub_tb_name");
+							$create_table_index_tmp .= "CREATE INDEX " . $self->quote_object_name("${tb_name}_${sub_tb_name}_$colname")
+												 . " ON " . $self->quote_object_name("${tb_name}_$sub_tb_name") . " ($cindx);\n";
+							my $tb_name2 = $self->quote_object_name("${tb_name}_$sub_tb_name");
 							# Reproduce indexes definition from the main table
 							my ($idx, $fts_idx) = $self->_create_indexes($table, 0, %{$self->{tables}{$table}{indexes}});
 							if ($idx || $fts_idx) {
@@ -6360,15 +6360,16 @@ BEGIN
 							$create_subtable_tmp .= $check_cond;
 							$create_subtable_tmp .= " AND $sub_check_cond_tmp" if ($sub_check_cond_tmp);
 							$create_subtable_tmp .= "\n) ) INHERITS ($table);\n";
+							$check_cond = '';
 						}
 						$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
 						if ($owner) {
-							$create_subtable_tmp .= "ALTER TABLE " . $self->quote_object_name("${tb_name}$sub_tb_name")
+							$create_subtable_tmp .= "ALTER TABLE " . $self->quote_object_name("${tb_name}_$sub_tb_name")
 											. " OWNER TO " . $self->quote_object_name($owner) . ";\n";
 						}
 						if ($#subcondition >= 0) {
 							$sub_funct_cond_tmp .= "\t\t$sub_cond ( " . join(' AND ', @subcondition) . " ) THEN INSERT INTO "
-										. $self->quote_object_name("${tb_name}$sub_tb_name") . " VALUES (NEW.*);\n";
+										. $self->quote_object_name("${tb_name}_$sub_tb_name") . " VALUES (NEW.*);\n";
 							$sub_cond = 'ELSIF';
 						}
 						$sub_old_part = $part;
