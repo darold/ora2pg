@@ -3066,7 +3066,8 @@ sub read_dblink_from_file
 		$d_name =~ s/"//g;
 		$d_user =~ s/"//g;
 		$self->{dblink}{$d_name}{owner} = $self->{shema};
-		$self->{dblink}{$d_name}{username} = $d_user;
+		$self->{dblink}{$d_name}{user} = $d_user;
+		$self->{dblink}{$d_name}{username} = $self->{pg_user} || $d_user;
 		if ($d_auth =~ s/USING\s+([^\s]+)//) {
 			$self->{dblink}{$d_name}{host} = $1;
 			$self->{dblink}{$d_name}{host} =~ s/'//g;
@@ -3077,6 +3078,7 @@ sub read_dblink_from_file
 		if ($d_auth =~ s/AUTHENTICATED\s+BY\s+([^\s]+)\s+IDENTIFIED\s+BY\s+([^\s]+)//) {
 			$self->{dblink}{$d_name}{user} = $1;
 			$self->{dblink}{$d_name}{password} = $2;
+			$self->{dblink}{$d_name}{username} = $self->{pg_user} || $1;
 		}
 	}
 
@@ -4234,7 +4236,6 @@ LANGUAGE plpgsql ;
 				$self->{dblink}{$db}{password} ||= 'secret';
 				$self->{dblink}{$db}{password} = ", password '$self->{dblink}{$db}{password}'";
 			}
-			$self->{dblink}{$db}{user} ||= $self->{dblink}{$db}{username};
 			if ($self->{dblink}{$db}{username}) {
 				$sql_output .= "CREATE USER MAPPING FOR " . $self->quote_object_name($self->{dblink}{$db}{username})
 							. " SERVER " . $self->quote_object_name($db)
