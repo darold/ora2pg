@@ -5447,6 +5447,8 @@ LANGUAGE plpgsql ;
 		my $dirprefix = '';
 		$dirprefix = "$self->{output_dir}/" if ($self->{output_dir});
 
+                my $t0 = Benchmark->new;
+
 		# Connect the Oracle database to gather information
 		if ($self->{oracle_dsn} =~ /dbi:mysql/i) {
 			$self->{dbh} = $self->_mysql_connection();
@@ -5983,6 +5985,32 @@ LANGUAGE plpgsql ;
 		$self->{dbh}->disconnect() if ($self->{dbh});
 		$self->{dbhdest}->disconnect() if ($self->{dbhdest});
 
+		my $npart = 0;
+		my $nsubpart = 0;
+		foreach my $t (sort keys %{ $self->{partitions} }) {
+			$npart += scalar keys %{$self->{partitions}{$t}};
+		}
+		foreach my $t (sort keys %{ $self->{subpartitions_list} }) {
+			foreach my $p (sort keys %{ $self->{subpartitions_list}{$t} }) {
+				$nsubpart += scalar keys %{ $self->{subpartitions_list}{$t}{$p}};
+			}
+		}
+
+
+                my $t1 = Benchmark->new;
+                my $td = timediff($t1, $t0);
+		my $timestr = timestr($td);
+		my $title = 'Total time to export data';
+		if ($self->{ora2pg_speed}) {
+			$title = 'Total time to process data from Oracle';
+		} elsif ($self->{oracle_speed}) {
+			$title = 'Total time to extract data from Oracle';
+		}
+                $self->logit("$title from " . (scalar keys %{$self->{tables}}) . " tables ($npart partitions, $nsubpart sub-partitions) and $self->{global_rows} total rows: $timestr\n", 1);
+		if ($timestr =~ /^(\d+) wallclock secs/) {
+			my $mean = sprintf("%.2f", $self->{global_rows}/($1 || 1));
+			$self->logit("Speed average: $mean rows/sec\n", 1);
+		}
 		return;
 	}
 
@@ -10923,10 +10951,8 @@ sub _get_audit_queries
 		$row->[0] =~  s/\%ORA2PG_COMMENT\d+\%//gs;
 		$row->[0] =  $self->normalize_query($row->[0]);
 		$tmp_queries{$row->[0]}++;
-		$self->logit(".",1);
 	}
 	$sth->finish;
-	$self->logit("\n", 1);
 
 	my %queries = ();
 	my $i = 1;
@@ -10986,10 +11012,8 @@ AND a.TABLESPACE_NAME = c.TABLESPACE_NAME
 			$row->[0] = "$row->[4].$row->[0]";
 		}
 		push(@{$tbs{$row->[2]}{$row->[1]}{$row->[3]}}, $row->[0]);
-		$self->logit(".",1);
 	}
 	$sth->finish;
-	$self->logit("\n", 1);
 
 	return \%tbs;
 }
@@ -11025,10 +11049,8 @@ WHERE a.TABLESPACE_NAME = c.TABLESPACE_NAME
 	while (my $row = $sth->fetch) {
 		$tbs{$row->[1]}{path} = $row->[0];
 		$tbs{$row->[1]}{owner} = $row->[2];
-		$self->logit(".",1);
 	}
 	$sth->finish;
-	$self->logit("\n", 1);
 
 	return \%tbs;
 }
@@ -11099,10 +11121,8 @@ WHERE
 		}
 		$parts{$row->[0]}{$row->[1]}{name} = $row->[2];
 		push(@{$parts{$row->[0]}{$row->[1]}{info}}, { 'type' => $row->[5], 'value' => $row->[3], 'column' => $row->[7], 'colpos' => $row->[8], 'tablespace' => $row->[4], 'owner' => $row->[9]});
-		$self->logit(".",1);
 	}
 	$sth->finish;
-	$self->logit("\n", 1);
 
 	return \%parts, \%default;
 }
@@ -11174,10 +11194,8 @@ WHERE
 
 		$subparts{$row->[0]}{$row->[10]}{$row->[1]}{name} = $row->[2];
 		push(@{$subparts{$row->[0]}{$row->[10]}{$row->[1]}{info}}, { 'type' => $row->[5], 'value' => $row->[3], 'column' => $row->[7], 'colpos' => $row->[8], 'tablespace' => $row->[4], 'owner' => $row->[9]});
-		$self->logit(".",1);
 	}
 	$sth->finish;
-	$self->logit("\n", 1);
 
 	return \%subparts, \%default;
 }
