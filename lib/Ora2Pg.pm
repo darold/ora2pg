@@ -6036,7 +6036,6 @@ BEGIN
 					$create_table_tmp .= "FOR VALUES";
 				}
 
-				my $check_cond = '';
 				my @condition = ();
 				my @ind_col = ();
 				for (my $i = 0; $i <= $#{$self->{partitions}{$table}{$pos}{info}}; $i++) {
@@ -6125,13 +6124,13 @@ BEGIN
 								. $self->quote_object_name("${tb_name}_$colname")
 								. " ON " . $self->quote_object_name($tb_name) . " ($cindx);\n";
 						if ($idx || $fts_idx) {
-							$idx =~ s/$table/$tb_name2/igs;
-							$fts_idx =~ s/$table/$tb_name2/igs;
+							$idx =~ s/ $table/ $tb_name2/igs;
+							$fts_idx =~ s/ $table/ $tb_name2/igs;
 							# remove indexes already created
 							$idx =~ s/CREATE [^;]+ \($cindx\);//;
 							$fts_idx =~ s/CREATE [^;]+ \($cindx\);//;
 							if ($idx || $fts_idx) {
-								$create_table_index_tmp .= "-- Reproduce indexes that was defined on the parent table\n";
+								$create_table_index_tmp .= "-- Reproduce partition indexes that was defined on the parent table\n";
 							}
 							$create_table_index_tmp .= "$idx\n" if ($idx);
 							$create_table_index_tmp .= "$fts_idx\n" if ($fts_idx);
@@ -6140,12 +6139,11 @@ BEGIN
 						# Set the unique (and primary) key definition 
 						$idx = $self->_create_unique_keys($table, $self->{tables}{$table}{unique_key});
 						if ($idx) {
-							$idx =~ s/$table/$tb_name2/igs;
+							$idx =~ s/ $table/ $tb_name2/igs;
 							# remove indexes already created
 							$idx =~ s/CREATE [^;]+ \($cindx\);//;
-							$fts_idx =~ s/CREATE [^;]+ \($cindx\);//;
 							if ($idx) {
-								$create_table_index_tmp .= "-- Reproduce unique indexes / pk that was defined on the parent table\n";
+								$create_table_index_tmp .= "-- Reproduce partition unique indexes / pk that was defined on the parent table\n";
 								$create_table_index_tmp .= "$idx\n";
 								# Remove duplicate index with this one
 								if ($idx =~ /ALTER TABLE $tb_name2 ADD PRIMARY KEY (.*);/s) { 
@@ -6153,8 +6151,6 @@ BEGIN
 									$create_table_index_tmp =~ s/CREATE INDEX [^;]+ ON $tb_name2 $collist;//s;
 								}
 							}
-						# Do not duplicate index if there is a PK definition on the same columns
-						#if ($idx !~ /$pk/s) {
 						}
 					}
 					my $deftb = '';
@@ -6221,7 +6217,6 @@ BEGIN
 						my $sub_tb_name = $subpart;
 						$sub_tb_name =~ s/^[^\.]+\.//; # remove schema part if any
 						$tb_name .= '_' if ($tb_name && $tb_name !~ /_$/);
-						$sub_tb_name = $tb_name . $sub_tb_name if ($sub_tb_name !~ /^$tb_name/i);
 						$create_subtable_tmp .= "CREATE TABLE " . $self->quote_object_name($sub_tb_name);
 						if (!$self->{pg_supports_partition}) {
 							$create_subtable_tmp .= " ( CHECK (\n";
@@ -6303,13 +6298,13 @@ BEGIN
 							# Reproduce indexes definition from the main table
 							my ($idx, $fts_idx) = $self->_create_indexes($table, 0, %{$self->{tables}{$table}{indexes}});
 							if ($idx || $fts_idx) {
-								$idx =~ s/$table/$tb_name2/igs;
-								$fts_idx =~ s/$table/$tb_name2/igs;
+								$idx =~ s/ $table/ $tb_name2/igs;
+								$fts_idx =~ s/ $table/ $tb_name2/igs;
 								# remove indexes already created
 								$idx =~ s/CREATE [^;]+ \($cindx\);//;
 								$fts_idx =~ s/CREATE [^;]+ \($cindx\);//;
 								if ($idx || $fts_idx) {
-									$create_table_index_tmp .= "-- Reproduce indexes that was defined on the parent table\n";
+									$create_table_index_tmp .= "-- Reproduce subpartition indexes that was defined on the parent table\n";
 								}
 								$create_table_index_tmp .= "$idx\n" if ($idx);
 								$create_table_index_tmp .= "$fts_idx\n" if ($fts_idx);
@@ -6318,11 +6313,10 @@ BEGIN
 							# Set the unique (and primary) key definition 
 							$idx = $self->_create_unique_keys($table, $self->{tables}{$table}{unique_key});
 							if ($idx) {
-								$create_table_index_tmp .= "-- Reproduce unique indexes / pk that was defined on the parent table\n";
-								$idx =~ s/$table/$tb_name2/igs;
+								$create_table_index_tmp .= "-- Reproduce subpartition unique indexes / pk that was defined on the parent table\n";
+								$idx =~ s/ $table/$tb_name2/igs;
 								# remove indexes already created
 								$idx =~ s/CREATE [^;]+ \($cindx\);//;
-								$fts_idx =~ s/CREATE [^;]+ \($cindx\);//;
 								if ($idx) {
 									$create_table_index_tmp .= "$idx\n";
 									# Remove duplicate index with this one
