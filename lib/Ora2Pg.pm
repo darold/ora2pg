@@ -6036,8 +6036,6 @@ BEGIN
 					$create_table_tmp .= "FOR VALUES";
 				}
 
-				$tb_name = $table . "_" if ($self->{prefix_partition});
-
 				my $check_cond = '';
 				my @condition = ();
 				my @ind_col = ();
