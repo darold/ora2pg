@@ -6118,16 +6118,21 @@ BEGIN
 						}
 					}
 					if (!exists $self->{subpartitions}{$table}{$part} || (!$self->{pg_supports_partition} && $has_hash_subpartition)) {
-						$create_table_index_tmp .= "CREATE INDEX "
-									. $self->quote_object_name("${tb_name}_$colname")
-									. " ON $tb_name ($cindx);\n";
-						my $tb_name2 = $self->quote_object_name($tb_name);
 						# Reproduce indexes definition from the main table
 						my ($idx, $fts_idx) = $self->_create_indexes($table, 0, %{$self->{tables}{$table}{indexes}});
+						my $tb_name2 = $self->quote_object_name($tb_name);
+						$create_table_index_tmp .= "CREATE INDEX "
+								. $self->quote_object_name("${tb_name}_$colname")
+								. " ON " . $self->quote_object_name($tb_name) . " ($cindx);\n";
 						if ($idx || $fts_idx) {
 							$idx =~ s/$table/$tb_name2/igs;
 							$fts_idx =~ s/$table/$tb_name2/igs;
-							$create_table_index_tmp .= "-- Reproduce indexes that was defined on the parent table\n";
+							# remove indexes already created
+							$idx =~ s/CREATE [^;]+ \($cindx\);//;
+							$fts_idx =~ s/CREATE [^;]+ \($cindx\);//;
+							if ($idx || $fts_idx) {
+								$create_table_index_tmp .= "-- Reproduce indexes that was defined on the parent table\n";
+							}
 							$create_table_index_tmp .= "$idx\n" if ($idx);
 							$create_table_index_tmp .= "$fts_idx\n" if ($fts_idx);
 						}
@@ -6135,9 +6140,21 @@ BEGIN
 						# Set the unique (and primary) key definition 
 						$idx = $self->_create_unique_keys($table, $self->{tables}{$table}{unique_key});
 						if ($idx) {
-							$create_table_index_tmp .= "-- Reproduce unique indexes / pk that was defined on the parent table\n";
 							$idx =~ s/$table/$tb_name2/igs;
-							$create_table_index_tmp .= "$idx\n" if ($idx);
+							# remove indexes already created
+							$idx =~ s/CREATE [^;]+ \($cindx\);//;
+							$fts_idx =~ s/CREATE [^;]+ \($cindx\);//;
+							if ($idx) {
+								$create_table_index_tmp .= "-- Reproduce unique indexes / pk that was defined on the parent table\n";
+								$create_table_index_tmp .= "$idx\n";
+								# Remove duplicate index with this one
+								if ($idx =~ /ALTER TABLE $tb_name2 ADD PRIMARY KEY (.*);/s) { 
+									my $collist = quotemeta($1);
+									$create_table_index_tmp =~ s/CREATE INDEX [^;]+ ON $tb_name2 $collist;//s;
+								}
+							}
+						# Do not duplicate index if there is a PK definition on the same columns
+						#if ($idx !~ /$pk/s) {
 						}
 					}
 					my $deftb = '';
@@ -6146,7 +6163,7 @@ BEGIN
 						$cindx = $self->{partitions}{$table}{$pos}{info}[$i]->{column} || '';
 						$cindx = lc($cindx) if (!$self->{preserve_case});
 						$cindx = Ora2Pg::PLSQL::convert_plsql_code($self, $cindx, %{$self->{data_type}});
-						$create_table_index_tmp .= "CREATE INDEX $deftb$self->{partitions_default}{$table}_$colname ON $deftb$self->{partitions_default}{$table} ($cindx);\n";
+						$create_table_index_tmp .= "CREATE INDEX " . $self->quote_object_name("$deftb$self->{partitions_default}{$table}_$colname") . " ON " . $self->quote_object_name("$deftb$self->{partitions_default}{$table}") . " ($cindx);\n";
 					}
 					push(@ind_col, $self->{partitions}{$table}{$pos}{info}[$i]->{column}) if (!grep(/^$self->{partitions}{$table}{$pos}{info}[$i]->{column}$/, @ind_col));
 					if ($self->{partitions}{$table}{$pos}{info}[$i]->{type} eq 'LIST') {
@@ -6281,14 +6298,19 @@ BEGIN
 							$cindx = lc($cindx) if (!$self->{preserve_case});
 							$cindx = Ora2Pg::PLSQL::convert_plsql_code($self, $cindx, %{$self->{data_type}});
 							$create_table_index_tmp .= "CREATE INDEX " . $self->quote_object_name("${tb_name}${sub_tb_name}_$colname")
-												 . " ON ${tb_name}$sub_tb_name ($cindx);\n";
+												 . " ON " . $self->quote_object_name("${tb_name}$sub_tb_name") . " ($cindx);\n";
 							my $tb_name2 = $self->quote_object_name("${tb_name}$sub_tb_name");
 							# Reproduce indexes definition from the main table
 							my ($idx, $fts_idx) = $self->_create_indexes($table, 0, %{$self->{tables}{$table}{indexes}});
 							if ($idx || $fts_idx) {
 								$idx =~ s/$table/$tb_name2/igs;
 								$fts_idx =~ s/$table/$tb_name2/igs;
-								$create_table_index_tmp .= "-- Reproduce indexes that was defined on the parent table\n";
+								# remove indexes already created
+								$idx =~ s/CREATE [^;]+ \($cindx\);//;
+								$fts_idx =~ s/CREATE [^;]+ \($cindx\);//;
+								if ($idx || $fts_idx) {
+									$create_table_index_tmp .= "-- Reproduce indexes that was defined on the parent table\n";
+								}
 								$create_table_index_tmp .= "$idx\n" if ($idx);
 								$create_table_index_tmp .= "$fts_idx\n" if ($fts_idx);
 							}
@@ -6298,7 +6320,17 @@ BEGIN
 							if ($idx) {
 								$create_table_index_tmp .= "-- Reproduce unique indexes / pk that was defined on the parent table\n";
 								$idx =~ s/$table/$tb_name2/igs;
-								$create_table_index_tmp .= "$idx\n" if ($idx);
+								# remove indexes already created
+								$idx =~ s/CREATE [^;]+ \($cindx\);//;
+								$fts_idx =~ s/CREATE [^;]+ \($cindx\);//;
+								if ($idx) {
+									$create_table_index_tmp .= "$idx\n";
+									# Remove duplicate index with this one
+									if ($idx =~ /ALTER TABLE $tb_name2 ADD PRIMARY KEY (.*);/s) { 
+										my $collist = quotemeta($1);
+										$create_table_index_tmp =~ s/CREATE INDEX [^;]+ ON $tb_name2 $collist;//s;
+									}
+								}
 							}
 							if ($self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{type} eq 'LIST') {
 								if (!$fct) {
@@ -6357,7 +6389,7 @@ BEGIN
 						$create_table_tmp .= "CREATE TABLE " . $self->quote_object_name("$deftb$self->{subpartitions_default}{$table}{$part}")
 									. " () INHERITS ($table);\n";
 						$create_table_index_tmp .= "CREATE INDEX " . $self->quote_object_name("$deftb$self->{subpartitions_default}{$table}{$part}_$pos")
-									. " ON $deftb$self->{subpartitions_default}{$table}{$part} ($cindx);\n";
+									. " ON " . $self->quote_object_name("$deftb$self->{subpartitions_default}{$table}{$part}") . " ($cindx);\n";
 					} else {
 						$funct_cond .= qq{		ELSE
 			-- Raise an exception
@@ -7408,6 +7440,8 @@ sub _column_comments
 
 This function return SQL code to create indexes of a table
 and triggers to create for FTS indexes.
+
+- $indexonly mean no FTS index output
 
 =cut
 sub _create_indexes
