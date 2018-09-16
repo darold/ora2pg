@@ -6418,7 +6418,7 @@ BEGIN
 				}
 
 				if (!$sub_funct_cond) {
-					$funct_cond .= "\t$cond ( " . join(' AND ', @condition) . " ) THEN INSERT INTO $tb_name VALUES (NEW.*);\n";
+					$funct_cond .= "\t$cond ( " . join(' AND ', @condition) . " ) THEN INSERT INTO " . $self->quote_object_name($tb_name) . " VALUES (NEW.*);\n";
 				} else {
 					$sub_funct_cond = Ora2Pg::PLSQL::convert_plsql_code($self, $sub_funct_cond, %{$self->{data_type}});
 					$funct_cond .= "\t$cond ( " . join(' AND ', @condition) . " ) THEN \n";
