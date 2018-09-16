@@ -5358,6 +5358,7 @@ LANGUAGE plpgsql ;
 		}
 		my $dirprefix = '';
 		foreach my $tb_type (sort keys %{$self->{tablespaces}}) {
+			next if ($tb_type eq 'INDEX PARTITION' || $tb_type eq 'TABLE PARTITION');
 			# TYPE - TABLESPACE_NAME - FILEPATH - OBJECT_NAME
 			foreach my $tb_name (sort keys %{$self->{tablespaces}{$tb_type}}) {
 				foreach my $tb_path (sort keys %{$self->{tablespaces}{$tb_type}{$tb_name}}) {
