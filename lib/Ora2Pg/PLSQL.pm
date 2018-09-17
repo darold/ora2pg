@@ -129,6 +129,7 @@ $QUERY_TEST_SCORE = 0.1;
 	'TO_CHAR' => 0.1,
 	'ANYDATA' => 2,
 	'CONCAT' => 0.1,
+	'NSLSORT' => 1,
 );
 
 @ORA_FUNCTIONS = qw(
@@ -318,7 +319,7 @@ compatible code
 
 sub convert_plsql_code
 {
-        my ($class, $str, %data_type) = @_;
+        my ($class, $str, @strings) = @_;
 
 	return if ($str eq '');
 
@@ -388,16 +389,16 @@ sub convert_plsql_code
 			$class->{single_fct_call}{$k} = replace_oracle_function($class, $class->{single_fct_call}{$k});
 			if ($class->{single_fct_call}{$k} =~ /^CAST\s*\(/i) {
 				if (!$class->{is_mysql}) {
-					$class->{single_fct_call}{$k} = Ora2Pg::PLSQL::replace_sql_type($class->{single_fct_call}{$k}, $class->{pg_numeric_type}, $class->{default_numeric}, $class->{pg_integer_type}, %data_type);
+					$class->{single_fct_call}{$k} = Ora2Pg::PLSQL::replace_sql_type($class->{single_fct_call}{$k}, $class->{pg_numeric_type}, $class->{default_numeric}, $class->{pg_integer_type}, %{$class->{data_type}});
 				} else {
-					$class->{single_fct_call}{$k} = Ora2Pg::MySQL::replace_sql_type($class->{single_fct_call}{$k}, $class->{pg_numeric_type}, $class->{default_numeric}, $class->{pg_integer_type}, %data_type);
+					$class->{single_fct_call}{$k} = Ora2Pg::MySQL::replace_sql_type($class->{single_fct_call}{$k}, $class->{pg_numeric_type}, $class->{default_numeric}, $class->{pg_integer_type}, %{$class->{data_type}});
 				}
 			}
 			if ($class->{single_fct_call}{$k} =~ /^CAST\s*\(.*\%\%REPLACEFCT(\d+)\%\%/i) {
 				if (!$class->{is_mysql}) {
-					$class->{single_fct_call}{$1} = Ora2Pg::PLSQL::replace_sql_type($class->{single_fct_call}{$1}, $class->{pg_numeric_type}, $class->{default_numeric}, $class->{pg_integer_type}, %data_type);
+					$class->{single_fct_call}{$1} = Ora2Pg::PLSQL::replace_sql_type($class->{single_fct_call}{$1}, $class->{pg_numeric_type}, $class->{default_numeric}, $class->{pg_integer_type}, %{$class->{data_type}});
 				} else {
-					$class->{single_fct_call}{$1} = Ora2Pg::MySQL::replace_sql_type($class->{single_fct_call}{$1}, $class->{pg_numeric_type}, $class->{default_numeric}, $class->{pg_integer_type}, %data_type);
+					$class->{single_fct_call}{$1} = Ora2Pg::MySQL::replace_sql_type($class->{single_fct_call}{$1}, $class->{pg_numeric_type}, $class->{default_numeric}, $class->{pg_integer_type}, %{$class->{data_type}});
 				}
 			}
 		}
@@ -415,7 +416,7 @@ sub convert_plsql_code
 	}
 
 	# Apply code rewrite on other part of the code
-	$str = plsql_to_plpgsql($class, $str, %data_type);
+	$str = plsql_to_plpgsql($class, $str, @strings);
 
 	if ($class->{get_diagnostics}) {
 		if ($str !~ s/\b(DECLARE\s+)/$1$class->{get_diagnostics}\n/is) {
@@ -550,11 +551,11 @@ This function return a PLSQL code translated to PLPGSQL code
 
 sub plsql_to_plpgsql
 {
-        my ($class, $str, %data_type) = @_;
+        my ($class, $str, @strings) = @_;
 
 	return if ($str eq '');
 
-	return mysql_to_plpgsql($class, $str) if ($class->{is_mysql});
+	return mysql_to_plpgsql($class, $str, @strings) if ($class->{is_mysql});
 
 	my $field = '\s*([^\(\),]+)\s*';
 	my $num_field = '\s*([\d\.]+)\s*';
@@ -616,6 +617,21 @@ sub plsql_to_plpgsql
 	# Change NVL to COALESCE
 	$str =~ s/NVL\s*\(/coalesce(/is;
 	$str =~ s/NVL2\s*\($field,$field,$field\)/coalesce($1,$3)/is;
+
+	# NLSSORT to COLLATE
+	if ($str =~ /NLSSORT\($field,$field[\)]?/is) {
+		my $col = $1;
+		my $nls_sort = $2;
+		if ($nls_sort =~ s/\%\%string(\d+)\%\%/$strings[$1]/gs) {
+			$nls_sort =~ s/NLS_SORT=([^']+)[']*/COLLATE "$1"/is;
+			$str =~ s/NLSSORT\($field,$field[\)]?/$1 $nls_sort/is;
+		} elsif ($nls_sort =~ s/\?TEXTVALUE(\d+)\?/$class->{text_values}{$1}/s) {
+			$nls_sort =~ s/\s*'NLS_SORT=([^']+)'/COLLATE "$1"/is;
+			$str =~ s/NLSSORT\($field,$field[\)]?/$1 $nls_sort/is;
+		} else {
+			$str =~ s/NLSSORT\($field,['\s]*NLS_SORT=([^']+)[']*/$1 COLLATE "$2"/is;
+		}
+	}
 
 	# Replace EXEC function into variable, ex: EXEC :a := test(:r,1,2,3);
 	$str =~ s/\bEXEC\s+:([^\s:]+)\s*:=/SELECT INTO $2/igs;
@@ -765,9 +781,9 @@ sub plsql_to_plpgsql
 
 	# Replace type in sub block
 	if (!$class->{is_mysql}) {
-		$str =~ s/(BEGIN.*?DECLARE\s+)(.*?)(\s+BEGIN)/$1 . Ora2Pg::PLSQL::replace_sql_type($2, $class->{pg_numeric_type}, $class->{default_numeric}, $class->{pg_integer_type}, %data_type) . $3/iges;
+		$str =~ s/(BEGIN.*?DECLARE\s+)(.*?)(\s+BEGIN)/$1 . Ora2Pg::PLSQL::replace_sql_type($2, $class->{pg_numeric_type}, $class->{default_numeric}, $class->{pg_integer_type}, %{$class->{data_type}}) . $3/iges;
 	} else {
-		$str =~ s/(BEGIN.*?DECLARE\s+)(.*?)(\s+BEGIN)/$1 . Ora2Pg::MySQL::replace_sql_type($2, $class->{pg_numeric_type}, $class->{default_numeric}, $class->{pg_integer_type}, %data_type) . $3/iges;
+		$str =~ s/(BEGIN.*?DECLARE\s+)(.*?)(\s+BEGIN)/$1 . Ora2Pg::MySQL::replace_sql_type($2, $class->{pg_numeric_type}, $class->{default_numeric}, $class->{pg_integer_type}, %{$class->{data_type}}) . $3/iges;
 	}
 
 	# Remove any call to MDSYS schema in the code

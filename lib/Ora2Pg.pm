@@ -2537,7 +2537,7 @@ sub read_schema_from_file
 							}
 							$c_default =~ s/"//gs;
 							if ($self->{plsql_pgsql}) {
-								$c_default = Ora2Pg::PLSQL::convert_plsql_code($self, $c_default, %{$self->{data_type}});
+								$c_default = Ora2Pg::PLSQL::convert_plsql_code($self, $c_default);
 							}
 						}
 						if ($c_type =~ /date|timestamp/i && $c_default =~ /'0000-00-00/) {
@@ -4376,7 +4376,7 @@ LANGUAGE plpgsql ;
 			$self->_remove_comments(\$trig->[4]);
 			if (!$self->{pg_supports_insteadof} && $trig->[1] =~ /INSTEAD OF/) {
 				if ($self->{plsql_pgsql}) {
-					$trig->[4] = Ora2Pg::PLSQL::convert_plsql_code($self, $trig->[4], %{$self->{data_type}});
+					$trig->[4] = Ora2Pg::PLSQL::convert_plsql_code($self, $trig->[4]);
 					$self->_replace_declare_var(\$trig->[4]);
 				}
 				$sql_output .= "CREATE$self->{create_or_replace} RULE " . $self->quote_object_name($trig->[0])
@@ -4393,7 +4393,7 @@ LANGUAGE plpgsql ;
 				# Replace direct call of a stored procedure in triggers
 				if ($trig->[7] eq 'CALL') {
 					if ($self->{plsql_pgsql}) {
-						$trig->[4] = Ora2Pg::PLSQL::convert_plsql_code($self, $trig->[4], %{$self->{data_type}});
+						$trig->[4] = Ora2Pg::PLSQL::convert_plsql_code($self, $trig->[4]);
 						$self->_replace_declare_var(\$trig->[4]);
 					}
 					$trig->[4] = "BEGIN\nPERFORM $trig->[4];\nEND;";
@@ -4411,7 +4411,7 @@ LANGUAGE plpgsql ;
 							$trig->[4] .= ';' if ($trig->[4] !~ /;\s*$/s);
 							$trig->[4] = "BEGIN\n$trig->[4]\n$ret_kind\nEND;";
 						}
-						$trig->[4] = Ora2Pg::PLSQL::convert_plsql_code($self, $trig->[4], %{$self->{data_type}});
+						$trig->[4] = Ora2Pg::PLSQL::convert_plsql_code($self, $trig->[4]);
 						$self->_replace_declare_var(\$trig->[4]);
 
 						# When an exception statement is used enclosed everything
@@ -4471,7 +4471,7 @@ LANGUAGE plpgsql ;
 						$self->_remove_comments(\$trig->[5]);
 						$trig->[5] =~ s/"([^"]+)"/\L$1\E/gs if (!$self->{preserve_case});
 						if ($self->{plsql_pgsql}) {
-							$trig->[5] = Ora2Pg::PLSQL::convert_plsql_code($self, $trig->[5], %{$self->{data_type}});
+							$trig->[5] = Ora2Pg::PLSQL::convert_plsql_code($self, $trig->[5]);
 							$self->_replace_declare_var(\$trig->[5]);
 						}
 						$sql_output .= "\tWHEN ($trig->[5])\n";
@@ -4645,7 +4645,7 @@ LANGUAGE plpgsql ;
 		}
 		
 		foreach my $q (sort { $a <=> $b } keys %{$self->{queries}}) {
-			if ($self->{queries}{$q}{code} !~ /(SELECT|UPDATE|DELETE|INSERT|DROP|TRUNCATE)/is) {
+			if ($self->{queries}{$q}{code} !~ /(SELECT|UPDATE|DELETE|INSERT|DROP|TRUNCATE|CREATE(?:UNIQUE)? INDEX)/is) {
 				$self->{queries}{$q}{to_be_parsed} = 0;
 			} else {
 				$self->{queries}{$q}{to_be_parsed} = 1;
@@ -4662,7 +4662,7 @@ LANGUAGE plpgsql ;
 			if ($self->{queries}{$q}{to_be_parsed}) {
 				if ($self->{plsql_pgsql}) {
 					$self->_remove_comments(\$self->{queries}{$q}{code});
-					my $sql_q = Ora2Pg::PLSQL::convert_plsql_code($self, $self->{queries}{$q}{code}, %{$self->{data_type}});
+					my $sql_q = Ora2Pg::PLSQL::convert_plsql_code($self, $self->{queries}{$q}{code});
 					my $estimate = '';
 					if ($self->{estimate_cost}) {
 						my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($self, $sql_q, 'QUERY');
@@ -6098,27 +6098,27 @@ BEGIN
 							if (!$self->{pg_supports_partition}) {
 								if ($old_part eq '') {
 									$check_cond .= "\t$self->{partitions}{$table}{$pos}{info}[$i]->{column} < "
-										. Ora2Pg::PLSQL::convert_plsql_code($self, $self->{partitions}{$table}{$pos}{info}[$i]->{value}, %{$self->{data_type}});
+										. Ora2Pg::PLSQL::convert_plsql_code($self, $self->{partitions}{$table}{$pos}{info}[$i]->{value});
 								} else {
 									$check_cond .= "\t$self->{partitions}{$table}{$pos}{info}[$i]->{column} >= "
-										. Ora2Pg::PLSQL::convert_plsql_code($self, $self->{partitions}{$table}{$old_pos}{info}[$i]->{value}, %{$self->{data_type}})
+										. Ora2Pg::PLSQL::convert_plsql_code($self, $self->{partitions}{$table}{$old_pos}{info}[$i]->{value})
 										. " AND $self->{partitions}{$table}{$pos}{info}[$i]->{column} < "
-										. Ora2Pg::PLSQL::convert_plsql_code($self, $self->{partitions}{$table}{$pos}{info}[$i]->{value}, %{$self->{data_type}});
+										. Ora2Pg::PLSQL::convert_plsql_code($self, $self->{partitions}{$table}{$pos}{info}[$i]->{value});
 								}
 							} else {
 								if ($old_part eq '') {
 									$check_cond .= " FROM (MINVALUE) TO ("
-										. Ora2Pg::PLSQL::convert_plsql_code($self, $self->{partitions}{$table}{$pos}{info}[$i]->{value}, %{$self->{data_type}}) . ")";
+										. Ora2Pg::PLSQL::convert_plsql_code($self, $self->{partitions}{$table}{$pos}{info}[$i]->{value}) . ")";
 								} else {
 									$check_cond .= " FROM ("
-										. Ora2Pg::PLSQL::convert_plsql_code($self, $self->{partitions}{$table}{$old_pos}{info}[$i]->{value}, %{$self->{data_type}})
+										. Ora2Pg::PLSQL::convert_plsql_code($self, $self->{partitions}{$table}{$old_pos}{info}[$i]->{value})
 										. ") TO ("
-										. Ora2Pg::PLSQL::convert_plsql_code($self, $self->{partitions}{$table}{$pos}{info}[$i]->{value}, %{$self->{data_type}})
+										. Ora2Pg::PLSQL::convert_plsql_code($self, $self->{partitions}{$table}{$pos}{info}[$i]->{value})
 										.")";
 								}
 							}
 						} else {
-							my @values = split(/,\s/, Ora2Pg::PLSQL::convert_plsql_code($self, $self->{partitions}{$table}{$pos}{info}[$i]->{value}, %{$self->{data_type}}));
+							my @values = split(/,\s/, Ora2Pg::PLSQL::convert_plsql_code($self, $self->{partitions}{$table}{$pos}{info}[$i]->{value}));
 							if (!$self->{pg_supports_partition}) {
 								# multicolumn partitioning
 								$check_cond .= "\t$self->{partitions}{$table}{$pos}{info}[$i]->{column} < " .  $values[$i];
@@ -6151,7 +6151,7 @@ BEGIN
 					}
 					my $cindx = $self->{partitions}{$table}{$pos}{info}[$i]->{column} || '';
 					$cindx = lc($cindx) if (!$self->{preserve_case});
-					$cindx = Ora2Pg::PLSQL::convert_plsql_code($self, $cindx, %{$self->{data_type}});
+					$cindx = Ora2Pg::PLSQL::convert_plsql_code($self, $cindx);
 					my $has_hash_subpartition = 0;
 					if (exists $self->{subpartitions}{$table}{$part}) {
 						foreach my $p (sort {$a <=> $b} keys %{$self->{subpartitions}{$table}{$part}}) {
@@ -6206,21 +6206,21 @@ BEGIN
 					if ($self->{partitions_default}{$table} && ($create_table{$table}{index} !~ /ON $deftb$self->{partitions_default}{$table} /)) {
 						$cindx = $self->{partitions}{$table}{$pos}{info}[$i]->{column} || '';
 						$cindx = lc($cindx) if (!$self->{preserve_case});
-						$cindx = Ora2Pg::PLSQL::convert_plsql_code($self, $cindx, %{$self->{data_type}});
+						$cindx = Ora2Pg::PLSQL::convert_plsql_code($self, $cindx);
 						$create_table_index_tmp .= "CREATE INDEX " . $self->quote_object_name("$deftb$self->{partitions_default}{$table}_$colname") . " ON " . $self->quote_object_name("$deftb$self->{partitions_default}{$table}") . " ($cindx);\n";
 					}
 					push(@ind_col, $self->{partitions}{$table}{$pos}{info}[$i]->{column}) if (!grep(/^$self->{partitions}{$table}{$pos}{info}[$i]->{column}$/, @ind_col));
 					if ($self->{partitions}{$table}{$pos}{info}[$i]->{type} eq 'LIST') {
 						if (!$fct) {
-							push(@condition, "NEW.$self->{partitions}{$table}{$pos}{info}[$i]->{column} IN (" . Ora2Pg::PLSQL::convert_plsql_code($self, $self->{partitions}{$table}{$pos}{info}[$i]->{value}, %{$self->{data_type}}) . ")");
+							push(@condition, "NEW.$self->{partitions}{$table}{$pos}{info}[$i]->{column} IN (" . Ora2Pg::PLSQL::convert_plsql_code($self, $self->{partitions}{$table}{$pos}{info}[$i]->{value}) . ")");
 						} else {
-							push(@condition, "$fct(NEW.$colname) IN (" . Ora2Pg::PLSQL::convert_plsql_code($self, $self->{partitions}{$table}{$pos}{info}[$i]->{value}, %{$self->{data_type}}) . ")");
+							push(@condition, "$fct(NEW.$colname) IN (" . Ora2Pg::PLSQL::convert_plsql_code($self, $self->{partitions}{$table}{$pos}{info}[$i]->{value}) . ")");
 						}
 					} elsif ($self->{partitions}{$table}{$pos}{info}[$i]->{type} eq 'RANGE') {
 						if (!$fct) {
-							push(@condition, "NEW.$self->{partitions}{$table}{$pos}{info}[$i]->{column} < " . Ora2Pg::PLSQL::convert_plsql_code($self, $self->{partitions}{$table}{$pos}{info}[$i]->{value}, %{$self->{data_type}}));
+							push(@condition, "NEW.$self->{partitions}{$table}{$pos}{info}[$i]->{column} < " . Ora2Pg::PLSQL::convert_plsql_code($self, $self->{partitions}{$table}{$pos}{info}[$i]->{value}));
 						} else {
-							push(@condition, "$fct(NEW.$colname) < " . Ora2Pg::PLSQL::convert_plsql_code($self, $self->{partitions}{$table}{$pos}{info}[$i]->{value}, %{$self->{data_type}}));
+							push(@condition, "$fct(NEW.$colname) < " . Ora2Pg::PLSQL::convert_plsql_code($self, $self->{partitions}{$table}{$pos}{info}[$i]->{value}));
 						}
 					}
 					$owner = $self->{partitions}{$table}{$pos}{info}[$i]->{owner} || '';
@@ -6233,7 +6233,6 @@ BEGIN
 				}
 
 				if (!$self->{pg_supports_partition}) {
-					#$check_cond = Ora2Pg::PLSQL::convert_plsql_code($self, $check_cond, %{$self->{data_type}});
 					if (!exists $self->{subpartitions}{$table}{$part}) {
 						$check_cond .= ';' if ($self->{pg_supports_partition});
 						$create_table_tmp .= $check_cond . "\n";
@@ -6286,26 +6285,26 @@ BEGIN
 									if (!$self->{pg_supports_partition}) {
 										if ($sub_old_part eq '') {
 											$sub_check_cond_tmp .= "$self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{column} < "
-												. Ora2Pg::PLSQL::convert_plsql_code($self, $self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{value}, %{$self->{data_type}});
+												. Ora2Pg::PLSQL::convert_plsql_code($self, $self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{value});
 										} else {
 											$sub_check_cond_tmp .= "$self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{column} >= "
-												. Ora2Pg::PLSQL::convert_plsql_code($self, $self->{subpartitions}{$table}{$part}{$sub_old_pos}{info}[$i]->{value}, %{$self->{data_type}})
+												. Ora2Pg::PLSQL::convert_plsql_code($self, $self->{subpartitions}{$table}{$part}{$sub_old_pos}{info}[$i]->{value})
 												. " AND $self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{column} < "
-												. Ora2Pg::PLSQL::convert_plsql_code($self, $self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{value}, %{$self->{data_type}});
+												. Ora2Pg::PLSQL::convert_plsql_code($self, $self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{value});
 										}
 									} else {
 										if ($sub_old_part eq '') {
 											$sub_check_cond_tmp .= " FROM (MINVALUE) TO ("
-												. Ora2Pg::PLSQL::convert_plsql_code($self, $self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{value}, %{$self->{data_type}}) . ")";
+												. Ora2Pg::PLSQL::convert_plsql_code($self, $self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{value}) . ")";
 										} else {
 											$sub_check_cond_tmp .= " FROM ("
-												. Ora2Pg::PLSQL::convert_plsql_code($self, $self->{subpartitions}{$table}{$part}{$sub_old_pos}{info}[$i]->{value}, %{$self->{data_type}});
+												. Ora2Pg::PLSQL::convert_plsql_code($self, $self->{subpartitions}{$table}{$part}{$sub_old_pos}{info}[$i]->{value});
 											$sub_check_cond_tmp .= ") TO ("
-												. Ora2Pg::PLSQL::convert_plsql_code($self, $self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{value}, %{$self->{data_type}}) . ")";
+												. Ora2Pg::PLSQL::convert_plsql_code($self, $self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{value}) . ")";
 										}
 									}
 								} else {
-									my @values = split(/,\s/, Ora2Pg::PLSQL::convert_plsql_code($self, $self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{value}, %{$self->{data_type}}));
+									my @values = split(/,\s/, Ora2Pg::PLSQL::convert_plsql_code($self, $self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{value}));
 									if (!$self->{pg_supports_partition}) {
 										# multicolumn partitioning
 										$sub_check_cond_tmp .= "\t$self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{column} < " .  $values[$i];
@@ -6339,7 +6338,7 @@ BEGIN
 							}
 							$cindx = join(',', @ind_col);
 							$cindx = lc($cindx) if (!$self->{preserve_case});
-							$cindx = Ora2Pg::PLSQL::convert_plsql_code($self, $cindx, %{$self->{data_type}});
+							$cindx = Ora2Pg::PLSQL::convert_plsql_code($self, $cindx);
 							$create_table_index_tmp .= "CREATE INDEX " . $self->quote_object_name("${tb_name}_${sub_tb_name}_$colname")
 												 . " ON " . $self->quote_object_name("${tb_name}_$sub_tb_name") . " ($cindx);\n";
 							my $tb_name2 = $self->quote_object_name("${tb_name}_$sub_tb_name");
@@ -6376,20 +6375,19 @@ BEGIN
 							}
 							if ($self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{type} eq 'LIST') {
 								if (!$fct) {
-									push(@subcondition, "NEW.$self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{column} IN (" . Ora2Pg::PLSQL::convert_plsql_code($self, $self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{value}, %{$self->{data_type}}) . ")");
+									push(@subcondition, "NEW.$self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{column} IN (" . Ora2Pg::PLSQL::convert_plsql_code($self, $self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{value}) . ")");
 								} else {
-									push(@subcondition, "$fct(NEW.$colname) IN (" . Ora2Pg::PLSQL::convert_plsql_code($self, $self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{value}, %{$self->{data_type}}) . ")");
+									push(@subcondition, "$fct(NEW.$colname) IN (" . Ora2Pg::PLSQL::convert_plsql_code($self, $self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{value}) . ")");
 								}
 							} elsif ($self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{type} eq 'RANGE') {
 								if (!$fct) {
-									push(@subcondition, "NEW.$self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{column} < " . Ora2Pg::PLSQL::convert_plsql_code($self, $self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{value}, %{$self->{data_type}}));
+									push(@subcondition, "NEW.$self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{column} < " . Ora2Pg::PLSQL::convert_plsql_code($self, $self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{value}));
 								} else {
-									push(@subcondition, "$fct(NEW.$colname) < " . Ora2Pg::PLSQL::convert_plsql_code($self, $self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{value}, %{$self->{data_type}}));
+									push(@subcondition, "$fct(NEW.$colname) < " . Ora2Pg::PLSQL::convert_plsql_code($self, $self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{value}));
 								}
 							}
 							$owner = $self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{owner} || '';
 						}
-						#$sub_check_cond_tmp = Ora2Pg::PLSQL::convert_plsql_code($self, $sub_check_cond_tmp, %{$self->{data_type}});
 						if ($self->{pg_supports_partition}) {
 							$sub_check_cond_tmp .= ';';
 							$create_subtable_tmp .= "$sub_check_cond_tmp\n";
@@ -6421,7 +6419,7 @@ BEGIN
 				if (!$sub_funct_cond) {
 					$funct_cond .= "\t$cond ( " . join(' AND ', @condition) . " ) THEN INSERT INTO " . $self->quote_object_name($tb_name) . " VALUES (NEW.*);\n";
 				} else {
-					$sub_funct_cond = Ora2Pg::PLSQL::convert_plsql_code($self, $sub_funct_cond, %{$self->{data_type}});
+					$sub_funct_cond = Ora2Pg::PLSQL::convert_plsql_code($self, $sub_funct_cond);
 					$funct_cond .= "\t$cond ( " . join(' AND ', @condition) . " ) THEN \n";
 					$funct_cond .= $sub_funct_cond;
 					if ($self->{subpartitions_default}{$table}{$part}) {
@@ -6472,7 +6470,7 @@ END;
 \$\$
 LANGUAGE plpgsql;
 };
-					$function = Ora2Pg::PLSQL::convert_plsql_code($self, $function, %{$self->{data_type}});
+					$function = Ora2Pg::PLSQL::convert_plsql_code($self, $function);
 				}
 			}
 
@@ -6668,7 +6666,7 @@ CREATE TRIGGER ${table}_trigger_insert
 		}
 		if (exists $self->{tables}{$table}{table_as}) {
 			if ($self->{plsql_pgsql}) {
-				$self->{tables}{$table}{table_as} = Ora2Pg::PLSQL::convert_plsql_code($self, $self->{tables}{$table}{table_as}, %{$self->{data_type}});
+				$self->{tables}{$table}{table_as} = Ora2Pg::PLSQL::convert_plsql_code($self, $self->{tables}{$table}{table_as});
 			}
 			my $withoid = _make_WITH($self->{with_oid}, $self->{tables}{$tbname}{table_info});
 			$sql_output .= "\nCREATE $obj_type $tbname $withoid AS $self->{tables}{$table}{table_as};\n";
@@ -6830,7 +6828,7 @@ CREATE TRIGGER ${table}_trigger_insert
 					$f->[4] =~ s/\s+$//;
 					$f->[4] =~ s/"//gs;
 					if ($self->{plsql_pgsql}) {
-						$f->[4] = Ora2Pg::PLSQL::convert_plsql_code($self, $f->[4], %{$self->{data_type}});
+						$f->[4] = Ora2Pg::PLSQL::convert_plsql_code($self, $f->[4]);
 					}
 					# Check if this is a virtual column before proceeding to default value export
 					if ($self->{tables}{$table}{column_info}{$k}[10] eq 'YES') {
@@ -7537,7 +7535,7 @@ sub _create_indexes
 				$i++;
 			}
 			if ($self->{plsql_pgsql}) {
-				$indexes{$idx}->[$j] = Ora2Pg::PLSQL::convert_plsql_code($self, $indexes{$idx}->[$j], %{$self->{data_type}});
+				$indexes{$idx}->[$j] = Ora2Pg::PLSQL::convert_plsql_code($self, $indexes{$idx}->[$j], @strings);
 			}
 		}
 
@@ -8052,7 +8050,7 @@ sub _create_check_constraint
 				}
 			}
 			if ($self->{plsql_pgsql}) {
-				$chkconstraint = Ora2Pg::PLSQL::convert_plsql_code($self, $chkconstraint, %{$self->{data_type}});
+				$chkconstraint = Ora2Pg::PLSQL::convert_plsql_code($self, $chkconstraint);
 			}
 			foreach my $c (@$field_name) {
 				# Force lower case
@@ -12750,7 +12748,7 @@ END;
 		$fct_detail{code} =~ s/^BEGIN\b//is;
 		$code_part .= "BEGIN".$fct_detail{code};
 		# Replace PL/SQL code into PL/PGSQL similar code
-		$function .= Ora2Pg::PLSQL::convert_plsql_code($self, $code_part, %{$self->{data_type}});
+		$function .= Ora2Pg::PLSQL::convert_plsql_code($self, $code_part);
 		$function .= ';' if ($function !~ /END\s*;\s*$/is && $fct_detail{code} !~ /\%ORA2PG_COMMENT\d+\%\s*$/);
 		$function .= "\n\$body\$\nLANGUAGE PLPGSQL\n";
 
@@ -12947,7 +12945,7 @@ sub _format_view
 	}
 
 	if ($self->{plsql_pgsql}) {
-			$sqlstr = Ora2Pg::PLSQL::convert_plsql_code($self, $sqlstr, %{$self->{data_type}});
+			$sqlstr = Ora2Pg::PLSQL::convert_plsql_code($self, $sqlstr);
 	}
 
 	$self->_restore_comments(\$sqlstr);
@@ -14550,7 +14548,7 @@ sub _show_infos
 			my %queries = $self->_get_audit_queries();
 			foreach my $q (sort {$a <=> $b} keys %queries) {
 				$report_info{'Objects'}{'QUERY'}{'number'}++;
-				my $sql_q = Ora2Pg::PLSQL::convert_plsql_code($self, $queries{$q}, %{$self->{data_type}});
+				my $sql_q = Ora2Pg::PLSQL::convert_plsql_code($self, $queries{$q});
 				if ($self->{estimate_cost}) {
 					my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($self, $sql_q, 'QUERY');
 					$cost += $Ora2Pg::PLSQL::OBJECT_SCORE{'QUERY'};
@@ -16525,7 +16523,7 @@ sub _lookup_check_constraint
 				}
 			}
 			if ($self->{plsql_pgsql}) {
-				$chkconstraint = Ora2Pg::PLSQL::convert_plsql_code($self, $chkconstraint, %{$self->{data_type}});
+				$chkconstraint = Ora2Pg::PLSQL::convert_plsql_code($self, $chkconstraint);
 			}
 			next if ($nonotnull && ($chkconstraint =~ /IS NOT NULL/));
 			foreach my $c (@$field_name) {
@@ -17762,7 +17760,7 @@ sub register_global_variable
 	$glob_vars = Ora2Pg::PLSQL::replace_sql_type($glob_vars, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type}, %{$self->{data_type}});
 
 	# Replace PL/SQL code into PL/PGSQL similar code
-	$glob_vars = Ora2Pg::PLSQL::convert_plsql_code($self, $glob_vars, %{$self->{data_type}});
+	$glob_vars = Ora2Pg::PLSQL::convert_plsql_code($self, $glob_vars);
 
 	my @vars = split(/\s*(\%ORA2PG_COMMENT\d+\%|;)\s*/, $glob_vars);
 	map { s/^\s+//; s/\s+$//; } @vars;
