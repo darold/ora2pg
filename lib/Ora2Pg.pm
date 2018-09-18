@@ -6850,11 +6850,11 @@ CREATE TRIGGER ${table}_trigger_insert
 										last;
 									}
 								}
-								 $sql_output .= " DEFAULT " . $f->[4] if (!$found);
+								$sql_output .= " DEFAULT " . $f->[4] if (!$found);
 							} else {
 								if (($f->[4] !~ /^'/) && ($f->[4] =~ /[^\d\.]/)) {
 									if ($type =~ /CHAR|TEXT|ENUM/i) {
-										$f->[4] = "'$f->[4]'" if ($f->[4] !~ /'/);
+										$f->[4] = "'$f->[4]'" if ($f->[4] !~ /[']/ && $f->[4] !~ /\(.*\)/);
 									} elsif ($type =~ /DATE|TIME/i) {
 										if ($f->[4] =~ /0000-00-00/) {
 											if ($self->{replace_zero_date}) {
