@@ -803,7 +803,10 @@ sub setCoordicates
 	$end = $#{$coords} + 1 if ($end <= 0);
 
 	for (my $i = $start - 1; $i < $end && ($i <= $#{$coords}); $i++) {
-		$str .= join(' ', @{$coords->[$i]}) . ', ';
+		my $coordinates = join(' ', @{$coords->[$i]});
+		if ($coordinates =~ /\d/) {
+			$str .= "$coordinates, ";
+		}
 	}
 	$str =~ s/, $//;
 

@@ -11535,7 +11535,7 @@ sub format_data_row
 {
 	my ($self, $row, $data_types, $action, $src_data_types, $custom_types, $table, $colcond, $sprep) = @_;
 
-	for (my $idx = 0; $idx < scalar(@$data_types); $idx++) {
+	for (my $idx = 0; $idx <= $#{$data_types}; $idx++) {
 		my $data_type = $data_types->[$idx] || '';
 		if ($row->[$idx] && $src_data_types->[$idx] =~ /GEOMETRY/) {
 			if ($self->{type} ne 'INSERT') {
@@ -11543,7 +11543,7 @@ sub format_data_row
 					use Ora2Pg::GEOM;
 					my $geom_obj = new Ora2Pg::GEOM('srid' => $self->{spatial_srid}{$table}->[$idx]);
 					$row->[$idx] = $geom_obj->parse_sdo_geometry($row->[$idx]);
-					$row->[$idx]  = 'SRID=' . $self->{spatial_srid}{$table}->[$idx] . ';' . $row->[$idx];
+					$row->[$idx] = 'SRID=' . $self->{spatial_srid}{$table}->[$idx] . ';' . $row->[$idx];
 				} elsif ($self->{geometry_extract_type} eq 'WKB') {
 					if ($self->{is_mysql}) {
 						$row->[$idx] =~ s/^SRID=(\d+);//;
@@ -11637,7 +11637,7 @@ sub set_custom_type_value
 			for (my $j = 0; $j <= $#{$col_ref->[$i]}; $j++) {
 
 				# Look for data based on custom type to replace the reference by the value
-				if ($col_ref->[$i][$j] =~ /^(?!(?!)\x{100})ARRAY\(0x/) {
+				if ($col_ref->[$i][$j] =~ /^(?!(?!)\x{100})ARRAY\(0x/ && $user_type->{src_types}[$i][$j] !~ /geometry/i) {
 					my $dtype = uc($user_type->{src_types}[$i][$j]) || '';
 					$dtype =~ s/\(.*//; # remove any precision
 					my $utype = {};
@@ -13499,7 +13499,7 @@ sub _extract_data
 				for (my $j = 0; $j <= $#$stt; $j++) {
 
 					# Look for data based on custom type to replace the reference by the value
-					if ($row[$j] =~ /^(?!(?!)\x{100})ARRAY\(0x/) {
+					if ($row[$j] =~ /^(?!(?!)\x{100})ARRAY\(0x/ && $stt->[$j] !~ /geometry/i) {
 
 						my $data_type = uc($stt->[$j]) || '';
 						$data_type =~ s/\(.*//; # remove any precision
