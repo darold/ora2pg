@@ -209,6 +209,12 @@ COMPILE_SCHEMA	0
 #	MVIEW		Export materialized view as snapshot refresh view
 #       QUERY		Convert Oracle SQL queries from a file.
 #       KETTLE		Generate XML ktr template files to be used by Kettle.
+#       DBLINK		Generate oracle foreign data wrapper server to use as dblink.
+#       SYNONYM		Export Oracle's synonyms as views on other schema's objects.
+#       DIRECTORY	Export Oracle's directories as external_file extension objects.
+#       LOAD		Dispatch a list of queries over multiple PostgreSQl connections.
+#       TEST		perform a diff between Oracle and PostgreSQL database.
+#       TEST_VIEW	perform a count on both side of rows returned by views
 
 TYPE		TABLE
 

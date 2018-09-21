@@ -718,6 +718,8 @@ Here are the different values of the TYPE directive, default is TABLE:
 	- DIRECTORY: Export Oracle's directories as external_file extension objects.
 	- LOAD: Dispatch a list of queries over multiple PostgreSQl connections.
 	- TEST: perform a diff between Oracle and PostgreSQL database.
+	- TEST_VIEW: perform a count on both side of rows returned by views
+
 
 Only one type of export can be perform at the same time so the TYPE directive
 must be unique. If you have more than one only the last found in the file will
