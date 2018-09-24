@@ -6058,6 +6058,7 @@ BEGIN
 			my $old_part = '';
 			my $owner = '';
 			foreach my $pos (sort {$a <=> $b} keys %{$self->{partitions}{$table}}) {
+				print STDERR "PARTITION: $table :: $pos :: $self->{partitions}{$table}{$pos}{name}\n";
 				next if (!$self->{partitions}{$table}{$pos}{name});
 				my $part = $self->{partitions}{$table}{$pos}{name};
 				if (!$self->{quiet} && !$self->{debug}) {
@@ -6076,8 +6077,10 @@ BEGIN
 					}
 				}
 				if (!$self->{pg_supports_partition}) {
-					$create_table_tmp .= "CREATE TABLE " . $self->quote_object_name($tb_name)
-									. " ( CHECK (\n";
+					if (!exists $self->{subpartitions}{$table}{$part}) {
+						$create_table_tmp .= "CREATE TABLE " . $self->quote_object_name($tb_name)
+										. " ( CHECK (\n";
+					}
 				} else {
 					$create_table_tmp .= "CREATE TABLE " . $self->quote_object_name($tb_name)
 									. " PARTITION OF \L$table\E\n";
@@ -6129,6 +6132,7 @@ BEGIN
 					} elsif ($self->{partitions}{$table}{$pos}{info}[$i]->{type} eq 'HASH') {
 						if (!$self->{pg_supports_partition}) {
 							print STDERR "WARNING: Hash partitioning not supported, skipping partitioning of table $table\n";
+							$function = '';
 							$create_table_tmp = '';
 							$create_table_index_tmp = '';
 							next;
@@ -6226,29 +6230,28 @@ BEGIN
 					$owner = $self->{partitions}{$table}{$pos}{info}[$i]->{owner} || '';
 				}
 				# Go to next partition if this one is of type HASH partitioning
-				if (!$create_table_tmp) {
-					$old_part = $part;
-					$old_pos = $pos;
-					next;
-				}
+#				if ($self->{pg_supports_partition} && !$create_table_tmp) {
+#					$old_part = $part;
+#					$old_pos = $pos;
+#					next;
+#				}
 
 				if (!$self->{pg_supports_partition}) {
-					if (!exists $self->{subpartitions}{$table}{$part}) {
-						$check_cond .= ';' if ($self->{pg_supports_partition});
-						$create_table_tmp .= $check_cond . "\n";
-						$create_table_tmp .= ") ) INHERITS ($table);\n" if (!$self->{pg_supports_partition});
-						$check_cond = '';
-					}
-					$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
-					if ($owner) {
-						$create_table_tmp .= "ALTER TABLE " . $self->quote_object_name($tb_name)
-											. " OWNER TO " . $self->quote_object_name($owner) . ";\n";
+					if ($self->{partitions}{$table}{$pos}{info}[$i]->{type} ne 'HASH') {
+						if (!exists $self->{subpartitions}{$table}{$part}) {
+							$create_table_tmp .= $check_cond . "\n";
+							$create_table_tmp .= ") ) INHERITS ($table);\n";
+						}
+						$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
+						if ($owner) {
+							$create_table_tmp .= "ALTER TABLE " . $self->quote_object_name($tb_name)
+												. " OWNER TO " . $self->quote_object_name($owner) . ";\n";
+						}
 					}
 				} else {
 					$create_table_tmp .= $check_cond;
 					$create_table_tmp .= "\nPARTITION BY " . $self->{subpartitions_list}{"\L$table\E"}{"\L$part\E"}{type} . " (" . lc(join(',', @{$self->{subpartitions_list}{"\L$table\E"}{"\L$part\E"}{columns}})) . ")" if (exists $self->{subpartitions_list}{"\L$table\E"}{"\L$part\E"}{type});
 					$create_table_tmp .= ";\n";
-					$check_cond = '';
 				}
 				# Add subpartition if any defined on Oracle
 				my $sub_funct_cond = '';
@@ -6259,11 +6262,14 @@ BEGIN
 					my $create_subtable_tmp = '';
 					foreach my $p (sort {$a <=> $b} keys %{$self->{subpartitions}{$table}{$part}}) {
 						my $subpart = $self->{subpartitions}{$table}{$part}{$p}{name};
+						my $sub_tb_name = $subpart;
+						$sub_tb_name =~ s/^[^\.]+\.//; # remove schema part if any
+						if ($self->{prefix_partition}) {
+							$sub_tb_name = "${tb_name}_$sub_tb_name";
+						}
 						if (!$self->{quiet} && !$self->{debug}) {
 							print STDERR $self->progress_bar($ipos++, $total_partition, 25, '=', 'subpartitions', "generating $table/$part/$subpart" ), "\r";
 						}
-						my $sub_tb_name = $subpart;
-						$sub_tb_name =~ s/^[^\.]+\.//; # remove schema part if any
 						$create_subtable_tmp .= "CREATE TABLE " . $self->quote_object_name($sub_tb_name);
 						if (!$self->{pg_supports_partition}) {
 							$create_subtable_tmp .= " ( CHECK (\n";
@@ -6339,9 +6345,9 @@ BEGIN
 							$cindx = join(',', @ind_col);
 							$cindx = lc($cindx) if (!$self->{preserve_case});
 							$cindx = Ora2Pg::PLSQL::convert_plsql_code($self, $cindx);
-							$create_table_index_tmp .= "CREATE INDEX " . $self->quote_object_name("${tb_name}_${sub_tb_name}_$colname")
-												 . " ON " . $self->quote_object_name("${tb_name}_$sub_tb_name") . " ($cindx);\n";
-							my $tb_name2 = $self->quote_object_name("${tb_name}_$sub_tb_name");
+							$create_table_index_tmp .= "CREATE INDEX " . $self->quote_object_name("${sub_tb_name}_$colname")
+												 . " ON " . $self->quote_object_name("$sub_tb_name") . " ($cindx);\n";
+							my $tb_name2 = $self->quote_object_name("$sub_tb_name");
 							# Reproduce indexes definition from the main table
 							my ($idx, $fts_idx) = $self->_create_indexes($table, 0, %{$self->{tables}{$table}{indexes}});
 							if ($idx || $fts_idx) {
@@ -6395,16 +6401,15 @@ BEGIN
 							$create_subtable_tmp .= $check_cond;
 							$create_subtable_tmp .= " AND $sub_check_cond_tmp" if ($sub_check_cond_tmp);
 							$create_subtable_tmp .= "\n) ) INHERITS ($table);\n";
-							$check_cond = '';
 						}
 						$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
 						if ($owner) {
-							$create_subtable_tmp .= "ALTER TABLE " . $self->quote_object_name("${tb_name}_$sub_tb_name")
+							$create_subtable_tmp .= "ALTER TABLE " . $self->quote_object_name("$sub_tb_name")
 											. " OWNER TO " . $self->quote_object_name($owner) . ";\n";
 						}
 						if ($#subcondition >= 0) {
 							$sub_funct_cond_tmp .= "\t\t$sub_cond ( " . join(' AND ', @subcondition) . " ) THEN INSERT INTO "
-										. $self->quote_object_name("${tb_name}_$sub_tb_name") . " VALUES (NEW.*);\n";
+										. $self->quote_object_name("$sub_tb_name") . " VALUES (NEW.*);\n";
 							$sub_cond = 'ELSIF';
 						}
 						$sub_old_part = $part;
@@ -6415,33 +6420,52 @@ BEGIN
 						$sub_funct_cond = $sub_funct_cond_tmp;
 					}
 				}
+				$check_cond = '';
 
-				if (!$sub_funct_cond) {
-					$funct_cond .= "\t$cond ( " . join(' AND ', @condition) . " ) THEN INSERT INTO " . $self->quote_object_name($tb_name) . " VALUES (NEW.*);\n";
-				} else {
-					$sub_funct_cond = Ora2Pg::PLSQL::convert_plsql_code($self, $sub_funct_cond);
-					$funct_cond .= "\t$cond ( " . join(' AND ', @condition) . " ) THEN \n";
-					$funct_cond .= $sub_funct_cond;
-					if ($self->{subpartitions_default}{$table}{$part}) {
-						my $deftb = '';
-						$deftb = "${table}_" if ($self->{prefix_partition});
-						$funct_cond .= "\t\tELSE INSERT INTO " . $self->quote_object_name("$deftb$self->{subpartitions_default}{$table}{$part}")
-									. " VALUES (NEW.*);\n\t\tEND IF;\n";
-						$create_table_tmp .= "CREATE TABLE " . $self->quote_object_name("$deftb$self->{subpartitions_default}{$table}{$part}")
-									. " () INHERITS ($table);\n";
-						$create_table_index_tmp .= "CREATE INDEX " . $self->quote_object_name("$deftb$self->{subpartitions_default}{$table}{$part}_$pos")
-									. " ON " . $self->quote_object_name("$deftb$self->{subpartitions_default}{$table}{$part}") . " ($cindx);\n";
+				if ($#condition >= 0) {
+					if (!$sub_funct_cond) {
+						$funct_cond .= "\t$cond ( " . join(' AND ', @condition) . " ) THEN INSERT INTO " . $self->quote_object_name($tb_name) . " VALUES (NEW.*);\n";
 					} else {
-						$funct_cond .= qq{		ELSE
-			-- Raise an exception
-			RAISE EXCEPTION 'Value out of range in subpartition. Fix the ${table}_insert_trigger() function!';
-};
-						$funct_cond .= "\t\tEND IF;\n";
+						if (!$self->{pg_supports_partition}) {
+							$sub_funct_cond = Ora2Pg::PLSQL::convert_plsql_code($self, $sub_funct_cond);
+							$funct_cond .= "\t$cond ( " . join(' AND ', @condition) . " ) THEN \n";
+							$funct_cond .= $sub_funct_cond;
+							if (exists $self->{subpartitions_default}{$table}{$part}) {
+								my $deftb = '';
+								$deftb = "${table}_" if ($self->{prefix_partition});
+								$funct_cond .= "\t\tELSE INSERT INTO " . $self->quote_object_name("$deftb$self->{subpartitions_default}{$table}{$part}")
+											. " VALUES (NEW.*);\n\t\tEND IF;\n";
+								$create_table_tmp .= "CREATE TABLE " . $self->quote_object_name("$deftb$self->{subpartitions_default}{$table}{$part}")
+											. " () INHERITS ($table);\n";
+								$create_table_index_tmp .= "CREATE INDEX " . $self->quote_object_name("$deftb$self->{subpartitions_default}{$table}{$part}_$pos")
+											. " ON " . $self->quote_object_name("$deftb$self->{subpartitions_default}{$table}{$part}") . " ($cindx);\n";
+							} else {
+								$funct_cond .= qq{		ELSE
+					-- Raise an exception
+					RAISE EXCEPTION 'Value out of range in subpartition. Fix the ${table}_insert_trigger() function!';
+		};
+								$funct_cond .= "\t\tEND IF;\n";
+							}
+
+						# With default partition just add default and continue
+						} elsif (exists $self->{subpartitions_default}{$table}{$part}) {
+
+							my $tb_name = $self->{subpartitions_default}{$table}{$part};
+							if ($self->{prefix_partition}) {
+								$tb_name = $table . "_" . $self->{subpartitions_default}{$table}{$part};
+							} elsif ($self->{export_schema} && !$self->{schema} && ($table =~ /^([^\.]+)\./)) {
+								$tb_name =  $1 . '.' . $self->{subpartitions_default}{$table}{$part};
+							}
+							$create_table_tmp .= "CREATE TABLE " . $self->quote_object_name($tb_name)
+										. " PARTITION OF \L$table\E\n";
+							$create_table_tmp .= "FOR VALUES DEFAULT;\n";
+						}
+
+						if ($self->{subpartitions_default}{$table}{$part} && ($create_table{$table}{index} !~ /ON $self->{subpartitions_default}{$table}{$part} /)) {
+						}
 					}
-					if ($self->{subpartitions_default}{$table}{$part} && ($create_table{$table}{index} !~ /ON $self->{subpartitions_default}{$table}{$part} /)) {
-					}
+					$cond = 'ELSIF';
 				}
-				$cond = 'ELSIF';
 				$old_part = $part;
 				$old_pos = $pos;
 				$create_table{$table}{table} .= $create_table_tmp;
@@ -6457,7 +6481,7 @@ BEGIN
 						$function .= $funct_cond . qq{	ELSE
                 INSERT INTO $pname VALUES (NEW.*);
 };
-					} else {
+					} elsif ($function) {
 						$function .= $funct_cond . qq{	ELSE
                 -- Raise an exception
                 RAISE EXCEPTION 'Value out of range in partition. Fix the ${table}_insert_trigger() function!';
@@ -6469,8 +6493,25 @@ BEGIN
 END;
 \$\$
 LANGUAGE plpgsql;
-};
+} if ($function);
 					$function = Ora2Pg::PLSQL::convert_plsql_code($self, $function);
+				} else {
+					# With default partition just add default and continue
+					if (exists $self->{partitions_default}{$table}) {
+						my $tb_name = '';
+						if ($self->{prefix_partition}) {
+							$tb_name = $table . "_" . $self->{partitions_default}{$table};
+						} else {
+							if ($self->{export_schema} && !$self->{schema} && ($table =~ /^([^\.]+)\./)) {
+								$tb_name =  $1 . '.' . $self->{partitions_default}{$table};
+							} else {
+								$tb_name =  $self->{partitions_default}{$table};
+							}
+						}
+						$create_table{$table}{table} .= "CREATE TABLE " . $self->quote_object_name($tb_name)
+									. " PARTITION OF \L$table\E\n";
+						$create_table{$table}{table} .= "FOR VALUES DEFAULT;\n";
+					}
 				}
 			}
 
@@ -6488,7 +6529,7 @@ $create_table{$table}{table}
 				my $defname = $self->{partitions_default}{$table};
 				$defname = $table . '_' .  $defname if ($self->{prefix_partition});
 				$defname = $self->quote_object_name($defname);
-				if (!$self->{pg_supports_partition}) {
+				if (!$self->{pg_supports_partition} && $function) {
 					$sql_output .= qq{
 -- Create default table, where datas are inserted if no condition match
 CREATE TABLE $defname () INHERITS ($tb);
