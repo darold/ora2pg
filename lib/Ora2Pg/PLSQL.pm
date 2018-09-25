@@ -971,7 +971,13 @@ sub perform_replacement
 			}
 		}
 	}
-	$str =~ s/\bCALL\s+PERFORM/PERFORM/igs;
+
+	# Fix call to procedure changed above
+	if ($class->{pg_supports_procedure}) {
+		$str =~ s/\bCALL\s+PERFORM/CALL/igs;
+	} else {
+		$str =~ s/\bCALL\s+PERFORM/PERFORM/igs;
+	}
 
 	return $str;
 }
@@ -2401,8 +2407,10 @@ sub mysql_to_plpgsql
 	# Rewrite direct call to function without out parameters using PERFORM
 	$str = perform_replacement($class, $str);
 
-	# Remove CALL from all statement
-	$str =~ s/\bCALL\s+/$1/igs;
+	# Remove CALL from all statements if not supported
+	if (!$class->{pg_supports_procedure}) {
+		$str =~ s/\bCALL\s+//igs;
+	}
 
 	return $str;
 }
