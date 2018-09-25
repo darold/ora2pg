@@ -2024,6 +2024,10 @@ CONFIGURATION
         must be imported after data import otherwise sequence will be kept
         to start value.
 
+    PG_SUPPORTS_PROCEDURE
+        PostgreSQL v11 adds support of PROCEDURE, enable it if you use such
+        version.
+
     BITMAP_AS_GIN
         Use btree_gin extension to create bitmap like index with pg >= 9.4
         You will need to create the extension by yourself: create extension

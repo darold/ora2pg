@@ -1216,6 +1216,9 @@ PG_SUPPORTS_NAMED_OPERATOR		1
 # be imported after data import otherwise sequence will be kept to start value.
 PG_SUPPORTS_IDENTITY	0
 
+# PostgreSQL v11 adds support of PROCEDURE, enable it if you use such version.
+PG_SUPPORTS_PROCEDURE	0
+
 #------------------------------------------------------------------------------
 # SPATIAL SECTION (Control spatial geometry export)
 #------------------------------------------------------------------------------

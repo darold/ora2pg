@@ -2093,6 +2093,10 @@ with a embedded function to update the associated sequences with the restart
 value set to "SELECT max(colname)+1 FROM tablename". Of course this file must
 be imported after data import otherwise sequence will be kept to start value.
 
+=item PG_SUPPORTS_PROCEDURE
+
+PostgreSQL v11 adds support of PROCEDURE, enable it if you use such version.
+
 =item BITMAP_AS_GIN
 
 Use btree_gin extension to create bitmap like index with pg >= 9.4
