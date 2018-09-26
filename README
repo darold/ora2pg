@@ -151,6 +151,18 @@ INSTALLATION
     directory and the ora2pg.conf file as well as all documentation files
     into C:\ora2pg\
 
+    To install ora2pg in a different directory than the default one, simply
+    use this command:
+
+            perl Makefile.PL PREFIX=<your_install_dir>
+            make && make install
+
+    then set PERL5LIB to the path to your installation directory before
+    using Ora2Pg.
+
+            export PERL5LIB=<your_install_dir>
+            ora2pg -c config/ora2pg.conf -t TABLE -b outdir/
+
   Packaging
     If you want to build the binary package for your preferred Linux
     distribution take a look at the packaging/ directory of the source
@@ -1992,7 +2004,7 @@ CONFIGURATION
     PG_SUPPORTS_PARTITION
         PostgreSQL version prior to 10.0 do not have native partitioning.
         Enable this directive if you want to use declarative partitioning.
-        Disable by default.
+        Enable by default.
 
     PG_SUPPORTS_SUBSTR
         Some versions of PostgreSQL like Redshift doesn't support substr()
@@ -2022,7 +2034,7 @@ CONFIGURATION
         function to update the associated sequences with the restart value
         set to "SELECT max(colname)+1 FROM tablename". Of course this file
         must be imported after data import otherwise sequence will be kept
-        to start value.
+        to start value. Enabled by default.
 
     PG_SUPPORTS_PROCEDURE
         PostgreSQL v11 adds support of PROCEDURE, enable it if you use such

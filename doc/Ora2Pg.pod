@@ -149,6 +149,17 @@ This will install scripts and libraries into your Perl site installation
 directory and the ora2pg.conf file as well as all documentation files
 into C:\ora2pg\
 
+To install ora2pg in a different directory than the default one, simply
+use this command:
+
+	perl Makefile.PL PREFIX=<your_install_dir>
+	make && make install
+
+then set PERL5LIB to the path to your installation directory before using
+Ora2Pg.
+
+	export PERL5LIB=<your_install_dir>
+	ora2pg -c config/ora2pg.conf -t TABLE -b outdir/
 
 =head2 Packaging
 
@@ -2059,7 +2070,7 @@ Enabled by default.
 
 PostgreSQL version prior to 10.0 do not have native partitioning.
 Enable this directive if you want to use declarative partitioning.
-Disable by default.
+Enable by default.
 
 =item PG_SUPPORTS_SUBSTR
 
@@ -2092,6 +2103,7 @@ Additionally in both cases, Ora2Pg will create a file AUTOINCREMENT_output.sql
 with a embedded function to update the associated sequences with the restart
 value set to "SELECT max(colname)+1 FROM tablename". Of course this file must
 be imported after data import otherwise sequence will be kept to start value.
+Enabled by default.
 
 =item PG_SUPPORTS_PROCEDURE
 
