@@ -1280,8 +1280,12 @@ sub _init
 	if ($self->{pg_supports_named_operator} eq '') {
 		$self->{pg_supports_named_operator} = 1;
 	}
-	$self->{pg_supports_partition} ||= 0;
-	$self->{pg_supports_identity}  ||= 0;
+	if ($self->{pg_supports_partition} eq '') {
+		$self->{pg_supports_partition} = 1;
+	}
+	if ($self->{pg_supports_identity} eq '') {
+		$self->{pg_supports_identity} = 1;
+	}
 	$self->{pg_supports_procedure} ||= 0;
 
 	$self->{pg_background} ||= 0;
