@@ -1146,7 +1146,7 @@ HUMAN_DAYS_LIMIT	5
 #------------------------------------------------------------------------------
 
 # Allow support of WHEN clause in trigger definition PG>=9.0
-PG_SUPPORTS_WHEN		1
+PG_SUPPORTS_WHEN	1
 
 # Allow support of INSTEAD OF in triggers definition PG>=9.1
 PG_SUPPORTS_INSTEADOF	1
@@ -1171,7 +1171,7 @@ PG_SUPPORTS_LATERAL	1
 
 # PostgreSQL version prior to 10.0 do not have native partitioning.
 # Enable this directive if you want to use declarative partitioning.
-PG_SUPPORTS_PARTITION	0
+PG_SUPPORTS_PARTITION	1
 
 # Use btree_gin extenstion to create bitmap like index with pg >= 9.4
 # You will need to create the extension by yourself:
@@ -1193,11 +1193,11 @@ PG_BACKGROUND		0
 # Some versions of PostgreSQL like Redshift doesn't support substr()
 # and it need to be replaced by a call to substring(). In this case,
 # disable it.
-PG_SUPPORTS_SUBSTR		1
+PG_SUPPORTS_SUBSTR	1
 
 # Disable this directive if you are using PG < 9.5, PL/SQL operator used in
 # named parameter => will be replaced by PostgreSQL proprietary operator :=
-PG_SUPPORTS_NAMED_OPERATOR		1
+PG_SUPPORTS_NAMED_OPERATOR	1
 
 # Enable this directive if you have PostgreSQL >= 10 to use IDENTITY columns
 # instead of serial or bigserial data type. If PG_SUPPORTS_IDENTITY is disabled
@@ -1214,7 +1214,7 @@ PG_SUPPORTS_NAMED_OPERATOR		1
 # with a embedded function to update the associated sequences with a restart
 # value set to "SELECT max(colname)+1 FROM tablename". Of course this file must
 # be imported after data import otherwise sequence will be kept to start value.
-PG_SUPPORTS_IDENTITY	0
+PG_SUPPORTS_IDENTITY	1
 
 # PostgreSQL v11 adds support of PROCEDURE, enable it if you use such version.
 PG_SUPPORTS_PROCEDURE	0
