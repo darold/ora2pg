@@ -698,7 +698,7 @@ sub quote_object_name
 		if (!$self->{preserve_case}) {
 			$obj_name = lc($obj_name);
 			# then if there is non alphanumeric or the object name is a reserved word
-			if ($obj_name =~ /[^a-z0-9\_\.]/ || ($self->{use_reserved_words} && $self->is_reserved_words($obj_name))) {
+			if ($obj_name =~ /[^a-z0-9\_\.]/ || ($self->{use_reserved_words} && $self->is_reserved_words($obj_name)) || $obj_name =~ /^\d+/) {
 				# Add double quote to [schema.] object name 
 				if ($obj_name !~ /^[^\.]+\.[^\.]+$/) {
 					$obj_name = '"' . $obj_name . '"';
@@ -6065,7 +6065,6 @@ BEGIN
 			my $old_part = '';
 			my $owner = '';
 			foreach my $pos (sort {$a <=> $b} keys %{$self->{partitions}{$table}}) {
-				print STDERR "PARTITION: $table :: $pos :: $self->{partitions}{$table}{$pos}{name}\n";
 				next if (!$self->{partitions}{$table}{$pos}{name});
 				my $part = $self->{partitions}{$table}{$pos}{name};
 				if (!$self->{quiet} && !$self->{debug}) {
@@ -8502,9 +8501,9 @@ VARCHAR2
 
 	if ($part_name) {
 		if ($is_subpart) {
-			$alias = "SUBPARTITION($part_name) a";
+			$alias = "SUBPARTITION(" . $self->quote_object_name($part_name) . ") a";
 		} else {
-			$alias = "PARTITION($part_name) a";
+			$alias = "PARTITION(". $self->quote_object_name($part_name) . ") a";
 		}
 	}
 	# Force parallelism on Oracle side
