@@ -1,4 +1,123 @@
-2017 08 18 - v19.0
+2018 09 27 - v19.1
+
+This release fix several issues reported during the last month and
+add support to PostgreSQL 11 HASH partitioning.
+
+It also adds some new features and configuration directives:
+
+  * Add export of default partition and default sub partition. 
+  * Add export of HASH partition type.
+  * Add support of stored procedure object.
+  * Add replacement of NLSORT in indexes or queries. For example:
+        CREATE INDEX test_idx ON emp
+                          (NLSSORT(emp_name, 'NLS_SORT=GERMAN'));
+    is translated into
+        CREATE INDEX test_idx ON emp
+                    ((emp_name collate "german"));
+    The collation still need to be adapted, here probably "de_DE".
+    NLSSORT() in ORDER BY clause are also translated.
+  * Prevent duplicate index with primary key on partition to be
+    exported.
+  * PostgreSQL native partitioning does not allow direct import of
+    data into already attached partitions. We now force direct import
+    into main table but we keep Oracle export of data from individual
+
+This release also adds two new command line options:
+
+   --oracle_speed: use to know at which speed Oracle is able to send
+                   data. No data will be processed or written written
+   --ora2pg_speed: use to know at which speed Ora2Pg is able to send
+                   transformed data. Nothing will be written
+
+Use it for debugging purpose. They are useful to see Oracle speed to
+send data and at what speed Ora2Pg is processing the data without
+reaching disk or direct import into PostgreSQL. 
+
+Two new configuration directive has been added:
+
+  * PG_SUPPORTS_PROCEDURE : PostgreSQL v11 adds support to stored
+    procedure objects. Disabled by default.
+  - PARALLEL_MIN_ROWS: set the minimum number of tuples in a table
+    before calling Oracle's parallel mode during data export. 
+    Default to 100000 rows.
+
+Note that PG_SUPPORTS_PARTITION and PG_SUPPORTS_IDENTITY are now
+enabled by default to use PostgreSQL declarative partionning and
+identity column instead of serial data type.
+
+Here is the full list of changes and acknowledgements:
+
+  - Fix automatic quoting of table or partition name starting with
+    a number. Thanks to Barzaqh for the report.
+  - Add information about custom directory installation. Thanks to
+    joguess for the report.
+  - Update list of action in documentation.
+  - Fix export of spatial geometries. Thanks to burak yurdakul for
+    the report.
+  - Fix translation of default value in CREATE TABLE DDL when using
+    a function. Thanks to Denis Oleynikov for the report.
+  - Prevent moving index on partition during tablespace export.
+    Thanks to Maxim Zakharov for the report.
+  - Fix upper case of partition name in triggers.
+  - Enforce KEEP_PKEY_NAMES when USE_TABLESPACE is enabled. Thanks
+    to Maxim Zakharov for the patch.
+  - Fix parsing of Oracle user login in dblink input from a file.
+  - Fix multiple duplication of range clause in partition export.
+  - Add bench of total time and rows to migrate data from Oracle
+    in debug mode with speed average.
+  - Fix sub partition prefix name.
+  - Fix unset oracle username when exporting DBLINK from database.
+    Thanks to Denis Oleynikov for the report.
+  - Remove NO VALID to foreign keys on partitioned table. Thanks to
+    Denis Oleynikov for the report.
+  - Fix crash of Ora2Pg on regexp with dynamic pattern base on package
+    code. Thank to Alain Debie and MikeCaliffCBORD for the report.
+  - PostgreSQL native partitioning does not allow direct import of
+    data into already attached partitions. When PG_SUPPORTS_PARTITION
+    is enable we now force direct import into main single table but
+    we keep Oracle export of data from individual partition. Previous
+    behavior was to use main table from both side. Thanks to Denis
+    Oleynikov for the report.
+  - Add the PARALLEL_MIN_ROWS configuration directive to prevent
+    Oracle's parallel mode to be activated during data export if the
+    table have less than a certain amount of rows. Default is 100000
+    rows. This prevent unnecessary fork of Oracle process. Thanks to
+    Denis Oleynikov for the feature request.
+  - Fix composite partition MODULUS value. Thanks to Denis Oleynikov
+    for the report.
+  - Fix count of partitions that was not including subpartition count.
+  - Force PostgreSQL user in FDW user mapping to be PG_USER when it is
+    defined.
+  - Sometimes Oracle indexes can be defined as follow:
+        CREATE INDEX idx_err_status_id
+                                   ON err_status (status_id, 1);
+    which generate errors on PostgreSQL. Remove column names composed
+    of digit only from the translation. Thanks to Denis Oleynikov for
+    the report.
+  - Move Oracle indexes or PK defined on partitioned tables to each
+    partition as PostgreSQL do not support UNIQUE, PRIMARY KEY,
+    EXCLUDE, or FOREIGN KEY constraints on partitioned tables.
+    Definition are created in file PARTITION_INDEXES_output.sql
+    generated with the PARTITION export type. Thanks to Denis
+    Oleynikov for the feature request.
+  - Fix parallel data load from Oracle partitioned tables by using
+    a unique alias. Thanks to Denis Oleynikov for the report.
+  - Fix export of composite partitioned (range/hash) table when
+    PG_SUPPORTS_PARTITION is disabled. Thanks to Denis Oleynikov
+    for the report.
+  - Remove composite sub partition from the list of partition, this
+    return a wrong partition count.
+  - Fix MODULUS value in hash sub partitioning.
+  - Index and table partitions could be on separate tablespaces.
+    Thanks to Maxim Zakharov for the patch.
+  - Fix case where procedure object name is wrongly double quoted.
+    Thanks to danghb for the report.
+  - Fix parser to support comment between procedure|function name
+    and IS|AS keyword. Thanks to danghb for the report.
+  - Remove dependency to List::Util for the min() function.
+
+
+2018 08 18 - v19.0
 
 This major release fix several issues reported by users during last
 year. It also adds several new features and configuration directives.
