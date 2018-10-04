@@ -11621,7 +11621,6 @@ sub format_data_row
 		} elsif ($row->[$idx] =~ /^(?!(?!)\x{100})ARRAY\(0x/) {
 
 			print STDERR "/!\\ WARNING /!\\: we should not be there !!!\n";
-			#$row->[$idx] =  $self->set_custom_type_value($row, $idx, $data_types, $action, $src_data_types, $custom_types, $table, $colcond, $sprep);
 
 		} else {
 
@@ -11633,11 +11632,14 @@ sub format_data_row
 
 sub set_custom_type_value
 {
-	my ($self, $data_type, $user_type, $col_ref, $dest_type, $no_quote) = @_;
+	my ($self, $data_type, $user_type, $rows, $dest_type, $no_quote) = @_;
 
 	my $has_array = 0;
 	my @type_col = ();
 	my $result = '';
+	my $col_ref = [];
+	push(@$col_ref, @$rows);
+	my $num_arr = 0;
 
 	for (my $i = 0; $i <= $#{$col_ref}; $i++) {
 
@@ -11679,6 +11681,8 @@ sub set_custom_type_value
 			push(@type_col, $col_ref->[$i]);
 
 		} else {
+
+			$num_arr++;
 
 			my @arr_col = ();
 			for (my $j = 0; $j <= $#{$col_ref->[$i]}; $j++) {
@@ -11739,10 +11743,27 @@ sub set_custom_type_value
 	if ($has_array) {
 		$result =  '{' . join(',', @type_col) . '}';
 	} else {
+		# This is the root call of the function, no global quoting is required
 		if (!$no_quote) {
 			#map { s/^$/NULL/; } @type_col;
 			#$result = 'ROW(ARRAY[ROW(' . join(',', @type_col) . ')])';
-			$result =  "(\"{\"\"" . join('"",""', @type_col) . "\"\"}\")";
+			# With arrays of arrays the construction is different
+			if ($num_arr > 1) {
+				#### Expected
+				# INSERT: '("{""(0,0,0,0,0,0,0,0,0,,,)"",""(0,0,0,0,0,0,0,0,0,,,)""}")'
+				# COPY:    ("{""(0,0,0,0,0,0,0,0,0,,,)"",""(0,0,0,0,0,0,0,0,0,,,)""}")
+				####
+				$result =  "(\"{\"\"" . join('"",""', @type_col) . "\"\"}\")";
+			# When just one or none arrays are present
+			} else {
+				#### Expected
+				# INSERT: '("(1,1)",0,,)'
+				# COPY:    ("(1,1)",0,,)
+				####
+				map { s/^\(([^\)]+)\)$/"($1)"/; } @type_col;
+				$result =  "(" . join(',', @type_col) . ")";
+			}
+		# else we are in recusive call
 		} else {
 			$result =  "\"(" . join(',', @type_col) . ")\"";
 		}
@@ -13557,7 +13578,7 @@ sub _extract_data
 
 						my $data_type = uc($stt->[$j]) || '';
 						$data_type =~ s/\(.*//; # remove any precision
-						$row[$j] =  $self->set_custom_type_value($data_type, $user_type{$j}, $row[$j], $tt->[$j]);
+						$row[$j] =  $self->set_custom_type_value($data_type, $user_type{$j}, $row[$j], $tt->[$j], 0);
 
 					} elsif (($stt->[$j] =~ /LOB/) && $row[$j]) {
 
