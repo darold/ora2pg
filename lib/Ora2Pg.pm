@@ -6373,7 +6373,7 @@ BEGIN
 							$idx = $self->_create_unique_keys($table, $self->{tables}{$table}{unique_key});
 							if ($idx) {
 								$create_table_index_tmp .= "-- Reproduce subpartition unique indexes / pk that was defined on the parent table\n";
-								$idx =~ s/ $table/$tb_name2/igs;
+								$idx =~ s/ $table/ $tb_name2/igs;
 								# remove indexes already created
 								$idx =~ s/CREATE [^;]+ \($cindx\);//;
 								if ($idx) {
