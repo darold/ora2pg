@@ -177,9 +177,9 @@ Usage: ora2pg_scanner -l CSVFILE [-o OUTDIR]
 
    -c | --config FILE : set custom configuration file to use otherwise ora2pg
 		will use the default: /etc/ora2pg/ora2pg.conf.
-   -l | --list FILE : CSV file containing a list of database to scan with
-		all requiered information. The first line of the file
-		can contains the following header that describe the
+   -l | --list FILE : CSV file containing a list of databases to scan with
+		all required information. The first line of the file
+		can contain the following header that describes the
 		format that must be used:
 
 		"type","schema/database","dsn","user","password"
@@ -189,10 +189,10 @@ Usage: ora2pg_scanner -l CSVFILE [-o OUTDIR]
 		If you want to change the name of this directory, set the name
 		at second argument.
 
-   -t | --test : just try all connection by retrieving the requiered schema
+   -t | --test : just try all connections by retrieving the required schema
 		 or database name. Useful to validate your CSV list file.
 
-   Here is a full example of a CSV database list file:
+   Here is a full example of a CSV databases list file:
 
 	"type","schema/database","dsn","user","password"
 	"MYSQL","sakila","dbi:mysql:host=192.168.1.10;database=sakila;port=3306","root","secret"
@@ -200,10 +200,10 @@ Usage: ora2pg_scanner -l CSVFILE [-o OUTDIR]
 
    The CSV field separator must be a comma.
 
-   Note that if you want to scan all schema from an Oracle instance you just
+   Note that if you want to scan all schemas from an Oracle instance you just
    have to leave the schema field empty, Ora2Pg will automatically detect all
-   available schema and generate a report for each one. Of course you need to
-   use a connection user with enough privilege to be able to scan all schema.
+   available schemas and generate a report for each one. Of course you need to
+   use a connection user with enough privileges to be able to scan all schemas.
    For example:
 
 	"ORACLE","","dbi:Oracle:host=192.168.1.10;sid=XE;port=1521","system","manager"
