@@ -569,8 +569,10 @@ sub plsql_to_plpgsql
 	}
 	# Replace sysdate +/- N by localtimestamp - 1 day intervel
 	$str =~ s/\bSYSDATE\s*(\+|\-)\s*(\d+)/$conv_current_time $1 interval '$2 days'/igs;
+
 	# Replace special case : (sysdate - to_date('01-Jan-1970', 'dd-Mon-yyyy'))*24*60*60
 	# with: (extract(epoch from now())
+	# When translating from code
 	while ($str =~ /\bSYSDATE\s*\-\s*to_date\(\s*\?TEXTVALUE(\d+)\?\s*,\s*\?TEXTVALUE(\d+)\?\s*\)\s*\)\s*\*\s*(24|60)\s*\*\s*(24|60)/is) {
 		my $t1 = $1;
 		my $t2 = $2;
@@ -579,6 +581,10 @@ sub plsql_to_plpgsql
 			$str =~ s/\bSYSDATE\s*\-\s*to_date\(\s*\?TEXTVALUE(\d+)\?\s*,\s*\?TEXTVALUE(\d+)\?\s*\)\s*\)\s*\*\s*(24|60)\s*\*\s*(24|60)\*\s*(24|60)/extract(epoch from now()))/is;
 		}
 	}
+
+	# When translating from default value (sysdate - to_date('01-01-1970','dd-MM-yyyy'))*24*60*60
+	$str =~ s/\bSYSDATE\s*\-\s*to_date\(\s*'(Jan|01).(Jan|01).1970'\s*,\s*'(Mon|MM|dd).(Mon|MM|dd).yyyy'\s*\)\s*\)\s*\*\s*(24|60)\s*\*\s*(24|60)\s*\*\s*(24|60)/extract(epoch from now()))/igs;
+
 	# Change SYSDATE to 'now' or current timestamp.
 	$str =~ s/\bSYSDATE\s*\(\s*\)/$conv_current_time/igs;
 	$str =~ s/\bSYSDATE\b/$conv_current_time/igs;
