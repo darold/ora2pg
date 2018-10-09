@@ -2534,10 +2534,13 @@ sub read_schema_from_file
 						if ($c =~ s/\s*AUTO_INCREMENT\s*//is) {
 							$auto_incr = 1;
 						}
+						# At this stage only the DEFAULT part might be on the string
 						if ($c =~ /\bDEFAULT\s+/is) {
 							if ($c =~ s/\bDEFAULT\s+('[^']+')\s*//is) {
 								$c_default = $1;
-							} elsif ($c =~ s/\bDEFAULT\s+([^\s]+)\s*//is) {
+							} elsif ($c =~ s/\bDEFAULT\s+([^\s]+)\s*$//is) {
+								$c_default = $1;
+							} elsif ($c =~ s/\bDEFAULT\s+(.*)$//is) {
 								$c_default = $1;
 							}
 							$c_default =~ s/"//gs;
