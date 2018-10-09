@@ -852,6 +852,7 @@ sub _init
 
 	# Used to precise if we need to prefix partition tablename with main tablename
 	$self->{prefix_partition} = 0;
+	$self->{prefix_part_subpartition} = 1;
 
 	# Use to preserve the data export type with geometry objects
 	$self->{local_type} = '';
@@ -6271,8 +6272,12 @@ BEGIN
 						my $sub_tb_name = $subpart;
 						$sub_tb_name =~ s/^[^\.]+\.//; # remove schema part if any
 						if ($self->{prefix_partition}) {
-							$sub_tb_name = "${tb_name}_$sub_tb_name";
-						}
+                                                	if ($self->{prefix_sub_partition}) {
+                                                                $sub_tb_name = "${tb_name}_$sub_tb_name";
+                                                        } else {
+                                                                $sub_tb_name = "${table}_$sub_tb_name";
+                                                        }
+                                                }
 						if (!$self->{quiet} && !$self->{debug}) {
 							print STDERR $self->progress_bar($ipos++, $total_partition, 25, '=', 'subpartitions', "generating $table/$part/$subpart" ), "\r";
 						}

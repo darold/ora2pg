@@ -586,6 +586,9 @@ USE_INDEX_OPCLASS	0
 # could have the same name but different parent tables. This is not allowed,
 # table name must be unique. 
 PREFIX_PARTITION	0
+# Disable this directive if your subpartitions are dedicated to your partition 
+# (in case of your partition_name is a part of your subpartition_name)
+PREFIX_SUB_PARTITION 	1
 
 # If you don't want to reproduce the partitioning like in Oracle and want to
 # export all partitionned Oracle data into the main single table in PostgreSQL
