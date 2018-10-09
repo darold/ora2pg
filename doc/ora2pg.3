@@ -1520,6 +1520,11 @@ exported using the parent table name. Disabled by default. If you have
 multiple partitioned table, when exported to PostgreSQL some partitions
 could have the same name but different parent tables. This is not allowed,
 table name must be unique.
+.IP "\s-1PREFIX_SUB_PARTITION\s0" 4
+.IX Item "PREFIX_SUB_PARTITION"
+Enable this directive if you want that your subpartition table name will be exported
+using the parent partition name. Enabled by default. If the partition names are a part
+of the subpartition names, you should enable this directive.
 .IP "\s-1DISABLE_PARTITION\s0" 4
 .IX Item "DISABLE_PARTITION"
 If you don't want to reproduce the partitioning like in Oracle and want to
