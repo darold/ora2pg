@@ -500,6 +500,8 @@ sub append_alias_clause
 				$parts[0] =~ s/(?<!USING|[\s,]ONLY|[\s,]JOIN|.\sON\s|\sAND\s|.\sOR\s)\%SUBQUERY(\d+)\%(\s*)$/\%SUBQUERY$1\% alias$1$2/is;
 				# Remove unwanted alias appended with the REGEXP_SUBSTR translation
 				$parts[0] =~ s/(\%SUBQUERY\d+\%\s+AS\s+[^\s]+)\s+alias\d+/$1/g;
+				# Remove unwanted alias appended with the epoch translation
+				$parts[0] =~ s/\b(now\%SUBQUERY\d+\%) alias\d+/$1/ig;
 				$from_clause = join('', @parts);
 			}
 			$q[$j] =~ s/\%FROM_CLAUSE\%/$from_clause/s;
@@ -567,6 +569,16 @@ sub plsql_to_plpgsql
 	}
 	# Replace sysdate +/- N by localtimestamp - 1 day intervel
 	$str =~ s/\bSYSDATE\s*(\+|\-)\s*(\d+)/$conv_current_time $1 interval '$2 days'/igs;
+	# Replace special case : (sysdate - to_date('01-Jan-1970', 'dd-Mon-yyyy'))*24*60*60
+	# with: (extract(epoch from now())
+	while ($str =~ /\bSYSDATE\s*\-\s*to_date\(\s*\?TEXTVALUE(\d+)\?\s*,\s*\?TEXTVALUE(\d+)\?\s*\)\s*\)\s*\*\s*(24|60)\s*\*\s*(24|60)/is) {
+		my $t1 = $1;
+		my $t2 = $2;
+		if ($class->{text_values}{$t1} =~ /'(Jan|01).(Jan|01).1970'/
+			&& $class->{text_values}{$t2} =~ /'(Mon|MM|dd).(Mon|MM|dd).yyyy'/) {
+			$str =~ s/\bSYSDATE\s*\-\s*to_date\(\s*\?TEXTVALUE(\d+)\?\s*,\s*\?TEXTVALUE(\d+)\?\s*\)\s*\)\s*\*\s*(24|60)\s*\*\s*(24|60)\*\s*(24|60)/extract(epoch from now()))/is;
+		}
+	}
 	# Change SYSDATE to 'now' or current timestamp.
 	$str =~ s/\bSYSDATE\s*\(\s*\)/$conv_current_time/igs;
 	$str =~ s/\bSYSDATE\b/$conv_current_time/igs;
