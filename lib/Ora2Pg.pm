@@ -11651,7 +11651,7 @@ sub set_custom_type_value
 	my $result = '';
 	my $col_ref = [];
 	push(@$col_ref, @$rows);
-	my $num_arr = 0;
+	my $num_arr = -1;
 
 	for (my $i = 0; $i <= $#{$col_ref}; $i++) {
 
