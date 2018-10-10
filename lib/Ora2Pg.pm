@@ -852,6 +852,7 @@ sub _init
 
 	# Used to precise if we need to prefix partition tablename with main tablename
 	$self->{prefix_partition} = 0;
+	$self->{prefix_part_subpartition} = 1;
 
 	# Use to preserve the data export type with geometry objects
 	$self->{local_type} = '';
@@ -6274,8 +6275,12 @@ BEGIN
 						my $sub_tb_name = $subpart;
 						$sub_tb_name =~ s/^[^\.]+\.//; # remove schema part if any
 						if ($self->{prefix_partition}) {
-							$sub_tb_name = "${tb_name}_$sub_tb_name";
-						}
+                                                	if ($self->{prefix_sub_partition}) {
+                                                                $sub_tb_name = "${tb_name}_$sub_tb_name";
+                                                        } else {
+                                                                $sub_tb_name = "${table}_$sub_tb_name";
+                                                        }
+                                                }
 						if (!$self->{quiet} && !$self->{debug}) {
 							print STDERR $self->progress_bar($ipos++, $total_partition, 25, '=', 'subpartitions', "generating $table/$part/$subpart" ), "\r";
 						}
@@ -6376,7 +6381,7 @@ BEGIN
 							$idx = $self->_create_unique_keys($table, $self->{tables}{$table}{unique_key});
 							if ($idx) {
 								$create_table_index_tmp .= "-- Reproduce subpartition unique indexes / pk that was defined on the parent table\n";
-								$idx =~ s/ $table/$tb_name2/igs;
+								$idx =~ s/ $table/ $tb_name2/igs;
 								# remove indexes already created
 								$idx =~ s/CREATE [^;]+ \($cindx\);//;
 								if ($idx) {

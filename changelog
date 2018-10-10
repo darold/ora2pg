@@ -25,7 +25,7 @@ It also adds some new features and configuration directives:
 This release also adds two new command line options:
 
    --oracle_speed: use to know at which speed Oracle is able to send
-                   data. No data will be processed or written written
+                   data. No data will be processed or written
    --ora2pg_speed: use to know at which speed Ora2Pg is able to send
                    transformed data. Nothing will be written
 
