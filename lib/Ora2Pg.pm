@@ -10777,6 +10777,10 @@ sub _get_types
 		$tmp{name} = $row->[0];
 		$tmp{owner} = $row->[1];
 		$tmp{pos} = $row->[2];
+		if (!$self->{preserve_case}) {
+			$tmp{code} =~ s/(TYPE\s+)"[^"]+"\."[^"]+"/$1\L$row->[0]\E/is;
+			$tmp{code} =~ s/(TYPE\s+)"[^"]+"/$1\L$row->[0]\E/is;
+		}
 		push(@types, \%tmp);
 	}
 
@@ -13129,8 +13133,9 @@ sub _convert_type
 	$plsql =~ s/\s*INDEX\s+BY\s+([^\s;]+)//is;
 	if ($plsql =~ /TYPE\s+([^\s]+)\s+(IS|AS)\s*TABLE\s*OF\s+(.*)/is) {
 		$type_name = $1;
-		my $internal_name = $1;
 		my $type_of = $3;
+		$type_name =~ s/"//g;
+		my $internal_name = $type_name;
 		if ($self->{export_schema} && !$self->{schema} && $owner) {
 			$type_name = "$owner.$type_name";
 		}
