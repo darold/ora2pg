@@ -271,7 +271,7 @@ Usage: ora2pg [-dhpqv --estimate_cost --dump_as_html] [--option value]
     -i | --input file : File containing Oracle PL/SQL code to convert with
 			no Oracle database connection initiated.
     -j | --jobs num   : Number of parallel process to send data to PostgreSQL.
-    -J | --copies num : number of parallel connection to extract data from Oracle.
+    -J | --copies num : Number of parallel connections to extract data from Oracle.
     -l | --log file   : Set a log file. Default is stdout.
     -L | --limit num  : Number of tuples extracted from Oracle and stored in
 			memory before writing, default: 10000.
@@ -299,25 +299,25 @@ Usage: ora2pg [-dhpqv --estimate_cost --dump_as_html] [--option value]
 		  used to connect to the Pg database that will be the owner.
     --nls_lang code: Set the Oracle NLS_LANG client encoding.
     --client_encoding code: Set the PostgreSQL client encoding.
-    --view_as_table str: Comma separated list of view to export as table.
-    --estimate_cost   : Activate the migration cost evalution with SHOW_REPORT
+    --view_as_table str: Comma separated list of views to export as table.
+    --estimate_cost   : Activate the migration cost evaluation with SHOW_REPORT
     --cost_unit_value minutes: Number of minutes for a cost evalution unit.
-		  default: 5 minutes, correspond to a migration conducted by a
+		  default: 5 minutes, corresponds to a migration conducted by a
 		  PostgreSQL expert. Set it to 10 if this is your first migration.
    --dump_as_html     : Force ora2pg to dump report in HTML, used only with
                         SHOW_REPORT. Default is to dump report as simple text.
    --dump_as_csv      : As above but force ora2pg to dump report in CSV.
-   --dump_as_sheet    : Report migration assessment one CSV line per database.
+   --dump_as_sheet    : Report migration assessment with one CSV line per database.
    --init_project NAME: Initialise a typical ora2pg project tree. Top directory
                         will be created under project base dir.
    --project_base DIR : Define the base dir for ora2pg project trees. Default
                         is current directory.
    --print_header     : Used with --dump_as_sheet to print the CSV header
                         especially for the first run of ora2pg.
-   --human_days_limit num : Set the number human-days limit where the migration
+   --human_days_limit num : Set the number of human-days limit where the migration
                         assessment level switch from B to C. Default is set to
                         5 human-days.
-   --audit_user LIST  : Comma separated list of username to filter queries in
+   --audit_user LIST  : Comma separated list of usernames to filter queries in
                         the DBA_AUDIT_TRAIL table. Used only with SHOW_REPORT
                         and QUERY export type.
    --pg_dsn DSN       : Set the datasource to PostgreSQL for direct import.
@@ -325,9 +325,9 @@ Usage: ora2pg [-dhpqv --estimate_cost --dump_as_html] [--option value]
    --pg_pwd password  : Set the PostgreSQL password to use.
    --count_rows       : Force ora2pg to perform a real row count in TEST action.
    --no_header        : Do not append Ora2Pg header to output file
-   --oracle_speed     : use to know at which speed Oracle is able to send
-                        data. No data will be processed or written written.
-   --ora2pg_speed     : use to know at which speed Ora2Pg is able to send
+   --oracle_speed     : Use to know at which speed Oracle is able to send
+                        data. No data will be processed or written.
+   --ora2pg_speed     : Use to know at which speed Ora2Pg is able to send
                         transformed data. Nothing will be written.
 
 See full documentation at http://ora2pg.darold.net/ for more help or see
@@ -2680,9 +2680,9 @@ Usage: ora2pg_scanner -l CSVFILE [-o OUTDIR]
 
    -c | --config FILE : set custom configuration file to use otherwise ora2pg
 		will use the default: /etc/ora2pg/ora2pg.conf.
-   -l | --list FILE : CSV file containing a list of database to scan with
-		all requiered information. The first line of the file
-		can contains the following header that describe the
+   -l | --list FILE : CSV file containing a list of databases to scan with
+		all required information. The first line of the file
+		can contain the following header that describes the
 		format that must be used:
 
 		"type","schema/database","dsn","user","password"
@@ -2692,10 +2692,10 @@ Usage: ora2pg_scanner -l CSVFILE [-o OUTDIR]
 		If you want to change the name of this directory, set the name
 		at second argument.
 
-   -t | --test : just try all connection by retrieving the requiered schema
+   -t | --test : just try all connections by retrieving the required schema
 		 or database name. Useful to validate your CSV list file.
 
-   Here is a full example of a CSV database list file:
+   Here is a full example of a CSV databases list file:
 
 	"type","schema/database","dsn","user","password"
 	"MYSQL","sakila","dbi:mysql:host=192.168.1.10;database=sakila;port=3306","root","secret"
@@ -2703,10 +2703,10 @@ Usage: ora2pg_scanner -l CSVFILE [-o OUTDIR]
 
    The CSV field separator must be a comma.
 
-   Note that if you want to scan all schema from an Oracle instance you just
+   Note that if you want to scan all schemas from an Oracle instance you just
    have to leave the schema field empty, Ora2Pg will automatically detect all
-   available schema and generate a report for each one. Of course you need to
-   use a connection user with enough privilege to be able to scan all schema.
+   available schemas and generate a report for each one. Of course you need to
+   use a connection user with enough privileges to be able to scan all schemas.
    For example:
 
 	"ORACLE","","dbi:Oracle:host=192.168.1.10;sid=XE;port=1521","system","manager"

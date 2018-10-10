@@ -129,7 +129,7 @@
 .\" ========================================================================
 .\"
 .IX Title "ORA2PG 1"
-.TH ORA2PG 1 "2018-03-17" "perl v5.26.0" "User Contributed Perl Documentation"
+.TH ORA2PG 1 "2018-10-10" "perl v5.26.1" "User Contributed Perl Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -283,6 +283,22 @@ On Windows(tm) OSes you may use instead:
 This will install scripts and libraries into your Perl site installation
 directory and the ora2pg.conf file as well as all documentation files
 into C:\eora2pg\e
+.PP
+To install ora2pg in a different directory than the default one, simply
+use this command:
+.PP
+.Vb 2
+\&        perl Makefile.PL PREFIX=<your_install_dir>
+\&        make && make install
+.Ve
+.PP
+then set \s-1PERL5LIB\s0 to the path to your installation directory before using
+Ora2Pg.
+.PP
+.Vb 2
+\&        export PERL5LIB=<your_install_dir>
+\&        ora2pg \-c config/ora2pg.conf \-t TABLE \-b outdir/
+.Ve
 .SS "Packaging"
 .IX Subsection "Packaging"
 If you want to build the binary package for your preferred Linux distribution
@@ -401,7 +417,7 @@ Usage: ora2pg [\-dhpqv \-\-estimate_cost \-\-dump_as_html] [\-\-option value]
 \&    \-i | \-\-input file : File containing Oracle PL/SQL code to convert with
 \&                        no Oracle database connection initiated.
 \&    \-j | \-\-jobs num   : Number of parallel process to send data to PostgreSQL.
-\&    \-J | \-\-copies num : number of parallel connection to extract data from Oracle.
+\&    \-J | \-\-copies num : Number of parallel connections to extract data from Oracle.
 \&    \-l | \-\-log file   : Set a log file. Default is stdout.
 \&    \-L | \-\-limit num  : Number of tuples extracted from Oracle and stored in
 \&                        memory before writing, default: 10000.
@@ -429,25 +445,25 @@ Usage: ora2pg [\-dhpqv \-\-estimate_cost \-\-dump_as_html] [\-\-option value]
 \&                  used to connect to the Pg database that will be the owner.
 \&    \-\-nls_lang code: Set the Oracle NLS_LANG client encoding.
 \&    \-\-client_encoding code: Set the PostgreSQL client encoding.
-\&    \-\-view_as_table str: Comma separated list of view to export as table.
-\&    \-\-estimate_cost   : Activate the migration cost evalution with SHOW_REPORT
+\&    \-\-view_as_table str: Comma separated list of views to export as table.
+\&    \-\-estimate_cost   : Activate the migration cost evaluation with SHOW_REPORT
 \&    \-\-cost_unit_value minutes: Number of minutes for a cost evalution unit.
-\&                  default: 5 minutes, correspond to a migration conducted by a
+\&                  default: 5 minutes, corresponds to a migration conducted by a
 \&                  PostgreSQL expert. Set it to 10 if this is your first migration.
 \&   \-\-dump_as_html     : Force ora2pg to dump report in HTML, used only with
 \&                        SHOW_REPORT. Default is to dump report as simple text.
 \&   \-\-dump_as_csv      : As above but force ora2pg to dump report in CSV.
-\&   \-\-dump_as_sheet    : Report migration assessment one CSV line per database.
+\&   \-\-dump_as_sheet    : Report migration assessment with one CSV line per database.
 \&   \-\-init_project NAME: Initialise a typical ora2pg project tree. Top directory
 \&                        will be created under project base dir.
 \&   \-\-project_base DIR : Define the base dir for ora2pg project trees. Default
 \&                        is current directory.
 \&   \-\-print_header     : Used with \-\-dump_as_sheet to print the CSV header
 \&                        especially for the first run of ora2pg.
-\&   \-\-human_days_limit num : Set the number human\-days limit where the migration
+\&   \-\-human_days_limit num : Set the number of human\-days limit where the migration
 \&                        assessment level switch from B to C. Default is set to
 \&                        5 human\-days.
-\&   \-\-audit_user LIST  : Comma separated list of username to filter queries in
+\&   \-\-audit_user LIST  : Comma separated list of usernames to filter queries in
 \&                        the DBA_AUDIT_TRAIL table. Used only with SHOW_REPORT
 \&                        and QUERY export type.
 \&   \-\-pg_dsn DSN       : Set the datasource to PostgreSQL for direct import.
@@ -455,6 +471,10 @@ Usage: ora2pg [\-dhpqv \-\-estimate_cost \-\-dump_as_html] [\-\-option value]
 \&   \-\-pg_pwd password  : Set the PostgreSQL password to use.
 \&   \-\-count_rows       : Force ora2pg to perform a real row count in TEST action.
 \&   \-\-no_header        : Do not append Ora2Pg header to output file
+\&   \-\-oracle_speed     : Use to know at which speed Oracle is able to send
+\&                        data. No data will be processed or written.
+\&   \-\-ora2pg_speed     : Use to know at which speed Ora2Pg is able to send
+\&                        transformed data. Nothing will be written.
 .Ve
 .PP
 See full documentation at http://ora2pg.darold.net/ for more help or see
@@ -839,6 +859,7 @@ Here are the different values of the \s-1TYPE\s0 directive, default is \s-1TABLE
 \&        \- DIRECTORY: Export Oracle\*(Aqs directories as external_file extension objects.
 \&        \- LOAD: Dispatch a list of queries over multiple PostgreSQl connections.
 \&        \- TEST: perform a diff between Oracle and PostgreSQL database.
+\&        \- TEST_VIEW: perform a count on both side of rows returned by views
 .Ve
 .Sp
 Only one type of export can be perform at the same time so the \s-1TYPE\s0 directive
@@ -1018,6 +1039,12 @@ so the real number of process that will be used is \s-1PARALLEL_TABLES\s0 * \s-1
 .Sp
 Note that this directive when set upper that 1 will also automatically enable
 the \s-1FILE_PER_TABLE\s0 directive if your are exporting to files.
+.IP "\s-1DEFAULT_PARALLELISM_DEGREE\s0" 4
+.IX Item "DEFAULT_PARALLELISM_DEGREE"
+You can force Ora2Pg to use /*+ \s-1PARALLEL\s0(tbname, degree) */ hint in each
+query used to export data from Oracle by setting a value upper than 1 to
+this directive. A value of 0 or 1 disable the use of parallel hint.
+Default is disabled.
 .IP "\s-1FDW_SERVER\s0" 4
 .IX Item "FDW_SERVER"
 This directive is used to set the name of the foreign data server that is used
@@ -1522,9 +1549,9 @@ could have the same name but different parent tables. This is not allowed,
 table name must be unique.
 .IP "\s-1PREFIX_SUB_PARTITION\s0" 4
 .IX Item "PREFIX_SUB_PARTITION"
-Enable this directive if you want that your subpartition table name will be exported
-using the parent partition name. Enabled by default. If the partition names are a part
-of the subpartition names, you should enable this directive.
+Enable this directive if you want that your subpartition table name will be
+exported using the parent partition name. Enabled by default. If the partition 
+names are a part of the subpartition names, you should enable this directive.
 .IP "\s-1DISABLE_PARTITION\s0" 4
 .IX Item "DISABLE_PARTITION"
 If you don't want to reproduce the partitioning like in Oracle and want to
@@ -1996,9 +2023,9 @@ to GreenPlum PostgreSQL database.
 .IP "\s-1KEEP_PKEY_NAMES\s0" 4
 .IX Item "KEEP_PKEY_NAMES"
 By default names of the primary and unique key in the source Oracle database
-are ignored and key names are created in the target PostgreSQL database with
-the PostgreSQL internal default naming rules. If you want to preserve Oracle
-primary key names set this option to 1.
+are ignored and key names are autogenerated in the target PostgreSQL database
+with the PostgreSQL internal default naming rules. If you want to preserve
+Oracle primary and unique key names set this option to 1.
 .IP "\s-1FKEY_ADD_UPDATE\s0" 4
 .IX Item "FKEY_ADD_UPDATE"
 This directive allows you to add an \s-1ON UPDATE CASCADE\s0 option to a foreign
@@ -2157,7 +2184,7 @@ Enabled by default.
 .IX Item "PG_SUPPORTS_PARTITION"
 PostgreSQL version prior to 10.0 do not have native partitioning.
 Enable this directive if you want to use declarative partitioning.
-Disable by default.
+Enable by default.
 .IP "\s-1PG_SUPPORTS_SUBSTR\s0" 4
 .IX Item "PG_SUPPORTS_SUBSTR"
 Some versions of PostgreSQL like Redshift doesn't support \fIsubstr()\fR
@@ -2168,6 +2195,31 @@ disable it.
 Disable this directive if you are using \s-1PG\s0 < 9.5, \s-1PL/SQL\s0 operator used in
 named parameter => will be replaced by PostgreSQL proprietary operator :=
 Enable by default.
+.IP "\s-1PG_SUPPORTS_IDENTITY\s0" 4
+.IX Item "PG_SUPPORTS_IDENTITY"
+Enable this directive if you have PostgreSQL >= 10 to use \s-1IDENTITY\s0 columns
+instead of serial or bigserial data type. If \s-1PG_SUPPORTS_IDENTITY\s0 is disabled
+and there is \s-1IDENTITY\s0 column in the Oracle table, they are exported as serial
+or bigserial columns. When it is enabled they are exported as \s-1IDENTITY\s0 columns
+like:
+.Sp
+.Vb 4
+\&      CREATE TABLE identity_test_tab (
+\&              id bigint GENERATED ALWAYS AS IDENTITY,
+\&              description varchar(30)
+\&      ) ;
+.Ve
+.Sp
+If there is non default sequence options set in Oracle, they will be appended
+after the \s-1IDENTITY\s0 keyword.
+Additionally in both cases, Ora2Pg will create a file AUTOINCREMENT_output.sql
+with a embedded function to update the associated sequences with the restart
+value set to \*(L"\s-1SELECT\s0 max(colname)+1 \s-1FROM\s0 tablename\*(R". Of course this file must
+be imported after data import otherwise sequence will be kept to start value.
+Enabled by default.
+.IP "\s-1PG_SUPPORTS_PROCEDURE\s0" 4
+.IX Item "PG_SUPPORTS_PROCEDURE"
+PostgreSQL v11 adds support of \s-1PROCEDURE,\s0 enable it if you use such version.
 .IP "\s-1BITMAP_AS_GIN\s0" 4
 .IX Item "BITMAP_AS_GIN"
 Use btree_gin extension to create bitmap like index with pg >= 9.4
@@ -2733,9 +2785,9 @@ Usage: ora2pg_scanner \-l \s-1CSVFILE\s0 [\-o \s-1OUTDIR\s0]
 .Vb 6
 \&   \-c | \-\-config FILE : set custom configuration file to use otherwise ora2pg
 \&                will use the default: /etc/ora2pg/ora2pg.conf.
-\&   \-l | \-\-list FILE : CSV file containing a list of database to scan with
-\&                all requiered information. The first line of the file
-\&                can contains the following header that describe the
+\&   \-l | \-\-list FILE : CSV file containing a list of databases to scan with
+\&                all required information. The first line of the file
+\&                can contain the following header that describes the
 \&                format that must be used:
 \&
 \&                "type","schema/database","dsn","user","password"
@@ -2745,10 +2797,10 @@ Usage: ora2pg_scanner \-l \s-1CSVFILE\s0 [\-o \s-1OUTDIR\s0]
 \&                If you want to change the name of this directory, set the name
 \&                at second argument.
 \&
-\&   \-t | \-\-test : just try all connection by retrieving the requiered schema
+\&   \-t | \-\-test : just try all connections by retrieving the required schema
 \&                 or database name. Useful to validate your CSV list file.
 \&
-\&   Here is a full example of a CSV database list file:
+\&   Here is a full example of a CSV databases list file:
 \&
 \&        "type","schema/database","dsn","user","password"
 \&        "MYSQL","sakila","dbi:mysql:host=192.168.1.10;database=sakila;port=3306","root","secret"
@@ -2756,10 +2808,10 @@ Usage: ora2pg_scanner \-l \s-1CSVFILE\s0 [\-o \s-1OUTDIR\s0]
 \&
 \&   The CSV field separator must be a comma.
 \&
-\&   Note that if you want to scan all schema from an Oracle instance you just
+\&   Note that if you want to scan all schemas from an Oracle instance you just
 \&   have to leave the schema field empty, Ora2Pg will automatically detect all
-\&   available schema and generate a report for each one. Of course you need to
-\&   use a connection user with enough privilege to be able to scan all schema.
+\&   available schemas and generate a report for each one. Of course you need to
+\&   use a connection user with enough privileges to be able to scan all schemas.
 \&   For example:
 \&
 \&        "ORACLE","","dbi:Oracle:host=192.168.1.10;sid=XE;port=1521","system","manager"
@@ -2978,7 +3030,7 @@ Any contribution to build a better tool is welcome, you just have to send me
 your ideas, features request or patches and there will be applied.
 .SH "LICENSE"
 .IX Header "LICENSE"
-Copyright (c) 2000\-2017 Gilles Darold \- All rights reserved.
+Copyright (c) 2000\-2018 Gilles Darold \- All rights reserved.
 .PP
 .Vb 4
 \&        This program is free software: you can redistribute it and/or modify
