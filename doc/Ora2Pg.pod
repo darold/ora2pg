@@ -950,6 +950,13 @@ Disable this directive if you want to disable check_function_bodies.
 It disables validation of the function body string during CREATE FUNCTION.
 Default is to use de postgresql.conf setting that enable it by default.
 
+=item NO_BLOB_EXPORT
+
+Exporting BLOB takes time, you may want to export all data except the BLOB
+columns. In this case enable this directive and the BLOB columns will not be
+included into data export. That mean that the BLOB column must not have a
+NOT NULL constraint.
+
 =back
 
 =head2 Limiting objects to export

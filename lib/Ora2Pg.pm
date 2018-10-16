@@ -1117,6 +1117,9 @@ sub _init
 	# Disable the use of orafce library by default
 	$self->{use_orafce} ||= 0;
 
+	# Enable BLOB data export by default
+	$self->{no_blob_export} ||= 0;
+
 	# Free some memory
 	%options = ();
 	%AConfig = ();
@@ -7406,14 +7409,19 @@ sub _dump_table
 				next if (!grep(/^$fieldname$/i, @{$self->{modify}{"$table"}}));
 			}
 		}
+
+		my $f = $self->{tables}{"$table"}{column_info}{"$fieldname"};
+		$f->[2] =~ s/\D//g;
+		if ($self->{no_blob_export} && $f->[1] =~ /blob/i) {
+			# user don't want to export blob
+			next;
+		}
+
 		if (!$self->{preserve_case}) {
 			push(@fname, lc($fieldname));
 		} else {
 			push(@fname, $fieldname);
 		}
-
-		my $f = $self->{tables}{"$table"}{column_info}{"$fieldname"};
-		$f->[2] =~ s/\D//g;
 
 		if ($f->[1] =~ /GEOMETRY/i) {
 			$self->{local_type} = $self->{type} if (!$self->{local_type});
@@ -8426,12 +8434,16 @@ sub _howto_get_data
 				}
 
 			} elsif ( !$self->{is_mysql} && (($src_type->[$k] =~ /clob/i) || ($src_type->[$k] =~ /blob/i)) ) {
-
+				if ($self->{no_blob_export} && $src_type->[$k] =~ /blob/i) {
+					# user don't want to export blob
+					next;
+				}
 				if ($self->{empty_lob_null}) {
 					$str .= "CASE WHEN dbms_lob.getlength($name->[$k]->[0]) = 0 THEN NULL ELSE $name->[$k]->[0] END,";
 				} else {
 					$str .= "$name->[$k]->[0],";
 				}
+
 			} else {
 
 				$str .= "$name->[$k]->[0],";

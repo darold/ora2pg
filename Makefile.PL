@@ -959,6 +959,12 @@ INTERNAL_DATE_MAX	49
 # Default is to use de postgresql.conf setting that enable it by default.
 FUNCTION_CHECK		1
 
+# Exporting BLOB takes time, you may want to export all data except the BLOB
+# columns. In this case enable this directive and the BLOB columns will not be
+# included into data export. That mean that the BLOB column must not have a
+# NOT NULL constraint.
+NO_BLOB_EXPORT		0
+
 #------------------------------------------------------------------------------
 # PERFORMANCES SECTION (Control export/import performances)
 #------------------------------------------------------------------------------
