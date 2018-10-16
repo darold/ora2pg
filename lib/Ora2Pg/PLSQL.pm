@@ -657,9 +657,9 @@ sub plsql_to_plpgsql
 	# Replace simple EXEC function call by SELECT function
 	$str =~ s/\bEXEC(\s+)/SELECT$1/igs;
 
-	# Remove leading : on Oracle variable
+	# Remove leading : on Oracle variable taking care of regex character class
 	$str =~ s/([^\w:]+):(\d+)/$1\$$2/igs;
-	$str =~ s/([^\w:]+):(\w+)/$1$2/igs;
+	$str =~ s/([^\w:]+):((?!alpha|alnum|blank|cntrl|digit|graph|lower|print|punct|space|upper|xdigit)\w+)/$1$2/igs;
 
 	# INSERTING|DELETING|UPDATING -> TG_OP = 'INSERT'|'DELETE'|'UPDATE'
 	$str =~ s/\bINSERTING\b/TG_OP = 'INSERT'/igs;
