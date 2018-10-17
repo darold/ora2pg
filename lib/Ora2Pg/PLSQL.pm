@@ -659,7 +659,7 @@ sub plsql_to_plpgsql
 
 	# Remove leading : on Oracle variable taking care of regex character class
 	$str =~ s/([^\w:]+):(\d+)/$1\$$2/igs;
-	$str =~ s/([^\w:]+):((?!alpha|alnum|blank|cntrl|digit|graph|lower|print|punct|space|upper|xdigit)\w+)/$1$2/igs;
+	$str =~ s/([^\w:]+):((?!alpha:|alnum:|blank:|cntrl:|digit:|graph:|lower:|print:|punct:|space:|upper:|xdigit:)\w+)/$1$2/igs;
 
 	# INSERTING|DELETING|UPDATING -> TG_OP = 'INSERT'|'DELETE'|'UPDATE'
 	$str =~ s/\bINSERTING\b/TG_OP = 'INSERT'/igs;
