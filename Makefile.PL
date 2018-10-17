@@ -860,7 +860,6 @@ FORCE_SECURITY_INVOKER	0
 # a high value be sure to have enough memory if you have million of rows.
 DATA_LIMIT	$DATA_LIMIT_DEFAULT
 
-
 # When Ora2Pg detect a table with some BLOB it will automatically reduce the
 # value of this directive by dividing it by 10 until his value is below 1000.
 # You can control this value by setting BLOB_LIMIT. Exporting BLOB use lot of
@@ -964,6 +963,15 @@ FUNCTION_CHECK		1
 # included into data export. That mean that the BLOB column must not have a
 # NOT NULL constraint.
 NO_BLOB_EXPORT		0
+
+# By default data export order will be done by sorting on table name. If you
+# have huge tables at end of alphabetic order and you are using multiprocess
+# it can be better to set the sort order on size so that multiple small tables
+# can be processed before the largest tables finish. In this case set this
+# directive to size. Possible values are name and size. Note that export type
+# SHOW_TABLE and SHOW_COLUMN will use this sort order too, not only COPY or
+# INSERT export type.
+DATA_EXPORT_ORDER	name
 
 #------------------------------------------------------------------------------
 # PERFORMANCES SECTION (Control export/import performances)

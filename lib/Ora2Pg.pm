@@ -1120,6 +1120,9 @@ sub _init
 	# Enable BLOB data export by default
 	$self->{no_blob_export} ||= 0;
 
+	# Table data export will be sorted by name by default
+	$self->{data_sort_order} ||= 'name';
+
 	# Free some memory
 	%options = ();
 	%AConfig = ();
@@ -5449,8 +5452,15 @@ LANGUAGE plpgsql ;
 			}
 		}
 
-		# Ordering tables by name
+		# Ordering tables by name by default
 		my @ordered_tables = sort { $a cmp $b } keys %{$self->{tables}};
+		if (lc($self->{data_sort_order}) eq 'size') {
+			@ordered_tables = sort {
+				($self->{tables}{$b}{table_info}{num_rows} || $self->{tables}{$a}{table_info}{num_rows}) ?
+					$self->{tables}{$b}{table_info}{num_rows} <=> $self->{tables}{$a}{table_info}{num_rows} :
+						$a cmp $b 
+		       	} keys %{$self->{tables}};
+		}
 
 		my $dirprefix = '';
 		$dirprefix = "$self->{output_dir}/" if ($self->{output_dir});
@@ -5497,8 +5507,15 @@ LANGUAGE plpgsql ;
 		# Get partition information
 		$self->_partitions() if (!$self->{disable_partition});
 
-		# Ordering tables by name
+		# Ordering tables by name by default
 		my @ordered_tables = sort { $a cmp $b } keys %{$self->{tables}};
+		if (lc($self->{data_sort_order}) eq 'size') {
+			@ordered_tables = sort {
+				($self->{tables}{$b}{table_info}{num_rows} || $self->{tables}{$a}{table_info}{num_rows}) ?
+					$self->{tables}{$b}{table_info}{num_rows} <=> $self->{tables}{$a}{table_info}{num_rows} :
+						$a cmp $b 
+		       	} keys %{$self->{tables}};
+		}
 
 		# Set SQL orders that should be in the file header
 		# (before the COPY or INSERT commands)
@@ -14683,6 +14700,7 @@ sub _show_infos
 			}
 		}
 		$sth->finish();
+
 	} elsif ( ($type eq 'SHOW_TABLE') || ($type eq 'SHOW_COLUMN') ) {
 
 		# Get all tables information specified by the DBI method table_info
@@ -14729,12 +14747,22 @@ sub _show_infos
 			%externals = $self->_get_external_tables();
 		}
 
+		# Ordering tables by name by default
+		my @ordered_tables = sort { $a cmp $b } keys %tables_infos;
+		if (lc($self->{data_sort_order}) eq 'size') {
+			@ordered_tables = sort {
+				($tables_infos{$b}{num_rows} || $tables_infos{$a}{num_rows}) ?
+					$tables_infos{$b}{num_rows} <=> $tables_infos{$a}{num_rows} :
+						$a cmp $b
+		       	} keys %tables_infos;
+		}
+
 		my @done = ();
 		my $id = 0;
 		# Set the table information for each class found
 		my $i = 1;
 		my $total_row_num = 0;
-		foreach my $t (sort keys %tables_infos) {
+		foreach my $t (@ordered_tables) {
 			# Jump to desired extraction
 			if (grep(/^$t$/, @done)) {
 				$self->logit("Duplicate entry found: $t\n", 1);

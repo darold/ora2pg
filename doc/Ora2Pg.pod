@@ -957,6 +957,16 @@ columns. In this case enable this directive and the BLOB columns will not be
 included into data export. That mean that the BLOB column must not have a
 NOT NULL constraint.
 
+=item DATA_EXPORT_ORDER
+
+By default data export order will be done by sorting on table name. If you
+have huge tables at end of alphabetic order and you are using multiprocess,
+it can be better to set the sort order on size so that multiple small tables
+can be processed before the largest tables finish. In this case set this
+directive to size. Possible values are name and size. Note that export type
+SHOW_TABLE and SHOW_COLUMN will use this sort order too, not only COPY or
+INSERT export type.
+
 =back
 
 =head2 Limiting objects to export

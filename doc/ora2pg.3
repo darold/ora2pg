@@ -129,7 +129,7 @@
 .\" ========================================================================
 .\"
 .IX Title "ORA2PG 1"
-.TH ORA2PG 1 "2018-10-10" "perl v5.26.1" "User Contributed Perl Documentation"
+.TH ORA2PG 1 "2018-10-17" "perl v5.26.1" "User Contributed Perl Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -1081,6 +1081,21 @@ Disable this directive if you want to disable check_function_bodies.
 .Sp
 It disables validation of the function body string during \s-1CREATE FUNCTION.\s0
 Default is to use de postgresql.conf setting that enable it by default.
+.IP "\s-1NO_BLOB_EXPORT\s0" 4
+.IX Item "NO_BLOB_EXPORT"
+Exporting \s-1BLOB\s0 takes time, you may want to export all data except the \s-1BLOB\s0
+columns. In this case enable this directive and the \s-1BLOB\s0 columns will not be
+included into data export. That mean that the \s-1BLOB\s0 column must not have a
+\&\s-1NOT NULL\s0 constraint.
+.IP "\s-1DATA_EXPORT_ORDER\s0" 4
+.IX Item "DATA_EXPORT_ORDER"
+By default data export order will be done by sorting on table name. If you
+have huge tables at end of alphabetic order and you are using multiprocess,
+it can be better to set the sort order on size so that multiple small tables
+can be processed before the largest tables finish. In this case set this
+directive to size. Possible values are name and size. Note that export type
+\&\s-1SHOW_TABLE\s0 and \s-1SHOW_COLUMN\s0 will use this sort order too, not only \s-1COPY\s0 or
+\&\s-1INSERT\s0 export type.
 .SS "Limiting objects to export"
 .IX Subsection "Limiting objects to export"
 You may want to export only a part of an Oracle database, here are a set of
