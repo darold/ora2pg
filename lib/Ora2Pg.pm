@@ -5756,6 +5756,8 @@ LANGUAGE plpgsql ;
 			$pipe->print("GLOBAL EXPORT ROW NUMBER: $self->{global_rows}\n");
 		}
 		$self->{global_start_time} = time();
+		print STDERR "UUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUU @ordered_tables\n";
+		exit 0;
 		foreach my $table (@ordered_tables) {
 
 			if ($self->{file_per_table} && !$self->{pg_dsn}) {
@@ -6957,7 +6959,7 @@ CREATE TRIGGER ${table}_trigger_insert
 			}
 			$sql_output =~ s/,$//;
 			$sql_output .= ')';
-			if ($self->{tables}{$table}{table_info}{partitioned} && $self->{pg_supports_partition}) {
+			if ($self->{tables}{$table}{table_info}{partitioned} && $self->{pg_supports_partition} && !$self->{disable_partition}) {
 				$sql_output .= " PARTITION BY " . $self->{partitions_list}{"\L$table\E"}{type} . " (" . lc(join(',', @{$self->{partitions_list}{"\L$table\E"}{columns}})) . ")";
 			}
 			if ( ($self->{type} ne 'FDW') && (!$self->{external_to_fdw} || (!grep(/^$table$/i, keys %{$self->{external_table}}) && !$self->{tables}{$table}{table_info}{connection})) ) {
