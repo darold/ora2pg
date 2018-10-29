@@ -5756,8 +5756,6 @@ LANGUAGE plpgsql ;
 			$pipe->print("GLOBAL EXPORT ROW NUMBER: $self->{global_rows}\n");
 		}
 		$self->{global_start_time} = time();
-		print STDERR "UUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUU @ordered_tables\n";
-		exit 0;
 		foreach my $table (@ordered_tables) {
 
 			if ($self->{file_per_table} && !$self->{pg_dsn}) {
