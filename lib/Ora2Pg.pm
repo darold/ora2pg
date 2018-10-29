@@ -7028,7 +7028,7 @@ CREATE TRIGGER ${table}_trigger_insert
 				$sql_output .= "$_;\n";
 			}
 		}
-		if (!$self->{tables}{$table}{table_info}{partitioned} && $self->{type} ne 'FDW') {
+		if ((!$self->{tables}{$table}{table_info}{partitioned} || $self->{disable_partition}) && $self->{type} ne 'FDW') {
 			# Set the indexes definition
 			my ($idx, $fts_idx) = $self->_create_indexes($table, 0, %{$self->{tables}{$table}{indexes}});
 			$indices .= "$idx\n" if ($idx);
@@ -7048,9 +7048,8 @@ CREATE TRIGGER ${table}_trigger_insert
 				$sql_output .= $constraints;
 				$constraints = '';
 			}
-
-
 		}
+
 		if (exists $self->{tables}{$table}{alter_table}) {
 			$obj_type =~ s/UNLOGGED //;
 			foreach (@{$self->{tables}{$table}{alter_table}}) {
