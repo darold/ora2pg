@@ -1343,7 +1343,9 @@ sub replace_oracle_function
 	$str =~ s/TO_DATE\s*\(\s*('[^\']+')\s*,\s*('[^\']+')[^\)]*\)/to_date($1,$2)/is;
 
 	# When the date format is ISO and we have a constant we can remove the call to to_date()
-	$str =~ s/to_date\(\s*('\s*\d+-\d+-\d+ \d+:\d+:\d+')\s*,\s*'[S]*YYYY-MM-DD HH24:MI:SS'[^\)]*\)/$1/;
+	if ($class->{type} eq 'PARTITION' && $class->{pg_supports_partition}) {
+		$str =~ s/to_date\(\s*('\s*\d+-\d+-\d+ \d+:\d+:\d+')\s*,\s*'[S]*YYYY-MM-DD HH24:MI:SS'[^\)]*\)/$1/;
+	}
 
 	# Translate to_timestamp_tz Oracle function
 	$str =~ s/TO_TIMESTAMP_TZ\s*\((.*)\)/'to_timestamp(' . convert_date_format($class, $1) . ')'/ies;
