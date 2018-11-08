@@ -11892,9 +11892,7 @@ sub format_data_type
 				$col = $q . $self->{ora_boolean_values}{lc($col)} . $q;
 			}
 		} else {
-			# covered now by the call to _numeric_format()
-			# $col =~ s/,/\./;
-			$col =~ s/\~/inf/;
+			$col =~ s/([\-]*)(\~|Inf)/'$1Infinity'/i;
 			if (!$sprep) {
 				$col = 'NULL' if ($col eq '');
 			} else {
@@ -11915,8 +11913,7 @@ sub format_data_type
 				$col = $self->{ora_boolean_values}{lc($col)};
 			}
 		} elsif ($cond->{isnum}) {
-			# covered now by the call to _numeric_format()
-			$col =~ s/\~/inf/;
+			$col =~ s/([\-]*)(\~|Inf)/$1Infinity/i;
 			$col = '\N' if ($col eq '');
 		} elsif ($cond->{isbytea}) {
 			$col = $self->_escape_lob($col, $cond->{raw} ? 'RAW' : 'BLOB', $cond, $isnested);
