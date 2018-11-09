@@ -12,15 +12,15 @@
 #        it under the terms of the GNU General Public License as published by
 #        the Free Software Foundation, either version 3 of the License, or
 #        any later version.
-# 
+#
 #        This program is distributed in the hope that it will be useful,
 #        but WITHOUT ANY WARRANTY; without even the implied warranty of
 #        MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 #        GNU General Public License for more details.
-# 
+#
 #        You should have received a copy of the GNU General Public License
 #        along with this program. If not, see < http://www.gnu.org/licenses/ >.
-# 
+#
 #------------------------------------------------------------------------------
 use strict qw/vars/;
 
@@ -330,7 +330,7 @@ if ( ($EXPORT_TYPE !~ /^SHOW_/i) && !$INPUT_FILE ) {
 	$schema->export_schema();
 }
 
-# Check if error occurs during data export 
+# Check if error occurs during data export
 unless(opendir(DIR, "$TMP_DIR")) {
 	print "FATAL: can't opendir $TMP_DIR: $!\n";
 	exit 1;
@@ -496,7 +496,7 @@ sub create_project
 		my @cf = <IN>;
 		close(IN);
 		# Create a generic configuration file only if it has the .dist extension
-		# otherwise use the configuration given at command line (-c option) 
+		# otherwise use the configuration given at command line (-c option)
 		if ($conf_file =~ /\.dist/) {
 			&make_config_generic(\@cf);
 		}
@@ -712,10 +712,10 @@ confirm () {
 	    # call with a prompt string or use a default
 	    read -r -p "${msg} [y/N/q] " response
 	    case $response in
-		[yY][eE][sS]|[yY]) 
+		[yY][eE][sS]|[yY])
 		    true
 		    ;;
-		[qQ][uU][iI][tT]|[qQ]) 
+		[qQ][uU][iI][tT]|[qQ])
 		    exit
 		    ;;
 		*)
@@ -795,9 +795,9 @@ import_constraints () {
 
 	if [ $NO_CONSTRAINTS -eq 1 ] && [ -r "$NAMESPACE/schema/triggers/trigger.sql" ]; then
 		if confirm "Would you like to import TRIGGER from $NAMESPACE/schema/triggers/trigger.sql?" ; then
-			echo "Running: psql --single-transaction$DB_HOST$DB_PORT -U $DB_OWNER -d $DB_NAME -f $NAMESPACE/schema/triggers/trigger.sql"
+			echo "Running: psql --single-transaction $DB_HOST$DB_PORT -U $DB_OWNER -d $DB_NAME -f $NAMESPACE/schema/triggers/trigger.sql"
 			if [ $DEBUG -eq 0 ]; then
-				psql --single-transaction$DB_HOST$DB_PORT -U $DB_OWNER -d $DB_NAME -f $NAMESPACE/schema/triggers/trigger.sql
+				psql --single-transaction $DB_HOST$DB_PORT -U $DB_OWNER -d $DB_NAME -f $NAMESPACE/schema/triggers/trigger.sql
 				if [ $? -ne 0 ]; then
 					die "an error occurs when importing file $NAMESPACE/schema/triggers/trigger.sql."
 				fi
@@ -976,9 +976,9 @@ if [ $DATA_ONLY -eq 0 ]; then
 		fi
 		if [ ! -z "$SQL_POST_SCRIPT" ] && [ $etype = "TABLE" ]; then
 			if confirm "Would you like to execute SQL script $SQL_POST_SCRIPT?" ; then
-				echo "Running: psql --single-transaction$DB_HOST$DB_PORT -U $DB_OWNER -d $DB_NAME -f $SQL_POST_SCRIPT"
+				echo "Running: psql --single-transaction $DB_HOST$DB_PORT -U $DB_OWNER -d $DB_NAME -f $SQL_POST_SCRIPT"
 				if [ $DEBUG -eq 0 ]; then
-					psql --single-transaction$DB_HOST$DB_PORT -U $DB_OWNER -d $DB_NAME -f $SQL_POST_SCRIPT
+					psql --single-transaction $DB_HOST$DB_PORT -U $DB_OWNER -d $DB_NAME -f $SQL_POST_SCRIPT
 					if [ $? -ne 0 ]; then
 						die "an error occurs when importing file $SQL_POST_SCRIPT."
 					fi
