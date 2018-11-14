@@ -603,7 +603,7 @@ DISABLE_PARTITION	0
 WITH_OID		0
 
 # Allow escaping of column name using Oracle reserved words.
-ORA_RESERVED_WORDS	audit,comment
+ORA_RESERVED_WORDS	audit,comment,references
 
 # Enable this directive if you have tables or column names that are a reserved
 # word for PostgreSQL. Ora2Pg will double quote the name of the object. 
