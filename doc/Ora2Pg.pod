@@ -2024,7 +2024,7 @@ names on all your SQL scripts.
 =item ORA_RESERVED_WORDS
 
 Allow escaping of column name using Oracle reserved words. Value is a list of
-comma-separated reserved word. Default is audit,comment.
+comma-separated reserved word. Default: audit,comment,references.
 
 =item USE_RESERVED_WORDS
 

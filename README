@@ -1960,7 +1960,8 @@ CONFIGURATION
 
     ORA_RESERVED_WORDS
         Allow escaping of column name using Oracle reserved words. Value is
-        a list of comma-separated reserved word. Default is audit,comment.
+        a list of comma-separated reserved word. Default:
+        audit,comment,references.
 
     USE_RESERVED_WORDS
         Enable this directive if you have table or column names that are a
