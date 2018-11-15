@@ -61,7 +61,7 @@ FEATURES
             - Perform a diff between Oracle and PostgreSQL database for test purpose.
 
     Ora2Pg does its best to automatically convert your Oracle database to
-    PostgreSQL but there's still manual workxs to do. The Oracle specific
+    PostgreSQL but there's still manual works to do. The Oracle specific
     PL/SQL code generated for functions, procedures, packages and triggers
     has to be reviewed to match the PostgreSQL syntax. You will find some
     useful recommendations on porting Oracle PL/SQL code to PostgreSQL

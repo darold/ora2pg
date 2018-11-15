@@ -13455,6 +13455,8 @@ sub _extract_data
 			$self->_numeric_format($dbh);
 			# Force datetime format into the cloned session
 			$self->_datetime_format($dbh);
+			# Set the action name on Oracle side to see which table is exported
+			$dbh->do("CALL DBMS_APPLICATION_INFO.set_action(action_name => '$table')") or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
 		}
 
 		# Set row cache size
@@ -13488,7 +13490,11 @@ sub _extract_data
 		} 
 
 		# prepare the query before execution
-		if (!$self->{is_mysql}) {
+		if (!$self->{is_mysql})
+		{
+			# Set the action name on Oracle side to see which table is exported
+			$self->{dbh}->do("CALL DBMS_APPLICATION_INFO.set_action(action_name => '$table')") or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+
 			if ($self->{no_lob_locator}) {
 				$sth = $self->{dbh}->prepare($query,{ora_piece_lob => 1, ora_piece_size => $self->{longreadlen}, ora_exe_mode=>OCI_STMT_SCROLLABLE_READONLY, ora_check_sql => 1});
 			} else {
