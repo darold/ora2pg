@@ -12607,8 +12607,8 @@ sub _convert_function
 			$self->_restore_text_constant_part(\$str);
 			$fct_warning = "\n-- WARNING: parameters order has been changed by Ora2Pg to move parameters with default values at end\n";
 			$fct_warning .= "-- Original order was: $fname($str)\n";
-			$fct_warning .= "-- You will need to manually reorder parameters in the function calls";
-			print STDERR $fct_warning, "\n";
+			$fct_warning .= "-- You will need to manually reorder parameters in the function calls\n";
+			print STDERR $fct_warning;
 			last;
 		}
 	}
@@ -12689,14 +12689,14 @@ sub _convert_function
 	my $type = $fct_detail{type};
 	$type = 'FUNCTION' if (!$self->{pg_supports_procedure});
 
-	my $function = "\nCREATE$self->{create_or_replace} $type $fname$at_suffix $fct_detail{args}";
+	my $function = "\n${fct_warning}CREATE$self->{create_or_replace} $type $fname$at_suffix $fct_detail{args}";
 	if (!$pname || !$self->{package_as_schema}) {
 		if ($self->{export_schema} && !$self->{schema}) {
-			$function = "\nCREATE$self->{create_or_replace} $type " . $self->quote_object_name("$owner.$fname") . " $fct_detail{args}";
+			$function = "\n${fct_warning}CREATE$self->{create_or_replace} $type " . $self->quote_object_name("$owner.$fname") . " $fct_detail{args}";
 			$name =  $self->quote_object_name("$owner.$fname");
 			$self->logit("Parsing function " . $self->quote_object_name("$owner.$fname") . "...\n", 1);
 		} elsif ($self->{export_schema} && $self->{schema}) {
-			$function = "\nCREATE$self->{create_or_replace} $type " . $self->quote_object_name("$self->{schema}.$fname") . " $fct_detail{args}";
+			$function = "\n${fct_warning}CREATE$self->{create_or_replace} $type " . $self->quote_object_name("$self->{schema}.$fname") . " $fct_detail{args}";
 			$name =  $self->quote_object_name("$self->{schema}.$fname");
 			$self->logit("Parsing function " . $self->quote_object_name("$self->{schema}.$fname") . "...\n", 1);
 		}
