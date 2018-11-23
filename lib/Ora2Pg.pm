@@ -8761,7 +8761,11 @@ sub _column_info
 
 	my $condition = '';
 	$condition .= "AND A.TABLE_NAME='$table' " if ($table);
-	$condition .= "AND A.OWNER='$owner' " if ($owner);
+	if ($owner) {
+		$condition .= "AND A.OWNER='$owner' ";
+	} else {
+		$condition .= " AND A.OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "') ";
+	}
 	if (!$table) {
 		$condition .= $self->limit_to_objects('TABLE', 'A.TABLE_NAME');
 	} else {
@@ -8969,7 +8973,11 @@ sub _column_attributes
 
 	my $condition = '';
 	$condition .= "AND A.TABLE_NAME='$table' " if ($table);
-	$condition .= "AND A.OWNER='$owner' " if ($owner);
+	if ($owner) {
+		$condition .= "AND A.OWNER='$owner' ";
+	} else {
+		$condition .= " AND A.OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "') ";
+	}
 	if (!$table) {
 		$condition .= $self->limit_to_objects('TABLE', 'A.TABLE_NAME');
 	} else {
@@ -9053,7 +9061,11 @@ sub _encrypted_columns
 
 	my $condition = '';
 	$condition .= "AND A.TABLE_NAME='$table' " if ($table);
-	$condition .= "AND A.OWNER='$owner' " if ($owner);
+	if ($owner) {
+		$condition .= "AND A.OWNER='$owner' ";
+	} else {
+		$condition .= " AND A.OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "') ";
+	}
 	if (!$table) {
 		$condition .= $self->limit_to_objects('TABLE', 'A.TABLE_NAME');
 	} else {
@@ -9572,7 +9584,11 @@ sub _get_indexes
 
 	my $condition = '';
 	$condition .= "AND A.TABLE_NAME='$table' " if ($table);
-	$condition .= "AND A.INDEX_OWNER='$owner' AND B.OWNER='$owner' " if ($owner);
+	if ($owner) {
+		$condition .= "AND A.INDEX_OWNER='$owner' ";
+	} else {
+		$condition .= " AND A.INDEX_OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "') ";
+	}
 	if (!$table) {
 		$condition .= $self->limit_to_objects('TABLE|INDEX', "A.TABLE_NAME|A.INDEX_NAME");
 	} else {
@@ -11169,6 +11185,12 @@ sub _get_partitions
 	if ($self->{db_version} =~ /Release 8/) {
 		$highvalue = "'' AS HIGH_VALUE";
 	}
+	my $condition = '';
+	if ($self->{schema}) {
+		$condition .= "AND A.TABLE_OWNER='$self->{schema}' ";
+	} else {
+		$condition .= " AND A.TABLE_OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "') ";
+	}
 	# Retrieve all partitions.
 	my $str = qq{
 SELECT
@@ -11187,6 +11209,7 @@ WHERE
 	a.table_name = b.table_name AND
 	(b.partitioning_type = 'RANGE' OR b.partitioning_type = 'LIST' OR b.partitioning_type = 'HASH')
 	AND a.table_name = c.name
+	$condition
 };
 
 	if ($self->{db_version} !~ /Release 8/) {
@@ -11241,6 +11264,12 @@ sub _get_subpartitions
 	if ($self->{db_version} =~ /Release 8/) {
 		$highvalue = "'' AS HIGH_VALUE";
 	}
+	my $condition = '';
+	if ($self->{schema}) {
+		$condition .= "AND A.TABLE_OWNER='$self->{schema}' ";
+	} else {
+		$condition .= " AND A.TABLE_OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "') ";
+	}
 	# Retrieve all partitions.
 	my $str = qq{
 SELECT
@@ -11260,6 +11289,7 @@ WHERE
 	a.table_name = b.table_name AND
 	(b.subpartitioning_type = 'RANGE' OR b.subpartitioning_type = 'LIST' OR b.subpartitioning_type = 'HASH')
 	AND a.table_name = c.name
+	$condition
 };
 	$str .= $self->limit_to_objects('TABLE|PARTITION', 'A.TABLE_NAME|A.SUBPARTITION_NAME');
 
@@ -11382,6 +11412,12 @@ sub _get_partitions_list
 	if ($self->{db_version} =~ /Release 8/) {
 		$highvalue = "'' AS HIGH_VALUE";
 	}
+	my $condition = '';
+	if ($self->{schema}) {
+		$condition .= "AND A.TABLE_OWNER='$self->{schema}' ";
+	} else {
+		$condition .= " AND A.TABLE_OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "') ";
+	}
 	# Retrieve all partitions.
 	my $str = qq{
 SELECT
@@ -11394,6 +11430,7 @@ SELECT
 	A.TABLE_OWNER
 FROM $self->{prefix}_TAB_PARTITIONS A, $self->{prefix}_PART_TABLES B
 WHERE A.TABLE_NAME = B.TABLE_NAME
+$condition
 };
 	if ($self->{db_version} !~ /Release 8/) {
 		$str .= " AND (A.TABLE_OWNER, A.TABLE_NAME) NOT IN (SELECT OWNER, MVIEW_NAME FROM ALL_MVIEWS UNION ALL SELECT LOG_OWNER, LOG_TABLE FROM ALL_MVIEW_LOGS)";
@@ -11436,6 +11473,12 @@ sub _get_partitioned_table
 	my $highvalue = 'A.HIGH_VALUE';
 	if ($self->{db_version} =~ /Release 8/) {
 		$highvalue = "'' AS HIGH_VALUE";
+	}
+	my $condition = '';
+	if ($self->{schema}) {
+		$condition .= "AND B.OWNER='$self->{schema}' ";
+	} else {
+		$condition .= " AND B.OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "') ";
 	}
 	# Retrieve all partitions.
 	my $str = qq{
@@ -11498,6 +11541,12 @@ sub _get_subpartitioned_table
 	my $highvalue = 'A.HIGH_VALUE';
 	if ($self->{db_version} =~ /Release 8/) {
 		$highvalue = "'' AS HIGH_VALUE";
+	}
+	my $condition = '';
+	if ($self->{schema}) {
+		$condition .= "AND A.TABLE_OWNER='$self->{schema}' ";
+	} else {
+		$condition .= " AND A.TABLE_OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "') ";
 	}
 	# Retrieve all partitions.
 	my $str = qq{
