@@ -888,8 +888,8 @@ sub plsql_to_plpgsql
 	# Attempt to remove some extra parenthesis in simple case only
 	$str = remove_extra_parenthesis($str);
 
-	# Replace cast in partition range
-	$str =~ s/TIMESTAMP\s*('[^']+')/$1::timestamp/igs;
+	# Remove cast in partition range
+	$str =~ s/TIMESTAMP\s*('[^']+')/$1/igs;
 	
 	# Replace call to SQL%ROWCOUNT
 	$str =~ s/([^\s]+)\s*:=\s*SQL\%ROWCOUNT/GET DIAGNOSTICS $1 = ROW_COUNT/igs;
