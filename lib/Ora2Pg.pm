@@ -11730,6 +11730,7 @@ sub set_custom_type_value
 	my $col_ref = [];
 	push(@$col_ref, @$rows);
 	my $num_arr = -1;
+	my $isnested = 0;
 
 	for (my $i = 0; $i <= $#{$col_ref}; $i++) {
 
@@ -11746,11 +11747,13 @@ sub set_custom_type_value
 				# Data must be exported as an array of numeric types
 				} elsif ($dest_type =~ /\[\d*\]$/) {
 					$has_array = 1;
-				} else {
+				} elsif ($dest_type =~ /(char|text)/) {
 					$col_ref->[$i] =~ s/"/\\\\\\\\""/igs;
 					if ($col_ref->[$i] =~ /[,"]/) {
 						$col_ref->[$i] = '""' . $col_ref->[$i] . '""';
 					};
+				} else {
+					$isnested = 1;
 				}
 			} else {
 				# Want to export the user defined type as a single array, not composite type
@@ -11766,6 +11769,8 @@ sub set_custom_type_value
 					$has_array = 1;
 				} elsif ($dest_type =~ /(char|text)/) {
 					$col_ref->[$i] = "'" . $col_ref->[$i] . "'" if ($col_ref->[0][$i] ne '');
+				} else {
+					$isnested = 1;
 				}
 			}
 			push(@type_col, $col_ref->[$i]);
@@ -11831,7 +11836,10 @@ sub set_custom_type_value
 	}
 
 	if ($has_array) {
-		$result =  '{' . join(',', @type_col) . '}';
+		 $result =  '{' . join(',', @type_col) . '}';
+	} elsif ($isnested) {
+		# ARRAY[ROW('B','C')]
+		$result =  '{"(' . join(',', @type_col) . ')"}';
 	} else {
 		# This is the root call of the function, no global quoting is required
 		if (!$no_quote) {
