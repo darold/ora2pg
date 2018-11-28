@@ -1469,9 +1469,22 @@ sub _init
 		}
 	}
 
-	# Retreive all table information
-        foreach my $t (@{$self->{export_type}}) {
+	# backup output filename in multiple export mode
+	$self->{output_origin} = '';
+	if ($#{$self->{export_type}} > 0) {
+		$self->{output_origin} = $self->{output};
+	}
+
+	# Retreive all export types information
+        foreach my $t (@{$self->{export_type}})
+	{
                 $self->{type} = $t;
+
+		# Prefix the output file with the export type to avoid output.sql overriding 
+		if ($#{$self->{export_type}} > 0) {
+			$self->{output} = lc($self->{type}) . '_' . $self->{output_origin};
+		}
+
 		if (($self->{type} eq 'TABLE') || ($self->{type} eq 'FDW') || ($self->{type} eq 'INSERT') || ($self->{type} eq 'COPY') || ($self->{type} eq 'KETTLE')) {
 			$self->{plsql_pgsql} = 1;
 			$self->_tables();
