@@ -6491,8 +6491,7 @@ BEGIN
 								$tb_name =  $1 . '.' . $self->{subpartitions_default}{$table}{$part};
 							}
 							$create_table_tmp .= "CREATE TABLE " . $self->quote_object_name($tb_name)
-										. " PARTITION OF \L$table\E\n";
-							$create_table_tmp .= "FOR VALUES DEFAULT;\n";
+										. " PARTITION OF \L$table\E DEFAULT;\n";
 						}
 
 						if ($self->{subpartitions_default}{$table}{$part} && ($create_table{$table}{index} !~ /ON $self->{subpartitions_default}{$table}{$part} /)) {
@@ -6543,8 +6542,7 @@ LANGUAGE plpgsql;
 							}
 						}
 						$create_table{$table}{table} .= "CREATE TABLE " . $self->quote_object_name($tb_name)
-									. " PARTITION OF \L$table\E\n";
-						$create_table{$table}{table} .= "FOR VALUES DEFAULT;\n";
+									. " PARTITION OF \L$table\E DEFAULT;\n";
 					}
 				}
 			}
