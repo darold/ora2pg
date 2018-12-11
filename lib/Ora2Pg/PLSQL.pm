@@ -101,7 +101,7 @@ $QUERY_TEST_SCORE = 0.1;
 	'REGEXP_LIKE' => 0.1,
 	'REGEXP_SUBSTR' => 0.1,
 	'TG_OP' => 0,
-	'CURSOR' => 0.2,
+	'CURSOR' => 1,
 	'PIPE ROW' => 1,
 	'ORA_ROWSCN' => 3,
 	'SAVEPOINT' => 1,
@@ -2057,7 +2057,7 @@ sub estimate_cost
 	$cost_details{'REGEXP_SUBSTR'} += $n;
 	$n = () = $str =~ m/\b(INSERTING|DELETING|UPDATING)\b/igs;
 	$cost_details{'TG_OP'} += $n;
-	$n = () = $str =~ m/CURSOR/igs;
+	$n = () = $str =~ m/REF\s*CURSOR/igs;
 	$cost_details{'CURSOR'} += $n;
 	$n = () = $str =~ m/ORA_ROWSCN/igs;
 	$cost_details{'ORA_ROWSCN'} += $n;
