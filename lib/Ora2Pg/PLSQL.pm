@@ -700,8 +700,10 @@ sub plsql_to_plpgsql
 	$str =~ s/\bDEFAULT\s+NULL\b//igs;
 
 	# Replace DEFAULT empty_blob() and empty_clob()
-	$str =~ s/(empty_blob|empty_clob)\(\s*\)//igs;
-	$str =~ s/(empty_blob|empty_clob)\b//igs;
+	my $empty = '';
+	$empty = 'NULL' if (!$class->{empty_lob_null});
+	$str =~ s/(empty_blob|empty_clob)\s*\(\s*\)/$empty/is;
+	$str =~ s/(empty_blob|empty_clob)\b/$empty/is;
 
 	# dup_val_on_index => unique_violation : already exist exception
 	$str =~ s/\bdup_val_on_index\b/unique_violation/igs;
@@ -1332,8 +1334,10 @@ sub replace_oracle_function
 	$str =~ s/NVL2\s*\($field,$field,$field\)/coalesce($1,$3)/is;
 
 	# Replace DEFAULT empty_blob() and empty_clob()
-	$str =~ s/(empty_blob|empty_clob)\s*\(\s*\)//is;
-	$str =~ s/(empty_blob|empty_clob)\b//is;
+	my $empty = '';
+	$empty = 'NULL' if (!$class->{empty_lob_null});
+	$str =~ s/(empty_blob|empty_clob)\s*\(\s*\)/$empty/is;
+	$str =~ s/(empty_blob|empty_clob)\b/$empty/is;
 
 	# Replace call to SYS_GUID() function
 	$str =~ s/\bSYS_GUID\s*\(\s*\)/$class->{uuid_function}()/is;
