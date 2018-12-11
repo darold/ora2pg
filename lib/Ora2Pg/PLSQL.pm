@@ -700,7 +700,7 @@ sub plsql_to_plpgsql
 	$str =~ s/\bDEFAULT\s+NULL\b//igs;
 
 	# Replace DEFAULT empty_blob() and empty_clob()
-	my $empty = '';
+	my $empty = "''";
 	$empty = 'NULL' if (!$class->{empty_lob_null});
 	$str =~ s/(empty_blob|empty_clob)\s*\(\s*\)/$empty/is;
 	$str =~ s/(empty_blob|empty_clob)\b/$empty/is;
@@ -1334,7 +1334,7 @@ sub replace_oracle_function
 	$str =~ s/NVL2\s*\($field,$field,$field\)/coalesce($1,$3)/is;
 
 	# Replace DEFAULT empty_blob() and empty_clob()
-	my $empty = '';
+	my $empty = "''";
 	$empty = 'NULL' if (!$class->{empty_lob_null});
 	$str =~ s/(empty_blob|empty_clob)\s*\(\s*\)/$empty/is;
 	$str =~ s/(empty_blob|empty_clob)\b/$empty/is;
