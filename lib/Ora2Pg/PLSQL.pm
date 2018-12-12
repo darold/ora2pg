@@ -129,7 +129,7 @@ $QUERY_TEST_SCORE = 0.1;
 	'TO_CHAR' => 0.1,
 	'ANYDATA' => 2,
 	'CONCAT' => 0.1,
-	'NSLSORT' => 1,
+	'TIMEZONE' => 1,
 );
 
 @ORA_FUNCTIONS = qw(
@@ -2115,7 +2115,8 @@ sub estimate_cost
 	$cost_details{'ANYDATA'} += $n;
 	$n = () = $str =~ m/\|\|/igs;
 	$cost_details{'CONCAT'} += $n;
-
+	$n = () = $str =~ m/TIMEZONE_(REGION|ABBR)/igs;
+	$cost_details{'TIMEZONE'} += $n;
 
 	foreach my $f (@ORA_FUNCTIONS) {
 		if ($str =~ /\b$f\b/igs) {
