@@ -1379,6 +1379,7 @@ sub _init
 	} else {
 		@{$self->{export_type}} = ('TABLE');
 	}
+
 	# If you decide to autorewrite PLSQL code, this load the dedicated
 	# Perl module
 	$self->{plsql_pgsql} = 1 if ($self->{plsql_pgsql} eq '');
@@ -7418,6 +7419,10 @@ sub _get_sql_statements
 			$self->logit("Removing function ora2pg_get_efile() used to retrieve EFILE from BFILE.\n", 1);
 			my $efile_function = "DROP FUNCTION ora2pg_get_efile";
 			my $sth2 = $self->{dbh}->do($efile_function);
+		} elsif ($self->{bfile_found} eq 'bytea') {
+			$self->logit("Removing function ora2pg_get_bfile() used to retrieve BFILE content.\n", 1);
+			my $efile_function = "DROP FUNCTION ora2pg_get_bfile";
+			my $sth2 = $self->{dbh}->do($efile_function);
 		}
 
 		#### Set SQL commands that must be executed after data loading
@@ -8763,7 +8768,7 @@ sub _howto_get_data
 			# If dest type is bytea the content of the file is exported as bytea
 			} elsif ( ($src_type->[$k] =~ /bfile/i) && ($type->[$k] =~ /bytea/i) ) {
 				$self->{bfile_found} = 'bytea';
-				$str .= "$name->[$k]->[0],";
+				$str .= "ora2pg_get_bfile($name->[$k]->[0]),";
 			# If dest type is efile the content of the file is exported to use the efile extension
 			} elsif ( ($src_type->[$k] =~ /bfile/i) && ($type->[$k] =~ /efile/i) ) {
 				$self->{bfile_found} = 'efile';
@@ -8888,6 +8893,37 @@ VARCHAR2
       RETURN '($quote' || l_dir || '$quote,$quote' || l_fname || '$quote)';
   END IF;
   END;
+};
+	# If we have a BFILE that might be exported as bytea we need to create a
+	# function that exports the bfile as a binary BLOB, a HEX encoded string
+	} elsif ($self->{bfile_found} eq 'bytea') {
+		$self->logit("Creating function ora2pg_get_bfile( p_bfile IN BFILE ) to retrieve BFILE content as BLOB.\n", 1);
+		$bfile_function = qq{
+CREATE OR REPLACE FUNCTION ora2pg_get_bfile( p_bfile IN BFILE ) RETURN 
+BLOB AS
+        filecontent BLOB := NULL;
+	src_file BFILE := NULL;
+        l_step PLS_INTEGER := 12000;
+	l_dir   VARCHAR2(4000);
+	l_fname VARCHAR2(4000);
+	offset NUMBER := 1;
+BEGIN
+    IF p_bfile IS NULL THEN
+      RETURN NULL;
+    END IF;
+
+    DBMS_LOB.FILEGETNAME( p_bfile, l_dir, l_fname );
+    src_file := BFILENAME( l_dir, l_fname );
+    IF src_file IS NULL THEN
+	RETURN NULL;
+    END IF;
+
+    DBMS_LOB.FILEOPEN(src_file, DBMS_LOB.FILE_READONLY);
+    DBMS_LOB.CREATETEMPORARY(filecontent, true);
+    DBMS_LOB.LOADBLOBFROMFILE (filecontent, src_file, DBMS_LOB.LOBMAXSIZE, offset, offset);
+    DBMS_LOB.FILECLOSE(src_file);
+    RETURN filecontent;
+END;
 };
 	}
 

@@ -1772,22 +1772,22 @@ Use the DIRECTORY export type to export the existing directories as well as
 privileges on those directories.
 
 
-There's no SQL function available to retrieve the path to the BFILE, then Ora2Pg
+There's no SQL function available to retrieve the path to the BFILE. Ora2Pg
 have to create one using the DBMS_LOB package.
 
 	CREATE OR REPLACE FUNCTION ora2pg_get_bfilename( p_bfile IN BFILE )
 	RETURN VARCHAR2
-	  AS
+	AS
 	    l_dir   VARCHAR2(4000);
 	    l_fname VARCHAR2(4000);
 	    l_path  VARCHAR2(4000);
-	  BEGIN
+	BEGIN
 	    dbms_lob.FILEGETNAME( p_bfile, l_dir, l_fname );
 	    SELECT directory_path INTO l_path FROM all_directories
 		WHERE directory_name = l_dir;
 	    l_dir := rtrim(l_path,'/');
 	    RETURN l_dir || '/' || l_fname;
-	  END;
+	END;
 
 This function is only created if Ora2Pg found a table with a BFILE column and
 that the destination type is TEXT. The function is dropped at the end of the
@@ -1798,13 +1798,13 @@ Ora2Pg have to create one using the DBMS_LOB package.
 
 	CREATE OR REPLACE FUNCTION ora2pg_get_efile( p_bfile IN BFILE )
 	RETURN VARCHAR2
-	  AS
+	AS
 	    l_dir   VARCHAR2(4000);
 	    l_fname VARCHAR2(4000);
-	  BEGIN
+	BEGIN
 	    dbms_lob.FILEGETNAME( p_bfile, l_dir, l_fname );
 	    RETURN '(' || l_dir || ',' || l_fnamei || ')';
-	  END;
+	END;
 
 This function is only created if Ora2Pg found a table with a BFILE column and
 that the destination type is EFILE. The function is dropped at the end of the
@@ -1819,6 +1819,40 @@ for example.
 The EFILE type is a user defined type created by the PostgreSQL extension
 external_file that can be found here: https://github.com/darold/external_file
 This is a port of the BFILE Oracle type to PostgreSQL.
+
+There's no SQL function available to retrieve the content of a BFILE. Ora2Pg
+have to create one using the DBMS_LOB package.
+
+	CREATE OR REPLACE FUNCTION ora2pg_get_bfile( p_bfile IN BFILE ) RETURN
+	BLOB
+	  AS
+		filecontent BLOB := NULL;
+		src_file BFILE := NULL;
+		l_step PLS_INTEGER := 12000;
+		l_dir   VARCHAR2(4000);
+		l_fname VARCHAR2(4000);
+		offset NUMBER := 1;
+	  BEGIN
+	    IF p_bfile IS NULL THEN
+	      RETURN NULL;
+	    END IF;
+
+	    DBMS_LOB.FILEGETNAME( p_bfile, l_dir, l_fname );
+	    src_file := BFILENAME( l_dir, l_fname );
+	    IF src_file IS NULL THEN
+		RETURN NULL;
+	    END IF;
+
+	    DBMS_LOB.FILEOPEN(src_file, DBMS_LOB.FILE_READONLY);
+	    DBMS_LOB.CREATETEMPORARY(filecontent, true);
+	    DBMS_LOB.LOADBLOBFROMFILE (filecontent, src_file, DBMS_LOB.LOBMAXSIZE, offset, offset);
+	    DBMS_LOB.FILECLOSE(src_file);
+	    RETURN filecontent;
+	END;
+
+This function is only created if Ora2Pg found a table with a BFILE column and
+that the destination type is bytea (the default). The function is dropped at
+the end of the export. This concern both, COPY and INSERT export type.
 
 About the ROWID and UROWID, they are converted into OID by "logical" default
 but this will through an error at data import. There is no equivalent data type

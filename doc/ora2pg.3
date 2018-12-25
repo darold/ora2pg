@@ -129,7 +129,7 @@
 .\" ========================================================================
 .\"
 .IX Title "ORA2PG 1"
-.TH ORA2PG 1 "2018-11-15" "perl v5.26.1" "User Contributed Perl Documentation"
+.TH ORA2PG 1 "2018-12-25" "perl v5.26.1" "User Contributed Perl Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -1893,23 +1893,23 @@ in this case, Ora2Pg will export it as an \s-1EFILE\s0 record: (\s-1DIRECTORY, F
 Use the \s-1DIRECTORY\s0 export type to export the existing directories as well as
 privileges on those directories.
 .Sp
-There's no \s-1SQL\s0 function available to retrieve the path to the \s-1BFILE,\s0 then Ora2Pg
+There's no \s-1SQL\s0 function available to retrieve the path to the \s-1BFILE.\s0 Ora2Pg
 have to create one using the \s-1DBMS_LOB\s0 package.
 .Sp
 .Vb 10
 \&        CREATE OR REPLACE FUNCTION ora2pg_get_bfilename( p_bfile IN BFILE )
 \&        RETURN VARCHAR2
-\&          AS
+\&        AS
 \&            l_dir   VARCHAR2(4000);
 \&            l_fname VARCHAR2(4000);
 \&            l_path  VARCHAR2(4000);
-\&          BEGIN
+\&        BEGIN
 \&            dbms_lob.FILEGETNAME( p_bfile, l_dir, l_fname );
 \&            SELECT directory_path INTO l_path FROM all_directories
 \&                WHERE directory_name = l_dir;
 \&            l_dir := rtrim(l_path,\*(Aq/\*(Aq);
 \&            RETURN l_dir || \*(Aq/\*(Aq || l_fname;
-\&          END;
+\&        END;
 .Ve
 .Sp
 This function is only created if Ora2Pg found a table with a \s-1BFILE\s0 column and
@@ -1922,13 +1922,13 @@ Ora2Pg have to create one using the \s-1DBMS_LOB\s0 package.
 .Vb 9
 \&        CREATE OR REPLACE FUNCTION ora2pg_get_efile( p_bfile IN BFILE )
 \&        RETURN VARCHAR2
-\&          AS
+\&        AS
 \&            l_dir   VARCHAR2(4000);
 \&            l_fname VARCHAR2(4000);
-\&          BEGIN
+\&        BEGIN
 \&            dbms_lob.FILEGETNAME( p_bfile, l_dir, l_fname );
 \&            RETURN \*(Aq(\*(Aq || l_dir || \*(Aq,\*(Aq || l_fnamei || \*(Aq)\*(Aq;
-\&          END;
+\&        END;
 .Ve
 .Sp
 This function is only created if Ora2Pg found a table with a \s-1BFILE\s0 column and
@@ -1946,6 +1946,42 @@ for example.
 The \s-1EFILE\s0 type is a user defined type created by the PostgreSQL extension
 external_file that can be found here: https://github.com/darold/external_file
 This is a port of the \s-1BFILE\s0 Oracle type to PostgreSQL.
+.Sp
+There's no \s-1SQL\s0 function available to retrieve the content of a \s-1BFILE.\s0 Ora2Pg
+have to create one using the \s-1DBMS_LOB\s0 package.
+.Sp
+.Vb 10
+\&        CREATE OR REPLACE FUNCTION ora2pg_get_bfile( p_bfile IN BFILE ) RETURN
+\&        BLOB
+\&          AS
+\&                filecontent BLOB := NULL;
+\&                src_file BFILE := NULL;
+\&                l_step PLS_INTEGER := 12000;
+\&                l_dir   VARCHAR2(4000);
+\&                l_fname VARCHAR2(4000);
+\&                offset NUMBER := 1;
+\&          BEGIN
+\&            IF p_bfile IS NULL THEN
+\&              RETURN NULL;
+\&            END IF;
+\&
+\&            DBMS_LOB.FILEGETNAME( p_bfile, l_dir, l_fname );
+\&            src_file := BFILENAME( l_dir, l_fname );
+\&            IF src_file IS NULL THEN
+\&                RETURN NULL;
+\&            END IF;
+\&
+\&            DBMS_LOB.FILEOPEN(src_file, DBMS_LOB.FILE_READONLY);
+\&            DBMS_LOB.CREATETEMPORARY(filecontent, true);
+\&            DBMS_LOB.LOADBLOBFROMFILE (filecontent, src_file, DBMS_LOB.LOBMAXSIZE, offset, offset);
+\&            DBMS_LOB.FILECLOSE(src_file);
+\&            RETURN filecontent;
+\&        END;
+.Ve
+.Sp
+This function is only created if Ora2Pg found a table with a \s-1BFILE\s0 column and
+that the destination type is bytea (the default). The function is dropped at
+the end of the export. This concern both, \s-1COPY\s0 and \s-1INSERT\s0 export type.
 .Sp
 About the \s-1ROWID\s0 and \s-1UROWID,\s0 they are converted into \s-1OID\s0 by \*(L"logical\*(R" default
 but this will through an error at data import. There is no equivalent data type
