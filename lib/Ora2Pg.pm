@@ -6817,11 +6817,7 @@ RETURNS text AS
 		$self->logit("Dumping RI $table...\n", 1);
 		# Add constraint definition
 		if ($self->{type} ne 'FDW') {
-			# Does foreign key constraint do not support NO VALID?
-			my $novalid = 0;
-			$novalid = 1 if ($self->{pg_supports_partition} && exists $self->{partitions}{$table});
-
-			my $create_all = $self->_create_foreign_keys($table, $novalid);
+			my $create_all = $self->_create_foreign_keys($table);
 			if ($create_all) {
 				if ($self->{file_per_fkeys}) {
 					$fkeys .= $create_all;
@@ -7430,9 +7426,6 @@ sub _get_sql_statements
 		my (@datadiff_tbl, @datadiff_del, @datadiff_upd, @datadiff_ins);
 		foreach my $table (@ordered_tables) {
 
-			my $novalid = 0;
-			$novalid = 1 if ($self->{pg_supports_partition} && exists $self->{partitions}{$table});
-
 			# Rename table and double-quote it if required
 			my $tmptb = $self->get_replaced_tbname($table);
 			
@@ -7524,7 +7517,7 @@ sub _get_sql_statements
 			if ($self->{drop_fkey} && !$self->{oracle_speed}) {
 				my @create_all = ();
 				$self->logit("Restoring foreign keys of table $table...\n", 1);
-				push(@create_all, $self->_create_foreign_keys($table, $novalid));
+				push(@create_all, $self->_create_foreign_keys($table));
 				foreach my $str (@create_all) {
 					chomp($str);
 					next if (!$str);
@@ -8531,7 +8524,7 @@ This function return SQL code to create the foreign keys of a table
 =cut
 sub _create_foreign_keys
 {
-	my ($self, $table, $novalid) = @_;
+	my ($self, $table) = @_;
 
 	my @out = ();
 	
@@ -8554,6 +8547,14 @@ sub _create_foreign_keys
 		}
 		foreach my $desttable (keys %{$self->{tables}{$tbsaved}{foreign_link}{$fkname}{remote}}) {
 			push(@done, $fkname);
+
+			# This is not possible to reference a partitionned table 
+			next if ($self->{pg_supports_partition} && exists $self->{partitions_list}{lc($desttable)});
+
+			# Foreign key constraint on partitionned table do not support
+			# NO VALID when the remote table is not partitionned
+			my $allow_fk_notvalid = 1;
+			$allow_fk_notvalid = 0 if ($self->{pg_supports_partition} && exists $self->{partitions_list}{lc($tbsaved)});
 			my $str = '';
 			# Add double quote to column name
 			map { $_ = '"' . $_ . '"' } @{$self->{tables}{$tbsaved}{foreign_link}{$fkname}{local}};
@@ -8609,7 +8610,7 @@ sub _create_foreign_keys
 				$state->[5] = 'DEFERRED' if ($state->[5] =~ /^Y/);
 				$state->[5] ||= 'IMMEDIATE';
 				$str .= " INITIALLY " . ( ($self->{'defer_fkey'} ) ? 'DEFERRED' : $state->[5] );
-				if (!$novalid && $state->[9] eq 'NOT VALIDATED') {
+				if ($allow_fk_notvalid && $state->[9] eq 'NOT VALIDATED') {
 					$str .= " NOT VALID";
 				}
 			}
