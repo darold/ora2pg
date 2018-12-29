@@ -11634,7 +11634,7 @@ WHERE
 		if (!$self->{schema} && $self->{export_schema}) {
 			$row->[0] = "$row->[9].$row->[0]";
 		}
-		if ( ($row->[3] eq 'MAXVALUE') || ($row->[3] eq 'DEFAULT')) {
+		if ( ($row->[3] eq 'DEFAULT')) {
 			$default{$row->[0]} = $row->[2];
 			next;
 		}
