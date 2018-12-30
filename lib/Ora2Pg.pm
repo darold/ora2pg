@@ -5875,39 +5875,54 @@ BEGIN
 					}
 				}
 
-				if (!exists $self->{subpartitions}{$table}{$part} || (!$self->{pg_supports_partition} && $has_hash_subpartition)) {
-					# Reproduce indexes definition from the main table
-					my ($idx, $fts_idx) = $self->_create_indexes($table, 0, %{$self->{tables}{$table}{indexes}});
-					my $tb_name2 = $self->quote_object_name($tb_name);
-					$create_table_index_tmp .= "CREATE INDEX "
-							. $self->quote_object_name("${tb_name}_$colname")
-							. " ON " . $self->quote_object_name($tb_name) . " ($cindx);\n";
-					if ($idx || $fts_idx) {
-						$idx =~ s/ $table/ $tb_name2/igs;
-						$fts_idx =~ s/ $table/ $tb_name2/igs;
-						# remove indexes already created
-						$idx =~ s/CREATE [^;]+ \($cindx\);//;
-						$fts_idx =~ s/CREATE [^;]+ \($cindx\);//;
-						if ($idx || $fts_idx) {
-							$create_table_index_tmp .= "-- Reproduce partition indexes that was defined on the parent table\n";
+				if (!exists $self->{subpartitions}{$table}{$part} || (!$self->{pg_supports_partition} && $has_hash_subpartition))
+				{
+					# Reproduce indexes definition from the main table before PG 11
+					# after they are automatically created on partition tables
+					if ($self->{pg_version} < 11)
+					{
+						my ($idx, $fts_idx) = $self->_create_indexes($table, 0, %{$self->{tables}{$table}{indexes}});
+						my $tb_name2 = $self->quote_object_name($tb_name);
+						$create_table_index_tmp .= "CREATE INDEX "
+								. $self->quote_object_name("${tb_name}_$colname$pos")
+								. " ON " . $self->quote_object_name($tb_name) . " ($cindx);\n";
+						if ($idx || $fts_idx)
+						{
+							$idx =~ s/ $table/ $tb_name2/igs;
+							$fts_idx =~ s/ $table/ $tb_name2/igs;
+							# remove indexes already created
+							$idx =~ s/CREATE [^;]+ \($cindx\);//;
+							$fts_idx =~ s/CREATE [^;]+ \($cindx\);//;
+							if ($idx || $fts_idx)
+							{
+								# fix index name to avoid duplicate index name
+								$idx =~ s/(CREATE(?:.*?)INDEX ([^\s]+)) /$1$pos /gs;
+								$fts_idx =~ s/(CREATE(?:.*?)INDEX ([^\s]+)) /$1$pos /gs;
+								$create_table_index_tmp .= "-- Reproduce partition indexes that was defined on the parent table\n";
+							}
+							$create_table_index_tmp .= "$idx\n" if ($idx);
+							$create_table_index_tmp .= "$fts_idx\n" if ($fts_idx);
 						}
-						$create_table_index_tmp .= "$idx\n" if ($idx);
-						$create_table_index_tmp .= "$fts_idx\n" if ($fts_idx);
-					}
 
-					# Set the unique (and primary) key definition 
-					$idx = $self->_create_unique_keys($table, $self->{tables}{$table}{unique_key});
-					if ($idx) {
-						$idx =~ s/ $table/ $tb_name2/igs;
-						# remove indexes already created
-						$idx =~ s/CREATE [^;]+ \($cindx\);//;
-						if ($idx) {
-							$create_table_index_tmp .= "-- Reproduce partition unique indexes / pk that was defined on the parent table\n";
-							$create_table_index_tmp .= "$idx\n";
-							# Remove duplicate index with this one
-							if ($idx =~ /ALTER TABLE $tb_name2 ADD PRIMARY KEY (.*);/s) { 
-								my $collist = quotemeta($1);
-								$create_table_index_tmp =~ s/CREATE INDEX [^;]+ ON $tb_name2 $collist;//s;
+						# Set the unique (and primary) key definition 
+						$idx = $self->_create_unique_keys($table, $self->{tables}{$table}{unique_key});
+						if ($idx)
+						{
+							$idx =~ s/ $table/ $tb_name2/igs;
+							# remove indexes already created
+							$idx =~ s/CREATE [^;]+ \($cindx\);//;
+							if ($idx)
+							{
+								# fix index name to avoid duplicate index name
+								$idx =~ s/(CREATE(?:.*?)INDEX ([^\s]+)) /$1$pos /gs;
+								$create_table_index_tmp .= "-- Reproduce partition unique indexes / pk that was defined on the parent table\n";
+								$create_table_index_tmp .= "$idx\n";
+								# Remove duplicate index with this one
+								if ($idx =~ /ALTER TABLE $tb_name2 ADD PRIMARY KEY (.*);/s)
+								{ 
+									my $collist = quotemeta($1);
+									$create_table_index_tmp =~ s/CREATE INDEX [^;]+ ON $tb_name2 $collist;//s;
+								}
 							}
 						}
 					}
@@ -6043,46 +6058,56 @@ BEGIN
 						if (!$self->{pg_supports_partition}) {
 							$sub_check_cond_tmp .= " AND " if ($i < $#{$self->{subpartitions}{$table}{$part}{$p}{info}});
 						}
-						push(@ind_col, $self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{column}) if (!grep(/^$self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{column}$/, @ind_col));
-						my $fct = '';
-						my $colname = $self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{column};
-						if ($colname =~ s/([^\(]+)\(([^\)]+)\)/$2/) {
-							$fct = $1;
-						}
-						$cindx = join(',', @ind_col);
-						$cindx = lc($cindx) if (!$self->{preserve_case});
-						$cindx = Ora2Pg::PLSQL::convert_plsql_code($self, $cindx);
-						$create_table_index_tmp .= "CREATE INDEX " . $self->quote_object_name("${sub_tb_name}_$colname")
-											 . " ON " . $self->quote_object_name("$sub_tb_name") . " ($cindx);\n";
-						my $tb_name2 = $self->quote_object_name("$sub_tb_name");
-						# Reproduce indexes definition from the main table
-						my ($idx, $fts_idx) = $self->_create_indexes($table, 0, %{$self->{tables}{$table}{indexes}});
-						if ($idx || $fts_idx) {
-							$idx =~ s/ $table/ $tb_name2/igs;
-							$fts_idx =~ s/ $table/ $tb_name2/igs;
-							# remove indexes already created
-							$idx =~ s/CREATE [^;]+ \($cindx\);//;
-							$fts_idx =~ s/CREATE [^;]+ \($cindx\);//;
-							if ($idx || $fts_idx) {
-								$create_table_index_tmp .= "-- Reproduce subpartition indexes that was defined on the parent table\n";
+						# Reproduce indexes definition from the main table before PG 11
+						# after they are automatically created on partition tables
+						if ($self->{pg_version} < 11)
+						{
+							push(@ind_col, $self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{column}) if (!grep(/^$self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{column}$/, @ind_col));
+							my $fct = '';
+							my $colname = $self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{column};
+							if ($colname =~ s/([^\(]+)\(([^\)]+)\)/$2/) {
+								$fct = $1;
 							}
-							$create_table_index_tmp .= "$idx\n" if ($idx);
-							$create_table_index_tmp .= "$fts_idx\n" if ($fts_idx);
-						}
+							$cindx = join(',', @ind_col);
+							$cindx = lc($cindx) if (!$self->{preserve_case});
+							$cindx = Ora2Pg::PLSQL::convert_plsql_code($self, $cindx);
+							$create_table_index_tmp .= "CREATE INDEX " . $self->quote_object_name("${sub_tb_name}_$colname$p")
+												 . " ON " . $self->quote_object_name("$sub_tb_name") . " ($cindx);\n";
+							my $tb_name2 = $self->quote_object_name("$sub_tb_name");
+							# Reproduce indexes definition from the main table
+							my ($idx, $fts_idx) = $self->_create_indexes($table, 0, %{$self->{tables}{$table}{indexes}});
+							if ($idx || $fts_idx) {
+								$idx =~ s/ $table/ $tb_name2/igs;
+								$fts_idx =~ s/ $table/ $tb_name2/igs;
+								# remove indexes already created
+								$idx =~ s/CREATE [^;]+ \($cindx\);//;
+								$fts_idx =~ s/CREATE [^;]+ \($cindx\);//;
+								if ($idx || $fts_idx) {
+									# fix index name to avoid duplicate index name
+									$idx =~ s/(CREATE(?:.*?)INDEX ([^\s]+)) /$1$p /gs;
+									$fts_idx =~ s/(CREATE(?:.*?)INDEX ([^\s]+)) /$1$p /gs;
+									$create_table_index_tmp .= "-- Reproduce subpartition indexes that was defined on the parent table\n";
+								}
+								$create_table_index_tmp .= "$idx\n" if ($idx);
+								$create_table_index_tmp .= "$fts_idx\n" if ($fts_idx);
+							}
 
-						# Set the unique (and primary) key definition 
-						$idx = $self->_create_unique_keys($table, $self->{tables}{$table}{unique_key});
-						if ($idx) {
-							$create_table_index_tmp .= "-- Reproduce subpartition unique indexes / pk that was defined on the parent table\n";
-							$idx =~ s/ $table/ $tb_name2/igs;
-							# remove indexes already created
-							$idx =~ s/CREATE [^;]+ \($cindx\);//;
+							# Set the unique (and primary) key definition 
+							$idx = $self->_create_unique_keys($table, $self->{tables}{$table}{unique_key});
 							if ($idx) {
-								$create_table_index_tmp .= "$idx\n";
-								# Remove duplicate index with this one
-								if ($idx =~ /ALTER TABLE $tb_name2 ADD PRIMARY KEY (.*);/s) { 
-									my $collist = quotemeta($1);
-									$create_table_index_tmp =~ s/CREATE INDEX [^;]+ ON $tb_name2 $collist;//s;
+								$create_table_index_tmp .= "-- Reproduce subpartition unique indexes / pk that was defined on the parent table\n";
+								$idx =~ s/ $table/ $tb_name2/igs;
+								# remove indexes already created
+								$idx =~ s/CREATE [^;]+ \($cindx\);//;
+								if ($idx) {
+									# fix index name to avoid duplicate index name
+									$idx =~ s/(CREATE(?:.*?)INDEX ([^\s]+)) /$1$p /gs;
+									$create_table_index_tmp .= "$idx\n";
+									# Remove duplicate index with this one
+									if ($idx =~ /ALTER TABLE $tb_name2 ADD PRIMARY KEY (.*);/s) { 
+										my $collist = quotemeta($1);
+										$create_table_index_tmp =~ s/CREATE INDEX [^;]+ ON $tb_name2 $collist;//s;
+									}
 								}
 							}
 						}
