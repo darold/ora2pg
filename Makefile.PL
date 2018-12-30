@@ -1163,33 +1163,10 @@ HUMAN_DAYS_LIMIT	5
 # POSTGRESQL FEATURE SECTION (Control which PostgreSQL features are available)
 #------------------------------------------------------------------------------
 
-# Allow support of WHEN clause in trigger definition PG>=9.0
-PG_SUPPORTS_WHEN	1
-
-# Allow support of INSTEAD OF in triggers definition PG>=9.1
-PG_SUPPORTS_INSTEADOF	1
-
-# Allow support of native MATERIALIZED VIEW PG>=9.3. If disable Ora2Pg
-# will use old behavior, a normal table with a set of function to refresh
-# the view.
-PG_SUPPORTS_MVIEW	1
-
-# If enabled, export view with CHECK OPTION. Disable it if you have PostgreSQL
-# version prior 9.4. Default, enabled
-PG_SUPPORTS_CHECKOPTION	1
-
-# PostgreSQL versions below 9.x do not support IF EXISTS in DDL statements.
-# Disabling the directive with value 0 will prevent Ora2Pg to add those
-# keywords in all generated statements.
-PG_SUPPORTS_IFEXISTS	1
-
-# PostgreSQL versions prior to 9.3 do not support the LATERAL keyword.
-# This is required for the DATADIFF feature.
-PG_SUPPORTS_LATERAL	1
-
-# PostgreSQL version prior to 10.0 do not have native partitioning.
-# Enable this directive if you want to use declarative partitioning.
-PG_SUPPORTS_PARTITION	1
+# Set the PostgreSQL major version number of the target database. Ex: 9.6 or 10
+# Default is current major version at time of a new release. This replace the
+# old PG_SUPPORTS_* configuration directives.
+PG_VERSION	11
 
 # Use btree_gin extenstion to create bitmap like index with pg >= 9.4
 # You will need to create the extension by yourself:
@@ -1212,30 +1189,6 @@ PG_BACKGROUND		0
 # and it need to be replaced by a call to substring(). In this case,
 # disable it.
 PG_SUPPORTS_SUBSTR	1
-
-# Disable this directive if you are using PG < 9.5, PL/SQL operator used in
-# named parameter => will be replaced by PostgreSQL proprietary operator :=
-PG_SUPPORTS_NAMED_OPERATOR	1
-
-# Enable this directive if you have PostgreSQL >= 10 to use IDENTITY columns
-# instead of serial or bigserial data type. If PG_SUPPORTS_IDENTITY is disabled
-# and there is IDENTITY column in the Oracle table, they are exported as serial
-# or bigserial columns. When it is enabled they are exported as IDENTITY columns
-# like:
-#	CREATE TABLE identity_test_tab (
-#		id bigint GENERATED ALWAYS AS IDENTITY,
-#		description varchar(30)
-#	) ;
-# If there is non default sequence options set in Oracle, they will be appended
-# after the IDENTITY keyword.
-# Additionally in both cases, Ora2Pg will create a file AUTOINCREMENT_output.sql
-# with a embedded function to update the associated sequences with a restart
-# value set to "SELECT max(colname)+1 FROM tablename". Of course this file must
-# be imported after data import otherwise sequence will be kept to start value.
-PG_SUPPORTS_IDENTITY	1
-
-# PostgreSQL v11 adds support of PROCEDURE, enable it if you use such version.
-PG_SUPPORTS_PROCEDURE	0
 
 #------------------------------------------------------------------------------
 # SPATIAL SECTION (Control spatial geometry export)
