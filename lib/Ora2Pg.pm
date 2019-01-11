@@ -997,6 +997,9 @@ sub _init
 	# Disable synchronous commit for pg data load
 	$self->{synchronous_commit} ||= 0;
 
+	# Disallow NOLOGGING / UNLOGGED table creation
+        $self->{disable_unlogged} ||= 0;
+
 	# Default degree for Oracle parallelism
 	if ($self->{default_parallelism_degree} eq '') {
 		$self->{default_parallelism_degree} = 0;
@@ -6472,7 +6475,7 @@ sub export_table
 			$foreign = ' FOREIGN';
 		}
 		my $obj_type = $self->{tables}{$table}{table_info}{type} || 'TABLE';
-		if ( ($obj_type eq 'TABLE') && $self->{tables}{$table}{table_info}{nologging}) {
+		if ( ($obj_type eq 'TABLE') && $self->{tables}{$table}{table_info}{nologging} && !$self->{disable_unlogged} ) {
 			$obj_type = 'UNLOGGED ' . $obj_type;
 		}
 		if (exists $self->{tables}{$table}{table_as}) {
@@ -6787,7 +6790,7 @@ sub export_table
 			}
 		}
 
-		if (exists $self->{tables}{$table}{alter_table}) {
+		if (exists $self->{tables}{$table}{alter_table} && !$self->{disable_unlogged} ) {
 			$obj_type =~ s/UNLOGGED //;
 			foreach (@{$self->{tables}{$table}{alter_table}}) {
 				$sql_output .= "\nALTER $obj_type $tbname $_;\n";
@@ -12745,6 +12748,7 @@ sub read_config
 		}
 	}
 	$self->close_export_file($fh);
+
 }
 
 sub _extract_functions
