@@ -637,14 +637,17 @@ sub plsql_to_plpgsql
 	$str =~ s/NVL2\s*\($field,$field,$field\)/coalesce($1,$3)/is;
 
 	# NLSSORT to COLLATE
-	if ($str =~ /NLSSORT\($field,$field[\)]?/is) {
+	if ($str =~ /NLSSORT\($field,$field[\)]?/is)
+	{
 		my $col = $1;
 		my $nls_sort = $2;
 		if ($nls_sort =~ s/\%\%string(\d+)\%\%/$strings[$1]/gs) {
 			$nls_sort =~ s/NLS_SORT=([^']+)[']*/COLLATE "$1"/is;
+			$nls_sort =~ s/\%\%ESCAPED_STRING\%\%//ig;
 			$str =~ s/NLSSORT\($field,$field[\)]?/$1 $nls_sort/is;
 		} elsif ($nls_sort =~ s/\?TEXTVALUE(\d+)\?/$class->{text_values}{$1}/s) {
 			$nls_sort =~ s/\s*'NLS_SORT=([^']+)'/COLLATE "$1"/is;
+			$nls_sort =~ s/\%\%ESCAPED_STRING\%\%//ig;
 			$str =~ s/NLSSORT\($field,$field[\)]?/$1 $nls_sort/is;
 		} else {
 			$str =~ s/NLSSORT\($field,['\s]*NLS_SORT=([^']+)[']*/$1 COLLATE "$2"/is;

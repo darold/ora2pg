@@ -8053,6 +8053,7 @@ sub _create_indexes
 		my @strings = ();
 		my $i = 0;
 		for (my $j = 0; $j <= $#{$indexes{$idx}}; $j++) {
+			$indexes{$idx}->[$j] =~ s/''/%%ESCAPED_STRING%%/g;
 			while ($indexes{$idx}->[$j] =~ s/'([^']+)'/%%string$i%%/) {
 				push(@strings, $1);
 				$i++;
@@ -8162,7 +8163,7 @@ sub _create_indexes
 				$idxname =~ s/"//g;
 				my @collist = @{$indexes{$idx}};
 				# Remove double quote, DESC and parenthesys
-				map { s/"//g; s/.*\(([^\)]+)\).*/$1/; s/\s+DESC//i; } @collist;
+				map { s/"//g; s/.*\(([^\)]+)\).*/$1/; s/\s+DESC//i; s/::.*//; } @collist;
 				$idxname = $idxname . '_' . join('_', @collist);
 				$idxname =~ s/\s+//g;
 				if ($self->{indexes_suffix}) {
