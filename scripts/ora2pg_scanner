@@ -3,7 +3,7 @@
 # Project  : Oracle to Postgresql converter
 # Name     : ora2pg_scanner
 # Author   : Gilles Darold, gilles _AT_ darold _DOT_ net
-# Copyright: Copyright (c) 2000-2018 : Gilles Darold - All rights reserved -
+# Copyright: Copyright (c) 2000-2019 : Gilles Darold - All rights reserved -
 # Function : Script used to scan a list of DSN and generate reports
 # Usage    : ora2pg_scanner -l dsn_csv_file -o outdir
 #------------------------------------------------------------------------------

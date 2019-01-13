@@ -4,7 +4,7 @@ package Ora2Pg::GEOM;
 # Name     : Ora2Pg/GEOM.pm
 # Language : Perl
 # Authors  : Gilles Darold, gilles _AT_ darold _DOT_ net
-# Copyright: Copyright (c) 2000-2018 : Gilles Darold - All rights reserved -
+# Copyright: Copyright (c) 2000-2019 : Gilles Darold - All rights reserved -
 # Function : Perl module used to convert Oracle SDO_GEOMETRY into PostGis
 # Usage    : See documentation
 #------------------------------------------------------------------------------
