@@ -6768,7 +6768,11 @@ sub export_table
 				$sql_output .= "$_;\n";
 			}
 		}
-		if ((!$self->{tables}{$table}{table_info}{partitioned} || $self->{disable_partition}) && $self->{type} ne 'FDW') {
+		my $export_indexes = 1;
+
+		if ((!$self->{tables}{$table}{table_info}{partitioned} || $self->{pg_version} >= 11
+				|| $self->{disable_partition}) && $self->{type} ne 'FDW')
+		{
 			# Set the indexes definition
 			my ($idx, $fts_idx) = $self->_create_indexes($table, 0, %{$self->{tables}{$table}{indexes}});
 			$indices .= "$idx\n" if ($idx);
