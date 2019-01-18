@@ -6691,6 +6691,14 @@ sub export_table
 										}
 									}
 								}
+								else
+								{
+									my @c =  $f->[4] =~ /\./g;
+									if ($#c >= 1)
+									{
+										$f->[4] = "'$f->[4]'";
+									}
+								}
 								$f->[4] = 'NULL' if ($f->[4] eq "''" && $type =~ /int|double|numeric/i);
 								$sql_output .= " DEFAULT $f->[4]";
 							}
