@@ -657,6 +657,7 @@ sub _get_functions
 	# ROUTINE_NAME             | varchar(64)   | NO   |     |                     |       |
 	# ROUTINE_TYPE             | varchar(9)    | NO   |     |                     |       |
 	# DATA_TYPE                | varchar(64)   | NO   |     |                     |       |
+	#  or DTD_IDENTIFIER < 5.5 | varchar(64)   | NO   |     |                     |       |
 	# CHARACTER_MAXIMUM_LENGTH | int(21)       | YES  |     | NULL                |       |
 	# CHARACTER_OCTET_LENGTH   | int(21)       | YES  |     | NULL                |       |
 	# NUMERIC_PRECISION        | int(21)       | YES  |     | NULL                |       |
@@ -689,6 +690,10 @@ sub _get_functions
 	$str .= " " . $self->limit_to_objects('FUNCTION','ROUTINE_NAME');
 	$str =~ s/ AND / WHERE /;
 	$str .= " ORDER BY ROUTINE_NAME";
+	# Version below 5.5 do not have DATA_TYPE column it is named DTD_IDENTIFIER
+	if ($self->{db_version} lt '5.5.0') {
+		$str =~ s/,DATA_TYPE,/,DTD_IDENTIFIER,/;
+	}
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 

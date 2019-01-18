@@ -1199,6 +1199,11 @@ sub _init
 		$self->{is_mysql} = 1;
 	}
 
+	if ($self->{is_mysql}) {
+		# MySQL do not supports this syntax fallback to read committed
+		$self->{transaction} =~ s/(READ ONLY|READ WRITE)/ISOLATION LEVEL READ COMMITTED/;
+	}
+
 	# Set Oracle, Perl and PostgreSQL encoding that will be used
 	$self->_init_environment();
 
