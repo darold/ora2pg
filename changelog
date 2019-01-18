@@ -1,3 +1,159 @@
+2019 01 18 - v20.0
+
+This release fix several issues reported during the last three months
+and adds several new features and improvement. The change of major
+version is related to backward compatibility break with the removed of
+most PG_SUPPORTS_* configuration directives and their replacement with
+the new PG_VERSION directive.
+
+New features and configuration directives in this release:
+
+  * Add PG_VERSION configuration directive to set the PostgreSQL major
+    version number of the target database. Ex: 9.6 or 10. Default is
+    current major version at time of a new release. This replace the
+    old PG_SUPPORTS_* configuration directives.
+  * Removed all PG_SUPPORTS_* configuration directives minus
+    PG_SUPPORTS_SUBSTR that is related to Redshift engine.
+  * Export of BFILE as bytea is now done through a PL/SQL function to
+    extract the content of a BFILE and generate a bytea data suitable
+    for insert or copy into PostgreSQL.
+  * Foreign keys that reference a partitioned table are no more
+    exported.
+  * Show table name on Oracle side during export using at connection
+    time: DBMS_APPLICATION_INFO.SET_ACTION(table_name);
+  * When the date format is ISO and the value is a constant the call
+    to to_date() is removed and only the constant is preserved. For
+    example: to_date(' 2013-04-01 00:00:00','SYYYY-MM-DD HH24:MI:SS')
+    is replaced by a simple call to: ' 2013-04-01 00:00:00'.
+    This rewrite is limited to PARTITION export type when directive
+    PG_SUPPORTS_PARTITION is enabled.
+  * Add DATA_EXPORT_ORDER configuration directive. By default data
+    export order will be done by sorting on table name. If you have
+    huge tables at end of alphabetic order and are using multiprocess,
+    it can be better to set the sort order on size so that multiple
+    small tables can be processed before the largest tables finish.
+    In this case set this directive to size. Possible values are name
+    and size. Note that export type SHOW_TABLE and SHOW_COLUMN will
+    use this sort order too, not only COPY or INSERT export type.
+  * Add NO_BLOB_EXPORT configuration directive. Exporting BLOB could
+    take time and you may want to export all data except the BLOB
+    columns. In this case enable this directive and the BLOB columns
+    will not be included into data export. The BLOB column must not
+    have a NOT NULL constraint. Thanks to Ilya Vladimirovich for the
+  * Add PREFIX_SUB_PARTITION to enable/disable sub-partitioning table
+    prefixing in case of the partition names are a part of the sub-
+    partition names.
+  * Add special replacement for case of epoch syntax in Oracle:
+        (sysdate - to_date('01-Jan-1970', 'dd-Mon-yyyy'))*24*60*60
+    is replaced by the PostgreSQL equivalent:
+        (extract(epoch from now()))
+
+Here is the full list of changes and acknowledgements:
+
+  - Export indexes and constraints on partitioned table with pg >= 11.
+  - Fix incorrect replacement of NLS_SORT in indexes.
+  - Bring back DISABLE_UNLOGGED feature. Thanks to Jean-Christophe
+    Arnu for the patch
+  - Fix CREATE SCHEMA statement that was not written to dump file.
+  - Fix DBMS_APPLICATION_INFO.set_action() call, old Oracle version
+    do not support named parameters.
+  - Fix duplicate index name on partition. Thanks to buragaddapavan
+    for the report.
+  - Add support to new configuration directive PG_VERSION to control
+    the behavior of Ora2Pg following PostgreSQL version.
+  - Fix error in creation of default partition with PostgreSQL 10.
+    Thanks to buragaddapavan for the report.
+  - Fix missing export of single MAXVALUE partition, this will produce
+    the following range partition: ... FOR VALUES FROM (MINVALUE) TO
+    (MAXVALUE) Previous behavior was to not export partition as it is
+    better to not partition the table at all. However it is declared
+    in Oracle so it is better to export it to see what can be done.
+    Thanks to buragaddapavan for the report.
+  - Do not export foreign keys that reference a partitioned table.
+    Remove NOT VALID on foreign keys defined on a partitioned
+    table if present. Thanks to Denis Oleynikov for the report.
+  - Fix export of BFILE as bytea. Ora2Pg now use a PL/SQL function to
+    extract the content of a BFILE and generate a bytea data suitable
+    for insert or copy into PostgreSQL. Thanks to RickyTR for the
+    report.
+  - Add TIMEZONE_REGION and TIMEZONE_ABBR to migration assessment, no
+    direct equivalent in PostgreSQL. Remove NSLSORT not used in
+    migration assessment. Thanks to buragaddapavan for the report.
+  - Fix output of multiple export type specifed in TYPE directive.
+  - Rewrite and renaming of _get_sql_data() function into
+    _get_sql_statements().
+  - Limit CURSOR weight in migration assessment to REF CURSOR only,
+    other case are all covered. REF CURSOR might need a review to see
+    if they need to be replaced with a SET OF RECORD.
+  - Fix replacement of EMPTY_CLOB() or EMPTY_BLOB() with empty string
+    when EMPTY_LOB_NULL is disabled and NULL when it is enabled.
+  - Prefix output file with the export type in multiple export type
+    mode, ex: sequence_output.sql or table_output.sql. Thanks to
+    buragaddapavan for the report.
+  - Fix export of data from an Oracle nested table. Thanks to rejo
+    oommen for the report.
+  - Removed cast to timestamp from partition range. Thanks to
+    buragaddapavan and rejo-oommen for the report.
+  - Fix partition default syntax. Thanks to rejo-oommen for the
+    report.
+  - Apply missing SYSUSERS schemas exclusion on columns and partition
+    listing. Thanks to rejo-oommen for the report.
+  - Add warning about parameter order change in output file.
+  - Show table name on Oracle side during export using at connection
+    time: DBMS_APPLICATION_INFO.SET_ACTION(table_name);
+    Thanks to Denis Oleynikov for the feature request.
+  - Report change in ORA_RESERVED_WORDS into documentation.
+  - Add references in the keyword list of ORA_RESERVED_WORDS.
+  - Fix the missing white space in some lines while creating
+    import_all.sh file. Thanks to Fabiano for the patch.
+  - Fix translation of infinity value for float. Thanks to Damien
+    Trecu for the report.
+  - Fix default value in timestamp column definition when a timezone
+    is given. Thanks to buragaddapavan for the report.
+  - Fix missing export of index and constraint in a partitioned
+    table when DISABLE_PARTITION is enabled. Thanks to Denis Oleynikov
+    for the report.
+  - Prevent PARTITION BY when DISABLE_PARTITION is enabled. Thanks to
+    Denis Oleynikov for the report.
+  - Add DATA_EXPORT_ORDER configuration directive. By default data
+    export order will be done by sorting on table name. If you have
+    huge tables at end of alphabetic order and are using multiprocess,
+    it can be better to set the sort order on size so that multiple
+    small tables can be processed before the largest tables finish.
+    In this case set this directive to size. Possible values are name
+    and size. Note that export type SHOW_TABLE and SHOW_COLUMN will
+    use this sort order too, not only COPY or INSERT export type.
+    Thanks to Guy Browne for the feature request.
+  - Fix remove leading ':' on Oracle variable taking care of regex
+    character class. Thanks to jselbach for the report.
+  - Add NO_BLOB_EXPORT configuration directive. Exporting BLOB could
+    take time and you may want to export all data except the BLOB
+    columns. In this case enable this directive and the BLOB columns
+    will not be included into data export. The BLOB column must not
+    have a NOT NULL constraint. Thanks to Ilya Vladimirovich for the
+    feature request.
+  - Fix incorrect rewrote of the first custom type in a row. Thanks
+    to Francesco Loreti for the patch.
+  - Remove double quote in type definition en set type name in lower
+    case when PRESERVE_CASE is disabled.
+  - Add PREFIX_SUB_PARTITION to enable/disable sub-partitioning table
+    prefixing in case of the partition names are a part of the sub-
+    partition names.
+  - Fix epoch replacement case in CREATE TABLE statements.
+  - Apply epoch replacement to default value in table declaration.
+  - Add special replacement for case of epoch syntax in Oracle:
+        (sysdate - to_date('01-Jan-1970', 'dd-Mon-yyyy'))*24*60*60
+    is replaced by the PostgreSQL equivalent:
+        (extract(epoch from now()))
+    Thanks to rejo-oommen for the feature request.
+  - A few typos in --help sections. Thanks to Christophe Courtois
+    for the report.
+  - Fix export of primary key on partition table. Thanks to chmanu
+    for the patch.
+  - Fix malformed user defined type export. Thanks to Francesco Loreti
+    for the report.
+
+
 2018 09 27 - v19.1
 
 This release fix several issues reported during the last month and

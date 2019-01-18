@@ -12,13 +12,13 @@ RPM/
 
 	The binary package may be found here:
 
-		~/rpmbuild/RPMS/noarch/ora2pg-19.1-1.noarch.rpm
+		~/rpmbuild/RPMS/noarch/ora2pg-20.0-1.noarch.rpm
 	or
-		/usr/src/redhat/RPMS/i386/ora2pg-19.1-1.noarch.rpm
+		/usr/src/redhat/RPMS/i386/ora2pg-20.0-1.noarch.rpm
 
 	To install run:
 
-		rpm -i ~/rpmbuild/RPMS/noarch/ora2pg-19.1-1.noarch.rpm
+		rpm -i ~/rpmbuild/RPMS/noarch/ora2pg-20.0-1.noarch.rpm
 
 
 slackbuild/
@@ -30,11 +30,11 @@ slackbuild/
 	then take a look at /tmp/build/ to find the Slackware package.
 	To install run the following command:
 
-		installpkg /tmp/build/ora2pg-19.1-i386-1gda.tgz
+		installpkg /tmp/build/ora2pg-20.0-i386-1gda.tgz
 
 	or
 
-		installpkg /tmp/build/ora2pg-19.1-x86_64-1gda.tgz
+		installpkg /tmp/build/ora2pg-20.0-x86_64-1gda.tgz
 
 	following the architecture.
 
