@@ -1324,7 +1324,7 @@ sub _init
 		$self->{pg_supports_identity} = 1;
 	}
 	if ($self->{pg_version} >= 11) {
-		$self->{pg_supports_procedure} = 0;
+		$self->{pg_supports_procedure} = 1;
 	}
 
 	# Other PostgreSQL fork compatibility
