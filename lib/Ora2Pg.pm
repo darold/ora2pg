@@ -541,6 +541,7 @@ sub create_export_file
 				$outfile = $self->{output_dir} . "/" . $outfile;
 			}
 		}
+
 		# Send output to the specified file
 		if ($outfile =~ /\.gz$/)
 		{
@@ -608,7 +609,7 @@ sub append_export_file
 			$outfile = $self->{output_dir} . '/' . $outfile;
 		}
 		# If user request data compression
-		if ($self->{compress}) {
+		if ($self->{compress} && (($self->{jobs} > 1) || ($self->{oracle_copies} > 1))) {
 			die "FATAL: you can't use compressed output with parallel dump\n";
 		} else {
 			$filehdl = new IO::File;
@@ -645,12 +646,12 @@ Close a file handle.
 
 sub close_export_file
 {
-	my ($self, $filehdl) = @_;
+	my ($self, $filehdl, $not_compressed) = @_;
 
 
 	return if (!defined $filehdl);
 
-	if ($self->{output} =~ /\.gz$/) {
+	if (!$not_compressed && $self->{output} =~ /\.gz$/) {
 		$filehdl->gzclose();
 	} else {
 		$filehdl->close();
@@ -3593,7 +3594,9 @@ sub translate_function
 		}
 		$self->logit("Dumping function $fct...\n", 1);
 		if ($self->{file_per_function}) {
-			$self->dump("\\i $dirprefix${fct}_$self->{output}\n");
+			my $f = "$dirprefix${fct}_$self->{output}";
+			$f =~ s/\.(?:gz|bz2)$//i;
+			$self->dump("\\i $f\n");
 			$self->save_filetoupdate_list("ORA2PG_$self->{type}", lc($fct), "$dirprefix${fct}_$self->{output}");
 		} else {
 			$self->save_filetoupdate_list("ORA2PG_$self->{type}", lc($fct), "$dirprefix$self->{output}");
@@ -3607,7 +3610,7 @@ sub translate_function
 		if ($self->{file_per_function}) {
 			$self->logit("Dumping to one file per function : ${fct}_$self->{output}\n", 1);
 			$fhdl = $self->open_export_file("${fct}_$self->{output}");
-			$self->set_binmode($fhdl);
+			$self->set_binmode($fhdl) if (!$self->{compress});
 		}
 		if ($self->{plsql_pgsql}) {
 			my $sql_f = '';
@@ -3638,7 +3641,7 @@ sub translate_function
 						my $tfh = $self->append_export_file($dirprefix . 'temp_cost_file.dat', 1);
 						flock($tfh, 2) || die "FATAL: can't lock file temp_cost_file.dat\n";
 						$tfh->print("${fct}:$lsize:$lcost\n");
-						$self->close_export_file($tfh);
+						$self->close_export_file($tfh, 1);
 					}
 				}
 			}
@@ -3719,7 +3722,7 @@ sub save_filetoupdate_list
 	my $tfh = $self->append_export_file($dirprefix . 'temp_pass2_file.dat', 1);
 	flock($tfh, 2) || die "FATAL: can't lock file temp_pass2_file.dat\n";
 	$tfh->print("${pname}:${ftcname}:$file_name\n");
-	$self->close_export_file($tfh);
+	$self->close_export_file($tfh, 1);
 }
 
 =head2 _set_file_header
@@ -3789,7 +3792,7 @@ sub export_view
 			$self->dump("\\i $file_name\n");
 			$self->logit("Dumping to one file per view : ${view}_$self->{output}\n", 1);
 			$fhdl = $self->open_export_file("${view}_$self->{output}");
-			$self->set_binmode($fhdl);
+			$self->set_binmode($fhdl) if (!$self->{compress});
 			$self->save_filetoupdate_list("ORA2PG_$self->{type}", lc($view), $file_name);
 		} else {
 			$self->save_filetoupdate_list("ORA2PG_$self->{type}", lc($view), "$dirprefix$self->{output}");
@@ -4048,7 +4051,7 @@ LANGUAGE plpgsql ;
 			$self->dump("\\i $file_name\n");
 			$self->logit("Dumping to one file per materialized view : ${view}_$self->{output}\n", 1);
 			$fhdl = $self->open_export_file("${view}_$self->{output}");
-			$self->set_binmode($fhdl);
+			$self->set_binmode($fhdl) if (!$self->{compress});
 			$self->save_filetoupdate_list("ORA2PG_$self->{type}", lc($view), $file_name);
 		} else {
 			$self->save_filetoupdate_list("ORA2PG_$self->{type}", lc($view), "$dirprefix$self->{output}");
@@ -4472,10 +4475,12 @@ sub export_trigger
 		}
 		my $fhdl = undef;
 		if ($self->{file_per_function}) {
-			$self->dump("\\i $dirprefix$trig->[0]_$self->{output}\n");
+			my $f = "$dirprefix$trig->[0]_$self->{output}";
+			$f =~ s/\.(?:gz|bz2)$//i;
+			$self->dump("\\i $f\n");
 			$self->logit("Dumping to one file per trigger : $trig->[0]_$self->{output}\n", 1);
 			$fhdl = $self->open_export_file("$trig->[0]_$self->{output}");
-			$self->set_binmode($fhdl);
+			$self->set_binmode($fhdl) if (!$self->{compress});
 			$self->save_filetoupdate_list("ORA2PG_$self->{type}", lc($trig->[0]), "$dirprefix$trig->[0]_$self->{output}");
 		} else {
 			$self->save_filetoupdate_list("ORA2PG_$self->{type}", lc($trig->[0]), "$dirprefix$self->{output}");
@@ -5025,7 +5030,7 @@ sub export_function
 				$total_size += $fsize;
 				$cost_value += $fcost;
 			}
-			$self->close_export_file($tfh);
+			$self->close_export_file($tfh, 1);
 			unlink($dirprefix . 'temp_cost_file.dat');
 		}
 	}
@@ -5211,7 +5216,7 @@ sub export_procedure
 					$total_size += $fsize;
 					$cost_value += $fcost;
 				}
-				$self->close_export_file($tfh);
+				$self->close_export_file($tfh, 1);
 			}
 			unlink($dirprefix . 'temp_cost_file.dat');
 		}
@@ -5368,9 +5373,11 @@ sub export_package
 		if (!$self->{plsql_pgsql}) {
 			$self->logit("Dumping package $pkg...\n", 1);
 			if ($self->{file_per_function}) {
-				$pkgbody = "\\i $dirprefix\L${pkg}\E_$self->{output}\n";
+				my $f = "$dirprefix\L${pkg}\E_$self->{output}";
+				$f =~ s/\.(?:gz|bz2)$//i;
+				$pkgbody = "\\i $f\n";
 				my $fhdl = $self->open_export_file("$dirprefix\L${pkg}\E_$self->{output}", 1);
-				$self->set_binmode($fhdl);
+				$self->set_binmode($fhdl) if (!$self->{compress});
 				$self->dump($sql_header . $self->{packages}{$pkg}{text}, $fhdl);
 				$self->close_export_file($fhdl);
 			} else {
@@ -5617,7 +5624,7 @@ sub export_tablespace
 		my $fhdl = undef;
 		$self->logit("Dumping tablespace alter indexes to one separate file : TBSP_INDEXES_$self->{output}\n", 1);
 		$fhdl = $self->open_export_file("TBSP_INDEXES_$self->{output}");
-		$self->set_binmode($fhdl);
+		$self->set_binmode($fhdl) if (!$self->{compress});
 		$sql_output = '';
 		foreach my $tb_type (sort keys %{$self->{tablespaces}}) {
 			# TYPE - TABLESPACE_NAME - FILEPATH - OBJECT_NAME
@@ -6325,7 +6332,7 @@ FOR EACH ROW EXECUTE PROCEDURE $trg();
 		$sql_header .= "-- DATASOURCE: $self->{oracle_dsn}\n\n";
 		$sql_header = ''  if ($self->{no_header});
 		$fhdl = $self->open_export_file("PARTITION_INDEXES_$self->{output}");
-		$self->set_binmode($fhdl);
+		$self->set_binmode($fhdl) if (!$self->{compress});
 		$self->dump($sql_header . $partition_indexes, $fhdl);
 		$self->close_export_file($fhdl);
 	}
@@ -6852,7 +6859,7 @@ LANGUAGE PLPGSQL;
 		$sequence_output .= "DROP FUNCTION ora2pg_upd_autoincrement_seq(text, text);\n";
 		$self->logit("Dumping DDL to restart autoincrement sequences into separate file : AUTOINCREMENT_$self->{output}\n", 1);
 		$fhdl = $self->open_export_file("AUTOINCREMENT_$self->{output}");
-		$self->set_binmode($fhdl);
+		$self->set_binmode($fhdl) if (!$self->{compress});
 		$sequence_output = $self->set_search_path() . $sequence_output;
 		$self->dump($sql_header . $sequence_output, $fhdl);
 		$self->close_export_file($fhdl);
@@ -6863,7 +6870,7 @@ LANGUAGE PLPGSQL;
 		my $fhdl = undef;
 		$self->logit("Dumping indexes to one separate file : INDEXES_$self->{output}\n", 1);
 		$fhdl = $self->open_export_file("INDEXES_$self->{output}");
-		$self->set_binmode($fhdl);
+		$self->set_binmode($fhdl) if (!$self->{compress});
 		$indices = "-- Nothing found of type indexes\n" if (!$indices && !$self->{no_header});
 		$indices =~ s/\n+/\n/gs;
 		$self->_restore_comments(\$indices);
@@ -6898,7 +6905,7 @@ RETURNS text AS
 			# FTS TRIGGERS are exported in a separated file to be able to parallelize index creation
 			$self->logit("Dumping triggers for FTS indexes to one separate file : FTS_INDEXES_$self->{output}\n", 1);
 			$fhdl = $self->open_export_file("FTS_INDEXES_$self->{output}");
-			$self->set_binmode($fhdl);
+			$self->set_binmode($fhdl) if (!$self->{compress});
 			$self->_restore_comments(\$fts_indices);
 			$fts_indices = $self->set_search_path() . $fts_indices;
 			$self->dump($sql_header. $unaccent . $fts_indices, $fhdl);
@@ -6935,7 +6942,7 @@ RETURNS text AS
 		my $fhdl = undef;
 		$self->logit("Dumping constraints to one separate file : CONSTRAINTS_$self->{output}\n", 1);
 		$fhdl = $self->open_export_file("CONSTRAINTS_$self->{output}");
-		$self->set_binmode($fhdl);
+		$self->set_binmode($fhdl) if (!$self->{compress});
 		$constraints = "-- Nothing found of type constraints\n" if (!$constraints && !$self->{no_header});
 		$self->_restore_comments(\$constraints);
 		$self->dump($sql_header . $constraints, $fhdl);
@@ -6948,7 +6955,7 @@ RETURNS text AS
 		my $fhdl = undef;
 		$self->logit("Dumping foreign keys to one separate file : FKEYS_$self->{output}\n", 1);
 		$fhdl = $self->open_export_file("FKEYS_$self->{output}");
-		$self->set_binmode($fhdl);
+		$self->set_binmode($fhdl) if (!$self->{compress});
 		$fkeys = "-- Nothing found of type foreign keys\n" if (!$fkeys && !$self->{no_header});
 		$self->_restore_comments(\$fkeys);
 		$fkeys = $self->set_search_path() . $fkeys;
@@ -7005,7 +7012,7 @@ CREATE TRIGGER $tname
 			my $fhdl = undef;
 			$self->logit("Dumping virtual column triggers to one separate file : VIRTUAL_COLUMNS_$self->{output}\n", 1);
 			$fhdl = $self->open_export_file("VIRTUAL_COLUMNS_$self->{output}");
-			$self->set_binmode($fhdl);
+			$self->set_binmode($fhdl) if (!$self->{compress});
 			$self->dump($sql_header . $trig_out, $fhdl);
 			$self->close_export_file($fhdl);
 		}
@@ -12533,6 +12540,8 @@ sub dump
 {
 	my ($self, $data, $fh) = @_;
 
+	return if (!defined $data || $data eq '');
+
 	if (!$self->{compress}) {
 		if (defined $fh) {
 			$fh->print($data);
@@ -12543,9 +12552,9 @@ sub dump
 		}
 	} elsif ($self->{compress} eq 'Zlib') {
 		if (not defined $fh) {
-			$self->{fhout}->gzwrite($data) or $self->logit("FATAL: error writing compressed data\n", 0, 1);
+			$self->{fhout}->gzwrite($data) or $self->logit("FATAL: error dumping compressed data\n", 0, 1);
 		} else {
-			$fh->gzwrite($data) or $self->logit("FATAL: error writing compressed data\n", 0, 1);
+			$fh->gzwrite($data) or $self->logit("FATAL: error dumping compressed data\n", 0, 1);
 		}
 	} elsif (defined $self->{fhout}) {
 		 $self->{fhout}->print($data);
@@ -12567,6 +12576,9 @@ sub data_dump
 
 	return if ($self->{oracle_speed});
 
+	# get out of here if there is no data to dump
+	return if (not defined $data or $data eq '');
+
 	my $dirprefix = '';
 	$dirprefix = "$self->{output_dir}/" if ($self->{output_dir});
 	my $filename = $self->{output};
@@ -12578,29 +12590,38 @@ sub data_dump
 	# Set file temporary until the table export is done
 	$self->logit("Dumping data from $rname to file: $filename\n", 1);
 
-	if ( ($self->{jobs} > 1) || ($self->{oracle_copies} > 1) ) {
+	if ( ($self->{jobs} > 1) || ($self->{oracle_copies} > 1) )
+	{
 		$self->close_export_file($self->{fhout}) if (defined $self->{fhout} && !$self->{file_per_table} && !$self->{pg_dsn});
 		my $fh = $self->append_export_file($filename);
-		$self->set_binmode($fh);
+		$self->set_binmode($fh) if (!$self->{compress});
 		flock($fh, 2) || die "FATAL: can't lock file $dirprefix$filename\n";
 		$fh->print($data);
 		$self->close_export_file($fh);
 		$self->logit("Written " . length($data) . " bytes to $dirprefix$filename\n", 1);
 		# Reopen default output file
 		$self->create_export_file() if (defined $self->{fhout} && !$self->{file_per_table} && !$self->{pg_dsn});
-	} elsif ($self->{file_per_table}) {
-		if ($self->{file_per_table} && $pname) {
+	}
+	elsif ($self->{file_per_table})
+	{
+		if ($pname)
+		{
 			my $fh = $self->append_export_file($filename);
-			$self->set_binmode($fh);
+			$self->set_binmode($fh) if (!$self->{compress});
 			$fh->print($data);
 			$self->close_export_file($fh);
 			$self->logit("Written " . length($data) . " bytes to $dirprefix$filename\n", 1);
-		} else {
+		}
+		else
+		{
 			$self->{cfhout} = $self->open_export_file($filename) if (!defined $self->{cfhout});
-			if ($self->{compress} eq 'Zlib') {
-				$self->{cfhout}->gzwrite($data) or $self->logit("FATAL: error writing compressed data\n", 0, 1);
-			} else {
-				$self->set_binmode($self->{cfhout});
+			if ($self->{compress} eq 'Zlib')
+			{
+				$self->{cfhout}->gzwrite($data) or $self->logit("FATAL: error writing compressed data into $filename :: $self->{cfhout}\n", 0, 1);
+			}
+			else
+			{
+				$self->set_binmode($self->{cfhout}) if (!$self->{compress});
 				$self->{cfhout}->print($data);
 			}
 		}
@@ -13475,13 +13496,15 @@ END;
 		$sql_header = '' if ($self->{no_header});
 
 		my $fhdl = $self->open_export_file("$dirprefix\L$pname/$fname\E_$self->{output}", 1);
-		$self->set_binmode($fhdl);
+		$self->set_binmode($fhdl) if (!$self->{compress});
 		$self->_restore_comments(\$function);
 		$self->normalize_function_call(\$function);
 		$function =~ s/(-- REVOKE ALL ON (?:FUNCTION|PROCEDURE) [^;]+ FROM PUBLIC;)/&remove_newline($1)/sge;
 		$self->dump($sql_header . $function, $fhdl);
 		$self->close_export_file($fhdl);
-		$function = "\\i $dirprefix\L$pname/$fname\E_$self->{output}\n";
+		my $f = "$dirprefix\L$pname/$fname\E_$self->{output}";
+		$f =~ s/\.(?:gz|bz2)$//i;
+		$function = "\\i $f\n";
 		$self->save_filetoupdate_list(lc($pname), lc($fname), "$dirprefix\L$pname/$fname\E_$self->{output}");
 		return $function;
 	} elsif ($pname) {
