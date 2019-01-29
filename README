@@ -43,7 +43,7 @@ FEATURES
             - Export Oracle views as PG tables.
             - Export Oracle user defined types.
             - Provide some basic automatic conversion of PLSQL code to PLPGSQL.
-            - Works on any plateform.
+            - Works on any platform.
             - Export Oracle tables as foreign data wrapper tables.
             - Export materialized view.
             - Show a detailled report of an Oracle database content.
