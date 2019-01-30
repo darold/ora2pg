@@ -2729,7 +2729,9 @@ number of instances and schema to scan for migration assessment.
 
 Usage: ora2pg_scanner -l CSVFILE [-o OUTDIR]
 
-   -c | --config FILE : set custom configuration file to use otherwise ora2pg
+   -b | --binpath DIR: full path to directory where the ora2pg binary stays.
+   		Might be useful only on Windows OS.
+   -c | --config FILE: set custom configuration file to use otherwise ora2pg
 		will use the default: /etc/ora2pg/ora2pg.conf.
    -l | --list FILE : CSV file containing a list of databases to scan with
 		all required information. The first line of the file
@@ -2770,6 +2772,9 @@ database and a detailed HTML report for each database scanned.
 
 Hint: Use the -t | --test option before to test all your connections in your
 CSV file.
+
+For Windows users you must use the -b command line option to set the directory
+where ora2pg_scanner stays otherwise the ora2pg command calls will fail.
 
 =head2 Migration assessment method
 
