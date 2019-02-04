@@ -968,6 +968,8 @@ sub perform_replacement
 							while ($str =~ s/(EXCEPTION(?:(?!CASE).)*?THEN)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($fct_name\s*[\(;])/$1$2PERFORM $3/is) {};
 							$str =~ s/(IF(?:(?!CASE|THEN).)*?THEN)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($fct_name\s*[\(;])/$1$2PERFORM $3/isg;
 							$str =~ s/(IF(?:(?!CASE|ELSE).)*?ELSE)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($fct_name\s*[\(;])/$1$2PERFORM $3/isg;
+							$str =~ s/(WHEN(?:(?!CASE|THEN).)*?THEN)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($fct_name\s*[\(;])/$1$2PERFORM $3/isg;
+							$str =~ s/(WHEN(?:(?!CASE|ELSE).)*?ELSE)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($fct_name\s*[\(;])/$1$2PERFORM $3/isg;
 							$str =~ s/(PERFORM $fct_name);/$1\(\);/igs;
 						}
 					} else {
