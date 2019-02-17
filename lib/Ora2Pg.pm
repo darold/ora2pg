@@ -16960,7 +16960,7 @@ sub multiprocess_progressbar
 			# Display table progression
 			my $dt = $table_progress{$1}{end} - $table_progress{$1}{start};
 			my $rps = int($table_progress{$1}{rows}/ ($dt||1));
-			print STDERR $self->progress_bar($table_progress{$1}{rows}, $table_progress{$1}{rows}, 25, '=', 'rows', "Table $1 ($dt sec., $rps recsi/sec)"), "\n";
+			print STDERR $self->progress_bar($table_progress{$1}{rows}, $table_progress{$1}{rows}, 25, '=', 'rows', "Table $1 ($dt sec., $rps recs/sec)"), "\n";
 
 		} else {
 			print "PROGRESS BAR ERROR (unrecognized line sent to pipe): $r\n";
