@@ -16911,7 +16911,6 @@ sub multiprocess_progressbar
 		} elsif ($r =~ /CHUNK \d+ DUMPED: (.*?), time: (\d+), rows (\d+)/) {
 
 			$table_progress{$1}{progress} += $3;
-			$global_line_counter += $3;
 			my $cur_time = time();
 			if ($cur_time >= ($last_refresh + $refresh_time)) {
 				my $dt = $cur_time - $global_start_time;
