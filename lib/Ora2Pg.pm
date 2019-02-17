@@ -1978,7 +1978,7 @@ sub _types
 	my ($self) = @_;
 
 	$self->logit("Retrieving user defined types information...\n", 1);
-	$self->{types} = $self->_get_types($self->{dbh});
+	$self->{types} = $self->_get_types();
 
 }
 
@@ -11288,7 +11288,7 @@ Returns a hash of all type names with their code.
 
 sub _get_types
 {
-	my ($self, $dbh, $name) = @_;
+	my ($self, $name) = @_;
 
 	# Retrieve all user defined types
 	my $str = "SELECT DISTINCT OBJECT_NAME,OWNER,OBJECT_ID FROM $self->{prefix}_OBJECTS WHERE OBJECT_TYPE='TYPE'";
@@ -11307,8 +11307,8 @@ sub _get_types
 	}
 	$str .= " ORDER BY OBJECT_NAME";
 
-	my $sth = $dbh->prepare($str) or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
-	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
+	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
 	my @types = ();
 	my @fct_done = ();
@@ -11321,11 +11321,12 @@ sub _get_types
 		next if (grep(/^$row->[0]$/, @fct_done));
 		push(@fct_done, $row->[0]);
 		my %tmp = ();
-		my $sth2 = $dbh->prepare($sql) or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
+		my $sth2 = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 		$sth2->execute or $self->logit("FATAL: " . $sth2->errstr . "\n", 0, 1);
 		while (my $r = $sth2->fetch) {
 			$tmp{code} .= $r->[0];
 		}
+		$sth2->finish();
 		$tmp{name} = $row->[0];
 		$tmp{owner} = $row->[1];
 		$tmp{pos} = $row->[2];
@@ -11335,6 +11336,7 @@ sub _get_types
 		}
 		push(@types, \%tmp);
 	}
+	$sth->finish();
 
 	return \@types;
 }
@@ -12152,13 +12154,17 @@ sub _get_custom_types
 	my %types_found = ();
 	my @type_def = split(/\s*,\s*/, $str);
 	foreach my $s (@type_def) {
-		$s =~ /^\s*([^\s]+)\s+([^\s]+)/;
-		my $cur_type = $2;
+		my $cur_type = '';
+		if ($s =~ /\s+OF\s+([^\s;]+)/) {
+			$cur_type = $1;
+		} elsif ($s =~ /^\s*([^\s]+)\s+([^\s]+)/) {
+			$cur_type = $2;
+		}
 		push(@{$types_found{src_types}}, $cur_type);
 		if (exists $all_types{$cur_type}) {
 			push(@{$types_found{pg_types}}, $all_types{$cur_type});
 		} else {
-			my $custom_type = $self->_get_types($self->{dbh}, $cur_type);
+			my $custom_type = $self->_get_types($cur_type);
 			foreach my $tpe (sort {length($a->{name}) <=> length($b->{name}) } @{$custom_type}) {
 				last if (uc($tpe->{name}) eq $cur_type); # prevent infinit loop
 				$self->logit("\tLooking inside nested custom type $tpe->{name} to extract values...\n", 1);
@@ -13905,6 +13911,18 @@ sub ask_for_data
 		$tt->[$i] = $self->{'modify_type'}{"\L$table\E"}{"\L$colname\E"} if (exists $self->{'modify_type'}{"\L$table\E"}{"\L$colname\E"});
 	}
 
+	# Look for user defined type
+	if (!$self->{is_mysql}) {
+		for (my $idx = 0; $idx < scalar(@$stt); $idx++) {
+			my $data_type = uc($stt->[$idx]) || '';
+			$data_type =~ s/\(.*//; # remove any precision
+			# in case of user defined type try to gather the underlying base types
+			if (!exists $self->{data_type}{$data_type} && !exists $self->{user_type}{$stt->[$idx]}) {
+				%{ $self->{user_type}{$stt->[$idx]} } = $self->custom_type_definition($stt->[$idx]);
+			}
+		}
+	}
+
 	if ( ($self->{oracle_copies} > 1) && $self->{defined_pk}{"\L$table\E"} ) {
 		$self->{ora_conn_count} = 0;
 		while ($self->{ora_conn_count} < $self->{oracle_copies}) {
@@ -13952,7 +13970,7 @@ sub custom_type_definition
 		} else {
 			$self->logit("\tData type $custom_type nested from type $parent is not native, searching on custom types.\n", 1);
 		}
-		$custom_type = $self->_get_types($self->{dbh}, $custom_type);
+		$custom_type = $self->_get_types($custom_type);
 		foreach my $tpe (sort {length($a->{name}) <=> length($b->{name}) } @{$custom_type}) {
 			$self->logit("\tLooking inside custom type $tpe->{name} to extract values...\n", 1);
 			my %types_def = $self->_get_custom_types($tpe->{code});
@@ -14016,9 +14034,9 @@ sub _extract_data
 			my $data_type = uc($stt->[$idx]) || '';
 			$data_type =~ s/\(.*//; # remove any precision
 			# in case of user defined type try to gather the underlying base types
-			if (!exists $self->{data_type}{$data_type}) {
+			if (!exists $self->{data_type}{$data_type} && exists $self->{user_type}{$stt->[$idx]}) {
 				push(@has_custom_type, $idx);
-				%{$user_type{$idx}} = $self->custom_type_definition($stt->[$idx]);
+				%{ $user_type{$idx} } = %{ $self->{user_type}{$stt->[$idx]} };
 			}
 		}
 	}
@@ -16286,7 +16304,7 @@ WHERE c.relkind IN ('S','')
       $schema_clause
 };
 	} elsif ($obj_type eq 'TYPE') {
-		my $obj_infos = $self->_get_types($self->{dbh});
+		my $obj_infos = $self->_get_types();
 		$nbobj = $#{$obj_infos} + 1;
 		$schema_clause .= " AND pg_catalog.pg_type_is_visible(t.oid)" if ($schema_clause =~ /information_schema/);
 		$sql = qq{
@@ -16899,23 +16917,24 @@ sub multiprocess_progressbar
 			# Display table progression
 			my $dt = $table_progress{$1}{end} - $table_progress{$1}{start};
 			my $rps = int($table_progress{$1}{progress}/ ($dt||1));
-			print STDERR $self->progress_bar($table_progress{$1}{progress}, $table_progress{$1}{rows}, 25, '=', 'rows', "Table $1 ($dt sec., $rps recs/sec)") . "\n";
+			print STDERR $self->progress_bar($table_progress{$1}{progress}, $table_progress{$1}{rows}, 25, '=', 'rows', "Table $1 ($dt sec., $rps recs/sec)"), "\n";
 			# Display global export progression
 			my $cur_time = time();
 			$dt = $cur_time - $global_start_time;
 			$rps = int($global_line_counter/ ($dt || 1));
-			print STDERR $self->progress_bar($global_line_counter, $total_rows, 25, '=', 'total rows', "- ($dt sec., avg: $rps recs/sec), $1 in progress.") . "\r";
+			print STDERR $self->progress_bar($global_line_counter, $total_rows, 25, '=', 'total rows', "- ($dt sec., avg: $rps recs/sec), $1 in progress."), "\r";
 			$last_refresh = $cur_time;
 
 		# A chunk of DATA_LIMIT row is exported
 		} elsif ($r =~ /CHUNK \d+ DUMPED: (.*?), time: (\d+), rows (\d+)/) {
 
 			$table_progress{$1}{progress} += $3;
+			$global_line_counter += $3 if ($self->{disable_partition});
 			my $cur_time = time();
 			if ($cur_time >= ($last_refresh + $refresh_time)) {
 				my $dt = $cur_time - $global_start_time;
 				my $rps = int($global_line_counter/ ($dt || 1));
-				print STDERR $self->progress_bar($global_line_counter, $total_rows, 25, '=', 'total rows', "- ($dt sec., avg: $rps recs/sec), $1 in progress.") . "\r";
+				print STDERR $self->progress_bar($global_line_counter, $total_rows, 25, '=', 'total rows', "- ($dt sec., avg: $rps recs/sec), $1 in progress."), "\r";
 				$last_refresh = $cur_time;
 			}
 
@@ -16928,7 +16947,7 @@ sub multiprocess_progressbar
 			# Get all statistics from multiple Oracle query
 			for (my $i = 0; $i < $self->{oracle_copies}; $i++) {
 				$table_progress{$1}{start} = $table_progress{"$1-part-$i"}{start} if (!exists $table_progress{$1}{start});
-				$table_progress{$1}{rows} += $table_progress{"$1-part-$i"}{rows};
+				$table_progress{$1}{rows} = $table_progress{"$1-part-$i"}{rows};
 				delete $table_progress{"$1-part-$i"};
 			}
 
@@ -16941,7 +16960,7 @@ sub multiprocess_progressbar
 			# Display table progression
 			my $dt = $table_progress{$1}{end} - $table_progress{$1}{start};
 			my $rps = int($table_progress{$1}{rows}/ ($dt||1));
-			print STDERR $self->progress_bar($table_progress{$1}{rows}, $table_progress{$1}{rows}, 25, '=', 'rows', "Table $1 ($dt sec., $rps recs/sec)") . "\n";
+			print STDERR $self->progress_bar($table_progress{$1}{rows}, $table_progress{$1}{rows}, 25, '=', 'rows', "Table $1 ($dt sec., $rps recsi/sec)"), "\n";
 
 		} else {
 			print "PROGRESS BAR ERROR (unrecognized line sent to pipe): $r\n";
