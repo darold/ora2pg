@@ -2173,6 +2173,9 @@ sub mysql_to_plpgsql
 	# ... INNER JOIN(services s) ON ...
 	$str =~ s/\bJOIN\s*\(([^\s]+\s+[^\s]+)\)/JOIN $1/igs;
 
+	# Rewrite MySQL JOIN with WHERE clause instead of ON
+	$str =~ s/\((\s*[^\s]+(?:\s+[^\s]+)?\s+JOIN\s+[^\s]+(?:\s+[^\s]+)?\s*)\)\s+WHERE\s+/$1 ON /igs;
+
 	# Try to replace LEAVE label by EXIT label
 	my %repl_leave = ();
 	my $i = 0;
