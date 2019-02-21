@@ -203,7 +203,7 @@ sub _table_info
 	my $sql = "SELECT TABLE_NAME,TABLE_COMMENT,TABLE_TYPE,TABLE_ROWS,ROUND( ( data_length + index_length) / 1024 / 1024, 2 ) AS \"Total Size Mb\", AUTO_INCREMENT, ENGINE FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE='BASE TABLE' AND TABLE_SCHEMA = '$self->{schema}'";
 	$sql .= $self->limit_to_objects('TABLE', 'TABLE_NAME');
 	$sth = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	while (my $row = $sth->fetch) {
 		$row->[2] =~ s/^BASE //;
 		$comments{$row->[0]}{comment} = $row->[1];
@@ -251,7 +251,7 @@ sub _column_comments
 
 	my $sth = $self->{dbh}->prepare($sql) or $self->logit("WARNING only: " . $self->{dbh}->errstr . "\n", 0, 0);
 
-	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	my %data = ();
 	while (my $row = $sth->fetch) {
 		$data{$row->[2]}{$row->[0]} = $row->[1];
@@ -302,7 +302,7 @@ END
 	if (!$sth) {
 		$self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	}
-	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
 	# Expected columns information stored in hash 
 	# COLUMN_NAME,DATA_TYPE,DATA_LENGTH,NULLABLE,DATA_DEFAULT,DATA_PRECISION,DATA_SCALE,CHAR_LENGTH,TABLE_NAME,OWNER,VIRTUAL_COLUMN,POSITION,AUTO_INCREMENT,ENUM_INFO
@@ -344,7 +344,7 @@ sub _get_indexes
 	# Retrieve all indexes for the given table
 	foreach my $t (keys %tables_infos) {
 		my $sth = $self->{dbh}->prepare("SHOW INDEX FROM $t $condition;") or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-		$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+		$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
 		my $i = 1;
 		while (my $row = $sth->fetch) {
@@ -410,7 +410,7 @@ sub _count_indexes
 	# Retrieve all indexes for the given table
 	foreach my $t (keys %tables_infos) {
 		my $sth = $self->{dbh}->prepare("SHOW INDEX FROM $t $condition;") or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-		$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+		$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
 		my $i = 1;
 		while (my $row = $sth->fetch) {
@@ -506,7 +506,7 @@ sub _get_views
 	$str =~ s/ AND / WHERE /;
 
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
 	my %ordered_view = ();
 	my %data = ();
@@ -563,7 +563,7 @@ sub _get_triggers
 
 	$str .= " ORDER BY EVENT_OBJECT_TABLE, TRIGGER_NAME";
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
 	my @triggers = ();
 	while (my $row = $sth->fetch) {
@@ -606,7 +606,7 @@ sub _unique_key
 	# Retrieve all indexes for the given table
 	foreach my $t (keys %tables_infos) {
 		my $sth = $self->{dbh}->prepare("SHOW INDEX FROM $t $condition;") or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-		$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+		$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
 		my $i = 1;
 		while (my $row = $sth->fetch) {
@@ -695,7 +695,7 @@ sub _get_functions
 		$str =~ s/,DATA_TYPE,/,DTD_IDENTIFIER,/;
 	}
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
 	my %functions = ();
 	while (my $row = $sth->fetch) {
@@ -940,7 +940,7 @@ sub _list_all_funtions
 	$str =~ s/ AND / WHERE /;
 	$str .= " ORDER BY ROUTINE_NAME";
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
 	my @functions = ();
 	while (my $row = $sth->fetch) {
@@ -1151,7 +1151,7 @@ sub _get_job
 	$str .= $self->limit_to_objects('JOB', 'EVENT_NAME');
 	$str .= " ORDER BY EVENT_NAME";
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
 	my %data = ();
 	while (my $row = $sth->fetch) {
@@ -1176,7 +1176,7 @@ sub _get_dblink
 	$str =~ s/mysql.servers AND /mysql.servers WHERE /;
 
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
 	my %data = ();
 	while (my $row = $sth->fetch) {
@@ -1214,7 +1214,7 @@ WHERE PARTITION_NAME IS NOT NULL AND SUBPARTITION_NAME IS NULL AND (PARTITION_ME
 	$str .= "ORDER BY TABLE_NAME,PARTITION_ORDINAL_POSITION\n";
 
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	my %parts = ();
 	my %default = ();
 	while (my $row = $sth->fetch) {
@@ -1254,7 +1254,7 @@ WHERE SUBPARTITION_NAME IS NOT NULL AND SUBPARTITION_EXPRESSION IS NOT NULL AND 
 	}
 	$str .= " ORDER BY TABLE_NAME,PARTITION_ORDINAL_POSITION\n";
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	my %subparts = ();
 	my %default = ();
 	while (my $row = $sth->fetch) {
@@ -1295,7 +1295,7 @@ FROM INFORMATION_SCHEMA.PARTITIONS WHERE SUBPARTITION_NAME IS NULL AND PARTITION
 	$str .= " ORDER BY TABLE_NAME,PARTITION_NAME\n";
 
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
 	my %parts = ();
 	while (my $row = $sth->fetch) {
@@ -1328,7 +1328,7 @@ FROM INFORMATION_SCHEMA.PARTITIONS WHERE SUBPARTITION_NAME IS NULL AND PARTITION
 	$str .= " ORDER BY TABLE_NAME,PARTITION_NAME\n";
 
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
 	my %parts = ();
 	while (my $row = $sth->fetch) {
@@ -1413,7 +1413,7 @@ WHERE SUBPARTITION_NAME IS NULL AND (PARTITION_METHOD = 'RANGE' OR PARTITION_MET
 		$sql .= "\tAND TABLE_SCHEMA ='$self->{schema}'\n";
 	}
 	$sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	while ( my @row = $sth->fetchrow()) {
 		push(@{$infos{'TABLE PARTITION'}}, { ( name => $row[0], invalid => 0) });
 	}
@@ -1430,7 +1430,7 @@ WHERE SUBPARTITION_NAME IS NOT NULL
 		$sql .= "\tAND TABLE_SCHEMA ='$self->{schema}'\n";
 	}
 	$sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	while ( my @row = $sth->fetchrow()) {
 		push(@{$infos{'TABLE PARTITION'}}, { ( name => $row[0], invalid => 0) });
 	}
@@ -1455,7 +1455,7 @@ sub _get_privilege
 	$str .= " ORDER BY TABLE_NAME, GRANTEE";
 	my $error = "\n\nFATAL: You must be connected as an oracle dba user to retrieved grants\n\n";
 	my $sth = $self->{dbh}->prepare($str) or $self->logit($error . "FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	while (my $row = $sth->fetch) {
 		# Remove the host part of the user
 		$row->[0] =~ s/\@.*//;
@@ -1478,7 +1478,7 @@ sub _get_privilege
 	$str .= " " . $self->limit_to_objects('GRANT|TABLE|VIEW|FUNCTION|PROCEDURE|SEQUENCE', 'GRANTEE|TABLE_NAME|TABLE_NAME|TABLE_NAME|TABLE_NAME|TABLE_NAME');
 
 	$sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	while (my $row = $sth->fetch) {
 		$row->[0] =~ s/\@.*//;
 		$row->[0] =~ s/'//g;
@@ -1545,7 +1545,7 @@ WHERE TABLE_SCHEMA='$self->{schema}'
 	$sql .= " LIMIT $self->{top_max}" if ($self->{top_max});
 
         my $sth = $self->{dbh}->prepare( $sql ) or return undef;
-        $sth->execute or return undef;
+        $sth->execute(@{$self->{query_bind_params}}) or return undef;
 	while ( my @row = $sth->fetchrow()) {
 		$table_size{$row[0]} = $row[1];
 	}
@@ -1659,7 +1659,7 @@ sub _count_sequences
 	my $sql = "SELECT TABLE_NAME, AUTO_INCREMENT FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE='BASE TABLE' AND TABLE_SCHEMA = '$self->{schema}'";
 	$sql .= $self->limit_to_objects('TABLE', 'TABLE_NAME');
 	my $sth = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	while (my $row = $sth->fetch) {
 		push(@seqs, $row->[0]) if ($row->[1]);
 	}
@@ -1711,7 +1711,7 @@ END
 	if (!$sth) {
 		$self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	}
-	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
 	my %data = ();
 	while (my $row = $sth->fetch) {
@@ -1736,7 +1736,7 @@ sub _list_triggers
 
 	$str .= " ORDER BY EVENT_OBJECT_TABLE, TRIGGER_NAME";
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
 	my %triggers = ();
 	while (my $row = $sth->fetch) {
@@ -1898,7 +1898,7 @@ sub _get_security_definer
 	$str .= " ORDER BY ROUTINE_NAME";
 
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
 	while (my $row = $sth->fetch) {
 		next if (!$row->[0]);
