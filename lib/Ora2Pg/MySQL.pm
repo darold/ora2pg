@@ -247,7 +247,11 @@ sub _column_comments
 		$sql .= " WHERE TABLE_SCHEMA='$self->{schema}' ";
 	}
 	$sql .= "AND TABLE_NAME='$table' " if ($table);
-	$sql .= $self->limit_to_objects('TABLE','TABLE_NAME') if (!$table);
+	if (!$table) {
+		$sql .= $self->limit_to_objects('TABLE','TABLE_NAME');
+	} else {
+		@{$self->{query_bind_params}} = ();
+	}
 
 	my $sth = $self->{dbh}->prepare($sql) or $self->logit("WARNING only: " . $self->{dbh}->errstr . "\n", 0, 0);
 
@@ -270,7 +274,11 @@ sub _column_info
 		$condition .= "AND TABLE_SCHEMA='$self->{schema}' ";
 	}
 	$condition .= "AND TABLE_NAME='$table' " if ($table);
-	$condition .= $self->limit_to_objects('TABLE', 'TABLE_NAME') if (!$table);
+	if (!$table) {
+		$condition .= $self->limit_to_objects('TABLE', 'TABLE_NAME');
+	} else {
+		@{$self->{query_bind_params}} = ();
+	}
 	$condition =~ s/^AND/WHERE/;
 
 	# TABLE_CATALOG            | varchar(512)        | NO   |     |         |       |
@@ -327,7 +335,11 @@ sub _get_indexes
 
 	my $condition = '';
 	$condition = " FROM $self->{schema}" if ($self->{schema});
-	$condition .= $self->limit_to_objects('TABLE|INDEX', "`Table`|`Key_name`") if (!$table);
+	if (!$table) {
+		$condition .= $self->limit_to_objects('TABLE|INDEX', "`Table`|`Key_name`");
+	} else {
+		@{$self->{query_bind_params}} = ();
+	}
 	$condition =~ s/ AND / WHERE /;
 
 	my %tables_infos = ();
@@ -396,7 +408,11 @@ sub _count_indexes
 
 	my $condition = '';
 	$condition = " FROM $self->{schema}" if ($self->{schema});
-	$condition .= $self->limit_to_objects('TABLE|INDEX', "`Table`|`Key_name`") if (!$table);
+	if (!$table) {
+		$condition .= $self->limit_to_objects('TABLE|INDEX', "`Table`|`Key_name`");
+	} else {
+		@{$self->{query_bind_params}} = ();
+	}
 	$condition =~ s/ AND / WHERE /;
 
 	my %tables_infos = ();
@@ -594,7 +610,11 @@ sub _unique_key
 
 	my $condition = '';
 	$condition = " FROM $self->{schema}" if ($self->{schema});
-	$condition .= $self->limit_to_objects('TABLE|INDEX', "`Table`|`Key_name`") if (!$table);
+	if (!$table) {
+		$condition .= $self->limit_to_objects('TABLE|INDEX', "`Table`|`Key_name`");
+	} else {
+		@{$self->{query_bind_params}} = ();
+	}
 	$condition =~ s/ AND / WHERE /;
 
 	my %tables_infos = ();
@@ -1679,7 +1699,11 @@ sub _column_attributes
 		$condition .= "AND TABLE_SCHEMA='$self->{schema}' ";
 	}
 	$condition .= "AND TABLE_NAME='$table' " if ($table);
-	$condition .= $self->limit_to_objects('TABLE', 'TABLE_NAME') if (!$table);
+	if (!$table) {
+		$condition .= $self->limit_to_objects('TABLE', 'TABLE_NAME');
+	} else {
+		@{$self->{query_bind_params}} = ();
+	}
 	$condition =~ s/^AND/WHERE/;
 
 	# TABLE_CATALOG            | varchar(512)        | NO   |     |         |       |
