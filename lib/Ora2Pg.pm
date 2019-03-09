@@ -1628,6 +1628,7 @@ sub _oracle_connection
 			LongReadLen=>$self->{longreadlen},
 			LongTruncOk=>$self->{longtruncok},
 			AutoInactiveDestroy => 1,
+			PrintError => 0
 		}
 	);
 
@@ -1646,6 +1647,20 @@ sub _oracle_connection
 	$sth->finish();
 	chomp($self->{db_version});
 	$self->{db_version} =~ s/ \- .*//;
+
+	# Check if the connection user has the DBA privilege
+	$sth = $dbh->prepare( "SELECT 1 FROM DBA_ROLE_PRIVS" );
+	if (!$sth) {
+		my $ret = $dbh->err;
+		if ($ret == 942 && $self->{prefix} eq 'DBA') {
+			$self->logit("HINT: you should activate USER_GRANTS for a connection without DBA privilege. Continuing with USER privilege.\n");
+			# No DBA privilege, set use of ALL_* tables instead of DBA_* tables
+			$self->{prefix} = 'ALL';
+			$self->{user_grants} = 1;
+		}
+	} else {
+		$sth->finish();
+	}
 
 	# Fix a problem when exporting type LONG and LOB
 	$dbh->{'LongReadLen'} = $self->{longreadlen};
