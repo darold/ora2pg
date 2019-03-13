@@ -46,7 +46,7 @@ Features included:
 	- Export Oracle views as PG tables.
 	- Export Oracle user defined types.
 	- Provide some basic automatic conversion of PLSQL code to PLPGSQL.
-	- Works on any plateform.
+	- Works on any platform.
 	- Export Oracle tables as foreign data wrapper tables.
 	- Export materialized view.
 	- Show a detailled report of an Oracle database content.
@@ -177,7 +177,7 @@ After setting ORACLE_HOME and LD_LIBRARY_PATH environment variables as root
 user, install DBD::Oracle. Proceed as follow:
 
 	export LD_LIBRARY_PATH=/usr/lib/oracle/12.2/client64/lib
-	export ORACLE_HOME=/usr/lib/oracle/12.2/client64/lib
+	export ORACLE_HOME=/usr/lib/oracle/12.2/client64
 	perl -MCPAN -e 'install DBD::Oracle'
 
 If you are running for the first time it will ask many questions; you can keep
@@ -190,7 +190,7 @@ above doesn't work:
 	cpan> quit
 	cd ~/.cpan/build/DBD-Oracle*
 	export LD_LIBRARY_PATH=/usr/lib/oracle/11.2/client64/lib
-	export ORACLE_HOME=/usr/lib/oracle/11.2/client64/lib
+	export ORACLE_HOME=/usr/lib/oracle/11.2/client64
 	perl Makefile.PL
 	make
 	make install

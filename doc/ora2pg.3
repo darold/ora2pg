@@ -129,7 +129,7 @@
 .\" ========================================================================
 .\"
 .IX Title "ORA2PG 1"
-.TH ORA2PG 1 "2018-12-25" "perl v5.26.1" "User Contributed Perl Documentation"
+.TH ORA2PG 1 "2019-03-13" "perl v5.26.1" "User Contributed Perl Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -178,7 +178,7 @@ Features included:
 \&        \- Export Oracle views as PG tables.
 \&        \- Export Oracle user defined types.
 \&        \- Provide some basic automatic conversion of PLSQL code to PLPGSQL.
-\&        \- Works on any plateform.
+\&        \- Works on any platform.
 \&        \- Export Oracle tables as foreign data wrapper tables.
 \&        \- Export materialized view.
 \&        \- Show a detailled report of an Oracle database content.
@@ -315,7 +315,7 @@ user, install DBD::Oracle. Proceed as follow:
 .PP
 .Vb 3
 \&        export LD_LIBRARY_PATH=/usr/lib/oracle/12.2/client64/lib
-\&        export ORACLE_HOME=/usr/lib/oracle/12.2/client64/lib
+\&        export ORACLE_HOME=/usr/lib/oracle/12.2/client64
 \&        perl \-MCPAN \-e \*(Aqinstall DBD::Oracle\*(Aq
 .Ve
 .PP
@@ -330,7 +330,7 @@ above doesn't work:
 \&        cpan> quit
 \&        cd ~/.cpan/build/DBD\-Oracle*
 \&        export LD_LIBRARY_PATH=/usr/lib/oracle/11.2/client64/lib
-\&        export ORACLE_HOME=/usr/lib/oracle/11.2/client64/lib
+\&        export ORACLE_HOME=/usr/lib/oracle/11.2/client64
 \&        perl Makefile.PL
 \&        make
 \&        make install
@@ -2833,8 +2833,10 @@ number of instances and schema to scan for migration assessment.
 .PP
 Usage: ora2pg_scanner \-l \s-1CSVFILE\s0 [\-o \s-1OUTDIR\s0]
 .PP
-.Vb 6
-\&   \-c | \-\-config FILE : set custom configuration file to use otherwise ora2pg
+.Vb 8
+\&   \-b | \-\-binpath DIR: full path to directory where the ora2pg binary stays.
+\&                Might be useful only on Windows OS.
+\&   \-c | \-\-config FILE: set custom configuration file to use otherwise ora2pg
 \&                will use the default: /etc/ora2pg/ora2pg.conf.
 \&   \-l | \-\-list FILE : CSV file containing a list of databases to scan with
 \&                all required information. The first line of the file
@@ -2876,6 +2878,9 @@ database and a detailed \s-1HTML\s0 report for each database scanned.
 .PP
 Hint: Use the \-t | \-\-test option before to test all your connections in your
 \&\s-1CSV\s0 file.
+.PP
+For Windows users you must use the \-b command line option to set the directory
+where ora2pg_scanner stays otherwise the ora2pg command calls will fail.
 .SS "Migration assessment method"
 .IX Subsection "Migration assessment method"
 Migration unit scores given to each type of Oracle database object are defined in the
@@ -3081,7 +3086,7 @@ Any contribution to build a better tool is welcome, you just have to send me
 your ideas, features request or patches and there will be applied.
 .SH "LICENSE"
 .IX Header "LICENSE"
-Copyright (c) 2000\-2018 Gilles Darold \- All rights reserved.
+Copyright (c) 2000\-2019 Gilles Darold \- All rights reserved.
 .PP
 .Vb 4
 \&        This program is free software: you can redistribute it and/or modify
