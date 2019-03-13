@@ -18523,7 +18523,7 @@ sub clear_global_declaration
 	}
 	# Extract TYPE/SUBTYPE declaration
 	my $i = 0;
-	while ($str =~ s/(SUBTYPE|TYPE)\s+([^\s]+)\s+(AS|IS)\s+([^;]+;)//is) {
+	while ($str =~ s/\b(SUBTYPE|TYPE)\s+([^\s\(\)]+)\s+(AS|IS)\s+([^;]+;)//is) {
 		$self->{pkg_type}{$pname}{$2} = "$pname.$2";
 		my $code = "$1 $self->{pkg_type}{$pname}{$2} AS $4";
 		push(@{$self->{types}}, { ('name' => $2, 'code' => $code, 'pos' => $i++) });
