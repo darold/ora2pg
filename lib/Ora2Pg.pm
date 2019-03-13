@@ -14227,8 +14227,6 @@ sub _extract_data
 					last;
 				}
 
-				# Retrieve LOB data from locator
-				$self->{chunk_size} = 8192;
 				# Then foreach row use the returned lob locator to retrieve data
 				# and all column with a LOB data type, extract data by chunk
 				for (my $j = 0; $j <= $#$stt; $j++) {
@@ -14240,30 +14238,35 @@ sub _extract_data
 						$data_type =~ s/\(.*//; # remove any precision
 						$row[$j] =  $self->set_custom_type_value($data_type, $user_type{$j}, $row[$j], $tt->[$j], 0);
 
+					# Retrieve LOB data from locator
 					} elsif (($stt->[$j] =~ /LOB/) && $row[$j]) {
 
 						my $lob_content = '';
 						my $offset = 1;   # Offsets start at 1, not 0
 						if ( ($self->{parallel_tables} > 1) || (($self->{oracle_copies} > 1) && $self->{defined_pk}{"\L$table\E"}) ) {
+							# Get chunk size
+							my $chunk_size = $dbh->ora_lob_chunk_size($row[$j]) || 8192;
 							while (1) {
-								my $lobdata = $dbh->ora_lob_read($row[$j], $offset, $self->{chunk_size} );
+								my $lobdata = $dbh->ora_lob_read($row[$j], $offset, $chunk_size );
 								if ($dbh->errstr) {
-									$self->logit("ERROR: " . $dbh->errstr . "\n", 0, 0);
+									$self->logit("ERROR: " . $dbh->errstr . "\n", 0, 0) if ($dbh->errstr !~ /ORA-22831/);
 									last;
 								}
 								last unless (defined $lobdata && length $lobdata);
-								$offset += $self->{chunk_size};
+								$offset += $chunk_size;
 								$lob_content .= $lobdata;
 							}
 						} else {
+							# Get chunk size
+							my $chunk_size = $self->{dbh}->ora_lob_chunk_size($row[$j]) || 8192;
 							while (1) {
-								my $lobdata = $self->{dbh}->ora_lob_read($row[$j], $offset, $self->{chunk_size} );
+								my $lobdata = $self->{dbh}->ora_lob_read($row[$j], $offset, $chunk_size );
 								if ($self->{dbh}->errstr) {
-									$self->logit("ERROR: " . $self->{dbh}->errstr . "\n", 0, 0);
+									$self->logit("ERROR: " . $self->{dbh}->errstr . "\n", 0, 0) if ($dbh->errstr !~ /ORA-22831/);
 									last;
 								}
 								last unless (defined $lobdata && length $lobdata);
-								$offset += $self->{chunk_size};
+								$offset += $chunk_size;
 								$lob_content .= $lobdata;
 							}
 						}
