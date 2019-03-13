@@ -13029,11 +13029,13 @@ sub _restore_comments
 		delete $self->{comment_values}{$id};
 	};
 
+	# Restore start comment in a constant string
+	$$content =~ s/\%OPEN_COMMENT\%/\/\*/gs;
+
 	if ($self->{string_constant_regexp}) {
 		# Replace potential text values that was replaced in comments
 		$self->_restore_text_constant_part($content);
 	}
-
 }
 
 =head2 _remove_comments
@@ -13046,6 +13048,9 @@ to allow easy parsing
 sub _remove_comments
 {
 	my ($self, $content, $no_constant) = @_;
+
+	# Fix comment in a string constant
+	while ($$content =~ s/('[^';\n]*)\/\*([^';\n]*')/$1\%OPEN_COMMENT\%$2/s) {};
 
 	# Fix unterminated comment at end of the code
 	$$content =~ s/(\/\*(?:(?!\*\/).)*)$/$1 \*\//s;
@@ -17385,10 +17390,9 @@ sub _lookup_function
 
 	@{$fct_detail{param_types}} = ();
 	$fct_detail{declare} =~ s/(\b(?:FUNCTION|PROCEDURE)\s+(?:[^\s\(]+))(\s*\%ORA2PG_COMMENT\d+\%\s*)+/$2$1 /is;
-	#if ( ($fct_detail{declare} =~ s/(.*?)\b(FUNCTION|PROCEDURE)\s+([^\s\(]+)(?:\s*\%ORA2PG_COMMENT\d+\%)*\s*(\([^\)]*\))//is) || 
-	#($fct_detail{declare} =~ s/(.*?)\b(FUNCTION|PROCEDURE)\s+([^\s\(]+)(?:\s*\%ORA2PG_COMMENT\d+\%)*\s+(RETURN|IS|AS)/$4/is) ) {
 	if ( ($fct_detail{declare} =~ s/(.*?)\b(FUNCTION|PROCEDURE)\s+([^\s\(]+)\s*(\([^\)]*\))//is) || 
-	($fct_detail{declare} =~ s/(.*?)\b(FUNCTION|PROCEDURE)\s+([^\s\(]+)\s+(RETURN|IS|AS)/$4/is) ) {
+			($fct_detail{declare} =~ s/(.*?)\b(FUNCTION|PROCEDURE)\s+([^\s\(]+)\s+(RETURN|IS|AS)/$4/is) )
+	{
 		$fct_detail{before} = $1;
 		$fct_detail{type} = uc($2);
 		$fct_detail{name} = $3;
