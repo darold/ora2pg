@@ -10189,6 +10189,9 @@ AND    IC.TABLE_OWNER = ?
 			if ($row->[-1] eq 'DESC') {
 				$row->[1] .= " DESC";
 			}
+		} else {
+                        # Quote column with unsupported symbols
+                        $row->[1] = $self->quote_object_name($row->[1]);
 		}
 
 		$row->[1] =~ s/SYS_EXTRACT_UTC\s*\(([^\)]+)\)/$1/isg;
