@@ -18429,7 +18429,7 @@ sub _escape_lob
 			#$col = escape_bytea($col);
 			# RAW data type is returned in hex
 			$col = unpack("H*",$col) if ($generic_type ne 'RAW');
-			$col = '\\\\x' . $col;
+			$col = '\\x' . $col;
 		} elsif (($generic_type eq 'CLOB') || $cond->{istext}) {
 			$col = $self->escape_copy($col, $isnested);
 		}
