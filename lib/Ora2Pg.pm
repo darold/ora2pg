@@ -1455,7 +1455,7 @@ sub _init
 				$self->_compile_schema(uc($self->{compile_schema}));
 			}
 		}
-		if (!grep(/^$self->{type}$/, 'COPY', 'INSERT', 'SEQUENCE', 'GRANT', 'TABLESPACE', 'QUERY', 'SYNONYM', 'FDW', 'KETTLE', 'DBLINK', 'DIRECTORY')) {
+		if (!grep(/^$self->{type}$/, 'COPY', 'INSERT', 'SEQUENCE', 'GRANT', 'TABLESPACE', 'QUERY', 'SYNONYM', 'FDW', 'KETTLE', 'DBLINK', 'DIRECTORY') && $self->{type} !~ /SHOW_/) {
 			if ($self->{plsql_pgsql}) {
 				my @done = ();
 				if ($#{ $self->{look_forward_function} } >= 0) {
