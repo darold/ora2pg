@@ -190,8 +190,8 @@ INSTALLATION
             cpan> get DBD::Oracle
             cpan> quit
             cd ~/.cpan/build/DBD-Oracle*
-            export LD_LIBRARY_PATH=/usr/lib/oracle/12.2/client64/lib
-            export ORACLE_HOME=/usr/lib/oracle/12.2/client64
+            export LD_LIBRARY_PATH=/usr/lib/oracle/11.2/client64/lib
+            export ORACLE_HOME=/usr/lib/oracle/11.2/client64
             perl Makefile.PL
             make
             make install
@@ -673,6 +673,12 @@ CONFIGURATION
         will look forward in these packages for all
         functions/procedures/packages declaration before proceeding to
         current schema export.
+
+    NO_FUNCTION_METADATA
+        Force Ora2Pg to not look for function declaration. Note that this
+        will prevent Ora2Pg to rewrite function replacement call if needed.
+        Do not enable it unless looking forward at function breaks other
+        export.
 
   Export type
     The export action is perform following a single configuration directive

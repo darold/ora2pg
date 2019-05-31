@@ -863,6 +863,7 @@ sub _init
 	$self->{allow_partition} = ();
 	$self->{empty_lob_null} = 0;
 	$self->{look_forward_function} = ();
+	$self->{no_function_metadata} = 0;
 
 	# Initial command to execute at Oracle and PostgreSQL connexion
 	$self->{ora_initial_command} = ();
@@ -1456,7 +1457,7 @@ sub _init
 			}
 		}
 		if (!grep(/^$self->{type}$/, 'COPY', 'INSERT', 'SEQUENCE', 'GRANT', 'TABLESPACE', 'QUERY', 'SYNONYM', 'FDW', 'KETTLE', 'DBLINK', 'DIRECTORY') && $self->{type} !~ /SHOW_/) {
-			if ($self->{plsql_pgsql}) {
+			if ($self->{plsql_pgsql} && !$self->{no_function_metadata}) {
 				my @done = ();
 				if ($#{ $self->{look_forward_function} } >= 0) {
 					foreach my $o (@{ $self->{look_forward_function} }) {

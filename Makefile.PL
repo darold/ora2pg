@@ -168,6 +168,10 @@ COMPILE_SCHEMA	0
 # schema export.
 #LOOK_FORWARD_FUNCTION	SCOTT,OE
 
+# Force Ora2Pg to not look for function declaration. Note that this will prevent
+# Ora2Pg to rewrite function replacement call if needed. Do not enable it unless
+# looking forward at function breaks other export.
+NO_FUNCTION_METADATA	0
 
 #------------------------------------------------------------------------------
 # ENCODING SECTION (Define client encoding at Oracle and PostgreSQL side)

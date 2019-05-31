@@ -692,6 +692,12 @@ as value of this directive, Ora2Pg will look forward in these packages for
 all functions/procedures/packages declaration before proceeding to current
 schema export.
  
+=item NO_FUNCTION_METADATA
+
+Force Ora2Pg to not look for function declaration. Note that this will prevent
+Ora2Pg to rewrite function replacement call if needed. Do not enable it unless
+looking forward at function breaks other export.
+
 =back
 
 =head2 Export type
