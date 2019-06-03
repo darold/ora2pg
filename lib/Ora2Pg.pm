@@ -15762,9 +15762,9 @@ sub _test_table
 				next;
 			}
 			while ( my @row = $s->fetchrow()) {
-				print "POSTGRES:$tbmod$orig:$row[0]\n";
+				print "POSTGRES:$both$orig:$row[0]\n";
 				if ($row[0] != $numixd) {
-					push(@errors, "Table $tbmod$orig doesn't have the same number of indexes in source database ($numixd) and in PostgreSQL ($row[0]).");
+					push(@errors, "Table $both$orig doesn't have the same number of indexes in source database ($numixd) and in PostgreSQL ($row[0]).");
 				}
 				last;
 			}
@@ -15808,9 +15808,9 @@ AND pg_constraint.contype IN ('u')
 			}
 			$tbmod = $1 . $tbmod  if ($1);
 			while ( my @row = $s->fetchrow()) {
-				print "POSTGRES:$tbmod$orig:$row[0]\n";
+				print "POSTGRES:$both$orig:$row[0]\n";
 				if ($row[0] != $numixd) {
-					push(@errors, "Table $tbmod$orig doesn't have the same number of unique constraints in source database ($numixd) and in PostgreSQL ($row[0]).");
+					push(@errors, "Table $both$orig doesn't have the same number of unique constraints in source database ($numixd) and in PostgreSQL ($row[0]).");
 				}
 				last;
 			}
@@ -15855,9 +15855,9 @@ AND pg_constraint.contype IN ('p')
 			}
 			$tbmod = $1 . $tbmod  if ($1);
 			while ( my @row = $s->fetchrow()) {
-				print "POSTGRES:$tbmod$orig:$row[0]\n";
+				print "POSTGRES:$both$orig:$row[0]\n";
 				if ($row[0] != $nbpk) {
-					push(@errors, "Table $tbmod$orig doesn't have the same number of primary keys in source database ($nbpk) and in PostgreSQL ($row[0]).");
+					push(@errors, "Table $both$orig doesn't have the same number of primary keys in source database ($nbpk) and in PostgreSQL ($row[0]).");
 				}
 				last;
 			}
@@ -15901,9 +15901,9 @@ $schema_cond
 				}
 				$tbmod = $1 . $tbmod  if ($1);
 				while ( my @row = $s->fetchrow()) {
-					print "POSTGRES:$tbmod$orig:$row[0]\n";
+					print "POSTGRES:$both$orig:$row[0]\n";
 					if ($row[0] != $nbcheck) {
-						push(@errors, "Table $tbmod$orig doesn't have the same number of check constraints in source database ($nbcheck) and in PostgreSQL ($row[0]).");
+						push(@errors, "Table $both$orig doesn't have the same number of check constraints in source database ($nbcheck) and in PostgreSQL ($row[0]).");
 					}
 					last;
 				}
@@ -15953,9 +15953,9 @@ WHERE e.relname = ?
 			}
 			$tbmod = $1 . $tbmod  if ($1);
 			while ( my @row = $s->fetchrow()) {
-				print "POSTGRES:$tbmod$orig:$row[0]\n";
+				print "POSTGRES:$both$orig:$row[0]\n";
 				if ($row[0] != $nbnull) {
-					push(@errors, "Table $tbmod$orig doesn't have the same number of not null constraints in source database ($nbnull) and in PostgreSQL ($row[0]).");
+					push(@errors, "Table $both$orig doesn't have the same number of not null constraints in source database ($nbnull) and in PostgreSQL ($row[0]).");
 				}
 				last;
 			}
@@ -16011,9 +16011,9 @@ WHERE e.relname = ? AND a.attnum > 0 AND NOT a.attisdropped
 			while ( my @row = $s->fetchrow()) {
 				$pgdef++ if ($row[1] ne '');
 			}
-			print "POSTGRES:$tbmod$orig:$pgdef\n";
+			print "POSTGRES:$both$orig:$pgdef\n";
 			if ($pgdef != $nbdefault) {
-				push(@errors, "Table $tbmod$orig doesn't have the same number of column default value in source database ($nbdefault) and in PostgreSQL ($pgdef).");
+				push(@errors, "Table $both$orig doesn't have the same number of column default value in source database ($nbdefault) and in PostgreSQL ($pgdef).");
 			}
 		}
 	}
@@ -16052,9 +16052,9 @@ WHERE c.relname = ?
 			}
 			$tbmod = $1 . $tbmod  if ($1);
 			while ( my @row = $s->fetchrow()) {
-				print "POSTGRES:$tbmod$orig:$row[0]\n";
+				print "POSTGRES:$both$orig:$row[0]\n";
 				if ($row[0] != $nbfk) {
-					push(@errors, "Table $tbmod$orig doesn't have the same number of foreign key constraints in source database ($nbfk) and in PostgreSQL ($row[0]).");
+					push(@errors, "Table $both$orig doesn't have the same number of foreign key constraints in source database ($nbfk) and in PostgreSQL ($row[0]).");
 				}
 				last;
 			}
@@ -16094,9 +16094,9 @@ WHERE c.relname = ?
 			}
 			$tbmod = $1 . $tbmod  if ($1);
 			while ( my @row = $s->fetchrow()) {
-				print "POSTGRES:$tbmod$orig:$row[0]\n";
+				print "POSTGRES:$both$orig:$row[0]\n";
 				if ($row[0] != $nbtrg) {
-					push(@errors, "Table $tbmod$orig doesn't have the same number of triggers in source database ($nbtrg) and in PostgreSQL ($row[0]).");
+					push(@errors, "Table $both$orig doesn't have the same number of triggers in source database ($nbtrg) and in PostgreSQL ($row[0]).");
 				}
 				last;
 			}
@@ -16146,12 +16146,12 @@ GROUP BY
 		print "$lbl:$t:", $partitions{"\L$t\E"}{count}, "\n";
 		my ($tbmod, $orig, $schema, $both) = $self->set_pg_relation_name($t);
 		if (exists $pg_part{$tbmod}) {
-			print "POSTGRES:$tbmod$orig:$pg_part{$tbmod}\n";
+			print "POSTGRES:$both$orig:$pg_part{$tbmod}\n";
 			if ($pg_part{$tbmod} != $partitions{"\L$t\E"}{count}) {
-				push(@errors, "Table $tbmod$orig doesn't have the same number of partitions in source database (" . $partitions{"\L$t\E"}{count} . ") and in PostgreSQL ($pg_part{$tbmod}).");
+				push(@errors, "Table $both$orig doesn't have the same number of partitions in source database (" . $partitions{"\L$t\E"}{count} . ") and in PostgreSQL ($pg_part{$tbmod}).");
 			}
 		} else {
-			push(@errors, "Table $tbmod$orig doesn't have the same number of partitions in source database (" . $partitions{"\L$t\E"}{count} . ") and in PostgreSQL (0).");
+			push(@errors, "Table $both$orig doesn't have the same number of partitions in source database (" . $partitions{"\L$t\E"}{count} . ") and in PostgreSQL (0).");
 		}
 	}
 	$self->show_test_errors('PARTITION', @errors);
