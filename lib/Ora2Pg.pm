@@ -15706,15 +15706,15 @@ sub _table_row_count
 		print "$lbl:$t:$tables_infos{$t}{num_rows}\n";
 		if ($self->{pg_dsn}) {
 			my ($tbmod, $orig, $schema, $both) = $self->set_pg_relation_name($t);
-			my $s = $self->{dbhdest}->prepare("SELECT count(*) FROM $tbmod;") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
+			my $s = $self->{dbhdest}->prepare("SELECT count(*) FROM $both;") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
 			if (not $s->execute) {
-				push(@errors, "Table $tbmod$orig does not exists in PostgreSQL database.") if ($s->state eq '42P01');
+				push(@errors, "Table $both$orig does not exists in PostgreSQL database.") if ($s->state eq '42P01');
 				next;
 			}
 			while ( my @row = $s->fetchrow()) {
-				print "POSTGRES:$tbmod$orig:$row[0]\n";
+				print "POSTGRES:$both$orig:$row[0]\n";
 				if ($row[0] != $tables_infos{$t}{num_rows}) {
-					push(@errors, "Table $tbmod$orig doesn't have the same number of line in source database ($tables_infos{$t}{num_rows}) and in PostgreSQL ($row[0]).");
+					push(@errors, "Table $both$orig doesn't have the same number of line in source database ($tables_infos{$t}{num_rows}) and in PostgreSQL ($row[0]).");
 				}
 				last;
 			}
@@ -18716,4 +18716,3 @@ L<DBD::Oracle>, L<DBD::Pg>
 
 
 =cut
-
