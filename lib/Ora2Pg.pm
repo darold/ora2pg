@@ -11708,7 +11708,7 @@ sub _get_partitions
 	return Ora2Pg::MySQL::_get_partitions($self) if ($self->{is_mysql});
 
 	my $highvalue = 'A.HIGH_VALUE';
-	if ($self->{db_version} =~ /Release 8/) {
+	if ($self->{db_version} =~ /Release [89]/) {
 		$highvalue = "'' AS HIGH_VALUE";
 	}
 	my $condition = '';
@@ -11787,7 +11787,7 @@ sub _get_subpartitions
 	return Ora2Pg::MySQL::_get_subpartitions($self) if ($self->{is_mysql});
 
 	my $highvalue = 'A.HIGH_VALUE';
-	if ($self->{db_version} =~ /Release 8/) {
+	if ($self->{db_version} =~ /Release [89]/) {
 		$highvalue = "'' AS HIGH_VALUE";
 	}
 	my $condition = '';
@@ -11935,7 +11935,7 @@ sub _get_partitions_list
 	return Ora2Pg::MySQL::_get_partitions_list($self) if ($self->{is_mysql});
 
 	my $highvalue = 'A.HIGH_VALUE';
-	if ($self->{db_version} =~ /Release 8/) {
+	if ($self->{db_version} =~ /Release [89]/) {
 		$highvalue = "'' AS HIGH_VALUE";
 	}
 	my $condition = '';
@@ -11997,7 +11997,7 @@ sub _get_partitioned_table
 	return Ora2Pg::MySQL::_get_partitioned_table($self) if ($self->{is_mysql});
 
 	my $highvalue = 'A.HIGH_VALUE';
-	if ($self->{db_version} =~ /Release 8/) {
+	if ($self->{db_version} =~ /Release [89]/) {
 		$highvalue = "'' AS HIGH_VALUE";
 	}
 	my $condition = '';
@@ -12065,7 +12065,7 @@ sub _get_subpartitioned_table
 	return Ora2Pg::MySQL::_get_subpartitioned_table($self) if ($self->{is_mysql});
 
 	my $highvalue = 'A.HIGH_VALUE';
-	if ($self->{db_version} =~ /Release 8/) {
+	if ($self->{db_version} =~ /Release [89]/) {
 		$highvalue = "'' AS HIGH_VALUE";
 	}
 	my $condition = '';
