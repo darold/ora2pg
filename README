@@ -88,7 +88,7 @@ INSTALLATION
     an already packaged DBD::Oracle easy to install.
 
   Requirement
-    The Oracle Instant Client or a full Oracle instaaltion must be installed
+    The Oracle Instant Client or a full Oracle installation must be installed
     on the system. You can download the RPM from Oracle download center:
 
         rpm -ivh oracle-instantclient12.2-basic-12.2.0.1.0-1.x86_64.rpm
