@@ -129,7 +129,7 @@
 .\" ========================================================================
 .\"
 .IX Title "ORA2PG 1"
-.TH ORA2PG 1 "2019-03-13" "perl v5.26.1" "User Contributed Perl Documentation"
+.TH ORA2PG 1 "2019-11-11" "perl v5.26.1" "User Contributed Perl Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -221,7 +221,7 @@ Perl (http://www.activestate.com/activeperl) could help as they seems to have
 an already packaged DBD::Oracle easy to install.
 .SS "Requirement"
 .IX Subsection "Requirement"
-The Oracle Instant Client or a full Oracle instaaltion must be installed on
+The Oracle Instant Client or a full Oracle installation must be installed on
 the system. You can download the \s-1RPM\s0 from Oracle download center:
 .PP
 .Vb 4
@@ -340,7 +340,7 @@ Installing DBD::Oracle require that the three Oracle packages: instant-client,
 \&\s-1SDK\s0 and SQLplus are installed as well as the libaio1 library.
 .PP
 If you are using Instant Client from \s-1ZIP\s0 archives, the \s-1LD_LIBRARY_PATH\s0 and
-\&\s-1ORACLE_HOME\s0 will be the same and muist be set to the directory where you have
+\&\s-1ORACLE_HOME\s0 will be the same and must be set to the directory where you have
 installed the files. For example: /opt/oracle/instantclient_12_2/
 .SH "CONFIGURATION"
 .IX Header "CONFIGURATION"
@@ -379,6 +379,14 @@ Values set in command line options will override values from the configuration
 file.
 .SS "Ora2Pg usage"
 .IX Subsection "Ora2Pg usage"
+First of all be sure that libraries and binaries path include the Oracle
+Instant Client installation:
+.PP
+.Vb 2
+\&        export LD_LIBRARY_PATH=/usr/lib/oracle/11.2/client64/lib
+\&        export PATH="/usr/lib/oracle/11.2/client64/bin:$PATH"
+.Ve
+.PP
 By default Ora2Pg will look for /etc/ora2pg/ora2pg.conf configuration file, if
 the file exist you can simply execute:
 .PP
@@ -826,6 +834,11 @@ declared in the current schema. By setting a comma separated list of schema
 as value of this directive, Ora2Pg will look forward in these packages for
 all functions/procedures/packages declaration before proceeding to current
 schema export.
+.IP "\s-1NO_FUNCTION_METADATA\s0" 4
+.IX Item "NO_FUNCTION_METADATA"
+Force Ora2Pg to not look for function declaration. Note that this will prevent
+Ora2Pg to rewrite function replacement call if needed. Do not enable it unless
+looking forward at function breaks other export.
 .SS "Export type"
 .IX Subsection "Export type"
 The export action is perform following a single configuration directive '\s-1TYPE\s0',

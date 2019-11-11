@@ -88,8 +88,9 @@ INSTALLATION
     an already packaged DBD::Oracle easy to install.
 
   Requirement
-    The Oracle Instant Client or a full Oracle installation must be installed
-    on the system. You can download the RPM from Oracle download center:
+    The Oracle Instant Client or a full Oracle installation must be
+    installed on the system. You can download the RPM from Oracle download
+    center:
 
         rpm -ivh oracle-instantclient12.2-basic-12.2.0.1.0-1.x86_64.rpm
         rpm -ivh oracle-instantclient12.2-devel-12.2.0.1.0-1.x86_64.rpm
@@ -201,7 +202,7 @@ INSTALLATION
     library.
 
     If you are using Instant Client from ZIP archives, the LD_LIBRARY_PATH
-    and ORACLE_HOME will be the same and muist be set to the directory where
+    and ORACLE_HOME will be the same and must be set to the directory where
     you have installed the files. For example:
     /opt/oracle/instantclient_12_2/
 
@@ -239,6 +240,12 @@ CONFIGURATION
     configuration file.
 
   Ora2Pg usage
+    First of all be sure that libraries and binaries path include the Oracle
+    Instant Client installation:
+
+            export LD_LIBRARY_PATH=/usr/lib/oracle/11.2/client64/lib
+            export PATH="/usr/lib/oracle/11.2/client64/bin:$PATH"
+
     By default Ora2Pg will look for /etc/ora2pg/ora2pg.conf configuration
     file, if the file exist you can simply execute:
 

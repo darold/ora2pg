@@ -199,7 +199,7 @@ Installing DBD::Oracle require that the three Oracle packages: instant-client,
 SDK and SQLplus are installed as well as the libaio1 library.
 
 If you are using Instant Client from ZIP archives, the LD_LIBRARY_PATH and
-ORACLE_HOME will be the same and muist be set to the directory where you have
+ORACLE_HOME will be the same and must be set to the directory where you have
 installed the files. For example: /opt/oracle/instantclient_12_2/
  
 =head1 CONFIGURATION
@@ -237,6 +237,12 @@ Values set in command line options will override values from the configuration
 file.
 
 =head2 Ora2Pg usage
+
+First of all be sure that libraries and binaries path include the Oracle
+Instant Client installation:
+
+	export LD_LIBRARY_PATH=/usr/lib/oracle/11.2/client64/lib
+	export PATH="/usr/lib/oracle/11.2/client64/bin:$PATH"
 
 By default Ora2Pg will look for /etc/ora2pg/ora2pg.conf configuration file, if
 the file exist you can simply execute:
