@@ -14279,7 +14279,7 @@ sub _extract_data
 								$lob_content .= $lobdata;
 							}
 						}
-						if ($lob_content) {
+						if ($lob_content ne '') {
 							$row[$j] = $lob_content;
 						} else {
 							$row[$j] = undef;
