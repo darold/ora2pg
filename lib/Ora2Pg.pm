@@ -14224,8 +14224,8 @@ sub _extract_data
 		} else {
 
 			my @rows = ();
-			while ( my @row = $sth->fetchrow_array()) {
-
+			while ( my @row = $sth->fetchrow_array())
+			{
 				if ( ($self->{parallel_tables} > 1) || (($self->{oracle_copies} > 1) && $self->{defined_pk}{"\L$table\E"}) ) {
 					if ($dbh->errstr) {
 						$self->logit("ERROR: " . $dbh->errstr . "\n", 0, 0);
@@ -14254,7 +14254,7 @@ sub _extract_data
 						my $offset = 1;   # Offsets start at 1, not 0
 						if ( ($self->{parallel_tables} > 1) || (($self->{oracle_copies} > 1) && $self->{defined_pk}{"\L$table\E"}) ) {
 							# Get chunk size
-							my $chunk_size = $dbh->ora_lob_chunk_size($row[$j]) || 8192;
+							my $chunk_size = $self->{lob_chunk_size} || $dbh->ora_lob_chunk_size($row[$j]) || 8192;
 							while (1) {
 								my $lobdata = $dbh->ora_lob_read($row[$j], $offset, $chunk_size );
 								if ($dbh->errstr) {
@@ -14267,7 +14267,7 @@ sub _extract_data
 							}
 						} else {
 							# Get chunk size
-							my $chunk_size = $self->{dbh}->ora_lob_chunk_size($row[$j]) || 8192;
+							my $chunk_size = $self->{lob_chunk_size} || $self->{dbh}->ora_lob_chunk_size($row[$j]) || 8192;
 							while (1) {
 								my $lobdata = $self->{dbh}->ora_lob_read($row[$j], $offset, $chunk_size );
 								if ($self->{dbh}->errstr) {
@@ -14291,14 +14291,16 @@ sub _extract_data
 						$row[$j] = undef;
 					}
 				}
-				push(@rows, [ @row ] );
 				$total_record++;
 				$self->{current_total_row}++;
 
 				# Do we just want to test Oracle output speed
 				next if ($self->{oracle_speed} && !$self->{ora2pg_speed});
 
-				if ($#rows == $data_limit) {
+				push(@rows, [ @row ] );
+
+				if ($#rows == $data_limit)
+				{
 					if ( ($self->{jobs} > 1) || ($self->{oracle_copies} > 1) ) {
 						while ($self->{child_count} >= $self->{jobs}) {
 							my $kid = waitpid(-1, WNOHANG);

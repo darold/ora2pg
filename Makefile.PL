@@ -918,7 +918,27 @@ STANDARD_CONFORMING_STRINGS	1
 # and not by chunk of DATA_LIMIT rows. For more information on how it works, see
 # http://search.cpan.org/~pythian/DBD-Oracle-1.74/lib/DBD/Oracle.pm#Data_Interface_for_LOB_Locators
 # Default is enabled, it will not use LOB locators for backward compatibility.
-NO_LOB_LOCATOR  1
+NO_LOB_LOCATOR  0
+
+# Oracle recommends reading from and writing to a LOB in batches using a
+# multiple of the LOB chunk size. This chunk size defaults to 8k (8192).
+# Recent tests shown that the best performances can be reach with higher
+# value like 512K or 4Mb.
+#
+# A quick benchmark with 30120 rows with different size of BLOB (200x5Mb,
+# 19800x212k, 10000x942K, 100x17Mb, 20x156Mb), with DATA_LIMIT=100,
+# LONGREADLEN=170Mb and a total table size of 20GB gives:
+#
+#	no lob locator  : 22m46,218s (1365 sec., avg: 22 recs/sec)
+#	chunk size 8k   : 15m50,886s (951 sec., avg: 31 recs/sec)
+#	chunk size 512k : 1m28,161s (88 sec., avg: 342 recs/sec)
+#	chunk size 4Mb  : 1m23,717s (83 sec., avg: 362 recs/sec)
+#
+# In conclusion it can be more than 10 time faster with LOB_CHUNK_SIZE set
+# to 4Mb. Dependind of the size of most BLOB you may want to adjust the value
+# here. For example if you have a majority of small lobs bellow 8K, using 8192
+# is better to not waste space.
+LOB_CHUNK_SIZE	512000
 
 # Force the use of getStringVal() instead of getClobVal() for XML data export.
 # Default is 1, enabled for backward compatibility. Set here to 0 to use extract

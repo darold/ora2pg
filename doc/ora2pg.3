@@ -129,7 +129,7 @@
 .\" ========================================================================
 .\"
 .IX Title "ORA2PG 1"
-.TH ORA2PG 1 "2019-11-11" "perl v5.26.1" "User Contributed Perl Documentation"
+.TH ORA2PG 1 "2020-04-23" "perl v5.26.1" "User Contributed Perl Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -2329,13 +2329,32 @@ by default so that you will be warned if your LongReadLen value is not high
 enough.
 .IP "\s-1NO_LOB_LOCATOR\s0" 4
 .IX Item "NO_LOB_LOCATOR"
-Disable this if you don't want to load full content of \s-1BLOB\s0 and \s-1CLOB\s0 and use
-\&\s-1LOB\s0 locators instead. This is useful to not having to set \s-1LONGREADLEN.\s0 Note
-that this will not improve speed of \s-1BLOB\s0 export as most of the time is always
-consumed by the bytea escaping and in this case data will be processed line
-by line and not by chunk of \s-1DATA_LIMIT\s0 rows. For more information on how it
-works, see http://search.cpan.org/~pythian/DBD\-Oracle\-1.74/lib/DBD/Oracle.pm#Data_Interface_for_LOB_Locators
-Default is enabled, it will not use \s-1LOB\s0 locators for backward compatibility.
+Enable this directive if you want to load full content of \s-1BLOB\s0 and \s-1CLOB\s0 and
+not use \s-1LOB\s0 locators. If enable you must take care of the value of \s-1LONGREADLEN.\s0
+This directive is now disabled by default as using a lob locator has better
+performances when chunk size can be controled, see \s-1LOB_CHUNK_SIZE.\s0
+.IP "\s-1LOB_CHUNK_SIZE\s0" 4
+.IX Item "LOB_CHUNK_SIZE"
+Oracle recommends reading from and writing to a \s-1LOB\s0 in batches using a
+multiple of the \s-1LOB\s0 chunk size. This chunk size defaults to 8k (8192).
+Recent tests shown that the best performances can be reach with higher
+value like 512K or 4Mb.
+.Sp
+A quick benchmark with 30120 rows with different size of \s-1BLOB\s0 (200x5Mb,
+19800x212k, 10000x942K, 100x17Mb, 20x156Mb), with DATA_LIMIT=100,
+LONGREADLEN=170Mb and a total table size of 20GB gives:
+.Sp
+.Vb 4
+\&       no lob locator  : 22m46,218s (1365 sec., avg: 22 recs/sec)
+\&       chunk size 8k   : 15m50,886s (951 sec., avg: 31 recs/sec)
+\&       chunk size 512k : 1m28,161s (88 sec., avg: 342 recs/sec)
+\&       chunk size 4Mb  : 1m23,717s (83 sec., avg: 362 recs/sec)
+.Ve
+.Sp
+In conclusion it can be more than 10 time faster with \s-1LOB_CHUNK_SIZE\s0 set
+to 4Mb. Depending of the size of most \s-1BLOB\s0 you may want to adjust the value
+here. For example if you have a majority of small lobs bellow 8K, using 8192
+is better to not waste space. Default value for \s-1LOB_CHUNK_SIZE\s0 is 512000.
 .IP "\s-1XML_PRETTY\s0" 4
 .IX Item "XML_PRETTY"
 Force the use \fIgetStringVal()\fR instead of \fIgetClobVal()\fR for \s-1XML\s0 data export. Default is 1,
