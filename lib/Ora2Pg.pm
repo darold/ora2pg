@@ -14254,7 +14254,7 @@ sub _extract_data
 						my $offset = 1;   # Offsets start at 1, not 0
 						if ( ($self->{parallel_tables} > 1) || (($self->{oracle_copies} > 1) && $self->{defined_pk}{"\L$table\E"}) ) {
 							# Get chunk size
-							my $chunk_size = $self->{lob_chunk_size} || $dbh->ora_lob_chunk_size($row[$j]) || 8192;
+							my $chunk_size = $self->{lob_chunk_size} || $dbh->ora_lob_chunk_size($row[$j]) || 8192;
 							while (1) {
 								my $lobdata = $dbh->ora_lob_read($row[$j], $offset, $chunk_size );
 								if ($dbh->errstr) {
@@ -14267,7 +14267,7 @@ sub _extract_data
 							}
 						} else {
 							# Get chunk size
-							my $chunk_size = $self->{lob_chunk_size} || $self->{dbh}->ora_lob_chunk_size($row[$j]) || 8192;
+							my $chunk_size = $self->{lob_chunk_size} || $self->{dbh}->ora_lob_chunk_size($row[$j]) || 8192;
 							while (1) {
 								my $lobdata = $self->{dbh}->ora_lob_read($row[$j], $offset, $chunk_size );
 								if ($self->{dbh}->errstr) {
