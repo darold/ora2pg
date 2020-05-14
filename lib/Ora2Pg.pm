@@ -11326,8 +11326,11 @@ sub _get_types
 	}
 	$str .= " ORDER BY OBJECT_NAME";
 
-	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	# use a separeate connection
+	my $local_dbh = $self->_oracle_connection();
+
+	my $sth = $local_dbh->prepare($str) or $self->logit("FATAL: " . $local_dbh->errstr . "\n", 0, 1);
+	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $local_dbh->errstr . "\n", 0, 1);
 
 	my @types = ();
 	my @fct_done = ();
@@ -11340,7 +11343,7 @@ sub _get_types
 		next if (grep(/^$row->[0]$/, @fct_done));
 		push(@fct_done, $row->[0]);
 		my %tmp = ();
-		my $sth2 = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+		my $sth2 = $local_dbh->prepare($sql) or $self->logit("FATAL: " . $local_dbh->errstr . "\n", 0, 1);
 		$sth2->execute or $self->logit("FATAL: " . $sth2->errstr . "\n", 0, 1);
 		while (my $r = $sth2->fetch) {
 			$tmp{code} .= $r->[0];
@@ -11356,6 +11359,8 @@ sub _get_types
 		push(@types, \%tmp);
 	}
 	$sth->finish();
+
+	$local_dbh->disconnect() if ($local_dbh);
 
 	return \@types;
 }
