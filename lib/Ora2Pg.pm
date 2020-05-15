@@ -15319,6 +15319,7 @@ sub _show_infos
 				}
 			}
 			$report_info{'total_cost_value'} += $report_info{'Objects'}{$typ}{'cost_value'};
+			$report_info{'Objects'}{$typ}{'cost_value'} = sprintf("%2.2f", $report_info{'Objects'}{$typ}{'cost_value'});
 		}
 		if (!$self->{quiet} && !$self->{debug}) {
 			print STDERR $self->progress_bar($idx, $num_total_obj, 25, '=', 'objects types', 'end of objects auditing.'), "\n";
@@ -17967,6 +17968,7 @@ h2 {
 		$self->logit($html_header, 0);
 		foreach my $typ (sort keys %{ $report_info{'Objects'} } ) {
 			$report_info{'Objects'}{$typ}{'detail'} =~ s/\n/<br>/gs;
+			$report_info{'Objects'}{$typ}{'detail'} = "<details><summary>See details</summary>$report_info{'Objects'}{$typ}{'detail'}</details>" if ($report_info{'Objects'}{$typ}{'detail'} ne '');
 			if ($self->{estimate_cost}) {
 				$self->logit("<tr><td class=\"object_name\">$typ</td><td style=\"text-align: center;\">$report_info{'Objects'}{$typ}{'number'}</td><td style=\"text-align: center;\">$report_info{'Objects'}{$typ}{'invalid'}</td><td style=\"text-align: center;\">$report_info{'Objects'}{$typ}{'cost_value'}</td><td>$report_info{'Objects'}{$typ}{'comment'}</td><td class=\"detail\">$report_info{'Objects'}{$typ}{'detail'}</td></tr>\n", 0);
 			} else {
@@ -18004,7 +18006,7 @@ h2 {
 			$self->logit($lbl_mig_type, 0);
 			if (scalar keys %{ $report_info{'full_function_details'} }) {
 				$self->logit("<h2>Details of cost assessment per function</h2>\n", 0);
-				$self->logit("<ul>\n", 0);
+				$self->logit("<details><summary>Show</summary><ul>\n", 0);
 				foreach my $fct (sort { $report_info{'full_function_details'}{$b}{count} <=> $report_info{'full_function_details'}{$a}{count} } keys %{ $report_info{'full_function_details'} } ) {
 					
 					$self->logit("<li>Function $fct total estimated cost: $report_info{'full_function_details'}{$fct}{count}</li>\n", 0);
@@ -18014,11 +18016,11 @@ h2 {
 					$self->logit($report_info{'full_function_details'}{$fct}{info}, 0);
 					$self->logit("</ul>\n", 0);
 				}
-				$self->logit("</ul>\n", 0);
+				$self->logit("</ul></details>\n", 0);
 			}
 			if (scalar keys %{ $report_info{'full_trigger_details'} }) {
 				$self->logit("<h2>Details of cost assessment per trigger</h2>\n", 0);
-				$self->logit("<ul>\n", 0);
+				$self->logit("<details><summary>Show</summary><ul>\n", 0);
 				foreach my $fct (sort { $report_info{'full_trigger_details'}{$b}{count} <=> $report_info{'full_trigger_details'}{$a}{count} } keys %{ $report_info{'full_trigger_details'} } ) {
 					
 					$self->logit("<li>Trigger $fct total estimated cost: $report_info{'full_trigger_details'}{$fct}{count}</li>\n", 0);
@@ -18028,11 +18030,11 @@ h2 {
 					$self->logit($report_info{'full_trigger_details'}{$fct}{info}, 0);
 					$self->logit("</ul>\n", 0);
 				}
-				$self->logit("</ul>\n", 0);
+				$self->logit("</ul></details>\n", 0);
 			}
 			if (scalar keys %{ $report_info{'full_view_details'} }) {
 				$self->logit("<h2>Details of cost assessment per view</h2>\n", 0);
-				$self->logit("<ul>\n", 0);
+				$self->logit("<details><summary>Show</summary><ul>\n", 0);
 				foreach my $fct (sort { $report_info{'full_view_details'}{$b}{count} <=> $report_info{'full_view_details'}{$a}{count} } keys %{ $report_info{'full_view_details'} } ) {
 					
 					$self->logit("<li>View $fct total estimated cost: $report_info{'full_view_details'}{$fct}{count}</li>\n", 0);
@@ -18042,7 +18044,7 @@ h2 {
 					$self->logit($report_info{'full_view_details'}{$fct}{info}, 0);
 					$self->logit("</ul>\n", 0);
 				}
-				$self->logit("</ul>\n", 0);
+				$self->logit("</ul></details>\n", 0);
 			}
 		}
 		my $html_footer = qq{
