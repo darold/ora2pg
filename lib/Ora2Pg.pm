@@ -1559,7 +1559,10 @@ sub _init
 			$self->_materialized_views();
 		} elsif ($self->{type} eq 'QUERY') {
 			$self->_queries();
-		} elsif (($self->{type} eq 'SHOW_REPORT') || ($self->{type} eq 'SHOW_VERSION') || ($self->{type} eq 'SHOW_SCHEMA') || ($self->{type} eq 'SHOW_TABLE') || ($self->{type} eq 'SHOW_COLUMN') || ($self->{type} eq 'SHOW_ENCODING')) {
+		} elsif ( ($self->{type} eq 'SHOW_REPORT') || ($self->{type} eq 'SHOW_VERSION')
+				|| ($self->{type} eq 'SHOW_SCHEMA') || ($self->{type} eq 'SHOW_TABLE')
+				|| ($self->{type} eq 'SHOW_COLUMN') || ($self->{type} eq 'SHOW_ENCODING'))
+		{
 			$self->_show_infos($self->{type});
 			$self->{dbh}->disconnect() if ($self->{dbh}); 
 			exit 0;
@@ -2052,14 +2055,16 @@ sub _tables
 	# Retrieve column identity information
 	%{ $self->{identity_info} } = $self->_get_identities();
 
-	if (scalar keys %tables_infos > 0) {
-		if ( grep(/^$self->{type}$/, 'TABLE','SHOW_REPORT','COPY','INSERT') && !$self->{skip_indices} && !$self->{skip_indexes}) {
-
+	if (scalar keys %tables_infos > 0)
+	{
+		if ( grep(/^$self->{type}$/, 'TABLE','SHOW_REPORT','COPY','INSERT')
+				&& !$self->{skip_indices} && !$self->{skip_indexes})
+		{
 			my $autogen = 0;
 			$autogen = 1 if (grep(/^$self->{type}$/, 'COPY','INSERT'));
-
 			my ($uniqueness, $indexes, $idx_type, $idx_tbsp) = $self->_get_indexes('',$self->{schema}, $autogen);
-			foreach my $tb (keys %{$indexes}) {
+			foreach my $tb (keys %{$indexes})
+			{
 				next if (!exists $tables_infos{$tb});
 				%{$self->{tables}{$tb}{indexes}} = %{$indexes->{$tb}};
 			}
@@ -2078,7 +2083,8 @@ sub _tables
 		}
 
 		# Get detailed informations on each tables
-		if (!$nodetail) {
+		if (!$nodetail)
+		{
 			# Retrieve all column's details
 			my %columns_infos = $self->_column_info('',$self->{schema}, 'TABLE');
 			foreach my $tb (keys %columns_infos) {
@@ -2140,11 +2146,15 @@ sub _tables
 	# Set the table information for each class found
 	my $i = 1;
 	my $num_total_table = scalar keys %tables_infos;
-	foreach my $t (sort keys %tables_infos) {
+	my $count_table = 0;
+	my $PGBAR_REFRESH = set_refresh_count($num_total_table);
+	foreach my $t (sort keys %tables_infos)
+	{
 
-		if (!$self->{quiet} && !$self->{debug}) {
+		if (!$self->{quiet} && !$self->{debug} && ($count_table % $PGBAR_REFRESH) == 0) {
 			print STDERR $self->progress_bar($i, $num_total_table, 25, '=', 'tables', "scanning table $t" ), "\r";
 		}
+		$count_table++;
 
 		if (grep(/^$t$/, @done)) {
 			$self->logit("Duplicate entry found: $t\n", 1);
@@ -2159,10 +2169,13 @@ sub _tables
 			next;
 		}
 		# Try to respect order specified in the TABLES limited extraction array
-		if ($#{$self->{limited}{TABLE}} > 0) {
+		if ($#{$self->{limited}{TABLE}} > 0)
+		{
 			$self->{tables}{$t}{internal_id} = 0;
-			for (my $j = 0; $j <= $#{$self->{limited}{TABLE}}; $j++) {
-				if (uc($self->{limited}{TABLE}->[$j]) eq uc($t)) {
+			for (my $j = 0; $j <= $#{$self->{limited}{TABLE}}; $j++)
+			{
+				if (uc($self->{limited}{TABLE}->[$j]) eq uc($t))
+				{
 					$self->{tables}{$t}{internal_id} = $j;
 					last;
 				}
@@ -2186,33 +2199,37 @@ sub _tables
 		}
 
 		# Set the fields information
-		my $tmp_tbname = $t;
-		if (!$self->{is_mysql}) {
-			if ( $t !~ /\./ ) {
-				$tmp_tbname = "\"$tables_infos{$t}{owner}\".\"$t\"";
-			} else {
-				# in case we already have the schema name, add doublequote
-				$tmp_tbname =~ s/\./"."/;
-				$tmp_tbname = "\"$tmp_tbname\"";
+		if ($self->{type} ne 'SHOW_REPORT')
+		{
+			my $tmp_tbname = $t;
+			if (!$self->{is_mysql})
+			{
+				if ( $t !~ /\./ ) {
+					$tmp_tbname = "\"$tables_infos{$t}{owner}\".\"$t\"";
+				} else {
+					# in case we already have the schema name, add doublequote
+					$tmp_tbname =~ s/\./"."/;
+					$tmp_tbname = "\"$tmp_tbname\"";
+				}
 			}
+			my $query = "SELECT * FROM $tmp_tbname WHERE 1=0";
+			if ($tables_infos{$t}{nested} eq 'YES') {
+				$query = "SELECT /*+ nested_table_get_refs */ * FROM $tmp_tbname WHERE 1=0";
+			}
+			my $sth = $self->{dbh}->prepare($query);
+			if (!defined($sth)) {
+				warn "Can't prepare statement: $DBI::errstr";
+				next;
+			}
+			$sth->execute;
+			if ($sth->err) {
+				warn "Can't execute statement: $DBI::errstr";
+				next;
+			}
+			$self->{tables}{$t}{type} = 'table';
+			$self->{tables}{$t}{field_name} = $sth->{NAME};
+			$self->{tables}{$t}{field_type} = $sth->{TYPE};
 		}
-		my $query = "SELECT * FROM $tmp_tbname WHERE 1=0";
-		if ($tables_infos{$t}{nested} eq 'YES') {
-			$query = "SELECT /*+ nested_table_get_refs */ * FROM $tmp_tbname WHERE 1=0";
-		}
-		my $sth = $self->{dbh}->prepare($query);
-		if (!defined($sth)) {
-			warn "Can't prepare statement: $DBI::errstr";
-			next;
-		}
-		$sth->execute;
-		if ($sth->err) {
-			warn "Can't execute statement: $DBI::errstr";
-			next;
-		}
-		$self->{tables}{$t}{type} = 'table';
-		$self->{tables}{$t}{field_name} = $sth->{NAME};
-		$self->{tables}{$t}{field_type} = $sth->{TYPE};
 		$i++;
 	}
 
@@ -2222,7 +2239,8 @@ sub _tables
  
 	# Try to search requested TABLE names in the VIEW names if not found in
 	# real TABLE names
-	if ($#{$self->{view_as_table}} >= 0) {
+	if ($#{$self->{view_as_table}} >= 0)
+	{
 		my %view_infos = $self->_get_views();
 		# Retrieve comment of each columns
 		my %columns_comments = $self->_column_comments();
@@ -2283,7 +2301,6 @@ sub _tables
 	if (!$self->{is_mysql} && ($self->{db_version} !~ /Release 8/)) {
 		%{$self->{external_table}} = $self->_get_external_tables();
 	}
-
 }
 
 sub _get_plsql_code
@@ -3582,6 +3599,16 @@ sub rename_dump_partfile
 	}
 }
 
+sub set_refresh_count
+{
+	my $count = shift;
+
+	return 500 if ($count > 10000);
+	return 100 if ($count > 1000);
+	return 10 if ($count > 100);
+	return 1;
+}
+
 sub translate_function
 {
 	my ($self, $i, $num_total_function, %functions) = @_;
@@ -3601,13 +3628,14 @@ sub translate_function
 	my $lsize = 0;
 	my $lcost = 0;
 	my $fct_count = 0;
-	foreach my $fct (sort keys %functions) {
-
-		$fct_count++;
-
-		if (!$self->{quiet} && !$self->{debug}) {
+	my $PGBAR_REFRESH = set_refresh_count($num_total_function);
+	foreach my $fct (sort keys %functions)
+	{
+		if (!$self->{quiet} && !$self->{debug} && ($fct_count % $PGBAR_REFRESH) == 0)
+		{
 			print STDERR $self->progress_bar($i+1, $num_total_function, 25, '=', 'functions', "generating $fct" ), "\r";
 		}
+		$fct_count++;
 		$self->logit("Dumping function $fct...\n", 1);
 		if ($self->{file_per_function}) {
 			my $f = "$dirprefix${fct}_$self->{output}";
@@ -3796,11 +3824,16 @@ sub export_view
 	my $i = 1;
 	my $num_total_view = scalar keys %{$self->{views}};
 	%ordered_views = %{$self->{views}};
-	foreach my $view (sort sort_view_by_iter keys %ordered_views) {
+	my $count_view = 0;
+	my $PGBAR_REFRESH = set_refresh_count($num_total_view);
+	foreach my $view (sort sort_view_by_iter keys %ordered_views)
+	{
 		$self->logit("\tAdding view $view...\n", 1);
-		if (!$self->{quiet} && !$self->{debug}) {
+		if (!$self->{quiet} && !$self->{debug} && ($count_view % $PGBAR_REFRESH) == 0)
+		{
 			print STDERR $self->progress_bar($i, $num_total_view, 25, '=', 'views', "generating $view" ), "\r";
 		}
+		$count_view++;
 		my $fhdl = undef;
 		if ($self->{file_per_table}) {
 			my $file_name = "$dirprefix${view}_$self->{output}";
@@ -4055,11 +4088,15 @@ LANGUAGE plpgsql ;
 	}
 	my $i = 1;
 	my $num_total_mview = scalar keys %{$self->{materialized_views}};
-	foreach my $view (sort { $a cmp $b } keys %{$self->{materialized_views}}) {
+	my $count_mview = 0;
+	my $PGBAR_REFRESH = set_refresh_count($num_total_mview);
+	foreach my $view (sort { $a cmp $b } keys %{$self->{materialized_views}})
+	{
 		$self->logit("\tAdding materialized view $view...\n", 1);
-		if (!$self->{quiet} && !$self->{debug}) {
+		if (!$self->{quiet} && !$self->{debug} && ($count_mview % $PGBAR_REFRESH) == 0) {
 			print STDERR $self->progress_bar($i, $num_total_mview, 25, '=', 'materialized views', "generating $view" ), "\r";
 		}
+		$count_mview++;
 		my $fhdl = undef;
 		if ($self->{file_per_table} && !$self->{pg_dsn}) {
 			my $file_name = "$dirprefix${view}_$self->{output}";
@@ -4294,12 +4331,14 @@ sub export_sequence
 	}
 	my $i = 1;
 	my $num_total_sequence = $#{$self->{sequences}} + 1;
-
+	my $count_seq = 0;
+	my $PGBAR_REFRESH = set_refresh_count($num_total_sequence);
 	foreach my $seq (sort { $a->[0] cmp $b->[0] } @{$self->{sequences}})
 	{
-		if (!$self->{quiet} && !$self->{debug}) {
+		if (!$self->{quiet} && !$self->{debug} && ($count_seq % $PGBAR_REFRESH) == 0) {
 			print STDERR $self->progress_bar($i, $num_total_sequence, 25, '=', 'sequences', "generating $seq->[0]" ), "\r";
 		}
+		$count_seq++;
 		my $cache = '';
 		$cache = $seq->[5] if ($seq->[5]);
 		my $cycle = '';
@@ -4484,11 +4523,14 @@ sub export_trigger
 	my $nothing = 0;
 	my $i = 1;      
 	my $num_total_trigger = $#{$self->{triggers}} + 1;
-	foreach my $trig (sort {$a->[0] cmp $b->[0]} @{$self->{triggers}}) {
-
-		if (!$self->{quiet} && !$self->{debug}) {
+	my $count_trig = 0;
+	my $PGBAR_REFRESH = set_refresh_count($num_total_trigger);
+	foreach my $trig (sort {$a->[0] cmp $b->[0]} @{$self->{triggers}})
+	{
+		if (!$self->{quiet} && !$self->{debug} && ($count_trig % $PGBAR_REFRESH) == 0) {
 			print STDERR $self->progress_bar($i, $num_total_trigger, 25, '=', 'triggers', "generating $trig->[0]" ), "\r";
 		}
+		$count_trig++;
 		my $fhdl = undef;
 		if ($self->{file_per_function}) {
 			my $f = "$dirprefix$trig->[0]_$self->{output}";
@@ -4970,7 +5012,8 @@ sub export_function
 		}
 		# Get all metadata from all functions when we are
 		# reading a file, otherwise it has already been done
-		foreach my $fct (sort keys %{$self->{functions}}) {
+		foreach my $fct (sort keys %{$self->{functions}})
+		{
 			$self->{functions}{$fct}{text} =~ s/(.*?\b(?:FUNCTION|PROCEDURE)\s+(?:[^\s\(]+))(\s*\%ORA2PG_COMMENT\d+\%\s*)+/$2$1 /is;
 			my %fct_detail = $self->_lookup_function($self->{functions}{$fct}{text}, ($self->{is_mysql}) ? $fct : undef);
 			if (!exists $fct_detail{name}) {
@@ -5005,12 +5048,14 @@ sub export_function
 	my $num_chunk = $self->{jobs} || 1;
 	my @fct_group = ();
 	my $i = 0;
-	foreach my $key ( sort keys %{$self->{functions}} ) {
+	foreach my $key ( sort keys %{$self->{functions}} )
+	{
 		$fct_group[$i++]{$key} = $self->{functions}{$key};
 		$i = 0 if ($i == $num_chunk);
 	}
 	my $num_cur_fct = 0;
-	for ($i = 0; $i <= $#fct_group; $i++) {
+	for ($i = 0; $i <= $#fct_group; $i++)
+	{
 
 		if ($self->{jobs} > 1) {
 			$self->logit("Creating a new process to translate functions...\n", 1);
@@ -5028,8 +5073,10 @@ sub export_function
 		$nothing++;
 	}
 	# Wait for all oracle connection terminaison
-	if ($self->{jobs} > 1) {
-		while ($parallel_fct_count) {
+	if ($self->{jobs} > 1)
+	{
+		while ($parallel_fct_count)
+		{
 			my $kid = waitpid(-1, WNOHANG);
 			if ($kid > 0) {
 				$parallel_fct_count--;
@@ -5237,7 +5284,8 @@ sub export_procedure
 			unlink($dirprefix . 'temp_cost_file.dat');
 		}
 	}
-	if (!$self->{quiet} && !$self->{debug}) {
+	if (!$self->{quiet} && !$self->{debug})
+	{
 		print STDERR $self->progress_bar($num_cur_fct, $num_total_function, 25, '=', 'procedures', 'end of procedures export.'), "\n";
 	}
 	if ($self->{estimate_cost}) {
@@ -5752,15 +5800,18 @@ BEGIN
 		my $old_pos = '';
 		my $old_part = '';
 		my $owner = '';
+		my $count_part = 0;
+		my $PGBAR_REFRESH = set_refresh_count($total_partition);
 		# Extract partitions in their position order
 		foreach my $pos (sort {$a <=> $b} keys %{$self->{partitions}{$table}})
 		{
 			next if (!$self->{partitions}{$table}{$pos}{name});
 			my $part = $self->{partitions}{$table}{$pos}{name};
-			if (!$self->{quiet} && !$self->{debug})
+			if (!$self->{quiet} && !$self->{debug} && ($count_part % $PGBAR_REFRESH) == 0)
 			{
 				print STDERR $self->progress_bar($ipos++, $total_partition, 25, '=', 'partitions', "generating $table/$part" ), "\r";
 			}
+			$count_part++;
 			my $create_table_tmp = '';
 			my $create_table_index_tmp = '';
 			my $tb_name = '';
@@ -6007,7 +6058,11 @@ BEGIN
 				my $sub_cond = 'IF';
 				my $sub_funct_cond_tmp = '';
 				my $create_subtable_tmp = '';
-				foreach my $p (sort {$a <=> $b} keys %{$self->{subpartitions}{$table}{$part}}) {
+				my $count_subpart = 0;
+				my $total_subpartition = scalar %{$self->{subpartitions}{$table}{$part}} || 0;
+				my $PGBAR_REFRESH_S = set_refresh_count($total_subpartition);
+				foreach my $p (sort {$a <=> $b} keys %{$self->{subpartitions}{$table}{$part}})
+				{
 					my $subpart = $self->{subpartitions}{$table}{$part}{$p}{name};
 					my $sub_tb_name = $subpart;
 					$sub_tb_name =~ s/^[^\.]+\.//; # remove schema part if any
@@ -6018,9 +6073,10 @@ BEGIN
 							$sub_tb_name = "${table}_$sub_tb_name";
 						}
 					}
-					if (!$self->{quiet} && !$self->{debug}) {
-						print STDERR $self->progress_bar($ipos++, $total_partition, 25, '=', 'subpartitions', "generating $table/$part/$subpart" ), "\r";
+					if (!$self->{quiet} && !$self->{debug} && ($count_subpart % $PGBAR_REFRESH_S) == 0) {
+						print STDERR $self->progress_bar($ipos++, $total_subpartition, 25, '=', 'subpartitions', "generating $table/$part/$subpart" ), "\r";
 					}
+					$count_subpart++;
 					$create_subtable_tmp .= "CREATE TABLE " . $self->quote_object_name($sub_tb_name);
 					if (!$self->{pg_supports_partition}) {
 						$create_subtable_tmp .= " ( CHECK (\n";
@@ -6376,11 +6432,14 @@ sub export_synonym
 	}
 	my $i = 1;
 	my $num_total_synonym = scalar keys %{$self->{synonyms}};
-
-	foreach my $syn (sort { $a cmp $b } keys %{$self->{synonyms}}) {
-		if (!$self->{quiet} && !$self->{debug}) {
+	my $count_syn = 0;
+	my $PGBAR_REFRESH = set_refresh_count($num_total_synonym);
+	foreach my $syn (sort { $a cmp $b } keys %{$self->{synonyms}})
+	{
+		if (!$self->{quiet} && !$self->{debug} && ($count_syn % $PGBAR_REFRESH) == 0) {
 			print STDERR $self->progress_bar($i, $num_total_synonym, 25, '=', 'synonyms', "generating $syn" ), "\r";
 		}
+		$count_syn++;
 		if ($self->{synonyms}{$syn}{dblink}) {
 			$sql_output .= "-- You need to create foreign table $self->{synonyms}{$syn}{table_owner}.$self->{synonyms}{$syn}{table_name} using foreign server: $self->{synonyms}{$syn}{dblink} (see DBLINK and FDW export type)\n";
 		}
@@ -6474,6 +6533,8 @@ sub export_table
 
 	# Dump all table/index/constraints SQL definitions
 	my $ib = 1;
+	my $count_table = 0;
+	my $PGBAR_REFRESH = set_refresh_count($num_total_table);
 	foreach my $table (sort {
 			if (exists $self->{tables}{$a}{internal_id}) {
 				$self->{tables}{$a}{internal_id} <=> $self->{tables}{$b}{internal_id};
@@ -6484,10 +6545,10 @@ sub export_table
 	{
 
 		$self->logit("Dumping table $table...\n", 1);
-
-		if (!$self->{quiet} && !$self->{debug}) {
+		if (!$self->{quiet} && !$self->{debug} && ($count_table % $PGBAR_REFRESH) == 0) {
 			print STDERR $self->progress_bar($ib, $num_total_table, 25, '=', 'tables', "exporting $table" ), "\r";
 		}
+		$count_table++;
 
 		# Create FDW server if required
 		if ($self->{external_to_fdw}) {
@@ -8081,7 +8142,7 @@ sub _create_indexes
 		@{$indexes{$idx}} = grep(!/^\d+$/, @{$indexes{$idx}});
 
 		# Cluster, bitmap join, reversed and IOT indexes will not be exported at all
-		# Hash indexes will be exported as btree
+		# Hash indexes will be exported as btree if PG < 10
 		next if ($self->{$objtyp}{$tbsaved}{idx_type}{$idx}{type} =~ /JOIN|IOT|CLUSTER|REV/i);
 
 		if (exists $self->{replaced_cols}{"\L$tbsaved\E"} && $self->{replaced_cols}{"\L$tbsaved\E"}) {
@@ -8414,13 +8475,15 @@ sub _drop_indexes
 This function return the indexes that will be exported
 
 =cut
+
 sub _exportable_indexes
 {
 	my ($self, $table, %indexes) = @_;
 
 	my @out = ();
 	# Set the index definition
-	foreach my $idx (keys %indexes) {
+	foreach my $idx (keys %indexes)
+	{
 
 		map { if ($_ !~ /\(.*\)/) { s/^/"/; s/$/"/; } } @{$indexes{$idx}};
 		map { s/"//gs } @{$indexes{$idx}};
@@ -8428,7 +8491,8 @@ sub _exportable_indexes
 		my $colscompare = $columns;
 		my $columnlist = '';
 		my $skip_index_creation = 0;
-		foreach my $consname (keys %{$self->{tables}{$table}{unique_key}}) {
+		foreach my $consname (keys %{$self->{tables}{$table}{unique_key}})
+		{
 			my $constype =  $self->{tables}{$table}{unique_key}->{$consname}{type};
 			next if (($constype ne 'P') && ($constype ne 'U'));
 			my @conscols = @{$self->{tables}{$table}{unique_key}->{$consname}{columns}};
@@ -9598,7 +9662,6 @@ sub _encrypted_columns
 SELECT A.COLUMN_NAME, A.TABLE_NAME, A.OWNER, A.ENCRYPTION_ALG
 FROM $self->{prefix}_ENCRYPTED_COLUMNS A
 $condition
-ORDER BY A.OWNER, A.TABLE_NAME, A.COLUMN_NAME
 END
 	if (!$sth) {
 		$self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -9634,7 +9697,7 @@ Returns a hash of hashes in the following form:
 
 =cut
 
-sub _unique_key
+sub _unique_key2
 {
 	my ($self, $table, $owner, $type) = @_;
 
@@ -9652,6 +9715,7 @@ sub _unique_key
 
         my $cons_types = '('. join(',', @accepted_constraint_types) .')';
 
+	# Get columns of all the table in the specified schema or excluding the list of system schema
 	my $sql = "SELECT DISTINCT COLUMN_NAME,POSITION,CONSTRAINT_NAME,OWNER FROM $self->{prefix}_CONS_COLUMNS";
 	if ($owner) {
 		$sql .= " WHERE OWNER = '$owner' ";
@@ -9660,6 +9724,7 @@ sub _unique_key
 	}
 	$sql .= $self->limit_to_objects('TABLE', 'TABLE_NAME');
 	$sql .=  " ORDER BY POSITION";
+
 	my $sth = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $sth->errstr . "\n", 0, 1);
 	my @cons_columns = ();
@@ -9668,6 +9733,7 @@ sub _unique_key
 	}
 	$sth->finish;
 
+	# Get the list of constraints in the specified schema or excluding the list of system schema
 	my @tmpparams = ();
 	my $condition = '';
 	$condition .= "AND TABLE_NAME='$table' " if ($table);
@@ -9682,38 +9748,41 @@ sub _unique_key
 	push(@tmpparams, @{$self->{query_bind_params}});
 
 	if ($self->{db_version} !~ /Release 8/) {
-		$sth = $self->{dbh}->prepare(<<END) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-SELECT CONSTRAINT_NAME,R_CONSTRAINT_NAME,SEARCH_CONDITION,DELETE_RULE,DEFERRABLE,DEFERRED,R_OWNER,CONSTRAINT_TYPE,GENERATED,TABLE_NAME,OWNER,INDEX_NAME
+		$sql = qq{SELECT CONSTRAINT_NAME,R_CONSTRAINT_NAME,SEARCH_CONDITION,DELETE_RULE,DEFERRABLE,DEFERRED,R_OWNER,CONSTRAINT_TYPE,GENERATED,TABLE_NAME,OWNER,INDEX_NAME
 FROM $self->{prefix}_CONSTRAINTS
 WHERE CONSTRAINT_TYPE IN $cons_types
 AND STATUS='ENABLED'
 $condition
-END
+};
 	} else {
-		$sth = $self->{dbh}->prepare(<<END) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-SELECT CONSTRAINT_NAME,R_CONSTRAINT_NAME,SEARCH_CONDITION,DELETE_RULE,DEFERRABLE,DEFERRED,R_OWNER,CONSTRAINT_TYPE,GENERATED,TABLE_NAME,OWNER,'' AS INDEX_NAME
+		$sql = qq{SELECT CONSTRAINT_NAME,R_CONSTRAINT_NAME,SEARCH_CONDITION,DELETE_RULE,DEFERRABLE,DEFERRED,R_OWNER,CONSTRAINT_TYPE,GENERATED,TABLE_NAME,OWNER,'' AS INDEX_NAME
 FROM $self->{prefix}_CONSTRAINTS
 WHERE CONSTRAINT_TYPE IN $cons_types
 AND STATUS='ENABLED'
 $condition
-END
+};
 	}
+
+	$sth = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute(@tmpparams) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
-	while (my $row = $sth->fetch) {
-
+	while (my $row = $sth->fetch)
+	{
 		my %constraint = (type => $row->[7], 'generated' => $row->[8], 'index_name' => $row->[11], 'deferrable' => $row->[4], 'deferred' => $row->[5], columns => ());
-		my @done = ();
-		foreach my $r (@cons_columns) {
+		my %done = ();
+		foreach my $r (@cons_columns)
+		{
 			# Skip constraints on system internal columns
 			next if ($r->[0] =~ /^SYS_NC/i);
-			next if (grep(/^$r->[0]$/, @done));
+			# Associate the related columns to the constraint
 			if ( ($r->[2] eq $row->[0]) && ($row->[10] eq $r->[3]) ) {
+				next if (exists $done{$r->[0]});
 				push(@{$constraint{'columns'}}, $r->[0]);
-				push(@done, $r->[0]);
+				$done{$r->[0]} = 1;
 			}
 		}
-		if ($#{$constraint{'columns'}} >= 0) {
+		if ($#{$constraint{'columns'}} >= 0)
+		{
 			if (!$self->{schema} && $self->{export_schema}) {
 				$result{"$row->[10].$row->[9]"}{$row->[0]} = \%constraint;
 			} else {
@@ -9722,7 +9791,76 @@ END
 		}
 	}
 	return %result;
+}
 
+sub _unique_key
+{
+	my ($self, $table, $owner, $type) = @_;
+
+	return Ora2Pg::MySQL::_unique_key($self,$table,$owner) if ($self->{is_mysql});
+
+	my %result = ();
+
+        my @accepted_constraint_types = ();
+	if ($type) {
+		push @accepted_constraint_types, "'$type'";
+	} else {
+		push @accepted_constraint_types, "'P'" unless($self->{skip_pkeys});
+		push @accepted_constraint_types, "'U'" unless($self->{skip_ukeys});
+	}
+        return %result unless(@accepted_constraint_types);
+
+        my $cons_types = '('. join(',', @accepted_constraint_types) .')';
+
+	my $indexname = "'' AS INDEX_NAME";
+	if ($self->{db_version} !~ /Release 8/) {
+		$indexname = 'B.INDEX_NAME';
+	}
+	# Get columns of all the table in the specified schema or excluding the list of system schema
+	my $sql = qq{SELECT DISTINCT A.COLUMN_NAME,A.CONSTRAINT_NAME,A.OWNER,A.POSITION,B.CONSTRAINT_NAME,B.CONSTRAINT_TYPE,B.DEFERRABLE,B.DEFERRED,B.GENERATED,B.TABLE_NAME,B.OWNER,$indexname
+FROM $self->{prefix}_CONS_COLUMNS A JOIN $self->{prefix}_CONSTRAINTS B ON (B.CONSTRAINT_NAME = A.CONSTRAINT_NAME AND B.OWNER = A.OWNER)
+};
+	if ($owner) {
+		$sql .= " WHERE A.OWNER = '$owner'";
+	} else {
+		$sql .= " WHERE A.OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
+	}
+	$sql .= " AND B.CONSTRAINT_TYPE IN $cons_types";
+	$sql .= " AND B.TABLE_NAME='$table'" if ($table);
+	$sql .= " AND B.STATUS='ENABLED' ";
+
+	# Get the list of constraints in the specified schema or excluding the list of system schema
+	my @tmpparams = ();
+	if ($self->{type} ne 'SHOW_REPORT')
+	{
+		$sql .= $self->limit_to_objects('UKEY|TABLE', 'B.CONSTRAINT_NAME|B.TABLE_NAME');
+		push(@tmpparams, @{$self->{query_bind_params}});
+		$sql .= $self->limit_to_objects('UKEY', 'B.CONSTRAINT_NAME');
+		push(@tmpparams, @{$self->{query_bind_params}});
+	}
+	$sql .=  " ORDER BY A.POSITION";
+
+	my $sth = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute(@tmpparams) or $self->logit("FATAL: " . $sth->errstr . "\n", 0, 1);
+
+	while (my $row = $sth->fetch)
+	{
+		my $name = $row->[9];
+		if (!$self->{schema} && $self->{export_schema})
+		{
+			$name = "$row->[10].$row->[9]";
+		}
+		if (!exists $result{$name}{$row->[4]})
+		{
+			$result{$name}{$row->[4]} = { (type => $row->[5], 'generated' => $row->[8], 'index_name' => $row->[11], 'deferrable' => $row->[6], 'deferred' => $row->[7], columns => ()) };
+			push(@{ $result{$name}{$row->[4]}->{columns} }, $row->[0]) if ($row->[4] !~ /^SYS_NC/i);
+		}
+		elsif ($row->[4] !~ /^SYS_NC/i)
+		{
+			push(@{ $result{$name}{$row->[4]}->{columns} }, $row->[0]);
+		}
+	}
+	return %result;
 }
 
 =head2 _check_constraint TABLE OWNER
@@ -9924,7 +10062,7 @@ sub _get_privilege
 	if (!$self->{export_invalid}) {
 		$str .= " AND a.STATUS='VALID'";
 	}
-	$str .= " ORDER BY b.TABLE_NAME, b.GRANTEE";
+	#$str .= " ORDER BY b.TABLE_NAME, b.GRANTEE";
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	while (my $row = $sth->fetch) {
@@ -9982,7 +10120,7 @@ sub _get_privilege
 		# Get all system priviledge given to a role
 		$str = "SELECT PRIVILEGE,ADMIN_OPTION FROM DBA_SYS_PRIVS WHERE GRANTEE = '$r'";
 		$str .= " " . $self->limit_to_objects('GRANT', 'GRANTEE');
-		$str .= " ORDER BY PRIVILEGE";
+		#$str .= " ORDER BY PRIVILEGE";
 		$sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 		$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 		while (my $row = $sth->fetch) {
@@ -9995,7 +10133,7 @@ sub _get_privilege
 	foreach my $u (@done) {
 		$str = "SELECT GRANTED_ROLE FROM DBA_ROLE_PRIVS WHERE GRANTEE = '$u'";
 		$str .= " " . $self->limit_to_objects('GRANT', 'GRANTEE');
-		$str .= " ORDER BY GRANTED_ROLE";
+		#$str .= " ORDER BY GRANTED_ROLE";
 		$sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 		$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 		while (my $row = $sth->fetch) {
@@ -10003,7 +10141,7 @@ sub _get_privilege
 		}
 		$str = "SELECT USERNAME FROM DBA_USERS WHERE USERNAME = '$u'";
 		$str .= " " . $self->limit_to_objects('GRANT', 'USERNAME');
-		$str .= " ORDER BY USERNAME";
+		#$str .= " ORDER BY USERNAME";
 		$sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 		$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 		while (my $row = $sth->fetch) {
@@ -10012,7 +10150,7 @@ sub _get_privilege
 		next if  $roles{type}{$u};
 		$str = "SELECT ROLE,PASSWORD_REQUIRED FROM DBA_ROLES WHERE ROLE='$u'";
 		$str .= " " . $self->limit_to_objects('GRANT', 'ROLE');
-		$str .= " ORDER BY ROLE";
+		#$str .= " ORDER BY ROLE";
 		$sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 		$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 		while (my $row = $sth->fetch) {
@@ -10059,7 +10197,7 @@ sub _get_security_definer
 		$str .= " AND OBJECT_TYPE='$type'";
 	}
 	$str .= " " . $self->limit_to_objects('FUNCTION|PROCEDURE|PACKAGE|TRIGGER', 'OBJECT_NAME|OBJECT_NAME|OBJECT_NAME|OBJECT_NAME');
-	$str .= " ORDER BY OBJECT_NAME";
+	#$str .= " ORDER BY OBJECT_NAME";
 
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -10258,7 +10396,6 @@ sub _get_fts_indexes_info
 SELECT DISTINCT IXV_INDEX_OWNER,IXV_INDEX_NAME,IXV_CLASS,IXV_ATTRIBUTE,IXV_VALUE
 FROM CTXSYS.CTX_INDEX_VALUES
 WHERE (IXV_CLASS='WORDLIST' AND IXV_ATTRIBUTE='STEMMER') $condition
-ORDER BY IXV_INDEX_NAME
 END
 
 	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -10299,7 +10436,7 @@ sub _get_sequences
 		$str .= " WHERE SEQUENCE_OWNER = '$self->{schema}'";
 	}
 	$str .= $self->limit_to_objects('SEQUENCE', 'SEQUENCE_NAME');
-	$str .= " ORDER BY SEQUENCE_NAME";
+	#$str .= " ORDER BY SEQUENCE_NAME";
 
 
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -10338,7 +10475,7 @@ sub _get_identities
 		$str .= " WHERE OWNER = '$self->{schema}'";
 	}
 	$str .= $self->limit_to_objects('TABLE', 'TABLE_NAME');
-	$str .= " ORDER BY OWNER, TABLE_NAME, COLUMN_NAME";
+	#$str .= " ORDER BY OWNER, TABLE_NAME, COLUMN_NAME";
 
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -10393,7 +10530,7 @@ sub _get_external_tables
 	}
 	$str .= " AND a.DEFAULT_DIRECTORY_NAME = b.DIRECTORY_NAME AND a.TABLE_NAME=c.TABLE_NAME AND a.DEFAULT_DIRECTORY_NAME=c.DIRECTORY_NAME AND a.OWNER=c.OWNER";
 	$str .= $self->limit_to_objects('TABLE', 'a.TABLE_NAME');
-	$str .= " ORDER BY a.TABLE_NAME";
+	#$str .= " ORDER BY a.TABLE_NAME";
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	
@@ -10442,7 +10579,7 @@ sub _get_directory
 		$str .= " AND p.GRANTEE = '$self->{schema}'";
 	}
 	$str .= $self->limit_to_objects('TABLE', 'd.DIRECTORY_NAME');
-	$str .= " ORDER BY d.DIRECTORY_NAME";
+	#$str .= " ORDER BY d.DIRECTORY_NAME";
 
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -10487,7 +10624,7 @@ sub _get_dblink
 		$str .= " WHERE OWNER = '$self->{schema}'";
 	}
 	$str .= $self->limit_to_objects('DBLINK', 'DB_LINK');
-	$str .= " ORDER BY DB_LINK";
+	#$str .= " ORDER BY DB_LINK";
 
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -10534,7 +10671,7 @@ sub _get_job
 		$str .= " WHERE SCHEMA_USER = '$self->{schema}'";
 	}
 	$str .= $self->limit_to_objects('JOB', 'JOB');
-	$str .= " ORDER BY JOB";
+	#$str .= " ORDER BY JOB";
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
@@ -10594,18 +10731,23 @@ sub _get_views
 	}
 
 	my %comments = ();
-	my $sql = "SELECT A.TABLE_NAME,A.COMMENTS,A.TABLE_TYPE,A.OWNER FROM ALL_TAB_COMMENTS A, ALL_OBJECTS O WHERE A.OWNER=O.OWNER and A.TABLE_NAME=O.OBJECT_NAME and O.OBJECT_TYPE='VIEW' $owner";
-	$sql .= $self->limit_to_objects('VIEW', 'A.TABLE_NAME');
-	my $sth = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-	while (my $row = $sth->fetch) {
-		if (!$self->{schema} && $self->{export_schema}) {
-			$row->[0] = "$row->[0].$row->[3]";
+	if ($self->{type} ne 'SHOW_REPORT')
+	{
+		my $sql = "SELECT A.TABLE_NAME,A.COMMENTS,A.TABLE_TYPE,A.OWNER FROM ALL_TAB_COMMENTS A, ALL_OBJECTS O WHERE A.OWNER=O.OWNER and A.TABLE_NAME=O.OBJECT_NAME and O.OBJECT_TYPE='VIEW' $owner";
+		$sql .= $self->limit_to_objects('VIEW', 'A.TABLE_NAME');
+		my $sth = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+		$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+		while (my $row = $sth->fetch)
+		{
+			if (!$self->{schema} && $self->{export_schema})
+			{
+				$row->[0] = "$row->[0].$row->[3]";
+			}
+			$comments{$row->[0]}{comment} = $row->[1];
+			$comments{$row->[0]}{table_type} = $row->[2];
 		}
-		$comments{$row->[0]}{comment} = $row->[1];
-		$comments{$row->[0]}{table_type} = $row->[2];
+		$sth->finish();
 	}
-	$sth->finish();
 
 	# Retrieve all views
 	my $str = "SELECT v.VIEW_NAME,v.TEXT,v.OWNER FROM $self->{prefix}_VIEWS v";
@@ -10623,18 +10765,21 @@ sub _get_views
 		$str .= " AND a.OBJECT_TYPE='VIEW' AND a.STATUS='VALID' AND v.VIEW_NAME=a.OBJECT_NAME AND a.OWNER=v.OWNER";
 	}
 	$str .= $self->limit_to_objects('VIEW', 'v.VIEW_NAME');
-	$str .= " ORDER BY v.OWNER,v.VIEW_NAME";
+	#$str .= " ORDER BY v.OWNER,v.VIEW_NAME";
 
 
 	# Compute view order, where depended view appear before using view
 	my %view_order = ();
-	if ($self->{db_version} !~ /Release (8|9|10|11\.1)/) {
-		if ($self->{schema}) {
-			$owner = "AND o.OWNER='$self->{schema}' ";
-		} else {
-			$owner = "AND o.OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "') ";
-		}
-		$sql = qq{
+	if ($self->{type} ne 'SHOW_REPORT')
+	{
+		if ($self->{db_version} !~ /Release (8|9|10|11\.1)/)
+		{
+			if ($self->{schema}) {
+				$owner = "AND o.OWNER='$self->{schema}' ";
+			} else {
+				$owner = "AND o.OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "') ";
+			}
+			$sql = qq{
 WITH x (ITER, OWNER, OBJECT_NAME) AS
 ( SELECT 1 , o.OWNER, o.OBJECT_NAME FROM ALL_OBJECTS o WHERE OBJECT_TYPE = 'VIEW' $owner
   AND NOT EXISTS (SELECT 1 FROM ALL_DEPENDENCIES d WHERE TYPE LIKE 'VIEW' AND REFERENCED_TYPE = 'VIEW'
@@ -10649,27 +10794,33 @@ GROUP BY OWNER, OBJECT_NAME
 ORDER BY ITER ASC, 2, 3
 };
 
-		my $sth = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-		$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-		while (my $row = $sth->fetch) {
-			$view_order{"\U$row->[1].$row->[2]\E"} = $row->[0];
+			my $sth = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+			$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+			while (my $row = $sth->fetch) {
+				$view_order{"\U$row->[1].$row->[2]\E"} = $row->[0];
+			}
+			$sth->finish();
 		}
-		$sth->finish();
 	}
 
 	$sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
 	my %data = ();
-	while (my $row = $sth->fetch) {
+	while (my $row = $sth->fetch)
+	{
 		if (!$self->{schema} && $self->{export_schema}) {
 			$row->[0] = "$row->[2].$row->[0]";
 		}
 		$data{$row->[0]}{text} = $row->[1];
 		$data{$row->[0]}{owner} = $row->[2];
-		$data{$row->[0]}{comment} = $comments{$row->[0]}{comment};
-		@{$data{$row->[0]}{alias}} = $self->_alias_info ($row->[0]);
-		if (exists $view_order{"\U$row->[2].$row->[0]\E"}) {
+		$data{$row->[0]}{comment} = $comments{$row->[0]}{comment} || '';
+		if ($self->{type} ne 'SHOW_REPORT')
+		{
+			@{$data{$row->[0]}{alias}} = $self->_alias_info ($row->[0]);
+		}
+		if ($self->{type} ne 'SHOW_REPORT' && exists $view_order{"\U$row->[2].$row->[0]\E"})
+		{
 			$data{$row->[0]}{iter} = $view_order{"\U$row->[2].$row->[0]\E"};
 		}
 	}
@@ -10700,7 +10851,7 @@ sub _get_materialized_views
 		$str .= " WHERE OWNER = '$self->{schema}'";
 	}
 	$str .= $self->limit_to_objects('MVIEW', 'MVIEW_NAME');
-	$str .= " ORDER BY MVIEW_NAME";
+	#$str .= " ORDER BY MVIEW_NAME";
 	my $sth = $self->{dbh}->prepare($str);
 	if (not defined $sth) {
 		$self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -10740,7 +10891,7 @@ sub _get_materialized_view_names
 		$str .= " WHERE OWNER = '$self->{schema}'";
 	}
 	$str .= $self->limit_to_objects('MVIEW', 'MVIEW_NAME');
-	$str .= " ORDER BY MVIEW_NAME";
+	#$str .= " ORDER BY MVIEW_NAME";
 	my $sth = $self->{dbh}->prepare($str);
 	if (not defined $sth) {
 		$self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -10824,7 +10975,7 @@ sub _get_triggers
 	}
 	$str .= " " . $self->limit_to_objects('TABLE|VIEW|TRIGGER','TABLE_NAME|TABLE_NAME|TRIGGER_NAME');
 
-	$str .= " ORDER BY TABLE_NAME, TRIGGER_NAME";
+	#$str .= " ORDER BY TABLE_NAME, TRIGGER_NAME";
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
@@ -10851,7 +11002,7 @@ sub _list_triggers
 	}
 	$str .= " " . $self->limit_to_objects('TABLE|VIEW|TRIGGER','TABLE_NAME|TABLE_NAME|TRIGGER_NAME');
 
-	$str .= " ORDER BY TABLE_NAME, TRIGGER_NAME";
+	#$str .= " ORDER BY TABLE_NAME, TRIGGER_NAME";
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
@@ -10896,7 +11047,7 @@ sub _get_plsql_metadata
 		$str .= " AND OWNER = '$self->{schema}'";
 		$self->logit("Looking forward functions declaration in schema $self->{schema}.\n", 1) if (!$quiet);
 	}
-	$str .= " ORDER BY OBJECT_NAME";
+	#$str .= " ORDER BY OBJECT_NAME";
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
@@ -11009,7 +11160,7 @@ sub _get_package_function_list
 		$str .= " AND OWNER = '$self->{schema}'";
 		$self->logit("Looking forward functions declaration in schema $self->{schema}.\n", 1) if (!$quiet);
 	}
-	$str .= " ORDER BY OBJECT_NAME";
+	#$str .= " ORDER BY OBJECT_NAME";
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
@@ -11096,7 +11247,7 @@ sub _get_functions
 		$str .= " AND OWNER = '$self->{schema}'";
 	}
 	$str .= " " . $self->limit_to_objects('FUNCTION','OBJECT_NAME');
-	$str .= " ORDER BY OBJECT_NAME";
+	#$str .= " ORDER BY OBJECT_NAME";
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
@@ -11152,7 +11303,7 @@ sub _get_functions2
 		$str .= " AND OWNER = '$self->{schema}'";
 	}
 	$str .= " " . $self->limit_to_objects('FUNCTION','OBJECT_NAME');
-	$str .= " ORDER BY OBJECT_NAME";
+	#$str .= " ORDER BY OBJECT_NAME";
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
@@ -11200,7 +11351,7 @@ sub _get_procedures
 		$str .= " AND OWNER = '$self->{schema}'";
 	}
 	$str .= " " . $self->limit_to_objects('PROCEDURE','OBJECT_NAME');
-	$str .= " ORDER BY OBJECT_NAME";
+	#$str .= " ORDER BY OBJECT_NAME";
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
@@ -11262,7 +11413,7 @@ sub _get_packages
 		$str .= " AND OWNER = '$self->{schema}'";
 	}
 	$str .= " " . $self->limit_to_objects('PACKAGE','OBJECT_NAME');
-	$str .= " ORDER BY OBJECT_NAME";
+	#$str .= " ORDER BY OBJECT_NAME";
 
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -11324,7 +11475,7 @@ sub _get_types
 	} else {
 		@{$self->{query_bind_params}} = ();
 	}
-	$str .= " ORDER BY OBJECT_NAME";
+	#$str .= " ORDER BY OBJECT_NAME";
 
 	# use a separeate connection
 	my $local_dbh = $self->_oracle_connection();
@@ -11388,7 +11539,8 @@ sub _table_info
 	}
 
 	my %comments = ();
-	if ($self->{type} eq 'TABLE') {
+	if ($self->{type} eq 'TABLE')
+	{
 		my $sql = "SELECT A.TABLE_NAME,A.COMMENTS,A.TABLE_TYPE,A.OWNER FROM ALL_TAB_COMMENTS A, ALL_OBJECTS O WHERE A.OWNER=O.OWNER and A.TABLE_NAME=O.OBJECT_NAME and O.OBJECT_TYPE='TABLE' $owner";
 		if ($self->{db_version} !~ /Release 8/) {
 			$sql .= " AND (A.OWNER, A.TABLE_NAME) NOT IN (SELECT OWNER, MVIEW_NAME FROM ALL_MVIEWS UNION ALL SELECT LOG_OWNER, LOG_TABLE FROM ALL_MVIEW_LOGS)" if ($self->{type} ne 'FDW');
@@ -11417,12 +11569,14 @@ sub _table_info
 		$sql .= " AND (A.OWNER, A.TABLE_NAME) NOT IN (SELECT OWNER, TABLE_NAME FROM ALL_OBJECT_TABLES)";
 	}
 	$sql .= $self->limit_to_objects('TABLE', 'A.TABLE_NAME');
-        $sql .= " AND (A.IOT_TYPE IS NULL OR A.IOT_TYPE = 'IOT') ORDER BY A.OWNER, A.TABLE_NAME";
+        $sql .= " AND (A.IOT_TYPE IS NULL OR A.IOT_TYPE = 'IOT')";
+        #$sql .= " ORDER BY A.OWNER, A.TABLE_NAME";
 
         my $sth = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
         $sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	my %tables_infos = ();
-	while (my $row = $sth->fetch) {
+	while (my $row = $sth->fetch)
+	{
 		if (!$self->{schema} && $self->{export_schema}) {
 			$row->[1] = "$row->[0].$row->[1]";
 		}
@@ -11446,7 +11600,8 @@ sub _table_info
 		if (($row->[7] || 0) > 10) {
 			$tables_infos{$row->[1]}{fillfactor} = 100 - min(90, $row->[7]);
 		}
-		if ($do_real_row_count) {
+		if ($do_real_row_count)
+		{
 			$self->logit("DEBUG: looking for real row count for table ($row->[0]) $row->[1] (aka using count(*))...\n", 1);
 			$sql = "SELECT COUNT(*) FROM $row->[1]";
 			if ($self->{schema}) {
@@ -11485,23 +11640,27 @@ sub _global_temp_table_info
             $owner .= "AND A.OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "') ";
 	}
 
+	# Get comment on global temporary table
 	my %comments = ();
-	my $sql = "SELECT A.TABLE_NAME,A.COMMENTS,A.TABLE_TYPE,A.OWNER FROM ALL_TAB_COMMENTS A, ALL_OBJECTS O WHERE A.OWNER=O.OWNER and A.TABLE_NAME=O.OBJECT_NAME and O.OBJECT_TYPE='TABLE' $owner";
-	if ($self->{db_version} !~ /Release 8/) {
-		$sql .= " AND (A.OWNER, A.TABLE_NAME) NOT IN (SELECT OWNER, MVIEW_NAME FROM ALL_MVIEWS UNION ALL SELECT LOG_OWNER, LOG_TABLE FROM ALL_MVIEW_LOGS)";
-		$sql .= " AND (A.OWNER, A.TABLE_NAME) NOT IN (SELECT OWNER, TABLE_NAME FROM ALL_OBJECT_TABLES)";
-	}
-	$sql .= $self->limit_to_objects('TABLE', 'A.TABLE_NAME');
-	my $sth = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-	while (my $row = $sth->fetch) {
-		if (!$self->{schema} && $self->{export_schema}) {
-			$row->[0] = "$row->[3].$row->[0]";
+	if ($self->{type} eq 'TABLE')
+	{
+		my $sql = "SELECT A.TABLE_NAME,A.COMMENTS,A.TABLE_TYPE,A.OWNER FROM ALL_TAB_COMMENTS A, ALL_OBJECTS O WHERE A.OWNER=O.OWNER and A.TABLE_NAME=O.OBJECT_NAME and O.OBJECT_TYPE='TABLE' $owner";
+		if ($self->{db_version} !~ /Release 8/) {
+			$sql .= " AND (A.OWNER, A.TABLE_NAME) NOT IN (SELECT OWNER, MVIEW_NAME FROM ALL_MVIEWS UNION ALL SELECT LOG_OWNER, LOG_TABLE FROM ALL_MVIEW_LOGS)";
+			$sql .= " AND (A.OWNER, A.TABLE_NAME) NOT IN (SELECT OWNER, TABLE_NAME FROM ALL_OBJECT_TABLES)";
 		}
-		$comments{$row->[0]}{comment} = $row->[1];
-		$comments{$row->[0]}{table_type} = $row->[2];
+		$sql .= $self->limit_to_objects('TABLE', 'A.TABLE_NAME');
+		my $sth = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+		$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+		while (my $row = $sth->fetch) {
+			if (!$self->{schema} && $self->{export_schema}) {
+				$row->[0] = "$row->[3].$row->[0]";
+			}
+			$comments{$row->[0]}{comment} = $row->[1];
+			$comments{$row->[0]}{table_type} = $row->[2];
+		}
+		$sth->finish();
 	}
-	$sth->finish();
 
 	$sql = "SELECT A.OWNER,A.TABLE_NAME,NVL(num_rows,1) NUMBER_ROWS,A.TABLESPACE_NAME,A.NESTED,A.LOGGING FROM $self->{prefix}_TABLES A, ALL_OBJECTS O WHERE A.OWNER=O.OWNER AND A.TABLE_NAME=O.OBJECT_NAME AND O.OBJECT_TYPE='TABLE' $owner";
 	$sql .= " AND A.TEMPORARY='Y'";
@@ -11509,7 +11668,8 @@ sub _global_temp_table_info
 		$sql .= " AND (A.DROPPED IS NULL OR A.DROPPED = 'NO')";
 	}
 	$sql .= $self->limit_to_objects('TABLE', 'A.TABLE_NAME');
-        $sql .= " AND (A.IOT_TYPE IS NULL OR A.IOT_TYPE = 'IOT') ORDER BY A.OWNER, A.TABLE_NAME";
+        $sql .= " AND (A.IOT_TYPE IS NULL OR A.IOT_TYPE = 'IOT')";
+        #$sql .= " ORDER BY A.OWNER, A.TABLE_NAME";
 
         $sth = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
         $sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -11645,7 +11805,7 @@ AND a.TABLESPACE_NAME = c.TABLESPACE_NAME
 		$str .= " AND a.OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
 	}
 	$str .= $self->limit_to_objects('TABLESPACE|TABLE', 'a.TABLESPACE_NAME|a.SEGMENT_NAME');
-	$str .= " ORDER BY TABLESPACE_NAME";
+	#$str .= " ORDER BY TABLESPACE_NAME";
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
@@ -11685,7 +11845,7 @@ WHERE a.TABLESPACE_NAME = c.TABLESPACE_NAME
 		$str .= " AND a.OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
 	}
 	$str .= $self->limit_to_objects('TABLESPACE', 'c.TABLESPACE_NAME');
-	$str .= " ORDER BY c.TABLESPACE_NAME";
+	#$str .= " ORDER BY c.TABLESPACE_NAME";
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
@@ -11905,8 +12065,7 @@ sub _get_synonyms
 		$str .= " WHERE (owner='PUBLIC' OR owner NOT IN ('" . join("','", @{$self->{sysusers}}) . "')) AND table_owner NOT IN ('" . join("','", @{$self->{sysusers}}) . "') ";
 	}
 	$str .= $self->limit_to_objects('SYNONYM','SYNONYM_NAME');
-	$str .= " ORDER BY SYNONYM_NAME\n";
-
+	#$str .= " ORDER BY SYNONYM_NAME\n";
 
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -11975,7 +12134,7 @@ $condition
 			$str .= "\tAND A.TABLE_OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "')\n";
 		}
 	}
-	$str .= "ORDER BY A.TABLE_NAME\n";
+	#$str .= "ORDER BY A.TABLE_NAME\n";
 
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -12142,7 +12301,7 @@ FROM $self->{prefix}_TAB_PARTITIONS A
 			$str .= " WHERE A.TABLE_OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "')\n";
 		}
 	}
-	$str .= "ORDER BY A.TABLE_OWNER,A.TABLE_NAME,A.PARTITION_NAME\n";
+	#$str .= "ORDER BY A.TABLE_OWNER,A.TABLE_NAME,A.PARTITION_NAME\n";
 
 	$sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute() or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -13727,6 +13886,9 @@ sub logit
 {
 	my ($self, $message, $level, $critical) = @_;
 
+	# Assessment report are dumped to stdin so avoid printing debug info
+	return if (!$critical && $self->{type} eq 'SHOW_REPORT');
+
 	$level ||= 0;
 
 	$message = '[' . strftime("%Y-%m-%d %H:%M:%S", localtime(time)) . '] ' . $message if ($self->{debug});
@@ -13751,6 +13913,24 @@ sub logit
 		die "Aborting export...\n";
 	}
 }
+
+=head2 logrep
+
+This function log report's information to STDOUT or to a logfile.
+
+=cut
+
+sub logrep
+{
+	my ($self, $message) = @_;
+
+	if (defined $self->{fhlog}) {
+		$self->{fhlog}->print($message);
+	} else {
+		print $message;
+	}
+}
+
 
 =head2 _convert_type
 
@@ -14844,8 +15024,10 @@ sub _show_infos
 {
 	my ($self, $type) = @_;
 
-	if ($type eq 'SHOW_ENCODING') {
-		if ($self->{is_mysql}) {
+	if ($type eq 'SHOW_ENCODING')
+	{
+		if ($self->{is_mysql})
+		{
 			$self->logit("Current encoding settings that will be used by Ora2Pg:\n", 0);
 			$self->logit("\tMySQL database and client encoding: $self->{nls_lang}\n", 0);
 			$self->logit("\tMySQL collation encoding: $self->{nls_nchar}\n", 0);
@@ -14880,38 +15062,44 @@ sub _show_infos
 			$self->logit("\tOracle NLS_DATE_FORMAT $nls_date_format\n", 0);
 			$self->logit("\tPostgreSQL CLIENT_ENCODING $pg_encoding\n", 0);
 		}
-	} elsif ($type eq 'SHOW_VERSION') {
-
+	}
+	elsif ($type eq 'SHOW_VERSION')
+	{
 		$self->logit("Showing Database Version...\n", 1);
 		$self->logit("$self->{db_version}\n", 0);
-
-	} elsif ($type eq 'SHOW_REPORT') {
-
-		$self->logit("Reporting Oracle Content...\n", 1);
+	}
+	elsif ($type eq 'SHOW_REPORT')
+	{
+		print STDERR "Reporting Oracle Content...\n" if ($self->{debug});
 		my $uncovered_score = 'Ora2Pg::PLSQL::UNCOVERED_SCORE';
 		if ($self->{is_mysql}) {
 			$uncovered_score = 'Ora2Pg::PLSQL::UNCOVERED_MYSQL_SCORE';
 		}
 		# Get Oracle database version and size
+		print STDERR "Looking at Oracle server version...\n" if ($self->{debug});
 		my $ver = $self->_get_version();
+		print STDERR "Looking at Oracle database size...\n" if ($self->{debug});
 		my $size = $self->_get_database_size();
 		# Get the list of all database objects
+		print STDERR "Looking at Oracle defined objects...\n" if ($self->{debug});
 		my %objects = $self->_get_objects();
-		# Determining how many non automatiques indexes will be exported
+
+		# Extract all tables informations
 		my %all_indexes = ();
 		$self->{skip_fkeys} = $self->{skip_indices} = $self->{skip_indexes} = $self->{skip_checks} = 0;
 		$self->{view_as_table} = ();
-		# Determining how many non automatiques indexes will be exported
-		# Extract all tables informations
-		$self->_tables();
+		print STDERR "Looking at table definition...\n" if ($self->{debug});
+		$self->_tables(1);
 		my $total_index = 0;
 		my $total_table_objects = 0;
 		my $total_index_objects = 0;
-		foreach my $table (sort keys %{$self->{tables}}) {
+		foreach my $table (sort keys %{$self->{tables}})
+		{
 			$total_table_objects++;
 			push(@exported_indexes, $self->_exportable_indexes($table, %{$self->{tables}{$table}{indexes}}));
 			$total_index_objects += scalar keys %{$self->{tables}{$table}{indexes}};
-			foreach my $idx (sort keys %{$self->{tables}{$table}{idx_type}}) {
+			foreach my $idx (sort keys %{$self->{tables}{$table}{idx_type}})
+			{
 				next if (!grep(/^$idx$/i, @exported_indexes));
 				my $typ = $self->{tables}{$table}{idx_type}{$idx}{type};
 				push(@{$all_indexes{$typ}}, $idx);
@@ -14927,22 +15115,39 @@ sub _show_infos
 				$self->_convert_type($tpe->{code}, $tpe->{owner});
 			}
 		}
+		print STDERR "Looking at views definition...\n" if ($self->{debug});
+		my %view_infos = ();
+		%view_infos = $self->_get_views() if ($self->{estimate_cost});
+
 		# Get definition of Database Link
+		print STDERR "Looking at database links...\n" if ($self->{debug});
 		my %dblink = $self->_get_dblink();
 		$objects{'DATABASE LINK'} = scalar keys %dblink;	
+		print STDERR "\tFound $objects{'DATABASE LINK'} DATABASE LINK.\n" if ($self->{debug});
 		# Get Jobs
+		print STDERR "Looking at jobs...\n" if ($self->{debug});
 		my %jobs = $self->_get_job();
 		$objects{'JOB'} = scalar keys %jobs;
+		print STDERR "\tFound $objects{'JOB'} JOB.\n" if ($self->{debug});
 		# Get synonym information
+		print STDERR "Looking at synonyms...\n" if ($self->{debug});
 		my %synonyms = $self->_synonyms();
 		$objects{'SYNONYM'} = scalar keys %synonyms;	
+		print STDERR "\tFound $objects{'SYNONYM'} SYNONYM.\n" if ($self->{debug});
 		# Get all global temporary tables
+		print STDERR "Looking at global temporary table...\n" if ($self->{debug});
 		my %global_tables = $self->_global_temp_table_info();
 		$objects{'GLOBAL TEMPORARY TABLE'} = scalar keys %global_tables;
-		# Look for encrypted columns
+		print STDERR "\tFound $objects{'GLOBAL TEMPORARY TABLE'} GLOBAL TEMPORARY TABLE.\n" if ($self->{debug});
+		# Look for encrypted columns and identity columns
 		my %encrypted_column = ();
 		if ($self->{db_version} !~ /Release [89]/) {
-			$self->_encrypted_columns('',$self->{schema});
+			print STDERR "Looking at encrypted columns...\n" if ($self->{debug});
+			%encrypted_column = $self->_encrypted_columns('',$self->{schema});
+			print STDERR "\tFound ", scalar keys %encrypted_column, " encrypted column.\n" if ($self->{debug});
+			print STDERR "Looking at identity columns...\n" if ($self->{debug});
+			# Identity column are collected in call to sub _tables() above
+			print STDERR "\tFound ", scalar keys %{$self->{identity_info}}, " identity column.\n" if ($self->{debug});
 		}
 
 		# Look at all database objects to compute report
@@ -14952,54 +15157,78 @@ sub _show_infos
 		$report_info{'Size'} = $size || 'Unknown';
 		my $idx = 0;
 		my $num_total_obj = scalar keys %objects;
-		foreach my $typ (sort keys %objects) {
+		foreach my $typ (sort keys %objects)
+		{
 			$idx++;
 			next if ($typ eq 'EVALUATION CONTEXT'); # Do not care about rule evaluation context
-			next if ($self->{is_mysql} && ($typ eq 'SYNONYM')); # Package are scanned with PACKAGE BODY not PACKAGE objects
+			next if ($self->{is_mysql} && $typ eq 'SYNONYM');
 			next if ($typ eq 'PACKAGE'); # Package are scanned with PACKAGE BODY not PACKAGE objects
+			print STDERR "Building report for object $typ...\n" if ($self->{debug});
 			if (!$self->{quiet} && !$self->{debug}) {
 				print STDERR $self->progress_bar($idx, $num_total_obj, 25, '=', 'objects types', "inspecting object $typ" ), "\r";
 			}
 			$report_info{'Objects'}{$typ}{'number'} = 0;
 			$report_info{'Objects'}{$typ}{'invalid'} = 0;
-			if (!grep(/^$typ$/, 'DATABASE LINK', 'JOB', 'TABLE', 'INDEX','SYNONYM','GLOBAL TEMPORARY TABLE')) {
-				for (my $i = 0; $i <= $#{$objects{$typ}}; $i++) {
+			if (!grep(/^$typ$/, 'DATABASE LINK', 'JOB', 'TABLE', 'INDEX',
+					'SYNONYM','GLOBAL TEMPORARY TABLE'))
+			{
+				for (my $i = 0; $i <= $#{$objects{$typ}}; $i++)
+				{
 					$report_info{'Objects'}{$typ}{'number'}++;
 					$report_info{'Objects'}{$typ}{'invalid'}++ if ($objects{$typ}[$i]->{invalid});
 				}
-			} elsif ($typ eq 'TABLE') {
+			}
+			elsif ($typ eq 'TABLE')
+			{
 				$report_info{'Objects'}{$typ}{'number'} = $total_table_objects;
-			} elsif ($typ eq 'INDEX') {
+			}
+			elsif ($typ eq 'INDEX')
+			{
 				$report_info{'Objects'}{$typ}{'number'} = $total_index_objects;
-			} else {
+			}
+			else
+			{
 				$report_info{'Objects'}{$typ}{'number'} = $objects{$typ};
 			}
+
 			$report_info{'total_object_invalid'} += $report_info{'Objects'}{$typ}{'invalid'};
 			$report_info{'total_object_number'} += $report_info{'Objects'}{$typ}{'number'};
-			if ($report_info{'Objects'}{$typ}{'number'} > 0) {
+
+			if ($report_info{'Objects'}{$typ}{'number'} > 0)
+			{
 				$report_info{'Objects'}{$typ}{'real_number'} = ($report_info{'Objects'}{$typ}{'number'} - $report_info{'Objects'}{$typ}{'invalid'});
 				$report_info{'Objects'}{$typ}{'real_number'} = $report_info{'Objects'}{$typ}{'number'} if ($self->{export_invalid});
 			}
-			if ($self->{estimate_cost}) {
+
+			if ($self->{estimate_cost})
+			{
 				$report_info{'Objects'}{$typ}{'cost_value'} = ($report_info{'Objects'}{$typ}{'real_number'}*$Ora2Pg::PLSQL::OBJECT_SCORE{$typ});
 				# Minimal unit is 1
 				$report_info{'Objects'}{$typ}{'cost_value'} = 1 if ($report_info{'Objects'}{$typ}{'cost_value'} =~ /^0\./);
 				# For some object's type do not set migration unit upper than 2 days.
-				if (grep(/^$typ$/, 'TABLE PARTITION', 'GLOBAL TEMPORARY TABLE', 'TRIGGER', 'VIEW')) {
+				if (grep(/^$typ$/, 'TABLE PARTITION', 'GLOBAL TEMPORARY TABLE', 'TRIGGER', 'VIEW'))
+				{
 					$report_info{'Objects'}{$typ}{'cost_value'} = 168 if ($report_info{'Objects'}{$typ}{'cost_value'} > 168);
 					if (grep(/^$typ$/, 'TRIGGER', 'VIEW') && $report_info{'Objects'}{$typ}{'real_number'} > 500) {
 						$report_info{'Objects'}{$typ}{'cost_value'} += 84 * int(($report_info{'Objects'}{$typ}{'real_number'} - 500) / 500);
 					}
-				} elsif (grep(/^$typ$/, 'TABLE', 'INDEX', 'SYNONYM')) {
+				}
+				elsif (grep(/^$typ$/, 'TABLE', 'INDEX', 'SYNONYM'))
+				{
 					$report_info{'Objects'}{$typ}{'cost_value'} = 84 if ($report_info{'Objects'}{$typ}{'cost_value'} > 84);
 				}
 			}
-			if ($typ eq 'INDEX') {
+
+			if ($typ eq 'INDEX')
+			{
 				my $bitmap = 0;
-				foreach my $t (sort keys %INDEX_TYPE) {
+				foreach my $t (sort keys %INDEX_TYPE)
+				{
 					my $len = ($#{$all_indexes{$t}}+1);
 					$report_info{'Objects'}{$typ}{'detail'} .= "\L$len $INDEX_TYPE{$t} index(es)\E\n" if ($len);
-					if ($self->{estimate_cost} && $len && ( ($t =~ /FUNCTION.*NORMAL/) || ($t eq 'FUNCTION-BASED BITMAP') ) ) {
+					if ($self->{estimate_cost} && $len &&
+						( ($t =~ /FUNCTION.*NORMAL/) || ($t eq 'FUNCTION-BASED BITMAP') ) )
+					{
 						$report_info{'Objects'}{$typ}{'cost_value'} += ($len * $Ora2Pg::PLSQL::OBJECT_SCORE{'FUNCTION-BASED-INDEX'});
 					}
 					if ($self->{estimate_cost} && $len && ($t =~ /REV/)) {
@@ -15008,16 +15237,23 @@ sub _show_infos
 				}
 				$report_info{'Objects'}{$typ}{'cost_value'} += ($Ora2Pg::PLSQL::OBJECT_SCORE{$typ}*$total_index) if ($self->{estimate_cost});
 				$report_info{'Objects'}{$typ}{'comment'} = "$total_index index(es) are concerned by the export, others are automatically generated and will do so on PostgreSQL.";
+				my $hash_index = '';
+				if ($self->{pg_version} < 10)
+				{
+					$hash_index = ' and hash index(es) will be exported as b-tree index(es) if any';
+				}
 				if (!$self->{is_mysql}) {
 					my $bitmap = 'Bitmap';
 					if ($self->{bitmap_as_gin}) {
 						$bitmap = 'Bitmap will be exported as btree_gin index(es)';
 					}
-					$report_info{'Objects'}{$typ}{'comment'} .= " $bitmap and hash index(es) will be exported as b-tree index(es) if any. Domain index are exported as b-tree but commented to be edited to mainly use FTS. Cluster, bitmap join and IOT indexes will not be exported at all. Reverse indexes are not exported too, you may use a trigram-based index (see pg_trgm) or a reverse() function based index and search. Use 'varchar_pattern_ops', 'text_pattern_ops' or 'bpchar_pattern_ops' operators in your indexes to improve search with the LIKE operator respectively into varchar, text or char columns.";
+					$report_info{'Objects'}{$typ}{'comment'} .= " $bitmap$hash_index. Domain index are exported as b-tree but commented to be edited to mainly use FTS. Cluster, bitmap join and IOT indexes will not be exported at all. Reverse indexes are not exported too, you may use a trigram-based index (see pg_trgm) or a reverse() function based index and search. Use 'varchar_pattern_ops', 'text_pattern_ops' or 'bpchar_pattern_ops' operators in your indexes to improve search with the LIKE operator respectively into varchar, text or char columns.";
 				} else {
-					$report_info{'Objects'}{$typ}{'comment'} .= " Hash index(es) will be exported as b-tree index(es) if any. Use 'varchar_pattern_ops', 'text_pattern_ops' or 'bpchar_pattern_ops' operators in your indexes to improve search with the LIKE operator respectively into varchar, text or char columns. Fulltext search indexes will be replaced by using a dedicated tsvector column, Ora2Pg will set the DDL to create the column, function and trigger together with the index.";
+					$report_info{'Objects'}{$typ}{'comment'} .= "$hash_index. Use 'varchar_pattern_ops', 'text_pattern_ops' or 'bpchar_pattern_ops' operators in your indexes to improve search with the LIKE operator respectively into varchar, text or char columns. Fulltext search indexes will be replaced by using a dedicated tsvector column, Ora2Pg will set the DDL to create the column, function and trigger together with the index.";
 				}
-			} elsif ($typ eq 'MATERIALIZED VIEW') {
+			}
+			elsif ($typ eq 'MATERIALIZED VIEW')
+			{
 				$report_info{'Objects'}{$typ}{'comment'}= "All materialized view will be exported as snapshot materialized views, they are only updated when fully refreshed.";
 				my %mview_infos = $self->_get_materialized_views();
 				my $oncommit = 0;
@@ -15033,7 +15269,9 @@ sub _show_infos
 				}
 
 
-			} elsif ($typ eq 'TABLE') {
+			}
+			elsif ($typ eq 'TABLE')
+			{
 				my $exttb = scalar keys %{$self->{external_table}};
 				if ($exttb) {
 					if (!$self->{external_to_fdw}) {
@@ -15050,8 +15288,8 @@ sub _show_infos
 				my $total_check = 0;
 				my $total_row_num = 0;
 				# Set the table information for each class found
-				foreach my $t (sort keys %{$self->{tables}}) {
-
+				foreach my $t (sort keys %{$self->{tables}})
+				{
 					# Set the total number of rows
 					$total_row_num += $self->{tables}{$t}{table_info}{num_rows};
 
@@ -15062,7 +15300,8 @@ sub _show_infos
 						$report_info{'Objects'}{$typ}{'cost_value'} += 12; # one hour to solve reserved keyword might be enough
 					}
 					# Get fields informations
-					foreach my $k (sort {$self->{tables}{$t}{column_info}{$a}[11] <=> $self->{tables}{$t}{column_info}{$a}[11]} keys %{$self->{tables}{$t}{column_info}}) {
+					foreach my $k (sort {$self->{tables}{$t}{column_info}{$a}[11] <=> $self->{tables}{$t}{column_info}{$a}[11]} keys %{$self->{tables}{$t}{column_info}})
+					{
 						$r = $self->is_reserved_words($self->{tables}{$t}{column_info}{$k}[0]);
 						if (($r > 0) && ($r != 3)) {
 							$table_detail{'reserved words in column name'}++;
@@ -15089,15 +15328,15 @@ sub _show_infos
 						}
 					}
 					# Get check constraints information related to this table
-					my @constraints = $self->_lookup_check_constraint($t, $self->{tables}{$t}{check_constraint},$self->{tables}{$t}{field_name}, 1);
-					$total_check += ($#constraints + 1);
-					if ($self->{estimate_cost} && ($#constraints >= 0)) {
-						$report_info{'Objects'}{$typ}{'cost_value'} += (($#constraints + 1) * $Ora2Pg::PLSQL::OBJECT_SCORE{'CHECK'});
+					my $constraints = $self->_count_check_constraint($self->{tables}{$t}{check_constraint});
+					$total_check += $constraints;
+					if ($self->{estimate_cost} && $constraints >= 0) {
+						$report_info{'Objects'}{$typ}{'cost_value'} += $constraints * $Ora2Pg::PLSQL::OBJECT_SCORE{'CHECK'};
 					}
 				}
 				$report_info{'Objects'}{$typ}{'comment'} .= " $total_check check constraint(s)." if ($total_check);
 				foreach my $d (sort keys %table_detail) {
-					$report_info{'Objects'}{$typ}{'detail'} .= "\L$table_detail{$d} $d\E\n";
+					$report_info{'Objects'}{$typ}{'comment'} .= "\L$table_detail{$d} $d\E.\n";
 				}
 				$report_info{'Objects'}{$typ}{'detail'} .= "Total number of rows: $total_row_num\n";
 				$report_info{'Objects'}{$typ}{'detail'} .= "Top $self->{top_max} of tables sorted by number of rows:\n";
@@ -15139,7 +15378,13 @@ sub _show_infos
 						$report_info{'Objects'}{$typ}{'cost_value'} += (scalar keys %encrypted_column) * $Ora2Pg::PLSQL::OBJECT_SCORE{'ENCRYPTED COLUMN'};
 					}
 				}
-			} elsif ($typ eq 'TYPE') {
+				if (scalar keys %{$self->{identity_info}} > 0) {
+					$report_info{'Objects'}{$typ}{'comment'} .= "\n" . (scalar keys %{$self->{identity_info}}) . " identity column(s).\n";
+					$report_info{'Objects'}{$typ}{'comment'} .= " Identity columns are fully supported since PG10.\n";
+				}
+			}
+			elsif ($typ eq 'TYPE')
+			{
 				my $total_type = 0;
 				foreach my $t (sort keys %{$self->{type_of_type}}) {
 					$total_type++ if (!grep(/^$t$/, 'Associative Arrays','Type Boby','Type with member method', 'Type Ref Cursor'));
@@ -15147,9 +15392,13 @@ sub _show_infos
 				}
 				$report_info{'Objects'}{$typ}{'cost_value'} = ($Ora2Pg::PLSQL::OBJECT_SCORE{$typ}*$total_type) if ($self->{estimate_cost});
 				$report_info{'Objects'}{$typ}{'comment'} = "$total_type type(s) are concerned by the export, others are not supported. Note that Type inherited and Subtype are converted as table, type inheritance is not supported.";
-			} elsif ($typ eq 'TYPE BODY') {
+			}
+			elsif ($typ eq 'TYPE BODY')
+			{
 				$report_info{'Objects'}{$typ}{'comment'} = "Export of type with member method are not supported, they will not be exported.";
-			} elsif ($typ eq 'TRIGGER') {
+			}
+			elsif ($typ eq 'TRIGGER')
+			{
 				my $triggers = $self->_get_triggers();
 				my $total_size = 0;
 				foreach my $trig (@{$triggers}) {
@@ -15169,9 +15418,13 @@ sub _show_infos
 					}
 				}
 				$report_info{'Objects'}{$typ}{'comment'} = "Total size of trigger code: $total_size bytes.";
-			} elsif ($typ eq 'SEQUENCE') {
+			}
+			elsif ($typ eq 'SEQUENCE')
+			{
 				$report_info{'Objects'}{$typ}{'comment'} = "Sequences are fully supported, but all call to sequence_name.NEXTVAL or sequence_name.CURRVAL will be transformed into NEXTVAL('sequence_name') or CURRVAL('sequence_name').";
-			} elsif ($typ eq 'FUNCTION') {
+			}
+			elsif ($typ eq 'FUNCTION')
+			{
 				my $functions = $self->_get_functions();
 				my $total_size = 0;
 				foreach my $fct (keys %{$functions}) {
@@ -15191,10 +15444,13 @@ sub _show_infos
 					}
 				}
 				$report_info{'Objects'}{$typ}{'comment'} = "Total size of function code: $total_size bytes.";
-			} elsif ($typ eq 'PROCEDURE') {
+			}
+			elsif ($typ eq 'PROCEDURE')
+			{
 				my $procedures = $self->_get_procedures();
 				my $total_size = 0;
-				foreach my $proc (keys %{$procedures}) {
+				foreach my $proc (keys %{$procedures})
+				{
 					$total_size += length($procedures->{$proc}{text});
 					if ($self->{estimate_cost}) {
 						my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($self, $procedures->{$proc}{text});
@@ -15211,7 +15467,9 @@ sub _show_infos
 					}
 				}
 				$report_info{'Objects'}{$typ}{'comment'} = "Total size of procedure code: $total_size bytes.";
-			} elsif ($typ eq 'PACKAGE BODY') {
+			}
+			elsif ($typ eq 'PACKAGE BODY')
+			{
 				$self->{packages} = $self->_get_packages();
 				my $total_size = 0;
 				my $number_fct = 0;
@@ -15252,7 +15510,9 @@ sub _show_infos
 					$report_info{'Objects'}{$typ}{'cost_value'} += ($number_pkg*$Ora2Pg::PLSQL::OBJECT_SCORE{'PACKAGE BODY'});
 				}
 				$report_info{'Objects'}{$typ}{'comment'} = "Total size of package code: $total_size bytes. Number of procedures and functions found inside those packages: $number_fct.";
-			} elsif ( ($typ eq 'SYNONYM') && !$self->{is_mysql} ) {
+			}
+			elsif ( ($typ eq 'SYNONYM') && !$self->{is_mysql} )
+			{
 				foreach my $t (sort {$a cmp $b} keys %synonyms) {
 					if ($synonyms{$t}{dblink}) {
 						$report_info{'Objects'}{$typ}{'detail'} .= "\L$synonyms{$t}{owner}.$t\E is a link to \L$synonyms{$t}{table_owner}.$synonyms{$t}{table_name}\@$synonyms{$t}{dblink}\E\n";
@@ -15261,32 +15521,42 @@ sub _show_infos
 					}
 				}
 				$report_info{'Objects'}{$typ}{'comment'} = "SYNONYMs will be exported as views. SYNONYMs do not exists with PostgreSQL but a common workaround is to use views or set the PostgreSQL search_path in your session to access object outside the current schema.";
-			} elsif ($typ eq 'INDEX PARTITION') {
+			}
+			elsif ($typ eq 'INDEX PARTITION')
+			{
 				$report_info{'Objects'}{$typ}{'comment'} = "Only local indexes partition are exported, they are build on the column used for the partitioning.";
-			} elsif ($typ eq 'TABLE PARTITION') {
+			}
+			elsif ($typ eq 'TABLE PARTITION')
+			{
 				my %partitions = $self->_get_partitions_list();
 				foreach my $t (sort keys %partitions) {
 					$report_info{'Objects'}{$typ}{'detail'} .= " $partitions{$t} $t partitions.\n";
 				}
 				$report_info{'Objects'}{$typ}{'comment'} = "Partitions are exported using table inheritance and check constraint. Hash and Key partitions are not supported by PostgreSQL and will not be exported.";
-			} elsif ($typ eq 'GLOBAL TEMPORARY TABLE') {
+			}
+			elsif ($typ eq 'GLOBAL TEMPORARY TABLE')
+			{
 				$report_info{'Objects'}{$typ}{'comment'} = "Global temporary table are not supported by PostgreSQL and will not be exported. You will have to rewrite some application code to match the PostgreSQL temporary table behavior.";
 				foreach my $t (sort keys %global_tables) {
 					$report_info{'Objects'}{$typ}{'detail'} .= "\L$t\E\n";
 				}
-			} elsif ($typ eq 'CLUSTER') {
+			}
+			elsif ($typ eq 'CLUSTER')
+			{
 				$report_info{'Objects'}{$typ}{'comment'} = "Clusters are not supported by PostgreSQL and will not be exported.";
-			} elsif ($typ eq 'VIEW') {
-				my %view_infos = $self->_get_views();
-				foreach my $view (sort keys %view_infos) {
+			}
+			elsif ($typ eq 'VIEW')
+			{
+				if ($self->{estimate_cost})
+				{
+					foreach my $view (sort keys %view_infos)
+					{
+						# Remove unsupported definitions from the ddl statement
+						$view_infos{$view}{text} =~ s/\s*WITH\s+READ\s+ONLY//is;
+						$view_infos{$view}{text} =~ s/\s*OF\s+([^\s]+)\s+(WITH|UNDER)\s+[^\)]+\)//is;
+						$view_infos{$view}{text} =~ s/\s*OF\s+XMLTYPE\s+[^\)]+\)//is;
+						$view_infos{$view}{text} = $self->_format_view($view_infos{$view}{text});
 
-					# Remove unsupported definitions from the ddl statement
-					$view_infos{$view}{text} =~ s/\s*WITH\s+READ\s+ONLY//is;
-					$view_infos{$view}{text} =~ s/\s*OF\s+([^\s]+)\s+(WITH|UNDER)\s+[^\)]+\)//is;
-					$view_infos{$view}{text} =~ s/\s*OF\s+XMLTYPE\s+[^\)]+\)//is;
-					$view_infos{$view}{text} = $self->_format_view($view_infos{$view}{text});
-
-					if ($self->{estimate_cost}) {
 						my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($self, $view_infos{$view}{text}, 'VIEW');
 						$report_info{'Objects'}{$typ}{'cost_value'} += $cost;
 						# Do not show view that just have to be tested
@@ -15295,7 +15565,8 @@ sub _show_infos
 						# Show detail about views that might need manual rewritting
 						$report_info{'Objects'}{$typ}{'detail'} .= "\L$view: $cost\E\n";
 						$report_info{full_view_details}{"\L$view\E"}{count} = $cost;
-						foreach my $d (sort { $cost_detail{$b} <=> $cost_detail{$a} } keys %cost_detail) {
+						foreach my $d (sort { $cost_detail{$b} <=> $cost_detail{$a} } keys %cost_detail)
+						{
 							next if (!$cost_detail{$d});
 							$report_info{full_view_details}{"\L$view\E"}{info} .= "\t$d => $cost_detail{$d}";
 							$report_info{full_view_details}{"\L$view\E"}{info} .= " (cost: ${$uncovered_score}{$d})" if (${$uncovered_score}{$d});
@@ -15305,14 +15576,18 @@ sub _show_infos
 					}
 				}
 				$report_info{'Objects'}{$typ}{'comment'} = "Views are fully supported but can use specific functions.";
-			} elsif ($typ eq 'DATABASE LINK') {
+			}
+			elsif ($typ eq 'DATABASE LINK')
+			{
 				my $def_fdw = 'oracle_fdw';
 				$def_fdw = 'mysql_fdw' if ($self->{is_mysql});
 				$report_info{'Objects'}{$typ}{'comment'} = "Database links will be exported as SQL/MED PostgreSQL's Foreign Data Wrapper (FDW) extensions using $def_fdw.";
 				if ($self->{estimate_cost}) {
 					$report_info{'Objects'}{$typ}{'cost_value'} = ($Ora2Pg::PLSQL::OBJECT_SCORE{'DATABASE LINK'}*$objects{$typ});
 				}
-			} elsif ($typ eq 'JOB') {
+			}
+			elsif ($typ eq 'JOB')
+			{
 				$report_info{'Objects'}{$typ}{'comment'} = "Job are not exported. You may set external cron job with them.";
 				if ($self->{estimate_cost}) {
 					$report_info{'Objects'}{$typ}{'cost_value'} = ($Ora2Pg::PLSQL::OBJECT_SCORE{'JOB'}*$objects{$typ});
@@ -15321,11 +15596,15 @@ sub _show_infos
 			$report_info{'total_cost_value'} += $report_info{'Objects'}{$typ}{'cost_value'};
 			$report_info{'Objects'}{$typ}{'cost_value'} = sprintf("%2.2f", $report_info{'Objects'}{$typ}{'cost_value'});
 		}
-		if (!$self->{quiet} && !$self->{debug}) {
+
+		if (!$self->{quiet} && !$self->{debug})
+		{
 			print STDERR $self->progress_bar($idx, $num_total_obj, 25, '=', 'objects types', 'end of objects auditing.'), "\n";
 		}
+
 		# DBA_AUDIT_TRAIL queries will not be count if no audit user is give
-		if ($self->{audit_user}) {
+		if ($self->{audit_user})
+		{
 			my $tbname = 'DBA_AUDIT_TRAIL';
 			$tbname = 'general_log' if ($self->{is_mysql});
 			$report_info{'Objects'}{'QUERY'}{'number'} = 0;
@@ -15349,8 +15628,9 @@ sub _show_infos
 		# Display report in the requested format
 		$self->_show_report(%report_info);
 
-	} elsif ($type eq 'SHOW_SCHEMA') {
-
+	}
+	elsif ($type eq 'SHOW_SCHEMA')
+	{
 		# Get all tables information specified by the DBI method table_info
 		$self->logit("Showing all schema...\n", 1);
 		my $sth = $self->_schema_list() or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -15369,8 +15649,9 @@ sub _show_infos
 			}
 		}
 		$sth->finish();
-
-	} elsif ( ($type eq 'SHOW_TABLE') || ($type eq 'SHOW_COLUMN') ) {
+	}
+	elsif ( ($type eq 'SHOW_TABLE') || ($type eq 'SHOW_COLUMN') )
+	{
 
 		# Get all tables information specified by the DBI method table_info
 		$self->logit("Showing table information...\n", 1);
@@ -16516,6 +16797,7 @@ sub _get_database_size
 =head2 _get_objects
 
 This function retrieves all object the Oracle information
+except SYNONYM and temporary objects
 
 =cut
 
@@ -16537,10 +16819,22 @@ sub _get_objects
         my $sth = $self->{dbh}->prepare( $sql ) or return undef;
 	push(@infos, join('|', @{$sth->{NAME}}));
         $sth->execute or return undef;
-	while ( my @row = $sth->fetchrow()) {
-		push(@{$infos{$row[1]}}, { ( name => $row[0], invalid => ($row[2] eq 'VALID') ? 0 : 1) });
+	my %count = ();
+	while ( my @row = $sth->fetchrow())
+	{
+		my $valid = ($row[2] eq 'VALID') ? 0 : 1;
+		push(@{$infos{$row[1]}}, { ( name => $row[0], invalid => $valid ) });
+		$count{$row[1]}{$valid}++;
 	}
 	$sth->finish();
+
+	if ($self->{debug})
+	{
+		foreach my $k (sort keys %count)
+		{
+			print STDERR "\tFound $count{$k}{0} valid and ", ($count{$k}{1}||0), " invalid object $k\n";
+		}
+	}
 
 	return %infos;
 }
@@ -17138,6 +17432,9 @@ sub limit_to_objects
 {
 	my ($self, $obj_type, $column) = @_;
 
+	# With reports we don't have object name limitation
+	return if ($self->{type} eq 'SHOW_REPORT');
+
 	my $str = '';
 	$obj_type ||= $self->{type};
 	$column ||= 'TABLE_NAME';
@@ -17293,6 +17590,7 @@ BEGIN
 This function return an array of the SQL code of the check constraints of a table
 
 =cut
+
 sub _lookup_check_constraint
 {
 	my ($self, $table, $check_constraint, $field_name, $nonotnull) = @_;
@@ -17303,7 +17601,8 @@ sub _lookup_check_constraint
 	$table = $self->get_replaced_tbname($table);
 
 	# Set the check constraint definition 
-	foreach my $k (keys %{$check_constraint->{constraint}}) {
+	foreach my $k (keys %{$check_constraint->{constraint}})
+	{
 		my $chkconstraint = $check_constraint->{constraint}->{$k}{condition};
 		next if (!$chkconstraint);
 		my $skip_create = 0;
@@ -17312,9 +17611,12 @@ sub _lookup_check_constraint
 				$skip_create = 1, last if (lc($chkconstraint) eq lc("\"$col\" IS NOT NULL"));
 			}
 		}
-		if (!$skip_create) {
-			if (exists $self->{replaced_cols}{"\L$tbsaved\E"} && $self->{replaced_cols}{"\L$tbsaved\E"}) {
-				foreach my $c (keys %{$self->{replaced_cols}{"\L$tbsaved\E"}}) {
+		if (!$skip_create)
+		{
+			if (exists $self->{replaced_cols}{"\L$tbsaved\E"} && $self->{replaced_cols}{"\L$tbsaved\E"})
+			{
+				foreach my $c (keys %{$self->{replaced_cols}{"\L$tbsaved\E"}})
+				{
 					$chkconstraint =~ s/"$c"/"$self->{replaced_cols}{"\L$tbsaved\E"}{"\L$c\E"}"/gsi;
 					$chkconstraint =~ s/\b$c\b/$self->{replaced_cols}{"\L$tbsaved\E"}{"\L$c\E"}/gsi;
 				}
@@ -17338,6 +17640,41 @@ sub _lookup_check_constraint
 
 	return @chk_constr;
 }
+
+=head2 _count_check_constraint
+
+This function return the number of check constraints on a given table
+excluding CHECK IS NOT NULL constraint.
+
+=cut
+sub _count_check_constraint
+{
+	my ($self, $check_constraint) = @_;
+
+	my  $num_chk_constr = 0;
+
+	# Set the check constraint definition 
+	foreach my $k (keys %{$check_constraint->{constraint}})
+	{
+		my $chkconstraint = $check_constraint->{constraint}->{$k}{condition};
+		next if (!$chkconstraint);
+		my $skip_create = 0;
+		if (exists $check_constraint->{notnull})
+		{
+			foreach my $col (@{$check_constraint->{notnull}})
+			{
+				$skip_create = 1, last if (lc($chkconstraint) eq lc("\"$col\" IS NOT NULL"));
+			}
+		}
+		if (!$skip_create)
+		{
+			$num_chk_constr++;
+		}
+	}
+
+	return $num_chk_constr;
+}
+
 
 
 =head2 _lookup_package
@@ -17756,84 +18093,89 @@ Technical levels:
     5 = difficult: stored functions and/or triggers with code rewriting
 };
 	# Generate report text report
-	if (!$self->{dump_as_html} && !$self->{dump_as_csv} && !$self->{dump_as_sheet}) {
+	if (!$self->{dump_as_html} && !$self->{dump_as_csv} && !$self->{dump_as_sheet})
+	{
 		my $cost_header = '';
 		$cost_header = "\tEstimated cost" if ($self->{estimate_cost});
-		$self->logit("-------------------------------------------------------------------------------\n", 0);
-		$self->logit("Ora2Pg v$VERSION - Database Migration Report\n", 0);
-		$self->logit("-------------------------------------------------------------------------------\n", 0);
-		$self->logit("Version\t$report_info{'Version'}\n", 0);
-		$self->logit("Schema\t$report_info{'Schema'}\n", 0);
-		$self->logit("Size\t$report_info{'Size'}\n\n", 0);
-		$self->logit("-------------------------------------------------------------------------------\n", 0);
-		$self->logit("Object\tNumber\tInvalid$cost_header\tComments\tDetails\n", 0);
-		$self->logit("-------------------------------------------------------------------------------\n", 0);
+		$self->logrep("-------------------------------------------------------------------------------\n");
+		$self->logrep("Ora2Pg v$VERSION - Database Migration Report\n");
+		$self->logrep("-------------------------------------------------------------------------------\n");
+		$self->logrep("Version\t$report_info{'Version'}\n");
+		$self->logrep("Schema\t$report_info{'Schema'}\n");
+		$self->logrep("Size\t$report_info{'Size'}\n\n");
+		$self->logrep("-------------------------------------------------------------------------------\n");
+		$self->logrep("Object\tNumber\tInvalid$cost_header\tComments\tDetails\n");
+		$self->logrep("-------------------------------------------------------------------------------\n");
 		foreach my $typ (sort keys %{ $report_info{'Objects'} } ) {
 			$report_info{'Objects'}{$typ}{'detail'} =~ s/\n/\. /gs;
 			if ($self->{estimate_cost}) {
-				$self->logit("$typ\t$report_info{'Objects'}{$typ}{'number'}\t$report_info{'Objects'}{$typ}{'invalid'}\t$report_info{'Objects'}{$typ}{'cost_value'}\t$report_info{'Objects'}{$typ}{'comment'}\t$report_info{'Objects'}{$typ}{'detail'}\n", 0);
+				$self->logrep("$typ\t$report_info{'Objects'}{$typ}{'number'}\t$report_info{'Objects'}{$typ}{'invalid'}\t$report_info{'Objects'}{$typ}{'cost_value'}\t$report_info{'Objects'}{$typ}{'comment'}\t$report_info{'Objects'}{$typ}{'detail'}\n");
 			} else {
-				$self->logit("$typ\t$report_info{'Objects'}{$typ}{'number'}\t$report_info{'Objects'}{$typ}{'invalid'}\t$report_info{'Objects'}{$typ}{'comment'}\t$report_info{'Objects'}{$typ}{'detail'}\n", 0);
+				$self->logrep("$typ\t$report_info{'Objects'}{$typ}{'number'}\t$report_info{'Objects'}{$typ}{'invalid'}\t$report_info{'Objects'}{$typ}{'comment'}\t$report_info{'Objects'}{$typ}{'detail'}\n");
 			}
 		}
-		$self->logit("-------------------------------------------------------------------------------\n", 0);
+		$self->logrep("-------------------------------------------------------------------------------\n");
 		if ($self->{estimate_cost}) {
 			my $human_cost = $self->_get_human_cost($report_info{'total_cost_value'});
 			my $comment = "$report_info{'total_cost_value'} cost migration units means approximatively $human_cost. The migration unit was set to $self->{cost_unit_value} minute(s)\n";
-			$self->logit("Total\t$report_info{'total_object_number'}\t$report_info{'total_object_invalid'}\t$report_info{'total_cost_value'}\t$comment\n", 0);
+			$self->logrep("Total\t$report_info{'total_object_number'}\t$report_info{'total_object_invalid'}\t$report_info{'total_cost_value'}\t$comment\n");
 		} else {
-			$self->logit("Total\t$report_info{'total_object_number'}\t$report_info{'total_object_invalid'}\n", 0);
+			$self->logrep("Total\t$report_info{'total_object_number'}\t$report_info{'total_object_invalid'}\n");
 		}
-		$self->logit("-------------------------------------------------------------------------------\n", 0);
+		$self->logrep("-------------------------------------------------------------------------------\n");
 		if ($self->{estimate_cost}) {
-			$self->logit("Migration level : $difficulty\n", 0);
-			$self->logit("-------------------------------------------------------------------------------\n", 0);
-			$self->logit($lbl_mig_type, 0);
-			$self->logit("-------------------------------------------------------------------------------\n", 0);
+			$self->logrep("Migration level : $difficulty\n");
+			$self->logrep("-------------------------------------------------------------------------------\n");
+			$self->logrep($lbl_mig_type);
+			$self->logrep("-------------------------------------------------------------------------------\n");
 			if (scalar keys %{ $report_info{'full_function_details'} }) {
-				$self->logit("\nDetails of cost assessment per function\n", 0);
+				$self->logrep("\nDetails of cost assessment per function\n");
 				foreach my $fct (sort { $report_info{'full_function_details'}{$b}{count} <=> $report_info{'full_function_details'}{$a}{count} } keys %{ $report_info{'full_function_details'} } ) {
-					$self->logit("Function $fct total estimated cost: $report_info{'full_function_details'}{$fct}{count}\n", 0);
-					$self->logit($report_info{'full_function_details'}{$fct}{info}, 0);
+					$self->logrep("Function $fct total estimated cost: $report_info{'full_function_details'}{$fct}{count}\n");
+					$self->logrep($report_info{'full_function_details'}{$fct}{info});
 				}
-				$self->logit("-------------------------------------------------------------------------------\n", 0);
+				$self->logrep("-------------------------------------------------------------------------------\n");
 			}
 			if (scalar keys %{ $report_info{'full_trigger_details'} }) {
-				$self->logit("\nDetails of cost assessment per trigger\n", 0);
+				$self->logrep("\nDetails of cost assessment per trigger\n");
 				foreach my $fct (sort { $report_info{'full_trigger_details'}{$b}{count} <=> $report_info{'full_trigger_details'}{$a}{count} } keys %{ $report_info{'full_trigger_details'} } ) {
-					$self->logit("Trigger $fct total estimated cost: $report_info{'full_trigger_details'}{$fct}{count}\n", 0);
-					$self->logit($report_info{'full_trigger_details'}{$fct}{info}, 0);
+					$self->logrep("Trigger $fct total estimated cost: $report_info{'full_trigger_details'}{$fct}{count}\n");
+					$self->logrep($report_info{'full_trigger_details'}{$fct}{info});
 				}
-				$self->logit("-------------------------------------------------------------------------------\n", 0);
+				$self->logrep("-------------------------------------------------------------------------------\n");
 			}
 			if (scalar keys %{ $report_info{'full_view_details'} }) {
-				$self->logit("\nDetails of cost assessment per view\n", 0);
+				$self->logrep("\nDetails of cost assessment per view\n");
 				foreach my $fct (sort { $report_info{'full_view_details'}{$b}{count} <=> $report_info{'full_view_details'}{$a}{count} } keys %{ $report_info{'full_view_details'} } ) {
-					$self->logit("View $fct total estimated cost: $report_info{'full_view_details'}{$fct}{count}\n", 0);
-					$self->logit($report_info{'full_view_details'}{$fct}{info}, 0);
+					$self->logrep("View $fct total estimated cost: $report_info{'full_view_details'}{$fct}{count}\n");
+					$self->logrep($report_info{'full_view_details'}{$fct}{info});
 				}
-				$self->logit("-------------------------------------------------------------------------------\n", 0);
+				$self->logrep("-------------------------------------------------------------------------------\n");
 			}
 		}
-	} elsif ($self->{dump_as_csv}) {
-		$self->logit("-------------------------------------------------------------------------------\n", 0);
-		$self->logit("Ora2Pg v$VERSION - Database Migration Report\n", 0);
-		$self->logit("-------------------------------------------------------------------------------\n", 0);
-		$self->logit("Version\t$report_info{'Version'}\n", 0);
-		$self->logit("Schema\t$report_info{'Schema'}\n", 0);
-		$self->logit("Size\t$report_info{'Size'}\n\n", 0);
-		$self->logit("-------------------------------------------------------------------------------\n\n", 0);
-		$self->logit("Object;Number;Invalid;Estimated cost;Comments\n", 0);
+	}
+	elsif ($self->{dump_as_csv})
+	{
+		$self->logrep("-------------------------------------------------------------------------------\n");
+		$self->logrep("Ora2Pg v$VERSION - Database Migration Report\n");
+		$self->logrep("-------------------------------------------------------------------------------\n");
+		$self->logrep("Version\t$report_info{'Version'}\n");
+		$self->logrep("Schema\t$report_info{'Schema'}\n");
+		$self->logrep("Size\t$report_info{'Size'}\n\n");
+		$self->logrep("-------------------------------------------------------------------------------\n\n");
+		$self->logrep("Object;Number;Invalid;Estimated cost;Comments\n");
 		foreach my $typ (sort keys %{ $report_info{'Objects'} } ) {
 			$report_info{'Objects'}{$typ}{'detail'} =~ s/\n/\. /gs;
-			$self->logit("$typ;$report_info{'Objects'}{$typ}{'number'};$report_info{'Objects'}{$typ}{'invalid'};$report_info{'Objects'}{$typ}{'cost_value'};$report_info{'Objects'}{$typ}{'comment'}\n", 0);
+			$self->logrep("$typ;$report_info{'Objects'}{$typ}{'number'};$report_info{'Objects'}{$typ}{'invalid'};$report_info{'Objects'}{$typ}{'cost_value'};$report_info{'Objects'}{$typ}{'comment'}\n");
 		}
 		my $human_cost = $self->_get_human_cost($report_info{'total_cost_value'});
 		$difficulty = '' if (!$self->{estimate_cost});
-		$self->logit("\n", 0);
-		$self->logit("Total Number;Total Invalid;Total Estimated cost;Human days cost;Migration level\n", 0);
-		$self->logit("$report_info{'total_object_number'};$report_info{'total_object_invalid'};$report_info{'total_cost_value'};$human_cost;$difficulty\n", 0);
-	} elsif ($self->{dump_as_sheet}) {
+		$self->logrep("\n");
+		$self->logrep("Total Number;Total Invalid;Total Estimated cost;Human days cost;Migration level\n");
+		$self->logrep("$report_info{'total_object_number'};$report_info{'total_object_invalid'};$report_info{'total_cost_value'};$human_cost;$difficulty\n");
+	}
+	elsif ($self->{dump_as_sheet})
+	{
 		$difficulty = '' if (!$self->{estimate_cost});
 		my @header = ('Instance', 'Version', 'Schema', 'Size', 'Cost assessment', 'Migration type');
 		my $human_cost = $self->_get_human_cost($report_info{'total_cost_value'});
@@ -17848,10 +18190,12 @@ Technical levels:
 		push(@header, "Total assessment");
 		push(@infos, "$report_info{total_object_number}/$report_info{total_object_invalid}/$report_info{total_cost_value}");
 		if ($self->{print_header}) {
-			$self->logit('"' . join('";"', @header) . '"' . "\n");
+			$self->logrep('"' . join('";"', @header) . '"' . "\n");
 		}
-		$self->logit('"' . join('";"', @infos) . '"' . "\n");
-	} else {
+		$self->logrep('"' . join('";"', @infos) . '"' . "\n");
+	}
+	else
+	{
 		my $cost_header = '';
 		$cost_header = "<th>Estimated cost</th>" if ($self->{estimate_cost});
 		my $date = localtime(time);
@@ -17965,26 +18309,26 @@ h2 {
 <tr><th>Object</th><th>Number</th><th>Invalid</th>$cost_header<th>Comments</th><th>Details</th></tr>
 };
 
-		$self->logit($html_header, 0);
+		$self->logrep($html_header);
 		foreach my $typ (sort keys %{ $report_info{'Objects'} } ) {
 			$report_info{'Objects'}{$typ}{'detail'} =~ s/\n/<br>/gs;
 			$report_info{'Objects'}{$typ}{'detail'} = "<details><summary>See details</summary>$report_info{'Objects'}{$typ}{'detail'}</details>" if ($report_info{'Objects'}{$typ}{'detail'} ne '');
 			if ($self->{estimate_cost}) {
-				$self->logit("<tr><td class=\"object_name\">$typ</td><td style=\"text-align: center;\">$report_info{'Objects'}{$typ}{'number'}</td><td style=\"text-align: center;\">$report_info{'Objects'}{$typ}{'invalid'}</td><td style=\"text-align: center;\">$report_info{'Objects'}{$typ}{'cost_value'}</td><td>$report_info{'Objects'}{$typ}{'comment'}</td><td class=\"detail\">$report_info{'Objects'}{$typ}{'detail'}</td></tr>\n", 0);
+				$self->logrep("<tr><td class=\"object_name\">$typ</td><td style=\"text-align: center;\">$report_info{'Objects'}{$typ}{'number'}</td><td style=\"text-align: center;\">$report_info{'Objects'}{$typ}{'invalid'}</td><td style=\"text-align: center;\">$report_info{'Objects'}{$typ}{'cost_value'}</td><td>$report_info{'Objects'}{$typ}{'comment'}</td><td class=\"detail\">$report_info{'Objects'}{$typ}{'detail'}</td></tr>\n");
 			} else {
-				$self->logit("<tr><td class=\"object_name\">$typ</td><td style=\"text-align: center;\">$report_info{'Objects'}{$typ}{'number'}</td><td style=\"text-align: center;\">$report_info{'Objects'}{$typ}{'invalid'}</td><td>$report_info{'Objects'}{$typ}{'comment'}</td><td class=\"detail\">$report_info{'Objects'}{$typ}{'detail'}</td></tr>\n", 0);
+				$self->logrep("<tr><td class=\"object_name\">$typ</td><td style=\"text-align: center;\">$report_info{'Objects'}{$typ}{'number'}</td><td style=\"text-align: center;\">$report_info{'Objects'}{$typ}{'invalid'}</td><td>$report_info{'Objects'}{$typ}{'comment'}</td><td class=\"detail\">$report_info{'Objects'}{$typ}{'detail'}</td></tr>\n");
 			}
 		}
 		if ($self->{estimate_cost}) {
 			my $human_cost = $self->_get_human_cost($report_info{'total_cost_value'});
 			my $comment = "$report_info{'total_cost_value'} cost migration units means approximatively $human_cost. The migration unit was set to $self->{cost_unit_value} minute(s)\n";
-			$self->logit("<tr><th style=\"text-align: center; border-bottom: 0px; vertical-align: bottom;\">Total</th><td style=\"text-align: center; border-bottom: 0px; vertical-align: bottom;\">$report_info{'total_object_number'}</td><td style=\"text-align: center; border-bottom: 0px; vertical-align: bottom;\">$report_info{'total_object_invalid'}</td><td style=\"text-align: center; border-bottom: 0px; vertical-align: bottom;\">$report_info{'total_cost_value'}</td><td colspan=\"2\" style=\"border-bottom: 0px; vertical-align: bottom;\">$comment</td></tr>\n", 0);
+			$self->logrep("<tr><th style=\"text-align: center; border-bottom: 0px; vertical-align: bottom;\">Total</th><td style=\"text-align: center; border-bottom: 0px; vertical-align: bottom;\">$report_info{'total_object_number'}</td><td style=\"text-align: center; border-bottom: 0px; vertical-align: bottom;\">$report_info{'total_object_invalid'}</td><td style=\"text-align: center; border-bottom: 0px; vertical-align: bottom;\">$report_info{'total_cost_value'}</td><td colspan=\"2\" style=\"border-bottom: 0px; vertical-align: bottom;\">$comment</td></tr>\n");
 		} else {
-			$self->logit("<tr><th style=\"text-align: center; border-bottom: 0px; vertical-align: bottom;\">Total</th><td style=\"text-align: center; border-bottom: 0px; vertical-align: bottom; border-bottom: 0px; vertical-align: bottom;\">$report_info{'total_object_number'}</td><td style=\"text-align: center; border-bottom: 0px; vertical-align: bottom;\">$report_info{'total_object_invalid'}</td><td colspan=\"3\" style=\"border-bottom: 0px; vertical-align: bottom;\"></td></tr>\n", 0);
+			$self->logrep("<tr><th style=\"text-align: center; border-bottom: 0px; vertical-align: bottom;\">Total</th><td style=\"text-align: center; border-bottom: 0px; vertical-align: bottom; border-bottom: 0px; vertical-align: bottom;\">$report_info{'total_object_number'}</td><td style=\"text-align: center; border-bottom: 0px; vertical-align: bottom;\">$report_info{'total_object_invalid'}</td><td colspan=\"3\" style=\"border-bottom: 0px; vertical-align: bottom;\"></td></tr>\n");
 		}
-		$self->logit("</table>\n</div>\n", 0);
+		$self->logrep("</table>\n</div>\n");
 		if ($self->{estimate_cost}) {
-			$self->logit("<h2>Migration level: $difficulty</h2>\n", 0);
+			$self->logrep("<h2>Migration level: $difficulty</h2>\n");
 			$lbl_mig_type = qq{
 <ul>
 <li>Migration levels:</li>
@@ -18003,48 +18347,48 @@ h2 {
   </ul>
 </ul>
 };
-			$self->logit($lbl_mig_type, 0);
+			$self->logrep($lbl_mig_type);
 			if (scalar keys %{ $report_info{'full_function_details'} }) {
-				$self->logit("<h2>Details of cost assessment per function</h2>\n", 0);
-				$self->logit("<details><summary>Show</summary><ul>\n", 0);
+				$self->logrep("<h2>Details of cost assessment per function</h2>\n");
+				$self->logrep("<details><summary>Show</summary><ul>\n");
 				foreach my $fct (sort { $report_info{'full_function_details'}{$b}{count} <=> $report_info{'full_function_details'}{$a}{count} } keys %{ $report_info{'full_function_details'} } ) {
 					
-					$self->logit("<li>Function $fct total estimated cost: $report_info{'full_function_details'}{$fct}{count}</li>\n", 0);
-					$self->logit("<ul>\n", 0);
+					$self->logrep("<li>Function $fct total estimated cost: $report_info{'full_function_details'}{$fct}{count}</li>\n");
+					$self->logrep("<ul>\n");
 					$report_info{'full_function_details'}{$fct}{info} =~ s/\t/<li>/gs;
 					$report_info{'full_function_details'}{$fct}{info} =~ s/\n/<\/li>\n/gs;
-					$self->logit($report_info{'full_function_details'}{$fct}{info}, 0);
-					$self->logit("</ul>\n", 0);
+					$self->logrep($report_info{'full_function_details'}{$fct}{info});
+					$self->logrep("</ul>\n");
 				}
-				$self->logit("</ul></details>\n", 0);
+				$self->logrep("</ul></details>\n");
 			}
 			if (scalar keys %{ $report_info{'full_trigger_details'} }) {
-				$self->logit("<h2>Details of cost assessment per trigger</h2>\n", 0);
-				$self->logit("<details><summary>Show</summary><ul>\n", 0);
+				$self->logrep("<h2>Details of cost assessment per trigger</h2>\n");
+				$self->logrep("<details><summary>Show</summary><ul>\n");
 				foreach my $fct (sort { $report_info{'full_trigger_details'}{$b}{count} <=> $report_info{'full_trigger_details'}{$a}{count} } keys %{ $report_info{'full_trigger_details'} } ) {
 					
-					$self->logit("<li>Trigger $fct total estimated cost: $report_info{'full_trigger_details'}{$fct}{count}</li>\n", 0);
-					$self->logit("<ul>\n", 0);
+					$self->logrep("<li>Trigger $fct total estimated cost: $report_info{'full_trigger_details'}{$fct}{count}</li>\n");
+					$self->logrep("<ul>\n");
 					$report_info{'full_trigger_details'}{$fct}{info} =~ s/\t/<li>/gs;
 					$report_info{'full_trigger_details'}{$fct}{info} =~ s/\n/<\/li>\n/gs;
-					$self->logit($report_info{'full_trigger_details'}{$fct}{info}, 0);
-					$self->logit("</ul>\n", 0);
+					$self->logrep($report_info{'full_trigger_details'}{$fct}{info});
+					$self->logrep("</ul>\n");
 				}
-				$self->logit("</ul></details>\n", 0);
+				$self->logrep("</ul></details>\n");
 			}
 			if (scalar keys %{ $report_info{'full_view_details'} }) {
-				$self->logit("<h2>Details of cost assessment per view</h2>\n", 0);
-				$self->logit("<details><summary>Show</summary><ul>\n", 0);
+				$self->logrep("<h2>Details of cost assessment per view</h2>\n");
+				$self->logrep("<details><summary>Show</summary><ul>\n");
 				foreach my $fct (sort { $report_info{'full_view_details'}{$b}{count} <=> $report_info{'full_view_details'}{$a}{count} } keys %{ $report_info{'full_view_details'} } ) {
 					
-					$self->logit("<li>View $fct total estimated cost: $report_info{'full_view_details'}{$fct}{count}</li>\n", 0);
-					$self->logit("<ul>\n", 0);
+					$self->logrep("<li>View $fct total estimated cost: $report_info{'full_view_details'}{$fct}{count}</li>\n");
+					$self->logrep("<ul>\n");
 					$report_info{'full_view_details'}{$fct}{info} =~ s/\t/<li>/gs;
 					$report_info{'full_view_details'}{$fct}{info} =~ s/\n/<\/li>\n/gs;
-					$self->logit($report_info{'full_view_details'}{$fct}{info}, 0);
-					$self->logit("</ul>\n", 0);
+					$self->logrep($report_info{'full_view_details'}{$fct}{info});
+					$self->logrep("</ul>\n");
 				}
-				$self->logit("</ul></details>\n", 0);
+				$self->logrep("</ul></details>\n");
 			}
 		}
 		my $html_footer = qq{
@@ -18054,9 +18398,8 @@ Generated by <a href="http://ora2pg.darold.net/">Ora2Pg v$VERSION</a>
 </body>
 </html>
 };
-		$self->logit($html_footer, 0);
+		$self->logrep($html_footer);
 	}
-
 }
 
 sub get_kettle_xml
