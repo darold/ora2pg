@@ -14589,7 +14589,8 @@ sub _extract_data
 
 	$sth->finish();
 
-	if ( ($self->{jobs} <= 1) && ($self->{oracle_copies} <= 1) && ($self->{parallel_tables} <= 1)) {
+	if ( ($self->{jobs} <= 1) && ($self->{oracle_copies} <= 1) && ($self->{parallel_tables} <= 1))
+	{
 		my $end_time = time();
 		my $dt = $end_time - $self->{global_start_time};
 		my $rps = int($self->{current_total_row} / ($dt||1));
@@ -14598,7 +14599,8 @@ sub _extract_data
 	}
 
 	# Wait for all child end
-	while ($self->{child_count} > 0) {
+	while ($self->{child_count} > 0)
+	{
 		my $kid = waitpid(-1, WNOHANG);
 		if ($kid > 0) {
 			$self->{child_count}--;
@@ -14607,7 +14609,8 @@ sub _extract_data
 		usleep(50000);
 	}
 
-	if (defined $pipe) {
+	if (defined $pipe)
+	{
 		my $t_name = $part_name || $table;
 		my $t_time = time();
 		if ($proc ne '') {
@@ -17183,6 +17186,7 @@ sub multiprocess_progressbar
 
 	$| = 1;
 
+	my $DEBUG_PBAR = 0;
 	my $width = 25;
 	my $char  = '=';
 	my $kind  = 'rows';
@@ -17198,8 +17202,10 @@ sub multiprocess_progressbar
 	my $refresh_rows = 0;
 
 	# Terminate the process when we doesn't read the complete file but must exit
-	local $SIG{USR1} = sub {
-		if ($global_line_counter) {
+	local $SIG{USR1} = sub
+	{
+		if ($global_line_counter)
+		{
 			my $end_time = time();
 			my $dt = $end_time - $global_start_time;
 			$dt ||= 1;
@@ -17210,35 +17216,41 @@ sub multiprocess_progressbar
 	};
 
 	$pipe->reader();
-	while ( my $r = <$pipe> ) {
+	while ( my $r = <$pipe> )
+	{
 		chomp($r);
 		# When quit is received, then exit immediatly
 		last if ($r eq 'quit');
 
 		# Store data export start time
-		if ($r =~ /^GLOBAL EXPORT START TIME: (\d+)/) {
-
+		if ($r =~ /^GLOBAL EXPORT START TIME: (\d+)/)
+		{
+print STDERR "GLOBAL EXPORT START TIME: $1\n" if ($DEBUG_PBAR);
 			$global_start_time = $1;
-
+		}
 		# Store total number of tuples exported
-		} elsif ($r =~ /^GLOBAL EXPORT ROW NUMBER: (\d+)/) {
-
+		elsif ($r =~ /^GLOBAL EXPORT ROW NUMBER: (\d+)/)
+		{
+print STDERR "GLOBAL EXPORT ROW NUMBER: $1\n" if ($DEBUG_PBAR);
 			$total_rows = $1;
-
+		}
 		# A table export is starting (can be called multiple time with -J option)
-		} elsif ($r =~ /TABLE EXPORT IN PROGESS: (.*?), start: (\d+), rows (\d+)/) {
-
+		elsif ($r =~ /TABLE EXPORT IN PROGESS: (.*?), start: (\d+), rows (\d+)/)
+		{
+print STDERR "TABLE EXPORT IN PROGESS: $1, start: $2, rows $3\n" if ($DEBUG_PBAR);
 			$table_progress{$1}{start} = $2 if (!exists $table_progress{$1}{start});
 			$table_progress{$1}{rows} = $3  if (!exists $table_progress{$1}{rows});
-
+		}
 		# A table export is ending
-		} elsif ($r =~ /TABLE EXPORT ENDED: (.*?), end: (\d+), rows (\d+)/) {
-
+		elsif ($r =~ /TABLE EXPORT ENDED: (.*?), end: (\d+), rows (\d+)/)
+		{
+print STDERR "TABLE EXPORT ENDED: $1, end: $2, rows $3\n" if ($DEBUG_PBAR);
 			# Store timestamp at end of table export
 			$table_progress{$1}{end} = $2;
 
 			# Stores total number of rows exported when we do not used chunk of data
-			if (!exists $table_progress{$1}{progress}) {
+			if (!exists $table_progress{$1}{progress})
+			{
 				$table_progress{$1}{progress} = $3;
 				$global_line_counter += $3;
 			}
@@ -17253,23 +17265,26 @@ sub multiprocess_progressbar
 			$rps = int($global_line_counter/ ($dt || 1));
 			print STDERR $self->progress_bar($global_line_counter, $total_rows, 25, '=', 'total rows', "- ($dt sec., avg: $rps recs/sec), $1 in progress."), "\r";
 			$last_refresh = $cur_time;
-
+		}
 		# A chunk of DATA_LIMIT row is exported
-		} elsif ($r =~ /CHUNK \d+ DUMPED: (.*?), time: (\d+), rows (\d+)/) {
-
+		elsif ($r =~ /CHUNK \d+ DUMPED: (.*?), time: (\d+), rows (\d+)/)
+		{
+print STDERR "CHUNK X DUMPED: $1, time: $2, rows $3\n" if ($DEBUG_PBAR);
 			$table_progress{$1}{progress} += $3;
-			$global_line_counter += $3 if ($self->{disable_partition});
+			$global_line_counter += $3;
 			my $cur_time = time();
-			if ($cur_time >= ($last_refresh + $refresh_time)) {
+			if ($cur_time >= ($last_refresh + $refresh_time))
+			{
 				my $dt = $cur_time - $global_start_time;
 				my $rps = int($global_line_counter/ ($dt || 1));
 				print STDERR $self->progress_bar($global_line_counter, $total_rows, 25, '=', 'total rows', "- ($dt sec., avg: $rps recs/sec), $1 in progress."), "\r";
 				$last_refresh = $cur_time;
 			}
-
+		}
 		# A table export is ending
-		} elsif ($r =~ /TABLE EXPORT ENDED: (.*?), end: (\d+), report all parts/) {
-
+		elsif ($r =~ /TABLE EXPORT ENDED: (.*?), end: (\d+), report all parts/)
+		{
+print STDERR "TABLE EXPORT ENDED: $1, end: $2, report all parts\n" if ($DEBUG_PBAR);
 			# Store timestamp at end of table export
 			$table_progress{$1}{end} = $2;
 
@@ -17290,18 +17305,21 @@ sub multiprocess_progressbar
 			my $dt = $table_progress{$1}{end} - $table_progress{$1}{start};
 			my $rps = int($table_progress{$1}{rows}/ ($dt||1));
 			print STDERR $self->progress_bar($table_progress{$1}{rows}, $table_progress{$1}{rows}, 25, '=', 'rows', "Table $1 ($dt sec., $rps recs/sec)"), "\n";
-
-		} else {
+		}
+		else
+		{
 			print "PROGRESS BAR ERROR (unrecognized line sent to pipe): $r\n";
 		}
 
 	}
 
-	if ($global_line_counter) {
+	if ($global_line_counter)
+	{
 		my $end_time = time();
 		my $dt = $end_time - $global_start_time;
 		$dt ||= 1;
 		my $rps = int($global_line_counter / $dt);
+print STDERR "THIS IS THE END total: $global_line_counter, rows: $total_rows\n";
 		print STDERR $self->progress_bar($global_line_counter, $total_rows, 25, '=', 'rows', "on total estimated data ($dt sec., avg: $rps tuples/sec)"), "\n";
 	}
 
