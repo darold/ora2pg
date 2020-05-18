@@ -246,6 +246,11 @@ DISABLE_COMMENT         0
 # If export type is COPY or INSERT, the corresponding data will be exported.
 #VIEW_AS_TABLE	VIEW_NAME
 
+# By default Ora2Pg try to order views to avoid error at import time with
+# nested views. With a huge number of view this can take a very long time,
+# you can bypass this ordering by enabling this directive.
+NO_VIEW_ORDERING	0
+
 # When exporting GRANTs you can specify a comma separated  list of objects
 # for which privilege will be exported. Default is export for all objects.
 # Here are the possibles values TABLE, VIEW, MATERIALIZED VIEW, SEQUENCE,

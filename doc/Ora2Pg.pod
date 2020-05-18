@@ -1094,6 +1094,12 @@ exported.
 
 See chapter "Exporting views as PostgreSQL table" for more details.
 
+=item NO_VIEW_ORDERING
+
+By default Ora2Pg try to order views to avoid error at import time with
+nested views. With a huge number of views this can take a very long time,
+you can bypass this ordering by enabling this directive.
+
 =item GRANT_OBJECT
 
 When exporting GRANTs you can specify a comma separated  list of objects
