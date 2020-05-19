@@ -604,7 +604,8 @@ sub append_export_file
 
 	my $filehdl = undef;
 
-	if ($outfile) {
+	if ($outfile)
+	{
 		if ($self->{output_dir} && !$noprefix) {
 			$outfile = $self->{output_dir} . '/' . $outfile;
 		}
@@ -929,6 +930,9 @@ sub _init
 
 	# Storage of string constant placeholder regexp
 	$self->{string_constant_regexp} = ();
+
+	# Global file handle
+	$self->{cfhout} = undef;
 
 	# Initialyze following configuration file
 	foreach my $k (sort keys %AConfig) {
@@ -1786,6 +1790,8 @@ sub _init_environment
 sub set_binmode
 {
 	my $self = shift;
+
+        my ($package, $filename, $line) = caller;
 
         if ( !$self->{input_file} && (!$self->{'binmode'} || $self->{nls_lang} =~ /UTF8/i) ) {
                 use open ':utf8';
@@ -3444,7 +3450,8 @@ sub _export_table_data
 		$local_dbh = $self->{dbhdest};
  	}
 
-	if ($self->{global_delete} || exists $self->{delete}{"\L$table\E"}) {
+	if ($self->{global_delete} || exists $self->{delete}{"\L$table\E"})
+	{
 		my $delete_clause = '';
 		my $delete_clause_start = "DELETE";
 		if ($self->{datadiff}) {
@@ -3492,8 +3499,10 @@ sub _export_table_data
 	}
 
 	# With partitioned table, load data direct from table partition
-	if (exists $self->{partitions}{$table}) {
-		foreach my $pos (sort {$self->{partitions}{$table}{$a} <=> $self->{partitions}{$table}{$b}} keys %{$self->{partitions}{$table}}) {
+	if (exists $self->{partitions}{$table})
+	{
+		foreach my $pos (sort {$self->{partitions}{$table}{$a} <=> $self->{partitions}{$table}{$b}} keys %{$self->{partitions}{$table}})
+		{
 			my $part_name = $self->{partitions}{$table}{$pos}{name};
 			my $tbpart_name = $part_name;
 			$tbpart_name = $table . '_' . $part_name if ($self->{prefix_partition});
@@ -7499,8 +7508,8 @@ sub _get_sql_statements
 			$pipe->print("GLOBAL EXPORT ROW NUMBER: $self->{global_rows}\n");
 		}
 		$self->{global_start_time} = time();
-		foreach my $table (@ordered_tables) {
-
+		foreach my $table (@ordered_tables)
+		{
 			if ($self->{file_per_table} && !$self->{pg_dsn}) {
 				# Do not dump data again if the file already exists
 				next if ($self->file_exists("$dirprefix${table}_$self->{output}"));
@@ -7514,7 +7523,8 @@ sub _get_sql_statements
 			%{$self->{colinfo}} = $self->_column_attributes($table, $self->{schema}, 'TABLE');
 
 			my $total_record = 0;
-			if ($self->{parallel_tables} > 1) {
+			if ($self->{parallel_tables} > 1)
+			{
 				spawn sub {
 					$self->logit("Creating new connection to Oracle database to export table $table...\n", 1);
 					$self->_export_table_data($table, $dirprefix, $sql_header);
@@ -7534,10 +7544,6 @@ sub _get_sql_statements
 				$total_record = $self->_export_table_data($table, $dirprefix, $sql_header);
 			}
 
-			# Close data file
-			$self->close_export_file($self->{cfhout}) if (defined $self->{cfhout});
-			$self->{cfhout} = undef;
-
 			# Display total export position
 			if (!$self->{quiet} && !$self->{debug}) {
 				if ( ($self->{jobs} <= 1) && ($self->{oracle_copies} <= 1) && ($self->{parallel_tables} <= 1) ) {
@@ -7556,7 +7562,8 @@ sub _get_sql_statements
 		}
 
 		# Wait for all child die
-		if ( ($self->{oracle_copies} > 1) || ($self->{parallel_tables} > 1) ){
+		if ( ($self->{oracle_copies} > 1) || ($self->{parallel_tables} > 1) )
+		{
 			# Wait for all child dies less the logger
 			my $numchild = 1; # will not wait for progressbar process
 			$numchild = 0 if ($self->{debug}); # in debug there is no progressbar
@@ -12795,10 +12802,10 @@ sub data_dump
 	{
 		if ($pname)
 		{
-			my $fh = $self->append_export_file($filename);
-			$self->set_binmode($fh) if (!$self->{compress});
-			$fh->print($data);
-			$self->close_export_file($fh);
+ 			my $fh = $self->append_export_file($filename);
+ 			$self->set_binmode($fh) if (!$self->{compress});
+ 			$fh->print($data);
+ 			$self->close_export_file($fh);
 			$self->logit("Written " . length($data) . " bytes to $dirprefix$filename\n", 1);
 		}
 		else
@@ -12810,11 +12817,13 @@ sub data_dump
 			}
 			else
 			{
-				$self->set_binmode($self->{cfhout}) if (!$self->{compress});
+				$self->set_binmode($self->{cfhout}) if (!$self->{compress} && not defined $self->{cfhout});
 				$self->{cfhout}->print($data);
 			}
 		}
-	} else {
+	}
+	else
+	{
 		$self->dump($data);
 	}
 }
@@ -14534,32 +14543,34 @@ sub _extract_data
 
 		my @rows = ();
 		my $num_row = 0;
-		while (my @row = $sth->fetchrow())  {
+		while (my @row = $sth->fetchrow())
+		{
 			push(@rows, \@row);
 			$num_row++;
-			if ($num_row == $self->{data_limit}) {
+			if ($num_row == $self->{data_limit})
+			{
 				$num_row  = 0;
 				$total_record += @rows;
 				$self->{current_total_row} += @rows;
 				# Do we just want to test Oracle output speed
 				next if ($self->{oracle_speed} && !$self->{ora2pg_speed});
-				if ( ($self->{parallel_tables} > 1) || (($self->{oracle_copies} > 1) && $self->{defined_pk}{"\L$table\E"}) ) {
-					my $max_jobs = $self->{jobs};
-					while ($self->{child_count} >= $max_jobs) {
-						my $kid = waitpid(-1, WNOHANG);
-						if ($kid > 0) {
-							$self->{child_count}--;
-							delete $RUNNING_PIDS{$kid};
-						}
-						usleep(50000);
-					}
-					spawn sub {
-						$self->_dump_to_pg($proc, \@rows, $table, $cmd_head, $cmd_foot, $s_out, $tt, $sprep, $stt, $start_time, $part_name, $total_record, %user_type);
-					};
-					$self->{child_count}++;
-				} else {
+#				if ( ($self->{parallel_tables} > 1) || (($self->{oracle_copies} > 1) && $self->{defined_pk}{"\L$table\E"}) ) {
+#					my $max_jobs = $self->{jobs};
+#					while ($self->{child_count} >= $max_jobs) {
+#						my $kid = waitpid(-1, WNOHANG);
+#						if ($kid > 0) {
+#							$self->{child_count}--;
+#							delete $RUNNING_PIDS{$kid};
+#						}
+#						usleep(50000);
+#					}
+#					spawn sub {
+#						$self->_dump_to_pg($proc, \@rows, $table, $cmd_head, $cmd_foot, $s_out, $tt, $sprep, $stt, $start_time, $part_name, $total_record, %user_type);
+#					};
+#					$self->{child_count}++;
+#				} else {
 					$self->_dump_to_pg($proc, \@rows, $table, $cmd_head, $cmd_foot, $s_out, $tt, $sprep, $stt, $start_time, $part_name, $total_record, %user_type);
-				}
+#				}
 				@rows = ();
 			}
 		}
@@ -14567,27 +14578,31 @@ sub _extract_data
 		if (@rows && (!$self->{oracle_speed} || $self->{ora2pg_speed})) {
 			$total_record += @rows;
 			$self->{current_total_row} += @rows;
-			if ( ($self->{parallel_tables} > 1) || (($self->{oracle_copies} > 1) && $self->{defined_pk}{"\L$table\E"}) ) {
-				my $max_jobs = $self->{jobs};
-				while ($self->{child_count} >= $max_jobs) {
-					my $kid = waitpid(-1, WNOHANG);
-					if ($kid > 0) {
-						$self->{child_count}--;
-						delete $RUNNING_PIDS{$kid};
-					}
-					usleep(50000);
-				}
-				spawn sub {
-					$self->_dump_to_pg($proc, \@rows, $table, $cmd_head, $cmd_foot, $s_out, $tt, $sprep, $stt, $start_time, $part_name, $total_record, %user_type);
-				};
-				$self->{child_count}++;
-			} else {
+#			if ( ($self->{parallel_tables} > 1) || (($self->{oracle_copies} > 1) && $self->{defined_pk}{"\L$table\E"}) ) {
+#				my $max_jobs = $self->{jobs};
+#				while ($self->{child_count} >= $max_jobs) {
+#					my $kid = waitpid(-1, WNOHANG);
+#					if ($kid > 0) {
+#						$self->{child_count}--;
+#						delete $RUNNING_PIDS{$kid};
+#					}
+#					usleep(50000);
+#				}
+#				spawn sub {
+#					$self->_dump_to_pg($proc, \@rows, $table, $cmd_head, $cmd_foot, $s_out, $tt, $sprep, $stt, $start_time, $part_name, $total_record, %user_type);
+#				};
+#				$self->{child_count}++;
+#			} else {
 				$self->_dump_to_pg($proc, \@rows, $table, $cmd_head, $cmd_foot, $s_out, $tt, $sprep, $stt, $start_time, $part_name, $total_record, %user_type);
-			}
+#			}
 		}
 	}
 
 	$sth->finish();
+
+	# Close global data file in use when parallel table is used without output mutliprocess
+	$self->close_export_file($self->{cfhout}) if (defined $self->{cfhout});
+	$self->{cfhout} = undef;
 
 	if ( ($self->{jobs} <= 1) && ($self->{oracle_copies} <= 1) && ($self->{parallel_tables} <= 1))
 	{
