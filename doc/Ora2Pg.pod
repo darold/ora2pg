@@ -469,7 +469,7 @@ do not have enough grants to extract things from the DBA_... tables. It will
 use tables ALL_... instead.
 
 Warning: if you use export type GRANT, you must set this configuration option
-to 0 or it will not works.
+to 0 or it will not work.
 
 =item TRANSACTION
 
@@ -491,7 +491,7 @@ SERIALIZABLE.
 =item INPUT_FILE
 
 This directive did not control the Oracle database connection or unless it
-purely disable the use of any Oracle database by accepting a file as argument.
+purely disables the use of any Oracle database by accepting a file as argument.
 Set this directive to a file containing PL/SQL Oracle Code like function,
 procedure or full package body to prevent Ora2Pg from connecting to an
 Oracle database and just apply his conversion tool to the content of the
@@ -502,7 +502,7 @@ VIEW, FUNCTION or PACKAGE, etc.
 
 This directive can be used to send an initial command to Oracle, just after
 the connection. For example to unlock a policy before reading objects or
-to set some session parameters. This directive can be used multiple time.
+to set some session parameters. This directive can be used multiple times.
 
 =back
 
@@ -553,7 +553,7 @@ USER_GRANTS above and at next section, especially the SCHEMA directive.
 
 =item LOGFILE
 
-By default all messageis are sent to the standard output. If you give a file
+By default all messages are sent to the standard output. If you give a file
 path to that directive, all output will be appended to this file.
 
 =back
@@ -576,7 +576,7 @@ will extract objects associated to the APPS schema.
 
 When no schema name is provided and EXPORT_SCHEMA is enabled, Ora2Pg
 will export all objects from all schema of the Oracle instance with
-their names prefixed with the scham name.
+their names prefixed with the schema name.
 
 =item EXPORT_SCHEMA
 
@@ -692,7 +692,7 @@ tables or views as tables. Default is same as PostgreSQL, disabled.
 List of schema to get functions/procedures meta information that are used
 in the current schema export. When replacing call to function with OUT
 parameters, if a function is declared in an other package then the function
-call rewriting can not be done because Ora2Pg only know about functions
+call rewriting can not be done because Ora2Pg only knows about functions
 declared in the current schema. By setting a comma separated list of schema
 as value of this directive, Ora2Pg will look forward in these packages for
 all functions/procedures/packages declaration before proceeding to current
@@ -796,7 +796,7 @@ Here is an example of the SHOW_COLUMN output:
 		COUNTRY_ID : CHAR(2) => char(2)
 
 Those extraction keywords are use to only display the requested information and
-exit. This allow you to quickly know on what you are going to work.
+exit. This allows you to quickly know on what you are going to work.
 
 The SHOW_COLUMN allow an other ora2pg command line option: '--allow relname'
 or '-a relname' to limit the displayed information to the given table.
@@ -872,7 +872,7 @@ gain can be very important when you have tons of function to convert.
 There's no limitation in parallel processing than the number of cores
 and the PostgreSQL I/O performance capabilities.
 
-Doesn't works under Windows Operating System, it is simply disabled.
+Doesn't work under Windows Operating System, it is simply disabled.
 
 =item ORACLE_COPIES
 
@@ -888,7 +888,7 @@ of cores given as value to ORACLE_COPIES as follow:
 where COLUMN is a technical key like a primary or unique key where split
 will be based and the current core used by the query (CUR_PROC).
 
-Doesn't works under Windows Operating System, it is simply disabled.
+Doesn't work under Windows Operating System, it is simply disabled.
 
 =item DEFINED_PK
 
@@ -991,7 +991,7 @@ database should be exported.
 
 =item ALLOW
 
-This directive allows you to set a list of objects on witch the export must be
+This directive allows you to set a list of objects on which the export must be
 limited, excluding all other objects in the same type of export. The value is
 a space or comma-separated list of objects name to export. You can include
 valid regex into the list. For example:
@@ -1077,7 +1077,7 @@ For example, you can ban from export some unwanted function with this directive:
 	EXCLUDE		write_to_.* send_mail_.*
 
 this example will exclude all functions, procedures or functions in a package
-with the name beginning with those regex. Note that regex will not works with
+with the name beginning with those regex. Note that regex will not work with
 8i database, you must use the % placeholder instead, Ora2Pg will use the NOT
 LIKE operator.
 
@@ -1163,7 +1163,7 @@ import on error.
 =item REPLACE_QUERY
 
 Sometime you may want to extract data from an Oracle table but you need a
-a custom query for that. Not just a "SELECT * FROM table" like Ora2Pg do
+custom query for that. Not just a "SELECT * FROM table" like Ora2Pg do
 but a more complex query. This directive allows you to overwrite the query
 used by Ora2Pg to extract data. The format is TABLENAME[SQL_QUERY].
 If you have multiple table to extract by replacing the Ora2Pg query, you can
@@ -1173,11 +1173,11 @@ define multiple REPLACE_QUERY lines.
 
 =back
 
-=head2 Controm of Full Text Search export
+=head2 Control of Full Text Search export
 
 Several directives can be used to control the way Ora2Pg will export the
 Oracle's Text search indexes. By default CONTEXT indexes will be exported
-to PostgreSQL FTS indexes but CTXCAT indexes wikk be exported as indexes
+to PostgreSQL FTS indexes but CTXCAT indexes will be exported as indexes
 using the pg_trgm extension.
 
 =over 4
@@ -1445,8 +1445,8 @@ and import them into the PostgreSQL dedicated partition table.
 
 By default Ora2Pg export Oracle tables with the NOLOGGING attribute as
 UNLOGGED tables. You may want to fully disable this feature because
-you will lost all data from unlogged table in case of PostgreSQL crash.
-Set it to 1 to export all tables as normal table.
+you will lose all data from unlogged tables in case of a PostgreSQL crash.
+Set it to 1 to export all tables as normal tables.
 
 =back
 
@@ -1640,7 +1640,7 @@ If this directive is set to 1, a TRUNCATE TABLE instruction will be add before
 loading data. This is usable only during INSERT or COPY export type.
 
 When activated, the instruction will be added only if there's no global DELETE
-clause or not one specific to the current table (see bellow).
+clause or not one specific to the current table (see below).
 
 =item DELETE
 
@@ -1673,13 +1673,13 @@ Enable this directive to use COPY FREEZE instead of a simple COPY to
 export data with rows already frozen. This is intended as a performance
 option for initial data loading. Rows will be frozen only if the table
 being loaded has been created or truncated in the current sub-transaction.
-This will only works with export to file and when -J or ORACLE_COPIES is
+This will only work with export to file and when -J or ORACLE_COPIES is
 not set or default to 1. It can be used with direct import into PostgreSQL
 under the same condition but -j or JOBS must also be unset or default to 1.
 
 =item CREATE_OR_REPLACE
 
-By default Ora2Pg use CREATE OR REPLACE in function DDL, if you need not
+By default Ora2Pg uses CREATE OR REPLACE in function DDL, if you need not
 to override existing functions disable this configuration directive,
 DDL will not include OR REPLACE.
 
@@ -1730,11 +1730,11 @@ set this directive to 1, ora2pg will not  try to change the setting.
 
 This directive can be used to send an initial command to PostgreSQL, just after
 the connection. For example to set some session parameters. This directive can
-be used multiple time.
+be used multiple times.
 
 =back
 
-=head2 Column tytpe control
+=head2 Column type control
 
 =over 4
 
@@ -1752,7 +1752,7 @@ precision because using numeric(p,s) is slower than using real or double.
 If set to 1 replace portable numeric type into PostgreSQL internal type.
 Oracle data type NUMBER(p) or NUMBER are converted to smallint, integer
 or bigint PostgreSQL data type following the length of the precision. If
-NUMBER without precision are set to DEFAULT_NUMERIC (see bellow).
+NUMBER without precision are set to DEFAULT_NUMERIC (see below).
 
 =item DEFAULT_NUMERIC
 
@@ -1881,7 +1881,7 @@ type in PostgreSQL. You should consider replacing this data type by a bigserial
 
 =item MODIFY_TYPE
 
-Some time you need to force the destination type, for example a column
+Sometimes you need to force the destination type, for example a column
 exported as timestamp by Ora2Pg can be forced into type date. Value is
 a comma-separated list of TABLE:COLUMN:TYPE structure. If you need to use
 comma or space inside type definition you will have to backslash them.
@@ -1955,7 +1955,7 @@ will removed indexes ans check constraints from export.
 
 Enable this directive if you want to add primary key definition inside the
 create table statement. If disabled (the default) primary key definition
-will be add with an alter table statement. Enable it if you are exporting
+will be added with an alter table statement. Enable it if you are exporting
 to GreenPlum PostgreSQL database.
 
 =item KEEP_PKEY_NAMES
@@ -1971,7 +1971,7 @@ This directive allows you to add an ON UPDATE CASCADE option to a foreign
 key when a ON DELETE CASCADE is defined or always. Oracle do not support
 this feature, you have to use trigger to operate the ON UPDATE CASCADE.
 As PostgreSQL has this feature, you can choose how to add the foreign
-key option. There is three value to this directive: never, the default
+key option. There are three values to this directive: never, the default
 that mean that foreign keys will be declared exactly like in Oracle.
 The second value is delete, that mean that the ON UPDATE CASCADE option
 will be added only if the ON DELETE CASCADE is already defined on the
@@ -1988,7 +1988,7 @@ be exported as deferrable.
 
 =item DEFER_FKEY
 
-In addition when exporting data the DEFER_FKEY option set to 1 will add
+In addition to exporting data when the DEFER_FKEY option set to 1, it will add
 a command to defer all foreign key constraints during data export and
 the import will be done in a single transaction. This will work only if
 foreign keys have been exported as deferrable and you are not using direct
@@ -2028,7 +2028,7 @@ as PostgreSQL superuser. A value of 1 is equal to USER.
 
 =item DISABLE_SEQUENCE
 
-If set to 1 disables alter of sequences on all tables during COPY or INSERT export
+If set to 1 it disables alter of sequences on all tables during COPY or INSERT export
 mode. This is used to prevent the update of sequence during data migration.
 Default is 0, alter sequences.
 
