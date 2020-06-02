@@ -14442,7 +14442,7 @@ sub _extract_data
 						$row[$j] =  $self->set_custom_type_value($data_type, $user_type{$j}, $row[$j], $tt->[$j], 0);
 
 					# Retrieve LOB data from locator
-					} elsif (($stt->[$j] =~ /LOB/) && $row[$j]) {
+					} elsif (($stt->[$j] =~ /LOB|XML/) && $row[$j]) {
 
 						my $lob_content = '';
 						my $offset = 1;   # Offsets start at 1, not 0
