@@ -14374,7 +14374,7 @@ sub _extract_data
 			$data_limit = $self->{local_data_limit}{$table};
 		}
 		my $has_blob = 0;
-		$has_blob = 1 if (grep(/LOB/, @$stt));
+		$has_blob = 1 if (grep(/LOB|XMLTYPE/, @$stt));
 
 		# With rows that not have custom type nor blob unless the user doesn't want to use lob locator
 		if (($#has_custom_type == -1) && (!$has_blob || $self->{no_lob_locator})) {
@@ -14442,7 +14442,7 @@ sub _extract_data
 						$row[$j] =  $self->set_custom_type_value($data_type, $user_type{$j}, $row[$j], $tt->[$j], 0);
 
 					# Retrieve LOB data from locator
-					} elsif (($stt->[$j] =~ /LOB|XML/) && $row[$j]) {
+					} elsif (($stt->[$j] =~ /LOB|XMLTYPE/) && $row[$j]) {
 
 						my $lob_content = '';
 						my $offset = 1;   # Offsets start at 1, not 0
