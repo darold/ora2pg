@@ -465,7 +465,7 @@ CONFIGURATION
         DBA_... tables. It will use tables ALL_... instead.
 
         Warning: if you use export type GRANT, you must set this
-        configuration option to 0 or it will not works.
+        configuration option to 0 or it will not work.
 
     TRANSACTION
         This directive may be used if you want to change the default
@@ -484,19 +484,19 @@ CONFIGURATION
 
     INPUT_FILE
         This directive did not control the Oracle database connection or
-        unless it purely disable the use of any Oracle database by accepting
-        a file as argument. Set this directive to a file containing PL/SQL
-        Oracle Code like function, procedure or full package body to prevent
-        Ora2Pg from connecting to an Oracle database and just apply his
-        conversion tool to the content of the file. This can be used with
-        the most of export types: TABLE, TRIGGER, PROCEDURE, VIEW, FUNCTION
-        or PACKAGE, etc.
+        unless it purely disables the use of any Oracle database by
+        accepting a file as argument. Set this directive to a file
+        containing PL/SQL Oracle Code like function, procedure or full
+        package body to prevent Ora2Pg from connecting to an Oracle database
+        and just apply his conversion tool to the content of the file. This
+        can be used with the most of export types: TABLE, TRIGGER,
+        PROCEDURE, VIEW, FUNCTION or PACKAGE, etc.
 
     ORA_INITIAL_COMMAND
         This directive can be used to send an initial command to Oracle,
         just after the connection. For example to unlock a policy before
         reading objects or to set some session parameters. This directive
-        can be used multiple time.
+        can be used multiple times.
 
   Data encryption with Oracle server
     If your Oracle Client config file already includes the encryption
@@ -542,9 +542,9 @@ CONFIGURATION
     and at next section, especially the SCHEMA directive.
 
     LOGFILE
-        By default all messageis are sent to the standard output. If you
-        give a file path to that directive, all output will be appended to
-        this file.
+        By default all messages are sent to the standard output. If you give
+        a file path to that directive, all output will be appended to this
+        file.
 
   Oracle schema to export
     The Oracle database export can be limited to a specific Schema or
@@ -560,7 +560,7 @@ CONFIGURATION
 
         When no schema name is provided and EXPORT_SCHEMA is enabled, Ora2Pg
         will export all objects from all schema of the Oracle instance with
-        their names prefixed with the scham name.
+        their names prefixed with the schema name.
 
     EXPORT_SCHEMA
         By default the Oracle schema is not exported into the PostgreSQL
@@ -675,7 +675,7 @@ CONFIGURATION
         used in the current schema export. When replacing call to function
         with OUT parameters, if a function is declared in an other package
         then the function call rewriting can not be done because Ora2Pg only
-        know about functions declared in the current schema. By setting a
+        knows about functions declared in the current schema. By setting a
         comma separated list of schema as value of this directive, Ora2Pg
         will look forward in these packages for all
         functions/procedures/packages declaration before proceeding to
@@ -777,8 +777,8 @@ CONFIGURATION
                         COUNTRY_ID : CHAR(2) => char(2)
 
         Those extraction keywords are use to only display the requested
-        information and exit. This allow you to quickly know on what you are
-        going to work.
+        information and exit. This allows you to quickly know on what you
+        are going to work.
 
         The SHOW_COLUMN allow an other ora2pg command line option: '--allow
         relname' or '-a relname' to limit the displayed information to the
@@ -853,7 +853,7 @@ CONFIGURATION
         There's no limitation in parallel processing than the number of
         cores and the PostgreSQL I/O performance capabilities.
 
-        Doesn't works under Windows Operating System, it is simply disabled.
+        Doesn't work under Windows Operating System, it is simply disabled.
 
     ORACLE_COPIES
         This configuration directive adds multiprocess support to extract
@@ -869,7 +869,7 @@ CONFIGURATION
         split will be based and the current core used by the query
         (CUR_PROC).
 
-        Doesn't works under Windows Operating System, it is simply disabled.
+        Doesn't work under Windows Operating System, it is simply disabled.
 
     DEFINED_PK
         This directive is used to defined the technical key to used to split
@@ -962,7 +962,7 @@ CONFIGURATION
     the database should be exported.
 
     ALLOW
-        This directive allows you to set a list of objects on witch the
+        This directive allows you to set a list of objects on which the
         export must be limited, excluding all other objects in the same type
         of export. The value is a space or comma-separated list of objects
         name to export. You can include valid regex into the list. For
@@ -1057,7 +1057,7 @@ CONFIGURATION
 
         this example will exclude all functions, procedures or functions in
         a package with the name beginning with those regex. Note that regex
-        will not works with 8i database, you must use the % placeholder
+        will not work with 8i database, you must use the % placeholder
         instead, Ora2Pg will use the NOT LIKE operator.
 
         See above (directive 'ALLOW') for the extended syntax.
@@ -1139,19 +1139,19 @@ CONFIGURATION
 
     REPLACE_QUERY
         Sometime you may want to extract data from an Oracle table but you
-        need a a custom query for that. Not just a "SELECT * FROM table"
-        like Ora2Pg do but a more complex query. This directive allows you
-        to overwrite the query used by Ora2Pg to extract data. The format is
+        need a custom query for that. Not just a "SELECT * FROM table" like
+        Ora2Pg do but a more complex query. This directive allows you to
+        overwrite the query used by Ora2Pg to extract data. The format is
         TABLENAME[SQL_QUERY]. If you have multiple table to extract by
         replacing the Ora2Pg query, you can define multiple REPLACE_QUERY
         lines.
 
                 REPLACE_QUERY   EMPLOYEES[SELECT e.id,e.fisrtname,lastname FROM EMPLOYEES e JOIN EMP_UPDT u ON (e.id=u.id AND u.cdate>'2014-08-01 00:00:00')]
 
-  Controm of Full Text Search export
+  Control of Full Text Search export
     Several directives can be used to control the way Ora2Pg will export the
     Oracle's Text search indexes. By default CONTEXT indexes will be
-    exported to PostgreSQL FTS indexes but CTXCAT indexes wikk be exported
+    exported to PostgreSQL FTS indexes but CTXCAT indexes will be exported
     as indexes using the pg_trgm extension.
 
     CONTEXT_AS_TRGM
@@ -1403,8 +1403,8 @@ CONFIGURATION
     DISABLE_UNLOGGED
         By default Ora2Pg export Oracle tables with the NOLOGGING attribute
         as UNLOGGED tables. You may want to fully disable this feature
-        because you will lost all data from unlogged table in case of
-        PostgreSQL crash. Set it to 1 to export all tables as normal table.
+        because you will lose all data from unlogged tables in case of a
+        PostgreSQL crash. Set it to 1 to export all tables as normal tables.
 
   Oracle Spatial to PostGis
     Ora2Pg fully export Spatial object from Oracle database. There's some
@@ -1592,7 +1592,7 @@ CONFIGURATION
 
         When activated, the instruction will be added only if there's no
         global DELETE clause or not one specific to the current table (see
-        bellow).
+        below).
 
     DELETE
         Support for include a DELETE FROM ... WHERE clause filter before
@@ -1624,14 +1624,14 @@ CONFIGURATION
         export data with rows already frozen. This is intended as a
         performance option for initial data loading. Rows will be frozen
         only if the table being loaded has been created or truncated in the
-        current sub-transaction. This will only works with export to file
-        and when -J or ORACLE_COPIES is not set or default to 1. It can be
-        used with direct import into PostgreSQL under the same condition but
-        -j or JOBS must also be unset or default to 1.
+        current sub-transaction. This will only work with export to file and
+        when -J or ORACLE_COPIES is not set or default to 1. It can be used
+        with direct import into PostgreSQL under the same condition but -j
+        or JOBS must also be unset or default to 1.
 
     CREATE_OR_REPLACE
-        By default Ora2Pg use CREATE OR REPLACE in function DDL, if you need
-        not to override existing functions disable this configuration
+        By default Ora2Pg uses CREATE OR REPLACE in function DDL, if you
+        need not to override existing functions disable this configuration
         directive, DDL will not include OR REPLACE.
 
     NO_HEADER
@@ -1675,9 +1675,9 @@ CONFIGURATION
     PG_INITIAL_COMMAND
         This directive can be used to send an initial command to PostgreSQL,
         just after the connection. For example to set some session
-        parameters. This directive can be used multiple time.
+        parameters. This directive can be used multiple times.
 
-  Column tytpe control
+  Column type control
     PG_NUMERIC_TYPE
         If set to 1 replace portable numeric type into PostgreSQL internal
         type. Oracle data type NUMBER(p,s) is approximatively converted to
@@ -1692,7 +1692,7 @@ CONFIGURATION
         type. Oracle data type NUMBER(p) or NUMBER are converted to
         smallint, integer or bigint PostgreSQL data type following the
         length of the precision. If NUMBER without precision are set to
-        DEFAULT_NUMERIC (see bellow).
+        DEFAULT_NUMERIC (see below).
 
     DEFAULT_NUMERIC
         NUMBER without precision are converted by default to bigint only if
@@ -1826,7 +1826,7 @@ CONFIGURATION
         sequence), text or uuid data type.
 
     MODIFY_TYPE
-        Some time you need to force the destination type, for example a
+        Sometimes you need to force the destination type, for example a
         column exported as timestamp by Ora2Pg can be forced into type date.
         Value is a comma-separated list of TABLE:COLUMN:TYPE structure. If
         you need to use comma or space inside type definition you will have
@@ -1897,8 +1897,8 @@ CONFIGURATION
     PKEY_IN_CREATE
         Enable this directive if you want to add primary key definition
         inside the create table statement. If disabled (the default) primary
-        key definition will be add with an alter table statement. Enable it
-        if you are exporting to GreenPlum PostgreSQL database.
+        key definition will be added with an alter table statement. Enable
+        it if you are exporting to GreenPlum PostgreSQL database.
 
     KEEP_PKEY_NAMES
         By default names of the primary and unique key in the source Oracle
@@ -1912,7 +1912,7 @@ CONFIGURATION
         foreign key when a ON DELETE CASCADE is defined or always. Oracle do
         not support this feature, you have to use trigger to operate the ON
         UPDATE CASCADE. As PostgreSQL has this feature, you can choose how
-        to add the foreign key option. There is three value to this
+        to add the foreign key option. There are three values to this
         directive: never, the default that mean that foreign keys will be
         declared exactly like in Oracle. The second value is delete, that
         mean that the ON UPDATE CASCADE option will be added only if the ON
@@ -1929,11 +1929,11 @@ CONFIGURATION
         deferrable.
 
     DEFER_FKEY
-        In addition when exporting data the DEFER_FKEY option set to 1 will
-        add a command to defer all foreign key constraints during data
-        export and the import will be done in a single transaction. This
-        will work only if foreign keys have been exported as deferrable and
-        you are not using direct import to PostgreSQL (PG_DSN is not
+        In addition to exporting data when the DEFER_FKEY option set to 1,
+        it will add a command to defer all foreign key constraints during
+        data export and the import will be done in a single transaction.
+        This will work only if foreign keys have been exported as deferrable
+        and you are not using direct import to PostgreSQL (PG_DSN is not
         defined). Constraints will then be checked at the end of the
         transaction.
 
@@ -1968,9 +1968,9 @@ CONFIGURATION
         connected as PostgreSQL superuser. A value of 1 is equal to USER.
 
     DISABLE_SEQUENCE
-        If set to 1 disables alter of sequences on all tables during COPY or
-        INSERT export mode. This is used to prevent the update of sequence
-        during data migration. Default is 0, alter sequences.
+        If set to 1 it disables alter of sequences on all tables during COPY
+        or INSERT export mode. This is used to prevent the update of
+        sequence during data migration. Default is 0, alter sequences.
 
     NOESCAPE
         By default all data that are not of type date or time are escaped.
@@ -2728,6 +2728,13 @@ CONFIGURATION
     For Windows users you must use the -b command line option to set the
     directory where ora2pg_scanner stays otherwise the ora2pg command calls
     will fail.
+
+    In the migration assessment details about functions Ora2Pg always
+    include per default 2 migration units for TEST and 1 unit for SIZE per
+    1000 characters in the code. This mean that by default it will add 15
+    minutes in the migration assessment per function. Obviously if you have
+    unitary tests or very simple functions this is not represent the real
+    migration time.
 
   Migration assessment method
     Migration unit scores given to each type of Oracle database object are

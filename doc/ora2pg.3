@@ -129,7 +129,7 @@
 .\" ========================================================================
 .\"
 .IX Title "ORA2PG 1"
-.TH ORA2PG 1 "2020-04-23" "perl v5.26.1" "User Contributed Perl Documentation"
+.TH ORA2PG 1 "2020-06-05" "perl v5.26.1" "User Contributed Perl Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -619,7 +619,7 @@ do not have enough grants to extract things from the \s-1DBA_...\s0 tables. It w
 use tables \s-1ALL_...\s0 instead.
 .Sp
 Warning: if you use export type \s-1GRANT,\s0 you must set this configuration option
-to 0 or it will not works.
+to 0 or it will not work.
 .IP "\s-1TRANSACTION\s0" 4
 .IX Item "TRANSACTION"
 This directive may be used if you want to change the default isolation level of
@@ -640,7 +640,7 @@ but in some case this was breaking data consistency so now default is set to
 .IP "\s-1INPUT_FILE\s0" 4
 .IX Item "INPUT_FILE"
 This directive did not control the Oracle database connection or unless it
-purely disable the use of any Oracle database by accepting a file as argument.
+purely disables the use of any Oracle database by accepting a file as argument.
 Set this directive to a file containing \s-1PL/SQL\s0 Oracle Code like function,
 procedure or full package body to prevent Ora2Pg from connecting to an
 Oracle database and just apply his conversion tool to the content of the
@@ -650,7 +650,7 @@ VIEW, FUNCTION\s0 or \s-1PACKAGE,\s0 etc.
 .IX Item "ORA_INITIAL_COMMAND"
 This directive can be used to send an initial command to Oracle, just after
 the connection. For example to unlock a policy before reading objects or
-to set some session parameters. This directive can be used multiple time.
+to set some session parameters. This directive can be used multiple times.
 .SS "Data encryption with Oracle server"
 .IX Subsection "Data encryption with Oracle server"
 If your Oracle Client config file already includes the encryption method,
@@ -697,7 +697,7 @@ the database. Try to connect to Oracle as super user or take a look at directive
 \&\s-1USER_GRANTS\s0 above and at next section, especially the \s-1SCHEMA\s0 directive.
 .IP "\s-1LOGFILE\s0" 4
 .IX Item "LOGFILE"
-By default all messageis are sent to the standard output. If you give a file
+By default all messages are sent to the standard output. If you give a file
 path to that directive, all output will be appended to this file.
 .SS "Oracle schema to export"
 .IX Subsection "Oracle schema to export"
@@ -716,7 +716,7 @@ will extract objects associated to the \s-1APPS\s0 schema.
 .Sp
 When no schema name is provided and \s-1EXPORT_SCHEMA\s0 is enabled, Ora2Pg
 will export all objects from all schema of the Oracle instance with
-their names prefixed with the scham name.
+their names prefixed with the schema name.
 .IP "\s-1EXPORT_SCHEMA\s0" 4
 .IX Item "EXPORT_SCHEMA"
 By default the Oracle schema is not exported into the PostgreSQL database and
@@ -829,7 +829,7 @@ tables or views as tables. Default is same as PostgreSQL, disabled.
 List of schema to get functions/procedures meta information that are used
 in the current schema export. When replacing call to function with \s-1OUT\s0
 parameters, if a function is declared in an other package then the function
-call rewriting can not be done because Ora2Pg only know about functions
+call rewriting can not be done because Ora2Pg only knows about functions
 declared in the current schema. By setting a comma separated list of schema
 as value of this directive, Ora2Pg will look forward in these packages for
 all functions/procedures/packages declaration before proceeding to current
@@ -931,7 +931,7 @@ Here is an example of the \s-1SHOW_COLUMN\s0 output:
 .Ve
 .Sp
 Those extraction keywords are use to only display the requested information and
-exit. This allow you to quickly know on what you are going to work.
+exit. This allows you to quickly know on what you are going to work.
 .Sp
 The \s-1SHOW_COLUMN\s0 allow an other ora2pg command line option: '\-\-allow relname'
 or '\-a relname' to limit the displayed information to the given table.
@@ -1006,7 +1006,7 @@ gain can be very important when you have tons of function to convert.
 There's no limitation in parallel processing than the number of cores
 and the PostgreSQL I/O performance capabilities.
 .Sp
-Doesn't works under Windows Operating System, it is simply disabled.
+Doesn't work under Windows Operating System, it is simply disabled.
 .IP "\s-1ORACLE_COPIES\s0" 4
 .IX Item "ORACLE_COPIES"
 This configuration directive adds multiprocess support to extract data
@@ -1023,7 +1023,7 @@ of cores given as value to \s-1ORACLE_COPIES\s0 as follow:
 where \s-1COLUMN\s0 is a technical key like a primary or unique key where split
 will be based and the current core used by the query (\s-1CUR_PROC\s0).
 .Sp
-Doesn't works under Windows Operating System, it is simply disabled.
+Doesn't work under Windows Operating System, it is simply disabled.
 .IP "\s-1DEFINED_PK\s0" 4
 .IX Item "DEFINED_PK"
 This directive is used to defined the technical key to used to split
@@ -1116,7 +1116,7 @@ configuration directives that will allow you to control what parts of the
 database should be exported.
 .IP "\s-1ALLOW\s0" 4
 .IX Item "ALLOW"
-This directive allows you to set a list of objects on witch the export must be
+This directive allows you to set a list of objects on which the export must be
 limited, excluding all other objects in the same type of export. The value is
 a space or comma-separated list of objects name to export. You can include
 valid regex into the list. For example:
@@ -1225,7 +1225,7 @@ For example, you can ban from export some unwanted function with this directive:
 .Ve
 .Sp
 this example will exclude all functions, procedures or functions in a package
-with the name beginning with those regex. Note that regex will not works with
+with the name beginning with those regex. Note that regex will not work with
 8i database, you must use the % placeholder instead, Ora2Pg will use the \s-1NOT
 LIKE\s0 operator.
 .Sp
@@ -1239,6 +1239,11 @@ statement. If export type is \s-1COPY\s0 or \s-1INSERT,\s0 the corresponding dat
 exported.
 .Sp
 See chapter \*(L"Exporting views as PostgreSQL table\*(R" for more details.
+.IP "\s-1NO_VIEW_ORDERING\s0" 4
+.IX Item "NO_VIEW_ORDERING"
+By default Ora2Pg try to order views to avoid error at import time with
+nested views. With a huge number of views this can take a very long time,
+you can bypass this ordering by enabling this directive.
 .IP "\s-1GRANT_OBJECT\s0" 4
 .IX Item "GRANT_OBJECT"
 When exporting GRANTs you can specify a comma separated  list of objects
@@ -1304,7 +1309,7 @@ import on error.
 .IP "\s-1REPLACE_QUERY\s0" 4
 .IX Item "REPLACE_QUERY"
 Sometime you may want to extract data from an Oracle table but you need a
-a custom query for that. Not just a \*(L"\s-1SELECT\s0 * \s-1FROM\s0 table\*(R" like Ora2Pg do
+custom query for that. Not just a \*(L"\s-1SELECT\s0 * \s-1FROM\s0 table\*(R" like Ora2Pg do
 but a more complex query. This directive allows you to overwrite the query
 used by Ora2Pg to extract data. The format is TABLENAME[\s-1SQL_QUERY\s0].
 If you have multiple table to extract by replacing the Ora2Pg query, you can
@@ -1313,11 +1318,11 @@ define multiple \s-1REPLACE_QUERY\s0 lines.
 .Vb 1
 \&        REPLACE_QUERY   EMPLOYEES[SELECT e.id,e.fisrtname,lastname FROM EMPLOYEES e JOIN EMP_UPDT u ON (e.id=u.id AND u.cdate>\*(Aq2014\-08\-01 00:00:00\*(Aq)]
 .Ve
-.SS "Controm of Full Text Search export"
-.IX Subsection "Controm of Full Text Search export"
+.SS "Control of Full Text Search export"
+.IX Subsection "Control of Full Text Search export"
 Several directives can be used to control the way Ora2Pg will export the
 Oracle's Text search indexes. By default \s-1CONTEXT\s0 indexes will be exported
-to PostgreSQL \s-1FTS\s0 indexes but \s-1CTXCAT\s0 indexes wikk be exported as indexes
+to PostgreSQL \s-1FTS\s0 indexes but \s-1CTXCAT\s0 indexes will be exported as indexes
 using the pg_trgm extension.
 .IP "\s-1CONTEXT_AS_TRGM\s0" 4
 .IX Item "CONTEXT_AS_TRGM"
@@ -1591,8 +1596,8 @@ and import them into the PostgreSQL dedicated partition table.
 .IX Item "DISABLE_UNLOGGED"
 By default Ora2Pg export Oracle tables with the \s-1NOLOGGING\s0 attribute as
 \&\s-1UNLOGGED\s0 tables. You may want to fully disable this feature because
-you will lost all data from unlogged table in case of PostgreSQL crash.
-Set it to 1 to export all tables as normal table.
+you will lose all data from unlogged tables in case of a PostgreSQL crash.
+Set it to 1 to export all tables as normal tables.
 .SS "Oracle Spatial to PostGis"
 .IX Subsection "Oracle Spatial to PostGis"
 Ora2Pg fully export Spatial object from Oracle database. There's some
@@ -1770,7 +1775,7 @@ If this directive is set to 1, a \s-1TRUNCATE TABLE\s0 instruction will be add b
 loading data. This is usable only during \s-1INSERT\s0 or \s-1COPY\s0 export type.
 .Sp
 When activated, the instruction will be added only if there's no global \s-1DELETE\s0
-clause or not one specific to the current table (see bellow).
+clause or not one specific to the current table (see below).
 .IP "\s-1DELETE\s0" 4
 .IX Item "DELETE"
 Support for include a \s-1DELETE FROM ... WHERE\s0 clause filter before importing
@@ -1802,12 +1807,12 @@ Enable this directive to use \s-1COPY FREEZE\s0 instead of a simple \s-1COPY\s0 
 export data with rows already frozen. This is intended as a performance
 option for initial data loading. Rows will be frozen only if the table
 being loaded has been created or truncated in the current sub-transaction.
-This will only works with export to file and when \-J or \s-1ORACLE_COPIES\s0 is
+This will only work with export to file and when \-J or \s-1ORACLE_COPIES\s0 is
 not set or default to 1. It can be used with direct import into PostgreSQL
 under the same condition but \-j or \s-1JOBS\s0 must also be unset or default to 1.
 .IP "\s-1CREATE_OR_REPLACE\s0" 4
 .IX Item "CREATE_OR_REPLACE"
-By default Ora2Pg use \s-1CREATE OR REPLACE\s0 in function \s-1DDL,\s0 if you need not
+By default Ora2Pg uses \s-1CREATE OR REPLACE\s0 in function \s-1DDL,\s0 if you need not
 to override existing functions disable this configuration directive,
 \&\s-1DDL\s0 will not include \s-1OR REPLACE.\s0
 .IP "\s-1NO_HEADER\s0" 4
@@ -1851,9 +1856,9 @@ set this directive to 1, ora2pg will not  try to change the setting.
 .IX Item "PG_INITIAL_COMMAND"
 This directive can be used to send an initial command to PostgreSQL, just after
 the connection. For example to set some session parameters. This directive can
-be used multiple time.
-.SS "Column tytpe control"
-.IX Subsection "Column tytpe control"
+be used multiple times.
+.SS "Column type control"
+.IX Subsection "Column type control"
 .IP "\s-1PG_NUMERIC_TYPE\s0" 4
 .IX Item "PG_NUMERIC_TYPE"
 If set to 1 replace portable numeric type into PostgreSQL internal type.
@@ -1867,7 +1872,7 @@ precision because using numeric(p,s) is slower than using real or double.
 If set to 1 replace portable numeric type into PostgreSQL internal type.
 Oracle data type \s-1NUMBER\s0(p) or \s-1NUMBER\s0 are converted to smallint, integer
 or bigint PostgreSQL data type following the length of the precision. If
-\&\s-1NUMBER\s0 without precision are set to \s-1DEFAULT_NUMERIC\s0 (see bellow).
+\&\s-1NUMBER\s0 without precision are set to \s-1DEFAULT_NUMERIC\s0 (see below).
 .IP "\s-1DEFAULT_NUMERIC\s0" 4
 .IX Item "DEFAULT_NUMERIC"
 \&\s-1NUMBER\s0 without precision are converted by default to bigint only if
@@ -2003,7 +2008,7 @@ type in PostgreSQL. You should consider replacing this data type by a bigserial
 (autoincremented sequence), text or uuid data type.
 .IP "\s-1MODIFY_TYPE\s0" 4
 .IX Item "MODIFY_TYPE"
-Some time you need to force the destination type, for example a column
+Sometimes you need to force the destination type, for example a column
 exported as timestamp by Ora2Pg can be forced into type date. Value is
 a comma-separated list of \s-1TABLE:COLUMN:TYPE\s0 structure. If you need to use
 comma or space inside type definition you will have to backslash them.
@@ -2082,7 +2087,7 @@ will removed indexes ans check constraints from export.
 .IX Item "PKEY_IN_CREATE"
 Enable this directive if you want to add primary key definition inside the
 create table statement. If disabled (the default) primary key definition
-will be add with an alter table statement. Enable it if you are exporting
+will be added with an alter table statement. Enable it if you are exporting
 to GreenPlum PostgreSQL database.
 .IP "\s-1KEEP_PKEY_NAMES\s0" 4
 .IX Item "KEEP_PKEY_NAMES"
@@ -2096,7 +2101,7 @@ This directive allows you to add an \s-1ON UPDATE CASCADE\s0 option to a foreign
 key when a \s-1ON DELETE CASCADE\s0 is defined or always. Oracle do not support
 this feature, you have to use trigger to operate the \s-1ON UPDATE CASCADE.\s0
 As PostgreSQL has this feature, you can choose how to add the foreign
-key option. There is three value to this directive: never, the default
+key option. There are three values to this directive: never, the default
 that mean that foreign keys will be declared exactly like in Oracle.
 The second value is delete, that mean that the \s-1ON UPDATE CASCADE\s0 option
 will be added only if the \s-1ON DELETE CASCADE\s0 is already defined on the
@@ -2111,7 +2116,7 @@ The \s-1FKEY_DEFERRABLE\s0 option set to 1 will cause all foreign key constraint
 be exported as deferrable.
 .IP "\s-1DEFER_FKEY\s0" 4
 .IX Item "DEFER_FKEY"
-In addition when exporting data the \s-1DEFER_FKEY\s0 option set to 1 will add
+In addition to exporting data when the \s-1DEFER_FKEY\s0 option set to 1, it will add
 a command to defer all foreign key constraints during data export and
 the import will be done in a single transaction. This will work only if
 foreign keys have been exported as deferrable and you are not using direct
@@ -2147,7 +2152,7 @@ If you want to disable triggers during data migration, set the value to
 as PostgreSQL superuser. A value of 1 is equal to \s-1USER.\s0
 .IP "\s-1DISABLE_SEQUENCE\s0" 4
 .IX Item "DISABLE_SEQUENCE"
-If set to 1 disables alter of sequences on all tables during \s-1COPY\s0 or \s-1INSERT\s0 export
+If set to 1 it disables alter of sequences on all tables during \s-1COPY\s0 or \s-1INSERT\s0 export
 mode. This is used to prevent the update of sequence during data migration.
 Default is 0, alter sequences.
 .IP "\s-1NOESCAPE\s0" 4
@@ -2913,6 +2918,12 @@ Hint: Use the \-t | \-\-test option before to test all your connections in your
 .PP
 For Windows users you must use the \-b command line option to set the directory
 where ora2pg_scanner stays otherwise the ora2pg command calls will fail.
+.PP
+In the migration assessment details about functions Ora2Pg always include per
+default 2 migration units for \s-1TEST\s0 and 1 unit for \s-1SIZE\s0 per 1000 characters in
+the code. This mean that by default it will add 15 minutes in the migration
+assessment per function. Obviously if you have unitary tests or very simple
+functions this is not represent the real migration time.
 .SS "Migration assessment method"
 .IX Subsection "Migration assessment method"
 Migration unit scores given to each type of Oracle database object are defined in the

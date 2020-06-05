@@ -2812,6 +2812,12 @@ CSV file.
 For Windows users you must use the -b command line option to set the directory
 where ora2pg_scanner stays otherwise the ora2pg command calls will fail.
 
+In the migration assessment details about functions Ora2Pg always include per
+default 2 migration units for TEST and 1 unit for SIZE per 1000 characters in
+the code. This mean that by default it will add 15 minutes in the migration
+assessment per function. Obviously if you have unitary tests or very simple
+functions this is not represent the real migration time.
+ 
 =head2 Migration assessment method
 
 Migration unit scores given to each type of Oracle database object are defined in the
