@@ -2733,7 +2733,7 @@ CONFIGURATION
     include per default 2 migration units for TEST and 1 unit for SIZE per
     1000 characters in the code. This mean that by default it will add 15
     minutes in the migration assessment per function. Obviously if you have
-    unitary tests or very simple functions this is not represent the real
+    unitary tests or very simple functions this will not represent the real
     migration time.
 
   Migration assessment method
