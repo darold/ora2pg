@@ -3491,9 +3491,9 @@ sub _export_table_data
 			my $s = $local_dbh->do("TRUNCATE TABLE $tmptb;") or $self->logit("FATAL: " . $local_dbh->errstr . "\n", 0, 1);
 		} else {
 			if ($self->{file_per_table}) {
-				$self->data_dump("TRUNCATE TABLE $tmptb;\n",  $table);
+				$self->data_dump("$search_path\nTRUNCATE TABLE $tmptb;\n",  $table);
 			} else {
-				$self->dump("\nTRUNCATE TABLE $tmptb;\n");
+				$self->dump("\n$search_path\nTRUNCATE TABLE $tmptb;\n");
 			}
 		}
 	}
@@ -7933,7 +7933,7 @@ sub _dump_table
 
 	# Set search path
 	my $search_path = $self->set_search_path();
-	if ($search_path) {
+	if (!$self->{truncate_table} && $search_path) {
 		push(@cmd_head,$search_path);
 	}
 
