@@ -2546,19 +2546,28 @@ sub read_schema_from_file
 							my $options = $3;
 							$self->{identity_info}{$tb_name}{$c_name}{options} = $3;
 
-							$self->{identity_info}{$tb_name}{$c_name}{options} =~ s/(START WITH):/$1/;
-							$self->{identity_info}{$tb_name}{$c_name}{options} =~ s/(INCREMENT BY):/$1/;
-							$self->{identity_info}{$tb_name}{$c_name}{options} =~ s/MAX_VALUE:/MAXVALUE/;
-							$self->{identity_info}{$tb_name}{$c_name}{options} =~ s/MIN_VALUE:/MINVALUE/;
-							$self->{identity_info}{$tb_name}{$c_name}{options} =~ s/CYCLE_FLAG: N/NO CYCLE/;
-							$self->{identity_info}{$tb_name}{$c_name}{options} =~ s/CYCLE_FLAG: Y/CYCLE/;
-							$self->{identity_info}{$tb_name}{$c_name}{options} =~ s/CACHE_SIZE:/CACHE/;
-							$self->{identity_info}{$tb_name}{$c_name}{options} =~ s/CACHE_SIZE:/CACHE/;
-							$self->{identity_info}{$tb_name}{$c_name}{options} =~ s/ORDER_FLAG: .//;
-							$self->{identity_info}{$tb_name}{$c_name}{options} =~ s/,//g;
-							$self->{identity_info}{$tb_name}{$c_name}{options} =~ s/\s$//;
-							$self->{identity_info}{$tb_name}{$c_name}{options} =~ s/CACHE\s+0/CACHE 1/;
-
+							$self->{identity_info}{$tb_name}{$c_name}{options} =~ s/(START WITH):/$1/is;
+							$self->{identity_info}{$tb_name}{$c_name}{options} =~ s/(INCREMENT BY):/$1/is;
+							$self->{identity_info}{$tb_name}{$c_name}{options} =~ s/MAX_VALUE:/MAXVALUE/is;
+							$self->{identity_info}{$tb_name}{$c_name}{options} =~ s/MIN_VALUE:/MINVALUE/is;
+							$self->{identity_info}{$tb_name}{$c_name}{options} =~ s/CYCLE_FLAG: N/NO CYCLE/is;
+							$self->{identity_info}{$tb_name}{$c_name}{options} =~ s/NOCYCLE/NO CYCLE/is;
+							$self->{identity_info}{$tb_name}{$c_name}{options} =~ s/CYCLE_FLAG: Y/CYCLE/is;
+							$self->{identity_info}{$tb_name}{$c_name}{options} =~ s/CACHE_SIZE:/CACHE/is;
+							$self->{identity_info}{$tb_name}{$c_name}{options} =~ s/CACHE_SIZE:/CACHE/is;
+							$self->{identity_info}{$tb_name}{$c_name}{options} =~ s/ORDER_FLAG: .//is;
+							$self->{identity_info}{$tb_name}{$c_name}{options} =~ s/,//gs;
+							$self->{identity_info}{$tb_name}{$c_name}{options} =~ s/\s$//s;
+							$self->{identity_info}{$tb_name}{$c_name}{options} =~ s/CACHE\s+0/CACHE 1/is;
+							$self->{identity_info}{$tb_name}{$c_name}{options} =~ s/\s*NOORDER//is;
+							$self->{identity_info}{$tb_name}{$c_name}{options} =~ s/\s*NOKEEP//is;
+							$self->{identity_info}{$tb_name}{$c_name}{options} =~ s/\s*NOSCALE//is;
+							$self->{identity_info}{$tb_name}{$c_name}{options} =~ s/\s*NOT\s+NULL//is;
+							# Be sure that we don't exceed the bigint max value,
+							# we assume that the increment is always positive
+							if ($self->{identity_info}{$tb_name}{$c_name}{options} =~ /MAXVALUE\s+(\d+)/is) {
+								$self->{identity_info}{$tb_name}{$c_name}{options} =~ s/(MAXVALUE)\s+\d+/$1 9223372036854775807/is;
+							}
 						} elsif ($c =~ s/\b(GENERATED ALWAYS AS|AS)\s+(.*)//is) {
 							$virt_col = 'YES';
 							$c_default = $2;
