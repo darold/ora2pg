@@ -6741,7 +6741,7 @@ sub export_table
 					$sql_output =~ s/ NOT NULL\s*$//s; # IDENTITY or serial column are NOT NULL by default
 					if ($self->{pg_supports_identity}) {
 						$sql_output .= " GENERATED $self->{identity_info}{$f->[8]}{$f->[0]}{generation} AS IDENTITY";
-						$sql_output .= " (" . $self->{identity_info}{$f->[8]}{$f->[0]}{options} . ')' if (exists $self->{identity_info}{$f->[8]}{$f->[0]}{options});
+						$sql_output .= " (" . $self->{identity_info}{$f->[8]}{$f->[0]}{options} . ')' if (exists $self->{identity_info}{$f->[8]}{$f->[0]}{options} && $self->{identity_info}{$f->[8]}{$f->[0]}{options} ne '');
 					} else {
 						$sql_output =~ s/bigint\s*$/bigserial/s;
 						$sql_output =~ s/smallint\s*$/smallserial/s;
@@ -15901,7 +15901,7 @@ sub _show_infos
 					if (exists $self->{identity_info}{$d->[8]}{$d->[0]}) {
 						if ($self->{pg_supports_identity}) {
 							$type .= " GENERATED $self->{identity_info}{$d->[8]}{$d->[0]}{generation} AS IDENTITY";
-							$type .= " (" . $self->{identity_info}{$d->[8]}{$d->[0]}{options} . ')' if (exists $self->{identity_info}{$d->[8]}{$d->[0]}{options});
+							$type .= " (" . $self->{identity_info}{$d->[8]}{$d->[0]}{options} . ')' if (exists $self->{identity_info}{$d->[8]}{$d->[0]}{options} && $self->{identity_info}{$d->[8]}{$d->[0]}{options} ne '');
 						} else {
 							$type =~ s/bigint$/bigserial/;
 							$type =~ s/smallint/smallserial/;
