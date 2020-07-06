@@ -443,6 +443,10 @@ CONFIGURATION
 
                 dbi:Oracle:DB_SID
 
+        On 18c this could be for example:
+
+                dbi:Oracle:host=192.168.1.29;service_name=pdb1;port=1521
+
         for the second notation the SID should be declared in the well known
         file $ORACLE_HOME/network/admin/tnsnames.ora or in the path given to
         the TNS_ADMIN environment variable.
@@ -2164,7 +2168,7 @@ CONFIGURATION
 
     NO_LOB_LOCATOR
         Enable this directive if you want to load full content of BLOB and
-        CLOB and not use LOB locators. If enable you must take care of the
+        CLOB and not use LOB locators. If enabled you must take care of the
         value of LONGREADLEN. This directive is now disabled by default as
         using a lob locator has better performances when chunk size can be
         controled, see LOB_CHUNK_SIZE.
