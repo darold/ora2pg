@@ -3050,7 +3050,11 @@ sub read_sequence_from_file
 			push(@seq_info, '');
 		}
 		if ($s_def =~ /MAXVALUE\s+([\-\d]+)/i) {
-			push(@seq_info, $1);
+			if ($1 > 9223372036854775807) {
+				push(@seq_info, 9223372036854775807);
+			} else {
+				push(@seq_info, $1);
+			}
 		} else {
 			push(@seq_info, '');
 		}
@@ -4381,6 +4385,7 @@ sub export_sequence
 		if ($seq->[2] eq '' || $seq->[2] > (2**63-1)) {
 			$sql_output .= " NO MAXVALUE";
 		} else {
+			$seq->[2] = 9223372036854775807 if ($seq->[2] > 9223372036854775807);
 			$sql_output .= " MAXVALUE $seq->[2]";
 		}
 		$sql_output .= " START $seq->[4]";
@@ -10521,9 +10526,12 @@ sub _get_identities
 		$seqs{$row->[1]}{$row->[2]}{options} =~ s/,//g;
 		$seqs{$row->[1]}{$row->[2]}{options} =~ s/\s$//;
 		$seqs{$row->[1]}{$row->[2]}{options} =~ s/CACHE\s+0/CACHE 1/;
+		# For default values don't use option at all
 		if ( $seqs{$row->[1]}{$row->[2]}{options} eq 'START WITH 1 INCREMENT BY 1 MAXVALUE 9999999999999999999999999999 MINVALUE 1 NO CYCLE CACHE 20') {
 			delete $seqs{$row->[1]}{$row->[2]}{options};
 		}
+		# Limit the sequence value to bigint max
+		$seqs{$row->[1]}{$row->[2]}{options} =~ s/MAXVALUE 9999999999999999999999999999/MAXVALUE 9223372036854775807/;
 	}
 
 	return %seqs;
