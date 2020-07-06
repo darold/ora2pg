@@ -7980,6 +7980,8 @@ sub _dump_table
 	my @nn = ();
 	my $col_list = '';
 	my $has_geometry = 0;
+	my $has_identity = 0;
+	$has_identity = 1 if (exists $self->{identity_info}{$table});
 
 	# Extract column information following the Oracle position order
 	my @fname = ();
@@ -8047,6 +8049,8 @@ sub _dump_table
 	$self->{tables}{$table}{pg_colnames_notnull} = \@pg_colnames_notnull;
 	$self->{tables}{$table}{pg_colnames_pkey} = \@pg_colnames_pkey;
 
+	my $overriding_system = '';
+	$overriding_system = ' OVERRIDING SYSTEM VALUE' if ($has_identity);
 	my $s_out = "INSERT INTO $tmptb ($col_list";
 	if ($self->{type} eq 'COPY') {
 		$s_out = "\nCOPY $tmptb ($col_list";
@@ -8055,7 +8059,7 @@ sub _dump_table
 	if ($self->{type} eq 'COPY') {
 		$s_out .= ") FROM STDIN$self->{copy_freeze};\n";
 	} else {
-		$s_out .= ") VALUES (";
+		$s_out .= ")$overriding_system  VALUES (";
 	}
 
 	# Prepare statements might work in binary mode but not WKT
