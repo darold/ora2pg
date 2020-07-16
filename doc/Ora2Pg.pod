@@ -1649,7 +1649,7 @@ clause or not one specific to the current table (see below).
 =item DELETE
 
 Support for include a DELETE FROM ... WHERE clause filter before importing
-data and perform a delete of some lines instead of truncatinf tables.
+data and perform a delete of some lines instead of truncating tables.
 Value is construct as follow: TABLE_NAME[DELETE_WHERE_CLAUSE], or
 if you have only one where clause for all tables just put the delete
 clause as single value. Both are possible too. Here are some examples:
