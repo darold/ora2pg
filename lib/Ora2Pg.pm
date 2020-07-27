@@ -5002,20 +5002,20 @@ sub export_function
 				$l = $old_line .= ' ' . $l;
 				$old_line = '';
 			}
-			if ($l =~ /^\s*CREATE\s*(?:OR REPLACE)?\s*(?:EDITABLE|NONEDITABLE|DEFINER=[^\s]+)?\s*$/i) {
+			if ($l =~ /^\s*CREATE\s*(?:OR REPLACE)?\s*(?:EDITIONABLE|NONEDITIONABLE|DEFINER=[^\s]+)?\s*$/i) {
 				$old_line = $l;
 				next;
 			}
-			if ($l =~ /^\s*(?:EDITABLE|NONEDITABLE|DEFINER=[^\s]+)?\s*(FUNCTION|PROCEDURE)$/i) {
+			if ($l =~ /^\s*(?:EDITIONABLE|NONEDITIONABLE|DEFINER=[^\s]+)?\s*(FUNCTION|PROCEDURE)$/i) {
 				$old_line = $l;
 				next;
 			}
-			if ($l =~ /^\s*CREATE\s*(?:OR REPLACE)?\s*(?:EDITABLE|NONEDITABLE|DEFINER=[^\s]+)?\s*(FUNCTION|PROCEDURE)\s*$/i) {
+			if ($l =~ /^\s*CREATE\s*(?:OR REPLACE)?\s*(?:EDITIONABLE|NONEDITIONABLE|DEFINER=[^\s]+)?\s*(FUNCTION|PROCEDURE)\s*$/i) {
 				$old_line = $l;
 				next;
 			}
-			$l =~ s/^\s*CREATE (?:OR REPLACE)?\s*(?:EDITABLE|NONEDITABLE|DEFINER=[^\s]+)?\s*(FUNCTION|PROCEDURE)/$1/i;
-			$l =~ s/^\s*(?:EDITABLE|NONEDITABLE)?\s*(FUNCTION|PROCEDURE)/$1/i;
+			$l =~ s/^\s*CREATE (?:OR REPLACE)?\s*(?:EDITIONABLE|NONEDITIONABLE|DEFINER=[^\s]+)?\s*(FUNCTION|PROCEDURE)/$1/i;
+			$l =~ s/^\s*(?:EDITIONABLE|NONEDITIONABLE)?\s*(FUNCTION|PROCEDURE)/$1/i;
 			if ($l =~ /^(FUNCTION|PROCEDURE)\s+([^\s\(]+)/i) {
 				$fcnm = $2;
 				$fcnm =~ s/"//g;
@@ -5192,20 +5192,20 @@ sub export_procedure
 				$l = $old_line .= ' ' . $l;
 				$old_line = '';
 			}
-			if ($l =~ /^\s*CREATE\s*(?:OR REPLACE)?\s*(?:EDITABLE|NONEDITABLE)?\s*$/i) {
+			if ($l =~ /^\s*CREATE\s*(?:OR REPLACE)?\s*(?:EDITIONABLE|NONEDITIONABLE)?\s*$/i) {
 				$old_line = $l;
 				next;
 			}
-			if ($l =~ /^\s*(?:EDITABLE|NONEDITABLE)?\s*(FUNCTION|PROCEDURE)$/i) {
+			if ($l =~ /^\s*(?:EDITIONABLE|NONEDITIONABLE)?\s*(FUNCTION|PROCEDURE)$/i) {
 				$old_line = $l;
 				next;
 			}
-			if ($l =~ /^\s*CREATE\s*(?:OR REPLACE)?\s*(?:EDITABLE|NONEDITABLE)?\s*(FUNCTION|PROCEDURE)\s*$/i) {
+			if ($l =~ /^\s*CREATE\s*(?:OR REPLACE)?\s*(?:EDITIONABLE|NONEDITIONABLE)?\s*(FUNCTION|PROCEDURE)\s*$/i) {
 				$old_line = $l;
 				next;
 			}
-			$l =~ s/^\s*CREATE (?:OR REPLACE)?\s*(?:EDITABLE|NONEDITABLE)?\s*(FUNCTION|PROCEDURE)/$1/i;
-			$l =~ s/^\s*(?:EDITABLE|NONEDITABLE)?\s*(FUNCTION|PROCEDURE)/$1/i;
+			$l =~ s/^\s*CREATE (?:OR REPLACE)?\s*(?:EDITIONABLE|NONEDITIONABLE)?\s*(FUNCTION|PROCEDURE)/$1/i;
+			$l =~ s/^\s*(?:EDITIONABLE|NONEDITIONABLE)?\s*(FUNCTION|PROCEDURE)/$1/i;
 			if ($l =~ /^(FUNCTION|PROCEDURE)\s+([^\s\(]+)/i) {
 				$fcnm = $2;
 				$fcnm =~ s/"//g;
@@ -5375,7 +5375,7 @@ sub export_package
 		my $skip_pkg_header = 0;
 		$self->_remove_comments(\$content);
 		# Normalise start of package declaration
-		$content =~ s/CREATE(?:\s+OR\s+REPLACE)?(?:\s+EDITABLE|\s+NONEDITABLE)?\s+PACKAGE\s+/CREATE OR REPLACE PACKAGE /igs;
+		$content =~ s/CREATE(?:\s+OR\s+REPLACE)?(?:\s+EDITIONABLE|\s+NONEDITIONABLE)?\s+PACKAGE\s+/CREATE OR REPLACE PACKAGE /igs;
 		# Preserve hearder
 		$content =~ s/^(.*?)(CREATE OR REPLACE PACKAGE)/$2/s;
 		my $start = $1 || '';
@@ -5483,7 +5483,7 @@ sub export_package
 			$self->_remove_comments(\$self->{packages}{$pkg}{text});
 
 			# Normalyse package creation call
-			$self->{packages}{$pkg}{text} =~ s/CREATE(?:\s+OR\s+REPLACE)?(?:\s+EDITABLE|\s+NONEDITABLE)?\s+PACKAGE\s+/CREATE OR REPLACE PACKAGE /is;
+			$self->{packages}{$pkg}{text} =~ s/CREATE(?:\s+OR\s+REPLACE)?(?:\s+EDITIONABLE|\s+NONEDITIONABLE)?\s+PACKAGE\s+/CREATE OR REPLACE PACKAGE /is;
 			if ($self->{estimate_cost}) {
 				my %infos = $self->_lookup_package($self->{packages}{$pkg}{text});
 				foreach my $f (sort keys %infos) {
@@ -5611,7 +5611,7 @@ sub export_type
 			}
 			$self->_restore_comments(\$cmt);
 			$l =~ s/^\s+//;
-			$l =~ s/^CREATE\s+(?:OR REPLACE)?\s*(?:NONEDITABLE|EDITABLE)?\s*//is;
+			$l =~ s/^CREATE\s+(?:OR REPLACE)?\s*(?:NONEDITIONABLE|EDITIONABLE)?\s*//is;
 			$l .= ";\n";
 			if ($l =~ /^(SUBTYPE|TYPE)\s+([^\s\(]+)/is) {
 				push(@{$self->{types}}, { ('name' => $2, 'code' => $l, 'comment' => $cmt, 'pos' => $i) });
@@ -13023,7 +13023,7 @@ sub _extract_functions
 	my $fcname =  '';
 	my $type = '';
 	for (my $i = 0; $i <= $#lines; $i++) { 
-		if ($lines[$i] =~ /^(?:CREATE|CREATE OR REPLACE)?\s*(?:NONEDITABLE|EDITABLE)?\s*(FUNCTION|PROCEDURE)\s+([a-z0-9_\-\."]+)(.*)/i) {
+		if ($lines[$i] =~ /^(?:CREATE|CREATE OR REPLACE)?\s*(?:NONEDITIONABLE|EDITIONABLE)?\s*(FUNCTION|PROCEDURE)\s+([a-z0-9_\-\."]+)(.*)/i) {
 			$type = uc($1);
 			$fcname = $2;
 			$fcname =~ s/^.*\.//;
@@ -15525,7 +15525,7 @@ sub _show_infos
 					$self->_remove_comments(\$self->{packages}{$pkg}{text});
 					$self->{comment_values} = ();
 					$self->{text_values} = ();
-					my @codes = split(/CREATE(?: OR REPLACE)?(?: EDITABLE| NONEDITABLE)? PACKAGE\s+/i, $self->{packages}{$pkg}{text});
+					my @codes = split(/CREATE(?: OR REPLACE)?(?: EDITIONABLE| NONEDITIONABLE)? PACKAGE\s+/i, $self->{packages}{$pkg}{text});
 					foreach my $txt (@codes) {
 						next if ($txt !~ /^BODY\s+/is);
 						my %infos = $self->_lookup_package("CREATE OR REPLACE PACKAGE $txt");
@@ -17748,7 +17748,7 @@ sub _lookup_package
 
 	my $content = '';
 	my %infos = ();
-	if ($plsql =~ /(?:CREATE|CREATE OR REPLACE)?\s*(?:EDITABLE|NONEDITABLE)?\s*PACKAGE\s+BODY\s*([^\s]+)((?:\s*\%ORA2PG_COMMENT\d+\%)*\s*(?:AS|IS))\s*(.*)/is) {
+	if ($plsql =~ /(?:CREATE|CREATE OR REPLACE)?\s*(?:EDITIONABLE|NONEDITIONABLE)?\s*PACKAGE\s+BODY\s*([^\s]+)((?:\s*\%ORA2PG_COMMENT\d+\%)*\s*(?:AS|IS))\s*(.*)/is) {
 		my $pname = $1;
 		my $type = $2;
 		$content = $3;
