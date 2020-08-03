@@ -1015,6 +1015,9 @@ sub _init
 		$self->{default_parallelism_degree} = 0;
 	}
 
+	# Add header to output file
+	$self->{no_header} ||= 0;
+
 	# Mark function as STABLE by default
 	if (not defined $self->{function_stable} || $self->{function_stable} ne '0') {
 		$self->{function_stable} = 1;
@@ -3507,10 +3510,12 @@ sub _export_table_data
 			$self->logit("Truncating table $table...\n", 1);
 			my $s = $local_dbh->do("TRUNCATE TABLE $tmptb;") or $self->logit("FATAL: " . $local_dbh->errstr . "\n", 0, 1);
 		} else {
+			my $head = "SET client_encoding TO '\U$self->{client_encoding}\E';\n";
+			$head .= "SET synchronous_commit TO off;\n" if (!$self->{synchronous_commit});
 			if ($self->{file_per_table}) {
-				$self->data_dump("$search_path\nTRUNCATE TABLE $tmptb;\n",  $table);
+				$self->data_dump("$head$search_path\nTRUNCATE TABLE $tmptb;\n",  $table);
 			} else {
-				$self->dump("\n$search_path\nTRUNCATE TABLE $tmptb;\n");
+				$self->dump("\n$head$search_path\nTRUNCATE TABLE $tmptb;\n");
 			}
 		}
 	}
@@ -8051,6 +8056,7 @@ sub _dump_table
 
 	my $overriding_system = '';
 	$overriding_system = ' OVERRIDING SYSTEM VALUE' if ($has_identity);
+
 	my $s_out = "INSERT INTO $tmptb ($col_list";
 	if ($self->{type} eq 'COPY') {
 		$s_out = "\nCOPY $tmptb ($col_list";
