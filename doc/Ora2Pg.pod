@@ -1716,6 +1716,9 @@ Perl module as follow:
 
 will connect to database 'pgdb' on localhost at tcp port 5432.
 
+Note that this directive is only used for data export, other export need to
+be imported manually through the use og psql or any other PostgreSQL client.
+
 =item PG_USER and PG_PWD
 
 These two directives are used to set the login user and password.

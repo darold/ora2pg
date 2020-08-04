@@ -629,7 +629,9 @@ DISABLE_UNLOGGED	0
 #------------------------------------------------------------------------------
 
 # Define the following directive to send export directly to a PostgreSQL
-# database. This will disable file output.
+# database, this will disable file output. Note that these directives are only
+# used for data export, other export need to be imported manually through the
+# use og psql or any other PostgreSQL client.
 #PG_DSN		dbi:Pg:dbname=test_db;host=localhost;port=5432
 #PG_USER	test
 #PG_PWD		test
