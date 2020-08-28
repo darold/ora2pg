@@ -10779,7 +10779,7 @@ sub _get_views
 		{
 			if (!$self->{schema} && $self->{export_schema})
 			{
-				$row->[0] = "$row->[0].$row->[3]";
+				$row->[0] = "$row->[3].$row->[0]";
 			}
 			$comments{$row->[0]}{comment} = $row->[1];
 			$comments{$row->[0]}{table_type} = $row->[2];
