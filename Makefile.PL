@@ -121,7 +121,7 @@ CREATE_SCHEMA	1
 # This will ask to Oracle to validate the PL/SQL that could have been invalidate
 # after a export/import for example. The 'VALID' or 'INVALID' status applies to
 # functions, procedures, packages and user defined types.
-COMPILE_SCHEMA	0
+COMPILE_SCHEMA	1
 
 # By default if you set EXPORT_SCHEMA to 1 the PostgreSQL search_path will be
 # set to the schema name exported set as value of the SCHEMA directive. You can
