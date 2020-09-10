@@ -3956,7 +3956,7 @@ sub export_view
 				$sql_output .= " IS E'" . $self->{views}{$view}{comment} . "';\n\n";
 			}
 
-			foreach $f (sort keys %{$self->{views}{$view}{column_comments}}) {
+			foreach $f (sort { lc{$a} <=> lc($b) } keys %{$self->{views}{$view}{column_comments}}) {
 				next unless $self->{views}{$view}{column_comments}{$f};
 				$self->{views}{$view}{column_comments}{$f} =~ s/'/''/gs;
 				# Change column names
@@ -6872,7 +6872,7 @@ sub export_table
 
 		# Add comments on columns
 		if (!$self->{disable_comment}) {
-			foreach $f (keys %{$self->{tables}{$table}{column_comments}}) {
+			foreach $f (sort { lc($a) <=> lc($b) } keys %{$self->{tables}{$table}{column_comments}}) {
 				next unless $self->{tables}{$table}{column_comments}{$f};
 				$self->{tables}{$table}{column_comments}{$f} =~ s/'/''/gs;
 				# Change column names
