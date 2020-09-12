@@ -1379,7 +1379,11 @@ sub _init
 	} else {
 		$self->{standard_conforming_strings} = 1;
 	}
-	$self->{compile_schema} ||= 0;
+	if (!defined $self->{compile_schema} || $self->{compile_schema}) {
+		$self->{compile_schema} = 1;
+	} else {
+		$self->{compile_schema} = 0;
+	}
 	$self->{export_invalid} ||= 0;
 	$self->{use_reserved_words} ||= 0;
 	$self->{pkey_in_create} ||= 0;
@@ -13403,7 +13407,6 @@ sub _convert_function
 	$fct_detail{args} =~ s/\s+DEFAULT\s+NULL//igs;
 	# Remove DEFAULT EMPTY_BLOB() from function/procedure arguments, NULL is the default
 	$fct_detail{args} =~ s/\s+DEFAULT\s+EMPTY_[CB]LOB\(\)//igs;
-
 
 	# Input parameters after one with a default value must also have defaults
 	# and we need to sort the arguments so the ones with default values will be on the bottom
