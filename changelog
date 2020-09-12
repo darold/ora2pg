@@ -79,7 +79,7 @@ Here is the full list of changes and acknowledgements:
   - Add TIMEZONE_REGION and TIMEZONE_ABBR to migration assessment, no
     direct equivalent in PostgreSQL. Remove NSLSORT not used in
     migration assessment. Thanks to buragaddapavan for the report.
-  - Fix output of multiple export type specifed in TYPE directive.
+  - Fix output of multiple export type specified in TYPE directive.
   - Rewrite and renaming of _get_sql_data() function into
     _get_sql_statements().
   - Limit CURSOR weight in migration assessment to REF CURSOR only,
@@ -709,7 +709,7 @@ Here is a complete list of changes and acknowledgments:
     Pavel Stehule for the report.
   - Fix extra parenthesis removing when a OR clause is present. Thanks
     to Pavel Stehule for the report.
-  - Keep autonomous pragma commented when conversion is desactivated
+  - Keep autonomous pragma commented when conversion is deactivated
     to be able to identify functions using this pragma.
   - Fix bug in replacement of package function in string constant.
   - Fix malformed replacement of array element calls. Thanks to Eric
@@ -854,7 +854,7 @@ It also adds several new features and configuration directives:
     the schema name to audit was mandatory, now, when the schema
     is not set Ora2Pg will scan all schema. The connexion user need
     to have DBA privilege. Ora2Pg will also add the hostname and SID
-    as prefix in the filename of the report. This last changee forbids
+    as prefix in the filename of the report. This last change forbids
     ora2pg_scanner to overwrite a report if the same schema name is
     found in several databases.
 
@@ -3192,7 +3192,7 @@ NLS_NCHAR to AL32UTF8. On PostgreSQL side CLIENT_ENCODING to UTF8. For export
 that dump to files, Perl binmode is set to utf8. You can always change those
 default setting in configuration file, but it is not recommanded.
 
-Here is the full changlog of the release:
+Here is the full changelog of the release:
 
     - Fix inline comments into function declaration. Thanks to Marcel Huber
       for the report.

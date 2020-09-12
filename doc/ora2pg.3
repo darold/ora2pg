@@ -181,7 +181,7 @@ Features included:
 \&        \- Works on any platform.
 \&        \- Export Oracle tables as foreign data wrapper tables.
 \&        \- Export materialized view.
-\&        \- Show a detailled report of an Oracle database content.
+\&        \- Show a detailed report of an Oracle database content.
 \&        \- Migration cost assessment of an Oracle database.
 \&        \- Migration difficulty level assessment of an Oracle database.
 \&        \- Migration cost assessment of PL/SQL code from a file.
@@ -455,7 +455,7 @@ Usage: ora2pg [\-dhpqv \-\-estimate_cost \-\-dump_as_html] [\-\-option value]
 \&    \-\-client_encoding code: Set the PostgreSQL client encoding.
 \&    \-\-view_as_table str: Comma separated list of views to export as table.
 \&    \-\-estimate_cost   : Activate the migration cost evaluation with SHOW_REPORT
-\&    \-\-cost_unit_value minutes: Number of minutes for a cost evalution unit.
+\&    \-\-cost_unit_value minutes: Number of minutes for a cost evaluation unit.
 \&                  default: 5 minutes, corresponds to a migration conducted by a
 \&                  PostgreSQL expert. Set it to 10 if this is your first migration.
 \&   \-\-dump_as_html     : Force ora2pg to dump report in HTML, used only with
@@ -806,7 +806,7 @@ will add users \s-1INTERNAL\s0 and \s-1SYSDBA\s0 to the schema exclusion list.
 .IP "\s-1FORCE_OWNER\s0" 4
 .IX Item "FORCE_OWNER"
 By default the owner of the database objects is the one you're using to connect
-to PostgreSQL using the psql command. If you use an other user (postgres for exemple)
+to PostgreSQL using the psql command. If you use an other user (postgres for example)
 you can force Ora2Pg to set the object owner to be the one used in the Oracle database
 by setting the directive to 1, or to a completely different username by setting the
 directive value to that username.
@@ -961,7 +961,7 @@ Release 10 adds a new export type destined to evaluate the content of the
 database to migrate, in terms of objects and cost to end the migration:
 .Sp
 .Vb 1
-\&        SHOW_REPORT  : show a detailled report of the Oracle database content.
+\&        SHOW_REPORT  : show a detailed report of the Oracle database content.
 .Ve
 .Sp
 Here is a sample of report: http://ora2pg.darold.net/report.html
@@ -2082,7 +2082,7 @@ For example:
 \&        SKIP    indexes,checks
 .Ve
 .Sp
-will removed indexes ans check constraints from export.
+will removed indexes and check constraints from export.
 .IP "\s-1PKEY_IN_CREATE\s0" 4
 .IX Item "PKEY_IN_CREATE"
 Enable this directive if you want to add primary key definition inside the
@@ -2174,7 +2174,7 @@ See \s-1NOESCAPE\s0 for enabling/disabling escape in \s-1COPY\s0 statements.
 .IP "\s-1TRIM_TYPE\s0" 4
 .IX Item "TRIM_TYPE"
 If you want to convert \s-1CHAR\s0(n) from Oracle into varchar(n) or text on PostgreSQL
-using directive \s-1DATA_TYPE,\s0 you might want to do some triming on the data. By
+using directive \s-1DATA_TYPE,\s0 you might want to do some trimming on the data. By
 default Ora2Pg will auto-detect this conversion and remove any whitespace at both
 leading and trailing position. If you just want to remove the leadings character
 set the value to \s-1LEADING.\s0 If you just want to remove the trailing character, set
@@ -2324,7 +2324,7 @@ Take a look at this page to learn more: http://search.cpan.org/~pythian/DBD\-Ora
 Important note: If you increase the value of this directive take care that
 \&\s-1DATA_LIMIT\s0 will probably needs to be reduced. Even if you only have a 1MB blob,
 trying to read 10000 of them (the default \s-1DATA_LIMIT\s0) all at once will require
-10GB of memory. You may extract data from those table separatly and set a
+10GB of memory. You may extract data from those table separately and set a
 \&\s-1DATA_LIMIT\s0 to 500 or lower, otherwise you may experience some out of memory.
 .IP "\s-1LONGTRUNKOK\s0" 4
 .IX Item "LONGTRUNKOK"
@@ -2337,7 +2337,7 @@ enough.
 Enable this directive if you want to load full content of \s-1BLOB\s0 and \s-1CLOB\s0 and
 not use \s-1LOB\s0 locators. If enable you must take care of the value of \s-1LONGREADLEN.\s0
 This directive is now disabled by default as using a lob locator has better
-performances when chunk size can be controled, see \s-1LOB_CHUNK_SIZE.\s0
+performances when chunk size can be controlled, see \s-1LOB_CHUNK_SIZE.\s0
 .IP "\s-1LOB_CHUNK_SIZE\s0" 4
 .IX Item "LOB_CHUNK_SIZE"
 Oracle recommends reading from and writing to a \s-1LOB\s0 in batches using a
@@ -2401,7 +2401,7 @@ with format; DDHH24MMSS::bigint, this depend of your apps usage.
 .IP "\s-1NLS_LANG\s0 and \s-1NLS_NCHAR\s0" 4
 .IX Item "NLS_LANG and NLS_NCHAR"
 By default Ora2Pg will set \s-1NLS_LANG\s0 to \s-1AMERICAN_AMERICA.AL32UTF8\s0 and \s-1NLS_NCHAR\s0
-to \s-1AL32UTF8.\s0 It is not recommanded to change those settings but in some case it
+to \s-1AL32UTF8.\s0 It is not recommended to change those settings but in some case it
 could be useful. Using your own settings with those configuration directive will
 change the client encoding at Oracle side by setting the environment variables
 \&\f(CW$ENV\fR{\s-1NLS_LANG\s0} and \f(CW$ENV\fR{\s-1NLS_NCHAR\s0}.
@@ -2479,7 +2479,7 @@ command line.
 .IX Item "REWRITE_OUTER_JOIN"
 Enable this directive if the rewrite of Oracle native syntax (+) of
 \&\s-1OUTER JOIN\s0 is broken. This will force Ora2Pg to not rewrite such code,
-default is to try to rewrite simple form of rigth outer join for the
+default is to try to rewrite simple form of right outer join for the
 moment.
 .IP "\s-1UUID_FUNCTION\s0" 4
 .IX Item "UUID_FUNCTION"
@@ -2512,7 +2512,7 @@ may want to also comment \s-1SAVEPOINT\s0 calls, in this case enable it.
 Ora2Pg replace all string constant during the pl/sql to plpgsql translation,
 string constant are all text include between single quote. If you have some
 string placeholder used in dynamic call to queries you can set a list of
-regexp to be temporary replaced to not break the parser. For exemple:
+regexp to be temporary replaced to not break the parser. For example:
 .Sp
 .Vb 1
 \&        STRING_CONSTANT_REGEXP         <placeholder value=".*">
@@ -2572,7 +2572,7 @@ then it adds the \s-1SQL\s0 code to create the view and the materialized view:
 .Ve
 .PP
 The first argument is the name of the materialized view, the second the name of the view on which the materialized view is based
-and the third is the column name on which the index should be build (aka most od the time the primary key). This column is not
+and the third is the column name on which the index should be build (aka most of the time the primary key). This column is not
 automatically deduced so you need to replace its name.
 .PP
 As said above Ora2Pg only supports snapshot materialized views so the table will be entirely refreshed by issuing first a truncate
@@ -2860,7 +2860,7 @@ to indicate that it need a huge amount of work and a full project management
 with migration support. Default is 10 human-days. You can use the configuration
 directive \s-1HUMAN_DAYS_LIMIT\s0 to change this default value permanently.
 .PP
-This feature has been developped to help you or your boss to decide which
+This feature has been developed to help you or your boss to decide which
 database to migrate first and the team that must be mobilized to operate
 the migration.
 .SS "Global Oracle and MySQL migraton assessment"
@@ -2986,7 +2986,7 @@ directive) and to renamed the new temporary table on the fly using the
 .IX Subsection "Global variables"
 Oracle allow the use of global variables defined in packages. Ora2Pg will
 export these variables for PostgreSQL as user defined custom variables
-available in a session. Oracle variables assignement are exported as
+available in a session. Oracle variables assignment are exported as
 call to:
 .PP
 .Vb 1
