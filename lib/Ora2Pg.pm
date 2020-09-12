@@ -38,7 +38,6 @@ use File::Basename;
 use File::Spec qw/ tmpdir /;
 use File::Temp qw/ tempfile /;
 use Benchmark;
-use Term::ReadKey;
 
 #set locale to LC_NUMERIC C
 setlocale(LC_NUMERIC,"C");
@@ -1639,10 +1638,14 @@ sub _init
 sub _oracle_connection
 {
 	my ($self, $quiet) = @_;
-  
-  $self->{oracle_user} = $self->_ask_username('Oracle') unless (defined($self->{oracle_user}));
-  $self->{oracle_pwd} = $self->_ask_password('Oracle') unless (defined($self->{oracle_pwd}) || $self->{oracle_user} eq '/');
-   my $ora_session_mode = ($self->{oracle_user} eq "/" || $self->{oracle_user} eq "sys") ? 2 : undef;
+ 
+	if (!defined $self->{oracle_pwd})
+	{
+		eval("use Term::ReadKey;");
+		$self->{oracle_user} = $self->_ask_username('Oracle') unless (defined $self->{oracle_user});
+		$self->{oracle_pwd} = $self->_ask_password('Oracle') unless ($self->{oracle_user} eq '/');
+	}
+	my $ora_session_mode = ($self->{oracle_user} eq "/" || $self->{oracle_user} eq "sys") ? 2 : undef;
 
 	$self->logit("Trying to connect to database: $self->{oracle_dsn}\n", 1) if (!$quiet);
 
@@ -1653,7 +1656,7 @@ sub _oracle_connection
 			LongTruncOk=>$self->{longtruncok},
 			AutoInactiveDestroy => 1,
 			PrintError => 0,
-      ora_session_mode => $ora_session_mode,
+			ora_session_mode => $ora_session_mode
 		}
 	);
 
@@ -1721,6 +1724,13 @@ sub _mysql_connection
 	use Ora2Pg::MySQL;
 
 	$self->logit("Trying to connect to database: $self->{oracle_dsn}\n", 1) if (!$quiet);
+ 
+	if (!defined $self->{oracle_pwd})
+	{
+		eval("use Term::ReadKey;");
+		$self->{oracle_user} = $self->_ask_username('MySQL') unless (defined $self->{oracle_user});
+		$self->{oracle_pwd} = $self->_ask_password('MySQL');
+	}
 
 	my $dbh = DBI->connect("$self->{oracle_dsn}", $self->{oracle_user}, $self->{oracle_pwd}, { 'RaiseError' => 1, AutoInactiveDestroy => 1, mysql_enable_utf8 => 1});
 	# Check for connection failure
@@ -1897,15 +1907,19 @@ sub _send_to_pgdb
 	eval("use DBD::Pg qw(:pg_types);");
 
 	return if ($self->{oracle_speed});
-  
-  $self->{pg_user} = $self->_ask_username('PostgreSQL') unless (defined($self->{pg_user}));
-  $self->{pg_pwd} = $self->_ask_password('PostgreSQL') unless (defined($self->{pg_pwd}));
+ 
+	if (!defined $self->{pg_pwd})
+	{
+		eval("use Term::ReadKey;");
+		$self->{pg_user} = $self->_ask_username('PostgreSQL') unless (defined($self->{pg_user}));
+		$self->{pg_pwd} = $self->_ask_password('PostgreSQL');
+	}
 
-  # Connect the destination database
-  my $dbhdest = DBI->connect($self->{pg_dsn}, $self->{pg_user}, $self->{pg_pwd}, {AutoInactiveDestroy => 1});
+	# Connect the destination database
+	my $dbhdest = DBI->connect($self->{pg_dsn}, $self->{pg_user}, $self->{pg_pwd}, {AutoInactiveDestroy => 1});
 
-  # Check for connection failure
-  if (!$dbhdest) {
+	# Check for connection failure
+	if (!$dbhdest) {
 		$self->logit("FATAL: $DBI::err ... $DBI::errstr\n", 0, 1);
 	}
 
