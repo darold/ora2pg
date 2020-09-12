@@ -218,7 +218,7 @@ $EXPORT_TYPE = uc($EXPORT_TYPE);
 $EXPORT_TYPE =~ s/DATA/COPY/;
 foreach my $t (split(/[,;\s\t]+/, $EXPORT_TYPE)) {
 	if ($t && !grep(/^$t$/, @CAPABILITIES)) {
-		print "FATAL: Unknow export type: $t. Type supported: ", join(',', @CAPABILITIES), "\n";
+		print "FATAL: Unknown export type: $t. Type supported: ", join(',', @CAPABILITIES), "\n";
 		&usage();
 	}
 }
@@ -398,7 +398,7 @@ Usage: ora2pg [-dhpqv --estimate_cost --dump_as_html] [--option value]
     --client_encoding code: Set the PostgreSQL client encoding.
     --view_as_table str: Comma separated list of views to export as table.
     --estimate_cost   : Activate the migration cost evaluation with SHOW_REPORT
-    --cost_unit_value minutes: Number of minutes for a cost evalution unit.
+    --cost_unit_value minutes: Number of minutes for a cost evaluation unit.
 		  default: 5 minutes, corresponds to a migration conducted by a
 		  PostgreSQL expert. Set it to 10 if this is your first migration.
    --dump_as_html     : Force ora2pg to dump report in HTML, used only with
@@ -997,7 +997,7 @@ if [ $DATA_ONLY -eq 0 ]; then
 		fi
 	fi
 
-	# Import objects that need superuser priviledge: GRANT and TABLESPACE
+	# Import objects that need superuser privilege: GRANT and TABLESPACE
 	if [ -r "$NAMESPACE/schema/grants/grant.sql" ]; then
 		if confirm "Would you like to import GRANT from $NAMESPACE/schema/grants/grant.sql?" ; then
 			echo "Running: psql $DB_HOST$DB_PORT -U postgres -d $DB_NAME -f $NAMESPACE/schema/grants/grant.sql"
