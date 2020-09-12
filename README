@@ -46,7 +46,7 @@ FEATURES
             - Works on any platform.
             - Export Oracle tables as foreign data wrapper tables.
             - Export materialized view.
-            - Show a detailed report of an Oracle database content.
+            - Show a  report of an Oracle database content.
             - Migration cost assessment of an Oracle database.
             - Migration difficulty level assessment of an Oracle database.
             - Migration cost assessment of PL/SQL code from a file.
@@ -1607,8 +1607,8 @@ CONFIGURATION
         Both are possible too. Here are some examples:
 
                 DELETE  1=1    # Apply to all tables and delete all tuples
-                DELETE TABLE_TEST[ID1='001']   # Apply only on table TABLE_TEST
-                DELETE TABLE_TEST[ID1='001' OR ID1='002] DATE_CREATE > '2001-01-01' TABLE_INFO[NAME='test']
+                DELETE  TABLE_TEST[ID1='001']   # Apply only on table TABLE_TEST
+                DELETE  TABLE_TEST[ID1='001' OR ID1='002] DATE_CREATE > '2001-01-01' TABLE_INFO[NAME='test']
 
         The last applies two different delete where clause on tables
         TABLE_TEST and TABLE_INFO and a generic delete where clause on
@@ -2375,13 +2375,15 @@ CONFIGURATION
         a normal one without the pragma call, disable this directive.
 
   Materialized view
-    Since PostgreSQL 9.3, materialized view are supported with the CREATE
-    MATERIALIZED VIEW syntax, to force Ora2Pg to use the native PostgreSQL
-    support you must enable the configuration directive PG_SUPPORTS_MVIEW.
+    Materialized views are exported as snapshot "Snapshot Materialized
+    Views" as PostgreSQL only supports full refresh.
 
-    In other case Ora2Pg will export all materialized views as "Snapshot
-    Materialized Views" as explain in this document:
-    http://tech.jonathangardner.net/wiki/PostgreSQL/Materialized_Views.
+    If you want to import the materialized views in PostgreSQL prior to 9.3
+    you have to set configuration directive PG_SUPPORTS_MVIEW to 0. In this
+    case Ora2Pg will export all materialized views as explain in this
+    document:
+
+            http://tech.jonathangardner.net/wiki/PostgreSQL/Materialized_Views.
 
     When exporting materialized view Ora2Pg will first add the SQL code to
     create the "materialized_views" table:
@@ -2679,9 +2681,9 @@ CONFIGURATION
     Default is 10 human-days. You can use the configuration directive
     HUMAN_DAYS_LIMIT to change this default value permanently.
 
-    This feature has been developed to help you or your boss to decide
-    which database to migrate first and the team that must be mobilized to
-    operate the migration.
+    This feature has been developed to help you or your boss to decide which
+    database to migrate first and the team that must be mobilized to operate
+    the migration.
 
   Global Oracle and MySQL migration assessment
     Ora2Pg come with a script ora2pg_scanner that can be used when you have

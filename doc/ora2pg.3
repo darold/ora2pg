@@ -129,7 +129,7 @@
 .\" ========================================================================
 .\"
 .IX Title "ORA2PG 1"
-.TH ORA2PG 1 "2020-06-05" "perl v5.26.1" "User Contributed Perl Documentation"
+.TH ORA2PG 1 "2020-09-12" "perl v5.26.1" "User Contributed Perl Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -168,7 +168,7 @@ Features included:
 \&        \- Export full database schema (tables, views, sequences, indexes), with
 \&          unique, primary, foreign key and check constraints.
 \&        \- Export grants/privileges for users and groups.
-\&        \- Export range/list partitions andi sub partitions.
+\&        \- Export range/list partitions and sub partitions.
 \&        \- Export a table selection (by specifying the table names).
 \&        \- Export Oracle schema to a PostgreSQL 8.4+ schema.
 \&        \- Export predefined functions, triggers, procedures, packages and
@@ -181,7 +181,7 @@ Features included:
 \&        \- Works on any platform.
 \&        \- Export Oracle tables as foreign data wrapper tables.
 \&        \- Export materialized view.
-\&        \- Show a detailed report of an Oracle database content.
+\&        \- Show a  report of an Oracle database content.
 \&        \- Migration cost assessment of an Oracle database.
 \&        \- Migration difficulty level assessment of an Oracle database.
 \&        \- Migration cost assessment of PL/SQL code from a file.
@@ -593,6 +593,12 @@ or
 .Sp
 .Vb 1
 \&        dbi:Oracle:DB_SID
+.Ve
+.Sp
+On 18c this could be for example:
+.Sp
+.Vb 1
+\&        dbi:Oracle:host=192.168.1.29;service_name=pdb1;port=1521
 .Ve
 .Sp
 for the second notation the \s-1SID\s0 should be declared in the well known file
@@ -1246,7 +1252,7 @@ nested views. With a huge number of views this can take a very long time,
 you can bypass this ordering by enabling this directive.
 .IP "\s-1GRANT_OBJECT\s0" 4
 .IX Item "GRANT_OBJECT"
-When exporting GRANTs you can specify a comma separated  list of objects
+When exporting GRANTs you can specify a comma separated list of objects
 for which privilege will be exported. Default is export for all objects.
 Here are the possibles values \s-1TABLE, VIEW, MATERIALIZED VIEW, SEQUENCE,
 PROCEDURE, FUNCTION, PACKAGE BODY, TYPE, SYNONYM, DIRECTORY.\s0 Only one object
@@ -1779,15 +1785,15 @@ clause or not one specific to the current table (see below).
 .IP "\s-1DELETE\s0" 4
 .IX Item "DELETE"
 Support for include a \s-1DELETE FROM ... WHERE\s0 clause filter before importing
-data and perform a delete of some lines instead of truncatinf tables.
+data and perform a delete of some lines instead of truncating tables.
 Value is construct as follow: TABLE_NAME[\s-1DELETE_WHERE_CLAUSE\s0], or
 if you have only one where clause for all tables just put the delete
 clause as single value. Both are possible too. Here are some examples:
 .Sp
 .Vb 3
 \&        DELETE  1=1    # Apply to all tables and delete all tuples
-\&        DELETE TABLE_TEST[ID1=\*(Aq001\*(Aq]   # Apply only on table TABLE_TEST
-\&        DELETE TABLE_TEST[ID1=\*(Aq001\*(Aq OR ID1=\*(Aq002] DATE_CREATE > \*(Aq2001\-01\-01\*(Aq TABLE_INFO[NAME=\*(Aqtest\*(Aq]
+\&        DELETE  TABLE_TEST[ID1=\*(Aq001\*(Aq]   # Apply only on table TABLE_TEST
+\&        DELETE  TABLE_TEST[ID1=\*(Aq001\*(Aq OR ID1=\*(Aq002] DATE_CREATE > \*(Aq2001\-01\-01\*(Aq TABLE_INFO[NAME=\*(Aqtest\*(Aq]
 .Ve
 .Sp
 The last applies two different delete where clause on tables \s-1TABLE_TEST\s0 and
@@ -1840,6 +1846,9 @@ Perl module as follow:
 .Ve
 .Sp
 will connect to database 'pgdb' on localhost at tcp port 5432.
+.Sp
+Note that this directive is only used for data export, other export need to
+be imported manually through the use og psql or any other PostgreSQL client.
 .IP "\s-1PG_USER\s0 and \s-1PG_PWD\s0" 4
 .IX Item "PG_USER and PG_PWD"
 These two directives are used to set the login user and password.
@@ -1851,7 +1860,7 @@ is the equivalent to set synchronous_commit directive of postgresql.conf file.
 This is only used when you load data directly to PostgreSQL, the default is
 off to disable synchronous commit to gain speed at writing data. Some modified
 version of PostgreSQL, like greenplum, do not have this setting, so in this
-set this directive to 1, ora2pg will not  try to change the setting.
+set this directive to 1, ora2pg will not try to change the setting.
 .IP "\s-1PG_INITIAL_COMMAND\s0" 4
 .IX Item "PG_INITIAL_COMMAND"
 This directive can be used to send an initial command to PostgreSQL, just after
@@ -2188,7 +2197,7 @@ this directive, this is the default value.
 .IP "\s-1PRESERVE_CASE\s0" 4
 .IX Item "PRESERVE_CASE"
 If you want to preserve the case of Oracle object name set this directive to 1.
-By default Ora2Pg will convert all Oracle object names to lower case.  I do not
+By default Ora2Pg will convert all Oracle object names to lower case. I do not
 recommend to enable this unless you will always have to double-quote object
 names on all your \s-1SQL\s0 scripts.
 .IP "\s-1ORA_RESERVED_WORDS\s0" 4
@@ -2335,7 +2344,7 @@ enough.
 .IP "\s-1NO_LOB_LOCATOR\s0" 4
 .IX Item "NO_LOB_LOCATOR"
 Enable this directive if you want to load full content of \s-1BLOB\s0 and \s-1CLOB\s0 and
-not use \s-1LOB\s0 locators. If enable you must take care of the value of \s-1LONGREADLEN.\s0
+not use \s-1LOB\s0 locators. If enabled you must take care of the value of \s-1LONGREADLEN.\s0
 This directive is now disabled by default as using a lob locator has better
 performances when chunk size can be controlled, see \s-1LOB_CHUNK_SIZE.\s0
 .IP "\s-1LOB_CHUNK_SIZE\s0" 4
@@ -2429,7 +2438,7 @@ Most of the time, leave this directive commented.
 .IX Item "CLIENT_ENCODING"
 By default PostgreSQL client encoding is automatically set to \s-1UTF8\s0 to avoid
 encoding issue. If you have changed the value of \s-1NLS_LANG\s0 you might have to
-change  the encoding of the PostgreSQL client.
+change the encoding of the PostgreSQL client.
 .Sp
 You can take a look at the PostgreSQL supported character sets here: http://www.postgresql.org/docs/9.0/static/multibyte.html
 .SS "\s-1PLSQL\s0 to \s-1PLPGSQL\s0 conversion"
@@ -2536,12 +2545,16 @@ translation and just want the function to be exported as a normal one
 without the pragma call, disable this directive.
 .SS "Materialized view"
 .IX Subsection "Materialized view"
-Since PostgreSQL 9.3, materialized view are supported with the \s-1CREATE MATERIALIZED VIEW\s0 syntax,
-to force Ora2Pg to use the native PostgreSQL support you must enable the configuration
-directive \s-1PG_SUPPORTS_MVIEW.\s0
+Materialized views are exported as snapshot \*(L"Snapshot Materialized Views\*(R" as
+PostgreSQL only supports full refresh.
 .PP
-In other case Ora2Pg will export all materialized views as \*(L"Snapshot Materialized Views\*(R" as explain
-in this document: http://tech.jonathangardner.net/wiki/PostgreSQL/Materialized_Views.
+If you want to import the materialized views in PostgreSQL prior to 9.3 you
+have to set configuration directive \s-1PG_SUPPORTS_MVIEW\s0 to 0. In this case
+Ora2Pg will export all materialized views as explain in this document:
+.PP
+.Vb 1
+\&        http://tech.jonathangardner.net/wiki/PostgreSQL/Materialized_Views.
+.Ve
 .PP
 When exporting materialized view Ora2Pg will first add the \s-1SQL\s0 code to create the \*(L"materialized_views\*(R" table:
 .PP
@@ -2554,7 +2567,8 @@ When exporting materialized view Ora2Pg will first add the \s-1SQL\s0 code to cr
 \&        );
 .Ve
 .PP
-all materialized views will have an entry in this table. It then adds the plpgsql code to create tree functions:
+all materialized views will have an entry in this table. It then adds the
+plpgsql code to create tree functions:
 .PP
 .Vb 3
 \&        create_materialized_view(text, text, text) used to create a materialized view
@@ -2571,19 +2585,21 @@ then it adds the \s-1SQL\s0 code to create the view and the materialized view:
 \&        SELECT create_materialized_view(\*(Aqmviewname\*(Aq,\*(Aqmviewname_mview\*(Aq, change with the name of the column to used for the index);
 .Ve
 .PP
-The first argument is the name of the materialized view, the second the name of the view on which the materialized view is based
-and the third is the column name on which the index should be build (aka most of the time the primary key). This column is not
-automatically deduced so you need to replace its name.
+The first argument is the name of the materialized view, the second the name of
+the view on which the materialized view is based and the third is the column
+name on which the index should be build (aka most of the time the primary key).
+This column is not automatically deduced so you need to replace its name.
 .PP
-As said above Ora2Pg only supports snapshot materialized views so the table will be entirely refreshed by issuing first a truncate
-of the table and then by load again all data from the view:
+As said above Ora2Pg only supports snapshot materialized views so the table will
+be entirely refreshed by issuing first a truncate of the table and then by load
+again all data from the view:
 .PP
 .Vb 1
 \&         refresh_full_materialized_view(\*(Aqmviewname\*(Aq);
 .Ve
 .PP
-To drop the materialized view you just have to call the \fIdrop_materialized_view()\fR function with the name of the materialized view
-as parameter.
+To drop the materialized view you just have to call the \fIdrop_materialized_view()\fR
+function with the name of the materialized view as parameter.
 .SS "Other configuration directives"
 .IX Subsection "Other configuration directives"
 .IP "\s-1DEBUG\s0" 4
@@ -2863,8 +2879,8 @@ directive \s-1HUMAN_DAYS_LIMIT\s0 to change this default value permanently.
 This feature has been developed to help you or your boss to decide which
 database to migrate first and the team that must be mobilized to operate
 the migration.
-.SS "Global Oracle and MySQL migraton assessment"
-.IX Subsection "Global Oracle and MySQL migraton assessment"
+.SS "Global Oracle and MySQL migration assessment"
+.IX Subsection "Global Oracle and MySQL migration assessment"
 Ora2Pg come with a script ora2pg_scanner that can be used when you have a huge
 number of instances and schema to scan for migration assessment.
 .PP
@@ -3129,7 +3145,7 @@ Any contribution to build a better tool is welcome, you just have to send me
 your ideas, features request or patches and there will be applied.
 .SH "LICENSE"
 .IX Header "LICENSE"
-Copyright (c) 2000\-2019 Gilles Darold \- All rights reserved.
+Copyright (c) 2000\-2020 Gilles Darold \- All rights reserved.
 .PP
 .Vb 4
 \&        This program is free software: you can redistribute it and/or modify

@@ -36,7 +36,7 @@ Features included:
 	- Export full database schema (tables, views, sequences, indexes), with
 	  unique, primary, foreign key and check constraints.
 	- Export grants/privileges for users and groups.
-	- Export range/list partitions andi sub partitions.
+	- Export range/list partitions and sub partitions.
 	- Export a table selection (by specifying the table names).
 	- Export Oracle schema to a PostgreSQL 8.4+ schema.
 	- Export predefined functions, triggers, procedures, packages and
@@ -49,7 +49,7 @@ Features included:
 	- Works on any platform.
 	- Export Oracle tables as foreign data wrapper tables.
 	- Export materialized view.
-	- Show a detailled report of an Oracle database content.
+	- Show a  report of an Oracle database content.
 	- Migration cost assessment of an Oracle database.
 	- Migration difficulty level assessment of an Oracle database.
 	- Migration cost assessment of PL/SQL code from a file.
@@ -307,7 +307,7 @@ Usage: ora2pg [-dhpqv --estimate_cost --dump_as_html] [--option value]
     --client_encoding code: Set the PostgreSQL client encoding.
     --view_as_table str: Comma separated list of views to export as table.
     --estimate_cost   : Activate the migration cost evaluation with SHOW_REPORT
-    --cost_unit_value minutes: Number of minutes for a cost evalution unit.
+    --cost_unit_value minutes: Number of minutes for a cost evaluation unit.
 		  default: 5 minutes, corresponds to a migration conducted by a
 		  PostgreSQL expert. Set it to 10 if this is your first migration.
    --dump_as_html     : Force ora2pg to dump report in HTML, used only with
@@ -669,7 +669,7 @@ will add users INTERNAL and SYSDBA to the schema exclusion list.
 =item FORCE_OWNER
 
 By default the owner of the database objects is the one you're using to connect
-to PostgreSQL using the psql command. If you use an other user (postgres for exemple)
+to PostgreSQL using the psql command. If you use an other user (postgres for example)
 you can force Ora2Pg to set the object owner to be the one used in the Oracle database
 by setting the directive to 1, or to a completely different username by setting the
 directive value to that username. 
@@ -827,7 +827,7 @@ wrapper.
 Release 10 adds a new export type destined to evaluate the content of the
 database to migrate, in terms of objects and cost to end the migration:
 
-	SHOW_REPORT  : show a detailled report of the Oracle database content.
+	SHOW_REPORT  : show a detailed report of the Oracle database content.
 
 Here is a sample of report: http://ora2pg.darold.net/report.html
 
@@ -1106,7 +1106,7 @@ you can bypass this ordering by enabling this directive.
 
 =item GRANT_OBJECT
 
-When exporting GRANTs you can specify a comma separated  list of objects
+When exporting GRANTs you can specify a comma separated list of objects
 for which privilege will be exported. Default is export for all objects.
 Here are the possibles values TABLE, VIEW, MATERIALIZED VIEW, SEQUENCE,
 PROCEDURE, FUNCTION, PACKAGE BODY, TYPE, SYNONYM, DIRECTORY. Only one object
@@ -1302,7 +1302,7 @@ on disc, so that more rows fit on a data page, which is the most important
 factor for speed. Default is disabled, that mean the same order than in
 Oracle tables definition, that's should be enough for most usage. This
 directive is only used with TABLE export.
-    
+
 =item MODIFY_STRUCT
 
 This directive allows you to limit the columns to extract for a given table. The
@@ -1655,8 +1655,8 @@ if you have only one where clause for all tables just put the delete
 clause as single value. Both are possible too. Here are some examples:
 
 	DELETE  1=1    # Apply to all tables and delete all tuples
-	DELETE TABLE_TEST[ID1='001']   # Apply only on table TABLE_TEST
-	DELETE TABLE_TEST[ID1='001' OR ID1='002] DATE_CREATE > '2001-01-01' TABLE_INFO[NAME='test']
+	DELETE  TABLE_TEST[ID1='001']   # Apply only on table TABLE_TEST
+	DELETE  TABLE_TEST[ID1='001' OR ID1='002] DATE_CREATE > '2001-01-01' TABLE_INFO[NAME='test']
 
 The last applies two different delete where clause on tables TABLE_TEST and
 TABLE_INFO and a generic delete where clause on DATE_CREATE to all other tables.
@@ -1731,7 +1731,7 @@ is the equivalent to set synchronous_commit directive of postgresql.conf file.
 This is only used when you load data directly to PostgreSQL, the default is
 off to disable synchronous commit to gain speed at writing data. Some modified
 version of PostgreSQL, like greenplum, do not have this setting, so in this
-set this directive to 1, ora2pg will not  try to change the setting.
+set this directive to 1, ora2pg will not try to change the setting.
 
 =item PG_INITIAL_COMMAND
 
@@ -1956,7 +1956,7 @@ For example:
 
 	SKIP	indexes,checks
 
-will removed indexes ans check constraints from export.
+will removed indexes and check constraints from export.
 
 =item PKEY_IN_CREATE
 
@@ -2060,7 +2060,7 @@ See NOESCAPE for enabling/disabling escape in COPY statements.
 =item TRIM_TYPE
 
 If you want to convert CHAR(n) from Oracle into varchar(n) or text on PostgreSQL
-using directive DATA_TYPE, you might want to do some triming on the data. By
+using directive DATA_TYPE, you might want to do some trimming on the data. By
 default Ora2Pg will auto-detect this conversion and remove any whitespace at both
 leading and trailing position. If you just want to remove the leadings character
 set the value to LEADING. If you just want to remove the trailing character, set
@@ -2076,7 +2076,7 @@ this directive, this is the default value.
 =item PRESERVE_CASE
 
 If you want to preserve the case of Oracle object name set this directive to 1.
-By default Ora2Pg will convert all Oracle object names to lower case.  I do not
+By default Ora2Pg will convert all Oracle object names to lower case. I do not
 recommend to enable this unless you will always have to double-quote object
 names on all your SQL scripts.
 
@@ -2229,7 +2229,7 @@ Take a look at this page to learn more: http://search.cpan.org/~pythian/DBD-Orac
 Important note: If you increase the value of this directive take care that
 DATA_LIMIT will probably needs to be reduced. Even if you only have a 1MB blob,
 trying to read 10000 of them (the default DATA_LIMIT) all at once will require
-10GB of memory. You may extract data from those table separatly and set a
+10GB of memory. You may extract data from those table separately and set a
 DATA_LIMIT to 500 or lower, otherwise you may experience some out of memory.
 
 =item LONGTRUNKOK
@@ -2244,7 +2244,7 @@ enough.
 Enable this directive if you want to load full content of BLOB and CLOB and
 not use LOB locators. If enabled you must take care of the value of LONGREADLEN.
 This directive is now disabled by default as using a lob locator has better
-performances when chunk size can be controled, see LOB_CHUNK_SIZE.
+performances when chunk size can be controlled, see LOB_CHUNK_SIZE.
 
 =item LOB_CHUNK_SIZE
 
@@ -2317,7 +2317,7 @@ with format; DDHH24MMSS::bigint, this depend of your apps usage.
 =item NLS_LANG and NLS_NCHAR
 
 By default Ora2Pg will set NLS_LANG to AMERICAN_AMERICA.AL32UTF8 and NLS_NCHAR
-to AL32UTF8. It is not recommanded to change those settings but in some case it
+to AL32UTF8. It is not recommended to change those settings but in some case it
 could be useful. Using your own settings with those configuration directive will
 change the client encoding at Oracle side by setting the environment variables
 $ENV{NLS_LANG} and $ENV{NLS_NCHAR}.
@@ -2343,7 +2343,7 @@ Most of the time, leave this directive commented.
 
 By default PostgreSQL client encoding is automatically set to UTF8 to avoid
 encoding issue. If you have changed the value of NLS_LANG you might have to
-change  the encoding of the PostgreSQL client.
+change the encoding of the PostgreSQL client.
 
 You can take a look at the PostgreSQL supported character sets here: http://www.postgresql.org/docs/9.0/static/multibyte.html
 
@@ -2401,7 +2401,7 @@ command line.
 
 Enable this directive if the rewrite of Oracle native syntax (+) of
 OUTER JOIN is broken. This will force Ora2Pg to not rewrite such code,
-default is to try to rewrite simple form of rigth outer join for the
+default is to try to rewrite simple form of right outer join for the
 moment.
 
 =item UUID_FUNCTION
@@ -2439,7 +2439,7 @@ may want to also comment SAVEPOINT calls, in this case enable it.
 Ora2Pg replace all string constant during the pl/sql to plpgsql translation,
 string constant are all text include between single quote. If you have some
 string placeholder used in dynamic call to queries you can set a list of
-regexp to be temporary replaced to not break the parser. For exemple:
+regexp to be temporary replaced to not break the parser. For example:
  
 	STRING_CONSTANT_REGEXP         <placeholder value=".*">
 
@@ -2466,12 +2466,14 @@ without the pragma call, disable this directive.
 
 =head2 Materialized view
 
-Since PostgreSQL 9.3, materialized view are supported with the CREATE MATERIALIZED VIEW syntax,
-to force Ora2Pg to use the native PostgreSQL support you must enable the configuration
-directive PG_SUPPORTS_MVIEW.
+Materialized views are exported as snapshot "Snapshot Materialized Views" as
+PostgreSQL only supports full refresh.
 
-In other case Ora2Pg will export all materialized views as "Snapshot Materialized Views" as explain
-in this document: http://tech.jonathangardner.net/wiki/PostgreSQL/Materialized_Views.
+If you want to import the materialized views in PostgreSQL prior to 9.3 you
+have to set configuration directive PG_SUPPORTS_MVIEW to 0. In this case
+Ora2Pg will export all materialized views as explain in this document:
+
+	http://tech.jonathangardner.net/wiki/PostgreSQL/Materialized_Views.
 
 When exporting materialized view Ora2Pg will first add the SQL code to create the "materialized_views" table:
 
@@ -2482,7 +2484,8 @@ When exporting materialized view Ora2Pg will first add the SQL code to create th
 		last_refresh TIMESTAMP WITH TIME ZONE
 	);
 
-all materialized views will have an entry in this table. It then adds the plpgsql code to create tree functions:
+all materialized views will have an entry in this table. It then adds the
+plpgsql code to create tree functions:
 
 	create_materialized_view(text, text, text) used to create a materialized view
 	drop_materialized_view(text) used to delete a materialized view
@@ -2495,17 +2498,19 @@ then it adds the SQL code to create the view and the materialized view:
 
 	SELECT create_materialized_view('mviewname','mviewname_mview', change with the name of the column to used for the index);
 
-The first argument is the name of the materialized view, the second the name of the view on which the materialized view is based
-and the third is the column name on which the index should be build (aka most od the time the primary key). This column is not
-automatically deduced so you need to replace its name.
+The first argument is the name of the materialized view, the second the name of
+the view on which the materialized view is based and the third is the column
+name on which the index should be build (aka most of the time the primary key).
+This column is not automatically deduced so you need to replace its name.
 
-As said above Ora2Pg only supports snapshot materialized views so the table will be entirely refreshed by issuing first a truncate
-of the table and then by load again all data from the view:
+As said above Ora2Pg only supports snapshot materialized views so the table will
+be entirely refreshed by issuing first a truncate of the table and then by load
+again all data from the view:
 
 	 refresh_full_materialized_view('mviewname');
 
-To drop the materialized view you just have to call the drop_materialized_view() function with the name of the materialized view
-as parameter.
+To drop the materialized view you just have to call the drop_materialized_view()
+function with the name of the materialized view as parameter.
 
 =head2 Other configuration directives
 
@@ -2761,7 +2766,7 @@ to indicate that it need a huge amount of work and a full project management
 with migration support. Default is 10 human-days. You can use the configuration
 directive HUMAN_DAYS_LIMIT to change this default value permanently.
 
-This feature has been developped to help you or your boss to decide which
+This feature has been developed to help you or your boss to decide which
 database to migrate first and the team that must be mobilized to operate
 the migration.
 
@@ -2882,7 +2887,7 @@ REPLACE_TABLES configuration directive.
 
 Oracle allow the use of global variables defined in packages. Ora2Pg will
 export these variables for PostgreSQL as user defined custom variables
-available in a session. Oracle variables assignement are exported as
+available in a session. Oracle variables assignment are exported as
 call to:
 
     PERFORM set_config('pkgname.varname', value, false);
