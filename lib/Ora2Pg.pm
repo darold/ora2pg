@@ -13399,6 +13399,11 @@ sub _convert_function
 	$fname =~ s/"_"/_/gs;
 
 	$fct_detail{args} =~ s/\s+IN\s+/ /igs; # Remove default IN keyword
+	# Remove DEFAULT NULL from function/procedure arguments, NULL is always the default
+	$fct_detail{args} =~ s/\s+DEFAULT\s+NULL//igs;
+	# Remove DEFAULT EMPTY_BLOB() from function/procedure arguments, NULL is the default
+	$fct_detail{args} =~ s/\s+DEFAULT\s+EMPTY_[CB]LOB\(\)//igs;
+
 
 	# Input parameters after one with a default value must also have defaults
 	# and we need to sort the arguments so the ones with default values will be on the bottom
@@ -17868,6 +17873,11 @@ sub _lookup_function
 		$fct_detail{args} =~ s/\s*NOCOPY//igs;
 		# IN OUT should be INOUT
 		$fct_detail{args} =~ s/\bIN\s+OUT/INOUT/igs;
+
+		# Remove DEFAULT NULL from function/procedure arguments, NULL is always the default
+		$fct_detail{args} =~ s/\s+DEFAULT\s+NULL//igs;
+		# Remove DEFAULT EMPTY_BLOB() from function/procedure arguments, NULL is the default
+		$fct_detail{args} =~ s/\s+DEFAULT\s+EMPTY_[CB]LOB\(\)//igs;
 
 		# Now convert types
 		$fct_detail{args} = Ora2Pg::PLSQL::replace_sql_type($fct_detail{args}, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type}, %{$self->{data_type}});
