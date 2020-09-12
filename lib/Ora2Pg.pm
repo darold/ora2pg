@@ -38,6 +38,7 @@ use File::Basename;
 use File::Spec qw/ tmpdir /;
 use File::Temp qw/ tempfile /;
 use Benchmark;
+use Term::ReadKey;
 
 #set locale to LC_NUMERIC C
 setlocale(LC_NUMERIC,"C");
@@ -1638,6 +1639,10 @@ sub _init
 sub _oracle_connection
 {
 	my ($self, $quiet) = @_;
+  
+  $self->{oracle_user} = $self->_ask_username('Oracle') unless (defined($self->{oracle_user}));
+  $self->{oracle_pwd} = $self->_ask_password('Oracle') unless (defined($self->{oracle_pwd}) || $self->{oracle_user} eq '/');
+   my $ora_session_mode = ($self->{oracle_user} eq "/" || $self->{oracle_user} eq "sys") ? 2 : undef;
 
 	$self->logit("Trying to connect to database: $self->{oracle_dsn}\n", 1) if (!$quiet);
 
@@ -1647,7 +1652,8 @@ sub _oracle_connection
 			LongReadLen=>$self->{longreadlen},
 			LongTruncOk=>$self->{longtruncok},
 			AutoInactiveDestroy => 1,
-			PrintError => 0
+			PrintError => 0,
+      ora_session_mode => $ora_session_mode,
 		}
 	);
 
@@ -1891,12 +1897,15 @@ sub _send_to_pgdb
 	eval("use DBD::Pg qw(:pg_types);");
 
 	return if ($self->{oracle_speed});
+  
+  $self->{pg_user} = $self->_ask_username('PostgreSQL') unless (defined($self->{pg_user}));
+  $self->{pg_pwd} = $self->_ask_password('PostgreSQL') unless (defined($self->{pg_pwd}));
 
-        # Connect the destination database
-        my $dbhdest = DBI->connect($self->{pg_dsn}, $self->{pg_user}, $self->{pg_pwd}, {AutoInactiveDestroy => 1});
+  # Connect the destination database
+  my $dbhdest = DBI->connect($self->{pg_dsn}, $self->{pg_user}, $self->{pg_pwd}, {AutoInactiveDestroy => 1});
 
-        # Check for connection failure
-        if (!$dbhdest) {
+  # Check for connection failure
+  if (!$dbhdest) {
 		$self->logit("FATAL: $DBI::err ... $DBI::errstr\n", 0, 1);
 	}
 
@@ -19042,6 +19051,30 @@ sub remove_newline
 	$str =~ s/[\n\r]+\s*/ /gs;
 
 	return $str;
+}
+
+sub _ask_username {
+  my $self = shift;
+  my $target = shift;
+  
+  print 'Enter ' . $target . ' username:' . "\n";
+  my $username = ReadLine(0);
+  chomp($username);
+  
+  return $username;
+}
+
+sub _ask_password {
+  my $self = shift;
+  my $target = shift;
+  
+  print 'Enter ' . $target . ' password:' . "\n";
+  ReadMode(2);
+  my $password = ReadLine(0);
+  ReadMode(0);
+  chomp($password);
+  
+  return $password;
 }
 
 ##############
