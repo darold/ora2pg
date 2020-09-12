@@ -19071,7 +19071,7 @@ sub _ask_username {
   my $self = shift;
   my $target = shift;
   
-  print 'Enter ' . $target . ' username:' . "\n";
+  print 'Enter ' . $target . ' username: ';
   my $username = ReadLine(0);
   chomp($username);
   
@@ -19082,11 +19082,12 @@ sub _ask_password {
   my $self = shift;
   my $target = shift;
   
-  print 'Enter ' . $target . ' password:' . "\n";
+  print 'Enter ' . $target . ' password: ';
   ReadMode(2);
   my $password = ReadLine(0);
   ReadMode(0);
   chomp($password);
+  print "\n";
   
   return $password;
 }
