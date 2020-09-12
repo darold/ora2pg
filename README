@@ -463,6 +463,14 @@ CONFIGURATION
         login as Oracle super admin to avoid grants problem during the
         database scan and be sure that nothing is missing.
 
+        If you do not supply a credential with ORACLE_PWD and you have
+        installed the Term::ReadKey Perl module, Ora2Pg will ask for the
+        password interactively. If ORACLE_USER is not set it will be asked
+        interactively too.
+
+        To connect to a local ORACLE instance with connections "as sysdba"
+        you have to set ORACLE_USER to "/" and an empty password.
+
     USER_GRANTS
         Set this directive to 1 if you connect the Oracle database as simple
         user and do not have enough grants to extract things from the
@@ -1668,6 +1676,11 @@ CONFIGURATION
 
     PG_USER and PG_PWD
         These two directives are used to set the login user and password.
+
+        If you do not supply a credential with PG_PWD and you have installed
+        the Term::ReadKey Perl module, Ora2Pg will ask for the password
+        interactively. If PG_USER is not set it will be asked interactively
+        too.
 
     SYNCHRONOUS_COMMIT
         Specifies whether transaction commit will wait for WAL records to be

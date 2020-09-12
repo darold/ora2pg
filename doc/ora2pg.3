@@ -618,6 +618,13 @@ These two directives are used to define the user and password for the Oracle
 database connection. Note that if you can it is better to login as Oracle super
 admin to avoid grants problem during the database scan and be sure that nothing
 is missing.
+.Sp
+If you do not supply a credential with \s-1ORACLE_PWD\s0 and you have installed the
+Term::ReadKey Perl module, Ora2Pg will ask for the password interactively. If
+\&\s-1ORACLE_USER\s0 is not set it will be asked interactively too.
+.Sp
+To connect to a local \s-1ORACLE\s0 instance with connections \*(L"as sysdba\*(R" you have to
+set \s-1ORACLE_USER\s0 to \*(L"/\*(R" and an empty password.
 .IP "\s-1USER_GRANTS\s0" 4
 .IX Item "USER_GRANTS"
 Set this directive to 1 if you connect the Oracle database as simple user and
@@ -1852,6 +1859,10 @@ be imported manually through the use og psql or any other PostgreSQL client.
 .IP "\s-1PG_USER\s0 and \s-1PG_PWD\s0" 4
 .IX Item "PG_USER and PG_PWD"
 These two directives are used to set the login user and password.
+.Sp
+If you do not supply a credential with \s-1PG_PWD\s0 and you have installed the
+Term::ReadKey Perl module, Ora2Pg will ask for the password interactively. If
+\&\s-1PG_USER\s0 is not set it will be asked interactively too.
 .IP "\s-1SYNCHRONOUS_COMMIT\s0" 4
 .IX Item "SYNCHRONOUS_COMMIT"
 Specifies whether transaction commit will wait for \s-1WAL\s0 records to be written

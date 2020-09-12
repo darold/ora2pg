@@ -1641,7 +1641,7 @@ sub _oracle_connection
  
 	if (!defined $self->{oracle_pwd})
 	{
-		eval("use Term::ReadKey;");
+		eval("use Term::ReadKey;") unless $self->{oracle_user} eq '/');
 		$self->{oracle_user} = $self->_ask_username('Oracle') unless (defined $self->{oracle_user});
 		$self->{oracle_pwd} = $self->_ask_password('Oracle') unless ($self->{oracle_user} eq '/');
 	}
