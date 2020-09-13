@@ -6840,7 +6840,26 @@ sub export_table
 									my @c =  $f->[4] =~ /\./g;
 									if ($#c >= 1)
 									{
-										$f->[4] = "'$f->[4]'";
+										if ($type =~ /CHAR|TEXT|ENUM/i) {
+											$f->[4] = "'$f->[4]'" if ($f->[4] !~ /[']/ && $f->[4] !~ /\(.*\)/);
+										} elsif ($type =~ /DATE|TIME/i) {
+											if ($f->[4] =~ /0000-00-00/) {
+												if ($self->{replace_zero_date}) {
+													$f->[4] = $self->{replace_zero_date};
+												} else {
+													$f->[4] =~ s/^0000-00-00/1970-01-01/;
+												}
+											}
+											if ($f->[4] =~ /^\d+/) {
+												$f->[4] = "'$f->[4]'";
+											} elsif ($f->[4] =~ /^[\-]*INFINITY$/) {
+												$f->[4] = "'$f->[4]'::$type";
+											} elsif ($f->[4] =~ /AT TIME ZONE/i) {
+												$f->[4] = "($f->[4])";
+											}
+										} else {
+											$f->[4] = "'$f->[4]'";
+										}
 									}
 								}
 								$f->[4] = 'NULL' if ($f->[4] eq "''" && $type =~ /int|double|numeric/i);
