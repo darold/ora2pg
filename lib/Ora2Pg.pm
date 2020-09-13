@@ -4726,12 +4726,13 @@ sub export_trigger
 				$trig->[6] =~ s/^[^\.\s]+\.//;
 				if (!$self->{preserve_case}) {
 					$trig->[6] =~ s/"([^"]+)"/\L$1\E/gs;
-
 				}
 				chomp($trig->[6]);
 				# Remove referencing clause, not supported by PostgreSQL
 				$trig->[6] =~ s/REFERENCING\s+(.*?)(FOR\s+EACH\s+)/$2/is;
-				$sql_output .= "CREATE TRIGGER " . $self->quote_object_name($trig->[6]) . "\n";
+				$trig->[6] =~ s/^\s*["]*(?:$trig->[0])["]*//is;
+				$trig->[6] =~ s/\s+ON\s+([^"\s]+)\s+/" ON " . $self->quote_object_name($1) . " "/ies;
+				$sql_output .= "CREATE TRIGGER " . $self->quote_object_name($trig->[0]) . "$trig->[6]\n";
 				if ($trig->[5]) {
 					$self->_remove_comments(\$trig->[5]);
 					$trig->[5] =~ s/"([^"]+)"/\L$1\E/gs if (!$self->{preserve_case});
