@@ -3378,6 +3378,7 @@ sub _partitions
 
 	$self->logit("Retrieving partitions information...\n", 1);
 	($self->{partitions}, $self->{partitions_default}) = $self->_get_partitions();
+
 	($self->{subpartitions}, $self->{subpartitions_default}) = $self->_get_subpartitions();
 
 	# Get partition list meta information
@@ -10343,11 +10344,14 @@ sub _get_indexes
 	# Retrieve all indexes 
 	my $sth = '';
 	if ($self->{db_version} !~ /Release 8/) {
+		my $no_mview = " AND (A.INDEX_OWNER, A.TABLE_NAME) NOT IN (SELECT OWNER, MVIEW_NAME FROM ALL_MVIEWS UNION ALL SELECT LOG_OWNER, LOG_TABLE FROM ALL_MVIEW_LOGS)" if ($self->{type} ne 'FDW');
+		$no_mview .= " AND (A.INDEX_OWNER, A.TABLE_NAME) NOT IN (SELECT OWNER, TABLE_NAME FROM ALL_OBJECT_TABLES)";
+		$no_mview = '' if ($self->{type} eq 'MVIEW');
 		$sth = $self->{dbh}->prepare(<<END) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 SELECT DISTINCT A.INDEX_NAME,A.COLUMN_NAME,B.UNIQUENESS,A.COLUMN_POSITION,B.INDEX_TYPE,B.TABLE_TYPE,B.GENERATED,B.JOIN_INDEX,A.TABLE_NAME,A.INDEX_OWNER,B.TABLESPACE_NAME,B.ITYP_NAME,B.PARAMETERS,A.DESCEND
 FROM $self->{prefix}_IND_COLUMNS A
 JOIN $self->{prefix}_INDEXES B ON (B.INDEX_NAME=A.INDEX_NAME AND B.OWNER=A.INDEX_OWNER)
-WHERE$generated B.TEMPORARY <> 'Y' $condition
+WHERE$generated B.TEMPORARY <> 'Y' $condition $no_mview
 ORDER BY A.COLUMN_POSITION
 END
 	} else {
