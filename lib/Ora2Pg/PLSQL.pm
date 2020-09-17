@@ -789,8 +789,8 @@ sub plsql_to_plpgsql
 	# Add missing FROM clause in DELETE statements minus MERGE and FK ON DELETE
 	$str =~ s/(\bDELETE\s+)(?!FROM|WHERE|RESTRICT|CASCADE|NO ACTION)\b/$1FROM /igs;
 
-	# Revert changes on update queries in the column setting part of the query
-	while ($str =~ s/\b(UPDATE\s+[^;]+)\s+IS NULL(\s*(?!WHERE)([^;]*))/$1 = NULL$2/is) {};
+	# Revert changes on update queries for IS NULL transaltion in the target list only
+	while ($str =~ s/\b(UPDATE\s+((?!WHERE|;).)*)\s+IS NULL/$1 = NULL/is) {};
 
 	# Rewrite all IF ... IS NULL with coalesce because for Oracle empty and NULL is the same
 	if ($class->{null_equal_empty}) {
