@@ -2457,6 +2457,27 @@ regexp to be temporary replaced to not break the parser. For example:
 
 The list of regexp must use the semi colon as separator.
 
+=item ALTERNATIVE_QUOTING_REGEXP
+
+To support the Alternative Quoting Mechanism ('Q' or 'q') for String Literals
+set the regexp with the text capture to use to extract the text part. For
+example with a variable declared as
+
+	c_sample VARCHAR2(100 CHAR) := q'{This doesn't work.}';
+
+the regexp to use must be:
+
+	ALTERNATIVE_QUOTING_REGEXP     q'{(.*)}'
+
+ora2pg will use the $$ delimiter, with the example the result will be:
+
+	c_sample varchar(100) := $$This doesn't work.$$;
+
+The value of this configuration directive can be a list of regexp
+separated by a semi colon. The capture part (between parenthesis) is
+mandatory in each regexp if you want to restore the string constant.
+
+
 =item USE_ORAFCE
 
 If you want to use functions defined in the Orafce library and prevent

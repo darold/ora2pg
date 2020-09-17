@@ -1135,6 +1135,13 @@ COMMENT_SAVEPOINT	0
 # must use the semi colon as separator. For exemple:
 #STRING_CONSTANT_REGEXP		<placeholder value=".*">
 
+# To support the Alternative Quoting Mechanism (''Q'') for String Literals
+# set the regexp with the text capture to use to extract the text part.
+# For example with a variable declared as
+#       c_sample VARCHAR2(100 CHAR) := q'{This doesn't work.}';
+# the regexp must be: q'{(.*)}' ora2pg use the $$ delimiter.
+#ALTERNATIVE_QUOTING_REGEXP              q'{(.*)}'
+
 # If you want to use functions defined in the Orafce library and prevent
 # Ora2Pg to translate call to these function, enable this directive.
 # The Orafce library can be found here: https://github.com/orafce/orafce

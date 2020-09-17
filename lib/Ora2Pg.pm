@@ -933,6 +933,7 @@ sub _init
 
 	# Storage of string constant placeholder regexp
 	$self->{string_constant_regexp} = ();
+	$self->{alternative_quoting_regexp} = ();
 
 	# Global file handle
 	$self->{cfhout} = undef;
@@ -1059,6 +1060,9 @@ sub _init
 	# Set regexp to detect parts of statements that need to be considered as text
 	if ($AConfig{STRING_CONSTANT_REGEXP}) {
 		push(@{ $self->{string_constant_regexp} } , split(/;/, $AConfig{STRING_CONSTANT_REGEXP}));
+	}
+	if ($AConfig{ALTERNATIVE_QUOTING_REGEXP}) {
+		push(@{ $self->{alternative_quoting_regexp} } , split(/;/, $AConfig{ALTERNATIVE_QUOTING_REGEXP}));
 	}
 
 	# Overwrite configuration with all given parameters
@@ -2417,6 +2421,13 @@ sub _parse_constraint
 sub _remove_text_constant_part
 {
 	my ($self, $str) = @_;
+
+	for (my $i = 0; $i <= $#{$self->{alternative_quoting_regexp}}; $i++) {
+		while ($$str =~ s/$self->{alternative_quoting_regexp}[$i]/\?TEXTVALUE$self->{text_values_pos}\?/s) {
+			$self->{text_values}{$self->{text_values_pos}} = '$$' . $1 . '$$';
+			$self->{text_values_pos}++;
+		}
+	}
 
 	$$str =~ s/\\'/ORA2PG_ESCAPE1_QUOTE'/gs;
 	while ($$str =~ s/''/ORA2PG_ESCAPE2_QUOTE/gs) {}
