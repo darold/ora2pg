@@ -10357,7 +10357,7 @@ END
 	} else {
 		# an 8i database.
 		$sth = $self->{dbh}->prepare(<<END) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-SELECT DISTINCT A.INDEX_NAME,A.COLUMN_NAME,B.UNIQUENESS,A.COLUMN_POSITION,B.INDEX_TYPE,B.TABLE_TYPE,B.GENERATED, A.TABLE_NAME,A.INDEX_OWNER,B.TABLESPACE_NAME,B.ITYP_NAME,B.PARAMETERS,A.DESCEND
+SELECT DISTINCT A.INDEX_NAME,A.COLUMN_NAME,B.UNIQUENESS,A.COLUMN_POSITION,B.INDEX_TYPE,B.TABLE_TYPE,B.GENERATED, 'NO', A.TABLE_NAME,A.INDEX_OWNER,B.TABLESPACE_NAME,B.ITYP_NAME,B.PARAMETERS,A.DESCEND
 FROM $self->{prefix}_IND_COLUMNS A, $self->{prefix}_INDEXES B
 WHERE B.INDEX_NAME=A.INDEX_NAME AND B.OWNER=A.INDEX_OWNER $condition
 AND$generated B.TEMPORARY <> 'Y'
@@ -10381,21 +10381,26 @@ AND    IC.TABLE_OWNER = ?
 	my %data = ();
 	my %unique = ();
 	my %idx_type = ();
-	while (my $row = $sth->fetch) {
-		my $save_tb = $row->[-6];
+	while (my $row = $sth->fetch)
+	{
+		# Exclude log indexes of materialized views, there must be a better
+		# way to exclude then than looking at index name, fill free to fix it.
+		next if ($row->[0] =~ /^I_SNAP\$_/);
+
+		my $save_tb = $row->[8];
 		if (!$self->{schema} && $self->{export_schema}) {
-			$row->[-6] = "$row->[-5].$row->[-6]";
+			$row->[8] = "$row->[9].$row->[8]";
 		}
 		if (!$self->{preserve_case}) {
-			next if (exists $self->{modify}{"\L$row->[-6]\E"} && !grep(/^$row->[1]$/i, @{$self->{modify}{"\L$row->[-6]\E"}}));
+			next if (exists $self->{modify}{"\L$row->[8]\E"} && !grep(/^$row->[1]$/i, @{$self->{modify}{"\L$row->[8]\E"}}));
 		} else {
-			next if (exists $self->{modify}{$row->[-6]} && !grep(/^$row->[1]$/i, @{$self->{modify}{$row->[-6]}}));
+			next if (exists $self->{modify}{$row->[8]} && !grep(/^$row->[1]$/i, @{$self->{modify}{$row->[8]}}));
 		}
 		# Show a warning when an index has the same name as the table
 		if ( !$self->{indexes_renaming} && !$self->{indexes_suffix} && (lc($row->[0]) eq lc($table)) ) {
 			 print STDERR "WARNING: index $row->[0] has the same name as the table itself. Please rename it before export or enable INDEXES_RENAMING.\n"; 
 		}
-		$unique{$row->[-6]}{$row->[0]} = $row->[2];
+		$unique{$row->[8]}{$row->[0]} = $row->[2];
 
 		# Save original column name
 		my $colname = $row->[1];
@@ -10411,7 +10416,7 @@ AND    IC.TABLE_OWNER = ?
 				$row->[1] = $self->quote_object_name($row->[1]);
 			}
 			# Append DESC sort order when not default to ASC
-			if ($row->[-1] eq 'DESC') {
+			if ($row->[13] eq 'DESC') {
 				$row->[1] .= " DESC";
 			}
 		} else {
@@ -10426,33 +10431,33 @@ AND    IC.TABLE_OWNER = ?
 			$row->[4] =~ s/FUNCTION-BASED\s*//;
 		}
 
-		$idx_type{$row->[-6]}{$row->[0]}{type_name} = $row->[-3];
+		$idx_type{$row->[8]}{$row->[0]}{type_name} = $row->[11];
 		if (($#{$row} > 6) && ($row->[7] eq 'Y')) {
-			$idx_type{$row->[-6]}{$row->[0]}{type} = $row->[4] . ' JOIN';
+			$idx_type{$row->[8]}{$row->[0]}{type} = $row->[4] . ' JOIN';
 		} else {
-			$idx_type{$row->[-6]}{$row->[0]}{type} = $row->[4];
+			$idx_type{$row->[8]}{$row->[0]}{type} = $row->[4];
 		}
 		my $idx_name = $row->[0];
 		if (!$self->{schema} && $self->{export_schema}) {
-			$idx_name = "$row->[-5].$row->[0]";
+			$idx_name = "$row->[9].$row->[0]";
 		}
 		if (exists $idx_info{$idx_name}) {
-			$idx_type{$row->[-6]}{$row->[0]}{stemmer} = $idx_info{$idx_name}{stemmer};
+			$idx_type{$row->[8]}{$row->[0]}{stemmer} = $idx_info{$idx_name}{stemmer};
 		}
-		if ($row->[-3] =~ /SPATIAL_INDEX/) {
-			$idx_type{$row->[-6]}{$row->[0]}{type} = 'SPATIAL INDEX';
-			if ($row->[-2] =~ /layer_gtype=([^\s,]+)/i) {
-				$idx_type{$row->[-5]}{$row->[0]}{type_constraint} = uc($1);
+		if ($row->[11] =~ /SPATIAL_INDEX/) {
+			$idx_type{$row->[8]}{$row->[0]}{type} = 'SPATIAL INDEX';
+			if ($row->[12] =~ /layer_gtype=([^\s,]+)/i) {
+				$idx_type{$row->[9]}{$row->[0]}{type_constraint} = uc($1);
 			}
-			if ($row->[-2] =~ /sdo_indx_dims=(\d+)/i) {
-				$idx_type{$row->[-6]}{$row->[0]}{type_dims} = $1;
+			if ($row->[12] =~ /sdo_indx_dims=(\d+)/i) {
+				$idx_type{$row->[8]}{$row->[0]}{type_dims} = $1;
 			}
 		}
 		if ($row->[4] eq 'BITMAP') {
-			$idx_type{$row->[-6]}{$row->[0]}{type} = $row->[4];
+			$idx_type{$row->[8]}{$row->[0]}{type} = $row->[4];
 		}
-		push(@{$data{$row->[-6]}{$row->[0]}}, $row->[1]);
-		$index_tablespace{$row->[-6]}{$row->[0]} = $row->[-4];
+		push(@{$data{$row->[8]}{$row->[0]}}, $row->[1]);
+		$index_tablespace{$row->[8]}{$row->[0]} = $row->[10];
 
 	}
 	$sth->finish();
