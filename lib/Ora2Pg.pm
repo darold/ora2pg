@@ -573,7 +573,6 @@ sub remove_export_file
 {
 	my ($self, $outfile) = @_;
 
-
 	# Init with configuration OUTPUT filename
 	$outfile ||= $self->{output};
 	if ($outfile && $outfile ne '-')
@@ -4626,7 +4625,7 @@ sub export_trigger
 		}
 		# Extract columns specified in the UPDATE OF ... ON clause
 		my $cols = '';
-		if ($trig->[2] eq 'UPDATE' && $trig->[6] =~ /UPDATE\s+OF\s+(.*?)\s+ON/i) {
+		if ($trig->[2] =~ /UPDATE/ && $trig->[6] =~ /UPDATE\s+OF\s+(.*?)\s+ON/i) {
 			my @defs = split(/\s*,\s*/, $1);
 			$cols = ' OF ';
 			foreach my $c (@defs) {
@@ -4946,7 +4945,8 @@ sub translate_query
 
 	my $total_size = 0;
 	my $cost_value = 0;
-	foreach my $q (sort {$a <=> $b} keys %{$self->{queries}}) {
+	foreach my $q (sort {$a <=> $b} keys %{$self->{queries}})
+	{
 		$total_size += length($self->{queries}{$q}{code});
 		$self->logit("Dumping query $q...\n", 1);
 		if ($self->{queries}{$q}{to_be_parsed}) {
@@ -4987,7 +4987,6 @@ sub translate_query
 	if (!$nothing) {
 		$sql_output = "-- Nothing found of type $self->{type}\n" if (!$self->{no_header});
 	}
-
 	$self->dump($sql_output);
 
 	$self->{queries} = ();
