@@ -11535,11 +11535,12 @@ sub _get_packages
 		my $sth2 = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 		$sth2->execute or $self->logit("FATAL: " . $sth2->errstr . "\n", 0, 1);
 		while (my $r = $sth2->fetch) {
-			$packages{$row->[0]}{text} .= 'CREATE OR REPLACE ' if ($r->[0] =~ /^PACKAGE\s+/is);
-			$packages{$row->[0]}{text} .= $r->[0];
+			$packages{$row->[0]}{desc} .= 'CREATE OR REPLACE ' if ($r->[0] =~ /^PACKAGE\s+/is);
+			$packages{$row->[0]}{desc} .= $r->[0];
 		}
 		$sth2->finish();
-		$packages{$row->[0]}{text} .= "\n" if (exists $packages{$row->[0]});
+		$packages{$row->[0]}{desc} .= "\n" if (exists $packages{$row->[0]});
+
 		# Then package body code
 		$sql = "SELECT TEXT FROM $self->{prefix}_SOURCE WHERE OWNER='$row->[1]' AND NAME='$row->[0]' AND TYPE='PACKAGE BODY' ORDER BY LINE";
 		$sth2 = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -13157,11 +13158,9 @@ sub _convert_package
 	}
 	# Grab global declaration from the package header
 	if ($self->{packages}{$pkg}{desc} =~ /CREATE OR REPLACE PACKAGE\s+([^\s]+)(?:\s*\%ORA2PG_COMMENT\d+\%)*\s*(AS|IS)\s*(.*)/is) {
-
 		my $pname = $1;
 		my $type = $2;
 		my $glob_declare = $3;
-
 		$pname =~ s/"//g;
 		$pname =~ s/^.*\.//g;
 		$self->logit("Looking global declaration in package $pname...\n", 1);
@@ -19055,7 +19054,8 @@ sub register_global_variable
 	my @vars = split(/\s*(\%ORA2PG_COMMENT\d+\%|;)\s*/, $glob_vars);
 	map { s/^\s+//; s/\s+$//; } @vars;
 	my $ret = '';
-	foreach my $l (@vars) {
+	foreach my $l (@vars)
+	{
 		if ($l eq ';' || $l =~ /ORA2PG_COMMENT/ || $l =~ /^CREATE\s+/i) {
 			$ret .= $l if ($l ne ';');
 			next;
