@@ -82,7 +82,7 @@ $QUERY_TEST_SCORE = 0.1;
 	'BULK COLLECT' => 3,
 	'GOTO' => 2,
 	'FORALL' => 1,
-	'ROWNUM' => 2,
+	'ROWNUM' => 0.1,
 	'NOTFOUND' => 0,
 	'ISOPEN' => 1,
 	'ROWCOUNT' => 1,
@@ -823,7 +823,7 @@ sub plsql_to_plpgsql
 	$class->{sub_queries_idx} = 0;
 
 	####
-	# Replace ending ROWNUM with LIMIT and replace (+) outer join
+	# Replace ending ROWNUM with LIMIT or row_number() and replace (+) outer join
 	####
 	# Catch potential subquery first and replace rownum in subqueries
 	my @statements = split(/;/, $str);
@@ -1022,8 +1022,17 @@ sub translate_statement
 		# Replace call to left outer join obsolete syntax
 		$q[$j] = replace_outer_join($class, $q[$j], 'left');
 
-		# Replace LIMIT into the main query
-		$q[$j] = replace_rownum_with_limit($class, $q[$j]);
+		if ($q[$j] =~ /\bROWNUM\b/)
+		{
+			# Replace ROWNUM after the WHERE clause by a LIMIT clause
+			$q[$j] = replace_rownum_with_limit($class, $q[$j]);
+			# Replace ROWNUM by row_number() when used in the target list
+			$q[$j] =~ s/((?!WHERE\s.*|LIMIT\s.*)[\s,]+)ROWNUM([\s,]+)/$1row_number() OVER () AS rownum$2/is;
+			# The form "UPDATE mytbl SET col1 = ROWNUM;" is not yet translated
+			# and mus be manually rewritten as follow:
+			# WITH cte AS (SELECT *, ROW_NUMBER() OVER() AS rn FROM mytbl)
+			# 	UPDATE mytbl SET col1 = (SELECT rn FROM cte WHERE cte.pk = mytbl.pk);
+		}
 
 	}
 	$stmt = join("\n", @q);
@@ -1136,7 +1145,6 @@ sub extract_subqueries
 	}
 
 }
-
 
 sub replace_rownum_with_limit
 {
