@@ -1370,7 +1370,11 @@ sub replace_oracle_function
 
 		# Replace to_char() without format by a simple cast to text
 		$str =~ s/\bTO_CHAR\s*\(\s*([^,\)]+)\)/($1)::varchar/is;
-		$str =~ s/\(([^\s]+)\)(::varchar)/$1$2/igs;
+		if ($class->{type} ne 'TABLE') {
+			$str =~ s/\(([^\s]+)\)(::varchar)/$1$2/igs;
+		} else {
+			$str =~ s/\(([^\s]+)\)(::varchar)/($1$2)/igs;
+		}
 
 		# Change trunc() to date_trunc('day', field)
 		# Trunc is replaced with date_trunc if we find date in the name of
