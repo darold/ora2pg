@@ -8379,7 +8379,7 @@ sub _create_indexes
 				($self->{context_as_trgm} && ($self->{$objtyp}{$tbsaved}{idx_type}{$idx}{type_name} =~ /FULLTEXT|CONTEXT/)) ) {
 				# use pg_trgm
 				my @cols = split(/\s*,\s*/, $columns);
-				map { s/^(.*)$/unaccent_immutable($1)/; } @cols;
+				map { s/^(.*)$/unaccent_immutable($1)/; } @cols if ($self->{use_unaccent});
 				$columns = join(" gin_trgm_ops, ", @cols);
 				$columns .= " gin_trgm_ops";
 				$str .= "CREATE INDEX$concurrently " . $self->quote_object_name("$idxname$self->{indexes_suffix}")
