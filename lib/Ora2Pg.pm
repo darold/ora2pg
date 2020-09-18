@@ -5483,7 +5483,8 @@ sub export_package
 	my $number_fct = 0;
 	my $i = 1;
 	my $num_total_package = scalar keys %{$self->{packages}};
-	foreach my $pkg (sort keys %{$self->{packages}}) {
+	foreach my $pkg (sort keys %{$self->{packages}})
+	{
 		my $total_size = 0;
 		my $total_size_no_comment = 0;
 		my $cost_value = 0;
@@ -11524,7 +11525,8 @@ sub _get_packages
 
 	my %packages = ();
 	my @fct_done = ();
-	while (my $row = $sth->fetch) {
+	while (my $row = $sth->fetch)
+	{
 		$self->logit("\tFound Package: $row->[0]\n", 1);
 		next if (grep(/^$row->[0]$/, @fct_done));
 		push(@fct_done, $row->[0]);
@@ -13505,6 +13507,11 @@ sub _convert_function
 	my $search_path = '';
 	if ($self->{export_schema} && !$self->{schema}) {
 		$search_path = $self->set_search_path($owner);
+	}
+
+	# PostgreSQL procedure do not support OUT parameter, translate them into INOUT params
+	if ($self->{pg_supports_procedure} && ($fct_detail{args} =~ /\bOUT\s+[^,\)]+/i)) {
+		$fct_detail{args} =~ s/\bOUT(\s+[^,\)]+)/INOUT$1/igs;
 	}
 
 	my @nout = $fct_detail{args} =~ /\bOUT\s+([^,\)]+)/igs;
@@ -17984,6 +17991,11 @@ sub _lookup_function
 		delete $fct_detail{func_ret_type};
 		delete $fct_detail{declare};
 		$fct_detail{code} = $plsql;
+	}
+
+	# PostgreSQL procedure do not support OUT parameter, translate them into INOUT params
+	if ($self->{pg_supports_procedure} && ($fct_detail{args} =~ /\bOUT\s+[^,\)]+/i)) {
+		$fct_detail{args} =~ s/\bOUT(\s+[^,\)]+)/INOUT$1/igs;
 	}
 
 	# Mark the function as having out parameters if any
