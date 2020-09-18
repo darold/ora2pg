@@ -82,7 +82,7 @@ $QUERY_TEST_SCORE = 0.1;
 	'BULK COLLECT' => 3,
 	'GOTO' => 2,
 	'FORALL' => 1,
-	'ROWNUM' => 0.1,
+	'ROWNUM' => 1,
 	'NOTFOUND' => 0,
 	'ISOPEN' => 1,
 	'ROWCOUNT' => 1,
@@ -116,7 +116,6 @@ $QUERY_TEST_SCORE = 0.1;
 	'LAST_DAY' => 1,
 	'NEXT_DAY' => 1,
 	'MONTHS_BETWEEN' => 1,
-	'NVL2' => 1,
 	'SDO_' => 3,
 	'PRAGMA' => 3,
 	'MDSYS' => 1,
@@ -634,7 +633,7 @@ sub plsql_to_plpgsql
 
 	# Change NVL to COALESCE
 	$str =~ s/NVL\s*\(/coalesce(/is;
-	$str =~ s/NVL2\s*\($field,$field,$field\)/coalesce($1,$3)/is;
+	$str =~ s/NVL2\s*\($field,$field,$field\)/(CASE WHEN $1 IS NOT NULL THEN $2 ELSE $3 END)/is;
 
 	# NLSSORT to COLLATE
 	if ($str =~ /NLSSORT\($field,$field[\)]?/is)
@@ -1344,7 +1343,7 @@ sub replace_oracle_function
 
 	# Change NVL to COALESCE
 	$str =~ s/NVL\s*\(/coalesce(/is;
-	$str =~ s/NVL2\s*\($field,$field,$field\)/coalesce($1,$3)/is;
+	$str =~ s/NVL2\s*\($field,$field,$field\)/(CASE WHEN $1 IS NOT NULL THEN $2 ELSE $3 END)/is;
 
 	# Replace DEFAULT empty_blob() and empty_clob()
 	my $empty = "''";
