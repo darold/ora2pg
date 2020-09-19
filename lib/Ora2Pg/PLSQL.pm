@@ -289,6 +289,11 @@ $QUERY_TEST_SCORE = 0.1;
 	'ZERO_DIVIDE' => 'division_by_zero',
 	'STORAGE_ERROR' => 'out_of_memory',
 	'INTEGRITY_ERROR' => 'integrity_constraint_violation',
+	'VALUE_ERROR' => 'data_exception',
+	'INVALID_NUMBER' => 'data_exception',
+	'INVALID_CURSOR' => 'invalid_cursor_state',
+	'NO_DATA_FOUND' => 'no_data_found',
+	'LOGIN_DENIED' => 'connection_exception',
 	# 'PROGRAM_ERROR' => 'INTERNAL ERROR',
 	# 'ROWTYPE_MISMATCH' => 'DATATYPE MISMATCH'
 );
