@@ -2096,7 +2096,10 @@ sub _tables
 	my %tables_infos = $self->_table_info();
 
 	# Retrieve column identity information
-	%{ $self->{identity_info} } = $self->_get_identities();
+	if ($self->{type} ne 'FDW')
+	{
+		%{ $self->{identity_info} } = $self->_get_identities();
+	}
 
 	if (scalar keys %tables_infos > 0)
 	{
@@ -2138,46 +2141,52 @@ sub _tables
 			}
 			%columns_infos = ();
 
-			# Retrieve comment of each columns
-			my %columns_comments = $self->_column_comments();
-			foreach my $tb (keys %columns_comments) {
-				next if (!exists $tables_infos{$tb});
-				foreach my $c (keys %{$columns_comments{$tb}}) {
-					$self->{tables}{$tb}{column_comments}{$c} = $columns_comments{$tb}{$c};
+			# Retrieve comment of each columns and FK information if not foreign table export
+			if ($self->{type} ne 'FDW')
+			{
+				my %columns_comments = $self->_column_comments();
+				foreach my $tb (keys %columns_comments) {
+					next if (!exists $tables_infos{$tb});
+					foreach my $c (keys %{$columns_comments{$tb}}) {
+						$self->{tables}{$tb}{column_comments}{$c} = $columns_comments{$tb}{$c};
+					}
 				}
-			}
 
-			# Extract foreign keys informations
-			if (!$self->{skip_fkeys}) {
-				my ($foreign_link, $foreign_key) = $self->_foreign_key('',$self->{schema});
-				foreach my $tb (keys %{$foreign_link}) {
-					next if (!exists $tables_infos{$tb});
-					%{$self->{tables}{$tb}{foreign_link}} =  %{$foreign_link->{$tb}};
-				}
-				foreach my $tb (keys %{$foreign_key}) {
-					next if (!exists $tables_infos{$tb});
-					push(@{$self->{tables}{$tb}{foreign_key}}, @{$foreign_key->{$tb}});
+				# Extract foreign keys informations
+				if (!$self->{skip_fkeys}) {
+					my ($foreign_link, $foreign_key) = $self->_foreign_key('',$self->{schema});
+					foreach my $tb (keys %{$foreign_link}) {
+						next if (!exists $tables_infos{$tb});
+						%{$self->{tables}{$tb}{foreign_link}} =  %{$foreign_link->{$tb}};
+					}
+					foreach my $tb (keys %{$foreign_key}) {
+						next if (!exists $tables_infos{$tb});
+						push(@{$self->{tables}{$tb}{foreign_key}}, @{$foreign_key->{$tb}});
+					}
 				}
 			}
 		}
 
-		# Retrieve all unique keys informations
-		my %unique_keys = $self->_unique_key('',$self->{schema});
-		foreach my $tb (keys %unique_keys) {
-			next if (!exists $tables_infos{$tb});
-			foreach my $c (keys %{$unique_keys{$tb}}) {
-				$self->{tables}{$tb}{unique_key}{$c} = $unique_keys{$tb}{$c};
-			}
-		}
-		%unique_keys = ();
-
-		# Retrieve check constraints
-		if (!$self->{skip_checks} && !$self->{is_mysql}) {
-			my %check_constraints = $self->_check_constraint('',$self->{schema});
-			foreach my $tb (keys %check_constraints) {
+		# Retrieve unique keys and check constraint information if not FDW export
+		if ($self->{type} ne 'FDW')
+		{
+			my %unique_keys = $self->_unique_key('',$self->{schema});
+			foreach my $tb (keys %unique_keys) {
 				next if (!exists $tables_infos{$tb});
-				%{$self->{tables}{$tb}{check_constraint}} = ( %{$check_constraints{$tb}});
+				foreach my $c (keys %{$unique_keys{$tb}}) {
+					$self->{tables}{$tb}{unique_key}{$c} = $unique_keys{$tb}{$c};
+				}
 			}
+			%unique_keys = ();
+
+			if (!$self->{skip_checks} && !$self->{is_mysql}) {
+				my %check_constraints = $self->_check_constraint('',$self->{schema});
+				foreach my $tb (keys %check_constraints) {
+					next if (!exists $tables_infos{$tb});
+					%{$self->{tables}{$tb}{check_constraint}} = ( %{$check_constraints{$tb}});
+				}
+			}
+
 		}
 		# Get partition list to mark tables with partition.
 		%{ $self->{partitions_list} } = $self->_get_partitioned_table() if (!$self->{disable_partition});
@@ -6550,6 +6559,8 @@ sub export_table
 	my $sql_header = $self->_set_file_header();
 	my $sql_output = "";
 
+	$self->logit("Exporting tables...\n", 1);
+
 	if ($self->{export_schema} && ($self->{schema} || $self->{pg_schema}))
 	{
 		if ($self->{create_schema}) {
@@ -6782,7 +6793,7 @@ sub export_table
 				if (!$self->{schema} && $self->{export_schema}) {
 					$f->[8] = "$f->[9].$f->[8]";
 				}
-				if (exists $self->{identity_info}{$f->[8]}{$f->[0]}) {
+				if (exists $self->{identity_info}{$f->[8]}{$f->[0]} and $self->{type} ne 'FDW') {
 					$sql_output =~ s/ NOT NULL\s*$//s; # IDENTITY or serial column are NOT NULL by default
 					if ($self->{pg_supports_identity}) {
 						$sql_output .= " GENERATED $self->{identity_info}{$f->[8]}{$f->[0]}{generation} AS IDENTITY";
@@ -6995,7 +7006,7 @@ sub export_table
 		print STDERR $self->progress_bar($ib - 1, $num_total_table, 25, '=', 'tables', 'end of table export.'), "\n";
 	}
 
-	if ($sequence_output)
+	if ($sequence_output && $self->{type} ne 'FDW')
 	{
 		my $fhdl = undef;
 		$sequence_output = qq{
@@ -7144,7 +7155,7 @@ RETURNS text AS
 	$self->dump($sql_header . $sql_output);
 
 	# Some virtual column have been found
-	if (scalar keys %virtual_trigger_info > 0)
+	if ($self->{type} ne 'FDW' and scalar keys %virtual_trigger_info > 0)
 	{
 		my $trig_out = '';
 		foreach my $tb (sort keys %virtual_trigger_info) {
@@ -7301,7 +7312,7 @@ sub _get_sql_statements
 	}
 
 	# Dump the database structure: tables, constraints, indexes, etc.
-	elsif ($self->{type} eq 'TABLE')
+	elsif ($self->{type} eq 'TABLE' or $self->{type} eq 'FDW')
 	{
 		$self->export_table();
 	}
