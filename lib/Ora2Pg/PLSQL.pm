@@ -581,7 +581,7 @@ sub plsql_to_plpgsql
 		my $t1 = $1;
 		my $t2 = $2;
 		if ($class->{text_values}{$t1} =~ /'(Jan|01).(Jan|01).1970'/
-			&& $class->{text_values}{$t2} =~ /'(Mon|MM|dd).(Mon|MM|dd).yyyy'/) {
+			&& $class->{text_values}{$t2} =~ /'(Mon|MM|dd).(Mon|MM|dd).yyyy'/i) {
 			$str =~ s/\bSYSDATE\s*\-\s*to_date\(\s*\?TEXTVALUE(\d+)\?\s*,\s*\?TEXTVALUE(\d+)\?\s*\)\s*\)\s*\*\s*(24|60)\s*\*\s*(24|60)\*\s*(24|60)/extract(epoch from now()))/is;
 		}
 	}
