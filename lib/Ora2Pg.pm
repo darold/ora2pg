@@ -8310,8 +8310,10 @@ sub _create_indexes
 		$colscompare =~ s/"//gs;
 		my $columnlist = '';
 		my $skip_index_creation = 0;
+		my %pk_hist = ();
 
-		foreach my $consname (keys %{$self->{$objtyp}{$tbsaved}{unique_key}}) {
+		foreach my $consname (keys %{$self->{$objtyp}{$tbsaved}{unique_key}})
+		{
 			my $constype =  $self->{$objtyp}{$tbsaved}{unique_key}->{$consname}{type};
 			next if (($constype ne 'P') && ($constype ne 'U'));
 			my @conscols = grep(!/^\d+$/, @{$self->{$objtyp}{$tbsaved}{unique_key}->{$consname}{columns}});
@@ -8323,6 +8325,10 @@ sub _create_indexes
 			}
 			$columnlist = join(',', @conscols);
 			$columnlist =~ s/"//gs;
+			if ($constype eq 'P')
+			{
+				$pk_hist{$table} = $columnlist;
+			}
 			if (lc($columnlist) eq lc($colscompare)) {
 				$skip_index_creation = 1;
 				last;
@@ -8332,7 +8338,8 @@ sub _create_indexes
 		# Do not create the index if there already a constraint on the same column list
 		# or there a primary key defined on the same columns as a unique index, in both cases
 		# the index will be automatically created by PostgreSQL at constraint import time.
-		if (!$skip_index_creation) {
+		if (!$skip_index_creation)
+		{
 			my $unique = '';
 			$unique = ' UNIQUE' if ($self->{$objtyp}{$tbsaved}{uniqueness}{$idx} eq 'UNIQUE');
 			my $str = '';
@@ -8350,6 +8357,15 @@ sub _create_indexes
 
 			# Replace call of schema.package.function() into package.function()
 			$columns =~ s/\b[^\s\.]+\.([^\s\.]+\.[^\s\.]+)\s*\(/$1\(/is;
+
+			# Do not create indexes if they are already defined as constraints
+			if ($self->{type} eq 'TABLE')
+			{
+				my $col_list = $columns;
+				$col_list =~ s/"//g;
+				$col_list =~ s/, /,/g;
+				next if (exists $pk_hist{$table} && uc($pk_hist{$table}) eq uc($col_list));
+			}
 
 			my $schm = '';
 			my $idxname = '';
