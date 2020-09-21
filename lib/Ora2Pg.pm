@@ -2518,7 +2518,7 @@ sub read_schema_from_file
 				$self->{tables}{$tb_name}{internal_id} = $tid;
 			}
 			$self->{tables}{$tb_name}{truncate_table} = 1;
-		} elsif ($content =~ s/CREATE\s+(GLOBAL)?\s*(TEMPORARY)?\s*TABLE[\s]+([^\s]+)\s+AS\s+([^;]+);//is) {
+		} elsif ($content =~ s/CREATE\s+(GLOBAL|PRIVATE)?\s*(TEMPORARY)?\s*TABLE[\s]+([^\s]+)\s+AS\s+([^;]+);//is) {
 			my $tb_name = $3;
 			$tb_name =~ s/"//gs;
 			my $tb_def = $4;
@@ -2529,7 +2529,7 @@ sub read_schema_from_file
 			$tid++;
 			$self->{tables}{$tb_name}{internal_id} = $tid;
 			$self->{tables}{$tb_name}{table_as} = $tb_def;
-		} elsif ($content =~ s/CREATE\s+(GLOBAL)?\s*(TEMPORARY)?\s*TABLE[\s]+([^\s\(]+)\s*([^;]+);//is) {
+		} elsif ($content =~ s/CREATE\s+(GLOBAL|PRIVATE)?\s*(TEMPORARY)?\s*TABLE[\s]+([^\s\(]+)\s*([^;]+);//is) {
 			my $tb_name = $3;
 			my $tb_def  = $4;
 			my $tb_param  = '';
@@ -2539,6 +2539,20 @@ sub read_schema_from_file
 			$self->{tables}{$tb_name}{table_info}{num_rows} = 0;
 			$tid++;
 			$self->{tables}{$tb_name}{internal_id} = $tid;
+			# For private temporary table extract the ON COMMIT information (18c)
+			if ($tb_def =~ s/ON\s+COMMIT\s+PRESERVE\s+DEFINITION//is)
+			{
+				$self->{tables}{$tb_name}{table_info}{on_commit} = 'ON COMMIT PRESERVE ROWS';
+			}
+			elsif ($tb_def =~ s/ON\s+COMMIT\s+DROP\s+DEFINITION//is)
+			{
+				$self->{tables}{$tb_name}{table_info}{on_commit} = 'ON COMMIT DROP';
+			}
+			elsif ($self->{tables}{$tb_name}{table_info}{type} eq 'TEMPORARY ')
+			{
+				# Default for PRIVATE TEMPORARY TABLE
+				$self->{tables}{$tb_name}{table_info}{on_commit} = 'ON COMMIT DROP';
+			}
 			# Get table embedded comment
 			if ($tb_def =~ s/COMMENT=["']([^"']+)["']//is) {
 				$self->{tables}{$tb_name}{table_info}{comment} = $1;
@@ -6626,6 +6640,8 @@ sub export_table
 			}
 		} keys %{$self->{tables}})
 	{
+		# Foreign table can not be temporary
+		next if ($self->{type} eq 'FDW' and $self->{tables}{$table}{table_info}{type} =~/ TEMPORARY/);
 
 		$self->logit("Dumping table $table...\n", 1);
 		if (!$self->{quiet} && !$self->{debug} && ($count_table % $PGBAR_REFRESH) == 0) {
@@ -6898,6 +6914,11 @@ sub export_table
 			}
 			$sql_output =~ s/,$//;
 			$sql_output .= ')';
+			if (exists $self->{tables}{$table}{table_info}{on_commit})
+			{
+				$sql_output .= ' ' . $self->{tables}{$table}{table_info}{on_commit};
+			}
+
 			if ($self->{tables}{$table}{table_info}{partitioned} && $self->{pg_supports_partition} && !$self->{disable_partition}) {
 				$sql_output .= " PARTITION BY " . $self->{partitions_list}{"\L$table\E"}{type} . " (" . lc(join(',', @{$self->{partitions_list}{"\L$table\E"}{columns}})) . ")";
 			}

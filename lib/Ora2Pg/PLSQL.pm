@@ -596,7 +596,12 @@ sub plsql_to_plpgsql
 	$str =~ s/(TO_DATE\($conv_current_time)\s*,/$1::text,/igs;
 
 	# Drop temporary doesn't exist in PostgreSQL
-	$str =~ s/DROP\s+TEMPORARY/DROP/gs;
+	$str =~ s/DROP\s+TEMPORARY/DROP/igs;
+
+	# Private temporary table doesn't exist in PostgreSQL
+	$str =~ s/PRIVATE\s+TEMPORARY/TEMPORARY/igs;
+	$str =~ s/ON\s+COMMIT\s+PRESERVE\s+DEFINITION/ON COMMIT PRESERVE ROWS/igs;
+	$str =~ s/ON\s+COMMIT\s+DROP\s+DEFINITION/ON COMMIT DROP/igs;
 
 	# Replace SYSTIMESTAMP 
 	$str =~ s/\bSYSTIMESTAMP\b/CURRENT_TIMESTAMP/igs;
@@ -2189,6 +2194,11 @@ sub mysql_to_plpgsql
 	# Drop temporary doesn't exist in PostgreSQL
 	$str =~ s/DROP\s+TEMPORARY/DROP/gs;
 
+	# Private temporary table doesn't exist in PostgreSQL
+	$str =~ s/PRIVATE\s+TEMPORARY/TEMPORARY/igs;
+	$str =~ s/ON\s+COMMIT\s+PRESERVE\s+DEFINITION/ON COMMIT PRESERVE ROWS/igs;
+	$str =~ s/ON\s+COMMIT\s+DROP\s+DEFINITION/ON COMMIT DROP/igs;
+
 	# Remove extra parenthesis in join in some possible cases
 	# ... INNER JOIN(services s) ON ...
 	$str =~ s/\bJOIN\s*\(([^\s]+\s+[^\s]+)\)/JOIN $1/igs;
@@ -2449,7 +2459,10 @@ sub mysql_to_plpgsql
 	}
 
 	# Translate call to CREATE TABLE ... SELECT
+	$str =~ s/CREATE\s+PRIVATE\s+TEMPORARY/CREATE TEMPORARY/;
 	$str =~ s/(CREATE(?:\s+TEMPORARY)?\s+TABLE\s+[^\s]+)(\s+SELECT)/$1 AS $2/igs;
+	$str =~ s/ON\s+COMMIT\s+PRESERVE\s+DEFINITION/ON COMMIT PRESERVE ROWS/igs;
+	$str =~ s/ON\s+COMMIT\s+DROP\s+DEFINITION/ON COMMIT DROP/igs;
 
 	# Remove @ from variables and rewrite SET assignement in QUERY mode
 	if ($class->{type} eq 'QUERY') {
