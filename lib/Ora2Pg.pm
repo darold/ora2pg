@@ -17150,9 +17150,9 @@ sub _get_largest_tables
 	}
 
 	if ($self->{db_version} =~ /Release 8/) {
-		$sql .= " ORDER BY A.BYTES,A.SEGMENT_NAME DESC) WHERE ROWNUM <= $self->{top_max}";
+		$sql .= " ORDER BY A.BYTES DESC, A.SEGMENT_NAME ASC) WHERE ROWNUM <= $self->{top_max}";
 	} else {
-		$sql .= " ORDER BY S.BYTES,S.SEGMENT_NAME DESC) WHERE ROWNUM <= $self->{top_max}";
+		$sql .= " ORDER BY S.BYTES DESC, S.SEGMENT_NAME ASC) WHERE ROWNUM <= $self->{top_max}";
 	}
 
         my $sth = $self->{dbh}->prepare( $sql ) or return undef;
