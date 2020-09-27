@@ -949,7 +949,9 @@ LOB_CHUNK_SIZE	512000
 
 # Force the use of getStringVal() instead of getClobVal() for XML data export.
 # Default is 1, enabled for backward compatibility. Set here to 0 to use extract
-# method a la CLOB and export the XML code as it was stored.
+# method a la CLOB and export the XML code as it was stored. Note that XML value
+# extracted with getStringVal() must not exceed VARCHAR2 size limit otherwize
+# it will return an error.
 XML_PRETTY	0
 
 # Enable this directive if you want to continue direct data import on error.

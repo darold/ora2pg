@@ -2283,6 +2283,8 @@ is better to not waste space. Default value for LOB_CHUNK_SIZE is 512000.
 
 Force the use getStringVal() instead of getClobVal() for XML data export. Default is 1,
 enabled for backward compatibility. Set it to 0 to use extract method a la CLOB.
+Note that XML value extracted with getStringVal() must not exceed VARCHAR2 size
+limit (4000) otherwise it will return an error.
 
 =item ENABLE_MICROSECOND
 
