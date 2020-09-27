@@ -8262,8 +8262,8 @@ sub _create_indexes
 	my @out = ();
 	my @fts_out = ();
 	# Set the index definition
-	foreach my $idx (sort keys %indexes) {
-
+	foreach my $idx (sort keys %indexes)
+	{
 		# Remove cols than have only digit as name
 		@{$indexes{$idx}} = grep(!/^\d+$/, @{$indexes{$idx}});
 
@@ -8271,7 +8271,8 @@ sub _create_indexes
 		# Hash indexes will be exported as btree if PG < 10
 		next if ($self->{$objtyp}{$tbsaved}{idx_type}{$idx}{type} =~ /JOIN|IOT|CLUSTER|REV/i);
 
-		if (exists $self->{replaced_cols}{"\L$tbsaved\E"} && $self->{replaced_cols}{"\L$tbsaved\E"}) {
+		if (exists $self->{replaced_cols}{"\L$tbsaved\E"} && $self->{replaced_cols}{"\L$tbsaved\E"})
+		{
 			foreach my $c (keys %{$self->{replaced_cols}{"\L$tbsaved\E"}}) {
 				map { s/\b$c\b/$self->{replaced_cols}{"\L$tbsaved\E"}{"\L$c\E"}/i } @{$indexes{$idx}};
 			}
@@ -8279,9 +8280,11 @@ sub _create_indexes
 
 		my @strings = ();
 		my $i = 0;
-		for (my $j = 0; $j <= $#{$indexes{$idx}}; $j++) {
+		for (my $j = 0; $j <= $#{$indexes{$idx}}; $j++)
+		{
 			$indexes{$idx}->[$j] =~ s/''/%%ESCAPED_STRING%%/g;
-			while ($indexes{$idx}->[$j] =~ s/'([^']+)'/%%string$i%%/) {
+			while ($indexes{$idx}->[$j] =~ s/'([^']+)'/%%string$i%%/)
+			{
 				push(@strings, $1);
 				$i++;
 			}
@@ -8292,10 +8295,13 @@ sub _create_indexes
 
 		# Add index opclass if required and type allow it
 		my %opclass_type = ();
-		if ($self->{use_index_opclass}) {
+		if ($self->{use_index_opclass})
+		{
 			my $i = 0;
-			for (my $j = 0; $j <= $#{$indexes{$idx}}; $j++) {
-				if (exists $self->{$objtyp}{$tbsaved}{column_info}{uc($indexes{$idx}->[$j])}) {
+			for (my $j = 0; $j <= $#{$indexes{$idx}}; $j++)
+			{
+				if (exists $self->{$objtyp}{$tbsaved}{column_info}{uc($indexes{$idx}->[$j])})
+				{
 					my $d = $self->{$objtyp}{$tbsaved}{column_info}{uc($indexes{$idx}->[$j])};
 					$d->[2] =~ s/\D//g;
 					if ( (($self->{use_index_opclass} == 1) || ($self->{use_index_opclass} <= $d->[2])) && ($d->[1] =~ /VARCHAR/)) {
@@ -8322,8 +8328,14 @@ sub _create_indexes
 			}
 		}
 		my $columns = '';
-		foreach (@{$indexes{$idx}}) {
+		foreach (@{$indexes{$idx}})
+		{
 			$columns .= ((exists $opclass_type{$_}) ? $opclass_type{$_} : $_) . ", ";
+			# Add double quotes on column name if PRESERVE_CASE is enabled
+			foreach my $c (keys %{$self->{tables}{$tbsaved}{column_info}})
+			{
+				$columns =~ s/\b$c\b/"$c"/ if ($self->{preserve_case} && $columns !~ /"$c"/);
+			}
 		}
 		$columns =~ s/, $//;
 		$columns =~ s/\s+/ /g;
@@ -8338,7 +8350,8 @@ sub _create_indexes
 			my $constype =  $self->{$objtyp}{$tbsaved}{unique_key}->{$consname}{type};
 			next if (($constype ne 'P') && ($constype ne 'U'));
 			my @conscols = grep(!/^\d+$/, @{$self->{$objtyp}{$tbsaved}{unique_key}->{$consname}{columns}});
-			for ($i = 0; $i <= $#conscols; $i++) {
+			for ($i = 0; $i <= $#conscols; $i++)
+			{
 				# Change column names
 				if (exists $self->{replaced_cols}{"\L$tbsaved\E"}{"\L$conscols[$i]\E"} && $self->{replaced_cols}{"\L$tbsaved\E"}{"\L$conscols[$i]\E"}) {
 					$conscols[$i] = $self->{replaced_cols}{"\L$tbsaved\E"}{"\L$conscols[$i]\E"};
