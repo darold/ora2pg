@@ -5469,7 +5469,8 @@ sub export_package
 		}
 		@pkg_content = ();
 
-		foreach my $pkg (sort keys %{$self->{packages}}) {
+		foreach my $pkg (sort keys %{$self->{packages}})
+		{
 			my $tmp_txt = '';
 			if (exists $self->{packages}{$pkg}{desc}) {
 				# Move comments at end of package declaration before package definition
@@ -5487,7 +5488,8 @@ sub export_package
 			if ($pname =~ s/^([^\.\s]+)\.([^\s]+)$/$2/is) {
 				$sch = $1;
 			}
-			foreach my $f (sort keys %infos) {
+			foreach my $f (sort keys %infos)
+			{
 				next if (!$f);
 				my $name = lc($f);
 				delete $infos{$f}{code};
@@ -5529,7 +5531,8 @@ sub export_package
 		%{$self->{global_variables}} = ();
 		my $pkgbody = '';
 		my $fct_cost = '';
-		if (!$self->{plsql_pgsql}) {
+		if (!$self->{plsql_pgsql})
+		{
 			$self->logit("Dumping package $pkg...\n", 1);
 			if ($self->{file_per_function}) {
 				my $f = "$dirprefix\L${pkg}\E_$self->{output}";
@@ -5543,7 +5546,9 @@ sub export_package
 				$pkgbody = $self->{packages}{$pkg}{text};
 			}
 
-		} else {
+		}
+		else
+		{
 			$self->{current_package} = $pkg;
 			if ($self->{estimate_cost}) {
 				$total_size += length($self->{packages}->{$pkg}{text});
@@ -5552,9 +5557,11 @@ sub export_package
 
 			# Normalyse package creation call
 			$self->{packages}{$pkg}{text} =~ s/CREATE(?:\s+OR\s+REPLACE)?(?:\s+EDITIONABLE|\s+NONEDITIONABLE)?\s+PACKAGE\s+/CREATE OR REPLACE PACKAGE /is;
-			if ($self->{estimate_cost}) {
+			if ($self->{estimate_cost})
+			{
 				my %infos = $self->_lookup_package($self->{packages}{$pkg}{text});
-				foreach my $f (sort keys %infos) {
+				foreach my $f (sort keys %infos)
+				{
 					next if (!$f);
 					my @cnt = $infos{$f}{code} =~ /(\%ORA2PG_COMMENT\d+\%)/i;
 					$total_size_no_comment += (length($infos{$f}{code}) - (17 * length(join('', @cnt))));
@@ -13205,12 +13212,14 @@ sub _convert_package
 	$dirprefix = "$self->{output_dir}/" if ($self->{output_dir});
 	my $content = '';
 
-	if ($self->{package_as_schema}) {
+	if ($self->{package_as_schema})
+	{
 		my $pname =  $self->quote_object_name($pkg);
 		$pname =~ s/^[^\.]+\.//;
 		$content .= "\nDROP SCHEMA $self->{pg_supports_ifexists} $pname CASCADE;\n";
 		$content .= "CREATE SCHEMA $pname;\n";
-		if ($self->{force_owner}) {
+		if ($self->{force_owner})
+		{
 			$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
 			if ($owner) {
 				$content .= "ALTER SCHEMA \L$pname\E OWNER TO " .  $self->quote_object_name($owner) . ";\n";
@@ -13218,7 +13227,8 @@ sub _convert_package
 		}
 	}
 	# Grab global declaration from the package header
-	if ($self->{packages}{$pkg}{desc} =~ /CREATE OR REPLACE PACKAGE\s+([^\s]+)(?:\s*\%ORA2PG_COMMENT\d+\%)*\s*(AS|IS)\s*(.*)/is) {
+	if ($self->{packages}{$pkg}{desc} =~ /CREATE OR REPLACE PACKAGE\s+([^\s]+)(?:\s*\%ORA2PG_COMMENT\d+\%)*\s*(AS|IS)\s*(.*)/is)
+	{
 		my $pname = $1;
 		my $type = $2;
 		my $glob_declare = $3;
@@ -13228,11 +13238,13 @@ sub _convert_package
 
 		# Process package spec to extract global variables
 		$self->_remove_comments(\$glob_declare);
-		if ($glob_declare) {
+		if ($glob_declare)
+		{
 			my @cursors = ();
 			($glob_declare, @cursors) = $self->clear_global_declaration($pname, $glob_declare, 0);
 			# Then dump custom type
-			foreach my $tpe (sort {$a->{pos} <=> $b->{pos}} @{$self->{types}}) {
+			foreach my $tpe (sort {$a->{pos} <=> $b->{pos}} @{$self->{types}})
+			{
 				$self->logit("Dumping type $tpe->{name}...\n", 1);
 				if ($self->{plsql_pgsql}) {
 					$tpe->{code} = $self->_convert_type($tpe->{code}, $tpe->{owner}, %{$self->{pkg_type}{$pname}});
@@ -13252,7 +13264,8 @@ sub _convert_package
 	}
 
 	# Convert the package body part
-	if ($self->{packages}{$pkg}{text} =~ /CREATE OR REPLACE PACKAGE\s+BODY\s*([^\s]+)(?:\s*\%ORA2PG_COMMENT\d+\%)*\s*(AS|IS)\s*(.*)/is) {
+	if ($self->{packages}{$pkg}{text} =~ /CREATE OR REPLACE PACKAGE\s+BODY\s*([^\s]+)(?:\s*\%ORA2PG_COMMENT\d+\%)*\s*(AS|IS)\s*(.*)/is)
+	{
 
 		my $pname = $1;
 		my $type = $2;
@@ -13264,11 +13277,14 @@ sub _convert_package
 		$self->logit("Dumping package $pname...\n", 1);
 
 		# Process package spec to extract global variables
-		if ($glob_declare) {
+		$self->_remove_comments(\$glob_declare);
+		if ($glob_declare && $glob_declare !~ /^(?:\s*\%ORA2PG_COMMENT\d+\%)*(FUNCTION|PROCEDURE)/is)
+		{
 			my @cursors = ();
 			($glob_declare, @cursors) = $self->clear_global_declaration($pname, $glob_declare, 1);
 			# Then dump custom type
-			foreach my $tpe (sort {$a->{pos} <=> $b->{pos}} @{$self->{types}}) {
+			foreach my $tpe (sort {$a->{pos} <=> $b->{pos}} @{$self->{types}})
+			{
 				next if (!exists $self->{pkg_type}{$pname}{$tpe->{name}});
 				$self->logit("Dumping type $tpe->{name}...\n", 1);
 				if ($self->{plsql_pgsql}) {
@@ -13301,7 +13317,8 @@ sub _convert_package
 		my @functions = $self->_extract_functions($ctt);
 
 		# Try to detect local function
-		for (my $i = 0; $i <= $#functions; $i++) {
+		for (my $i = 0; $i <= $#functions; $i++)
+		{
 			my %fct_detail = $self->_lookup_function($functions[$i], $pname);
 			if (!exists $fct_detail{name}) {
 				$functions[$i] = '';
@@ -17905,7 +17922,8 @@ sub _lookup_package
 
 	my $content = '';
 	my %infos = ();
-	if ($plsql =~ /(?:CREATE|CREATE OR REPLACE)?\s*(?:EDITIONABLE|NONEDITIONABLE)?\s*PACKAGE\s+BODY\s*([^\s]+)((?:\s*\%ORA2PG_COMMENT\d+\%)*\s*(?:AS|IS))\s*(.*)/is) {
+	if ($plsql =~ /(?:CREATE|CREATE OR REPLACE)?\s*(?:EDITIONABLE|NONEDITIONABLE)?\s*PACKAGE\s+BODY\s*([^\s]+)((?:\s*\%ORA2PG_COMMENT\d+\%)*\s*(?:AS|IS))\s*(.*)/is)
+	{
 		my $pname = $1;
 		my $type = $2;
 		$content = $3;
@@ -17913,7 +17931,8 @@ sub _lookup_package
 		$self->logit("Looking at package $pname...\n", 1);
 		$content =~ s/\bEND[^;]*;$//is;
 		my @functions = $self->_extract_functions($content);
-		foreach my $f (@functions) {
+		foreach my $f (@functions)
+		{
 			next if (!$f);
 			my %fct_detail = $self->_lookup_function($f, $pname);
 			next if (!exists $fct_detail{name});
@@ -19154,26 +19173,32 @@ sub register_global_variable
 		next if (!$pname);
 		my $v = lc($pname . '.' . $n);
 		$self->{global_variables}{$v}{name} = lc($n);
-		if (uc($type) eq 'CONSTANT') {
+		if (uc($type) eq 'CONSTANT')
+		{
 			$type = '';
 			$self->{global_variables}{$v}{constant} = 1;
-			while ($others[0] ne ':=') {
-				$type .= shift(@others);
+			for (my $j = 0; $j < $#others; $j++)
+			{
+				$type .=  $others[$j] if ($others[$j] ne ':=' and uc($others[$j]) ne 'DEFAULT');
 			}
 		}
-		if ($#others > 0 && $others[0] eq ':=') {
-			shift(@others);
-			$self->{global_variables}{$v}{default} = join(' ', @others);
+		# extract the default value from the declaration
+		for (my $j = 0; $j < $#others; $j++)
+		{
+			$self->{global_variables}{$v}{default} = $others[$j+1] if ($others[$j] eq ':=' or uc($others[$j]) eq 'DEFAULT');
 		}
-		if (exists $self->{global_variables}{$v}{default}) {
+		if (exists $self->{global_variables}{$v}{default})
+		{
 			$self->_restore_text_constant_part(\$self->{global_variables}{$v}{default});
 			$self->{global_variables}{$v}{default} =~ s/^'//s;
 			$self->{global_variables}{$v}{default} =~ s/'$//s;
 		}
 		$self->{global_variables}{$v}{type} = $type;
+
 		# Handle Oracle user defined error code
 		if ($self->{global_variables}{$v}{constant} && ($type =~ /bigint|int|numeric|double/)
-			&& $self->{global_variables}{$v}{default} <= -20000 && $self->{global_variables}{$v}{default} >= -20999) {
+			&& $self->{global_variables}{$v}{default} <= -20000 && $self->{global_variables}{$v}{default} >= -20999)
+		{
 			# Change the type into char(5) for SQLSTATE type
 			$self->{global_variables}{$v}{type} = 'char(5)';
 			# Transform the value to match PostgreSQL user defined exceptions starting with 45
