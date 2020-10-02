@@ -13227,6 +13227,7 @@ sub _convert_package
 		$self->logit("Looking global declaration in package $pname...\n", 1);
 
 		# Process package spec to extract global variables
+		$self->_remove_comments(\$glob_declare);
 		if ($glob_declare) {
 			my @cursors = ();
 			($glob_declare, @cursors) = $self->clear_global_declaration($pname, $glob_declare, 0);
@@ -13399,8 +13400,21 @@ sub _remove_comments
 
 	# Replace some other cases that are breaking the parser (presence of -- in constant string)
 	my @lines = split(/([\n\r]+)/, $$content);
-	for (my $i = 0; $i <= $#lines; $i++) {
+	for (my $i = 0; $i <= $#lines; $i++)
+	{
 		next if ($lines[$i] !~ /\S/);
+
+		# Single line comment --
+		if ($lines[$i] =~ s/^([\t ]*\-\-.*)$/$1\%ORA2PG_COMMENT$self->{idxcomment}\%/) {
+			$self->{comment_values}{"\%ORA2PG_COMMENT$self->{idxcomment}\%"} = $2;
+			$self->{idxcomment}++;
+		}
+ 
+		# Single line comment /* ... */
+		if ($lines[$i] =~ s/^([\t ]*\/\*.*\*\/)$/$1\%ORA2PG_COMMENT$self->{idxcomment}\%/) {
+			$self->{comment_values}{"\%ORA2PG_COMMENT$self->{idxcomment}\%"} = $2;
+			$self->{idxcomment}++;
+		}
 
 		# ex:		v := 'literal'    -- commentaire avec un ' guillemet
 		if ($lines[$i] =~ s/^([^']+'[^']*'\s*)(\-\-.*)$/$1\%ORA2PG_COMMENT$self->{idxcomment}\%/) {
