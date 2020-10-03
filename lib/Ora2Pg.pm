@@ -7123,7 +7123,7 @@ RETURNS text AS
 
 	# Dumping foreign key constraints
 	my $fkeys = '';
-	foreach my $table (keys %{$self->{tables}})
+	foreach my $table (sort keys %{$self->{tables}})
 	{
 		next if ($#{$self->{tables}{$table}{foreign_key}} < 0);
 		$self->logit("Dumping RI $table...\n", 1);
@@ -8886,19 +8886,23 @@ sub _create_foreign_keys
 
 	# Add constraint definition
 	my @done = ();
-	foreach my $fkname (keys %{$self->{tables}{$tbsaved}{foreign_link}}) {
+	foreach my $fkname (sort keys %{$self->{tables}{$tbsaved}{foreign_link}})
+	{
 		next if (grep(/^$fkname$/, @done));
 
 		# Extract all attributes if the foreign key definition
 		my $state;
-		foreach my $h (@{$self->{tables}{$tbsaved}{foreign_key}}) {
-			if (lc($h->[0]) eq lc($fkname)) {
+		foreach my $h (@{$self->{tables}{$tbsaved}{foreign_key}})
+		{
+			if (lc($h->[0]) eq lc($fkname))
+			{
 				# @$h : CONSTRAINT_NAME,R_CONSTRAINT_NAME,SEARCH_CONDITION,DELETE_RULE,$deferrable,DEFERRED,R_OWNER,TABLE_NAME,OWNER,UPDATE_RULE,VALIDATED
 				push(@$state, @$h);
 				last;
 			}
 		}
-		foreach my $desttable (keys %{$self->{tables}{$tbsaved}{foreign_link}{$fkname}{remote}}) {
+		foreach my $desttable (sort keys %{$self->{tables}{$tbsaved}{foreign_link}{$fkname}{remote}})
+		{
 			push(@done, $fkname);
 
 			# This is not possible to reference a partitionned table 
@@ -8930,7 +8934,8 @@ sub _create_foreign_keys
 			}
 			my @rfkeys = ();
 			push(@rfkeys, @{$self->{tables}{$tbsaved}{foreign_link}{$fkname}{remote}{$desttable}});
-			if (exists $self->{replaced_cols}{"\L$desttable\E"} && $self->{replaced_cols}{"\L$desttable\E"}) {
+			if (exists $self->{replaced_cols}{"\L$desttable\E"} && $self->{replaced_cols}{"\L$desttable\E"})
+			{
 				foreach my $c (keys %{$self->{replaced_cols}{"\L$desttable\E"}}) {
 					map { s/"$c"/"$self->{replaced_cols}{"\L$desttable\E"}{"\L$c\E"}"/i } @rfkeys;
 				}
@@ -8958,7 +8963,8 @@ sub _create_foreign_keys
 			}
 			# if DEFER_FKEY is enabled, force constraint to be
 			# deferrable and defer it initially.
-			if (!$self->{is_mysql}) {
+			if (!$self->{is_mysql})
+			{
 				$str .= (($self->{'defer_fkey'} ) ? ' DEFERRABLE' : " $state->[4]") if ($state->[4]);
 				$state->[5] = 'DEFERRED' if ($state->[5] =~ /^Y/);
 				$state->[5] ||= 'IMMEDIATE';
@@ -10423,7 +10429,7 @@ sub _get_indexes
 
 	# When comparing number of index we need to retrieve generated index (mostly PK)
         my $generated = '';
-        $generated = " B.GENERATED <> 'Y' AND" if (!$generated_indexes);
+        $generated = " B.GENERATED = 'N' AND" if (!$generated_indexes);
 
 	# Retrieve all indexes 
 	my $sth = '';
@@ -10435,7 +10441,7 @@ sub _get_indexes
 SELECT DISTINCT A.INDEX_NAME,A.COLUMN_NAME,B.UNIQUENESS,A.COLUMN_POSITION,B.INDEX_TYPE,B.TABLE_TYPE,B.GENERATED,B.JOIN_INDEX,A.TABLE_NAME,A.INDEX_OWNER,B.TABLESPACE_NAME,B.ITYP_NAME,B.PARAMETERS,A.DESCEND
 FROM $self->{prefix}_IND_COLUMNS A
 JOIN $self->{prefix}_INDEXES B ON (B.INDEX_NAME=A.INDEX_NAME AND B.OWNER=A.INDEX_OWNER)
-WHERE$generated B.TEMPORARY <> 'Y' $condition $no_mview
+WHERE$generated B.TEMPORARY = 'N' $condition $no_mview
 ORDER BY A.COLUMN_POSITION
 END
 	} else {
@@ -10444,7 +10450,7 @@ END
 SELECT DISTINCT A.INDEX_NAME,A.COLUMN_NAME,B.UNIQUENESS,A.COLUMN_POSITION,B.INDEX_TYPE,B.TABLE_TYPE,B.GENERATED, 'NO', A.TABLE_NAME,A.INDEX_OWNER,B.TABLESPACE_NAME,B.ITYP_NAME,B.PARAMETERS,A.DESCEND
 FROM $self->{prefix}_IND_COLUMNS A, $self->{prefix}_INDEXES B
 WHERE B.INDEX_NAME=A.INDEX_NAME AND B.OWNER=A.INDEX_OWNER $condition
-AND$generated B.TEMPORARY <> 'Y'
+AND$generated B.TEMPORARY = 'N'
 ORDER BY A.COLUMN_POSITION
 END
 	}
@@ -10475,7 +10481,8 @@ AND    IC.TABLE_OWNER = ?
 		if (!$self->{schema} && $self->{export_schema}) {
 			$row->[8] = "$row->[9].$row->[8]";
 		}
-		next if (!exists $self->{table}{$row->[8]});
+		next if (grep(/^$self->{type}$/, 'INSERT', 'COPY') && !exists $self->{table}{$row->[8]} && !exists $self->{materialized_views}{$row->[8]});
+
 		if (!$self->{preserve_case}) {
 			next if (exists $self->{modify}{"\L$row->[8]\E"} && !grep(/^$row->[1]$/i, @{$self->{modify}{"\L$row->[8]\E"}}));
 		} else {
