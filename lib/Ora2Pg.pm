@@ -3927,7 +3927,8 @@ sub export_view
 		}
 		$count_view++;
 		my $fhdl = undef;
-		if ($self->{file_per_table}) {
+		if ($self->{file_per_table})
+		{
 			my $file_name = "$dirprefix${view}_$self->{output}";
 			$file_name =~ s/\.(gz|bz2)$//;
 			$self->dump("\\i $file_name\n");
@@ -3948,7 +3949,8 @@ sub export_view
 		$self->{views}{$view}{text} =~ s/\s*OF\s+XMLTYPE\s+[^\)]+\)//is;
 		$self->{views}{$view}{text} = $self->_format_view($self->{views}{$view}{text});
 		my $tmpv = $view;
-		if (exists $self->{replaced_tables}{"\L$tmpv\E"} && $self->{replaced_tables}{"\L$tmpv\E"}) {
+		if (exists $self->{replaced_tables}{"\L$tmpv\E"} && $self->{replaced_tables}{"\L$tmpv\E"})
+		{
 			$self->logit("\tReplacing table $tmpv as " . $self->{replaced_tables}{lc($tmpv)} . "...\n", 1);
 			$tmpv = $self->{replaced_tables}{lc($tmpv)};
 		}
@@ -3956,7 +3958,8 @@ sub export_view
 			$sql_output .= $self->set_search_path($1) . "\n";
 		}
 		$tmpv = $self->quote_object_name($tmpv);
-		if (!@{$self->{views}{$view}{alias}}) {
+		if (!@{$self->{views}{$view}{alias}})
+		{
 			$sql_output .= "CREATE$self->{create_or_replace} VIEW $tmpv AS ";
 			$sql_output .= $self->{views}{$view}{text};
 			$sql_output .= ';' if ($sql_output !~ /;\s*$/s);
@@ -3968,10 +3971,13 @@ sub export_view
 				$sql_output .= "\n-- Estimed cost of view [ $view ]: " . sprintf("%2.2f", $cost);
 			}
 			$sql_output .= "\n";
-		} else {
+		}
+		else
+		{
 			$sql_output .= "CREATE$self->{create_or_replace} VIEW $tmpv (";
 			my $count = 0;
-			foreach my $d (@{$self->{views}{$view}{alias}}) {
+			foreach my $d (@{$self->{views}{$view}{alias}})
+			{
 				if ($count == 0) {
 					$count = 1;
 				} else {
@@ -3979,7 +3985,8 @@ sub export_view
 				}
 				# Change column names
 				my $fname = $d->[0];
-				if (exists $self->{replaced_cols}{"\L$view\E"}{"\L$fname\E"} && $self->{replaced_cols}{"\L$view\E"}{"\L$fname\E"}) {
+				if (exists $self->{replaced_cols}{"\L$view\E"}{"\L$fname\E"} && $self->{replaced_cols}{"\L$view\E"}{"\L$fname\E"})
+				{
 					$self->logit("\tReplacing column \L$d->[0]\E as " . $self->{replaced_cols}{"\L$view\E"}{"\L$fname\E"} . "...\n", 1);
 					$fname = $self->{replaced_cols}{"\L$view\E"}{"\L$fname\E"};
 				}
@@ -3993,7 +4000,8 @@ sub export_view
 			$sql_output .= ") AS " . $self->{views}{$view}{text};
 			$sql_output .= ';' if ($sql_output !~ /;\s*$/s);
 			$sql_output .= "\n";
-			if ($self->{estimate_cost}) {
+			if ($self->{estimate_cost})
+			{
 				my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($self, $self->{views}{$view}{text}, 'VIEW');
 				$cost += $Ora2Pg::PLSQL::OBJECT_SCORE{'VIEW'};
 				$cost_value += $cost;
@@ -4002,22 +4010,25 @@ sub export_view
 			$sql_output .= "\n";
 		}
 
-		if ($self->{force_owner}) {
+		if ($self->{force_owner})
+		{
 			my $owner = $self->{views}{$view}{owner};
 			$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
 			$sql_output .= "ALTER VIEW $tmpv OWNER TO " . $self->quote_object_name($owner) . ";\n";
 		}
 
 		# Add comments on view and columns
-		if (!$self->{disable_comment}) {
-
-			if ($self->{views}{$view}{comment}) {
+		if (!$self->{disable_comment})
+		{
+			if ($self->{views}{$view}{comment})
+			{
 				$sql_output .= "COMMENT ON VIEW $tmpv ";
 				$self->{views}{$view}{comment} =~ s/'/''/gs;
 				$sql_output .= " IS E'" . $self->{views}{$view}{comment} . "';\n\n";
 			}
 
-			foreach $f (sort { lc{$a} <=> lc($b) } keys %{$self->{views}{$view}{column_comments}}) {
+			foreach my $f (sort { lc{$a} cmp lc($b) } keys %{$self->{views}{$view}{column_comments}})
+			{
 				next unless $self->{views}{$view}{column_comments}{$f};
 				$self->{views}{$view}{column_comments}{$f} =~ s/'/''/gs;
 				# Change column names
@@ -4030,7 +4041,8 @@ sub export_view
 			}
 		}
 
-		if ($self->{file_per_table}) {
+		if ($self->{file_per_table})
+		{
 			$self->dump($sql_header . $sql_output, $fhdl);
 			$self->_restore_comments(\$sql_output);
 			$self->close_export_file($fhdl);
@@ -6963,14 +6975,17 @@ sub export_table
 		$sql_output .= $enum_str;
 
 		# Add comments on table
-		if (!$self->{disable_comment} && $self->{tables}{$table}{table_info}{comment}) {
+		if (!$self->{disable_comment} && $self->{tables}{$table}{table_info}{comment})
+		{
 			$self->{tables}{$table}{table_info}{comment} =~ s/'/''/gs;
 			$sql_output .= "COMMENT ON$foreign TABLE $tbname IS E'$self->{tables}{$table}{table_info}{comment}';\n";
 		}
 
 		# Add comments on columns
-		if (!$self->{disable_comment}) {
-			foreach $f (sort { lc($a) <=> lc($b) } keys %{$self->{tables}{$table}{column_comments}}) {
+		if (!$self->{disable_comment})
+		{
+			foreach my $f (sort { lc($a) cmp lc($b) } keys %{$self->{tables}{$table}{column_comments}})
+			{
 				next unless $self->{tables}{$table}{column_comments}{$f};
 				$self->{tables}{$table}{column_comments}{$f} =~ s/'/''/gs;
 				# Change column names
