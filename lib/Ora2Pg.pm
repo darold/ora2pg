@@ -18196,11 +18196,12 @@ sub set_search_path
 
 	my $local_path = '';
 	if ($self->{postgis_schema}) {
-		$local_path = ', ' . $self->quote_object_name($self->{postgis_schema});
+		$local_path = ',' . $self->quote_object_name($self->{postgis_schema});
 	}
 	if ($self->{data_type}{BFILE} eq 'efile') {
-			$local_path .= ', external_file';
+			$local_path .= ',external_file';
 	}
+	$local_path .= ',public';
 	
 	my $search_path = '';
 	if (!$self->{schema} && $self->{export_schema} && $owner) {
