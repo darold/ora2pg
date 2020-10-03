@@ -6162,7 +6162,16 @@ BEGIN
 				}
 			} else {
 				$create_table_tmp .= $check_cond;
-				$create_table_tmp .= "\nPARTITION BY " . $self->{subpartitions_list}{"\L$table\E"}{"\L$part\E"}{type} . " (" . lc(join(',', @{$self->{subpartitions_list}{"\L$table\E"}{"\L$part\E"}{columns}})) . ")" if (exists $self->{subpartitions_list}{"\L$table\E"}{"\L$part\E"}{type});
+				if (exists $self->{subpartitions_list}{"\L$table\E"}{"\L$part\E"}{type})
+				{
+					$create_table_tmp .= "\nPARTITION BY " . $self->{subpartitions_list}{"\L$table\E"}{"\L$part\E"}{type} . " (";
+					for (my $j = 0; $j <= $#{$self->{subpartitions_list}{"\L$table\E"}{"\L$part\E"}{columns}}; $j++)
+					{
+						$create_table_tmp .= ', ' if ($j > 0);
+						$create_table_tmp .= $self->quote_object_name($self->{subpartitions_list}{"\L$table\E"}{"\L$part\E"}{columns}[$j]);
+					}
+					$create_table_tmp .= ")";
+				}
 				$create_table_tmp .= ";\n";
 			}
 			# Add subpartition if any defined on Oracle
@@ -6600,7 +6609,7 @@ sub export_table
 			if ($self->{pg_schema} && $self->{pg_schema} =~ /,/) {
 				$self->logit("FATAL: with export type TABLE you can not set multiple schema to PG_SCHEMA when EXPORT_SCHEMA is enabled.\n", 0, 1);
 			}
-			$sql_output .= "CREATE SCHEMA " . $self->quote_object_name($self->{pg_schema} || $self->{schema}) . ";\n";
+			$sql_output .= "CREATE SCHEMA IF NOT EXISTS " . $self->quote_object_name($self->{pg_schema} || $self->{schema}) . ";\n";
 		}
 		my $owner = '';
 		$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
@@ -6618,7 +6627,7 @@ sub export_table
 				if ($table =~ /^([^\.]+)\..*/) {
 					if ($1 ne $current_schema) {
 						$current_schema = $1;
-						$sql_output .= "CREATE SCHEMA " . $self->quote_object_name($1) . ";\n";
+						$sql_output .= "CREATE SCHEMA IF NOT EXISTS " . $self->quote_object_name($1) . ";\n";
 					}
 				}
 			}
@@ -6939,7 +6948,13 @@ sub export_table
 			}
 
 			if ($self->{tables}{$table}{table_info}{partitioned} && $self->{pg_supports_partition} && !$self->{disable_partition}) {
-				$sql_output .= " PARTITION BY " . $self->{partitions_list}{"\L$table\E"}{type} . " (" . lc(join(',', @{$self->{partitions_list}{"\L$table\E"}{columns}})) . ")";
+				$sql_output .= " PARTITION BY " . $self->{partitions_list}{"\L$table\E"}{type} . " (";
+				for (my $j = 0; $j <= $#{$self->{partitions_list}{"\L$table\E"}{columns}}; $j++)
+				{
+					$sql_output .= ', ' if ($j > 0);
+			       		$sql_output .= $self->quote_object_name($self->{partitions_list}{"\L$table\E"}{columns}[$j]);
+				}
+			       $sql_output .= 	")";
 			}
 			if ( ($self->{type} ne 'FDW') && (!$self->{external_to_fdw} || (!grep(/^$table$/i, keys %{$self->{external_table}}) && !$self->{tables}{$table}{table_info}{connection})) ) {
 				my $withoid = _make_WITH($self->{with_oid}, $self->{tables}{$table}{table_info});
@@ -13244,7 +13259,7 @@ sub _convert_package
 		my $pname =  $self->quote_object_name($pkg);
 		$pname =~ s/^[^\.]+\.//;
 		$content .= "\nDROP SCHEMA $self->{pg_supports_ifexists} $pname CASCADE;\n";
-		$content .= "CREATE SCHEMA $pname;\n";
+		$content .= "CREATE SCHEMA IF NOT EXISTS $pname;\n";
 		if ($self->{force_owner})
 		{
 			$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
