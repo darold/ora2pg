@@ -7371,7 +7371,8 @@ sub _get_sql_statements
 			}
 		}
 		# Remove remote table from export, they must be exported using FDW export type
-		foreach my $table (keys %{$self->{tables}}) {
+		foreach my $table (sort keys %{$self->{tables}})
+		{
 			if ( $self->{tables}{$table}{table_info}{connection} ) {
 				delete $self->{tables}{$table};
 			}
@@ -7382,7 +7383,8 @@ sub _get_sql_statements
 
 		# Ordering tables by name by default
 		my @ordered_tables = sort { $a cmp $b } keys %{$self->{tables}};
-		if (lc($self->{data_sort_order}) eq 'size') {
+		if (lc($self->{data_sort_order}) eq 'size')
+		{
 			@ordered_tables = sort {
 				($self->{tables}{$b}{table_info}{num_rows} || $self->{tables}{$a}{table_info}{num_rows}) ?
 					$self->{tables}{$b}{table_info}{num_rows} <=> $self->{tables}{$a}{table_info}{num_rows} :
@@ -7395,7 +7397,8 @@ sub _get_sql_statements
 		my $first_header = "$sql_header\n";
 		# Add search path and constraint deferring
 		my $search_path = $self->set_search_path();
-		if (!$self->{pg_dsn}) {
+		if (!$self->{pg_dsn})
+		{
 			# Set search path
 			if ($search_path) {
 				$first_header .= $self->set_search_path();
@@ -7406,7 +7409,9 @@ sub _get_sql_statements
 			if ($self->{defer_fkey}) {
 				$first_header .= "SET CONSTRAINTS ALL DEFERRED;\n\n";
 			}
-		} elsif (!$self->{oracle_speed}) {
+		}
+		elsif (!$self->{oracle_speed})
+		{
 			# Set search path
 			if ($search_path) {
 				$self->{dbhdest}->do($search_path) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
@@ -7416,8 +7421,8 @@ sub _get_sql_statements
 
 		#### Defined all SQL commands that must be executed before and after data loading
 		my $load_file = "\n";
-		foreach my $table (@ordered_tables) {
-
+		foreach my $table (@ordered_tables)
+		{
 			# Remove main table partition (for MySQL "SELECT * FROM emp PARTITION (p1);" is supported from 5.6)
 			delete $self->{partitions}{$table} if (exists $self->{partitions}{$table} && $self->{is_mysql} && ($self->{db_version} =~ /^5\.[012345]/));
 			if (-e "${dirprefix}tmp_${table}_$self->{output}") {
@@ -10470,6 +10475,7 @@ AND    IC.TABLE_OWNER = ?
 		if (!$self->{schema} && $self->{export_schema}) {
 			$row->[8] = "$row->[9].$row->[8]";
 		}
+		next if (!exists $self->{table}{$row->[8]});
 		if (!$self->{preserve_case}) {
 			next if (exists $self->{modify}{"\L$row->[8]\E"} && !grep(/^$row->[1]$/i, @{$self->{modify}{"\L$row->[8]\E"}}));
 		} else {
@@ -10509,7 +10515,6 @@ AND    IC.TABLE_OWNER = ?
 		if (($row->[4] =~ /FUNCTION-BASED/i) && ($row->[1] !~ /\(.*\)/)) {
 			$row->[4] =~ s/FUNCTION-BASED\s*//;
 		}
-
 		$idx_type{$row->[8]}{$row->[0]}{type_name} = $row->[11];
 		if (($#{$row} > 6) && ($row->[7] eq 'Y')) {
 			$idx_type{$row->[8]}{$row->[0]}{type} = $row->[4] . ' JOIN';
