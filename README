@@ -292,6 +292,7 @@ CONFIGURATION
         -p | --plsql      : Enable PLSQL to PLPGSQL code conversion.
         -P | --parallel num: Number of parallel tables to extract at the same time.
         -q | --quiet      : Disable progress bar.
+        -r | --relative   : use \ir instead of \i in the psql scripts generated.
         -s | --source DSN : Allow to set the Oracle DBI datasource.
         -t | --type export: Set the export type. It will override the one
                             given in the configuration file (TYPE).
@@ -1559,7 +1560,7 @@ CONFIGURATION
         the OUTPUT file. This directive is usable only with TABLE AND
         TABLESPACE export type. With the TABLESPACE export, it is used to
         write "ALTER INDEX ... TABLESPACE ..." into a separate file named
-        TBSP_INDEXES_OUPUT that can be loaded at end of the migration after
+        TBSP_INDEXES_OUTPUT that can be loaded at end of the migration after
         the indexes creation to move the indexes.
 
         The indexes can be imported quickly into PostgreSQL using the LOAD
@@ -1649,6 +1650,12 @@ CONFIGURATION
     NO_HEADER
         Enabling this directive will prevent Ora2Pg to print his header into
         output files. Only the translated code will be written.
+
+    PSQL_RELATIVE_PATH
+        By default Ora2Pg use \i psql command to execute generated SQL files
+        if you want to use a relative path following the script execution
+        file enabling this option will use \ir. See psql help for more
+        information.
 
     When using Ora2Pg export type INSERT or COPY to dump data to file and
     that FILE_PER_TABLE is enabled, you will be warned that Ora2Pg will not

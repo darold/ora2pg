@@ -1006,6 +1006,12 @@ NO_BLOB_EXPORT		0
 # INSERT export type.
 DATA_EXPORT_ORDER	name
 
+# By default Ora2Pg use \i psql command to execute generated SQL files
+# if you want to use a relative path following the script execution file
+# enabling this option will use \ir. See psql help for more information.
+PSQL_RELATIVE_PATH	0
+ 
+
 #------------------------------------------------------------------------------
 # PERFORMANCES SECTION (Control export/import performances)
 #------------------------------------------------------------------------------

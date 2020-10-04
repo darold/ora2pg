@@ -1067,19 +1067,24 @@ sub _init
 
 	# Overwrite configuration with all given parameters
 	# and try to preserve backward compatibility
-	foreach my $k (keys %options) {
-		if (($k eq 'allow') && $options{allow}) {
+	foreach my $k (keys %options)
+	{
+		if (($k eq 'allow') && $options{allow})
+		{
 			$self->{limited} = ();
 			# Syntax: TABLE[regex1 regex2 ...];VIEW[regex1 regex2 ...];glob_regex1 glob_regex2 ...
 			my @allow_vlist = split(/\s*;\s*/, $options{allow});
-			foreach my $a (@allow_vlist) {
+			foreach my $a (@allow_vlist)
+			{
 				if ($a =~ /^([^\[]+)\[(.*)\]$/) {
 					push(@{$self->{limited}{"\U$1\E"}}, split(/[\s,]+/, $2) );
 				} else {
 					push(@{$self->{limited}{ALL}}, split(/[\s,]+/, $a) );
 				}
 			}
-		} elsif (($k eq 'exclude') && $options{exclude}) {
+		}
+		elsif (($k eq 'exclude') && $options{exclude})
+		{
 			$self->{excluded} = ();
 			# Syntax: TABLE[regex1 regex2 ...];VIEW[regex1 regex2 ...];glob_regex1 glob_regex2 ...
 			my @exclude_vlist = split(/\s*;\s*/, $options{exclude});
@@ -1090,7 +1095,9 @@ sub _init
 					push(@{$self->{excluded}{ALL}}, split(/[\s,]+/, $a) );
 				}
 			}
-		} elsif (($k eq 'view_as_table') && $options{view_as_table}) {
+		}
+		elsif (($k eq 'view_as_table') && $options{view_as_table})
+		{
 			$self->{view_as_table} = ();
 			push(@{$self->{view_as_table}}, split(/[\s;,]+/, $options{view_as_table}) );
 		} elsif (($k eq 'datasource') && $options{datasource}) {
@@ -1107,22 +1114,23 @@ sub _init
 	}
 
 	# Global regex will be applied to the export type only
-	foreach my $i (@{$self->{limited}{ALL}}) {
+	foreach my $i (@{$self->{limited}{ALL}})
+	{
 		my $typ = $self->{type} || 'TABLE';
 		$typ = 'TABLE' if ($self->{type} =~ /(SHOW_TABLE|SHOW_COLUMN|FDW|KETTLE|COPY|INSERT)/);
 		push(@{$self->{limited}{$typ}}, $i);
 	}
 	delete $self->{limited}{ALL};
-	foreach my $i (@{$self->{excluded}{ALL}}) {
+	foreach my $i (@{$self->{excluded}{ALL}})
+	{
 		my $typ = $self->{type} || 'TABLE';
 		$typ = 'TABLE' if ($self->{type} =~ /(SHOW_TABLE|SHOW_COLUMN|FDW|KETTLE|COPY|INSERT)/);
 		push(@{$self->{excluded}{$typ}}, $i);
 	}
 	delete $self->{excluded}{ALL};
 
-	if ($AConfig{'DEBUG'} == 1) {
-		$self->{debug} = 1;
-	}
+	$self->{debug} = 1 if ($AConfig{'DEBUG'} == 1);
+
 	# Set default XML data extract method
 	if (not defined $self->{xml_pretty} || ($self->{xml_pretty} != 0)) {
 		$self->{xml_pretty} = 1;
@@ -1131,6 +1139,12 @@ sub _init
 		$self->{fdw_server} = 'orcl';
 	}
 
+	# Should we use \i or \ir in psql scripts
+	if ($AConfig{PSQL_RELATIVE_PATH}) {
+		$self->{psql_relative_path} = 'r';
+	} else {
+		$self->{psql_relative_path} = '';
+	}
 
 	# Clean potential remaining temporary files
 	my $dirprefix = '';
@@ -3732,7 +3746,7 @@ sub translate_function
 		if ($self->{file_per_function}) {
 			my $f = "$dirprefix${fct}_$self->{output}";
 			$f =~ s/\.(?:gz|bz2)$//i;
-			$self->dump("\\i $f\n");
+			$self->dump("\\i$self->{psql_relative_path} $f\n");
 			$self->save_filetoupdate_list("ORA2PG_$self->{type}", lc($fct), "$dirprefix${fct}_$self->{output}");
 		} else {
 			$self->save_filetoupdate_list("ORA2PG_$self->{type}", lc($fct), "$dirprefix$self->{output}");
@@ -3931,7 +3945,7 @@ sub export_view
 		{
 			my $file_name = "$dirprefix${view}_$self->{output}";
 			$file_name =~ s/\.(gz|bz2)$//;
-			$self->dump("\\i $file_name\n");
+			$self->dump("\\i$self->{psql_relative_path} $file_name\n");
 			$self->logit("Dumping to one file per view : ${view}_$self->{output}\n", 1);
 			$fhdl = $self->open_export_file("${view}_$self->{output}");
 			$self->set_binmode($fhdl) if (!$self->{compress});
@@ -4205,7 +4219,7 @@ LANGUAGE plpgsql ;
 		if ($self->{file_per_table} && !$self->{pg_dsn}) {
 			my $file_name = "$dirprefix${view}_$self->{output}";
 			$file_name =~ s/\.(gz|bz2)$//;
-			$self->dump("\\i $file_name\n");
+			$self->dump("\\i$self->{psql_relative_path} $file_name\n");
 			$self->logit("Dumping to one file per materialized view : ${view}_$self->{output}\n", 1);
 			$fhdl = $self->open_export_file("${view}_$self->{output}");
 			$self->set_binmode($fhdl) if (!$self->{compress});
@@ -4640,7 +4654,7 @@ sub export_trigger
 		if ($self->{file_per_function}) {
 			my $f = "$dirprefix$trig->[0]_$self->{output}";
 			$f =~ s/\.(?:gz|bz2)$//i;
-			$self->dump("\\i $f\n");
+			$self->dump("\\i$self->{psql_relative_path} $f\n");
 			$self->logit("Dumping to one file per trigger : $trig->[0]_$self->{output}\n", 1);
 			$fhdl = $self->open_export_file("$trig->[0]_$self->{output}");
 			$self->set_binmode($fhdl) if (!$self->{compress});
@@ -5549,7 +5563,7 @@ sub export_package
 			if ($self->{file_per_function}) {
 				my $f = "$dirprefix\L${pkg}\E_$self->{output}";
 				$f =~ s/\.(?:gz|bz2)$//i;
-				$pkgbody = "\\i $f\n";
+				$pkgbody = "\\i$self->{psql_relative_path} $f\n";
 				my $fhdl = $self->open_export_file("$dirprefix\L${pkg}\E_$self->{output}", 1);
 				$self->set_binmode($fhdl) if (!$self->{compress});
 				$self->dump($sql_header . $self->{packages}{$pkg}{text}, $fhdl);
@@ -7510,7 +7524,7 @@ sub _get_sql_statements
 			if ($self->{file_per_table} && !$self->{pg_dsn}) {
 				my $file_name = "$dirprefix${table}_$self->{output}";
 				$file_name =~ s/\.(gz|bz2)$//;
-				$load_file .=  "\\i $file_name\n";
+				$load_file .=  "\\i$self->{psql_relative_path} $file_name\n";
 			}
 
 			# With partitioned table, load data direct from table partition
@@ -7534,7 +7548,7 @@ sub _get_sql_statements
 							if ($self->{file_per_table} && !$self->{pg_dsn}) {
 								my $file_name = "$dirprefix${sub_tb_name}_$self->{output}";
 								$file_name =~ s/\.(gz|bz2)$//;
-								$load_file .=  "\\i $file_name\n";
+								$load_file .=  "\\i$self->{psql_relative_path} $file_name\n";
 							}
 						}
 						# Now load content of the default partion table
@@ -7545,7 +7559,7 @@ sub _get_sql_statements
 									$part_name = "${tb_name}$part_name" if ($self->{prefix_partition});
 									my $file_name = "$dirprefix${part_name}_$self->{output}";
 									$file_name =~ s/\.(gz|bz2)$//;
-									$load_file .=  "\\i $file_name\n";
+									$load_file .=  "\\i$self->{psql_relative_path} $file_name\n";
 								}
 							}
 						}
@@ -7553,7 +7567,7 @@ sub _get_sql_statements
 						if ($self->{file_per_table} && !$self->{pg_dsn}) {
 							my $file_name = "$dirprefix${tb_name}_$self->{output}";
 							$file_name =~ s/\.(gz|bz2)$//;
-							$load_file .=  "\\i $file_name\n";
+							$load_file .=  "\\i$self->{psql_relative_path} $file_name\n";
 						}
 					}
 				}
@@ -7565,7 +7579,7 @@ sub _get_sql_statements
 							$part_name = $table . '_' . $part_name if ($self->{prefix_partition});
 							my $file_name = "$dirprefix${part_name}_$self->{output}";
 							$file_name =~ s/\.(gz|bz2)$//;
-							$load_file .=  "\\i $file_name\n";
+							$load_file .=  "\\i$self->{psql_relative_path} $file_name\n";
 						}
 					}
 				}
@@ -13961,7 +13975,7 @@ END;
 		$self->close_export_file($fhdl);
 		my $f = "$dirprefix\L$pname/$fname\E_$self->{output}";
 		$f =~ s/\.(?:gz|bz2)$//i;
-		$function = "\\i $f\n";
+		$function = "\\i$self->{psql_relative_path} $f\n";
 		$self->save_filetoupdate_list(lc($pname), lc($fname), "$dirprefix\L$pname/$fname\E_$self->{output}");
 		return $function;
 	} elsif ($pname) {
