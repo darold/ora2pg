@@ -683,7 +683,6 @@ usage() {
     echo "    -i             only load indexes, constraints and triggers"
     echo "    -I             do not try to load indexes, constraints and triggers"
     echo "    -j cores       number of connection to use to import data or indexes into PostgreSQL"
-    echo "    -l filename    log file where stdout+stderr are redirected (default: stdout)"
     echo "    -n schema      comma separated list of schema to create"
     echo "    -o username    owner of the database to create"
     echo "    -p port        listening port of the PostgreSQL server (default: 5432)"
@@ -819,7 +818,6 @@ while getopts "b:d:e:h:j:l:n:o:p:P:t:U:aDfiIsyx?"  opt; do
         i) CONSTRAINTS_ONLY=1;;
         I) NO_CONSTRAINTS=1;;
         j) IMPORT_JOBS=" -j $OPTARG";;
-        l) LOGFILE=$OPTARG;;
         n) DB_SCHEMA=$OPTARG;;
         o) DB_OWNER=$OPTARG;;
         p) DB_PORT=" -p $OPTARG";;
