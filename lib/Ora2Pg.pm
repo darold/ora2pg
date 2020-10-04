@@ -16961,19 +16961,21 @@ sub _test_function
 	print "\n";
 	print "[TEST FUNCTION COUNT]\n";
 	my @fct_infos = $self->_list_all_funtions();
-	my $schema_clause = $self->get_schema_condition('', 'pg_catalog.pg_function_is_visible(p.oid)');
+	#my $schema_clause = $self->get_schema_condition('', 'pg_catalog.pg_function_is_visible(p.oid)');
+	my $schema_clause = "    AND n.nspname NOT IN ('pg_catalog','information_schema')";
 	$sql = qq{
 SELECT n.nspname,proname,prorettype
 FROM pg_catalog.pg_proc p
      LEFT JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
      LEFT JOIN pg_catalog.pg_type t ON t.oid=p.prorettype
 WHERE t.typname <> 'trigger'
- $schema_clause
+$schema_clause
 };
 
 	my $nbobj = $#fct_infos + 1;
 	print "$lbl:FUNCTION:$nbobj\n";
-	if ($self->{pg_dsn}) {
+	if ($self->{pg_dsn})
+	{
 		$s = $self->{dbhdest}->prepare($sql) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
 		if (not $s->execute()) {
 			push(@errors, "Can not extract information from catalog about $obj_type.");
@@ -16981,7 +16983,8 @@ WHERE t.typname <> 'trigger'
 		}
 		my $pgfct = 0;
 		my %pg_function = ();
-		while ( my @row = $s->fetchrow()) {
+		while ( my @row = $s->fetchrow())
+		{
 			$pgfct++;
 			my $fname = $row[1];
 			if ($row[0] ne 'public') {
@@ -16995,8 +16998,18 @@ WHERE t.typname <> 'trigger'
 		}
 		$s->finish();
 		# search for missing funtion
-		foreach my $f (@fct_infos) {
-			 push(@errors, "Function $f is missing in PostgreSQL database.") if (!exists $pg_function{$f});
+		foreach my $f (@fct_infos)
+		{
+			my $found = 0;
+			foreach my $pgf (keys %pg_function)
+			{
+				if ($f !~ /\./) {
+					$found = 1, last if ($pgf =~ /^[^\.]+\.$f$/i);
+				} else {
+					$found = 1, last if ($pgf =~ /^$f$/i);
+				}
+			}
+			push(@errors, "Function $f is missing in PostgreSQL database.") if (!$found);
 		}
 	}
 	$self->show_test_errors('FUNCTION', @errors);
