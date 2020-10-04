@@ -3751,7 +3751,7 @@ sub translate_function
 		if ($self->{plsql_pgsql}) {
 			my $sql_f = '';
 			if ($self->{is_mysql}) {
-				$sql_f = $self->_convert_function($functions{$fct}{owner}, $functions{$fct}{text}, ${fct});
+				$sql_f = $self->_convert_function($functions{$fct}{owner}, $functions{$fct}{text}, $fct);
 			} else {
 				$sql_f = $self->_convert_function($functions{$fct}{owner}, $functions{$fct}{text});
 			}
@@ -13268,6 +13268,7 @@ sub _convert_package
 			}
 		}
 	}
+
 	# Grab global declaration from the package header
 	if ($self->{packages}{$pkg}{desc} =~ /CREATE OR REPLACE PACKAGE\s+([^\s]+)(?:\s*\%ORA2PG_COMMENT\d+\%)*\s*(AS|IS)\s*(.*)/is)
 	{
@@ -13343,7 +13344,8 @@ sub _convert_package
 			$content .= join("\n", @cursors) . "\n";
 			$glob_declare = $self->register_global_variable($pname, $glob_declare);
 		}
-		if ($self->{file_per_function}) {
+		if ($self->{file_per_function})
+		{
 			my $dir = lc("$dirprefix$pname");
 			if (!-d "$dir") {
 				if (not mkdir($dir)) {
@@ -13370,7 +13372,8 @@ sub _convert_package
 			$fct_detail{name} =~ s/"//g;
 			next if (!$fct_detail{name});
 			$fct_detail{name} =  lc($fct_detail{name});
-			if (!exists $self->{package_functions}{"\L$pname\E"}{$fct_detail{name}}) {
+			if (!exists $self->{package_functions}{"\L$pname\E"}{$fct_detail{name}})
+			{
 				my $res_name = $fct_detail{name};
 				$res_name =~ s/^[^\.]+\.//;
 				$fct_detail{name} =~ s/^([^\.]+)\.//;
@@ -13386,9 +13389,10 @@ sub _convert_package
 		}
 
 		$self->{pkgcost} = 0;
-		foreach my $f (@functions) {
+		foreach my $f (@functions)
+		{
 			next if (!$f);
-			$content .= $self->_convert_function($owner, $f, $pname);
+			$content .= $self->_convert_function($owner, $f, $pkg || $pname);
 		}
 		if ($self->{estimate_cost}) {
 			$self->{total_pkgcost} += $self->{pkgcost} || 0;
@@ -13712,23 +13716,30 @@ sub _convert_function
 	$type = 'FUNCTION' if (!$self->{pg_supports_procedure});
 
 	my $function = "\n${fct_warning}CREATE$self->{create_or_replace} $type $fname$at_suffix $fct_detail{args}";
-	if (!$pname || !$self->{package_as_schema}) {
-		if ($self->{export_schema} && !$self->{schema}) {
+	if (!$pname || !$self->{package_as_schema})
+	{
+		if ($self->{export_schema} && !$self->{schema})
+		{
 			$function = "\n${fct_warning}CREATE$self->{create_or_replace} $type " . $self->quote_object_name("$owner.$fname") . " $fct_detail{args}";
 			$name =  $self->quote_object_name("$owner.$fname");
 			$self->logit("Parsing function " . $self->quote_object_name("$owner.$fname") . "...\n", 1);
-		} elsif ($self->{export_schema} && $self->{schema}) {
+		}
+		elsif ($self->{export_schema} && $self->{schema})
+		{
 			$function = "\n${fct_warning}CREATE$self->{create_or_replace} $type " . $self->quote_object_name("$self->{schema}.$fname") . " $fct_detail{args}";
 			$name =  $self->quote_object_name("$self->{schema}.$fname");
 			$self->logit("Parsing function " . $self->quote_object_name("$self->{schema}.$fname") . "...\n", 1);
 		}
-	} else {
+	}
+	else
+	{
 		$self->logit("Parsing function $fname...\n", 1);
 	}
 
 	# Create a wrapper for the function if we found an autonomous transaction
 	my $at_wrapper = '';
-	if ($at_suffix && !$self->{pg_background}) {
+	if ($at_suffix && !$self->{pg_background})
+	{
 		$at_wrapper = qq{
 $search_path
 --
@@ -13816,7 +13827,9 @@ END;
 \$body\$ LANGUAGE plpgsql SECURITY DEFINER;
 };
 
-	} elsif ($at_suffix && $self->{pg_background}) {
+	}
+	elsif ($at_suffix && $self->{pg_background})
+	{
 		$at_wrapper = qq{
 $search_path
 --
