@@ -729,7 +729,7 @@ sub plsql_to_plpgsql
 	$str = replace_cursor_def($str);
 
 	# Remove remaining %ROWTYPE in other prototype declaration
-	$str =~ s/\%ROWTYPE//isg;
+	#$str =~ s/\%ROWTYPE//isg;
 
 	# Normalize HAVING ... GROUP BY into GROUP BY ... HAVING clause	
 	$str =~ s/\bHAVING\b((?:(?!SELECT|INSERT|UPDATE|DELETE).)*?)\bGROUP BY\b((?:(?!SELECT|INSERT|UPDATE|DELETE|WHERE).)*?)((?=UNION|ORDER BY|LIMIT|INTO |FOR UPDATE|PROCEDURE|\)\s+(?:AS)*[a-z0-9_]+\s+)|$)/GROUP BY$2 HAVING$1/gis;
@@ -1928,7 +1928,7 @@ sub replace_sql_type
 	$str = replace_cursor_def($str);
 
 	# Remove remaining %ROWTYPE in other prototype declaration
-	$str =~ s/\%ROWTYPE//isg;
+	#$str =~ s/\%ROWTYPE//isg;
 
 	$str =~ s/;[ ]+/;/gs;
 
@@ -1946,6 +1946,10 @@ sub replace_cursor_def
 		$str =~ s/\%\%CURSORREPLACE\%\%/$args/is;
 	}
 
+	# Replace %ROWTYPE ref cursor
+	$str =~ s/\bTYPE\s+([^\s]+)\s+(IS\s+REF\s+CURSOR|REFCURSOR)\s+RETURN\s+[^\s\%]+\%ROWTYPE;/$1 REFCURSOR;/isg;
+
+
 	# Replace local type ref cursor
 	my %locatype = ();
 	my $i = 0;
@@ -1960,14 +1964,14 @@ sub replace_cursor_def
 	$str =~ s/\%LOCALTYPE(\d+)\%/$localtype{$1}/gs;
 
 	# Retrieve cursor names
-	my @cursor_names = $str =~ /\bCURSOR\b\s*([A-Z0-9_\$]+)/isg;
+	#my @cursor_names = $str =~ /\bCURSOR\b\s*([A-Z0-9_\$]+)/isg;
 	# Reorder cursor declaration
 	$str =~ s/\bCURSOR\b\s*([A-Z0-9_\$]+)/$1 CURSOR/isg;
 
 	# Replace call to cursor type if any
-	foreach my $c (@cursor_names) {
-		$str =~ s/\b$c\%ROWTYPE/RECORD/isg;
-	}
+	#foreach my $c (@cursor_names) {
+	#	$str =~ s/\b$c\%ROWTYPE/RECORD/isg;
+	#}
 
 	# Replace REF CURSOR as Pg REFCURSOR
 	$str =~ s/\bIS(\s*)REF\s+CURSOR/REFCURSOR/isg;

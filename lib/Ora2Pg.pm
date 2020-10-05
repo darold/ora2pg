@@ -9529,7 +9529,7 @@ sub _sql_type
 		}
         }
 
-	$type =~ s/\%ROWTYPE//i;
+	#$type =~ s/\%ROWTYPE//i;
 
         return $type;
 }
