@@ -7479,7 +7479,8 @@ sub _get_sql_statements
 			#### Set SQL commands that must be executed before data loading
 
 			# Drop foreign keys if required
-			if ($self->{drop_fkey}) {
+			if ($self->{drop_fkey})
+			{
 				$self->logit("Dropping foreign keys of table $table...\n", 1);
 				my @drop_all = $self->_drop_foreign_keys($table, @{$self->{tables}{$table}{foreign_key}});
 				foreach my $str (@drop_all) {
@@ -7494,8 +7495,8 @@ sub _get_sql_statements
 			}
 
 			# Drop indexes if required
-			if ($self->{drop_indexes}) {
-
+			if ($self->{drop_indexes})
+			{
 				$self->logit("Dropping indexes of table $table...\n", 1);
 				my @drop_all = $self->_drop_indexes($table, %{$self->{tables}{$table}{indexes}}) . "\n";
 				foreach my $str (@drop_all) {
@@ -7510,7 +7511,8 @@ sub _get_sql_statements
 			}
 
 			# Disable triggers of current table if requested
-			if ($self->{disable_triggers} && !$self->{oracle_speed}) {
+			if ($self->{disable_triggers} && !$self->{oracle_speed})
+			{
 				my $trig_type = 'USER';
 				$trig_type = 'ALL' if (uc($self->{disable_triggers}) eq 'ALL');
 				if ($self->{pg_dsn}) {
@@ -7521,15 +7523,18 @@ sub _get_sql_statements
 			}
 
 			#### Add external data file loading if file_per_table is enable
-			if ($self->{file_per_table} && !$self->{pg_dsn}) {
+			if ($self->{file_per_table} && !$self->{pg_dsn})
+			{
 				my $file_name = "$dirprefix${table}_$self->{output}";
 				$file_name =~ s/\.(gz|bz2)$//;
 				$load_file .=  "\\i$self->{psql_relative_path} $file_name\n";
 			}
 
 			# With partitioned table, load data direct from table partition
-			if (exists $self->{partitions}{$table}) {
-				foreach my $pos (sort {$a <=> $b} keys %{$self->{partitions}{$table}}) {
+			if (exists $self->{partitions}{$table})
+			{
+				foreach my $pos (sort {$a <=> $b} keys %{$self->{partitions}{$table}})
+				{
 					my $part_name = $self->{partitions}{$table}{$pos}{name};
 					my $tb_name = '';
 					if (!exists $self->{subpartitions}{$table}{$part_name}) {
@@ -7538,8 +7543,10 @@ sub _get_sql_statements
 					$tb_name = $table . '_' . $tb_name if ($self->{prefix_partition});
 					next if ($self->{allow_partition} && !grep($_ =~ /^$part_name$/i, @{$self->{allow_partition}}));
 
-					if (exists $self->{subpartitions}{$table}{$part_name}) {
-						foreach my $p (sort {$a <=> $b} keys %{$self->{subpartitions}{$table}{$part_name}}) {
+					if (exists $self->{subpartitions}{$table}{$part_name})
+					{
+						foreach my $p (sort {$a <=> $b} keys %{$self->{subpartitions}{$table}{$part_name}})
+						{
 							my $subpart = $self->{subpartitions}{$table}{$part_name}{$p}{name};
 							next if ($self->{allow_partition} && !grep($_ =~ /^$subpart$/i, @{$self->{allow_partition}}));
 							my $sub_tb_name = $subpart;
@@ -7552,9 +7559,12 @@ sub _get_sql_statements
 							}
 						}
 						# Now load content of the default partion table
-						if ($self->{subpartitions_default}{$table}{$part_name}) {
-							if (!$self->{allow_partition} || grep($_ =~ /^$self->{subpartitions_default}{$table}{$part_name}$/i, @{$self->{allow_partition}})) {
-								if ($self->{file_per_table} && !$self->{pg_dsn}) {
+						if ($self->{subpartitions_default}{$table}{$part_name})
+						{
+							if (!$self->{allow_partition} || grep($_ =~ /^$self->{subpartitions_default}{$table}{$part_name}$/i, @{$self->{allow_partition}}))
+							{
+								if ($self->{file_per_table} && !$self->{pg_dsn})
+								{
 									my $part_name = $self->{subpartitions_default}{$table}{$part_name};
 									$part_name = "${tb_name}$part_name" if ($self->{prefix_partition});
 									my $file_name = "$dirprefix${part_name}_$self->{output}";
@@ -7563,8 +7573,11 @@ sub _get_sql_statements
 								}
 							}
 						}
-					} else {
-						if ($self->{file_per_table} && !$self->{pg_dsn}) {
+					}
+					else
+					{
+						if ($self->{file_per_table} && !$self->{pg_dsn})
+						{
 							my $file_name = "$dirprefix${tb_name}_$self->{output}";
 							$file_name =~ s/\.(gz|bz2)$//;
 							$load_file .=  "\\i$self->{psql_relative_path} $file_name\n";
@@ -7572,9 +7585,12 @@ sub _get_sql_statements
 					}
 				}
 				# Now load content of the default partion table
-				if ($self->{partitions_default}{$table}) {
-					if (!$self->{allow_partition} || grep($_ =~ /^$self->{partitions_default}{$table}$/i, @{$self->{allow_partition}})) {
-						if ($self->{file_per_table} && !$self->{pg_dsn}) {
+				if ($self->{partitions_default}{$table})
+				{
+					if (!$self->{allow_partition} || grep($_ =~ /^$self->{partitions_default}{$table}$/i, @{$self->{allow_partition}}))
+					{
+						if ($self->{file_per_table} && !$self->{pg_dsn})
+						{
 							my $part_name = $self->{partitions_default}{$table};
 							$part_name = $table . '_' . $part_name if ($self->{prefix_partition});
 							my $file_name = "$dirprefix${part_name}_$self->{output}";
@@ -7586,7 +7602,8 @@ sub _get_sql_statements
 			}
 
 			# Create temporary tables for DATADIFF
-			if ($self->{datadiff}) {
+			if ($self->{datadiff})
+			{
 				my $tmptb_del = $self->get_tbname_with_suffix($tmptb, $self->{datadiff_del_suffix});
 				my $tmptb_ins = $self->get_tbname_with_suffix($tmptb, $self->{datadiff_ins_suffix});
 				my $tmptb_upd = $self->get_tbname_with_suffix($tmptb, $self->{datadiff_upd_suffix});
@@ -8252,13 +8269,17 @@ sub _column_comments
 
 	my $condition = '';
 
-	my $sql = "SELECT COLUMN_NAME,COMMENTS,TABLE_NAME,OWNER FROM $self->{prefix}_COL_COMMENTS $condition";
+	my $sql = "SELECT A.COLUMN_NAME,A.COMMENTS,A.TABLE_NAME,A.OWNER FROM $self->{prefix}_COL_COMMENTS A $condition";
 	if ($self->{schema}) {
-		$sql .= "WHERE OWNER='$self->{schema}' ";
+		$sql .= "WHERE A.OWNER='$self->{schema}' ";
 	} else {
-		$sql .= " WHERE OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
+		$sql .= " WHERE A.OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
 	}
-	$sql .= "AND TABLE_NAME='$table' " if ($table);
+	$sql .= "AND A.TABLE_NAME='$table' " if ($table);
+	if ($self->{db_version} !~ /Release 8/) {
+		$sql .= " AND (A.OWNER, A.TABLE_NAME) NOT IN (SELECT OWNER, TABLE_NAME FROM ALL_OBJECT_TABLES)";
+		$sql .= " AND (A.OWNER, A.TABLE_NAME) NOT IN (SELECT OWNER, MVIEW_NAME FROM ALL_MVIEWS UNION ALL SELECT LOG_OWNER, LOG_TABLE FROM ALL_MVIEW_LOGS)" if ($self->{type} ne 'FDW');
+	}
 	if (!$table) {
 		$sql .= $self->limit_to_objects('TABLE','TABLE_NAME');
 	} else {
