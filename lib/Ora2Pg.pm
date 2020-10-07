@@ -10066,6 +10066,10 @@ FROM $self->{prefix}_CONS_COLUMNS A JOIN $self->{prefix}_CONSTRAINTS B ON (B.CON
 	$sql .= " AND B.CONSTRAINT_TYPE IN $cons_types";
 	$sql .= " AND B.TABLE_NAME='$table'" if ($table);
 	$sql .= " AND B.STATUS='ENABLED' ";
+	if ($self->{db_version} !~ /Release 8/) {
+		$sql .= " AND (B.OWNER, B.TABLE_NAME) NOT IN (SELECT OWNER, MVIEW_NAME FROM ALL_MVIEWS UNION ALL SELECT LOG_OWNER, LOG_TABLE FROM ALL_MVIEW_LOGS)" if ($self->{type} ne 'FDW');
+		$sql .= " AND (B.OWNER, B.TABLE_NAME) NOT IN (SELECT OWNER, TABLE_NAME FROM ALL_OBJECT_TABLES)";
+	}
 
 	# Get the list of constraints in the specified schema or excluding the list of system schema
 	my @tmpparams = ();
@@ -10124,13 +10128,18 @@ sub _check_constraint
 	}
 	$condition .= $self->limit_to_objects('CKEY|TABLE', 'CONSTRAINT_NAME|TABLE_NAME');
 
-	my $sth = $self->{dbh}->prepare(<<END) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-SELECT CONSTRAINT_NAME,R_CONSTRAINT_NAME,SEARCH_CONDITION,DELETE_RULE,DEFERRABLE,DEFERRED,R_OWNER,TABLE_NAME,OWNER,VALIDATED
-FROM $self->{prefix}_CONSTRAINTS
-WHERE CONSTRAINT_TYPE='C' $condition
-AND STATUS='ENABLED'
-END
+	my $sql = qq{
+SELECT A.CONSTRAINT_NAME,A.R_CONSTRAINT_NAME,A.SEARCH_CONDITION,A.DELETE_RULE,A.DEFERRABLE,A.DEFERRED,A.R_OWNER,A.TABLE_NAME,A.OWNER,A.VALIDATED
+FROM $self->{prefix}_CONSTRAINTS A
+WHERE A.CONSTRAINT_TYPE='C' $condition
+AND A.STATUS='ENABLED'
+};
 
+	if ($self->{db_version} !~ /Release 8/) {
+		$sql .= " AND (A.OWNER, A.TABLE_NAME) NOT IN (SELECT OWNER, MVIEW_NAME FROM ALL_MVIEWS UNION ALL SELECT LOG_OWNER, LOG_TABLE FROM ALL_MVIEW_LOGS)" if ($self->{type} ne 'FDW');
+		$sql .= " AND (A.OWNER, A.TABLE_NAME) NOT IN (SELECT OWNER, TABLE_NAME FROM ALL_OBJECT_TABLES)";
+	}
+	my $sth = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
 	my %data = ();
@@ -10204,8 +10213,11 @@ FROM $self->{prefix}_CONSTRAINTS CONS
     LEFT JOIN $self->{prefix}_CONSTRAINTS CONS_R ON (CONS_R.CONSTRAINT_NAME = CONS.R_CONSTRAINT_NAME AND CONS_R.OWNER = CONS.R_OWNER)
     LEFT JOIN $self->{prefix}_CONS_COLUMNS COLS_R ON (COLS_R.CONSTRAINT_NAME = CONS.R_CONSTRAINT_NAME AND COLS_R.POSITION=COLS.POSITION AND COLS_R.OWNER = CONS.R_OWNER)
 WHERE CONS.CONSTRAINT_TYPE = 'R' $condition
-ORDER BY CONS.TABLE_NAME, CONS.CONSTRAINT_NAME, COLS.POSITION
 END
+	$sql .= "\nAND (CONS.OWNER, CONS.TABLE_NAME) NOT IN (SELECT OWNER, MVIEW_NAME FROM ALL_MVIEWS UNION ALL SELECT LOG_OWNER, LOG_TABLE FROM ALL_MVIEW_LOGS)" if ($self->{type} ne 'FDW');
+	$sql .= " AND (CONS.OWNER, CONS.TABLE_NAME) NOT IN (SELECT OWNER, TABLE_NAME FROM ALL_OBJECT_TABLES)";
+
+	$sql .= "\nORDER BY CONS.TABLE_NAME, CONS.CONSTRAINT_NAME, COLS.POSITION";
 
 	if ($self->{db_version} =~ /Release 8/) {
 		$sql = <<END;
