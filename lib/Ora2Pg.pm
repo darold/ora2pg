@@ -1304,6 +1304,7 @@ sub _init
 	$self->{dump_as_sheet} ||= 0;
 	$self->{top_max} ||= 10;
 	$self->{print_header} ||= 0;
+	$self->{use_default_null} = 1 if (!defined $self->{use_default_null});
 
 	$self->{estimate_cost} = 1 if ($self->{dump_as_sheet});
 	$self->{count_rows} ||= 0;
@@ -13657,27 +13658,45 @@ sub _convert_function
 	$fct_detail{args} =~ s/\s+DEFAULT\s+EMPTY_[CB]LOB\(\)//igs;
 
 	# Input parameters after one with a default value must also have defaults
-	# and we need to sort the arguments so the ones with default values will be on the bottom
-	$fct_detail{args} =~ s/^\((.*)\)(\s*\%ORA2PG_COMMENT\d+\%)*\s*$/$1$2/gs;
+	# we add DEFAULT NULL to all remaining parameter without a default value.
 	my @args_sorted = ();
-	push(@args_sorted, grep {!/\sdefault\s/i} split ',', $fct_detail{args});
-	push(@args_sorted, grep {/\sdefault\s/i} split ',', $fct_detail{args});
-	my @orig_args = split(',', $fct_detail{args});
+	$fct_detail{args} =~ s/^\((.*)\)(\s*\%ORA2PG_COMMENT\d+\%)*\s*$/$1$2/gs;
+	if ($self->{use_default_null})
+	{
+		my $has_default = 0;
+		@args_sorted = split(',', $fct_detail{args});
+		for (my $i = 0; $i <= $#args_sorted; $i++)
+		{
+			$has_default = 1 if ($args_sorted[$i] =~ /\s+DEFAULT\s/i);
+			if ($has_default && $args_sorted[$i] !~ /\s+DEFAULT\s/i) {
+				$args_sorted[$i] .= ' DEFAULT NULL';
+			}
+		}
+	}
+	else
+	{
+		# or we need to sort the arguments so the ones with default values will be on the bottom
+		push(@args_sorted, grep {!/\sdefault\s/i} split ',', $fct_detail{args});
+		push(@args_sorted, grep {/\sdefault\s/i} split ',', $fct_detail{args});
+		my @orig_args = split(',', $fct_detail{args});
 
-	# Show a warning when there is parameters reordering
-	my $fct_warning = '';
-	for (my $i = 0; $i <= $#args_sorted; $i++) {
-		if ($args_sorted[$i] ne $orig_args[$i]) {
-			my $str = $fct_detail{args};
-			$str =~ s/\%ORA2PG_COMMENT\d+\%//sg;
-			$str =~ s/[\n\r]+//gs;
-			$str =~ s/\s+/ /g;
-			$self->_restore_text_constant_part(\$str);
-			$fct_warning = "\n-- WARNING: parameters order has been changed by Ora2Pg to move parameters with default values at end\n";
-			$fct_warning .= "-- Original order was: $fname($str)\n";
-			$fct_warning .= "-- You will need to manually reorder parameters in the function calls\n";
-			print STDERR $fct_warning;
-			last;
+		# Show a warning when there is parameters reordering
+		my $fct_warning = '';
+		for (my $i = 0; $i <= $#args_sorted; $i++)
+		{
+			if ($args_sorted[$i] ne $orig_args[$i])
+			{
+				my $str = $fct_detail{args};
+				$str =~ s/\%ORA2PG_COMMENT\d+\%//sg;
+				$str =~ s/[\n\r]+//gs;
+				$str =~ s/\s+/ /g;
+				$self->_restore_text_constant_part(\$str);
+				$fct_warning = "\n-- WARNING: parameters order has been changed by Ora2Pg to move parameters with default values at end\n";
+				$fct_warning .= "-- Original order was: $fname($str)\n";
+				$fct_warning .= "-- You will need to manually reorder parameters in the function calls\n";
+				print STDERR $fct_warning;
+				last;
+			}
 		}
 	}
 
