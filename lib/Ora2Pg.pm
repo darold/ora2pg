@@ -17680,7 +17680,6 @@ print STDERR "TABLE EXPORT ENDED: $1, end: $2, report all parts\n" if ($DEBUG_PB
 		my $dt = $end_time - $global_start_time;
 		$dt ||= 1;
 		my $rps = int($global_line_counter / $dt);
-print STDERR "THIS IS THE END total: $global_line_counter, rows: $total_rows\n";
 		print STDERR $self->progress_bar($global_line_counter, $total_rows, 25, '=', 'rows', "on total estimated data ($dt sec., avg: $rps tuples/sec)"), "\n";
 	}
 
