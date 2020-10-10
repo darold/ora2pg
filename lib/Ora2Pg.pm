@@ -13656,10 +13656,8 @@ sub _convert_function
 	$fname =~ s/"_"/_/gs;
 
 	$fct_detail{args} =~ s/\s+IN\s+/ /igs; # Remove default IN keyword
-	# Remove DEFAULT NULL from function/procedure arguments, NULL is always the default
-	$fct_detail{args} =~ s/\s+DEFAULT\s+NULL//igs;
-	# Remove DEFAULT EMPTY_BLOB() from function/procedure arguments, NULL is the default
-	$fct_detail{args} =~ s/\s+DEFAULT\s+EMPTY_[CB]LOB\(\)//igs;
+	# Replace DEFAULT EMPTY_BLOB() from function/procedure arguments by DEFAULT NULL
+	$fct_detail{args} =~ s/\s+DEFAULT\s+EMPTY_[CB]LOB\(\)/DEFAULT NULL/igs;
 
 	# Input parameters after one with a default value must also have defaults
 	# we add DEFAULT NULL to all remaining parameter without a default value.
@@ -18188,10 +18186,8 @@ sub _lookup_function
 		# IN OUT should be INOUT
 		$fct_detail{args} =~ s/\bIN\s+OUT/INOUT/igs;
 
-		# Remove DEFAULT NULL from function/procedure arguments, NULL is always the default
-		$fct_detail{args} =~ s/\s+DEFAULT\s+NULL//igs;
-		# Remove DEFAULT EMPTY_BLOB() from function/procedure arguments, NULL is the default
-		$fct_detail{args} =~ s/\s+DEFAULT\s+EMPTY_[CB]LOB\(\)//igs;
+		# Replace DEFAULT EMPTY_BLOB() from function/procedure arguments by DEFAULT NULL
+		$fct_detail{args} =~ s/\s+DEFAULT\s+EMPTY_[CB]LOB\(\)/DEFAULT NULL/igs;
 
 		# Now convert types
 		$fct_detail{args} = Ora2Pg::PLSQL::replace_sql_type($fct_detail{args}, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type}, %{$self->{data_type}});
@@ -18200,7 +18196,8 @@ sub _lookup_function
 		# Sometime variable used in FOR ... IN SELECT loop is not declared
 		# Append its RECORD declaration in the DECLARE section.
 		my $tmp_code = $fct_detail{code};
-		while ($tmp_code =~ s/\bFOR\s+([^\s]+)\s+IN(.*?)LOOP//is) {
+		while ($tmp_code =~ s/\bFOR\s+([^\s]+)\s+IN(.*?)LOOP//is)
+		{
 			my $varname = quotemeta($1);
 			my $clause = $2;
 			if ($fct_detail{declare} !~ /\b$varname\s+/is) {
