@@ -12421,7 +12421,7 @@ Return a hash of the partitioned table list with the number of partition.
 
 sub _get_partitioned_table
 {
-	my($self) = @_;
+	my ($self, %subpart) = @_;
 
 	return Ora2Pg::MySQL::_get_partitioned_table($self) if ($self->{is_mysql});
 
@@ -12436,45 +12436,72 @@ sub _get_partitioned_table
 		$condition .= " AND B.OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "') ";
 	}
 	# Retrieve all partitions.
-	my $str = qq{
-SELECT
-	B.TABLE_NAME,
-	B.PARTITIONING_TYPE,
-	B.OWNER,
-	B.PARTITION_COUNT,
-	C.COLUMN_NAME,
-	C.COLUMN_POSITION,
-	B.DEF_SUBPARTITION_COUNT,
-	B.SUBPARTITIONING_TYPE
-FROM $self->{prefix}_PART_TABLES B, $self->{prefix}_PART_KEY_COLUMNS C
-WHERE B.TABLE_NAME = C.NAME
-	AND (b.partitioning_type = 'RANGE' OR b.partitioning_type = 'LIST' OR b.partitioning_type = 'HASH')
-};
+	my $str = "SELECT B.TABLE_NAME, B.PARTITIONING_TYPE, B.OWNER, B.PARTITION_COUNT, B.SUBPARTITIONING_TYPE";
+	if ($self->{type} !~ /SHOW|TEST/)
+	{
+		$str .= ", C.COLUMN_NAME, C.COLUMN_POSITION";
+		$str .= " FROM $self->{prefix}_PART_TABLES B, $self->{prefix}_PART_KEY_COLUMNS C";
+		$str .= " WHERE B.TABLE_NAME = C.NAME AND (B.PARTITIONING_TYPE = 'RANGE' OR B.PARTITIONING_TYPE = 'LIST' OR B.PARTITIONING_TYPE = 'HASH')";
+	}
+	else
+	{
+		$str .= " FROM $self->{prefix}_PART_TABLES B WHERE (B.PARTITIONING_TYPE = 'RANGE' OR B.PARTITIONING_TYPE = 'LIST' OR B.PARTITIONING_TYPE = 'HASH') AND B.SUBPARTITIONING_TYPE <> 'SYSTEM' ";
+	}
 	$str .= $self->limit_to_objects('TABLE','B.TABLE_NAME');
 
-	if ($self->{prefix} ne 'USER') {
-		if ($self->{schema}) {
-			$str .= "\tAND B.OWNER ='$self->{schema}' AND C.OWNER=B.OWNER\n";
+	if ($self->{prefix} ne 'USER')
+	{
+		if ($self->{type} !~ /SHOW|TEST/)
+		{
+			if ($self->{schema}) {
+				$str .= "\tAND B.OWNER ='$self->{schema}' AND C.OWNER=B.OWNER\n";
+			} else {
+				$str .= "\tAND B.OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "') AND B.OWNER=C.OWNER\n";
+			}
 		} else {
-			$str .= "\tAND B.OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "') AND B.OWNER=C.OWNER\n";
+			if ($self->{schema}) {
+				$str .= "\tAND B.OWNER ='$self->{schema}'\n";
+			} else {
+				$str .= "\tAND B.OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "')\n";
+			}
 		}
 	}
 	if ($self->{db_version} !~ /Release 8/) {
 		$str .= " AND (B.OWNER, B.TABLE_NAME) NOT IN (SELECT OWNER, MVIEW_NAME FROM ALL_MVIEWS UNION ALL SELECT LOG_OWNER, LOG_TABLE FROM ALL_MVIEW_LOGS)"  if ($self->{type} ne 'FDW');
 	}
-	$str .= "ORDER BY B.OWNER,B.TABLE_NAME,C.COLUMN_POSITION\n";
+	if ($self->{type} !~ /SHOW|TEST/) {
+		$str .= "ORDER BY B.OWNER,B.TABLE_NAME,C.COLUMN_POSITION\n";
+	} else {
+		$str .= "ORDER BY B.OWNER,B.TABLE_NAME\n";
+	}
 
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
 	my %parts = ();
-	while (my $row = $sth->fetch) {
+	while (my $row = $sth->fetch)
+	{
 		if (!$self->{schema} && $self->{export_schema}) {
 			$row->[0] = "$row->[2].$row->[0]";
 		}
-		$parts{"\L$row->[0]\E"}{count} = ($row->[7] eq 'NONE') ? $row->[3] : 0;
-		$parts{"\L$row->[0]\E"}{type} = $row->[1] if (!exists $parts{"\L$row->[0]\E"}{type});
-		push(@{ $parts{"\L$row->[0]\E"}{columns} }, $row->[4]);
+		# when this is not a composite partition the count is defined
+		# when this is not the default number of subpartition
+		$parts{"\L$row->[0]\E"}{count} = 0;
+		$parts{"\L$row->[0]\E"}{composite} = 0;
+		if (exists $subpart{"\L$row->[0]\E"})
+		{
+			$parts{"\L$row->[0]\E"}{composite} = 1;
+			foreach my $k (keys %{$subpart{"\L$row->[0]\E"}}) {
+				$parts{"\L$row->[0]\E"}{count} += $subpart{"\L$row->[0]\E"}{$k}{count};
+			}
+			$parts{"\L$row->[0]\E"}{count} = $row->[3] if (!$parts{"\L$row->[0]\E"}{count});
+		} else {
+			$parts{"\L$row->[0]\E"}{count} = $row->[3];
+		}
+		$parts{"\L$row->[0]\E"}{type} = $row->[1];
+		if ($self->{type} !~ /SHOW|TEST/) {
+			push(@{ $parts{"\L$row->[0]\E"}{columns} }, $row->[5]);
+		}
 	}
 	$sth->finish;
 
@@ -12504,78 +12531,55 @@ sub _get_subpartitioned_table
 		$condition .= " AND A.TABLE_OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "') ";
 	}
 	# Retrieve all partitions.
-	my $str = qq{
-SELECT
-	A.TABLE_NAME,
-	A.PARTITION_NAME,
-	A.SUBPARTITION_NAME,
-	A.SUBPARTITION_POSITION,
-	B.SUBPARTITIONING_TYPE,
-	A.TABLE_OWNER,
-	B.PARTITION_COUNT,
-	C.COLUMN_NAME,
-	C.COLUMN_POSITION,
-	B.DEF_SUBPARTITION_COUNT
-FROM $self->{prefix}_TAB_SUBPARTITIONS A, $self->{prefix}_PART_TABLES B, $self->{prefix}_SUBPART_KEY_COLUMNS C
-WHERE 
-        a.table_name = b.table_name AND
-        (b.subpartitioning_type = 'RANGE' OR b.subpartitioning_type = 'LIST' OR b.subpartitioning_type = 'HASH')
-        AND a.table_name = c.name
+	my $str = "SELECT A.TABLE_NAME, A.PARTITION_NAME, A.SUBPARTITION_NAME, A.SUBPARTITION_POSITION, B.SUBPARTITIONING_TYPE, A.TABLE_OWNER, B.PARTITION_COUNT";
+	if ($self->{type} !~ /SHOW|TEST/) {
+		$str .= ", C.COLUMN_NAME, C.COLUMN_POSITION";
+		$str .= " FROM $self->{prefix}_TAB_SUBPARTITIONS A, $self->{prefix}_PART_TABLES B, $self->{prefix}_SUBPART_KEY_COLUMNS C";
+	} else {
+		$str .= " FROM $self->{prefix}_TAB_SUBPARTITIONS A, $self->{prefix}_PART_TABLES B";
+	}
+	$str .= " WHERE A.TABLE_NAME = B.TABLE_NAME AND (B.SUBPARTITIONING_TYPE = 'RANGE' OR B.SUBPARTITIONING_TYPE = 'LIST' OR B.SUBPARTITIONING_TYPE = 'HASH')";
 
-};
+        $str .= " AND A.TABLE_NAME = C.NAME" if ($self->{type} !~ /SHOW|TEST/);
+
 	$str .= $self->limit_to_objects('TABLE|PARTITION','A.TABLE_NAME|A.PARTITION_NAME');
 
 	if ($self->{prefix} ne 'USER') {
-		if ($self->{schema}) {
-			$str .= "\tAND A.TABLE_OWNER ='$self->{schema}' AND B.OWNER=A.TABLE_OWNER AND C.OWNER=A.TABLE_OWNER\n";
+		if ($self->{type} !~ /SHOW|TEST/) {
+			if ($self->{schema}) {
+				$str .= "\tAND A.TABLE_OWNER ='$self->{schema}' AND B.OWNER=A.TABLE_OWNER AND C.OWNER=A.TABLE_OWNER\n";
+			} else {
+				$str .= "\tAND A.TABLE_OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "') AND B.OWNER=A.TABLE_OWNER AND C.OWNER=A.TABLE_OWNER\n";
+			}
 		} else {
-			$str .= "\tAND A.TABLE_OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "') AND B.OWNER=A.TABLE_OWNER AND C.OWNER=A.TABLE_OWNER\n";
+			if ($self->{schema}) {
+				$str .= "\tAND A.TABLE_OWNER ='$self->{schema}' AND B.OWNER=A.TABLE_OWNER\n";
+			} else {
+				$str .= "\tAND A.TABLE_OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "') AND B.OWNER=A.TABLE_OWNER\n";
+			}
 		}
 	}
 	if ($self->{db_version} !~ /Release 8/) {
 		$str .= " AND (A.TABLE_OWNER, A.TABLE_NAME) NOT IN (SELECT OWNER, MVIEW_NAME FROM ALL_MVIEWS UNION ALL SELECT LOG_OWNER, LOG_TABLE FROM ALL_MVIEW_LOGS)";
 	}
-	$str .= "ORDER BY A.TABLE_OWNER,A.TABLE_NAME,A.PARTITION_NAME,A.SUBPARTITION_POSITION,C.COLUMN_POSITION\n";
+	if ($self->{type} !~ /SHOW|TEST/) {
+		$str .= "ORDER BY A.TABLE_OWNER,A.TABLE_NAME,A.PARTITION_NAME,A.SUBPARTITION_POSITION,C.COLUMN_POSITION\n";
+	} else {
+		$str .= "ORDER BY A.TABLE_OWNER,A.TABLE_NAME,A.PARTITION_NAME,A.SUBPARTITION_POSITION\n";
+	}
 
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
 	my %parts = ();
-	while (my $row = $sth->fetch) {
+	while (my $row = $sth->fetch)
+	{
 		if (!$self->{schema} && $self->{export_schema}) {
 			$row->[0] = "$row->[5].$row->[0]";
 		}
-		$parts{"\L$row->[0]\E"}{"\L$row->[1]\E"}{type} = $row->[4] if (!exists $parts{"\L$row->[0]\E"}{"\L$row->[1]\E"}{type});
+		$parts{"\L$row->[0]\E"}{"\L$row->[1]\E"}{type} = $row->[4];
+		$parts{"\L$row->[0]\E"}{"\L$row->[1]\E"}{count}++;
 		push(@{ $parts{"\L$row->[0]\E"}{"\L$row->[1]\E"}{columns} }, $row->[7]) if (!grep(/^$row->[7]$/, @{ $parts{"\L$row->[0]\E"}{"\L$row->[1]\E"}{columns} }));
-	}
-	$sth->finish;
-
-	# Get number of subpartition
-	$str = qq{
-SELECT
-        A.TABLE_OWNER,
-	A.TABLE_NAME,
-	A.PARTITION_NAME,
-	A.SUBPARTITION_COUNT
-FROM $self->{prefix}_TAB_PARTITIONS A
-};
-	if ($self->{prefix} ne 'USER') {
-		if ($self->{schema}) {
-			$str .= " WHERE A.TABLE_OWNER ='$self->{schema}'\n";
-		} else {
-			$str .= " WHERE A.TABLE_OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "')\n";
-		}
-	}
-	#$str .= "ORDER BY A.TABLE_OWNER,A.TABLE_NAME,A.PARTITION_NAME\n";
-
-	$sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-	$sth->execute() or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-
-	while (my $row = $sth->fetch) {
-		if (!$self->{schema} && $self->{export_schema}) {
-			$row->[1] = "$row->[0].$row->[1]";
-		}
-		$parts{"\L$row->[1]\E"}{"\L$row->[2]\E"}{count} = $row->[3] if (exists $parts{"\L$row->[1]\E"}{"\L$row->[2]\E"});
 	}
 	$sth->finish;
 
@@ -15998,11 +16002,13 @@ sub _show_infos
 		my %tables_infos = $self->_table_info();
 
 		# Retrieve column identity information
+		$self->logit("Retrieving column identity information...\n", 1);
 		%{ $self->{identity_info} } = $self->_get_identities();
 
 		# Retrieve all columns information
 		my %columns_infos = ();
-		if ($type eq 'SHOW_COLUMN') {
+		if ($type eq 'SHOW_COLUMN')
+		{
 			%columns_infos = $self->_column_info('',$self->{schema}, 'TABLE');
 			foreach my $tb (keys %columns_infos) {
 				foreach my $c (keys %{$columns_infos{$tb}}) {
@@ -16027,17 +16033,22 @@ sub _show_infos
 		}
 
 		# Get partition list to mark tables with partition.
-		my %partitions = $self->_get_partitioned_table();
+		$self->logit("Looking to subpartition information...\n", 1);
+		my %subpartitions_list = $self->_get_subpartitioned_table();
+		$self->logit("Looking to partitioned tables information...\n", 1);
+		my %partitions = $self->_get_partitioned_table(%subpartitions_list);
 
                 # Look for external tables
                 my %externals = ();
 		if (!$self->{is_mysql} && ($self->{db_version} !~ /Release 8/)) {
+			$self->logit("Looking to external tables information...\n", 1);
 			%externals = $self->_get_external_tables();
 		}
 
 		# Ordering tables by name by default
 		my @ordered_tables = sort { $a cmp $b } keys %tables_infos;
-		if (lc($self->{data_sort_order}) eq 'size') {
+		if (lc($self->{data_sort_order}) eq 'size')
+		{
 			@ordered_tables = sort {
 				($tables_infos{$b}{num_rows} || $tables_infos{$a}{num_rows}) ?
 					$tables_infos{$b}{num_rows} <=> $tables_infos{$a}{num_rows} :
@@ -16050,7 +16061,8 @@ sub _show_infos
 		# Set the table information for each class found
 		my $i = 1;
 		my $total_row_num = 0;
-		foreach my $t (@ordered_tables) {
+		foreach my $t (@ordered_tables)
+		{
 			# Jump to desired extraction
 			if (grep(/^$t$/, @done)) {
 				$self->logit("Duplicate entry found: $t\n", 1);
@@ -16062,7 +16074,10 @@ sub _show_infos
 
 			# Set the number of partition if any
 			if (exists $partitions{"\L$t\E"}) {
-				$warning .= " - " . $partitions{"\L$t\E"}{count} . " partitions";
+				my $upto = '';
+				$upto = 'up to ' if ($partitions{"\L$t\E"}{count} == 1048575);
+				$warning .= " - $upto" . $partitions{"\L$t\E"}{count} . " " . $partitions{"\L$t\E"}{type} . " partitions";
+				$warning .= " with subpartitions" if ($partitions{"\L$t\E"}{composite});
 			}
 
 			# Search for reserved keywords
