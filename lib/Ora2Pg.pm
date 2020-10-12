@@ -7419,7 +7419,8 @@ sub _get_sql_statements
 		}
 
 		# Remove external table from data export
-		if (scalar keys %{$self->{external_table}} ) {
+		if (scalar keys %{$self->{external_table}} )
+		{
 			foreach my $table (keys %{$self->{tables}}) {
 				if ( grep(/^$table$/i, keys %{$self->{external_table}}) ) {
 					delete $self->{tables}{$table};
@@ -7511,7 +7512,8 @@ sub _get_sql_statements
 			{
 				$self->logit("Dropping indexes of table $table...\n", 1);
 				my @drop_all = $self->_drop_indexes($table, %{$self->{tables}{$table}{indexes}}) . "\n";
-				foreach my $str (@drop_all) {
+				foreach my $str (@drop_all)
+				{
 					chomp($str);
 					next if (!$str);
 					if ($self->{pg_dsn}) {
@@ -8651,49 +8653,69 @@ sub _drop_indexes
 
 	my @out = ();
 	# Set the index definition
-	foreach my $idx (keys %indexes) {
-
+	foreach my $idx (keys %indexes)
+	{
 		# Cluster, bitmap join, reversed and IOT indexes will not be exported at all
 		next if ($self->{tables}{$tbsaved}{idx_type}{$idx}{type} =~ /JOIN|IOT|CLUSTER|REV/i);
 
-		if (exists $self->{replaced_cols}{"\L$tbsaved\E"} && $self->{replaced_cols}{"\L$tbsaved\E"}) {
-			foreach my $c (keys %{$self->{replaced_cols}{"\L$tbsaved\E"}}) {
+		if (exists $self->{replaced_cols}{"\L$tbsaved\E"} && $self->{replaced_cols}{"\L$tbsaved\E"})
+		{
+			foreach my $c (keys %{$self->{replaced_cols}{"\L$tbsaved\E"}})
+			{
 				map { s/\b$c\b/$self->{replaced_cols}{"\L$tbsaved\E"}{"\L$c\E"}/i } @{$indexes{$idx}};
 			}
 		}
 		map { if ($_ !~ /\(.*\)/) { $_ = $self->quote_object_name($_) } } @{$indexes{$idx}};
 
-		my $columns = join(',', @{$indexes{$idx}});
-		my $colscompare = $columns;
-		$colscompare =~ s/"//gs;
-		my $columnlist = '';
-		my $skip_index_creation = 0;
-		foreach my $consname (keys %{$self->{tables}{$table}{unique_key}}) {
-			next if ($consname ne $idx);
-			my $constype =   $self->{tables}{$table}{unique_key}->{$consname}{type};
-			if ($constype eq 'P') {
-				$skip_index_creation = 1;
-				last;
-			}
-			my @conscols = @{$self->{tables}{$table}{unique_key}->{$consname}{columns}};
-			for (my $i = 0; $i <= $#conscols; $i++) {
-				# Change column names
-				if (exists $self->{replaced_cols}{"\L$tbsaved\E"}{"\L$conscols[$i]\E"} && $self->{replaced_cols}{"\L$tbsaved\E"}{"\L$conscols[$i]\E"}) {
-					$conscols[$i] = $self->{replaced_cols}{"\L$tbsaved\E"}{"\L$conscols[$i]\E"};
-				}
-			}
-			$columnlist = join(',', @conscols);
-			$columnlist =~ s/"//gs;
-			if (lc($columnlist) eq lc($colscompare)) {
-				$skip_index_creation = 1;
-				last;
-			}
-		}
+                my $columns = '';
+                foreach (@{$indexes{$idx}})
+                {
+                        $columns .= ((exists $opclass_type{$_}) ? $opclass_type{$_} : $_) . ", ";
+                        # Add double quotes on column name if PRESERVE_CASE is enabled
+                        foreach my $c (keys %{$self->{tables}{$tbsaved}{column_info}})
+                        {
+                                $columns =~ s/\b$c\b/"$c"/ if ($self->{preserve_case} && $columns !~ /"$c"/);
+                        }
+                }
+                $columns =~ s/, $//s;
+                $columns =~ s/\s+//gs;
+                my $colscompare = $columns;
+                $colscompare =~ s/"//gs;
+                my $columnlist = '';
+                my $skip_index_creation = 0;
+                my %pk_hist = ();
+
+                foreach my $consname (keys %{$self->{tables}{$tbsaved}{unique_key}})
+                {
+                        my $constype =  $self->{tables}{$tbsaved}{unique_key}->{$consname}{type};
+                        next if (($constype ne 'P') && ($constype ne 'U'));
+                        my @conscols = grep(!/^\d+$/, @{$self->{tables}{$tbsaved}{unique_key}->{$consname}{columns}});
+                        for ($i = 0; $i <= $#conscols; $i++)
+                        {
+                                # Change column names
+                                if (exists $self->{replaced_cols}{"\L$tbsaved\E"}{"\L$conscols[$i]\E"} && $self->{replaced_cols}{"\L$tbsaved\E"}{"\L$conscols[$i]\E"}) {
+                                        $conscols[$i] = $self->{replaced_cols}{"\L$tbsaved\E"}{"\L$conscols[$i]\E"};
+                                }
+                        }
+                        $columnlist = join(',', @conscols);
+                        $columnlist =~ s/"//gs;
+                        $columnlist =~ s/\s+//gs;
+                        if ($constype eq 'P')
+                        {
+                                $pk_hist{$table} = $columnlist;
+                        }
+                        if (lc($columnlist) eq lc($colscompare)) {
+                                $skip_index_creation = 1;
+                                last;
+                        }
+                }
 
 		# Do not create the index if there already a constraint on the same column list
 		# the index will be automatically created by PostgreSQL at constraint import time.
-		if (!$skip_index_creation) {
-			if ($self->{indexes_renaming}) {
+		if (!$skip_index_creation)
+		{
+			if ($self->{indexes_renaming})
+			{
 				map { s/"//g; } @{$indexes{$idx}};
 				$idx = $self->quote_object_name($table.'_'.join('_', @{$indexes{$idx}}));
 				$idx =~ s/\s+//g;
@@ -8703,7 +8725,8 @@ sub _drop_indexes
 					$idx = substr($idx,0,63);
 				}
 			}
-			if ($self->{tables}{$table}{idx_type}{$idx}{type} =~ /DOMAIN/i && $self->{tables}{$table}{idx_type}{$idx}{type_name} !~ /SPATIAL_INDEX/) {
+			if ($self->{tables}{$table}{idx_type}{$idx}{type} =~ /DOMAIN/i && $self->{tables}{$table}{idx_type}{$idx}{type_name} !~ /SPATIAL_INDEX/)
+			{
 				push(@out, "-- Declared as DOMAIN index, uncomment line below if it must be removed");
 				push(@out, "-- DROP INDEX $self->{pg_supports_ifexists} \L$idx$self->{indexes_suffix}\E;");
 			} else {
@@ -16996,6 +17019,7 @@ $schema_clause
 			my $found = 0;
 			foreach my $pgf (keys %pg_function)
 			{
+				$found = 1, last if (lc($f) eq lc($pgf));
 				if ($f !~ /\./) {
 					$found = 1, last if ($pgf =~ /^[^\.]+\.$f$/i);
 				} else {
