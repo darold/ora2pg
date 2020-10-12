@@ -90,6 +90,8 @@ Backward compatibility changes:
 
 Here is the full list of changes and acknowledgements:
 
+  - Fix unwanted references to PK/UK when DROP_INDEXES is enabled.
+  - Fix comparison between function name in TEST report.
   - Fix duplicates on retrieving partitions information.
   - Improve SHOW_TABLE report about partitioned tables information.
   - Drop code about removing DEFAULT NULL in functions parameters. Thanks to
