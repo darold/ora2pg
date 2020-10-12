@@ -2217,10 +2217,6 @@ sub _tables
 			}
 
 		}
-		# Get partition list to mark tables with partition.
-		$self->logit("Retrieving partitions information...\n", 1);
-		%{ $self->{partitions_list} } = $self->_get_partitioned_table() if (!$self->{disable_partition});
-
 	}
 
 	my @done = ();
@@ -7644,7 +7640,8 @@ sub _get_sql_statements
 
 		}
 
-		if (!$self->{pg_dsn}) {
+		if (!$self->{pg_dsn})
+		{
 			# Write header to file
 			$self->dump($first_header);
 
@@ -10478,8 +10475,6 @@ AND    IC.TABLE_OWNER = ?
 		if (!$self->{schema} && $self->{export_schema}) {
 			$row->[8] = "$row->[9].$row->[8]";
 		}
-		next if (grep(/^$self->{type}$/, 'INSERT', 'COPY') && !exists $self->{table}{$row->[8]} && !exists $self->{materialized_views}{$row->[8]});
-
 		if (!$self->{preserve_case}) {
 			next if (exists $self->{modify}{"\L$row->[8]\E"} && !grep(/^$row->[1]$/i, @{$self->{modify}{"\L$row->[8]\E"}}));
 		} else {
