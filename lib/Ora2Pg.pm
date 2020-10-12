@@ -2121,6 +2121,7 @@ sub _tables
 		if ( grep(/^$self->{type}$/, 'TABLE','SHOW_REPORT','COPY','INSERT')
 				&& !$self->{skip_indices} && !$self->{skip_indexes})
 		{
+			$self->logit("Retrieving index information...\n", 1);
 			my $autogen = 0;
 			$autogen = 1 if (grep(/^$self->{type}$/, 'COPY','INSERT'));
 			my ($uniqueness, $indexes, $idx_type, $idx_tbsp) = $self->_get_indexes('',$self->{schema}, $autogen);
@@ -2146,9 +2147,11 @@ sub _tables
 		# Get detailed informations on each tables
 		if (!$nodetail)
 		{
+			$self->logit("Retrieving columns information...\n", 1);
 			# Retrieve all column's details
 			my %columns_infos = $self->_column_info('',$self->{schema}, 'TABLE');
-			foreach my $tb (keys %columns_infos) {
+			foreach my $tb (keys %columns_infos)
+			{
 				next if (!exists $tables_infos{$tb});
 				foreach my $c (keys %{$columns_infos{$tb}}) {
 					push(@{$self->{tables}{$tb}{column_info}{$c}}, @{$columns_infos{$tb}{$c}});
@@ -2159,16 +2162,23 @@ sub _tables
 			# Retrieve comment of each columns and FK information if not foreign table export
 			if ($self->{type} ne 'FDW')
 			{
-				my %columns_comments = $self->_column_comments();
-				foreach my $tb (keys %columns_comments) {
-					next if (!exists $tables_infos{$tb});
-					foreach my $c (keys %{$columns_comments{$tb}}) {
-						$self->{tables}{$tb}{column_comments}{$c} = $columns_comments{$tb}{$c};
+				if ($self->{type} eq 'TABLE')
+				{
+					$self->logit("Retrieving comments information...\n", 1);
+					my %columns_comments = $self->_column_comments();
+					foreach my $tb (keys %columns_comments)
+					{
+						next if (!exists $tables_infos{$tb});
+						foreach my $c (keys %{$columns_comments{$tb}}) {
+							$self->{tables}{$tb}{column_comments}{$c} = $columns_comments{$tb}{$c};
+						}
 					}
 				}
 
 				# Extract foreign keys informations
-				if (!$self->{skip_fkeys}) {
+				if (!$self->{skip_fkeys})
+				{
+					$self->logit("Retrieving foreign keys information...\n", 1);
 					my ($foreign_link, $foreign_key) = $self->_foreign_key('',$self->{schema});
 					foreach my $tb (keys %{$foreign_link}) {
 						next if (!exists $tables_infos{$tb});
@@ -2185,8 +2195,10 @@ sub _tables
 		# Retrieve unique keys and check constraint information if not FDW export
 		if ($self->{type} ne 'FDW')
 		{
+			$self->logit("Retrieving unique keys information...\n", 1);
 			my %unique_keys = $self->_unique_key('',$self->{schema});
-			foreach my $tb (keys %unique_keys) {
+			foreach my $tb (keys %unique_keys)
+			{
 				next if (!exists $tables_infos{$tb});
 				foreach my $c (keys %{$unique_keys{$tb}}) {
 					$self->{tables}{$tb}{unique_key}{$c} = $unique_keys{$tb}{$c};
@@ -2194,7 +2206,9 @@ sub _tables
 			}
 			%unique_keys = ();
 
-			if (!$self->{skip_checks} && !$self->{is_mysql}) {
+			if (!$self->{skip_checks} && !$self->{is_mysql})
+			{
+				$self->logit("Retrieving check constraints information...\n", 1);
 				my %check_constraints = $self->_check_constraint('',$self->{schema});
 				foreach my $tb (keys %check_constraints) {
 					next if (!exists $tables_infos{$tb});
@@ -2204,6 +2218,7 @@ sub _tables
 
 		}
 		# Get partition list to mark tables with partition.
+		$self->logit("Retrieving partitions information...\n", 1);
 		%{ $self->{partitions_list} } = $self->_get_partitioned_table() if (!$self->{disable_partition});
 
 	}
@@ -2217,8 +2232,8 @@ sub _tables
 	my $PGBAR_REFRESH = set_refresh_count($num_total_table);
 	foreach my $t (sort keys %tables_infos)
 	{
-
-		if (!$self->{quiet} && !$self->{debug} && ($count_table % $PGBAR_REFRESH) == 0) {
+		if (!$self->{quiet} && !$self->{debug} && ($count_table % $PGBAR_REFRESH) == 0)
+		{
 			print STDERR $self->progress_bar($i, $num_total_table, 25, '=', 'tables', "scanning table $t" ), "\r";
 		}
 		$count_table++;
@@ -9935,102 +9950,6 @@ Returns a hash of hashes in the following form:
     )
 
 =cut
-
-sub _unique_key2
-{
-	my ($self, $table, $owner, $type) = @_;
-
-	return Ora2Pg::MySQL::_unique_key($self,$table,$owner) if ($self->{is_mysql});
-
-	my %result = ();
-        my @accepted_constraint_types = ();
-	if ($type) {
-		push @accepted_constraint_types, "'$type'";
-	} else {
-		push @accepted_constraint_types, "'P'" unless($self->{skip_pkeys});
-		push @accepted_constraint_types, "'U'" unless($self->{skip_ukeys});
-	}
-        return %result unless(@accepted_constraint_types);
-
-        my $cons_types = '('. join(',', @accepted_constraint_types) .')';
-
-	# Get columns of all the table in the specified schema or excluding the list of system schema
-	my $sql = "SELECT DISTINCT COLUMN_NAME,POSITION,CONSTRAINT_NAME,OWNER FROM $self->{prefix}_CONS_COLUMNS";
-	if ($owner) {
-		$sql .= " WHERE OWNER = '$owner' ";
-	} else {
-		$sql .= " WHERE OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "') ";
-	}
-	$sql .= $self->limit_to_objects('TABLE', 'TABLE_NAME');
-	$sql .=  " ORDER BY POSITION";
-
-	my $sth = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $sth->errstr . "\n", 0, 1);
-	my @cons_columns = ();
-	while (my $r = $sth->fetch) {
-		push(@cons_columns, [ @$r ]);
-	}
-	$sth->finish;
-
-	# Get the list of constraints in the specified schema or excluding the list of system schema
-	my @tmpparams = ();
-	my $condition = '';
-	$condition .= "AND TABLE_NAME='$table' " if ($table);
-	if ($owner) {
-		$condition .= "AND OWNER = '$owner' ";
-	} else {
-		$condition .= "AND OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "') ";
-	}
-	$condition .= $self->limit_to_objects('UKEY|TABLE', 'CONSTRAINT_NAME|TABLE_NAME');
-	push(@tmpparams, @{$self->{query_bind_params}});
-	$condition .= $self->limit_to_objects('UKEY', 'CONSTRAINT_NAME');
-	push(@tmpparams, @{$self->{query_bind_params}});
-
-	if ($self->{db_version} !~ /Release 8/) {
-		$sql = qq{SELECT CONSTRAINT_NAME,R_CONSTRAINT_NAME,SEARCH_CONDITION,DELETE_RULE,DEFERRABLE,DEFERRED,R_OWNER,CONSTRAINT_TYPE,GENERATED,TABLE_NAME,OWNER,INDEX_NAME
-FROM $self->{prefix}_CONSTRAINTS
-WHERE CONSTRAINT_TYPE IN $cons_types
-AND STATUS='ENABLED'
-$condition
-};
-	} else {
-		$sql = qq{SELECT CONSTRAINT_NAME,R_CONSTRAINT_NAME,SEARCH_CONDITION,DELETE_RULE,DEFERRABLE,DEFERRED,R_OWNER,CONSTRAINT_TYPE,GENERATED,TABLE_NAME,OWNER,'' AS INDEX_NAME
-FROM $self->{prefix}_CONSTRAINTS
-WHERE CONSTRAINT_TYPE IN $cons_types
-AND STATUS='ENABLED'
-$condition
-};
-	}
-
-	$sth = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-	$sth->execute(@tmpparams) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-
-	while (my $row = $sth->fetch)
-	{
-		my %constraint = (type => $row->[7], 'generated' => $row->[8], 'index_name' => $row->[11], 'deferrable' => $row->[4], 'deferred' => $row->[5], columns => ());
-		my %done = ();
-		foreach my $r (@cons_columns)
-		{
-			# Skip constraints on system internal columns
-			next if ($r->[0] =~ /^SYS_NC/i);
-			# Associate the related columns to the constraint
-			if ( ($r->[2] eq $row->[0]) && ($row->[10] eq $r->[3]) ) {
-				next if (exists $done{$r->[0]});
-				push(@{$constraint{'columns'}}, $r->[0]);
-				$done{$r->[0]} = 1;
-			}
-		}
-		if ($#{$constraint{'columns'}} >= 0)
-		{
-			if (!$self->{schema} && $self->{export_schema}) {
-				$result{"$row->[10].$row->[9]"}{$row->[0]} = \%constraint;
-			} else {
-				$result{$row->[9]}{$row->[0]} = \%constraint;
-			}
-		}
-	}
-	return %result;
-}
 
 sub _unique_key
 {
