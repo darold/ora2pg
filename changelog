@@ -1,3 +1,252 @@
+2020 10 12 - v21.0
+
+This release fix several issues reported since last release and adds
+several new features and improvements.
+
+  * Add clause OVERRIDING SYSTEM VALUE to INSERT statements when the
+    table has an IDENTITY column.
+  * Considerably increase the speed to generate the report about the
+    migration assessment, especially for database with huge number of
+    objects.
+  * Reduce time passed in the progress bar. Following the number of
+    database objects we were spending too much time in refreshing the
+    progress bar.
+  * Add number of identity columns in migration assessment report.
+  * Make assessment details report initially hidden using HTML5 tags
+    <details><summary>
+  * Improve speed of BLOB/CLOB data export. Oracle recommends reading
+    from and writing to a LOB in batches using a multiple of the LOB
+    chunk size. This chunk size defaults to 8k (8192). Recent tests
+    show that the best performances can be reach with higher value
+    like 512K or 4Mb.
+  * Add progress bar when --oracle_speed is use in single process mode.
+  * Automatically activate USER_GRANTS when the connection user has no DBA
+    privilege. A warning is displayed.
+  * Complete port to Windows by using the Windows separator on stdout
+    redirection into a file at ora2pg command line call and improve
+    ora2pg_scanner port on Windows OS.
+  * Add rewrite of MySQL JOIN with WHERE clause instead of ON.
+  * Add MGDSYS (Oracle E-Business Suite) and APEX_040000 to the list
+    of schemas excluded from the export.
+  * Supply credentials interactively when a password is not defined in
+    the configuration file. Need the installation of a new Perl module
+    Term::ReadKey.
+  * Add supports oracle connections "as sysdba" with username "/" and
+    an empty password to connect to a local oracle instance.
+  * Add translation of PRIVATE TEMPORARY TABLE from Oracle 18c into
+    PostgreSQL basic temporary table, only the default behavior for
+    on commit change.
+
+New command line options:
+
+  * Add new command line option to ora2pg_scanner: -b | --binpath DIR
+    to set the full path to directory where the ora2pg binary stays.
+    Might be useful only on Windows OS.
+  * Add -r | --relative command line option and PSQL_RELATIVE_PATH
+    configuration directive. By default Ora2Pg use \i psql command to
+    execute generated SQL files if you want to use a relative path
+    following the script execution file enabling this option will use
+    \ir. See psql help for more information.
+
+New configuration directives:
+
+  * NO_VIEW_ORDERING:
+      By default Ora2Pg try to order views to avoid error at import time
+      with nested views. With a huge number of views this can take a very
+      long time, you can bypass this ordering by enabling this directive.
+  * NO_FUNCTION_METADATA
+      Force Ora2Pg to not look for function declaration. Note that this
+      will prevent Ora2Pg to rewrite function replacement call if needed.
+      Do not enable it unless looking forward at function breaks other
+      export.
+  * LOB_CHUNK_SIZE
+      See explanation in the new features and improvement list.
+  * ALTERNATIVE_QUOTING_REGEXP
+      To support the Alternative Quoting Mechanism ('Q' or 'q') for String
+      Literals set the regexp with the text capture to use to extract the
+      text part. For example with a variable declared as
+            c_sample VARCHAR2(100 CHAR) := q'{This doesn't work.}';
+      the regexp to use must be:
+            ALTERNATIVE_QUOTING_REGEXP     q'{(.*)}'
+      ora2pg will use the $$ delimiter, with the example the result will
+      be:
+            c_sample varchar(100) := $$This doesn't work.$$;
+      The value of this configuration directive can be a list of regexp
+      separated by a semi colon. The capture part (between parenthesis) is
+      mandatory in each regexp if you want to restore the string constant.
+
+Backward compatibility changes:
+
+  - Default for NO_LOB_LOCATOR is now 1 to benefit from the LOB_CHUNK_SIZE
+    performances gain.
+  - Enable schema compilation (COMPILE_SCHEMA set to 1) by default to
+    speed up DDL extraction.
+  - Change the behavior of Ora2Pg with the parameters that follows a
+    parameter with a default value. Ora2Pg used to change the order of the
+    parameter's function to put all parameters with a default value at end
+    of the list which need a function call rewrite. This have been abandoned
+    now any parameter without default value after a parameter with a default
+    value will be appended DEFAULT NULL.
+
+Here is the full list of changes and acknowledgements:
+
+  - Fix duplicates on retrieving partitions information.
+  - Improve SHOW_TABLE report about partitioned tables information.
+  - Drop code about removing DEFAULT NULL in functions parameters. Thanks to
+    chaluvadi286 for the report.
+  - Fix two other case where materialized view can be listed in the table list.
+  - Fix case where materialized view can be listed in the table list. Thanks
+    to Thomas Reiss for the report.
+  - Fix %ROWTYPE removing to be restricted to REF CURSOR. Thanks to
+    jagmohankaintura-tl for the report.
+  - Fix PG functions count when comparing Oracle functions count in TEST action.
+    Remove useless -l option to import_all.sh auto generated script.
+  - Fix PRESERVE_CASE on schema name for functions extracted from a package.
+  - Fix search_path adding public default schema.
+  - Apply PRESERVE_CASE to partition by involved columns.
+  - Add IF EXIXTS to create schema to avoid error when import_all.sh is run
+    several time.
+  - Fix sort order of comment on columns for tables and views.
+  - Fix warning about data export from nonexistent table resulting of index
+    lookup on nested table.
+  - Fix infinite loop in global variables package extraction. Thanks to Thomas
+    Reiss for the report.
+  - Fix global variables and packages export when comments are present in the
+    package description.
+  - Add information about XML_PRETTY size limit to 4000
+  - Fix column name in indexes when PRESERVE_CASE is enabled. Thanks 
+    to Julien traxverlis for the report.
+  - Fix Top 10 of largest tables sort order. Thanks to Tom Vanzieleghem
+    for the patch.
+  - Fix duplicates between indexes and constraints. Thanks to sdpdb and
+    Jon Betts for the report.
+  - Fix SYSDATE replacement and possible infinite loop in SYSDATE parsing.
+    Thanks to pbidault for the report.
+  - Fix export of Oracle TEXT indexes with USE_UNACCENT disabled. Thanks to
+    Eric Delanoe for the report.
+  - Add new configuration directive ALTERNATIVE_QUOTING_REGEXP to support
+    the Alternative Quoting Mechanism ('Q' or 'q') for String Literals.
+    Thanks to just-doit for the report.
+  - Fix OF clause missing in update triggers. Thanks to just-doit for
+    the report.
+  - Fix IS NULL translation in WHERE clause of UPDATE statement. Thanks
+    to Eric Delanoe for the report.
+  - Remove DDL export of LOG indexes on materialized views.
+  - Fix unexpected materialized view listed in table export. Thanks to
+    jagmohankaintura-tl for the report.
+  - Fix default values with single quote in create table DDL. Thanks to
+    justdoit for the report.
+  - Fix double quote in CREATE TRIGGER code and applying of preserve case
+    on column name.
+  - Supply credentials interactively when a password is not defined in
+    configuration file. Thanks to rpeiremans for the patch.
+  - Add supports oracle connections "as sysdba" with username "/" and
+    an empty password to connect to a local oracle instance. Thanks to
+    rpeiremans for the patch.
+  - Fix documentation about materialized view export.
+  - Fix export order of comments on columns.
+  - Fix export of views comments when no schema is used for export and
+    export schema is activated.
+  - Fix cast in replacement with TO_NUMBER and TO_CHAR in indexes. Thanks
+    to Kiran for the report.
+  - Add MGDSYS (Oracle E-Business Suite) to the list of schemas excluded
+    from the export. Thanks to naveenjul29 for the report.
+  - Add more information about PG_DSN use. Thanks to Pepan7 for the report.
+  - Update copyright year.
+  - Fix regression where "SET client_encoding TO ..." was missing data file
+    header. Thanks to Emmanuel Gaultier for the report.
+  - Fix EDITABLE vs EDITIONABLE parsing. Thanks to Naveen Kumar for the report.
+  - Fix typos in documentation. Thanks to swallow-life, ChrisYuan, Edward Betts,
+    Jack Caperon and cavpollo for the patches.
+  - Add OVERRIDING SYSTEM VALUE to INSERT statement when the table has an
+    IDENTITY column. Thanks to Robin Windey for the report
+  - Remove empty parenthesis of identity column options
+  - Limit sequence/identity column value to bigint max
+  - Add an example of DBD::Oracle DSN with 18c.
+  - Fix parsing of identity column from file. Thanks to deepakp555 for the
+    report.
+  - Fix quoting of identifier when PRESERVE_CASE is enable and no particular
+    schema is specified. Thanks to mkgrgis for the report.
+  - Move setting of search_path before truncate table. Thanks to Michael Vitale
+    for the report.
+  - Add explanation about TEST and SIZE migration assessment values.
+  - Mark XMLTYPE as having LOB locator.
+  - Fix XMLTYPE columns that are exported as lob locator. Thanks to Tamas for
+    the report.
+  - Fix a problem of data export throughput that was slowing down all along
+    the export when multiprocess for output was not used. Ora2Pg was forking
+    a process for each chunk of data (see DATA_LIMIT) which is useless when
+    write output is done on a single process (-j 1) and slow down the export.
+    Thanks to markhooper99 and Tamas for reporting, testing and finding the
+    source of the issue.
+  - Fix progress bar in multiprocess mode, update was not displayed at each
+    chunk of data processed.
+  - Add internal debug information for progress bar.
+  - Add debug information for SHOW_REPORT
+  - Fix a long pending issue with custom data type export. Thanks to
+    jhollandsworth for the patch.
+  - Fix LOB data export with value changed to NULL when the CLOB value was 0.
+    Thanks to jhollandsworth for the report.
+  - Fix escape format issue with COPY and bytea. Thanks to Christoph Noel and
+    dwbrock62 for the report.
+  - Add LD_LIBRARY_PATH and PATH prerequisite to run ora2pg.
+  - Fix use of the HIGH_VALUE column in partition listing with Oracle 9i. Thanks
+    to Francisco Puga for the report.
+  - Update the table row count logic to incorporate the PostgreSQL table FQN as
+    established through the set_pg_relation_name routine. Thanks to Jacob
+    Roberts for the patch.
+  - Add the PostgreSQL FQN when printing the results in the TEST function. Thanks
+    to Jacob Roberts for the patch.
+  - Do not look forward function with the SHOW_* action
+  - Fix BLOB export where \x was escaped. Thanks to Christophe Noel for the
+    report.
+  - Update Ora2Pg.pm to fix symbol in column name in create index statement.
+    Thanks to kpoluektov for the patch.
+  - Fix package function extraction when there is a start of comment (/*) in
+    a constant string. Thanks to Tiago Anastacio for the report.
+  - Fix type detection in package declaration. Thanks to Tiago Anastacio for
+    the report.
+  - Avoid displaying error ORA-22831 when exporting LOB. This error can
+    appears when LOB chunk size is different from default 8192. The error
+    has no incidence on the export so we can just ignore it. This patch
+    also use DBD::Oracle ora_lob_chunk_size() method to gather chunk the
+    chunk size of the LOB, fallback to 8192 if not available. Thanks to
+    joedbadmin for the report.
+  - Disable direct report of Oracle errors, all error should be handled at
+    Ora2Pg level.
+  - Fix MySQL data export with allow/exclude objects. Thanks to Manuel Pavy for
+    the report.
+  - Fix exclude/allow object feature in MySQL export that was not working since
+    release 19.0. Thanks to Manuel Pavy for the report.
+  - Add rewrite of MySQL JOIN with WHERE clause instead of ON. Thanks to Marc
+    Rechte for the report.
+  - Fix issue with custom type when multiprocess is used.
+  - Fix progress bar on final total estimated data in multiprocess mode.
+  - Fix ORACLE_HOME path in README.md. Thanks to Lubos Cisar for the patch.
+  - Fix missing replacement with PERFORM in CASE ... WHEN statements. Thanks to
+    Eric Delanoe for the report.
+  - Fix duplicate ora2pg command in iteration.
+  - Improve ora2pg_scanner port on Windows OS. Thanks to Marie Contencin for the
+    report.
+  - Add perl call to all ora2pg commands when the scanner is executed on
+    Windows system as the shebang is not recognized. Thanks to Marie Contencin
+    for the report.
+  - Fix several issue with compressed output. Thanks to Bach Nga for the report.
+  - Fix translation of CURSOR IS SELECT with a comment before the SELECT.
+    Thanks to Izaak van Niekerk for the report.
+  - Fix export of procedures as PostgreSQL procedures with version 11.
+  - Add APEX_040000 to the schemas exclusion list.  Thanks to Don Seiler for the
+    report.
+  - Fix possible unquoted default values. Thanks to Marc Rechte for the report.
+  - Fix MySQL SET TRANSACTION clause when TRANSACTION is set to readonly or
+    readwrite this is not supported so fall back in READ COMMITTED isolation
+    level in this case. Thanks to Marc Rechte for the report.
+  - Fix export of functions, column DATA_TYPE does not exists in table
+    INFORMATION_SCHEMA.ROUTINES before MySQL 5.5.0. Replace it with column
+    DTD_IDENTIFIER for prior version. Thanks to Marc Rechte for the report.
+  - Fix double quote in CREATE TRIGGER code and applying of preserve case on
+    column name.
+
 2019 01 18 - v20.0
 
 This release fix several issues reported during the last three months
