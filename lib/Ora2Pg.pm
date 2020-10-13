@@ -8429,10 +8429,11 @@ sub _create_indexes
 				$columns =~ s/\b$c\b/"$c"/ if ($self->{preserve_case} && $columns !~ /"$c"/);
 			}
 		}
-		$columns =~ s/, $//;
-		$columns =~ s/\s+/ /g;
+		$columns =~ s/, $//s;
+		$columns =~ s/\s+/ /gs;
 		my $colscompare = $columns;
-		$colscompare =~ s/"//gs;
+		$colscompare =~ s/"//g;
+		$colscompare =~ s/ //g;
 		my $columnlist = '';
 		my $skip_index_creation = 0;
 		my %pk_hist = ();
@@ -8451,6 +8452,7 @@ sub _create_indexes
 			}
 			$columnlist = join(',', @conscols);
 			$columnlist =~ s/"//gs;
+			$columnlist =~ s/\s+//gs;
 			if ($constype eq 'P')
 			{
 				$pk_hist{$table} = $columnlist;
