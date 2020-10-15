@@ -1665,6 +1665,9 @@ sub _oracle_connection
 	}
 	my $ora_session_mode = ($self->{oracle_user} eq "/" || $self->{oracle_user} eq "sys") ? 2 : undef;
 
+	$self->logit("ORACLE_HOME = $ENV{ORACLE_HOME}\n", 1);
+	$self->logit("NLS_LANG = $ENV{NLS_LANG}\n", 1);
+	$self->logit("NLS_NCHAR = $ENV{NLS_NCHAR}\n", 1);
 	$self->logit("Trying to connect to database: $self->{oracle_dsn}\n", 1) if (!$quiet);
 
 	my $dbh = DBI->connect($self->{oracle_dsn}, $self->{oracle_user}, $self->{oracle_pwd},
@@ -13011,14 +13014,20 @@ sub data_dump
 		}
 		else
 		{
-			$self->{cfhout} = $self->open_export_file($filename) if (!defined $self->{cfhout});
+			my $set_encoding = 0;
+			if (!defined $self->{cfhout})
+			{
+				$self->{cfhout} = $self->open_export_file($filename);
+				$set_encoding = 1;
+			}
+
 			if ($self->{compress} eq 'Zlib')
 			{
 				$self->{cfhout}->gzwrite($data) or $self->logit("FATAL: error writing compressed data into $filename :: $self->{cfhout}\n", 0, 1);
 			}
 			else
 			{
-				$self->set_binmode($self->{cfhout}) if (!$self->{compress} && not defined $self->{cfhout});
+				$self->set_binmode($self->{cfhout}) if (!$self->{compress} && $set_encoding);
 				$self->{cfhout}->print($data);
 			}
 		}
