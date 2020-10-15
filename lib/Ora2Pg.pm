@@ -13650,7 +13650,15 @@ sub _convert_function
 		}
 	}
 
-	# Apply parameter list with reordering if needed
+	# Apply parameter list with translation for default values and reordering if needed
+	for (my $i = 0; $i <= $#args_sorted; $i++)
+	{
+		if ($args_sorted[$i] =~ / DEFAULT ([^'].*)/i)
+		{
+			my $cod = Ora2Pg::PLSQL::convert_plsql_code($self, $1);
+			$args_sorted[$i] =~ s/( DEFAULT )([^'].*)/$1$cod/i;
+		}
+	}
 	$fct_detail{args} = '(' . join(',', @args_sorted) . ')';
 
 	# Set the return part
