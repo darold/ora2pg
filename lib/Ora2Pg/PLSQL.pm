@@ -1830,46 +1830,60 @@ sub replace_sql_type
 	map { s/\(/\\\(/; s/\)/\\\)/; } @ora_type;
 	my $oratype_regex = join('|', @ora_type);
 
-	while ($str =~ /(.*)\b($oratype_regex)\s*\(([^\)]+)\)/i) {
+	while ($str =~ /(.*)\b($oratype_regex)\s*\(([^\)]+)\)/i)
+	{
 		my $backstr = $1;
 		my $type = uc($2);
 		my $args = $3;
 
 		# Remove extra CHAR or BYTE information from column type
 		$args =~ s/\s*(CHAR|BYTE)\s*$//i;
-		if ($backstr =~ /_$/) {
+		if ($backstr =~ /_$/)
+		{
 		    $str =~ s/\b($oratype_regex)\s*\(([^\)]+)\)/$1\%\|$2\%\|\%/is;
 		    next;
 		}
 
-		my ($precision, $scale) = split(/,/, $args);
+		my ($precision, $scale) = split(/\s*,\s*/, $args);
+		$precision = '' if ($precision eq '*'); # case of NUMBER(*,10)
 		$scale ||= 0;
 		my $len = $precision || 0;
 		$len =~ s/\D//;
-		if ( $type =~ /CHAR|STRING/i ) {
+		if ( $type =~ /CHAR|STRING/i )
+		{
 			# Type CHAR have default length set to 1
 			# Type VARCHAR(2) must have a specified length
 			$len = 1 if (!$len && (($type eq "CHAR") || ($type eq "NCHAR")));
 			$str =~ s/\b$type\b\s*\([^\)]+\)/$data_type{$type}\%\|$len\%\|\%/is;
-		} elsif ($type =~ /TIMESTAMP/i) {
+		}
+		elsif ($type =~ /TIMESTAMP/i)
+		{
 			$len = 6 if ($len > 6);
 			$str =~ s/\b$type\b\s*\([^\)]+\)/timestamp\%\|$len%\|\%/is;
- 		} elsif ($type =~ /INTERVAL/i) {
+ 		}
+		elsif ($type =~ /INTERVAL/i)
+		{
  			# Interval precision for year/month/day is not supported by PostgreSQL
  			$str =~ s/(INTERVAL\s+YEAR)\s*\(\d+\)/$1/is;
  			$str =~ s/(INTERVAL\s+YEAR\s+TO\s+MONTH)\s*\(\d+\)/$1/is;
  			$str =~ s/(INTERVAL\s+DAY)\s*\(\d+\)/$1/is;
 			# maximum precision allowed for seconds is 6
-			if ($str =~ /INTERVAL\s+DAY\s+TO\s+SECOND\s*\((\d+)\)/) {
+			if ($str =~ /INTERVAL\s+DAY\s+TO\s+SECOND\s*\((\d+)\)/)
+			{
 				if ($1 > 6) {
 					$str =~ s/(INTERVAL\s+DAY\s+TO\s+SECOND)\s*\(\d+\)/$1(6)/i;
 				}
 			}
-		} elsif ($type eq "NUMBER") {
+		}
+		elsif ($type eq "NUMBER")
+		{
 			# This is an integer
-			if (!$scale) {
-				if ($precision) {
-					if ($pg_integer_type) {
+			if (!$scale)
+			{
+				if ($precision)
+				{
+					if ($pg_integer_type)
+					{
 						if ($precision < 5) {
 							$str =~ s/\b$type\b\s*\([^\)]+\)/smallint/is;
 						} elsif ($precision <= 9) {
@@ -1880,28 +1894,42 @@ sub replace_sql_type
 					} else {
 						$str =~ s/\b$type\b\s*\([^\)]+\)/numeric\%\|$precision\%\|\%/i;
 					}
-				} elsif ($pg_integer_type) {
+				}
+				elsif ($pg_integer_type)
+				{
 					my $tmp = $default_numeric || 'bigint';
 					$str =~ s/\b$type\b\s*\([^\)]+\)/$tmp/is;
 				}
-			} else {
-				if ($precision) {
-					if ($pg_numeric_type) {
-						if ($precision <= 6) {
-							$str =~ s/\b$type\b\s*\([^\)]+\)/real/is;
-						} else {
-							$str =~ s/\b$type\b\s*\([^\)]+\)/double precision/is;
-						}
+			}
+			else
+			{
+				if ($pg_numeric_type)
+				{
+					if ($precision eq '') {
+						$str =~ s/\b$type\b\s*\([^\)]+\)/decimal(38, $scale)/is;
+					} elsif ($precision <= 6) {
+						$str =~ s/\b$type\b\s*\([^\)]+\)/real/is;
+					} else {
+						$str =~ s/\b$type\b\s*\([^\)]+\)/double precision/is;
+					}
+				}
+				else
+				{
+					if ($precision eq '') {
+						$str =~ s/\b$type\b\s*\([^\)]+\)/decimal(38, $scale)/is;
 					} else {
 						$str =~ s/\b$type\b\s*\([^\)]+\)/decimal\%\|$precision,$scale\%\|\%/is;
 					}
 				}
 			}
-		} elsif ($type eq "NUMERIC") {
+		}
+		elsif ($type eq "NUMERIC") {
 			$str =~ s/\b$type\b\s*\([^\)]+\)/numeric\%\|$args\%\|\%/is;
 		} elsif ( ($type eq "DEC") || ($type eq "DECIMAL") ) {
 			$str =~ s/\b$type\b\s*\([^\)]+\)/decimal\%\|$args\%\|\%/is;
-		} else {
+		}
+		else
+		{
 			# Prevent from infinit loop
 			$str =~ s/\(/\%\|/s;
 			$str =~ s/\)/\%\|\%/s;

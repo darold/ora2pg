@@ -9536,22 +9536,29 @@ sub _sql_type
 		return 'uuid';
 	}
 
-        if (exists $self->{data_type}{$type}) {
-		if ($len) {
-
-			if ( ($type eq "CHAR") || ($type eq "NCHAR") || ($type =~ /VARCHAR/) ) {
+        if (exists $self->{data_type}{$type})
+	{
+		if ($len)
+		{
+			if ( ($type eq "CHAR") || ($type eq "NCHAR") || ($type =~ /VARCHAR/) )
+			{
 				# Type CHAR have default length set to 1
 				# Type VARCHAR(2) must have a specified length
 				$len = 1 if (!$len && (($type eq "CHAR") || ($type eq "NCHAR")) );
                 		return "$self->{data_type}{$type}($len)";
-			} elsif ($type eq "NUMBER") {
+			}
+			elsif ($type eq "NUMBER")
+			{
 				# This is an integer
-				if (!$scale) {
-					if ($precision) {
+				if (!$scale)
+				{
+					if ($precision)
+					{
 						if (exists $self->{data_type}{"$type($precision)"}) {
 							return $self->{data_type}{"$type($precision)"};
 						}
-						if ($self->{pg_integer_type}) {
+						if ($self->{pg_integer_type})
+						{
 							if ($precision < 5) {
 								return 'smallint';
 							} elsif ($precision <= 9) {
@@ -9563,26 +9570,36 @@ sub _sql_type
 							}
 						}
 						return "numeric($precision)";
-					} elsif ($self->{pg_integer_type}) {
+					}
+					elsif ($self->{pg_integer_type})
+					{
 						# Most of the time interger should be enought?
 						return $self->{default_numeric} || 'bigint';
 					}
-				} else {
+				}
+				else
+				{
 					if (exists $self->{data_type}{"$type($precision,$scale)"}) {
 						return $self->{data_type}{"$type($precision,$scale)"};
 					}
-					if ($self->{pg_numeric_type}) {
-						if ($precision <= 6) {
+					if ($self->{pg_numeric_type})
+					{
+						if ($precision eq '') {
+							return "decimal(38, $scale)";
+						} elsif ($precision <= 6) {
 							return 'real';
 						} elsif ($precision <= 15) {
 							return 'double precision';
 						}
 					}
+					$precision = 38 if ($precision eq '');
 					return "decimal($precision,$scale)";
 				}
 			}
 			return "$self->{data_type}{$type}";
-		} else {
+		}
+		else
+		{
 			if (($type eq 'NUMBER') && $self->{pg_integer_type}) {
 				return $self->{default_numeric};
 			} else {
@@ -9590,8 +9607,6 @@ sub _sql_type
 			}
 		}
         }
-
-	#$type =~ s/\%ROWTYPE//i;
 
         return $type;
 }
