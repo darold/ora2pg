@@ -5472,7 +5472,8 @@ sub export_package
 	# Code to use to find package parser bugs, it load a file
 	# containing the untouched PL/SQL code from Oracle Package
 	#---------------------------------------------------------
-	if ($self->{input_file}) {
+	if ($self->{input_file})
+	{
 		$self->{plsql_pgsql} = 1;
 		$self->{packages} = ();
 		$self->logit("Reading input code from file $self->{input_file}...\n", 1);
@@ -5488,10 +5489,13 @@ sub export_package
 		$content =~ s/^(.*?)(CREATE OR REPLACE PACKAGE)/$2/s;
 		my $start = $1 || '';
 		my @pkg_content = split(/CREATE OR REPLACE PACKAGE\s+/is, $content);
-		for (my $i = 0; $i <= $#pkg_content; $i++) {
+		for (my $i = 0; $i <= $#pkg_content; $i++)
+		{
 			# package declaration
-			if ($pkg_content[$i] !~ /^BODY\s+/is) {
-				if ($pkg_content[$i] =~ /^([^\s]+)/is) {
+			if ($pkg_content[$i] !~ /^BODY\s+/is)
+			{
+				if ($pkg_content[$i] =~ /^([^\s]+)/is)
+				{
 					my $pname = lc($1);
 					$pname =~ s/"//g;
 					$pname =~ s/^[^\.]+\.//g;
@@ -5499,8 +5503,11 @@ sub export_package
 					$self->{packages}{$pname}{text} =  $start if ($start);
 					$start = '';
 				}
-			} else {
-				if ($pkg_content[$i] =~ /^BODY\s+([^\s]+)\s+/is) {
+			}
+			else
+			{
+				if ($pkg_content[$i] =~ /^BODY\s+([^\s]+)\s+/is)
+				{
 					my $pname = lc($1);
 					$pname =~ s/"//g;
 					$pname =~ s/^[^\.]+\.//g;
@@ -5513,7 +5520,8 @@ sub export_package
 		foreach my $pkg (sort keys %{$self->{packages}})
 		{
 			my $tmp_txt = '';
-			if (exists $self->{packages}{$pkg}{desc}) {
+			if (exists $self->{packages}{$pkg}{desc})
+			{
 				# Move comments at end of package declaration before package definition
 				while ($self->{packages}{$pkg}{desc} =~ s/(\%ORA2PG_COMMENT\d+\%\s*)$//) {
 					$self->{packages}{$pkg}{text} = $1 . $self->{packages}{$pkg}{text};
@@ -5557,11 +5565,13 @@ sub export_package
 		if (!$self->{quiet} && !$self->{debug}) {
 			print STDERR $self->progress_bar($i, $num_total_package, 25, '=', 'packages', "generating $pkg" ), "\r";
 		}
-		$i++, next if (!$self->{packages}{$pkg}{text});
+		$i++, next if (!$self->{packages}{$pkg}{text} && !$self->{packages}{$pkg}{desc});
 
 		# Save and cleanup previous global variables defined in other package
-		if (scalar keys %{$self->{global_variables}}) {
-			foreach my $n (sort keys %{$self->{global_variables}}) {
+		if (scalar keys %{$self->{global_variables}})
+		{
+			foreach my $n (sort keys %{$self->{global_variables}})
+			{
 				if (exists $self->{global_variables}{$n}{constant} || exists $self->{global_variables}{$n}{default}) {
 					$default_global_vars .= "$n = '$self->{global_variables}{$n}{default}'\n";
 				} else {
@@ -5575,22 +5585,32 @@ sub export_package
 		if (!$self->{plsql_pgsql})
 		{
 			$self->logit("Dumping package $pkg...\n", 1);
-			if ($self->{file_per_function}) {
+			if ($self->{file_per_function})
+			{
 				my $f = "$dirprefix\L${pkg}\E_$self->{output}";
 				$f =~ s/\.(?:gz|bz2)$//i;
 				$pkgbody = "\\i$self->{psql_relative_path} $f\n";
 				my $fhdl = $self->open_export_file("$dirprefix\L${pkg}\E_$self->{output}", 1);
 				$self->set_binmode($fhdl) if (!$self->{compress});
-				$self->dump($sql_header . $self->{packages}{$pkg}{text}, $fhdl);
+				$self->dump($sql_header . $self->{packages}{$pkg}{desc} . "\n\n" . $self->{packages}{$pkg}{text}, $fhdl);
 				$self->close_export_file($fhdl);
 			} else {
-				$pkgbody = $self->{packages}{$pkg}{text};
+				$pkgbody = $self->{packages}{$pkg}{desc} . "\n\n" . $self->{packages}{$pkg}{text};
 			}
 
 		}
 		else
 		{
 			$self->{current_package} = $pkg;
+
+			# If there is a declaration only do not go further than looking at global var
+			if (!$self->{packages}{$pkg}{text})
+			{
+				$self->_convert_package($pkg);
+				$i++;
+				next;
+			}
+
 			if ($self->{estimate_cost}) {
 				$total_size += length($self->{packages}->{$pkg}{text});
 			}
@@ -11255,7 +11275,7 @@ sub _get_plsql_metadata
 	return Ora2Pg::MySQL::_get_plsql_metadata($self, $owner) if ($self->{is_mysql});
 
 	# Retrieve all functions 
-	my $str = "SELECT DISTINCT OBJECT_NAME,OWNER,OBJECT_TYPE FROM $self->{prefix}_OBJECTS WHERE (OBJECT_TYPE = 'FUNCTION' OR OBJECT_TYPE = 'PROCEDURE' OR  OBJECT_TYPE = 'PACKAGE BODY')";
+	my $str = "SELECT DISTINCT OBJECT_NAME,OWNER,OBJECT_TYPE FROM $self->{prefix}_OBJECTS WHERE (OBJECT_TYPE = 'FUNCTION' OR OBJECT_TYPE = 'PROCEDURE' OR OBJECT_TYPE = 'PACKAGE BODY')";
 	$str .= " AND STATUS='VALID'" if (!$self->{export_invalid});
 	if ($owner) {
 		$str .= " AND OWNER = '$owner'";
@@ -11294,24 +11314,29 @@ sub _get_plsql_metadata
 	$sql .= " ORDER BY OWNER, NAME, LINE";
 	$sth = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute or $self->logit("FATAL: " . $sth->errstr . "\n", 0, 1);
-	while (my $row = $sth->fetch) {
+	while (my $row = $sth->fetch)
+	{
 		next if (!exists $self->{function_metadata}{$row->[1]}{'none'}{$row->[0]});
 		$self->{function_metadata}{$row->[1]}{'none'}{$row->[0]}{text} .= $row->[3];
 	}
         $sth->finish();
 
 	# For each schema in the Oracle instance
-	foreach my $sch (sort keys %{ $self->{function_metadata} }) {
+	foreach my $sch (sort keys %{ $self->{function_metadata} })
+	{
 		next if ( ($owner && ($sch ne $owner)) || (!$owner && $self->{schema} && ($sch ne $self->{schema})) );
 		# Look for functions/procedures
-		foreach my $name (sort keys %{$self->{function_metadata}{$sch}{'none'}}) {
-			if ($self->{function_metadata}{$sch}{'none'}{$name}{type} ne 'PACKAGE BODY') {
+		foreach my $name (sort keys %{$self->{function_metadata}{$sch}{'none'}})
+		{
+			if ($self->{function_metadata}{$sch}{'none'}{$name}{type} ne 'PACKAGE BODY')
+			{
 				# Retrieve metadata for this function after removing comments
 				$self->_remove_comments(\$self->{function_metadata}{$sch}{'none'}{$name}{text}, 1);
 				$self->{comment_values} = ();
 				$self->{function_metadata}{$sch}{'none'}{$name}{text} =~  s/\%ORA2PG_COMMENT\d+\%//gs;
 				my %fct_detail = $self->_lookup_function($self->{function_metadata}{$sch}{'none'}{$name}{text});
-				if (!exists $fct_detail{name}) {
+				if (!exists $fct_detail{name})
+				{
 					delete $self->{function_metadata}{$sch}{'none'}{$name};
 					next;
 				}
@@ -11319,14 +11344,17 @@ sub _get_plsql_metadata
 				delete $fct_detail{before};
 				%{$self->{function_metadata}{$sch}{'none'}{$name}{metadata}} = %fct_detail;
 				delete $self->{function_metadata}{$sch}{'none'}{$name}{text};
-			} else {
+			}
+			else
+			{
 				$self->_remove_comments(\$self->{function_metadata}{$sch}{'none'}{$name}{text}, 1);
 				$self->{comment_values} = ();
 				$self->{function_metadata}{$sch}{'none'}{$name}{text} =~  s/\%ORA2PG_COMMENT\d+\%//gs;
 				my %infos = $self->_lookup_package($self->{function_metadata}{$sch}{'none'}{$name}{text});
 				delete $self->{function_metadata}{$sch}{'none'}{$name};
 				$name =~ s/"//g;
-				foreach my $f (sort keys %infos) {
+				foreach my $f (sort keys %infos)
+				{
 					next if (!$f);
 					my $fn = lc($f);
 					delete $infos{$f}{code};
@@ -11625,7 +11653,8 @@ sub _get_packages
 	my ($self) = @_;
 
 	# Retrieve all indexes 
-	my $str = "SELECT DISTINCT OBJECT_NAME,OWNER FROM $self->{prefix}_OBJECTS WHERE OBJECT_TYPE = 'PACKAGE BODY'";
+	#my $str = "SELECT DISTINCT OBJECT_NAME,OWNER FROM $self->{prefix}_OBJECTS WHERE OBJECT_TYPE = 'PACKAGE BODY'";
+	my $str = "SELECT DISTINCT OBJECT_NAME,OWNER FROM $self->{prefix}_OBJECTS WHERE OBJECT_TYPE = 'PACKAGE'";
 	$str .= " AND STATUS='VALID'" if (!$self->{export_invalid});
 	if (!$self->{schema}) {
 		$str .= " AND OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
@@ -13261,7 +13290,7 @@ sub _convert_package
 {
 	my ($self, $pkg) = @_;
 
-	return if (!$pkg || !exists $self->{packages}{$pkg}{text});
+	return if (!$pkg || !exists $self->{packages}{$pkg});
 
 	my $owner = $self->{packages}{$pkg}{owner} || '';
 
