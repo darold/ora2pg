@@ -673,7 +673,6 @@ sub modify_struct
 		map { $_ = lc($_) } @fields;
 		$table = lc($table);
 	}
-
 	push(@{$self->{modify}{$table}}, @fields);
 
 }
@@ -8199,15 +8198,16 @@ sub _dump_table
 	# Extract column information following the Oracle position order
 	my @fname = ();
 	my (@pg_colnames_nullable, @pg_colnames_notnull, @pg_colnames_pkey);
-	foreach my $i ( 0 .. $#{$self->{tables}{$table}{field_name}} ) {
+	foreach my $i ( 0 .. $#{$self->{tables}{$table}{field_name}} )
+	{
 		my $fieldname = ${$self->{tables}{$table}{field_name}}[$i];
 		if (!$self->{preserve_case}) {
 			if (exists $self->{modify}{"\L$table\E"}) {
-				next if (!grep(/^$fieldname$/i, @{$self->{modify}{"\L$table\E"}}));
+				next if (!grep(/^\Q$fieldname\E$/i, @{$self->{modify}{"\L$table\E"}}));
 			}
 		} else {
 			if (exists $self->{modify}{"$table"}) {
-				next if (!grep(/^$fieldname$/i, @{$self->{modify}{"$table"}}));
+				next if (!grep(/^\Q$fieldname\E$/i, @{$self->{modify}{"$table"}}));
 			}
 		}
 
@@ -8334,14 +8334,15 @@ sub _column_comments
 
 	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	my %data = ();
-	while (my $row = $sth->fetch) {
+	while (my $row = $sth->fetch)
+	{
 		if (!$self->{schema} && $self->{export_schema}) {
 			$row->[2] = "$row->[3].$row->[2]";
 		}
 		if (!$self->{preserve_case}) {
-			next if (exists $self->{modify}{"\L$row->[2]\E"} && !grep(/^$row->[0]$/i, @{$self->{modify}{"\L$row->[2]\E"}}));
+			next if (exists $self->{modify}{"\L$row->[2]\E"} && !grep(/^\Q$row->[0]\E$/i, @{$self->{modify}{"\L$row->[2]\E"}}));
 		} else {
-			next if (exists $self->{modify}{$row->[2]} && !grep(/^$row->[0]$/i, @{$self->{modify}{$row->[2]}}));
+			next if (exists $self->{modify}{$row->[2]} && !grep(/^\Q$row->[0]\E$/i, @{$self->{modify}{$row->[2]}}));
 		}
 		$data{$row->[2]}{$row->[0]} = $row->[1];
 	}
@@ -9850,14 +9851,18 @@ END
 			}
 		}
 
-		if (!$self->{schema} && $self->{export_schema}) {
-			next if (exists $self->{modify}{"\L$tmptable\E"} && !grep(/^$row->[0]$/i, @{$self->{modify}{"\L$tmptable\E"}}));
+		if (!$self->{schema} && $self->{export_schema})
+		{
+			next if (exists $self->{modify}{"\L$tmptable\E"} && !grep(/^\Q$row->[0]\E$/i, @{$self->{modify}{"\L$tmptable\E"}}));
 			push(@{$data{$tmptable}{"$row->[0]"}}, (@$row, $pos, @geom_inf));
-		} else {
+		}
+		else
+		
+		{
 			if (!$self->{preserve_case}) {
-				next if (exists $self->{modify}{"\L$row->[8]\E"} && !grep(/^$row->[0]$/i, @{$self->{modify}{"\L$row->[8]\E"}}));
+				next if (exists $self->{modify}{"\L$row->[8]\E"} && !grep(/^\Q$row->[0]\E$/i, @{$self->{modify}{"\L$row->[8]\E"}}));
 			} else {
-				next if (exists $self->{modify}{$row->[8]} && !grep(/^$row->[0]$/i, @{$self->{modify}{$row->[8]}}));
+				next if (exists $self->{modify}{$row->[8]} && !grep(/^\Q$row->[0]\E$/i, @{$self->{modify}{$row->[8]}}));
 			}
 			push(@{$data{"$row->[8]"}{"$row->[0]"}}, (@$row, $pos, @geom_inf));
 		}
@@ -10240,11 +10245,11 @@ END
 			$remote_table = "$row->[11].$row->[3]";
 		}
 		if (!$self->{preserve_case}) {
-			next if (exists $self->{modify}{"\L$local_table\E"} && !grep(/^$row->[2]$/i, @{$self->{modify}{"\L$local_table\E"}}));
-			next if (exists $self->{modify}{"\L$remote_table\E"} && !grep(/^$row->[5]$/i, @{$self->{modify}{"\L$remote_table\E"}}));
+			next if (exists $self->{modify}{"\L$local_table\E"} && !grep(/^\Q$row->[2]\E$/i, @{$self->{modify}{"\L$local_table\E"}}));
+			next if (exists $self->{modify}{"\L$remote_table\E"} && !grep(/^\Q$row->[5]\E$/i, @{$self->{modify}{"\L$remote_table\E"}}));
 		} else {
-			next if (exists $self->{modify}{$local_table} && !grep(/^$row->[2]$/i, @{$self->{modify}{$local_table}}));
-			next if (exists $self->{modify}{$remote_table} && !grep(/^$row->[5]$/i, @{$self->{modify}{$remote_table}}));
+			next if (exists $self->{modify}{$local_table} && !grep(/^\Q$row->[2]\E$/i, @{$self->{modify}{$local_table}}));
+			next if (exists $self->{modify}{$remote_table} && !grep(/^\Q$row->[5]\E$/i, @{$self->{modify}{$remote_table}}));
 		}
 		push(@{$data{$local_table}}, [ ($row->[1],$row->[4],$row->[6],$row->[7],$row->[8],$row->[9],$row->[11],$row->[0],$row->[10],$row->[14]) ]);
 		#            TABLENAME     CONSTNAME           COLNAME
@@ -10545,9 +10550,9 @@ AND    IC.TABLE_OWNER = ?
 			$row->[8] = "$row->[9].$row->[8]";
 		}
 		if (!$self->{preserve_case}) {
-			next if (exists $self->{modify}{"\L$row->[8]\E"} && !grep(/^$row->[1]$/i, @{$self->{modify}{"\L$row->[8]\E"}}));
+			next if (exists $self->{modify}{"\L$row->[8]\E"} && !grep(/^\Q$row->[1]\E$/i, @{$self->{modify}{"\L$row->[8]\E"}}));
 		} else {
-			next if (exists $self->{modify}{$row->[8]} && !grep(/^$row->[1]$/i, @{$self->{modify}{$row->[8]}}));
+			next if (exists $self->{modify}{$row->[8]} && !grep(/^\Q$row->[1]\E$/i, @{$self->{modify}{$row->[8]}}));
 		}
 		# Show a warning when an index has the same name as the table
 		if ( !$self->{indexes_renaming} && !$self->{indexes_suffix} && (lc($row->[0]) eq lc($table)) ) {
