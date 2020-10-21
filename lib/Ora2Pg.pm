@@ -2382,6 +2382,12 @@ sub _tables
 	if (!$self->{is_mysql} && ($self->{db_version} !~ /Release 8/)) {
 		%{$self->{external_table}} = $self->_get_external_tables();
 	}
+
+	if ($self->{type} eq 'TABLE')
+	{
+		$self->logit("Retrieving table partitioning information...\n", 0);
+		%{ $self->{partitions_list} } = $self->_get_partitioned_table();
+	}
 }
 
 sub _get_plsql_code
