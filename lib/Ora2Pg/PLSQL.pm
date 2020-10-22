@@ -2770,7 +2770,8 @@ sub replace_outer_join
 	my $nbouter = $str =~ $regexp1;
 
 	# Check that we don't have right outer join too
-	if ($nbouter >= 1 && $str !~ $regexp2) {
+	if ($nbouter >= 1 && $str !~ $regexp2)
+	{
 		# Extract tables in the FROM clause
 		$str =~ s/(.*)\bFROM\s+(.*?)\s+WHERE\s+(.*?)$/$1FROM FROM_CLAUSE WHERE $3/is;
 		my $from_clause = $2;
@@ -2781,7 +2782,8 @@ sub replace_outer_join
 		my %from_clause_list = ();
 		my %from_order = ();
 		my $fidx = 0;
-		foreach my $table (@tables) {
+		foreach my $table (@tables)
+		{
 			$table =~ s/^\s+//s;
 			$table =~ s/\s+$//s;
 			my $cmt = '';
@@ -2813,7 +2815,8 @@ sub replace_outer_join
 		my $id = 0;
 		my %other_join_clause = ();
 		# Process only predicat with a obsolete join syntax (+) for now
-		for (my $i = 0; $i <= $#predicat; $i++) {
+		for (my $i = 0; $i <= $#predicat; $i++)
+		{
 			next if ($predicat[$i] !~ /\%OUTERJOIN\d+\%/i);
 			my $where_clause = $predicat[$i];
 			$where_clause =~ s/"//gs;
@@ -2828,7 +2831,8 @@ sub replace_outer_join
 
 			# NEW / OLD pseudo table in triggers can not be part of a join
 			# clause. Move them int to the WHERE clause.
-			if ($l =~ /^(NEW|OLD)\./is) {
+			if ($l =~ /^(NEW|OLD)\./is)
+			{
 				$predicat[$i] =~ s/WHERE_CLAUSE$id / $l $o $r /s;
 				next;
 			}
@@ -2837,7 +2841,8 @@ sub replace_outer_join
 			# Extract the tablename part of the left clause
 			my $lbl1 = '';
 			my $table_decl1 = $l;
-			if ($l =~ /^([^\.]+)\..*/) {
+			if ($l =~ /^([^\.\s]+\.[^\.\s]+)\..*/ || $l =~ /^([^\.\s]+)\..*/)
+			{
 				$lbl1 = lc($1);
 				# If the table/alias is not part of the from clause
 				if (!exists $from_clause_list{$lbl1}) {
@@ -2846,14 +2851,20 @@ sub replace_outer_join
 				}
 				$table_decl1 = $from_clause_list{$lbl1};
 				$table_decl1 .= " $lbl1" if ($lbl1 ne $from_clause_list{$lbl1});
-			} elsif ($l =~ /\%SUBQUERY(\d+)\%/) {
+			}
+			elsif ($l =~ /\%SUBQUERY(\d+)\%/)
+			{
 				# Search for table.column in the subquery or function code
 				my $tmp_str = $l;
-				while ($tmp_str =~ s/\%SUBQUERY(\d+)\%/$class->{sub_parts}{$1}/is) {
-					if ($tmp_str =~ /\b(\w+)\.\w+/) {
+				while ($tmp_str =~ s/\%SUBQUERY(\d+)\%/$class->{sub_parts}{$1}/is)
+				{
+					if ($tmp_str =~ /\b([^\.\s]+\.[^\.\s]+)\.[^\.\s]+/
+						|| $tmp_str =~ /\b([^\.\s]+)\.[^\.\s]+/)
+					{
 						$lbl1 = lc($1);
 						# If the table/alias is not part of the from clause
-						if (!exists $from_clause_list{$lbl1}) {
+						if (!exists $from_clause_list{$lbl1})
+						{
 							$from_clause_list{$lbl1} = $lbl1;
 							$from_order{$lbl1} = $fidx++;
 						}
@@ -2863,10 +2874,12 @@ sub replace_outer_join
 					}
 				}
 			}
+
 			# Extract the tablename part of the right clause
 			my $lbl2 = '';
 			my $table_decl2 = $r;
-			if ($r =~ /^([^\.]+)\..*/) {
+			if ($r =~ /^([^\.\s]+\.[^\.\s]+)\..*/ || $r =~ /^([^\.\s]+)\..*/)
+			{
 				$lbl2 = lc($1);
 				if (!$lbl1) {
 					push(@{$other_join_clause{$lbl2}}, "$l $o $r");
@@ -2879,14 +2892,20 @@ sub replace_outer_join
 				}
 				$table_decl2 = $from_clause_list{$lbl2};
 				$table_decl2 .= " $lbl2" if ($lbl2 ne $from_clause_list{$lbl2});
-			} elsif ($lbl1) {
+			}
+			elsif ($lbl1)
+			{
 				# Search for table.column in the subquery or function code
 				my $tmp_str = $r;
-				while ($tmp_str =~ s/\%SUBQUERY(\d+)\%/$class->{sub_parts}{$1}/is) {
-					if ($tmp_str =~ /\b(\w+)\.\w+/) {
+				while ($tmp_str =~ s/\%SUBQUERY(\d+)\%/$class->{sub_parts}{$1}/is)
+				{
+					if ($tmp_str =~ /\b([^\.\s]+\.[^\.\s]+)\.[^\.\s]+/
+						|| $tmp_str =~ /\b([^\.\s]+)\.[^\.\s]+/)
+					{
 						$lbl2 = lc($1);
 						# If the table/alias is not part of the from clause
-						if (!exists $from_clause_list{$lbl2}) {
+						if (!exists $from_clause_list{$lbl2})
+						{
 							$from_clause_list{$lbl2} = $lbl2;
 							$from_order{$lbl2} = $fidx++;
 						}
@@ -2894,7 +2913,8 @@ sub replace_outer_join
 						$table_decl2 .= " $lbl2" if ($lbl2 ne $from_clause_list{$lbl2});
 					}
 				}
-				if (!$lbl2 ) {
+				if (!$lbl2 )
+				{
 					push(@{$other_join_clause{$lbl1}}, "$l $o $r");
 					next;
 				}
@@ -2902,13 +2922,16 @@ sub replace_outer_join
 
 			# When this is the first join parse add the left tablename
 			# first then the outer join with the right table
-			if (scalar keys %final_from_clause == 0) {
+			if (scalar keys %final_from_clause == 0)
+			{
 				$from_clause = $table_decl1;
 				$table_decl1 =~ s/\s*\%ORA2PG_COMMENT\d+\%\s*//igs;
 				push(@outer_clauses, (split(/\s/, $table_decl1))[1] || $table_decl1);
 				$final_from_clause{"$lbl1;$lbl2"}{position} = $i;
 				push(@{$final_from_clause{"$lbl1;$lbl2"}{clause}{$table_decl2}{predicat}}, "$l $o $r");
-			} else {
+			}
+			else
+			{
 				$final_from_clause{"$lbl1;$lbl2"}{position} = $i;
 				push(@{$final_from_clause{"$lbl1;$lbl2"}{clause}{$table_decl2}{predicat}}, "$l $o $r");
 				if (!exists $final_from_clause{"$lbl1;$lbl2"}{clause}{$table_decl2}{$type}) {
@@ -2931,11 +2954,14 @@ sub replace_outer_join
 		$str =~ s/\s+WHERE(\s+)/\nWHERE$1/igs;
 
 		my %associated_clause = ();
-		foreach my $t (sort { $final_from_clause{$a}{position} <=> $final_from_clause{$b}{position} } keys %final_from_clause) {
-			foreach my $j (sort { $final_from_clause{$t}{clause}{$a}{position} <=> $final_from_clause{$t}{clause}{$b}{position} } keys %{$final_from_clause{$t}{clause}}) {
+		foreach my $t (sort { $final_from_clause{$a}{position} <=> $final_from_clause{$b}{position} } keys %final_from_clause)
+		{
+			foreach my $j (sort { $final_from_clause{$t}{clause}{$a}{position} <=> $final_from_clause{$t}{clause}{$b}{position} } keys %{$final_from_clause{$t}{clause}})
+			{
 				next if ($#{$final_from_clause{$t}{clause}{$j}{predicat}} < 0);
 
-				if (exists $final_from_clause{$t}{clause}{$j}{$type} && $j !~ /\%SUBQUERY\d+\%/i && $from_clause !~ /\b\Q$final_from_clause{$t}{clause}{$j}{$type}\E\b/) {
+				if (exists $final_from_clause{$t}{clause}{$j}{$type} && $j !~ /\%SUBQUERY\d+\%/i && $from_clause !~ /\b\Q$final_from_clause{$t}{clause}{$j}{$type}\E\b/)
+				{
 					$from_clause .= ",$final_from_clause{$t}{clause}{$j}{$type}";
 					push(@outer_clauses, (split(/\s/, $final_from_clause{$t}{clause}{$j}{$type}))[1] || $final_from_clause{$t}{clause}{$j}{$type});
 				}
@@ -2951,7 +2977,8 @@ sub replace_outer_join
 
 		$from_clause = '';
 		my @clause_done = ();
-		foreach my $c (sort { $from_order{$a} <=> $from_order{$b} } keys %from_order) {
+		foreach my $c (sort { $from_order{$a} <=> $from_order{$b} } keys %from_order)
+		{
 			next if (!grep(/^\Q$c\E$/i, @outer_clauses));
 			my @output = ();
 			for (my $j = 0; $j <= $#{$final_outer_clauses{$c}{join}}; $j++) {
@@ -2960,7 +2987,8 @@ sub replace_outer_join
 
 			find_associated_clauses($c, \@output, \%associated_clause, \%final_outer_clauses);
 
-			if (!grep(/\QJOIN $from_clause_list{$c} $c \E/is, @clause_done)) {
+			if (!grep(/\QJOIN $from_clause_list{$c} $c \E/is, @clause_done))
+			{
 				$from_clause .= "\n, $from_clause_list{$c}";
 				$from_clause .= " $c" if ($c ne $from_clause_list{$c});
 			}
@@ -2975,7 +3003,8 @@ sub replace_outer_join
 		$from_clause =~ s/^\s*,\s*//s;
 
 		# Append tables to from clause that was not involved into an outer join
-		foreach my $a (sort keys %from_clause_list) {
+		foreach my $a (sort keys %from_clause_list)
+		{
 			my $table_decl = "$from_clause_list{$a}";
 			$table_decl .= " $a" if ($a ne $from_clause_list{$a});
 			# Remove comment before searching it inside the from clause
