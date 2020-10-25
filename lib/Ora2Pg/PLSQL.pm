@@ -2791,6 +2791,7 @@ sub replace_outer_join
 				$cmt .= $1;
 			}
 			my ($t, $alias, @others) = split(/\s+/, lc($table));
+			$alias = $others[0] if (uc($alias) eq 'AS');
 			$alias = "$t" if (!$alias);
 			$from_clause_list{$alias} = "$cmt$t";
 			$from_order{$alias} = $fidx++;
