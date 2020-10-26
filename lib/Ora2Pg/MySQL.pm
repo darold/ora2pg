@@ -1949,5 +1949,21 @@ sub _get_identities
 	return;
 }
 
+=head2 _get_materialized_views
+
+This function implements a mysql-native materialized views information.
+
+Returns a hash of view names with the SQL queries they are based on.
+
+=cut
+
+sub _get_materialized_views
+{
+	my($self) = @_;
+
+	# nothing to do, materialized view are not supported by MySQL.
+	return;
+}
+
 1;
 

@@ -3388,7 +3388,8 @@ sub _materialized_views
 	my %mview_infos = $self->_get_materialized_views();
 
 	my $i = 1;
-	foreach my $table (sort keys %mview_infos) {
+	foreach my $table (sort keys %mview_infos)
+	{
 		$self->logit("[$i] Scanning $table...\n", 1);
 		$self->{materialized_views}{$table}{text} = $mview_infos{$table}{text};
 		$self->{materialized_views}{$table}{updatable}= $mview_infos{$table}{updatable};
@@ -3402,14 +3403,19 @@ sub _materialized_views
 	}
 
 	# Retrieve index informations
-	my ($uniqueness, $indexes, $idx_type, $idx_tbsp) = $self->_get_indexes('',$self->{schema});
-	foreach my $tb (keys %{$indexes}) {
-		next if (!exists $self->{materialized_views}{$tb});
-		%{$self->{materialized_views}{$tb}{indexes}} = %{$indexes->{$tb}};
-	}
-	foreach my $tb (keys %{$idx_type}) {
-		next if (!exists $self->{materialized_views}{$tb});
-		%{$self->{materialized_views}{$tb}{idx_type}} = %{$idx_type->{$tb}};
+	if (scalar keys %mview_infos)
+	{
+		my ($uniqueness, $indexes, $idx_type, $idx_tbsp) = $self->_get_indexes('',$self->{schema});
+		foreach my $tb (keys %{$indexes})
+		{
+			next if (!exists $self->{materialized_views}{$tb});
+			%{$self->{materialized_views}{$tb}{indexes}} = %{$indexes->{$tb}};
+		}
+		foreach my $tb (keys %{$idx_type})
+		{
+			next if (!exists $self->{materialized_views}{$tb});
+			%{$self->{materialized_views}{$tb}{idx_type}} = %{$idx_type->{$tb}};
+		}
 	}
 }
 
@@ -11090,6 +11096,8 @@ Returns a hash of view names with the SQL queries they are based on.
 sub _get_materialized_views
 {
 	my($self) = @_;
+
+	return Ora2Pg::MySQL::_get_materialized_views($self) if ($self->{is_mysql});
 
 	# Retrieve all views
 	my $str = "SELECT MVIEW_NAME,QUERY,UPDATABLE,REFRESH_MODE,REFRESH_METHOD,USE_NO_INDEX,REWRITE_ENABLED,BUILD_MODE,OWNER FROM $self->{prefix}_MVIEWS";
