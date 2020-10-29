@@ -16322,7 +16322,7 @@ sub set_pg_relation_name
 
 sub get_schema_condition
 {
-	my ($self, $attrname, $visible) = @_;
+	my ($self, $attrname) = @_;
 
 	$attrname ||= 'n.nspname';
 
@@ -16332,11 +16332,7 @@ sub get_schema_condition
 		return "AND $attrname = '\L$self->{schema}\E'";
 	}
 
-	my $cond = '';
-	if ($visible && !$self->{pg_schema}) {
-		$cond = " AND $visible";
-	}
-	$cond .= " AND $attrname <> 'pg_catalog' AND $attrname <> 'information_schema' AND $attrname !~ '^pg_toast'";
+	my $cond = " AND $attrname <> 'pg_catalog' AND $attrname <> 'information_schema' AND $attrname !~ '^pg_toast'";
 
 	return $cond;
 }
@@ -17059,7 +17055,6 @@ sub _test_function
 	print "\n";
 	print "[TEST FUNCTION COUNT]\n";
 	my @fct_infos = $self->_list_all_funtions();
-	#my $schema_clause = $self->get_schema_condition('', 'pg_catalog.pg_function_is_visible(p.oid)');
 	my $schema_clause = "    AND n.nspname NOT IN ('pg_catalog','information_schema')";
 	$sql = qq{
 SELECT n.nspname,proname,prorettype

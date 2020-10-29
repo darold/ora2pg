@@ -2883,9 +2883,15 @@ CONFIGURATION
   Test the migration
     The type of action called TEST allow you to check that all objects from
     Oracle database have been created under PostgreSQL. Of course PG_DSN
-    must be set to be able to check PostgreSQL side. Note that this feature
-    will respect the schema name limitation if EXPORT_SCHEMA and SCHEMA or
-    PG_SCHEMA are defined.
+    must be set to be able to check PostgreSQL side.
+
+    Note that this feature respect the schema set in the SCHEMA directive to
+    scan the Oracle database and also at PostgreSQL side if EXPORT_SCHEMA is
+    enabled. If PG_SCHEMA is defined and EXPORT_SCHEMA is enabled Ora2Pg
+    will use the list of schemas defined in PG_SCHEMA to scan PostgreSQL. If
+    EXPORT_SCHEMA is disabled the entire PostgreSQL database is scanned.
+
+    For example command:
 
             ora2pg -t TEST -c config/ora2pg.conf > migration_diff.txt
 
