@@ -8378,7 +8378,8 @@ sub _create_indexes
 
 	my %pkcollist = ();
 	# Save the list of column for PK to check unique index that must be removed
-	foreach my $consname (keys %{$self->{$objtyp}{$tbsaved}{unique_key}}) {
+	foreach my $consname (keys %{$self->{$objtyp}{$tbsaved}{unique_key}})
+	{
 		next if ($self->{$objtyp}{$tbsaved}{unique_key}->{$consname}{type} ne 'P');
 		my @conscols = grep(!/^\d+$/, @{$self->{$objtyp}{$tbsaved}{unique_key}->{$consname}{columns}});
 		# save the list of column for PK to check unique index that must be removed
@@ -8448,8 +8449,10 @@ sub _create_indexes
 			}
 		}
 		# Add parentheses to index column definition when a space is found
-		if (!$self->{input_file}) {
-			for ($i = 0; $i <= $#{$indexes{$idx}}; $i++) {
+		if (!$self->{input_file})
+		{
+			for ($i = 0; $i <= $#{$indexes{$idx}}; $i++)
+			{
 				if ( ($indexes{$idx}->[$i] =~ /\s/) && ($indexes{$idx}->[$i] !~ /^[^\.\s]+\s+DESC$/i) ) {
 					$indexes{$idx}->[$i] = '(' . $indexes{$idx}->[$i] . ')';
 				}
@@ -8493,7 +8496,8 @@ sub _create_indexes
 			{
 				$pk_hist{$table} = $columnlist;
 			}
-			if (lc($columnlist) eq lc($colscompare)) {
+			if (lc($columnlist) eq lc($colscompare))
+			{
 				$skip_index_creation = 1;
 				last;
 			}
@@ -8533,13 +8537,15 @@ sub _create_indexes
 
 			my $schm = '';
 			my $idxname = '';
-			if ($idx =~ /^([^\.]+)\.(.*)$/) {
+			if ($idx =~ /^([^\.]+)\.(.*)$/)
+			{
 				$schm = $1;
 				$idxname = $2;
 			} else {
 				$idxname = $idx;
 			}
-			if ($self->{indexes_renaming}) {
+			if ($self->{indexes_renaming})
+			{
 				if ($table =~ /^([^\.]+)\.(.*)$/) {
 					$schm = $1;
 					$idxname = $2;
@@ -8561,14 +8567,19 @@ sub _create_indexes
 			$idxname = $schm . '.' . $idxname if ($schm);
 			$idxname = $self->quote_object_name($idxname);
 			my $tb = $self->quote_object_name($table);
-			if ($self->{$objtyp}{$tbsaved}{idx_type}{$idx}{type_name} =~ /SPATIAL_INDEX/) {
+			if ($self->{$objtyp}{$tbsaved}{idx_type}{$idx}{type_name} =~ /SPATIAL_INDEX/)
+			{
 				$str .= "CREATE INDEX$concurrently " . $self->quote_object_name("$idxname$self->{indexes_suffix}")
 						. " ON $tb USING gist($columns)";
-			} elsif ($self->{bitmap_as_gin} && $self->{$objtyp}{$tbsaved}{idx_type}{$idx}{type_name} eq 'BITMAP') {
+			}
+			elsif ($self->{bitmap_as_gin} && $self->{$objtyp}{$tbsaved}{idx_type}{$idx}{type_name} eq 'BITMAP')
+			{
 				$str .= "CREATE INDEX$concurrently " . $self->quote_object_name("$idxname$self->{indexes_suffix}")
 						. " ON $tb USING gin($columns)";
-			} elsif ( ($self->{$objtyp}{$tbsaved}{idx_type}{$idx}{type_name} =~ /CTXCAT/) ||
-				($self->{context_as_trgm} && ($self->{$objtyp}{$tbsaved}{idx_type}{$idx}{type_name} =~ /FULLTEXT|CONTEXT/)) ) {
+			}
+			elsif ( ($self->{$objtyp}{$tbsaved}{idx_type}{$idx}{type_name} =~ /CTXCAT/) ||
+				($self->{context_as_trgm} && ($self->{$objtyp}{$tbsaved}{idx_type}{$idx}{type_name} =~ /FULLTEXT|CONTEXT/)) )
+			{
 				# use pg_trgm
 				my @cols = split(/\s*,\s*/, $columns);
 				map { s/^(.*)$/unaccent_immutable($1)/; } @cols if ($self->{use_unaccent});
@@ -8576,7 +8587,9 @@ sub _create_indexes
 				$columns .= " gin_trgm_ops";
 				$str .= "CREATE INDEX$concurrently " . $self->quote_object_name("$idxname$self->{indexes_suffix}")
 						. " ON $tb USING gin($columns)";
-			} elsif (($self->{$objtyp}{$tbsaved}{idx_type}{$idx}{type_name} =~ /FULLTEXT|CONTEXT/) && $self->{fts_index_only}) {
+			}
+			elsif (($self->{$objtyp}{$tbsaved}{idx_type}{$idx}{type_name} =~ /FULLTEXT|CONTEXT/) && $self->{fts_index_only})
+			{
 				my $stemmer = $self->{fts_config} || lc($self->{$objtyp}{$tbsaved}{idx_type}{$idx}{stemmer}) || 'pg_catalog.english';
 				my $dico = $stemmer;
 				$dico =~ s/^pg_catalog\.//;
@@ -8593,7 +8606,9 @@ sub _create_indexes
 				$columns = "to_tsvector('$dico', " . join("||' '||", @cols) . ")";
 				$fts_str .= "CREATE INDEX$concurrently " . $self->quote_object_name("$idxname$self->{indexes_suffix}")
 						. " ON $tb USING gin($columns);\n";
-			} elsif (($self->{$objtyp}{$tbsaved}{idx_type}{$idx}{type_name} =~ /FULLTEXT|CONTEXT/) && !$self->{fts_index_only}) {
+			}
+			elsif (($self->{$objtyp}{$tbsaved}{idx_type}{$idx}{type_name} =~ /FULLTEXT|CONTEXT/) && !$self->{fts_index_only})
+			{
 				# use Full text search, then create dedicated column and trigger before the index.
 				map { s/"//g; } @{$indexes{$idx}};
 				my $newcolname = join('_', @{$indexes{$idx}});
@@ -8607,23 +8622,29 @@ sub _create_indexes
 				my $stemmer = $self->{fts_config} || lc($self->{$objtyp}{$tbsaved}{idx_type}{$idx}{stemmer}) || 'pg_catalog.english';
 				my $dico = $stemmer;
 				$dico =~ s/^pg_catalog\.//;
-				if ($self->{use_unaccent}) {
+				if ($self->{use_unaccent})
+				{
 					$dico =~ s/^(..).*/$1/;
-					if ($fts_str !~ /CREATE TEXT SEARCH CONFIGURATION $dico (COPY = $stemmer);/s) {
+					if ($fts_str !~ /CREATE TEXT SEARCH CONFIGURATION $dico (COPY = $stemmer);/s)
+					{
 						$fts_str .= "CREATE TEXT SEARCH CONFIGURATION $dico (COPY = $stemmer);\n";
 						$stemmer =~ s/pg_catalog\.//;
 						$fts_str .= "ALTER TEXT SEARCH CONFIGURATION $dico ALTER MAPPING FOR hword, hword_part, word WITH unaccent, ${stemmer}_stem;\n\n";
 					}
 				}
-				if ($#{$indexes{$idx}} > 0) {
-					foreach my $col (@{$indexes{$idx}}) {
+				if ($#{$indexes{$idx}} > 0)
+				{
+					foreach my $col (@{$indexes{$idx}})
+					{
 						$contruct_vector .= "\t\tsetweight(to_tsvector('$dico', coalesce(new.$col,'')), '$weight') ||\n";
 						$update_vector .= " setweight(to_tsvector('$dico', coalesce($col,'')), '$weight') ||";
 						$weight++;
 					}
 					$contruct_vector =~ s/\|\|$/;/s;
 					$update_vector =~ s/\|\|$/;/s;
-				} else {
+				}
+				else
+				{
 					$contruct_vector = "\t\tto_tsvector('$dico', coalesce(new.$indexes{$idx}->[0],''))\n";
 					$update_vector = " to_tsvector('$dico', coalesce($indexes{$idx}->[0],''))";
 				}
@@ -8648,25 +8669,34 @@ CREATE TRIGGER $trig_name BEFORE INSERT OR UPDATE
   FOR EACH ROW EXECUTE PROCEDURE $fctname();
 
 } if (!$indexonly);
-				if ($objtyp eq 'tables') {
+				if ($objtyp eq 'tables')
+				{
 					$str .= "CREATE$unique INDEX$concurrently " . $self->quote_object_name("$idxname$self->{indexes_suffix}")
 						 . " ON $table USING gin(tsv_$newcolname)";
-				} else {
+				}
+				else
+				{
 					$fts_str .= "CREATE$unique INDEX$concurrently " . $self->quote_object_name("$idxname$self->{indexes_suffix}")
 						. " ON $table USING gin(tsv_$newcolname)";
 				}
-			} elsif ($self->{$objtyp}{$tbsaved}{idx_type}{$idx}{type} =~ /DOMAIN/i && $self->{$objtyp}{$tbsaved}{idx_type}{$idx}{type_name} !~ /SPATIAL_INDEX/) {
+			}
+			elsif ($self->{$objtyp}{$tbsaved}{idx_type}{$idx}{type} =~ /DOMAIN/i && $self->{$objtyp}{$tbsaved}{idx_type}{$idx}{type_name} !~ /SPATIAL_INDEX/)
+			{
 				$str .= "-- Was declared as DOMAIN index, please check for FTS adaptation if require\n";
 				$str .= "-- CREATE$unique INDEX$concurrently " . $self->quote_object_name("$idxname$self->{indexes_suffix}")
 						. " ON $table ($columns)";
-			} else {
+			}
+			else
+			{
 				$str .= "CREATE$unique INDEX$concurrently " . $self->quote_object_name("$idxname$self->{indexes_suffix}")
 						. " ON $table ($columns)";
 			}
-			if ($self->{use_tablespace} && $self->{$objtyp}{$tbsaved}{idx_tbsp}{$idx} && !grep(/^$self->{$objtyp}{$tbsaved}{idx_tbsp}{$idx}$/i, @{$self->{default_tablespaces}})) {
+			if ($self->{use_tablespace} && $self->{$objtyp}{$tbsaved}{idx_tbsp}{$idx} && !grep(/^$self->{$objtyp}{$tbsaved}{idx_tbsp}{$idx}$/i, @{$self->{default_tablespaces}}))
+			{
 				$str .= " TABLESPACE $self->{$objtyp}{$tbsaved}{idx_tbsp}{$idx}";
 			}
-			if ($str) {
+			if ($str)
+			{
 				$str .= ";";
 				push(@out, $str);
 			}
@@ -10570,20 +10600,27 @@ AND    IC.TABLE_OWNER = ?
 		my $colname = $row->[1];
 
 		# Replace function based index type
-		if ( ($row->[4] =~ /FUNCTION-BASED/i) && ($colname =~ /^SYS_NC\d+\$$/) ) {
+		if ( ($row->[4] =~ /FUNCTION-BASED/i) && ($colname =~ /^SYS_NC\d+\$$/) )
+		{
 			$sth2->execute($colname,$save_tb,$row->[-5]) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 			my $nc = $sth2->fetch();
 			$row->[1] = $nc->[0];
 			$row->[1] =~ s/"//g;
+			# Single row constraint based on a constant and a function based unique index
+			if ($row->[2] eq 'UNIQUE' && $nc->[0] =~ /^\d+$/ && $row->[4] =~ /FUNCTION-BASED/i) {
+				$row->[1] = '(' . $nc->[0] . ')';
+			}
 			# Enclose with double quote if required when is is not an index function
-			if ($row->[1] !~ /\(.*\)/ && $row->[4] !~ /FUNCTION-BASED/i) {
+			elsif ($row->[1] !~ /\(.*\)/ && $row->[4] !~ /FUNCTION-BASED/i) {
 				$row->[1] = $self->quote_object_name($row->[1]);
 			}
 			# Append DESC sort order when not default to ASC
 			if ($row->[13] eq 'DESC') {
 				$row->[1] .= " DESC";
 			}
-		} else {
+		}
+		else
+		{
                         # Quote column with unsupported symbols
                         $row->[1] = $self->quote_object_name($row->[1]);
 		}
