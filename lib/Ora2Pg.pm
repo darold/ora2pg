@@ -8459,9 +8459,13 @@ sub _create_indexes
 			}
 		}
 		my $columns = '';
-		foreach (@{$indexes{$idx}})
+		foreach my $s (@{$indexes{$idx}})
 		{
-			$columns .= ((exists $opclass_type{$_}) ? $opclass_type{$_} : $_) . ", ";
+			if ($s =~ /\|\|/) {
+				$columns .= '(' . $s . ')';
+			} else {
+				$columns .= ((exists $opclass_type{$s}) ? $opclass_type{$s} : $s) . ", ";
+			}
 			# Add double quotes on column name if PRESERVE_CASE is enabled
 			foreach my $c (keys %{$self->{tables}{$tbsaved}{column_info}})
 			{
@@ -8736,9 +8740,13 @@ sub _drop_indexes
 		map { if ($_ !~ /\(.*\)/) { $_ = $self->quote_object_name($_) } } @{$indexes{$idx}};
 
                 my $columns = '';
-                foreach (@{$indexes{$idx}})
+                foreach my $s (@{$indexes{$idx}})
                 {
-                        $columns .= ((exists $opclass_type{$_}) ? $opclass_type{$_} : $_) . ", ";
+			if ($s =~ /\|\|/) {
+				$columns .= '(' . $s . ')';
+			} else {
+				$columns .= ((exists $opclass_type{$s}) ? $opclass_type{$s} : $s) . ", ";
+			}
                         # Add double quotes on column name if PRESERVE_CASE is enabled
                         foreach my $c (keys %{$self->{tables}{$tbsaved}{column_info}})
                         {
