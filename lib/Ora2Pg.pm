@@ -12747,13 +12747,15 @@ sub set_custom_type_value
 	my $num_arr = -1;
 	my $isnested = 0;
 
-	for (my $i = 0; $i <= $#{$col_ref}; $i++) {
-
-		if ($col_ref->[$i] !~ /^ARRAY\(0x/) {
-
-			if ($self->{type} eq 'COPY') {
+	for (my $i = 0; $i <= $#{$col_ref}; $i++)
+	{
+		if ($col_ref->[$i] !~ /^ARRAY\(0x/)
+		{
+			if ($self->{type} eq 'COPY')
+			{
 				# Want to export the user defined type as a single array, not composite type
-				if ($dest_type =~ /(text|char|varying)\[\d*\]$/i) {
+				if ($dest_type =~ /(text|char|varying)\[\d*\]$/i)
+				{
 					$has_array = 1;
 					$col_ref->[$i] =~ s/"/\\\\"/gs;
 					if ($col_ref->[$i] =~ /[,"]/) {
@@ -12762,7 +12764,9 @@ sub set_custom_type_value
 				# Data must be exported as an array of numeric types
 				} elsif ($dest_type =~ /\[\d*\]$/) {
 					$has_array = 1;
-				} elsif ($dest_type =~ /(char|text)/) {
+				}
+				elsif ($dest_type =~ /(char|text)/)
+				{
 					$col_ref->[$i] =~ s/"/\\\\\\\\""/igs;
 					if ($col_ref->[$i] =~ /[,"]/) {
 						$col_ref->[$i] = '""' . $col_ref->[$i] . '""';
@@ -12770,9 +12774,12 @@ sub set_custom_type_value
 				} else {
 					$isnested = 1;
 				}
-			} else {
+			}
+			else
+			{
 				# Want to export the user defined type as a single array, not composite type
-				if ($dest_type =~ /(text|char|varying)\[\d*\]$/i) {
+				if ($dest_type =~ /(text|char|varying)\[\d*\]$/i)
+				{
 					$has_array = 1;
 					$col_ref->[$i] =~ s/"/\\"/gs;
 					$col_ref->[$i] =~ s/'/''/gs;
@@ -12789,16 +12796,17 @@ sub set_custom_type_value
 				}
 			}
 			push(@type_col, $col_ref->[$i]);
-
-		} else {
-
+		}
+		else
+		{
 			$num_arr++;
 
 			my @arr_col = ();
-			for (my $j = 0; $j <= $#{$col_ref->[$i]}; $j++) {
-
+			for (my $j = 0; $j <= $#{$col_ref->[$i]}; $j++)
+			{
 				# Look for data based on custom type to replace the reference by the value
-				if ($col_ref->[$i][$j] =~ /^(?!(?!)\x{100})ARRAY\(0x/ && $user_type->{src_types}[$i][$j] !~ /geometry/i) {
+				if ($col_ref->[$i][$j] =~ /^(?!(?!)\x{100})ARRAY\(0x/ && $user_type->{src_types}[$i][$j] !~ /geometry/i)
+				{
 					my $dtype = uc($user_type->{src_types}[$i][$j]) || '';
 					$dtype =~ s/\(.*//; # remove any precision
 					my $utype = {};
@@ -12811,33 +12819,41 @@ sub set_custom_type_value
 					}
 				}
 
-				if ($self->{type} eq 'COPY') {
+				if ($self->{type} eq 'COPY')
+				{
 					# Want to export the user defined type as charaters array
-					if ($dest_type =~ /(text|char|varying)\[\d*\]$/i) {
+					if ($dest_type =~ /(text|char|varying)\[\d*\]$/i)
+					{
 						$has_array = 1;
 						$col_ref->[$i][$j] =~ s/"/\\\\"/gs;
 						if ($col_ref->[$i][$j] =~ /[,"]/) {
 							$col_ref->[$i][$j] = '"' . $col_ref->[$i][$j] . '"';
 						};
+					}
 					# Data must be exported as an array of numeric types
-					} elsif ($dest_type =~ /\[\d*\]$/) {
+					elsif ($dest_type =~ /\[\d*\]$/) {
 						$has_array = 1;
 					}
-				} else {
+				}
+				else
+				{
 					# Want to export the user defined type as array
-					if ($dest_type =~ /(text|char|varying)\[\d*\]$/i) {
+					if ($dest_type =~ /(text|char|varying)\[\d*\]$/i)
+					{
 						$has_array = 1;
 						$col_ref->[$i][$j] =~ s/"/\\"/gs;
 						$col_ref->[$i][$j] =~ s/'/''/gs;
 						if ($col_ref->[$i][$j] =~ /[,"]/) {
 							$col_ref->[$i][$j] = '"' . $col_ref->[$i][$j] . '"';
 						};
+					}
 					# Data must be exported as an array of numeric types
-					} elsif ($dest_type =~ /\[\d*\]$/) {
+					elsif ($dest_type =~ /\[\d*\]$/) {
 						$has_array = 1;
 					}
 				}
-				if ($col_ref->[$i][$j] =~ /[\(\)]/ && $col_ref->[$i][$j] !~ /^[\\]+""/) {
+				if ($col_ref->[$i][$j] =~ /[\(\)]/ && $col_ref->[$i][$j] !~ /^[\\]+""/)
+				{
 					if ($self->{type} ne 'COPY') {
 						$col_ref->[$i][$j] = "\\\\\"\"" . $col_ref->[$i][$j] . "\\\\\"\"";
 					} else {
@@ -12852,23 +12868,39 @@ sub set_custom_type_value
 
 	if ($has_array) {
 		 $result =  '{' . join(',', @type_col) . '}';
-	} elsif ($isnested) {
+	}
+	elsif ($isnested)
+	{
 		# ARRAY[ROW('B','C')]
-		$result =  '{"(' . join(',', @type_col) . ')"}';
-	} else {
+		my $is_string = 0;
+		foreach my $g (@{$self->{user_type}{$dest_type}->{pg_types}}) {
+			$is_string = 1 if (grep(/(text|char|varying)/i, @$g));
+		}
+		if ($is_string) {
+			$result =  '({"(' . join(',', @type_col) . ')"})';
+		} else {
+			$result =  '("{' . join(',', @type_col) . '}")';
+		}
+	}
+	else
+	{
 		# This is the root call of the function, no global quoting is required
-		if (!$no_quote) {
+		if (!$no_quote)
+		{
 			#map { s/^$/NULL/; } @type_col;
 			#$result = 'ROW(ARRAY[ROW(' . join(',', @type_col) . ')])';
 			# With arrays of arrays the construction is different
-			if ($num_arr > 1) {
+			if ($num_arr > 1)
+			{
 				#### Expected
 				# INSERT: '("{""(0,0,0,0,0,0,0,0,0,,,)"",""(0,0,0,0,0,0,0,0,0,,,)""}")'
 				# COPY:    ("{""(0,0,0,0,0,0,0,0,0,,,)"",""(0,0,0,0,0,0,0,0,0,,,)""}")
 				####
 				$result =  "(\"{\"\"" . join('"",""', @type_col) . "\"\"}\")";
+			}
 			# When just one or none arrays are present
-			} else {
+			else
+			{
 				#### Expected
 				# INSERT: '("(1,1)",0,,)'
 				# COPY:    ("(1,1)",0,,)
