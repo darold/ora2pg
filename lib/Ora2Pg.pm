@@ -16404,7 +16404,7 @@ sub get_schema_condition
 	$attrname ||= 'n.nspname';
 
 	if ($self->{pg_schema} && $self->{export_schema}) {
-		return " AND $attrname IN ('" . join("','", split(/\s*,\s*/, lc($self->{pg_schema}))) . "')";
+		return " AND $attrname IN ('" . join("','", split(/\s*,\s*/, $self->{pg_schema})) . "')";
 	} elsif ($self->{schema} && $self->{export_schema}) {
 		return "AND $attrname = '\L$self->{schema}\E'";
 	}
