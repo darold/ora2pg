@@ -9464,7 +9464,8 @@ END;
 };
 	}
 
-	if ($bfile_function) {
+	if ($bfile_function)
+	{
 		my $local_dbh = $self->_oracle_connection();
 		my $sth2 =  $local_dbh->do($bfile_function);
 		$local_dbh->disconnect() if ($local_dbh);
@@ -9473,7 +9474,8 @@ END;
 	# Fix empty column list with nested table
 	$str =~ s/ ""$/ \*/;
 
-	if ($part_name) {
+	if ($part_name)
+	{
 		if ($is_subpart) {
 			$alias = "SUBPARTITION(" . $self->quote_object_name($part_name) . ") a";
 		} else {
@@ -9481,7 +9483,8 @@ END;
 		}
 	}
 	# Force parallelism on Oracle side
-	if ($self->{default_parallelism_degree} > 1) {
+	if ($self->{default_parallelism_degree} > 1)
+	{
 		# Only if the number of rows is upper than PARALLEL_MIN_ROWS
 		$self->{tables}{$table}{table_info}{num_rows} ||= 0;
 		if ($self->{tables}{"\L$table\E"}{table_info}{num_rows} > $self->{parallel_min_rows}) {
@@ -9490,8 +9493,8 @@ END;
 	}
 	$str .= " FROM $realtable $alias";
 
-	if (exists $self->{where}{"\L$table\E"} && $self->{where}{"\L$table\E"}) {
-
+	if (exists $self->{where}{"\L$table\E"} && $self->{where}{"\L$table\E"})
+	{
 		($str =~ / WHERE /) ? $str .= ' AND ' : $str .= ' WHERE ';
 		if (!$self->{is_mysql} || ($self->{where}{"\L$table\E"} !~ /\s+LIMIT\s+\d/)) {
 			$str .= '(' . $self->{where}{"\L$table\E"} . ')';
@@ -9499,9 +9502,9 @@ END;
 			$str .= $self->{where}{"\L$table\E"};
 		}
 		$self->logit("\tApplying WHERE clause on table: " . $self->{where}{"\L$table\E"} . "\n", 1);
-
-	} elsif ($self->{global_where}) {
-
+	}
+	elsif ($self->{global_where})
+	{
 		($str =~ / WHERE /) ? $str .= ' AND ' : $str .= ' WHERE ';
 		if (!$self->{is_mysql} || ($self->{global_where} !~ /\s+LIMIT\s+\d/)) {
 			$str .= '(' . $self->{global_where} . ')';
@@ -9509,25 +9512,34 @@ END;
 			$str .= $self->{global_where};
 		}
 		$self->logit("\tApplying WHERE global clause: " . $self->{global_where} . "\n", 1);
-
 	}
 
 	# Automatically set the column on which query will be splitted
 	# to the first column with a unique key and of type NUMBER.
-	if ($self->{oracle_copies} > 1) {
-		if (!exists $self->{defined_pk}{"\L$table\E"}) {
-			foreach my $consname (keys %{$self->{tables}{$table}{unique_key}}) {
+	if ($self->{oracle_copies} > 1)
+	{
+		if (!exists $self->{defined_pk}{"\L$table\E"})
+		{
+			foreach my $consname (keys %{$self->{tables}{$table}{unique_key}})
+			{
 				my $constype =   $self->{tables}{$table}{unique_key}->{$consname}{type};
-				if (($constype eq 'P') || ($constype eq 'U')) {
-					foreach my $c (@{$self->{tables}{$table}{unique_key}->{$consname}{columns}}) {
-					       for my $k (0 .. $#{$name}) {
+				if (($constype eq 'P') || ($constype eq 'U'))
+				{
+					foreach my $c (@{$self->{tables}{$table}{unique_key}->{$consname}{columns}})
+					{
+					       for my $k (0 .. $#{$name})
+					       {
 							my $realcolname = $name->[$k]->[0];
 							$realcolname =~ s/"//g;
-							if ($c eq $realcolname) {
-								if ($src_type->[$k] =~ /^number\(.*,.*\)/i) {
+							if ($c eq $realcolname)
+							{
+								if ($src_type->[$k] =~ /^number\(.*,.*\)/i)
+								{
 									$self->{defined_pk}{"\L$table\E"} = "ROUND($c)";
 									last;
-								} elsif ($src_type->[$k] =~ /^number/i) {
+								}
+								elsif ($src_type->[$k] =~ /^number/i)
+								{
 									$self->{defined_pk}{"\L$table\E"} = $c;
 									last;
 								}
@@ -9539,12 +9551,18 @@ END;
 				last if (exists $self->{defined_pk}{"\L$table\E"});
 			}
 		}
-		if ($self->{defined_pk}{"\L$table\E"}) {
-			if ($str =~ / WHERE /) {
-				$str .= " AND ABS(MOD(" . $self->{defined_pk}{"\L$table\E"} . ", $self->{oracle_copies})) = ?";
-			} else {
-				$str .= " WHERE ABS(MOD(" . $self->{defined_pk}{"\L$table\E"} . ", $self->{oracle_copies})) = ?";
+		if ($self->{defined_pk}{"\L$table\E"})
+		{
+			my $colpk = $self->{defined_pk}{"\L$table\E"};
+			if ($self->{preserve_case}) {
+				$colpk = '"' . $colpk . '"';
 			}
+			if ($str =~ / WHERE /) {
+				$str .= " AND";
+			} else {
+				$str .= " WHERE";
+			}
+			$str .= " ABS(MOD($colpk, $self->{oracle_copies})) = ?";
 		}
 	}
 
@@ -14641,7 +14659,11 @@ sub _extract_data
 	if ($self->{replace_query}{"\L$table\E"}) {
 		$query = $self->{replace_query}{"\L$table\E"};
 		if (($self->{oracle_copies} > 1) && $self->{defined_pk}{"\L$table\E"}) {
-			my $cond = " ABS(MOD(" . $self->{defined_pk}{"\L$table\E"} . ", $self->{oracle_copies})) = ?";
+			my $colpk = $self->{defined_pk}{"\L$table\E"};
+			if ($self->{preserve_case}) {
+				$colpk = '"' . $colpk . '"';
+			}
+			my $cond = " ABS(MOD($colpk, $self->{oracle_copies})) = ?";
 			if ($query !~ s/\bWHERE\s+/WHERE $cond AND /) {
 				if ($query !~ s/\b(ORDER\s+BY\s+.*)/WHERE $cond $1/) {
 					$query .= " WHERE $cond";
@@ -19155,10 +19177,14 @@ sub create_kettle_output
 	}
 	my $select_copies = $self->{oracle_copies} || 1;
 	if (($self->{oracle_copies} > 1) && $self->{defined_pk}{"\L$table\E"}) {
+		my $colpk = $self->{defined_pk}{"\L$table\E"};
+		if ($self->{preserve_case}) {
+			$colpk = '"' . $colpk . '"';
+		}
 		if ($self->{schema}) {
-			$select_query = "SELECT * FROM $self->{schema}.$table WHERE ABS(MOD(" . $self->{defined_pk}{"\L$table\E"} . ",\${Internal.Step.Unique.Count}))=\${Internal.Step.Unique.Number}";
+			$select_query = "SELECT * FROM $self->{schema}.$table WHERE ABS(MOD($colpk,\${Internal.Step.Unique.Count}))=\${Internal.Step.Unique.Number}";
 		} else {
-			$select_query = "SELECT * FROM $table WHERE ABS(MOD(" . $self->{defined_pk}{"\L$table\E"} . ",\${Internal.Step.Unique.Count}))=\${Internal.Step.Unique.Number}";
+			$select_query = "SELECT * FROM $table WHERE ABS(MOD($colpk,\${Internal.Step.Unique.Count}))=\${Internal.Step.Unique.Number}";
 		}
 	} else {
 		$select_copies = 1;
