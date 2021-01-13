@@ -3079,8 +3079,10 @@ sub read_trigger_from_file
 	my $tid = 0; 
 	my $doloop = 1;
 	my @triggers_decl = split(/(?:CREATE)?(?:\s+OR\s+REPLACE)?\s*(?:DEFINER=[^\s]+)?\s*\bTRIGGER(\s+|$)/is, $content);
-	foreach $content (@triggers_decl) {
-		if ($content =~ s/^([^\s]+)\s+(BEFORE|AFTER|INSTEAD\s+OF)\s+(.*?)\s+ON\s+([^\s]+)\s+(.*)(\bEND\s*(?!IF|LOOP|CASE|INTO|FROM|,)[a-z0-9_]*(?:;|$))//is) {
+	foreach $content (@triggers_decl)
+	{
+		if ($content =~ s/^([^\s]+)\s+(BEFORE|AFTER|INSTEAD\s+OF)\s+(.*?)\s+ON\s+([^\s]+)\s+(.*)(\bEND\s*(?!IF|LOOP|CASE|INTO|FROM|,)[a-z0-9_]*(?:;|$))//is)
+		{
 			my $t_name = $1;
 			my $t_pos = $2;
 			my $t_event = $3;
@@ -3095,16 +3097,21 @@ sub read_trigger_from_file
 				$t_type = $1 . $2;
 			}
 			my $t_when_cond = '';
-			if ($trigger =~ s/^\s*WHEN\s+(.*?)\s+((?:BEGIN|DECLARE|CALL).*)//is) {
+			if ($trigger =~ s/^\s*WHEN\s+(.*?)\s+((?:BEGIN|DECLARE|CALL).*)//is)
+			{
 				$t_when_cond = $1;
 				$trigger = $2;
 				if ($trigger =~ /^(BEGIN|DECLARE)/i) {
 					($trigger, $content) = &_get_plsql_code($trigger);
-				} else {
+				}
+				else
+				{
 					$trigger =~ s/([^;]+;)\s*(.*)/$1/;
 					$content = $2;
 				}
-			} else {
+			}
+			else
+			{
 				if ($trigger =~ /^(BEGIN|DECLARE)/i) {
 					($trigger, $content) = &_get_plsql_code($trigger);
 				}
@@ -3113,11 +3120,13 @@ sub read_trigger_from_file
 
 			# TRIGGER_NAME, TRIGGER_TYPE, TRIGGERING_EVENT, TABLE_NAME, TRIGGER_BODY, WHEN_CLAUSE, DESCRIPTION,ACTION_TYPE
 			$trigger =~ s/\bEND\s+[^\s]+\s+$/END/is;
-			push(@{$self->{triggers}}, [($t_name, $t_pos, $t_event, $tb_name, $trigger, $t_when_cond, '', $t_type)]);
-
+			my $when_event = '';
+			if ($t_when_cond) {
+				$when_event = "$t_name\n$t_pos $t_event ON $tb_name\n$t_type";
+			}
+			push(@{$self->{triggers}}, [($t_name, $t_pos, $t_event, $tb_name, $trigger, $t_when_cond, $when_event, $t_type)]);
 		}
 	};
-
 }
 
 sub read_sequence_from_file
@@ -4791,18 +4800,22 @@ sub export_trigger
 			my $security = '';
 			my $revoke = '';
 			my $trig_fctname = $self->quote_object_name("trigger_fct_\L$trig->[0]\E");
-			if ($self->{security}{"\U$trig->[0]\E"}{security} eq 'DEFINER') {
+			if ($self->{security}{"\U$trig->[0]\E"}{security} eq 'DEFINER')
+			{
 				$security = " SECURITY DEFINER";
 				$revoke = "-- REVOKE ALL ON FUNCTION $trig_fctname() FROM PUBLIC;\n";
 			}
 			$security = " SECURITY INVOKER" if ($self->{force_security_invoker});
-			if ($self->{pg_supports_when} && $trig->[5]) {
-				if (!$self->{preserve_case}) {
+			if ($self->{pg_supports_when} && $trig->[5])
+			{
+				if (!$self->{preserve_case})
+				{
 					$trig->[4] =~ s/"([^"]+)"/\L$1\E/gs;
 					$trig->[4] =~ s/ALTER TRIGGER\s+[^\s]+\s+ENABLE(;)?//;
 				}
 				$sql_output .= "CREATE$self->{create_or_replace} FUNCTION $trig_fctname() RETURNS trigger AS \$BODY\$\n$trig->[4]\n\$BODY\$\n LANGUAGE 'plpgsql'$security;\n$revoke\n";
-				if ($self->{force_owner}) {
+				if ($self->{force_owner})
+				{
 					my $owner = $trig->[8];
 					$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
 					$sql_output .= "ALTER FUNCTION $trig_fctname() OWNER TO " . $self->quote_object_name($owner) . ";\n\n";
@@ -4819,23 +4832,29 @@ sub export_trigger
 				$trig->[6] =~ s/^\s*["]*(?:$trig->[0])["]*//is;
 				$trig->[6] =~ s/\s+ON\s+([^"\s]+)\s+/" ON " . $self->quote_object_name($1) . " "/ies;
 				$sql_output .= "CREATE TRIGGER " . $self->quote_object_name($trig->[0]) . "$trig->[6]\n";
-				if ($trig->[5]) {
+				if ($trig->[5])
+				{
 					$self->_remove_comments(\$trig->[5]);
 					$trig->[5] =~ s/"([^"]+)"/\L$1\E/gs if (!$self->{preserve_case});
-					if ($self->{plsql_pgsql}) {
+					if ($self->{plsql_pgsql})
+					{
 						$trig->[5] = Ora2Pg::PLSQL::convert_plsql_code($self, $trig->[5]);
 						$self->_replace_declare_var(\$trig->[5]);
 					}
 					$sql_output .= "\tWHEN ($trig->[5])\n";
 				}
 				$sql_output .= "\tEXECUTE PROCEDURE $trig_fctname();\n\n";
-			} else {
-				if (!$self->{preserve_case}) {
+			}
+			else
+			{
+				if (!$self->{preserve_case})
+				{
 					$trig->[4] =~ s/"([^"]+)"/\L$1\E/gs;
 					$trig->[4] =~ s/ALTER TRIGGER\s+[^\s]+\s+ENABLE(;)?//;
 				}
 				$sql_output .= "CREATE$self->{create_or_replace} FUNCTION $trig_fctname() RETURNS trigger AS \$BODY\$\n$trig->[4]\n\$BODY\$\n LANGUAGE 'plpgsql'$security;\n$revoke\n";
-				if ($self->{force_owner}) {
+				if ($self->{force_owner})
+				{
 					my $owner = $trig->[8];
 					$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
 					$sql_output .= "ALTER FUNCTION $trig_fctname() OWNER TO " . $self->quote_object_name($owner) . ";\n\n";
