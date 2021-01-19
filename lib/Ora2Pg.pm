@@ -13308,7 +13308,7 @@ sub read_config
 				my $fields = $2;
 				$fields =~ s/^\s+//;
 				$fields =~ s/\s+$//;
-				my @rel = split(/[\s,]+/, $fields);
+				my @rel = split(/[,]+/, $fields);
 				foreach my $r (@rel) {
 					my ($old, $new) = split(/:/, $r);
 					$AConfig{$var}{$table}{$old} = $new;
