@@ -3996,7 +3996,7 @@ sub export_view
 		$self->{views}{$view}{text} =~ s/\s*WITH\s+READ\s+ONLY//is;
 		$self->{views}{$view}{text} =~ s/\s*OF\s+([^\s]+)\s+(WITH|UNDER)\s+[^\)]+\)//is;
 		$self->{views}{$view}{text} =~ s/\s*OF\s+XMLTYPE\s+[^\)]+\)//is;
-		$self->{views}{$view}{text} = $self->_format_view($self->{views}{$view}{text});
+		$self->{views}{$view}{text} = $self->_format_view($view, $self->{views}{$view}{text});
 		my $tmpv = $view;
 		if (exists $self->{replaced_tables}{"\L$tmpv\E"} && $self->{replaced_tables}{"\L$tmpv\E"})
 		{
@@ -4007,6 +4007,7 @@ sub export_view
 			$sql_output .= $self->set_search_path($1) . "\n";
 		}
 		$tmpv = $self->quote_object_name($tmpv);
+
 		if (!@{$self->{views}{$view}{alias}})
 		{
 			$sql_output .= "CREATE$self->{create_or_replace} VIEW $tmpv AS ";
@@ -4025,6 +4026,7 @@ sub export_view
 		{
 			$sql_output .= "CREATE$self->{create_or_replace} VIEW $tmpv (";
 			my $count = 0;
+			my %col_to_replace = ();
 			foreach my $d (@{$self->{views}{$view}{alias}})
 			{
 				if ($count == 0) {
@@ -4040,11 +4042,6 @@ sub export_view
 					$fname = $self->{replaced_cols}{"\L$view\E"}{"\L$fname\E"};
 				}
 				$sql_output .= $self->quote_object_name($fname);
-			}
-
-			if ($self->{views}{$view}{text} =~ /SELECT[^\s]*(.*?)\bFROM\b/is) {
-				my $clause = $1;
-				$self->{views}{$view}{text} =~ s/SELECT[^\s]*(.*?)\bFROM\b/SELECT $clause FROM/is;
 			}
 			$sql_output .= ") AS " . $self->{views}{$view}{text};
 			$sql_output .= ';' if ($sql_output !~ /;\s*$/s);
@@ -4276,7 +4273,7 @@ LANGUAGE plpgsql ;
 			my ($idx, $fts_idx) = $self->_create_indexes($view, 0, %{$self->{materialized_views}{$view}{indexes}});
 			$sql_output .= "$idx$fts_idx\n\n";
 		} else {
-			$self->{materialized_views}{$view}{text} = $self->_format_view($self->{materialized_views}{$view}{text});
+			$self->{materialized_views}{$view}{text} = $self->_format_view($view, $self->{materialized_views}{$view}{text});
 			if (!$self->{preserve_case}) {
 				$self->{materialized_views}{$view}{text} =~ s/"//gs;
 			}
@@ -13303,7 +13300,7 @@ sub read_config
 				$AConfig{$var}{$table}{$col} = $type;
 			}
 		} elsif ($var eq 'REPLACE_COLS') {
-			while ($val =~ s/([^\(\s]+)\s*\(([^\)]+)\)\s*//) {
+			while ($val =~ s/([^\(\s]+)\s*\(([^\)]+)\)[,;\s]*//) {
 				my $table = $1;
 				my $fields = $2;
 				$fields =~ s/^\s+//;
@@ -14246,7 +14243,7 @@ to PostgreSQL.
 
 sub _format_view
 {
-	my ($self, $sqlstr) = @_;
+	my ($self, $view, $sqlstr) = @_;
 
 	$self->_remove_comments(\$sqlstr);
 
@@ -14295,6 +14292,13 @@ sub _format_view
 				$sqlstr =~ s/"$regextb"/"$prefx"\."$sufx/g;
 			}
 		}
+	}
+
+	# replace column name in view query definition if needed
+	foreach my $c (sort { $b cmp $a } keys %{ $self->{replaced_cols}{"\L$view\E"} })
+	{
+		my $nm = $self->{replaced_cols}{"\L$view\E"}{$c};
+		$sqlstr =~ s/([\(,\s\."])$c([,\s\.:"\)])/$1$nm$2/ig;
 	}
 
 	if ($self->{plsql_pgsql}) {
@@ -16032,7 +16036,7 @@ sub _show_infos
 						$view_infos{$view}{text} =~ s/\s*WITH\s+READ\s+ONLY//is;
 						$view_infos{$view}{text} =~ s/\s*OF\s+([^\s]+)\s+(WITH|UNDER)\s+[^\)]+\)//is;
 						$view_infos{$view}{text} =~ s/\s*OF\s+XMLTYPE\s+[^\)]+\)//is;
-						$view_infos{$view}{text} = $self->_format_view($view_infos{$view}{text});
+						$view_infos{$view}{text} = $self->_format_view($view, $view_infos{$view}{text});
 
 						my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($self, $view_infos{$view}{text}, 'VIEW');
 						$report_info{'Objects'}{$typ}{'cost_value'} += $cost;
