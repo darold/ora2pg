@@ -9336,7 +9336,19 @@ sub _howto_get_data
 				} else {
 					$str .= "$alias.$name->[$k]->[0].extract('/').getClobVal(),";
 				}
-			} elsif ( !$self->{is_mysql} && $src_type->[$k] =~ /SDO_GEOMETRY/i) {
+			}
+			# ArcGis Geometries
+			elsif ( !$self->{is_mysql} && $src_type->[$k] =~ /^ST_/i)
+			{
+				if ($self->{geometry_extract_type} eq 'WKB') {
+					$str .= "CASE WHEN $name->[$k]->[0] IS NOT NULL THEN SDE.ST_ASBINARY($name->[$k]->[0]) ELSE NULL END,";
+				} else {
+					$str .= "CASE WHEN $name->[$k]->[0] IS NOT NULL THEN SDE.ST_ASTEXT($name->[$k]->[0]) ELSE NULL END,";
+				}
+			}
+			# Oracle geometries
+			elsif ( !$self->{is_mysql} && $src_type->[$k] =~ /SDO_GEOMETRY/i)
+			{
 
 				# Set SQL query to get the SRID of the column
 				if ($self->{convert_srid} > 1) {
@@ -12730,7 +12742,7 @@ sub format_data_row
 	for (my $idx = 0; $idx <= $#{$data_types}; $idx++)
 	{
 		my $data_type = $data_types->[$idx] || '';
-		if ($row->[$idx] && $src_data_types->[$idx] =~ /SDO_GEOMETRY/)
+		if ($row->[$idx] && $src_data_types->[$idx] =~ /SDO_GEOMETRY|^ST_/)
 		{
 			if ($self->{type} ne 'INSERT')
 			{
