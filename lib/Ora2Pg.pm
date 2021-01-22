@@ -9336,7 +9336,7 @@ sub _howto_get_data
 				} else {
 					$str .= "$alias.$name->[$k]->[0].extract('/').getClobVal(),";
 				}
-			} elsif ( !$self->{is_mysql} && $src_type->[$k] =~ /geometry/i) {
+			} elsif ( !$self->{is_mysql} && $src_type->[$k] =~ /SDO_GEOMETRY/i) {
 
 				# Set SQL query to get the SRID of the column
 				if ($self->{convert_srid} > 1) {
@@ -12860,7 +12860,7 @@ sub set_custom_type_value
 			for (my $j = 0; $j <= $#{$col_ref->[$i]}; $j++)
 			{
 				# Look for data based on custom type to replace the reference by the value
-				if ($col_ref->[$i][$j] =~ /^(?!(?!)\x{100})ARRAY\(0x/ && $user_type->{src_types}[$i][$j] !~ /geometry/i)
+				if ($col_ref->[$i][$j] =~ /^(?!(?!)\x{100})ARRAY\(0x/ && $user_type->{src_types}[$i][$j] !~ /SDO_GEOMETRY/i)
 				{
 					my $dtype = uc($user_type->{src_types}[$i][$j]) || '';
 					$dtype =~ s/\(.*//; # remove any precision
@@ -13024,7 +13024,7 @@ sub format_data_type
 			} else {
 				$col = "$q$q";
 			}
-		} elsif ( ($src_type =~ /geometry/i) && ($self->{geometry_extract_type} eq 'WKB') ) {
+		} elsif ( ($src_type =~ /SDO_GEOMETRY/i) && ($self->{geometry_extract_type} eq 'WKB') ) {
 			$col = "St_GeomFromWKB($q\\x" . unpack('H*', $col) . "$q, $self->{spatial_srid}{$table}->[$idx])";
 		} elsif ($cond->{isbytea}) {
 			$col = $self->_escape_lob($col, $cond->{raw} ? 'RAW' : 'BLOB', $cond, $isnested);
@@ -14927,7 +14927,7 @@ sub _extract_data
 				for (my $j = 0; $j <= $#$stt; $j++) {
 
 					# Look for data based on custom type to replace the reference by the value
-					if ($row[$j] =~ /^(?!(?!)\x{100})ARRAY\(0x/ && $stt->[$j] !~ /geometry/i) {
+					if ($row[$j] =~ /^(?!(?!)\x{100})ARRAY\(0x/ && $stt->[$j] !~ /SDO_GEOMETRY/i) {
 
 						my $data_type = uc($stt->[$j]) || '';
 						$data_type =~ s/\(.*//; # remove any precision
