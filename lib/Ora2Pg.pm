@@ -8246,7 +8246,7 @@ sub _dump_table
 			push(@fname, $fieldname);
 		}
 
-		if ($f->[1] =~ /GEOMETRY/i) {
+		if ($f->[1] =~ /SDO_GEOMETRY/i) {
 			$self->{local_type} = $self->{type} if (!$self->{local_type});
 			$has_geometry = 1;
 		}
@@ -10005,7 +10005,7 @@ END
 			$data{$row->[3]}{"$row->[0]"}{default} = $row->[2];
 		}
 		my $f = $self->{tables}{"$table"}{column_info}{"$row->[0]"};
-		if ( ($f->[1] =~ /GEOMETRY/i) && ($self->{convert_srid} <= 1) ) {
+		if ( ($f->[1] =~ /SDO_GEOMETRY/i) && ($self->{convert_srid} <= 1) ) {
 			$spatial_srid = "SELECT COALESCE(SRID, $self->{default_srid}) FROM ALL_SDO_GEOM_METADATA WHERE TABLE_NAME='\U$table\E' AND COLUMN_NAME='$row->[0]' AND OWNER='\U$self->{tables}{$table}{table_info}{owner}\E'";
 			if ($self->{convert_srid} == 1) {
 				$spatial_srid = "SELECT COALESCE(sdo_cs.map_oracle_srid_to_epsg(SRID), $self->{default_srid}) FROM ALL_SDO_GEOM_METADATA WHERE TABLE_NAME='\U$table\E' AND COLUMN_NAME='$row->[0]' AND OWNER='\U$self->{tables}{$table}{table_info}{owner}\E'";
@@ -11834,7 +11834,8 @@ sub _get_types
 
 	my @types = ();
 	my @fct_done = ();
-	while (my $row = $sth->fetch) {
+	while (my $row = $sth->fetch)
+	{
 		my $sql = "SELECT TEXT FROM $self->{prefix}_SOURCE WHERE OWNER='$row->[1]' AND NAME='$row->[0]' AND (TYPE='TYPE' OR TYPE='TYPE BODY') ORDER BY TYPE, LINE";
 		if (!$self->{schema} && $self->{export_schema}) {
 			$row->[0] = "$row->[1].$row->[0]";
@@ -12689,7 +12690,8 @@ sub _get_custom_types
 	$str =~ s/\s*--[^\r\n]+//gs;
 	my %types_found = ();
 	my @type_def = split(/\s*,\s*/, $str);
-	foreach my $s (@type_def) {
+	foreach my $s (@type_def)
+	{
 		my $cur_type = '';
 		if ($s =~ /\s+OF\s+([^\s;]+)/) {
 			$cur_type = $1;
@@ -12699,13 +12701,17 @@ sub _get_custom_types
 		push(@{$types_found{src_types}}, $cur_type);
 		if (exists $all_types{$cur_type}) {
 			push(@{$types_found{pg_types}}, $all_types{$cur_type});
-		} else {
+		}
+		else
+		{
 			my $custom_type = $self->_get_types($cur_type);
-			foreach my $tpe (sort {length($a->{name}) <=> length($b->{name}) } @{$custom_type}) {
+			foreach my $tpe (sort {length($a->{name}) <=> length($b->{name}) } @{$custom_type})
+			{
 				last if (uc($tpe->{name}) eq $cur_type); # prevent infinit loop
 				$self->logit("\tLooking inside nested custom type $tpe->{name} to extract values...\n", 1);
 				my %types_def = $self->_get_custom_types($tpe->{code}, $cur_type);
-				if ($#{$types_def{pg_types}} >= 0) {
+				if ($#{$types_def{pg_types}} >= 0)
+				{
 					$self->logit("\t\tfound subtype description: $tpe->{name}(" . join(',', @{$types_def{pg_types}}) . ")\n", 1);
 					push(@{$types_found{pg_types}}, \@{$types_def{pg_types}});
 					push(@{$types_found{src_types}}, \@{$types_def{src_types}});
@@ -12721,16 +12727,22 @@ sub format_data_row
 {
 	my ($self, $row, $data_types, $action, $src_data_types, $custom_types, $table, $colcond, $sprep) = @_;
 
-	for (my $idx = 0; $idx <= $#{$data_types}; $idx++) {
+	for (my $idx = 0; $idx <= $#{$data_types}; $idx++)
+	{
 		my $data_type = $data_types->[$idx] || '';
-		if ($row->[$idx] && $src_data_types->[$idx] =~ /GEOMETRY/) {
-			if ($self->{type} ne 'INSERT') {
-				if (!$self->{is_mysql} && ($self->{geometry_extract_type} eq 'INTERNAL')) {
+		if ($row->[$idx] && $src_data_types->[$idx] =~ /SDO_GEOMETRY/)
+		{
+			if ($self->{type} ne 'INSERT')
+			{
+				if (!$self->{is_mysql} && ($self->{geometry_extract_type} eq 'INTERNAL'))
+				{
 					use Ora2Pg::GEOM;
 					my $geom_obj = new Ora2Pg::GEOM('srid' => $self->{spatial_srid}{$table}->[$idx]);
 					$row->[$idx] = $geom_obj->parse_sdo_geometry($row->[$idx]);
 					$row->[$idx] = 'SRID=' . $self->{spatial_srid}{$table}->[$idx] . ';' . $row->[$idx];
-				} elsif ($self->{geometry_extract_type} eq 'WKB') {
+				}
+				elsif ($self->{geometry_extract_type} eq 'WKB')
+				{
 					if ($self->{is_mysql}) {
 						$row->[$idx] =~ s/^SRID=(\d+);//;
 						$self->{spatial_srid}{$table}->[$idx] = $1;
@@ -12738,30 +12750,39 @@ sub format_data_row
 					$row->[$idx] = unpack('H*', $row->[$idx]);
 					$row->[$idx]  = 'SRID=' . $self->{spatial_srid}{$table}->[$idx] . ';' . $row->[$idx];
 				}
-			} elsif ($self->{geometry_extract_type} eq 'WKB') {
-				if ($self->{is_mysql}) {
+			}
+			elsif ($self->{geometry_extract_type} eq 'WKB')
+			{
+				if ($self->{is_mysql})
+				{
 					$row->[$idx] =~ s/^SRID=(\d+);//;
 					$self->{spatial_srid}{$table}->[$idx] = $1;
 				}
 				$row->[$idx] = unpack('H*', $row->[$idx]);
 				$row->[$idx]  = "'SRID=" . $self->{spatial_srid}{$table}->[$idx] . ';' . $row->[$idx] . "'";
-			} elsif (($self->{geometry_extract_type} eq 'INTERNAL') || ($self->{geometry_extract_type} eq 'WKT')) {
-				if (!$self->{is_mysql}) {
+			}
+			elsif (($self->{geometry_extract_type} eq 'INTERNAL') || ($self->{geometry_extract_type} eq 'WKT'))
+			{
+				if (!$self->{is_mysql})
+				{
 					use Ora2Pg::GEOM;
 					my $geom_obj = new Ora2Pg::GEOM('srid' => $self->{spatial_srid}{$table}->[$idx]);
 					$row->[$idx] = $geom_obj->parse_sdo_geometry($row->[$idx]);
 					$row->[$idx] = "ST_GeomFromText('" . $row->[$idx] . "', $self->{spatial_srid}{$table}->[$idx])";
-				} else {
+				}
+				else
+				{
 					$row->[$idx] =~ s/^SRID=(\d+);//;
 					$row->[$idx] = "ST_GeomFromText('" . $row->[$idx] . "', $1)";
 				}
 			}
-
-		} elsif ($row->[$idx] =~ /^(?!(?!)\x{100})ARRAY\(0x/) {
-
+		}
+		elsif ($row->[$idx] =~ /^(?!(?!)\x{100})ARRAY\(0x/)
+		{
 			print STDERR "/!\\ WARNING /!\\: we should not be there !!!\n";
-
-		} else {
+		}
+		else
+		{
 
 			$row->[$idx] = $self->format_data_type($row->[$idx], $data_type, $action, $table, $src_data_types->[$idx], $idx, $colcond->[$idx], $sprep);
 
@@ -13075,7 +13096,7 @@ sub hs_cond
 	my $col_cond = [];
 	for (my $idx = 0; $idx < scalar(@$data_types); $idx++) {
 		my $hs={};
-		$hs->{geometry} = $src_data_types->[$idx] =~ /GEOMETRY/i ? 1 : 0;
+		$hs->{geometry} = $src_data_types->[$idx] =~ /SDO_GEOMETRY/i ? 1 : 0;
 		$hs->{isnum} =    $data_types->[$idx] !~ /^(char|varchar|date|time|text|bytea|xml|uuid|citext)/i ? 1 :0;
 		$hs->{isdate} =  $data_types->[$idx] =~ /^(date|time)/i ? 1 : 0;
 		$hs->{raw} = $src_data_types->[$idx] =~ /RAW/i ? 1 : 0;
@@ -14641,28 +14662,36 @@ sub custom_type_definition
 
 	my $data_type = uc($custom_type) || '';
 	$data_type =~ s/\(.*//; # remove any precision
-	if (!exists $self->{data_type}{$data_type}) {
+	if (!exists $self->{data_type}{$data_type})
+	{
 		if (!$is_nested) {
 			$self->logit("Data type $custom_type is not native, searching on custom types.\n", 1);
 		} else {
 			$self->logit("\tData type $custom_type nested from type $parent is not native, searching on custom types.\n", 1);
 		}
 		$custom_type = $self->_get_types($custom_type);
-		foreach my $tpe (sort {length($a->{name}) <=> length($b->{name}) } @{$custom_type}) {
+		foreach my $tpe (sort {length($a->{name}) <=> length($b->{name}) } @{$custom_type})
+		{
 			$self->logit("\tLooking inside custom type $tpe->{name} to extract values...\n", 1);
 			my %types_def = $self->_get_custom_types($tpe->{code});
-			if ($#{$types_def{pg_types}} >= 0) {
+			if ($#{$types_def{pg_types}} >= 0)
+			{
 				$self->logit("\tfound type description: $tpe->{name}(" . join(',', @{$types_def{pg_types}}) . ")\n", 1);
 				push(@{$user_type{pg_types}} , \@{$types_def{pg_types}});
 				push(@{$user_type{src_types}}, \@{$types_def{src_types}});
-			} else {
+			}
+			else
+			{
 				if ($tpe->{code} =~ /AS\s+VARRAY\s*(.*?)\s+OF\s+([^\s;]+);/is) {
 					return $self->custom_type_definition(uc($2), $orig, 1);
-				} elsif ($tpe->{code} =~ /\s+([^\s]+)\s+AS\s+TABLE\s+OF\s+([^;]+);/is) {
+				}
+				elsif ($tpe->{code} =~ /\s+([^\s]+)\s+AS\s+TABLE\s+OF\s+([^;]+);/is)
+				{
 					%types_def = $self->_get_custom_types("varname $2");
 					push(@{$user_type{pg_types}} , \@{$types_def{pg_types}});
 					push(@{$user_type{src_types}}, \@{$types_def{src_types}});
-				} else {
+				}
+				else {
 					$self->logit("\tCan not found subtype for $tpe->{name} into code: $tpe->{code}\n", 1);
 				}
 			}
