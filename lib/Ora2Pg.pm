@@ -12876,9 +12876,10 @@ sub set_custom_type_value
 				{
 					my $dtype = uc($user_type->{src_types}[$i][$j]) || '';
 					$dtype =~ s/\(.*//; # remove any precision
-					my $utype = {};
-					%{$utype} = $self->custom_type_definition($dtype);
-					$col_ref->[$i][$j] =  $self->set_custom_type_value($dtype, $utype, $col_ref->[$i][$j], $user_type->{pg_types}[$i][$j], 1);
+					if (!exists $self->{data_type}{$dtype} && !exists $self->{user_type}{$dtype}) {
+						%{ $self->{user_type}{$dtype} } = $self->custom_type_definition($dtype);
+					}
+					$col_ref->[$i][$j] =  $self->set_custom_type_value($dtype, $self->{user_type}{$dtype}, $col_ref->[$i][$j], $user_type->{pg_types}[$i][$j], 1);
 					if ($self->{type} ne 'COPY') {
 						$col_ref->[$i][$j] =~ s/"/\\\\""/gs;
 					} else {
@@ -14936,24 +14937,26 @@ sub _extract_data
 
 				# Then foreach row use the returned lob locator to retrieve data
 				# and all column with a LOB data type, extract data by chunk
-				for (my $j = 0; $j <= $#$stt; $j++) {
-
+				for (my $j = 0; $j <= $#$stt; $j++)
+				{
 					# Look for data based on custom type to replace the reference by the value
-					if ($row[$j] =~ /^(?!(?!)\x{100})ARRAY\(0x/ && $stt->[$j] !~ /SDO_GEOMETRY/i) {
-
+					if ($row[$j] =~ /^(?!(?!)\x{100})ARRAY\(0x/ && $stt->[$j] !~ /SDO_GEOMETRY/i)
+					{
 						my $data_type = uc($stt->[$j]) || '';
 						$data_type =~ s/\(.*//; # remove any precision
 						$row[$j] =  $self->set_custom_type_value($data_type, $user_type{$j}, $row[$j], $tt->[$j], 0);
-
+					}
 					# Retrieve LOB data from locator
-					} elsif (($stt->[$j] =~ /LOB|XMLTYPE/) && $row[$j]) {
-
+					elsif (($stt->[$j] =~ /LOB|XMLTYPE/) && $row[$j])
+					{
 						my $lob_content = '';
 						my $offset = 1;   # Offsets start at 1, not 0
-						if ( ($self->{parallel_tables} > 1) || (($self->{oracle_copies} > 1) && $self->{defined_pk}{"\L$table\E"}) ) {
+						if ( ($self->{parallel_tables} > 1) || (($self->{oracle_copies} > 1) && $self->{defined_pk}{"\L$table\E"}) )
+						{
 							# Get chunk size
 							my $chunk_size = $self->{lob_chunk_size} || $dbh->ora_lob_chunk_size($row[$j]) || 8192;
-							while (1) {
+							while (1)
+							{
 								my $lobdata = $dbh->ora_lob_read($row[$j], $offset, $chunk_size );
 								if ($dbh->errstr) {
 									$self->logit("ERROR: " . $dbh->errstr . "\n", 0, 0) if ($dbh->errstr !~ /ORA-22831/);
@@ -14963,12 +14966,16 @@ sub _extract_data
 								$offset += $chunk_size;
 								$lob_content .= $lobdata;
 							}
-						} else {
+						}
+						else
+						{
 							# Get chunk size
 							my $chunk_size = $self->{lob_chunk_size} || $self->{dbh}->ora_lob_chunk_size($row[$j]) || 8192;
-							while (1) {
+							while (1)
+							{
 								my $lobdata = $self->{dbh}->ora_lob_read($row[$j], $offset, $chunk_size );
-								if ($self->{dbh}->errstr) {
+								if ($self->{dbh}->errstr)
+								{
 									$self->logit("ERROR: " . $self->{dbh}->errstr . "\n", 0, 0) if ($dbh->errstr !~ /ORA-22831/);
 									last;
 								}
@@ -14983,7 +14990,9 @@ sub _extract_data
 							$row[$j] = undef;
 						}
 
-					} elsif (($stt->[$j] =~ /LOB/) && !$row[$j]) {
+					}
+					elsif (($stt->[$j] =~ /LOB/) && !$row[$j])
+					{
 						# This might handle case where the LOB is NULL and might prevent error:
 						# DBD::Oracle::db::ora_lob_read: locator is not of type OCILobLocatorPtr
 						$row[$j] = undef;
