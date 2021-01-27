@@ -950,7 +950,7 @@ sub _init
 
 	# Set default system user/schema to not export. Most of them are extracted from this doc:
 	# http://docs.oracle.com/cd/E11882_01/server.112/e10575/tdpsg_user_accounts.htm#TDPSG20030
-	push(@{$self->{sysusers}},'SYSTEM','CTXSYS','DBSNMP','EXFSYS','LBACSYS','MDSYS','MGMT_VIEW','OLAPSYS','ORDDATA','OWBSYS','ORDPLUGINS','ORDSYS','OUTLN','SI_INFORMTN_SCHEMA','SYS','SYSMAN','WK_TEST','WKSYS','WKPROXY','WMSYS','XDB','APEX_PUBLIC_USER','DIP','FLOWS_020100','FLOWS_030000','FLOWS_040100','FLOWS_010600','FLOWS_FILES','MDDATA','ORACLE_OCM','SPATIAL_CSW_ADMIN_USR','SPATIAL_WFS_ADMIN_USR','XS$NULL','PERFSTAT','SQLTXPLAIN','DMSYS','TSMSYS','WKSYS','APEX_040000','APEX_040200','DVSYS','OJVMSYS','GSMADMIN_INTERNAL','APPQOSSYS','DVSYS','DVF','AUDSYS','APEX_030200','MGMT_VIEW','ODM','ODM_MTR','TRACESRV','MTMSYS','OWBSYS_AUDIT','WEBSYS','WK_PROXY','OSE$HTTP$ADMIN','AURORA$JIS$UTILITY$','AURORA$ORB$UNAUTHENTICATED','DBMS_PRIVILEGE_CAPTURE','CSMIG', 'MGDSYS');
+	push(@{$self->{sysusers}},'SYSTEM','CTXSYS','DBSNMP','EXFSYS','LBACSYS','MDSYS','MGMT_VIEW','OLAPSYS','ORDDATA','OWBSYS','ORDPLUGINS','ORDSYS','OUTLN','SI_INFORMTN_SCHEMA','SYS','SYSMAN','WK_TEST','WKSYS','WKPROXY','WMSYS','XDB','APEX_PUBLIC_USER','DIP','FLOWS_020100','FLOWS_030000','FLOWS_040100','FLOWS_010600','FLOWS_FILES','MDDATA','ORACLE_OCM','SPATIAL_CSW_ADMIN_USR','SPATIAL_WFS_ADMIN_USR','XS$NULL','PERFSTAT','SQLTXPLAIN','DMSYS','TSMSYS','WKSYS','APEX_040000','APEX_040200','DVSYS','OJVMSYS','GSMADMIN_INTERNAL','APPQOSSYS','DVSYS','DVF','AUDSYS','APEX_030200','MGMT_VIEW','ODM','ODM_MTR','TRACESRV','MTMSYS','OWBSYS_AUDIT','WEBSYS','WK_PROXY','OSE$HTTP$ADMIN','AURORA$JIS$UTILITY$','AURORA$ORB$UNAUTHENTICATED','DBMS_PRIVILEGE_CAPTURE','CSMIG', 'MGDSYS', 'SDE');
 
 	# Set default tablespace to exclude when using USE_TABLESPACE
 	push(@{$self->{default_tablespaces}}, 'TEMP', 'USERS','SYSTEM');
@@ -1452,6 +1452,8 @@ sub _init
 
 	if ($self->{debug}) {
 		$self->logit("Ora2Pg version: $VERSION\n");
+		$self->logit("Export type: $self->{type}\n", 1);
+		$self->logit("Geometry export type: $self->{geometry_extract_type}\n", 1);
 	}
 
 	# Replace ; or space by comma in the audit user list
@@ -9338,7 +9340,7 @@ sub _howto_get_data
 				}
 			}
 			# ArcGis Geometries
-			elsif ( !$self->{is_mysql} && $src_type->[$k] =~ /^ST_/i)
+			elsif ( !$self->{is_mysql} && $src_type->[$k] =~ /^(ST_|STGEOM_)/i)
 			{
 				if ($self->{geometry_extract_type} eq 'WKB') {
 					$str .= "CASE WHEN $name->[$k]->[0] IS NOT NULL THEN SDE.ST_ASBINARY($name->[$k]->[0]) ELSE NULL END,";
@@ -11848,6 +11850,7 @@ sub _get_types
 	my @fct_done = ();
 	while (my $row = $sth->fetch)
 	{
+		next if ($row->[0] =~ /^(SDO_GEOMETRY|ST_|STGEOM_)/);
 		my $sql = "SELECT TEXT FROM $self->{prefix}_SOURCE WHERE OWNER='$row->[1]' AND NAME='$row->[0]' AND (TYPE='TYPE' OR TYPE='TYPE BODY') ORDER BY TYPE, LINE";
 		if (!$self->{schema} && $self->{export_schema}) {
 			$row->[0] = "$row->[1].$row->[0]";
@@ -12742,7 +12745,7 @@ sub format_data_row
 	for (my $idx = 0; $idx <= $#{$data_types}; $idx++)
 	{
 		my $data_type = $data_types->[$idx] || '';
-		if ($row->[$idx] && $src_data_types->[$idx] =~ /SDO_GEOMETRY|^ST_/)
+		if ($row->[$idx] && $src_data_types->[$idx] =~ /^(SDO_GEOMETRY|ST_|STGEOM_)/)
 		{
 			if ($self->{type} ne 'INSERT')
 			{
@@ -12872,7 +12875,10 @@ sub set_custom_type_value
 			for (my $j = 0; $j <= $#{$col_ref->[$i]}; $j++)
 			{
 				# Look for data based on custom type to replace the reference by the value
-				if ($col_ref->[$i][$j] =~ /^(?!(?!)\x{100})ARRAY\(0x/ && $user_type->{src_types}[$i][$j] !~ /SDO_GEOMETRY/i)
+				if ($col_ref->[$i][$j] =~ /^(?!(?!)\x{100})ARRAY\(0x/
+				       	&& $user_type->{src_types}[$i][$j] !~ /SDO_GEOMETRY/i
+				       	&& $user_type->{src_types}[$i][$j] !~ /^(ST_|STGEOM_)/i #ArGis geometry types
+				)
 				{
 					my $dtype = uc($user_type->{src_types}[$i][$j]) || '';
 					$dtype =~ s/\(.*//; # remove any precision
@@ -14623,13 +14629,18 @@ sub ask_for_data
 	}
 
 	# Look for user defined type
-	if (!$self->{is_mysql}) {
-		for (my $idx = 0; $idx < scalar(@$stt); $idx++) {
+	if (!$self->{is_mysql})
+	{
+		for (my $idx = 0; $idx < scalar(@$stt); $idx++)
+		{
 			my $data_type = uc($stt->[$idx]) || '';
 			$data_type =~ s/\(.*//; # remove any precision
 			# in case of user defined type try to gather the underlying base types
-			if (!exists $self->{data_type}{$data_type} && !exists $self->{user_type}{$stt->[$idx]}) {
-				%{ $self->{user_type}{$stt->[$idx]} } = $self->custom_type_definition($stt->[$idx]);
+			if (!exists $self->{data_type}{$data_type} && !exists $self->{user_type}{$data_type}
+				       	&& $data_type !~ /SDO_GEOMETRY/i
+				       	&& $data_type !~ /^(ST_|STGEOM_)/i #ArGis geometry types
+			) {
+				%{ $self->{user_type}{$data_type} } = $self->custom_type_definition($data_type);
 			}
 		}
 	}
