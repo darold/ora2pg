@@ -8287,7 +8287,9 @@ sub _dump_table
 	$self->{tables}{$table}{pg_colnames_pkey} = \@pg_colnames_pkey;
 
 	my $overriding_system = '';
-	$overriding_system = ' OVERRIDING SYSTEM VALUE' if ($has_identity);
+	if ($self->{pg_supports_identity}) {
+		$overriding_system = ' OVERRIDING SYSTEM VALUE' if ($has_identity);
+	}
 
 	my $s_out = "INSERT INTO $tmptb ($col_list";
 	if ($self->{type} eq 'COPY') {
