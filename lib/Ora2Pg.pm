@@ -9367,8 +9367,10 @@ sub _howto_get_data
 						$str .= "CASE WHEN $name->[$k]->[0] IS NOT NULL THEN SDO_UTIL.TO_WKBGEOMETRY($name->[$k]->[0]) ELSE NULL END,";
 					} elsif ($self->{geometry_extract_type} eq 'INTERNAL') {
 						$str .= "CASE WHEN $name->[$k]->[0] IS NOT NULL THEN $name->[$k]->[0] ELSE NULL END,";
-					} else {
+					} elsif ($spatial_srid) {
 						$str .= "CASE WHEN $name->[$k]->[0] IS NOT NULL THEN 'ST_GeomFromText('''||SDO_UTIL.TO_WKTGEOMETRY($name->[$k]->[0])||''','||($spatial_srid)||')' ELSE NULL END,";
+					} else {
+						$str .= "CASE WHEN $name->[$k]->[0] IS NOT NULL THEN 'ST_GeomFromText('''||SDO_UTIL.TO_WKTGEOMETRY($name->[$k]->[0])||''')' ELSE NULL END,";
 					}
 				} else {
 					if ($self->{geometry_extract_type} eq 'WKB') {
@@ -12788,12 +12790,19 @@ sub format_data_row
 						my $geom_obj = new Ora2Pg::GEOM('srid' => $self->{spatial_srid}{$table}->[$idx]);
 						$row->[$idx] = $geom_obj->parse_sdo_geometry($row->[$idx]);
 					}
-					$row->[$idx] = "ST_GeomFromText('" . $row->[$idx] . "', $self->{spatial_srid}{$table}->[$idx])";
+					if (defined $self->{spatial_srid}{$table}->[$idx]) {
+						$row->[$idx] = "ST_GeomFromText('" . $row->[$idx] . "', $self->{spatial_srid}{$table}->[$idx])";
+					} else {
+						$row->[$idx] = "ST_GeomFromText('" . $row->[$idx] . "')";
+					}
 				}
 				else
 				{
-					$row->[$idx] =~ s/^SRID=(\d+);//;
-					$row->[$idx] = "ST_GeomFromText('" . $row->[$idx] . "', $1)";
+					if ($row->[$idx] =~ s/^SRID=(\d+);//) {
+						$row->[$idx] = "ST_GeomFromText('" . $row->[$idx] . "', $1)";
+					} else {
+						$row->[$idx] = "ST_GeomFromText('" . $row->[$idx] . ")";
+					}
 				}
 			}
 		}
