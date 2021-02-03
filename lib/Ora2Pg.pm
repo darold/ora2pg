@@ -9952,6 +9952,8 @@ END
 				{
 					if ($r->[0] =~ /(\d)$/) {
 						push(@result, $ORA2PG_SDO_GTYPE{$1});
+					} elsif ($r->[0] =~ /ST_(.*)$/) {
+						push(@result, $1);
 					}
 				}
 				$sth2->finish();
