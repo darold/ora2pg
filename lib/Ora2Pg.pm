@@ -9367,10 +9367,8 @@ sub _howto_get_data
 						$str .= "CASE WHEN $name->[$k]->[0] IS NOT NULL THEN SDO_UTIL.TO_WKBGEOMETRY($name->[$k]->[0]) ELSE NULL END,";
 					} elsif ($self->{geometry_extract_type} eq 'INTERNAL') {
 						$str .= "CASE WHEN $name->[$k]->[0] IS NOT NULL THEN $name->[$k]->[0] ELSE NULL END,";
-					} elsif ($spatial_srid) {
-						$str .= "CASE WHEN $name->[$k]->[0] IS NOT NULL THEN 'ST_GeomFromText('''||SDO_UTIL.TO_WKTGEOMETRY($name->[$k]->[0])||''','||($spatial_srid)||')' ELSE NULL END,";
 					} else {
-						$str .= "CASE WHEN $name->[$k]->[0] IS NOT NULL THEN 'ST_GeomFromText('''||SDO_UTIL.TO_WKTGEOMETRY($name->[$k]->[0])||''')' ELSE NULL END,";
+						$str .= "CASE WHEN $name->[$k]->[0] IS NOT NULL THEN 'ST_GeomFromText('''||SDO_UTIL.TO_WKTGEOMETRY($name->[$k]->[0])||''','||($spatial_srid)||')' ELSE NULL END,";
 					}
 				} else {
 					if ($self->{geometry_extract_type} eq 'WKB') {
@@ -9823,19 +9821,22 @@ END
 	my $max_lines = 50000;
 	$max_lines = $self->{autodetect_spatial_type} if ($self->{autodetect_spatial_type} > 1);
 	my $spatial_gtype =  'SELECT DISTINCT c.%s.SDO_GTYPE FROM %s c WHERE ROWNUM < ' . $max_lines;
+	my $st_spatial_gtype =  'SELECT DISTINCT ST_GeometryType(c.%s) FROM %s c WHERE ROWNUM < ' . $max_lines;
 	# Set query to retrieve the SRID
 	my $spatial_srid = "SELECT SRID FROM ALL_SDO_GEOM_METADATA WHERE TABLE_NAME=? AND COLUMN_NAME=? AND OWNER=?";
+	my $st_spatial_srid = "SELECT ST_SRID(c.%s) FROM %s c";
 	if ($self->{convert_srid}) {
 		# Translate SRID to standard EPSG SRID, may return 0 because there's lot of Oracle only SRID.
 		$spatial_srid = 'SELECT sdo_cs.map_oracle_srid_to_epsg(SRID) FROM ALL_SDO_GEOM_METADATA WHERE TABLE_NAME=? AND COLUMN_NAME=? AND OWNER=?';
 	}
 	# Get the dimension of the geometry by looking at the number of element in the SDO_DIM_ARRAY
 	my $spatial_dim = "SELECT t.SDO_DIMNAME, t.SDO_LB, t.SDO_UB FROM ALL_SDO_GEOM_METADATA m, TABLE (m.diminfo) t WHERE m.TABLE_NAME=? AND m.COLUMN_NAME=? AND OWNER=?";
+	my $st_spatial_dim = "SELECT ST_DIMENSION(c.%s) FROM %s c";
 
 	my %data = ();
 	my $pos = 0;
-	while (my $row = $sth->fetch) {
-
+	while (my $row = $sth->fetch)
+	{
 		$row->[2] = $row->[7] if $row->[1] =~ /char/i;
 
 		# Seems that for a NUMBER with a DATA_SCALE to 0, no DATA_PRECISION and a DATA_LENGTH of 22
@@ -9851,23 +9852,33 @@ END
 
 		# check if this is a spatial column (srid, dim, gtype)
 		my @geom_inf = ();
-		if ($row->[1] eq 'SDO_GEOMETRY') {
-
+		if ($row->[1] eq 'SDO_GEOMETRY' || $row->[1] =~ /^ST_|STGEOM_/)
+		{
 			# Get the SRID of the column
 			if ($self->{convert_srid} > 1) {
 				push(@geom_inf, $self->{convert_srid});
-			} else {
+			}
+			else
+			{
 				my @result = ();
+				$spatial_srid = $st_spatial_srid if ($row->[1] =~ /^ST_|STGEOM_/);
 				my $sth2 = $self->{dbh}->prepare($spatial_srid);
-				if (!$sth2) {
+				if (!$sth2)
+				{
 					if ($self->{dbh}->errstr !~ /ORA-01741/) {
 						$self->logit("FATAL: _column_info() " . $self->{dbh}->errstr . "\n", 0, 1);
 					} else {
 						# No SRID defined, use default one
 						$self->logit("WARNING: Error retreiving SRID, no matter default SRID will be used: $spatial_srid\n", 0);
 					}
-				} else {
-					$sth2->execute($row->[8],$row->[0],$row->[9]) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+				}
+				else
+				{
+					if ($row->[1] =~ /^ST_|STGEOM_/) {
+						$sth2->execute($row->[0]) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+					} else {
+						$sth2->execute($row->[8],$row->[0],$row->[9]) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+					}
 					while (my $r = $sth2->fetch) {
 						push(@result, $r->[0]) if ($r->[0] =~ /\d+/);
 					}
@@ -9900,12 +9911,18 @@ END
 			}
 
 			# Get the dimension of the geometry column
-			if (!$found_dims) {
+			if (!$found_dims)
+			{
+				$spatial_dim = $st_spatial_dim if ($row->[1] =~ /^ST_|STGEOM_/);
 				$sth2 = $self->{dbh}->prepare($spatial_dim);
 				if (!$sth2) {
 					$self->logit("FATAL: _column_info() " . $self->{dbh}->errstr . "\n", 0, 1);
 				}
-				$sth2->execute($row->[8],$row->[0],$row->[9]) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+				if ($row->[1] =~ /^ST_|STGEOM_/) {
+					$sth2->execute($row->[0]) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+				} else {
+					$sth2->execute($row->[8],$row->[0],$row->[9]) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+				}
 				my $count = 0;
 				while (my $r = $sth2->fetch) {
 					$count++;
@@ -9917,18 +9934,22 @@ END
 			}
 
 			# Set dimension and type of the spatial column
-			if (!$found_contraint && $self->{autodetect_spatial_type}) {
-
+			if (!$found_contraint && $self->{autodetect_spatial_type})
+			{
 				# Get spatial information
 				my $colname = $row->[9] . "." . $row->[8];
 				my $squery = sprintf($spatial_gtype, $row->[0], $colname);
+				if ($row->[1] =~ /^ST_|STGEOM_/) {
+					$squery = sprintf($st_spatial_gtype, $row->[0], $colname);
+				}
 				my $sth2 = $self->{dbh}->prepare($squery);
 				if (!$sth2) {
 					$self->logit("FATAL: _column_info() " . $self->{dbh}->errstr . "\n", 0, 1);
 				}
 				$sth2->execute or $self->logit("FATAL: _column_info() " . $self->{dbh}->errstr . "\n", 0, 1);
 				my @result = ();
-				while (my $r = $sth2->fetch) {
+				while (my $r = $sth2->fetch)
+				{
 					if ($r->[0] =~ /(\d)$/) {
 						push(@result, $ORA2PG_SDO_GTYPE{$1});
 					}
@@ -12789,20 +12810,17 @@ sub format_data_row
 						use Ora2Pg::GEOM;
 						my $geom_obj = new Ora2Pg::GEOM('srid' => $self->{spatial_srid}{$table}->[$idx]);
 						$row->[$idx] = $geom_obj->parse_sdo_geometry($row->[$idx]);
-					}
-					if (defined $self->{spatial_srid}{$table}->[$idx]) {
 						$row->[$idx] = "ST_GeomFromText('" . $row->[$idx] . "', $self->{spatial_srid}{$table}->[$idx])";
-					} else {
-						$row->[$idx] = "ST_GeomFromText('" . $row->[$idx] . "')";
+					}
+					else
+					{
+						$row->[$idx] = "ST_Geomtry('" . $row->[$idx] . "', $self->{spatial_srid}{$table}->[$idx])";
 					}
 				}
 				else
 				{
-					if ($row->[$idx] =~ s/^SRID=(\d+);//) {
-						$row->[$idx] = "ST_GeomFromText('" . $row->[$idx] . "', $1)";
-					} else {
-						$row->[$idx] = "ST_GeomFromText('" . $row->[$idx] . ")";
-					}
+					$row->[$idx] =~ s/^SRID=(\d+);//;
+					$row->[$idx] = "ST_GeomFromText('" . $row->[$idx] . "', $1)";
 				}
 			}
 		}
