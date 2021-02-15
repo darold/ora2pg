@@ -748,8 +748,8 @@ CREATE_OR_REPLACE	1
 # Oracle data type NUMBER(p,s) is approximatively converted to real and
 # float PostgreSQL data type. If you have monetary fields or don't want
 # rounding issues with the extra decimals you should preserve the same
-# numeric(p,s) PostgreSQL data type. Do that only if you need very good
-# precision because using numeric(p,s) is slower than using real or double.
+# numeric(p,s) PostgreSQL data type. Do that only if you need exactness
+# because using numeric(p,s) is slower than using real or double.
 PG_NUMERIC_TYPE	1
 
 # If set to 1 replace portable numeric type into PostgreSQL internal type.
@@ -794,7 +794,7 @@ ENABLE_MICROSECOND      1
 #         MODIFY_TYPE     TABLE1:COL3:varchar,TABLE1:COL4:decimal(9\,6)
 # 
 # Type of table1.col3 will be replaced by a varchar and table1.col4 by
-# a decimal with precision.
+# a decimal with precision and scale.
 # 
 # If the column's type is a user defined type Ora2Pg will autodetect the
 # composite type and will export its data using ROW(). Some Oracle user
