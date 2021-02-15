@@ -1006,9 +1006,9 @@ NO_BLOB_EXPORT		0
 # INSERT export type.
 DATA_EXPORT_ORDER	name
 
-# By default Ora2Pg use \i psql command to execute generated SQL files
+# By default Ora2Pg use \\i psql command to execute generated SQL files
 # if you want to use a relative path following the script execution file
-# enabling this option will use \ir. See psql help for more information.
+# enabling this option will use \\ir. See psql help for more information.
 PSQL_RELATIVE_PATH	0
  
 
@@ -1212,7 +1212,7 @@ HUMAN_DAYS_LIMIT	5
 # Set the PostgreSQL major version number of the target database. Ex: 9.6 or 10
 # Default is current major version at time of a new release. This replace the
 # old PG_SUPPORTS_* configuration directives.
-PG_VERSION	11
+PG_VERSION	12
 
 # Use btree_gin extenstion to create bitmap like index with pg >= 9.4
 # You will need to create the extension by yourself:
