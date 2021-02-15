@@ -9267,20 +9267,27 @@ sub _howto_get_data
 	my $realtable = $table;
 	$realtable =~ s/\"//g;
 	# Do not use double quote with mysql, but backquote
-	if (!$self->{is_mysql}) {
-		if (!$self->{schema} && $self->{export_schema}) {
+	if (!$self->{is_mysql})
+	{
+		if (!$self->{schema} && $self->{export_schema})
+		{
 			$realtable =~ s/\./"."/;
 			$realtable = "\"$realtable\"";
-		} else {
+		}
+		else
+		{
 			$realtable = "\"$realtable\"";
 			my $owner  = $self->{tables}{$table}{table_info}{owner} || $self->{tables}{$table}{owner} || '';
-			if ($owner) {
+			if ($owner)
+			{
 				$owner =~ s/\"//g;
 				$owner = "\"$owner\"";
 				$realtable = "$owner.$realtable";
 			}
 		}
-	} else {
+	}
+	else
+	{
 		$realtable = "\`$realtable\`";
 	}
 
@@ -9295,22 +9302,28 @@ sub _howto_get_data
 	my $extraStr = "";
 	my $dateformat = 'YYYY-MM-DD HH24:MI:SS';
 	my $timeformat = $dateformat;
-	if ($self->{enable_microsecond}) {
+	if ($self->{enable_microsecond})
+	{
 		my $dim = 6;
 		$dim = '' if ($self->{db_version} =~ /Release [89]/);
 		$timeformat = "YYYY-MM-DD HH24:MI:SS.FF$dim";
 	}
 	my $timeformat_tz = $timeformat . ' TZH:TZM';
 	# Lookup through columns information
-	if ($#{$name} < 0) {
+	if ($#{$name} < 0)
+	{
 		# There a problem whe can't find any column in this table
 		return '';
-	} else {
-		for my $k (0 .. $#{$name}) {
+	}
+	else
+	{
+		for my $k (0 .. $#{$name})
+		{
 			my $realcolname = $name->[$k]->[0];
 			my $spatial_srid = '';
 			$self->{nullable}{$table}{$k} = $self->{colinfo}->{$table}{$realcolname}{nullable};
-			if ($name->[$k]->[0] !~ /"/) {
+			if ($name->[$k]->[0] !~ /"/)
+			{
 				# Do not use double quote with mysql
 				if (!$self->{is_mysql}) {
 					$name->[$k]->[0] = '"' . $name->[$k]->[0] . '"';
@@ -9322,19 +9335,27 @@ sub _howto_get_data
 				$str .= "trim($self->{trim_type} '$self->{trim_char}' FROM $name->[$k]->[0]) AS $name->[$k]->[0],";
 			} elsif ($self->{is_mysql} && $src_type->[$k] =~ /bit/i) {
 				$str .= "BIN($name->[$k]->[0]),";
+			}
 			# If dest type is bytea the content of the file is exported as bytea
-			} elsif ( ($src_type->[$k] =~ /bfile/i) && ($type->[$k] =~ /bytea/i) ) {
+			elsif ( ($src_type->[$k] =~ /bfile/i) && ($type->[$k] =~ /bytea/i) )
+			{
 				$self->{bfile_found} = 'bytea';
 				$str .= "ora2pg_get_bfile($name->[$k]->[0]),";
+			}
 			# If dest type is efile the content of the file is exported to use the efile extension
-			} elsif ( ($src_type->[$k] =~ /bfile/i) && ($type->[$k] =~ /efile/i) ) {
+			elsif ( ($src_type->[$k] =~ /bfile/i) && ($type->[$k] =~ /efile/i) )
+			{
 				$self->{bfile_found} = 'efile';
 				$str .= "ora2pg_get_efile($name->[$k]->[0]),";
+			}
 			# Only extract path to the bfile if dest type is text.
-			} elsif ( ($src_type->[$k] =~ /bfile/i) && ($type->[$k] =~ /text/i) ) {
+			elsif ( ($src_type->[$k] =~ /bfile/i) && ($type->[$k] =~ /text/i) )
+			{
 				$self->{bfile_found} = 'text';
 				$str .= "ora2pg_get_bfilename($name->[$k]->[0]),";
-			} elsif ( $src_type->[$k] =~ /xmltype/i) {
+			}
+			elsif ( $src_type->[$k] =~ /xmltype/i)
+			{
 				if ($self->{xml_pretty}) {
 					$str .= "$alias.$name->[$k]->[0].extract('/').getStringVal(),";
 				} else {
@@ -9406,13 +9427,17 @@ sub _howto_get_data
 			}
 			push(@{$self->{spatial_srid}{$table}}, $spatial_srid);
 			
-			if ($type->[$k] =~ /bytea/i) {
-				if ($self->{data_limit} >= 1000) {
+			if ($type->[$k] =~ /bytea/i && !$self->{no_blob_export})
+			{
+				if ($self->{data_limit} >= 1000)
+				{
 					$self->{local_data_limit}{$table} = int($self->{data_limit}/10);
 					while ($self->{local_data_limit}{$table} > 1000) {
 						$self->{local_data_limit}{$table} = int($self->{local_data_limit}{$table}/10);
 					}
-				} else {
+				}
+				else
+				{
 					$self->{local_data_limit}{$table} = $self->{data_limit};
 				}
 				$self->{local_data_limit}{$table} = $self->{blob_limit} if ($self->{blob_limit});
