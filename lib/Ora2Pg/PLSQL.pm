@@ -347,7 +347,8 @@ sub convert_plsql_code
 	# Extract all block from the code by splitting it on the semi-comma
 	# character and replace all necessary function call
 	my @code_parts = split(/;/, $str);
-	for (my $i = 0; $i <= $#code_parts; $i++) {
+	for (my $i = 0; $i <= $#code_parts; $i++)
+	{
 		next if (!$code_parts[$i]);
 
 		# For mysql also replace if() statements in queries or views.
@@ -358,24 +359,29 @@ sub convert_plsql_code
 		# Remove parenthesis from function parameters when they not belong to a function call
 		my %subparams = ();
 		my $p = 0;
-		while ($code_parts[$i] =~ s/(\(\s*)(\([^\(\)]*\))(\s*,)/$1\%SUBPARAMS$p\%$3/is) {
+		while ($code_parts[$i] =~ s/(\(\s*)(\([^\(\)]*\))(\s*,)/$1\%SUBPARAMS$p\%$3/is)
+		{
 			$subparams{$p} = $2;
 			$p++;
 		}
-		while ($code_parts[$i] =~ s/(,\s*)(\([^\(\)]*\))(\s*[\),])/$1\%SUBPARAMS$p\%$3/is) {
+		while ($code_parts[$i] =~ s/(,\s*)(\([^\(\)]*\))(\s*[\),])/$1\%SUBPARAMS$p\%$3/is)
+		{
 			$subparams{$p} = $2;
 			$p++;
 		}
 
 		# Remove some noisy parenthesis for outer join replacement
-		if ($code_parts[$i] =~ /\%OUTERJOIN\d+\%/) {
+		if ($code_parts[$i] =~ /\%OUTERJOIN\d+\%/)
+		{
 			my %tmp_ph = ();
 			my $idx = 0;
-			while ($code_parts[$i] =~ s/\(([^\(\)]*\%OUTERJOIN\d+\%[^\(\)]*)\)/\%SUBPART$idx\%/s) {
+			while ($code_parts[$i] =~ s/\(([^\(\)]*\%OUTERJOIN\d+\%[^\(\)]*)\)/\%SUBPART$idx\%/s)
+			{
 				$tmp_ph{$idx} = $1;
 				$idx++;
 			}
-			foreach my $k (keys %tmp_ph) {
+			foreach my $k (keys %tmp_ph)
+			{
 				if ($tmp_ph{$k} =~ /^\s*[^\s]+\s*(=|NOT LIKE|LIKE)\s*[^\s]+\s*$/i) {
 					$code_parts[$i] =~ s/\%SUBPART$k\%/$tmp_ph{$k}/s;
 				} else {
@@ -390,16 +396,20 @@ sub convert_plsql_code
 		# Things that must ne done when functions are replaced with placeholder
 		$code_parts[$i] = replace_without_function($class, $code_parts[$i]);
 
-		foreach my $k (keys %{$class->{single_fct_call}}) {
+		foreach my $k (keys %{$class->{single_fct_call}})
+		{
 			$class->{single_fct_call}{$k} = replace_oracle_function($class, $class->{single_fct_call}{$k});
-			if ($class->{single_fct_call}{$k} =~ /^CAST\s*\(/i) {
-				if (!$class->{is_mysql}) {
+			if ($class->{single_fct_call}{$k} =~ /^CAST\s*\(/i)
+			{
+				if (!$class->{is_mysql})
+				{
 					$class->{single_fct_call}{$k} = Ora2Pg::PLSQL::replace_sql_type($class->{single_fct_call}{$k}, $class->{pg_numeric_type}, $class->{default_numeric}, $class->{pg_integer_type}, %{$class->{data_type}});
 				} else {
 					$class->{single_fct_call}{$k} = Ora2Pg::MySQL::replace_sql_type($class->{single_fct_call}{$k}, $class->{pg_numeric_type}, $class->{default_numeric}, $class->{pg_integer_type}, %{$class->{data_type}});
 				}
 			}
-			if ($class->{single_fct_call}{$k} =~ /^CAST\s*\(.*\%\%REPLACEFCT(\d+)\%\%/i) {
+			if ($class->{single_fct_call}{$k} =~ /^CAST\s*\(.*\%\%REPLACEFCT(\d+)\%\%/i)
+			{
 				if (!$class->{is_mysql}) {
 					$class->{single_fct_call}{$1} = Ora2Pg::PLSQL::replace_sql_type($class->{single_fct_call}{$1}, $class->{pg_numeric_type}, $class->{default_numeric}, $class->{pg_integer_type}, %{$class->{data_type}});
 				} else {
@@ -413,7 +423,8 @@ sub convert_plsql_code
 	}
 	$str = join(';', @code_parts);
 
-	if ($class->{replace_out_params}) {
+	if ($class->{replace_out_params})
+	{
 		if ($str !~ s/\b(DECLARE\s+)/$1$class->{replace_out_params}\n/is) {
 			$str =~ s/\b(BEGIN\s+)/DECLARE\n$class->{replace_out_params}\n$1/is;
 		}
@@ -423,7 +434,8 @@ sub convert_plsql_code
 	# Apply code rewrite on other part of the code
 	$str = plsql_to_plpgsql($class, $str, @strings);
 
-	if ($class->{get_diagnostics}) {
+	if ($class->{get_diagnostics})
+	{
 		if ($str !~ s/\b(DECLARE\s+)/$1$class->{get_diagnostics}\n/is) {
 			$str =~ s/\b(BEGIN\s+)/DECLARE\n$class->{get_diagnostics}\n$1/is;
 		}

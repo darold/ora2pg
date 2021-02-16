@@ -2538,7 +2538,8 @@ sub read_schema_from_file
 
 	my @statements = split(/\s*;\s*/, $content);
 
-	foreach $content (@statements) {
+	foreach $content (@statements)
+	{
 		$content .= ';';
 
 		# Remove some unwanted and unused keywords from the statements
@@ -3794,27 +3795,32 @@ sub translate_function
 		$self->_remove_comments(\$functions{$fct}{text});
 		$lsize = length($functions{$fct}{text});
 
-		if ($self->{file_per_function}) {
+		if ($self->{file_per_function})
+		{
 			$self->logit("Dumping to one file per function : ${fct}_$self->{output}\n", 1);
 			$fhdl = $self->open_export_file("${fct}_$self->{output}");
 			$self->set_binmode($fhdl) if (!$self->{compress});
 		}
-		if ($self->{plsql_pgsql}) {
+		if ($self->{plsql_pgsql})
+		{
 			my $sql_f = '';
 			if ($self->{is_mysql}) {
 				$sql_f = $self->_convert_function($functions{$fct}{owner}, $functions{$fct}{text}, $fct);
 			} else {
 				$sql_f = $self->_convert_function($functions{$fct}{owner}, $functions{$fct}{text});
 			}
-			if ( $sql_f ) {
+			if ( $sql_f )
+			{
 				$sql_output .= $sql_f . "\n\n";
-				if ($self->{estimate_cost}) {
+				if ($self->{estimate_cost})
+				{
 					my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($self, $sql_f);
 					$cost += $Ora2Pg::PLSQL::OBJECT_SCORE{'FUNCTION'};
 					$lcost += $cost;
 					$self->logit("Function ${fct} estimated cost: $cost\n", 1);
 					$sql_output .= "-- Function ${fct} estimated cost: $cost\n";
-					foreach (sort { $cost_detail{$b} <=> $cost_detail{$a} } keys %cost_detail) {
+					foreach (sort { $cost_detail{$b} <=> $cost_detail{$a} } keys %cost_detail)
+					{
 						next if (!$cost_detail{$_});
 						$sql_output .= "\t-- $_ => $cost_detail{$_}";
 						if (!$self->{is_mysql}) {
@@ -3824,7 +3830,8 @@ sub translate_function
 						}
 						$sql_output .= "\n";
 					}
-					if ($self->{jobs} > 1) {
+					if ($self->{jobs} > 1)
+					{
 						my $tfh = $self->append_export_file($dirprefix . 'temp_cost_file.dat', 1);
 						flock($tfh, 2) || die "FATAL: can't lock file temp_cost_file.dat\n";
 						$tfh->print("${fct}:$lsize:$lcost\n");
@@ -3832,7 +3839,9 @@ sub translate_function
 					}
 				}
 			}
-		} else {
+		}
+		else
+		{
 			$sql_output .= $functions{$fct}{text} . "\n\n";
 		}
 		$self->_restore_comments(\$sql_output);
@@ -13878,6 +13887,7 @@ sub _remove_comments
 		$self->{idxcomment}++;
 	}
 
+	# Restore possible false positive constant replacement inside comment
 	foreach my $k (keys %{ $self->{comment_values} } ) { 
 		$self->{comment_values}{$k} =~ s/\?TEXTVALUE(\d+)\?/$self->{text_values}{$1}/gs;
 	}
@@ -13992,7 +14002,8 @@ sub _convert_function
 
 	my @nout = $fct_detail{args} =~ /\bOUT\s+([^,\)]+)/igs;
 	my @ninout = $fct_detail{args} =~ /\bINOUT\s+([^,\)]+)/igs;
-	if ($fct_detail{hasreturn}) {
+	if ($fct_detail{hasreturn})
+	{
 		my $nbout = $#nout+1 + $#ninout+1;
 		# When there is one or more out parameter, let PostgreSQL
 		# choose the right type with not using a RETURNS clause.
@@ -14002,7 +14013,9 @@ sub _convert_function
 			# Returns the right type
 			$func_return = " RETURNS$fct_detail{setof} $fct_detail{func_ret_type} AS \$body\$\n";
 		}
-	} elsif (!$self->{pg_supports_procedure}) {
+	}
+	elsif (!$self->{pg_supports_procedure})
+	{
 		# Return void when there's no out parameters
 		if (($#nout < 0) && ($#ninout < 0)) {
 			$func_return = " RETURNS VOID AS \$body\$\n";
@@ -14011,7 +14024,9 @@ sub _convert_function
 			# choose the right type with not using a RETURNS clause.
 			$func_return = " AS \$body\$\n";
 		}
-	} else {
+	}
+	else
+	{
 		$func_return = " AS \$body\$\n";
 	}
 
@@ -14019,7 +14034,8 @@ sub _convert_function
 	my @at_ret_type = ();
 	my $at_suffix = '';
 	my $at_inout = 0;
-	if ($fct_detail{declare} =~ s/\s*(PRAGMA\s+AUTONOMOUS_TRANSACTION[\s;]*)/-- $1/is && $self->{autonomous_transaction}) {
+	if ($fct_detail{declare} =~ s/\s*(PRAGMA\s+AUTONOMOUS_TRANSACTION[\s;]*)/-- $1/is && $self->{autonomous_transaction})
+	{
 		$at_suffix = '_atx';
 		# COMMIT is not allowed in PLPGSQL function
 		$fct_detail{code} =~ s/\bCOMMIT\s*;//;
@@ -14028,19 +14044,24 @@ sub _convert_function
 		my @tmp = split(',', $fct_detail{args});
 		$tmp[0] =~ s/^\(//;
 		$tmp[-1] =~ s/\)$//;
-		foreach my $p (@tmp) {
-			if ($p =~ s/\bOUT\s+//) {
+		foreach my $p (@tmp)
+		{
+			if ($p =~ s/\bOUT\s+//)
+			{
 				$at_inout++;
 				push(@at_ret_param, $p);
 				push(@at_ret_type, $p);
-			} elsif ($p =~ s/\bINOUT\s+//) {
+			}
+			elsif ($p =~ s/\bINOUT\s+//)
+			{
 				$at_inout++;
 				push(@at_ret_param, $p);
 				push(@at_ret_type, $p);
 			}
 		}
 		map { s/^(.*?) //; } @at_ret_type;
-		if ($fct_detail{hasreturn} && $#at_ret_param < 0) {
+		if ($fct_detail{hasreturn} && $#at_ret_param < 0)
+		{
 			push(@at_ret_param, 'ret ' . $fct_detail{func_ret_type});
 			push(@at_ret_type, $fct_detail{func_ret_type});
 		}
@@ -14089,7 +14110,8 @@ CREATE EXTENSION IF NOT EXISTS dblink;
 };
 		$at_wrapper .= "CREATE$self->{create_or_replace} $type $name $fct_detail{args}$func_return";
 		my $params = '';
-		if ($#{$fct_detail{at_args}} >= 0) {
+		if ($#{$fct_detail{at_args}} >= 0)
+		{
 			map { s/(.+)/quote_nullable($1)/; }  @{$fct_detail{at_args}};
 			$params = " ' || " . join(" || ',' || ", @{$fct_detail{at_args}}) . " || ' ";
 		}
@@ -14099,18 +14121,22 @@ CREATE EXTENSION IF NOT EXISTS dblink;
 	v_conn_str  text := $dblink_conn;
 	v_query     text;
 };
-		if ($#at_ret_param == 0) {
+		if ($#at_ret_param == 0)
+		{
 			my $varname = $at_ret_param[0];
 			$varname =~ s/\s+.*//;
 			my $vartype = $at_ret_type[0];
 			$vartype =~ s/.*\s+//;
-			if (!$fct_detail{hasreturn}) {
+			if (!$fct_detail{hasreturn})
+			{
 				$at_wrapper .= qq{
 BEGIN
 	v_query := 'SELECT * FROM $fname$at_suffix ($params)';
 	SELECT v_ret INTO $varname FROM dblink(v_conn_str, v_query) AS p (v_ret $vartype);
 };
-			} else {
+			}
+			else
+			{
 				$at_ret_type[0] = $fct_detail{func_ret_type};
 				$at_ret_param[0] = 'ret ' . $fct_detail{func_ret_type};
 				$at_wrapper .= qq{
@@ -14121,10 +14147,13 @@ BEGIN
 	RETURN v_ret;
 };
 			}
-		} elsif ($#at_ret_param > 0) {
+		}
+		elsif ($#at_ret_param > 0)
+		{
 			my $varnames = '';
 			my $vartypes = '';
-			for (my $i = 0; $i <= $#at_ret_param; $i++) {
+			for (my $i = 0; $i <= $#at_ret_param; $i++)
+			{
 				my $v = $at_ret_param[$i];
 				$v =~ s/\s+.*//;
 				$varnames .= "$v, ";
@@ -14135,13 +14164,16 @@ BEGIN
 			}
 			$varnames =~ s/, $//;
 			$vartypes =~ s/, $//;
-			if (!$fct_detail{hasreturn}) {
+			if (!$fct_detail{hasreturn})
+			{
 				$at_wrapper .= qq{
 BEGIN
 	v_query := 'SELECT * FROM $fname$at_suffix ($params)';
 	SELECT * FROM dblink(v_conn_str, v_query) AS p ($vartypes) INTO $varnames;
 };
-			} else {
+			}
+			else
+			{
 				$at_ret_type[0] = $fct_detail{func_ret_type};
 				$at_ret_param[0] = 'ret ' . $fct_detail{func_ret_type};
 				$at_wrapper .= qq{
@@ -14152,13 +14184,17 @@ BEGIN
 	RETURN v_ret;
 };
 			}
-		} elsif (!$fct_detail{hasreturn}) {
+		}
+		elsif (!$fct_detail{hasreturn})
+		{
 			$at_wrapper .= qq{
 BEGIN
 	v_query := 'SELECT true FROM $fname$at_suffix ($params)';
 	PERFORM * FROM dblink(v_conn_str, v_query) AS p (ret boolean);
 };
-		} else {
+		}
+		else
+		{
 			print STDERR "WARNING: we should not be there, please send the Oracle code of the $self->{type} to the author for debuging.\n";
 		}
 		$at_wrapper .= qq{
@@ -14179,7 +14215,8 @@ CREATE EXTENSION IF NOT EXISTS pg_background;
 };
 		$at_wrapper .= "CREATE$self->{create_or_replace} $type $name $fct_detail{args}$func_return";
 		my $params = '';
-		if ($#{$fct_detail{at_args}} >= 0) {
+		if ($#{$fct_detail{at_args}} >= 0)
+		{
 			map { s/(.+)/quote_nullable($1)/; }  @{$fct_detail{at_args}};
 			$params = " ' || " . join(" || ',' || ", @{$fct_detail{at_args}}) . " || ' ";
 		}
@@ -14188,13 +14225,16 @@ CREATE EXTENSION IF NOT EXISTS pg_background;
 DECLARE
 	v_query     text;
 };
-		if (!$fct_detail{hasreturn}) {
+		if (!$fct_detail{hasreturn})
+		{
 			$at_wrapper .= qq{
 BEGIN
 	v_query := 'SELECT true FROM $fname$at_suffix ($params)';
 	PERFORM * FROM pg_background_result(pg_background_launch(v_query)) AS p (ret boolean);
 };
-		} elsif ($#at_ret_param == 0) {
+		}
+		elsif ($#at_ret_param == 0)
+		{
 			my $prm = join(',', @at_ret_param);
 			$at_wrapper .= qq{
 	v_ret	$at_ret_type[0];
@@ -14216,7 +14256,8 @@ END;
 	$function .= $func_return;
 	if ($fct_detail{immutable}) {
 		$fct_detail{immutable} = ' IMMUTABLE';
-	} elsif ($plsql =~  /^FUNCTION/i) {
+	} elsif ($plsql =~  /^FUNCTION/i)
+	{
 		# Oracle function can't modify data so always mark them as stable
 		if ($self->{function_stable}) {
 			$fct_detail{immutable} = ' STABLE';
@@ -14228,14 +14269,15 @@ END;
 	}
 
 	my $revoke = '';
-	if ($fct_detail{code}) {
+	if ($fct_detail{code})
+	{
 		$fct_detail{declare} = '' if ($fct_detail{declare} !~ /[a-z]/is);
 		$fct_detail{declare} =~ s/^\s*DECLARE//i;
 		$fct_detail{declare} .= ';' if ($fct_detail{declare} && $fct_detail{declare} !~ /;\s*$/s && $fct_detail{declare} !~ /\%ORA2PG_COMMENT\d+\%\s*$/s);
 		my $code_part = '';
 		$code_part .= "DECLARE\n$fct_detail{declare}\n" if ($fct_detail{declare});
 		$fct_detail{code} =~ s/^BEGIN\b//is;
-		$code_part .= "BEGIN".$fct_detail{code};
+		$code_part .= "BEGIN" . $fct_detail{code};
 		# Replace PL/SQL code into PL/PGSQL similar code
 		$function .= Ora2Pg::PLSQL::convert_plsql_code($self, $code_part);
 		$function .= ';' if ($function !~ /END\s*;\s*$/is && $fct_detail{code} !~ /\%ORA2PG_COMMENT\d+\%\s*$/);
@@ -14243,21 +14285,28 @@ END;
 
 		# Remove parameters to RETURN call when the function has no RETURNS clause
 		if ($function !~ /\s+RETURNS\s+/s || ($function =~ /\s+RETURNS VOID\s+/s || ($type eq 'PROCEDURE' && $self->{pg_supports_procedures}))) {
+			$self->_remove_text_constant_part(\$function);
 			$function =~ s/(RETURN)\s+[^;]+;/$1;/igs;
+			$self->_restore_text_constant_part(\$function);
 		}
 		$revoke = "-- REVOKE ALL ON $type $name $fct_detail{args} FROM PUBLIC;";
 		$revoke =~ s/[\n\r]+\s*/ /gs;
 		$revoke .= "\n";
 		if ($self->{force_security_invoker}) {
 			$function .= "SECURITY INVOKER\n";
-		} else {
-			if ($self->{type} ne 'PACKAGE') {
+		}
+		else
+		{
+			if ($self->{type} ne 'PACKAGE')
+			{
 				if (!$self->{is_mysql}) {
 					$function .= "SECURITY DEFINER\n" if ($self->{security}{"\U$fct_detail{name}\E"}{security} eq 'DEFINER');
 				} else  {
 					$function .= "SECURITY DEFINER\n" if ($fct_detail{security} eq 'DEFINER');
 				}
-			} else {
+			}
+			else
+			{
 				$function .= "SECURITY DEFINER\n" if ($self->{security}{"\U$pname\E"}{security} eq 'DEFINER');
 			}
 		}
