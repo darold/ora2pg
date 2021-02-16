@@ -294,6 +294,7 @@ $QUERY_TEST_SCORE = 0.1;
 	'INVALID_CURSOR' => 'invalid_cursor_state',
 	'NO_DATA_FOUND' => 'no_data_found',
 	'LOGIN_DENIED' => 'connection_exception',
+	'TOO_MANY_ROWS'=> 'too_many_rows',
 	# 'PROGRAM_ERROR' => 'INTERNAL ERROR',
 	# 'ROWTYPE_MISMATCH' => 'DATATYPE MISMATCH'
 );
@@ -1031,7 +1032,7 @@ sub translate_statement
 		# Replace call to left outer join obsolete syntax
 		$q[$j] = replace_outer_join($class, $q[$j], 'left');
 
-		if ($q[$j] =~ /\bROWNUM\b/)
+		if ($q[$j] =~ /\bROWNUM\b/i)
 		{
 			# Replace ROWNUM after the WHERE clause by a LIMIT clause
 			$q[$j] = replace_rownum_with_limit($class, $q[$j]);
