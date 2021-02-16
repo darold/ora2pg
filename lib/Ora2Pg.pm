@@ -483,11 +483,11 @@ sub open_export_file
 
 	if ($outfile && $outfile ne '-') {
 		if ($outfile ne '-') {
-			if ($self->{input_file} && ($outfile eq $self->{input_file})) {
-				$self->logit("FATAL: input file is the same as output file: $outfile, can not overwrite it.\n",0,1);
-			}
 			if ($self->{output_dir} && !$noprefix) {
 				$outfile = $self->{output_dir} . '/' . $outfile;
+			}
+			if ($self->{input_file} && ($outfile eq $self->{input_file})) {
+				$self->logit("FATAL: input file is the same as output file: $outfile, can not overwrite it.\n",0,1);
 			}
 		}
 		# If user request data compression
@@ -532,13 +532,13 @@ sub create_export_file
 	{
 		if ($outfile ne '-')
 		{
-			if ($self->{input_file} && ($outfile eq $self->{input_file})) {
-				$self->logit("FATAL: input file is the same as output file: $outfile, can not overwrite it.\n",0,1);
-			}
 			# Prefix out file with export type in multiple export type call
 			$outfile = $self->{type} . "_$outfile" if ($#{$self->{export_type}} > 0);
 			if ($self->{output_dir} && $outfile) {
 				$outfile = $self->{output_dir} . "/" . $outfile;
+			}
+			if ($self->{input_file} && ($outfile eq $self->{input_file})) {
+				$self->logit("FATAL: input file is the same as output file: $outfile, can not overwrite it.\n",0,1);
 			}
 		}
 
@@ -577,15 +577,15 @@ sub remove_export_file
 	$outfile ||= $self->{output};
 	if ($outfile && $outfile ne '-')
 	{
-		if ($self->{input_file} && ($outfile eq $self->{input_file}))
-		{
-			$self->logit("FATAL: input file is the same as output file: $outfile, can not overwrite it.\n",0,1);
-		}
 		# Prefix out file with export type in multiple export type call
 		$outfile = $self->{type} . "_$outfile" if ($#{$self->{export_type}} > 0);
 		if ($self->{output_dir} && $outfile)
 		{
 			$outfile = $self->{output_dir} . "/" . $outfile;
+		}
+		if ($self->{input_file} && ($outfile eq $self->{input_file}))
+		{
+			$self->logit("FATAL: input file is the same as output file: $outfile, can not overwrite it.\n",0,1);
 		}
 		unlink($outfile);
 	}
