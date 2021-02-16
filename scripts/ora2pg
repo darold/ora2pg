@@ -658,9 +658,9 @@ NAMESPACE=.
 NO_CONSTRAINTS=0
 IMPORT_INDEXES_AFTER=0
 DEBUG=0
-SCHEMA_ONLY=0
-DATA_ONLY=0
-CONSTRAINTS_ONLY=0
+IMPORT_SCHEMA=0
+IMPORT_DATA=0
+IMPORT_CONSTRAINTS=0
 NO_DBCHECK=0
 
 
@@ -812,21 +812,21 @@ import_constraints () {
 # Command line options
 while getopts "b:d:e:h:j:l:n:o:p:P:t:U:aDfiIsyx?"  opt; do
     case "$opt" in
-	a) DATA_ONLY=1;;
+	a) IMPORT_DATA=1;;
 	b) SQL_POST_SCRIPT=$OPTARG;;
         d) DB_NAME=$OPTARG;;
         D) DEBUG=1;;
         e) DB_ENCODING=" -E $OPTARG";;
 	f) NO_DBCHECK=1;;
         h) DB_HOST=" -h $OPTARG";;
-        i) CONSTRAINTS_ONLY=1;;
+        i) IMPORT_CONSTRAINTS=1;;
         I) NO_CONSTRAINTS=1;;
         j) IMPORT_JOBS=" -j $OPTARG";;
         n) DB_SCHEMA=$OPTARG;;
         o) DB_OWNER=$OPTARG;;
         p) DB_PORT=" -p $OPTARG";;
         P) PARALLEL_TABLES=" -P $OPTARG";;
-        s) SCHEMA_ONLY=1;;
+        s) IMPORT_SCHEMA=1;;
         t) EXPORT_TYPE=$OPTARG;;
         U) DB_USER=" -U $OPTARG";;
 	x) IMPORT_INDEXES_AFTER=1;;
@@ -859,7 +859,7 @@ if [ ! -r "$NAMESPACE/schema/tables/table.sql" ]; then
 fi
 
 # If constraints and indexes files are present propose to import these object
-if [ $CONSTRAINTS_ONLY -eq 1 ]; then
+if [ $IMPORT_CONSTRAINTS -eq 1 ]; then
 	if confirm "Would you like to load indexes, constraints and triggers?" ; then
 		import_constraints
 	fi
@@ -867,7 +867,7 @@ if [ $CONSTRAINTS_ONLY -eq 1 ]; then
 fi
 
 # When a PostgreSQL schema list is provided, create them
-if [ $DATA_ONLY -eq 0 ]; then
+if [ $IMPORT_DATA -eq 0 ]; then
 	if [ $NO_DBCHECK  -eq 0 ]; then
 		# Create owner user
     user_exists=`psql -d $DB_NAME$DB_HOST$DB_PORT$DB_USER -Atc "select usename from pg_user where usename='$DB_OWNER';"`
@@ -1026,7 +1026,7 @@ fi
 
 
 # Check if we must just import schema or proceed to data import too
-if [ $SCHEMA_ONLY -eq 0 ]; then
+if [ $IMPORT_SCHEMA -eq 0 ]; then
 	# set the PostgreSQL datasource
 	pgdsn_defined=`grep "^PG_DSN" config/ora2pg.conf | sed 's/.*dbi:Pg/dbi:Pg/'`
 	if [ "a$pgdsn_defined" = "a" ]; then
@@ -1070,7 +1070,7 @@ if [ $SCHEMA_ONLY -eq 0 ]; then
 		fi
 	fi
 
-	if [ $NO_CONSTRAINTS -eq 0 ] && [ $DATA_ONLY -eq 0 ]; then
+	if [ $NO_CONSTRAINTS -eq 0 ] && [ $IMPORT_DATA -eq 0 ]; then
 		# Import indexes and constraint after data
 		if [ $IMPORT_INDEXES_AFTER -eq 1 ]; then
 			import_constraints
