@@ -5312,7 +5312,8 @@ sub export_procedure
 	# Code to use to find procedure parser issues, it load a file
 	# containing the untouched PL/SQL code from Oracle Procedure
 	#---------------------------------------------------------
-	if ($self->{input_file}) {
+	if ($self->{input_file})
+	{
 		$self->{procedures} = ();
 		$self->logit("Reading input code from file $self->{input_file}...\n", 1);
 		my $content = $self->read_input_file($self->{input_file});
@@ -5321,29 +5322,40 @@ sub export_procedure
 		my $fcnm = '';
 		my $old_line = '';
 		my $language = '';
-		foreach my $l (@allfct) {
+		my $first_comment = '';
+		foreach my $l (@allfct)
+		{
 			$l =~ s/\r//g;
 			next if ($l =~ /^\/$/);
 			next if ($l =~ /^\s*$/);
-			if ($old_line) {
+			if ($old_line)
+			{
 				$l = $old_line .= ' ' . $l;
 				$old_line = '';
 			}
-			if ($l =~ /^\s*CREATE\s*(?:OR REPLACE)?\s*(?:EDITIONABLE|NONEDITIONABLE)?\s*$/i) {
-				$old_line = $l;
+			$comment .= $l if ($l =~ /^\%ORA2PG_COMMENT\d+\%$/);
+			if ($l =~ /^\s*CREATE\s*(?:OR REPLACE)?\s*(?:EDITIONABLE|NONEDITIONABLE)?\s*$/i)
+			{
+				$old_line = $comment . $l;
+				$comment = '';
 				next;
 			}
-			if ($l =~ /^\s*(?:EDITIONABLE|NONEDITIONABLE)?\s*(FUNCTION|PROCEDURE)$/i) {
-				$old_line = $l;
+			if ($l =~ /^\s*(?:EDITIONABLE|NONEDITIONABLE)?\s*(FUNCTION|PROCEDURE)$/i)
+			{
+				$old_line = $comment . $l;
+				$comment = '';
 				next;
 			}
-			if ($l =~ /^\s*CREATE\s*(?:OR REPLACE)?\s*(?:EDITIONABLE|NONEDITIONABLE)?\s*(FUNCTION|PROCEDURE)\s*$/i) {
-				$old_line = $l;
+			if ($l =~ /^\s*CREATE\s*(?:OR REPLACE)?\s*(?:EDITIONABLE|NONEDITIONABLE)?\s*(FUNCTION|PROCEDURE)\s*$/i)
+			{
+				$old_line = $comment . $l;
+				$comment = '';
 				next;
 			}
 			$l =~ s/^\s*CREATE (?:OR REPLACE)?\s*(?:EDITIONABLE|NONEDITIONABLE)?\s*(FUNCTION|PROCEDURE)/$1/i;
 			$l =~ s/^\s*(?:EDITIONABLE|NONEDITIONABLE)?\s*(FUNCTION|PROCEDURE)/$1/i;
-			if ($l =~ /^(FUNCTION|PROCEDURE)\s+([^\s\(]+)/i) {
+			if ($l =~ /^(FUNCTION|PROCEDURE)\s+([^\s\(]+)/i)
+			{
 				$fcnm = $2;
 				$fcnm =~ s/"//g;
 			}
@@ -5351,13 +5363,22 @@ sub export_procedure
 			if ($l =~ /LANGUAGE\s+([^\s="'><\!\(\)]+)/is) {
 				$language = $1;
 			}
+			if ($comment)
+			{
+				$self->{procedures}{$fcnm}{text} .= "$comment";
+				$comment = '';
+			}
 			$self->{procedures}{$fcnm}{text} .= "$l\n";
-			if (!$language) {
+			if (!$language)
+			{
 				if ($l =~ /^END\s+$fcnm(_atx)?\s*;/i) {
 					$fcnm = '';
 				}
-			} else {
-				if ($l =~ /;/i) {
+			}
+			else
+			{
+				if ($l =~ /;/i)
+				{
 					$fcnm = '';
 					$language = '';
 				}
@@ -5366,10 +5387,12 @@ sub export_procedure
 
 		# Get all metadata from all procedures when we are
 		# reading a file, otherwise it has already been done
-		foreach my $fct (sort keys %{$self->{procedures}}) {
+		foreach my $fct (sort keys %{$self->{procedures}})
+		{
 			$self->{procedures}{$fct}{text} =~ s/(.*?\b(?:FUNCTION|PROCEDURE)\s+(?:[^\s\(]+))(\s*\%ORA2PG_COMMENT\d+\%\s*)+/$2$1 /is;
 			my %fct_detail = $self->_lookup_function($self->{procedures}{$fct}{text}, ($self->{is_mysql}) ? $fct : undef);
-			if (!exists $fct_detail{name}) {
+			if (!exists $fct_detail{name})
+			{
 				delete $self->{procedures}{$fct};
 				next;
 			}
@@ -5514,7 +5537,7 @@ sub export_package
 		$self->_remove_comments(\$content);
 		# Normalise start of package declaration
 		$content =~ s/CREATE(?:\s+OR\s+REPLACE)?(?:\s+EDITIONABLE|\s+NONEDITIONABLE)?\s+PACKAGE\s+/CREATE OR REPLACE PACKAGE /igs;
-		# Preserve hearder
+		# Preserve header
 		$content =~ s/^(.*?)(CREATE OR REPLACE PACKAGE)/$2/s;
 		my $start = $1 || '';
 		my @pkg_content = split(/CREATE OR REPLACE PACKAGE\s+/is, $content);
@@ -13541,7 +13564,6 @@ sub _convert_package
 			}
 		}
 	}
-
 	# Grab global declaration from the package header
 	if ($self->{packages}{$pkg}{desc} =~ /CREATE OR REPLACE PACKAGE\s+([^\s]+)(?:\s*\%ORA2PG_COMMENT\d+\%)*\s*(AS|IS)\s*(.*)/is)
 	{
@@ -13728,77 +13750,93 @@ sub _remove_comments
 	# Fix unterminated comment at end of the code
 	$$content =~ s/(\/\*(?:(?!\*\/).)*)$/$1 \*\//s;
 
-	# First remove hints they are not supported in PostgreSQL and it break the parser
-	while ($$content =~ s/(\/\*\+(?:.*?)\*\/)/\%ORA2PG_COMMENT$self->{idxcomment}\%/s) {
-		$self->{comment_values}{"\%ORA2PG_COMMENT$self->{idxcomment}\%"} = $1;
-		$self->{idxcomment}++;
-	}
-
-	# Replace some other cases that are breaking the parser (presence of -- in constant string)
+	# Replace some other cases that are breaking the parser (presence of -- in constant string, etc.)
 	my @lines = split(/([\n\r]+)/, $$content);
 	for (my $i = 0; $i <= $#lines; $i++)
 	{
 		next if ($lines[$i] !~ /\S/);
 
+		# Single line comment --...-- */ is replaced by  */ only
+		$lines[$i] =~ s/^([\t ]*)\-[\-]+\s*\*\//$1\*\//;
+
 		# Single line comment --
-		if ($lines[$i] =~ s/^([\t ]*\-\-.*)$/$1\%ORA2PG_COMMENT$self->{idxcomment}\%/) {
+		if ($lines[$i] =~ s/^([\t ]*\-\-.*)$/$1\%ORA2PG_COMMENT$self->{idxcomment}\%/)
+		{
 			$self->{comment_values}{"\%ORA2PG_COMMENT$self->{idxcomment}\%"} = $2;
 			$self->{idxcomment}++;
 		}
  
 		# Single line comment /* ... */
-		if ($lines[$i] =~ s/^([\t ]*\/\*.*\*\/)$/$1\%ORA2PG_COMMENT$self->{idxcomment}\%/) {
+		if ($lines[$i] =~ s/^([\t ]*\/\*.*\*\/)$/$1\%ORA2PG_COMMENT$self->{idxcomment}\%/)
+		{
 			$self->{comment_values}{"\%ORA2PG_COMMENT$self->{idxcomment}\%"} = $2;
 			$self->{idxcomment}++;
 		}
 
 		# ex:		v := 'literal'    -- commentaire avec un ' guillemet
-		if ($lines[$i] =~ s/^([^']+'[^']*'\s*)(\-\-.*)$/$1\%ORA2PG_COMMENT$self->{idxcomment}\%/) {
+		if ($lines[$i] =~ s/^([^']+'[^']*'\s*)(\-\-.*)$/$1\%ORA2PG_COMMENT$self->{idxcomment}\%/)
+		{
 			$self->{comment_values}{"\%ORA2PG_COMMENT$self->{idxcomment}\%"} = $2;
 			$self->{idxcomment}++;
 		}
 
 		# ex:       ---/* REN 16.12.2010 ZKOUSKA TEST NA KOLURC
-		if ($lines[$i] =~ s/^(\s*)(\-\-(?:(?!\*\/\s*$).)*)$/$1\%ORA2PG_COMMENT$self->{idxcomment}\%/) {
+		if ($lines[$i] =~ s/^(\s*)(\-\-(?:(?!\*\/\s*$).)*)$/$1\%ORA2PG_COMMENT$self->{idxcomment}\%/)
+		{
 			$self->{comment_values}{"\%ORA2PG_COMMENT$self->{idxcomment}\%"} = $2;
 			$self->{idxcomment}++;
 		}
 
 		# ex: var1 := SUBSTR(var2,1,28) || ' -- ' || var3 || ' --  ' || SUBSTR(var4,1,26) ;
-		while ($lines[$i] =~ s/('[^;']*\-\-[^']*')/\?TEXTVALUE$self->{text_values_pos}\?/) {
+		while ($lines[$i] =~ s/('[^;']*\-\-[^']*')/\?TEXTVALUE$self->{text_values_pos}\?/)
+		{
 			$self->{text_values}{$self->{text_values_pos}} = $1;
 			$self->{text_values_pos}++;
 		}
 	}
 	$$content =join('', @lines);
 
-	# Replace /* */ comments by a placeholder and save the comment
-	while ($$content =~ s/(\/\*(.*?)\*\/)/\%ORA2PG_COMMENT$self->{idxcomment}\%/s) {
+	# First remove hints they are not supported in PostgreSQL and it break the parser
+	while ($$content =~ s/(\/\*\+(?:.*?)\*\/)/\%ORA2PG_COMMENT$self->{idxcomment}\%/s)
+	{
 		$self->{comment_values}{"\%ORA2PG_COMMENT$self->{idxcomment}\%"} = $1;
 		$self->{idxcomment}++;
 	}
 
-	while ($$content =~ s/(\'[^\'\n\r]+\b(PROCEDURE|FUNCTION)\s+[^\'\n\r]+\')/\%ORA2PG_COMMENT$self->{idxcomment}\%/is) {
+	# Replace /* */ comments by a placeholder and save the comment
+	while ($$content =~ s/(\/\*(.*?)\*\/)/\%ORA2PG_COMMENT$self->{idxcomment}\%/s)
+	{
+		$self->{comment_values}{"\%ORA2PG_COMMENT$self->{idxcomment}\%"} = $1;
+		$self->{idxcomment}++;
+	}
+
+	while ($$content =~ s/(\'[^\'\n\r]+\b(PROCEDURE|FUNCTION)\s+[^\'\n\r]+\')/\%ORA2PG_COMMENT$self->{idxcomment}\%/is)
+	{
 		$self->{comment_values}{"\%ORA2PG_COMMENT$self->{idxcomment}\%"} = $1;
 		$self->{idxcomment}++;
 	}
 	@lines = split(/\n/, $$content);
-	for (my $j = 0; $j <= $#lines; $j++) {
-		if (!$self->{is_mysql}) {
+	for (my $j = 0; $j <= $#lines; $j++)
+	{
+		if (!$self->{is_mysql})
+		{
 			# Extract multiline comments as a single placeholder
 			my $old_j = $j;
 			my $cmt = '';
-			while ($lines[$j] =~ /^(\s*\-\-.*)$/) {
+			while ($lines[$j] =~ /^(\s*\-\-.*)$/)
+			{
 				$cmt .= "$1\n";
 				$j++;
 			}
-			if ( $j > $old_j ) {
+			if ( $j > $old_j )
+			{
 				chomp($cmt);
 				$lines[$old_j] =~ s/^(\s*\-\-.*)$/\%ORA2PG_COMMENT$self->{idxcomment}\%/;
 				$self->{comment_values}{"\%ORA2PG_COMMENT$self->{idxcomment}\%"} = $cmt;
 				$self->{idxcomment}++;
 				$j--;
-				while ($j > $old_j) {
+				while ($j > $old_j)
+				{
 					delete $lines[$j];
 					$j--;
 				}
@@ -13807,17 +13845,21 @@ sub _remove_comments
 			if ($lines[$j] =~ s/^([^']*)('[^\-\']*\-\-[^\-\']*')/$1\%NO_COMMENT\%/) {
 				$nocomment = $2;
 			}
-			if ($lines[$j] =~ s/(\s*\-\-.*)$/\%ORA2PG_COMMENT$self->{idxcomment}\%/) {
+			if ($lines[$j] =~ s/(\s*\-\-.*)$/\%ORA2PG_COMMENT$self->{idxcomment}\%/)
+			{
 				$self->{comment_values}{"\%ORA2PG_COMMENT$self->{idxcomment}\%"} = $1;
 				chomp($self->{comment_values}{"\%ORA2PG_COMMENT$self->{idxcomment}\%"});
 				$self->{idxcomment}++;
 			}
 			$lines[$j] =~ s/\%NO_COMMENT\%/$nocomment/;
-		} else {
+		}
+		else
+		{
 			# Mysql supports differents kinds of comment's starter
 			if ( ($lines[$j] =~ s/(\s*\-\- .*)$/\%ORA2PG_COMMENT$self->{idxcomment}\%/) ||
-			(!grep(/^$self->{type}$/, 'FUNCTION', 'PROCEDURE') && $lines[$j] =~ s/(\s*COMMENT\s+'.*)$/\%ORA2PG_COMMENT$self->{idxcomment}\%/) ||
-			($lines[$j] =~ s/(\s*\# .*)$/\%ORA2PG_COMMENT$self->{idxcomment}\%/) ) {
+				(!grep(/^$self->{type}$/, 'FUNCTION', 'PROCEDURE') && $lines[$j] =~ s/(\s*COMMENT\s+'.*)$/\%ORA2PG_COMMENT$self->{idxcomment}\%/) ||
+				($lines[$j] =~ s/(\s*\# .*)$/\%ORA2PG_COMMENT$self->{idxcomment}\%/) )
+			{
 				$self->{comment_values}{"\%ORA2PG_COMMENT$self->{idxcomment}\%"} = $1;
 				chomp($self->{comment_values}{"\%ORA2PG_COMMENT$self->{idxcomment}\%"});
 				# Normalize start of comment
@@ -13830,7 +13872,8 @@ sub _remove_comments
 	$$content = join("\n", @lines);
 
 	# Replace subsequent comment by a single one
-	while ($$content =~ s/(\%ORA2PG_COMMENT\d+\%\s*\%ORA2PG_COMMENT\d+\%)/\%ORA2PG_COMMENT$self->{idxcomment}\%/s) {
+	while ($$content =~ s/(\%ORA2PG_COMMENT\d+\%\s*\%ORA2PG_COMMENT\d+\%)/\%ORA2PG_COMMENT$self->{idxcomment}\%/s)
+	{
 		$self->{comment_values}{"\%ORA2PG_COMMENT$self->{idxcomment}\%"} = $1;
 		$self->{idxcomment}++;
 	}
@@ -13843,7 +13886,6 @@ sub _remove_comments
 	if (!$no_constant) {
 		$self->_remove_text_constant_part($content);
 	}
-
 }
 
 =head2 _convert_function
