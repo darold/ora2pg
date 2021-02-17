@@ -1105,7 +1105,7 @@ NULL_EQUAL_EMPTY	0
 # Force empty_clob() and empty_blob() to be exported as NULL instead as empty
 # string for the first one and \\\\x for the second. If NULL is allowed in your
 # column this might improve data export speed if you have lot of empty lob.
-EMPTY_LOB_NULL		0
+EMPTY_LOB_NULL		1
 
 # If you don't want to export package as schema but as simple functions you
 # might also want to replace all call to package_name.function_name. If you

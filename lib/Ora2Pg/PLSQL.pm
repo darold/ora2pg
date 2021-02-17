@@ -726,7 +726,7 @@ sub plsql_to_plpgsql
 
 	# Replace DEFAULT empty_blob() and empty_clob()
 	my $empty = "''";
-	$empty = 'NULL' if (!$class->{empty_lob_null});
+	$empty = 'NULL' if ($class->{empty_lob_null});
 	$str =~ s/(empty_blob|empty_clob)\s*\(\s*\)/$empty/is;
 	$str =~ s/(empty_blob|empty_clob)\b/$empty/is;
 
@@ -1370,7 +1370,7 @@ sub replace_oracle_function
 
 	# Replace DEFAULT empty_blob() and empty_clob()
 	my $empty = "''";
-	$empty = 'NULL' if (!$class->{empty_lob_null});
+	$empty = 'NULL' if ($class->{empty_lob_null});
 	$str =~ s/(empty_blob|empty_clob)\s*\(\s*\)/$empty/is;
 	$str =~ s/(empty_blob|empty_clob)\b/$empty/is;
 
