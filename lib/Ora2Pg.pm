@@ -2631,17 +2631,20 @@ sub read_schema_from_file
 				$c =~ s/\(\s+/\(/gs;
 
 				# Get column name
-				if ($c =~ s/^\s*([^\s]+)\s*//s) {
+				if ($c =~ s/^\s*([^\s]+)\s*//s)
+				{
 					my $c_name = $1;
 					$c_name =~ s/"//g;
 					# Retrieve all columns information
-					if (!grep(/^\Q$c_name\E$/i, 'CONSTRAINT','INDEX')) {
+					if (!grep(/^\Q$c_name\E$/i, 'CONSTRAINT','INDEX'))
+					{
 						$cur_c_name = $c_name;
 						$c_name =~ s/\./_/gs;
 						my $c_default = '';
 						my $virt_col = 'NO';
 						$c =~ s/\s+ENABLE//is;
-						if ($c =~ s/\bGENERATED\s+(ALWAYS|BY\s+DEFAULT)\s+(ON\s+NULL\s+)?AS\s+IDENTITY\s*(.*)//is) {
+						if ($c =~ s/\bGENERATED\s+(ALWAYS|BY\s+DEFAULT)\s+(ON\s+NULL\s+)?AS\s+IDENTITY\s*(.*)//is)
+						{
 							$self->{identity_info}{$tb_name}{$c_name}{generation} = $1;
 							my $options = $3;
 							$self->{identity_info}{$tb_name}{$c_name}{options} = $3;
@@ -2668,19 +2671,23 @@ sub read_schema_from_file
 							if ($self->{identity_info}{$tb_name}{$c_name}{options} =~ /MAXVALUE\s+(\d+)/is) {
 								$self->{identity_info}{$tb_name}{$c_name}{options} =~ s/(MAXVALUE)\s+\d+/$1 9223372036854775807/is;
 							}
-						} elsif ($c =~ s/\b(GENERATED ALWAYS AS|AS)\s+(.*)//is) {
+						}
+						elsif ($c =~ s/\b(GENERATED ALWAYS AS|AS)\s+(.*)//is)
+						{
 							$virt_col = 'YES';
 							$c_default = $2;
 							$c_default =~ s/\s+VIRTUAL//is;
 						}
 						my $c_type = '';
-						if ($c =~ s/^ENUM\s*(\([^\(\)]+\))\s*//is) {
+						if ($c =~ s/^ENUM\s*(\([^\(\)]+\))\s*//is)
+						{
 							$c_type = 'varchar';
 							my $ck_name = 'ora2pg_ckey_' . $c_name;
 							$self->_parse_constraint($tb_name, $c_name, "$ck_name CHECK ($c_name IN $1)");
 						} elsif ($c =~ s/^([^\s\(]+)\s*//s) {
 							$c_type = $1;
-						} elsif ($c_default) {
+						} elsif ($c_default)
+						{
 							# Try to guess a type the virtual column was declared without one,
 							# but always default to text and always display a warning.
 							if ($c_default =~ /ROUND\s*\(/is) {
@@ -2691,12 +2698,15 @@ sub read_schema_from_file
 								$c_type = 'text';
 							}
 							print STDERR "WARNING: Virtual column $tb_name.$cur_c_name has no data type defined, using $c_type but you need to check that this is the right type.\n";
-						} else {
+						}
+						else
+						{
 							next;
 						}
 						my $c_length = '';
 						my $c_scale = '';
-						if ($c =~ s/^\(([^\)]+)\)\s*//s) {
+						if ($c =~ s/^\(([^\)]+)\)\s*//s)
+						{
 							$c_length = $1;
 							if ($c_length =~ s/\s*,\s*(\d+)\s*//s) {
 								$c_scale = $1;
@@ -2709,7 +2719,8 @@ sub read_schema_from_file
 							$c_nullable = 0;
 						}
 
-						if (($c =~ s/(UNIQUE|PRIMARY KEY)\s*\(([^\)]+)\)//is) || ($c =~ s/(UNIQUE|PRIMARY KEY)\s*//is)) {
+						if (($c =~ s/(UNIQUE|PRIMARY KEY)\s*\(([^\)]+)\)//is) || ($c =~ s/(UNIQUE|PRIMARY KEY)\s*//is))
+						{
 							$c_name =~ s/\./_/gs;
 							my $pk_name = 'ora2pg_ukey_' . $c_name; 
 							my $cols = $c_name;
@@ -2718,17 +2729,22 @@ sub read_schema_from_file
 							}
 							$self->_parse_constraint($tb_name, $c_name, "$pk_name $1 ($cols)");
 
-						} elsif ( ($c =~ s/CONSTRAINT\s([^\s]+)\sCHECK\s*\(([^\)]+)\)//is) || ($c =~ s/CHECK\s*\(([^\)]+)\)//is) ) {
+						}
+						elsif ( ($c =~ s/CONSTRAINT\s([^\s]+)\sCHECK\s*\(([^\)]+)\)//is) || ($c =~ s/CHECK\s*\(([^\)]+)\)//is) )
+						{
 							$c_name =~ s/\./_/gs;
 							my $pk_name = 'ora2pg_ckey_' . $c_name; 
 							my $chk_search = $1;
-							if ($2) {
+							if ($2)
+							{
 								$pk_name = $1;
 								$chk_search = $2;
 							}
+							$chk_search .= $c if ($c eq ')');
 							$self->_parse_constraint($tb_name, $c_name, "$pk_name CHECK ($chk_search)");
-
-						} elsif ($c =~ s/REFERENCES\s+([^\(\s]+)\s*\(([^\)]+)\)//is) {
+						}
+						elsif ($c =~ s/REFERENCES\s+([^\(\s]+)\s*\(([^\)]+)\)//is)
+						{
 
 							$c_name =~ s/\./_/gs;
 							my $pk_name = 'ora2pg_fkey_' . $c_name; 
@@ -2742,7 +2758,8 @@ sub read_schema_from_file
 							$auto_incr = 1;
 						}
 						# At this stage only the DEFAULT part might be on the string
-						if ($c =~ /\bDEFAULT\s+/is) {
+						if ($c =~ /\bDEFAULT\s+/is)
+						{
 							if ($c =~ s/\bDEFAULT\s+('[^']+')\s*//is) {
 								$c_default = $1;
 							} elsif ($c =~ s/\bDEFAULT\s+([^\s]+)\s*$//is) {
@@ -2755,7 +2772,8 @@ sub read_schema_from_file
 								$c_default = Ora2Pg::PLSQL::convert_plsql_code($self, $c_default);
 							}
 						}
-						if ($c_type =~ /date|timestamp/i && $c_default =~ /'0000-00-00/) {
+						if ($c_type =~ /date|timestamp/i && $c_default =~ /'0000-00-00/)
+						{
 							if ($self->{replace_zero_date}) {
 								$c_default = $self->{replace_zero_date};
 							} else {
@@ -2767,10 +2785,15 @@ sub read_schema_from_file
 						}
 						# COLUMN_NAME,DATA_TYPE,DATA_LENGTH,NULLABLE,DATA_DEFAULT,DATA_PRECISION,DATA_SCALE,CHAR_LENGTH,TABLE_NAME,OWNER,VIRTUAL_COLUMN,POSITION,AUTO_INCREMENT,SRID,SDO_DIM,SDO_GTYPE
 						push(@{$self->{tables}{$tb_name}{column_info}{$c_name}}, ($c_name, $c_type, $c_length, $c_nullable, $c_default, $c_length, $c_scale, $c_length, $tb_name, '', $virt_col, $pos, $auto_incr));
-					} elsif (uc($c_name) eq 'CONSTRAINT') {
+					}
+					elsif (uc($c_name) eq 'CONSTRAINT')
+					{
 						$self->_parse_constraint($tb_name, $cur_c_name, $c);
-					} elsif (uc($c_name) eq 'INDEX') {
-						if ($c =~ /^\s*UNIQUE\s+([^\s]+)\s+\(([^\)]+)\)/) {
+					}
+					elsif (uc($c_name) eq 'INDEX')
+					{
+						if ($c =~ /^\s*UNIQUE\s+([^\s]+)\s+\(([^\)]+)\)/)
+						{
 							my $idx_name = $1;
 							my @cols = ();
 							push(@cols, split(/\s*,\s*/, $2));
@@ -2779,7 +2802,9 @@ sub read_schema_from_file
 							$self->{tables}{$tb_name}{unique_key}->{$idx_name}{generated} = 0;
 							$self->{tables}{$tb_name}{unique_key}->{$idx_name}{index_name} = $idx_name;
 							push(@{$self->{tables}{$tb_name}{unique_key}->{$idx_name}{columns}}, @cols);
-						} elsif ($c =~ /^\s*([^\s]+)\s+\(([^\)]+)\)/) {
+						}
+						elsif ($c =~ /^\s*([^\s]+)\s+\(([^\)]+)\)/)
+						{
 							my $idx_name = $1;
 							my @cols = ();
 							push(@cols, split(/\s*,\s*/, $2));
@@ -7124,13 +7149,15 @@ sub export_table
 		}
 
 		# Change ownership
-		if ($self->{force_owner}) {
+		if ($self->{force_owner})
+		{
 			my $owner = $self->{tables}{$table}{table_info}{owner};
 			$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
 			$sql_output .= "ALTER$foreign $self->{tables}{$table}{table_info}{type} " .  $self->quote_object_name($tbname)
 						. " OWNER TO " .  $self->quote_object_name($owner) . ";\n";
 		}
-		if (exists $self->{tables}{$table}{alter_index} && $self->{tables}{$table}{alter_index}) {
+		if (exists $self->{tables}{$table}{alter_index} && $self->{tables}{$table}{alter_index})
+		{
 			foreach (@{$self->{tables}{$table}{alter_index}}) {
 				$sql_output .= "$_;\n";
 			}
@@ -7144,7 +7171,8 @@ sub export_table
 			my ($idx, $fts_idx) = $self->_create_indexes($table, 0, %{$self->{tables}{$table}{indexes}});
 			$indices .= "$idx\n" if ($idx);
 			$fts_indices .= "$fts_idx\n" if ($fts_idx);
-			if (!$self->{file_per_index}) {
+			if (!$self->{file_per_index})
+			{
 				$sql_output .= $indices;
 				$indices = '';
 				$sql_output .= $fts_indices;
@@ -7155,13 +7183,15 @@ sub export_table
 			$constraints .= $self->_create_unique_keys($table, $self->{tables}{$table}{unique_key});
 			# Set the check constraint definition 
 			$constraints .= $self->_create_check_constraint($table, $self->{tables}{$table}{check_constraint},$self->{tables}{$table}{field_name}, @skip_column_check);
-			if (!$self->{file_per_constraint}) {
+			if (!$self->{file_per_constraint})
+			{
 				$sql_output .= $constraints;
 				$constraints = '';
 			}
 		}
 
-		if (exists $self->{tables}{$table}{alter_table} && !$self->{disable_unlogged} ) {
+		if (exists $self->{tables}{$table}{alter_table} && !$self->{disable_unlogged} )
+		{
 			$obj_type =~ s/UNLOGGED //;
 			foreach (@{$self->{tables}{$table}{alter_table}}) {
 				$sql_output .= "\nALTER $obj_type $tbname $_;\n";
@@ -9055,20 +9085,25 @@ sub _create_check_constraint
 
 	my $out = '';
 	# Set the check constraint definition 
-	foreach my $k (keys %{$check_constraint->{constraint}}) {
+	foreach my $k (keys %{$check_constraint->{constraint}})
+	{
 		my $chkconstraint = $check_constraint->{constraint}->{$k}{condition};
 		my $validate = '';
 		$validate = ' NOT VALID' if ($check_constraint->{constraint}->{$k}{validate} eq 'NOT VALIDATED');
 		next if (!$chkconstraint);
 		my $skip_create = 0;
-		if (exists $check_constraint->{notnull}) {
+		if (exists $check_constraint->{notnull})
+		{
 			foreach my $col (@{$check_constraint->{notnull}}) {
 				$skip_create = 1, last if (lc($chkconstraint) eq lc("\"$col\" IS NOT NULL"));
 			}
 		}
-		if (!$skip_create) {
-			if (exists $self->{replaced_cols}{"\L$tbsaved\E"} && $self->{replaced_cols}{"\L$tbsaved\E"}) {
-				foreach my $c (keys %{$self->{replaced_cols}{"\L$tbsaved\E"}}) {
+		if (!$skip_create)
+		{
+			if (exists $self->{replaced_cols}{"\L$tbsaved\E"} && $self->{replaced_cols}{"\L$tbsaved\E"})
+			{
+				foreach my $c (keys %{$self->{replaced_cols}{"\L$tbsaved\E"}})
+				{
 					$chkconstraint =~ s/"$c"/"$self->{replaced_cols}{"\L$tbsaved\E"}{"\L$c\E"}"/gsi;
 					$chkconstraint =~ s/\b$c\b/$self->{replaced_cols}{"\L$tbsaved\E"}{"\L$c\E"}/gsi;
 				}
@@ -9076,7 +9111,8 @@ sub _create_check_constraint
 			if ($self->{plsql_pgsql}) {
 				$chkconstraint = Ora2Pg::PLSQL::convert_plsql_code($self, $chkconstraint);
 			}
-			foreach my $c (@$field_name) {
+			foreach my $c (@$field_name)
+			{
 				# Force lower case
 				my $ret = $self->quote_object_name($c);
 				$chkconstraint =~ s/"$c"/$ret/igs;
@@ -9085,12 +9121,15 @@ sub _create_check_constraint
 
 			# If the column has been converted as a boolean do not export the constraint
 			my $converted_as_boolean = 0;
-			foreach my $c (@$field_name) {
+			foreach my $c (@$field_name)
+			{
 				if (grep(/^$c$/i, @skip_column_check) && $chkconstraint =~ /\b$c\b/i) {
 					$converted_as_boolean = 1;
 				}
 			}
-			if (!$converted_as_boolean) {
+			if (!$converted_as_boolean)
+			{
+				$chkconstraint = Ora2Pg::PLSQL::replace_oracle_function($self, $chkconstraint);
 				$out .= "ALTER TABLE $table ADD CONSTRAINT $k CHECK ($chkconstraint)$validate;\n";
 			}
 		}

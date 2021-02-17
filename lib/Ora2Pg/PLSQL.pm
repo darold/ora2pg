@@ -851,8 +851,8 @@ sub plsql_to_plpgsql
 	####
 	# Catch potential subquery first and replace rownum in subqueries
 	my @statements = split(/;/, $str);
-	for ( my $i = 0; $i <= $#statements; $i++ ) {
-
+	for ( my $i = 0; $i <= $#statements; $i++ )
+	{
 		# Remove any unecessary parenthesis in code
 		$statements[$i] = remove_extra_parenthesis($statements[$i]);
 
@@ -861,10 +861,13 @@ sub plsql_to_plpgsql
 		extract_subpart($class, \$statements[$i]);
 
 		# Translate all sub parts of the query before applying translation on the main query
-		foreach my $z (sort {$a <=> $b } keys %{$class->{sub_parts}}) {
-			if ($class->{sub_parts}{$z} =~ /\S/is) { 
+		foreach my $z (sort {$a <=> $b } keys %{$class->{sub_parts}})
+		{
+			if ($class->{sub_parts}{$z} =~ /\S/is)
+			{ 
 				$class->{sub_parts}{$z} = translate_statement($class, $class->{sub_parts}{$z}, 1);
-				if ($class->{sub_parts}{$z} =~ /SELECT/is) {
+				if ($class->{sub_parts}{$z} =~ /SELECT/is)
+				{
 					$class->{sub_parts}{$z} .= $class->{limit_clause};
 					$class->{limit_clause} = '';
 				}
@@ -872,10 +875,13 @@ sub plsql_to_plpgsql
 				$class->{sub_parts}{$z} = append_alias_clause($class->{sub_parts}{$z});
 			}
 			# If subpart is not empty after transformation
-			if ($class->{sub_parts}{$z} =~ /\S/is) { 
+			if ($class->{sub_parts}{$z} =~ /\S/is)
+			{
 				# add open and closed parenthesis 
 				$class->{sub_parts}{$z} = '(' . $class->{sub_parts}{$z} . ')';
-			} elsif ($statements[$i] !~ /\s+(WHERE|AND|OR)\s*\%SUBQUERY$z\%/is) {
+			}
+			elsif ($statements[$i] !~ /\s+(WHERE|AND|OR)\s*\%SUBQUERY$z\%/is)
+			{
 				# otherwise do not report the empty parenthesis when this is not a function
 				$class->{sub_parts}{$z} = '(' . $class->{sub_parts}{$z} . ')';
 			}
@@ -929,16 +935,20 @@ sub plsql_to_plpgsql
 	# Sometime variable used in FOR ... IN SELECT loop is not declared
 	# Append its RECORD declaration in the DECLARE section.
 	my $tmp_code = $str;
-	while ($tmp_code =~ s/\bFOR\s+([^\s]+)\s+IN(.*?)LOOP//is) {
+	while ($tmp_code =~ s/\bFOR\s+([^\s]+)\s+IN(.*?)LOOP//is)
+	{
 		my $varname = $1;
 		my $clause = $2;
 		my @code = split(/\bBEGIN\b/i, $str);
-		if ($code[0] !~ /\bDECLARE\s+.*\b$varname\s+/is) {
+		if ($code[0] !~ /\bDECLARE\s+.*\b$varname\s+/is)
+		{
 			# When the cursor is refereing to a statement, declare
 			# it as record otherwise it don't need to be replaced
-			if ($clause =~ /\bSELECT\b/is) {
+			if ($clause =~ /\bSELECT\b/is)
+			{
 				# append variable declaration to declare section
-				if ($str !~ s/\bDECLARE\b/DECLARE\n  $varname RECORD;/is) {
+				if ($str !~ s/\bDECLARE\b/DECLARE\n  $varname RECORD;/is)
+				{
 					# No declare section
 					$str = "DECLARE\n  $varname RECORD;\n" . $str;
 				}
