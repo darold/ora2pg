@@ -715,6 +715,8 @@ sub plsql_to_plpgsql
 	$str =~ s/\bMINUS\b/EXCEPT/igs;
 	# Comment DBMS_OUTPUT.ENABLE calls
 	$str =~ s/(DBMS_OUTPUT.ENABLE[^;]+;)/-- $1/isg;
+	# DBMS_LOB.GETLENGTH can be replaced by binary length.
+	$str =~ s/DBMS_LOB.GETLENGTH/octet_length/igs;
 
 	# Raise information to the client
 	$str =~ s/DBMS_OUTPUT\.(put_line|put|new_line)\s*\((.*?)\)\s*;/&raise_output($class, $2) . ';'/isge;
@@ -1374,6 +1376,9 @@ sub replace_oracle_function
 	$str =~ s/(empty_blob|empty_clob)\s*\(\s*\)/$empty/is;
 	$str =~ s/(empty_blob|empty_clob)\b/$empty/is;
 
+	# DBMS_LOB.GETLENGTH can be replaced by binary length.
+	$str =~ s/DBMS_LOB.GETLENGTH/octet_length/igs;
+
 	# Replace call to SYS_GUID() function
 	$str =~ s/\bSYS_GUID\s*\(\s*\)/$class->{uuid_function}()/is;
 	$str =~ s/\bSYS_GUID\b/$class->{uuid_function}()/is;
@@ -1396,8 +1401,8 @@ sub replace_oracle_function
 	$str =~ s/\bTRIM\s*\(([^\(\)]+)\)/trim(both $1)/is;
 
 	# Do some transformation when Orafce is not used
-	if (!$class->{use_orafce}) {
-
+	if (!$class->{use_orafce})
+	{
 		# Replace to_char() without format by a simple cast to text
 		$str =~ s/\bTO_CHAR\s*\(\s*([^,\)]+)\)/($1)::varchar/is;
 		if ($class->{type} ne 'TABLE') {
@@ -1414,8 +1419,10 @@ sub replace_oracle_function
 		if ($str =~ s/\bTRUNC\s*\($date_field,$field\)/date_trunc($2, $1)/is ||
 		    # Case where the parameters are obfuscated by function and string placeholders
 		    $str =~ s/\bTRUNC\((\%\%REPLACEFCT\d+\%\%)\s*,\s*(\?TEXTVALUE\d+\?)\)/date_trunc($2, $1)/is
-		) {
-			if ($str =~ /date_trunc\(\?TEXTVALUE(\d+)\?/) {
+		)
+		{
+			if ($str =~ /date_trunc\(\?TEXTVALUE(\d+)\?/)
+			{
 				my $k = $1;
 				$class->{text_values}{$k} =~ s/'(SYYYY|SYEAR|YEAR|[Y]+)'/'year'/is;
 				$class->{text_values}{$k} =~ s/'Q'/'quarter'/is;
@@ -1437,7 +1444,6 @@ sub replace_oracle_function
 
 		# Translate numtodsinterval Oracle function
 		$str =~ s/(?:NUMTODSINTERVAL|NUMTOYMINTERVAL)\s*\(\s*([^,]+)\s*,\s*([^\)]+)\s*\)/($1 * ('1'||$2)::interval)/is;
-
 	}
 
 	# Replace INSTR by POSITION
@@ -1446,15 +1452,19 @@ sub replace_oracle_function
 
 	# The to_number() function reclaim a second argument under postgres which is the format.
 	# Replace to_number with a cast when no specific format is given
-	if (lc($class->{to_number_conversion}) ne 'none') {
-		if ($class->{to_number_conversion} =~ /(numeric|bigint|integer|int)/i) {
+	if (lc($class->{to_number_conversion}) ne 'none')
+	{
+		if ($class->{to_number_conversion} =~ /(numeric|bigint|integer|int)/i)
+		{
 			my $cast = lc($1);
 			if ($class->{type} ne 'TABLE') {
 				$str =~ s/\bTO_NUMBER\s*\(\s*([^,\)]+)\s*\)\s?/($1)\:\:$cast /is;
 			} else {
 				$str =~ s/\bTO_NUMBER\s*\(\s*([^,\)]+)\s*\)\s?/($1\:\:$cast) /is;
 			}
-		} else {
+		}
+		else
+		{
 			$str =~ s/\bTO_NUMBER\s*\(\s*([^,\)]+)\s*\)/to_number\($1,'$class->{to_number_conversion}'\)/is;
 		}
 	}
@@ -1478,7 +1488,8 @@ sub replace_oracle_function
 	# Cast round() call as numeric
 	$str =~ s/round\s*\(([^,]+),([\s\d]+)\)/round\(($1)::numeric,$2\)/is;
 
-	if ($str =~ /SDO_/is) {
+	if ($str =~ /SDO_/is)
+	{
 		# Replace SDO_GEOM to the postgis equivalent
 		$str = &replace_sdo_function($str);
 
@@ -1492,7 +1503,8 @@ sub replace_oracle_function
 	# Replace Oracle substr(string, start_position, length) with
 	# PostgreSQL substring(string from start_position for length)
 	$str =~ s/\bsubstrb\s*\(/substr\(/igs;
-	if (!$class->{pg_supports_substr}) {
+	if (!$class->{pg_supports_substr})
+	{
 		$str =~ s/\bsubstr\s*\($field,$field,$field\)/substring($1 from $2 for $3)/is;
 		$str =~ s/\bsubstr\s*\($field,$field\)/substring($1 from $2)/is;
 	}
