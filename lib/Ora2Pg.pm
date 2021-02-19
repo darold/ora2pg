@@ -1184,7 +1184,7 @@ sub _init
 	$self->{no_blob_export} ||= 0;
 
 	# Table data export will be sorted by name by default
-	$self->{data_sort_order} ||= 'name';
+	$self->{data_export_order} ||= 'name';
 
 	# Free some memory
 	%options = ();
@@ -5985,7 +5985,7 @@ sub export_kettle
 
 	# Ordering tables by name by default
 	my @ordered_tables = sort { $a cmp $b } keys %{$self->{tables}};
-	if (lc($self->{data_sort_order}) eq 'size') {
+	if (lc($self->{data_export_order}) eq 'size') {
 		@ordered_tables = sort {
 			($self->{tables}{$b}{table_info}{num_rows} || $self->{tables}{$a}{table_info}{num_rows}) ?
 				$self->{tables}{$b}{table_info}{num_rows} <=> $self->{tables}{$a}{table_info}{num_rows} :
@@ -7554,7 +7554,7 @@ sub _get_sql_statements
 
 		# Ordering tables by name by default
 		my @ordered_tables = sort { $a cmp $b } keys %{$self->{tables}};
-		if (lc($self->{data_sort_order}) eq 'size')
+		if (lc($self->{data_export_order}) eq 'size')
 		{
 			@ordered_tables = sort {
 				($self->{tables}{$b}{table_info}{num_rows} || $self->{tables}{$a}{table_info}{num_rows}) ?
@@ -16436,7 +16436,7 @@ sub _show_infos
 
 		# Ordering tables by name by default
 		my @ordered_tables = sort { $a cmp $b } keys %tables_infos;
-		if (lc($self->{data_sort_order}) eq 'size')
+		if (lc($self->{data_export_order}) eq 'size')
 		{
 			@ordered_tables = sort {
 				($tables_infos{$b}{num_rows} || $tables_infos{$a}{num_rows}) ?
