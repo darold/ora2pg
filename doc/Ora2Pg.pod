@@ -82,11 +82,8 @@ it will brings you the page for download.
 Releases of Ora2Pg stay at SF.net (https://sourceforge.net/projects/ora2pg/).
 
 Under Windows you should install Strawberry Perl (http://strawberryperl.com/)
-and the OSes corresponding Oracle clients. It seems that compiling DBD::Oracle
-from CPAN on Windows can be a struggle and there be little documentation on that
-(mostly outdated and not working). Installing the free version of ActiveState
-Perl (http://www.activestate.com/activeperl) could help as they seems to have
-an already packaged DBD::Oracle easy to install.
+and the OSes corresponding Oracle clients. Since version 5.32 this Perl
+distribution include pre-compiled driver of DBD::Oracle and DBD::Pg.
 
 =head2 Requirement
 
@@ -116,6 +113,15 @@ DBD::mysql which requires that the mysql client libraries are installed.
 
 On some Perl distribution you may need to install the Time::HiRes Perl module. 
 
+If your distribution doesn't include these Perl modules you can install them
+using CPAN:
+
+	perl -MCPAN -e 'install DBD::Oracle'
+	perl -MCPAN -e 'install DBD::MySQL'
+	perl -MCPAN -e 'install Time::HiRes'
+
+otherwise use the packages provided by your distribution.
+
 =head2 Optional
 
 By default Ora2Pg dumps export to flat files, to load them into your PostgreSQL
@@ -127,6 +133,14 @@ DBD::Pg is required.
 Ora2Pg allows you to dump all output in a compressed gzip file, to do that you
 need the Compress::Zlib Perl module or if you prefer using bzip2 compression,
 the program bzip2 must be available in your PATH.
+
+If your distribution doesn't include these Perl modules you can install them
+using CPAN:
+
+	perl -MCPAN -e 'install DBD::Pg'
+	perl -MCPAN -e 'install Compress::Zlib'
+
+otherwise use the packages provided by your distribution.
 
 =head2 Installing Ora2Pg
 
