@@ -168,19 +168,63 @@ our @FKEY_OPTIONS = ('NEVER', 'DELETE', 'ALWAYS');
 # Minimized the footprint on disc, so that more rows fit on a data page,
 # which is the most important factor for speed. 
 our %TYPALIGN = (
-	'bool' => 0, 'boolean' => 0, 'bytea' => 4, 'char' => 0, 'name' => 0,
-	'int8' => 8, 'int2' => 2, 'int4' => 4, 'text' => 4, 'oid' => 4, 'json' => 4,
-	'xml' => 4, 'point' => 8, 'lseg' => 8, 'path' => 8, 'box' => 8,
-	'polygon' => 8, 'line' => 8, 'float4' => 4, 'float8' => 8,
-	'abstime' => 4, 'reltime' => 4, 'tinterval' => 4, 'circle' => 8,
-	'money' => 8, 'macaddr' => 4, 'inet' => 4, 'cidr' => 4, 'bpchar' => 4,
-	'varchar' => 4, 'date' => 4, 'time' => 8, 'timestamp' => 8,
-	'timestamptz' => 8, 'interval' => 8, 'timetz' => 8, 'bit' => 4,
-	'varbit' => 4, 'numeric' => 4, 'uuid' => 0, 'timestamp with time zone' => 8,
-	'character varying' => 0, 'timestamp without time zone' => 8,
-	'double precision' => 8, 'smallint' => 2, 'integer' => 4, 'bigint' => 8,
-	'decimal' => '4', 'real' => 4, 'smallserial' => 2, 'serial' => 4,
-	'bigserial' => 8
+	# Types and size, 1000 = variable
+	'boolean' => 1,
+	'smallint' => 2,
+	'smallserial' => 2,
+	'integer' => 4,
+	'real' => 4,
+	'serial' => 4,
+	'date' => 4,
+	'oid' => 4,
+	'macaddr' => 6,
+	'bigint' => 8,
+	'bigserial' => 8,
+	'double precision' => 8,
+	'macaddr8' => 8,
+	'money' => 8,
+	'time' => 8,
+	'timestamp' => 8,
+	'timestamp without time zone' => 8,
+	'timestamp with time zone' => 8,
+	'interval' => 16,
+	'point' => 16,
+	'tinterval' => 16,
+	'uuid' => 16,
+	'circle' => 24,
+	'box' => 32,
+	'line' => 32,
+	'lseg' => 32,
+	'bit' => 1000,
+	'bytea' => 1000,
+	'character varying' => 1000,
+	'cidr' => 19,
+	'json' => 1000,
+	'jsonb' => 1000,
+	'numeric' => 1000,
+	'path' => 1000,
+	'polygon' => 1000,
+	'text' => 1000,
+	'xml' => 1000,
+	# aliases
+	'bool' => 1,
+	'timetz' => 12,
+	'char' => 1000,
+	'decimal' => 1000,
+	# deprecated
+	'int2' => 2,
+	'abstime' => 4,
+	'bpchar' => 4,
+	'int4' => 4,
+	'reltime' => 4,
+	'float4' => 4,
+	'timestamptz' => 8,
+	'float8' => 8,
+	'int8' => 8,
+	'name' => 64,
+	'inet' => 19,
+	'varbit' => 1000,
+	'varchar' => 1000
 );
 
 # These definitions can be overriden from configuration file
@@ -1184,7 +1228,7 @@ sub _init
 	$self->{no_blob_export} ||= 0;
 
 	# Table data export will be sorted by name by default
-	$self->{data_sort_order} ||= 'name';
+	$self->{data_export_order} ||= 'name';
 
 	# Free some memory
 	%options = ();
@@ -5985,7 +6029,7 @@ sub export_kettle
 
 	# Ordering tables by name by default
 	my @ordered_tables = sort { $a cmp $b } keys %{$self->{tables}};
-	if (lc($self->{data_sort_order}) eq 'size') {
+	if (lc($self->{data_export_order}) eq 'size') {
 		@ordered_tables = sort {
 			($self->{tables}{$b}{table_info}{num_rows} || $self->{tables}{$a}{table_info}{num_rows}) ?
 				$self->{tables}{$b}{table_info}{num_rows} <=> $self->{tables}{$a}{table_info}{num_rows} :
@@ -7554,7 +7598,7 @@ sub _get_sql_statements
 
 		# Ordering tables by name by default
 		my @ordered_tables = sort { $a cmp $b } keys %{$self->{tables}};
-		if (lc($self->{data_sort_order}) eq 'size')
+		if (lc($self->{data_export_order}) eq 'size')
 		{
 			@ordered_tables = sort {
 				($self->{tables}{$b}{table_info}{num_rows} || $self->{tables}{$a}{table_info}{num_rows}) ?
@@ -16436,7 +16480,7 @@ sub _show_infos
 
 		# Ordering tables by name by default
 		my @ordered_tables = sort { $a cmp $b } keys %tables_infos;
-		if (lc($self->{data_sort_order}) eq 'size')
+		if (lc($self->{data_export_order}) eq 'size')
 		{
 			@ordered_tables = sort {
 				($tables_infos{$b}{num_rows} || $tables_infos{$a}{num_rows}) ?
