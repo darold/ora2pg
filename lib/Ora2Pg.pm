@@ -3153,52 +3153,69 @@ sub read_trigger_from_file
 	my @triggers_decl = split(/(?:CREATE)?(?:\s+OR\s+REPLACE)?\s*(?:DEFINER=[^\s]+)?\s*\bTRIGGER(\s+|$)/is, $content);
 	foreach $content (@triggers_decl)
 	{
+		my $t_name = '';
+		my $t_pos = '';
+		my $t_event = '';
+		my $tb_name = '';
+		my $trigger = '';
+		my $t_type = '';
 		if ($content =~ s/^([^\s]+)\s+(BEFORE|AFTER|INSTEAD\s+OF)\s+(.*?)\s+ON\s+([^\s]+)\s+(.*)(\bEND\s*(?!IF|LOOP|CASE|INTO|FROM|,)[a-z0-9_]*(?:;|$))//is)
 		{
-			my $t_name = $1;
-			my $t_pos = $2;
-			my $t_event = $3;
-			my $tb_name = $4;
-			my $trigger = $5 . $6;
-			my $t_type = '';
+			$t_name = $1;
+			$t_pos = $2;
+			$t_event = $3;
+			$tb_name = $4;
+			$trigger = $5 . $6;
 			$t_name =~ s/"//g;
-			# Remove referencing clause, not supported by PostgreSQL
-			$trigger =~ s/REFERENCING\s+(.*?)(FOR\s+EACH\s+)/$2/is;
+		}
+		elsif ($content =~ s/^([^\s]+)\s+(BEFORE|AFTER|INSTEAD|\s+|OF)((?:INSERT|UPDATE|DELETE|OR|\s+|OF)+\s+(?:.*?))*\s+ON\s+([^\s]+)\s+(.*)(\bEND\s*(?!IF|LOOP|CASE|INTO|FROM|,)[a-z0-9_]*(?:;|$))//is)
+		{
+			$t_name = $1;
+			$t_pos = $2;
+			$t_event = $3;
+			$tb_name = $4;
+			$trigger = $5 . $6;
+			$t_name =~ s/"//g;
+		}
 
-			if ($trigger =~ s/^\s*(FOR\s+EACH\s+)(ROW|STATEMENT)\s*//is) {
-				$t_type = $1 . $2;
-			}
-			my $t_when_cond = '';
-			if ($trigger =~ s/^\s*WHEN\s+(.*?)\s+((?:BEGIN|DECLARE|CALL).*)//is)
-			{
-				$t_when_cond = $1;
-				$trigger = $2;
-				if ($trigger =~ /^(BEGIN|DECLARE)/i) {
-					($trigger, $content) = &_get_plsql_code($trigger);
-				}
-				else
-				{
-					$trigger =~ s/([^;]+;)\s*(.*)/$1/;
-					$content = $2;
-				}
+		next if (!$t_name || ! $tb_name);
+
+		# Remove referencing clause, not supported by PostgreSQL
+		$trigger =~ s/REFERENCING\s+(.*?)(FOR\s+EACH\s+)/$2/is;
+
+		if ($trigger =~ s/^\s*(FOR\s+EACH\s+)(ROW|STATEMENT)\s*//is) {
+			$t_type = $1 . $2;
+		}
+		my $t_when_cond = '';
+		if ($trigger =~ s/^\s*WHEN\s+(.*?)\s+((?:BEGIN|DECLARE|CALL).*)//is)
+		{
+			$t_when_cond = $1;
+			$trigger = $2;
+			if ($trigger =~ /^(BEGIN|DECLARE)/i) {
+				($trigger, $content) = &_get_plsql_code($trigger);
 			}
 			else
 			{
-				if ($trigger =~ /^(BEGIN|DECLARE)/i) {
-					($trigger, $content) = &_get_plsql_code($trigger);
-				}
+				$trigger =~ s/([^;]+;)\s*(.*)/$1/;
+				$content = $2;
 			}
-			$tid++;
-
-			# TRIGGER_NAME, TRIGGER_TYPE, TRIGGERING_EVENT, TABLE_NAME, TRIGGER_BODY, WHEN_CLAUSE, DESCRIPTION,ACTION_TYPE
-			$trigger =~ s/\bEND\s+[^\s]+\s+$/END/is;
-			my $when_event = '';
-			if ($t_when_cond) {
-				$when_event = "$t_name\n$t_pos $t_event ON $tb_name\n$t_type";
-			}
-			push(@{$self->{triggers}}, [($t_name, $t_pos, $t_event, $tb_name, $trigger, $t_when_cond, $when_event, $t_type)]);
 		}
-	};
+		else
+		{
+			if ($trigger =~ /^(BEGIN|DECLARE)/i) {
+				($trigger, $content) = &_get_plsql_code($trigger);
+			}
+		}
+		$tid++;
+
+		# TRIGGER_NAME, TRIGGER_TYPE, TRIGGERING_EVENT, TABLE_NAME, TRIGGER_BODY, WHEN_CLAUSE, DESCRIPTION,ACTION_TYPE
+		$trigger =~ s/\bEND\s+[^\s]+\s+$/END/is;
+		my $when_event = '';
+		if ($t_when_cond) {
+			$when_event = "$t_name\n$t_pos $t_event ON $tb_name\n$t_type";
+		}
+		push(@{$self->{triggers}}, [($t_name, $t_pos, $t_event, $tb_name, $trigger, $t_when_cond, $when_event, $t_type)]);
+	}
 }
 
 sub read_sequence_from_file
