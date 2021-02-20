@@ -9666,9 +9666,9 @@ END;
 	if ($part_name)
 	{
 		if ($is_subpart) {
-			$alias = "SUBPARTITION(" . $self->quote_object_name($part_name) . ") a";
+			$alias = "SUBPARTITION($part_name) a";
 		} else {
-			$alias = "PARTITION(". $self->quote_object_name($part_name) . ") a";
+			$alias = "PARTITION($part_name) a";
 		}
 	}
 	# Force parallelism on Oracle side
