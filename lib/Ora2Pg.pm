@@ -7150,7 +7150,7 @@ sub export_table
 					$sql_output .= ', ' if ($j > 0);
 			       		$sql_output .= $self->quote_object_name($self->{partitions_list}{"\L$table\E"}{columns}[$j]);
 				}
-			       $sql_output .= 	")";
+				$sql_output .= 	")";
 			}
 			if ( ($self->{type} ne 'FDW') && (!$self->{external_to_fdw} || (!grep(/^$table$/i, keys %{$self->{external_table}}) && !$self->{tables}{$table}{table_info}{connection})) ) {
 				my $withoid = _make_WITH($self->{with_oid}, $self->{tables}{$table}{table_info});
@@ -9037,7 +9037,8 @@ sub _get_primary_keys
 	my $out = '';
 
 	# Set the unique (and primary) key definition 
-	foreach my $consname (keys %$unique_key) {
+	foreach my $consname (keys %$unique_key)
+	{
 		next if ($self->{pkey_in_create} && ($unique_key->{$consname}{type} ne 'P'));
 		my $constype =   $unique_key->{$consname}{type};
 		my $constgen =   $unique_key->{$consname}{generated};
@@ -9045,7 +9046,8 @@ sub _get_primary_keys
 		my @conscols = @{$unique_key->{$consname}{columns}};
 		my %constypenames = ('U' => 'UNIQUE', 'P' => 'PRIMARY KEY');
 		my $constypename = $constypenames{$constype};
-		for (my $i = 0; $i <= $#conscols; $i++) {
+		for (my $i = 0; $i <= $#conscols; $i++)
+		{
 			# Change column names
 			if (exists $self->{replaced_cols}{"\L$table\E"}{"\L$conscols[$i]\E"} && $self->{replaced_cols}{"\L$table\E"}{"\L$conscols[$i]\E"}) {
 				$conscols[$i] = $self->{replaced_cols}{"\L$table\E"}{"\L$conscols[$i]\E"};
@@ -9054,8 +9056,10 @@ sub _get_primary_keys
 		map { $_ = $self->quote_object_name($_) } @conscols;
 
 		my $columnlist = join(',', @conscols);
-		if ($columnlist) {
-			if ($self->{pkey_in_create}) {
+		if ($columnlist)
+		{
+			if ($self->{pkey_in_create})
+			{
 				if (!$self->{keep_pkey_names} || ($constgen eq 'GENERATED NAME')) {
 					$out .= "\tPRIMARY KEY ($columnlist)";
 				} else {
@@ -9089,7 +9093,8 @@ sub _create_unique_keys
 	$table = $self->get_replaced_tbname($table);
 
 	# Set the unique (and primary) key definition 
-	foreach my $consname (keys %$unique_key) {
+	foreach my $consname (keys %$unique_key)
+	{
 		next if ($self->{pkey_in_create} && ($unique_key->{$consname}{type} eq 'P'));
 		my $constype =   $unique_key->{$consname}{type};
 		my $constgen =   $unique_key->{$consname}{generated};
@@ -9102,16 +9107,26 @@ sub _create_unique_keys
 
 		my %constypenames = ('U' => 'UNIQUE', 'P' => 'PRIMARY KEY');
 		my $constypename = $constypenames{$constype};
-		for (my $i = 0; $i <= $#conscols; $i++) {
+		for (my $i = 0; $i <= $#conscols; $i++)
+		{
 			# Change column names
 			if (exists $self->{replaced_cols}{"\L$tbsaved\E"}{"\L$conscols[$i]\E"} && $self->{replaced_cols}{"\L$tbsaved\L"}{"\L$conscols[$i]\E"}) {
 				$conscols[$i] = $self->{replaced_cols}{"\L$tbsaved\E"}{"\L$conscols[$i]\E"};
 			}
 		}
+		# Add the partition column if it is not is the PK
+		if ($constype eq 'P' && exists $self->{partitions_list}{"\L$tbsaved\E"})
+		{
+			for (my $j = 0; $j <= $#{$self->{partitions_list}{"\L$tbsaved\E"}{columns}}; $j++)
+			{
+				push(@conscols, $self->{partitions_list}{"\L$tbsaved\E"}{columns}[$j]) if (!grep(/^$self->{partitions_list}{"\L$tbsaved\E"}{columns}[$j]$/i, @conscols));
+			}
+		}
 		map { $_ = $self->quote_object_name($_) } @conscols;
 
 		my $columnlist = join(',', @conscols);
-		if ($columnlist) {
+		if ($columnlist)
+		{
 			if (!$self->{keep_pkey_names} || ($constgen eq 'GENERATED NAME')) {
 				$out .= "ALTER TABLE $table ADD $constypename ($columnlist)";
 			} else {
@@ -9120,7 +9135,8 @@ sub _create_unique_keys
 			if ($self->{use_tablespace} && $self->{tables}{$tbsaved}{idx_tbsp}{$index_name} && !grep(/^$self->{tables}{$tbsaved}{idx_tbsp}{$index_name}$/i, @{$self->{default_tablespaces}})) {
 				$out .= " USING INDEX TABLESPACE $self->{tables}{$tbsaved}{idx_tbsp}{$index_name}";
 			}
-			if ($deferrable eq "DEFERRABLE") {
+			if ($deferrable eq "DEFERRABLE")
+			{
 				$out .= " DEFERRABLE";
 				if ($deferred eq "DEFERRED") {
 					$out .= " INITIALLY DEFERRED";
