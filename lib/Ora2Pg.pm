@@ -6921,7 +6921,13 @@ sub export_table
 						$tmpb->[2] =~ s/\D//g;
 						my $typb = $self->_sql_type($tmpb->[1], $tmpb->[2], $tmpb->[5], $tmpb->[6], $tmpb->[4]);
 						$typb =~ s/\(.*//;
-						$TYPALIGN{$typb} <=> $TYPALIGN{$typa};
+						if($TYPALIGN{$typa} != $TYPALIGN{$typb}){
+							# sort by field size asc
+							$TYPALIGN{$typa} <=> $TYPALIGN{$typb};
+						}else{
+							# if same size sort by original position
+							$self->{tables}{$table}{column_info}{$a}[11] <=> $self->{tables}{$table}{column_info}{$b}[11];
+						}
 					}
 				} keys %{$self->{tables}{$table}{column_info}}) {
 
