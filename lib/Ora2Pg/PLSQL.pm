@@ -1359,6 +1359,76 @@ sub convert_date_format
 }
 
 
+#------------------------------------------------------------------------------
+# Set the correspondance between Oracle and PostgreSQL regexp modifiers
+# Oracle default:
+# 1) The default case sensitivity is determined by the NLS_SORT parameter.
+#    Ora2pg assuming case sensitivy
+# 2) A period (.) does not match the newline character.
+# 3) The source string is treated as a single line.
+# PostgreSQL default:
+# 1) Default to case sensitivity
+# 2) A period match the newline character.
+# 3) The source string is treated as a single line.
+# Oracle only supports the following modifiers
+# 'i' specifies case-insensitive matching.
+# 'c' specifies case-sensitive matching.
+# 'n' allows the period (.) to match the newline character.
+# 'm' treats the source string as multiple lines.
+#------------------------------------------------------------------------------
+sub regex_flags
+{
+	my ($class, $modifier) = @_;
+	my $nconst = '';
+	my $flags = '';
+
+	if ($modifier =~ /\?TEXTVALUE(\d+)\?/)
+	{
+		$nconst = $1;
+		$modifier =~ s/\?TEXTVALUE$nconst\?/$class->{text_values}{$nconst}/;
+	}
+	# These flags have the same behavior
+	if ($modifier =~ /([icx]+)/) {
+		$flags .= $1;
+	}
+	# Oracle:
+	# m : treats the source string as multiple lines.
+	# SELECT '1' FROM DUAL WHERE REGEXP_LIKE('Hello'||CHR(10)||'world!', '^world!$', 'm'); => 1
+	# PostgreSQL:
+	# m : historical synonym for n => m : newline-sensitive matching
+	# SELECT  regexp_match('Hello'||chr(10)||'world!', '^world!$', 'm'); => match
+	if ($modifier =~ /m/) {
+		$flags .= 'n';
+	}
+	# Oracle:
+	# n: allows the period (.) to match the newline character. 
+	# SELECT '1' FROM DUAL WHERE REGEXP_LIKE('a'||CHR(10)||'d', 'a.d', 'n'); => 1
+	# SELECT '1' FROM DUAL WHERE REGEXP_LIKE('a'||CHR(10)||'d', '^d$', 'n'); => not match
+	# PostgreSQL:
+	# s: non-newline-sensitive matching (default)
+	# SELECT regexp_match('a'||chr(10)||'d', 'a.d', 's'); => match
+	# SELECT regexp_match('a'||chr(10)||'d', '^d$', 's'); => not match
+	if ($modifier =~ /n/) {
+		$flags .= 's';
+	}
+
+	# By default PG is non-newline-sensitive whereas Oracle is newline-sensitive
+	# Oracle:
+	# SELECT '1' FROM DUAL WHERE REGEXP_LIKE('a'||CHR(10)||'d', 'a.d'); => not match
+	# PostgreSQL:
+	# SELECT regexp_match('a'||chr(10)||'d', 'a.d'); => match
+	# Add 'n' to force the same behavior like Oracle
+	$flags .= 'n' if ($flags !~ /n|s/);
+
+	if ($nconst ne '')
+	{
+		$class->{text_values}{$nconst} = "'$flags'";
+		return "?TEXTVALUE$nconst?";
+	}
+
+	return "'$flags'";
+}
+	
 sub replace_oracle_function
 {
         my ($class, $str) = @_;
@@ -1483,8 +1553,10 @@ sub replace_oracle_function
 	# Replace the UTC convertion with the PG syntaxe
 	$str =~ s/SYS_EXTRACT_UTC\s*\(([^\)]+)\)/($1 AT TIME ZONE 'UTC')/is;
 
-	# REGEX_LIKE( string, pattern ) => string ~ pattern
-	$str =~ s/REGEXP_LIKE\s*\(\s*([^,]+)\s*,\s*([^\)]+)\s*\)/$1 \~ $2/is;
+	# REGEX_LIKE( string, pattern, flags )
+	$str =~ s/REGEXP_LIKE\s*\(\s*([^,]+)\s*,\s*([^,]+)\s*,\s*([^\)]+)\s*\)/"regexp_match($1, $2," . regex_flags($class, $3) . ") IS NOT NULL"/iges;
+	# REGEX_LIKE( string, pattern )
+	$str =~ s/REGEXP_LIKE\s*\(\s*([^,]+)\s*,\s*([^\)]+)\s*\)/"regexp_match($1, $2," . regex_flags($class, '') . ") IS NOT NULL"/iges;
 
 	# REGEX_SUBSTR( string, pattern, pos, num ) translation
 	$str =~ s/REGEXP_SUBSTR\s*\(\s*([^\)]+)\s*\)/convert_regex_substr($class, $1)/iges;
