@@ -78,8 +78,8 @@ $QUERY_TEST_SCORE = 0.1;
 	'TRUNC' => 0.1,
 	'IS TABLE OF' => 4,
 	'OUTER JOIN' => 2,
-	'CONNECT BY' => 2,
-	'BULK COLLECT' => 3,
+	'CONNECT BY' => 3,
+	'BULK COLLECT' => 5,
 	'GOTO' => 2,
 	'FORALL' => 1,
 	'ROWNUM' => 1,
@@ -129,6 +129,7 @@ $QUERY_TEST_SCORE = 0.1;
 	'ANYDATA' => 2,
 	'CONCAT' => 0.1,
 	'TIMEZONE' => 1,
+	'JSON' => 3,
 );
 
 @ORA_FUNCTIONS = qw(
@@ -2214,6 +2215,8 @@ sub estimate_cost
 	$cost_details{'CONCAT'} += $n;
 	$n = () = $str =~ m/TIMEZONE_(REGION|ABBR)/igs;
 	$cost_details{'TIMEZONE'} += $n;
+	$n = () = $str =~ m/IS\s+(NOT)?\s*JSON/igs;
+	$cost_details{'JSON'} += $n;
 
 	foreach my $f (@ORA_FUNCTIONS) {
 		if ($str =~ /\b$f\b/igs) {
