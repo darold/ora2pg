@@ -99,6 +99,8 @@ $QUERY_TEST_SCORE = 0.1;
 	'EXCEPTION' => 2,
 	'TO_NUMBER' => 0.1,
 	'REGEXP_LIKE' => 0.1,
+	'REGEXP_COUNT' => 1,
+	'REGEXP_INSTR' => 2,
 	'REGEXP_SUBSTR' => 0.1,
 	'TG_OP' => 0,
 	'CURSOR' => 1,
@@ -1371,16 +1373,18 @@ sub convert_date_format
 # 2) A period match the newline character.
 # 3) The source string is treated as a single line.
 # Oracle only supports the following modifiers
-# 'i' specifies case-insensitive matching.
-# 'c' specifies case-sensitive matching.
-# 'n' allows the period (.) to match the newline character.
-# 'm' treats the source string as multiple lines.
+# 'i' specifies case-insensitive matching. Same for PG.
+# 'c' specifies case-sensitive matching. Same for PG.
+# 'x' Ignores whitespace characters in the search pattern. Same for PG.
+# 'n' allows the period (.) to match the newline character. PG => s.
+# 'm' treats the source string as multiple lines. PG => n.
 #------------------------------------------------------------------------------
 sub regex_flags
 {
-	my ($class, $modifier) = @_;
+	my ($class, $modifier, $append) = @_;
+
 	my $nconst = '';
-	my $flags = '';
+	my $flags = $append || '';
 
 	if ($modifier =~ /\?TEXTVALUE(\d+)\?/)
 	{
@@ -1558,6 +1562,12 @@ sub replace_oracle_function
 	# REGEX_LIKE( string, pattern )
 	$str =~ s/REGEXP_LIKE\s*\(\s*([^,]+)\s*,\s*([^\)]+)\s*\)/"regexp_match($1, $2," . regex_flags($class, '') . ") IS NOT NULL"/iges;
 
+	# REGEX_COUNT( string, pattern, position, flags )
+	$str =~ s/REGEXP_COUNT\s*\(\s*([^,]+)\s*,\s*([^,]+)\s*,\s*(\d+)\s*,\s*([^\)]+)\s*\)/"(SELECT count(*) FROM regexp_matches(substr($1, $3), $2, " . regex_flags($class, $4, 'g') . "))"/iges;
+	# REGEX_COUNT( string, pattern, position )
+	$str =~ s/REGEXP_COUNT\s*\(\s*([^,]+)\s*,\s*([^,]+)\s*,\s*(\d+)\s*\)/(SELECT count(*) FROM regexp_matches(substr($1, $3), $2, 'g'))/igs;
+	# REGEX_COUNT( string, pattern )
+	$str =~ s/REGEXP_COUNT\s*\(\s*([^,]+)\s*,\s*([^\)]+)\s*\)/(SELECT count(*) FROM regexp_matches($1, $2, 'g'))/igs;
 	# REGEX_SUBSTR( string, pattern, pos, num ) translation
 	$str =~ s/REGEXP_SUBSTR\s*\(\s*([^\)]+)\s*\)/convert_regex_substr($class, $1)/iges;
 
