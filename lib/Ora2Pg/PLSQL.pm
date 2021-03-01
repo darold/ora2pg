@@ -1065,6 +1065,9 @@ sub translate_statement
 			$q[$j] = replace_rownum_with_limit($class, $q[$j]);
 			# Replace ROWNUM by row_number() when used in the target list
 			$q[$j] =~ s/((?!WHERE\s.*|LIMIT\s.*)[\s,]+)ROWNUM([\s,]+)/$1row_number() OVER () AS rownum$2/is;
+			# Try to replace AS rownnum with alias if there is one already defined
+			$q[$j] =~ s/(row_number\(\) OVER \(\) AS) rownum ((?!FROM\s+|,\s*)[^\s]+)/$1 $2/is;
+			$q[$j] =~ s/\s+AS(\s+AS\s+)/$1/is;
 			# The form "UPDATE mytbl SET col1 = ROWNUM;" is not yet translated
 			# and mus be manually rewritten as follow:
 			# WITH cte AS (SELECT *, ROW_NUMBER() OVER() AS rn FROM mytbl)
