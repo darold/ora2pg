@@ -1722,7 +1722,8 @@ sub _oracle_connection
 			LongTruncOk=>$self->{longtruncok},
 			AutoInactiveDestroy => 1,
 			PrintError => 0,
-			ora_session_mode => $ora_session_mode
+			ora_session_mode => $ora_session_mode,
+			ora_client_info => 'ora2pg ' || $VERSION
 		}
 	);
 
@@ -1798,7 +1799,14 @@ sub _mysql_connection
 		$self->{oracle_pwd} = $self->_ask_password('MySQL');
 	}
 
-	my $dbh = DBI->connect("$self->{oracle_dsn}", $self->{oracle_user}, $self->{oracle_pwd}, { 'RaiseError' => 1, AutoInactiveDestroy => 1, mysql_enable_utf8 => 1});
+	my $dbh = DBI->connect("$self->{oracle_dsn}", $self->{oracle_user}, $self->{oracle_pwd}, {
+			'RaiseError' => 1,
+			AutoInactiveDestroy => 1,
+			mysql_enable_utf8 => 1,
+			mysql_conn_attrs => { program_name => 'ora2pg ' || $VERSION }
+		}
+	);
+
 	# Check for connection failure
 	if (!$dbh) {
 		$self->logit("FATAL: $DBI::err ... $DBI::errstr\n", 0, 1);
@@ -1980,6 +1988,8 @@ sub _send_to_pgdb
 		$self->{pg_user} = $self->_ask_username('PostgreSQL') unless (defined($self->{pg_user}));
 		$self->{pg_pwd} = $self->_ask_password('PostgreSQL');
 	}
+
+	$ENV{PGAPPNAME} = 'ora2pg ' || $VERSION;
 
 	# Connect the destination database
 	my $dbhdest = DBI->connect($self->{pg_dsn}, $self->{pg_user}, $self->{pg_pwd}, {AutoInactiveDestroy => 1});
@@ -6388,7 +6398,7 @@ BEGIN
 					}
 					if (!$self->{quiet} && !$self->{debug} && ($nparts % $PGBAR_REFRESH) == 0)
 					{
-						print STDERR $self->progress_bar($nparts, $total_partition, 25, '=', 'partitions', "generating $table/$parti/$subpart" ), "\r";
+						print STDERR $self->progress_bar($nparts, $total_partition, 25, '=', 'partitions', "generating $table/$part/$subpart" ), "\r";
 					}
 					$nparts++;
 					$create_subtable_tmp .= "CREATE TABLE " . $self->quote_object_name($sub_tb_name);
