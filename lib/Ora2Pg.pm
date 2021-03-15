@@ -2450,13 +2450,14 @@ sub _get_plsql_code
 	my $str = shift();
 
 	my $ct = '';
-	my @parts = split(/\b(BEGIN|DECLARE|END\s*(?!IF|LOOP|CASE|INTO|FROM|,)[^;\s]*\s*;)/i, $str);
+	my @parts = split(/\b(BEGIN|DECLARE|END\s*(?!IF|LOOP|CASE|INTO|FROM|,|\))[^;\s]*\s*;)/i, $str);
 	my $code = '';
 	my $other = '';
 	my $i = 0;
-	for (; $i <= $#parts; $i++) {
+	for (; $i <= $#parts; $i++)
+	{
 		$ct++ if ($parts[$i] =~ /\bBEGIN\b/i);
-		$ct-- if ($parts[$i] =~ /\bEND\s*(?!IF|LOOP|CASE|INTO|FROM|,)[^;\s]*\s*;/i);
+		$ct-- if ($parts[$i] =~ /\bEND\s*(?!IF|LOOP|CASE|INTO|FROM|,|\))[^;\s]*\s*;/i);
 		if ( ($ct ne '') && ($ct == 0) ) {
 			$code .= $parts[$i];
 			last;
@@ -4790,7 +4791,8 @@ sub export_trigger
 		}
 		$count_trig++;
 		my $fhdl = undef;
-		if ($self->{file_per_function}) {
+		if ($self->{file_per_function})
+		{
 			my $f = "$dirprefix$trig->[0]_$self->{output}";
 			$f =~ s/\.(?:gz|bz2)$//i;
 			$self->dump("\\i$self->{psql_relative_path} $f\n");
@@ -4798,7 +4800,9 @@ sub export_trigger
 			$fhdl = $self->open_export_file("$trig->[0]_$self->{output}");
 			$self->set_binmode($fhdl) if (!$self->{compress});
 			$self->save_filetoupdate_list("ORA2PG_$self->{type}", lc($trig->[0]), "$dirprefix$trig->[0]_$self->{output}");
-		} else {
+		}
+		else
+		{
 			$self->save_filetoupdate_list("ORA2PG_$self->{type}", lc($trig->[0]), "$dirprefix$self->{output}");
 		}
 		$trig->[1] =~ s/\s*EACH ROW//is;
@@ -4813,8 +4817,10 @@ sub export_trigger
 		$self->{current_trigger_table} = $trig->[3];
 
 		# Replace column name in function code
-		if (exists $self->{replaced_cols}{"\L$trig->[3]\E"}) {
-			foreach my $coln (sort keys %{$self->{replaced_cols}{"\L$trig->[3]\E"}}) {
+		if (exists $self->{replaced_cols}{"\L$trig->[3]\E"})
+		{
+			foreach my $coln (sort keys %{$self->{replaced_cols}{"\L$trig->[3]\E"}})
+			{
 				$self->logit("\tReplacing column \L$coln\E as " . $self->{replaced_cols}{"\L$trig->[3]\E"}{"\L$coln\E"} . "...\n", 1);
 				my $cname = $self->{replaced_cols}{"\L$trig->[3]\E"}{"\L$coln\E"};
 				$cname = $self->quote_object_name($cname);
@@ -4824,7 +4830,8 @@ sub export_trigger
 		}
 		# Extract columns specified in the UPDATE OF ... ON clause
 		my $cols = '';
-		if ($trig->[2] =~ /UPDATE/ && $trig->[6] =~ /UPDATE\s+OF\s+(.*?)\s+ON/i) {
+		if ($trig->[2] =~ /UPDATE/ && $trig->[6] =~ /UPDATE\s+OF\s+(.*?)\s+ON/i)
+		{
 			my @defs = split(/\s*,\s*/, $1);
 			$cols = ' OF ';
 			foreach my $c (@defs) {
@@ -4838,8 +4845,10 @@ sub export_trigger
 		}
 		# Check if it's like a pg rule
 		$self->_remove_comments(\$trig->[4]);
-		if (!$self->{pg_supports_insteadof} && $trig->[1] =~ /INSTEAD OF/) {
-			if ($self->{plsql_pgsql}) {
+		if (!$self->{pg_supports_insteadof} && $trig->[1] =~ /INSTEAD OF/)
+		{
+			if ($self->{plsql_pgsql})
+			{
 				$trig->[4] = Ora2Pg::PLSQL::convert_plsql_code($self, $trig->[4]);
 				$self->_replace_declare_var(\$trig->[4]);
 			}
@@ -4847,30 +4856,39 @@ sub export_trigger
 						. " AS\n\tON " . $self->quote_object_name($trig->[2])
 						. " TO " . $self->quote_object_name($tbname)
 						. "\n\tDO INSTEAD\n(\n\t$trig->[4]\n);\n\n";
-			if ($self->{force_owner}) {
+			if ($self->{force_owner})
+			{
 				my $owner = $trig->[8];
 				$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
 				$sql_output .= "ALTER RULE " . $self->quote_object_name($trig->[0])
 							. " OWNER TO " . $self->quote_object_name($owner) . ";\n";
 			}
-		} else {
+		}
+		else
+		{
 			# Replace direct call of a stored procedure in triggers
-			if ($trig->[7] eq 'CALL') {
-				if ($self->{plsql_pgsql}) {
+			if ($trig->[7] eq 'CALL')
+			{
+				if ($self->{plsql_pgsql})
+				{
 					$trig->[4] = Ora2Pg::PLSQL::convert_plsql_code($self, $trig->[4]);
 					$self->_replace_declare_var(\$trig->[4]);
 				}
 				$trig->[4] = "BEGIN\nPERFORM $trig->[4];\nEND;";
-			} else {
+			}
+			else
+			{
 				my $ret_kind = 'RETURN NEW;';
 				if (uc($trig->[2]) eq 'DELETE') {
 					$ret_kind = 'RETURN OLD;';
 				} elsif (uc($trig->[2]) =~ /DELETE/) {
 					$ret_kind = "IF TG_OP = 'DELETE' THEN\n\tRETURN OLD;\nELSE\n\tRETURN NEW;\nEND IF;\n";
 				}
-				if ($self->{plsql_pgsql}) {
+				if ($self->{plsql_pgsql})
+				{
 					# Add a semi colon if none
-					if ($trig->[4] !~ /\bBEGIN\b/i) {
+					if ($trig->[4] !~ /\bBEGIN\b/i)
+					{
 						chomp($trig->[4]);
 						$trig->[4] .= ';' if ($trig->[4] !~ /;\s*$/s);
 						$trig->[4] = "BEGIN\n$trig->[4]\n$ret_kind\nEND;";
@@ -4880,7 +4898,8 @@ sub export_trigger
 
 					# When an exception statement is used enclosed everything
 					# in a block before returning NEW
-					if ($trig->[4] =~ /EXCEPTION(.*?)\b(END[;]*)[\s\/]*$/is) {
+					if ($trig->[4] =~ /EXCEPTION(.*?)\b(END[;]*)[\s\/]*$/is)
+					{
 						$trig->[4] =~ s/^\s*BEGIN/BEGIN\n  BEGIN/ism;
 						$trig->[4] =~ s/\b(END[;]*)[\s\/]*$/  END;\n$1/is;
 					}
@@ -4888,7 +4907,8 @@ sub export_trigger
 					$trig->[4] =~ s/\b(END[;]*)(\s*\%ORA2PG_COMMENT\d+\%\s*)?[\s\/]*$/$ret_kind\n$1$2/igs;
 					# Look at function header to convert sql type
 					my @parts = split(/BEGIN/i, $trig->[4]);
-					if ($#parts > 0) {
+					if ($#parts > 0)
+					{
 						if (!$self->{is_mysql}) {
 							$parts[0] = Ora2Pg::PLSQL::replace_sql_type($parts[0], $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type}, %{$self->{data_type}});
 						} else {
@@ -4976,7 +4996,8 @@ sub export_trigger
 			}
 		}
 		$self->_restore_comments(\$sql_output);
-		if ($self->{file_per_function}) {
+		if ($self->{file_per_function})
+		{
 			$self->dump($sql_header . $sql_output, $fhdl);
 			$self->close_export_file($fhdl);
 			$sql_output = '';
