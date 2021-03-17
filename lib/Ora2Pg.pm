@@ -9514,15 +9514,6 @@ sub _howto_get_data
 	}
 
 	my $extraStr = "";
-	my $dateformat = 'YYYY-MM-DD HH24:MI:SS';
-	my $timeformat = $dateformat;
-	if ($self->{enable_microsecond})
-	{
-		my $dim = 6;
-		$dim = '' if ($self->{db_version} =~ /Release [89]/);
-		$timeformat = "YYYY-MM-DD HH24:MI:SS.FF$dim";
-	}
-	my $timeformat_tz = $timeformat . ' TZH:TZM';
 	# Lookup through columns information
 	if ($#{$name} < 0)
 	{
