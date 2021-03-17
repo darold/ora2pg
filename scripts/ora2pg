@@ -869,9 +869,11 @@ fi
 
 # When a PostgreSQL schema list is provided, create them
 if [ $IMPORT_DATA -eq 0 ]; then
+	is_superuser='f'
 	if [ $NO_DBCHECK  -eq 0 ]; then
 		# Create owner user
-    user_exists=`psql -d $DB_NAME$DB_HOST$DB_PORT$DB_USER -Atc "select usename from pg_user where usename='$DB_OWNER';"`
+		user_exists=`psql -d $DB_NAME$DB_HOST$DB_PORT$DB_USER -Atc "select usename from pg_user where usename='$DB_OWNER';"`
+		is_superuser=`psql -d $DB_NAME$DB_HOST$DB_PORT$DB_USER -Atc "select usesuper from pg_user where usename='$DB_OWNER';"`;
 		if [ "a$user_exists" = "a" ]; then
 			if confirm "Would you like to create the owner of the database $DB_OWNER?" ; then
 				echo "Running: createuser$DB_HOST$DB_PORT$DB_USER --no-superuser --no-createrole --no-createdb $DB_OWNER"
@@ -890,7 +892,7 @@ if [ $IMPORT_DATA -eq 0 ]; then
 		if [ "a$DB_ENCODING" = "a" ]; then
 			DB_ENCODING=" -E UTF8"
 		fi
-    db_exists=`psql -d $DB_NAME$DB_HOST$DB_PORT$DB_USER -Atc "select datname from pg_database where datname='$DB_NAME';"`
+		db_exists=`psql -d $DB_NAME$DB_HOST$DB_PORT$DB_USER -Atc "select datname from pg_database where datname='$DB_NAME';"`
 		if [ "a$db_exists" = "a" ]; then
 			if confirm "Would you like to create the database $DB_NAME?" ; then
 				echo "Running: createdb$DB_HOST$DB_PORT$DB_USER$DB_ENCODING --owner $DB_OWNER $DB_NAME"
@@ -1000,12 +1002,18 @@ if [ $IMPORT_DATA -eq 0 ]; then
 		fi
 	fi
 
+	# When the database owner is not superuser use postgres instead
+	q_user='postgres'
+	if [ "$is_superuser" = "t" ]; then
+		q_user=$DB_OWNER
+	fi
+
 	# Import objects that need superuser privilege: GRANT and TABLESPACE
 	if [ -r "$NAMESPACE/schema/grants/grant.sql" ]; then
 		if confirm "Would you like to import GRANT from $NAMESPACE/schema/grants/grant.sql?" ; then
-			echo "Running: psql $DB_HOST$DB_PORT -U postgres -d $DB_NAME -f $NAMESPACE/schema/grants/grant.sql"
+			echo "Running: psql $DB_HOST$DB_PORT -U $q_user -d $DB_NAME -f $NAMESPACE/schema/grants/grant.sql"
 			if [ $DEBUG -eq 0 ]; then
-				psql $DB_HOST$DB_PORT -U postgres -d $DB_NAME -f $NAMESPACE/schema/grants/grant.sql
+				psql $DB_HOST$DB_PORT -U $q_user -d $DB_NAME -f $NAMESPACE/schema/grants/grant.sql
 				if [ $? -ne 0 ]; then
 					die "an error occurs when importing file $NAMESPACE/schema/grants/grant.sql."
 				fi
@@ -1014,9 +1022,9 @@ if [ $IMPORT_DATA -eq 0 ]; then
 	fi
 	if [ -r "$NAMESPACE/schema/tablespaces/tablespace.sql" ]; then
 		if confirm "Would you like to import TABLESPACE from $NAMESPACE/schema/tablespaces/tablespace.sql?" ; then
-			echo "Running: psql $DB_HOST$DB_PORT -U postgres -d $DB_NAME -f $NAMESPACE/schema/tablespaces/tablespace.sql"
+			echo "Running: psql $DB_HOST$DB_PORT -U $q_user -d $DB_NAME -f $NAMESPACE/schema/tablespaces/tablespace.sql"
 			if [ $DEBUG -eq 0 ]; then
-				psql $DB_HOST$DB_PORT -U postgres -d $DB_NAME -f $NAMESPACE/schema/tablespaces/tablespace.sql
+				psql $DB_HOST$DB_PORT -U $q_user -d $DB_NAME -f $NAMESPACE/schema/tablespaces/tablespace.sql
 				if [ $? -ne 0 ]; then
 					die "an error occurs when importing file $NAMESPACE/schema/tablespaces/tablespace.sql."
 				fi
