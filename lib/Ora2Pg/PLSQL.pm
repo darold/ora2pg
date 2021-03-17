@@ -99,9 +99,9 @@ $QUERY_TEST_SCORE = 0.1;
 	'EXCEPTION' => 2,
 	'TO_NUMBER' => 0.1,
 	'REGEXP_LIKE' => 0.1,
-	'REGEXP_COUNT' => 0.1,
-	'REGEXP_INSTR' => 2,
-	'REGEXP_SUBSTR' => 0.1,
+	'REGEXP_COUNT' => 0.2,
+	'REGEXP_INSTR' => 1,
+	'REGEXP_SUBSTR' => 1,
 	'TG_OP' => 0,
 	'CURSOR' => 1,
 	'PIPE ROW' => 1,
@@ -1532,6 +1532,20 @@ sub replace_oracle_function
 
 		# Translate numtodsinterval Oracle function
 		$str =~ s/(?:NUMTODSINTERVAL|NUMTOYMINTERVAL)\s*\(\s*([^,]+)\s*,\s*([^\)]+)\s*\)/($1 * ('1'||$2)::interval)/is;
+
+		# REGEX_LIKE( string, pattern, flags )
+		$str =~ s/REGEXP_LIKE\s*\(\s*([^,]+)\s*,\s*([^,]+)\s*,\s*([^\)]+)\s*\)/"regexp_match($1, $2," . regex_flags($class, $3) . ") IS NOT NULL"/iges;
+		# REGEX_LIKE( string, pattern )
+		$str =~ s/REGEXP_LIKE\s*\(\s*([^,]+)\s*,\s*([^\)]+)\s*\)/"regexp_match($1, $2," . regex_flags($class, '') . ") IS NOT NULL"/iges;
+
+		# REGEX_COUNT( string, pattern, position, flags )
+		$str =~ s/REGEXP_COUNT\s*\(\s*([^,]+)\s*,\s*([^,]+)\s*,\s*(\d+)\s*,\s*([^\)]+)\s*\)/"(SELECT count(*) FROM regexp_matches(substr($1, $3), $2, " . regex_flags($class, $4, 'g') . "))"/iges;
+		# REGEX_COUNT( string, pattern, position )
+		$str =~ s/REGEXP_COUNT\s*\(\s*([^,]+)\s*,\s*([^,]+)\s*,\s*(\d+)\s*\)/(SELECT count(*) FROM regexp_matches(substr($1, $3), $2, 'g'))/igs;
+		# REGEX_COUNT( string, pattern )
+		$str =~ s/REGEXP_COUNT\s*\(\s*([^,]+)\s*,\s*([^\)]+)\s*\)/(SELECT count(*) FROM regexp_matches($1, $2, 'g'))/igs;
+		# REGEX_SUBSTR( string, pattern, pos, num ) translation
+		$str =~ s/REGEXP_SUBSTR\s*\(\s*([^\)]+)\s*\)/convert_regex_substr($class, $1)/iges;
 	}
 
 	# Replace INSTR by POSITION
@@ -1559,20 +1573,6 @@ sub replace_oracle_function
 
 	# Replace the UTC convertion with the PG syntaxe
 	$str =~ s/SYS_EXTRACT_UTC\s*\(([^\)]+)\)/($1 AT TIME ZONE 'UTC')/is;
-
-	# REGEX_LIKE( string, pattern, flags )
-	$str =~ s/REGEXP_LIKE\s*\(\s*([^,]+)\s*,\s*([^,]+)\s*,\s*([^\)]+)\s*\)/"regexp_match($1, $2," . regex_flags($class, $3) . ") IS NOT NULL"/iges;
-	# REGEX_LIKE( string, pattern )
-	$str =~ s/REGEXP_LIKE\s*\(\s*([^,]+)\s*,\s*([^\)]+)\s*\)/"regexp_match($1, $2," . regex_flags($class, '') . ") IS NOT NULL"/iges;
-
-	# REGEX_COUNT( string, pattern, position, flags )
-	$str =~ s/REGEXP_COUNT\s*\(\s*([^,]+)\s*,\s*([^,]+)\s*,\s*(\d+)\s*,\s*([^\)]+)\s*\)/"(SELECT count(*) FROM regexp_matches(substr($1, $3), $2, " . regex_flags($class, $4, 'g') . "))"/iges;
-	# REGEX_COUNT( string, pattern, position )
-	$str =~ s/REGEXP_COUNT\s*\(\s*([^,]+)\s*,\s*([^,]+)\s*,\s*(\d+)\s*\)/(SELECT count(*) FROM regexp_matches(substr($1, $3), $2, 'g'))/igs;
-	# REGEX_COUNT( string, pattern )
-	$str =~ s/REGEXP_COUNT\s*\(\s*([^,]+)\s*,\s*([^\)]+)\s*\)/(SELECT count(*) FROM regexp_matches($1, $2, 'g'))/igs;
-	# REGEX_SUBSTR( string, pattern, pos, num ) translation
-	$str =~ s/REGEXP_SUBSTR\s*\(\s*([^\)]+)\s*\)/convert_regex_substr($class, $1)/iges;
 
 	# Remove call to XMLCDATA, there's no such function with PostgreSQL
 	$str =~ s/XMLCDATA\s*\(([^\)]+)\)/'<![CDATA[' || $1 || ']]>'/is;
@@ -2234,10 +2234,17 @@ sub estimate_cost
 	# See:  http://www.postgresql.org/docs/9.0/static/errcodes-appendix.html#ERRCODES-TABLE
 	$n = () = $str =~ m/\b(DUP_VAL_ON_INDEX|TIMEOUT_ON_RESOURCE|TRANSACTION_BACKED_OUT|NOT_LOGGED_ON|LOGIN_DENIED|INVALID_NUMBER|PROGRAM_ERROR|VALUE_ERROR|ROWTYPE_MISMATCH|CURSOR_ALREADY_OPEN|ACCESS_INTO_NULL|COLLECTION_IS_NULL)\b/igs;
 	$cost_details{'EXCEPTION'} += $n;
-	$n = () = $str =~ m/REGEXP_LIKE/igs;
-	$cost_details{'REGEXP_LIKE'} += $n;
-	$n = () = $str =~ m/REGEXP_SUBSTR/igs;
-	$cost_details{'REGEXP_SUBSTR'} += $n;
+	if (!$class->{use_orafce})
+	{
+		$n = () = $str =~ m/REGEXP_LIKE/igs;
+		$cost_details{'REGEXP_LIKE'} += $n;
+		$n = () = $str =~ m/REGEXP_SUBSTR/igs;
+		$cost_details{'REGEXP_SUBSTR'} += $n;
+		$n = () = $str =~ m/REGEXP_COUNT/igs;
+		$cost_details{'REGEXP_COUNT'} += $n;
+		$n = () = $str =~ m/REGEXP_INSTR/igs;
+		$cost_details{'REGEXP_INSTR'} += $n;
+	}
 	$n = () = $str =~ m/\b(INSERTING|DELETING|UPDATING)\b/igs;
 	$cost_details{'TG_OP'} += $n;
 	$n = () = $str =~ m/REF\s*CURSOR/igs;
