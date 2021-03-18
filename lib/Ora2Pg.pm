@@ -11070,6 +11070,8 @@ sub _get_sequences
 	} else {
 		$str .= " WHERE SEQUENCE_OWNER = '$self->{schema}'";
 	}
+	# Exclude sequence used for IDENTITY columns
+	$str .= " AND SEQUENCE_NAME NOT LIKE 'ISEQ\$\$_%'";
 	$str .= $self->limit_to_objects('SEQUENCE', 'SEQUENCE_NAME');
 	#$str .= " ORDER BY SEQUENCE_NAME";
 
@@ -11078,8 +11080,8 @@ sub _get_sequences
 	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
 	my @seqs = ();
-	while (my $row = $sth->fetch) {
-
+	while (my $row = $sth->fetch)
+	{
 		push(@seqs, [ @$row ]);
 	}
 
