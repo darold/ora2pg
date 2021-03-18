@@ -2569,7 +2569,8 @@ sub _get_dml_from_file
 	$content =~ s/CREATE\s+EDITIONABLE/CREATE/gs;
 	$content =~ s/CREATE\s+NONEDITIONABLE/CREATE/gs;
 
-	if ($self->{is_mysql}) {
+	if ($self->{is_mysql})
+	{
 		$content =~ s/CREATE\s+ALGORITHM=[^\s]+/CREATE/gs;
 		$content =~ s/CREATE\s+DEFINER=[^\s]+/CREATE/gs;
 		$content =~ s/SQL SECURITY DEFINER VIEW/VIEW/gs;
@@ -2588,7 +2589,6 @@ sub read_schema_from_file
 	# Clear content from comment and text constant for better parsing
 	$self->_remove_comments(\$content, 1);
 	$content =~  s/\%ORA2PG_COMMENT\d+\%//gs;
-
 	my $tid = 0; 
 
 	my @statements = split(/\s*;\s*/, $content);
@@ -2600,17 +2600,21 @@ sub read_schema_from_file
 		# Remove some unwanted and unused keywords from the statements
 		$content =~ s/\s+(PARALLEL|COMPRESS)\b//igs;
 
-		if ($content =~ s/TRUNCATE TABLE\s+([^\s;]+)([^;]*);//is) {
+		if ($content =~ s/TRUNCATE TABLE\s+([^\s;]+)([^;]*);//is)
+		{
 			my $tb_name = $1;
 			$tb_name =~ s/"//gs;
-			if (!exists $self->{tables}{$tb_name}{table_info}{type}) {
+			if (!exists $self->{tables}{$tb_name}{table_info}{type})
+			{
 				$self->{tables}{$tb_name}{table_info}{type} = 'TABLE';
 				$self->{tables}{$tb_name}{table_info}{num_rows} = 0;
 				$tid++;
 				$self->{tables}{$tb_name}{internal_id} = $tid;
 			}
 			$self->{tables}{$tb_name}{truncate_table} = 1;
-		} elsif ($content =~ s/CREATE\s+(GLOBAL|PRIVATE)?\s*(TEMPORARY)?\s*TABLE[\s]+([^\s]+)\s+AS\s+([^;]+);//is) {
+		}
+		elsif ($content =~ s/CREATE\s+(GLOBAL|PRIVATE)?\s*(TEMPORARY)?\s*TABLE[\s]+([^\s]+)\s+AS\s+([^;]+);//is)
+		{
 			my $tb_name = $3;
 			$tb_name =~ s/"//gs;
 			my $tb_def = $4;
@@ -2621,7 +2625,9 @@ sub read_schema_from_file
 			$tid++;
 			$self->{tables}{$tb_name}{internal_id} = $tid;
 			$self->{tables}{$tb_name}{table_as} = $tb_def;
-		} elsif ($content =~ s/CREATE\s+(GLOBAL|PRIVATE)?\s*(TEMPORARY)?\s*TABLE[\s]+([^\s\(]+)\s*([^;]+);//is) {
+		}
+		elsif ($content =~ s/CREATE\s+(GLOBAL|PRIVATE)?\s*(TEMPORARY)?\s*TABLE[\s]+([^\s\(]+)\s*([^;]+);//is)
+		{
 			my $tb_name = $3;
 			my $tb_def  = $4;
 			my $tb_param  = '';
@@ -2646,13 +2652,15 @@ sub read_schema_from_file
 				$self->{tables}{$tb_name}{table_info}{on_commit} = 'ON COMMIT DROP';
 			}
 			# Get table embedded comment
-			if ($tb_def =~ s/COMMENT=["']([^"']+)["']//is) {
+			if ($tb_def =~ s/COMMENT=["']([^"']+)["']//is)
+			{
 				$self->{tables}{$tb_name}{table_info}{comment} = $1;
 			}
 			$tb_def =~ s/^\(//;
 			my %fct_placeholder = ();
 			my $i = 0;
-			while ($tb_def =~ s/(\([^\(\)]*\))/\%\%FCT$i\%\%/is) {
+			while ($tb_def =~ s/(\([^\(\)]*\))/\%\%FCT$i\%\%/is)
+			{
 				$fct_placeholder{$i} = $1;
 				$i++;
 			};
@@ -2661,7 +2669,8 @@ sub read_schema_from_file
 			map { s/^\s+//; s/\s+$//; } @column_defs;
 			my $pos = 0;
 			my $cur_c_name = '';
-			foreach my $c (@column_defs) {
+			foreach my $c (@column_defs)
+			{
 				next if (!$c);
 
 				# Replace temporary substitution
@@ -3236,13 +3245,17 @@ sub read_sequence_from_file
 	# Load file in a single string
 	my $content = $self->_get_dml_from_file();
 
+	# Clear content from comment and text constant for better parsing
+	$self->_remove_comments(\$content, 1);
+	$content =~  s/\%ORA2PG_COMMENT\d+\%//gs;
 	my $tid = 0; 
 
 	# Sequences 
-	while ($content =~ s/CREATE\s+SEQUENCE[\s]+([^\s;]+)\s*([^;]+);//i) {
+	while ($content =~ s/CREATE\s+SEQUENCE[\s]+([^\s;]+)\s*([^;]+);//i)
+	{
 		my $s_name = $1;
-		$s_name =~ s/"//g;
 		my $s_def = $2;
+		$s_name =~ s/"//g;
 		$s_def =~ s/\s+/ /g;
 		$tid++;
 		my @seq_info = ();
@@ -3255,7 +3268,8 @@ sub read_sequence_from_file
 		} else {
 			push(@seq_info, '');
 		}
-		if ($s_def =~ /MAXVALUE\s+([\-\d]+)/i) {
+		if ($s_def =~ /MAXVALUE\s+([\-\d]+)/i)
+		{
 			if ($1 > 9223372036854775807) {
 				push(@seq_info, 9223372036854775807);
 			} else {
@@ -3269,6 +3283,7 @@ sub read_sequence_from_file
 		} else {
 			push(@seq_info, 1);
 		}
+
 		if ($s_def =~ /START\s+WITH\s+([\-\d]+)/i) {
 			push(@seq_info, $1);
 		} else {
@@ -5040,7 +5055,8 @@ sub parallelize_statements
 	#---------------------------------------------------------
 	my %comments = ();
 	my @settings = ();
-	if ($self->{input_file}) {
+	if ($self->{input_file})
+	{
 		$self->{functions} = ();
 		$self->logit("Reading input SQL orders from file $self->{input_file}...\n", 1);
 		my $content = $self->read_input_file($self->{input_file});
@@ -5048,22 +5064,26 @@ sub parallelize_statements
 		$self->_remove_comments(\$content, 1);
 		$content =~  s/\%ORA2PG_COMMENT\d+\%//gs;
 		my $query = 1;
-		foreach my $l (split(/\n/, $content)) {
+		foreach my $l (split(/\n/, $content))
+		{
 			chomp($l);
 			next if ($l =~ /^\s*$/);
 			# do not parse interactive or session command
 			next if ($l =~ /^(\\set|\\pset|\\i)/is);
 			# Put setting change in header to apply them on all parallel session
 			# This will help to set a special search_path or encoding
-			if ($l =~ /^SET\s+/i) {
+			if ($l =~ /^SET\s+/i)
+			{
 				push(@settings, $l);
 				next;
 			}
-			if ($old_line) {
+			if ($old_line)
+			{
 				$l = $old_line .= ' ' . $l;
 				$old_line = '';
 			}
-			if ($l =~ /;\s*$/) {
+			if ($l =~ /;\s*$/)
+			{
 					$self->{queries}{$query} .= "$l\n";
 					$query++;
 			} else {
@@ -5077,13 +5097,17 @@ sub parallelize_statements
 	#--------------------------------------------------------
 	my $total_queries = scalar keys %{$self->{queries}};
 	$self->{child_count} = 0;
-	foreach my $q (sort {$a <=> $b} keys %{$self->{queries}}) {
+	foreach my $q (sort {$a <=> $b} keys %{$self->{queries}})
+	{
 		chomp($self->{queries}{$q});
 		next if (!$self->{queries}{$q});
-		if ($self->{jobs} > 1) {
-			while ($self->{child_count} >= $self->{jobs}) {
+		if ($self->{jobs} > 1)
+		{
+			while ($self->{child_count} >= $self->{jobs})
+			{
 				my $kid = waitpid(-1, WNOHANG);
-				if ($kid > 0) {
+				if ($kid > 0)
+				{
 					$self->{child_count}--;
 					delete $RUNNING_PIDS{$kid};
 				}
@@ -5107,9 +5131,11 @@ sub parallelize_statements
 		$self->logit("No query to load...\n", 0);
 	} else {
 		# Wait for all child end
-		while ($self->{child_count} > 0) {
+		while ($self->{child_count} > 0)
+		{
 			my $kid = waitpid(-1, WNOHANG);
-			if ($kid > 0) {
+			if ($kid > 0)
+			{
 				$self->{child_count}--;
 				delete $RUNNING_PIDS{$kid};
 			}
@@ -5145,13 +5171,15 @@ sub translate_query
 	# Code to use to find queries parser issues, it load a file
 	# containing the untouched SQL code from Oracle queries
 	#---------------------------------------------------------
-	if ($self->{input_file}) {
+	if ($self->{input_file})
+	{
 		$self->{functions} = ();
 		$self->logit("Reading input code from file $self->{input_file}...\n", 1);
 		my $content = $self->read_input_file($self->{input_file});
 		$self->_remove_comments(\$content);
 		my $query = 1;
-		foreach my $l (split(/(?:^\/$|;\s*$)/m, $content)) {
+		foreach my $l (split(/(?:^\/$|;\s*$)/m, $content))
+		{
 			chomp($l);
 			next if ($l =~ /^\s*$/s);
 			$self->{queries}{$query}{code} = "$l\n";
@@ -5163,7 +5191,8 @@ sub translate_query
 		}
 	}
 	
-	foreach my $q (sort { $a <=> $b } keys %{$self->{queries}}) {
+	foreach my $q (sort { $a <=> $b } keys %{$self->{queries}})
+	{
 		if ($self->{queries}{$q}{code} !~ /(SELECT|UPDATE|DELETE|INSERT|DROP|TRUNCATE|CREATE(?:UNIQUE)? INDEX)/is) {
 			$self->{queries}{$q}{to_be_parsed} = 0;
 		} else {
@@ -8329,7 +8358,8 @@ sub read_input_file
 
 			
 	my $content = '';
-	if (open(my $fin, '<', $file)) {
+	if (open(my $fin, '<', $file))
+	{
 		$self->set_binmode($fin) if (_is_utf8_file( $file));
 		while (<$fin>) { next if /^\/$/; $content .= $_; };
 		close($fin);
@@ -8341,7 +8371,8 @@ sub read_input_file
 	$content =~ s/\r//gs;
 	$content =~ s/[\r\n]SHOW\s+(?:ERRORS|ERR|BTITLE|BTI|LNO|PNO|RECYCLEBIN|RECYC|RELEASE|REL|REPFOOTER|REPF|REPHEADER|REPH|SPOOL|SPOO|SGA|SQLCODE|TTITLE|TTI|USER|XQUERY|SPPARAMETERS|PARAMETERS)[^\r\n]*([\r\n]|$)/;$2/igs;
 
-        if ($self->{is_mysql}) {
+        if ($self->{is_mysql})
+	{
                 $content =~ s/"/'/gs;
                 $content =~ s/`/"/gs;
         }
