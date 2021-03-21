@@ -3755,8 +3755,10 @@ sub _export_table_data
 			$tbpart_name = $table . '_' . $part_name if ($self->{prefix_partition});
 			next if ($self->{allow_partition} && !grep($_ =~ /^$tbpart_name$/i, @{$self->{allow_partition}}));
 
-			if (exists $self->{subpartitions}{$table}{$part_name}) {
-				foreach my $p (sort {$a <=> $b} keys %{$self->{subpartitions}{$table}{$part_name}}) {
+			if (exists $self->{subpartitions}{$table}{$part_name})
+			{
+				foreach my $p (sort {$a <=> $b} keys %{$self->{subpartitions}{$table}{$part_name}})
+				{
 					my $subpart = $self->{subpartitions}{$table}{$part_name}{$p}{name};
 					next if ($self->{allow_partition} && !grep($_ =~ /^$subpart$/i, @{$self->{allow_partition}}));
 					my $sub_tb_name = $subpart;
@@ -3773,22 +3775,31 @@ sub _export_table_data
 					$self->rename_dump_partfile($dirprefix, $sub_tb_name);
 				}
 				# Now load content of the default subpartition table
-				if ($self->{subpartitions_default}{$table}{$part_name}) {
-					if (!$self->{allow_partition} || grep($_ =~ /^$self->{subpartitions_default}{$table}{$part_name}$/i, @{$self->{allow_partition}})) {
-						if ($self->{file_per_table} && !$self->{pg_dsn}) {
+				if ($self->{subpartitions_default}{$table}{$part_name})
+				{
+					if (!$self->{allow_partition} || grep($_ =~ /^$self->{subpartitions_default}{$table}{$part_name}$/i, @{$self->{allow_partition}}))
+					{
+						if ($self->{file_per_table} && !$self->{pg_dsn})
+						{
 							# Do not dump data again if the file already exists
-							if (!$self->file_exists("$dirprefix$self->{subpartitions_default}{$table}{$part_name}_$self->{output}")) {
+							if (!$self->file_exists("$dirprefix$self->{subpartitions_default}{$table}{$part_name}_$self->{output}"))
+							{
 								$total_record = $self->_dump_table($dirprefix, $sql_header, $table, $self->{subpartitions_default}{$table}{$part_name}, 1);
 							}
-						} else {
+						}
+						else
+						{
 							$total_record = $self->_dump_table($dirprefix, $sql_header, $table, $self->{subpartitions_default}{$table}{$part_name}, 1);
 						}
 					}
 					# Rename temporary filename into final name
 					$self->rename_dump_partfile($dirprefix, $self->{subpartitions_default}{$table}{$part_name}, $table);
 				}
-			} else {
-				if ($self->{file_per_table} && !$self->{pg_dsn}) {
+			}
+			else
+			{
+				if ($self->{file_per_table} && !$self->{pg_dsn})
+				{
 					# Do not dump data again if the file already exists
 					next if ($self->file_exists("$dirprefix${tbpart_name}_$self->{output}"));
 				}
@@ -3800,27 +3811,36 @@ sub _export_table_data
 			}
 		}
 		# Now load content of the default partition table
-		if ($self->{partitions_default}{$table}) {
-			if (!$self->{allow_partition} || grep($_ =~ /^$self->{partitions_default}{$table}$/i, @{$self->{allow_partition}})) {
-				if ($self->{file_per_table} && !$self->{pg_dsn}) {
+		if ($self->{partitions_default}{$table})
+		{
+			if (!$self->{allow_partition} || grep($_ =~ /^$self->{partitions_default}{$table}$/i, @{$self->{allow_partition}}))
+			{
+				if ($self->{file_per_table} && !$self->{pg_dsn})
+				{
 					# Do not dump data again if the file already exists
-					if (!$self->file_exists("$dirprefix$self->{partitions_default}{$table}_$self->{output}")) {
+					if (!$self->file_exists("$dirprefix$self->{partitions_default}{$table}_$self->{output}"))
+					{
 						$total_record = $self->_dump_table($dirprefix, $sql_header, $table, $self->{partitions_default}{$table});
 					}
-				} else {
+				}
+				else
+				{
 					$total_record = $self->_dump_table($dirprefix, $sql_header, $table, $self->{partitions_default}{$table});
 				}
 				# Rename temporary filename into final name
 				$self->rename_dump_partfile($dirprefix, $self->{partitions_default}{$table}, $table);
 			}
 		}
-	} else {
+	}
+	else
+	{
 
 		$total_record = $self->_dump_table($dirprefix, $sql_header, $table);
 	}
 
 	# When copy freeze is required, close the transaction
-	if ($self->{copy_freeze} && !$self->{pg_dsn}) {
+	if ($self->{copy_freeze} && !$self->{pg_dsn})
+	{
 		if ($self->{file_per_table}) {
 			$self->data_dump("COMMIT;\n",  $table);
 		} else {
@@ -6145,7 +6165,8 @@ sub export_partition
 	foreach my $t (sort keys %{ $self->{partitions} }) {
 		$total_partition += scalar keys %{$self->{partitions}{$t}};
 	}
-	foreach my $t (sort keys %{ $self->{subpartitions_list} }) {
+	foreach my $t (sort keys %{ $self->{subpartitions_list} })
+	{
 		foreach my $p (sort keys %{ $self->{subpartitions_list}{$t} }) {
 			$total_partition += $self->{subpartitions_list}{$t}{$p}{count};
 		}
@@ -6564,8 +6585,8 @@ BEGIN
 								$fts_idx =~ s/CREATE [^;]+ \($cindx\);//;
 								if ($idx || $fts_idx) {
 									# fix index name to avoid duplicate index name
-									$idx =~ s/(CREATE(?:.*?)INDEX ([^\s]+)) /$1$p /gs;
-									$fts_idx =~ s/(CREATE(?:.*?)INDEX ([^\s]+)) /$1$p /gs;
+									$idx =~ s/(CREATE(?:.*?)INDEX ([^\s]+)) /$1${pos}_$p /gs;
+									$fts_idx =~ s/(CREATE(?:.*?)INDEX ([^\s]+)) /$1${pos}_$p /gs;
 									$create_table_index_tmp .= "-- Reproduce subpartition indexes that was defined on the parent table\n";
 								}
 								$create_table_index_tmp .= "$idx\n" if ($idx);
@@ -6581,7 +6602,7 @@ BEGIN
 								$idx =~ s/CREATE [^;]+ \($cindx\);//;
 								if ($idx) {
 									# fix index name to avoid duplicate index name
-									$idx =~ s/(CREATE(?:.*?)INDEX ([^\s]+)) /$1$p /gs;
+									$idx =~ s/(CREATE(?:.*?)INDEX ([^\s]+)) /$1${pos}_$p /gs;
 									$create_table_index_tmp .= "$idx\n";
 									# Remove duplicate index with this one
 									if ($idx =~ /ALTER TABLE $tb_name2 ADD PRIMARY KEY (.*);/s) { 
