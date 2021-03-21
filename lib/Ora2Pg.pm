@@ -7168,7 +7168,8 @@ sub export_table
 				}
 
 				# Default value
-				if ($f->[4] ne "" && uc($f->[4]) ne 'NULL') {
+				if ($f->[4] ne "" && uc($f->[4]) ne 'NULL')
+				{
 					$f->[4] =~ s/^\s+//;
 					$f->[4] =~ s/\s+$//;
 					$f->[4] =~ s/"//gs;
