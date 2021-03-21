@@ -4626,6 +4626,9 @@ sub export_sequence
 	my $num_total_sequence = $#{$self->{sequences}} + 1;
 	my $count_seq = 0;
 	my $PGBAR_REFRESH = set_refresh_count($num_total_sequence);
+	if ($self->{export_schema}) {
+		$sql_output .= "CREATE SCHEMA IF NOT EXISTS " . $self->quote_object_name($self->{pg_schema} || $self->{schema}) . ";\n";
+	}
 	foreach my $seq (sort { $a->[0] cmp $b->[0] } @{$self->{sequences}})
 	{
 		if (!$self->{quiet} && !$self->{debug} && ($count_seq % $PGBAR_REFRESH) == 0) {
