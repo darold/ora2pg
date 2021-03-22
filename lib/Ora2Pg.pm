@@ -761,7 +761,8 @@ sub quote_object_name
 
 	my @ret = ();
 
-	foreach my $obj_name (@obj_list) {
+	foreach my $obj_name (@obj_list)
+	{
 		next if ($obj_name =~ /^SYS_NC\d+/);
 
 		# Start by removing any double quote and extra space
@@ -770,10 +771,12 @@ sub quote_object_name
 		$obj_name =~ s/\s+$//;
 
 		# When PRESERVE_CASE is not enabled set object name to lower case
-		if (!$self->{preserve_case}) {
+		if (!$self->{preserve_case})
+		{
 			$obj_name = lc($obj_name);
 			# then if there is non alphanumeric or the object name is a reserved word
-			if ($obj_name =~ /[^a-z0-9\_\.]/ || ($self->{use_reserved_words} && $self->is_reserved_words($obj_name)) || $obj_name =~ /^\d+/) {
+			if ($obj_name =~ /[^a-z0-9\_\.]/ || ($self->{use_reserved_words} && $self->is_reserved_words($obj_name)) || $obj_name =~ /^\d+/)
+			{
 				# Add double quote to [schema.] object name 
 				if ($obj_name !~ /^[^\.]+\.[^\.]+$/ && $obj_name !~ /^[^\.]+\.[^\.]+\.[^\.]+$/) {
 					$obj_name = '"' . $obj_name . '"';
@@ -783,8 +786,9 @@ sub quote_object_name
 					$obj_name =~ s/^([^\.]+)\.([^\.]+)\.([^\.]+)$/"$1"\."$2"\."$3"/;
 				}
 			}
+		}
 		# Add double quote to [schema.] object name 
-		} elsif ($obj_name !~ /^[^\.]+\.[^\.]+$/ && $obj_name !~ /^[^\.]+\.[^\.]+\.[^\.]+$/) {
+		elsif ($obj_name !~ /^[^\.]+\.[^\.]+$/ && $obj_name !~ /^[^\.]+\.[^\.]+\.[^\.]+$/) {
 			$obj_name = "\"$obj_name\"";
 		} elsif ($obj_name =~ /^[^\.]+\.[^\.]+$/) {
 			$obj_name =~ s/^([^\.]+)\.([^\.]+)$/"$1"\."$2"/;
@@ -12753,9 +12757,6 @@ sub _get_synonyms
 	my %synonyms = ();
 	while (my $row = $sth->fetch) {
 		next if ($row->[1] =~ /^\//); # Some not fully deleted synonym start with a slash
-		if (!$self->{schema} && $self->{export_schema}) {
-			$row->[1] = "$row->[0].$row->[1]";
-		}
 		$synonyms{$row->[1]}{owner} = $row->[0];
 		$synonyms{$row->[1]}{table_owner} = $row->[2];
 		$synonyms{$row->[1]}{table_name} = $row->[3];
