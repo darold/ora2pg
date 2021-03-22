@@ -301,12 +301,15 @@ sub _column_info
 	# PRIVILEGES               | varchar(80)         | NO   |     |         |       |
 	# COLUMN_COMMENT           | varchar(1024)       | NO   |     |         |       |
 
-	my $sth = $self->{dbh}->prepare(<<END);
-SELECT COLUMN_NAME, DATA_TYPE, CHARACTER_MAXIMUM_LENGTH, IS_NULLABLE, COLUMN_DEFAULT, NUMERIC_PRECISION, NUMERIC_SCALE, CHARACTER_OCTET_LENGTH, TABLE_NAME, '' AS OWNER, '' AS VIRTUAL_COLUMN, ORDINAL_POSITION, EXTRA, COLUMN_TYPE
+	my $str = qq{SELECT COLUMN_NAME, DATA_TYPE, CHARACTER_MAXIMUM_LENGTH, IS_NULLABLE, COLUMN_DEFAULT, NUMERIC_PRECISION, NUMERIC_SCALE, CHARACTER_OCTET_LENGTH, TABLE_NAME, '' AS OWNER, '' AS VIRTUAL_COLUMN, ORDINAL_POSITION, EXTRA, COLUMN_TYPE
 FROM INFORMATION_SCHEMA.COLUMNS
 $condition
-ORDER BY ORDINAL_POSITION
-END
+ORDER BY ORDINAL_POSITION};
+	# Version below 5.5 do not have DATA_TYPE column it is named DTD_IDENTIFIER
+	if ($self->{db_version} lt '5.5.0') {
+		$str =~ s/\bDATA_TYPE\b/DTD_IDENTIFIER/;
+	}
+	my $sth = $self->{dbh}->prepare($str);
 	if (!$sth) {
 		$self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	}
@@ -316,7 +319,8 @@ END
 	# COLUMN_NAME,DATA_TYPE,DATA_LENGTH,NULLABLE,DATA_DEFAULT,DATA_PRECISION,DATA_SCALE,CHAR_LENGTH,TABLE_NAME,OWNER,VIRTUAL_COLUMN,POSITION,AUTO_INCREMENT,ENUM_INFO
 	my %data = ();
 	my $pos = 0;
-	while (my $row = $sth->fetch) {
+	while (my $row = $sth->fetch)
+	{
 		if ($row->[1] eq 'enum') {
 			$row->[1] = $row->[-1];
 		}
@@ -712,7 +716,7 @@ sub _get_functions
 	$str .= " ORDER BY ROUTINE_NAME";
 	# Version below 5.5 do not have DATA_TYPE column it is named DTD_IDENTIFIER
 	if ($self->{db_version} lt '5.5.0') {
-		$str =~ s/,DATA_TYPE,/,DTD_IDENTIFIER,/;
+		$str =~ s/\bDATA_TYPE\b/DTD_IDENTIFIER/;
 	}
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -955,6 +959,9 @@ sub _list_all_funtions
 	my $str = "SELECT ROUTINE_NAME,DATA_TYPE FROM INFORMATION_SCHEMA.ROUTINES";
 	if ($self->{schema}) {
 		$str .= " AND ROUTINE_SCHEMA = '$self->{schema}'";
+	}
+	if ($self->{db_version} lt '5.5.0') {
+		$str =~ s/\bDATA_TYPE\b/DTD_IDENTIFIER/;
 	}
 	$str .= " " . $self->limit_to_objects('FUNCTION','ROUTINE_NAME');
 	$str =~ s/ AND / WHERE /;
@@ -1407,6 +1414,9 @@ sub _get_objects
 	}
 	# FUNCTION
 	$sql = "SELECT ROUTINE_NAME FROM INFORMATION_SCHEMA.ROUTINES WHERE DATA_TYPE IS NOT NULL AND ROUTINE_SCHEMA = '$self->{schema}'";
+	if ($self->{db_version} lt '5.5.0') {
+		$sql =~ s/\bDATA_TYPE\b/DTD_IDENTIFIER/;
+	}
 	$sth = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	while ( my @row = $sth->fetchrow()) {
@@ -1415,6 +1425,9 @@ sub _get_objects
 	$sth->finish();
 	# PROCEDURE
 	$sql = "SELECT ROUTINE_NAME FROM INFORMATION_SCHEMA.ROUTINES WHERE DATA_TYPE IS NULL AND ROUTINE_SCHEMA = '$self->{schema}'";
+	if ($self->{db_version} lt '5.5.0') {
+		$sql =~ s/\bDATA_TYPE\b/DTD_IDENTIFIER/;
+	}
 	$sth = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	while ( my @row = $sth->fetchrow()) {
