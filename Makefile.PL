@@ -148,12 +148,18 @@ COMPILE_SCHEMA	1
 # Oracle extraction. Oracle have many of them following the modules
 # installed. By default it will suppress all object owned by the following
 # system users:
-#        CTXSYS,DBSNMP,EXFSYS,LBACSYS,MDSYS,MGMT_VIEW,OLAPSYS,ORDDATA,OWBSYS,
-#        ORDPLUGINS,ORDSYS,OUTLN,SI_INFORMTN_SCHEMA,SYS,SYSMAN,SYSTEM,WK_TEST,
-#        WKSYS,WKPROXY,WMSYS,XDB,APEX_PUBLIC_USER,DIP,FLOWS_020100,FLOWS_030000,
-#        FLOWS_040100,FLOWS_010600,FLOWS_FILES,MDDATA,ORACLE_OCM,SPATIAL_CSW_ADMIN_USR,
-#        SPATIAL_WFS_ADMIN_USR,XS\$NULL,PERFSTAT,SQLTXPLAIN,DMSYS,TSMSYS,WKSYS,
-#        APEX_040200,DVSYS,OJVMSYS,GSMADMIN_INTERNAL,APPQOSSYS, APEX_040000
+# 	'SYSTEM','CTXSYS','DBSNMP','EXFSYS','LBACSYS','MDSYS','MGMT_VIEW',
+# 	'OLAPSYS','ORDDATA','OWBSYS','ORDPLUGINS','ORDSYS','OUTLN',
+# 	'SI_INFORMTN_SCHEMA','SYS','SYSMAN','WK_TEST','WKSYS','WKPROXY',
+# 	'WMSYS','XDB','APEX_PUBLIC_USER','DIP','FLOWS_020100','FLOWS_030000',
+# 	'FLOWS_040100','FLOWS_010600','FLOWS_FILES','MDDATA','ORACLE_OCM',
+# 	'SPATIAL_CSW_ADMIN_USR','SPATIAL_WFS_ADMIN_USR','XS\$NULL','PERFSTAT',
+# 	'SQLTXPLAIN','DMSYS','TSMSYS','WKSYS','APEX_040000','APEX_040200',
+# 	'DVSYS','OJVMSYS','GSMADMIN_INTERNAL','APPQOSSYS','DVSYS','DVF',
+# 	'AUDSYS','APEX_030200','MGMT_VIEW','ODM','ODM_MTR','TRACESRV','MTMSYS',
+# 	'OWBSYS_AUDIT','WEBSYS','WK_PROXY','OSE\$HTTP\$ADMIN',
+# 	'AURORA\$JIS\$UTILITY\$','AURORA\$ORB\$UNAUTHENTICATED',
+# 	'DBMS_PRIVILEGE_CAPTURE','CSMIG', 'MGDSYS', 'SDE','DBSFWUSER'
 # Other list of users set to this directive will be added to this list.
 #SYSUSERS	OE,HR
 
@@ -918,14 +924,14 @@ STANDARD_CONFORMING_STRINGS	1
 # to 1, it will truncate the data extracted to the LongReadLen value.
 #LONGTRUNCOK	0
 
-# Disable this if you don't want to load full content of BLOB and CLOB and use
-# LOB locators instead. This is usefull to not having to set LONGREADLEN. Note
-# that this will not improve speed of BLOB export as most of the time is always
+# Disable this if you want to load full content of BLOB and CLOB and not use
+# LOB locators. In this case you will have to set LONGREADLEN to the right
+# value. Note that this will not improve speed of BLOB export as most of the time is always
 # consumed by the bytea escaping and in this case export is done line by line
 # and not by chunk of DATA_LIMIT rows. For more information on how it works, see
 # http://search.cpan.org/~pythian/DBD-Oracle-1.74/lib/DBD/Oracle.pm#Data_Interface_for_LOB_Locators
-# Default is enabled, it will not use LOB locators for backward compatibility.
-NO_LOB_LOCATOR  0
+# Default is enabled, it use LOB locators.
+USE_LOB_LOCATOR  1
 
 # Oracle recommends reading from and writing to a LOB in batches using a
 # multiple of the LOB chunk size. This chunk size defaults to 8k (8192).
