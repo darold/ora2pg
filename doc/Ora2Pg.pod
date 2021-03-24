@@ -2961,7 +2961,7 @@ where global_variables_type is the type of the variable extracted from
 the package definition.
 
 If the variable is a constant or have a default value assigned at
-declaration, ora2pg will create a file global_variables.conf with
+declaration, Ora2Pg will create a file global_variables.conf with
 the definition to include in the postgresql.conf file so that their
 values will already be set at database connection. Note that the
 value can always modified by the user so you can not have exactly
