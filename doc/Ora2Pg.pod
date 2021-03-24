@@ -2854,6 +2854,8 @@ Usage: ora2pg_scanner -l CSVFILE [-o OUTDIR]
 
    -t | --test : just try all connections by retrieving the required schema
 		 or database name. Useful to validate your CSV list file.
+   -u | --unit MIN : redefine globally the migration cost unit value in minutes.
+		 Default is taken from the ora2pg.conf (default 5 minutes).
 
    Here is a full example of a CSV databases list file:
 

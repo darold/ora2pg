@@ -37,6 +37,7 @@ my $HELP = 0;
 my $ORA2PG_CMD = 'ora2pg';
 my $BINPATH = '';
 my $SEP = ($^O =~ /MSWin32|dos/i) ? "\\" : "/";
+my $COST_UNIT = 5;
 
 # Collect command line arguments
 GetOptions
@@ -46,6 +47,7 @@ GetOptions
 	'l|list=s'    => \$INPUT_FILE,
 	't|test!'     => \$DRYRUN,
         'o|outdir=s'  => \$OUTDIR,
+        'u|unit=s'    => \$COST_UNIT,
         'h|help!'     => \$HELP,
 );
 
@@ -178,8 +180,8 @@ for (my $i = 0; $i < @DB_DNS; $i++)
 			print "Running: $cmd_ora2pg -t SHOW_SCHEMA -s '$DB_DNS[$i]->{dsn}'\n";
 			print `$cmd_ora2pg -t SHOW_SCHEMA -s '$DB_DNS[$i]->{dsn}'`;
 			print "For each schema returned the following commands will be executed:\n";
-			print "    $cmd_ora2pg -t SHOW_REPORT --dump_as_sheet --estimate_cost$header$audit -s '$DB_DNS[$i]->{dsn}' -n '<schema_returned>' >> $OUTDIR${SEP}dbs_scan.csv\n";
-			print "    $cmd_ora2pg -t SHOW_REPORT --dump_as_html --estimate_cost$audit -s '$DB_DNS[$i]->{dsn}' -n '<schema_returned>' >> \"$OUTDIR${SEP}$DB_DNS[$i]->{host}$DB_DNS[$i]->{sid}_<schema_returned>-report.html\"\n";
+			print "    $cmd_ora2pg -t SHOW_REPORT --dump_as_sheet --cost_unit_value $COST_UNIT --estimate_cost$header$audit -s '$DB_DNS[$i]->{dsn}' -n '<schema_returned>' >> $OUTDIR${SEP}dbs_scan.csv\n";
+			print "    $cmd_ora2pg -t SHOW_REPORT --dump_as_html --cost_unit_value $COST_UNIT --estimate_cost$audit -s '$DB_DNS[$i]->{dsn}' -n '<schema_returned>' >> \"$OUTDIR${SEP}$DB_DNS[$i]->{host}$DB_DNS[$i]->{sid}_<schema_returned>-report.html\"\n";
 		}
 		else
 		{
@@ -190,12 +192,12 @@ for (my $i = 0; $i < @DB_DNS; $i++)
 				$DB_DNS[$i]->{schema} = $schemaname;
 				# Escape some chars for file path use
 				$schemaname = quotemeta($schemaname);
-				print "Running: $cmd_ora2pg -t SHOW_REPORT --dump_as_sheet --estimate_cost$header$audit -s '$DB_DNS[$i]->{dsn}' -n '$DB_DNS[$i]->{schema}' >> $OUTDIR${SEP}dbs_scan.csv\n";
-				`$cmd_ora2pg -t SHOW_REPORT --dump_as_sheet --estimate_cost$header$audit -s '$DB_DNS[$i]->{dsn}' -n '$DB_DNS[$i]->{schema}' >> $OUTDIR${SEP}dbs_scan.csv`;
+				print "Running: $cmd_ora2pg -t SHOW_REPORT --dump_as_sheet --cost_unit_value $COST_UNIT --estimate_cost$header$audit -s '$DB_DNS[$i]->{dsn}' -n '$DB_DNS[$i]->{schema}' >> $OUTDIR${SEP}dbs_scan.csv\n";
+				`$cmd_ora2pg -t SHOW_REPORT --dump_as_sheet --cost_unit_value $COST_UNIT --estimate_cost$header$audit -s '$DB_DNS[$i]->{dsn}' -n '$DB_DNS[$i]->{schema}' >> $OUTDIR${SEP}dbs_scan.csv`;
 				$header = '';
 
-				print "Running: $cmd_ora2pg -t SHOW_REPORT --dump_as_html --estimate_cost$audit -s '$DB_DNS[$i]->{dsn}' -n '$DB_DNS[$i]->{schema}' >> \"$OUTDIR${SEP}$DB_DNS[$i]->{host}$DB_DNS[$i]->{sid}_$schemaname-report.html\"\n";
-				`$cmd_ora2pg -t SHOW_REPORT --dump_as_html --estimate_cost$audit -s '$DB_DNS[$i]->{dsn}' -n '$DB_DNS[$i]->{schema}' >> "$OUTDIR${SEP}$DB_DNS[$i]->{host}$DB_DNS[$i]->{sid}_$schemaname-report.html"`;
+				print "Running: $cmd_ora2pg -t SHOW_REPORT --dump_as_html --cost_unit_value $COST_UNIT --estimate_cost$audit -s '$DB_DNS[$i]->{dsn}' -n '$DB_DNS[$i]->{schema}' >> \"$OUTDIR${SEP}$DB_DNS[$i]->{host}$DB_DNS[$i]->{sid}_$schemaname-report.html\"\n";
+				`$cmd_ora2pg -t SHOW_REPORT --dump_as_html --cost_unit_value $COST_UNIT --estimate_cost$audit -s '$DB_DNS[$i]->{dsn}' -n '$DB_DNS[$i]->{schema}' >> "$OUTDIR${SEP}$DB_DNS[$i]->{host}$DB_DNS[$i]->{sid}_$schemaname-report.html"`;
 			}
 		}
 	}
@@ -211,10 +213,10 @@ for (my $i = 0; $i < @DB_DNS; $i++)
 		}
 		else
 		{
-			print "Running: $cmd_ora2pg -t SHOW_REPORT --dump_as_sheet --estimate_cost$header$audit -s '$DB_DNS[$i]->{dsn}' -n '$DB_DNS[$i]->{schema}' >> $OUTDIR${SEP}dbs_scan.csv\n";
-			`$cmd_ora2pg -t SHOW_REPORT --dump_as_sheet --estimate_cost$header$audit -s '$DB_DNS[$i]->{dsn}' -n '$DB_DNS[$i]->{schema}' >> $OUTDIR${SEP}dbs_scan.csv`;
-			print "Running: $cmd_ora2pg -t SHOW_REPORT --dump_as_html --estimate_cost$audit -s '$DB_DNS[$i]->{dsn}' -n '$DB_DNS[$i]->{schema}' >> \"$OUTDIR${SEP}$DB_DNS[$i]->{sid}_$schemaname-report.html\"\n";
-			`$cmd_ora2pg -t SHOW_REPORT --dump_as_html --estimate_cost$audit -s '$DB_DNS[$i]->{dsn}' -n '$DB_DNS[$i]->{schema}' >> "$OUTDIR${SEP}$DB_DNS[$i]->{sid}_$schemaname-report.html"`;
+			print "Running: $cmd_ora2pg -t SHOW_REPORT --dump_as_sheet --cost_unit_value $COST_UNIT --estimate_cost$header$audit -s '$DB_DNS[$i]->{dsn}' -n '$DB_DNS[$i]->{schema}' >> $OUTDIR${SEP}dbs_scan.csv\n";
+			`$cmd_ora2pg -t SHOW_REPORT --dump_as_sheet --cost_unit_value $COST_UNIT --estimate_cost$header$audit -s '$DB_DNS[$i]->{dsn}' -n '$DB_DNS[$i]->{schema}' >> $OUTDIR${SEP}dbs_scan.csv`;
+			print "Running: $cmd_ora2pg -t SHOW_REPORT --dump_as_html --cost_unit_value $COST_UNIT --estimate_cost$audit -s '$DB_DNS[$i]->{dsn}' -n '$DB_DNS[$i]->{schema}' >> \"$OUTDIR${SEP}$DB_DNS[$i]->{sid}_$schemaname-report.html\"\n";
+			`$cmd_ora2pg -t SHOW_REPORT --dump_as_html --cost_unit_value $COST_UNIT --estimate_cost$audit -s '$DB_DNS[$i]->{dsn}' -n '$DB_DNS[$i]->{schema}' >> "$OUTDIR${SEP}$DB_DNS[$i]->{sid}_$schemaname-report.html"`;
 		}
 	}
 }
@@ -248,6 +250,8 @@ Usage: ora2pg_scanner -l CSVFILE [-o OUTDIR]
 
    -t | --test : just try all connections by retrieving the required schema
 		 or database name. Useful to validate your CSV list file.
+   -u | --unit MIN : redefine globally the migration cost unit value in minutes.
+		 Default is taken from the ora2pg.conf (default 5 minutes).
 
    Here is a full example of a CSV databases list file:
 

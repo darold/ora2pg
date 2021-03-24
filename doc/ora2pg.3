@@ -133,7 +133,7 @@
 .\" ========================================================================
 .\"
 .IX Title "ORA2PG 1"
-.TH ORA2PG 1 "2021-03-23" "perl v5.30.0" "User Contributed Perl Documentation"
+.TH ORA2PG 1 "2021-03-24" "perl v5.30.0" "User Contributed Perl Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -2974,6 +2974,8 @@ Usage: ora2pg_scanner \-l \s-1CSVFILE\s0 [\-o \s-1OUTDIR\s0]
 \&
 \&   \-t | \-\-test : just try all connections by retrieving the required schema
 \&                 or database name. Useful to validate your CSV list file.
+\&   \-u | \-\-unit MIN : redefine globally the migration cost unit value in minutes.
+\&                 Default is taken from the ora2pg.conf (default 5 minutes).
 \&
 \&   Here is a full example of a CSV databases list file:
 \&
