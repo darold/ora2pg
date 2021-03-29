@@ -16309,9 +16309,10 @@ sub _show_infos
 			}
 			elsif ($typ eq 'TYPE')
 			{
-				my $total_type = 0;
-				foreach my $t (sort keys %{$self->{type_of_type}}) {
-					$total_type++ if (!grep(/^$t$/, 'Associative Arrays','Type Boby','Type with member method', 'Type Ref Cursor'));
+				my $total_type = $report_info{'Objects'}{'TYPE'}{'number'};
+				foreach my $t (sort keys %{$self->{type_of_type}})
+				{
+					$total_type-- if (grep(/^$t$/, 'Associative Arrays','Type Boby','Type with member method', 'Type Ref Cursor'));
 					$report_info{'Objects'}{$typ}{'detail'} .= "\L$self->{type_of_type}{$t} $t\E\n" if ($self->{type_of_type}{$t});
 				}
 				$report_info{'Objects'}{$typ}{'cost_value'} = ($Ora2Pg::PLSQL::OBJECT_SCORE{$typ}*$total_type) if ($self->{estimate_cost});
