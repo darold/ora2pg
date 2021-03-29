@@ -132,6 +132,7 @@ $QUERY_TEST_SCORE = 0.1;
 	'CONCAT' => 0.1,
 	'TIMEZONE' => 1,
 	'JSON' => 3,
+	'TO_CLOB' => 0.1
 );
 
 @ORA_FUNCTIONS = qw(
@@ -754,6 +755,10 @@ sub plsql_to_plpgsql
 	$str =~ s/(DBMS_OUTPUT.ENABLE[^;]+;)/-- $1/isg;
 	# DBMS_LOB.GETLENGTH can be replaced by binary length.
 	$str =~ s/DBMS_LOB.GETLENGTH/octet_length/igs;
+	# DBMS_LOB.SUBSTR can be replaced by SUBSTR()
+	$str =~ s/DBMS_LOB.SUBSTR/substr/igs;
+	# TO_CLOB()
+	$str =~ s/TO_CLOB\(([^\)]+)\)/$1/igs;
 
 	# Raise information to the client
 	$str =~ s/DBMS_OUTPUT\.(put_line|put|new_line)\s*\((.*?)\)\s*;/&raise_output($class, $2) . ';'/isge;
@@ -1500,6 +1505,10 @@ sub replace_oracle_function
 
 	# DBMS_LOB.GETLENGTH can be replaced by binary length.
 	$str =~ s/DBMS_LOB.GETLENGTH/octet_length/igs;
+	# DBMS_LOB.SUBSTR can be replaced by SUBSTR()
+	$str =~ s/DBMS_LOB.SUBSTR/substr/igs;
+	# TO_CLOB()
+	$str =~ s/TO_CLOB\(([^\)]+)\)/$1/igs;
 
 	# Replace call to SYS_GUID() function
 	$str =~ s/\bSYS_GUID\s*\(\s*\)/$class->{uuid_function}()/is;
@@ -2343,6 +2352,8 @@ sub estimate_cost
 	$cost_details{'TIMEZONE'} += $n;
 	$n = () = $str =~ m/IS\s+(NOT)?\s*JSON/igs;
 	$cost_details{'JSON'} += $n;
+	$n = () = $str =~ m/TO_CLOB\([^,\)]+\)/igs;
+	$cost_details{'TO_CLOB'} += $n;
 
 	foreach my $f (@ORA_FUNCTIONS) {
 		if ($str =~ /\b$f\b/igs) {
