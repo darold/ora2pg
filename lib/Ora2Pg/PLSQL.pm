@@ -634,6 +634,7 @@ sub plsql_to_plpgsql
 	$str =~ s/<\s+>/<>/gs;
 	$str =~ s/:\s+=/:=/gs;
 	$str =~ s/\|\s+\|/\|\|/gs;
+	$str =~ s/!=([+\-])/!= $1/gs;
 
 	# replace operator for named parameters in function calls
 	if (!$class->{pg_supports_named_operator}) {
@@ -659,8 +660,8 @@ sub plsql_to_plpgsql
 	$str =~ s/:old\./OLD\./igs;
 
 	# Change NVL to COALESCE
-	$str =~ s/NVL\s*\(/coalesce(/is;
-	$str =~ s/NVL2\s*\($field,$field,$field\)/(CASE WHEN $1 IS NOT NULL THEN $2 ELSE $3 END)/is;
+	$str =~ s/NVL\s*\(/coalesce(/isg;
+	$str =~ s/NVL2\s*\($field,$field,$field\)/(CASE WHEN $1 IS NOT NULL THEN $2 ELSE $3 END)/isg;
 
 	# NLSSORT to COLLATE
 	if ($str =~ /NLSSORT\($field,$field[\)]?/is)
