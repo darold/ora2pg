@@ -613,6 +613,9 @@ sub plsql_to_plpgsql
 	# Cast call to to_date with localtimestamp 
 	$str =~ s/(TO_DATE\($conv_current_time)\s*,/$1::text,/igs;
 
+	# JSON validation mostly in CHECK contraints
+	$str =~ s/((?:\w+\.)?\w+)\s+IS\s+JSON\b/\(CASE WHEN $1::json IS NULL THEN true ELSE true END\)/igs;
+
 	# Drop temporary doesn't exist in PostgreSQL
 	$str =~ s/DROP\s+TEMPORARY/DROP/igs;
 
@@ -646,7 +649,7 @@ sub plsql_to_plpgsql
 	}
 
 	# Replace listagg() call
-	$str =~ s/\bLISTAGG\s*\((.*?)\)\s+WITHIN\s+GROUP\s*\((.*?)\)/string_agg($1 $2)/ig;
+	$str =~ s/\bLISTAGG\s*\((.*?)(?:\s*ON OVERFLOW [^\)]+)?\)\s+WITHIN\s+GROUP\s*\((.*?)\)/string_agg($1 $2)/ig;
 
 	# There's no such things in PostgreSQL
 	$str =~ s/PRAGMA RESTRICT_REFERENCES[^;]+;//igs;
@@ -794,7 +797,7 @@ sub plsql_to_plpgsql
 	#$str =~ s/\%ROWTYPE//isg;
 
 	# Normalize HAVING ... GROUP BY into GROUP BY ... HAVING clause	
-	$str =~ s/\bHAVING\b((?:(?!SELECT|INSERT|UPDATE|DELETE).)*?)\bGROUP BY\b((?:(?!SELECT|INSERT|UPDATE|DELETE|WHERE).)*?)((?=UNION|ORDER BY|LIMIT|INTO |FOR UPDATE|PROCEDURE|\)\s+(?:AS)*[a-z0-9_]+\s+)|$)/GROUP BY$2 HAVING$1/gis;
+	$str =~ s/\bHAVING\b((?:(?!SELECT|INSERT|UPDATE|DELETE|WHERE|FROM).)*?)\bGROUP BY\b((?:(?!SELECT|INSERT|UPDATE|DELETE|WHERE|FROM).)*?)((?=UNION|ORDER BY|LIMIT|INTO |FOR UPDATE|PROCEDURE|\)\s+(?:AS)*[a-z0-9_]+\s+)|$)/GROUP BY$2 HAVING$1/gis;
 
 	# Add STRICT keyword when select...into and an exception with NO_DATA_FOUND/TOO_MANY_ROW is present
 	#$str =~ s/\b(SELECT\b[^;]*?INTO)(.*?)(EXCEPTION.*?(?:NO_DATA_FOUND|TOO_MANY_ROW))/$1 STRICT $2 $3/igs;
