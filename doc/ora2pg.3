@@ -133,7 +133,7 @@
 .\" ========================================================================
 .\"
 .IX Title "ORA2PG 1"
-.TH ORA2PG 1 "2021-03-24" "perl v5.30.0" "User Contributed Perl Documentation"
+.TH ORA2PG 1 "2021-03-29" "perl v5.30.0" "User Contributed Perl Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -829,7 +829,7 @@ system schema or role:
 \&        AUDSYS,APEX_030200,MGMT_VIEW,ODM,ODM_MTR,TRACESRV,MTMSYS,
 \&        OWBSYS_AUDIT,WEBSYS,WK_PROXY,OSE$HTTP$ADMIN,
 \&        AURORA$JIS$UTILITY$,AURORA$ORB$UNAUTHENTICATED,
-\&        DBMS_PRIVILEGE_CAPTURE,CSMIG, MGDSYS, SDE,DBSFWUSER
+\&        DBMS_PRIVILEGE_CAPTURE,CSMIG,MGDSYS,SDE,DBSFWUSER
 .Ve
 .Sp
 Following your Oracle installation you may have several other system role
@@ -2383,12 +2383,16 @@ If you want to bypass the '\s-1ORA\-24345: A\s0 Truncation' error, set this dire
 to 1, it will truncate the data extracted to the LongReadLen value. Disable
 by default so that you will be warned if your LongReadLen value is not high
 enough.
-.IP "\s-1NO_LOB_LOCATOR\s0" 4
-.IX Item "NO_LOB_LOCATOR"
-Enable this directive if you want to load full content of \s-1BLOB\s0 and \s-1CLOB\s0 and
-not use \s-1LOB\s0 locators. If enabled you must take care of the value of \s-1LONGREADLEN.\s0
-This directive is now disabled by default as using a lob locator has better
-performances when chunk size can be controlled, see \s-1LOB_CHUNK_SIZE.\s0
+.IP "\s-1USE_LOB_LOCATOR\s0" 4
+.IX Item "USE_LOB_LOCATOR"
+Disable this if you want to load full content of \s-1BLOB\s0 and \s-1CLOB\s0 and not use
+\&\s-1LOB\s0 locators. In this case you will have to set \s-1LONGREADLEN\s0 to the right
+value. Note that this will not improve speed of \s-1BLOB\s0 export as most of the
+time is always consumed by the bytea escaping and in this case export is
+done line by line and not by chunk of \s-1DATA_LIMIT\s0 rows. For more information
+on how it works, see http://search.cpan.org/~pythian/DBD\-Oracle\-1.74/lib/DBD/Oracle.pm#Data_Interface_for_LOB_Locators
+.Sp
+Default is enabled, it use \s-1LOB\s0 locators.
 .IP "\s-1LOB_CHUNK_SIZE\s0" 4
 .IX Item "LOB_CHUNK_SIZE"
 Oracle recommends reading from and writing to a \s-1LOB\s0 in batches using a
@@ -3090,7 +3094,7 @@ where global_variables_type is the type of the variable extracted from
 the package definition.
 .PP
 If the variable is a constant or have a default value assigned at
-declaration, ora2pg will create a file global_variables.conf with
+declaration, Ora2Pg will create a file global_variables.conf with
 the definition to include in the postgresql.conf file so that their
 values will already be set at database connection. Note that the
 value can always modified by the user so you can not have exactly

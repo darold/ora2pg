@@ -680,7 +680,7 @@ system schema or role:
 	AUDSYS,APEX_030200,MGMT_VIEW,ODM,ODM_MTR,TRACESRV,MTMSYS,
 	OWBSYS_AUDIT,WEBSYS,WK_PROXY,OSE$HTTP$ADMIN,
 	AURORA$JIS$UTILITY$,AURORA$ORB$UNAUTHENTICATED,
-	DBMS_PRIVILEGE_CAPTURE,CSMIG, MGDSYS, SDE,DBSFWUSER
+	DBMS_PRIVILEGE_CAPTURE,CSMIG,MGDSYS,SDE,DBSFWUSER
 
 Following your Oracle installation you may have several other system role
 defined. To append these users to the schema exclusion list, just set the
@@ -2275,12 +2275,16 @@ to 1, it will truncate the data extracted to the LongReadLen value. Disable
 by default so that you will be warned if your LongReadLen value is not high
 enough.
 
-=item NO_LOB_LOCATOR
+=item USE_LOB_LOCATOR
 
-Enable this directive if you want to load full content of BLOB and CLOB and
-not use LOB locators. If enabled you must take care of the value of LONGREADLEN.
-This directive is now disabled by default as using a lob locator has better
-performances when chunk size can be controlled, see LOB_CHUNK_SIZE.
+Disable this if you want to load full content of BLOB and CLOB and not use
+LOB locators. In this case you will have to set LONGREADLEN to the right
+value. Note that this will not improve speed of BLOB export as most of the
+time is always consumed by the bytea escaping and in this case export is
+done line by line and not by chunk of DATA_LIMIT rows. For more information
+on how it works, see http://search.cpan.org/~pythian/DBD-Oracle-1.74/lib/DBD/Oracle.pm#Data_Interface_for_LOB_Locators
+
+Default is enabled, it use LOB locators.
 
 =item LOB_CHUNK_SIZE
 
