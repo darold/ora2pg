@@ -626,6 +626,9 @@ sub plsql_to_plpgsql
 	$str =~ s/FROM\s+DUAL//igs;
 	$str =~ s/FROM\s+SYS\.DUAL//igs;
 
+	# DISTINCT and UNIQUE are synonym on Oracle
+	$str =~ s/SELECT\s+UNIQUE\s+([^,])/SELECT DISTINCT $1/igs;
+
 	# Remove space between operators
 	$str =~ s/=\s+>/=>/gs;
 	$str =~ s/<\s+=/<=/gs;
