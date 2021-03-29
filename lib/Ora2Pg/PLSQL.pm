@@ -128,6 +128,7 @@ $QUERY_TEST_SCORE = 0.1;
 	'FUZZY' => 1,
 	'NEAR' => 1,
 	'TO_CHAR' => 0.1,
+	'TO_NCHAR' => 0.1,
 	'ANYDATA' => 2,
 	'CONCAT' => 0.1,
 	'TIMEZONE' => 1,
@@ -825,14 +826,14 @@ sub plsql_to_plpgsql
 	}
 
 	# Replace exit at end of cursor
-	$str =~ s/EXIT WHEN ([^\%;]+)\%NOTFOUND\s*;/EXIT WHEN NOT FOUND; \/\* apply on $1 \*\//isg;
-	$str =~ s/EXIT WHEN \(\s*([^\%;]+)\%NOTFOUND\s*\)\s*;/EXIT WHEN NOT FOUND;  \/\* apply on $1 \*\//isg;
+	$str =~ s/EXIT\s+WHEN\s+([^\%;]+)\%\s*NOTFOUND\s*;/EXIT WHEN NOT FOUND; \/\* apply on $1 \*\//isg;
+	$str =~ s/EXIT\s+WHEN\s+\(\s*([^\%;]+)\%\s*NOTFOUND\s*\)\s*;/EXIT WHEN NOT FOUND;  \/\* apply on $1 \*\//isg;
 	# Same but with additional conditions
-	$str =~ s/EXIT WHEN ([^\%;]+)\%NOTFOUND\s+([^;]+);/EXIT WHEN NOT FOUND $2;  \/\* apply on $1 \*\//isg;
-	$str =~ s/EXIT WHEN \(\s*([^\%;]+)\%NOTFOUND\s+([^\)]+)\)\s*;/EXIT WHEN NOT FOUND $2;  \/\* apply on $1 \*\//isg;
+	$str =~ s/EXIT\s+WHEN\s+([^\%;]+)\%\s*NOTFOUND\s+([^;]+);/EXIT WHEN NOT FOUND $2;  \/\* apply on $1 \*\//isg;
+	$str =~ s/EXIT\s+WHEN\s+\(\s*([^\%;]+)\%\s*NOTFOUND\s+([^\)]+)\)\s*;/EXIT WHEN NOT FOUND $2;  \/\* apply on $1 \*\//isg;
 	# Replacle call to SQL%NOTFOUND and SQL%FOUND
-	$str =~ s/SQL\%NOTFOUND/NOT FOUND/isg;
-	$str =~ s/SQL\%FOUND/FOUND/isg;
+	$str =~ s/SQL\s*\%\s*NOTFOUND/NOT FOUND/isg;
+	$str =~ s/SQL\s*\%\s*FOUND/FOUND/isg;
 
 	# Replace UTL_MATH function by fuzzymatch function
 	$str =~ s/UTL_MATCH.EDIT_DISTANCE/levenshtein/igs;
@@ -1540,8 +1541,10 @@ sub replace_oracle_function
 	# Do some transformation when Orafce is not used
 	if (!$class->{use_orafce})
 	{
+		# Replace to_nchar() without format by a simple cast to text
+		$str =~ s/\bTO_NCHAR\s*\(\s*([^,\)]+)\)/($1)::varchar/igs;
 		# Replace to_char() without format by a simple cast to text
-		$str =~ s/\bTO_CHAR\s*\(\s*([^,\)]+)\)/($1)::varchar/is;
+		$str =~ s/\bTO_CHAR\s*\(\s*([^,\)]+)\)/($1)::varchar/igs;
 		if ($class->{type} ne 'TABLE') {
 			$str =~ s/\(([^\s]+)\)(::varchar)/$1$2/igs;
 		} else {
@@ -2350,6 +2353,8 @@ sub estimate_cost
 	$cost_details{'NEAR'} += $n;
 	$n = () = $str =~ m/TO_CHAR\([^,\)]+\)/igs;
 	$cost_details{'TO_CHAR'} += $n;
+	$n = () = $str =~ m/TO_NCHAR\([^,\)]+\)/igs;
+	$cost_details{'TO_NCHAR'} += $n;
 	$n = () = $str =~ m/\s+ANYDATA/igs;
 	$cost_details{'ANYDATA'} += $n;
 	$n = () = $str =~ m/\|\|/igs;
