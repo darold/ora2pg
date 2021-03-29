@@ -13594,7 +13594,8 @@ sub read_config
 
 	my $fh = new IO::File;
 	$fh->open($file) or $self->logit("FATAL: can't read configuration file $file, $!\n", 0, 1);
-	while (my $l = <$fh>) {
+	while (my $l = <$fh>)
+	{
 		chomp($l);
 		$l =~ s/\r//gs;
 		$l =~ s/^\s*\#.*$//g;
@@ -13602,38 +13603,65 @@ sub read_config
 		$l =~ s/^\s*//; $l =~ s/\s*$//;
 		my ($var, $val) = split(/\s+/, $l, 2);
 		$var = uc($var);
-                if ($var eq 'IMPORT') {
-			if ($val) {
+                if ($var eq 'IMPORT')
+		{
+			if ($val)
+			{
 				$self->logit("Importing $val...\n", 1);
 				$self->read_config($val);
 				$self->logit("Done importing $val.\n",1);
 			}
-		} elsif ($var =~ /^SKIP/) {
-			if ($val) {
+		}
+		elsif ($var =~ /^SKIP/)
+		{
+			if ($val)
+			{
 				$self->logit("No extraction of \L$val\E\n",1);
 				my @skip = split(/[\s;,]+/, $val);
-				foreach my $s (@skip) {
+				foreach my $s (@skip)
+				{
 					$s = 'indexes' if ($s =~ /^indices$/i);
 					$AConfig{"skip_\L$s\E"} = 1;
 				}
 			}
+		}
 		# Should be a else statement but keep the list up to date to memorize the directives full list
-		} elsif (!grep(/^$var$/, 'TABLES', 'ALLOW', 'MODIFY_STRUCT', 'REPLACE_TABLES', 'REPLACE_COLS', 'WHERE', 'EXCLUDE','VIEW_AS_TABLE','ORA_RESERVED_WORDS','SYSUSERS','REPLACE_AS_BOOLEAN','BOOLEAN_VALUES','MODIFY_TYPE','DEFINED_PK', 'ALLOW_PARTITION','REPLACE_QUERY','FKEY_ADD_UPDATE','DELETE','LOOK_FORWARD_FUNCTION','ORA_INITIAL_COMMAND', 'PG_INITIAL_COMMAND')) {
+		elsif (!grep(/^$var$/, 'TABLES','ALLOW','MODIFY_STRUCT','REPLACE_TABLES','REPLACE_COLS',
+				'WHERE','EXCLUDE','VIEW_AS_TABLE','ORA_RESERVED_WORDS','SYSUSERS',
+				'REPLACE_AS_BOOLEAN','BOOLEAN_VALUES','MODIFY_TYPE','DEFINED_PK',
+				'ALLOW_PARTITION','REPLACE_QUERY','FKEY_ADD_UPDATE','DELETE',
+				'LOOK_FORWARD_FUNCTION','ORA_INITIAL_COMMAND','PG_INITIAL_COMMAND'))
+		{
 			$AConfig{$var} = $val;
+			if ($var eq 'NO_LOB_LOCATOR') {
+				print STDERR "WARNING: NO_LOB_LOCATOR is deprecated, use USE_LOB_LOCATOR instead see documentation about the logic change.\n";
+				if ($val == 1) {
+					$AConfig{USE_LOB_LOCATOR} = 0;
+				} else {
+					$AConfig{USE_LOB_LOCATOR} = 1;
+				}
+			}
 		} elsif ($var eq 'VIEW_AS_TABLE') {
 			push(@{$AConfig{$var}}, split(/[\s;,]+/, $val) );
 		} elsif ($var eq 'LOOK_FORWARD_FUNCTION') {
 			push(@{$AConfig{$var}}, split(/[\s;,]+/, $val) );
-		} elsif ( ($var eq 'TABLES') || ($var eq 'ALLOW') || ($var eq 'EXCLUDE') || ($var eq 'ALLOW_PARTITION') ) {
+		}
+		elsif ( ($var eq 'TABLES') || ($var eq 'ALLOW') || ($var eq 'EXCLUDE')
+			|| ($var eq 'ALLOW_PARTITION') )
+		{
 			$var = 'ALLOW' if ($var eq 'TABLES');
-			if ($var eq 'ALLOW_PARTITION') {
+			if ($var eq 'ALLOW_PARTITION')
+			{
 				$var = 'ALLOW';
 				push(@{$AConfig{$var}{PARTITION}}, split(/[,\s]+/, $val) );
-			} else {
+			}
+			else
+			{
 				# Syntax: TABLE[regex1 regex2 ...];VIEW[regex1 regex2 ...];glob_regex1 glob_regex2 ...
 				# Global regex will be applied to the export type only
 				my @vlist = split(/\s*;\s*/, $val);
-				foreach my $a (@vlist) {
+				foreach my $a (@vlist)
+				{
 					if ($a =~ /^([^\[]+)\[(.*)\]$/) {
 						push(@{$AConfig{$var}{"\U$1\E"}}, split(/[,\s]+/, $2) );
 					} else {
@@ -13641,19 +13669,24 @@ sub read_config
 					}
 				}
 			}
-		} elsif ( $var =~ /_INITIAL_COMMAND/ ) {
+		}
+		elsif ( $var =~ /_INITIAL_COMMAND/ ) {
 			push(@{$AConfig{$var}}, $val);
 		} elsif ( $var eq 'SYSUSERS' ) {
 			push(@{$AConfig{$var}}, split(/[\s;,]+/, $val) );
 		} elsif ( $var eq 'ORA_RESERVED_WORDS' ) {
 			push(@{$AConfig{$var}}, split(/[\s;,]+/, $val) );
-		} elsif ( $var eq 'FKEY_ADD_UPDATE' ) {
+		}
+		elsif ( $var eq 'FKEY_ADD_UPDATE' )
+		{
 			if (grep(/^$val$/i, @FKEY_OPTIONS)) {
 				$AConfig{$var} = uc($val);
 			} else {
 				$self->logit("FATAL: invalid option, see FKEY_ADD_UPDATE in configuration file\n", 0, 1);
 			}
-		} elsif ($var eq 'MODIFY_STRUCT') {
+		}
+		elsif ($var eq 'MODIFY_STRUCT')
+		{
 			while ($val =~ s/([^\(\s]+)\s*\(([^\)]+)\)\s*//) {
 				my $table = $1;
 				my $fields = $2;
@@ -13661,53 +13694,75 @@ sub read_config
 				$fields =~ s/\s+$//;
 				push(@{$AConfig{$var}{$table}}, split(/[\s,]+/, $fields) );
 			}
-		} elsif ($var eq 'MODIFY_TYPE') {
+		}
+		elsif ($var eq 'MODIFY_TYPE')
+		{
 			$val =~ s/\\,/#NOSEP#/gs;
 			my @modif_type = split(/[,;]+/, $val);
-			foreach my $r (@modif_type) { 
+			foreach my $r (@modif_type)
+			{ 
 				$r =~ s/#NOSEP#/,/gs;
 				my ($table, $col, $type) = split(/:/, lc($r));
 				$AConfig{$var}{$table}{$col} = $type;
 			}
-		} elsif ($var eq 'REPLACE_COLS') {
-			while ($val =~ s/([^\(\s]+)\s*\(([^\)]+)\)[,;\s]*//) {
+		}
+		elsif ($var eq 'REPLACE_COLS')
+		{
+			while ($val =~ s/([^\(\s]+)\s*\(([^\)]+)\)[,;\s]*//)
+			{
 				my $table = $1;
 				my $fields = $2;
 				$fields =~ s/^\s+//;
 				$fields =~ s/\s+$//;
 				my @rel = split(/[,]+/, $fields);
-				foreach my $r (@rel) {
+				foreach my $r (@rel)
+				{
 					my ($old, $new) = split(/:/, $r);
 					$AConfig{$var}{$table}{$old} = $new;
 				}
 			}
-		} elsif ($var eq 'REPLACE_TABLES') {
+		}
+		elsif ($var eq 'REPLACE_TABLES')
+		{
 			my @replace_tables = split(/[\s,;]+/, $val);
-			foreach my $r (@replace_tables) { 
+			foreach my $r (@replace_tables)
+			{ 
 				my ($old, $new) = split(/:/, $r);
 				$AConfig{$var}{$old} = $new;
 			}
-		} elsif ($var eq 'REPLACE_AS_BOOLEAN') {
+		}
+		elsif ($var eq 'REPLACE_AS_BOOLEAN')
+		{
 			my @replace_boolean = split(/[\s;]+/, $val);
-			foreach my $r (@replace_boolean) { 
+			foreach my $r (@replace_boolean)
+			{ 
 				my ($table, $col) = split(/:/, $r);
 				push(@{$AConfig{$var}{uc($table)}}, uc($col));
 			}
-		} elsif ($var eq 'BOOLEAN_VALUES') {
+		}
+		elsif ($var eq 'BOOLEAN_VALUES')
+		{
 			my @replace_boolean = split(/[\s,;]+/, $val);
-			foreach my $r (@replace_boolean) { 
+			foreach my $r (@replace_boolean)
+			{ 
 				my ($yes, $no) = split(/:/, $r);
 				$AConfig{$var}{lc($yes)} = 't';
 				$AConfig{$var}{lc($no)} = 'f';
 			}
-		} elsif ($var eq 'DEFINED_PK') {
+		}
+		elsif ($var eq 'DEFINED_PK')
+		{
 			my @defined_pk = split(/[\s,;]+/, $val);
-			foreach my $r (@defined_pk) { 
+			foreach my $r (@defined_pk)
+			{ 
 				my ($table, $col) = split(/:/, lc($r));
 				$AConfig{$var}{lc($table)} = $col;
 			}
-		} elsif ($var eq 'WHERE') {
-			while ($val =~ s/([^\[\s]+)\s*\[([^\]]+)\]\s*//) {
+		}
+		elsif ($var eq 'WHERE')
+		{
+			while ($val =~ s/([^\[\s]+)\s*\[([^\]]+)\]\s*//)
+			{
 				my $table = $1;
 				my $where = $2;
 				$where =~ s/^\s+//;
@@ -13717,8 +13772,11 @@ sub read_config
 			if ($val) {
 				$AConfig{"GLOBAL_WHERE"} = $val;
 			}
-		} elsif ($var eq 'DELETE') {
-			while ($val =~ s/([^\[\s]+)\s*\[([^\]]+)\]\s*//) {
+		}
+		elsif ($var eq 'DELETE')
+		{
+			while ($val =~ s/([^\[\s]+)\s*\[([^\]]+)\]\s*//)
+			{
 				my $table = $1;
 				my $delete = $2;
 				$delete =~ s/^\s+//;
@@ -13728,8 +13786,11 @@ sub read_config
 			if ($val) {
 				$AConfig{"GLOBAL_DELETE"} = $val;
 			}
-		} elsif ($var eq 'REPLACE_QUERY') {
-			while ($val =~ s/([^\[\s]+)\s*\[([^\]]+)\]\s*//) {
+		}
+		elsif ($var eq 'REPLACE_QUERY')
+		{
+			while ($val =~ s/([^\[\s]+)\s*\[([^\]]+)\]\s*//)
+			{
 				my $table = lc($1);
 				my $query = $2;
 				$query =~ s/^\s+//;
