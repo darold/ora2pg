@@ -11439,7 +11439,7 @@ sub _get_views
 
 	# Compute view order, where depended view appear before using view
 	my %view_order = ();
-	if ($self->{type} ne 'SHOW_REPORT')
+	if ($self->{type} ne 'SHOW_REPORT' && !$self->{no_view_ordering})
 	{
 		if ($self->{db_version} !~ /Release (8|9|10|11\.1)/)
 		{
