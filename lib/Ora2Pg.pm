@@ -18351,37 +18351,6 @@ sub auto_set_encoding
 	return '';
 }
 
-# Return 0 if the object should be exported, 1 if it not found in allow list
-# and 2 if it is found in the exclude list
-sub skip_this_object
-{
-	my ($self, $obj_type, $name) = @_;
-
-return 0;
-
-	# Exclude object in Recycle Bin from the export
-	return 3 if ($name =~ /^BIN\$/);
-
-	$obj_type = uc($obj_type);
-	if (!$obj_type) {
-		$obj_type = 'ALL';
-	} else {
-		$obj_type .= '|ALL';
-	}
-
-
-	my $found = 0;
-	foreach my $obj (split(/\|/, $obj_type)) {
-		# Check if this object is in the allowed list of object to export.
-		$found = 1 if (($#{$self->{limited}{$obj}} >= 0) && !grep($name =~ /^$_$/i, @{$self->{limited}{$obj}}));
-
-		# Check if this object is in the exlusion list of object to export.
-		$found = 2 if (($#{$self->{excluded}{$obj}} >= 0) && grep($name =~ /^$_$/i, @{$self->{excluded}{$obj}}));
-	}
-
-	return $found;
-}
-
 # Construct a query to exclude or only include some object wanted by the user
 # following the ALLOW and EXCLUDE configuration directive. The filter returned
 # must be used with the bind parameters stored in the @{$self->{query_bind_params}}
