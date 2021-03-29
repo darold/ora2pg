@@ -2716,6 +2716,8 @@ sub read_schema_from_file
 							$self->{identity_info}{$tb_name}{$c_name}{generation} = $1;
 							my $options = $3;
 							$self->{identity_info}{$tb_name}{$c_name}{options} = $3;
+							$self->{identity_info}{$tb_name}{$c_name}{options} =~ s/(SCALE|EXTEND|SESSION)_FLAG: .//isg;
+							$self->{identity_info}{$tb_name}{$c_name}{options} =~ s/KEEP_VALUE: .//is;
 
 							$self->{identity_info}{$tb_name}{$c_name}{options} =~ s/(START WITH):/$1/is;
 							$self->{identity_info}{$tb_name}{$c_name}{options} =~ s/(INCREMENT BY):/$1/is;
@@ -2739,6 +2741,7 @@ sub read_schema_from_file
 							if ($self->{identity_info}{$tb_name}{$c_name}{options} =~ /MAXVALUE\s+(\d+)/is) {
 								$self->{identity_info}{$tb_name}{$c_name}{options} =~ s/(MAXVALUE)\s+\d+/$1 9223372036854775807/is;
 							}
+							$self->{identity_info}{$tb_name}{$c_name}{options} =~ s/\s+/ /igs;
 						}
 						elsif ($c =~ s/\b(GENERATED ALWAYS AS|AS)\s+(.*)//is)
 						{
@@ -8689,6 +8692,7 @@ sub _create_indexes
 			if ($self->{plsql_pgsql}) {
 				$indexes{$idx}->[$j] = Ora2Pg::PLSQL::convert_plsql_code($self, $indexes{$idx}->[$j], @strings);
 			}
+			$indexes{$idx}->[$j] =~ s/%%ESCAPED_STRING%%/''/ig;
 		}
 
 		# Add index opclass if required and type allow it
@@ -11155,6 +11159,8 @@ sub _get_identities
 		$seqs{$row->[1]}{$row->[2]}{generation} = $row->[3];
 		# SEQUENCE options
 		$seqs{$row->[1]}{$row->[2]}{options} = $row->[4];
+		$seqs{$row->[1]}{$row->[2]}{options} =~ s/(SCALE|EXTEND|SESSION)_FLAG: .//ig;
+		$seqs{$row->[1]}{$row->[2]}{options} =~ s/KEEP_VALUE: .//is;
 		$seqs{$row->[1]}{$row->[2]}{options} =~ s/(START WITH):/$1/;
 		$seqs{$row->[1]}{$row->[2]}{options} =~ s/(INCREMENT BY):/$1/;
 		$seqs{$row->[1]}{$row->[2]}{options} =~ s/MAX_VALUE:/MAXVALUE/;
@@ -11173,6 +11179,7 @@ sub _get_identities
 		}
 		# Limit the sequence value to bigint max
 		$seqs{$row->[1]}{$row->[2]}{options} =~ s/MAXVALUE 9999999999999999999999999999/MAXVALUE 9223372036854775807/;
+		$seqs{$row->[1]}{$row->[2]}{options} =~ s/\s+/ /g;
 	}
 
 	return %seqs;
