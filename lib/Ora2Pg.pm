@@ -10971,7 +10971,6 @@ AND    IC.TABLE_OWNER = ?
 
 		# Save original column name
 		my $colname = $row->[1];
-
 		# Replace function based index type
 		if ( ($row->[4] =~ /FUNCTION-BASED/i) && ($colname =~ /^SYS_NC\d+\$$/) )
 		{
@@ -10979,6 +10978,7 @@ AND    IC.TABLE_OWNER = ?
 			my $nc = $sth2->fetch();
 			$row->[1] = $nc->[0];
 			$row->[1] =~ s/"//g;
+			$row->[1] =~ s/'//g if ($row->[1] =~ /^'[^'\s]+'$/);
 			# Single row constraint based on a constant and a function based unique index
 			if ($row->[2] eq 'UNIQUE' && $nc->[0] =~ /^\d+$/ && $row->[4] =~ /FUNCTION-BASED/i) {
 				$row->[1] = '(' . $nc->[0] . ')';
