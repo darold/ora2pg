@@ -190,7 +190,7 @@ sub parse_sdo_geometry
 
         # Get the srid from the data otherwise it will be
 	# overriden by the column srid found in meta information
-	$self->{geometry}{srid} = $sdo_geom->[1] if ($sdo_geom->[1]);
+	$self->{geometry}{srid} = $sdo_geom->[1] if (defined $sdo_geom->[1] && $sdo_geom->[1] ne '');
 	$self->{geometry}{srid} = $self->{srid} if ($self->{geometry}{srid} eq '');
 
         # Look at point only coordonate
