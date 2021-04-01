@@ -673,11 +673,11 @@ sub plsql_to_plpgsql
 	$str =~ s/NVL2\s*\($field,$field,$field\)/(CASE WHEN $1 IS NOT NULL THEN $2 ELSE $3 END)/isg;
 
 	# NLSSORT to COLLATE
-	if ($str =~ /NLSSORT\($field,$field[\)]?/is)
+	while ($str =~ /NLSSORT\($field,$field[\)]?/is)
 	{
 		my $col = $1;
 		my $nls_sort = $2;
-		if ($nls_sort =~ s/\%\%string(\d+)\%\%/$strings[$1]/gs) {
+		if ($nls_sort =~ s/\%\%string(\d+)\%\%/$strings[$1]/s) {
 			$nls_sort =~ s/NLS_SORT=([^']+)[']*/COLLATE "$1"/is;
 			$nls_sort =~ s/\%\%ESCAPED_STRING\%\%//ig;
 			$str =~ s/NLSSORT\($field,$field[\)]?/$1 $nls_sort/is;
