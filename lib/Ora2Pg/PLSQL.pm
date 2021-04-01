@@ -773,8 +773,6 @@ sub plsql_to_plpgsql
 	# Raise information to the client
 	$str =~ s/DBMS_OUTPUT\.(put_line|put|new_line)\s*\((.*?)\)\s*;/&raise_output($class, $2) . ';'/isge;
 
-	# Procedure are the same as function in PG
-	$str =~ s/\bPROCEDURE\b/FUNCTION/igs;
 	# Simply remove this as not supported
 	$str =~ s/\bDEFAULT\s+NULL\b//igs;
 
@@ -2396,9 +2394,6 @@ sub mysql_to_plpgsql
 
 	# remove FROM DUAL
 	$str =~ s/FROM\s+DUAL//igs;
-
-	# Procedure are functions returning void
-	$str =~ s/\bPROCEDURE\b/FUNCTION/igs;
 
 	# Simply remove this as not supported
 	$str =~ s/\bDEFAULT\s+NULL\b//igs;
