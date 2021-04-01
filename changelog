@@ -1,3 +1,207 @@
+2021 04 01 - v21.1
+
+This release fix several issues reported since past six months and
+as usual adds some new features and improvements.
+
+  * Now that Orafce 3.15.0 has a definition for the REGEXP_* function,
+    makes the translation optional to USE_ORAFCE directive.
+  * Add set application name in connection to Oracle/MySql/PostgreSQL.
+  * Add translation of REGEXP_COUNT() and change assessment cost.
+  * Rewrite the way REGEXP_LIKE() is translated into regexp_match to
+    support modifiers. This rewrite also fix default behavior between
+    Oracle and PostgreSQL.
+  * Replace DBMS_LOB.GETLENGTH() by PostgreSQL octet_length() function.
+  * Add types correspondences for VARCHAR2 and NVARCHAR2 in DATA_TYPE
+    configuration directive.
+  * Add autodetection and support of geometry type, srid and dimension
+    for ArcGis geometries.
+  * Add conversion of default value in function parameters.
+  * Add -u | --unit option to ora2pg_scanner to be able to set the
+    migration cost unit value globally.
+  * Replace DBMS_LOB.SUBSTR() by SUBSTR()
+  * Remove TO_CLOB() it is useless, manual cast could be necessary.
+  * Replace IS JSON validation clause in CHECK constraints by
+        (CASE WHEN $1::json IS NULL THEN true ELSE true END)
+    When the code is invalid an error is fired.
+  * DISTINCT and UNIQUE are synonym on Oracle
+
+Backward compatibility changes:
+
+  - Force a column to be bigint if this is an identity column. Thanks
+    to MigOps.com for the patch.
+  - Fix EMPTY_LOB_NULL, enable/disable was inverted, keeping default
+    to enabled. Take care that in old ora2pg.conf it is disabled so it
+    will break backward compatibility with old configuration.
+  - Replace NO_LOB_LOCATOR with USE_LOB_LOCATOR and NO_BLOB_EXPORT
+    with ENABLE_BLOB_EXPORT to avoid confusion with double negative
+    variable. Backward compatibility is preserved with a warning. 
+  - SRID for SDO_GEOMETRY export is now taken from the value not forced
+    from the metadata table. 
+
+Here is the full list of changes and acknowledgements:
+
+  - Take Geometry SRID from the data and fallback to SRID defined in
+    metadata when not found. Thanks to Sebastian Albert for the report.
+  - Fix case where Ora2Pg temporary substitution of '' by placeholder
+    was not restored. Thanks to MigOps.com for the patch.
+  - Fix identity column export on unsupported Oracle 18c options.
+    Thanks to MigOps.com for the patch.
+  - Fix export of columns indexes created with single quote.
+    Thanks to MigOps.com for the patch.
+  - Fix replacement of keyword PROCEDURE by FUNCTION in constraints
+    constants definition. Thanks to marie-joechahine for the report.
+  - Replace IS JSON validation clause in CHECK constraints. Thanks to
+    marie-joechahine for the report and MigOps.com for the patch.
+  - Add support to ON OVERFLOW clause in LISTAGG replacement.
+    Thanks to MigOps.com for the patch.
+  - Fix incorrect handling of HAVING+GROUP BY rewriting.
+    Thanks to MigOps.com for the patch.
+  - Add replacement of TO_NCHAR by a cast to varchar. Thanks to
+    MigOps.com for the patch.
+  - Fix replacement of NOTFOUND when there is extra space or new line
+    in the WHEN EXIT clause. Thanks to MigOps.com for the patch.
+  - Fix a regression in NO_VIEW_ORDERING, it was not taken in account
+    anymore. Thanks to RonJojn2 for the report.
+  - Replace DATA_TYPE with DTD_IDENTIFIER in MySQL catalog queries for
+    version prior 5.5.0. Thanks to zejeanmi for the report.
+  - Fix import script to import sequences before tables. Thanks to
+    MigOps.com for the patch.
+  - Fix detail report of custom type in migration assessment. Thanks
+    to MigOps.com for the patch.
+  - Fix duplicate schema prefixed to SYNONYM. Thanks to dlc75 for the
+    reports.
+  - Replace NO_LOB_LOCATOR with USE_LOB_LOCATOR and NO_BLOB_EXPORT with
+    ENABLE_BLOB_EXPORT to avoid confusion with double negative variable.
+    Thanks to Rob Johnson for the report.
+  - Fix some missing replacements of NVL and rewrite !=-1 into != -1.
+    Thanks to MigOps.com for the patch.
+  - Fix ROWNUM followed by + or - operator and when no aliases are
+    provided. Thanks to MigOps.com for the patch.
+  - Add DBSFWUSER to the list of user/schema exclusion. Thanks to
+    MigOps.com for the patch.
+  - Fix regexp to not append subquery aliases on JOIN clause. Thanks
+    to Rui Pereira for the report.
+  - Handle PRESERVE_CASE and EXPORT_SCHEMA in sequence name. Thanks
+    to marie-joechahine for the report.
+  - Add CREATE SCHEMA statement to sequence export when EXPORT_SCHEMA
+    is enabled. Thanks to marie-joechahine for the report.
+  - Fix duplicate index name on subpartition. Thanks to Philippe
+    Beaudoin for the report.
+  - Exclude sequences used for IDENTITY column (ISEQ$$_). Thanks to
+    marie-joechahine for the report.
+  - Fix parsing from file of CREATE SEQUENCE. Thanks to Rui Pereira
+    for the report.
+  - In export_all.sh script use the database owner provided if it is a
+    superuser instead of postgres user. Thanks to jjune235 for the
+    feature request.
+  - Fix parsing of triggers when there is a CASE inside the code.
+    Thanks to Rui Pereira for the report.
+  - Add set application name in connection to Oracle/MySql/PostgreSQL.
+    Thanks to Yoni Sade for the patch.
+  - Fix double column alias when replacing ROWNUM. Thanks to Rui
+    Pereira for the report.
+  - Add translation of the REGEXP_COUNT function and change assessment
+    cost.
+  - Rewrite the way REGEXP_LIKE is translated into regexp_match to
+    support modifiers. This rewrite also fix default behavior between
+    Oracle and PostgreSQL.  Thanks to otterrisk for the report.
+  - Add IS JSON to assessment. Thanks to marie-joe Chahine for the
+    report.
+  - Fix multi-columns RANGE partitioning. Thanks to Philippe Beaudoin
+    for the report.
+  - Improve reordering columns. Sort by fieldsize first, if same size
+    then it sorts by original position. Thanks to Sebastien Caunes for
+    the patch.
+  - Append partition's column to the primary key of the table as it
+    must be part of the PK on PostgreSQL. Thanks to xinjirufen for the
+    report.
+  - Fix partition export where PRESERVE_CASE was applied to Oracle
+    side. Thanks to schleb1309 for the report.
+  - Fix trigger export with column restriction. Thanks to Sebastien
+    Caunes for the report.
+  - Update installation information.
+  - Fix table reordering following data type. Thanks to Sebastien
+    Caunes for the patch.
+  - Fix incorrect variable name corresponding to DATA_EXPORT_ORDER
+    making this directive inefficient. Thanks to Ron Johnson for the
+    report.
+  - Fix translation of check constraint when read from file
+  - Fix EMPTY_LOB_NULL, enable/disable as inverted, keep default to
+    enabled. Take care that in old ora2pg.conf it is disabled so it
+    will break backward compatibility with old configuration.
+  - Fix false positive detection of input filename is the same as
+    output file.
+  - Rename variables SCHEMA_ONLY, DATA_ONLY and CONSTRAINTS_ONLY in
+    script import_all.sh to conform to their real use. Thanks to
+    Sebastien Caunes for the report.
+  - Fix comment detection breaking the package header parsing and
+    global variable detection.
+  - Fix ROWNUM detection for replacement by LIMIT
+  - Fix escaping of psql command in configuration file comment and
+    set default value for PG_VERSION to 12.
+  - Replace precision by exactness in documentation. Thanks to
+    Sebastien Caunes for the report.
+  - Prevent reducing DATA_LIMIT when NO_BLOB_EXPORT is enabled.
+   Thanks to Thomas Reiss for the report.
+  - Fix geometry type detection.
+  - Add autodetection of geometry type, srid and dimension for
+    ArcGis geometries. Thanks to changmao01 for the feature request.
+  - Fix call to ST_GeomFromText when no SRID is found.
+  - Fix case where OVERRIDE SYSTEM VALUE clause could be added if PG
+    version is < 10. Thanks to changmao01 for the report.
+  - Fix unwanted call to internal GEOM library for ArcGis geometries.
+    Thanks to changmao01 for the report.
+  - Exclude schema SDE (ArGis) from export. Thanks to changmao01 for
+    the report.
+  - prevent looking twice to same custom data type definition.
+  - Fix previous patch to catch SDO_GEOMETRY on lowercase regexp.
+  - Limit detection of geometry data type to SDO_GEOMETRY.
+  - Fix column name replacement in view definition. Thanks to Amit
+    Sanghvi for the report.
+  - Fix REPLACE_COLS parsing to allow space in column name. Thanks
+    to Amit Sanghvi for the report.
+  - Fix translation from file of triggers with WHEN clause. Thanks
+    to Rui Pereira for the report.
+  - Fix column name kept lowercase in the MOD() clause when -J is
+    used. Thanks to Code-UV for the report.
+  - Keep case of PG_SCHEMA definition when used in TEST action.
+  - Fix data export for columns with custom data type. Thanks to
+    Aymen Zaiter for the report.
+  - Fix missing bracket with || operator in CREATE INDEX. Thanks to
+    traxverlis for the report.
+  - Fix export of single row unique function base index. Example:
+      CREATE UNIQUE INDEX single_row_idx ON single_row ((1));
+    Thanks to unrandom123 for the report.
+  - Update documentation about schemas used in TEST action.
+  - Disable materialized view export with MySQL export it is not
+    supported. Thanks to naveenjul29 for the report.
+  - Fix table alias detection in Oracle (+) join rewrite.
+  - Fix an infinite loop in Oracle (+) join rewrite when there is no
+    table aliases and the table is prefixed by its schema. Thanks to
+    Olivier Picavet for the report.
+  - Fix MODIFY_STRUCT when column name need to be escaped. Thanks to
+    helmichamsi10 for the report.
+  - Fix empty PARTITION BY () clause. Thanks to Aymen Zaiter.
+  - Fix export of global variable from package description when there
+    is no package body. Thanks to naveenjul29 for the report.
+  - Add package description export when dumping package source,
+    previously only the package body was dump. This will allow to
+    check global variables export.
+  - Whilst working on the Reproducible Builds effort (https//reproducible-builds.org/)
+    it appears that ora2pg could not be built reproducibly. Thanks to
+    Chris Lamb for the patch.
+  - Fix case of NUMBER(*,10) declaration. Oracle has a precision of 1 to 38
+    for numeric. Even if PostgreSQL allow a precision of 1000 use 38 to
+    replace junk parameter. Thanks to xinjirufen for the report.
+  - Add conversion of default value in function parameters, like syssdate
+    rewriting for example. Thanks to unrandom123 for the report.
+  - Fix a regression in data encoding when exporting data introduced in
+    commit fa8e9de. Thanks to gp4git for the report.
+  - Add debug information about the environment variables used before
+    connecting to Oracle.
+  - Fix case of duplicate between unique index and unique constraint with
+    multiple columns. Thanks to gp4git.
+
 2020 10 12 - v21.0
 
 This release fix several issues reported since last release and adds

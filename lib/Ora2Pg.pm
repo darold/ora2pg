@@ -42,7 +42,7 @@ use Benchmark;
 #set locale to LC_NUMERIC C
 setlocale(LC_NUMERIC,"C");
 
-$VERSION = '21.0';
+$VERSION = '21.1';
 $PSQL = $ENV{PLSQL} || 'psql';
 
 $| = 1;
