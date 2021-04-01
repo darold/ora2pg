@@ -14347,6 +14347,13 @@ sub _convert_function
 		$func_return = " AS \$body\$\n";
 	}
 
+	# extract custom type declared in a stored procedure
+	my $create_type = '';
+	while ($fct_detail{declare} =~ s/\s+TYPE\s+([^\s]+)\s+IS\s+RECORD\s*\(([^;]+)\)\s*;//is)
+	{
+		$create_type .= "CREATE TYPE $1 AS ($2);\n";
+	}
+	
 	my @at_ret_param = ();
 	my @at_ret_type = ();
 	my $at_suffix = '';
@@ -14392,7 +14399,7 @@ sub _convert_function
 	my $type = $fct_detail{type};
 	$type = 'FUNCTION' if (!$self->{pg_supports_procedure});
 
-	my $function = "\n${fct_warning}CREATE$self->{create_or_replace} $type $fname$at_suffix $fct_detail{args}";
+	my $function = "\n$create_type\n\n${fct_warning}CREATE$self->{create_or_replace} $type $fname$at_suffix $fct_detail{args}";
 	if (!$pname || !$self->{package_as_schema})
 	{
 		if ($self->{export_schema} && !$self->{schema})
