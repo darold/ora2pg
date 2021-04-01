@@ -7159,12 +7159,17 @@ sub export_table
 				if (!$self->{schema} && $self->{export_schema}) {
 					$f->[8] = "$f->[9].$f->[8]";
 				}
-				if (exists $self->{identity_info}{$f->[8]}{$f->[0]} and $self->{type} ne 'FDW') {
+				if (exists $self->{identity_info}{$f->[8]}{$f->[0]} and $self->{type} ne 'FDW')
+				{
 					$sql_output =~ s/ NOT NULL\s*$//s; # IDENTITY or serial column are NOT NULL by default
-					if ($self->{pg_supports_identity}) {
+					if ($self->{pg_supports_identity})
+					{
+						$sql_output =~ s/ [^\s]+$/ bigint/; # Force bigint
 						$sql_output .= " GENERATED $self->{identity_info}{$f->[8]}{$f->[0]}{generation} AS IDENTITY";
 						$sql_output .= " (" . $self->{identity_info}{$f->[8]}{$f->[0]}{options} . ')' if (exists $self->{identity_info}{$f->[8]}{$f->[0]}{options} && $self->{identity_info}{$f->[8]}{$f->[0]}{options} ne '');
-					} else {
+					}
+					else
+					{
 						$sql_output =~ s/bigint\s*$/bigserial/s;
 						$sql_output =~ s/smallint\s*$/smallserial/s;
 						$sql_output =~ s/(integer|int)\s*$/serial/s;
@@ -16762,8 +16767,8 @@ sub _show_infos
 			}
 
 			# Set the fields information
-			if ($type eq 'SHOW_COLUMN') {
-
+			if ($type eq 'SHOW_COLUMN')
+			{
 				# Collect column's details for the current table with attempt to preserve column declaration order
 				foreach my $k (sort { 
 						if (!$self->{reordering_columns}) {
@@ -16779,46 +16784,55 @@ sub _show_infos
 							$typb =~ s/\(.*//;
 							$TYPALIGN{$typb} <=> $TYPALIGN{$typa};
 						}
-					} keys %{$self->{tables}{$t}{column_info}}) {
+					} keys %{$self->{tables}{$t}{column_info}})
+				{
 					# COLUMN_NAME,DATA_TYPE,DATA_LENGTH,NULLABLE,DATA_DEFAULT,DATA_PRECISION,DATA_SCALE,CHAR_LENGTH,TABLE_NAME,OWNER,VIRTUAL_COLUMN,POSITION,AUTO_INCREMENT,SRID,SDO_DIM,SDO_GTYPE
 					my $d = $self->{tables}{$t}{column_info}{$k};
 					$d->[2] =~ s/\D//g;
-					my $type = $self->_sql_type($d->[1], $d->[2], $d->[5], $d->[6], $d->[4]);
-					$type = "$d->[1], $d->[2]" if (!$type);
+					my $type1 = $self->_sql_type($d->[1], $d->[2], $d->[5], $d->[6], $d->[4]);
+					$type1 = "$d->[1], $d->[2]" if (!$type1);
 
 					# Check if we need auto increment
 					$warning = '';
-					if ($d->[12] eq 'auto_increment' || $d->[12] eq '1') {
-						if ($type !~ s/bigint/bigserial/) {
-							if ($type !~ s/smallint/smallserial/) {
-								$type =~ s/integer/serial/;
+					if ($d->[12] eq 'auto_increment' || $d->[12] eq '1')
+					{
+						if ($type1 !~ s/bigint/bigserial/)
+						{
+							if ($type1 !~ s/smallint/smallserial/) {
+								$type1 =~ s/integer/serial/;
 							}
 						}
-						if ($type =~ /serial/) {
+						if ($type1 =~ /serial/) {
 							$warning = " - Seq last value: $tables_infos{$t}{auto_increment}";
 						}
 					}
-					$type = $self->{'modify_type'}{"\L$t\E"}{"\L$k\E"} if (exists $self->{'modify_type'}{"\L$t\E"}{"\L$k\E"});
+					$type1 = $self->{'modify_type'}{"\L$t\E"}{"\L$k\E"} if (exists $self->{'modify_type'}{"\L$t\E"}{"\L$k\E"});
 					my $align = '';
 					my $len = $d->[2];
 					if (($d->[1] =~ /char/i) && ($d->[7] > $d->[2])) {
 						$d->[2] = $d->[7];
 					}
 					$self->logit("\t$d->[0] : $d->[1]");
-					if ($d->[1] !~ /SDO_GEOMETRY/) {
+					if ($d->[1] !~ /SDO_GEOMETRY/)
+					{
 						if ($d->[2] && !$d->[5]) {
 							$self->logit("($d->[2])");
-						} elsif ($d->[5] && ($d->[1] =~ /NUMBER/i) ) {
+						}
+						elsif ($d->[5] && ($d->[1] =~ /NUMBER/i) )
+						{
 							$self->logit("($d->[5]");
 							$self->logit(",$d->[6]") if ($d->[6]);
 							$self->logit(")");
 						}
-						if ($self->{reordering_columns}) {
-							my $typ = $type;
+						if ($self->{reordering_columns})
+						{
+							my $typ = $type1;
 							$typ =~ s/\(.*//;
 							$align = " - typalign: $TYPALIGN{$typ}";
 						}
-					} else {
+					}
+					else
+					{
 						# 12:SRID,13:SDO_DIM,14:SDO_GTYPE
 						# Set the dimension, array is (srid, dims, gtype)
 						my $suffix = '';
@@ -16833,12 +16847,12 @@ sub _show_infos
 						} else {
 							$gtypes = $d->[14];
 						}
-						$type = "geometry($gtypes$suffix";
+						$type1 = "geometry($gtypes$suffix";
 						if ($d->[12]) {
-							$type .= ",$d->[12]";
+							$type1 .= ",$d->[12]";
 						}
-						$type .= ")";
-						$type .= " - $d->[14]" if ($d->[14] =~  /,/);
+						$type1 .= ")";
+						$type1 .= " - $d->[14]" if ($d->[14] =~  /,/);
 						
 					}
 					my $ret = $self->is_reserved_words($d->[0]);
@@ -16853,24 +16867,29 @@ sub _show_infos
 					my $typlen = $d->[5];
 					$typlen ||= $d->[2];
 					if (grep(/^$d->[0]$/i, @{$self->{'replace_as_boolean'}{uc($t)}})) {
-						$type = 'boolean';
+						$type1 = 'boolean';
 					# Check if this column should be replaced by a boolean following type/precision
 					} elsif (exists $self->{'replace_as_boolean'}{uc($d->[1])} && ($self->{'replace_as_boolean'}{uc($d->[1])}[0] == $typlen)) {
-						$type = 'boolean';
+						$type1 = 'boolean';
 					}
 
 					# Autoincremented columns
 					if (!$self->{schema} && $self->{export_schema}) {
 						$d->[8] = "$d->[9].$d->[8]";
 					}
-					if (exists $self->{identity_info}{$d->[8]}{$d->[0]}) {
-						if ($self->{pg_supports_identity}) {
-							$type .= " GENERATED $self->{identity_info}{$d->[8]}{$d->[0]}{generation} AS IDENTITY";
-							$type .= " (" . $self->{identity_info}{$d->[8]}{$d->[0]}{options} . ')' if (exists $self->{identity_info}{$d->[8]}{$d->[0]}{options} && $self->{identity_info}{$d->[8]}{$d->[0]}{options} ne '');
-						} else {
-							$type =~ s/bigint$/bigserial/;
-							$type =~ s/smallint/smallserial/;
-							$type =~ s/(integer|int)$/serial/;
+					if (exists $self->{identity_info}{$d->[8]}{$d->[0]})
+					{
+						if ($self->{pg_supports_identity})
+						{
+							$type1 = 'bigint'; # Force bigint
+							$type1 .= " GENERATED $self->{identity_info}{$d->[8]}{$d->[0]}{generation} AS IDENTITY";
+							$type1 .= " (" . $self->{identity_info}{$d->[8]}{$d->[0]}{options} . ')' if (exists $self->{identity_info}{$d->[8]}{$d->[0]}{options} && $self->{identity_info}{$d->[8]}{$d->[0]}{options} ne '');
+						}
+						else
+						{
+							$type1 =~ s/bigint$/bigserial/;
+							$type1 =~ s/smallint/smallserial/;
+							$type1 =~ s/(integer|int)$/serial/;
 						}
 					}
 
@@ -16878,7 +16897,7 @@ sub _show_infos
 					$encrypted = " [encrypted]" if (exists $self->{encrypted_column}{"$t.$k"});
 					my $virtual = '';
 					$virtual = " [virtual column]" if ($d->[10] eq 'YES');
-					$self->logit(" => $type$warning$align$virtual$encrypted\n");
+					$self->logit(" => $type1$warning$align$virtual$encrypted\n");
 				}
 			}
 			$i++;
