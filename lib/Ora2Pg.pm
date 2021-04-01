@@ -1229,7 +1229,9 @@ sub _init
 	$self->{use_orafce} ||= 0;
 
 	# Enable BLOB data export by default
-	$self->{no_blob_export} ||= 0;
+	if (not defined $self->{enable_blob_export}) {
+		$self->{enable_blob_export} = 1;
+	}
 
 	# Table data export will be sorted by name by default
 	$self->{data_export_order} ||= 'name';
@@ -8494,7 +8496,7 @@ sub _dump_table
 
 		my $f = $self->{tables}{"$table"}{column_info}{"$fieldname"};
 		$f->[2] =~ s/\D//g;
-		if ($self->{no_blob_export} && $f->[1] =~ /blob/i) {
+		if (!$self->{enable_blob_export} && $f->[1] =~ /blob/i) {
 			# user don't want to export blob
 			next;
 		}
@@ -9684,7 +9686,7 @@ sub _howto_get_data
 				}
 
 			} elsif ( !$self->{is_mysql} && (($src_type->[$k] =~ /clob/i) || ($src_type->[$k] =~ /blob/i)) ) {
-				if ($self->{no_blob_export} && $src_type->[$k] =~ /blob/i) {
+				if (!$self->{enable_blob_export} && $src_type->[$k] =~ /blob/i) {
 					# user don't want to export blob
 					next;
 				}
@@ -9701,7 +9703,7 @@ sub _howto_get_data
 			}
 			push(@{$self->{spatial_srid}{$table}}, $spatial_srid);
 			
-			if ($type->[$k] =~ /bytea/i && !$self->{no_blob_export})
+			if ($type->[$k] =~ /bytea/i && $self->{enable_blob_export})
 			{
 				if ($self->{data_limit} >= 1000)
 				{
@@ -13644,6 +13646,14 @@ sub read_config
 					$AConfig{USE_LOB_LOCATOR} = 0;
 				} else {
 					$AConfig{USE_LOB_LOCATOR} = 1;
+				}
+			}
+			if ($var eq 'NO_BLOB_EXPORT') {
+				print STDERR "WARNING: NO_BLOB_EXPORT is deprecated, use ENABLE_BLOB_EXPORT instead see documentation about the logic change.\n";
+				if ($val == 1) {
+					$AConfig{ENABLE_BLOB_EXPORT} = 0;
+				} else {
+					$AConfig{ENABLE_BLOB_EXPORT} = 1;
 				}
 			}
 		} elsif ($var eq 'VIEW_AS_TABLE') {

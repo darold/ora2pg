@@ -626,6 +626,7 @@ sub make_config_generic
 		$conf_arr->[$i] =~ s/^#LONGREADLEN.*1047552/LONGREADLEN\t1047552/;
 		$conf_arr->[$i] =~ s/^AUTODETECT_SPATIAL_TYPE.*0/AUTODETECT_SPATIAL_TYPE\t1/;
 		$conf_arr->[$i] =~ s/^NO_LOB_LOCATOR.*/NO_LOB_LOCATOR\t0/;
+		$conf_arr->[$i] =~ s/^USE_LOB_LOCATOR.*/USE_LOB_LOCATOR\t1/;
 		$conf_arr->[$i] =~ s/^FTS_INDEX_ONLY.*0/FTS_INDEX_ONLY\t1/;
 		$conf_arr->[$i] =~ s/^DISABLE_UNLOGGED.*0/DISABLE_UNLOGGED\t1/;
 		$conf_arr->[$i] =~ s/^EMPTY_LOB_NULL.*0/EMPTY_LOB_NULL\t1/;
