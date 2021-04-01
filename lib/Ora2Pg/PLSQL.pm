@@ -521,7 +521,9 @@ sub append_alias_clause
 				$parts[0] =~ s/(?<!USING|[\s,]ONLY|[\s,]JOIN|..\sON|.\sAND|..\sOR)\s*\%SUBQUERY(\d+)\%(\s*,)/\%SUBQUERY$1\% alias$1$2/igs;
 				$parts[0] =~ s/(?<!USING|[\s,]ONLY|[\s,]JOIN|.\sON\s|\sAND\s|.\sOR\s)\s*\%SUBQUERY(\d+)\%(\s*)$/\%SUBQUERY$1\% alias$1$2/is;
 				# Remove unwanted alias appended with the REGEXP_SUBSTR translation
-				$parts[0] =~ s/(\%SUBQUERY\d+\%\s+AS\s+[^\s]+)\s+alias\d+/$1/g;
+				$parts[0] =~ s/(\%SUBQUERY\d+\%\s+AS\s+[^\s]+)\s+alias\d+/$1/ig;
+				# Remove unwanted alias appended with JOIN
+				$parts[0] =~ s/\bON\s*(\%SUBQUERY\d+\%)\s+alias\d+/ON $1/ig;
 				# Remove unwanted alias appended with the epoch translation
 				$parts[0] =~ s/\b(now\%SUBQUERY\d+\%) alias\d+/$1/ig;
 				$from_clause = join('', @parts);
