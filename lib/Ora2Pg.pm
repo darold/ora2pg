@@ -6447,13 +6447,21 @@ BEGIN
 				$create_table_tmp .= $check_cond;
 				if (exists $self->{subpartitions_list}{"\L$table\E"}{"\L$part\E"}{type})
 				{
-					$create_table_tmp .= "\nPARTITION BY " . $self->{subpartitions_list}{"\L$table\E"}{"\L$part\E"}{type} . " (";
-					for (my $j = 0; $j <= $#{$self->{subpartitions_list}{"\L$table\E"}{"\L$part\E"}{columns}}; $j++)
+					if ($self->{subpartitions_list}{"\L$table\E"}{"\L$part\E"}{type})
 					{
-						$create_table_tmp .= ', ' if ($j > 0);
-						$create_table_tmp .= $self->quote_object_name($self->{subpartitions_list}{"\L$table\E"}{"\L$part\E"}{columns}[$j]);
+						$create_table_tmp .= "\nPARTITION BY " . $self->{subpartitions_list}{"\L$table\E"}{"\L$part\E"}{type} . " (";
+						for (my $j = 0; $j <= $#{$self->{subpartitions_list}{"\L$table\E"}{"\L$part\E"}{columns}}; $j++)
+						{
+							$create_table_tmp .= ', ' if ($j > 0);
+							$create_table_tmp .= $self->quote_object_name($self->{subpartitions_list}{"\L$table\E"}{"\L$part\E"}{columns}[$j]);
+						}
+						$create_table_tmp .= ")";
 					}
-					$create_table_tmp .= ")";
+					else
+					{
+						print STDERR "WARNING: unsupported subpartition type on table '$table' for partition '$part'\n";
+						$sql_output .=  " -- Unsupported partition type, please check\n";
+					}
 				}
 				$create_table_tmp .= ";\n";
 			}
@@ -7278,13 +7286,21 @@ sub export_table
 			}
 
 			if ($self->{tables}{$table}{table_info}{partitioned} && $self->{pg_supports_partition} && !$self->{disable_partition}) {
-				$sql_output .= " PARTITION BY " . $self->{partitions_list}{"\L$table\E"}{type} . " (";
-				for (my $j = 0; $j <= $#{$self->{partitions_list}{"\L$table\E"}{columns}}; $j++)
+				if ($self->{partitions_list}{"\L$table\E"}{type})
 				{
-					$sql_output .= ', ' if ($j > 0);
-			       		$sql_output .= $self->quote_object_name($self->{partitions_list}{"\L$table\E"}{columns}[$j]);
+					$sql_output .= " PARTITION BY " . $self->{partitions_list}{"\L$table\E"}{type} . " (";
+					for (my $j = 0; $j <= $#{$self->{partitions_list}{"\L$table\E"}{columns}}; $j++)
+					{
+						$sql_output .= ', ' if ($j > 0);
+						$sql_output .= $self->quote_object_name($self->{partitions_list}{"\L$table\E"}{columns}[$j]);
+					}
+					$sql_output .= 	")";
 				}
-				$sql_output .= 	")";
+				else
+				{
+					print STDERR "WARNING: unsupported partition type on table '$table'\n";
+					$sql_output .=  " -- Unsupported partition type, please check\n";
+				}
 			}
 			if ( ($self->{type} ne 'FDW') && (!$self->{external_to_fdw} || (!grep(/^$table$/i, keys %{$self->{external_table}}) && !$self->{tables}{$table}{table_info}{connection})) ) {
 				my $withoid = _make_WITH($self->{with_oid}, $self->{tables}{$table}{table_info});
