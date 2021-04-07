@@ -9762,7 +9762,7 @@ VARCHAR2
     THEN RETURN NULL;
     ELSE
       dbms_lob.FILEGETNAME( p_bfile, l_dir, l_fname );
-      SELECT directory_path INTO l_path FROM all_directories WHERE directory_name = l_dir;
+      SELECT DIRECTORY_PATH INTO l_path FROM $self->{prefix}_DIRECTORIES WHERE DIRECTORY_NAME = l_dir;
       l_dir := rtrim(l_path,'/');
       RETURN l_dir || '/' || l_fname;
   END IF;
