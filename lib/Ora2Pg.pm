@@ -8601,6 +8601,15 @@ sub _dump_table
 
 }
 
+sub exclude_mviews
+{
+	my ($self, $cols) = @_;
+
+	my $sql = " AND ($cols) NOT IN (SELECT OWNER, TABLE_NAME FROM $self->{prefix}_OBJECT_TABLES)";
+	$sql .= " AND ($cols) NOT IN (SELECT OWNER, MVIEW_NAME FROM $self->{prefix}_MVIEWS UNION ALL SELECT LOG_OWNER, LOG_TABLE FROM $self->{prefix}_MVIEW_LOGS)" if ($self->{type} ne 'FDW');
+	return $sql;
+}
+
 =head2 _column_comments
 
 This function return comments associated to columns
@@ -8622,8 +8631,7 @@ sub _column_comments
 	}
 	$sql .= "AND A.TABLE_NAME='$table' " if ($table);
 	if ($self->{db_version} !~ /Release 8/) {
-		$sql .= " AND (A.OWNER, A.TABLE_NAME) NOT IN (SELECT OWNER, TABLE_NAME FROM ALL_OBJECT_TABLES)";
-		$sql .= " AND (A.OWNER, A.TABLE_NAME) NOT IN (SELECT OWNER, MVIEW_NAME FROM ALL_MVIEWS UNION ALL SELECT LOG_OWNER, LOG_TABLE FROM ALL_MVIEW_LOGS)" if ($self->{type} ne 'FDW');
+		$sql .= $self->exclude_mviews('A.OWNER, A.TABLE_NAME');
 	}
 	if (!$table) {
 		$sql .= $self->limit_to_objects('TABLE','TABLE_NAME');
@@ -10091,12 +10099,11 @@ sub _column_info
 
 	my $sth = '';
 	if ($self->{db_version} !~ /Release 8/) {
-		my $exclude_mview = " AND (A.OWNER, A.TABLE_NAME) NOT IN (SELECT OWNER, TABLE_NAME FROM ALL_OBJECT_TABLES)";
-		$exclude_mview .= " AND (A.OWNER, A.TABLE_NAME) NOT IN (SELECT OWNER, MVIEW_NAME FROM ALL_MVIEWS UNION ALL SELECT LOG_OWNER, LOG_TABLE FROM ALL_MVIEW_LOGS)" if ($self->{type} ne 'FDW');
+		my $exclude_mview = $self->exclude_mviews('A.OWNER, A.TABLE_NAME');
 		$sth = $self->{dbh}->prepare(<<END);
 SELECT A.COLUMN_NAME, A.DATA_TYPE, A.DATA_LENGTH, A.NULLABLE, A.DATA_DEFAULT,
     A.DATA_PRECISION, A.DATA_SCALE, A.CHAR_LENGTH, A.TABLE_NAME, A.OWNER, V.VIRTUAL_COLUMN
-FROM $self->{prefix}_TAB_COLUMNS A, ALL_OBJECTS O, ALL_TAB_COLS V
+FROM $self->{prefix}_TAB_COLUMNS A, $self->{prefix}_OBJECTS O, $self->{prefix}_TAB_COLS V
 WHERE A.OWNER=O.OWNER and A.TABLE_NAME=O.OBJECT_NAME and O.OBJECT_TYPE='$objtype'
     AND A.OWNER=V.OWNER AND A.TABLE_NAME=V.TABLE_NAME AND A.COLUMN_NAME=V.COLUMN_NAME $condition
     $exclude_mview
@@ -10116,7 +10123,7 @@ END
 		$sth = $self->{dbh}->prepare(<<END);
 SELECT A.COLUMN_NAME, A.DATA_TYPE, A.DATA_LENGTH, A.NULLABLE, A.DATA_DEFAULT,
     A.DATA_PRECISION, A.DATA_SCALE, A.DATA_LENGTH, A.TABLE_NAME, A.OWNER, 'NO' as "VIRTUAL_COLUMN"
-FROM $self->{prefix}_TAB_COLUMNS A, ALL_OBJECTS O
+FROM $self->{prefix}_TAB_COLUMNS A, $self->{prefix}_OBJECTS O
 WHERE A.OWNER=O.OWNER and A.TABLE_NAME=O.OBJECT_NAME and O.OBJECT_TYPE='$objtype'
     $condition
 ORDER BY A.COLUMN_ID
@@ -10334,7 +10341,7 @@ sub _column_attributes
 	if ($self->{db_version} !~ /Release 8/) {
 		$sth = $self->{dbh}->prepare(<<END);
 SELECT A.COLUMN_NAME, A.NULLABLE, A.DATA_DEFAULT, A.TABLE_NAME, A.OWNER, A.COLUMN_ID
-FROM $self->{prefix}_TAB_COLUMNS A, ALL_OBJECTS O WHERE A.OWNER=O.OWNER and A.TABLE_NAME=O.OBJECT_NAME and O.OBJECT_TYPE='$objtype' $condition
+FROM $self->{prefix}_TAB_COLUMNS A, $self->{prefix}_OBJECTS O WHERE A.OWNER=O.OWNER and A.TABLE_NAME=O.OBJECT_NAME and O.OBJECT_TYPE='$objtype' $condition
 ORDER BY A.COLUMN_ID
 END
 		if (!$sth) {
@@ -10344,7 +10351,7 @@ END
 		# an 8i database.
 		$sth = $self->{dbh}->prepare(<<END);
 SELECT A.COLUMN_NAME, A.NULLABLE, A.DATA_DEFAULT, A.TABLE_NAME, A.OWNER, A.COLUMN_ID
-FROM $self->{prefix}_TAB_COLUMNS A, ALL_OBJECTS O WHERE A.OWNER=O.OWNER and A.TABLE_NAME=O.OBJECT_NAME and O.OBJECT_TYPE='$objtype' $condition
+FROM $self->{prefix}_TAB_COLUMNS A, $self->{prefix}_OBJECTS O WHERE A.OWNER=O.OWNER and A.TABLE_NAME=O.OBJECT_NAME and O.OBJECT_TYPE='$objtype' $condition
 ORDER BY A.COLUMN_ID
 END
 		if (!$sth) {
@@ -10494,8 +10501,7 @@ FROM $self->{prefix}_CONS_COLUMNS A JOIN $self->{prefix}_CONSTRAINTS B ON (B.CON
 	$sql .= " AND B.TABLE_NAME='$table'" if ($table);
 	$sql .= " AND B.STATUS='ENABLED' ";
 	if ($self->{db_version} !~ /Release 8/) {
-		$sql .= " AND (B.OWNER, B.TABLE_NAME) NOT IN (SELECT OWNER, MVIEW_NAME FROM ALL_MVIEWS UNION ALL SELECT LOG_OWNER, LOG_TABLE FROM ALL_MVIEW_LOGS)" if ($self->{type} ne 'FDW');
-		$sql .= " AND (B.OWNER, B.TABLE_NAME) NOT IN (SELECT OWNER, TABLE_NAME FROM ALL_OBJECT_TABLES)";
+		$sql .= $self->exclude_mviews('B.OWNER, B.TABLE_NAME');
 	}
 
 	# Get the list of constraints in the specified schema or excluding the list of system schema
@@ -10563,8 +10569,7 @@ AND A.STATUS='ENABLED'
 };
 
 	if ($self->{db_version} !~ /Release 8/) {
-		$sql .= " AND (A.OWNER, A.TABLE_NAME) NOT IN (SELECT OWNER, MVIEW_NAME FROM ALL_MVIEWS UNION ALL SELECT LOG_OWNER, LOG_TABLE FROM ALL_MVIEW_LOGS)" if ($self->{type} ne 'FDW');
-		$sql .= " AND (A.OWNER, A.TABLE_NAME) NOT IN (SELECT OWNER, TABLE_NAME FROM ALL_OBJECT_TABLES)";
+		$sql .= $self->exclude_mviews('A.OWNER, A.TABLE_NAME');
 	}
 	my $sth = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -10641,8 +10646,9 @@ FROM $self->{prefix}_CONSTRAINTS CONS
     LEFT JOIN $self->{prefix}_CONS_COLUMNS COLS_R ON (COLS_R.CONSTRAINT_NAME = CONS.R_CONSTRAINT_NAME AND COLS_R.POSITION=COLS.POSITION AND COLS_R.OWNER = CONS.R_OWNER)
 WHERE CONS.CONSTRAINT_TYPE = 'R' $condition
 END
-	$sql .= "\nAND (CONS.OWNER, CONS.TABLE_NAME) NOT IN (SELECT OWNER, MVIEW_NAME FROM ALL_MVIEWS UNION ALL SELECT LOG_OWNER, LOG_TABLE FROM ALL_MVIEW_LOGS)" if ($self->{type} ne 'FDW');
-	$sql .= " AND (CONS.OWNER, CONS.TABLE_NAME) NOT IN (SELECT OWNER, TABLE_NAME FROM ALL_OBJECT_TABLES)";
+	if ($self->{db_version} !~ /Release 8/) {
+		$sql .= $self->exclude_mviews('CONS.OWNER, CONS.TABLE_NAME');
+	}
 
 	$sql .= "\nORDER BY CONS.TABLE_NAME, CONS.CONSTRAINT_NAME, COLS.POSITION";
 
@@ -10938,8 +10944,7 @@ sub _get_indexes
 	# Retrieve all indexes 
 	my $sth = '';
 	if ($self->{db_version} !~ /Release 8/) {
-		my $no_mview = " AND (A.INDEX_OWNER, A.TABLE_NAME) NOT IN (SELECT OWNER, MVIEW_NAME FROM ALL_MVIEWS UNION ALL SELECT LOG_OWNER, LOG_TABLE FROM ALL_MVIEW_LOGS)" if ($self->{type} ne 'FDW');
-		$no_mview .= " AND (A.INDEX_OWNER, A.TABLE_NAME) NOT IN (SELECT OWNER, TABLE_NAME FROM ALL_OBJECT_TABLES)";
+		my $no_mview = $self->exclude_mviews('A.INDEX_OWNER, A.TABLE_NAME');
 		$no_mview = '' if ($self->{type} eq 'MVIEW');
 		$sth = $self->{dbh}->prepare(<<END) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 SELECT DISTINCT A.INDEX_NAME,A.COLUMN_NAME,B.UNIQUENESS,A.COLUMN_POSITION,B.INDEX_TYPE,B.TABLE_TYPE,B.GENERATED,B.JOIN_INDEX,A.TABLE_NAME,A.INDEX_OWNER,B.TABLESPACE_NAME,B.ITYP_NAME,B.PARAMETERS,A.DESCEND
@@ -11432,7 +11437,7 @@ sub _get_views
 	my %comments = ();
 	if ($self->{type} ne 'SHOW_REPORT')
 	{
-		my $sql = "SELECT A.TABLE_NAME,A.COMMENTS,A.TABLE_TYPE,A.OWNER FROM ALL_TAB_COMMENTS A, ALL_OBJECTS O WHERE A.OWNER=O.OWNER and A.TABLE_NAME=O.OBJECT_NAME and O.OBJECT_TYPE='VIEW' $owner";
+		my $sql = "SELECT A.TABLE_NAME,A.COMMENTS,A.TABLE_TYPE,A.OWNER FROM $self->{prefix}_TAB_COMMENTS A, $self->{prefix}_OBJECTS O WHERE A.OWNER=O.OWNER and A.TABLE_NAME=O.OBJECT_NAME and O.OBJECT_TYPE='VIEW' $owner";
 		$sql .= $self->limit_to_objects('VIEW', 'A.TABLE_NAME');
 		my $sth = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 		$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -11480,11 +11485,11 @@ sub _get_views
 			}
 			$sql = qq{
 WITH x (ITER, OWNER, OBJECT_NAME) AS
-( SELECT 1 , o.OWNER, o.OBJECT_NAME FROM ALL_OBJECTS o WHERE OBJECT_TYPE = 'VIEW' $owner
-  AND NOT EXISTS (SELECT 1 FROM ALL_DEPENDENCIES d WHERE TYPE LIKE 'VIEW' AND REFERENCED_TYPE = 'VIEW'
+( SELECT 1 , o.OWNER, o.OBJECT_NAME FROM $self->{prefix}_OBJECTS o WHERE OBJECT_TYPE = 'VIEW' $owner
+  AND NOT EXISTS (SELECT 1 FROM $self->{prefix}_DEPENDENCIES d WHERE TYPE LIKE 'VIEW' AND REFERENCED_TYPE = 'VIEW'
   AND REFERENCED_OWNER = o.OWNER AND d.OWNER = o.OWNER and o.OBJECT_NAME=d.NAME)
 UNION ALL
-  SELECT ITER + 1, d.OWNER, d.NAME FROM ALL_DEPENDENCIES d
+  SELECT ITER + 1, d.OWNER, d.NAME FROM $self->{prefix}_DEPENDENCIES d
      JOIN x ON d.REFERENCED_OWNER = x.OWNER and d.REFERENCED_NAME = x.OBJECT_NAME
     WHERE TYPE LIKE 'VIEW' AND REFERENCED_TYPE = 'VIEW'
 )
@@ -12255,10 +12260,9 @@ sub _table_info
 	my %comments = ();
 	if ($self->{type} eq 'TABLE')
 	{
-		my $sql = "SELECT A.TABLE_NAME,A.COMMENTS,A.TABLE_TYPE,A.OWNER FROM ALL_TAB_COMMENTS A, ALL_OBJECTS O WHERE A.OWNER=O.OWNER and A.TABLE_NAME=O.OBJECT_NAME and O.OBJECT_TYPE='TABLE' $owner";
+		my $sql = "SELECT A.TABLE_NAME,A.COMMENTS,A.TABLE_TYPE,A.OWNER FROM $self->{prefix}_TAB_COMMENTS A, $self->{prefix}_OBJECTS O WHERE A.OWNER=O.OWNER and A.TABLE_NAME=O.OBJECT_NAME and O.OBJECT_TYPE='TABLE' $owner";
 		if ($self->{db_version} !~ /Release 8/) {
-			$sql .= " AND (A.OWNER, A.TABLE_NAME) NOT IN (SELECT OWNER, MVIEW_NAME FROM ALL_MVIEWS UNION ALL SELECT LOG_OWNER, LOG_TABLE FROM ALL_MVIEW_LOGS)" if ($self->{type} ne 'FDW');
-			$sql .= " AND (A.OWNER, A.TABLE_NAME) NOT IN (SELECT OWNER, TABLE_NAME FROM ALL_OBJECT_TABLES)";
+			$sql .= $self->exclude_mviews('A.OWNER, A.TABLE_NAME');
 		}
 		$sql .= $self->limit_to_objects('TABLE', 'A.TABLE_NAME');
 		my $sth = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -12273,14 +12277,13 @@ sub _table_info
 		$sth->finish();
 	}
 
-	my $sql = "SELECT A.OWNER,A.TABLE_NAME,NVL(num_rows,1) NUMBER_ROWS,A.TABLESPACE_NAME,A.NESTED,A.LOGGING,A.PARTITIONED,A.PCT_FREE FROM $self->{prefix}_TABLES A, ALL_OBJECTS O WHERE A.OWNER=O.OWNER AND A.TABLE_NAME=O.OBJECT_NAME AND O.OBJECT_TYPE='TABLE' $owner";
+	my $sql = "SELECT A.OWNER,A.TABLE_NAME,NVL(num_rows,1) NUMBER_ROWS,A.TABLESPACE_NAME,A.NESTED,A.LOGGING,A.PARTITIONED,A.PCT_FREE FROM $self->{prefix}_TABLES A, $self->{prefix}_OBJECTS O WHERE A.OWNER=O.OWNER AND A.TABLE_NAME=O.OBJECT_NAME AND O.OBJECT_TYPE='TABLE' $owner";
 	$sql .= " AND A.TEMPORARY='N' AND (A.NESTED != 'YES' OR A.LOGGING != 'YES') AND A.SECONDARY = 'N'";
 	if ($self->{db_version} !~ /Release [89]/) {
 		$sql .= " AND (A.DROPPED IS NULL OR A.DROPPED = 'NO')";
 	}
 	if ($self->{db_version} !~ /Release 8/) {
-		$sql .= " AND (A.OWNER, A.TABLE_NAME) NOT IN (SELECT OWNER, MVIEW_NAME FROM ALL_MVIEWS UNION ALL SELECT LOG_OWNER, LOG_TABLE FROM ALL_MVIEW_LOGS)" if ($self->{type} ne 'FDW');
-		$sql .= " AND (A.OWNER, A.TABLE_NAME) NOT IN (SELECT OWNER, TABLE_NAME FROM ALL_OBJECT_TABLES)";
+		$sql .= $self->exclude_mviews('A.OWNER, A.TABLE_NAME');
 	}
 	$sql .= $self->limit_to_objects('TABLE', 'A.TABLE_NAME');
         $sql .= " AND (A.IOT_TYPE IS NULL OR A.IOT_TYPE = 'IOT')";
@@ -12358,10 +12361,9 @@ sub _global_temp_table_info
 	my %comments = ();
 	if ($self->{type} eq 'TABLE')
 	{
-		my $sql = "SELECT A.TABLE_NAME,A.COMMENTS,A.TABLE_TYPE,A.OWNER FROM ALL_TAB_COMMENTS A, ALL_OBJECTS O WHERE A.OWNER=O.OWNER and A.TABLE_NAME=O.OBJECT_NAME and O.OBJECT_TYPE='TABLE' $owner";
+		my $sql = "SELECT A.TABLE_NAME,A.COMMENTS,A.TABLE_TYPE,A.OWNER FROM $self->{prefix}_TAB_COMMENTS A, $self->{prefix}_OBJECTS O WHERE A.OWNER=O.OWNER and A.TABLE_NAME=O.OBJECT_NAME and O.OBJECT_TYPE='TABLE' $owner";
 		if ($self->{db_version} !~ /Release 8/) {
-			$sql .= " AND (A.OWNER, A.TABLE_NAME) NOT IN (SELECT OWNER, MVIEW_NAME FROM ALL_MVIEWS UNION ALL SELECT LOG_OWNER, LOG_TABLE FROM ALL_MVIEW_LOGS)";
-			$sql .= " AND (A.OWNER, A.TABLE_NAME) NOT IN (SELECT OWNER, TABLE_NAME FROM ALL_OBJECT_TABLES)";
+			$sql .= $self->exclude_mviews('A.OWNER, A.TABLE_NAME');
 		}
 		$sql .= $self->limit_to_objects('TABLE', 'A.TABLE_NAME');
 		my $sth = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -12376,7 +12378,7 @@ sub _global_temp_table_info
 		$sth->finish();
 	}
 
-	$sql = "SELECT A.OWNER,A.TABLE_NAME,NVL(num_rows,1) NUMBER_ROWS,A.TABLESPACE_NAME,A.NESTED,A.LOGGING FROM $self->{prefix}_TABLES A, ALL_OBJECTS O WHERE A.OWNER=O.OWNER AND A.TABLE_NAME=O.OBJECT_NAME AND O.OBJECT_TYPE='TABLE' $owner";
+	$sql = "SELECT A.OWNER,A.TABLE_NAME,NVL(num_rows,1) NUMBER_ROWS,A.TABLESPACE_NAME,A.NESTED,A.LOGGING FROM $self->{prefix}_TABLES A, $self->{prefix}_OBJECTS O WHERE A.OWNER=O.OWNER AND A.TABLE_NAME=O.OBJECT_NAME AND O.OBJECT_TYPE='TABLE' $owner";
 	$sql .= " AND A.TEMPORARY='Y'";
 	if ($self->{db_version} !~ /Release [89]/) {
 		$sql .= " AND (A.DROPPED IS NULL OR A.DROPPED = 'NO')";
@@ -12618,7 +12620,7 @@ WHERE
 };
 
 	if ($self->{db_version} !~ /Release 8/) {
-		$str .= " AND (A.TABLE_OWNER, A.TABLE_NAME) NOT IN (SELECT OWNER, MVIEW_NAME FROM ALL_MVIEWS UNION ALL SELECT LOG_OWNER, LOG_TABLE FROM ALL_MVIEW_LOGS)";
+		$str .= $self->exclude_mviews('A.TABLE_OWNER, A.TABLE_NAME');
 	}
 	$str .= $self->limit_to_objects('TABLE|PARTITION', 'A.TABLE_NAME|A.PARTITION_NAME');
 
@@ -12706,7 +12708,7 @@ WHERE
 		}
 	}
 	if ($self->{db_version} !~ /Release 8/) {
-		$str .= " AND (A.TABLE_OWNER, A.TABLE_NAME) NOT IN (SELECT OWNER, MVIEW_NAME FROM ALL_MVIEWS UNION ALL SELECT LOG_OWNER, LOG_TABLE FROM ALL_MVIEW_LOGS)";
+		$str .= $self->exclude_mviews('A.TABLE_OWNER, A.TABLE_NAME');
 	}
 	$str .= "ORDER BY A.TABLE_OWNER,A.TABLE_NAME,A.PARTITION_NAME,A.SUBPARTITION_POSITION,C.COLUMN_POSITION\n";
 
@@ -12834,7 +12836,7 @@ WHERE A.TABLE_NAME = B.TABLE_NAME
 $condition
 };
 	if ($self->{db_version} !~ /Release 8/) {
-		$str .= " AND (A.TABLE_OWNER, A.TABLE_NAME) NOT IN (SELECT OWNER, MVIEW_NAME FROM ALL_MVIEWS UNION ALL SELECT LOG_OWNER, LOG_TABLE FROM ALL_MVIEW_LOGS)";
+		$str .= $self->exclude_mviews('A.TABLE_OWNER, A.TABLE_NAME');
 	}
 	$str .= $self->limit_to_objects('TABLE|PARTITION','A.TABLE_NAME|A.PARTITION_NAME');
 
@@ -12913,7 +12915,7 @@ sub _get_partitioned_table
 		}
 	}
 	if ($self->{db_version} !~ /Release 8/) {
-		$str .= " AND (B.OWNER, B.TABLE_NAME) NOT IN (SELECT OWNER, MVIEW_NAME FROM ALL_MVIEWS UNION ALL SELECT LOG_OWNER, LOG_TABLE FROM ALL_MVIEW_LOGS)"  if ($self->{type} ne 'FDW');
+		$str .= $self->exclude_mviews('B.OWNER, B.TABLE_NAME');
 	}
 	if ($self->{type} !~ /SHOW|TEST/) {
 		$str .= "ORDER BY B.OWNER,B.TABLE_NAME,C.COLUMN_POSITION\n";
@@ -13006,7 +13008,7 @@ sub _get_subpartitioned_table
 		}
 	}
 	if ($self->{db_version} !~ /Release 8/) {
-		$str .= " AND (A.TABLE_OWNER, A.TABLE_NAME) NOT IN (SELECT OWNER, MVIEW_NAME FROM ALL_MVIEWS UNION ALL SELECT LOG_OWNER, LOG_TABLE FROM ALL_MVIEW_LOGS)";
+		$str .= $self->exclude_mviews('A.TABLE_OWNER, A.TABLE_NAME');
 	}
 	if ($self->{type} !~ /SHOW|TEST/) {
 		$str .= "ORDER BY A.TABLE_OWNER,A.TABLE_NAME,A.PARTITION_NAME,A.SUBPARTITION_POSITION,C.COLUMN_POSITION\n";
@@ -17970,7 +17972,7 @@ sub _schema_list
 
 	return Ora2Pg::MySQL::_schema_list($self) if ($self->{is_mysql});
 
-	my $sql = "SELECT DISTINCT OWNER FROM ALL_TABLES WHERE OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "') ORDER BY OWNER";
+	my $sql = "SELECT DISTINCT OWNER FROM $self->{prefix}_TABLES WHERE OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "') ORDER BY OWNER";
 
         my $sth = $self->{dbh}->prepare( $sql ) or return undef;
         $sth->execute or return undef;
@@ -18026,7 +18028,7 @@ sub _get_largest_tables
 		$owner_segment = ' AND S.OWNER=A.OWNER';
 	}
 
-	my $sql = "SELECT * FROM ( SELECT S.SEGMENT_NAME, ROUND(S.BYTES/1024/1024) SIZE_MB FROM ${prefix}_SEGMENTS S JOIN ALL_TABLES A ON (S.SEGMENT_NAME=A.TABLE_NAME$owner_segment) WHERE S.SEGMENT_TYPE LIKE 'TABLE%' AND A.SECONDARY = 'N'";
+	my $sql = "SELECT * FROM ( SELECT S.SEGMENT_NAME, ROUND(S.BYTES/1024/1024) SIZE_MB FROM ${prefix}_SEGMENTS S JOIN $self->{prefix}_TABLES A ON (S.SEGMENT_NAME=A.TABLE_NAME$owner_segment) WHERE S.SEGMENT_TYPE LIKE 'TABLE%' AND A.SECONDARY = 'N'";
 	if ($self->{db_version} =~ /Release 8/) {
 		$sql = "SELECT * FROM ( SELECT A.SEGMENT_NAME, ROUND(A.BYTES/1024/1024) SIZE_MB FROM ${prefix}_SEGMENTS A WHERE A.SEGMENT_TYPE LIKE 'TABLE%'";
 	}
