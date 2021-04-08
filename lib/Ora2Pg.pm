@@ -14279,7 +14279,10 @@ sub _convert_function
 		{
 			$has_default = 1 if ($args_sorted[$i] =~ /\s+DEFAULT\s/i);
 			if ($has_default && $args_sorted[$i] !~ /\s+DEFAULT\s/i) {
-				$args_sorted[$i] .= ' DEFAULT NULL';
+				# Add default null if this is not an OUT parameter
+				if ( $args_sorted[$i] !~ /[,\(\s]OUT[\s,\)]/i && $args_sorted[$i] !~ /^OUT\s/i) {
+					$args_sorted[$i] .= ' DEFAULT NULL';
+				}
 			}
 		}
 	}
@@ -14331,7 +14334,7 @@ sub _convert_function
 	}
 
 	# PostgreSQL procedure do not support OUT parameter, translate them into INOUT params
-	if ($self->{pg_supports_procedure} && ($fct_detail{args} =~ /\bOUT\s+[^,\)]+/i)) {
+	if (!$fct_detail{hasreturn} && $self->{pg_supports_procedure} && ($fct_detail{args} =~ /\bOUT\s+[^,\)]+/i)) {
 		$fct_detail{args} =~ s/\bOUT(\s+[^,\)]+)/INOUT$1/igs;
 	}
 
@@ -14625,10 +14628,11 @@ END;
 		$function .= ';' if ($function !~ /END\s*;\s*$/is && $fct_detail{code} !~ /\%ORA2PG_COMMENT\d+\%\s*$/);
 		$function .= "\n\$body\$\nLANGUAGE PLPGSQL\n";
 
-		# Remove parameters to RETURN call when the function has no RETURNS clause
+		# Remove parameters to RETURN call when the function has no RETURNS
+		# clause which is the case when there is OUT parameters.
 		if ($function !~ /\s+RETURNS\s+/s || ($function =~ /\s+RETURNS VOID\s+/s || ($type eq 'PROCEDURE' && $self->{pg_supports_procedures}))) {
 			$self->_remove_text_constant_part(\$function);
-			$function =~ s/(RETURN)\s+[^;]+;/$1;/igs;
+			$function =~ s/(RETURN)\s*[^;]+;/$1;/igs;
 			$self->_restore_text_constant_part(\$function);
 		}
 		$revoke = "-- REVOKE ALL ON $type $name $fct_detail{args} FROM PUBLIC;";
@@ -18906,7 +18910,7 @@ sub _lookup_function
 	}
 
 	# PostgreSQL procedure do not support OUT parameter, translate them into INOUT params
-	if ($self->{pg_supports_procedure} && ($fct_detail{args} =~ /\bOUT\s+[^,\)]+/i)) {
+	if (!$fct_detail{hasreturn} && $self->{pg_supports_procedure} && ($fct_detail{args} =~ /\bOUT\s+[^,\)]+/i)) {
 		$fct_detail{args} =~ s/\bOUT(\s+[^,\)]+)/INOUT$1/igs;
 	}
 
