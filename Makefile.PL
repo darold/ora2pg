@@ -318,6 +318,10 @@ REORDERING_COLUMNS	0
 # define multiple REPLACE_QUERY lines.
 #REPLACE_QUERY	EMPLOYEES[SELECT e.id,e.fisrtname,lastname FROM EMPLOYEES e JOIN EMP_UPDT u ON (e.id=u.id AND u.cdate>'2014-08-01 00:00:00')]
 
+# To add a DROP <OBJECT> IF EXISTS before creating the object, enable
+# this directive. Can be useful in an iterative work. Default is disabled.
+DROP_IF_EXISTS		0
+
 #------------------------------------------------------------------------------
 # FULL TEXT SEARCH SECTION (Control full text search export behaviors)
 #------------------------------------------------------------------------------
@@ -722,9 +726,9 @@ STOP_ON_ERROR		1
 # under the same condition but -j or JOBS must also be unset or default to 1.
 COPY_FREEZE		0
 
-# By default Ora2Pg use CREATE OR REPLACE in function DDL, if you need not
-# to override existing functions disable this configuration directive,
-# DDL will not include OR REPLACE.
+# By default Ora2Pg use CREATE OR REPLACE in functions and views DDL, if you
+# need not to override existing functions or views disable this configuration
+# directive, DDL will not include OR REPLACE.
 CREATE_OR_REPLACE	1
 
 # This directive can be used to send an initial command to PostgreSQL, just

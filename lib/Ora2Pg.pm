@@ -986,7 +986,8 @@ sub _init
 	$self->{cfhout} = undef;
 
 	# Initialyze following configuration file
-	foreach my $k (sort keys %AConfig) {
+	foreach my $k (sort keys %AConfig)
+	{
 		if (lc($k) eq 'allow') {
 			$self->{limited} = $AConfig{ALLOW};
 		} elsif (lc($k) eq 'exclude') {
@@ -1004,7 +1005,8 @@ sub _init
 	push(@{$self->{default_tablespaces}}, 'TEMP', 'USERS','SYSTEM');
 
 	# Verify grant objects
-	if ($self->{type} eq 'GRANT' && $self->{grant_object}) {
+	if ($self->{type} eq 'GRANT' && $self->{grant_object})
+	{
 		die "FATAL: wrong object type in GRANT_OBJECTS directive.\n" if (!grep(/^$self->{grant_object}$/, 'USER', 'TABLE', 'VIEW', 'MATERIALIZED VIEW', 'SEQUENCE', 'PROCEDURE', 'FUNCTION', 'PACKAGE BODY', 'TYPE', 'SYNONYM', 'DIRECTORY'));
 	}
 
@@ -1111,6 +1113,9 @@ sub _init
 	if ($AConfig{ALTERNATIVE_QUOTING_REGEXP}) {
 		push(@{ $self->{alternative_quoting_regexp} } , split(/;/, $AConfig{ALTERNATIVE_QUOTING_REGEXP}));
 	}
+
+	# Defined if we must add a drop if exists statement before creating an object
+	$self->{drop_if_exists} ||= 0;
 
 	# Overwrite configuration with all given parameters
 	# and try to preserve backward compatibility
@@ -4286,7 +4291,9 @@ sub export_mview
 	$self->dump($sql_header) if ($self->{file_per_table} && !$self->{pg_dsn});
 	my $dirprefix = '';
 	$dirprefix = "$self->{output_dir}/" if ($self->{output_dir});
-	if ($self->{plsql_pgsql} && !$self->{pg_supports_mview}) {
+	if ($self->{plsql_pgsql} && !$self->{pg_supports_mview})
+	{
+		$sql_header .= "DROP TABLE IF EXISTS materialized_views;\n" if ($self->{drop_if_exists});
 		my $sqlout = qq{
 $sql_header
 
@@ -4411,7 +4418,9 @@ LANGUAGE plpgsql ;
 		} else {
 			$self->save_filetoupdate_list("ORA2PG_$self->{type}", lc($view), "$dirprefix$self->{output}");
 		}
-		if (!$self->{plsql_pgsql}) {
+		if (!$self->{plsql_pgsql})
+		{
+			$sql_output .= "DROP MATERIALIZED VIEW IF EXISTS $view;\n" if ($self->{drop_if_exists});
 			$sql_output .= "CREATE MATERIALIZED VIEW $view\n";
 			$sql_output .= "BUILD $self->{materialized_views}{$view}{build_mode}\n";
 			$sql_output .= "REFRESH $self->{materialized_views}{$view}{refresh_method} ON $self->{materialized_views}{$view}{refresh_mode}\n";
@@ -4433,19 +4442,25 @@ LANGUAGE plpgsql ;
 				$sql_output .= $self->set_search_path($1) . "\n";
 			}
 			$self->{materialized_views}{$view}{text} =~ s/^PERFORM/SELECT/;
-			if (!$self->{pg_supports_mview}) {
+			if (!$self->{pg_supports_mview})
+			{
+				$sql_output .= "DROP VIEW IF EXISTS \L$view\E_mview;\n" if ($self->{drop_if_exists});
 				$sql_output .= "CREATE VIEW \L$view\E_mview AS\n";
 				$sql_output .= $self->{materialized_views}{$view}{text};
 				$sql_output .= ";\n\n";
 				$sql_output .= "SELECT create_materialized_view('\L$view\E','\L$view\E_mview', change with the name of the colum to used for the index);\n\n\n";
 
-				if ($self->{force_owner}) {
+				if ($self->{force_owner})
+				{
 					my $owner = $self->{materialized_views}{$view}{owner};
 					$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
 					$sql_output .= "ALTER VIEW " . $self->quote_object_name($view . '_mview')
 								. " OWNER TO " . $self->quote_object_name($owner) . ";\n";
 				}
-			} else {
+			}
+			else
+			{
+				$sql_output .= "DROP MATERIALIZED VIEW IF EXISTS \L$view\E;\n" if ($self->{drop_if_exists});
 				$sql_output .= "CREATE MATERIALIZED VIEW \L$view\E AS\n";
 				$sql_output .= $self->{materialized_views}{$view}{text};
 				if ($self->{materialized_views}{$view}{build_mode} eq 'DEFERRED') {
@@ -4457,14 +4472,16 @@ LANGUAGE plpgsql ;
 				$sql_output .= "$idx$fts_idx\n\n";
 			}
 		}
-		if ($self->{force_owner}) {
+		if ($self->{force_owner})
+		{
 			my $owner = $self->{materialized_views}{$view}{owner};
 			$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
 			$sql_output .= "ALTER MATERIALIZED VIEW " . $self->quote_object_name($view)
 						. " OWNER TO " . $self->quote_object_name($owner) . ";\n";
 		}
 
-		if ($self->{file_per_table} && !$self->{pg_dsn}) {
+		if ($self->{file_per_table} && !$self->{pg_dsn})
+		{
 			$self->dump($sql_header . $sql_output, $fhdl);
 			$self->close_export_file($fhdl);
 			$sql_output = '';
@@ -4651,6 +4668,7 @@ sub export_sequence
 		if ($self->{export_schema} && !$self->{schema}) {
 			$seq->[0] = $seq->[7] . '.' . $seq->[0];
 		}
+		$sql_output .= "DROP SEQUENCE IF EXISTS " . $self->quote_object_name($seq->[0]) . ";\n" if ($self->{drop_if_exists});
 		$sql_output .= "CREATE SEQUENCE " . $self->quote_object_name($seq->[0]) . " INCREMENT $seq->[3]";
 		if ($seq->[1] eq '' || $seq->[1] < (-2**63-1)) {
 			$sql_output .= " NO MINVALUE";
@@ -4713,8 +4731,8 @@ sub export_dblink
 	my $i = 1;
 	my $num_total_dblink = scalar keys %{$self->{dblink}};
 
-	foreach my $db (sort { $a cmp $b } keys %{$self->{dblink}}) {
-
+	foreach my $db (sort { $a cmp $b } keys %{$self->{dblink}})
+	{
 		if (!$self->{quiet} && !$self->{debug}) {
 			print STDERR $self->progress_bar($i, $num_total_dblink, 25, '=', 'dblink', "generating $db" ), "\r";
 		}
@@ -5002,6 +5020,7 @@ sub export_trigger
 				$trig->[6] =~ s/REFERENCING\s+(.*?)(FOR\s+EACH\s+)/$2/is;
 				$trig->[6] =~ s/^\s*["]*(?:$trig->[0])["]*//is;
 				$trig->[6] =~ s/\s+ON\s+([^"\s]+)\s+/" ON " . $self->quote_object_name($1) . " "/ies;
+				$sql_output .= "DROP TRIGGER IF EXISTS " . $self->quote_object_name($trig->[0]) . " ON " . $self->quote_object_name($1) . ";\n" if ($self->{drop_if_exists});
 				$sql_output .= "CREATE TRIGGER " . $self->quote_object_name($trig->[0]) . "$trig->[6]\n";
 				if ($trig->[5])
 				{
@@ -5030,6 +5049,7 @@ sub export_trigger
 					$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
 					$sql_output .= "ALTER FUNCTION $trig_fctname() OWNER TO " . $self->quote_object_name($owner) . ";\n\n";
 				}
+				$sql_output .= "DROP TRIGGER IF EXISTS " . $self->quote_object_name($trig->[0]) . " ON " . $self->quote_object_name($tbname) . ";\n" if ($self->{drop_if_exists});
 				$sql_output .= "CREATE TRIGGER " . $self->quote_object_name($trig->[0]) . "\n\t";
 				my $statement = 0;
 				$statement = 1 if ($trig->[1] =~ s/ STATEMENT//);
@@ -6060,11 +6080,13 @@ sub export_tablespace
 				if ($tb_path =~ /^(.*[^\\\/]+)/) {
 					$loc = $1 . '/' . $loc;
 				}
-				if (!grep(/^$tb_name$/, @done)) {
+				if (!grep(/^$tb_name$/, @done))
+				{
 					$create_tb .= "CREATE TABLESPACE \L$tb_name\E LOCATION '$loc';\n";
 					my $owner = $self->{list_tablespaces}{$tb_name}{owner} || '';
 					$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
-					if ($owner) {
+					if ($owner)
+					{
 						$create_tb .= "ALTER TABLESPACE " . $self->quote_object_name($tb_name)
 								. " OWNER TO " . $self->quote_object_name($owner) . ";\n";
 					}
@@ -6226,7 +6248,9 @@ BEGIN
 					$tb_name =  $part;
 				}
 			}
-			if (!$self->{pg_supports_partition}) {
+			$create_table_tmp .= "DROP TABLE IF EXISTS " . $self->quote_object_name($tb_name) . ";\n" if ($self->{drop_if_exists});
+			if (!$self->{pg_supports_partition})
+			{
 				if (!exists $self->{subpartitions}{$table}{$part}) {
 					$create_table_tmp .= "CREATE TABLE " . $self->quote_object_name($tb_name)
 									. " ( CHECK (\n";
@@ -6492,6 +6516,7 @@ BEGIN
 						print STDERR $self->progress_bar($nparts, $total_partition, 25, '=', 'partitions', "generating $table/$part/$subpart" ), "\r";
 					}
 					$nparts++;
+					$create_subtable_tmp .= "DROP TABLE IF EXISTS " . $self->quote_object_name($sub_tb_name) . ";\n" if ($self->{drop_if_exists});
 					$create_subtable_tmp .= "CREATE TABLE " . $self->quote_object_name($sub_tb_name);
 					if (!$self->{pg_supports_partition}) {
 						$create_subtable_tmp .= " ( CHECK (\n";
@@ -6694,6 +6719,7 @@ BEGIN
 							$deftb = "${table}_" if ($self->{prefix_partition});
 							$funct_cond .= "\t\tELSE INSERT INTO " . $self->quote_object_name("$deftb$self->{subpartitions_default}{$table}{$part}")
 										. " VALUES (NEW.*);\n\t\tEND IF;\n";
+							$create_table_tmp .= "DROP TABLE IF EXISTS " . $self->quote_object_name("$deftb$self->{subpartitions_default}{$table}{$part}") . ";\n" if ($self->{drop_if_exists});
 							$create_table_tmp .= "CREATE TABLE " . $self->quote_object_name("$deftb$self->{subpartitions_default}{$table}{$part}")
 										. " () INHERITS ($table);\n";
 							$create_table_index_tmp .= "CREATE INDEX " . $self->quote_object_name("$deftb$self->{subpartitions_default}{$table}{$part}_$pos")
@@ -6718,6 +6744,7 @@ BEGIN
 						} elsif ($self->{export_schema} && !$self->{schema} && ($table =~ /^([^\.]+)\./)) {
 							$tb_name =  $1 . '.' . $self->{subpartitions_default}{$table}{$part};
 						}
+						$create_table_tmp .= "DROP TABLE IF EXISTS " . $self->quote_object_name($tb_name) . ";\n" if ($self->{drop_if_exists});
 						if ($self->{pg_version} >= 11) {
 							$create_table_tmp .= "CREATE TABLE " . $self->quote_object_name($tb_name)
 									. " PARTITION OF \L$table\E DEFAULT;\n";
@@ -6781,6 +6808,7 @@ LANGUAGE plpgsql;
 							$tb_name =  $self->{partitions_default}{$table};
 						}
 					}
+					$create_table{$table}{table} .= "DROP TABLE IF EXISTS " . $self->quote_object_name($tb_name) . ";\n" if ($self->{drop_if_exists});
 					if ($self->{pg_version} >= 11) {
 						$create_table{$table}{table} .= "CREATE TABLE " . $self->quote_object_name($tb_name)
 								. " PARTITION OF \L$table\E DEFAULT;\n";
@@ -6892,7 +6920,7 @@ sub export_synonym
 		if ($self->{synonyms}{$syn}{dblink}) {
 			$sql_output .= "-- You need to create foreign table $self->{synonyms}{$syn}{table_owner}.$self->{synonyms}{$syn}{table_name} using foreign server: $self->{synonyms}{$syn}{dblink} (see DBLINK and FDW export type)\n";
 		}
-		$sql_output .= "CREATE VIEW " . $self->quote_object_name("$self->{synonyms}{$syn}{owner}.$syn")
+		$sql_output .= "CREATE$self->{create_or_replace} VIEW " . $self->quote_object_name("$self->{synonyms}{$syn}{owner}.$syn")
 			. " AS SELECT * FROM " . $self->quote_object_name("$self->{synonyms}{$syn}{table_owner}.$self->{synonyms}{$syn}{table_name}") . ";\n";
 		my $owner = $self->{synonyms}{$syn}{table_owner};
 		$owner = $self->{force_owner} if ($self->{force_owner} && ($self->{force_owner} ne "1"));
@@ -14372,6 +14400,7 @@ sub _convert_function
 	my $create_type = '';
 	while ($fct_detail{declare} =~ s/\s+TYPE\s+([^\s]+)\s+IS\s+RECORD\s*\(([^;]+)\)\s*;//is)
 	{
+		$create_type .= "DROP TYPE IF EXISTS $1;\n" if ($self->{drop_if_exists});
 		$create_type .= "CREATE TYPE $1 AS ($2);\n";
 	}
 	
@@ -14973,6 +15002,7 @@ sub _convert_type
 		if ($type_of !~ /\s/s) { 
 			$type_of = Ora2Pg::PLSQL::replace_sql_type($type_of, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type}, %{$self->{data_type}});
 			$self->{type_of_type}{'Nested Tables'}++;
+			$content .= "DROP TYPE IF EXISTS \L$type_name\E;\n" if ($self->{drop_if_exists});
 			$content = "CREATE TYPE \L$type_name\E AS (\L$internal_name\E $type_of\[\]);\n";
 		} else {
 			$self->{type_of_type}{'Associative Arrays'}++;
