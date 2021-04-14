@@ -1140,7 +1140,8 @@ sub _init
 			$self->{excluded} = ();
 			# Syntax: TABLE[regex1 regex2 ...];VIEW[regex1 regex2 ...];glob_regex1 glob_regex2 ...
 			my @exclude_vlist = split(/\s*;\s*/, $options{exclude});
-			foreach my $a (@exclude_vlist) {
+			foreach my $a (@exclude_vlist)
+			{
 				if ($a =~ /^([^\[]+)\[(.*)\]$/) {
 					push(@{$self->{excluded}{"\U$1\E"}}, split(/[\s,]+/, $2) );
 				} else {
@@ -1169,14 +1170,14 @@ sub _init
 	foreach my $i (@{$self->{limited}{ALL}})
 	{
 		my $typ = $self->{type} || 'TABLE';
-		$typ = 'TABLE' if ($self->{type} =~ /(SHOW_TABLE|SHOW_COLUMN|FDW|KETTLE|COPY|INSERT)/);
+		$typ = 'TABLE' if ($self->{type} =~ /(SHOW_TABLE|SHOW_COLUMN|FDW|KETTLE|COPY|INSERT|TEST)/);
 		push(@{$self->{limited}{$typ}}, $i);
 	}
 	delete $self->{limited}{ALL};
 	foreach my $i (@{$self->{excluded}{ALL}})
 	{
 		my $typ = $self->{type} || 'TABLE';
-		$typ = 'TABLE' if ($self->{type} =~ /(SHOW_TABLE|SHOW_COLUMN|FDW|KETTLE|COPY|INSERT)/);
+		$typ = 'TABLE' if ($self->{type} =~ /(SHOW_TABLE|SHOW_COLUMN|FDW|KETTLE|COPY|INSERT|TEST)/);
 		push(@{$self->{excluded}{$typ}}, $i);
 	}
 	delete $self->{excluded}{ALL};
@@ -1206,7 +1207,8 @@ sub _init
 
 	# Log file handle
 	$self->{fhlog} = undef;
-	if ($self->{logfile}) {
+	if ($self->{logfile})
+	{
 		$self->{fhlog} = new IO::File;
 		$self->{fhlog}->open(">>$self->{logfile}") or $self->logit("FATAL: can't log to $self->{logfile}, $!\n", 0, 1);
 	}
@@ -1254,13 +1256,16 @@ sub _init
 
 	$self->{copy_freeze} = ' FREEZE' if ($self->{copy_freeze});
 	# Prevent use of COPY FREEZE with some incompatible case
-	if ($self->{copy_freeze}) {
+	if ($self->{copy_freeze})
+	{
 		if ($self->{pg_dsn} && ($self->{jobs} > 1)) {
 			$self->logit("FATAL: You can not use COPY FREEZE with -j (JOBS) > 1 and direct import to PostgreSQL.\n", 0, 1);
 		} elsif ($self->{oracle_copies} > 1) {
 			$self->logit("FATAL: You can not use COPY FREEZE with -J (ORACLE_COPIES) > 1.\n", 0, 1);
 		}
-	} else {
+	}
+	else
+	{
 		$self->{copy_freeze} = '';
 	}
 
@@ -1314,7 +1319,8 @@ sub _init
 	$self->{package_functions} = ();
 
 	# Set user defined data type translation
-	if ($self->{data_type}) {
+	if ($self->{data_type})
+	{
 		$self->{data_type} =~ s/\\,/#NOSEP#/gs;
 		my @transl = split(/[,;]/, uc($self->{data_type}));
 		$self->{data_type} = ();
@@ -1325,7 +1331,8 @@ sub _init
 		}
 		# then set custom type conversion from the DATA_TYPE
 		# configuration directive 
-		foreach my $t (@transl) {
+		foreach my $t (@transl)
+		{
 			my ($typ, $val) = split(/:/, $t);
 			$typ =~ s/^\s+//;
 			$typ =~ s/\s+$//;
@@ -1335,7 +1342,9 @@ sub _init
 			$val =~ s/#NOSEP#/,/g;
 			$self->{data_type}{$typ} = lc($val) if ($val);
 		}
-	} else {
+	}
+	else
+	{
 		# Set default type conversion
 		%{$self->{data_type}} = %TYPE;
 		if ($self->{is_mysql}) {
@@ -1365,7 +1374,8 @@ sub _init
 
 	# Enforce preservation of primary and unique keys
 	# when USE_TABLESPACE is enabled
-	if ($self->{use_tablespace} && !$self->{keep_pkey_names}) {
+	if ($self->{use_tablespace} && !$self->{keep_pkey_names})
+	{
 	    print STDERR "WARNING: Enforcing KEEP_PKEY_NAMES to 1 as USE_TABLESPACE is enabled.\n";
 	    $self->{keep_pkey_names} = 1;
 	}
@@ -14932,8 +14942,10 @@ sub logit
 			print $message;
 		}
 	}
-	if ($critical) {
-		if ($self->{debug} < $level) {
+	if ($critical)
+	{
+		if ($self->{debug} < $level)
+		{
 			if (defined $self->{fhlog}) {
 				$self->{fhlog}->print($message);
 			} else {
@@ -18531,8 +18543,8 @@ sub limit_to_objects
 	my $has_limitation = 0;
 	$self->{query_bind_params} = ();
 
-	for (my $i = 0; $i <= $#arr_type; $i++) {
-
+	for (my $i = 0; $i <= $#arr_type; $i++)
+	{
 		my $colname = $cols[0];
 		$colname = $cols[$i] if (($#cols >= $i) && $cols[$i]);
 
@@ -18541,11 +18553,15 @@ sub limit_to_objects
 		push(@done, $colname);
 
 		my $have_lookahead = 0;
-		if ($#{$self->{limited}{$arr_type[$i]}} >= 0) {
+		if ($#{$self->{limited}{$arr_type[$i]}} >= 0)
+		{
 			$str .= ' AND (';
-			if ($self->{db_version} =~ /Release [89]/) {
-				for (my $j = 0; $j <= $#{$self->{limited}{$arr_type[$i]}}; $j++) {
-					if ($self->{limited}{$arr_type[$i]}->[$j] =~ /^\!/) {
+			if ($self->{db_version} =~ /Release [89]/)
+			{
+				for (my $j = 0; $j <= $#{$self->{limited}{$arr_type[$i]}}; $j++)
+				{
+					if ($self->{limited}{$arr_type[$i]}->[$j] =~ /^\!/)
+					{
 						$have_lookahead = 1;
 						next;
 					}
@@ -18556,9 +18572,13 @@ sub limit_to_objects
 					}
 				}
 				$str =~ s/ OR $//;
-			} else {
-				for (my $j = 0; $j <= $#{$self->{limited}{$arr_type[$i]}}; $j++) {
-					if ($self->{limited}{$arr_type[$i]}->[$j] =~ /^\!/) {
+			}
+			else
+			{
+				for (my $j = 0; $j <= $#{$self->{limited}{$arr_type[$i]}}; $j++)
+				{
+					if ($self->{limited}{$arr_type[$i]}->[$j] =~ /^\!/)
+					{
 						$have_lookahead = 1;
 						next;
 					}
@@ -18577,16 +18597,21 @@ sub limit_to_objects
 			$str .= ')';
 			$str =~ s/ AND \(\)//;
 
-			if ($have_lookahead) {
-
-				if ($self->{db_version} =~ /Release [89]/) {
-					for (my $j = 0; $j <= $#{$self->{limited}{$arr_type[$i]}}; $j++) {
+			if ($have_lookahead)
+			{
+				if ($self->{db_version} =~ /Release [89]/)
+				{
+					for (my $j = 0; $j <= $#{$self->{limited}{$arr_type[$i]}}; $j++)
+					{
 						next if ($self->{limited}{$arr_type[$i]}->[$j] !~ /^\!(.+)/);
 						$str .= " AND upper($colname) NOT LIKE ?";
 						push(@{$self->{query_bind_params}}, uc($1));
 					}
-				} else {
-					for (my $j = 0; $j <= $#{$self->{limited}{$arr_type[$i]}}; $j++) {
+				}
+				else
+				{
+					for (my $j = 0; $j <= $#{$self->{limited}{$arr_type[$i]}}; $j++)
+					{
 						next if ($self->{limited}{$arr_type[$i]}->[$j] !~ /^\!(.+)/);
 						if ($self->{is_mysql}) {
 							$str .= " AND upper($colname) NOT RLIKE ?" ;
@@ -18600,11 +18625,14 @@ sub limit_to_objects
 			}
 			$has_limitation = 1;
 
-		} elsif ($#{$self->{excluded}{$arr_type[$i]}} >= 0) {
-
-			if ($self->{db_version} =~ /Release [89]/) {
+		}
+		elsif ($#{$self->{excluded}{$arr_type[$i]}} >= 0)
+		{
+			if ($self->{db_version} =~ /Release [89]/)
+			{
 				$str .= ' AND (';
-				for (my $j = 0; $j <= $#{$self->{excluded}{$arr_type[$i]}}; $j++) {
+				for (my $j = 0; $j <= $#{$self->{excluded}{$arr_type[$i]}}; $j++)
+				{
 					$str .= "upper($colname) NOT LIKE ?" ;
 					push(@{$self->{query_bind_params}}, uc($self->{excluded}{$arr_type[$i]}->[$j]));
 					if ($j < $#{$self->{excluded}{$arr_type[$i]}}) {
@@ -18612,9 +18640,12 @@ sub limit_to_objects
 					}
 				}
 				$str .= ')';
-			} else {
+			}
+			else
+			{
 				$str .= ' AND (';
-				for (my $j = 0; $j <= $#{$self->{excluded}{$arr_type[$i]}}; $j++) {
+				for (my $j = 0; $j <= $#{$self->{excluded}{$arr_type[$i]}}; $j++)
+				{
 					if ($self->{is_mysql}) {
 						$str .= "upper($colname) NOT RLIKE ?" ;
 					} else {
@@ -18630,17 +18661,23 @@ sub limit_to_objects
 		}
 
 		# Always exclude unwanted tables
-		if (!$self->{is_mysql} && !$has_limitation && ($arr_type[$i] =~ /TABLE|SEQUENCE|VIEW|TRIGGER|TYPE|SYNONYM/)) {
-			if ($self->{db_version} =~ /Release [89]/) {
+		if (!$self->{is_mysql} && !$has_limitation && ($arr_type[$i] =~ /TABLE|SEQUENCE|VIEW|TRIGGER|TYPE|SYNONYM/))
+		{
+			if ($self->{db_version} =~ /Release [89]/)
+			{
 				$str .= ' AND (';
-				foreach my $t (@EXCLUDED_TABLES_8I) {
+				foreach my $t (@EXCLUDED_TABLES_8I)
+				{
 					$str .= " AND upper($colname) NOT LIKE ?";
 					push(@{$self->{query_bind_params}}, uc($t));
 				}
 				$str .= ')';
-			} else {
+			}
+			else
+			{
 				$str .= ' AND ( ';
-				for (my $j = 0; $j <= $#EXCLUDED_TABLES; $j++) {
+				for (my $j = 0; $j <= $#EXCLUDED_TABLES; $j++)
+				{
 					if ($self->{is_mysql}) {
 						$str .= " upper($colname) NOT RLIKE ?" ;
 					} else {
