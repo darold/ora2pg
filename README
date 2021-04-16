@@ -1870,7 +1870,7 @@ CONFIGURATION
         COPY and INSERT export type.
 
         About the ROWID and UROWID, they are converted into OID by "logical"
-        default but this will through an error at data import. There is no
+        default but this will throw an error at data import. There is no
         equivalent data type so you might want to use the DATA_TYPE
         directive to change the corresponding type in PostgreSQL. You should
         consider replacing this data type by a bigserial (autoincremented
@@ -1922,6 +1922,17 @@ CONFIGURATION
         Ora2Pg will take care to transform all data of this column in the
         correct format. Only arrays of characters and numerics types are
         supported.
+
+    INCLUDE_ROWID_PSEUDOCOLUMN
+        By default the ROWID pseudocolumn will not be translated into Postgres.
+        If you wish to include a ROWID column in Postgres, you can set
+        this value to 1. The column will be of type ROWID by default, which
+        will require using a data type translation.
+
+        We suggest using the flag DATA_TYPE and converting the OID Postgres
+        type into bigserial (autoincremented sequence), text or a
+        uuid data type.  Please read the ROWID section in the DATA_TYPE
+        documentation above for more information.
 
   Taking export under control
     The following other configuration directives interact directly with the

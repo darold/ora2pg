@@ -841,6 +841,11 @@ ENABLE_MICROSECOND      1
 # format. Only arrays of characters and numerics types are supported.
 #MODIFY_TYPE     
 
+# To include the ROWID pseudocolumn, assign a value of 1 using the
+# flag INCLUDE_ROWID_PSEUDOCOLUMN.  This must be used in conjunction with a
+# DATA_TYPE cast from ROWID to a Postgres datatype (eg. DATA_TYPE ROWID:text).
+# INCLUDE_ROWID_PSEUDOCOLUMN 1
+
 # By default Oracle call to function TO_NUMBER will be translated as a cast
 # into numeric. For example, TO_NUMBER('10.1234') is converted into PostgreSQL
 # call to_number('10.1234')::numeric. If you want you can cast the call to integer

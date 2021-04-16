@@ -2235,6 +2235,9 @@ sub _tables
 				foreach my $c (keys %{$columns_infos{$tb}}) {
 					push(@{$self->{tables}{$tb}{column_info}{$c}}, @{$columns_infos{$tb}{$c}});
 				}
+        if ($self->{include_rowid_pseudocolumn}) {
+          push(@{$self->{tables}{$tb}{column_info}{'ROWID'}}, ('ROWID', 'ROWID', 10, 'N', undef, undef, undef, 0, $tb, $tables_infos{$tb}{owner}, 'NO'));
+        }
 			}
 			%columns_infos = ();
 
