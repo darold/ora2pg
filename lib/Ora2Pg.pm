@@ -6351,7 +6351,8 @@ BEGIN
 					}
 					else
 					{
-						$check_cond .= " WITH (MODULUS " . (scalar keys %{$self->{partitions}{$table}}) . ", REMAINDER " . ($pos-1) . ")";
+						my $part_clause = " WITH (MODULUS " . (scalar keys %{$self->{partitions}{$table}}) . ", REMAINDER " . ($pos-1) . ")";
+						$check_cond .= $part_clause if ($check_cond !~ /\Q$part_clause\E$/);
 					}
 				}
 				else
@@ -6612,8 +6613,11 @@ BEGIN
 								$create_subtable_tmp = '';
 								$sub_funct_cond_tmp = '';
 								next;
-							} else {
-								$sub_check_cond_tmp .= " WITH (MODULUS " . $self->{subpartitions_list}{"\L$table\E"}{"\L$part\E"}{count} . ", REMAINDER " . ($p-1) . ")";
+							}
+							else
+							{
+								my $part_clause = " WITH (MODULUS " . $self->{subpartitions_list}{"\L$table\E"}{"\L$part\E"}{count} . ", REMAINDER " . ($p-1) . ")";
+								$sub_check_cond_tmp .= $part_clause if ($sub_check_cond_tmp !~ /\Q$part_clause\E$/);
 							}
 						}
 						else
