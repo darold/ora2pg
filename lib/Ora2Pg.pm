@@ -1665,29 +1665,39 @@ sub _init
 			$self->_show_infos($self->{type});
 			$self->{dbh}->disconnect() if ($self->{dbh}); 
 			exit 0;
-		} elsif ($self->{type} eq 'TEST') {
+		}
+		elsif ($self->{type} eq 'TEST')
+		{
 			$self->{dbhdest} = $self->_send_to_pgdb() if ($self->{pg_dsn} && !$self->{dbhdest});
 			# Check if all tables have the same number of indexes, constraints, etc.
 			$self->_test_table();
 			# Count each object at both sides
-			foreach my $o ('VIEW', 'MVIEW', 'SEQUENCE', 'TYPE', 'FDW') {
+			foreach my $o ('VIEW', 'MVIEW', 'SEQUENCE', 'TYPE', 'FDW')
+			{
 				next if ($self->{is_mysql} && grep(/^$o$/, 'MVIEW','TYPE','FDW'));
 				$self->_count_object($o);
 			}
 			# count function/procedure/package function
 			$self->_test_function();
+			# compare sequences values
+			$self->_test_seq_values();
 			# Count row in each table
 			if ($self->{count_rows}) {
 				$self->_table_row_count();
 			}
+
 			$self->{dbh}->disconnect() if ($self->{dbh}); 
 			exit 0;
-		} elsif ($self->{type} eq 'TEST_VIEW') {
+		}
+		elsif ($self->{type} eq 'TEST_VIEW')
+		{
 			$self->{dbhdest} = $self->_send_to_pgdb() if ($self->{pg_dsn} && !$self->{dbhdest});
 			$self->_unitary_test_views();
 			$self->{dbh}->disconnect() if ($self->{dbh}); 
 			exit 0;
-		} else {
+		}
+		else
+		{
 			warn "type option must be (TABLE, VIEW, GRANT, SEQUENCE, TRIGGER, PACKAGE, FUNCTION, PROCEDURE, PARTITION, TYPE, INSERT, COPY, TABLESPACE, SHOW_REPORT, SHOW_VERSION, SHOW_SCHEMA, SHOW_TABLE, SHOW_COLUMN, SHOW_ENCODING, FDW, MVIEW, QUERY, KETTLE, DBLINK, SYNONYM, DIRECTORY, LOAD, TEST, TEST_VIEW), unknown $self->{type}\n";
 		}
 		$self->replace_tables(%{$self->{'replace_tables'}});
@@ -4662,7 +4672,7 @@ sub export_sequence
 	my $num_total_sequence = $#{$self->{sequences}} + 1;
 	my $count_seq = 0;
 	my $PGBAR_REFRESH = set_refresh_count($num_total_sequence);
-	if ($self->{export_schema}) {
+	if ($self->{export_schema} && ($self->{pg_schema} || $self->{schema})) {
 		$sql_output .= "CREATE SCHEMA IF NOT EXISTS " . $self->quote_object_name($self->{pg_schema} || $self->{schema}) . ";\n";
 	}
 	foreach my $seq (sort { $a->[0] cmp $b->[0] } @{$self->{sequences}})
@@ -4868,13 +4878,15 @@ sub export_trigger
 		my $fhdl = undef;
 		if ($self->{file_per_function})
 		{
-			my $f = "$dirprefix$trig->[0]_$self->{output}";
+			my $schm = '';
+			$schm = $trig->[8] . '-' if ($self->{export_schema} && !$self->{schema});
+			my $f = "$dirprefix$schm$trig->[0]_$self->{output}";
 			$f =~ s/\.(?:gz|bz2)$//i;
 			$self->dump("\\i$self->{psql_relative_path} $f\n");
-			$self->logit("Dumping to one file per trigger : $trig->[0]_$self->{output}\n", 1);
-			$fhdl = $self->open_export_file("$trig->[0]_$self->{output}");
+			$self->logit("Dumping to one file per trigger : $schm$trig->[0]_$self->{output}\n", 1);
+			$fhdl = $self->open_export_file("$schm$trig->[0]_$self->{output}");
 			$self->set_binmode($fhdl) if (!$self->{compress});
-			$self->save_filetoupdate_list("ORA2PG_$self->{type}", lc($trig->[0]), "$dirprefix$trig->[0]_$self->{output}");
+			$self->save_filetoupdate_list("ORA2PG_$self->{type}", lc($trig->[0]), "$dirprefix$schm$trig->[0]_$self->{output}");
 		}
 		else
 		{
@@ -17025,11 +17037,14 @@ sub show_test_errors
 	my ($self, $lbl_type, @errors) = @_;
 
 	print "[ERRORS \U$lbl_type\E COUNT]\n";
-	if ($#errors >= 0) {
+	if ($#errors >= 0)
+	{
 		foreach my $msg (@errors) {
 			print "$msg\n";
 		}
-	} else {
+	}
+	else
+	{
 		if ($self->{pg_dsn}) {
 			print "OK, Oracle and PostgreSQL have the same number of $lbl_type.\n";
 		} else {
@@ -17043,8 +17058,10 @@ sub set_pg_relation_name
 	my ($self, $table) = @_;
 
 	my $tbmod = $self->get_replaced_tbname($table);
+	my $cmptb = $tbmod;
+	$cmptb =~ s/"//g;
 	my $orig = '';
-	$orig = " (origin: $table)" if (lc($tbmod) ne lc($table));
+	$orig = " (origin: $table)" if (lc($cmptb) ne lc($table));
 	my $tbname = $tbmod;
 	$tbname =~ s/[^"\.]+\.//;
 	if ($self->{pg_schema} && $self->{export_schema}) {
@@ -17058,14 +17075,18 @@ sub set_pg_relation_name
 
 sub get_schema_condition
 {
-	my ($self, $attrname) = @_;
+	my ($self, $attrname, $local_schema) = @_;
 
 	$attrname ||= 'n.nspname';
 
-	if ($self->{pg_schema} && $self->{export_schema}) {
-		return " AND $attrname IN ('" . join("','", split(/\s*,\s*/, $self->{pg_schema})) . "')";
+	if ($local_schema && $self->{export_schema}) {
+		return " AND lower($attrname) = '\L$local_schema\E'";
+	} elsif ($self->{pg_schema} && $self->{export_schema}) {
+		return " AND lower($attrname) IN ('" . join("','", split(/\s*,\s*/, lc($self->{pg_schema}))) . "')";
 	} elsif ($self->{schema} && $self->{export_schema}) {
-		return "AND $attrname = '\L$self->{schema}\E'";
+		return "AND lower($attrname) = '\L$self->{schema}\E'";
+	} elsif ($self->{pg_schema}) {
+		return "AND lower($attrname) = '\L$self->{pg_schema}\E'";
 	}
 
 	my $cond = " AND $attrname <> 'pg_catalog' AND $attrname <> 'information_schema' AND $attrname !~ '^pg_toast'";
@@ -17093,16 +17114,20 @@ sub _table_row_count
 	my @errors = ();
 	print "\n";
 	print "[TEST ROWS COUNT]\n";
-	foreach my $t (sort keys %tables_infos) {
+	foreach my $t (sort keys %tables_infos)
+	{
 		print "$lbl:$t:$tables_infos{$t}{num_rows}\n";
-		if ($self->{pg_dsn}) {
+		if ($self->{pg_dsn})
+		{
 			my ($tbmod, $orig, $schema, $both) = $self->set_pg_relation_name($t);
 			my $s = $self->{dbhdest}->prepare("SELECT count(*) FROM $both;") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
-			if (not $s->execute) {
+			if (not $s->execute)
+			{
 				push(@errors, "Table $both$orig does not exists in PostgreSQL database.") if ($s->state eq '42P01');
 				next;
 			}
-			while ( my @row = $s->fetchrow()) {
+			while ( my @row = $s->fetchrow())
+			{
 				print "POSTGRES:$both$orig:$row[0]\n";
 				if ($row[0] != $tables_infos{$t}{num_rows}) {
 					push(@errors, "Table $both$orig doesn't have the same number of line in source database ($tables_infos{$t}{num_rows}) and in PostgreSQL ($row[0]).");
@@ -17138,28 +17163,47 @@ sub _test_table
 	if ($self->{is_mysql}) {
 		$indexes = Ora2Pg::MySQL::_count_indexes($self, '', $self->{schema});
 	}
-	foreach my $t (keys %{$indexes}) {
+	$schema_cond = $self->get_schema_condition('pg_indexes.schemaname');
+	my $sql = qq{
+SELECT schemaname||'.'||tablename, count(*)
+FROM pg_indexes
+WHERE 1=1 $schema_cond
+GROUP BY schemaname,tablename
+};
+	my %pgret = ();
+	if ($self->{pg_dsn})
+	{
+		my $s = $self->{dbhdest}->prepare($sql) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
+		if (not $s->execute())
+		{
+			push(@errors, "Can not extract information from catalog about indexes.");
+			return;
+		}
+		while ( my @row = $s->fetchrow())
+		{
+			$row[0] =~ s/^[^\.]+\.// if (!$self->{export_schema});
+			$pgret{"\U$row[0]\E"} = $row[1];
+		}
+		$s->finish;
+	}
+	# Initialize when there is not indexes in a table
+	foreach my $t (keys %tables_infos) {
+		$indexes->{$t} = {} if (not exists $indexes->{$t});
+	}
+
+	foreach my $t (sort keys %{$indexes})
+	{
 		next if (!exists $tables_infos{$t});
 		my $numixd = scalar keys %{$indexes->{$t}};
 		print "$lbl:$t:$numixd\n";
-		if ($self->{pg_dsn}) {
+		if ($self->{pg_dsn})
+		{
 			my ($tbmod, $orig, $schema, $both) = $self->set_pg_relation_name($t);
-			$schema = $self->get_schema_condition('schemaname');
-			$tbmod =~ s/^([^\.]+\.)//; # Remove schema part from table name
-			my $s = $self->{dbhdest}->prepare("SELECT count(*) FROM pg_indexes WHERE tablename = '\L$tbmod\E'$schema;") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
-			$tbmod = $1 . $tbmod  if ($1);
-			if (not $s->execute) {
-				push(@errors, "Can not extract information from catalog table pg_indexes.");
-				next;
+			$pgret{"\U$both$orig\E"} ||= 0;
+			print "POSTGRES:$both$orig:", $pgret{"\U$both$orig\E"}, "\n";
+			if ($pgret{"\U$both$orig\E"} != $numixd) {
+				push(@errors, "Table $both$orig doesn't have the same number of indexes in source database ($numixd) and in PostgreSQL (" . $pgret{"\U$both$orig\E"} . ").");
 			}
-			while ( my @row = $s->fetchrow()) {
-				print "POSTGRES:$both$orig:$row[0]\n";
-				if ($row[0] != $numixd) {
-					push(@errors, "Table $both$orig doesn't have the same number of indexes in source database ($numixd) and in PostgreSQL ($row[0]).");
-				}
-				last;
-			}
-			$s->finish();
 		}
 	}
 	$self->show_test_errors('indexes', @errors);
@@ -17171,43 +17215,51 @@ sub _test_table
 	print "\n";
 	print "[TEST UNIQUE CONSTRAINTS COUNT]\n";
 	my %unique_keys = $self->_unique_key('',$self->{schema},'U');
-	my $schema_cond = $self->get_schema_condition('pg_indexes.schemaname');
-	my $sql = qq{
-SELECT count(*)
+	$schema_cond = $self->get_schema_condition('pg_class.relnamespace::regnamespace::text');
+	$sql = qq{
+SELECT schemaname||'.'||tablename, count(*)
 FROM pg_indexes
 JOIN pg_class ON (pg_class.relname=pg_indexes.indexname)
 JOIN pg_constraint ON (pg_constraint.conname=pg_class.relname AND pg_constraint.connamespace=pg_class.relnamespace)
-WHERE pg_indexes.tablename=?
-AND pg_constraint.contype IN ('u')
- $schema_cond
+WHERE pg_constraint.contype IN ('u') $schema_cond
+GROUP BY schemaname,tablename
 };
-
-	my $s = undef;
-	if ($self->{pg_dsn}) {
-		$s = $self->{dbhdest}->prepare($sql) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
+	%pgret = ();
+	if ($self->{pg_dsn})
+	{
+		my $s = $self->{dbhdest}->prepare($sql) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
+		if (not $s->execute())
+		{
+			push(@errors, "Can not extract information from catalog about unique constraints.");
+			return;
+		}
+		while ( my @row = $s->fetchrow())
+		{
+			$row[0] =~ s/^[^\.]+\.// if (!$self->{export_schema});
+			$pgret{"\U$row[0]\E"} = $row[1];
+		}
+		$s->finish;
 	}
-	foreach my $t (keys %unique_keys) {
+	# Initialize when there is not unique key in a table
+	foreach my $t (keys %tables_infos) {
+		$unique_keys{$t} = {} if (not exists $unique_keys{$t});
+	}
+
+	foreach my $t (sort keys %unique_keys)
+	{
 		next if (!exists $tables_infos{$t});
 		my $numixd = scalar keys %{$unique_keys{$t}};
 		print "$lbl:$t:$numixd\n";
-		if ($self->{pg_dsn}) {
+		if ($self->{pg_dsn})
+		{
 			my ($tbmod, $orig, $schema, $both) = $self->set_pg_relation_name($t);
-			$tbmod =~ s/^([^\.]+\.)//; # Remove schema part from table name
-			if (not $s->execute(lc($tbmod))) {
-				push(@errors, "Can not extract information from catalog about unique constraints.");
-				next;
-			}
-			$tbmod = $1 . $tbmod  if ($1);
-			while ( my @row = $s->fetchrow()) {
-				print "POSTGRES:$both$orig:$row[0]\n";
-				if ($row[0] != $numixd) {
-					push(@errors, "Table $both$orig doesn't have the same number of unique constraints in source database ($numixd) and in PostgreSQL ($row[0]).");
-				}
-				last;
+			$pgret{"\U$both$orig\E"} ||= 0;
+			print "POSTGRES:$both$orig:", $pgret{"\U$both$orig\E"}, "\n";
+			if ($pgret{"\U$both$orig\E"} != $numixd) {
+				push(@errors, "Table $both$orig doesn't have the same number of unique constraints in source database ($numixd) and in PostgreSQL (" . $pgret{"\U$both$orig\E"} . ").");
 			}
 		}
 	}
-	$s->finish() if ($self->{pg_dsn});
 	$self->show_test_errors('unique constraints', @errors);
 	@errors = ();
 
@@ -17217,44 +17269,54 @@ AND pg_constraint.contype IN ('u')
 	print "\n";
 	print "[TEST PRIMARY KEYS COUNT]\n";
 	%unique_keys = $self->_unique_key('',$self->{schema},'P');
-	$schema_cond = $self->get_schema_condition('pg_indexes.schemaname');
+	$schema_cond = $self->get_schema_condition('pg_class.relnamespace::regnamespace::text');
 	$sql = qq{
-SELECT count(*)
+SELECT schemaname||'.'||tablename, count(*)
 FROM pg_indexes
-JOIN pg_class ON (pg_class.relname=pg_indexes.indexname)
+JOIN pg_class ON (pg_class.relname=pg_indexes.indexname AND pg_class.relnamespace=pg_indexes.schemaname::regnamespace::oid)
 JOIN pg_constraint ON (pg_constraint.conname=pg_class.relname AND pg_constraint.connamespace=pg_class.relnamespace)
-WHERE pg_indexes.tablename=?
-AND pg_constraint.contype IN ('p')
- $schema_cond
+WHERE pg_constraint.contype = 'p' $schema_cond
+GROUP BY schemaname,tablename
 };
-	if ($self->{pg_dsn}) {
-		$s = $self->{dbhdest}->prepare($sql) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
+	%pgret = ();
+	if ($self->{pg_dsn})
+	{
+		my $s = $self->{dbhdest}->prepare($sql) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
+		if (not $s->execute())
+		{
+			push(@errors, "Can not extract information from catalog about primary keys.");
+			return;
+		}
+		while ( my @row = $s->fetchrow())
+		{
+			$row[0] =~ s/^[^\.]+\.// if (!$self->{export_schema});
+			$pgret{"\U$row[0]\E"} = $row[1];
+		}
+		$s->finish;
 	}
-	foreach my $t (keys %unique_keys) {
+	# Initialize when there is not unique key in a table
+	foreach my $t (keys %tables_infos) {
+		$unique_keys{$t} = {} if (not exists $unique_keys{$t});
+	}
+
+	foreach my $t (sort keys %unique_keys)
+	{
 		next if (!exists $tables_infos{$t});
 		my $nbpk = 0;
 		foreach my $c (keys %{$unique_keys{$t}}) {
 			$nbpk++ if ($unique_keys{$t}{$c}{type} eq 'P');
 		}
 		print "$lbl:$t:$nbpk\n";
-		if ($self->{pg_dsn}) {
+		if ($self->{pg_dsn})
+		{
 			my ($tbmod, $orig, $schema, $both) = $self->set_pg_relation_name($t);
-			$tbmod =~ s/^([^\.]+\.)//; # Remove schema part from table name
-			if (not $s->execute(lc($tbmod))) {
-				push(@errors, "Can not extract information from catalog about primary keys.");
-				next;
-			}
-			$tbmod = $1 . $tbmod  if ($1);
-			while ( my @row = $s->fetchrow()) {
-				print "POSTGRES:$both$orig:$row[0]\n";
-				if ($row[0] != $nbpk) {
-					push(@errors, "Table $both$orig doesn't have the same number of primary keys in source database ($nbpk) and in PostgreSQL ($row[0]).");
-				}
-				last;
+			$pgret{"\U$both$orig\E"} ||= 0;
+			print "POSTGRES:$both$orig:", $pgret{"\U$both$orig\E"}, "\n";
+			if ($pgret{"\U$both$orig\E"} != $nbpk) {
+				push(@errors, "Table $both$orig doesn't have the same number of primary keys in source database ($nbpk) and in PostgreSQL (" . $pgret{"\U$both$orig\E"} . ").");
 			}
 		}
 	}
-	$s->finish() if ($self->{pg_dsn});
 	%unique_keys = ();
 	$self->show_test_errors('primary keys', @errors);
 	@errors = ();
@@ -17262,45 +17324,57 @@ AND pg_constraint.contype IN ('p')
 	####
 	# Test check constraints
 	####
-	if (!$self->{is_mysql}) {
+	if (!$self->{is_mysql})
+	{
 		print "\n";
 		print "[TEST CHECK CONSTRAINTS COUNT]\n";
 		my %check_constraints = $self->_check_constraint('',$self->{schema});
-		$schema_cond = $self->get_schema_condition();
+		$schema_cond = $self->get_schema_condition('n.nspname');
 		$sql = qq{
-SELECT count(*)
+SELECT n.nspname::regnamespace||'.'||r.conrelid::regclass, count(*)
 FROM pg_catalog.pg_constraint r JOIN pg_class c ON (r.conrelid=c.oid) JOIN pg_namespace n ON (c.relnamespace=n.oid)
-WHERE c.relname = ? AND r.contype = 'c'
-$schema_cond
+WHERE r.contype = 'c' $schema_cond
+GROUP BY n.nspname,r.conrelid
 };
-		if ($self->{pg_dsn}) {
-			$s = $self->{dbhdest}->prepare($sql) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
+		%pgret = ();
+		if ($self->{pg_dsn})
+		{
+			my $s = $self->{dbhdest}->prepare($sql) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
+			if (not $s->execute())
+			{
+				push(@errors, "Can not extract information from catalog about check constraints.");
+				return;
+			}
+			while ( my @row = $s->fetchrow())
+			{
+				$row[0] =~ s/^[^\.]+\.// if (!$self->{export_schema});
+				$pgret{"\U$row[0]\E"} = $row[1];
+			}
+			$s->finish;
 		}
-		foreach my $t (keys %check_constraints) {
+		# Initialize when there is not unique key in a table
+		foreach my $t (keys %tables_infos) {
+			$check_constraints{$t}{constraint} = {} if (not exists $check_constraints{$t});
+		}
+
+		foreach my $t (sort keys %check_constraints)
+		{
 			next if (!exists $tables_infos{$t});
 			my $nbcheck = 0;
 			foreach my $cn (keys %{$check_constraints{$t}{constraint}}) {
 				$nbcheck++ if ($check_constraints{$t}{constraint}{$cn}{condition} !~ /IS NOT NULL$/);
 			}
 			print "$lbl:$t:$nbcheck\n";
-			if ($self->{pg_dsn}) {
+			if ($self->{pg_dsn})
+			{
 				my ($tbmod, $orig, $schema, $both) = $self->set_pg_relation_name($t);
-				$tbmod =~ s/^([^\.]+\.)//; # Remove schema part from table name
-				if (not $s->execute(lc($tbmod))) {
-					push(@errors, "Can not extract information from catalog about check constraints.");
-					next;
-				}
-				$tbmod = $1 . $tbmod  if ($1);
-				while ( my @row = $s->fetchrow()) {
-					print "POSTGRES:$both$orig:$row[0]\n";
-					if ($row[0] != $nbcheck) {
-						push(@errors, "Table $both$orig doesn't have the same number of check constraints in source database ($nbcheck) and in PostgreSQL ($row[0]).");
-					}
-					last;
+				$pgret{"\U$both$orig\E"} ||= 0;
+				print "POSTGRES:$both$orig:", $pgret{"\U$both$orig\E"}, "\n";
+				if ($pgret{"\U$both$orig\E"} != $nbcheck) {
+					push(@errors, "Table $both$orig doesn't have the same number of check constraints in source database ($nbcheck) and in PostgreSQL (" . $pgret{"\U$both$orig\E"} . ").");
 				}
 			}
 		}
-		$s->finish() if ($self->{pg_dsn});
 		%check_constraints = ();
 		$self->show_test_errors('check constraints', @errors);
 		@errors = ();
@@ -17312,77 +17386,111 @@ $schema_cond
 	print "\n";
 	print "[TEST NOT NULL CONSTRAINTS COUNT]\n";
 	my %column_infos = $self->_column_attributes('', $self->{schema}, 'TABLE');
-	$schema_cond = $self->get_schema_condition();
+	$schema_cond = $self->get_schema_condition('n.nspname');
 	$sql = qq{
-SELECT count(*)
+SELECT n.nspname||'.'||e.oid::regclass, count(*)
 FROM pg_catalog.pg_attribute a
 JOIN pg_class e ON (e.oid=a.attrelid)
 JOIN pg_namespace n ON (e.relnamespace=n.oid)
-WHERE e.relname = ?
-  AND a.attnum > 0
+WHERE a.attnum > 0
+  AND e.relkind IN ('r')
   AND NOT a.attisdropped AND a.attnotnull 
  $schema_cond
+GROUP BY n.nspname,e.oid
 };
-	if ($self->{pg_dsn}) {
-		$s = $self->{dbhdest}->prepare($sql) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
+	%pgret = ();
+	if ($self->{pg_dsn})
+	{
+		my $s = $self->{dbhdest}->prepare($sql) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
+		if (not $s->execute())
+		{
+			push(@errors, "Can not extract information from catalog about not null constraints.");
+			return;
+		}
+		while ( my @row = $s->fetchrow())
+		{
+			$row[0] =~ s/^[^\.]+\.([^\.]+\.)/$1/; # remove possible duplicate schema prefix
+			$row[0] =~ s/^[^\.]+\.// if (!$self->{export_schema});
+			$pgret{"\U$row[0]\E"} = $row[1];
+		}
+		$s->finish;
 	}
-	foreach my $t (keys %column_infos) {
+	foreach my $t (sort keys %column_infos)
+	{
 		next if (!exists $tables_infos{$t});
 		my $nbnull = 0;
-		foreach my $cn (keys %{$column_infos{$t}}) {
+		foreach my $cn (keys %{$column_infos{$t}})
+		{
 			if ($column_infos{$t}{$cn}{nullable} =~ /^N/) {
 				$nbnull++;
 			}
 		}
 		print "$lbl:$t:$nbnull\n";
-		if ($self->{pg_dsn}) {
+		if ($self->{pg_dsn})
+		{
 			my ($tbmod, $orig, $schema, $both) = $self->set_pg_relation_name($t);
-			$tbmod =~ s/^([^\.]+\.)//; # Remove schema part from table name
-			if (not $s->execute(lc($tbmod))) {
-				push(@errors, "Can not extract information from catalog about not null constraints.");
-				next;
-			}
-			$tbmod = $1 . $tbmod  if ($1);
-			while ( my @row = $s->fetchrow()) {
-				print "POSTGRES:$both$orig:$row[0]\n";
-				if ($row[0] != $nbnull) {
-					push(@errors, "Table $both$orig doesn't have the same number of not null constraints in source database ($nbnull) and in PostgreSQL ($row[0]).");
-				}
-				last;
+			$pgret{"\U$both$orig\E"} ||= 0;
+			print "POSTGRES:$both$orig:", $pgret{"\U$both$orig\E"}, "\n";
+			if ($pgret{"\U$both$orig\E"} != $nbnull) {
+				push(@errors, "Table $both$orig doesn't have the same number of not null constraints in source database ($nbnull) and in PostgreSQL (" . $pgret{"\U$both$orig\E"} . ").");
 			}
 		}
 	}
-	$s->finish() if ($self->{pg_dsn});
 	$self->show_test_errors('not null constraints', @errors);
 	@errors = ();
 
 	####
-	# Test NOT NULL constraints
+	# Test column default values
 	####
 	print "\n";
 	print "[TEST COLUMN DEFAULT VALUE COUNT]\n";
-	$schema_cond = $self->get_schema_condition();
+	$schema_cond = $self->get_schema_condition('n.nspname');
+	# SELECT n.nspname||'.'||e.oid::regclass,
 	$sql = qq{
-SELECT a.attname,
-  (SELECT substring(pg_catalog.pg_get_expr(d.adbin, d.adrelid) for 128)
+SELECT n.nspname||'.'||e.oid::regclass,
+  count((SELECT substring(pg_catalog.pg_get_expr(d.adbin, d.adrelid) for 128)
    FROM pg_catalog.pg_attrdef d
-   WHERE d.adrelid = a.attrelid AND d.adnum = a.attnum AND a.atthasdef)
+   WHERE d.adrelid = a.attrelid AND d.adnum = a.attnum AND a.atthasdef)) "default value"
 FROM pg_catalog.pg_attribute a JOIN pg_class e ON (e.oid=a.attrelid) JOIN pg_namespace n ON (e.relnamespace=n.oid)
-WHERE e.relname = ? AND a.attnum > 0 AND NOT a.attisdropped
- $schema_cond
+WHERE a.attnum > 0 AND NOT a.attisdropped
+$schema_cond
+GROUP BY n.nspname,e.oid
 };
-	if ($self->{pg_dsn}) {
-		$s = $self->{dbhdest}->prepare($sql) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
+	%pgret = ();
+	if ($self->{pg_dsn})
+	{
+		my $s = $self->{dbhdest}->prepare($sql) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
+		if (not $s->execute())
+		{
+			push(@errors, "Can not extract information from catalog about column default values.");
+			return;
+		}
+		while ( my @row = $s->fetchrow())
+		{
+			$row[0] =~ s/^[^\.]+\.([^\.]+\.)/$1/; # remove possible duplicate schema prefix
+			$row[0] =~ s/^[^\.]+\.// if (!$self->{export_schema});
+			$pgret{"\U$row[0]\E"} = $row[1];
+		}
+		$s->finish;
 	}
 	my @seqs = ();
 	if ($self->{is_mysql}) {
 		@seqs = Ora2Pg::MySQL::_count_sequences($self);
 	}
-	foreach my $t (keys %column_infos) {
+	foreach my $t (sort keys %column_infos)
+	{
 		next if (!exists $tables_infos{$t});
 		my $nbdefault = 0;
-		foreach my $cn (keys %{$column_infos{$t}}) {
-			if ($column_infos{$t}{$cn}{default} ne '' && uc($column_infos{$t}{$cn}{default}) ne 'NULL') {
+		foreach my $cn (keys %{$column_infos{$t}})
+		{
+			if ($column_infos{$t}{$cn}{default} ne ''
+				&& uc($column_infos{$t}{$cn}{default}) ne 'NULL'
+				# identity column
+				&& ( $column_infos{$t}{$cn}{default} !~ /ISEQ\$\$_.*nextval/i
+					|| $self->{is_mysql} || !$self->{pg_supports_identity})
+
+			)
+			{
 				$nbdefault++;
 			}
 		}
@@ -17390,28 +17498,88 @@ WHERE e.relname = ? AND a.attnum > 0 AND NOT a.attisdropped
 			$nbdefault++;
 		}
 		print "$lbl:$t:$nbdefault\n";
-		if ($self->{pg_dsn}) {
+		if ($self->{pg_dsn})
+		{
 			my ($tbmod, $orig, $schema, $both) = $self->set_pg_relation_name($t);
-			$tbmod =~ s/^([^\.]+\.)//; # Remove schema part from table name
-			if (not $s->execute(lc($tbmod))) {
-				push(@errors, "Can not extract information from catalog about column default value.");
-				next;
-			}
-			$tbmod = $1 . $tbmod  if ($1);
-			my $pgdef = 0;
-			while ( my @row = $s->fetchrow()) {
-				$pgdef++ if ($row[1] ne '');
-			}
-			print "POSTGRES:$both$orig:$pgdef\n";
-			if ($pgdef != $nbdefault) {
-				push(@errors, "Table $both$orig doesn't have the same number of column default value in source database ($nbdefault) and in PostgreSQL ($pgdef).");
+			$pgret{"\U$both$orig\E"} ||= 0;
+			print "POSTGRES:$both$orig:", $pgret{"\U$both$orig\E"}, "\n";
+			if ($pgret{"\U$both$orig\E"} != $nbdefault) {
+				push(@errors, "Table $both$orig doesn't have the same number of column default value in source database ($nbdefault) and in PostgreSQL (" . $pgret{"\U$both$orig\E"} . ").");
 			}
 		}
 	}
-	$s->finish() if ($self->{pg_dsn});
 	%column_infos = ();
 	$self->show_test_errors('column default value', @errors);
 	@errors = ();
+
+	####
+	# Test identity columns
+	####
+	if ($self->{is_mysql} || !$self->{pg_supports_identity})
+	{
+		print "\n";
+		print "[TEST IDENTITY COLUMN COUNT]\n";
+		$schema_cond = $self->get_schema_condition('n.nspname');
+		$sql = qq{
+SELECT e.oid::regclass,
+  count((SELECT substring(pg_catalog.pg_get_expr(d.adbin, d.adrelid) for 128)
+   FROM pg_catalog.pg_attrdef d
+   WHERE d.adrelid = a.attrelid AND d.adnum = a.attnum AND a.atthasdef)) "default value"
+FROM pg_catalog.pg_attribute a JOIN pg_class e ON (e.oid=a.attrelid) JOIN pg_namespace n ON (e.relnamespace=n.oid)
+WHERE a.attnum > 0 AND NOT a.attisdropped AND a.attidentity IN ('a', 'd')
+$schema_cond
+GROUP BY e.oid
+};
+		%pgret = ();
+		if ($self->{pg_dsn})
+		{
+			my $s = $self->{dbhdest}->prepare($sql) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
+			if (not $s->execute())
+			{
+				push(@errors, "Can not extract information from catalog about identity columns.");
+				return;
+			}
+			while ( my @row = $s->fetchrow())
+			{
+				$row[0] =~ s/^[^\.]+\.// if (!$self->{export_schema});
+				$pgret{"\U$row[0]\E"} = $row[1];
+			}
+			$s->finish;
+		}
+		@seqs = ();
+		if ($self->{is_mysql}) {
+			@seqs = Ora2Pg::MySQL::_count_sequences($self);
+		}
+		foreach my $t (sort keys %column_infos)
+		{
+			next if (!exists $tables_infos{$t});
+			my $nbidty = 0;
+			foreach my $cn (keys %{$column_infos{$t}})
+			{
+				if ($column_infos{$t}{$cn}{default} =~ /ISEQ\$\$_.*nextval/i) {
+					$nbidty++;
+				}
+			}
+			if (grep(/^$t$/i, @seqs)) {
+				$nbidty++;
+			}
+			print "$lbl:$t:$nbidty\n";
+			if ($self->{pg_dsn})
+			{
+				my ($tbmod, $orig, $schema, $both) = $self->set_pg_relation_name($t);
+				$pgret{"\U$both$orig\E"} ||= 0;
+				print "POSTGRES:$both$orig:", $pgret{"\U$both$orig\E"}, "\n";
+				if ($pgret{"\U$both$orig\E"} != $nbidty) {
+					push(@errors, "Table $both$orig doesn't have the same number of identity column in source database ($nbidty) and in PostgreSQL (" . $pgret{"\U$both$orig\E"} . ").");
+				}
+			}
+		}
+		%column_infos = ();
+		$self->show_test_errors('column default value', @errors);
+		@errors = ();
+	}
+
+	%column_infos = ();
 
 	####
 	# Test foreign keys
@@ -17419,83 +17587,54 @@ WHERE e.relname = ? AND a.attnum > 0 AND NOT a.attisdropped
 	print "\n";
 	print "[TEST FOREIGN KEYS COUNT]\n";
 	my ($foreign_link, $foreign_key) = $self->_foreign_key('',$self->{schema});
-	$schema_cond = $self->get_schema_condition();
+	$schema_cond = $self->get_schema_condition('n.nspname');
 	$sql = qq{
-SELECT count(*)
+SELECT n.nspname||'.'||r.conrelid::regclass, count(*)
 FROM pg_catalog.pg_constraint r JOIN pg_class c ON (r.conrelid=c.oid) JOIN pg_namespace n ON (c.relnamespace=n.oid)
-WHERE c.relname = ?
-  AND r.contype = 'f'
- $schema_cond
+WHERE r.contype = 'f' $schema_cond
+GROUP BY n.nspname,r.conrelid
 };
-	if ($self->{pg_dsn}) {
-		$s = $self->{dbhdest}->prepare($sql) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
+	%pgret = ();
+	if ($self->{pg_dsn})
+	{
+		my $s = $self->{dbhdest}->prepare($sql) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
+		if (not $s->execute())
+		{
+			push(@errors, "Can not extract information from catalog about foreign keys constraints.");
+			return;
+		}
+		while ( my @row = $s->fetchrow())
+		{
+			$row[0] =~ s/^[^\.]+\.([^\.]+\.)/$1/; # remove possible duplicate schema prefix
+			$row[0] =~ s/^[^\.]+\.// if (!$self->{export_schema});
+			$pgret{"\U$row[0]\E"} = $row[1];
+		}
+		$s->finish;
 	}
-	foreach my $t (keys %{$foreign_link}) {
+	# Initialize when there is not unique key in a table
+	foreach my $t (keys %tables_infos) {
+		$foreign_link->{$t} = {} if (not exists $foreign_link->{$t});
+	}
+
+	foreach my $t (sort keys %{$foreign_link})
+	{
 		next if (!exists $tables_infos{$t});
 		my $nbfk = scalar keys %{$foreign_link->{$t}};
 		print "$lbl:$t:$nbfk\n";
-		if ($self->{pg_dsn}) {
+		if ($self->{pg_dsn})
+		{
 			my ($tbmod, $orig, $schema, $both) = $self->set_pg_relation_name($t);
-			$tbmod =~ s/^([^\.]+\.)//; # Remove schema part from table name
-			if (not $s->execute(lc($tbmod))) {
-				push(@errors, "Can not extract information from catalog about foreign key constraints.");
-				next;
-			}
-			$tbmod = $1 . $tbmod  if ($1);
-			while ( my @row = $s->fetchrow()) {
-				print "POSTGRES:$both$orig:$row[0]\n";
-				if ($row[0] != $nbfk) {
-					push(@errors, "Table $both$orig doesn't have the same number of foreign key constraints in source database ($nbfk) and in PostgreSQL ($row[0]).");
-				}
-				last;
+			$pgret{"\U$both$orig\E"} ||= 0;
+			print "POSTGRES:$both$orig:", $pgret{"\U$both$orig\E"}, "\n";
+			if ($pgret{"\U$both$orig\E"} != $nbfk) {
+				push(@errors, "Table $both$orig doesn't have the same number of foreign key constraints in source database ($nbfk) and in PostgreSQL (" . $pgret{"\U$both$orig\E"} . ").");
 			}
 		}
 	}
-	$s->finish() if ($self->{pg_dsn});
 	$self->show_test_errors('foreign keys', @errors);
 	@errors = ();
-
-	####
-	# Test triggers
-	####
-	print "\n";
-	print "[TEST TABLE TRIGGERS COUNT]\n";
-	my %triggers = $self->_list_triggers();
-	$schema_cond = $self->get_schema_condition();
-	$sql = qq{
-SELECT count(*)
-FROM pg_catalog.pg_trigger t JOIN pg_class c ON (t.tgrelid=c.oid) JOIN pg_namespace n ON (c.relnamespace=n.oid)
-WHERE c.relname = ?
-  AND (NOT t.tgisinternal OR (t.tgisinternal AND t.tgenabled = 'D'))
- $schema_cond
-};
-	if ($self->{pg_dsn}) {
-		$s = $self->{dbhdest}->prepare($sql) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
-	}
-	foreach my $t (keys %triggers) {
-		next if (!exists $tables_infos{$t});
-		my $nbtrg = $#{$triggers{$t}}+1;
-		print "$lbl:$t:$nbtrg\n";
-		if ($self->{pg_dsn}) {
-			my ($tbmod, $orig, $schema, $both) = $self->set_pg_relation_name($t);
-			$tbmod =~ s/^([^\.]+\.)//; # Remove schema part from table name
-			if (not $s->execute(lc($tbmod))) {
-				push(@errors, "Can not extract information from catalog about foreign key constraints.");
-				next;
-			}
-			$tbmod = $1 . $tbmod  if ($1);
-			while ( my @row = $s->fetchrow()) {
-				print "POSTGRES:$both$orig:$row[0]\n";
-				if ($row[0] != $nbtrg) {
-					push(@errors, "Table $both$orig doesn't have the same number of triggers in source database ($nbtrg) and in PostgreSQL ($row[0]).");
-				}
-				last;
-			}
-		}
-	}
-	$s->finish() if ($self->{pg_dsn});
-	$self->show_test_errors('table triggers', @errors);
-	@errors = ();
+	$foreign_link = undef;
+	$foreign_key = undef;
 
 	####
 	# Test partitions
@@ -17521,32 +17660,41 @@ GROUP BY
     parent;
 };
 	my %pg_part = ();
-	if ($self->{pg_dsn}) {
+	if ($self->{pg_dsn})
+	{
 		$s = $self->{dbhdest}->prepare($sql) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
-		if (not $s->execute()) {
+		if (not $s->execute())
+		{
 			push(@errors, "Can not extract information from catalog about PARTITION.");
 			next;
 		}
-		while ( my @row = $s->fetchrow()) {
+		while ( my @row = $s->fetchrow())
+		{
+			$row[1] =~ s/^[^\.]+\.// if (!$self->{export_schema});
 			$pg_part{$row[1]} = $row[2];
 		}
 		$s->finish();
 	}
-	foreach my $t (keys %partitions) {
+	foreach my $t (sort keys %partitions)
+	{
 		next if (!exists $tables_infos{$t});
 		print "$lbl:$t:", $partitions{"\L$t\E"}{count}, "\n";
 		my ($tbmod, $orig, $schema, $both) = $self->set_pg_relation_name($t);
-		if (exists $pg_part{$tbmod}) {
+		if (exists $pg_part{$tbmod})
+		{
 			print "POSTGRES:$both$orig:$pg_part{$tbmod}\n";
 			if ($pg_part{$tbmod} != $partitions{"\L$t\E"}{count}) {
 				push(@errors, "Table $both$orig doesn't have the same number of partitions in source database (" . $partitions{"\L$t\E"}{count} . ") and in PostgreSQL ($pg_part{$tbmod}).");
 			}
-		} else {
+		}
+		else
+		{
 			push(@errors, "Table $both$orig doesn't have the same number of partitions in source database (" . $partitions{"\L$t\E"}{count} . ") and in PostgreSQL (0).");
 		}
 	}
 	$self->show_test_errors('PARTITION', @errors);
 	@errors = ();
+	%partitions = ();
 
 	print "\n";
 	print "[TEST TABLE COUNT]\n";
@@ -17561,13 +17709,16 @@ WHERE c.relkind IN ('r','')
 };
 
 	print "$lbl:TABLE:$nbobj\n";
-	if ($self->{pg_dsn}) {
+	if ($self->{pg_dsn})
+	{
 		$s = $self->{dbhdest}->prepare($sql) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
-		if (not $s->execute()) {
+		if (not $s->execute())
+		{
 			push(@errors, "Can not extract information from catalog about $obj_type.");
 			next;
 		}
-		while ( my @row = $s->fetchrow()) {
+		while ( my @row = $s->fetchrow())
+		{
 			print "POSTGRES:TABLE:$row[0]\n";
 			if ($row[0] != $nbobj) {
 				push(@errors, "TABLE does not have the same count in source database ($nbobj) and in PostgreSQL ($row[0]).");
@@ -17577,6 +17728,60 @@ WHERE c.relkind IN ('r','')
 		$s->finish();
 	}
 	$self->show_test_errors('TABLE', @errors);
+	@errors = ();
+
+	####
+	# Test triggers
+	####
+	print "\n";
+	print "[TEST TABLE TRIGGERS COUNT]\n";
+	my %triggers = $self->_list_triggers();
+	$schema_cond = $self->get_schema_condition();
+	$sql = qq{
+SELECT n.nspname||'.'||c.relname, count(*)
+FROM pg_catalog.pg_trigger t JOIN pg_class c ON (t.tgrelid=c.oid) JOIN pg_namespace n ON (c.relnamespace=n.oid)
+WHERE (NOT t.tgisinternal OR (t.tgisinternal AND t.tgenabled = 'D'))
+ $schema_cond
+GROUP BY n.nspname,c.relname
+};
+	%pgret = ();
+	if ($self->{pg_dsn})
+	{
+		my $s = $self->{dbhdest}->prepare($sql) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
+		if (not $s->execute())
+		{
+			push(@errors, "Can not extract information from catalog about table triggrers.");
+			return;
+		}
+		while ( my @row = $s->fetchrow())
+		{
+			$row[0] =~ s/^[^\.]+\.// if (!$self->{export_schema});
+			$pgret{"\U$row[0]\E"} = $row[1];
+		}
+		$s->finish;
+	}
+	# Initialize when there is not unique key in a table
+	foreach my $t (keys %tables_infos) {
+		$triggers{$t} = () if (not exists $triggers{$t});
+	}
+
+	foreach my $t (sort keys %triggers)
+	{
+		next if (!exists $tables_infos{$t});
+		my $nbtrg = $#{$triggers{$t}}+1;
+		print "$lbl:$t:$nbtrg\n";
+		if ($self->{pg_dsn})
+		{
+			my ($tbmod, $orig, $schema, $both) = $self->set_pg_relation_name($t);
+			$pgret{"\U$both$orig\E"} ||= 0;
+			print "POSTGRES:$both$orig:", $pgret{"\U$both$orig\E"}, "\n";
+			if ($pgret{"\U$both$orig\E"} != $nbtrg) {
+				push(@errors, "Table $both$orig doesn't have the same number of triggers in source database ($nbtrg) and in PostgreSQL (" . $pgret{"\U$both$orig\E"} . ").");
+			}
+		}
+	}
+	$s->finish() if ($self->{pg_dsn});
+	$self->show_test_errors('table triggers', @errors);
 	@errors = ();
 
 	print "\n";
@@ -17595,13 +17800,16 @@ WHERE (NOT t.tgisinternal OR (t.tgisinternal AND t.tgenabled = 'D'))
 };
 
 	print "$lbl:TRIGGER:$nbobj\n";
-	if ($self->{pg_dsn}) {
+	if ($self->{pg_dsn})
+	{
 		$s = $self->{dbhdest}->prepare($sql) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
-		if (not $s->execute()) {
+		if (not $s->execute())
+		{
 			push(@errors, "Can not extract information from catalog about $obj_type.");
 			next;
 		}
-		while ( my @row = $s->fetchrow()) {
+		while ( my @row = $s->fetchrow())
+		{
 			print "POSTGRES:TRIGGER:$row[0]\n";
 			if ($row[0] != $nbobj) {
 				push(@errors, "TRIGGER does not have the same count in source database ($nbobj) and in PostgreSQL ($row[0]).");
@@ -17612,7 +17820,6 @@ WHERE (NOT t.tgisinternal OR (t.tgisinternal AND t.tgenabled = 'D'))
 	}
 	$self->show_test_errors('TRIGGER', @errors);
 	@errors = ();
-
 }
 
 sub _unitary_test_views
@@ -17638,7 +17845,9 @@ WHERE c.relkind IN ('v','')
 			push(@errors, "Can not extract information from catalog about views.");
 			next;
 		}
-		while ( my @row = $s->fetchrow()) {
+		while ( my @row = $s->fetchrow())
+		{
+			$row[0] =~ s/^[^\.]+\.// if (!$self->{export_schema});
 			$list_views{$row[0]} = $row[1];
 		}
 		$s->finish();
@@ -17648,7 +17857,8 @@ WHERE c.relkind IN ('v','')
 	$lbl    = 'MYSQL_DB' if ($self->{is_mysql});
 
 	print "[UNITARY TEST OF VIEWS]\n";
-	foreach my $v (sort keys %list_views) {
+	foreach my $v (sort keys %list_views)
+	{
 		# Execute init settings if any
 		# Count rows returned by all view on the source database
 		$sql = "SELECT count(*) FROM $v";
@@ -17686,7 +17896,8 @@ sub _count_object
 	my $schema_clause = $self->get_schema_condition();
 	my $nbobj = 0;
 	my $sql = '';
-	if ($obj_type eq 'VIEW') {
+	if ($obj_type eq 'VIEW')
+	{
 		my %obj_infos = $self->_get_views();
 		$nbobj = scalar keys %obj_infos;
 		$sql = qq{
@@ -17696,7 +17907,9 @@ FROM pg_catalog.pg_class c
 WHERE c.relkind IN ('v','')
       $schema_clause
 };
-	} elsif ($obj_type eq 'MVIEW') {
+	}
+	elsif ($obj_type eq 'MVIEW')
+	{
 		my %obj_infos = $self->_get_materialized_views();
 		$nbobj = scalar keys %obj_infos;
 		$sql = qq{
@@ -17706,7 +17919,9 @@ FROM pg_catalog.pg_class c
 WHERE c.relkind IN ('m','')
       $schema_clause
 };
-	} elsif ($obj_type eq 'SEQUENCE') {
+	}
+	elsif ($obj_type eq 'SEQUENCE')
+	{
 		my $obj_infos = ();
 		if (!$self->{is_mysql}) {
 			$obj_infos = $self->_get_sequences();
@@ -17721,7 +17936,9 @@ FROM pg_catalog.pg_class c
 WHERE c.relkind IN ('S','')
       $schema_clause
 };
-	} elsif ($obj_type eq 'TYPE') {
+	}
+	elsif ($obj_type eq 'TYPE')
+	{
 		my $obj_infos = $self->_get_types();
 		$nbobj = $#{$obj_infos} + 1;
 		$schema_clause .= " AND pg_catalog.pg_type_is_visible(t.oid)" if ($schema_clause =~ /information_schema/);
@@ -17733,7 +17950,9 @@ WHERE (t.typrelid = 0 OR (SELECT c.relkind = 'c' FROM pg_catalog.pg_class c WHER
   AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_type el WHERE el.oid = t.typelem AND el.typarray = t.oid)
   $schema_clause
 };
-	} elsif ($obj_type eq 'FDW') {
+	}
+	elsif ($obj_type eq 'FDW')
+	{
 		my %obj_infos = $self->_get_external_tables();
 		$nbobj = scalar keys %obj_infos;
 		$sql = qq{
@@ -17743,7 +17962,9 @@ FROM pg_catalog.pg_class c
 WHERE c.relkind IN ('f','')
       $schema_clause
 };
-	} else {
+	}
+	else
+	{
 		return;
 	}
 
@@ -17755,13 +17976,16 @@ WHERE c.relkind IN ('f','')
 	} else {
 		print "$lbl:$obj_type:$nbobj\n";
 	}
-	if ($self->{pg_dsn}) {
+	if ($self->{pg_dsn})
+	{
 		my $s = $self->{dbhdest}->prepare($sql) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
-		if (not $s->execute()) {
+		if (not $s->execute())
+		{
 			push(@errors, "Can not extract information from catalog about $obj_type.");
 			next;
 		}
-		while ( my @row = $s->fetchrow()) {
+		while ( my @row = $s->fetchrow())
+		{
 			print "POSTGRES:$obj_type:$row[0]\n";
 			if ($row[0] != $nbobj) {
 				push(@errors, "\U$obj_type\E does not have the same count in source database ($nbobj) and in PostgreSQL ($row[0]).");
@@ -17806,7 +18030,8 @@ $schema_clause
 	if ($self->{pg_dsn})
 	{
 		$s = $self->{dbhdest}->prepare($sql) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
-		if (not $s->execute()) {
+		if (not $s->execute())
+		{
 			push(@errors, "Can not extract information from catalog about $obj_type.");
 			next;
 		}
@@ -17843,6 +18068,84 @@ $schema_clause
 		}
 	}
 	$self->show_test_errors('FUNCTION', @errors);
+	@errors = ();
+	print "\n";
+}
+
+sub _test_seq_values
+{
+	my $self = shift;
+
+	my @errors = ();
+
+	$self->logit("Looking for last values related to source database and PostgreSQL sequences...\n", 1);
+
+	my $lbl = 'ORACLEDB';
+	$lbl    = 'MYSQL_DB' if ($self->{is_mysql});
+
+	####
+	# Test number of function
+	####
+	print "\n";
+	print "[TEST SEQUENCE VALUES]\n";
+	my $obj_infos = [];
+	if (!$self->{is_mysql}) {
+		$obj_infos = $self->_get_sequences();
+	} else {
+		$obj_infos = Ora2Pg::MySQL::_count_sequences($self);
+	}
+
+	my %pgret = ();
+	if ($self->{pg_dsn})
+	{
+		# create a function to extract the last value of all sequences
+		my $sql = qq{
+CREATE OR REPLACE FUNCTION get_sequence_last_values() RETURNS TABLE(seqname text,val bigint) AS
+\$\$
+DECLARE
+  seq_name varchar(128);
+BEGIN
+  FOR seq_name in SELECT quote_ident(relnamespace::regnamespace::text)||'.'||quote_ident(relname::text) FROM pg_class WHERE (relkind = 'S')
+  LOOP
+      RETURN QUERY EXECUTE  'SELECT ' || quote_literal(seq_name) || ',last_value FROM ' || seq_name;
+  END LOOP;
+  RETURN;
+END
+\$\$
+LANGUAGE 'plpgsql';
+};
+		$self->{dbhdest}->do($sql) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
+		my $s = $self->{dbhdest}->prepare("SELECT * FROM get_sequence_last_values()") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
+		if (not $s->execute())
+		{
+			push(@errors, "Can not extract information from catalog about last values of sequences.");
+			return;
+		}
+		while ( my @row = $s->fetchrow())
+		{
+			$row[0] =~ s/^[^\.]+\.// if (!$self->{export_schema});
+			$pgret{"\U$row[0]\E"} = $row[1];
+		}
+		$s->finish;
+		$self->{dbhdest}->do("DROP FUNCTION get_sequence_last_values") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
+	}
+
+	foreach my $r (@{$obj_infos})
+	{
+		my $t = $r->[7] . '.' . $r->[0];
+		$t =~ s/^[^\.]+\.// if (!$self->{export_schema});
+		print "$lbl:$t:$r->[4]\n";
+		if ($self->{pg_dsn})
+		{
+			my ($tbmod, $orig, $schema, $both) = $self->set_pg_relation_name($t);
+			$pgret{"\U$both$orig\E"} ||= 0;
+			print "POSTGRES:$both$orig:", $pgret{"\U$both$orig\E"}, "\n";
+			if ($pgret{"\U$both$orig\E"} != $r->[4]) {
+				push(@errors, "Sequence $both$orig doesn't have the same value in source database ($r->[4]) and in PostgreSQL (" . $pgret{"\U$both$orig\E"} . "). Verify +/- cache size: $r->[5].");
+			}
+		}
+	}
+	$self->show_test_errors('sequence values', @errors);
 	@errors = ();
 	print "\n";
 }
@@ -17989,12 +18292,21 @@ SELECT p.owner,p.object_name,p.procedure_name,o.object_type
 	my @infos = ();
         my $sth = $self->{dbh}->prepare( $sql ) or return undef;
         $sth->execute or return undef;
-	while ( my @row = $sth->fetchrow()) {
+	while ( my @row = $sth->fetchrow())
+	{
 		next if (($row[3] eq 'PACKAGE') && !$row[2]);
-		if ( $row[2] ) {
+		if ( $row[2] )
+		{
 			# package_name.fct_name
 			push(@infos, lc("$row[1].$row[2]"));
-		} else {
+		}
+		elsif ( $self->{export_schema} )
+		{
+			# package_name.fct_name
+			push(@infos, lc("$row[0].$row[1]"));
+		}
+		else
+		{
 			# owner.fct_name
 			push(@infos, lc($row[1]));
 		}

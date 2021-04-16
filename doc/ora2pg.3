@@ -133,7 +133,7 @@
 .\" ========================================================================
 .\"
 .IX Title "ORA2PG 1"
-.TH ORA2PG 1 "2021-04-14" "perl v5.30.0" "User Contributed Perl Documentation"
+.TH ORA2PG 1 "2021-04-16" "perl v5.30.0" "User Contributed Perl Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -3121,11 +3121,12 @@ The type of action called \s-1TEST\s0 allow you to check that all objects from O
 database have been created under PostgreSQL. Of course \s-1PG_DSN\s0 must be set to be
 able to check PostgreSQL side.
 .PP
-Note that this feature respect the schema set in the \s-1SCHEMA\s0 directive to scan
-the Oracle database and also at PostgreSQL side if \s-1EXPORT_SCHEMA\s0 is enabled.
-If \s-1PG_SCHEMA\s0 is defined and \s-1EXPORT_SCHEMA\s0 is enabled Ora2Pg will use the list
-of schemas defined in \s-1PG_SCHEMA\s0 to scan PostgreSQL. If \s-1EXPORT_SCHEMA\s0 is
-disabled the entire PostgreSQL database is scanned.
+Note that this feature respect the schema name limitation if \s-1EXPORT_SCHEMA\s0 and
+\&\s-1SCHEMA\s0 or \s-1PG_SCHEMA\s0 are defined. If only \s-1EXPORT_SCHEMA\s0 is set all schemes from
+Oracle and PostgreSQL are scanned. You can filter to a single schema using
+\&\s-1SCHEMA\s0 and/or \s-1PG_SCHEMA\s0 but you can not filter on a list of schema. To test
+a list of schema you will have to repeat the calls to Ora2Pg by specifying
+a single schema each time.
 .PP
 For example command:
 .PP
@@ -3137,49 +3138,90 @@ Will create a file containing the report of all object and row count on both
 side, Oracle and PostgreSQL, with an error section giving you the detail of
 the differences for each kind of object. Here is a sample result:
 .PP
-.Vb 10
-\&        [TEST ROWS COUNT]
-\&        ORACLEDB:COUNTRIES:25
-\&        POSTGRES:countries:25
-\&        ORACLEDB:CUSTOMERS:6
-\&        POSTGRES:customers:6
-\&        ORACLEDB:DEPARTMENTS:27
-\&        POSTGRES:departments:27
-\&        ORACLEDB:EMPLOYEES:107
-\&        POSTGRES:employees:107
-\&        ORACLEDB:JOBS:19
-\&        POSTGRES:jobs:19
-\&        ORACLEDB:JOB_HISTORY:10
-\&        POSTGRES:job_history:10
-\&        ORACLEDB:LOCATIONS:23
-\&        POSTGRES:locations:23
-\&        ORACLEDB:PRODUCTS:0
-\&        POSTGRES:products:0
-\&        ORACLEDB:PTAB2:4
-\&        ORACLEDB:REGIONS:4
-\&        POSTGRES:regions:4
-\&        [ERRORS ROWS COUNT]
-\&        Table ptab2 does not exists in PostgreSQL database.
-\&
+.Vb 7
 \&        [TEST INDEXES COUNT]
-\&        ORACLEDB:COUNTRIES:1
-\&        POSTGRES:countries:1
-\&        ORACLEDB:JOB_HISTORY:4
-\&        POSTGRES:job_history:4
 \&        ORACLEDB:DEPARTMENTS:2
 \&        POSTGRES:departments:1
 \&        ORACLEDB:EMPLOYEES:6
 \&        POSTGRES:employees:6
-\&        ORACLEDB:CUSTOMERS:1
-\&        POSTGRES:customers:1
-\&        ORACLEDB:REGIONS:1
-\&        POSTGRES:regions:1
-\&        ORACLEDB:LOCATIONS:4
-\&        POSTGRES:locations:4
-\&        ORACLEDB:JOBS:1
-\&        POSTGRES:jobs:1
 \&        [ERRORS INDEXES COUNT]
 \&        Table departments doesn\*(Aqt have the same number of indexes in Oracle (2) and in PostgreSQL (1).
+\&
+\&        [TEST UNIQUE CONSTRAINTS COUNT]
+\&        ORACLEDB:DEPARTMENTS:1
+\&        POSTGRES:departments:1
+\&        ORACLEDB:EMPLOYEES:1
+\&        POSTGRES:employees:1
+\&        [ERRORS UNIQUE CONSTRAINTS COUNT]
+\&        OK, Oracle and PostgreSQL have the same number of unique constraints.
+\&
+\&        [TEST PRIMARY KEYS COUNT]
+\&        ORACLEDB:DEPARTMENTS:1
+\&        POSTGRES:departments:1
+\&        ORACLEDB:EMPLOYEES:1
+\&        POSTGRES:employees:1
+\&        [ERRORS PRIMARY KEYS COUNT]
+\&        OK, Oracle and PostgreSQL have the same number of primary keys.
+\&
+\&        [TEST CHECK CONSTRAINTS COUNT]
+\&        ORACLEDB:DEPARTMENTS:1
+\&        POSTGRES:departments:1
+\&        ORACLEDB:EMPLOYEES:1
+\&        POSTGRES:employees:1
+\&        [ERRORS CHECK CONSTRAINTS COUNT]
+\&        OK, Oracle and PostgreSQL have the same number of check constraints.
+\&
+\&        [TEST NOT NULL CONSTRAINTS COUNT]
+\&        ORACLEDB:DEPARTMENTS:1
+\&        POSTGRES:departments:1
+\&        ORACLEDB:EMPLOYEES:1
+\&        POSTGRES:employees:1
+\&        [ERRORS NOT NULL CONSTRAINTS COUNT]
+\&        OK, Oracle and PostgreSQL have the same number of not null constraints.
+\&
+\&        [TEST COLUMN DEFAULT VALUE COUNT]
+\&        ORACLEDB:DEPARTMENTS:1
+\&        POSTGRES:departments:1
+\&        ORACLEDB:EMPLOYEES:1
+\&        POSTGRES:employees:1
+\&        [ERRORS COLUMN DEFAULT VALUE COUNT]
+\&        OK, Oracle and PostgreSQL have the same number of column default value.
+\&
+\&        [TEST IDENTITY COLUMN COUNT]
+\&        ORACLEDB:DEPARTMENTS:1
+\&        POSTGRES:departments:1
+\&        ORACLEDB:EMPLOYEES:0
+\&        POSTGRES:employees:0
+\&        [ERRORS IDENTITY COLUMN COUNT]
+\&        OK, Oracle and PostgreSQL have the same number of identity column.
+\&
+\&        [TEST FOREIGN KEYS COUNT]
+\&        ORACLEDB:DEPARTMENTS:0
+\&        POSTGRES:departments:0
+\&        ORACLEDB:EMPLOYEES:1
+\&        POSTGRES:employees:1
+\&        [ERRORS FOREIGN KEYS COUNT]
+\&        OK, Oracle and PostgreSQL have the same number of foreign keys.
+\&
+\&        [TEST TABLE COUNT]
+\&        ORACLEDB:TABLE:2
+\&        POSTGRES:TABLE:2
+\&        [ERRORS TABLE COUNT]
+\&        OK, Oracle and PostgreSQL have the same number of TABLE.
+\&
+\&        [TEST TABLE TRIGGERS COUNT]
+\&        ORACLEDB:DEPARTMENTS:0
+\&        POSTGRES:departments:0
+\&        ORACLEDB:EMPLOYEES:1
+\&        POSTGRES:employees:1
+\&        [ERRORS TABLE TRIGGERS COUNT]
+\&        OK, Oracle and PostgreSQL have the same number of table triggers.
+\&
+\&        [TEST TRIGGER COUNT]
+\&        ORACLEDB:TRIGGER:2
+\&        POSTGRES:TRIGGER:2
+\&        [ERRORS TRIGGER COUNT]
+\&        OK, Oracle and PostgreSQL have the same number of TRIGGER.
 \&
 \&        [TEST VIEW COUNT]
 \&        ORACLEDB:VIEW:1
@@ -3210,10 +3252,27 @@ the differences for each kind of object. Here is a sample result:
 \&        POSTGRES:FDW:0
 \&        [ERRORS FDW COUNT]
 \&        OK, Oracle and PostgreSQL have the same number of FDW.
+\&
+\&        [TEST FUNCTION COUNT]
+\&        ORACLEDB:FUNCTION:3
+\&        POSTGRES:FUNCTION:3
+\&        [ERRORS FUNCTION COUNT]
+\&        OK, Oracle and PostgreSQL have the same number of functions.
+\&
+\&        [TEST SEQUENCE VALUES]
+\&        ORACLEDB:EMPLOYEES_NUM_SEQ:1285
+\&        POSTGRES:employees_num_seq:1285
+\&        [ERRORS SEQUENCE VALUES COUNT]
+\&        OK, Oracle and PostgreSQL have the same values for sequences
+\&
+\&        [TEST ROWS COUNT]
+\&        ORACLEDB:DEPARTMENTS:27
+\&        POSTGRES:departments:27
+\&        ORACLEDB:EMPLOYEES:854
+\&        POSTGRES:employees:854
+\&        [ERRORS ROWS COUNT]
+\&        OK, Oracle and PostgreSQL have the same number of rows.
 .Ve
-.PP
-Here we can see that one table, one index, one sequence and one user defined
-type have not been imported yet or have encountered an error.
 .SH "SUPPORT"
 .IX Header "SUPPORT"
 .SS "Author / Maintainer"
