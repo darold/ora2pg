@@ -306,7 +306,7 @@ FROM INFORMATION_SCHEMA.COLUMNS
 $condition
 ORDER BY ORDINAL_POSITION};
 	# Version below 5.5 do not have DATA_TYPE column it is named DTD_IDENTIFIER
-	if ($self->{db_version} lt '5.5.0') {
+	if ($self->{db_version} < '5.5.0') {
 		$str =~ s/\bDATA_TYPE\b/DTD_IDENTIFIER/;
 	}
 	my $sth = $self->{dbh}->prepare($str);
@@ -715,7 +715,7 @@ sub _get_functions
 	$str =~ s/ AND / WHERE /;
 	$str .= " ORDER BY ROUTINE_NAME";
 	# Version below 5.5 do not have DATA_TYPE column it is named DTD_IDENTIFIER
-	if ($self->{db_version} lt '5.5.0') {
+	if ($self->{db_version} < '5.5.0') {
 		$str =~ s/\bDATA_TYPE\b/DTD_IDENTIFIER/;
 	}
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -960,7 +960,7 @@ sub _list_all_funtions
 	if ($self->{schema}) {
 		$str .= " AND ROUTINE_SCHEMA = '$self->{schema}'";
 	}
-	if ($self->{db_version} lt '5.5.0') {
+	if ($self->{db_version} < '5.5.0') {
 		$str =~ s/\bDATA_TYPE\b/DTD_IDENTIFIER/;
 	}
 	$str .= " " . $self->limit_to_objects('FUNCTION','ROUTINE_NAME');
@@ -1414,7 +1414,7 @@ sub _get_objects
 	}
 	# FUNCTION
 	$sql = "SELECT ROUTINE_NAME FROM INFORMATION_SCHEMA.ROUTINES WHERE DATA_TYPE IS NOT NULL AND ROUTINE_SCHEMA = '$self->{schema}'";
-	if ($self->{db_version} lt '5.5.0') {
+	if ($self->{db_version} < '5.5.0') {
 		$sql =~ s/\bDATA_TYPE\b/DTD_IDENTIFIER/;
 	}
 	$sth = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -1425,7 +1425,7 @@ sub _get_objects
 	$sth->finish();
 	# PROCEDURE
 	$sql = "SELECT ROUTINE_NAME FROM INFORMATION_SCHEMA.ROUTINES WHERE DATA_TYPE IS NULL AND ROUTINE_SCHEMA = '$self->{schema}'";
-	if ($self->{db_version} lt '5.5.0') {
+	if ($self->{db_version} < '5.5.0') {
 		$sql =~ s/\bDATA_TYPE\b/DTD_IDENTIFIER/;
 	}
 	$sth = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
