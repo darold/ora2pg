@@ -160,7 +160,7 @@ INSTALLATION
     On Windows(tm) OSes you may use instead:
 
             perl Makefile.PL
-            dmake && dmake install
+            gmake && gmake install
 
     This will install scripts and libraries into your Perl site installation
     directory and the ora2pg.conf file as well as all documentation files
