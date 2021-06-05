@@ -1295,10 +1295,17 @@ GEOMETRY_EXTRACT_TYPE	INTERNAL
 
 # This directive is used to set the name of the foreign data server that is used
 # in the "CREATE SERVER name FOREIGN DATA WRAPPER oracle_fdw ..." command. This
-# name will then be used in the "CREATE FOREIGN TABLE ..." SQL command. Default
-# is arbitrary set to orcl. This only concerns export type FDW.
-FDW_SERVER	orcl
+# import data using oracle_fdw. Default is no foreign server defined.
+# This only concerns export type FDW, COPY and INSERT. For export type FDW the
+# default value is orcl
+#FDW_SERVER	orcl
 
+# Use this directive to precise which transformation should be applied to a
+# column when exporting data. Value must be a semicolon separated list of
+#       TABLE[COLUMN_NAME, <replace code in SELECT target list>]
+# For example to replace string 'Oracle' by 'PostgreSQL' in a varchar2 column
+# use the following.
+# ORACLE_FDW_TRANSFORM   ERROR_LOG_SAMPLE[DBMS_TYPE:regexp_replace("DBMS_TYPE",'Oracle','PostgreSQL')]
 
 #------------------------------------------------------------------------------
 # MYSQL SECTION (Control MySQL export behavior)

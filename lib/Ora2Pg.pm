@@ -915,6 +915,7 @@ sub _init
 	$self->{empty_lob_null} = 0;
 	$self->{look_forward_function} = ();
 	$self->{no_function_metadata} = 0;
+	$self->{oracle_fdw_transform} = ();
 
 	# Initial command to execute at Oracle and PostgreSQL connexion
 	$self->{ora_initial_command} = ();
@@ -984,6 +985,9 @@ sub _init
 
 	# Global file handle
 	$self->{cfhout} = undef;
+
+	# oracle_fdw foreign server
+	$self->{fdw_server} = '';
 
 	# Initialyze following configuration file
 	foreach my $k (sort keys %AConfig)
@@ -1188,7 +1192,9 @@ sub _init
 	if (not defined $self->{xml_pretty} || ($self->{xml_pretty} != 0)) {
 		$self->{xml_pretty} = 1;
 	}
-	if (!$self->{fdw_server}) {
+
+	# Set a default name for the foreign server
+	if (!$self->{fdw_server} && $self->{type} eq 'FDW') {
 		$self->{fdw_server} = 'orcl';
 	}
 
@@ -1397,7 +1403,8 @@ sub _init
 	}
 
 	# Compatibility with PostgreSQL versions
-	if ($self->{pg_version} >= 9.0) {
+	if ($self->{pg_version} >= 9.0)
+	{
 		$self->{pg_supports_when} = 1;
 		$self->{pg_supports_ifexists} = 'IF EXISTS';
 	}
@@ -1446,8 +1453,10 @@ sub _init
 	$self->{preserve_case} = $self->{case_sensitive} if (defined $self->{case_sensitive} && not defined $self->{preserve_case});
 	$self->{schema} = uc($self->{schema}) if (!$self->{preserve_case} && ($self->{oracle_dsn} !~ /:mysql/i));
 	# With MySQL override schema with the database name
-	if ($self->{oracle_dsn} =~ /:mysql:.*database=([^;]+)/i) {
-		if ($self->{schema} ne $1) {
+	if ($self->{oracle_dsn} =~ /:mysql:.*database=([^;]+)/i)
+	{
+		if ($self->{schema} ne $1)
+		{
 			$self->{schema} = $1;
 			#$self->logit("WARNING: setting SCHEMA to MySQL database name $1.\n", 0);
 		}
@@ -1480,7 +1489,7 @@ sub _init
 	$self->{export_type} = ();
 	if ($self->{type}) {
 		@{$self->{export_type}} = split(/[\s,;]+/, $self->{type});
-		# Assume backward comaptibility with DATA replacement by INSERT
+		# Assume backward compatibility with DATA replacement by INSERT
 		map { s/^DATA$/INSERT/; } @{$self->{export_type}};
 	} else {
 		@{$self->{export_type}} = ('TABLE');
@@ -1499,8 +1508,10 @@ sub _init
 	$self->{pkgcost} = 0;
 	$self->{total_pkgcost} = 0;
 
-	if ($^O =~ /MSWin32|dos/i) {
-		if ( ($self->{oracle_copies} > 1) || ($self->{jobs} > 1) || ($self->{parallel_tables} > 1) ) {
+	if ($^O =~ /MSWin32|dos/i)
+	{
+		if ( ($self->{oracle_copies} > 1) || ($self->{jobs} > 1) || ($self->{parallel_tables} > 1) )
+		{
 			$self->logit("WARNING: multiprocess is not supported under that kind of OS.\n", 0);
 			$self->logit("If you need full speed at data export, please use Linux instead.\n", 0);
 		}
@@ -1515,7 +1526,8 @@ sub _init
 		$self->{file_per_function} = 1;
 	}
 
-	if ($self->{debug}) {
+	if ($self->{debug})
+	{
 		$self->logit("Ora2Pg version: $VERSION\n");
 		$self->logit("Export type: $self->{type}\n", 1);
 		$self->logit("Geometry export type: $self->{geometry_extract_type}\n", 1);
@@ -1528,7 +1540,14 @@ sub _init
 	# defined the dblink connection to use in autonomous transaction
 	$self->set_pg_conn_details();
 
-	if (!$self->{input_file}) {
+	# Mark that we are exporting data using oracle_fdw
+	$self->{oracle_fdw_data_export} = 0;
+	if ($self->{fdw_server} && $self->{type} =~ /^(INSERT|COPY)$/) {
+		$self->{oracle_fdw_data_export} = 1;
+	}
+
+	if (!$self->{input_file})
+	{
 		if ($self->{type} eq 'LOAD') {
 			$self->logit("FATAL: with LOAD you must provide an input file\n", 0, 1);
 		}
@@ -1536,7 +1555,8 @@ sub _init
 			$self->logit("FATAL: you must set ORACLE_DSN in ora2pg.conf or use a DDL input file.\n", 0, 1);
 		}
 		# Connect the database
-		if ($self->{oracle_dsn} =~ /dbi:mysql/i) {
+		if ($self->{oracle_dsn} =~ /dbi:mysql/i)
+		{
 			$self->{dbh} = $self->_mysql_connection();
 
 			$self->{is_mysql} = 1;
@@ -1555,11 +1575,15 @@ sub _init
 				$self->_compile_schema(uc($self->{compile_schema}));
 			}
 		}
-		if (!grep(/^$self->{type}$/, 'COPY', 'INSERT', 'SEQUENCE', 'GRANT', 'TABLESPACE', 'QUERY', 'SYNONYM', 'FDW', 'KETTLE', 'DBLINK', 'DIRECTORY') && $self->{type} !~ /SHOW_/) {
-			if ($self->{plsql_pgsql} && !$self->{no_function_metadata}) {
+		if (!grep(/^$self->{type}$/, 'COPY', 'INSERT', 'SEQUENCE', 'GRANT', 'TABLESPACE', 'QUERY', 'SYNONYM', 'FDW', 'KETTLE', 'DBLINK', 'DIRECTORY') && $self->{type} !~ /SHOW_/)
+		{
+			if ($self->{plsql_pgsql} && !$self->{no_function_metadata})
+			{
 				my @done = ();
-				if ($#{ $self->{look_forward_function} } >= 0) {
-					foreach my $o (@{ $self->{look_forward_function} }) {
+				if ($#{ $self->{look_forward_function} } >= 0)
+				{
+					foreach my $o (@{ $self->{look_forward_function} })
+					{
 						next if (grep(/^$o$/i, @done) || uc($o) eq uc($self->{schema}));
 						push(@done, $o);
 						if ($self->{type} eq 'VIEW') {
@@ -1582,13 +1606,15 @@ sub _init
 
 			$self->{security} = $self->_get_security_definer($self->{type}) if (grep(/^$self->{type}$/, 'TRIGGER', 'FUNCTION','PROCEDURE','PACKAGE'));
 		}
-
-	} else {
-
+	}
+	else
+	{
 		$self->{plsql_pgsql} = 1;
 
-		if (grep(/^$self->{type}$/, 'TABLE', 'SEQUENCE', 'GRANT', 'TABLESPACE', 'VIEW', 'TRIGGER', 'QUERY', 'FUNCTION','PROCEDURE','PACKAGE','TYPE','SYNONYM', 'DIRECTORY', 'DBLINK','LOAD')) {
-			if ($self->{type} eq 'LOAD') {
+		if (grep(/^$self->{type}$/, 'TABLE', 'SEQUENCE', 'GRANT', 'TABLESPACE', 'VIEW', 'TRIGGER', 'QUERY', 'FUNCTION','PROCEDURE','PACKAGE','TYPE','SYNONYM', 'DIRECTORY', 'DBLINK','LOAD'))
+		{
+			if ($self->{type} eq 'LOAD')
+			{
 				if (!$self->{pg_dsn}) {
 					$self->logit("FATAL: You must set PG_DSN to connect to PostgreSQL to be able to dispatch load over multiple connections.\n", 0, 1);
 				} elsif ($self->{jobs} <= 1) {
@@ -1596,17 +1622,24 @@ sub _init
 				}
 			}
 			$self->export_schema();
-		} else {
+		}
+		else
+		{
 			$self->logit("FATAL: bad export type using input file option\n", 0, 1);
 		}
 		return;
 	}
 
 	# Register export structure modification
-	if ($self->{type} =~ /^(INSERT|COPY|TABLE)$/) {
+	if ($self->{type} =~ /^(INSERT|COPY|TABLE)$/)
+	{
 		for my $t (keys %{$self->{'modify_struct'}}) {
 			$self->modify_struct($t, @{$self->{'modify_struct'}{$t}});
 		}
+	}
+
+	if ($self->{oracle_fdw_data_export} && scalar keys %{$self->{'modify_struct'}} > 0) {
+		$self->logit("FATAL: MODIFY_STRUCT is not supported with oracle_fdw data export.\n", 0, 1);
 	}
 
 	# backup output filename in multiple export mode
@@ -1620,11 +1653,13 @@ sub _init
 	{
                 $self->{type} = $t;
 
-		if (($self->{type} eq 'TABLE') || ($self->{type} eq 'FDW') || ($self->{type} eq 'INSERT') || ($self->{type} eq 'COPY') || ($self->{type} eq 'KETTLE')) {
+		if (($self->{type} eq 'TABLE') || ($self->{type} eq 'FDW') || ($self->{type} eq 'INSERT') || ($self->{type} eq 'COPY') || ($self->{type} eq 'KETTLE'))
+		{
 			$self->{plsql_pgsql} = 1;
 			$self->_tables();
 			# Partitionned table do not accept NOT VALID constraint
-			if ($self->{pg_supports_partition} && $self->{type} eq 'TABLE') {
+			if ($self->{pg_supports_partition} && $self->{type} eq 'TABLE')
+			{
 				# Get the list of partition
 				$self->{partitions} = $self->_get_partitions_list();
 			}
@@ -1686,6 +1721,7 @@ sub _init
 				$self->_table_row_count();
 			}
 
+			$self->{dbhtest}->disconnect() if ($self->{dbhtest}); 
 			$self->{dbh}->disconnect() if ($self->{dbh}); 
 			exit 0;
 		}
@@ -1693,12 +1729,37 @@ sub _init
 		{
 			$self->{dbhdest} = $self->_send_to_pgdb() if ($self->{pg_dsn} && !$self->{dbhdest});
 			$self->_unitary_test_views();
+			$self->{dbhtest}->disconnect() if ($self->{dbhtest});
 			$self->{dbh}->disconnect() if ($self->{dbh}); 
+			exit 0;
+		}
+		elsif ($self->{type} eq 'TEST_DATA')
+		{
+			if (!$self->{schema})
+			{
+				$self->{dbhtest}->disconnect() if ($self->{dbhtest});
+				$self->{dbh}->disconnect() if ($self->{dbh}); 
+				$self->logit("FATAL: an Oracle schema to compare must be defined.\n", 0, 1);
+			}
+			if (!$self->{pg_dsn})
+			{
+				$self->{dbhtest}->disconnect() if ($self->{dbhtest});
+				$self->{dbh}->disconnect() if ($self->{dbh}); 
+				$self->logit("FATAL: a PostgreSQL connection datasource must be defined.\n", 0, 1);
+			}
+			# Create a connection to PostgreSQL
+			$self->{dbhdest} = $self->_send_to_pgdb() if (!$self->{dbhdest});
+			# Create the oracle_fdw extension en the foreign server
+			$self->_create_foreign_server();
+			# Import the foreign tables following ALLOW or EXCLUDE
+			$self->_import_foreign_schema();
+			$self->{dbhtest}->disconnect() if ($self->{dbhtest});
+			$self->{dbh}->disconnect() if ($self->{dbh});
 			exit 0;
 		}
 		else
 		{
-			warn "type option must be (TABLE, VIEW, GRANT, SEQUENCE, TRIGGER, PACKAGE, FUNCTION, PROCEDURE, PARTITION, TYPE, INSERT, COPY, TABLESPACE, SHOW_REPORT, SHOW_VERSION, SHOW_SCHEMA, SHOW_TABLE, SHOW_COLUMN, SHOW_ENCODING, FDW, MVIEW, QUERY, KETTLE, DBLINK, SYNONYM, DIRECTORY, LOAD, TEST, TEST_VIEW), unknown $self->{type}\n";
+			warn "type option must be (TABLE, VIEW, GRANT, SEQUENCE, TRIGGER, PACKAGE, FUNCTION, PROCEDURE, PARTITION, TYPE, INSERT, COPY, TABLESPACE, SHOW_REPORT, SHOW_VERSION, SHOW_SCHEMA, SHOW_TABLE, SHOW_COLUMN, SHOW_ENCODING, FDW, MVIEW, QUERY, KETTLE, DBLINK, SYNONYM, DIRECTORY, LOAD, TEST, TEST_VIEW, TEST_DATA), unknown $self->{type}\n";
 		}
 		$self->replace_tables(%{$self->{'replace_tables'}});
 		$self->replace_cols(%{$self->{'replace_cols'}});
@@ -1706,10 +1767,13 @@ sub _init
 		$self->set_delete_clause($self->{'global_delete'}, %{$self->{'delete'}});
 	}
 
-	if ( ($self->{type} eq 'INSERT') || ($self->{type} eq 'COPY') || ($self->{type} eq 'KETTLE') ) {
+	if ( ($self->{type} eq 'INSERT') || ($self->{type} eq 'COPY') || ($self->{type} eq 'KETTLE') )
+	{
 		if ( ($self->{type} eq 'KETTLE') && !$self->{pg_dsn} ) {
 			$self->logit("FATAL: PostgreSQL connection datasource must be defined with KETTLE export.\n", 0, 1);
-		} elsif ($self->{type} ne 'KETTLE') {
+		}
+		elsif ($self->{type} ne 'KETTLE')
+		{
 			if ($self->{defer_fkey} && $self->{pg_dsn}) {
 				$self->logit("FATAL: DEFER_FKEY can not be used with direct import to PostgreSQL, check use of DROP_FKEY instead.\n", 0, 1);
 			}
@@ -1720,12 +1784,19 @@ sub _init
 				$self->logit("FATAL: DATADIFF requires LATERAL support (Pg version 9.3 and above; see config parameter PG_SUPPORTS_LATERAL)\n", 0, 1);
 			}
 			$self->{dbhdest} = $self->_send_to_pgdb() if ($self->{pg_dsn} && !$self->{dbhdest});
+			# In case we will use oracle_fdw creates the foreign tables
+			if ($self->{fdw_server})
+			{
+				# Create the oracle_fdw extension en the foreign server
+				$self->_create_foreign_server();
+				# Import the foreign tables following ALLOW or EXCLUDE
+				#$self->_import_foreign_schema();
+			}
 		}
 	}
 
 	# Disconnect from the database
 	$self->{dbh}->disconnect() if ($self->{dbh});
-
 }
 
 
@@ -2249,7 +2320,7 @@ sub _tables
 			%columns_infos = ();
 
 			# Retrieve comment of each columns and FK information if not foreign table export
-			if ($self->{type} ne 'FDW')
+			if ($self->{type} ne 'FDW' and !$self->{oracle_fdw_data_export})
 			{
 				if ($self->{type} eq 'TABLE')
 				{
@@ -2282,7 +2353,7 @@ sub _tables
 		}
 
 		# Retrieve unique keys and check constraint information if not FDW export
-		if ($self->{type} ne 'FDW')
+		if ($self->{type} ne 'FDW'  and !$self->{oracle_fdw_data_export})
 		{
 			$self->logit("Retrieving unique keys information...\n", 1);
 			my %unique_keys = $self->_unique_key('',$self->{schema});
@@ -2411,14 +2482,16 @@ sub _tables
 		my %view_infos = $self->_get_views();
 		# Retrieve comment of each columns
 		my %columns_comments = $self->_column_comments();
-		foreach my $view (keys %columns_comments) {
+		foreach my $view (keys %columns_comments)
+		{
 			next if (!exists $view_infos{$view});
 			next if (!grep($view =~ /^$_$/i, @{$self->{view_as_table}}));
 			foreach my $c (keys %{$columns_comments{$view}}) {
 				$self->{tables}{$view}{column_comments}{$c} = $columns_comments{$view}{$c};
 			}
 		}
-		foreach my $view (sort keys %view_infos) {
+		foreach my $view (sort keys %view_infos)
+		{
 			# Set the table information for each class found
 			# Jump to desired extraction
 			next if (!grep($view =~ /^$_$/i, @{$self->{view_as_table}}));
@@ -2432,7 +2505,8 @@ sub _tables
 			$self->{tables}{$view}{comment} = $view_infos{$view}{comment};
 			my $realview = $view;
 			$realview =~ s/"//g;
-			if (!$self->{is_mysql}) {
+			if (!$self->{is_mysql})
+			{
 				if ($realview !~ /\./) {
 					$realview = "\"$self->{tables}{$view}{owner}\".\"$realview\"";
 				} else {
@@ -2443,19 +2517,22 @@ sub _tables
 			}
 			# Set the fields information
 			my $sth = $self->{dbh}->prepare("SELECT * FROM $realview WHERE 1=0");
-			if (!defined($sth)) {
+			if (!defined($sth))
+			{
 				warn "Can't prepare statement: $DBI::errstr";
 				next;
 			}
 			$sth->execute;
-			if ($sth->err) {
+			if ($sth->err)
+			{
 				warn "Can't execute statement: $DBI::errstr";
 				next;
 			}
 			$self->{tables}{$view}{field_name} = $sth->{NAME};
 			$self->{tables}{$view}{field_type} = $sth->{TYPE};
 			my %columns_infos = $self->_column_info($view, $self->{schema}, 'VIEW');
-			foreach my $tb (keys %columns_infos) {
+			foreach my $tb (keys %columns_infos)
+			{
 				next if ($tb ne $view);
 				foreach my $c (keys %{$columns_infos{$tb}}) {
 					push(@{$self->{tables}{$view}{column_info}{$c}}, @{$columns_infos{$tb}{$c}});
@@ -3701,6 +3778,8 @@ sub _export_table_data
 {
 	my ($self, $table, $dirprefix, $sql_header) = @_;
 
+	$self->logit("Exporting data of table $table...\n", 1);
+
 	# Rename table and double-quote it if required
 	my $tmptb = $self->get_replaced_tbname($table);
 
@@ -3736,19 +3815,26 @@ sub _export_table_data
 		if ($self->{datadiff}) {
 			$delete_clause_start = "INSERT INTO " . $self->get_tbname_with_suffix($tmptb, $self->{datadiff_del_suffix}) . " SELECT *";
 		}
-		if (exists $self->{delete}{"\L$table\E"} && $self->{delete}{"\L$table\E"}) {
+		if (exists $self->{delete}{"\L$table\E"} && $self->{delete}{"\L$table\E"})
+		{
 			$delete_clause = "$delete_clause_start FROM $tmptb WHERE " . $self->{delete}{"\L$table\E"} . ";";
 			$self->logit("\tApplying DELETE clause on table: " . $self->{delete}{"\L$table\E"} . "\n", 1);
-		} elsif ($self->{global_delete}) {
+		}
+		elsif ($self->{global_delete})
+		{
 			$delete_clause = "$delete_clause_start FROM $tmptb WHERE " . $self->{global_delete} . ";";
 			$self->logit("\tApplying DELETE global clause: " . $self->{global_delete} . "\n", 1);
 
 		}
-		if ($delete_clause) {
-			if ($self->{pg_dsn}) {
+		if ($delete_clause)
+		{
+			if ($self->{pg_dsn})
+			{
 				$self->logit("Deleting from table $table...\n", 1);
 				my $s = $local_dbh->do("$delete_clause") or $self->logit("FATAL: " . $local_dbh->errstr . "\n", 0, 1);
-			} else {
+			}
+			else
+			{
 				if ($self->{file_per_table}) {
 					$self->data_dump("$delete_clause\n",  $table);
 				} else {
@@ -3759,16 +3845,20 @@ sub _export_table_data
 	}
 
 	# Add table truncate order if there's no global DELETE clause or one specific to the current table
-	if ($self->{truncate_table} && !$self->{global_delete} && !exists $self->{delete}{"\L$table\E"}) {
+	if ($self->{truncate_table} && !$self->{global_delete} && !exists $self->{delete}{"\L$table\E"})
+	{
 		# Set search path
 		my $search_path = $self->set_search_path();
-		if ($self->{pg_dsn} && !$self->{oracle_speed}) {
+		if ($self->{pg_dsn} && !$self->{oracle_speed})
+		{
 			if ($search_path) {
 				$local_dbh->do($search_path) or $self->logit("FATAL: " . $local_dbh->errstr . "\n", 0, 1);
 			}
 			$self->logit("Truncating table $table...\n", 1);
 			my $s = $local_dbh->do("TRUNCATE TABLE $tmptb;") or $self->logit("FATAL: " . $local_dbh->errstr . "\n", 0, 1);
-		} else {
+		}
+		else
+		{
 			my $head = "SET client_encoding TO '\U$self->{client_encoding}\E';\n";
 			$head .= "SET synchronous_commit TO off;\n" if (!$self->{synchronous_commit});
 			if ($self->{file_per_table}) {
@@ -3890,6 +3980,78 @@ sub _export_table_data
 	# Rename temporary filename into final name
 	$self->rename_dump_partfile($dirprefix, $table) if (!$self->{oracle_speed});
 
+	return $total_record;
+}
+
+sub _export_fdw_table_data
+{
+	my ($self, $table, $dirprefix, $sql_header) = @_;
+ 
+	$self->logit("FATAL: foreign data export requires that PG_DSN to be set \n", 0, 1) if (!$self->{pg_dsn});
+ 
+	$self->logit("Exporting data of table $table using foreign table...\n", 1);
+ 
+	# Rename table and double-quote it if required
+	my $tmptb = $self->get_replaced_tbname($table);
+ 
+	my $total_record = 0;
+ 
+	$self->{copy_freeze} = '';
+ 
+	# Open a new connection to PostgreSQL destination with parallel table export
+	my $local_dbh = undef;
+	if ($self->{parallel_tables} > 1) {
+		$local_dbh = $self->_send_to_pgdb();
+	} else {
+		$local_dbh = $self->{dbhdest};
+	}
+ 
+	if ($self->{global_delete} || exists $self->{delete}{"\L$table\E"})
+	{
+		my $delete_clause = '';
+		my $delete_clause_start = "DELETE";
+		if (exists $self->{delete}{"\L$table\E"} && $self->{delete}{"\L$table\E"})
+		{
+			$delete_clause = "$delete_clause_start FROM $tmptb WHERE " . $self->{delete}{"\L$table\E"} . ";";
+			$self->logit("\tApplying DELETE clause on table: " . $self->{delete}{"\L$table\E"} . "\n", 1);
+		}
+		elsif ($self->{global_delete})
+		{
+			$delete_clause = "$delete_clause_start FROM $tmptb WHERE " . $self->{global_delete} . ";";
+			$self->logit("\tApplying DELETE global clause: " . $self->{global_delete} . "\n", 1);
+ 
+		}
+		if ($delete_clause)
+		{
+			$self->logit("Deleting from table $table...\n", 1);
+			my $s = $local_dbh->do("$delete_clause") or $self->logit("FATAL: " . $local_dbh->errstr . "\n", 0, 1);
+		}
+	}
+ 
+	# Add table truncate order if there's no global DELETE clause or one specific to the current table
+	if ($self->{truncate_table} && !$self->{global_delete} && !exists $self->{delete}{"\L$table\E"})
+	{
+		# Set search path
+		my $search_path = $self->set_search_path();
+		if (!$self->{oracle_speed})
+		{
+			if ($search_path)
+			{
+				$self->logit("Setting search_path using: $search_path...\n", 1);
+				$local_dbh->do($search_path) or $self->logit("FATAL: " . $local_dbh->errstr . "\n", 0, 1);
+			}
+			$self->logit("Truncating table $table...\n", 1);
+			my $s = $local_dbh->do("TRUNCATE TABLE $tmptb;") or $self->logit("FATAL: " . $local_dbh->errstr . "\n", 0, 1);
+		}
+	}
+ 
+	$total_record = $self->_dump_fdw_table($dirprefix, $sql_header, $table, $local_dbh);
+ 
+	# close the connection with parallel table export
+	if ($self->{parallel_tables} > 1) {
+		$local_dbh->disconnect() if (defined $local_dbh);
+	}
+ 
 	return $total_record;
 }
 
@@ -6092,11 +6254,14 @@ sub export_tablespace
 		$self->read_tablespace_from_file();
 	}
 	my $dirprefix = '';
-	foreach my $tb_type (sort keys %{$self->{tablespaces}}) {
+	foreach my $tb_type (sort keys %{$self->{tablespaces}})
+	{
 		next if ($tb_type eq 'INDEX PARTITION' || $tb_type eq 'TABLE PARTITION');
 		# TYPE - TABLESPACE_NAME - FILEPATH - OBJECT_NAME
-		foreach my $tb_name (sort keys %{$self->{tablespaces}{$tb_type}}) {
-			foreach my $tb_path (sort keys %{$self->{tablespaces}{$tb_type}{$tb_name}}) {
+		foreach my $tb_name (sort keys %{$self->{tablespaces}{$tb_type}})
+		{
+			foreach my $tb_path (sort keys %{$self->{tablespaces}{$tb_type}{$tb_name}})
+			{
 				# Replace Oracle tablespace filename
 				my $loc = $tb_name;
 				if ($tb_path =~ /^(.*[^\\\/]+)/) {
@@ -6130,7 +6295,8 @@ sub export_tablespace
 	
 	$self->dump($sql_header . $sql_output);
 	
-	if ($self->{file_per_index} && (scalar keys %{$self->{tablespaces}} > 0)) {
+	if ($self->{file_per_index} && (scalar keys %{$self->{tablespaces}} > 0))
+	{
 		my $fhdl = undef;
 		$self->logit("Dumping tablespace alter indexes to one separate file : TBSP_INDEXES_$self->{output}\n", 1);
 		$fhdl = $self->open_export_file("TBSP_INDEXES_$self->{output}");
@@ -6279,7 +6445,7 @@ BEGIN
 				}
 			} else {
 				$create_table_tmp .= "CREATE TABLE " . $self->quote_object_name($tb_name)
-								. " PARTITION OF \L$table\E\n";
+								. " PARTITION OF " . $self->quote_object_name($table) . "\n";
 				$create_table_tmp .= "FOR VALUES";
 			}
 
@@ -6773,10 +6939,10 @@ BEGIN
 						$create_table_tmp .= "DROP TABLE IF EXISTS " . $self->quote_object_name($tb_name) . ";\n" if ($self->{drop_if_exists});
 						if ($self->{pg_version} >= 11) {
 							$create_table_tmp .= "CREATE TABLE " . $self->quote_object_name($tb_name)
-									. " PARTITION OF \L$table\E DEFAULT;\n";
+									. " PARTITION OF " . $self->quote_object_name($table) . " DEFAULT;\n";
 						} elsif ($self->{subpartitions}{$table}{$part}{$sub_old_pos}{info}[$i]->{type} eq 'RANGE') {
 							$create_table_tmp .= "CREATE TABLE " . $self->quote_object_name($tb_name)
-									. " PARTITION OF \L$table\E FOR VALUES FROM ($self->{subpartitions}{$table}{$part}{$sub_old_pos}{info}[-1]->{value}) TO (MAX_VALUE);\n";
+									. " PARTITION OF " . $self->quote_object_name($table) . " FOR VALUES FROM ($self->{subpartitions}{$table}{$part}{$sub_old_pos}{info}[-1]->{value}) TO (MAX_VALUE);\n";
 						}
 					}
 				}
@@ -6837,10 +7003,10 @@ LANGUAGE plpgsql;
 					$create_table{$table}{table} .= "DROP TABLE IF EXISTS " . $self->quote_object_name($tb_name) . ";\n" if ($self->{drop_if_exists});
 					if ($self->{pg_version} >= 11) {
 						$create_table{$table}{table} .= "CREATE TABLE " . $self->quote_object_name($tb_name)
-								. " PARTITION OF \L$table\E DEFAULT;\n";
+								. " PARTITION OF " . $self->quote_object_name($table) . " DEFAULT;\n";
 					} else {
 						$create_table{$table}{table} .= "CREATE TABLE " . $self->quote_object_name($tb_name)
-								. " PARTITION OF \L$table\E FOR VALUES FROM ($self->{partitions}{$table}{$old_pos}{info}[-1]->{value}) TO (MAX_VALUE);\n";
+								. " PARTITION OF " . $self->quote_object_name($table) . " FOR VALUES FROM ($self->{partitions}{$table}{$old_pos}{info}[-1]->{value}) TO (MAX_VALUE);\n";
 					}
 				}
 			}
@@ -6983,37 +7149,47 @@ sub export_table
 
 	$self->logit("Exporting tables...\n", 1);
 
-	if ($self->{export_schema} && ($self->{schema} || $self->{pg_schema}))
+	if (!$self->{oracle_fdw_data_export})
 	{
-		if ($self->{create_schema}) {
-			if ($self->{pg_schema} && $self->{pg_schema} =~ /,/) {
-				$self->logit("FATAL: with export type TABLE you can not set multiple schema to PG_SCHEMA when EXPORT_SCHEMA is enabled.\n", 0, 1);
+		if ($self->{export_schema} && ($self->{schema} || $self->{pg_schema}))
+		{
+			if ($self->{create_schema}) {
+				if ($self->{pg_schema} && $self->{pg_schema} =~ /,/) {
+					$self->logit("FATAL: with export type TABLE you can not set multiple schema to PG_SCHEMA when EXPORT_SCHEMA is enabled.\n", 0, 1);
+				}
+				$sql_output .= "CREATE SCHEMA IF NOT EXISTS " . $self->quote_object_name($self->{pg_schema} || $self->{schema}) . ";\n";
 			}
-			$sql_output .= "CREATE SCHEMA IF NOT EXISTS " . $self->quote_object_name($self->{pg_schema} || $self->{schema}) . ";\n";
+			my $owner = '';
+			$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
+			$owner ||= $self->{schema};
+			if ($owner && $self->{create_schema}) {
+				$sql_output .= "ALTER SCHEMA " . $self->quote_object_name($self->{pg_schema} || $self->{schema}) . " OWNER TO \L$owner\E;\n";
+			}
+			$sql_output .= "\n";
 		}
-		my $owner = '';
-		$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
-		$owner ||= $self->{schema};
-		if ($owner && $self->{create_schema}) {
-			$sql_output .= "ALTER SCHEMA " . $self->quote_object_name($self->{pg_schema} || $self->{schema}) . " OWNER TO \L$owner\E;\n";
-		}
-		$sql_output .= "\n";
-	}
-	elsif ($self->{export_schema})
-	{
-		if ($self->{create_schema}) {
-			my $current_schema = '';
-			foreach my $table (sort keys %{$self->{tables}}) {
-				if ($table =~ /^([^\.]+)\..*/) {
-					if ($1 ne $current_schema) {
-						$current_schema = $1;
-						$sql_output .= "CREATE SCHEMA IF NOT EXISTS " . $self->quote_object_name($1) . ";\n";
+		elsif ($self->{export_schema})
+		{
+			if ($self->{create_schema}) {
+				my $current_schema = '';
+				foreach my $table (sort keys %{$self->{tables}}) {
+					if ($table =~ /^([^\.]+)\..*/) {
+						if ($1 ne $current_schema) {
+							$current_schema = $1;
+							$sql_output .= "CREATE SCHEMA IF NOT EXISTS " . $self->quote_object_name($1) . ";\n";
+						}
 					}
 				}
 			}
 		}
+                $sql_output .= $self->set_search_path();
+        }
+        else
+        {
+		# prefix the search path with FDW import ora2pg_fdw_import schema
+                my $tmp_search_path = $self->set_search_path();
+		$tmp_search_path =~ s/search_path = /search_path = ora2pg_fdw_import,/;
+                $sql_output .= $tmp_search_path;
 	}
-	$sql_output .= $self->set_search_path();
 
 	# Read DML from file if any
 	if ($self->{input_file}) {
@@ -7049,7 +7225,8 @@ sub export_table
 		} keys %{$self->{tables}})
 	{
 		# Foreign table can not be temporary
-		next if ($self->{type} eq 'FDW' and $self->{tables}{$table}{table_info}{type} =~/ TEMPORARY/);
+		next if (($self->{type} eq 'FDW' || $self->{oracle_fdw_data_export})
+				and $self->{tables}{$table}{table_info}{type} =~/ TEMPORARY/);
 
 		$self->logit("Dumping table $table...\n", 1);
 		if (!$self->{quiet} && !$self->{debug} && ($count_table % $PGBAR_REFRESH) == 0) {
@@ -7067,7 +7244,7 @@ sub export_table
 
 		my $tbname = $self->get_replaced_tbname($table);
 		my $foreign = '';
-		if ( ($self->{type} eq 'FDW') || ($self->{external_to_fdw} && (grep(/^$table$/i, keys %{$self->{external_table}}) || $self->{tables}{$table}{table_info}{connection})) ) {
+		if ( ($self->{type} eq 'FDW') || $self->{oracle_fdw_data_export} || ($self->{external_to_fdw} && (grep(/^$table$/i, keys %{$self->{external_table}}) || $self->{tables}{$table}{table_info}{connection})) ) {
 			$foreign = ' FOREIGN';
 		}
 		my $obj_type = $self->{tables}{$table}{table_info}{type} || 'TABLE';
@@ -7175,13 +7352,16 @@ sub export_table
 				}
 				my $typlen = $f->[5];
 				$typlen ||= $f->[2];
-				if (grep(/^$f->[0]$/i, @{$self->{'replace_as_boolean'}{uc($table)}})) {
-					$type = 'boolean';
-					push(@skip_column_check, $fname);
-				# Check if this column should be replaced by a boolean following type/precision
-				} elsif (exists $self->{'replace_as_boolean'}{uc($f->[1])} && ($self->{'replace_as_boolean'}{uc($f->[1])}[0] == $typlen)) {
-					$type = 'boolean';
-					push(@skip_column_check, $fname);
+				if (!$self->{oracle_fdw_data_export})
+				{
+					if (grep(/^$f->[0]$/i, @{$self->{'replace_as_boolean'}{uc($table)}})) {
+						$type = 'boolean';
+						push(@skip_column_check, $fname);
+					# Check if this column should be replaced by a boolean following type/precision
+					} elsif (exists $self->{'replace_as_boolean'}{uc($f->[1])} && ($self->{'replace_as_boolean'}{uc($f->[1])}[0] == $typlen)) {
+						$type = 'boolean';
+						push(@skip_column_check, $fname);
+					}
 				}
 				if ($f->[1] =~ /SDO_GEOMETRY/) {
 					# 12:SRID,13:SDO_DIM,14:SDO_GTYPE
@@ -7223,7 +7403,7 @@ sub export_table
 				if (!$self->{schema} && $self->{export_schema}) {
 					$f->[8] = "$f->[9].$f->[8]";
 				}
-				if (exists $self->{identity_info}{$f->[8]}{$f->[0]} and $self->{type} ne 'FDW')
+				if (exists $self->{identity_info}{$f->[8]}{$f->[0]} and $self->{type} ne 'FDW' and !$self->{oracle_fdw_data_export})
 				{
 					$sql_output =~ s/ NOT NULL\s*$//s; # IDENTITY or serial column are NOT NULL by default
 					if ($self->{pg_supports_identity})
@@ -7262,7 +7442,7 @@ sub export_table
 
 					} else {
 
-						if (($f->[4] ne '') && ($self->{type} ne 'FDW')) {
+						if (($f->[4] ne '') && ($self->{type} ne 'FDW') && !$self->{oracle_fdw_data_export}) {
 							if ($type eq 'boolean') {
 								my $found = 0;
 								foreach my $k (sort {$b cmp $a} %{ $self->{ora_boolean_values} }) {
@@ -7356,27 +7536,35 @@ sub export_table
 					$sql_output .=  " -- Unsupported partition type, please check\n";
 				}
 			}
-			if ( ($self->{type} ne 'FDW') && (!$self->{external_to_fdw} || (!grep(/^$table$/i, keys %{$self->{external_table}}) && !$self->{tables}{$table}{table_info}{connection})) ) {
+			if ( ($self->{type} ne 'FDW') && !$self->{oracle_fdw_data_export} && (!$self->{external_to_fdw} || (!grep(/^$table$/i, keys %{$self->{external_table}}) && !$self->{tables}{$table}{table_info}{connection})) )
+			{
 				my $withoid = _make_WITH($self->{with_oid}, $self->{tables}{$table}{table_info});
 				if ($self->{use_tablespace} && $self->{tables}{$table}{table_info}{tablespace} && !grep(/^$self->{tables}{$table}{table_info}{tablespace}$/i, @{$self->{default_tablespaces}})) {
 					$sql_output .= " $withoid TABLESPACE $self->{tables}{$table}{table_info}{tablespace};\n";
 				} else {
 					$sql_output .= " $withoid;\n";
 				}
-			} elsif ( grep(/^$table$/i, keys %{$self->{external_table}}) ) {
+			}
+			elsif ( grep(/^$table$/i, keys %{$self->{external_table}}) )
+			{
 				my $program = '';
 				$program = ", program '$self->{external_table}{$table}{program}'" if ($self->{external_table}{$table}{program});
 				$sql_output .= " SERVER \L$self->{external_table}{$table}{directory}\E OPTIONS(filename '$self->{external_table}{$table}{directory_path}$self->{external_table}{$table}{location}', format 'csv', delimiter '$self->{external_table}{$table}{delimiter}'$program);\n";
-			} elsif ($self->{is_mysql}) {
+			}
+			elsif ($self->{is_mysql})
+			{
 				$schem = "dbname '$self->{schema}'," if ($self->{schema});
 				my $r_server = $self->{fdw_server};
 				my $r_table = $table;
-				if ($self->{tables}{$table}{table_info}{connection} =~ /([^'\/]+)\/([^']+)/) {
+				if ($self->{tables}{$table}{table_info}{connection} =~ /([^'\/]+)\/([^']+)/)
+				{
 					$r_server = $1;
 					$r_table = $2;
 				}
 				$sql_output .= " SERVER $r_server OPTIONS($schem table_name '$r_table');\n";
-			} else {
+			}
+			else
+		       	{
 				my $tmptb = $table;
 				if ($self->{schema}) {
 					$schem = "schema '$self->{schema}',";
@@ -7386,6 +7574,8 @@ sub export_table
 				$sql_output .= " SERVER $self->{fdw_server} OPTIONS($schem table '$tmptb');\n";
 			}
 		}
+		next if ($self->{oracle_fdw_data_export});
+
 		$sql_output .= $serial_sequence;
 		$sql_output .= $enum_str;
 
@@ -7464,10 +7654,14 @@ sub export_table
 		}
 		$ib++;
 	}
+
 	if (!$self->{quiet} && !$self->{debug})
 	{
 		print STDERR $self->progress_bar($ib - 1, $num_total_table, 25, '=', 'tables', 'end of table export.'), "\n";
 	}
+
+	# When exporting data with oracle_fdw there is no more to do
+	return $sql_output if ($self->{oracle_fdw_data_export});
 
 	if ($sequence_output && $self->{type} ne 'FDW')
 	{
@@ -7783,6 +7977,13 @@ sub _get_sql_statements
 	# Extract data only
 	elsif (($self->{type} eq 'INSERT') || ($self->{type} eq 'COPY'))
 	{
+		if ($self->{oracle_fdw_data_export})
+		{
+			my $fdw_definition = $self->export_table();
+			$self->{dbhdest}->do("DROP SCHEMA IF EXISTS ora2pg_fdw_import CASCADE") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
+			$self->{dbhdest}->do("CREATE SCHEMA ora2pg_fdw_import") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
+			$self->{dbhdest}->do($fdw_definition) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
+		}
 
 		my $sql_output = "";
 		my $dirprefix = '';
@@ -7800,7 +8001,8 @@ sub _get_sql_statements
 		# Remove external table from data export
 		if (scalar keys %{$self->{external_table}} )
 		{
-			foreach my $table (keys %{$self->{tables}}) {
+			foreach my $table (keys %{$self->{tables}})
+			{
 				if ( grep(/^$table$/i, keys %{$self->{external_table}}) ) {
 					delete $self->{tables}{$table};
 				}
@@ -7859,6 +8061,13 @@ sub _get_sql_statements
 		my $load_file = "\n";
 		foreach my $table (@ordered_tables)
 		{
+			# Do not process nested table
+			if ($self->{tables}{$table}{table_info}{nested} ne 'NO')
+			{
+				$self->logit("WARNING: nested table $table will not be exported.\n", 1);
+				next;
+			}
+
 			# Remove main table partition (for MySQL "SELECT * FROM emp PARTITION (p1);" is supported from 5.6)
 			delete $self->{partitions}{$table} if (exists $self->{partitions}{$table} && $self->{is_mysql} && ($self->{db_version} =~ /^5\.[012345]/));
 			if (-e "${dirprefix}tmp_${table}_$self->{output}") {
@@ -8043,14 +8252,18 @@ sub _get_sql_statements
 
 		# Set total number of rows
 		$self->{global_rows} = 0;
-		foreach my $table (keys %{$self->{tables}}) {
-                        if ($self->{global_where}) {
+		foreach my $table (keys %{$self->{tables}})
+		{
+                        if ($self->{global_where})
+			{
                                 if ($self->{is_mysql} && ($self->{global_where} =~ /\s+LIMIT\s+\d+,(\d+)/)) {
 					$self->{tables}{$table}{table_info}{num_rows} = $1 if ($i < $self->{tables}{$table}{table_info}{num_rows});
                                 } elsif ($self->{global_where} =~ /\s+ROWNUM\s+[<=>]+\s+(\d+)/) {
 					$self->{tables}{$table}{table_info}{num_rows} = $1 if ($i < $self->{tables}{$table}{table_info}{num_rows});
                                 }
-                        } elsif (exists $self->{where}{"\L$table\E"}) {
+                        }
+			elsif (exists $self->{where}{"\L$table\E"})
+			{
                                 if ($self->{is_mysql} && ($self->{where}{"\L$table\E"} =~ /\s+LIMIT\s+\d+,(\d+)/)) {
 					$self->{tables}{$table}{table_info}{num_rows} = $1 if ($i < $self->{tables}{$table}{table_info}{num_rows});
                                 } elsif ($self->{where}{"\L$table\E"} =~ /\s+ROWNUM\s+[<=>]+\s+(\d+)/) {
@@ -8065,8 +8278,10 @@ sub _get_sql_statements
 		my $writer = new IO::Handle;
 
 		# Fork the logger process
-		if (!$self->{quiet} && !$self->{debug}) {
-			if ( ($self->{jobs} > 1) || ($self->{oracle_copies} > 1) || ($self->{parallel_tables} > 1)) {
+		if (!$self->{quiet} && !$self->{debug})
+		{
+			if ( ($self->{jobs} > 1) || ($self->{oracle_copies} > 1) || ($self->{parallel_tables} > 1))
+			{
 				$pipe = IO::Pipe->new($reader, $writer);
 				$writer->autoflush(1);
 				spawn sub {
@@ -8083,7 +8298,8 @@ sub _get_sql_statements
 		$self->{oracle_copies} = 1 if ($self->{parallel_tables} > 1);
 
 		# Send global startup information to pipe
-		if (defined $pipe) {
+		if (defined $pipe)
+		{
 			$pipe->writer();
 			$pipe->print("GLOBAL EXPORT START TIME: $first_start_time\n");
 			$pipe->print("GLOBAL EXPORT ROW NUMBER: $self->{global_rows}\n");
@@ -8091,7 +8307,15 @@ sub _get_sql_statements
 		$self->{global_start_time} = time();
 		foreach my $table (@ordered_tables)
 		{
-			if ($self->{file_per_table} && !$self->{pg_dsn}) {
+			# Do not process nested table
+			if ($self->{tables}{$table}{table_info}{nested} ne 'NO')
+			{
+				$self->logit("WARNING: nested table $table will not be exported.\n", 1);
+				next;
+			}
+
+			if ($self->{file_per_table} && !$self->{pg_dsn})
+			{
 				# Do not dump data again if the file already exists
 				next if ($self->file_exists("$dirprefix${table}_$self->{output}"));
 			}
@@ -8107,27 +8331,40 @@ sub _get_sql_statements
 			if ($self->{parallel_tables} > 1)
 			{
 				spawn sub {
-					$self->logit("Creating new connection to Oracle database to export table $table...\n", 1);
-					$self->_export_table_data($table, $dirprefix, $sql_header);
+					if (!$self->{fdw_server}) {
+						$self->_export_table_data($table, $dirprefix, $sql_header);
+					} else {
+						$self->_export_fdw_table_data($table, $dirprefix, $sql_header);
+					}
 				};
 				$parallel_tables_count++;
 
 				# Wait for oracle connection terminaison
-				while ($parallel_tables_count > $self->{parallel_tables}) {
+				while ($parallel_tables_count > $self->{parallel_tables})
+				{
 					my $kid = waitpid(-1, WNOHANG);
-					if ($kid > 0) {
+					if ($kid > 0)
+					{
 						$parallel_tables_count--;
 						delete $RUNNING_PIDS{$kid};
 					}
 					usleep(50000);
 				}
-			} else {
-				$total_record = $self->_export_table_data($table, $dirprefix, $sql_header);
+                        }
+			else
+			{
+				if (!$self->{fdw_server}) {
+					$total_record = $self->_export_table_data($table, $dirprefix, $sql_header);
+				} else {
+					$total_record = $self->_export_fdw_table_data($table, $dirprefix, $sql_header);
+				}
 			}
 
 			# Display total export position
-			if (!$self->{quiet} && !$self->{debug}) {
-				if ( ($self->{jobs} <= 1) && ($self->{oracle_copies} <= 1) && ($self->{parallel_tables} <= 1) ) {
+			if (!$self->{quiet} && !$self->{debug})
+			{
+				if ( ($self->{jobs} <= 1) && ($self->{oracle_copies} <= 1) && ($self->{parallel_tables} <= 1) )
+				{
 					my $last_end_time = time();
 					my $dt = $last_end_time - $first_start_time;
 					$dt ||= 1;
@@ -8136,7 +8373,8 @@ sub _get_sql_statements
 				}
 			}
 		}
-		if (!$self->{quiet} && !$self->{debug}) {
+		if (!$self->{quiet} && !$self->{debug})
+		{
 			if ( ($self->{jobs} <= 1) && ($self->{oracle_copies} <= 1) && ($self->{parallel_tables} <= 1) ) {
 				print "\n";
 			}
@@ -8148,7 +8386,8 @@ sub _get_sql_statements
 			# Wait for all child dies less the logger
 			my $numchild = 1; # will not wait for progressbar process
 			$numchild = 0 if ($self->{debug}); # in debug there is no progressbar
-			while (scalar keys %RUNNING_PIDS > $numchild) {
+			while (scalar keys %RUNNING_PIDS > $numchild)
+			{
 				my $kid = waitpid(-1, WNOHANG);
 				if ($kid > 0) {
 					delete $RUNNING_PIDS{$kid};
@@ -8156,7 +8395,8 @@ sub _get_sql_statements
 				usleep(50000);
 			}
 			# Terminate the process logger
-			foreach my $k (keys %RUNNING_PIDS) {
+			foreach my $k (keys %RUNNING_PIDS)
+			{
 				kill(10, $k);
 				%RUNNING_PIDS = ();
 			}
@@ -8177,15 +8417,20 @@ sub _get_sql_statements
 		}
 
 		# Remove function created to export external table
-		if ($self->{bfile_found} eq 'text') {
+		if ($self->{bfile_found} eq 'text')
+		{
 			$self->logit("Removing function ora2pg_get_bfilename() used to retrieve path from BFILE.\n", 1);
 			my $bfile_function = "DROP FUNCTION ora2pg_get_bfilename";
 			my $sth2 = $self->{dbh}->do($bfile_function);
-		} elsif ($self->{bfile_found} eq 'efile') {
+		}
+		elsif ($self->{bfile_found} eq 'efile')
+		{
 			$self->logit("Removing function ora2pg_get_efile() used to retrieve EFILE from BFILE.\n", 1);
 			my $efile_function = "DROP FUNCTION ora2pg_get_efile";
 			my $sth2 = $self->{dbh}->do($efile_function);
-		} elsif ($self->{bfile_found} eq 'bytea') {
+		}
+		elsif ($self->{bfile_found} eq 'bytea')
+		{
 			$self->logit("Removing function ora2pg_get_bfile() used to retrieve BFILE content.\n", 1);
 			my $efile_function = "DROP FUNCTION ora2pg_get_bfile";
 			my $sth2 = $self->{dbh}->do($efile_function);
@@ -8194,13 +8439,21 @@ sub _get_sql_statements
 		#### Set SQL commands that must be executed after data loading
 		my $footer = '';
 		my (@datadiff_tbl, @datadiff_del, @datadiff_upd, @datadiff_ins);
-		foreach my $table (@ordered_tables) {
+		foreach my $table (@ordered_tables)
+		{
+			# Do not process nested table
+			if ($self->{tables}{$table}{table_info}{nested} ne 'NO')
+			{
+				$self->logit("WARNING: nested table $table will not be exported.\n", 1);
+				next;
+			}
 
 			# Rename table and double-quote it if required
 			my $tmptb = $self->get_replaced_tbname($table);
 			
 			# DATADIFF reduction (annihilate identical deletions and insertions) and execution
-			if ($self->{datadiff}) {
+			if ($self->{datadiff})
+			{
 				my $tmptb_del = $self->get_tbname_with_suffix($tmptb, $self->{datadiff_del_suffix});
 				my $tmptb_upd = $self->get_tbname_with_suffix($tmptb, $self->{datadiff_upd_suffix});
 				my $tmptb_ins = $self->get_tbname_with_suffix($tmptb, $self->{datadiff_ins_suffix});
@@ -8272,7 +8525,8 @@ sub _get_sql_statements
 			
 
 			# disable triggers of current table if requested
-			if ($self->{disable_triggers} && !$self->{oracle_speed}) {
+			if ($self->{disable_triggers} && !$self->{oracle_speed})
+			{
 				my $trig_type = 'USER';
 				$trig_type = 'ALL' if (uc($self->{disable_triggers}) eq 'ALL');
 				my $str = "ALTER TABLE $tmptb ENABLE TRIGGER $trig_type;";
@@ -8284,11 +8538,13 @@ sub _get_sql_statements
 			}
 
 			# Recreate all foreign keys of the concerned tables
-			if ($self->{drop_fkey} && !$self->{oracle_speed}) {
+			if ($self->{drop_fkey} && !$self->{oracle_speed})
+			{
 				my @create_all = ();
 				$self->logit("Restoring foreign keys of table $table...\n", 1);
 				push(@create_all, $self->_create_foreign_keys($table));
-				foreach my $str (@create_all) {
+				foreach my $str (@create_all)
+				{
 					chomp($str);
 					next if (!$str);
 					if ($self->{pg_dsn}) {
@@ -8300,16 +8556,19 @@ sub _get_sql_statements
 			}
 
 			# Recreate all indexes
-			if ($self->{drop_indexes} && !$self->{oracle_speed}) {
+			if ($self->{drop_indexes} && !$self->{oracle_speed})
+			{
 				my @create_all = ();
 				$self->logit("Restoring indexes of table $table...\n", 1);
 				push(@create_all, $self->_create_indexes($table, 1, %{$self->{tables}{$table}{indexes}}));
-				if ($#create_all >= 0) {
-					foreach my $str (@create_all) {
+				if ($#create_all >= 0)
+				{
+					foreach my $str (@create_all)
+					{
 						chomp($str);
 						next if (!$str);
 						if ($self->{pg_dsn}) {
-							my $s = $self->{dbhdest}->do($str) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
+							my $s = $self->{dbhdest}->do($str) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . ", SQL: $str\n", 0, 1);
 						} else {
 							$footer .= "$str\n";
 						}
@@ -8319,10 +8578,12 @@ sub _get_sql_statements
 		}
 
 		# Insert restart sequences orders
-		if (($#ordered_tables >= 0) && !$self->{disable_sequence} && !$self->{oracle_speed}) {
+		if (($#ordered_tables >= 0) && !$self->{disable_sequence} && !$self->{oracle_speed})
+		{
 			$self->logit("Restarting sequences\n", 1);
 			my @restart_sequence = $self->_extract_sequence_info();
-			foreach my $str (@restart_sequence) {
+			foreach my $str (@restart_sequence)
+			{
 				if ($self->{pg_dsn}) {
 					my $s = $self->{dbhdest}->do($str) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
 				} else {
@@ -8332,7 +8593,8 @@ sub _get_sql_statements
 		}
 
 		# DATADIFF: call optional function specified in config to be called with all table names right before commit
-		if ($self->{datadiff} && $self->{datadiff_after_all} && $#datadiff_tbl >= 0) {
+		if ($self->{datadiff} && $self->{datadiff_after_all} && $#datadiff_tbl >= 0)
+		{
 			$footer .= "SELECT " . $self->{datadiff_after_all} . "(ARRAY['";
 			$footer .= join("', '", @datadiff_tbl) . "'], ARRAY['";
 			$footer .= join("', '", @datadiff_del) . "'], ARRAY['";
@@ -8355,12 +8617,12 @@ sub _get_sql_statements
 		foreach my $t (sort keys %{ $self->{partitions} }) {
 			$npart += scalar keys %{$self->{partitions}{$t}};
 		}
-		foreach my $t (sort keys %{ $self->{subpartitions_list} }) {
+		foreach my $t (sort keys %{ $self->{subpartitions_list} })
+		{
 			foreach my $p (sort keys %{ $self->{subpartitions_list}{$t} }) {
 				$nsubpart += scalar keys %{ $self->{subpartitions_list}{$t}{$p}};
 			}
 		}
-
 
                 my $t1 = Benchmark->new;
                 my $td = timediff($t1, $t0);
@@ -8372,7 +8634,8 @@ sub _get_sql_statements
 			$title = 'Total time to extract data from Oracle';
 		}
                 $self->logit("$title from " . (scalar keys %{$self->{tables}}) . " tables ($npart partitions, $nsubpart sub-partitions) and $self->{global_rows} total rows: $timestr\n", 1);
-		if ($timestr =~ /^(\d+) wallclock secs/) {
+		if ($timestr =~ /^(\d+) wallclock secs/)
+		{
 			my $mean = sprintf("%.2f", $self->{global_rows}/($1 || 1));
 			$self->logit("Speed average: $mean rows/sec\n", 1);
 		}
@@ -8516,7 +8779,7 @@ sub _dump_table
 
 	# Set search path
 	my $search_path = $self->set_search_path();
-	if (!$self->{truncate_table} && $search_path) {
+	if ((!$self->{truncate_table} || $self->{pg_dsn}) && $search_path) {
 		push(@cmd_head,$search_path);
 	}
 
@@ -8554,11 +8817,14 @@ sub _dump_table
 	foreach my $i ( 0 .. $#{$self->{tables}{$table}{field_name}} )
 	{
 		my $fieldname = ${$self->{tables}{$table}{field_name}}[$i];
-		if (!$self->{preserve_case}) {
+		if (!$self->{preserve_case})
+		{
 			if (exists $self->{modify}{"\L$table\E"}) {
 				next if (!grep(/^\Q$fieldname\E$/i, @{$self->{modify}{"\L$table\E"}}));
 			}
-		} else {
+		}
+		else
+		{
 			if (exists $self->{modify}{"$table"}) {
 				next if (!grep(/^\Q$fieldname\E$/i, @{$self->{modify}{"$table"}}));
 			}
@@ -8566,7 +8832,8 @@ sub _dump_table
 
 		my $f = $self->{tables}{"$table"}{column_info}{"$fieldname"};
 		$f->[2] =~ s/\D//g;
-		if (!$self->{enable_blob_export} && $f->[1] =~ /blob/i) {
+		if (!$self->{enable_blob_export} && $f->[1] =~ /blob/i)
+		{
 			# user don't want to export blob
 			next;
 		}
@@ -8577,7 +8844,8 @@ sub _dump_table
 			push(@fname, $fieldname);
 		}
 
-		if ($f->[1] =~ /SDO_GEOMETRY/i) {
+		if ($f->[1] =~ /SDO_GEOMETRY/i)
+		{
 			$self->{local_type} = $self->{type} if (!$self->{local_type});
 			$has_geometry = 1;
 		}
@@ -8653,6 +8921,228 @@ sub _dump_table
 	$self->{type} = $self->{local_type} if ($self->{local_type});
 	$self->{local_type} = '';
 
+}
+
+####
+# dump FDW table content
+####
+sub _dump_fdw_table
+{
+	my ($self, $dirprefix, $sql_header, $table, $local_dbh) = @_;
+ 
+	my @cmd_head = ();
+	my @cmd_foot = ();
+ 
+	# Set search path
+	my $search_path = $self->set_search_path();
+	if (!$self->{truncate_table} && $search_path) {
+		push(@cmd_head,$search_path);
+	}
+ 
+	# Rename table and double-quote it if required
+	my $tmptb = $self->get_replaced_tbname($table);
+ 
+	# Replace Tablename by temporary table for DATADIFF (data will be inserted in real table at the end)
+	# !!! does not work correctly for partitions yet !!!
+	if ($self->{datadiff}) {
+		$tmptb = $self->get_tbname_with_suffix($tmptb, $self->{datadiff_ins_suffix});
+	}
+ 
+	# Build the header of the query
+	my @tt = ();
+	my @stt = ();
+	my @nn = ();
+	my $col_list = '';
+	my $fdw_col_list = '';
+	my $has_geometry = 0;
+	my $has_identity = 0;
+	$has_identity = 1 if (exists $self->{identity_info}{$table});
+ 
+	# Extract column information following the Oracle position order
+	my @fname = ();
+	my (@pg_colnames_nullable, @pg_colnames_notnull, @pg_colnames_pkey);
+	foreach my $i ( 0 .. $#{$self->{tables}{$table}{field_name}} )
+	{
+		my $fieldname = ${$self->{tables}{$table}{field_name}}[$i];
+		if (!$self->{preserve_case})
+		{
+			if (exists $self->{modify}{"\L$table\E"}) {
+				next if (!grep(/^\Q$fieldname\E$/i, @{$self->{modify}{"\L$table\E"}}));
+			}
+		}
+		else
+		{
+			if (exists $self->{modify}{"$table"}) {
+				next if (!grep(/^\Q$fieldname\E$/i, @{$self->{modify}{"$table"}}));
+			}
+		}
+ 
+		my $f = $self->{tables}{"$table"}{column_info}{"$fieldname"};
+		$f->[2] =~ s/\D//g;
+		if (!$self->{enable_blob_export} && $f->[1] =~ /blob/i)
+		{
+			# user don't want to export blob
+			next;
+		}
+ 
+		if (!$self->{preserve_case}) {
+			push(@fname, lc($fieldname));
+		} else {
+			push(@fname, $fieldname);
+		}
+ 
+		if ($f->[1] =~ /SDO_GEOMETRY/i)
+		{
+			$self->{local_type} = $self->{type} if (!$self->{local_type});
+			$has_geometry = 1;
+		}
+ 
+		my $type = $self->_sql_type($f->[1], $f->[2], $f->[5], $f->[6], $f->[4]);
+		$type = "$f->[1], $f->[2]" if (!$type);
+ 
+		# Check for boolean rewritting
+		my $typlen = $f->[5];
+		$typlen ||= $f->[2];
+		# Check if this column should be replaced by a boolean following table/column name
+		if (grep(/^\L$fieldname\E$/i, @{$self->{'replace_as_boolean'}{uc($table)}})) {
+			$type = 'boolean';
+		# Check if this column should be replaced by a boolean following type/precision
+		} elsif (exists $self->{'replace_as_boolean'}{uc($f->[1])} && ($self->{'replace_as_boolean'}{uc($f->[1])}[0] == $typlen)) {
+			$type = 'boolean';
+		}
+		# check if destination column type must be changed
+		my $colname = $fieldname;
+		$colname =~ s/["`]//g;
+		$type = $self->{'modify_type'}{"\L$table\E"}{"\L$colname\E"} if (exists $self->{'modify_type'}{"\L$table\E"}{"\L$colname\E"});
+ 
+		if (uc($f->[1]) eq 'ENUM') {
+			$type = 'varchar';
+		}
+		# Change column names
+		$colname = $f->[0];
+		if ($self->{replaced_cols}{lc($table)}{lc($f->[0])}) {
+			$self->logit("\tReplacing column $f->[0] as " . $self->{replaced_cols}{lc($table)}{lc($f->[0])} . "...\n", 1);
+			$colname = $self->{replaced_cols}{lc($table)}{lc($f->[0])};
+		}
+		# If there is any transformation to apply replace the column name with the clause
+		if (exists $self->{oracle_fdw_transform}{lc($table)}{lc($colname)}) {
+			$fdw_col_list .= $self->{oracle_fdw_transform}{lc($table)}{lc($colname)} . ",";
+		} else {
+			# If this column is translated into boolean apply the CASE clause
+			if ($type eq 'boolean')
+			{
+				$fdw_col_list .= "(CASE WHEN \"$colname\" IS NULL THEN NULL";
+				my $true_list = '';
+				foreach my $k (keys %{$self->{ora_boolean_values}})
+				{
+					if ($self->{ora_boolean_values}{$k} eq 't') {
+						$true_list .= " lower(\"$colname\") = '$k' OR";
+					}
+				}
+				$true_list =~ s/ OR$//;
+				$fdw_col_list .= " WHEN ($true_list) THEN 't' ELSE 'f' END)::boolean,";
+			}
+			else
+			{
+				$fdw_col_list .= "\"$colname\",";
+			}
+		}
+		$colname = $self->quote_object_name($colname);
+		if ($colname !~ /"/ && $self->is_reserved_words($colname)) {
+			$colname = '"' . $colname . '"';
+		}
+		$col_list .= "$colname,";
+		if ($self->is_primary_key_column($table, $fieldname)) {
+			push @pg_colnames_pkey, "$colname";
+		} elsif ($f->[3] =~ m/^Y/) {
+			push @pg_colnames_nullable, "$colname";
+		} else {
+			push @pg_colnames_notnull, "$colname";
+		}
+	}
+	$col_list =~ s/,$//;
+	$fdw_col_list =~ s/,$//;
+	$self->{tables}{$table}{pg_colnames_nullable} = \@pg_colnames_nullable;
+	$self->{tables}{$table}{pg_colnames_notnull} = \@pg_colnames_notnull;
+	$self->{tables}{$table}{pg_colnames_pkey} = \@pg_colnames_pkey;
+ 
+	my $overriding_system = '';
+	if ($self->{pg_supports_identity}) {
+		$overriding_system = ' OVERRIDING SYSTEM VALUE' if ($has_identity);
+	}
+ 
+	my $s_out = "INSERT INTO $tmptb ($col_list";
+	my $fdwtb = $tmptb;
+	$fdwtb = '"' . $tmptb . '"' if ($tmptb !~ /"/);
+	$s_out .= ")$overriding_system SELECT $fdw_col_list FROM ora2pg_fdw_import.$fdwtb";
+ 
+	$0 = "ora2pg - exporting table ora2pg_fdw_import.$fdwtb";
+ 
+	# Overwrite the query if REPLACE_QUERY is defined for this table
+	if ($self->{replace_query}{"\L$table\E"})
+	{
+		$s_out = $self->{replace_query}{"\L$table\E"};
+	}
+ 
+	# Prepare statements might work in binary mode but not WKT
+	# and INTERNAL because they use the call to ST_GeomFromText()
+	$has_geometry = 0 if ($self->{geometry_extract_type} eq 'WKB');
+ 
+	 if ( ($self->{oracle_copies} > 1) && $self->{defined_pk}{"\L$table\E"} )
+	 {
+		my $colpk = $self->{defined_pk}{"\L$table\E"};
+		$colpk = '"' . uc($colpk) . '"';
+		my $cond = " ABS(MOD($colpk, $self->{oracle_copies})) = ?";
+		if ($s_out !~ s/\bWHERE\s+/WHERE $cond AND /)
+		{
+			if ($s_out !~ s/\b(ORDER\s+BY\s+.*)/WHERE $cond $1/) {
+				$s_out .= " WHERE $cond";
+			}
+		}
+		 $self->{ora_conn_count} = 0;
+		 while ($self->{ora_conn_count} < $self->{oracle_copies})
+		 {
+			 spawn sub {
+				 $self->logit("Creating new connection to extract data in parallel...\n", 1);
+				my $dbh = $local_dbh->clone();
+				my $search_path = $self->set_search_path();
+				if ($search_path) {
+					$dbh->do($search_path) or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
+				}
+				my $sth = $dbh->prepare($s_out) or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
+				$self->logit("Parallelizing on core #$self->{ora_conn_count} with query: $s_out\n", 1);
+				$self->logit("Exporting foreign table data for $table, #$self->{ora_conn_count}\n", 0);
+				$sth->execute($self->{ora_conn_count}) or $self->logit("FATAL: " . $dbh->errstr . ", SQL: $s_out\n", 0, 1);
+				$sth->finish();
+				if (defined $pipe)
+				{
+					my $t_time = time();
+					$pipe->print("TABLE EXPORT ENDED: $table, end: $t_time, rows $self->{tables}{$table}{table_info}{num_rows}\n");
+				}
+				$dbh->disconnect() if ($dbh);
+			 };
+			 $self->{ora_conn_count}++;
+		 }
+		 # Wait for oracle connection terminaison
+		 while ($self->{ora_conn_count} > 0)
+		 {
+			 my $kid = waitpid(-1, WNOHANG);
+			 if ($kid > 0)
+			 {
+				 $self->{ora_conn_count}--;
+				 delete $RUNNING_PIDS{$kid};
+			 }
+			 usleep(50000);
+		 }
+	 }
+	else
+	{
+		$self->logit("Exporting foreign table data for $table using query: $s_out\n", 0);
+		$local_dbh->do($s_out) or $self->logit("ERROR: " . $local_dbh->errstr . ", SQL: $s_out\n", 1);
+	}
+ 
+	$self->{type} = $self->{local_type} if ($self->{local_type});
+	$self->{local_type} = '';
 }
 
 sub exclude_mviews
@@ -8747,6 +9237,7 @@ sub _create_indexes
 	$table = $self->get_replaced_tbname($table);
 	my @out = ();
 	my @fts_out = ();
+	my $has_to_char = 0;
 	# Set the index definition
 	foreach my $idx (sort keys %indexes)
 	{
@@ -8778,6 +9269,7 @@ sub _create_indexes
 				$indexes{$idx}->[$j] = Ora2Pg::PLSQL::convert_plsql_code($self, $indexes{$idx}->[$j], @strings);
 			}
 			$indexes{$idx}->[$j] =~ s/%%ESCAPED_STRING%%/''/ig;
+			$has_to_char = 1 if ($indexes{$idx}->[$j] =~ s/TO_CHAR\s*\(/immutable_to_char\(/ig);
 		}
 
 		# Add index opclass if required and type allow it
@@ -8827,7 +9319,7 @@ sub _create_indexes
 			# Add double quotes on column name if PRESERVE_CASE is enabled
 			foreach my $c (keys %{$self->{tables}{$tbsaved}{column_info}})
 			{
-				$columns =~ s/\b$c\b/"$c"/ if ($self->{preserve_case} && $columns !~ /"$c"/);
+				$columns =~ s/\b$c\b/"$c"/g if ($self->{preserve_case} && $columns !~ /"$c"/);
 			}
 		}
 		$columns =~ s/, $//s;
@@ -9066,6 +9558,17 @@ CREATE TRIGGER $trig_name BEFORE INSERT OR UPDATE
 		}
 	}
 
+        if ($has_to_char)
+        {
+                unshift(@out, qq{
+-- Function used in indexes must be immutable, use immutable_to_char() instead of to_char()
+CREATE OR REPLACE FUNCTION immutable_to_char(timestamp, fmt text) RETURNS text AS
+\$\$ SELECT to_char(\$1, \$2); \$\$
+LANGUAGE sql immutable;
+ 
+});
+        }
+
 	return $indexonly ? (@out,@fts_out) : (join("\n", @out), join("\n", @fts_out));
 }
 
@@ -9152,6 +9655,7 @@ sub _drop_indexes
 			{
 				map { s/"//g; } @{$indexes{$idx}};
 				$idx = $self->quote_object_name($table.'_'.join('_', @{$indexes{$idx}}));
+				$idx = $table . '_' . join('_', @{$indexes{$idx}});
 				$idx =~ s/\s+//g;
 				if ($self->{indexes_suffix}) {
 					$idx = substr($idx,0,59);
@@ -9161,10 +9665,14 @@ sub _drop_indexes
 			}
 			if ($self->{tables}{$table}{idx_type}{$idx}{type} =~ /DOMAIN/i && $self->{tables}{$table}{idx_type}{$idx}{type_name} !~ /SPATIAL_INDEX/)
 			{
+				$idx = $self->quote_object_name($idx);
 				push(@out, "-- Declared as DOMAIN index, uncomment line below if it must be removed");
-				push(@out, "-- DROP INDEX $self->{pg_supports_ifexists} \L$idx$self->{indexes_suffix}\E;");
-			} else {
-				push(@out, "DROP INDEX $self->{pg_supports_ifexists} \L$idx$self->{indexes_suffix}\E;");
+				push(@out, "-- DROP INDEX $self->{pg_supports_ifexists} $idx\L$self->{indexes_suffix}\E;");
+			}
+			else
+			{
+				$idx = $self->quote_object_name($idx);
+				push(@out, "DROP INDEX $self->{pg_supports_ifexists} $idx\L$self->{indexes_suffix}\E;");
 			}
 		}
 	}
@@ -9405,9 +9913,9 @@ sub _create_check_constraint
 			}
 			foreach my $c (@$field_name)
 			{
-				# Force lower case
 				my $ret = $self->quote_object_name($c);
-				$chkconstraint =~ s/"$c"/$ret/igs;
+				$chkconstraint =~ s/\b$c\b/$ret/igs;
+				$chkconstraint =~ s/""/"/igs;
 			}
 			$k = $self->quote_object_name($k);
 
@@ -9659,7 +10167,7 @@ sub _howto_get_data
 	my $alias = 'a';
 	my $str = "SELECT ";
 	if ($self->{tables}{$table}{table_info}{nested} eq 'YES') {
-		$str = "SELECT /*+ nested_table_get_refs */ ";
+		$str = "SELECT /*  nested_table_get_refs */ ";
 	}
 
 	my $extraStr = "";
@@ -9844,7 +10352,9 @@ VARCHAR2
 };
 	# If we have a BFILE that might be exported as bytea we need to create a
 	# function that exports the bfile as a binary BLOB, a HEX encoded string
-	} elsif ($self->{bfile_found} eq 'bytea') {
+	}
+	elsif ($self->{bfile_found} eq 'bytea')
+	{
 		$self->logit("Creating function ora2pg_get_bfile( p_bfile IN BFILE ) to retrieve BFILE content as BLOB.\n", 1);
 		$bfile_function = qq{
 CREATE OR REPLACE FUNCTION ora2pg_get_bfile( p_bfile IN BFILE ) RETURN 
@@ -9860,31 +10370,31 @@ BEGIN
       RETURN NULL;
     END IF;
 
-    DBMS_LOB.FILEGETNAME( p_bfile, l_dir, l_fname );
-    src_file := BFILENAME( l_dir, l_fname );
-    IF src_file IS NULL THEN
-	RETURN NULL;
-    END IF;
-
-    DBMS_LOB.FILEOPEN(src_file, DBMS_LOB.FILE_READONLY);
-    DBMS_LOB.CREATETEMPORARY(filecontent, true);
-    DBMS_LOB.LOADBLOBFROMFILE (filecontent, src_file, DBMS_LOB.LOBMAXSIZE, offset, offset);
-    DBMS_LOB.FILECLOSE(src_file);
-    RETURN filecontent;
+     DBMS_LOB.FILEGETNAME( p_bfile, l_dir, l_fname );
+     src_file := BFILENAME( l_dir, l_fname );
+     IF src_file IS NULL THEN
+        RETURN NULL;
+     END IF;
+ 
+     DBMS_LOB.FILEOPEN(src_file, DBMS_LOB.FILE_READONLY);
+     DBMS_LOB.CREATETEMPORARY(filecontent, true);
+     DBMS_LOB.LOADBLOBFROMFILE (filecontent, src_file, DBMS_LOB.LOBMAXSIZE, offset, offset);
+     DBMS_LOB.FILECLOSE(src_file);
+     RETURN filecontent;
 END;
 };
-	}
-
+        }
+ 
 	if ($bfile_function)
 	{
 		my $local_dbh = $self->_oracle_connection();
 		my $sth2 =  $local_dbh->do($bfile_function);
 		$local_dbh->disconnect() if ($local_dbh);
 	}
-
+ 
 	# Fix empty column list with nested table
 	$str =~ s/ ""$/ \*/;
-
+ 
 	if ($part_name)
 	{
 		if ($is_subpart) {
@@ -9901,6 +10411,180 @@ END;
 		if ($self->{tables}{"\L$table\E"}{table_info}{num_rows} > $self->{parallel_min_rows}) {
 			$str =~ s#^SELECT #SELECT /*+ FULL(a) PARALLEL(a, $self->{default_parallelism_degree}) */ #;
 		}
+	}
+	$str .= " FROM $realtable $alias";
+ 
+	if (exists $self->{where}{"\L$table\E"} && $self->{where}{"\L$table\E"})
+	{
+		($str =~ / WHERE /) ? $str .= ' AND ' : $str .= ' WHERE ';
+		if (!$self->{is_mysql} || ($self->{where}{"\L$table\E"} !~ /\s+LIMIT\s+\d/)) {
+			$str .= '(' . $self->{where}{"\L$table\E"} . ')';
+		} else {
+			$str .= $self->{where}{"\L$table\E"};
+		}
+		$self->logit("\tApplying WHERE clause on table: " . $self->{where}{"\L$table\E"} . "\n", 1);
+	}
+	elsif ($self->{global_where})
+	{
+		($str =~ / WHERE /) ? $str .= ' AND ' : $str .= ' WHERE ';
+		if (!$self->{is_mysql} || ($self->{global_where} !~ /\s+LIMIT\s+\d/)) {
+			$str .= '(' . $self->{global_where} . ')';
+		} else {
+			$str .= $self->{global_where};
+		}
+		$self->logit("\tApplying WHERE global clause: " . $self->{global_where} . "\n", 1);
+	}
+ 
+	# Automatically set the column on which query will be splitted
+	# to the first column with a unique key and of type NUMBER.
+	if ($self->{oracle_copies} > 1)
+	{
+		if (!exists $self->{defined_pk}{"\L$table\E"})
+		{
+			foreach my $consname (keys %{$self->{tables}{$table}{unique_key}})
+			{
+				my $constype =   $self->{tables}{$table}{unique_key}->{$consname}{type};
+				if (($constype eq 'P') || ($constype eq 'U'))
+				{
+					foreach my $c (@{$self->{tables}{$table}{unique_key}->{$consname}{columns}})
+					{
+					       for my $k (0 .. $#{$name})
+					       {
+							my $realcolname = $name->[$k]->[0];
+							$realcolname =~ s/"//g;
+							if ($c eq $realcolname)
+							{
+								if ($src_type->[$k] =~ /^number\(.*,.*\)/i)
+								{
+									$self->{defined_pk}{"\L$table\E"} = "ROUND($c)";
+									last;
+								}
+								elsif ($src_type->[$k] =~ /^number/i)
+								{
+									$self->{defined_pk}{"\L$table\E"} = $c;
+									last;
+								}
+							}
+						}
+						last if (exists $self->{defined_pk}{"\L$table\E"});
+					}
+				}
+				last if (exists $self->{defined_pk}{"\L$table\E"});
+			}
+		}
+		if ($self->{defined_pk}{"\L$table\E"})
+		{
+			my $colpk = $self->{defined_pk}{"\L$table\E"};
+			if ($self->{preserve_case}) {
+				$colpk = '"' . $colpk . '"';
+			}
+			if ($str =~ / WHERE /) {
+				$str .= " AND";
+			} else {
+				$str .= " WHERE";
+			}
+			$str .= " ABS(MOD($colpk, $self->{oracle_copies})) = ?";
+		}
+	}
+ 
+	$self->logit("DEGUG: Query sent to Oracle: $str\n", 1);
+ 
+	return $str;
+}
+ 
+=head2 _howto_get_fdw_data TABLE
+ 
+This function implements an Oracle data extraction through oracle_fdw.
+Returns the SQL query to use to retrieve data
+
+=cut
+ 
+sub _howto_get_fdw_data
+{
+	my ($self, $table, $name, $type, $src_type, $part_name, $is_subpart) = @_;
+ 
+	# Fix a problem when the table need to be prefixed by the schema
+	my $realtable = $table;
+	$realtable =~ s/\"//g;
+	# Do not use double quote with mysql, but backquote
+	if (!$self->{is_mysql})
+	{
+		if (!$self->{schema} && $self->{export_schema})
+		{
+			$realtable =~ s/\./"."/;
+			$realtable = "\"$realtable\"";
+		}
+		else
+		{
+			$realtable = "\"$realtable\"";
+			my $owner  = $self->{tables}{$table}{table_info}{owner} || $self->{tables}{$table}{owner} || '';
+			if ($owner)
+			{
+				$owner =~ s/\"//g;
+				$owner = "\"$owner\"";
+				$realtable = "$owner.$realtable";
+			}
+		}
+	}
+	else
+	{
+		$realtable = "\`$realtable\`";
+	}
+
+	delete $self->{nullable}{$table};
+
+	my $alias = 'a';
+	my $str = "SELECT ";
+ 
+	my $extraStr = "";
+	# Lookup through columns information
+	if ($#{$name} < 0)
+	{
+		# There a problem whe can't find any column in this table
+		return '';
+	}
+	else
+	{
+		for my $k (0 .. $#{$name})
+		{
+			my $realcolname = $name->[$k]->[0];
+			my $spatial_srid = '';
+			$self->{nullable}{$table}{$k} = $self->{colinfo}->{$table}{$realcolname}{nullable};
+			if ($name->[$k]->[0] !~ /"/)
+			{
+				# Do not use double quote with mysql
+				if (!$self->{is_mysql}) {
+					$name->[$k]->[0] = '"' . $name->[$k]->[0] . '"';
+				} else {
+					$name->[$k]->[0] = '`' . $name->[$k]->[0] . '`';
+				}
+			}
+			# If dest type is bytea the content of the file is exported as bytea
+			if ( ($src_type->[$k] =~ /bfile/i) && ($type->[$k] =~ /bytea/i) )
+			{
+				$self->{bfile_found} = 'bytea';
+			}
+			# If dest type is efile the content of the file is exported to use the efile extension
+			elsif ( ($src_type->[$k] =~ /bfile/i) && ($type->[$k] =~ /efile/i) )
+			{
+				$self->{bfile_found} = 'efile';
+				$self->logit("FATAL: with oracle_fdw data export, BFILE can only be converted to bytea\n", 0, 1);
+			}
+			# Only extract path to the bfile if dest type is text.
+			elsif ( ($src_type->[$k] =~ /bfile/i) && ($type->[$k] =~ /text/i) )
+			{
+				$self->{bfile_found} = 'text';
+				$self->logit("FATAL: with oracle_fdw data export, BFILE can only be converted to bytea\n", 0, 1);
+			}
+			$str .= "$name->[$k]->[0],";
+ 
+			push(@{$self->{spatial_srid}{$table}}, $spatial_srid);
+			# Wit oracle_fdw export we migrate data in stream not in chunk
+			$self->{data_limit} = 0;
+			$self->{local_data_limit}{$table} = 0;
+			$self->{blob_limit} = 0;
+		}
+		$str =~ s/,$//;
 	}
 	$str .= " FROM $realtable $alias";
 
@@ -13418,7 +14102,8 @@ sub format_data_type
 	next if ($data_type =~ /\[\d*\]/); 
 
 	# Internal timestamp retrieves from custom type is as follow: 01-JAN-77 12.00.00.000000 AM (internal_date_max)
-	if (($data_type eq 'char') && $col =~ /^(\d{2})-([A-Z]{3})-(\d{2}) (\d{2})\.(\d{2})\.(\d{2}\.\d+) (AM|PM)$/ ) {
+	if (($data_type eq 'char') && $col =~ /^(\d{2})-([A-Z]{3})-(\d{2}) (\d{2})\.(\d{2})\.(\d{2}\.\d+) (AM|PM)$/ )
+	{
 		my $d = $1;
 		my $m = $ORACLE_MONTHS{$2};
 		my $y = $3;
@@ -13478,8 +14163,14 @@ sub format_data_type
 			if (exists $self->{ora_boolean_values}{lc($col)}) {
 				$col = $q . $self->{ora_boolean_values}{lc($col)} . $q;
 			}
-		} else {
-			$col =~ s/([\-]*)(\~|Inf)/'$1Infinity'/i;
+		}
+		else
+		{
+			if (!$self->{pg_dsn}) {
+				$col =~ s/([\-]*)(\~|Inf)/'$1Infinity'/i;
+			} else {
+				$col =~ s/([\-]*)(\~|Inf)/$1Infinity/i;
+			}
 			if (!$sprep) {
 				$col = 'NULL' if ($col eq '');
 			} else {
@@ -13711,7 +14402,9 @@ sub read_config
 				'WHERE','EXCLUDE','VIEW_AS_TABLE','ORA_RESERVED_WORDS','SYSUSERS',
 				'REPLACE_AS_BOOLEAN','BOOLEAN_VALUES','MODIFY_TYPE','DEFINED_PK',
 				'ALLOW_PARTITION','REPLACE_QUERY','FKEY_ADD_UPDATE','DELETE',
-				'LOOK_FORWARD_FUNCTION','ORA_INITIAL_COMMAND','PG_INITIAL_COMMAND'))
+				'LOOK_FORWARD_FUNCTION','ORA_INITIAL_COMMAND','PG_INITIAL_COMMAND',
+				'ORACLE_FDW_TRANSFORM'
+			))
 		{
 			$AConfig{$var} = $val;
 			if ($var eq 'NO_LOB_LOCATOR') {
@@ -13844,7 +14537,7 @@ sub read_config
 			my @defined_pk = split(/[\s,;]+/, $val);
 			foreach my $r (@defined_pk)
 			{ 
-				my ($table, $col) = split(/:/, lc($r));
+				my ($table, $col) = split(/:/, $r);
 				$AConfig{$var}{lc($table)} = $col;
 			}
 		}
@@ -13861,6 +14554,21 @@ sub read_config
 			if ($val) {
 				$AConfig{"GLOBAL_WHERE"} = $val;
 			}
+		}
+                elsif ($var eq 'ORACLE_FDW_TRANSFORM')
+                {
+                        my @vals = split(/\s*;\s*/, $val);
+                        foreach my $v (@vals)
+                        {
+                                while ($v =~ s/([^\[\s]+)\s*\[\s*([^,]+)\s*,\s*([^\]]+)\s*\]\s*//)
+                                {
+                                        my $table = $1;
+                                        my $column = $2;
+                                        my $clause = $3;
+                                        $column =~ s/"//g;
+                                        $AConfig{$var}{lc($table)}{lc($column)} = $clause;
+                                }
+                        }
 		}
 		elsif ($var eq 'DELETE')
 		{
@@ -15161,7 +15869,8 @@ sub ask_for_data
 	}
 
 	# Check for boolean rewritting
-	for (my $i = 0; $i <= $#{$nn}; $i++) {
+	for (my $i = 0; $i <= $#{$nn}; $i++)
+	{
 		my $colname = $nn->[$i]->[0];
 		$colname =~ s/["`]//g;
 		my $typlen = $nn->[$i]->[5];
@@ -15176,7 +15885,8 @@ sub ask_for_data
 	}
 
 	# check if destination column type must be changed
-	for (my $i = 0; $i <= $#{$nn}; $i++) {
+	for (my $i = 0; $i <= $#{$nn}; $i++)
+	{
 		my $colname = $nn->[$i]->[0];
 		$colname =~ s/["`]//g;
 		$tt->[$i] = $self->{'modify_type'}{"\L$table\E"}{"\L$colname\E"} if (exists $self->{'modify_type'}{"\L$table\E"}{"\L$colname\E"});
@@ -15199,9 +15909,11 @@ sub ask_for_data
 		}
 	}
 
-	if ( ($self->{oracle_copies} > 1) && $self->{defined_pk}{"\L$table\E"} ) {
+	if ( ($self->{oracle_copies} > 1) && $self->{defined_pk}{"\L$table\E"} )
+	{
 		$self->{ora_conn_count} = 0;
-		while ($self->{ora_conn_count} < $self->{oracle_copies}) {
+		while ($self->{ora_conn_count} < $self->{oracle_copies})
+		{
 			spawn sub {
 				$self->logit("Creating new connection to database to extract data...\n", 1);
 				$self->_extract_data($query, $table, $cmd_head, $cmd_foot, $s_out, $nn, $tt, $sprep, $stt, $part_name, $self->{ora_conn_count});
@@ -15209,20 +15921,25 @@ sub ask_for_data
 			$self->{ora_conn_count}++;
 		}
 		# Wait for oracle connection terminaison
-		while ($self->{ora_conn_count} > 0) {
+		while ($self->{ora_conn_count} > 0)
+		{
 			my $kid = waitpid(-1, WNOHANG);
-			if ($kid > 0) {
+			if ($kid > 0)
+			{
 				$self->{ora_conn_count}--;
 				delete $RUNNING_PIDS{$kid};
 			}
 			usleep(50000);
 		}
-		if (defined $pipe) {
+		if (defined $pipe)
+		{
 			my $t_name = $part_name || $table;
 			my $t_time = time();
 			$pipe->print("TABLE EXPORT ENDED: $t_name, end: $t_time, report all parts\n");
 		}
-	} else {
+	}
+	else
+	{
 		my $total_record = $self->_extract_data($query, $table, $cmd_head, $cmd_foot, $s_out, $nn, $tt, $sprep, $stt, $part_name);
 		# Only useful for single process
 		return $total_record;
@@ -15286,15 +16003,18 @@ sub _extract_data
 	$0 = "ora2pg - querying table $table";
 
 	# Overwrite the query if REPLACE_QUERY is defined for this table
-	if ($self->{replace_query}{"\L$table\E"}) {
+	if ($self->{replace_query}{"\L$table\E"})
+	{
 		$query = $self->{replace_query}{"\L$table\E"};
-		if (($self->{oracle_copies} > 1) && $self->{defined_pk}{"\L$table\E"}) {
+		if (($self->{oracle_copies} > 1) && $self->{defined_pk}{"\L$table\E"})
+		{
 			my $colpk = $self->{defined_pk}{"\L$table\E"};
 			if ($self->{preserve_case}) {
 				$colpk = '"' . $colpk . '"';
 			}
 			my $cond = " ABS(MOD($colpk, $self->{oracle_copies})) = ?";
-			if ($query !~ s/\bWHERE\s+/WHERE $cond AND /) {
+			if ($query !~ s/\bWHERE\s+/WHERE $cond AND /)
+			{
 				if ($query !~ s/\b(ORDER\s+BY\s+.*)/WHERE $cond $1/) {
 					$query .= " WHERE $cond";
 				}
@@ -15309,7 +16029,8 @@ sub _extract_data
 	my @has_custom_type = ();
 	$self->{data_cols}{$table} = ();
 
-	if ($self->{is_mysql}) {
+	if ($self->{is_mysql})
+	{
 		my %col_info = Ora2Pg::MySQL::_column_info($self, $rname);
 		foreach my $col (keys %{$col_info{$rname}}) {
 			push(@{$self->{data_cols}{$table}}, $col);
@@ -15317,26 +16038,30 @@ sub _extract_data
 	}
 
 	# Look for user defined type
-	if (!$self->{is_mysql}) {
-		for (my $idx = 0; $idx < scalar(@$stt); $idx++) {
+	if (!$self->{is_mysql})
+	{
+		for (my $idx = 0; $idx < scalar(@$stt); $idx++)
+		{
 			my $data_type = uc($stt->[$idx]) || '';
 			$data_type =~ s/\(.*//; # remove any precision
 			# in case of user defined type try to gather the underlying base types
-			if (!exists $self->{data_type}{$data_type} && exists $self->{user_type}{$stt->[$idx]}) {
+			if (!exists $self->{data_type}{$data_type} && exists $self->{user_type}{$stt->[$idx]})
+			{
 				push(@has_custom_type, $idx);
 				%{ $user_type{$idx} } = %{ $self->{user_type}{$stt->[$idx]} };
 			}
 		}
 	}
 
-	if ( ($self->{parallel_tables} > 1) || (($self->{oracle_copies} > 1) && $self->{defined_pk}{"\L$table\E"}) ) {
-
+	if ( ($self->{parallel_tables} > 1) || (($self->{oracle_copies} > 1) && $self->{defined_pk}{"\L$table\E"}) )
+	{
 		$self->logit("DEBUG: cloning Oracle database connection.\n", 1);
 		$dbh = $self->{dbh}->clone();
 
 		# Force execution of initial command
 		$self->_ora_initial_command($dbh);
-		if (!$self->{is_mysql}) {
+		if (!$self->{is_mysql})
+		{
 			# Force numeric format into the cloned session
 			$self->_numeric_format($dbh);
 			# Force datetime format into the cloned session
@@ -15352,7 +16077,8 @@ sub _extract_data
 		}
 
 		# prepare the query before execution
-		if (!$self->{is_mysql}) {
+		if (!$self->{is_mysql})
+		{
 			if ($self->{no_lob_locator}) {
 				$sth = $dbh->prepare($query,{ora_piece_lob => 1, ora_piece_size => $self->{longreadlen}, ora_exe_mode=>OCI_STMT_SCROLLABLE_READONLY, ora_check_sql => 1}) or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
 			} else {
@@ -15361,13 +16087,16 @@ sub _extract_data
 			foreach (@{$sth->{NAME}}) {
 				push(@{$self->{data_cols}{$table}}, $_);
 			}
-		} else {
+		}
+		else
+		{
 			#$query .= " LIMIT ?, ?";
 			$query =~ s/^SELECT\s+/SELECT \/\*\!40001 SQL_NO_CACHE \*\/ /s;
 			$sth = $dbh->prepare($query, { mysql_use_result => 1, mysql_use_row => 1 }) or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
 		}
-
-	} else {
+	}
+	else
+	{
 
 		# Set row cache size
 		$self->{dbh}->{RowCacheSize} = int($self->{data_limit}/10);
@@ -15387,7 +16116,8 @@ sub _extract_data
 				$sth = $self->{dbh}->prepare($query,{'ora_auto_lob' => 0, ora_exe_mode=>OCI_STMT_SCROLLABLE_READONLY, ora_check_sql => 1});
 			}
 
-			if ($self->{dbh}->errstr =~ /ORA-00942/) {
+			if ($self->{dbh}->errstr =~ /ORA-00942/)
+			{
 				 $self->logit("WARNING: table $table is not yet physically created and has no data.\n", 0, 0);
 
 				# Only useful for single process
@@ -15398,7 +16128,9 @@ sub _extract_data
 			foreach (@{$sth->{NAME}}) {
 				push(@{$self->{data_cols}{$table}}, $_);
 			}
-		} else {
+		}
+		else
+	       	{
 			#$query .= " LIMIT ?, ?";
 			$query =~ s/^SELECT\s+/SELECT \/\*\!40001 SQL_NO_CACHE \*\/ /s;
 			$sth = $self->{dbh}->prepare($query, { mysql_use_result => 1, mysql_use_row => 1 }) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -15787,7 +16519,8 @@ sub _dump_to_pg
 		$self->logit("Dumping data from table $rname into PostgreSQL table $dname...\n", 1);
 		$self->logit("Setting client_encoding to $self->{client_encoding}...\n", 1);
 		my $s = $dbhdest->do( "SET client_encoding TO '\U$self->{client_encoding}\E';") or $self->logit("FATAL: " . $dbhdest->errstr . "\n", 0, 1);
-		if (!$self->{synchronous_commit}) {
+		if (!$self->{synchronous_commit})
+		{
 			$self->logit("Disabling synchronous commit when writing to PostgreSQL...\n", 1);
 			$s = $dbhdest->do("SET synchronous_commit TO off") or $self->logit("FATAL: " . $dbhdest->errstr . "\n", 0, 1);
 		}
@@ -15797,7 +16530,9 @@ sub _dump_to_pg
 	my $h_towrite = '';
 	foreach my $cmd (@$cmd_head)
 	{
-		if ($self->{pg_dsn} && !$self->{oracle_speed}) {
+		if ($self->{pg_dsn} && !$self->{oracle_speed})
+		{
+			$self->logit("Executing pre command to PostgreSQL: $cmd\n", 1);
 			my $s = $dbhdest->do("$cmd") or $self->logit("FATAL: " . $dbhdest->errstr . "\n", 0, 1);
 		} else {
 			$h_towrite .= "$cmd\n";
@@ -15839,16 +16574,21 @@ sub _dump_to_pg
 	$self->logit("DEBUG: Creating output for $data_limit tuples\n", 1);
 	if ($self->{type} eq 'COPY')
 	{
-		if ($self->{pg_dsn}) {
+		if ($self->{pg_dsn})
+		{
 			$sql_out =~ s/;$//;
-			if (!$self->{oracle_speed}) {
+			if (!$self->{oracle_speed})
+			{
 				$self->logit("DEBUG: Sending COPY bulk output directly to PostgreSQL backend\n", 1);
 				$dbhdest->do($sql_out) or $self->logit("FATAL: " . $dbhdest->errstr . "\n", 0, 1);
 				$sql_out = '';
 				my $skip_end = 0;
-				foreach my $row (@$rows) {
-					unless($dbhdest->pg_putcopydata(join("\t", @$row) . "\n")) {
-						if ($self->{log_on_error}) {
+				foreach my $row (@$rows)
+				{
+					unless($dbhdest->pg_putcopydata(join("\t", @$row) . "\n"))
+					{
+						if ($self->{log_on_error})
+						{
 							$self->logit("ERROR (log error enabled): " . $dbhdest->errstr . "\n", 0, 0);
 							$self->log_error_copy($table, $s_out, $rows);
 							$skip_end = 1;
@@ -15858,20 +16598,26 @@ sub _dump_to_pg
 						}
 					}
 				}
-				unless ($dbhdest->pg_putcopyend()) {
-					if ($self->{log_on_error}) {
+				unless ($dbhdest->pg_putcopyend())
+				{
+					if ($self->{log_on_error})
+					{
 						$self->logit("ERROR (log error enabled): " . $dbhdest->errstr . "\n", 0, 0);
 						$self->log_error_copy($table, $s_out, $rows) if (!$skip_end);
 					} else {
 						$self->logit("FATAL: " . $dbhdest->errstr . "\n", 0, 1);
 					}
 				}
-			} else {
+			}
+			else
+			{
 				foreach my $row (@$rows) {
 					# do nothing, just add loop time nothing must be sent to PG
 				}
 			}
-		} else {
+		}
+		else
+		{
 			# then add data to the output
 			map { $sql_out .= join("\t", @$_) . "\n"; } @$rows;
 			$sql_out .= "\\.\n";
@@ -15941,14 +16687,19 @@ sub _dump_to_pg
 						($row->[$j] eq "'f'") ? $row->[$j] = 0 : $row->[$j] = 1;
 					}
 					# Apply bind parmeters
-					if (!$self->{oracle_speed}) {
-						unless ($ps->execute(@$row) ) {
-							if ($self->{log_on_error}) {
+					if (!$self->{oracle_speed})
+					{
+						unless ($ps->execute(@$row) )
+						{
+							if ($self->{log_on_error})
+							{
 								$self->logit("ERROR (log error enabled): " . $ps->errstr . "\n", 0, 0);
 								$s_out =~ s/\([,\?]+\)/\(/;
 								$self->format_data_row($row,$tt,'INSERT', $stt, \%user_type, $table, $col_cond);
 								$self->log_error_insert($table, $s_out . join(',', @$row) . ");\n");
-							} else {
+							}
+							else
+							{
 								$self->logit("FATAL: " . $ps->errstr . "\n", 0, 1);
 							}
 						}
@@ -16042,7 +16793,9 @@ sub _pload_to_pg
 		# Apply setting from configuration
 		$dbhdest->do( "SET client_encoding TO '\U$self->{client_encoding}\E';") or $self->logit("FATAL: " . $dbhdest->errstr . "\n", 0, 1);
 		my $search_path = $self->set_search_path();
-		if ($search_path) {
+		if ($search_path)
+		{
+			$self->logit("Setting search_path using: $search_path...\n", 1);
 			$dbhdest->do($search_path) or $self->logit("FATAL: " . $dbhdest->errstr . "\n", 0, 1);
 		}
 	}
@@ -20520,6 +21273,112 @@ sub min
 	return $_[0] if ($_[0] < $_[1]);
 
 	return $_[1];
+}
+
+sub _create_foreign_server
+{
+	my $self = shift;
+ 
+	# Verify that the oracle_fdw extension is created, create it if not
+	my $sth = $self->{dbhdest}->prepare("SELECT * FROM pg_extension WHERE extname=?") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
+	$sth->execute('oracle_fdw') or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
+	my $row = $sth->fetch;
+	$sth->finish;
+	if (not defined $row)
+	{
+		# try to create the extension
+		$self->{dbhdest}->do("CREATE EXTENSION oracle_fdw") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
+	}
+ 
+	# Check if the server already exists or need to be created
+	$sth = $self->{dbhdest}->prepare("SELECT * FROM pg_foreign_server WHERE srvname=?") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
+	$sth->execute($self->{fdw_server}) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
+	$row = $sth->fetch;
+	$sth->finish;
+	if (not defined $row)
+	{
+		# try to create the foreign server
+		if (!defined $self->{oracle_pwd})
+		{
+			eval("use Term::ReadKey;") unless $self->{oracle_user} eq '/';
+			$self->{oracle_user} = $self->_ask_username('Oracle') unless (defined $self->{oracle_user});
+			$self->{oracle_pwd} = $self->_ask_password('Oracle') unless ($self->{oracle_user} eq '/');
+		}
+		my $ora_session_mode = ($self->{oracle_user} eq "/" || $self->{oracle_user} eq "sys") ? 2 : undef;
+ 
+		$self->logit("ORACLE_HOME = $ENV{ORACLE_HOME}\n", 1);
+		$self->logit("NLS_LANG = $ENV{NLS_LANG}\n", 1);
+		$self->logit("NLS_NCHAR = $ENV{NLS_NCHAR}\n", 1);
+		$self->logit("Trying to connect to database: $self->{oracle_dsn}\n", 1) if (!$quiet);
+ 
+		if (!$self->{fdw_server}) {
+			$self->logit("FATAL: a foreign server name must be set using FWD_SERVER\n", 0, 1);
+		}
+		if ($self->{oracle_dsn} =~ /(\/\/.*\/.*)/)
+		{
+			$self->{oracle_fwd_dsn} = $1;
+		}
+		else
+		{
+			$self->{oracle_dsn} =~ /host=([^;]+)/;
+			my $host = $1 || 'localhost';
+			$self->{oracle_dsn} =~ /port=(\d+)/;
+			my $port = $1 || 1521;
+			$self->{oracle_dsn} =~ /(service_name|sid)=([^;]+)/;
+			my $sid = $2 || '';
+			$self->{oracle_fwd_dsn} = "//$host:$port/$sid";
+		}
+		my $sql = "CREATE SERVER $self->{fdw_server} FOREIGN DATA WRAPPER oracle_fdw OPTIONS (dbserver '$self->{oracle_fwd_dsn}');";
+		$self->{dbhdest}->do($sql) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
+	}
+ 
+	# Create the user mapping if it not exists
+	my $sql = "CREATE USER MAPPING IF NOT EXISTS FOR $self->{pg_user} SERVER $self->{fdw_server} OPTIONS (user '$self->{oracle_user}', password '$self->{oracle_pwd}');";
+	$self->{dbhdest}->do($sql) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
+}
+
+sub _select_foreign_objects
+{
+	my $self = shift;
+ 
+	# With reports we don't have object name limitation
+	return if ($self->{type} ne 'TEST_DATA');
+ 
+	my $str = '';
+	my @limit_to = ();
+	my @except = ();
+ 
+	for (my $j = 0; $j <= $#{$self->{limited}{TABLE}}; $j++) {
+		push(@limit_to, '"' . uc($self->{limited}{TABLE}->[$j]) . '"');
+	}
+ 
+	if ($#limit_to == -1)
+	{
+		for (my $j = 0; $j <= $#{$self->{excluded}{TABLE}}; $j++) {
+			push(@except, '"'. uc($self->{excluded}{TABLE}->[$j] . '"'));
+		}
+		if ($#except > -1) {
+			$str = " EXCEPT ( " .  join(', ', @except) . ")";
+		}
+	} else {
+		$str = " LIMIT TO ( " .  join(', ', @limit_to) . ")";
+	}
+ 
+	return $str;
+}
+
+sub _import_foreign_schema
+{
+	my $self = shift;
+ 
+	# Drop and recreate the import schema
+	$self->{dbhdest}->do("DROP SCHEMA IF EXISTS ora2pg_fdw_import CASCADE") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
+	$self->{dbhdest}->do("CREATE SCHEMA ora2pg_fdw_import") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
+	# Import foreign table into the dedicated schema ora2pg_fdw_import
+	my $sql = "IMPORT FOREIGN SCHEMA \"\U$self->{schema}\E\"";
+	$sql .= $self->_select_foreign_objects();
+	$sql .= " FROM SERVER $self->{fdw_server} INTO ora2pg_fdw_import OPTIONS (case 'keep')";
+	$self->{dbhdest}->do($sql) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
 }
 
 1;

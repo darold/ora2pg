@@ -403,7 +403,7 @@ sub convert_plsql_code
 
 		foreach my $k (keys %{$class->{single_fct_call}})
 		{
-			$class->{single_fct_call}{$k} = replace_oracle_function($class, $class->{single_fct_call}{$k});
+			$class->{single_fct_call}{$k} = replace_oracle_function($class, $class->{single_fct_call}{$k}, @strings);
 			if ($class->{single_fct_call}{$k} =~ /^CAST\s*\(/i)
 			{
 				if (!$class->{is_mysql})
@@ -423,8 +423,11 @@ sub convert_plsql_code
 			}
 		}
 		while ($code_parts[$i] =~ s/\%\%REPLACEFCT(\d+)\%\%/$class->{single_fct_call}{$1}/) {};
-		$code_parts[$i] =~ s/\%SUBPARAMS(\d+)\%/$subparams{$1}/igs;
+		$code_parts[$i] =~ s/\%SUBPARAMS(\d )\%/$subparams{$1}/igs;
 
+		# Remove potential double affectation for function with out parameter
+		$code_parts[$i] =~ s/(\s*)[^\s=;]+\s*:=\s*(?:\%ORA2PG_COMMENT\d+\%)?(\s*[^\s;=]+\s*:=)/$1$2/gs;
+		$code_parts[$i] =~ s/(\s*)[^\s=;]+\s*:=\s*(SELECT\s+[^;]+INTO\s*)/$1$2/igs;
 	}
 	$str = join(';', @code_parts);
 
@@ -1384,11 +1387,15 @@ sub convert_from_tz
 
 sub convert_date_format
 {
-	my ($class, $fields) = @_;
+	my ($class, $fields, @strings) = @_;
 
 	# Restore constant string to look into date format
 	while ($fields =~ s/\?TEXTVALUE(\d+)\?/$class->{text_values}{$1}/is) {
 		delete $class->{text_values}{$1};
+	}
+
+	for ($i = 0; $i <= $#strings; $i++) {
+		$fields =~ s/\%\%string$i\%\%/'$strings[$i]'/;
 	}
 
 	# Truncate time to microsecond
@@ -1487,7 +1494,7 @@ sub regex_flags
 	
 sub replace_oracle_function
 {
-        my ($class, $str) = @_;
+        my ($class, $str, @strings) = @_;
 
 	my @xmlelt = ();
 	my $field = '\s*([^\(\),]+)\s*';
@@ -1521,25 +1528,25 @@ sub replace_oracle_function
 	$str =~ s/TO_CLOB\(([^\)]+)\)/$1/igs;
 
 	# Replace call to SYS_GUID() function
-	$str =~ s/\bSYS_GUID\s*\(\s*\)/$class->{uuid_function}()/is;
-	$str =~ s/\bSYS_GUID\b/$class->{uuid_function}()/is;
+	$str =~ s/\bSYS_GUID\s*\(\s*\)/$class->{uuid_function}()/igs;
+	$str =~ s/\bSYS_GUID\b/$class->{uuid_function}()/igs;
 
 	# Rewrite TO_DATE formating call
-	$str =~ s/TO_DATE\s*\(\s*('[^\']+')\s*,\s*('[^\']+')[^\)]*\)/to_date($1,$2)/is;
+	$str =~ s/TO_DATE\s*\(\s*('[^\']+')\s*,\s*('[^\']+')[^\)]*\)/to_date($1,$2)/igs;
 
 	# When the date format is ISO and we have a constant we can remove the call to to_date()
 	if ($class->{type} eq 'PARTITION' && $class->{pg_supports_partition}) {
-		$str =~ s/to_date\(\s*('\s*\d+-\d+-\d+ \d+:\d+:\d+')\s*,\s*'[S]*YYYY-MM-DD HH24:MI:SS'[^\)]*\)/$1/;
+		$str =~ s/to_date\(\s*('\s*\d+-\d+-\d+ \d+:\d+:\d+')\s*,\s*'[S]*YYYY-MM-DD HH24:MI:SS'[^\)]*\)/$1/igs;
 	}
 
 	# Translate to_timestamp_tz Oracle function
-	$str =~ s/TO_TIMESTAMP_TZ\s*\((.*)\)/'to_timestamp(' . convert_date_format($class, $1) . ')'/ies;
+	$str =~ s/TO_TIMESTAMP_TZ\s*\((.*)\)/'to_timestamp(' . convert_date_format($class, $1, @strings) . ')'/iegs;
 
 	# Translate from_tz Oracle function
-	$str =~ s/FROM_TZ\s*\(\s*([^\)]+)\s*\)/'(' . convert_from_tz($class,$1) . ')::timestamp with time zone'/ies;
+	$str =~ s/FROM_TZ\s*\(\s*([^\)]+)\s*\)/'(' . convert_from_tz($class,$1) . ')::timestamp with time zone'/iegs;
 
 	# Replace call to trim into btrim
-	$str =~ s/\bTRIM\s*\(([^\(\)]+)\)/trim(both $1)/is;
+	$str =~ s/\bTRIM\s*\(([^\(\)]+)\)/trim(both $1)/igs;
 
 	# Do some transformation when Orafce is not used
 	if (!$class->{use_orafce})
@@ -1548,6 +1555,8 @@ sub replace_oracle_function
 		$str =~ s/\bTO_NCHAR\s*\(\s*([^,\)]+)\)/($1)::varchar/igs;
 		# Replace to_char() without format by a simple cast to text
 		$str =~ s/\bTO_CHAR\s*\(\s*([^,\)]+)\)/($1)::varchar/igs;
+		# Fix format for to_char() with format
+		$str =~ s/\b(TO_CHAR\s*\(\s*[^,\)]+\s*),(\s*[^,\)]+\s*)\)/"$1," . convert_date_format($class, $2, @strings) . ")"/iegs;
 		if ($class->{type} ne 'TABLE') {
 			$str =~ s/\(([^\s]+)\)(::varchar)/$1$2/igs;
 		} else {
@@ -1678,11 +1687,16 @@ sub replace_out_param_call
 {
 	my ($class, $str) = @_;
 
-	if (uc($class->{type}) =~ /^(PACKAGE|FUNCTION|PROCEDURE|TRIGGER)$/) {
-		foreach my $sch (sort keys %{$class->{function_metadata}}) {
-			foreach my $p (sort keys %{$class->{function_metadata}{$sch}}) {
-				foreach my $k (sort keys %{$class->{function_metadata}{$sch}{$p}}) {
-					if ($class->{function_metadata}{$sch}{$p}{$k}{metadata}{inout}) {
+	if (uc($class->{type}) =~ /^(PACKAGE|FUNCTION|PROCEDURE|TRIGGER)$/)
+	{
+		foreach my $sch (sort keys %{$class->{function_metadata}})
+		{
+			foreach my $p (sort keys %{$class->{function_metadata}{$sch}})
+			{
+				foreach my $k (sort keys %{$class->{function_metadata}{$sch}{$p}})
+				{
+					if ($class->{function_metadata}{$sch}{$p}{$k}{metadata}{inout})
+					{
 						my $fct_name = $class->{function_metadata}{$sch}{$p}{$k}{metadata}{fct_name} || '';
 						next if (!$fct_name);
 						next if ($p eq 'none' && $str !~ /\b$fct_name\b/is);
@@ -1693,33 +1707,41 @@ sub replace_out_param_call
 
 						my %replace_out_parm = ();
 						my $idx = 0;
-						while ($str =~ s/((?:[^\s\.]+\.)?\b$fct_name)\s*\(([^\(\)]+)\)/\%FCTINOUTPARAM$idx\%/is) {
+						while ($str =~ s/((?:[^\s\.]+\.)?\b$fct_name)\s*\(([^\(\)]+)\)/\%FCTINOUTPARAM$idx\%/is)
+						{
 							my $fname = $1;
 							my $fparam = $2;
-							if ($fname =~ /\./ && lc($fname) ne lc($k)) {
+							if ($fname =~ /\./ && lc($fname) ne lc($k))
+							{
 								$replace_out_parm{$idx} = "$fname($fparam)";
 								next;
 							}
 							$replace_out_parm{$idx} = "$fname(";
 							# Extract position of out parameters
 							my @params = split(/\s*,\s*/, $class->{function_metadata}{$sch}{$p}{$k}{metadata}{args});
-							my @cparams = split(/\s*,\s*/, $fparam);
+							my @cparams = split(/\s*,\s*/s, $fparam);
 							my $call_params = '';
 							my @out_pos = ();
 							my @out_fields = ();
-							for (my $i = 0; $i <= $#params; $i++) {
-								if (!$class->{is_mysql} && $params[$i] =~ /\s*([^\s]+)\s+(OUT|INOUT)\s/is) {
+							for (my $i = 0; $i <= $#params; $i++)
+							{
+								if (!$class->{is_mysql} && $params[$i] =~ /\s*([^\s]+)\s+(OUT|INOUT)\s/is)
+								{
 									push(@out_fields, $1);
 									push(@out_pos, $i);
 									$call_params .= $cparams[$i] if ($params[$i] =~ /\bINOUT\b/is);
-								} elsif ($class->{is_mysql} && $params[$i] =~ /\s*(OUT|INOUT)\s+([^\s]+)\s/is) {
+								}
+								elsif ($class->{is_mysql} && $params[$i] =~ /\s*(OUT|INOUT)\s+([^\s]+)\s/is)
+								{
 									push(@out_fields, $2);
 									push(@out_pos, $i);
 									$call_params .= $cparams[$i] if ($params[$i] =~ /\bINOUT\b/is);
-								} else {
+								}
+								else
+								{
 									$call_params .= $cparams[$i];
 								}
-								$call_params .= ", " if ($i < $#params);
+								$call_params .= ', ' if ($i < $#params);
 							}
 							map { s/^\(//; } @out_fields;
 							$call_params =~ s/(\s*,\s*)+$//s;
@@ -1730,13 +1752,16 @@ sub replace_out_param_call
 							foreach my $i (@out_pos) {
 								push(@out_param, $cparams[$i]);
 							}
-							if ($class->{function_metadata}{$sch}{$p}{$k}{metadata}{inout} == 1) {
+							if ($class->{function_metadata}{$sch}{$p}{$k}{metadata}{inout} == 1)
+							{
 								if ($#out_param == 0) {
 									$replace_out_parm{$idx} = "$out_param[0] := $replace_out_parm{$idx}";
 								} else {
 									$replace_out_parm{$idx} = "SELECT * FROM $replace_out_parm{$idx} INTO " . join(', ', @out_param);
 								}
-							} elsif ($class->{function_metadata}{$sch}{$p}{$k}{metadata}{inout} > 1) {
+							}
+							elsif ($class->{function_metadata}{$sch}{$p}{$k}{metadata}{inout} > 1)
+							{
 								$class->{replace_out_params} = "_ora2pg_r RECORD;" if (!$class->{replace_out_params});
 								$replace_out_parm{$idx} = "SELECT * FROM $replace_out_parm{$idx} INTO _ora2pg_r;";
 								my $out_field_pos = 0;
