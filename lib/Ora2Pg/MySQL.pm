@@ -722,21 +722,30 @@ sub _get_functions
 	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
 	my %functions = ();
-	while (my $row = $sth->fetch) {
-
+	while (my $row = $sth->fetch)
+	{
 		my $kind = 'FUNCTION';
-		if (!$row->[2]) {
-			$kind = 'PROCEDURE';
+		if ($self->{db_version} < '5.5.0')
+		{
+			if (!$row->[2]) {
+				$kind = 'PROCEDURE';
+			}
+		}
+		else
+		{
+			$kind = $row->[2];
 		}
 		next if ( ($kind ne $self->{type}) && ($self->{type} ne 'SHOW_REPORT') );
 		my $sth2 = $self->{dbh}->prepare("SHOW CREATE $kind $row->[0]") or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 		$sth2->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-		while (my $r = $sth2->fetch) {
+		while (my $r = $sth2->fetch)
+		{
 			$functions{"$row->[0]"}{text} = $r->[2];
 			last;
 		}
 		$sth2->finish();
-		if ($self->{plsql_pgsql} || ($self->{type} eq 'SHOW_REPORT')) {
+		if ($self->{plsql_pgsql} || ($self->{type} eq 'SHOW_REPORT'))
+		{
 			$functions{"$row->[0]"}{name} = $row->[0];
 			$functions{"$row->[0]"}{return} = $row->[2];
 			$functions{"$row->[0]"}{definition} = $row->[1];
@@ -1413,9 +1422,14 @@ sub _get_objects
 		}
 	}
 	# FUNCTION
-	$sql = "SELECT ROUTINE_NAME FROM INFORMATION_SCHEMA.ROUTINES WHERE DATA_TYPE IS NOT NULL AND ROUTINE_SCHEMA = '$self->{schema}'";
-	if ($self->{db_version} < '5.5.0') {
+	if ($self->{db_version} < '5.5.0')
+	{
+		$sql = "SELECT ROUTINE_NAME FROM INFORMATION_SCHEMA.ROUTINES WHERE DATA_TYPE IS NOT NULL AND ROUTINE_SCHEMA = '$self->{schema}'";
 		$sql =~ s/\bDATA_TYPE\b/DTD_IDENTIFIER/;
+	}
+	else
+	{
+		$sql = "SELECT ROUTINE_NAME FROM INFORMATION_SCHEMA.ROUTINES WHERE DATA_TYPE = 'FUNCTION' AND ROUTINE_SCHEMA = '$self->{schema}'";
 	}
 	$sth = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -1424,9 +1438,14 @@ sub _get_objects
 	}
 	$sth->finish();
 	# PROCEDURE
-	$sql = "SELECT ROUTINE_NAME FROM INFORMATION_SCHEMA.ROUTINES WHERE DATA_TYPE IS NULL AND ROUTINE_SCHEMA = '$self->{schema}'";
-	if ($self->{db_version} < '5.5.0') {
+	if ($self->{db_version} < '5.5.0')
+	{
+		$sql = "SELECT ROUTINE_NAME FROM INFORMATION_SCHEMA.ROUTINES WHERE DATA_TYPE IS NULL AND ROUTINE_SCHEMA = '$self->{schema}'";
 		$sql =~ s/\bDATA_TYPE\b/DTD_IDENTIFIER/;
+	}
+	else
+	{
+		$sql = "SELECT ROUTINE_NAME FROM INFORMATION_SCHEMA.ROUTINES WHERE DATA_TYPE = 'PROCEDURE' AND ROUTINE_SCHEMA = '$self->{schema}'";
 	}
 	$sth = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
