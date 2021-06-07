@@ -707,7 +707,7 @@ sub _get_functions
 	# COLLATION_CONNECTION     | varchar(32)   | NO   |     |                     |       |
 	# DATABASE_COLLATION       | varchar(32)   | NO   |     |                     |       |
 
-	my $str = "SELECT ROUTINE_NAME,ROUTINE_DEFINITION,DATA_TYPE,ROUTINE_BODY,EXTERNAL_LANGUAGE,SECURITY_TYPE,IS_DETERMINISTIC FROM INFORMATION_SCHEMA.ROUTINES";
+	my $str = "SELECT ROUTINE_NAME,ROUTINE_DEFINITION,DATA_TYPE,ROUTINE_BODY,EXTERNAL_LANGUAGE,SECURITY_TYPE,IS_DETERMINISTIC,ROUTINE_TYPE FROM INFORMATION_SCHEMA.ROUTINES";
 	if ($self->{schema}) {
 		$str .= " AND ROUTINE_SCHEMA = '$self->{schema}'";
 	}
@@ -724,17 +724,7 @@ sub _get_functions
 	my %functions = ();
 	while (my $row = $sth->fetch)
 	{
-		my $kind = 'FUNCTION';
-		if ($self->{db_version} < '5.5.0')
-		{
-			if (!$row->[2]) {
-				$kind = 'PROCEDURE';
-			}
-		}
-		else
-		{
-			$kind = $row->[2];
-		}
+		my $kind = $row->[7]; # FUNCTION or PROCEDURE
 		next if ( ($kind ne $self->{type}) && ($self->{type} ne 'SHOW_REPORT') );
 		my $sth2 = $self->{dbh}->prepare("SHOW CREATE $kind $row->[0]") or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 		$sth2->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -1422,15 +1412,7 @@ sub _get_objects
 		}
 	}
 	# FUNCTION
-	if ($self->{db_version} < '5.5.0')
-	{
-		$sql = "SELECT ROUTINE_NAME FROM INFORMATION_SCHEMA.ROUTINES WHERE DATA_TYPE IS NOT NULL AND ROUTINE_SCHEMA = '$self->{schema}'";
-		$sql =~ s/\bDATA_TYPE\b/DTD_IDENTIFIER/;
-	}
-	else
-	{
-		$sql = "SELECT ROUTINE_NAME FROM INFORMATION_SCHEMA.ROUTINES WHERE DATA_TYPE = 'FUNCTION' AND ROUTINE_SCHEMA = '$self->{schema}'";
-	}
+	$sql = "SELECT ROUTINE_NAME FROM INFORMATION_SCHEMA.ROUTINES WHERE ROUTINE_TYPE = 'FUNCTION' AND ROUTINE_SCHEMA = '$self->{schema}'";
 	$sth = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	while ( my @row = $sth->fetchrow()) {
@@ -1438,15 +1420,7 @@ sub _get_objects
 	}
 	$sth->finish();
 	# PROCEDURE
-	if ($self->{db_version} < '5.5.0')
-	{
-		$sql = "SELECT ROUTINE_NAME FROM INFORMATION_SCHEMA.ROUTINES WHERE DATA_TYPE IS NULL AND ROUTINE_SCHEMA = '$self->{schema}'";
-		$sql =~ s/\bDATA_TYPE\b/DTD_IDENTIFIER/;
-	}
-	else
-	{
-		$sql = "SELECT ROUTINE_NAME FROM INFORMATION_SCHEMA.ROUTINES WHERE DATA_TYPE = 'PROCEDURE' AND ROUTINE_SCHEMA = '$self->{schema}'";
-	}
+	$sql = "SELECT ROUTINE_NAME FROM INFORMATION_SCHEMA.ROUTINES WHERE ROUTINE_TYPE = 'PROCEDURE' AND ROUTINE_SCHEMA = '$self->{schema}'";
 	$sth = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	while ( my @row = $sth->fetchrow()) {
