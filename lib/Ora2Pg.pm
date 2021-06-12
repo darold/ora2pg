@@ -14681,6 +14681,7 @@ sub _convert_package
 			}
 		}
 	}
+
 	# Grab global declaration from the package header
 	if ($self->{packages}{$pkg}{desc} =~ /CREATE OR REPLACE PACKAGE\s+([^\s]+)(?:\s*\%ORA2PG_COMMENT\d+\%)*\s*((?:AS|IS)(?:\s*\%ORA2PG_COMMENT\d+\%)*)\s*(.*)/is)
 	{
@@ -21117,6 +21118,9 @@ sub clear_global_declaration
 
 	# Remove comment
 	$str =~ s/\%ORA2PG_COMMENT\d+\%//igs;
+
+	# remove pragma restrict_references
+	$str =~ s/PRAGMA\s+RESTRICT_REFERENCES\s*\([^;]+;//igs;
 
 	# Remove all function/procedure declaration from the content
 	if (!$is_pkg_body) {
