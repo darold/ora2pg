@@ -24,7 +24,7 @@ package Ora2Pg::PLSQL;
 # 
 #------------------------------------------------------------------------------
 
-use vars qw($VERSION %OBJECT_SCORE $SIZE_SCORE $FCT_TEST_SCORE $QUERY_TEST_SCORE %UNCOVERED_SCORE %UNCOVERED_MYSQL_SCORE @ORA_FUNCTIONS @MYSQL_SPATIAL_FCT @MYSQL_FUNCTIONS %EXCEPTION_MAP);
+use vars qw($VERSION %OBJECT_SCORE $SIZE_SCORE $FCT_TEST_SCORE $QUERY_TEST_SCORE %UNCOVERED_SCORE %UNCOVERED_MYSQL_SCORE @ORA_FUNCTIONS @MYSQL_SPATIAL_FCT @MYSQL_FUNCTIONS %EXCEPTION_MAP %MAX_SCORE);
 use POSIX qw(locale_h);
 
 #set locale to LC_NUMERIC C
@@ -63,6 +63,17 @@ $VERSION = '21.1';
 	'SYNONYM' => 0.1, # read/adapt
 	'QUERY' => 0.2, # read/adapt
 	'ENCRYPTED COLUMN' => 20, ## adapt using pg_crypto
+);
+
+# Max score to applicate per type of object
+%MAX_SCORE = (
+	'INDEX' => 288, # 3 man days
+	'SEQUENCE' => 288, # 3 man days
+	'TABLE' => 672, # 7 man days
+	'TABLE PARTITION' => 480, # 5 man days
+	'TABLE SUBPARTITION' => 480, # 5 man days
+	'GLOBAL TEMPORARY TABLE' => 288, # 3 man days
+	'SYNONYM' => 192, # 2 man days
 );
 
 # Scores following the number of characters: 1000 chars for one unit.
