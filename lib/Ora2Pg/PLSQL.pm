@@ -433,8 +433,8 @@ sub convert_plsql_code
 
 	if ($class->{replace_out_params})
 	{
-		if ($str !~ s/\b(DECLARE\s+)/$1$class->{replace_out_params}\n/is) {
-			$str =~ s/\b(BEGIN\s+)/DECLARE\n$class->{replace_out_params}\n$1/is;
+		if ($str !~ s/\b(DECLARE(?:\s+|\%ORA2PG_COMMENT\d+\%))/$1$class->{replace_out_params}\n/is) {
+			$str =~ s/\b(BEGIN(?:\s+|\%ORA2PG_COMMENT\d+\%))/DECLARE\n$class->{replace_out_params}\n$1/is;
 		}
 		$class->{replace_out_params} = '';
 	}
