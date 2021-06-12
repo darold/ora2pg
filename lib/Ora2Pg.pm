@@ -17766,7 +17766,7 @@ sub _show_infos
 					my $encrypted = '';
 					$encrypted = " [encrypted]" if (exists $self->{encrypted_column}{"$t.$k"});
 					my $virtual = '';
-					$virtual = " [virtual column]" if ($d->[10] eq 'YES');
+					$virtual = " [virtual column]" if ($d->[10] eq 'YES' && $d->[4]);
 					$self->logit(" => $type1$warning$align$virtual$encrypted\n");
 				}
 			}
