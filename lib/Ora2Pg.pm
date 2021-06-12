@@ -20163,7 +20163,9 @@ sub set_search_path
 	if ($self->{data_type}{BFILE} eq 'efile') {
 			$local_path .= ',external_file';
 	}
-	$local_path .= ',public';
+	my $orafce_path = '';
+	$orafce_path = ',oracle' if ($self->{'use_orafce'});
+	$local_path .= "$orafce_path,public";
 	
 	my $search_path = '';
 	if (!$self->{schema} && $self->{export_schema} && $owner) {
