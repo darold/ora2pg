@@ -2265,9 +2265,7 @@ sub estimate_cost
 	$cost_details{'SIZE'} = $cost_size;
 
 	# Try to figure out the manual work
-	my $n = () = $str =~ m/\bTRUNC\s*\(/igs;
-	$cost_details{'TRUNC'} += $n;
-	$n = () = $str =~ m/\bIS\s+TABLE\s+OF\b/igs;
+	my $n = () = $str =~ m/\bIS\s+TABLE\s+OF\b/igs;
 	$cost_details{'IS TABLE OF'} += $n;
 	$n = () = $str =~ m/\(\+\)/igs;
 	$cost_details{'OUTER JOIN'} += $n;
@@ -2299,8 +2297,6 @@ sub estimate_cost
 	$cost_details{'DBMS_'} += $n;
 	$n = () = $str =~ m/DBMS_OUTPUT\.(put_line|new_line|put)/igs;
 	$cost_details{'DBMS_'} -= $n;
-	$n = () = $str =~ m/DBMS_OUTPUT\.put\(/igs;
-	$cost_details{'DBMS_OUTPUT.put'} += $n;
 	$n = () = $str =~ m/DBMS_STANDARD\.RAISE EXCEPTION/igs;
 	$cost_details{'DBMS_'} -= $n;
 	$n = () = $str =~ m/UTL_\w/igs;
@@ -2314,8 +2310,22 @@ sub estimate_cost
 	# See:  http://www.postgresql.org/docs/9.0/static/errcodes-appendix.html#ERRCODES-TABLE
 	$n = () = $str =~ m/\b(DUP_VAL_ON_INDEX|TIMEOUT_ON_RESOURCE|TRANSACTION_BACKED_OUT|NOT_LOGGED_ON|LOGIN_DENIED|INVALID_NUMBER|PROGRAM_ERROR|VALUE_ERROR|ROWTYPE_MISMATCH|CURSOR_ALREADY_OPEN|ACCESS_INTO_NULL|COLLECTION_IS_NULL)\b/igs;
 	$cost_details{'EXCEPTION'} += $n;
+	$n = () = $str =~ m/PLUNIT/igs;
+	$cost_details{'PLUNIT'} += $n;
 	if (!$class->{use_orafce})
 	{
+		$n = () = $str =~ m/ADD_MONTHS/igs;
+		$cost_details{'ADD_MONTHS'} += $n;
+		$n = () = $str =~ m/LAST_DAY/igs;
+		$cost_details{'LAST_DAY'} += $n;
+		$n = () = $str =~ m/NEXT_DAY/igs;
+		$cost_details{'NEXT_DAY'} += $n;
+		$n = () = $str =~ m/MONTHS_BETWEEN/igs;
+		$cost_details{'MONTHS_BETWEEN'} += $n;
+		$n = () = $str =~ m/DBMS_OUTPUT\.put\(/igs;
+		$cost_details{'DBMS_OUTPUT.put'} += $n;
+		$n = () = $str =~ m/\bTRUNC\s*\(/igs;
+		$cost_details{'TRUNC'} += $n;
 		$n = () = $str =~ m/REGEXP_LIKE/igs;
 		$cost_details{'REGEXP_LIKE'} += $n;
 		$n = () = $str =~ m/REGEXP_SUBSTR/igs;
@@ -2324,6 +2334,33 @@ sub estimate_cost
 		$cost_details{'REGEXP_COUNT'} += $n;
 		$n = () = $str =~ m/REGEXP_INSTR/igs;
 		$cost_details{'REGEXP_INSTR'} += $n;
+		$n = () = $str =~ m/PLVDATE/igs;
+		$cost_details{'PLVDATE'} += $n;
+		$n = () = $str =~ m/PLVSTR/igs;
+		$cost_details{'PLVSTR'} += $n;
+		$n = () = $str =~ m/PLVCHR/igs;
+		$cost_details{'PLVCHR'} += $n;
+		$n = () = $str =~ m/PLVSUBST/igs;
+		$cost_details{'PLVSUBST'} += $n;
+		$n = () = $str =~ m/PLVLEX/igs;
+		$cost_details{'PLVLEX'} += $n;
+	}
+	else
+	{
+		$n = () = $str =~ m/UTL_FILE/igs;
+		$cost_details{'UTL_'} -= $n;
+		$n = () = $str =~ m/DBMS_PIPE/igs;
+		$cost_details{'DBMS_'} -= $n;
+		$n = () = $str =~ m/DBMS_ALERT/igs;
+		$cost_details{'DBMS_'} -= $n;
+		$n = () = $str =~ m/DMS_UTILITY.FORMAT_CALL_STACK/igs;
+		$cost_details{'DBMS_'} -= $n;
+		$n = () = $str =~ m/DBMS_ASSERT/igs;
+		$cost_details{'DBMS_'} -= $n;
+		$n = () = $str =~ m/DBMS_STRING/igs;
+		$cost_details{'DBMS_'} -= $n;
+		$n = () = $str =~ m/PLUNIT.ASSERT/igs;
+		$cost_details{'PLUNIT'} -= $n;
 	}
 	$n = () = $str =~ m/\b(INSERTING|DELETING|UPDATING)\b/igs;
 	$cost_details{'TG_OP'} += $n;
@@ -2339,27 +2376,6 @@ sub estimate_cost
 	$cost_details{'ISOPEN'} += $n;
 	$n = () = $str =~ m/\%ROWCOUNT\b/igs;
 	$cost_details{'ROWCOUNT'} += $n;
-
-	$n = () = $str =~ m/PLVDATE/igs;
-	$cost_details{'PLVDATE'} += $n;
-	$n = () = $str =~ m/PLVSTR/igs;
-	$cost_details{'PLVSTR'} += $n;
-	$n = () = $str =~ m/PLVCHR/igs;
-	$cost_details{'PLVCHR'} += $n;
-	$n = () = $str =~ m/PLVSUBST/igs;
-	$cost_details{'PLVSUBST'} += $n;
-	$n = () = $str =~ m/PLVLEX/igs;
-	$cost_details{'PLVLEX'} += $n;
-	$n = () = $str =~ m/PLUNIT/igs;
-	$cost_details{'PLUNIT'} += $n;
-	$n = () = $str =~ m/ADD_MONTHS/igs;
-	$cost_details{'ADD_MONTHS'} += $n;
-	$n = () = $str =~ m/LAST_DAY/igs;
-	$cost_details{'LAST_DAY'} += $n;
-	$n = () = $str =~ m/NEXT_DAY/igs;
-	$cost_details{'NEXT_DAY'} += $n;
-	$n = () = $str =~ m/MONTHS_BETWEEN/igs;
-	$cost_details{'MONTHS_BETWEEN'} += $n;
 	$n = () = $str =~ m/NVL2/igs;
 	$cost_details{'NVL2'} += $n;
 	$str =~ s/MDSYS\.(["]*SDO_)/$1/igs;
