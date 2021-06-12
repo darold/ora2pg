@@ -571,6 +571,15 @@ sub set_error_code
 	return $code;
 }
 
+# Fix case where the raise_application_error() parameters are named by removing them
+sub remove_named_parameters
+{
+	my $str = shift;
+
+	$str =~ s/\w+\s*=>\s*//g;
+
+	return $str;
+}
 
 =head2 plsql_to_plpgsql
 
@@ -789,8 +798,8 @@ sub plsql_to_plpgsql
 	$str =~ s/\bdup_val_on_index\b/unique_violation/igs;
 
 	# Replace raise_application_error by PG standard RAISE EXCEPTION
-	$str =~ s/\braise_application_error\s*\(\s*([^,]+)\s*,\s*([^;]+),\s*(true|false)\s*\)\s*;/"RAISE EXCEPTION '%', $2 USING ERRCODE = " . set_error_code($1) . ";"/iges;
-	$str =~ s/\braise_application_error\s*\(\s*([^,]+)\s*,\s*([^;]+)\)\s*;/"RAISE EXCEPTION '%', $2 USING ERRCODE = " . set_error_code($1) . ";"/iges;
+	$str =~ s/\braise_application_error\s*\(\s*([^,]+)\s*,\s*([^;]+),\s*(true|false)\s*\)\s*;/"RAISE EXCEPTION '%', " . remove_named_parameters($2) . " USING ERRCODE = " . set_error_code(remove_named_parameters($1)) . ";"/iges;
+	$str =~ s/\braise_application_error\s*\(\s*([^,]+)\s*,\s*([^;]+)\)\s*;/"RAISE EXCEPTION '%', " . remove_named_parameters($2) . " USING ERRCODE = " . set_error_code(remove_named_parameters($1)) . ";"/iges;
 	$str =~ s/DBMS_STANDARD\.RAISE EXCEPTION/RAISE EXCEPTION/igs;
 
 	# Translate cursor declaration
