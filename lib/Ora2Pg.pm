@@ -38,6 +38,7 @@ use File::Basename;
 use File::Spec qw/ tmpdir /;
 use File::Temp qw/ tempfile /;
 use Benchmark;
+use Encode;
 
 #set locale to LC_NUMERIC C
 setlocale(LC_NUMERIC,"C");
@@ -12730,6 +12731,8 @@ sub _get_functions
 		if (!$self->{schema} && $self->{export_schema}) {
 			$row->[0] = "$row->[1].$row->[0]";
 		}
+		# Fix possible Malformed UTF-8 character
+		$row->[2] = encode('UTF-8', $row->[2]);
 		# Remove some bargage when migrating from 8i
 		$row->[2] =~ s/\bAUTHID\s+[^\s]+\s+//is;
 		if (exists $functions{"$row->[0]"}) {
@@ -12835,6 +12838,7 @@ sub _get_procedures
 			$row->[0] = "$row->[1].$row->[0]";
 		}
 		# Remove some bargage when migrating from 8i
+		$row->[2] = encode('UTF-8', $row->[2]);
 		$row->[2] =~ s/\bAUTHID\s+[^\s]+\s+//is;
 		if (exists $procedures{"$row->[0]"}) {
 			$procedures{"$row->[0]"}{text} .= $row->[2];
@@ -14671,7 +14675,7 @@ sub _convert_package
 		}
 	}
 	# Grab global declaration from the package header
-	if ($self->{packages}{$pkg}{desc} =~ /CREATE OR REPLACE PACKAGE\s+([^\s]+)(?:\s*\%ORA2PG_COMMENT\d+\%)*\s*(AS|IS)\s*(.*)/is)
+	if ($self->{packages}{$pkg}{desc} =~ /CREATE OR REPLACE PACKAGE\s+([^\s]+)(?:\s*\%ORA2PG_COMMENT\d+\%)*\s*((?:AS|IS)(?:\s*\%ORA2PG_COMMENT\d+\%)*)\s*(.*)/is)
 	{
 		my $pname = $1;
 		my $type = $2;
@@ -14708,7 +14712,7 @@ sub _convert_package
 	}
 
 	# Convert the package body part
-	if ($self->{packages}{$pkg}{text} =~ /CREATE OR REPLACE PACKAGE\s+BODY\s*([^\s]+)(?:\s*\%ORA2PG_COMMENT\d+\%)*\s*(AS|IS)\s*(.*)/is)
+	if ($self->{packages}{$pkg}{text} =~ /CREATE OR REPLACE PACKAGE\s+BODY\s*([^\s\%]+)(?:\s*\%ORA2PG_COMMENT\d+\%)*\s*(AS|IS)\s*(.*)/is)
 	{
 
 		my $pname = $1;
@@ -14851,6 +14855,7 @@ sub _remove_comments
 	my ($self, $content, $no_constant) = @_;
 
 	# Fix comment in a string constant
+	$$content = encode('UTF-8', $$content);
 	while ($$content =~ s/('[^';\n]*)\/\*([^';\n]*')/$1\%OPEN_COMMENT\%$2/s) {};
 
 	# Fix unterminated comment at end of the code
@@ -19882,7 +19887,7 @@ sub _lookup_package
 
 	my $content = '';
 	my %infos = ();
-	if ($plsql =~ /(?:CREATE|CREATE OR REPLACE)?\s*(?:EDITIONABLE|NONEDITIONABLE)?\s*PACKAGE\s+BODY\s*([^\s]+)((?:\s*\%ORA2PG_COMMENT\d+\%)*\s*(?:AS|IS))\s*(.*)/is)
+	if ($plsql =~ /(?:CREATE|CREATE OR REPLACE)?\s*(?:EDITIONABLE|NONEDITIONABLE)?\s*PACKAGE\s+BODY\s*([^\s\%]+)((?:\s*\%ORA2PG_COMMENT\d+\%)*\s*(?:AS|IS))\s*(.*)/is)
 	{
 		my $pname = $1;
 		my $type = $2;
