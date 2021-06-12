@@ -917,6 +917,7 @@ sub _init
 	$self->{look_forward_function} = ();
 	$self->{no_function_metadata} = 0;
 	$self->{oracle_fdw_transform} = ();
+	$self->{all_objects} = ();
 
 	# Initial command to execute at Oracle and PostgreSQL connexion
 	$self->{ora_initial_command} = ();
@@ -10835,9 +10836,12 @@ sub _column_info
 	}
 
 	my $sth = '';
-	if ($self->{db_version} !~ /Release 8/) {
+	my $sql = '';
+	#my $virtual_col = "SELECT V.VIRTUAL_COLUMN FROM $self->{prefix}_TAB_COLS V WHERE V.OWNER=? AND V.TABLE_NAME=? AND V.COLUMN_NAME=?";
+	if ($self->{db_version} !~ /Release 8/)
+	{
 		my $exclude_mview = $self->exclude_mviews('A.OWNER, A.TABLE_NAME');
-		$sth = $self->{dbh}->prepare(<<END);
+		$sql = qq{
 SELECT A.COLUMN_NAME, A.DATA_TYPE, A.DATA_LENGTH, A.NULLABLE, A.DATA_DEFAULT,
     A.DATA_PRECISION, A.DATA_SCALE, A.CHAR_LENGTH, A.TABLE_NAME, A.OWNER, V.VIRTUAL_COLUMN
 FROM $self->{prefix}_TAB_COLUMNS A, $self->{prefix}_OBJECTS O, $self->{prefix}_TAB_COLS V
@@ -10845,29 +10849,28 @@ WHERE A.OWNER=O.OWNER and A.TABLE_NAME=O.OBJECT_NAME and O.OBJECT_TYPE='$objtype
     AND A.OWNER=V.OWNER AND A.TABLE_NAME=V.TABLE_NAME AND A.COLUMN_NAME=V.COLUMN_NAME $condition
     $exclude_mview
 ORDER BY A.COLUMN_ID
-END
-		if (!$sth) {
-			my $ret = $self->{dbh}->err;
-			if (!$recurs && ($ret == 942) && ($self->{prefix} eq 'DBA')) {
-				$self->logit("HINT: Please activate USER_GRANTS or connect using a user with DBA privilege.\n");
-				$self->{prefix} = 'ALL';
-				return $self->_column_info($table, $owner, $objtype, 1);
-			}
-			$self->logit("FATAL: _column_info() " . $self->{dbh}->errstr . "\n", 0, 1);
-		}
-	} else {
-		# an 8i database.
-		$sth = $self->{dbh}->prepare(<<END);
+};
+		$sql = qq{
 SELECT A.COLUMN_NAME, A.DATA_TYPE, A.DATA_LENGTH, A.NULLABLE, A.DATA_DEFAULT,
-    A.DATA_PRECISION, A.DATA_SCALE, A.DATA_LENGTH, A.TABLE_NAME, A.OWNER, 'NO' as "VIRTUAL_COLUMN"
-FROM $self->{prefix}_TAB_COLUMNS A, $self->{prefix}_OBJECTS O
-WHERE A.OWNER=O.OWNER and A.TABLE_NAME=O.OBJECT_NAME and O.OBJECT_TYPE='$objtype'
-    $condition
+    A.DATA_PRECISION, A.DATA_SCALE, A.CHAR_LENGTH, A.TABLE_NAME, A.OWNER, V.VIRTUAL_COLUMN
+FROM $self->{prefix}_TAB_COLUMNS A, $self->{prefix}_TAB_COLS V
+WHERE A.OWNER=V.OWNER AND A.TABLE_NAME=V.TABLE_NAME AND A.COLUMN_NAME=V.COLUMN_NAME $condition
+    $exclude_mview
 ORDER BY A.COLUMN_ID
-END
-		if (!$sth) {
+};
+		$sql = qq{
+SELECT A.COLUMN_NAME, A.DATA_TYPE, A.DATA_LENGTH, A.NULLABLE, A.DATA_DEFAULT,
+    A.DATA_PRECISION, A.DATA_SCALE, A.CHAR_LENGTH, A.TABLE_NAME, A.OWNER, 'NO' as "VIRTUAL_COLUMN"
+FROM $self->{prefix}_TAB_COLUMNS A
+WHERE 1=1 $condition
+ORDER BY A.COLUMN_ID
+};
+		$sth = $self->{dbh}->prepare($sql);
+		if (!$sth)
+		{
 			my $ret = $self->{dbh}->err;
-			if (!$recurs && ($ret == 942) && ($self->{prefix} eq 'DBA')) {
+			if (!$recurs && ($ret == 942) && ($self->{prefix} eq 'DBA'))
+			{
 				$self->logit("HINT: Please activate USER_GRANTS or connect using a user with DBA privilege.\n");
 				$self->{prefix} = 'ALL';
 				return $self->_column_info($table, $owner, $objtype, 1);
@@ -10875,6 +10878,38 @@ END
 			$self->logit("FATAL: _column_info() " . $self->{dbh}->errstr . "\n", 0, 1);
 		}
 	}
+	else
+	{
+		# an 8i database.
+		$sql = qq{
+SELECT A.COLUMN_NAME, A.DATA_TYPE, A.DATA_LENGTH, A.NULLABLE, A.DATA_DEFAULT,
+    A.DATA_PRECISION, A.DATA_SCALE, A.DATA_LENGTH, A.TABLE_NAME, A.OWNER, 'NO' as "VIRTUAL_COLUMN"
+FROM $self->{prefix}_TAB_COLUMNS A, $self->{prefix}_OBJECTS O
+WHERE A.OWNER=O.OWNER and A.TABLE_NAME=O.OBJECT_NAME and O.OBJECT_TYPE='$objtype'
+    $condition
+ORDER BY A.COLUMN_ID
+};
+		$sql = qq{
+SELECT A.COLUMN_NAME, A.DATA_TYPE, A.DATA_LENGTH, A.NULLABLE, A.DATA_DEFAULT,
+    A.DATA_PRECISION, A.DATA_SCALE, A.DATA_LENGTH, A.TABLE_NAME, A.OWNER, 'NO' as "VIRTUAL_COLUMN"
+FROM $self->{prefix}_TAB_COLUMNS A
+    $condition
+ORDER BY A.COLUMN_ID
+};
+		$sth = $self->{dbh}->prepare($sql);
+		if (!$sth)
+		{
+			my $ret = $self->{dbh}->err;
+			if (!$recurs && ($ret == 942) && ($self->{prefix} eq 'DBA'))
+			{
+				$self->logit("HINT: Please activate USER_GRANTS or connect using a user with DBA privilege.\n");
+				$self->{prefix} = 'ALL';
+				return $self->_column_info($table, $owner, $objtype, 1);
+			}
+			$self->logit("FATAL: _column_info() " . $self->{dbh}->errstr . "\n", 0, 1);
+		}
+	}
+	$self->logit("DEBUG, $sql", 1);
 	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: _column_info() " . $self->{dbh}->errstr . "\n", 0, 1);
 
 	# Default number of line to scan to grab the geometry type of the column.
@@ -10886,7 +10921,8 @@ END
 	# Set query to retrieve the SRID
 	my $spatial_srid = "SELECT SRID FROM ALL_SDO_GEOM_METADATA WHERE TABLE_NAME=? AND COLUMN_NAME=? AND OWNER=?";
 	my $st_spatial_srid = "SELECT ST_SRID(c.%s) FROM %s c";
-	if ($self->{convert_srid}) {
+	if ($self->{convert_srid})
+	{
 		# Translate SRID to standard EPSG SRID, may return 0 because there's lot of Oracle only SRID.
 		$spatial_srid = 'SELECT sdo_cs.map_oracle_srid_to_epsg(SRID) FROM ALL_SDO_GEOM_METADATA WHERE TABLE_NAME=? AND COLUMN_NAME=? AND OWNER=?';
 	}
@@ -10894,10 +10930,16 @@ END
 	my $spatial_dim = "SELECT t.SDO_DIMNAME, t.SDO_LB, t.SDO_UB FROM ALL_SDO_GEOM_METADATA m, TABLE (m.diminfo) t WHERE m.TABLE_NAME=? AND m.COLUMN_NAME=? AND OWNER=?";
 	my $st_spatial_dim = "SELECT ST_DIMENSION(c.%s) FROM %s c";
 
+	my $t0 = Benchmark->new;
 	my %data = ();
 	my $pos = 0;
+	my $ncols = 0;
 	while (my $row = $sth->fetch)
 	{
+		my $tmptable = "$row->[9].$row->[8]";
+		next if (!exists $self->{all_objects}{$tmptable}
+					|| $self->{all_objects}{$tmptable} ne $objtype);
+
 		$row->[2] = $row->[7] if $row->[1] =~ /char/i;
 
 		# Seems that for a NUMBER with a DATA_SCALE to 0, no DATA_PRECISION and a DATA_LENGTH of 22
@@ -10906,7 +10948,7 @@ END
 			$row->[2] = 38;
 		}
 
-		my $tmptable = $row->[8];
+		$tmptable = $row->[8];
 		if ($self->{export_schema} && !$self->{schema}) {
 			$tmptable = "$row->[9].$row->[8]";
 		}
@@ -10956,10 +10998,14 @@ END
 
 			# Grab constraint type and dimensions from index definition
 			my $found_contraint = 0;
-			foreach my $idx (keys %{$self->{tables}{$tmptable}{idx_type}}) {
-				if (exists $self->{tables}{$tmptable}{idx_type}{$idx}{type_constraint}) {
-					foreach my $c (@{$self->{tables}{$tmptable}{indexes}{$idx}}) {
-						if ($c eq $row->[0]) {
+			foreach my $idx (keys %{$self->{tables}{$tmptable}{idx_type}})
+			{
+				if (exists $self->{tables}{$tmptable}{idx_type}{$idx}{type_constraint})
+				{
+					foreach my $c (@{$self->{tables}{$tmptable}{indexes}{$idx}})
+					{
+						if ($c eq $row->[0])
+						{
 							if ($self->{tables}{$tmptable}{idx_type}{$idx}{type_dims}) {
 								$found_dims = $self->{tables}{$tmptable}{idx_type}{$idx}{type_dims};
 							}
@@ -10990,7 +11036,9 @@ END
 				}
 				$sth2->finish();
 				push(@geom_inf, $count);
-			} else {
+			}
+			else
+			{
 				push(@geom_inf, $found_dims);
 			}
 
@@ -11023,10 +11071,13 @@ END
 				} else {
 					push(@geom_inf, join(',', @result));
 				}
-			} elsif ($found_contraint) {
+			}
+			elsif ($found_contraint)
+			{
 				push(@geom_inf, $found_contraint);
-
-			} else {
+			}
+			else
+			{
 				push(@geom_inf, $ORA2PG_SDO_GTYPE{0});
 			}
 		}
@@ -11046,9 +11097,12 @@ END
 			}
 			push(@{$data{"$row->[8]"}{"$row->[0]"}}, (@$row, $pos, @geom_inf));
 		}
-
 		$pos++;
+		$ncols++;
 	}
+	my $t1 = Benchmark->new;
+	$td = timediff($t1, $t0);
+	$self->logit("Collecting $ncols columns in $self->{prefix}_INDEXES took: " . timestr($td) . "\n", 1);
 
 	return %data;	
 }
@@ -11098,7 +11152,8 @@ END
 	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: _column_attributes() " . $self->{dbh}->errstr . "\n", 0, 1);
 
 	my %data = ();
-	while (my $row = $sth->fetch) {
+	while (my $row = $sth->fetch)
+	{
 		if ($self->{export_schema} && !$self->{schema}) {
 			$data{"$row->[4].$row->[3]"}{"$row->[0]"}{nullable} = $row->[1];
 			$data{"$row->[4].$row->[3]"}{"$row->[0]"}{default} = $row->[2];
@@ -11652,6 +11707,8 @@ sub _get_indexes
 
 	return Ora2Pg::MySQL::_get_indexes($self,$table,$owner) if ($self->{is_mysql});
 
+	# Retrieve all indexes 
+
 	# Retrieve FTS indexes information before.
 	my %idx_info = ();
 	%idx_info = $self->_get_fts_indexes_info($owner) if ($self->_table_exists('CTXSYS', 'CTX_INDEX_VALUES'));
@@ -11678,9 +11735,10 @@ sub _get_indexes
         my $generated = '';
         $generated = " B.GENERATED = 'N' AND" if (!$generated_indexes);
 
-	# Retrieve all indexes 
+        my $t0 = Benchmark->new;
 	my $sth = '';
-	if ($self->{db_version} !~ /Release 8/) {
+	if ($self->{db_version} !~ /Release 8/)
+	{
 		my $no_mview = $self->exclude_mviews('A.INDEX_OWNER, A.TABLE_NAME');
 		$no_mview = '' if ($self->{type} eq 'MVIEW');
 		$sth = $self->{dbh}->prepare(<<END) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -11690,7 +11748,9 @@ JOIN $self->{prefix}_INDEXES B ON (B.INDEX_NAME=A.INDEX_NAME AND B.OWNER=A.INDEX
 WHERE$generated B.TEMPORARY = 'N' $condition $no_mview
 ORDER BY A.COLUMN_POSITION
 END
-	} else {
+	}
+	else
+	{
 		# an 8i database.
 		$sth = $self->{dbh}->prepare(<<END) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 SELECT DISTINCT A.INDEX_NAME,A.COLUMN_NAME,B.UNIQUENESS,A.COLUMN_POSITION,B.INDEX_TYPE,B.TABLE_TYPE,B.GENERATED, 'NO', A.TABLE_NAME,A.INDEX_OWNER,B.TABLESPACE_NAME,B.ITYP_NAME,B.PARAMETERS,A.DESCEND
@@ -11717,6 +11777,7 @@ AND    IC.TABLE_OWNER = ?
 	my %data = ();
 	my %unique = ();
 	my %idx_type = ();
+	my $nidx = 0;
 	while (my $row = $sth->fetch)
 	{
 		# Exclude log indexes of materialized views, there must be a better
@@ -11800,10 +11861,13 @@ AND    IC.TABLE_OWNER = ?
 		}
 		push(@{$data{$row->[8]}{$row->[0]}}, $row->[1]);
 		$index_tablespace{$row->[8]}{$row->[0]} = $row->[10];
-
+		$nidx++;
 	}
 	$sth->finish();
 	$sth2->finish();
+	my $t1 = Benchmark->new;
+	$td = timediff($t1, $t0);
+	$self->logit("Collecting $nidx indexes in $self->{prefix}_INDEXES took: " . timestr($td) . "\n", 1);
 
 	return \%unique, \%data, \%idx_type, \%index_tablespace;
 }
@@ -12175,15 +12239,41 @@ sub _get_views
 		$owner = "AND A.OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "') ";
 	}
 
+	####
+	# Get name of all VIEW objects in ALL_OBJECTS looking at OBJECT_TYPE='VIEW'
+	####
+	my $sql = "SELECT A.OWNER,A.OBJECT_NAME,A.OBJECT_TYPE FROM $self->{prefix}_OBJECTS A WHERE A.OBJECT_TYPE IN 'VIEW' $owner";
+	if (!$self->{export_invalid}) {
+		$sql .= " AND A.STATUS='VALID'";
+	}
+	$sql .= $self->limit_to_objects('VIEW', 'A.OBJECT_NAME');
+	$self->logit("DEBUG: $sql\n", 2);
+	my $t0 = Benchmark->new;
+	my $sth = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	my $nrows = 0;
+	my %tbtype = ();
+	while (my $row = $sth->fetch)
+	{
+		$all_objects{"$row->[0].$row->[1]"} =  $row->[2];
+		$nrows++;
+	}
+	$sth->finish();
+	my $t1 = Benchmark->new;
+	my $td = timediff($t1, $t0);
+	$self->logit("Collecting $nrows tables in $self->{prefix}_OBJECTS took: " . timestr($td) . "\n", 1);
+
 	my %comments = ();
 	if ($self->{type} ne 'SHOW_REPORT')
 	{
-		my $sql = "SELECT A.TABLE_NAME,A.COMMENTS,A.TABLE_TYPE,A.OWNER FROM $self->{prefix}_TAB_COMMENTS A, $self->{prefix}_OBJECTS O WHERE A.OWNER=O.OWNER and A.TABLE_NAME=O.OBJECT_NAME and O.OBJECT_TYPE='VIEW' $owner";
+		$sql = "SELECT A.TABLE_NAME,A.COMMENTS,A.TABLE_TYPE,A.OWNER FROM $self->{prefix}_TAB_COMMENTS A WHERE 1=1 $owner";
 		$sql .= $self->limit_to_objects('VIEW', 'A.TABLE_NAME');
-		my $sth = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+		$sth = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 		$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 		while (my $row = $sth->fetch)
 		{
+			next if (!exists $self->{all_objects}{"$row->[3].$row->[0]"});
+
 			if (!$self->{schema} && $self->{export_schema})
 			{
 				$row->[0] = "$row->[3].$row->[0]";
@@ -12196,22 +12286,12 @@ sub _get_views
 
 	# Retrieve all views
 	my $str = "SELECT v.VIEW_NAME,v.TEXT,v.OWNER FROM $self->{prefix}_VIEWS v";
-	if (!$self->{export_invalid}) {
-		$str .= ", $self->{prefix}_OBJECTS a";
-	}
-
 	if (!$self->{schema}) {
 		$str .= " WHERE v.OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
 	} else {
 		$str .= " WHERE v.OWNER = '$self->{schema}'";
 	}
-
-	if (!$self->{export_invalid}) {
-		$str .= " AND a.OBJECT_TYPE='VIEW' AND a.STATUS='VALID' AND v.VIEW_NAME=a.OBJECT_NAME AND a.OWNER=v.OWNER";
-	}
 	$str .= $self->limit_to_objects('VIEW', 'v.VIEW_NAME');
-	#$str .= " ORDER BY v.OWNER,v.VIEW_NAME";
-
 
 	# Compute view order, where depended view appear before using view
 	my %view_order = ();
@@ -12254,6 +12334,7 @@ ORDER BY ITER ASC, 2, 3
 	my %data = ();
 	while (my $row = $sth->fetch)
 	{
+		next if (!exists $all_objects{"$row->[2].$row->[0]"});
 		if (!$self->{schema} && $self->{export_schema}) {
 			$row->[0] = "$row->[2].$row->[0]";
 		}
@@ -13001,32 +13082,70 @@ sub _table_info
 
 	my $owner = '';
 	if ($self->{schema}) {
-		$owner .= "AND A.OWNER='$self->{schema}' ";
+		$owner .= " A.OWNER='$self->{schema}' ";
 	} else {
-            $owner .= "AND A.OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "') ";
+            $owner .= " A.OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "') ";
 	}
 
+	####
+	# Get name of all TABLE objects in ALL_OBJECTS loking at OBJECT_TYPE='TABLE'
+	####
+	my $sql = "SELECT A.OWNER,A.OBJECT_NAME,A.OBJECT_TYPE FROM $self->{prefix}_OBJECTS A WHERE A.OBJECT_TYPE IN ('TABLE','VIEW') AND $owner";
+	$sql .= $self->limit_to_objects('TABLE', 'A.OBJECT_NAME');
+	$self->logit("DEBUG: $sql\n", 2);
+	my $t0 = Benchmark->new;
+	my $sth = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	my $nrows = 0;
+	my %tbtype = ();
+	while (my $row = $sth->fetch)
+	{
+		$self->{all_objects}{"$row->[0].$row->[1]"} =  $row->[2];
+		$nrows++;
+	}
+	$sth->finish();
+	my $t1 = Benchmark->new;
+	my $td = timediff($t1, $t0);
+	$self->logit("Collecting $nrows tables in $self->{prefix}_OBJECTS took: " . timestr($td) . "\n", 1);
+
+	####
+	# Get comments for all tables
+	####
 	my %comments = ();
 	if ($self->{type} eq 'TABLE')
 	{
-		my $sql = "SELECT A.TABLE_NAME,A.COMMENTS,A.TABLE_TYPE,A.OWNER FROM $self->{prefix}_TAB_COMMENTS A, $self->{prefix}_OBJECTS O WHERE A.OWNER=O.OWNER and A.TABLE_NAME=O.OBJECT_NAME and O.OBJECT_TYPE='TABLE' $owner";
+		$sql = "SELECT A.TABLE_NAME,A.COMMENTS,A.TABLE_TYPE,A.OWNER FROM $self->{prefix}_TAB_COMMENTS A WHERE $owner";
 		if ($self->{db_version} !~ /Release 8/) {
 			$sql .= $self->exclude_mviews('A.OWNER, A.TABLE_NAME');
 		}
 		$sql .= $self->limit_to_objects('TABLE', 'A.TABLE_NAME');
-		my $sth = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+		$self->logit("DEBUG: $sql\n", 2);
+		$t0 = Benchmark->new;
+		$sth = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 		$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-		while (my $row = $sth->fetch) {
+		$nrows = 0;
+		my %tbtype = ();
+		while (my $row = $sth->fetch)
+		{
+			next if (!exists $self->{all_objects}{"$row->[3].$row->[0]"} || $self->{all_objects}{"$row->[3].$row->[0]"} ne 'TABLE');
 			if (!$self->{schema} && $self->{export_schema}) {
 				$row->[0] = "$row->[3].$row->[0]";
 			}
 			$comments{$row->[0]}{comment} = $row->[1];
 			$comments{$row->[0]}{table_type} = $row->[2];
+			$tbtype{$row->[2]}++;
+			$nrows++;
 		}
 		$sth->finish();
+		$t1 = Benchmark->new;
+		$td = timediff($t1, $t0);
+		$self->logit("Collecting $nrows tables comments in $self->{prefix}_TAB_COMMENTS took: " . timestr($td) . "\n", 1);
 	}
 
-	my $sql = "SELECT A.OWNER,A.TABLE_NAME,NVL(num_rows,1) NUMBER_ROWS,A.TABLESPACE_NAME,A.NESTED,A.LOGGING,A.PARTITIONED,A.PCT_FREE FROM $self->{prefix}_TABLES A, $self->{prefix}_OBJECTS O WHERE A.OWNER=O.OWNER AND A.TABLE_NAME=O.OBJECT_NAME AND O.OBJECT_TYPE='TABLE' $owner";
+	####
+	# Get information about all tables
+	####
+	$sql = "SELECT A.OWNER,A.TABLE_NAME,NVL(num_rows,1) NUMBER_ROWS,A.TABLESPACE_NAME,A.NESTED,A.LOGGING,A.PARTITIONED,A.PCT_FREE FROM $self->{prefix}_TABLES A WHERE $owner";
 	$sql .= " AND A.TEMPORARY='N' AND (A.NESTED != 'YES' OR A.LOGGING != 'YES') AND A.SECONDARY = 'N'";
 	if ($self->{db_version} !~ /Release [89]/) {
 		$sql .= " AND (A.DROPPED IS NULL OR A.DROPPED = 'NO')";
@@ -13038,11 +13157,15 @@ sub _table_info
         $sql .= " AND (A.IOT_TYPE IS NULL OR A.IOT_TYPE = 'IOT')";
         #$sql .= " ORDER BY A.OWNER, A.TABLE_NAME";
 
-        my $sth = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$self->logit("DEBUG: $sql\n", 2);
+	$t0 = Benchmark->new;
+        $sth = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
         $sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	my %tables_infos = ();
+	my $nrows = 0;
 	while (my $row = $sth->fetch)
 	{
+		next if (!exists $self->{all_objects}{"$row->[0].$row->[1]"} || $self->{all_objects}{"$row->[0].$row->[1]"} ne 'TABLE');
 		if (!$self->{schema} && $self->{export_schema}) {
 			$row->[1] = "$row->[0].$row->[1]";
 		}
@@ -13079,8 +13202,12 @@ sub _table_info
 			$sth2->finish();
 			$tables_infos{$row->[1]}{num_rows} = $size->[0];
 		}
+		$nrows++;
 	}
 	$sth->finish();
+	$t1 = Benchmark->new;
+	$td = timediff($t1, $t0);
+	$self->logit("Collecting $nrows tables information in $self->{prefix}_TABLES took: " . timestr($td) . "\n", 1);
 
 	return %tables_infos;
 }
@@ -17461,6 +17588,10 @@ sub _show_infos
 					$report_info{'Objects'}{$typ}{'cost_value'} = ($Ora2Pg::PLSQL::OBJECT_SCORE{'JOB'}*$objects{$typ});
 				}
 			}
+			# Apply maximum cost per object type
+			if (exists $MAX_SCORE{$typ} && $report_info{'Objects'}{$typ}{'cost_value'} > $MAX_SCORE{$typ}) {
+				$report_info{'Objects'}{$typ}{'cost_value'} = $MAX_SCORE{$typ};
+			}
 			$report_info{'total_cost_value'} += $report_info{'Objects'}{$typ}{'cost_value'};
 			$report_info{'Objects'}{$typ}{'cost_value'} = sprintf("%2.2f", $report_info{'Objects'}{$typ}{'cost_value'});
 		}
@@ -17479,10 +17610,12 @@ sub _show_infos
 			$report_info{'Objects'}{'QUERY'}{'invalid'} = 0;
 			$report_info{'Objects'}{'QUERY'}{'comment'} = "Normalized queries found in $tbname for user(s): $self->{audit_user}";
 			my %queries = $self->_get_audit_queries();
-			foreach my $q (sort {$a <=> $b} keys %queries) {
+			foreach my $q (sort {$a <=> $b} keys %queries)
+			{
 				$report_info{'Objects'}{'QUERY'}{'number'}++;
 				my $sql_q = Ora2Pg::PLSQL::convert_plsql_code($self, $queries{$q});
-				if ($self->{estimate_cost}) {
+				if ($self->{estimate_cost})
+				{
 					my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($self, $sql_q, 'QUERY');
 					$cost += $Ora2Pg::PLSQL::OBJECT_SCORE{'QUERY'};
 					$report_info{'Objects'}{'QUERY'}{'cost_value'} += $cost;
