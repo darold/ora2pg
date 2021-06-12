@@ -59,7 +59,7 @@ my $EXCLUDE = '';
 my $ALLOW = '';
 my $VIEW_AS_TABLE = '';
 my $ESTIMATE_COST;
-my $COST_UNIT_VALUE;
+my $COST_UNIT_VALUE = 5;
 my $DUMP_AS_HTML;
 my $DUMP_AS_CSV;
 my $DUMP_AS_SHEET;
@@ -531,10 +531,11 @@ sub create_project
 	print OUT "EXPORT_TYPE=\"", join(' ', @SCHEMA_ARRAY), "\"\n";
 	print OUT "SOURCE_TYPE=\"", join(' ', @SOURCES_ARRAY), "\"\n";
 	print OUT "namespace=\".\"\n";
+	print OUT "unit_cost=$COST_UNIT_VALUE\n";
 	print OUT qq{
 ora2pg -t SHOW_TABLE -c \$namespace/config/ora2pg.conf > \$namespace/reports/tables.txt
 ora2pg -t SHOW_COLUMN -c \$namespace/config/ora2pg.conf > \$namespace/reports/columns.txt
-ora2pg -t SHOW_REPORT -c \$namespace/config/ora2pg.conf --dump_as_html --estimate_cost > \$namespace/reports/report.html
+ora2pg -t SHOW_REPORT -c \$namespace/config/ora2pg.conf --dump_as_html --cost_unit_value  \$unit_cost --estimate_cost > \$namespace/reports/report.html
 
 for etype in \$(echo \$EXPORT_TYPE | tr " " "\\n")
 do
