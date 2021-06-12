@@ -3416,7 +3416,7 @@ sub read_sequence_from_file
 		} else {
 			push(@seq_info, '');
 		}
-		push(@{$self->{sequences}}, \@seq_info);
+		push(@{$self->{sequences}{$s_name}}, \@seq_info);
 	}
 }
 
@@ -4832,50 +4832,48 @@ sub export_sequence
 		$self->read_sequence_from_file();
 	}
 	my $i = 1;
-	my $num_total_sequence = $#{$self->{sequences}} + 1;
+	my $num_total_sequence = scalar keys %{$self->{sequences}};
 	my $count_seq = 0;
 	my $PGBAR_REFRESH = set_refresh_count($num_total_sequence);
 	if ($self->{export_schema} && ($self->{pg_schema} || $self->{schema})) {
 		$sql_output .= "CREATE SCHEMA IF NOT EXISTS " . $self->quote_object_name($self->{pg_schema} || $self->{schema}) . ";\n";
 	}
-	foreach my $seq (sort { $a->[0] cmp $b->[0] } @{$self->{sequences}})
+	foreach my $seq (sort keys %{$self->{sequences}})
 	{
 		if (!$self->{quiet} && !$self->{debug} && ($count_seq % $PGBAR_REFRESH) == 0) {
-			print STDERR $self->progress_bar($i, $num_total_sequence, 25, '=', 'sequences', "generating $seq->[0]" ), "\r";
+			print STDERR $self->progress_bar($i, $num_total_sequence, 25, '=', 'sequences', "generating $seq" ), "\r";
 		}
 		$count_seq++;
 		my $cache = '';
-		$cache = $seq->[5] if ($seq->[5]);
+		$cache = $self->{sequences}{$seq}->[5] if ($self->{sequences}{$seq}->[5]);
 		my $cycle = '';
-		$cycle = ' CYCLE' if ($seq->[6] eq 'Y');
-		if ($self->{export_schema} && !$self->{schema}) {
-			$seq->[0] = $seq->[7] . '.' . $seq->[0];
-		}
-		$sql_output .= "DROP SEQUENCE IF EXISTS " . $self->quote_object_name($seq->[0]) . ";\n" if ($self->{drop_if_exists});
-		$sql_output .= "CREATE SEQUENCE " . $self->quote_object_name($seq->[0]) . " INCREMENT $seq->[3]";
-		if ($seq->[1] eq '' || $seq->[1] < (-2**63-1)) {
+		$cycle = ' CYCLE' if ($self->{sequences}{$seq}->[6] eq 'Y');
+		$sql_output .= "DROP SEQUENCE IF EXISTS " . $self->quote_object_name($seq) . ";\n" if ($self->{drop_if_exists});
+		$sql_output .= "CREATE SEQUENCE " . $self->quote_object_name($seq) . " INCREMENT $self->{sequences}{$seq}->[3]";
+		if ($self->{sequences}{$seq}->[1] eq '' || $self->{sequences}{$seq}->[1] < (-2**63-1)) {
 			$sql_output .= " NO MINVALUE";
 		} else {
 			$sql_output .= " MINVALUE $seq->[1]";
 		}
 		# Max value lower than start value are not allowed
-		if (($seq->[2] > 0) && ($seq->[2] < $seq->[4])) {
-			$seq->[2] = $seq->[4];
+		if (($self->{sequences}{$seq}->[2] > 0) && ($self->{sequences}{$seq}->[2] < $self->{sequences}{$seq}->[4])) {
+			$self->{sequences}{$seq}->[2] = $self->{sequences}{$seq}->[4];
+
 		}
-		if ($seq->[2] eq '' || $seq->[2] > (2**63-1)) {
+		if ($self->{sequences}{$seq}->[2] eq '' || $self->{sequences}{$seq}->[2] > (2**63-1)) {
 			$sql_output .= " NO MAXVALUE";
 		} else {
-			$seq->[2] = 9223372036854775807 if ($seq->[2] > 9223372036854775807);
-			$sql_output .= " MAXVALUE $seq->[2]";
+			$self->{sequences}{$seq}->[2] = 9223372036854775807 if ($self->{sequences}{$seq}->[2] > 9223372036854775807);
+			$sql_output .= " MAXVALUE $self->{sequences}{$seq}->[2]";
 		}
-		$sql_output .= " START $seq->[4]";
+		$sql_output .= " START $self->{sequences}{$seq}->[4]";
 		$sql_output .= " CACHE $cache" if ($cache ne '');
 		$sql_output .= "$cycle;\n";
 
 		if ($self->{force_owner}) {
-			my $owner = $seq->[7];
+			my $owner = $self->{sequences}{$seq}->[7];
 			$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
-			$sql_output .= "ALTER SEQUENCE " . $self->quote_object_name($seq->[0])
+			$sql_output .= "ALTER SEQUENCE " . $self->quote_object_name($seq)
 						. " OWNER TO " . $self->quote_object_name($owner) . ";\n";
 		}
 		$i++;
@@ -11859,7 +11857,7 @@ INCREMENT and LAST_NUMBER for the specified table.
 
 sub _get_sequences
 {
-	my($self) = @_;
+	my ($self) = @_;
 
 	return Ora2Pg::MySQL::_get_sequences($self) if ($self->{is_mysql});
 
@@ -11879,13 +11877,16 @@ sub _get_sequences
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
-	my @seqs = ();
+	my %seqs = ();
 	while (my $row = $sth->fetch)
 	{
-		push(@seqs, [ @$row ]);
+		if (!$self->{schema} && $self->{export_schema}) {
+			$row->[0] = $row->[7] . '.' . $row->[0];
+		}
+		push(@{$seqs{$row->[0]}}, @$row);
 	}
 
-	return \@seqs;
+	return \%seqs;
 }
 
 =head2 _get_identities
@@ -11918,7 +11919,8 @@ sub _get_identities
 	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
 	my %seqs = ();
-	while (my $row = $sth->fetch) {
+	while (my $row = $sth->fetch)
+	{
 		if (!$self->{schema} && $self->{export_schema}) {
 			$row->[1] = "$row->[0].$row->[1]";
 		}
@@ -12646,15 +12648,18 @@ sub _get_package_function_list
 
 	my @fct_done = ();
 	push(@fct_done, @EXCLUDED_FUNCTION);
-	foreach my $sch (sort keys %function_metadata) {
+	foreach my $sch (sort keys %function_metadata)
+	{
 		next if ( ($owner && ($sch ne $owner)) || (!$owner && $self->{schema} && ($sch ne $self->{schema})) );
-		foreach my $name (sort keys %{$function_metadata{$sch}}) {
+		foreach my $name (sort keys %{$function_metadata{$sch}})
+		{
 			$self->_remove_comments(\$function_metadata{$sch}{$name}{text}, 1);
 			$self->{comment_values} = ();
 			$function_metadata{$sch}{$name}{text} =~  s/\%ORA2PG_COMMENT\d+\%//gs;
 			my %infos = $self->_lookup_package($function_metadata{$sch}{$name}{text});
 			delete $function_metadata{$sch}{$name};
-			foreach my $f (sort keys %infos) {
+			foreach my $f (sort keys %infos)
+			{
 				next if (!$f);
 				my $fn = lc($f);
 				my $res_name = $f;
@@ -12668,7 +12673,8 @@ sub _get_package_function_list
 				}
 				$res_name =~ s/"_"/_/g;
 				$f =~ s/"//gs;
-				if ($res_name) {
+				if ($res_name)
+				{
 					$self->{package_functions}{"\L$name\E"}{"\L$f\E"}{name}    = $self->quote_object_name($res_name);
 					$self->{package_functions}{"\L$name\E"}{"\L$f\E"}{package} = $name;
 				}
@@ -12886,7 +12892,8 @@ sub _get_packages
 		my $sql = "SELECT TEXT FROM $self->{prefix}_SOURCE WHERE OWNER='$row->[1]' AND NAME='$row->[0]' AND TYPE='PACKAGE' ORDER BY LINE";
 		my $sth2 = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 		$sth2->execute or $self->logit("FATAL: " . $sth2->errstr . "\n", 0, 1);
-		while (my $r = $sth2->fetch) {
+		while (my $r = $sth2->fetch)
+		{
 			$packages{$row->[0]}{desc} .= 'CREATE OR REPLACE ' if ($r->[0] =~ /^PACKAGE\s+/is);
 			$packages{$row->[0]}{desc} .= $r->[0];
 		}
@@ -17329,7 +17336,8 @@ sub _show_infos
 				my $total_size = 0;
 				my $number_fct = 0;
 				my $number_pkg = 0;
-				foreach my $pkg (sort keys %{$self->{packages}}) {
+				foreach my $pkg (sort keys %{$self->{packages}})
+				{
 					next if (!$self->{packages}{$pkg}{text});
 					$number_pkg++;
 					$total_size += length($self->{packages}{$pkg}{text});
@@ -17338,17 +17346,21 @@ sub _show_infos
 					$self->{comment_values} = ();
 					$self->{text_values} = ();
 					my @codes = split(/CREATE(?: OR REPLACE)?(?: EDITIONABLE| NONEDITIONABLE)? PACKAGE\s+/i, $self->{packages}{$pkg}{text});
-					foreach my $txt (@codes) {
+					foreach my $txt (@codes)
+					{
 						next if ($txt !~ /^BODY\s+/is);
 						my %infos = $self->_lookup_package("CREATE OR REPLACE PACKAGE $txt");
-						foreach my $f (sort keys %infos) {
+						foreach my $f (sort keys %infos)
+						{
 							next if (!$f);
-							if ($self->{estimate_cost}) {
+							if ($self->{estimate_cost})
+							{
 								my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($self, $infos{$f}{code});
 								$report_info{'Objects'}{$typ}{'cost_value'} += $cost;
 								$report_info{'Objects'}{$typ}{'detail'} .= "\L$f: $cost\E\n";
 								$report_info{full_function_details}{"\L$f\E"}{count} = $cost;
-								foreach my $d (sort { $cost_detail{$b} <=> $cost_detail{$a} } keys %cost_detail) {
+								foreach my $d (sort { $cost_detail{$b} <=> $cost_detail{$a} } keys %cost_detail)
+								{
 									next if (!$cost_detail{$d});
 									$report_info{full_function_details}{"\L$f\E"}{info} .= "\t$d => $cost_detail{$d}";
 									$report_info{full_function_details}{"\L$f\E"}{info} .= " (cost: ${$uncovered_score}{$d})" if (${$uncovered_score}{$d});
@@ -18684,13 +18696,13 @@ WHERE c.relkind IN ('m','')
 	}
 	elsif ($obj_type eq 'SEQUENCE')
 	{
-		my $obj_infos = ();
+		my $obj_infos = {};
 		if (!$self->{is_mysql}) {
 			$obj_infos = $self->_get_sequences();
 		} else {
 			$obj_infos = Ora2Pg::MySQL::_count_sequences($self);
 		}
-		$nbobj = $#{$obj_infos} + 1;
+		$nbobj = scalar keys %$obj_infos;
 		$sql = qq{
 SELECT count(*)
 FROM pg_catalog.pg_class c
@@ -18892,18 +18904,17 @@ LANGUAGE 'plpgsql';
 		$self->{dbhdest}->do("DROP FUNCTION get_sequence_last_values") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
 	}
 
-	foreach my $r (@{$obj_infos})
+	foreach my $r (sort keys %$obj_infos)
 	{
-		my $t = $r->[7] . '.' . $r->[0];
-		$t =~ s/^[^\.]+\.// if (!$self->{export_schema});
-		print "$lbl:$t:$r->[4]\n";
+		$r =~ s/^[^\.]+\.// if (!$self->{export_schema});
+		print "$lbl:$r:$obj_infos->{$r}->[4]\n";
 		if ($self->{pg_dsn})
 		{
-			my ($tbmod, $orig, $schema, $both) = $self->set_pg_relation_name($t);
+			my ($tbmod, $orig, $schema, $both) = $self->set_pg_relation_name($r);
 			$pgret{"\U$both$orig\E"} ||= 0;
 			print "POSTGRES:$both$orig:", $pgret{"\U$both$orig\E"}, "\n";
-			if ($pgret{"\U$both$orig\E"} != $r->[4]) {
-				push(@errors, "Sequence $both$orig doesn't have the same value in source database ($r->[4]) and in PostgreSQL (" . $pgret{"\U$both$orig\E"} . "). Verify +/- cache size: $r->[5].");
+			if ($pgret{"\U$both$orig\E"} != $obj_infos->{$r}->[4]) {
+				push(@errors, "Sequence $both$orig doesn't have the same value in source database ($obj_infos->{$r}->[4]) and in PostgreSQL (" . $pgret{"\U$both$orig\E"} . "). Verify +/- cache size: $obj_infos->{$r}->[5].");
 			}
 		}
 	}
@@ -19908,6 +19919,33 @@ sub _lookup_package
 	}
 
 	return %infos;
+}
+
+# Returns 1 if the function match a EXCLUDED clause, 0 otherwise
+sub excluded_functions
+{
+	my ($self, $fct_name) = @_;
+
+	my @done = ();
+
+	# Case where there is nothing to do here
+	return 0 if (!$fct_name || (!exists $self->{excluded}{FUNCTION} && !exists $self->{excluded}{PROCEDURE}));
+	push(@done, $fct_name);
+
+	foreach my $type ('FUNCTION', 'PROCEDURE')
+	{
+	       for (my $j = 0; $j <= $#{$self->{excluded}{$type}}; $j++)
+	       {
+		       if ($self->{excluded}{$type}->[$j] =~ /^!$fct_name$/i) {
+			       return 0;
+		       }
+		       elsif ($self->{excluded}{$type}->[$j] =~ /^$fct_name$/i) {
+			       return 1;
+		       }
+	       }
+	}
+
+	return 0;
 }
 
 =head2 _lookup_function
