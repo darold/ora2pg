@@ -148,7 +148,7 @@ for (my $i = 0; $i < @DB_DNS; $i++)
 	# dbi:Oracle:DB
 	# dbi:Oracle://192.168.1.10:1521/XE
 	# DBI:mysql:database=$db;host=$host
-	if ($DB_DNS[$i]->{dsn} =~ m/(?:sid|database)=([^;]+)/ ||
+	if ($DB_DNS[$i]->{dsn} =~ m/(?:sid|database|service_name)=([^;]+)/ ||
 		$DB_DNS[$i]->{dsn} =~ m/dbi:Oracle:([\w]+)$/  ||
 		$DB_DNS[$i]->{dsn} =~ m/dbi:Oracle:\/\/[^\/]+\/([\w]+)/ )
 	{
