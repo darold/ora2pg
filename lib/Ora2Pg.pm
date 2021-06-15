@@ -11773,7 +11773,7 @@ AND    IC.COLUMN_NAME = ?
 AND    IE.TABLE_NAME = ?
 AND    IC.TABLE_OWNER = ?
 };
-	my $sth2 = $self->{dbh}->prepare($idxnc);
+	my $sth2 = $self->{dbh}->prepare($idxnc) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	my %data = ();
 	my %unique = ();
 	my %idx_type = ();
