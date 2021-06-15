@@ -2162,6 +2162,12 @@ PostgreSQL version below 9.x do not support IF EXISTS in DDL statements.
 Disabling the directive with value 0 will prevent Ora2Pg to add those
 keywords in all generated statements. Default value is 1, enabled.
 
+=item PG_VERSION
+
+Set the PostgreSQL major version number of the target database. Ex: 9.6 or 13
+Default is current major version at time of a new release. This replace the
+old and deprecadted PG_SUPPORTS_* configuration directives described bellow.
+
 =item PG_SUPPORTS_ROLE (Deprecated)
 
 This option is deprecated since Ora2Pg release v7.3.
