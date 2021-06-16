@@ -8062,7 +8062,7 @@ sub _get_sql_statements
 		foreach my $table (@ordered_tables)
 		{
 			# Do not process nested table
-			if ($self->{tables}{$table}{table_info}{nested} ne 'NO')
+			if (!$self->{is_mysql} && $self->{tables}{$table}{table_info}{nested} ne 'NO')
 			{
 				$self->logit("WARNING: nested table $table will not be exported.\n", 1);
 				next;
@@ -8308,7 +8308,7 @@ sub _get_sql_statements
 		foreach my $table (@ordered_tables)
 		{
 			# Do not process nested table
-			if ($self->{tables}{$table}{table_info}{nested} ne 'NO')
+			if (!$self->{is_mysql} && $self->{tables}{$table}{table_info}{nested} ne 'NO')
 			{
 				$self->logit("WARNING: nested table $table will not be exported.\n", 1);
 				next;
@@ -8442,7 +8442,7 @@ sub _get_sql_statements
 		foreach my $table (@ordered_tables)
 		{
 			# Do not process nested table
-			if ($self->{tables}{$table}{table_info}{nested} ne 'NO')
+			if (!$self->{is_mysql} && $self->{tables}{$table}{table_info}{nested} ne 'NO')
 			{
 				$self->logit("WARNING: nested table $table will not be exported.\n", 1);
 				next;
