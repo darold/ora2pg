@@ -10245,7 +10245,8 @@ sub _howto_get_data
 				}
 
 				# With INSERT statement we always use WKT
-				if ($self->{type} eq 'INSERT') {
+				if ($self->{type} eq 'INSERT')
+				{
 					if ($self->{geometry_extract_type} eq 'WKB') {
 						$str .= "CASE WHEN $name->[$k]->[0] IS NOT NULL THEN SDO_UTIL.TO_WKBGEOMETRY($name->[$k]->[0]) ELSE NULL END,";
 					} elsif ($self->{geometry_extract_type} eq 'INTERNAL') {
@@ -10253,7 +10254,9 @@ sub _howto_get_data
 					} else {
 						$str .= "CASE WHEN $name->[$k]->[0] IS NOT NULL THEN 'ST_GeomFromText('''||SDO_UTIL.TO_WKTGEOMETRY($name->[$k]->[0])||''','||($spatial_srid)||')' ELSE NULL END,";
 					}
-				} else {
+				}
+				else
+				{
 					if ($self->{geometry_extract_type} eq 'WKB') {
 						$str .= "CASE WHEN $name->[$k]->[0] IS NOT NULL THEN SDO_UTIL.TO_WKBGEOMETRY($name->[$k]->[0]) ELSE NULL END,";
 					} elsif ($self->{geometry_extract_type} eq 'INTERNAL') {
@@ -10262,16 +10265,28 @@ sub _howto_get_data
 						$str .= "CASE WHEN $name->[$k]->[0] IS NOT NULL THEN SDO_UTIL.TO_WKTGEOMETRY($name->[$k]->[0]) ELSE NULL END,";
 					}
 				}
-
-			} elsif ( $self->{is_mysql} && $src_type->[$k] =~ /geometry/i) {
-
-				if ($self->{geometry_extract_type} eq 'WKB') {
-					$str .= "CASE WHEN $name->[$k]->[0] IS NOT NULL THEN CONCAT('SRID=',SRID($name->[$k]->[0]),';', AsBinary($name->[$k]->[0])) ELSE NULL END,";
-				} else {
-					$str .= "CASE WHEN $name->[$k]->[0] IS NOT NULL THEN CONCAT('SRID=',SRID($name->[$k]->[0]),';',AsText($name->[$k]->[0])) ELSE NULL END,";
+			}
+			elsif ( $self->{is_mysql} && $src_type->[$k] =~ /geometry/i)
+			{
+				if ($self->{db_version} < '5.7.6')
+				{
+					if ($self->{geometry_extract_type} eq 'WKB') {
+						$str .= "CASE WHEN $name->[$k]->[0] IS NOT NULL THEN CONCAT('SRID=',SRID($name->[$k]->[0]),';', AsBinary($name->[$k]->[0])) ELSE NULL END,";
+					} else {
+						$str .= "CASE WHEN $name->[$k]->[0] IS NOT NULL THEN CONCAT('SRID=',SRID($name->[$k]->[0]),';', AsText($name->[$k]->[0])) ELSE NULL END,";
+					}
 				}
-
-			} elsif ( !$self->{is_mysql} && (($src_type->[$k] =~ /clob/i) || ($src_type->[$k] =~ /blob/i)) ) {
+				else
+				{
+					if ($self->{geometry_extract_type} eq 'WKB') {
+						$str .= "CASE WHEN $name->[$k]->[0] IS NOT NULL THEN CONCAT('SRID=',ST_Srid($name->[$k]->[0]),';', ST_AsBinary($name->[$k]->[0])) ELSE NULL END,";
+					} else {
+						$str .= "CASE WHEN $name->[$k]->[0] IS NOT NULL THEN CONCAT('SRID=',ST_Srid($name->[$k]->[0]),';', ST_AsText($name->[$k]->[0])) ELSE NULL END,";
+					}
+				}
+			}
+			elsif ( !$self->{is_mysql} && (($src_type->[$k] =~ /clob/i) || ($src_type->[$k] =~ /blob/i)) )
+			{
 				if (!$self->{enable_blob_export} && $src_type->[$k] =~ /blob/i) {
 					# user don't want to export blob
 					next;
@@ -10281,9 +10296,9 @@ sub _howto_get_data
 				} else {
 					$str .= "$name->[$k]->[0],";
 				}
-
-			} else {
-
+			}
+			else
+			{
 				$str .= "$name->[$k]->[0],";
 
 			}
