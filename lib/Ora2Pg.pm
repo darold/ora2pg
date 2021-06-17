@@ -8384,9 +8384,9 @@ sub _get_sql_statements
 		if ( ($self->{oracle_copies} > 1) || ($self->{parallel_tables} > 1) )
 		{
 			# Wait for all child dies less the logger
-			my $numchild = 1; # will not wait for progressbar process
-			$numchild = 0 if ($self->{debug}); # in debug there is no progressbar
-			while (scalar keys %RUNNING_PIDS > $numchild)
+			my $minnumchild = 1; # will not wait for progressbar process
+			$minnumchild = 0 if ($self->{debug} || $self->{quiet}); # in debug or quiet mode there is no progressbar
+			while (scalar keys %RUNNING_PIDS > $minnumchild)
 			{
 				my $kid = waitpid(-1, WNOHANG);
 				if ($kid > 0) {
@@ -8407,7 +8407,6 @@ sub _get_sql_statements
 			} else {
 				$self->{dbh} = $self->_oracle_connection();
 			}
-
 		}
 		
 		# Start a new transaction
@@ -13177,7 +13176,7 @@ sub _table_info
         $sth = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
         $sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	my %tables_infos = ();
-	my $nrows = 0;
+	$nrows = 0;
 	while (my $row = $sth->fetch)
 	{
 		next if (!exists $self->{all_objects}{"$row->[0].$row->[1]"} || $self->{all_objects}{"$row->[0].$row->[1]"} ne 'TABLE');
