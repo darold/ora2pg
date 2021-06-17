@@ -17048,9 +17048,7 @@ sub _show_infos
 			$self->logit("\tOracle NLS_LANG $self->{nls_lang}\n", 0);
 			$self->logit("\tOracle NLS_NCHAR $self->{nls_nchar}\n", 0);
 			if ($self->{enable_microsecond}) {
-				my $dim = 6;
-				$dim = '' if ($self->{db_version} =~ /Release  [89]/);
-				$self->logit("\tOracle NLS_TIMESTAMP_FORMAT YYYY-MM-DD HH24:MI:SS.FF$dim\n", 0);
+				$self->logit("\tOracle NLS_TIMESTAMP_FORMAT YYYY-MM-DD HH24:MI:SS.FF\n", 0);
 			} else {
 				$self->logit("\tOracle NLS_TIMESTAMP_FORMAT YYYY-MM-DD HH24:MI:SS\n", 0);
 			}
