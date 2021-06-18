@@ -10734,6 +10734,16 @@ sub _sql_type
 		return 'uuid';
 	}
 
+	# Special case of * precision
+	if ($precision eq '*')
+	{
+		if ($len ne '*') {
+			$precision = $len;
+		} else {
+			$precision = 38;
+		}
+	}
+
         if (exists $self->{data_type}{$type})
 	{
 		if ($len)

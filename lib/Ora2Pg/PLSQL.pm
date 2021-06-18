@@ -2074,7 +2074,8 @@ sub replace_sql_type
 		}
 
 		my ($precision, $scale) = split(/\s*,\s*/, $args);
-		$precision = '' if ($precision eq '*'); # case of NUMBER(*,10)
+		$precision = 38 if ($precision eq '*'); # case of NUMBER(*,10) or NUMBER(*)
+		$len = $precision if ($len eq '*');
 		$scale ||= 0;
 		my $len = $precision || 0;
 		$len =~ s/\D//;
