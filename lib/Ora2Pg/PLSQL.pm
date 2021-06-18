@@ -620,7 +620,8 @@ sub plsql_to_plpgsql
 	# Replace special case : (sysdate - to_date('01-Jan-1970', 'dd-Mon-yyyy'))*24*60*60
 	# with: (extract(epoch from now())
 	# When translating from code
-	while ($str =~ /\bSYSDATE\s*\-\s*to_date\(\s*\?TEXTVALUE(\d+)\?\s*,\s*\?TEXTVALUE(\d+)\?\s*\)\s*\)\s*\*\s*(24|60)\s*\*\s*(24|60)/is) {
+	while ($str =~ /\bSYSDATE\s*\-\s*to_date\(\s*\?TEXTVALUE(\d+)\?\s*,\s*\?TEXTVALUE(\d+)\?\s*\)\s*\)\s*\*\s*(24|60)\s*\*\s*(24|60)/is)
+	{
 		my $t1 = $1;
 		my $t2 = $2;
 		if ($class->{text_values}{$t1} =~ /'(Jan|01).(Jan|01).1970'/
@@ -734,7 +735,8 @@ sub plsql_to_plpgsql
 	$str =~ s/EXECUTE IMMEDIATE/EXECUTE/igs;
 
 	# SELECT without INTO should be PERFORM. Exclude select of view when prefixed with AS ot IS
-	if ( ($class->{type} ne 'QUERY') && ($class->{type} ne 'VIEW') ) {
+	if ( ($class->{type} ne 'QUERY') && ($class->{type} ne 'VIEW') )
+	{
 		$str =~ s/(\s+)(?<!AS|IS)(\s+)SELECT((?![^;]+\bINTO\b)[^;]+;)/$1$2PERFORM$3/isg;
 		$str =~ s/\bSELECT\b((?![^;]+\bINTO\b)[^;]+;)/PERFORM$1/isg;
 		$str =~ s/(AS|IS|FOR|UNION ALL|UNION|MINUS|INTERSECT|\()(\s*)(\%ORA2PG_COMMENT\d+\%)?(\s*)PERFORM/$1$2$3$4SELECT/isg;
@@ -841,7 +843,8 @@ sub plsql_to_plpgsql
 	$str =~ s/\bFOR(.*?)IN\s+REVERSE\s+([^\.\s]+)\s*\.\.\s*([^\s]+)/FOR$1IN REVERSE $3..$2/isg;
 
 	# Comment call to COMMIT or ROLLBACK in the code if allowed
-	if ($class->{comment_commit_rollback}) {
+	if ($class->{comment_commit_rollback})
+	{
 		$str =~ s/\b(COMMIT|ROLLBACK)\s*;/-- $1;/igs;
 		$str =~ s/(ROLLBACK\s+TO\s+[^;]+);/-- $1;/igs;
 	}
@@ -1630,6 +1633,9 @@ sub replace_oracle_function
 		$str =~ s/REGEXP_COUNT\s*\(\s*([^,]+)\s*,\s*([^\)]+)\s*\)/(SELECT count(*) FROM regexp_matches($1, $2, 'g'))/igs;
 		# REGEX_SUBSTR( string, pattern, pos, num ) translation
 		$str =~ s/REGEXP_SUBSTR\s*\(\s*([^\)]+)\s*\)/convert_regex_substr($class, $1)/iges;
+
+		# LAST_DAY( date ) translation
+		$str =~ s/\bLAST_DAY\(\s*([^\(\)]+)\s*\)/((date_trunc('month',($1)::timestamp + interval '1 month'))::date - 1)/igs;
 	}
 
 	# Replace INSTR by POSITION
@@ -2614,7 +2620,7 @@ sub mysql_to_plpgsql
 	$str =~ s/\bFROM_UNIXTIME2\(\s*(.*?)\s*,\s*('[^'\(\)]+'|\?TEXTVALUE\d+\?)\s*\)/_mysql_dateformat_to_pgsql($class, $1, $2)/eigs;
 	$str =~ s/\bGET_FORMAT\(\s*([^,]+)\s*,\s*([^\(\)]+)\s*\)/_mysql_getformat_to_pgsql($1, $2)/eigs;
 	$str =~ s/\bHOUR\(\s*([^\(\)]+)\s*\)/extract(hour from ($1)::interval)::integer/igs;
-	$str =~ s/\bLAST_DAY\(\s*([^\(\)]+)\s*\)/(date_trunc('month',($1)::timestamp + interval '1 month'))::date - 1/igs;
+	$str =~ s/\bLAST_DAY\(\s*([^\(\)]+)\s*\)/((date_trunc('month',($1)::timestamp + interval '1 month'))::date - 1)/igs;
 	$str =~ s/\bMAKEDATE\(\s*([^,]+)\s*,\s*([^\(\)]+)\s*\)/(date($1||'-01-01') + ($2 - 1) * interval '1 day')::date/igs;
 	$str =~ s/\bMAKETIME\(\s*([^,]+)\s*,\s*([^,]+)\s*,\s*([^\(\)]+)\s*\)/($1 * interval '1 hour' + $2 * interval '1 min' + $3 * interval '1 sec')/igs;
 	$str =~ s/\bMICROSECOND\(\s*([^\(\)]+)\s*\)/extract(microsecond from ($1)::time)::integer/igs;
