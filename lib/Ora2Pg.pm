@@ -15004,7 +15004,7 @@ sub _remove_comments
 	my ($self, $content, $no_constant) = @_;
 
 	# Fix comment in a string constant
-	$$content = encode('UTF-8', $$content);
+	$$content = encode('UTF-8', $$content) if (!$self->{input_file});
 	while ($$content =~ s/('[^';\n]*)\/\*([^';\n]*')/$1\%OPEN_COMMENT\%$2/s) {};
 
 	# Fix unterminated comment at end of the code
