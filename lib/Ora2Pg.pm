@@ -2586,7 +2586,8 @@ sub _parse_constraint
 {
 	my ($self, $tb_name, $cur_col_name, $c) = @_;
 
-	if ($c =~ /^([^\s]+)\s+(UNIQUE|PRIMARY KEY)\s*\(([^\)]+)\)/is) {
+	if ($c =~ /^([^\s]+)\s+(UNIQUE|PRIMARY KEY)\s*\(([^\)]+)\)/is)
+	{
 		my $tp = 'U';
 		$tp = 'P' if ($2 eq 'PRIMARY KEY');
 		$self->{tables}{$tb_name}{unique_key}{$1} = { (
@@ -2594,13 +2595,22 @@ sub _parse_constraint
 			columns => ()
 		) };
 		push(@{$self->{tables}{$tb_name}{unique_key}{$1}{columns}}, split(/\s*,\s*/, $3));
-	} elsif ($c =~ /^([^\s]+)\s+CHECK\s*\((.*)\)/is) {
-		my %tmp = ($1 => $2);
-		$self->{tables}{$tb_name}{check_constraint}{constraint}{$1}{condition} = $2;
-		if ($c =~ /NOVALIDATE/is) {
-			$self->{tables}{$tb_name}{check_constraint}{constraint}{$1}{validate} = 'NOT VALIDATED';
+	}
+	elsif ($c =~ /^([^\s]+)\s+CHECK\s*\((.*)\)/is)
+	{
+		my $name = $1;
+		my $desc = $2;
+		if ($desc =~ /^([a-z_\$0-9]+)\b/i) {
+			$name .= "_$1";
 		}
-	} elsif ($c =~ /^([^\s]+)\s+FOREIGN KEY (\([^\)]+\))?\s*REFERENCES ([^\(\s]+)\s*\(([^\)]+)\)/is) {
+		my %tmp = ($name => $desc);
+		$self->{tables}{$tb_name}{check_constraint}{constraint}{$name}{condition} = $desc;
+		if ($c =~ /NOVALIDATE/is) {
+			$self->{tables}{$tb_name}{check_constraint}{constraint}{$name}{validate} = 'NOT VALIDATED';
+		}
+	}
+	elsif ($c =~ /^([^\s]+)\s+FOREIGN KEY (\([^\)]+\))?\s*REFERENCES ([^\(\s]+)\s*\(([^\)]+)\)/is)
+	{
 		my $c_name = $1;
 		if ($2) {
 			$cur_col_name = $2;
@@ -2794,10 +2804,10 @@ sub read_schema_from_file
 				# Rewrite some parts for easiest/generic parsing
 				my $tbn = $tb_name;
 				$tbn =~ s/\./_/gs;
-				$c =~ s/^(PRIMARY KEY|UNIQUE)/CONSTRAINT ora2pg_ukey_$tbn $1/is;
+				$c =~ s/^(PRIMARY KEY|UNIQUE)/CONSTRAINT o2pu_$tbn $1/is;
 				$c =~ s/^(CHECK[^,;]+)DEFERRABLE\s+INITIALLY\s+DEFERRED/$1/is;
-				$c =~ s/^CHECK\b/CONSTRAINT ora2pg_ckey_$tbn CHECK/is;
-				$c =~ s/^FOREIGN KEY/CONSTRAINT ora2pg_fkey_$tbn FOREIGN KEY/is;
+				$c =~ s/^CHECK\b/CONSTRAINT o2pc_$tbn CHECK/is;
+				$c =~ s/^FOREIGN KEY/CONSTRAINT o2pf_$tbn FOREIGN KEY/is;
 
 				if (!$self->{preserve_case}) {
 					$c =~ s/"//gs;
@@ -2809,6 +2819,7 @@ sub read_schema_from_file
 				{
 					my $c_name = $1;
 					$c_name =~ s/"//g;
+					print STDERR "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA $c = => $c_name\n";
 					# Retrieve all columns information
 					if (!grep(/^\Q$c_name\E$/i, 'CONSTRAINT','INDEX'))
 					{
@@ -2859,7 +2870,7 @@ sub read_schema_from_file
 						if ($c =~ s/^ENUM\s*(\([^\(\)]+\))\s*//is)
 						{
 							$c_type = 'varchar';
-							my $ck_name = 'ora2pg_ckey_' . $c_name;
+							my $ck_name = 'o2pc_' . $c_name;
 							$self->_parse_constraint($tb_name, $c_name, "$ck_name CHECK ($c_name IN $1)");
 						} elsif ($c =~ s/^([^\s\(]+)\s*//s) {
 							$c_type = $1;
@@ -2899,7 +2910,7 @@ sub read_schema_from_file
 						if (($c =~ s/(UNIQUE|PRIMARY KEY)\s*\(([^\)]+)\)//is) || ($c =~ s/(UNIQUE|PRIMARY KEY)\s*//is))
 						{
 							$c_name =~ s/\./_/gs;
-							my $pk_name = 'ora2pg_ukey_' . $c_name; 
+							my $pk_name = 'o2pu_' . $c_name; 
 							my $cols = $c_name;
 							if ($2) {
 								$cols = $2;
@@ -2910,7 +2921,7 @@ sub read_schema_from_file
 						elsif ( ($c =~ s/CONSTRAINT\s([^\s]+)\sCHECK\s*\(([^\)]+)\)//is) || ($c =~ s/CHECK\s*\(([^\)]+)\)//is) )
 						{
 							$c_name =~ s/\./_/gs;
-							my $pk_name = 'ora2pg_ckey_' . $c_name; 
+							my $pk_name = 'o2pc_' . $c_name; 
 							my $chk_search = $1;
 							if ($2)
 							{
@@ -2924,7 +2935,7 @@ sub read_schema_from_file
 						{
 
 							$c_name =~ s/\./_/gs;
-							my $pk_name = 'ora2pg_fkey_' . $c_name; 
+							my $pk_name = 'o2pf_' . $c_name; 
 							my $chk_search = $1 . "($2)";
 							$chk_search =~ s/\s+//gs;
 							$self->_parse_constraint($tb_name, $c_name, "$pk_name FOREIGN KEY ($c_name) REFERENCES $chk_search");
