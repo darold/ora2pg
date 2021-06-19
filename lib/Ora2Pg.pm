@@ -9104,7 +9104,9 @@ sub _dump_fdw_table
 	 if ( ($self->{oracle_copies} > 1) && $self->{defined_pk}{"\L$table\E"} )
 	 {
 		my $colpk = $self->{defined_pk}{"\L$table\E"};
-		$colpk = '"' . uc($colpk) . '"';
+		if ($self->{preserve_case}) {
+			$colpk = '"' . $colpk . '"';
+		}
 		my $cond = " ABS(MOD($colpk, $self->{oracle_copies})) = ?";
 		if ($s_out !~ s/\bWHERE\s+/WHERE $cond AND /)
 		{
