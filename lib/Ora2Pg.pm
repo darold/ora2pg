@@ -2819,7 +2819,6 @@ sub read_schema_from_file
 				{
 					my $c_name = $1;
 					$c_name =~ s/"//g;
-					print STDERR "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA $c = => $c_name\n";
 					# Retrieve all columns information
 					if (!grep(/^\Q$c_name\E$/i, 'CONSTRAINT','INDEX'))
 					{
