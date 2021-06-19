@@ -786,6 +786,7 @@ sub quote_object_name
 				} else {
 					$obj_name =~ s/^([^\.]+)\.([^\.]+)\.([^\.]+)$/"$1"\."$2"\."$3"/;
 				}
+				$obj_name = '"' . $obj_name . '"' if ($obj_name =~ /^\d+/);
 			}
 		}
 		# Add double quote to [schema.] object name 
@@ -4433,7 +4434,8 @@ sub export_view
 				if (exists $self->{replaced_cols}{"\L$view\E"}{"\L$f\E"} && $self->{replaced_cols}{"\L$view\E"}{"\L$f\E"}) {
 					$fname = $self->{replaced_cols}{"\L$view\E"}{"\L$f\E"};
 				}
-				$sql_output .= "COMMENT ON COLUMN " . $self->quote_object_name("$tmpv.$fname")
+				$sql_output .= "COMMENT ON COLUMN " . $self->quote_object_name($tmpv) . '.'
+						. $self->quote_object_name($fname)
 						. " IS E'" . $self->{views}{$view}{column_comments}{$f} .  "';\n";
 			}
 		}
@@ -7593,7 +7595,7 @@ sub export_table
 		if (!$self->{disable_comment} && $self->{tables}{$table}{table_info}{comment})
 		{
 			$self->{tables}{$table}{table_info}{comment} =~ s/'/''/gs;
-			$sql_output .= "COMMENT ON$foreign TABLE $tbname IS E'$self->{tables}{$table}{table_info}{comment}';\n";
+			$sql_output .= "COMMENT ON$foreign TABLE " . $self->quote_object_name($tbname) . " IS E'$self->{tables}{$table}{table_info}{comment}';\n";
 		}
 
 		# Add comments on columns
@@ -7609,7 +7611,9 @@ sub export_table
 					$self->logit("\tReplacing column $f as " . $self->{replaced_cols}{"\L$table\E"}{lc($fname)} . "...\n", 1);
 					$fname = $self->{replaced_cols}{"\L$table\E"}{lc($fname)};
 				}
-				$sql_output .= "COMMENT ON COLUMN " .  $self->quote_object_name("$tbname.$fname") . " IS E'" . $self->{tables}{$table}{column_comments}{$f} .  "';\n";
+				$sql_output .= "COMMENT ON COLUMN " .  $self->quote_object_name($tbname) . '.'
+								.  $self->quote_object_name($fname)
+								. " IS E'" . $self->{tables}{$table}{column_comments}{$f} .  "';\n";
 			}
 		}
 
