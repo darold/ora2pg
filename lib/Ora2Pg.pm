@@ -9324,6 +9324,7 @@ sub _create_indexes
 		my $columns = '';
 		foreach my $s (@{$indexes{$idx}})
 		{
+			$s = '"' . $s . '"' if ($self->is_reserved_words($s));
 			if ($s =~ /\|\|/) {
 				$columns .= '(' . $s . ')';
 			} else {
