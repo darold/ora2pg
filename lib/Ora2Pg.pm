@@ -15203,6 +15203,14 @@ sub _convert_function
 	$fct_detail{args} =~ s/\s+IN\s+/ /igs; # Remove default IN keyword
 	# Replace DEFAULT EMPTY_BLOB() from function/procedure arguments by DEFAULT NULL
 	$fct_detail{args} =~ s/\s+DEFAULT\s+EMPTY_[CB]LOB\(\)/DEFAULT NULL/igs;
+	# Preserve parameters with precision and scale
+	my $h = 0;
+	my %param_param = ();
+	while ($fct_detail{args} =~ s/\(([^\)]+)\)/%%tmp$h%%/s)
+	{
+		$param_param{$h} = $1;
+		$h++;
+	}
 
 	# Input parameters after one with a default value must also have defaults
 	# we add DEFAULT NULL to all remaining parameter without a default value.
@@ -15260,6 +15268,7 @@ sub _convert_function
 		}
 	}
 	$fct_detail{args} = '(' . join(',', @args_sorted) . ')';
+	$fct_detail{args} =~ s/\%\%tmp(\d+)\%\%/($param_param{$1})/gs;
 
 	# Set the return part
 	my $func_return = '';

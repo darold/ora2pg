@@ -1099,13 +1099,13 @@ sub perform_replacement
 							$str =~ s/(IF(?:(?!CASE|ELSE).)*?ELSE)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($sch\.$k\s*[\(;])/$1$2PERFORM $3/isg;
 							$str =~ s/(PERFORM $sch\.$k);/$1\(\);/igs;
 						}
-						elsif ($str =~ /\b((?:$k|$fct_name)\b/is)
+						elsif ($str =~ /\b(?:$k|$fct_name)\b/is)
 						{
-							$str =~ s/(BEGIN|LOOP|CALL|;)((?:\s*%ORA2PG_COMMENT\d+\%\s*|\s*\/\*(?:.*?)\*\/\s*)*\s*)(((?:$k|$fct_name)\s*[\(;])/$1$2PERFORM $3/igs;
-							while ($str =~ s/(EXCEPTION(?:(?!CASE).)*?THEN)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)(((?:$k|$fct_name)\s*[\(;])/$1$2PERFORM $3/is) {};
-							$str =~ s/(IF(?:(?!CASE|THEN).)*?THEN)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)(((?:$k|$fct_name)\s*[\(;])/$1$2PERFORM $3/isg;
-							$str =~ s/(IF(?:(?!CASE|ELSE).)*?ELSE)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)(((?:$k|$fct_name)\s*[\(;])/$1$2PERFORM $3/isg;
-							$str =~ s/(PERFORM ((?:$k|$fct_name));/$1\(\);/igs;
+							$str =~ s/(BEGIN|LOOP|CALL|;)((?:\s*%ORA2PG_COMMENT\d+\%\s*|\s*\/\*(?:.*?)\*\/\s*)*\s*)((?:$k|$fct_name)\s*[\(;])/$1$2PERFORM $3/igs;
+							while ($str =~ s/(EXCEPTION(?:(?!CASE).)*?THEN)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)((?:$k|$fct_name)\s*[\(;])/$1$2PERFORM $3/is) {};
+							$str =~ s/(IF(?:(?!CASE|THEN).)*?THEN)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)((?:$k|$fct_name)\s*[\(;])/$1$2PERFORM $3/isg;
+							$str =~ s/(IF(?:(?!CASE|ELSE).)*?ELSE)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)((?:$k|$fct_name)\s*[\(;])/$1$2PERFORM $3/isg;
+							$str =~ s/(PERFORM (?:$k|$fct_name));/$1\(\);/igs;
 						}
 					}
 				}
