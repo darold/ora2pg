@@ -2810,16 +2810,24 @@ sub read_schema_from_file
 				$c =~ s/^CHECK\b/CONSTRAINT o2pc_$tbn CHECK/is;
 				$c =~ s/^FOREIGN KEY/CONSTRAINT o2pf_$tbn FOREIGN KEY/is;
 
-				if (!$self->{preserve_case}) {
-					$c =~ s/"//gs;
-				}
 				$c =~ s/\(\s+/\(/gs;
 
+				# register column name between double quote
+				my $i = 0;
+				my %col_name = ();
 				# Get column name
+				while ($c =~ s/("[^"]+")/\%\%COLNAME$i\%\%/s)
+				{
+					$col_name{$i} = $1;
+					$i++;
+				}
 				if ($c =~ s/^\s*([^\s]+)\s*//s)
 				{
 					my $c_name = $1;
-					$c_name =~ s/"//g;
+					$c_name =~ s/\%\%COLNAME(\d+)\%\%/$col_name{$1}/gs;
+					if (!$self->{preserve_case}) {
+						$c_name =~ s/"//gs;
+					}
 					# Retrieve all columns information
 					if (!grep(/^\Q$c_name\E$/i, 'CONSTRAINT','INDEX'))
 					{
@@ -3176,7 +3184,8 @@ sub read_comment_from_file
 
 	my $tid = 0; 
 
-	while ($content =~ s/COMMENT\s+ON\s+TABLE\s+([^\s]+)\s+IS\s+'([^;]+);//is) {
+	while ($content =~ s/COMMENT\s+ON\s+TABLE\s+([^\s]+)\s+IS\s+'([^;]+);//is)
+	{
 		my $tb_name = $1;
 		my $tb_comment = $2;
 		$tb_name =~ s/"//g;
@@ -3186,16 +3195,32 @@ sub read_comment_from_file
 		}
 	}
 
-	while ($content =~ s/COMMENT\s+ON\s+COLUMN\s+([^\s]+)\s+IS\s+'([^;]+);//is) {
+	while ($content =~ s/COMMENT\s+ON\s+COLUMN\s+(.*?)\s+IS\s*'([^;]+);//is)
+	{
 		my $tb_name = $1;
 		my $tb_comment = $2;
-		$tb_name =~ s/"//g;
+		# register column name between double quote
+		my $i = 0;
+		my %col_name = ();
+		# Get column name
+		while ($tb_name =~ s/("[^"]+")/\%\%COLNAME$i\%\%/s)
+		{
+			$col_name{$i} = $1;
+			$i++;
+		}
 		$tb_comment =~ s/'\s*$//g;
-		if ($tb_name =~ s/\.([^\.]+)$//) {
+		if ($tb_name =~ s/\.([^\.]+)$//)
+		{
+			my $cname = $1;
+			$tb_name =~ s/\%\%COLNAME(\d+)\%\%/$col_name{$1}/gs;
+			$tb_name =~ s/"//g;
+			$cname =~ s/\%\%COLNAME(\d+)\%\%/$col_name{$1}/gs;
+			$cname =~ s/"//g;
+			$cname =~ s/\./_/g;
 			if (exists $self->{tables}{$tb_name}) {
-					$self->{tables}{$tb_name}{column_comments}{"\L$1\E"} = $tb_comment;
+					$self->{tables}{$tb_name}{column_comments}{"\L$cname\E"} = $tb_comment;
 			} elsif (exists $self->{views}{$tb_name}) {
-					$self->{views}{$tb_name}{column_comments}{"\L$1\E"} = $tb_comment;
+					$self->{views}{$tb_name}{column_comments}{"\L$cname\E"} = $tb_comment;
 			}
 		}
 	}
@@ -11123,13 +11148,19 @@ ORDER BY A.COLUMN_ID
 			}
 		}
 
+		# Replace dot in column name by underscore
+		if ($row->[0] =~ /\./ && (!exists $self->{replaced_cols}{"\L$tmptable\E"}
+					|| !exists $self->{replaced_cols}{"\L$tmptable\E"}{"\L$row->[0]\E"})) {
+			$self->{replaced_cols}{"\L$tmptable\E"}{"\L$row->[0]\E"} = $row->[0];
+			$self->{replaced_cols}{"\L$tmptable\E"}{"\L$row->[0]\E"} =~ s/\./_/g;
+		}
+
 		if (!$self->{schema} && $self->{export_schema})
 		{
 			next if (exists $self->{modify}{"\L$tmptable\E"} && !grep(/^\Q$row->[0]\E$/i, @{$self->{modify}{"\L$tmptable\E"}}));
 			push(@{$data{$tmptable}{"$row->[0]"}}, (@$row, $pos, @geom_inf));
 		}
-		else
-		
+		else		
 		{
 			if (!$self->{preserve_case}) {
 				next if (exists $self->{modify}{"\L$row->[8]\E"} && !grep(/^\Q$row->[0]\E$/i, @{$self->{modify}{"\L$row->[8]\E"}}));
