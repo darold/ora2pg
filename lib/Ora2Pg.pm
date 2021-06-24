@@ -2824,7 +2824,8 @@ sub read_schema_from_file
 				if ($c =~ s/^\s*([^\s]+)\s*//s)
 				{
 					my $c_name = $1;
-					$c_name =~ s/\%\%COLNAME(\d+)\%\%/$col_name{$1}/gs;
+					$c_name =~ s/\%\%COLNAME(\d+)\%\%/$col_name{$1}/sg;
+					$c =~ s/\%\%COLNAME(\d+)\%\%/$col_name{$1}/sg;
 					if (!$self->{preserve_case}) {
 						$c_name =~ s/"//gs;
 					}
@@ -3008,6 +3009,10 @@ sub read_schema_from_file
 							push(@{$self->{tables}{$tb_name}{indexes}{$idx_name}}, @cols); 
 						}
 					}
+				}
+				else
+				{
+					$c =~ s/\%\%COLNAME(\d+)\%\%/$col_name{$1}/sg;
 				}
 				$pos++;
 			}
@@ -3212,9 +3217,9 @@ sub read_comment_from_file
 		if ($tb_name =~ s/\.([^\.]+)$//)
 		{
 			my $cname = $1;
-			$tb_name =~ s/\%\%COLNAME(\d+)\%\%/$col_name{$1}/gs;
+			$tb_name =~ s/\%\%COLNAME(\d+)\%\%/$col_name{$1}/sg;
 			$tb_name =~ s/"//g;
-			$cname =~ s/\%\%COLNAME(\d+)\%\%/$col_name{$1}/gs;
+			$cname =~ s/\%\%COLNAME(\d+)\%\%/$col_name{$1}/sg;
 			$cname =~ s/"//g;
 			$cname =~ s/\./_/g;
 			if (exists $self->{tables}{$tb_name}) {
@@ -3222,6 +3227,10 @@ sub read_comment_from_file
 			} elsif (exists $self->{views}{$tb_name}) {
 					$self->{views}{$tb_name}{column_comments}{"\L$cname\E"} = $tb_comment;
 			}
+		}
+		else
+		{
+			$tb_name =~ s/\%\%COLNAME(\d+)\%\%/$col_name{$1}/sg;
 		}
 	}
 
