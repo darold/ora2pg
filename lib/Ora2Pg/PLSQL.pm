@@ -2256,7 +2256,7 @@ sub replace_cursor_def
 
 	# Replace OPEN cursor FOR with dynamic query
 	$str =~ s/(OPEN\s+(?:[^;]+?)\s+FOR)((?:[^;]+?)USING)/$1 EXECUTE$2/isg;
-	$str =~ s/(OPEN\s+(?:[^;]+?)\s+FOR)\s+((?!EXECUTE)(?:[^;]+?)\|\|)/$1 EXECUTE $2/isg;
+	#$str =~ s/(OPEN\s+(?:[^;]+?)\s+FOR)\s+((?!EXECUTE)(?:[^;]+?)\|\|)/$1 EXECUTE $2/isg;
 	$str =~ s/(OPEN\s+(?:[^;]+?)\s+FOR)\s+([^\s]+\s*;)/$1 EXECUTE $2/isg;
 	# Remove empty parenthesis after an open cursor
 	$str =~ s/(OPEN\s+[^\(\s;]+)\s*\(\s*\)/$1/isg;
