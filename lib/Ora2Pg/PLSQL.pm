@@ -794,8 +794,8 @@ sub plsql_to_plpgsql
 	$str =~ s/DBMS_LOB.GETLENGTH/octet_length/igs;
 	# DBMS_LOB.SUBSTR can be replaced by SUBSTR()
 	$str =~ s/DBMS_LOB.SUBSTR/substr/igs;
-	# TO_CLOB()
-	$str =~ s/TO_CLOB\(([^\)]+)\)/$1/igs;
+	# TO_CLOB(), we just remove it
+	$str =~ s/TO_CLOB\s*\(/\(/igs;
 
 	# Raise information to the client
 	$str =~ s/DBMS_OUTPUT\.(put_line|put|new_line)\s*\((.*?)\)\s*;/&raise_output($class, $2) . ';'/isge;
@@ -1553,8 +1553,8 @@ sub replace_oracle_function
 	$str =~ s/DBMS_LOB.GETLENGTH/octet_length/igs;
 	# DBMS_LOB.SUBSTR can be replaced by SUBSTR()
 	$str =~ s/DBMS_LOB.SUBSTR/substr/igs;
-	# TO_CLOB()
-	$str =~ s/TO_CLOB\(([^\)]+)\)/$1/igs;
+	# TO_CLOB(), we just remove it
+	$str =~ s/TO_CLOB\s*\(/\(/igs;
 
 	# Replace call to SYS_GUID() function
 	$str =~ s/\bSYS_GUID\s*\(\s*\)/$class->{uuid_function}()/igs;
