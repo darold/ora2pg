@@ -3,7 +3,7 @@
 # Project  : Oracle to Postgresql converter
 # Name     : ora2pg
 # Author   : Gilles Darold, gilles _AT_ darold _DOT_ net
-# Copyright: Copyright (c) 2000-2020 : Gilles Darold - All rights reserved -
+# Copyright: Copyright (c) 2000-2021 : Gilles Darold - All rights reserved -
 # Function : Script used to convert Oracle Database to PostgreSQL
 # Usage    : ora2pg configuration_file
 #------------------------------------------------------------------------------
@@ -31,7 +31,7 @@ use POSIX qw(locale_h sys_wait_h _exit);
 setlocale(LC_NUMERIC, '');
 setlocale(LC_ALL,     'C');
 
-my $VERSION = '21.1';
+my $VERSION = '22.0';
 
 $| = 1;
 

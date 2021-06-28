@@ -1,3 +1,154 @@
+2021 06 26 - v22.0
+
+This release fix several issues reported since past three months and
+adds some new features and improvements.  I must thanks MigOps Inc who
+hire me to drive Oracle to PostgreSQL migrations and to develop Ora2Pg.
+It's been a long time that I was looking for such a company and it is
+an amazing gift for the 20 years of Ora2Pg. All improvements and new
+new features developed during my work at MigOps will be available in
+the public GitHub repository, here are the new ones.
+
+  - Add export of data using oracle_fdw when FDW_SERVER is set and export
+    type is COPY or INSERT. Multi-process using -P or -J is fully supported
+    but option -j is useless in this case. Boolean transformation of some
+    columns or data type is also supported. Actually, expect that it works
+    just like data migration without oracle_fdw. This can improve the data
+    migration speed from 30 to 40% especially for BLOB export.
+ 
+  - Improve export performances with huge number of objects by avoiding join
+    between Oracle catalog tables.
+
+  - Set a maximum of assessment score for tables, indexes, sequences,
+    partitions, global temporary table and synonym following the number of
+    objects.
+
+  - Add detection of XML functions to the assessment cost.
+
+  - Allow to change the assessment cost unit value in the export_all.sh script
+    when ora2pg is used with options --init_project and --cost_unit_value.
+
+  - Remove pragma restrict_references from P/PSQL code, it is useless.
+
+  - Add the oracle schema to search_path in SQL files generated and improve
+    the migration assessment when USE_ORAFCE is enabled.
+
+  - Apply ALLOW and EXCLUDED filtered stored procedures at package extraction
+    level. Previous this patch there was no way to not export some package
+    functions or to exclude them from assessment.
+
+  - Add new tests to check sequences last values and number of identity columns
+    in both side.
+
+  - Apply ALLOW/EXCLUDE without object to table object by default in TEST
+    action.
+
+New configuration directives:
+
+  - Add ORACLE_FDW_TRANSFORM configuration directive to apply a transformation
+    to a column when exporting data. Value must be a semicolon separated list of
+        TABLE[COLUMN_NAME, <replace code in SELECT target list>]
+    For example to replace string 'Oracle' by 'PostgreSQL' in a varchar2 column
+    use the following.
+        ERROR_LOG[DBMS_TYPE:regexp_replace("DBMS_TYPE",'Oracle','PostgreSQL')]
+    Thanks to MigOps for the patch.
+
+  - Add DROP_IF_EXISTS configuration directive to add a statement
+    "DROP <OBJECT> IF EXISTS" before creating the object. Can be
+    useful in an iterative work. Default is disabled. Thanks to
+    dherzhau for the feature request.
+
+Backward compatibility:
+
+    There is a backward compatibility issue with old configuration files
+    where FDW_SERVER is set by default. This directive was not used when
+    exporting data, this is not the case anymore as it instruct Ora2Pg to
+    use the given foreign server to use oracle_fdw to migrate the data.
+
+Here is the full list of changes and acknowledgements:
+
+  - Fix replacement of TO_CLOB() function, now it is just removed and the
+    parenthesis are kept. Thanks to Rui Pereira for the report.
+  - Fix incorrect detection of cursor on dynamic query. Thanks to Rui
+    Pereira for the report.
+  - Fix quoting column names with spaces and dots. Dots are replaced by
+    underscore. Thanks to Veka for the report.
+  - Fix one case where DEFINED_PKEY with PRESERVE_CASE was not handled
+    correctly. Thanks to Veka for the report.
+  - Fix quoting of reserved keywords in CREATE INDEX columns names. Thanks
+    to Veka for the report.
+  - Fix column name starting with number not quoted in COMMENT. Thanks to
+    Veka for the report.
+  - Fix addition of PERFORM on call to stored procedures not prefixed by
+    the package name. Thanks to Rui Pereira fo the report.
+  - Fix search of ora2pg_conf.dist under Windows instead of ora2pg.conf.dist
+    when --init_project is used. Thanks to Julien Monticolo for the report.
+  - Fix translation from file of check constraint when created on same column,
+    only the last one was exported. Also shortened the prefix for constraint
+    naming, ora2pg_ckey becomes o2pc, ora2pg_ukey is now o2pu and ora2pg_fkey
+    is renamed into o2pf. Thanks to anvithaprabhu8 for the report.
+  - Replace wildcard precision * for numeric by 38.
+  - Fix incomplete listagg() conversion. Thanks to avandras for the report.
+  - Fix potential problem in last_day conversion when USE_ORAFCE is off and
+    a number is added or subtracted to the last day. Thanks to atlterry for
+    the report.
+  - Do not apply utf8 conversion of comments to input files.
+  - Fix termination of last writer process when parallel and quiet mode are
+    used together. Thanks to David Harper for the patch.
+  - Remove precision in number of digit in timestamp microseconds when
+    setting NLS_TIMESTAMP_FORMAT at session startup. Now use:
+      ALTER SESSION SET NLS_TIMESTAMP_FORMAT='YYYY-MM-DD HH24:MI:SS.FF'
+    instead of '.FF6'. This was possibly the cause of sporadic error:
+      ORA-03106: fatal two-task communication protocol error (DBD ERROR: OCIStmtFetch)
+    Default is precision 6 so it may not change anything. Thanks to
+    Abhijeet Bonde for the report.
+  - Fix call to deprecated MySQL spatial function when version is after 5.7.6.
+    Thanks to naveenjul29 for the report.
+  - Fix false positive detection for nested table with MySQL export.
+  - Fix sequence export read from file.
+  - Add PG_VERSION to the documentation. Thanks to xinjirufen for the report.
+  - Fix error report when preparing query to ALL_IND_COLUMNS IC. Thanks to
+    ganeshakorde for the report.
+  - ora2pg_scanner: Fix detection of service_name in DSN.
+  - Fix error raise_application_error() with named parameters.
+  - Fix replacement of out parameters in triggers.
+  - Change sequence export result storage to hash instead of array.
+  - Fix package export when there is a comment between PACKAGE BODY and the
+    name of the package.
+  - Fix Perl error "malformed utf-8 character in substitution" when there is
+    character not in utf8 in the comment or constants.
+  - Fix detection of MySQL FUNCTION vs PROCEDURE for version >= 5.5. Thanks
+    to naveenjul29 for the report.
+  - Exclude nested tables from the export as it is not supported and it
+    always generate an error. A warning is raised.
+  - Fix column case in check constraints when PRESERVE_CASE is enabled.
+  - Fix search_path in direct PG data export when PG_SCHEMA is set.
+  - Fix -Infinity insert for direct PG data export.
+  - Fix drop indexes when PRESERVE_CASE is enabled.
+  - Remove potential double affectation for function with out parameter.
+  - Create immutable to_char function when used in an index.
+  - Replace dmake by gmake on Windows installation instruction. Thanks to
+    Julien Monticolo for the report.
+  - Fix MySQL version conditions. Thanks to Christoph Berg for the report.
+  - Fix HASH partitioning for duplicate WITH clause.
+  - Fix tests when no schema are set to compare all objects in all schemes.
+    Thanks to gp4git and dlc75 for the report.
+  - Apply ALLOW/EXCLUDE without object to table object by default in TEST
+    action. Thanks to Yony Sade for the feature request.
+  - Add DROP_IF_EXISTS configuration directive. Thanks to dherzhau for the
+    feature request.
+  - Fix regression in removing %ROWTYPE from function parameters. Thanks to
+    Eric Delanoe for the report.
+  - Fix not adding default values to parameters when this is an OUT parameter.
+    Thanks to Eric Delanoe for the report.
+  - Fix ALL_DIRECTORIES call be using table name relative to USER_GRANTS.
+    Thanks to Yoni Sade for the report.
+  - Change all remaining call to static ALL_* tables to a call relative to
+    USER_GRANTS. Thanks to Yoni Sade for the report.
+  - Fix export or partitioned table with unsupported partitioning type
+    like PARTITION BY REFERENCE. The table is created without partition
+    and a warning it fired as well as the following message in the output
+    file as a comment: -- Unsupported partition type, please check
+
 2021 04 01 - v21.1
 
 This release fix several issues reported since past six months and

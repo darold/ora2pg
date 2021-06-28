@@ -9,7 +9,7 @@ use POSIX qw(locale_h);
 setlocale(LC_NUMERIC,"C");
 
 
-$VERSION = '21.1';
+$VERSION = '22.0';
 
 # Some function might be excluded from export and assessment.
 our @EXCLUDED_FUNCTION = ('SQUIRREL_GET_ERROR_OFFSET');
