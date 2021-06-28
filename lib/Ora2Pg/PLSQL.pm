@@ -434,7 +434,7 @@ sub convert_plsql_code
 			}
 		}
 		while ($code_parts[$i] =~ s/\%\%REPLACEFCT(\d+)\%\%/$class->{single_fct_call}{$1}/) {};
-		$code_parts[$i] =~ s/\%SUBPARAMS(\d )\%/$subparams{$1}/igs;
+		$code_parts[$i] =~ s/\%SUBPARAMS(\d+)\%/$subparams{$1}/igs;
 
 		# Remove potential double affectation for function with out parameter
 		$code_parts[$i] =~ s/(\s*)[^\s=;]+\s*:=\s*(?:\%ORA2PG_COMMENT\d+\%)?(\s*[^\s;=]+\s*:=)/$1$2/gs;

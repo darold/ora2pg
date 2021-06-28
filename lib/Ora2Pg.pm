@@ -4900,7 +4900,7 @@ sub export_sequence
 		if ($self->{sequences}{$seq}->[1] eq '' || $self->{sequences}{$seq}->[1] < (-2**63-1)) {
 			$sql_output .= " NO MINVALUE";
 		} else {
-			$sql_output .= " MINVALUE $seq->[1]";
+			$sql_output .= " MINVALUE $self->{sequences}{$seq}->[1]";
 		}
 		# Max value lower than start value are not allowed
 		if (($self->{sequences}{$seq}->[2] > 0) && ($self->{sequences}{$seq}->[2] < $self->{sequences}{$seq}->[4])) {
@@ -11891,7 +11891,7 @@ AND    IC.TABLE_OWNER = ?
 			$row->[1] =~ s/"//g;
 			$row->[1] =~ s/'//g if ($row->[1] =~ /^'[^'\s]+'$/);
 			# Single row constraint based on a constant and a function based unique index
-			if ($row->[2] eq 'UNIQUE' && $nc->[0] =~ /^\d+$/ && $row->[4] =~ /FUNCTION-BASED/i) {
+			if ($nc->[0] =~ /^\d+$/ && $row->[4] =~ /FUNCTION-BASED/i) {
 				$row->[1] = '(' . $nc->[0] . ')';
 			}
 			# Enclose with double quote if required when is is not an index function
@@ -14096,7 +14096,7 @@ sub format_data_row
 					}
 					else
 					{
-						$row->[$idx] = "ST_Geomtry('" . $row->[$idx] . "', $self->{spatial_srid}{$table}->[$idx])";
+						$row->[$idx] = "ST_Geometry('" . $row->[$idx] . "', $self->{spatial_srid}{$table}->[$idx])";
 					}
 				}
 				else
@@ -15247,8 +15247,15 @@ sub _convert_function
 	$fname =~ s/"_"/_/gs;
 
 	$fct_detail{args} =~ s/\s+IN\s+/ /igs; # Remove default IN keyword
+
 	# Replace DEFAULT EMPTY_BLOB() from function/procedure arguments by DEFAULT NULL
 	$fct_detail{args} =~ s/\s+DEFAULT\s+EMPTY_[CB]LOB\(\)/DEFAULT NULL/igs;
+
+	# Input parameters after one with a default value must also have defaults
+	# we add DEFAULT NULL to all remaining parameter without a default value.
+	my @args_sorted = ();
+	$fct_detail{args} =~ s/^\((.*)\)(\s*\%ORA2PG_COMMENT\d+\%)*\s*$/$1$2/gs;
+
 	# Preserve parameters with precision and scale
 	my $h = 0;
 	my %param_param = ();
@@ -15258,10 +15265,6 @@ sub _convert_function
 		$h++;
 	}
 
-	# Input parameters after one with a default value must also have defaults
-	# we add DEFAULT NULL to all remaining parameter without a default value.
-	my @args_sorted = ();
-	$fct_detail{args} =~ s/^\((.*)\)(\s*\%ORA2PG_COMMENT\d+\%)*\s*$/$1$2/gs;
 	if ($self->{use_default_null})
 	{
 		my $has_default = 0;
@@ -15269,7 +15272,8 @@ sub _convert_function
 		for (my $i = 0; $i <= $#args_sorted; $i++)
 		{
 			$has_default = 1 if ($args_sorted[$i] =~ /\s+DEFAULT\s/i);
-			if ($has_default && $args_sorted[$i] !~ /\s+DEFAULT\s/i) {
+			if ($has_default && $args_sorted[$i] !~ /\s+DEFAULT\s/i)
+			{
 				# Add default null if this is not an OUT parameter
 				if ( $args_sorted[$i] !~ /[,\(\s]OUT[\s,\)]/i && $args_sorted[$i] !~ /^OUT\s/i) {
 					$args_sorted[$i] .= ' DEFAULT NULL';
