@@ -1788,7 +1788,7 @@ sub _init
 			}
 			$self->{dbhdest} = $self->_send_to_pgdb() if ($self->{pg_dsn} && !$self->{dbhdest});
 			# In case we will use oracle_fdw creates the foreign tables
-			if ($self->{fdw_server})
+			if ($self->{fdw_server} && $self->{pg_dsn})
 			{
 				# Create the oracle_fdw extension en the foreign server
 				$self->_create_foreign_server();
@@ -8025,7 +8025,7 @@ sub _get_sql_statements
 	# Extract data only
 	elsif (($self->{type} eq 'INSERT') || ($self->{type} eq 'COPY'))
 	{
-		if ($self->{oracle_fdw_data_export})
+		if ($self->{oracle_fdw_data_export} && $self->{pg_dsn})
 		{
 			my $fdw_definition = $self->export_table();
 			$self->{dbhdest}->do("DROP SCHEMA IF EXISTS ora2pg_fdw_import CASCADE") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
@@ -8379,7 +8379,7 @@ sub _get_sql_statements
 			if ($self->{parallel_tables} > 1)
 			{
 				spawn sub {
-					if (!$self->{fdw_server}) {
+					if (!$self->{fdw_server} && $self->{pg_dsn}) {
 						$self->_export_table_data($table, $dirprefix, $sql_header);
 					} else {
 						$self->_export_fdw_table_data($table, $dirprefix, $sql_header);
@@ -8401,7 +8401,7 @@ sub _get_sql_statements
                         }
 			else
 			{
-				if (!$self->{fdw_server}) {
+				if (!$self->{fdw_server} && $self->{pg_dsn}) {
 					$total_record = $self->_export_table_data($table, $dirprefix, $sql_header);
 				} else {
 					$total_record = $self->_export_fdw_table_data($table, $dirprefix, $sql_header);
