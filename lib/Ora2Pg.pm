@@ -19525,7 +19525,7 @@ sub _compile_schema
 	if ($#to_compile >= 0) {
 		foreach my $schm (@to_compile) {
 			$self->logit("Force Oracle to compile schema $schm before code extraction\n", 1);
-			my $sth = $self->{dbh}->do("BEGIN\nDBMS_UTILITY.compile_schema(schema => '$schm');\nEND;")
+			my $sth = $self->{dbh}->do("BEGIN\nDBMS_UTILITY.compile_schema(schema => '$schm', compile_all => FALSE);\nEND;")
 						or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 		}
 	}
