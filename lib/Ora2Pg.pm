@@ -7620,7 +7620,7 @@ sub export_table
 				$sql_output .= " SERVER $self->{fdw_server} OPTIONS($schem table '$tmptb');\n";
 			}
 		}
-		next if ($self->{oracle_fdw_data_export});
+		$ib++, next if ($self->{oracle_fdw_data_export});
 
 		$sql_output .= $serial_sequence;
 		$sql_output .= $enum_str;
@@ -8030,7 +8030,7 @@ sub _get_sql_statements
 			my $fdw_definition = $self->export_table();
 			$self->{dbhdest}->do("DROP SCHEMA IF EXISTS ora2pg_fdw_import CASCADE") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
 			$self->{dbhdest}->do("CREATE SCHEMA ora2pg_fdw_import") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
-			$self->{dbhdest}->do($fdw_definition) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
+			$self->{dbhdest}->do($fdw_definition) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . ", SQL: $fdw_definition\n", 0, 1);
 		}
 
 		my $sql_output = "";
@@ -8379,7 +8379,7 @@ sub _get_sql_statements
 			if ($self->{parallel_tables} > 1)
 			{
 				spawn sub {
-					if (!$self->{fdw_server} && $self->{pg_dsn}) {
+					if (!$self->{fdw_server} || !$self->{pg_dsn}) {
 						$self->_export_table_data($table, $dirprefix, $sql_header);
 					} else {
 						$self->_export_fdw_table_data($table, $dirprefix, $sql_header);
@@ -8401,7 +8401,7 @@ sub _get_sql_statements
                         }
 			else
 			{
-				if (!$self->{fdw_server} && $self->{pg_dsn}) {
+				if (!$self->{fdw_server} || !$self->{pg_dsn}) {
 					$total_record = $self->_export_table_data($table, $dirprefix, $sql_header);
 				} else {
 					$total_record = $self->_export_fdw_table_data($table, $dirprefix, $sql_header);
@@ -9160,7 +9160,7 @@ sub _dump_fdw_table
 				}
 				my $sth = $dbh->prepare($s_out) or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
 				$self->logit("Parallelizing on core #$self->{ora_conn_count} with query: $s_out\n", 1);
-				$self->logit("Exporting foreign table data for $table, #$self->{ora_conn_count}\n", 0);
+				$self->logit("Exporting foreign table data for $table, #$self->{ora_conn_count}\n", 1);
 				$sth->execute($self->{ora_conn_count}) or $self->logit("FATAL: " . $dbh->errstr . ", SQL: $s_out\n", 0, 1);
 				$sth->finish();
 				if (defined $pipe)
@@ -9186,7 +9186,7 @@ sub _dump_fdw_table
 	 }
 	else
 	{
-		$self->logit("Exporting foreign table data for $table using query: $s_out\n", 0);
+		$self->logit("Exporting foreign table data for $table using query: $s_out\n", 1);
 		$local_dbh->do($s_out) or $self->logit("ERROR: " . $local_dbh->errstr . ", SQL: $s_out\n", 1);
 	}
  
