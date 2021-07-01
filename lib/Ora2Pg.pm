@@ -7311,9 +7311,17 @@ sub export_table
 		my $serial_sequence = '';
 		my $enum_str = '';
 		my @skip_column_check = ();
-		if (exists $self->{tables}{$table}{column_info}) {
+		if (exists $self->{tables}{$table}{column_info})
+		{
 			my $schem = '';
-			$sql_output .= "\nCREATE$foreign $obj_type $tbname (\n";
+
+			# Add the destination schema
+			if ($self->{external_to_fdw} && ($self->{type} eq 'INSERT' || $self->{type} eq 'COPY')) {
+				$sql_output .= "\nCREATE$foreign $obj_type ora2pg_fdw_import.$tbname (\n";
+			} else {
+				$sql_output .= "\nCREATE$foreign $obj_type $tbname (\n";
+			}
+
 
 			# Extract column information following the Oracle position order
 			foreach my $k (sort { 
@@ -7617,10 +7625,15 @@ sub export_table
 				} elsif ($tmptb =~ s/^([^\.]+)\.//) {
 					$schem = "schema '$1',";
 				}
-				$sql_output .= " SERVER $self->{fdw_server} OPTIONS($schem table '$tmptb');\n";
+				$sql_output .= " SERVER $self->{fdw_server} OPTIONS($schem table '$tmptb', readonly 'true');\n";
 			}
 		}
-		$ib++, next if ($self->{oracle_fdw_data_export});
+		# For data export from foreign table, go to next table
+		if ($self->{oracle_fdw_data_export})
+		{
+			$ib++;
+			next;
+		}
 
 		$sql_output .= $serial_sequence;
 		$sql_output .= $enum_str;
@@ -9091,7 +9104,8 @@ sub _dump_fdw_table
 			}
 			else
 			{
-				$fdw_col_list .= "\"$colname\",";
+				$fdw_col_list .= $self->quote_object_name($colname) . ",";
+				#$fdw_col_list .= "\"$colname\",";
 			}
 		}
 		$colname = $self->quote_object_name($colname);
@@ -9114,8 +9128,8 @@ sub _dump_fdw_table
 	$self->{tables}{$table}{pg_colnames_pkey} = \@pg_colnames_pkey;
  
 	my $overriding_system = '';
-	if ($self->{pg_supports_identity}) {
-		$overriding_system = ' OVERRIDING SYSTEM VALUE' if ($has_identity);
+	if ($self->{pg_supports_identity} && $has_identity) {
+		$overriding_system = ' OVERRIDING SYSTEM VALUE';
 	}
  
 	my $s_out = "INSERT INTO $tmptb ($col_list";
@@ -21651,7 +21665,7 @@ sub _import_foreign_schema
 	# Import foreign table into the dedicated schema ora2pg_fdw_import
 	my $sql = "IMPORT FOREIGN SCHEMA \"\U$self->{schema}\E\"";
 	$sql .= $self->_select_foreign_objects();
-	$sql .= " FROM SERVER $self->{fdw_server} INTO ora2pg_fdw_import OPTIONS (case 'keep')";
+	$sql .= " FROM SERVER $self->{fdw_server} INTO ora2pg_fdw_import OPTIONS (case 'keep', readonly 'true')";
 	$self->{dbhdest}->do($sql) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
 }
 
