@@ -1,3 +1,19 @@
+2021 07 02 - v22.1
+
+This is a maintenance release to extend the feature of data export through the
+oracle_fdw PostgreSQL extension to migration that use the public schema and
+do not preserve case.
+
+There is also some other fixes:
+
+  - Fix compile_schema() call that breaks valid function based indexes by
+    adding compile_all => FALSE to DBMS_UTILITY.compile_schema().
+    Thanks to Pawel Fengler for the patch.
+  - Force foreign table for data export as readonly to avoid accidental
+    write if import schema is not cleaned.
+  - Fix data export to file not possible since last changes for oracle_fdw
+    export. Thanks to Niels Jespersen for the report.
+
 2021 06 26 - v22.0
 
 This release fix several issues reported since past three months and
