@@ -11879,6 +11879,9 @@ AND    IC.TABLE_OWNER = ?
 		# way to exclude then than looking at index name, fill free to fix it.
 		next if ($row->[0] =~ /^I_SNAP\$_/);
 
+		# Handle case where indexes name include the schema at create time
+		$row->[0] =~ s/^$self->{schema}\.//i if ($self->{schema});
+
 		my $save_tb = $row->[8];
 		if (!$self->{schema} && $self->{export_schema}) {
 			$row->[8] = "$row->[9].$row->[8]";
