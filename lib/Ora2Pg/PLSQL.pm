@@ -2122,8 +2122,10 @@ sub replace_sql_type
 							$str =~ s/\b$type\b\s*\([^\)]+\)/smallint/is;
 						} elsif ($precision <= 9) {
 							$str =~ s/\b$type\b\s*\([^\)]+\)/integer/is;
-						} else {
+						} elsif ($precision <= 19) {
 							$str =~ s/\b$type\b\s*\([^\)]+\)/bigint/is;
+						} else {
+							$str =~ s/\b$type\b\s*\([^\)]+\)/numeric($precision)/is;
 						}
 					} else {
 						$str =~ s/\b$type\b\s*\([^\)]+\)/numeric\%\|$precision\%\|\%/i;
