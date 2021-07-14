@@ -56,6 +56,7 @@ our %ordered_views = ();
 
 # Character that must be escaped in COPY statement
 my $ESCAPE_COPY = { "\0" => "", "\\" => "\\\\", "\r" => "\\r", "\n" => "\\n", "\t" => "\\t"};
+my $FDW_SCHEMA = $ENV{FDW_SCHEMA} || 'ora2pg_fdw_import';
 
 # Oracle internal timestamp month equivalent
 our %ORACLE_MONTHS = ('JAN'=>'01', 'FEB'=>'02','MAR'=>'03','APR'=>'04','MAY'=>'05','JUN'=>'06','JUL'=>'07','AUG'=>'08','SEP'=>'09','OCT'=>10,'NOV'=>11,'DEC'=>12);
@@ -7231,9 +7232,9 @@ sub export_table
         }
         else
         {
-		# prefix the search path with FDW import ora2pg_fdw_import schema
+		# prefix the search path with FDW import $FDW_SCHEMA schema
                 my $tmp_search_path = $self->set_search_path();
-		$tmp_search_path =~ s/search_path = /search_path = ora2pg_fdw_import,/;
+		$tmp_search_path =~ s/search_path = /search_path = ${FDW_SCHEMA},/;
                 $sql_output .= $tmp_search_path;
 	}
 
@@ -7317,7 +7318,7 @@ sub export_table
 
 			# Add the destination schema
 			if ($self->{external_to_fdw} && ($self->{type} eq 'INSERT' || $self->{type} eq 'COPY')) {
-				$sql_output .= "\nCREATE$foreign $obj_type ora2pg_fdw_import.$tbname (\n";
+				$sql_output .= "\nCREATE$foreign $obj_type $FDW_SCHEMA.$tbname (\n";
 			} else {
 				$sql_output .= "\nCREATE$foreign $obj_type $tbname (\n";
 			}
@@ -8041,8 +8042,8 @@ sub _get_sql_statements
 		if ($self->{oracle_fdw_data_export} && $self->{pg_dsn})
 		{
 			my $fdw_definition = $self->export_table();
-			$self->{dbhdest}->do("DROP SCHEMA IF EXISTS ora2pg_fdw_import CASCADE") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
-			$self->{dbhdest}->do("CREATE SCHEMA ora2pg_fdw_import") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
+			$self->{dbhdest}->do("DROP SCHEMA IF EXISTS $FDW_SCHEMA CASCADE") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
+			$self->{dbhdest}->do("CREATE SCHEMA $FDW_SCHEMA") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
 			$self->{dbhdest}->do($fdw_definition) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . ", SQL: $fdw_definition\n", 0, 1);
 		}
 
@@ -9135,9 +9136,9 @@ sub _dump_fdw_table
 	my $s_out = "INSERT INTO $tmptb ($col_list";
 	my $fdwtb = $tmptb;
 	$fdwtb = '"' . $tmptb . '"' if ($tmptb !~ /"/);
-	$s_out .= ")$overriding_system SELECT $fdw_col_list FROM ora2pg_fdw_import.$fdwtb";
+	$s_out .= ")$overriding_system SELECT $fdw_col_list FROM $FDW_SCHEMA.$fdwtb";
  
-	$0 = "ora2pg - exporting table ora2pg_fdw_import.$fdwtb";
+	$0 = "ora2pg - exporting table $FDW_SCHEMA.$fdwtb";
  
 	# Overwrite the query if REPLACE_QUERY is defined for this table
 	if ($self->{replace_query}{"\L$table\E"})
@@ -9200,6 +9201,9 @@ sub _dump_fdw_table
 	 }
 	else
 	{
+		if ($search_path) {
+		  $local_dbh->do($search_path) or $self->logit("FATAL: " . $local_dbh->errstr . "\n", 0, 1);
+		}
 		$self->logit("Exporting foreign table data for $table using query: $s_out\n", 1);
 		$local_dbh->do($s_out) or $self->logit("ERROR: " . $local_dbh->errstr . ", SQL: $s_out\n", 1);
 	}
@@ -21663,12 +21667,12 @@ sub _import_foreign_schema
 	my $self = shift;
  
 	# Drop and recreate the import schema
-	$self->{dbhdest}->do("DROP SCHEMA IF EXISTS ora2pg_fdw_import CASCADE") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
-	$self->{dbhdest}->do("CREATE SCHEMA ora2pg_fdw_import") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
-	# Import foreign table into the dedicated schema ora2pg_fdw_import
+	$self->{dbhdest}->do("DROP SCHEMA IF EXISTS $FDW_SCHEMA CASCADE") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
+	$self->{dbhdest}->do("CREATE SCHEMA $FDW_SCHEMA") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
+	# Import foreign table into the dedicated schema $FDW_SCHEMA
 	my $sql = "IMPORT FOREIGN SCHEMA \"\U$self->{schema}\E\"";
 	$sql .= $self->_select_foreign_objects();
-	$sql .= " FROM SERVER $self->{fdw_server} INTO ora2pg_fdw_import OPTIONS (case 'keep', readonly 'true')";
+	$sql .= " FROM SERVER $self->{fdw_server} INTO $FDW_SCHEMA OPTIONS (case 'keep', readonly 'true')";
 	$self->{dbhdest}->do($sql) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
 }
 
