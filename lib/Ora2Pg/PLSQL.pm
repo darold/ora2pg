@@ -144,7 +144,8 @@ $QUERY_TEST_SCORE = 0.1;
 	'CONCAT' => 0.1,
 	'TIMEZONE' => 1,
 	'JSON' => 3,
-	'TO_CLOB' => 0.1
+	'TO_CLOB' => 0.1,
+	'XMLTYPE' => 3,
 );
 
 @ORA_FUNCTIONS = qw(
@@ -868,6 +869,9 @@ sub plsql_to_plpgsql
 
 	# Replace UTL_MATH function by fuzzymatch function
 	$str =~ s/UTL_MATCH.EDIT_DISTANCE/levenshtein/igs;
+
+        # Replace UTL_ROW.CAST_TO_RAW function by encode function
+        $str =~ s/UTL_RAW.CAST_TO_RAW\s*\(\s*([^\)]+)\s*\)/encode($1::bytea, 'hex')::bytea/igs;
 
 	# Replace known EXCEPTION equivalent ERROR code
 	foreach my $e (keys %EXCEPTION_MAP) {
@@ -1676,6 +1680,8 @@ sub replace_oracle_function
 	$str =~ s/\.(getClobVal|getStringVal)\s*\(\s*\)//is;
 	# Add the name keyword to XMLELEMENT
 	$str =~ s/XMLELEMENT\s*\(\s*/XMLELEMENT(name /is;
+	# Replace XMLTYPE function
+	$str =~ s/XMLTYPE\s*\(\s*([^,]+)\s*,[^\)]+\)/xmlparse(DOCUMENT, convert_from($1, 'utf-8'))/igs;
 
 	# Cast round() call as numeric
 	$str =~ s/round\s*\(([^,]+),([\s\d]+)\)/round\(($1)::numeric,$2\)/is;
