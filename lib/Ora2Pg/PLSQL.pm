@@ -146,6 +146,22 @@ $QUERY_TEST_SCORE = 0.1;
 	'JSON' => 3,
 	'TO_CLOB' => 0.1,
 	'XMLTYPE' => 3,
+	'CREATENONSCHEMABASEDXML' => 3,
+	'CREATESCHEMABASEDXML' => 3,
+	'CREATEXML' => 3,
+	'EXISTSNODE' => 3,
+	'EXTRACT' => 3,
+	'GETNAMESPACE' => 3,
+	'GETROOTELEMENT' => 3,
+	'GETSCHEMAURL' => 3,
+	'ISFRAGMENT' => 3,
+	'ISSCHEMABASED' => 3,
+	'ISSCHEMAVALID' => 3,
+	'ISSCHEMAVALIDATED' => 3,
+	'SCHEMAVALIDATE' => 3,
+	'SETSCHEMAVALIDATED' => 3,
+	'TOOBJECT' => 3,
+	'TRANSFORM' => 3,
 );
 
 @ORA_FUNCTIONS = qw(
@@ -344,6 +360,9 @@ sub convert_plsql_code
         my ($class, $str, @strings) = @_;
 
 	return if ($str eq '');
+
+	# Remove the SYS schema from calls
+	$str =~ s/\bSYS\.//igs;
 
 	# Replace outer join sign (+) with a placeholder
 	$class->{outerjoin_idx} //= 0;
@@ -615,6 +634,10 @@ sub plsql_to_plpgsql
 	if (!grep(/$class->{type}/i, 'FUNCTION', 'PROCEDURE', 'PACKAGE')) {
 		$conv_current_time = 'LOCALTIMESTAMP';
 	}
+
+	# Remove the SYS schema from calls
+	$str =~ s/\bSYS\.//igs;
+
 	# Replace sysdate +/- N by localtimestamp - 1 day intervel
 	$str =~ s/\bSYSDATE\s*(\+|\-)\s*(\d+)/$conv_current_time $1 interval '$2 days'/igs;
 
@@ -1534,6 +1557,9 @@ sub replace_oracle_function
 	my $num_field = '\s*([\d\.]+)\s*';
 	my $date_field = '\s*([^,\)\(]*(?:date|time)[^,\)\(]*)\s*';
 
+	# Remove the SYS schema from calls
+	$str =~ s/\bSYS\.//igs;
+
 	#--------------------------------------------
 	# PL/SQL to PL/PGSQL code conversion
 	# Feel free to add your contribution here.
@@ -1677,11 +1703,12 @@ sub replace_oracle_function
 	# Remove call to XMLCDATA, there's no such function with PostgreSQL
 	$str =~ s/XMLCDATA\s*\(([^\)]+)\)/'<![CDATA[' || $1 || ']]>'/is;
 	# Remove call to getClobVal() or getStringVal, no need of that
-	$str =~ s/\.(getClobVal|getStringVal)\s*\(\s*\)//is;
+	$str =~ s/\.(GETCLOBVAL|GETSTRINGVAL|GETNUMBERVAL|GETBLOBVAL)\s*\(\s*\)//is;
 	# Add the name keyword to XMLELEMENT
 	$str =~ s/XMLELEMENT\s*\(\s*/XMLELEMENT(name /is;
 	# Replace XMLTYPE function
-	$str =~ s/XMLTYPE\s*\(\s*([^,]+)\s*,[^\)]+\)/xmlparse(DOCUMENT, convert_from($1, 'utf-8'))/igs;
+	$str =~ s/XMLTYPE\s*\(\s*([^,]+)\s*,[^\)]+\s*\)/xmlparse(DOCUMENT, convert_from($1, 'utf-8'))/igs;
+	$str =~ s/XMLTYPE\.CREATEXML\s*\(\s*[^\)]+\s*\)/xmlparse(DOCUMENT, convert_from($1, 'utf-8'))/igs;
 
 	# Cast round() call as numeric
 	$str =~ s/round\s*\(([^,]+),([\s\d]+)\)/round\(($1)::numeric,$2\)/is;
@@ -2054,6 +2081,8 @@ sub replace_sql_type
 {
         my ($str, $pg_numeric_type, $default_numeric, $pg_integer_type, %data_type) = @_;
 
+	# Remove the SYS schema from type name
+	$str =~ s/\bSYS\.//igs;
 
 	$str =~ s/with local time zone/with time zone/igs;
 	$str =~ s/([A-Z])\%ORA2PG_COMMENT/$1 \%ORA2PG_COMMENT/igs;
@@ -2452,6 +2481,40 @@ sub estimate_cost
 	$cost_details{'JSON'} += $n;
 	$n = () = $str =~ m/TO_CLOB\([^,\)]+\)/igs;
 	$cost_details{'TO_CLOB'} += $n;
+	$n = () = $str =~ m/XMLTYPE\(/igs;
+	$cost_details{'XMLTYPE'} += $n;
+	$n = () = $str =~ m/CREATENONSCHEMABASEDXML\(/igs;
+	$cost_details{'CREATENONSCHEMABASEDXML'} += $n;
+	$n = () = $str =~ m/CREATESCHEMABASEDXML\(/igs;
+	$cost_details{'CREATESCHEMABASEDXML'} += $n;
+	$n = () = $str =~ m/CREATEXML\(/igs;
+	$cost_details{'CREATEXML'} += $n;
+	$n = () = $str =~ m/EXISTSNODE\(/igs;
+	$cost_details{'EXISTSNODE'} += $n;
+	$n = () = $str =~ m/EXTRACT\(/igs;
+	$cost_details{'EXTRACT'} += $n;
+	$n = () = $str =~ m/GETNAMESPACE\(/igs;
+	$cost_details{'GETNAMESPACE'} += $n;
+	$n = () = $str =~ m/GETROOTELEMENT\(/igs;
+	$cost_details{'GETROOTELEMENT'} += $n;
+	$n = () = $str =~ m/GETSCHEMAURL\(/igs;
+	$cost_details{'GETSCHEMAURL'} += $n;
+	$n = () = $str =~ m/ISFRAGMENT\(/igs;
+	$cost_details{'ISFRAGMENT'} += $n;
+	$n = () = $str =~ m/ISSCHEMABASED\(/igs;
+	$cost_details{'ISSCHEMABASED'} += $n;
+	$n = () = $str =~ m/ISSCHEMAVALID\(/igs;
+	$cost_details{'ISSCHEMAVALID'} += $n;
+	$n = () = $str =~ m/ISSCHEMAVALIDATED\(/igs;
+	$cost_details{'ISSCHEMAVALIDATED'} += $n;
+	$n = () = $str =~ m/SCHEMAVALIDATE\(/igs;
+	$cost_details{'SCHEMAVALIDATE'} += $n;
+	$n = () = $str =~ m/SETSCHEMAVALIDATED\(/igs;
+	$cost_details{'SETSCHEMAVALIDATED'} += $n;
+	$n = () = $str =~ m/TOOBJECT\(/igs;
+	$cost_details{'TOOBJECT'} += $n;
+	$n = () = $str =~ m/TRANSFORM\(/igs;
+	$cost_details{'TRANSFORM'} += $n;
 
 	foreach my $f (@ORA_FUNCTIONS) {
 		if ($str =~ /\b$f\b/igs) {
