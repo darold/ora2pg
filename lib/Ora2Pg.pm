@@ -13108,7 +13108,11 @@ sub _get_types
 	# Retrieve all user defined types
 	my $str = "SELECT DISTINCT OBJECT_NAME,OWNER,OBJECT_ID FROM $self->{prefix}_OBJECTS WHERE OBJECT_TYPE='TYPE'";
 	$str .= " AND STATUS='VALID'" if (!$self->{export_invalid});
-	$str .= " AND OBJECT_NAME='$name'" if ($name);
+	if ($name) {
+		$str .= " AND OBJECT_NAME='$name'";
+	} else {
+		$str .= " AND OBJECT_NAME NOT LIKE 'SYS_PLSQL_%'"; # found in export from 9i
+	}
 	$str .= " AND GENERATED='N'";
 	if ($self->{schema}) {
 		$str .= "AND OWNER='$self->{schema}' ";
@@ -17636,7 +17640,7 @@ sub _show_infos
 				foreach my $t (sort keys %partitions) {
 					$report_info{'Objects'}{$typ}{'detail'} .= " $partitions{$t} $t partitions.\n";
 				}
-				$report_info{'Objects'}{$typ}{'comment'} = "Partitions are exported using table inheritance and check constraint. Hash and Key partitions are not supported by PostgreSQL and will not be exported.";
+				$report_info{'Objects'}{$typ}{'comment'} = "Partitions are well supported by PostgreSQL except key partition which will not be exported.";
 			}
 			elsif ($typ eq 'GLOBAL TEMPORARY TABLE')
 			{
@@ -20443,13 +20447,13 @@ sub _get_human_cost
 	if ($human_cost >= 420) {
 		my $tmp = $human_cost/420;
 		$tmp++ if ($tmp =~ s/\.\d+//);
-		$human_cost = "$tmp man-day(s)";
+		$human_cost = "$tmp person-day(s)";
 	} else {
 		#my $tmp = $human_cost/60;
 		#$tmp++ if ($tmp =~ s/\.\d+//);
 		#$human_cost = "$tmp man-hour(s)";
 		# mimimum to 1 day, hours are not really relevant
-		$human_cost = "1 man-day(s)";
+		$human_cost = "1 person-day(s)";
 	} 
 
 	return $human_cost;
