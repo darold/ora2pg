@@ -6270,6 +6270,10 @@ sub export_type
 	}
 	if (!$sql_output) {
 		$sql_output = "-- Nothing found of type $self->{type}\n" if (!$self->{no_header});
+	} else {
+		if ($self->{export_schema} && ($self->{pg_schema} || $self->{schema})) {
+			$sql_header .= "CREATE SCHEMA IF NOT EXISTS " . $self->quote_object_name($self->{pg_schema} || $self->{schema}) . ";\n\n";
+		}
 	}
 	$self->dump($sql_header . $sql_output);
 
