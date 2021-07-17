@@ -13571,7 +13571,7 @@ sub _get_partitions
 	return Ora2Pg::MySQL::_get_partitions($self) if ($self->{is_mysql});
 
 	my $highvalue = 'A.HIGH_VALUE';
-	if ($self->{db_version} =~ /Release [89]/) {
+	if ($self->{db_version} =~ /Release 8/) {
 		$highvalue = "'' AS HIGH_VALUE";
 	}
 	my $condition = '';
@@ -13606,7 +13606,8 @@ WHERE
 	}
 	$str .= $self->limit_to_objects('TABLE|PARTITION', 'A.TABLE_NAME|A.PARTITION_NAME');
 
-	if ($self->{prefix} ne 'USER') {
+	if ($self->{prefix} ne 'USER')
+	{
 		if ($self->{schema}) {
 			$str .= "\tAND A.TABLE_OWNER ='$self->{schema}' AND B.OWNER=A.TABLE_OWNER AND C.OWNER=A.TABLE_OWNER\n";
 		} else {
@@ -13620,11 +13621,13 @@ WHERE
 
 	my %parts = ();
 	my %default = ();
-	while (my $row = $sth->fetch) {
+	while (my $row = $sth->fetch)
+	{
 		if (!$self->{schema} && $self->{export_schema}) {
 			$row->[0] = "$row->[9].$row->[0]";
 		}
-		if ( ($row->[3] eq 'DEFAULT')) {
+		if ( ($row->[3] eq 'DEFAULT'))
+		{
 			$default{$row->[0]} = $row->[2];
 			next;
 		}
