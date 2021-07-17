@@ -17913,6 +17913,7 @@ sub _show_infos
 						}
 					} keys %{$self->{tables}{$t}{column_info}})
 				{
+					$warning = '';
 					# COLUMN_NAME,DATA_TYPE,DATA_LENGTH,NULLABLE,DATA_DEFAULT,DATA_PRECISION,DATA_SCALE,CHAR_LENGTH,TABLE_NAME,OWNER,VIRTUAL_COLUMN,POSITION,AUTO_INCREMENT,SRID,SDO_DIM,SDO_GTYPE
 					my $d = $self->{tables}{$t}{column_info}{$k};
 					$d->[2] =~ s/\D//g;
@@ -17920,7 +17921,6 @@ sub _show_infos
 					$type1 = "$d->[1], $d->[2]" if (!$type1);
 
 					# Check if we need auto increment
-					$warning = '';
 					if ($d->[12] eq 'auto_increment' || $d->[12] eq '1')
 					{
 						if ($type1 !~ s/bigint/bigserial/)
@@ -18031,6 +18031,15 @@ sub _show_infos
 		}
 		$self->logit("----------------------------------------------------------\n", 0);
 		$self->logit("Total number of rows: $total_row_num\n\n", 0);
+
+		# Looking for Global temporary tables
+		my %global_tables = $self->_global_temp_table_info();
+		$self->logit("Global Temporary Tables:\n", 0);
+		foreach my $k (sort keys %global_tables) {
+			$self->logit("\t$k\n", 0);
+		}
+		$self->logit("\n\n", 0);
+
 		$self->logit("Top $self->{top_max} of tables sorted by number of rows:\n", 0);
 		$i = 1;
 		foreach my $t (sort {$tables_infos{$b}{num_rows} <=> $tables_infos{$a}{num_rows}} keys %tables_infos) {
