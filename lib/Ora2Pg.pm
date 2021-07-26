@@ -13145,7 +13145,8 @@ sub _get_types
 	while (my $row = $sth->fetch)
 	{
 		next if ($row->[0] =~ /^(SDO_GEOMETRY|ST_|STGEOM_)/);
-		my $sql = "SELECT TEXT FROM $self->{prefix}_SOURCE WHERE OWNER='$row->[1]' AND NAME='$row->[0]' AND (TYPE='TYPE' OR TYPE='TYPE BODY') ORDER BY TYPE, LINE";
+		#my $sql = "SELECT DBMS_METADATA.GET_DDL('TYPE','$row->[0]','$row->[1]') FROM DUAL";
+		my $sql = "SELECT TEXT,LINE FROM $self->{prefix}_SOURCE WHERE OWNER='$row->[1]' AND NAME='$row->[0]' AND (TYPE='TYPE' OR TYPE='TYPE BODY') ORDER BY TYPE, LINE";
 		if (!$self->{schema} && $self->{export_schema}) {
 			$row->[0] = "$row->[1].$row->[0]";
 		}
@@ -13162,10 +13163,16 @@ sub _get_types
 		$tmp{name} = $row->[0];
 		$tmp{owner} = $row->[1];
 		$tmp{pos} = $row->[2];
-		if (!$self->{preserve_case}) {
-			$tmp{code} =~ s/(TYPE\s+)"[^"]+"\."[^"]+"/$1\L$row->[0]\E/is;
-			$tmp{code} =~ s/(TYPE\s+)"[^"]+"/$1\L$row->[0]\E/is;
+		if (!$self->{preserve_case})
+		{
+			$tmp{code} =~ s/(TYPE\s+)"[^"]+"\."[^"]+"/$1\L$row->[0]\E/igs;
+			$tmp{code} =~ s/(TYPE\s+)"[^"]+"/$1\L$row->[0]\E/igs;
 		}
+		else
+		{
+			$tmp{code} =~ s/((?:CREATE|REPLACE|ALTER)\s+TYPE\s+)([^"\s]+)\s/$1"$2" /igs;
+		}
+		$tmp{code} =~ s/\s+ALTER/;\nALTER/igs;
 		push(@types, \%tmp);
 	}
 	$sth->finish();
