@@ -4010,16 +4010,6 @@ sub _export_table_data
 		$total_record = $self->_dump_table($dirprefix, $sql_header, $table);
 	}
 
-	# When copy freeze is required, close the transaction
-	if ($self->{copy_freeze} && !$self->{pg_dsn})
-	{
-		if ($self->{file_per_table}) {
-			$self->data_dump("COMMIT;\n",  $table);
-		} else {
-			$self->dump("\nCOMMIT;\n");
-		}
-	}
-
  	# close the connection with parallel table export
  	if (($self->{parallel_tables} > 1) && $self->{pg_dsn}) {
  		$local_dbh->disconnect() if (defined $local_dbh);
@@ -8298,6 +8288,11 @@ sub _get_sql_statements
 
 		}
 
+		# When copy freeze is required, close the current transaction
+		if ($self->{copy_freeze} && !$self->{pg_dsn}) {
+			$first_header .= ("\nCOMMIT;\n");
+		}
+
 		if (!$self->{pg_dsn})
 		{
 			# Write header to file
@@ -8505,6 +8500,13 @@ sub _get_sql_statements
 
 		#### Set SQL commands that must be executed after data loading
 		my $footer = '';
+
+		# When copy freeze is required, start a new the transaction
+		if ($self->{copy_freeze} && !$self->{pg_dsn})
+		{
+			$footer .= "\nBEGIN;\n";
+		}
+
 		my (@datadiff_tbl, @datadiff_del, @datadiff_upd, @datadiff_ins);
 		foreach my $table (@ordered_tables)
 		{
@@ -16444,8 +16446,8 @@ sub _extract_data
 	my $col_cond = $self->hs_cond($tt,$stt, $table);
 
 	# Oracle allow direct retreiving of bchunk of data 
-	if (!$self->{is_mysql}) {
-
+	if (!$self->{is_mysql})
+	{
 		my $data_limit = $self->{data_limit};
 		if (exists $self->{local_data_limit}{$table}) {
 			$data_limit = $self->{local_data_limit}{$table};
@@ -16454,15 +16456,20 @@ sub _extract_data
 		$has_blob = 1 if (grep(/LOB|XMLTYPE/, @$stt));
 
 		# With rows that not have custom type nor blob unless the user doesn't want to use lob locator
-		if (($#has_custom_type == -1) && (!$has_blob || $self->{no_lob_locator})) {
-
-			while ( my $rows = $sth->fetchall_arrayref(undef,$data_limit)) {
-				if ( ($self->{parallel_tables} > 1) || (($self->{oracle_copies} > 1) && $self->{defined_pk}{"\L$table\E"}) ) {
-					if ($dbh->errstr) {
+		if (($#has_custom_type == -1) && (!$has_blob || $self->{no_lob_locator}))
+		{
+			while ( my $rows = $sth->fetchall_arrayref(undef,$data_limit))
+			{
+				if ( ($self->{parallel_tables} > 1) || (($self->{oracle_copies} > 1) && $self->{defined_pk}{"\L$table\E"}) )
+				{
+					if ($dbh->errstr)
+					{
 						$self->logit("ERROR: " . $dbh->errstr . "\n", 0, 0);
 						last;
 					}
-				} elsif ( $self->{dbh}->errstr ) {
+				}
+				elsif ( $self->{dbh}->errstr )
+				{
 					$self->logit("ERROR: " . $self->{dbh}->errstr . "\n", 0, 0);
 					last;
 				}
@@ -16474,10 +16481,13 @@ sub _extract_data
 				# Do we just want to test Oracle output speed
 				next if ($self->{oracle_speed} && !$self->{ora2pg_speed});
 
-				if ( ($self->{jobs} > 1) || ($self->{oracle_copies} > 1) ) {
-					while ($self->{child_count} >= $self->{jobs}) {
+				if ( ($self->{jobs} > 1) || ($self->{oracle_copies} > 1) )
+				{
+					while ($self->{child_count} >= $self->{jobs})
+					{
 						my $kid = waitpid(-1, WNOHANG);
-						if ($kid > 0) {
+						if ($kid > 0)
+						{
 							$self->{child_count}--;
 							delete $RUNNING_PIDS{$kid};
 						}
@@ -16487,22 +16497,28 @@ sub _extract_data
 						$self->_dump_to_pg($proc, $rows, $table, $cmd_head, $cmd_foot, $s_out, $tt, $sprep, $stt, $start_time, $part_name, $total_record, %user_type);
 					};
 					$self->{child_count}++;
-				} else {
+				}
+				else
+				{
 					$self->_dump_to_pg($proc, $rows, $table, $cmd_head, $cmd_foot, $s_out, $tt, $sprep, $stt, $start_time, $part_name, $total_record, %user_type);
 				}
 			}
-
-		} else {
-
+		}
+		else
+		{
 			my @rows = ();
 			while ( my @row = $sth->fetchrow_array())
 			{
-				if ( ($self->{parallel_tables} > 1) || (($self->{oracle_copies} > 1) && $self->{defined_pk}{"\L$table\E"}) ) {
-					if ($dbh->errstr) {
+				if ( ($self->{parallel_tables} > 1) || (($self->{oracle_copies} > 1) && $self->{defined_pk}{"\L$table\E"}) )
+				{
+					if ($dbh->errstr)
+					{
 						$self->logit("ERROR: " . $dbh->errstr . "\n", 0, 0);
 						last;
 					}
-				} elsif ( $self->{dbh}->errstr ) {
+				}
+				elsif ( $self->{dbh}->errstr )
+				{
 					$self->logit("ERROR: " . $self->{dbh}->errstr . "\n", 0, 0);
 					last;
 				}
@@ -16580,10 +16596,13 @@ sub _extract_data
 
 				if ($#rows == $data_limit)
 				{
-					if ( ($self->{jobs} > 1) || ($self->{oracle_copies} > 1) ) {
-						while ($self->{child_count} >= $self->{jobs}) {
+					if ( ($self->{jobs} > 1) || ($self->{oracle_copies} > 1) )
+					{
+						while ($self->{child_count} >= $self->{jobs})
+						{
 							my $kid = waitpid(-1, WNOHANG);
-							if ($kid > 0) {
+							if ($kid > 0)
+							{
 								$self->{child_count}--;
 								delete $RUNNING_PIDS{$kid};
 							}
@@ -16593,7 +16612,9 @@ sub _extract_data
 							$self->_dump_to_pg($proc, \@rows, $table, $cmd_head, $cmd_foot, $s_out, $tt, $sprep, $stt, $start_time, $part_name, $total_record, %user_type);
 						};
 						$self->{child_count}++;
-					} else {
+					}
+					else
+					{
 						$self->_dump_to_pg($proc, \@rows, $table, $cmd_head, $cmd_foot, $s_out, $tt, $sprep, $stt, $start_time, $part_name, $total_record, %user_type);
 					}
 					@rows = ();
@@ -16604,10 +16625,13 @@ sub _extract_data
 			next if ($self->{oracle_speed} && !$self->{ora2pg_speed});
 
 			# Flush last extracted data
-			if ( ($self->{jobs} > 1) || ($self->{oracle_copies} > 1) ) {
-				while ($self->{child_count} >= $self->{jobs}) {
+			if ( ($self->{jobs} > 1) || ($self->{oracle_copies} > 1) )
+			{
+				while ($self->{child_count} >= $self->{jobs})
+				{
 					my $kid = waitpid(-1, WNOHANG);
-					if ($kid > 0) {
+					if ($kid > 0)
+					{
 						$self->{child_count}--;
 						delete $RUNNING_PIDS{$kid};
 					}
@@ -16617,15 +16641,16 @@ sub _extract_data
 					$self->_dump_to_pg($proc, \@rows, $table, $cmd_head, $cmd_foot, $s_out, $tt, $sprep, $stt, $start_time, $part_name, $total_record, %user_type);
 				};
 				$self->{child_count}++;
-			} else {
+			}
+			else
+			{
 				$self->_dump_to_pg($proc, \@rows, $table, $cmd_head, $cmd_foot, $s_out, $tt, $sprep, $stt, $start_time, $part_name, $total_record, %user_type);
 			}
 			@rows = ();
-
 		}
-
-	} else {
-
+	}
+	else
+	{
 		my @rows = ();
 		my $num_row = 0;
 		while (my @row = $sth->fetchrow())
@@ -16660,7 +16685,8 @@ sub _extract_data
 			}
 		}
 
-		if (@rows && (!$self->{oracle_speed} || $self->{ora2pg_speed})) {
+		if (@rows && (!$self->{oracle_speed} || $self->{ora2pg_speed}))
+		{
 			$total_record += @rows;
 			$self->{current_total_row} += @rows;
 #			if ( ($self->{parallel_tables} > 1) || (($self->{oracle_copies} > 1) && $self->{defined_pk}{"\L$table\E"}) ) {
@@ -16684,6 +16710,16 @@ sub _extract_data
 	}
 
 	$sth->finish();
+
+        # When copy freeze is required, close the transaction
+        if ($self->{copy_freeze} && !$self->{pg_dsn})
+        {
+                if ($self->{file_per_table}) {
+                        $self->data_dump("COMMIT;\n",  $table);
+                } else {
+                        $self->dump("\nCOMMIT;\n");
+                }
+        }
 
 	# Close global data file in use when parallel table is used without output mutliprocess
 	$self->close_export_file($self->{cfhout}) if (defined $self->{cfhout});
