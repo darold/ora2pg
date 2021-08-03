@@ -56,7 +56,7 @@ our %ordered_views = ();
 
 # Character that must be escaped in COPY statement
 my $ESCAPE_COPY = { "\0" => "", "\\" => "\\\\", "\r" => "\\r", "\n" => "\\n", "\t" => "\\t"};
-my $FDW_SCHEMA = $ENV{FDW_SCHEMA} || 'ora2pg_fdw_import';
+my $FDW_SCHEMA = $ENV{FDW_SCHEMA} || '$FDW_SCHEMA';
 
 # Oracle internal timestamp month equivalent
 our %ORACLE_MONTHS = ('JAN'=>'01', 'FEB'=>'02','MAR'=>'03','APR'=>'04','MAY'=>'05','JUN'=>'06','JUL'=>'07','AUG'=>'08','SEP'=>'09','OCT'=>10,'NOV'=>11,'DEC'=>12);
@@ -2324,7 +2324,7 @@ sub _tables
 			%columns_infos = ();
 
 			# Retrieve comment of each columns and FK information if not foreign table export
-			if ($self->{type} ne 'FDW' and !$self->{oracle_fdw_data_export})
+			if ($self->{type} ne 'FDW' and (!$self->{oracle_fdw_data_export} || $self->{drop_fkey} || $self->{drop_indexes}))
 			{
 				if ($self->{type} eq 'TABLE')
 				{
@@ -7286,10 +7286,12 @@ sub export_table
 		$count_table++;
 
 		# Create FDW server if required
-		if ($self->{external_to_fdw}) {
-			if ( grep(/^$table$/i, keys %{$self->{external_table}}) ) {
-					$sql_header .= "CREATE EXTENSION IF NOT EXISTS file_fdw;\n\n" if ($sql_header !~ /CREATE EXTENSION .* file_fdw;/is);
-					$sql_header .= "CREATE SERVER \L$self->{external_table}{$table}{directory}\E FOREIGN DATA WRAPPER file_fdw;\n\n" if ($sql_header !~ /CREATE SERVER $self->{external_table}{$table}{directory} FOREIGN DATA WRAPPER file_fdw;/is);
+		if ($self->{external_to_fdw})
+		{
+			if ( grep(/^$table$/i, keys %{$self->{external_table}}) )
+			{
+				$sql_header .= "CREATE EXTENSION IF NOT EXISTS file_fdw;\n\n" if ($sql_header !~ /CREATE EXTENSION .* file_fdw;/is);
+				$sql_header .= "CREATE SERVER \L$self->{external_table}{$table}{directory}\E FOREIGN DATA WRAPPER file_fdw;\n\n" if ($sql_header !~ /CREATE SERVER $self->{external_table}{$table}{directory} FOREIGN DATA WRAPPER file_fdw;/is);
 			}
 		}
 
@@ -7321,8 +7323,8 @@ sub export_table
 			my $schem = '';
 
 			# Add the destination schema
-			if ($self->{external_to_fdw} && ($self->{type} eq 'INSERT' || $self->{type} eq 'COPY')) {
-				$sql_output .= "\nCREATE$foreign $obj_type $FDW_SCHEMA.$tbname (\n";
+			if ($self->{oracle_fdw_data_export} && ($self->{type} eq 'INSERT' || $self->{type} eq 'COPY')) {
+				 $sql_output .= "\nCREATE FOREIGN TABLE $FDW_SCHEMA.$tbname (\n";
 			} else {
 				$sql_output .= "\nCREATE$foreign $obj_type $tbname (\n";
 			}
