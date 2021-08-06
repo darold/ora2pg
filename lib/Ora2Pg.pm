@@ -10291,9 +10291,10 @@ sub _howto_get_data
 			elsif ( $src_type->[$k] =~ /xmltype/i)
 			{
 				if ($self->{xml_pretty}) {
-					$str .= "$alias.$name->[$k]->[0].extract('/').getStringVal(),";
+					$str .= "($alias.$name->[$k]->[0]).getStringVal(),";
+					#$str .= "$alias.$name->[$k]->[0].extract('/').getStringVal(),";
 				} else {
-					$str .= "$alias.$name->[$k]->[0].extract('/').getClobVal(),";
+					$str .= "($alias.$name->[$k]->[0]).getClobVal(),";
 				}
 			}
 			# ArcGis Geometries
