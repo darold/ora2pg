@@ -9506,7 +9506,7 @@ sub _create_indexes
 				$str .= "CREATE INDEX$concurrently " . $self->quote_object_name("$idxname$self->{indexes_suffix}")
 						. " ON $tb USING gist($columns)";
 			}
-			elsif ($self->{bitmap_as_gin} && $self->{$objtyp}{$tbsaved}{idx_type}{$idx}{type_name} eq 'BITMAP')
+			elsif ($self->{bitmap_as_gin} && ($self->{$objtyp}{$tbsaved}{idx_type}{$idx}{type_name} eq 'BITMAP' || $self->{$objtyp}{$tbsaved}{idx_type}{$idx}{type} eq 'BITMAP'))
 			{
 				$str .= "CREATE INDEX$concurrently " . $self->quote_object_name("$idxname$self->{indexes_suffix}")
 						. " ON $tb USING gin($columns)";
