@@ -439,17 +439,17 @@ sub convert_plsql_code
 			{
 				if (!$class->{is_mysql})
 				{
-					$class->{single_fct_call}{$k} = Ora2Pg::PLSQL::replace_sql_type($class->{single_fct_call}{$k}, $class->{pg_numeric_type}, $class->{default_numeric}, $class->{pg_integer_type}, %{$class->{data_type}});
+					$class->{single_fct_call}{$k} = Ora2Pg::PLSQL::replace_sql_type($class->{single_fct_call}{$k}, $class->{pg_numeric_type}, $class->{default_numeric}, $class->{pg_integer_type}, $class->{varchar_to_text}, %{$class->{data_type}});
 				} else {
-					$class->{single_fct_call}{$k} = Ora2Pg::MySQL::replace_sql_type($class->{single_fct_call}{$k}, $class->{pg_numeric_type}, $class->{default_numeric}, $class->{pg_integer_type}, %{$class->{data_type}});
+					$class->{single_fct_call}{$k} = Ora2Pg::MySQL::replace_sql_type($class->{single_fct_call}{$k}, $class->{pg_numeric_type}, $class->{default_numeric}, $class->{pg_integer_type}, $class->{varchar_to_text}, %{$class->{data_type}});
 				}
 			}
 			if ($class->{single_fct_call}{$k} =~ /^CAST\s*\(.*\%\%REPLACEFCT(\d+)\%\%/i)
 			{
 				if (!$class->{is_mysql}) {
-					$class->{single_fct_call}{$1} = Ora2Pg::PLSQL::replace_sql_type($class->{single_fct_call}{$1}, $class->{pg_numeric_type}, $class->{default_numeric}, $class->{pg_integer_type}, %{$class->{data_type}});
+					$class->{single_fct_call}{$1} = Ora2Pg::PLSQL::replace_sql_type($class->{single_fct_call}{$1}, $class->{pg_numeric_type}, $class->{default_numeric}, $class->{pg_integer_type}, $class->{varchar_to_text}, %{$class->{data_type}});
 				} else {
-					$class->{single_fct_call}{$1} = Ora2Pg::MySQL::replace_sql_type($class->{single_fct_call}{$1}, $class->{pg_numeric_type}, $class->{default_numeric}, $class->{pg_integer_type}, %{$class->{data_type}});
+					$class->{single_fct_call}{$1} = Ora2Pg::MySQL::replace_sql_type($class->{single_fct_call}{$1}, $class->{pg_numeric_type}, $class->{default_numeric}, $class->{pg_integer_type}, $class->{varchar_to_text}, %{$class->{data_type}});
 				}
 			}
 		}
@@ -933,9 +933,9 @@ sub plsql_to_plpgsql
 
 	# Replace type in sub block
 	if (!$class->{is_mysql}) {
-		$str =~ s/(BEGIN.*?DECLARE\s+)(.*?)(\s+BEGIN)/$1 . Ora2Pg::PLSQL::replace_sql_type($2, $class->{pg_numeric_type}, $class->{default_numeric}, $class->{pg_integer_type}, %{$class->{data_type}}) . $3/iges;
+		$str =~ s/(BEGIN.*?DECLARE\s+)(.*?)(\s+BEGIN)/$1 . Ora2Pg::PLSQL::replace_sql_type($2, $class->{pg_numeric_type}, $class->{default_numeric}, $class->{pg_integer_type}, $class->{varchar_to_text}, %{$class->{data_type}}) . $3/iges;
 	} else {
-		$str =~ s/(BEGIN.*?DECLARE\s+)(.*?)(\s+BEGIN)/$1 . Ora2Pg::MySQL::replace_sql_type($2, $class->{pg_numeric_type}, $class->{default_numeric}, $class->{pg_integer_type}, %{$class->{data_type}}) . $3/iges;
+		$str =~ s/(BEGIN.*?DECLARE\s+)(.*?)(\s+BEGIN)/$1 . Ora2Pg::MySQL::replace_sql_type($2, $class->{pg_numeric_type}, $class->{default_numeric}, $class->{pg_integer_type}, $class->{varchar_to_text}, %{$class->{data_type}}) . $3/iges;
 	}
 
 	# Remove any call to MDSYS schema in the code
@@ -2079,7 +2079,7 @@ sub raise_output
 
 sub replace_sql_type
 {
-        my ($str, $pg_numeric_type, $default_numeric, $pg_integer_type, %data_type) = @_;
+        my ($str, $pg_numeric_type, $default_numeric, $pg_integer_type, $varchar_to_text, %data_type) = @_;
 
 	# Remove the SYS schema from type name
 	$str =~ s/\bSYS\.//igs;
@@ -2217,8 +2217,10 @@ sub replace_sql_type
 	# Set varchar without length to text
 	$str =~ s/\bVARCHAR2\b/VARCHAR/igs;
 	$str =~ s/\bSTRING\b/VARCHAR/igs;
-	if ($self->{varchar_to_text}) {
-		$str =~ s/\bVARCHAR(\s*(?!\())/text$1/igs;
+	if ($varchar_to_text) {
+		$str =~ s/\bVARCHAR\b(\s*(?!\())/text$1/igs;
+	} else {
+		$str =~ s/\bVARCHAR\b(\s*(?!\())/varchar$1/igs;
 	}
 
 	foreach my $t ('DATE','LONG RAW','LONG','NCLOB','CLOB','BLOB','BFILE','RAW','ROWID','UROWID','FLOAT','DOUBLE PRECISION','INTEGER','INT','REAL','SMALLINT','BINARY_FLOAT','BINARY_DOUBLE','BINARY_INTEGER','BOOLEAN','XMLTYPE','SDO_GEOMETRY','PLS_INTEGER') {

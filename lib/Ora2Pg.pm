@@ -5203,9 +5203,9 @@ sub export_trigger
 					if ($#parts > 0)
 					{
 						if (!$self->{is_mysql}) {
-							$parts[0] = Ora2Pg::PLSQL::replace_sql_type($parts[0], $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type}, %{$self->{data_type}});
+							$parts[0] = Ora2Pg::PLSQL::replace_sql_type($parts[0], $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type}, $self->{varchar_to_text}, %{$self->{data_type}});
 						} else {
-							$parts[0] = Ora2Pg::MySQL::replace_sql_type($parts[0], $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type}, %{$self->{data_type}});
+							$parts[0] = Ora2Pg::MySQL::replace_sql_type($parts[0], $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type}, $self->{varchar_to_text}, %{$self->{data_type}});
 						}
 					}
 					$trig->[4] = join('BEGIN', @parts);
@@ -16000,7 +16000,7 @@ sub _convert_type
 	# Replace SUBTYPE declaration into DOMAIN declaration
         if ($plsql =~ s/SUBTYPE\s+/CREATE DOMAIN /i) {
 		$plsql =~ s/\s+IS\s+/ AS /;
-		$plsql = Ora2Pg::PLSQL::replace_sql_type($plsql, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type}, %{$self->{data_type}});
+		$plsql = Ora2Pg::PLSQL::replace_sql_type($plsql, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type}, $self->{varchar_to_text}, %{$self->{data_type}});
 		return $plsql;
 	}
 
@@ -16018,7 +16018,7 @@ sub _convert_type
 		$type_of =~ s/\s*;\s*$//s;
 		$type_of =~ s/^\s+//s;
 		if ($type_of !~ /\s/s) { 
-			$type_of = Ora2Pg::PLSQL::replace_sql_type($type_of, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type}, %{$self->{data_type}});
+			$type_of = Ora2Pg::PLSQL::replace_sql_type($type_of, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type}, $self->{varchar_to_text}, %{$self->{data_type}});
 			$self->{type_of_type}{'Nested Tables'}++;
 			$content .= "DROP TYPE IF EXISTS \L$type_name\E;\n" if ($self->{drop_if_exists});
 			$content = "CREATE TYPE \L$type_name\E AS (\L$internal_name\E $type_of\[\]);\n";
@@ -16050,7 +16050,7 @@ sub _convert_type
 			return "${unsupported}CREATE$self->{create_or_replace} $plsql";
 		}
 		$description =~ s/^\s+//s;
-		my $declar = Ora2Pg::PLSQL::replace_sql_type($description, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type}, %{$self->{data_type}});
+		my $declar = Ora2Pg::PLSQL::replace_sql_type($description, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type}, $self->{varchar_to_text}, %{$self->{data_type}});
 		$type_name =~ s/"//g;
 		$type_name = $self->get_replaced_tbname($type_name);
 		if ($notfinal =~ /FINAL/is) {
@@ -16081,7 +16081,7 @@ $declar
 			return "${unsupported}CREATE$self->{create_or_replace} $plsql";
 		}
 		$description =~ s/^\s+//s;
-		my $declar = Ora2Pg::PLSQL::replace_sql_type($description, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type}, %{$self->{data_type}});
+		my $declar = Ora2Pg::PLSQL::replace_sql_type($description, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type}, $self->{varchar_to_text}, %{$self->{data_type}});
 		$type_name =~ s/"//g;
 		$type_name = $self->get_replaced_tbname($type_name);
 		$content = qq{
@@ -16102,7 +16102,7 @@ $declar
 			$type_name = "$owner.$type_name";
 		}
 		$internal_name  =~ s/^[^\.]+\.//;
-		my $declar = Ora2Pg::PLSQL::replace_sql_type($tbname, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type}, %{$self->{data_type}});
+		my $declar = Ora2Pg::PLSQL::replace_sql_type($tbname, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type}, $self->{varchar_to_text}, %{$self->{data_type}});
 		$declar =~ s/[\n\r]+//s;
 		$content = qq{
 CREATE TYPE \L$type_name\E AS ($internal_name $declar\[$size\]);
@@ -20365,8 +20365,8 @@ sub _lookup_function
 		$fct_detail{args} =~ s/\s+DEFAULT\s+EMPTY_[CB]LOB\(\)/DEFAULT NULL/igs;
 
 		# Now convert types
-		$fct_detail{args} = Ora2Pg::PLSQL::replace_sql_type($fct_detail{args}, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type}, %{$self->{data_type}});
-		$fct_detail{declare} = Ora2Pg::PLSQL::replace_sql_type($fct_detail{declare}, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type}, %{$self->{data_type}});
+		$fct_detail{args} = Ora2Pg::PLSQL::replace_sql_type($fct_detail{args}, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type}, $self->{varchar_to_text}, %{$self->{data_type}});
+		$fct_detail{declare} = Ora2Pg::PLSQL::replace_sql_type($fct_detail{declare}, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type}, $self->{varchar_to_text}, %{$self->{data_type}});
 
 		# Sometime variable used in FOR ... IN SELECT loop is not declared
 		# Append its RECORD declaration in the DECLARE section.
@@ -21471,7 +21471,7 @@ sub register_global_variable
 {
 	my ($self, $pname, $glob_vars) = @_;
 
-	$glob_vars = Ora2Pg::PLSQL::replace_sql_type($glob_vars, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type}, %{$self->{data_type}});
+	$glob_vars = Ora2Pg::PLSQL::replace_sql_type($glob_vars, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type}, $self->{varchar_to_text}, %{$self->{data_type}});
 
 	# Replace PL/SQL code into PL/PGSQL similar code
 	$glob_vars = Ora2Pg::PLSQL::convert_plsql_code($self, $glob_vars);
