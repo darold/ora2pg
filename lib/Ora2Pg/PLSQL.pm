@@ -2436,6 +2436,8 @@ sub estimate_cost
 		$cost_details{'PLUNIT'} -= $n;
 		$n = () = $str =~ m/DBMS_SQL/igs;
 		$cost_details{'DBMS_'} -= $n;
+		$n = () = $str =~ m/DBMS_RANDOM/igs;
+		$cost_details{'DBMS_'} -= $n;
 	}
 	$n = () = $str =~ m/\b(INSERTING|DELETING|UPDATING)\b/igs;
 	$cost_details{'TG_OP'} += $n;
