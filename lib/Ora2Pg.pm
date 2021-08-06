@@ -343,11 +343,11 @@ our @KEYWORDS = qw(
 	CROSS CURRENT_CATALOG CURRENT_DATE CURRENT_ROLE CURRENT_SCHEMA CURRENT_TIME
 	CURRENT_TIMESTAMP CURRENT_USER DEFAULT DEFERRABLE DESC DISTINCT DO ELSE END
 	EXCEPT FALSE FETCH FOR FOREIGN FREEZE FROM FULL GRANT GROUP HAVING ILIKE IN
-	INITIALLY INNER INTERSECT INTO IS ISNULL JOIN LATERAL LEADING LEFT LIKE LIMIT
+	INITIALLY INNER INTERSECT INTO IS ISNULL JOIN KEY LATERAL LEADING LEFT LIKE LIMIT
 	LOCALTIME LOCALTIMESTAMP NATURAL NOT NOTNULL NULL OFFSET ON ONLY OR ORDER OUTER
-	OVERLAPS PLACING PRIMARY REFERENCES RETURNING RIGHT SELECT SESSION_USER SIMILAR
-	SOME SYMMETRIC TABLE TABLESAMPLE THEN TO TRAILING TRUE UNION UNIQUE USER USING
-	VARIADIC VERBOSE WHEN WHERE WINDOW WITH
+	OVERLAPS PASSWORD PLACING PRIMARY REFERENCES REF RETURNING RIGHT SELECT SESSION_USER
+	SIMILAR SOME SYMMETRIC TABLE TABLESAMPLE THEN TO TRAILING TRUE UNION UNIQUE USER
+	USING VARIADIC VERBOSE WHEN WHERE WINDOW WITH
 );
 
 # Reserved keywords that can be used in PostgreSQL as function or type name
@@ -3248,12 +3248,13 @@ sub read_view_from_file
 
 	my $tid = 0; 
 
-	$content =~ s/\s+NO\s+FORCE\s+/ /gs;
-	$content =~ s/\s+FORCE\s+/ /gs;
-	$content =~ s/\s+OR\s+REPLACE\s+/ /gs;
-	$content =~ s/CREATE\s+VIEW\s+([^\s]+)\s+OF\s+(.*?)\s+AS\s+/CREATE VIEW $1 AS /sg;
+	$content =~ s/\s+NO\s+FORCE\s+/ /igs;
+	$content =~ s/\s+FORCE\s+/ /igs;
+	$content =~ s/\s+OR\s+REPLACE\s+/ /igs;
+	$content =~ s/CREATE\s+VIEW\s+([^\s]+)\s+OF\s+(.*?)\s+AS\s+/CREATE VIEW $1 AS /isg;
 	# Views with aliases
-	while ($content =~ s/CREATE\s+VIEW\s+([^\s]+)\s*\((.*?)\)\s+AS\s+([^;]+)(;|$)//is) {
+	while ($content =~ s/CREATE\s+VIEW\s+([^\s]+)\s*\((.*?)\)\s+AS\s+([^;]+)(;|$)//is)
+	{
 		my $v_name = $1;
 		my $v_alias = $2;
 		my $v_def = $3;
@@ -3264,7 +3265,8 @@ sub read_view_from_file
 		# Remove constraint
 		while ($v_alias =~ s/(,[^,\(]+\(.*)$//) {};
 		my @aliases = split(/\s*,\s*/, $v_alias);
-		foreach (@aliases) {
+		foreach (@aliases)
+		{
 			s/^\s+//;
 			s/\s+$//;
 			my @tmp = split(/\s+/);
@@ -3272,7 +3274,8 @@ sub read_view_from_file
 		}
 	}
 	# Standard views
-	while ($content =~ s/CREATE\sVIEW[\s]+([^\s]+)\s+AS\s+([^;]+);//i) {
+	while ($content =~ s/CREATE\sVIEW[\s]+([^\s]+)\s+AS\s+([^;]+);//i)
+	{
 		my $v_name = $1;
 		my $v_def = $2;
 		$v_name =~ s/"//g;
