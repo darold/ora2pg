@@ -6185,7 +6185,7 @@ sub export_package
 		my $dirprefix = '';
 		$dirprefix = "$self->{output_dir}/" if ($self->{output_dir});
 		open(OUT, ">${dirprefix}global_variables.conf");
-		print OUT "-- Global variables with default values used in packages.\n";
+		print OUT "# Global variables with default values used in packages.\n";
 		print OUT $default_global_vars;
 		close(OUT);
 	}
