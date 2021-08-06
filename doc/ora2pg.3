@@ -133,7 +133,7 @@
 .\" ========================================================================
 .\"
 .IX Title "ORA2PG 1"
-.TH ORA2PG 1 "2021-06-05" "perl v5.30.0" "User Contributed Perl Documentation"
+.TH ORA2PG 1 "2021-08-06" "perl v5.30.0" "User Contributed Perl Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -2130,6 +2130,22 @@ To do so, just use the directive as follow:
 .Sp
 Ora2Pg will take care to transform all data of this column in the correct
 format. Only arrays of characters and numerics types are supported.
+.IP "\s-1TO_NUMBER_CONVERSION\s0" 4
+.IX Item "TO_NUMBER_CONVERSION"
+By default Oracle call to function \s-1TO_NUMBER\s0 will be translated as a cast
+into numeric. For example, \s-1TO_NUMBER\s0('10.1234') is converted into PostgreSQL
+call to_number('10.1234')::numeric. If you want you can cast the call to integer
+or bigint by changing the value of the configuration directive. If you need
+better control of the format, just set it as value, for example:
+   \s-1TO_NUMBER_CONVERSION\s0    99999999999999999999.9999999999
+will convert the code above as:
+   \s-1TO_NUMBER\s0('10.1234', '99999999999999999999.9999999999')
+Any value of the directive that it is not numeric, integer or bigint will
+be taken as a mask format. If set to none, no conversion will be done.
+.IP "\s-1VARCHAR_TO_TEXT\s0" 4
+.IX Item "VARCHAR_TO_TEXT"
+By default varchar2 without size constraint are tranlated into text. If you
+want to keep the varchar name, disable this directive.
 .SS "Taking export under control"
 .IX Subsection "Taking export under control"
 The following other configuration directives interact directly with the export process and give you fine granularity in database export control.
@@ -2285,6 +2301,11 @@ to use the old style with table and a set of function, you should disable it.
 PostgreSQL version below 9.x do not support \s-1IF EXISTS\s0 in \s-1DDL\s0 statements.
 Disabling the directive with value 0 will prevent Ora2Pg to add those
 keywords in all generated statements. Default value is 1, enabled.
+.IP "\s-1PG_VERSION\s0" 4
+.IX Item "PG_VERSION"
+Set the PostgreSQL major version number of the target database. Ex: 9.6 or 13
+Default is current major version at time of a new release. This replace the
+old and deprecadted PG_SUPPORTS_* configuration directives described bellow.
 .IP "\s-1PG_SUPPORTS_ROLE\s0 (Deprecated)" 4
 .IX Item "PG_SUPPORTS_ROLE (Deprecated)"
 This option is deprecated since Ora2Pg release v7.3.
@@ -3306,7 +3327,7 @@ Any contribution to build a better tool is welcome, you just have to send me
 your ideas, features request or patches and there will be applied.
 .SH "LICENSE"
 .IX Header "LICENSE"
-Copyright (c) 2000\-2020 Gilles Darold \- All rights reserved.
+Copyright (c) 2000\-2021 Gilles Darold \- All rights reserved.
 .PP
 .Vb 4
 \&        This program is free software: you can redistribute it and/or modify

@@ -854,6 +854,11 @@ ENABLE_MICROSECOND      1
 # be taken as a mask format. If set to none, no conversion will be done.
 TO_NUMBER_CONVERSION	numeric
 
+# By default varchar2 without size constraint are tranlated into text. If you
+# want to keep the varchar name, disable this directive.
+VARCHAR_TO_TEXT	1
+
+
 #------------------------------------------------------------------------------
 # GRANT SECTION (Control priviledge and owner export)
 #------------------------------------------------------------------------------

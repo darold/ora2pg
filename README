@@ -1936,6 +1936,22 @@ CONFIGURATION
         correct format. Only arrays of characters and numerics types are
         supported.
 
+    TO_NUMBER_CONVERSION
+        By default Oracle call to function TO_NUMBER will be translated as a
+        cast into numeric. For example, TO_NUMBER('10.1234') is converted
+        into PostgreSQL call to_number('10.1234')::numeric. If you want you
+        can cast the call to integer or bigint by changing the value of the
+        configuration directive. If you need better control of the format,
+        just set it as value, for example: TO_NUMBER_CONVERSION
+        99999999999999999999.9999999999 will convert the code above as:
+        TO_NUMBER('10.1234', '99999999999999999999.9999999999') Any value of
+        the directive that it is not numeric, integer or bigint will be
+        taken as a mask format. If set to none, no conversion will be done.
+
+    VARCHAR_TO_TEXT
+        By default varchar2 without size constraint are tranlated into text.
+        If you want to keep the varchar name, disable this directive.
+
   Taking export under control
     The following other configuration directives interact directly with the
     export process and give you fine granularity in database export control.
@@ -2101,6 +2117,12 @@ CONFIGURATION
         statements. Disabling the directive with value 0 will prevent Ora2Pg
         to add those keywords in all generated statements. Default value is
         1, enabled.
+
+    PG_VERSION
+        Set the PostgreSQL major version number of the target database. Ex:
+        9.6 or 13 Default is current major version at time of a new release.
+        This replace the old and deprecadted PG_SUPPORTS_* configuration
+        directives described bellow.
 
     PG_SUPPORTS_ROLE (Deprecated)
         This option is deprecated since Ora2Pg release v7.3.

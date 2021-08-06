@@ -2217,7 +2217,9 @@ sub replace_sql_type
 	# Set varchar without length to text
 	$str =~ s/\bVARCHAR2\b/VARCHAR/igs;
 	$str =~ s/\bSTRING\b/VARCHAR/igs;
-	$str =~ s/\bVARCHAR(\s*(?!\())/text$1/igs;
+	if ($self->{varchar_to_text}) {
+		$str =~ s/\bVARCHAR(\s*(?!\())/text$1/igs;
+	}
 
 	foreach my $t ('DATE','LONG RAW','LONG','NCLOB','CLOB','BLOB','BFILE','RAW','ROWID','UROWID','FLOAT','DOUBLE PRECISION','INTEGER','INT','REAL','SMALLINT','BINARY_FLOAT','BINARY_DOUBLE','BINARY_INTEGER','BOOLEAN','XMLTYPE','SDO_GEOMETRY','PLS_INTEGER') {
 		if ($t eq 'DATE') {

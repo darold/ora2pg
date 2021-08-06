@@ -1200,6 +1200,11 @@ sub _init
 	if (!$self->{fdw_server} && $self->{type} eq 'FDW') {
 		$self->{fdw_server} = 'orcl';
 	}
+	
+	# By default varchar without size constraint are translated into text
+	if (not defined $self->{varchar_to_text} || $self->{varchar_to_text} != 0) {
+		$self->{varchar_to_text} = 1;
+	}
 
 	# Should we use \i or \ir in psql scripts
 	if ($AConfig{PSQL_RELATIVE_PATH}) {
