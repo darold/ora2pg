@@ -2283,7 +2283,7 @@ sub replace_cursor_def
 	$str =~ s/\bSYS_REFCURSOR\b/REFCURSOR/isg;
 
 	# Replace CURSOR IS SELECT by CURSOR FOR SELECT
-	$str =~ s/\bCURSOR(\s+)IS(\s+)(\%ORA2PG_COMMENT\d+\%)?(\s*)SELECT/CURSOR$1FOR$2$3$4SELECT/isg;
+	$str =~ s/\bCURSOR(\s+)IS(\s*)(\%ORA2PG_COMMENT\d+\%)?(\s*)SELECT/CURSOR$1FOR$2$3$4SELECT/isg;
 	# Replace CURSOR (param) IS SELECT by CURSOR FOR SELECT
 	$str =~ s/\bCURSOR(\s*\([^\)]+\)\s*)IS(\s*)(\%ORA2PG_COMMENT\d+\%)?(\s*)SELECT/CURSOR$1FOR$2$3$4SELECT/isg;
 
