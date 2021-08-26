@@ -799,7 +799,7 @@ import_constraints () {
 		fi
 	fi
 
-	if [ $NO_CONSTRAINTS -eq 1 ] && [ -r "$NAMESPACE/schema/triggers/trigger.sql" ]; then
+	if [ -r "$NAMESPACE/schema/triggers/trigger.sql" ]; then
 		if confirm "Would you like to import TRIGGER from $NAMESPACE/schema/triggers/trigger.sql?" ; then
 			echo "Running: psql --single-transaction $DB_HOST$DB_PORT -U $DB_OWNER -d $DB_NAME -f $NAMESPACE/schema/triggers/trigger.sql"
 			if [ $DEBUG -eq 0 ]; then
