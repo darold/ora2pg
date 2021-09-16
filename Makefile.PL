@@ -491,7 +491,7 @@ DATADIFF_TEMP_BUFFERS	512 MB
 # with the PostgreSQL internal default naming rules. If you want to preserve
 # Oracle primary and unique key names set this option to 1.
 # Please note if value of USE_TABLESPACE is set to 1 the value of this option is
-# enforced to 1 to preserve correct primary and uniqie key allocation to tablespace.
+# enforced to 1 to preserve correct primary and unique key allocation to tablespace.
 KEEP_PKEY_NAMES		0
 
 # Enable this directive if you want to add primary key definitions inside the
@@ -529,7 +529,7 @@ FKEY_DEFERRABLE	0
 # initially deferred during schema export (TABLE export type).
 DEFER_FKEY	0
 
-# If deferring foreign keys is not possible du to the amount of data in a
+# If deferring foreign keys is not possible due to the amount of data in a
 # single transaction, you've not exported foreign keys as deferrable or you
 # are using direct import to PostgreSQL, you can use the DROP_FKEY directive.
 # It will drop all foreign keys before all data import and recreate them at
