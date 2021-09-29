@@ -1717,6 +1717,11 @@ CONFIGURATION
         need to be imported manually through the use og psql or any other
         PostgreSQL client.
 
+        To use SSL encrypted connection you must add sslmode=require to the
+        connection string like follow:
+
+                dbi:Pg:dbname=pgdb;host=localhost;port=5432;sslmode=require
+
     PG_USER and PG_PWD
         These two directives are used to set the login user and password.
 

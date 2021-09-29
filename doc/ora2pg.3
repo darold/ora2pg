@@ -133,7 +133,7 @@
 .\" ========================================================================
 .\"
 .IX Title "ORA2PG 1"
-.TH ORA2PG 1 "2021-08-06" "perl v5.30.0" "User Contributed Perl Documentation"
+.TH ORA2PG 1 "2021-09-29" "perl v5.30.0" "User Contributed Perl Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -1907,6 +1907,13 @@ will connect to database 'pgdb' on localhost at tcp port 5432.
 .Sp
 Note that this directive is only used for data export, other export need to
 be imported manually through the use og psql or any other PostgreSQL client.
+.Sp
+To use \s-1SSL\s0 encrypted connection you must add sslmode=require to the connection
+string like follow:
+.Sp
+.Vb 1
+\&        dbi:Pg:dbname=pgdb;host=localhost;port=5432;sslmode=require
+.Ve
 .IP "\s-1PG_USER\s0 and \s-1PG_PWD\s0" 4
 .IX Item "PG_USER and PG_PWD"
 These two directives are used to set the login user and password.
