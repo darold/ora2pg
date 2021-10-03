@@ -10789,12 +10789,14 @@ sub _sql_type
 	$type =~ s/TIMESTAMP\(\d+\)/TIMESTAMP/;
 
 	# Interval precision for year/month/day is not supported by PostgreSQL
-	if ($type =~ /INTERVAL/) {
+	if ($type =~ /INTERVAL/)
+	{
 		$type =~ s/(INTERVAL\s+YEAR)\s*\(\d+\)/$1/;
 		$type =~ s/(INTERVAL\s+YEAR\s+TO\s+MONTH)\s*\(\d+\)/$1/;
 		$type =~ s/(INTERVAL\s+DAY)\s*\(\d+\)/$1/;
 		# maximum precision allowed for seconds is 6
-		if ($type =~ /INTERVAL\s+DAY\s+TO\s+SECOND\s*\((\d+)\)/) {
+		if ($type =~ /INTERVAL\s+DAY\s+TO\s+SECOND\s*\((\d+)\)/)
+		{
 			if ($1 > 6) {
 				$type =~ s/(INTERVAL\s+DAY\s+TO\s+SECOND)\s*\(\d+\)/$1(6)/;
 			}
@@ -10802,20 +10804,31 @@ sub _sql_type
 	}
 
         # Overide the length
-	if ( ($type eq 'NUMBER') && $precision ) {
+	if ( ($type eq 'NUMBER') && $precision )
+	{
 		$len = $precision;
 		return $self->{data_type}{'NUMBER(*)'} if ($scale eq '0' && exists $self->{data_type}{'NUMBER(*)'});
-	} elsif ( ($type eq 'NUMBER') && ($len == 38) ) {
-		if ($scale eq '0' && $precision eq '') {
+	}
+	elsif ( ($type eq 'NUMBER') && ($len == 38) )
+	{
+		if ($scale eq '0' && $precision eq '')
+		{
 			# Allow custom type rewrite for NUMBER(*,0)
 			return $self->{data_type}{'NUMBER(*,0)'} if (exists $self->{data_type}{'NUMBER(*,0)'});
 		}
 		$precision = $len;
-	} elsif ( $type =~ /CHAR/ && $len && exists $self->{data_type}{"$type($len)"}) {
+	}
+	elsif ( $type =~ /CHAR/ && $len && exists $self->{data_type}{"$type($len)"})
+	{
 		return $self->{data_type}{"$type($len)"};
-	} elsif ( $type =~ /RAW/ && $len && exists $self->{data_type}{"$type($len)"}) {
-		return $self->{data_type}{"$type($len)"};
-	} elsif ( $type =~ /RAW/ && $len && $default =~ /sys_guid/i) {
+	}
+	elsif ( $type =~ /RAW/ )
+	{
+		return $self->{data_type}{"$type($len)"} if ($len && exists $self->{data_type}{"$type($len)"});
+		return 'uuid' if ($default =~ /(SYS_GUID|$self->{uuid_function})/i);
+	}
+	elsif ( $type =~ /RAW/ && $len && $default =~ /sys_guid/i)
+	{
 		return 'uuid';
 	}
 
