@@ -133,7 +133,7 @@
 .\" ========================================================================
 .\"
 .IX Title "ORA2PG 1"
-.TH ORA2PG 1 "2021-09-29" "perl v5.30.0" "User Contributed Perl Documentation"
+.TH ORA2PG 1 "2021-10-03" "perl v5.30.0" "User Contributed Perl Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -1965,10 +1965,16 @@ is a comma-separated list of \*(L"Oracle datatype:Postgresql datatype\*(R". Here
 the default list used:
 .Sp
 .Vb 1
-\&        DATA_TYPE       VARCHAR2:varchar,NVARCHAR2:varchar,DATE:timestamp,LONG:text,LONG RAW:bytea,CLOB:text,NCLOB:text,BLOB:bytea,BFILE:bytea,RAW:bytea,UROWID:oid,ROWID:oid,FLOAT:double precision,DEC:decimal,DECIMAL:decimal,DOUBLE PRECISION:double precision,INT:numeric,INTEGER:numeric,REAL:real,SMALLINT:smallint,BINARY_FLOAT:double precision,BINARY_DOUBLE:double precision,TIMESTAMP:timestamp,XMLTYPE:xml,BINARY_INTEGER:integer,PLS_INTEGER:integer,TIMESTAMP WITH TIME ZONE:timestamp with time zone,TIMESTAMP WITH LOCAL TIME ZONE:timestamp with time zone
+\&        DATA_TYPE       VARCHAR2:varchar,NVARCHAR2:varchar,DATE:timestamp,LONG:text,LONG RAW:bytea,CLOB:text,NCLOB:text,BLOB:bytea,BFILE:bytea,RAW(16):uuid,RAW(32):uuid,RAW:bytea,UROWID:oid,ROWID:oid,FLOAT:double precision,DEC:decimal,DECIMAL:decimal,DOUBLE PRECISION:double precision,INT:numeric,INTEGER:numeric,REAL:real,SMALLINT:smallint,BINARY_FLOAT:double precision,BINARY_DOUBLE:double precision,TIMESTAMP:timestamp,XMLTYPE:xml,BINARY_INTEGER:integer,PLS_INTEGER:integer,TIMESTAMP WITH TIME ZONE:timestamp with time zone,TIMESTAMP WITH LOCAL TIME ZONE:timestamp with time zone
 .Ve
 .Sp
-Note that the directive and the list definition must be a single line.
+The directive and the list definition must be a single line.
+.Sp
+Note that when a \s-1RAW\s0(16) and \s-1RAW\s0(32) columns is found or that the \s-1RAW\s0 column
+has \*(L"\s-1\fBSYS_GUID\s0()\fR\*(R" as default value Ora2Pg will automatically translate the
+type of the column into uuid which might be the right translation in most of
+the case. In this case data will be automatically migrated as PostgreSQL uuid
+data type provided by the \*(L"uuid-ossp\*(R" extension.
 .Sp
 If you want to replace a type with a precision and scale you need to escape
 the coma with a backslash. For example, if you want to replace all \s-1NUMBER\s0(*,0)
@@ -2593,9 +2599,11 @@ with a call to uuid_generate_v4 from uuid-ossp extension. You can
 redefined it to use the gen_random_uuid function from pgcrypto
 extension by changing the function name. Default to uuid_generate_v4.
 .Sp
-Note that when a \s-1RAW\s0(n) column has \*(L"\s-1\fBSYS_GUID\s0()\fR\*(R" as default value
-Ora2Pg will automatically translate the type of the column into uuid
-which might be the right translation in most of the case.
+Note that when a \s-1RAW\s0(16) and \s-1RAW\s0(32) columns is found or that the \s-1RAW\s0 column
+has \*(L"\s-1\fBSYS_GUID\s0()\fR\*(R" as default value Ora2Pg will automatically translate the
+type of the column into uuid which might be the right translation in most of
+the case. In this case data will be automatically migrated as PostgreSQL uuid
+data type provided by the \*(L"uuid-ossp\*(R" extension.
 .IP "\s-1FUNCTION_STABLE\s0" 4
 .IX Item "FUNCTION_STABLE"
 By default Oracle functions are marked as \s-1STABLE\s0 as they can not modify data

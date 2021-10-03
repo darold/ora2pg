@@ -263,6 +263,9 @@ our %TYPE = (
 	# The full path to the external file is returned if destination type is text.
 	# If the destination type is bytea the content of the external file is returned.
 	'BFILE' => 'bytea', # Locator for external large binary file
+	# RAW column with a length of 16 or 32 bytes are usually GUID, convert them to uuid.
+	'RAW(16)' => 'uuid',
+	'RAW(32)' => 'uuid',
 	# The RAW type is presented as hexadecimal characters. The
 	# contents are treated as binary data. Limit of 2000 bytes
 	# PG type text should match all needs or if you want you could
@@ -14399,26 +14402,38 @@ sub format_data_type
 	}
 
 	# Preparing data for output
-	if ($action ne 'COPY') {
-		if (!defined $col) {
+	if ($action ne 'COPY')
+	{
+		if (!defined $col)
+		{
 			if (!$cond->{isnotnull} || ($self->{empty_lob_null} && ($cond->{clob} || $cond->{isbytea}))) {
 				$col = 'NULL' if (!$sprep);
 			} else {
 				$col = "$q$q";
 			}
-		} elsif ( ($src_type =~ /SDO_GEOMETRY/i) && ($self->{geometry_extract_type} eq 'WKB') ) {
+		}
+		elsif ( ($src_type =~ /SDO_GEOMETRY/i) && ($self->{geometry_extract_type} eq 'WKB') )
+		{
 			$col = "St_GeomFromWKB($q\\x" . unpack('H*', $col) . "$q, $self->{spatial_srid}{$table}->[$idx])";
-		} elsif ($cond->{isbytea}) {
-			$col = $self->_escape_lob($col, $cond->{raw} ? 'RAW' : 'BLOB', $cond, $isnested);
-		} elsif ($cond->{istext}) {
+		}
+		elsif ($cond->{isbytea})
+		{
+			$col = $self->_escape_lob($col, $cond->{raw} ? 'RAW' : 'BLOB', $cond, $isnested, $data_type);
+		}
+		elsif ($cond->{istext})
+		{
 			if ($cond->{clob}) {
-				$col = $self->_escape_lob($col, 'CLOB', $cond, $isnested);
+				$col = $self->_escape_lob($col, 'CLOB', $cond, $isnested, $data_type);
 			} elsif (!$sprep) {
 				$col = $self->escape_insert($col, $isnested);
 			}
-		} elsif ($cond->{isbit}) {
+		}
+		elsif ($cond->{isbit})
+		{
 			$col = "B$q" . $col . "$q";
-		} elsif ($cond->{isdate}) {
+		}
+		elsif ($cond->{isdate})
+		{
 			if ($col =~ /^0000-00-00/) {
 				$col = $self->{replace_zero_date} ?  "$q$self->{replace_zero_date}$q" : 'NULL';
 			} elsif ($col =~ /^(\d+-\d+-\d+ \d+:\d+:\d+)\.$/) {
@@ -14426,7 +14441,9 @@ sub format_data_type
 			} else {
 				$col = "$q$col$q";
 			}
-		} elsif ($data_type eq 'boolean') {
+		}
+		elsif ($data_type eq 'boolean')
+		{
 			if (exists $self->{ora_boolean_values}{lc($col)}) {
 				$col = $q . $self->{ora_boolean_values}{lc($col)} . $q;
 			}
@@ -14444,33 +14461,50 @@ sub format_data_type
 				$col = undef if ($col eq '');
 			}
 		}
-	} else {
-		if (!defined $col) {
+	}
+	else
+	{
+		if (!defined $col)
+		{
 			if (!$cond->{isnotnull} || ($self->{empty_lob_null} && ($cond->{clob} || $cond->{isbytea}))) {
 				$col = '\N';
 			} else {
 				$col = '';
 			}
-		} elsif ( $cond->{geometry} && ($self->{geometry_extract_type} eq 'WKB') ) {
+		}
+		elsif ( $cond->{geometry} && ($self->{geometry_extract_type} eq 'WKB') )
+		{
 			$col = 'SRID=' . $self->{spatial_srid}{$table}->[$idx] . ';' . unpack('H*', $col);
-		} elsif ($data_type eq 'boolean') {
+		}
+		elsif ($data_type eq 'boolean')
+		{
 			if (exists $self->{ora_boolean_values}{lc($col)}) {
 				$col = $self->{ora_boolean_values}{lc($col)};
 			}
-		} elsif ($cond->{isnum}) {
+		}
+		elsif ($cond->{isnum})
+		{
 			$col =~ s/([\-]*)(\~|Inf)/$1Infinity/i;
 			$col = '\N' if ($col eq '');
-		} elsif ($cond->{isbytea}) {
-			$col = $self->_escape_lob($col, $cond->{raw} ? 'RAW' : 'BLOB', $cond, $isnested);
-		} elsif ($cond->{istext}) {
-			$cond->{clob} ? $col = $self->_escape_lob($col, 'CLOB', $cond, $isnested) : $col = $self->escape_copy($col, $isnested);
-		} elsif ($cond->{isdate}) {
+		}
+		elsif ($cond->{isbytea})
+		{
+			$col = $self->_escape_lob($col, $cond->{raw} ? 'RAW' : 'BLOB', $cond, $isnested, $data_type);
+		}
+		elsif ($cond->{istext})
+		{
+			$cond->{clob} ? $col = $self->_escape_lob($col, 'CLOB', $cond, $isnested, $data_type) : $col = $self->escape_copy($col, $isnested);
+		}
+		elsif ($cond->{isdate})
+		{
 			if ($col =~ /^0000-00-00/) {
 				$col = $self->{replace_zero_date} || '\N';
 			} elsif ($col =~ /^(\d+-\d+-\d+ \d+:\d+:\d+)\.$/) {
 				$col = $1;
 			}
-		} elsif ($cond->{isbit}) {
+		}
+		elsif ($cond->{isbit})
+		{
 			$col = $col;
 		}
 	}
@@ -21347,28 +21381,66 @@ sub normalize_query
 
 sub _escape_lob
 {
-	my ($self, $col, $generic_type, $cond, $isnested) = @_;
+	my ($self, $col, $generic_type, $cond, $isnested, $dest_type) = @_;
 
-	if ($self->{type} eq 'COPY') {
-		if ( ($generic_type eq 'BLOB') || ($generic_type eq 'RAW') ) {
-			# RAW data type is returned in hex
-			$col = unpack("H*",$col) if ($generic_type ne 'RAW');
+	if ($self->{type} eq 'COPY')
+	{
+		if ($generic_type eq 'BLOB')
+		{
+			# Get an hexa representation of the blob data
+			$col = unpack("H*",$col);
 			$col = "\\\\x" . $col;
-		} elsif (($generic_type eq 'CLOB') || $cond->{istext}) {
+		}
+		elsif ($generic_type eq 'RAW')
+		{
+			# RAW data are already returned in hexa by DBD::Oracle 
+			if ($dest_type eq 'uuid')
+			{
+				# we do nothing, the value will be cast into uuid automatically
+			}
+			elsif ($dest_type eq 'bytea')
+			{
+				$col = "\\\\x" . $col;
+			}
+		}
+		elsif (($generic_type eq 'CLOB') || $cond->{istext})
+		{
 			$col = $self->escape_copy($col, $isnested);
 		}
-	} else {
-		if ( ($generic_type eq 'BLOB') || ($generic_type eq 'RAW') ) {
-			#$col = escape_bytea($col);
-			# RAW data type is returned in hex
-			$col = unpack("H*",$col) if ($generic_type ne 'RAW');
+	}
+	else
+	{
+		if ($generic_type eq 'BLOB')
+		{
+			# Get an hexa representation of the blob data
+			$col = unpack("H*",$col);
 			if (!$self->{standard_conforming_strings}) {
 				$col = "'$col'";
 			} else {
 				$col = "E'$col'";
 			}
 			$col = "decode($col, 'hex')";
-		} elsif (($generic_type eq 'CLOB') || $cond->{istext}) {
+		}
+		elsif ($generic_type eq 'RAW')
+		{
+			# RAW data are already returned in hexa by DBD::Oracle
+			if ($dest_type eq 'uuid')
+			{
+				# we do nothing, the value will be cast into uuid automatically
+				$col = "'$col'";
+			}
+			elsif ($dest_type eq 'bytea')
+			{
+				if (!$self->{standard_conforming_strings}) {
+					$col = "'$col'";
+				} else {
+					$col = "E'$col'";
+				}
+				$col = "decode($col, 'hex')";
+			}
+		}
+		elsif (($generic_type eq 'CLOB') || $cond->{istext})
+		{
 			$col = $self->escape_insert($col, $isnested);
 		}
 	}
