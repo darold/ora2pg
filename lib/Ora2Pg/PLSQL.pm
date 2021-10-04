@@ -1171,8 +1171,8 @@ sub translate_statement
 			$q[$j] = replace_rownum_with_limit($class, $q[$j]);
 			# Replace ROWNUM by row_number() when used in the target list
 			$q[$j] =~ s/((?!WHERE\s.*|LIMIT\s.*)[\s,]+)ROWNUM([\s,]+)/$1row_number() OVER () AS rownum$2/is;
-			# Aliases before + or - will generate an error
-			$q[$j] =~ s/row_number\(\) OVER \(\) AS rownum\s*([+\-])/row_number() OVER () $1/is;
+			# Aliases before =, <, >, +, -, ASC or DESC will generate an error
+			$q[$j] =~ s/row_number\(\) OVER \(\) AS rownum\s*([=><+\-]|ASC|DESC)/row_number() OVER () $1/is;
 			# Try to replace AS rownnum with alias if there is one already defined
 			$q[$j] =~ s/(row_number\(\) OVER \(\) AS)\s+rownum\s+((?!FROM\s+|[,+\-]\s*)[^\s]+)/$1 $2/is;
 			$q[$j] =~ s/\s+AS(\s+AS\s+)/$1/is;
