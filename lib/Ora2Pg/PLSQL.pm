@@ -1298,6 +1298,7 @@ sub replace_rownum_with_limit
 {
 	my ($class, $str) = @_;
 
+
 	my $offset = '';
         if ($str =~ s/\s+(WHERE)\s+(?:\(\s*)?ROWNUM\s*=\s*([^\s\)]+)(\s*\)\s*)?([^;]*)/ $1 $3$4/is) {
 		$offset = $2;
@@ -1310,7 +1311,6 @@ sub replace_rownum_with_limit
 		($offset =~ /[^0-9]/) ? $offset = "($offset)" : $offset -= 1;
 		$class->{limit_clause} = ' LIMIT 1 OFFSET ' . $offset;
         }
-
 	if ($str =~ s/\s+(WHERE)\s+(?:\(\s*)?ROWNUM\s*>=\s*([^\s\)]+)(\s*\)\s*)?([^;]*)/ $1 $3$4/is) {
 		$offset = $2;
 		($offset =~ /[^0-9]/) ? $offset = "($offset)" : $offset -= 1;
@@ -1345,6 +1345,7 @@ sub replace_rownum_with_limit
 	if ($str =~ s/\s+AND\s+(?:\(\s*)?ROWNUM\s*<\s*([^\s\)]+)(\s*\)\s*)?([^;]*)/ $2$3/is) {
 		$tmp_val = $1 - 1;
         }
+	$str =~ s/\s+WHERE\s+ORDER\s+/ ORDER /is;
 
 	if ($tmp_val) {
 		if ($class->{limit_clause} =~ /LIMIT ALL OFFSET ([^\s]+)/is) {
