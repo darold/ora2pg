@@ -18857,7 +18857,7 @@ GROUP BY
 SELECT count(*)
 FROM pg_catalog.pg_class c
      LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
-WHERE c.relkind IN ('r','')
+WHERE c.relkind IN ('r','') AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_depend d WHERE d.refclassid = 'pg_catalog.pg_extension'::pg_catalog.regclass AND d.objid = c.relfilenode AND d.deptype = 'e')
  $schema_cond
 };
 
