@@ -7734,7 +7734,7 @@ sub export_table
 	if ($sequence_output && $self->{type} ne 'FDW')
 	{
 		my $fhdl = undef;
-		$sequence_output = qq{
+		my $fct_sequence = qq{
 CREATE OR REPLACE FUNCTION ora2pg_upd_autoincrement_seq (tbname text, colname text) RETURNS VOID AS \$body\$
 DECLARE
         query text;
@@ -7744,9 +7744,23 @@ BEGIN
         query := 'SELECT max(' || colname || ')+1 FROM ' || tbname;
         EXECUTE query INTO maxval;
         IF (maxval IS NOT NULL) THEN
+};
+		if ($self->{pg_version} < 12)
+		{
+			$fct_sequence .= qq{
                 query := \$\$SELECT (string_to_array(adsrc,''''))[2] FROM pg_attrdef WHERE adrelid = '\$\$
                         || tbname || \$\$'::regclass AND adnum = (SELECT attnum FROM pg_attribute WHERE attrelid = '\$\$
                         || tbname || \$\$'::regclass AND attname = '\$\$ || colname || \$\$') AND adsrc LIKE 'nextval%'\$\$;
+};
+		}
+		else
+		{
+			$fct_sequence .= qq{
+		query := \$\$SELECT pg_get_serial_sequence ('\$\$|| tbname || \$\$', '\$\$ || colname || \$\$');\$\$;
+};
+		}
+
+		$fct_sequence .= qq{
                 EXECUTE query INTO seqname;
                 IF (seqname IS NOT NULL) THEN
                         query := 'ALTER SEQUENCE ' || seqname || ' RESTART WITH ' || maxval;
@@ -7759,7 +7773,8 @@ END;
 \$body\$
 LANGUAGE PLPGSQL;
 
-} . $sequence_output;
+};
+		$sequence_output = $fct_sequence . $sequence_output;
 		$sequence_output .= "DROP FUNCTION ora2pg_upd_autoincrement_seq(text, text);\n";
 		$self->logit("Dumping DDL to restart autoincrement sequences into separate file : AUTOINCREMENT_$self->{output}\n", 1);
 		$fhdl = $self->open_export_file("AUTOINCREMENT_$self->{output}");
