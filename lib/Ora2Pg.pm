@@ -9125,12 +9125,12 @@ sub _dump_fdw_table
 			# If this column is translated into boolean apply the CASE clause
 			if ($type eq 'boolean')
 			{
-				$fdw_col_list .= "(CASE WHEN \"$colname\" IS NULL THEN NULL";
+				$fdw_col_list .= "(CASE WHEN " . $self->quote_object_name($colname) . " IS NULL THEN NULL";
 				my $true_list = '';
 				foreach my $k (keys %{$self->{ora_boolean_values}})
 				{
 					if ($self->{ora_boolean_values}{$k} eq 't') {
-						$true_list .= " lower(\"$colname\") = '$k' OR";
+						$true_list .= " lower(" . $self->quote_object_name($colname) .") = '$k' OR";
 					}
 				}
 				$true_list =~ s/ OR$//;
