@@ -979,6 +979,7 @@ sub plsql_to_plpgsql
 				# Try to append aliases of subqueries in the from clause
 				$class->{sub_parts}{$z} = append_alias_clause($class->{sub_parts}{$z});
 			}
+			next if ($class->{sub_parts}{$z} =~ /^\(/ || $class->{sub_parts}{$z} =~ /^TABLE[\(\%]/i);
 			# If subpart is not empty after transformation
 			if ($class->{sub_parts}{$z} =~ /\S/is)
 			{
@@ -1253,7 +1254,6 @@ sub extract_subpart
 		delete $class->{sub_parts}{$_};
 	}
 }
-
 
 sub extract_subqueries
 {
@@ -3501,6 +3501,7 @@ sub replace_connect_by
 		# Remove table aliases from prior clause
 		map { s/\s*PRIOR\s*//s; s/[^\s\.=<>!]+\.//s; } @prior_clause;
 	}
+
 	my $bkup_query = $str;
 	# Construct the initialization query
 	$str =~ s/(SELECT\s+)(.*?)(\s+FROM)/$1COLUMN_ALIAS$3/is;
@@ -3542,7 +3543,7 @@ sub replace_connect_by
 
 		# Append parenthesis on new subqueries values
 		foreach my $z (sort {$a <=> $b } keys %{$class->{sub_parts}}) {
-			next if ($class->{sub_parts}{$z} =~ /^\(/);
+			next if ($class->{sub_parts}{$z} =~ /^\(/ || $class->{sub_parts}{$z} =~ /^TABLE[\(\%]/i);
 			# If subpart is not empty after transformation
 			if ($class->{sub_parts}{$z} =~ /\S/is) { 
 				# add open and closed parenthesis 
@@ -3599,7 +3600,7 @@ sub replace_connect_by
 
 		# Append parenthesis on new subqueries values
 		foreach my $z (sort {$a <=> $b } keys %{$class->{sub_parts}}) {
-			next if ($class->{sub_parts}{$z} =~ /^\(/);
+			next if ($class->{sub_parts}{$z} =~ /^\(/ || $class->{sub_parts}{$z} =~ /^TABLE[\(\%]/i);
 			# If subpart is not empty after transformation
 			if ($class->{sub_parts}{$z} =~ /\S/is) { 
 				# add open and closed parenthesis 
@@ -3631,6 +3632,7 @@ sub replace_connect_by
 	}
 	$final_query .= $bkup_query;
 	map { s/^\s*(.*?)(=\s*)(.*)/c\.$1$2$prior_alias$3/s; } @prior_clause;
+	map { s/\s+$//s; s/^\s+//s; } @prior_clause;
 	$final_query .= " JOIN cte c ON (" . join(' AND ', @prior_clause) . ")\n";
 	if ($siblings) {
 		$order_by = " ORDER BY hierarchy";
