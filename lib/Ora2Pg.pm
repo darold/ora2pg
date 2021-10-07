@@ -7329,6 +7329,11 @@ sub export_table
 				$sql_output .= "\nCREATE$foreign $obj_type $tbname (\n";
 			}
 
+			# get column name list.
+			my @collist = ();
+			foreach my $k (keys %{$self->{tables}{$table}{column_info}}) {
+				push(@collist, $self->{tables}{$table}{column_info}{$k}[0]);
+			}
 
 			# Extract column information following the Oracle position order
 			foreach my $k (sort { 
@@ -7493,16 +7498,27 @@ sub export_table
 					if ($self->{plsql_pgsql}) {
 						$f->[4] = Ora2Pg::PLSQL::convert_plsql_code($self, $f->[4]);
 					}
+					my $use_other_col = 0;
+					foreach my $c (@collist) {
+						$use_other_col = 1 if ($f->[4] =~ /\b$c\b/i);
+					}
+
+					# Check if the column make reference to an other column
+					if ($use_other_col && $self->{pg_version} >= 12)
+					{
+								$sql_output .= " GENERATED ALWAYS AS (" . $f->[4] . ") STORED";
+					}
 					# Check if this is a virtual column before proceeding to default value export
-					if ($self->{tables}{$table}{column_info}{$k}[10] eq 'YES') {
+					elsif ($self->{tables}{$table}{column_info}{$k}[10] eq 'YES')
+					{
 						$virtual_trigger_info{$table}{$k} = $f->[4];
 						$virtual_trigger_info{$table}{$k} =~ s/"//gs;
 						foreach my $c (keys %{$self->{tables}{$table}{column_info}}) {
 							$virtual_trigger_info{$table}{$k} =~ s/\b$c\b/NEW.$c/gs;
 						}
-
-					} else {
-
+					}
+					else
+					{
 						if (($f->[4] ne '') && ($self->{type} ne 'FDW') && !$self->{oracle_fdw_data_export}) {
 							if ($type eq 'boolean') {
 								my $found = 0;
