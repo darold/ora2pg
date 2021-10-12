@@ -15656,7 +15656,7 @@ BEGIN
 		{
 			$at_wrapper .= qq{
 BEGIN
-	v_query := 'SELECT true FROM $fname$at_suffix ($params)';
+	v_query := 'CALL $fname$at_suffix ($params)';
 	PERFORM * FROM dblink(v_conn_str, v_query) AS p (ret boolean);
 };
 		}
