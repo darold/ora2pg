@@ -12879,12 +12879,14 @@ sub _get_package_function_list
 		$sql .= " WHERE OWNER = '$self->{schema}'";
 	}
 	$sql .= " AND TYPE <> 'PACKAGE'";
-	$sql .= " AND NAME IN ('" . join("','", @packages) . "')" if ($#packages >= 0);
 	$sql .= " ORDER BY OWNER, NAME, LINE";
 	$sth = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute or $self->logit("FATAL: " . $sth->errstr . "\n", 0, 1);
 	my %function_metadata = ();
-	while (my $row = $sth->fetch) {
+	my $has_pkg = $#packages;
+	while (my $row = $sth->fetch)
+	{
+		next if ($has_pkg >= 0 && !grep(/^$row->[0]$/, @packages));
 		$function_metadata{$row->[1]}{$row->[0]}{text} .= $row->[3];
 	}
         $sth->finish();
