@@ -7412,8 +7412,10 @@ sub export_table
 					$f->[1] =~ s/^ENUM\(//i;
 					$f->[1] =~ s/\)$//;
 					my $keyname = $tbname . '_' . $fname . '_chk';
-					$keyname =~ s/(.*)"(_${fname}_chk)/$1$2"/; # used when preserve_case is enable
-					$enum_str .= "ALTER TABLE $tbname ADD CONSTRAINT $keyname CHECK ($fname IN ($f->[1]));\n";
+					$keyname =~ s/"//g;
+					$enum_str .= "ALTER TABLE $tbname ADD CONSTRAINT " .
+								$self->quote_object_name($keyname) .
+								" CHECK ($fname IN ($f->[1]));\n";
 					$type = 'varchar';
 				}
 				my $typlen = $f->[5];
@@ -9966,7 +9968,7 @@ sub _create_unique_keys
 			if (!$self->{keep_pkey_names} || ($constgen eq 'GENERATED NAME')) {
 				$out .= "ALTER TABLE $table ADD $constypename ($columnlist)";
 			} else {
-				$out .= "ALTER TABLE $table ADD CONSTRAINT \L$consname\E $constypename ($columnlist)";
+				$out .= "ALTER TABLE $table ADD CONSTRAINT " . $self->quote_object_name($consname) . " $constypename ($columnlist)";
 			}
 			if ($self->{use_tablespace} && $self->{tables}{$tbsaved}{idx_tbsp}{$index_name} && !grep(/^$self->{tables}{$tbsaved}{idx_tbsp}{$index_name}$/i, @{$self->{default_tablespaces}})) {
 				$out .= " USING INDEX TABLESPACE $self->{tables}{$tbsaved}{idx_tbsp}{$index_name}";
