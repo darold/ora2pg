@@ -191,8 +191,10 @@ unless(opendir(DIR, "$TMP_DIR")) {
 }
 my @files = grep { $_ =~ /^tmp_ora2pg.*$/ } readdir(DIR);
 closedir DIR;
-foreach (@files) {
-	if (not unlink("$TMP_DIR/$_\n")){
+foreach (@files)
+{
+	if (-e "$TMP_DIR/$_" and not unlink("$TMP_DIR/$_"))
+	{
 		print "FATAL: can not remove old temporary files $TMP_DIR/$_\n";
 		exit 1;
 	}
