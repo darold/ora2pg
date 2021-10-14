@@ -9532,17 +9532,16 @@ sub _create_indexes
 					$idxname = substr($idxname,0,63);
 				}
 			}
-			$idxname = $schm . '.' . $idxname if ($schm);
-			$idxname = $self->quote_object_name($idxname);
+			$idxname = $self->quote_object_name("$idxname$self->{indexes_suffix}");
 			my $tb = $self->quote_object_name($table);
 			if ($self->{$objtyp}{$tbsaved}{idx_type}{$idx}{type_name} =~ /SPATIAL_INDEX/)
 			{
-				$str .= "CREATE INDEX$concurrently " . $self->quote_object_name("$idxname$self->{indexes_suffix}")
+				$str .= "CREATE INDEX$concurrently " . $idxname
 						. " ON $tb USING gist($columns)";
 			}
 			elsif ($self->{bitmap_as_gin} && ($self->{$objtyp}{$tbsaved}{idx_type}{$idx}{type_name} eq 'BITMAP' || $self->{$objtyp}{$tbsaved}{idx_type}{$idx}{type} eq 'BITMAP'))
 			{
-				$str .= "CREATE INDEX$concurrently " . $self->quote_object_name("$idxname$self->{indexes_suffix}")
+				$str .= "CREATE INDEX$concurrently " . $idxname
 						. " ON $tb USING gin($columns)";
 			}
 			elsif ( ($self->{$objtyp}{$tbsaved}{idx_type}{$idx}{type_name} =~ /CTXCAT/) ||
@@ -9553,7 +9552,7 @@ sub _create_indexes
 				map { s/^(.*)$/unaccent_immutable($1)/; } @cols if ($self->{use_unaccent});
 				$columns = join(" gin_trgm_ops, ", @cols);
 				$columns .= " gin_trgm_ops";
-				$str .= "CREATE INDEX$concurrently " . $self->quote_object_name("$idxname$self->{indexes_suffix}")
+				$str .= "CREATE INDEX$concurrently " . $idxname
 						. " ON $tb USING gin($columns)";
 			}
 			elsif (($self->{$objtyp}{$tbsaved}{idx_type}{$idx}{type_name} =~ /FULLTEXT|CONTEXT/) && $self->{fts_index_only})
@@ -9572,7 +9571,7 @@ sub _create_indexes
 				# use function-based index"
 				my @cols = split(/\s*,\s*/, $columns);
 				$columns = "to_tsvector('$dico', " . join("||' '||", @cols) . ")";
-				$fts_str .= "CREATE INDEX$concurrently " . $self->quote_object_name("$idxname$self->{indexes_suffix}")
+				$fts_str .= "CREATE INDEX$concurrently " . $idxname
 						. " ON $tb USING gin($columns);\n";
 			}
 			elsif (($self->{$objtyp}{$tbsaved}{idx_type}{$idx}{type_name} =~ /FULLTEXT|CONTEXT/) && !$self->{fts_index_only})
@@ -9639,24 +9638,24 @@ CREATE TRIGGER $trig_name BEFORE INSERT OR UPDATE
 } if (!$indexonly);
 				if ($objtyp eq 'tables')
 				{
-					$str .= "CREATE$unique INDEX$concurrently " . $self->quote_object_name("$idxname$self->{indexes_suffix}")
+					$str .= "CREATE$unique INDEX$concurrently " . $idxname
 						 . " ON $table USING gin(tsv_$newcolname)";
 				}
 				else
 				{
-					$fts_str .= "CREATE$unique INDEX$concurrently " . $self->quote_object_name("$idxname$self->{indexes_suffix}")
+					$fts_str .= "CREATE$unique INDEX$concurrently " . $idxname
 						. " ON $table USING gin(tsv_$newcolname)";
 				}
 			}
 			elsif ($self->{$objtyp}{$tbsaved}{idx_type}{$idx}{type} =~ /DOMAIN/i && $self->{$objtyp}{$tbsaved}{idx_type}{$idx}{type_name} !~ /SPATIAL_INDEX/)
 			{
 				$str .= "-- Was declared as DOMAIN index, please check for FTS adaptation if require\n";
-				$str .= "-- CREATE$unique INDEX$concurrently " . $self->quote_object_name("$idxname$self->{indexes_suffix}")
+				$str .= "-- CREATE$unique INDEX$concurrently " . $idxname
 						. " ON $table ($columns)";
 			}
 			else
 			{
-				$str .= "CREATE$unique INDEX$concurrently " . $self->quote_object_name("$idxname$self->{indexes_suffix}")
+				$str .= "CREATE$unique INDEX$concurrently " . $idxname
 						. " ON $table ($columns)";
 			}
 			if ($self->{use_tablespace} && $self->{$objtyp}{$tbsaved}{idx_tbsp}{$idx} && !grep(/^$self->{$objtyp}{$tbsaved}{idx_tbsp}{$idx}$/i, @{$self->{default_tablespaces}}))
@@ -15659,7 +15658,7 @@ BEGIN
 		{
 			$at_wrapper .= qq{
 BEGIN
-	v_query := 'SELECT true FROM $fname$at_suffix ($params)';
+	v_query := 'CALL $fname$at_suffix ($params)';
 	PERFORM * FROM dblink(v_conn_str, v_query) AS p (ret boolean);
 };
 		}
