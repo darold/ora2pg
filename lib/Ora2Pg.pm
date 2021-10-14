@@ -9146,7 +9146,7 @@ sub _dump_fdw_table
 				foreach my $k (keys %{$self->{ora_boolean_values}})
 				{
 					if ($self->{ora_boolean_values}{$k} eq 't') {
-						$true_list .= " lower(" . $self->quote_object_name($colname) .") = '$k' OR";
+						$true_list .= " lower(" . $self->quote_object_name($colname) ."::varchar) = '$k' OR";
 					}
 				}
 				$true_list =~ s/ OR$//;
