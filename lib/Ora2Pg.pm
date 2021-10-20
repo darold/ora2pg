@@ -10840,6 +10840,7 @@ sub _sql_type
 	{
 		$len = $precision;
 		return $self->{data_type}{'NUMBER(*)'} if ($scale eq '0' && exists $self->{data_type}{'NUMBER(*)'});
+		return $self->{data_type}{"NUMBER(*,$scale)"} if (exists $self->{data_type}{"NUMBER(*,$scale)"});
 	}
 	elsif ( ($type eq 'NUMBER') && ($len == 38) )
 	{
