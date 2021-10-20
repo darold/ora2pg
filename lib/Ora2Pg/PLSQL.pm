@@ -2226,9 +2226,18 @@ sub replace_sql_type
 		$str =~ s/\bVARCHAR\b(\s*(?!\())/varchar$1/igs;
 	}
 
-	foreach my $t ('DATE','LONG RAW','LONG','NCLOB','CLOB','BLOB','BFILE','RAW','ROWID','UROWID','FLOAT','DOUBLE PRECISION','INTEGER','INT','REAL','SMALLINT','BINARY_FLOAT','BINARY_DOUBLE','BINARY_INTEGER','BOOLEAN','XMLTYPE','SDO_GEOMETRY','PLS_INTEGER') {
+	foreach my $t ('DATE','LONG RAW','LONG','NCLOB','CLOB','BLOB','BFILE','RAW','ROWID','UROWID','FLOAT','DOUBLE PRECISION','INTEGER','INT','REAL','SMALLINT','BINARY_FLOAT','BINARY_DOUBLE','BINARY_INTEGER','BOOLEAN','XMLTYPE','SDO_GEOMETRY','PLS_INTEGER', 'NUMBER') {
 		if ($t eq 'DATE') {
 			$str =~ s/\b$t\s*\(\d\)/$data_type{$t}/igs;
+		}
+		elsif ($t eq 'NUMBER')
+		{
+			if ($pg_integer_type)
+			{
+				my $tmp = $default_numeric || 'bigint';
+				$str =~ s/\b$t\b/$tmp/igs;
+				next;
+			}
 		}
 		$str =~ s/\b$t\b/$data_type{$t}/igs;
 	}
