@@ -6689,7 +6689,6 @@ BEGIN
 				}
 				$owner = $self->{partitions}{$table}{$pos}{info}[$i]->{owner} || '';
 			}
-
 			if (!$self->{pg_supports_partition})
 			{
 				if ($self->{partitions}{$table}{$pos}{info}[$i]->{type} ne 'HASH')
@@ -6729,6 +6728,7 @@ BEGIN
 				}
 				$create_table_tmp .= ";\n";
 			}
+
 			# Add subpartition if any defined on Oracle
 			my $sub_funct_cond = '';
 			my $sub_old_part = '';
@@ -6942,6 +6942,9 @@ BEGIN
 				}
 			}
 			$check_cond = '';
+
+			# Fix case where default partition is taken as a value
+			$create_table_tmp =~ s/FOR VALUES IN \(default\)/DEFAULT/igs;
 
 			if ($#condition >= 0)
 			{
