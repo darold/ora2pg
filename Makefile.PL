@@ -225,6 +225,7 @@ NO_FUNCTION_METADATA	0
 #       DIRECTORY	Export Oracle's directories as external_file extension objects.
 #       LOAD		Dispatch a list of queries over multiple PostgreSQl connections.
 #       TEST		perform a diff between Oracle and PostgreSQL database.
+#       TEST_COUNT	perform only a row count between Oracle and PostgreSQL tables.
 #       TEST_VIEW	perform a count on both side of rows returned by views
 
 TYPE		TABLE

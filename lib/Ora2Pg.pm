@@ -1736,6 +1736,17 @@ sub _init
 			$self->{dbh}->disconnect() if ($self->{dbh}); 
 			exit 0;
 		}
+		elsif ($self->{type} eq 'TEST_COUNT')
+		{
+			$self->replace_tables(%{$self->{'replace_tables'}});
+			$self->replace_cols(%{$self->{'replace_cols'}});
+			$self->{dbhdest} = $self->_send_to_pgdb() if ($self->{pg_dsn} && !$self->{dbhdest});
+			# Count row in each table
+			$self->_table_row_count();
+			$self->{dbhdest}->disconnect() if ($self->{dbhdest}); 
+			$self->{dbh}->disconnect() if ($self->{dbh}); 
+			exit 0;
+		}
 		elsif ($self->{type} eq 'TEST_VIEW')
 		{
 			$self->{dbhdest} = $self->_send_to_pgdb() if ($self->{pg_dsn} && !$self->{dbhdest});
@@ -1770,7 +1781,7 @@ sub _init
 		}
 		else
 		{
-			warn "type option must be (TABLE, VIEW, GRANT, SEQUENCE, TRIGGER, PACKAGE, FUNCTION, PROCEDURE, PARTITION, TYPE, INSERT, COPY, TABLESPACE, SHOW_REPORT, SHOW_VERSION, SHOW_SCHEMA, SHOW_TABLE, SHOW_COLUMN, SHOW_ENCODING, FDW, MVIEW, QUERY, KETTLE, DBLINK, SYNONYM, DIRECTORY, LOAD, TEST, TEST_VIEW, TEST_DATA), unknown $self->{type}\n";
+			warn "type option must be (TABLE, VIEW, GRANT, SEQUENCE, TRIGGER, PACKAGE, FUNCTION, PROCEDURE, PARTITION, TYPE, INSERT, COPY, TABLESPACE, SHOW_REPORT, SHOW_VERSION, SHOW_SCHEMA, SHOW_TABLE, SHOW_COLUMN, SHOW_ENCODING, FDW, MVIEW, QUERY, KETTLE, DBLINK, SYNONYM, DIRECTORY, LOAD, TEST, TEST_COUNT, TEST_VIEW, TEST_DATA), unknown $self->{type}\n";
 		}
 		$self->replace_tables(%{$self->{'replace_tables'}});
 		$self->replace_cols(%{$self->{'replace_cols'}});
