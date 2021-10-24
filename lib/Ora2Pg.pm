@@ -277,12 +277,12 @@ our %TYPE = (
 	'DEC' => 'decimal',
 	'DECIMAL' => 'decimal',
 	'DOUBLE PRECISION' => 'double precision',
-	'INT' => 'numeric',
-	'INTEGER' => 'numeric',
+	'INT' => 'integer',
+	'INTEGER' => 'integer',
 	'BINARY_INTEGER' => 'integer',
 	'PLS_INTEGER' => 'integer',
-	'REAL' => 'real',
 	'SMALLINT' => 'smallint',
+	'REAL' => 'real',
 	'BINARY_FLOAT' => 'double precision',
 	'BINARY_DOUBLE' => 'double precision',
 	'TIMESTAMP' => 'timestamp',
@@ -6700,7 +6700,6 @@ BEGIN
 				}
 				$owner = $self->{partitions}{$table}{$pos}{info}[$i]->{owner} || '';
 			}
-
 			if (!$self->{pg_supports_partition})
 			{
 				if ($self->{partitions}{$table}{$pos}{info}[$i]->{type} ne 'HASH')
@@ -6740,6 +6739,7 @@ BEGIN
 				}
 				$create_table_tmp .= ";\n";
 			}
+
 			# Add subpartition if any defined on Oracle
 			my $sub_funct_cond = '';
 			my $sub_old_part = '';
@@ -6953,6 +6953,9 @@ BEGIN
 				}
 			}
 			$check_cond = '';
+
+			# Fix case where default partition is taken as a value
+			$create_table_tmp =~ s/FOR VALUES IN \(default\)/DEFAULT/igs;
 
 			if ($#condition >= 0)
 			{
@@ -10851,6 +10854,7 @@ sub _sql_type
 	{
 		$len = $precision;
 		return $self->{data_type}{'NUMBER(*)'} if ($scale eq '0' && exists $self->{data_type}{'NUMBER(*)'});
+		return $self->{data_type}{"NUMBER(*,$scale)"} if (exists $self->{data_type}{"NUMBER(*,$scale)"});
 	}
 	elsif ( ($type eq 'NUMBER') && ($len == 38) )
 	{

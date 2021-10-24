@@ -1775,13 +1775,13 @@ string like follow:
 
 	dbi:Pg:dbname=pgdb;host=localhost;port=5432;sslmode=require
 
-=item PG_USER and PG_PWD
+=item PGUSER and PGPASSWORD
 
 These two directives are used to set the login user and password.
 
-If you do not supply a credential with PG_PWD and you have installed the
+If you do not supply a credential with PGPASSWORD and you have installed the
 Term::ReadKey Perl module, Ora2Pg will ask for the password interactively. If
-PG_USER is not set it will be asked interactively too.
+PGUSER is not set it will be asked interactively too.
 
 
 =item SYNCHRONOUS_COMMIT
@@ -1836,7 +1836,7 @@ PostgreSQL types to redefine data type translation used in Ora2pg. The syntax
 is a comma-separated list of "Oracle datatype:Postgresql datatype". Here are
 the default list used:
 
-	DATA_TYPE	VARCHAR2:varchar,NVARCHAR2:varchar,DATE:timestamp,LONG:text,LONG RAW:bytea,CLOB:text,NCLOB:text,BLOB:bytea,BFILE:bytea,RAW(16):uuid,RAW(32):uuid,RAW:bytea,UROWID:oid,ROWID:oid,FLOAT:double precision,DEC:decimal,DECIMAL:decimal,DOUBLE PRECISION:double precision,INT:numeric,INTEGER:numeric,REAL:real,SMALLINT:smallint,BINARY_FLOAT:double precision,BINARY_DOUBLE:double precision,TIMESTAMP:timestamp,XMLTYPE:xml,BINARY_INTEGER:integer,PLS_INTEGER:integer,TIMESTAMP WITH TIME ZONE:timestamp with time zone,TIMESTAMP WITH LOCAL TIME ZONE:timestamp with time zone
+	DATA_TYPE	VARCHAR2:varchar,NVARCHAR2:varchar,DATE:timestamp,LONG:text,LONG RAW:bytea,CLOB:text,NCLOB:text,BLOB:bytea,BFILE:bytea,RAW(16):uuid,RAW(32):uuid,RAW:bytea,UROWID:oid,ROWID:oid,FLOAT:double precision,DEC:decimal,DECIMAL:decimal,DOUBLE PRECISION:double precision,INT:integer,INTEGER:integer,REAL:real,SMALLINT:smallint,BINARY_FLOAT:double precision,BINARY_DOUBLE:double precision,TIMESTAMP:timestamp,XMLTYPE:xml,BINARY_INTEGER:integer,PLS_INTEGER:integer,TIMESTAMP WITH TIME ZONE:timestamp with time zone,TIMESTAMP WITH LOCAL TIME ZONE:timestamp with time zone
 
 The directive and the list definition must be a single line.
 
@@ -2301,7 +2301,7 @@ See https://github.com/vibhorkum/pg_background about this extension.
 
 By default if you have an autonomous transaction translated using dblink
 extension instead of pg_background the connection is defined using the
-values set with PG_DSN, PG_USER and PG_PWD. If you want to fully override
+values set with PG_DSN, PGUSER and PGPASSWORD. If you want to fully override
 the connection string use this directive as follow to set the connection
 in the autonomous transaction wrapper function. For example:
 
@@ -2970,7 +2970,7 @@ experiences to polish the scores/units attributed in those variables.
 
 Using the LOAD export type and a file containing SQL orders to perform, it is
 possible to dispatch those orders over multiple PostgreSQL connections. To be
-able to use this feature, the PG_DSN, PG_USER and PG_PWD must be set. Then:
+able to use this feature, the PG_DSN, PGUSER and PGPASSWORD must be set. Then:
 
 	ora2pg -t LOAD -c config/ora2pg.conf -i schema/tables/INDEXES_table.sql -j 4
 
