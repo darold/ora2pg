@@ -15769,11 +15769,11 @@ END;
 		$function .= ';' if ($function !~ /END\s*;\s*$/is && $fct_detail{code} !~ /\%ORA2PG_COMMENT\d+\%\s*$/);
 		$function .= "\n\$body\$\nLANGUAGE PLPGSQL\n";
 
-		# Remove parameters to RETURN call when the function has no RETURNS
+		# Remove parameters to RETURN call when the function has no RETURNS
 		# clause which is the case when there is OUT parameters.
 		if ($function !~ /\s+RETURNS\s+/s || ($function =~ /\s+RETURNS VOID\s+/s || ($type eq 'PROCEDURE' && $self->{pg_supports_procedures}))) {
 			$self->_remove_text_constant_part(\$function);
-			$function =~ s/(RETURN)\s*[^;]+;/$1;/igs;
+			$function =~ s/(\bRETURN\b)\s*[^;]+;/$1;/igs;
 			$self->_restore_text_constant_part(\$function);
 		}
 		$revoke = "-- REVOKE ALL ON $type $name $fct_detail{args} FROM PUBLIC;";
