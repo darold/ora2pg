@@ -1074,6 +1074,8 @@ sub _init
 		$self->{default_parallelism_degree} = 0;
 	}
 
+	$self->{force_plsql_encoding} =  1 if (not defined $self->{force_plsql_encoding});
+
 	# Add header to output file
 	$self->{no_header} ||= 0;
 
@@ -12999,7 +13001,7 @@ sub _get_functions
 			$row->[0] = "$row->[1].$row->[0]";
 		}
 		# Fix possible Malformed UTF-8 character
-		$row->[2] = encode('UTF-8', $row->[2]);
+		$row->[2] = encode('UTF-8', $row->[2]) if ($self->{force_plsql_encoding});
 		# Remove some bargage when migrating from 8i
 		$row->[2] =~ s/\bAUTHID\s+[^\s]+\s+//is;
 		if (exists $functions{"$row->[0]"}) {
@@ -13104,8 +13106,9 @@ sub _get_procedures
 		if (!$self->{schema} && $self->{export_schema}) {
 			$row->[0] = "$row->[1].$row->[0]";
 		}
+		# Fix possible Malformed UTF-8 character
+		$row->[2] = encode('UTF-8', $row->[2]) if ($self->{force_plsql_encoding});
 		# Remove some bargage when migrating from 8i
-		$row->[2] = encode('UTF-8', $row->[2]);
 		$row->[2] =~ s/\bAUTHID\s+[^\s]+\s+//is;
 		if (exists $procedures{"$row->[0]"}) {
 			$procedures{"$row->[0]"}{text} .= $row->[2];
@@ -15215,7 +15218,7 @@ sub _remove_comments
 	my ($self, $content, $no_constant) = @_;
 
 	# Fix comment in a string constant
-	$$content = encode('UTF-8', $$content) if (!$self->{input_file});
+	$$content = encode('UTF-8', $$content) if (!$self->{input_file} && $self->{force_plsql_encoding});
 	while ($$content =~ s/('[^';\n]*)\/\*([^';\n]*')/$1\%OPEN_COMMENT\%$2/s) {};
 
 	# Fix unterminated comment at end of the code

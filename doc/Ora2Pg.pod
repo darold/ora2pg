@@ -2444,6 +2444,11 @@ change the encoding of the PostgreSQL client.
 
 You can take a look at the PostgreSQL supported character sets here: http://www.postgresql.org/docs/9.0/static/multibyte.html
 
+=item FORCE_PLSQL_ENCODING
+
+By default Ora2Pg encode all function code to ut8, this sometime can generate
+double encoding. To change this behavior, disable this configuration directive.
+
 =back
 
 =head2 PLSQL to PLPGSQL conversion

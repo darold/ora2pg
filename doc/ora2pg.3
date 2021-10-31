@@ -133,7 +133,7 @@
 .\" ========================================================================
 .\"
 .IX Title "ORA2PG 1"
-.TH ORA2PG 1 "2021-10-24" "perl v5.30.0" "User Contributed Perl Documentation"
+.TH ORA2PG 1 "2021-10-31" "perl v5.30.0" "User Contributed Perl Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -1916,13 +1916,13 @@ string like follow:
 .Vb 1
 \&        dbi:Pg:dbname=pgdb;host=localhost;port=5432;sslmode=require
 .Ve
-.IP "\s-1PG_USER\s0 and \s-1PG_PWD\s0" 4
-.IX Item "PG_USER and PG_PWD"
+.IP "\s-1PGUSER\s0 and \s-1PGPASSWORD\s0" 4
+.IX Item "PGUSER and PGPASSWORD"
 These two directives are used to set the login user and password.
 .Sp
-If you do not supply a credential with \s-1PG_PWD\s0 and you have installed the
+If you do not supply a credential with \s-1PGPASSWORD\s0 and you have installed the
 Term::ReadKey Perl module, Ora2Pg will ask for the password interactively. If
-\&\s-1PG_USER\s0 is not set it will be asked interactively too.
+\&\s-1PGUSER\s0 is not set it will be asked interactively too.
 .IP "\s-1SYNCHRONOUS_COMMIT\s0" 4
 .IX Item "SYNCHRONOUS_COMMIT"
 Specifies whether transaction commit will wait for \s-1WAL\s0 records to be written
@@ -2411,7 +2411,7 @@ See https://github.com/vibhorkum/pg_background about this extension.
 .IX Item "DBLINK_CONN"
 By default if you have an autonomous transaction translated using dblink
 extension instead of pg_background the connection is defined using the
-values set with \s-1PG_DSN, PG_USER\s0 and \s-1PG_PWD.\s0 If you want to fully override
+values set with \s-1PG_DSN, PGUSER\s0 and \s-1PGPASSWORD.\s0 If you want to fully override
 the connection string use this directive as follow to set the connection
 in the autonomous transaction wrapper function. For example:
 .Sp
@@ -2545,6 +2545,10 @@ encoding issue. If you have changed the value of \s-1NLS_LANG\s0 you might have 
 change the encoding of the PostgreSQL client.
 .Sp
 You can take a look at the PostgreSQL supported character sets here: http://www.postgresql.org/docs/9.0/static/multibyte.html
+.IP "\s-1FORCE_PLSQL_ENCODING\s0" 4
+.IX Item "FORCE_PLSQL_ENCODING"
+By default Ora2Pg encode all function code to ut8, this sometime can generate
+double encoding. To change this behavior, disable this configuration directive.
 .SS "\s-1PLSQL\s0 to \s-1PLPGSQL\s0 conversion"
 .IX Subsection "PLSQL to PLPGSQL conversion"
 Automatic code conversion from Oracle \s-1PLSQL\s0 to PostgreSQL \s-1PLPGSQL\s0 is a work in
@@ -3090,7 +3094,7 @@ experiences to polish the scores/units attributed in those variables.
 .IX Subsection "Improving indexes and constraints creation speed"
 Using the \s-1LOAD\s0 export type and a file containing \s-1SQL\s0 orders to perform, it is
 possible to dispatch those orders over multiple PostgreSQL connections. To be
-able to use this feature, the \s-1PG_DSN, PG_USER\s0 and \s-1PG_PWD\s0 must be set. Then:
+able to use this feature, the \s-1PG_DSN, PGUSER\s0 and \s-1PGPASSWORD\s0 must be set. Then:
 .PP
 .Vb 1
 \&        ora2pg \-t LOAD \-c config/ora2pg.conf \-i schema/tables/INDEXES_table.sql \-j 4
