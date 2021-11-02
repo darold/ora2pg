@@ -546,11 +546,14 @@ sub append_alias_clause
 	my $str = shift;
 
 	# Divise code through UNION keyword marking a new query level
-	my @q = split(/\b(UNION\s+ALL|UNION)\b/i, $str);
-	for (my $j = 0; $j <= $#q; $j+=2) {
-		if ($q[$j] =~ s/\b(FROM\s+)(.*\%SUBQUERY.*?)(\s*)(WHERE|ORDER\s+BY|GROUP\s+BY|LIMIT|$)/$1\%FROM_CLAUSE\%$3$4/is) {
+	my @q = split(/\b(UNION\s+ALL|UNION|EXCEPT)\b/i, $str);
+	for (my $j = 0; $j <= $#q; $j+=2)
+	{
+		if ($q[$j] =~ s/\b(FROM\s+)(.*\%SUBQUERY.*?)(\s*)(WHERE|ORDER\s+BY|GROUP\s+BY|LIMIT|$)/$1\%FROM_CLAUSE\%$3$4/is)
+		{
 			my $from_clause = $2;
-			if ($q[$j] !~ /\b(YEAR|MONTH|DAY|HOUR|MINUTE|SECOND|TIMEZONE_HOUR|TIMEZONE_MINUTE|TIMEZONE_ABBR|TIMEZONE_REGION|TIMEZONE_OFFSET)\s+FROM/is) {
+			if ($from_clause !~ /TABLE\%SUBQUERY\d+\%/ && $q[$j] !~ /\b(YEAR|MONTH|DAY|HOUR|MINUTE|SECOND|TIMEZONE_HOUR|TIMEZONE_MINUTE|TIMEZONE_ABBR|TIMEZONE_REGION|TIMEZONE_OFFSET)\s+FROM/is)
+			{
 				my @parts = split(/\b(WHERE|ORDER\s+BY|GROUP\s+BY|LIMIT)\b/i, $from_clause);
 				$parts[0] =~ s/(?<!USING|[\s,]ONLY|[\s,]JOIN|..\sON|.\sAND|..\sOR)\s*\%SUBQUERY(\d+)\%(\s*,)/\%SUBQUERY$1\% alias$1$2/igs;
 				$parts[0] =~ s/(?<!USING|[\s,]ONLY|[\s,]JOIN|.\sON\s|\sAND\s|.\sOR\s)\s*\%SUBQUERY(\d+)\%(\s*)$/\%SUBQUERY$1\% alias$1$2/is;
@@ -558,8 +561,8 @@ sub append_alias_clause
 				$parts[0] =~ s/(\%SUBQUERY\d+\%\s+AS\s+[^\s]+)\s+alias\d+/$1/ig;
 				# Remove unwanted alias appended with JOIN
 				$parts[0] =~ s/\bON\s*(\%SUBQUERY\d+\%)\s+alias\d+/ON $1/ig;
-				# Remove unwanted alias appended with the epoch translation
-				$parts[0] =~ s/\b(now\%SUBQUERY\d+\%) alias\d+/$1/ig;
+				# Remove unwanted alias appended with function with subquery translation
+				$parts[0] =~ s/\b([^\s,]+\%SUBQUERY\d+\%) alias\d+/$1/ig;
 				$from_clause = join('', @parts);
 			}
 			$q[$j] =~ s/\%FROM_CLAUSE\%/$from_clause/s;
