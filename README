@@ -2368,9 +2368,8 @@ CONFIGURATION
         http://www.postgresql.org/docs/9.0/static/multibyte.html
 
     FORCE_PLSQL_ENCODING
-        By default Ora2Pg encode all function code to ut8, this sometime can
-        generate double encoding. To change this behavior, disable this
-        configuration directive.
+        To force utf8 encoding of the PL/SQL code exported, enable this
+        directive. Could be helpful in some rare condition.
 
   PLSQL to PLPGSQL conversion
     Automatic code conversion from Oracle PLSQL to PostgreSQL PLPGSQL is a

@@ -2446,8 +2446,8 @@ You can take a look at the PostgreSQL supported character sets here: http://www.
 
 =item FORCE_PLSQL_ENCODING
 
-By default Ora2Pg encode all function code to ut8, this sometime can generate
-double encoding. To change this behavior, disable this configuration directive.
+To force utf8 encoding of the PL/SQL code exported, enable this directive.
+Could be helpful in some rare condition.
 
 =back
 

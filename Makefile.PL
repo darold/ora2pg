@@ -197,9 +197,9 @@ NO_FUNCTION_METADATA	0
 # change  the encoding of the PostgreSQL client.
 #CLIENT_ENCODING	UTF8
 
-# By default Ora2Pg encode all function code to ut8, this sometime can generate
-# double encoding. To change this behavior, disable this configuration directive.
-FORCE_PLSQL_ENCODING	1
+# To force utf8 encoding of the PL/SQL code exported, enable this directive.
+# Could be helpful in some rare condition.
+FORCE_PLSQL_ENCODING	0
 
 #------------------------------------------------------------------------------
 # EXPORT SECTION (Export type and filters)

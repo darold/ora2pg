@@ -1074,7 +1074,8 @@ sub _init
 		$self->{default_parallelism_degree} = 0;
 	}
 
-	$self->{force_plsql_encoding} =  1 if (not defined $self->{force_plsql_encoding});
+	# For utf8 encoding of the stored procedure code
+	$self->{force_plsql_encoding} ||= 0;
 
 	# Add header to output file
 	$self->{no_header} ||= 0;
