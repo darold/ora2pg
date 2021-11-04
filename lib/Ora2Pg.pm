@@ -2475,6 +2475,16 @@ sub _tables
 					$tmp_tbname = "\"$tmp_tbname\"";
 				}
 			}
+			else
+			{
+				if ( $t !~ /\./ && $tables_infos{$t}{owner}) {
+					$tmp_tbname = "\`$tables_infos{$t}{owner}\`.\`$t\`";
+				} else {
+					# in case we already have the schema name, add doublequote
+					$tmp_tbname =~ s/\./\`.\`/;
+					$tmp_tbname = "\`$tmp_tbname\`";
+				}
+			}
 			my $query = "SELECT * FROM $tmp_tbname WHERE 1=0";
 			if ($tables_infos{$t}{nested} eq 'YES') {
 				$query = "SELECT /*+ nested_table_get_refs */ * FROM $tmp_tbname WHERE 1=0";
@@ -2538,7 +2548,15 @@ sub _tables
 					$realview =~ s/\./"."/;
 					$realview = "\"$realview\"";
 				}
-				
+			}
+			else
+			{
+				if ($realview !~ /\./ && $tables_infos{$t}{owner}) {
+					$realview = "\`$self->{tables}{$view}{owner}\`.\`$realview\`";
+				} else {
+					$realview =~ s/\./\`.\`/;
+					$realview = "\`$realview\`";
+				}
 			}
 			# Set the fields information
 			my $sth = $self->{dbh}->prepare("SELECT * FROM $realview WHERE 1=0");
@@ -10291,6 +10309,7 @@ sub _howto_get_data
 	}
 	else
 	{
+		$realtable =~ s/\`//g;
 		$realtable = "\`$realtable\`";
 	}
 
@@ -10316,12 +10335,15 @@ sub _howto_get_data
 			my $realcolname = $name->[$k]->[0];
 			my $spatial_srid = '';
 			$self->{nullable}{$table}{$k} = $self->{colinfo}->{$table}{$realcolname}{nullable};
-			if ($name->[$k]->[0] !~ /"/)
+			if (!$self->{is_mysql})
 			{
-				# Do not use double quote with mysql
-				if (!$self->{is_mysql}) {
+				if ($name->[$k]->[0] !~ /"/) {
 					$name->[$k]->[0] = '"' . $name->[$k]->[0] . '"';
-				} else {
+				}
+			}
+			else
+			{
+				if ($name->[$k]->[0] !~ /`/) {
 					$name->[$k]->[0] = '`' . $name->[$k]->[0] . '`';
 				}
 			}
@@ -10541,7 +10563,11 @@ END;
 	}
  
 	# Fix empty column list with nested table
-	$str =~ s/ ""$/ \*/;
+	if (!$self->{is_mysql}) {
+		$str =~ s/ ""$/ \*/;
+	} else {
+		$str =~ s/ ``$/ \*/;
+	}
  
 	if ($part_name)
 	{

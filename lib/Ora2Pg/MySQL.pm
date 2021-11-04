@@ -358,13 +358,15 @@ sub _get_indexes
 	my %index_tablespace = ();
 
 	# Retrieve all indexes for the given table
-	foreach my $t (keys %tables_infos) {
-		my $sth = $self->{dbh}->prepare("SHOW INDEX FROM $t $condition;") or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	foreach my $t (keys %tables_infos)
+	{
+		my $sql = "SHOW INDEX FROM `$t` $condition";
+		my $sth = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 		$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
 		my $i = 1;
-		while (my $row = $sth->fetch) {
-
+		while (my $row = $sth->fetch)
+		{
 			next if ($row->[2] eq 'PRIMARY');
 		#Table : The name of the table.
 		#Non_unique : 0 if the index cannot contain duplicates, 1 if it can.
@@ -428,8 +430,10 @@ sub _count_indexes
 	my %data = ();
 
 	# Retrieve all indexes for the given table
-	foreach my $t (keys %tables_infos) {
-		my $sth = $self->{dbh}->prepare("SHOW INDEX FROM $t $condition;") or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	foreach my $t (keys %tables_infos)
+	{
+		my $sql = "SHOW INDEX FROM `$t` $condition";
+		my $sth = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 		$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
 		my $i = 1;
@@ -628,12 +632,15 @@ sub _unique_key
 		%tables_infos = Ora2Pg::MySQL::_table_info($self);
 	}
 	# Retrieve all indexes for the given table
-	foreach my $t (keys %tables_infos) {
-		my $sth = $self->{dbh}->prepare("SHOW INDEX FROM $t $condition;") or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	foreach my $t (keys %tables_infos)
+	{
+		my $sql = "SHOW INDEX FROM `$t` $condition";
+		my $sth = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 		$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
 		my $i = 1;
-		while (my $row = $sth->fetch) {
+		while (my $row = $sth->fetch)
+		{
 			# Exclude non unique constraints
 			next if ($row->[1]);
 		#Table : The name of the table.
@@ -1403,8 +1410,10 @@ sub _get_objects
 	}
 	$sth->finish();
 	# INDEX
-	foreach my $t (@{$infos{TABLE}}) {
-		$sth = $self->{dbh}->prepare("SHOW INDEX FROM $t->{name} FROM $self->{schema}") or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	foreach my $t (@{$infos{TABLE}})
+	{
+		my $sql = "SHOW INDEX FROM `$t->{name}` FROM $self->{schema}";
+		$sth = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 		$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 		while (my @row = $sth->fetchrow()) {
 			next if ($row[2] eq 'PRIMARY');
