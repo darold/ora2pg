@@ -876,8 +876,8 @@ if [ $IMPORT_DATA -eq 0 ]; then
 	is_superuser='f'
 	if [ $NO_DBCHECK  -eq 0 ]; then
 		# Create owner user
-		user_exists=`psql -d $DB_NAME$DB_HOST$DB_PORT$DB_USER -Atc "select usename from pg_user where usename='$DB_OWNER';"`
-		is_superuser=`psql -d $DB_NAME$DB_HOST$DB_PORT$DB_USER -Atc "select usesuper from pg_user where usename='$DB_OWNER';"`;
+		user_exists=`psql -d $DB_NAME$DB_HOST$DB_PORT$DB_USER -Atc "select usename from pg_user where usename='$DB_OWNER';" 2>/dev/null`
+		is_superuser=`psql -d $DB_NAME$DB_HOST$DB_PORT$DB_USER -Atc "select usesuper from pg_user where usename='$DB_OWNER';" 2>/dev/null`;
 		if [ "a$user_exists" = "a" ]; then
 			if confirm "Would you like to create the owner of the database $DB_OWNER?" ; then
 				echo "Running: createuser$DB_HOST$DB_PORT$DB_USER --no-superuser --no-createrole --no-createdb $DB_OWNER"
