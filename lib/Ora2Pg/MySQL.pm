@@ -466,7 +466,6 @@ sub _count_indexes
 		#Index_type : The index method used (BTREE, FULLTEXT, HASH, RTREE).
 		#Comment : Information about the index not described in its own column, such as disabled if the index is disabled. 
 			push(@{$data{$row->[0]}{$row->[2]}}, $row->[4]);
-
 		}
 	}
 
@@ -679,7 +678,8 @@ sub _unique_key
 			next if (!grep(/^'$type'$/, @accepted_constraint_types));
 			my $generated = 0;
 			$generated = 'GENERATED NAME' if ($row->[2] ne 'PRIMARY');
-			if (!exists $result{$row->[0]}{$idxname}) {
+			if (!exists $result{$row->[0]}{$idxname})
+			{
 				my %constraint = (type => $type, 'generated' => $generated, 'index_name' => $idxname, columns => [ ($row->[4]) ] );
 				$result{$row->[0]}{$idxname} = \%constraint if ($row->[4]);
 				$i++ if ($row->[2] ne 'PRIMARY');
@@ -1704,17 +1704,17 @@ sub _count_sequences
 	# CREATE_OPTIONS  | varchar(255)        | YES  |     | NULL    |       |
 	# TABLE_COMMENT   | varchar(2048)       | NO   |     |         |       |
 
-	my @seqs = ();
+	my %seqs = ();
 	my $sql = "SELECT TABLE_NAME, AUTO_INCREMENT FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE='BASE TABLE' AND TABLE_SCHEMA = '$self->{schema}'";
 	$sql .= $self->limit_to_objects('TABLE', 'TABLE_NAME');
 	my $sth = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	while (my $row = $sth->fetch) {
-		push(@seqs, $row->[0]) if ($row->[1]);
+		push(@{$seqs{$row->[0]}}, @$row) if ($row->[1]);
 	}
 	$sth->finish();
 
-	return \@seqs;
+	return \%seqs;
 }
 
 sub _column_attributes

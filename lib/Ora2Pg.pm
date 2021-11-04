@@ -18467,6 +18467,12 @@ GROUP BY schemaname,tablename
 	{
 		next if (!exists $tables_infos{$t});
 		my $numixd = scalar keys %{$unique_keys{$t}};
+		if ($self->{is_mysql})
+		{
+			foreach my $k (keys %{$unique_keys{$t}}) {
+				$numixd-- if ($unique_keys{$t}{$k}{type} eq 'P');
+			}
+		}
 		print "$lbl:$t:$numixd\n";
 		if ($self->{pg_dsn})
 		{
