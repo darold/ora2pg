@@ -10035,7 +10035,7 @@ sub _create_check_constraint
 
 	my $out = '';
 	# Set the check constraint definition 
-	foreach my $k (keys %{$check_constraint->{constraint}})
+	foreach my $k (sort keys %{$check_constraint->{constraint}})
 	{
 		my $chkconstraint = $check_constraint->{constraint}->{$k}{condition};
 		my $validate = '';
