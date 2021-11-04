@@ -1391,6 +1391,7 @@ sub _init
 
 	$self->{estimate_cost} = 1 if ($self->{dump_as_sheet});
 	$self->{count_rows} ||= 0;
+	$self->{count_rows} = 1 if ($self->{type} eq 'TEST_COUNT');
 
 	# Enforce preservation of primary and unique keys
 	# when USE_TABLESPACE is enabled
@@ -13299,7 +13300,7 @@ sub _table_info
 	my $self = shift;
 	my $do_real_row_count = shift;
 
-	return Ora2Pg::MySQL::_table_info($self) if ($self->{is_mysql});
+	return Ora2Pg::MySQL::_table_info($self, $do_real_row_count) if ($self->{is_mysql});
 
 	my $owner = '';
 	if ($self->{schema}) {

@@ -165,6 +165,7 @@ Returns a handle to a DB query statement.
 sub _table_info
 {
 	my $self = shift;
+	my $do_real_row_count = shift;
 
 	# First register all tablespace/table in memory from this database
 	my %tbspname = ();
@@ -204,7 +205,8 @@ sub _table_info
 	$sql .= $self->limit_to_objects('TABLE', 'TABLE_NAME');
 	$sth = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-	while (my $row = $sth->fetch) {
+	while (my $row = $sth->fetch)
+	{
 		$row->[2] =~ s/^BASE //;
 		$comments{$row->[0]}{comment} = $row->[1];
 		$comments{$row->[0]}{table_type} = $row->[2];
@@ -219,16 +221,28 @@ sub _table_info
 		$tables_infos{$row->[0]}{tablespace} = $tbspname{$row->[0]} || '';
 
 		# Get creation option unavailable in information_schema
-		if ($row->[6] eq 'FEDERATED') {
-			my $sth2 = $self->{dbh}->prepare("SHOW CREATE TABLE $row->[0]") or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0);
+		if ($row->[6] eq 'FEDERATED')
+		{
+			my $sth2 = $self->{dbh}->prepare("SHOW CREATE TABLE `$row->[0]`") or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0);
 			$sth2->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-			while (my $r = $sth2->fetch) {
+			while (my $r = $sth2->fetch)
+			{
 				if ($r->[1] =~ /CONNECTION='([^']+)'/) {
 					$tables_infos{$row->[0]}{connection} = $1;
 				}
 				last;
 			}
 			$sth2->finish();
+		}
+		if ($do_real_row_count)
+		{
+			$self->logit("DEBUG: looking for real row count for table $row->[0] (aka using count(*))...\n", 1);
+			$sql = "SELECT COUNT(*) FROM `$row->[0]`";
+			my $sth2 = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+			$sth2->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+			my $size = $sth2->fetch();
+			$sth2->finish();
+			$tables_infos{$row->[0]}{num_rows} = $size->[0];
 		}
 	}
 	$sth->finish();
