@@ -1611,7 +1611,8 @@ sub replace_oracle_function
 	$str =~ s/FROM_TZ\s*\(\s*([^\)]+)\s*\)/'(' . convert_from_tz($class,$1) . ')::timestamp with time zone'/iegs;
 
 	# Replace call to trim into btrim
-	$str =~ s/\bTRIM\s*\(([^\(\)]+)\)/trim(both $1)/igs;
+	$str =~ s/\b(TRIM\s*\()\s+/$1/igs;
+	$str =~ s/\bTRIM\s*\(((?!BoTH)[^\(\)]*)\)/trim(both $1)/igs;
 
 	# Do some transformation when Orafce is not used
 	if (!$class->{use_orafce})
