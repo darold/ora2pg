@@ -637,7 +637,6 @@ sub plsql_to_plpgsql
 	if (!grep(/$class->{type}/i, 'FUNCTION', 'PROCEDURE', 'PACKAGE')) {
 		$conv_current_time = 'LOCALTIMESTAMP';
 	}
-
 	# Remove the SYS schema from calls
 	$str =~ s/\bSYS\.//igs;
 
@@ -896,8 +895,8 @@ sub plsql_to_plpgsql
 	# Replace UTL_MATH function by fuzzymatch function
 	$str =~ s/UTL_MATCH.EDIT_DISTANCE/levenshtein/igs;
 
-        # Replace UTL_ROW.CAST_TO_RAW function by encode function
-        $str =~ s/UTL_RAW.CAST_TO_RAW\s*\(\s*([^\)]+)\s*\)/encode($1::bytea, 'hex')::bytea/igs;
+	# Replace UTL_ROW.CAST_TO_RAW function by encode function
+	$str =~ s/UTL_RAW.CAST_TO_RAW\s*\(\s*([^\)]+)\s*\)/encode($1::bytea, 'hex')::bytea/igs;
 
 	# Replace known EXCEPTION equivalent ERROR code
 	foreach my $e (keys %EXCEPTION_MAP) {
@@ -1621,7 +1620,7 @@ sub replace_oracle_function
 		$str =~ s/\bTO_NCHAR\s*\(\s*([^,\)]+)\)/($1)::varchar/igs;
 		# Replace to_char() without format by a simple cast to text
 		$str =~ s/\bTO_CHAR\s*\(\s*([^,\)]+)\)/($1)::varchar/igs;
-		# Fix format for to_char() with format
+		# Fix format for to_char() with format 
 		$str =~ s/\b(TO_CHAR\s*\(\s*[^,\)]+\s*),(\s*[^,\)]+\s*)\)/"$1," . convert_date_format($class, $2, @strings) . ")"/iegs;
 		if ($class->{type} ne 'TABLE') {
 			$str =~ s/\(([^\s]+)\)(::varchar)/$1$2/igs;
@@ -1850,6 +1849,7 @@ sub replace_out_param_call
 			}
 		}
 	}
+
 	return $str;
 }
 
@@ -2114,7 +2114,6 @@ sub replace_sql_type
 		my $backstr = $1;
 		my $type = uc($2);
 		my $args = $3;
-
 		# Remove extra CHAR or BYTE information from column type
 		$args =~ s/\s*(CHAR|BYTE)\s*$//i;
 		if ($backstr =~ /_$/)
@@ -2234,7 +2233,8 @@ sub replace_sql_type
 		$str =~ s/\bVARCHAR\b(\s*(?!\())/varchar$1/igs;
 	}
 
-	foreach my $t ('DATE','LONG RAW','LONG','NCLOB','CLOB','BLOB','BFILE','RAW','ROWID','UROWID','FLOAT','DOUBLE PRECISION','INTEGER','INT','REAL','SMALLINT','BINARY_FLOAT','BINARY_DOUBLE','BINARY_INTEGER','BOOLEAN','XMLTYPE','SDO_GEOMETRY','PLS_INTEGER', 'NUMBER') {
+	foreach my $t ('DATE','LONG RAW','LONG','NCLOB','CLOB','BLOB','BFILE','RAW','ROWID','UROWID','FLOAT','DOUBLE PRECISION','INTEGER','INT','REAL','SMALLINT','BINARY_FLOAT','BINARY_DOUBLE','BINARY_INTEGER','BOOLEAN','XMLTYPE','SDO_GEOMETRY','PLS_INTEGER','NUMBER')
+	{
 		if ($t eq 'DATE') {
 			$str =~ s/\b$t\s*\(\d\)/$data_type{$t}/igs;
 		}
@@ -3116,6 +3116,10 @@ sub mysql_estimate_cost
 sub replace_outer_join
 {
 	my ($class, $str, $type) = @_;
+
+	# Remove comments in the from clause. They need to be removed because the
+	# entire FROM clause will be rewritten and we don't know where to restore.
+	while ($str =~ s/(\s+FROM\s+(?:.*)?)\%ORA2PG_COMMENT\d+\%((?:.*)?WHERE\s+)/$1$2/is) {};
 
 	if (!grep(/^$type$/, 'left', 'right')) {
 		die "FATAL: outer join type must be 'left' or 'right' in call to replace_outer_join().\n";
