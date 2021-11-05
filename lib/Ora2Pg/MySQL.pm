@@ -1755,25 +1755,32 @@ sub _column_attributes
 	# PRIVILEGES               | varchar(80)         | NO   |     |         |       |
 	# COLUMN_COMMENT           | varchar(1024)       | NO   |     |         |       |
 
-	my $sth = $self->{dbh}->prepare(<<END);
-SELECT COLUMN_NAME, IS_NULLABLE, COLUMN_DEFAULT, TABLE_NAME
+	my $sql = qq{SELECT COLUMN_NAME, IS_NULLABLE,
+	(CASE WHEN COLUMN_DEFAULT IS NOT NULL THEN COLUMN_DEFAULT ELSE EXTRA END) AS COLUMN_DEFAULT,
+	TABLE_NAME, DATA_TYPE, ORDINAL_POSITION
 FROM INFORMATION_SCHEMA.COLUMNS
 $condition
 ORDER BY ORDINAL_POSITION
-END
+};
+	if ($self->{db_version} < '5.5.0') {
+		$sql =~ s/\bDATA_TYPE\b/DTD_IDENTIFIER/;
+	}
+	my $sth = $self->{dbh}->prepare($sql);
 	if (!$sth) {
 		$self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	}
 	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
 	my %data = ();
-	while (my $row = $sth->fetch) {
+	while (my $row = $sth->fetch)
+	{
 		$data{$row->[3]}{"$row->[0]"}{nullable} = $row->[1];
 		$data{$row->[3]}{"$row->[0]"}{default} = $row->[2];
+		# Store the data type of the column following its position
+		$data{$row->[3]}{data_type}{$row->[5]} = $row->[4];
 	}
 
 	return %data;
-
 }
 
 sub _list_triggers
