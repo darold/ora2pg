@@ -19061,7 +19061,7 @@ sub _unitary_test_views
 SELECT c.relname,n.nspname
 FROM pg_catalog.pg_class c
      LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
-WHERE c.relkind IN ('v','')
+WHERE c.relkind = 'v' AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_depend WHERE refclassid = 'pg_catalog.pg_extension'::pg_catalog.regclass AND objid = c.oid AND deptype = 'e')
       $schema_clause
 };
 	my %list_views  = ();
