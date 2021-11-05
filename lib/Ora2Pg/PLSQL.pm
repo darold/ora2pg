@@ -2095,7 +2095,11 @@ sub replace_sql_type
 	$str =~ s/([A-Z])\%ORA2PG_COMMENT/$1 \%ORA2PG_COMMENT/igs;
 
 	# Replace MySQL type UNSIGNED in cast
-	$str =~ s/UNSIGNED\s*\)/bigint)/is;
+	$str =~ s/\bTINYINT\s+UNSIGNED\b/smallint/igs;
+	$str =~ s/\bSMALLINT\s+UNSIGNED\b/integer/igs;
+	$str =~ s/\bMEDIUMINT_s+UNSIGNED\b/integer/igs;
+	$str =~ s/\bBIGINT\s+UNSIGNED\b/bigint/igs;
+	$str =~ s/\bINT\s+UNSIGNED\b/bigint/igs;
 
 	# Remove precision for RAW|BLOB as type modifier is not allowed for type "bytea"
 	$str =~ s/\b(RAW|BLOB)\s*\(\s*\d+\s*\)/$1/igs;
@@ -2577,9 +2581,11 @@ sub mysql_to_plpgsql
 	$str =~ s/[^\s]+\s+HANDLER\s+FOR\s+[^;]+;//igs;
 
 	# Fix call to unsigned
-	$str =~ s/UNSIGNED\sINTEGER/bigint/g;
-	$str =~ s/UNSIGNED\sINT/bigint/g;
-	$str =~ s/UNSIGNED/bigint/g;
+	$str =~ s/\bTINYINT\s+UNSIGNED\b/smallint/igs;
+	$str =~ s/\bSMALLINT\s+UNSIGNED\b/integer/igs;
+	$str =~ s/\bMEDIUMINT_s+UNSIGNED\b/integer/igs;
+	$str =~ s/\bBIGINT\s+UNSIGNED\b/bigint/igs;
+	$str =~ s/\bINT\s+UNSIGNED\b/bigint/igs;
 
 	# Drop temporary doesn't exist in PostgreSQL
 	$str =~ s/DROP\s+TEMPORARY/DROP/gs;
