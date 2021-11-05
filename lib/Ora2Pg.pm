@@ -15840,7 +15840,9 @@ END;
 			$function .= " " . $self->quote_object_name($owner) . ";\n";
 		}
 	}
-	$function .= "\nCOMMENT ON FUNCTION $fname$at_suffix $fct_detail{args} IS $fct_detail{comment};\n" if ($fct_detail{comment});
+	my $act_type = $type;
+	$act_type = 'FUNCTION' if (!$self->{pg_supports_procedure});
+	$function .= "\nCOMMENT ON $act_type $fname$at_suffix $fct_detail{args} IS $fct_detail{comment};\n" if ($fct_detail{comment});
 	$function .= $revoke;
 	$function = $at_wrapper . $function;
 
