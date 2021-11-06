@@ -21992,10 +21992,17 @@ sub _import_foreign_schema
 	$self->{dbhdest}->do("CREATE SCHEMA ora2pg_fdw_import") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
 	# Import foreign table into the dedicated schema ora2pg_fdw_import
 	my $sql = "IMPORT FOREIGN SCHEMA \"\U$self->{schema}\E\"";
+	if ($self->{is_mysql}) {
+		$sql = "IMPORT FOREIGN SCHEMA $self->{schema}";
+	}
 	# ALLOW/EXCLUDE must be applied for data validation
 	$sql .= $self->_select_foreign_objects();
-	$sql .= " FROM SERVER $self->{fdw_server} INTO ora2pg_fdw_import OPTIONS (case 'keep', readonly 'true')";
-	$self->{dbhdest}->do($sql) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
+	if (!$self->{is_mysql}) {
+		$sql .= " FROM SERVER $self->{fdw_server} INTO ora2pg_fdw_import OPTIONS (case 'keep', readonly 'true')";
+	} else {
+		$sql .= " FROM SERVER $self->{fdw_server} INTO ora2pg_fdw_import";
+	}
+	$self->{dbhdest}->do($sql) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . ", SQL: $sql\n", 0, 1);
 }
 
 sub _data_validation
