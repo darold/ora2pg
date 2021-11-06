@@ -9217,7 +9217,12 @@ sub _dump_fdw_table
 				foreach my $k (keys %{$self->{ora_boolean_values}})
 				{
 					if ($self->{ora_boolean_values}{$k} eq 't') {
-						$true_list .= " lower(" . $self->quote_object_name($colname) .") = '$k' OR";
+						if ($f->[1] =~ /char/i) {
+							$true_list .= " lower(" . $self->quote_object_name($colname) .") = '$k' OR";
+						} elsif ($k !~ /\D/) {
+							# we only take care of numeric values
+							$true_list .= " " . $self->quote_object_name($colname) ." = $k OR";
+						}
 					}
 				}
 				$true_list =~ s/ OR$//;
@@ -9321,7 +9326,7 @@ sub _dump_fdw_table
 	else
 	{
 		$self->logit("Exporting foreign table data for $table using query: $s_out\n", 1);
-		$local_dbh->do($s_out) or $self->logit("ERROR: " . $local_dbh->errstr . ", SQL: $s_out\n", 1);
+		$local_dbh->do($s_out) or $self->logit("ERROR: " . $local_dbh->errstr . ", SQL: $s_out\n", 0);
 	}
 
 	$self->{type} = $self->{local_type} if ($self->{local_type});
@@ -21876,15 +21881,17 @@ sub _create_foreign_server
 {
 	my $self = shift;
 
-	# Verify that the oracle_fdw extension is created, create it if not
+	# Verify that the oracle_fdw or mysql_fdw extension is created, create it if not
 	my $sth = $self->{dbhdest}->prepare("SELECT * FROM pg_extension WHERE extname=?") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
-	$sth->execute('oracle_fdw') or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
+	my $extension = 'oracle_fdw';
+	$extension = 'mysql_fdw' if ($self->{is_mysql});
+	$sth->execute($extension) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . ", SQL: SELECT * FROM pg_extension WHERE extname='$extension'\n", 0, 1);
 	my $row = $sth->fetch;
 	$sth->finish;
 	if (not defined $row)
 	{
 		# try to create the extension
-		$self->{dbhdest}->do("CREATE EXTENSION oracle_fdw") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
+		$self->{dbhdest}->do("CREATE EXTENSION $extension") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
 	}
 
 	# Check if the server already exists or need to be created
@@ -21908,29 +21915,41 @@ sub _create_foreign_server
 		$self->logit("NLS_NCHAR = $ENV{NLS_NCHAR}\n", 1);
 		$self->logit("Trying to connect to database: $self->{oracle_dsn}\n", 1) if (!$quiet);
 
+		my $sql = '';
+		my $extension = 'oracle_fdw';
 		if (!$self->{fdw_server}) {
 			$self->logit("FATAL: a foreign server name must be set using FDW_SERVER\n", 0, 1);
 		}
-		if ($self->{oracle_dsn} =~ /(\/\/.*\/.*)/)
+		if (!$self->{is_mysql} && $self->{oracle_dsn} =~ /(\/\/.*\/.*)/)
 		{
-			$self->{oracle_fwd_dsn} = $1;
+			$self->{oracle_fwd_dsn} = "dbserver '$1'";
 		}
 		else
 		{
 			$self->{oracle_dsn} =~ /host=([^;]+)/;
 			my $host = $1 || 'localhost';
 			$self->{oracle_dsn} =~ /port=(\d+)/;
-			my $port = $1 || 1521;
-			$self->{oracle_dsn} =~ /(service_name|sid)=([^;]+)/;
-			my $sid = $2 || '';
-			$self->{oracle_fwd_dsn} = "//$host:$port/$sid";
+			my $port = $1 || ((!$self->{is_mysql}) ? 1521 : 3306);
+			my $sid = '';
+			if (!$self->{is_mysql}) {
+				$self->{oracle_dsn} =~ /(service_name|sid)=([^;]+)/;
+				$sid = $2 || '';
+				$self->{oracle_fwd_dsn} = "dbserver '//$host:$port/$sid'";
+			} else {
+				$extension = 'mysql_fdw';
+				$self->{oracle_dsn} =~ /(database)=([^;]+)/;
+				$self->{mysql_fwd_db} = $2 || '';
+				$self->{oracle_fwd_dsn} = "host '$host', port '$port'";
+			}
 		}
-		my $sql = "CREATE SERVER $self->{fdw_server} FOREIGN DATA WRAPPER oracle_fdw OPTIONS (dbserver '$self->{oracle_fwd_dsn}');";
+		$sql = "CREATE SERVER $self->{fdw_server} FOREIGN DATA WRAPPER $extension OPTIONS ($self->{oracle_fwd_dsn});";
 		$self->{dbhdest}->do($sql) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
 	}
 
 	# Create the user mapping if it not exists
-	my $sql = "CREATE USER MAPPING IF NOT EXISTS FOR $self->{pg_user} SERVER $self->{fdw_server} OPTIONS (user '$self->{oracle_user}', password '$self->{oracle_pwd}');";
+	my $usrlbl = 'user';
+	$usrlbl = 'username' if ($self->{is_mysql});
+	my $sql = "CREATE USER MAPPING IF NOT EXISTS FOR $self->{pg_user} SERVER $self->{fdw_server} OPTIONS ($usrlbl '$self->{oracle_user}', password '$self->{oracle_pwd}');";
 	$self->{dbhdest}->do($sql) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
 }
 
