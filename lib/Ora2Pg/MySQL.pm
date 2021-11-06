@@ -451,8 +451,8 @@ sub _count_indexes
 		$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
 		my $i = 1;
-		while (my $row = $sth->fetch) {
-
+		while (my $row = $sth->fetch)
+		{
 		#Table : The name of the table.
 		#Non_unique : 0 if the index cannot contain duplicates, 1 if it can.
 		#Key_name : The name of the index. If the index is the primary key, the name is always PRIMARY.
@@ -1705,12 +1705,12 @@ sub _count_sequences
 	# TABLE_COMMENT   | varchar(2048)       | NO   |     |         |       |
 
 	my %seqs = ();
-	my $sql = "SELECT TABLE_NAME, AUTO_INCREMENT FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE='BASE TABLE' AND TABLE_SCHEMA = '$self->{schema}'";
+	my $sql = "SELECT TABLE_NAME, AUTO_INCREMENT FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE='BASE TABLE' AND TABLE_SCHEMA = '$self->{schema}' AND AUTO_INCREMENT IS NOT NULL";
 	$sql .= $self->limit_to_objects('TABLE', 'TABLE_NAME');
 	my $sth = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	while (my $row = $sth->fetch) {
-		push(@{$seqs{$row->[0]}}, @$row) if ($row->[1]);
+		push(@{$seqs{$row->[0]}}, @$row);
 	}
 	$sth->finish();
 
@@ -1762,6 +1762,7 @@ FROM INFORMATION_SCHEMA.COLUMNS
 $condition
 ORDER BY ORDINAL_POSITION
 };
+
 	if ($self->{db_version} < '5.5.0') {
 		$sql =~ s/\bDATA_TYPE\b/DTD_IDENTIFIER/;
 	}

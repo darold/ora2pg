@@ -229,7 +229,8 @@ FORCE_PLSQL_ENCODING	0
 #       LOAD		Dispatch a list of queries over multiple PostgreSQl connections.
 #       TEST		perform a diff between Oracle and PostgreSQL database.
 #       TEST_COUNT	perform only a row count between Oracle and PostgreSQL tables.
-#       TEST_VIEW	perform a count on both side of rows returned by views
+#       TEST_VIEW	perform a count on both side of number of rows returned by views
+#       TEST_DATA	perform data validation check on rows at both sides.
 
 TYPE		TABLE
 
@@ -1031,6 +1032,20 @@ DATA_EXPORT_ORDER	name
 # enabling this option will use \\ir. See psql help for more information.
 PSQL_RELATIVE_PATH	0
  
+# Number of rows that must be retrieved on both side for data validation.
+DATA_VALIDATION_ROWS   10000
+
+# Order of rows between both sides are different once the data have been
+# modified. In this case data must be ordered using a primary key or a
+# unique index, that mean that a table without such object can not be
+# compared. If the validation is done just after the data migration without
+# any data modification the validation can be done on all tables without any
+# ordering.
+DATA_VALIDATION_ORDERING	1
+
+# Stop validating data from a table after a certain amount of row mistmatch.
+# Default is to stop after 10 rows validation errors.
+DATA_VALIDATION_ERROR		10
 
 #------------------------------------------------------------------------------
 # PERFORMANCES SECTION (Control export/import performances)
@@ -1315,7 +1330,14 @@ GEOMETRY_EXTRACT_TYPE	INTERNAL
 #       TABLE[COLUMN_NAME, <replace code in SELECT target list>]
 # For example to replace string 'Oracle' by 'PostgreSQL' in a varchar2 column
 # use the following.
-# ORACLE_FDW_TRANSFORM   ERROR_LOG_SAMPLE[DBMS_TYPE:regexp_replace("DBMS_TYPE",'Oracle','PostgreSQL')]
+#ORACLE_FDW_TRANSFORM   ERROR_LOG_SAMPLE[DBMS_TYPE:regexp_replace("DBMS_TYPE",'Oracle','PostgreSQL')]
+
+# By default Ora2Pg drops the temporary schema ora2pg_fdw_import used to import
+# the Oracle foreign schema before each new import. If you want to preserve
+# the existing schema because of modifications or the use of a third party
+# server, disable this directive.
+DROP_FOREIGN_SCHEMA    1
+
 
 #------------------------------------------------------------------------------
 # MYSQL SECTION (Control MySQL export behavior)
