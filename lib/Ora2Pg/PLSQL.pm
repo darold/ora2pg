@@ -1652,29 +1652,29 @@ sub replace_oracle_function
 		}
 
 		# Convert the call to the Oracle function add_months() into Pg syntax
-		$str =~ s/ADD_MONTHS\s*\(([^,]+),\s*(\d+)\s*\)/$1 + '$2 month'::interval/si;
-		$str =~ s/ADD_MONTHS\s*\(([^,]+),\s*([^,\(\)]+)\s*\)/$1 + $2*'1 month'::interval/si;
+		$str =~ s/\bADD_MONTHS\s*\(([^,]+),\s*(\d+)\s*\)/$1 + '$2 month'::interval/si;
+		$str =~ s/\bADD_MONTHS\s*\(([^,]+),\s*([^,\(\)]+)\s*\)/$1 + $2*'1 month'::interval/si;
 
 		# Convert the call to the Oracle function add_years() into Pg syntax
-		$str =~ s/ADD_YEARS\s*\(([^,]+),\s*(\d+)\s*\)/$1 + '$2 year'::interval/si;
-		$str =~ s/ADD_YEARS\s*\(([^,]+),\s*([^,\(\)]+)\s*\)/$1 + $2*' year'::interval/si;
+		$str =~ s/\bADD_YEARS\s*\(([^,]+),\s*(\d+)\s*\)/$1 + '$2 year'::interval/si;
+		$str =~ s/\bADD_YEARS\s*\(([^,]+),\s*([^,\(\)]+)\s*\)/$1 + $2*' year'::interval/si;
 
 		# Translate numtodsinterval Oracle function
-		$str =~ s/(?:NUMTODSINTERVAL|NUMTOYMINTERVAL)\s*\(\s*([^,]+)\s*,\s*([^\)]+)\s*\)/($1 * ('1'||$2)::interval)/is;
+		$str =~ s/\b(?:NUMTODSINTERVAL|NUMTOYMINTERVAL)\s*\(\s*([^,]+)\s*,\s*([^\)]+)\s*\)/($1 * ('1'||$2)::interval)/is;
 
 		# REGEX_LIKE( string, pattern, flags )
-		$str =~ s/REGEXP_LIKE\s*\(\s*([^,]+)\s*,\s*([^,]+)\s*,\s*([^\)]+)\s*\)/"regexp_match($1, $2," . regex_flags($class, $3) . ") IS NOT NULL"/iges;
+		$str =~ s/\bREGEXP_LIKE\s*\(\s*([^,]+)\s*,\s*([^,]+)\s*,\s*([^\)]+)\s*\)/"regexp_match($1, $2," . regex_flags($class, $3) . ") IS NOT NULL"/iges;
 		# REGEX_LIKE( string, pattern )
-		$str =~ s/REGEXP_LIKE\s*\(\s*([^,]+)\s*,\s*([^\)]+)\s*\)/"regexp_match($1, $2," . regex_flags($class, '') . ") IS NOT NULL"/iges;
+		$str =~ s/\bREGEXP_LIKE\s*\(\s*([^,]+)\s*,\s*([^\)]+)\s*\)/"regexp_match($1, $2," . regex_flags($class, '') . ") IS NOT NULL"/iges;
 
 		# REGEX_COUNT( string, pattern, position, flags )
-		$str =~ s/REGEXP_COUNT\s*\(\s*([^,]+)\s*,\s*([^,]+)\s*,\s*(\d+)\s*,\s*([^\)]+)\s*\)/"(SELECT count(*) FROM regexp_matches(substr($1, $3), $2, " . regex_flags($class, $4, 'g') . "))"/iges;
+		$str =~ s/\bREGEXP_COUNT\s*\(\s*([^,]+)\s*,\s*([^,]+)\s*,\s*(\d+)\s*,\s*([^\)]+)\s*\)/"(SELECT count(*) FROM regexp_matches(substr($1, $3), $2, " . regex_flags($class, $4, 'g') . "))"/iges;
 		# REGEX_COUNT( string, pattern, position )
-		$str =~ s/REGEXP_COUNT\s*\(\s*([^,]+)\s*,\s*([^,]+)\s*,\s*(\d+)\s*\)/(SELECT count(*) FROM regexp_matches(substr($1, $3), $2, 'g'))/igs;
+		$str =~ s/\bREGEXP_COUNT\s*\(\s*([^,]+)\s*,\s*([^,]+)\s*,\s*(\d+)\s*\)/(SELECT count(*) FROM regexp_matches(substr($1, $3), $2, 'g'))/igs;
 		# REGEX_COUNT( string, pattern )
-		$str =~ s/REGEXP_COUNT\s*\(\s*([^,]+)\s*,\s*([^\)]+)\s*\)/(SELECT count(*) FROM regexp_matches($1, $2, 'g'))/igs;
+		$str =~ s/\bREGEXP_COUNT\s*\(\s*([^,]+)\s*,\s*([^\)]+)\s*\)/(SELECT count(*) FROM regexp_matches($1, $2, 'g'))/igs;
 		# REGEX_SUBSTR( string, pattern, pos, num ) translation
-		$str =~ s/REGEXP_SUBSTR\s*\(\s*([^\)]+)\s*\)/convert_regex_substr($class, $1)/iges;
+		$str =~ s/\bREGEXP_SUBSTR\s*\(\s*([^\)]+)\s*\)/convert_regex_substr($class, $1)/iges;
 
 		# LAST_DAY( date ) translation
 		$str =~ s/\bLAST_DAY\(\s*([^\(\)]+)\s*\)/((date_trunc('month',($1)::timestamp + interval '1 month'))::date - 1)/igs;
