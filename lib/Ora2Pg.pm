@@ -1469,6 +1469,9 @@ sub _init
 	if ($self->{pg_version} >= 11) {
 		$self->{pg_supports_procedure} = 1;
 	}
+	if ($self->{pg_version} >= 13) {
+		$self->{pg_supports_virtualcol} = 1;
+	}
 
 	# Other PostgreSQL fork compatibility
 	# Redshift
@@ -2535,7 +2538,7 @@ sub _tables
 			}
 			my $query = "SELECT * FROM $tmp_tbname WHERE 1=0";
 			if ($tables_infos{$t}{nested} eq 'YES') {
-				$query = "SELECT /*+nested_table_get_refs+*/ * FROM $tmp_tbname WHERE 1=0";
+				$query = "SELECT /*+ nested_table_get_refs */ * FROM $tmp_tbname WHERE 1=0";
 			}
 			my $sth = $self->{dbh}->prepare($query);
 			if (!defined($sth)) {
@@ -2956,9 +2959,14 @@ sub read_schema_from_file
 						my $c_type = '';
 						if ($c =~ s/^ENUM\s*(\([^\(\)]+\))\s*//is)
 						{
-							$c_type = 'varchar';
-							my $ck_name = 'o2pc_' . $c_name;
-							$self->_parse_constraint($tb_name, $c_name, "$ck_name CHECK ($c_name IN $1)");
+							my %tmp = ();
+							$tmp{name} = lc($tb_name . '_' . $c_name . '_t');
+							$tmp{pos} = 0;
+							$tmp{code} .= "CREATE TYPE " .
+								$self->quote_object_name($tmp{name}) .
+								" AS ENUM ($1);";
+							push(@{$self->{types}}, \%tmp);
+							$c_type = $tmp{name};
 						} elsif ($c =~ s/^([^\s\(]+)\s*//s) {
 							$c_type = $1;
 						} elsif ($c_default)
@@ -3126,8 +3134,9 @@ sub read_schema_from_file
 					$self->{external_table}{$tb_name}{location} = $1;
 				}
 			}
-
-		} elsif ($content =~ s/CREATE\s+(UNIQUE|BITMAP)?\s*INDEX\s+([^\s]+)\s+ON\s+([^\s\(]+)\s*\((.*)\)//is) {
+		}
+		elsif ($content =~ s/CREATE\s+(UNIQUE|BITMAP)?\s*INDEX\s+([^\s]+)\s+ON\s+([^\s\(]+)\s*\((.*)\)//is)
+		{
 			my $is_unique = $1;
 			my $idx_name = $2;
 			my $tb_name = $3;
@@ -3176,8 +3185,9 @@ sub read_schema_from_file
 				$tid++;
 				$self->{tables}{$tb_name}{internal_id} = $tid;
 			}
-
-		} elsif ($content =~ s/ALTER\s+TABLE\s+([^\s]+)\s+ADD\s*\(*\s*(.*)//is) {
+		}
+		elsif ($content =~ s/ALTER\s+TABLE\s+([^\s]+)\s+ADD\s*\(*\s*(.*)//is)
+		{
 			my $tb_name = $1;
 			$tb_name =~ s/"//g;
 			my $tb_def = $2;
@@ -3251,7 +3261,6 @@ sub read_schema_from_file
 				}
 			}
 		}
-
 	}
 
 	# Extract comments
@@ -7386,6 +7395,7 @@ sub export_table
 		my $serial_sequence = '';
 		my $enum_str = '';
 		my @skip_column_check = ();
+		$sql_output .= "#ORA2PGENUM#\n"; # used to insert any enum data type before the table that will use it
 		if (exists $self->{tables}{$table}{column_info})
 		{
 			my $schem = '';
@@ -7479,12 +7489,11 @@ sub export_table
 				if ($f->[1] =~ /ENUM/i) {
 					$f->[1] =~ s/^ENUM\(//i;
 					$f->[1] =~ s/\)$//;
-					my $keyname = $tbname . '_' . $fname . '_chk';
-					$keyname =~ s/"//g;
-					$enum_str .= "ALTER TABLE $tbname ADD CONSTRAINT " .
-								$self->quote_object_name($keyname) .
-								" CHECK ($fname IN ($f->[1]));\n";
-					$type = 'varchar';
+					my $keyname = lc($tbname . '_' . $fname . '_t');
+					$keyname =~ s/["\`]//g;
+					$enum_str .= "\nCREATE TYPE " .  $self->quote_object_name($keyname) .
+								" AS ENUM ($f->[1]);";
+					$type = $self->quote_object_name($keyname);
 				}
 				my $typlen = $f->[5];
 				$typlen ||= $f->[2];
@@ -7720,6 +7729,7 @@ sub export_table
 				$sql_output .= " SERVER $self->{fdw_server} OPTIONS($schem table '$tmptb', readonly 'true');\n";
 			}
 		}
+		$sql_output =~ s/#ORA2PGENUM#/$enum_str/s;
 
 		# For data export from foreign table, go to next table
 		if ($self->{oracle_fdw_data_export})
@@ -7729,7 +7739,6 @@ sub export_table
 		}
 
 		$sql_output .= $serial_sequence;
-		$sql_output .= $enum_str;
 
 		# Add comments on table
 		if (!$self->{disable_comment} && $self->{tables}{$table}{table_info}{comment})
@@ -9016,6 +9025,9 @@ sub _dump_table
 			next;
 		}
 
+		# A virtual column must not be part of the target list
+		next if ($f->[4] && $self->{pg_supports_virtualcol});
+
 		if (!$self->{preserve_case}) {
 			push(@fname, lc($fieldname));
 		} else {
@@ -9032,7 +9044,8 @@ sub _dump_table
 		$type = "$f->[1], $f->[2]" if (!$type);
 
 		if (uc($f->[1]) eq 'ENUM') {
-			$f->[1] = 'varchar';
+			my $keyname = lc($table . '_' . $fieldname . '_t');
+			$f->[1] = $keyname;
 		}
 		push(@stt, uc($f->[1]));
 		push(@tt, $type);
@@ -9194,7 +9207,8 @@ sub _dump_fdw_table
 		$type = $self->{'modify_type'}{"\L$table\E"}{"\L$colname\E"} if (exists $self->{'modify_type'}{"\L$table\E"}{"\L$colname\E"});
 
 		if (uc($f->[1]) eq 'ENUM') {
-			$type = 'varchar';
+			my $keyname = lc($table . '_' . $colname . '_t');
+			$type = $keyname;
 		}
 		# Change column names
 		$colname = $f->[0];
@@ -10354,7 +10368,7 @@ sub _howto_get_data
 	my $alias = 'a';
 	my $str = "SELECT ";
 	if ($self->{tables}{$table}{table_info}{nested} eq 'YES') {
-		$str = "SELECT /*+nested_table_get_refs+*/ ";
+		$str = "SELECT /*+ nested_table_get_refs */ ";
 	}
 
 	my $extraStr = "";
@@ -11183,7 +11197,6 @@ ORDER BY A.COLUMN_ID
 					|| $self->{all_objects}{$tmptable} ne $objtype);
 
 		$row->[2] = $row->[7] if $row->[1] =~ /char/i;
-
 		# Seems that for a NUMBER with a DATA_SCALE to 0, no DATA_PRECISION and a DATA_LENGTH of 22
 		# Oracle use a NUMBER(38) instead
 		if ( ($row->[1] eq 'NUMBER') && ($row->[6] eq '0') && ($row->[5] eq '') && ($row->[2] == 22) ) {
@@ -13177,8 +13190,7 @@ sub _get_packages
 {
 	my ($self) = @_;
 
-	# Retrieve all indexes 
-	#my $str = "SELECT DISTINCT OBJECT_NAME,OWNER FROM $self->{prefix}_OBJECTS WHERE OBJECT_TYPE = 'PACKAGE BODY'";
+	# Retrieve the list of packages
 	my $str = "SELECT DISTINCT OBJECT_NAME,OWNER FROM $self->{prefix}_OBJECTS WHERE OBJECT_TYPE = 'PACKAGE'";
 	$str .= " AND STATUS='VALID'" if (!$self->{export_invalid});
 	if (!$self->{schema}) {
@@ -19799,13 +19811,14 @@ sub _compile_schema
 		$sth->finish();
 	}
 
-	if ($#to_compile >= 0)
+	if ($#to_compile >= 0 && $self->{type} !~ /^SHOW_/i)
 	{
 		foreach my $schm (@to_compile)
 		{
 			$self->logit("Force Oracle to compile schema $schm before code extraction\n", 1);
-			my $sth = $self->{dbh}->do("BEGIN\nDBMS_UTILITY.compile_schema(schema => '$schm', compile_all => FALSE);\nEND;")
-						or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+			my $sql = "BEGIN\nDBMS_UTILITY.compile_schema(schema => '$schm', compile_all => FALSE);\nEND;";
+			my $sth = $self->{dbh}->do($sql)
+						or $self->logit("FATAL: " . $self->{dbh}->errstr . ", SQL: $sql\n", 0, 1);
 		}
 	}
 }
@@ -22277,7 +22290,6 @@ ORDER BY attnum};
 	my $error_msg = '';
 	while ( my @orow = $sth->fetchrow())
 	{
-		my $ora_data = join('|', @orow);
 		my @prow = $sth2->fetchrow();
 		# There is an issue to compare timestamp, try to fix it
 		for (my $i = 0; $i <= $#orow; $i++)
@@ -22298,7 +22310,12 @@ ORDER BY attnum};
 			if ($self->{is_mysql} && $self->{colinfo}{$tb}{data_type}{$i+1} =~ /^CHAR/i) {
 				$prow[$i] =~ s/[ ]+$//;
 			}
+			# Oracle can report decimal as .nn, PG always have a 0 at startup
+			if ($self->{colinfo}{$tb}{data_type}{$i+1} eq 'NUMBER') {
+				$orow[$i] =~ s/^(\.\d+)/0$1/;
+			}
 		}
+		my $ora_data = join('|', @orow);
 		my $pg_data = join('|', @prow);
 		if ($ora_data ne $pg_data)
 		{
@@ -22392,7 +22409,8 @@ sub _get_oracle_test_data
 		$type = "$f->[1], $f->[2]" if (!$type);
 
 		if (uc($f->[1]) eq 'ENUM') {
-			$f->[1] = 'varchar';
+			my $keyname = lc($table . '_' . $colname . '_t');
+			$f->[1] = $keyname;
 		}
 		push(@stt, uc($f->[1]));
 		push(@tt, $type);
