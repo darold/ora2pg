@@ -7600,7 +7600,7 @@ sub export_table
 						if (($f->[4] ne '') && ($self->{type} ne 'FDW') && !$self->{oracle_fdw_data_export}) {
 							if ($type eq 'boolean') {
 								my $found = 0;
-								foreach my $k (sort {$b cmp $a} %{ $self->{ora_boolean_values} }) {
+								foreach my $k (sort {$b cmp $a} keys %{ $self->{ora_boolean_values} }) {
 									if ($f->[4] =~ /\b$k\b/i) {
 										$sql_output .= " DEFAULT '" . $self->{ora_boolean_values}{$k} . "'";
 										$found = 1;
@@ -22025,6 +22025,9 @@ sub _data_validation
 	# Get all tables information specified by the DBI method table_info
 	$self->logit("Data validation between source database and PostgreSQL...\n", 1);
 
+	my $unique_clause = ' AND i.indkey IS NOT NULL AND i.indisunique';
+	$unique_clause = '' if (!$self->{data_validation_ordering});
+
 	# First of all extract all tables from PostgreSQL database with the
 	# unique index column list they must be part of a single schema.
 	my $schema_clause = $self->get_schema_condition();
@@ -22033,7 +22036,7 @@ SELECT c.relname,n.nspname,i.indkey
 FROM pg_catalog.pg_class c
      LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
      LEFT JOIN pg_catalog.pg_index i ON i.indrelid = c.oid
-WHERE c.relkind IN ('r','p') AND i.indkey IS NOT NULL AND i.indisunique
+WHERE c.relkind IN ('r','p')$unique_clause
       $schema_clause
 };
 	$self->logit("Get list of table with unique key: $sql\n", 1);
@@ -22259,6 +22262,7 @@ ORDER BY attnum};
 	my $tmpsth = $dbhpg->prepare($tmp);
 	$tmpsth->execute();
 	my @tlist = ();
+	my @dest_types = ();
 	while ( my @crow = $tmpsth->fetchrow())
 	{
 		if ($crow[2] eq 'geometry')
@@ -22273,9 +22277,9 @@ ORDER BY attnum};
 		{
 			push(@tlist, $crow[0]);
 		}
+		push(@dest_types, $crow[2]);
 	}
 	$tmpsth->finish();
-
 	# Now get the data
 	my $sql2 = "SELECT " . join(',', @tlist) . " FROM " . $self->quote_object_name($schema) . '.'. $self->quote_object_name($tb);
 	$sql2 .= " ORDER BY " . $ucols if ($self->{data_validation_ordering});
@@ -22305,6 +22309,28 @@ ORDER BY attnum};
 					while (length($prow[$i]) < 26) { $prow[$i] .= '0' };
 				}
 			}
+			# RAW(16) and RAW(32) might have been replaced by uuid
+			if ($dest_types[$i] eq 'uuid' && $self->{colinfo}{$tb}{data_type}{$i+1} eq 'RAW') {
+				$orow[$i] =~ s/^([A-F0-9]{8})([A-F0-9]{4})([A-F0-9]{4})([A-F0-9]{4})([A-F0-9]{12})$/\L$1-$2-$3-$4-$5\E/i;
+			}
+			# Cover boolean transformation
+			if ($dest_types[$i] eq 'boolean')
+			{
+				foreach my $k (keys %{ $self->{ora_boolean_values} })
+				{
+					if ($orow[$i] =~ /^$k$/i)
+					{
+						$orow[$i] = $self->{ora_boolean_values}{$k};
+						last;
+					}
+				}
+				if ($prow[$i] == 1) {
+					$prow[$i] = 't';
+				} else {
+					$prow[$i] = 'f';
+				}
+			}
+
 			# MySQL remove the trailing space at end of char(n) -> take care of that in your app
 			# PostgreSQL keep the trailing spaces in respect to SQL standard.
 			if ($self->{is_mysql} && $self->{colinfo}{$tb}{data_type}{$i+1} =~ /^CHAR/i) {
@@ -22314,6 +22340,7 @@ ORDER BY attnum};
 			if ($self->{colinfo}{$tb}{data_type}{$i+1} eq 'NUMBER') {
 				$orow[$i] =~ s/^(\.\d+)/0$1/;
 			}
+
 		}
 		my $ora_data = join('|', @orow);
 		my $pg_data = join('|', @prow);
