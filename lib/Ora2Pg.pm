@@ -9004,18 +9004,7 @@ sub _dump_table
 	foreach my $i ( 0 .. $#{$self->{tables}{$table}{field_name}} )
 	{
 		my $fieldname = ${$self->{tables}{$table}{field_name}}[$i];
-		if (!$self->{preserve_case})
-		{
-			if (exists $self->{modify}{"\L$table\E"}) {
-				next if (!grep(/^\Q$fieldname\E$/i, @{$self->{modify}{"\L$table\E"}}));
-			}
-		}
-		else
-		{
-			if (exists $self->{modify}{"$table"}) {
-				next if (!grep(/^\Q$fieldname\E$/i, @{$self->{modify}{"$table"}}));
-			}
-		}
+		next if (!$self->is_in_struct($table, $fieldname));
 
 		my $f = $self->{tables}{"$table"}{column_info}{"$fieldname"};
 		$f->[2] =~ s/\D//g;
@@ -9155,18 +9144,7 @@ sub _dump_fdw_table
 	foreach my $i ( 0 .. $#{$self->{tables}{$table}{field_name}} )
 	{
 		my $fieldname = ${$self->{tables}{$table}{field_name}}[$i];
-		if (!$self->{preserve_case})
-		{
-			if (exists $self->{modify}{"\L$table\E"}) {
-				next if (!grep(/^\Q$fieldname\E$/i, @{$self->{modify}{"\L$table\E"}}));
-			}
-		}
-		else
-		{
-			if (exists $self->{modify}{"$table"}) {
-				next if (!grep(/^\Q$fieldname\E$/i, @{$self->{modify}{"$table"}}));
-			}
-		}
+		next if (!$self->is_in_struct($table, $fieldname));
 
 		my $f = $self->{tables}{"$table"}{column_info}{"$fieldname"};
 		$f->[2] =~ s/\D//g;
@@ -9394,11 +9372,7 @@ sub _column_comments
 		if (!$self->{schema} && $self->{export_schema}) {
 			$row->[2] = "$row->[3].$row->[2]";
 		}
-		if (!$self->{preserve_case}) {
-			next if (exists $self->{modify}{"\L$row->[2]\E"} && !grep(/^\Q$row->[0]\E$/i, @{$self->{modify}{"\L$row->[2]\E"}}));
-		} else {
-			next if (exists $self->{modify}{$row->[2]} && !grep(/^\Q$row->[0]\E$/i, @{$self->{modify}{$row->[2]}}));
-		}
+		next if (!$self->is_in_struct($row->[2], $row->[0]));
 		$data{$row->[2]}{$row->[0]} = $row->[1];
 	}
 
@@ -11346,16 +11320,12 @@ ORDER BY A.COLUMN_ID
 
 		if (!$self->{schema} && $self->{export_schema})
 		{
-			next if (exists $self->{modify}{"\L$tmptable\E"} && !grep(/^\Q$row->[0]\E$/i, @{$self->{modify}{"\L$tmptable\E"}}));
+			next if (!$self->is_in_struct($tmptable, $row->[0]));
 			push(@{$data{$tmptable}{"$row->[0]"}}, (@$row, $pos, @geom_inf));
 		}
 		else		
 		{
-			if (!$self->{preserve_case}) {
-				next if (exists $self->{modify}{"\L$row->[8]\E"} && !grep(/^\Q$row->[0]\E$/i, @{$self->{modify}{"\L$row->[8]\E"}}));
-			} else {
-				next if (exists $self->{modify}{$row->[8]} && !grep(/^\Q$row->[0]\E$/i, @{$self->{modify}{$row->[8]}}));
-			}
+			next if (!$self->is_in_struct($row->[8], $row->[0]));
 			push(@{$data{"$row->[8]"}{"$row->[0]"}}, (@$row, $pos, @geom_inf));
 		}
 		$pos++;
@@ -11752,13 +11722,8 @@ END
 			$local_table = "$row->[10].$row->[0]";
 			$remote_table = "$row->[11].$row->[3]";
 		}
-		if (!$self->{preserve_case}) {
-			next if (exists $self->{modify}{"\L$local_table\E"} && !grep(/^\Q$row->[2]\E$/i, @{$self->{modify}{"\L$local_table\E"}}));
-			next if (exists $self->{modify}{"\L$remote_table\E"} && !grep(/^\Q$row->[5]\E$/i, @{$self->{modify}{"\L$remote_table\E"}}));
-		} else {
-			next if (exists $self->{modify}{$local_table} && !grep(/^\Q$row->[2]\E$/i, @{$self->{modify}{$local_table}}));
-			next if (exists $self->{modify}{$remote_table} && !grep(/^\Q$row->[5]\E$/i, @{$self->{modify}{$remote_table}}));
-		}
+		next if (!$self->is_in_struct($local_table, $row->[2]));
+		next if (!$self->is_in_struct($remote_table, $row->[2]));
 		push(@{$data{$local_table}}, [ ($row->[1],$row->[4],$row->[6],$row->[7],$row->[8],$row->[9],$row->[11],$row->[0],$row->[10],$row->[14]) ]);
 		#            TABLENAME     CONSTNAME           COLNAME
 		push(@{$link{$local_table}{$row->[1]}{local}}, $row->[2]);
@@ -12065,11 +12030,7 @@ AND    IC.TABLE_OWNER = ?
 		if (!$self->{schema} && $self->{export_schema}) {
 			$row->[8] = "$row->[9].$row->[8]";
 		}
-		if (!$self->{preserve_case}) {
-			next if (exists $self->{modify}{"\L$row->[8]\E"} && !grep(/^\Q$row->[1]\E$/i, @{$self->{modify}{"\L$row->[8]\E"}}));
-		} else {
-			next if (exists $self->{modify}{$row->[8]} && !grep(/^\Q$row->[1]\E$/i, @{$self->{modify}{$row->[8]}}));
-		}
+		next if (!$self->is_in_struct($row->[8], $row->[1]));
 		# Show a warning when an index has the same name as the table
 		if ( !$self->{indexes_renaming} && !$self->{indexes_suffix} && (lc($row->[0]) eq lc($table)) ) {
 			 print STDERR "WARNING: index $row->[0] has the same name as the table itself. Please rename it before export or enable INDEXES_RENAMING.\n"; 
@@ -18426,6 +18387,26 @@ sub _table_row_count
 	$self->show_test_errors('rows', @errors);
 }
 
+sub is_in_struct
+{
+	my ($self, $t, $cn) = @_;
+
+	if (!$self->{preserve_case})
+	{
+		if (exists $self->{modify}{"\L$t\E"}) {
+			return 0 if (!grep(/^\Q$cn\E$/i, @{$self->{modify}{"\L$t\E"}}));
+		}
+	}
+	else
+	{
+		if (exists $self->{modify}{"$t"}) {
+			return 0 if (!grep(/^\Q$cn\E$/i, @{$self->{modify}{"$t"}}));
+		}
+	}
+
+	return 1;
+}
+
 sub _test_table
 {
 	my $self = shift;
@@ -18713,6 +18694,7 @@ GROUP BY n.nspname,e.oid
 		my $nbnull = 0;
 		foreach my $cn (keys %{$column_infos{$t}})
 		{
+			next if (!$self->is_in_struct($t, $cn));
 			if ($column_infos{$t}{$cn}{nullable} =~ /^N/) {
 				$nbnull++;
 			}
@@ -18775,6 +18757,7 @@ GROUP BY n.nspname,e.oid
 		my $nbdefault = 0;
 		foreach my $cn (keys %{$column_infos{$t}})
 		{
+			next if (!$self->is_in_struct($t, $cn));
 			if ($column_infos{$t}{$cn}{default} ne ''
 				&& uc($column_infos{$t}{$cn}{default}) ne 'NULL'
 				# identity column
@@ -18848,6 +18831,7 @@ GROUP BY e.oid
 			my $nbidty = 0;
 			foreach my $cn (keys %{$column_infos{$t}})
 			{
+				next if (!$self->is_in_struct($t, $cn));
 				if ($column_infos{$t}{$cn}{default} =~ /ISEQ\$\$_.*nextval/i) {
 					$nbidty++;
 				}
@@ -22405,18 +22389,7 @@ sub _get_oracle_test_data
 	foreach my $i ( 0 .. $#{$self->{tables}{$table}{field_name}} )
 	{
 		my $fieldname = ${$self->{tables}{$table}{field_name}}[$i];
-		if (!$self->{preserve_case})
-		{
-			if (exists $self->{modify}{"\L$table\E"}) {
-				next if (!grep(/^\Q$fieldname\E$/i, @{$self->{modify}{"\L$table\E"}}));
-			}
-		}
-		else
-		{
-			if (exists $self->{modify}{"$table"}) {
-				next if (!grep(/^\Q$fieldname\E$/i, @{$self->{modify}{"$table"}}));
-			}
-		}
+		next if (!$self->is_in_struct($table, $fieldname));
 
 		my $f = $self->{tables}{"$table"}{column_info}{"$fieldname"};
 		$f->[2] =~ s/\D//g;
