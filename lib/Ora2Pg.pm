@@ -22314,6 +22314,13 @@ ORDER BY attnum};
 					$prow[$i] = 'f';
 				}
 			}
+			# oracle_fdw returns extra zero following the decimal, PostgreSQL strip them
+			if ($dest_types[$i] =~ /(double precision|real)/i)
+			{
+				
+				$orow[$i] =~ s/\.[0]+$// if ($prow[$i] !~ /\.[0]+$/);
+				$orow[$i] =~ s/(\.[0-9]+)[0]+$/$1/ if ($prow[$i] !~ /\.[0-9]+[0]+$/);
+			}
 
 			# MySQL remove the trailing space at end of char(n) -> take care of that in your app
 			# PostgreSQL keep the trailing spaces in respect to SQL standard.
