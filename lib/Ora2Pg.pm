@@ -9250,7 +9250,6 @@ sub _dump_fdw_table
 			elsif ($type eq 'oid' && $self->{blob_to_lo})
 			{
 				$fdw_col_list  .= "lo_from_bytea(0, " . $self->quote_object_name($colname) . "::bytea),";
-				ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ
 			}
 			else
 			{
