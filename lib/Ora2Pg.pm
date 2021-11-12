@@ -7434,28 +7434,33 @@ sub export_table
 							$self->{tables}{$table}{column_info}{$a}[11] <=> $self->{tables}{$table}{column_info}{$b}[11];
 						}
 					}
-				} keys %{$self->{tables}{$table}{column_info}}) {
+				} keys %{$self->{tables}{$table}{column_info}})
+			{
 
 				# COLUMN_NAME,DATA_TYPE,DATA_LENGTH,NULLABLE,DATA_DEFAULT,DATA_PRECISION,DATA_SCALE,CHAR_LENGTH,TABLE_NAME,OWNER,VIRTUAL_COLUMN,POSITION,AUTO_INCREMENT,SRID,SDO_DIM,SDO_GTYPE
 				my $f = $self->{tables}{$table}{column_info}{$k};
 				$f->[2] =~ s/\D//g;
-				my $type = $self->_sql_type($f->[1], $f->[2], $f->[5], $f->[6], $f->[4]);
+				my $type = $self->_sql_type($f->[1], $f->[2], $f->[5], $f->[6], $f->[4], 1);
 				$type = "$f->[1], $f->[2]" if (!$type);
 				# Change column names
 				my $fname = $f->[0];
-				if (exists $self->{replaced_cols}{"\L$table\E"}{"\L$fname\E"} && $self->{replaced_cols}{"\L$table\E"}{"\L$fname\E"}) {
+				if (exists $self->{replaced_cols}{"\L$table\E"}{"\L$fname\E"} && $self->{replaced_cols}{"\L$table\E"}{"\L$fname\E"})
+				{
 					$self->logit("\tReplacing column \L$f->[0]\E as " . $self->{replaced_cols}{"\L$table\E"}{"\L$fname\E"} . "...\n", 1);
 					$fname = $self->{replaced_cols}{"\L$table\E"}{"\L$fname\E"};
 				}
 
 				# Check if we need auto increment
-				if ($f->[12] eq 'auto_increment' || $f->[12] eq '1') {
-					if ($type !~ s/bigint/bigserial/) {
+				if ($f->[12] eq 'auto_increment' || $f->[12] eq '1')
+				{
+					if ($type !~ s/bigint/bigserial/)
+					{
 						if ($type !~ s/smallint/smallserial/) {
 							$type =~ s/integer/serial/;
 						}
 					}
-					if ($type =~ /serial/) {
+					if ($type =~ /serial/)
+					{
 						my $seqname = lc($tbname) . '_' . lc($fname) . '_seq';
 						if ($self->{preserve_case}) {
 							$seqname = $tbname . '_' . $fname . '_seq';
@@ -7465,7 +7470,8 @@ sub export_table
 							$tobequoted = 1;
 						}
 						
-						if (length($seqname) > 63) {
+						if (length($seqname) > 63)
+						{
 							if (length($tbname) > 29) {
 								$seqname = substr(lc($tbname), 0, 29);
 							} else {
@@ -7486,7 +7492,8 @@ sub export_table
 				}
 
 				# Check if this column should be replaced by a boolean following table/column name
-				if ($f->[1] =~ /ENUM/i) {
+				if ($f->[1] =~ /ENUM/i)
+				{
 					$f->[1] =~ s/^ENUM\(//i;
 					$f->[1] =~ s/\)$//;
 					my $keyname = lc($tbname . '_' . $fname . '_t');
@@ -7508,7 +7515,8 @@ sub export_table
 						push(@skip_column_check, $fname);
 					}
 				}
-				if ($f->[1] =~ /SDO_GEOMETRY/) {
+				if ($f->[1] =~ /SDO_GEOMETRY/)
+				{
 					# 12:SRID,13:SDO_DIM,14:SDO_GTYPE
 					# Set the dimension, array is (srid, dims, gtype)
 					my $suffix = '';
@@ -7535,7 +7543,8 @@ sub export_table
 				if ($foreign && $self->is_primary_key_column($table, $f->[0])) {
 					 $sql_output .= " OPTIONS (key 'true')";
 				}
-				if (!$f->[3] || ($f->[3] =~ /^N/)) {
+				if (!$f->[3] || ($f->[3] =~ /^N/))
+				{
 					# smallserial, serial and bigserial use a NOT NULL sequence as default value,
 					# so we don't need to add it here
 					if ($type !~ /serial/) {
@@ -7598,22 +7607,31 @@ sub export_table
 					else
 					{
 						if (($f->[4] ne '') && ($self->{type} ne 'FDW') && !$self->{oracle_fdw_data_export}) {
-							if ($type eq 'boolean') {
+							if ($type eq 'boolean')
+							{
 								my $found = 0;
-								foreach my $k (sort {$b cmp $a} keys %{ $self->{ora_boolean_values} }) {
-									if ($f->[4] =~ /\b$k\b/i) {
+								foreach my $k (sort {$b cmp $a} keys %{ $self->{ora_boolean_values} })
+								{
+									if ($f->[4] =~ /\b$k\b/i)
+									{
 										$sql_output .= " DEFAULT '" . $self->{ora_boolean_values}{$k} . "'";
 										$found = 1;
 										last;
 									}
 								}
 								$sql_output .= " DEFAULT " . $f->[4] if (!$found);
-							} else {
-								if (($f->[4] !~ /^'/) && ($f->[4] =~ /[^\d\.]/)) {
+							}
+							else
+							{
+								if (($f->[4] !~ /^'/) && ($f->[4] =~ /[^\d\.]/))
+								{
 									if ($type =~ /CHAR|TEXT|ENUM/i) {
 										$f->[4] = "'$f->[4]'" if ($f->[4] !~ /[']/ && $f->[4] !~ /\(.*\)/);
-									} elsif ($type =~ /DATE|TIME/i) {
-										if ($f->[4] =~ /0000-00-00/) {
+									}
+									elsif ($type =~ /DATE|TIME/i)
+									{
+										if ($f->[4] =~ /0000-00-00/)
+										{
 											if ($self->{replace_zero_date}) {
 												$f->[4] = $self->{replace_zero_date};
 											} else {
@@ -9076,7 +9094,7 @@ sub _dump_table
 	if ($self->{type} eq 'COPY') {
 		$s_out .= ") FROM STDIN$self->{copy_freeze};\n";
 	} else {
-		$s_out .= ")$overriding_system  VALUES (";
+		$s_out .= ")$overriding_system VALUES (";
 	}
 
 	# Prepare statements might work in binary mode but not WKT
@@ -9086,9 +9104,18 @@ sub _dump_table
 	# Use prepared statement in INSERT mode and only if
 	# we are not exporting a row with a spatial column
 	my $sprep = '';
-	if ($self->{pg_dsn} && !$has_geometry) {
-		if ($self->{type} ne 'COPY') {
-			$s_out .= '?,' foreach (@fname);
+	if ($self->{pg_dsn} && !$has_geometry)
+	{
+		if ($self->{type} ne 'COPY')
+		{
+			for (my $i = 0; $i <= $#fname; $i++)
+			{
+				if ($stt[$i] eq 'BLOB' && $tt[$i] eq 'oid') {
+					$s_out .= "lo_from_bytea(0, decode(?, 'hex')),";
+				} else {
+					$s_out .= '?,';
+				}
+			}
 			$s_out =~ s/,$//;
 			$s_out .= ")";
 			$sprep = $s_out;
@@ -9219,6 +9246,11 @@ sub _dump_fdw_table
 				}
 				$true_list =~ s/ OR$//;
 				$fdw_col_list .= " WHEN ($true_list) THEN 't' ELSE 'f' END)::boolean,";
+			}
+			elsif ($type eq 'oid' && $self->{blob_to_lo})
+			{
+				$fdw_col_list  .= "lo_from_bytea(0, " . $self->quote_object_name($colname) . "::bytea),";
+				ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ
 			}
 			else
 			{
@@ -10886,7 +10918,7 @@ Oracle data type.
 
 sub _sql_type
 {
-        my ($self, $type, $len, $precision, $scale, $default) = @_;
+        my ($self, $type, $len, $precision, $scale, $default, $no_blob_to_oid) = @_;
 
 	$type = uc($type); # Force uppercase
 
@@ -10938,6 +10970,11 @@ sub _sql_type
 	{
 		return $self->{data_type}{"$type($len)"} if ($len && exists $self->{data_type}{"$type($len)"});
 		return 'uuid' if ($default =~ /(SYS_GUID|$self->{uuid_function})/i);
+	}
+	elsif ($type =~ /BLOB/ && $self->{blob_to_lo} && !$no_blob_to_oid)
+	{
+		# we want to convert BLOB into large object
+		return 'oid';
 	}
 
 	# Special case of * precision
@@ -14502,7 +14539,7 @@ sub format_data_type
 		{
 			$col = "St_GeomFromWKB($q\\x" . unpack('H*', $col) . "$q, $self->{spatial_srid}{$table}->[$idx])";
 		}
-		elsif ($cond->{isbytea})
+		elsif ($cond->{isbytea} || ($self->{blob_to_lo} && $cond->{isoid} && $cond->{blob}))
 		{
 			$col = $self->_escape_lob($col, $cond->{raw} ? 'RAW' : 'BLOB', $cond, $isnested, $data_type);
 		}
@@ -14602,7 +14639,8 @@ sub hs_cond
 	my ($self, $data_types, $src_data_types, $table) = @_;
 
 	my $col_cond = [];
-	for (my $idx = 0; $idx < scalar(@$data_types); $idx++) {
+	for (my $idx = 0; $idx < scalar(@$data_types); $idx++)
+	{
 		my $hs={};
 		$hs->{geometry} = $src_data_types->[$idx] =~ /SDO_GEOMETRY/i ? 1 : 0;
 		$hs->{isnum} =    $data_types->[$idx] !~ /^(char|varchar|date|time|text|bytea|xml|uuid|citext)/i ? 1 :0;
@@ -14613,6 +14651,7 @@ sub hs_cond
 		$hs->{long} = $src_data_types->[$idx] =~ /LONG/i ? 1 : 0;
 		$hs->{istext} = $data_types->[$idx] =~ /(char|text|xml|uuid|citext)/i ? 1 : 0;
 		$hs->{isbytea} = $data_types->[$idx] =~ /bytea/i ? 1 : 0;
+		$hs->{isoid} = $data_types->[$idx] =~ /oid/i ? 1 : 0;
 		$hs->{isbit} = $data_types->[$idx] =~ /bit/i ? 1 : 0;
 		$hs->{isnotnull} = 0;
 		if ($self->{nullable}{$table}{$idx} =~ /^N/) {
@@ -17110,8 +17149,10 @@ sub _dump_to_pg
 				foreach my $row (@$rows)
 				{
 					# Even with prepared statement we need to replace zero date
-					foreach my $j (@date_cols) {
-						if ($row->[$j] =~ /^0000-00-00/) {
+					foreach my $j (@date_cols)
+					{
+						if ($row->[$j] =~ /^0000-00-00/)
+						{
 							if (!$self->{replace_zero_date}) {
 								$row->[$j] = undef;
 							} else {
@@ -21581,7 +21622,13 @@ sub _escape_lob
 			} else {
 				$col = "E'$col'";
 			}
-			$col = "decode($col, 'hex')";
+			if (!$self->{blob_to_lo} || $self->{pg_dsn}) {
+				#$col = "decode($col, 'hex')";
+				$col =~ s/^[E]?'//;
+				$col =~ s/'$//;
+			} else {
+				$col = "lo_from_bytea(0, decode($col, 'hex'))";
+			}
 		}
 		elsif ($generic_type eq 'RAW')
 		{
@@ -21637,7 +21684,8 @@ sub escape_insert
 	my $q = "'";
 	$q = '"' if ($isnested);
 
-	if (!$self->{standard_conforming_strings}) {
+	if (!$self->{standard_conforming_strings})
+	{
 		$col =~ s/'/''/gs; # double single quote
 		if ($isnested) {
 			$col =~ s/"/\\"/gs; # escape double quote
@@ -21645,16 +21693,21 @@ sub escape_insert
 		$col =~ s/\\/\\\\/gs;
 		$col =~ s/\0//gs;
 		$col = "$q$col$q";
-	} else {
+	}
+	else
+	{
 		$col =~ s/\0//gs;
 		$col =~ s/\\/\\\\/gs;
 		$col =~ s/\r/\\r/gs;
 		$col =~ s/\n/\\n/gs;
-		if ($isnested) {
+		if ($isnested)
+		{
 			$col =~ s/'/''/gs; # double single quote
 			$col =~ s/"/\\"/gs; # escape double quote
 			$col = "$q$col$q";
-		} else {
+		}
+		else
+		{
 			$col =~ s/'/\\'/gs; # escape single quote
 			$col = "E'$col'";
 		}

@@ -353,9 +353,11 @@ CONFIGURATION
                             data. No data will be processed or written.
        --ora2pg_speed     : Use to know at which speed Ora2Pg is able to send
                             transformed data. Nothing will be written.
+       --blob_to_lo       : export BLOB as large objects, can only be used with
+                            action SHOW_COLUMN, TABLE and INSERT.
 
-    See full documentation at http://ora2pg.darold.net/ for more help or see
-    manpage with 'man ora2pg'.
+    See full documentation at https://ora2pg.darold.net/ for more help or
+    see manpage with 'man ora2pg'.
 
     ora2pg will return 0 on success, 1 on error. It will return 2 when a
     child process has been interrupted and you've gotten the warning
