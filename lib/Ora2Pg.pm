@@ -1349,7 +1349,7 @@ sub _init
 	$self->{blob_limit} ||= 0;
 	$self->{disable_partition} ||= 0;
 	$self->{parallel_tables} ||= 0;
-	$self->{no_lob_locator} = 1 if ($self->{no_lob_locator} ne '0');
+	$self->{use_lob_locator} ||= 0;
 
 	# Transformation and output during data export
 	$self->{oracle_speed} ||= 0;
@@ -1487,7 +1487,7 @@ sub _init
 	}
 	$self->{longtruncok} = 0 if (not defined $self->{longtruncok});
 	# With lob locators LONGREADLEN must at least be 1MB
-	if (!$self->{longreadlen} || !$self->{no_lob_locator}) {
+	if (!$self->{longreadlen} || $self->{use_lob_locator}) {
 		$self->{longreadlen} = (1023*1024);
 	}
 
@@ -14517,9 +14517,9 @@ sub format_data_type
 	}
 
 	# Workaround for a bug in DBD::Oracle with the ora_piece_lob option
-	# (used when no_lob_locator is enabled) where null values fetch as
+	# (used when use_lob_locator is disabled) where null values fetch as
 	# empty string for certain types.
-	if ($self->{no_lob_locator} and ($cond->{clob} or $cond->{blob} or $cond->{long})) {
+	if (!$self->{use_lob_locator} and ($cond->{clob} or $cond->{blob} or $cond->{long})) {
 		$col = undef if (!length($col));
 	}
 
@@ -16519,7 +16519,7 @@ sub _extract_data
 		# prepare the query before execution
 		if (!$self->{is_mysql})
 		{
-			if ($self->{no_lob_locator}) {
+			if (!$self->{use_lob_locator}) {
 				$sth = $dbh->prepare($query,{ora_piece_lob => 1, ora_piece_size => $self->{longreadlen}, ora_exe_mode=>OCI_STMT_SCROLLABLE_READONLY, ora_check_sql => 1}) or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
 			} else {
 				$sth = $dbh->prepare($query,{'ora_auto_lob' => 0, ora_exe_mode=>OCI_STMT_SCROLLABLE_READONLY, ora_check_sql => 1}) or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
@@ -16549,7 +16549,7 @@ sub _extract_data
 			# Set the action name on Oracle side to see which table is exported
 			$self->{dbh}->do("CALL DBMS_APPLICATION_INFO.set_action('$table')") or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
-			if ($self->{no_lob_locator}) {
+			if (!$self->{use_lob_locator}) {
 				$sth = $self->{dbh}->prepare($query,{ora_piece_lob => 1, ora_piece_size => $self->{longreadlen}, ora_exe_mode=>OCI_STMT_SCROLLABLE_READONLY, ora_check_sql => 1});
 			} else {
 				$sth = $self->{dbh}->prepare($query,{'ora_auto_lob' => 0, ora_exe_mode=>OCI_STMT_SCROLLABLE_READONLY, ora_check_sql => 1});
@@ -16617,7 +16617,7 @@ sub _extract_data
 		$has_blob = 1 if (grep(/LOB|XMLTYPE/, @$stt));
 
 		# With rows that not have custom type nor blob unless the user doesn't want to use lob locator
-		if (($#has_custom_type == -1) && (!$has_blob || $self->{no_lob_locator}))
+		if (($#has_custom_type == -1) && (!$has_blob || !$self->{use_lob_locator}))
 		{
 			while ( my $rows = $sth->fetchall_arrayref(undef,$data_limit))
 			{
