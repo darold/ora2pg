@@ -282,7 +282,7 @@ Usage: ora2pg [-dhpqv --estimate_cost --dump_as_html] [--option value]
     -c | --conf file  : Set an alternate configuration file other than the
 			default /etc/ora2pg/ora2pg.conf.
     -d | --debug      : Enable verbose output.
-    -D | --data_type STR : Allow custom type replacement at command line.
+    -D | --data_type str : Allow custom type replacement at command line.
     -e | --exclude str: Comma separated list of objects to exclude from export.
 			Can be used with SHOW_COLUMN too.
     -h | --help       : Print this short help.
@@ -307,13 +307,15 @@ Usage: ora2pg [-dhpqv --estimate_cost --dump_as_html] [--option value]
     -s | --source DSN : Allow to set the Oracle DBI datasource.
     -t | --type export: Set the export type. It will override the one
 			given in the configuration file (TYPE).
-    -T | --temp_dir DIR: Set a distinct temporary directory when two
+    -T | --temp_dir dir: Set a distinct temporary directory when two
                          or more ora2pg are run in parallel.
     -u | --user name  : Set the Oracle database connection user.
 		        ORA2PG_USER environment variable can be used instead.
     -v | --version    : Show Ora2Pg Version and exit.
     -w | --password pwd : Set the password of the Oracle database user.
 		        ORA2PG_PASSWD environment variable can be used instead.
+    -W | --where clause : Set the WHERE clause to apply to the Oracle query to
+                          retrieve data. Can be used multiple time.
     --forceowner      : Force ora2pg to set tables and sequences owner like in
 		  Oracle database. If the value is set to a username this one
 		  will be used as the objects owner. By default it's the user
@@ -329,16 +331,16 @@ Usage: ora2pg [-dhpqv --estimate_cost --dump_as_html] [--option value]
                         SHOW_REPORT. Default is to dump report as simple text.
    --dump_as_csv      : As above but force ora2pg to dump report in CSV.
    --dump_as_sheet    : Report migration assessment with one CSV line per database.
-   --init_project NAME: Initialise a typical ora2pg project tree. Top directory
+   --init_project name: Initialise a typical ora2pg project tree. Top directory
                         will be created under project base dir.
-   --project_base DIR : Define the base dir for ora2pg project trees. Default
+   --project_base dir : Define the base dir for ora2pg project trees. Default
                         is current directory.
    --print_header     : Used with --dump_as_sheet to print the CSV header
                         especially for the first run of ora2pg.
    --human_days_limit num : Set the number of human-days limit where the migration
                         assessment level switch from B to C. Default is set to
                         5 human-days.
-   --audit_user LIST  : Comma separated list of usernames to filter queries in
+   --audit_user list  : Comma separated list of usernames to filter queries in
                         the DBA_AUDIT_TRAIL table. Used only with SHOW_REPORT
                         and QUERY export type.
    --pg_dsn DSN       : Set the datasource to PostgreSQL for direct import.
@@ -360,7 +362,6 @@ ora2pg will return 0 on success, 1 on error. It will return 2 when a child
 process has been interrupted and you've gotten the warning message:
     "WARNING: an error occurs during data export. Please check what's happen."
 Most of the time this is an OOM issue, first try reducing DATA_LIMIT value.
-
 
 For developers, it is possible to add your own custom option(s) in the Perl
 script ora2pg as any configuration directive from ora2pg.conf can be passed
@@ -774,7 +775,7 @@ Here are the different values of the TYPE directive, default is TABLE:
 	- LOAD: Dispatch a list of queries over multiple PostgreSQl connections.
 	- TEST: perform a diff between Oracle and PostgreSQL database.
 	- TEST_COUNT: perform a row count diff between Oracle and PostgreSQL table.
-	- TEST_VIEW: perform a count on both side of number of rows returned by views
+	- TEST_VIEW: perform a count on both side of number of rows returned by views.
 	- TEST_DATA: perform data validation check on rows at both sides.
 
 
@@ -1198,6 +1199,9 @@ and for MySQL, use the following:
 	WHERE 	1=1 LIMIT 1,1000
 
 This can also be restricted to some tables data export.
+
+Command line option -W or --where will override this directive for the global
+part and per table if the table names is the same.
 
 =item TOP_MAX
 
@@ -1805,13 +1809,13 @@ string like follow:
 
 	dbi:Pg:dbname=pgdb;host=localhost;port=5432;sslmode=require
 
-=item PGUSER and PGPASSWORD
+=item PG_USER and PG_PWD
 
 These two directives are used to set the login user and password.
 
-If you do not supply a credential with PGPASSWORD and you have installed the
+If you do not supply a credential with PG_PWD and you have installed the
 Term::ReadKey Perl module, Ora2Pg will ask for the password interactively. If
-PGUSER is not set it will be asked interactively too.
+PG_USER is not set it will be asked interactively too.
 
 
 =item SYNCHRONOUS_COMMIT
@@ -2331,7 +2335,7 @@ See https://github.com/vibhorkum/pg_background about this extension.
 
 By default if you have an autonomous transaction translated using dblink
 extension instead of pg_background the connection is defined using the
-values set with PG_DSN, PGUSER and PGPASSWORD. If you want to fully override
+values set with PG_DSN, PG_USER and PG_PWD. If you want to fully override
 the connection string use this directive as follow to set the connection
 in the autonomous transaction wrapper function. For example:
 
@@ -3005,7 +3009,7 @@ experiences to polish the scores/units attributed in those variables.
 
 Using the LOAD export type and a file containing SQL orders to perform, it is
 possible to dispatch those orders over multiple PostgreSQL connections. To be
-able to use this feature, the PG_DSN, PGUSER and PGPASSWORD must be set. Then:
+able to use this feature, the PG_DSN, PG_USER and PG_PWD must be set. Then:
 
 	ora2pg -t LOAD -c config/ora2pg.conf -i schema/tables/INDEXES_table.sql -j 4
 
@@ -3237,25 +3241,26 @@ Data validation consists in comparing data retrieved from a foreign table
 pointing to the source Oracle table and a local PostgreSQL table resulting
 from the data export.
 
-To run data validation you must have the oracle_fdw extension installed with
-FDW_SERVER and PG_DSN set. See these configuration directives for more
-explanation.
+To run data validation you can use a direct connection like any other Ora2Pg
+action but you can also use the oracle_fdw or mysql_fdw extension provided
+that FDW_SERVER and PG_DSN configuration directives are set.
 
-By default Ora2Pg will extract 10000 rows from both side, you can change this
-value using directive DATA_VALIDATION_ROWS. When it is set to zero all rows
-of the tables will be compared.
+By default Ora2Pg will extract the 10000 first rows from both side, you can
+change this value using directive DATA_VALIDATION_ROWS. When it is set to
+zero all rows of the tables will be compared.
 
 Data validation requires that the table has a primary key or unique index
 and that the key columns is not a LOB. Rows will be sorted using this unique
 key. Due to differences in sort behavior between Oracle and PostgreSQL, if the
-collation of unique key columns in PostgreSQL is not 'C', the sort order of
-is different compared to Oracle. In this case the data validation will fail.
+collation of unique key columns in PostgreSQL is not 'C', the sort order can
+be different compared to Oracle. In this case the data validation will fail.
 
 Data validation must be done before any data is modified.
 
-Ora2Pg will stop comparing two tables after 10 errors, result is dumped to
-file data_validation.log written in the current directory. The number of
-error before stopping the diff between rows can be controlled using the
+Ora2Pg will stop comparing two tables after DATA_VALIDATION_ROWS is reached
+or that 10 errors has been encountered, result is dumped in a file named
+"data_validation.log" written in the current directory by default. The number
+of error before stopping the diff between rows can be controlled using the
 configuration directive DATA_VALIDATION_ERROR. All rows in errors are printed
 to the output file for your analyze.
 

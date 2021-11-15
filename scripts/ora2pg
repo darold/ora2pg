@@ -85,6 +85,7 @@ my $ORACLE_SPEED = 0;
 my $ORA2PG_SPEED = 0;
 my $RELATIVE_PATH = 0;
 my $BLOB_TO_LO = 0;
+my @WHERE_CLAUSE = ();
 
 my @SCHEMA_ARRAY  = qw( SEQUENCE TABLE PACKAGE VIEW GRANT TRIGGER FUNCTION PROCEDURE TABLESPACE PARTITION TYPE MVIEW DBLINK SYNONYM DIRECTORY );
 my @EXTERNAL_ARRAY  = qw( KETTLE FDW );
@@ -130,6 +131,7 @@ GetOptions (
 	'u|user=s' => \$DBUSER,
 	'v|version!' => \$SHOW_VER,
 	'w|password=s' => \$DBPWD,
+	'W|where=s' => \@WHERE_CLAUSE,
 	'x|xtable=s' => \$TABLEONLY, # Obsolete
 	'forceowner=s' => \$FORCEOWNER,
 	'nls_lang=s' => \$ORA_ENCODING,
@@ -156,7 +158,8 @@ GetOptions (
 );
 
 # Check command line parameters
-if ($SHOW_VER) {
+if ($SHOW_VER)
+{
 	print "Ora2Pg v$VERSION\n";
 	exit 0;
 }
@@ -164,15 +167,18 @@ if ($HELP) {
 	&usage();
 }
 
-if ($IS_MYSQL) {
+if ($IS_MYSQL)
+{
 	@SCHEMA_ARRAY = @MYSQL_SCHEMA_ARRAY;
 	@SOURCES_ARRAY = @MYSQL_SOURCES_ARRAY;
 	@EXTERNAL_ARRAY = ();
 }
 
 # Create project repository and useful stuff
-if ($CREATE_PROJECT) {
-	if (!-d "$PROJECT_BASE") {
+if ($CREATE_PROJECT)
+{
+	if (!-d "$PROJECT_BASE")
+	{
 		print "FATAL: Project base directory does not exists: $PROJECT_BASE\n";
 		&usage();
 	}
@@ -181,13 +187,15 @@ if ($CREATE_PROJECT) {
 	exit 0;
 }
 
-if ($GRANT_OBJECT && !grep(/^$GRANT_OBJECT$/, @GRANT_OBJECTS_ARRAY)) {
+if ($GRANT_OBJECT && !grep(/^$GRANT_OBJECT$/, @GRANT_OBJECTS_ARRAY))
+{
 	print "FATAL: invalid grant object type in -g option. See GRAND_OBJECT configuration directive.\n";
 	exit 1;
 }
 
 # Clean temporary files
-unless(opendir(DIR, "$TMP_DIR")) {
+unless(opendir(DIR, "$TMP_DIR"))
+{
 	print "FATAL: can't opendir $TMP_DIR: $!\n";
 	exit 1;
 }
@@ -204,12 +212,16 @@ foreach (@files)
 
 # Check configuration file
 my $GOES_WITH_DEFAULT = 0;
-if ($FILE_CONF && ! -e $FILE_CONF) {
+if ($FILE_CONF && ! -e $FILE_CONF)
+{
 	print "FATAL: can't find configuration file $FILE_CONF\n";
 	&usage();
-} elsif (!$FILE_CONF && ! -e $CONFIG_FILE) {
+}
+elsif (!$FILE_CONF && ! -e $CONFIG_FILE)
+{
 	# At least we need configuration to connect to Oracle
-	if (!$DSN || (!$DBUSER && !$ENV{ORA2PG_USER}) || (!$DBPWD && !$ENV{ORA2PG_PASSWD})) {
+	if (!$DSN || (!$DBUSER && !$ENV{ORA2PG_USER}) || (!$DBPWD && !$ENV{ORA2PG_PASSWD}))
+	{
 		print "FATAL: can't find configuration file $CONFIG_FILE\n";
 		&usage();
 	}
@@ -221,23 +233,27 @@ push(@CAPABILITIES, @SCHEMA_ARRAY, @REPORT_ARRAY, @DATA_ARRAY, @EXTERNAL_ARRAY, 
 
 # Validate export type
 $EXPORT_TYPE = uc($EXPORT_TYPE);
-$EXPORT_TYPE =~ s/^DATA/COPY/;
-foreach my $t (split(/[,;\s\t]+/, $EXPORT_TYPE)) {
-	if ($t && !grep(/^$t$/, @CAPABILITIES)) {
+$EXPORT_TYPE =~ s/^DATA$/COPY/;
+foreach my $t (split(/[,;\s\t]+/, $EXPORT_TYPE))
+{
+	if ($t && !grep(/^$t$/, @CAPABILITIES))
+	{
 		print "FATAL: Unknown export type: $t. Type supported: ", join(',', @CAPABILITIES), "\n";
 		&usage();
 	}
 }
 
 # Preserve barckward compatibility
-if ($TABLEONLY) {
+if ($TABLEONLY)
+{
 	warn "-x | --xtable is deprecated, use -a | --allow option instead.\n";
 	if (!$ALLOW) {
 		$ALLOW = $TABLEONLY;
 	}
 }
 
-if ($BLOB_TO_LO && !grep(/^$EXPORT_TYPE$/, 'TABLE', 'INSERT', 'SHOW_COLUMN')) {
+if ($BLOB_TO_LO && !grep(/^$EXPORT_TYPE$/, 'TABLE', 'INSERT', 'SHOW_COLUMN'))
+{
 	print "FATAL: option --blob_to_lo can only be used with the INSERT action.\n";
 	&usage();
 }
@@ -250,7 +266,8 @@ sub getout
         $SIG{TERM} = \&getout;
 
 	# Cleaning temporary files
-	unless(opendir(DIR, "$TMP_DIR")) {
+	unless(opendir(DIR, "$TMP_DIR"))
+	{
 		print "FATAL: can't opendir $TMP_DIR: $!\n";
 		exit 1;
 	}
@@ -314,15 +331,18 @@ my $schema = new Ora2Pg (
 	oracle_speed => $ORACLE_SPEED,
 	ora2pg_speed => $ORA2PG_SPEED,
 	psql_relative_path => $RELATIVE_PATH,
+	where => join(' ', @WHERE_CLAUSE),
 	blob_to_lo => $BLOB_TO_LO,
 );
 
 # Look at configuration file if an input file is defined
-if (!$INPUT_FILE && !$GOES_WITH_DEFAULT) {
+if (!$INPUT_FILE && !$GOES_WITH_DEFAULT)
+{
 	my $cf_file = $FILE_CONF || $CONFIG_FILE;
 	my $fh = new IO::File;
 	$fh->open($cf_file) or die "FATAL: can't read configuration file $cf_file, $!\n";
-	while (my $l = <$fh>) {
+	while (my $l = <$fh>)
+	{
 		chomp($l);
 		$l =~ s/\r//gs;
 		$l =~ s/^\s*\#.*$//g;
@@ -344,13 +364,15 @@ if ( ($EXPORT_TYPE !~ /^SHOW_/i) && !$INPUT_FILE ) {
 }
 
 # Check if error occurs during data export
-unless(opendir(DIR, "$TMP_DIR")) {
+unless(opendir(DIR, "$TMP_DIR"))
+{
 	print "FATAL: can't opendir $TMP_DIR: $!\n";
 	exit 1;
 }
 @files = grep { $_ =~ /^tmp_ora2pg.*$/ } readdir(DIR);
 closedir DIR;
-if ($#files >= 0) {
+if ($#files >= 0)
+{
 	print STDERR "\nWARNING: an error occurs during data export. Please check what's happen.\n\n";
 	exit 2;
 }
@@ -372,7 +394,7 @@ Usage: ora2pg [-dhpqv --estimate_cost --dump_as_html] [--option value]
     -c | --conf file  : Set an alternate configuration file other than the
 			default /etc/ora2pg/ora2pg.conf.
     -d | --debug      : Enable verbose output.
-    -D | --data_type STR : Allow custom type replacement at command line.
+    -D | --data_type str : Allow custom type replacement at command line.
     -e | --exclude str: Comma separated list of objects to exclude from export.
 			Can be used with SHOW_COLUMN too.
     -h | --help       : Print this short help.
@@ -397,13 +419,15 @@ Usage: ora2pg [-dhpqv --estimate_cost --dump_as_html] [--option value]
     -s | --source DSN : Allow to set the Oracle DBI datasource.
     -t | --type export: Set the export type. It will override the one
 			given in the configuration file (TYPE).
-    -T | --temp_dir DIR: Set a distinct temporary directory when two
+    -T | --temp_dir dir: Set a distinct temporary directory when two
                          or more ora2pg are run in parallel.
     -u | --user name  : Set the Oracle database connection user.
 		        ORA2PG_USER environment variable can be used instead.
     -v | --version    : Show Ora2Pg Version and exit.
     -w | --password pwd : Set the password of the Oracle database user.
 		        ORA2PG_PASSWD environment variable can be used instead.
+    -W | --where clause : Set the WHERE clause to apply to the Oracle query to
+                          retrieve data. Can be used multiple time.
     --forceowner      : Force ora2pg to set tables and sequences owner like in
 		  Oracle database. If the value is set to a username this one
 		  will be used as the objects owner. By default it's the user
@@ -419,16 +443,16 @@ Usage: ora2pg [-dhpqv --estimate_cost --dump_as_html] [--option value]
                         SHOW_REPORT. Default is to dump report as simple text.
    --dump_as_csv      : As above but force ora2pg to dump report in CSV.
    --dump_as_sheet    : Report migration assessment with one CSV line per database.
-   --init_project NAME: Initialise a typical ora2pg project tree. Top directory
+   --init_project name: Initialise a typical ora2pg project tree. Top directory
                         will be created under project base dir.
-   --project_base DIR : Define the base dir for ora2pg project trees. Default
+   --project_base dir : Define the base dir for ora2pg project trees. Default
                         is current directory.
    --print_header     : Used with --dump_as_sheet to print the CSV header
                         especially for the first run of ora2pg.
    --human_days_limit num : Set the number of human-days limit where the migration
                         assessment level switch from B to C. Default is set to
                         5 human-days.
-   --audit_user LIST  : Comma separated list of usernames to filter queries in
+   --audit_user list  : Comma separated list of usernames to filter queries in
                         the DBA_AUDIT_TRAIL table. Used only with SHOW_REPORT
                         and QUERY export type.
    --pg_dsn DSN       : Set the datasource to PostgreSQL for direct import.
@@ -873,7 +897,7 @@ if [ ! -r "$NAMESPACE/schema/tables/table.sql" ]; then
 	die "project directory '$NAMESPACE' is not valid or is not readable."
 fi
 
-# If constraints and indexes files are present propose to import these object
+# If constraints and indexes files are present propose to import these objects
 if [ $IMPORT_CONSTRAINTS -eq 1 ]; then
 	if confirm "Would you like to load indexes, constraints and triggers?" ; then
 		import_constraints
@@ -1006,7 +1030,7 @@ if [ $IMPORT_DATA -eq 0 ]; then
 		fi
 	done
 
-	# If constraints and indexes files are present propose to import these object
+	# If constraints and indexes files are present propose to import these objects
 	if [ $NO_CONSTRAINTS -eq 0 ] && [ $IMPORT_INDEXES_AFTER -eq 0 ]; then
 		if confirm "Would you like to process indexes and constraints before loading data?" ; then
 			IMPORT_INDEXES_AFTER=0
