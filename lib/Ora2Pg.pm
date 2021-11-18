@@ -16254,6 +16254,7 @@ $declar
 		my $tbname = $5;
 		$type_name =~ s/"//g;
 		$tbname =~ s/;//g;
+		$tbname =~ s/\s+NOT\s+NULL//g;
 		my $internal_name = $type_name;
 		chomp($tbname);
 		if ($self->{export_schema} && !$self->{schema} && $owner) {
