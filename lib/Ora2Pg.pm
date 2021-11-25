@@ -9600,27 +9600,79 @@ sub _drop_indexes
 		# the index will be automatically created by PostgreSQL at constraint import time.
 		if (!$skip_index_creation)
 		{
+
+			# Cluster, bitmap join, reversed and IOT indexes will not be exported at all
+			# Hash indexes will be exported as btree if PG < 10
+			next if ($self->{$objtyp}{$tbsaved}{idx_type}{$idx}{type} =~ /JOIN|IOT|CLUSTER|REV/i);
+
+			if (exists $self->{replaced_cols}{"\L$tbsaved\E"} && $self->{replaced_cols}{"\L$tbsaved\E"})
+			{
+				foreach my $c (keys %{$self->{replaced_cols}{"\L$tbsaved\E"}}) {
+					map { s/\b$c\b/$self->{replaced_cols}{"\L$tbsaved\E"}{"\L$c\E"}/i } @{$indexes{$idx}};
+				}
+			}
+
+			for (my $j = 0; $j <= $#{$indexes{$idx}}; $j++)
+			{
+				$indexes{$idx}->[$j] =~ s/''/%%ESCAPED_STRING%%/g;
+				my @strings = ();
+				my $i = 0;
+				while ($indexes{$idx}->[$j] =~ s/'([^']+)'/%%string$i%%/)
+				{
+					push(@strings, $1);
+					$i++;
+				}
+				if ($self->{plsql_pgsql}) {
+					$indexes{$idx}->[$j] = Ora2Pg::PLSQL::convert_plsql_code($self, $indexes{$idx}->[$j], @strings);
+				}
+				$indexes{$idx}->[$j] =~ s/%%ESCAPED_STRING%%/''/ig;
+
+				for ($i = 0; $i <= $#strings; $i++) {
+					$indexes{$idx}->[$j] =~ s/\%\%string$i\%\%/'$strings[$i]'/;
+				}
+			}
+
+			my $schm = '';
+			my $idxname = '';
+			if ($idx =~ /^([^\.]+)\.(.*)$/)
+			{
+				$schm = $1;
+				$idxname = $2;
+			} else {
+				$idxname = $idx;
+			}
+
 			if ($self->{indexes_renaming})
 			{
-				map { s/"//g; } @{$indexes{$idx}};
-				$idx = $self->quote_object_name($table.'_'.join('_', @{$indexes{$idx}}));
-				$idx =~ s/\s+//g;
-				if ($self->{indexes_suffix}) {
-					$idx = substr($idx,0,59);
+				if ($table =~ /^([^\.]+)\.(.*)$/)
+				{
+					$schm = $1;
+					$idxname = $2;
 				} else {
-					$idx = substr($idx,0,63);
+					$idxname = $table;
+				}
+				$idxname =~ s/"//g;
+				my @collist = @{$indexes{$idx}};
+				# Remove double quote, DESC and parenthesys
+				map { s/"//g; s/.*\(([^\)]+)\).*/$1/; s/\s+DESC//i; s/::.*//; } @collist;
+				$idxname = $idxname . '_' . join('_', @collist);
+				$idxname =~ s/\s+//g;
+				if ($self->{indexes_suffix}) {
+					$idxname = substr($idxname,0,59);
+				} else {
+					$idxname = substr($idxname,0,63);
 				}
 			}
 			if ($self->{tables}{$table}{idx_type}{$idx}{type} =~ /DOMAIN/i && $self->{tables}{$table}{idx_type}{$idx}{type_name} !~ /SPATIAL_INDEX/)
 			{
-				$idx = $self->quote_object_name($idx);
+				$idxname = $self->quote_object_name($idxname);
 				push(@out, "-- Declared as DOMAIN index, uncomment line below if it must be removed");
-				push(@out, "-- DROP INDEX $self->{pg_supports_ifexists} $idx\L$self->{indexes_suffix}\E;");
+				push(@out, "-- DROP INDEX $self->{pg_supports_ifexists} $idxname\L$self->{indexes_suffix}\E;");
 			}
 			else
 			{
-				$idx = $self->quote_object_name($idx);
-				push(@out, "DROP INDEX $self->{pg_supports_ifexists} $idx\L$self->{indexes_suffix}\E;");
+				$idxname = $self->quote_object_name($idxname);
+				push(@out, "DROP INDEX $self->{pg_supports_ifexists} $idxname\L$self->{indexes_suffix}\E;");
 			}
 		}
 	}
