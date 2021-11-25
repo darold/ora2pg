@@ -7301,7 +7301,7 @@ sub export_table
 					}
 					my $gtypes = '';
 					if (!$f->[14] || ($f->[14] =~  /,/) ) {
-						$gtypes = $ORA2PG_SDO_GTYPE{0};
+						$gtypes = $Ora2Pg::Oracle::ORA2PG_SDO_GTYPE{0};
 					} else {
 						$gtypes = $f->[14];
 					}
@@ -15469,7 +15469,7 @@ sub _show_infos
 						}
 						my $gtypes = '';
 						if (!$d->[14] || ($d->[14] =~  /,/) ) {
-							$gtypes = $ORA2PG_SDO_GTYPE{0};
+							$gtypes = $Ora2Pg::Oracle::ORA2PG_SDO_GTYPE{0};
 						} else {
 							$gtypes = $d->[14];
 						}
