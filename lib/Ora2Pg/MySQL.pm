@@ -3,6 +3,7 @@ package Ora2Pg::MySQL;
 use vars qw($VERSION);
 use strict;
 
+use DBI;
 use POSIX qw(locale_h);
 
 #set locale to LC_NUMERIC C
@@ -14,8 +15,9 @@ $VERSION = '23.0';
 # Some function might be excluded from export and assessment.
 our @EXCLUDED_FUNCTION = ('SQUIRREL_GET_ERROR_OFFSET');
 
-# These definitions can be overriden from configuration file
-our %MYSQL_TYPE = (
+# These definitions can be overriden from configuration
+# file using the DATA_TYPË configuration directive.
+our %SQL_TYPE = (
 	'TINYINT' => 'smallint', # 1 byte
 	'SMALLINT' => 'smallint', # 2 bytes
 	'MEDIUMINT' => 'integer', # 3 bytes
@@ -54,6 +56,73 @@ our %MYSQL_TYPE = (
 	'BIT' => 'bit varying',
 	'UNSIGNED' => 'bigint'
 );
+
+sub _db_connection
+{
+	my $self = shift;
+
+	$self->logit("Trying to connect to database: $self->{oracle_dsn}\n", 1) if (!$self->{quiet});
+
+	if (!defined $self->{oracle_pwd})
+	{
+		eval("use Term::ReadKey;");
+		$self->{oracle_user} = $self->_ask_username('MySQL') unless (defined $self->{oracle_user});
+		$self->{oracle_pwd} = $self->_ask_password('MySQL');
+	}
+
+	my $dbh = DBI->connect("$self->{oracle_dsn}", $self->{oracle_user}, $self->{oracle_pwd}, {
+			'RaiseError' => 1,
+			AutoInactiveDestroy => 1,
+			mysql_enable_utf8 => 1,
+			mysql_conn_attrs => { program_name => 'ora2pg ' || $VERSION }
+		}
+	);
+
+	# Check for connection failure
+	if (!$dbh) {
+		$self->logit("FATAL: $DBI::err ... $DBI::errstr\n", 0, 1);
+	}
+
+	# Use consistent reads for concurrent dumping...
+	#$dbh->do('START TRANSACTION WITH CONSISTENT SNAPSHOT;') || $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
+	if ($self->{debug} && !$self->{quiet}) {
+		$self->logit("Isolation level: $self->{transaction}\n", 1);
+	}
+	my $sth = $dbh->prepare($self->{transaction}) or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
+	$sth->execute or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
+	$sth->finish;
+
+	# Get SQL_MODE from the MySQL database
+	$sth = $dbh->prepare('SELECT @@sql_mode') or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
+	$sth->execute or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
+	while (my $row = $sth->fetch) {
+		$self->{mysql_mode} = $row->[0];
+	}
+	$sth->finish;
+
+	if ($self->{nls_lang})
+	{
+		if ($self->{debug} && !$self->{quiet}) {
+			$self->logit("Set default encoding to '$self->{nls_lang}' and collate to '$self->{nls_nchar}'\n", 1);
+		}
+		my $collate = '';
+		$collate = " COLLATE '$self->{nls_nchar}'" if ($self->{nls_nchar});
+		$sth = $dbh->prepare("SET NAMES '$self->{nls_lang}'$collate") or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
+		$sth->execute or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
+		$sth->finish;
+	}
+	# Force execution of initial command
+	$self->_ora_initial_command($dbh);
+
+	if ($self->{mysql_mode} =~ /PIPES_AS_CONCAT/) {
+		$self->{mysql_pipes_as_concat} = 1;
+	}
+
+	# Instruct Ora2Pg that the database engine is mysql
+	$self->{is_mysql} = 1;
+
+	return $dbh;
+}
 
 sub _get_version
 {
@@ -349,7 +418,7 @@ ORDER BY ORDINAL_POSITION};
 
 sub _get_indexes
 {
-	my ($self, $table, $owner) = @_;
+	my ($self, $table, $owner, $generated_indexes) = @_;
 
 	my $condition = '';
 	$condition = " FROM $self->{schema}" if ($self->{schema});
@@ -415,7 +484,6 @@ sub _get_indexes
 			}
 			push(@{$data{$row->[0]}{$idxname}}, $row->[4]);
 			$index_tablespace{$row->[0]}{$idxname} = '';
-
 		}
 	}
 
@@ -689,6 +757,30 @@ sub _unique_key
 		}
 	}
 	return %result;
+}
+
+sub _check_constraint
+{
+	my ($self, $table, $owner) = @_;
+
+	# There is no check constraint in MySQL
+	return;
+}
+
+sub _get_external_tables
+{
+	my ($self) = @_;
+
+	# There is no external table in MySQL
+	return;
+}
+
+sub _get_directory
+{
+	my ($self) = @_;
+
+	# There is no external table in MySQL
+	return;
 }
 
 sub _get_functions
@@ -1002,7 +1094,7 @@ sub _list_all_funtions
 
 sub _sql_type
 {
-        my ($self, $type, $len, $precision, $scale) = @_;
+        my ($self, $type, $len, $precision, $scale, $default, $no_blob_to_oid) = @_;
 
 	my $data_type = '';
 
@@ -1361,7 +1453,7 @@ Return a hash of the partitioned table with the number of partition
 
 sub _get_partitioned_table
 {
-	my($self) = @_;
+	my ($self, %subpart) = @_;
 
 	# Retrieve all partitions.
 	my $str = qq{
@@ -1816,7 +1908,7 @@ sub _global_temp_table_info
 
 sub _encrypted_columns
 {
-        my($self) = @_;
+        my ($self, $table, $owner) = @_;
 
 	return;
 }
@@ -1999,6 +2091,38 @@ sub _get_materialized_views
 	my($self) = @_;
 
 	# nothing to do, materialized view are not supported by MySQL.
+	return;
+}
+
+sub _get_materialized_view_names
+{
+	my($self) = @_;
+
+	# nothing to do, materialized view are not supported by MySQL.
+	return;
+}
+
+sub _get_package_function_list
+{
+	my ($self, $owner) = @_;
+
+	# not package in MySQL
+	return;
+}
+
+sub _get_procedures
+{
+	my ($self) = @_;
+
+	# not package in MySQL
+	return _get_functions($self);
+}
+
+sub _get_types
+{
+        my ($self, $name) = @_;
+
+	# Not supported
 	return;
 }
 
