@@ -9196,7 +9196,7 @@ sub _create_indexes
 
 		# Cluster, bitmap join, reversed and IOT indexes will not be exported at all
 		# Hash indexes will be exported as btree if PG < 10
-		next if ($self->{$objtyp}{$tbsaved}{idx_type}{$idx}{type} =~ /JOIN|IOT|CLUSTER|REV/i);
+		next if ($self->{tables}{$tbsaved}{idx_type}{$idx}{type} =~ /JOIN|IOT|CLUSTER|REV/i);
 
 		if (exists $self->{replaced_cols}{"\L$tbsaved\E"} && $self->{replaced_cols}{"\L$tbsaved\E"})
 		{
@@ -9369,7 +9369,7 @@ sub _create_indexes
 					$idxname = substr($idxname,0,63);
 				}
 			}
-			$idxname =~ s/,//g;
+			$idxname =~ s/[^a-z0-9_]+//ig; # Remove non alphanumeric character
 			$idxname = $self->quote_object_name("$idxname$self->{indexes_suffix}");
 			my $tb = $self->quote_object_name($table);
 			if ($self->{$objtyp}{$tbsaved}{idx_type}{$idx}{type_name} =~ /SPATIAL_INDEX/)
@@ -9601,10 +9601,9 @@ sub _drop_indexes
 		# the index will be automatically created by PostgreSQL at constraint import time.
 		if (!$skip_index_creation)
 		{
-
 			# Cluster, bitmap join, reversed and IOT indexes will not be exported at all
 			# Hash indexes will be exported as btree if PG < 10
-			next if ($self->{$objtyp}{$tbsaved}{idx_type}{$idx}{type} =~ /JOIN|IOT|CLUSTER|REV/i);
+			next if ($self->{tables}{$tbsaved}{idx_type}{$idx}{type} =~ /JOIN|IOT|CLUSTER|REV/i);
 
 			if (exists $self->{replaced_cols}{"\L$tbsaved\E"} && $self->{replaced_cols}{"\L$tbsaved\E"})
 			{
@@ -9664,7 +9663,7 @@ sub _drop_indexes
 					$idxname = substr($idxname,0,63);
 				}
 			}
-			$idxname =~ s/,//g;
+			$idxname =~ s/[^a-z0-9_]+//ig; # Remove non alphanumeric character
 			if ($self->{tables}{$table}{idx_type}{$idx}{type} =~ /DOMAIN/i && $self->{tables}{$table}{idx_type}{$idx}{type_name} !~ /SPATIAL_INDEX/)
 			{
 				$idxname = $self->quote_object_name($idxname);
