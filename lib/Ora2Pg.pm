@@ -11872,6 +11872,7 @@ sub format_data_type
 		}
 		elsif ($cond->{isdate})
 		{
+			$q = '' if ( $col =~ /^['\`]/ );
 			if ($col =~ /^0000-00-00/) {
 				$col = $self->{replace_zero_date} ?  "$q$self->{replace_zero_date}$q" : 'NULL';
 			} elsif ($col =~ /^(\d+-\d+-\d+ \d+:\d+:\d+)\.$/) {
