@@ -9369,6 +9369,7 @@ sub _create_indexes
 					$idxname = substr($idxname,0,63);
 				}
 			}
+			$idxname =~ s/,//g;
 			$idxname = $self->quote_object_name("$idxname$self->{indexes_suffix}");
 			my $tb = $self->quote_object_name($table);
 			if ($self->{$objtyp}{$tbsaved}{idx_type}{$idx}{type_name} =~ /SPATIAL_INDEX/)
@@ -9663,6 +9664,7 @@ sub _drop_indexes
 					$idxname = substr($idxname,0,63);
 				}
 			}
+			$idxname =~ s/,//g;
 			if ($self->{tables}{$table}{idx_type}{$idx}{type} =~ /DOMAIN/i && $self->{tables}{$table}{idx_type}{$idx}{type_name} !~ /SPATIAL_INDEX/)
 			{
 				$idxname = $self->quote_object_name($idxname);
