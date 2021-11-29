@@ -1041,6 +1041,8 @@ sub plsql_to_plpgsql
 	} elsif ($str =~ s/;(\s+)([^;]+)SQL\%ROWCOUNT/;$1GET DIAGNOSTICS ora2pg_rowcount = ROW_COUNT;\n$1$2 ora2pg_rowcount/igs) {
 		$class->{get_diagnostics} = 'ora2pg_rowcount int;';
 	}
+	# SQL%ROWCOUNT with concatenated string
+	$str =~ s/(\s+)(GET DIAGNOSTICS )([^\s]+)( = ROW_COUNT)(\s+\|\|[^;]+);/$1$2$3$4;$1$3 := $3 $5/;
 
 	# Sometime variable used in FOR ... IN SELECT loop is not declared
 	# Append its RECORD declaration in the DECLARE section.
