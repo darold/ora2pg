@@ -1042,7 +1042,7 @@ sub plsql_to_plpgsql
 		$class->{get_diagnostics} = 'ora2pg_rowcount int;';
 	}
 	# SQL%ROWCOUNT with concatenated string
-	$str =~ s/(\s+)(GET DIAGNOSTICS )([^\s]+)( = ROW_COUNT)(\s+\|\|[^;]+);/$1$2$3$4;$1$3 := $3 $5/;
+	$str =~ s/(\s+)(GET DIAGNOSTICS )([^\s]+)( = ROW_COUNT)(\s+\|\|[^;]+);/$1$2$3$4;$1$3 := $3 $5;/;
 
 	# Sometime variable used in FOR ... IN SELECT loop is not declared
 	# Append its RECORD declaration in the DECLARE section.
