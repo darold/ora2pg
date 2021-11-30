@@ -12891,6 +12891,23 @@ sub _convert_function
 		$create_type .= "DROP TYPE IF EXISTS $1;\n" if ($self->{drop_if_exists});
 		$create_type .= "CREATE TYPE $1 AS ($2);\n";
 	}
+	while ($fct_detail{declare} =~ s/\s+TYPE\s+([^\s]+)\s+(AS|IS)\s*(VARRAY|VARYING ARRAY)\s*\((\d+)\)\s*OF\s*([^;]+);//is) {
+		my $type_name = $1;
+		my $size = $4;
+		my $tbname = $5;
+		$tbname =~ s/\s+NOT\s+NULL//g;
+		chomp($tbname);
+		$type_name =~ s/"//g;
+		my $internal_name = $type_name;
+		if ($self->{export_schema} && !$self->{schema} && $owner) {
+			$type_name = "$owner.$type_name";
+		}
+		$internal_name  =~ s/^[^\.]+\.//;
+		my $declar = Ora2Pg::PLSQL::replace_sql_type($tbname, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type}, $self->{varchar_to_text}, %{$self->{data_type}});
+		$declar =~ s/[\n\r]+//s;
+		$create_type .= "DROP TYPE IF EXISTS $1;\n" if ($self->{drop_if_exists});
+		$create_type .= "CREATE TYPE $type_name AS ($internal_name $declar\[$size\]);\n";
+	}
 	
 	my @at_ret_param = ();
 	my @at_ret_type = ();
