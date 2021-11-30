@@ -2965,7 +2965,8 @@ sub read_schema_from_file
 			$tb_name =~ s/"//g;
 			my $tb_def = $2;
 			# Oracle allow multiple constraints declaration inside a single ALTER TABLE
-			while ($tb_def =~ s/CONSTRAINT\s+([^\s]+)\s+CHECK\s*(\(.*?\))\s+(ENABLE|DISABLE|VALIDATE|NOVALIDATE|DEFERRABLE|INITIALLY|DEFERRED|USING\s+INDEX|\s+)+([^,]*)//is) {
+			while ($tb_def =~ s/CONSTRAINT\s+([^\s]+)\s+CHECK\s*(\(.*?\))\s+(ENABLE|DISABLE|VALIDATE|NOVALIDATE|DEFERRABLE|INITIALLY|DEFERRED|USING\s+INDEX|\s+)+([^,]*)//is)
+			{
 				my $constname = $1;
 				my $code = $2;
 				my $states = $3;
@@ -3341,13 +3342,16 @@ sub read_tablespace_from_file
 
 	my @tbsps = split(/\s*;\s*/, $content);
 	# tablespace without undo ones
-	foreach $content (@tbsps) {
+	foreach $content (@tbsps)
+	{
 		$content .= ';';
-		if ($content =~ /CREATE\s+(?:BIGFILE|SMALLFILE)?\s*(?:TEMPORARY)?\s*TABLESPACE\s+([^\s;]+)\s*([^;]*);/is) {
+		if ($content =~ /CREATE\s+(?:BIGFILE|SMALLFILE)?\s*(?:TEMPORARY)?\s*TABLESPACE\s+([^\s;]+)\s*([^;]*);/is)
+		{
 			my $t_name = $1;
 			my $t_def = $2;
 			$t_name =~ s/"//g;
-			if ($t_def =~ /(?:DATA|TEMP)FILE\s+'([^']+)'/is) {
+			if ($t_def =~ /(?:DATA|TEMP)FILE\s+'([^']+)'/is)
+			{
 				my $t_path = $1;
 				$t_path =~ s/:/\//g;
 				$t_path =~ s/\\/\//g;
@@ -6207,15 +6211,19 @@ sub export_tablespace
 		$fhdl = $self->open_export_file("TBSP_INDEXES_$self->{output}");
 		$self->set_binmode($fhdl) if (!$self->{compress});
 		$sql_output = '';
-		foreach my $tb_type (sort keys %{$self->{tablespaces}}) {
+		foreach my $tb_type (sort keys %{$self->{tablespaces}})
+		{
 			# TYPE - TABLESPACE_NAME - FILEPATH - OBJECT_NAME
-			foreach my $tb_name (sort keys %{$self->{tablespaces}{$tb_type}}) {
-				foreach my $tb_path (sort keys %{$self->{tablespaces}{$tb_type}{$tb_name}}) {
+			foreach my $tb_name (sort keys %{$self->{tablespaces}{$tb_type}})
+			{
+				foreach my $tb_path (sort keys %{$self->{tablespaces}{$tb_type}{$tb_name}})
+				{
 					# Replace Oracle tablespace filename
 					my $loc = $tb_name;
 					$tb_path =~ /^(.*)[^\\\/]+$/;
 					$loc = $1 . $loc;
-					foreach my $obj (@{$self->{tablespaces}{$tb_type}{$tb_name}{$tb_path}}) {
+					foreach my $obj (@{$self->{tablespaces}{$tb_type}{$tb_name}{$tb_path}})
+					{
 						next if ($tb_type eq 'TABLE');
 						$sql_output .= "ALTER $tb_type \L$obj\E SET TABLESPACE \L$tb_name\E;\n";
 					}
@@ -9153,6 +9161,45 @@ sub _column_comments
 	}
 }
 
+sub get_indexname
+{
+	my ($self, $idx, @collist) = @_;
+
+
+	my $schm = '';
+	my $idxname = '';
+	if ($idx =~ /^([^\.]+)\.(.*)$/)
+	{
+		$schm = $1;
+		$idxname = $2;
+	} else {
+		$idxname = $idx;
+	}
+	if ($self->{indexes_renaming})
+	{
+		if ($table =~ /^([^\.]+)\.(.*)$/) {
+			$schm = $1;
+			$idxname = $2;
+		} else {
+			$idxname = $table;
+		}
+		$idxname =~ s/"//g;
+		# Remove double quote, DESC and parenthesys
+		map { s/"//g; s/.*\(([^\)]+)\).*/$1/; s/\s+DESC//i; s/::.*//; } @collist;
+		$idxname = $idxname . '_' . join('_', @collist);
+		$idxname =~ s/\s+//g;
+		if ($self->{indexes_suffix}) {
+			$idxname = substr($idxname,0,59);
+		} else {
+			$idxname = substr($idxname,0,63);
+		}
+	}
+	$idxname =~ s/[^a-z0-9_]+//ig; # Remove non alphanumeric character
+	$idxname = $self->quote_object_name("$idxname$self->{indexes_suffix}");
+
+	return $idxname;
+}
+
 
 =head2 _create_indexes
 
@@ -9340,37 +9387,8 @@ sub _create_indexes
 				next if (exists $pk_hist{$table} && uc($pk_hist{$table}) eq uc($col_list));
 			}
 
-			my $schm = '';
-			my $idxname = '';
-			if ($idx =~ /^([^\.]+)\.(.*)$/)
-			{
-				$schm = $1;
-				$idxname = $2;
-			} else {
-				$idxname = $idx;
-			}
-			if ($self->{indexes_renaming})
-			{
-				if ($table =~ /^([^\.]+)\.(.*)$/) {
-					$schm = $1;
-					$idxname = $2;
-				} else {
-					$idxname = $table;
-				}
-				$idxname =~ s/"//g;
-				my @collist = @{$indexes{$idx}};
-				# Remove double quote, DESC and parenthesys
-				map { s/"//g; s/.*\(([^\)]+)\).*/$1/; s/\s+DESC//i; s/::.*//; } @collist;
-				$idxname = $idxname . '_' . join('_', @collist);
-				$idxname =~ s/\s+//g;
-				if ($self->{indexes_suffix}) {
-					$idxname = substr($idxname,0,59);
-				} else {
-					$idxname = substr($idxname,0,63);
-				}
-			}
-			$idxname =~ s/[^a-z0-9_]+//ig; # Remove non alphanumeric character
-			$idxname = $self->quote_object_name("$idxname$self->{indexes_suffix}");
+			my $idxname = $self->get_indexname($idx, @{$indexes{$idx}});
+
 			my $tb = $self->quote_object_name($table);
 			if ($self->{$objtyp}{$tbsaved}{idx_type}{$idx}{type_name} =~ /SPATIAL_INDEX/)
 			{
@@ -9632,47 +9650,15 @@ sub _drop_indexes
 				}
 			}
 
-			my $schm = '';
-			my $idxname = '';
-			if ($idx =~ /^([^\.]+)\.(.*)$/)
-			{
-				$schm = $1;
-				$idxname = $2;
-			} else {
-				$idxname = $idx;
-			}
+			my $idxname = $self->get_indexname($idx, @{$indexes{$idx}});
 
-			if ($self->{indexes_renaming})
-			{
-				if ($table =~ /^([^\.]+)\.(.*)$/)
-				{
-					$schm = $1;
-					$idxname = $2;
-				} else {
-					$idxname = $table;
-				}
-				$idxname =~ s/"//g;
-				my @collist = @{$indexes{$idx}};
-				# Remove double quote, DESC and parenthesys
-				map { s/"//g; s/.*\(([^\)]+)\).*/$1/; s/\s+DESC//i; s/::.*//; } @collist;
-				$idxname = $idxname . '_' . join('_', @collist);
-				$idxname =~ s/\s+//g;
-				if ($self->{indexes_suffix}) {
-					$idxname = substr($idxname,0,59);
-				} else {
-					$idxname = substr($idxname,0,63);
-				}
-			}
-			$idxname =~ s/[^a-z0-9_]+//ig; # Remove non alphanumeric character
 			if ($self->{tables}{$table}{idx_type}{$idx}{type} =~ /DOMAIN/i && $self->{tables}{$table}{idx_type}{$idx}{type_name} !~ /SPATIAL_INDEX/)
 			{
-				$idxname = $self->quote_object_name($idxname);
 				push(@out, "-- Declared as DOMAIN index, uncomment line below if it must be removed");
 				push(@out, "-- DROP INDEX $self->{pg_supports_ifexists} $idxname\L$self->{indexes_suffix}\E;");
 			}
 			else
 			{
-				$idxname = $self->quote_object_name($idxname);
 				push(@out, "DROP INDEX $self->{pg_supports_ifexists} $idxname\L$self->{indexes_suffix}\E;");
 			}
 		}
