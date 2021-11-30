@@ -9163,7 +9163,7 @@ sub _column_comments
 
 sub get_indexname
 {
-	my ($self, $idx, @collist) = @_;
+	my ($self, $table, $idx, @collist) = @_;
 
 
 	my $schm = '';
@@ -9387,7 +9387,7 @@ sub _create_indexes
 				next if (exists $pk_hist{$table} && uc($pk_hist{$table}) eq uc($col_list));
 			}
 
-			my $idxname = $self->get_indexname($idx, @{$indexes{$idx}});
+			my $idxname = $self->get_indexname($table, $idx, @{$indexes{$idx}});
 
 			my $tb = $self->quote_object_name($table);
 			if ($self->{$objtyp}{$tbsaved}{idx_type}{$idx}{type_name} =~ /SPATIAL_INDEX/)
@@ -9650,7 +9650,7 @@ sub _drop_indexes
 				}
 			}
 
-			my $idxname = $self->get_indexname($idx, @{$indexes{$idx}});
+			my $idxname = $self->get_indexname($table, $idx, @{$indexes{$idx}});
 
 			if ($self->{tables}{$table}{idx_type}{$idx}{type} =~ /DOMAIN/i && $self->{tables}{$table}{idx_type}{$idx}{type_name} !~ /SPATIAL_INDEX/)
 			{
