@@ -1946,6 +1946,8 @@ sub replace_sdo_function
 	$str =~ s/SDO_POINTONSURFACE/ST_PointOnSurface/igs;
 	$str =~ s/SDO_UNION/ST_Union/igs;
 	$str =~ s/SDO_XOR/ST_SymDifference/igs;
+	# SDO_CS.TRANSFORM(geom, srid)
+	$str =~ s/\bSDO_CS\.TRANSFORM\(/ST_Transform\(/igs;
 
 	# Note that with ST_DumpPoints and :
 	# TABLE(SDO_UTIL.GETVERTICES(C.GEOLOC)) T
