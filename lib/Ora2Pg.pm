@@ -12761,7 +12761,8 @@ sub _convert_function
 	# Input parameters after one with a default value must also have defaults
 	# we add DEFAULT NULL to all remaining parameter without a default value.
 	my @args_sorted = ();
-	$fct_detail{args} =~ s/^\((.*)\)(\s*\%ORA2PG_COMMENT\d+\%)*\s*$/$1$2/gs;
+	$fct_detail{args} =~ s/^\((.*)\)(\s*\%ORA2PG_COMMENT\d+\%)*\s*$/$1/gs;
+	my $param_comments = $2 || '';
 
 	# Preserve parameters with precision and scale
 	my $h = 0;
@@ -12869,6 +12870,7 @@ sub _convert_function
 	{
 		$func_return = " AS \$body\$\n";
 	}
+	$func_return .= $param_comments;
 
 	# extract custom type declared in a stored procedure
 	my $create_type = '';

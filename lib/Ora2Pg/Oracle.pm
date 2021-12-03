@@ -1689,7 +1689,8 @@ sub _lookup_function
 	$fct_detail{declare} =~ s/PRAGMA\s+EXCEPTION_INIT[^;]*;//igs;
 
 	# Replace call to global variables declared in this package
-	foreach my $n (keys %{$self->{global_variables}}) {
+	foreach my $n (keys %{$self->{global_variables}})
+	{
 		next if (!$n || ($pname && (uc($n) !~ /^\U$pname\E\./)));
 		my $tmpname = $n;
 		$tmpname =~ s/^$pname\.//i;
