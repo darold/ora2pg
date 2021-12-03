@@ -2312,9 +2312,9 @@ sub replace_cursor_def
 	$str =~ s/\bSYS_REFCURSOR\b/REFCURSOR/isg;
 
 	# Replace CURSOR IS SELECT by CURSOR FOR SELECT
-	$str =~ s/\bCURSOR(\s+)IS(\s*)(\%ORA2PG_COMMENT\d+\%)?(\s*)SELECT/CURSOR$1FOR$2$3$4SELECT/isg;
+	$str =~ s/\bCURSOR(\s+)IS([\s\(]*)(\%ORA2PG_COMMENT\d+\%)?([\s\(]*)SELECT/CURSOR$1FOR$2$3$4SELECT/isg;
 	# Replace CURSOR (param) IS SELECT by CURSOR FOR SELECT
-	$str =~ s/\bCURSOR(\s*\([^\)]+\)\s*)IS(\s*)(\%ORA2PG_COMMENT\d+\%)?(\s*)SELECT/CURSOR$1FOR$2$3$4SELECT/isg;
+	$str =~ s/\bCURSOR(\s*\([^\)]+\)\s*)IS([\s\(]*)(\%ORA2PG_COMMENT\d+\%)?([\s\(]*)SELECT/CURSOR$1FOR$2$3$4SELECT/isg;
 
 	# Replace REF CURSOR as Pg REFCURSOR
 	$str =~ s/\bIS(\s*)REF\s+CURSOR/REFCURSOR/isg;
@@ -2331,6 +2331,7 @@ sub replace_cursor_def
 	$str =~ s/(OPEN\s+[^\(\s;]+)\s*\(\s*\)/$1/isg;
 
 	# Invert FOR CURSOR call
+	$str =~ s/\bFOR\s+CURSOR\s*\(([^;]+)?\);/CURSOR FOR $1;/igs;
 	$str =~ s/\bFOR\s+CURSOR(\s+)/CURSOR FOR$1/igs;
 
         return $str;
