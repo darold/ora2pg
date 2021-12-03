@@ -1576,7 +1576,7 @@ sub _lookup_function
 			$fct_detail{hasreturn} = 1;
 			$fct_detail{func_ret_type} = $self->_sql_type($2) || 'OPAQUE';
 		}
-		if ($fct_detail{declare} =~ s/(.*?)(USING|AS|IS)//is) {
+		if ($fct_detail{declare} =~ s/(.*?)(USING|AS|IS)(\s+(?!REF\s+))/$3/is) {
 			$fct_detail{args} .= $1 if (!$fct_detail{hasreturn});
 			$clause = $2;
 		}
@@ -1641,7 +1641,9 @@ sub _lookup_function
 		map { s/\)$//; } @{$fct_detail{param_types}};
 		map { s/\%ORA2PG_COMMENT\d+\%//gs; }  @{$fct_detail{param_types}};
 		map { s/^\s*[^\s]+\s+(IN|OUT|INOUT)/$1/i; s/^((?:IN|OUT|INOUT)\s+[^\s]+)\s+[^\s]*$/$1/i; s/\(.*//; s/\s*\)\s*$//; s/\s+$//; } @{$fct_detail{param_types}};
-	} else {
+	}
+	else
+	{
 		delete $fct_detail{func_ret_type};
 		delete $fct_detail{declare};
 		$fct_detail{code} = $plsql;
