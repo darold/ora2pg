@@ -644,7 +644,8 @@ sub is_reserved_words
 	if ($obj_name && grep(/^\Q$obj_name\E$/i, @KEYWORDS)) {
 		return 1 if (!grep(/^$self->{type}/, 'FUNCTION', 'PACKAGE', 'PROCEDURE') || grep(/^\Q$obj_name\E$/i, @FCT_TYPE_KEYWORDS));
 	}
-	if ($obj_name =~ /^\d+/) {
+	# columns starting by numbers need to be quoted unless it is an operation
+	if ($obj_name =~ /^\d+/ && $obj_name !~ /[\+\-\/\*]/) {
 		return 2;
 	}
 	if ($obj_name && grep(/^\Q$obj_name\E$/i, @SYSTEM_FIELDS)) {
