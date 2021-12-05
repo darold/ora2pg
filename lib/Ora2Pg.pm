@@ -13478,14 +13478,16 @@ sub _convert_type
 	my $type_name = '';
 
 	# Replace SUBTYPE declaration into DOMAIN declaration
-        if ($plsql =~ s/SUBTYPE\s+/CREATE DOMAIN /i) {
+        if ($plsql =~ s/SUBTYPE\s+/CREATE DOMAIN /i)
+	{
 		$plsql =~ s/\s+IS\s+/ AS /;
 		$plsql = Ora2Pg::PLSQL::replace_sql_type($plsql, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type}, $self->{varchar_to_text}, %{$self->{data_type}});
 		return $plsql;
 	}
 
 	$plsql =~ s/\s*INDEX\s+BY\s+([^\s;]+)//is;
-	if ($plsql =~ /TYPE\s+([^\s]+)\s+(IS|AS)\s*TABLE\s*OF\s+(.*)/is) {
+	if ($plsql =~ /TYPE\s+([^\s]+)\s+(IS|AS)\s*TABLE\s*OF\s+(.*)/is)
+	{
 		$type_name = $1;
 		my $type_of = $3;
 		$type_name =~ s/"//g;
@@ -13497,26 +13499,35 @@ sub _convert_type
 		$type_of =~ s/\s*NOT[\t\s]+NULL//is;
 		$type_of =~ s/\s*;\s*$//s;
 		$type_of =~ s/^\s+//s;
-		if ($type_of !~ /\s/s) { 
+		if ($type_of !~ /\s/s)
+		{ 
 			$type_of = Ora2Pg::PLSQL::replace_sql_type($type_of, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type}, $self->{varchar_to_text}, %{$self->{data_type}});
 			$self->{type_of_type}{'Nested Tables'}++;
 			$content .= "DROP TYPE IF EXISTS \L$type_name\E;\n" if ($self->{drop_if_exists});
 			$content = "CREATE TYPE \L$type_name\E AS (\L$internal_name\E $type_of\[\]);\n";
-		} else {
+		}
+		else
+		{
 			$self->{type_of_type}{'Associative Arrays'}++;
 			$self->logit("WARNING: this kind of Nested Tables are not supported, skipping type $1\n", 1);
 			return "${unsupported}CREATE$self->{create_or_replace} $plsql";
 		}
-	} elsif ($plsql =~ /TYPE\s+([^\s]+)\s+(AS|IS)\s*REF\s+CURSOR/is) {
+	}
+	elsif ($plsql =~ /TYPE\s+([^\s]+)\s+(AS|IS)\s*REF\s+CURSOR/is)
+	{
 		$self->logit("WARNING: TYPE REF CURSOR are not supported, skipping type $1\n", 1);
 		$plsql =~ s/\bREF\s+CURSOR/REFCURSOR/is;
 		$self->{type_of_type}{'Type Ref Cursor'}++;
 		return "${unsupported}CREATE$self->{create_or_replace} $plsql";
-	} elsif ($plsql =~ /TYPE\s+([^\s]+)\s+(AS|IS)\s*OBJECT\s*\((.*?)(TYPE BODY.*)/is) {
+	}
+	elsif ($plsql =~ /TYPE\s+([^\s]+)\s+(AS|IS)\s*OBJECT\s*\((.*?)(TYPE BODY.*)/is)
+	{
 		$self->{type_of_type}{'Type Boby'}++;
 		$self->logit("WARNING: TYPE BODY are not supported, skipping type $1\n", 1);
 		return "${unsupported}CREATE$self->{create_or_replace} $plsql";
-	} elsif ($plsql =~ /TYPE\s+([^\s]+)\s+(AS|IS)\s*(?:OBJECT|RECORD)\s*\((.*)\)([^\)]*)/is) {
+	}
+	elsif ($plsql =~ /TYPE\s+([^\s]+)\s+(AS|IS)\s*(?:OBJECT|RECORD)\s*\((.*)\)([^\)]*)/is)
+	{
 		$type_name = $1;
 		my $description = $3;
 		my $notfinal = $4;
@@ -13524,7 +13535,8 @@ sub _convert_type
 		if ($self->{export_schema} && !$self->{schema} && $owner) {
 			$type_name = "$owner.$type_name";
 		}
-		if ($description =~ /\s*(MAP MEMBER|MEMBER|CONSTRUCTOR)\s+(FUNCTION|PROCEDURE).*/is) {
+		if ($description =~ /\s*(MAP MEMBER|MEMBER|CONSTRUCTOR)\s+(FUNCTION|PROCEDURE).*/is)
+		{
 			$self->{type_of_type}{'Type with member method'}++;
 			$self->logit("WARNING: TYPE with CONSTRUCTOR and MEMBER FUNCTION are not supported, skipping type $type_name\n", 1);
 			return "${unsupported}CREATE$self->{create_or_replace} $plsql";
@@ -13533,14 +13545,17 @@ sub _convert_type
 		my $declar = Ora2Pg::PLSQL::replace_sql_type($description, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type}, $self->{varchar_to_text}, %{$self->{data_type}});
 		$type_name =~ s/"//g;
 		$type_name = $self->get_replaced_tbname($type_name);
-		if ($notfinal =~ /FINAL/is) {
+		if ($notfinal =~ /FINAL/is)
+		{
 			$content = "-- Inherited types are not supported in PostgreSQL, replacing with inherited table\n";
 			$content .= qq{CREATE TABLE $type_name (
 $declar
 );
 };
 			$self->{type_of_type}{'Type inherited'}++;
-		} else {
+		}
+		else
+		{
 			$content = qq{
 CREATE TYPE $type_name AS (
 $declar
@@ -13548,7 +13563,9 @@ $declar
 };
 			$self->{type_of_type}{'Object type'}++;
 		}
-	} elsif ($plsql =~ /TYPE\s+([^\s]+)\s+UNDER\s*([^\s]+)\s+\((.*)\)([^\)]*)/is) {
+	}
+	elsif ($plsql =~ /TYPE\s+([^\s]+)\s+UNDER\s*([^\s]+)\s+\((.*)\)([^\)]*)/is)
+	{
 		$type_name = $1;
 		my $type_inherit = $2;
 		my $description = $3;
@@ -13570,7 +13587,9 @@ $declar
 ) INHERITS (\L$type_inherit\E);
 };
 		$self->{type_of_type}{'Subtype'}++;
-	} elsif ($plsql =~ /TYPE\s+([^\s]+)\s+(AS|IS)\s*(VARRAY|VARYING ARRAY)\s*\((\d+)\)\s*OF\s*(.*)/is) {
+	}
+	elsif ($plsql =~ /TYPE\s+([^\s]+)\s+(AS|IS)\s*(VARRAY|VARYING ARRAY)\s*\((\d+)\)\s*OF\s*(.*)/is)
+	{
 		$type_name = $1;
 		my $size = $4;
 		my $tbname = $5;
@@ -13589,15 +13608,19 @@ $declar
 CREATE TYPE \L$type_name\E AS ($internal_name $declar\[$size\]);
 };
 		$self->{type_of_type}{Varrays}++;
-	} else {
+	}
+	else
+	{
 		$self->{type_of_type}{Unknown}++;
 		$plsql =~ s/;$//s;
 		$content = "${unsupported}CREATE$self->{create_or_replace} $plsql;"
 	}
 
-	if ($self->{force_owner}) {
+	if ($self->{force_owner})
+	{
 		$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
-		if ($owner) {
+		if ($owner)
+		{
 			$content .= "ALTER TYPE " . $self->quote_object_name($type_name)
 					. " OWNER TO " . $self->quote_object_name($owner) . ";\n";
 		}

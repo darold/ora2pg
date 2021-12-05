@@ -1836,9 +1836,12 @@ sub replace_out_param_call
 							elsif ($class->{function_metadata}{$sch}{$p}{$k}{metadata}{inout} > 1)
 							{
 								$class->{replace_out_params} = "_ora2pg_r RECORD;" if (!$class->{replace_out_params});
-								$replace_out_parm{$idx} = "SELECT * FROM $replace_out_parm{$idx} INTO _ora2pg_r;";
+								$replace_out_parm{$idx} = "SELECT * FROM $replace_out_parm{$idx} INTO _ora2pg_r;\n";
 								my $out_field_pos = 0;
-								foreach $param (@out_param) {
+								foreach $param (@out_param)
+								{
+									# remove use of named parameters
+									$param =~ s/.*=>\s*//;
 									$replace_out_parm{$idx} .= " $param := _ora2pg_r.$out_fields[$out_field_pos++];";
 								}
 								$replace_out_parm{$idx} =~ s/;$//s;
