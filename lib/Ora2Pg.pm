@@ -3787,6 +3787,16 @@ sub _export_table_data
 			}
 		}
 	}
+	else
+	{
+		my $head = "SET client_encoding TO '\U$self->{client_encoding}\E';\n";
+		$head .= "SET synchronous_commit TO off;\n" if (!$self->{synchronous_commit});
+		if ($self->{file_per_table}) {
+			$self->data_dump("$head$search_path\n",  $table);
+		} else {
+			$self->dump("\n$head$search_path\n");
+		}
+	}
 
 	# With partitioned table, load data direct from table partition
 	if (exists $self->{partitions}{$table})
@@ -3853,6 +3863,7 @@ sub _export_table_data
 				$self->rename_dump_partfile($dirprefix, $part_name, $table);
 			}
 		}
+
 		# Now load content of the default partition table
 		if ($self->{partitions_default}{$table})
 		{
