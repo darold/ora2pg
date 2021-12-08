@@ -1873,8 +1873,12 @@ sub _sql_type
 					}
 					elsif ($self->{pg_integer_type})
 					{
-						# Most of the time integer should be enought?
-						return $self->{default_numeric} || 'bigint';
+						# For number without precision default is to use bigint
+						# but mark the column for review (#) if it needs to be
+						# translated into numeric instead
+						my $need_review = '';
+						$need_review = '#' if ($self->{type} eq 'SHOW_COLUMN');
+						return $self->{default_numeric} || 'bigint' . $need_review;
 					}
 				}
 				else
@@ -1901,7 +1905,12 @@ sub _sql_type
 		else
 		{
 			if (($type eq 'NUMBER') && $self->{pg_integer_type}) {
-				return $self->{default_numeric};
+				# For number without precision default is to use bigint
+				# but mark the column for review (#) if it needs to be
+				# translated into numeric instead
+				my $need_review = '';
+				$need_review = '#' if ($self->{type} eq 'SHOW_COLUMN');
+				return $self->{default_numeric} . $need_review;
 			} else {
 				return $self->{data_type}{$type};
 			}
