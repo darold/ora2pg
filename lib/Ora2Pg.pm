@@ -15450,6 +15450,11 @@ sub _show_infos
 			}
 			my $warning = '';
 
+			# Add a warning when the table name is > 63 character
+			if (length($t) > 63) {
+				$warning .= " (>63)";
+			}
+
 			# Set the number of partition if any
 			if (exists $partitions{"\L$t\E"})
 			{
@@ -15536,6 +15541,9 @@ sub _show_infos
 					my $len = $d->[2];
 					if (($d->[1] =~ /char/i) && ($d->[7] > $d->[2])) {
 						$d->[2] = $d->[7];
+					}
+					if (length($d->[0]) > 63) {
+						$warning .= " (>63)";
 					}
 					$self->logit("\t$d->[0] : $d->[1]");
 					if ($d->[1] !~ /SDO_GEOMETRY/)
