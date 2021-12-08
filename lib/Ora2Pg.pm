@@ -983,6 +983,7 @@ sub _init
 
 	# Set default function to use for uuid generation
 	$self->{uuid_function} ||= 'uuid_generate_v4';
+	$self->{use_uuid} = 0;
 
 	# Set default cost unit value to 5 minutes
 	$self->{cost_unit_value} ||= 5;
@@ -7546,6 +7547,8 @@ sub export_table
 		}
 		$sql_output =~ s/#ORA2PGENUM#/$enum_str/s;
 
+		$sql_header .= "CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\";\n" if ($self->{use_uuid} && $sql_header !~ /CREATE EXTENSION .*uuid-ossp/is);
+
 		# For data export from foreign table, go to next table
 		if ($self->{oracle_fdw_data_export})
 		{
@@ -7808,7 +7811,8 @@ RETURNS text AS
 	if ($self->{type} ne 'FDW' and scalar keys %virtual_trigger_info > 0)
 	{
 		my $trig_out = '';
-		foreach my $tb (sort keys %virtual_trigger_info) {
+		foreach my $tb (sort keys %virtual_trigger_info)
+		{
 			my $tname = "virt_col_${tb}_trigger";
 			$tname =~ s/\./_/g;
 			$tname = $self->quote_object_name($tname);
@@ -7835,9 +7839,12 @@ CREATE TRIGGER $tname
 };
 		}
 		$self->_restore_comments(\$trig_out);
-		if (!$self->{file_per_constraint}) {
+		if (!$self->{file_per_constraint})
+		{
 			$self->dump($trig_out);
-		} else {
+		}
+		else
+		{
 			my $fhdl = undef;
 			$self->logit("Dumping virtual column triggers to one separate file : VIRTUAL_COLUMNS_$self->{output}\n", 1);
 			$fhdl = $self->open_export_file("VIRTUAL_COLUMNS_$self->{output}");

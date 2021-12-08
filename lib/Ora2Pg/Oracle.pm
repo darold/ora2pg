@@ -1817,6 +1817,7 @@ sub _sql_type
 	}
 	elsif ( $type =~ /RAW/ )
 	{
+		$self->{use_uuid} = 1 if (($len && exists $self->{data_type}{"$type($len)"}) || ($default =~ /(SYS_GUID|$self->{uuid_function})/i));
 		return $self->{data_type}{"$type($len)"} if ($len && exists $self->{data_type}{"$type($len)"});
 		return 'uuid' if ($default =~ /(SYS_GUID|$self->{uuid_function})/i);
 	}
