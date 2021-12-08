@@ -6093,13 +6093,15 @@ sub export_type
 	# Code to use to find type parser issues, it load a file
 	# containing the untouched PL/SQL code from Oracle type
 	#---------------------------------------------------------
-	if ($self->{input_file}) {
+	if ($self->{input_file})
+	{
 		$self->{types} = ();
 		$self->logit("Reading input code from file $self->{input_file}...\n", 1);
 		my $content = $self->read_input_file($self->{input_file});
 		$self->_remove_comments(\$content);
 		my $i = 0;
-		foreach my $l (split(/;/, $content)) {
+		foreach my $l (split(/;/, $content))
+		{
 			chomp($l);
 			next if ($l =~ /^[\s\/]*$/s);
 			my $cmt = '';
@@ -6118,7 +6120,8 @@ sub export_type
 	}
 	#--------------------------------------------------------
 	my $i = 1;
-	foreach my $tpe (sort {$a->{pos} <=> $b->{pos} } @{$self->{types}}) {
+	foreach my $tpe (sort {$a->{pos} <=> $b->{pos} } @{$self->{types}})
+	{
 		$self->logit("Dumping type $tpe->{name}...\n", 1);
 		if (!$self->{quiet} && !$self->{debug}) {
 			print STDERR $self->progress_bar($i, $#{$self->{types}}+1, 25, '=', 'types', "generating $tpe->{name}" ), "\r";
@@ -13497,7 +13500,7 @@ sub _convert_type
 	}
 
 	$plsql =~ s/\s*INDEX\s+BY\s+([^\s;]+)//is;
-	if ($plsql =~ /TYPE\s+([^\s]+)\s+(IS|AS)\s*TABLE\s*OF\s+(.*)/is)
+	if ($plsql =~ /TYPE\s+([^\s]+)\s+(IS|AS)\s+TABLE\s+OF\s+(.*)/is)
 	{
 		$type_name = $1;
 		my $type_of = $3;
@@ -13507,6 +13510,8 @@ sub _convert_type
 			$type_name = "$owner.$type_name";
 		}
 		$internal_name  =~ s/^[^\.]+\.//;
+		$type_of =~ s/\s*\(\s*/\(/;
+		$type_of =~ s/\s*\)\s*/\)/;
 		$type_of =~ s/\s*NOT[\t\s]+NULL//is;
 		$type_of =~ s/\s*;\s*$//s;
 		$type_of =~ s/^\s+//s;
