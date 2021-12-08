@@ -15522,6 +15522,7 @@ sub _show_infos
 					$d->[2] =~ s/\D//g;
 					my $type1 = $self->_sql_type($d->[1], $d->[2], $d->[5], $d->[6], $d->[4]);
 					$type1 = "$d->[1], $d->[2]" if (!$type1);
+					$warning .= " (numeric?)" if ($type1 =~ s/#$//);
 
 					# Check if we need auto increment
 					if ($d->[12] eq 'auto_increment' || $d->[12] eq '1')
@@ -15544,6 +15545,9 @@ sub _show_infos
 					}
 					if (length($d->[0]) > 63) {
 						$warning .= " (>63)";
+					}
+					if ($d->[1] eq 'DATE') {
+						$warning .= " (date?)";
 					}
 					$self->logit("\t$d->[0] : $d->[1]");
 					if ($d->[1] !~ /SDO_GEOMETRY/)
