@@ -9322,7 +9322,7 @@ sub _create_indexes
 		{
 			for ($i = 0; $i <= $#{$indexes{$idx}}; $i++)
 			{
-				if ( ($indexes{$idx}->[$i] =~ /\s/) && ($indexes{$idx}->[$i] !~ /^[^\.\s]+\s+DESC$/i) ) {
+				if ( ($indexes{$idx}->[$i] =~ /[\s\-\+\/\*]/) && ($indexes{$idx}->[$i] !~ /^[^\.\s]+\s+DESC$/i) ) {
 					$indexes{$idx}->[$i] = '(' . $indexes{$idx}->[$i] . ')';
 				}
 			}
