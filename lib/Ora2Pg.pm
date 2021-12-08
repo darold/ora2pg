@@ -2407,7 +2407,7 @@ sub _tables
 
 	if ($self->{type} eq 'TABLE')
 	{
-		$self->logit("Retrieving table partitioning information...\n", 0);
+		$self->logit("Retrieving table partitioning information...\n", 1);
 		%{ $self->{partitions_list} } = $self->_get_partitioned_table();
 	}
 }
@@ -9928,7 +9928,7 @@ sub _create_check_constraint
 			}
 			if (!$converted_as_boolean)
 			{
-				$chkconstraint = Ora2Pg::PLSQL::replace_oracle_function($self, $chkconstraint);
+				$chkconstraint = Ora2Pg::PLSQL::convert_plsql_code($self, $chkconstraint);
 				$out .= "ALTER TABLE $table ADD CONSTRAINT $k CHECK ($chkconstraint)$validate;\n";
 			}
 		}
