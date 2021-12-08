@@ -14984,12 +14984,25 @@ sub _show_infos
 				my $id = 0;
 				my $total_check = 0;
 				my $total_row_num = 0;
+				my $rdbms_error_table = 0;
+				my $quartz_scheduler = 0;
+				my @maxtablen = ();
+				my @maxcollen = ();
 				# Set the table information for each class found
 				foreach my $t (sort keys %{$self->{tables}})
 				{
+					my $tbname = $t;
+					$tbname =~ s/.*\.//;
+
 					# Set the total number of rows
 					$total_row_num += $self->{tables}{$t}{table_info}{num_rows};
 
+					# Look if this is a RDBMS table
+					$rdbms_error_table++ if ($tbname =~ /^ERR\$_/i);
+					# Object name too long
+					push(@maxtablen, $t) if (length($tbname) > 63);
+					# Look if this is a Quartz Scheduler table
+					$quartz_scheduler++ if ($tbname =~ /^QRTZ_/i);
 					# Look at reserved words if tablename is found
 					my $r = $self->is_reserved_words($t);
 					if (($r > 0) && ($r != 3))
@@ -15000,6 +15013,8 @@ sub _show_infos
 					# Get fields informations
 					foreach my $k (sort {$self->{tables}{$t}{column_info}{$a}[11] <=> $self->{tables}{$t}{column_info}{$a}[11]} keys %{$self->{tables}{$t}{column_info}})
 					{
+						# Column name too long
+						push(@maxcollen, "$t.$self->{tables}{$t}{column_info}{$k}[0]") if (length($self->{tables}{$t}{column_info}{$k}[0]) > 63);
 						$r = $self->is_reserved_words($self->{tables}{$t}{column_info}{$k}[0]);
 						if (($r > 0) && ($r != 3))
 						{
@@ -15080,8 +15095,15 @@ sub _show_infos
 					if ($self->{estimate_cost}) {
 						$report_info{'Objects'}{$typ}{'cost_value'} += (scalar keys %encrypted_column) * $Ora2Pg::PLSQL::OBJECT_SCORE{'ENCRYPTED COLUMN'};
 					}
+					$report_info{'Objects'}{$typ}{'comment'} .= "Table(s) name too long: " . ($#maxtablen+1) . "\n" if ($#maxtablen >= 0);
+					$report_info{'Objects'}{$typ}{'detail'} .= "List of table(s) name too long:\n" . join(",\n", @maxtablen) . "\n" if ($#maxtablen >= 0);
+					$report_info{'Objects'}{$typ}{'comment'} .= "Column(s) name too long: " . ($#maxcollen+1) . "\n" if ($#maxcollen >= 0);
+					$report_info{'Objects'}{$typ}{'detail'} .= "List of column(s) name too long:\n" . join(",\n", @maxcollen) . "\n" if ($#maxcollen >= 0);
+					$report_info{'Objects'}{$typ}{'comment'} .= "RDBMS_ERROR is used on $rdbms_error_table tables.\n" if ($rdbms_error_table);
+					$report_info{'Objects'}{$typ}{'comment'} .= "Quartz Scheduler looks to be used.\n" if ($quartz_scheduler);
 				}
-				if (scalar keys %{$self->{identity_info}} > 0) {
+				if (scalar keys %{$self->{identity_info}} > 0)
+				{
 					$report_info{'Objects'}{$typ}{'comment'} .= "\n" . (scalar keys %{$self->{identity_info}}) . " identity column(s).\n";
 					$report_info{'Objects'}{$typ}{'comment'} .= " Identity columns are fully supported since PG10.\n";
 				}
