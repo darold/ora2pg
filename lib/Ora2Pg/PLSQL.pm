@@ -615,6 +615,17 @@ sub remove_named_parameters
 	return $str;
 }
 
+sub set_interval_value
+{
+	my $num = shift();
+
+	if ($num !~ /\./) {
+		return "'$num days'";
+	} else {
+		return "'" . int($num*86400) . " seconds'";
+	}
+}
+
 =head2 plsql_to_plpgsql
 
 This function return a PLSQL code translated to PLPGSQL code
@@ -640,9 +651,8 @@ sub plsql_to_plpgsql
 	# Remove the SYS schema from calls
 	$str =~ s/\bSYS\.//igs;
 
-	# Replace sysdate +/- N by localtimestamp - 1 day intervel
-	$str =~ s/\bSYSDATE\s*(\+|\-)\s*(\d+)/$conv_current_time $1 interval '$2 days'/igs;
-
+	# Replace sysdate +/- N by localtimestamp - N day interval
+	$str =~ s/\bSYSDATE\s*(\+|\-)\s*([\d\.]+)/"$conv_current_time $1 interval " . set_interval_value($2)/iges;
 	# Replace special case : (sysdate - to_date('01-Jan-1970', 'dd-Mon-yyyy'))*24*60*60
 	# with: (extract(epoch from now())
 	# When translating from code
