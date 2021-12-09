@@ -1390,9 +1390,9 @@ sub convert_regex_substr
 	my $mod = '';
 	if ($#params == 4) {
 		# Restore constant string to look into date format
-		while ($params[4] =~ s/\?TEXTVALUE(\d+)\?/$class->{text_values}{$1}/is) {
-			delete $class->{text_values}{$1};
-		}
+		while ($params[4] =~ s/\?TEXTVALUE(\d+)\?/$class->{text_values}{$1}/igs) {};
+		#delete $class->{text_values}{$1};
+		#
 		$params[4] =~ s/'//g;
 		$mod = $params[4] if ($params[4] ne 'g');
 	}
@@ -1415,9 +1415,8 @@ sub convert_from_tz
 	my ($class, $date) = @_;
 
 	# Restore constant string to look into date format
-	while ($date =~ s/\?TEXTVALUE(\d+)\?/$class->{text_values}{$1}/is) {
-		delete $class->{text_values}{$1};
-	}
+	while ($date =~ s/\?TEXTVALUE(\d+)\?/$class->{text_values}{$1}/igs) {};
+	#delete $class->{text_values}{$1};
 
 	my $tz = '00:00';
 	if ($date =~ /^[^']*'([^']+)'\s*,\s*'([^']+)'/) {
@@ -1440,7 +1439,7 @@ sub convert_from_tz
 	}
 
 	# Replace constant strings
-	while ($date =~ s/('[^']+')/\?TEXTVALUE$class->{text_values_pos}\?/s) {
+	while ($date =~ s/('[^']+')/\?TEXTVALUE$class->{text_values_pos}\?/is) {
 		$class->{text_values}{$class->{text_values_pos}} = $1;
 		$class->{text_values_pos}++;
 	}
@@ -1453,9 +1452,7 @@ sub convert_date_format
 	my ($class, $fields, @strings) = @_;
 
 	# Restore constant string to look into date format
-	while ($fields =~ s/\?TEXTVALUE(\d+)\?/$class->{text_values}{$1}/is) {
-		delete $class->{text_values}{$1};
-	}
+	while ($fields =~ s/\?TEXTVALUE(\d+)\?/$class->{text_values}{$1}/igs) {};
 
 	for ($i = 0; $i <= $#strings; $i++) {
 		$fields =~ s/\%\%string$i\%\%/'$strings[$i]'/;
@@ -1511,7 +1508,7 @@ sub regex_flags
 	if ($modifier =~ /\?TEXTVALUE(\d+)\?/)
 	{
 		$nconst = $1;
-		$modifier =~ s/\?TEXTVALUE$nconst\?/$class->{text_values}{$nconst}/;
+		$modifier =~ s/\?TEXTVALUE$nconst\?/$class->{text_values}{$nconst}/igs;
 	}
 	# These flags have the same behavior
 	if ($modifier =~ /([icx]+)/) {
@@ -2071,7 +2068,7 @@ sub raise_output
 	my @params = ();
 	my @pattern = ();
 	foreach my $el (@strings) {
-		$el =~ s/\?TEXTVALUE(\d+)\?/$class->{text_values}{$1}/gs;
+		$el =~ s/\?TEXTVALUE(\d+)\?/$class->{text_values}{$1}/igs;
 		$el =~ s/ORA2PG_ESCAPE2_QUOTE/''/gs;
 		$el =~ s/ORA2PG_ESCAPE1_QUOTE'/\\'/gs;
 		if ($el =~ /^\s*'(.*)'\s*$/s) {
@@ -3016,9 +3013,7 @@ sub _mysql_dateformat_to_pgsql
 # Not supported:
 # %X	Year for the week where Sunday is the first day of the week, numeric, four digits; used with %V
 
-	if ($format =~ s/\?TEXTVALUE(\d+)\?/$class->{text_values}{$1}/) {
-		delete $class->{text_values}{$1};
-	}
+	$format =~ s/\?TEXTVALUE(\d+)\?/$class->{text_values}{$1}/igs;
 
 	$format =~ s/\%a/Dy/g;
 	$format =~ s/\%b/Mon/g;
@@ -3052,7 +3047,7 @@ sub _mysql_dateformat_to_pgsql
 	$format =~ s/\%(\d+)/$1/g;
 
 	# Replace constant strings
-	if ($format =~ s/('[^']+')/\?TEXTVALUE$class->{text_values_pos}\?/s) {
+	if ($format =~ s/('[^']+')/\?TEXTVALUE$class->{text_values_pos}\?/is) {
 		$class->{text_values}{$class->{text_values_pos}} = $1;
 		$class->{text_values_pos}++;
 	}

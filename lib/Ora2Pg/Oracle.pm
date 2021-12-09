@@ -1556,7 +1556,6 @@ sub _lookup_function
 			}
 			$fct_detail{before} = $cmt;
 		}
-
 		if ($fct_detail{args} =~ /\b(RETURN|IS|AS)\b/is) {
 			$fct_detail{args} = '()';
 		}
@@ -1566,7 +1565,7 @@ sub _lookup_function
 
 		$fct_detail{immutable} = 1 if ($fct_detail{declare} =~ s/\bDETERMINISTIC\b//is);
 		$fct_detail{setof} = 1 if ($fct_detail{declare} =~ s/\bPIPELINED\b//is);
-		$fct_detail{declare} =~ s/\bDEFAULT/:=/igs;
+		$fct_detail{declare} =~ s/\bDEFAULT\b/:=/igs;
 		if ($fct_detail{declare} =~ s/(.*?)\bRETURN\s+self\s+AS RESULT IS//is) {
 			$fct_detail{args} .= $1;
 			$fct_detail{hasreturn} = 1;

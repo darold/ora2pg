@@ -15185,12 +15185,14 @@ sub _show_infos
 				foreach my $proc (keys %{$procedures})
 				{
 					$total_size += length($procedures->{$proc}{text});
-					if ($self->{estimate_cost}) {
+					if ($self->{estimate_cost})
+					{
 						my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($self, $procedures->{$proc}{text});
 						$report_info{'Objects'}{$typ}{'cost_value'} += $cost;
 						$report_info{'Objects'}{$typ}{'detail'} .= "\L$proc: $cost\E\n";
 						$report_info{full_function_details}{"\L$proc\E"}{count} = $cost;
-						foreach my $d (sort { $cost_detail{$b} <=> $cost_detail{$a} } keys %cost_detail) {
+						foreach my $d (sort { $cost_detail{$b} <=> $cost_detail{$a} } keys %cost_detail)
+						{
 							next if (!$cost_detail{$d});
 							$report_info{full_function_details}{"\L$proc\E"}{info} .= "\t$d => $cost_detail{$d}";
 							$report_info{full_function_details}{"\L$proc\E"}{info} .= " (cost: ${$uncovered_score}{$d})" if (${$uncovered_score}{$d});
@@ -15216,6 +15218,7 @@ sub _show_infos
 					$self->_remove_comments(\$self->{packages}{$pkg}{text});
 					$self->{comment_values} = ();
 					$self->{text_values} = ();
+					$self->{text_values_pos} = 0;
 					my @codes = split(/CREATE(?: OR REPLACE)?(?: EDITIONABLE| NONEDITIONABLE)? PACKAGE\s+/i, $self->{packages}{$pkg}{text});
 					foreach my $txt (@codes)
 					{
