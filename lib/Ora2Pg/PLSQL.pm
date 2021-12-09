@@ -769,6 +769,8 @@ sub plsql_to_plpgsql
 		$str =~ s/\bSELECT\b((?![^;]+\bINTO\b)[^;]+;)/PERFORM$1/isg;
 		$str =~ s/(AS|IS|FOR|UNION ALL|UNION|MINUS|INTERSECT|\()(\s*)(\%ORA2PG_COMMENT\d+\%)?(\s*)PERFORM/$1$2$3$4SELECT/isg;
 		$str =~ s/(INSERT\s+INTO\s+[^;]+\s+)PERFORM/$1SELECT/isg;
+		# Restore the SELECT from a CTE
+		$str =~ s/(\)\s*)PERFORM\b/$1SELECT/isg;
 	}
 
 	# Change nextval on sequence
