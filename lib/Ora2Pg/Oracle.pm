@@ -1567,11 +1567,11 @@ sub _lookup_function
 		$fct_detail{immutable} = 1 if ($fct_detail{declare} =~ s/\bDETERMINISTIC\b//is);
 		$fct_detail{setof} = 1 if ($fct_detail{declare} =~ s/\bPIPELINED\b//is);
 		$fct_detail{declare} =~ s/\bDEFAULT/:=/igs;
-		if ($fct_detail{declare} =~ s/(.*?)RETURN\s+self\s+AS RESULT IS//is) {
+		if ($fct_detail{declare} =~ s/(.*?)\bRETURN\s+self\s+AS RESULT IS//is) {
 			$fct_detail{args} .= $1;
 			$fct_detail{hasreturn} = 1;
 			$fct_detail{func_ret_type} = 'OPAQUE';
-		} elsif ($fct_detail{declare} =~ s/(.*?)RETURN\s+([^\s]+)//is) {
+		} elsif ($fct_detail{declare} =~ s/(.*?)\bRETURN\s+([^\s]+)//is) {
 			$fct_detail{args} .= $1;
 			$fct_detail{hasreturn} = 1;
 			$fct_detail{func_ret_type} = $self->_sql_type($2) || 'OPAQUE';
