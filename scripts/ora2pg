@@ -835,6 +835,28 @@ import_constraints () {
 		fi
 	fi
 
+	if [ -r "$NAMESPACE/schema/tables/FTS_INDEXES_table.sql" ]; then
+		if confirm "Would you like to import FTS indexes from $NAMESPACE/schema/tables/FTS_INDEXES_table.sql?" ; then
+			if [ -z "$IMPORT_JOBS" ]; then
+				echo "Running: psql$DB_HOST$DB_PORT -U $DB_OWNER -d $DB_NAME -f $NAMESPACE/schema/tables/FTS_INDEXES_table.sql"
+				if [ $DEBUG -eq 0 ]; then
+					psql$DB_HOST$DB_PORT -U $DB_OWNER -d $DB_NAME -f $NAMESPACE/schema/tables/FTS_INDEXES_table.sql
+					if [ $? -ne 0 ]; then
+						die "can not import FTS indexes."
+					fi
+				fi
+			else
+				echo "Running: ora2pg -c config/ora2pg.conf -t LOAD -i $NAMESPACE/schema/tables/FTS_INDEXES_table.sql"
+				if [ $DEBUG -eq 0 ]; then
+					ora2pg$IMPORT_JOBS -c config/ora2pg.conf -t LOAD -i $NAMESPACE/schema/tables/FTS_INDEXES_table.sql
+					if [ $? -ne 0 ]; then
+						die "can not import FTS indexes."
+					fi
+				fi
+			fi
+		fi
+	fi
+
 	if [ -r "$NAMESPACE/schema/triggers/trigger.sql" ]; then
 		if confirm "Would you like to import TRIGGER from $NAMESPACE/schema/triggers/trigger.sql?" ; then
 			echo "Running: psql --single-transaction $DB_HOST$DB_PORT -U $DB_OWNER -d $DB_NAME -f $NAMESPACE/schema/triggers/trigger.sql"
