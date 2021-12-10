@@ -2890,7 +2890,7 @@ sub read_schema_from_file
 				# We only take care of pctfree upper than the default
 				if ($1 > 10) {
 					# fillfactor must be >= 10
-					$self->{tables}{$tb_name}{table_info}{fillfactor} = 100 - min(90, $1);
+					$self->{tables}{$tb_name}{table_info}{fillfactor} = 100 - &Ora2Pg::Oracle::min(90, $1);
 				}
 			}
 			if ($tb_param =~ /\bNOLOGGING\b/is) {
@@ -18959,13 +18959,6 @@ sub _make_WITH
 	$WITH .= 'WITH (' . join(",",@withs) . ')';
     }
     return $WITH;
-}
-
-sub min
-{
-	return $_[0] if ($_[0] < $_[1]);
-
-	return $_[1];
 }
 
 sub _create_foreign_server

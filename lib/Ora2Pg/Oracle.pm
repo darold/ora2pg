@@ -319,6 +319,15 @@ sub _get_encoding
 	return ($ora_encoding, $charset, $pg_encoding, $nls_timestamp_format, $nls_date_format);
 }
 
+# Return the lower value between two
+sub min
+{
+	return $_[0] if ($_[0] < $_[1]);
+
+	return $_[1];
+}
+
+
 =head2 _table_info
 
 This function retrieves all MySQL tables information.
