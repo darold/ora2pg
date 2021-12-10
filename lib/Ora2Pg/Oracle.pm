@@ -6,6 +6,7 @@ use strict;
 use POSIX qw(locale_h);
 use Benchmark;
 use DBI;
+use Encode;
 
 #set locale to LC_NUMERIC C
 setlocale(LC_NUMERIC,"C");
