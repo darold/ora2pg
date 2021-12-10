@@ -308,6 +308,7 @@ CONFIGURATION
         -q | --quiet      : Disable progress bar.
         -r | --relative   : use \ir instead of \i in the psql scripts generated.
         -s | --source DSN : Allow to set the Oracle DBI datasource.
+        -S | --scn    SCN : Allow to set the Oracle System Change Number (SCN)
         -t | --type export: Set the export type. It will override the one
                             given in the configuration file (TYPE).
         -T | --temp_dir dir: Set a distinct temporary directory when two
@@ -3181,6 +3182,36 @@ CONFIGURATION
 
     It is possible to parallelize data validation by using -P option or the
     corresponding configuration directive PARALLEL_TABLES in ora2pg.conf.
+
+  Use of System Change Number (SCN)
+    Ora2Pg is able to export data as of a specific SCN. You can set it at
+    command line using the -S or --scn option. You can give a specific SCN
+    or if you want to use the current SCN at first connection time set the
+    value to 'current'. In this last case the connection user has the
+    "SELECT ANY DICTIONARY" or the "SELECT_CATALOG_ROLE" role, the current
+    SCN is looked at the v$database view.
+
+    Example of use:
+
+        ora2pg -c ora2pg.conf -t COPY --scn 16605281
+
+    This adds the following clause to the query used to retrieve data for
+    example:
+
+        AS OF SCN 16605281
+
+    You can also use th --scn option to use the Oracle flashback capabality
+    by specifying a timestamp expression instead of a SCN. For example:
+
+        ora2pg -c ora2pg.conf -t COPY --scn "TO_TIMESTAMP('2021-12-01 00:00:00', 'YYYY-MM-DD HH:MI:SS')"
+
+    This will add the following clause to the query used to retrieve data:
+
+        AS OF TIMESTAMP TO_TIMESTAMP('2021-12-01 00:00:00', 'YYYY-MM-DD HH:MI:SS')
+
+    or for example to only retrive yesterday's data:
+
+        ora2pg -c ora2pg.conf -t COPY --scn "SYSDATE - 1"
 
 SUPPORT
   Author / Maintainer

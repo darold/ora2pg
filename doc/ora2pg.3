@@ -133,7 +133,7 @@
 .\" ========================================================================
 .\"
 .IX Title "ORA2PG 1"
-.TH ORA2PG 1 "2021-11-15" "perl v5.30.0" "User Contributed Perl Documentation"
+.TH ORA2PG 1 "2021-12-10" "perl v5.30.0" "User Contributed Perl Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -461,6 +461,7 @@ Usage: ora2pg [\-dhpqv \-\-estimate_cost \-\-dump_as_html] [\-\-option value]
 \&    \-q | \-\-quiet      : Disable progress bar.
 \&    \-r | \-\-relative   : use \eir instead of \ei in the psql scripts generated.
 \&    \-s | \-\-source DSN : Allow to set the Oracle DBI datasource.
+\&    \-S | \-\-scn    SCN : Allow to set the Oracle System Change Number (SCN)
 \&    \-t | \-\-type export: Set the export type. It will override the one
 \&                        given in the configuration file (TYPE).
 \&    \-T | \-\-temp_dir dir: Set a distinct temporary directory when two
@@ -3392,6 +3393,44 @@ to the output file for your analyze.
 .PP
 It is possible to parallelize data validation by using \-P option or the
 corresponding configuration directive \s-1PARALLEL_TABLES\s0 in ora2pg.conf.
+.SS "Use of System Change Number (\s-1SCN\s0)"
+.IX Subsection "Use of System Change Number (SCN)"
+Ora2Pg is able to export data as of a specific \s-1SCN.\s0 You can set it at command
+line using the \-S or \-\-scn option. You can give a specific \s-1SCN\s0 or if you want
+to use the current \s-1SCN\s0 at first connection time set the value to 'current'.
+In this last case the connection user has the \*(L"\s-1SELECT ANY DICTIONARY\*(R"\s0 or the
+\&\*(L"\s-1SELECT_CATALOG_ROLE\*(R"\s0 role, the current \s-1SCN\s0 is looked at the v$database view.
+.PP
+Example of use:
+.PP
+.Vb 1
+\&    ora2pg \-c ora2pg.conf \-t COPY \-\-scn 16605281
+.Ve
+.PP
+This adds the following clause to the query used to retrieve data for example:
+.PP
+.Vb 1
+\&    AS OF SCN 16605281
+.Ve
+.PP
+You can also use th \-\-scn option to use the Oracle flashback capabality by
+specifying a timestamp expression instead of a \s-1SCN.\s0 For example:
+.PP
+.Vb 1
+\&    ora2pg \-c ora2pg.conf \-t COPY \-\-scn "TO_TIMESTAMP(\*(Aq2021\-12\-01 00:00:00\*(Aq, \*(AqYYYY\-MM\-DD HH:MI:SS\*(Aq)"
+.Ve
+.PP
+This will add the following clause to the query used to retrieve data:
+.PP
+.Vb 1
+\&    AS OF TIMESTAMP TO_TIMESTAMP(\*(Aq2021\-12\-01 00:00:00\*(Aq, \*(AqYYYY\-MM\-DD HH:MI:SS\*(Aq)
+.Ve
+.PP
+or for example to only retrive yesterday's data:
+.PP
+.Vb 1
+\&    ora2pg \-c ora2pg.conf \-t COPY \-\-scn "SYSDATE \- 1"
+.Ve
 .SH "SUPPORT"
 .IX Header "SUPPORT"
 .SS "Author / Maintainer"

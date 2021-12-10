@@ -193,6 +193,17 @@ sub _db_connection
 	$sth->execute or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
 	$sth->finish;
 
+	# Get the current SCN to get data if required
+	if (grep(/^$self->{type}$/i, 'INSERT', 'COPY', 'TEST_DATA') && lc($self->{oracle_scn}) eq 'current')
+	{
+		$sth = $dbh->prepare("SELECT CURRENT_SCN FROM v\$database") or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
+		$sth->execute or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
+		my @row = $sth->fetchrow();
+		$self->{oracle_scn} = $row[0];
+		$sth->finish;
+	}
+	$self->logit("Using SCN: $self->{oracle_scn}\n", 1) if ($self->{oracle_scn});
+
 	# Force execution of initial command
 	$self->_ora_initial_command($dbh);
 

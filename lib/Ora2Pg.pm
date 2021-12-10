@@ -928,6 +928,9 @@ sub _init
 	# oracle_fdw foreign server
 	$self->{fdw_server} = '';
 
+	# As of SCN
+	$self->{oracle_scn} = '';
+
 	# Initialyze following configuration file
 	foreach my $k (sort keys %AConfig)
 	{
@@ -10417,9 +10420,9 @@ END;
 	if ($part_name)
 	{
 		if ($is_subpart) {
-			$alias = "SUBPARTITION(" . $self->quote_object_name($part_name) . ") a";
+			$realtable .= " SUBPARTITION(" . $self->quote_object_name($part_name) . ")";
 		} else {
-			$alias = "PARTITION(" . $self->quote_object_name($part_name) . ") a";
+			$realtable .= " PARTITION(" . $self->quote_object_name($part_name) . ")";
 		}
 	}
 	# Force parallelism on Oracle side
@@ -10431,7 +10434,13 @@ END;
 			$str =~ s#^SELECT #SELECT /*+ FULL(a) PARALLEL(a, $self->{default_parallelism_degree}) */ #;
 		}
 	}
-	$str .= " FROM $realtable $alias";
+	$str .= " FROM $realtable";
+	if ($self->{oracle_scn} =~ /^\d+$/) {
+		$str .= " AS OF SCN $self->{oracle_scn}";
+	} elsif ($self->{oracle_scn}) {
+		$str .= " AS OF TIMESTAMP $self->{oracle_scn}";
+	}
+	$str .= " $alias";
 
 	if (exists $self->{where}{"\L$table\E"} && $self->{where}{"\L$table\E"})
 	{
