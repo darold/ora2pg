@@ -5981,6 +5981,10 @@ sub export_package
 			}
 			$self->_remove_comments(\$self->{packages}{$pkg}{text});
 
+			# Remove trailing comment and space
+			$self->{packages}{$pkg}{text} =~ s/(\s*\%ORA2PG_COMMENT\d+\%)\s*$//s;
+			$self->{packages}{$pkg}{text} =~ s/\s*$//s;
+
 			# Normalyse package creation call
 			$self->{packages}{$pkg}{text} =~ s/CREATE(?:\s+OR\s+REPLACE)?(?:\s+EDITIONABLE|\s+NONEDITIONABLE)?\s+PACKAGE\s+/CREATE OR REPLACE PACKAGE /is;
 			if ($self->{estimate_cost})
