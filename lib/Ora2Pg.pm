@@ -12978,13 +12978,13 @@ sub _convert_function
 	{
 		if ($self->{export_schema} && !$self->{schema})
 		{
-			$function = "\n${fct_warning}CREATE$self->{create_or_replace} $type " . $self->quote_object_name("$owner.$fname") . " $fct_detail{args}";
+			$function = "\n$create_type\n\n${fct_warning}CREATE$self->{create_or_replace} $type " . $self->quote_object_name("$owner.$fname") . " $fct_detail{args}";
 			$name =  $self->quote_object_name("$owner.$fname");
 			$self->logit("Parsing function " . $self->quote_object_name("$owner.$fname") . "...\n", 1);
 		}
 		elsif ($self->{export_schema} && $self->{schema})
 		{
-			$function = "\n${fct_warning}CREATE$self->{create_or_replace} $type " . $self->quote_object_name("$self->{schema}.$fname") . " $fct_detail{args}";
+			$function = "\n$create_type\n\n${fct_warning}CREATE$self->{create_or_replace} $type " . $self->quote_object_name("$self->{schema}.$fname") . " $fct_detail{args}";
 			$name =  $self->quote_object_name("$self->{schema}.$fname");
 			$self->logit("Parsing function " . $self->quote_object_name("$self->{schema}.$fname") . "...\n", 1);
 		}
