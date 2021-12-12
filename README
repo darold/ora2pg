@@ -358,6 +358,8 @@ CONFIGURATION
                             transformed data. Nothing will be written.
        --blob_to_lo       : export BLOB as large objects, can only be used with
                             action SHOW_COLUMN, TABLE and INSERT.
+       --cdc_ready        : use current SCN per table to extract and register
+                            them into a file named TABLES_SCN.log
 
     See full documentation at https://ora2pg.darold.net/ for more help or
     see manpage with 'man ora2pg'.
@@ -3212,6 +3214,13 @@ CONFIGURATION
     or for example to only retrive yesterday's data:
 
         ora2pg -c ora2pg.conf -t COPY --scn "SYSDATE - 1"
+
+  Change Data Capture (CDC)
+    Ora2Pg do not have such feature which allow to import data and to only
+    apply changes after the first import. But you can use the --cdc_ready
+    option to export data with registration of the SCN at the time of the
+    table export. All SCN per tables are written to a file name
+    TABLES_SCN.log. This SCN can be used with a CDC tool.
 
 SUPPORT
   Author / Maintainer

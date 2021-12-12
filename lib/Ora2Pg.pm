@@ -928,8 +928,10 @@ sub _init
 	# oracle_fdw foreign server
 	$self->{fdw_server} = '';
 
-	# As of SCN
-	$self->{oracle_scn} = '';
+	# AS OF SCN related variables
+	$self->{oracle_scn} = $options{oracle_scn} || '';
+	$self->{current_oracle_scn} = ();
+	$self->{cdc_ready} = $options{cdc_ready} || '';
 
 	# Initialyze following configuration file
 	foreach my $k (sort keys %AConfig)
@@ -8338,6 +8340,17 @@ sub _get_sql_statements
 			# This hash will be used in function _howto_get_data()
 			%{$self->{colinfo}} = $self->_column_attributes($table, $self->{schema}, 'TABLE');
 
+			# Get the current SCN before getting data for this table
+			if ($self->{cdc_ready})
+			{
+				my $sth = $self->{dbh}->prepare("SELECT CURRENT_SCN FROM v\$database") or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+				$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+				my @row = $sth->fetchrow();
+				$self->{current_oracle_scn}{$table} = $row[0];
+				$sth->finish;
+				$self->logit("Storing SCN for table $table: $self->{current_oracle_scn}{$table}\n", 1);
+			}
+
 			my $total_record = 0;
 			if ($self->{parallel_tables} > 1)
 			{
@@ -8653,6 +8666,21 @@ sub _get_sql_statements
 			my $mean = sprintf("%.2f", $self->{global_rows}/($1 || 1));
 			$self->logit("Speed average: $mean rows/sec\n", 1);
 		}
+
+		####
+		# Save SCN registered before exporting tables
+		####
+		if (scalar keys %{$self->{current_oracle_scn}}) {
+			my $dirprefix = '';
+			$dirprefix = "$self->{output_dir}/" if ($self->{output_dir});
+			open(OUT, ">${dirprefix}TABLES_SCN.log");
+			print OUT "# SCN per table\n";
+			foreach my $t (sort keys %{$self->{current_oracle_scn}}) {
+				print OUT "$t:$self->{current_oracle_scn}{$t}\n";
+			}
+			close(OUT);
+		}
+
 		return;
 	}
 }
@@ -10443,6 +10471,8 @@ END;
 		$str .= " AS OF SCN $self->{oracle_scn}";
 	} elsif ($self->{oracle_scn}) {
 		$str .= " AS OF TIMESTAMP $self->{oracle_scn}";
+	} elsif (exists $self->{current_oracle_scn}{$table}) {
+		$str .= " AS OF SCN $self->{current_oracle_scn}{$table}";
 	}
 	$str .= " $alias";
 
