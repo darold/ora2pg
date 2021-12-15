@@ -2126,5 +2126,13 @@ sub _get_types
 	return;
 }
 
+sub _col_count
+{
+        my ($self, $name) = @_;
+
+	# Not supported
+	return;
+}
+
 1;
 

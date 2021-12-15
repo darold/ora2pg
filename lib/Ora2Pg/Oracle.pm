@@ -3661,5 +3661,58 @@ sub _get_types
 	return \@types;
 }
 
+sub _col_count
+{
+	my ($self, $table, $owner) = @_;
+
+	my $condition = '';
+	$condition .= "AND A.TABLE_NAME='$table' " if ($table);
+	if ($owner) {
+		$condition .= "AND A.OWNER='$owner' ";
+	} else {
+		$condition .= " AND A.OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "') ";
+	}
+	if (!$table) {
+		$condition .= $self->limit_to_objects('TABLE', 'A.TABLE_NAME');
+	} else {
+		@{$self->{query_bind_params}} = ();
+	}
+
+	my $sth = '';
+	if ($self->{db_version} !~ /Release 8/) {
+		$sth = $self->{dbh}->prepare(<<END);
+SELECT A.OWNER, A.TABLE_NAME, COUNT(*)
+FROM $self->{prefix}_TAB_COLUMNS A, $self->{prefix}_OBJECTS O WHERE A.OWNER=O.OWNER and A.TABLE_NAME=O.OBJECT_NAME and O.OBJECT_TYPE='TABLE' $condition
+GROUP BY A.OWNER, A.TABLE_NAME
+END
+		if (!$sth) {
+			$self->logit("FATAL: _col_count() " . $self->{dbh}->errstr . "\n", 0, 1);
+		}
+	} else {
+		# an 8i database.
+		$sth = $self->{dbh}->prepare(<<END);
+SELECT A.OWNER, A.TABLE_NAME, COUNT(*)
+FROM $self->{prefix}_TAB_COLUMNS A, $self->{prefix}_OBJECTS O WHERE A.OWNER=O.OWNER and A.TABLE_NAME=O.OBJECT_NAME and O.OBJECT_TYPE='TABLE' $condition
+GROUP BY A.OWNER, A.TABLE_NAME
+END
+		if (!$sth) {
+			$self->logit("FATAL: _col_count() " . $self->{dbh}->errstr . "\n", 0, 1);
+		}
+	}
+	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: _column_attributes() " . $self->{dbh}->errstr . "\n", 0, 1);
+
+	my %data = ();
+	while (my $row = $sth->fetch)
+	{
+		if ($self->{export_schema} && !$self->{schema}) {
+			$data{"$row->[0].$row->[1]"} = $row->[2];
+		} else {
+			$data{$row->[1]} = $row->[2];
+		}
+	}
+
+	return %data;
+}
+
 1;
 

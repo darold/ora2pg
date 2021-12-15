@@ -15792,10 +15792,13 @@ sub set_pg_relation_name
 	$orig = " (origin: $table)" if (lc($cmptb) ne lc($table));
 	my $tbname = $tbmod;
 	$tbname =~ s/[^"\.]+\.//;
+	my $schm = $self->{pg_schema};
+	$schm =~ s/"//g;
+	$tbname =~ s/"//g;
 	if ($self->{pg_schema} && $self->{export_schema}) {
-		return ($tbmod, $orig, $self->{pg_schema}, "$self->{pg_schema}.$tbname");
+		return ($tbmod, $orig, $self->{pg_schema}, "$schm.$tbname");
 	} elsif ($self->{schema} && $self->{export_schema}) {
-		return ($tbmod, $orig, $self->{schema}, "$self->{schema}.$tbname");
+		return ($tbmod, $orig, $self->{schema}, "$schm.$tbname");
 	}
 
 	return ($tbmod, $orig, '', $tbmod);
@@ -15904,6 +15907,65 @@ sub _test_table
 	$lbl    = 'MYSQL_DB' if ($self->{is_mysql});
 
 	####
+	# Test number of column in tables
+	####
+	print "[TEST COLUMNS COUNT]\n";
+	my %col_count = ();
+	if ($self->{is_mysql}) {
+		%col_count = Ora2Pg::MySQL::_col_count($self, '', $self->{schema});
+	} else {
+		%col_count = Ora2Pg::Oracle::_col_count($self, '', $self->{schema});
+	}
+	$schema_cond = $self->get_schema_condition('pg_class.relnamespace::regnamespace::text');
+	my $sql = qq{
+SELECT pg_namespace.nspname||'.'||pg_class.relname, pg_attribute.attname
+FROM pg_attribute
+JOIN pg_class ON (pg_class.oid=pg_attribute.attrelid)
+JOIN pg_namespace ON (pg_class.relnamespace=pg_namespace.oid)
+WHERE pg_class.relkind = 'r' AND pg_attribute.attnum > 0 AND NOT pg_attribute.attisdropped $schema_cond
+ORDER BY pg_attribute.attnum
+};
+	my %pgret = ();
+	if ($self->{pg_dsn})
+	{
+		my $s = $self->{dbhdest}->prepare($sql) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
+		if (not $s->execute())
+		{
+			push(@errors, "Can not extract information from catalog about indexes.");
+			return;
+		}
+		while ( my @row = $s->fetchrow())
+		{
+			$row[0] =~ s/^[^\.]+\.// if (!$self->{export_schema});
+			push(@{$pgret{"\U$row[0]\E"}}, $row[1]);
+		}
+		$s->finish;
+	}
+	my %pgcount = ();
+	foreach my $t (keys %pgret) {
+		$pgcount{$t} = $#{$pgret{$t}} + 1;
+	}
+
+	foreach my $t (sort keys %col_count)
+	{
+		next if (!exists $tables_infos{$t});
+		print "$lbl:$t:$col_count{$t}\n";
+		if ($self->{pg_dsn})
+		{
+			my ($tbmod, $orig, $schema, $both) = $self->set_pg_relation_name($t);
+			$pgcount{"\U$both$orig\E"} ||= 0;
+			print "POSTGRES:$both$orig:", $pgcount{"\U$both$orig\E"}, "\n";
+			if ($pgcount{"\U$both$orig\E"} != $col_count{$t}) {
+				push(@errors, "Table $both$orig doesn't have the same number of columns in source database ($col_count{$t}) and in PostgreSQL (" . $pgcount{"\U$both$orig\E"} . ").");
+				push(@errors, "\tPostgreSQL modified struct: \U$both$orig\E(" . join(',', @{$pgret{"\U$both$orig\E"}}) . ")");
+			}
+		}
+	}
+	%pgcount = ();
+	$self->show_test_errors('columns', @errors);
+	@errors = ();
+
+	####
 	# Test number of index in tables
 	####
 	print "[TEST INDEXES COUNT]\n";
@@ -15915,13 +15977,13 @@ sub _test_table
 		($uniqueness, $indexes, $idx_type, $idx_tbsp) = $self->_get_indexes('', $self->{schema}, 1);
 	}
 	$schema_cond = $self->get_schema_condition('pg_indexes.schemaname');
-	my $sql = qq{
+	$sql = qq{
 SELECT schemaname||'.'||tablename, count(*)
 FROM pg_indexes
 WHERE 1=1 $schema_cond
 GROUP BY schemaname,tablename
 };
-	my %pgret = ();
+	%pgret = ();
 	if ($self->{pg_dsn})
 	{
 		my $s = $self->{dbhdest}->prepare($sql) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
@@ -19144,7 +19206,7 @@ FROM pg_catalog.pg_class c
      LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
      LEFT JOIN pg_catalog.pg_index i ON i.indrelid = c.oid
 WHERE c.relkind IN ('r','p') $schema_clause
-      $unique_clause
+    $unique_clause
 };
 	$self->logit("Get list of table with unique key: $sql\n", 1);
 	my $s = $self->{dbhdest}->prepare($sql) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
@@ -19161,6 +19223,7 @@ WHERE c.relkind IN ('r','p') $schema_clause
 		$list_tables{"\L$row[0]\E"}{schema} = $row[1];
 	}
 	$s->finish();
+	
 
 	my @foreign_tables  = ();
 	if ($self->{fdw_server})
@@ -19387,6 +19450,7 @@ ORDER BY attnum};
 		push(@dest_types, $crow[2]);
 	}
 	$tmpsth->finish();
+
 	# Now get the data
 	map { s/^([^"])/"$1/; s/([^"])$/$1"/; } @tlist if ($self->{preserve_case});
 	my $sql2 = "SELECT " . join(',', @tlist) . " FROM " . $self->quote_object_name($schema) . '.'. $self->quote_object_name($tb);
@@ -19438,7 +19502,6 @@ ORDER BY attnum};
 					$prow[$i] = 'f';
 				}
 			}
-
 			# Remove extra zero following the decimal when needed
 			if ($dest_types[$i] =~ /(double precision|real|numeric)/i)
 			{
