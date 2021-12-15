@@ -19132,7 +19132,7 @@ sub _data_validation
 	# Get all tables information specified by the DBI method table_info
 	$self->logit("Data validation between source database and PostgreSQL...\n", 1);
 
-	my $unique_clause = ' AND i.indkey IS NOT NULL AND i.indisunique';
+	my $unique_clause = ' AND i.indkey IS NOT NULL AND i.indisunique ORDER BY i.indisprimary ASC';
 	$unique_clause = '' if (!$self->{data_validation_ordering});
 
 	# First of all extract all tables from PostgreSQL database with the
@@ -19143,8 +19143,8 @@ SELECT c.relname,n.nspname,i.indkey
 FROM pg_catalog.pg_class c
      LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
      LEFT JOIN pg_catalog.pg_index i ON i.indrelid = c.oid
-WHERE c.relkind IN ('r','p')$unique_clause
-      $schema_clause
+WHERE c.relkind IN ('r','p') $schema_clause
+      $unique_clause
 };
 	$self->logit("Get list of table with unique key: $sql\n", 1);
 	my $s = $self->{dbhdest}->prepare($sql) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
@@ -19438,12 +19438,18 @@ ORDER BY attnum};
 					$prow[$i] = 'f';
 				}
 			}
-			# oracle_fdw returns extra zero following the decimal, PostgreSQL strip them
-			if ($dest_types[$i] =~ /(double precision|real)/i)
+
+			# Remove extra zero following the decimal when needed
+			if ($dest_types[$i] =~ /(double precision|real|numeric)/i)
 			{
-				
 				$orow[$i] =~ s/\.[0]+$// if ($prow[$i] !~ /\.[0]+$/);
-				$orow[$i] =~ s/(\.[0-9]+)[0]+$/$1/ if ($prow[$i] !~ /\.[0-9]+[0]+$/);
+				if ($prow[$i] !~ /\.[0-9]+[0]+$/) {
+					while ($orow[$i] =~ s/(\.[0-9]+)[0]+$/$1/) {};
+				}
+				$prow[$i] =~ s/\.[0]+$// if ($orow[$i] !~ /\.[0]+$/);
+				if ($orow[$i] !~ /\.[0-9]+[0]+$/) {
+					while ($prow[$i] =~ s/(\.[0-9]+)[0]+$/$1/) {};
+				}
 			}
 
 			# MySQL remove the trailing space at end of char(n) -> take care of that in your app
