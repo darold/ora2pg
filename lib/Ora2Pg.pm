@@ -7656,6 +7656,8 @@ sub export_table
 	if ($sequence_output && $self->{type} ne 'FDW')
 	{
 		my $fhdl = undef;
+		my $qt = '';
+		$qt = '"' if ($self->{preserve_case});
 		my $fct_sequence = qq{
 CREATE OR REPLACE FUNCTION ora2pg_upd_autoincrement_seq (tbname text, colname text) RETURNS VOID AS \$body\$
 DECLARE
@@ -7663,7 +7665,7 @@ DECLARE
         maxval bigint;
         seqname text;
 BEGIN
-        query := 'SELECT max(' || colname || ')+1 FROM ' || tbname;
+        query := 'SELECT max($qt' || colname || '$qt)+1 FROM $qt' || tbname || '$qt';
         EXECUTE query INTO maxval;
         IF (maxval IS NOT NULL) THEN
 };
@@ -7678,7 +7680,7 @@ BEGIN
 		else
 		{
 			$fct_sequence .= qq{
-		query := \$\$SELECT pg_get_serial_sequence ('\$\$|| tbname || \$\$', '\$\$ || colname || \$\$');\$\$;
+		query := \$\$SELECT pg_get_serial_sequence ('$qt\$\$|| tbname || \$\$$qt', '\$\$ || colname || \$\$');\$\$;
 };
 		}
 
