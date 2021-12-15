@@ -19386,6 +19386,7 @@ ORDER BY attnum};
 	}
 	$tmpsth->finish();
 	# Now get the data
+	map { s/^([^"])/"$1/; s/([^"])$/$1"/; } @tlist if ($self->{preserve_case});
 	my $sql2 = "SELECT " . join(',', @tlist) . " FROM " . $self->quote_object_name($schema) . '.'. $self->quote_object_name($tb);
 	$sql2 .= " ORDER BY " . $ucols if ($self->{data_validation_ordering});
 	$sql2 .= " LIMIT $self->{data_validation_rows}" if ($self->{data_validation_rows});
