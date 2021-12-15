@@ -17432,55 +17432,6 @@ sub progress_bar
 	return $str;
 }
 
-=head2 auto_set_encoding
-
-This function is used to find the PostgreSQL charset corresponding to the
-Oracle NLS_LANG value
-
-=cut
-
-sub auto_set_encoding
-{
-	my $oracle_charset = shift;
-
-	my %ENCODING = (
-		"AL32UTF8" => "UTF8",
-		"JA16EUC" => "EUC_JP",
-		"JA16SJIS" => "EUC_JIS_2004",
-		"ZHT32EUC" => "EUC_TW",
-		"CL8ISO8859P5" => "ISO_8859_5",
-		"AR8ISO8859P6" => "ISO_8859_6",
-		"EL8ISO8859P7" => "ISO_8859_7",
-		"IW8ISO8859P8" => "ISO_8859_8",
-		"CL8KOI8R" => "KOI8R",
-		"CL8KOI8U" => "KOI8U",
-		"WE8ISO8859P1" => "LATIN1",
-		"EE8ISO8859P2" => "LATIN2",
-		"SE8ISO8859P3" => "LATIN3",
-		"NEE8ISO8859P4"=> "LATIN4",
-		"WE8ISO8859P9" => "LATIN5",
-		"NE8ISO8859P10"=> "LATIN6",
-		"BLT8ISO8859P13"=> "LATIN7",
-		"CEL8ISO8859P14"=> "LATIN8",
-		"WE8ISO8859P15" => "LATIN9",
-		"RU8PC866" => "WIN866",
-		"EE8MSWIN1250" => "WIN1250",
-		"CL8MSWIN1251" => "WIN1251",
-		"WE8MSWIN1252" => "WIN1252",
-		"EL8MSWIN1253" => "WIN1253",
-		"TR8MSWIN1254" => "WIN1254",
-		"IW8MSWIN1255" => "WIN1255",
-		"AR8MSWIN1256" => "WIN1256",
-		"BLT8MSWIN1257"=> "WIN1257"
-	);
-
-	foreach my $k (keys %ENCODING) {
-		return $ENCODING{$k} if (uc($oracle_charset) eq $k);
-	}
-
-	return '';
-}
-
 # Construct a query to exclude or only include some object wanted by the user
 # following the ALLOW and EXCLUDE configuration directive. The filter returned
 # must be used with the bind parameters stored in the @{$self->{query_bind_params}}
