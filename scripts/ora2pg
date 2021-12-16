@@ -289,6 +289,33 @@ $SIG{TERM} = \&getout;
 # Replace ; or space by comma in the user list
 $AUDIT_USER =~ s/[;\s]+/,/g;
 
+# Look if the ALLOW and EXCLUDE values are existing files,
+# in this case import the content as a space separated list.
+if (-e $ALLOW)
+{
+	my $fh = new IO::File;
+	$fh->open($ALLOW) or die "FATAL: can't read file $ALLOW, $!\n";
+	while (my $l = <$fh>)
+	{
+		chomp($l);
+		$ALLOW .= "$l ";
+	}
+	$fh->close;
+	$ALLOW =~ s/ $//;
+}
+if (-e $EXCLUDE)
+{
+	my $fh = new IO::File;
+	$fh->open($EXCLUDE) or die "FATAL: can't read file $EXCLUDE, $!\n";
+	while (my $l = <$fh>)
+	{
+		chomp($l);
+		$EXCLUDE .= "$l ";
+	}
+	$fh->close;
+	$EXCLUDE =~ s/ $//;
+}
+
 # Create an instance of the Ora2Pg perl module
 my $schema = new Ora2Pg (
 	config => $FILE_CONF || $CONFIG_FILE,
