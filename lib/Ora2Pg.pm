@@ -15795,6 +15795,8 @@ sub set_pg_relation_name
 	my $schm = $self->{pg_schema};
 	$schm =~ s/"//g;
 	$tbname =~ s/"//g;
+	$schm = $self->quote_object_name($schm);
+	$tbname = $self->quote_object_name($tbname);
 	if ($self->{pg_schema} && $self->{export_schema}) {
 		return ($tbmod, $orig, $self->{pg_schema}, "$schm.$tbname");
 	} elsif ($self->{schema} && $self->{export_schema}) {
