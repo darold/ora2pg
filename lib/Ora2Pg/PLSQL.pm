@@ -1690,6 +1690,11 @@ sub replace_oracle_function
 		# LAST_DAY( date ) translation
 		$str =~ s/\bLAST_DAY\(\s*([^\(\)]+)\s*\)/((date_trunc('month',($1)::timestamp + interval '1 month'))::date - 1)/igs;
 	}
+	else
+	{
+		s/([^\.])\b(GREATEST\()/$1oracle.$2/igs;
+		s/([^\.])\b(LEAST\()/$1oracle.$2/igs;
+	}
 
 	# Replace INSTR by POSITION
 	$str =~ s/\bINSTR\s*\(\s*([^,]+),\s*([^\),]+)\s*\)/position($2 in $1)/is;
