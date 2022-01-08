@@ -133,7 +133,7 @@
 .\" ========================================================================
 .\"
 .IX Title "ORA2PG 1"
-.TH ORA2PG 1 "2021-12-12" "perl v5.30.0" "User Contributed Perl Documentation"
+.TH ORA2PG 1 "2022-01-08" "perl v5.30.0" "User Contributed Perl Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -511,8 +511,12 @@ Usage: ora2pg [\-dhpqv \-\-estimate_cost \-\-dump_as_html] [\-\-option value]
 \&                        transformed data. Nothing will be written.
 \&   \-\-blob_to_lo       : export BLOB as large objects, can only be used with
 \&                        action SHOW_COLUMN, TABLE and INSERT.
-\&   \-\-cdc_ready        : use current SCN per table to extract and register
+\&   \-\-cdc_ready        : use current SCN per table to export data and register
 \&                        them into a file named TABLES_SCN.log
+\&   \-\-lo_import        : use psql \elo_import command to import BLOB as large
+\&                        object. Can be use to import data with COPY and import
+\&                        large object manually in a second pass. It is recquired
+\&                        for BLOB > 1GB. See documentation for more explanation.
 .Ve
 .PP
 See full documentation at https://ora2pg.darold.net/ for more help or see
@@ -3440,6 +3444,39 @@ changes after the first import. But you can use the \-\-cdc_ready option to
 export data with registration of the \s-1SCN\s0 at the time of the table export.
 All \s-1SCN\s0 per tables are written to a file name \s-1TABLES_SCN\s0.log. This \s-1SCN\s0 can be
 used with a \s-1CDC\s0 tool.
+.SS "Importing \s-1BLOB\s0 as large objects"
+.IX Subsection "Importing BLOB as large objects"
+By default Ora2Pg imports Oracle \s-1BLOB\s0 as bytea, the destination column is
+created using the bytea data type. If you want to use large object instead
+of bytea, just add the \-\-blob_to_lo option to the ora2pg command. It will
+create the destination column as data type Oid and will save the \s-1BLOB\s0 as a
+large object using the \fBlo_from_bytea()\fR function. The Oid returned by the
+call to \fBlo_from_bytea()\fR is inserted in the destination column instead of
+a bytea. Because of the use of the function this option can only be used
+with actions \s-1SHOW_COLUMN, TABLE\s0 and \s-1INSERT.\s0 Action \s-1COPY\s0 is not allowed.
+.PP
+If you want to use \s-1COPY\s0 or have huge size \s-1BLOB\s0 ( > 1GB) than can not be
+imported using \fBlo_from_bytea()\fR you can add option \-\-lo_import to the ora2pg
+command. This will allow to import data in two passes.
+.PP
+1) Export data using \s-1COPY\s0 or \s-1INSERT\s0 will set the Oid destination column for
+\&\s-1BLOB\s0 to value 0 and save the \s-1BLOB\s0 value into a dedicated file. It will also
+create a Shell script to import the \s-1BLOB\s0 files into the database using psql
+command \elo_import and to update the table Oid column to the returned large
+object Oid. The script is named lo_import\-TABLENAME.sh
+.PP
+2) Execute all scripts lo_import\-TABLENAME.sh after setting the environment
+variables \s-1PGDATABASE\s0 and optionally \s-1PGHOST, PGPORT, PGUSER,\s0 etc. if they do
+not correspond to the default values for libpq.
+.PP
+You might also execute manually a \s-1VACUUM FULL\s0 on the table to remove the bloat
+created by the table update.
+.PP
+Limitation: the table must have a primary key, it is used to set the \s-1WHERE\s0
+clause to update the Oid column after the large object import. Importing \s-1BLOB\s0
+using this second method (\-\-lo_import) is very slow so it should be reserved
+to rows where the \s-1BLOB\s0 > 1GB for all other rows use the option \-\-blob_to_lo.
+To filter the rows you can use the \s-1WHERE\s0 configuration directive in ora2pg.conf.
 .SH "SUPPORT"
 .IX Header "SUPPORT"
 .SS "Author / Maintainer"

@@ -573,6 +573,45 @@ sub append_export_file
 	return $filehdl;
 }
 
+=head2 append_lo_import_file FILENAME
+
+Open a file handle to lo_import-$table.sh file to append data.
+
+=cut
+
+sub append_lo_import_file
+{
+	my ($self, $table, $noprefix) = @_;
+
+	my $filehdl = undef;
+	my $new = 0;
+
+	my $outfile = "lo_import-$table.sh";
+	if ($self->{output_dir} && !$noprefix) {
+		$outfile = $self->{output_dir} . '/' . $outfile;
+	}
+	$filehdl = new IO::File;
+	$new = 1 if (!-e $outfile);
+	$filehdl->open(">>$outfile") or $self->logit("FATAL: Can't open $outfile: $!\n", 0, 1);
+	$filehdl->autoflush(1);
+	$self->set_binmode($filehdl);
+	flock($filehdl, 2) || die "FATAL: can't lock file $outfile\n";
+	# At file creation append the verification of the required environment variable
+	if ($new)
+	{
+		$self->{post_lo_script} = qq{#!/bin/sh
+if [ "\${PGDATABASE}a" = "a" ]; then
+	echo "You must set the environment variable PGDATABASE to defined the database where the commands"
+	echo "will be executed. And optionally PGHOST, PGUSER, etc. if they don't correspond to the default."
+	exit 1
+fi
+$self->{post_lo_script}
+};
+	}
+	$filehdl->print($self->{post_lo_script});
+	$filehdl->close();
+}
+
 =head2 read_export_file FILENAME
 
 Open a file handle to a given filename to read data.
@@ -1239,6 +1278,20 @@ sub _init
 		$self->{create_or_replace} = ' OR REPLACE';
 	} else {
 		$self->{create_or_replace} = '';
+	}
+
+	# Export to files using lo_import to be loaded
+	# into PG need blob_to_lo to be activated and
+	# some other configuration disabled.
+	if ($self->{lo_import})
+	{
+		if ($self->{type} eq 'INSERT') {
+			$self->logit("FATAL: You must use action COPY, not INSERT with --lo_import.\n", 0, 1);
+		}
+		$self->{blob_to_lo} = 1;
+		$self->{truncate_table} = 0;
+		$self->{drop_fkeys} = 0;
+		$self->{drop_indexes} = 0;
 	}
 
 	$self->{copy_freeze} = ' FREEZE' if ($self->{copy_freeze});
@@ -8850,10 +8903,11 @@ sub _dump_table
 	my @tt = ();
 	my @stt = ();
 	my @nn = ();
-	my $col_list = '';
 	my $has_geometry = 0;
 	my $has_identity = 0;
 	$has_identity = 1 if (exists $self->{identity_info}{$table});
+
+	%{ $self->{tables}{$table}{pk_columns} } = ();
 
 	# Extract column information following the Oracle position order
 	my @fname = ();
@@ -8869,6 +8923,19 @@ sub _dump_table
 		{
 			# user don't want to export blob
 			next;
+		}
+
+		my $is_pk = $self->is_primary_key_column($table, $fieldname);
+
+		# When lo_import is used we only want the PK colmuns and the BLOB
+		if ($self->{lo_import} && $f->[1] !~ /blob/i && !$is_pk) {
+			next;
+		}
+
+		# Get the indices and column name of the primary
+		# for possible use for blob_to_lo data export.
+		if ($is_pk) {
+			$self->{tables}{$table}{pk_columns}{$i} = $fieldname;
 		}
 
 		# A virtual column must not be part of the target list
@@ -8906,7 +8973,7 @@ sub _dump_table
 		if ($colname !~ /"/ && $self->is_reserved_words($colname)) {
 			$colname = '"' . $colname . '"';
 		}
-		$col_list .= "$colname,";
+		push(@{ $self->{tables}{$table}{dest_column_name} }, $colname);
 		if ($self->is_primary_key_column($table, $fieldname)) {
 			push @pg_colnames_pkey, "$colname";
 		} elsif ($f->[3] =~ m/^Y/) {
@@ -8915,7 +8982,10 @@ sub _dump_table
 			push @pg_colnames_notnull, "$colname";
 		}
 	}
-	$col_list =~ s/,$//;
+
+	# No column => ERROR
+	$self->logit("FATAL: no column to export for table $table, aborting\n", 0, 1) if ($#fname < 0);
+
 	$self->{tables}{$table}{pg_colnames_nullable} = \@pg_colnames_nullable;
 	$self->{tables}{$table}{pg_colnames_notnull} = \@pg_colnames_notnull;
 	$self->{tables}{$table}{pg_colnames_pkey} = \@pg_colnames_pkey;
@@ -8925,9 +8995,9 @@ sub _dump_table
 		$overriding_system = ' OVERRIDING SYSTEM VALUE' if ($has_identity);
 	}
 
-	my $s_out = "INSERT INTO $tmptb ($col_list";
+	my $s_out = "INSERT INTO $tmptb (" . join(',', @{ $self->{tables}{$table}{dest_column_name} });
 	if ($self->{type} eq 'COPY') {
-		$s_out = "\nCOPY $tmptb ($col_list";
+		$s_out = "\nCOPY $tmptb (" . join(',', @{ $self->{tables}{$table}{dest_column_name} });
 	}
 
 	if ($self->{type} eq 'COPY') {
@@ -8966,7 +9036,6 @@ sub _dump_table
 
 	$self->{type} = $self->{local_type} if ($self->{local_type});
 	$self->{local_type} = '';
-
 }
 
 ####
@@ -11586,7 +11655,10 @@ sub _get_custom_types
 
 sub format_data_row
 {
-	my ($self, $row, $data_types, $action, $src_data_types, $custom_types, $table, $colcond, $sprep) = @_;
+	my ($self, $row, $data_types, $action, $src_data_types, $custom_types, $table, $colcond, $sprep, $colname) = @_;
+
+	@{ $self->{tables}{$table}{pk_where_clause} } = ();
+	@{ $self->{tables}{$table}{lo_import_id} } = ();
 
 	for (my $idx = 0; $idx <= $#{$data_types}; $idx++)
 	{
@@ -11646,6 +11718,10 @@ sub format_data_row
 					$row->[$idx] = "ST_GeomFromText('" . $row->[$idx] . "', $1)";
 				}
 			}
+			# Stores the filter to use in the WHERE clause
+			if (exists $self->{tables}{$table}{pk_columns}{$idx}) {
+				push(@{ $self->{tables}{$table}{pk_where_clause} }, "$self->{tables}{$table}{pk_columns}{$idx} = $row->[$idx]");
+			}
 		}
 		elsif ($row->[$idx] =~ /^(?!(?!)\x{100})ARRAY\(0x/)
 		{
@@ -11656,6 +11732,55 @@ sub format_data_row
 
 			$row->[$idx] = $self->format_data_type($row->[$idx], $data_type, $action, $table, $src_data_types->[$idx], $idx, $colcond->[$idx], $sprep);
 
+			# Construct a WHERE clause based onb PK columns values
+			if ($self->{lo_import} && $colcond->[$idx]->{isoid} && $colcond->[$idx]->{blob})
+			{
+				# Store the uuid of the file containing the BLOB and set the oid to 0
+				if ($colcond->[$idx]->{isoid} && $colcond->[$idx]->{blob})
+				{
+					push(@{ $self->{tables}{$table}{lo_import_id} }, $row->[$idx]);
+					push(@{ $self->{tables}{$table}{lo_import_col} }, $self->{tables}{$table}{dest_column_name}[$idx]);
+					$row->[$idx] = 0;
+				}
+			}
+			# Stores the filter to use in the WHERE clause
+			if (exists $self->{tables}{$table}{pk_columns}{$idx}) {
+				push(@{ $self->{tables}{$table}{pk_where_clause} }, "$self->{tables}{$table}{pk_columns}{$idx} = $row->[$idx]");
+			}
+		}
+	}
+
+	# Now add the script to import later the BLOB(s) into the table as a large object
+	if ($self->{lo_import} && $#{ $self->{tables}{$table}{pk_where_clause} } >= 0)
+	{
+		# Rename table and double-quote it if required
+		my $tmptb = $self->get_replaced_tbname($table);
+
+		# Replace Tablename by temporary table for DATADIFF (data will be inserted in real table at the end)
+		if ($self->{datadiff}) {
+			$tmptb = $self->get_tbname_with_suffix($tmptb, $self->{datadiff_ins_suffix});
+		}
+
+		my $where_clause = join(' AND ', @{ $self->{tables}{$table}{pk_where_clause} });
+		# Generete the entry in the psql script
+		foreach (my $i = 0; $i <= $#{ $self->{tables}{$table}{lo_import_id} }; $i++)
+		{
+			if ($self->{tables}{$table}{lo_import_id}[$i] ne '\N'
+					&& $self->{tables}{$table}{lo_import_id}[$i] ne 'NULL')
+			{
+				$self->{post_lo_script} .= qq{
+ret=`psql -c "\\lo_import '$self->{tables}{$table}{lo_import_id}[$i]'" | awk '{print \$2}'`
+if [ "\${ret}a" != "a" ]; then
+	psql -c "UPDATE $tmptb SET $self->{tables}{$table}{lo_import_col}[$i] = \${ret} WHERE $where_clause"
+fi
+};
+			}
+			else
+			{
+				$self->{post_lo_script} .= qq{
+psql -c "UPDATE $tmptb SET $self->{tables}{$table}{lo_import_col}[$i] = NULL WHERE $where_clause"
+};
+			}
 		}
 	}
 }
@@ -11973,14 +12098,23 @@ sub format_data_type
 				$col = $self->{ora_boolean_values}{lc($col)};
 			}
 		}
-		elsif ($cond->{isnum})
+		elsif ($self->{lo_import} && $cond->{blob})
 		{
-			$col =~ s/([\-]*)(\~|Inf)/$1Infinity/i;
-			$col = '\N' if ($col eq '');
+			# In copy mode we write the BLOB data to an external file
+			# for later lo_import and we insert the corresponding unique
+			# reference of this BLOB into the Oid column. The value of
+			# the Oid will be fixed with the right Oid when importing
+			# the large object.
+			$col = $self->_save_blob_to_lo($col);
 		}
 		elsif ($cond->{isbytea})
 		{
 			$col = $self->_escape_lob($col, $cond->{raw} ? 'RAW' : 'BLOB', $cond, $isnested, $data_type);
+		}
+		elsif ($cond->{isnum})
+		{
+			$col =~ s/([\-]*)(\~|Inf)/$1Infinity/i;
+			$col = '\N' if ($col eq '');
 		}
 		elsif ($cond->{istext})
 		{
@@ -12000,6 +12134,38 @@ sub format_data_type
 		}
 	}
 	return $col;
+}
+
+sub _save_blob_to_lo
+{
+	my $self = shift;
+
+	my $dirprefix = '';
+	$dirprefix = "$self->{output_dir}" if ($self->{output_dir});
+
+	my $filename = $dirprefix . &get_uuid() . '.lo';
+	$self->logit("DEBUG: write blob to $filename\n", 1);
+	my $fh = new IO::File;
+	$fh->open(">$filename") or $self->logit("FATAL: can not write $filename\n", 0, 1);
+	$fh->binmode(':raw');
+	print $fh $_[0];
+	$fh->close();
+
+	return $filename;
+}
+
+sub get_uuid
+{
+	my $uuid = '';
+	if (open(my $fh, "/proc/sys/kernel/random/uuid")) {
+		$uuid = <$fh>;
+		close($fh);
+	} else {
+		$uuid = `/usr/bin/uuidgen`;
+	}
+	chomp($uuid);
+
+	return $uuid;
 }
 
 sub hs_cond
@@ -12037,6 +12203,9 @@ sub format_data
 	my $col_cond = $self->hs_cond($data_types,$src_data_types, $table);
 	foreach my $row (@$rows) {
 		$self->format_data_row($row,$data_types,$action,$src_data_types,$custom_types,$table,$col_cond);
+	}
+	if ($self->{post_lo_script}) {
+		$self->append_lo_import_file($table);
 	}
 }
 
@@ -13881,16 +14050,7 @@ sub _extract_data
 	my $dbh = 0;
 	my $sth = 0;
 	my @has_custom_type = ();
-	$self->{data_cols}{$table} = ();
-
-	# For MySQL export columns have not been extracted yet
-#	if ($self->{is_mysql})
-#	{
-#		my %col_info = Ora2Pg::MySQL::_column_info($self, $rname);
-#		foreach my $col (keys %{$col_info{$rname}}) {
-#			push(@{$self->{data_cols}{$table}}, $col);
-#		}
-#	}
+	@{ $self->{data_cols}{$table} } = ();
 
 	# Look for user defined type
 	if (!$self->{is_mysql})
@@ -19551,6 +19711,13 @@ sub _get_oracle_test_data
 			next;
 		}
 
+		my $is_pk = $self->is_primary_key_column($table, $fieldname);
+
+		# When lo_import is used we only want the PK colmuns and the BLOB
+		if ($self->{lo_import} && $f->[1] !~ /blob/i && !$is_pk) {
+			next;
+		}
+
 		if (!$self->{preserve_case}) {
 			push(@fname, lc($fieldname));
 		} else {
@@ -19578,7 +19745,7 @@ sub _get_oracle_test_data
 			$colname = '"' . $colname . '"';
 		}
 		$col_list .= "$colname,";
-		if ($self->is_primary_key_column($table, $fieldname)) {
+		if ($self->is_pk) {
 			push @pg_colnames_pkey, "$colname";
 		} elsif ($f->[3] =~ m/^Y/) {
 			push @pg_colnames_nullable, "$colname";

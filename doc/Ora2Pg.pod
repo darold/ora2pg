@@ -357,6 +357,10 @@ Usage: ora2pg [-dhpqv --estimate_cost --dump_as_html] [--option value]
                         action SHOW_COLUMN, TABLE and INSERT.
    --cdc_ready        : use current SCN per table to export data and register
                         them into a file named TABLES_SCN.log
+   --lo_import        : use psql \lo_import command to import BLOB as large
+                        object. Can be use to import data with COPY and import
+                        large object manually in a second pass. It is recquired
+                        for BLOB > 1GB. See documentation for more explanation.
 
 See full documentation at https://ora2pg.darold.net/ for more help or see
 manpage with 'man ora2pg'.
@@ -3306,6 +3310,40 @@ changes after the first import. But you can use the --cdc_ready option to
 export data with registration of the SCN at the time of the table export.
 All SCN per tables are written to a file name TABLES_SCN.log. This SCN can be
 used with a CDC tool.
+
+=head2 Importing BLOB as large objects
+
+By default Ora2Pg imports Oracle BLOB as bytea, the destination column is
+created using the bytea data type. If you want to use large object instead
+of bytea, just add the --blob_to_lo option to the ora2pg command. It will
+create the destination column as data type Oid and will save the BLOB as a
+large object using the lo_from_bytea() function. The Oid returned by the
+call to lo_from_bytea() is inserted in the destination column instead of
+a bytea. Because of the use of the function this option can only be used
+with actions SHOW_COLUMN, TABLE and INSERT. Action COPY is not allowed.
+
+If you want to use COPY or have huge size BLOB ( > 1GB) than can not be
+imported using lo_from_bytea() you can add option --lo_import to the ora2pg
+command. This will allow to import data in two passes.
+
+1) Export data using COPY or INSERT will set the Oid destination column for
+BLOB to value 0 and save the BLOB value into a dedicated file. It will also
+create a Shell script to import the BLOB files into the database using psql
+command \lo_import and to update the table Oid column to the returned large
+object Oid. The script is named lo_import-TABLENAME.sh
+
+2) Execute all scripts lo_import-TABLENAME.sh after setting the environment
+variables PGDATABASE and optionally PGHOST, PGPORT, PGUSER, etc. if they do
+not correspond to the default values for libpq.
+
+You might also execute manually a VACUUM FULL on the table to remove the bloat
+created by the table update.
+
+Limitation: the table must have a primary key, it is used to set the WHERE
+clause to update the Oid column after the large object import. Importing BLOB
+using this second method (--lo_import) is very slow so it should be reserved
+to rows where the BLOB > 1GB for all other rows use the option --blob_to_lo.
+To filter the rows you can use the WHERE configuration directive in ora2pg.conf.
 
 =head1 SUPPORT
 
