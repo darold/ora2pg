@@ -539,23 +539,6 @@ sub _column_info
 		my $exclude_mview = $self->exclude_mviews('A.OWNER, A.TABLE_NAME');
 		$sql = qq{
 SELECT A.COLUMN_NAME, A.DATA_TYPE, A.DATA_LENGTH, A.NULLABLE, A.DATA_DEFAULT,
-    A.DATA_PRECISION, A.DATA_SCALE, A.CHAR_LENGTH, A.TABLE_NAME, A.OWNER, V.VIRTUAL_COLUMN
-FROM $self->{prefix}_TAB_COLUMNS A, $self->{prefix}_OBJECTS O, $self->{prefix}_TAB_COLS V
-WHERE A.OWNER=O.OWNER and A.TABLE_NAME=O.OBJECT_NAME and O.OBJECT_TYPE='$objtype'
-    AND A.OWNER=V.OWNER AND A.TABLE_NAME=V.TABLE_NAME AND A.COLUMN_NAME=V.COLUMN_NAME $condition
-    $exclude_mview
-ORDER BY A.COLUMN_ID
-};
-		$sql = qq{
-SELECT A.COLUMN_NAME, A.DATA_TYPE, A.DATA_LENGTH, A.NULLABLE, A.DATA_DEFAULT,
-    A.DATA_PRECISION, A.DATA_SCALE, A.CHAR_LENGTH, A.TABLE_NAME, A.OWNER, V.VIRTUAL_COLUMN
-FROM $self->{prefix}_TAB_COLUMNS A, $self->{prefix}_TAB_COLS V
-WHERE A.OWNER=V.OWNER AND A.TABLE_NAME=V.TABLE_NAME AND A.COLUMN_NAME=V.COLUMN_NAME $condition
-    $exclude_mview
-ORDER BY A.COLUMN_ID
-};
-		$sql = qq{
-SELECT A.COLUMN_NAME, A.DATA_TYPE, A.DATA_LENGTH, A.NULLABLE, A.DATA_DEFAULT,
     A.DATA_PRECISION, A.DATA_SCALE, A.CHAR_LENGTH, A.TABLE_NAME, A.OWNER, 'NO' as "VIRTUAL_COLUMN"
 FROM $self->{prefix}_TAB_COLUMNS A
 WHERE 1=1 $condition
@@ -577,14 +560,6 @@ ORDER BY A.COLUMN_ID
 	else
 	{
 		# an 8i database.
-		$sql = qq{
-SELECT A.COLUMN_NAME, A.DATA_TYPE, A.DATA_LENGTH, A.NULLABLE, A.DATA_DEFAULT,
-    A.DATA_PRECISION, A.DATA_SCALE, A.DATA_LENGTH, A.TABLE_NAME, A.OWNER, 'NO' as "VIRTUAL_COLUMN"
-FROM $self->{prefix}_TAB_COLUMNS A, $self->{prefix}_OBJECTS O
-WHERE A.OWNER=O.OWNER and A.TABLE_NAME=O.OBJECT_NAME and O.OBJECT_TYPE='$objtype'
-    $condition
-ORDER BY A.COLUMN_ID
-};
 		$sql = qq{
 SELECT A.COLUMN_NAME, A.DATA_TYPE, A.DATA_LENGTH, A.NULLABLE, A.DATA_DEFAULT,
     A.DATA_PRECISION, A.DATA_SCALE, A.DATA_LENGTH, A.TABLE_NAME, A.OWNER, 'NO' as "VIRTUAL_COLUMN"
@@ -634,7 +609,9 @@ ORDER BY A.COLUMN_ID
 	{
 		my $tmptable = "$row->[9].$row->[8]";
 		next if (!exists $self->{all_objects}{$tmptable}
-					|| $self->{all_objects}{$tmptable} ne $objtype);
+				|| ($self->{all_objects}{$tmptable} ne $objtype
+					&& ($#{$self->{view_as_table}} < 0
+						|| $self->{all_objects}{$tmptable} ne 'VIEW')));
 
 		$row->[2] = $row->[7] if $row->[1] =~ /char/i;
 		# Seems that for a NUMBER with a DATA_SCALE to 0, no DATA_PRECISION and a DATA_LENGTH of 22
@@ -2960,7 +2937,8 @@ sub _global_temp_table_info
 	my $sth = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	my %tables_infos = ();
-	while (my $row = $sth->fetch) {
+	while (my $row = $sth->fetch)
+	{
 		if (!$self->{schema} && $self->{export_schema}) {
 			$row->[1] = "$row->[0].$row->[1]";
 		}
