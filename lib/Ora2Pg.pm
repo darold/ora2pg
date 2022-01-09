@@ -1909,9 +1909,7 @@ sub set_binmode
                 use open ':utf8';
         } elsif ($self->{'binmode'} =~ /^:/) {
                 eval "use open '$self->{'binmode'}';" or die "FATAL: can't use open layer $self->{'binmode'}\n";
-        } elsif ($self->{'binmode'} eq 'raw' or $self->{'binmode'} eq 'locale') {
-                eval "use open ':$self->{'binmode'}';" or die "FATAL: can't use open layer :$self->{'binmode'}\n";
-        } elsif ($self->{'binmode'}) {
+	} elsif ($self->{'binmode'} ne 'raw' and $self->{'binmode'} ne 'locale') {
                 eval "use open ':encoding($self->{'binmode'})';" or die "FATAL: can't use open layer :encoding($self->{'binmode'})\n";
         }
         # Set default PostgreSQL client encoding to UTF8
