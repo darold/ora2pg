@@ -1465,7 +1465,7 @@ sub _init
 	if ($self->{pg_version} >= 11) {
 		$self->{pg_supports_procedure} = 1;
 	}
-	if ($self->{pg_version} >= 13) {
+	if ($self->{pg_version} >= 12) {
 		$self->{pg_supports_virtualcol} = 1;
 	}
 
