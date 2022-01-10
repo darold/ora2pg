@@ -8186,6 +8186,7 @@ sub _get_sql_statements
 			{
 				my $trig_type = 'USER';
 				$trig_type = 'ALL' if (uc($self->{disable_triggers}) eq 'ALL');
+				$self->logit("Disabling \L$trig_type\E triggers...\n", 1);
 				if ($self->{pg_dsn}) {
 					my $s = $self->{dbhdest}->do("ALTER TABLE $tmptb DISABLE TRIGGER $trig_type;") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
 				} else {
@@ -8944,7 +8945,7 @@ sub _dump_table
 		}
 
 		# A virtual column must not be part of the target list
-		next if ($f->[4] && $self->{pg_supports_virtualcol});
+		next if ($f->[10] eq 'YES' and $self->{pg_supports_virtualcol});
 
 		if (!$self->{preserve_case}) {
 			push(@fname, lc($fieldname));
@@ -8961,16 +8962,18 @@ sub _dump_table
 		my $type = $self->_sql_type($f->[1], $f->[2], $f->[5], $f->[6], $f->[4]);
 		$type = "$f->[1], $f->[2]" if (!$type);
 
-		if (uc($f->[1]) eq 'ENUM') {
+		if (uc($f->[1]) eq 'ENUM')
+		{
 			my $keyname = lc($table . '_' . $fieldname . '_t');
 			$f->[1] = $keyname;
 		}
 		push(@stt, uc($f->[1]));
 		push(@tt, $type);
-		push(@nn,  $self->{tables}{$table}{column_info}{$fieldname});
+		push(@nn,  $fieldname);
 		# Change column names
 		my $colname = $f->[0];
-		if ($self->{replaced_cols}{lc($table)}{lc($f->[0])}) {
+		if ($self->{replaced_cols}{lc($table)}{lc($f->[0])})
+		{
 			$self->logit("\tReplacing column $f->[0] as " . $self->{replaced_cols}{lc($table)}{lc($f->[0])} . "...\n", 1);
 			$colname = $self->{replaced_cols}{lc($table)}{lc($f->[0])};
 		}
@@ -9069,9 +9072,6 @@ sub _dump_fdw_table
 	}
 
 	# Build the header of the query
-	my @tt = ();
-	my @stt = ();
-	my @nn = ();
 	my $col_list = '';
 	my $fdw_col_list = '';
 	my $has_geometry = 0;
@@ -10276,60 +10276,59 @@ sub _howto_get_data
 	{
 		for my $k (0 .. $#{$name})
 		{
-			my $realcolname = $name->[$k]->[0];
+			my $realcolname = $name->[$k];
 			my $spatial_srid = '';
 			$self->{nullable}{$table}{$k} = $self->{colinfo}->{$table}{$realcolname}{nullable};
 			if (!$self->{is_mysql})
 			{
-				if ($name->[$k]->[0] !~ /"/) {
-					$name->[$k]->[0] = '"' . $name->[$k]->[0] . '"';
+				if ($name->[$k] !~ /"/) {
+					$name->[$k] = '"' . $name->[$k] . '"';
 				}
 			}
 			else
 			{
-				if ($name->[$k]->[0] !~ /\`/) {
-					$name->[$k]->[0] = '`' . $name->[$k]->[0] . '`';
+				if ($name->[$k] !~ /\`/) {
+					$name->[$k] = '`' . $name->[$k] . '`';
 				}
 			}
 			if ( ( $src_type->[$k] =~ /^char/i) && ($type->[$k] =~ /(varchar|text)/i)) {
-				$str .= "trim($self->{trim_type} '$self->{trim_char}' FROM $name->[$k]->[0]) AS $name->[$k]->[0],";
+				$str .= "trim($self->{trim_type} '$self->{trim_char}' FROM $name->[$k]) AS $name->[$k],";
 			} elsif ($self->{is_mysql} && $src_type->[$k] =~ /bit/i) {
-				$str .= "BIN($name->[$k]->[0]),";
+				$str .= "BIN($name->[$k]),";
 			}
 			# If dest type is bytea the content of the file is exported as bytea
 			elsif ( ($src_type->[$k] =~ /bfile/i) && ($type->[$k] =~ /bytea/i) )
 			{
 				$self->{bfile_found} = 'bytea';
-				$str .= "ora2pg_get_bfile($name->[$k]->[0]),";
+				$str .= "ora2pg_get_bfile($name->[$k]),";
 			}
 			# If dest type is efile the content of the file is exported to use the efile extension
 			elsif ( ($src_type->[$k] =~ /bfile/i) && ($type->[$k] =~ /efile/i) )
 			{
 				$self->{bfile_found} = 'efile';
-				$str .= "ora2pg_get_efile($name->[$k]->[0]),";
+				$str .= "ora2pg_get_efile($name->[$k]),";
 			}
 			# Only extract path to the bfile if dest type is text.
 			elsif ( ($src_type->[$k] =~ /bfile/i) && ($type->[$k] =~ /text/i) )
 			{
 				$self->{bfile_found} = 'text';
-				$str .= "ora2pg_get_bfilename($name->[$k]->[0]),";
+				$str .= "ora2pg_get_bfilename($name->[$k]),";
 			}
 			elsif ( $src_type->[$k] =~ /xmltype/i)
 			{
 				if ($self->{xml_pretty}) {
-					$str .= "($alias.$name->[$k]->[0]).getStringVal(),";
-					#$str .= "$alias.$name->[$k]->[0].extract('/').getStringVal(),";
+					$str .= "($alias.$name->[$k]).getStringVal(),";
 				} else {
-					$str .= "($alias.$name->[$k]->[0]).getClobVal(),";
+					$str .= "($alias.$name->[$k]).getClobVal(),";
 				}
 			}
 			# ArcGis Geometries
 			elsif ( !$self->{is_mysql} && $src_type->[$k] =~ /^(ST_|STGEOM_)/i)
 			{
 				if ($self->{geometry_extract_type} eq 'WKB') {
-					$str .= "CASE WHEN $name->[$k]->[0] IS NOT NULL THEN SDE.ST_ASBINARY($name->[$k]->[0]) ELSE NULL END,";
+					$str .= "CASE WHEN $name->[$k] IS NOT NULL THEN SDE.ST_ASBINARY($name->[$k]) ELSE NULL END,";
 				} else {
-					$str .= "CASE WHEN $name->[$k]->[0] IS NOT NULL THEN SDE.ST_ASTEXT($name->[$k]->[0]) ELSE NULL END,";
+					$str .= "CASE WHEN $name->[$k] IS NOT NULL THEN SDE.ST_ASTEXT($name->[$k]) ELSE NULL END,";
 				}
 			}
 			# Oracle geometries
@@ -10347,21 +10346,21 @@ sub _howto_get_data
 				if ($self->{type} eq 'INSERT')
 				{
 					if ($self->{geometry_extract_type} eq 'WKB') {
-						$str .= "CASE WHEN $name->[$k]->[0] IS NOT NULL THEN SDO_UTIL.TO_WKBGEOMETRY($name->[$k]->[0]) ELSE NULL END,";
+						$str .= "CASE WHEN $name->[$k] IS NOT NULL THEN SDO_UTIL.TO_WKBGEOMETRY($name->[$k]) ELSE NULL END,";
 					} elsif ($self->{geometry_extract_type} eq 'INTERNAL') {
-						$str .= "CASE WHEN $name->[$k]->[0] IS NOT NULL THEN $name->[$k]->[0] ELSE NULL END,";
+						$str .= "CASE WHEN $name->[$k] IS NOT NULL THEN $name->[$k] ELSE NULL END,";
 					} else {
-						$str .= "CASE WHEN $name->[$k]->[0] IS NOT NULL THEN 'ST_GeomFromText('''||SDO_UTIL.TO_WKTGEOMETRY($name->[$k]->[0])||''','||($spatial_srid)||')' ELSE NULL END,";
+						$str .= "CASE WHEN $name->[$k] IS NOT NULL THEN 'ST_GeomFromText('''||SDO_UTIL.TO_WKTGEOMETRY($name->[$k])||''','||($spatial_srid)||')' ELSE NULL END,";
 					}
 				}
 				else
 				{
 					if ($self->{geometry_extract_type} eq 'WKB') {
-						$str .= "CASE WHEN $name->[$k]->[0] IS NOT NULL THEN SDO_UTIL.TO_WKBGEOMETRY($name->[$k]->[0]) ELSE NULL END,";
+						$str .= "CASE WHEN $name->[$k] IS NOT NULL THEN SDO_UTIL.TO_WKBGEOMETRY($name->[$k]) ELSE NULL END,";
 					} elsif ($self->{geometry_extract_type} eq 'INTERNAL') {
-						$str .= "CASE WHEN $name->[$k]->[0] IS NOT NULL THEN $name->[$k]->[0] ELSE NULL END,";
+						$str .= "CASE WHEN $name->[$k] IS NOT NULL THEN $name->[$k] ELSE NULL END,";
 					} else {
-						$str .= "CASE WHEN $name->[$k]->[0] IS NOT NULL THEN SDO_UTIL.TO_WKTGEOMETRY($name->[$k]->[0]) ELSE NULL END,";
+						$str .= "CASE WHEN $name->[$k] IS NOT NULL THEN SDO_UTIL.TO_WKTGEOMETRY($name->[$k]) ELSE NULL END,";
 					}
 				}
 			}
@@ -10370,17 +10369,17 @@ sub _howto_get_data
 				if ($self->{db_version} < '5.7.6')
 				{
 					if ($self->{geometry_extract_type} eq 'WKB') {
-						$str .= "CASE WHEN $name->[$k]->[0] IS NOT NULL THEN CONCAT('SRID=',SRID($name->[$k]->[0]),';', AsBinary($name->[$k]->[0])) ELSE NULL END,";
+						$str .= "CASE WHEN $name->[$k]->[0] IS NOT NULL THEN CONCAT('SRID=',SRID($name->[$k]),';', AsBinary($name->[$k])) ELSE NULL END,";
 					} else {
-						$str .= "CASE WHEN $name->[$k]->[0] IS NOT NULL THEN CONCAT('SRID=',SRID($name->[$k]->[0]),';', AsText($name->[$k]->[0])) ELSE NULL END,";
+						$str .= "CASE WHEN $name->[$k]->[0] IS NOT NULL THEN CONCAT('SRID=',SRID($name->[$k]),';', AsText($name->[$k])) ELSE NULL END,";
 					}
 				}
 				else
 				{
 					if ($self->{geometry_extract_type} eq 'WKB') {
-						$str .= "CASE WHEN $name->[$k]->[0] IS NOT NULL THEN CONCAT('SRID=',ST_Srid($name->[$k]->[0]),';', ST_AsBinary($name->[$k]->[0])) ELSE NULL END,";
+						$str .= "CASE WHEN $name->[$k] IS NOT NULL THEN CONCAT('SRID=',ST_Srid($name->[$k]),';', ST_AsBinary($name->[$k]->[0])) ELSE NULL END,";
 					} else {
-						$str .= "CASE WHEN $name->[$k]->[0] IS NOT NULL THEN CONCAT('SRID=',ST_Srid($name->[$k]->[0]),';', ST_AsText($name->[$k]->[0])) ELSE NULL END,";
+						$str .= "CASE WHEN $name->[$k] IS NOT NULL THEN CONCAT('SRID=',ST_Srid($name->[$k]),';', ST_AsText($name->[$k]->[0])) ELSE NULL END,";
 					}
 				}
 			}
@@ -10388,9 +10387,9 @@ sub _howto_get_data
 			elsif ( $self->{is_mysql} && $src_type->[$k] =~ /geometry/i && $self->{type} eq 'TEST_DATA')
 			{
 				if ($self->{db_version} < '5.7.6') {
-					$str .= "CASE WHEN $name->[$k]->[0] IS NOT NULL THEN AsText($name->[$k]->[0]) ELSE NULL END,";
+					$str .= "CASE WHEN $name->[$k] IS NOT NULL THEN AsText($name->[$k]) ELSE NULL END,";
 				} else {
-					$str .= "CASE WHEN $name->[$k]->[0] IS NOT NULL THEN ST_AsText($name->[$k]->[0]) ELSE NULL END,";
+					$str .= "CASE WHEN $name->[$k] IS NOT NULL THEN ST_AsText($name->[$k]) ELSE NULL END,";
 				}
 			}
 			elsif ( !$self->{is_mysql} && (($src_type->[$k] =~ /clob/i) || ($src_type->[$k] =~ /blob/i)) )
@@ -10400,14 +10399,14 @@ sub _howto_get_data
 					next;
 				}
 				if ($self->{empty_lob_null}) {
-					$str .= "CASE WHEN dbms_lob.getlength($name->[$k]->[0]) = 0 THEN NULL ELSE $name->[$k]->[0] END,";
+					$str .= "CASE WHEN dbms_lob.getlength($name->[$k]) = 0 THEN NULL ELSE $name->[$k] END,";
 				} else {
-					$str .= "$name->[$k]->[0],";
+					$str .= "$name->[$k],";
 				}
 			}
 			else
 			{
-				$str .= "$name->[$k]->[0],";
+				$str .= "$name->[$k],";
 
 			}
 			push(@{$self->{spatial_srid}{$table}}, $spatial_srid);
@@ -10846,6 +10845,8 @@ elements for each column the specified table
 sub _column_info
 {
 	my ($self, $table, $owner, $objtype, $recurs) = @_;
+
+	$self->logit("Collecting column information for table $table...\n", 1);
 
 	if ($self->{is_mysql}) {
 		return Ora2Pg::MySQL::_column_info($self,'',$owner,'TABLE');

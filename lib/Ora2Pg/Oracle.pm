@@ -533,13 +533,12 @@ sub _column_info
 
 	my $sth = '';
 	my $sql = '';
-	#my $virtual_col = "SELECT V.VIRTUAL_COLUMN FROM $self->{prefix}_TAB_COLS V WHERE V.OWNER=? AND V.TABLE_NAME=? AND V.COLUMN_NAME=?";
 	if ($self->{db_version} !~ /Release 8/)
 	{
 		my $exclude_mview = $self->exclude_mviews('A.OWNER, A.TABLE_NAME');
 		$sql = qq{
 SELECT A.COLUMN_NAME, A.DATA_TYPE, A.DATA_LENGTH, A.NULLABLE, A.DATA_DEFAULT,
-    A.DATA_PRECISION, A.DATA_SCALE, A.CHAR_LENGTH, A.TABLE_NAME, A.OWNER, 'NO' as "VIRTUAL_COLUMN"
+    A.DATA_PRECISION, A.DATA_SCALE, A.CHAR_LENGTH, A.TABLE_NAME, A.OWNER
 FROM $self->{prefix}_TAB_COLUMNS A
 WHERE 1=1 $condition
 ORDER BY A.COLUMN_ID
@@ -562,7 +561,7 @@ ORDER BY A.COLUMN_ID
 		# an 8i database.
 		$sql = qq{
 SELECT A.COLUMN_NAME, A.DATA_TYPE, A.DATA_LENGTH, A.NULLABLE, A.DATA_DEFAULT,
-    A.DATA_PRECISION, A.DATA_SCALE, A.DATA_LENGTH, A.TABLE_NAME, A.OWNER, 'NO' as "VIRTUAL_COLUMN"
+    A.DATA_PRECISION, A.DATA_SCALE, A.DATA_LENGTH, A.TABLE_NAME, A.OWNER
 FROM $self->{prefix}_TAB_COLUMNS A
     $condition
 ORDER BY A.COLUMN_ID
@@ -601,6 +600,12 @@ ORDER BY A.COLUMN_ID
 	my $spatial_dim = "SELECT t.SDO_DIMNAME, t.SDO_LB, t.SDO_UB FROM ALL_SDO_GEOM_METADATA m, TABLE (m.diminfo) t WHERE m.TABLE_NAME=? AND m.COLUMN_NAME=? AND OWNER=?";
 	my $st_spatial_dim = "SELECT ST_DIMENSION(c.%s) FROM %s c";
 
+	my $is_virtual_col = "SELECT V.VIRTUAL_COLUMN FROM $self->{prefix}_TAB_COLS V WHERE V.OWNER=? AND V.TABLE_NAME=? AND V.COLUMN_NAME=?";
+	my $sth3 = undef;
+	if ($self->{db_version} !~ /Release 8/) {
+		$sth3 = $self->{dbh}->prepare($is_virtual_col);
+	}
+
 	my $t0 = Benchmark->new;
 	my %data = ();
 	my $pos = 0;
@@ -623,6 +628,15 @@ ORDER BY A.COLUMN_ID
 		$tmptable = $row->[8];
 		if ($self->{export_schema} && !$self->{schema}) {
 			$tmptable = "$row->[9].$row->[8]";
+		}
+
+		# In case we have a default value, check if this is a virtual column
+		my $virtual = 'NO';
+		if ($self->{pg_supports_virtualcol} and defined $sth3 and $row->[4])
+		{
+			$sth3->execute($row->[9],$row->[8],$row->[0]) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+			my $r = $sth3->fetch;
+			$virtual = $r->[0];
 		}
 
 		# check if this is a spatial column (srid, dim, gtype)
@@ -765,12 +779,12 @@ ORDER BY A.COLUMN_ID
 		if (!$self->{schema} && $self->{export_schema})
 		{
 			next if (!$self->is_in_struct($tmptable, $row->[0]));
-			push(@{$data{$tmptable}{"$row->[0]"}}, (@$row, $pos, @geom_inf));
+			push(@{$data{$tmptable}{"$row->[0]"}}, (@$row, $virtual, $pos, @geom_inf));
 		}
 		else
 		{
 			next if (!$self->is_in_struct($row->[8], $row->[0]));
-			push(@{$data{"$row->[8]"}{"$row->[0]"}}, (@$row, $pos, @geom_inf));
+			push(@{$data{"$row->[8]"}{"$row->[0]"}}, (@$row, $virtual, $pos, @geom_inf));
 		}
 		$pos++;
 		$ncols++;
@@ -778,6 +792,8 @@ ORDER BY A.COLUMN_ID
 	my $t1 = Benchmark->new;
 	my $td = timediff($t1, $t0);
 	$self->logit("Collecting $ncols columns in $self->{prefix}_INDEXES took: " . timestr($td) . "\n", 1);
+
+	$sth3->finish() if (defined $sth3);
 
 	return %data;
 }
@@ -1100,13 +1116,13 @@ sub _alias_info
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	my $data = $sth->fetchall_arrayref();
-	$self->logit("View $view column aliases:\n", 1);
+	#$self->logit("View $view column aliases:\n", 1);
 	foreach my $d (@$data)
 	{
 		if (!$self->{schema} && $self->{export_schema}) {
 			$d->[0] = "$d->[2].$d->[0]";
 		}
-		$self->logit("\t$d->[0] =>  column id:$d->[1]\n", 1);
+		#$self->logit("\t$d->[0] =>  column id:$d->[1]\n", 1);
 	}
 
 	return @$data;
@@ -2786,17 +2802,23 @@ sub _column_attributes
 	if ($self->{db_version} !~ /Release 8/) {
 		$sth = $self->{dbh}->prepare(<<END);
 SELECT A.COLUMN_NAME, A.NULLABLE, A.DATA_DEFAULT, A.TABLE_NAME, A.OWNER, A.COLUMN_ID, A.DATA_TYPE
-FROM $self->{prefix}_TAB_COLUMNS A, $self->{prefix}_OBJECTS O WHERE A.OWNER=O.OWNER and A.TABLE_NAME=O.OBJECT_NAME and O.OBJECT_TYPE='$objtype' $condition
+FROM $self->{prefix}_TAB_COLUMNS A, $self->{prefix}_OBJECTS O
+WHERE A.OWNER=O.OWNER and A.TABLE_NAME=O.OBJECT_NAME and O.OBJECT_TYPE='$objtype'
+    $condition
 ORDER BY A.COLUMN_ID
 END
 		if (!$sth) {
 			$self->logit("FATAL: _column_attributes() " . $self->{dbh}->errstr . "\n", 0, 1);
 		}
-	} else {
+	}
+	else
+	{
 		# an 8i database.
 		$sth = $self->{dbh}->prepare(<<END);
 SELECT A.COLUMN_NAME, A.NULLABLE, A.DATA_DEFAULT, A.TABLE_NAME, A.OWNER, A.COLUMN_ID, A.DATA_TYPE
-FROM $self->{prefix}_TAB_COLUMNS A, $self->{prefix}_OBJECTS O WHERE A.OWNER=O.OWNER and A.TABLE_NAME=O.OBJECT_NAME and O.OBJECT_TYPE='$objtype' $condition
+FROM $self->{prefix}_TAB_COLUMNS A, $self->{prefix}_OBJECTS O
+WHERE A.OWNER=O.OWNER and A.TABLE_NAME=O.OBJECT_NAME and O.OBJECT_TYPE='$objtype'
+    $condition
 ORDER BY A.COLUMN_ID
 END
 		if (!$sth) {
