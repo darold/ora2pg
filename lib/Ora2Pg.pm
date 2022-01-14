@@ -19752,7 +19752,7 @@ sub _get_oracle_test_data
 			$colname = '"' . $colname . '"';
 		}
 		$col_list .= "$colname,";
-		if ($self->is_pk) {
+		if ($is_pk) {
 			push @pg_colnames_pkey, "$colname";
 		} elsif ($f->[3] =~ m/^Y/) {
 			push @pg_colnames_nullable, "$colname";
