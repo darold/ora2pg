@@ -19740,7 +19740,8 @@ sub _get_oracle_test_data
 		}
 		push(@stt, uc($f->[1]));
 		push(@tt, $type);
-		push(@nn,  $self->{tables}{$table}{column_info}{$fieldname});
+		push(@nn, $f->[0]);
+
 		# Change column names
 		my $colname = $f->[0];
 		if ($self->{replaced_cols}{lc($table)}{lc($f->[0])}) {
