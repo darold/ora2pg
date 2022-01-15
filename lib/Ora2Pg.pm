@@ -1073,6 +1073,11 @@ sub _init
 		$self->{autonomous_transaction} = 1;
 	}
 
+	# By default we force identity column to be bigint
+	if (!exists $self->{force_identity_bigint} || $self->{force_identity_bigint} ne '0') {
+		$self->{force_identity_bigint} = 1;
+	}
+
 	# Don't use *_pattern_ops with indexes by default
 	$self->{use_index_opclass} ||= 0;
 
@@ -7427,7 +7432,7 @@ sub export_table
 					$sql_output =~ s/ NOT NULL\s*$//s; # IDENTITY or serial column are NOT NULL by default
 					if ($self->{pg_supports_identity})
 					{
-						$sql_output =~ s/ [^\s]+$/ bigint/; # Force bigint
+						$sql_output =~ s/ [^\s]+$/ bigint/ if ($self->{force_identity_bigint}) ; # Force bigint
 						$sql_output .= " GENERATED $self->{identity_info}{$f->[8]}{$f->[0]}{generation} AS IDENTITY";
 						$sql_output .= " (" . $self->{identity_info}{$f->[8]}{$f->[0]}{options} . ')' if (exists $self->{identity_info}{$f->[8]}{$f->[0]}{options} && $self->{identity_info}{$f->[8]}{$f->[0]}{options} ne '');
 					}
@@ -15861,7 +15866,7 @@ sub _show_infos
 					{
 						if ($self->{pg_supports_identity})
 						{
-							$type1 = 'bigint'; # Force bigint
+							$type1 = 'bigint' if ($self->{force_identity_bigint}); # Force bigint
 							$type1 .= " GENERATED $self->{identity_info}{$d->[8]}{$d->[0]}{generation} AS IDENTITY";
 							$type1 .= " (" . $self->{identity_info}{$d->[8]}{$d->[0]}{options} . ')' if (exists $self->{identity_info}{$d->[8]}{$d->[0]}{options} && $self->{identity_info}{$d->[8]}{$d->[0]}{options} ne '');
 						}

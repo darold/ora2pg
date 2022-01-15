@@ -133,7 +133,7 @@
 .\" ========================================================================
 .\"
 .IX Title "ORA2PG 1"
-.TH ORA2PG 1 "2022-01-08" "perl v5.30.0" "User Contributed Perl Documentation"
+.TH ORA2PG 1 "2022-01-15" "perl v5.30.0" "User Contributed Perl Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -2198,6 +2198,12 @@ be taken as a mask format. If set to none, no conversion will be done.
 .IX Item "VARCHAR_TO_TEXT"
 By default varchar2 without size constraint are tranlated into text. If you
 want to keep the varchar name, disable this directive.
+.IP "\s-1FORCE_IDENTITY_BIGINT\s0" 4
+.IX Item "FORCE_IDENTITY_BIGINT"
+Usually identity column must be bigint to correspond to an auto increment
+sequence so Ora2Pg always force it to be a bigint. If, for any reason you
+want Ora2Pg to respect the \s-1DATA_TYPE\s0 you have set for identity column then
+disable this directive.
 .SS "Taking export under control"
 .IX Subsection "Taking export under control"
 The following other configuration directives interact directly with the export process and give you fine granularity in database export control.

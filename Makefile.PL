@@ -863,6 +863,10 @@ TO_NUMBER_CONVERSION	numeric
 # want to keep the varchar name, disable this directive.
 VARCHAR_TO_TEXT	1
 
+# Usually identity column must be bigint to correspond to an auto increment
+# sequence. If, for any reason you want Ora2Pg respect the DATA_TYPE you have
+# set, disable this directive.
+FORCE_IDENTITY_BIGINT	1
 
 #------------------------------------------------------------------------------
 # GRANT SECTION (Control priviledge and owner export)

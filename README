@@ -2002,6 +2002,12 @@ CONFIGURATION
         By default varchar2 without size constraint are tranlated into text.
         If you want to keep the varchar name, disable this directive.
 
+    FORCE_IDENTITY_BIGINT
+        Usually identity column must be bigint to correspond to an auto
+        increment sequence so Ora2Pg always force it to be a bigint. If, for
+        any reason you want Ora2Pg to respect the DATA_TYPE you have set for
+        identity column then disable this directive.
+
   Taking export under control
     The following other configuration directives interact directly with the
     export process and give you fine granularity in database export control.
