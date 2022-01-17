@@ -7434,7 +7434,15 @@ sub export_table
 					{
 						$sql_output =~ s/ [^\s]+$/ bigint/ if ($self->{force_identity_bigint}) ; # Force bigint
 						$sql_output .= " GENERATED $self->{identity_info}{$f->[8]}{$f->[0]}{generation} AS IDENTITY";
-						$sql_output .= " (" . $self->{identity_info}{$f->[8]}{$f->[0]}{options} . ')' if (exists $self->{identity_info}{$f->[8]}{$f->[0]}{options} && $self->{identity_info}{$f->[8]}{$f->[0]}{options} ne '');
+						if (exists $self->{identity_info}{$f->[8]}{$f->[0]}{options}
+							&& $self->{identity_info}{$f->[8]}{$f->[0]}{options} ne '')
+						{
+							# Adapt automatically the max value following the data type
+							if ($sql_output =~ / (integer|int4|int) GENERATED/i) {
+								$self->{identity_info}{$f->[8]}{$f->[0]}{options} =~ s/ 9223372036854775807/ 2147483647/s;
+							}
+							$sql_output .= " (" . $self->{identity_info}{$f->[8]}{$f->[0]}{options} . ')';
+						}
 					}
 					else
 					{
@@ -15868,7 +15876,15 @@ sub _show_infos
 						{
 							$type1 = 'bigint' if ($self->{force_identity_bigint}); # Force bigint
 							$type1 .= " GENERATED $self->{identity_info}{$d->[8]}{$d->[0]}{generation} AS IDENTITY";
-							$type1 .= " (" . $self->{identity_info}{$d->[8]}{$d->[0]}{options} . ')' if (exists $self->{identity_info}{$d->[8]}{$d->[0]}{options} && $self->{identity_info}{$d->[8]}{$d->[0]}{options} ne '');
+							if (exists $self->{identity_info}{$d->[8]}{$d->[0]}{options}
+								&& $self->{identity_info}{$d->[8]}{$d->[0]}{options} ne '')
+							{
+								# Adapt automatically the max value following the data type
+								if ($type1 =~ /^(integer|int4|int)$/) {
+									$self->{identity_info}{$d->[8]}{$d->[0]}{options} =~ s/ 9223372036854775807/ 2147483647/s;
+								}
+								$type1 .= " (" . $self->{identity_info}{$d->[8]}{$d->[0]}{options} . ')';
+							}
 						}
 						else
 						{
