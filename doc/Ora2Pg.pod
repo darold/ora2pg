@@ -2065,6 +2065,11 @@ sequence so Ora2Pg always force it to be a bigint. If, for any reason you
 want Ora2Pg to respect the DATA_TYPE you have set for identity column then
 disable this directive.
 
+=item TO_CHAR_NOTIMEZONE
+
+If you want Ora2Pg to remove any timezone information into the format part
+of the TO_CHAR() function, enable this directive. Disabled by default.
+
 =back
 
 =head2 Taking export under control

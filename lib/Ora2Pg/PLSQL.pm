@@ -1481,10 +1481,13 @@ sub convert_date_format
 	$fields =~ s/FF\d*/US/s;
 
 	# Remove any timezone format
-	$fields =~ s/\s*TZ[DHMR]//gs;
+	if ($class->{to_char_notimezone}) {
+		$fields =~ s/\s*TZ[DHMR]//gs;
+	}
 
 	# Replace constant strings
-	while ($str =~ s/('[^']+')/\?TEXTVALUE$class->{text_values_pos}\?/s) {
+	while ($str =~ s/('[^']+')/\?TEXTVALUE$class->{text_values_pos}\?/s)
+	{
 		$class->{text_values}{$class->{text_values_pos}} = $1;
 		$class->{text_values_pos}++;
 	}

@@ -2008,6 +2008,11 @@ CONFIGURATION
         any reason you want Ora2Pg to respect the DATA_TYPE you have set for
         identity column then disable this directive.
 
+    TO_CHAR_NOTIMEZONE
+        If you want Ora2Pg to remove any timezone information into the
+        format part of the TO_CHAR() function, enable this directive.
+        Disabled by default.
+
   Taking export under control
     The following other configuration directives interact directly with the
     export process and give you fine granularity in database export control.

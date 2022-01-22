@@ -868,6 +868,9 @@ VARCHAR_TO_TEXT	1
 # set, disable this directive.
 FORCE_IDENTITY_BIGINT	1
 
+# Remove timezone part into the format of the TO_CHAR() function
+TO_CHAR_NOTIMEZONE		1
+
 #------------------------------------------------------------------------------
 # GRANT SECTION (Control priviledge and owner export)
 #------------------------------------------------------------------------------

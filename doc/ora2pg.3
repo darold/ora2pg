@@ -133,7 +133,7 @@
 .\" ========================================================================
 .\"
 .IX Title "ORA2PG 1"
-.TH ORA2PG 1 "2022-01-15" "perl v5.30.0" "User Contributed Perl Documentation"
+.TH ORA2PG 1 "2022-01-22" "perl v5.30.0" "User Contributed Perl Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -2204,6 +2204,10 @@ Usually identity column must be bigint to correspond to an auto increment
 sequence so Ora2Pg always force it to be a bigint. If, for any reason you
 want Ora2Pg to respect the \s-1DATA_TYPE\s0 you have set for identity column then
 disable this directive.
+.IP "\s-1TO_CHAR_NOTIMEZONE\s0" 4
+.IX Item "TO_CHAR_NOTIMEZONE"
+If you want Ora2Pg to remove any timezone information into the format part
+of the \s-1\fBTO_CHAR\s0()\fR function, enable this directive. Disabled by default.
 .SS "Taking export under control"
 .IX Subsection "Taking export under control"
 The following other configuration directives interact directly with the export process and give you fine granularity in database export control.

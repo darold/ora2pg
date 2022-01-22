@@ -1078,6 +1078,11 @@ sub _init
 		$self->{force_identity_bigint} = 1;
 	}
 
+	# by default we don't remove TZ part of the TO_CHAR() format
+	if (!exists $self->{to_char_notimezone}) {
+		$self->{to_char_notimezone} = 0;
+	}
+
 	# Don't use *_pattern_ops with indexes by default
 	$self->{use_index_opclass} ||= 0;
 
