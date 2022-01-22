@@ -1595,7 +1595,9 @@ sub _lookup_function
 		}
 		$fct_detail{args} =~ s/;.*//s;
 
-		if ($fct_detail{declare} =~ /LANGUAGE\s+([^\s="'><\!\(\)]+)/is) {
+		$fct_detail{declare} =~ s/\s*AS\%ORA2PG_COMMENT\d+\%//is;
+		if ($fct_detail{declare} =~ /LANGUAGE\s+([^\s="'><\!\(\)]+)/is)
+		{
 			$fct_detail{language} = $1;
 			if ($fct_detail{declare} =~ /LIBRARY\s+([^\s="'><\!\(\)]+)/is) {
 				$fct_detail{library} = $1;
