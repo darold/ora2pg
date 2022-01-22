@@ -1416,6 +1416,7 @@ sub _init
 	$self->{type_of_type} = ();
 	$self->{dump_as_html} ||= 0;
 	$self->{dump_as_csv} ||= 0;
+	$self->{dump_as_json} ||= 0;
 	$self->{dump_as_sheet} ||= 0;
 	$self->{top_max} ||= 10;
 	$self->{print_header} ||= 0;
@@ -18182,7 +18183,7 @@ Technical levels:
     5 = difficult: stored functions and/or triggers with code rewriting
 };
 	# Generate report text report
-	if (!$self->{dump_as_html} && !$self->{dump_as_csv} && !$self->{dump_as_sheet})
+	if (!$self->{dump_as_html} && !$self->{dump_as_csv} && !$self->{dump_as_sheet} && !$self->{dump_as_json})
 	{
 		my $cost_header = '';
 		$cost_header = "\tEstimated cost" if ($self->{estimate_cost});
@@ -18262,6 +18263,36 @@ Technical levels:
 		$self->logrep("\n");
 		$self->logrep("Total Number;Total Invalid;Total Estimated cost;Human days cost;Migration level\n");
 		$self->logrep("$report_info{'total_object_number'};$report_info{'total_object_invalid'};$report_info{'total_cost_value'};$human_cost;$difficulty\n");
+	}
+	elsif ($self->{dump_as_json})
+	{
+		$self->logrep("{\n");
+		$self->logrep("\"ora2pg version\": $VERSION,\n");
+		$self->logrep("\"Version\": $report_info{'Version'},\n");
+		$self->logrep("\"Schema\": $report_info{'Schema'},\n");
+		$self->logrep("\"Size\": $report_info{'Size'},\n");
+		my $cnt=0;
+		foreach my $typ (sort keys %{ $report_info{'Objects'} } ) {
+			$report_info{'Objects'}{$typ}{'detail'} =~ s/\n/\. /gs;
+			$cnt++;
+			if ($cnt ne 1) {
+			    $self->logrep(",");
+			}
+			$self->logrep("\"case $cnt\":{")
+			$self->logrep("\"object\":$typ,\"number\":$report_info{'Objects'}{$typ}{'number'},")
+			$self->logrep("\"invalid\":$report_info{'Objects'}{$typ}{'invalid'},")
+			$self->logrep("\"cost value\":$report_info{'Objects'}{$typ}{'cost_value'},")
+			$self->logrep("\"comment\":$report_info{'Objects'}{$typ}{'comment'}}\n");
+			$self->logrep("\"details\":$report_info{'Objects'}{$typ}{'detail'}}\n");
+		}
+		my $human_cost = $self->_get_human_cost($report_info{'total_cost_value'});
+		$difficulty = '' if (!$self->{estimate_cost});
+		$self->logrep(",\"total number\":$report_info{'total_object_number'}");
+		$self->logrep(",\"total invalid\":$report_info{'total_object_invalid'}");
+		$self->logrep(",\"total cost\":$report_info{'total_cost_value'}");
+		$self->logrep(",\"human days cost\":$human_cost");
+		$self->logrep(",\"migration level\":$difficulty");
+		$self->logrep("}\n");
 	}
 	elsif ($self->{dump_as_sheet})
 	{
