@@ -6130,8 +6130,10 @@ sub export_package
 	$self->{packages} = ();
 	$sql_output = '';
 	# Create file to load custom variable initialization into postgresql.conf
-	if (scalar keys %{$self->{global_variables}}) {
-		foreach my $n (sort keys %{$self->{global_variables}}) {
+	if (scalar keys %{$self->{global_variables}})
+	{
+		foreach my $n (sort keys %{$self->{global_variables}})
+		{
 			if (exists $self->{global_variables}{$n}{constant} || exists $self->{global_variables}{$n}{default}) {
 				$default_global_vars .= "$n = '$self->{global_variables}{$n}{default}'\n";
 			} else {
@@ -13623,7 +13625,7 @@ sub _format_view
 	}
 
 	if ($self->{plsql_pgsql}) {
-			$sqlstr = Ora2Pg::PLSQL::convert_plsql_code($self, $sqlstr);
+		$sqlstr = Ora2Pg::PLSQL::convert_plsql_code($self, $sqlstr);
 	}
 
 	$self->_restore_comments(\$sqlstr);
@@ -19093,11 +19095,13 @@ sub register_global_variable
 		$l =~ s/\s*:=\s*/ := /igs;
 		my ($n, $type, @others) = split(/\s+/, $l);
 		$ret .= $l, next if (!$type);
-		if (!$n) {
+		if (!$n)
+		{
 			$n = $type;
 			$type = $others[0] || '';
 		}
-		if (uc($type) eq 'EXCEPTION') {
+		if (uc($type) eq 'EXCEPTION')
+		{
 			$n = lc($n);
 			if (!exists $self->{custom_exception}{$n}) {
 				$self->{custom_exception}{$n} = $self->{exception_id}++;
@@ -19111,7 +19115,7 @@ sub register_global_variable
 		{
 			$type = '';
 			$self->{global_variables}{$v}{constant} = 1;
-			for (my $j = 0; $j < $#others; $j++)
+			for (my $j = 0; $j <= $#others; $j++)
 			{
 				$type .=  $others[$j] if ($others[$j] ne ':=' and uc($others[$j]) ne 'DEFAULT');
 			}
@@ -19123,7 +19127,10 @@ sub register_global_variable
 		}
 		if (exists $self->{global_variables}{$v}{default})
 		{
+			$self->{global_variables}{$v}{default} .= $others[-1] if ($#others > 2 and $others[-2] =~ /,$/);
+			$self->{global_variables}{$v}{default} = Ora2Pg::PLSQL::convert_plsql_code($self, $self->{global_variables}{$v}{default});
 			$self->_restore_text_constant_part(\$self->{global_variables}{$v}{default});
+			$self->{global_variables}{$v}{default} =~ s/'/\\'/gs;
 			$self->{global_variables}{$v}{default} =~ s/^'//s;
 			$self->{global_variables}{$v}{default} =~ s/'$//s;
 		}
