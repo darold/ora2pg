@@ -18272,16 +18272,17 @@ Technical levels:
 		$self->logrep("\"Schema\": $report_info{'Schema'},\n");
 		$self->logrep("\"Size\": $report_info{'Size'},\n");
 		my $cnt=0;
-		foreach my $typ (sort keys %{ $report_info{'Objects'} } ) {
+		foreach my $typ (sort keys %{ $report_info{'Objects'} } )
+		{
 			$report_info{'Objects'}{$typ}{'detail'} =~ s/\n/\. /gs;
 			$cnt++;
 			if ($cnt ne 1) {
 			    $self->logrep(",");
 			}
-			$self->logrep("\"case $cnt\":{")
-			$self->logrep("\"object\":$typ,\"number\":$report_info{'Objects'}{$typ}{'number'},")
-			$self->logrep("\"invalid\":$report_info{'Objects'}{$typ}{'invalid'},")
-			$self->logrep("\"cost value\":$report_info{'Objects'}{$typ}{'cost_value'},")
+			$self->logrep("\"case $cnt\":{");
+			$self->logrep("\"object\":$typ,\"number\":$report_info{'Objects'}{$typ}{'number'},");
+			$self->logrep("\"invalid\":$report_info{'Objects'}{$typ}{'invalid'},");
+			$self->logrep("\"cost value\":$report_info{'Objects'}{$typ}{'cost_value'},");
 			$self->logrep("\"comment\":$report_info{'Objects'}{$typ}{'comment'}}\n");
 			$self->logrep("\"details\":$report_info{'Objects'}{$typ}{'detail'}}\n");
 		}
