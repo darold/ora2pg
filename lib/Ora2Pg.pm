@@ -19130,7 +19130,9 @@ sub register_global_variable
 			$self->{global_variables}{$v}{default} .= $others[-1] if ($#others > 2 and $others[-2] =~ /,$/);
 			$self->{global_variables}{$v}{default} = Ora2Pg::PLSQL::convert_plsql_code($self, $self->{global_variables}{$v}{default});
 			$self->_restore_text_constant_part(\$self->{global_variables}{$v}{default});
-			$self->{global_variables}{$v}{default} =~ s/'/\\'/gs;
+			if ($self->{global_variables}{$v}{default} !~ /^'/) {
+				$self->{global_variables}{$v}{default} =~ s/'/\\'/gs;
+			}
 			$self->{global_variables}{$v}{default} =~ s/^'//s;
 			$self->{global_variables}{$v}{default} =~ s/'$//s;
 		}
