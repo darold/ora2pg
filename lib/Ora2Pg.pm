@@ -4223,7 +4223,8 @@ sub _replace_declare_var
 	}
 
 	# Replace call to raise exception
-	foreach my $e (keys %{$self->{custom_exception}}) {
+	foreach my $e (keys %{$self->{custom_exception}})
+	{
 		$$code =~ s/\bRAISE\s+$e\b/RAISE EXCEPTION '$e' USING ERRCODE = '$self->{custom_exception}{$e}'/igs;
 		$$code =~ s/(\s+WHEN\s+)$e\s+/$1SQLSTATE '$self->{custom_exception}{$e}' /igs;
 	}
@@ -6144,7 +6145,8 @@ sub export_package
 	%{$self->{global_variables}} = ();
 
 	# Save global variable that need to be initialized at startup
-	if ($default_global_vars) {
+	if ($default_global_vars)
+	{
 		my $dirprefix = '';
 		$dirprefix = "$self->{output_dir}/" if ($self->{output_dir});
 		open(OUT, ">${dirprefix}global_variables.conf");
@@ -19115,26 +19117,34 @@ sub register_global_variable
 		{
 			$type = '';
 			$self->{global_variables}{$v}{constant} = 1;
-			for (my $j = 0; $j <= $#others; $j++)
+			for (my $j = 0; $j < $#others; $j++)
 			{
-				$type .=  $others[$j] if ($others[$j] ne ':=' and uc($others[$j]) ne 'DEFAULT');
+				$type .= $others[$j] if ($others[$j] ne ':=' and uc($others[$j]) ne 'DEFAULT');
 			}
 		}
 		# extract the default value from the declaration
 		for (my $j = 0; $j < $#others; $j++)
 		{
-			$self->{global_variables}{$v}{default} = $others[$j+1] if ($others[$j] eq ':=' or uc($others[$j]) eq 'DEFAULT');
+			if ($others[$j] eq ':=' or uc($others[$j]) eq 'DEFAULT')
+			{
+				# Append the rest of the definition to the default value
+				for (my $l = $j+1; $l <= $#others; $l++) {
+					$self->{global_variables}{$v}{default} .= " " if ($l > $j+1);
+					$self->{global_variables}{$v}{default} .= $others[$l];
+				}
+				last;
+			}
 		}
 		if (exists $self->{global_variables}{$v}{default})
 		{
-			$self->{global_variables}{$v}{default} .= $others[-1] if ($#others > 2 and $others[-2] =~ /,$/);
+			#$self->{global_variables}{$v}{default} =~ s/^\s+//;
 			$self->{global_variables}{$v}{default} = Ora2Pg::PLSQL::convert_plsql_code($self, $self->{global_variables}{$v}{default});
 			$self->_restore_text_constant_part(\$self->{global_variables}{$v}{default});
 			if ($self->{global_variables}{$v}{default} !~ /^'/) {
 				$self->{global_variables}{$v}{default} =~ s/'/\\'/gs;
 			}
 			$self->{global_variables}{$v}{default} =~ s/^'//s;
-			$self->{global_variables}{$v}{default} =~ s/'$//s;
+			$self->{global_variables}{$v}{default} =~ s/'\s*$//s;
 		}
 		$self->{global_variables}{$v}{type} = $type;
 
@@ -19142,6 +19152,7 @@ sub register_global_variable
 		if ($self->{global_variables}{$v}{constant} && ($type =~ /bigint|int|numeric|double/)
 			&& $self->{global_variables}{$v}{default} <= -20000 && $self->{global_variables}{$v}{default} >= -20999)
 		{
+			$self->{global_variables}{$v}{default} =~ s/^\s+//;
 			# Change the type into char(5) for SQLSTATE type
 			$self->{global_variables}{$v}{type} = 'char(5)';
 			# Transform the value to match PostgreSQL user defined exceptions starting with 45
