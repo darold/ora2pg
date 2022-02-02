@@ -956,7 +956,8 @@ This directive, when upper than 1, will invalidate ORACLE_COPIES but not JOBS,
 so the real number of process that will be used is PARALLEL_TABLES * JOBS.
 
 Note that this directive when set upper that 1 will also automatically enable
-the FILE_PER_TABLE directive if your are exporting to files.
+the FILE_PER_TABLE directive if your are exporting to files. This is used to
+export tables and views in separate files.
 
 =item DEFAULT_PARALLELISM_DEGREE
 

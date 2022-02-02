@@ -133,7 +133,7 @@
 .\" ========================================================================
 .\"
 .IX Title "ORA2PG 1"
-.TH ORA2PG 1 "2022-01-22" "perl v5.30.0" "User Contributed Perl Documentation"
+.TH ORA2PG 1 "2022-02-02" "perl v5.30.0" "User Contributed Perl Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -1103,7 +1103,8 @@ This directive, when upper than 1, will invalidate \s-1ORACLE_COPIES\s0 but not 
 so the real number of process that will be used is \s-1PARALLEL_TABLES\s0 * \s-1JOBS.\s0
 .Sp
 Note that this directive when set upper that 1 will also automatically enable
-the \s-1FILE_PER_TABLE\s0 directive if your are exporting to files.
+the \s-1FILE_PER_TABLE\s0 directive if your are exporting to files. This is used to
+export tables and views in separate files.
 .IP "\s-1DEFAULT_PARALLELISM_DEGREE\s0" 4
 .IX Item "DEFAULT_PARALLELISM_DEGREE"
 You can force Ora2Pg to use /*+ \s-1PARALLEL\s0(tbname, degree) */ hint in each
