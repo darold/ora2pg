@@ -10560,7 +10560,7 @@ END;
 	{
 		# Only if the number of rows is upper than PARALLEL_MIN_ROWS
 		$self->{tables}{$table}{table_info}{num_rows} ||= 0;
-		if ($self->{tables}{"\L$table\E"}{table_info}{num_rows} > $self->{parallel_min_rows}) {
+		if ($self->{tables}{$table}{table_info}{num_rows} > $self->{parallel_min_rows}) {
 			$str =~ s#^SELECT #SELECT /*+ FULL(a) PARALLEL(a, $self->{default_parallelism_degree}) */ #;
 		}
 	}
