@@ -8941,6 +8941,7 @@ sub _dump_table
 	# Extract column information following the Oracle position order
 	my @fname = ();
 	my (@pg_colnames_nullable, @pg_colnames_notnull, @pg_colnames_pkey);
+	@{ $self->{tables}{$table}{dest_column_name} } = ();
 	foreach my $i ( 0 .. $#{$self->{tables}{$table}{field_name}} )
 	{
 		my $fieldname = ${$self->{tables}{$table}{field_name}}[$i];
