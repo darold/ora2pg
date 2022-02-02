@@ -18942,11 +18942,20 @@ sub _escape_lob
 			} else {
 				$col = "E'$col'";
 			}
-			if (!$self->{blob_to_lo} || $self->{pg_dsn}) {
-				#$col = "decode($col, 'hex')";
-				$col =~ s/^[E]?'//;
-				$col =~ s/'$//;
-			} else {
+			if (!$self->{blob_to_lo})
+			{
+				if (!$self->{pg_dsn}) {
+					$col = "decode($col, 'hex')";
+				}
+				else
+				{
+					# with prepare just send the data
+					$col =~ s/^[E]?'//;
+					$col =~ s/'$//;
+				}
+			}
+			else
+			{
 				$col = "lo_from_bytea(0, decode($col, 'hex'))";
 			}
 		}
