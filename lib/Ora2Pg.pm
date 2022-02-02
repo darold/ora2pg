@@ -6040,10 +6040,21 @@ sub export_package
 		{
 			$self->{current_package} = $pkg;
 
-			# If there is a declaration only do not go further than looking at global var
+			# If there is a declaration only do not go further than looking at global var and packages type
 			if (!$self->{packages}{$pkg}{text})
 			{
-				$self->_convert_package($pkg);
+				my $t = $self->_convert_package($pkg);
+				$self->_restore_comments(\$t) if (!$self->{file_per_function});
+
+				$sql_output .= "\n\n-- Oracle package '$pkg' declaration, please edit to match PostgreSQL syntax.\n";
+				$sql_output .= $t . "\n";
+				$sql_output .= "-- End of Oracle package '$pkg' declaration\n\n";
+				if ($self->{estimate_cost}) {
+					$sql_output .= "-- Total size of package code: $total_size bytes.\n";
+					$sql_output .= "-- Total size of package code without comments and header: $total_size_no_comment bytes.\n";
+					$sql_output .= "-- Detailed cost per function:\n" . $fct_cost;
+				}
+				$nothing++;
 				$i++;
 				next;
 			}
@@ -6096,12 +6107,14 @@ sub export_package
 			$pkgbody =~ s/[\r\n]*\bEND;\s*$//is;
 			$pkgbody =~ s/(\s*;)\s*$/$1/is;
 		}
-		if ($self->{estimate_cost}) {
+		if ($self->{estimate_cost})
+		{
 			$self->logit("Total size of package code: $total_size bytes.\n", 1);
 			$self->logit("Total size of package code without comments and header: $total_size_no_comment bytes.\n", 1);
 			$self->logit("Total estimated cost for package $pkg: $cost_value units, " . $self->_get_human_cost($cost_value) . ".\n", 1);
 		}
-		if ($pkgbody && ($pkgbody =~ /[a-z]/is)) {
+		if ($pkgbody && ($pkgbody =~ /[a-z]/is))
+		{
 			$sql_output .= "\n\n-- Oracle package '$pkg' declaration, please edit to match PostgreSQL syntax.\n";
 			$sql_output .= $pkgbody . "\n";
 			$sql_output .= "-- End of Oracle package '$pkg' declaration\n\n";
@@ -12682,7 +12695,7 @@ sub _convert_package
 			# Then dump custom type
 			foreach my $tpe (sort {$a->{pos} <=> $b->{pos}} @{$self->{types}})
 			{
-				$self->logit("Dumping type $tpe->{name}...\n", 1);
+				$self->logit("Dumping type $tpe->{name} from package description $pname...\n", 1);
 				if ($self->{plsql_pgsql}) {
 					$tpe->{code} = $self->_convert_type($tpe->{code}, $tpe->{owner}, %{$self->{pkg_type}{$pname}});
 				} else {
@@ -12723,7 +12736,7 @@ sub _convert_package
 			foreach my $tpe (sort {$a->{pos} <=> $b->{pos}} @{$self->{types}})
 			{
 				next if (!exists $self->{pkg_type}{$pname}{$tpe->{name}});
-				$self->logit("Dumping type $tpe->{name}...\n", 1);
+				$self->logit("Dumping type $tpe->{name} from package body $pname...\n", 1);
 				if ($self->{plsql_pgsql}) {
 					$tpe->{code} = $self->_convert_type($tpe->{code}, $tpe->{owner}, %{$self->{pkg_type}{$pname}});
 				} else {
