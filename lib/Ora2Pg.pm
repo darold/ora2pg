@@ -5220,7 +5220,51 @@ sub export_trigger
 					$trig->[4] =~ s/"([^"]+)"/\L$1\E/gs;
 					$trig->[4] =~ s/ALTER TRIGGER\s+[^\s]+\s+ENABLE(;)?//;
 				}
-				$sql_output .= "CREATE$self->{create_or_replace} FUNCTION $trig_fctname() RETURNS trigger AS \$BODY\$\n$trig->[4]\n\$BODY\$\n LANGUAGE 'plpgsql'$security;\n$revoke\n";
+
+				if ($trig->[4] =~ s/\s*(PRAGMA\s+AUTONOMOUS_TRANSACTION[\s;]*)/-- $1/is && $self->{autonomous_transaction})
+				{
+					# Remove the pragma when a conversion is done
+					$trig->[4] =~ s/--\s+PRAGMA\s+AUTONOMOUS_TRANSACTION[\s;]*//is;
+					$trig->[4] =~ s/DECLARE\s*BEGIN/BEGIN/is;
+					# COMMIT is not allowed in PLPGSQL function
+					$trig->[4] =~ s/\s*COMMIT;//is;
+					my $ret = '';
+					if ($trig->[4] =~ s/\s*(RETURN\s+(?:NEW|OLD)\s*;)//igs) {
+						$ret = $1;
+					}
+					$sql_output .= "CREATE$self->{create_or_replace} FUNCTION ${trig_fctname}_atx(NEW $tbname, OLD $tbname) RETURNS void AS \$BODY\$\n$trig->[4]\n\$BODY\$\n LANGUAGE 'plpgsql'$security;\n$revoke\n";
+					my $dblink_conn = $self->{dblink_conn} || "'port=5432 dbname=testdb host=localhost user=pguser password=pgpass'";
+
+					my $at_wrapper = "\tPERFORM ${trig_fctname}_atx(NEW,OLD);\n";
+					if (!$self->{pg_background})
+					{
+						$at_wrapper = qq{DECLARE
+	-- Change this to reflect the dblink connection string
+	v_conn_str  text := $dblink_conn;
+	v_query     text;
+BEGIN
+	v_query := 'SELECT * FROM ${trig_fctname}_atx(NEW,OLD)';
+	PERFORM dblink(v_conn_str, v_query);
+};
+					}
+					else
+					{
+						$at_wrapper = qq{
+DECLARE
+	v_query     text;
+BEGIN
+	v_query := 'SELECT true FROM ${trig_fctname}_atx(NEW,OLD)';
+	PERFORM * FROM pg_background_result(pg_background_launch(v_query)) AS p (ret boolean);
+};
+					}
+					$sql_output .= "CREATE$self->{create_or_replace} FUNCTION $trig_fctname() RETURNS trigger AS \$BODY\$\n$at_wrapper\t$ret\nEND\n\$BODY\$\n LANGUAGE 'plpgsql'$security;\n$revoke\n";
+				}
+				else
+				{
+
+					$sql_output .= "CREATE$self->{create_or_replace} FUNCTION $trig_fctname() RETURNS trigger AS \$BODY\$\n$trig->[4]\n\$BODY\$\n LANGUAGE 'plpgsql'$security;\n$revoke\n";
+				}
+
 				if ($self->{force_owner})
 				{
 					my $owner = $trig->[8];
@@ -6049,7 +6093,8 @@ sub export_package
 				$sql_output .= "\n\n-- Oracle package '$pkg' declaration, please edit to match PostgreSQL syntax.\n";
 				$sql_output .= $t . "\n";
 				$sql_output .= "-- End of Oracle package '$pkg' declaration\n\n";
-				if ($self->{estimate_cost}) {
+				if ($self->{estimate_cost})
+				{
 					$sql_output .= "-- Total size of package code: $total_size bytes.\n";
 					$sql_output .= "-- Total size of package code without comments and header: $total_size_no_comment bytes.\n";
 					$sql_output .= "-- Detailed cost per function:\n" . $fct_cost;
