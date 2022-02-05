@@ -1154,6 +1154,8 @@ sub _get_views
 	my $sql = "SELECT A.OWNER,A.OBJECT_NAME,A.OBJECT_TYPE FROM $self->{prefix}_OBJECTS A WHERE A.OBJECT_TYPE IN 'VIEW' $owner";
 	if (!$self->{export_invalid}) {
 		$sql .= " AND A.STATUS='VALID'";
+	} elsif ($self->{export_invalid} == 2) {
+		$sql .= " AND A.STATUS <> 'VALID'";
 	}
 	$sql .= $self->limit_to_objects('VIEW', 'A.OBJECT_NAME');
 	$self->logit("DEBUG: $sql\n", 2);
@@ -1480,7 +1482,11 @@ sub _get_functions
 
 	# Retrieve all functions 
 	my $str = "SELECT DISTINCT OBJECT_NAME,OWNER FROM $self->{prefix}_OBJECTS WHERE OBJECT_TYPE='FUNCTION'";
-	$str .= " AND STATUS='VALID'" if (!$self->{export_invalid});
+	if (!$self->{export_invalid}) {
+		$str .= " AND STATUS='VALID'";
+	} elsif ($self->{export_invalid} == 2) {
+		$str .= " AND STATUS <> 'VALID'";
+	}
 	if (!$self->{schema}) {
 		$str .= " AND OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
 	} else {
@@ -1742,7 +1748,6 @@ SELECT p.owner,p.object_name,p.procedure_name,o.object_type
    AND p.object_name = o.object_name 
  WHERE o.object_type IN ('PROCEDURE','PACKAGE','FUNCTION')
    AND o.TEMPORARY='N' AND o.GENERATED='N' AND o.SECONDARY='N'
-   AND o.STATUS = 'VALID'
 };
 	if ($self->{db_version} =~ /Release 8/) {
 		$sql = qq{
@@ -1751,8 +1756,12 @@ SELECT p.owner,p.object_name,p.procedure_name,o.object_type
  WHERE o.object_type IN ('PROCEDURE','PACKAGE','FUNCTION')
    AND p.owner = o.owner AND p.object_name = o.object_name
    AND o.TEMPORARY='N' AND o.GENERATED='N' AND o.SECONDARY='N'
-   AND o.STATUS = 'VALID'
 };
+	}
+	if (!$self->{export_invalid}) {
+		$sql .= " AND o.STATUS = 'VALID'";
+	} elsif ($self->{export_invalid} == 2) {
+		$sql .= " AND o.STATUS <> 'VALID'";
 	}
 	if ($self->{schema}) {
 		$sql .= " AND p.OWNER='$self->{schema}'";
@@ -2395,6 +2404,8 @@ sub _get_privilege
 
 	if (!$self->{export_invalid}) {
 		$str .= " AND a.STATUS='VALID'";
+	} elsif ($self->{export_invalid} == 2) {
+		$str .= " AND a.STATUS <> 'VALID'";
 	}
 	#$str .= " ORDER BY b.TABLE_NAME, b.GRANTEE";
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -2424,6 +2435,8 @@ sub _get_privilege
 	}
 	if (!$self->{export_invalid}) {
 		$str .= " AND a.STATUS='VALID'";
+	} elsif ($self->{export_invalid} == 2) {
+		$str .= " AND a.STATUS <> 'VALID'";
 	}
 	$str .= " AND b.TABLE_NAME=a.OBJECT_NAME AND a.OWNER=b.GRANTOR AND a.OBJECT_TYPE <> 'TYPE'";
 	if ($self->{grant_object} && $self->{grant_object} ne 'USER') {
@@ -3105,7 +3118,11 @@ sub _get_plsql_metadata
 
        # Retrieve all functions 
 	my $str = "SELECT DISTINCT OBJECT_NAME,OWNER,OBJECT_TYPE FROM $self->{prefix}_OBJECTS WHERE (OBJECT_TYPE = 'FUNCTION' OR OBJECT_TYPE = 'PROCEDURE' OR OBJECT_TYPE = 'PACKAGE BODY')";
-	$str .= " AND STATUS='VALID'" if (!$self->{export_invalid});
+	if (!$self->{export_invalid}) {
+		$str .= " AND STATUS='VALID'";
+	} elsif ($self->{export_invalid} == 2) {
+		$str .= " AND STATUS <> 'VALID'";
+	}
 	if ($owner) {
 		$str .= " AND OWNER = '$owner'";
 		$self->logit("Looking forward functions declaration in schema $owner.\n", 1) if (!$self->{quiet});
@@ -3400,7 +3417,11 @@ sub _get_package_function_list
 
 	# Retrieve all package information
 	my $str = "SELECT DISTINCT OBJECT_NAME,OWNER FROM $self->{prefix}_OBJECTS WHERE OBJECT_TYPE = 'PACKAGE BODY'";
-	$str .= " AND STATUS='VALID'" if (!$self->{export_invalid});
+	if (!$self->{export_invalid}) {
+		$str .= " AND STATUS='VALID'";
+	} elsif ($self->{export_invalid} == 2) {
+		$str .= " AND STATUS <> 'VALID'";
+	}
 	if ($owner) {
 		$str .= " AND OWNER = '$owner'";
 		$self->logit("Looking forward functions declaration in schema $owner.\n", 1) if (!$self->{quiet});
@@ -3488,7 +3509,11 @@ sub _get_procedures
 
 	# Retrieve all functions 
 	my $str = "SELECT DISTINCT OBJECT_NAME,OWNER FROM $self->{prefix}_OBJECTS WHERE OBJECT_TYPE='PROCEDURE'";
-	$str .= " AND STATUS='VALID'" if (!$self->{export_invalid});
+	if (!$self->{export_invalid}) {
+		$str .= " AND STATUS='VALID'";
+	} elsif ($self->{export_invalid} == 2) {
+		$str .= " AND STATUS <> 'VALID'";
+	}
 	if (!$self->{schema}) {
 		$str .= " AND OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
 	} else {
@@ -3544,7 +3569,11 @@ sub _get_packages
 
 	# Retrieve the list of packages
 	my $str = "SELECT DISTINCT OBJECT_NAME,OWNER FROM $self->{prefix}_OBJECTS WHERE OBJECT_TYPE = 'PACKAGE'";
-	$str .= " AND STATUS='VALID'" if (!$self->{export_invalid});
+	if (!$self->{export_invalid}) {
+		$str .= " AND STATUS='VALID'";
+	} elsif ($self->{export_invalid} == 2) {
+		$str .= " AND STATUS <> 'VALID'";
+	}
 	if (!$self->{schema}) {
 		$str .= " AND OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
 	} else {
@@ -3596,7 +3625,11 @@ sub _get_types
 
 	# Retrieve all user defined types
 	my $str = "SELECT DISTINCT OBJECT_NAME,OWNER,OBJECT_ID FROM $self->{prefix}_OBJECTS WHERE OBJECT_TYPE='TYPE'";
-	$str .= " AND STATUS='VALID'" if (!$self->{export_invalid});
+	if (!$self->{export_invalid}) {
+		$str .= " AND STATUS='VALID'";
+	} elsif ($self->{export_invalid} == 2) {
+		$str .= " AND STATUS <> 'VALID'";
+	}
 	if ($name) {
 		$str .= " AND OBJECT_NAME='$name'";
 	} else {
