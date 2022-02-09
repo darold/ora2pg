@@ -1108,25 +1108,30 @@ sub perform_replacement
 					next if (!$fct_name);
 					next if ($p ne 'none' && $str !~ /\b$p\.$fct_name\b/is && $str !~ /(^|[^\.])\b$fct_name\b/is);
 					next if ($p eq 'none' && $str !~ /\b$fct_name\b/is);
+					my $call = 'PERFORM';
+					if ($class->{pg_supports_procedure} && uc($class->{function_metadata}{$sch}{$p}{$k}{metadata}{type}) eq 'PROCEDURE') {
+						$call = 'CALL';
+					}
+
 					if (!$class->{function_metadata}{$sch}{$p}{$k}{metadata}{inout})
 					{
 						if ($sch ne 'unknown' and $str =~ /\b$sch.$k\b/is)
 						{
-							# Look if we need to use PERFORM to call the function
-							$str =~ s/(BEGIN|LOOP|;)((?:\s*%ORA2PG_COMMENT\d+\%\s*|\s*\/\*(?:.*?)\*\/\s*)*\s*)($sch\.$k\s*[\(;])/$1$2PERFORM $3/igs;
-							while ($str =~ s/(EXCEPTION(?:(?!CASE|THEN).)*?THEN)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($sch\.$k\s*[\(;])/$1$2PERFORM $3/is) {};
-							$str =~ s/(IF(?:(?!CASE|THEN).)*?THEN)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($sch\.$k\s*[\(;])/$1$2PERFORM $3/isg;
-							$str =~ s/(IF(?:(?!CASE|ELSE).)*?ELSE)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($sch\.$k\s*[\(;])/$1$2PERFORM $3/isg;
-							$str =~ s/(PERFORM $sch\.$k);/$1\(\);/igs;
+							# Look if we need to use $call to call the function
+							$str =~ s/(BEGIN|LOOP|;)((?:\s*%ORA2PG_COMMENT\d+\%\s*|\s*\/\*(?:.*?)\*\/\s*)*\s*)($sch\.$k\s*[\(;])/$1$2$call $3/igs;
+							while ($str =~ s/(EXCEPTION(?:(?!CASE|THEN).)*?THEN)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($sch\.$k\s*[\(;])/$1$2$call $3/is) {};
+							$str =~ s/(IF(?:(?!CASE|THEN).)*?THEN)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($sch\.$k\s*[\(;])/$1$2$call $3/isg;
+							$str =~ s/(IF(?:(?!CASE|ELSE).)*?ELSE)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($sch\.$k\s*[\(;])/$1$2$call $3/isg;
+							$str =~ s/($call $sch\.$k);/$1\(\);/igs;
 						}
 						elsif ($str =~ /\b($k|$fct_name)\b/is)
 						{
-							# Look if we need to use PERFORM to call the function
-							$str =~ s/(BEGIN|LOOP|CALL|;)((?:\s*%ORA2PG_COMMENT\d+\%\s*|\s*\/\*(?:.*?)\*\/\s*)*\s*)((?:$k|$fct_name)\s*[\(;])/$1$2PERFORM $3/igs;
-							while ($str =~ s/(EXCEPTION(?:(?!CASE).)*?THEN)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)((?:$k|$fct_name)\s*[\(;])/$1$2PERFORM $3/is) {};
-							$str =~ s/(IF(?:(?!CASE|THEN).)*?THEN)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)((?:$k|$fct_name)\s*[\(;])/$1$2PERFORM $3/isg;
-							$str =~ s/(IF(?:(?!CASE|ELSE).)*?ELSE)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)((?:$k|$fct_name)\s*[\(;])/$1$2PERFORM $3/isg;
-							$str =~ s/(PERFORM (?:$k|$fct_name));/$1\(\);/igs;
+							# Look if we need to use $call to call the function
+							$str =~ s/(BEGIN|LOOP|CALL|;)((?:\s*%ORA2PG_COMMENT\d+\%\s*|\s*\/\*(?:.*?)\*\/\s*)*\s*)((?:$k|$fct_name)\s*[\(;])/$1$2$call $3/igs;
+							while ($str =~ s/(EXCEPTION(?:(?!CASE).)*?THEN)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)((?:$k|$fct_name)\s*[\(;])/$1$2$call $3/is) {};
+							$str =~ s/(IF(?:(?!CASE|THEN).)*?THEN)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)((?:$k|$fct_name)\s*[\(;])/$1$2$call $3/isg;
+							$str =~ s/(IF(?:(?!CASE|ELSE).)*?ELSE)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)((?:$k|$fct_name)\s*[\(;])/$1$2$call $3/isg;
+							$str =~ s/($call (?:$k|$fct_name));/$1\(\);/igs;
 						}
 					}
 					else
@@ -1139,19 +1144,19 @@ sub perform_replacement
 					{
 						if ($sch ne 'unknown' and $str =~ /\b$sch\.$k\b/is)
 						{
-							$str =~ s/(BEGIN|LOOP|;)((?:\s*%ORA2PG_COMMENT\d+\%\s*|\s*\/\*(?:.*?)\*\/\s*)*\s*)($sch\.$k\s*[\(;])/$1$2PERFORM $3/igs;
-							while ($str =~ s/(EXCEPTION(?:(?!CASE).)*?THEN)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($sch\.$k\s*[\(;])/$1$2PERFORM $3/is) {};
-							$str =~ s/(IF(?:(?!CASE|THEN).)*?THEN)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($sch\.$k\s*[\(;])/$1$2PERFORM $3/isg;
-							$str =~ s/(IF(?:(?!CASE|ELSE).)*?ELSE)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($sch\.$k\s*[\(;])/$1$2PERFORM $3/isg;
-							$str =~ s/(PERFORM $sch\.$k);/$1\(\);/igs;
+							$str =~ s/(BEGIN|LOOP|;)((?:\s*%ORA2PG_COMMENT\d+\%\s*|\s*\/\*(?:.*?)\*\/\s*)*\s*)($sch\.$k\s*[\(;])/$1$2$call $3/igs;
+							while ($str =~ s/(EXCEPTION(?:(?!CASE).)*?THEN)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($sch\.$k\s*[\(;])/$1$2$call $3/is) {};
+							$str =~ s/(IF(?:(?!CASE|THEN).)*?THEN)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($sch\.$k\s*[\(;])/$1$2$call $3/isg;
+							$str =~ s/(IF(?:(?!CASE|ELSE).)*?ELSE)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)($sch\.$k\s*[\(;])/$1$2$call $3/isg;
+							$str =~ s/($call $sch\.$k);/$1\(\);/igs;
 						}
 						elsif ($str =~ /\b(?:$k|$fct_name)\b/is)
 						{
-							$str =~ s/(BEGIN|LOOP|CALL|;)((?:\s*%ORA2PG_COMMENT\d+\%\s*|\s*\/\*(?:.*?)\*\/\s*)*\s*)((?:$k|$fct_name)\s*[\(;])/$1$2PERFORM $3/igs;
-							while ($str =~ s/(EXCEPTION(?:(?!CASE).)*?THEN)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)((?:$k|$fct_name)\s*[\(;])/$1$2PERFORM $3/is) {};
-							$str =~ s/(IF(?:(?!CASE|THEN).)*?THEN)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)((?:$k|$fct_name)\s*[\(;])/$1$2PERFORM $3/isg;
-							$str =~ s/(IF(?:(?!CASE|ELSE).)*?ELSE)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)((?:$k|$fct_name)\s*[\(;])/$1$2PERFORM $3/isg;
-							$str =~ s/(PERFORM (?:$k|$fct_name));/$1\(\);/igs;
+							$str =~ s/(BEGIN|LOOP|CALL|;)((?:\s*%ORA2PG_COMMENT\d+\%\s*|\s*\/\*(?:.*?)\*\/\s*)*\s*)((?:$k|$fct_name)\s*[\(;])/$1$2$call $3/igs;
+							while ($str =~ s/(EXCEPTION(?:(?!CASE).)*?THEN)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)((?:$k|$fct_name)\s*[\(;])/$1$2$call $3/is) {};
+							$str =~ s/(IF(?:(?!CASE|THEN).)*?THEN)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)((?:$k|$fct_name)\s*[\(;])/$1$2$call $3/isg;
+							$str =~ s/(IF(?:(?!CASE|ELSE).)*?ELSE)((?:\s*%ORA2PG_COMMENT\d+\%\s*)*\s*)((?:$k|$fct_name)\s*[\(;])/$1$2$call $3/isg;
+							$str =~ s/($call (?:$k|$fct_name));/$1\(\);/igs;
 						}
 					}
 				}
@@ -1161,9 +1166,9 @@ sub perform_replacement
 
 	# Fix call to procedure changed above
 	if ($class->{pg_supports_procedure}) {
-		$str =~ s/\bCALL\s+PERFORM/CALL/igs;
+		$str =~ s/\bCALL\s+(PERFORM|CALL)\s+/CALL /igs;
 	} else {
-		$str =~ s/\bCALL\s+PERFORM/PERFORM/igs;
+		$str =~ s/\bCALL\s+(PERFORM|CALL)\s+/PERFORM /igs;
 	}
 
 	return $str;
