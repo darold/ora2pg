@@ -8174,6 +8174,10 @@ sub _get_sql_statements
 
 			# Remove main table partition (for MySQL "SELECT * FROM emp PARTITION (p1);" is supported from 5.6)
 			delete $self->{partitions}{$table} if (exists $self->{partitions}{$table} && $self->{is_mysql} && ($self->{db_version} =~ /^5\.[012345]/));
+			# Remove main table partition if we have a where clause for the table,
+			# in this case lookup for PARTITION (p1) must not be done.
+			delete $self->{partitions}{$table} if (exists $self->{partitions}{$table} && ($self->{global_where} or (exists $self->{where}{"\L$table\E"} && $self->{where}{"\L$table\E"})));
+
 			if (-e "${dirprefix}tmp_${table}_$self->{output}") {
 				$self->logit("Removing incomplete export file ${dirprefix}tmp_${table}_$self->{output}\n", 1);
 				unlink("${dirprefix}tmp_${table}_$self->{output}");
