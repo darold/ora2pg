@@ -13226,13 +13226,13 @@ sub _convert_function
 	{
 		if ($self->{export_schema} && !$self->{schema})
 		{
-			$function = "\n$create_type\n\n${fct_warning}CREATE$self->{create_or_replace} $type " . $self->quote_object_name("$owner.$fname") . " $fct_detail{args}";
+			$function = "\n$create_type\n\n${fct_warning}CREATE$self->{create_or_replace} $type " . $self->quote_object_name("$owner.$fname$at_suffix") . " $fct_detail{args}";
 			$name =  $self->quote_object_name("$owner.$fname");
 			$self->logit("Parsing function " . $self->quote_object_name("$owner.$fname") . "...\n", 1);
 		}
 		elsif ($self->{export_schema} && $self->{schema})
 		{
-			$function = "\n$create_type\n\n${fct_warning}CREATE$self->{create_or_replace} $type " . $self->quote_object_name("$self->{schema}.$fname") . " $fct_detail{args}";
+			$function = "\n$create_type\n\n${fct_warning}CREATE$self->{create_or_replace} $type " . $self->quote_object_name("$self->{schema}.$fname$at_suffix") . " $fct_detail{args}";
 			$name =  $self->quote_object_name("$self->{schema}.$fname");
 			$self->logit("Parsing function " . $self->quote_object_name("$self->{schema}.$fname") . "...\n", 1);
 		}
@@ -13437,6 +13437,9 @@ END;
 			$self->_restore_text_constant_part(\$function);
 		}
 		$revoke = "-- REVOKE ALL ON $type $name $fct_detail{args} FROM PUBLIC;";
+		if ($at_suffix) {
+			$revoke .= "\n-- REVOKE ALL ON $type $name$at_suffix $fct_detail{args} FROM PUBLIC;";
+		}
 		$revoke =~ s/[\n\r]+\s*/ /gs;
 		$revoke .= "\n";
 		if ($self->{force_security_invoker}) {
@@ -13462,16 +13465,23 @@ END;
 		$function = "\n$fct_detail{before}$function";
 	}
 
-	if ($self->{force_owner}) {
+	if ($self->{force_owner})
+	{
 		$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
-		if ($owner) {
-			$function .= "ALTER $type $fname $fct_detail{args} OWNER TO";
+		if ($owner)
+		{
+			$function .= "ALTER $type $name $fct_detail{args} OWNER TO";
 			$function .= " " . $self->quote_object_name($owner) . ";\n";
+			if ($at_suffix)
+			{
+				$function .= "ALTER $type $name$at_suffix $fct_detail{args} OWNER TO";
+				$function .= " " . $self->quote_object_name($owner) . ";\n";
+			}
 		}
 	}
 	my $act_type = $type;
 	$act_type = 'FUNCTION' if (!$self->{pg_supports_procedure});
-	$function .= "\nCOMMENT ON $act_type $fname$at_suffix $fct_detail{args} IS $fct_detail{comment};\n" if ($fct_detail{comment});
+	$function .= "\nCOMMENT ON $act_type $name$at_suffix $fct_detail{args} IS $fct_detail{comment};\n" if ($fct_detail{comment});
 	$function .= $revoke;
 	$function = $at_wrapper . $function;
 
