@@ -2344,7 +2344,7 @@ sub replace_cursor_def
 	$str =~ s/\bSYS_REFCURSOR\b/REFCURSOR/isg;
 
 	# Replace OPEN cursor FOR with dynamic query
-	$str =~ s/(OPEN\s+(?:[^;]+?)\s+FOR)((?:[^;]+?)USING)/$1 EXECUTE$2/isg;
+	$str =~ s/(OPEN\s+(?:[^;]+?)\s+FOR)((?:[^;]+?)\bUSING\b)/$1 EXECUTE$2/isg;
 	$str =~ s/(OPEN\s+(?:[^;]+?)\s+FOR)\s+([^\s]+\s*;)/$1 EXECUTE $2/isg;
 	$str =~ s/(OPEN\s+(?:[^;]+?)\s+FOR)\s+(?!(\s+|SELECT|EXECUTE|WITH|\%ORA2PG_COMMENT))/$1 EXECUTE /isg;
 
