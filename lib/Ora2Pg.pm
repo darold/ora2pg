@@ -7189,7 +7189,7 @@ sub export_table
 			$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
 			$owner ||= $self->{schema};
 			if ($owner && $self->{create_schema}) {
-				$sql_output .= "ALTER SCHEMA " . $self->quote_object_name($self->{pg_schema} || $self->{schema}) . " OWNER TO \L$owner\E;\n";
+				$sql_output .= "ALTER SCHEMA " . $self->quote_object_name($self->{pg_schema} || $self->{schema}) . " OWNER TO " .  $self->quote_object_name($owner) . ";\n";
 			}
 			$sql_output .= "\n";
 		}
@@ -9486,9 +9486,12 @@ sub _create_indexes
 		foreach my $s (@{$indexes{$idx}})
 		{
 			$s = '"' . $s . '"' if ($self->is_reserved_words($s));
-			if ($s =~ /(\|\||CASE\s+.*END)/i) {
+			if ($s =~ /\|\|/i) {
 				$columns .= '(' . $s . ')';
 			} else {
+				if ($s =~ /^CASE\s+.*END/i) {
+					$s = "($s)";
+				}
 				$columns .= ((exists $opclass_type{$s}) ? $opclass_type{$s} : $s) . ", ";
 			}
 			# Add double quotes on column name if PRESERVE_CASE is enabled
