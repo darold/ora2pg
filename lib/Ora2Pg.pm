@@ -4472,7 +4472,7 @@ sub export_mview
 	$dirprefix = "$self->{output_dir}/" if ($self->{output_dir});
 	if ($self->{plsql_pgsql} && !$self->{pg_supports_mview})
 	{
-		$sql_header .= "DROP TABLE IF EXISTS materialized_views;\n" if ($self->{drop_if_exists});
+		$sql_header .= "DROP TABLE $self->{pg_supports_ifexists} materialized_views;\n" if ($self->{drop_if_exists});
 		my $sqlout = qq{
 $sql_header
 
@@ -4599,7 +4599,7 @@ LANGUAGE plpgsql ;
 		}
 		if (!$self->{plsql_pgsql})
 		{
-			$sql_output .= "DROP MATERIALIZED VIEW IF EXISTS $view;\n" if ($self->{drop_if_exists});
+			$sql_output .= "DROP MATERIALIZED VIEW $self->{pg_supports_ifexists} $view;\n" if ($self->{drop_if_exists});
 			$sql_output .= "CREATE MATERIALIZED VIEW $view\n";
 			$sql_output .= "BUILD $self->{materialized_views}{$view}{build_mode}\n";
 			$sql_output .= "REFRESH $self->{materialized_views}{$view}{refresh_method} ON $self->{materialized_views}{$view}{refresh_mode}\n";
@@ -4623,7 +4623,7 @@ LANGUAGE plpgsql ;
 			$self->{materialized_views}{$view}{text} =~ s/^PERFORM/SELECT/;
 			if (!$self->{pg_supports_mview})
 			{
-				$sql_output .= "DROP VIEW IF EXISTS \L$view\E_mview;\n" if ($self->{drop_if_exists});
+				$sql_output .= "DROP VIEW $self->{pg_supports_ifexists} \L$view\E_mview;\n" if ($self->{drop_if_exists});
 				$sql_output .= "CREATE VIEW \L$view\E_mview AS\n";
 				$sql_output .= $self->{materialized_views}{$view}{text};
 				$sql_output .= ";\n\n";
@@ -4639,7 +4639,7 @@ LANGUAGE plpgsql ;
 			}
 			else
 			{
-				$sql_output .= "DROP MATERIALIZED VIEW IF EXISTS \L$view\E;\n" if ($self->{drop_if_exists});
+				$sql_output .= "DROP MATERIALIZED VIEW $self->{pg_supports_ifexists} \L$view\E;\n" if ($self->{drop_if_exists});
 				$sql_output .= "CREATE MATERIALIZED VIEW \L$view\E AS\n";
 				$sql_output .= $self->{materialized_views}{$view}{text};
 				if ($self->{materialized_views}{$view}{build_mode} eq 'DEFERRED') {
@@ -4844,7 +4844,7 @@ sub export_sequence
 		$cache = $self->{sequences}{$seq}->[5] if ($self->{sequences}{$seq}->[5]);
 		my $cycle = '';
 		$cycle = ' CYCLE' if ($self->{sequences}{$seq}->[6] eq 'Y');
-		$sql_output .= "DROP SEQUENCE IF EXISTS " . $self->quote_object_name($seq) . ";\n" if ($self->{drop_if_exists});
+		$sql_output .= "DROP SEQUENCE $self->{pg_supports_ifexists} " . $self->quote_object_name($seq) . ";\n" if ($self->{drop_if_exists});
 		$sql_output .= "CREATE SEQUENCE " . $self->quote_object_name($seq) . " INCREMENT $self->{sequences}{$seq}->[3]";
 		if ($self->{sequences}{$seq}->[1] eq '' || $self->{sequences}{$seq}->[1] < (-2**63-1)) {
 			$sql_output .= " NO MINVALUE";
@@ -5198,7 +5198,7 @@ sub export_trigger
 				$trig->[6] =~ s/REFERENCING\s+(.*?)(FOR\s+EACH\s+)/$2/is;
 				$trig->[6] =~ s/^\s*["]*(?:$trig->[0])["]*//is;
 				$trig->[6] =~ s/\s+ON\s+([^"\s]+)\s+/" ON " . $self->quote_object_name($1) . " "/ies;
-				$sql_output .= "DROP TRIGGER IF EXISTS " . $self->quote_object_name($trig->[0]) . " ON " . $self->quote_object_name($1) . ";\n" if ($self->{drop_if_exists});
+				$sql_output .= "DROP TRIGGER $self->{pg_supports_ifexists} " . $self->quote_object_name($trig->[0]) . " ON " . $self->quote_object_name($1) . ";\n" if ($self->{drop_if_exists});
 				$sql_output .= "CREATE TRIGGER " . $self->quote_object_name($trig->[0]) . "$trig->[6]\n";
 				if ($trig->[5])
 				{
@@ -5227,7 +5227,7 @@ sub export_trigger
 					$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
 					$sql_output .= "ALTER FUNCTION $trig_fctname() OWNER TO " . $self->quote_object_name($owner) . ";\n\n";
 				}
-				$sql_output .= "DROP TRIGGER IF EXISTS " . $self->quote_object_name($trig->[0]) . " ON " . $self->quote_object_name($tbname) . ";\n" if ($self->{drop_if_exists});
+				$sql_output .= "DROP TRIGGER $self->{pg_supports_ifexists} " . $self->quote_object_name($trig->[0]) . " ON " . $self->quote_object_name($tbname) . ";\n" if ($self->{drop_if_exists});
 				$sql_output .= "CREATE TRIGGER " . $self->quote_object_name($trig->[0]) . "\n\t";
 				my $statement = 0;
 				$statement = 1 if ($trig->[1] =~ s/ STATEMENT//);
@@ -6460,7 +6460,7 @@ BEGIN
 					$tb_name =  $part;
 				}
 			}
-			$create_table_tmp .= "DROP TABLE IF EXISTS " . $self->quote_object_name($tb_name) . ";\n" if ($self->{drop_if_exists});
+			$create_table_tmp .= "DROP TABLE $self->{pg_supports_ifexists} " . $self->quote_object_name($tb_name) . ";\n" if ($self->{drop_if_exists});
 			if (!$self->{pg_supports_partition})
 			{
 				if (!exists $self->{subpartitions}{$table}{$part}) {
@@ -6729,7 +6729,7 @@ BEGIN
 						print STDERR $self->progress_bar($nparts, $total_partition, 25, '=', 'partitions', "generating $table/$part/$subpart" ), "\r";
 					}
 					$nparts++;
-					$create_subtable_tmp .= "DROP TABLE IF EXISTS " . $self->quote_object_name($sub_tb_name) . ";\n" if ($self->{drop_if_exists});
+					$create_subtable_tmp .= "DROP TABLE $self->{pg_supports_ifexists} " . $self->quote_object_name($sub_tb_name) . ";\n" if ($self->{drop_if_exists});
 					$create_subtable_tmp .= "CREATE TABLE " . $self->quote_object_name($sub_tb_name);
 					if (!$self->{pg_supports_partition}) {
 						$create_subtable_tmp .= " ( CHECK (\n";
@@ -6938,7 +6938,7 @@ BEGIN
 							$deftb = "${table}_" if ($self->{prefix_partition});
 							$funct_cond .= "\t\tELSE INSERT INTO " . $self->quote_object_name("$deftb$self->{subpartitions_default}{$table}{$part}")
 										. " VALUES (NEW.*);\n\t\tEND IF;\n";
-							$create_table_tmp .= "DROP TABLE IF EXISTS " . $self->quote_object_name("$deftb$self->{subpartitions_default}{$table}{$part}") . ";\n" if ($self->{drop_if_exists});
+							$create_table_tmp .= "DROP TABLE $self->{pg_supports_ifexists} " . $self->quote_object_name("$deftb$self->{subpartitions_default}{$table}{$part}") . ";\n" if ($self->{drop_if_exists});
 							$create_table_tmp .= "CREATE TABLE " . $self->quote_object_name("$deftb$self->{subpartitions_default}{$table}{$part}")
 										. " () INHERITS ($table);\n";
 							$create_table_index_tmp .= "CREATE INDEX " . $self->quote_object_name("$deftb$self->{subpartitions_default}{$table}{$part}_$pos")
@@ -6962,7 +6962,7 @@ BEGIN
 						} elsif ($self->{export_schema} && !$self->{schema} && ($table =~ /^([^\.]+)\./)) {
 							$tb_name =  $1 . '.' . $self->{subpartitions_default}{$table}{$part};
 						}
-						$create_table_tmp .= "DROP TABLE IF EXISTS " . $self->quote_object_name($tb_name) . ";\n" if ($self->{drop_if_exists});
+						$create_table_tmp .= "DROP TABLE $self->{pg_supports_ifexists} " . $self->quote_object_name($tb_name) . ";\n" if ($self->{drop_if_exists});
 						if ($self->{pg_version} >= 11) {
 							$create_table_tmp .= "CREATE TABLE " . $self->quote_object_name($tb_name)
 									. " PARTITION OF " . $self->quote_object_name($table) . " DEFAULT;\n";
@@ -7026,7 +7026,7 @@ LANGUAGE plpgsql;
 							$tb_name =  $self->{partitions_default}{$table};
 						}
 					}
-					$create_table{$table}{table} .= "DROP TABLE IF EXISTS " . $self->quote_object_name($tb_name) . ";\n" if ($self->{drop_if_exists});
+					$create_table{$table}{table} .= "DROP TABLE $self->{pg_supports_ifexists} " . $self->quote_object_name($tb_name) . ";\n" if ($self->{drop_if_exists});
 					if ($self->{pg_version} >= 11) {
 						$create_table{$table}{table} .= "CREATE TABLE " . $self->quote_object_name($tb_name)
 								. " PARTITION OF " . $self->quote_object_name($table) . " DEFAULT;\n";
@@ -7276,6 +7276,8 @@ sub export_table
 			if ($self->{plsql_pgsql}) {
 				$self->{tables}{$table}{table_as} = Ora2Pg::PLSQL::convert_plsql_code($self, $self->{tables}{$table}{table_as});
 			}
+			$sql_output .= "\nDROP${foreign} TABLE $self->{pg_supports_ifexists} $tbname;" if ($self->{drop_if_exists});
+
 			my $withoid = _make_WITH($self->{with_oid}, $self->{tables}{$tbname}{table_info});
 			$sql_output .= "\nCREATE $obj_type $tbname $withoid AS $self->{tables}{$table}{table_as};\n";
 			next;
@@ -7295,6 +7297,7 @@ sub export_table
 			if ($self->{oracle_fdw_data_export} && ($self->{type} eq 'INSERT' || $self->{type} eq 'COPY')) {
 				 $sql_output .= "\nCREATE FOREIGN TABLE ora2pg_fdw_import.$tbname (\n";
 			} else {
+				$sql_output .= "\nDROP${foreign} TABLE $self->{pg_supports_ifexists} $tbname;" if ($self->{drop_if_exists});
 				$sql_output .= "\nCREATE$foreign $obj_type $tbname (\n";
 			}
 
@@ -8085,7 +8088,7 @@ sub _get_sql_statements
 		if ($self->{oracle_fdw_data_export} && $self->{pg_dsn} && $self->{drop_foreign_schema})
 		{
 			my $fdw_definition = $self->export_table();
-			$self->{dbhdest}->do("DROP SCHEMA IF EXISTS ora2pg_fdw_import CASCADE") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
+			$self->{dbhdest}->do("DROP SCHEMA $self->{pg_supports_ifexists} ora2pg_fdw_import CASCADE") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
 			$self->{dbhdest}->do("CREATE SCHEMA ora2pg_fdw_import") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
 			$self->{dbhdest}->do($fdw_definition) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . ", SQL: $fdw_definition\n", 0, 1);
 		}
@@ -9563,6 +9566,7 @@ sub _create_indexes
 
 			my $idxname = $self->get_indexname($table, $idx, @{$indexes{$idx}});
 
+			$str .= "DROP INDEX $self->{pg_supports_ifexists} $idxname;\n" if ($self->{drop_if_exists});
 			my $tb = $self->quote_object_name($table);
 			if ($self->{$objtyp}{$tbsaved}{idx_type}{$idx}{type_name} =~ /SPATIAL_INDEX/)
 			{
@@ -10012,8 +10016,10 @@ sub _create_unique_keys
 		if ($columnlist)
 		{
 			if (!$self->{keep_pkey_names} || ($constgen eq 'GENERATED NAME')) {
+				$str .= "ALTER TABLE $table DROP $constypename;\n" if ($self->{drop_if_exists});
 				$out .= "ALTER TABLE $table ADD $constypename ($columnlist)";
 			} else {
+				$str .= "ALTER TABLE $table DROP CONSTRAINT $self->{pg_supports_ifexists} " . $self->quote_object_name($consname) . ";\n" if ($self->{drop_if_exists});
 				$out .= "ALTER TABLE $table ADD CONSTRAINT " . $self->quote_object_name($consname) . " $constypename ($columnlist)";
 			}
 			if ($self->{use_tablespace} && $self->{tables}{$tbsaved}{idx_tbsp}{$index_name} && !grep(/^$self->{tables}{$tbsaved}{idx_tbsp}{$index_name}$/i, @{$self->{default_tablespaces}})) {
@@ -10091,6 +10097,7 @@ sub _create_check_constraint
 			if (!$converted_as_boolean)
 			{
 				$chkconstraint = Ora2Pg::PLSQL::convert_plsql_code($self, $chkconstraint);
+				$str .= "ALTER TABLE $table DROP CONSTRAINT $self->{pg_supports_ifexists} $k;\n" if ($self->{drop_if_exists});
 				$out .= "ALTER TABLE $table ADD CONSTRAINT $k CHECK ($chkconstraint)$validate;\n";
 			}
 		}
@@ -10176,6 +10183,7 @@ sub _create_foreign_keys
 				$rfkeys[$i] = $self->quote_object_name(split(/\s*,\s*/, $rfkeys[$i]));
 			}
 			$fkname = $self->quote_object_name($fkname);
+			$str .= "ALTER TABLE $table DROP CONSTRAINT $self->{pg_supports_ifexists} $fkname;\n" if ($self->{drop_if_exists});
 			$str .= "ALTER TABLE $table ADD CONSTRAINT $fkname FOREIGN KEY (" . join(',', @lfkeys) . ") REFERENCES $subsdesttable(" . join(',', @rfkeys) . ")";
 			$str .= " MATCH $state->[2]" if ($state->[2]);
 			if ($state->[3]) {
@@ -13159,7 +13167,7 @@ sub _convert_function
 	my $create_type = '';
 	while ($fct_detail{declare} =~ s/\s+TYPE\s+([^\s]+)\s+IS\s+RECORD\s*\(([^;]+)\)\s*;//is)
 	{
-		$create_type .= "DROP TYPE IF EXISTS $1;\n" if ($self->{drop_if_exists});
+		$create_type .= "DROP TYPE  $self->{pg_supports_ifexists} $1;\n" if ($self->{drop_if_exists});
 		$create_type .= "CREATE TYPE $1 AS ($2);\n";
 	}
 	while ($fct_detail{declare} =~ s/\s+TYPE\s+([^\s]+)\s+(AS|IS)\s*(VARRAY|VARYING ARRAY)\s*\((\d+)\)\s*OF\s*([^;]+);//is) {
@@ -13176,7 +13184,7 @@ sub _convert_function
 		$internal_name  =~ s/^[^\.]+\.//;
 		my $declar = Ora2Pg::PLSQL::replace_sql_type($tbname, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type}, $self->{varchar_to_text}, %{$self->{data_type}});
 		$declar =~ s/[\n\r]+//s;
-		$create_type .= "DROP TYPE IF EXISTS $1;\n" if ($self->{drop_if_exists});
+		$create_type .= "DROP TYPE $self->{pg_supports_ifexists} $1;\n" if ($self->{drop_if_exists});
 		$create_type .= "CREATE TYPE $type_name AS ($internal_name $declar\[$size\]);\n";
 	}
 	
@@ -13797,7 +13805,7 @@ sub _convert_type
 		{ 
 			$type_of = Ora2Pg::PLSQL::replace_sql_type($type_of, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type}, $self->{varchar_to_text}, %{$self->{data_type}});
 			$self->{type_of_type}{'Nested Tables'}++;
-			$content .= "DROP TYPE IF EXISTS \L$type_name\E;\n" if ($self->{drop_if_exists});
+			$content .= "DROP TYPE $self->{pg_supports_ifexists} \L$type_name\E;\n" if ($self->{drop_if_exists});
 			$content = "CREATE TYPE \L$type_name\E AS (\L$internal_name\E $type_of\[\]);\n";
 		}
 		else
@@ -19404,7 +19412,7 @@ sub _import_foreign_schema
 	my $self = shift;
 
 	# Drop and recreate the import schema
-	$self->{dbhdest}->do("DROP SCHEMA IF EXISTS ora2pg_fdw_import CASCADE") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
+	$self->{dbhdest}->do("DROP SCHEMA $self->{pg_supports_ifexists} ora2pg_fdw_import CASCADE") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
 	$self->{dbhdest}->do("CREATE SCHEMA ora2pg_fdw_import") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
 	# Import foreign table into the dedicated schema ora2pg_fdw_import
 	my $sql = "IMPORT FOREIGN SCHEMA \"\U$self->{schema}\E\"";
