@@ -9486,7 +9486,7 @@ sub _create_indexes
 		foreach my $s (@{$indexes{$idx}})
 		{
 			$s = '"' . $s . '"' if ($self->is_reserved_words($s));
-			if ($s =~ /\|\|/) {
+			if ($s =~ /(\|\||CASE\s+.*END)/i) {
 				$columns .= '(' . $s . ')';
 			} else {
 				$columns .= ((exists $opclass_type{$s}) ? $opclass_type{$s} : $s) . ", ";
