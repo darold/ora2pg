@@ -13465,14 +13465,16 @@ END;
 			if ($self->{type} ne 'PACKAGE')
 			{
 				if (!$self->{is_mysql}) {
-					$function .= "SECURITY DEFINER\n" if ($self->{security}{"\U$fct_detail{name}\E"}{security} eq 'DEFINER');
+					# A SECURITY DEFINER procedure cannot execute transaction control statements
+					$function .= "SECURITY DEFINER\n" if ($self->{security}{"\U$fct_detail{name}\E"}{security} eq 'DEFINER' && $fct_detail{code} !~ /\b(COMMIT|ROLLBACK)\s*;/i);
 				} else  {
 					$function .= "SECURITY DEFINER\n" if ($fct_detail{security} eq 'DEFINER');
 				}
 			}
 			else
 			{
-				$function .= "SECURITY DEFINER\n" if ($self->{security}{"\U$pname\E"}{security} eq 'DEFINER');
+				# A SECURITY DEFINER procedure cannot execute transaction control statements
+				$function .= "SECURITY DEFINER\n" if ($self->{security}{"\U$pname\E"}{security} eq 'DEFINER' && $fct_detail{code} !~ /\b(COMMIT|ROLLBACK)\s*;/i);
 			}
 		}
 		$fct_detail{immutable} = '' if ($fct_detail{code} =~ /\b(UPDATE|INSERT|DELETE)\b/is);
