@@ -646,7 +646,7 @@ sub plsql_to_plpgsql
 
 	my $conv_current_time = 'clock_timestamp()';
 	if (!grep(/$class->{type}/i, 'FUNCTION', 'PROCEDURE', 'PACKAGE')) {
-		$conv_current_time = 'LOCALTIMESTAMP';
+		$conv_current_time = 'statement_timestamp()';
 	}
 	# Remove the SYS schema from calls
 	$str =~ s/\bSYS\.//igs;
@@ -903,6 +903,9 @@ sub plsql_to_plpgsql
 	# Replacle call to SQL%NOTFOUND and SQL%FOUND
 	$str =~ s/SQL\s*\%\s*NOTFOUND/NOT FOUND/isg;
 	$str =~ s/SQL\s*\%\s*FOUND/FOUND/isg;
+
+	# Replace all remaining CURSORNAME%NOTFOUND with NOT FOUND
+	$str =~ s/\s+([^\(\%\s]+)\%\s*NOTFOUND\s*/ NOT FOUND /isg;
 
 	# Replace UTL_MATH function by fuzzymatch function
 	$str =~ s/UTL_MATCH.EDIT_DISTANCE/levenshtein/igs;
@@ -2737,7 +2740,7 @@ sub mysql_to_plpgsql
 	$str =~ s/\bCURRENT_TIMESTAMP\(\s*\)/CURRENT_TIMESTAMP::timestamp(0) without time zone/igs;
 	$str =~ s/\b(LOCALTIMESTAMP|LOCALTIME)\(\s*\)/CURRENT_TIMESTAMP::timestamp(0) without time zone/igs;
 	$str =~ s/\b(LOCALTIMESTAMP|LOCALTIME)\b/CURRENT_TIMESTAMP::timestamp(0) without time zone/igs;
-	$str =~ s/\bSYSDATE\(\s*\)/timeofday()::timestamp(0) without time zone/igs;
+	$str =~ s/\bstatementSYSDATE\(\s*\)/timeofday()::timestamp(0) without time zone/igs;
 	$str =~ s/\bUNIX_TIMESTAMP\(\s*\)/floor(extract(epoch from CURRENT_TIMESTAMP::timestamp with time zone))/igs;
 	$str =~ s/\bUNIX_TIMESTAMP\(\s*([^\)]+)\s*\)/floor(extract(epoch from ($1)::timestamp with time zone))/igs;
 	$str =~ s/\bUTC_DATE\(\s*\)/(CURRENT_TIMESTAMP AT TIME ZONE 'UTC')::date/igs;
