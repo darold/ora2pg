@@ -1271,6 +1271,9 @@ sub _init
 	# Disable the use of orafce library by default
 	$self->{use_orafce} ||= 0;
 
+	# Do not apply any default table filtering to improve performances by not applying regexp
+	$self->{no_excluded_table} ||= 0;
+
 	# Enable BLOB data export by default
 	if (not defined $self->{enable_blob_export}) {
 		$self->{enable_blob_export} = 1;
@@ -17811,7 +17814,8 @@ sub limit_to_objects
 		}
 
 		# Always exclude unwanted tables
-		if (!$self->{is_mysql} && !$has_limitation && ($arr_type[$i] =~ /TABLE|SEQUENCE|VIEW|TRIGGER|TYPE|SYNONYM/))
+		if (!$self->{is_mysql} && !$self->{no_excluded_table} && !$has_limitation
+			&& ($arr_type[$i] =~ /TABLE|SEQUENCE|VIEW|TRIGGER|TYPE|SYNONYM/))
 		{
 			if ($self->{db_version} =~ /Release [89]/)
 			{
@@ -17828,11 +17832,7 @@ sub limit_to_objects
 				$str .= ' AND ( ';
 				for (my $j = 0; $j <= $#EXCLUDED_TABLES; $j++)
 				{
-					if ($self->{is_mysql}) {
-						$str .= " upper($colname) NOT RLIKE ?" ;
-					} else {
-						$str .= " NOT REGEXP_LIKE(upper($colname), ?)" ;
-					}
+					$str .= " NOT REGEXP_LIKE(upper($colname), ?)" ;
 					push(@{$self->{query_bind_params}}, uc("\^$EXCLUDED_TABLES[$j]\$"));
 					if ($j < $#EXCLUDED_TABLES){
 						$str .= " AND ";

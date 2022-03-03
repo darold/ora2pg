@@ -252,6 +252,15 @@ DISABLE_COMMENT         0
 # see chapter "Limiting object to export" in documentation.
 #EXCLUDE	OTHER_TABLES
 
+# By default Ora2Pg exclude from export some Oracle "garbage" tables that should
+# never be part of an export. This behavior generates a lot of REGEXP_LIKE
+# expressions which are slowing down the export when looking at tables. To disable
+# this behavior enable this directive, you will have to exclude or clean up later
+# by yourself the unwanted tables. The regexp used to exclude the table are
+# defined in the array @EXCLUDED_TABLES in lib/Ora2Pg.pm. Note this is behavior
+# is independant to the EXCLUDE configuration directive.
+NO_EXCLUDED_TABLE	0
+
 # Set which view to export as table. By default none. Value must be a list of
 # view name or regexp separated by space. If the object name is a view and the
 # export type is TABLE, the view will be exported as a create table statement.

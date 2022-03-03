@@ -1126,6 +1126,16 @@ CONFIGURATION
 
         See above (directive 'ALLOW') for the extended syntax.
 
+    NO_EXCLUDED_TABLE
+        By default Ora2Pg exclude from export some Oracle "garbage" tables
+        that should never be part of an export. This behavior generates a
+        lot of REGEXP_LIKE expressions which are slowing down the export
+        when looking at tables. To disable this behavior enable this
+        directive, you will have to exclude or clean up later by yourself
+        the unwanted tables. The regexp used to exclude the table are
+        defined in the array @EXCLUDED_TABLES in lib/Ora2Pg.pm. Note this is
+        behavior is independant to the EXCLUDE configuration directive.
+
     VIEW_AS_TABLE
         Set which view to export as table. By default none. Value must be a
         list of view name or regexp separated by space or comma. If the
