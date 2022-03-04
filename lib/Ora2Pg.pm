@@ -18962,6 +18962,11 @@ sub _escape_lob
 			{
 				# we do nothing, the value will be cast into uuid automatically
 			}
+			elsif ($dest_type eq 'bytea' && $cond->{long})
+			{
+				$col = unpack("H*",$col);
+				$col = "\\\\x" . $col;
+			}
 			elsif ($dest_type eq 'bytea')
 			{
 				$col = "\\\\x" . $col;
