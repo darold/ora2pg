@@ -66,8 +66,10 @@ sub _db_connection
 	if (!defined $self->{oracle_pwd})
 	{
 		eval("use Term::ReadKey;");
-		$self->{oracle_user} = $self->_ask_username('MySQL') unless (defined $self->{oracle_user});
-		$self->{oracle_pwd} = $self->_ask_password('MySQL');
+		if (!$@) {
+			$self->{oracle_user} = $self->_ask_username('MySQL') unless (defined $self->{oracle_user});
+			$self->{oracle_pwd} = $self->_ask_password('MySQL');
+		}
 	}
 
 	my $dbh = DBI->connect("$self->{oracle_dsn}", $self->{oracle_user}, $self->{oracle_pwd}, {

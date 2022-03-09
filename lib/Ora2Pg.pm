@@ -2015,8 +2015,10 @@ sub _send_to_pgdb
 	if (!defined $self->{pg_pwd})
 	{
 		eval("use Term::ReadKey;");
-		$self->{pg_user} = $self->_ask_username('PostgreSQL') unless (defined($self->{pg_user}));
-		$self->{pg_pwd} = $self->_ask_password('PostgreSQL');
+		if (!$@) {
+			$self->{pg_user} = $self->_ask_username('PostgreSQL') unless (defined($self->{pg_user}));
+			$self->{pg_pwd} = $self->_ask_password('PostgreSQL');
+		}
 	}
 
 	$ENV{PGAPPNAME} = 'ora2pg ' || $VERSION;
@@ -19340,8 +19342,10 @@ sub _create_foreign_server
 		if (!defined $self->{oracle_pwd})
 		{
 			eval("use Term::ReadKey;") unless $self->{oracle_user} eq '/';
-			$self->{oracle_user} = $self->_ask_username('Oracle') unless (defined $self->{oracle_user});
-			$self->{oracle_pwd} = $self->_ask_password('Oracle') unless ($self->{oracle_user} eq '/');
+			if (!$@) {
+				$self->{oracle_user} = $self->_ask_username('Oracle') unless (defined $self->{oracle_user});
+				$self->{oracle_pwd} = $self->_ask_password('Oracle') unless ($self->{oracle_user} eq '/');
+			}
 		}
 		my $ora_session_mode = ($self->{oracle_user} eq "/" || $self->{oracle_user} eq "sys") ? 2 : undef;
 
