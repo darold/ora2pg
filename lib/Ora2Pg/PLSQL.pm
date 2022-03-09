@@ -845,7 +845,7 @@ sub plsql_to_plpgsql
 	# DBMS_LOB.GETLENGTH can be replaced by binary length.
 	$str =~ s/DBMS_LOB.GETLENGTH/octet_length/igs;
 	# DBMS_LOB.SUBSTR can be replaced by SUBSTR()
-	$str =~ s/DBMS_LOB.SUBSTR/substr/igs;
+	$str =~ s/DBMS_LOB.SUBSTR\s*\($field,$field,$field\)/substr($1, $3, $2)/igs;
 	# TO_CLOB(), we just remove it
 	$str =~ s/TO_CLOB\s*\(/\(/igs;
 
@@ -1622,8 +1622,8 @@ sub replace_oracle_function
 
 	# DBMS_LOB.GETLENGTH can be replaced by binary length.
 	$str =~ s/DBMS_LOB.GETLENGTH/octet_length/igs;
-	# DBMS_LOB.SUBSTR can be replaced by SUBSTR()
-	$str =~ s/DBMS_LOB.SUBSTR/substr/igs;
+	# DBMS_LOB.SUBSTR can be replaced by SUBSTR() with second and third parameter inversed
+	$str =~ s/DBMS_LOB.SUBSTR\s*\($field,$field,$field\)/substr($1, $3, $2)/igs;
 	# TO_CLOB(), we just remove it
 	$str =~ s/TO_CLOB\s*\(/\(/igs;
 

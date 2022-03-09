@@ -2852,7 +2852,7 @@ sub read_schema_from_file
 						my $c_nullable = 1;
 						if ($c =~ s/CONSTRAINT\s*([^\s]+)?\s*NOT NULL//is) {
 							$c_nullable = 0;
-						} elsif ($c =~ s/NOT NULL//is) {
+						} elsif ($c !~ /IS\s+NOT\s+NULL/is && $c =~ s/\bNOT\s+NULL//is) {
 							$c_nullable = 0;
 						}
 
