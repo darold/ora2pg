@@ -7533,7 +7533,7 @@ sub export_table
 								if (($f->[4] !~ /^'/) && ($f->[4] =~ /[^\d\.]/))
 								{
 									if ($type =~ /CHAR|TEXT/i || ($was_enum && $f->[1] =~ /'/i)) {
-										$f->[4] = "'$f->[4]'" if ($f->[4] !~ /[']/ && $f->[4] !~ /\(.*\)/);
+										$f->[4] = "'$f->[4]'" if ($f->[4] !~ /[']/ && $f->[4] !~ /\(.*\)/ && uc($f->[4]) ne 'NULL');
 									}
 									elsif ($type =~ /DATE|TIME/i)
 									{
@@ -7560,7 +7560,7 @@ sub export_table
 									if ($#c >= 1)
 									{
 										if ($type =~ /CHAR|TEXT/i || ($was_enum && $f->[1] =~ /'/i)) {
-											$f->[4] = "'$f->[4]'" if ($f->[4] !~ /[']/ && $f->[4] !~ /\(.*\)/);
+											$f->[4] = "'$f->[4]'" if ($f->[4] !~ /[']/ && $f->[4] !~ /\(.*\)/ && uc($f->[4]) ne 'NULL');
 										} elsif ($type =~ /DATE|TIME/i) {
 											if ($f->[4] =~ /0000-00-00/) {
 												if ($self->{replace_zero_date}) {
@@ -7576,7 +7576,7 @@ sub export_table
 											} elsif ($f->[4] =~ /AT TIME ZONE/i) {
 												$f->[4] = "($f->[4])";
 											}
-										} else {
+										} elsif (uc($f->[4]) ne 'NULL') {
 											$f->[4] = "'$f->[4]'";
 										}
 									}
