@@ -162,6 +162,20 @@ $QUERY_TEST_SCORE = 0.1;
 	'SETSCHEMAVALIDATED' => 3,
 	'TOOBJECT' => 3,
 	'TRANSFORM' => 3,
+	'FND_CONC_GLOBAL' => 3,
+	'FND_CONCURRENT' => 3,
+	'FND_FILE' => 1,
+	'FND_PROGRAM' => 3,
+	'FND_SET' => 3,
+	'FND_REQUEST' => 3,
+	'FND_REQUEST_INFO' => 3,
+	'FND_SUBMIT' => 3,
+	'FND_GLOBAL' => 1,
+	'FND_PROFILE' => 1,
+	'FND_CURRENCY' => 3,
+	'FND_ORG' => 3,
+	'FND_STANDARD' => 3,
+	'FND_UTILITIES' => 3,
 );
 
 @ORA_FUNCTIONS = qw(
@@ -1169,9 +1183,9 @@ sub perform_replacement
 
 	# Fix call to procedure changed above
 	if ($class->{pg_supports_procedure}) {
-		$str =~ s/\bCALL\s+(PERFORM|CALL)\s+/CALL /igs;
+		while ($str =~ s/\bCALL\s+(PERFORM|CALL)\s+/CALL /igs) {};
 	} else {
-		$str =~ s/\bCALL\s+(PERFORM|CALL)\s+/PERFORM /igs;
+		while ($str =~ s/\bCALL\s+(PERFORM|CALL)\s+/PERFORM /igs) {};
 	}
 
 	return $str;
