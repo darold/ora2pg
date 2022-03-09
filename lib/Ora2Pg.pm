@@ -2850,9 +2850,9 @@ sub read_schema_from_file
 							}
 						}
 						my $c_nullable = 1;
-						if ($c =~ s/CONSTRAINT\s*([^\s]+)?\s*NOT NULL//s) {
+						if ($c =~ s/CONSTRAINT\s*([^\s]+)?\s*NOT NULL//is) {
 							$c_nullable = 0;
-						} elsif ($c =~ s/NOT NULL//) {
+						} elsif ($c =~ s/NOT NULL//is) {
 							$c_nullable = 0;
 						}
 
