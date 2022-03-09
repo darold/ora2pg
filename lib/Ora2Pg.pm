@@ -12635,7 +12635,8 @@ sub _extract_functions
 	my $before = '';
 	my $fcname =  '';
 	my $type = '';
-	for (my $i = 0; $i <= $#lines; $i++) { 
+	for (my $i = 0; $i <= $#lines; $i++)
+	{ 
 		if ($lines[$i] =~ /^(?:CREATE|CREATE OR REPLACE)?\s*(?:NONEDITIONABLE|EDITIONABLE)?\s*(FUNCTION|PROCEDURE)\s+([a-z0-9_\-\."]+)(.*)/i) {
 			$type = uc($1);
 			$fcname = $2;
@@ -12657,7 +12658,7 @@ sub _extract_functions
 		$fcname = '' if ($lines[$i] =~ /^\s*END\s+$fcname\b/i);
 	}
 
-	map { s/\bEND\s+(?!IF|LOOP|CASE|INTO|FROM|,)[a-z0-9_]+\s*;/END;/igs; } @functions;
+	map { s/\bEND\s+(?!IF|LOOP|CASE|INTO|FROM|END|,)[a-z0-9_]+\s*;/END;/igs; } @functions;
 
 	return @functions;
 }
