@@ -6500,6 +6500,7 @@ BEGIN
 
 				if ($self->{partitions}{$table}{$pos}{info}[$i]->{type} eq 'LIST')
 				{
+					$value = $self->{partitions}{$table}{$pos}{info}[$i]->{value};
 					if (!$self->{pg_supports_partition}) {
 						$check_cond .= "\t$self->{partitions}{$table}{$pos}{info}[$i]->{column} IN ($value)";
 					} else {
