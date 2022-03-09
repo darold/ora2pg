@@ -9483,9 +9483,24 @@ sub _create_indexes
 		{
 			for ($i = 0; $i <= $#{$indexes{$idx}}; $i++)
 			{
-				if ( ($indexes{$idx}->[$i] =~ /[\s\-\+\/\*]/) && ($indexes{$idx}->[$i] !~ /^[^\.\s]+\s+DESC$/i) ) {
+				if ( $indexes{$idx}->[$i] =~ /[\s\-\+\/\*]/ && $indexes{$idx}->[$i] !~ /^[^\.\s]+\s+(ASC|DESC)$/i
+				       			&& $tmp_col[$j] !~ /\s+collate\s+/i ) {
 					$indexes{$idx}->[$i] = '(' . $indexes{$idx}->[$i] . ')';
 				}
+			}
+		}
+		else
+		{
+			for ($i = 0; $i <= $#{$indexes{$idx}}; $i++)
+			{
+				my @tmp_col = split(/\s*,\s*/, $indexes{$idx}->[$i]);
+				for (my $j = 0; $j <= $#tmp_col; $j++) {
+					if ( $tmp_col[$j] =~ /[\s\-\+\/\*]/ && $tmp_col[$j] !~ /^[^\.\s]+\s+(ASC|DESC)$/i
+				       			&& $tmp_col[$j] !~ /\s+collate\s+/i ) {
+						$tmp_col[$j] = '(' . $tmp_col[$j] . ')';
+					}
+				}
+				$indexes{$idx}->[$i] = join(', ', @tmp_col);
 			}
 		}
 		my $columns = '';
