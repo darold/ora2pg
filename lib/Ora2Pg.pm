@@ -1482,6 +1482,9 @@ sub _init
 	if ($self->{pg_version} >= 12) {
 		$self->{pg_supports_virtualcol} = 1;
 	}
+	if ($self->{pg_version} >= 14) {
+		$self->{pg_supports_outparam} = 1;
+	}
 
 	# Other PostgreSQL fork compatibility
 	# Redshift
@@ -13153,7 +13156,8 @@ sub _convert_function
 	}
 
 	# PostgreSQL procedure do not support OUT parameter, translate them into INOUT params
-	if (!$fct_detail{hasreturn} && $self->{pg_supports_procedure} && ($fct_detail{args} =~ /\bOUT\s+[^,\)]+/i)) {
+	if (!$fct_detail{hasreturn} && $self->{pg_supports_procedure}
+		&&!$self->{pg_supports_outparam} && ($fct_detail{args} =~ /\bOUT\s+[^,\)]+/i)) {
 		$fct_detail{args} =~ s/\bOUT(\s+[^,\)]+)/INOUT$1/igs;
 	}
 

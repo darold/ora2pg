@@ -1817,6 +1817,15 @@ sub replace_out_param_call
 						# Prevent replacement with same function name from an other package
 						next if ($class->{current_package} && lc($p) ne lc($class->{current_package}) && $str =~ /(^|[^\.])\b$fct_name\b/is);
 
+						# Since PG14 procedures support OUT param should not be
+						# changed, just add CALL at start of the function call
+						if ($class->{pg_supports_outparam}
+							&& $class->{function_metadata}{$sch}{$p}{$k}{metadata}{type} eq 'PROCEDURE')
+						{
+							$str =~ s/(^|\s+)($fct_name)\b/$1 CALL $2/igs;
+							$str =~ s/\b($p\.$fct_name)\b/CALL $1/igs;
+							next;
+						}
 						my %replace_out_parm = ();
 						my $idx = 0;
 						while ($str =~ s/((?:[^\s\.]+\.)?\b$fct_name)\s*\(([^\(\)]+)\)/\%FCTINOUTPARAM$idx\%/is)
