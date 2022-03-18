@@ -1098,6 +1098,9 @@ sub _init
 	# Minimum of lines required in a table to use parallelism
 	$self->{parallel_min_rows} ||= 100000;
 
+	# Should we export global temporary table
+	$self->{export_gtt} ||= 0;
+
 	# Should we replace zero date with something else than NULL
 	$self->{replace_zero_date} ||= '';
 	if ($self->{replace_zero_date} && (uc($self->{replace_zero_date}) ne '-INFINITY') && ($self->{replace_zero_date} !~ /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/)) {
@@ -1199,7 +1202,7 @@ sub _init
 	}
 	delete $self->{excluded}{ALL};
 
-	$self->{debug} = 1 if ($AConfig{'DEBUG'} == 1);
+	$self->{debug} = $AConfig{'DEBUG'} if ($AConfig{'DEBUG'} >= 1);
 
 	# Set default XML data extract method
 	if (not defined $self->{xml_pretty} || ($self->{xml_pretty} != 0)) {
@@ -2365,6 +2368,8 @@ sub _tables
 		$self->{tables}{$t}{table_info}{connection} = $tables_infos{$t}{connection};
 		$self->{tables}{$t}{table_info}{nologging} = $tables_infos{$t}{nologging};
 		$self->{tables}{$t}{table_info}{partitioned} = $tables_infos{$t}{partitioned};
+		$self->{tables}{$t}{table_info}{temporary} = $tables_infos{$t}{temporary};
+		$self->{tables}{$t}{table_info}{duration} = $tables_infos{$t}{duration};
 		if (exists $tables_infos{$t}{fillfactor}) {
 		    $self->{tables}{$t}{table_info}{fillfactor} = $tables_infos{$t}{fillfactor};
 		}
@@ -2974,6 +2979,9 @@ sub read_schema_from_file
 			}
 			if ($tb_param =~ /\bNOLOGGING\b/is) {
 				$self->{tables}{$tb_name}{table_info}{nologging} = 1;
+			}
+			if ($tb_param =~ /\bGLOBAL\s+TEMPORARY\b/is) {
+				$self->{tables}{$tb_name}{table_info}{temporary} = 'Y';
 			}
 
 			if ($tb_param =~ /ORGANIZATION EXTERNAL/is) {
@@ -7281,7 +7289,11 @@ sub export_table
 		if ( ($obj_type eq 'TABLE') && $self->{tables}{$table}{table_info}{nologging} && !$self->{disable_unlogged} ) {
 			$obj_type = 'UNLOGGED ' . $obj_type;
 		}
-		if (exists $self->{tables}{$table}{table_as}) {
+		if ($self->{export_gtt} && !$foreign && $self->{tables}{$table}{table_info}{temporary} eq 'Y') {
+			$obj_type = ' /*GLOBAL*/ TEMPORARY TABLE' if ($obj_type =~ /TABLE/);
+		}
+		if (exists $self->{tables}{$table}{table_as})
+		{
 			if ($self->{plsql_pgsql}) {
 				$self->{tables}{$table}{table_as} = Ora2Pg::PLSQL::convert_plsql_code($self, $self->{tables}{$table}{table_as});
 			}
@@ -7622,7 +7634,17 @@ sub export_table
 					$sql_output .=  " -- Unsupported partition type, please check\n";
 				}
 			}
-			if ( ($self->{type} ne 'FDW') && !$self->{oracle_fdw_data_export} && (!$self->{external_to_fdw} || (!grep(/^$table$/i, keys %{$self->{external_table}}) && !$self->{tables}{$table}{table_info}{connection})) )
+			if ($obj_type =~ /\bTEMPORARY TABLE\b/)
+			{
+				if ($self->{tables}{$table}{table_info}{duration} eq 'SYS$TRANSACTION') {
+					$sql_output .= ' ON COMMIT DELETE ROWS';
+				} elsif ($self->{tables}{$table}{table_info}{duration} eq 'SYS$SESSION') {
+					$sql_output .= ' ON COMMIT PRESERVE ROWS';
+				}
+			}
+			if ( ($self->{type} ne 'FDW') && !$self->{oracle_fdw_data_export}
+				&& (!$self->{external_to_fdw} || (!grep(/^$table$/i, keys %{$self->{external_table}})
+						&& !$self->{tables}{$table}{table_info}{connection})) )
 			{
 				my $withoid = _make_WITH($self->{with_oid}, $self->{tables}{$table}{table_info});
 				if ($self->{use_tablespace} && $self->{tables}{$table}{table_info}{tablespace} && !grep(/^$self->{tables}{$table}{table_info}{tablespace}$/i, @{$self->{default_tablespaces}})) {
@@ -9487,7 +9509,7 @@ sub _create_indexes
 			for ($i = 0; $i <= $#{$indexes{$idx}}; $i++)
 			{
 				if ( $indexes{$idx}->[$i] =~ /[\s\-\+\/\*]/ && $indexes{$idx}->[$i] !~ /^[^\.\s]+\s+(ASC|DESC)$/i
-				       			&& $tmp_col[$j] !~ /\s+collate\s+/i ) {
+				       			&& $indexes{$idx}->[$i] !~ /\s+collate\s+/i ) {
 					$indexes{$idx}->[$i] = '(' . $indexes{$idx}->[$i] . ')';
 				}
 			}

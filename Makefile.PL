@@ -337,6 +337,11 @@ REORDERING_COLUMNS	0
 # this directive. Can be useful in an iterative work. Default is disabled.
 DROP_IF_EXISTS		0
 
+# PostgreSQL do not supports Global Temporary Table natively but you can use
+# the pgtt extension to emulate this behavior. Enable this directive to export
+# global temporary table.
+EXPORT_GTT		0
+
 #------------------------------------------------------------------------------
 # FULL TEXT SEARCH SECTION (Control full text search export behaviors)
 #------------------------------------------------------------------------------

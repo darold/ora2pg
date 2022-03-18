@@ -333,7 +333,7 @@ sub min
 
 =head2 _table_info
 
-This function retrieves all MySQL tables information.
+This function retrieves all tables information.
 
 Returns a handle to a DB query statement.
 
@@ -409,8 +409,9 @@ sub _table_info
 	####
 	# Get information about all tables
 	####
-	$sql = "SELECT A.OWNER,A.TABLE_NAME,NVL(num_rows,1) NUMBER_ROWS,A.TABLESPACE_NAME,A.NESTED,A.LOGGING,A.PARTITIONED,A.PCT_FREE FROM $self->{prefix}_TABLES A WHERE $owner";
-	$sql .= " AND A.TEMPORARY='N' AND (A.NESTED != 'YES' OR A.LOGGING != 'YES') AND A.SECONDARY = 'N'";
+	$sql = "SELECT A.OWNER,A.TABLE_NAME,NVL(num_rows,1) NUMBER_ROWS,A.TABLESPACE_NAME,A.NESTED,A.LOGGING,A.PARTITIONED,A.PCT_FREE,A.TEMPORARY,A.DURATION FROM $self->{prefix}_TABLES A WHERE $owner";
+	$sql .= " AND A.TEMPORARY='N'" if (!$self->{export_gtt});
+	$sql .= " AND (A.NESTED != 'YES' OR A.LOGGING != 'YES') AND A.SECONDARY = 'N'";
 	if ($self->{db_version} !~ /Release [89]/) {
 		$sql .= " AND (A.DROPPED IS NULL OR A.DROPPED = 'NO')";
 	}
@@ -453,6 +454,10 @@ sub _table_info
 		if (($row->[7] || 0) > 10) {
 			$tables_infos{$row->[1]}{fillfactor} = 100 - min(90, $row->[7]);
 		}
+		# Global temporary table ?
+		$tables_infos{$row->[1]}{temporary} = $row->[8];
+		$tables_infos{$row->[1]}{duration} = $row->[9];
+
 		if ($do_real_row_count)
 		{
 			$self->logit("DEBUG: looking for real row count for table ($row->[0]) $row->[1] (aka using count(*))...\n", 1);
@@ -856,6 +861,9 @@ sub _get_indexes
 	} else {
 		$condition .= " AND A.INDEX_OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "') ";
 	}
+	if (!$self->{export_gtt}) {
+		$condition .= " AND B.TEMPORARY = 'N' ";
+	}
 	if (!$table) {
 		$condition .= $self->limit_to_objects('TABLE|INDEX', "A.TABLE_NAME|A.INDEX_NAME");
 	} else {
@@ -864,7 +872,7 @@ sub _get_indexes
 
 	# When comparing number of index we need to retrieve generated index (mostly PK)
 	my $generated = '';
-	$generated = " B.GENERATED = 'N' AND" if (!$generated_indexes);
+	$generated = " B.GENERATED = 'N'" if (!$generated_indexes);
 
 	my $t0 = Benchmark->new;
 	my $sth = '';
@@ -876,7 +884,7 @@ sub _get_indexes
 SELECT DISTINCT A.INDEX_NAME,A.COLUMN_NAME,B.UNIQUENESS,A.COLUMN_POSITION,B.INDEX_TYPE,B.TABLE_TYPE,B.GENERATED,B.JOIN_INDEX,A.TABLE_NAME,A.INDEX_OWNER,B.TABLESPACE_NAME,B.ITYP_NAME,B.PARAMETERS,A.DESCEND
 FROM $self->{prefix}_IND_COLUMNS A
 JOIN $self->{prefix}_INDEXES B ON (B.INDEX_NAME=A.INDEX_NAME AND B.OWNER=A.INDEX_OWNER)
-WHERE$generated B.TEMPORARY = 'N' $condition $no_mview
+WHERE$generated $condition $no_mview
 ORDER BY A.COLUMN_POSITION
 END
 	}
@@ -886,8 +894,7 @@ END
 		$sth = $self->{dbh}->prepare(<<END) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 SELECT DISTINCT A.INDEX_NAME,A.COLUMN_NAME,B.UNIQUENESS,A.COLUMN_POSITION,B.INDEX_TYPE,B.TABLE_TYPE,B.GENERATED, 'NO', A.TABLE_NAME,A.INDEX_OWNER,B.TABLESPACE_NAME,B.ITYP_NAME,B.PARAMETERS,A.DESCEND
 FROM $self->{prefix}_IND_COLUMNS A, $self->{prefix}_INDEXES B
-WHERE B.INDEX_NAME=A.INDEX_NAME AND B.OWNER=A.INDEX_OWNER $condition
-AND$generated B.TEMPORARY = 'N'
+WHERE $generated $condition AND B.INDEX_NAME=A.INDEX_NAME AND B.OWNER=A.INDEX_OWNER
 ORDER BY A.COLUMN_POSITION
 END
 	}
@@ -2355,9 +2362,13 @@ sub _get_objects
 {
 	my $self = shift;
 
+	my $temporary = "TEMPORARY='N'";
+	if ($self->{export_gtt}) {
+		$temporary = "(TEMPORARY='N' OR OBJECT_TYPE='TABLE')";
+	}
 	my $oraver = '';
 	# OWNER|OBJECT_NAME|SUBOBJECT_NAME|OBJECT_ID|DATA_OBJECT_ID|OBJECT_TYPE|CREATED|LAST_DDL_TIME|TIMESTAMP|STATUS|TEMPORARY|GENERATED|SECONDARY
-	my $sql = "SELECT OBJECT_NAME,OBJECT_TYPE,STATUS FROM $self->{prefix}_OBJECTS WHERE TEMPORARY='N' AND GENERATED='N' AND SECONDARY='N' AND OBJECT_TYPE <> 'SYNONYM'";
+	my $sql = "SELECT OBJECT_NAME,OBJECT_TYPE,STATUS FROM $self->{prefix}_OBJECTS WHERE $temporary AND GENERATED='N' AND SECONDARY='N' AND OBJECT_TYPE <> 'SYNONYM'";
 	if ($self->{schema}) {
 		$sql .= " AND OWNER='$self->{schema}'";
 	} else {
@@ -2968,7 +2979,7 @@ sub _global_temp_table_info
 		$sth->finish();
 	}
 
-	my $sql = "SELECT A.OWNER,A.TABLE_NAME,NVL(num_rows,1) NUMBER_ROWS,A.TABLESPACE_NAME,A.NESTED,A.LOGGING FROM $self->{prefix}_TABLES A, $self->{prefix}_OBJECTS O WHERE A.OWNER=O.OWNER AND A.TABLE_NAME=O.OBJECT_NAME AND O.OBJECT_TYPE='TABLE' $owner";
+	my $sql = "SELECT A.OWNER,A.TABLE_NAME,NVL(num_rows,1) NUMBER_ROWS,A.TABLESPACE_NAME,A.NESTED,A.LOGGING,A.DURATION FROM $self->{prefix}_TABLES A, $self->{prefix}_OBJECTS O WHERE A.OWNER=O.OWNER AND A.TABLE_NAME=O.OBJECT_NAME AND O.OBJECT_TYPE='TABLE' $owner";
 	$sql .= " AND A.TEMPORARY='Y'";
 	if ($self->{db_version} !~ /Release [89]/) {
 		$sql .= " AND (A.DROPPED IS NULL OR A.DROPPED = 'NO')";
@@ -2997,6 +3008,8 @@ sub _global_temp_table_info
 			$tables_infos{$row->[1]}{nologging} = 0;
 		}
 		$tables_infos{$row->[1]}{num_rows} = 0;
+		$tables_infos{$row->[1]}{temporary} = 'Y';
+		$tables_infos{$row->[1]}{duration} = $row->[6];
 	}
 	$sth->finish();
 

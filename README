@@ -1716,6 +1716,11 @@ CONFIGURATION
         this directive. Can be useful in an iterative work. Default is
         disabled.
 
+    EXPORT_GTT
+        PostgreSQL do not supports Global Temporary Table natively but you
+        can use the pgtt extension to emulate this behavior. Enable this
+        directive to export global temporary table.
+
     NO_HEADER
         Enabling this directive will prevent Ora2Pg to print his header into
         output files. Only the translated code will be written.

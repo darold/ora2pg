@@ -1763,6 +1763,12 @@ directive, DDL will not include OR REPLACE.
 To add a DROP <OBJECT> IF EXISTS before creating the object, enable
 this directive. Can be useful in an iterative work. Default is disabled.
 
+=item EXPORT_GTT
+
+PostgreSQL do not supports Global Temporary Table natively but you can use
+the pgtt extension to emulate this behavior. Enable this directive to export
+global temporary table.
+
 =item NO_HEADER
 
 Enabling this directive will prevent Ora2Pg to print his header into
