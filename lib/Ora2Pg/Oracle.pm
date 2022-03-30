@@ -895,7 +895,7 @@ FROM $self->{prefix}_IND_COLUMNS A, $self->{prefix}_INDEXES B
 WHERE $generated $condition AND B.INDEX_NAME=A.INDEX_NAME AND B.OWNER=A.INDEX_OWNER
 ORDER BY A.COLUMN_POSITION};
 	}
-	$sql =~ s/WHERE AND/WHERE/s;
+	$sql =~ s/WHERE\s+AND/WHERE/s;
 	$sth = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
