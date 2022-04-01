@@ -1560,6 +1560,7 @@ sub _lookup_function
 
 	@{$fct_detail{param_types}} = ();
 	$fct_detail{declare} =~ s/(\b(?:FUNCTION|PROCEDURE)\s+(?:[^\s\(]+))(\s*\%ORA2PG_COMMENT\d+\%\s*)+/$2$1 /is;
+	$fct_detail{declare} =~ s/RETURN\%ORA2PG_COMMENT\d+\%/RETURN/is;
 	if ( ($fct_detail{declare} =~ s/(.*?)\b(FUNCTION|PROCEDURE)\s+([^\s\(]+)\s*(\([^\)]*\))//is) ||
 			($fct_detail{declare} =~ s/(.*?)\b(FUNCTION|PROCEDURE)\s+([^\s\(]+)\s+(RETURN|IS|AS)/$4/is) )
 	{
