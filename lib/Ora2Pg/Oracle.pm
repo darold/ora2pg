@@ -1734,6 +1734,8 @@ sub _lookup_function
 
 		# Replace global variable in DECLARE section too
 		$i = 0;
+		while ($fct_detail{declare} =~ s/([^']+)\b$n\b([^']+)/$1current_setting('$n')::$self->{global_variables}{$n}{type}$2/is) { last if ($i++ > 100); };
+		$i = 0;
 		while ($fct_detail{declare} =~ s/([^\.']+)\b$self->{global_variables}{$n}{name}\b([^']+)/$1current_setting('$n')::$self->{global_variables}{$n}{type}$2/is) { last if ($i++ > 100); };
 	}
 
