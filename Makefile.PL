@@ -17,9 +17,7 @@ my $DOCDIR  = $ENV{DOCDIR} || '/usr/local/share/doc/ora2pg';
 my $DEST_CONF_FILE = 'ora2pg.conf.dist';
 my $DATA_LIMIT_DEFAULT = 10000;
 if ($^O =~ /MSWin32|dos/i) {
-	$DEST_CONF_FILE = 'ora2pg_dist.conf';
 	$DATA_LIMIT_DEFAULT = 2000;
-	$DEST_CONF_FILE = 'ora2pg_conf.dist';
 }
 
 my $PREFIX = $ENV{DESTDIR} || $ENV{PREFIX} || $ENV{INSTALL_BASE} ||  '';
