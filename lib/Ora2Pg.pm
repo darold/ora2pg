@@ -10947,9 +10947,9 @@ sub _column_info
 	$self->logit("Collecting column information for table $table...\n", 1);
 
 	if ($self->{is_mysql}) {
-		return Ora2Pg::MySQL::_column_info($self,'',$owner,'TABLE');
+		return Ora2Pg::MySQL::_column_info($self,$table,$owner,'TABLE');
 	} else {
-		return Ora2Pg::Oracle::_column_info($self,'',$owner,'TABLE');
+		return Ora2Pg::Oracle::_column_info($self,$table,$owner,'TABLE');
 	}
 }
 
@@ -10969,9 +10969,9 @@ sub _encrypted_columns
 	my ($self, $table, $owner) = @_;
 
 	if ($self->{is_mysql}) {
-		return Ora2Pg::MySQL::_encrypted_columns($self,'',$owner);
+		return Ora2Pg::MySQL::_encrypted_columns($self,$table,$owner);
 	} else {
-		return Ora2Pg::Oracle::_encrypted_columns($self,'',$owner);
+		return Ora2Pg::Oracle::_encrypted_columns($self,$table,$owner);
 	}
 }
 
