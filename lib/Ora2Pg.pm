@@ -10958,9 +10958,9 @@ sub _column_attributes
 	my ($self, $table, $owner, $objtype) = @_;
 
 	if ($self->{is_mysql}) {
-		return Ora2Pg::MySQL::_column_attributes($self,'',$owner,'TABLE');
+		return Ora2Pg::MySQL::_column_attributes($self,$table,$owner,'TABLE');
 	} else {
-		return Ora2Pg::Oracle::_column_attributes($self,'',$owner,'TABLE');
+		return Ora2Pg::Oracle::_column_attributes($self,$table,$owner,'TABLE');
 	}
 }
 
