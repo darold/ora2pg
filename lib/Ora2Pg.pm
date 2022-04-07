@@ -3913,6 +3913,11 @@ sub _export_table_data
 						next if ($self->file_exists("$dirprefix${sub_tb_name}_$self->{output}"));
 					}
 
+					if ($#{$self->{tables}{$table}{field_name}} < 0) {
+						$self->logit("Table $table has no column defined, skipping...\n", 1);
+						next;
+					}
+
 					$self->logit("Dumping sub partition table $table ($subpart)...\n", 1);
 					$total_record = $self->_dump_table($dirprefix, $sql_header, $table, $subpart, 1);
 					# Rename temporary filename into final name
@@ -3980,7 +3985,12 @@ sub _export_table_data
 	else
 	{
 
-		$total_record = $self->_dump_table($dirprefix, $sql_header, $table);
+		# Do not dump data if the table has no column
+		if ($#{$self->{tables}{$table}{field_name}} < 0) {
+			$self->logit("Table $table has no column defined, skipping...\n", 1);
+		} else {
+			$total_record = $self->_dump_table($dirprefix, $sql_header, $table);
+		}
 	}
 
  	# close the connection with parallel table export
