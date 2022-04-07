@@ -1601,7 +1601,9 @@ sub _lookup_function
 		} elsif ($fct_detail{declare} =~ s/(.*?)\bRETURN\s+([^\s]+)//is) {
 			$fct_detail{args} .= $1;
 			$fct_detail{hasreturn} = 1;
-			$fct_detail{func_ret_type} = $self->_sql_type($2) || 'OPAQUE';
+			my $ret_typ = $2 || '';
+			$ret_typ =~ s/(\%ORA2PG_COMMENT\d+\%)+//i;
+			$fct_detail{func_ret_type} = $self->_sql_type($ret_typ) || 'OPAQUE';
 		}
 		if ($fct_detail{declare} =~ s/(.*?)(USING|AS|IS)(\s+(?!REF\s+))/$3/is) {
 			$fct_detail{args} .= $1 if (!$fct_detail{hasreturn});
