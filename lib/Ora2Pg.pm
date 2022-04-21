@@ -9052,6 +9052,7 @@ sub _dump_table
 			my $keyname = lc($table . '_' . $fieldname . '_t');
 			$f->[1] = $keyname;
 		}
+		$type = $self->{'modify_type'}{lc($table)}{lc($f->[0])} if (exists $self->{'modify_type'}{lc($table)}{lc($f->[0])});
 		push(@stt, uc($f->[1]));
 		push(@tt, $type);
 		push(@nn,  $fieldname);
@@ -11843,7 +11844,6 @@ sub format_data_row
 		}
 		else
 		{
-
 			$row->[$idx] = $self->format_data_type($row->[$idx], $data_type, $action, $table, $src_data_types->[$idx], $idx, $colcond->[$idx], $sprep);
 
 			# Construct a WHERE clause based onb PK columns values
