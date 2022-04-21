@@ -657,7 +657,9 @@ ORDER BY A.COLUMN_ID
 			else
 			{
 				my @result = ();
-				$spatial_srid = $st_spatial_srid if ($row->[1] =~ /^ST_|STGEOM_/);
+				if ($row->[1] =~ /^ST_|STGEOM_/) {
+					$spatial_srid = sprintf($st_spatial_srid, $row->[0], $tmptable);
+				}
 				my $sth2 = $self->{dbh}->prepare($spatial_srid);
 				if (!$sth2)
 				{
@@ -671,7 +673,7 @@ ORDER BY A.COLUMN_ID
 				else
 				{
 					if ($row->[1] =~ /^ST_|STGEOM_/) {
-						$sth2->execute($row->[0]) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+						$sth2->execute() or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 					} else {
 						$sth2->execute($row->[8],$row->[0],$row->[9]) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 					}
@@ -714,13 +716,15 @@ ORDER BY A.COLUMN_ID
 			# Get the dimension of the geometry column
 			if (!$found_dims)
 			{
-				$spatial_dim = $st_spatial_dim if ($row->[1] =~ /^ST_|STGEOM_/);
+				if ($row->[1] =~ /^ST_|STGEOM_/) {
+					$spatial_dim = sprintf($st_spatial_dim, $row->[0], $tmptable);
+				}
 				my $sth2 = $self->{dbh}->prepare($spatial_dim);
 				if (!$sth2) {
 					$self->logit("FATAL: _column_info() " . $self->{dbh}->errstr . "\n", 0, 1);
 				}
 				if ($row->[1] =~ /^ST_|STGEOM_/) {
-					$sth2->execute($row->[0]) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+					$sth2->execute() or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 				} else {
 					$sth2->execute($row->[8],$row->[0],$row->[9]) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 				}
@@ -740,10 +744,9 @@ ORDER BY A.COLUMN_ID
 			if (!$found_contraint && $self->{autodetect_spatial_type})
 			{
 				# Get spatial information
-				my $colname = $row->[9] . "." . $row->[8];
-				my $squery = sprintf($spatial_gtype, $row->[0], $colname);
+				my $squery = sprintf($spatial_gtype, $row->[0], $tmptable);
 				if ($row->[1] =~ /^ST_|STGEOM_/) {
-					$squery = sprintf($st_spatial_gtype, $row->[0], $colname);
+					$squery = sprintf($st_spatial_gtype, $row->[0], $tmptable);
 				}
 				my $sth2 = $self->{dbh}->prepare($squery);
 				if (!$sth2) {
