@@ -11787,7 +11787,7 @@ sub format_data_row
 					use Ora2Pg::GEOM;
 					my $geom_obj = new Ora2Pg::GEOM('srid' => $self->{spatial_srid}{$table}->[$idx]);
 					$geom_obj->{geometry}{srid} = '';
-					$row->[$idx] = $geom_obj->parse_sdo_geometry($row->[$idx]);
+					$row->[$idx] = $geom_obj->parse_sdo_geometry($row->[$idx]) if ($row->[$idx] =~ /^ARRAY\(0x/);
 					$row->[$idx] = 'SRID=' . $geom_obj->{geometry}{srid} . ';' . $row->[$idx];
 				}
 				elsif ($self->{geometry_extract_type} eq 'WKB')
@@ -11819,7 +11819,7 @@ sub format_data_row
 						use Ora2Pg::GEOM;
 						my $geom_obj = new Ora2Pg::GEOM('srid' => $self->{spatial_srid}{$table}->[$idx]);
 						$geom_obj->{geometry}{srid} = '';
-						$row->[$idx] = $geom_obj->parse_sdo_geometry($row->[$idx]);
+						$row->[$idx] = $geom_obj->parse_sdo_geometry($row->[$idx]) if ($row->[$idx] =~ /^ARRAY\(0x/);
 						$row->[$idx] = "ST_GeomFromText('" . $row->[$idx] . "', $geom_obj->{geometry}{srid})";
 					}
 					else
