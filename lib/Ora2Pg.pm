@@ -10558,7 +10558,7 @@ VARCHAR2
       dbms_lob.FILEGETNAME( p_bfile, l_dir, l_fname );
       SELECT DIRECTORY_PATH INTO l_path FROM $self->{prefix}_DIRECTORIES WHERE DIRECTORY_NAME = l_dir;
       l_dir := rtrim(l_path,'/');
-      RETURN l_dir || '/' || l_fname;
+      RETURN l_dir || '/' || replace(l_fname, '\\', '/');
   END IF;
   END;
 };
@@ -10580,7 +10580,7 @@ VARCHAR2
       RETURN NULL;
     ELSE
       dbms_lob.FILEGETNAME( p_bfile, l_dir, l_fname );
-      RETURN '($quote' || l_dir || '$quote,$quote' || l_fname || '$quote)';
+      RETURN '($quote' || l_dir || '$quote,$quote' || replace(l_fname, '\\', '/') || '$quote)';
   END IF;
   END;
 };
