@@ -9296,6 +9296,31 @@ sub _dump_fdw_table
 	# and INTERNAL because they use the call to ST_GeomFromText()
 	$has_geometry = 0 if ($self->{geometry_extract_type} eq 'WKB');
 
+	# Append WHERE clause defined in the configuration file that must be applied
+	if ($s_out !~ / WHERE /)
+	{
+		if (exists $self->{where}{"\L$table\E"} && $self->{where}{"\L$table\E"})
+		{
+			($s_out =~ / WHERE /) ? $s_out .= ' AND ' : $s_out .= ' WHERE ';
+			if (!$self->{is_mysql} || ($self->{where}{"\L$table\E"} !~ /\s+LIMIT\s+\d/)) {
+				$s_out .= '(' . $self->{where}{"\L$table\E"} . ')';
+			} else {
+				$s_out .= $self->{where}{"\L$table\E"};
+			}
+			$self->logit("\tApplying WHERE clause on foreign table: " . $self->{where}{"\L$table\E"} . "\n", 1);
+		}
+		elsif ($self->{global_where})
+		{
+			($s_out =~ / WHERE /) ? $s_out .= ' AND ' : $s_out .= ' WHERE ';
+			if (!$self->{is_mysql} || ($self->{global_where} !~ /\s+LIMIT\s+\d/)) {
+				$s_out .= '(' . $self->{global_where} . ')';
+			} else {
+				$s_out .= $self->{global_where};
+			}
+			$self->logit("\tApplying WHERE global clause: " . $self->{global_where} . "\n", 1);
+		}
+	}
+
 	if ( ($self->{oracle_copies} > 1) && $self->{defined_pk}{"\L$table\E"} )
 	{
 		my $colpk = $self->{defined_pk}{"\L$table\E"};
