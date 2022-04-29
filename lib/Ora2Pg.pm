@@ -2860,7 +2860,7 @@ sub read_schema_from_file
 						my $c_nullable = 1;
 						if ($c =~ s/CONSTRAINT\s*([^\s]+)?\s*NOT NULL//is) {
 							$c_nullable = 0;
-						} elsif ($c !~ /IS\s+NOT\s+NULL/is && $c =~ s/\bNOT\s+NULL//is) {
+						} elsif ($c !~ /IS\s+NOT\s+NULL/is && $c !~ /DEFAULT\s+null\s+NOT\s+NULL/is && $c =~ s/\bNOT\s+NULL//is) {
 							$c_nullable = 0;
 						}
 
@@ -2905,6 +2905,9 @@ sub read_schema_from_file
 						# At this stage only the DEFAULT part might be on the string
 						if ($c =~ /\bDEFAULT\s+/is)
 						{
+							# Fix syntax:  DEFAULT null NOT NULL ENABLE
+							$c =~ s/\b(DEFAULT\s+NULL)\s+NOT\s+NULL\s*(?:(?:DIS|E)NABLE)?/$1/is;
+
 							if ($c =~ s/\bDEFAULT\s+('[^']+')\s*//is) {
 								$c_default = $1;
 							} elsif ($c =~ s/\bDEFAULT\s+([^\s]+)\s*$//is) {
@@ -7470,11 +7473,11 @@ sub export_table
 				if ($foreign && $self->is_primary_key_column($table, $f->[0])) {
 					 $sql_output .= " OPTIONS (key 'true')";
 				}
-				if (!$f->[3] || ($f->[3] =~ /^N/))
+				if (!$f->[3] || $f->[3] =~ /^N/)
 				{
 					# smallserial, serial and bigserial use a NOT NULL sequence as default value,
 					# so we don't need to add it here
-					if ($type !~ /serial/) {
+					if ($type !~ /serial/ && $f->[4] !~ /^\s*NULL\s*$/i) {
 						push(@{$self->{tables}{$table}{check_constraint}{notnull}}, $f->[0]);
 						$sql_output .= " NOT NULL";
 					}
@@ -7513,7 +7516,7 @@ sub export_table
 				}
 
 				# Default value
-				if ($f->[4] ne "" && uc($f->[4]) ne 'NULL')
+				if ($f->[4] ne "" && $f->[4] !~ /^\s*NULL\s*$/i)
 				{
 					$f->[4] =~ s/^\s+//;
 					$f->[4] =~ s/\s+$//;
