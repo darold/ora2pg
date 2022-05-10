@@ -1346,7 +1346,7 @@ sub _get_partitions
 	my $str = qq{
 SELECT TABLE_NAME, PARTITION_ORDINAL_POSITION, PARTITION_NAME, PARTITION_DESCRIPTION, TABLESPACE_NAME, PARTITION_METHOD, PARTITION_EXPRESSION
 FROM INFORMATION_SCHEMA.PARTITIONS
-WHERE PARTITION_NAME IS NOT NULL AND SUBPARTITION_NAME IS NULL AND (PARTITION_METHOD = 'RANGE' OR PARTITION_METHOD = 'LIST')
+WHERE PARTITION_NAME IS NOT NULL AND SUBPARTITION_NAME IS NULL AND (PARTITION_METHOD LIKE 'RANGE%' OR PARTITION_METHOD LIKE 'LIST%')
 };
 	$str .= $self->limit_to_objects('TABLE|PARTITION', 'TABLE_NAME|PARTITION_NAME');
 	if ($self->{schema}) {
@@ -1358,17 +1358,25 @@ WHERE PARTITION_NAME IS NOT NULL AND SUBPARTITION_NAME IS NULL AND (PARTITION_ME
 	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	my %parts = ();
 	my %default = ();
-	while (my $row = $sth->fetch) {
-		if ( ($row->[3] eq 'MAXVALUE') || ($row->[3] eq 'DEFAULT')) {
+	while (my $row = $sth->fetch)
+	{
+		if ($row->[3] =~ /^MAXVALUE(?:,MAXVALUE)*$/ || $row->[3] eq 'DEFAULT')
+		{
 			$default{$row->[0]} = $row->[2];
 			next;
 		}
-		my $i = $#{$parts{$row->[0]}{$row->[1]}{$row->[2]}} + 1;
-		push(@{$parts{$row->[0]}{$row->[1]}{$row->[2]}}, { 'type' => $row->[5], 'value' => $row->[3], 'column' => $row->[6], 'colpos' => $i, 'tablespace' => $row->[4], 'owner' => ''});
-		$self->logit(".",1);
+		$parts{$row->[0]}{$row->[1]}{name} = $row->[2];
+		$row->[6] =~ s/\`//g;
+		$row->[3] =~ s/\`//g;
+		$row->[5] =~ s/ COLUMNS//;
+		my $i = 0;
+		foreach my $c (split(',', $row->[6]))
+		{
+			push(@{$parts{$row->[0]}{$row->[1]}{info}}, { 'type' => $row->[5], 'value' => $row->[3], 'column' => $c, 'colpos' => $i, 'tablespace' => $row->[4], 'owner' => ''});
+			$i++;
+		}
 	}
 	$sth->finish;
-	$self->logit("\n", 1);
 
 	return \%parts, \%default;
 }
@@ -1385,7 +1393,7 @@ sub _get_subpartitions
 
 	# Retrieve all partitions.
 	my $str = qq{
-SELECT TABLE_NAME, SUBPARTITION_ORDINAL_POSITION, SUBPARTITION_NAME, PARTITION_DESCRIPTION, TABLESPACE_NAME, SUBPARTITION_METHOD, SUBPARTITION_EXPRESSION
+SELECT TABLE_NAME, SUBPARTITION_ORDINAL_POSITION, SUBPARTITION_NAME, PARTITION_DESCRIPTION, TABLESPACE_NAME, SUBPARTITION_METHOD, SUBPARTITION_EXPRESSION,PARTITION_NAME
 FROM INFORMATION_SCHEMA.PARTITIONS
 WHERE SUBPARTITION_NAME IS NOT NULL AND SUBPARTITION_EXPRESSION IS NOT NULL AND (SUBPARTITION_METHOD = 'RANGE' OR SUBPARTITION_METHOD = 'LIST')
 };
@@ -1393,22 +1401,30 @@ WHERE SUBPARTITION_NAME IS NOT NULL AND SUBPARTITION_EXPRESSION IS NOT NULL AND 
 	if ($self->{schema}) {
 		$str .= " AND TABLE_SCHEMA ='$self->{schema}'\n";
 	}
-	$str .= " ORDER BY TABLE_NAME,PARTITION_ORDINAL_POSITION\n";
+	$str .= " ORDER BY TABLE_NAME,PARTITION_ORDINAL_POSITION,SUBPARTITION_ORDINAL_POSITION\n";
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	my %subparts = ();
 	my %default = ();
-	while (my $row = $sth->fetch) {
-		if ( ($row->[3] eq 'MAXVALUE') || ($row->[3] eq 'DEFAULT')) {
+	while (my $row = $sth->fetch)
+	{
+		if ($row->[3] =~ /^MAXVALUE(?:,MAXVALUE)*$/ || $row->[3] eq 'DEFAULT')
+		{
 			$default{$row->[0]} = $row->[2];
 			next;
 		}
-		my $i = $#{$subparts{$row->[0]}{$row->[1]}{$row->[2]}} + 1;
-		push(@{$subparts{$row->[0]}{$row->[1]}{$row->[2]}}, { 'type' => $row->[5], 'value' => $row->[3], 'column' => $row->[6], 'colpos' => $i, 'tablespace' => $row->[4], 'owner' => ''});
-		$self->logit(".",1);
+		$subparts{$row->[0]}{$row->[7]}{$row->[1]}{name} = $row->[2];
+		my $i = 0;
+		$row->[6] =~ s/\`//g;
+		$row->[3] =~ s/\`//g;
+		$row->[5] =~ s/ COLUMNS//;
+		foreach my $c (split(',', $row->[6]))
+		{
+			push(@{$subparts{$row->[0]}{$row->[7]}{$row->[1]}{info}}, { 'type' => $row->[5], 'value' => $row->[3], 'column' => $c, 'colpos' => $i, 'tablespace' => $row->[4], 'owner' => ''});
+			$i++;
+		}
 	}
 	$sth->finish;
-	$self->logit("\n", 1);
 
 	return \%subparts, \%default;
 }
