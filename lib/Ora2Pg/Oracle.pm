@@ -1730,6 +1730,8 @@ sub _lookup_function
 		$tmpname =~ s/^$pname\.//i;
 		next if ($fct_detail{code} !~ /\b$tmpname\b/is);
 		my $i = 0;
+		while ($fct_detail{code} =~ s/(SELECT\s+(?:.*?)\s+)INTO\s+$tmpname\s+([^;]+);/PERFORM set_config('$n', ($1$2), false);/is) { last if ($i++ > 100); };
+		$i = 0;
 		while ($fct_detail{code} =~ s/\b$n\s*:=\s*([^;]+)\s*;/PERFORM set_config('$n', $1, false);/is) { last if ($i++ > 100); };
 		$i = 0;
 		while ($fct_detail{code} =~ s/([^\.]+)\b$self->{global_variables}{$n}{name}\s*:=\s*([^;]+);/$1PERFORM set_config('$n', $2, false);/is) { last if ($i++ > 100); };
