@@ -461,9 +461,9 @@ sub _table_info
 		if ($do_real_row_count)
 		{
 			$self->logit("DEBUG: looking for real row count for table ($row->[0]) $row->[1] (aka using count(*))...\n", 1);
-			$sql = "SELECT COUNT(*) FROM $row->[1]";
+			$sql = "SELECT COUNT(*) FROM \"$row->[1]\"";
 			if ($self->{schema}) {
-				$sql = "SELECT COUNT(*) FROM $row->[0].$row->[1]";
+				$sql = "SELECT COUNT(*) FROM \"$row->[0]\".\"$row->[1]\"";
 			}
 			my $sth2 = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 			$sth2->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);

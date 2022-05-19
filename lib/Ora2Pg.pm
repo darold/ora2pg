@@ -16175,6 +16175,9 @@ sub _table_row_count
 		{
 			my ($tbmod, $orig, $schema, $both) = $self->set_pg_relation_name($t);
 			my $s = $self->{dbhdest}->prepare("SELECT count(*) FROM $both;") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
+			if ($self->{preserve_case}) {
+				$s = $self->{dbhdest}->prepare("SELECT count(*) FROM \"$schema\".\"$t\";") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
+			}
 			if (not $s->execute)
 			{
 				push(@errors, "Table $both$orig does not exists in PostgreSQL database.") if ($s->state eq '42P01');
