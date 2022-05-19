@@ -14453,7 +14453,7 @@ sub _extract_data
 								my $lobdata = $self->{dbh}->ora_lob_read($row[$j], $offset, $chunk_size );
 								if ($self->{dbh}->errstr)
 								{
-									$self->logit("ERROR: " . $self->{dbh}->errstr . "\n", 0, 0) if ($dbh->errstr !~ /ORA-22831/);
+									$self->logit("ERROR: " . $self->{dbh}->errstr . "\n", 0, 0) if ($self->{dbh}->errstr !~ /ORA-22831/);
 									last;
 								}
 								last unless (defined $lobdata && length $lobdata);
