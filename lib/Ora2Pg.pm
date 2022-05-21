@@ -13220,6 +13220,7 @@ sub _convert_function
 
 	my @nout = $fct_detail{args} =~ /\bOUT\s+([^,\)]+)/igs;
 	my @ninout = $fct_detail{args} =~ /\bINOUT\s+([^,\)]+)/igs;
+	my $out_return = 0;
 	if ($fct_detail{hasreturn})
 	{
 		my $nbout = $#nout+1 + $#ninout+1;
@@ -13227,6 +13228,13 @@ sub _convert_function
 		# choose the right type with not using a RETURNS clause.
 		if ($nbout > 0) {
 			$func_return = " AS \$body\$\n";
+			if ($fct_detail{type} ne 'PROCEDURE' || !$self->{pg_supports_procedure})
+			{
+				push(@nout, "extra_param $fct_detail{func_ret_type}");
+				$func_return = " RETURNS record AS \$body\$\n";
+				$out_return = 1;
+			}
+			$fct_detail{args} =~ s/\)$/, OUT extra_param $fct_detail{func_ret_type}\)/;
 		} else {
 			# Returns the right type
 			$func_return = " RETURNS$fct_detail{setof} $fct_detail{func_ret_type} AS \$body\$\n";
@@ -13241,6 +13249,10 @@ sub _convert_function
 			# When there is one or more out parameter, let PostgreSQL
 			# choose the right type with not using a RETURNS clause.
 			$func_return = " AS \$body\$\n";
+			push(@nout, "extra_param $fct_detail{func_ret_type}") if ($fct_detail{type} ne 'PROCEDURE');
+			$func_return = " RETURNS record AS \$body\$\n";
+			$fct_detail{args} =~ s/\)$/, OUT extra_param $fct_detail{func_ret_type}\)/;
+			$out_return = 1;
 		}
 	}
 	else
@@ -13527,11 +13539,11 @@ END;
 		$function .= ';' if ($function !~ /END\s*;\s*$/is && $fct_detail{code} !~ /\%ORA2PG_COMMENT\d+\%\s*$/);
 		$function .= "\n\$body\$\nLANGUAGE PLPGSQL\n";
 
-		# Remove parameters to RETURN call when the function has no RETURNS
-		# clause which is the case when there is OUT parameters.
-		if ($function !~ /\s+RETURNS\s+/s || ($function =~ /\s+RETURNS VOID\s+/s || ($type eq 'PROCEDURE' && $self->{pg_supports_procedures}))) {
+		# Fix RETURN call when the function has OUT parameters
+		if ($out_return)
+		{
 			$self->_remove_text_constant_part(\$function);
-			$function =~ s/(\bRETURN\b)\s*[^;]+;/$1;/igs;
+			$function =~ s/(\s+)RETURN\s+([^;]+);/$1extra_param := $2;$1RETURN;/igs;
 			$self->_restore_text_constant_part(\$function);
 		}
 		$revoke = "-- REVOKE ALL ON $type $name $fct_detail{args} FROM PUBLIC;";
