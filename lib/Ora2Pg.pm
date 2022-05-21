@@ -13543,6 +13543,7 @@ END;
 		if ($out_return)
 		{
 			$self->_remove_text_constant_part(\$function);
+			$function =~ s/(\s+)RETURN\s*(\([^;]+\))\s*;/$1extra_param := $2;$1RETURN;/igs;
 			$function =~ s/(\s+)RETURN\s+([^;]+);/$1extra_param := $2;$1RETURN;/igs;
 			$self->_restore_text_constant_part(\$function);
 		}
