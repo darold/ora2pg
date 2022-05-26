@@ -639,11 +639,14 @@ sub close_export_file
 {
 	my ($self, $filehdl, $not_compressed) = @_;
 
-
 	return if (!defined $filehdl);
 
 	if (!$not_compressed && $self->{output} =~ /\.gz$/) {
-		$filehdl->gzclose();
+		if ($filehdl =~ /IO::File=/) {
+			$filehdl->close();
+		} else {
+			$filehdl->gzclose();
+		}
 	} else {
 		$filehdl->close();
 	}
@@ -14627,13 +14630,16 @@ sub _extract_data
 	$self->close_export_file($self->{cfhout}) if (defined $self->{cfhout});
 	$self->{cfhout} = undef;
 
-	if ( ($self->{jobs} <= 1) && ($self->{oracle_copies} <= 1) && ($self->{parallel_tables} <= 1))
+	if (!$self->{quiet} && !$self->{debug})
 	{
-		my $end_time = time();
-		my $dt = $end_time - $self->{global_start_time};
-		my $rps = int($self->{current_total_row} / ($dt||1));
-		print STDERR "\n";
-		print STDERR $self->progress_bar($self->{current_total_row}, $self->{global_rows}, 25, '=', 'total rows', "- ($dt sec., avg: $rps recs/sec).") . "\n";
+		if ( ($self->{jobs} <= 1) && ($self->{oracle_copies} <= 1) && ($self->{parallel_tables} <= 1))
+		{
+			my $end_time = time();
+			my $dt = $end_time - $self->{global_start_time};
+			my $rps = int($self->{current_total_row} / ($dt||1));
+			print STDERR "\n";
+			print STDERR $self->progress_bar($self->{current_total_row}, $self->{global_rows}, 25, '=', 'total rows', "- ($dt sec., avg: $rps recs/sec).") . "\n";
+		}
 	}
 
 	# Wait for all child end
@@ -19656,7 +19662,9 @@ WHERE c.relkind = 'f' and n.nspname = 'ora2pg_fdw_import'
 		}
 		$q++;
 	}
-	print STDERR $self->progress_bar($q-1, $total_tables, 25, '=', 'tables', "checked" ), "\n\n";
+	if (!$self->{quiet} && !$self->{debug}) {
+		print STDERR $self->progress_bar($q-1, $total_tables, 25, '=', 'tables', "checked" ), "\n\n";
+	}
 }
 
 sub compare_data

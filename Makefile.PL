@@ -1349,7 +1349,7 @@ GEOMETRY_EXTRACT_TYPE	INTERNAL
 #       TABLE[COLUMN_NAME, <replace code in SELECT target list>]
 # For example to replace string 'Oracle' by 'PostgreSQL' in a varchar2 column
 # use the following.
-#ORACLE_FDW_TRANSFORM   ERROR_LOG_SAMPLE[DBMS_TYPE:regexp_replace("DBMS_TYPE",'Oracle','PostgreSQL')]
+#ORACLE_FDW_TRANSFORM   ERROR_LOG_SAMPLE[DBMS_TYPE,regexp_replace("DBMS_TYPE",'Oracle','PostgreSQL')]
 
 # By default Ora2Pg drops the temporary schema ora2pg_fdw_import used to import
 # the Oracle foreign schema before each new import. If you want to preserve
