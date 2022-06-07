@@ -7511,7 +7511,11 @@ sub export_table
 						$sql_output =~ s/(integer|int)\s*$/serial/s;
 					}
 					$sql_output .= ",\n";
-					$sequence_output .= "SELECT ora2pg_upd_autoincrement_seq('$f->[8]','$f->[0]');\n";
+					if ($self->{preserve_case}) {
+						$sequence_output .= "SELECT ora2pg_upd_autoincrement_seq('$f->[8]','$f->[0]');\n";
+					} else {
+						$sequence_output .= "SELECT ora2pg_upd_autoincrement_seq('\L$f->[8]\E','\L$f->[0]\E');\n";
+					}
 					next;
 				}
 
