@@ -1753,6 +1753,9 @@ sub _lookup_function
 		$fct_detail{code} =~ s/(\s+WHEN\s+)$e\s+/$1SQLSTATE '$self->{custom_exception}{$e}' /igs;
 	}
 
+	# Remove %ROWTYPE from return type
+	$fct_detail{func_ret_type} =~ s/\%ROWTYPE//igs;
+
 	return %fct_detail;
 }
 

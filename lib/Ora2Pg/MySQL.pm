@@ -970,6 +970,9 @@ sub _lookup_function
 
 	($fct_detail{code}, $fct_detail{declare}) = replace_mysql_variables($self, $fct_detail{code}, $fct_detail{declare});
 
+	# Remove %ROWTYPE from return type
+	$fct_detail{func_ret_type} =~ s/\%ROWTYPE//igs;
+
 	return %fct_detail;
 }
 

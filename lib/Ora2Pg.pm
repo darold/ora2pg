@@ -13136,7 +13136,17 @@ sub _convert_function
 	$fname =  $self->quote_object_name("$pname$sep$fct_detail{name}") if ($pname && !$self->{is_mysql});
 	$fname =~ s/"_"/_/gs;
 
-	$fct_detail{args} =~ s/\s+IN\s+/ /igs; # Remove default IN keyword
+	# rewrite argument syntax
+	# Replace alternate syntax for default value
+	$fct_detail{args} =~ s/:=/DEFAULT/igs;
+	# NOCOPY not supported
+	$fct_detail{args} =~ s/\s*NOCOPY//igs;
+	# IN OUT should be INOUT
+	$fct_detail{args} =~ s/\bIN\s+OUT/INOUT/igs;
+	# Remove default IN keyword
+	$fct_detail{args} =~ s/\s+IN\s+/ /igs;
+	# Remove %ROWTYPE from arguments, we can use the table name as type
+	$fct_detail{args} =~ s/\%ROWTYPE//igs;
 
 	# Replace DEFAULT EMPTY_BLOB() from function/procedure arguments by DEFAULT NULL
 	$fct_detail{args} =~ s/\s+DEFAULT\s+EMPTY_[CB]LOB\(\)/DEFAULT NULL/igs;
@@ -13231,6 +13241,7 @@ sub _convert_function
 	if ($fct_detail{hasreturn})
 	{
 		my $nbout = $#nout+1 + $#ninout+1;
+
 		# When there is one or more out parameter, let PostgreSQL
 		# choose the right type with not using a RETURNS clause.
 		if ($nbout > 0) {
