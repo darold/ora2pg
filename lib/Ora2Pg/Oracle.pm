@@ -1632,8 +1632,6 @@ sub _lookup_function
 		$fct_detail{args} =~ s/\s*NOCOPY//igs;
 		# IN OUT should be INOUT
 		$fct_detail{args} =~ s/\bIN\s+OUT/INOUT/igs;
-		# Remove %ROWTYPE from arguments, we can use the table name as type
-		$fct_detail{args} =~ s/\%ROWTYPE//igs;
 
 		# Replace DEFAULT EMPTY_BLOB() from function/procedure arguments by DEFAULT NULL
 		$fct_detail{args} =~ s/\s+DEFAULT\s+EMPTY_[CB]LOB\(\)/DEFAULT NULL/igs;
