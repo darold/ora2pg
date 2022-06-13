@@ -388,8 +388,18 @@ sub convert_plsql_code
 	%{$class->{single_fct_call}} = ();
 	$class->{replace_out_params} = '';
 
-	# Rewrite all decode() call before
-	$str = replace_decode($str) if (uc($class->{type}) ne 'SHOW_REPORT');
+	if (uc($class->{type}) ne 'SHOW_REPORT')
+	{
+		# Rewrite all decode() call before
+		$str = replace_decode($str);
+
+		# Rewrite numeric operation with ADD_MONTHS(date, 1) to use interval
+		$str =~ s/\b(ADD_MONTHS\s*\([^,]+,\s*\d+\s*\))\s*([+\-\*\/])\s*(\d+)(\s*[^+\-\*\/])/$1 $2 '$3 days'::interval$4/sgi;
+		# Rewrite numeric operation with TRUNC() to use interval
+		$str =~ s/\b(TRUNC\s*\(\s*(?:[^\(\)]+)\s*\))\s*([+\-\*\/])\s*(\d+)(\s*[^+\-\*\/])/$1 $2 '$3 days'::interval$4/sgi;
+		# Rewrite numeric operation with LAST_DAY() to use interval
+		$str =~ s/\b(LAST_DAY\s*\(\s*(?:[^\(\)]+)\s*\))\s*([+\-\*\/])\s*(\d+)(\s*[^+\-\*\/])/$1 $2 '$3 days'::interval$4/sgi;
+	}
 
 	# Replace array syntax arr(i).x into arr[i].x
 	$str =~ s/\b([a-z0-9_]+)\(([^\(\)]+)\)(\.[a-z0-9_]+)/$1\[$2\]$3/igs;
@@ -656,7 +666,6 @@ sub plsql_to_plpgsql
 
 	my $field = '\s*([^\(\),]+)\s*';
 	my $num_field = '\s*([\d\.]+)\s*';
-	my $date_field = '\s*([^,\)\(]*(?:date|time)[^,\)\(]*)\s*';
 
 	my $conv_current_time = 'clock_timestamp()';
 	if (!grep(/$class->{type}/i, 'FUNCTION', 'PROCEDURE', 'PACKAGE')) {
@@ -1596,7 +1605,6 @@ sub replace_oracle_function
 	my @xmlelt = ();
 	my $field = '\s*([^\(\),]+)\s*';
 	my $num_field = '\s*([\d\.]+)\s*';
-	my $date_field = '\s*([^,\)\(]*(?:date|time)[^,\)\(]*)\s*';
 
 	# Remove the SYS schema from calls
 	$str =~ s/\bSYS\.//igs;
@@ -1647,7 +1655,7 @@ sub replace_oracle_function
 
 	# Replace call to trim into btrim
 	$str =~ s/\b(TRIM\s*\()\s+/$1/igs;
-	$str =~ s/\bTRIM\s*\(((?!BoTH)[^\(\)]*)\)/trim(both $1)/igs;
+	$str =~ s/\bTRIM\s*\(((?!BOTH)[^\(\)]*)\)/trim(both $1)/igs;
 
 	# Do some transformation when Orafce is not used
 	if (!$class->{use_orafce})
@@ -1664,12 +1672,11 @@ sub replace_oracle_function
 			$str =~ s/\(([^\s]+)\)(::varchar)/($1$2)/igs;
 		}
 
-		# Change trunc() to date_trunc('day', field)
-		# Trunc is replaced with date_trunc if we find date in the name of
-		# the value because Oracle have the same trunc function on number
-		# and date type
-		$str =~ s/\bTRUNC\s*\($date_field\)/date_trunc('day', $1)/is;
-		if ($str =~ s/\bTRUNC\s*\($date_field,$field\)/date_trunc($2, $1)/is ||
+		# Change trunc(date) to date_trunc('day', field)
+		# Oracle has trunc(number) so there will have false positive
+		# replacement but most of the time trunc(date) is encountered.
+		$str =~ s/\bTRUNC\s*\($field\)/date_trunc('day', $1)/is;
+		if ($str =~ s/\bTRUNC\s*\($field,$field\)/date_trunc($2, $1)/is ||
 		    # Case where the parameters are obfuscated by function and string placeholders
 		    $str =~ s/\bTRUNC\((\%\%REPLACEFCT\d+\%\%)\s*,\s*(\?TEXTVALUE\d+\?)\)/date_trunc($2, $1)/is
 		)
@@ -1713,7 +1720,7 @@ sub replace_oracle_function
 		$str =~ s/\bREGEXP_SUBSTR\s*\(\s*([^\)]+)\s*\)/convert_regex_substr($class, $1)/iges;
 
 		# LAST_DAY( date ) translation
-		$str =~ s/\bLAST_DAY\(\s*([^\(\)]+)\s*\)/((date_trunc('month',($1)::timestamp + interval '1 month'))::date - 1)/igs;
+		$str =~ s/\bLAST_DAY\s*\(\s*([^\(\)]+)\s*\)/((date_trunc('month',($1)::timestamp + interval '1 month'))::date - 1)/igs;
 	}
 	else
 	{
@@ -3645,7 +3652,13 @@ sub replace_connect_by
 	}
 
 	# Now append the UNION ALL query that will be called recursively
-	$final_query .= $str;
+	if ($str =~ s/^(\s*BEGIN\s+(?:.*)?(?:\s+))(SELECT\s+)/$2/is) {
+		$final_query = "$1$final_query";
+		$final_query .= $str;
+		$bkup_query =~ s/^(\s*BEGIN\s+(?:.*)?(?:\s+))(SELECT\s+)/$2/is;
+	} else {
+		$final_query .= $str;
+	}
 	$final_query .= ' WHERE ' . $start_with . "\n" if ($start_with);
 	#$where_clause =~ s/^\s*WHERE\s+/ AND /is;
 	#$final_query .= $where_clause . "\n";
@@ -3721,7 +3734,7 @@ sub replace_connect_by
 		$order_by =~ s/^, //s;
 		$order_by = " ORDER BY $order_by";
 	}
-	$final_query .= "\n) SELECT * FROM cte$where_clause$union$group_by$order_by;\n";
+	$final_query .= "\n) SELECT * FROM cte$where_clause$union$group_by$order_by";
 
 	return $final_query;
 }
