@@ -3645,7 +3645,13 @@ sub replace_connect_by
 	}
 
 	# Now append the UNION ALL query that will be called recursively
-	$final_query .= $str;
+	if ($str =~ s/^(\s*BEGIN\s+(?:.*)?(?:\s+))(SELECT\s+)/$2/is) {
+		$final_query = "$1$final_query";
+		$final_query .= $str;
+		$bkup_query =~ s/^(\s*BEGIN\s+(?:.*)?(?:\s+))(SELECT\s+)/$2/is;
+	} else {
+		$final_query .= $str;
+	}
 	$final_query .= ' WHERE ' . $start_with . "\n" if ($start_with);
 	#$where_clause =~ s/^\s*WHERE\s+/ AND /is;
 	#$final_query .= $where_clause . "\n";
@@ -3721,7 +3727,7 @@ sub replace_connect_by
 		$order_by =~ s/^, //s;
 		$order_by = " ORDER BY $order_by";
 	}
-	$final_query .= "\n) SELECT * FROM cte$where_clause$union$group_by$order_by;\n";
+	$final_query .= "\n) SELECT * FROM cte$where_clause$union$group_by$order_by";
 
 	return $final_query;
 }
