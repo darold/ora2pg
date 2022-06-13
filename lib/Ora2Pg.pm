@@ -10082,6 +10082,7 @@ sub _create_unique_keys
 		my $deferrable = $unique_key->{$consname}{deferrable};
 		my $deferred = $unique_key->{$consname}{deferred};
 		my @conscols = @{$unique_key->{$consname}{columns}};
+
 		# Exclude unique index used in PK when column list is the same
 		next if (($constype eq 'U') && exists $pkcollist{$table} && ($pkcollist{$table} eq join(",", @conscols)));
 
@@ -10094,8 +10095,9 @@ sub _create_unique_keys
 				$conscols[$i] = $self->{replaced_cols}{"\L$tbsaved\E"}{"\L$conscols[$i]\E"};
 			}
 		}
+
 		# Add the partition column if it is not is the PK
-		if ($constype eq 'P' && exists $self->{partitions_list}{"\L$tbsaved\E"})
+		if (($constype eq 'P' || $constype eq 'U') && exists $self->{partitions_list}{"\L$tbsaved\E"})
 		{
 			for (my $j = 0; $j <= $#{$self->{partitions_list}{"\L$tbsaved\E"}{columns}}; $j++)
 			{
