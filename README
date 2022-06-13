@@ -1360,6 +1360,25 @@ CONFIGURATION
         and all indexes or foreign key pointing to or from a column removed
         will not be exported.
 
+    EXCLUDE_COLUMNS
+        Instead of redefining the table structure with MODIFY_STRUCT you may
+        want to exclude some columns from the table export. The value
+        consist in a space-separated list of table name with a set of column
+        between parenthesis as follow:
+
+                EXCLUDE_COLUMNS NOM_TABLE(nomcol1,nomcol2,...) ...
+
+        for example:
+
+                EXCLUDE_COLUMNS T_TEST1(id,dossier) T_TEST2(id,fichier)
+
+        This will exclude from the export columns 'id' and 'dossier' from
+        table T_TEST1 and columns 'id' and 'fichier' from the T_TEST2 table.
+        This directive can only be used with TABLE, COPY or INSERT export.
+        With TABLE export create table DDL will respect the new list of
+        columns and all indexes or foreign key pointing to or from a column
+        removed will not be exported.
+
     REPLACE_TABLES
         This directive allows you to remap a list of Oracle table name to a
         PostgreSQL table name during export. The value is a list of

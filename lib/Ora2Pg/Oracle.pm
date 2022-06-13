@@ -632,10 +632,8 @@ ORDER BY A.COLUMN_ID
 			$row->[2] = 38;
 		}
 
-		$tmptable = $row->[8];
-		if ($self->{export_schema} && !$self->{schema}) {
-			$tmptable = "$row->[9].$row->[8]";
-		}
+		# Use FQDN table name otherwise a table not exist error can occurs.
+		$tmptable = "$row->[9].$row->[8]";
 
 		# In case we have a default value, check if this is a virtual column
 		my $virtual = 'NO';
@@ -1736,7 +1734,15 @@ sub _lookup_function
 		$i = 0;
 		while ($fct_detail{code} =~ s/([^\.]+)\b$self->{global_variables}{$n}{name}\s*:=\s*([^;]+);/$1PERFORM set_config('$n', $2, false);/is) { last if ($i++ > 100); };
 		$i = 0;
+		while ($fct_detail{code} =~ s/([^']+)\b$n\s+IS NOT NULL/$1current_setting('$n') != ''/is) { last if ($i++ > 100); };
+		$i = 0;
+		while ($fct_detail{code} =~ s/([^']+)\b$n\s+IS NULL/$1current_setting('$n') = ''/is) { last if ($i++ > 100); };
+		$i = 0;
 		while ($fct_detail{code} =~ s/([^']+)\b$n\b([^']+)/$1current_setting('$n')::$self->{global_variables}{$n}{type}$2/is) { last if ($i++ > 100); };
+		$i = 0;
+		while ($fct_detail{code} =~ s/([^\.']+)\b$self->{global_variables}{$n}{name}\s+IS NOT NULL/$1current_setting('$n') != ''/is) { last if ($i++ > 100); };
+		$i = 0;
+		while ($fct_detail{code} =~ s/([^\.']+)\b$self->{global_variables}{$n}{name}\s+IS NULL/$1current_setting('$n') = ''/is) { last if ($i++ > 100); };
 		$i = 0;
 		while ($fct_detail{code} =~ s/([^\.']+)\b$self->{global_variables}{$n}{name}\b([^']+)/$1current_setting('$n')::$self->{global_variables}{$n}{type}$2/is) { last if ($i++ > 100); };
 

@@ -671,6 +671,26 @@ sub modify_struct
 
 }
 
+=head2 exclude_columns TABLE_NAME ARRAYOF_FIELDNAME
+
+Modify the table structure during the export. The specified columns
+will NOT be exported. 
+
+=cut
+
+sub exclude_columns
+{
+	my ($self, $table, @fields) = @_;
+
+	if (!$self->{preserve_case}) {
+		delete $self->{exclude_columns}{$table};
+		map { $_ = lc($_) } @fields;
+		$table = lc($table);
+		push(@{$self->{exclude_columns}{$table}}, @fields);
+	}
+}
+
+
 =head2 is_reserved_words
 
 Returns 1 if the given object name is a PostgreSQL reserved word
@@ -1729,10 +1749,16 @@ sub _init
 		for my $t (keys %{$self->{'modify_struct'}}) {
 			$self->modify_struct($t, @{$self->{'modify_struct'}{$t}});
 		}
+		for my $t (keys %{$self->{'exclude_columns'}}) {
+			$self->exclude_columns($t, @{$self->{'exclude_columns'}{$t}});
+		}
 	}
 
 	if ($self->{oracle_fdw_data_export} && scalar keys %{$self->{'modify_struct'}} > 0) {
 		$self->logit("FATAL: MODIFY_STRUCT is not supported with oracle_fdw data export.\n", 0, 1);
+	}
+	if ($self->{oracle_fdw_data_export} && scalar keys %{$self->{'exclude_columns'}} > 0) {
+		$self->logit("FATAL: EXCLUDE_COLUMNS is not supported with oracle_fdw data export.\n", 0, 1);
 	}
 
 	# backup output filename in multiple export mode
@@ -10117,6 +10143,7 @@ sub _create_unique_keys
 		my $deferrable = $unique_key->{$consname}{deferrable};
 		my $deferred = $unique_key->{$consname}{deferred};
 		my @conscols = @{$unique_key->{$consname}{columns}};
+
 		# Exclude unique index used in PK when column list is the same
 		next if (($constype eq 'U') && exists $pkcollist{$table} && ($pkcollist{$table} eq join(",", @conscols)));
 
@@ -10129,8 +10156,9 @@ sub _create_unique_keys
 				$conscols[$i] = $self->{replaced_cols}{"\L$tbsaved\E"}{"\L$conscols[$i]\E"};
 			}
 		}
+
 		# Add the partition column if it is not is the PK
-		if ($constype eq 'P' && exists $self->{partitions_list}{"\L$tbsaved\E"})
+		if (($constype eq 'P' || $constype eq 'U') && exists $self->{partitions_list}{"\L$tbsaved\E"})
 		{
 			for (my $j = 0; $j <= $#{$self->{partitions_list}{"\L$tbsaved\E"}{columns}}; $j++)
 			{
@@ -12583,7 +12611,7 @@ sub read_config
 				'REPLACE_AS_BOOLEAN','BOOLEAN_VALUES','MODIFY_TYPE','DEFINED_PK',
 				'ALLOW_PARTITION','REPLACE_QUERY','FKEY_ADD_UPDATE','DELETE',
 				'LOOK_FORWARD_FUNCTION','ORA_INITIAL_COMMAND','PG_INITIAL_COMMAND',
-				'ORACLE_FDW_TRANSFORM'
+				'ORACLE_FDW_TRANSFORM','EXCLUDE_COLUMNS'
 			))
 		{
 			$AConfig{$var} = $val;
@@ -12647,9 +12675,10 @@ sub read_config
 				$self->logit("FATAL: invalid option, see FKEY_ADD_UPDATE in configuration file\n", 0, 1);
 			}
 		}
-		elsif ($var eq 'MODIFY_STRUCT')
+		elsif ($var eq 'MODIFY_STRUCT' or $var eq 'EXCLUDE_COLUMNS')
 		{
-			while ($val =~ s/([^\(\s]+)\s*\(([^\)]+)\)\s*//) {
+			while ($val =~ s/([^\(\s]+)\s*\(([^\)]+)\)\s*//)
+			{
 				my $table = $1;
 				my $fields = $2;
 				$fields =~ s/^\s+//;
@@ -16321,12 +16350,16 @@ sub is_in_struct
 	{
 		if (exists $self->{modify}{"\L$t\E"}) {
 			return 0 if (!grep(/^\Q$cn\E$/i, @{$self->{modify}{"\L$t\E"}}));
+		} elsif (exists $self->{exclude_columns}{"\L$t\E"}) {
+			return 0 if (grep(/^\Q$cn\E$/i, @{$self->{exclude_columns}{"\L$t\E"}}));
 		}
 	}
 	else
 	{
 		if (exists $self->{modify}{"$t"}) {
 			return 0 if (!grep(/^\Q$cn\E$/i, @{$self->{modify}{"$t"}}));
+		} elsif (exists $self->{exclude_columns}{"$t"}) {
+			return 0 if (grep(/^\Q$cn\E$/i, @{$self->{exclude_columns}{"$t"}}));
 		}
 	}
 
