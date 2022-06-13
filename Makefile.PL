@@ -580,6 +580,12 @@ DISABLE_TRIGGERS 0
 # Modify output from the following tables(fields separate by space or comma)
 #MODIFY_STRUCT	TABLE_TEST(dico,dossier)
 
+# When there is a lot of columns dropped in the target database compared to the
+# Oracle database, being able to exclude columns from data export will simplify
+# the configuration compared to MODIFY_STRUCT. The following directive can be
+# used to define the columns per table that must be excluded from data export.
+#EXCLUDE_COLUMNS	TABLE_TEST(dropcol1,dropcol2)
+
 # You may wish to change table names during data extraction, especally for
 # replication use. Give a list of tables separate by space as follow.
 #REPLACE_TABLES	ORIG_TB_NAME1:NEW_TB_NAME1 ORIG_TB_NAME2:NEW_TB_NAME2 
