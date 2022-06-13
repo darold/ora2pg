@@ -666,7 +666,6 @@ sub plsql_to_plpgsql
 
 	my $field = '\s*([^\(\),]+)\s*';
 	my $num_field = '\s*([\d\.]+)\s*';
-	my $date_field = '\s*([^,\)\(]*(?:date|time)[^,\)\(]*)\s*';
 
 	my $conv_current_time = 'clock_timestamp()';
 	if (!grep(/$class->{type}/i, 'FUNCTION', 'PROCEDURE', 'PACKAGE')) {
@@ -1606,7 +1605,6 @@ sub replace_oracle_function
 	my @xmlelt = ();
 	my $field = '\s*([^\(\),]+)\s*';
 	my $num_field = '\s*([\d\.]+)\s*';
-	my $date_field = '\s*([^,\)\(]*(?:date|time)[^,\)\(]*)\s*';
 
 	# Remove the SYS schema from calls
 	$str =~ s/\bSYS\.//igs;
@@ -1657,7 +1655,7 @@ sub replace_oracle_function
 
 	# Replace call to trim into btrim
 	$str =~ s/\b(TRIM\s*\()\s+/$1/igs;
-	$str =~ s/\bTRIM\s*\(((?!BoTH)[^\(\)]*)\)/trim(both $1)/igs;
+	$str =~ s/\bTRIM\s*\(((?!BOTH)[^\(\)]*)\)/trim(both $1)/igs;
 
 	# Do some transformation when Orafce is not used
 	if (!$class->{use_orafce})
@@ -1674,12 +1672,11 @@ sub replace_oracle_function
 			$str =~ s/\(([^\s]+)\)(::varchar)/($1$2)/igs;
 		}
 
-		# Change trunc() to date_trunc('day', field)
-		# Trunc is replaced with date_trunc if we find date in the name of
-		# the value because Oracle have the same trunc function on number
-		# and date type
-		$str =~ s/\bTRUNC\s*\($date_field\)/date_trunc('day', $1)/is;
-		if ($str =~ s/\bTRUNC\s*\($date_field,$field\)/date_trunc($2, $1)/is ||
+		# Change trunc(date) to date_trunc('day', field)
+		# Oracle has trunc(number) so there will have false positive
+		# replacement but most of the time trunc(date) is encountered.
+		$str =~ s/\bTRUNC\s*\($field\)/date_trunc('day', $1)/is;
+		if ($str =~ s/\bTRUNC\s*\($field,$field\)/date_trunc($2, $1)/is ||
 		    # Case where the parameters are obfuscated by function and string placeholders
 		    $str =~ s/\bTRUNC\((\%\%REPLACEFCT\d+\%\%)\s*,\s*(\?TEXTVALUE\d+\?)\)/date_trunc($2, $1)/is
 		)
