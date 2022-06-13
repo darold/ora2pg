@@ -388,8 +388,18 @@ sub convert_plsql_code
 	%{$class->{single_fct_call}} = ();
 	$class->{replace_out_params} = '';
 
-	# Rewrite all decode() call before
-	$str = replace_decode($str) if (uc($class->{type}) ne 'SHOW_REPORT');
+	if (uc($class->{type}) ne 'SHOW_REPORT')
+	{
+		# Rewrite all decode() call before
+		$str = replace_decode($str);
+
+		# Rewrite numeric operation with ADD_MONTHS(date, 1) to use interval
+		$str =~ s/\b(ADD_MONTHS\s*\([^,]+,\s*\d+\s*\))\s*([+\-\*\/])\s*(\d+)(\s*[^+\-\*\/])/$1 $2 '$3 days'::interval$4/sgi;
+		# Rewrite numeric operation with TRUNC() to use interval
+		$str =~ s/\b(TRUNC\s*\(\s*(?:[^\(\)]+)\s*\))\s*([+\-\*\/])\s*(\d+)(\s*[^+\-\*\/])/$1 $2 '$3 days'::interval$4/sgi;
+		# Rewrite numeric operation with LAST_DAY() to use interval
+		$str =~ s/\b(LAST_DAY\s*\(\s*(?:[^\(\)]+)\s*\))\s*([+\-\*\/])\s*(\d+)(\s*[^+\-\*\/])/$1 $2 '$3 days'::interval$4/sgi;
+	}
 
 	# Replace array syntax arr(i).x into arr[i].x
 	$str =~ s/\b([a-z0-9_]+)\(([^\(\)]+)\)(\.[a-z0-9_]+)/$1\[$2\]$3/igs;
@@ -1713,7 +1723,7 @@ sub replace_oracle_function
 		$str =~ s/\bREGEXP_SUBSTR\s*\(\s*([^\)]+)\s*\)/convert_regex_substr($class, $1)/iges;
 
 		# LAST_DAY( date ) translation
-		$str =~ s/\bLAST_DAY\(\s*([^\(\)]+)\s*\)/((date_trunc('month',($1)::timestamp + interval '1 month'))::date - 1)/igs;
+		$str =~ s/\bLAST_DAY\s*\(\s*([^\(\)]+)\s*\)/((date_trunc('month',($1)::timestamp + interval '1 month'))::date - 1)/igs;
 	}
 	else
 	{
