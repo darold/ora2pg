@@ -632,10 +632,8 @@ ORDER BY A.COLUMN_ID
 			$row->[2] = 38;
 		}
 
-		$tmptable = $row->[8];
-		if ($self->{export_schema} && !$self->{schema}) {
-			$tmptable = "$row->[9].$row->[8]";
-		}
+		# Use FQDN table name otherwise a table not exist error can occurs.
+		$tmptable = "$row->[9].$row->[8]";
 
 		# In case we have a default value, check if this is a virtual column
 		my $virtual = 'NO';
