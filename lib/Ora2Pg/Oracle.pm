@@ -1736,7 +1736,15 @@ sub _lookup_function
 		$i = 0;
 		while ($fct_detail{code} =~ s/([^\.]+)\b$self->{global_variables}{$n}{name}\s*:=\s*([^;]+);/$1PERFORM set_config('$n', $2, false);/is) { last if ($i++ > 100); };
 		$i = 0;
+		while ($fct_detail{code} =~ s/([^']+)\b$n\s+IS NOT NULL/$1current_setting('$n') != ''/is) { last if ($i++ > 100); };
+		$i = 0;
+		while ($fct_detail{code} =~ s/([^']+)\b$n\s+IS NULL/$1current_setting('$n') = ''/is) { last if ($i++ > 100); };
+		$i = 0;
 		while ($fct_detail{code} =~ s/([^']+)\b$n\b([^']+)/$1current_setting('$n')::$self->{global_variables}{$n}{type}$2/is) { last if ($i++ > 100); };
+		$i = 0;
+		while ($fct_detail{code} =~ s/([^\.']+)\b$self->{global_variables}{$n}{name}\s+IS NOT NULL/$1current_setting('$n') != ''/is) { last if ($i++ > 100); };
+		$i = 0;
+		while ($fct_detail{code} =~ s/([^\.']+)\b$self->{global_variables}{$n}{name}\s+IS NULL/$1current_setting('$n') = ''/is) { last if ($i++ > 100); };
 		$i = 0;
 		while ($fct_detail{code} =~ s/([^\.']+)\b$self->{global_variables}{$n}{name}\b([^']+)/$1current_setting('$n')::$self->{global_variables}{$n}{type}$2/is) { last if ($i++ > 100); };
 
