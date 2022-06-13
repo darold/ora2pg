@@ -451,19 +451,22 @@ sub convert_plsql_code
 			$class->{single_fct_call}{$k} = replace_oracle_function($class, $class->{single_fct_call}{$k}, @strings);
 			if ($class->{single_fct_call}{$k} =~ /^CAST\s*\(/i)
 			{
-				if (!$class->{is_mysql})
-				{
-					$class->{single_fct_call}{$k} = Ora2Pg::PLSQL::replace_sql_type($class->{single_fct_call}{$k}, $class->{pg_numeric_type}, $class->{default_numeric}, $class->{pg_integer_type}, $class->{varchar_to_text}, %{$class->{data_type}});
-				} else {
+				if ($class->{is_mysql}) {
 					$class->{single_fct_call}{$k} = Ora2Pg::MySQL::replace_sql_type($class->{single_fct_call}{$k}, $class->{pg_numeric_type}, $class->{default_numeric}, $class->{pg_integer_type}, $class->{varchar_to_text}, %{$class->{data_type}});
+				} elsif ($class->{is_mssql}) {
+					$class->{single_fct_call}{$k} = Ora2Pg::MSSQL::replace_sql_type($class->{single_fct_call}{$k}, $class->{pg_numeric_type}, $class->{default_numeric}, $class->{pg_integer_type}, $class->{varchar_to_text}, %{$class->{data_type}});
+				} else {
+					$class->{single_fct_call}{$k} = Ora2Pg::PLSQL::replace_sql_type($class->{single_fct_call}{$k}, $class->{pg_numeric_type}, $class->{default_numeric}, $class->{pg_integer_type}, $class->{varchar_to_text}, %{$class->{data_type}});
 				}
 			}
 			if ($class->{single_fct_call}{$k} =~ /^CAST\s*\(.*\%\%REPLACEFCT(\d+)\%\%/i)
 			{
 				if (!$class->{is_mysql}) {
-					$class->{single_fct_call}{$1} = Ora2Pg::PLSQL::replace_sql_type($class->{single_fct_call}{$1}, $class->{pg_numeric_type}, $class->{default_numeric}, $class->{pg_integer_type}, $class->{varchar_to_text}, %{$class->{data_type}});
-				} else {
 					$class->{single_fct_call}{$1} = Ora2Pg::MySQL::replace_sql_type($class->{single_fct_call}{$1}, $class->{pg_numeric_type}, $class->{default_numeric}, $class->{pg_integer_type}, $class->{varchar_to_text}, %{$class->{data_type}});
+				} elsif (!$class->{is_mssql}) {
+					$class->{single_fct_call}{$1} = Ora2Pg::MSSQL::replace_sql_type($class->{single_fct_call}{$1}, $class->{pg_numeric_type}, $class->{default_numeric}, $class->{pg_integer_type}, $class->{varchar_to_text}, %{$class->{data_type}});
+				} else {
+					$class->{single_fct_call}{$1} = Ora2Pg::PLSQL::replace_sql_type($class->{single_fct_call}{$1}, $class->{pg_numeric_type}, $class->{default_numeric}, $class->{pg_integer_type}, $class->{varchar_to_text}, %{$class->{data_type}});
 				}
 			}
 		}
@@ -653,6 +656,7 @@ sub plsql_to_plpgsql
 	return if ($str eq '');
 
 	return mysql_to_plpgsql($class, $str, @strings) if ($class->{is_mysql});
+	return mssql_to_plpgsql($class, $str, @strings) if ($class->{is_mssql});
 
 	my $field = '\s*([^\(\),]+)\s*';
 	my $num_field = '\s*([\d\.]+)\s*';
@@ -1608,6 +1612,8 @@ sub replace_oracle_function
 
 	if ($class->{is_mysql}) {
 		$str = mysql_to_plpgsql($class, $str);
+	} elsif ($class->{is_mssql}) {
+		$str = mssql_to_plpgsql($class, $str);
 	}
 
 	# Change NVL to COALESCE
@@ -2394,6 +2400,7 @@ sub estimate_cost
 	my ($class, $str, $type) = @_;
 
 	return mysql_estimate_cost($str, $type) if ($class->{is_mysql});
+	return mssql_estimate_cost($str, $type) if ($class->{is_mssql});
 
 	my %cost_details = ();
 
@@ -3745,6 +3752,48 @@ sub replace_without_function
 
 	return $str;
 }
+
+=head2 mssql_to_plpgsql
+
+This function turn a MSSQL function code into a PLPGSQL code
+
+=cut
+
+sub mssql_to_plpgsql
+{
+        my ($class, $str) = @_;
+
+	# Replace getdate() with CURRENT_TIMESTAMP
+	$str =~ s/\bgetdate\s*\(\s*\)/CURRENT_TIMESTAMP/igs;
+	# Replace user_name() with CURRENT_USER
+	$str =~ s/\buser_name\s*\(\s*\)/CURRENT_USER/gi;
+
+	# Replace call to SYS_GUID() function
+	$str =~ s/\bnewid\s*\(\s*\)/$class->{uuid_function}()/igs;
+
+	# Rewrite call to sequences
+	while ($str =~ /NEXT VALUE FOR ([^\s]+)/i)
+	{
+		my $seqname = $1;
+		$seqname =~ s/[\[\]\)]+//g;
+		$str =~ s/[\(]*NEXT VALUE FOR ([^\s]+)/nextval('$seqname')/i;
+	}
+
+	####
+	# Replace some function with their PostgreSQL syntax
+	####
+	$str =~ s/ISNULL\s*\(/COALESCE(/gi;
+	$str =~ s/SPACE\s*\(/REPEAT(' ', /gi;
+	$str =~ s/CHARINDEX\s*\(\s*(.*?)\s*\,\s*(.*?)\s*\)/position('$1' in $2)/gi;
+	$str =~ s/DATEPART\s*\(\s*(.*?)\s*\,\s*(.*?)\s*\)/date_part('$1', $2)/gi;
+	$str =~ s/DATEADD\s*\(\s*(.*?)\s*\,\s*(.*?)\s*\,\s*(.*?)\s*\)/$3 + INTERVAL '$2 $1'/gi;
+	$str =~ s/CONVERT\s*\(\s*NVARCHAR\s*(.*?)\s*\(\s*(.*?)\s*\s*\)\,\s*(.*?)\s*\)/CAST($3 AS varchar($2))/gi;
+	$str =~ s/CONVERT\s*\(\s*(.*?)\s*\(\s*(.*?)\s*\s*\)\,\s*(.*?)\s*\)/CAST($3 AS $1($2))/gi;
+	$str =~ s/CONVERT\s*\(\s*(.*?)\s*\,\s*(.*?)\s*\)/CAST($2 AS $1)/gi;
+
+	return $str;
+}
+
 
 1;
 

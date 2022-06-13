@@ -841,6 +841,11 @@ sub _db_connection
 		use Ora2Pg::MySQL;
 		return Ora2Pg::MySQL::_db_connection($self);
 	}
+	elsif ($self->{is_mssql})
+	{
+		use Ora2Pg::MSSQL;
+		return Ora2Pg::MSSQL::_db_connection($self);
+	}
 	else
 	{
 		use Ora2Pg::Oracle;
@@ -926,6 +931,9 @@ sub _init
 	$self->{mysql_mode} = '';
 	$self->{mysql_internal_extract_format} = 0;
 	$self->{mysql_pipes_as_concat} = 0;
+
+	# Initialize some variable related to export of mssql database
+	$self->{is_mssql} = 0;
 
 	# List of users for audit trail
 	$self->{audit_user} = '';
@@ -1168,6 +1176,8 @@ sub _init
 			$self->{oracle_pwd} = $options{password};
 		} elsif (($k eq 'is_mysql') && $options{is_mysql}) {
 			$self->{is_mysql} = $options{is_mysql};
+		} elsif (($k eq 'is_mssql') && $options{is_mssql}) {
+			$self->{is_mssql} = $options{is_mssql};
 		}
 		elsif ($k eq 'where')
 		{
@@ -1243,6 +1253,8 @@ sub _init
 	# Preload our dedicated function per DBMS
 	if ($self->{is_mysql}) {
 		import Ora2Pg::MySQL;
+	} elsif ($self->{is_mssql}) {
+		import Ora2Pg::MSSQL;
 	} else {
 		import Ora2Pg::Oracle;
 	}
@@ -1345,10 +1357,12 @@ sub _init
 	# Autodetexct if we are exporting a MySQL database
 	if ($self->{oracle_dsn} =~ /dbi:mysql/i) {
 		$self->{is_mysql} = 1;
+	} elsif ($self->{oracle_dsn} =~ /dbi:ODBC:driver=msodbcsql/i) {
+		$self->{is_mssql} = 1;
 	}
 
-	if ($self->{is_mysql}) {
-		# MySQL do not supports this syntax fallback to read committed
+	if ($self->{is_mysql} or $self->{is_mssql}) {
+		# MySQL and MSQL do not supports this syntax fallback to read committed
 		$self->{transaction} =~ s/(READ ONLY|READ WRITE)/ISOLATION LEVEL READ COMMITTED/;
 	}
 
@@ -1386,6 +1400,8 @@ sub _init
 		# Set default type conversion
 		if ($self->{is_mysql}) {
 			%{$self->{data_type}} = %Ora2Pg::MySQL::SQL_TYPE;
+		} elsif ($self->{is_mssql}) {
+			%{$self->{data_type}} = %Ora2Pg::MSSQL::SQL_TYPE;
 		} else {
 			%{$self->{data_type}} = %Ora2Pg::Oracle::SQL_TYPE;
 		}
@@ -1408,6 +1424,8 @@ sub _init
 		# Set default type conversion
 		if ($self->{is_mysql}) {
 			%{$self->{data_type}} = %Ora2Pg::MySQL::SQL_TYPE;
+		} elsif ($self->{is_mssql}) {
+			%{$self->{data_type}} = %Ora2Pg::MSSQL::SQL_TYPE;
 		} else {
 			%{$self->{data_type}} = %Ora2Pg::Oracle::SQL_TYPE;
 		}
@@ -1631,6 +1649,8 @@ sub _init
 		# Connect the database
 		if ($self->{oracle_dsn} =~ /dbi:mysql/i) {
 			$self->{is_mysql} = 1;
+		} elsif ($self->{oracle_dsn} =~ /dbi:ODBC:driver=msodbcsql/i) {
+			$self->{is_mssql} = 1;
 		}
 		$self->{dbh} = $self->_db_connection();
 
@@ -1638,7 +1658,7 @@ sub _init
 		$self->{db_version} = $self->_get_version();
 
 		# Compile again all objects in the schema
-		if (!$self->{is_mysql} && $self->{compile_schema}) {
+		if (!$self->{is_mysql} && !$self->{is_mssql} && $self->{compile_schema}) {
 			$self->_compile_schema(uc($self->{compile_schema}));
 		}
 
@@ -1656,7 +1676,7 @@ sub _init
 						if ($self->{type} eq 'VIEW')
 						{
 							# Limit to package lookup with VIEW export type
-							$self->_get_package_function_list($o) if (!$self->{is_mysql});
+							$self->_get_package_function_list($o) if (!$self->{is_mysql} && !$self->{is_mssql});
 						}
 						else
 						{
@@ -1668,7 +1688,7 @@ sub _init
 				if ($self->{type} eq 'VIEW')
 				{
 					# Limit to package lookup with WIEW export type
-					$self->_get_package_function_list() if (!$self->{is_mysql});
+					$self->_get_package_function_list() if (!$self->{is_mysql} && !$self->{is_mssql});
 				}
 				else
 				{
@@ -1785,6 +1805,7 @@ sub _init
 			foreach my $o ('VIEW', 'MVIEW', 'SEQUENCE', 'TYPE', 'FDW')
 			{
 				next if ($self->{is_mysql} && grep(/^$o$/, 'MVIEW','TYPE','FDW'));
+				next if ($self->{is_mssql} && grep(/^$o$/, 'FDW'));
 				$self->_count_object($o);
 			}
 			# count function/procedure/package function
@@ -3598,17 +3619,19 @@ sub _views
 	}
 
 	my $i = 1;
-	foreach my $view (sort keys %view_infos) {
+	foreach my $view (sort keys %view_infos)
+	{
 		$self->logit("[$i] Scanning $view...\n", 1);
 		$self->{views}{$view}{text} = $view_infos{$view}{text};
 		$self->{views}{$view}{owner} = $view_infos{$view}{owner};
+		$self->{views}{$view}{check_option} = $view_infos{$view}{check_option};
+		$self->{views}{$view}{updatable} = $view_infos{$view}{updatable};
 		$self->{views}{$view}{iter} = $view_infos{$view}{iter} if (exists $view_infos{$view}{iter});
 		$self->{views}{$view}{comment} = $view_infos{$view}{comment};
                 # Retrieve also aliases from views
                 $self->{views}{$view}{alias} = $view_infos{$view}{alias};
 		$i++;
 	}
-
 }
 
 =head2 _materialized_views
@@ -4875,7 +4898,10 @@ sub export_sequence
 		$cycle = ' CYCLE' if ($self->{sequences}{$seq}->[6] eq 'Y');
 		$sql_output .= "DROP SEQUENCE $self->{pg_supports_ifexists} " . $self->quote_object_name($seq) . ";\n" if ($self->{drop_if_exists});
 		$sql_output .= "CREATE SEQUENCE " . $self->quote_object_name($seq) . " INCREMENT $self->{sequences}{$seq}->[3]";
-		if ($self->{sequences}{$seq}->[1] eq '' || $self->{sequences}{$seq}->[1] < (-2**63-1)) {
+		if ($self->{sequences}{$seq}->[1] eq '' || $self->{sequences}{$seq}->[1] <= (-2**63/2)) {
+			$sql_output .= " NO MINVALUE";
+		# MSSQL has 32 bit sequences
+		} elsif ($self->{sequences}{$seq}->[1] eq '' || $self->{sequences}{$seq}->[1] <= (-2**32/2)) {
 			$sql_output .= " NO MINVALUE";
 		} else {
 			$sql_output .= " MINVALUE $self->{sequences}{$seq}->[1]";
@@ -4884,7 +4910,10 @@ sub export_sequence
 		if (($self->{sequences}{$seq}->[2] > 0) && ($self->{sequences}{$seq}->[2] < $self->{sequences}{$seq}->[4])) {
 			$self->{sequences}{$seq}->[2] = $self->{sequences}{$seq}->[4];
 		}
-		if ($self->{sequences}{$seq}->[2] eq '' || $self->{sequences}{$seq}->[2] > (2**63-1)) {
+		if ($self->{sequences}{$seq}->[2] eq '' || $self->{sequences}{$seq}->[2] >= (2**63/2)-1) {
+			$sql_output .= " NO MAXVALUE";
+		# MSSQL has 32 bit sequences
+		} elsif ($self->{sequences}{$seq}->[2] eq '' || $self->{sequences}{$seq}->[2] >= (2**32/2)-1) {
 			$sql_output .= " NO MAXVALUE";
 		} else {
 			$self->{sequences}{$seq}->[2] = 9223372036854775807 if ($self->{sequences}{$seq}->[2] > 9223372036854775807);
@@ -4894,7 +4923,8 @@ sub export_sequence
 		$sql_output .= " CACHE $cache" if ($cache ne '');
 		$sql_output .= "$cycle;\n";
 
-		if ($self->{force_owner}) {
+		if ($self->{force_owner})
+		{
 			my $owner = $self->{sequences}{$seq}->[7];
 			$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
 			$sql_output .= "ALTER SEQUENCE " . $self->quote_object_name($seq)
@@ -7530,8 +7560,11 @@ sub export_table
 					}
 					# Check if the column make reference to an other column
 					my $use_other_col = 0;
-					foreach my $c (@collist) {
-						$use_other_col = 1 if ($f->[4] =~ /\b$c\b/i);
+					foreach my $c (@collist)
+					{
+						if ($f->[4] =~ /\b$c\b/i && $f->[4] !~ /nextval\(/i) {
+							$use_other_col = 1;
+						}
 					}
 					if ($use_other_col && $self->{pg_version} >= 12)
 					{
@@ -9407,6 +9440,8 @@ sub _column_comments
 
 	if ($self->{is_mysql}) {
 		return Ora2Pg::MySQL::_column_comments($self, $table);
+	} elsif ($self->{is_mssql}) {
+		return Ora2Pg::MSSQL::_column_comments($self, $table);
 	} else {
 		return Ora2Pg::Oracle::_column_comments($self, $table);
 	}
@@ -10991,6 +11026,8 @@ sub _column_info
 
 	if ($self->{is_mysql}) {
 		return Ora2Pg::MySQL::_column_info($self,$table,$owner,'TABLE');
+	} elsif ($self->{is_mssql}) {
+		return Ora2Pg::MSSQL::_column_info($self,$table,$owner,'TABLE');
 	} else {
 		return Ora2Pg::Oracle::_column_info($self,$table,$owner,'TABLE');
 	}
@@ -11013,6 +11050,8 @@ sub _encrypted_columns
 
 	if ($self->{is_mysql}) {
 		return Ora2Pg::MySQL::_encrypted_columns($self,$table,$owner);
+	} elsif ($self->{is_mssql}) {
+		return Ora2Pg::MSSQL::_encrypted_columns($self,$table,$owner);
 	} else {
 		return Ora2Pg::Oracle::_encrypted_columns($self,$table,$owner);
 	}
@@ -11041,6 +11080,8 @@ sub _unique_key
 
 	if ($self->{is_mysql}) {
 		return Ora2Pg::MySQL::_unique_key($self,$table,$owner, $type);
+	} elsif ($self->{is_mssql}) {
+		return Ora2Pg::MSSQL::_unique_key($self,$table,$owner, $type);
 	} else {
 		return Ora2Pg::Oracle::_unique_key($self,$table,$owner, $type);
 	}
@@ -11062,6 +11103,8 @@ sub _check_constraint
 
 	if ($self->{is_mysql}) {
 		return Ora2Pg::MySQL::_check_constraint($self, $table, $owner);
+	} elsif ($self->{is_mssql}) {
+		return Ora2Pg::MSSQL::_check_constraint($self, $table, $owner);
 	} else {
 		return Ora2Pg::Oracle::_check_constraint($self, $table, $owner);
 	}
@@ -11096,6 +11139,8 @@ sub _foreign_key
 
 	if ($self->{is_mysql}) {
 		return Ora2Pg::MySQL::_foreign_key($self,$table,$owner);
+	} elsif ($self->{is_mssql}) {
+		return Ora2Pg::MSSQL::_foreign_key($self,$table,$owner);
 	} else {
 		return Ora2Pg::Oracle::_foreign_key($self,$table,$owner);
 	}
@@ -11162,6 +11207,8 @@ sub _get_indexes
 
 	if ($self->{is_mysql}) {
 		return Ora2Pg::MySQL::_get_indexes($self,$table,$owner, $generated_indexes);
+	} elsif ($self->{is_mssql}) {
+		return Ora2Pg::MSSQL::_get_indexes($self,$table,$owner, $generated_indexes);
 	} else {
 		return Ora2Pg::Oracle::_get_indexes($self,$table,$owner, $generated_indexes);
 	}
@@ -11182,6 +11229,8 @@ sub _get_sequences
 
 	if ($self->{is_mysql}) {
 		return Ora2Pg::MySQL::_get_sequences($self);
+	} elsif ($self->{is_mssql}) {
+		return Ora2Pg::MSSQL::_get_sequences($self);
 	} else {
 		return Ora2Pg::Oracle::_get_sequences($self);
 	}
@@ -11200,6 +11249,8 @@ sub _get_identities
 
 	if ($self->{is_mysql}) {
 		return Ora2Pg::MySQL::_get_identities($self);
+	} elsif ($self->{is_mssql}) {
+		return Ora2Pg::MSSQL::_get_identities($self);
 	} else {
 		return Ora2Pg::Oracle::_get_identities($self);
 	}
@@ -11219,6 +11270,8 @@ sub _get_external_tables
 
 	if ($self->{is_mysql}) {
 		return Ora2Pg::MySQL::_get_external_tables($self);
+	} elsif ($self->{is_mssql}) {
+		return Ora2Pg::MSSQL::_get_external_tables($self);
 	} else {
 		return Ora2Pg::Oracle::_get_external_tables($self);
 	}
@@ -11300,6 +11353,8 @@ sub _get_views
 
 	if ($self->{is_mysql}) {
 		return Ora2Pg::MySQL::_get_views($self);
+	} elsif ($self->{is_mssql}) {
+		return Ora2Pg::MSSQL::_get_views($self);
 	} else {
 		return Ora2Pg::Oracle::_get_views($self);
 	}
@@ -11320,6 +11375,8 @@ sub _get_materialized_views
 
 	if ($self->{is_mysql}) {
 		return Ora2Pg::MySQL::_get_materialized_views($self);
+	} elsif ($self->{is_mssql}) {
+		return Ora2Pg::MSSQL::_get_materialized_views($self);
 	} else {
 		return Ora2Pg::Oracle::_get_materialized_views($self);
 	}
@@ -11331,6 +11388,8 @@ sub _get_materialized_view_names
 
 	if ($self->{is_mysql}) {
 		return Ora2Pg::MySQL::_get_materialized_view_names($self);
+	} elsif ($self->{is_mssql}) {
+		return Ora2Pg::MSSQL::_get_materialized_view_names($self);
 	} else {
 		return Ora2Pg::Oracle::_get_materialized_view_names($self);
 	}
@@ -11382,6 +11441,8 @@ sub _get_plsql_metadata
 
 	if ($self->{is_mysql}) {
 		return Ora2Pg::MySQL::_get_plsql_metadata($self, $owner);
+	} elsif ($self->{is_mssql}) {
+		return Ora2Pg::MSSQL::_get_plsql_metadata($self, $owner);
 	} else {
 		return Ora2Pg::Oracle::_get_plsql_metadata($self, $owner);
 	}
@@ -11500,6 +11561,8 @@ sub _table_info
 
 	if ($self->{is_mysql}) {
 		return Ora2Pg::MySQL::_table_info($self, $do_real_row_count);
+	} elsif ($self->{is_mssql}) {
+		return Ora2Pg::MSSQL::_table_info($self, $do_real_row_count);
 	} else {
 		return Ora2Pg::Oracle::_table_info($self, $do_real_row_count);
 	}
@@ -11519,6 +11582,8 @@ sub _global_temp_table_info
 
 	if ($self->{is_mysql}) {
 		return Ora2Pg::MySQL::_global_temp_table_info($self);
+	} elsif ($self->{is_mssql}) {
+		return Ora2Pg::MSSQL::_global_temp_table_info($self);
 	} else {
 		return Ora2Pg::Oracle::_global_temp_table_info($self);
 	}
@@ -11704,6 +11769,8 @@ sub _get_partitions_list
 
 	if ($self->{is_mysql}) {
 		return Ora2Pg::MySQL::_get_partitions_list($self);
+	} elsif ($self->{is_mssql}) {
+		return Ora2Pg::MSSQL::_get_partitions_list($self);
 	} else {
 		return Ora2Pg::Oracle::_get_partitions_list($self);
 	}
@@ -11721,6 +11788,8 @@ sub _get_partitioned_table
 
 	if ($self->{is_mysql}) {
 		return Ora2Pg::MySQL::_get_partitioned_table($self);
+	} elsif ($self->{is_mssql}) {
+		return Ora2Pg::MSSQL::_get_partitioned_table($self);
 	} else {
 		return Ora2Pg::Oracle::_get_partitioned_table($self);
 	}
@@ -11738,6 +11807,8 @@ sub _get_subpartitioned_table
 
 	if ($self->{is_mysql}) {
 		return Ora2Pg::MySQL::_get_subpartitioned_table($self);
+	} elsif ($self->{is_mssql}) {
+		return Ora2Pg::MSSQL::_get_subpartitioned_table($self);
 	} else {
 		return Ora2Pg::Oracle::_get_subpartitioned_table($self);
 	}
@@ -15452,36 +15523,36 @@ sub _show_infos
 				my $j = 1;
 				foreach my $t (sort {$self->{tables}{$b}{table_info}{num_rows} <=> $self->{tables}{$a}{table_info}{num_rows}} keys %{$self->{tables}})
 				{
+					next if ($self->{tables}{$t}{table_info}{num_rows} == 0);
 					$report_info{'Objects'}{$typ}{'detail'} .= "\L$t\E has $self->{tables}{$t}{table_info}{num_rows} rows\n";
 					$j++;
 					last if ($j > $self->{top_max});
 				}
-				my %largest_table = ();
-				%largest_table = $self->_get_largest_tables() if ($self->{is_mysql});
-				if ((scalar keys %largest_table > 0) || !$self->{is_mysql})
+				$report_info{'Objects'}{$typ}{'detail'} .= "Top $self->{top_max} of largest tables:\n";
+				$j = 1;
+				if ($self->{is_mssql} || $self->{is_mysql})
 				{
-					$i = 1;
-					if (!$self->{is_mysql})
+					foreach my $t (sort {$self->{tables}{$b}{table_info}{size} <=> $self->{tables}{$a}{table_info}{size}} keys %{$self->{tables}})
 					{
-						$report_info{'Objects'}{$typ}{'detail'} .= "Top $self->{top_max} of largest tables:\n";
-						foreach my $t (sort { $largest_table{$b} <=> $largest_table{$a} } keys %largest_table)
-						{
-							$report_info{'Objects'}{$typ}{'detail'} .= "\L$t\E: $largest_table{$t} MB (" . $self->{tables}{$t}{table_info}{num_rows} . " rows)\n";
-							$i++;
-							last if ($i > $self->{top_max});
-						}
-					}
-					else
-					{
-						$report_info{'Objects'}{$typ}{'detail'} .= "Top $self->{top_max} of largest tables:\n";
-						foreach my $t (sort {$self->{tables}{$b}{table_info}{size} <=> $self->{tables}{$a}{table_info}{size}} keys %{$self->{tables}})
-						{
-							$report_info{'Objects'}{$typ}{'detail'} .= "\L$t\E: $self->{tables}{$t}{table_info}{size} MB (" . $self->{tables}{$t}{table_info}{num_rows} . " rows)\n";
-							$i++;
-							last if ($i > $self->{top_max});
-						}
+						next if ($self->{tables}{$t}{table_info}{size} == 0);
+						$report_info{'Objects'}{$typ}{'detail'} .= "\L$t\E: $self->{tables}{$t}{table_info}{size} MB (" . $self->{tables}{$t}{table_info}{num_rows} . " rows)\n";
+						$j++;
+						last if ($j > $self->{top_max});
 					}
 				}
+				else
+				{
+					# Because we avoid using JOIN when querying the Oracle catalog, look for all table size
+					my %largest_table = ();
+					%largest_table = $self->_get_largest_tables() if ($self->{is_mysql});
+					foreach my $t (sort { $largest_table{$b} <=> $largest_table{$a} } keys %largest_table)
+					{
+						$report_info{'Objects'}{$typ}{'detail'} .= "\L$t\E: $largest_table{$t} MB (" . $self->{tables}{$t}{table_info}{num_rows} . " rows)\n";
+						$j++;
+						last if ($j > $self->{top_max});
+					}
+				}
+
 				$comment = "Nothing particular." if (!$comment);
 				$report_info{'Objects'}{$typ}{'cost_value'} =~ s/(\.\d).*$/$1/;
 				if (scalar keys %encrypted_column > 0)
@@ -16084,7 +16155,9 @@ sub _show_infos
 
 		$self->logit("Top $self->{top_max} of tables sorted by number of rows:\n", 0);
 		$i = 1;
-		foreach my $t (sort {$tables_infos{$b}{num_rows} <=> $tables_infos{$a}{num_rows}} keys %tables_infos) {
+		foreach my $t (sort {$tables_infos{$b}{num_rows} <=> $tables_infos{$a}{num_rows}} keys %tables_infos)
+		{
+			next if ($tables_infos{$t}{num_rows} == 0);
 			my $tname = $t;
 			if (!$self->{is_mysql}) {
 				$tname = "$tables_infos{$t}{owner}.$t" if ($self->{debug});
@@ -16095,20 +16168,29 @@ sub _show_infos
 		}
 		$self->logit("Top $self->{top_max} of largest tables:\n", 0);
 		$i = 1;
-		if (!$self->{is_mysql}) {
+		if ($self->{is_mssql} || $self->{is_mysql})
+		{
+			foreach my $t (sort {$tables_infos{$b}{size} <=> $tables_infos{$a}{size}} keys %tables_infos)
+			{
+				next if ($tables_infos{$t}{size} == 0);
+				my $tname = $t;
+				if (!$self->{is_mysql} && !$self->{is_mssql}) {
+					$tname = "$tables_infos{$t}{owner}.$t" if ($self->{debug});
+				}
+				$self->logit("\t[$i] TABLE $tname: $tables_infos{$t}{size} MB (" . $tables_infos{$t}{num_rows} . " rows)\n", 0);
+				$i++;
+				last if ($i > $self->{top_max});
+			}
+		}
+		else
+		{
+			# Because we avoid using JOIN when querying the Oracle catalog, look for all table size
 			my %largest_table = $self->_get_largest_tables();
 			foreach my $t (sort { $largest_table{$b} <=> $largest_table{$a} } keys %largest_table) {
 				last if ($i > $self->{top_max});
 				my $tname = $t;
 				$tname = "$tables_infos{$t}{owner}.$t" if ($self->{debug});
 				$self->logit("\t[$i] TABLE $tname: $largest_table{$t} MB (" . $tables_infos{$t}{num_rows} . " rows)\n", 0);
-				$i++;
-			}
-		} else {
-			foreach my $t (sort {$tables_infos{$b}{size} <=> $tables_infos{$a}{size}} keys %tables_infos) {
-				last if ($i > $self->{top_max});
-				my $tname = $t;
-				$self->logit("\t[$i] TABLE $tname: $tables_infos{$t}{size} MB (" . $tables_infos{$t}{num_rows} . " rows)\n", 0);
 				$i++;
 			}
 		}
@@ -17355,6 +17437,8 @@ sub _get_version
 
 	if ($self->{is_mysql}) {
 		return Ora2Pg::MySQL::_get_version($self);
+	} elsif ($self->{is_mssql}) {
+		return Ora2Pg::MSSQL::_get_version($self);
 	} else {
 		return Ora2Pg::Oracle::_get_version($self);
 	}
@@ -17420,6 +17504,8 @@ sub _schema_list
 
 	if ($self->{is_mysql}) {
 		return Ora2Pg::MySQL::_schema_list($self);
+	} elsif ($self->{is_mssql}) {
+		return Ora2Pg::MSSQL::_schema_list($self);
 	} else {
 		return Ora2Pg::Oracle::_schema_list($self);
 	}
@@ -17438,12 +17524,12 @@ sub _table_exists
 
 	if ($self->{is_mysql}) {
 		return Ora2Pg::MySQL::_table_exists($self, $schema, $table);
+	} elsif ($self->{is_mssql}) {
+		return Ora2Pg::MSSQL::_table_exists($self, $schema, $table);
 	} else {
 		return Ora2Pg::Oracle::_table_exists($self, $schema, $table);
 	}
 }
-
-
 
 =head2 _get_largest_tables
 
@@ -17457,11 +17543,12 @@ sub _get_largest_tables
 
 	if ($self->{is_mysql}) {
 		return Ora2Pg::MySQL::_get_largest_tables($self);
+	} elsif ($self->{is_mssql}) {
+		return Ora2Pg::MSSQL::_get_largest_tables($self);
 	} else {
 		return Ora2Pg::Oracle::_get_largest_tables($self);
 	}
 }
-
 
 =head2 _get_encoding
 
@@ -17477,6 +17564,8 @@ sub _get_encoding
 
 	if ($self->{is_mysql}) {
 		return Ora2Pg::MySQL::_get_encoding($self, $self->{dbh});
+	} elsif ($self->{is_mssql}) {
+		return Ora2Pg::MSSQL::_get_encoding($self, $self->{dbh});
 	} else {
 		return Ora2Pg::Oracle::_get_encoding($self, $self->{dbh});
 	}
@@ -17854,10 +17943,16 @@ sub limit_to_objects
 					}
 					if ($self->{is_mysql}) {
 						$str .= "upper($colname) RLIKE ?" ;
+					} elsif ($self->{is_mssql}) {
+						$str .= "PATINDEX(?, upper($colname)) != 0" ;
 					} else {
 						$str .= "REGEXP_LIKE(upper($colname), ?)" ;
 					}
-					push(@{$self->{query_bind_params}}, uc("\^$self->{limited}{$arr_type[$i]}->[$j]\$"));
+					if (!$self->{is_mssql}) {
+						push(@{$self->{query_bind_params}}, uc("\^$self->{limited}{$arr_type[$i]}->[$j]\$"));
+					} else {
+						push(@{$self->{query_bind_params}}, uc("$self->{limited}{$arr_type[$i]}->[$j]"));
+					}
 					if ($j < $#{$self->{limited}{$arr_type[$i]}}) {
 						$str .= " OR ";
 					}
@@ -17885,13 +17980,18 @@ sub limit_to_objects
 						next if ($self->{limited}{$arr_type[$i]}->[$j] !~ /^\!(.+)/);
 						if ($self->{is_mysql}) {
 							$str .= " AND upper($colname) NOT RLIKE ?" ;
+						} elsif ($self->{is_mssql}) {
+							$str .= "PATINDEX(?, upper($colname)) != 0" ;
 						} else {
 							$str .= " AND NOT REGEXP_LIKE(upper($colname), ?)" ;
 						}
-						push(@{$self->{query_bind_params}}, uc("\^$1\$"));
+						if (!$self->{is_mssql}) {
+							push(@{$self->{query_bind_params}}, uc("\^$1\$"));
+						} else {
+							push(@{$self->{query_bind_params}}, uc("$1"));
+						}
 					}
 				}
-
 			}
 			$has_limitation = 1;
 
@@ -17918,10 +18018,16 @@ sub limit_to_objects
 				{
 					if ($self->{is_mysql}) {
 						$str .= "upper($colname) NOT RLIKE ?" ;
+					} elsif ($self->{is_mssql}) {
+						$str .= "PATINDEX(?, upper($colname)) = 0" ;
 					} else {
 						$str .= "NOT REGEXP_LIKE(upper($colname), ?)" ;
 					}
-					push(@{$self->{query_bind_params}}, uc("\^$self->{excluded}{$arr_type[$i]}->[$j]\$"));
+					if (!$self->{is_mssql}) {
+						push(@{$self->{query_bind_params}}, uc("\^$self->{excluded}{$arr_type[$i]}->[$j]\$"));
+					} else {
+						push(@{$self->{query_bind_params}}, uc("$self->{excluded}{$arr_type[$i]}->[$j]"));
+					}
 					if ($j < $#{$self->{excluded}{$arr_type[$i]}}) {
 						$str .= " AND ";
 					}
@@ -17949,8 +18055,13 @@ sub limit_to_objects
 				$str .= ' AND ( ';
 				for (my $j = 0; $j <= $#EXCLUDED_TABLES; $j++)
 				{
-					$str .= " NOT REGEXP_LIKE(upper($colname), ?)" ;
-					push(@{$self->{query_bind_params}}, uc("\^$EXCLUDED_TABLES[$j]\$"));
+					if ($self->{is_mssql}) {
+						$str .= "PATINDEX(?, upper($colname)) = 0" ;
+						push(@{$self->{query_bind_params}}, uc("$EXCLUDED_TABLES[$j]"));
+					} else {
+						$str .= " NOT REGEXP_LIKE(upper($colname), ?)" ;
+						push(@{$self->{query_bind_params}}, uc("\^$EXCLUDED_TABLES[$j]\$"));
+					}
 					if ($j < $#EXCLUDED_TABLES){
 						$str .= " AND ";
 					}
