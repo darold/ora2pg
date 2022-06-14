@@ -2848,7 +2848,7 @@ sub read_schema_from_file
 							$c_default =~ s/\s+VIRTUAL//is;
 						}
 						my $c_type = '';
-						if ($c =~ s/^ENUM\s*(\([^\(\)]+\))\s*//is)
+						if ($c =~ s/^\s*ENUM\s*(\([^\(\)]+\))\s*//is)
 						{
 							my %tmp = ();
 							$tmp{name} = lc($tb_name . '_' . $c_name . '_t');
@@ -7447,10 +7447,9 @@ sub export_table
 
 				# Check if this column should be replaced by a boolean following table/column name
 				my $was_enum = 0;
-				if ($f->[1] =~ /ENUM/i)
+				if ($f->[1] =~ s/^\s*ENUM\s*\(//i)
 				{
 					$was_enum = 1;
-					$f->[1] =~ s/^ENUM\(//i;
 					$f->[1] =~ s/\)$//;
 					my $keyname = lc($tbname . '_' . $fname . '_t');
 					$keyname =~ s/["\`]//g;
