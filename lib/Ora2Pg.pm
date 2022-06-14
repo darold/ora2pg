@@ -5232,7 +5232,7 @@ sub export_trigger
 						$trig->[4] =~ s/\b(END[;]*)[\s\/]*$/  END;\n$1/is;
 					}
 					# Add return statement.
-					$trig->[4] =~ s/\b(END[;]*)(\s*\%ORA2PG_COMMENT\d+\%\s*)?[\s\/]*$/$ret_kind\n$1$2/igs;
+					$trig->[4] =~ s/(?:$ret_kind\s+)?\b(END[;]*)(\s*\%ORA2PG_COMMENT\d+\%\s*)?[\s\/]*$/$ret_kind\n$1$2/igs;
 					# Look at function header to convert sql type
 					my @parts = split(/BEGIN/i, $trig->[4]);
 					if ($#parts > 0)
@@ -11214,6 +11214,8 @@ sub _get_security_definer
 
 	if ($self->{is_mysql}) {
 		return Ora2Pg::MySQL::_get_security_definer($self, $type);
+	} elsif ($self->{is_mssql}) {
+		return Ora2Pg::MSSQL::_get_security_definer($self, $type);
 	} else {
 		return Ora2Pg::Oracle::_get_security_definer($self, $type);
 	}
@@ -11437,6 +11439,8 @@ sub _get_triggers
 
 	if ($self->{is_mysql}) {
 		return Ora2Pg::MySQL::_get_triggers($self);
+	} elsif ($self->{is_mssql}) {
+		return Ora2Pg::MSSQL::_get_triggers($self);
 	} else {
 		return Ora2Pg::Oracle::_get_triggers($self);
 	}

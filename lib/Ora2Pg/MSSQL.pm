@@ -667,45 +667,49 @@ sub _get_triggers
 {
 	my($self) = @_;
 
-	# Retrieve all indexes 
-	# TRIGGER_CATALOG            | varchar(512)  | NO   |     |         |       |
-	# TRIGGER_SCHEMA             | varchar(64)   | NO   |     |         |       |
-	# TRIGGER_NAME               | varchar(64)   | NO   |     |         |       |
-	# EVENT_MANIPULATION         | varchar(6)    | NO   |     |         |       |
-	# EVENT_OBJECT_CATALOG       | varchar(512)  | NO   |     |         |       |
-	# EVENT_OBJECT_SCHEMA        | varchar(64)   | NO   |     |         |       |
-	# EVENT_OBJECT_TABLE         | varchar(64)   | NO   |     |         |       |
-	# ACTION_ORDER               | bigint(4)     | NO   |     | 0       |       |
-	# ACTION_CONDITION           | longtext      | YES  |     | NULL    |       |
-	# ACTION_STATEMENT           | longtext      | NO   |     | NULL    |       |
-	# ACTION_ORIENTATION         | varchar(9)    | NO   |     |         |       |
-	# ACTION_TIMING              | varchar(6)    | NO   |     |         |       |
-	# ACTION_REFERENCE_OLD_TABLE | varchar(64)   | YES  |     | NULL    |       |
-	# ACTION_REFERENCE_NEW_TABLE | varchar(64)   | YES  |     | NULL    |       |
-	# ACTION_REFERENCE_OLD_ROW   | varchar(3)    | NO   |     |         |       |
-	# ACTION_REFERENCE_NEW_ROW   | varchar(3)    | NO   |     |         |       |
-	# CREATED                    | datetime      | YES  |     | NULL    |       |
-	# SQL_MODE                   | varchar(8192) | NO   |     |         |       |
-	# DEFINER                    | varchar(77)   | NO   |     |         |       |
-	# CHARACTER_SET_CLIENT       | varchar(32)   | NO   |     |         |       |
-	# COLLATION_CONNECTION       | varchar(32)   | NO   |     |         |       |
-	# DATABASE_COLLATION         | varchar(32)   | NO   |     |         |       |
+	my $str = qq{SELECT 
+     o.name AS trigger_name 
+    ,USER_NAME(o.uid) AS trigger_owner 
+    ,OBJECT_NAME(o.parent_obj) AS table_name 
+    ,s.name AS table_schema 
+    ,OBJECTPROPERTY( o.id, 'ExecIsAfterTrigger') AS isafter 
+    ,OBJECTPROPERTY( o.id, 'ExecIsInsertTrigger') AS isinsert 
+    ,OBJECTPROPERTY( o.id, 'ExecIsUpdateTrigger') AS isupdate 
+    ,OBJECTPROPERTY( o.id, 'ExecIsDeleteTrigger') AS isdelete 
+    ,OBJECTPROPERTY( o.id, 'ExecIsInsteadOfTrigger') AS isinsteadof 
+    ,OBJECTPROPERTY( o.id, 'ExecIsTriggerDisabled') AS [disabled]
+    , c.text
+FROM sys.sysobjects o
+INNER JOIN sys.syscomments AS c ON o.id = c.id
+INNER JOIN sys.tables t ON o.parent_obj = t.object_id 
+INNER JOIN sys.schemas s ON t.schema_id = s.schema_id 
+WHERE o.type = 'TR'
+};
 
-	my $str = "SELECT TRIGGER_NAME, ACTION_TIMING, EVENT_MANIPULATION, EVENT_OBJECT_TABLE, ACTION_STATEMENT, '' AS WHEN_CLAUSE, '' AS DESCRIPTION, ACTION_ORIENTATION FROM INFORMATION_SCHEMA.TRIGGERS";
 	if ($self->{schema}) {
-		$str .= " AND TRIGGER_SCHEMA = '$self->{schema}'";
+		$str .= " AND s.name = '$self->{schema}'";
 	}
-	$str .= " " . $self->limit_to_objects('TABLE|VIEW|TRIGGER','EVENT_OBJECT_TABLE|EVENT_OBJECT_TABLE|TRIGGER_NAME');
-	$str =~ s/ AND / WHERE /;
+	$str .= " " . $self->limit_to_objects('TABLE|VIEW|TRIGGER','t.name|t.name|o.name');
 
-	$str .= " ORDER BY EVENT_OBJECT_TABLE, TRIGGER_NAME";
+	$str .= " ORDER BY t.name, o.name";
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
 	my @triggers = ();
-	while (my $row = $sth->fetch) {
-		$row->[7] = 'FOR EACH '. $row->[7];
-		push(@triggers, [ @$row ]);
+	while (my $row = $sth->fetch)
+	{
+		$row->[4] = 'AFTER'; # only FOR=AFTER trigger in this field, no BEFORE
+		$row->[4] = 'INSTEAD OF' if ($row->[8]);
+		my @actions = ();
+		push(@actions, 'INSERT') if ($row->[5]);
+		push(@actions, 'UPDATE') if ($row->[6]);
+		push(@actions, 'DELETE') if ($row->[7]);
+		my $act = join(', ', @actions);
+		if (!$self->{schema} && $self->{export_schema}) {
+			$row->[2] = "$row->[3].$row->[2]";
+		}
+		$row->[10] =~ s/^(?:.*?)\sAS\s(.*)\s*;\s*$/$1/is;
+		push(@triggers, [ ($row->[0], $row->[4], $act, $row->[2], $row->[10], '', 'ROW', $row->[1]) ]);
 	}
 
 	return \@triggers;
@@ -2187,27 +2191,8 @@ sub _get_security_definer
 {
 	my ($self, $type) = @_;
 
-	my %security = ();
-
-	# Retrieve all functions security information
-	my $str = "SELECT ROUTINE_NAME,ROUTINE_SCHEMA,SECURITY_TYPE,DEFINER FROM INFORMATION_SCHEMA.ROUTINES";
-	if ($self->{schema}) {
-		$str .= " WHERE ROUTINE_SCHEMA = '$self->{schema}'";
-	}
-	$str .= " " . $self->limit_to_objects('FUNCTION|PROCEDURE', 'ROUTINE_NAME|ROUTINE_NAME');
-	$str .= " ORDER BY ROUTINE_NAME";
-
-	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-
-	while (my $row = $sth->fetch) {
-		next if (!$row->[0]);
-		$security{$row->[0]}{security} = $row->[2];
-		$security{$row->[0]}{owner} = $row->[3];
-	}
-	$sth->finish();
-
-	return (\%security);
+	# Not supported by SQL Server
+	return;
 }
 
 =head2 _get_identities
