@@ -52,7 +52,7 @@ our %SQL_TYPE = (
 	'HIERARCHYID' => 'varchar', # The application need to handle the value, no PG equivalent
 	'GEOMETRY' => 'geometry',
 	'GEOGRAPHY' => 'geometry',
-	'SYSNAME' => 'varchar(128)',
+	'SYSNAME' => 'varchar(256)',
 	'SQL_VARIANT' => 'text'
 );
 
@@ -325,50 +325,45 @@ sub _column_info
 
 	my $condition = '';
 	if ($self->{schema}) {
-		$condition .= "AND TABLE_SCHEMA='$self->{schema}' ";
+		$condition .= "AND s.name='$self->{schema}' ";
 	}
-	$condition .= "AND TABLE_NAME='$table' " if ($table);
+	$condition .= "AND tb.name='$table' " if ($table);
 	if (!$table) {
-		$condition .= $self->limit_to_objects('TABLE', 'TABLE_NAME');
+		$condition .= $self->limit_to_objects('TABLE', 'tb.name');
 	} else {
 		@{$self->{query_bind_params}} = ();
 	}
-	$condition =~ s/^AND/WHERE/;
+	$condition =~ s/^\s*AND\s/ WHERE /;
 
-	# TABLE_CATALOG            | nvarchar(128)
-	# TABLE_SCHEMA             | nvarchar(128)
-	# TABLE_NAME               | nvarchar(128)
-	# COLUMN_NAME              | nvarchar(128)
-	# ORDINAL_POSITION         | int
-	# COLUMN_DEFAULT           | nvarchar(4000)
-	# IS_NULLABLE              | varchar(3)
-	# DATA_TYPE                | nvarchar(128)
-	# CHARACTER_MAXIMUM_LENGTH | int
-	# CHARACTER_OCTET_LENGTH   | int
-	# NUMERIC_PRECISION        | tinyint
-	# NUMERIC_PRECISION_RADIX  | smallint
-	# NUMERIC_SCALE            | int
-	# DATETIME_PRECISION       | smallint            |
-	# CHARACTER_SET_CATALOG    | nvarchar(128)
-	# CHARACTER_SET_SCHEMA     | nvarchar(128) => always NULL
-	# CHARACTER_SET_NAME       | nvarchar(128)
-	# COLLATION_CATALOG        | nvarchar(128) => always NULL
-	# COLLATION_SCHEMA         | nvarchar(128) => always NULL
-	# COLLATION_NAME           | nvarchar(128)
-	# DOMAIN_CATALOG           | nvarchar(128)
-	# DOMAIN_SCHEMA            | nvarchar(128)
-	# DOMAIN_NAME              | nvarchar(128)
-
-	$condition =~ s/^ AND / WHERE /;
-	my $str = qq{SELECT COLUMN_NAME, DATA_TYPE, CHARACTER_MAXIMUM_LENGTH, IS_NULLABLE, COLUMN_DEFAULT, NUMERIC_PRECISION, NUMERIC_SCALE, CHARACTER_OCTET_LENGTH, TABLE_NAME, TABLE_SCHEMA, '' AS VIRTUAL_COLUMN, ORDINAL_POSITION, CONCAT(DOMAIN_SCHEMA,'.',DOMAIN_NAME) AS EXTRA, NULL AS COLUMN_TYPE
-FROM INFORMATION_SCHEMA.COLUMNS
+	my $str = qq{SELECT 
+    c.name 'Column Name',
+    t.Name 'Data type',
+    c.max_length 'Max Length',
+    c.is_nullable,
+    object_definition(c.default_object_id),
+    c.precision ,
+    c.scale ,
+    '',
+    tb.name,
+    s.name,
+    '',
+    c.column_id,
+    NULL as AUTO_INCREMENT,
+    NULL AS ENUM_INFO,
+    object_definition(c.rule_object_id),
+    t.is_user_defined
+FROM sys.columns c
+INNER JOIN sys.types t ON t.user_type_id = c.user_type_id
+INNER JOIN sys.tables AS tb ON tb.object_id = c.object_id
+INNER JOIN sys.schemas AS s ON s.schema_id = tb.schema_id
 $condition
-ORDER BY ORDINAL_POSITION};
+ORDER BY c.column_id};
 
 	my $sth = $self->{dbh}->prepare($str);
 	if (!$sth) {
 		$self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	}
+	$sth->{'LongReadLen'} = 1000000;
 	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
 	# Expected columns information stored in hash 
@@ -380,12 +375,27 @@ ORDER BY ORDINAL_POSITION};
 		if (!$self->{schema} && $self->{export_schema}) {
 			$row->[8] = "$row->[9].$row->[8]";
 		}
-		if ($row->[1] eq 'enum') {
-			$row->[1] = $row->[-1];
+		if (!$row->[15])
+		{
+			if ($row->[4]) {
+				$row->[4] =~ s/\s*CREATE\s+DEFAULT\s+.*\s+AS\s*//is;
+			}
+			if ($row->[14]) {
+				$row->[14] =~ s/\s*CREATE\s+RULE\s+.*\s+AS\s*//is;
+				$row->[14] =~ s/\@[a-z0-1_\$\#]+/VALUE/igs;
+				$row->[14] = " CHECK ($row->[14])";
+				$row->[14] =~ s/[\r\n]+/ /gs;
+			}
 		}
-		$row->[10] = $pos;
+		else
+		{
+			# For user data type the NOT NULL, DEFAULT and RULES belongs to
+			# the user defined data type and are appended at type creation
+			$row->[3] = 1;
+			$row->[4] = '';
+			$row->[14] = '';
+		}
 		push(@{$data{"$row->[8]"}{"$row->[0]"}}, @$row);
-		pop(@{$data{"$row->[8]"}{"$row->[0]"}});
 		$pos++;
 	}
 
@@ -805,15 +815,19 @@ sub _check_constraint
 		@{$self->{query_bind_params}} = ();
 	}
 
-	my $sql = qq{SELECT s.Name SchemaName, t.Name TableName, c.Name ColumnName, dc.Name DefaultName, dc.Definition DefaultDefinition
-FROM sys.schemas s
-JOIN sys.tables t on t.schema_id = s.schema_id
-JOIN sys.default_constraints dc on dc.parent_object_id = t.object_id 
-JOIN sys.check_constraints chk on chk.object_id = dc.object_id 
-JOIN sys.columns c on c.object_id = dc.parent_object_id and c.column_id = dc.parent_column_id
-WHERE chk.type = 'C' $condition
-ORDER BY s.Name, t.Name, c.name
- };
+	my $sql = qq{SELECT
+    schema_name(t.schema_id) SchemaName,
+    t.name as TableName,
+    col.name as column_name,
+    con.name as constraint_name,
+    con.definition,
+    con.is_disabled 
+FROM sys.check_constraints con
+LEFT OUTER JOIN sys.objects t ON con.parent_object_id = t.object_id
+LEFT OUTER JOIN sys.all_columns col ON con.parent_column_id = col.column_id AND con.parent_object_id = col.object_id
+$condition
+ORDER BY SchemaName, t.Name, col.name
+};
 
         my $sth = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
         $sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -824,12 +838,18 @@ ORDER BY s.Name, t.Name, c.name
                 if ($self->{export_schema} && !$self->{schema}) {
                         $row->[1] = "$row->[0].$row->[1]";
                 }
+		$row->[4] =~ s/[\[\]]//gs;
+		$row->[4] =~ s/^\(//s;
+		$row->[4] =~ s/\)$//s;
                 $data{$row->[1]}{constraint}{$row->[3]}{condition} = $row->[4];
-                $data{$row->[1]}{constraint}{$row->[3]}{validate}  = 'Y';
+		if ($row->[5]) {
+			$data{$row->[1]}{constraint}{$row->[3]}{validate}  = 'NOT VALIDATED';
+		} else {
+			$data{$row->[1]}{constraint}{$row->[3]}{validate}  = 'VALIDATED';
+		}
         }
 
-
-	return;
+	return %data;
 }
 
 sub _get_external_tables
@@ -2328,10 +2348,211 @@ sub _get_procedures
 
 sub _get_types
 {
-        my ($self, $name) = @_;
+	my ($self, $name) = @_;
 
-	# Not supported
-	return;
+	# Retrieve all user defined types => PostgreSQL DOMAIN
+	my $idx = 1;
+	my $str = qq{SELECT
+	t1.name, s.name, t2.name, t1.precision, t1.scale, t1.max_length, t1.is_nullable,
+	object_definition(t1.default_object_id), object_definition(t1.rule_object_id), t1.is_table_type
+FROM sys.types t1
+JOIN sys.types t2 ON t2.system_type_id = t1.system_type_id AND t2.is_user_defined = 0
+LEFT OUTER JOIN sys.schemas s ON t1.schema_id = s.schema_id
+WHERE t1.is_user_defined = 1 AND t2.name <> 'sysname'};
+
+	if ($name) {
+		$str .= " AND t1.name='$name'";
+	}
+	if ($self->{schema}) {
+		$str .= "AND s.name='$self->{schema}' ";
+	}
+	if (!$name) {
+		$str .= $self->limit_to_objects('TYPE', 't1.name');
+	} else {
+		@{$self->{query_bind_params}} = ();
+	}
+	$str .= " ORDER BY t1.name";
+	# use a separeate connection
+	my $local_dbh = _db_connection($self);
+
+	my $sth = $local_dbh->prepare($str) or $self->logit("FATAL: " . $local_dbh->errstr . "\n", 0, 1);
+	$sth->{'LongReadLen'} = 1000000;
+	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $local_dbh->errstr . "\n", 0, 1);
+
+	my @types = ();
+	my @fct_done = ();
+	while (my $row = $sth->fetch)
+	{
+		if (!$self->{schema} && $self->{export_schema}) {
+			$row->[0] = "$row->[1].$row->[0]";
+		}
+		$self->logit("\tFound Type: $row->[0]\n", 1);
+		next if (grep(/^$row->[0]$/, @fct_done));
+		push(@fct_done, $row->[0]);
+		my %tmp = ();
+		if (!$row->[9])
+		{
+			my $precision = '';
+			if ($row->[3]) {
+				$precision .= "($row->[3]";
+				$precision .= ",$row->[4]" if ($row->[4]);
+			} elsif ($row->[5]) {
+				$precision .= "($row->[5]";
+			}
+			$precision .= ")" if ($precision);
+			my $notnull = '';
+			$notnull = ' NOT NULL' if (!$row->[6]);
+			my $default = '';
+			if ($row->[7]) {
+				$row->[7] =~ s/\s*CREATE\s+DEFAULT\s+.*\s+AS\s*//is;
+				$default = " DEFAULT $row->[7]";
+			}
+			my $rule = '';
+			if ($row->[8]) {
+				$row->[8] =~ s/\s*CREATE\s+RULE\s+.*\s+AS\s*//is;
+				$row->[8] =~ s/\@[a-z0-1_\$\#]+/VALUE/igs;
+				$rule = " CHECK ($row->[8])";
+				$rule =~ s/[\r\n]+/ /gs;
+			}
+			$tmp{code} = "CREATE TYPE $row->[0] FROM $row->[2]$precision$notnull$default$rule;";
+		}
+		$tmp{name} = $row->[0];
+		$tmp{owner} = $row->[1];
+		$tmp{pos} = $idx++;
+		if (!$self->{preserve_case})
+		{
+			$tmp{code} =~ s/(TYPE\s+)"[^"]+"\."[^"]+"/$1\L$row->[0]\E/igs;
+			$tmp{code} =~ s/(TYPE\s+)"[^"]+"/$1\L$row->[0]\E/igs;
+		}
+		else
+		{
+			$tmp{code} =~ s/((?:CREATE|REPLACE|ALTER)\s+TYPE\s+)([^"\s]+)\s/$1"$2" /igs;
+		}
+		$tmp{code} =~ s/\s+ALTER/;\nALTER/igs;
+		push(@types, \%tmp);
+	}
+	$sth->finish();
+
+	# Retrieve all user defined table types => PostgreSQL TYPE
+	$str = qq{SELECT
+	t1.name AS table_Type, s.name SchemaName, c.name AS ColName, c.column_id, y.name AS DataType,
+	c.precision, c.scale, c.max_length, c.is_nullable, object_definition(t1.default_object_id),
+	object_definition(t1.rule_object_id)
+FROM sys.table_types t1
+INNER JOIN sys.columns c ON c.object_id = t1.type_table_object_id
+INNER JOIN sys.types y ON y.user_type_id = c.user_type_id
+LEFT OUTER JOIN sys.schemas s ON t1.schema_id = s.schema_id
+};
+	if ($name) {
+		$str .= " AND t1.name='$name'";
+	}
+	if ($self->{schema}) {
+		$str .= "AND s.name='$self->{schema}' ";
+	}
+	if (!$name) {
+		$str .= $self->limit_to_objects('TYPE', 't1.name');
+	} else {
+		@{$self->{query_bind_params}} = ();
+	}
+	$str =~ s/ AND / WHERE /s;
+	$str .= " ORDER BY t1.name, c.column_id";
+
+	$sth = $local_dbh->prepare($str) or $self->logit("FATAL: " . $local_dbh->errstr . "\n", 0, 1);
+	$sth->{'LongReadLen'} = 1000000;
+	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $local_dbh->errstr . "\n", 0, 1);
+
+	my $current_type = '';
+	my $old_type = '';
+	while (my $row = $sth->fetch)
+	{
+		if (!$self->{schema} && $self->{export_schema}) {
+			$row->[0] = "$row->[1].$row->[0]";
+		}
+		if ($old_type ne $row->[0]) {
+			$self->logit("\tFound Type: $row->[0]\n", 1);
+
+			if ($current_type ne '') {
+				$current_type =~ s/,$//s;
+				$current_type .= ");";
+
+				my %tmp = (
+					code => $current_type,
+					name => $old_type,
+					owner => '',
+					pos => $idx++
+				);
+				if (!$self->{preserve_case})
+				{
+					$tmp{code} =~ s/(TYPE\s+)"[^"]+"\."[^"]+"/$1\L$old_type\E/igs;
+					$tmp{code} =~ s/(TYPE\s+)"[^"]+"/$1\L$old_type\E/igs;
+				}
+				else
+				{
+					$tmp{code} =~ s/((?:CREATE|REPLACE|ALTER)\s+TYPE\s+)([^"\s]+)\s/$1"$2" /igs;
+				}
+				$tmp{code} =~ s/\s+ALTER/;\nALTER/igs;
+				push(@types, \%tmp);
+				$current_type = '';
+			}
+			$old_type = $row->[0];
+		}
+		if ($current_type eq '') {
+			$current_type = "CREATE TYPE $row->[0] AS OBJECT ("
+		}
+		
+		my $precision = '';
+		if ($row->[5]) {
+			$precision .= "($row->[5]";
+			$precision .= ",$row->[6]" if ($row->[6]);
+		} elsif ($row->[7]) {
+			$precision .= "($row->[7]";
+		}
+		$precision .= ")" if ($precision);
+		my $notnull = '';
+		$notnull = 'NOT NULL' if (!$row->[8]);
+		my $default = '';
+		if ($row->[9]) {
+			$row->[9] =~ s/\s*CREATE\s+DEFAULT\s+.*\s+AS\s*//is;
+			$default = " DEFAULT $row->[9]";
+		}
+		my $rule = '';
+		if ($row->[10]) {
+			$row->[10] =~ s/\s*CREATE\s+RULE\s+.*\s+AS\s*//is;
+			$row->[10] =~ s/\@[a-z0-1_\$\#]+/VALUE/igs;
+			$rule = " CHECK ($row->[10])";
+		}
+		$current_type .= "\n\t$row->[2] $row->[4]$precision $notnull$default$rule,"
+	}
+	$sth->finish();
+
+	$local_dbh->disconnect() if ($local_dbh);
+
+	# Process last table type
+	if ($current_type ne '')
+	{
+		$current_type =~ s/,$//s;
+		$current_type .= ");";
+
+		my %tmp = (
+			code => $current_type,
+			name => $old_type,
+			owner => '',
+			pos => $idx++
+		);
+		if (!$self->{preserve_case})
+		{
+			$tmp{code} =~ s/(TYPE\s+)"[^"]+"\."[^"]+"/$1\L$old_type\E/igs;
+			$tmp{code} =~ s/(TYPE\s+)"[^"]+"/$1\L$old_type\E/igs;
+		}
+		else
+		{
+			$tmp{code} =~ s/((?:CREATE|REPLACE|ALTER)\s+TYPE\s+)([^"\s]+)\s/$1"$2" /igs;
+		}
+		$tmp{code} =~ s/\s+ALTER/;\nALTER/igs;
+		push(@types, \%tmp);
+	}
+
+	return \@types;
 }
 
 sub _col_count

@@ -11516,6 +11516,8 @@ sub _get_functions
 
 	if ($self->{is_mysql}) {
 		return Ora2Pg::MySQL::_get_functions($self);
+	} elsif ($self->{is_mssql}) {
+		return Ora2Pg::MSSQL::_get_functions($self);
 	} else {
 		return Ora2Pg::Oracle::_get_functions($self);
 	}
@@ -11535,6 +11537,8 @@ sub _get_procedures
 
 	if ($self->{is_mysql}) {
 		return Ora2Pg::MySQL::_get_procedures($self);
+	} elsif ($self->{is_mssql}) {
+		return Ora2Pg::MSSQL::_get_procedures($self);
 	} else {
 		return Ora2Pg::Oracle::_get_procedures($self);
 	}
@@ -11573,6 +11577,8 @@ sub _get_types
 
 	if ($self->{is_mysql}) {
 		return Ora2Pg::MySQL::_get_types($self, $name);
+	} elsif ($self->{is_mssql}) {
+		return Ora2Pg::MSSQL::_get_types($self, $name);
 	} else {
 		return Ora2Pg::Oracle::_get_types($self, $name);
 	}
@@ -14133,6 +14139,10 @@ $declar
 CREATE TYPE \L$type_name\E AS ($internal_name $declar\[$size\]);
 };
 		$self->{type_of_type}{Varrays}++;
+	}
+	elsif ($plsql =~ /TYPE\s+([^\s]+)\s+FROM\s+(.*)( NOT NULL)?;/is)
+	{
+		$content .= "CREATE DOMAIN $1 AS $2$3;\n";
 	}
 	else
 	{
