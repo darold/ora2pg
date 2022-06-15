@@ -2250,6 +2250,12 @@ sub _tables
 {
 	my ($self, $nodetail) = @_;
 
+	if ($self->{is_mssql} && $self->{type} eq 'TABLE')
+	{
+		$self->logit("Retrieving table partitioning information...\n", 1);
+		%{ $self->{partitions_list} } = $self->_get_partitioned_table();
+	}
+
 	# Get all tables information specified by the DBI method table_info
 	$self->logit("Retrieving table information...\n", 1);
 
@@ -2543,7 +2549,7 @@ sub _tables
 		%{$self->{external_table}} = $self->_get_external_tables();
 	}
 
-	if ($self->{type} eq 'TABLE')
+	if (!$self->{is_mssql} && $self->{type} eq 'TABLE')
 	{
 		$self->logit("Retrieving table partitioning information...\n", 1);
 		%{ $self->{partitions_list} } = $self->_get_partitioned_table();
@@ -11720,6 +11726,8 @@ sub _get_partitions
 
 	if ($self->{is_mysql}) {
 		return Ora2Pg::MySQL::_get_partitions($self);
+	} elsif ($self->{is_mssql}) {
+		return Ora2Pg::MSSQL::_get_partitions($self);
 	} else {
 		return Ora2Pg::Oracle::_get_partitions($self);
 	}
@@ -11738,6 +11746,8 @@ sub _get_subpartitions
 
 	if ($self->{is_mysql}) {
 		return Ora2Pg::MySQL::_get_subpartitions($self);
+	} elsif ($self->{is_mssql}) {
+		return Ora2Pg::MSSQL::_get_subpartitions($self);
 	} else {
 		return Ora2Pg::Oracle::_get_subpartitions($self);
 	}

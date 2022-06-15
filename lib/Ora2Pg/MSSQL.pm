@@ -293,6 +293,7 @@ WHERE t.is_ms_shipped = 0 AND i.OBJECT_ID > 255 AND t.type='U' AND t.NAME NOT LI
 		$tables_infos{$row->[0]}{tablespace} = 0;
 		$tables_infos{$row->[0]}{auto_increment} = 0;
 		$tables_infos{$row->[0]}{tablespace} = $tbspname{$row->[0]} || '';
+		$tables_infos{$row->[0]}{partitioned} = 1 if (exists $self->{partitions_list}{"\L$row->[0]\E"});
 
 		if ($do_real_row_count)
 		{
@@ -1430,37 +1431,43 @@ sub _get_partitions
 
 	# Retrieve all partitions.
 	my $str = qq{
-SELECT TABLE_NAME, PARTITION_ORDINAL_POSITION, PARTITION_NAME, PARTITION_DESCRIPTION, TABLESPACE_NAME, PARTITION_METHOD, PARTITION_EXPRESSION
-FROM INFORMATION_SCHEMA.PARTITIONS
-WHERE PARTITION_NAME IS NOT NULL AND SUBPARTITION_NAME IS NULL AND (PARTITION_METHOD LIKE 'RANGE%' OR PARTITION_METHOD LIKE 'LIST%')
+SELECT sch.name AS SchemaName, t.name AS TableName, i.name AS IndexName,
+    p.partition_number, p.partition_id, i.data_space_id, f.function_id, f.type_desc,
+    r.boundary_id, r.value AS BoundaryValue, ic.column_id AS PartitioningColumnID,
+    c.name AS PartitioningColumnName
+FROM sys.tables AS t
+JOIN sys.indexes AS i ON t.object_id = i.object_id AND i.[type] <= 1
+JOIN sys.partitions AS p ON i.object_id = p.object_id AND i.index_id = p.index_id
+JOIN sys.partition_schemes AS s ON i.data_space_id = s.data_space_id
+JOIN sys.index_columns AS ic ON ic.[object_id] = i.[object_id] AND ic.index_id = i.index_id AND ic.partition_ordinal >= 1 -- because 0 = non-partitioning column
+JOIN sys.columns AS c ON t.[object_id] = c.[object_id] AND ic.column_id = c.column_id
+JOIN sys.partition_functions AS f ON s.function_id = f.function_id
+LEFT JOIN sys.partition_range_values AS r ON f.function_id = r.function_id and r.boundary_id = p.partition_number
+LEFT OUTER JOIN sys.schemas sch ON t.schema_id = sch.schema_id
 };
-	$str .= $self->limit_to_objects('TABLE|PARTITION', 'TABLE_NAME|PARTITION_NAME');
+
+	$str .= $self->limit_to_objects('TABLE|PARTITION','t.name|t.name');
 	if ($self->{schema}) {
-		$str .= "\tAND TABLE_SCHEMA ='$self->{schema}'\n";
+		$str .= " WHERE sch.name ='$self->{schema}'";
 	}
-	$str .= "ORDER BY TABLE_NAME,PARTITION_ORDINAL_POSITION\n";
+	$str .= " ORDER BY sch.name, t.name, i.name, p.partition_number, ic.column_id\n";
 
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+
 	my %parts = ();
 	my %default = ();
+	my $i = 1;
 	while (my $row = $sth->fetch)
 	{
-		if ($row->[3] =~ /^MAXVALUE(?:,MAXVALUE)*$/ || $row->[3] eq 'DEFAULT')
-		{
-			$default{$row->[0]} = $row->[2];
-			next;
+		my $tbname = $row->[1];
+		if ($self->{export_schema} && !$self->{schema}) {
+			$row->[1] = "$row->[0].$row->[1]";
 		}
-		$parts{$row->[0]}{$row->[1]}{name} = $row->[2];
-		$row->[6] =~ s/\`//g;
-		$row->[3] =~ s/\`//g;
-		$row->[5] =~ s/ COLUMNS//;
-		my $i = 0;
-		foreach my $c (split(',', $row->[6]))
-		{
-			push(@{$parts{$row->[0]}{$row->[1]}{info}}, { 'type' => $row->[5], 'value' => $row->[3], 'column' => $c, 'colpos' => $i, 'tablespace' => $row->[4], 'owner' => ''});
-			$i++;
-		}
+		#dbo | PartitionTable | PK__Partitio__357D0D3E1290FD9F | 2 | 72057594048872448 | 65601 | 65536 | RANGE | 2 | 2022-05-01 00:00:00 | 1 | col1
+		$parts{$row->[1]}{$row->[3]}{name} = $tbname . '_part_' . $i++;
+		$row->[9] = 'MAXVALUE' if ($row->[9] eq '');
+		push(@{$parts{$row->[1]}{$row->[3]}{info}}, { 'type' => 'RANGE', 'value' => $row->[9], 'column' => $row->[11], 'colpos' => $row->[10], 'tablespace' => '', 'owner' => ''});
 	}
 	$sth->finish;
 
@@ -1477,41 +1484,10 @@ sub _get_subpartitions
 {
 	my($self) = @_;
 
-	# Retrieve all partitions.
-	my $str = qq{
-SELECT TABLE_NAME, SUBPARTITION_ORDINAL_POSITION, SUBPARTITION_NAME, PARTITION_DESCRIPTION, TABLESPACE_NAME, SUBPARTITION_METHOD, SUBPARTITION_EXPRESSION,PARTITION_NAME
-FROM INFORMATION_SCHEMA.PARTITIONS
-WHERE SUBPARTITION_NAME IS NOT NULL AND SUBPARTITION_EXPRESSION IS NOT NULL AND (SUBPARTITION_METHOD = 'RANGE' OR SUBPARTITION_METHOD = 'LIST')
-};
-	$str .= $self->limit_to_objects('TABLE|PARTITION', 'TABLE_NAME|PARTITION_NAME');
-	if ($self->{schema}) {
-		$str .= " AND TABLE_SCHEMA ='$self->{schema}'\n";
-	}
-	$str .= " ORDER BY TABLE_NAME,PARTITION_ORDINAL_POSITION,SUBPARTITION_ORDINAL_POSITION\n";
-	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	my %subparts = ();
 	my %default = ();
-	while (my $row = $sth->fetch)
-	{
-		if ($row->[3] =~ /^MAXVALUE(?:,MAXVALUE)*$/ || $row->[3] eq 'DEFAULT')
-		{
-			$default{$row->[0]} = $row->[2];
-			next;
-		}
-		$subparts{$row->[0]}{$row->[7]}{$row->[1]}{name} = $row->[2];
-		my $i = 0;
-		$row->[6] =~ s/\`//g;
-		$row->[3] =~ s/\`//g;
-		$row->[5] =~ s/ COLUMNS//;
-		foreach my $c (split(',', $row->[6]))
-		{
-			push(@{$subparts{$row->[0]}{$row->[7]}{$row->[1]}{info}}, { 'type' => $row->[5], 'value' => $row->[3], 'column' => $c, 'colpos' => $i, 'tablespace' => $row->[4], 'owner' => ''});
-			$i++;
-		}
-	}
-	$sth->finish;
 
+	# For what I know, subpartition is not supported by MSSQL
 	return \%subparts, \%default;
 }
 
@@ -1528,34 +1504,41 @@ sub _get_partitions_list
 
 	# Retrieve all partitions.
 	my $str = qq{
-SELECT
-    t.name AS [Table],
-    i.name AS [Index],
-    s.name,
-    i.type_desc,
-    i.is_primary_key,
-    ps.name AS [Partition Scheme]
-FROM sys.tables t
-INNER JOIN sys.indexes i
-    ON t.object_id = i.object_id
-    AND i.type IN (0,1)
-INNER JOIN sys.partition_schemes ps   
-    ON i.data_space_id = ps.data_space_id
-LEFT OUTER JOIN sys.schemas s ON t.schema_id = s.schema_id
+SELECT sch.name AS SchemaName, t.name AS TableName, i.name AS IndexName,
+    p.partition_number, p.partition_id, i.data_space_id, f.function_id, f.type_desc,
+    r.boundary_id, r.value AS BoundaryValue, ic.column_id AS PartitioningColumnID,
+    c.name AS PartitioningColumnName
+FROM sys.tables AS t
+JOIN sys.indexes AS i ON t.object_id = i.object_id AND i.[type] <= 1
+JOIN sys.partitions AS p ON i.object_id = p.object_id AND i.index_id = p.index_id
+JOIN sys.partition_schemes AS s ON i.data_space_id = s.data_space_id
+JOIN sys.index_columns AS ic ON ic.[object_id] = i.[object_id] AND ic.index_id = i.index_id AND ic.partition_ordinal >= 1 -- because 0 = non-partitioning column
+JOIN sys.columns AS c ON t.[object_id] = c.[object_id] AND ic.column_id = c.column_id
+JOIN sys.partition_functions AS f ON s.function_id = f.function_id
+LEFT JOIN sys.partition_range_values AS r ON f.function_id = r.function_id and r.boundary_id = p.partition_number
+LEFT OUTER JOIN sys.schemas sch ON t.schema_id = sch.schema_id
 };
 
 	$str .= $self->limit_to_objects('TABLE|PARTITION','t.name|t.name');
 	if ($self->{schema}) {
-		$str .= " WHERE s.name ='$self->{schema}'";
+		$str .= " WHERE sch.name ='$self->{schema}'";
 	}
-	$str .= " ORDER BY t.name\n";
+	$str .= " ORDER BY sch.name, t.name, i.name, p.partition_number, ic.column_id\n";
 
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
 	my %parts = ();
-	while (my $row = $sth->fetch) {
-		$parts{$row->[0]}++;
+	while (my $row = $sth->fetch)
+	{
+		if ($self->{export_schema} && !$self->{schema}) {
+			$row->[1] = "$row->[0].$row->[1]";
+		}
+                $parts{"\L$row->[1]\E"}{count}++;
+                $parts{"\L$row->[1]\E"}{composite} = 0;
+		$parts{"\L$row->[1]\E"}{type} = 'RANGE';
+		push(@{ $parts{"\L$row->[1]\E"}{columns} }, $row->[11]) if (!grep(/^$row->[11]$/, @{ $parts{"\L$row->[1]\E"}{columns} }));
+		#dbo | PartitionTable | PK__Partitio__357D0D3E1290FD9F | 2 | 72057594048872448 | 65601 | 65536 | RANGE | 2 | 2022-05-01 00:00:00 | 1 | col1
 	}
 	$sth->finish;
 
@@ -1574,24 +1557,41 @@ sub _get_partitioned_table
 
 	# Retrieve all partitions.
 	my $str = qq{
-    SELECT p.partition_id, t.name, s.name, p.partition_number, p.rows, p.data_compression_desc
-FROM sys.partitions p
-INNER JOIN sys.tables t ON t.object_id = p.object_id
-LEFT OUTER JOIN sys.schemas s ON t.schema_id = s.schema_id
-WHERE p.index_id = 0
+SELECT sch.name AS SchemaName, t.name AS TableName, i.name AS IndexName,
+    p.partition_number, p.partition_id, i.data_space_id, f.function_id, f.type_desc,
+    r.boundary_id, r.value AS BoundaryValue, ic.column_id AS PartitioningColumnID,
+    c.name AS PartitioningColumnName
+FROM sys.tables AS t
+JOIN sys.indexes AS i ON t.object_id = i.object_id AND i.[type] <= 1
+JOIN sys.partitions AS p ON i.object_id = p.object_id AND i.index_id = p.index_id
+JOIN sys.partition_schemes AS s ON i.data_space_id = s.data_space_id
+JOIN sys.index_columns AS ic ON ic.[object_id] = i.[object_id] AND ic.index_id = i.index_id AND ic.partition_ordinal >= 1 -- because 0 = non-partitioning column
+JOIN sys.columns AS c ON t.[object_id] = c.[object_id] AND ic.column_id = c.column_id
+JOIN sys.partition_functions AS f ON s.function_id = f.function_id
+LEFT JOIN sys.partition_range_values AS r ON f.function_id = r.function_id and r.boundary_id = p.partition_number
+LEFT OUTER JOIN sys.schemas sch ON t.schema_id = sch.schema_id
 };
+
 	$str .= $self->limit_to_objects('TABLE|PARTITION','t.name|t.name');
 	if ($self->{schema}) {
-		$str .= " AND s.name = '$self->{schema}'";
+		$str .= " WHERE sch.name ='$self->{schema}'";
 	}
-	$str .= " ORDER BY t.name\n";
+	$str .= " ORDER BY sch.name, t.name, i.name, p.partition_number, ic.column_id\n";
 
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
 	my %parts = ();
-	while (my $row = $sth->fetch) {
-		$parts{$row->[0]}++;
+	while (my $row = $sth->fetch)
+	{
+		if ($self->{export_schema} && !$self->{schema}) {
+			$row->[1] = "$row->[0].$row->[1]";
+		}
+                $parts{"\L$row->[1]\E"}{count}++;
+                $parts{"\L$row->[1]\E"}{composite} = 0;
+		$parts{"\L$row->[1]\E"}{type} = 'RANGE';
+		push(@{ $parts{"\L$row->[1]\E"}{columns} }, $row->[11]) if (!grep(/^$row->[11]$/, @{ $parts{"\L$row->[1]\E"}{columns} }));
+		#dbo | PartitionTable | PK__Partitio__357D0D3E1290FD9F | 2 | 72057594048872448 | 65601 | 65536 | RANGE | 2 | 2022-05-01 00:00:00 | 1 | col1
 	}
 	$sth->finish;
 
