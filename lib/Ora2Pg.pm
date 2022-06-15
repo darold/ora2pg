@@ -6911,8 +6911,9 @@ BEGIN
 							}
 
 							# Set the unique (and primary) key definition 
-							$idx = $self->_create_unique_keys($table, $self->{tables}{$table}{unique_key});
-							if ($idx) {
+							$idx = $self->_create_unique_keys($table, $self->{tables}{$table}{unique_key}, $part);
+							if ($idx)
+							{
 								$create_table_index_tmp .= "-- Reproduce subpartition unique indexes / pk that was defined on the parent table\n";
 								$idx =~ s/ $table/ $tb_name2/igs;
 								# remove indexes already created
@@ -10074,7 +10075,7 @@ This function return SQL code to create unique and primary keys of a table
 =cut
 sub _create_unique_keys
 {
-	my ($self, $table, $unique_key) = @_;
+	my ($self, $table, $unique_key, $partition) = @_;
 
 	my $out = '';
 
@@ -10104,13 +10105,20 @@ sub _create_unique_keys
 				$conscols[$i] = $self->{replaced_cols}{"\L$tbsaved\E"}{"\L$conscols[$i]\E"};
 			}
 		}
-
 		# Add the partition column if it is not is the PK
 		if (($constype eq 'P' || $constype eq 'U') && exists $self->{partitions_list}{"\L$tbsaved\E"})
 		{
 			for (my $j = 0; $j <= $#{$self->{partitions_list}{"\L$tbsaved\E"}{columns}}; $j++)
 			{
 				push(@conscols, $self->{partitions_list}{"\L$tbsaved\E"}{columns}[$j]) if (!grep(/^$self->{partitions_list}{"\L$tbsaved\E"}{columns}[$j]$/i, @conscols));
+			}
+
+			if ($partition)
+			{
+				for (my $j = 0; $j <= $#{$self->{subpartitions_list}{"\L$tbsaved\E"}{"\L$partition\E"}{columns}}; $j++)
+				{
+					push(@conscols, $self->{subpartitions_list}{"\L$tbsaved\E"}{"\L$partition\E"}{columns}[$j]) if (!grep(/^$self->{subpartitions_list}{"\L$tbsaved\E"}{"\L$partition\E"}{columns}[$j]$/i, @conscols));
+				}
 			}
 		}
 		map { $_ = $self->quote_object_name($_) } @conscols;
