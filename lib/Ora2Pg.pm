@@ -7765,11 +7765,12 @@ sub export_table
 		}
 
 		# Change ownership
-		if ($self->{force_owner})
+		if ($self->{force_owner} && length($sql_output) > 2)
 		{
 			my $owner = $self->{tables}{$table}{table_info}{owner};
 			$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
-			$sql_output .= "ALTER$foreign $self->{tables}{$table}{table_info}{type} " .  $self->quote_object_name($tbname)
+			$sql_output .= "ALTER $foreign " . ($self->{tables}{$table}{table_info}{type} || 'TABLE')
+		       				.  " " .$self->quote_object_name($tbname)
 						. " OWNER TO " .  $self->quote_object_name($owner) . ";\n";
 		}
 		if (exists $self->{tables}{$table}{alter_index} && $self->{tables}{$table}{alter_index})
