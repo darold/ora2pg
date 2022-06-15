@@ -7765,7 +7765,7 @@ sub export_table
 		}
 
 		# Change ownership
-		if ($self->{force_owner} && length($sql_output) > 2)
+		if ($self->{force_owner} && $sql_output =~ /$tbname/is )
 		{
 			my $owner = $self->{tables}{$table}{table_info}{owner};
 			$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
