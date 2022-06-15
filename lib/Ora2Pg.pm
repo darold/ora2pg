@@ -6941,8 +6941,9 @@ BEGIN
 							}
 
 							# Set the unique (and primary) key definition 
-							$idx = $self->_create_unique_keys($table, $self->{tables}{$table}{unique_key});
-							if ($idx) {
+							$idx = $self->_create_unique_keys($table, $self->{tables}{$table}{unique_key}, $part);
+							if ($idx)
+							{
 								$create_table_index_tmp .= "-- Reproduce subpartition unique indexes / pk that was defined on the parent table\n";
 								$idx =~ s/ $table/ $tb_name2/igs;
 								# remove indexes already created
@@ -7797,11 +7798,12 @@ sub export_table
 		}
 
 		# Change ownership
-		if ($self->{force_owner})
+		if ($self->{force_owner} && $sql_output =~ /$tbname/is )
 		{
 			my $owner = $self->{tables}{$table}{table_info}{owner};
 			$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
-			$sql_output .= "ALTER$foreign $self->{tables}{$table}{table_info}{type} " .  $self->quote_object_name($tbname)
+			$sql_output .= "ALTER $foreign " . ($self->{tables}{$table}{table_info}{type} || 'TABLE')
+		       				.  " " .$self->quote_object_name($tbname)
 						. " OWNER TO " .  $self->quote_object_name($owner) . ";\n";
 		}
 		if (exists $self->{tables}{$table}{alter_index} && $self->{tables}{$table}{alter_index})
@@ -7871,23 +7873,7 @@ BEGIN
         query := 'SELECT max($qt' || colname || '$qt)+1 FROM $qt' || tbname || '$qt';
         EXECUTE query INTO maxval;
         IF (maxval IS NOT NULL) THEN
-};
-		if ($self->{pg_version} < 12)
-		{
-			$fct_sequence .= qq{
-                query := \$\$SELECT (string_to_array(adsrc,''''))[2] FROM pg_attrdef WHERE adrelid = '\$\$
-                        || tbname || \$\$'::regclass AND adnum = (SELECT attnum FROM pg_attribute WHERE attrelid = '\$\$
-                        || tbname || \$\$'::regclass AND attname = '\$\$ || colname || \$\$') AND adsrc LIKE 'nextval%'\$\$;
-};
-		}
-		else
-		{
-			$fct_sequence .= qq{
 		query := \$\$SELECT pg_get_serial_sequence ('$qt\$\$|| tbname || \$\$$qt', '\$\$ || colname || \$\$');\$\$;
-};
-		}
-
-		$fct_sequence .= qq{
                 EXECUTE query INTO seqname;
                 IF (seqname IS NOT NULL) THEN
                         query := 'ALTER SEQUENCE ' || seqname || ' RESTART WITH ' || maxval;
@@ -10125,7 +10111,7 @@ This function return SQL code to create unique and primary keys of a table
 =cut
 sub _create_unique_keys
 {
-	my ($self, $table, $unique_key) = @_;
+	my ($self, $table, $unique_key, $partition) = @_;
 
 	my $out = '';
 
@@ -10155,13 +10141,20 @@ sub _create_unique_keys
 				$conscols[$i] = $self->{replaced_cols}{"\L$tbsaved\E"}{"\L$conscols[$i]\E"};
 			}
 		}
-
 		# Add the partition column if it is not is the PK
 		if (($constype eq 'P' || $constype eq 'U') && exists $self->{partitions_list}{"\L$tbsaved\E"})
 		{
 			for (my $j = 0; $j <= $#{$self->{partitions_list}{"\L$tbsaved\E"}{columns}}; $j++)
 			{
 				push(@conscols, $self->{partitions_list}{"\L$tbsaved\E"}{columns}[$j]) if (!grep(/^$self->{partitions_list}{"\L$tbsaved\E"}{columns}[$j]$/i, @conscols));
+			}
+
+			if ($partition)
+			{
+				for (my $j = 0; $j <= $#{$self->{subpartitions_list}{"\L$tbsaved\E"}{"\L$partition\E"}{columns}}; $j++)
+				{
+					push(@conscols, $self->{subpartitions_list}{"\L$tbsaved\E"}{"\L$partition\E"}{columns}[$j]) if (!grep(/^$self->{subpartitions_list}{"\L$tbsaved\E"}{"\L$partition\E"}{columns}[$j]$/i, @conscols));
+				}
 			}
 		}
 		map { $_ = $self->quote_object_name($_) } @conscols;
@@ -12966,7 +12959,7 @@ sub _convert_package
 		}
 		if ($self->{file_per_function})
 		{
-			my $dir = lc("$dirprefix$pname");
+			my $dir = "$dirprefix$pname";
 			if (!-d "$dir") {
 				if (not mkdir($dir)) {
 					$self->logit("Fail creating directory package : $dir - $!\n", 1);
