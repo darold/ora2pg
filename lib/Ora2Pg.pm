@@ -7838,23 +7838,7 @@ BEGIN
         query := 'SELECT max($qt' || colname || '$qt)+1 FROM $qt' || tbname || '$qt';
         EXECUTE query INTO maxval;
         IF (maxval IS NOT NULL) THEN
-};
-		if ($self->{pg_version} < 12)
-		{
-			$fct_sequence .= qq{
-                query := \$\$SELECT (string_to_array(adsrc,''''))[2] FROM pg_attrdef WHERE adrelid = '\$\$
-                        || tbname || \$\$'::regclass AND adnum = (SELECT attnum FROM pg_attribute WHERE attrelid = '\$\$
-                        || tbname || \$\$'::regclass AND attname = '\$\$ || colname || \$\$') AND adsrc LIKE 'nextval%'\$\$;
-};
-		}
-		else
-		{
-			$fct_sequence .= qq{
 		query := \$\$SELECT pg_get_serial_sequence ('$qt\$\$|| tbname || \$\$$qt', '\$\$ || colname || \$\$');\$\$;
-};
-		}
-
-		$fct_sequence .= qq{
                 EXECUTE query INTO seqname;
                 IF (seqname IS NOT NULL) THEN
                         query := 'ALTER SEQUENCE ' || seqname || ' RESTART WITH ' || maxval;
