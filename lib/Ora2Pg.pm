@@ -12878,7 +12878,7 @@ sub _convert_package
 		}
 		if ($self->{file_per_function})
 		{
-			my $dir = "$dirprefix$pname";
+			my $dir = "$dirprefix".lc("$pname");
 			if (!-d "$dir") {
 				if (not mkdir($dir)) {
 					$self->logit("Fail creating directory package : $dir - $!\n", 1);
