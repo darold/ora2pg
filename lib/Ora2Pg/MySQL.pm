@@ -942,10 +942,10 @@ sub _lookup_function
 		}
 		# Now convert types
 		if ($fct_detail{args}) {
-			$fct_detail{args} = replace_sql_type($fct_detail{args}, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type}, %{ $self->{data_type} });
+			$fct_detail{args} = replace_sql_type($self, $fct_detail{args});
 		}
 		if ($fct_detail{declare}) {
-			$fct_detail{declare} = replace_sql_type($fct_detail{declare}, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type}, %{ $self->{data_type} });
+			$fct_detail{declare} = replace_sql_type($self, $fct_detail{declare});
 		}
 
 		$fct_detail{args} =~ s/\s+/ /gs;
@@ -1180,14 +1180,14 @@ sub _sql_type
 
 sub replace_sql_type
 {
-        my ($str, $pg_numeric_type, $default_numeric, $pg_integer_type, %data_type) = @_;
+        my ($self, $str) = @_;
 
 	$str =~ s/with local time zone/with time zone/igs;
 	$str =~ s/([A-Z])ORA2PG_COMMENT/$1 ORA2PG_COMMENT/igs;
 
 	# Remove any reference to UNSIGNED AND ZEROFILL
 	# but translate CAST( ... AS unsigned) before.
-	$str =~ s/(\s+AS\s+)UNSIGNED/$1$data_type{'UNSIGNED'}/gis;
+	$str =~ s/(\s+AS\s+)UNSIGNED/$1$self->{data_type}{'UNSIGNED'}/gis;
 	$str =~ s/\b(UNSIGNED|ZEROFILL)\b//gis;
 
 	# Remove BINARY from CHAR(n) BINARY and VARCHAR(n) BINARY
@@ -1196,7 +1196,7 @@ sub replace_sql_type
 
 	# Replace type with precision
 	my $mysqltype_regex = '';
-	foreach (keys %data_type) {
+	foreach (keys %{$self->{data_type}}) {
 		$mysqltype_regex .= quotemeta($_) . '|';
 	}
 	$mysqltype_regex =~ s/\|$//;
@@ -1210,8 +1210,8 @@ sub replace_sql_type
 			$str =~ s/\)/\%\|\%/s;
 			next;
 		}
-		if (exists $data_type{"$type($args)"}) {
-			$str =~ s/\b$type\($args\)/$data_type{"$type($args)"}/igs;
+		if (exists $self->{data_type}{"$type($args)"}) {
+			$str =~ s/\b$type\($args\)/$self->{data_type}{"$type($args)"}/igs;
 			next;
 		}
 		if ($backstr =~ /_$/) {
@@ -1227,11 +1227,11 @@ sub replace_sql_type
 			# Type CHAR have default length set to 1
 			# Type VARCHAR must have a specified length
 			$len = 1 if (!$len && ($type eq "CHAR"));
-			$str =~ s/\b$type\b\s*\([^\)]+\)/$data_type{$type}\%\|$len\%\|\%/is;
+			$str =~ s/\b$type\b\s*\([^\)]+\)/$self->{data_type}{$type}\%\|$len\%\|\%/is;
 		} elsif ($precision && ($type =~ /(BIT|TINYINT|SMALLINT|MEDIUMINT|INTEGER|BIGINT|INT|REAL|DOUBLE|FLOAT|DECIMAL|NUMERIC)/)) {
 			if (!$scale) {
 				if ($type =~ /(BIT|TINYINT|SMALLINT|MEDIUMINT|INTEGER|BIGINT|INT)/) {
-					if ($pg_integer_type) {
+					if ($self->{pg_integer_type}) {
 						if ($precision < 5) {
 							$str =~ s/\b$type\b\s*\([^\)]+\)/smallint/is;
 						} elsif ($precision <= 9) {
@@ -1243,13 +1243,13 @@ sub replace_sql_type
 						$str =~ s/\b$type\b\s*\([^\)]+\)/numeric\%\|$precision\%\|\%/i;
 					}
 				} else {
-					$str =~ s/\b$type\b\s*\([^\)]+\)/$data_type{$type}\%\|$precision\%\|\%/is;
+					$str =~ s/\b$type\b\s*\([^\)]+\)/$self->{data_type}{$type}\%\|$precision\%\|\%/is;
 				}
 			} else {
 				if ($type =~ /DOUBLE/) {
 					$str =~ s/\b$type\b\s*\([^\)]+\)/decimal\%\|$args\%\|\%/is;
 				} else {
-					$str =~ s/\b$type\b\s*\([^\)]+\)/$data_type{$type}\%\|$args\%\|\%/is;
+					$str =~ s/\b$type\b\s*\([^\)]+\)/$self->{data_type}{$type}\%\|$args\%\|\%/is;
 				}
 			}
 		} else {
@@ -1264,11 +1264,11 @@ sub replace_sql_type
 	# Replace datatype even without precision
 	my %recover_type = ();
 	my $i = 0;
-	foreach my $type (sort { length($b) <=> length($a) } keys %data_type) {
+	foreach my $type (sort { length($b) <=> length($a) } keys %{$self->{data_type}}) {
 		# Keep enum as declared, we are not in table definition
 		next if (uc($type) eq 'ENUM');
 		while ($str =~ s/\b$type\b/%%RECOVER_TYPE$i%%/is) {
-			$recover_type{$i} = $data_type{$type};
+			$recover_type{$i} = $self->{data_type}{$type};
 			$i++;
 		}
 	}
@@ -2039,7 +2039,8 @@ sub _get_plsql_metadata
 	$sth->finish();
 
 	# Look for functions/procedures
-	foreach my $name (sort keys %{$self->{function_metadata}{'unknown'}{'none'}}) {
+	foreach my $name (sort keys %{$self->{function_metadata}{'unknown'}{'none'}})
+	{
 		# Retrieve metadata for this function after removing comments
 		$self->_remove_comments(\$self->{function_metadata}{'unknown'}{'none'}{$name}{text}, 1);
 		$self->{comment_values} = ();

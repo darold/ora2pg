@@ -459,25 +459,11 @@ sub convert_plsql_code
 		foreach my $k (keys %{$class->{single_fct_call}})
 		{
 			$class->{single_fct_call}{$k} = replace_oracle_function($class, $class->{single_fct_call}{$k}, @strings);
-			if ($class->{single_fct_call}{$k} =~ /^CAST\s*\(/i)
-			{
-				if ($class->{is_mysql}) {
-					$class->{single_fct_call}{$k} = Ora2Pg::MySQL::replace_sql_type($class->{single_fct_call}{$k}, $class->{pg_numeric_type}, $class->{default_numeric}, $class->{pg_integer_type}, $class->{varchar_to_text}, %{$class->{data_type}});
-				} elsif ($class->{is_mssql}) {
-					$class->{single_fct_call}{$k} = Ora2Pg::MSSQL::replace_sql_type($class->{single_fct_call}{$k}, $class->{pg_numeric_type}, $class->{default_numeric}, $class->{pg_integer_type}, $class->{varchar_to_text}, %{$class->{data_type}});
-				} else {
-					$class->{single_fct_call}{$k} = Ora2Pg::PLSQL::replace_sql_type($class->{single_fct_call}{$k}, $class->{pg_numeric_type}, $class->{default_numeric}, $class->{pg_integer_type}, $class->{varchar_to_text}, %{$class->{data_type}});
-				}
+			if ($class->{single_fct_call}{$k} =~ /^CAST\s*\(/i) {
+				$class->{single_fct_call}{$k} = replace_sql_type($class, $class->{single_fct_call}{$k});
 			}
-			if ($class->{single_fct_call}{$k} =~ /^CAST\s*\(.*\%\%REPLACEFCT(\d+)\%\%/i)
-			{
-				if (!$class->{is_mysql}) {
-					$class->{single_fct_call}{$1} = Ora2Pg::MySQL::replace_sql_type($class->{single_fct_call}{$1}, $class->{pg_numeric_type}, $class->{default_numeric}, $class->{pg_integer_type}, $class->{varchar_to_text}, %{$class->{data_type}});
-				} elsif (!$class->{is_mssql}) {
-					$class->{single_fct_call}{$1} = Ora2Pg::MSSQL::replace_sql_type($class->{single_fct_call}{$1}, $class->{pg_numeric_type}, $class->{default_numeric}, $class->{pg_integer_type}, $class->{varchar_to_text}, %{$class->{data_type}});
-				} else {
-					$class->{single_fct_call}{$1} = Ora2Pg::PLSQL::replace_sql_type($class->{single_fct_call}{$1}, $class->{pg_numeric_type}, $class->{default_numeric}, $class->{pg_integer_type}, $class->{varchar_to_text}, %{$class->{data_type}});
-				}
+			if ($class->{single_fct_call}{$k} =~ /^CAST\s*\(.*\%\%REPLACEFCT(\d+)\%\%/i) {
+				$class->{single_fct_call}{$1} = replace_sql_type($class, $class->{single_fct_call}{$1});
 			}
 		}
 		while ($code_parts[$i] =~ s/\%\%REPLACEFCT(\d+)\%\%/$class->{single_fct_call}{$1}/) {};
@@ -976,11 +962,7 @@ sub plsql_to_plpgsql
 	}
 
 	# Replace type in sub block
-	if (!$class->{is_mysql}) {
-		$str =~ s/(BEGIN.*?DECLARE\s+)(.*?)(\s+BEGIN)/$1 . Ora2Pg::PLSQL::replace_sql_type($2, $class->{pg_numeric_type}, $class->{default_numeric}, $class->{pg_integer_type}, $class->{varchar_to_text}, %{$class->{data_type}}) . $3/iges;
-	} else {
-		$str =~ s/(BEGIN.*?DECLARE\s+)(.*?)(\s+BEGIN)/$1 . Ora2Pg::MySQL::replace_sql_type($2, $class->{pg_numeric_type}, $class->{default_numeric}, $class->{pg_integer_type}, $class->{varchar_to_text}, %{$class->{data_type}}) . $3/iges;
-	}
+	$str =~ s/(BEGIN.*?DECLARE\s+)(.*?)(\s+BEGIN)/$1 . replace_sql_type($class, $2) . $3/iges;
 
 	# Remove any call to MDSYS schema in the code
 	$str =~ s/\bMDSYS\.//igs;
@@ -2154,7 +2136,7 @@ sub raise_output
 
 sub replace_sql_type
 {
-        my ($str, $pg_numeric_type, $default_numeric, $pg_integer_type, $varchar_to_text, %data_type) = @_;
+        my ($self, $str) = @_;
 
 	# Remove the SYS schema from type name
 	$str =~ s/\bSYS\.//igs;
@@ -2173,7 +2155,7 @@ sub replace_sql_type
 	$str =~ s/\b(RAW|BLOB)\s*\(\s*\d+\s*\)/$1/igs;
 
 	# Replace type with precision
-	my @ora_type = keys %data_type;
+	my @ora_type = keys %{$self->{data_type}};
 	map { s/\(/\\\(/; s/\)/\\\)/; } @ora_type;
 	my $oratype_regex = join('|', @ora_type);
 
@@ -2201,7 +2183,7 @@ sub replace_sql_type
 			# Type CHAR have default length set to 1
 			# Type VARCHAR(2) must have a specified length
 			$len = 1 if (!$len && (($type eq "CHAR") || ($type eq "NCHAR")));
-			$str =~ s/\b$type\b\s*\([^\)]+\)/$data_type{$type}\%\|$len\%\|\%/is;
+			$str =~ s/\b$type\b\s*\([^\)]+\)/$self->{data_type}{$type}\%\|$len\%\|\%/is;
 		}
 		elsif ($type =~ /TIMESTAMP/i)
 		{
@@ -2229,7 +2211,7 @@ sub replace_sql_type
 			{
 				if ($precision)
 				{
-					if ($pg_integer_type)
+					if ($self->{pg_integer_type})
 					{
 						if ($precision < 5) {
 							$str =~ s/\b$type\b\s*\([^\)]+\)/smallint/is;
@@ -2244,15 +2226,15 @@ sub replace_sql_type
 						$str =~ s/\b$type\b\s*\([^\)]+\)/numeric\%\|$precision\%\|\%/i;
 					}
 				}
-				elsif ($pg_integer_type)
+				elsif ($self->{pg_integer_type})
 				{
-					my $tmp = $default_numeric || 'bigint';
+					my $tmp = $self->{default_numeric} || 'bigint';
 					$str =~ s/\b$type\b\s*\([^\)]+\)/$tmp/is;
 				}
 			}
 			else
 			{
-				if ($pg_numeric_type)
+				if ($self->{pg_numeric_type})
 				{
 					if ($precision eq '') {
 						$str =~ s/\b$type\b\s*\([^\)]+\)/decimal(38, $scale)/is;
@@ -2288,14 +2270,14 @@ sub replace_sql_type
 	$str =~ s/\%\|/\(/gs;
 
         # Replace datatype without precision
-	my $number = $data_type{'NUMBER'};
-	$number = $default_numeric if ($pg_integer_type);
+	my $number = $self->{data_type}{'NUMBER'};
+	$number = $self->{default_numeric} if ($self->{pg_integer_type});
 	$str =~ s/\bNUMBER\b/$number/igs;
 
 	# Set varchar without length to text
 	$str =~ s/\bVARCHAR2\b/VARCHAR/igs;
 	$str =~ s/\bSTRING\b/VARCHAR/igs;
-	if ($varchar_to_text) {
+	if ($self->{varchar_to_text}) {
 		$str =~ s/\bVARCHAR\b(\s*(?!\())/text$1/igs;
 	} else {
 		$str =~ s/\bVARCHAR\b(\s*(?!\())/varchar$1/igs;
@@ -2304,25 +2286,22 @@ sub replace_sql_type
 	foreach my $t ('DATE','LONG RAW','LONG','NCLOB','CLOB','BLOB','BFILE','RAW','ROWID','UROWID','FLOAT','DOUBLE PRECISION','INTEGER','INT','REAL','SMALLINT','BINARY_FLOAT','BINARY_DOUBLE','BINARY_INTEGER','BOOLEAN','XMLTYPE','SDO_GEOMETRY','PLS_INTEGER','NUMBER')
 	{
 		if ($t eq 'DATE') {
-			$str =~ s/\b$t\s*\(\d\)/$data_type{$t}/igs;
+			$str =~ s/\b$t\s*\(\d\)/$self->{data_type}{$t}/igs;
 		}
 		elsif ($t eq 'NUMBER')
 		{
-			if ($pg_integer_type)
+			if ($self->{pg_integer_type})
 			{
-				my $tmp = $default_numeric || 'bigint';
+				my $tmp = $self->{default_numeric} || 'bigint';
 				$str =~ s/\b$t\b/$tmp/igs;
 				next;
 			}
 		}
-		$str =~ s/\b$t\b/$data_type{$t}/igs;
+		$str =~ s/\b$t\b/$self->{data_type}{$t}/igs;
 	}
 
 	# Translate cursor declaration
 	$str = replace_cursor_def($str);
-
-	# Remove remaining %ROWTYPE in other prototype declaration
-	#$str =~ s/\%ROWTYPE//isg;
 
 	$str =~ s/;[ ]+/;/gs;
 

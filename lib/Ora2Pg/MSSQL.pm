@@ -75,8 +75,11 @@ sub _db_connection
 			'RaiseError' => 1,
 			AutoInactiveDestroy => 1,
 			odbc_cursortype => 2,
+			PrintError => 0,
 		}
 	);
+	$dbh->{LongReadLen} = $self->{longreadlen} if ($self->{longreadlen});
+	$dbh->{LongTruncOk} = $self->{longtruncok} if (defined $self->{longtruncok});
 
 	# Check for connection failure
 	if (!$dbh) {
@@ -288,7 +291,7 @@ WHERE t.is_ms_shipped = 0 AND i.OBJECT_ID > 255 AND t.type='U' AND t.NAME NOT LI
 		$tables_infos{$row->[0]}{num_rows} = $row->[3] || 0;
 		$tables_infos{$row->[0]}{comment} = ''; # SQL Server doesn't have COMMENT and we don't play with "Extended Properties"
 		$tables_infos{$row->[0]}{type} =  $comments{$row->[0]}{table_type} || '';
-		$tables_infos{$row->[0]}{nested} = '';
+		$tables_infos{$row->[0]}{nested} = 'NO';
 		$tables_infos{$row->[0]}{size} = sprintf("%.3f", $row->[5]) || 0;
 		$tables_infos{$row->[0]}{tablespace} = 0;
 		$tables_infos{$row->[0]}{auto_increment} = 0;
@@ -364,7 +367,6 @@ ORDER BY c.column_id};
 	if (!$sth) {
 		$self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	}
-	$sth->{'LongReadLen'} = 1000000;
 	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
 	# Expected columns information stored in hash 
@@ -507,7 +509,7 @@ ORDER BY T.name, Id.index_id, IC.key_ordinal
 	$sth->finish();
 	my $t1 = Benchmark->new;
 	my $td = timediff($t1, $t0);
-	$self->logit("Collecting $nidx indexes in $self->{prefix}_INDEXES took: " . timestr($td) . "\n", 1);
+	$self->logit("Collecting $nidx indexes in sys.indexes took: " . timestr($td) . "\n", 1);
 
 	return \%unique, \%data, \%idx_type, \%index_tablespace;
 }
@@ -650,7 +652,6 @@ WHERE NOT EXISTS (SELECT 1 FROM sys.indexes i WHERE i.object_id = v.object_id an
 
 
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-	$sth->{'LongReadLen'} = 1000000;
 	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
 	my %ordered_view = ();
@@ -1026,10 +1027,10 @@ sub _lookup_function
 		}
 		# Now convert types
 		if ($fct_detail{args}) {
-			$fct_detail{args} = replace_sql_type($fct_detail{args}, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type}, %{ $self->{data_type} });
+			$fct_detail{args} = replace_sql_type($self, $fct_detail{args});
 		}
 		if ($fct_detail{declare}) {
-			$fct_detail{declare} = replace_sql_type($fct_detail{declare}, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type}, %{ $self->{data_type} });
+			$fct_detail{declare} = replace_sql_type($self, $fct_detail{declare});
 		}
 
 		$fct_detail{args} =~ s/\s+/ /gs;
@@ -1264,14 +1265,14 @@ sub _sql_type
 
 sub replace_sql_type
 {
-        my ($str, $pg_numeric_type, $default_numeric, $pg_integer_type, %data_type) = @_;
+        my ($self,  $str) = @_;
 
 	$str =~ s/with local time zone/with time zone/igs;
 	$str =~ s/([A-Z])ORA2PG_COMMENT/$1 ORA2PG_COMMENT/igs;
 
 	# Remove any reference to UNSIGNED AND ZEROFILL
 	# but translate CAST( ... AS unsigned) before.
-	$str =~ s/(\s+AS\s+)UNSIGNED/$1$data_type{'UNSIGNED'}/gis;
+	$str =~ s/(\s+AS\s+)UNSIGNED/$1$self->{data_type}{'UNSIGNED'}/gis;
 	$str =~ s/\b(UNSIGNED|ZEROFILL)\b//gis;
 
 	# Remove BINARY from CHAR(n) BINARY and VARCHAR(n) BINARY
@@ -1280,11 +1281,13 @@ sub replace_sql_type
 
 	# Replace type with precision
 	my $mysqltype_regex = '';
-	foreach (keys %data_type) {
+	foreach (keys %{$self->{data_type}}) {
 		$mysqltype_regex .= quotemeta($_) . '|';
 	}
 	$mysqltype_regex =~ s/\|$//;
-	while ($str =~ /(.*)\b($mysqltype_regex)\s*\(([^\)]+)\)/i) {
+
+	while ($str =~ /(.*)\b($mysqltype_regex)\s*\(([^\)]+)\)/i)
+	{
 		my $backstr = $1;
 		my $type = uc($2);
 		my $args = $3;
@@ -1294,8 +1297,8 @@ sub replace_sql_type
 			$str =~ s/\)/\%\|\%/s;
 			next;
 		}
-		if (exists $data_type{"$type($args)"}) {
-			$str =~ s/\b$type\($args\)/$data_type{"$type($args)"}/igs;
+		if (exists $self->{data_type}{"$type($args)"}) {
+			$str =~ s/\b$type\($args\)/$self->{data_type}{"$type($args)"}/igs;
 			next;
 		}
 		if ($backstr =~ /_$/) {
@@ -1307,15 +1310,21 @@ sub replace_sql_type
 		$scale ||= 0;
 		my $len = $precision || 0;
 		$len =~ s/\D//;
-		if ( $type =~ /CHAR/i ) {
+		if ( $type =~ /CHAR/i )
+		{
 			# Type CHAR have default length set to 1
 			# Type VARCHAR must have a specified length
 			$len = 1 if (!$len && ($type eq "CHAR"));
-			$str =~ s/\b$type\b\s*\([^\)]+\)/$data_type{$type}\%\|$len\%\|\%/is;
-		} elsif ($precision && ($type =~ /(BIT|TINYINT|SMALLINT|MEDIUMINT|INTEGER|BIGINT|INT|REAL|DOUBLE|FLOAT|DECIMAL|NUMERIC)/)) {
-			if (!$scale) {
-				if ($type =~ /(BIT|TINYINT|SMALLINT|MEDIUMINT|INTEGER|BIGINT|INT)/) {
-					if ($pg_integer_type) {
+			$str =~ s/\b$type\b\s*\([^\)]+\)/$self->{data_type}{$type}\%\|$len\%\|\%/is;
+		}
+		elsif ($precision && ($type =~ /(BIT|TINYINT|SMALLINT|MEDIUMINT|INTEGER|BIGINT|INT|REAL|DOUBLE|FLOAT|DECIMAL|NUMERIC)/))
+		{
+			if (!$scale)
+			{
+				if ($type =~ /(BIT|TINYINT|SMALLINT|MEDIUMINT|INTEGER|BIGINT|INT)/)
+				{
+					if ($self->{pg_integer_type})
+					{
 						if ($precision < 5) {
 							$str =~ s/\b$type\b\s*\([^\)]+\)/smallint/is;
 						} elsif ($precision <= 9) {
@@ -1323,20 +1332,26 @@ sub replace_sql_type
 						} else {
 							$str =~ s/\b$type\b\s*\([^\)]+\)/bigint/is;
 						}
-					} else {
+					}
+					else {
 						$str =~ s/\b$type\b\s*\([^\)]+\)/numeric\%\|$precision\%\|\%/i;
 					}
-				} else {
-					$str =~ s/\b$type\b\s*\([^\)]+\)/$data_type{$type}\%\|$precision\%\|\%/is;
 				}
-			} else {
+				else {
+					$str =~ s/\b$type\b\s*\([^\)]+\)/$self->{data_type}{$type}\%\|$precision\%\|\%/is;
+				}
+			}
+			else
+			{
 				if ($type =~ /DOUBLE/) {
 					$str =~ s/\b$type\b\s*\([^\)]+\)/decimal\%\|$args\%\|\%/is;
 				} else {
-					$str =~ s/\b$type\b\s*\([^\)]+\)/$data_type{$type}\%\|$args\%\|\%/is;
+					$str =~ s/\b$type\b\s*\([^\)]+\)/$self->{data_type}{$type}\%\|$args\%\|\%/is;
 				}
 			}
-		} else {
+		}
+		else
+		{
 			# Prevent from infinit loop
 			$str =~ s/\(/\%\|/s;
 			$str =~ s/\)/\%\|\%/s;
@@ -1348,11 +1363,11 @@ sub replace_sql_type
 	# Replace datatype even without precision
 	my %recover_type = ();
 	my $i = 0;
-	foreach my $type (sort { length($b) <=> length($a) } keys %data_type) {
-		# Keep enum as declared, we are not in table definition
-		next if (uc($type) eq 'ENUM');
-		while ($str =~ s/\b$type\b/%%RECOVER_TYPE$i%%/is) {
-			$recover_type{$i} = $data_type{$type};
+	foreach my $type (sort { length($b) <=> length($a) } keys %{$self->{data_type}})
+	{
+		while ($str =~ s/\b$type\b/%%RECOVER_TYPE$i%%/is)
+		{
+			$recover_type{$i} = $self->{data_type}{$type};
 			$i++;
 		}
 	}
@@ -1361,6 +1376,9 @@ sub replace_sql_type
 		$str =~ s/\%\%RECOVER_TYPE$i\%\%/$recover_type{$i}/;
 	}
 
+	if (($self->{type} eq 'COPY' || $self->{type} eq 'INSERT') && exists $SQL_TYPE{uc($str)}) {
+		$str = $SQL_TYPE{uc($str)};
+	}
 	# Set varchar without length to text
 	$str =~ s/\bVARCHAR(\s*(?!\())/text$1/igs;
 
@@ -1926,7 +1944,45 @@ sub _extract_sequence_info
 {
 	my ($self) = shift;
 
-	return;
+        my $str = qq{SELECT
+  s.name,
+  s.minimum_value AS minimum_value,
+  s.maximum_value AS maximum_value,
+  s.increment AS increment,
+  s.current_value AS current_value,
+  s.cache_size AS cache_size,
+  s.is_cycling AS cycling,
+  n.name,
+  s.is_cached AS cached
+FROM sys.sequences s
+LEFT OUTER JOIN sys.schemas n ON s.schema_id = n.schema_id
+};
+	
+        if (!$self->{schema}) {
+                $str .= " WHERE n.name NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
+        } else {
+                $str .= " WHERE n.name = '$self->{schema}'";
+        }
+        $str .= $self->limit_to_objects('SEQUENCE', 's.name');
+
+        my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+        $sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+
+	my @script = ();
+        while (my $row = $sth->fetch)
+        {
+		$row->[5] = '' if ($row->[8]);
+                if (!$self->{schema} && $self->{export_schema}) {
+                        $row->[0] = $row->[7] . '.' . $row->[0];
+                }
+		my $nextvalue = $row->[4] + $row->[3];
+		my $alter = "ALTER SEQUENCE $self->{pg_supports_ifexists} " .  $self->quote_object_name($row->[0]) . " RESTART WITH $nextvalue;";
+		push(@script, $alter);
+		$self->logit("Extracted sequence information for sequence \"$row->[0]\", nextvalue: $nextvalue\n", 1);
+	}
+	$sth->finish();
+
+	return @script;
 }
 
 # MSSQL does not have sequences but we count auto_increment as sequences
@@ -1974,51 +2030,34 @@ sub _column_attributes
 {
 	my ($self, $table, $owner, $objtype) = @_;
 
-	$objtype ||= 'TABLE';
-
+	
 	my $condition = '';
 	if ($self->{schema}) {
-		$condition .= "AND TABLE_SCHEMA='$self->{schema}' ";
+		$condition .= "AND s.name='$self->{schema}' ";
 	}
-	$condition .= "AND TABLE_NAME='$table' " if ($table);
+	$condition .= "AND tb.name='$table' " if ($table);
 	if (!$table) {
-		$condition .= $self->limit_to_objects('TABLE', 'TABLE_NAME');
+		$condition .= $self->limit_to_objects('TABLE', 'tb.name');
 	} else {
 		@{$self->{query_bind_params}} = ();
 	}
-	$condition =~ s/^AND/WHERE/;
+	$condition =~ s/^\s*AND\s/ WHERE /;
 
-	# TABLE_CATALOG            | varchar(512)        | NO   |     |         |       |
-	# TABLE_SCHEMA             | varchar(64)         | NO   |     |         |       |
-	# TABLE_NAME               | varchar(64)         | NO   |     |         |       |
-	# COLUMN_NAME              | varchar(64)         | NO   |     |         |       |
-	# ORDINAL_POSITION         | bigint(21) unsigned | NO   |     | 0       |       |
-	# COLUMN_DEFAULT           | longtext            | YES  |     | NULL    |       |
-	# IS_NULLABLE              | varchar(3)          | NO   |     |         |       |
-	# DATA_TYPE                | varchar(64)         | NO   |     |         |       |
-	# CHARACTER_MAXIMUM_LENGTH | bigint(21) unsigned | YES  |     | NULL    |       |
-	# CHARACTER_OCTET_LENGTH   | bigint(21) unsigned | YES  |     | NULL    |       |
-	# NUMERIC_PRECISION        | bigint(21) unsigned | YES  |     | NULL    |       |
-	# NUMERIC_SCALE            | bigint(21) unsigned | YES  |     | NULL    |       |
-	# CHARACTER_SET_NAME       | varchar(32)         | YES  |     | NULL    |       |
-	# COLLATION_NAME           | varchar(32)         | YES  |     | NULL    |       |
-	# COLUMN_TYPE              | longtext            | NO   |     | NULL    |       |
-	# COLUMN_KEY               | varchar(3)          | NO   |     |         |       |
-	# EXTRA                    | varchar(27)         | NO   |     |         |       |
-	# PRIVILEGES               | varchar(80)         | NO   |     |         |       |
-	# COLUMN_COMMENT           | varchar(1024)       | NO   |     |         |       |
-
-	my $sql = qq{SELECT COLUMN_NAME, IS_NULLABLE,
-	(CASE WHEN COLUMN_DEFAULT IS NOT NULL THEN COLUMN_DEFAULT ELSE EXTRA END) AS COLUMN_DEFAULT,
-	TABLE_NAME, DATA_TYPE, ORDINAL_POSITION
-FROM INFORMATION_SCHEMA.COLUMNS
+	my $sql = qq{SELECT 
+    c.name 'Column Name',
+    c.is_nullable,
+    object_definition(c.default_object_id),
+    tb.name,
+    t.Name 'Data type',
+    c.column_id,
+    s.name
+FROM sys.columns c
+INNER JOIN sys.types t ON t.user_type_id = c.user_type_id
+INNER JOIN sys.tables AS tb ON tb.object_id = c.object_id
+INNER JOIN sys.schemas AS s ON s.schema_id = tb.schema_id
 $condition
-ORDER BY ORDINAL_POSITION
-};
+ORDER BY c.column_id};
 
-	if ($self->{db_version} < '5.5.0') {
-		$sql =~ s/\bDATA_TYPE\b/DTD_IDENTIFIER/;
-	}
 	my $sth = $self->{dbh}->prepare($sql);
 	if (!$sth) {
 		$self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -2173,7 +2212,6 @@ FROM sys.sql_modules AS sm
 JOIN sys.objects AS o ON sm.object_id = o.object_id $schema_clause
 ORDER BY 1;};
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-	$sth->{'LongReadLen'} = 1000000;
 	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
 	my %functions = ();
@@ -2261,7 +2299,6 @@ join sys.sql_modules m on m.object_id = v.object_id
 	$str .= " ORDER BY schema_name, view_name";
 
 	my $sth = $self->{dbh}->prepare($str);
-	$sth->{'LongReadLen'} = 1000000;
 	if (not defined $sth) {
 		$self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	}
@@ -2376,13 +2413,13 @@ WHERE t1.is_user_defined = 1 AND t2.name <> 'sysname'};
 	my $local_dbh = _db_connection($self);
 
 	my $sth = $local_dbh->prepare($str) or $self->logit("FATAL: " . $local_dbh->errstr . "\n", 0, 1);
-	$sth->{'LongReadLen'} = 1000000;
 	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $local_dbh->errstr . "\n", 0, 1);
 
 	my @types = ();
 	my @fct_done = ();
 	while (my $row = $sth->fetch)
 	{
+		my $origname = $row->[0];
 		if (!$self->{schema} && $self->{export_schema}) {
 			$row->[0] = "$row->[1].$row->[0]";
 		}
@@ -2415,6 +2452,13 @@ WHERE t1.is_user_defined = 1 AND t2.name <> 'sysname'};
 				$rule =~ s/[\r\n]+/ /gs;
 			}
 			$tmp{code} = "CREATE TYPE $row->[0] FROM $row->[2]$precision$notnull$default$rule;";
+			# Add domain type to main type convertion hash
+			if ($self->{is_mssql} && !exists $self->{data_type}{uc($origname)}
+					&& ($self->{type} eq 'COPY' || $self->{type} eq 'INSERT')
+			)
+			{
+				$self->{data_type}{uc($origname)} = replace_sql_type($self, $row->[2]);
+			}
 		}
 		$tmp{name} = $row->[0];
 		$tmp{owner} = $row->[1];
@@ -2458,7 +2502,6 @@ LEFT OUTER JOIN sys.schemas s ON t1.schema_id = s.schema_id
 	$str .= " ORDER BY t1.name, c.column_id";
 
 	$sth = $local_dbh->prepare($str) or $self->logit("FATAL: " . $local_dbh->errstr . "\n", 0, 1);
-	$sth->{'LongReadLen'} = 1000000;
 	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $local_dbh->errstr . "\n", 0, 1);
 
 	my $current_type = '';

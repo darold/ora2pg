@@ -1273,10 +1273,13 @@ sub _init
 	# Preload our dedicated function per DBMS
 	if ($self->{is_mysql}) {
 		import Ora2Pg::MySQL;
+		$self->{sgbd_name} = 'MySQL';
 	} elsif ($self->{is_mssql}) {
 		import Ora2Pg::MSSQL;
+		$self->{sgbd_name} = 'MSSQL';
 	} else {
 		import Ora2Pg::Oracle;
+		$self->{sgbd_name} = 'Oracle';
 	}
 
 	# Log file handle
@@ -1397,6 +1400,9 @@ sub _init
 	$self->{disable_partition} ||= 0;
 	$self->{parallel_tables} ||= 0;
 	$self->{use_lob_locator} ||= 0;
+
+        $self->{disable_partition} = 1 if ($self->{is_mssql} and
+                                ($self->{type} eq 'COPY' or $self->{type} eq 'INSERT'));
 
 	# Transformation and output during data export
 	$self->{oracle_speed} ||= 0;
@@ -1542,10 +1548,12 @@ sub _init
 	if ($self->{longtrunkok} && not defined $self->{longtruncok}) {
 		$self->{longtruncok} = $self->{longtrunkok};
 	}
+	$self->{use_lob_locator} = 0 if ($self->{is_mssql});
 	$self->{longtruncok} = 0 if (not defined $self->{longtruncok});
 	# With lob locators LONGREADLEN must at least be 1MB
 	if (!$self->{longreadlen} || $self->{use_lob_locator}) {
 		$self->{longreadlen} = (1023*1024);
+		$self->{longtruncok} = 1;
 	}
 
 	# Backward compatibility with PG_NUMERIC_TYPE alone
@@ -1751,6 +1759,11 @@ sub _init
 		}
 		for my $t (keys %{$self->{'exclude_columns'}}) {
 			$self->exclude_columns($t, @{$self->{'exclude_columns'}{$t}});
+		}
+		# Look for custom data type
+		if ($self->{is_mssql}) {
+			$self->logit("Looking for user defined data type of type FROM => DOMAIN...\n", 1);
+			$self->_get_types();
 		}
 	}
 
@@ -5089,6 +5102,21 @@ sub export_directory
 	return;
 }
 
+sub _replace_sql_type
+{
+	my ($self, $str) = @_;
+
+	if ($self->{is_mysql}) {
+		$str = Ora2Pg::MySQL::replace_sql_type($self, $str);
+	} elsif ($self->{is_mssql}) {
+		$str = Ora2Pg::MSSQL::replace_sql_type($self, $str);
+	} else {
+		$str = Ora2Pg::PLSQL::replace_sql_type($self, $str);
+	}
+
+	return $str;
+}
+
 =head2 export_trigger
 
 Export Oracle trigger into PostgreSQL compatible SQL statements.
@@ -5241,13 +5269,8 @@ sub export_trigger
 					$trig->[4] =~ s/(?:$ret_kind\s+)?\b(END[;]*)(\s*\%ORA2PG_COMMENT\d+\%\s*)?[\s\/]*$/$ret_kind\n$1$2/igs;
 					# Look at function header to convert sql type
 					my @parts = split(/BEGIN/i, $trig->[4]);
-					if ($#parts > 0)
-					{
-						if (!$self->{is_mysql}) {
-							$parts[0] = Ora2Pg::PLSQL::replace_sql_type($parts[0], $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type}, $self->{varchar_to_text}, %{$self->{data_type}});
-						} else {
-							$parts[0] = Ora2Pg::MySQL::replace_sql_type($parts[0], $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type}, $self->{varchar_to_text}, %{$self->{data_type}});
-						}
+					if ($#parts > 0) {
+						$parts[0] = $self->_replace_sql_type($parts[0]);
 					}
 					$trig->[4] = join('BEGIN', @parts);
 					$trig->[4] =~ s/\bRETURN\s*;/$ret_kind/igs;
@@ -10412,6 +10435,8 @@ sub _extract_sequence_info
 
 	if ($self->{is_mysql}) {
 		return Ora2Pg::MySQL::_extract_sequence_info($self);
+	} elsif ($self->{is_mssql}) {
+		return Ora2Pg::MSSQL::_extract_sequence_info($self);
 	} else {
 		return Ora2Pg::Oracle::_extract_sequence_info($self);
 	}
@@ -10434,7 +10459,20 @@ sub _howto_get_data
 	my $realtable = $table;
 	$realtable =~ s/\"//g;
 	# Do not use double quote with mysql, but backquote
-	if (!$self->{is_mysql})
+	if ($self->{is_mysql})
+	{
+		$realtable =~ s/\`//g;
+		$realtable = "\`$realtable\`";
+	}
+	elsif ($self->{is_mssql})
+	{
+		$realtable =~ s/[\[\]]+//g;
+		$realtable = "\[$realtable\]";
+		if (!$self->{schema} && $self->{export_schema}) {
+			$realtable =~ s/\./\].\[/;
+		}
+	}
+	else
 	{
 		if (!$self->{schema} && $self->{export_schema})
 		{
@@ -10452,11 +10490,6 @@ sub _howto_get_data
 				$realtable = "$owner.$realtable";
 			}
 		}
-	}
-	else
-	{
-		$realtable =~ s/\`//g;
-		$realtable = "\`$realtable\`";
 	}
 
 	delete $self->{nullable}{$table};
@@ -10481,16 +10514,22 @@ sub _howto_get_data
 			my $realcolname = $name->[$k];
 			my $spatial_srid = '';
 			$self->{nullable}{$table}{$k} = $self->{colinfo}->{$table}{$realcolname}{nullable};
-			if (!$self->{is_mysql})
+			if ($self->{is_mysql})
 			{
-				if ($name->[$k] !~ /"/) {
-					$name->[$k] = '"' . $name->[$k] . '"';
+				if ($name->[$k] !~ /\`/) {
+					$name->[$k] = '`' . $name->[$k] . '`';
+				}
+			}
+			elsif ($self->{is_mssql})
+			{
+				if ($name->[$k] !~ /\[/) {
+					$name->[$k] = '[' . $name->[$k] . ']';
 				}
 			}
 			else
 			{
-				if ($name->[$k] !~ /\`/) {
-					$name->[$k] = '`' . $name->[$k] . '`';
+				if ($name->[$k] !~ /"/) {
+					$name->[$k] = '"' . $name->[$k] . '"';
 				}
 			}
 			if ( ( $src_type->[$k] =~ /^char/i) && ($type->[$k] =~ /(varchar|text)/i)) {
@@ -10826,7 +10865,7 @@ END;
 		}
 	}
 
-	$self->logit("DEGUG: Query sent to Oracle: $str\n", 1);
+	$self->logit("DEGUG: Query sent to $self->{sgbd_name}: $str\n", 1);
 
 	return $str;
 }
@@ -11001,7 +11040,7 @@ sub _howto_get_fdw_data
 		}
 	}
 
-	$self->logit("DEGUG: Query sent to Oracle: $str\n", 1);
+	$self->logit("DEGUG: Query sent to $self->{sgbd_name}: $str\n", 1);
 
 	return $str;
 }
@@ -11065,6 +11104,8 @@ sub _column_attributes
 
 	if ($self->{is_mysql}) {
 		return Ora2Pg::MySQL::_column_attributes($self,$table,$owner,'TABLE');
+	} elsif ($self->{is_mssql}) {
+		return Ora2Pg::MSSQL::_column_attributes($self,$table,$owner,'TABLE');
 	} else {
 		return Ora2Pg::Oracle::_column_attributes($self,$table,$owner,'TABLE');
 	}
@@ -11862,6 +11903,8 @@ sub _get_custom_types
 	my %all_types = undef;
 	if ($self->{is_mysql}) {
 		%all_types = %Ora2Pg::MySQL::SQL_TYPE;
+	} elsif ($self->{is_mssql}) {
+		%all_types = %Ora2Pg::MSSQL::SQL_TYPE;
 	} else {
 		%all_types = %Ora2Pg::Oracle::SQL_TYPE;
 	}
@@ -11883,6 +11926,8 @@ sub _get_custom_types
 		my $cur_type = '';
 		if ($s =~ /\s+OF\s+([^\s;]+)/) {
 			$cur_type = $1;
+		} elsif ($s =~ /\s+FROM\s+([^\s;]+)/) {
+			$cur_type = uc($1);
 		} elsif ($s =~ /^\s*([^\s]+)\s+([^\s]+)/) {
 			$cur_type = $2;
 		}
@@ -13410,7 +13455,7 @@ sub _convert_function
 			$type_name = "$owner.$type_name";
 		}
 		$internal_name  =~ s/^[^\.]+\.//;
-		my $declar = Ora2Pg::PLSQL::replace_sql_type($tbname, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type}, $self->{varchar_to_text}, %{$self->{data_type}});
+		my $declar = $self->_replace_sql_type($tbname);
 		$declar =~ s/[\n\r]+//s;
 		$create_type .= "DROP TYPE $self->{pg_supports_ifexists} $1;\n" if ($self->{drop_if_exists});
 		$create_type .= "CREATE TYPE $type_name AS ($internal_name $declar\[$size\]);\n";
@@ -14004,6 +14049,8 @@ sub _convert_type
 {
 	my ($self, $plsql, $owner, %pkg_type) = @_;
 
+        my ($package, $filename, $line) = caller;
+
 	my $unsupported = "-- Unsupported, please edit to match PostgreSQL syntax\n";
 	my $content = '';
 	my $type_name = '';
@@ -14012,7 +14059,7 @@ sub _convert_type
         if ($plsql =~ s/SUBTYPE\s+/CREATE DOMAIN /i)
 	{
 		$plsql =~ s/\s+IS\s+/ AS /;
-		$plsql = Ora2Pg::PLSQL::replace_sql_type($plsql, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type}, $self->{varchar_to_text}, %{$self->{data_type}});
+		$plsql = $self->_replace_sql_type($plsql);
 		return $plsql;
 	}
 
@@ -14034,7 +14081,7 @@ sub _convert_type
 		$type_of =~ s/^\s+//s;
 		if ($type_of !~ /\s/s)
 		{ 
-			$type_of = Ora2Pg::PLSQL::replace_sql_type($type_of, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type}, $self->{varchar_to_text}, %{$self->{data_type}});
+			$type_of = $self->_replace_sql_type($type_of);
 			$self->{type_of_type}{'Nested Tables'}++;
 			$content .= "DROP TYPE $self->{pg_supports_ifexists} \L$type_name\E;\n" if ($self->{drop_if_exists});
 			$content = "CREATE TYPE \L$type_name\E AS (\L$internal_name\E $type_of\[\]);\n";
@@ -14075,7 +14122,7 @@ sub _convert_type
 			return "${unsupported}CREATE$self->{create_or_replace} $plsql";
 		}
 		$description =~ s/^\s+//s;
-		my $declar = Ora2Pg::PLSQL::replace_sql_type($description, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type}, $self->{varchar_to_text}, %{$self->{data_type}});
+		my $declar = $self->_replace_sql_type($description);
 		$type_name =~ s/"//g;
 		$type_name = $self->get_replaced_tbname($type_name);
 		if ($notfinal =~ /FINAL/is)
@@ -14111,7 +14158,7 @@ $declar
 			return "${unsupported}CREATE$self->{create_or_replace} $plsql";
 		}
 		$description =~ s/^\s+//s;
-		my $declar = Ora2Pg::PLSQL::replace_sql_type($description, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type}, $self->{varchar_to_text}, %{$self->{data_type}});
+		my $declar = $self->_replace_sql_type($description);
 		$type_name =~ s/"//g;
 		$type_name = $self->get_replaced_tbname($type_name);
 		$content = qq{
@@ -14135,7 +14182,7 @@ $declar
 			$type_name = "$owner.$type_name";
 		}
 		$internal_name  =~ s/^[^\.]+\.//;
-		my $declar = Ora2Pg::PLSQL::replace_sql_type($tbname, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type}, $self->{varchar_to_text}, %{$self->{data_type}});
+		my $declar = $self->_replace_sql_type($tbname);
 		$declar =~ s/[\n\r]+//s;
 		$content = qq{
 CREATE TYPE \L$type_name\E AS ($internal_name $declar\[$size\]);
@@ -14144,7 +14191,10 @@ CREATE TYPE \L$type_name\E AS ($internal_name $declar\[$size\]);
 	}
 	elsif ($plsql =~ /TYPE\s+([^\s]+)\s+FROM\s+(.*)( NOT NULL)?;/is)
 	{
-		$content .= "CREATE DOMAIN $1 AS $2$3;\n";
+		my $typname = $1;
+		my $notnull = $3;
+		my $dtype = $self->_replace_sql_type($2);
+		$content .= "CREATE DOMAIN $typname AS $dtype$notnull;\n";
 	}
 	else
 	{
@@ -14302,6 +14352,10 @@ sub custom_type_definition
 			{
 				if ($tpe->{code} =~ /AS\s+VARRAY\s*(.*?)\s+OF\s+([^\s;]+);/is) {
 					return $self->custom_type_definition(uc($2), $orig, 1);
+				} elsif ($tpe->{code} =~ /(.*FROM\s+[^;\s\(]+)/is) {
+					%types_def = $self->_get_custom_types($1);
+					push(@{$user_type{pg_types}} , \@{$types_def{pg_types}});
+					push(@{$user_type{src_types}}, \@{$types_def{src_types}});
 				}
 				elsif ($tpe->{code} =~ /\s+([^\s]+)\s+AS\s+TABLE\s+OF\s+([^;]+);/is)
 				{
@@ -14392,7 +14446,17 @@ sub _extract_data
 		}
 
 		# prepare the query before execution
-		if (!$self->{is_mysql})
+		if ($self->{is_mysql})
+		{
+			$query =~ s/^SELECT\s+/SELECT \/\*\!40001 SQL_NO_CACHE \*\/ /s;
+			$sth = $dbh->prepare($query, { mysql_use_result => 1, mysql_use_row => 1 }) or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
+		}
+		elsif ($self->{is_mssql})
+		{
+			$sth = $dbh->prepare($query) or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
+			$sth->{'LongReadLen'} = $self->{longreadlen};
+		}
+		else
 		{
 			if (!$self->{use_lob_locator}) {
 				$sth = $dbh->prepare($query,{ora_piece_lob => 1, ora_piece_size => $self->{longreadlen}, ora_exe_mode=>OCI_STMT_SCROLLABLE_READONLY, ora_check_sql => 1}) or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
@@ -14402,12 +14466,6 @@ sub _extract_data
 			foreach (@{$sth->{NAME}}) {
 				push(@{$self->{data_cols}{$table}}, $_);
 			}
-		}
-		else
-		{
-			#$query .= " LIMIT ?, ?";
-			$query =~ s/^SELECT\s+/SELECT \/\*\!40001 SQL_NO_CACHE \*\/ /s;
-			$sth = $dbh->prepare($query, { mysql_use_result => 1, mysql_use_row => 1 }) or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
 		}
 	}
 	else
@@ -14419,7 +14477,17 @@ sub _extract_data
 		} 
 
 		# prepare the query before execution
-		if (!$self->{is_mysql})
+		if ($self->{is_mysql})
+		{
+			$query =~ s/^SELECT\s+/SELECT \/\*\!40001 SQL_NO_CACHE \*\/ /s;
+			$sth = $self->{dbh}->prepare($query, { mysql_use_result => 1, mysql_use_row => 1 }) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+		}
+		elsif ($self->{is_mssql})
+		{
+			$sth = $self->{dbh}->prepare($query) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+			$sth->{'LongReadLen'} = $self->{longreadlen};
+		}
+		else
 		{
 			# Set the action name on Oracle side to see which table is exported
 			$self->{dbh}->do("CALL DBMS_APPLICATION_INFO.set_action('$table')") or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -14442,12 +14510,6 @@ sub _extract_data
 			foreach (@{$sth->{NAME}}) {
 				push(@{$self->{data_cols}{$table}}, $_);
 			}
-		}
-		else
-		{
-			#$query .= " LIMIT ?, ?";
-			$query =~ s/^SELECT\s+/SELECT \/\*\!40001 SQL_NO_CACHE \*\/ /s;
-			$sth = $self->{dbh}->prepare($query, { mysql_use_result => 1, mysql_use_row => 1 }) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 		}
 	}
 
@@ -19410,7 +19472,7 @@ sub register_global_variable
 {
 	my ($self, $pname, $glob_vars) = @_;
 
-	$glob_vars = Ora2Pg::PLSQL::replace_sql_type($glob_vars, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type}, $self->{varchar_to_text}, %{$self->{data_type}});
+	$glob_vars = $self->_replace_sql_type($glob_vars);
 
 	# Replace PL/SQL code into PL/PGSQL similar code
 	$glob_vars = Ora2Pg::PLSQL::convert_plsql_code($self, $glob_vars);
