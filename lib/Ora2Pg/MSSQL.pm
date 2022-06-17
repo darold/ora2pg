@@ -615,24 +615,8 @@ sub _get_views
         my $condition = '';
         $condition .= "AND TABLE_SCHEMA='$self->{schema}' " if ($self->{schema});
 
-	# Retrieve comment of each columns
-	# TABLE_CATALOG        | varchar(512) | NO   |     |         |       |
-	# TABLE_SCHEMA         | varchar(64)  | NO   |     |         |       |
-	# TABLE_NAME           | varchar(64)  | NO   |     |         |       |
-	# VIEW_DEFINITION      | longtext     | NO   |     | NULL    |       |
-	# CHECK_OPTION         | varchar(8)   | NO   |     |         |       |
-	# IS_UPDATABLE         | varchar(3)   | NO   |     |         |       |
-	# DEFINER              | varchar(77)  | NO   |     |         |       |
-	# SECURITY_TYPE        | varchar(7)   | NO   |     |         |       |
-	# CHARACTER_SET_CLIENT | varchar(32)  | NO   |     |         |       |
-	# COLLATION_CONNECTION | varchar(32)  | NO   |     |         |       |
 	my %comments = ();
 	# Retrieve all views
-#	my $str = "SELECT TABLE_NAME,TABLE_SCHEMA,VIEW_DEFINITION,CHECK_OPTION,IS_UPDATABLE FROM INFORMATION_SCHEMA.VIEWS $condition";
-#	$str .= $self->limit_to_objects('VIEW', 'TABLE_NAME');
-#	$str .= " ORDER BY TABLE_NAME";
-#	$str =~ s/ AND / WHERE /;
-
 	my $str = qq{select
        v.name as view_name,
        schema_name(v.schema_id) as schema_name,
@@ -671,6 +655,10 @@ WHERE NOT EXISTS (SELECT 1 FROM sys.indexes i WHERE i.object_id = v.object_id an
 		$data{$row->[0]}{updatable} = 'Y';
 		$data{$row->[0]}{definer} = '';
 		$data{$row->[0]}{security} = '';
+		if ($self->{plsql_pgsql}) {
+			$data{$row->[0]}{text} =~ s/\s+WITH\s+(ENCRYPTION|SCHEMABINDING|VIEW_METADATA)\s+AS\s+//is;
+			$data{$row->[0]}{text} =~ s/^\s*AS\s+//is;
+		}
 	}
 	return %data;
 }
@@ -1156,14 +1144,6 @@ sub _sql_type
 
 	my $data_type = '';
 
-	# Simplify timestamp type
-	$type =~ s/TIMESTAMP\s*\(\s*\d+\s*\)/TIMESTAMP/i;
-	$type =~ s/TIME\s*\(\s*\d+\s*\)/TIME/i;
-	$type =~ s/DATE\s*\(\s*\d+\s*\)/DATE/i;
-	# Remove BINARY from CHAR(n) BINARY, TEXT(n) BINARY, VARCHAR(n) BINARY ...
-	$type =~ s/(CHAR|TEXT)\s*(\(\s*\d+\s*\)) BINARY/$1$2/i;
-	$type =~ s/(CHAR|TEXT)\s+BINARY/$1/i;
-
 	# Some length and scale may have not been extracted before
 	if ($type =~ s/\(\s*(\d+)\s*\)//) {
 		$len   = $1;
@@ -1177,25 +1157,35 @@ sub _sql_type
 
         # Override the length
         $len = $precision if ( ((uc($type) eq 'NUMBER') || (uc($type) eq 'BIT')) && $precision );
-        if (exists $self->{data_type}{uc($type)}) {
+        if (exists $self->{data_type}{uc($type)})
+	{
 		$type = uc($type); # Force uppercase
-		if ($len) {
-			if ( ($type eq "CHAR") || ($type =~ /VARCHAR/) ) {
+		if ($len)
+		{
+			if ( $type =~ /CHAR|TEXT/ )
+			{
 				# Type CHAR have default length set to 1
 				# Type VARCHAR(2) must have a specified length
-				$len = 1 if (!$len && ($type eq "CHAR"));
+				$len = 1 if (!$len && ($type eq "CHAR" || $type eq "NCHAR"));
                 		return "$self->{data_type}{$type}($len)";
-			} elsif ($type eq 'BIT') {
-				if ($precision) {
-					return "$self->{data_type}{$type}($precision)";
+			}
+			elsif ($type eq 'BIT')
+			{
+				if ($precision > 1) {
+					return "bit($precision)";
 				} else {
 					return $self->{data_type}{$type};
 				}
-			} elsif ($type =~ /(TINYINT|SMALLINT|MEDIUMINT|INTEGER|BIGINT|INT|REAL|DOUBLE|FLOAT|DECIMAL|NUMERIC)/i) {
+			}
+			elsif ($type =~ /(TINYINT|SMALLINT|INTEGER|BIGINT|INT|REAL|FLOAT|DECIMAL|NUMERIC|SMALLMONEY|MONEY)/i)
+			{
 				# This is an integer
-				if (!$scale) {
-					if ($precision) {
-						if ($self->{pg_integer_type}) {
+				if (!$scale)
+				{
+					if ($precision)
+					{
+						if ($self->{pg_integer_type})
+						{
 							if ($precision < 5) {
 								return 'smallint';
 							} elsif ($precision <= 9) {
@@ -1205,13 +1195,19 @@ sub _sql_type
 							}
 						}
 						return "numeric($precision)";
-					} else {
+					}
+					else
+					{
 						# Most of the time interger should be enought?
 						return $self->{data_type}{$type};
 					}
-				} else {
-					if ($precision) {
-						if ($type !~ /DOUBLE/ && $self->{pg_numeric_type}) {
+				}
+				else
+				{
+					if ($precision)
+					{
+						if ($self->{pg_numeric_type})
+						{
 							if ($precision <= 6) {
 								return 'real';
 							} else {
@@ -1222,6 +1218,7 @@ sub _sql_type
 					}
 				}
 			}
+			$self->{use_uuid} = 1 if ($type =~ /UNIQUEIDENTIFIER/);
 			return $self->{data_type}{$type};
 		} else {
 			return $self->{data_type}{$type};
@@ -1238,15 +1235,6 @@ sub replace_sql_type
 	$str =~ s/with local time zone/with time zone/igs;
 	$str =~ s/([A-Z])ORA2PG_COMMENT/$1 ORA2PG_COMMENT/igs;
 
-	# Remove any reference to UNSIGNED AND ZEROFILL
-	# but translate CAST( ... AS unsigned) before.
-	$str =~ s/(\s+AS\s+)UNSIGNED/$1$self->{data_type}{'UNSIGNED'}/gis;
-	$str =~ s/\b(UNSIGNED|ZEROFILL)\b//gis;
-
-	# Remove BINARY from CHAR(n) BINARY and VARCHAR(n) BINARY
-	$str =~ s/(CHAR|TEXT)\s*(\(\s*\d+\s*\))\s+BINARY/$1$2/gis;
-	$str =~ s/(CHAR|TEXT)\s+BINARY/$1/gis;
-
 	# Replace type with precision
 	my $mysqltype_regex = '';
 	foreach (keys %{$self->{data_type}}) {
@@ -1259,12 +1247,6 @@ sub replace_sql_type
 		my $backstr = $1;
 		my $type = uc($2);
 		my $args = $3;
-		if (uc($type) eq 'ENUM') {
-			# Prevent from infinit loop
-			$str =~ s/\(/\%\|/s;
-			$str =~ s/\)/\%\|\%/s;
-			next;
-		}
 		if (exists $self->{data_type}{"$type($args)"}) {
 			$str =~ s/\b$type\($args\)/$self->{data_type}{"$type($args)"}/igs;
 			next;
@@ -1278,18 +1260,26 @@ sub replace_sql_type
 		$scale ||= 0;
 		my $len = $precision || 0;
 		$len =~ s/\D//;
-		if ( $type =~ /CHAR/i )
+		if ( $type =~ /CHAR|TEXT/i )
 		{
 			# Type CHAR have default length set to 1
 			# Type VARCHAR must have a specified length
-			$len = 1 if (!$len && ($type eq "CHAR"));
+			$len = 1 if (!$len && ($type eq 'CHAR' || $type eq 'NCHAR'));
 			$str =~ s/\b$type\b\s*\([^\)]+\)/$self->{data_type}{$type}\%\|$len\%\|\%/is;
 		}
-		elsif ($precision && ($type =~ /(BIT|TINYINT|SMALLINT|MEDIUMINT|INTEGER|BIGINT|INT|REAL|DOUBLE|FLOAT|DECIMAL|NUMERIC)/))
+		elsif ($type eq 'BIT')
+		{
+			if ($precision > 1) {
+				return "bit($precision)";
+			} else {
+				return $self->{data_type}{$type};
+			}
+		}
+		elsif ($precision && ($type =~ /(TINYINT|SMALLINT|INTEGER|BIGINT|INT|REAL|FLOAT|DECIMAL|NUMERIC|SMALLMONEY|MONEY)/))
 		{
 			if (!$scale)
 			{
-				if ($type =~ /(BIT|TINYINT|SMALLINT|MEDIUMINT|INTEGER|BIGINT|INT)/)
+				if ($type =~ /(TINYINT|SMALLINT|INTEGER|BIGINT|INT)/)
 				{
 					if ($self->{pg_integer_type})
 					{
@@ -1311,11 +1301,7 @@ sub replace_sql_type
 			}
 			else
 			{
-				if ($type =~ /DOUBLE/) {
-					$str =~ s/\b$type\b\s*\([^\)]+\)/decimal\%\|$args\%\|\%/is;
-				} else {
-					$str =~ s/\b$type\b\s*\([^\)]+\)/$self->{data_type}{$type}\%\|$args\%\|\%/is;
-				}
+				$str =~ s/\b$type\b\s*\([^\)]+\)/$self->{data_type}{$type}\%\|$args\%\|\%/is;
 			}
 		}
 		else
@@ -1452,6 +1438,7 @@ LEFT OUTER JOIN sys.schemas sch ON t.schema_id = sch.schema_id
 		}
 		#dbo | PartitionTable | PK__Partitio__357D0D3E1290FD9F | 2 | 72057594048872448 | 65601 | 65536 | RANGE | 2 | 2022-05-01 00:00:00 | 1 | col1
 		$parts{$row->[1]}{$row->[3]}{name} = $tbname . '_part_' . $i++;
+		$row->[9] = "'$row->[9]'" if ($row->[9] && $row->[9] =~ /[^\d\.]/);
 		$row->[9] = 'MAXVALUE' if ($row->[9] eq '');
 		push(@{$parts{$row->[1]}{$row->[3]}{info}}, { 'type' => 'RANGE', 'value' => $row->[9], 'column' => $row->[11], 'colpos' => $row->[10], 'tablespace' => '', 'owner' => ''});
 	}

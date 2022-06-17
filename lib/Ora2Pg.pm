@@ -11065,6 +11065,8 @@ sub _sql_type
 
 	if ($self->{is_mysql}) {
 		return Ora2Pg::MySQL::_sql_type($self, $type, $len, $precision, $scale);
+	} elsif ($self->{is_mssql}) {
+		return Ora2Pg::MSSQL::_sql_type($self, $type, $len, $precision, $scale);
 	} else {
 		return Ora2Pg::Oracle::_sql_type($self, $type, $len, $precision, $scale);
 	}
