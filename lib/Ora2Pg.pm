@@ -2197,6 +2197,9 @@ sub _packages
 {
 	my ($self) = @_;
 
+	if ($self->{is_mysql} or $self->{is_mssql}) {
+		$self->logit("Action type PACKAGES is not available for $self->{sgbd_name}.\n", 0, 1);
+	}
 	$self->logit("Retrieving packages information...\n", 1);
 	$self->{packages} = $self->_get_packages();
 
@@ -4201,12 +4204,14 @@ sub translate_function
 		}
 		$fct_count++;
 		$self->logit("Dumping function $fct...\n", 1);
-		if ($self->{file_per_function}) {
+		if ($self->{file_per_function})
+		{
 			my $f = "$dirprefix${fct}_$self->{output}";
 			$f =~ s/\.(?:gz|bz2)$//i;
 			$self->dump("\\i$self->{psql_relative_path} $f\n");
 			$self->save_filetoupdate_list("ORA2PG_$self->{type}", lc($fct), "$dirprefix${fct}_$self->{output}");
-		} else {
+		}
+		else {
 			$self->save_filetoupdate_list("ORA2PG_$self->{type}", lc($fct), "$dirprefix$self->{output}");
 		}
 

@@ -875,73 +875,41 @@ sub _get_functions
 	my $self = shift;
 
 	# Retrieve all functions 
-	# SPECIFIC_NAME            | varchar(64)   | NO   |     |                     |       |
-	# ROUTINE_CATALOG          | varchar(512)  | NO   |     |                     |       |
-	# ROUTINE_SCHEMA           | varchar(64)   | NO   |     |                     |       |
-	# ROUTINE_NAME             | varchar(64)   | NO   |     |                     |       |
-	# ROUTINE_TYPE             | varchar(9)    | NO   |     |                     |       |
-	# DATA_TYPE                | varchar(64)   | NO   |     |                     |       |
-	#  or DTD_IDENTIFIER < 5.5 | varchar(64)   | NO   |     |                     |       |
-	# CHARACTER_MAXIMUM_LENGTH | int(21)       | YES  |     | NULL                |       |
-	# CHARACTER_OCTET_LENGTH   | int(21)       | YES  |     | NULL                |       |
-	# NUMERIC_PRECISION        | int(21)       | YES  |     | NULL                |       |
-	# NUMERIC_SCALE            | int(21)       | YES  |     | NULL                |       |
-	# CHARACTER_SET_NAME       | varchar(64)   | YES  |     | NULL                |       |
-	# COLLATION_NAME           | varchar(64)   | YES  |     | NULL                |       |
-	# DTD_IDENTIFIER           | longtext      | YES  |     | NULL                |       |
-	# ROUTINE_BODY             | varchar(8)    | NO   |     |                     |       |
-	# ROUTINE_DEFINITION       | longtext      | YES  |     | NULL                |       |
-	# EXTERNAL_NAME            | varchar(64)   | YES  |     | NULL                |       |
-	# EXTERNAL_LANGUAGE        | varchar(64)   | YES  |     | NULL                |       |
-	# PARAMETER_STYLE          | varchar(8)    | NO   |     |                     |       |
-	# IS_DETERMINISTIC         | varchar(3)    | NO   |     |                     |       |
-	# SQL_DATA_ACCESS          | varchar(64)   | NO   |     |                     |       |
-	# SQL_PATH                 | varchar(64)   | YES  |     | NULL                |       |
-	# SECURITY_TYPE            | varchar(7)    | NO   |     |                     |       |
-	# CREATED                  | datetime      | NO   |     | 0000-00-00 00:00:00 |       |
-	# LAST_ALTERED             | datetime      | NO   |     | 0000-00-00 00:00:00 |       |
-	# SQL_MODE                 | varchar(8192) | NO   |     |                     |       |
-	# ROUTINE_COMMENT          | longtext      | NO   |     | NULL                |       |
-	# DEFINER                  | varchar(77)   | NO   |     |                     |       |
-	# CHARACTER_SET_CLIENT     | varchar(32)   | NO   |     |                     |       |
-	# COLLATION_CONNECTION     | varchar(32)   | NO   |     |                     |       |
-	# DATABASE_COLLATION       | varchar(32)   | NO   |     |                     |       |
-
-	my $str = "SELECT ROUTINE_NAME,ROUTINE_DEFINITION,DATA_TYPE,ROUTINE_BODY,EXTERNAL_LANGUAGE,SECURITY_TYPE,IS_DETERMINISTIC,ROUTINE_TYPE FROM INFORMATION_SCHEMA.ROUTINES";
+	my $str = qq{SELECT
+    O.name, M.definition, O.type_desc, s.name, M.null_on_null_input,
+    M.execute_as_principal_id
+FROM sys.sql_modules M
+JOIN sys.objects O ON M.object_id=O.object_id
+JOIN sys.schemas AS s ON o.schema_id = s.schema_id
+WHERE O.type IN ('IF','TF','FN','P')
+};
 	if ($self->{schema}) {
-		$str .= " AND ROUTINE_SCHEMA = '$self->{schema}'";
+		$str .= " AND s.name = '$self->{schema}'";
 	}
-	$str .= " " . $self->limit_to_objects('FUNCTION','ROUTINE_NAME');
-	$str =~ s/ AND / WHERE /;
-	$str .= " ORDER BY ROUTINE_NAME";
-	# Version below 5.5 do not have DATA_TYPE column it is named DTD_IDENTIFIER
-	if ($self->{db_version} < '5.5.0') {
-		$str =~ s/\bDATA_TYPE\b/DTD_IDENTIFIER/;
-	}
+	$str .= " " . $self->limit_to_objects('FUNCTION','O.name');
+	$str .= " ORDER BY O.name";
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
 	my %functions = ();
 	while (my $row = $sth->fetch)
 	{
-		my $kind = $row->[7]; # FUNCTION or PROCEDURE
+		my $kind = 'FUNCTION';
+		$kind = 'PROCEDURE' if ($row->[2] eq 'SQL_STORED_PROCEDURE');
 		next if ( ($kind ne $self->{type}) && ($self->{type} ne 'SHOW_REPORT') );
-		my $sth2 = $self->{dbh}->prepare("SHOW CREATE $kind $row->[0]") or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-		$sth2->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-		while (my $r = $sth2->fetch)
-		{
-			$functions{"$row->[0]"}{text} = $r->[2];
-			last;
+		my $fname = $row->[0];
+		if ($self->{export_schema} && !$self->{schema}) {
+			$row->[0] = "$row->[3].$row->[0]";
 		}
-		$sth2->finish();
-		if ($self->{plsql_pgsql} || ($self->{type} eq 'SHOW_REPORT'))
+		$functions{"$row->[0]"}{name} = $row->[0];
+		$functions{"$row->[0]"}{text} = $row->[1];
+		$functions{"$row->[0]"}{kind} = $row->[2];
+		$functions{"$row->[0]"}{strict} = $row->[4];
+		$functions{"$row->[0]"}{security} = ($row->[5] == -2) ? 'DEFINER' : 'EXECUTER';
+		$functions{"$row->[0]"}{text} =~ s///gs;
+		if ($self->{plsql_pgsql})
 		{
-			$functions{"$row->[0]"}{name} = $row->[0];
-			$functions{"$row->[0]"}{return} = $row->[2];
-			$functions{"$row->[0]"}{definition} = $row->[1];
-			$functions{"$row->[0]"}{language} = $row->[3];
-			$functions{"$row->[0]"}{security} = $row->[5];
-			$functions{"$row->[0]"}{immutable} = $row->[6];
+			$functions{"$row->[0]"}{text} =~ s/[\[\]]//gs;
 		}
 	}
 
