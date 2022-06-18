@@ -7330,6 +7330,9 @@ sub export_table
 			$obj_type = 'UNLOGGED ' . $obj_type;
 		}
 		if ($self->{export_gtt} && !$foreign && $self->{tables}{$table}{table_info}{temporary} eq 'Y') {
+			if ($sql_output !~ /LOAD 'pgtt';/s) {
+				$sql_output .= "\nLOAD 'pgtt';\n";
+			}
 			$obj_type = ' /*GLOBAL*/ TEMPORARY TABLE' if ($obj_type =~ /TABLE/);
 		}
 		if (exists $self->{tables}{$table}{table_as})
