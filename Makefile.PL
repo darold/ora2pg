@@ -1387,6 +1387,11 @@ MYSQL_INTERNAL_EXTRACT_FORMAT	0
 # 'rowversion' or 'timestamp' will not be exported.
 DROP_ROWVERSION		0
 
+# Use citext instead of char/varchar/text to emulate the same behavior of MSSQL
+# where search is case insentive. Ora2Pg will add a CHECK constraint for columns
+# with a precision.
+CASE_INSENSITIVE_SEARCH	0
+
 };
 close(OUTCFG);
 

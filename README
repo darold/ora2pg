@@ -2422,6 +2422,11 @@ CONFIGURATION
         Columns of datatype 'rowversion' or 'timestamp' will not be
         exported.
 
+    CASE_INSENSITIVE_SEARCH
+        Use citext instead of char/varchar/text to emulate the same behavior
+        of MSSQL where search is case insentive. Ora2Pg will add a CHECK
+        constraint for columns with a precision.
+
   Special options to handle character encoding
     NLS_LANG and NLS_NCHAR
         By default Ora2Pg will set NLS_LANG to AMERICAN_AMERICA.AL32UTF8 and

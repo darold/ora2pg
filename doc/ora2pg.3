@@ -2600,6 +2600,11 @@ with format; DDHH24MMSS::bigint, this depend of your apps usage.
 PostgreSQL has no equivalent to rowversion datatype and feature, if you want
 to remove these useless columns, enable this directive. Columns of datatype
 \&'rowversion' or 'timestamp' will not be exported.
+.IP "\s-1CASE_INSENSITIVE_SEARCH\s0" 4
+.IX Item "CASE_INSENSITIVE_SEARCH"
+Use citext instead of char/varchar/text to emulate the same behavior of \s-1MSSQL\s0
+where search is case insentive. Ora2Pg will add a \s-1CHECK\s0 constraint for columns
+with a precision.
 .SS "Special options to handle character encoding"
 .IX Subsection "Special options to handle character encoding"
 .IP "\s-1NLS_LANG\s0 and \s-1NLS_NCHAR\s0" 4

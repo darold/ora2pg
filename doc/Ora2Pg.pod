@@ -2504,6 +2504,12 @@ PostgreSQL has no equivalent to rowversion datatype and feature, if you want
 to remove these useless columns, enable this directive. Columns of datatype
 'rowversion' or 'timestamp' will not be exported.
 
+=item CASE_INSENSITIVE_SEARCH
+
+Use citext instead of char/varchar/text to emulate the same behavior of MSSQL
+where search is case insentive. Ora2Pg will add a CHECK constraint for columns
+with a precision.
+
 =back
 
 =head2 Special options to handle character encoding
