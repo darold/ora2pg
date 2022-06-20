@@ -2415,6 +2415,13 @@ CONFIGURATION
         will be replaced with format; DDHH24MMSS::bigint, this depend of
         your apps usage.
 
+  Control SQL Server export behavior
+    DROP_ROWVERSION
+        PostgreSQL has no equivalent to rowversion datatype and feature, if
+        you want to remove these useless columns, enable this directive.
+        Columns of datatype 'rowversion' or 'timestamp' will not be
+        exported.
+
   Special options to handle character encoding
     NLS_LANG and NLS_NCHAR
         By default Ora2Pg will set NLS_LANG to AMERICAN_AMERICA.AL32UTF8 and

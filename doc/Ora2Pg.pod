@@ -2494,6 +2494,18 @@ with format; DDHH24MMSS::bigint, this depend of your apps usage.
 
 =back
 
+=head2 Control SQL Server export behavior
+
+=over 4
+
+=item DROP_ROWVERSION
+
+PostgreSQL has no equivalent to rowversion datatype and feature, if you want
+to remove these useless columns, enable this directive. Columns of datatype
+'rowversion' or 'timestamp' will not be exported.
+
+=back
+
 =head2 Special options to handle character encoding
 
 =over 4

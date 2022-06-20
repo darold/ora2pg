@@ -954,6 +954,7 @@ sub _init
 
 	# Initialize some variable related to export of mssql database
 	$self->{is_mssql} = 0;
+	$self->{drop_rowversion} = 0;
 
 	# List of users for audit trail
 	$self->{audit_user} = '';
@@ -9099,6 +9100,8 @@ sub _dump_table
 	{
 		my $fieldname = ${$self->{tables}{$table}{field_name}}[$i];
 		next if (!$self->is_in_struct($table, $fieldname));
+
+		next if (!exists $self->{tables}{"$table"}{column_info}{"$fieldname"});
 
 		my $f = $self->{tables}{"$table"}{column_info}{"$fieldname"};
 		$f->[2] =~ s/\D//g;

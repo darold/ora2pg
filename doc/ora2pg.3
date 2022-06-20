@@ -133,7 +133,7 @@
 .\" ========================================================================
 .\"
 .IX Title "ORA2PG 1"
-.TH ORA2PG 1 "2022-06-13" "perl v5.30.0" "User Contributed Perl Documentation"
+.TH ORA2PG 1 "2022-06-20" "perl v5.30.0" "User Contributed Perl Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -2593,6 +2593,13 @@ Use it only if Ora2Pg fail on auto detecting this behavior.
 Enable this directive if you want \s-1\fBEXTRACT\s0()\fR replacement to use the internal
 format returned as an integer, for example \s-1DD HH24:MM:SS\s0 will be replaced
 with format; DDHH24MMSS::bigint, this depend of your apps usage.
+.SS "Control \s-1SQL\s0 Server export behavior"
+.IX Subsection "Control SQL Server export behavior"
+.IP "\s-1DROP_ROWVERSION\s0" 4
+.IX Item "DROP_ROWVERSION"
+PostgreSQL has no equivalent to rowversion datatype and feature, if you want
+to remove these useless columns, enable this directive. Columns of datatype
+\&'rowversion' or 'timestamp' will not be exported.
 .SS "Special options to handle character encoding"
 .IX Subsection "Special options to handle character encoding"
 .IP "\s-1NLS_LANG\s0 and \s-1NLS_NCHAR\s0" 4

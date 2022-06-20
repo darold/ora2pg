@@ -1378,6 +1378,15 @@ MYSQL_PIPES_AS_CONCAT		0
 # with format; DDHH24MMSS::bigint, this depend of your apps usage.
 MYSQL_INTERNAL_EXTRACT_FORMAT	0
 
+#------------------------------------------------------------------------------
+# SQL Server SECTION (Control MSSQL export behavior)
+#------------------------------------------------------------------------------
+
+# PostgreSQL has no equivalent to rowversion datatype and feature, if you want
+# to remove these useless columns, enable this directive. Columns of datatype
+# 'rowversion' or 'timestamp' will not be exported.
+DROP_ROWVERSION		0
+
 };
 close(OUTCFG);
 

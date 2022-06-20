@@ -47,7 +47,7 @@ our %SQL_TYPE = (
 	'IMAGE' => 'bytea',
 	'UNIQUEIDENTIFIER' => 'uuid',
 	'ROWVERSION' => 'bytea',
-	'TIMESTAMP' => 'timestamp without time zone DEFAULT now()', # synonym of ROWVERSION
+	'TIMESTAMP' => 'bytea', # synonym of ROWVERSION
 	'XML' => 'xml',
 	'HIERARCHYID' => 'varchar', # The application need to handle the value, no PG equivalent
 	'GEOMETRY' => 'geometry',
@@ -379,6 +379,8 @@ ORDER BY c.column_id};
 	my $pos = 0;
 	while (my $row = $sth->fetch)
 	{
+		next if ($self->{drop_rowversion} && ($row->[1] eq 'rowversion' || $row->[1] eq 'timestamp'));
+
 		if (!$self->{schema} && $self->{export_schema}) {
 			$row->[8] = "$row->[9].$row->[8]";
 		}
@@ -432,11 +434,12 @@ sub _get_indexes
 
 	my $t0 = Benchmark->new;
 	my $sth = '';
-	my $sql = qq{SELECT Id.name AS index_name, AC.name AS column_name, Id.is_unique AS UNIQUENESS, AC.column_id AS COLUMN_POSITION, Id.type AS INDEX_TYPE, 'U' AS TABLE_TYPE, Id.auto_created AS GENERATED, NULL AS JOIN_INDEX, t.name AS TABLE_NAME, s.name as TABLE_SCHEMA, Id.data_space_id AS TABLESPACE_NAME, Id.type_desc AS ITYP_NAME, Id.filter_definition AS PARAMETERS, IC.is_descending_key AS DESCEND, id.is_primary_key PRIMARY_KEY
+	my $sql = qq{SELECT Id.name AS index_name, AC.name AS column_name, Id.is_unique AS UNIQUENESS, AC.column_id AS COLUMN_POSITION, Id.type AS INDEX_TYPE, 'U' AS TABLE_TYPE, Id.auto_created AS GENERATED, NULL AS JOIN_INDEX, t.name AS TABLE_NAME, s.name as TABLE_SCHEMA, Id.data_space_id AS TABLESPACE_NAME, Id.type_desc AS ITYP_NAME, Id.filter_definition AS PARAMETERS, IC.is_descending_key AS DESCEND, id.is_primary_key PRIMARY_KEY, typ.name AS COL_TYPE_NAME
 FROM sys.tables AS T
 INNER JOIN sys.indexes Id ON T.object_id = Id.object_id 
 INNER JOIN sys.index_columns IC ON Id.object_id = IC.object_id
 INNER JOIN sys.all_columns AC ON T.object_id = AC.object_id AND IC.column_id = AC.column_id 
+INNER JOIN sys.types typ ON typ.user_type_id = AC.user_type_id
 LEFT OUTER JOIN sys.schemas s ON t.schema_id = s.schema_id
 WHERE T.is_ms_shipped = 0 $generated $condition
 ORDER BY T.name, Id.index_id, IC.key_ordinal
@@ -452,12 +455,12 @@ ORDER BY T.name, Id.index_id, IC.key_ordinal
 	my $nidx = 0;
 	while (my $row = $sth->fetch)
 	{
-		# Exclude log indexes of materialized views, there must be a better
-		# way to exclude then than looking at index name, fill free to fix it.
-		next if ($row->[0] =~ /^I_SNAP\$_/);
+		next if ($self->{drop_rowversion} && ($row->[15] eq 'rowversion' || $row->[15] eq 'timestamp'));
 
 		# Handle case where indexes name include the schema at create time
 		$row->[0] =~ s/^$self->{schema}\.//i if ($self->{schema});
+
+		next if (!$row->[0]);
 
 		my $save_tb = $row->[8];
 		if (!$self->{schema} && $self->{export_schema}) {
@@ -748,11 +751,13 @@ sub _unique_key
    ic.key_ordinal AS column_position,
    ic.is_descending_key AS is_desc,
    i.is_unique_constraint AS unique_key,
-   i.is_primary_key AS primary_key
+   i.is_primary_key AS primary_key,
+   typ.name
 FROM sys.indexes i
    INNER JOIN sys.index_columns ic ON i.index_id = ic.index_id AND i.object_id = ic.object_id
    INNER JOIN sys.tables AS t ON t.object_id = i.object_id
    INNER JOIN sys.columns c ON t.object_id = c.object_id AND ic.column_id = c.column_id
+   INNER JOIN sys.types typ ON typ.user_type_id = c.user_type_id
    INNER JOIN sys.objects AS syso ON syso.object_id = t.object_id AND syso.is_ms_shipped = 0 
    INNER JOIN sys.schemas AS sh ON sh.schema_id = t.schema_id 
 WHERE (i.is_unique_constraint = 1 OR i.is_primary_key = 1) $condition
@@ -772,6 +777,8 @@ ORDER BY sh.name, i.name, ic.key_ordinal;
 	my $i = 1;
 	while (my $row = $sth->fetch)
 	{
+		next if ($self->{drop_rowversion} && ($row->[9] eq 'rowversion' || $row->[9] eq 'timestamp'));
+
 		my $name = $row->[2];
 		if (!$self->{schema} && $self->{export_schema}) {
 			$name = "$row->[0].$row->[2]";
@@ -2027,6 +2034,7 @@ ORDER BY c.column_id};
 	my %data = ();
 	while (my $row = $sth->fetch)
 	{
+		next if ($self->{drop_rowversion} && ($row->[4] eq 'rowversion' || $row->[4] eq 'timestamp'));
 		$data{$row->[3]}{"$row->[0]"}{nullable} = $row->[1];
 		$data{$row->[3]}{"$row->[0]"}{default} = $row->[2];
 		# Store the data type of the column following its position
@@ -2468,6 +2476,8 @@ LEFT OUTER JOIN sys.schemas s ON t1.schema_id = s.schema_id
 	my $old_type = '';
 	while (my $row = $sth->fetch)
 	{
+		next if ($self->{drop_rowversion} && ($row->[4] eq 'rowversion' || $row->[4] eq 'timestamp'));
+
 		if (!$self->{schema} && $self->{export_schema}) {
 			$row->[0] = "$row->[1].$row->[0]";
 		}
