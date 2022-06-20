@@ -76,6 +76,7 @@ sub _db_connection
 			AutoInactiveDestroy => 1,
 			odbc_cursortype => 2,
 			PrintError => 0,
+			odbc_utf8_on => 1
 		}
 	);
 	$dbh->{LongReadLen} = $self->{longreadlen} if ($self->{longreadlen});
@@ -187,34 +188,20 @@ sub _get_encoding
 {
 	my ($self, $dbh) = @_;
 
-	my $sql = qq{SELECT
---       os_language_version,
---       SERVERPROPERTY('LCID') AS 'Instance-LCID',
-       SERVERPROPERTY('Collation') AS 'Instance-Collation',
---       SERVERPROPERTY('ComparisonStyle') AS 'Instance-ComparisonStyle',
---       SERVERPROPERTY('SqlSortOrder') AS 'Instance-SqlSortOrder',
-       SERVERPROPERTY('SqlSortOrderName') AS 'Instance-SqlSortOrderName'
---       SERVERPROPERTY('SqlCharSet') AS 'Instance-SqlCharSet'
---       SERVERPROPERTY('SqlCharSetName') AS 'Instance-SqlCharSetName',
---       DATABASEPROPERTYEX(N'{database_name}', 'LCID') AS 'Database-LCID',
---       DATABASEPROPERTYEX(N'{database_name}', 'Collation') AS 'Database-Collation',
---       DATABASEPROPERTYEX(N'{database_name}', 'ComparisonStyle') AS 'Database-ComparisonStyle',
---       DATABASEPROPERTYEX(N'{database_name}', 'SQLSortOrder') AS 'Database-SQLSortOrder'
--- FROM   sys.dm_os_windows_info;
-};
+	my $sql = qq{SELECT SERVERPROPERTY('SqlCharSetName') AS 'Instance-SqlCharSetName', SERVERPROPERTY('Collation') AS 'Instance-Collation'};
         my $sth = $dbh->prepare($sql) or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
         $sth->execute() or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
-	my $my_encoding = '';
-	my $my_client_encoding = '';
+	my $db_encoding = '';
+	my $db_collation = '';
 	while ( my @row = $sth->fetchrow())
 	{
-		$my_encoding = $row[0];
-		$my_client_encoding = $row[1];
+		$db_encoding = $row[0];
+		$db_collation = $row[1];
 	}
 	$sth->finish();
 
-	my $my_timestamp_format = '';
-	my $my_date_format = '';
+	my $db_timestamp_format = '';
+	my $db_date_format = '';
 	$sql = qq{SELECT date_format
 FROM sys.dm_exec_sessions
 WHERE session_id = \@\@spid
@@ -222,14 +209,31 @@ WHERE session_id = \@\@spid
         $sth = $dbh->prepare($sql) or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
         $sth->execute() or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
 	while ( my @row = $sth->fetchrow()) {
-		$my_date_format = $row[0];
+		$db_date_format = $row[0];
 	}
 	$sth->finish();
 
-	#my $pg_encoding = auto_set_encoding($charset);
-	my $pg_encoding = $my_encoding;
+	my $pg_encoding = auto_set_encoding($db_encoding);
 
-	return ($my_encoding, $my_client_encoding, $pg_encoding, $my_timestamp_format, $my_date_format);
+	return ($db_encoding, $db_collation, $pg_encoding, $db_timestamp_format, $db_date_format);
+}
+
+=head2 auto_set_encoding
+
+This function is used to find the PostgreSQL charset corresponding to the
+MSSQL encoding valie
+
+=cut
+
+sub auto_set_encoding
+{
+	my $mssql_encoding = shift;
+
+	my %ENCODING = (
+		"iso_1" => "LATIN1",
+	);
+
+	return $ENCODING{$mssql_encoding};
 }
 
 
@@ -708,6 +712,7 @@ WHERE o.type = 'TR'
 		if (!$self->{schema} && $self->{export_schema}) {
 			$row->[2] = "$row->[3].$row->[2]";
 		}
+		$row->[10] =~ s///g;
 		$row->[10] =~ s/^(?:.*?)\sAS\s(.*)\s*;\s*$/$1/is;
 		push(@triggers, [ ($row->[0], $row->[4], $act, $row->[2], $row->[10], '', 'ROW', $row->[1]) ]);
 	}

@@ -1952,18 +1952,25 @@ sub _init_environment
 	my ($self) = @_;
 
 	# Set default Oracle client encoding
-	if (!$self->{nls_lang}) {
-		if (!$self->{is_mysql}) {
-			$self->{nls_lang} = 'AMERICAN_AMERICA.AL32UTF8';
-		} else {
+	if (!$self->{nls_lang})
+	{
+		if ($self->{is_mysql}) {
 			$self->{nls_lang} = 'utf8';
+		} elsif ($self->{is_mssql}) {
+			$self->{nls_lang} = 'iso_1';
+			$self->{client_encoding} = 'LATIN1' if (!$self->{client_encoding});
+		} else {
+			$self->{nls_lang} = 'AMERICAN_AMERICA.AL32UTF8';
 		}
 	}
-	if (!$self->{nls_nchar}) {
-		if (!$self->{is_mysql}) {
-			$self->{nls_nchar} = 'AL32UTF8';
-		} else {
+	if (!$self->{nls_nchar})
+	{
+		if ($self->{is_mysql}) {
 			$self->{nls_nchar} = 'utf8_general_ci';
+		} elsif ($self->{is_mssql}) {
+			$self->{nls_nchar} = 'SQL_Latin1_General_CP1_CI_AS';
+		} else {
+			$self->{nls_nchar} = 'AL32UTF8';
 		}
 	}
 	$ENV{NLS_LANG} = $self->{nls_lang};
@@ -1976,10 +1983,9 @@ sub _init_environment
 	$self->set_binmode();
 
 	# Set default PostgreSQL client encoding to UTF8
-	if (!$self->{client_encoding} || ($self->{nls_lang} =~ /UTF8/) ) {
+	if (!$self->{client_encoding} || $self->{nls_lang} =~ /UTF8/i) {
 		$self->{client_encoding} = 'UTF8';
 	}
-
 }
 
 sub set_binmode
@@ -5292,6 +5298,7 @@ sub export_trigger
 				$revoke = "-- REVOKE ALL ON FUNCTION $trig_fctname() FROM PUBLIC;\n";
 			}
 			$security = " SECURITY INVOKER" if ($self->{force_security_invoker});
+			$trig->[4] =~ s/CREATE TRIGGER (.*?)\sAS\s+//s;
 			if ($self->{pg_supports_when} && $trig->[5])
 			{
 				if (!$self->{preserve_case})
@@ -15314,6 +15321,19 @@ sub _show_infos
 			$self->logit("\tMySQL collation encoding: $collation\n", 0);
 			$self->logit("\tPostgreSQL CLIENT_ENCODING: $client_encoding\n", 0);
 			$self->logit("MySQL SQL mode: $self->{mysql_mode}\n", 0);
+		} elsif ($self->{is_mssql})
+		{
+			$self->logit("Current encoding settings that will be used by Ora2Pg:\n", 0);
+			$self->logit("\tMSSQL database and client encoding: utf8\n", 0);
+			$self->logit("\tMSSQL collation encoding: $self->{nls_nchar}\n", 0);
+			$self->logit("\tPostgreSQL CLIENT_ENCODING: $self->{client_encoding}\n", 0);
+			$self->logit("\tPerl output encoding '$self->{binmode}'\n", 0);
+			$self->logit("\tOra2Pg use UTF8 export to export from MSSQL, change to NSL_LANG and\n", 0);
+			$self->logit("\tNLS_NCHAR have no effect. CLIENT_ENCODING must be set to UFT8\n", 0);
+			$self->logit("Showing current MSSQL encoding and possible PostgreSQL client encoding:\n", 0);
+			$self->logit("\tMSSQL database encoding: $self->{nls_lang}\n", 0);
+			$self->logit("\tMSSQL collation encoding: $self->{nls_nchar}\n", 0);
+			$self->logit("\tPostgreSQL CLIENT_ENCODING: $client_encoding\n", 0);
 		} else {
 			$self->logit("Current encoding settings that will be used by Ora2Pg:\n", 0);
 			$self->logit("\tOracle NLS_LANG $self->{nls_lang}\n", 0);
