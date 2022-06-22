@@ -56,9 +56,9 @@ FEATURES
             - Export DBLINK as Oracle FDW.
             - Export SYNONYMS as views.
             - Export DIRECTORY as external table or directory for external_file extension.
-            - Full MySQL export just like Oracle database.
             - Dispatch a list of SQL orders over multiple PostgreSQL connections
             - Perform a diff between Oracle and PostgreSQL database for test purpose.
+            - MySQL/MariaDB and Microsoft SQL Server migration.
 
     Ora2Pg does its best to automatically convert your Oracle database to
     PostgreSQL but there's still manual works to do. The Oracle specific
@@ -101,18 +101,18 @@ INSTALLATION
     You also need a modern Perl distribution (perl 5.10 and more). To
     connect to a database and proceed to his migration you need the DBI Perl
     module > 1.614. To migrate an Oracle database you need the DBD::Oracle
-    Perl modules to be installed. To migrate a MySQL database you need the
-    DBD::MySQL Perl modules. These modules are used to connect to the
-    database but they are not mandatory if you want to migrate DDL input
-    files.
+    Perl modules to be installed.
 
     To install DBD::Oracle and have it working you need to have the Oracle
     client libraries installed and the ORACLE_HOME environment variable must
     be defined.
 
     If you plan to export a MySQL database you need to install the Perl
-    module DBD::mysql which requires that the mysql client libraries are
+    module DBD::MySQL which requires that the mysql client libraries are
     installed.
+
+    If you plan to export a SQL Server database you need to install the Perl
+    module DBD::ODBC which requires that the unixODBC package is installed.
 
     On some Perl distribution you may need to install the Time::HiRes Perl
     module.
@@ -122,6 +122,7 @@ INSTALLATION
 
             perl -MCPAN -e 'install DBD::Oracle'
             perl -MCPAN -e 'install DBD::MySQL'
+            perl -MCPAN -e 'install DBD::ODBC'
             perl -MCPAN -e 'install Time::HiRes'
 
     otherwise use the packages provided by your distribution.
@@ -144,6 +145,29 @@ INSTALLATION
             perl -MCPAN -e 'install Compress::Zlib'
 
     otherwise use the packages provided by your distribution.
+
+  Instruction for SQL Server
+    For SQL Server you need to install the unixodbc package and the Perl
+    DBD::ODBC driver:
+
+            sudo apt install unixodbc
+            sudo apt install libdbd-odbc-perl
+
+    then install the Microsoft ODBC Driver for SQL Server. Follow the
+    instructions relative to your operating system from here:
+
+            https://docs.microsoft.com/fr-fr/sql/connect/odbc/linux-mac/installing-the-microsoft-odbc-driver-for-sql-server?view=sql-server-ver16
+
+    Once it is done set the following in the /etc/odbcinst.ini file by
+    adjusting the SQL Server ODBC driver version:
+
+            [msodbcsql18]
+            Description=Microsoft ODBC Driver 18 for SQL Server
+            Driver=/opt/microsoft/msodbcsql18/lib64/libmsodbcsql-18.0.so.1.1
+            UsageCount=1
+
+    See ORACLE_DSN to know how to use the driver to connect to your MSSQL
+    database.
 
   Installing Ora2Pg
     Like any other Perl Module Ora2Pg can be installed with the following
@@ -299,6 +323,7 @@ CONFIGURATION
         -L | --limit num  : Number of tuples extracted from Oracle and stored in
                             memory before writing, default: 10000.
         -m | --mysql      : Export a MySQL database instead of an Oracle schema.
+        -M | --mssql      : Export a Microsoft SQL Server database.
         -n | --namespace schema : Set the Oracle schema to extract from.
         -N | --pg_schema schema : Set PostgreSQL's search_path.
         -o | --out file   : Set the path to the output file where SQL will
@@ -482,6 +507,10 @@ CONFIGURATION
                 dbi:mysql:host=192.168.1.10;database=sakila;port=3306
 
         the 'sid' part is replaced by 'database'.
+
+        For MS SQL Server it will look like this:
+
+                dbi:ODBC:driver=msodbcsql18;server=mydb.database.windows.net;database=testdb
 
     ORACLE_USER et ORACLE_PWD
         These two directives are used to define the user and password for

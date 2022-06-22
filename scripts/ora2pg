@@ -455,6 +455,7 @@ Usage: ora2pg [-dhpqv --estimate_cost --dump_as_html] [--option value]
     -L | --limit num  : Number of tuples extracted from Oracle and stored in
 			memory before writing, default: 10000.
     -m | --mysql      : Export a MySQL database instead of an Oracle schema.
+    -M | --mssql      : Export a Microsoft SQL Server database.
     -n | --namespace schema : Set the Oracle schema to extract from.
     -N | --pg_schema schema : Set PostgreSQL's search_path.
     -o | --out file   : Set the path to the output file where SQL will
