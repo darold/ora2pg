@@ -7593,7 +7593,7 @@ sub export_table
 				}
 
 				# Autoincremented columns
-				if (!$self->{schema} && $self->{export_schema}) {
+				if (!$self->{schema} && $self->{export_schema} && $f->[8] !~ /\./) {
 					$f->[8] = "$f->[9].$f->[8]";
 				}
 				if (exists $self->{identity_info}{$f->[8]}{$f->[0]} and $self->{type} ne 'FDW' and !$self->{oracle_fdw_data_export})

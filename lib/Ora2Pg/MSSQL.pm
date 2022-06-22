@@ -2232,8 +2232,48 @@ sub _get_identities
 {
 	my ($self) = @_;
 
-	# nothing to do, AUTO_INCREMENT column are converted to serial/bigserial
-	return;
+	# Retrieve all indexes 
+	my $str = qq{SELECT
+	s.name As SchemaName,
+	t.name As TableName,
+	i.name as ColumnName,
+	i.seed_value,
+	i.increment_value,
+	i.last_value
+FROM sys.tables t
+JOIN sys.identity_columns i ON t.object_id=i.object_id
+LEFT OUTER JOIN sys.schemas s ON t.schema_id = s.schema_id
+};
+	if (!$self->{schema}) {
+		$str .= " WHERE s.name NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
+	} else {
+		$str .= " WHERE s.name = '$self->{schema}'";
+	}
+	$str .= $self->limit_to_objects('TABLE', 't.name');
+
+	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+
+	my %seqs = ();
+	while (my $row = $sth->fetch)
+	{
+		if (!$self->{schema} && $self->{export_schema}) {
+			$row->[1] = "$row->[0].$row->[1]";
+		}
+		# GENERATION_TYPE can be ALWAYS, BY DEFAULT and BY DEFAULT ON NULL
+		$seqs{$row->[1]}{$row->[2]}{generation} = 'BY DEFAULT';
+		# SEQUENCE options
+		$row->[5] = 1 if ($row->[5] eq '');
+		$seqs{$row->[1]}{$row->[2]}{options} = "START WITH $row->[5]";
+		$seqs{$row->[1]}{$row->[2]}{options} .= " INCREMENT BY $row->[4]";
+		$seqs{$row->[1]}{$row->[2]}{options} .= " MINVALUE $row->[3]" if ($row->[3] ne '');
+		# For default values don't use option at all
+		if ( $seqs{$row->[1]}{$row->[2]}{options} eq 'START WITH 1 INCREMENT BY 1 MINVALUE 1') {
+			delete $seqs{$row->[1]}{$row->[2]}{options};
+		}
+	}
+
+	return %seqs;
 }
 
 =head2 _get_materialized_views
