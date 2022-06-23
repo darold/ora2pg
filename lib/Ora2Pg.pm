@@ -4373,7 +4373,7 @@ sub export_view
 		{
 			my $file_name = "$dirprefix${view}_$self->{output}";
 			$file_name =~ s/\.(gz|bz2)$//;
-			$self->dump("\\i$self->{psql_relative_path} $file_name\n");
+			$self->dump("\\i$self->{psql_relative_path} '$file_name'\n");
 			$self->logit("Dumping to one file per view : ${view}_$self->{output}\n", 1);
 			$fhdl = $self->open_export_file("${view}_$self->{output}");
 			$self->set_binmode($fhdl) if (!$self->{compress});
@@ -4647,7 +4647,7 @@ LANGUAGE plpgsql ;
 		if ($self->{file_per_table} && !$self->{pg_dsn}) {
 			my $file_name = "$dirprefix${view}_$self->{output}";
 			$file_name =~ s/\.(gz|bz2)$//;
-			$self->dump("\\i$self->{psql_relative_path} $file_name\n");
+			$self->dump("\\i$self->{psql_relative_path} '$file_name'\n");
 			$self->logit("Dumping to one file per materialized view : ${view}_$self->{output}\n", 1);
 			$fhdl = $self->open_export_file("${view}_$self->{output}");
 			$self->set_binmode($fhdl) if (!$self->{compress});
@@ -8307,7 +8307,7 @@ sub _get_sql_statements
 			{
 				my $file_name = "$dirprefix${table}_$self->{output}";
 				$file_name =~ s/\.(gz|bz2)$//;
-				$load_file .=  "\\i$self->{psql_relative_path} $file_name\n";
+				$load_file .=  "\\i$self->{psql_relative_path} '$file_name'\n";
 			}
 
 			# With partitioned table, load data direct from table partition
@@ -8335,7 +8335,7 @@ sub _get_sql_statements
 							if ($self->{file_per_table} && !$self->{pg_dsn}) {
 								my $file_name = "$dirprefix${sub_tb_name}_$self->{output}";
 								$file_name =~ s/\.(gz|bz2)$//;
-								$load_file .=  "\\i$self->{psql_relative_path} $file_name\n";
+								$load_file .=  "\\i$self->{psql_relative_path} '$file_name'\n";
 							}
 						}
 						# Now load content of the default partion table
@@ -8349,7 +8349,7 @@ sub _get_sql_statements
 									$part_name = "${tb_name}$part_name" if ($self->{prefix_partition});
 									my $file_name = "$dirprefix${part_name}_$self->{output}";
 									$file_name =~ s/\.(gz|bz2)$//;
-									$load_file .=  "\\i$self->{psql_relative_path} $file_name\n";
+									$load_file .=  "\\i$self->{psql_relative_path} '$file_name'\n";
 								}
 							}
 						}
@@ -8360,7 +8360,7 @@ sub _get_sql_statements
 						{
 							my $file_name = "$dirprefix${tb_name}_$self->{output}";
 							$file_name =~ s/\.(gz|bz2)$//;
-							$load_file .=  "\\i$self->{psql_relative_path} $file_name\n";
+							$load_file .=  "\\i$self->{psql_relative_path} '$file_name'\n";
 						}
 					}
 				}
@@ -8375,7 +8375,7 @@ sub _get_sql_statements
 							$part_name = $table . '_' . $part_name if ($self->{prefix_partition});
 							my $file_name = "$dirprefix${part_name}_$self->{output}";
 							$file_name =~ s/\.(gz|bz2)$//;
-							$load_file .=  "\\i$self->{psql_relative_path} $file_name\n";
+							$load_file .=  "\\i$self->{psql_relative_path} '$file_name'\n";
 						}
 					}
 				}
