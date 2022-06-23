@@ -10637,6 +10637,16 @@ sub _howto_get_data
 					}
 				}
 			}
+			# SQL Server geometry
+ 			elsif ( $self->{is_mssql} && $src_type->[$k] =~ /^GEOM(ETRY|GRAPHY)/i)
+ 			{
+				if ($self->{geometry_extract_type} eq 'WKB') {
+					$str .= "CASE WHEN $name->[$k] IS NOT NULL THEN CONCAT('SRID=', $name->[$k].STSrid,';', $name->[$k].STAsText()) ELSE NULL END,";
+				} else {
+					$str .= "CASE WHEN $name->[$k] IS NOT NULL THEN CONCAT('SRID=',$name->[$k].STSrid,';', $name->[$k].STAsText()) ELSE NULL END,";
+				}
+ 			}
+			# MySQL geometry
 			elsif ( $self->{is_mysql} && $src_type->[$k] =~ /geometry/i && $self->{type} ne 'TEST_DATA')
 			{
 				if ($self->{db_version} < '5.7.6')
