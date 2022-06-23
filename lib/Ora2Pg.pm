@@ -252,7 +252,7 @@ our @KEYWORDS = qw(
 	EXCEPT FALSE FETCH FOR FOREIGN FREEZE FROM FULL GRANT GROUP HAVING ILIKE IN
 	INITIALLY INNER INTERSECT INTO IS ISNULL JOIN KEY LATERAL LEADING LEFT LIKE LIMIT
 	LOCALTIME LOCALTIMESTAMP NATURAL NOT NOTNULL NULL OFFSET ON ONLY OR ORDER OUTER
-	OVERLAPS PASSWORD PLACING PRIMARY REFERENCES REF RETURNING RIGHT SELECT SESSION_USER
+	OVERLAPS PARTITION PASSWORD PLACING PRIMARY REFERENCES REF RETURNING RIGHT SELECT SESSION_USER
 	SIMILAR SOME SYMMETRIC TABLE TABLESAMPLE THEN TO TRAILING TRUE UNION UNIQUE USER
 	USING VARIADIC VERBOSE WHEN WHERE WINDOW WITH
 );
@@ -1023,6 +1023,9 @@ sub _init
 
 	# Set default tablespace to exclude when using USE_TABLESPACE
 	push(@{$self->{default_tablespaces}}, 'TEMP', 'USERS','SYSTEM');
+
+	# Add the custom reserved keywords defined in configuration file
+	push(@KEYWORDS, @{$self->{ora_reserved_words}});
 
 	# Verify grant objects
 	if ($self->{type} eq 'GRANT' && $self->{grant_object})
@@ -7406,6 +7409,9 @@ sub export_table
 			$obj_type = 'UNLOGGED ' . $obj_type;
 		}
 		if ($self->{export_gtt} && !$foreign && $self->{tables}{$table}{table_info}{temporary} eq 'Y') {
+			if ($sql_output !~ /LOAD 'pgtt';/s) {
+				$sql_output .= "\nLOAD 'pgtt';\n";
+			}
 			$obj_type = ' /*GLOBAL*/ TEMPORARY TABLE' if ($obj_type =~ /TABLE/);
 		}
 		if (exists $self->{tables}{$table}{table_as})
