@@ -1148,8 +1148,6 @@ sub _list_all_funtions
 	return @functions;
 }
 
-
-
 sub _sql_type
 {
         my ($self, $type, $len, $precision, $scale, $default, $no_blob_to_oid) = @_;
@@ -1168,7 +1166,6 @@ sub _sql_type
 	}
 
         # Override the length
-        $len = $precision if ( ((uc($type) eq 'NUMBER') || (uc($type) eq 'BIT')) && $precision );
         if (exists $self->{data_type}{uc($type)})
 	{
 		$type = uc($type); # Force uppercase
