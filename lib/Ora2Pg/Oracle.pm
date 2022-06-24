@@ -2683,8 +2683,12 @@ sub _get_synonyms
 	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
 	my %synonyms = ();
-	while (my $row = $sth->fetch) {
+	while (my $row = $sth->fetch)
+	{
 		next if ($row->[1] =~ /^\//); # Some not fully deleted synonym start with a slash
+                if (!$self->{schema} && $self->{export_schema}) {
+                        $row->[1] = $row->[0] . '.' . $row->[1];
+                }
 		$synonyms{$row->[1]}{owner} = $row->[0];
 		$synonyms{$row->[1]}{table_owner} = $row->[2];
 		$synonyms{$row->[1]}{table_name} = $row->[3];

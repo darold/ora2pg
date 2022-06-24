@@ -5033,25 +5033,40 @@ sub export_dblink
 			print STDERR $self->progress_bar($i, $num_total_dblink, 25, '=', 'dblink', "generating $db" ), "\r";
 		}
 		$sql_output .= "CREATE SERVER " . $self->quote_object_name($db);
-		if (!$self->{is_mysql}) {
-			$sql_output .= " FOREIGN DATA WRAPPER oracle_fdw OPTIONS (dbserver '$self->{dblink}{$db}{host}');\n";
-		} else {
+		if ($self->{is_mysql})
+		{
 			$sql_output .= " FOREIGN DATA WRAPPER mysql_fdw OPTIONS (host '$self->{dblink}{$db}{host}'";
 			$sql_output .= ", port '$self->{dblink}{$db}{port}'" if ($self->{dblink}{$db}{port});
 			$sql_output .= ");\n";
 		}
-		if ($self->{dblink}{$db}{password} ne 'NONE') {
+		elsif ($self->{is_mssql})
+		{
+			$self->{oracle_dsn} =~ /driver=([^;]+);/;
+			my $driver = $1 || 'msodbcsql18';
+			$sql_output .= " FOREIGN DATA WRAPPER odbc_fdw OPTIONS (odbc_driver '$driver', odbc_server '$self->{dblink}{$db}{host}'";
+			$sql_output .= ", odbc_port '$self->{dblink}{$db}{port}'" if ($self->{dblink}{$db}{port});
+			$sql_output .= ");\n";
+		}
+		else
+		{
+			$sql_output .= " FOREIGN DATA WRAPPER oracle_fdw OPTIONS (dbserver '$self->{dblink}{$db}{host}');\n";
+		}
+		if ($self->{dblink}{$db}{password} ne 'NONE')
+		{
 			$self->{dblink}{$db}{password} ||= 'secret';
 			$self->{dblink}{$db}{password} = ", password '$self->{dblink}{$db}{password}'";
 		}
-		if ($self->{dblink}{$db}{username}) {
+		if ($self->{dblink}{$db}{username})
+		{
+			$self->{dblink}{$db}{user} ||= 'unknown';
 			$sql_output .= "CREATE USER MAPPING FOR " . $self->quote_object_name($self->{dblink}{$db}{username})
 						. " SERVER " . $self->quote_object_name($db)
 						. " OPTIONS (user '" . $self->quote_object_name($self->{dblink}{$db}{user})
 						. "' $self->{dblink}{$db}{password});\n";
 		}
 		
-		if ($self->{force_owner}) {
+		if ($self->{force_owner})
+		{
 			my $owner = $self->{dblink}{$db}{owner};
 			$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
 			$sql_output .= "ALTER FOREIGN DATA WRAPPER " . $self->quote_object_name($db)
@@ -7269,15 +7284,15 @@ sub export_synonym
 		}
 		$count_syn++;
 		if ($self->{synonyms}{$syn}{dblink}) {
-			$sql_output .= "-- You need to create foreign table $self->{synonyms}{$syn}{table_owner}.$self->{synonyms}{$syn}{table_name} using foreign server: $self->{synonyms}{$syn}{dblink} (see DBLINK and FDW export type)\n";
+			$sql_output .= "-- You need to create foreign table $self->{synonyms}{$syn}{table_owner}.$self->{synonyms}{$syn}{table_name} using foreign server: '$self->{synonyms}{$syn}{dblink}'\n -- see DBLINK export type to export the server definition\n";
 		}
-		$sql_output .= "CREATE$self->{create_or_replace} VIEW " . $self->quote_object_name("$self->{synonyms}{$syn}{owner}.$syn")
+		$sql_output .= "CREATE$self->{create_or_replace} VIEW " . $self->quote_object_name($syn)
 			. " AS SELECT * FROM " . $self->quote_object_name("$self->{synonyms}{$syn}{table_owner}.$self->{synonyms}{$syn}{table_name}") . ";\n";
 		my $owner = $self->{synonyms}{$syn}{table_owner};
 		$owner = $self->{force_owner} if ($self->{force_owner} && ($self->{force_owner} ne "1"));
-		$sql_output .= "ALTER VIEW " . $self->quote_object_name("$self->{synonyms}{$syn}{owner}.$syn")
+		$sql_output .= "ALTER VIEW " . $self->quote_object_name($syn)
 					. " OWNER TO " . $self->quote_object_name($owner) . ";\n";
-		$sql_output .= "GRANT ALL ON " . $self->quote_object_name("$self->{synonyms}{$syn}{owner}.$syn")
+		$sql_output .= "GRANT ALL ON " . $self->quote_object_name($syn)
 					. " TO " . $self->quote_object_name($self->{synonyms}{$syn}{owner}) . ";\n\n";
 		$i++;
 	}
@@ -11424,6 +11439,8 @@ sub _get_dblink
 
 	if ($self->{is_mysql}) {
 		return Ora2Pg::MySQL::_get_dblink($self);
+	} elsif ($self->{is_mssql}) {
+		return Ora2Pg::MSSQL::_get_dblink($self);
 	} else {
 		return Ora2Pg::Oracle::_get_dblink($self);
 	}
@@ -11877,6 +11894,8 @@ sub _get_synonyms
 
 	if ($self->{is_mysql}) {
 		return Ora2Pg::MySQL::_get_synonyms($self);
+	} elsif ($self->{is_mssql}) {
+		return Ora2Pg::MSSQL::_get_synonyms($self);
 	} else {
 		return Ora2Pg::Oracle::_get_synonyms($self);
 	}
@@ -15881,9 +15900,10 @@ sub _show_infos
 			}
 			elsif ( ($typ eq 'SYNONYM') && !$self->{is_mysql} )
 			{
-				foreach my $t (sort {$a cmp $b} keys %synonyms) {
+				foreach my $t (sort {$a cmp $b} keys %synonyms)
+				{
 					if ($synonyms{$t}{dblink}) {
-						$report_info{'Objects'}{$typ}{'detail'} .= "\L$synonyms{$t}{owner}.$t\E is a link to \L$synonyms{$t}{table_owner}.$synonyms{$t}{table_name}\@$synonyms{$t}{dblink}\E\n";
+						$report_info{'Objects'}{$typ}{'detail'} .= "\L$t\E is a link to \L$synonyms{$t}{table_owner}.$synonyms{$t}{table_name}\@$synonyms{$t}{dblink}\E\n";
 					} else {
 						$report_info{'Objects'}{$typ}{'detail'} .= "\L$t\E is an alias to $synonyms{$t}{table_owner}.$synonyms{$t}{table_name}\n";
 					}

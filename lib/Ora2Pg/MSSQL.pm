@@ -88,7 +88,6 @@ sub _db_connection
 	}
 
 	# Use consistent reads for concurrent dumping...
-	#$dbh->do('START TRANSACTION WITH CONSISTENT SNAPSHOT;') || $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
 	if ($self->{debug} && !$self->{quiet}) {
 		$self->logit("Isolation level: $self->{transaction}\n", 1);
 	}
@@ -96,17 +95,6 @@ sub _db_connection
 	$sth->execute or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
 	$sth->finish;
 
-#	if ($self->{nls_lang})
-#	{
-#		if ($self->{debug} && !$self->{quiet}) {
-#			$self->logit("Set default encoding to '$self->{nls_lang}' and collate to '$self->{nls_nchar}'\n", 1);
-#		}
-#		my $collate = '';
-#		$collate = " COLLATE '$self->{nls_nchar}'" if ($self->{nls_nchar});
-#		$sth = $dbh->prepare("SET NAMES '$self->{nls_lang}'$collate") or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
-#		$sth->execute or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
-#		$sth->finish;
-#	}
 	# Force execution of initial command
 	$self->_ora_initial_command($dbh);
 
@@ -1164,7 +1152,6 @@ sub _sql_type
 	if ($type !~ /CHAR/i) {
 		$precision = $len if (!$precision);
 	}
-
         # Override the length
         if (exists $self->{data_type}{uc($type)})
 	{
@@ -1379,22 +1366,33 @@ sub _get_dblink
 	return if ($self->{user_grants});
 
 	# Retrieve all database link from dba_db_links table
-	my $str = "SELECT OWNER,SERVER_NAME,USERNAME,HOST,DB,PORT,PASSWORD FROM mysql.servers";
-	$str .= $self->limit_to_objects('DBLINK', 'SERVER_NAME');
-	$str .= " ORDER BY SERVER_NAME";
-	$str =~ s/mysql.servers AND /mysql.servers WHERE /;
+	my $str = qq{SELECT 
+  name,
+  provider,
+  data_source,
+  catalog
+FROM sys.servers
+WHERE is_linked = 1
+};
+	$str .= $self->limit_to_objects('DBLINK', 'name');
+	$str .= " ORDER BY name";
 
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
 	my %data = ();
-	while (my $row = $sth->fetch) {
-		$data{$row->[1]}{owner} = $row->[0];
-		$data{$row->[1]}{username} = $row->[2];
-		$data{$row->[1]}{host} = $row->[3];
-		$data{$row->[1]}{db} = $row->[4];
-		$data{$row->[1]}{port} = $row->[5];
-		$data{$row->[1]}{password} = $row->[6];
+	while (my $row = $sth->fetch)
+	{
+		my $port = '1433';
+		if ($row->[2] =~ s/,(\d+)$//) {
+			$port = $1;
+		}
+		$data{$row->[0]}{owner} = 'unknown';
+		$data{$row->[0]}{username} = 'unknown';
+		$data{$row->[0]}{host} = $row->[2];
+		$data{$row->[0]}{db} = $row->[3] || 'unknown';
+		$data{$row->[0]}{port} = $port;
+		$data{$row->[0]}{backend} = $row->[1] || 'SQL Server';
 	}
 
 	return %data;
@@ -1844,7 +1842,45 @@ sub _get_synonyms
 {
 	my ($self) = shift;
 
-	return;
+	# Retrieve all synonym
+	my $str = qq{SELECT
+	n.name AS SchemaName, 
+	sy.name AS synonym_name,
+	sy.base_object_name AS synonym_definition,
+	COALESCE(PARSENAME(sy.base_object_name, 4), \@\@servername) AS server_name,
+	COALESCE(PARSENAME(sy.base_object_name, 3), DB_NAME(DB_ID())) AS DB_name,
+	COALESCE(PARSENAME (sy.base_object_name, 2), SCHEMA_NAME(SCHEMA_ID ())) AS schema_name,
+	PARSENAME(sy.base_object_name, 1) AS table_name,
+	\@\@servername AS local_server
+FROM sys.synonyms sy
+LEFT OUTER JOIN sys.schemas n ON sy.schema_id = n.schema_id
+};
+	if ($self->{schema}) {
+		$str .= " WHERE n.name='$self->{schema}' ";
+	} else {
+		$str .= " WHERE n.name NOT IN ('" . join("','", @{$self->{sysusers}}) . "') ";
+	}
+	$str .= $self->limit_to_objects('SYNONYM','sy.name');
+
+	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+
+	my %synonyms = ();
+	while (my $row = $sth->fetch)
+	{
+                if (!$self->{schema} && $self->{export_schema}) {
+                        $row->[1] = $row->[0] . '.' . $row->[1];
+                }
+		$synonyms{$row->[1]}{owner} = $row->[0];
+		$synonyms{$row->[1]}{table_owner} = $row->[5];
+		$synonyms{$row->[1]}{table_name} = $row->[6];
+		if ($row->[3] ne $row->[7]) {
+			$synonyms{$row->[1]}{dblink} = $row->[3];
+		}
+	}
+	$sth->finish;
+
+	return %synonyms;
 }
 
 sub _get_tablespaces
