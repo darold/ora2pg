@@ -1703,6 +1703,29 @@ LEFT OUTER JOIN sys.schemas sch ON t.schema_id = sch.schema_id
 	}
 	$sth->finish;
 
+	# MATERIALIZED VIEW
+	$sql = qq{select
+       v.name as view_name,
+       schema_name(v.schema_id) as schema_name,
+       i.name as index_name,
+       m.definition
+from sys.views v
+join sys.indexes i on i.object_id = v.object_id and i.index_id = 1 and i.ignore_dup_key = 0
+join sys.sql_modules m on m.object_id = v.object_id
+};
+
+	if (!$self->{schema}) {
+		$sql .= " WHERE schema_name(v.schema_id) NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
+	} else {
+		$sql .= " WHERE schema_name(v.schema_id) = '$self->{schema}'";
+	}
+	$sth = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	while ( my @row = $sth->fetchrow()) {
+		push(@{$infos{'MATERIALIZED VIEW'}}, { ( name => $row[0], invalid => 0) });
+	}
+	$sth->finish;
+
 	return %infos;
 }
 

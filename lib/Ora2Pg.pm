@@ -4718,12 +4718,19 @@ LANGUAGE plpgsql ;
 		{
 			$sql_output .= "DROP MATERIALIZED VIEW $self->{pg_supports_ifexists} $view;\n" if ($self->{drop_if_exists});
 			$sql_output .= "CREATE MATERIALIZED VIEW $view\n";
-			$sql_output .= "BUILD $self->{materialized_views}{$view}{build_mode}\n";
-			$sql_output .= "REFRESH $self->{materialized_views}{$view}{refresh_method} ON $self->{materialized_views}{$view}{refresh_mode}\n";
-			$sql_output .= "ENABLE QUERY REWRITE" if ($self->{materialized_views}{$view}{rewritable});
-			$sql_output .= "AS $self->{materialized_views}{$view}{text}";
-			$sql_output .= " USING INDEX" if ($self->{materialized_views}{$view}{no_index});
-			$sql_output .= " USING NO INDEX" if (!$self->{materialized_views}{$view}{no_index});
+			if (!$self->{is_mysql} && !$self->{is_mssql})
+			{
+				$sql_output .= "BUILD $self->{materialized_views}{$view}{build_mode}\n";
+				$sql_output .= "REFRESH $self->{materialized_views}{$view}{refresh_method} ON $self->{materialized_views}{$view}{refresh_mode}\n";
+				$sql_output .= "ENABLE QUERY REWRITE" if ($self->{materialized_views}{$view}{rewritable});
+				$sql_output .= "AS ";
+			}
+			$sql_output .= "$self->{materialized_views}{$view}{text}";
+			if (!$self->{is_mysql} && !$self->{is_mssql})
+			{
+				$sql_output .= " USING INDEX" if ($self->{materialized_views}{$view}{no_index});
+				$sql_output .= " USING NO INDEX" if (!$self->{materialized_views}{$view}{no_index});
+			}
 			$sql_output .= ";\n\n";
 
 			# Set the index definition
@@ -4742,6 +4749,9 @@ LANGUAGE plpgsql ;
 			{
 				$sql_output .= "DROP VIEW $self->{pg_supports_ifexists} \L$view\E_mview;\n" if ($self->{drop_if_exists});
 				$sql_output .= "CREATE VIEW \L$view\E_mview AS\n";
+				if ($self->{is_mssql}) {
+					$self->{materialized_views}{$view}{text} =~ s/^(.*?)\s+AS\s+//is;
+				}
 				$sql_output .= $self->{materialized_views}{$view}{text};
 				$sql_output .= ";\n\n";
 				$sql_output .= "SELECT create_materialized_view('\L$view\E','\L$view\E_mview', change with the name of the colum to used for the index);\n\n\n";
@@ -4758,6 +4768,9 @@ LANGUAGE plpgsql ;
 			{
 				$sql_output .= "DROP MATERIALIZED VIEW $self->{pg_supports_ifexists} \L$view\E;\n" if ($self->{drop_if_exists});
 				$sql_output .= "CREATE MATERIALIZED VIEW \L$view\E AS\n";
+				if ($self->{is_mssql}) {
+					$self->{materialized_views}{$view}{text} =~ s/^(.*?)\s+AS\s+//is;
+				}
 				$sql_output .= $self->{materialized_views}{$view}{text};
 				if ($self->{materialized_views}{$view}{build_mode} eq 'DEFERRED') {
 					$sql_output .= " WITH NO DATA";
