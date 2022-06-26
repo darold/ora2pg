@@ -1362,8 +1362,8 @@ sub _get_dblink
 {
 	my($self) = @_;
 
-	# Must be able to read mysql.servers table
-	return if ($self->{user_grants});
+	# Don't work with Azure
+	return if ($self->{db_version} =~ /Microsoft SQL Azure/);
 
 	# Retrieve all database link from dba_db_links table
 	my $str = qq{SELECT 
@@ -1592,7 +1592,12 @@ sub _get_objects
 	my %infos = ();
 
 	# TABLE
-	my $sql = "SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE='BASE TABLE' AND TABLE_SCHEMA = '$self->{schema}'";
+	my $sql = "SELECT t.name FROM sys.tables t INNER JOIN sys.indexes i ON t.OBJECT_ID = i.object_id INNER JOIN sys.partitions p ON i.object_id = p.OBJECT_ID AND i.index_id = p.index_id LEFT OUTER JOIN sys.schemas s ON t.schema_id = s.schema_id WHERE t.is_ms_shipped = 0 AND i.OBJECT_ID > 255 AND t.type='U' AND t.NAME NOT LIKE '#%'";
+	if (!$self->{schema}) {
+		$sql .= " AND s.name NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
+	} else {
+		$sql.= " AND s.name = '$self->{schema}'";
+	}
 	my $sth = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	while ( my @row = $sth->fetchrow()) {
@@ -1600,7 +1605,12 @@ sub _get_objects
 	}
 	$sth->finish();
 	# VIEW
-	$sql = "SELECT TABLE_NAME FROM INFORMATION_SCHEMA.VIEWS WHERE TABLE_SCHEMA = '$self->{schema}'";
+	$sql = "SELECT v.name from sys.views v join sys.sql_modules m on m.object_id = v.object_id WHERE NOT EXISTS (SELECT 1 FROM sys.indexes i WHERE i.object_id = v.object_id and i.index_id = 1 and i.ignore_dup_key = 0) AND is_date_correlation_view=0";
+	if (!$self->{schema}) {
+		$sql .= " AND schema_name(v.schema_id) NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
+	} else {
+		$sql.= " AND schema_name(v.schema_id) = '$self->{schema}'";
+	}
 	$sth = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	while ( my @row = $sth->fetchrow()) {
@@ -1608,7 +1618,12 @@ sub _get_objects
 	}
 	$sth->finish();
 	# TRIGGER
-	$sql = "SELECT TRIGGER_NAME FROM INFORMATION_SCHEMA.TRIGGERS WHERE TRIGGER_SCHEMA = '$self->{schema}'";
+	$sql = "SELECT o.name FROM sys.sysobjects o INNER JOIN sys.tables t ON o.parent_obj = t.object_id INNER JOIN sys.schemas s ON t.schema_id = s.schema_id WHERE o.type = 'TR'";
+	if (!$self->{schema}) {
+		$sql .= " AND s.name NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
+	} else {
+		$sql.= " AND s.name = '$self->{schema}'";
+	}
 	$sth = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	while ( my @row = $sth->fetchrow()) {
@@ -1618,7 +1633,12 @@ sub _get_objects
 	# INDEX
 	foreach my $t (@{$infos{TABLE}})
 	{
-		my $sql = "SHOW INDEX FROM `$t->{name}` FROM $self->{schema}";
+		my $sql = "SELECT Id.name AS index_name FROM sys.tables AS T INNER JOIN sys.indexes Id ON T.object_id = Id.object_id LEFT OUTER JOIN sys.schemas s ON t.schema_id = s.schema_id WHERE T.is_ms_shipped = 0 AND Id.auto_created = 0 AND OBJECT_NAME(Id.object_id, DB_ID())='$t' AND Id.is_primary_key = 0";
+		if (!$self->{schema}) {
+			$sql .= " AND s.name NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
+		} else {
+			$sql.= " AND s.name = '$self->{schema}'";
+		}
 		$sth = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 		$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 		while (my @row = $sth->fetchrow()) {
@@ -1627,7 +1647,12 @@ sub _get_objects
 		}
 	}
 	# FUNCTION
-	$sql = "SELECT ROUTINE_NAME FROM INFORMATION_SCHEMA.ROUTINES WHERE ROUTINE_TYPE = 'FUNCTION' AND ROUTINE_SCHEMA = '$self->{schema}'";
+	$sql = "SELECT O.name FROM sys.sql_modules M JOIN sys.objects O ON M.object_id=O.object_id JOIN sys.schemas AS s ON o.schema_id = s.schema_id WHERE O.type IN ('IF','TF','FN')";
+	if (!$self->{schema}) {
+		 $sql .= " AND s.name NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
+	} else {
+		$sql .= " AND s.name = '$self->{schema}'";
+	}
 	$sth = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	while ( my @row = $sth->fetchrow()) {
@@ -1635,7 +1660,12 @@ sub _get_objects
 	}
 	$sth->finish();
 	# PROCEDURE
-	$sql = "SELECT ROUTINE_NAME FROM INFORMATION_SCHEMA.ROUTINES WHERE ROUTINE_TYPE = 'PROCEDURE' AND ROUTINE_SCHEMA = '$self->{schema}'";
+	$sql = "SELECT O.name FROM sys.sql_modules M JOIN sys.objects O ON M.object_id=O.object_id JOIN sys.schemas AS s ON o.schema_id = s.schema_id WHERE O.type = 'P'";
+	if (!$self->{schema}) {
+		 $sql .= " AND s.name NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
+	} else {
+		$sql .= " AND s.name = '$self->{schema}'";
+	}
 	$sth = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	while ( my @row = $sth->fetchrow()) {
@@ -1644,33 +1674,13 @@ sub _get_objects
 	$sth->finish();
 
 	# PARTITION.
-	my $str = qq{
-SELECT TABLE_NAME||'_'||PARTITION_NAME
-FROM INFORMATION_SCHEMA.PARTITIONS
-WHERE SUBPARTITION_NAME IS NULL AND (PARTITION_METHOD = 'RANGE' OR PARTITION_METHOD = 'LIST')
-};
-	$sql .= $self->limit_to_objects('TABLE|PARTITION', 'TABLE_NAME|PARTITION_NAME');
-	if ($self->{schema}) {
-		$sql .= "\tAND TABLE_SCHEMA ='$self->{schema}'\n";
+	$sql = " SELECT t.name AS TableName FROM sys.tables AS t JOIN sys.indexes AS i ON t.object_id = i.object_id AND i.[type] <= 1 JOIN sys.partitions AS p ON i.object_id = p.object_id AND i.index_id = p.index_id LEFT OUTER JOIN sys.schemas s ON t.schema_id = s.schema_id";
+	if (!$self->{schema}) {
+		 $sql .= " WHERE s.name NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
+	} else {
+		$sql .= " WHERE s.name = '$self->{schema}'";
 	}
-	$sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-	while ( my @row = $sth->fetchrow()) {
-		push(@{$infos{'TABLE PARTITION'}}, { ( name => $row[0], invalid => 0) });
-	}
-	$sth->finish;
-
-	# SUBPARTITION.
-	$str = qq{
-SELECT TABLE_NAME||'_'||SUBPARTITION_NAME
-FROM INFORMATION_SCHEMA.PARTITIONS
-WHERE SUBPARTITION_NAME IS NOT NULL
-};
-	$sql .= $self->limit_to_objects('TABLE|PARTITION', 'TABLE_NAME|SUBPARTITION_NAME');
-	if ($self->{schema}) {
-		$sql .= "\tAND TABLE_SCHEMA ='$self->{schema}'\n";
-	}
-	$sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	while ( my @row = $sth->fetchrow()) {
 		push(@{$infos{'TABLE PARTITION'}}, { ( name => $row[0], invalid => 0) });
@@ -1742,15 +1752,16 @@ sub _get_database_size
 {
 	my $self = shift;
 
+	# Don't work with Azure
+	return if ($self->{db_version} =~ /Microsoft SQL Azure/);
+
 	my $mb_size = '';
 	my $condition = '';
 
-	my $sql = qq{
-SELECT TABLE_SCHEMA "DB Name",
-   sum(DATA_LENGTH + INDEX_LENGTH)/1024/1024 "DB Size in MB"
-FROM INFORMATION_SCHEMA.TABLES
-WHERE TABLE_SCHEMA='$self->{schema}'
-GROUP BY TABLE_SCHEMA
+       my $sql = qq{SELECT
+   d.name,
+   m.size * 8 / 1024
+FROM sys.master_files m JOIN sys.databases d ON d.database_id = m.database_id and m.type = 0
 };
         my $sth = $self->{dbh}->prepare( $sql ) or return undef;
         $sth->execute or return undef;

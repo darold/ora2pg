@@ -1017,10 +1017,6 @@ sub _init
 		}
 	}
 
-	# Set default system user/schema to not export. Most of them are extracted from this doc:
-	# http://docs.oracle.com/cd/E11882_01/server.112/e10575/tdpsg_user_accounts.htm#TDPSG20030
-	push(@{$self->{sysusers}},'SYSTEM','CTXSYS','DBSNMP','EXFSYS','LBACSYS','MDSYS','MGMT_VIEW','OLAPSYS','ORDDATA','OWBSYS','ORDPLUGINS','ORDSYS','OUTLN','SI_INFORMTN_SCHEMA','SYS','SYSMAN','WK_TEST','WKSYS','WKPROXY','WMSYS','XDB','APEX_PUBLIC_USER','DIP','FLOWS_020100','FLOWS_030000','FLOWS_040100','FLOWS_010600','FLOWS_FILES','MDDATA','ORACLE_OCM','SPATIAL_CSW_ADMIN_USR','SPATIAL_WFS_ADMIN_USR','XS$NULL','PERFSTAT','SQLTXPLAIN','DMSYS','TSMSYS','WKSYS','APEX_040000','APEX_040200','DVSYS','OJVMSYS','GSMADMIN_INTERNAL','APPQOSSYS','DVSYS','DVF','AUDSYS','APEX_030200','MGMT_VIEW','ODM','ODM_MTR','TRACESRV','MTMSYS','OWBSYS_AUDIT','WEBSYS','WK_PROXY','OSE$HTTP$ADMIN','AURORA$JIS$UTILITY$','AURORA$ORB$UNAUTHENTICATED','DBMS_PRIVILEGE_CAPTURE','CSMIG', 'MGDSYS', 'SDE','DBSFWUSER');
-
 	# Set default tablespace to exclude when using USE_TABLESPACE
 	push(@{$self->{default_tablespaces}}, 'TEMP', 'USERS','SYSTEM');
 
@@ -1277,14 +1273,22 @@ sub _init
 
 	# Preload our dedicated function per DBMS
 	if ($self->{is_mysql}) {
+		@{$self->{sysusers}} = ();
 		import Ora2Pg::MySQL;
 		$self->{sgbd_name} = 'MySQL';
 	} elsif ($self->{is_mssql}) {
+		@{$self->{sysusers}} = ('sys') if ($#{$self->{sysusers}} < 0);
 		import Ora2Pg::MSSQL;
 		$self->{sgbd_name} = 'MSSQL';
 	} else {
 		import Ora2Pg::Oracle;
 		$self->{sgbd_name} = 'Oracle';
+	}
+
+	# Set default system user/schema to not export. Most of them are extracted from this doc:
+	# http://docs.oracle.com/cd/E11882_01/server.112/e10575/tdpsg_user_accounts.htm#TDPSG20030
+	if (!$self->{is_mysql} && !$self->{is_mssql}) {
+		push(@{$self->{sysusers}},'SYSTEM','CTXSYS','DBSNMP','EXFSYS','LBACSYS','MDSYS','MGMT_VIEW','OLAPSYS','ORDDATA','OWBSYS','ORDPLUGINS','ORDSYS','OUTLN','SI_INFORMTN_SCHEMA','SYS','SYSMAN','WK_TEST','WKSYS','WKPROXY','WMSYS','XDB','APEX_PUBLIC_USER','DIP','FLOWS_020100','FLOWS_030000','FLOWS_040100','FLOWS_010600','FLOWS_FILES','MDDATA','ORACLE_OCM','SPATIAL_CSW_ADMIN_USR','SPATIAL_WFS_ADMIN_USR','XS$NULL','PERFSTAT','SQLTXPLAIN','DMSYS','TSMSYS','WKSYS','APEX_040000','APEX_040200','DVSYS','OJVMSYS','GSMADMIN_INTERNAL','APPQOSSYS','DVSYS','DVF','AUDSYS','APEX_030200','MGMT_VIEW','ODM','ODM_MTR','TRACESRV','MTMSYS','OWBSYS_AUDIT','WEBSYS','WK_PROXY','OSE$HTTP$ADMIN','AURORA$JIS$UTILITY$','AURORA$ORB$UNAUTHENTICATED','DBMS_PRIVILEGE_CAPTURE','CSMIG', 'MGDSYS', 'SDE','DBSFWUSER');
 	}
 
 	# Log file handle
@@ -17644,6 +17648,8 @@ sub _get_database_size
 
 	if ($self->{is_mysql}) {
 		return Ora2Pg::MySQL::_get_database_size($self);
+	} elsif ($self->{is_mssql}) {
+		return Ora2Pg::MSSQL::_get_database_size($self);
 	} else {
 		return Ora2Pg::Oracle::_get_database_size($self);
 	}
@@ -17662,6 +17668,8 @@ sub _get_objects
 
 	if ($self->{is_mysql}) {
 		return Ora2Pg::MySQL::_get_objects($self);
+	} elsif ($self->{is_mssql}) {
+		return Ora2Pg::MSSQL::_get_objects($self);
 	} else {
 		return Ora2Pg::Oracle::_get_objects($self);
 	}
