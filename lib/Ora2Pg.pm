@@ -11467,6 +11467,8 @@ sub _get_job
 
 	if ($self->{is_mysql}) {
 		return Ora2Pg::MySQL::_get_job($self);
+	} elsif ($self->{is_mssql}) {
+		return Ora2Pg::MSSQL::_get_job($self);
 	} else {
 		return Ora2Pg::Oracle::_get_job($self);
 	}
@@ -15922,7 +15924,7 @@ sub _show_infos
 			{
 				my %partitions = $self->_get_partitions_list();
 				foreach my $t (sort keys %partitions) {
-					$report_info{'Objects'}{$typ}{'detail'} .= " $partitions{$t} $t partitions.\n";
+					$report_info{'Objects'}{$typ}{'detail'} .= "$t\n";
 				}
 				$report_info{'Objects'}{$typ}{'comment'} = "Partitions are well supported by PostgreSQL except key partition which will not be exported.";
 			}

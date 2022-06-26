@@ -1339,6 +1339,9 @@ sub _get_job
 {
 	my($self) = @_;
 
+	# Don't work with Azure
+	return if ($self->{db_version} =~ /Microsoft SQL Azure/);
+
 	# Retrieve all database job from user_jobs table
 	my $str = "SELECT EVENT_NAME,EVENT_DEFINITION,EXECUTE_AT FROM INFORMATION_SCHEMA.EVENTS WHERE STATUS = 'ENABLED'";
 	if ($self->{schema}) {
@@ -1511,14 +1514,14 @@ LEFT OUTER JOIN sys.schemas sch ON t.schema_id = sch.schema_id
 	my %parts = ();
 	while (my $row = $sth->fetch)
 	{
-		if ($self->{export_schema} && !$self->{schema}) {
-			$row->[1] = "$row->[0].$row->[1]";
-		}
-                $parts{"\L$row->[1]\E"}{count}++;
-                $parts{"\L$row->[1]\E"}{composite} = 0;
-		$parts{"\L$row->[1]\E"}{type} = 'RANGE';
-		push(@{ $parts{"\L$row->[1]\E"}{columns} }, $row->[11]) if (!grep(/^$row->[11]$/, @{ $parts{"\L$row->[1]\E"}{columns} }));
-		#dbo | PartitionTable | PK__Partitio__357D0D3E1290FD9F | 2 | 72057594048872448 | 65601 | 65536 | RANGE | 2 | 2022-05-01 00:00:00 | 1 | col1
+		$parts{"\L$row->[1]\E"}++;
+#		if ($self->{export_schema} && !$self->{schema}) {
+#			$row->[1] = "$row->[0].$row->[1]";
+#		}
+#               $parts{"\L$row->[1]\E"}{count}++;
+#               $parts{"\L$row->[1]\E"}{composite} = 0;
+#		$parts{"\L$row->[1]\E"}{type} = 'RANGE';
+#		push(@{ $parts{"\L$row->[1]\E"}{columns} }, $row->[11]) if (!grep(/^$row->[11]$/, @{ $parts{"\L$row->[1]\E"}{columns} }));
 	}
 	$sth->finish;
 
@@ -1674,12 +1677,25 @@ sub _get_objects
 	$sth->finish();
 
 	# PARTITION.
-	$sql = " SELECT t.name AS TableName FROM sys.tables AS t JOIN sys.indexes AS i ON t.object_id = i.object_id AND i.[type] <= 1 JOIN sys.partitions AS p ON i.object_id = p.object_id AND i.index_id = p.index_id LEFT OUTER JOIN sys.schemas s ON t.schema_id = s.schema_id";
-	if (!$self->{schema}) {
-		 $sql .= " WHERE s.name NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
-	} else {
-		$sql .= " WHERE s.name = '$self->{schema}'";
+	$sql = qq{
+SELECT sch.name AS SchemaName, t.name AS TableName, i.name AS IndexName,
+    p.partition_number, p.partition_id, i.data_space_id, f.function_id, f.type_desc,
+    r.boundary_id, r.value AS BoundaryValue, ic.column_id AS PartitioningColumnID,
+    c.name AS PartitioningColumnName
+FROM sys.tables AS t
+JOIN sys.indexes AS i ON t.object_id = i.object_id AND i.[type] <= 1
+JOIN sys.partitions AS p ON i.object_id = p.object_id AND i.index_id = p.index_id
+JOIN sys.partition_schemes AS s ON i.data_space_id = s.data_space_id
+JOIN sys.index_columns AS ic ON ic.[object_id] = i.[object_id] AND ic.index_id = i.index_id AND ic.partition_ordinal >= 1 -- because 0 = non-partitioning column
+JOIN sys.columns AS c ON t.[object_id] = c.[object_id] AND ic.column_id = c.column_id
+JOIN sys.partition_functions AS f ON s.function_id = f.function_id
+LEFT JOIN sys.partition_range_values AS r ON f.function_id = r.function_id and r.boundary_id = p.partition_number
+LEFT OUTER JOIN sys.schemas sch ON t.schema_id = sch.schema_id
+};
+	if ($self->{schema}) {
+		$sql .= " WHERE sch.name ='$self->{schema}'";
 	}
+
 	$sth = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	while ( my @row = $sth->fetchrow()) {
