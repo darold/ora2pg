@@ -2949,12 +2949,12 @@ sub read_schema_from_file
 								$c_default = Ora2Pg::PLSQL::convert_plsql_code($self, $c_default);
 							}
 						}
-						if ($c_type =~ /date|timestamp/i && $c_default =~ /'0000-00-00/)
+						if ($c_type =~ /date|timestamp/i && $c_default =~ /^'0000-/)
 						{
 							if ($self->{replace_zero_date}) {
 								$c_default = $self->{replace_zero_date};
 							} else {
-								$c_default =~ s/^'0000-00-00/'1970-01-01/;
+								$c_default =~ s/^'0000-\d+-\d+/'1970-01-01/;
 							}
 							if ($c_default =~ /^[\-]*INFINITY$/) {
 								$c_default .= "::$c_type";
@@ -7604,12 +7604,12 @@ sub export_table
 									}
 									elsif ($type =~ /DATE|TIME/i)
 									{
-										if ($f->[4] =~ /0000-00-00/)
+										if ($f->[4] =~ /^0000-/)
 										{
 											if ($self->{replace_zero_date}) {
 												$f->[4] = $self->{replace_zero_date};
 											} else {
-												$f->[4] =~ s/^0000-00-00/1970-01-01/;
+												$f->[4] =~ s/^0000-\d+-\d+/1970-01-01/;
 											}
 										}
 										if ($f->[4] =~ /^\d+/) {
@@ -7629,11 +7629,11 @@ sub export_table
 										if ($type =~ /CHAR|TEXT/i || ($was_enum && $f->[1] =~ /'/i)) {
 											$f->[4] = "'$f->[4]'" if ($f->[4] !~ /[']/ && $f->[4] !~ /\(.*\)/ && uc($f->[4]) ne 'NULL');
 										} elsif ($type =~ /DATE|TIME/i) {
-											if ($f->[4] =~ /0000-00-00/) {
+											if ($f->[4] =~ /^0000-/) {
 												if ($self->{replace_zero_date}) {
 													$f->[4] = $self->{replace_zero_date};
 												} else {
-													$f->[4] =~ s/^0000-00-00/1970-01-01/;
+													$f->[4] =~ s/^0000-\d+-\d+/1970-01-01/;
 												}
 											}
 											if ($f->[4] =~ /^\d+/) {
@@ -12222,7 +12222,7 @@ sub format_data_type
 		elsif ($cond->{isdate})
 		{
 			$q = '' if ( $col =~ /^['\`]/ );
-			if ($col =~ /^0000-00-00/) {
+			if ($col =~ /^0000-/) {
 				$col = $self->{replace_zero_date} ?  "$q$self->{replace_zero_date}$q" : 'NULL';
 			} elsif ($col =~ /^(\d+-\d+-\d+ \d+:\d+:\d+)\.$/) {
 				$col = "$q$1$q";
@@ -12294,7 +12294,7 @@ sub format_data_type
 		}
 		elsif ($cond->{isdate})
 		{
-			if ($col =~ /^0000-00-00/) {
+			if ($col =~ /^0000-/) {
 				$col = $self->{replace_zero_date} || '\N';
 			} elsif ($col =~ /^(\d+-\d+-\d+ \d+:\d+:\d+)\.$/) {
 				$col = $1;
@@ -14939,7 +14939,7 @@ sub _dump_to_pg
 					# Even with prepared statement we need to replace zero date
 					foreach my $j (@date_cols)
 					{
-						if ($row->[$j] =~ /^0000-00-00/)
+						if ($row->[$j] =~ /^0000-/)
 						{
 							if (!$self->{replace_zero_date}) {
 								$row->[$j] = undef;
