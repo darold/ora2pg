@@ -869,7 +869,7 @@ sub _get_functions
 FROM sys.sql_modules M
 JOIN sys.objects O ON M.object_id=O.object_id
 JOIN sys.schemas AS s ON o.schema_id = s.schema_id
-WHERE O.type IN ('IF','TF','FN','P')
+WHERE O.type IN ('IF','TF','FN')
 };
 	if ($self->{schema}) {
 		$str .= " AND s.name = '$self->{schema}'";
@@ -883,7 +883,51 @@ WHERE O.type IN ('IF','TF','FN','P')
 	while (my $row = $sth->fetch)
 	{
 		my $kind = 'FUNCTION';
-		$kind = 'PROCEDURE' if ($row->[2] eq 'SQL_STORED_PROCEDURE');
+		next if ( ($kind ne $self->{type}) && ($self->{type} ne 'SHOW_REPORT') );
+		my $fname = $row->[0];
+		if ($self->{export_schema} && !$self->{schema}) {
+			$row->[0] = "$row->[3].$row->[0]";
+		}
+		$functions{"$row->[0]"}{name} = $row->[0];
+		$functions{"$row->[0]"}{text} = $row->[1];
+		$functions{"$row->[0]"}{kind} = $row->[2];
+		$functions{"$row->[0]"}{strict} = $row->[4];
+		$functions{"$row->[0]"}{security} = ($row->[5] == -2) ? 'DEFINER' : 'EXECUTER';
+		$functions{"$row->[0]"}{text} =~ s///gs;
+		if ($self->{plsql_pgsql})
+		{
+			$functions{"$row->[0]"}{text} =~ s/[\[\]]//gs;
+		}
+	}
+
+	return \%functions;
+}
+
+sub _get_procedures
+{
+	my $self = shift;
+
+	# Retrieve all functions 
+	my $str = qq{SELECT
+    O.name, M.definition, O.type_desc, s.name, M.null_on_null_input,
+    M.execute_as_principal_id
+FROM sys.sql_modules M
+JOIN sys.objects O ON M.object_id=O.object_id
+JOIN sys.schemas AS s ON o.schema_id = s.schema_id
+WHERE O.type = 'P'
+};
+	if ($self->{schema}) {
+		$str .= " AND s.name = '$self->{schema}'";
+	}
+	$str .= " " . $self->limit_to_objects('PROCEDURE','O.name');
+	$str .= " ORDER BY O.name";
+	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+
+	my %functions = ();
+	while (my $row = $sth->fetch)
+	{
+		my $kind = 'PROCEDURE';
 		next if ( ($kind ne $self->{type}) && ($self->{type} ne 'SHOW_REPORT') );
 		my $fname = $row->[0];
 		if ($self->{export_schema} && !$self->{schema}) {
@@ -1662,6 +1706,7 @@ sub _get_objects
 		push(@{$infos{FUNCTION}}, { ( name => $row[0], invalid => 0) });
 	}
 	$sth->finish();
+
 	# PROCEDURE
 	$sql = "SELECT O.name FROM sys.sql_modules M JOIN sys.objects O ON M.object_id=O.object_id JOIN sys.schemas AS s ON o.schema_id = s.schema_id WHERE O.type = 'P'";
 	if (!$self->{schema}) {
@@ -2464,14 +2509,6 @@ sub _get_package_function_list
 
 	# not package in MSSQL
 	return;
-}
-
-sub _get_procedures
-{
-	my ($self) = @_;
-
-	# not package in MSSQL
-	return _get_functions($self);
 }
 
 sub _get_types

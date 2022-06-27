@@ -4254,7 +4254,7 @@ sub translate_function
 				$sql_output .= $sql_f . "\n\n";
 				if ($self->{estimate_cost})
 				{
-					my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($self, $sql_f);
+					my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($self, $sql_f, 'FUNCTION');
 					$cost += $Ora2Pg::PLSQL::OBJECT_SCORE{'FUNCTION'};
 					$lcost += $cost;
 					$self->logit("Function ${fct} estimated cost: $cost\n", 1);
@@ -6241,7 +6241,7 @@ sub export_package
 					next if (!$f);
 					my @cnt = $infos{$f}{code} =~ /(\%ORA2PG_COMMENT\d+\%)/i;
 					$total_size_no_comment += (length($infos{$f}{code}) - (17 * length(join('', @cnt))));
-					my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($self, $infos{$f}{code});
+					my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($self, $infos{$f}{code}, 'FUNCTION');
 					$self->logit("Function $f estimated cost: $cost\n", 1);
 					$cost_value += $cost;
 					$number_fct++;
@@ -15799,14 +15799,17 @@ sub _show_infos
 			{
 				my $triggers = $self->_get_triggers();
 				my $total_size = 0;
-				foreach my $trig (@{$triggers}) {
+				foreach my $trig (@{$triggers})
+				{
 					$total_size += length($trig->[4]);
-					if ($self->{estimate_cost}) {
-						my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($self, $trig->[4]);
+					if ($self->{estimate_cost})
+					{
+						my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($self, $trig->[4], 'TRIGGER');
 						$report_info{'Objects'}{$typ}{'cost_value'} += $cost;
 						$report_info{'Objects'}{$typ}{'detail'} .= "\L$trig->[0]: $cost\E\n";
 						$report_info{full_trigger_details}{"\L$trig->[0]\E"}{count} = $cost;
-						foreach my $d (sort { $cost_detail{$b} <=> $cost_detail{$a} } keys %cost_detail) {
+						foreach my $d (sort { $cost_detail{$b} <=> $cost_detail{$a} } keys %cost_detail)
+						{
 							next if (!$cost_detail{$d});
 							$report_info{full_trigger_details}{"\L$trig->[0]\E"}{info} .= "\t$d => $cost_detail{$d}";
 							$report_info{full_trigger_details}{"\L$trig->[0]\E"}{info} .= " (cost: ${$uncovered_score}{$d})" if (${$uncovered_score}{$d});
@@ -15825,14 +15828,17 @@ sub _show_infos
 			{
 				my $functions = $self->_get_functions();
 				my $total_size = 0;
-				foreach my $fct (keys %{$functions}) {
+				foreach my $fct (keys %{$functions})
+				{
 					$total_size += length($functions->{$fct}{text});
-					if ($self->{estimate_cost}) {
-						my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($self, $functions->{$fct}{text});
+					if ($self->{estimate_cost})
+					{
+						my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($self, $functions->{$fct}{text}, 'FUNCTION');
 						$report_info{'Objects'}{$typ}{'cost_value'} += $cost;
 						$report_info{'Objects'}{$typ}{'detail'} .= "\L$fct: $cost\E\n";
 						$report_info{full_function_details}{"\L$fct\E"}{count} = $cost;
-						foreach my $d (sort { $cost_detail{$b} <=> $cost_detail{$a} } keys %cost_detail) {
+						foreach my $d (sort { $cost_detail{$b} <=> $cost_detail{$a} } keys %cost_detail)
+						{
 							next if (!$cost_detail{$d});
 							$report_info{full_function_details}{"\L$fct\E"}{info} .= "\t$d => $cost_detail{$d}";
 							$report_info{full_function_details}{"\L$fct\E"}{info} .= " (cost: ${$uncovered_score}{$d})" if (${$uncovered_score}{$d});
@@ -15852,7 +15858,7 @@ sub _show_infos
 					$total_size += length($procedures->{$proc}{text});
 					if ($self->{estimate_cost})
 					{
-						my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($self, $procedures->{$proc}{text});
+						my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($self, $procedures->{$proc}{text}, 'FUNCTION');
 						$report_info{'Objects'}{$typ}{'cost_value'} += $cost;
 						$report_info{'Objects'}{$typ}{'detail'} .= "\L$proc: $cost\E\n";
 						$report_info{full_function_details}{"\L$proc\E"}{count} = $cost;
@@ -15894,7 +15900,7 @@ sub _show_infos
 							next if (!$f);
 							if ($self->{estimate_cost})
 							{
-								my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($self, $infos{$f}{code});
+								my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($self, $infos{$f}{code}, 'FUNCTION');
 								$report_info{'Objects'}{$typ}{'cost_value'} += $cost;
 								$report_info{'Objects'}{$typ}{'detail'} .= "\L$f: $cost\E\n";
 								$report_info{full_function_details}{"\L$f\E"}{count} = $cost;

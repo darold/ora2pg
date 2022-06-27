@@ -319,6 +319,42 @@ $QUERY_TEST_SCORE = 0.1;
 	'WEIGHT_STRING',
 );
 
+@MSSQL_FUNCTIONS = (
+	'CHARINDEX',
+	'Concat with +',
+	'NCHAR',
+	'PATINDEX',
+	'QUOTENAME',
+	'REPLICATE',
+	'SOUNDEX',
+	'SPACE',
+	'STR',
+	'STUFF',
+	'UNICODE',
+	'ATN2',
+	'RAND',
+	'SQUARE',
+	'DATEADD',
+	'DATEDIFF',
+	'DATEFROMPARTS',
+	'DATENAME',
+	'DATEPART',
+	'DAY',
+	'GETDATE',
+	'GETUTCDATE',
+	'ISDATE',
+	'MONTH',
+	'SYSDATETIME',
+	'YEAR',
+	'CONVERT',
+	'IIF',
+	'ISNULL',
+	'ISNUMERIC',
+	'NULLIF',
+	'SESSIONPROPERTY',
+	'SYSTEM_USER'
+);
+
 # Scores associated to each code difficulties after replacement.
 %UNCOVERED_MYSQL_SCORE = (
 	'ARRAY_AGG_DISTINCT' => 1, # array_agg(distinct
@@ -3162,6 +3198,58 @@ sub mysql_estimate_cost
 	return $cost, %cost_details;
 }
 
+sub mssql_estimate_cost
+{
+	my $str = shift;
+	my $type = shift;
+
+	my %cost_details = ();
+
+	# Default cost is testing that mean it at least must be tested
+	my $cost = $FCT_TEST_SCORE;
+	# When evaluating queries tests must not be included here
+	if ($type eq 'QUERY') {
+		$cost = 0;
+	}
+	$cost_details{'TEST'} = $cost;
+
+	# Set cost following code length
+	my $cost_size = int(length($str)/$SIZE_SCORE) || 1;
+	# When evaluating queries size must not be included here
+	if ($type eq 'QUERY') {
+		$cost_size = 0;
+	}
+
+	# Temporary cost 1 hour per function and 30min per triggers
+	if ($type eq 'FUNCTION' or $type eq 'PROCEDURE') {
+		$cost += 12;
+	}
+	if ($type eq 'TRIGGER') {
+		$cost += 6;
+	}
+
+	$cost += $cost_size;
+	$cost_details{'SIZE'} = $cost_size;
+
+	# Try to figure out the manual work
+	# Not accurate for now
+	my $n = () = $str =~ m/(ARRAY_AGG|GROUP_CONCAT)\(\s*DISTINCT/igs;
+	$cost_details{'ARRAY_AGG_DISTINCT'} += $n;
+
+	foreach my $t (keys %UNCOVERED_MYSQL_SCORE) {
+		$cost += $UNCOVERED_MYSQL_SCORE{$t}*$cost_details{$t};
+	}
+	foreach my $f (@MSSQL_FUNCTIONS) {
+		if ($str =~ /\b$f\b/igs) {
+			$cost += 2;
+			$cost_details{$f} += 2;
+		}
+	}
+
+	return $cost, %cost_details;
+}
+
+
 sub replace_outer_join
 {
 	my ($class, $str, $type) = @_;
@@ -3774,6 +3862,8 @@ sub mssql_to_plpgsql
 	####
 	# Replace some function with their PostgreSQL syntax
 	####
+	$str =~ s/\bDATALENGTH\s*\(/LENGTH(/gi;
+	$str =~ s/\bLEN\s*\(([^\)]+)\)/LENGTH(RTRIM($1))/gi;
 	$str =~ s/ISNULL\s*\(/COALESCE(/gi;
 	$str =~ s/SPACE\s*\(/REPEAT(' ', /gi;
 	$str =~ s/CHARINDEX\s*\(\s*(.*?)\s*\,\s*(.*?)\s*\)/position('$1' in $2)/gi;
