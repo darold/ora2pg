@@ -240,20 +240,6 @@ sub _table_info
 
 	# First register all tablespace/table in memory from this database
 	my %tbspname = ();
-#	my $sth = $self->{dbh}->prepare("SELECT DISTINCT TABLE_NAME, TABLESPACE_NAME FROM INFORMATION_SCHEMA.FILES WHERE table_schema = '$self->{schema}' AND TABLE_NAME IS NOT NULL") or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0);
-#	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-#	while (my $r = $sth->fetch) {
-#		$tbspname{$r->[0]} = $r->[1];
-#	}
-#	$sth->finish();
-
-	# Table: information_schema.tables
-	# TABLE_CATALOG   | nvarchar(128)
-	# TABLE_SCHEMA    | nvarchar(128)
-	# TABLE_NAME      | sysname
-	# TABLE_TYPE      | varchar(10)
-
-	# Use SYS.TABLES instead, there is more information available
 
         my $schema_clause = '';
         $schema_clause = " AND s.name='$self->{schema}'" if ($self->{schema});
@@ -289,19 +275,24 @@ WHERE t.is_ms_shipped = 0 AND i.OBJECT_ID > 255 AND t.type='U' AND t.NAME NOT LI
 		$tables_infos{$row->[0]}{auto_increment} = 0;
 		$tables_infos{$row->[0]}{tablespace} = $tbspname{$row->[0]} || '';
 		$tables_infos{$row->[0]}{partitioned} = 1 if (exists $self->{partitions_list}{"\L$row->[0]\E"});
-
-		if ($do_real_row_count)
-		{
-			$self->logit("DEBUG: looking for real row count for table $row->[0] (aka using count(*))...\n", 1);
-			$sql = "SELECT COUNT(*) FROM `$row->[0]`";
-			my $sth2 = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-			$sth2->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-			my $size = $sth2->fetch();
-			$sth2->finish();
-			$tables_infos{$row->[0]}{num_rows} = $size->[0];
-		}
 	}
 	$sth->finish();
+
+	if ($do_real_row_count)
+	{
+		foreach my $t (keys %tables_infos)
+		{
+			$self->logit("DEBUG: looking for real row count for table $t (aka using count(*))...\n", 1);
+			my $tbname = "[$t]";
+			$tbname =~ s/\./\].\[/;
+			$sql = "SELECT COUNT(*) FROM $tbname";
+			$sth = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+			$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+			my $size = $sth->fetch();
+			$sth->finish();
+			$tables_infos{$t}{num_rows} = $size->[0];
+		}
+	}
 
 	return %tables_infos;
 }
