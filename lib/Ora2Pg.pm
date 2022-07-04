@@ -16480,6 +16480,7 @@ sub _table_row_count
 
 	my $lbl = 'ORACLEDB';
 	$lbl    = 'MYSQL_DB' if ($self->{is_mysql});
+	$lbl    = 'MSSQL_DB' if ($self->{is_mssql});
 
 	# Get all tables information specified by the DBI method table_info
 	$self->logit("Looking for real row count in source database and PostgreSQL tables...\n", 1);
@@ -16560,6 +16561,7 @@ sub _test_table
 
 	my $lbl = 'ORACLEDB';
 	$lbl    = 'MYSQL_DB' if ($self->{is_mysql});
+	$lbl    = 'MSSQL_DB' if ($self->{is_mssql});
 
 	####
 	# Test number of column in tables
@@ -17329,25 +17331,29 @@ WHERE c.relkind = 'v' AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_depend WHERE r
 		while ( my @row = $s->fetchrow())
 		{
 			$row[0] =~ s/^[^\.]+\.// if (!$self->{export_schema});
-			$list_views{$row[0]} = $row[1];
+			$list_views{$row[0]} = $self->{schema} || $row[1];
 		}
 		$s->finish();
 	}
 
 	my $lbl = 'ORACLEDB';
 	$lbl    = 'MYSQL_DB' if ($self->{is_mysql});
+	$lbl    = 'MSSQL_DB' if ($self->{is_mssql});
 
 	print "[UNITARY TEST OF VIEWS]\n";
 	foreach my $v (sort keys %list_views)
 	{
 		# Execute init settings if any
 		# Count rows returned by all view on the source database
-		$sql = "SELECT count(*) FROM $self->{schema}.$v";
+		my $vname = $v;
+		my $vname = "$list_views{$v}.$v" if (!$self->{schema});
+	        	
+		$sql = "SELECT count(*) FROM $list_views{$v}.$v";
 		my $sth = $self->{dbh}->prepare($sql)  or $self->logit("ERROR: " . $self->{dbh}->errstr . "\n", 0, 0);
 		$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 0);
 		my @row = $sth->fetchrow();
 		my $ora_ct = $row[0];
-		print "$lbl:$v:", join('|', @row), "\n";
+		print "$lbl:$vname:", join('|', @row), "\n";
 		$sth->finish;
 		# Execute view in the PostgreSQL database
 		$sql = "SELECT count(*) FROM " . $self->quote_object_name($list_views{$v}) . '.' . $self->quote_object_name($v);
@@ -17361,7 +17367,7 @@ WHERE c.relkind = 'v' AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_depend WHERE r
 		@row = $sth->fetchrow();
 		$sth->finish;
 		my $pg_ct = $row[0];
-		print "POSTGRES:$v:", join('|', @row), "\n";
+		print "POSTGRES:$vname:", join('|', @row), "\n";
 		if ($pg_ct != $ora_ct) {
 			print "ERROR: view $v returns different row count [oracle: $ora_ct, postgresql: $pg_ct]\n";
 		}
@@ -17378,6 +17384,7 @@ sub _count_object
 
 	my $lbl = 'ORACLEDB';
 	$lbl    = 'MYSQL_DB' if ($self->{is_mysql});
+	$lbl    = 'MSSQL_DB' if ($self->{is_mssql});
 
 	my $schema_clause = $self->get_schema_condition();
 	my $nbobj = 0;
@@ -17495,6 +17502,7 @@ sub _test_function
 
 	my $lbl = 'ORACLEDB';
 	$lbl    = 'MYSQL_DB' if ($self->{is_mysql});
+	$lbl    = 'MSSQL_DB' if ($self->{is_mssql});
 
 	####
 	# Test number of function
@@ -17570,6 +17578,7 @@ sub _test_seq_values
 
 	my $lbl = 'ORACLEDB';
 	$lbl    = 'MYSQL_DB' if ($self->{is_mysql});
+	$lbl    = 'MSSQL_DB' if ($self->{is_mssql});
 
 	####
 	# Test number of function
@@ -20016,6 +20025,7 @@ sub compare_data
 
 	my $lbl = 'ORACLEDB';
 	$lbl    = 'MYSQL_DB' if ($self->{is_mysql});
+	$lbl    = 'MSSQL_DB' if ($self->{is_mssql});
 	my $dbhora = undef;
 	my $dbhpg = undef;
 
