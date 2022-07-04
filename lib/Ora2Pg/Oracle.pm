@@ -1595,11 +1595,14 @@ sub _lookup_function
 		$fct_detail{immutable} = 1 if ($fct_detail{declare} =~ s/\bDETERMINISTIC\b//is);
 		$fct_detail{setof} = 1 if ($fct_detail{declare} =~ s/\bPIPELINED\b//is);
 		$fct_detail{declare} =~ s/\bDEFAULT\b/:=/igs;
-		if ($fct_detail{declare} =~ s/(.*?)\bRETURN\s+self\s+AS RESULT IS//is) {
+		if ($fct_detail{declare} =~ s/(.*?)\bRETURN\s+self\s+AS RESULT IS//is)
+		{
 			$fct_detail{args} .= $1;
 			$fct_detail{hasreturn} = 1;
 			$fct_detail{func_ret_type} = 'OPAQUE';
-		} elsif ($fct_detail{declare} =~ s/(.*?)\bRETURN\s+([^\s]+)//is) {
+		}
+		elsif ($fct_detail{declare} =~ s/(.*?)\bRETURN\s+([^\s]+)//is)
+		{
 			$fct_detail{args} .= $1;
 			$fct_detail{hasreturn} = 1;
 			my $ret_typ = $2 || '';
@@ -1637,8 +1640,8 @@ sub _lookup_function
 		$fct_detail{args} =~ s/\s+DEFAULT\s+EMPTY_[CB]LOB\(\)/DEFAULT NULL/igs;
 
 		# Now convert types
-		$fct_detail{args} = Ora2Pg::PLSQL::replace_sql_type($fct_detail{args}, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type}, $self->{varchar_to_text}, %{$self->{data_type}});
-		$fct_detail{declare} = Ora2Pg::PLSQL::replace_sql_type($fct_detail{declare}, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type}, $self->{varchar_to_text}, %{$self->{data_type}});
+		$fct_detail{args} = Ora2Pg::PLSQL::replace_sql_type($self, $fct_detail{args}, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type}, $self->{varchar_to_text}, %{$self->{data_type}});
+		$fct_detail{declare} = Ora2Pg::PLSQL::replace_sql_type($self, $fct_detail{declare}, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type}, $self->{varchar_to_text}, %{$self->{data_type}});
 
 		# Sometime variable used in FOR ... IN SELECT loop is not declared
 		# Append its RECORD declaration in the DECLARE section.
