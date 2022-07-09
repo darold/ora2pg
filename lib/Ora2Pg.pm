@@ -12830,6 +12830,10 @@ sub _convert_package
 
 		# Process package spec to extract global variables
 		$self->_remove_comments(\$glob_declare);
+
+		# Remove multiline comment from declaration part
+		while ($glob_declare =~ s/\%OPEN_COMMENT\%((?:.*)?\*\/)//s) {};
+
 		if ($glob_declare)
 		{
 			my @cursors = ();
