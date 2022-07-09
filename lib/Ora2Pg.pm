@@ -2529,6 +2529,7 @@ sub _tables
 	{
 		$self->logit("Retrieving table partitioning information...\n", 1);
 		%{ $self->{partitions_list} } = $self->_get_partitioned_table();
+		%{ $self->{subpartitions_list} } = $self->_get_subpartitioned_table();
 	}
 }
 
@@ -10125,6 +10126,16 @@ sub _create_unique_keys
 				for (my $j = 0; $j <= $#{$self->{subpartitions_list}{"\L$tbsaved\E"}{"\L$partition\E"}{columns}}; $j++)
 				{
 					push(@conscols, $self->{subpartitions_list}{"\L$tbsaved\E"}{"\L$partition\E"}{columns}[$j]) if (!grep(/^$self->{subpartitions_list}{"\L$tbsaved\E"}{"\L$partition\E"}{columns}[$j]$/i, @conscols));
+				}
+			}
+			else
+			{
+				foreach my $part (keys %{$self->{subpartitions_list}{"\L$tbsaved\E"}})
+				{
+					for (my $j = 0; $j <= $#{$self->{subpartitions_list}{"\L$tbsaved\E"}{"\L$part\E"}{columns}}; $j++)
+					{
+						push(@conscols, $self->{subpartitions_list}{"\L$tbsaved\E"}{"\L$part\E"}{columns}[$j]) if (!grep(/^$self->{subpartitions_list}{"\L$tbsaved\E"}{"\L$part\E"}{columns}[$j]$/i, @conscols));
+					}
 				}
 			}
 		}
