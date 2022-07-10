@@ -1719,6 +1719,9 @@ sub replace_oracle_function
 		# REGEX_SUBSTR( string, pattern, pos, num ) translation
 		$str =~ s/\bREGEXP_SUBSTR\s*\(\s*([^\)]+)\s*\)/convert_regex_substr($class, $1)/iges;
 
+		# Always append 'g' modifier to regexp_replace, this is the default with Oracle
+		$str =~ s/\b(REGEXP_REPLACE\s*\(\s*[^\)]+)\s*\)/$1, 'g')/igs;
+
 		# LAST_DAY( date ) translation
 		$str =~ s/\bLAST_DAY\s*\(\s*([^\(\)]+)\s*\)/((date_trunc('month',($1)::timestamp + interval '1 month'))::date - 1)/igs;
 	}

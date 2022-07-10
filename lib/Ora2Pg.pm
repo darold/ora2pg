@@ -13689,6 +13689,7 @@ END;
 	}
 
 	$function =~ s/\r//gs;
+	$function =~ s/\bEND[\s;]+;/END;/is;
 	my @lines = split(/\n/, $function);
 	map { s/^\/$//; } @lines;
 
