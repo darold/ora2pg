@@ -12511,6 +12511,7 @@ sub read_config
 	my ($self, $file) = @_;
 
 	my $fh = new IO::File;
+	binmode($fh, ":utf8");
 	$fh->open($file) or $self->logit("FATAL: can't read configuration file $file, $!\n", 0, 1);
 	while (my $l = <$fh>)
 	{
