@@ -1465,7 +1465,7 @@ sub convert_from_tz
 	if ($date =~ /^[^']*'([^']+)'\s*,\s*'([^']+)'/) {
 		$date = $1;
 		$tz = $2;
-		$date = $date . ' ';
+		$date .= ' ';
 		if ($tz =~ /^\d+:\d+$/) {
 			$date .= '+' . $tz;
 		} else {
@@ -1478,7 +1478,7 @@ sub convert_from_tz
 		if ($tz =~ /^\d+:\d+$/) {
 			$tz .= '+' . $tz;
 		}
-		$date = $date . ' AT TIME ZONE ' . "'$tz'";
+		$date .= ' AT TIME ZONE ' . "'$tz'";
 	}
 
 	# Replace constant strings

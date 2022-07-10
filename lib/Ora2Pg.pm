@@ -9455,7 +9455,7 @@ sub get_indexname
 		$idxname =~ s/"//g;
 		# Remove double quote, DESC and parenthesys
 		map { s/"//g; s/.*\(([^\)]+)\).*/$1/; s/\s+DESC//i; s/::.*//; } @collist;
-		$idxname = $idxname . '_' . join('_', @collist);
+		$idxname .= '_' . join('_', @collist);
 		$idxname =~ s/\s+//g;
 		if ($self->{indexes_suffix}) {
 			$idxname = substr($idxname,0,59);
