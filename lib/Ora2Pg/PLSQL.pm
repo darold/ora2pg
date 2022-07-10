@@ -1802,6 +1802,87 @@ sub replace_oracle_function
 	return $str;
 }
 
+sub replace_out_param_call_internal
+{
+	my ($class, $fct_name, $str, $sch, $p, $k) = @_;
+
+	my %replace_out_parm = ();
+	my $idx = 0;
+	while ($str =~ s/((?:[^\s\.]+\.)?\b$fct_name)\s*\(([^\(\)]+)\)/\%FCTINOUTPARAM$idx\%/is)
+	{
+		my $fname = $1;
+		my $fparam = $2;
+		if ($fname =~ /\./ && lc($fname) ne lc($k))
+		{
+			$replace_out_parm{$idx} = "$fname($fparam)";
+			next;
+		}
+		$replace_out_parm{$idx} = "$fname(";
+		# Extract position of out parameters
+		my @params = split(/\s*,\s*/, $class->{function_metadata}{$sch}{$p}{$k}{metadata}{args});
+		my @cparams = split(/\s*,\s*/s, $fparam);
+		my $call_params = '';
+		my @out_pos = ();
+		my @out_fields = ();
+		for (my $i = 0; $i <= $#params; $i++)
+		{
+			if (!$class->{is_mysql} && $params[$i] =~ /\s*([^\s]+)\s+(OUT|INOUT)\s/is)
+			{
+				push(@out_fields, $1);
+				push(@out_pos, $i);
+				$call_params .= $cparams[$i] if ($params[$i] =~ /\bINOUT\b/is);
+			}
+			elsif ($class->{is_mysql} && $params[$i] =~ /\s*(OUT|INOUT)\s+([^\s]+)\s/is)
+			{
+				push(@out_fields, $2);
+				push(@out_pos, $i);
+				$call_params .= $cparams[$i] if ($params[$i] =~ /\bINOUT\b/is);
+			}
+			else
+			{
+				$call_params .= $cparams[$i];
+			}
+			$call_params .= ', ' if ($i < $#params);
+		}
+		map { s/^\(//; } @out_fields;
+		$call_params =~ s/(\s*,\s*)+$//s;
+		while ($call_params =~ s/\s*,\s*,\s*/, /s) {};
+		$call_params =~ s/^(\s*,\s*)+//s;
+		$replace_out_parm{$idx} .= "$call_params)";
+		my @out_param = ();
+		foreach my $i (@out_pos) {
+			push(@out_param, $cparams[$i]);
+		}
+		if ($class->{function_metadata}{$sch}{$p}{$k}{metadata}{inout} == 1)
+		{
+			map { s/[^\s=]+\s*=>\s*//; } @out_param;
+			if ($#out_param == 0) {
+				$replace_out_parm{$idx} = "$out_param[0] := $replace_out_parm{$idx}";
+			} else {
+				$replace_out_parm{$idx} = "SELECT * FROM $replace_out_parm{$idx} INTO " . join(', ', @out_param);
+			}
+		}
+		elsif ($class->{function_metadata}{$sch}{$p}{$k}{metadata}{inout} > 1)
+		{
+			$class->{replace_out_params} = "_ora2pg_r RECORD;" if (!$class->{replace_out_params});
+			$replace_out_parm{$idx} = "SELECT * FROM $replace_out_parm{$idx} INTO _ora2pg_r;\n";
+			my $out_field_pos = 0;
+			foreach my $parm (@out_param)
+			{
+				# remove use of named parameters
+				$parm =~ s/.*=>\s*//;
+				$replace_out_parm{$idx} .= " $parm := _ora2pg_r.$out_fields[$out_field_pos++];";
+			}
+			$replace_out_parm{$idx} =~ s/;$//s;
+		}
+		$idx++;
+	}
+	$str =~ s/\%FCTINOUTPARAM(\d+)\%/$replace_out_parm{$1}/gs;
+
+	return $str;
+}
+
+
 ##############
 # Replace call to function with out parameters
 ##############
@@ -1836,78 +1917,36 @@ sub replace_out_param_call
 							$str =~ s/\b($p\.$fct_name)\b/CALL $1/igs;
 							next;
 						}
-						my %replace_out_parm = ();
-						my $idx = 0;
-						while ($str =~ s/((?:[^\s\.]+\.)?\b$fct_name)\s*\(([^\(\)]+)\)/\%FCTINOUTPARAM$idx\%/is)
-						{
-							my $fname = $1;
-							my $fparam = $2;
-							if ($fname =~ /\./ && lc($fname) ne lc($k))
-							{
-								$replace_out_parm{$idx} = "$fname($fparam)";
-								next;
-							}
-							$replace_out_parm{$idx} = "$fname(";
-							# Extract position of out parameters
-							my @params = split(/\s*,\s*/, $class->{function_metadata}{$sch}{$p}{$k}{metadata}{args});
-							my @cparams = split(/\s*,\s*/s, $fparam);
-							my $call_params = '';
-							my @out_pos = ();
-							my @out_fields = ();
-							for (my $i = 0; $i <= $#params; $i++)
-							{
-								if (!$class->{is_mysql} && $params[$i] =~ /\s*([^\s]+)\s+(OUT|INOUT)\s/is)
-								{
-									push(@out_fields, $1);
-									push(@out_pos, $i);
-									$call_params .= $cparams[$i] if ($params[$i] =~ /\bINOUT\b/is);
-								}
-								elsif ($class->{is_mysql} && $params[$i] =~ /\s*(OUT|INOUT)\s+([^\s]+)\s/is)
-								{
-									push(@out_fields, $2);
-									push(@out_pos, $i);
-									$call_params .= $cparams[$i] if ($params[$i] =~ /\bINOUT\b/is);
-								}
-								else
-								{
-									$call_params .= $cparams[$i];
-								}
-								$call_params .= ', ' if ($i < $#params);
-							}
-							map { s/^\(//; } @out_fields;
-							$call_params =~ s/(\s*,\s*)+$//s;
-							while ($call_params =~ s/\s*,\s*,\s*/, /s) {};
-							$call_params =~ s/^(\s*,\s*)+//s;
-							$replace_out_parm{$idx} .= "$call_params)";
-							my @out_param = ();
-							foreach my $i (@out_pos) {
-								push(@out_param, $cparams[$i]);
-							}
-							if ($class->{function_metadata}{$sch}{$p}{$k}{metadata}{inout} == 1)
-							{
-								if ($#out_param == 0) {
-									$replace_out_parm{$idx} = "$out_param[0] := $replace_out_parm{$idx}";
-								} else {
-									$replace_out_parm{$idx} = "SELECT * FROM $replace_out_parm{$idx} INTO " . join(', ', @out_param);
-								}
-							}
-							elsif ($class->{function_metadata}{$sch}{$p}{$k}{metadata}{inout} > 1)
-							{
-								$class->{replace_out_params} = "_ora2pg_r RECORD;" if (!$class->{replace_out_params});
-								$replace_out_parm{$idx} = "SELECT * FROM $replace_out_parm{$idx} INTO _ora2pg_r;\n";
-								my $out_field_pos = 0;
-								foreach $param (@out_param)
-								{
-									# remove use of named parameters
-									$param =~ s/.*=>\s*//;
-									$replace_out_parm{$idx} .= " $param := _ora2pg_r.$out_fields[$out_field_pos++];";
-								}
-								$replace_out_parm{$idx} =~ s/;$//s;
-							}
-							$idx++;
-						}
-						$str =~ s/\%FCTINOUTPARAM(\d+)\%/$replace_out_parm{$1}/gs;
+						$str = &replace_out_param_call_internal($class, $fct_name, $str, $sch, $p, $k);
 					}
+				}
+			}
+		}
+
+		# Replace regular procedur call (not proc from package)
+		foreach my $sch (sort keys %{$class->{function_metadata}})
+		{
+			my $p = 'none';
+			foreach my $k (sort keys %{$class->{function_metadata}{$sch}{$p}})
+			{
+				if ($class->{function_metadata}{$sch}{$p}{$k}{metadata}{inout})
+				{
+					my $fct_name = $class->{function_metadata}{$sch}{$p}{$k}{metadata}{fct_name} || '';
+					next if (!$fct_name);
+
+					# Prevent replacement with same function name from an other package
+					next if ($str !~ /(^|[\.])\b$fct_name\b/is);
+
+					# Since PG14 procedures support OUT param should not be
+					# changed, just add CALL at start of the function call
+					if ($class->{pg_supports_outparam}
+						&& $class->{function_metadata}{$sch}{$p}{$k}{metadata}{type} eq 'PROCEDURE')
+					{
+						$str =~ s/(^|\s+)($fct_name)\b/$1 CALL $2/igs;
+						$str =~ s/\b($p\.$fct_name)\b/CALL $1/igs;
+						next;
+					}
+					$str = &replace_out_param_call_internal($class, $fct_name, $str, $sch, $p, $k);
 				}
 			}
 		}
