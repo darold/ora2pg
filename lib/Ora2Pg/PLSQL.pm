@@ -508,13 +508,6 @@ sub convert_plsql_code
 	return $str;
 }
 
-=head2 extract_function_code
-
-Recursive function used to extract call to function in Oracle SQL
-and PL/SQL code
-
-=cut
-
 sub clear_parenthesis
 {
 	my $str = shift;
@@ -530,6 +523,13 @@ sub clear_parenthesis
 
 	return $str;
 }
+
+=head2 extract_function_code
+
+Recursive function used to extract call to function in Oracle SQL
+and PL/SQL code
+
+=cut
 
 sub extract_function_code
 {
@@ -763,15 +763,15 @@ sub plsql_to_plpgsql
 		my $col = $1;
 		my $nls_sort = $2;
 		if ($nls_sort =~ s/\%\%string(\d+)\%\%/$strings[$1]/s) {
-			$nls_sort =~ s/NLS_SORT=([^']+)[']*/COLLATE "$1"/is;
+			$nls_sort =~ s/NLS_SORT=([^']+).*/COLLATE "$1"/is;
 			$nls_sort =~ s/\%\%ESCAPED_STRING\%\%//ig;
 			$str =~ s/NLSSORT\($field,$field[\)]?/$1 $nls_sort/is;
 		} elsif ($nls_sort =~ s/\?TEXTVALUE(\d+)\?/$class->{text_values}{$1}/s) {
-			$nls_sort =~ s/\s*'NLS_SORT=([^']+)'/COLLATE "$1"/is;
+			$nls_sort =~ s/\s*'NLS_SORT=([^']+).*/COLLATE "$1"/is;
 			$nls_sort =~ s/\%\%ESCAPED_STRING\%\%//ig;
 			$str =~ s/NLSSORT\($field,$field[\)]?/$1 $nls_sort/is;
 		} else {
-			$str =~ s/NLSSORT\($field,['\s]*NLS_SORT=([^']+)[']*/$1 COLLATE "$2"/is;
+			$str =~ s/NLSSORT\($field,\s*'NLS_SORT=([^']+)'\s*[\)]?/$1 COLLATE "$2"/is;
 		}
 	}
 
