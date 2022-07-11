@@ -16320,14 +16320,11 @@ sub _table_row_count
 		}
 	}
 	
-	if ($self->{parallel_tables} > 1) {
-
-		my $fh = new IO::File;
-		$fh->open("$output_dir.ora2pg_stdout_locker") or $self->logit("FATAL: can't read file $output_dir.ora2pg_stdout_locker, $!\n", 0, 1);
-		@errors = <$fh>;
-		$fh->close;
-		unlink("$output_dir.ora2pg_stdout_locker");
-	}
+	my $fh = new IO::File;
+	$fh->open("$output_dir.ora2pg_stdout_locker") or $self->logit("FATAL: can't read file $output_dir.ora2pg_stdout_locker, $!\n", 0, 1);
+	@errors = <$fh>;
+	$fh->close;
+	unlink("$output_dir.ora2pg_stdout_locker");
 	chomp @errors;
 
 	$self->show_test_errors('rows', @errors);
