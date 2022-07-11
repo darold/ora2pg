@@ -15949,7 +15949,7 @@ sub _show_infos
 		$self->logit("Showing table information...\n", 1);
 
 		# Retrieve tables informations
-		my %tables_infos = $self->_table_info();
+		my %tables_infos = $self->_table_info(($type eq 'SHOW_TABLE') ? $self->{count_rows}: 0);
 
 		# Retrieve column identity information
 		$self->logit("Retrieving column identity information...\n", 1);
@@ -16479,7 +16479,7 @@ sub _test_table
 	$self->logit("Looking for objects count related to source database and PostgreSQL tables...\n", 1);
 
 	# Retrieve tables informations
-	my %tables_infos = $self->_table_info($self->{count_rows});
+	my %tables_infos = $self->_table_info();
 
 	my $lbl = 'ORACLEDB';
 	$lbl    = 'MYSQL_DB' if ($self->{is_mysql});
