@@ -2584,6 +2584,7 @@ sub _tables
 	{
 		$self->logit("Retrieving table partitioning information...\n", 1);
 		%{ $self->{partitions_list} } = $self->_get_partitioned_table();
+		%{ $self->{subpartitions_list} } = $self->_get_subpartitioned_table();
 	}
 }
 
@@ -9578,7 +9579,7 @@ sub get_indexname
 		$idxname =~ s/"//g;
 		# Remove double quote, DESC and parenthesys
 		map { s/"//g; s/.*\(([^\)]+)\).*/$1/; s/\s+DESC//i; s/::.*//; } @collist;
-		$idxname = $idxname . '_' . join('_', @collist);
+		$idxname .= '_' . join('_', @collist);
 		$idxname =~ s/\s+//g;
 		if ($self->{indexes_suffix}) {
 			$idxname = substr($idxname,0,59);
@@ -10249,6 +10250,16 @@ sub _create_unique_keys
 				for (my $j = 0; $j <= $#{$self->{subpartitions_list}{"\L$tbsaved\E"}{"\L$partition\E"}{columns}}; $j++)
 				{
 					push(@conscols, $self->{subpartitions_list}{"\L$tbsaved\E"}{"\L$partition\E"}{columns}[$j]) if (!grep(/^$self->{subpartitions_list}{"\L$tbsaved\E"}{"\L$partition\E"}{columns}[$j]$/i, @conscols));
+				}
+			}
+			else
+			{
+				foreach my $part (keys %{$self->{subpartitions_list}{"\L$tbsaved\E"}})
+				{
+					for (my $j = 0; $j <= $#{$self->{subpartitions_list}{"\L$tbsaved\E"}{"\L$part\E"}{columns}}; $j++)
+					{
+						push(@conscols, $self->{subpartitions_list}{"\L$tbsaved\E"}{"\L$part\E"}{columns}[$j]) if (!grep(/^$self->{subpartitions_list}{"\L$tbsaved\E"}{"\L$part\E"}{columns}[$j]$/i, @conscols));
+					}
 				}
 			}
 		}
@@ -12716,6 +12727,7 @@ sub read_config
 	my ($self, $file) = @_;
 
 	my $fh = new IO::File;
+	binmode($fh, ":utf8");
 	$fh->open($file) or $self->logit("FATAL: can't read configuration file $file, $!\n", 0, 1);
 	while (my $l = <$fh>)
 	{
@@ -13035,6 +13047,10 @@ sub _convert_package
 
 		# Process package spec to extract global variables
 		$self->_remove_comments(\$glob_declare);
+
+		# Remove multiline comment from declaration part
+		while ($glob_declare =~ s/\%OPEN_COMMENT\%((?:.*)?\*\/)//s) {};
+
 		if ($glob_declare)
 		{
 			my @cursors = ();
@@ -13890,6 +13906,7 @@ END;
 	}
 
 	$function =~ s/\r//gs;
+	$function =~ s/\bEND[\s;]+;/END;/is;
 	my @lines = split(/\n/, $function);
 	map { s/^\/$//; } @lines;
 

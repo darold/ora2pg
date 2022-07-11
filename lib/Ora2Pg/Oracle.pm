@@ -2675,9 +2675,9 @@ sub _get_synonyms
 	# Retrieve all synonym
 	my $str = "SELECT OWNER,SYNONYM_NAME,TABLE_OWNER,TABLE_NAME,DB_LINK FROM $self->{prefix}_SYNONYMS";
 	if ($self->{schema}) {
-		$str .= " WHERE (owner='$self->{schema}' OR owner='PUBLIC') AND table_owner NOT IN ('" . join("','", @{$self->{sysusers}}) . "') ";
+		$str .= " WHERE owner='$self->{schema}' AND table_owner NOT IN ('" . join("','", @{$self->{sysusers}}) . "') ";
 	} else {
-		$str .= " WHERE (owner='PUBLIC' OR owner NOT IN ('" . join("','", @{$self->{sysusers}}) . "')) AND table_owner NOT IN ('" . join("','", @{$self->{sysusers}}) . "') ";
+		$str .= " WHERE owner NOT IN ('" . join("','", @{$self->{sysusers}}) . "') AND table_owner NOT IN ('" . join("','", @{$self->{sysusers}}) . "') ";
 	}
 	$str .= $self->limit_to_objects('SYNONYM','SYNONYM_NAME');
 	#$str .= " ORDER BY SYNONYM_NAME\n";
