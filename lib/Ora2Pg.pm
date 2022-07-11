@@ -8288,6 +8288,8 @@ sub _get_sql_statements
 		# Connect the Oracle database to gather information
 		if ($self->{oracle_dsn} =~ /dbi:mysql/i) {
 			$self->{is_mysql} = 1;
+		} elsif ($self->{oracle_dsn} =~ /dbi:ODBC:driver=msodbcsql/i) {
+			$self->{is_mssql} = 1;
 		}
 		$self->{dbh} = $self->_db_connection();
 
@@ -8718,6 +8720,8 @@ sub _get_sql_statements
 			$self->{dbh}->disconnect() if (defined $self->{dbh});
 			if ($self->{oracle_dsn} =~ /dbi:mysql/i) {
 				$self->{is_mysql} = 1;
+			} elsif ($self->{oracle_dsn} =~ /dbi:ODBC:driver=msodbcsql/i) {
+				$self->{is_mssql} = 1;
 			}
 			$self->{dbh} = $self->_db_connection();
 		}
@@ -11724,10 +11728,9 @@ This function retrieves real rows count from a table.
 
 =cut
 
-
 sub _count_source_rows
 {
-	my ($self, $dbh, $t) = @_;
+	my ($self, $dbhsrc, $t) = @_;
 
 	$self->logit("DEBUG: pid $$ looking for real row count for source table $t...\n", 1);
 	my $tbname = $t;
@@ -11737,12 +11740,12 @@ sub _count_source_rows
 		$tbname = "[$t]";
 		$tbname =~ s/\./\].\[/;
 	} else {
-		$tbname = "[$t]";
-		$tbname =~ s/\./\].\[/;
+		$tbname = "\"$t\"";
+		$tbname =~ s/\./"."/;
 	}
-	my $sql = "SELECT COUNT(*) FROM $t";
-	my $sth = $dbh->prepare( $sql ) or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
-	$sth->execute or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
+	my $sql = "SELECT COUNT(*) FROM $tbname";
+	my $sth = $dbhsrc->prepare( $sql ) or $self->logit("FATAL: " . $dbhsrc->errstr . "\n", 0, 1);
+	$sth->execute or $self->logit("FATAL: " . $dbhsrc->errstr . "\n", 0, 1);
 	my $size = $sth->fetch();
 	$sth->finish();
 
