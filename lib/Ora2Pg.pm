@@ -16576,21 +16576,21 @@ sub _table_row_count
 		{
 			$self->_count_pg_rows($self->{dbhdest}, $lbl, $t, $tables_infos{$t}{num_rows});
 		}
-
-		# Wait for all child die
-		if ($self->{parallel_tables} > 1)
-		{
-			while (scalar keys %RUNNING_PIDS > 0)
-			{
-				my $kid = waitpid(-1, WNOHANG);
-				if ($kid > 0) {
-					delete $RUNNING_PIDS{$kid};
-				}
-				usleep(50000);
-			}
-		}
 	}
 
+	# Wait for all child die
+	if ($self->{parallel_tables} > 1)
+	{
+		while (scalar keys %RUNNING_PIDS > 0)
+		{
+			my $kid = waitpid(-1, WNOHANG);
+			if ($kid > 0) {
+				delete $RUNNING_PIDS{$kid};
+			}
+			usleep(50000);
+		}
+	}
+	
 	if ($self->{parallel_tables} > 1) {
 
 		my $fh = new IO::File;
