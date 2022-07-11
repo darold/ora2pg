@@ -1768,7 +1768,7 @@ sub _lookup_function
 	return %fct_detail;
 }
 
-sub _list_all_funtions
+sub _list_all_functions
 {
 	my $self = shift;
 

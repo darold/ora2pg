@@ -1064,7 +1064,7 @@ sub replace_mysql_variables
 	return ($code, $declare);
 }
 
-sub _list_all_funtions
+sub _list_all_functions
 {
 	my $self = shift;
 

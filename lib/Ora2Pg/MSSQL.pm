@@ -375,14 +375,6 @@ ORDER BY c.column_id};
 				$row->[14] =~ s/[\r\n]+/ /gs;
 			}
 		}
-		else
-		{
-			# For user data type the NOT NULL, DEFAULT and RULES belongs to
-			# the user defined data type and are appended at type creation
-			$row->[3] = 1;
-			$row->[4] = '';
-			$row->[14] = '';
-		}
 		push(@{$data{"$row->[8]"}{"$row->[0]"}}, @$row);
 		$pos++;
 	}
@@ -467,27 +459,24 @@ ORDER BY T.name, Id.index_id, IC.key_ordinal
 		}
 
 		$idx_type{$row->[8]}{$row->[0]}{type_name} = $row->[11];
-		if (($#{$row} > 6) && ($row->[7] eq 'Y')) {
-			$idx_type{$row->[8]}{$row->[0]}{type} = $row->[4] . ' JOIN';
-		} else {
-			$idx_type{$row->[8]}{$row->[0]}{type} = $row->[4];
-		}
-		my $idx_name = $row->[0];
-		if (!$self->{schema} && $self->{export_schema}) {
-			$idx_name = "$row->[9].$row->[0]";
-		}
-		if ($row->[11] =~ /SPATIAL_INDEX/) {
-			$idx_type{$row->[8]}{$row->[0]}{type} = 'SPATIAL INDEX';
-			if ($row->[12] =~ /layer_gtype=([^\s,]+)/i) {
-				$idx_type{$row->[9]}{$row->[0]}{type_constraint} = uc($1);
-			}
-			if ($row->[12] =~ /sdo_indx_dims=(\d+)/i) {
-				$idx_type{$row->[8]}{$row->[0]}{type_dims} = $1;
-			}
-		}
-		if ($row->[4] eq 'BITMAP') {
-			$idx_type{$row->[8]}{$row->[0]}{type} = $row->[4];
-		}
+		$idx_type{$row->[8]}{$row->[0]}{type} = $row->[4];
+
+#		my $idx_name = $row->[0];
+#		if (!$self->{schema} && $self->{export_schema}) {
+#			$idx_name = "$row->[9].$row->[0]";
+#		}
+#		if ($row->[11] =~ /SPATIAL_INDEX/) {
+#			$idx_type{$row->[8]}{$row->[0]}{type} = 'SPATIAL INDEX';
+#			if ($row->[12] =~ /layer_gtype=([^\s,]+)/i) {
+#				$idx_type{$row->[9]}{$row->[0]}{type_constraint} = uc($1);
+#			}
+#			if ($row->[12] =~ /sdo_indx_dims=(\d+)/i) {
+#				$idx_type{$row->[8]}{$row->[0]}{type_dims} = $1;
+#			}
+#		}
+#		if ($row->[4] eq 'BITMAP') {
+#			$idx_type{$row->[8]}{$row->[0]}{type} = $row->[4];
+#		}
 		push(@{$data{$row->[8]}{$row->[0]}}, $row->[1]);
 		$index_tablespace{$row->[8]}{$row->[0]} = $row->[10];
 		$nidx++;
@@ -690,7 +679,7 @@ WHERE o.type = 'TR'
 		push(@actions, 'INSERT') if ($row->[5]);
 		push(@actions, 'UPDATE') if ($row->[6]);
 		push(@actions, 'DELETE') if ($row->[7]);
-		my $act = join(', ', @actions);
+		my $act = join(' OR ', @actions);
 		if (!$self->{schema} && $self->{export_schema}) {
 			$row->[2] = "$row->[3].$row->[2]";
 		}
@@ -1140,7 +1129,7 @@ sub replace_mysql_variables
 	return ($code, $declare);
 }
 
-sub _list_all_funtions
+sub _list_all_functions
 {
 	my $self = shift;
 
@@ -1605,10 +1594,10 @@ LEFT OUTER JOIN sys.schemas sch ON t.schema_id = sch.schema_id
 		if ($self->{export_schema} && !$self->{schema}) {
 			$row->[1] = "$row->[0].$row->[1]";
 		}
-                $parts{"\L$row->[1]\E"}{count}++;
-                $parts{"\L$row->[1]\E"}{composite} = 0;
-		$parts{"\L$row->[1]\E"}{type} = 'RANGE';
-		push(@{ $parts{"\L$row->[1]\E"}{columns} }, $row->[11]) if (!grep(/^$row->[11]$/, @{ $parts{"\L$row->[1]\E"}{columns} }));
+                $parts{$row->[1]}{count}++;
+                $parts{$row->[1]}{composite} = 0;
+		$parts{$row->[1]}{type} = 'RANGE';
+		push(@{ $parts{$row->[1]}{columns} }, $row->[11]) if (!grep(/^$row->[11]$/, @{ $parts{$row->[1]}{columns} }));
 		#dbo | PartitionTable | PK__Partitio__357D0D3E1290FD9F | 2 | 72057594048872448 | 65601 | 65536 | RANGE | 2 | 2022-05-01 00:00:00 | 1 | col1
 	}
 	$sth->finish;
@@ -2154,8 +2143,14 @@ ORDER BY c.column_id};
 	while (my $row = $sth->fetch)
 	{
 		next if ($self->{drop_rowversion} && ($row->[4] eq 'rowversion' || $row->[4] eq 'timestamp'));
-		$data{$row->[3]}{"$row->[0]"}{nullable} = $row->[1];
-		$data{$row->[3]}{"$row->[0]"}{default} = $row->[2];
+                if (!$self->{schema} && $self->{export_schema}) {
+                        $row->[3] = $row->[6] . '.' . $row->[3];
+                }
+		$data{$row->[3]}{$row->[0]}{nullable} = 'N';
+		if ($row->[1]) {
+			$data{$row->[3]}{$row->[0]}{nullable} = 'Y';
+		}
+		$data{$row->[3]}{$row->[0]}{default} = $row->[2];
 		# Store the data type of the column following its position
 		$data{$row->[3]}{data_type}{$row->[5]} = $row->[4];
 	}
@@ -2165,21 +2160,33 @@ ORDER BY c.column_id};
 
 sub _list_triggers
 {
-        my($self) = @_;
+        my ($self) = @_;
 
-	my $str = "SELECT TRIGGER_NAME, EVENT_OBJECT_TABLE FROM INFORMATION_SCHEMA.TRIGGERS";
+	my $str = qq{SELECT 
+     o.name AS trigger_name 
+    ,OBJECT_NAME(o.parent_obj) AS table_name 
+    ,s.name AS table_schema 
+FROM sys.sysobjects o
+INNER JOIN sys.tables t ON o.parent_obj = t.object_id 
+INNER JOIN sys.schemas s ON t.schema_id = s.schema_id 
+WHERE o.type = 'TR'
+};
+
 	if ($self->{schema}) {
-		$str .= " AND TRIGGER_SCHEMA = '$self->{schema}'";
+		$str .= " AND s.name = '$self->{schema}'";
 	}
-	$str .= " " . $self->limit_to_objects('TABLE|VIEW|TRIGGER','EVENT_OBJECT_TABLE|EVENT_OBJECT_TABLE|TRIGGER_NAME');
-	$str =~ s/ AND / WHERE /;
+	$str .= " " . $self->limit_to_objects('TABLE|VIEW|TRIGGER','t.name|t.name|o.name');
 
-	$str .= " ORDER BY EVENT_OBJECT_TABLE, TRIGGER_NAME";
+	$str .= " ORDER BY t.name, o.name";
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
 	my %triggers = ();
-	while (my $row = $sth->fetch) {
+	while (my $row = $sth->fetch)
+	{
+		if (!$self->{schema} && $self->{export_schema}) {
+			$row->[1] = "$row->[2].$row->[1]";
+		}
 		push(@{$triggers{$row->[1]}}, $row->[0]);
 	}
 
@@ -2721,10 +2728,44 @@ LEFT OUTER JOIN sys.schemas s ON t1.schema_id = s.schema_id
 
 sub _col_count
 {
-        my ($self, $name) = @_;
+	my ($self, $table, $schema) = @_;
 
-	# Not supported
-	return;
+	my $condition = '';
+	if ($schema) {
+		$condition .= "AND s.name='$self->{schema}' ";
+	}
+	$condition .= "AND t.name='$table' " if ($table);
+	if (!$table) {
+		$condition .= $self->limit_to_objects('TABLE', 't.name');
+	} else {
+		@{$self->{query_bind_params}} = ();
+	}
+	$condition =~ s/^\s*AND\s/ WHERE /;
+
+	my $sql = qq{SELECT 
+    s.name,
+    t.name,
+    count(*)
+FROM sys.columns c
+INNER JOIN sys.tables AS t ON t.object_id = c.object_id
+INNER JOIN sys.schemas AS s ON s.schema_id = t.schema_id
+$condition
+GROUP BY s.name, t.name};
+
+	my $sth = $self->{dbh}->prepare($sql) || $self->logit("FATAL: _col_count() " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: _column_attributes() " . $self->{dbh}->errstr . "\n", 0, 1);
+
+	my %data = ();
+	while (my $row = $sth->fetch)
+	{
+		if ($self->{export_schema} && !$self->{schema}) {
+			$data{"$row->[0].$row->[1]"} = $row->[2];
+		} else {
+			$data{$row->[1]} = $row->[2];
+		}
+	}
+
+	return %data;
 }
 
 1;

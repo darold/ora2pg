@@ -1271,13 +1271,20 @@ sub _init
 	unlink($dirprefix . 'temp_pass2_file.dat');
 	unlink($dirprefix . 'temp_cost_file.dat');
 
+	# Autodetexct if we are exporting a MySQL database
+	if ($self->{oracle_dsn} =~ /dbi:mysql/i) {
+		$self->{is_mysql} = 1;
+	} elsif ($self->{oracle_dsn} =~ /dbi:ODBC:driver=msodbcsql/i) {
+		$self->{is_mssql} = 1;
+	}
+
 	# Preload our dedicated function per DBMS
 	if ($self->{is_mysql}) {
 		@{$self->{sysusers}} = ();
 		import Ora2Pg::MySQL;
 		$self->{sgbd_name} = 'MySQL';
 	} elsif ($self->{is_mssql}) {
-		@{$self->{sysusers}} = ('sys') if ($#{$self->{sysusers}} < 0);
+		push(@{$self->{sysusers}}, 'sys');
 		import Ora2Pg::MSSQL;
 		$self->{sgbd_name} = 'MSSQL';
 	} else {
@@ -1384,13 +1391,6 @@ sub _init
 	if ($@) {
 		# Old perl install doesn't include these functions
 		$self->{has_utf8_fct} = 0;
-	}
-
-	# Autodetexct if we are exporting a MySQL database
-	if ($self->{oracle_dsn} =~ /dbi:mysql/i) {
-		$self->{is_mysql} = 1;
-	} elsif ($self->{oracle_dsn} =~ /dbi:ODBC:driver=msodbcsql/i) {
-		$self->{is_mssql} = 1;
 	}
 
 	if ($self->{is_mysql} or $self->{is_mssql}) {
@@ -6388,6 +6388,7 @@ sub export_type
 		if ($self->{plsql_pgsql}) {
 			$tpe->{code} = $self->_convert_type($tpe->{code}, $tpe->{owner});
 		} else {
+			$tpe->{code} =~ s/^CREATE TYPE/TYPE/i;
 			if ($tpe->{code} !~ /^SUBTYPE\s+/) {
 				$tpe->{code} = "CREATE$self->{create_or_replace} $tpe->{code}\n";
 			}
@@ -7698,7 +7699,8 @@ sub export_table
 					}
 					else
 					{
-						if (($f->[4] ne '') && ($self->{type} ne 'FDW') && !$self->{oracle_fdw_data_export}) {
+						if (($f->[4] ne '') && ($self->{type} ne 'FDW') && !$self->{oracle_fdw_data_export})
+						{
 							if ($type eq 'boolean')
 							{
 								my $found = 0;
@@ -11571,6 +11573,8 @@ sub _list_triggers
 
 	if ($self->{is_mysql}) {
 		return Ora2Pg::MySQL::_list_triggers($self);
+	} elsif ($self->{is_mssql}) {
+		return Ora2Pg::MSSQL::_list_triggers($self);
 	} else {
 		return Ora2Pg::Oracle::_list_triggers($self);
 	}
@@ -14141,6 +14145,7 @@ sub _convert_type
         if ($plsql =~ s/SUBTYPE\s+/CREATE DOMAIN /i)
 	{
 		$plsql =~ s/\s+IS\s+/ AS /;
+		$plsql =~ s/^CREATE TYPE/TYPE/i;
 		$plsql = $self->_replace_sql_type($plsql);
 		return $plsql;
 	}
@@ -16547,6 +16552,22 @@ sub is_in_struct
 	return 1;
 }
 
+sub _col_count
+{
+	my ($self, $table, $schema) = @_;
+
+	my %col_count = ();
+	if ($self->{is_mysql}) {
+		%col_count = Ora2Pg::MySQL::_col_count($self, $table, $schema);
+	} elsif ($self->{is_mssql}) {
+		%col_count = Ora2Pg::MSSQL::_col_count($self, $table, $schema);
+	} else {
+		%col_count = Ora2Pg::Oracle::_col_count($self, $table, $schema);
+	}
+
+	return %col_count;
+}
+
 sub _test_table
 {
 	my $self = shift;
@@ -16567,12 +16588,7 @@ sub _test_table
 	# Test number of column in tables
 	####
 	print "[TEST COLUMNS COUNT]\n";
-	my %col_count = ();
-	if ($self->{is_mysql}) {
-		%col_count = Ora2Pg::MySQL::_col_count($self, '', $self->{schema});
-	} else {
-		%col_count = Ora2Pg::Oracle::_col_count($self, '', $self->{schema});
-	}
+	my %col_count = $self->_col_count('', $self->{schema});
 	$schema_cond = $self->get_schema_condition('pg_class.relnamespace::regnamespace::text');
 	my $sql = qq{
 SELECT pg_namespace.nspname||'.'||pg_class.relname, pg_attribute.attname
@@ -16633,12 +16649,17 @@ ORDER BY pg_attribute.attnum
 	} else {
 		($uniqueness, $indexes, $idx_type, $idx_tbsp) = $self->_get_indexes('', $self->{schema}, 1);
 	}
-	$schema_cond = $self->get_schema_condition('pg_indexes.schemaname');
-	$sql = qq{
-SELECT schemaname||'.'||tablename, count(*)
-FROM pg_indexes
-WHERE 1=1 $schema_cond
-GROUP BY schemaname,tablename
+	$schema_cond = $self->get_schema_condition('tn.nspname');
+	my $exclude_unique = '';
+	$exclude_unique = 'AND NOT i.indisunique' if ($self->{is_mssql});
+	$sql = qq{SELECT tn.nspname||'.'||t.relname, count(*)
+FROM pg_index i
+JOIN pg_class c on c.oid = i.indexrelid
+JOIN pg_namespace n on n.oid = c.relnamespace
+JOIN pg_class t on t.oid = i.indrelid
+JOIN pg_namespace tn on tn.oid = t.relnamespace
+WHERE 1=1 $exclude_unique $schema_cond
+GROUP BY tn.nspname, t.relname
 };
 	%pgret = ();
 	if ($self->{pg_dsn})
@@ -16656,7 +16677,7 @@ GROUP BY schemaname,tablename
 		}
 		$s->finish;
 	}
-	# Initialize when there is not indexes in a table
+	# Initialize when there is no indexes in a table
 	foreach my $t (keys %tables_infos) {
 		$indexes->{$t} = {} if (not exists $indexes->{$t});
 	}
@@ -16685,14 +16706,17 @@ GROUP BY schemaname,tablename
 	print "\n";
 	print "[TEST UNIQUE CONSTRAINTS COUNT]\n";
 	my %unique_keys = $self->_unique_key('',$self->{schema},'U');
-	$schema_cond = $self->get_schema_condition('pg_class.relnamespace::regnamespace::text');
-	$sql = qq{
-SELECT schemaname||'.'||tablename, count(*)
-FROM pg_indexes
-JOIN pg_class ON (pg_class.relname=pg_indexes.indexname)
-JOIN pg_constraint ON (pg_constraint.conname=pg_class.relname AND pg_constraint.connamespace=pg_class.relnamespace)
-WHERE pg_constraint.contype IN ('u') $schema_cond
-GROUP BY schemaname,tablename
+	$schema_cond = $self->get_schema_condition('tn.nspname');
+	my $exclude_unique = '';
+	$exclude_unique = 'AND i.indisunique' if ($self->{is_mssql});
+	$sql = qq{SELECT tn.nspname||'.'||t.relname, count(*)
+FROM pg_index i
+JOIN pg_class c on c.oid = i.indexrelid
+JOIN pg_namespace n on n.oid = c.relnamespace
+JOIN pg_class t on t.oid = i.indrelid
+JOIN pg_namespace tn on tn.oid = t.relnamespace
+WHERE 1=1 $exclude_unique $schema_cond
+GROUP BY tn.nspname, t.relname
 };
 	%pgret = ();
 	if ($self->{pg_dsn})
@@ -17124,21 +17148,17 @@ GROUP BY n.nspname,r.conrelid
 	print "[TEST PARTITION COUNT]\n";
 	my %partitions = $self->_get_partitioned_table();
 	$schema_cond = $self->get_schema_condition('nmsp_parent.nspname');
-	$schema_cond =~ s/^ AND/ WHERE/;
 	$sql = qq{
 SELECT
-    nmsp_parent.nspname     AS parent_schema,
-    parent.relname          AS parent,
+    nmsp_parent.nspname || '.' || parent.relname,
     COUNT(*)                     
 FROM pg_inherits
     JOIN pg_class parent        ON pg_inherits.inhparent = parent.oid
     JOIN pg_class child     ON pg_inherits.inhrelid   = child.oid
     JOIN pg_namespace nmsp_parent   ON nmsp_parent.oid  = parent.relnamespace
     JOIN pg_namespace nmsp_child    ON nmsp_child.oid   = child.relnamespace
-$schema_cond
-GROUP BY                                                                    
-    parent_schema,
-    parent;
+WHERE child.relkind = 'r' $schema_cond
+GROUP BY nmsp_parent.nspname || '.' || parent.relname                                                                   
 };
 	my %pg_part = ();
 	if ($self->{pg_dsn})
@@ -17151,26 +17171,22 @@ GROUP BY
 		}
 		while ( my @row = $s->fetchrow())
 		{
-			$row[1] =~ s/^[^\.]+\.// if (!$self->{export_schema});
-			$pg_part{$row[1]} = $row[2];
+			$row[0] =~ s/^[^\.]+\.// if (!$self->{export_schema});
+			$pg_part{$row[0]} = $row[1];
 		}
 		$s->finish();
 	}
-	foreach my $t (sort keys %partitions)
+
+	foreach my $t (sort keys %tables_infos)
 	{
-		next if (!exists $tables_infos{$t});
-		print "$lbl:$t:", $partitions{"\L$t\E"}{count}, "\n";
 		my ($tbmod, $orig, $schema, $both) = $self->set_pg_relation_name($t);
-		if (exists $pg_part{$tbmod})
-		{
-			print "POSTGRES:$both$orig:$pg_part{$tbmod}\n";
-			if ($pg_part{$tbmod} != $partitions{"\L$t\E"}{count}) {
-				push(@errors, "Table $both$orig doesn't have the same number of partitions in source database (" . $partitions{"\L$t\E"}{count} . ") and in PostgreSQL ($pg_part{$tbmod}).");
-			}
-		}
-		else
-		{
-			push(@errors, "Table $both$orig doesn't have the same number of partitions in source database (" . $partitions{"\L$t\E"}{count} . ") and in PostgreSQL (0).");
+		next if (!exists $partitions{$t} && !exists $pg_part{$tbmod});
+		$partitions{$t}{count} ||= 0;
+		print "$lbl:$t:$partitions{$t}{count}\n";
+		$pg_part{$tbmod} ||= 0;
+		print "POSTGRES:$both$orig:$pg_part{$tbmod}\n";
+		if ($pg_part{$tbmod} != $partitions{$t}{count}) {
+			push(@errors, "Table $both$orig doesn't have the same number of partitions in source database ($partitions{$t}{count}) and in PostgreSQL ($pg_part{$tbmod}).");
 		}
 	}
 	$self->show_test_errors('PARTITION', @errors);
@@ -17185,7 +17201,8 @@ GROUP BY
 SELECT count(*)
 FROM pg_catalog.pg_class c
      LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
-WHERE c.relkind IN ('r','') AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_depend d WHERE d.refclassid = 'pg_catalog.pg_extension'::pg_catalog.regclass AND d.objid = c.oid AND d.deptype = 'e')
+WHERE c.relkind IN ('r', 'p') AND NOT c.relispartition
+    AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_depend d WHERE d.refclassid = 'pg_catalog.pg_extension'::pg_catalog.regclass AND d.objid = c.oid AND d.deptype = 'e')
  $schema_cond
 };
 
@@ -17428,20 +17445,22 @@ SELECT count(*)
 FROM pg_catalog.pg_class c
      LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
 WHERE c.relkind IN ('S','') AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_depend d WHERE d.refclassid = 'pg_catalog.pg_extension'::pg_catalog.regclass AND d.objid = c.oid AND d.deptype = 'e')
-      $schema_clause
+     AND NOT EXISTS (SELECT 1 FROM pg_attribute a WHERE NOT a.attisdropped AND a.attidentity IN ('a', 'd') AND c.oid = pg_get_serial_sequence(a.attrelid::regclass::text, a.attname)::regclass::oid)
+     $schema_clause
 };
 	}
 	elsif ($obj_type eq 'TYPE')
 	{
 		my $obj_infos = $self->_get_types();
-		$nbobj = $#{$obj_infos} + 1;
+		$nbobj = scalar @{$obj_infos};
 		$schema_clause .= " AND pg_catalog.pg_type_is_visible(t.oid)" if ($schema_clause =~ /information_schema/);
 		$sql = qq{
 SELECT count(*)
 FROM pg_catalog.pg_type t
      LEFT JOIN pg_catalog.pg_namespace n ON n.oid = t.typnamespace
 WHERE (t.typrelid = 0 OR (SELECT c.relkind = 'c' FROM pg_catalog.pg_class c WHERE c.oid = t.typrelid))
-  AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_type el WHERE el.oid = t.typelem AND el.typarray = t.oid)
+  AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_type el WHERE el.oid = t.typelem AND el.typarray = t.oid)
+  AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_depend d WHERE d.refclassid = 'pg_catalog.pg_extension'::pg_catalog.regclass AND d.objid = t.oid AND d.deptype = 'e')
   $schema_clause
 };
 	}
@@ -17509,7 +17528,7 @@ sub _test_function
 	####
 	print "\n";
 	print "[TEST FUNCTION COUNT]\n";
-	my @fct_infos = $self->_list_all_funtions();
+	my @fct_infos = $self->_list_all_functions();
 	my $schema_clause = "    AND n.nspname NOT IN ('pg_catalog','information_schema')";
 	$sql = qq{
 SELECT n.nspname,proname,prorettype
@@ -17705,14 +17724,16 @@ sub _get_objects
 	}
 }
 
-sub _list_all_funtions
+sub _list_all_functions
 {
 	my $self = shift;
 
 	if ($self->{is_mysql}) {
-		return Ora2Pg::MySQL::_list_all_funtions($self);
+		return Ora2Pg::MySQL::_list_all_functions($self);
+	} elsif ($self->{is_mssql}) {
+		return Ora2Pg::MSSQL::_list_all_functions($self);
 	} else {
-		return Ora2Pg::Oracle::_list_all_funtions($self);
+		return Ora2Pg::Oracle::_list_all_functions($self);
 	}
 }
 
@@ -18263,7 +18284,7 @@ sub limit_to_objects
 		}
 
 		# Always exclude unwanted tables
-		if (!$self->{is_mysql} && !$self->{no_excluded_table} && !$has_limitation
+		if (!$self->{is_mysql} && !$self->{is_mssql} && !$self->{no_excluded_table} && !$has_limitation
 			&& ($arr_type[$i] =~ /TABLE|SEQUENCE|VIEW|TRIGGER|TYPE|SYNONYM/))
 		{
 			if ($self->{db_version} =~ /Release [89]/)
@@ -18481,6 +18502,8 @@ sub _lookup_function
 
 	if ($self->{is_mysql}) {
 		return Ora2Pg::MySQL::_lookup_function($self, $plsql, $pname);
+	} elsif ($self->{is_mssql}) {
+		return Ora2Pg::MSSQL::_lookup_function($self, $plsql, $pname);
 	} else {
 		return Ora2Pg::Oracle::_lookup_function($self, $plsql, $pname);
 	}
