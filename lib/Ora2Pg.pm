@@ -13537,6 +13537,7 @@ sub _convert_function
 		$func_return = " AS \$body\$\n";
 	}
 	$func_return .= $param_comments;
+	$func_return =~ s/\s+AS(\s+AS\s+)/$1/is;
 
 	# extract custom type declared in a stored procedure
 	my $create_type = '';
