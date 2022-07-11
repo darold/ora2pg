@@ -11522,6 +11522,44 @@ sub _get_types
 	}
 }
 
+=head2 _count_source_rows
+
+This function retrieves real rows count from a table.
+
+=cut
+
+
+sub _count_source_rows
+{
+	my ($self, $dbh, $t) = @_;
+
+	$self->logit("DEBUG: pid $$ looking for real row count for source table $t...\n", 1);
+	my $tbname = $t;
+	if ($self->{is_mysql}) {
+		$tbname = "`$t`";
+	} elsif ($self->{is_mssql}) {
+		$tbname = "[$t]";
+		$tbname =~ s/\./\].\[/;
+	} else {
+		$tbname = "[$t]";
+		$tbname =~ s/\./\].\[/;
+	}
+	my $sql = "SELECT COUNT(*) FROM $t";
+	my $sth = $dbh->prepare( $sql ) or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
+	$sth->execute or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
+	my $size = $sth->fetch();
+	$sth->finish();
+
+	my $dirprefix = '';
+	$dirprefix = "$self->{output_dir}/" if ($self->{output_dir});
+	my $fh = new IO::File;
+	$fh->open(">>${dirprefix}ora2pg_count_rows") or $self->logit("FATAL: can't write to ${dirprefix}ora2pg_count_rows, $!\n", 0, 1);
+	flock($fh, 2) || die "FATAL: can't lock file ${dirprefix}ora2pg_count_rows\n";
+	$fh->print("$t:$size->[0]\n");
+	$fh->close;
+}
+
+
 =head2 _table_info
 
 This function retrieves all Oracle-native tables information.
@@ -11535,11 +11573,82 @@ sub _table_info
 	my $self = shift;
 	my $do_real_row_count = shift;
 
+	my %tables_infos = ();
+
 	if ($self->{is_mysql}) {
-		return Ora2Pg::MySQL::_table_info($self, $do_real_row_count);
+		%tables_infos = Ora2Pg::MySQL::_table_info($self);
 	} else {
-		return Ora2Pg::Oracle::_table_info($self, $do_real_row_count);
+		%tables_infos = Ora2Pg::Oracle::_table_info($self);
 	}
+
+	# Collect real row count for each table
+	if ($do_real_row_count)
+	{
+		my $t1 = Benchmark->new;
+
+		my $parallel_tables_count = 0;
+		my $dirprefix = '';
+		$dirprefix = "$self->{output_dir}/" if ($self->{output_dir});
+		unlink("${dirprefix}ora2pg_count_rows");
+		foreach my $t (sort keys %tables_infos)
+		{
+			if ($self->{parallel_tables} > 1)
+			{
+				spawn sub {
+					my $dbhsrc = $self->{dbh}->clone();
+					$self->_count_source_rows($dbhsrc, $t);
+					$dbhsrc->disconnect();
+				};
+				$parallel_tables_count++;
+
+				# Wait for oracle connection terminaison
+				while ($parallel_tables_count > $self->{parallel_tables})
+				{
+					my $kid = waitpid(-1, WNOHANG);
+					if ($kid > 0)
+					{
+						$parallel_tables_count--;
+						delete $RUNNING_PIDS{$kid};
+					}
+					usleep(50000);
+				}
+			}
+			else
+			{
+				$self->_count_source_rows($self->{dbh}, $t);
+			}
+		}
+
+		# Wait for all child die
+		if ($self->{parallel_tables} > 1)
+		{
+			while (scalar keys %RUNNING_PIDS > 0)
+			{
+				my $kid = waitpid(-1, WNOHANG);
+				if ($kid > 0) {
+					delete $RUNNING_PIDS{$kid};
+				}
+				usleep(50000);
+			}
+		}
+
+		my $fh = new IO::File;
+		$fh->open("${dirprefix}ora2pg_count_rows") or $self->logit("FATAL: can't read file ${dirprefix}ora2pg_count_rows, $!\n", 0, 1);
+		my @ret = <$fh>;
+		$fh->close;
+		unlink("${dirprefix}ora2pg_count_rows");
+		foreach my $s (@ret)
+		{
+			my ($tb, $cnt) = split(':', $s);
+			$tables_infos{$tb}{num_rows} = $cnt || 0;
+		}
+
+		my $t2 = Benchmark->new;
+		$td = timediff($t2, $t1);
+		$self->logit("Collecting tables real row count took: " . timestr($td) . "\n", 1);
+	}
+
+	return %tables_infos;
 }
 
 =head2 _global_temp_table_info
@@ -16232,6 +16341,8 @@ sub _count_pg_rows
 
 	if ($self->{pg_dsn})
 	{
+		$self->logit("DEBUG: pid $$ looking for real row count for destination table $t...\n", 1);
+
 		my ($tbmod, $orig, $schema, $both) = $self->set_pg_relation_name($t);
 		my $s = $dbhdest->prepare("SELECT count(*) FROM $both;") or $self->logit("FATAL: " . $dbhdest->errstr . "\n", 0, 1);
 		if ($self->{preserve_case}) {
@@ -16242,9 +16353,11 @@ sub _count_pg_rows
 			push(@errors, "Table $both$orig does not exists in PostgreSQL database.") if ($s->state eq '42P01');
 			next;
 		}
+                my $dirprefix = '';
+		$dirprefix = "$self->{output_dir}/" if ($self->{output_dir});
 		my $fh = new IO::File;
-		$fh->open(">>$output_dir.ora2pg_stdout_locker") or $self->logit("FATAL: can't write to $output_dir.ora2pg_stdout_locker, $!\n", 0, 1);
-		flock($fh, 2) || die "FATAL: can't lock file $output_dir.ora2pg_stdout_locker\n";
+		$fh->open(">>${dirprefix}ora2pg_stdout_locker") or $self->logit("FATAL: can't write to ${dirprefix}ora2pg_stdout_locker, $!\n", 0, 1);
+		flock($fh, 2) || die "FATAL: can't lock file ${dirprefix}ora2pg_stdout_locker\n";
 		print "$lbl:$t:$num_rows\n";
 		while ( my @row = $s->fetchrow())
 		{
@@ -16320,11 +16433,13 @@ sub _table_row_count
 		}
 	}
 	
+	my $dirprefix = '';
+	$dirprefix = "$self->{output_dir}/" if ($self->{output_dir});
 	my $fh = new IO::File;
-	$fh->open("$output_dir.ora2pg_stdout_locker") or $self->logit("FATAL: can't read file $output_dir.ora2pg_stdout_locker, $!\n", 0, 1);
+	$fh->open("${dirprefix}ora2pg_stdout_locker") or $self->logit("FATAL: can't read file ${dirprefix}ora2pg_stdout_locker, $!\n", 0, 1);
 	@errors = <$fh>;
 	$fh->close;
-	unlink("$output_dir.ora2pg_stdout_locker");
+	unlink("${dirprefix}ora2pg_stdout_locker");
 	chomp @errors;
 
 	$self->show_test_errors('rows', @errors);
