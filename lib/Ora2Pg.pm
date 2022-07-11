@@ -16495,6 +16495,38 @@ sub get_schema_condition
 	return $cond;
 }
 
+sub _count_pg_rows
+{
+	my ($self, $dbhdest, $lbl, $t, $num_rows) = @_;
+
+	if ($self->{pg_dsn})
+	{
+		my ($tbmod, $orig, $schema, $both) = $self->set_pg_relation_name($t);
+		my $s = $dbhdest->prepare("SELECT count(*) FROM $both;") or $self->logit("FATAL: " . $dbhdest->errstr . "\n", 0, 1);
+		if ($self->{preserve_case}) {
+			$s = $dbhdest->prepare("SELECT count(*) FROM \"$schema\".\"$t\";") or $self->logit("FATAL: " . $dbhdest->errstr . "\n", 0, 1);
+		}
+		if (not $s->execute)
+		{
+			push(@errors, "Table $both$orig does not exists in PostgreSQL database.") if ($s->state eq '42P01');
+			next;
+		}
+		my $fh = new IO::File;
+		$fh->open(">>$output_dir.ora2pg_stdout_locker") or $self->logit("FATAL: can't write to $output_dir.ora2pg_stdout_locker, $!\n", 0, 1);
+		flock($fh, 2) || die "FATAL: can't lock file $output_dir.ora2pg_stdout_locker\n";
+		print "$lbl:$t:$num_rows\n";
+		while ( my @row = $s->fetchrow())
+		{
+			print "POSTGRES:$both$orig:$row[0]\n";
+			if ($row[0] != $num_rows) {
+				$fh->print("Table $both$orig doesn't have the same number of line in source database ($num_rows) and in PostgreSQL ($row[0]).\n");
+			}
+			last;
+		}
+		$s->finish();
+		$fh->close;
+	}
+}
 
 sub _table_row_count
 {
@@ -16518,30 +16550,56 @@ sub _table_row_count
 	print "[TEST ROWS COUNT]\n";
 	foreach my $t (sort keys %tables_infos)
 	{
-		print "$lbl:$t:$tables_infos{$t}{num_rows}\n";
-		if ($self->{pg_dsn})
+		if ($self->{parallel_tables} > 1)
 		{
-			my ($tbmod, $orig, $schema, $both) = $self->set_pg_relation_name($t);
-			my $s = $self->{dbhdest}->prepare("SELECT count(*) FROM $both;") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
-			if ($self->{preserve_case}) {
-				$s = $self->{dbhdest}->prepare("SELECT count(*) FROM \"$schema\".\"$t\";") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
-			}
-			if (not $s->execute)
+			spawn sub {
+				my $dbhpg = $self->{dbhdest}->clone();
+				$self->_count_pg_rows($dbhpg, $lbl, $t, $tables_infos{$t}{num_rows});
+				$dbhpg->disconnect();
+			};
+			$parallel_tables_count++;
+
+			# Wait for oracle connection terminaison
+			while ($parallel_tables_count > $self->{parallel_tables})
 			{
-				push(@errors, "Table $both$orig does not exists in PostgreSQL database.") if ($s->state eq '42P01');
-				next;
-			}
-			while ( my @row = $s->fetchrow())
-			{
-				print "POSTGRES:$both$orig:$row[0]\n";
-				if ($row[0] != $tables_infos{$t}{num_rows}) {
-					push(@errors, "Table $both$orig doesn't have the same number of line in source database ($tables_infos{$t}{num_rows}) and in PostgreSQL ($row[0]).");
+				my $kid = waitpid(-1, WNOHANG);
+				if ($kid > 0)
+				{
+					$parallel_tables_count--;
+					delete $RUNNING_PIDS{$kid};
 				}
-				last;
+				usleep(50000);
 			}
-			$s->finish();
+		}
+		else
+		{
+			$self->_count_pg_rows($self->{dbhdest}, $lbl, $t, $tables_infos{$t}{num_rows});
+		}
+
+		# Wait for all child die
+		if ($self->{parallel_tables} > 1)
+		{
+			while (scalar keys %RUNNING_PIDS > 0)
+			{
+				my $kid = waitpid(-1, WNOHANG);
+				if ($kid > 0) {
+					delete $RUNNING_PIDS{$kid};
+				}
+				usleep(50000);
+			}
 		}
 	}
+
+	if ($self->{parallel_tables} > 1) {
+
+		my $fh = new IO::File;
+		$fh->open("$output_dir.ora2pg_stdout_locker") or $self->logit("FATAL: can't read file $output_dir.ora2pg_stdout_locker, $!\n", 0, 1);
+		@errors = <$fh>;
+		$fh->close;
+		unlink("$output_dir.ora2pg_stdout_locker");
+	}
+	chomp @errors;
+
 	$self->show_test_errors('rows', @errors);
 }
 
