@@ -654,7 +654,7 @@ exit 0
 	chmod(0700, "$base_path/export_schema.sh");
  
 	# On Windows system generate a Powershell script to execute all export
-	if ($^O !~ /MSWin32|dos/i)
+	if ($^O =~ /MSWin32|dos/i)
 	{
 		print "Creating Powershell script export_schema.ps1 to automate all exports.\n";
 		unless(open(OUT, "> $base_path/export_schema.ps1")) {
