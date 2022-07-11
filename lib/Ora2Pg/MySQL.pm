@@ -236,7 +236,6 @@ Returns a handle to a DB query statement.
 sub _table_info
 {
 	my $self = shift;
-	my $do_real_row_count = shift;
 
 	# First register all tablespace/table in memory from this database
 	my %tbspname = ();
@@ -304,16 +303,6 @@ sub _table_info
 				last;
 			}
 			$sth2->finish();
-		}
-		if ($do_real_row_count)
-		{
-			$self->logit("DEBUG: looking for real row count for table $row->[0] (aka using count(*))...\n", 1);
-			$sql = "SELECT COUNT(*) FROM `$row->[0]`";
-			my $sth2 = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-			$sth2->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-			my $size = $sth2->fetch();
-			$sth2->finish();
-			$tables_infos{$row->[0]}{num_rows} = $size->[0];
 		}
 	}
 	$sth->finish();

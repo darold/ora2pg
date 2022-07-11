@@ -457,23 +457,10 @@ sub _table_info
 		# Global temporary table ?
 		$tables_infos{$row->[1]}{temporary} = $row->[8];
 		$tables_infos{$row->[1]}{duration} = $row->[9];
-
-		if ($do_real_row_count)
-		{
-			$self->logit("DEBUG: looking for real row count for table ($row->[0]) $row->[1] (aka using count(*))...\n", 1);
-			$sql = "SELECT COUNT(*) FROM \"$row->[1]\"";
-			if ($self->{schema}) {
-				$sql = "SELECT COUNT(*) FROM \"$row->[0]\".\"$row->[1]\"";
-			}
-			my $sth2 = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-			$sth2->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-			my $size = $sth2->fetch();
-			$sth2->finish();
-			$tables_infos{$row->[1]}{num_rows} = $size->[0];
-		}
 		$nrows++;
 	}
 	$sth->finish();
+
 	$t1 = Benchmark->new;
 	$td = timediff($t1, $t0);
 	$self->logit("Collecting $nrows tables information in $self->{prefix}_TABLES took: " . timestr($td) . "\n", 1);
