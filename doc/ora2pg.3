@@ -133,7 +133,7 @@
 .\" ========================================================================
 .\"
 .IX Title "ORA2PG 1"
-.TH ORA2PG 1 "2022-06-22" "perl v5.30.0" "User Contributed Perl Documentation"
+.TH ORA2PG 1 "2022-07-11" "perl v5.30.0" "User Contributed Perl Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -534,7 +534,8 @@ Usage: ora2pg [\-dhpqv \-\-estimate_cost \-\-dump_as_html] [\-\-option value]
 \&   \-\-pg_dsn DSN       : Set the datasource to PostgreSQL for direct import.
 \&   \-\-pg_user name     : Set the PostgreSQL user to use.
 \&   \-\-pg_pwd password  : Set the PostgreSQL password to use.
-\&   \-\-count_rows       : Force ora2pg to perform a real row count in TEST action.
+\&   \-\-count_rows       : Force ora2pg to perform a real row count in TEST,
+\&                        TEST_COUNT and SHOW_TABLE actions.
 \&   \-\-no_header        : Do not append Ora2Pg header to output file
 \&   \-\-oracle_speed     : Use to know at which speed Oracle is able to send
 \&                        data. No data will be processed or written.
@@ -1142,6 +1143,10 @@ so the real number of process that will be used is \s-1PARALLEL_TABLES\s0 * \s-1
 Note that this directive when set upper that 1 will also automatically enable
 the \s-1FILE_PER_TABLE\s0 directive if your are exporting to files. This is used to
 export tables and views in separate files.
+.Sp
+Use \s-1PARALLEL_TABLES\s0 to use parallelism with \s-1COPY, INSERT\s0 and \s-1TEST_DATA\s0 actions.
+It is also useful with \s-1TEST, TEST_COUNT,\s0 and \s-1SHOW_TABLE\s0 if \-\-count_rows is
+used for real row count.
 .IP "\s-1DEFAULT_PARALLELISM_DEGREE\s0" 4
 .IX Item "DEFAULT_PARALLELISM_DEGREE"
 You can force Ora2Pg to use /*+ \s-1PARALLEL\s0(tbname, degree) */ hint in each

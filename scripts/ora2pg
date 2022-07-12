@@ -507,7 +507,8 @@ Usage: ora2pg [-dhpqv --estimate_cost --dump_as_html] [--option value]
    --pg_dsn DSN       : Set the datasource to PostgreSQL for direct import.
    --pg_user name     : Set the PostgreSQL user to use.
    --pg_pwd password  : Set the PostgreSQL password to use.
-   --count_rows       : Force ora2pg to perform a real row count in TEST action.
+   --count_rows       : Force ora2pg to perform a real row count in TEST,
+                        TEST_COUNT and SHOW_TABLE actions.
    --no_header        : Do not append Ora2Pg header to output file
    --oracle_speed     : Use to know at which speed Oracle is able to send
                         data. No data will be processed or written.
@@ -665,7 +666,7 @@ exit 0
 	chmod(0700, "$base_path/export_schema.sh");
  
 	# On Windows system generate a Powershell script to execute all export
-	if ($^O !~ /MSWin32|dos/i)
+	if ($^O =~ /MSWin32|dos/i)
 	{
 		print "Creating Powershell script export_schema.ps1 to automate all exports.\n";
 		unless(open(OUT, "> $base_path/export_schema.ps1")) {

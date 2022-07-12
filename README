@@ -375,7 +375,8 @@ CONFIGURATION
        --pg_dsn DSN       : Set the datasource to PostgreSQL for direct import.
        --pg_user name     : Set the PostgreSQL user to use.
        --pg_pwd password  : Set the PostgreSQL password to use.
-       --count_rows       : Force ora2pg to perform a real row count in TEST action.
+       --count_rows       : Force ora2pg to perform a real row count in TEST,
+                            TEST_COUNT and SHOW_TABLE actions.
        --no_header        : Do not append Ora2Pg header to output file
        --oracle_speed     : Use to know at which speed Oracle is able to send
                             data. No data will be processed or written.
@@ -969,6 +970,10 @@ CONFIGURATION
         automatically enable the FILE_PER_TABLE directive if your are
         exporting to files. This is used to export tables and views in
         separate files.
+
+        Use PARALLEL_TABLES to use parallelism with COPY, INSERT and
+        TEST_DATA actions. It is also useful with TEST, TEST_COUNT, and
+        SHOW_TABLE if --count_rows is used for real row count.
 
     DEFAULT_PARALLELISM_DEGREE
         You can force Ora2Pg to use /*+ PARALLEL(tbname, degree) */ hint in
