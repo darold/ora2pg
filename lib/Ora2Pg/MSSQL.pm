@@ -108,20 +108,21 @@ sub _get_version
 {
 	my $self = shift;
 
-	my $oraver = '';
+	my $dbver = '';
 	my $sql = "SELECT \@\@VERSION";
 
         my $sth = $self->{dbh}->prepare( $sql ) or return undef;
         $sth->execute or return undef;
 	while ( my @row = $sth->fetchrow()) {
-		$oraver = $row[0];
+		$dbver = $row[0];
 		last;
 	}
 	$sth->finish();
 
-	$oraver =~ s/ \- .*//;
+	$dbver =~ s/ \- .*//;
+	$dbver =~ s/[\r\n]+/ gs/;
 
-	return $oraver;
+	return $dbver;
 }
 
 sub _schema_list
@@ -786,7 +787,7 @@ sub _check_constraint
 	}
 
 	my $sql = qq{SELECT
-    schema_name(t.schema_id) SchemaName,
+    s.name SchemaName,
     t.name as TableName,
     col.name as column_name,
     con.name as constraint_name,
@@ -794,6 +795,7 @@ sub _check_constraint
     con.is_disabled 
 FROM sys.check_constraints con
 LEFT OUTER JOIN sys.objects t ON con.parent_object_id = t.object_id
+JOIN sys.schemas AS s ON t.schema_id = s.schema_id
 LEFT OUTER JOIN sys.all_columns col ON con.parent_column_id = col.column_id AND con.parent_object_id = col.object_id
 $condition
 ORDER BY SchemaName, t.Name, col.name

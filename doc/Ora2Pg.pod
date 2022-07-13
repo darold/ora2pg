@@ -3068,6 +3068,7 @@ Usage: ora2pg_scanner -l CSVFILE [-o OUTDIR]
 	"type","schema/database","dsn","user","password"
 	"MYSQL","sakila","dbi:mysql:host=192.168.1.10;database=sakila;port=3306","root","secret"
 	"ORACLE","HR","dbi:Oracle:host=192.168.1.10;sid=XE;port=1521","system","manager"
+	"MSSQL","HR","dbi:ODBC:driver=msodbcsql18;server=srv.database.windows.net;database=testdb","system","manager"
 
    The CSV field separator must be a comma.
 
@@ -3078,6 +3079,7 @@ Usage: ora2pg_scanner -l CSVFILE [-o OUTDIR]
    For example:
 
 	"ORACLE","","dbi:Oracle:host=192.168.1.10;sid=XE;port=1521","system","manager"
+	"MSSQL","","dbi:ODBC:driver=msodbcsql18;server=srv.database.windows.net;database=testdb","usrname","passwd"
 
    will generate a report for all schema in the XE instance. Note that in this
    case the SCHEMA directive in ora2pg.conf must not be set.
