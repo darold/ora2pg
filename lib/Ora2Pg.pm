@@ -7671,10 +7671,20 @@ sub export_table
 				if ($self->{partitions_list}{"\L$table\E"}{type})
 				{
 					$sql_output .= " PARTITION BY " . $self->{partitions_list}{"\L$table\E"}{type} . " (";
-					for (my $j = 0; $j <= $#{$self->{partitions_list}{"\L$table\E"}{columns}}; $j++)
+					if (exists $self->{partitions_list}{"\L$table\E"}{columns})
 					{
-						$sql_output .= ', ' if ($j > 0);
-						$sql_output .= $self->quote_object_name($self->{partitions_list}{"\L$table\E"}{columns}[$j]);
+						for (my $j = 0; $j <= $#{$self->{partitions_list}{"\L$table\E"}{columns}}; $j++)
+						{
+							$sql_output .= ', ' if ($j > 0);
+							$sql_output .= $self->quote_object_name($self->{partitions_list}{"\L$table\E"}{columns}[$j]);
+						}
+					}
+					else
+					{
+						if ($self->{plsql_pgsql}) {
+							$self->{partitions_list}{"\L$table\E"}{expression} = Ora2Pg::PLSQL::convert_plsql_code($self, $self->{partitions_list}{"\L$table\E"}{expression});
+						}
+						$sql_output .= $self->{partitions_list}{"\L$table\E"}{expression};
 					}
 					$sql_output .= 	")";
 				}

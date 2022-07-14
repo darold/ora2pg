@@ -271,7 +271,7 @@ sub _table_info
 
 	my %tables_infos = ();
 	my %comments = ();
-	my $sql = "SELECT TABLE_NAME,TABLE_COMMENT,TABLE_TYPE,TABLE_ROWS,ROUND( ( data_length + index_length) / 1024 / 1024, 2 ) AS \"Total Size Mb\", AUTO_INCREMENT, ENGINE FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE='BASE TABLE' AND TABLE_SCHEMA = '$self->{schema}'";
+	my $sql = "SELECT TABLE_NAME,TABLE_COMMENT,TABLE_TYPE,TABLE_ROWS,ROUND( ( data_length + index_length) / 1024 / 1024, 2 ) AS \"Total Size Mb\", AUTO_INCREMENT, CREATE_OPTIONS FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE='BASE TABLE' AND TABLE_SCHEMA = '$self->{schema}'";
 	$sql .= $self->limit_to_objects('TABLE', 'TABLE_NAME');
 	$sth = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -289,6 +289,7 @@ sub _table_info
 		$tables_infos{$row->[0]}{tablespace} = 0;
 		$tables_infos{$row->[0]}{auto_increment} = $row->[5] || 0;
 		$tables_infos{$row->[0]}{tablespace} = $tbspname{$row->[0]} || '';
+		$tables_infos{$row->[0]}{partitioned} = ($row->[6] eq 'partitioned') ? 1 : 0;
 
 		# Get creation option unavailable in information_schema
 		if ($row->[6] eq 'FEDERATED')
@@ -1467,7 +1468,7 @@ sub _get_partitioned_table
 
 	# Retrieve all partitions.
 	my $str = qq{
-SELECT TABLE_NAME, PARTITION_ORDINAL_POSITION, PARTITION_NAME, PARTITION_DESCRIPTION, TABLESPACE_NAME, PARTITION_METHOD
+SELECT TABLE_NAME, PARTITION_METHOD, PARTITION_ORDINAL_POSITION, PARTITION_NAME, PARTITION_DESCRIPTION, TABLESPACE_NAME, PARTITION_EXPRESSION
 FROM INFORMATION_SCHEMA.PARTITIONS WHERE SUBPARTITION_NAME IS NULL AND PARTITION_NAME IS NOT NULL
 };
 	$str .= $self->limit_to_objects('TABLE|PARTITION','TABLE_NAME|PARTITION_NAME');
@@ -1480,8 +1481,31 @@ FROM INFORMATION_SCHEMA.PARTITIONS WHERE SUBPARTITION_NAME IS NULL AND PARTITION
 	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
 	my %parts = ();
-	while (my $row = $sth->fetch) {
-		$parts{$row->[0]}++ if ($row->[2]);
+	while (my $row = $sth->fetch)
+	{
+		$parts{"\L$row->[0]\E"}{count} = 0;
+		$parts{"\L$row->[0]\E"}{composite} = 0;
+		if (exists $subpart{"\L$row->[0]\E"})
+		{
+			$parts{"\L$row->[0]\E"}{composite} = 1;
+			foreach my $k (keys %{$subpart{"\L$row->[0]\E"}}) {
+				$parts{"\L$row->[0]\E"}{count} += $subpart{"\L$row->[0]\E"}{$k}{count};
+			}
+			$parts{"\L$row->[0]\E"}{count}++;
+		} else {
+			$parts{"\L$row->[0]\E"}{count}++;
+		}
+		$parts{"\L$row->[0]\E"}{type} = $row->[1];
+		$row->[6] =~ s/\`//g;
+		if ($parts{"\L$row->[0]\E"}{type} =~ s/ COLUMNS//)
+		{
+			$row->[6] =~ s/[\(\)\s]//g;
+			@{ $parts{"\L$row->[0]\E"}{columns} } = split(',', $row->[6]);
+		}
+		else
+		{
+			$parts{"\L$row->[0]\E"}{expression} = $row->[6];
+		}
 	}
 	$sth->finish;
 
