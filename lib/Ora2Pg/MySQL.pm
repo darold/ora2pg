@@ -1339,7 +1339,7 @@ sub _get_partitions
 	my $str = qq{
 SELECT TABLE_NAME, PARTITION_ORDINAL_POSITION, PARTITION_NAME, PARTITION_DESCRIPTION, TABLESPACE_NAME, PARTITION_METHOD, PARTITION_EXPRESSION
 FROM INFORMATION_SCHEMA.PARTITIONS
-WHERE PARTITION_NAME IS NOT NULL AND SUBPARTITION_NAME IS NULL AND (PARTITION_METHOD LIKE 'RANGE%' OR PARTITION_METHOD LIKE 'LIST%')
+WHERE PARTITION_NAME IS NOT NULL
 };
 	$str .= $self->limit_to_objects('TABLE|PARTITION', 'TABLE_NAME|PARTITION_NAME');
 	if ($self->{schema}) {
@@ -1361,12 +1361,18 @@ WHERE PARTITION_NAME IS NOT NULL AND SUBPARTITION_NAME IS NULL AND (PARTITION_ME
 		$parts{$row->[0]}{$row->[1]}{name} = $row->[2];
 		$row->[6] =~ s/\`//g;
 		$row->[3] =~ s/\`//g;
-		$row->[5] =~ s/ COLUMNS//;
-		my $i = 0;
-		foreach my $c (split(',', $row->[6]))
+		if ($row->[5] =~ s/ COLUMNS//)
 		{
-			push(@{$parts{$row->[0]}{$row->[1]}{info}}, { 'type' => $row->[5], 'value' => $row->[3], 'column' => $c, 'colpos' => $i, 'tablespace' => $row->[4], 'owner' => ''});
-			$i++;
+			my $i = 0;
+			foreach my $c (split(',', $row->[6]))
+			{
+				push(@{$parts{$row->[0]}{$row->[1]}{info}}, { 'type' => $row->[5], 'value' => $row->[3], 'column' => $c, 'colpos' => $i, 'tablespace' => $row->[4], 'owner' => ''});
+				$i++;
+			}
+		}
+		else
+		{
+			@{$parts{$row->[0]}{$row->[1]}{info}} = ( { 'type' => $row->[5], 'value' => $row->[3], 'expression' => $row->[6], 'colpos' => 0, 'tablespace' => $row->[4], 'owner' => '' } );
 		}
 	}
 	$sth->finish;
@@ -1388,7 +1394,7 @@ sub _get_subpartitions
 	my $str = qq{
 SELECT TABLE_NAME, SUBPARTITION_ORDINAL_POSITION, SUBPARTITION_NAME, PARTITION_DESCRIPTION, TABLESPACE_NAME, SUBPARTITION_METHOD, SUBPARTITION_EXPRESSION,PARTITION_NAME
 FROM INFORMATION_SCHEMA.PARTITIONS
-WHERE SUBPARTITION_NAME IS NOT NULL AND SUBPARTITION_EXPRESSION IS NOT NULL AND (SUBPARTITION_METHOD = 'RANGE' OR SUBPARTITION_METHOD = 'LIST')
+WHERE SUBPARTITION_NAME IS NOT NULL AND SUBPARTITION_EXPRESSION IS NOT NULL
 };
 	$str .= $self->limit_to_objects('TABLE|PARTITION', 'TABLE_NAME|PARTITION_NAME');
 	if ($self->{schema}) {
@@ -1469,7 +1475,8 @@ sub _get_partitioned_table
 	# Retrieve all partitions.
 	my $str = qq{
 SELECT TABLE_NAME, PARTITION_METHOD, PARTITION_ORDINAL_POSITION, PARTITION_NAME, PARTITION_DESCRIPTION, TABLESPACE_NAME, PARTITION_EXPRESSION
-FROM INFORMATION_SCHEMA.PARTITIONS WHERE SUBPARTITION_NAME IS NULL AND PARTITION_NAME IS NOT NULL
+FROM INFORMATION_SCHEMA.PARTITIONS WHERE PARTITION_NAME IS NOT NULL
+     AND (PARTITION_METHOD LIKE 'RANGE%' OR PARTITION_METHOD LIKE 'LIST%' OR PARTITION_METHOD LIKE 'HASH%')
 };
 	$str .= $self->limit_to_objects('TABLE|PARTITION','TABLE_NAME|PARTITION_NAME');
 	if ($self->{schema}) {
@@ -1581,7 +1588,8 @@ sub _get_objects
 	my $str = qq{
 SELECT TABLE_NAME||'_'||PARTITION_NAME
 FROM INFORMATION_SCHEMA.PARTITIONS
-WHERE SUBPARTITION_NAME IS NULL AND (PARTITION_METHOD = 'RANGE' OR PARTITION_METHOD = 'LIST')
+WHERE SUBPARTITION_NAME IS NULL
+     AND (SUBPARTITION_METHOD LIKE 'RANGE%' OR SUBPARTITION_METHOD LIKE 'LIST%' OR SUBPARTITION_METHOD LIKE 'HASH%')
 };
 	$sql .= $self->limit_to_objects('TABLE|PARTITION', 'TABLE_NAME|PARTITION_NAME');
 	if ($self->{schema}) {
@@ -1951,7 +1959,40 @@ sub _get_subpartitioned_table
 {
         my($self) = @_;
 
-	return;
+	# Retrieve all partitions.
+	my $str = qq{
+SELECT TABLE_NAME, SUBPARTITION_METHOD, SUBPARTITION_ORDINAL_POSITION, PARTITION_NAME, SUBPARTITION_NAME, PARTITION_DESCRIPTION, TABLESPACE_NAME, SUBPARTITION_EXPRESSION
+FROM INFORMATION_SCHEMA.PARTITIONS WHERE SUBPARTITION_NAME IS NOT NULL
+     AND (SUBPARTITION_METHOD LIKE 'RANGE%' OR SUBPARTITION_METHOD LIKE 'LIST%' OR SUBPARTITION_METHOD LIKE 'HASH%')
+};
+	$str .= $self->limit_to_objects('TABLE|PARTITION','TABLE_NAME|SUBPARTITION_NAME');
+	if ($self->{schema}) {
+		$str .= " AND TABLE_SCHEMA ='$self->{schema}'";
+	}
+	$str .= " ORDER BY TABLE_NAME,PARTITION_NAME,SUBPARTITION_NAME\n";
+
+	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+
+	my %parts = ();
+	while (my $row = $sth->fetch)
+	{
+		$parts{"\L$row->[0]\E"}{"\L$row->[3]\E"}{count}++;
+		$parts{"\L$row->[0]\E"}{"\L$row->[3]\E"}{type} = $row->[1];
+		$row->[7] =~ s/\`//g;
+		if ($parts{"\L$row->[0]\E"}{"\L$row->[3]\E"}{type} =~ s/ COLUMNS//)
+		{
+			$row->[7] =~ s/[\(\)\s]//g;
+			@{ $parts{"\L$row->[0]\E"}{"\L$row->[3]\E"}{columns} } = split(',', $row->[7]);
+		}
+		else
+		{
+			$parts{"\L$row->[0]\E"}{"\L$row->[3]\E"}{expression} = $row->[7];
+		}
+	}
+	$sth->finish;
+
+	return %parts;
 }
 
 # Replace IF("user_status"=0,"username",NULL)
