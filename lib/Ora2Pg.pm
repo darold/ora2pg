@@ -6640,6 +6640,7 @@ BEGIN
 
 			my @condition = ();
 			my @ind_col = ();
+			my $check_cond = '';
 			for (my $i = 0; $i <= $#{$self->{partitions}{$table}{$pos}{info}}; $i++)
 			{
 				# We received all values for partitonning on multiple column, so get the one at the right indice
@@ -6849,21 +6850,23 @@ BEGIN
 				$create_table_tmp .= $check_cond;
 				if (exists $self->{subpartitions_list}{"\L$table\E"}{"\L$part\E"}{type})
 				{
-					if ($self->{subpartitions_list}{"\L$table\E"}{"\L$part\E"}{type})
+					$create_table_tmp .= "\nPARTITION BY " . $self->{subpartitions_list}{"\L$table\E"}{"\L$part\E"}{type} . " (";
+					if (exists $self->{subpartitions_list}{"\L$table\E"}{"\L$part\E"}{columns})
 					{
-						$create_table_tmp .= "\nPARTITION BY " . $self->{subpartitions_list}{"\L$table\E"}{"\L$part\E"}{type} . " (";
 						for (my $j = 0; $j <= $#{$self->{subpartitions_list}{"\L$table\E"}{"\L$part\E"}{columns}}; $j++)
 						{
 							$create_table_tmp .= ', ' if ($j > 0);
 							$create_table_tmp .= $self->quote_object_name($self->{subpartitions_list}{"\L$table\E"}{"\L$part\E"}{columns}[$j]);
 						}
-						$create_table_tmp .= ")";
 					}
 					else
 					{
-						print STDERR "WARNING: unsupported subpartition type on table '$table' for partition '$part'\n";
-						$sql_output .=  " -- Unsupported partition type, please check\n";
+						if ($self->{plsql_pgsql}) {
+							$self->{subpartitions_list}{"\L$table\E"}{"\L$part\E"}{expression} = Ora2Pg::PLSQL::convert_plsql_code($self, $self->{subpartitions_list}{"\L$table\E"}{"\L$part\E"}{expression});
+						}
+						$create_table_tmp .= $self->{subpartitions_list}{"\L$table\E"}{"\L$part\E"}{expression};
 					}
+					$create_table_tmp .= 	")";
 				}
 				$create_table_tmp .= ";\n";
 			}
@@ -6972,7 +6975,7 @@ BEGIN
 							}
 							else
 							{
-								my $part_clause = " WITH (MODULUS " . $self->{subpartitions_list}{"\L$table\E"}{"\L$part\E"}{count} . ", REMAINDER " . ($p-1) . ")";
+								my $part_clause = " WITH (MODULUS " . (scalar keys %{$self->{subpartitions}{$table}{$part}}) . ", REMAINDER " . ($p-1) . ")";
 								$sub_check_cond_tmp .= $part_clause if ($sub_check_cond_tmp !~ /\Q$part_clause\E$/);
 							}
 						}
@@ -7788,13 +7791,23 @@ sub export_table
 			}
 
 			if ($self->{tables}{$table}{table_info}{partitioned} && $self->{pg_supports_partition} && !$self->{disable_partition}) {
-				if ($self->{partitions_list}{"\L$table\E"}{type})
+				if (exists $self->{partitions_list}{"\L$table\E"}{type})
 				{
 					$sql_output .= " PARTITION BY " . $self->{partitions_list}{"\L$table\E"}{type} . " (";
-					for (my $j = 0; $j <= $#{$self->{partitions_list}{"\L$table\E"}{columns}}; $j++)
+					if (exists $self->{partitions_list}{"\L$table\E"}{columns})
 					{
-						$sql_output .= ', ' if ($j > 0);
-						$sql_output .= $self->quote_object_name($self->{partitions_list}{"\L$table\E"}{columns}[$j]);
+						for (my $j = 0; $j <= $#{$self->{partitions_list}{"\L$table\E"}{columns}}; $j++)
+						{
+							$sql_output .= ', ' if ($j > 0);
+							$sql_output .= $self->quote_object_name($self->{partitions_list}{"\L$table\E"}{columns}[$j]);
+						}
+					}
+					else
+					{
+						if ($self->{plsql_pgsql}) {
+							$self->{partitions_list}{"\L$table\E"}{expression} = Ora2Pg::PLSQL::convert_plsql_code($self, $self->{partitions_list}{"\L$table\E"}{expression});
+						}
+						$sql_output .= $self->{partitions_list}{"\L$table\E"}{expression};
 					}
 					$sql_output .= 	")";
 				}
