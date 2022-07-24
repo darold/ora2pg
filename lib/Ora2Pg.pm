@@ -991,7 +991,7 @@ sub _init
 	$self->{fdw_server} = '';
 
 	# AS OF SCN related variables
-	$self->{oracle_scn} = $options{oracle_scn} || '';
+	$self->{start_scn} = $options{start_scn} || '';
 	$self->{current_oracle_scn} = ();
 	$self->{cdc_ready} = $options{cdc_ready} || '';
 
@@ -10733,10 +10733,10 @@ END;
 		}
 	}
 	$str .= " FROM $realtable";
-	if ($self->{oracle_scn} =~ /^\d+$/) {
-		$str .= " AS OF SCN $self->{oracle_scn}";
-	} elsif ($self->{oracle_scn}) {
-		$str .= " AS OF TIMESTAMP $self->{oracle_scn}";
+	if ($self->{start_scn} =~ /^\d+$/) {
+		$str .= " AS OF SCN $self->{start_scn}";
+	} elsif ($self->{start_scn}) {
+		$str .= " AS OF TIMESTAMP $self->{start_scn}";
 	} elsif (exists $self->{current_oracle_scn}{$table}) {
 		$str .= " AS OF SCN $self->{current_oracle_scn}{$table}";
 	}
