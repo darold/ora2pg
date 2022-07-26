@@ -13560,6 +13560,9 @@ CREATE EXTENSION IF NOT EXISTS dblink;
 	v_conn_str  text := $dblink_conn;
 	v_query     text;
 };
+		my $call_str = 'SELECT * FROM';
+		$call_str = 'CALL' if (uc($type) eq 'PROCEDURE');
+
 		if ($#at_ret_param == 0)
 		{
 			my $varname = $at_ret_param[0];
@@ -13570,7 +13573,7 @@ CREATE EXTENSION IF NOT EXISTS dblink;
 			{
 				$at_wrapper .= qq{
 BEGIN
-	v_query := 'SELECT * FROM $fname$at_suffix ($params)';
+	v_query := 'CALL $fname$at_suffix ($params)';
 	SELECT v_ret INTO $varname FROM dblink(v_conn_str, v_query) AS p (v_ret $vartype);
 };
 			}
@@ -13607,7 +13610,7 @@ BEGIN
 			{
 				$at_wrapper .= qq{
 BEGIN
-	v_query := 'SELECT * FROM $fname$at_suffix ($params)';
+	v_query := 'CALL $fname$at_suffix ($params)';
 	SELECT * FROM dblink(v_conn_str, v_query) AS p ($vartypes) INTO $varnames;
 };
 			}
