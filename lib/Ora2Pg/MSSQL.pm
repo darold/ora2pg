@@ -120,7 +120,7 @@ sub _get_version
 	$sth->finish();
 
 	$dbver =~ s/ \- .*//;
-	$dbver =~ s/[\r\n]+/ gs/;
+	$dbver =~ s/\s+/ /gs;
 
 	return $dbver;
 }
