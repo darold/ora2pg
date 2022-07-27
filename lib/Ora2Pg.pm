@@ -9091,6 +9091,20 @@ sub _dump_table
 			$f->[1] = $keyname;
 		}
 		$type = $self->{'modify_type'}{lc($table)}{lc($f->[0])} if (exists $self->{'modify_type'}{lc($table)}{lc($f->[0])});
+		# Check if this column should be replaced by a boolean following table/column name
+		if (grep(/^\L$fieldname\E$/i, @{$self->{'replace_as_boolean'}{uc($table)}})) {
+			$type = 'boolean';
+		# Check if this column should be replaced by a boolean following type/precision
+		}
+		elsif (exists $self->{'replace_as_boolean'}{uc($f->[1])})
+		{
+			if ($self->{'replace_as_boolean'}{uc($f->[1])}[0] == $f->[5] ||
+				(!$f->[5] && $self->{'replace_as_boolean'}{uc($f->[1])}[0] == $f->[2]))
+			{
+				$type = 'boolean';
+			}
+		}
+
 		push(@stt, uc($f->[1]));
 		push(@tt, $type);
 		push(@nn,  $fieldname);
@@ -12366,7 +12380,7 @@ sub format_data_type
 		elsif ($data_type eq 'boolean')
 		{
 			if (exists $self->{ora_boolean_values}{lc($col)}) {
-				$col = $q . $self->{ora_boolean_values}{lc($col)} . $q;
+				$col = "$q" . $self->{ora_boolean_values}{lc($col)} . "$q";
 			}
 		}
 		else
