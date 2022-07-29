@@ -87,7 +87,7 @@ my $RELATIVE_PATH = 0;
 my $BLOB_TO_LO = 0;
 my $IMPORT_LO = 0;
 my @WHERE_CLAUSE = ();
-my $ORACLE_SCN = '';
+my $START_SCN = '';
 my $CDC_READY = '';
 my $CDC_FILE = 'TABLES_SCN.log';
 
@@ -131,7 +131,7 @@ GetOptions (
 	'q|quiet!' => \$QUIET,
 	'r|relative!' => \$RELATIVE_PATH,
 	's|source=s' => \$DSN,
-	'S|scn=s' => \$ORACLE_SCN,
+	'S|scn=s' => \$START_SCN,
         't|type=s' => \$EXPORT_TYPE,
         'T|temp_dir=s' => \$TMP_DIR,
 	'u|user=s' => \$DBUSER,
@@ -370,7 +370,7 @@ my $schema = new Ora2Pg (
 	psql_relative_path => $RELATIVE_PATH,
 	where => join(' ', @WHERE_CLAUSE),
 	blob_to_lo => $BLOB_TO_LO,
-	oracle_scn => $ORACLE_SCN,
+	start_scn => $START_SCN,
 	cdc_ready => $CDC_READY,
 	lo_import => $IMPORT_LO,
 	cdc_file => $CDC_FILE,
