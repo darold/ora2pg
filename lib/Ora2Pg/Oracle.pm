@@ -121,10 +121,8 @@ sub _db_connection
 	if (!defined $self->{oracle_pwd})
 	{
 		eval("use Term::ReadKey;") unless $self->{oracle_user} eq '/';
-		if (!$@) {
-			$self->{oracle_user} = $self->_ask_username('Oracle') unless (defined $self->{oracle_user});
-			$self->{oracle_pwd} = $self->_ask_password('Oracle') unless ($self->{oracle_user} eq '/');
-		}
+		$self->{oracle_user} = $self->_ask_username('Oracle') unless (defined $self->{oracle_user});
+		$self->{oracle_pwd} = $self->_ask_password('Oracle') unless ($self->{oracle_user} eq '/');
 	}
 	my $ora_session_mode = ($self->{oracle_user} eq "/" || $self->{oracle_user} eq "sys") ? 2 : undef;
 
@@ -329,11 +327,25 @@ sub min
 
 	return $_[1];
 }
-
-
+#allow naming tables that contain dollars to migrate--start
+#This function retrieves all oracle system user information.
+sub _get_system_user{
+	my $self = shift;
+	my @all_system_user = ();
+	#get system user sql
+	my $sql = "select USERNAME from DBA_USERS WHERE INITIAL_RSRC_CONSUMER_GROUP = 'SYS_GROUP'";
+	
+	my $sth = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute() or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	while(my $row = $sth->fetch){
+		push(@all_system_user,$row->[0]);
+	}
+	return @all_system_user;
+}
+#allow naming tables that contain dollars to migrate--end
 =head2 _table_info
 
-This function retrieves all tables information.
+This function retrieves all MySQL tables information.
 
 Returns a handle to a DB query statement.
 
@@ -355,7 +367,12 @@ sub _table_info
 	# Get name of all TABLE objects in ALL_OBJECTS loking at OBJECT_TYPE='TABLE'
 	####
 	my $sql = "SELECT A.OWNER,A.OBJECT_NAME,A.OBJECT_TYPE FROM $self->{prefix}_OBJECTS A WHERE A.OBJECT_TYPE IN ('TABLE','VIEW') AND $owner";
-	$sql .= $self->limit_to_objects('TABLE', 'A.OBJECT_NAME');
+	#allow naming tables that contain dollars to migrate--start
+	#$sql .= $self->limit_to_objects('TABLE', 'A.OBJECT_NAME');
+	if (grep(/^$self->{schema}$/i, @{$self->{all_system_user}})){
+		$sql .= $self->limit_to_objects('TABLE', 'A.OBJECT_NAME');
+	}
+	#allow naming tables that contain dollars to migrate--end
 	$self->logit("DEBUG: $sql\n", 2);
 	my $t0 = Benchmark->new;
 	my $sth = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -382,7 +399,12 @@ sub _table_info
 		if ($self->{db_version} !~ /Release 8/) {
 			$sql .= $self->exclude_mviews('A.OWNER, A.TABLE_NAME');
 		}
-		$sql .= $self->limit_to_objects('TABLE', 'A.TABLE_NAME');
+		#allow naming tables that contain dollars to migrate--start
+		#$sql .= $self->limit_to_objects('TABLE', 'A.TABLE_NAME');
+		if (grep(/^$self->{schema}$/i, @{$self->{all_system_user}})){
+			$sql .= $self->limit_to_objects('TABLE', 'A.TABLE_NAME');
+		}
+		#allow naming tables that contain dollars to migrate--end
 		$self->logit("DEBUG: $sql\n", 2);
 		$t0 = Benchmark->new;
 		$sth = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -409,16 +431,20 @@ sub _table_info
 	####
 	# Get information about all tables
 	####
-	$sql = "SELECT A.OWNER,A.TABLE_NAME,NVL(num_rows,1) NUMBER_ROWS,A.TABLESPACE_NAME,A.NESTED,A.LOGGING,A.PARTITIONED,A.PCT_FREE,A.TEMPORARY,A.DURATION FROM $self->{prefix}_TABLES A WHERE $owner";
-	$sql .= " AND A.TEMPORARY='N'" if (!$self->{export_gtt});
-	$sql .= " AND (A.NESTED != 'YES' OR A.LOGGING != 'YES') AND A.SECONDARY = 'N'";
+	$sql = "SELECT A.OWNER,A.TABLE_NAME,NVL(num_rows,1) NUMBER_ROWS,A.TABLESPACE_NAME,A.NESTED,A.LOGGING,A.PARTITIONED,A.PCT_FREE FROM $self->{prefix}_TABLES A WHERE $owner";
+	$sql .= " AND A.TEMPORARY='N' AND (A.NESTED != 'YES' OR A.LOGGING != 'YES') AND A.SECONDARY = 'N'";
 	if ($self->{db_version} !~ /Release [89]/) {
 		$sql .= " AND (A.DROPPED IS NULL OR A.DROPPED = 'NO')";
 	}
 	if ($self->{db_version} !~ /Release 8/) {
 		$sql .= $self->exclude_mviews('A.OWNER, A.TABLE_NAME');
 	}
-	$sql .= $self->limit_to_objects('TABLE', 'A.TABLE_NAME');
+	#allow naming tables that contain dollars to migrate--start
+	#$sql .= $self->limit_to_objects('TABLE', 'A.TABLE_NAME');
+	if (grep(/^$self->{schema}$/i, @{$self->{all_system_user}})){
+		$sql .= $self->limit_to_objects('TABLE', 'A.TABLE_NAME');
+	}
+	#allow naming tables that contain dollars to migrate--end
 	$sql .= " AND (A.IOT_TYPE IS NULL OR A.IOT_TYPE = 'IOT')";
 	#$sql .= " ORDER BY A.OWNER, A.TABLE_NAME";
 
@@ -454,13 +480,22 @@ sub _table_info
 		if (($row->[7] || 0) > 10) {
 			$tables_infos{$row->[1]}{fillfactor} = 100 - min(90, $row->[7]);
 		}
-		# Global temporary table ?
-		$tables_infos{$row->[1]}{temporary} = $row->[8];
-		$tables_infos{$row->[1]}{duration} = $row->[9];
+		if ($do_real_row_count)
+		{
+			$self->logit("DEBUG: looking for real row count for table ($row->[0]) $row->[1] (aka using count(*))...\n", 1);
+			$sql = "SELECT COUNT(*) FROM $row->[1]";
+			if ($self->{schema}) {
+				$sql = "SELECT COUNT(*) FROM $row->[0].$row->[1]";
+			}
+			my $sth2 = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+			$sth2->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+			my $size = $sth2->fetch();
+			$sth2->finish();
+			$tables_infos{$row->[1]}{num_rows} = $size->[0];
+		}
 		$nrows++;
 	}
 	$sth->finish();
-
 	$t1 = Benchmark->new;
 	$td = timediff($t1, $t0);
 	$self->logit("Collecting $nrows tables information in $self->{prefix}_TABLES took: " . timestr($td) . "\n", 1);
@@ -485,7 +520,12 @@ sub _column_comments
 		$sql .= $self->exclude_mviews('A.OWNER, A.TABLE_NAME');
 	}
 	if (!$table) {
-		$sql .= $self->limit_to_objects('TABLE','TABLE_NAME');
+		#allow naming tables that contain dollars to migrate--start
+		#$sql .= $self->limit_to_objects('TABLE','TABLE_NAME');
+		if (grep(/^$self->{schema}$/i, @{$self->{all_system_user}})){
+			$sql .= $self->limit_to_objects('TABLE','TABLE_NAME');
+		}
+		#allow naming tables that contain dollars to migrate--end
 	} else {
 		@{$self->{query_bind_params}} = ();
 	}
@@ -520,7 +560,12 @@ sub _column_info
 		$condition .= " AND A.OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "') ";
 	}
 	if (!$table) {
-		$condition .= $self->limit_to_objects('TABLE', 'A.TABLE_NAME');
+		#allow naming tables that contain dollars to migrate--start
+		#$condition .= $self->limit_to_objects('TABLE', 'A.TABLE_NAME');
+		if (grep(/^$owner$/i, @{$self->{all_system_user}})){
+			$condition .= $self->limit_to_objects('TABLE', 'A.TABLE_NAME');
+		}
+		#allow naming tables that contain dollars to migrate--end
 	} else {
 		@{$self->{query_bind_params}} = ();
 	}
@@ -619,8 +664,10 @@ ORDER BY A.COLUMN_ID
 			$row->[2] = 38;
 		}
 
-		# Use FQDN table name otherwise a table not exist error can occurs.
-		$tmptable = "$row->[9].$row->[8]";
+		$tmptable = $row->[8];
+		if ($self->{export_schema} && !$self->{schema}) {
+			$tmptable = "$row->[9].$row->[8]";
+		}
 
 		# In case we have a default value, check if this is a virtual column
 		my $virtual = 'NO';
@@ -642,9 +689,7 @@ ORDER BY A.COLUMN_ID
 			else
 			{
 				my @result = ();
-				if ($row->[1] =~ /^ST_|STGEOM_/) {
-					$spatial_srid = sprintf($st_spatial_srid, $row->[0], $tmptable);
-				}
+				$spatial_srid = $st_spatial_srid if ($row->[1] =~ /^ST_|STGEOM_/);
 				my $sth2 = $self->{dbh}->prepare($spatial_srid);
 				if (!$sth2)
 				{
@@ -658,7 +703,7 @@ ORDER BY A.COLUMN_ID
 				else
 				{
 					if ($row->[1] =~ /^ST_|STGEOM_/) {
-						$sth2->execute() or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+						$sth2->execute($row->[0]) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 					} else {
 						$sth2->execute($row->[8],$row->[0],$row->[9]) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 					}
@@ -701,15 +746,13 @@ ORDER BY A.COLUMN_ID
 			# Get the dimension of the geometry column
 			if (!$found_dims)
 			{
-				if ($row->[1] =~ /^ST_|STGEOM_/) {
-					$spatial_dim = sprintf($st_spatial_dim, $row->[0], $tmptable);
-				}
+				$spatial_dim = $st_spatial_dim if ($row->[1] =~ /^ST_|STGEOM_/);
 				my $sth2 = $self->{dbh}->prepare($spatial_dim);
 				if (!$sth2) {
 					$self->logit("FATAL: _column_info() " . $self->{dbh}->errstr . "\n", 0, 1);
 				}
 				if ($row->[1] =~ /^ST_|STGEOM_/) {
-					$sth2->execute() or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+					$sth2->execute($row->[0]) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 				} else {
 					$sth2->execute($row->[8],$row->[0],$row->[9]) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 				}
@@ -729,9 +772,10 @@ ORDER BY A.COLUMN_ID
 			if (!$found_contraint && $self->{autodetect_spatial_type})
 			{
 				# Get spatial information
-				my $squery = sprintf($spatial_gtype, $row->[0], $tmptable);
+				my $colname = $row->[9] . "." . $row->[8];
+				my $squery = sprintf($spatial_gtype, $row->[0], $colname);
 				if ($row->[1] =~ /^ST_|STGEOM_/) {
-					$squery = sprintf($st_spatial_gtype, $row->[0], $tmptable);
+					$squery = sprintf($st_spatial_gtype, $row->[0], $colname);
 				}
 				my $sth2 = $self->{dbh}->prepare($squery);
 				if (!$sth2) {
@@ -807,7 +851,13 @@ sub _get_fts_indexes_info
 
 	my $condition = '';
 	$condition .= "AND IXV_INDEX_OWNER='$owner' " if ($owner);
-	$condition .= $self->limit_to_objects('INDEX', "IXV_INDEX_NAME");
+	#allow naming tables that contain dollars to migrate--start
+	#$condition .= $self->limit_to_objects('INDEX', "IXV_INDEX_NAME");
+	if (grep(/^$owner$/i, @{$self->{all_system_user}})){
+		$condition .= $self->limit_to_objects('INDEX', "IXV_INDEX_NAME");
+	}
+	#allow naming tables that contain dollars to migrate--end
+	
 
 	# Retrieve all indexes informations
 	my $sth = $self->{dbh}->prepare(<<END) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -849,42 +899,47 @@ sub _get_indexes
 	} else {
 		$condition .= " AND A.INDEX_OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "') ";
 	}
-	if (!$self->{export_gtt}) {
-		$condition .= " AND B.TEMPORARY = 'N' ";
-	}
 	if (!$table) {
-		$condition .= $self->limit_to_objects('TABLE|INDEX', "A.TABLE_NAME|A.INDEX_NAME");
+		#allow naming tables that contain dollars to migrate--start
+		#$condition .= $self->limit_to_objects('TABLE|INDEX', "A.TABLE_NAME|A.INDEX_NAME");
+		if (grep(/^$owner$/i, @{$self->{all_system_user}})){
+			$condition .= $self->limit_to_objects('TABLE|INDEX', "A.TABLE_NAME|A.INDEX_NAME");
+		}
+		#allow naming tables that contain dollars to migrate--end
 	} else {
 		@{$self->{query_bind_params}} = ();
 	}
 
 	# When comparing number of index we need to retrieve generated index (mostly PK)
 	my $generated = '';
-	$generated = " B.GENERATED = 'N'" if (!$generated_indexes);
+	$generated = " B.GENERATED = 'N' AND" if (!$generated_indexes);
 
 	my $t0 = Benchmark->new;
 	my $sth = '';
-	my $sql = '';
 	if ($self->{db_version} !~ /Release 8/)
 	{
 		my $no_mview = $self->exclude_mviews('A.INDEX_OWNER, A.TABLE_NAME');
 		$no_mview = '' if ($self->{type} eq 'MVIEW');
-		$sql = qq{SELECT DISTINCT A.INDEX_NAME,A.COLUMN_NAME,B.UNIQUENESS,A.COLUMN_POSITION,B.INDEX_TYPE,B.TABLE_TYPE,B.GENERATED,B.JOIN_INDEX,A.TABLE_NAME,A.INDEX_OWNER,B.TABLESPACE_NAME,B.ITYP_NAME,B.PARAMETERS,A.DESCEND
+		$sth = $self->{dbh}->prepare(<<END) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+SELECT DISTINCT A.INDEX_NAME,A.COLUMN_NAME,B.UNIQUENESS,A.COLUMN_POSITION,B.INDEX_TYPE,B.TABLE_TYPE,B.GENERATED,B.JOIN_INDEX,A.TABLE_NAME,A.INDEX_OWNER,B.TABLESPACE_NAME,B.ITYP_NAME,B.PARAMETERS,A.DESCEND
 FROM $self->{prefix}_IND_COLUMNS A
 JOIN $self->{prefix}_INDEXES B ON (B.INDEX_NAME=A.INDEX_NAME AND B.OWNER=A.INDEX_OWNER)
-WHERE$generated $condition $no_mview
-ORDER BY A.COLUMN_POSITION};
+WHERE$generated B.TEMPORARY = 'N' $condition $no_mview
+ORDER BY A.COLUMN_POSITION
+END
 	}
 	else
 	{
 		# an 8i database.
-		$sql = qq{SELECT DISTINCT A.INDEX_NAME,A.COLUMN_NAME,B.UNIQUENESS,A.COLUMN_POSITION,B.INDEX_TYPE,B.TABLE_TYPE,B.GENERATED, 'NO', A.TABLE_NAME,A.INDEX_OWNER,B.TABLESPACE_NAME,B.ITYP_NAME,B.PARAMETERS,A.DESCEND
+		$sth = $self->{dbh}->prepare(<<END) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+SELECT DISTINCT A.INDEX_NAME,A.COLUMN_NAME,B.UNIQUENESS,A.COLUMN_POSITION,B.INDEX_TYPE,B.TABLE_TYPE,B.GENERATED, 'NO', A.TABLE_NAME,A.INDEX_OWNER,B.TABLESPACE_NAME,B.ITYP_NAME,B.PARAMETERS,A.DESCEND
 FROM $self->{prefix}_IND_COLUMNS A, $self->{prefix}_INDEXES B
-WHERE $generated $condition AND B.INDEX_NAME=A.INDEX_NAME AND B.OWNER=A.INDEX_OWNER
-ORDER BY A.COLUMN_POSITION};
+WHERE B.INDEX_NAME=A.INDEX_NAME AND B.OWNER=A.INDEX_OWNER $condition
+AND$generated B.TEMPORARY = 'N'
+ORDER BY A.COLUMN_POSITION
+END
 	}
-	$sql =~ s/WHERE\s+AND/WHERE/s;
-	$sth = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+
 	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
 	my $idxnc = qq{SELECT IE.COLUMN_EXPRESSION FROM $self->{prefix}_IND_EXPRESSIONS IE, $self->{prefix}_IND_COLUMNS IC
@@ -1008,7 +1063,12 @@ sub _foreign_key
 	} else {
 		$condition .= "AND CONS.OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "') ";
 	}
-	$condition .= $self->limit_to_objects('FKEY|TABLE','CONS.CONSTRAINT_NAME|CONS.TABLE_NAME');
+	#allow naming tables that contain dollars to migrate--start
+	#$condition .= $self->limit_to_objects('FKEY|TABLE','CONS.CONSTRAINT_NAME|CONS.TABLE_NAME');
+	if (grep(/^$owner$/i, @{$self->{all_system_user}})){
+		$condition .= $self->limit_to_objects('FKEY|TABLE','CONS.CONSTRAINT_NAME|CONS.TABLE_NAME');
+	}
+	#allow naming tables that contain dollars to migrate--end
 
 	my $deferrable = $self->{fkey_deferrable} ? "'DEFERRABLE' AS DEFERRABLE" : "DEFERRABLE";
 	my $defer = $self->{fkey_deferrable} ? "'DEFERRABLE' AS DEFERRABLE" : "CONS.DEFERRABLE";
@@ -1152,7 +1212,12 @@ sub _get_views
 	} elsif ($self->{export_invalid} == 2) {
 		$sql .= " AND A.STATUS <> 'VALID'";
 	}
-	$sql .= $self->limit_to_objects('VIEW', 'A.OBJECT_NAME');
+	#allow naming tables that contain dollars to migrate--start
+	#$sql .= $self->limit_to_objects('VIEW', 'A.OBJECT_NAME');
+	if (grep(/^$self->{schema}$/i, @{$self->{all_system_user}})){
+		$sql .= $self->limit_to_objects('VIEW', 'A.OBJECT_NAME');
+	}
+	#allow naming tables that contain dollars to migrate--end
 	$self->logit("DEBUG: $sql\n", 2);
 	my $t0 = Benchmark->new;
 	my $sth = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -1174,7 +1239,12 @@ sub _get_views
 	if ($self->{type} ne 'SHOW_REPORT')
 	{
 		$sql = "SELECT A.TABLE_NAME,A.COMMENTS,A.TABLE_TYPE,A.OWNER FROM $self->{prefix}_TAB_COMMENTS A WHERE 1=1 $owner";
-		$sql .= $self->limit_to_objects('VIEW', 'A.TABLE_NAME');
+		#allow naming tables that contain dollars to migrate--start
+		#$sql .= $self->limit_to_objects('VIEW', 'A.TABLE_NAME');
+		if (grep(/^$self->{schema}$/i, @{$self->{all_system_user}})){
+			$sql .= $self->limit_to_objects('VIEW', 'A.TABLE_NAME');
+		}
+		#allow naming tables that contain dollars to migrate--end
 		$sth = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 		$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 		while (my $row = $sth->fetch)
@@ -1198,7 +1268,12 @@ sub _get_views
 	} else {
 		$str .= " WHERE v.OWNER = '$self->{schema}'";
 	}
-	$str .= $self->limit_to_objects('VIEW', 'v.VIEW_NAME');
+	#allow naming tables that contain dollars to migrate--start
+	#$str .= $self->limit_to_objects('VIEW', 'v.VIEW_NAME');
+	if (grep(/^$self->{schema}$/i, @{$self->{all_system_user}})){
+		$str .= $self->limit_to_objects('VIEW', 'v.VIEW_NAME');
+	}
+	#allow naming tables that contain dollars to migrate--end
 
 	# Compute view order, where depended view appear before using view
 	my %view_order = ();
@@ -1272,7 +1347,12 @@ sub _get_triggers
 	} else {
 		$str .= " AND OWNER = '$self->{schema}'";
 	}
-	$str .= " " . $self->limit_to_objects('TABLE|VIEW|TRIGGER','TABLE_NAME|TABLE_NAME|TRIGGER_NAME');
+	#allow naming tables that contain dollars to migrate--start
+	#$str .= " " . $self->limit_to_objects('TABLE|VIEW|TRIGGER','TABLE_NAME|TABLE_NAME|TRIGGER_NAME');
+	if (grep(/^$self->{schema}$/i, @{$self->{all_system_user}})){
+		$str .= " " . $self->limit_to_objects('TABLE|VIEW|TRIGGER','TABLE_NAME|TABLE_NAME|TRIGGER_NAME');
+	}
+	#allow naming tables that contain dollars to migrate--end
 
 	#$str .= " ORDER BY TABLE_NAME, TRIGGER_NAME";
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -1327,9 +1407,19 @@ FROM $self->{prefix}_CONS_COLUMNS A JOIN $self->{prefix}_CONSTRAINTS B ON (B.CON
 	my @tmpparams = ();
 	if ($self->{type} ne 'SHOW_REPORT')
 	{
-		$sql .= $self->limit_to_objects('UKEY|TABLE', 'B.CONSTRAINT_NAME|B.TABLE_NAME');
+		#allow naming tables that contain dollars to migrate--start
+		#$sql .= $self->limit_to_objects('UKEY|TABLE', 'B.CONSTRAINT_NAME|B.TABLE_NAME');
+		if (grep(/^$owner$/i, @{$self->{all_system_user}})){
+			$sql .= $self->limit_to_objects('UKEY|TABLE', 'B.CONSTRAINT_NAME|B.TABLE_NAME');
+		}
+		#allow naming tables that contain dollars to migrate--end
 		push(@tmpparams, @{$self->{query_bind_params}}) if (defined $self->{query_bind_params});
-		$sql .= $self->limit_to_objects('UKEY', 'B.CONSTRAINT_NAME');
+		#allow naming tables that contain dollars to migrate--start
+		#$sql .= $self->limit_to_objects('UKEY', 'B.CONSTRAINT_NAME');
+		if (grep(/^$owner$/i, @{$self->{all_system_user}})){
+			$sql .= $self->limit_to_objects('UKEY', 'B.CONSTRAINT_NAME');
+		}
+		#allow naming tables that contain dollars to migrate--end
 		push(@tmpparams, @{$self->{query_bind_params}}) if (defined $self->{query_bind_params});
 	}
 	$sql .=  " ORDER BY A.POSITION";
@@ -1368,7 +1458,12 @@ sub _check_constraint
 	} else {
 		$condition .= "AND OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "') ";
 	}
-	$condition .= $self->limit_to_objects('CKEY|TABLE', 'CONSTRAINT_NAME|TABLE_NAME');
+	#allow naming tables that contain dollars to migrate--start
+	#$condition .= $self->limit_to_objects('CKEY|TABLE', 'CONSTRAINT_NAME|TABLE_NAME');
+	if (grep(/^$owner$/i, @{$self->{all_system_user}})){
+		$condition .= $self->limit_to_objects('CKEY|TABLE', 'CONSTRAINT_NAME|TABLE_NAME');
+	}
+	#allow naming tables that contain dollars to migrate--end
 
 	my $sql = qq{
 SELECT A.CONSTRAINT_NAME,A.R_CONSTRAINT_NAME,A.SEARCH_CONDITION,A.DELETE_RULE,A.DEFERRABLE,A.DEFERRED,A.R_OWNER,A.TABLE_NAME,A.OWNER,A.VALIDATED
@@ -1407,7 +1502,12 @@ sub _get_external_tables
 		$str .= " WHERE a.OWNER = '$self->{schema}'";
 	}
 	$str .= " AND a.DEFAULT_DIRECTORY_NAME = b.DIRECTORY_NAME AND a.TABLE_NAME=c.TABLE_NAME AND a.DEFAULT_DIRECTORY_NAME=c.DIRECTORY_NAME AND a.OWNER=c.OWNER";
-	$str .= $self->limit_to_objects('TABLE', 'a.TABLE_NAME');
+	#allow naming tables that contain dollars to migrate--start
+	#$str .= $self->limit_to_objects('TABLE', 'a.TABLE_NAME');
+	if (grep(/^$self->{schema}$/i, @{$self->{all_system_user}})){
+		$str .= $self->limit_to_objects('TABLE', 'a.TABLE_NAME');
+	}
+	#allow naming tables that contain dollars to migrate--end
 	#$str .= " ORDER BY a.TABLE_NAME";
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -1448,7 +1548,12 @@ sub _get_directory
 	} else {
 		$str .= " AND p.GRANTEE = '$self->{schema}'";
 	}
-	$str .= $self->limit_to_objects('TABLE', 'd.DIRECTORY_NAME');
+	#allow naming tables that contain dollars to migrate--start
+	#$str .= $self->limit_to_objects('TABLE', 'd.DIRECTORY_NAME');
+	if (grep(/^$self->{schema}$/i, @{$self->{all_system_user}})){
+		$str .= $self->limit_to_objects('TABLE', 'd.DIRECTORY_NAME');
+	}
+	#allow naming tables that contain dollars to migrate--end
 	#$str .= " ORDER BY d.DIRECTORY_NAME";
 
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -1487,7 +1592,12 @@ sub _get_functions
 	} else {
 		$str .= " AND OWNER = '$self->{schema}'";
 	}
-	$str .= " " . $self->limit_to_objects('FUNCTION','OBJECT_NAME');
+	#allow naming tables that contain dollars to migrate--start
+	#$str .= " " . $self->limit_to_objects('FUNCTION','OBJECT_NAME');
+	if (grep(/^$self->{schema}$/i, @{$self->{all_system_user}})){
+		$str .= " " . $self->limit_to_objects('FUNCTION','OBJECT_NAME');
+	}
+	#allow naming tables that contain dollars to migrate--end
 	#$str .= " ORDER BY OBJECT_NAME";
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -1512,7 +1622,12 @@ sub _get_functions
 	} else {
 		$sql .= " WHERE OWNER = '$self->{schema}'";
 	}
-	$sql .= " " . $self->limit_to_objects('FUNCTION','NAME');
+	#allow naming tables that contain dollars to migrate--start
+	#$sql .= " " . $self->limit_to_objects('FUNCTION','NAME');
+	if (grep(/^$self->{schema}$/i, @{$self->{all_system_user}})){
+		$sql .= " " . $self->limit_to_objects('FUNCTION','NAME');
+	}
+	#allow naming tables that contain dollars to migrate--end
 	$sql .= " ORDER BY OWNER,NAME,LINE";
 	$sth = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $sth->errstr . "\n", 0, 1);
@@ -1548,7 +1663,6 @@ sub _lookup_function
 
 	@{$fct_detail{param_types}} = ();
 	$fct_detail{declare} =~ s/(\b(?:FUNCTION|PROCEDURE)\s+(?:[^\s\(]+))(\s*\%ORA2PG_COMMENT\d+\%\s*)+/$2$1 /is;
-	$fct_detail{declare} =~ s/RETURN\%ORA2PG_COMMENT\d+\%/RETURN/is;
 	if ( ($fct_detail{declare} =~ s/(.*?)\b(FUNCTION|PROCEDURE)\s+([^\s\(]+)\s*(\([^\)]*\))//is) ||
 			($fct_detail{declare} =~ s/(.*?)\b(FUNCTION|PROCEDURE)\s+([^\s\(]+)\s+(RETURN|IS|AS)/$4/is) )
 	{
@@ -1589,9 +1703,7 @@ sub _lookup_function
 		} elsif ($fct_detail{declare} =~ s/(.*?)\bRETURN\s+([^\s]+)//is) {
 			$fct_detail{args} .= $1;
 			$fct_detail{hasreturn} = 1;
-			my $ret_typ = $2 || '';
-			$ret_typ =~ s/(\%ORA2PG_COMMENT\d+\%)+//i;
-			$fct_detail{func_ret_type} = $self->_sql_type($ret_typ) || 'OPAQUE';
+			$fct_detail{func_ret_type} = $self->_sql_type($2) || 'OPAQUE';
 		}
 		if ($fct_detail{declare} =~ s/(.*?)(USING|AS|IS)(\s+(?!REF\s+))/$3/is) {
 			$fct_detail{args} .= $1 if (!$fct_detail{hasreturn});
@@ -1715,27 +1827,15 @@ sub _lookup_function
 		$tmpname =~ s/^$pname\.//i;
 		next if ($fct_detail{code} !~ /\b$tmpname\b/is);
 		my $i = 0;
-		while ($fct_detail{code} =~ s/(SELECT\s+(?:.*?)\s+)INTO\s+$tmpname\s+([^;]+);/PERFORM set_config('$n', ($1$2), false);/is) { last if ($i++ > 100); };
-		$i = 0;
 		while ($fct_detail{code} =~ s/\b$n\s*:=\s*([^;]+)\s*;/PERFORM set_config('$n', $1, false);/is) { last if ($i++ > 100); };
 		$i = 0;
 		while ($fct_detail{code} =~ s/([^\.]+)\b$self->{global_variables}{$n}{name}\s*:=\s*([^;]+);/$1PERFORM set_config('$n', $2, false);/is) { last if ($i++ > 100); };
 		$i = 0;
-		while ($fct_detail{code} =~ s/([^']+)\b$n\s+IS NOT NULL/$1current_setting('$n') != ''/is) { last if ($i++ > 100); };
-		$i = 0;
-		while ($fct_detail{code} =~ s/([^']+)\b$n\s+IS NULL/$1current_setting('$n') = ''/is) { last if ($i++ > 100); };
-		$i = 0;
 		while ($fct_detail{code} =~ s/([^']+)\b$n\b([^']+)/$1current_setting('$n')::$self->{global_variables}{$n}{type}$2/is) { last if ($i++ > 100); };
-		$i = 0;
-		while ($fct_detail{code} =~ s/([^\.']+)\b$self->{global_variables}{$n}{name}\s+IS NOT NULL/$1current_setting('$n') != ''/is) { last if ($i++ > 100); };
-		$i = 0;
-		while ($fct_detail{code} =~ s/([^\.']+)\b$self->{global_variables}{$n}{name}\s+IS NULL/$1current_setting('$n') = ''/is) { last if ($i++ > 100); };
 		$i = 0;
 		while ($fct_detail{code} =~ s/([^\.']+)\b$self->{global_variables}{$n}{name}\b([^']+)/$1current_setting('$n')::$self->{global_variables}{$n}{type}$2/is) { last if ($i++ > 100); };
 
 		# Replace global variable in DECLARE section too
-		$i = 0;
-		while ($fct_detail{declare} =~ s/([^']+)\b$n\b([^']+)/$1current_setting('$n')::$self->{global_variables}{$n}{type}$2/is) { last if ($i++ > 100); };
 		$i = 0;
 		while ($fct_detail{declare} =~ s/([^\.']+)\b$self->{global_variables}{$n}{name}\b([^']+)/$1current_setting('$n')::$self->{global_variables}{$n}{type}$2/is) { last if ($i++ > 100); };
 	}
@@ -1745,9 +1845,6 @@ sub _lookup_function
 		$fct_detail{code} =~ s/\bRAISE\s+$e\b/RAISE EXCEPTION '$e' USING ERRCODE = '$self->{custom_exception}{$e}'/igs;
 		$fct_detail{code} =~ s/(\s+WHEN\s+)$e\s+/$1SQLSTATE '$self->{custom_exception}{$e}' /igs;
 	}
-
-	# Remove %ROWTYPE from return type
-	$fct_detail{func_ret_type} =~ s/\%ROWTYPE//igs;
 
 	return %fct_detail;
 }
@@ -1976,7 +2073,12 @@ sub _get_job
 	} else {
 		$str .= " WHERE SCHEMA_USER = '$self->{schema}'";
 	}
-	$str .= $self->limit_to_objects('JOB', 'JOB');
+	#allow naming tables that contain dollars to migrate--start
+	#$str .= $self->limit_to_objects('JOB', 'JOB');
+	if (grep(/^$self->{schema}$/i, @{$self->{all_system_user}})){
+		$str .= $self->limit_to_objects('JOB', 'JOB');
+	}
+	#allow naming tables that contain dollars to migrate--end
 	#$str .= " ORDER BY JOB";
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -2024,7 +2126,13 @@ sub _get_dblink
 	} else {
 		$str .= " WHERE OWNER = '$self->{schema}'";
 	}
-	$str .= $self->limit_to_objects('DBLINK', 'DB_LINK');
+	
+	#allow naming tables that contain dollars to migrate--start
+	#$str .= $self->limit_to_objects('DBLINK', 'DB_LINK');
+	if (grep(/^$self->{schema}$/i, @{$self->{all_system_user}})){
+		$str .= $self->limit_to_objects('DBLINK', 'DB_LINK');
+	}
+	#allow naming tables that contain dollars to migrate--end
 	#$str .= " ORDER BY DB_LINK";
 
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -2089,7 +2197,12 @@ WHERE
 	if ($self->{db_version} !~ /Release 8/) {
 		$str .= $self->exclude_mviews('A.TABLE_OWNER, A.TABLE_NAME');
 	}
-	$str .= $self->limit_to_objects('TABLE|PARTITION', 'A.TABLE_NAME|A.PARTITION_NAME');
+	#allow naming tables that contain dollars to migrate--start
+	#$str .= $self->limit_to_objects('TABLE|PARTITION', 'A.TABLE_NAME|A.PARTITION_NAME');
+	if (grep(/^$self->{schema}$/i, @{$self->{all_system_user}})){
+		$str .= $self->limit_to_objects('TABLE|PARTITION', 'A.TABLE_NAME|A.PARTITION_NAME');
+	}
+	#allow naming tables that contain dollars to migrate--end
 
 	if ($self->{prefix} ne 'USER')
 	{
@@ -2165,7 +2278,12 @@ WHERE
 	AND a.table_name = c.name
 	$condition
 };
-	$str .= $self->limit_to_objects('TABLE|PARTITION', 'A.TABLE_NAME|A.SUBPARTITION_NAME');
+	#allow naming tables that contain dollars to migrate--start
+	#$str .= $self->limit_to_objects('TABLE|PARTITION', 'A.TABLE_NAME|A.SUBPARTITION_NAME');
+	if (grep(/^$self->{schema}$/i, @{$self->{all_system_user}})){
+		$str .= $self->limit_to_objects('TABLE|PARTITION', 'A.TABLE_NAME|A.SUBPARTITION_NAME');
+	}
+	#allow naming tables that contain dollars to migrate--end
 
 	if ($self->{prefix} ne 'USER') {
 		if ($self->{schema}) {
@@ -2239,7 +2357,13 @@ $condition
 	if ($self->{db_version} !~ /Release 8/) {
 		$str .= $self->exclude_mviews('A.TABLE_OWNER, A.TABLE_NAME');
 	}
-	$str .= $self->limit_to_objects('TABLE|PARTITION','A.TABLE_NAME|A.PARTITION_NAME');
+	
+	#allow naming tables that contain dollars to migrate--start
+	#$str .= $self->limit_to_objects('TABLE|PARTITION','A.TABLE_NAME|A.PARTITION_NAME');
+	if (grep(/^$self->{schema}$/i, @{$self->{all_system_user}})){
+		$str .= $self->limit_to_objects('TABLE|PARTITION','A.TABLE_NAME|A.PARTITION_NAME');
+	}
+	#allow naming tables that contain dollars to migrate--end
 
 	if ($self->{prefix} ne 'USER') {
 		if ($self->{schema}) {
@@ -2294,7 +2418,13 @@ sub _get_partitioned_table
 	{
 		$str .= " FROM $self->{prefix}_PART_TABLES B WHERE (B.PARTITIONING_TYPE = 'RANGE' OR B.PARTITIONING_TYPE = 'LIST' OR B.PARTITIONING_TYPE = 'HASH') AND B.SUBPARTITIONING_TYPE <> 'SYSTEM' ";
 	}
-	$str .= $self->limit_to_objects('TABLE','B.TABLE_NAME');
+	
+	#allow naming tables that contain dollars to migrate--start
+	#$str .= $self->limit_to_objects('TABLE','B.TABLE_NAME');
+	if (grep(/^$self->{schema}$/i, @{$self->{all_system_user}})){
+		$str .= $self->limit_to_objects('TABLE','B.TABLE_NAME');
+	}
+	#allow naming tables that contain dollars to migrate--end
 
 	if ($self->{prefix} ne 'USER')
 	{
@@ -2366,13 +2496,9 @@ sub _get_objects
 {
 	my $self = shift;
 
-	my $temporary = "TEMPORARY='N'";
-	if ($self->{export_gtt}) {
-		$temporary = "(TEMPORARY='N' OR OBJECT_TYPE='TABLE')";
-	}
 	my $oraver = '';
 	# OWNER|OBJECT_NAME|SUBOBJECT_NAME|OBJECT_ID|DATA_OBJECT_ID|OBJECT_TYPE|CREATED|LAST_DDL_TIME|TIMESTAMP|STATUS|TEMPORARY|GENERATED|SECONDARY
-	my $sql = "SELECT OBJECT_NAME,OBJECT_TYPE,STATUS FROM $self->{prefix}_OBJECTS WHERE $temporary AND GENERATED='N' AND SECONDARY='N' AND OBJECT_TYPE <> 'SYNONYM'";
+	my $sql = "SELECT OBJECT_NAME,OBJECT_TYPE,STATUS FROM $self->{prefix}_OBJECTS WHERE TEMPORARY='N' AND GENERATED='N' AND SECONDARY='N' AND OBJECT_TYPE <> 'SYNONYM'";
 	if ($self->{schema}) {
 		$sql .= " AND OWNER='$self->{schema}'";
 	} else {
@@ -2421,7 +2547,13 @@ sub _get_privilege
 	} else {
 		$str .= " AND a.OBJECT_TYPE <> 'TYPE'";
 	}
-	$str .= " " . $self->limit_to_objects('GRANT|TABLE|VIEW|FUNCTION|PROCEDURE|SEQUENCE', 'b.GRANTEE|b.TABLE_NAME|b.TABLE_NAME|b.TABLE_NAME|b.TABLE_NAME|b.TABLE_NAME');
+	
+	#allow naming tables that contain dollars to migrate--start
+	#$str .= " " . $self->limit_to_objects('GRANT|TABLE|VIEW|FUNCTION|PROCEDURE|SEQUENCE', 'b.GRANTEE|b.TABLE_NAME|b.TABLE_NAME|b.TABLE_NAME|b.TABLE_NAME|b.TABLE_NAME');
+	if (grep(/^$self->{schema}$/i, @{$self->{all_system_user}})){
+		$str .= " " . $self->limit_to_objects('GRANT|TABLE|VIEW|FUNCTION|PROCEDURE|SEQUENCE', 'b.GRANTEE|b.TABLE_NAME|b.TABLE_NAME|b.TABLE_NAME|b.TABLE_NAME|b.TABLE_NAME');
+	}
+	#allow naming tables that contain dollars to migrate--end
 
 	if (!$self->{export_invalid}) {
 		$str .= " AND a.STATUS='VALID'";
@@ -2465,7 +2597,13 @@ sub _get_privilege
 	} else {
 		$str .= " AND a.OBJECT_TYPE <> 'TYPE'";
 	}
-	$str .= " " . $self->limit_to_objects('GRANT|TABLE|VIEW|FUNCTION|PROCEDURE|SEQUENCE', 'b.GRANTEE|b.TABLE_NAME|b.TABLE_NAME|b.TABLE_NAME|b.TABLE_NAME|b.TABLE_NAME');
+	
+	#allow naming tables that contain dollars to migrate--start
+	#$str .= " " . $self->limit_to_objects('GRANT|TABLE|VIEW|FUNCTION|PROCEDURE|SEQUENCE', 'b.GRANTEE|b.TABLE_NAME|b.TABLE_NAME|b.TABLE_NAME|b.TABLE_NAME|b.TABLE_NAME');
+	if (grep(/^$self->{schema}$/i, @{$self->{all_system_user}})){
+		$str .= " " . $self->limit_to_objects('GRANT|TABLE|VIEW|FUNCTION|PROCEDURE|SEQUENCE', 'b.GRANTEE|b.TABLE_NAME|b.TABLE_NAME|b.TABLE_NAME|b.TABLE_NAME|b.TABLE_NAME');
+	}
+	#allow naming tables that contain dollars to migrate--end
 
 	$sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -2487,7 +2625,13 @@ sub _get_privilege
 		push(@done, $r);
 		# Get all system priviledge given to a role
 		$str = "SELECT PRIVILEGE,ADMIN_OPTION FROM DBA_SYS_PRIVS WHERE GRANTEE = '$r'";
-		$str .= " " . $self->limit_to_objects('GRANT', 'GRANTEE');
+		
+		#allow naming tables that contain dollars to migrate--start
+		#$str .= " " . $self->limit_to_objects('GRANT', 'GRANTEE');
+		if (grep(/^$self->{schema}$/i, @{$self->{all_system_user}})){
+			$str .= " " . $self->limit_to_objects('GRANT', 'GRANTEE');
+		}
+		#allow naming tables that contain dollars to migrate--end
 		#$str .= " ORDER BY PRIVILEGE";
 		$sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 		$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -2500,7 +2644,13 @@ sub _get_privilege
 	# Now try to find if it's a user or a role 
 	foreach my $u (@done) {
 		$str = "SELECT GRANTED_ROLE FROM DBA_ROLE_PRIVS WHERE GRANTEE = '$u'";
-		$str .= " " . $self->limit_to_objects('GRANT', 'GRANTEE');
+		
+		#allow naming tables that contain dollars to migrate--start
+		#$str .= " " . $self->limit_to_objects('GRANT', 'GRANTEE');
+		if (grep(/^$self->{schema}$/i, @{$self->{all_system_user}})){
+			$str .= " " . $self->limit_to_objects('GRANT', 'GRANTEE');
+		}
+		#allow naming tables that contain dollars to migrate--end
 		#$str .= " ORDER BY GRANTED_ROLE";
 		$sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 		$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -2508,7 +2658,13 @@ sub _get_privilege
 			push(@{$roles{role}{$u}}, $row->[0]);
 		}
 		$str = "SELECT USERNAME FROM DBA_USERS WHERE USERNAME = '$u'";
-		$str .= " " . $self->limit_to_objects('GRANT', 'USERNAME');
+		
+		#allow naming tables that contain dollars to migrate--start
+		#$str .= " " . $self->limit_to_objects('GRANT', 'USERNAME');
+		if (grep(/^$self->{schema}$/i, @{$self->{all_system_user}})){
+			$str .= " " . $self->limit_to_objects('GRANT', 'USERNAME');
+		}
+		#allow naming tables that contain dollars to migrate--end
 		#$str .= " ORDER BY USERNAME";
 		$sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 		$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -2517,7 +2673,13 @@ sub _get_privilege
 		}
 		next if  $roles{type}{$u};
 		$str = "SELECT ROLE,PASSWORD_REQUIRED FROM DBA_ROLES WHERE ROLE='$u'";
-		$str .= " " . $self->limit_to_objects('GRANT', 'ROLE');
+		
+		#allow naming tables that contain dollars to migrate--start
+		#$str .= " " . $self->limit_to_objects('GRANT', 'ROLE');
+		if (grep(/^$self->{schema}$/i, @{$self->{all_system_user}})){
+			$str .= " " . $self->limit_to_objects('GRANT', 'ROLE');
+		}
+		#allow naming tables that contain dollars to migrate--end
 		#$str .= " ORDER BY ROLE";
 		$sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 		$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -2594,9 +2756,20 @@ sub _get_largest_tables
                 }
         }
         if ($self->{db_version} =~ /Release 8/) {
-                $sql .= $self->limit_to_objects('TABLE', 'A.SEGMENT_NAME');
+				#allow naming tables that contain dollars to migrate--start
+				#$sql .= $self->limit_to_objects('TABLE', 'A.SEGMENT_NAME');
+				if (grep(/^$self->{schema}$/i, @{$self->{all_system_user}})){
+					$sql .= $self->limit_to_objects('TABLE', 'A.SEGMENT_NAME');
+				}
+				#allow naming tables that contain dollars to migrate--end
         } else {
-                $sql .= $self->limit_to_objects('TABLE', 'A.TABLE_NAME');
+
+				#allow naming tables that contain dollars to migrate--start
+				#$sql .= $self->limit_to_objects('TABLE', 'A.TABLE_NAME');
+				if (grep(/^$self->{schema}$/i, @{$self->{all_system_user}})){
+					$sql .= $self->limit_to_objects('TABLE', 'A.TABLE_NAME');
+				}
+				#allow naming tables that contain dollars to migrate--end
         }
 
         if ($self->{db_version} =~ /Release 8/) {
@@ -2659,11 +2832,17 @@ sub _get_synonyms
 	# Retrieve all synonym
 	my $str = "SELECT OWNER,SYNONYM_NAME,TABLE_OWNER,TABLE_NAME,DB_LINK FROM $self->{prefix}_SYNONYMS";
 	if ($self->{schema}) {
-		$str .= " WHERE owner='$self->{schema}' AND table_owner NOT IN ('" . join("','", @{$self->{sysusers}}) . "') ";
+		$str .= " WHERE (owner='$self->{schema}' OR owner='PUBLIC') AND table_owner NOT IN ('" . join("','", @{$self->{sysusers}}) . "') ";
 	} else {
-		$str .= " WHERE owner NOT IN ('" . join("','", @{$self->{sysusers}}) . "') AND table_owner NOT IN ('" . join("','", @{$self->{sysusers}}) . "') ";
+		$str .= " WHERE (owner='PUBLIC' OR owner NOT IN ('" . join("','", @{$self->{sysusers}}) . "')) AND table_owner NOT IN ('" . join("','", @{$self->{sysusers}}) . "') ";
 	}
-	$str .= $self->limit_to_objects('SYNONYM','SYNONYM_NAME');
+	
+	#allow naming tables that contain dollars to migrate--start
+	#$str .= $self->limit_to_objects('SYNONYM','SYNONYM_NAME');
+	if (grep(/^$self->{schema}$/i, @{$self->{all_system_user}})){
+		$str .= $self->limit_to_objects('SYNONYM','SYNONYM_NAME');
+	}
+	#allow naming tables that contain dollars to migrate--end
 	#$str .= " ORDER BY SYNONYM_NAME\n";
 
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -2701,7 +2880,13 @@ AND a.TABLESPACE_NAME = c.TABLESPACE_NAME
 	} else {
 		$str .= " AND a.OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
 	}
-	$str .= $self->limit_to_objects('TABLESPACE|TABLE', 'a.TABLESPACE_NAME|a.SEGMENT_NAME');
+	
+	#allow naming tables that contain dollars to migrate--start
+	#$str .= $self->limit_to_objects('TABLESPACE|TABLE', 'a.TABLESPACE_NAME|a.SEGMENT_NAME');
+	if (grep(/^$self->{schema}$/i, @{$self->{all_system_user}})){
+		$str .= $self->limit_to_objects('TABLESPACE|TABLE', 'a.TABLESPACE_NAME|a.SEGMENT_NAME');
+	}
+	#allow naming tables that contain dollars to migrate--end
 	#$str .= " ORDER BY TABLESPACE_NAME";
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -2734,7 +2919,13 @@ WHERE a.TABLESPACE_NAME = c.TABLESPACE_NAME
 	} else {
 		$str .= " AND a.OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
 	}
-	$str .= $self->limit_to_objects('TABLESPACE', 'c.TABLESPACE_NAME');
+	
+	#allow naming tables that contain dollars to migrate--start
+	#$str .= $self->limit_to_objects('TABLESPACE', 'c.TABLESPACE_NAME');
+	if (grep(/^$self->{schema}$/i, @{$self->{all_system_user}})){
+		$str .= $self->limit_to_objects('TABLESPACE', 'c.TABLESPACE_NAME');
+	}
+	#allow naming tables that contain dollars to migrate--end
 	#$str .= " ORDER BY c.TABLESPACE_NAME";
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -2762,7 +2953,13 @@ sub _get_sequences
 	}
 	# Exclude sequence used for IDENTITY columns
 	$str .= " AND SEQUENCE_NAME NOT LIKE 'ISEQ\$\$_%'";
-	$str .= $self->limit_to_objects('SEQUENCE', 'SEQUENCE_NAME');
+	
+	#allow naming tables that contain dollars to migrate--start
+	#$str .= $self->limit_to_objects('SEQUENCE', 'SEQUENCE_NAME');
+	if (grep(/^$self->{schema}$/i, @{$self->{all_system_user}})){
+		$str .= $self->limit_to_objects('SEQUENCE', 'SEQUENCE_NAME');
+	}
+	#allow naming tables that contain dollars to migrate--end
 	#$str .= " ORDER BY SEQUENCE_NAME";
 
 
@@ -2791,7 +2988,13 @@ sub _extract_sequence_info
 	} else {
 		$sql .= " WHERE SEQUENCE_OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
 	}
-	$sql .= $self->limit_to_objects('SEQUENCE','SEQUENCE_NAME');
+	
+	#allow naming tables that contain dollars to migrate--start
+	#$sql .= $self->limit_to_objects('SEQUENCE','SEQUENCE_NAME');
+	if (grep(/^$self->{schema}$/i, @{$self->{all_system_user}})){
+		$sql .= $self->limit_to_objects('SEQUENCE','SEQUENCE_NAME');
+	}
+	#allow naming tables that contain dollars to migrate--end
 
 	my @script = ();
 
@@ -2829,7 +3032,13 @@ sub _column_attributes
 		$condition .= " AND A.OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "') ";
 	}
 	if (!$table) {
-		$condition .= $self->limit_to_objects('TABLE', 'A.TABLE_NAME');
+		
+		#allow naming tables that contain dollars to migrate--start
+		#$condition .= $self->limit_to_objects('TABLE', 'A.TABLE_NAME');
+		if (grep(/^$owner$/i, @{$self->{all_system_user}})){
+			$condition .= $self->limit_to_objects('TABLE', 'A.TABLE_NAME');
+		}
+		#allow naming tables that contain dollars to migrate--end
 	} else {
 		@{$self->{query_bind_params}} = ();
 	}
@@ -2932,7 +3141,13 @@ sub _list_triggers
 	} else {
 		$str .= " AND OWNER = '$self->{schema}'";
 	}
-	$str .= " " . $self->limit_to_objects('TABLE|VIEW|TRIGGER','TABLE_NAME|TABLE_NAME|TRIGGER_NAME');
+	
+	#allow naming tables that contain dollars to migrate--start
+	#$str .= " " . $self->limit_to_objects('TABLE|VIEW|TRIGGER','TABLE_NAME|TABLE_NAME|TRIGGER_NAME');
+	if (grep(/^$self->{schema}$/i, @{$self->{all_system_user}})){
+		$str .= " " . $self->limit_to_objects('TABLE|VIEW|TRIGGER','TABLE_NAME|TABLE_NAME|TRIGGER_NAME');
+	}
+	#allow naming tables that contain dollars to migrate--end
 
 	#$str .= " ORDER BY TABLE_NAME, TRIGGER_NAME";
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -2970,7 +3185,13 @@ sub _global_temp_table_info
 		if ($self->{db_version} !~ /Release 8/) {
 			$sql .= $self->exclude_mviews('A.OWNER, A.TABLE_NAME');
 		}
-		$sql .= $self->limit_to_objects('TABLE', 'A.TABLE_NAME');
+		
+		#allow naming tables that contain dollars to migrate--start
+		#$sql .= $self->limit_to_objects('TABLE', 'A.TABLE_NAME');
+		if (grep(/^$self->{schema}$/i, @{$self->{all_system_user}})){
+			$sql .= $self->limit_to_objects('TABLE', 'A.TABLE_NAME');
+		}
+		#allow naming tables that contain dollars to migrate--end
 		my $sth = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 		$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 		while (my $row = $sth->fetch) {
@@ -2983,12 +3204,18 @@ sub _global_temp_table_info
 		$sth->finish();
 	}
 
-	my $sql = "SELECT A.OWNER,A.TABLE_NAME,NVL(num_rows,1) NUMBER_ROWS,A.TABLESPACE_NAME,A.NESTED,A.LOGGING,A.DURATION FROM $self->{prefix}_TABLES A, $self->{prefix}_OBJECTS O WHERE A.OWNER=O.OWNER AND A.TABLE_NAME=O.OBJECT_NAME AND O.OBJECT_TYPE='TABLE' $owner";
+	my $sql = "SELECT A.OWNER,A.TABLE_NAME,NVL(num_rows,1) NUMBER_ROWS,A.TABLESPACE_NAME,A.NESTED,A.LOGGING FROM $self->{prefix}_TABLES A, $self->{prefix}_OBJECTS O WHERE A.OWNER=O.OWNER AND A.TABLE_NAME=O.OBJECT_NAME AND O.OBJECT_TYPE='TABLE' $owner";
 	$sql .= " AND A.TEMPORARY='Y'";
 	if ($self->{db_version} !~ /Release [89]/) {
 		$sql .= " AND (A.DROPPED IS NULL OR A.DROPPED = 'NO')";
 	}
-	$sql .= $self->limit_to_objects('TABLE', 'A.TABLE_NAME');
+	
+	#allow naming tables that contain dollars to migrate--start
+	#$sql .= $self->limit_to_objects('TABLE', 'A.TABLE_NAME');
+	if (grep(/^$self->{schema}$/i, @{$self->{all_system_user}})){
+		$sql .= $self->limit_to_objects('TABLE', 'A.TABLE_NAME');
+	}
+	#allow naming tables that contain dollars to migrate--end
 	$sql .= " AND (A.IOT_TYPE IS NULL OR A.IOT_TYPE = 'IOT')";
 	#$sql .= " ORDER BY A.OWNER, A.TABLE_NAME";
 
@@ -3012,8 +3239,6 @@ sub _global_temp_table_info
 			$tables_infos{$row->[1]}{nologging} = 0;
 		}
 		$tables_infos{$row->[1]}{num_rows} = 0;
-		$tables_infos{$row->[1]}{temporary} = 'Y';
-		$tables_infos{$row->[1]}{duration} = $row->[6];
 	}
 	$sth->finish();
 
@@ -3035,7 +3260,13 @@ sub _encrypted_columns
 		$condition .= " AND A.OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "') ";
 	}
 	if (!$table) {
-		$condition .= $self->limit_to_objects('TABLE', 'A.TABLE_NAME');
+		
+		#allow naming tables that contain dollars to migrate--start
+		#$condition .= $self->limit_to_objects('TABLE', 'A.TABLE_NAME');
+		if (grep(/^$owner$/i, @{$self->{all_system_user}})){
+			$condition .= $self->limit_to_objects('TABLE', 'A.TABLE_NAME');
+		}
+		#allow naming tables that contain dollars to migrate--end
 	} else {
 		@{$self->{query_bind_params}} = ();
 	}
@@ -3090,7 +3321,13 @@ sub _get_subpartitioned_table
 
 	$str .= " AND A.TABLE_NAME = C.NAME" if ($self->{type} !~ /SHOW|TEST/);
 
-	$str .= $self->limit_to_objects('TABLE|PARTITION','A.TABLE_NAME|A.PARTITION_NAME');
+	
+	#allow naming tables that contain dollars to migrate--start
+	#$str .= $self->limit_to_objects('TABLE|PARTITION','A.TABLE_NAME|A.PARTITION_NAME');
+	if (grep(/^$self->{schema}$/i, @{$self->{all_system_user}})){
+		$str .= $self->limit_to_objects('TABLE|PARTITION','A.TABLE_NAME|A.PARTITION_NAME');
+	}
+	#allow naming tables that contain dollars to migrate--end
 
 	if ($self->{prefix} ne 'USER') {
 		if ($self->{type} !~ /SHOW|TEST/) {
@@ -3270,7 +3507,13 @@ sub _get_security_definer
 	if ( $type && ($self->{db_version} !~ /Release 10/) ) {
 		$str .= " AND OBJECT_TYPE='$type'";
 	}
-	$str .= " " . $self->limit_to_objects('FUNCTION|PROCEDURE|PACKAGE|TRIGGER', 'OBJECT_NAME|OBJECT_NAME|OBJECT_NAME|OBJECT_NAME');
+	
+	#allow naming tables that contain dollars to migrate--start
+	#$str .= " " . $self->limit_to_objects('FUNCTION|PROCEDURE|PACKAGE|TRIGGER', 'OBJECT_NAME|OBJECT_NAME|OBJECT_NAME|OBJECT_NAME');
+	if (grep(/^$self->{schema}$/i, @{$self->{all_system_user}})){
+		$str .= " " . $self->limit_to_objects('FUNCTION|PROCEDURE|PACKAGE|TRIGGER', 'OBJECT_NAME|OBJECT_NAME|OBJECT_NAME|OBJECT_NAME');
+	}
+	#allow naming tables that contain dollars to migrate--end
 	#$str .= " ORDER BY OBJECT_NAME";
 
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -3309,7 +3552,13 @@ sub _get_identities
 	} else {
 		$str .= " WHERE OWNER = '$self->{schema}'";
 	}
-	$str .= $self->limit_to_objects('TABLE', 'TABLE_NAME');
+	
+	#allow naming tables that contain dollars to migrate--start
+	#$str .= $self->limit_to_objects('TABLE', 'TABLE_NAME');
+	if (grep(/^$self->{schema}$/i, @{$self->{all_system_user}})){
+		$str .= $self->limit_to_objects('TABLE', 'TABLE_NAME');
+	}
+	#allow naming tables that contain dollars to migrate--end
 	#$str .= " ORDER BY OWNER, TABLE_NAME, COLUMN_NAME";
 
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -3373,7 +3622,13 @@ sub _get_materialized_views
 	} else {
 		$str .= " WHERE OWNER = '$self->{schema}'";
 	}
-	$str .= $self->limit_to_objects('MVIEW', 'MVIEW_NAME');
+	
+	#allow naming tables that contain dollars to migrate--start
+	#$str .= $self->limit_to_objects('MVIEW', 'MVIEW_NAME');
+	if (grep(/^$self->{schema}$/i, @{$self->{all_system_user}})){
+		$str .= $self->limit_to_objects('MVIEW', 'MVIEW_NAME');
+	}
+	#allow naming tables that contain dollars to migrate--end
 	#$str .= " ORDER BY MVIEW_NAME";
 	my $sth = $self->{dbh}->prepare($str);
 	if (not defined $sth) {
@@ -3413,7 +3668,13 @@ sub _get_materialized_view_names
 	} else {
 		$str .= " WHERE OWNER = '$self->{schema}'";
 	}
-	$str .= $self->limit_to_objects('MVIEW', 'MVIEW_NAME');
+	
+	#allow naming tables that contain dollars to migrate--start
+	#$str .= $self->limit_to_objects('MVIEW', 'MVIEW_NAME');
+	if (grep(/^$self->{schema}$/i, @{$self->{all_system_user}})){
+		$str .= $self->limit_to_objects('MVIEW', 'MVIEW_NAME');
+	}
+	#allow naming tables that contain dollars to migrate--end
 	#$str .= " ORDER BY MVIEW_NAME";
 	my $sth = $self->{dbh}->prepare($str);
 	if (not defined $sth) {
@@ -3542,7 +3803,13 @@ sub _get_procedures
 	} else {
 		$str .= " AND OWNER = '$self->{schema}'";
 	}
-	$str .= " " . $self->limit_to_objects('PROCEDURE','OBJECT_NAME');
+	
+	#allow naming tables that contain dollars to migrate--start
+	#$str .= " " . $self->limit_to_objects('PROCEDURE','OBJECT_NAME');
+	if (grep(/^$self->{schema}$/i, @{$self->{all_system_user}})){
+		$str .= " " . $self->limit_to_objects('PROCEDURE','OBJECT_NAME');
+	}
+	#allow naming tables that contain dollars to migrate--end
 	#$str .= " ORDER BY OBJECT_NAME";
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -3566,7 +3833,13 @@ sub _get_procedures
 	} else {
 		$sql .= " WHERE OWNER = '$self->{schema}'";
 	}
-	$sql .= " " . $self->limit_to_objects('PROCEDURE','NAME');
+	
+	#allow naming tables that contain dollars to migrate--start
+	#$sql .= " " . $self->limit_to_objects('PROCEDURE','NAME');
+	if (grep(/^$self->{schema}$/i, @{$self->{all_system_user}})){
+		$sql .= " " . $self->limit_to_objects('PROCEDURE','NAME');
+	}
+	#allow naming tables that contain dollars to migrate--end
 	$sql .= " ORDER BY OWNER,NAME,LINE";
 	$sth = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $sth->errstr . "\n", 0, 1);
@@ -3602,7 +3875,13 @@ sub _get_packages
 	} else {
 		$str .= " AND OWNER = '$self->{schema}'";
 	}
-	$str .= " " . $self->limit_to_objects('PACKAGE','OBJECT_NAME');
+	
+	#allow naming tables that contain dollars to migrate--start
+	#$str .= " " . $self->limit_to_objects('PACKAGE','OBJECT_NAME');
+	if (grep(/^$self->{schema}$/i, @{$self->{all_system_user}})){
+		$str .= " " . $self->limit_to_objects('PACKAGE','OBJECT_NAME');
+	}
+	#allow naming tables that contain dollars to migrate--end
 	#$str .= " ORDER BY OBJECT_NAME";
 
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -3665,7 +3944,13 @@ sub _get_types
 		$str .= "AND OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "') ";
 	}
 	if (!$name) {
-		$str .= $self->limit_to_objects('TYPE', 'OBJECT_NAME');
+		
+		#allow naming tables that contain dollars to migrate--start
+		#$str .= $self->limit_to_objects('TYPE', 'OBJECT_NAME');
+		if (grep(/^$self->{schema}$/i, @{$self->{all_system_user}})){
+			$str .= $self->limit_to_objects('TYPE', 'OBJECT_NAME');
+		}
+		#allow naming tables that contain dollars to migrate--end
 	} else {
 		@{$self->{query_bind_params}} = ();
 	}
@@ -3731,7 +4016,13 @@ sub _col_count
 		$condition .= " AND A.OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "') ";
 	}
 	if (!$table) {
-		$condition .= $self->limit_to_objects('TABLE', 'A.TABLE_NAME');
+		
+		#allow naming tables that contain dollars to migrate--start
+		#$condition .= $self->limit_to_objects('TABLE', 'A.TABLE_NAME');
+		if (grep(/^$owner$/i, @{$self->{all_system_user}})){
+			$condition .= $self->limit_to_objects('TABLE', 'A.TABLE_NAME');
+		}
+		#allow naming tables that contain dollars to migrate--end
 	} else {
 		@{$self->{query_bind_params}} = ();
 	}
@@ -3822,4 +4113,3 @@ sub auto_set_encoding
 }
 
 1;
-
