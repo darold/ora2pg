@@ -190,7 +190,9 @@ if ($CREATE_PROJECT)
 		print "FATAL: Project base directory does not exists: $PROJECT_BASE\n";
 		&usage();
 	}
-	print STDERR "Creating project $CREATE_PROJECT.\n";
+    #show migration results,list of objects that successes,failures,ignores--start
+	#print STDERR "Creating project $CREATE_PROJECT.\n";
+    #show migration results,list of objects that successes,failures,ignores--end
 	&create_project($CREATE_PROJECT, $PROJECT_BASE);
 	exit 0;
 }
@@ -557,34 +559,52 @@ sub create_project
 		exit 1;
 	}
 	mkdir("$base_path");
-	print "$base_path/\n";
+    #show migration results,list of objects that successes,failures,ignores--start
+	#print "$base_path/\n";
+    #show migration results,list of objects that successes,failures,ignores--end
 	mkdir("$base_path/schema");
-	print "\tschema/\n";
+    #show migration results,list of objects that successes,failures,ignores--start
+	#print "\tschema/\n";
+    #show migration results,list of objects that successes,failures,ignores--end
 
 	foreach my $exp (sort @SCHEMA_ARRAY ) {
 		my $tpath = lc($exp);
 		$tpath =~ s/y$/ie/;
 		mkdir("$base_path/schema/" . $tpath . 's');
-		print "\t\t" . $tpath . "s/\n";
+        #show migration results,list of objects that successes,failures,ignores--start
+		#print "\t\t" . $tpath . "s/\n";
+        #show migration results,list of objects that successes,failures,ignores--end
 	}
 	mkdir("$base_path/sources");
-	print "\tsources/\n";
+    #show migration results,list of objects that successes,failures,ignores--start
+	#print "\tsources/\n";
+    #show migration results,list of objects that successes,failures,ignores--end
 	foreach my $exp (sort @SOURCES_ARRAY ) {
 		my $tpath = lc($exp);
 		$tpath =~ s/y$/ie/;
 		mkdir("$base_path/sources/" . $tpath . 's');
-		print "\t\t" . $tpath . "s/\n";
+        #show migration results,list of objects that successes,failures,ignores--start
+		#print "\t\t" . $tpath . "s/\n";
+        #show migration results,list of objects that successes,failures,ignores--end
 	}
 	mkdir("$base_path/data");
-	print "\tdata/\n";
+    #show migration results,list of objects that successes,failures,ignores--start
+	#print "\tdata/\n";
+    #show migration results,list of objects that successes,failures,ignores--end
 	mkdir("$base_path/config");
-	print "\tconfig/\n";
+    #show migration results,list of objects that successes,failures,ignores--start
+	#print "\tconfig/\n";
+    #show migration results,list of objects that successes,failures,ignores--end
 	mkdir("$base_path/reports");
-	print "\treports/\n";
-	print "\n";
+    #show migration results,list of objects that successes,failures,ignores--start
+	#print "\treports/\n";
+	#print "\n";
+    #show migration results,list of objects that successes,failures,ignores--end
 
 	# Copy configuration file and transform it as a generic one
-	print "Generating generic configuration file\n";
+    #show migration results,list of objects that successes,failures,ignores--start
+	#print "Generating generic configuration file\n";
+    #show migration results,list of objects that successes,failures,ignores--end
 	if (open(IN, "$conf_file")) {
 		my @cf = <IN>;
 		close(IN);
@@ -605,7 +625,9 @@ sub create_project
 	}
 
 	# Generate shell script to execute all export
-	print "Creating script export_schema.sh to automate all exports.\n";
+    #show migration results,list of objects that successes,failures,ignores--start
+	#print "Creating script export_schema.sh to automate all exports.\n";
+    #show migration results,list of objects that successes,failures,ignores--end
 	unless(open(OUT, "> $base_path/export_schema.sh")) {
 		print "FATAL: Can't write to file $base_path/export_schema.sh\n";
 		exit 1;
@@ -624,33 +646,43 @@ sub create_project
 	print OUT qq{
 ora2pg -t SHOW_TABLE -c \$namespace/config/ora2pg.conf > \$namespace/reports/tables.txt
 ora2pg -t SHOW_COLUMN -c \$namespace/config/ora2pg.conf > \$namespace/reports/columns.txt
+#show migration results,list of objects that successes,failures,ignores--start
 ora2pg -t SHOW_REPORT -c \$namespace/config/ora2pg.conf --dump_as_html --cost_unit_value  \$unit_cost --estimate_cost > \$namespace/reports/report.html
+#show migration results,list of objects that successes,failures,ignores--end
 
 for etype in \$(echo \$EXPORT_TYPE | tr " " "\\n")
 do
         ltype=`echo \$etype | tr '[:upper:]' '[:lower:]'`
         ltype=`echo \$ltype | sed 's/y\$/ie/'`
-        echo "Running: ora2pg -p -t \$etype -o \$ltype.sql -b \$namespace/schema/\$\{ltype\}s -c \$namespace/config/ora2pg.conf"
-        ora2pg -p -t \$etype -o \$ltype.sql -b \$namespace/schema/\$\{ltype\}s -c \$namespace/config/ora2pg.conf
+        #show migration results,list of objects that successes,failures,ignores--start
+		echo
+        #echo "Running: ora2pg -p -t \$etype -o \$ltype.sql -b \$namespace/schema/\$\{ltype\}s -c \$namespace/config/ora2pg.conf"
+        #ora2pg -p -t \$etype -o \$ltype.sql -b \$namespace/schema/\$\{ltype\}s -c \$namespace/config/ora2pg.conf
+        #show migration results,list of objects that successes,failures,ignores--end
 	ret=`grep "Nothing found" \$namespace/schema/\$\{ltype\}s/\$ltype.sql 2> /dev/null`
 	if [ ! -z "\$ret" ]; then
 		rm \$namespace/schema/\$\{ltype\}s/\$ltype.sql
 	fi
 done
 
-for etype in \$(echo \$SOURCE_TYPE | tr " " "\\n")
-do
-        ltype=`echo \$etype | tr '[:upper:]' '[:lower:]'`
-        ltype=`echo \$ltype | sed 's/y\$/ie/'`
-        echo "Running: ora2pg -t \$etype -o \$ltype.sql -b \$namespace/sources/\$\{ltype\}s -c \$namespace/config/ora2pg.conf"
-        ora2pg -t \$etype -o \$ltype.sql -b \$namespace/sources/\$\{ltype\}s -c \$namespace/config/ora2pg.conf
-	ret=`grep "Nothing found" \$namespace/sources/\$\{ltype\}s/\$ltype.sql 2> /dev/null`
-	if [ ! -z "\$ret" ]; then
-		rm \$namespace/sources/\$\{ltype\}s/\$ltype.sql
-	fi
-done
+#show migration results,list of objects that successes,failures,ignores--start
+#for etype in \$(echo \$SOURCE_TYPE | tr " " "\\n")
+#do
+#    ltype=`echo \$etype | tr '[:upper:]' '[:lower:]'`
+#    ltype=`echo \$ltype | sed 's/y\$/ie/'`
+#       echo "Running: ora2pg -t \$etype -o \$ltype.sql -b \$namespace/sources/\$\{ltype\}s -c \$namespace/config/ora2pg.conf"
+#       ora2pg -t \$etype -o \$ltype.sql -b \$namespace/sources/\$\{ltype\}s -c \$namespace/config/ora2pg.conf
+#	ret=`grep "Nothing found" \$namespace/sources/\$\{ltype\}s/\$ltype.sql 2> /dev/null`
+#	if [ ! -z "\$ret" ]; then
+#		rm \$namespace/sources/\$\{ltype\}s/\$ltype.sql
+#	fi
+#done
+#show migration results,list of objects that successes,failures,ignores--end
 
 echo
+#show migration results,list of objects that successes,failures,ignores--start
+echo 'OUTPUT_DIR'
+#show migration results,list of objects that successes,failures,ignores--end
 echo
 echo "To extract data use the following command:"
 echo
@@ -719,7 +751,9 @@ exit 0;
 	close(OUT);
 
 	# Generate shell script to execute all import
-	print "Creating script import_all.sh to automate all imports.\n";
+    #show migration results,list of objects that successes,failures,ignores--start
+	#print "Creating script import_all.sh to automate all imports.\n";
+    #show migration results,list of objects that successes,failures,ignores--end
 	my $exportype = "EXPORT_TYPE=\"TYPE " . join(' ', grep( !/^TYPE$/, @SCHEMA_ARRAY)) . "\"\n";
 	unless(open(OUT, "> $base_path/import_all.sh")) {
 		print "FATAL: Can't write to file $base_path/import_all.sh\n";
@@ -1256,4 +1290,3 @@ if [ $IMPORT_SCHEMA -eq 0 ]; then
 fi
 
 exit 0
-
