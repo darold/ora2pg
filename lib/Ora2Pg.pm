@@ -40,6 +40,11 @@ use File::Temp qw/ tempfile /;
 use Benchmark;
 use Encode;
 
+#show migration results,list of objects that successes,failures,ignores--start
+#Matches all files
+our @output_file = ();
+#show migration results,list of objects that successes,failures,ignores--end
+
 #set locale to LC_NUMERIC C
 setlocale(LC_NUMERIC,"C");
 
@@ -252,7 +257,7 @@ our @KEYWORDS = qw(
 	EXCEPT FALSE FETCH FOR FOREIGN FREEZE FROM FULL GRANT GROUP HAVING ILIKE IN
 	INITIALLY INNER INTERSECT INTO IS ISNULL JOIN KEY LATERAL LEADING LEFT LIKE LIMIT
 	LOCALTIME LOCALTIMESTAMP NATURAL NOT NOTNULL NULL OFFSET ON ONLY OR ORDER OUTER
-	OVERLAPS PARTITION PASSWORD PLACING PRIMARY REFERENCES REF RETURNING RIGHT SELECT SESSION_USER
+	OVERLAPS PASSWORD PLACING PRIMARY REFERENCES REF RETURNING RIGHT SELECT SESSION_USER
 	SIMILAR SOME SYMMETRIC TABLE TABLESAMPLE THEN TO TRAILING TRUE UNION UNIQUE USER
 	USING VARIADIC VERBOSE WHEN WHERE WINDOW WITH
 );
@@ -639,14 +644,11 @@ sub close_export_file
 {
 	my ($self, $filehdl, $not_compressed) = @_;
 
+
 	return if (!defined $filehdl);
 
 	if (!$not_compressed && $self->{output} =~ /\.gz$/) {
-		if ($filehdl =~ /IO::File=/) {
-			$filehdl->close();
-		} else {
-			$filehdl->gzclose();
-		}
+		$filehdl->gzclose();
 	} else {
 		$filehdl->close();
 	}
@@ -670,26 +672,6 @@ sub modify_struct
 	push(@{$self->{modify}{$table}}, @fields);
 
 }
-
-=head2 exclude_columns TABLE_NAME ARRAYOF_FIELDNAME
-
-Modify the table structure during the export. The specified columns
-will NOT be exported. 
-
-=cut
-
-sub exclude_columns
-{
-	my ($self, $table, @fields) = @_;
-
-	if (!$self->{preserve_case}) {
-		delete $self->{exclude_columns}{$table};
-		map { $_ = lc($_) } @fields;
-		$table = lc($table);
-		push(@{$self->{exclude_columns}{$table}}, @fields);
-	}
-}
-
 
 =head2 is_reserved_words
 
@@ -991,7 +973,7 @@ sub _init
 	$self->{fdw_server} = '';
 
 	# AS OF SCN related variables
-	$self->{start_scn} = $options{start_scn} || '';
+	$self->{oracle_scn} = $options{oracle_scn} || '';
 	$self->{current_oracle_scn} = ();
 	$self->{cdc_ready} = $options{cdc_ready} || '';
 
@@ -1013,9 +995,6 @@ sub _init
 
 	# Set default tablespace to exclude when using USE_TABLESPACE
 	push(@{$self->{default_tablespaces}}, 'TEMP', 'USERS','SYSTEM');
-
-	# Add the custom reserved keywords defined in configuration file
-	push(@KEYWORDS, @{$self->{ora_reserved_words}});
 
 	# Verify grant objects
 	if ($self->{type} eq 'GRANT' && $self->{grant_object})
@@ -1124,9 +1103,6 @@ sub _init
 	# Minimum of lines required in a table to use parallelism
 	$self->{parallel_min_rows} ||= 100000;
 
-	# Should we export global temporary table
-	$self->{export_gtt} ||= 0;
-
 	# Should we replace zero date with something else than NULL
 	$self->{replace_zero_date} ||= '';
 	if ($self->{replace_zero_date} && (uc($self->{replace_zero_date}) ne '-INFINITY') && ($self->{replace_zero_date} !~ /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/)) {
@@ -1228,7 +1204,7 @@ sub _init
 	}
 	delete $self->{excluded}{ALL};
 
-	$self->{debug} = $AConfig{'DEBUG'} if ($AConfig{'DEBUG'} >= 1);
+	$self->{debug} = 1 if ($AConfig{'DEBUG'} == 1);
 
 	# Set default XML data extract method
 	if (not defined $self->{xml_pretty} || ($self->{xml_pretty} != 0)) {
@@ -1299,9 +1275,6 @@ sub _init
 
 	# Disable the use of orafce library by default
 	$self->{use_orafce} ||= 0;
-
-	# Do not apply any default table filtering to improve performances by not applying regexp
-	$self->{no_excluded_table} ||= 0;
 
 	# Enable BLOB data export by default
 	if (not defined $self->{enable_blob_export}) {
@@ -1510,9 +1483,6 @@ sub _init
 	}
 	if ($self->{pg_version} >= 12) {
 		$self->{pg_supports_virtualcol} = 1;
-	}
-	if ($self->{pg_version} >= 14) {
-		$self->{pg_supports_outparam} = 1;
 	}
 
 	# Other PostgreSQL fork compatibility
@@ -1732,16 +1702,10 @@ sub _init
 		for my $t (keys %{$self->{'modify_struct'}}) {
 			$self->modify_struct($t, @{$self->{'modify_struct'}{$t}});
 		}
-		for my $t (keys %{$self->{'exclude_columns'}}) {
-			$self->exclude_columns($t, @{$self->{'exclude_columns'}{$t}});
-		}
 	}
 
 	if ($self->{oracle_fdw_data_export} && scalar keys %{$self->{'modify_struct'}} > 0) {
 		$self->logit("FATAL: MODIFY_STRUCT is not supported with oracle_fdw data export.\n", 0, 1);
-	}
-	if ($self->{oracle_fdw_data_export} && scalar keys %{$self->{'exclude_columns'}} > 0) {
-		$self->logit("FATAL: EXCLUDE_COLUMNS is not supported with oracle_fdw data export.\n", 0, 1);
 	}
 
 	# backup output filename in multiple export mode
@@ -2053,10 +2017,8 @@ sub _send_to_pgdb
 	if (!defined $self->{pg_pwd})
 	{
 		eval("use Term::ReadKey;");
-		if (!$@) {
-			$self->{pg_user} = $self->_ask_username('PostgreSQL') unless (defined($self->{pg_user}));
-			$self->{pg_pwd} = $self->_ask_password('PostgreSQL');
-		}
+		$self->{pg_user} = $self->_ask_username('PostgreSQL') unless (defined($self->{pg_user}));
+		$self->{pg_pwd} = $self->_ask_password('PostgreSQL');
 	}
 
 	$ENV{PGAPPNAME} = 'ora2pg ' || $VERSION;
@@ -2400,8 +2362,6 @@ sub _tables
 		$self->{tables}{$t}{table_info}{connection} = $tables_infos{$t}{connection};
 		$self->{tables}{$t}{table_info}{nologging} = $tables_infos{$t}{nologging};
 		$self->{tables}{$t}{table_info}{partitioned} = $tables_infos{$t}{partitioned};
-		$self->{tables}{$t}{table_info}{temporary} = $tables_infos{$t}{temporary};
-		$self->{tables}{$t}{table_info}{duration} = $tables_infos{$t}{duration};
 		if (exists $tables_infos{$t}{fillfactor}) {
 		    $self->{tables}{$t}{table_info}{fillfactor} = $tables_infos{$t}{fillfactor};
 		}
@@ -2529,7 +2489,6 @@ sub _tables
 	{
 		$self->logit("Retrieving table partitioning information...\n", 1);
 		%{ $self->{partitions_list} } = $self->_get_partitioned_table();
-		%{ $self->{subpartitions_list} } = $self->_get_subpartitioned_table();
 	}
 }
 
@@ -2852,7 +2811,7 @@ sub read_schema_from_file
 							$c_default =~ s/\s+VIRTUAL//is;
 						}
 						my $c_type = '';
-						if ($c =~ s/^\s*ENUM\s*(\([^\(\)]+\))\s*//is)
+						if ($c =~ s/^ENUM\s*(\([^\(\)]+\))\s*//is)
 						{
 							my %tmp = ();
 							$tmp{name} = lc($tb_name . '_' . $c_name . '_t');
@@ -2891,9 +2850,9 @@ sub read_schema_from_file
 							}
 						}
 						my $c_nullable = 1;
-						if ($c =~ s/CONSTRAINT\s*([^\s]+)?\s*NOT NULL//is) {
+						if ($c =~ s/CONSTRAINT\s*([^\s]+)?\s*NOT NULL//s) {
 							$c_nullable = 0;
-						} elsif ($c !~ /IS\s+NOT\s+NULL/is && $c =~ s/\bNOT\s+NULL//is) {
+						} elsif ($c =~ s/NOT NULL//) {
 							$c_nullable = 0;
 						}
 
@@ -2950,12 +2909,12 @@ sub read_schema_from_file
 								$c_default = Ora2Pg::PLSQL::convert_plsql_code($self, $c_default);
 							}
 						}
-						if ($c_type =~ /date|timestamp/i && $c_default =~ /^'0000-/)
+						if ($c_type =~ /date|timestamp/i && $c_default =~ /'0000-00-00/)
 						{
 							if ($self->{replace_zero_date}) {
 								$c_default = $self->{replace_zero_date};
 							} else {
-								$c_default =~ s/^'0000-\d+-\d+/'1970-01-01/;
+								$c_default =~ s/^'0000-00-00/'1970-01-01/;
 							}
 							if ($c_default =~ /^[\-]*INFINITY$/) {
 								$c_default .= "::$c_type";
@@ -3012,9 +2971,6 @@ sub read_schema_from_file
 			}
 			if ($tb_param =~ /\bNOLOGGING\b/is) {
 				$self->{tables}{$tb_name}{table_info}{nologging} = 1;
-			}
-			if ($tb_param =~ /\bGLOBAL\s+TEMPORARY\b/is) {
-				$self->{tables}{$tb_name}{table_info}{temporary} = 'Y';
 			}
 
 			if ($tb_param =~ /ORGANIZATION EXTERNAL/is) {
@@ -3946,11 +3902,6 @@ sub _export_table_data
 						next if ($self->file_exists("$dirprefix${sub_tb_name}_$self->{output}"));
 					}
 
-					if ($#{$self->{tables}{$table}{field_name}} < 0) {
-						$self->logit("Table $table has no column defined, skipping...\n", 1);
-						next;
-					}
-
 					$self->logit("Dumping sub partition table $table ($subpart)...\n", 1);
 					$total_record = $self->_dump_table($dirprefix, $sql_header, $table, $subpart, 1);
 					# Rename temporary filename into final name
@@ -4018,12 +3969,7 @@ sub _export_table_data
 	else
 	{
 
-		# Do not dump data if the table has no column
-		if ($#{$self->{tables}{$table}{field_name}} < 0) {
-			$self->logit("Table $table has no column defined, skipping...\n", 1);
-		} else {
-			$total_record = $self->_dump_table($dirprefix, $sql_header, $table);
-		}
+		$total_record = $self->_dump_table($dirprefix, $sql_header, $table);
 	}
 
  	# close the connection with parallel table export
@@ -4155,8 +4101,14 @@ sub translate_function
 	my $lcost = 0;
 	my $fct_count = 0;
 	my $PGBAR_REFRESH = set_refresh_count($num_total_function);
+	#show migration results,list of objects that successes,failures,ignores--start
+	my %error_list = ();
+	#show migration results,list of objects that successes,failures,ignores--end
+	
 	foreach my $fct (sort keys %functions)
 	{
+		#show migration results,list of objects that successes,failures,ignores--start
+=head2
 		if (!$self->{quiet} && !$self->{debug} && ($fct_count % $PGBAR_REFRESH) == 0)
 		{
 			print STDERR $self->progress_bar($i+1, $num_total_function, 25, '=', 'functions', "generating $fct" ), "\r";
@@ -4249,13 +4201,136 @@ sub translate_function
 			$self->close_export_file($fhdl);
 			$sql_output = '';
 		}
+=cut
+        #show migration results,list of objects that successes,failures,ignores--end
+        
+        #show migration results,list of objects that successes,failures,ignores--start
+        eval{
+			if (!$self->{quiet} && !$self->{debug} && ($fct_count % $PGBAR_REFRESH) == 0)
+			{
+				print STDERR $self->progress_bar($i+1, $num_total_function, 25, '=', 'functions', "generating $fct" ), "\r";
+			}
+			$fct_count++;
+			$self->logit("Dumping function $fct...\n", 1);
+			if ($self->{file_per_function}) {
+				my $f = "$dirprefix${fct}_$self->{output}";
+				$f =~ s/\.(?:gz|bz2)$//i;
+				$self->dump("\\i$self->{psql_relative_path} $f\n");
+				$self->save_filetoupdate_list("ORA2PG_$self->{type}", lc($fct), "$dirprefix${fct}_$self->{output}");
+			} else {
+				$self->save_filetoupdate_list("ORA2PG_$self->{type}", lc($fct), "$dirprefix$self->{output}");
+			}
+
+			my $fhdl = undef;
+
+			$self->_remove_comments(\$functions{$fct}{text});
+			$lsize = length($functions{$fct}{text});
+			
+			#show information about the cause of failure that occurred during conversion--start
+			if($functions{$fct}{text} =~/TYPE\s(.*)\sIS TABLE OF.*/ig){
+				$error_list{$fct} = "Custom type [$1] exists and cannot be imported to PostgreSQL";
+				next;
+			}
+			#show information about the cause of failure that occurred during conversion--end
+			
+			if ($self->{file_per_function})
+			{
+				$self->logit("Dumping to one file per function : ${fct}_$self->{output}\n", 1);
+				#show migration results,list of objects that successes,failures,ignores--start
+				push(@output_file,"${fct}");
+				#show migration results,list of objects that successes,failures,ignores--end
+				$fhdl = $self->open_export_file("${fct}_$self->{output}");
+				$self->set_binmode($fhdl) if (!$self->{compress});
+			}
+			if ($self->{plsql_pgsql})
+			{
+				my $sql_f = '';
+				if ($self->{is_mysql}) {
+					$sql_f = $self->_convert_function($functions{$fct}{owner}, $functions{$fct}{text}, $fct);
+				} else {
+					$sql_f = $self->_convert_function($functions{$fct}{owner}, $functions{$fct}{text});
+				}
+				if ( $sql_f )
+				{
+					$sql_output .= $sql_f . "\n\n";
+					if ($self->{estimate_cost})
+					{
+						my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($self, $sql_f);
+						$cost += $Ora2Pg::PLSQL::OBJECT_SCORE{'FUNCTION'};
+						$lcost += $cost;
+						$self->logit("Function ${fct} estimated cost: $cost\n", 1);
+						$sql_output .= "-- Function ${fct} estimated cost: $cost\n";
+						foreach (sort { $cost_detail{$b} <=> $cost_detail{$a} } keys %cost_detail)
+						{
+							next if (!$cost_detail{$_});
+							$sql_output .= "\t-- $_ => $cost_detail{$_}";
+							if (!$self->{is_mysql}) {
+								$sql_output .= " (cost: $Ora2Pg::PLSQL::UNCOVERED_SCORE{$_})" if ($Ora2Pg::PLSQL::UNCOVERED_SCORE{$_});
+							} else {
+								$sql_output .= " (cost: $Ora2Pg::PLSQL::UNCOVERED_MYSQL_SCORE{$_})" if ($Ora2Pg::PLSQL::UNCOVERED_MYSQL_SCORE{$_});
+							}
+							$sql_output .= "\n";
+						}
+						if ($self->{jobs} > 1)
+						{
+							my $tfh = $self->append_export_file($dirprefix . 'temp_cost_file.dat', 1);
+							flock($tfh, 2) || die "FATAL: can't lock file temp_cost_file.dat\n";
+							$tfh->print("${fct}:$lsize:$lcost\n");
+							$self->close_export_file($tfh, 1);
+						}
+					}
+				}
+			}
+			else
+			{
+				$sql_output .= $functions{$fct}{text} . "\n\n";
+			}
+			$self->_restore_comments(\$sql_output);
+			if ($self->{plsql_pgsql}) {
+				$sql_output =~ s/(-- REVOKE ALL ON (?:FUNCTION|PROCEDURE) [^;]+ FROM PUBLIC;)/&remove_newline($1)/sge;
+			}
+
+			my $sql_header = "-- Generated by Ora2Pg, the Oracle database Schema converter, version $VERSION\n";
+			$sql_header .= "-- Copyright 2000-2022 Gilles DAROLD. All rights reserved.\n";
+			$sql_header .= "-- DATASOURCE: $self->{oracle_dsn}\n\n";
+			if ($self->{client_encoding}) {
+				$sql_header .= "SET client_encoding TO '\U$self->{client_encoding}\E';\n\n";
+			}
+			if ($self->{type} ne 'TABLE') {
+				$sql_header .= $self->set_search_path();
+			}
+			$sql_header .= "\\set ON_ERROR_STOP ON\n\n" if ($self->{stop_on_error});
+			$sql_header .= "SET check_function_bodies = false;\n\n" if (!$self->{function_check});
+			$sql_header = '' if ($self->{no_header});
+
+			if ($self->{file_per_function}) {
+				$self->dump($sql_header . $sql_output, $fhdl);
+				$self->close_export_file($fhdl);
+				$sql_output = '';
+			}     
+		};
+		#show migration results,list of objects that successes,failures,ignores--start
+		if ($@){ 
+			$error_list{$fct} = "$@";
+			next;
+		}
+        #show migration results,list of objects that successes,failures,ignores--end   
 	}
+	#show migration results,list of objects that successes,failures,ignores--end
 
 	my $t1 = Benchmark->new;
 	my $td = timediff($t1, $t0);
 	$self->logit("Translating of $fct_count functions took: " . timestr($td) . "\n", 1);
 
-	return ($sql_output, $lsize, $lcost);
+	#show migration results,list of objects that successes,failures,ignores--start
+	#return ($sql_output, $lsize, $lcost);
+	my $error_size = scalar keys %error_list;
+	if ($error_size > 0){
+		return ($sql_output, $lsize, $lcost, %error_list);
+	}else{
+		return ($sql_output, $lsize, $lcost);
+	}
+	#show migration results,list of objects that successes,failures,ignores--end
 }
 
 sub _replace_declare_var
@@ -4346,6 +4421,14 @@ sub export_view
 	my $sql_header = $self->_set_file_header();
 	my $sql_output = "";
 
+	#show migration results,list of objects that successes,failures,ignores--start
+	my @object_info = ();
+	my @success_object = ();
+	my @err_object = ();
+	my @ignore_object = ();
+	my %error_dic = ();
+	#show migration results,list of objects that successes,failures,ignores--end
+
 	$self->logit("Add views definition...\n", 1);
 
 	# Read DML from file if any
@@ -4363,6 +4446,8 @@ sub export_view
 	my $PGBAR_REFRESH = set_refresh_count($num_total_view);
 	foreach my $view (sort sort_view_by_iter keys %ordered_views)
 	{
+		#show migration results,list of objects that successes,failures,ignores--start
+=head2
 		$self->logit("\tAdding view $view...\n", 1);
 		if (!$self->{quiet} && !$self->{debug} && ($count_view % $PGBAR_REFRESH) == 0)
 		{
@@ -4374,7 +4459,7 @@ sub export_view
 		{
 			my $file_name = "$dirprefix${view}_$self->{output}";
 			$file_name =~ s/\.(gz|bz2)$//;
-			$self->dump("\\i$self->{psql_relative_path} '$file_name'\n");
+			$self->dump("\\i$self->{psql_relative_path} $file_name\n");
 			$self->logit("Dumping to one file per view : ${view}_$self->{output}\n", 1);
 			$fhdl = $self->open_export_file("${view}_$self->{output}");
 			$self->set_binmode($fhdl) if (!$self->{compress});
@@ -4491,7 +4576,156 @@ sub export_view
 		}
 		$nothing++;
 		$i++;
+=cut
+        #show migration results,list of objects that successes,failures,ignores--end
+        #show migration results,list of objects that successes,failures,ignores--start
+        eval{
+			push(@object_info,$view);
+			$self->logit("\tAdding view $view...\n", 1);
+			if (!$self->{quiet} && !$self->{debug} && ($count_view % $PGBAR_REFRESH) == 0)
+			{
+				print STDERR $self->progress_bar($i, $num_total_view, 25, '=', 'views', "generating $view" ), "\r";
+			}
+			$count_view++;
+			my $fhdl = undef;
+			if ($self->{file_per_table})
+			{
+				my $file_name = "$dirprefix${view}_$self->{output}";
+				$file_name =~ s/\.(gz|bz2)$//;
+				$self->dump("\\i$self->{psql_relative_path} $file_name\n");
+				$self->logit("Dumping to one file per view : ${view}_$self->{output}\n", 1);
+				$fhdl = $self->open_export_file("${view}_$self->{output}");
+				$self->set_binmode($fhdl) if (!$self->{compress});
+				$self->save_filetoupdate_list("ORA2PG_$self->{type}", lc($view), $file_name);
+			} else {
+				$self->save_filetoupdate_list("ORA2PG_$self->{type}", lc($view), "$dirprefix$self->{output}");
+			}
+			$self->_remove_comments(\$self->{views}{$view}{text});
+			if (!$self->{pg_supports_checkoption}) {
+				$self->{views}{$view}{text} =~ s/\s*WITH\s+CHECK\s+OPTION//is;
+			}
+			#ﾂRemove unsupported definitions from the ddl statement
+			$self->{views}{$view}{text} =~ s/\s*WITH\s+READ\s+ONLY//is;
+			$self->{views}{$view}{text} =~ s/\s*OF\s+([^\s]+)\s+(WITH|UNDER)\s+[^\)]+\)//is;
+			$self->{views}{$view}{text} =~ s/\s*OF\s+XMLTYPE\s+[^\)]+\)//is;
+			$self->{views}{$view}{text} = $self->_format_view($view, $self->{views}{$view}{text});
+			my $tmpv = $view;
+			if (exists $self->{replaced_tables}{"\L$tmpv\E"} && $self->{replaced_tables}{"\L$tmpv\E"})
+			{
+				$self->logit("\tReplacing table $tmpv as " . $self->{replaced_tables}{lc($tmpv)} . "...\n", 1);
+				$tmpv = $self->{replaced_tables}{lc($tmpv)};
+			}
+			if ($self->{export_schema} && !$self->{schema} && ($tmpv =~ /^([^\.]+)\./) ) {
+				$sql_output .= $self->set_search_path($1) . "\n";
+			}
+			$tmpv = $self->quote_object_name($tmpv);
 
+			if (!@{$self->{views}{$view}{alias}})
+			{
+				$sql_output .= "CREATE$self->{create_or_replace} VIEW $tmpv AS ";
+				$sql_output .= $self->{views}{$view}{text};
+				$sql_output .= ';' if ($sql_output !~ /;\s*$/s);
+				$sql_output .= "\n";
+				if ($self->{estimate_cost}) {
+					my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($self, $self->{views}{$view}{text}, 'VIEW');
+					$cost += $Ora2Pg::PLSQL::OBJECT_SCORE{'VIEW'};
+					$cost_value += $cost;
+					$sql_output .= "\n-- Estimed cost of view [ $view ]: " . sprintf("%2.2f", $cost);
+				}
+				$sql_output .= "\n";
+			}
+			else
+			{
+				$sql_output .= "CREATE$self->{create_or_replace} VIEW $tmpv (";
+				my $count = 0;
+				my %col_to_replace = ();
+				foreach my $d (@{$self->{views}{$view}{alias}})
+				{
+					if ($count == 0) {
+						$count = 1;
+					} else {
+						$sql_output .= ", ";
+					}
+					# Change column names
+					my $fname = $d->[0];
+					if (exists $self->{replaced_cols}{"\L$view\E"}{"\L$fname\E"} && $self->{replaced_cols}{"\L$view\E"}{"\L$fname\E"})
+					{
+						$self->logit("\tReplacing column \L$d->[0]\E as " . $self->{replaced_cols}{"\L$view\E"}{"\L$fname\E"} . "...\n", 1);
+						$fname = $self->{replaced_cols}{"\L$view\E"}{"\L$fname\E"};
+					}
+					$sql_output .= $self->quote_object_name($fname);
+				}
+				$sql_output .= ") AS " . $self->{views}{$view}{text};
+				$sql_output .= ';' if ($sql_output !~ /;\s*$/s);
+				$sql_output .= "\n";
+				if ($self->{estimate_cost})
+				{
+					my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($self, $self->{views}{$view}{text}, 'VIEW');
+					$cost += $Ora2Pg::PLSQL::OBJECT_SCORE{'VIEW'};
+					$cost_value += $cost;
+					$sql_output .= "\n-- Estimed cost of view [ $view ]: " . sprintf("%2.2f", $cost);
+				}
+				$sql_output .= "\n";
+			}
+
+			if ($self->{force_owner})
+			{
+				my $owner = $self->{views}{$view}{owner};
+				$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
+				$sql_output .= "ALTER VIEW $tmpv OWNER TO " . $self->quote_object_name($owner) . ";\n";
+			}
+
+			# Add comments on view and columns
+			if (!$self->{disable_comment})
+			{
+				if ($self->{views}{$view}{comment})
+				{
+					$sql_output .= "COMMENT ON VIEW $tmpv ";
+					$self->{views}{$view}{comment} =~ s/'/''/gs;
+					$sql_output .= " IS E'" . $self->{views}{$view}{comment} . "';\n\n";
+				}
+
+				foreach my $f (sort { lc{$a} cmp lc($b) } keys %{$self->{views}{$view}{column_comments}})
+				{
+					next unless $self->{views}{$view}{column_comments}{$f};
+					$self->{views}{$view}{column_comments}{$f} =~ s/'/''/gs;
+					# Change column names
+					my $fname = $f;
+					if (exists $self->{replaced_cols}{"\L$view\E"}{"\L$f\E"} && $self->{replaced_cols}{"\L$view\E"}{"\L$f\E"}) {
+						$fname = $self->{replaced_cols}{"\L$view\E"}{"\L$f\E"};
+					}
+					$sql_output .= "COMMENT ON COLUMN " . $self->quote_object_name($tmpv) . '.'
+							. $self->quote_object_name($fname)
+							. " IS E'" . $self->{views}{$view}{column_comments}{$f} .  "';\n";
+				}
+			}
+			#show migration results,list of objects that successes,failures,ignores--start
+			if($sql_output =~ /\Q$view\E/gi){
+				push(@success_object,$view);
+			}else{
+				push(@err_object,$view);
+			}
+			#show migration results,list of objects that successes,failures,ignores--end
+
+			if ($self->{file_per_table})
+			{
+				$self->dump($sql_header . $sql_output, $fhdl);
+				$self->_restore_comments(\$sql_output);
+				$self->close_export_file($fhdl);
+				$sql_output = '';
+			}
+		#show migration results,list of objects that successes,failures,ignores--start
+		};
+		if($@){ 
+			$error_dic{$view} = "$@";
+			$nothing++;
+			$i++;
+			next;
+		}
+		#show migration results,list of objects that successes,failures,ignores--end
+		$nothing++;
+		$i++;	
+	#show migration results,list of objects that successes,failures,ignores--end
 	}
 	%ordered_views = ();
 
@@ -4506,6 +4740,12 @@ sub export_view
 	}
 
 	$self->dump($sql_output);
+        
+    #show migration results,list of objects that successes,failures,ignores--start
+	my $sql = "SELECT A.OWNER, A.OBJECT_NAME FROM $self->{prefix}_OBJECTS A WHERE A.OBJECT_TYPE IN 'VIEW' AND A.OWNER = '$self->{schema}'";
+	@ignore_object = _get_ignore_object($self,$sql,\@object_info);
+	type_log($self,\@success_object,\@err_object,\@ignore_object,$self->{type},%error_dic);
+	#show migration results,list of objects that successes,failures,ignores--end
 
 	return;
 }
@@ -4522,6 +4762,14 @@ sub export_mview
 
 	my $sql_header = $self->_set_file_header();
 	my $sql_output = "";
+
+	#show migration results,list of objects that successes,failures,ignores--start
+	my @object_info = ();
+	my @success_object = ();
+	my @err_object = ();
+	my @ignore_object = ();
+	my %error_dic = ();
+	#show migration results,list of objects that successes,failures,ignores--end
 
 	$self->logit("Add materialized views definition...\n", 1);
 
@@ -4639,6 +4887,8 @@ LANGUAGE plpgsql ;
 	my $PGBAR_REFRESH = set_refresh_count($num_total_mview);
 	foreach my $view (sort { $a cmp $b } keys %{$self->{materialized_views}})
 	{
+	#show migration results,list of objects that successes,failures,ignores--start
+=head2
 		$self->logit("\tAdding materialized view $view...\n", 1);
 		if (!$self->{quiet} && !$self->{debug} && ($count_mview % $PGBAR_REFRESH) == 0) {
 			print STDERR $self->progress_bar($i, $num_total_mview, 25, '=', 'materialized views', "generating $view" ), "\r";
@@ -4648,7 +4898,7 @@ LANGUAGE plpgsql ;
 		if ($self->{file_per_table} && !$self->{pg_dsn}) {
 			my $file_name = "$dirprefix${view}_$self->{output}";
 			$file_name =~ s/\.(gz|bz2)$//;
-			$self->dump("\\i$self->{psql_relative_path} '$file_name'\n");
+			$self->dump("\\i$self->{psql_relative_path} $file_name\n");
 			$self->logit("Dumping to one file per materialized view : ${view}_$self->{output}\n", 1);
 			$fhdl = $self->open_export_file("${view}_$self->{output}");
 			$self->set_binmode($fhdl) if (!$self->{compress});
@@ -4726,6 +4976,116 @@ LANGUAGE plpgsql ;
 		}
 		$nothing++;
 		$i++;
+=cut
+		#show migration results,list of objects that successes,failures,ignores--end
+		
+		#show migration results,list of objects that successes,failures,ignores--start
+		eval{
+			push(@object_info,$view);
+			$self->logit("\tAdding materialized view $view...\n", 1);
+			if (!$self->{quiet} && !$self->{debug} && ($count_mview % $PGBAR_REFRESH) == 0) {
+				print STDERR $self->progress_bar($i, $num_total_mview, 25, '=', 'materialized views', "generating $view" ), "\r";
+			}
+			$count_mview++;
+			my $fhdl = undef;
+			if ($self->{file_per_table} && !$self->{pg_dsn}) {
+				my $file_name = "$dirprefix${view}_$self->{output}";
+				$file_name =~ s/\.(gz|bz2)$//;
+				$self->dump("\\i$self->{psql_relative_path} $file_name\n");
+				$self->logit("Dumping to one file per materialized view : ${view}_$self->{output}\n", 1);
+				$fhdl = $self->open_export_file("${view}_$self->{output}");
+				$self->set_binmode($fhdl) if (!$self->{compress});
+				$self->save_filetoupdate_list("ORA2PG_$self->{type}", lc($view), $file_name);
+			} else {
+				$self->save_filetoupdate_list("ORA2PG_$self->{type}", lc($view), "$dirprefix$self->{output}");
+			}
+			if (!$self->{plsql_pgsql})
+			{
+				$sql_output .= "DROP MATERIALIZED VIEW $self->{pg_supports_ifexists} $view;\n" if ($self->{drop_if_exists});
+				$sql_output .= "CREATE MATERIALIZED VIEW $view\n";
+				$sql_output .= "BUILD $self->{materialized_views}{$view}{build_mode}\n";
+				$sql_output .= "REFRESH $self->{materialized_views}{$view}{refresh_method} ON $self->{materialized_views}{$view}{refresh_mode}\n";
+				$sql_output .= "ENABLE QUERY REWRITE" if ($self->{materialized_views}{$view}{rewritable});
+				$sql_output .= "AS $self->{materialized_views}{$view}{text}";
+				$sql_output .= " USING INDEX" if ($self->{materialized_views}{$view}{no_index});
+				$sql_output .= " USING NO INDEX" if (!$self->{materialized_views}{$view}{no_index});
+				$sql_output .= ";\n\n";
+
+				# Set the index definition
+				my ($idx, $fts_idx) = $self->_create_indexes($view, 0, %{$self->{materialized_views}{$view}{indexes}});
+				$sql_output .= "$idx$fts_idx\n\n";
+			} else {
+				$self->{materialized_views}{$view}{text} = $self->_format_view($view, $self->{materialized_views}{$view}{text});
+				if (!$self->{preserve_case}) {
+					$self->{materialized_views}{$view}{text} =~ s/"//gs;
+				}
+				if ($self->{export_schema} && !$self->{schema} && ($view =~ /^([^\.]+)\./) ) {
+					$sql_output .= $self->set_search_path($1) . "\n";
+				}
+				$self->{materialized_views}{$view}{text} =~ s/^PERFORM/SELECT/;
+				if (!$self->{pg_supports_mview})
+				{
+					$sql_output .= "DROP VIEW $self->{pg_supports_ifexists} \L$view\E_mview;\n" if ($self->{drop_if_exists});
+					$sql_output .= "CREATE VIEW \L$view\E_mview AS\n";
+					$sql_output .= $self->{materialized_views}{$view}{text};
+					$sql_output .= ";\n\n";
+					$sql_output .= "SELECT create_materialized_view('\L$view\E','\L$view\E_mview', change with the name of the colum to used for the index);\n\n\n";
+
+					if ($self->{force_owner})
+					{
+						my $owner = $self->{materialized_views}{$view}{owner};
+						$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
+						$sql_output .= "ALTER VIEW " . $self->quote_object_name($view . '_mview')
+									. " OWNER TO " . $self->quote_object_name($owner) . ";\n";
+					}
+				}
+				else
+				{
+					$sql_output .= "DROP MATERIALIZED VIEW $self->{pg_supports_ifexists} \L$view\E;\n" if ($self->{drop_if_exists});
+					$sql_output .= "CREATE MATERIALIZED VIEW \L$view\E AS\n";
+					$sql_output .= $self->{materialized_views}{$view}{text};
+					if ($self->{materialized_views}{$view}{build_mode} eq 'DEFERRED') {
+						$sql_output .= " WITH NO DATA";
+					}
+					$sql_output .= ";\n";
+					# Set the index definition
+					my ($idx, $fts_idx) = $self->_create_indexes($view, 0, %{$self->{materialized_views}{$view}{indexes}});
+					$sql_output .= "$idx$fts_idx\n\n";
+				}
+			}
+			if ($self->{force_owner})
+			{
+				my $owner = $self->{materialized_views}{$view}{owner};
+				$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
+				$sql_output .= "ALTER MATERIALIZED VIEW " . $self->quote_object_name($view)
+							. " OWNER TO " . $self->quote_object_name($owner) . ";\n";
+			}
+			#show migration results,list of objects that successes,failures,ignores--start
+			if($sql_output =~ /\Q$view\E/gi){
+			   push(@success_object,$view);
+			}else{
+			   push(@err_object,$view);
+			}
+			#show migration results,list of objects that successes,failures,ignores--end
+
+			if ($self->{file_per_table} && !$self->{pg_dsn})
+			{
+				$self->dump($sql_header . $sql_output, $fhdl);
+				$self->close_export_file($fhdl);
+				$sql_output = '';
+			}
+		#show migration results,list of objects that successes,failures,ignores--start
+		};
+		if($@){ 
+			$error_dic{$view} = "$@";
+			$nothing++;
+			$i++;
+			next;
+		}
+		#show migration results,list of objects that successes,failures,ignores--end
+		$nothing++;
+		$i++;
+	#show migration results,list of objects that successes,failures,ignores--end		
 	}
 	if (!$self->{quiet} && !$self->{debug}) {
 		print STDERR $self->progress_bar($i - 1, $num_total_mview, 25, '=', 'materialized views', 'end of output.'), "\n";
@@ -4736,6 +5096,11 @@ LANGUAGE plpgsql ;
 
 	$self->dump($sql_output);
 
+	#show migration results,list of objects that successes,failures,ignores--start
+	my $sql = "SELECT OWNER, MVIEW_NAME FROM $self->{prefix}_MVIEWS WHERE OWNER='$self->{schema}'";
+	@ignore_object = _get_ignore_object($self,$sql,\@object_info);
+	type_log($self,\@success_object,\@err_object,\@ignore_object,$self->{type},%error_dic);
+	#show migration results,list of objects that successes,failures,ignores--end
 	return;
 }
 
@@ -4765,8 +5130,17 @@ sub export_grant
 	# Do not create privilege defintiion if object type is USER
 	delete $self->{grants} if ($self->{grant_object} && $self->{grant_object} eq 'USER');
 
+	#show migration results,list of objects that successes,failures,ignores--start
+	my @success_object = ();
+	my @err_object = ();
+	my @ignore_object = ();
+	my @object_info = ();
+	my %error_dic = ();
+	#show migration results,list of objects that successes,failures,ignores--end
 	# Add privilege definition
 	foreach my $table (sort {"$self->{grants}{$a}{type}.$a" cmp "$self->{grants}{$b}{type}.$b" } keys %{$self->{grants}}) {
+		#show migration results,list of objects that successes,failures,ignores--start
+=head2
 		my $realtable = lc($table);
 		my $obj = $self->{grants}{$table}{type} || 'TABLE';
 		if ($self->{export_schema} && $self->{schema}) {
@@ -4830,13 +5204,97 @@ sub export_grant
 			}
 		}
 		$grants .= "\n";
-	}
+=cut
+		#show migration results,list of objects that successes,failures,ignores--end
+		
+		#show migration results,list of objects that successes,failures,ignores--start
+		eval{
+			push(@object_info,$table);
+			my $realtable = lc($table);
+			my $obj = $self->{grants}{$table}{type} || 'TABLE';
+			if ($self->{export_schema} && $self->{schema}) {
+				$realtable = $self->quote_object_name("$self->{schema}.$table");
+			} elsif ($self->{preserve_case}) {
+				$realtable =  $self->quote_object_name($table);
+			}
+			$grants .= "-- Set priviledge on $self->{grants}{$table}{type} $table\n";
 
+			my $ownee = $self->quote_object_name($self->{grants}{$table}{owner});
+
+			my $wgrantoption = '';
+			if ($self->{grants}{$table}{grantable}) {
+				$wgrantoption = ' WITH GRANT OPTION';
+			}
+			if ($self->{grants}{$table}{type} ne 'PACKAGE BODY') {
+				if ($self->{grants}{$table}{owner}) {
+					if (grep(/^$self->{grants}{$table}{owner}$/, @{$self->{roles}{roles}})) {
+						$grants .= "ALTER $obj $realtable OWNER TO ROLE $ownee;\n";
+						$obj = '' if (!grep(/^$obj$/, 'FUNCTION', 'SEQUENCE','SCHEMA','TABLESPACE'));
+						$grants .= "GRANT ALL ON $obj $realtable TO ROLE $ownee$wgrantoption;\n";
+					} else {
+						$grants .= "ALTER $obj $realtable OWNER TO $ownee;\n";
+						$obj = '' if (!grep(/^$obj$/, 'FUNCTION', 'SEQUENCE','SCHEMA','TABLESPACE'));
+						$grants .= "GRANT ALL ON $obj $realtable TO $ownee$wgrantoption;\n";
+					}
+				}
+				if (grep(/^$self->{grants}{$table}{type}$/, 'FUNCTION', 'SEQUENCE','SCHEMA','TABLESPACE')) {
+					$grants .= "REVOKE ALL ON $self->{grants}{$table}{type} $realtable FROM PUBLIC;\n";
+				} else {
+					$grants .= "REVOKE ALL ON $realtable FROM PUBLIC;\n";
+				}
+			} else {
+				if ($self->{grants}{$table}{owner}) {
+					if (grep(/^$self->{grants}{$table}{owner}$/, @{$self->{roles}{roles}})) {
+						$grants .= "ALTER SCHEMA $realtable OWNER TO ROLE $ownee;\n";
+						$grants .= "GRANT ALL ON SCHEMA $realtable TO ROLE $ownee$wgrantoption;\n";
+					} else {
+						$grants .= "ALTER SCHEMA $realtable OWNER TO $ownee;\n";
+						$grants .= "GRANT ALL ON SCHEMA $realtable TO $ownee$wgrantoption;\n";
+					}
+				}
+				$grants .= "REVOKE ALL ON SCHEMA $realtable FROM PUBLIC;\n";
+			}
+			foreach my $usr (sort keys %{$self->{grants}{$table}{privilege}}) {
+				my $agrants = '';
+				foreach my $g (@GRANTS) {
+					$agrants .= "$g," if (grep(/^$g$/i, @{$self->{grants}{$table}{privilege}{$usr}}));
+				}
+				$agrants =~ s/,$//;
+				$usr = $self->quote_object_name($usr);
+				if ($self->{grants}{$table}{type} ne 'PACKAGE BODY') {
+					if (grep(/^$self->{grants}{$table}{type}$/, 'FUNCTION', 'SEQUENCE','SCHEMA','TABLESPACE', 'TYPE')) {
+						$grants .= "GRANT $agrants ON $obj $realtable TO $usr$wgrantoption;\n";
+					} else {
+						$grants .= "GRANT $agrants ON $realtable TO $usr$wgrantoption;\n";
+					}
+				} else {
+					$grants .= "GRANT USAGE ON SCHEMA $realtable TO $usr$wgrantoption;\n";
+					$grants .= "GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA $realtable TO $usr$wgrantoption;\n";
+				}
+			}
+			$grants .= "\n";
+		};
+		#show migration results,list of objects that successes,failures,ignores--end
+        #show migration results,list of objects that successes,failures,ignores--start
+		if($grants =~ /\Q$table\E/gi){
+		   push(@success_object,$table);
+		}else{
+		   push(@err_object,$table);
+		}
+		if ($@){ 
+			$error_dic{$table} = "$@";
+			next;
+		} 
+		#show migration results,list of objects that successes,failures,ignores--end
+		
+	}
 	# Do not create user when privilege on an object type is asked
 	delete $self->{roles} if ($self->{grant_object} && $self->{grant_object} ne 'USER');
 
 	foreach my $r (@{$self->{roles}{owner}}, @{$self->{roles}{grantee}})
 	{
+		#show migration results,list of objects that successes,failures,ignores--start
+=head2
 		my $secret = 'change_my_secret';
 		if ($self->{gen_user_pwd}) {
 			$secret = &randpattern("CccnCccn");
@@ -4854,11 +5312,76 @@ sub export_grant
 			$users .= " IN ROLE " . join(',', @{$self->{roles}{role}{$r}});
 		}
 		$sql_header .= ";\n";
+=cut
+		#show migration results,list of objects that successes,failures,ignores--end
+		
+		#show migration results,list of objects that successes,failures,ignores--start
+		eval{
+			push(@object_info,$r);
+			my $secret = 'change_my_secret';
+			if ($self->{gen_user_pwd}) {
+				$secret = &randpattern("CccnCccn");
+			}
+			$sql_header .= "CREATE " . ($self->{roles}{type}{$r} ||'USER') . " $r";
+			$sql_header .= " WITH PASSWORD '$secret'" if ($self->{roles}{password_required}{$r} ne 'NO');
+			# It's difficult to parse all oracle privilege. So if one admin option is set we set all PG admin option.
+			if (grep(/YES|1/, @{$self->{roles}{$r}{admin_option}})) {
+				$sql_header .= " CREATEDB CREATEROLE CREATEUSER INHERIT";
+			}
+			if ($self->{roles}{type}{$r} eq 'USER') {
+				$sql_header .= " LOGIN";
+			}
+			if (exists $self->{roles}{role}{$r}) {
+				$users .= " IN ROLE " . join(',', @{$self->{roles}{role}{$r}});
+			}
+			$sql_header .= ";\n";
+		};
+		#show migration results,list of objects that successes,failures,ignores--end
+		#show migration results,list of objects that successes,failures,ignores--start
+		if($sql_header =~ /\Q$r\E/gi){
+		   push(@success_object,$r);
+		}else{
+		   push(@err_object,$r);
+		}
+		if ($@){ 
+			$error_dic{$r} = "$@";
+			next;
+		}
+		#show migration results,list of objects that successes,failures,ignores--end
+		
 	}
 	if (!$grants) {
 		$grants = "-- Nothing found of type $self->{type}\n" if (!$self->{no_header});
 	}
-
+	#show migration results,list of objects that successes,failures,ignores--start
+	$self->{dbh} = $self->_db_connection();
+	my @tmp_ignore = ();
+	my $sql = "SELECT distinct  b.GRANTEE,b.OWNER,b.TABLE_NAME,b.PRIVILEGE,b.COLUMN_NAME FROM DBA_COL_PRIVS b, DBA_OBJECTS a WHERE b.GRANTOR = '$self->{schema}' AND b.TABLE_NAME=a.OBJECT_NAME AND a.OWNER=b.GRANTOR";
+	$sth = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute() or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	while(my $row = $sth->fetch){
+		push(@tmp_ignore,$row->[1]);
+	}
+	$sql = "SELECT distinct b.GRANTEE,b.OWNER,b.TABLE_NAME FROM DBA_TAB_PRIVS b, DBA_OBJECTS a WHERE b.GRANTOR = '$self->{schema}' AND b.TABLE_NAME=a.OBJECT_NAME AND a.OWNER=b.GRANTOR";
+	$sth = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute() or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	while(my $row = $sth->fetch){
+		push(@tmp_ignore,$row->[0]);
+		push(@tmp_ignore,$row->[1]);
+		push(@tmp_ignore,$row->[2]);
+		push(@tmp_ignore,$row->[3]);
+		push(@tmp_ignore,$row->[4]);
+	}
+	foreach my $merge_arr (@tmp_ignore,@object_info){
+		$diff{$merge_arr}++;
+	}
+	my @diff = keys %diff;
+	@ignore_object = grep {$diff{$_}==1;}@diff;
+	if ($self->{user_grants}) {
+		$error_dic{$self->{type}} = "Exporting privilege as non DBA user is not allowed, see USER_GRANT";
+	}
+	type_log($self,\@success_object,\@err_object,\@ignore_object,$self->{type},%error_dic);
+	#show migration results,list of objects that successes,failures,ignores--end
 	$sql_output .= "\n" . $grants . "\n" if ($grants);
 
 	$self->_restore_comments(\$grants);
@@ -4880,6 +5403,14 @@ sub export_sequence
 	my $sql_header = $self->_set_file_header();
 	my $sql_output = "";
 
+	#show migration results,list of objects that successes,failures,ignores--start
+	my @object_info = ();
+	my @success_object = ();
+	my @err_object = ();
+	my @ignore_object = ();
+	my %error_dic = ();
+	#show migration results,list of objects that successes,failures,ignores--end
+
 	$self->logit("Add sequences definition...\n", 1);
 
 	# Read DML from file if any
@@ -4895,6 +5426,8 @@ sub export_sequence
 	}
 	foreach my $seq (sort keys %{$self->{sequences}})
 	{
+		#show migration results,list of objects that successes,failures,ignores--start
+=head2
 		if (!$self->{quiet} && !$self->{debug} && ($count_seq % $PGBAR_REFRESH) == 0) {
 			print STDERR $self->progress_bar($i, $num_total_sequence, 25, '=', 'sequences', "generating $seq" ), "\r";
 		}
@@ -4931,6 +5464,63 @@ sub export_sequence
 						. " OWNER TO " . $self->quote_object_name($owner) . ";\n";
 		}
 		$i++;
+=cut
+		#show migration results,list of objects that successes,failures,ignores--end
+		
+		#show migration results,list of objects that successes,failures,ignores--start
+		eval{
+			push(@object_info,$seq);
+			if (!$self->{quiet} && !$self->{debug} && ($count_seq % $PGBAR_REFRESH) == 0) {
+				print STDERR $self->progress_bar($i, $num_total_sequence, 25, '=', 'sequences', "generating $seq" ), "\r";
+			}
+			$count_seq++;
+			my $cache = '';
+			$cache = $self->{sequences}{$seq}->[5] if ($self->{sequences}{$seq}->[5]);
+			my $cycle = '';
+			$cycle = ' CYCLE' if ($self->{sequences}{$seq}->[6] eq 'Y');
+			$sql_output .= "DROP SEQUENCE $self->{pg_supports_ifexists} " . $self->quote_object_name($seq) . ";\n" if ($self->{drop_if_exists});
+			$sql_output .= "CREATE SEQUENCE " . $self->quote_object_name($seq) . " INCREMENT $self->{sequences}{$seq}->[3]";
+			if ($self->{sequences}{$seq}->[1] eq '' || $self->{sequences}{$seq}->[1] < (-2**63-1)) {
+				$sql_output .= " NO MINVALUE";
+			} else {
+				$sql_output .= " MINVALUE $self->{sequences}{$seq}->[1]";
+			}
+			# Max value lower than start value are not allowed
+			if (($self->{sequences}{$seq}->[2] > 0) && ($self->{sequences}{$seq}->[2] < $self->{sequences}{$seq}->[4])) {
+				$self->{sequences}{$seq}->[2] = $self->{sequences}{$seq}->[4];
+			}
+			if ($self->{sequences}{$seq}->[2] eq '' || $self->{sequences}{$seq}->[2] > (2**63-1)) {
+				$sql_output .= " NO MAXVALUE";
+			} else {
+				$self->{sequences}{$seq}->[2] = 9223372036854775807 if ($self->{sequences}{$seq}->[2] > 9223372036854775807);
+				$sql_output .= " MAXVALUE $self->{sequences}{$seq}->[2]";
+			}
+			$sql_output .= " START $self->{sequences}{$seq}->[4]";
+			$sql_output .= " CACHE $cache" if ($cache ne '');
+			$sql_output .= "$cycle;\n";
+
+			if ($self->{force_owner}) {
+				my $owner = $self->{sequences}{$seq}->[7];
+				$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
+				$sql_output .= "ALTER SEQUENCE " . $self->quote_object_name($seq)
+							. " OWNER TO " . $self->quote_object_name($owner) . ";\n";
+			}
+		};
+		#show migration results,list of objects that successes,failures,ignores--end
+		#show migration results,list of objects that successes,failures,ignores--start
+		if($sql_output =~ /\Q$seq\E/gi){
+		   push(@success_object,$seq);
+		}else{
+		   push(@err_object,$seq);
+		}
+		if($@){ 
+			$error_dic{$seq} = "$@";
+			$i++;
+			next;
+		}
+		#show migration results,list of objects that successes,failures,ignores--end
+		$i++;
+		
 	}
 	if (!$self->{quiet} && !$self->{debug}) {
 		print STDERR $self->progress_bar($i - 1, $num_total_sequence, 25, '=', 'sequences', 'end of output.'), "\n";
@@ -4940,6 +5530,12 @@ sub export_sequence
 	}
 
 	$self->dump($sql_header . $sql_output);
+
+	#show migration results,list of objects that successes,failures,ignores--start
+	my $sql = "SELECT DISTINCT SEQUENCE_OWNER, SEQUENCE_NAME FROM $self->{prefix}_SEQUENCES WHERE SEQUENCE_OWNER = '$self->{schema}'";
+	@ignore_object = _get_ignore_object($self,$sql,\@object_info);
+	type_log($self,\@success_object,\@err_object,\@ignore_object,$self->{type},%error_dic);
+	#show migration results,list of objects that successes,failures,ignores--end
 
 	return;
 }
@@ -4957,6 +5553,14 @@ sub export_dblink
 	my $sql_header = $self->_set_file_header();
 	my $sql_output = "";
 
+	#show migration results,list of objects that successes,failures,ignores--start
+	my @object_info = ();
+	my @success_object = ();
+	my @err_object = ();
+	my @ignore_object = ();
+	my %error_dic = ();
+	#show migration results,list of objects that successes,failures,ignores--end
+
 	$self->logit("Add dblink definition...\n", 1);
 
 	# Read DML from file if any
@@ -4968,6 +5572,8 @@ sub export_dblink
 
 	foreach my $db (sort { $a cmp $b } keys %{$self->{dblink}})
 	{
+		#show migration results,list of objects that successes,failures,ignores--start
+=head2
 		if (!$self->{quiet} && !$self->{debug}) {
 			print STDERR $self->progress_bar($i, $num_total_dblink, 25, '=', 'dblink', "generating $db" ), "\r";
 		}
@@ -4997,6 +5603,57 @@ sub export_dblink
 						. " OWNER TO " . $self->quote_object_name($owner) . ";\n";
 		}
 		$i++;
+=cut
+ 		#show migration results,list of objects that successes,failures,ignores--end
+ 		
+ 		#show migration results,list of objects that successes,failures,ignores--start
+		eval{
+			push(@object_info,$db);
+			if (!$self->{quiet} && !$self->{debug}) {
+				print STDERR $self->progress_bar($i, $num_total_dblink, 25, '=', 'dblink', "generating $db" ), "\r";
+			}
+			$sql_output .= "CREATE SERVER " . $self->quote_object_name($db);
+			if (!$self->{is_mysql}) {
+				$sql_output .= " FOREIGN DATA WRAPPER oracle_fdw OPTIONS (dbserver '$self->{dblink}{$db}{host}');\n";
+			} else {
+				$sql_output .= " FOREIGN DATA WRAPPER mysql_fdw OPTIONS (host '$self->{dblink}{$db}{host}'";
+				$sql_output .= ", port '$self->{dblink}{$db}{port}'" if ($self->{dblink}{$db}{port});
+				$sql_output .= ");\n";
+			}
+			if ($self->{dblink}{$db}{password} ne 'NONE') {
+				$self->{dblink}{$db}{password} ||= 'secret';
+				$self->{dblink}{$db}{password} = ", password '$self->{dblink}{$db}{password}'";
+			}
+			if ($self->{dblink}{$db}{username}) {
+				$sql_output .= "CREATE USER MAPPING FOR " . $self->quote_object_name($self->{dblink}{$db}{username})
+							. " SERVER " . $self->quote_object_name($db)
+							. " OPTIONS (user '" . $self->quote_object_name($self->{dblink}{$db}{user})
+							. "' $self->{dblink}{$db}{password});\n";
+			}
+			
+			if ($self->{force_owner}) {
+				my $owner = $self->{dblink}{$db}{owner};
+				$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
+				$sql_output .= "ALTER FOREIGN DATA WRAPPER " . $self->quote_object_name($db)
+							. " OWNER TO " . $self->quote_object_name($owner) . ";\n";
+			}
+		};
+		#show migration results,list of objects that successes,failures,ignores--end
+		#show migration results,list of objects that successes,failures,ignores--start
+		if($sql_output =~ /\Q$db\E/gi){
+		   push(@success_object,$db);
+		}else{
+		   push(@err_object,$db);
+		}
+
+		if($@){ 
+			$error_dic{$db} = "$@";
+			$i++;
+			next;
+		}
+		#show migration results,list of objects that successes,failures,ignores--end
+		$i++;
+		
 	}
 	if (!$self->{quiet} && !$self->{debug}) {
 		print STDERR $self->progress_bar($i - 1, $num_total_dblink, 25, '=', 'dblink', 'end of output.'), "\n";
@@ -5006,6 +5663,12 @@ sub export_dblink
 	}
 
 	$self->dump($sql_header . $sql_output);
+
+	#show migration results,list of objects that successes,failures,ignores--start
+	my $sql = "SELECT OWNER,DB_LINK FROM $self->{prefix}_DB_LINKS WHERE OWNER = '$self->{schema}'";
+	@ignore_object = _get_ignore_object($self,$sql,\@object_info);
+	type_log($self,\@success_object,\@err_object,\@ignore_object,$self->{type},%error_dic);
+	#show migration results,list of objects that successes,failures,ignores--end
 
 	return;
 }
@@ -5023,6 +5686,14 @@ sub export_directory
 	my $sql_header = $self->_set_file_header();
 	my $sql_output = "";
 
+	#show migration results,list of objects that successes,failures,ignores--start
+	my @object_info = ();
+	my @success_object = ();
+	my @err_object = ();
+	my @ignore_object = ();
+	my %error_dic = ();
+	#show migration results,list of objects that successes,failures,ignores--end
+
 	$self->logit("Add directory definition...\n", 1);
 
 	# Read DML from file if any
@@ -5033,7 +5704,8 @@ sub export_directory
 	my $num_total_directory = scalar keys %{$self->{directory}};
 
 	foreach my $db (sort { $a cmp $b } keys %{$self->{directory}}) {
-
+		#show migration results,list of objects that successes,failures,ignores--start
+=head2
 		if (!$self->{quiet} && !$self->{debug}) {
 			print STDERR $self->progress_bar($i, $num_total_directory, 25, '=', 'directory', "generating $db" ), "\r";
 		}
@@ -5044,6 +5716,39 @@ sub export_directory
 			$sql_output .= "INSERT INTO external_file.directory_roles(directory_name,directory_role,directory_read,directory_write) VALUES ('$db','" . $self->quote_object_name($owner) . "', true, $write);\n";
 		}
 		$i++;
+=cut
+		#show migration results,list of objects that successes,failures,ignores--end
+		
+		#show migration results,list of objects that successes,failures,ignores--start
+		eval{
+			push(@object_info,$db);
+
+			if (!$self->{quiet} && !$self->{debug}) {
+				print STDERR $self->progress_bar($i, $num_total_directory, 25, '=', 'directory', "generating $db" ), "\r";
+			}
+			$sql_output .= "INSERT INTO external_file.directories (directory_name,directory_path) VALUES ('$db', '$self->{directory}{$db}{path}');\n";
+			foreach my $owner (keys %{$self->{directory}{$db}{grantee}}) {
+				my $write = 'false';
+				$write = 'true' if ($self->{directory}{$db}{grantee}{$owner} =~ /write/i);
+				$sql_output .= "INSERT INTO external_file.directory_roles(directory_name,directory_role,directory_read,directory_write) VALUES ('$db','" . $self->quote_object_name($owner) . "', true, $write);\n";
+			}
+		};
+		#show migration results,list of objects that successes,failures,ignores--end
+		#show migration results,list of objects that successes,failures,ignores--start
+		if($sql_output =~ /\Q$db\E/gi){
+		   push(@success_object,$db);
+		}else{
+		   push(@err_object,$db);
+		}
+
+		if($@){ 
+			$error_dic{$db} = "$@";
+			$i++;
+			next;
+		}
+		
+		$i++;
+		#show migration results,list of objects that successes,failures,ignores--end		
 	}
 	if (!$self->{quiet} && !$self->{debug}) {
 		print STDERR $self->progress_bar($i - 1, $num_total_directory, 25, '=', 'directory', 'end of output.'), "\n";
@@ -5053,6 +5758,12 @@ sub export_directory
 	}
 
 	$self->dump($sql_header . $sql_output);
+	
+	#show migration results,list of objects that successes,failures,ignores--start
+	my $sql = "SELECT p.GRANTEE, d.DIRECTORY_NAME FROM $self->{prefix}_DIRECTORIES d, $self->{prefix}_TAB_PRIVS p WHERE d.DIRECTORY_NAME = p.TABLE_NAME AND p.GRANTEE = '$self->{schema}'";
+	@ignore_object = _get_ignore_object($self,$sql,\@object_info);
+	type_log($self,\@success_object,\@err_object,\@ignore_object,$self->{type},%error_dic);
+	#show migration results,list of objects that successes,failures,ignores--end
 
 	return;
 }
@@ -5069,6 +5780,14 @@ sub export_trigger
 
 	my $sql_header = $self->_set_file_header();
 	my $sql_output = "";
+	
+	#show migration results,list of objects that successes,failures,ignores--start
+	my @object_info = ();
+	my @success_object = ();
+	my @err_object = ();
+	my @ignore_object = ();
+	my %error_dic = ();
+	#show migration results,list of objects that successes,failures,ignores--end
 
 	$self->logit("Add triggers definition...\n", 1);
 
@@ -5086,6 +5805,8 @@ sub export_trigger
 	my $PGBAR_REFRESH = set_refresh_count($num_total_trigger);
 	foreach my $trig (sort {$a->[0] cmp $b->[0]} @{$self->{triggers}})
 	{
+		#show migration results,list of objects that successes,failures,ignores--start
+=head2
 		if (!$self->{quiet} && !$self->{debug} && ($count_trig % $PGBAR_REFRESH) == 0) {
 			print STDERR $self->progress_bar($i, $num_total_trigger, 25, '=', 'triggers', "generating $trig->[0]" ), "\r";
 		}
@@ -5308,6 +6029,252 @@ sub export_trigger
 		}
 		$nothing++;
 		$i++;
+=cut
+		#show migration results,list of objects that successes,failures,ignores--end
+		
+		#show migration results,list of objects that successes,failures,ignores--start
+		eval{
+			push(@object_info,$trig->[0]);
+			if (!$self->{quiet} && !$self->{debug} && ($count_trig % $PGBAR_REFRESH) == 0) {
+				print STDERR $self->progress_bar($i, $num_total_trigger, 25, '=', 'triggers', "generating $trig->[0]" ), "\r";
+			}
+			$count_trig++;
+			my $fhdl = undef;
+			if ($self->{file_per_function})
+			{
+				my $schm = '';
+				$schm = $trig->[8] . '-' if ($self->{export_schema} && !$self->{schema});
+				my $f = "$dirprefix$schm$trig->[0]_$self->{output}";
+				$f =~ s/\.(?:gz|bz2)$//i;
+				$self->dump("\\i$self->{psql_relative_path} $f\n");
+				$self->logit("Dumping to one file per trigger : $schm$trig->[0]_$self->{output}\n", 1);
+				$fhdl = $self->open_export_file("$schm$trig->[0]_$self->{output}");
+				$self->set_binmode($fhdl) if (!$self->{compress});
+				$self->save_filetoupdate_list("ORA2PG_$self->{type}", lc($trig->[0]), "$dirprefix$schm$trig->[0]_$self->{output}");
+			}
+			else
+			{
+				$self->save_filetoupdate_list("ORA2PG_$self->{type}", lc($trig->[0]), "$dirprefix$self->{output}");
+			}
+			$trig->[1] =~ s/\s*EACH ROW//is;
+			chomp($trig->[4]);
+
+			$trig->[4] =~ s/([^\*])[;\/]$/$1/;
+
+			$self->logit("\tDumping trigger $trig->[0] defined on table $trig->[3]...\n", 1);
+			my $tbname = $self->get_replaced_tbname($trig->[3]);
+
+			# Store current trigger table name for possible use in outer join translation
+			$self->{current_trigger_table} = $trig->[3];
+
+			# Replace column name in function code
+			if (exists $self->{replaced_cols}{"\L$trig->[3]\E"})
+			{
+				foreach my $coln (sort keys %{$self->{replaced_cols}{"\L$trig->[3]\E"}})
+				{
+					$self->logit("\tReplacing column \L$coln\E as " . $self->{replaced_cols}{"\L$trig->[3]\E"}{"\L$coln\E"} . "...\n", 1);
+					my $cname = $self->{replaced_cols}{"\L$trig->[3]\E"}{"\L$coln\E"};
+					$cname = $self->quote_object_name($cname);
+					$trig->[4] =~ s/(OLD|NEW)\.$coln\b/$1\.$cname/igs;
+					$trig->[6] =~ s/\b$coln\b/$self->{replaced_cols}{"\L$trig->[3]\E"}{"\L$coln\E"}/is;
+				}
+			}
+			# Extract columns specified in the UPDATE OF ... ON clause
+			my $cols = '';
+			if ($trig->[2] =~ /UPDATE/ && $trig->[6] =~ /UPDATE\s+OF\s+(.*?)\s+ON/i)
+			{
+				my @defs = split(/\s*,\s*/, $1);
+				$cols = ' OF ';
+				foreach my $c (@defs) {
+					$cols .= $self->quote_object_name($c) . ',';
+				}
+				$cols =~ s/,$//;
+			}
+
+			if ($self->{export_schema} && !$self->{schema}) {
+				$sql_output .= $self->set_search_path($trig->[8]) . "\n";
+			}
+			# Check if it's like a pg rule
+			$self->_remove_comments(\$trig->[4]);
+			if (!$self->{pg_supports_insteadof} && $trig->[1] =~ /INSTEAD OF/)
+			{
+				if ($self->{plsql_pgsql})
+				{
+					$trig->[4] = Ora2Pg::PLSQL::convert_plsql_code($self, $trig->[4]);
+					$self->_replace_declare_var(\$trig->[4]);
+				}
+				$sql_output .= "CREATE$self->{create_or_replace} RULE " . $self->quote_object_name($trig->[0])
+							. " AS\n\tON " . $self->quote_object_name($trig->[2])
+							. " TO " . $self->quote_object_name($tbname)
+							. "\n\tDO INSTEAD\n(\n\t$trig->[4]\n);\n\n";
+				if ($self->{force_owner})
+				{
+					my $owner = $trig->[8];
+					$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
+					$sql_output .= "ALTER RULE " . $self->quote_object_name($trig->[0])
+								. " OWNER TO " . $self->quote_object_name($owner) . ";\n";
+				}
+			}
+			else
+			{
+				# Replace direct call of a stored procedure in triggers
+				if ($trig->[7] eq 'CALL')
+				{
+					if ($self->{plsql_pgsql})
+					{
+						$trig->[4] = Ora2Pg::PLSQL::convert_plsql_code($self, $trig->[4]);
+						$self->_replace_declare_var(\$trig->[4]);
+					}
+					$trig->[4] = "BEGIN\nPERFORM $trig->[4];\nEND;";
+				}
+				else
+				{
+					my $ret_kind = 'RETURN NEW;';
+					if (uc($trig->[2]) eq 'DELETE') {
+						$ret_kind = 'RETURN OLD;';
+					} elsif (uc($trig->[2]) =~ /DELETE/) {
+						$ret_kind = "IF TG_OP = 'DELETE' THEN\n\tRETURN OLD;\nELSE\n\tRETURN NEW;\nEND IF;\n";
+					}
+					if ($self->{plsql_pgsql})
+					{
+						# Add a semi colon if none
+						if ($trig->[4] !~ /\bBEGIN\b/i)
+						{
+							chomp($trig->[4]);
+							$trig->[4] .= ';' if ($trig->[4] !~ /;\s*$/s);
+							$trig->[4] = "BEGIN\n$trig->[4]\n$ret_kind\nEND;";
+						}
+						$trig->[4] = Ora2Pg::PLSQL::convert_plsql_code($self, $trig->[4]);
+						$self->_replace_declare_var(\$trig->[4]);
+
+						# When an exception statement is used enclosed everything
+						# in a block before returning NEW
+						if ($trig->[4] =~ /EXCEPTION(.*?)\b(END[;]*)[\s\/]*$/is)
+						{
+							$trig->[4] =~ s/^\s*BEGIN/BEGIN\n  BEGIN/ism;
+							$trig->[4] =~ s/\b(END[;]*)[\s\/]*$/  END;\n$1/is;
+						}
+						# Add return statement.
+						$trig->[4] =~ s/\b(END[;]*)(\s*\%ORA2PG_COMMENT\d+\%\s*)?[\s\/]*$/$ret_kind\n$1$2/igs;
+						# Look at function header to convert sql type
+						my @parts = split(/BEGIN/i, $trig->[4]);
+						if ($#parts > 0)
+						{
+							if (!$self->{is_mysql}) {
+								$parts[0] = Ora2Pg::PLSQL::replace_sql_type($parts[0], $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type}, $self->{varchar_to_text}, %{$self->{data_type}});
+							} else {
+								$parts[0] = Ora2Pg::MySQL::replace_sql_type($parts[0], $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type}, $self->{varchar_to_text}, %{$self->{data_type}});
+							}
+						}
+						$trig->[4] = join('BEGIN', @parts);
+						$trig->[4] =~ s/\bRETURN\s*;/$ret_kind/igs;
+					}
+				}
+				$sql_output .= "DROP TRIGGER $self->{pg_supports_ifexists} " . $self->quote_object_name($trig->[0])
+							. " ON " . $self->quote_object_name($tbname) . " CASCADE;\n";
+				my $security = '';
+				my $revoke = '';
+				my $trig_fctname = $self->quote_object_name("trigger_fct_\L$trig->[0]\E");
+				if ($self->{security}{"\U$trig->[0]\E"}{security} eq 'DEFINER')
+				{
+					$security = " SECURITY DEFINER";
+					$revoke = "-- REVOKE ALL ON FUNCTION $trig_fctname() FROM PUBLIC;\n";
+				}
+				$security = " SECURITY INVOKER" if ($self->{force_security_invoker});
+				if ($self->{pg_supports_when} && $trig->[5])
+				{
+					if (!$self->{preserve_case})
+					{
+						$trig->[4] =~ s/"([^"]+)"/\L$1\E/gs;
+						$trig->[4] =~ s/ALTER TRIGGER\s+[^\s]+\s+ENABLE(;)?//;
+					}
+					$sql_output .= "CREATE$self->{create_or_replace} FUNCTION $trig_fctname() RETURNS trigger AS \$BODY\$\n$trig->[4]\n\$BODY\$\n LANGUAGE 'plpgsql'$security;\n$revoke\n";
+					if ($self->{force_owner})
+					{
+						my $owner = $trig->[8];
+						$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
+						$sql_output .= "ALTER FUNCTION $trig_fctname() OWNER TO " . $self->quote_object_name($owner) . ";\n\n";
+					}
+					$self->_remove_comments(\$trig->[6]);
+					$trig->[6] =~ s/\n+$//s;
+					$trig->[6] =~ s/^[^\.\s]+\.//;
+					if (!$self->{preserve_case}) {
+						$trig->[6] =~ s/"([^"]+)"/\L$1\E/gs;
+					}
+					chomp($trig->[6]);
+					# Remove referencing clause, not supported by PostgreSQL
+					$trig->[6] =~ s/REFERENCING\s+(.*?)(FOR\s+EACH\s+)/$2/is;
+					$trig->[6] =~ s/^\s*["]*(?:$trig->[0])["]*//is;
+					$trig->[6] =~ s/\s+ON\s+([^"\s]+)\s+/" ON " . $self->quote_object_name($1) . " "/ies;
+					$sql_output .= "DROP TRIGGER $self->{pg_supports_ifexists} " . $self->quote_object_name($trig->[0]) . " ON " . $self->quote_object_name($1) . ";\n" if ($self->{drop_if_exists});
+					$sql_output .= "CREATE TRIGGER " . $self->quote_object_name($trig->[0]) . "$trig->[6]\n";
+					if ($trig->[5])
+					{
+						$self->_remove_comments(\$trig->[5]);
+						$trig->[5] =~ s/"([^"]+)"/\L$1\E/gs if (!$self->{preserve_case});
+						if ($self->{plsql_pgsql})
+						{
+							$trig->[5] = Ora2Pg::PLSQL::convert_plsql_code($self, $trig->[5]);
+							$self->_replace_declare_var(\$trig->[5]);
+						}
+						$sql_output .= "\tWHEN ($trig->[5])\n";
+					}
+					$sql_output .= "\tEXECUTE PROCEDURE $trig_fctname();\n\n";
+				}
+				else
+				{
+					if (!$self->{preserve_case})
+					{
+						$trig->[4] =~ s/"([^"]+)"/\L$1\E/gs;
+						$trig->[4] =~ s/ALTER TRIGGER\s+[^\s]+\s+ENABLE(;)?//;
+					}
+					$sql_output .= "CREATE$self->{create_or_replace} FUNCTION $trig_fctname() RETURNS trigger AS \$BODY\$\n$trig->[4]\n\$BODY\$\n LANGUAGE 'plpgsql'$security;\n$revoke\n";
+					if ($self->{force_owner})
+					{
+						my $owner = $trig->[8];
+						$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
+						$sql_output .= "ALTER FUNCTION $trig_fctname() OWNER TO " . $self->quote_object_name($owner) . ";\n\n";
+					}
+					$sql_output .= "DROP TRIGGER $self->{pg_supports_ifexists} " . $self->quote_object_name($trig->[0]) . " ON " . $self->quote_object_name($tbname) . ";\n" if ($self->{drop_if_exists});
+					$sql_output .= "CREATE TRIGGER " . $self->quote_object_name($trig->[0]) . "\n\t";
+					my $statement = 0;
+					$statement = 1 if ($trig->[1] =~ s/ STATEMENT//);
+					$sql_output .= "$trig->[1] $trig->[2]$cols ON " . $self->quote_object_name($tbname) . " ";
+					if ($statement) {
+						$sql_output .= "FOR EACH STATEMENT\n";
+					} else {
+						$sql_output .= "FOR EACH ROW\n";
+					}
+					$sql_output .= "\tEXECUTE PROCEDURE $trig_fctname();\n\n";
+				}
+			}
+			$self->_restore_comments(\$sql_output);
+			#show migration results,list of objects that successes,failures,ignores--start
+			if($sql_output =~ /\Q$trig->[0]\E/gi){
+			   push(@success_object,$trig->[0]);
+			}else{
+			   push(@err_object,$trig->[0]);
+			}
+			#show migration results,list of objects that successes,failures,ignores--end
+			if ($self->{file_per_function})
+			{
+				$self->dump($sql_header . $sql_output, $fhdl);
+				$self->close_export_file($fhdl);
+				$sql_output = '';
+			}
+		};
+		#show migration results,list of objects that successes,failures,ignores--end
+		#show migration results,list of objects that successes,failures,ignores--start
+		if($@){ 
+			$error_dic{$trig->[0]} = "$@";
+			$nothing++;
+			$i++;
+			next;
+		}
+		#show migration results,list of objects that successes,failures,ignores--end
+		$nothing++;
+		$i++;
+		
 	}
 	delete $self->{current_trigger_table};
 
@@ -5319,7 +6286,12 @@ sub export_trigger
 	}
 
 	$self->dump($sql_output);
-
+	#show migration results,list of objects that successes,failures,ignores--start
+	my $sql = "SELECT OWNER, TRIGGER_NAME FROM $self->{prefix}_TRIGGERS WHERE STATUS='ENABLED' AND OWNER = '$self->{schema}'";
+	@ignore_object = _get_ignore_object($self,$sql,\@object_info);
+	type_log($self,\@success_object,\@err_object,\@ignore_object,$self->{type},%error_dic);
+	#show migration results,list of objects that successes,failures,ignores--end
+	
 	return;
 }
 
@@ -5554,6 +6526,14 @@ sub export_function
 
 	my $sql_header = $self->_set_file_header();
 	my $sql_output = "";
+	
+	#show migration results,list of objects that successes,failures,ignores--start
+	my @object_info = ();
+	my @success_object = ();
+	my @err_object = ();
+	my @ignore_object = ();
+	my %error_dic = ();
+	#show migration results,list of objects that successes,failures,ignores--end
 
 	use constant SQL_DATATYPE => 2;
 	$self->logit("Add functions definition...\n", 1);
@@ -5660,11 +6640,16 @@ sub export_function
 	{
 		$fct_group[$i++]{$key} = $self->{functions}{$key};
 		$i = 0 if ($i == $num_chunk);
+		#show migration results,list of objects that successes,failures,ignores--start
+		push(@object_info, $key);
+		#show migration results,list of objects that successes,failures,ignores--end
 	}
 	my $num_cur_fct = 0;
 	for ($i = 0; $i <= $#fct_group; $i++)
 	{
 
+		#show migration results,list of objects that successes,failures,ignores--start
+=head2
 		if ($self->{jobs} > 1) {
 			$self->logit("Creating a new process to translate functions...\n", 1);
 			spawn sub {
@@ -5679,6 +6664,33 @@ sub export_function
 		}
 		$num_cur_fct += scalar keys %{$fct_group[$i]};
 		$nothing++;
+=cut
+		#show migration results,list of objects that successes,failures,ignores--end
+		
+		#show migration results,list of objects that successes,failures,ignores--start
+		eval{
+			if ($self->{jobs} > 1) {
+				$self->logit("Creating a new process to translate functions...\n", 1);
+				spawn sub {
+					$self->translate_function($num_cur_fct, $num_total_function, %{$fct_group[$i]});
+				};
+				$parallel_fct_count++;
+			} else {
+				#show migration results,list of objects that successes,failures,ignores--start
+				my ($code, $lsize, $lcost, %error_msg) = $self->translate_function($num_cur_fct, $num_total_function, %{$fct_group[$i]});
+				if(%error_msg){
+					%error_dic = %error_msg;
+				}
+				#show migration results,list of objects that successes,failures,ignores--end
+				$sql_output .= $code;
+				$total_size += $lsize;
+				$cost_value += $lcost;
+			}
+		};
+		#show migration results,list of objects that successes,failures,ignores--end
+		$num_cur_fct += scalar keys %{$fct_group[$i]};
+		$nothing++;
+		
 	}
 	# Wait for all oracle connection terminaison
 	if ($self->{jobs} > 1)
@@ -5721,8 +6733,31 @@ sub export_function
 	if (!$nothing) {
 		$sql_output = "-- Nothing found of type $self->{type}\n" if (!$self->{no_header});
 	}
-
+	#show migration results,list of objects that successes,failures,ignores--start
+	foreach my $object_name (@object_info){
+		if($self->{file_per_function}){
+			@success_object = @output_file;
+			if(!grep(/^$object_name$/ig, @output_file)){
+			    push(@err_object,$object_name);
+			} 
+		}
+		if(!$self->{file_per_function}){
+			if ($sql_output =~ /\Q$object_name\E/gi){
+				push(@success_object,$object_name);
+			}else{
+				push(@err_object,$object_name);
+			
+			}
+		}
+	}
+	#show migration results,list of objects that successes,failures,ignores--end
 	$self->dump($sql_output);
+	
+	#show migration results,list of objects that successes,failures,ignores--start
+	my $sql = "SELECT DISTINCT OWNER, OBJECT_NAME FROM $self->{prefix}_OBJECTS WHERE OBJECT_TYPE='FUNCTION' AND OWNER='$self->{schema}'";
+	@ignore_object = _get_ignore_object($self,$sql,\@object_info);
+	type_log($self,\@success_object,\@err_object,\@ignore_object,$self->{type}, %error_dic);
+	#show migration results,list of objects that successes,failures,ignores--end
 
 	$self->{functions} = ();
 
@@ -5745,7 +6780,15 @@ sub export_procedure
 
 	my $sql_header = $self->_set_file_header();
 	my $sql_output = "";
-
+	
+	#show migration results,list of objects that successes,failures,ignores--start
+	my @object_info = ();
+	my @success_object = ();
+	my @err_object = ();
+	my @ignore_object = ();
+	my %error_dic = ();
+	#show migration results,list of objects that successes,failures,ignores--end
+	
 	use constant SQL_DATATYPE => 2;
 	$self->logit("Add procedures definition...\n", 1);
 	my $nothing = 0;
@@ -5871,9 +6914,14 @@ sub export_procedure
 	foreach my $key (sort keys %{$self->{procedures}} ) {
 		$fct_group[$i++]{$key} = $self->{procedures}{$key};
 		$i = 0 if ($i == $num_chunk);
+		#show migration results,list of objects that successes,failures,ignores--start
+		push(@object_info, $key);
+		#show migration results,list of objects that successes,failures,ignores--end
 	}
 	my $num_cur_fct = 0;
 	for ($i = 0; $i <= $#fct_group; $i++) {
+		#show migration results,list of objects that successes,failures,ignores--start
+=head2
 		if ($self->{jobs} > 1) {
 			$self->logit("Creating a new process to translate procedures...\n", 1);
 			spawn sub {
@@ -5888,6 +6936,33 @@ sub export_procedure
 		}
 		$num_cur_fct += scalar keys %{$fct_group[$i]};
 		$nothing++;
+=cut
+		#show migration results,list of objects that successes,failures,ignores--end
+		
+		#show migration results,list of objects that successes,failures,ignores--start
+		eval{
+			if ($self->{jobs} > 1) {
+			$self->logit("Creating a new process to translate procedures...\n", 1);
+			spawn sub {
+				$self->translate_function($num_cur_fct, $num_total_function, %{$fct_group[$i]});
+			};
+			$parallel_fct_count++;
+			} else {
+				#show migration results,list of objects that successes,failures,ignores--start
+				my ($code, $lsize, $lcost, %error_msg) = $self->translate_function($num_cur_fct, $num_total_function, %{$fct_group[$i]});
+				if(%error_msg){
+					%error_dic = %error_msg;
+				}
+				#show migration results,list of objects that successes,failures,ignores--end
+				$sql_output .= $code;
+				$total_size += $lsize;;
+				$cost_value += $lcost;
+			}
+		};
+		#show migration results,list of objects that successes,failures,ignores--end
+		$num_cur_fct += scalar keys %{$fct_group[$i]};
+		$nothing++;
+		
 	}
 
 	# Wait for all oracle connection terminaison
@@ -5932,9 +7007,33 @@ sub export_procedure
 	if (!$nothing) {
 		$sql_output = "-- Nothing found of type $self->{type}\n" if (!$self->{no_header});
 	}
-
+	#show migration results,list of objects that successes,failures,ignores--start
+	foreach my $object_name (@object_info){
+		if($self->{file_per_function}){
+			@success_object = @output_file;
+			if(!grep(/^$object_name$/ig, @output_file)){
+			    push(@err_object,$object_name);
+			} 
+		}
+		if(!$self->{file_per_function}){
+			if ($sql_output =~ /CREATE OR REPLACE PROCEDURE \Q$object_name\E/gi){
+				push(@success_object,$object_name);
+			}else{
+				push(@err_object,$object_name);
+				
+			}
+		}
+	}
+	#show migration results,list of objects that successes,failures,ignores--end
+	
 	$self->dump($sql_output);
-
+	
+	#show migration results,list of objects that successes,failures,ignores--start
+	my $sql = "SELECT DISTINCT OWNER, OBJECT_NAME FROM $self->{prefix}_OBJECTS WHERE OBJECT_TYPE='PROCEDURE' AND OWNER='$self->{schema}'";
+	@ignore_object = _get_ignore_object($self,$sql,\@object_info);
+	type_log($self,\@success_object,\@err_object,\@ignore_object,$self->{type}, %error_dic);
+	#show migration results,list of objects that successes,failures,ignores--end
+	
 	$self->{procedures} = ();
 
 	my $t1 = Benchmark->new;
@@ -5956,6 +7055,14 @@ sub export_package
 
 	my $sql_header = $self->_set_file_header();
 	my $sql_output = "";
+	
+	#show migration results,list of objects that successes,failures,ignores--start
+	my @object_info = ();
+	my @success_object = ();
+	my @err_object = ();
+	my @ignore_object = ();
+	my %error_dic = ();
+	#show migration results,list of objects that successes,failures,ignores--end
 
 	$self->{current_package} = '';
 	$self->logit("Add packages definition...\n", 1);
@@ -6055,6 +7162,8 @@ sub export_package
 	my $num_total_package = scalar keys %{$self->{packages}};
 	foreach my $pkg (sort keys %{$self->{packages}})
 	{
+		#show migration results,list of objects that successes,failures,ignores--start
+=head2
 		my $total_size = 0;
 		my $total_size_no_comment = 0;
 		my $cost_value = 0;
@@ -6187,6 +7296,159 @@ sub export_package
 		$self->{total_pkgcost} += ($number_fct*$Ora2Pg::PLSQL::OBJECT_SCORE{'FUNCTION'});
 		$self->{total_pkgcost} += $Ora2Pg::PLSQL::OBJECT_SCORE{'PACKAGE BODY'};
 		$i++;
+=cut
+		#show migration results,list of objects that successes,failures,ignores--end
+		
+		#show migration results,list of objects that successes,failures,ignores--start
+		eval{
+			push(@object_info,$pkg);
+			my $total_size = 0;
+			my $total_size_no_comment = 0;
+			my $cost_value = 0;
+			if (!$self->{quiet} && !$self->{debug}) {
+				print STDERR $self->progress_bar($i, $num_total_package, 25, '=', 'packages', "generating $pkg" ), "\r";
+			}
+			$i++, next if (!$self->{packages}{$pkg}{text} && !$self->{packages}{$pkg}{desc});
+
+			# Save and cleanup previous global variables defined in other package
+			if (scalar keys %{$self->{global_variables}})
+			{
+				foreach my $n (sort keys %{$self->{global_variables}})
+				{
+					if (exists $self->{global_variables}{$n}{constant} || exists $self->{global_variables}{$n}{default}) {
+						$default_global_vars .= "$n = '$self->{global_variables}{$n}{default}'\n";
+					} else {
+						$default_global_vars .= "$n = ''\n";
+					}
+				}
+			}
+			%{$self->{global_variables}} = ();
+			my $pkgbody = '';
+			my $fct_cost = '';
+			if (!$self->{plsql_pgsql})
+			{
+				$self->logit("Dumping package $pkg...\n", 1);
+				if ($self->{file_per_function})
+				{
+					my $f = "$dirprefix\L${pkg}\E_$self->{output}";
+					$f =~ s/\.(?:gz|bz2)$//i;
+					$pkgbody = "\\i$self->{psql_relative_path} $f\n";
+					my $fhdl = $self->open_export_file("$dirprefix\L${pkg}\E_$self->{output}", 1);
+					$self->set_binmode($fhdl) if (!$self->{compress});
+					$self->dump($sql_header . $self->{packages}{$pkg}{desc} . "\n\n" . $self->{packages}{$pkg}{text}, $fhdl);
+					$self->close_export_file($fhdl);
+				} else {
+					$pkgbody = $self->{packages}{$pkg}{desc} . "\n\n" . $self->{packages}{$pkg}{text};
+				}
+
+			}
+			else
+			{
+				$self->{current_package} = $pkg;
+
+				# If there is a declaration only do not go further than looking at global var and packages type
+			if (!$self->{packages}{$pkg}{text})
+			{
+				my $t = $self->_convert_package($pkg);
+				$self->_restore_comments(\$t) if (!$self->{file_per_function});
+
+				$sql_output .= "\n\n-- Oracle package '$pkg' declaration, please edit to match PostgreSQL syntax.\n";
+				$sql_output .= $t . "\n";
+				$sql_output .= "-- End of Oracle package '$pkg' declaration\n\n";
+				if ($self->{estimate_cost}) {
+					$sql_output .= "-- Total size of package code: $total_size bytes.\n";
+					$sql_output .= "-- Total size of package code without comments and header: $total_size_no_comment bytes.\n";
+					$sql_output .= "-- Detailed cost per function:\n" . $fct_cost;
+				}
+				$nothing++;
+				$i++;
+				next;
+			}
+
+				if ($self->{estimate_cost}) {
+					$total_size += length($self->{packages}->{$pkg}{text});
+				}
+				$self->_remove_comments(\$self->{packages}{$pkg}{text});
+
+				# Remove trailing comment and space
+				$self->{packages}{$pkg}{text} =~ s/(\s*\%ORA2PG_COMMENT\d+\%)\s*$//s;
+				$self->{packages}{$pkg}{text} =~ s/\s*$//s;
+
+				# Normalyse package creation call
+				$self->{packages}{$pkg}{text} =~ s/CREATE(?:\s+OR\s+REPLACE)?(?:\s+EDITIONABLE|\s+NONEDITIONABLE)?\s+PACKAGE\s+/CREATE OR REPLACE PACKAGE /is;
+				if ($self->{estimate_cost})
+				{
+					my %infos = $self->_lookup_package($self->{packages}{$pkg}{text});
+					foreach my $f (sort keys %infos)
+					{
+						next if (!$f);
+						my @cnt = $infos{$f}{code} =~ /(\%ORA2PG_COMMENT\d+\%)/i;
+						$total_size_no_comment += (length($infos{$f}{code}) - (17 * length(join('', @cnt))));
+						my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($self, $infos{$f}{code});
+						$self->logit("Function $f estimated cost: $cost\n", 1);
+						$cost_value += $cost;
+						$number_fct++;
+						$fct_cost .= "\t-- Function $f total estimated cost: $cost\n";
+						foreach (sort { $cost_detail{$b} <=> $cost_detail{$a} } keys %cost_detail) {
+							next if (!$cost_detail{$_});
+							$fct_cost .= "\t\t-- $_ => $cost_detail{$_}";
+							if (!$self->{is_mysql}) {
+								$fct_cost .= " (cost: $Ora2Pg::PLSQL::UNCOVERED_SCORE{$_})" if ($Ora2Pg::PLSQL::UNCOVERED_SCORE{$_});
+							} else {
+								$fct_cost .= " (cost: $Ora2Pg::PLSQL::UNCOVERED_MYSQL_SCORE{$_})" if ($Ora2Pg::PLSQL::UNCOVERED_MYSQL_SCORE{$_});
+							}
+							$fct_cost .= "\n";
+						}
+					}
+					$cost_value += $Ora2Pg::PLSQL::OBJECT_SCORE{'PACKAGE BODY'};
+					$fct_cost .= "-- Total estimated cost for package $pkg: $cost_value units, " . $self->_get_human_cost($cost_value) . "\n";
+				}
+				$txt = $self->_convert_package($pkg);
+				$self->_restore_comments(\$txt) if (!$self->{file_per_function});
+				$txt =~ s/(-- REVOKE ALL ON (?:FUNCTION|PROCEDURE) [^;]+ FROM PUBLIC;)/&remove_newline($1)/sge;
+				if (!$self->{file_per_function}) {
+					$self->normalize_function_call(\$txt);
+				}
+				$pkgbody .= $txt;
+				$pkgbody =~ s/[\r\n]*\bEND;\s*$//is;
+				$pkgbody =~ s/(\s*;)\s*$/$1/is;
+			}	
+			if ($self->{estimate_cost})
+			{
+				$self->logit("Total size of package code: $total_size bytes.\n", 1);
+				$self->logit("Total size of package code without comments and header: $total_size_no_comment bytes.\n", 1);
+				$self->logit("Total estimated cost for package $pkg: $cost_value units, " . $self->_get_human_cost($cost_value) . ".\n", 1);
+			}
+			if ($pkgbody && ($pkgbody =~ /[a-z]/is))
+			{
+				$sql_output .= "\n\n-- Oracle package '$pkg' declaration, please edit to match PostgreSQL syntax.\n";
+				$sql_output .= $pkgbody . "\n";
+				$sql_output .= "-- End of Oracle package '$pkg' declaration\n\n";
+				if ($self->{estimate_cost}) {
+					$sql_output .= "-- Total size of package code: $total_size bytes.\n";
+					$sql_output .= "-- Total size of package code without comments and header: $total_size_no_comment bytes.\n";
+					$sql_output .= "-- Detailed cost per function:\n" . $fct_cost;
+				}
+				$nothing++;
+			}
+			$self->{total_pkgcost} += ($number_fct*$Ora2Pg::PLSQL::OBJECT_SCORE{'FUNCTION'});
+			$self->{total_pkgcost} += $Ora2Pg::PLSQL::OBJECT_SCORE{'PACKAGE BODY'};
+		};
+		#show migration results,list of objects that successes,failures,ignores--end
+		#show migration results,list of objects that successes,failures,ignores--start
+		if ($sql_output =~ /\Q$pkg\E/gi){
+			push(@success_object,$pkg);
+		}else{
+			push(@err_object,$pkg);
+		}
+		if ($@){ 
+			$error_dic{$pkg} = "$@";
+			$i++;
+			next;
+		} 
+		#show migration results,list of objects that successes,failures,ignores--end
+		$i++;
+		
 	}
 	if ($self->{estimate_cost} && $number_fct) {
 		$self->logit("Total number of functions found inside all packages: $number_fct.\n", 1);
@@ -6199,6 +7461,12 @@ sub export_package
 	}
 
 	$self->dump($sql_output);
+	
+	#show migration results,list of objects that successes,failures,ignores--start
+	my $sql = "SELECT DISTINCT OWNER,OBJECT_NAME FROM $self->{prefix}_OBJECTS WHERE OBJECT_TYPE='PACKAGE' AND OWNER='$self->{schema}'";
+	@ignore_object = _get_ignore_object($self,$sql,\@object_info);
+	type_log($self,\@success_object,\@err_object,\@ignore_object,$self->{type}, %error_dic);
+	#show migration results,list of objects that successes,failures,ignores--end
 
 	$self->{packages} = ();
 	$sql_output = '';
@@ -6242,6 +7510,14 @@ sub export_type
 
 	my $sql_header = $self->_set_file_header();
 	my $sql_output = "";
+	
+	#show migration results,list of objects that successes,failures,ignores--start
+	my @object_info = ();
+	my @success_object = ();
+	my @err_object = ();
+	my @ignore_object = ();
+	my %error_dic = ();
+	#show migration results,list of objects that successes,failures,ignores--end
 
 	$self->logit("Add custom types definition...\n", 1);
 	#---------------------------------------------------------
@@ -6277,6 +7553,8 @@ sub export_type
 	my $i = 1;
 	foreach my $tpe (sort {$a->{pos} <=> $b->{pos} } @{$self->{types}})
 	{
+		#show migration results,list of objects that successes,failures,ignores--start
+=head2
 		$self->logit("Dumping type $tpe->{name}...\n", 1);
 		if (!$self->{quiet} && !$self->{debug}) {
 			print STDERR $self->progress_bar($i, $#{$self->{types}}+1, 25, '=', 'types', "generating $tpe->{name}" ), "\r";
@@ -6291,6 +7569,48 @@ sub export_type
 		$tpe->{code} =~ s/REPLACE type/REPLACE TYPE/;
 		$sql_output .= $tpe->{comment} . $tpe->{code} . "\n";
 		$i++;
+=cut
+		#show migration results,list of objects that successes,failures,ignores--end
+		
+		#show migration results,list of objects that successes,failures,ignores--start
+		eval{
+			push(@object_info, $tpe->{name});
+			$self->logit("Dumping type $tpe->{name}...\n", 1);
+			if (!$self->{quiet} && !$self->{debug}) {
+				print STDERR $self->progress_bar($i, $#{$self->{types}}+1, 25, '=', 'types', "generating $tpe->{name}" ), "\r";
+			}
+			if ($self->{plsql_pgsql}) {
+				$tpe->{code} = $self->_convert_type($tpe->{code}, $tpe->{owner});
+			} else {
+				if ($tpe->{code} !~ /^SUBTYPE\s+/) {
+					$tpe->{code} = "CREATE$self->{create_or_replace} $tpe->{code}\n";
+				}
+			}
+			$tpe->{code} =~ s/REPLACE type/REPLACE TYPE/;
+			#show information about the cause of failure that occurred during conversion--start
+			if($tpe->{code} =~ /constructor function/ig or !$tpe->{code} =~ /member function/ig){
+				$error_dic{$tpe->{name}} = "Custom type [constructor function OR member function] exists and cannot be imported to PostgreSQL";
+			}else{
+				$sql_output .= $tpe->{comment} . $tpe->{code} . "\n";
+			}
+			#show information about the cause of failure that occurred during conversion--end
+			 
+		};
+		#show migration results,list of objects that successes,failures,ignores--end
+		#show migration results,list of objects that successes,failures,ignores--start
+		if ($sql_output =~ /\Q$tpe->{name}\E/gi){
+			push(@success_object,$tpe->{name});
+		}else{
+			push(@err_object,$tpe->{name});
+		}
+		if ($@){ 
+			$error_dic{$tpe->{name}} = "$@";
+			$i++;
+			next;
+		} 
+		#show migration results,list of objects that successes,failures,ignores--end
+		$i++;
+		
 	}
 	$self->_restore_comments(\$sql_output);
 	$self->{comment_values} = ();
@@ -6305,6 +7625,12 @@ sub export_type
 		$sql_header .= "CREATE SCHEMA IF NOT EXISTS " . $self->quote_object_name($self->{pg_schema} || $self->{schema}) . ";\n";
 	}
 	$self->dump($sql_header . $sql_output);
+	
+	#show migration results,list of objects that successes,failures,ignores--start
+	my $sql = "SELECT DISTINCT OWNER,OBJECT_NAME FROM $self->{prefix}_OBJECTS WHERE OBJECT_TYPE='TYPE' AND OWNER='$self->{schema}'";
+	@ignore_object = _get_ignore_object($self,$sql,\@object_info);
+	type_log($self,\@success_object,\@err_object,\@ignore_object,$self->{type},%error_dic);
+	#show migration results,list of objects that successes,failures,ignores--end
 
 	return;
 }
@@ -6323,6 +7649,14 @@ sub export_tablespace
 	$sql_header .= "-- Oracle tablespaces export, please edit path to match your filesystem.\n";
 	$sql_header .= "-- In PostgreSQl the path must be a directory and is expected to already exists\n";
 	my $sql_output = "";
+	
+	#show migration results,list of objects that successes,failures,ignores--start
+	my @object_info = ();
+	my @success_object = ();
+	my @err_object = ();
+	my @ignore_object = ();
+	my %error_dic = ();
+	#show migration results,list of objects that successes,failures,ignores--end
 
 	$self->logit("Add tablespaces definition...\n", 1);
 
@@ -6335,6 +7669,8 @@ sub export_tablespace
 	my $dirprefix = '';
 	foreach my $tb_type (sort keys %{$self->{tablespaces}})
 	{
+		#show migration results,list of objects that successes,failures,ignores--start
+=head2
 		next if ($tb_type eq 'INDEX PARTITION' || $tb_type eq 'TABLE PARTITION');
 		# TYPE - TABLESPACE_NAME - FILEPATH - OBJECT_NAME
 		foreach my $tb_name (sort keys %{$self->{tablespaces}{$tb_type}})
@@ -6365,6 +7701,58 @@ sub export_tablespace
 				}
 			}
 		}
+=cut
+		#show migration results,list of objects that successes,failures,ignores--end
+		
+		#show migration results,list of objects that successes,failures,ignores--start
+		eval{
+			next if ($tb_type eq 'INDEX PARTITION' || $tb_type eq 'TABLE PARTITION');
+			# TYPE - TABLESPACE_NAME - FILEPATH - OBJECT_NAME
+			foreach my $tb_name (sort keys %{$self->{tablespaces}{$tb_type}})
+			{
+				foreach my $tb_path (sort keys %{$self->{tablespaces}{$tb_type}{$tb_name}})
+				{
+					# Replace Oracle tablespace filename
+					my $loc = $tb_name;
+					if ($tb_path =~ /^(.*[^\\\/]+)/) {
+						$loc = $1 . '/' . $loc;
+					}
+					if (!grep(/^$tb_name$/, @done))
+					{
+						$create_tb .= "CREATE TABLESPACE \L$tb_name\E LOCATION '$loc';\n";
+						my $owner = $self->{list_tablespaces}{$tb_name}{owner} || '';
+						$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
+						if ($owner)
+						{
+							$create_tb .= "ALTER TABLESPACE " . $self->quote_object_name($tb_name)
+									. " OWNER TO " . $self->quote_object_name($owner) . ";\n";
+						}
+					}
+					push(@done, $tb_name);
+					foreach my $obj (@{$self->{tablespaces}{$tb_type}{$tb_name}{$tb_path}}) {
+						next if ($self->{file_per_index} && ($tb_type eq 'INDEX'));
+						$sql_output .= "ALTER $tb_type " . $self->quote_object_name($obj)
+								. " SET TABLESPACE " . $self->quote_object_name($tb_name) . ";\n";
+						#show migration results,list of objects that successes,failures,ignores--start
+						push(@object_info, $obj);
+						if ($sql_output =~ /\Q$obj\E/gi){
+							push(@success_object,$obj);
+						}else{
+							push(@err_object,$obj);
+						#show migration results,list of objects that successes,failures,ignores--end
+						}
+					}
+				}
+			}
+		};
+		#show migration results,list of objects that successes,failures,ignores--end
+		#show migration results,list of objects that successes,failures,ignores--start
+		if ($@){ 
+			$error_dic{$self->{type}} = "$@";
+			next;
+		}  
+		#show migration results,list of objects that successes,failures,ignores--end
+		
 	}
 
 	$sql_output = "$create_tb\n" . $sql_output if ($create_tb);
@@ -6373,6 +7761,15 @@ sub export_tablespace
 	}
 	
 	$self->dump($sql_header . $sql_output);
+	
+	#show migration results,list of objects that successes,failures,ignores--start
+	my $sql = "SELECT a.TABLESPACE_NAME,a.SEGMENT_NAME,a.SEGMENT_TYPE,c.FILE_NAME, a.OWNER FROM DBA_SEGMENTS a, $self->{prefix}_OBJECTS b, DBA_DATA_FILES c WHERE a.SEGMENT_TYPE IN ('INDEX', 'TABLE', 'INDEX PARTITION', 'TABLE PARTITION') AND a.SEGMENT_NAME = b.OBJECT_NAME AND a.SEGMENT_TYPE = b.OBJECT_TYPE AND a.OWNER = b.OWNER AND a.TABLESPACE_NAME = c.TABLESPACE_NAME AND a.OWNER='$self->{schema}'";
+	@ignore_object = _get_ignore_object($self,$sql,\@object_info);
+	if ($self->{user_grants}) {
+		$error_dic{$self->{type}} = "Exporting tablespace as non DBA user is not allowed, see USER_GRANT";
+	}
+	type_log($self,\@success_object,\@err_object,\@ignore_object,$self->{type},%error_dic);
+	#show migration results,list of objects that successes,failures,ignores--end
 	
 	if ($self->{file_per_index} && (scalar keys %{$self->{tablespaces}} > 0))
 	{
@@ -6419,6 +7816,14 @@ sub export_kettle
 
 	my $sql_header = $self->_set_file_header();
 	my $sql_output = "";
+	
+	#show migration results,list of objects that successes,failures,ignores--start
+	my @object_info = ();
+	my @success_object = ();
+	my @err_object = ();
+	my @ignore_object = ();
+	my %error_dic = ();
+	#show migration results,list of objects that successes,failures,ignores--end
 
 	# Remove external table from data export
 	if (scalar keys %{$self->{external_table}} ) {
@@ -6442,12 +7847,37 @@ sub export_kettle
 	my $dirprefix = '';
 	$dirprefix = "$self->{output_dir}/" if ($self->{output_dir});
 	foreach my $table (@ordered_tables) {
-		$shell_commands .= $self->create_kettle_output($table, $dirprefix);
+		#show migration results,list of objects that successes,failures,ignores--start
+		#$shell_commands .= $self->create_kettle_output($table, $dirprefix);
+		eval{
+			push(@object_info, $table);
+			$shell_commands .= $self->create_kettle_output($table, $dirprefix);
+		};
+		#show migration results,list of objects that successes,failures,ignores--end
+		
+		#show migration results,list of objects that successes,failures,ignores--start
+		if ($shell_commands =~ /\Q$table\E/gi){
+			push(@success_object,$table);
+		}else{
+			push(@err_object,$table);
+		}
+		
+		if ($@){ 
+			$error_dic{$table} = "$@";
+			next;
+		} 
+		#show migration results,list of objects that successes,failures,ignores--end
 	}
 	$self->dump("#!/bin/sh\n\n", $fhdl);
 	$self->dump("KETTLE_TEMPLATE_PATH='.'\n\n", $fhdl);
 	$self->dump($shell_commands, $fhdl);
 
+	#show migration results,list of objects that successes,failures,ignores--start
+	my $sql = "SELECT OWNER,TABLE_NAME,NVL(num_rows,1) NUMBER_ROWS,TABLESPACE_NAME,NESTED,LOGGING,PARTITIONED,PCT_FREE FROM $self->{prefix}_TABLES  WHERE OWNER='$self->{schema}'";
+	@ignore_object = _get_ignore_object($self,$sql,\@object_info);
+	type_log($self,\@success_object,\@err_object,\@ignore_object,$self->{type},%error_dic);
+	#show migration results,list of objects that successes,failures,ignores--end
+	
 	return;
 }
 
@@ -6463,6 +7893,14 @@ sub export_partition
 
 	my $sql_header = $self->_set_file_header();
 	my $sql_output = "";
+	
+	#show migration results,list of objects that successes,failures,ignores--start
+	my @object_info = ();
+	my @success_object = ();
+	my @err_object = ();
+	my @ignore_object = ();
+	my %error_dic = ();
+	#show migration results,list of objects that successes,failures,ignores--end
 
 	$self->logit("Add partitions definition...\n", 1);
 
@@ -6500,6 +7938,8 @@ BEGIN
 		# Extract partitions in their position order
 		foreach my $pos (sort {$a <=> $b} keys %{$self->{partitions}{$table}})
 		{
+			#show migration results,list of objects that successes,failures,ignores--start
+=head2
 			next if (!$self->{partitions}{$table}{$pos}{name});
 			my $part = $self->{partitions}{$table}{$pos}{name};
 			if (!$self->{quiet} && !$self->{debug} && ($nparts % $PGBAR_REFRESH) == 0)
@@ -6534,7 +7974,6 @@ BEGIN
 
 			my @condition = ();
 			my @ind_col = ();
-			my $check_cond = '';
 			for (my $i = 0; $i <= $#{$self->{partitions}{$table}{$pos}{info}}; $i++)
 			{
 				# We received all values for partitonning on multiple column, so get the one at the right indice
@@ -6557,7 +7996,6 @@ BEGIN
 
 				if ($self->{partitions}{$table}{$pos}{info}[$i]->{type} eq 'LIST')
 				{
-					$value = $self->{partitions}{$table}{$pos}{info}[$i]->{value};
 					if (!$self->{pg_supports_partition}) {
 						$check_cond .= "\t$self->{partitions}{$table}{$pos}{info}[$i]->{column} IN ($value)";
 					} else {
@@ -6744,23 +8182,21 @@ BEGIN
 				$create_table_tmp .= $check_cond;
 				if (exists $self->{subpartitions_list}{"\L$table\E"}{"\L$part\E"}{type})
 				{
-					$create_table_tmp .= "\nPARTITION BY " . $self->{subpartitions_list}{"\L$table\E"}{"\L$part\E"}{type} . " (";
-					if (exists $self->{subpartitions_list}{"\L$table\E"}{"\L$part\E"}{columns})
+					if ($self->{subpartitions_list}{"\L$table\E"}{"\L$part\E"}{type})
 					{
+						$create_table_tmp .= "\nPARTITION BY " . $self->{subpartitions_list}{"\L$table\E"}{"\L$part\E"}{type} . " (";
 						for (my $j = 0; $j <= $#{$self->{subpartitions_list}{"\L$table\E"}{"\L$part\E"}{columns}}; $j++)
 						{
 							$create_table_tmp .= ', ' if ($j > 0);
 							$create_table_tmp .= $self->quote_object_name($self->{subpartitions_list}{"\L$table\E"}{"\L$part\E"}{columns}[$j]);
 						}
+						$create_table_tmp .= ")";
 					}
 					else
 					{
-						if ($self->{plsql_pgsql}) {
-							$self->{subpartitions_list}{"\L$table\E"}{"\L$part\E"}{expression} = Ora2Pg::PLSQL::convert_plsql_code($self, $self->{subpartitions_list}{"\L$table\E"}{"\L$part\E"}{expression});
-						}
-						$create_table_tmp .= $self->{subpartitions_list}{"\L$table\E"}{"\L$part\E"}{expression};
+						print STDERR "WARNING: unsupported subpartition type on table '$table' for partition '$part'\n";
+						$sql_output .=  " -- Unsupported partition type, please check\n";
 					}
-					$create_table_tmp .= 	")";
 				}
 				$create_table_tmp .= ";\n";
 			}
@@ -6869,7 +8305,7 @@ BEGIN
 							}
 							else
 							{
-								my $part_clause = " WITH (MODULUS " . (scalar keys %{$self->{subpartitions}{$table}{$part}}) . ", REMAINDER " . ($p-1) . ")";
+								my $part_clause = " WITH (MODULUS " . $self->{subpartitions_list}{"\L$table\E"}{"\L$part\E"}{count} . ", REMAINDER " . ($p-1) . ")";
 								$sub_check_cond_tmp .= $part_clause if ($sub_check_cond_tmp !~ /\Q$part_clause\E$/);
 							}
 						}
@@ -6918,9 +8354,8 @@ BEGIN
 							}
 
 							# Set the unique (and primary) key definition 
-							$idx = $self->_create_unique_keys($table, $self->{tables}{$table}{unique_key}, $part);
-							if ($idx)
-							{
+							$idx = $self->_create_unique_keys($table, $self->{tables}{$table}{unique_key});
+							if ($idx) {
 								$create_table_index_tmp .= "-- Reproduce subpartition unique indexes / pk that was defined on the parent table\n";
 								$idx =~ s/ $table/ $tb_name2/igs;
 								# remove indexes already created
@@ -7042,6 +8477,560 @@ BEGIN
 			$old_pos = $pos;
 			$create_table{$table}{table} .= $create_table_tmp;
 			$create_table{$table}{index} .= $create_table_index_tmp;
+=cut
+			#show migration results,list of objects that successes,failures,ignores--end
+			
+			#show migration results,list of objects that successes,failures,ignores--start
+			eval{
+				next if (!$self->{partitions}{$table}{$pos}{name});
+				my $part = $self->{partitions}{$table}{$pos}{name};
+				if (!$self->{quiet} && !$self->{debug} && ($nparts % $PGBAR_REFRESH) == 0)
+				{
+					print STDERR $self->progress_bar($nparts, $total_partition, 25, '=', 'partitions', "generating $table/$part" ), "\r";
+				}
+				$nparts++;
+				my $create_table_tmp = '';
+				my $create_table_index_tmp = '';
+				my $tb_name = '';
+				if ($self->{prefix_partition}) {
+					$tb_name = $table . "_" . $part;
+				} else {
+					if ($self->{export_schema} && !$self->{schema} && ($table =~ /^([^\.]+)\./)) {
+						$tb_name =  $1 . '.' . $part;
+					} else {
+						$tb_name =  $part;
+					}
+				}
+				$create_table_tmp .= "DROP TABLE $self->{pg_supports_ifexists} " . $self->quote_object_name($tb_name) . ";\n" if ($self->{drop_if_exists});
+				if (!$self->{pg_supports_partition})
+				{
+					if (!exists $self->{subpartitions}{$table}{$part}) {
+						$create_table_tmp .= "CREATE TABLE " . $self->quote_object_name($tb_name)
+										. " ( CHECK (\n";
+					}
+				} else {
+					$create_table_tmp .= "CREATE TABLE " . $self->quote_object_name($tb_name)
+									. " PARTITION OF " . $self->quote_object_name($table) . "\n";
+					$create_table_tmp .= "FOR VALUES";
+				}
+				#show migration results,list of objects that successes,failures,ignores--start
+				push(@object_info, $tb_name);
+				#show migration results,list of objects that successes,failures,ignores--end
+
+				my @condition = ();
+				my @ind_col = ();
+				for (my $i = 0; $i <= $#{$self->{partitions}{$table}{$pos}{info}}; $i++)
+				{
+					# We received all values for partitonning on multiple column, so get the one at the right indice
+					my $value = Ora2Pg::PLSQL::convert_plsql_code($self, $self->{partitions}{$table}{$pos}{info}[$i]->{value});
+					if ($#{$self->{partitions}{$table}{$pos}{info}} == 0)
+					{
+						my @values = split(/,\s/, Ora2Pg::PLSQL::convert_plsql_code($self, $self->{partitions}{$table}{$pos}{info}[$i]->{value}));
+						$value = $values[$i];
+					}
+					my $old_value = '';
+					if ($old_part)
+					{
+						$old_value = Ora2Pg::PLSQL::convert_plsql_code($self, $self->{partitions}{$table}{$old_pos}{info}[$i]->{value});
+						if ($#{$self->{partitions}{$table}{$pos}{info}} == 0)
+						{
+							my @values = split(/,\s/, Ora2Pg::PLSQL::convert_plsql_code($self, $self->{partitions}{$table}{$old_pos}{info}[$i]->{value}));
+							$old_value = $values[$i];
+						}
+					}
+
+					if ($self->{partitions}{$table}{$pos}{info}[$i]->{type} eq 'LIST')
+					{
+						if (!$self->{pg_supports_partition}) {
+							$check_cond .= "\t$self->{partitions}{$table}{$pos}{info}[$i]->{column} IN ($value)";
+						} else {
+							$check_cond .= " IN ($value)";
+						}
+					}
+					elsif ($self->{partitions}{$table}{$pos}{info}[$i]->{type} eq 'RANGE')
+					{
+						if (!$self->{pg_supports_partition})
+						{
+							if ($old_part eq '') {
+								$check_cond .= "\t$self->{partitions}{$table}{$pos}{info}[$i]->{column} < $value";
+							}
+							else
+							{
+								$check_cond .= "\t$self->{partitions}{$table}{$pos}{info}[$i]->{column} >= $old_value"
+									. " AND $self->{partitions}{$table}{$pos}{info}[$i]->{column} < $value";
+							}
+						}
+						else
+						{
+							if ($old_part eq '')
+							{
+								my $val = 'MINVALUE,' x ($#{$self->{partitions}{$table}{$pos}{info}}+1);
+								$val =~ s/,$//;
+								$check_cond .= " FROM ($val) TO ($value)";
+							} else {
+								$check_cond .= " FROM ($old_value) TO ($value)";
+							}
+							$i += $#{$self->{partitions}{$table}{$pos}{info}};
+						}
+					}
+					elsif ($self->{partitions}{$table}{$pos}{info}[$i]->{type} eq 'HASH')
+					{
+						if ($self->{pg_version} < 11)
+						{
+							print STDERR "WARNING: Hash partitioning not supported, skipping partitioning of table $table\n";
+							$function = '';
+							$create_table_tmp = '';
+							$create_table_index_tmp = '';
+							next;
+						}
+						else
+						{
+							my $part_clause = " WITH (MODULUS " . (scalar keys %{$self->{partitions}{$table}}) . ", REMAINDER " . ($pos-1) . ")";
+							$check_cond .= $part_clause if ($check_cond !~ /\Q$part_clause\E$/);
+						}
+					}
+					else
+					{
+						print STDERR "WARNING: Unknown partitioning type $self->{partitions}{$table}{$pos}{info}[$i]->{type}, skipping partitioning of table $table\n";
+						$create_table_tmp = '';
+						$create_table_index_tmp = '';
+						next;
+					}
+					if (!$self->{pg_supports_partition})
+					{
+						$check_cond .= " AND" if ($i < $#{$self->{partitions}{$table}{$pos}{info}});
+					}
+					my $fct = '';
+					my $colname = $self->{partitions}{$table}{$pos}{info}[$i]->{column};
+					if ($colname =~ s/([^\(]+)\(([^\)]+)\)/$2/)
+					{
+						$fct = $1;
+					}
+					my $cindx = $self->{partitions}{$table}{$pos}{info}[$i]->{column} || '';
+					$cindx = lc($cindx) if (!$self->{preserve_case});
+					$cindx = Ora2Pg::PLSQL::convert_plsql_code($self, $cindx);
+					my $has_hash_subpartition = 0;
+					if (exists $self->{subpartitions}{$table}{$part})
+					{
+						foreach my $p (sort {$a <=> $b} keys %{$self->{subpartitions}{$table}{$part}})
+						{
+							for (my $j = 0; $j <= $#{$self->{subpartitions}{$table}{$part}{$p}{info}}; $j++)
+							{
+								if ($self->{subpartitions}{$table}{$part}{$p}{info}[$j]->{type} eq 'HASH')
+								{
+									$has_hash_subpartition = 1;
+									last;
+								}
+							}
+							last if ($has_hash_subpartition);
+						}
+					}
+
+					if (!exists $self->{subpartitions}{$table}{$part} || (!$self->{pg_supports_partition} && $has_hash_subpartition))
+					{
+						# Reproduce indexes definition from the main table before PG 11
+						# after they are automatically created on partition tables
+						if ($self->{pg_version} < 11)
+						{
+							my ($idx, $fts_idx) = $self->_create_indexes($table, 0, %{$self->{tables}{$table}{indexes}});
+							my $tb_name2 = $self->quote_object_name($tb_name);
+							$create_table_index_tmp .= "CREATE INDEX "
+									. $self->quote_object_name("${tb_name}_$colname$pos")
+									. " ON " . $self->quote_object_name($tb_name) . " ($cindx);\n";
+							if ($idx || $fts_idx)
+							{
+								$idx =~ s/ $table/ $tb_name2/igs;
+								$fts_idx =~ s/ $table/ $tb_name2/igs;
+								# remove indexes already created
+								$idx =~ s/CREATE [^;]+ \($cindx\);//;
+								$fts_idx =~ s/CREATE [^;]+ \($cindx\);//;
+								if ($idx || $fts_idx)
+								{
+									# fix index name to avoid duplicate index name
+									$idx =~ s/(CREATE(?:.*?)INDEX ([^\s]+)) /$1$pos /gs;
+									$fts_idx =~ s/(CREATE(?:.*?)INDEX ([^\s]+)) /$1$pos /gs;
+									$create_table_index_tmp .= "-- Reproduce partition indexes that was defined on the parent table\n";
+								}
+								$create_table_index_tmp .= "$idx\n" if ($idx);
+								$create_table_index_tmp .= "$fts_idx\n" if ($fts_idx);
+							}
+
+							# Set the unique (and primary) key definition 
+							$idx = $self->_create_unique_keys($table, $self->{tables}{$table}{unique_key});
+							if ($idx)
+							{
+								$idx =~ s/ $table/ $tb_name2/igs;
+								# remove indexes already created
+								$idx =~ s/CREATE [^;]+ \($cindx\);//;
+								if ($idx)
+								{
+									# fix index name to avoid duplicate index name
+									$idx =~ s/(CREATE(?:.*?)INDEX ([^\s]+)) /$1$pos /gs;
+									$create_table_index_tmp .= "-- Reproduce partition unique indexes / pk that was defined on the parent table\n";
+									$create_table_index_tmp .= "$idx\n";
+									# Remove duplicate index with this one
+									if ($idx =~ /ALTER TABLE $tb_name2 ADD PRIMARY KEY (.*);/s)
+									{ 
+										my $collist = quotemeta($1);
+										$create_table_index_tmp =~ s/CREATE INDEX [^;]+ ON $tb_name2 $collist;//s;
+									}
+								}
+							}
+						}
+					}
+					my $deftb = '';
+					$deftb = "${table}_" if ($self->{prefix_partition});
+					if ($self->{partitions_default}{$table} && ($create_table{$table}{index} !~ /ON $deftb$self->{partitions_default}{$table} /))
+					{
+						$cindx = $self->{partitions}{$table}{$pos}{info}[$i]->{column} || '';
+						$cindx = lc($cindx) if (!$self->{preserve_case});
+						$cindx = Ora2Pg::PLSQL::convert_plsql_code($self, $cindx);
+						$create_table_index_tmp .= "CREATE INDEX " . $self->quote_object_name("$deftb$self->{partitions_default}{$table}_$colname") . " ON " . $self->quote_object_name("$deftb$self->{partitions_default}{$table}") . " ($cindx);\n";
+					}
+					push(@ind_col, $self->{partitions}{$table}{$pos}{info}[$i]->{column}) if (!grep(/^$self->{partitions}{$table}{$pos}{info}[$i]->{column}$/, @ind_col));
+					if ($self->{partitions}{$table}{$pos}{info}[$i]->{type} eq 'LIST')
+					{
+						if (!$fct) {
+							push(@condition, "NEW.$self->{partitions}{$table}{$pos}{info}[$i]->{column} IN (" . Ora2Pg::PLSQL::convert_plsql_code($self, $self->{partitions}{$table}{$pos}{info}[$i]->{value}) . ")");
+						} else {
+							push(@condition, "$fct(NEW.$colname) IN (" . Ora2Pg::PLSQL::convert_plsql_code($self, $self->{partitions}{$table}{$pos}{info}[$i]->{value}) . ")");
+						}
+					}
+					elsif ($self->{partitions}{$table}{$pos}{info}[$i]->{type} eq 'RANGE')
+					{
+						if (!$fct) {
+							push(@condition, "NEW.$self->{partitions}{$table}{$pos}{info}[$i]->{column} < " . Ora2Pg::PLSQL::convert_plsql_code($self, $self->{partitions}{$table}{$pos}{info}[$i]->{value}));
+						} else {
+							push(@condition, "$fct(NEW.$colname) < " . Ora2Pg::PLSQL::convert_plsql_code($self, $self->{partitions}{$table}{$pos}{info}[$i]->{value}));
+						}
+					}
+					$owner = $self->{partitions}{$table}{$pos}{info}[$i]->{owner} || '';
+				}
+				if (!$self->{pg_supports_partition})
+				{
+					if ($self->{partitions}{$table}{$pos}{info}[$i]->{type} ne 'HASH')
+					{
+						if (!exists $self->{subpartitions}{$table}{$part})
+						{
+							$create_table_tmp .= $check_cond . "\n";
+							$create_table_tmp .= ") ) INHERITS ($table);\n";
+						}
+						$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
+						if ($owner) {
+							$create_table_tmp .= "ALTER TABLE " . $self->quote_object_name($tb_name)
+												. " OWNER TO " . $self->quote_object_name($owner) . ";\n";
+						}
+					}
+				}
+				else
+				{
+					$create_table_tmp .= $check_cond;
+					if (exists $self->{subpartitions_list}{"\L$table\E"}{"\L$part\E"}{type})
+					{
+						if ($self->{subpartitions_list}{"\L$table\E"}{"\L$part\E"}{type})
+						{
+							$create_table_tmp .= "\nPARTITION BY " . $self->{subpartitions_list}{"\L$table\E"}{"\L$part\E"}{type} . " (";
+							for (my $j = 0; $j <= $#{$self->{subpartitions_list}{"\L$table\E"}{"\L$part\E"}{columns}}; $j++)
+							{
+								$create_table_tmp .= ', ' if ($j > 0);
+								$create_table_tmp .= $self->quote_object_name($self->{subpartitions_list}{"\L$table\E"}{"\L$part\E"}{columns}[$j]);
+							}
+							$create_table_tmp .= ")";
+						}
+						else
+						{
+							print STDERR "WARNING: unsupported subpartition type on table '$table' for partition '$part'\n";
+							$sql_output .=  " -- Unsupported partition type, please check\n";
+						}
+					}
+					$create_table_tmp .= ";\n";
+				}
+
+				# Add subpartition if any defined on Oracle
+				my $sub_funct_cond = '';
+				my $sub_old_part = '';
+				if (exists $self->{subpartitions}{$table}{$part})
+				{
+					my $sub_cond = 'IF';
+					my $sub_funct_cond_tmp = '';
+					my $create_subtable_tmp = '';
+					my $total_subpartition = scalar %{$self->{subpartitions}{$table}{$part}} || 0;
+					foreach my $p (sort {$a <=> $b} keys %{$self->{subpartitions}{$table}{$part}})
+					{
+						my $subpart = $self->{subpartitions}{$table}{$part}{$p}{name};
+						my $sub_tb_name = $subpart;
+						$sub_tb_name =~ s/^[^\.]+\.//; # remove schema part if any
+						if ($self->{prefix_partition})
+						{
+							if ($self->{prefix_sub_partition}) {
+								$sub_tb_name = "${tb_name}_$sub_tb_name";
+							} else {
+								$sub_tb_name = "${table}_$sub_tb_name";
+							}
+						}
+						if (!$self->{quiet} && !$self->{debug} && ($nparts % $PGBAR_REFRESH) == 0)
+						{
+							print STDERR $self->progress_bar($nparts, $total_partition, 25, '=', 'partitions', "generating $table/$part/$subpart" ), "\r";
+						}
+						$nparts++;
+						$create_subtable_tmp .= "DROP TABLE $self->{pg_supports_ifexists} " . $self->quote_object_name($sub_tb_name) . ";\n" if ($self->{drop_if_exists});
+						$create_subtable_tmp .= "CREATE TABLE " . $self->quote_object_name($sub_tb_name);
+						if (!$self->{pg_supports_partition}) {
+							$create_subtable_tmp .= " ( CHECK (\n";
+						}
+						else
+						{
+							$create_subtable_tmp .= " PARTITION OF " . $self->quote_object_name($tb_name) . "\n";
+							$create_subtable_tmp .= "FOR VALUES";
+						}
+						my $sub_check_cond_tmp = '';
+						my @subcondition = ();
+						for (my $i = 0; $i <= $#{$self->{subpartitions}{$table}{$part}{$p}{info}}; $i++)
+						{
+							# We received all values for partitonning on multiple column, so get the one at the right indice
+							my $value = Ora2Pg::PLSQL::convert_plsql_code($self, $self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{value});
+							if ($#{$self->{subpartitions}{$table}{$part}{$p}{info}} == 0)
+							{
+								my @values = split(/,\s/, Ora2Pg::PLSQL::convert_plsql_code($self, $self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{value}));
+								$value = $values[$i];
+							}
+							my $old_value = '';
+							if ($sub_old_part)
+							{
+								$old_value = Ora2Pg::PLSQL::convert_plsql_code($self, $self->{subpartitions}{$table}{$part}{$sub_old_pos}{info}[$i]->{value});
+								if ($#{$self->{subpartitions}{$table}{$part}{$p}{info}} == 0)
+								{
+									my @values = split(/,\s/, Ora2Pg::PLSQL::convert_plsql_code($self, $self->{subpartitions}{$table}{$part}{$sub_old_pos}{info}[$i]->{value}));
+									$old_value = $values[$i];
+								}
+							}
+
+							if ($self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{type} eq 'LIST')
+							{
+								if (!$self->{pg_supports_partition}) {
+									$sub_check_cond_tmp .= "$self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{column} IN ($value)";
+								} else {
+									$sub_check_cond_tmp .= " IN ($value)";
+								}
+							}
+							elsif ($self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{type} eq 'RANGE')
+							{
+								if (!$self->{pg_supports_partition})
+								{
+									if ($old_part eq '') {
+										$sub_check_cond_tmp .= "\t$self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{column} < $value";
+									}
+									else
+									{
+										$sub_check_cond_tmp .= "\t$self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{column} >= $old_value"
+											. " AND $self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{column} < $value";
+									}
+								}
+								else
+								{
+									if ($old_part eq '')
+									{
+										my $val = 'MINVALUE,' x ($#{$self->{subpartitions}{$table}{$part}{$p}{info}}+1);
+										$val =~ s/,$//;
+										$sub_check_cond_tmp .= " FROM ($val) TO ($value)";
+									} else {
+										$sub_check_cond_tmp .= " FROM ($old_value) TO ($value)";
+									}
+									$i += $#{$self->{subpartitions}{$table}{$part}{$p}{info}};
+								}
+							}
+							elsif ($self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{type} eq 'HASH')
+							{
+								if ($self->{pg_version} < 11)
+								{
+									print STDERR "WARNING: Hash partitioning not supported, skipping subpartitioning of table $table\n";
+									$create_subtable_tmp = '';
+									$sub_funct_cond_tmp = '';
+									next;
+								}
+								else
+								{
+									my $part_clause = " WITH (MODULUS " . $self->{subpartitions_list}{"\L$table\E"}{"\L$part\E"}{count} . ", REMAINDER " . ($p-1) . ")";
+									$sub_check_cond_tmp .= $part_clause if ($sub_check_cond_tmp !~ /\Q$part_clause\E$/);
+								}
+							}
+							else
+							{
+								print STDERR "WARNING: Unknown partitioning type $self->{partitions}{$table}{$pos}{info}[$i]->{type}, skipping partitioning of table $table\n";
+								$create_subtable_tmp = '';
+								$sub_funct_cond_tmp = '';
+								next;
+							}
+							if (!$self->{pg_supports_partition}) {
+								$sub_check_cond_tmp .= " AND " if ($i < $#{$self->{subpartitions}{$table}{$part}{$p}{info}});
+							}
+							# Reproduce indexes definition from the main table before PG 11
+							# after they are automatically created on partition tables
+							if ($self->{pg_version} < 11)
+							{
+								push(@ind_col, $self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{column}) if (!grep(/^$self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{column}$/, @ind_col));
+								my $fct = '';
+								my $colname = $self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{column};
+								if ($colname =~ s/([^\(]+)\(([^\)]+)\)/$2/) {
+									$fct = $1;
+								}
+								$cindx = join(',', @ind_col);
+								$cindx = lc($cindx) if (!$self->{preserve_case});
+								$cindx = Ora2Pg::PLSQL::convert_plsql_code($self, $cindx);
+								$create_table_index_tmp .= "CREATE INDEX " . $self->quote_object_name("${sub_tb_name}_$colname$p")
+													 . " ON " . $self->quote_object_name("$sub_tb_name") . " ($cindx);\n";
+								my $tb_name2 = $self->quote_object_name("$sub_tb_name");
+								# Reproduce indexes definition from the main table
+								my ($idx, $fts_idx) = $self->_create_indexes($table, 0, %{$self->{tables}{$table}{indexes}});
+								if ($idx || $fts_idx) {
+									$idx =~ s/ $table/ $tb_name2/igs;
+									$fts_idx =~ s/ $table/ $tb_name2/igs;
+									# remove indexes already created
+									$idx =~ s/CREATE [^;]+ \($cindx\);//;
+									$fts_idx =~ s/CREATE [^;]+ \($cindx\);//;
+									if ($idx || $fts_idx) {
+										# fix index name to avoid duplicate index name
+										$idx =~ s/(CREATE(?:.*?)INDEX ([^\s]+)) /$1${pos}_$p /gs;
+										$fts_idx =~ s/(CREATE(?:.*?)INDEX ([^\s]+)) /$1${pos}_$p /gs;
+										$create_table_index_tmp .= "-- Reproduce subpartition indexes that was defined on the parent table\n";
+									}
+									$create_table_index_tmp .= "$idx\n" if ($idx);
+									$create_table_index_tmp .= "$fts_idx\n" if ($fts_idx);
+								}
+
+								# Set the unique (and primary) key definition 
+								$idx = $self->_create_unique_keys($table, $self->{tables}{$table}{unique_key});
+								if ($idx) {
+									$create_table_index_tmp .= "-- Reproduce subpartition unique indexes / pk that was defined on the parent table\n";
+									$idx =~ s/ $table/ $tb_name2/igs;
+									# remove indexes already created
+									$idx =~ s/CREATE [^;]+ \($cindx\);//;
+									if ($idx) {
+										# fix index name to avoid duplicate index name
+										$idx =~ s/(CREATE(?:.*?)INDEX ([^\s]+)) /$1${pos}_$p /gs;
+										$create_table_index_tmp .= "$idx\n";
+										# Remove duplicate index with this one
+										if ($idx =~ /ALTER TABLE $tb_name2 ADD PRIMARY KEY (.*);/s) { 
+											my $collist = quotemeta($1);
+											$create_table_index_tmp =~ s/CREATE INDEX [^;]+ ON $tb_name2 $collist;//s;
+										}
+									}
+								}
+							}
+							if ($self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{type} eq 'LIST') {
+								if (!$fct) {
+									push(@subcondition, "NEW.$self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{column} IN (" . Ora2Pg::PLSQL::convert_plsql_code($self, $self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{value}) . ")");
+								} else {
+									push(@subcondition, "$fct(NEW.$colname) IN (" . Ora2Pg::PLSQL::convert_plsql_code($self, $self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{value}) . ")");
+								}
+							} elsif ($self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{type} eq 'RANGE') {
+								if (!$fct) {
+									push(@subcondition, "NEW.$self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{column} < " . Ora2Pg::PLSQL::convert_plsql_code($self, $self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{value}));
+								} else {
+									push(@subcondition, "$fct(NEW.$colname) < " . Ora2Pg::PLSQL::convert_plsql_code($self, $self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{value}));
+								}
+							}
+							$owner = $self->{subpartitions}{$table}{$part}{$p}{info}[$i]->{owner} || '';
+						}
+						if ($self->{pg_supports_partition}) {
+							$sub_check_cond_tmp .= ';';
+							$create_subtable_tmp .= "$sub_check_cond_tmp\n";
+						} else {
+							$create_subtable_tmp .= $check_cond;
+							$create_subtable_tmp .= " AND $sub_check_cond_tmp" if ($sub_check_cond_tmp);
+							$create_subtable_tmp .= "\n) ) INHERITS ($table);\n";
+						}
+						$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
+						if ($owner) {
+							$create_subtable_tmp .= "ALTER TABLE " . $self->quote_object_name("$sub_tb_name")
+											. " OWNER TO " . $self->quote_object_name($owner) . ";\n";
+						}
+						if ($#subcondition >= 0) {
+							$sub_funct_cond_tmp .= "\t\t$sub_cond ( " . join(' AND ', @subcondition) . " ) THEN INSERT INTO "
+										. $self->quote_object_name("$sub_tb_name") . " VALUES (NEW.*);\n";
+							$sub_cond = 'ELSIF';
+						}
+						$sub_old_part = $part;
+						$sub_old_pos = $p;
+					}
+					if ($create_subtable_tmp) {
+						$create_table_tmp .= $create_subtable_tmp;
+						$sub_funct_cond = $sub_funct_cond_tmp;
+					}
+				}
+				$check_cond = '';
+
+				# Fix case where default partition is taken as a value
+				$create_table_tmp =~ s/FOR VALUES IN \(default\)/DEFAULT/igs;
+
+				if ($#condition >= 0)
+				{
+					if (!$sub_funct_cond) {
+						$funct_cond .= "\t$cond ( " . join(' AND ', @condition) . " ) THEN INSERT INTO " . $self->quote_object_name($tb_name) . " VALUES (NEW.*);\n";
+					}
+					else
+					{
+						my $sub_old_pos = 0;
+						if (!$self->{pg_supports_partition})
+						{
+							$sub_funct_cond = Ora2Pg::PLSQL::convert_plsql_code($self, $sub_funct_cond);
+							$funct_cond .= "\t$cond ( " . join(' AND ', @condition) . " ) THEN \n";
+							$funct_cond .= $sub_funct_cond;
+							if (exists $self->{subpartitions_default}{$table}{$part})
+							{
+								my $deftb = '';
+								$deftb = "${table}_" if ($self->{prefix_partition});
+								$funct_cond .= "\t\tELSE INSERT INTO " . $self->quote_object_name("$deftb$self->{subpartitions_default}{$table}{$part}")
+											. " VALUES (NEW.*);\n\t\tEND IF;\n";
+								$create_table_tmp .= "DROP TABLE $self->{pg_supports_ifexists} " . $self->quote_object_name("$deftb$self->{subpartitions_default}{$table}{$part}") . ";\n" if ($self->{drop_if_exists});
+								$create_table_tmp .= "CREATE TABLE " . $self->quote_object_name("$deftb$self->{subpartitions_default}{$table}{$part}")
+											. " () INHERITS ($table);\n";
+								$create_table_index_tmp .= "CREATE INDEX " . $self->quote_object_name("$deftb$self->{subpartitions_default}{$table}{$part}_$pos")
+											. " ON " . $self->quote_object_name("$deftb$self->{subpartitions_default}{$table}{$part}") . " ($cindx);\n";
+							}
+							else
+							{
+								$funct_cond .= qq{		ELSE
+					-- Raise an exception
+					RAISE EXCEPTION 'Value out of range in subpartition. Fix the ${table}_insert_trigger() function!';
+		};
+								$funct_cond .= "\t\tEND IF;\n";
+							}
+						}
+						# With default partition just add default and continue
+						elsif (exists $self->{subpartitions_default}{$table}{$part})
+						{
+							my $tb_name = $self->{subpartitions_default}{$table}{$part};
+							if ($self->{prefix_partition}) {
+								$tb_name = $table . "_" . $self->{subpartitions_default}{$table}{$part};
+							} elsif ($self->{export_schema} && !$self->{schema} && ($table =~ /^([^\.]+)\./)) {
+								$tb_name =  $1 . '.' . $self->{subpartitions_default}{$table}{$part};
+							}
+							$create_table_tmp .= "DROP TABLE $self->{pg_supports_ifexists} " . $self->quote_object_name($tb_name) . ";\n" if ($self->{drop_if_exists});
+							if ($self->{pg_version} >= 11) {
+								$create_table_tmp .= "CREATE TABLE " . $self->quote_object_name($tb_name)
+										. " PARTITION OF " . $self->quote_object_name($table) . " DEFAULT;\n";
+							} elsif ($self->{subpartitions}{$table}{$part}{$sub_old_pos}{info}[$i]->{type} eq 'RANGE') {
+								$create_table_tmp .= "CREATE TABLE " . $self->quote_object_name($tb_name)
+										. " PARTITION OF " . $self->quote_object_name($table) . " FOR VALUES FROM ($self->{subpartitions}{$table}{$part}{$sub_old_pos}{info}[-1]->{value}) TO (MAX_VALUE);\n";
+							}
+						}
+					}
+					$cond = 'ELSIF';
+				}
+				$old_part = $part;
+				$old_pos = $pos;
+				$create_table{$table}{table} .= $create_table_tmp;
+				$create_table{$table}{index} .= $create_table_index_tmp;
+			};
+			#show migration results,list of objects that successes,failures,ignores--end
+			#show migration results,list of objects that successes,failures,ignores--start
+			if ($@){ 
+				$error_dic{$tb_name} = "$@";
+				next;
+			}
+			#show migration results,list of objects that successes,failures,ignores--end
+			
 		}
 
 		if (exists $create_table{$table})
@@ -7152,8 +9141,24 @@ FOR EACH ROW EXECUTE PROCEDURE $trg();
 	if (!$sql_output) {
 		$sql_output = "-- Nothing found of type $self->{type}\n" if (!$self->{no_header});
 	}
+	
+	#show migration results,list of objects that successes,failures,ignores--start
+	foreach my $function_name (@object_info){
+		if ($sql_output =~ /\Q$function_name\E/gi){
+			push(@success_object,$function_name);
+		}else{
+			push(@err_object,$function_name);
+		}
+	}
+	#show migration results,list of objects that successes,failures,ignores--end
 	$self->dump($sql_header . $sql_output);
 
+	#show migration results,list of objects that successes,failures,ignores--start
+	my $sql = "SELECT A.TABLESPACE_NAME, A.PARTITION_NAME, A.PARTITION_POSITION, A.HIGH_VALUE, A.TABLE_NAME, B.PARTITIONING_TYPE, C.NAME, C.COLUMN_NAME, C.COLUMN_POSITION, A.TABLE_OWNER FROM $self->{prefix}_TAB_PARTITIONS A, $self->{prefix}_PART_TABLES B, $self->{prefix}_PART_KEY_COLUMNS C WHERE a.table_name = b.table_name AND (b.partitioning_type = 'RANGE' OR b.partitioning_type = 'LIST' OR b.partitioning_type = 'HASH') AND a.table_name = c.name AND A.TABLE_OWNER='$self->{schema}'";
+	@ignore_object = _get_ignore_object($self,$sql,\@object_info);
+	type_log($self,\@success_object,\@err_object,\@ignore_object,$self->{type},%error_dic);
+	#show migration results,list of objects that successes,failures,ignores--end
+	
 	if ($partition_indexes)
 	{
 		my $fhdl = undef;
@@ -7184,6 +9189,14 @@ sub export_synonym
 	my $sql_header = $self->_set_file_header();
 	my $sql_output = "";
 
+	#show migration results,list of objects that successes,failures,ignores--start
+	my @object_info = ();
+	my @success_object = ();
+	my @err_object = ();
+	my @ignore_object = ();
+	my %error_dic = ();
+	#show migration results,list of objects that successes,failures,ignores--end
+
 	$self->logit("Add synonyms definition...\n", 1);
 	# Read DML from file if any
 	if ($self->{input_file}) {
@@ -7195,6 +9208,8 @@ sub export_synonym
 	my $PGBAR_REFRESH = set_refresh_count($num_total_synonym);
 	foreach my $syn (sort { $a cmp $b } keys %{$self->{synonyms}})
 	{
+		#show migration results,list of objects that successes,failures,ignores--start
+=head2
 		if (!$self->{quiet} && !$self->{debug} && ($count_syn % $PGBAR_REFRESH) == 0) {
 			print STDERR $self->progress_bar($i, $num_total_synonym, 25, '=', 'synonyms', "generating $syn" ), "\r";
 		}
@@ -7211,6 +9226,45 @@ sub export_synonym
 		$sql_output .= "GRANT ALL ON " . $self->quote_object_name("$self->{synonyms}{$syn}{owner}.$syn")
 					. " TO " . $self->quote_object_name($self->{synonyms}{$syn}{owner}) . ";\n\n";
 		$i++;
+=cut
+		#show migration results,list of objects that successes,failures,ignores--end
+		
+		#show migration results,list of objects that successes,failures,ignores--start
+		eval{
+			push(@object_info, $syn);
+			if (!$self->{quiet} && !$self->{debug} && ($count_syn % $PGBAR_REFRESH) == 0) {
+				print STDERR $self->progress_bar($i, $num_total_synonym, 25, '=', 'synonyms', "generating $syn" ), "\r";
+			}
+			$count_syn++;
+			if ($self->{synonyms}{$syn}{dblink}) {
+				$sql_output .= "-- You need to create foreign table $self->{synonyms}{$syn}{table_owner}.$self->{synonyms}{$syn}{table_name} using foreign server: $self->{synonyms}{$syn}{dblink} (see DBLINK and FDW export type)\n";
+			}
+			$sql_output .= "CREATE$self->{create_or_replace} VIEW " . $self->quote_object_name("$self->{synonyms}{$syn}{owner}.$syn")
+				. " AS SELECT * FROM " . $self->quote_object_name("$self->{synonyms}{$syn}{table_owner}.$self->{synonyms}{$syn}{table_name}") . ";\n";
+			my $owner = $self->{synonyms}{$syn}{table_owner};
+			$owner = $self->{force_owner} if ($self->{force_owner} && ($self->{force_owner} ne "1"));
+			$sql_output .= "ALTER VIEW " . $self->quote_object_name("$self->{synonyms}{$syn}{owner}.$syn")
+						. " OWNER TO " . $self->quote_object_name($owner) . ";\n";
+			$sql_output .= "GRANT ALL ON " . $self->quote_object_name("$self->{synonyms}{$syn}{owner}.$syn")
+						. " TO " . $self->quote_object_name($self->{synonyms}{$syn}{owner}) . ";\n\n";
+		};
+		#show migration results,list of objects that successes,failures,ignores--end
+		#show migration results,list of objects that successes,failures,ignores--start
+		push(@object_info, $syn);
+		if ($sql_output =~ /\Q$syn\E/gi){
+			push(@success_object,$syn);
+		}else{
+			push(@err_object,$syn);
+		}
+		
+		if ($@){ 
+			$error_dic{$syn} = "$@";
+			$i++;
+			next;
+		} 
+		#show migration results,list of objects that successes,failures,ignores--end
+		$i++;
+		
 	}
 	if (!$self->{quiet} && !$self->{debug}) {
 		print STDERR $self->progress_bar($i - 1, $num_total_synonym, 25, '=', 'synonyms', 'end of output.'), "\n";
@@ -7220,6 +9274,12 @@ sub export_synonym
 	}
 
 	$self->dump($sql_header . $sql_output);
+
+	#show migration results,list of objects that successes,failures,ignores--start
+	my $sql = "SELECT OWNER,SYNONYM_NAME,TABLE_OWNER,TABLE_NAME,DB_LINK FROM $self->{prefix}_SYNONYMS WHERE owner='$self->{schema}'";
+	@ignore_object = _get_ignore_object($self,$sql,\@object_info);
+	type_log($self,\@success_object,\@err_object,\@ignore_object,$self->{type},%error_dic);
+	#show migration results,list of objects that successes,failures,ignores--end
 
 	return;
 }
@@ -7236,6 +9296,14 @@ sub export_table
 
 	my $sql_header = $self->_set_file_header();
 	my $sql_output = "";
+
+	#show migration results,list of objects that successes,failures,ignores--start
+	my @success_object = ();
+	my @err_object = ();
+	my @ignore_object = ();
+	my @object_info = ();
+	my %error_dic = ();
+	#show migration results,list of objects that successes,failures,ignores--end
 
 	$self->logit("Exporting tables...\n", 1);
 
@@ -7307,6 +9375,8 @@ sub export_table
 			}
 		} keys %{$self->{tables}})
 	{
+		#show migration results,list of objects that successes,failures,ignores--start
+=head2
 		# Foreign table can not be temporary
 		next if (($self->{type} eq 'FDW' || $self->{oracle_fdw_data_export})
 				and $self->{tables}{$table}{table_info}{type} =~/ TEMPORARY/);
@@ -7336,14 +9406,7 @@ sub export_table
 		if ( ($obj_type eq 'TABLE') && $self->{tables}{$table}{table_info}{nologging} && !$self->{disable_unlogged} ) {
 			$obj_type = 'UNLOGGED ' . $obj_type;
 		}
-		if ($self->{export_gtt} && !$foreign && $self->{tables}{$table}{table_info}{temporary} eq 'Y') {
-			if ($sql_output !~ /LOAD 'pgtt';/s) {
-				$sql_output .= "\nLOAD 'pgtt';\n";
-			}
-			$obj_type = ' /*GLOBAL*/ TEMPORARY TABLE' if ($obj_type =~ /TABLE/);
-		}
-		if (exists $self->{tables}{$table}{table_as})
-		{
+		if (exists $self->{tables}{$table}{table_as}) {
 			if ($self->{plsql_pgsql}) {
 				$self->{tables}{$table}{table_as} = Ora2Pg::PLSQL::convert_plsql_code($self, $self->{tables}{$table}{table_as});
 			}
@@ -7458,9 +9521,10 @@ sub export_table
 
 				# Check if this column should be replaced by a boolean following table/column name
 				my $was_enum = 0;
-				if ($f->[1] =~ s/^\s*ENUM\s*\(//i)
+				if ($f->[1] =~ /ENUM/i)
 				{
 					$was_enum = 1;
+					$f->[1] =~ s/^ENUM\(//i;
 					$f->[1] =~ s/\)$//;
 					my $keyname = lc($tbname . '_' . $fname . '_t');
 					$keyname =~ s/["\`]//g;
@@ -7547,11 +9611,7 @@ sub export_table
 						$sql_output =~ s/(integer|int)\s*$/serial/s;
 					}
 					$sql_output .= ",\n";
-					if ($self->{preserve_case}) {
-						$sequence_output .= "SELECT ora2pg_upd_autoincrement_seq('$f->[8]','$f->[0]');\n";
-					} else {
-						$sequence_output .= "SELECT ora2pg_upd_autoincrement_seq('\L$f->[8]\E','\L$f->[0]\E');\n";
-					}
+					$sequence_output .= "SELECT ora2pg_upd_autoincrement_seq('$f->[8]','$f->[0]');\n";
 					next;
 				}
 
@@ -7604,16 +9664,16 @@ sub export_table
 								if (($f->[4] !~ /^'/) && ($f->[4] =~ /[^\d\.]/))
 								{
 									if ($type =~ /CHAR|TEXT/i || ($was_enum && $f->[1] =~ /'/i)) {
-										$f->[4] = "'$f->[4]'" if ($f->[4] !~ /[']/ && $f->[4] !~ /\(.*\)/ && uc($f->[4]) ne 'NULL');
+										$f->[4] = "'$f->[4]'" if ($f->[4] !~ /[']/ && $f->[4] !~ /\(.*\)/);
 									}
 									elsif ($type =~ /DATE|TIME/i)
 									{
-										if ($f->[4] =~ /^0000-/)
+										if ($f->[4] =~ /0000-00-00/)
 										{
 											if ($self->{replace_zero_date}) {
 												$f->[4] = $self->{replace_zero_date};
 											} else {
-												$f->[4] =~ s/^0000-\d+-\d+/1970-01-01/;
+												$f->[4] =~ s/^0000-00-00/1970-01-01/;
 											}
 										}
 										if ($f->[4] =~ /^\d+/) {
@@ -7631,13 +9691,13 @@ sub export_table
 									if ($#c >= 1)
 									{
 										if ($type =~ /CHAR|TEXT/i || ($was_enum && $f->[1] =~ /'/i)) {
-											$f->[4] = "'$f->[4]'" if ($f->[4] !~ /[']/ && $f->[4] !~ /\(.*\)/ && uc($f->[4]) ne 'NULL');
+											$f->[4] = "'$f->[4]'" if ($f->[4] !~ /[']/ && $f->[4] !~ /\(.*\)/);
 										} elsif ($type =~ /DATE|TIME/i) {
-											if ($f->[4] =~ /^0000-/) {
+											if ($f->[4] =~ /0000-00-00/) {
 												if ($self->{replace_zero_date}) {
 													$f->[4] = $self->{replace_zero_date};
 												} else {
-													$f->[4] =~ s/^0000-\d+-\d+/1970-01-01/;
+													$f->[4] =~ s/^0000-00-00/1970-01-01/;
 												}
 											}
 											if ($f->[4] =~ /^\d+/) {
@@ -7647,7 +9707,7 @@ sub export_table
 											} elsif ($f->[4] =~ /AT TIME ZONE/i) {
 												$f->[4] = "($f->[4])";
 											}
-										} elsif (uc($f->[4]) ne 'NULL') {
+										} else {
 											$f->[4] = "'$f->[4]'";
 										}
 									}
@@ -7671,23 +9731,13 @@ sub export_table
 			}
 
 			if ($self->{tables}{$table}{table_info}{partitioned} && $self->{pg_supports_partition} && !$self->{disable_partition}) {
-				if (exists $self->{partitions_list}{"\L$table\E"}{type})
+				if ($self->{partitions_list}{"\L$table\E"}{type})
 				{
 					$sql_output .= " PARTITION BY " . $self->{partitions_list}{"\L$table\E"}{type} . " (";
-					if (exists $self->{partitions_list}{"\L$table\E"}{columns})
+					for (my $j = 0; $j <= $#{$self->{partitions_list}{"\L$table\E"}{columns}}; $j++)
 					{
-						for (my $j = 0; $j <= $#{$self->{partitions_list}{"\L$table\E"}{columns}}; $j++)
-						{
-							$sql_output .= ', ' if ($j > 0);
-							$sql_output .= $self->quote_object_name($self->{partitions_list}{"\L$table\E"}{columns}[$j]);
-						}
-					}
-					else
-					{
-						if ($self->{plsql_pgsql}) {
-							$self->{partitions_list}{"\L$table\E"}{expression} = Ora2Pg::PLSQL::convert_plsql_code($self, $self->{partitions_list}{"\L$table\E"}{expression});
-						}
-						$sql_output .= $self->{partitions_list}{"\L$table\E"}{expression};
+						$sql_output .= ', ' if ($j > 0);
+						$sql_output .= $self->quote_object_name($self->{partitions_list}{"\L$table\E"}{columns}[$j]);
 					}
 					$sql_output .= 	")";
 				}
@@ -7697,17 +9747,7 @@ sub export_table
 					$sql_output .=  " -- Unsupported partition type, please check\n";
 				}
 			}
-			if ($obj_type =~ /\bTEMPORARY TABLE\b/)
-			{
-				if ($self->{tables}{$table}{table_info}{duration} eq 'SYS$TRANSACTION') {
-					$sql_output .= ' ON COMMIT DELETE ROWS';
-				} elsif ($self->{tables}{$table}{table_info}{duration} eq 'SYS$SESSION') {
-					$sql_output .= ' ON COMMIT PRESERVE ROWS';
-				}
-			}
-			if ( ($self->{type} ne 'FDW') && !$self->{oracle_fdw_data_export}
-				&& (!$self->{external_to_fdw} || (!grep(/^$table$/i, keys %{$self->{external_table}})
-						&& !$self->{tables}{$table}{table_info}{connection})) )
+			if ( ($self->{type} ne 'FDW') && !$self->{oracle_fdw_data_export} && (!$self->{external_to_fdw} || (!grep(/^$table$/i, keys %{$self->{external_table}}) && !$self->{tables}{$table}{table_info}{connection})) )
 			{
 				my $withoid = _make_WITH($self->{with_oid}, $self->{tables}{$table}{table_info});
 				if ($self->{use_tablespace} && $self->{tables}{$table}{table_info}{tablespace} && !grep(/^$self->{tables}{$table}{table_info}{tablespace}$/i, @{$self->{default_tablespaces}})) {
@@ -7785,12 +9825,11 @@ sub export_table
 		}
 
 		# Change ownership
-		if ($self->{force_owner} && $sql_output =~ /$tbname/is )
+		if ($self->{force_owner})
 		{
 			my $owner = $self->{tables}{$table}{table_info}{owner};
 			$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
-			$sql_output .= "ALTER $foreign " . ($self->{tables}{$table}{table_info}{type} || 'TABLE')
-		       				.  " " .$self->quote_object_name($tbname)
+			$sql_output .= "ALTER$foreign $self->{tables}{$table}{table_info}{type} " .  $self->quote_object_name($tbname)
 						. " OWNER TO " .  $self->quote_object_name($owner) . ";\n";
 		}
 		if (exists $self->{tables}{$table}{alter_index} && $self->{tables}{$table}{alter_index})
@@ -7835,12 +9874,541 @@ sub export_table
 			}
 		}
 		$ib++;
+=cut
+		#show migration results,list of objects that successes,failures,ignores--end
+		
+		#show migration results,list of objects that successes,failures,ignores--start
+		eval{
+			push(@object_info,$table);
+			# Foreign table can not be temporary
+			next if (($self->{type} eq 'FDW' || $self->{oracle_fdw_data_export})
+					and $self->{tables}{$table}{table_info}{type} =~/ TEMPORARY/);
+
+			$self->logit("Dumping table $table...\n", 1);
+			if (!$self->{quiet} && !$self->{debug} && ($count_table % $PGBAR_REFRESH) == 0) {
+				print STDERR $self->progress_bar($ib, $num_total_table, 25, '=', 'tables', "exporting $table" ), "\r";
+			}
+			$count_table++;
+
+			# Create FDW server if required
+			if ($self->{external_to_fdw})
+			{
+				if ( grep(/^$table$/i, keys %{$self->{external_table}}) )
+				{
+					$sql_header .= "CREATE EXTENSION IF NOT EXISTS file_fdw;\n\n" if ($sql_header !~ /CREATE EXTENSION .* file_fdw;/is);
+					$sql_header .= "CREATE SERVER \L$self->{external_table}{$table}{directory}\E FOREIGN DATA WRAPPER file_fdw;\n\n" if ($sql_header !~ /CREATE SERVER $self->{external_table}{$table}{directory} FOREIGN DATA WRAPPER file_fdw;/is);
+				}
+			}
+
+			my $tbname = $self->get_replaced_tbname($table);
+			my $foreign = '';
+			if ( ($self->{type} eq 'FDW') || $self->{oracle_fdw_data_export} || ($self->{external_to_fdw} && (grep(/^$table$/i, keys %{$self->{external_table}}) || $self->{tables}{$table}{table_info}{connection})) ) {
+				$foreign = ' FOREIGN ';
+			}
+			my $obj_type = $self->{tables}{$table}{table_info}{type} || 'TABLE';
+			if ( ($obj_type eq 'TABLE') && $self->{tables}{$table}{table_info}{nologging} && !$self->{disable_unlogged} ) {
+				$obj_type = 'UNLOGGED ' . $obj_type;
+			}
+			if (exists $self->{tables}{$table}{table_as}) {
+				if ($self->{plsql_pgsql}) {
+					$self->{tables}{$table}{table_as} = Ora2Pg::PLSQL::convert_plsql_code($self, $self->{tables}{$table}{table_as});
+				}
+			$sql_output .= "\nDROP${foreign} TABLE $self->{pg_supports_ifexists} $tbname;" if ($self->{drop_if_exists});
+
+				my $withoid = _make_WITH($self->{with_oid}, $self->{tables}{$tbname}{table_info});
+				$sql_output .= "\nCREATE $obj_type $tbname $withoid AS $self->{tables}{$table}{table_as};\n";
+				next;
+			}
+			if (exists $self->{tables}{$table}{truncate_table}) {
+				$sql_output .= "\nTRUNCATE TABLE $tbname;\n";
+			}
+			my $serial_sequence = '';
+			my $enum_str = '';
+			my @skip_column_check = ();
+			$sql_output .= "#ORA2PGENUM#\n"; # used to insert any enum data type before the table that will use it
+			if (exists $self->{tables}{$table}{column_info})
+			{
+				my $schem = '';
+
+				# Add the destination schema
+				if ($self->{oracle_fdw_data_export} && ($self->{type} eq 'INSERT' || $self->{type} eq 'COPY')) {
+					 $sql_output .= "\nCREATE FOREIGN TABLE ora2pg_fdw_import.$tbname (\n";
+				} else {
+				$sql_output .= "\nDROP${foreign} TABLE $self->{pg_supports_ifexists} $tbname;" if ($self->{drop_if_exists});
+					$sql_output .= "\nCREATE$foreign $obj_type $tbname (\n";
+				}
+
+				# get column name list.
+				my @collist = ();
+				foreach my $k (keys %{$self->{tables}{$table}{column_info}}) {
+					push(@collist, $self->{tables}{$table}{column_info}{$k}[0]);
+				}
+
+			# Extract column information following the Oracle position order
+				foreach my $k (sort { 
+						if (!$self->{reordering_columns}) {
+							$self->{tables}{$table}{column_info}{$a}[11] <=> $self->{tables}{$table}{column_info}{$b}[11];
+						} else {
+							my $tmpa = $self->{tables}{$table}{column_info}{$a};
+							$tmpa->[2] =~ s/\D//g;
+							my $typa = $self->_sql_type($tmpa->[1], $tmpa->[2], $tmpa->[5], $tmpa->[6], $tmpa->[4]);
+							$typa =~ s/\(.*//;
+							my $tmpb = $self->{tables}{$table}{column_info}{$b};
+							$tmpb->[2] =~ s/\D//g;
+							my $typb = $self->_sql_type($tmpb->[1], $tmpb->[2], $tmpb->[5], $tmpb->[6], $tmpb->[4]);
+							$typb =~ s/\(.*//;
+							if($TYPALIGN{$typa} != $TYPALIGN{$typb}){
+								# sort by field size asc
+								$TYPALIGN{$typa} <=> $TYPALIGN{$typb};
+							}else{
+								# if same size sort by original position
+								$self->{tables}{$table}{column_info}{$a}[11] <=> $self->{tables}{$table}{column_info}{$b}[11];
+							}
+						}
+					} keys %{$self->{tables}{$table}{column_info}})
+				{
+
+					# COLUMN_NAME,DATA_TYPE,DATA_LENGTH,NULLABLE,DATA_DEFAULT,DATA_PRECISION,DATA_SCALE,CHAR_LENGTH,TABLE_NAME,OWNER,VIRTUAL_COLUMN,POSITION,AUTO_INCREMENT,SRID,SDO_DIM,SDO_GTYPE
+					my $f = $self->{tables}{$table}{column_info}{$k};
+					$f->[2] =~ s/\D//g;
+					my $type = $self->_sql_type($f->[1], $f->[2], $f->[5], $f->[6], $f->[4], 1);
+					$type = "$f->[1], $f->[2]" if (!$type);
+					# Change column names
+					my $fname = $f->[0];
+					if (exists $self->{replaced_cols}{"\L$table\E"}{"\L$fname\E"} && $self->{replaced_cols}{"\L$table\E"}{"\L$fname\E"})
+					{
+						$self->logit("\tReplacing column \L$f->[0]\E as " . $self->{replaced_cols}{"\L$table\E"}{"\L$fname\E"} . "...\n", 1);
+						$fname = $self->{replaced_cols}{"\L$table\E"}{"\L$fname\E"};
+					}
+
+				# Check if we need auto increment
+					if ($f->[12] eq 'auto_increment' || $f->[12] eq '1')
+					{
+						if ($type !~ s/bigint/bigserial/)
+						{
+							if ($type !~ s/smallint/smallserial/) {
+								$type =~ s/integer/serial/;
+							}
+						}
+						if ($type =~ /serial/)
+						{
+							my $seqname = lc($tbname) . '_' . lc($fname) . '_seq';
+							if ($self->{preserve_case}) {
+								$seqname = $tbname . '_' . $fname . '_seq';
+							}
+							my $tobequoted = 0;
+							if ($seqname =~ s/"//g) {
+								$tobequoted = 1;
+							}
+							
+							if (length($seqname) > 63)
+							{
+								if (length($tbname) > 29) {
+									$seqname = substr(lc($tbname), 0, 29);
+								} else {
+									$seqname = lc($tbname);
+								}
+								if (length($fname) > 29) {
+									$seqname .= '_' . substr(lc($fname), 0, 29);
+								} else {
+									$seqname .= '_' . lc($fname);
+								}
+								$seqname .= '_seq';
+							}
+							if ($tobequoted) {
+								$seqname = '"' . $seqname . '"';
+							}
+							$serial_sequence .= "ALTER SEQUENCE $seqname RESTART WITH $self->{tables}{$table}{table_info}{auto_increment};\n" if (exists $self->{tables}{$table}{table_info}{auto_increment});
+						}
+					}
+
+					# Check if this column should be replaced by a boolean following table/column name
+					my $was_enum = 0;
+					if ($f->[1] =~ /ENUM/i)
+					{
+						$was_enum = 1;
+						$f->[1] =~ s/^ENUM\(//i;
+						$f->[1] =~ s/\)$//;
+						my $keyname = lc($tbname . '_' . $fname . '_t');
+						$keyname =~ s/["\`]//g;
+						$enum_str .= "\nCREATE TYPE " .  $self->quote_object_name($keyname) .
+									" AS ENUM ($f->[1]);";
+						$type = $self->quote_object_name($keyname);
+					}
+					my $typlen = $f->[5];
+					$typlen ||= $f->[2];
+					if (!$self->{oracle_fdw_data_export})
+					{
+						if (grep(/^$f->[0]$/i, @{$self->{'replace_as_boolean'}{uc($table)}})) {
+							$type = 'boolean';
+							push(@skip_column_check, $fname);
+						# Check if this column should be replaced by a boolean following type/precision
+						} elsif (exists $self->{'replace_as_boolean'}{uc($f->[1])} && ($self->{'replace_as_boolean'}{uc($f->[1])}[0] == $typlen)) {
+							$type = 'boolean';
+							push(@skip_column_check, $fname);
+						}
+					}
+					if ($f->[1] =~ /SDO_GEOMETRY/)
+					{
+						# 12:SRID,13:SDO_DIM,14:SDO_GTYPE
+						# Set the dimension, array is (srid, dims, gtype)
+						my $suffix = '';
+						if ($f->[13] == 3) {
+							$suffix = 'Z';
+						} elsif ($f->[13] == 4) {
+							$suffix = 'ZM';
+						}
+						my $gtypes = '';
+						if (!$f->[14] || ($f->[14] =~  /,/) ) {
+							$gtypes = $Ora2Pg::Oracle::ORA2PG_SDO_GTYPE{0};
+						} else {
+							$gtypes = $f->[14];
+						}
+						$type = "geometry($gtypes$suffix";
+						if ($f->[12]) {
+							$type .= ",$f->[12]";
+						}
+						$type .= ")";
+					}
+					$type = $self->{'modify_type'}{"\L$table\E"}{"\L$f->[0]\E"} if (exists $self->{'modify_type'}{"\L$table\E"}{"\L$f->[0]\E"});
+					$fname = $self->quote_object_name($fname);
+					$sql_output .= "\t$fname $type";
+					if ($foreign && $self->is_primary_key_column($table, $f->[0])) {
+						 $sql_output .= " OPTIONS (key 'true')";
+					}
+					if (!$f->[3] || ($f->[3] =~ /^N/))
+					{
+						# smallserial, serial and bigserial use a NOT NULL sequence as default value,
+						# so we don't need to add it here
+						if ($type !~ /serial/) {
+							push(@{$self->{tables}{$table}{check_constraint}{notnull}}, $f->[0]);
+							$sql_output .= " NOT NULL";
+						}
+					}
+
+					# Autoincremented columns
+					if (!$self->{schema} && $self->{export_schema}) {
+						$f->[8] = "$f->[9].$f->[8]";
+					}
+					if (exists $self->{identity_info}{$f->[8]}{$f->[0]} and $self->{type} ne 'FDW' and !$self->{oracle_fdw_data_export})
+					{
+						$sql_output =~ s/ NOT NULL\s*$//s; # IDENTITY or serial column are NOT NULL by default
+						if ($self->{pg_supports_identity})
+						{
+						$sql_output =~ s/ [^\s]+$/ bigint/ if ($self->{force_identity_bigint}) ; # Force bigint
+							$sql_output .= " GENERATED $self->{identity_info}{$f->[8]}{$f->[0]}{generation} AS IDENTITY";
+						if (exists $self->{identity_info}{$f->[8]}{$f->[0]}{options}
+							&& $self->{identity_info}{$f->[8]}{$f->[0]}{options} ne '')
+						{
+							# Adapt automatically the max value following the data type
+							if ($sql_output =~ / (integer|int4|int) GENERATED/i) {
+								$self->{identity_info}{$f->[8]}{$f->[0]}{options} =~ s/ 9223372036854775807/ 2147483647/s;
+							}
+							$sql_output .= " (" . $self->{identity_info}{$f->[8]}{$f->[0]}{options} . ')';
+						}
+						}
+						else
+						{
+							$sql_output =~ s/bigint\s*$/bigserial/s;
+							$sql_output =~ s/smallint\s*$/smallserial/s;
+							$sql_output =~ s/(integer|int)\s*$/serial/s;
+						}
+						$sql_output .= ",\n";
+						$sequence_output .= "SELECT ora2pg_upd_autoincrement_seq('$f->[8]','$f->[0]');\n";
+						next;
+					}
+
+					# Default value
+					if ($f->[4] ne "" && uc($f->[4]) ne 'NULL')
+					{
+						$f->[4] =~ s/^\s+//;
+						$f->[4] =~ s/\s+$//;
+						$f->[4] =~ s/"//gs;
+						if ($self->{plsql_pgsql}) {
+							$f->[4] = Ora2Pg::PLSQL::convert_plsql_code($self, $f->[4]);
+						}
+						# Check if the column make reference to an other column
+						my $use_other_col = 0;
+						foreach my $c (@collist) {
+							$use_other_col = 1 if ($f->[4] =~ /\b$c\b/i);
+						}
+						if ($use_other_col && $self->{pg_version} >= 12)
+						{
+							$sql_output .= " GENERATED ALWAYS AS (" . $f->[4] . ") STORED";
+						}
+						# Check if this is a virtual column before proceeding to default value export
+						elsif ($self->{tables}{$table}{column_info}{$k}[10] eq 'YES')
+						{
+							$virtual_trigger_info{$table}{$k} = $f->[4];
+							$virtual_trigger_info{$table}{$k} =~ s/"//gs;
+							foreach my $c (keys %{$self->{tables}{$table}{column_info}}) {
+								$virtual_trigger_info{$table}{$k} =~ s/\b$c\b/NEW.$c/gs;
+							}
+						}
+						else
+						{
+							if (($f->[4] ne '') && ($self->{type} ne 'FDW') && !$self->{oracle_fdw_data_export}) {
+								if ($type eq 'boolean')
+								{
+									my $found = 0;
+									foreach my $k (sort {$b cmp $a} keys %{ $self->{ora_boolean_values} })
+									{
+										if ($f->[4] =~ /\b$k\b/i)
+										{
+											$sql_output .= " DEFAULT '" . $self->{ora_boolean_values}{$k} . "'";
+											$found = 1;
+											last;
+										}
+									}
+									$sql_output .= " DEFAULT " . $f->[4] if (!$found);
+								}
+								else
+								{
+									if (($f->[4] !~ /^'/) && ($f->[4] =~ /[^\d\.]/))
+									{
+										if ($type =~ /CHAR|TEXT/i || ($was_enum && $f->[1] =~ /'/i)) {
+										$f->[4] = "'$f->[4]'" if ($f->[4] !~ /[']/ && $f->[4] !~ /\(.*\)/ && uc($f->[4]) ne 'NULL');
+										}
+										elsif ($type =~ /DATE|TIME/i)
+										{
+											if ($f->[4] =~ /0000-00-00/)
+											{
+												if ($self->{replace_zero_date}) {
+													$f->[4] = $self->{replace_zero_date};
+												} else {
+													$f->[4] =~ s/^0000-00-00/1970-01-01/;
+												}
+											}
+											if ($f->[4] =~ /^\d+/) {
+												$f->[4] = "'$f->[4]'";
+											} elsif ($f->[4] =~ /^[\-]*INFINITY$/) {
+												$f->[4] = "'$f->[4]'::$type";
+											} elsif ($f->[4] =~ /AT TIME ZONE/i) {
+												$f->[4] = "($f->[4])";
+											}
+										}
+									}
+									else
+									{
+										my @c =  $f->[4] =~ /\./g;
+										if ($#c >= 1)
+										{
+											if ($type =~ /CHAR|TEXT/i || ($was_enum && $f->[1] =~ /'/i)) {
+											$f->[4] = "'$f->[4]'" if ($f->[4] !~ /[']/ && $f->[4] !~ /\(.*\)/ && uc($f->[4]) ne 'NULL');
+											} elsif ($type =~ /DATE|TIME/i) {
+												if ($f->[4] =~ /0000-00-00/) {
+													if ($self->{replace_zero_date}) {
+														$f->[4] = $self->{replace_zero_date};
+													} else {
+														$f->[4] =~ s/^0000-00-00/1970-01-01/;
+													}
+												}
+												if ($f->[4] =~ /^\d+/) {
+													$f->[4] = "'$f->[4]'";
+												} elsif ($f->[4] =~ /^[\-]*INFINITY$/) {
+													$f->[4] = "'$f->[4]'::$type";
+												} elsif ($f->[4] =~ /AT TIME ZONE/i) {
+													$f->[4] = "($f->[4])";
+												}
+										} elsif (uc($f->[4]) ne 'NULL') {
+												$f->[4] = "'$f->[4]'";
+											}
+										}
+									}
+									$f->[4] = 'NULL' if ($f->[4] eq "''" && $type =~ /int|double|numeric/i);
+									$sql_output .= " DEFAULT $f->[4]";
+								}
+							}
+						}
+					}
+					$sql_output .= ",\n";
+				}
+				if ($self->{pkey_in_create}) {
+					$sql_output .= $self->_get_primary_keys($table, $self->{tables}{$table}{unique_key});
+				}
+				$sql_output =~ s/,$//;
+				$sql_output .= ')';
+				if (exists $self->{tables}{$table}{table_info}{on_commit})
+				{
+					$sql_output .= ' ' . $self->{tables}{$table}{table_info}{on_commit};
+				}
+
+				if ($self->{tables}{$table}{table_info}{partitioned} && $self->{pg_supports_partition} && !$self->{disable_partition}) {
+					if ($self->{partitions_list}{"\L$table\E"}{type})
+					{
+						$sql_output .= " PARTITION BY " . $self->{partitions_list}{"\L$table\E"}{type} . " (";
+						for (my $j = 0; $j <= $#{$self->{partitions_list}{"\L$table\E"}{columns}}; $j++)
+						{
+							$sql_output .= ', ' if ($j > 0);
+							$sql_output .= $self->quote_object_name($self->{partitions_list}{"\L$table\E"}{columns}[$j]);
+						}
+						$sql_output .= 	")";
+					}
+					else
+					{
+						print STDERR "WARNING: unsupported partition type on table '$table'\n";
+						$sql_output .=  " -- Unsupported partition type, please check\n";
+					}
+				}
+				if ( ($self->{type} ne 'FDW') && !$self->{oracle_fdw_data_export} && (!$self->{external_to_fdw} || (!grep(/^$table$/i, keys %{$self->{external_table}}) && !$self->{tables}{$table}{table_info}{connection})) )
+				{
+					my $withoid = _make_WITH($self->{with_oid}, $self->{tables}{$table}{table_info});
+					if ($self->{use_tablespace} && $self->{tables}{$table}{table_info}{tablespace} && !grep(/^$self->{tables}{$table}{table_info}{tablespace}$/i, @{$self->{default_tablespaces}})) {
+						$sql_output .= " $withoid TABLESPACE $self->{tables}{$table}{table_info}{tablespace};\n";
+					} else {
+						$sql_output .= " $withoid;\n";
+					}
+				}
+				elsif ( grep(/^$table$/i, keys %{$self->{external_table}}) )
+				{
+					my $program = '';
+					$program = ", program '$self->{external_table}{$table}{program}'" if ($self->{external_table}{$table}{program});
+					$sql_output .= " SERVER \L$self->{external_table}{$table}{directory}\E OPTIONS(filename '$self->{external_table}{$table}{directory_path}$self->{external_table}{$table}{location}', format 'csv', delimiter '$self->{external_table}{$table}{delimiter}'$program);\n";
+				}
+				elsif ($self->{is_mysql})
+				{
+					$schem = "dbname '$self->{schema}'," if ($self->{schema});
+					my $r_server = $self->{fdw_server};
+					my $r_table = $table;
+					if ($self->{tables}{$table}{table_info}{connection} =~ /([^'\/]+)\/([^']+)/)
+					{
+						$r_server = $1;
+						$r_table = $2;
+					}
+					$sql_output .= " SERVER $r_server OPTIONS($schem table_name '$r_table');\n";
+				}
+				else
+				{
+					my $tmptb = $table;
+					if ($self->{schema}) {
+						$schem = "schema '$self->{schema}',";
+					} elsif ($tmptb =~ s/^([^\.]+)\.//) {
+						$schem = "schema '$1',";
+					}
+					$sql_output .= " SERVER $self->{fdw_server} OPTIONS($schem table '$tmptb', readonly 'true');\n";
+				}
+			}
+			$sql_output =~ s/#ORA2PGENUM#/$enum_str/s;
+
+			$sql_header .= "CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\";\n" if ($self->{use_uuid} && $sql_header !~ /CREATE EXTENSION .*uuid-ossp/is);
+
+			# For data export from foreign table, go to next table
+			if ($self->{oracle_fdw_data_export})
+			{
+				$ib++;
+				next;
+			}
+
+			$sql_output .= $serial_sequence;
+
+			# Add comments on table
+			if (!$self->{disable_comment} && $self->{tables}{$table}{table_info}{comment})
+			{
+				$self->{tables}{$table}{table_info}{comment} =~ s/'/''/gs;
+				$sql_output .= "COMMENT ON$foreign TABLE " . $self->quote_object_name($tbname) . " IS E'$self->{tables}{$table}{table_info}{comment}';\n";
+			}
+
+			# Add comments on columns
+			if (!$self->{disable_comment})
+			{
+				foreach my $f (sort { lc($a) cmp lc($b) } keys %{$self->{tables}{$table}{column_comments}})
+				{
+					next unless $self->{tables}{$table}{column_comments}{$f};
+					$self->{tables}{$table}{column_comments}{$f} =~ s/'/''/gs;
+					# Change column names
+					my $fname = $f;
+					if (exists $self->{replaced_cols}{"\L$table\E"}{lc($fname)} && $self->{replaced_cols}{"\L$table\E"}{lc($fname)}) {
+						$self->logit("\tReplacing column $f as " . $self->{replaced_cols}{"\L$table\E"}{lc($fname)} . "...\n", 1);
+						$fname = $self->{replaced_cols}{"\L$table\E"}{lc($fname)};
+					}
+					$sql_output .= "COMMENT ON COLUMN " .  $self->quote_object_name($tbname) . '.'
+									.  $self->quote_object_name($fname)
+									. " IS E'" . $self->{tables}{$table}{column_comments}{$f} .  "';\n";
+				}
+			}
+
+			# Change ownership
+			if ($self->{force_owner})
+			{
+				my $owner = $self->{tables}{$table}{table_info}{owner};
+				$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
+				$sql_output .= "ALTER$foreign $self->{tables}{$table}{table_info}{type} " .  $self->quote_object_name($tbname)
+							. " OWNER TO " .  $self->quote_object_name($owner) . ";\n";
+			}
+			if (exists $self->{tables}{$table}{alter_index} && $self->{tables}{$table}{alter_index})
+			{
+				foreach (@{$self->{tables}{$table}{alter_index}}) {
+					$sql_output .= "$_;\n";
+				}
+			}
+			my $export_indexes = 1;
+
+			if ((!$self->{tables}{$table}{table_info}{partitioned} || $self->{pg_version} >= 11
+					|| $self->{disable_partition}) && $self->{type} ne 'FDW')
+			{
+				# Set the indexes definition
+				my ($idx, $fts_idx) = $self->_create_indexes($table, 0, %{$self->{tables}{$table}{indexes}});
+				$indices .= "$idx\n" if ($idx);
+                #show information about the cause of failure that occurred during conversion--start
+				if($indices =~/CREATE UNIQUE INDEX\s(.*)\sON\s(.*)\s\(/ig){
+					$error_dic{uc($2)} = "Failed to export unique index [$1] from [$2]";
+				}
+				#show information about the cause of failure that occurred during conversion--end
+				$fts_indices .= "$fts_idx\n" if ($fts_idx);
+				if (!$self->{file_per_index})
+				{
+					$sql_output .= $indices;
+					$indices = '';
+					$sql_output .= $fts_indices;
+					$fts_indices = '';
+				}
+
+				# Set the unique (and primary) key definition 
+				$constraints .= $self->_create_unique_keys($table, $self->{tables}{$table}{unique_key});
+				# Set the check constraint definition 
+				$constraints .= $self->_create_check_constraint($table, $self->{tables}{$table}{check_constraint},$self->{tables}{$table}{field_name}, @skip_column_check);
+				if (!$self->{file_per_constraint})
+				{
+					$sql_output .= $constraints;
+					$constraints = '';
+				}
+			}
+
+			if (exists $self->{tables}{$table}{alter_table} && !$self->{disable_unlogged} )
+			{
+				$obj_type =~ s/UNLOGGED //;
+				foreach (@{$self->{tables}{$table}{alter_table}}) {
+					$sql_output .= "\nALTER $obj_type $tbname $_;\n";
+				}
+			}
+		};
+		#show migration results,list of objects that successes,failures,ignores--end
+		#show migration results,list of objects that successes,failures,ignores--start
+		if($sql_output =~ /\Q$table\E/gi){
+			push(@success_object,$table);
+		}else{
+			push(@err_object,$table);
+		}
+		if ($@){ 
+			$error_dic{$table} = "$@";
+			$ib++;
+			next;
+		} 
+		#show migration results,list of objects that successes,failures,ignores--end
+		$ib++;
+		
 	}
 
 	if (!$self->{quiet} && !$self->{debug})
 	{
 		print STDERR $self->progress_bar($ib - 1, $num_total_table, 25, '=', 'tables', 'end of table export.'), "\n";
 	}
+
+	#show migration results,list of objects that successes,failures,ignores--start
+	my $sql = "SELECT OWNER,TABLE_NAME,NVL(num_rows,1) NUMBER_ROWS,TABLESPACE_NAME,NESTED,LOGGING,PARTITIONED,PCT_FREE FROM $self->{prefix}_TABLES  WHERE OWNER='$self->{schema}'";
+	@ignore_object = _get_ignore_object($self,$sql,\@object_info);
+	type_log($self,\@success_object,\@err_object,\@ignore_object,$self->{type},%error_dic);
+	#show migration results,list of objects that successes,failures,ignores--end
 
 	# When exporting data with oracle_fdw there is no more to do
 	return $sql_output if ($self->{oracle_fdw_data_export});
@@ -7860,7 +10428,23 @@ BEGIN
         query := 'SELECT max($qt' || colname || '$qt)+1 FROM $qt' || tbname || '$qt';
         EXECUTE query INTO maxval;
         IF (maxval IS NOT NULL) THEN
+};
+		if ($self->{pg_version} < 12)
+		{
+			$fct_sequence .= qq{
+                query := \$\$SELECT (string_to_array(adsrc,''''))[2] FROM pg_attrdef WHERE adrelid = '\$\$
+                        || tbname || \$\$'::regclass AND adnum = (SELECT attnum FROM pg_attribute WHERE attrelid = '\$\$
+                        || tbname || \$\$'::regclass AND attname = '\$\$ || colname || \$\$') AND adsrc LIKE 'nextval%'\$\$;
+};
+		}
+		else
+		{
+			$fct_sequence .= qq{
 		query := \$\$SELECT pg_get_serial_sequence ('$qt\$\$|| tbname || \$\$$qt', '\$\$ || colname || \$\$');\$\$;
+};
+		}
+
+		$fct_sequence .= qq{
                 EXECUTE query INTO seqname;
                 IF (seqname IS NOT NULL) THEN
                         query := 'ALTER SEQUENCE ' || seqname || ' RESTART WITH ' || maxval;
@@ -8053,6 +10637,14 @@ sub _get_sql_statements
 {
 	my $self = shift;
 
+    #show migration results,list of objects that successes,failures,ignores--start
+	my @success_object = ();
+	my @err_object = ();
+	my @ignore_object = ();
+	my @object_info = ();
+	my %error_dic = ();
+	#show migration results,list of objects that successes,failures,ignores--end
+
 	# Process view
 	if ($self->{type} eq 'VIEW')
 	{
@@ -8068,7 +10660,11 @@ sub _get_sql_statements
 	# Process grant
 	elsif ($self->{type} eq 'GRANT')
 	{
-		$self->export_grant();
+        #show migration results,list of objects that successes,failures,ignores--start
+		# $self->export_grant();
+        $error_dic{$self->{type}} = "Custom type [GRANT] exists and cannot be imported to PostgreSQL";
+        type_log($self,\@success_object,\@err_object,\@ignore_object,$self->{type},%error_dic);
+        #show migration results,list of objects that successes,failures,ignores--end
 	}
 
 	# Process sequences
@@ -8080,13 +10676,21 @@ sub _get_sql_statements
 	# Process dblink
 	elsif ($self->{type} eq 'DBLINK')
 	{
-		$self->export_dblink();
+        #show migration results,list of objects that successes,failures,ignores--start
+		# $self->export_dblink();
+        $error_dic{$self->{type}} = "Custom type [DBLINK] exists and cannot be imported to PostgreSQL";
+        type_log($self,\@success_object,\@err_object,\@ignore_object,$self->{type},%error_dic);
+        #show migration results,list of objects that successes,failures,ignores--end
 	}
 
 	# Process dblink
 	elsif ($self->{type} eq 'DIRECTORY')
 	{
-		$self->export_directory();
+        #show migration results,list of objects that successes,failures,ignores--start
+		# $self->export_directory();
+        $error_dic{$self->{type}} = "Custom type [DIRECTORY] exists and cannot be imported to PostgreSQL";
+        type_log($self,\@success_object,\@err_object,\@ignore_object,$self->{type},%error_dic);
+        #show migration results,list of objects that successes,failures,ignores--end
 	}
 
 	# Process triggers
@@ -8134,7 +10738,11 @@ sub _get_sql_statements
 	# Process TABLESPACE only
 	elsif ($self->{type} eq 'TABLESPACE')
 	{
-		$self->export_tablespace();
+        #show migration results,list of objects that successes,failures,ignores--start
+		# $self->export_tablespace();
+        $error_dic{$self->{type}} = "Custom type [TABLESPACE] exists and cannot be imported to PostgreSQL";
+        type_log($self,\@success_object,\@err_object,\@ignore_object,$self->{type},%error_dic);
+        #show migration results,list of objects that successes,failures,ignores--end
 	}
 
 	# Export as Kettle XML file
@@ -8321,7 +10929,7 @@ sub _get_sql_statements
 			{
 				my $file_name = "$dirprefix${table}_$self->{output}";
 				$file_name =~ s/\.(gz|bz2)$//;
-				$load_file .=  "\\i$self->{psql_relative_path} '$file_name'\n";
+				$load_file .=  "\\i$self->{psql_relative_path} $file_name\n";
 			}
 
 			# With partitioned table, load data direct from table partition
@@ -8349,7 +10957,7 @@ sub _get_sql_statements
 							if ($self->{file_per_table} && !$self->{pg_dsn}) {
 								my $file_name = "$dirprefix${sub_tb_name}_$self->{output}";
 								$file_name =~ s/\.(gz|bz2)$//;
-								$load_file .=  "\\i$self->{psql_relative_path} '$file_name'\n";
+								$load_file .=  "\\i$self->{psql_relative_path} $file_name\n";
 							}
 						}
 						# Now load content of the default partion table
@@ -8363,7 +10971,7 @@ sub _get_sql_statements
 									$part_name = "${tb_name}$part_name" if ($self->{prefix_partition});
 									my $file_name = "$dirprefix${part_name}_$self->{output}";
 									$file_name =~ s/\.(gz|bz2)$//;
-									$load_file .=  "\\i$self->{psql_relative_path} '$file_name'\n";
+									$load_file .=  "\\i$self->{psql_relative_path} $file_name\n";
 								}
 							}
 						}
@@ -8374,7 +10982,7 @@ sub _get_sql_statements
 						{
 							my $file_name = "$dirprefix${tb_name}_$self->{output}";
 							$file_name =~ s/\.(gz|bz2)$//;
-							$load_file .=  "\\i$self->{psql_relative_path} '$file_name'\n";
+							$load_file .=  "\\i$self->{psql_relative_path} $file_name\n";
 						}
 					}
 				}
@@ -8389,7 +10997,7 @@ sub _get_sql_statements
 							$part_name = $table . '_' . $part_name if ($self->{prefix_partition});
 							my $file_name = "$dirprefix${part_name}_$self->{output}";
 							$file_name =~ s/\.(gz|bz2)$//;
-							$load_file .=  "\\i$self->{psql_relative_path} '$file_name'\n";
+							$load_file .=  "\\i$self->{psql_relative_path} $file_name\n";
 						}
 					}
 				}
@@ -9090,7 +11698,6 @@ sub _dump_table
 			my $keyname = lc($table . '_' . $fieldname . '_t');
 			$f->[1] = $keyname;
 		}
-		$type = $self->{'modify_type'}{lc($table)}{lc($f->[0])} if (exists $self->{'modify_type'}{lc($table)}{lc($f->[0])});
 		push(@stt, uc($f->[1]));
 		push(@tt, $type);
 		push(@nn,  $fieldname);
@@ -9334,31 +11941,6 @@ sub _dump_fdw_table
 	# and INTERNAL because they use the call to ST_GeomFromText()
 	$has_geometry = 0 if ($self->{geometry_extract_type} eq 'WKB');
 
-	# Append WHERE clause defined in the configuration file that must be applied
-	if ($s_out !~ / WHERE /)
-	{
-		if (exists $self->{where}{"\L$table\E"} && $self->{where}{"\L$table\E"})
-		{
-			($s_out =~ / WHERE /) ? $s_out .= ' AND ' : $s_out .= ' WHERE ';
-			if (!$self->{is_mysql} || ($self->{where}{"\L$table\E"} !~ /\s+LIMIT\s+\d/)) {
-				$s_out .= '(' . $self->{where}{"\L$table\E"} . ')';
-			} else {
-				$s_out .= $self->{where}{"\L$table\E"};
-			}
-			$self->logit("\tApplying WHERE clause on foreign table: " . $self->{where}{"\L$table\E"} . "\n", 1);
-		}
-		elsif ($self->{global_where})
-		{
-			($s_out =~ / WHERE /) ? $s_out .= ' AND ' : $s_out .= ' WHERE ';
-			if (!$self->{is_mysql} || ($self->{global_where} !~ /\s+LIMIT\s+\d/)) {
-				$s_out .= '(' . $self->{global_where} . ')';
-			} else {
-				$s_out .= $self->{global_where};
-			}
-			$self->logit("\tApplying WHERE global clause: " . $self->{global_where} . "\n", 1);
-		}
-	}
-
 	if ( ($self->{oracle_copies} > 1) && $self->{defined_pk}{"\L$table\E"} )
 	{
 		my $colpk = $self->{defined_pk}{"\L$table\E"};
@@ -9468,7 +12050,7 @@ sub get_indexname
 		$idxname =~ s/"//g;
 		# Remove double quote, DESC and parenthesys
 		map { s/"//g; s/.*\(([^\)]+)\).*/$1/; s/\s+DESC//i; s/::.*//; } @collist;
-		$idxname .= '_' . join('_', @collist);
+		$idxname = $idxname . '_' . join('_', @collist);
 		$idxname =~ s/\s+//g;
 		if ($self->{indexes_suffix}) {
 			$idxname = substr($idxname,0,59);
@@ -9582,24 +12164,9 @@ sub _create_indexes
 		{
 			for ($i = 0; $i <= $#{$indexes{$idx}}; $i++)
 			{
-				if ( $indexes{$idx}->[$i] =~ /[\s\-\+\/\*]/ && $indexes{$idx}->[$i] !~ /^[^\.\s]+\s+(ASC|DESC)$/i
-				       			&& $indexes{$idx}->[$i] !~ /\s+collate\s+/i ) {
+				if ( ($indexes{$idx}->[$i] =~ /[\s\-\+\/\*]/) && ($indexes{$idx}->[$i] !~ /^[^\.\s]+\s+DESC$/i) ) {
 					$indexes{$idx}->[$i] = '(' . $indexes{$idx}->[$i] . ')';
 				}
-			}
-		}
-		else
-		{
-			for ($i = 0; $i <= $#{$indexes{$idx}}; $i++)
-			{
-				my @tmp_col = split(/\s*,\s*/, $indexes{$idx}->[$i]);
-				for (my $j = 0; $j <= $#tmp_col; $j++) {
-					if ( $tmp_col[$j] =~ /[\s\-\+\/\*]/ && $tmp_col[$j] !~ /^[^\.\s]+\s+(ASC|DESC)$/i
-				       			&& $tmp_col[$j] !~ /\s+collate\s+/i ) {
-						$tmp_col[$j] = '(' . $tmp_col[$j] . ')';
-					}
-				}
-				$indexes{$idx}->[$i] = join(', ', @tmp_col);
 			}
 		}
 		my $columns = '';
@@ -10096,7 +12663,7 @@ This function return SQL code to create unique and primary keys of a table
 =cut
 sub _create_unique_keys
 {
-	my ($self, $table, $unique_key, $partition) = @_;
+	my ($self, $table, $unique_key) = @_;
 
 	my $out = '';
 
@@ -10113,7 +12680,6 @@ sub _create_unique_keys
 		my $deferrable = $unique_key->{$consname}{deferrable};
 		my $deferred = $unique_key->{$consname}{deferred};
 		my @conscols = @{$unique_key->{$consname}{columns}};
-
 		# Exclude unique index used in PK when column list is the same
 		next if (($constype eq 'U') && exists $pkcollist{$table} && ($pkcollist{$table} eq join(",", @conscols)));
 
@@ -10127,29 +12693,11 @@ sub _create_unique_keys
 			}
 		}
 		# Add the partition column if it is not is the PK
-		if (($constype eq 'P' || $constype eq 'U') && exists $self->{partitions_list}{"\L$tbsaved\E"})
+		if ($constype eq 'P' && exists $self->{partitions_list}{"\L$tbsaved\E"})
 		{
 			for (my $j = 0; $j <= $#{$self->{partitions_list}{"\L$tbsaved\E"}{columns}}; $j++)
 			{
 				push(@conscols, $self->{partitions_list}{"\L$tbsaved\E"}{columns}[$j]) if (!grep(/^$self->{partitions_list}{"\L$tbsaved\E"}{columns}[$j]$/i, @conscols));
-			}
-
-			if ($partition)
-			{
-				for (my $j = 0; $j <= $#{$self->{subpartitions_list}{"\L$tbsaved\E"}{"\L$partition\E"}{columns}}; $j++)
-				{
-					push(@conscols, $self->{subpartitions_list}{"\L$tbsaved\E"}{"\L$partition\E"}{columns}[$j]) if (!grep(/^$self->{subpartitions_list}{"\L$tbsaved\E"}{"\L$partition\E"}{columns}[$j]$/i, @conscols));
-				}
-			}
-			else
-			{
-				foreach my $part (keys %{$self->{subpartitions_list}{"\L$tbsaved\E"}})
-				{
-					for (my $j = 0; $j <= $#{$self->{subpartitions_list}{"\L$tbsaved\E"}{"\L$part\E"}{columns}}; $j++)
-					{
-						push(@conscols, $self->{subpartitions_list}{"\L$tbsaved\E"}{"\L$part\E"}{columns}[$j]) if (!grep(/^$self->{subpartitions_list}{"\L$tbsaved\E"}{"\L$part\E"}{columns}[$j]$/i, @conscols));
-					}
-				}
 			}
 		}
 		map { $_ = $self->quote_object_name($_) } @conscols;
@@ -10640,7 +13188,7 @@ VARCHAR2
       dbms_lob.FILEGETNAME( p_bfile, l_dir, l_fname );
       SELECT DIRECTORY_PATH INTO l_path FROM $self->{prefix}_DIRECTORIES WHERE DIRECTORY_NAME = l_dir;
       l_dir := rtrim(l_path,'/');
-      RETURN l_dir || '/' || replace(l_fname, '\\', '/');
+      RETURN l_dir || '/' || l_fname;
   END IF;
   END;
 };
@@ -10662,7 +13210,7 @@ VARCHAR2
       RETURN NULL;
     ELSE
       dbms_lob.FILEGETNAME( p_bfile, l_dir, l_fname );
-      RETURN '($quote' || l_dir || '$quote,$quote' || replace(l_fname, '\\', '/') || '$quote)';
+      RETURN '($quote' || l_dir || '$quote,$quote' || l_fname || '$quote)';
   END IF;
   END;
 };
@@ -10733,10 +13281,10 @@ END;
 		}
 	}
 	$str .= " FROM $realtable";
-	if ($self->{start_scn} =~ /^\d+$/) {
-		$str .= " AS OF SCN $self->{start_scn}";
-	} elsif ($self->{start_scn}) {
-		$str .= " AS OF TIMESTAMP $self->{start_scn}";
+	if ($self->{oracle_scn} =~ /^\d+$/) {
+		$str .= " AS OF SCN $self->{oracle_scn}";
+	} elsif ($self->{oracle_scn}) {
+		$str .= " AS OF TIMESTAMP $self->{oracle_scn}";
 	} elsif (exists $self->{current_oracle_scn}{$table}) {
 		$str .= " AS OF SCN $self->{current_oracle_scn}{$table}";
 	}
@@ -11040,9 +13588,9 @@ sub _column_info
 	$self->logit("Collecting column information for table $table...\n", 1);
 
 	if ($self->{is_mysql}) {
-		return Ora2Pg::MySQL::_column_info($self,$table,$owner,'TABLE');
+		return Ora2Pg::MySQL::_column_info($self,'',$owner,'TABLE');
 	} else {
-		return Ora2Pg::Oracle::_column_info($self,$table,$owner,'TABLE');
+		return Ora2Pg::Oracle::_column_info($self,'',$owner,'TABLE');
 	}
 }
 
@@ -11051,9 +13599,9 @@ sub _column_attributes
 	my ($self, $table, $owner, $objtype) = @_;
 
 	if ($self->{is_mysql}) {
-		return Ora2Pg::MySQL::_column_attributes($self,$table,$owner,'TABLE');
+		return Ora2Pg::MySQL::_column_attributes($self,'',$owner,'TABLE');
 	} else {
-		return Ora2Pg::Oracle::_column_attributes($self,$table,$owner,'TABLE');
+		return Ora2Pg::Oracle::_column_attributes($self,'',$owner,'TABLE');
 	}
 }
 
@@ -11062,9 +13610,9 @@ sub _encrypted_columns
 	my ($self, $table, $owner) = @_;
 
 	if ($self->{is_mysql}) {
-		return Ora2Pg::MySQL::_encrypted_columns($self,$table,$owner);
+		return Ora2Pg::MySQL::_encrypted_columns($self,'',$owner);
 	} else {
-		return Ora2Pg::Oracle::_encrypted_columns($self,$table,$owner);
+		return Ora2Pg::Oracle::_encrypted_columns($self,'',$owner);
 	}
 }
 
@@ -11535,44 +14083,6 @@ sub _get_types
 	}
 }
 
-=head2 _count_source_rows
-
-This function retrieves real rows count from a table.
-
-=cut
-
-
-sub _count_source_rows
-{
-	my ($self, $dbh, $t) = @_;
-
-	$self->logit("DEBUG: pid $$ looking for real row count for source table $t...\n", 1);
-	my $tbname = $t;
-	if ($self->{is_mysql}) {
-		$tbname = "`$t`";
-	} elsif ($self->{is_mssql}) {
-		$tbname = "[$t]";
-		$tbname =~ s/\./\].\[/;
-	} else {
-		$tbname = "[$t]";
-		$tbname =~ s/\./\].\[/;
-	}
-	my $sql = "SELECT COUNT(*) FROM $t";
-	my $sth = $dbh->prepare( $sql ) or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
-	$sth->execute or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
-	my $size = $sth->fetch();
-	$sth->finish();
-
-	my $dirprefix = '';
-	$dirprefix = "$self->{output_dir}/" if ($self->{output_dir});
-	my $fh = new IO::File;
-	$fh->open(">>${dirprefix}ora2pg_count_rows") or $self->logit("FATAL: can't write to ${dirprefix}ora2pg_count_rows, $!\n", 0, 1);
-	flock($fh, 2) || die "FATAL: can't lock file ${dirprefix}ora2pg_count_rows\n";
-	$fh->print("$t:$size->[0]\n");
-	$fh->close;
-}
-
-
 =head2 _table_info
 
 This function retrieves all Oracle-native tables information.
@@ -11586,82 +14096,11 @@ sub _table_info
 	my $self = shift;
 	my $do_real_row_count = shift;
 
-	my %tables_infos = ();
-
 	if ($self->{is_mysql}) {
-		%tables_infos = Ora2Pg::MySQL::_table_info($self);
+		return Ora2Pg::MySQL::_table_info($self, $do_real_row_count);
 	} else {
-		%tables_infos = Ora2Pg::Oracle::_table_info($self);
+		return Ora2Pg::Oracle::_table_info($self, $do_real_row_count);
 	}
-
-	# Collect real row count for each table
-	if ($do_real_row_count)
-	{
-		my $t1 = Benchmark->new;
-
-		my $parallel_tables_count = 0;
-		my $dirprefix = '';
-		$dirprefix = "$self->{output_dir}/" if ($self->{output_dir});
-		unlink("${dirprefix}ora2pg_count_rows");
-		foreach my $t (sort keys %tables_infos)
-		{
-			if ($self->{parallel_tables} > 1)
-			{
-				spawn sub {
-					my $dbhsrc = $self->{dbh}->clone();
-					$self->_count_source_rows($dbhsrc, $t);
-					$dbhsrc->disconnect();
-				};
-				$parallel_tables_count++;
-
-				# Wait for oracle connection terminaison
-				while ($parallel_tables_count > $self->{parallel_tables})
-				{
-					my $kid = waitpid(-1, WNOHANG);
-					if ($kid > 0)
-					{
-						$parallel_tables_count--;
-						delete $RUNNING_PIDS{$kid};
-					}
-					usleep(50000);
-				}
-			}
-			else
-			{
-				$self->_count_source_rows($self->{dbh}, $t);
-			}
-		}
-
-		# Wait for all child die
-		if ($self->{parallel_tables} > 1)
-		{
-			while (scalar keys %RUNNING_PIDS > 0)
-			{
-				my $kid = waitpid(-1, WNOHANG);
-				if ($kid > 0) {
-					delete $RUNNING_PIDS{$kid};
-				}
-				usleep(50000);
-			}
-		}
-
-		my $fh = new IO::File;
-		$fh->open("${dirprefix}ora2pg_count_rows") or $self->logit("FATAL: can't read file ${dirprefix}ora2pg_count_rows, $!\n", 0, 1);
-		my @ret = <$fh>;
-		$fh->close;
-		unlink("${dirprefix}ora2pg_count_rows");
-		foreach my $s (@ret)
-		{
-			my ($tb, $cnt) = split(':', $s);
-			$tables_infos{$tb}{num_rows} = $cnt || 0;
-		}
-
-		my $t2 = Benchmark->new;
-		$td = timediff($t2, $t1);
-		$self->logit("Collecting tables real row count took: " . timestr($td) . "\n", 1);
-	}
-
-	return %tables_infos;
 }
 
 =head2 _global_temp_table_info
@@ -11978,7 +14417,7 @@ sub format_data_row
 					use Ora2Pg::GEOM;
 					my $geom_obj = new Ora2Pg::GEOM('srid' => $self->{spatial_srid}{$table}->[$idx]);
 					$geom_obj->{geometry}{srid} = '';
-					$row->[$idx] = $geom_obj->parse_sdo_geometry($row->[$idx]) if ($row->[$idx] =~ /^ARRAY\(0x/);
+					$row->[$idx] = $geom_obj->parse_sdo_geometry($row->[$idx]);
 					$row->[$idx] = 'SRID=' . $geom_obj->{geometry}{srid} . ';' . $row->[$idx];
 				}
 				elsif ($self->{geometry_extract_type} eq 'WKB')
@@ -12010,7 +14449,7 @@ sub format_data_row
 						use Ora2Pg::GEOM;
 						my $geom_obj = new Ora2Pg::GEOM('srid' => $self->{spatial_srid}{$table}->[$idx]);
 						$geom_obj->{geometry}{srid} = '';
-						$row->[$idx] = $geom_obj->parse_sdo_geometry($row->[$idx]) if ($row->[$idx] =~ /^ARRAY\(0x/);
+						$row->[$idx] = $geom_obj->parse_sdo_geometry($row->[$idx]);
 						$row->[$idx] = "ST_GeomFromText('" . $row->[$idx] . "', $geom_obj->{geometry}{srid})";
 					}
 					else
@@ -12035,6 +14474,7 @@ sub format_data_row
 		}
 		else
 		{
+
 			$row->[$idx] = $self->format_data_type($row->[$idx], $data_type, $action, $table, $src_data_types->[$idx], $idx, $colcond->[$idx], $sprep);
 
 			# Construct a WHERE clause based onb PK columns values
@@ -12355,7 +14795,7 @@ sub format_data_type
 		elsif ($cond->{isdate})
 		{
 			$q = '' if ( $col =~ /^['\`]/ );
-			if ($col =~ /^0000-/) {
+			if ($col =~ /^0000-00-00/) {
 				$col = $self->{replace_zero_date} ?  "$q$self->{replace_zero_date}$q" : 'NULL';
 			} elsif ($col =~ /^(\d+-\d+-\d+ \d+:\d+:\d+)\.$/) {
 				$col = "$q$1$q";
@@ -12427,7 +14867,7 @@ sub format_data_type
 		}
 		elsif ($cond->{isdate})
 		{
-			if ($col =~ /^0000-/) {
+			if ($col =~ /^0000-00-00/) {
 				$col = $self->{replace_zero_date} || '\N';
 			} elsif ($col =~ /^(\d+-\d+-\d+ \d+:\d+:\d+)\.$/) {
 				$col = $1;
@@ -12633,7 +15073,6 @@ sub read_config
 	my ($self, $file) = @_;
 
 	my $fh = new IO::File;
-	binmode($fh, ":utf8");
 	$fh->open($file) or $self->logit("FATAL: can't read configuration file $file, $!\n", 0, 1);
 	while (my $l = <$fh>)
 	{
@@ -12672,7 +15111,7 @@ sub read_config
 				'REPLACE_AS_BOOLEAN','BOOLEAN_VALUES','MODIFY_TYPE','DEFINED_PK',
 				'ALLOW_PARTITION','REPLACE_QUERY','FKEY_ADD_UPDATE','DELETE',
 				'LOOK_FORWARD_FUNCTION','ORA_INITIAL_COMMAND','PG_INITIAL_COMMAND',
-				'ORACLE_FDW_TRANSFORM','EXCLUDE_COLUMNS'
+				'ORACLE_FDW_TRANSFORM'
 			))
 		{
 			$AConfig{$var} = $val;
@@ -12736,10 +15175,9 @@ sub read_config
 				$self->logit("FATAL: invalid option, see FKEY_ADD_UPDATE in configuration file\n", 0, 1);
 			}
 		}
-		elsif ($var eq 'MODIFY_STRUCT' or $var eq 'EXCLUDE_COLUMNS')
+		elsif ($var eq 'MODIFY_STRUCT')
 		{
-			while ($val =~ s/([^\(\s]+)\s*\(([^\)]+)\)\s*//)
-			{
+			while ($val =~ s/([^\(\s]+)\s*\(([^\)]+)\)\s*//) {
 				my $table = $1;
 				my $fields = $2;
 				$fields =~ s/^\s+//;
@@ -12878,8 +15316,7 @@ sub _extract_functions
 	my $before = '';
 	my $fcname =  '';
 	my $type = '';
-	for (my $i = 0; $i <= $#lines; $i++)
-	{ 
+	for (my $i = 0; $i <= $#lines; $i++) { 
 		if ($lines[$i] =~ /^(?:CREATE|CREATE OR REPLACE)?\s*(?:NONEDITIONABLE|EDITIONABLE)?\s*(FUNCTION|PROCEDURE)\s+([a-z0-9_\-\."]+)(.*)/i) {
 			$type = uc($1);
 			$fcname = $2;
@@ -12901,7 +15338,7 @@ sub _extract_functions
 		$fcname = '' if ($lines[$i] =~ /^\s*END\s+$fcname\b/i);
 	}
 
-	map { s/\bEND\s+(?!IF|LOOP|CASE|INTO|FROM|END|,)[a-z0-9_]+\s*;/END;/igs; } @functions;
+	map { s/\bEND\s+(?!IF|LOOP|CASE|INTO|FROM|,)[a-z0-9_]+\s*;/END;/igs; } @functions;
 
 	return @functions;
 }
@@ -12953,10 +15390,6 @@ sub _convert_package
 
 		# Process package spec to extract global variables
 		$self->_remove_comments(\$glob_declare);
-
-		# Remove multiline comment from declaration part
-		while ($glob_declare =~ s/\%OPEN_COMMENT\%((?:.*)?\*\/)//s) {};
-
 		if ($glob_declare)
 		{
 			my @cursors = ();
@@ -13022,7 +15455,7 @@ sub _convert_package
 		}
 		if ($self->{file_per_function})
 		{
-			my $dir = "$dirprefix".lc("$pname");
+			my $dir = lc("$dirprefix$pname");
 			if (!-d "$dir") {
 				if (not mkdir($dir)) {
 					$self->logit("Fail creating directory package : $dir - $!\n", 1);
@@ -13301,17 +15734,7 @@ sub _convert_function
 	$fname =  $self->quote_object_name("$pname$sep$fct_detail{name}") if ($pname && !$self->{is_mysql});
 	$fname =~ s/"_"/_/gs;
 
-	# rewrite argument syntax
-	# Replace alternate syntax for default value
-	$fct_detail{args} =~ s/:=/DEFAULT/igs;
-	# NOCOPY not supported
-	$fct_detail{args} =~ s/\s*NOCOPY//igs;
-	# IN OUT should be INOUT
-	$fct_detail{args} =~ s/\bIN\s+OUT/INOUT/igs;
-	# Remove default IN keyword
-	$fct_detail{args} =~ s/\s+IN\s+/ /igs;
-	# Remove %ROWTYPE from arguments, we can use the table name as type
-	$fct_detail{args} =~ s/\%ROWTYPE//igs;
+	$fct_detail{args} =~ s/\s+IN\s+/ /igs; # Remove default IN keyword
 
 	# Replace DEFAULT EMPTY_BLOB() from function/procedure arguments by DEFAULT NULL
 	$fct_detail{args} =~ s/\s+DEFAULT\s+EMPTY_[CB]LOB\(\)/DEFAULT NULL/igs;
@@ -13395,29 +15818,19 @@ sub _convert_function
 	}
 
 	# PostgreSQL procedure do not support OUT parameter, translate them into INOUT params
-	if (!$fct_detail{hasreturn} && $self->{pg_supports_procedure}
-		&&!$self->{pg_supports_outparam} && ($fct_detail{args} =~ /\bOUT\s+[^,\)]+/i)) {
+	if (!$fct_detail{hasreturn} && $self->{pg_supports_procedure} && ($fct_detail{args} =~ /\bOUT\s+[^,\)]+/i)) {
 		$fct_detail{args} =~ s/\bOUT(\s+[^,\)]+)/INOUT$1/igs;
 	}
 
 	my @nout = $fct_detail{args} =~ /\bOUT\s+([^,\)]+)/igs;
 	my @ninout = $fct_detail{args} =~ /\bINOUT\s+([^,\)]+)/igs;
-	my $out_return = 0;
 	if ($fct_detail{hasreturn})
 	{
 		my $nbout = $#nout+1 + $#ninout+1;
-
 		# When there is one or more out parameter, let PostgreSQL
 		# choose the right type with not using a RETURNS clause.
 		if ($nbout > 0) {
 			$func_return = " AS \$body\$\n";
-			if ($fct_detail{type} ne 'PROCEDURE' || !$self->{pg_supports_procedure})
-			{
-				push(@nout, "extra_param $fct_detail{func_ret_type}");
-				$func_return = " RETURNS record AS \$body\$\n";
-				$out_return = 1;
-			}
-			$fct_detail{args} =~ s/\)$/, OUT extra_param $fct_detail{func_ret_type}\)/;
 		} else {
 			# Returns the right type
 			$func_return = " RETURNS$fct_detail{setof} $fct_detail{func_ret_type} AS \$body\$\n";
@@ -13432,10 +15845,6 @@ sub _convert_function
 			# When there is one or more out parameter, let PostgreSQL
 			# choose the right type with not using a RETURNS clause.
 			$func_return = " AS \$body\$\n";
-			push(@nout, "extra_param $fct_detail{func_ret_type}") if ($fct_detail{type} ne 'PROCEDURE');
-			$func_return = " RETURNS record AS \$body\$\n";
-			$fct_detail{args} =~ s/\)$/, OUT extra_param $fct_detail{func_ret_type}\)/;
-			$out_return = 1;
 		}
 	}
 	else
@@ -13560,9 +15969,6 @@ CREATE EXTENSION IF NOT EXISTS dblink;
 	v_conn_str  text := $dblink_conn;
 	v_query     text;
 };
-		my $call_str = 'SELECT * FROM';
-		$call_str = 'CALL' if (uc($type) eq 'PROCEDURE');
-
 		if ($#at_ret_param == 0)
 		{
 			my $varname = $at_ret_param[0];
@@ -13573,7 +15979,7 @@ CREATE EXTENSION IF NOT EXISTS dblink;
 			{
 				$at_wrapper .= qq{
 BEGIN
-	v_query := 'CALL $fname$at_suffix ($params)';
+	v_query := 'SELECT * FROM $fname$at_suffix ($params)';
 	SELECT v_ret INTO $varname FROM dblink(v_conn_str, v_query) AS p (v_ret $vartype);
 };
 			}
@@ -13610,7 +16016,7 @@ BEGIN
 			{
 				$at_wrapper .= qq{
 BEGIN
-	v_query := 'CALL $fname$at_suffix ($params)';
+	v_query := 'SELECT * FROM $fname$at_suffix ($params)';
 	SELECT * FROM dblink(v_conn_str, v_query) AS p ($vartypes) INTO $varnames;
 };
 			}
@@ -13725,12 +16131,11 @@ END;
 		$function .= ';' if ($function !~ /END\s*;\s*$/is && $fct_detail{code} !~ /\%ORA2PG_COMMENT\d+\%\s*$/);
 		$function .= "\n\$body\$\nLANGUAGE PLPGSQL\n";
 
-		# Fix RETURN call when the function has OUT parameters
-		if ($out_return)
-		{
+		# Remove parameters to RETURN call when the function has no RETURNS
+		# clause which is the case when there is OUT parameters.
+		if ($function !~ /\s+RETURNS\s+/s || ($function =~ /\s+RETURNS VOID\s+/s || ($type eq 'PROCEDURE' && $self->{pg_supports_procedures}))) {
 			$self->_remove_text_constant_part(\$function);
-			$function =~ s/(\s+)RETURN\s*(\([^;]+\))\s*;/$1extra_param := $2;$1RETURN;/igs;
-			$function =~ s/(\s+)RETURN\s+([^;]+);/$1extra_param := $2;$1RETURN;/igs;
+			$function =~ s/(\bRETURN\b)\s*[^;]+;/$1;/igs;
 			$self->_restore_text_constant_part(\$function);
 		}
 		$revoke = "-- REVOKE ALL ON $type $name $fct_detail{args} FROM PUBLIC;";
@@ -13747,19 +16152,17 @@ END;
 			if ($self->{type} ne 'PACKAGE')
 			{
 				if (!$self->{is_mysql}) {
-					# A SECURITY DEFINER procedure cannot execute transaction control statements
-					$function .= "SECURITY DEFINER\n" if ($self->{security}{"\U$fct_detail{name}\E"}{security} eq 'DEFINER' && $fct_detail{code} !~ /\b(COMMIT|ROLLBACK)\s*;/i);
+					$function .= "SECURITY DEFINER\n" if ($self->{security}{"\U$fct_detail{name}\E"}{security} eq 'DEFINER');
 				} else  {
 					$function .= "SECURITY DEFINER\n" if ($fct_detail{security} eq 'DEFINER');
 				}
 			}
 			else
 			{
-				# A SECURITY DEFINER procedure cannot execute transaction control statements
-				$function .= "SECURITY DEFINER\n" if ($self->{security}{"\U$pname\E"}{security} eq 'DEFINER' && $fct_detail{code} !~ /\b(COMMIT|ROLLBACK)\s*;/i);
+				$function .= "SECURITY DEFINER\n" if ($self->{security}{"\U$pname\E"}{security} eq 'DEFINER');
 			}
 		}
-		$fct_detail{immutable} = '' if ($fct_detail{code} =~ /\b(UPDATE|INSERT|DELETE|CALL)\b/is);
+		$fct_detail{immutable} = '' if ($fct_detail{code} =~ /\b(UPDATE|INSERT|DELETE)\b/is);
 		$function .= "$fct_detail{immutable};\n";
 		$function = "\n$fct_detail{before}$function";
 	}
@@ -13815,7 +16218,6 @@ END;
 	}
 
 	$function =~ s/\r//gs;
-	$function =~ s/\bEND[\s;]+;/END;/is;
 	my @lines = split(/\n/, $function);
 	map { s/^\/$//; } @lines;
 
@@ -14653,7 +17055,7 @@ sub _extract_data
 								my $lobdata = $self->{dbh}->ora_lob_read($row[$j], $offset, $chunk_size );
 								if ($self->{dbh}->errstr)
 								{
-									$self->logit("ERROR: " . $self->{dbh}->errstr . "\n", 0, 0) if ($self->{dbh}->errstr !~ /ORA-22831/);
+									$self->logit("ERROR: " . $self->{dbh}->errstr . "\n", 0, 0) if ($dbh->errstr !~ /ORA-22831/);
 									last;
 								}
 								last unless (defined $lobdata && length $lobdata);
@@ -14814,16 +17216,13 @@ sub _extract_data
 	$self->close_export_file($self->{cfhout}) if (defined $self->{cfhout});
 	$self->{cfhout} = undef;
 
-	if (!$self->{quiet} && !$self->{debug})
+	if ( ($self->{jobs} <= 1) && ($self->{oracle_copies} <= 1) && ($self->{parallel_tables} <= 1))
 	{
-		if ( ($self->{jobs} <= 1) && ($self->{oracle_copies} <= 1) && ($self->{parallel_tables} <= 1))
-		{
-			my $end_time = time();
-			my $dt = $end_time - $self->{global_start_time};
-			my $rps = int($self->{current_total_row} / ($dt||1));
-			print STDERR "\n";
-			print STDERR $self->progress_bar($self->{current_total_row}, $self->{global_rows}, 25, '=', 'total rows', "- ($dt sec., avg: $rps recs/sec).") . "\n";
-		}
+		my $end_time = time();
+		my $dt = $end_time - $self->{global_start_time};
+		my $rps = int($self->{current_total_row} / ($dt||1));
+		print STDERR "\n";
+		print STDERR $self->progress_bar($self->{current_total_row}, $self->{global_rows}, 25, '=', 'total rows', "- ($dt sec., avg: $rps recs/sec).") . "\n";
 	}
 
 	# Wait for all child end
@@ -15081,7 +17480,7 @@ sub _dump_to_pg
 					# Even with prepared statement we need to replace zero date
 					foreach my $j (@date_cols)
 					{
-						if ($row->[$j] =~ /^0000-/)
+						if ($row->[$j] =~ /^0000-00-00/)
 						{
 							if (!$self->{replace_zero_date}) {
 								$row->[$j] = undef;
@@ -15965,7 +18364,7 @@ sub _show_infos
 		$self->logit("Showing table information...\n", 1);
 
 		# Retrieve tables informations
-		my %tables_infos = $self->_table_info(($type eq 'SHOW_TABLE') ? $self->{count_rows}: 0);
+		my %tables_infos = $self->_table_info();
 
 		# Retrieve column identity information
 		$self->logit("Retrieving column identity information...\n", 1);
@@ -16351,42 +18750,6 @@ sub get_schema_condition
 	return $cond;
 }
 
-sub _count_pg_rows
-{
-	my ($self, $dbhdest, $lbl, $t, $num_rows) = @_;
-
-	if ($self->{pg_dsn})
-	{
-		$self->logit("DEBUG: pid $$ looking for real row count for destination table $t...\n", 1);
-
-		my ($tbmod, $orig, $schema, $both) = $self->set_pg_relation_name($t);
-		my $s = $dbhdest->prepare("SELECT count(*) FROM $both;") or $self->logit("FATAL: " . $dbhdest->errstr . "\n", 0, 1);
-		if ($self->{preserve_case}) {
-			$s = $dbhdest->prepare("SELECT count(*) FROM \"$schema\".\"$t\";") or $self->logit("FATAL: " . $dbhdest->errstr . "\n", 0, 1);
-		}
-		if (not $s->execute)
-		{
-			push(@errors, "Table $both$orig does not exists in PostgreSQL database.") if ($s->state eq '42P01');
-			next;
-		}
-                my $dirprefix = '';
-		$dirprefix = "$self->{output_dir}/" if ($self->{output_dir});
-		my $fh = new IO::File;
-		$fh->open(">>${dirprefix}ora2pg_stdout_locker") or $self->logit("FATAL: can't write to ${dirprefix}ora2pg_stdout_locker, $!\n", 0, 1);
-		flock($fh, 2) || die "FATAL: can't lock file ${dirprefix}ora2pg_stdout_locker\n";
-		print "$lbl:$t:$num_rows\n";
-		while ( my @row = $s->fetchrow())
-		{
-			print "POSTGRES:$both$orig:$row[0]\n";
-			if ($row[0] != $num_rows) {
-				$fh->print("Table $both$orig doesn't have the same number of line in source database ($num_rows) and in PostgreSQL ($row[0]).\n");
-			}
-			last;
-		}
-		$s->finish();
-		$fh->close;
-	}
-}
 
 sub _table_row_count
 {
@@ -16409,55 +18772,27 @@ sub _table_row_count
 	print "[TEST ROWS COUNT]\n";
 	foreach my $t (sort keys %tables_infos)
 	{
-		if ($self->{parallel_tables} > 1)
+		print "$lbl:$t:$tables_infos{$t}{num_rows}\n";
+		if ($self->{pg_dsn})
 		{
-			spawn sub {
-				my $dbhpg = $self->{dbhdest}->clone();
-				$self->_count_pg_rows($dbhpg, $lbl, $t, $tables_infos{$t}{num_rows});
-				$dbhpg->disconnect();
-			};
-			$parallel_tables_count++;
-
-			# Wait for oracle connection terminaison
-			while ($parallel_tables_count > $self->{parallel_tables})
+			my ($tbmod, $orig, $schema, $both) = $self->set_pg_relation_name($t);
+			my $s = $self->{dbhdest}->prepare("SELECT count(*) FROM $both;") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
+			if (not $s->execute)
 			{
-				my $kid = waitpid(-1, WNOHANG);
-				if ($kid > 0)
-				{
-					$parallel_tables_count--;
-					delete $RUNNING_PIDS{$kid};
+				push(@errors, "Table $both$orig does not exists in PostgreSQL database.") if ($s->state eq '42P01');
+				next;
+			}
+			while ( my @row = $s->fetchrow())
+			{
+				print "POSTGRES:$both$orig:$row[0]\n";
+				if ($row[0] != $tables_infos{$t}{num_rows}) {
+					push(@errors, "Table $both$orig doesn't have the same number of line in source database ($tables_infos{$t}{num_rows}) and in PostgreSQL ($row[0]).");
 				}
-				usleep(50000);
+				last;
 			}
-		}
-		else
-		{
-			$self->_count_pg_rows($self->{dbhdest}, $lbl, $t, $tables_infos{$t}{num_rows});
+			$s->finish();
 		}
 	}
-
-	# Wait for all child die
-	if ($self->{parallel_tables} > 1)
-	{
-		while (scalar keys %RUNNING_PIDS > 0)
-		{
-			my $kid = waitpid(-1, WNOHANG);
-			if ($kid > 0) {
-				delete $RUNNING_PIDS{$kid};
-			}
-			usleep(50000);
-		}
-	}
-	
-	my $dirprefix = '';
-	$dirprefix = "$self->{output_dir}/" if ($self->{output_dir});
-	my $fh = new IO::File;
-	$fh->open("${dirprefix}ora2pg_stdout_locker") or $self->logit("FATAL: can't read file ${dirprefix}ora2pg_stdout_locker, $!\n", 0, 1);
-	@errors = <$fh>;
-	$fh->close;
-	unlink("${dirprefix}ora2pg_stdout_locker");
-	chomp @errors;
-
 	$self->show_test_errors('rows', @errors);
 }
 
@@ -16469,16 +18804,12 @@ sub is_in_struct
 	{
 		if (exists $self->{modify}{"\L$t\E"}) {
 			return 0 if (!grep(/^\Q$cn\E$/i, @{$self->{modify}{"\L$t\E"}}));
-		} elsif (exists $self->{exclude_columns}{"\L$t\E"}) {
-			return 0 if (grep(/^\Q$cn\E$/i, @{$self->{exclude_columns}{"\L$t\E"}}));
 		}
 	}
 	else
 	{
 		if (exists $self->{modify}{"$t"}) {
 			return 0 if (!grep(/^\Q$cn\E$/i, @{$self->{modify}{"$t"}}));
-		} elsif (exists $self->{exclude_columns}{"$t"}) {
-			return 0 if (grep(/^\Q$cn\E$/i, @{$self->{exclude_columns}{"$t"}}));
 		}
 	}
 
@@ -16495,7 +18826,7 @@ sub _test_table
 	$self->logit("Looking for objects count related to source database and PostgreSQL tables...\n", 1);
 
 	# Retrieve tables informations
-	my %tables_infos = $self->_table_info();
+	my %tables_infos = $self->_table_info($self->{count_rows});
 
 	my $lbl = 'ORACLEDB';
 	$lbl    = 'MYSQL_DB' if ($self->{is_mysql});
@@ -18165,8 +20496,7 @@ sub limit_to_objects
 		}
 
 		# Always exclude unwanted tables
-		if (!$self->{is_mysql} && !$self->{no_excluded_table} && !$has_limitation
-			&& ($arr_type[$i] =~ /TABLE|SEQUENCE|VIEW|TRIGGER|TYPE|SYNONYM/))
+		if (!$self->{is_mysql} && !$has_limitation && ($arr_type[$i] =~ /TABLE|SEQUENCE|VIEW|TRIGGER|TYPE|SYNONYM/))
 		{
 			if ($self->{db_version} =~ /Release [89]/)
 			{
@@ -18183,7 +20513,11 @@ sub limit_to_objects
 				$str .= ' AND ( ';
 				for (my $j = 0; $j <= $#EXCLUDED_TABLES; $j++)
 				{
-					$str .= " NOT REGEXP_LIKE(upper($colname), ?)" ;
+					if ($self->{is_mysql}) {
+						$str .= " upper($colname) NOT RLIKE ?" ;
+					} else {
+						$str .= " NOT REGEXP_LIKE(upper($colname), ?)" ;
+					}
 					push(@{$self->{query_bind_params}}, uc("\^$EXCLUDED_TABLES[$j]\$"));
 					if ($j < $#EXCLUDED_TABLES){
 						$str .= " AND ";
@@ -19313,11 +21647,6 @@ sub _escape_lob
 			{
 				# we do nothing, the value will be cast into uuid automatically
 			}
-			elsif ($dest_type eq 'bytea' && $cond->{long})
-			{
-				$col = unpack("H*",$col);
-				$col = "\\\\x" . $col;
-			}
 			elsif ($dest_type eq 'bytea')
 			{
 				$col = "\\\\x" . $col;
@@ -19690,10 +22019,8 @@ sub _create_foreign_server
 		if (!defined $self->{oracle_pwd})
 		{
 			eval("use Term::ReadKey;") unless $self->{oracle_user} eq '/';
-			if (!$@) {
-				$self->{oracle_user} = $self->_ask_username('Oracle') unless (defined $self->{oracle_user});
-				$self->{oracle_pwd} = $self->_ask_password('Oracle') unless ($self->{oracle_user} eq '/');
-			}
+			$self->{oracle_user} = $self->_ask_username('Oracle') unless (defined $self->{oracle_user});
+			$self->{oracle_pwd} = $self->_ask_password('Oracle') unless ($self->{oracle_user} eq '/');
 		}
 		my $ora_session_mode = ($self->{oracle_user} eq "/" || $self->{oracle_user} eq "sys") ? 2 : undef;
 
@@ -19911,9 +22238,7 @@ WHERE c.relkind = 'f' and n.nspname = 'ora2pg_fdw_import'
 		}
 		$q++;
 	}
-	if (!$self->{quiet} && !$self->{debug}) {
-		print STDERR $self->progress_bar($q-1, $total_tables, 25, '=', 'tables', "checked" ), "\n\n";
-	}
+	print STDERR $self->progress_bar($q-1, $total_tables, 25, '=', 'tables', "checked" ), "\n\n";
 }
 
 sub compare_data
@@ -20260,6 +22585,120 @@ sub _get_oracle_test_data
 	return $query
 }
 
+#show migration results,list of objects that successes,failures,ignores--start
+#Get all Ignore object
+sub _get_ignore_object {
+	my($self,$sql,$object_info) = @_;
+	my @total_object = ();
+	my %diff;
+	#CONNECTION
+	$self->{dbh} = $self->_db_connection();
+	#GET TOTAL_INFO
+	$sth = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute() or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	while(my $row = $sth->fetch){
+		push(@total_object,$row->[1]);
+	}
+	#To obtain difference set
+	foreach my $merge_arr (@total_object,@$object_info){
+		$diff{$merge_arr}++;
+	}
+	my @diff = keys %diff;
+	my @ignore_object = grep {$diff{$_}==1;}@diff;
+	return @ignore_object;
+	
+}
+#show migration results,list of objects that successes,failures,ignores--end
+
+#show migration results,list of objects that successes,failures,ignores--start
+#All types of log output
+sub type_log {
+	my ($self, $success_object, $err_object, $ignore_object, $type, %error_dic) = @_;
+	my $success_index = 1;
+	my $error_index = 1;
+	my $ignore_index = 1;
+
+	# get all error object
+	my @error_key = keys %error_dic;
+	my @total_error_key = (@$err_object, @error_key);
+	my %tmp_error;
+	my @total_error_key = grep{ ++$tmp_error{ $_ }==1; } @total_error_key;
+	# get all error object num
+	my $error_num = @total_error_key;
+
+	# get all success object
+    if(@$success_object){
+    	my @tmp_success = ();
+        foreach my $merge_arr (@$success_object){
+            if(!grep(/^$merge_arr$/i, @total_error_key)){
+            	push(@tmp_success, $merge_arr)
+            }
+        }
+        @$success_object = @tmp_success;
+    }
+	# get all success object num
+	my $success_num = @$success_object;
+	
+	if(grep(/^$type$/i, @total_error_key)){
+		$error_num = @total_error_key - 1;
+	}
+
+	my $ignore_num = @$ignore_object;
+	my $total = $success_num + $error_num + $ignore_num;
+	print "OUTPUT_DIR:$self->{output_dir}\n";
+	print "******************** Migration information ********************\n";
+	print "$type:\t";
+	print "$success_num\tMigration source\t$total\n\n";
+	print "Total number of objects:$total\n";
+	print "Number of successes:$success_num\n";
+	print "Number of failures:$error_num\n";
+	print "Number of ignores:$ignore_num\n";
+	print "\n\nList of objects that could be migrated\n";
+	print "============================================\n";
+	if(@$success_object){
+
+		print "$type\n";
+		print "------------------------------\n";
+		foreach $a (@$success_object){
+			print "$success_index.\t$a\n";
+			$success_index++;
+		}
+		print "------------------------------\n";
+	}
+	print "\n\nList of objects that could not be migrated\n";
+	print "============================================\n";
+	if(@total_error_key){
+		print "$type\n";
+		print "------------------------------\n";
+		foreach my $message (@total_error_key){
+			if(exists($error_dic{$message})){
+				print "$error_index.";
+				printf "%-27s",$message;
+				printf "%-6s","ERROR:";
+				print "$error_dic{$message}\n";
+			}else{
+				print "$error_index.";
+				printf "%-27s",$message;
+				printf "%-6s","ERROR:";
+				print "Export failure...\n";
+			}
+			$error_index++;
+		}
+		print "------------------------------\n";
+	}
+	print "\n\nList of objects that be ignored\n";
+	print "============================================\n";
+	if(@$ignore_object){
+		print "$type\n";
+		print "------------------------------\n";
+		foreach $a (@$ignore_object){
+			print "$ignore_index.\t$a\n";
+			$ignore_index++;
+		}
+		print "------------------------------\n";
+	}
+}
+#show migration results,list of objects that successes,failures,ignores--end
 1;
 
 __END__
