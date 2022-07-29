@@ -121,8 +121,10 @@ sub _db_connection
 	if (!defined $self->{oracle_pwd})
 	{
 		eval("use Term::ReadKey;") unless $self->{oracle_user} eq '/';
-		$self->{oracle_user} = $self->_ask_username('Oracle') unless (defined $self->{oracle_user});
-		$self->{oracle_pwd} = $self->_ask_password('Oracle') unless ($self->{oracle_user} eq '/');
+		if (!$@) {
+			$self->{oracle_user} = $self->_ask_username('Oracle') unless (defined $self->{oracle_user});
+			$self->{oracle_pwd} = $self->_ask_password('Oracle') unless ($self->{oracle_user} eq '/');
+		}
 	}
 	my $ora_session_mode = ($self->{oracle_user} eq "/" || $self->{oracle_user} eq "sys") ? 2 : undef;
 
@@ -345,7 +347,7 @@ sub _get_system_user{
 #allow naming tables that contain dollars to migrate--end
 =head2 _table_info
 
-This function retrieves all MySQL tables information.
+This function retrieves all tables information.
 
 Returns a handle to a DB query statement.
 
@@ -431,8 +433,9 @@ sub _table_info
 	####
 	# Get information about all tables
 	####
-	$sql = "SELECT A.OWNER,A.TABLE_NAME,NVL(num_rows,1) NUMBER_ROWS,A.TABLESPACE_NAME,A.NESTED,A.LOGGING,A.PARTITIONED,A.PCT_FREE FROM $self->{prefix}_TABLES A WHERE $owner";
-	$sql .= " AND A.TEMPORARY='N' AND (A.NESTED != 'YES' OR A.LOGGING != 'YES') AND A.SECONDARY = 'N'";
+	$sql = "SELECT A.OWNER,A.TABLE_NAME,NVL(num_rows,1) NUMBER_ROWS,A.TABLESPACE_NAME,A.NESTED,A.LOGGING,A.PARTITIONED,A.PCT_FREE,A.TEMPORARY,A.DURATION FROM $self->{prefix}_TABLES A WHERE $owner";
+	$sql .= " AND A.TEMPORARY='N'" if (!$self->{export_gtt});
+	$sql .= " AND (A.NESTED != 'YES' OR A.LOGGING != 'YES') AND A.SECONDARY = 'N'";
 	if ($self->{db_version} !~ /Release [89]/) {
 		$sql .= " AND (A.DROPPED IS NULL OR A.DROPPED = 'NO')";
 	}
@@ -480,22 +483,13 @@ sub _table_info
 		if (($row->[7] || 0) > 10) {
 			$tables_infos{$row->[1]}{fillfactor} = 100 - min(90, $row->[7]);
 		}
-		if ($do_real_row_count)
-		{
-			$self->logit("DEBUG: looking for real row count for table ($row->[0]) $row->[1] (aka using count(*))...\n", 1);
-			$sql = "SELECT COUNT(*) FROM $row->[1]";
-			if ($self->{schema}) {
-				$sql = "SELECT COUNT(*) FROM $row->[0].$row->[1]";
-			}
-			my $sth2 = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-			$sth2->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-			my $size = $sth2->fetch();
-			$sth2->finish();
-			$tables_infos{$row->[1]}{num_rows} = $size->[0];
-		}
+		# Global temporary table ?
+		$tables_infos{$row->[1]}{temporary} = $row->[8];
+		$tables_infos{$row->[1]}{duration} = $row->[9];
 		$nrows++;
 	}
 	$sth->finish();
+
 	$t1 = Benchmark->new;
 	$td = timediff($t1, $t0);
 	$self->logit("Collecting $nrows tables information in $self->{prefix}_TABLES took: " . timestr($td) . "\n", 1);
@@ -664,10 +658,8 @@ ORDER BY A.COLUMN_ID
 			$row->[2] = 38;
 		}
 
-		$tmptable = $row->[8];
-		if ($self->{export_schema} && !$self->{schema}) {
-			$tmptable = "$row->[9].$row->[8]";
-		}
+		# Use FQDN table name otherwise a table not exist error can occurs.
+		$tmptable = "$row->[9].$row->[8]";
 
 		# In case we have a default value, check if this is a virtual column
 		my $virtual = 'NO';
@@ -689,7 +681,9 @@ ORDER BY A.COLUMN_ID
 			else
 			{
 				my @result = ();
-				$spatial_srid = $st_spatial_srid if ($row->[1] =~ /^ST_|STGEOM_/);
+				if ($row->[1] =~ /^ST_|STGEOM_/) {
+					$spatial_srid = sprintf($st_spatial_srid, $row->[0], $tmptable);
+				}
 				my $sth2 = $self->{dbh}->prepare($spatial_srid);
 				if (!$sth2)
 				{
@@ -703,7 +697,7 @@ ORDER BY A.COLUMN_ID
 				else
 				{
 					if ($row->[1] =~ /^ST_|STGEOM_/) {
-						$sth2->execute($row->[0]) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+						$sth2->execute() or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 					} else {
 						$sth2->execute($row->[8],$row->[0],$row->[9]) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 					}
@@ -746,13 +740,15 @@ ORDER BY A.COLUMN_ID
 			# Get the dimension of the geometry column
 			if (!$found_dims)
 			{
-				$spatial_dim = $st_spatial_dim if ($row->[1] =~ /^ST_|STGEOM_/);
+				if ($row->[1] =~ /^ST_|STGEOM_/) {
+					$spatial_dim = sprintf($st_spatial_dim, $row->[0], $tmptable);
+				}
 				my $sth2 = $self->{dbh}->prepare($spatial_dim);
 				if (!$sth2) {
 					$self->logit("FATAL: _column_info() " . $self->{dbh}->errstr . "\n", 0, 1);
 				}
 				if ($row->[1] =~ /^ST_|STGEOM_/) {
-					$sth2->execute($row->[0]) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+					$sth2->execute() or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 				} else {
 					$sth2->execute($row->[8],$row->[0],$row->[9]) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 				}
@@ -772,10 +768,9 @@ ORDER BY A.COLUMN_ID
 			if (!$found_contraint && $self->{autodetect_spatial_type})
 			{
 				# Get spatial information
-				my $colname = $row->[9] . "." . $row->[8];
-				my $squery = sprintf($spatial_gtype, $row->[0], $colname);
+				my $squery = sprintf($spatial_gtype, $row->[0], $tmptable);
 				if ($row->[1] =~ /^ST_|STGEOM_/) {
-					$squery = sprintf($st_spatial_gtype, $row->[0], $colname);
+					$squery = sprintf($st_spatial_gtype, $row->[0], $tmptable);
 				}
 				my $sth2 = $self->{dbh}->prepare($squery);
 				if (!$sth2) {
@@ -899,6 +894,9 @@ sub _get_indexes
 	} else {
 		$condition .= " AND A.INDEX_OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "') ";
 	}
+	if (!$self->{export_gtt}) {
+		$condition .= " AND B.TEMPORARY = 'N' ";
+	}
 	if (!$table) {
 		#allow naming tables that contain dollars to migrate--start
 		#$condition .= $self->limit_to_objects('TABLE|INDEX', "A.TABLE_NAME|A.INDEX_NAME");
@@ -912,34 +910,31 @@ sub _get_indexes
 
 	# When comparing number of index we need to retrieve generated index (mostly PK)
 	my $generated = '';
-	$generated = " B.GENERATED = 'N' AND" if (!$generated_indexes);
+	$generated = " B.GENERATED = 'N'" if (!$generated_indexes);
 
 	my $t0 = Benchmark->new;
 	my $sth = '';
+	my $sql = '';
 	if ($self->{db_version} !~ /Release 8/)
 	{
 		my $no_mview = $self->exclude_mviews('A.INDEX_OWNER, A.TABLE_NAME');
 		$no_mview = '' if ($self->{type} eq 'MVIEW');
-		$sth = $self->{dbh}->prepare(<<END) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-SELECT DISTINCT A.INDEX_NAME,A.COLUMN_NAME,B.UNIQUENESS,A.COLUMN_POSITION,B.INDEX_TYPE,B.TABLE_TYPE,B.GENERATED,B.JOIN_INDEX,A.TABLE_NAME,A.INDEX_OWNER,B.TABLESPACE_NAME,B.ITYP_NAME,B.PARAMETERS,A.DESCEND
+		$sql = qq{SELECT DISTINCT A.INDEX_NAME,A.COLUMN_NAME,B.UNIQUENESS,A.COLUMN_POSITION,B.INDEX_TYPE,B.TABLE_TYPE,B.GENERATED,B.JOIN_INDEX,A.TABLE_NAME,A.INDEX_OWNER,B.TABLESPACE_NAME,B.ITYP_NAME,B.PARAMETERS,A.DESCEND
 FROM $self->{prefix}_IND_COLUMNS A
 JOIN $self->{prefix}_INDEXES B ON (B.INDEX_NAME=A.INDEX_NAME AND B.OWNER=A.INDEX_OWNER)
-WHERE$generated B.TEMPORARY = 'N' $condition $no_mview
-ORDER BY A.COLUMN_POSITION
-END
+WHERE$generated $condition $no_mview
+ORDER BY A.COLUMN_POSITION};
 	}
 	else
 	{
 		# an 8i database.
-		$sth = $self->{dbh}->prepare(<<END) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-SELECT DISTINCT A.INDEX_NAME,A.COLUMN_NAME,B.UNIQUENESS,A.COLUMN_POSITION,B.INDEX_TYPE,B.TABLE_TYPE,B.GENERATED, 'NO', A.TABLE_NAME,A.INDEX_OWNER,B.TABLESPACE_NAME,B.ITYP_NAME,B.PARAMETERS,A.DESCEND
+		$sql = qq{SELECT DISTINCT A.INDEX_NAME,A.COLUMN_NAME,B.UNIQUENESS,A.COLUMN_POSITION,B.INDEX_TYPE,B.TABLE_TYPE,B.GENERATED, 'NO', A.TABLE_NAME,A.INDEX_OWNER,B.TABLESPACE_NAME,B.ITYP_NAME,B.PARAMETERS,A.DESCEND
 FROM $self->{prefix}_IND_COLUMNS A, $self->{prefix}_INDEXES B
-WHERE B.INDEX_NAME=A.INDEX_NAME AND B.OWNER=A.INDEX_OWNER $condition
-AND$generated B.TEMPORARY = 'N'
-ORDER BY A.COLUMN_POSITION
-END
+WHERE $generated $condition AND B.INDEX_NAME=A.INDEX_NAME AND B.OWNER=A.INDEX_OWNER
+ORDER BY A.COLUMN_POSITION};
 	}
-
+	$sql =~ s/WHERE\s+AND/WHERE/s;
+	$sth = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
 	my $idxnc = qq{SELECT IE.COLUMN_EXPRESSION FROM $self->{prefix}_IND_EXPRESSIONS IE, $self->{prefix}_IND_COLUMNS IC
@@ -1663,6 +1658,7 @@ sub _lookup_function
 
 	@{$fct_detail{param_types}} = ();
 	$fct_detail{declare} =~ s/(\b(?:FUNCTION|PROCEDURE)\s+(?:[^\s\(]+))(\s*\%ORA2PG_COMMENT\d+\%\s*)+/$2$1 /is;
+	$fct_detail{declare} =~ s/RETURN\%ORA2PG_COMMENT\d+\%/RETURN/is;
 	if ( ($fct_detail{declare} =~ s/(.*?)\b(FUNCTION|PROCEDURE)\s+([^\s\(]+)\s*(\([^\)]*\))//is) ||
 			($fct_detail{declare} =~ s/(.*?)\b(FUNCTION|PROCEDURE)\s+([^\s\(]+)\s+(RETURN|IS|AS)/$4/is) )
 	{
@@ -1703,7 +1699,9 @@ sub _lookup_function
 		} elsif ($fct_detail{declare} =~ s/(.*?)\bRETURN\s+([^\s]+)//is) {
 			$fct_detail{args} .= $1;
 			$fct_detail{hasreturn} = 1;
-			$fct_detail{func_ret_type} = $self->_sql_type($2) || 'OPAQUE';
+			my $ret_typ = $2 || '';
+			$ret_typ =~ s/(\%ORA2PG_COMMENT\d+\%)+//i;
+			$fct_detail{func_ret_type} = $self->_sql_type($ret_typ) || 'OPAQUE';
 		}
 		if ($fct_detail{declare} =~ s/(.*?)(USING|AS|IS)(\s+(?!REF\s+))/$3/is) {
 			$fct_detail{args} .= $1 if (!$fct_detail{hasreturn});
@@ -1827,15 +1825,27 @@ sub _lookup_function
 		$tmpname =~ s/^$pname\.//i;
 		next if ($fct_detail{code} !~ /\b$tmpname\b/is);
 		my $i = 0;
+		while ($fct_detail{code} =~ s/(SELECT\s+(?:.*?)\s+)INTO\s+$tmpname\s+([^;]+);/PERFORM set_config('$n', ($1$2), false);/is) { last if ($i++ > 100); };
+		$i = 0;
 		while ($fct_detail{code} =~ s/\b$n\s*:=\s*([^;]+)\s*;/PERFORM set_config('$n', $1, false);/is) { last if ($i++ > 100); };
 		$i = 0;
 		while ($fct_detail{code} =~ s/([^\.]+)\b$self->{global_variables}{$n}{name}\s*:=\s*([^;]+);/$1PERFORM set_config('$n', $2, false);/is) { last if ($i++ > 100); };
 		$i = 0;
+		while ($fct_detail{code} =~ s/([^']+)\b$n\s+IS NOT NULL/$1current_setting('$n') != ''/is) { last if ($i++ > 100); };
+		$i = 0;
+		while ($fct_detail{code} =~ s/([^']+)\b$n\s+IS NULL/$1current_setting('$n') = ''/is) { last if ($i++ > 100); };
+		$i = 0;
 		while ($fct_detail{code} =~ s/([^']+)\b$n\b([^']+)/$1current_setting('$n')::$self->{global_variables}{$n}{type}$2/is) { last if ($i++ > 100); };
+		$i = 0;
+		while ($fct_detail{code} =~ s/([^\.']+)\b$self->{global_variables}{$n}{name}\s+IS NOT NULL/$1current_setting('$n') != ''/is) { last if ($i++ > 100); };
+		$i = 0;
+		while ($fct_detail{code} =~ s/([^\.']+)\b$self->{global_variables}{$n}{name}\s+IS NULL/$1current_setting('$n') = ''/is) { last if ($i++ > 100); };
 		$i = 0;
 		while ($fct_detail{code} =~ s/([^\.']+)\b$self->{global_variables}{$n}{name}\b([^']+)/$1current_setting('$n')::$self->{global_variables}{$n}{type}$2/is) { last if ($i++ > 100); };
 
 		# Replace global variable in DECLARE section too
+		$i = 0;
+		while ($fct_detail{declare} =~ s/([^']+)\b$n\b([^']+)/$1current_setting('$n')::$self->{global_variables}{$n}{type}$2/is) { last if ($i++ > 100); };
 		$i = 0;
 		while ($fct_detail{declare} =~ s/([^\.']+)\b$self->{global_variables}{$n}{name}\b([^']+)/$1current_setting('$n')::$self->{global_variables}{$n}{type}$2/is) { last if ($i++ > 100); };
 	}
@@ -1845,6 +1855,9 @@ sub _lookup_function
 		$fct_detail{code} =~ s/\bRAISE\s+$e\b/RAISE EXCEPTION '$e' USING ERRCODE = '$self->{custom_exception}{$e}'/igs;
 		$fct_detail{code} =~ s/(\s+WHEN\s+)$e\s+/$1SQLSTATE '$self->{custom_exception}{$e}' /igs;
 	}
+
+	# Remove %ROWTYPE from return type
+	$fct_detail{func_ret_type} =~ s/\%ROWTYPE//igs;
 
 	return %fct_detail;
 }
@@ -2496,9 +2509,13 @@ sub _get_objects
 {
 	my $self = shift;
 
+	my $temporary = "TEMPORARY='N'";
+	if ($self->{export_gtt}) {
+		$temporary = "(TEMPORARY='N' OR OBJECT_TYPE='TABLE')";
+	}
 	my $oraver = '';
 	# OWNER|OBJECT_NAME|SUBOBJECT_NAME|OBJECT_ID|DATA_OBJECT_ID|OBJECT_TYPE|CREATED|LAST_DDL_TIME|TIMESTAMP|STATUS|TEMPORARY|GENERATED|SECONDARY
-	my $sql = "SELECT OBJECT_NAME,OBJECT_TYPE,STATUS FROM $self->{prefix}_OBJECTS WHERE TEMPORARY='N' AND GENERATED='N' AND SECONDARY='N' AND OBJECT_TYPE <> 'SYNONYM'";
+	my $sql = "SELECT OBJECT_NAME,OBJECT_TYPE,STATUS FROM $self->{prefix}_OBJECTS WHERE $temporary AND GENERATED='N' AND SECONDARY='N' AND OBJECT_TYPE <> 'SYNONYM'";
 	if ($self->{schema}) {
 		$sql .= " AND OWNER='$self->{schema}'";
 	} else {
@@ -2832,9 +2849,9 @@ sub _get_synonyms
 	# Retrieve all synonym
 	my $str = "SELECT OWNER,SYNONYM_NAME,TABLE_OWNER,TABLE_NAME,DB_LINK FROM $self->{prefix}_SYNONYMS";
 	if ($self->{schema}) {
-		$str .= " WHERE (owner='$self->{schema}' OR owner='PUBLIC') AND table_owner NOT IN ('" . join("','", @{$self->{sysusers}}) . "') ";
+		$str .= " WHERE owner='$self->{schema}' AND table_owner NOT IN ('" . join("','", @{$self->{sysusers}}) . "') ";
 	} else {
-		$str .= " WHERE (owner='PUBLIC' OR owner NOT IN ('" . join("','", @{$self->{sysusers}}) . "')) AND table_owner NOT IN ('" . join("','", @{$self->{sysusers}}) . "') ";
+		$str .= " WHERE owner NOT IN ('" . join("','", @{$self->{sysusers}}) . "') AND table_owner NOT IN ('" . join("','", @{$self->{sysusers}}) . "') ";
 	}
 	
 	#allow naming tables that contain dollars to migrate--start
@@ -3204,7 +3221,7 @@ sub _global_temp_table_info
 		$sth->finish();
 	}
 
-	my $sql = "SELECT A.OWNER,A.TABLE_NAME,NVL(num_rows,1) NUMBER_ROWS,A.TABLESPACE_NAME,A.NESTED,A.LOGGING FROM $self->{prefix}_TABLES A, $self->{prefix}_OBJECTS O WHERE A.OWNER=O.OWNER AND A.TABLE_NAME=O.OBJECT_NAME AND O.OBJECT_TYPE='TABLE' $owner";
+	my $sql = "SELECT A.OWNER,A.TABLE_NAME,NVL(num_rows,1) NUMBER_ROWS,A.TABLESPACE_NAME,A.NESTED,A.LOGGING,A.DURATION FROM $self->{prefix}_TABLES A, $self->{prefix}_OBJECTS O WHERE A.OWNER=O.OWNER AND A.TABLE_NAME=O.OBJECT_NAME AND O.OBJECT_TYPE='TABLE' $owner";
 	$sql .= " AND A.TEMPORARY='Y'";
 	if ($self->{db_version} !~ /Release [89]/) {
 		$sql .= " AND (A.DROPPED IS NULL OR A.DROPPED = 'NO')";
@@ -3239,6 +3256,8 @@ sub _global_temp_table_info
 			$tables_infos{$row->[1]}{nologging} = 0;
 		}
 		$tables_infos{$row->[1]}{num_rows} = 0;
+		$tables_infos{$row->[1]}{temporary} = 'Y';
+		$tables_infos{$row->[1]}{duration} = $row->[6];
 	}
 	$sth->finish();
 
