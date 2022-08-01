@@ -2465,17 +2465,7 @@ sub _tables
 		if ($self->{type} ne 'SHOW_REPORT')
 		{
 			my $tmp_tbname = $t;
-			if (!$self->{is_mysql})
-			{
-				if ( $t !~ /\./ ) {
-					$tmp_tbname = "\"$tables_infos{$t}{owner}\".\"$t\"";
-				} else {
-					# in case we already have the schema name, add doublequote
-					$tmp_tbname =~ s/\./"."/;
-					$tmp_tbname = "\"$tmp_tbname\"";
-				}
-			}
-			else
+			if ($self->{is_mysql})
 			{
 				if ( $t !~ /\./ && $tables_infos{$t}{owner}) {
 					$tmp_tbname = "\`$tables_infos{$t}{owner}\`.\`$t\`";
@@ -2483,6 +2473,26 @@ sub _tables
 					# in case we already have the schema name, add doublequote
 					$tmp_tbname =~ s/\./\`.\`/;
 					$tmp_tbname = "\`$tmp_tbname\`";
+				}
+			}
+			elsif ($self->{is_mssql})
+			{
+				if ( $t !~ /\./ && $tables_infos{$t}{owner}) {
+					$tmp_tbname = "[$tables_infos{$t}{owner}].[$t]";
+				} else {
+					# in case we already have the schema name, add doublequote
+					$tmp_tbname =~ s/\./\].\[/;
+					$tmp_tbname = "[$tmp_tbname]";
+				}
+			}
+			else
+			{
+				if ( $t !~ /\./ ) {
+					$tmp_tbname = "\"$tables_infos{$t}{owner}\".\"$t\"";
+				} else {
+					# in case we already have the schema name, add doublequote
+					$tmp_tbname =~ s/\./"."/;
+					$tmp_tbname = "\"$tmp_tbname\"";
 				}
 			}
 			my $query = "SELECT * FROM $tmp_tbname WHERE 1=0";
@@ -3855,7 +3865,8 @@ sub get_replaced_tbname
 {
 	my ($self, $tmptb) = @_;
 
-	if (exists $self->{replaced_tables}{"\L$tmptb\E"} && $self->{replaced_tables}{"\L$tmptb\E"}) {
+	if (exists $self->{replaced_tables}{"\L$tmptb\E"} && $self->{replaced_tables}{"\L$tmptb\E"})
+	{
 		$self->logit("\tReplacing table $tmptb as " . $self->{replaced_tables}{lc($tmptb)} . "...\n", 1);
 		$tmptb = $self->{replaced_tables}{lc($tmptb)};
 	}
@@ -7349,7 +7360,8 @@ sub export_table
 	{
 		if ($self->{export_schema} && ($self->{schema} || $self->{pg_schema}))
 		{
-			if ($self->{create_schema}) {
+			if ($self->{create_schema})
+			{
 				if ($self->{pg_schema} && $self->{pg_schema} =~ /,/) {
 					$self->logit("FATAL: with export type TABLE you can not set multiple schema to PG_SCHEMA when EXPORT_SCHEMA is enabled.\n", 0, 1);
 				}
@@ -7365,11 +7377,15 @@ sub export_table
 		}
 		elsif ($self->{export_schema})
 		{
-			if ($self->{create_schema}) {
+			if ($self->{create_schema})
+			{
 				my $current_schema = '';
-				foreach my $table (sort keys %{$self->{tables}}) {
-					if ($table =~ /^([^\.]+)\..*/) {
-						if ($1 ne $current_schema) {
+				foreach my $table (sort keys %{$self->{tables}})
+				{
+					if ($table =~ /^([^\.]+)\..*/)
+					{
+						if ($1 ne $current_schema)
+						{
 							$current_schema = $1;
 							$sql_output .= "CREATE SCHEMA IF NOT EXISTS " . $self->quote_object_name($1) . ";\n";
 						}

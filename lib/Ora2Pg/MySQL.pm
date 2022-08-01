@@ -857,7 +857,8 @@ sub _lookup_function
 {
 	my ($self, $code, $fctname) = @_;
 
-	my $type = lc($self->{type}) . 's';
+	my $type = 'functions';
+	$type = lc($self->{type}) . 's' if ($self->{type} eq 'FUNCTION' or $self->{type} eq 'PROCEDURE');
 
 	# Replace all double quote with single quote
 	$code =~ s/"/'/g;
@@ -886,6 +887,7 @@ sub _lookup_function
                 $fct_detail{name} = $3;
                 $fct_detail{args} = $4;
 		my $tmp_returned = $5;
+		$type = lc($fct_detail{type} . 's');
 		chomp($tmp_returned);
 		if ($tmp_returned =~ s/\b(DECLARE\b.*)//is) {
 			$fct_detail{code} = $1 . $fct_detail{code};

@@ -368,8 +368,10 @@ ORDER BY c.column_id};
 		{
 			if ($row->[4]) {
 				$row->[4] =~ s/\s*CREATE\s+DEFAULT\s+.*\s+AS\s*//is;
+				$row->[4] =~ s/[\[\]]+//g;
 			}
 			if ($row->[14]) {
+				$row->[14] =~ s/[\[\]]+//g;
 				$row->[14] =~ s/\s*CREATE\s+RULE\s+.*\s+AS\s*//is;
 				$row->[14] =~ s/\@[a-z0-1_\$\#]+/VALUE/igs;
 				$row->[14] = " CHECK ($row->[14])";
@@ -934,7 +936,8 @@ sub _lookup_function
 {
 	my ($self, $code, $fctname) = @_;
 
-	my $type = lc($self->{type}) . 's';
+	my $type = 'functions';
+	$type = lc($self->{type}) . 's' if ($self->{type} eq 'FUNCTION' or $self->{type} eq 'PROCEDURE');
 
 	# Replace all double quote with single quote
 	$code =~ s/"/'/g;
@@ -956,13 +959,15 @@ sub _lookup_function
 
         @{$fct_detail{param_types}} = ();
 
-        if ( ($fct_detail{declare} =~ s/(.*?)\b(FUNCTION|PROCEDURE)\s+([^\s\(]+)\s*(\(.*\))\s+RETURNS\s+(.*)//is) ||
-        ($fct_detail{declare} =~ s/(.*?)\b(FUNCTION|PROCEDURE)\s+([^\s\(]+)\s*(\(.*\))//is) ) {
+        if ( ($fct_detail{declare} =~ s/(.*?)\b(FUNCTION|PROCEDURE)\s+([^\s\(]+)\s*(\(.*\))\s+RETURNS\s+(.*)//is)
+		|| ($fct_detail{declare} =~ s/(.*?)\b(FUNCTION|PROCEDURE)\s+([^\s\(]+)\s*(\(.*\))//is) )
+	{
                 $fct_detail{before} = $1;
                 $fct_detail{type} = uc($2);
                 $fct_detail{name} = $3;
                 $fct_detail{args} = $4;
 		my $tmp_returned = $5;
+		$type = lc($fct_detail{type} . 's');
 		chomp($tmp_returned);
 		if ($tmp_returned =~ s/\b(DECLARE\b.*)//is) {
 			$fct_detail{code} = $1 . $fct_detail{code};
@@ -1035,7 +1040,7 @@ sub _lookup_function
 	my $nbout = $#nout+1 + $#ninout+1;
 	$fct_detail{inout} = 1 if ($nbout > 0);
 
-	($fct_detail{code}, $fct_detail{declare}) = replace_mysql_variables($self, $fct_detail{code}, $fct_detail{declare});
+	($fct_detail{code}, $fct_detail{declare}) = replace_mssql_variables($self, $fct_detail{code}, $fct_detail{declare});
 
 	# Remove %ROWTYPE from return type
 	$fct_detail{func_ret_type} =~ s/\%ROWTYPE//igs;
@@ -1043,7 +1048,7 @@ sub _lookup_function
 	return %fct_detail;
 }
 
-sub replace_mysql_variables
+sub replace_mssql_variables
 {
 	my ($self, $code, $declare) = @_;
 
@@ -2152,6 +2157,7 @@ ORDER BY c.column_id};
 		if ($row->[1]) {
 			$data{$row->[3]}{$row->[0]}{nullable} = 'Y';
 		}
+		$row->[2] =~ s/[\[\]]+//g;
 		$data{$row->[3]}{$row->[0]}{default} = $row->[2];
 		# Store the data type of the column following its position
 		$data{$row->[3]}{data_type}{$row->[5]} = $row->[4];
@@ -2291,7 +2297,7 @@ sub _get_plsql_metadata
         my $owner = shift;
 
         my $schema_clause = '';
-        $schema_clause = "WHERE SCHEMA_NAME(t.schema_id)='$self->{schema}'" if ($self->{schema});
+        $schema_clause = "WHERE s.name='$self->{schema}'" if ($self->{schema});
 
 	# Retrieve all functions
 	my $str = qq{SELECT
@@ -2305,7 +2311,8 @@ sub _get_plsql_metadata
    sm.is_schema_bound,  
    sm.execute_as_principal_id  
 FROM sys.sql_modules AS sm  
-JOIN sys.objects AS o ON sm.object_id = o.object_id $schema_clause
+JOIN sys.objects AS o ON sm.object_id = o.object_id
+LEFT OUTER JOIN sys.schemas s ON o.schema_id = s.schema_id $schema_clause
 ORDER BY 1;};
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
