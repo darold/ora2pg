@@ -14111,10 +14111,10 @@ sub _convert_type
 		$type_name = $1;
 		my $type_of = $3;
 		$type_name =~ s/"//g;
-		my $internal_name = $type_name;
-		if ($self->{export_schema} && !$self->{schema} && $owner) {
+		if ($self->{export_schema} && !$self->{schema} && $owner && $type_name !~ /\./) {
 			$type_name = "$owner.$type_name";
 		}
+		my $internal_name = $type_name;
 		$internal_name  =~ s/^[^\.]+\.//;
 		$type_of =~ s/\s*\(\s*/\(/;
 		$type_of =~ s/\s*\)\s*/\)/;
@@ -14125,8 +14125,8 @@ sub _convert_type
 		{ 
 			$type_of = Ora2Pg::PLSQL::replace_sql_type($type_of, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type}, $self->{varchar_to_text}, %{$self->{data_type}});
 			$self->{type_of_type}{'Nested Tables'}++;
-			$content .= "DROP TYPE $self->{pg_supports_ifexists} \L$type_name\E;\n" if ($self->{drop_if_exists});
-			$content = "CREATE TYPE \L$type_name\E AS (\L$internal_name\E $type_of\[\]);\n";
+			$content .= "DROP TYPE $self->{pg_supports_ifexists} " . $self->quote_object_name($type_name) . ";\n" if ($self->{drop_if_exists});
+			$content = "CREATE TYPE " . $self->quote_object_name($type_name) . " AS (" . $self->quote_object_name($internal_name) . " $type_of\[\]);\n";
 		}
 		else
 		{
@@ -14154,9 +14154,6 @@ sub _convert_type
 		my $description = $3;
 		my $notfinal = $4;
 		$notfinal =~ s/\s+/ /gs;
-		if ($self->{export_schema} && !$self->{schema} && $owner) {
-			$type_name = "$owner.$type_name";
-		}
 		if ($description =~ /\s*(MAP MEMBER|MEMBER|CONSTRUCTOR)\s+(FUNCTION|PROCEDURE).*/is)
 		{
 			$self->{type_of_type}{'Type with member method'}++;
@@ -14166,11 +14163,13 @@ sub _convert_type
 		$description =~ s/^\s+//s;
 		my $declar = Ora2Pg::PLSQL::replace_sql_type($description, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type}, $self->{varchar_to_text}, %{$self->{data_type}});
 		$type_name =~ s/"//g;
-		$type_name = $self->get_replaced_tbname($type_name);
+		if ($self->{export_schema} && !$self->{schema} && $owner && $type_name !~ /\./) {
+			$type_name = "$owner.$type_name";
+		}
 		if ($notfinal =~ /FINAL/is)
 		{
 			$content = "-- Inherited types are not supported in PostgreSQL, replacing with inherited table\n";
-			$content .= qq{CREATE TABLE $type_name (
+			$content .= qq{CREATE TABLE " . $self->quote_object_name($type_name) . " (
 $declar
 );
 };
@@ -14178,8 +14177,8 @@ $declar
 		}
 		else
 		{
-			$content = qq{
-CREATE TYPE $type_name AS (
+			$content = "CREATE TYPE " . $self->quote_object_name($type_name) . " AS (";
+			$content .= qq{
 $declar
 );
 };
@@ -14191,9 +14190,6 @@ $declar
 		$type_name = $1;
 		my $type_inherit = $2;
 		my $description = $3;
-		if ($self->{export_schema} && !$self->{schema} && $owner) {
-			$type_name = "$owner.$type_name";
-		}
 		if ($description =~ /\s*(MAP MEMBER|MEMBER|CONSTRUCTOR)\s+(FUNCTION|PROCEDURE).*/is) {
 			$self->logit("WARNING: TYPE with CONSTRUCTOR and MEMBER FUNCTION are not supported, skipping type $type_name\n", 1);
 			$self->{type_of_type}{'Type with member method'}++;
@@ -14202,9 +14198,11 @@ $declar
 		$description =~ s/^\s+//s;
 		my $declar = Ora2Pg::PLSQL::replace_sql_type($description, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type}, $self->{varchar_to_text}, %{$self->{data_type}});
 		$type_name =~ s/"//g;
-		$type_name = $self->get_replaced_tbname($type_name);
-		$content = qq{
-CREATE TABLE $type_name (
+		if ($self->{export_schema} && !$self->{schema} && $owner && $type_name !~ /\./) {
+			$type_name = "$owner.$type_name";
+		}
+		$content = "CREATE TABLE " . $self->quote_object_name($type_name) . " (";
+		$content .= qq{
 $declar
 ) INHERITS (\L$type_inherit\E);
 };
@@ -14216,19 +14214,17 @@ $declar
 		my $size = $4;
 		my $tbname = $5;
 		$type_name =~ s/"//g;
+		if ($self->{export_schema} && !$self->{schema} && $owner && $type_name !~ /\./) {
+			$type_name = "$owner.$type_name";
+		}
 		$tbname =~ s/;//g;
 		$tbname =~ s/\s+NOT\s+NULL//g;
 		my $internal_name = $type_name;
 		chomp($tbname);
-		if ($self->{export_schema} && !$self->{schema} && $owner) {
-			$type_name = "$owner.$type_name";
-		}
 		$internal_name  =~ s/^[^\.]+\.//;
 		my $declar = Ora2Pg::PLSQL::replace_sql_type($tbname, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type}, $self->{varchar_to_text}, %{$self->{data_type}});
 		$declar =~ s/[\n\r]+//s;
-		$content = qq{
-CREATE TYPE \L$type_name\E AS ($internal_name $declar\[$size\]);
-};
+		$content = "CREATE TYPE " . $self->quote_object_name($type_name) . " AS (" . $self->quote_object_name($internal_name) . " $declar\[$size\]);\n";
 		$self->{type_of_type}{Varrays}++;
 	}
 	else
