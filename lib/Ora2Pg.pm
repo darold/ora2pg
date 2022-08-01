@@ -1551,6 +1551,14 @@ sub _init
 		}
 	}
 
+	# Force disabling USE_LOB_LOCATOR with WKT geometry export type,
+	# ST_GeomFromText and SDO_UTIL.TO_WKTGEOMETRY functions return a
+	# CLOB instead of a geometry object
+	if ($self->{use_lob_locator} && uc($self->{geometry_extract_type}) eq 'WKT') {
+		#$self->logit("WARNING: disabling USE_LOB_LOCATOR with WKT geometry export.\n", 0);
+		$self->{use_lob_locator} = 0;
+	}
+
 	if (($self->{standard_conforming_strings} =~ /^off$/i) || ($self->{standard_conforming_strings} == 0)) {
 		$self->{standard_conforming_strings} = 0;
 	} else {
@@ -4276,7 +4284,7 @@ sub _replace_declare_var
 	foreach my $e (keys %{$self->{custom_exception}})
 	{
 		$$code =~ s/\bRAISE\s+$e\b/RAISE EXCEPTION '$e' USING ERRCODE = '$self->{custom_exception}{$e}'/igs;
-		$$code =~ s/(\s+WHEN\s+)$e\s+/$1SQLSTATE '$self->{custom_exception}{$e}' /igs;
+		$$code =~ s/(\s+(?:WHEN|OR)\s+)$e\s+/$1SQLSTATE '$self->{custom_exception}{$e}' /igs;
 	}
 
 }
@@ -9088,6 +9096,20 @@ sub _dump_table
 			$f->[1] = $keyname;
 		}
 		$type = $self->{'modify_type'}{lc($table)}{lc($f->[0])} if (exists $self->{'modify_type'}{lc($table)}{lc($f->[0])});
+		# Check if this column should be replaced by a boolean following table/column name
+		if (grep(/^\L$fieldname\E$/i, @{$self->{'replace_as_boolean'}{uc($table)}})) {
+			$type = 'boolean';
+		# Check if this column should be replaced by a boolean following type/precision
+		}
+		elsif (exists $self->{'replace_as_boolean'}{uc($f->[1])})
+		{
+			if ($self->{'replace_as_boolean'}{uc($f->[1])}[0] == $f->[5] ||
+				(!$f->[5] && $self->{'replace_as_boolean'}{uc($f->[1])}[0] == $f->[2]))
+			{
+				$type = 'boolean';
+			}
+		}
+
 		push(@stt, uc($f->[1]));
 		push(@tt, $type);
 		push(@nn,  $fieldname);
@@ -10538,7 +10560,7 @@ sub _howto_get_data
 					} elsif ($self->{geometry_extract_type} eq 'INTERNAL') {
 						$str .= "CASE WHEN $name->[$k] IS NOT NULL THEN $name->[$k] ELSE NULL END,";
 					} else {
-						$str .= "CASE WHEN $name->[$k] IS NOT NULL THEN 'ST_GeomFromText('''||SDO_UTIL.TO_WKTGEOMETRY($name->[$k])||''','||($spatial_srid)||')' ELSE NULL END,";
+						$str .= "CASE WHEN $name->[$k] IS NOT NULL THEN ST_GeomFromText(SDO_UTIL.TO_WKTGEOMETRY($name->[$k]), '$spatial_srid') ELSE NULL END,";
 					}
 				}
 				else
@@ -11976,7 +11998,7 @@ sub format_data_row
 					my $geom_obj = new Ora2Pg::GEOM('srid' => $self->{spatial_srid}{$table}->[$idx]);
 					$geom_obj->{geometry}{srid} = '';
 					$row->[$idx] = $geom_obj->parse_sdo_geometry($row->[$idx]) if ($row->[$idx] =~ /^ARRAY\(0x/);
-					$row->[$idx] = 'SRID=' . $geom_obj->{geometry}{srid} . ';' . $row->[$idx];
+					$row->[$idx] = 'SRID=' . $self->{spatial_srid}{$table}->[$idx] . ';' . $row->[$idx];
 				}
 				elsif ($self->{geometry_extract_type} eq 'WKB')
 				{
@@ -12008,7 +12030,7 @@ sub format_data_row
 						my $geom_obj = new Ora2Pg::GEOM('srid' => $self->{spatial_srid}{$table}->[$idx]);
 						$geom_obj->{geometry}{srid} = '';
 						$row->[$idx] = $geom_obj->parse_sdo_geometry($row->[$idx]) if ($row->[$idx] =~ /^ARRAY\(0x/);
-						$row->[$idx] = "ST_GeomFromText('" . $row->[$idx] . "', $geom_obj->{geometry}{srid})";
+						$row->[$idx] = "ST_GeomFromText('" . $row->[$idx] . "', " . $self->{spatial_srid}{$table}->[$idx] . ")";
 					}
 					else
 					{
@@ -12360,11 +12382,15 @@ sub format_data_type
 				$col = "$q$col$q";
 			}
 		}
-		elsif ($data_type eq 'boolean')
+		elsif ($cond->{isboolean})
 		{
 			if (exists $self->{ora_boolean_values}{lc($col)}) {
-				$col = $q . $self->{ora_boolean_values}{lc($col)} . $q;
+				$col = "$q" . $self->{ora_boolean_values}{lc($col)} . "$q";
 			}
+		}
+		elsif ($cond->{isefile})
+		{
+			$col =~ s/([\(\)])/\\$1/g;
 		}
 		else
 		{
@@ -12394,7 +12420,7 @@ sub format_data_type
 		{
 			$col = 'SRID=' . $self->{spatial_srid}{$table}->[$idx] . ';' . unpack('H*', $col);
 		}
-		elsif ($data_type eq 'boolean')
+		elsif ($cond->{isboolean})
 		{
 			if (exists $self->{ora_boolean_values}{lc($col)}) {
 				$col = $self->{ora_boolean_values}{lc($col)};
@@ -12429,6 +12455,10 @@ sub format_data_type
 			} elsif ($col =~ /^(\d+-\d+-\d+ \d+:\d+:\d+)\.$/) {
 				$col = $1;
 			}
+		}
+		elsif ($cond->{isefile})
+		{
+			$col =~ s/([\(\)])/\\\\$1/g;
 		}
 		elsif ($cond->{isbit})
 		{
@@ -12489,6 +12519,8 @@ sub hs_cond
 		$hs->{isbytea} = $data_types->[$idx] =~ /bytea/i ? 1 : 0;
 		$hs->{isoid} = $data_types->[$idx] =~ /oid/i ? 1 : 0;
 		$hs->{isbit} = $data_types->[$idx] =~ /bit/i ? 1 : 0;
+		$hs->{isboolean} = $data_types->[$idx] =~ /boolean/i ? 1 : 0;
+		$hs->{isefile} = $data_types->[$idx] =~ /efile/i ? 1 : 0;
 		$hs->{isnotnull} = 0;
 		if ($self->{nullable}{$table}{$idx} =~ /^N/) {
 			$hs->{isnotnull} = 1;
@@ -13557,6 +13589,9 @@ CREATE EXTENSION IF NOT EXISTS dblink;
 	v_conn_str  text := $dblink_conn;
 	v_query     text;
 };
+		my $call_str = 'SELECT * FROM';
+		$call_str = 'CALL' if (uc($type) eq 'PROCEDURE');
+
 		if ($#at_ret_param == 0)
 		{
 			my $varname = $at_ret_param[0];
@@ -13567,7 +13602,7 @@ CREATE EXTENSION IF NOT EXISTS dblink;
 			{
 				$at_wrapper .= qq{
 BEGIN
-	v_query := 'SELECT * FROM $fname$at_suffix ($params)';
+	v_query := 'CALL $fname$at_suffix ($params)';
 	SELECT v_ret INTO $varname FROM dblink(v_conn_str, v_query) AS p (v_ret $vartype);
 };
 			}
@@ -13604,7 +13639,7 @@ BEGIN
 			{
 				$at_wrapper .= qq{
 BEGIN
-	v_query := 'SELECT * FROM $fname$at_suffix ($params)';
+	v_query := 'CALL $fname$at_suffix ($params)';
 	SELECT * FROM dblink(v_conn_str, v_query) AS p ($vartypes) INTO $varnames;
 };
 			}
