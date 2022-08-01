@@ -12385,11 +12385,15 @@ sub format_data_type
 				$col = "$q$col$q";
 			}
 		}
-		elsif ($data_type eq 'boolean')
+		elsif ($cond->{isboolean})
 		{
 			if (exists $self->{ora_boolean_values}{lc($col)}) {
 				$col = "$q" . $self->{ora_boolean_values}{lc($col)} . "$q";
 			}
+		}
+		elsif ($cond->{isefile})
+		{
+			$col =~ s/([\(\)])/\\$1/g;
 		}
 		else
 		{
@@ -12419,7 +12423,7 @@ sub format_data_type
 		{
 			$col = 'SRID=' . $self->{spatial_srid}{$table}->[$idx] . ';' . unpack('H*', $col);
 		}
-		elsif ($data_type eq 'boolean')
+		elsif ($cond->{isboolean})
 		{
 			if (exists $self->{ora_boolean_values}{lc($col)}) {
 				$col = $self->{ora_boolean_values}{lc($col)};
@@ -12454,6 +12458,10 @@ sub format_data_type
 			} elsif ($col =~ /^(\d+-\d+-\d+ \d+:\d+:\d+)\.$/) {
 				$col = $1;
 			}
+		}
+		elsif ($cond->{isefile})
+		{
+			$col =~ s/([\(\)])/\\\\$1/g;
 		}
 		elsif ($cond->{isbit})
 		{
@@ -12514,6 +12522,8 @@ sub hs_cond
 		$hs->{isbytea} = $data_types->[$idx] =~ /bytea/i ? 1 : 0;
 		$hs->{isoid} = $data_types->[$idx] =~ /oid/i ? 1 : 0;
 		$hs->{isbit} = $data_types->[$idx] =~ /bit/i ? 1 : 0;
+		$hs->{isboolean} = $data_types->[$idx] =~ /boolean/i ? 1 : 0;
+		$hs->{isefile} = $data_types->[$idx] =~ /efile/i ? 1 : 0;
 		$hs->{isnotnull} = 0;
 		if ($self->{nullable}{$table}{$idx} =~ /^N/) {
 			$hs->{isnotnull} = 1;
