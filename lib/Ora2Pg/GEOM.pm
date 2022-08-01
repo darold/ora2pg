@@ -324,13 +324,13 @@ sub createCollection
 
     	my $sOffset = $self->get_start_offset($elemIndex);
 
-        my $length = $#{$coords}+1 * $self->{geometry}{dim};
+        my $length = ($#{$coords}+1) * $self->{geometry}{dim};
 
 	if ($sOffset > $length) {
-		$self->logit("ERROR: SDO_ELEM_INFO starting offset $sOffset inconsistent with ordinates length " . $#{$coords}+1);
+		$self->logit("ERROR: SDO_ELEM_INFO for Collection starting offset $sOffset inconsistent with ordinates length $length");
 	}
 
-        my $endTriplet = ($#{$self->{geometry}{sdo_elem_info}}+1) / 3 + 1;
+        my $endTriplet = ($#{$self->{geometry}{sdo_elem_info}}+1) / 3;
 
 	my @list_geom = ();
 	my $etype;
@@ -344,7 +344,11 @@ sub createCollection
 		$interpretation = $self->interpretation($i);
 
 		# Exclude type 0 (zero) element
-		next if ($etype == 0);
+		if ($etype == 0)
+		{
+			$self->logit("WARNING: SDO_ETYPE $etype not supported EWKT Geometry by Ora2Pg. Check what's going wrong with this geometry.");
+			next;
+		}
 
 		if ($etype == -1) {
 			$cont = 0; # We reach the end of the list - get out of here
@@ -362,19 +366,13 @@ sub createCollection
 
 			$geom = $self->createLine($i, $coords);
 
-		} elsif ( ($etype == $SDO_ETYPE{POLYGON}) || ($etype == $SDO_ETYPE{POLYGON_EXTERIOR}) ) {
+		} elsif ( ($etype == $SDO_ETYPE{POLYGON}) || ($etype == $SDO_ETYPE{POLYGON_EXTERIOR}) || ($etype == $SDO_ETYPE{POLYGON_INTERIOR}) ) {
 
 			$geom = $self->createPolygon($i, $coords);
-			# Skip interior rings
-			while ($self->eType($i+1) == $SDO_ETYPE{POLYGON_INTERIOR}) {
-				$i++;
-			}
-
-		} elsif ($etype == $SDO_ETYPE{POLYGON_INTERIOR}) {
-			$self->logit("ERROR: SDO_ETYPE 2003 (Polygon Interior) no expected in a GeometryCollection " .
-				"(2003 is used to represent polygon holes, in a 1003 polygon exterior)");
-			next;
-
+		} elsif ( ($etype == $SDO_ETYPE{COMPOUND_POLYGON_EXTERIOR}) || ($etype == $SDO_ETYPE{COMPOUND_POLYGON_INTERIOR}) ) {
+			$geom = $self->createCompoundPolygon($i, $coords);
+			# Skip elements
+			$i += $interpretation;
 		} else {
 			$self->logit("ERROR: SDO_ETYPE $etype not representable as a EWKT Geometry by Ora2Pg.");
 			next;
@@ -405,7 +403,7 @@ sub createMultiPolygon
 	my $length = ($#{$coords} + 1) * $self->{geometry}{dim};
 
 	if (($sOffset < 1) || ($sOffset > $length)) {
-		$self->logit("ERROR: SDO_ELEM_INFO starting offset $sOffset inconsistent with ordinates length " . ($#{$coords} + 1));
+		$self->logit("ERROR: SDO_ELEM_INFO for MultiPolygon starting offset $sOffset inconsistent with ordinates length $length");
 	}
 	#  For SDO_ETYPE values 1003 and 2003, the first digit indicates exterior (1) or interior (2)
 	if (($etype != $SDO_ETYPE{POLYGON}) && ($etype != $SDO_ETYPE{POLYGON_EXTERIOR})) {
@@ -466,7 +464,7 @@ sub createMultiLine
         my $length = ($#{$coords} + 1) * $self->{geometry}{dim};
 
 	if (($sOffset < 1) || ($sOffset > $length)) {
-		$self->logit("ERROR: SDO_ELEM_INFO starting offset $sOffset inconsistent with ordinates length " . ($#{$coords} + 1));
+		$self->logit("ERROR: SDO_ELEM_INFO for MultiLine starting offset $sOffset inconsistent with ordinates length $length");
 	}
 	if ($etype != $SDO_ETYPE{LINESTRING}) {
 		$self->logit("ERROR: SDO_ETYPE $etype inconsistent with expected LINESTRING");
@@ -516,7 +514,7 @@ sub createMultiPoint
         my $length = ($#{$coords} + 1) * $self->{geometry}{dim};
 
 	if (($sOffset < 1) || ($sOffset > $length)) {
-		$self->logit("ERROR: SDO_ELEM_INFO starting offset $sOffset inconsistent with ordinates length " . ($#{$coords} + 1));
+		$self->logit("ERROR: SDO_ELEM_INFO for MultiPoint starting offset $sOffset inconsistent with ordinates length $length");
 	}
 	if ($etype != $SDO_ETYPE{POINT}) {
 		$self->logit("ERROR: SDO_ETYPE $etype inconsistent with expected POINT");
@@ -571,11 +569,37 @@ sub createPolygon
 		$self->logit("ERROR: SDO_ELEM_INFO starting offset $sOffset inconsistent with COORDINATES length " . (($#{$coords} + 1) * $self->{geometry}{dim}) );
         }
 
-        my @rings = ();
-        my $exteriorRing = $self->createLinearRing($elemIndex, $coords);
-	push(@rings, $exteriorRing) if ($exteriorRing);
+	my $poly = '';
+	if ($interpretation == 1 ) {
+		$poly = "POLYGON$self->{geometry}{suffix} (" . $self->createLinearRing($elemIndex, $coords).")";
+	} elsif ($interpretation == 2) {
+		$poly = "CURVEPOLYGON$self->{geometry}{suffix} (" . $self->createLinearRing($elemIndex, $coords).")";
+	} else {
+		$self->logit("ERROR: Unsupported polygon type with interpretation $interpretation probably mangled");
+		$poly = "POLYGON$self->{geometry}{suffix} (" . $self->createLinearRing($elemIndex, $coords).")";
+	}
 
-        my $cont = 1;
+	return $poly;
+}
+
+# Create CompoundPolygon
+# AD: Unsure whether my dataset has testcases for this
+sub createCompoundPolygon
+{
+	my ($self, $elemIndex, $coords) = @_;
+
+	my $sOffset = $self->get_start_offset($elemIndex);
+	my $etype = $self->eType($elemIndex);
+	my $interpretation = $self->interpretation($elemIndex);
+
+
+	if ( ($sOffset < 1) || ($sOffset > ($#{$coords} + 1) * $self->{geometry}{dim}) ) {
+		$self->logit("ERROR: SDO_ELEM_INFO for Compound Polygon starting offset $sOffset inconsistent with COORDINATES length " . (($#{$coords} + 1) * $self->{geometry}{dim}) );
+	}
+
+	my @rings = ();
+
+	my $cont = 1;
 	for (my $i = $elemIndex+1; $cont && ($etype = $self->eType($i)) != -1; $i++) {
 
 		# Exclude type 0 (zero) element
@@ -583,29 +607,21 @@ sub createPolygon
 
 		if ($etype == $SDO_ETYPE{LINESTRING})  {
 			push(@rings, $self->createLinearRing($i, $coords));
-		} elsif ($etype == $SDO_ETYPE{POLYGON_INTERIOR}) {
-			push(@rings, $self->createLinearRing($i, $coords));
-		} elsif ($etype == $SDO_ETYPE{COMPOUND_POLYGON_EXTERIOR}) {
-			next;
-		} elsif ($etype == $SDO_ETYPE{POLYGON}) {
-			push(@rings, $self->createLinearRing($i, $coords));
-		} else { # not a LinearRing - get out of here
-			$cont = 0;
-		}
-	}
-
-	my $poly = '';
-	if ($interpretation > 1) {
-		if ($self->{geometry}{sdo_elem_info}->[1] == $SDO_ETYPE{COMPOUND_POLYGON_EXTERIOR}) {
-			$poly = "CURVEPOLYGON$self->{geometry}{suffix} (COMPOUNDCURVE$self->{geometry}{suffix} (" . join(', ', @rings) . '))';
 		} else {
-			$poly = "CURVEPOLYGON$self->{geometry}{suffix} (" . join(', ', @rings) . ')';
-		}
-	} else {
-		$poly = "POLYGON$self->{geometry}{suffix} (" . join(', ', @rings) . ')';
+			$self->logit("ERROR: ETYPE $etype inconsistent with Compound Polygon" );
+			if ($etype == $SDO_ETYPE{POLYGON_INTERIOR}) {
+				push(@rings, $self->createLinearRing($i, $coords));
+			} elsif ($etype == $SDO_ETYPE{COMPOUND_POLYGON_EXTERIOR}) {
+				next;
+			} elsif ($etype == $SDO_ETYPE{POLYGON}) {
+				push(@rings, $self->createLinearRing($i, $coords));
+			} else { # not a LinearRing - get out of here
+				$cont = 0;
+			}
+	       }
 	}
 
-	return $poly;
+	return "POLYGON$self->{geometry}{suffix} (" . join(', ', @rings) . ')';
 }
 
 # Create Linear Ring for polygon
@@ -630,7 +646,7 @@ sub createLinearRing
 	return if ($etype == 0);
 
 	if ($sOffset > $length) {
-		$self->logit("ERROR: SDO_ELEM_INFO starting offset $sOffset inconsistent with ordinates length " . ($#{$coords} + 1));
+		$self->logit("ERROR: SDO_ELEM_INFO for LinearRing starting offset $sOffset inconsistent with ordinates length $length");
 	}
 
 	if ( ($etype == $SDO_ETYPE{COMPOUND_POLYGON_INTERIOR}) || ($etype == $SDO_ETYPE{COMPOUND_POLYGON_EXTERIOR}) ) {
@@ -709,7 +725,7 @@ sub createCompoundLine
         my $length = ($#{$coords} + 1) * $self->{geometry}{dim};
 
 	if (($sOffset < 1) || ($sOffset > $length)) {
-		$self->logit("ERROR: SDO_ELEM_INFO starting offset $sOffset inconsistent with ordinates length " . ($#{$coords} + 1));
+		$self->logit("ERROR: SDO_ELEM_INFO for CompoundLine starting offset $sOffset inconsistent with ordinates length " . ($#{$coords} + 1));
 	}
 	if ($etype != $SDO_ETYPE{LINESTRING}) {
 		$self->logit("ERROR: SDO_ETYPE $etype inconsistent with expected LINESTRING");
@@ -771,9 +787,10 @@ sub createPoint
 	my $sOffset = $self->get_start_offset($elemIndex);
 	my $etype = $self->eType($elemIndex);
 	my $interpretation = $self->interpretation($elemIndex);
+	my $length = ($#{$coords}+1) * $self->{geometry}{dim};
 
-	if (($sOffset < 1) || ($sOffset > $#{$coords} + 1)) {
-		$self->logit("ERROR: SDO_ELEM_INFO starting offset $sOffset inconsistent with ordinates length " . ($#{$coords} + 1));
+	if (($sOffset < 1) || ($sOffset > $length)) {
+		$self->logit("ERROR: SDO_ELEM_INFO for Point starting offset $sOffset inconsistent with ordinates length $length");
 	}
 	if ($etype != $SDO_ETYPE{POINT}) {
 		$self->logit("ERROR: SDO_ETYPE $etype inconsistent with expected POINT");
@@ -783,7 +800,7 @@ sub createPoint
 		return $self->createMultiPoint($elemIndex, $coords);
 	# Oriented point should be processed by MULTIPOINT
 	} elsif ($interpretation == 0) {
-		$self->logit("ERROR: SDO_ETYPE.POINT requires interpretation >= 1");
+		$self->logit("ERROR: SDO_ETYPE.POINT with interpretation = 0 is not supported");
 		return undef;
 	}
 

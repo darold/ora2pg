@@ -876,7 +876,9 @@ sub plsql_to_plpgsql
 	# Oracle MINUS can be replaced by EXCEPT as is
 	$str =~ s/\bMINUS\b/EXCEPT/igs;
 	# Comment DBMS_OUTPUT.ENABLE calls
-	$str =~ s/(DBMS_OUTPUT.ENABLE[^;]+;)/-- $1/isg;
+	if (!$class->{use_orafce}) {
+		$str =~ s/(DBMS_OUTPUT.ENABLE[^;]+;)/-- $1/isg;
+	}
 	# DBMS_LOB.GETLENGTH can be replaced by binary length.
 	$str =~ s/DBMS_LOB.GETLENGTH/octet_length/igs;
 	# DBMS_LOB.SUBSTR can be replaced by SUBSTR()
@@ -885,7 +887,9 @@ sub plsql_to_plpgsql
 	$str =~ s/TO_CLOB\s*\(/\(/igs;
 
 	# Raise information to the client
-	$str =~ s/DBMS_OUTPUT\.(put_line|put|new_line)\s*\((.*?)\)\s*;/&raise_output($class, $2) . ';'/isge;
+	if (!$class->{use_orafce}) {
+		$str =~ s/DBMS_OUTPUT\.(put_line|put|new_line)\s*\((.*?)\)\s*;/&raise_output($class, $2) . ';'/isge;
+	}
 
 	# Simply remove this as not supported
 	$str =~ s/\bDEFAULT\s+NULL\b//igs;
@@ -2521,8 +2525,6 @@ sub estimate_cost
 	$cost_details{'PIPE ROW'} += $n;
 	$n = () = $str =~ m/DBMS_\w/igs;
 	$cost_details{'DBMS_'} += $n;
-	$n = () = $str =~ m/DBMS_OUTPUT\.(put_line|new_line|put)/igs;
-	$cost_details{'DBMS_'} -= $n;
 	$n = () = $str =~ m/DBMS_STANDARD\.RAISE EXCEPTION/igs;
 	$cost_details{'DBMS_'} -= $n;
 	$n = () = $str =~ m/UTL_\w/igs;
@@ -2550,6 +2552,8 @@ sub estimate_cost
 		$cost_details{'MONTHS_BETWEEN'} += $n;
 		$n = () = $str =~ m/DBMS_OUTPUT\.put\(/igs;
 		$cost_details{'DBMS_OUTPUT.put'} += $n;
+		$n = () = $str =~ m/DBMS_OUTPUT\.(put_line|new_line|put)/igs;
+		$cost_details{'DBMS_'} -= $n;
 		$n = () = $str =~ m/\bTRUNC\s*\(/igs;
 		$cost_details{'TRUNC'} += $n;
 		$n = () = $str =~ m/REGEXP_LIKE/igs;

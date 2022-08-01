@@ -308,6 +308,9 @@ CONFIGURATION
                             resulting from exports will be stored.
         -c | --conf file  : Set an alternate configuration file other than the
                             default /etc/ora2pg/ora2pg.conf.
+        -C | --cdc_file file: File used to store/read SCN per table during export.
+                            default: TABLES_SCN.log in the current directory. This
+                            is the file written by the --cdc_ready option.
         -d | --debug      : Enable verbose output.
         -D | --data_type str : Allow custom type replacement at command line.
         -e | --exclude str: Comma separated list of objects to exclude from export.
@@ -333,18 +336,20 @@ CONFIGURATION
         -q | --quiet      : Disable progress bar.
         -r | --relative   : use \ir instead of \i in the psql scripts generated.
         -s | --source DSN : Allow to set the Oracle DBI datasource.
-        -S | --scn    SCN : Allow to set the Oracle System Change Number (SCN)
+        -S | --scn    SCN : Allow to set the Oracle System Change Number (SCN) to
+                            use to export data. It will be used in the WHERE clause
+                            to get the data. It is used with action COPY or INSERT.
         -t | --type export: Set the export type. It will override the one
                             given in the configuration file (TYPE).
         -T | --temp_dir dir: Set a distinct temporary directory when two
-                             or more ora2pg are run in parallel.
+                            or more ora2pg are run in parallel.
         -u | --user name  : Set the Oracle database connection user.
                             ORA2PG_USER environment variable can be used instead.
         -v | --version    : Show Ora2Pg Version and exit.
         -w | --password pwd : Set the password of the Oracle database user.
                             ORA2PG_PASSWD environment variable can be used instead.
         -W | --where clause : Set the WHERE clause to apply to the Oracle query to
-                              retrieve data. Can be used multiple time.
+                            retrieve data. Can be used multiple time.
         --forceowner      : Force ora2pg to set tables and sequences owner like in
                       Oracle database. If the value is set to a username this one
                       will be used as the objects owner. By default it's the user
@@ -385,7 +390,8 @@ CONFIGURATION
        --blob_to_lo       : export BLOB as large objects, can only be used with
                             action SHOW_COLUMN, TABLE and INSERT.
        --cdc_ready        : use current SCN per table to export data and register
-                            them into a file named TABLES_SCN.log
+                            them into a file named TABLES_SCN.log per default. It
+                            can be changed using -C | --cdc_file.
        --lo_import        : use psql \lo_import command to import BLOB as large
                             object. Can be use to import data with COPY and import
                             large object manually in a second pass. It is recquired
@@ -3317,8 +3323,12 @@ CONFIGURATION
     Ora2Pg do not have such feature which allow to import data and to only
     apply changes after the first import. But you can use the --cdc_ready
     option to export data with registration of the SCN at the time of the
-    table export. All SCN per tables are written to a file name
-    TABLES_SCN.log. This SCN can be used with a CDC tool.
+    table export. All SCN per tables are written to a file named
+    TABLES_SCN.log by default, it can be changed using -C | --cdc_file
+    option.
+
+    These SCN registered per table during COPY or INSERT export can be used
+    with a CDC tool. The format of the file is tablename:SCN per line.
 
   Importing BLOB as large objects
     By default Ora2Pg imports Oracle BLOB as bytea, the destination column
