@@ -10563,7 +10563,7 @@ sub _howto_get_data
 					} elsif ($self->{geometry_extract_type} eq 'INTERNAL') {
 						$str .= "CASE WHEN $name->[$k] IS NOT NULL THEN $name->[$k] ELSE NULL END,";
 					} else {
-						$str .= "CASE WHEN $name->[$k] IS NOT NULL THEN 'ST_GeomFromText('''||SDO_UTIL.TO_WKTGEOMETRY($name->[$k])||''','||($spatial_srid)||')' ELSE NULL END,";
+						$str .= "CASE WHEN $name->[$k] IS NOT NULL THEN ST_GeomFromText(SDO_UTIL.TO_WKTGEOMETRY($name->[$k]), '$spatial_srid') ELSE NULL END,";
 					}
 				}
 				else
