@@ -1551,6 +1551,14 @@ sub _init
 		}
 	}
 
+	# Force disabling USE_LOB_LOCATOR with WKT geometry export type,
+	# ST_GeomFromText and SDO_UTIL.TO_WKTGEOMETRY functions return a
+	# CLOB instead of a geometry object
+	if ($self->{use_lob_locator} && uc($self->{geometry_extract_type}) eq 'WKT') {
+		#$self->logit("WARNING: disabling USE_LOB_LOCATOR with WKT geometry export.\n", 0);
+		$self->{use_lob_locator} = 0;
+	}
+
 	if (($self->{standard_conforming_strings} =~ /^off$/i) || ($self->{standard_conforming_strings} == 0)) {
 		$self->{standard_conforming_strings} = 0;
 	} else {
