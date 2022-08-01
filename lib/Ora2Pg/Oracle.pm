@@ -1741,9 +1741,10 @@ sub _lookup_function
 	}
 
 	# Replace call to raise exception
-	foreach my $e (keys %{$self->{custom_exception}}) {
+	foreach my $e (keys %{$self->{custom_exception}})
+	{
 		$fct_detail{code} =~ s/\bRAISE\s+$e\b/RAISE EXCEPTION '$e' USING ERRCODE = '$self->{custom_exception}{$e}'/igs;
-		$fct_detail{code} =~ s/(\s+WHEN\s+)$e\s+/$1SQLSTATE '$self->{custom_exception}{$e}' /igs;
+		$fct_detail{code} =~ s/(\s+(?:WHEN|OR)\s+)$e\s+/$1SQLSTATE '$self->{custom_exception}{$e}' /igs;
 	}
 
 	# Remove %ROWTYPE from return type

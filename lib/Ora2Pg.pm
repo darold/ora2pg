@@ -4293,7 +4293,7 @@ sub _replace_declare_var
 	foreach my $e (keys %{$self->{custom_exception}})
 	{
 		$$code =~ s/\bRAISE\s+$e\b/RAISE EXCEPTION '$e' USING ERRCODE = '$self->{custom_exception}{$e}'/igs;
-		$$code =~ s/(\s+WHEN\s+)$e\s+/$1SQLSTATE '$self->{custom_exception}{$e}' /igs;
+		$$code =~ s/(\s+(?:WHEN|OR)\s+)$e\s+/$1SQLSTATE '$self->{custom_exception}{$e}' /igs;
 	}
 
 }
