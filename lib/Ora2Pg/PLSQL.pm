@@ -968,11 +968,23 @@ sub plsql_to_plpgsql
 	# Rewrite all IF ... IS NULL with coalesce because for Oracle empty and NULL is the same
 	if ($class->{null_equal_empty}) {
 		# Form: column IS NULL
-		$str =~ s/([a-z0-9_\."]+)\s*IS NULL/coalesce($1::text, '') = ''/igs;
-		$str =~ s/([a-z0-9_\."]+)\s*IS NOT NULL/($1 IS NOT NULL AND $1::text <> '')/igs;
+		$str =~ s/([a-z0-9_\."]+)\s*IS\s+NULL/coalesce($1::text, '') = ''/igs;
+		my $i = 0;
+		my %isnull = ();
+		while ($str =~ s/([a-z0-9_\."]+)\s*IS\s+NULL/%ORA2PGISNULL$i%/is) {
+			$isnull{$i} = "coalesce($1::text, '') = ''";
+			$i++;
+		}
+		my %notnull = ();
+		while ($str =~ s/([a-z0-9_\."]+)\s*IS NOT NULL/%ORA2PGNOTNULL$i%/is) {
+			$notnull{$i} = "($1 AND $1::text <> '')";
+			$i++;
+		}
 		# Form: fct(expression) IS NULL
-		$str =~ s/([a-z0-9_\."]+\s*\([^\)\(]*\))\s*IS NULL/coalesce($1::text, '') = ''/igs;
-		$str =~ s/([a-z0-9_\."]+\s*\([^\)\(]*\))\s*IS NOT NULL/($1 IS NOT NULL AND ($1)::text <> '')/igs;
+		$str =~ s/([a-z0-9_\."]+\s*\([^\)\(]*\))\s*IS\s+NULL/coalesce($1::text, '') = ''/igs;
+		$str =~ s/([a-z0-9_\."]+\s*\([^\)\(]*\))\s*IS\s+NOT\s+NULL/($1 IS NOT NULL AND ($1)::text <> '')/igs;
+		$str =~ s/%ORA2PGISNULL(\d+)%/$isnull{$1}/gs;
+		$str =~ s/%ORA2PGNOTNULL(\d+)%/$notnull{$1}/gs;
 	}
 
 	# Replace type in sub block
