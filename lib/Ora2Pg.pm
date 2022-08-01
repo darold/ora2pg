@@ -3104,6 +3104,7 @@ sub read_schema_from_file
 				my $code = $2;
 				my $states = $3;
 				my $tbspace_move = $4;
+				next if ($code =~ /^[^\s]+\s+IS\s+NOT\s+NULL\s*[\)]*$/i);
 				if (!exists $self->{tables}{$tb_name}{table_info}{type}) {
 					$self->{tables}{$tb_name}{table_info}{type} = 'TABLE';
 					$self->{tables}{$tb_name}{table_info}{num_rows} = 0;
@@ -7522,7 +7523,6 @@ sub export_table
 					# smallserial, serial and bigserial use a NOT NULL sequence as default value,
 					# so we don't need to add it here
 					if ($type !~ /serial/) {
-						push(@{$self->{tables}{$table}{check_constraint}{notnull}}, $f->[0]);
 						$sql_output .= " NOT NULL";
 					}
 				}
