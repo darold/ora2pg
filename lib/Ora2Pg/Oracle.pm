@@ -3811,7 +3811,7 @@ sub auto_set_encoding
 		"TR8MSWIN1254" => "WIN1254",
 		"IW8MSWIN1255" => "WIN1255",
 		"AR8MSWIN1256" => "WIN1256",
-		"BLT8MSWIN1257"=> "WIN1257"
+		"BLT8MSWIN1257"=> "WIN125œ7"
 	);
 
 	foreach my $k (keys %ENCODING) {
@@ -3820,6 +3820,20 @@ sub auto_set_encoding
 
 	return '';
 }
+
+=head2 _change_data_capture
+
+This function handle the change data capture feature
+
+=cut
+
+sub _change_data_capture
+{
+	my $self = shift;
+
+	$self->logit("CDC: Change data capture\n", 0);
+}
+
 
 1;
 

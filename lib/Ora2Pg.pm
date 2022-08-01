@@ -1623,8 +1623,8 @@ sub _init
 	# Replace ; or space by comma in the audit user list
 	$self->{audit_user} =~ s/[;\s]+/,/g;
 
-	# TEST* action need PG_DSN to be set
-	if ($self->{type} =~ /^TEST/ && !$self->{pg_dsn}) {
+	# TEST* and CDC actions need PG_DSN to be set
+	if ($self->{type} =~ /^(TEST|CDC|LOAD|KETTLE)/ && !$self->{pg_dsn}) {
 		$self->logit("FATAL: export type $self->{type} required PG_DSN to be set.\n", 0, 1);
 	}
 
@@ -1665,7 +1665,7 @@ sub _init
 			$self->_compile_schema(uc($self->{compile_schema}));
 		}
 
-		if (!grep(/^$self->{type}$/, 'COPY', 'INSERT', 'SEQUENCE', 'GRANT', 'TABLESPACE', 'QUERY', 'SYNONYM', 'FDW', 'KETTLE', 'DBLINK', 'DIRECTORY') && $self->{type} !~ /SHOW_/)
+		if (!grep(/^$self->{type}$/, 'COPY', 'INSERT', 'SEQUENCE', 'GRANT', 'TABLESPACE', 'QUERY', 'SYNONYM', 'FDW', 'KETTLE', 'DBLINK', 'DIRECTORY', 'CDC') && $self->{type} !~ /SHOW_/)
 		{
 			if ($self->{plsql_pgsql} && !$self->{no_function_metadata})
 			{
@@ -1707,15 +1707,10 @@ sub _init
 	{
 		$self->{plsql_pgsql} = 1;
 
-		if (grep(/^$self->{type}$/, 'TABLE', 'SEQUENCE', 'GRANT', 'TABLESPACE', 'VIEW', 'TRIGGER', 'QUERY', 'FUNCTION','PROCEDURE','PACKAGE','TYPE','SYNONYM', 'DIRECTORY', 'DBLINK','LOAD'))
+		if (grep(/^$self->{type}$/, 'TABLE', 'SEQUENCE', 'GRANT', 'TABLESPACE', 'VIEW', 'TRIGGER', 'QUERY', 'FUNCTION', 'PROCEDURE', 'PACKAGE', 'TYPE', 'SYNONYM', 'DIRECTORY', 'DBLINK',' LOAD', 'CDC'))
 		{
-			if ($self->{type} eq 'LOAD')
-			{
-				if (!$self->{pg_dsn}) {
-					$self->logit("FATAL: You must set PG_DSN to connect to PostgreSQL to be able to dispatch load over multiple connections.\n", 0, 1);
-				} elsif ($self->{jobs} <= 1) {
-					$self->logit("FATAL: You must set set -j (JOBS) > 1 to be able to dispatch load over multiple connections.\n", 0, 1);
-				}
+			if ($self->{type} eq 'LOAD' && $self->{jobs} <= 1) {
+				$self->logit("FATAL: You must set set -j (JOBS) > 1 to be able to dispatch load over multiple connections.\n", 0, 1);
 			}
 			$self->export_schema();
 		}
@@ -1727,7 +1722,7 @@ sub _init
 	}
 
 	# Register export structure modification
-	if ($self->{type} =~ /^(INSERT|COPY|TABLE|TEST|TEST_DATA)$/)
+	if ($self->{type} =~ /^(INSERT|COPY|TABLE|TEST|TEST_DATA|CDC)$/)
 	{
 		for my $t (keys %{$self->{'modify_struct'}}) {
 			$self->modify_struct($t, @{$self->{'modify_struct'}{$t}});
@@ -1755,7 +1750,7 @@ sub _init
 	{
                 $self->{type} = $t;
 
-		if (($self->{type} eq 'TABLE') || ($self->{type} eq 'FDW') || ($self->{type} eq 'INSERT') || ($self->{type} eq 'COPY') || ($self->{type} eq 'KETTLE'))
+		if (grep(/^$self->{type}$/, 'TABLE', 'FDW', 'INSERT', 'COPY', 'KETTLE', 'CDC'))
 		{
 			$self->{plsql_pgsql} = 1;
 			$self->_tables();
@@ -1876,7 +1871,7 @@ sub _init
 		}
 		else
 		{
-			warn "type option must be (TABLE, VIEW, GRANT, SEQUENCE, TRIGGER, PACKAGE, FUNCTION, PROCEDURE, PARTITION, TYPE, INSERT, COPY, TABLESPACE, SHOW_REPORT, SHOW_VERSION, SHOW_SCHEMA, SHOW_TABLE, SHOW_COLUMN, SHOW_ENCODING, FDW, MVIEW, QUERY, KETTLE, DBLINK, SYNONYM, DIRECTORY, LOAD, TEST, TEST_COUNT, TEST_VIEW, TEST_DATA), unknown $self->{type}\n";
+			warn "type option must be (TABLE, VIEW, GRANT, SEQUENCE, TRIGGER, PACKAGE, FUNCTION, PROCEDURE, PARTITION, TYPE, INSERT, COPY, TABLESPACE, SHOW_REPORT, SHOW_VERSION, SHOW_SCHEMA, SHOW_TABLE, SHOW_COLUMN, SHOW_ENCODING, FDW, MVIEW, QUERY, KETTLE, DBLINK, SYNONYM, DIRECTORY, LOAD, CDC, TEST, TEST_COUNT, TEST_VIEW, TEST_DATA), unknown $self->{type}\n";
 		}
 		$self->replace_tables(%{$self->{'replace_tables'}});
 		$self->replace_cols(%{$self->{'replace_cols'}});
@@ -1886,11 +1881,7 @@ sub _init
 
 	if ( ($self->{type} eq 'INSERT') || ($self->{type} eq 'COPY') || ($self->{type} eq 'KETTLE') )
 	{
-		if ( ($self->{type} eq 'KETTLE') && !$self->{pg_dsn} )
-		{
-			$self->logit("FATAL: PostgreSQL connection datasource must be defined with KETTLE export.\n", 0, 1);
-		}
-		elsif ($self->{type} ne 'KETTLE')
+		if ($self->{type} ne 'KETTLE')
 		{
 			if ($self->{defer_fkey} && $self->{pg_dsn}) {
 				$self->logit("FATAL: DEFER_FKEY can not be used with direct import to PostgreSQL, check use of DROP_FKEY instead.\n", 0, 1);
@@ -2288,7 +2279,7 @@ sub _tables
 			%columns_infos = ();
 
 			# Retrieve comment of each columns and FK information if not foreign table export
-			if ($self->{type} ne 'FDW' and (!$self->{oracle_fdw_data_export} || $self->{drop_fkey} || $self->{drop_indexes}))
+			if ($self->{type} ne 'FDW' and $self->{type} ne 'CDC' and (!$self->{oracle_fdw_data_export} || $self->{drop_fkey} || $self->{drop_indexes}))
 			{
 				if ($self->{type} eq 'TABLE')
 				{
@@ -2321,7 +2312,7 @@ sub _tables
 		}
 
 		# Retrieve unique keys and check constraint information if not FDW export
-		if ($self->{type} ne 'FDW' and !$self->{oracle_fdw_data_export})
+		if ($self->{type} ne 'FDW' and $self->{type} ne 'CDC' and !$self->{oracle_fdw_data_export})
 		{
 			$self->logit("Retrieving unique keys information...\n", 1);
 			my %unique_keys = $self->_unique_key('',$self->{schema});
@@ -2356,7 +2347,7 @@ sub _tables
 	my $PGBAR_REFRESH = set_refresh_count($num_total_table);
 	foreach my $t (sort keys %tables_infos)
 	{
-		if (!$self->{quiet} && !$self->{debug} && ($count_table % $PGBAR_REFRESH) == 0)
+		if (!$self->{quiet} && !$self->{debug} and $self->{type} ne 'CDC' && ($count_table % $PGBAR_REFRESH) == 0)
 		{
 			print STDERR $self->progress_bar($i, $num_total_table, 25, '=', 'tables', "scanning table $t" ), "\r";
 		}
@@ -2457,7 +2448,7 @@ sub _tables
  
 	# Try to search requested TABLE names in the VIEW names if not found in
 	# real TABLE names
-	if ($#{$self->{view_as_table}} >= 0)
+	if ($#{$self->{view_as_table}} >= 0 and $self->{type} ne 'CDC')
 	{
 		my %view_infos = $self->_get_views();
 		# Retrieve comment of each columns
@@ -8159,6 +8150,12 @@ sub _get_sql_statements
 	elsif ($self->{type} eq 'TABLE' or $self->{type} eq 'FDW')
 	{
 		$self->export_table();
+	}
+
+	# Extract data only
+	elsif ($self->{type} eq 'INSERT')
+	{
+		$self->_change_data_capture();
 	}
 
 	# Extract data only
@@ -20255,6 +20252,23 @@ sub _get_oracle_test_data
 	my $query = $self->_howto_get_data($table, \@nn, \@tt, \@stt, $part_name, $is_subpart);
 
 	return $query
+}
+
+=head2 _change_data_capture
+
+This function handle the change data capture feature
+
+=cut
+
+sub _change_data_capture
+{
+	my $self = shift;
+
+	if ($self->{is_mysql}) {
+		return Ora2Pg::MySQL::_change_data_capture($self);
+	} else {
+		return Ora2Pg::Oracle::_change_data_capture($self);
+	}
 }
 
 1;
