@@ -16765,6 +16765,7 @@ GROUP BY schemaname,tablename
 	####
 	# Test check constraints
 	####
+	my %nbnotnull = {}; # will be used in the NOT NULL constraint count as based on a CHECK constraints
 	if (!$self->{is_mysql})
 	{
 		print "\n";
@@ -16804,6 +16805,11 @@ GROUP BY n.nspname,r.conrelid
 			my $nbcheck = 0;
 			foreach my $cn (keys %{$check_constraints{$t}{constraint}}) {
 				$nbcheck++ if ($check_constraints{$t}{constraint}{$cn}{condition} !~ /IS NOT NULL$/);
+				if ($check_constraints{$t}{constraint}{$cn}{condition} =~ /^[^\s]+\s+IS\s+NOT\s+NULL$/i) {
+					$nbnotnull{$t}++;
+				} else {
+					$nbcheck++;
+				}
 			}
 			print "$lbl:$t:$nbcheck\n";
 			if ($self->{pg_dsn})
@@ -16867,6 +16873,7 @@ GROUP BY n.nspname,e.oid
 				$nbnull++;
 			}
 		}
+		$nbnull += $nbnotnull{$t} if (exists $nbnotnull{$t}); # Append the CHECK not null constraints
 		print "$lbl:$t:$nbnull\n";
 		if ($self->{pg_dsn})
 		{
