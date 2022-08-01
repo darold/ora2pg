@@ -974,7 +974,7 @@ AND    IC.TABLE_OWNER = ?
 		if ($row->[11] =~ /SPATIAL_INDEX/) {
 			$idx_type{$row->[8]}{$row->[0]}{type} = 'SPATIAL INDEX';
 			if ($row->[12] =~ /layer_gtype=([^\s,]+)/i) {
-				$idx_type{$row->[9]}{$row->[0]}{type_constraint} = uc($1);
+				$idx_type{$row->[8]}{$row->[0]}{type_constraint} = uc($1);
 			}
 			if ($row->[12] =~ /sdo_indx_dims=(\d+)/i) {
 				$idx_type{$row->[8]}{$row->[0]}{type_dims} = $1;
