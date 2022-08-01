@@ -10222,14 +10222,14 @@ sub _create_check_constraint
 		my $validate = '';
 		$validate = ' NOT VALID' if ($check_constraint->{constraint}->{$k}{validate} eq 'NOT VALIDATED');
 		next if (!$chkconstraint);
-		my $skip_create = 0;
-		if (exists $check_constraint->{notnull})
+		if ($chkconstraint =~ /^([^\s]+)\s+IS\s+NOT\s+NULL$/i)
 		{
-			foreach my $col (@{$check_constraint->{notnull}}) {
-				$skip_create = 1, last if (lc($chkconstraint) eq lc("\"$col\" IS NOT NULL"));
-			}
+			my $col = $1;
+			$col =~ s/"//g;
+			$col = '"' . $col . '"' if ($self->{preserve_case});
+			$out .= "ALTER TABLE $table ALTER COLUMN $col SET NOT NULL;\n";
 		}
-		if (!$skip_create)
+		else
 		{
 			if (exists $self->{replaced_cols}{"\L$tbsaved\E"} && $self->{replaced_cols}{"\L$tbsaved\E"})
 			{
@@ -10261,7 +10261,7 @@ sub _create_check_constraint
 			if (!$converted_as_boolean)
 			{
 				$chkconstraint = Ora2Pg::PLSQL::convert_plsql_code($self, $chkconstraint);
-				$str .= "ALTER TABLE $table DROP CONSTRAINT $self->{pg_supports_ifexists} $k;\n" if ($self->{drop_if_exists});
+				$out .= "ALTER TABLE $table DROP CONSTRAINT $self->{pg_supports_ifexists} $k;\n" if ($self->{drop_if_exists});
 				$out .= "ALTER TABLE $table ADD CONSTRAINT $k CHECK ($chkconstraint)$validate;\n";
 			}
 		}
@@ -18237,62 +18237,6 @@ BEGIN
 }
 
 
-=head2 _lookup_check_constraint
-
-This function return an array of the SQL code of the check constraints of a table
-
-=cut
-
-sub _lookup_check_constraint
-{
-	my ($self, $table, $check_constraint, $field_name, $nonotnull) = @_;
-
-	my  @chk_constr = ();
-
-	my $tbsaved = $table;
-	$table = $self->get_replaced_tbname($table);
-
-	# Set the check constraint definition 
-	foreach my $k (keys %{$check_constraint->{constraint}})
-	{
-		my $chkconstraint = $check_constraint->{constraint}->{$k}{condition};
-		next if (!$chkconstraint);
-		my $skip_create = 0;
-		if (exists $check_constraint->{notnull}) {
-			foreach my $col (@{$check_constraint->{notnull}}) {
-				$skip_create = 1, last if (lc($chkconstraint) eq lc("\"$col\" IS NOT NULL"));
-			}
-		}
-		if (!$skip_create)
-		{
-			if (exists $self->{replaced_cols}{"\L$tbsaved\E"} && $self->{replaced_cols}{"\L$tbsaved\E"})
-			{
-				foreach my $c (keys %{$self->{replaced_cols}{"\L$tbsaved\E"}})
-				{
-					$chkconstraint =~ s/"$c"/"$self->{replaced_cols}{"\L$tbsaved\E"}{"\L$c\E"}"/gsi;
-					$chkconstraint =~ s/\b$c\b/$self->{replaced_cols}{"\L$tbsaved\E"}{"\L$c\E"}/gsi;
-				}
-			}
-			if ($self->{plsql_pgsql}) {
-				$chkconstraint = Ora2Pg::PLSQL::convert_plsql_code($self, $chkconstraint);
-			}
-			next if ($nonotnull && ($chkconstraint =~ /IS NOT NULL/));
-			foreach my $c (@$field_name) {
-				# Force lower case
-				my $ret = $self->quote_object_name($c);
-				$chkconstraint =~ s/"$c"/$ret/igs;
-				$chkconstraint =~ s/\b$c\b/$ret/igs;
-			}
-			$k = $self->quote_object_name($k);
-			my $validate = '';
-			$validate = ' NOT VALID' if ($check_constraint->{constraint}->{$k}{validate} eq 'NOT VALIDATED');
-			push(@chk_constr,  "ALTER TABLE $table ADD CONSTRAINT $k CHECK ($chkconstraint)$validate;\n");
-		}
-	}
-
-	return @chk_constr;
-}
-
 =head2 _count_check_constraint
 
 This function return the number of check constraints on a given table
@@ -18310,24 +18254,13 @@ sub _count_check_constraint
 	{
 		my $chkconstraint = $check_constraint->{constraint}->{$k}{condition};
 		next if (!$chkconstraint);
-		my $skip_create = 0;
-		if (exists $check_constraint->{notnull})
-		{
-			foreach my $col (@{$check_constraint->{notnull}})
-			{
-				$skip_create = 1, last if (lc($chkconstraint) eq lc("\"$col\" IS NOT NULL"));
-			}
-		}
-		if (!$skip_create)
-		{
-			$num_chk_constr++;
-		}
+		# Skip NOT NULL constraint only
+		next if ($chkconstraint =~ /^[^\s]+\s+IS\s+NOT\s+NULL$/i);
+		$num_chk_constr++;
 	}
 
 	return $num_chk_constr;
 }
-
-
 
 =head2 _lookup_package
 
