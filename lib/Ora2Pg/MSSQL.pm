@@ -2749,6 +2749,9 @@ sub _col_count
 	} else {
 		@{$self->{query_bind_params}} = ();
 	}
+	if ($self->{drop_rowversion}) {
+		$condition .= "AND typ.name NOT IN ( 'rowversion', 'timestamp')";
+	}
 	$condition =~ s/^\s*AND\s/ WHERE /;
 
 	my $sql = qq{SELECT 
@@ -2758,6 +2761,7 @@ sub _col_count
 FROM sys.columns c
 INNER JOIN sys.tables AS t ON t.object_id = c.object_id
 INNER JOIN sys.schemas AS s ON s.schema_id = t.schema_id
+INNER JOIN sys.types AS typ ON c.user_type_id = typ.user_type_id
 $condition
 GROUP BY s.name, t.name};
 

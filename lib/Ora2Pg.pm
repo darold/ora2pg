@@ -16842,11 +16842,11 @@ sub _test_table
 	my %col_count = $self->_col_count('', $self->{schema});
 	$schema_cond = $self->get_schema_condition('pg_class.relnamespace::regnamespace::text');
 	my $sql = qq{
-SELECT pg_namespace.nspname||'.'||pg_class.relname, pg_attribute.attname
+SELECT upper(pg_namespace.nspname||'.'||pg_class.relname), pg_attribute.attname
 FROM pg_attribute
 JOIN pg_class ON (pg_class.oid=pg_attribute.attrelid)
 JOIN pg_namespace ON (pg_class.relnamespace=pg_namespace.oid)
-WHERE pg_class.relkind = 'r' AND pg_attribute.attnum > 0 AND NOT pg_attribute.attisdropped $schema_cond
+WHERE pg_class.relkind IN ('r', 'p') AND pg_attribute.attnum > 0 AND NOT pg_attribute.attisdropped $schema_cond
 ORDER BY pg_attribute.attnum
 };
 	my %pgret = ();
@@ -16861,7 +16861,7 @@ ORDER BY pg_attribute.attnum
 		while ( my @row = $s->fetchrow())
 		{
 			$row[0] =~ s/^[^\.]+\.// if (!$self->{export_schema});
-			push(@{$pgret{"\U$row[0]\E"}}, $row[1]);
+			push(@{$pgret{$row[0]}}, $row[1]);
 		}
 		$s->finish;
 	}
@@ -16870,18 +16870,21 @@ ORDER BY pg_attribute.attnum
 		$pgcount{$t} = $#{$pgret{$t}} + 1;
 	}
 
+	my @tables_names = keys %tables_infos;
 	foreach my $t (sort keys %col_count)
 	{
-		next if (!exists $tables_infos{$t});
+		next if (!grep(/^$t$/i, @tables_names));
 		print "$lbl:$t:$col_count{$t}\n";
 		if ($self->{pg_dsn})
 		{
 			my ($tbmod, $orig, $schema, $both) = $self->set_pg_relation_name($t);
-			$pgcount{"\U$both$orig\E"} ||= 0;
-			print "POSTGRES:$both$orig:", $pgcount{"\U$both$orig\E"}, "\n";
-			if ($pgcount{"\U$both$orig\E"} != $col_count{$t}) {
-				push(@errors, "Table $both$orig doesn't have the same number of columns in source database ($col_count{$t}) and in PostgreSQL (" . $pgcount{"\U$both$orig\E"} . ").");
-				push(@errors, "\tPostgreSQL modified struct: \U$both$orig\E(" . join(',', @{$pgret{"\U$both$orig\E"}}) . ")");
+			my $tbname = "\U$both$orig\E";
+			$tbname =~ s/"//g;
+			$pgcount{$tbname} ||= 0;
+			print "POSTGRES:$both$orig:", $pgcount{$tbname}, "\n";
+			if ($pgcount{$tbname} != $col_count{$t}) {
+				push(@errors, "Table $both$orig doesn't have the same number of columns in source database ($col_count{$t}) and in PostgreSQL (" . $pgcount{$tbname} . ").");
+				push(@errors, "\tPostgreSQL modified struct: $both$orig(" . join(',', @{$pgret{$tbname}}) . ")");
 			}
 		}
 	}
