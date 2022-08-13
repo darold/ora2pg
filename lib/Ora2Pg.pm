@@ -992,8 +992,9 @@ sub _init
 
 	# AS OF SCN related variables
 	$self->{start_scn} = $options{start_scn} || '';
-	$self->{current_oracle_scn} = ();
-	$self->{cdc_ready} = $options{cdc_ready} || '';
+	$self->{current_oracle_scn} = '';
+	$self->{cdc_init} = $options{cdc_ready} || '';
+	$self->{cdc_file} = $options{cdc_file} || 'LAST_EXPORT_SCN.txt';
 
 	# Initialyze following configuration file
 	foreach my $k (sort keys %AConfig)
@@ -8507,6 +8508,16 @@ sub _get_sql_statements
 			$pipe->print("GLOBAL EXPORT ROW NUMBER: $self->{global_rows}\n");
 		}
 		$self->{global_start_time} = time();
+		# Get the current SCN before getting data for this table
+		if ($self->{cdc_init})
+		{
+			my $sth = $self->{dbh}->prepare("SELECT CURRENT_SCN FROM v\$database") or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+			$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+			my @row = $sth->fetchrow();
+			$self->{current_oracle_scn} = $row[0];
+			$sth->finish;
+			$self->logit("Storing current SCN before export: $self->{current_oracle_scn}\n", 1);
+		}
 		foreach my $table (@ordered_tables)
 		{
 			# Do not process nested table
@@ -8528,18 +8539,6 @@ sub _get_sql_statements
 			# Extract all column information used to determine data export.
 			# This hash will be used in function _howto_get_data()
 			%{$self->{colinfo}} = $self->_column_attributes($table, $self->{schema}, 'TABLE');
-
-			# Get the current SCN before getting data for this table
-			if ($self->{cdc_ready})
-			{
-				my $sth = $self->{dbh}->prepare("SELECT CURRENT_SCN FROM v\$database") or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-				$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-				my @row = $sth->fetchrow();
-				$self->{current_oracle_scn}{$table} = $row[0];
-				$sth->finish;
-				$self->logit("Storing SCN for table $table: $self->{current_oracle_scn}{$table}\n", 1);
-			}
-
 			my $total_record = 0;
 			if ($self->{parallel_tables} > 1)
 			{
@@ -8586,6 +8585,7 @@ sub _get_sql_statements
 				}
 			}
 		}
+
 		if (!$self->{quiet} && !$self->{debug})
 		{
 			if ( ($self->{jobs} <= 1) && ($self->{oracle_copies} <= 1) && ($self->{parallel_tables} <= 1) ) {
@@ -8621,6 +8621,18 @@ sub _get_sql_statements
 			$self->{dbh} = $self->_db_connection();
 		}
 		
+		####
+		# Save SCN registered before exporting tables
+		####
+		if ($self->{current_oracle_scn})
+		{
+			my $dirprefix = '';
+			$dirprefix = "$self->{output_dir}/" if ($self->{output_dir});
+			open(OUT, ">${dirprefix}$self->{cdc_file}");
+			print OUT "$self->{global_start_time}:$self->{current_oracle_scn}\n";
+			close(OUT);
+		}
+
 		# Start a new transaction
 		if ($self->{pg_dsn} && !$self->{oracle_speed}) {
 			my $s = $self->{dbhdest}->do("BEGIN;") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
@@ -8855,21 +8867,6 @@ sub _get_sql_statements
 			my $mean = sprintf("%.2f", $self->{global_rows}/($1 || 1));
 			$self->logit("Speed average: $mean rows/sec\n", 1);
 		}
-
-		####
-		# Save SCN registered before exporting tables
-		####
-		if (scalar keys %{$self->{current_oracle_scn}}) {
-			my $dirprefix = '';
-			$dirprefix = "$self->{output_dir}/" if ($self->{output_dir});
-			open(OUT, ">${dirprefix}TABLES_SCN.log");
-			print OUT "# SCN per table\n";
-			foreach my $t (sort keys %{$self->{current_oracle_scn}}) {
-				print OUT "$t:$self->{current_oracle_scn}{$t}\n";
-			}
-			close(OUT);
-		}
-
 		return;
 	}
 }
