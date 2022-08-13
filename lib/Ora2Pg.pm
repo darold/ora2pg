@@ -7203,12 +7203,13 @@ sub export_synonym
 		}
 		$sql_output .= "CREATE$self->{create_or_replace} VIEW " . $self->quote_object_name("$self->{synonyms}{$syn}{owner}.$syn")
 			. " AS SELECT * FROM " . $self->quote_object_name("$self->{synonyms}{$syn}{table_owner}.$self->{synonyms}{$syn}{table_name}") . ";\n";
-		my $owner = $self->{synonyms}{$syn}{table_owner};
-		$owner = $self->{force_owner} if ($self->{force_owner} && ($self->{force_owner} ne "1"));
-		$sql_output .= "ALTER VIEW " . $self->quote_object_name("$self->{synonyms}{$syn}{owner}.$syn")
-					. " OWNER TO " . $self->quote_object_name($owner) . ";\n";
-		$sql_output .= "GRANT ALL ON " . $self->quote_object_name("$self->{synonyms}{$syn}{owner}.$syn")
-					. " TO " . $self->quote_object_name($self->{synonyms}{$syn}{owner}) . ";\n\n";
+		if ($self->{force_owner})
+		{
+			my $owner = $self->{synonyms}{$syn}{owner};
+			$owner = $self->{force_owner} if ($self->{force_owner} && ($self->{force_owner} ne "1"));
+			$sql_output .= "ALTER VIEW " . $self->quote_object_name("$self->{synonyms}{$syn}{owner}.$syn")
+						. " OWNER TO " . $self->quote_object_name($owner) . ";\n";
+		}
 		$i++;
 	}
 	if (!$self->{quiet} && !$self->{debug}) {
@@ -10219,14 +10220,14 @@ sub _create_check_constraint
 		my $validate = '';
 		$validate = ' NOT VALID' if ($check_constraint->{constraint}->{$k}{validate} eq 'NOT VALIDATED');
 		next if (!$chkconstraint);
-		my $skip_create = 0;
-		if (exists $check_constraint->{notnull})
+		if ($chkconstraint =~ /^([^\s]+)\s+IS\s+NOT\s+NULL$/i)
 		{
-			foreach my $col (@{$check_constraint->{notnull}}) {
-				$skip_create = 1, last if (lc($chkconstraint) eq lc("\"$col\" IS NOT NULL"));
-			}
+			my $col = $1;
+			$col =~ s/"//g;
+			$col = '"' . $col . '"' if ($self->{preserve_case});
+			$out .= "ALTER TABLE $table ALTER COLUMN $col SET NOT NULL;\n";
 		}
-		if (!$skip_create)
+		else
 		{
 			if (exists $self->{replaced_cols}{"\L$tbsaved\E"} && $self->{replaced_cols}{"\L$tbsaved\E"})
 			{
@@ -10258,7 +10259,7 @@ sub _create_check_constraint
 			if (!$converted_as_boolean)
 			{
 				$chkconstraint = Ora2Pg::PLSQL::convert_plsql_code($self, $chkconstraint);
-				$str .= "ALTER TABLE $table DROP CONSTRAINT $self->{pg_supports_ifexists} $k;\n" if ($self->{drop_if_exists});
+				$out .= "ALTER TABLE $table DROP CONSTRAINT $self->{pg_supports_ifexists} $k;\n" if ($self->{drop_if_exists});
 				$out .= "ALTER TABLE $table ADD CONSTRAINT $k CHECK ($chkconstraint)$validate;\n";
 			}
 		}
@@ -14108,10 +14109,10 @@ sub _convert_type
 		$type_name = $1;
 		my $type_of = $3;
 		$type_name =~ s/"//g;
-		my $internal_name = $type_name;
-		if ($self->{export_schema} && !$self->{schema} && $owner) {
+		if ($self->{export_schema} && !$self->{schema} && $owner && $type_name !~ /\./) {
 			$type_name = "$owner.$type_name";
 		}
+		my $internal_name = $type_name;
 		$internal_name  =~ s/^[^\.]+\.//;
 		$type_of =~ s/\s*\(\s*/\(/;
 		$type_of =~ s/\s*\)\s*/\)/;
@@ -14122,8 +14123,8 @@ sub _convert_type
 		{ 
 			$type_of = Ora2Pg::PLSQL::replace_sql_type($type_of, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type}, $self->{varchar_to_text}, %{$self->{data_type}});
 			$self->{type_of_type}{'Nested Tables'}++;
-			$content .= "DROP TYPE $self->{pg_supports_ifexists} \L$type_name\E;\n" if ($self->{drop_if_exists});
-			$content = "CREATE TYPE \L$type_name\E AS (\L$internal_name\E $type_of\[\]);\n";
+			$content .= "DROP TYPE $self->{pg_supports_ifexists} " . $self->quote_object_name($type_name) . ";\n" if ($self->{drop_if_exists});
+			$content = "CREATE TYPE " . $self->quote_object_name($type_name) . " AS (" . $self->quote_object_name($internal_name) . " $type_of\[\]);\n";
 		}
 		else
 		{
@@ -14151,9 +14152,6 @@ sub _convert_type
 		my $description = $3;
 		my $notfinal = $4;
 		$notfinal =~ s/\s+/ /gs;
-		if ($self->{export_schema} && !$self->{schema} && $owner) {
-			$type_name = "$owner.$type_name";
-		}
 		if ($description =~ /\s*(MAP MEMBER|MEMBER|CONSTRUCTOR)\s+(FUNCTION|PROCEDURE).*/is)
 		{
 			$self->{type_of_type}{'Type with member method'}++;
@@ -14163,11 +14161,13 @@ sub _convert_type
 		$description =~ s/^\s+//s;
 		my $declar = Ora2Pg::PLSQL::replace_sql_type($description, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type}, $self->{varchar_to_text}, %{$self->{data_type}});
 		$type_name =~ s/"//g;
-		$type_name = $self->get_replaced_tbname($type_name);
+		if ($self->{export_schema} && !$self->{schema} && $owner && $type_name !~ /\./) {
+			$type_name = "$owner.$type_name";
+		}
 		if ($notfinal =~ /FINAL/is)
 		{
 			$content = "-- Inherited types are not supported in PostgreSQL, replacing with inherited table\n";
-			$content .= qq{CREATE TABLE $type_name (
+			$content .= qq{CREATE TABLE " . $self->quote_object_name($type_name) . " (
 $declar
 );
 };
@@ -14175,8 +14175,8 @@ $declar
 		}
 		else
 		{
-			$content = qq{
-CREATE TYPE $type_name AS (
+			$content = "CREATE TYPE " . $self->quote_object_name($type_name) . " AS (";
+			$content .= qq{
 $declar
 );
 };
@@ -14188,9 +14188,6 @@ $declar
 		$type_name = $1;
 		my $type_inherit = $2;
 		my $description = $3;
-		if ($self->{export_schema} && !$self->{schema} && $owner) {
-			$type_name = "$owner.$type_name";
-		}
 		if ($description =~ /\s*(MAP MEMBER|MEMBER|CONSTRUCTOR)\s+(FUNCTION|PROCEDURE).*/is) {
 			$self->logit("WARNING: TYPE with CONSTRUCTOR and MEMBER FUNCTION are not supported, skipping type $type_name\n", 1);
 			$self->{type_of_type}{'Type with member method'}++;
@@ -14199,9 +14196,11 @@ $declar
 		$description =~ s/^\s+//s;
 		my $declar = Ora2Pg::PLSQL::replace_sql_type($description, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type}, $self->{varchar_to_text}, %{$self->{data_type}});
 		$type_name =~ s/"//g;
-		$type_name = $self->get_replaced_tbname($type_name);
-		$content = qq{
-CREATE TABLE $type_name (
+		if ($self->{export_schema} && !$self->{schema} && $owner && $type_name !~ /\./) {
+			$type_name = "$owner.$type_name";
+		}
+		$content = "CREATE TABLE " . $self->quote_object_name($type_name) . " (";
+		$content .= qq{
 $declar
 ) INHERITS (\L$type_inherit\E);
 };
@@ -14213,19 +14212,17 @@ $declar
 		my $size = $4;
 		my $tbname = $5;
 		$type_name =~ s/"//g;
+		if ($self->{export_schema} && !$self->{schema} && $owner && $type_name !~ /\./) {
+			$type_name = "$owner.$type_name";
+		}
 		$tbname =~ s/;//g;
 		$tbname =~ s/\s+NOT\s+NULL//g;
 		my $internal_name = $type_name;
 		chomp($tbname);
-		if ($self->{export_schema} && !$self->{schema} && $owner) {
-			$type_name = "$owner.$type_name";
-		}
 		$internal_name  =~ s/^[^\.]+\.//;
 		my $declar = Ora2Pg::PLSQL::replace_sql_type($tbname, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type}, $self->{varchar_to_text}, %{$self->{data_type}});
 		$declar =~ s/[\n\r]+//s;
-		$content = qq{
-CREATE TYPE \L$type_name\E AS ($internal_name $declar\[$size\]);
-};
+		$content = "CREATE TYPE " . $self->quote_object_name($type_name) . " AS (" . $self->quote_object_name($internal_name) . " $declar\[$size\]);\n";
 		$self->{type_of_type}{Varrays}++;
 	}
 	else
@@ -16766,6 +16763,7 @@ GROUP BY schemaname,tablename
 	####
 	# Test check constraints
 	####
+	my %nbnotnull = {}; # will be used in the NOT NULL constraint count as based on a CHECK constraints
 	if (!$self->{is_mysql})
 	{
 		print "\n";
@@ -16805,6 +16803,11 @@ GROUP BY n.nspname,r.conrelid
 			my $nbcheck = 0;
 			foreach my $cn (keys %{$check_constraints{$t}{constraint}}) {
 				$nbcheck++ if ($check_constraints{$t}{constraint}{$cn}{condition} !~ /IS NOT NULL$/);
+				if ($check_constraints{$t}{constraint}{$cn}{condition} =~ /^[^\s]+\s+IS\s+NOT\s+NULL$/i) {
+					$nbnotnull{$t}++;
+				} else {
+					$nbcheck++;
+				}
 			}
 			print "$lbl:$t:$nbcheck\n";
 			if ($self->{pg_dsn})
@@ -16868,6 +16871,7 @@ GROUP BY n.nspname,e.oid
 				$nbnull++;
 			}
 		}
+		$nbnull += $nbnotnull{$t} if (exists $nbnotnull{$t}); # Append the CHECK not null constraints
 		print "$lbl:$t:$nbnull\n";
 		if ($self->{pg_dsn})
 		{
@@ -18238,62 +18242,6 @@ BEGIN
 }
 
 
-=head2 _lookup_check_constraint
-
-This function return an array of the SQL code of the check constraints of a table
-
-=cut
-
-sub _lookup_check_constraint
-{
-	my ($self, $table, $check_constraint, $field_name, $nonotnull) = @_;
-
-	my  @chk_constr = ();
-
-	my $tbsaved = $table;
-	$table = $self->get_replaced_tbname($table);
-
-	# Set the check constraint definition 
-	foreach my $k (keys %{$check_constraint->{constraint}})
-	{
-		my $chkconstraint = $check_constraint->{constraint}->{$k}{condition};
-		next if (!$chkconstraint);
-		my $skip_create = 0;
-		if (exists $check_constraint->{notnull}) {
-			foreach my $col (@{$check_constraint->{notnull}}) {
-				$skip_create = 1, last if (lc($chkconstraint) eq lc("\"$col\" IS NOT NULL"));
-			}
-		}
-		if (!$skip_create)
-		{
-			if (exists $self->{replaced_cols}{"\L$tbsaved\E"} && $self->{replaced_cols}{"\L$tbsaved\E"})
-			{
-				foreach my $c (keys %{$self->{replaced_cols}{"\L$tbsaved\E"}})
-				{
-					$chkconstraint =~ s/"$c"/"$self->{replaced_cols}{"\L$tbsaved\E"}{"\L$c\E"}"/gsi;
-					$chkconstraint =~ s/\b$c\b/$self->{replaced_cols}{"\L$tbsaved\E"}{"\L$c\E"}/gsi;
-				}
-			}
-			if ($self->{plsql_pgsql}) {
-				$chkconstraint = Ora2Pg::PLSQL::convert_plsql_code($self, $chkconstraint);
-			}
-			next if ($nonotnull && ($chkconstraint =~ /IS NOT NULL/));
-			foreach my $c (@$field_name) {
-				# Force lower case
-				my $ret = $self->quote_object_name($c);
-				$chkconstraint =~ s/"$c"/$ret/igs;
-				$chkconstraint =~ s/\b$c\b/$ret/igs;
-			}
-			$k = $self->quote_object_name($k);
-			my $validate = '';
-			$validate = ' NOT VALID' if ($check_constraint->{constraint}->{$k}{validate} eq 'NOT VALIDATED');
-			push(@chk_constr,  "ALTER TABLE $table ADD CONSTRAINT $k CHECK ($chkconstraint)$validate;\n");
-		}
-	}
-
-	return @chk_constr;
-}
-
 =head2 _count_check_constraint
 
 This function return the number of check constraints on a given table
@@ -18311,24 +18259,13 @@ sub _count_check_constraint
 	{
 		my $chkconstraint = $check_constraint->{constraint}->{$k}{condition};
 		next if (!$chkconstraint);
-		my $skip_create = 0;
-		if (exists $check_constraint->{notnull})
-		{
-			foreach my $col (@{$check_constraint->{notnull}})
-			{
-				$skip_create = 1, last if (lc($chkconstraint) eq lc("\"$col\" IS NOT NULL"));
-			}
-		}
-		if (!$skip_create)
-		{
-			$num_chk_constr++;
-		}
+		# Skip NOT NULL constraint only
+		next if ($chkconstraint =~ /^[^\s]+\s+IS\s+NOT\s+NULL$/i);
+		$num_chk_constr++;
 	}
 
 	return $num_chk_constr;
 }
-
-
 
 =head2 _lookup_package
 
