@@ -3527,7 +3527,9 @@ sub find_associated_clauses
 			push(@$output, $final_outer_clauses->{$f}{join}[$j]);
 		}
 		delete $final_outer_clauses->{$f};
-		find_associated_clauses($f, $output, $associated_clause, $final_outer_clauses);
+		if (scalar keys %{ $final_outer_clauses }) {
+			find_associated_clauses($f, $output, $associated_clause, $final_outer_clauses);
+		}
 	}
 	delete $associated_clause->{$c};
 }
