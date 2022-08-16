@@ -12394,7 +12394,11 @@ sub format_data_type
 		}
 		elsif ($cond->{isefile})
 		{
+			$col =~ s/\\/\\\\/g;
 			$col =~ s/([\(\)])/\\$1/g;
+			# escape comma except the first one
+			$col =~ s/,/\,/g;
+			$col =~ s/\,/,/;
 		}
 		else
 		{
@@ -12462,7 +12466,11 @@ sub format_data_type
 		}
 		elsif ($cond->{isefile})
 		{
+			$col =~ s/\\/\\\\/g;
 			$col =~ s/([\(\)])/\\\\$1/g;
+			# escape comma except the first one
+			$col =~ s/,/\\,/g;
+			$col =~ s/\\,/,/;
 		}
 		elsif ($cond->{isbit})
 		{
