@@ -1363,6 +1363,21 @@ GEOMETRY_EXTRACT_TYPE	INTERNAL
 # server, disable this directive.
 DROP_FOREIGN_SCHEMA    1
 
+#------------------------------------------------------------------------------
+# CDC SECTION (Change Data Capture)
+#------------------------------------------------------------------------------
+
+# Where the logminer dictionary must be extracted. Possible values
+# are ONLINE_CATALOG and REDO_LOGS.
+# XXX: Only REDO_LOGS is supported for the moment.
+LOGMINER_STRATEGY	REDO_LOGS
+
+# Enable this directive if you want Ora2Pg to perform continuous mining.
+# You will have to type ctrl+c to end the mining. Enable by default.
+LOGMINER_CONTINUOUS_MINING	1
+
+# Where the SQL_REDO statement will be written. Default: /tmp/logimner_output.sql
+LOGMINER_OUTPUT		/tmp/logimner_output.sql
 
 #------------------------------------------------------------------------------
 # MYSQL SECTION (Control MySQL export behavior)

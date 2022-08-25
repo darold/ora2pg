@@ -3822,6 +3822,155 @@ sub auto_set_encoding
 	return '';
 }
 
+sub startLogMinerSession
+{
+	my ($self, $start_scn, $end_scn) = @_;
+
+	# Where the logminer dictionary must be extracted
+	$self->logit("Using LogMiner Dictionary strategy: $self->{logminer_strategy}\n", 1);
+	my $logminer_strategy = 'DBMS_LOGMNR.DICT_FROM_ONLINE_CATALOG ';
+	if (uc($self->{logminer_strategy}) eq 'REDO_LOGS')
+	{ 
+		$logminer_strategy = 'DBMS_LOGMNR.DICT_FROM_REDO_LOGS + DBMS_LOGMNR.DDL_DICT_TRACKING ';
+	}
+
+	if ($self->{logminer_continuous_mining}) {
+		$logminer_strategy .= '+ DBMS_LOGMNR.CONTINUOUS_MINE ';
+	}
+
+	# Start LogMiner by specifying the strategy to use and using the
+	# COMMITTED_DATA_ONLY, PRINT_PRETTY_SQL and CONTINUOUS_MINE options.
+	$self->logit("Start LogMiner...\n", 1);
+	my $sql =  "BEGIN DBMS_LOGMNR.START_LOGMNR(" .
+	#" dictfilename => '$self->{logminer_directory_filename}'," .
+	#		" startScn => $self->{current_oracle_scn}," . 
+	#	" endScn => $end_scn," . 
+		" Options => $logminer_strategy +" . 
+		" DBMS_LOGMNR.COMMITTED_DATA_ONLY +" .
+		" DBMS_LOGMNR.PRINT_PRETTY_SQL +" . 
+		" DBMS_LOGMNR.NO_ROWID_IN_STMT" . 
+		" ); END;";
+	$self->{dbh}->do($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . ", SQL: $sql\n", 0, 1);
+}
+
+sub setLogFilesForMining
+{
+	my ($self, $start_scn, $end_scn) = @_;
+
+	$self->logit("Getting logs to be mined for offset scn: $start_scn to " . (($end_scn) ? $end_scn : 'n/a') . "\n", 0);
+
+	my $sql = '';
+	
+	$sql = "SELECT MIN(F.MEMBER) AS FILE_NAME, L.FIRST_CHANGE# FIRST_CHANGE, L.NEXT_CHANGE# NEXT_CHANGE, " .
+	"L.ARCHIVED, L.STATUS, 'ONLINE' AS TYPE, L.SEQUENCE# AS SEQ, 'NO' AS DICT_START, 'NO' AS DICT_END " .
+	"FROM V\$LOGFILE F, V\$LOG L " .
+	"LEFT JOIN V\$ARCHIVED_LOG A ON A.FIRST_CHANGE# = L.FIRST_CHANGE# AND A.NEXT_CHANGE# = L.NEXT_CHANGE# " .
+	"WHERE (A.STATUS <> 'A' OR A.FIRST_CHANGE# IS NULL) " .
+	"AND F.GROUP# = L.GROUP# " .
+	"GROUP BY F.GROUP#, L.FIRST_CHANGE#, L.NEXT_CHANGE#, L.STATUS, L.ARCHIVED, L.SEQUENCE# " .
+	"UNION " .
+	"SELECT A.NAME AS FILE_NAME, A.FIRST_CHANGE# FIRST_CHANGE, A.NEXT_CHANGE# NEXT_CHANGE, 'YES', " .
+	"NULL, 'ARCHIVED', A.SEQUENCE# AS SEQ, A.DICTIONARY_BEGIN, A.DICTIONARY_END " .
+	"FROM V\$ARCHIVED_LOG A " .
+	"WHERE A.NAME IS NOT NULL " .
+	"AND A.ARCHIVED = 'YES' " .
+	"AND A.STATUS = 'A' " .
+	"AND A.NEXT_CHANGE# >= $start_scn " .
+	(($end_scn) ? "AND A.NEXT_CHANGE# <= $end_scn" : '') .
+	"AND A.DEST_ID IN (SELECT DEST_ID FROM V\$ARCHIVE_DEST_STATUS WHERE STATUS='VALID' AND TYPE='LOCAL' AND ROWNUM=1)";
+	#XXX: From localArchiveLogDestinationsOnlyQuery see end
+
+	my $sth = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . ", SQL: $sql\n", 0, 1);
+	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+
+	my @file_list = ();
+	while (my @row = $sth->fetchrow())
+	{
+		#$self->logit("Add archived log to the file list: " . join(' | ', @row) . "\n", 1);
+		push(@file_list, \@row);
+	}
+	$sth->finish;
+
+	return @file_list;
+}
+
+# Get the current log file sequences from the supplied list of log files.
+sub getCurrentLogFileSequences
+{
+	my ($self, @logfiles) = @_;
+
+	my @sequences = ();
+
+	if ($#logfiles >= 0)
+	{
+		foreach my $l (@logfiles)
+		{
+			#if ($l->[4] eq 'CURRENT') {
+				push(@sequences, $l);
+				#}
+		}
+	}
+	return @sequences;
+}
+
+# Build DDL Dictionary
+sub initializeRedoLogsForMining
+{
+	my ($self, $start_scn, $end_scn) = @_;
+
+	my @currentLogFiles = &setLogFilesForMining($self, $start_scn, $end_scn);
+	my @currentRedoLogSequences = &getCurrentLogFileSequences($self, @currentLogFiles);
+	for (my $i = 0; $i <= $#currentRedoLogSequences; $i++)
+	{
+		$self->logit("Add archived log file to the LogMiner: " . join(' | ', @{$currentRedoLogSequences[$i]}) . "\n", 1);
+		my $options = (!$i) ? 'DBMS_LOGMNR.NEW' : 'DBMS_LOGMNR.ADDFILE';
+		my $sql = "BEGIN\nDBMS_LOGMNR.ADD_LOGFILE(LOGFILENAME => '$currentRedoLogSequences[$i]->[0]', OPTIONS => $options);\nEND;";
+		$self->{dbh}->do($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . ", SQL: $sql\n", 0, 1);
+	}
+}
+
+####
+# Verify that logging is correctly enable in the Oracle database
+####
+sub verify_oracle_logging
+{
+	my $self = shift;
+
+	#redoLogStatusQuery: "SELECT F.MEMBER, R.STATUS FROM V\$LOGFILE F, V\$LOG R WHERE F.GROUP# = R.GROUP# ORDER BY 2"
+
+	my $sql = "SELECT 'KEY', SUPPLEMENTAL_LOG_DATA_MIN FROM V\$DATABASE";
+	my $sth = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . ", SQL: $sql\n", 0, 1);
+	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	my @row = $sth->fetchrow();
+	my $has_supplemental = $row[0] || 0;
+	$sth->finish;
+
+	if (!$has_supplemental)
+	{
+		$sql = "SELECT 'KEY', SUPPLEMENTAL_LOG_DATA_MIN FROM V\$DATABASE";
+		$sth = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . ", SQL: $sql\n", 0, 1);
+		$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+		@row = $sth->fetchrow();
+		$has_supplemental = $row[0] || 0;
+		$sth->finish;
+		if (!$has_supplemental) {
+			$sth->execute or $self->logit("FATAL: Supplemental logging not properly configured. Use: ALTER DATABASE ADD SUPPLEMENTAL LOG DATA", 0, 1);
+		}
+		#XXX: Check if ALL COLUMNS supplemental logging is enabled for each captured table
+		$sql = "SELECT 'KEY', LOG_GROUP_TYPE FROM ALL_LOG_GROUPS WHERE OWNER = ? AND TABLE_NAME = ?";
+		$sth = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . ", SQL: $sql\n", 0, 1);
+		foreach my $table (sort keys %{$self->{tables}})
+		{
+			$sth->execute($self->{tables}{$table}{owner}, $table) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+			@row = $sth->fetchrow();
+			if ($row[1] ne 'ALL COLUMN LOGGING') {
+				$self->logit("WARNING: Database table '$table' not configured with supplemental logging \"(ALL) COLUMNS\". Use: ALTER TABLE $self->{tables}{$table}{owner}.$table ADD SUPPLEMENTAL LOG DATA (ALL) COLUMNS", 0);
+			}
+		}
+		$sth->finish;
+	}
+}
+
 =head2 _change_data_capture
 
 This function handle the change data capture feature
@@ -3832,9 +3981,55 @@ sub _change_data_capture
 {
 	my $self = shift;
 
-	$self->logit("CDC: Change data capture\n", 0);
-}
+	$self->logit("CDC: Change data capture using logminer\n", 0);
 
+	# Verify that logging is correctly enable in the Oracle database
+	&verify_oracle_logging($self);
+
+	# Get the current SCN that we can find in redo log.
+	my $sql = "SELECT CHECKPOINT_CHANGE#, CURRENT_SCN FROM v\$database";
+	my $sth = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . ", SQL: $sql\n", 0, 1);
+	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	my @row = $sth->fetchrow();
+	my $end_scn = $row[1] || 0;
+	$sth->finish;
+
+	# Build DDL Dictionary
+	&initializeRedoLogsForMining($self, $self->{current_oracle_scn}, $end_scn);
+
+	$self->logit("Run logminer with Start SCN: $self->{current_oracle_scn} and End SCN: $end_scn\n", 0);
+
+	&startLogMinerSession($self, $self->{current_oracle_scn}, $end_scn);
+
+	# Step 5 Query the V$LOGMNR_CONTENTS view.
+	# To reduce the number of rows returned by the query, exclude all DML statements
+	# done in the sys or system schema. (This query specifies a timestamp to exclude
+	# transactions that were involved in the dictionary extraction.)
+	# Note that all reconstructed SQL statements returned by the query are correctly translated.
+	$self->logit("Looking at V\$LOGMNR_CONTENTS for all SQL_REDO registered...\n", 0);
+	$sql = "SELECT USERNAME, OPERATION, STATUS, SEG_OWNER, TABLE_NAME, SQL_REDO FROM V\$LOGMNR_CONTENTS";
+	my $sth = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . ", SQL: $sql\n", 0, 1);
+	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	open(OUT, ">$self->{logminer_output}") or $self->logit("FATAL: can not write to file $self->{logminer_output}, $!", 0, 1);
+	OUT->autoflush(1);
+	while (my @row = $sth->fetchrow())
+	{
+		# Exclude actions by systems users
+		next if (grep(/^$row[3]$/i, 'UNKNOWN', @{$self->{sysusers}}) or grep(/^$row[0]$/i, 'UNKNOWN', @{$self->{sysusers}}));
+		print OUT join(' | ', @row), "\n";
+	}
+	$sth->finish;
+	close(OUT);
+
+	# End the logminer session
+	$self->logit("Stop LogMiner, new current SCN: $end_scn...\n", 0);
+	$sql = "BEGIN DBMS_LOGMNR.END_LOGMNR(); END;";
+	$sth = $self->{dbh}->do($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+
+	$self->{current_oracle_scn} = $end_scn;
+
+	return $end_scn;
+}
 
 1;
 

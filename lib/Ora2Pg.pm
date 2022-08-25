@@ -1008,6 +1008,15 @@ sub _init
 		}
 	}
 
+	# Set default LogMiner information for CDC
+	$self->{logminer_strategy} = 'REDO_LOGS'; # ONLINE_CATALOG not supported yet
+	if (!$self->{logminer_continuous_mining}) {
+		$self->{logminer_continuous_mining} = 1;
+	} else {
+		$self->{logminer_continuous_mining} = 0;
+	}
+	$self->{logminer_output} ||= '/tmp/logimner_output.sql';
+
 	# Set default system user/schema to not export. Most of them are extracted from this doc:
 	# http://docs.oracle.com/cd/E11882_01/server.112/e10575/tdpsg_user_accounts.htm#TDPSG20030
 	push(@{$self->{sysusers}},'SYSTEM','CTXSYS','DBSNMP','EXFSYS','LBACSYS','MDSYS','MGMT_VIEW','OLAPSYS','ORDDATA','OWBSYS','ORDPLUGINS','ORDSYS','OUTLN','SI_INFORMTN_SCHEMA','SYS','SYSMAN','WK_TEST','WKSYS','WKPROXY','WMSYS','XDB','APEX_PUBLIC_USER','DIP','FLOWS_020100','FLOWS_030000','FLOWS_040100','FLOWS_010600','FLOWS_FILES','MDDATA','ORACLE_OCM','SPATIAL_CSW_ADMIN_USR','SPATIAL_WFS_ADMIN_USR','XS$NULL','PERFSTAT','SQLTXPLAIN','DMSYS','TSMSYS','WKSYS','APEX_040000','APEX_040200','DVSYS','OJVMSYS','GSMADMIN_INTERNAL','APPQOSSYS','DVSYS','DVF','AUDSYS','APEX_030200','MGMT_VIEW','ODM','ODM_MTR','TRACESRV','MTMSYS','OWBSYS_AUDIT','WEBSYS','WK_PROXY','OSE$HTTP$ADMIN','AURORA$JIS$UTILITY$','AURORA$ORB$UNAUTHENTICATED','DBMS_PRIVILEGE_CAPTURE','CSMIG', 'MGDSYS', 'SDE','DBSFWUSER');
@@ -1632,8 +1641,8 @@ sub _init
 	# Replace ; or space by comma in the audit user list
 	$self->{audit_user} =~ s/[;\s]+/,/g;
 
-	# TEST* and CDC actions need PG_DSN to be set
-	if ($self->{type} =~ /^(TEST|CDC|LOAD|KETTLE)/ && !$self->{pg_dsn}) {
+	# TEST*, LOAD and KETTLE actions need PG_DSN to be set
+	if ($self->{type} =~ /^(TEST|LOAD|KETTLE)/ && !$self->{pg_dsn}) {
 		$self->logit("FATAL: export type $self->{type} required PG_DSN to be set.\n", 0, 1);
 	}
 
@@ -1759,14 +1768,12 @@ sub _init
 	{
                 $self->{type} = $t;
 
-		if (grep(/^$self->{type}$/, 'TABLE', 'FDW', 'INSERT', 'COPY', 'KETTLE', 'CDC'))
+		if (grep(/^$self->{type}$/, 'TABLE', 'FDW', 'INSERT', 'COPY', 'KETTLE'))
 		{
 			$self->{plsql_pgsql} = 1;
 			$self->_tables();
-			# Partitionned table do not accept NOT VALID constraint
-			if ($self->{pg_supports_partition} && $self->{type} eq 'TABLE')
-			{
-				# Get the list of partition
+			# Get the list of partition
+			if ($self->{pg_supports_partition} && $self->{type} eq 'TABLE') {
 				$self->{partitions} = $self->_get_partitions_list();
 			}
 		} elsif ($self->{type} eq 'VIEW') {
@@ -1874,6 +1881,35 @@ sub _init
 			}
 			# Check that data are the same.
 			$self->_data_validation();
+			$self->{dbhdest}->disconnect() if ($self->{dbhdest});
+			$self->{dbh}->disconnect() if ($self->{dbh});
+			exit 0;
+		}
+		elsif ($self->{type} eq 'CDC')
+		{
+
+			####
+			# Read SCN registered using --cdc_init
+			####
+			my $dirprefix = '';
+			$dirprefix = "$self->{output_dir}/" if ($self->{output_dir});
+			open(IN, "<${dirprefix}$self->{cdc_file}") or
+				$self->logit("FATAL: cannot read file ${dirprefix}$self->{cdc_file}.\n", 0, 1);
+			my $l = <IN>;
+			chomp($l);
+			($self->{global_start_time}, $self->{current_oracle_scn}) = split(':', $l);
+			close(IN);
+			$self->logit("LOG: Change Data Capture start at SCN $self->{current_oracle_scn}, last data export time: " . localtime($self->{global_start_time}) . ".\n", 0);
+
+
+			$self->{plsql_pgsql} = 1;
+			$self->_tables();
+			# Get the list of partition
+			if ($self->{pg_supports_partition} && $self->{type} eq 'TABLE') {
+				$self->{partitions} = $self->_get_partitions_list();
+			}		
+			# Get last changes in database since last data export
+			my $end_scn = $self->_change_data_capture();
 			$self->{dbhdest}->disconnect() if ($self->{dbhdest});
 			$self->{dbh}->disconnect() if ($self->{dbh});
 			exit 0;
@@ -8163,12 +8199,6 @@ sub _get_sql_statements
 	}
 
 	# Extract data only
-	elsif ($self->{type} eq 'INSERT')
-	{
-		$self->_change_data_capture();
-	}
-
-	# Extract data only
 	elsif (($self->{type} eq 'INSERT') || ($self->{type} eq 'COPY'))
 	{
 		if ($self->{oracle_fdw_data_export} && $self->{pg_dsn} && $self->{drop_foreign_schema})
@@ -8517,7 +8547,15 @@ sub _get_sql_statements
 			$self->{current_oracle_scn} = $row[0];
 			$sth->finish;
 			$self->logit("Storing current SCN before export: $self->{current_oracle_scn}\n", 1);
+
+			if (uc($self->{logminer_strategy}) eq 'REDO_LOGS')
+			{
+				my $sql = "BEGIN SYS.DBMS_LOGMNR_D.BUILD(OPTIONS => DBMS_LOGMNR_D.STORE_IN_REDO_LOGS); END;";
+				$self->logit("Building catalog dictionary in redo log: $sql\n", 1);
+				$self->{dbh}->do($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . ", SQL: $sql\n", 0, 1);
+			}
 		}
+
 		foreach my $table (@ordered_tables)
 		{
 			# Do not process nested table
@@ -10750,12 +10788,16 @@ END;
 		}
 	}
 	$str .= " FROM $realtable";
-	if ($self->{start_scn} =~ /^\d+$/) {
-		$str .= " AS OF SCN $self->{start_scn}";
-	} elsif ($self->{start_scn}) {
-		$str .= " AS OF TIMESTAMP $self->{start_scn}";
-	} elsif (exists $self->{current_oracle_scn}{$table}) {
-		$str .= " AS OF SCN $self->{current_oracle_scn}{$table}";
+	if ($self->{current_oracle_scn}) {
+		$str .= " AS OF SCN $self->{current_oracle_scn}";
+	}
+	else
+	{
+		if ($self->{start_scn} =~ /^\d+$/) {
+			$str .= " AS OF SCN $self->{start_scn}";
+		} elsif ($self->{start_scn}) {
+			$str .= " AS OF TIMESTAMP $self->{start_scn}";
+		}
 	}
 	$str .= " $alias";
 
