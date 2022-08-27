@@ -4982,7 +4982,9 @@ sub export_dblink
 		if (!$self->{quiet} && !$self->{debug}) {
 			print STDERR $self->progress_bar($i, $num_total_dblink, 25, '=', 'dblink', "generating $db" ), "\r";
 		}
-		$sql_output .= "CREATE SERVER " . $self->quote_object_name($db);
+		my $srv_name = $self->quote_object_name($db);
+		$srv_name =~ s/^.*\.//;
+		$sql_output .= "CREATE SERVER $srv_name";
 		if (!$self->{is_mysql}) {
 			$sql_output .= " FOREIGN DATA WRAPPER oracle_fdw OPTIONS (dbserver '$self->{dblink}{$db}{host}');\n";
 		} else {
@@ -4994,17 +4996,21 @@ sub export_dblink
 			$self->{dblink}{$db}{password} ||= 'secret';
 			$self->{dblink}{$db}{password} = ", password '$self->{dblink}{$db}{password}'";
 		}
-		if ($self->{dblink}{$db}{username}) {
-			$sql_output .= "CREATE USER MAPPING FOR " . $self->quote_object_name($self->{dblink}{$db}{username})
-						. " SERVER " . $self->quote_object_name($db)
-						. " OPTIONS (user '" . $self->quote_object_name($self->{dblink}{$db}{user})
-						. "' $self->{dblink}{$db}{password});\n";
+		if ($self->{dblink}{$db}{username})
+		{
+			my $usr_name = $self->quote_object_name($self->{dblink}{$db}{username});
+			$usr_name =~ s/^.*\.//;
+			$sql_output .= "CREATE USER MAPPING FOR $usr_name SERVER $srv_name";
+			$usr_name = $self->quote_object_name($self->{dblink}{$db}{user});
+			$usr_name =~ s/^.*\.//;
+			$sql_output .= " OPTIONS (user '$usr_name', password '$self->{dblink}{$db}{password}');\n";
 		}
 		
-		if ($self->{force_owner}) {
+		if ($self->{force_owner})
+		{
 			my $owner = $self->{dblink}{$db}{owner};
 			$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
-			$sql_output .= "ALTER FOREIGN DATA WRAPPER " . $self->quote_object_name($db)
+			$sql_output .= "ALTER SERVER $srv_name"
 						. " OWNER TO " . $self->quote_object_name($owner) . ";\n";
 		}
 		$i++;
@@ -7332,10 +7338,12 @@ sub export_table
 		# Create FDW server if required
 		if ($self->{external_to_fdw})
 		{
+			my $srv_name = "\L$self->{external_table}{$table}{directory}\E";
+			$srv_name =~ s/^.*\.//;
 			if ( grep(/^$table$/i, keys %{$self->{external_table}}) )
 			{
 				$sql_header .= "CREATE EXTENSION IF NOT EXISTS file_fdw;\n\n" if ($sql_header !~ /CREATE EXTENSION .* file_fdw;/is);
-				$sql_header .= "CREATE SERVER \L$self->{external_table}{$table}{directory}\E FOREIGN DATA WRAPPER file_fdw;\n\n" if ($sql_header !~ /CREATE SERVER $self->{external_table}{$table}{directory} FOREIGN DATA WRAPPER file_fdw;/is);
+				$sql_header .= "CREATE SERVER $srv_name FOREIGN DATA WRAPPER file_fdw;\n\n" if ($sql_header !~ /CREATE SERVER $srv_name FOREIGN DATA WRAPPER file_fdw;/is);
 			}
 		}
 
