@@ -133,7 +133,7 @@
 .\" ========================================================================
 .\"
 .IX Title "ORA2PG 1"
-.TH ORA2PG 1 "2022-07-24" "perl v5.30.0" "User Contributed Perl Documentation"
+.TH ORA2PG 1 "2022-08-27" "perl v5.30.0" "User Contributed Perl Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -1130,6 +1130,12 @@ name will then be used in the \*(L"\s-1CREATE FOREIGN TABLE ...\*(R" SQL\s0 comm
 import data using oracle_fdw. Default is no foreign server defined.
 This only concerns export type \s-1FDW, COPY\s0 and \s-1INSERT.\s0 For export type \s-1FDW\s0 the
 default value is orcl.
+.IP "\s-1FDW_IMPORT_SCHEMA\s0" 4
+.IX Item "FDW_IMPORT_SCHEMA"
+Schema where foreign tables for data migration will be created. If you use
+several instances of ora2pg for data migration through the foreign data
+wrapper, you might need to change the name of the schema for each instance.
+Default: ora2pg_fdw_import
 .IP "\s-1ORACLE_FDW_TRANSFORM\s0" 4
 .IX Item "ORACLE_FDW_TRANSFORM"
 Use this directive to precise which transformation should be applied to a

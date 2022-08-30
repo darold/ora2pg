@@ -1350,6 +1350,11 @@ GEOMETRY_EXTRACT_TYPE	INTERNAL
 # default value is orcl
 #FDW_SERVER	orcl
 
+# Schema where foreign tables for data migration will be created. If you use
+# several instances of ora2pg for data migration through the foreign data
+# wrapper, you might need to change the name of the schema for each instance.
+FDW_IMPORT_SCHEMA	ora2pg_fdw_import
+
 # Use this directive to precise which transformation should be applied to a
 # column when exporting data. Value must be a semicolon separated list of
 #       TABLE[COLUMN_NAME, <replace code in SELECT target list>]
