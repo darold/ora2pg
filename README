@@ -966,6 +966,12 @@ CONFIGURATION
         Default is no foreign server defined. This only concerns export type
         FDW, COPY and INSERT. For export type FDW the default value is orcl.
 
+    FDW_IMPORT_SCHEMA
+        Schema where foreign tables for data migration will be created. If
+        you use several instances of ora2pg for data migration through the
+        foreign data wrapper, you might need to change the name of the
+        schema for each instance. Default: ora2pg_fdw_import
+
     ORACLE_FDW_TRANSFORM
         Use this directive to precise which transformation should be applied
         to a column when exporting data. Value must be a semicolon separated

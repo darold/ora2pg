@@ -1363,35 +1363,40 @@ sub replace_rownum_with_limit
 {
 	my ($class, $str) = @_;
 
-
 	my $offset = '';
-        if ($str =~ s/\s+(WHERE)\s+(?:\(\s*)?ROWNUM\s*=\s*([^\s\)]+)(\s*\)\s*)?([^;]*)/ $1 $3$4/is) {
+        if ($str =~ s/\s+(WHERE)\s+(?:\(\s*)?ROWNUM\s*=\s*([^\s\)]+)(\s*\)\s*)?([^;]*)/ $1 $3$4/is)
+	{
 		$offset = $2;
 		($offset =~ /[^0-9]/) ? $offset = "($offset)" : $offset -= 1;
 		$class->{limit_clause} = ' LIMIT 1 OFFSET ' . $offset;
 		
         }
-	if ($str =~ s/\s+AND\s+(?:\(\s*)?ROWNUM\s*=\s*([^\s\)]+)(\s*\)\s*)?([^;]*)/ $2$3/is) {
+	if ($str =~ s/\s+AND\s+(?:\(\s*)?ROWNUM\s*=\s*([^\s\)]+)(\s*\)\s*)?([^;]*)/ $2$3/is)
+	{
 		$offset = $1;
 		($offset =~ /[^0-9]/) ? $offset = "($offset)" : $offset -= 1;
 		$class->{limit_clause} = ' LIMIT 1 OFFSET ' . $offset;
         }
-	if ($str =~ s/\s+(WHERE)\s+(?:\(\s*)?ROWNUM\s*>=\s*([^\s\)]+)(\s*\)\s*)?([^;]*)/ $1 $3$4/is) {
+	if ($str =~ s/\s+(WHERE)\s+(?:\(\s*)?ROWNUM\s*>=\s*([^\s\)]+)(\s*\)\s*)?([^;]*)/ $1 $3$4/is)
+	{
 		$offset = $2;
 		($offset =~ /[^0-9]/) ? $offset = "($offset)" : $offset -= 1;
 		$class->{limit_clause} = ' LIMIT ALL OFFSET ' . $offset;
         }
-	if ($str =~ s/\s+(WHERE)\s+(?:\(\s*)?ROWNUM\s*>\s*([^\s\)]+)(\s*\)\s*)?([^;]*)/ $1 $3$4/is) {
+	if ($str =~ s/\s+(WHERE)\s+(?:\(\s*)?ROWNUM\s*>\s*([^\s\)]+)(\s*\)\s*)?([^;]*)/ $1 $3$4/is)
+	{
 		$offset = $2;
 		$offset = "($offset)" if ($offset =~ /[^0-9]/);
 		$class->{limit_clause} = ' LIMIT ALL OFFSET ' . $offset;
 	}
-	if ($str =~ s/\s+AND\s+(?:\(\s*)?ROWNUM\s*>=\s*([^\s\)]+)(\s*\)\s*)?([^;]*)/ $2$3/is) {
+	if ($str =~ s/\s+AND\s+(?:\(\s*)?ROWNUM\s*>=\s*([^\s\)]+)(\s*\)\s*)?([^;]*)/ $2$3/is)
+	{
 		$offset = $1;
 		($offset =~ /[^0-9]/) ? $offset = "($offset)" : $offset -= 1;
 		$class->{limit_clause} = ' LIMIT ALL OFFSET ' . $offset;
         }
-	if ($str =~ s/\s+AND\s+(?:\(\s*)?ROWNUM\s*>\s*([^\s\)]+)(\s*\)\s*)?([^;]*)/ $2$3/is) {
+	if ($str =~ s/\s+AND\s+(?:\(\s*)?ROWNUM\s*>\s*([^\s\)]+)(\s*\)\s*)?([^;]*)/ $2$3/is)
+	{
 		$offset = $1;
 		$offset = "($offset)" if ($offset =~ /[^0-9]/);
 		$class->{limit_clause} = ' LIMIT ALL OFFSET ' . $offset;
@@ -1401,19 +1406,33 @@ sub replace_rownum_with_limit
 	if ($str =~ s/\s+(WHERE)\s+(?:\(\s*)?ROWNUM\s*<=\s*([^\s\)]+)(\s*\)\s*)?([^;]*)/ $1 $3$4/is) {
 		$tmp_val = $2;
 	}
-	if ($str =~ s/\s+(WHERE)\s+(?:\(\s*)?ROWNUM\s*<\s*([^\s\)]+)(\s*\)\s*)?([^;]*)/ $1 $3$4/is) {
-		$tmp_val = $2 - 1;
+	if ($str =~ s/\s+(WHERE)\s+(?:\(\s*)?ROWNUM\s*<\s*([^\s\)]+)(\s*\)\s*)?([^;]*)/ $1 $3$4/is)
+	{
+		my $clause = $2;
+		if ($clause =~ /\%SUBQUERY\d+\%/) {
+			$tmp_val = $clause;
+		} else {
+			$tmp_val = $clause - 1;
+		}
         }
 	if ($str =~ s/\s+AND\s+(?:\(\s*)?ROWNUM\s*<=\s*([^\s\)]+)(\s*\)\s*)?([^;]*)/ $2$3/is) {
 		$tmp_val = $1;
         }
-	if ($str =~ s/\s+AND\s+(?:\(\s*)?ROWNUM\s*<\s*([^\s\)]+)(\s*\)\s*)?([^;]*)/ $2$3/is) {
-		$tmp_val = $1 - 1;
+	if ($str =~ s/\s+AND\s+(?:\(\s*)?ROWNUM\s*<\s*([^\s\)]+)(\s*\)\s*)?([^;]*)/ $2$3/is)
+	{
+		my $clause = $1;
+		if ($clause =~ /\%SUBQUERY\d+\%/) {
+			$tmp_val = $clause;
+		} else {
+			$tmp_val = $clause - 1;
+		}
         }
 	$str =~ s/\s+WHERE\s+ORDER\s+/ ORDER /is;
 
-	if ($tmp_val) {
-		if ($class->{limit_clause} =~ /LIMIT ALL OFFSET ([^\s]+)/is) {
+	if ($tmp_val)
+	{
+		if ($class->{limit_clause} =~ /LIMIT ALL OFFSET ([^\s]+)/is)
+		{
 			my $tmp_offset = $1;
 			if ($tmp_offset !~ /[^0-9]/ && $tmp_val !~ /[^0-9]/) {
 				$tmp_val -= $tmp_offset;
@@ -1421,7 +1440,9 @@ sub replace_rownum_with_limit
 				$tmp_val = "($tmp_val - $tmp_offset)";
 			}
 			$class->{limit_clause} =~ s/LIMIT ALL/LIMIT $tmp_val/is;
-		} else {
+		}
+		else
+		{
 			$tmp_val = "($tmp_val)" if ($tmp_val =~ /[^0-9]/);
 			$class->{limit_clause} = ' LIMIT ' . $tmp_val;
 		}
@@ -3527,7 +3548,9 @@ sub find_associated_clauses
 			push(@$output, $final_outer_clauses->{$f}{join}[$j]);
 		}
 		delete $final_outer_clauses->{$f};
-		find_associated_clauses($f, $output, $associated_clause, $final_outer_clauses);
+		if (scalar keys %{ $final_outer_clauses }) {
+			find_associated_clauses($f, $output, $associated_clause, $final_outer_clauses);
+		}
 	}
 	delete $associated_clause->{$c};
 }

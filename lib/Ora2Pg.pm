@@ -1250,6 +1250,9 @@ sub _init
 		$self->{fdw_server} = 'orcl';
 	}
 
+	# Set the schema where the foreign tables will be created
+	$self->{fdw_import_schema} ||= 'ora2pg_fdw_import';
+
 	# By default we will drop the temporary schema used for foreign import
 	if (not defined $self->{drop_foreign_schema} || $self->{drop_foreign_schema} != 0) {
 		$self->{drop_foreign_schema} = 1;
@@ -5007,7 +5010,9 @@ sub export_dblink
 		if (!$self->{quiet} && !$self->{debug}) {
 			print STDERR $self->progress_bar($i, $num_total_dblink, 25, '=', 'dblink', "generating $db" ), "\r";
 		}
-		$sql_output .= "CREATE SERVER " . $self->quote_object_name($db);
+		my $srv_name = $self->quote_object_name($db);
+		$srv_name =~ s/^.*\.//;
+		$sql_output .= "CREATE SERVER $srv_name";
 		if (!$self->{is_mysql}) {
 			$sql_output .= " FOREIGN DATA WRAPPER oracle_fdw OPTIONS (dbserver '$self->{dblink}{$db}{host}');\n";
 		} else {
@@ -5019,17 +5024,21 @@ sub export_dblink
 			$self->{dblink}{$db}{password} ||= 'secret';
 			$self->{dblink}{$db}{password} = ", password '$self->{dblink}{$db}{password}'";
 		}
-		if ($self->{dblink}{$db}{username}) {
-			$sql_output .= "CREATE USER MAPPING FOR " . $self->quote_object_name($self->{dblink}{$db}{username})
-						. " SERVER " . $self->quote_object_name($db)
-						. " OPTIONS (user '" . $self->quote_object_name($self->{dblink}{$db}{user})
-						. "' $self->{dblink}{$db}{password});\n";
+		if ($self->{dblink}{$db}{username})
+		{
+			my $usr_name = $self->quote_object_name($self->{dblink}{$db}{username});
+			$usr_name =~ s/^.*\.//;
+			$sql_output .= "CREATE USER MAPPING FOR $usr_name SERVER $srv_name";
+			$usr_name = $self->quote_object_name($self->{dblink}{$db}{user});
+			$usr_name =~ s/^.*\.//;
+			$sql_output .= " OPTIONS (user '$usr_name', password '$self->{dblink}{$db}{password}');\n";
 		}
 		
-		if ($self->{force_owner}) {
+		if ($self->{force_owner})
+		{
 			my $owner = $self->{dblink}{$db}{owner};
 			$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
-			$sql_output .= "ALTER FOREIGN DATA WRAPPER " . $self->quote_object_name($db)
+			$sql_output .= "ALTER SERVER $srv_name"
 						. " OWNER TO " . $self->quote_object_name($owner) . ";\n";
 		}
 		$i++;
@@ -7357,10 +7366,12 @@ sub export_table
 		# Create FDW server if required
 		if ($self->{external_to_fdw})
 		{
+			my $srv_name = "\L$self->{external_table}{$table}{directory}\E";
+			$srv_name =~ s/^.*\.//;
 			if ( grep(/^$table$/i, keys %{$self->{external_table}}) )
 			{
 				$sql_header .= "CREATE EXTENSION IF NOT EXISTS file_fdw;\n\n" if ($sql_header !~ /CREATE EXTENSION .* file_fdw;/is);
-				$sql_header .= "CREATE SERVER \L$self->{external_table}{$table}{directory}\E FOREIGN DATA WRAPPER file_fdw;\n\n" if ($sql_header !~ /CREATE SERVER $self->{external_table}{$table}{directory} FOREIGN DATA WRAPPER file_fdw;/is);
+				$sql_header .= "CREATE SERVER $srv_name FOREIGN DATA WRAPPER file_fdw;\n\n" if ($sql_header !~ /CREATE SERVER $srv_name FOREIGN DATA WRAPPER file_fdw;/is);
 			}
 		}
 
@@ -7403,7 +7414,7 @@ sub export_table
 
 			# Add the destination schema
 			if ($self->{oracle_fdw_data_export} && ($self->{type} eq 'INSERT' || $self->{type} eq 'COPY')) {
-				 $sql_output .= "\nCREATE FOREIGN TABLE ora2pg_fdw_import.$tbname (\n";
+				 $sql_output .= "\nCREATE FOREIGN TABLE $self->{fdw_import_schema}.$tbname (\n";
 			} else {
 				$sql_output .= "\nDROP${foreign} TABLE $self->{pg_supports_ifexists} $tbname;" if ($self->{drop_if_exists});
 				$sql_output .= "\nCREATE$foreign $obj_type $tbname (\n";
@@ -8204,8 +8215,8 @@ sub _get_sql_statements
 		if ($self->{oracle_fdw_data_export} && $self->{pg_dsn} && $self->{drop_foreign_schema})
 		{
 			my $fdw_definition = $self->export_table();
-			$self->{dbhdest}->do("DROP SCHEMA $self->{pg_supports_ifexists} ora2pg_fdw_import CASCADE") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
-			$self->{dbhdest}->do("CREATE SCHEMA ora2pg_fdw_import") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
+			$self->{dbhdest}->do("DROP SCHEMA $self->{pg_supports_ifexists} $self->{fdw_import_schema} CASCADE") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
+			$self->{dbhdest}->do("CREATE SCHEMA $self->{fdw_import_schema}") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
 			$self->{dbhdest}->do($fdw_definition) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . ", SQL: $fdw_definition\n", 0, 1);
 		}
 
@@ -9375,9 +9386,9 @@ sub _dump_fdw_table
 	my $s_out = "INSERT INTO $tmptb ($col_list";
 	my $fdwtb = $tmptb;
 	$fdwtb = '"' . $tmptb . '"' if ($tmptb !~ /"/);
-	$s_out .= ")$overriding_system SELECT $fdw_col_list FROM ora2pg_fdw_import.$fdwtb";
+	$s_out .= ")$overriding_system SELECT $fdw_col_list FROM $self->{fdw_import_schema}.$fdwtb";
 
-	$0 = "ora2pg - exporting table ora2pg_fdw_import.$fdwtb";
+	$0 = "ora2pg - exporting table $self->{fdw_import_schema}.$fdwtb";
 
 	# Overwrite the query if REPLACE_QUERY is defined for this table
 	if ($self->{replace_query}{"\L$table\E"})
@@ -12430,7 +12441,11 @@ sub format_data_type
 		}
 		elsif ($cond->{isefile})
 		{
+			$col =~ s/\\/\\\\/g;
 			$col =~ s/([\(\)])/\\$1/g;
+			# escape comma except the first one
+			$col =~ s/,/\,/g;
+			$col =~ s/\,/,/;
 		}
 		else
 		{
@@ -12498,7 +12513,11 @@ sub format_data_type
 		}
 		elsif ($cond->{isefile})
 		{
+			$col =~ s/\\/\\\\/g;
 			$col =~ s/([\(\)])/\\\\$1/g;
+			# escape comma except the first one
+			$col =~ s/,/\\,/g;
+			$col =~ s/\\,/,/;
 		}
 		elsif ($cond->{isbit})
 		{
@@ -19780,9 +19799,9 @@ sub _import_foreign_schema
 	my $self = shift;
 
 	# Drop and recreate the import schema
-	$self->{dbhdest}->do("DROP SCHEMA $self->{pg_supports_ifexists} ora2pg_fdw_import CASCADE") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
-	$self->{dbhdest}->do("CREATE SCHEMA ora2pg_fdw_import") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
-	# Import foreign table into the dedicated schema ora2pg_fdw_import
+	$self->{dbhdest}->do("DROP SCHEMA $self->{pg_supports_ifexists} $self->{fdw_import_schema} CASCADE") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
+	$self->{dbhdest}->do("CREATE SCHEMA $self->{fdw_import_schema}") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
+	# Import foreign table into the dedicated schema $self->{fdw_import_schema}
 	my $sql = "IMPORT FOREIGN SCHEMA \"\U$self->{schema}\E\"";
 	if ($self->{is_mysql}) {
 		$sql = "IMPORT FOREIGN SCHEMA $self->{schema}";
@@ -19790,9 +19809,9 @@ sub _import_foreign_schema
 	# ALLOW/EXCLUDE must be applied for data validation
 	$sql .= $self->_select_foreign_objects();
 	if (!$self->{is_mysql}) {
-		$sql .= " FROM SERVER $self->{fdw_server} INTO ora2pg_fdw_import OPTIONS (case 'keep', readonly 'true')";
+		$sql .= " FROM SERVER $self->{fdw_server} INTO $self->{fdw_import_schema} OPTIONS (case 'keep', readonly 'true')";
 	} else {
-		$sql .= " FROM SERVER $self->{fdw_server} INTO ora2pg_fdw_import";
+		$sql .= " FROM SERVER $self->{fdw_server} INTO $self->{fdw_import_schema}";
 	}
 	$self->{dbhdest}->do($sql) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . ", SQL: $sql\n", 0, 1);
 }
@@ -19839,13 +19858,13 @@ WHERE c.relkind IN ('r','p') AND regexp_match(i.indkey::text, '(^0 | 0 | 0\$)') 
 	my @foreign_tables  = ();
 	if ($self->{fdw_server})
 	{
-		# Extract all foreign tables imported in schema ora2pg_fdw_import.
+		# Extract all foreign tables imported in schema $self->{fdw_import_schema}.
 		# Normally the table list have already been filtered.
 		$sql = qq{
 SELECT c.relname
 FROM pg_catalog.pg_class c
      LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
-WHERE c.relkind = 'f' and n.nspname = 'ora2pg_fdw_import'
+WHERE c.relkind = 'f' and n.nspname = '$self->{fdw_import_schema}'
 };
 		$self->logit("Get list of foreign tables imported: $sql\n") if ($self->{debug});
 		$s = $self->{dbhdest}->prepare($sql) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
@@ -19974,7 +19993,7 @@ sub compare_data
 	if ($self->{fdw_server})
 	{
 		# Oracle lookup through foreign table
-		$sql = "SELECT a.* FROM ora2pg_fdw_import.\"$tb\" a";
+		$sql = "SELECT a.* FROM $self->{fdw_import_schema}.\"$tb\" a";
 		if (exists $self->{where}{"\L$table\E"} && $self->{where}{"\L$table\E"})
 		{
 			$sql .= ' WHERE ';
