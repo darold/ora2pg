@@ -1126,7 +1126,6 @@ sub _init
 
 	# Should we export global temporary table
 	$self->{export_gtt} ||= 0;
-	$self->{export_gtt} = 0 if ($self->{type} ne 'TABLE');
 
 	# Should we replace zero date with something else than NULL
 	$self->{replace_zero_date} ||= '';
@@ -1314,6 +1313,8 @@ sub _init
 
 	# Table data export will be sorted by name by default
 	$self->{data_export_order} ||= 'name';
+
+	$self->{export_gtt} = 0 if ($self->{type} ne 'TABLE');
 
 	# Free some memory
 	%options = ();
