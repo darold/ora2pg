@@ -47,9 +47,8 @@ ENV ORACLE_HOME=/usr/lib/oracle/$ORAVERSION/client64 \
 RUN cpan install DBD::Oracle
 
 ARG ORA2PG_VERSION=v23.1
-# RUN git clone https://github.com/caffeine-01/ora2pg-1 \
-#   && (cd ora2pg-1 && git checkout $ORA2PG_VERSION && perl Makefile.PL && make && make install && rm -r ../ora2pg-1)
-RUN git clone https://github.com/darold/ora2pg.git \
+RUN git clone https://github.com/caffeine-01/ora2pg \
+# RUN git clone https://github.com/darold/ora2pg.git \
   && (cd ora2pg && git checkout $ORA2PG_VERSION && perl Makefile.PL && make && make install && rm -r ../ora2pg)
 
 ENTRYPOINT ["/usr/local/bin/ora2pg"]
