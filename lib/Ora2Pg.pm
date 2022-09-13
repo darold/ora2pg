@@ -1314,6 +1314,8 @@ sub _init
 	# Table data export will be sorted by name by default
 	$self->{data_export_order} ||= 'name';
 
+	$self->{export_gtt} = 0 if ($self->{type} ne 'TABLE');
+
 	# Free some memory
 	%options = ();
 	%AConfig = ();
