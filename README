@@ -371,6 +371,8 @@ CONFIGURATION
                             object. Can be use to import data with COPY and import
                             large object manually in a second pass. It is recquired
                             for BLOB > 1GB. See documentation for more explanation.
+       --mview_as_table str: Comma separated list of materialized views to export
+                            as regular table.
 
     See full documentation at https://ora2pg.darold.net/ for more help or
     see manpage with 'man ora2pg'.
