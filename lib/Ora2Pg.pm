@@ -1494,6 +1494,9 @@ sub _init
 		$self->{pg_version} = 11;
 	}
 
+	if ($self->{pg_version} >= 15) {
+		$self->{pg_supports_negative_scale} = 1;
+	}
 	# Compatibility with PostgreSQL versions
 	if ($self->{pg_version} >= 9.0)
 	{
@@ -11637,7 +11640,6 @@ sub _get_types
 This function retrieves real rows count from a table.
 
 =cut
-
 
 sub _count_source_rows
 {

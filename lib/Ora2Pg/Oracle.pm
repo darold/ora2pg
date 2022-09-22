@@ -1936,13 +1936,25 @@ sub _sql_type
 					{
 						if ($precision eq '') {
 							return "decimal(38, $scale)";
-						} elsif ($precision <= 6) {
-							return 'real';
-						} elsif ($precision <= 15) {
-							return 'double precision';
+						}
+						if ($precision >= $scale)
+						{
+							if ($precision <= 6)
+							{
+								if ($self->{pg_supports_negative_scale}) {
+									return "decimal($precision,$scale)";
+								} else {
+									return 'real';
+								}
+							} elsif ($precision <= 15) {
+								return 'double precision';
+							}
 						}
 					}
 					$precision = 38 if ($precision eq '');
+					if ($scale > $precision) {
+						return "numeric";
+					}
 					return "decimal($precision,$scale)";
 				}
 			}
