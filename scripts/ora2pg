@@ -58,6 +58,7 @@ my $INPUT_FILE = '';
 my $EXCLUDE = '';
 my $ALLOW = '';
 my $VIEW_AS_TABLE = '';
+my $MVIEW_AS_TABLE = '';
 my $ESTIMATE_COST;
 my $COST_UNIT_VALUE = 5;
 my $DUMP_AS_HTML;
@@ -143,6 +144,7 @@ GetOptions (
 	'nls_lang=s' => \$ORA_ENCODING,
 	'client_encoding=s' => \$PG_ENCODING,
 	'view_as_table=s' => \$VIEW_AS_TABLE,
+	'mview_as_table=s' => \$MVIEW_AS_TABLE,
 	'estimate_cost!' =>\$ESTIMATE_COST,
 	'cost_unit_value=i' =>\$COST_UNIT_VALUE,
 	'dump_as_html!' =>\$DUMP_AS_HTML,
@@ -342,6 +344,7 @@ my $schema = new Ora2Pg (
 	exclude => $EXCLUDE,
 	allow => $ALLOW,
 	view_as_table => $VIEW_AS_TABLE,
+	mview_as_table => $MVIEW_AS_TABLE,
 	estimate_cost => $ESTIMATE_COST,
 	cost_unit_value => $COST_UNIT_VALUE,
 	dump_as_html => $DUMP_AS_HTML,
@@ -519,6 +522,8 @@ Usage: ora2pg [-dhpqv --estimate_cost --dump_as_html] [--option value]
                         object. Can be use to import data with COPY and import
                         large object manually in a second pass. It is recquired
                         for BLOB > 1GB. See documentation for more explanation.
+   --mview_as_table str: Comma separated list of materialized views to export
+                        as regular table.
 
 See full documentation at https://ora2pg.darold.net/ for more help or see
 manpage with 'man ora2pg'.

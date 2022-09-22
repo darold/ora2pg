@@ -895,6 +895,7 @@ sub _init
 	$self->{limited} = ();
 	$self->{excluded} = ();
 	$self->{view_as_table} = ();
+	$self->{mview_as_table} = ();
 	$self->{modify} = ();
 	$self->{replaced_tables} = ();
 	$self->{replaced_cols} = ();
@@ -1183,7 +1184,13 @@ sub _init
 		{
 			$self->{view_as_table} = ();
 			push(@{$self->{view_as_table}}, split(/[\s;,]+/, $options{view_as_table}) );
-		} elsif (($k eq 'datasource') && $options{datasource}) {
+		}
+		elsif (($k eq 'mview_as_table') && $options{mview_as_table})
+		{
+			$self->{mview_as_table} = ();
+			push(@{$self->{mview_as_table}}, split(/[\s;,]+/, $options{mview_as_table}) );
+		}
+		elsif (($k eq 'datasource') && $options{datasource}) {
 			$self->{oracle_dsn} = $options{datasource};
 		} elsif (($k eq 'user') && $options{user}) {
 			$self->{oracle_user} = $options{user};
@@ -2468,8 +2475,9 @@ sub _tables
 		print STDERR $self->progress_bar($i - 1, $num_total_table, 25, '=', 'tables', 'end of scanning.'), "\n";
 	}
  
-	# Try to search requested TABLE names in the VIEW names if not found in
-	# real TABLE names
+	####	
+	# Get views definition if it must be exported as table
+	####	
 	if ($#{$self->{view_as_table}} >= 0)
 	{
 		my %view_infos = $self->_get_views();
@@ -2489,7 +2497,6 @@ sub _tables
 			# Jump to desired extraction
 			next if (!grep($view =~ /^$_$/i, @{$self->{view_as_table}}));
 			$self->logit("Scanning view $view to export as table...\n", 0);
-
 			$self->{tables}{$view}{type} = 'view';
 			$self->{tables}{$view}{text} = $view_infos{$view}{text};
 			$self->{tables}{$view}{owner} = $view_infos{$view}{owner};
@@ -2523,6 +2530,63 @@ sub _tables
 			$self->{tables}{$view}{field_name} = $sth->{NAME};
 			$self->{tables}{$view}{field_type} = $sth->{TYPE};
 			my %columns_infos = $self->_column_info($view, $self->{schema}, 'VIEW');
+			foreach my $tb (keys %columns_infos)
+			{
+				next if ($tb ne $view);
+				foreach my $c (keys %{$columns_infos{$tb}}) {
+					push(@{$self->{tables}{$view}{column_info}{$c}}, @{$columns_infos{$tb}{$c}});
+				}
+			}
+		}
+	}
+
+	####	
+	# Get materialized views definition if it must be exported as table
+	####	
+	if ($#{$self->{mview_as_table}} >= 0)
+	{
+		my %view_infos = $self->_get_materialized_views();
+		foreach my $view (sort keys %view_infos)
+		{
+			# Set the table information for each class found
+			# Jump to desired extraction
+			next if (!grep($view =~ /^$_$/i, @{$self->{mview_as_table}}));
+			$self->logit("Scanning materialized view $view to export as table...\n", 0);
+			if (exists $self->{tables}{$view})
+			{
+				$self->logit("WARNING: cannot export materialized view $view as table, a table with same name already exists...\n", 0);
+				next;
+			}
+			$self->{tables}{$view}{type} = 'mview';
+			$self->{tables}{$view}{text} = $view_infos{$view}{text};
+			$self->{tables}{$view}{owner} = $view_infos{$view}{owner};
+			my $realview = $view;
+			$realview =~ s/"//g;
+			if (!$self->{is_mysql})
+			{
+				if ($realview !~ /\./) {
+					$realview = "\"$self->{tables}{$view}{owner}\".\"$realview\"";
+				} else {
+					$realview =~ s/\./"."/;
+					$realview = "\"$realview\"";
+				}
+			}
+			# Set the fields information
+			my $sth = $self->{dbh}->prepare("SELECT * FROM $realview WHERE 1=0");
+			if (!defined($sth))
+			{
+				warn "Can't prepare statement: $DBI::errstr";
+				next;
+			}
+			$sth->execute;
+			if ($sth->err)
+			{
+				warn "Can't execute statement: $DBI::errstr";
+				next;
+			}
+			$self->{tables}{$view}{field_name} = $sth->{NAME};
+			$self->{tables}{$view}{field_type} = $sth->{TYPE};
+			my %columns_infos = $self->_column_info($view, $self->{schema}, 'MVIEW');
 			foreach my $tb (keys %columns_infos)
 			{
 				next if ($tb ne $view);
@@ -7338,15 +7402,12 @@ sub export_table
 		$count_table++;
 
 		# Create FDW server if required
-		if ($self->{external_to_fdw})
+		if ( $self->{external_to_fdw} && grep(/^$table$/i, keys %{$self->{external_table}}) )
 		{
 			my $srv_name = "\L$self->{external_table}{$table}{directory}\E";
 			$srv_name =~ s/^.*\.//;
-			if ( grep(/^$table$/i, keys %{$self->{external_table}}) )
-			{
-				$sql_header .= "CREATE EXTENSION IF NOT EXISTS file_fdw;\n\n" if ($sql_header !~ /CREATE EXTENSION .* file_fdw;/is);
-				$sql_header .= "CREATE SERVER $srv_name FOREIGN DATA WRAPPER file_fdw;\n\n" if ($sql_header !~ /CREATE SERVER $srv_name FOREIGN DATA WRAPPER file_fdw;/is);
-			}
+			$sql_header .= "CREATE EXTENSION IF NOT EXISTS file_fdw;\n\n" if ($sql_header !~ /CREATE EXTENSION .* file_fdw;/is);
+			$sql_header .= "CREATE SERVER $srv_name FOREIGN DATA WRAPPER file_fdw;\n\n" if ($sql_header !~ /CREATE SERVER $srv_name FOREIGN DATA WRAPPER file_fdw;/is);
 		}
 
 		my $tbname = $self->get_replaced_tbname($table);
@@ -7741,7 +7802,7 @@ sub export_table
 			elsif ( grep(/^$table$/i, keys %{$self->{external_table}}) )
 			{
 				my $program = '';
-				$program = ", program '$self->{external_table}{$table}{program}'" if ($self->{external_table}{$table}{program});
+				$program = ", program '$self->{external_table}{$table}{program}'";
 				$sql_output .= " SERVER \L$self->{external_table}{$table}{directory}\E OPTIONS(filename '$self->{external_table}{$table}{directory_path}$self->{external_table}{$table}{location}', format 'csv', delimiter '$self->{external_table}{$table}{delimiter}'$program);\n";
 			}
 			elsif ($self->{is_mysql})
@@ -12722,8 +12783,8 @@ sub read_config
 		}
 		# Should be a else statement but keep the list up to date to memorize the directives full list
 		elsif (!grep(/^$var$/, 'TABLES','ALLOW','MODIFY_STRUCT','REPLACE_TABLES','REPLACE_COLS',
-				'WHERE','EXCLUDE','VIEW_AS_TABLE','ORA_RESERVED_WORDS','SYSUSERS',
-				'REPLACE_AS_BOOLEAN','BOOLEAN_VALUES','MODIFY_TYPE','DEFINED_PK',
+				'WHERE','EXCLUDE','VIEW_AS_TABLE','MVIEW_AS_TABLE','ORA_RESERVED_WORDS',
+				'SYSUSERS','REPLACE_AS_BOOLEAN','BOOLEAN_VALUES','MODIFY_TYPE','DEFINED_PK',
 				'ALLOW_PARTITION','REPLACE_QUERY','FKEY_ADD_UPDATE','DELETE',
 				'LOOK_FORWARD_FUNCTION','ORA_INITIAL_COMMAND','PG_INITIAL_COMMAND',
 				'ORACLE_FDW_TRANSFORM','EXCLUDE_COLUMNS'
@@ -12746,7 +12807,7 @@ sub read_config
 					$AConfig{ENABLE_BLOB_EXPORT} = 1;
 				}
 			}
-		} elsif ($var eq 'VIEW_AS_TABLE') {
+		} elsif ($var =~ /VIEW_AS_TABLE/) {
 			push(@{$AConfig{$var}}, split(/[\s;,]+/, $val) );
 		} elsif ($var eq 'LOOK_FORWARD_FUNCTION') {
 			push(@{$AConfig{$var}}, split(/[\s;,]+/, $val) );
@@ -15393,6 +15454,7 @@ sub _show_infos
 		my %all_indexes = ();
 		$self->{skip_fkeys} = $self->{skip_indices} = $self->{skip_indexes} = $self->{skip_checks} = 0;
 		$self->{view_as_table} = ();
+		$self->{mview_as_table} = ();
 		print STDERR "Looking at table definition...\n" if ($self->{debug});
 		$self->_tables(1);
 		my $total_index = 0;

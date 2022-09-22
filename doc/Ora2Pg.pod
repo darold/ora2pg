@@ -1184,6 +1184,14 @@ exported.
 
 See chapter "Exporting views as PostgreSQL table" for more details.
 
+=item MVIEW_AS_TABLE
+
+Set which materialized view to export as table. By default none. Value must be
+a list of materialized view name or regexp separated by space or comma. If the
+object name is a materialized view and the export type is TABLE, the view will
+be exported as a create table statement. If export type is COPY or INSERT, the
+corresponding data will be exported.
+
 =item NO_VIEW_ORDERING
 
 By default Ora2Pg try to order views to avoid error at import time with
