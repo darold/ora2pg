@@ -607,10 +607,14 @@ ORDER BY A.COLUMN_ID
 	while (my $row = $sth->fetch)
 	{
 		my $tmptable = "$row->[9].$row->[8]";
+		# Skip object if it is not in the object list and if this is not
+		# a view or materialized view that must be exported as table.
 		next if (!exists $self->{all_objects}{$tmptable}
-				|| ($self->{all_objects}{$tmptable} ne $objtype
-					&& ($#{$self->{view_as_table}} < 0
-						|| $self->{all_objects}{$tmptable} ne 'VIEW')));
+				|| ($self->{all_objects}{$tmptable} eq 'VIEW'
+					&& !grep(/^$row->[8]$/i, @{$self->{view_as_table}}))
+				|| ($self->{all_objects}{$tmptable} eq 'MATERIALIZED VIEW'
+					&& !grep(/^$row->[8]$/i, @{$self->{mview_as_table}}))
+			);
 
 		$row->[2] = $row->[7] if $row->[1] =~ /char/i;
 		# Seems that for a NUMBER with a DATA_SCALE to 0, no DATA_PRECISION and a DATA_LENGTH of 22
@@ -1144,9 +1148,9 @@ sub _get_views
 	}
 
 	####
-	# Get name of all VIEW objects in ALL_OBJECTS looking at OBJECT_TYPE='VIEW'
+	# Get name of all VIEW objects in ALL_OBJECTS looking at OBJECT_TYPE='VIEW' or OBJECT_TYPE='MVIEW'
 	####
-	my $sql = "SELECT A.OWNER,A.OBJECT_NAME,A.OBJECT_TYPE FROM $self->{prefix}_OBJECTS A WHERE A.OBJECT_TYPE IN 'VIEW' $owner";
+	my $sql = "SELECT A.OWNER,A.OBJECT_NAME,A.OBJECT_TYPE FROM $self->{prefix}_OBJECTS A WHERE A.OBJECT_TYPE IN ('VIEW', 'MATERIALIZED VIEW') $owner";
 	if (!$self->{export_invalid}) {
 		$sql .= " AND A.STATUS='VALID'";
 	} elsif ($self->{export_invalid} == 2) {
@@ -1179,12 +1183,11 @@ sub _get_views
 		$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 		while (my $row = $sth->fetch)
 		{
-			next if (!exists $self->{all_objects}{"$row->[3].$row->[0]"});
-
-			if (!$self->{schema} && $self->{export_schema})
-			{
+			next if ($row->[2] ne 'VIEW');
+			next if (scalar keys %{ $self->{all_objects} } > 0 && !exists $self->{all_objects}{"$row->[3].$row->[0]"});
+			if (!$self->{schema} && $self->{export_schema}) {
 				$row->[0] = "$row->[3].$row->[0]";
-			}
+			} 
 			$comments{$row->[0]}{comment} = $row->[1];
 			$comments{$row->[0]}{table_type} = $row->[2];
 		}

@@ -265,6 +265,13 @@ NO_EXCLUDED_TABLE	0
 # If export type is COPY or INSERT, the corresponding data will be exported.
 #VIEW_AS_TABLE	VIEW_NAME
 
+# Set which materialized view to export as table. By default none. Value must
+# be a list of materialized view name or regexp separated by space. If the
+# object name is a materialized view and the export type is TABLE, the view
+# will be exported as a create table statement. If export type is COPY or
+# INSERT, the corresponding data will be exported.
+#MVIEW_AS_TABLE	VIEW_NAME
+
 # By default Ora2Pg try to order views to avoid error at import time with
 # nested views. With a huge number of view this can take a very long time,
 # you can bypass this ordering by enabling this directive.
