@@ -1183,12 +1183,11 @@ sub _get_views
 		$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 		while (my $row = $sth->fetch)
 		{
-			next if (!exists $self->{all_objects}{"$row->[3].$row->[0]"});
-
-			if (!$self->{schema} && $self->{export_schema})
-			{
+			next if ($row->[2] ne 'VIEW');
+			next if (scalar keys %{ $self->{all_objects} } > 0 && !exists $self->{all_objects}{"$row->[3].$row->[0]"});
+			if (!$self->{schema} && $self->{export_schema}) {
 				$row->[0] = "$row->[3].$row->[0]";
-			}
+			} 
 			$comments{$row->[0]}{comment} = $row->[1];
 			$comments{$row->[0]}{table_type} = $row->[2];
 		}
