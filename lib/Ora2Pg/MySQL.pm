@@ -872,6 +872,12 @@ sub _lookup_function
 
         # Split data into declarative and code part
         ($fct_detail{declare}, $fct_detail{code}) = split(/\bBEGIN\b/i, $code, 2);
+	if (!$fct_detail{code})
+	{
+		if ($fct_detail{declare} =~ s/(RETURN .*)$//i) {
+			$fct_detail{code} = "BEGIN\n    $1;\nEND\n";
+		}
+	}
 	return if (!$fct_detail{code});
 
 	# Remove any label that was before the main BEGIN block
@@ -880,7 +886,8 @@ sub _lookup_function
         @{$fct_detail{param_types}} = ();
 
         if ( ($fct_detail{declare} =~ s/(.*?)\b(FUNCTION|PROCEDURE)\s+([^\s\(]+)\s*(\(.*\))\s+RETURNS\s+(.*)//is) ||
-        ($fct_detail{declare} =~ s/(.*?)\b(FUNCTION|PROCEDURE)\s+([^\s\(]+)\s*(\(.*\))//is) ) {
+			($fct_detail{declare} =~ s/(.*?)\b(FUNCTION|PROCEDURE)\s+([^\s\(]+)\s*(\(.*\))//is) )
+	{
                 $fct_detail{before} = $1;
                 $fct_detail{type} = uc($2);
                 $fct_detail{name} = $3;

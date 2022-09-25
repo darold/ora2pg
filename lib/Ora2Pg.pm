@@ -2494,6 +2494,7 @@ sub _tables
 				$self->{tables}{$view}{column_comments}{$c} = $columns_comments{$view}{$c};
 			}
 		}
+
 		foreach my $view (sort keys %view_infos)
 		{
 			# Set the table information for each class found
@@ -13590,6 +13591,7 @@ sub _convert_function
 	my @at_ret_type = ();
 	my $at_suffix = '';
 	my $at_inout = 0;
+
 	if ($fct_detail{declare} =~ s/\s*(PRAGMA\s+AUTONOMOUS_TRANSACTION[\s;]*)/-- $1/is && $self->{autonomous_transaction})
 	{
 		$at_suffix = '_atx';
@@ -15835,14 +15837,17 @@ sub _show_infos
 			{
 				my $functions = $self->_get_functions();
 				my $total_size = 0;
-				foreach my $fct (keys %{$functions}) {
+				foreach my $fct (keys %{$functions})
+				{
 					$total_size += length($functions->{$fct}{text});
-					if ($self->{estimate_cost}) {
+					if ($self->{estimate_cost})
+					{
 						my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($self, $functions->{$fct}{text});
 						$report_info{'Objects'}{$typ}{'cost_value'} += $cost;
 						$report_info{'Objects'}{$typ}{'detail'} .= "\L$fct: $cost\E\n";
 						$report_info{full_function_details}{"\L$fct\E"}{count} = $cost;
-						foreach my $d (sort { $cost_detail{$b} <=> $cost_detail{$a} } keys %cost_detail) {
+						foreach my $d (sort { $cost_detail{$b} <=> $cost_detail{$a} } keys %cost_detail)
+						{
 							next if (!$cost_detail{$d});
 							$report_info{full_function_details}{"\L$fct\E"}{info} .= "\t$d => $cost_detail{$d}";
 							$report_info{full_function_details}{"\L$fct\E"}{info} .= " (cost: ${$uncovered_score}{$d})" if (${$uncovered_score}{$d});
