@@ -273,6 +273,7 @@ sub _table_info
 	my %comments = ();
 	my $sql = "SELECT TABLE_NAME,TABLE_COMMENT,TABLE_TYPE,TABLE_ROWS,ROUND( ( data_length + index_length) / 1024 / 1024, 2 ) AS \"Total Size Mb\", AUTO_INCREMENT, CREATE_OPTIONS FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE='BASE TABLE' AND TABLE_SCHEMA = '$self->{schema}'";
 	$sql .= $self->limit_to_objects('TABLE', 'TABLE_NAME');
+
 	$sth = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	while (my $row = $sth->fetch)
@@ -508,11 +509,16 @@ sub _get_indexes
 			# Enclose with double quote if required
 			$row->[4] = $self->quote_object_name($row->[4]);
 
-			if ($self->{preserve_case}) {
+			if ($self->{preserve_case})
+			{
 				if (($row->[4] !~ /".*"/) && ($row->[4] !~ /\(.*\)/)) {
 					$row->[4] =~ s/^/"/;
 					$row->[4] =~ s/$/"/;
 				}
+			}
+			# Append DESC sort order when not default to ASC
+			if ($row->[5] eq 'D') {
+				$row->[4] .= " DESC";
 			}
 			push(@{$data{$row->[0]}{$idxname}}, $row->[4]);
 			$index_tablespace{$row->[0]}{$idxname} = '';
