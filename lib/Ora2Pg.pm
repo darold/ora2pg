@@ -7539,7 +7539,11 @@ sub export_table
 						if ($tobequoted) {
 							$seqname = '"' . $seqname . '"';
 						}
-						$serial_sequence .= "ALTER SEQUENCE $seqname RESTART WITH $self->{tables}{$table}{table_info}{auto_increment};\n" if (exists $self->{tables}{$table}{table_info}{auto_increment});
+						if (exists $self->{tables}{$table}{table_info}{auto_increment})
+						{
+							$self->{tables}{$table}{table_info}{auto_increment} = 1 if ($self->{is_mysql} && !$self->{tables}{$table}{table_info}{auto_increment});
+							$serial_sequence .= "ALTER SEQUENCE $seqname RESTART WITH $self->{tables}{$table}{table_info}{auto_increment};\n";
+						}
 					}
 				}
 
