@@ -516,6 +516,10 @@ sub _get_indexes
 					$row->[4] =~ s/$/"/;
 				}
 			}
+			# Set the index expression
+			if ($row->[14] ne '') {
+				$row->[4] = $row->[14];
+			}
 			# Append DESC sort order when not default to ASC
 			if ($row->[5] eq 'D') {
 				$row->[4] .= " DESC";
