@@ -18,6 +18,11 @@ our @EXCLUDED_FUNCTION = ('SQUIRREL_GET_ERROR_OFFSET');
 # These definitions can be overriden from configuration
 # file using the DATA_TYPË configuration directive.
 our %SQL_TYPE = (
+ 	'TINYINT UNSIGNED' => 'smallint',
+ 	'SMALLINT UNSIGNED' => 'integer',
+ 	'MEDIUMINT UNSIGNED' => 'integer',
+ 	'BIGINT UNSIGNED' => 'numeric',
+ 	'INT UNSIGNED' => 'bigint',
 	'TINYINT' => 'smallint', # 1 byte
 	'SMALLINT' => 'smallint', # 2 bytes
 	'MEDIUMINT' => 'integer', # 3 bytes
@@ -402,6 +407,10 @@ ORDER BY ORDINAL_POSITION};
 		if ($row->[1] eq 'enum') {
 			$row->[1] = $row->[-1];
 		}
+		if ($row->[13] =~ /unsigned/) {
+			$row->[1] .= ' unsigned';
+		}
+
 		$row->[10] = $pos;
 		$row->[12] =~ s/\s+ENABLE//is;
 		if ($row->[12] =~ s/\bGENERATED\s+(ALWAYS|BY\s+DEFAULT)\s+(ON\s+NULL\s+)?AS\s+IDENTITY\s*(.*)//is)
@@ -1142,8 +1151,6 @@ sub _list_all_funtions
 	return @functions;
 }
 
-
-
 sub _sql_type
 {
         my ($self, $type, $len, $precision, $scale, $default, $no_blob_to_oid) = @_;
@@ -1197,7 +1204,17 @@ sub _sql_type
 				# This is an integer
 				if (!$scale)
 				{
-					if ($precision)
+					if ($type =~ /UNSIGNED/&& $precision)
+					{
+						# Replace MySQL type UNSIGNED in cast
+						$type =~ s/TINYINT UNSIGNED/smallint/igs;
+						$type =~ s/SMALLINT UNSIGNED/integer/igs;
+						$type =~ s/MEDIUMINT UNSIGNED/integer/igs;
+						$type =~ s/BIGINT UNSIGNED/numeric($precision)/igs;
+						$type =~ s/INT UNSIGNED/bigint/igs;
+						return $type;
+					}
+					elsif ($precision)
 					{
 						if ($self->{pg_integer_type})
 						{

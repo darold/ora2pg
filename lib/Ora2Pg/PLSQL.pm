@@ -2238,8 +2238,8 @@ sub replace_sql_type
 	# Replace MySQL type UNSIGNED in cast
 	$str =~ s/\bTINYINT\s+UNSIGNED\b/smallint/igs;
 	$str =~ s/\bSMALLINT\s+UNSIGNED\b/integer/igs;
-	$str =~ s/\bMEDIUMINT_s+UNSIGNED\b/integer/igs;
-	$str =~ s/\bBIGINT\s+UNSIGNED\b/bigint/igs;
+	$str =~ s/\bMEDIUMINT\s+UNSIGNED\b/integer/igs;
+	$str =~ s/\bBIGINT\s+UNSIGNED\b/numeric/igs;
 	$str =~ s/\bINT\s+UNSIGNED\b/bigint/igs;
 
 	# Remove precision for RAW|BLOB as type modifier is not allowed for type "bytea"
@@ -2727,8 +2727,8 @@ sub mysql_to_plpgsql
 	# Fix call to unsigned
 	$str =~ s/\bTINYINT\s+UNSIGNED\b/smallint/igs;
 	$str =~ s/\bSMALLINT\s+UNSIGNED\b/integer/igs;
-	$str =~ s/\bMEDIUMINT_s+UNSIGNED\b/integer/igs;
-	$str =~ s/\bBIGINT\s+UNSIGNED\b/bigint/igs;
+	$str =~ s/\bMEDIUMINT\s+UNSIGNED\b/integer/igs;
+	$str =~ s/\bBIGINT\s+UNSIGNED\b/numeric/igs;
 	$str =~ s/\bINT\s+UNSIGNED\b/bigint/igs;
 
 	# Drop temporary doesn't exist in PostgreSQL
