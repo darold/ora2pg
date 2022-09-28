@@ -394,11 +394,11 @@ sub convert_plsql_code
 		$str = replace_decode($str);
 
 		# Rewrite numeric operation with ADD_MONTHS(date, 1) to use interval
-		$str =~ s/\b(ADD_MONTHS\s*\([^,]+,\s*\d+\s*\))\s*([+\-\*\/])\s*(\d+)(\s*[^+\-\*\/])/$1 $2 '$3 days'::interval$4/sgi;
+		$str =~ s/\b(ADD_MONTHS\s*\([^,]+,\s*\d+\s*\))\s*([+\-\*\/])\s*(\d+)(\s*[^\-\*\/]|$)/$1 $2 '$3 days'::interval$4/sgi;
 		# Rewrite numeric operation with TRUNC() to use interval
-		$str =~ s/\b(TRUNC\s*\(\s*(?:[^\(\)]+)\s*\))\s*([+\-\*\/])\s*(\d+)(\s*[^+\-\*\/])/$1 $2 '$3 days'::interval$4/sgi;
+		$str =~ s/\b(TRUNC\s*\(\s*(?:[^\(\)]+)\s*\))\s*([+\-\*\/])\s*(\d+)(\s*[^+\-\*\/]|$)/$1 $2 '$3 days'::interval$4/sgi;
 		# Rewrite numeric operation with LAST_DAY() to use interval
-		$str =~ s/\b(LAST_DAY\s*\(\s*(?:[^\(\)]+)\s*\))\s*([+\-\*\/])\s*(\d+)(\s*[^+\-\*\/])/$1 $2 '$3 days'::interval$4/sgi;
+		$str =~ s/\b(LAST_DAY\s*\(\s*(?:[^\(\)]+)\s*\))\s*([+\-\*\/])\s*(\d+)(\s*[^+\-\*\/]|$)/$1 $2 '$3 days'::interval$4/sgi;
 	}
 
 	# Replace array syntax arr(i).x into arr[i].x
