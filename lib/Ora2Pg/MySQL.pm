@@ -814,8 +814,43 @@ sub _check_constraint
 {
 	my ($self, $table, $owner) = @_;
 
-	# There is no check constraint in MySQL
-	return;
+	if ($self->{db_version} < '8.0.0') {
+		return;
+	}
+
+	my $condition = '';
+	$condition .= "AND TABLE_NAME='$table' " if ($table);
+	$condition .= $self->limit_to_objects('CKEY|TABLE', 'CONSTRAINT_NAME|TABLE_NAME');
+
+	my $sql = qq{SELECT CONSTRAINT_NAME, TABLE_NAME FROM information_schema.TABLE_CONSTRAINTS WHERE CONSTRAINT_TYPE = 'CHECK' AND TABLE_SCHEMA = '$self->{schema}' $condition};
+	my $sth = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+
+	my %data = ();
+	while (my $row = $sth->fetch)
+	{
+		# Pour chaque retour SHOW CREATE TABLE xxxx;
+		my $sql2 = "SHOW CREATE TABLE $row->[1];";
+		my $sth2 = $self->{dbh}->prepare($sql2) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+		$sth2->execute() or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+		# Parsing de   CONSTRAINT `CHK_CONSTR` CHECK (((`Age` >= 18) and (`City` = _utf8mb4'Bangalore')))
+		while (my $r = $sth2->fetch)
+		{
+			$r->[1] =~ s/`//g;
+			my @def = split(/[\r\n]+/, $r->[1]);
+			foreach my $l (@def)
+			{
+				if ($l =~ s/.*CONSTRAINT $row->[0] CHECK (.*)/$1/)
+				{
+					$l =~ s/(LIKE|=) _[^']+('[^']+')/$1 $2/g;
+					$data{$row->[1]}{constraint}{$row->[0]}{condition} = $l;
+					$data{$row->[1]}{constraint}{$row->[0]}{validate}  = 'Y';
+				}
+			}
+		}
+	}
+
+	return %data;
 }
 
 sub _get_external_tables

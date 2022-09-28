@@ -2357,7 +2357,7 @@ sub _tables
 			}
 			%unique_keys = ();
 
-			if (!$self->{skip_checks} && !$self->{is_mysql})
+			if (!$self->{skip_checks})
 			{
 				$self->logit("Retrieving check constraints information...\n", 1);
 				my %check_constraints = $self->_check_constraint('',$self->{schema});
@@ -16861,66 +16861,63 @@ GROUP BY schemaname,tablename
 	# Test check constraints
 	####
 	my %nbnotnull = {}; # will be used in the NOT NULL constraint count as based on a CHECK constraints
-	if (!$self->{is_mysql})
-	{
-		print "\n";
-		print "[TEST CHECK CONSTRAINTS COUNT]\n";
-		my %check_constraints = $self->_check_constraint('',$self->{schema});
-		$schema_cond = $self->get_schema_condition('n.nspname');
-		$sql = qq{
+	print "\n";
+	print "[TEST CHECK CONSTRAINTS COUNT]\n";
+	my %check_constraints = $self->_check_constraint('',$self->{schema});
+	$schema_cond = $self->get_schema_condition('n.nspname');
+	$sql = qq{
 SELECT n.nspname::regnamespace||'.'||r.conrelid::regclass, count(*)
 FROM pg_catalog.pg_constraint r JOIN pg_class c ON (r.conrelid=c.oid) JOIN pg_namespace n ON (c.relnamespace=n.oid)
 WHERE r.contype = 'c' $schema_cond
 GROUP BY n.nspname,r.conrelid
 };
-		%pgret = ();
+	%pgret = ();
+	if ($self->{pg_dsn})
+	{
+		my $s = $self->{dbhdest}->prepare($sql) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
+		if (not $s->execute())
+		{
+			push(@errors, "Can not extract information from catalog about check constraints.");
+			return;
+		}
+		while ( my @row = $s->fetchrow())
+		{
+			$row[0] =~ s/^[^\.]+\.// if (!$self->{export_schema});
+			$pgret{"\U$row[0]\E"} = $row[1];
+		}
+		$s->finish;
+	}
+	# Initialize when there is not unique key in a table
+	foreach my $t (keys %tables_infos) {
+		$check_constraints{$t}{constraint} = {} if (not exists $check_constraints{$t});
+	}
+
+	foreach my $t (sort keys %check_constraints)
+	{
+		next if (!exists $tables_infos{$t});
+		my $nbcheck = 0;
+		foreach my $cn (keys %{$check_constraints{$t}{constraint}}) {
+			$nbcheck++ if ($check_constraints{$t}{constraint}{$cn}{condition} !~ /IS NOT NULL$/);
+			if ($check_constraints{$t}{constraint}{$cn}{condition} =~ /^[^\s]+\s+IS\s+NOT\s+NULL$/i) {
+				$nbnotnull{$t}++;
+			} else {
+				$nbcheck++;
+			}
+		}
+		print "$lbl:$t:$nbcheck\n";
 		if ($self->{pg_dsn})
 		{
-			my $s = $self->{dbhdest}->prepare($sql) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
-			if (not $s->execute())
-			{
-				push(@errors, "Can not extract information from catalog about check constraints.");
-				return;
-			}
-			while ( my @row = $s->fetchrow())
-			{
-				$row[0] =~ s/^[^\.]+\.// if (!$self->{export_schema});
-				$pgret{"\U$row[0]\E"} = $row[1];
-			}
-			$s->finish;
-		}
-		# Initialize when there is not unique key in a table
-		foreach my $t (keys %tables_infos) {
-			$check_constraints{$t}{constraint} = {} if (not exists $check_constraints{$t});
-		}
-
-		foreach my $t (sort keys %check_constraints)
-		{
-			next if (!exists $tables_infos{$t});
-			my $nbcheck = 0;
-			foreach my $cn (keys %{$check_constraints{$t}{constraint}}) {
-				$nbcheck++ if ($check_constraints{$t}{constraint}{$cn}{condition} !~ /IS NOT NULL$/);
-				if ($check_constraints{$t}{constraint}{$cn}{condition} =~ /^[^\s]+\s+IS\s+NOT\s+NULL$/i) {
-					$nbnotnull{$t}++;
-				} else {
-					$nbcheck++;
-				}
-			}
-			print "$lbl:$t:$nbcheck\n";
-			if ($self->{pg_dsn})
-			{
-				my ($tbmod, $orig, $schema, $both) = $self->set_pg_relation_name($t);
-				$pgret{"\U$both$orig\E"} ||= 0;
-				print "POSTGRES:$both$orig:", $pgret{"\U$both$orig\E"}, "\n";
-				if ($pgret{"\U$both$orig\E"} != $nbcheck) {
-					push(@errors, "Table $both$orig doesn't have the same number of check constraints in source database ($nbcheck) and in PostgreSQL (" . $pgret{"\U$both$orig\E"} . ").");
-				}
+			my ($tbmod, $orig, $schema, $both) = $self->set_pg_relation_name($t);
+			$pgret{"\U$both$orig\E"} ||= 0;
+			print "POSTGRES:$both$orig:", $pgret{"\U$both$orig\E"}, "\n";
+			if ($pgret{"\U$both$orig\E"} != $nbcheck) {
+				push(@errors, "Table $both$orig doesn't have the same number of check constraints in source database ($nbcheck) and in PostgreSQL (" . $pgret{"\U$both$orig\E"} . ").");
 			}
 		}
-		%check_constraints = ();
-		$self->show_test_errors('check constraints', @errors);
-		@errors = ();
 	}
+	%check_constraints = ();
+	$self->show_test_errors('check constraints', @errors);
+	@errors = ();
 
 	####
 	# Test NOT NULL constraints
