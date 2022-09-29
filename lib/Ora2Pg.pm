@@ -911,7 +911,7 @@ sub _init
 	$self->{empty_lob_null} = 0;
 	$self->{look_forward_function} = ();
 	$self->{no_function_metadata} = 0;
-	$self->{oracle_fdw_transform} = ();
+	$self->{transform_value} = ();
 	$self->{all_objects} = ();
 
 	# Initial command to execute at Oracle and PostgreSQL connexion
@@ -9365,8 +9365,8 @@ sub _dump_fdw_table
 			$colname = $self->{replaced_cols}{lc($table)}{lc($f->[0])};
 		}
 		# If there is any transformation to apply replace the column name with the clause
-		if (exists $self->{oracle_fdw_transform}{lc($table)}{lc($colname)}) {
-			$fdw_col_list .= $self->{oracle_fdw_transform}{lc($table)}{lc($colname)} . ",";
+		if (exists $self->{transform_value}{lc($table)}{lc($colname)}) {
+			$fdw_col_list .= $self->{transform_value}{lc($table)}{lc($colname)} . ",";
 		}
 		else
 		{
@@ -10587,7 +10587,13 @@ sub _howto_get_data
 					$name->[$k] = '`' . $name->[$k] . '`';
 				}
 			}
-			if ( ( $src_type->[$k] =~ /^char/i) && ($type->[$k] =~ /(varchar|text)/i)) {
+
+			# If there is any transformation to apply replace the column name with the clause
+			if (exists $self->{transform_value}{lc($table)} && exists $self->{transform_value}{lc($table)}{lc($realcolname)}) {
+				$str .= $self->{transform_value}{lc($table)}{lc($realcolname)} . ",";
+			}
+			# Apply some default transformation following the data type
+			elsif ( ( $src_type->[$k] =~ /^char/i) && ($type->[$k] =~ /(varchar|text)/i)) {
 				$str .= "trim($self->{trim_type} '$self->{trim_char}' FROM $name->[$k]) AS $name->[$k],";
 			} elsif ($self->{is_mysql} && $src_type->[$k] =~ /bit/i) {
 				$str .= "BIN($name->[$k]),";
@@ -10992,6 +10998,7 @@ sub _howto_get_fdw_data
 					$name->[$k]->[0] = '`' . $name->[$k]->[0] . '`';
 				}
 			}
+
 			# If dest type is bytea the content of the file is exported as bytea
 			if ( ($src_type->[$k] =~ /bfile/i) && ($type->[$k] =~ /bytea/i) )
 			{
@@ -12794,7 +12801,7 @@ sub read_config
 				'SYSUSERS','REPLACE_AS_BOOLEAN','BOOLEAN_VALUES','MODIFY_TYPE','DEFINED_PK',
 				'ALLOW_PARTITION','REPLACE_QUERY','FKEY_ADD_UPDATE','DELETE',
 				'LOOK_FORWARD_FUNCTION','ORA_INITIAL_COMMAND','PG_INITIAL_COMMAND',
-				'ORACLE_FDW_TRANSFORM','EXCLUDE_COLUMNS'
+				'TRANSFORM_VALUE','EXCLUDE_COLUMNS'
 			))
 		{
 			$AConfig{$var} = $val;
@@ -12947,12 +12954,12 @@ sub read_config
 				$AConfig{"GLOBAL_WHERE"} = $val;
 			}
 		}
-		elsif ($var eq 'ORACLE_FDW_TRANSFORM')
+		elsif ($var eq 'TRANSFORM_VALUE')
 		{
 			my @vals = split(/\s*;\s*/, $val);
 			foreach my $v (@vals)
 			{
-				while ($v =~ s/([^\[\s]+)\s*\[\s*([^,]+)\s*,\s*([^\]]+)\s*\]\s*//)
+				while ($v =~ s/([^\[\s]+)\s*\[\s*([^:,]+)\s*[,:]\s*([^\]]+)\s*\]\s*//)
 				{
 					my $table = $1;
 					my $column = $2;

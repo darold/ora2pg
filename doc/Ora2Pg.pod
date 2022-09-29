@@ -996,17 +996,6 @@ several instances of ora2pg for data migration through the foreign data
 wrapper, you might need to change the name of the schema for each instance.
 Default: ora2pg_fdw_import
 
-=item ORACLE_FDW_TRANSFORM
-
-Use this directive to precise which transformation should be applied to a
-column when exporting data. Value must be a semicolon separated list of
-
-   TABLE[COLUMN_NAME, <replace code in SELECT target list>]
-
-For example to replace string 'Oracle' by 'PostgreSQL' in a varchar2 column use the following.
-
-   ORACLE_FDW_TRANSFORM   ERROR_LOG_SAMPLE[DBMS_TYPE:regexp_replace("DBMS_TYPE",'Oracle','PostgreSQL')]
-
 =item DROP_FOREIGN_SCHEMA
 
 By default Ora2Pg drops the temporary schema ora2pg_fdw_import used to import
@@ -1847,6 +1836,24 @@ ordering.
 Stop validating data from a table after a certain amount of row mistmatch.
 Default is to stop after 10 rows validation errors.
  
+=item TRANSFORM_VALUE
+
+Use this directive to precise which transformation should be applied to a
+column when exporting data. Value must be a semicolon separated list of
+
+   TABLE[COLUMN_NAME, <replace code in SELECT target list>]
+
+For example to replace string 'Oracle' by 'PostgreSQL' in a varchar2 column use the following.
+
+   TRANSFORM_VALUE   ERROR_LOG_SAMPLE[DBMS_TYPE:regexp_replace("DBMS_TYPE",'Oracle','PostgreSQL')]
+
+or to replace all Oracle char(0) in a string by a space character:
+
+    TRANSFORM_VALUE   CLOB_TABLE[CHARDATA:translate("CHARDATA", chr(0), ' ')]
+
+The expression will be applied in the SQL statemeent used to extract data
+from the source database.
+
 =back
 
 When using Ora2Pg export type INSERT or COPY to dump data to file and that

@@ -1079,6 +1079,17 @@ DATA_VALIDATION_ORDERING	1
 # Default is to stop after 10 rows validation errors.
 DATA_VALIDATION_ERROR		10
 
+# Use this directive to precise which transformation should be applied to a
+# column when exporting data. Value must be a semicolon separated list of
+#       TABLE[COLUMN_NAME, <replace code in SELECT target list>]
+# For example to replace string 'Oracle' by 'PostgreSQL' in a varchar2 column
+# use the following.
+#TRANSFORM_VALUE   ERROR_LOG_SAMPLE[DBMS_TYPE,regexp_replace("DBMS_TYPE",'Oracle','PostgreSQL')]
+#or to replace all Oracle char(0) in a string by a space character:
+#TRANSFORM_VALUE   CLOB_TABLE[CHARDATA:translate("CHARDATA", chr(0), ' ')]
+#The expression will be applied in the SQL statemeent used to extract data
+#from the source database.
+
 #------------------------------------------------------------------------------
 # PERFORMANCES SECTION (Control export/import performances)
 #------------------------------------------------------------------------------
@@ -1361,13 +1372,6 @@ GEOMETRY_EXTRACT_TYPE	INTERNAL
 # several instances of ora2pg for data migration through the foreign data
 # wrapper, you might need to change the name of the schema for each instance.
 FDW_IMPORT_SCHEMA	ora2pg_fdw_import
-
-# Use this directive to precise which transformation should be applied to a
-# column when exporting data. Value must be a semicolon separated list of
-#       TABLE[COLUMN_NAME, <replace code in SELECT target list>]
-# For example to replace string 'Oracle' by 'PostgreSQL' in a varchar2 column
-# use the following.
-#ORACLE_FDW_TRANSFORM   ERROR_LOG_SAMPLE[DBMS_TYPE,regexp_replace("DBMS_TYPE",'Oracle','PostgreSQL')]
 
 # By default Ora2Pg drops the temporary schema ora2pg_fdw_import used to import
 # the Oracle foreign schema before each new import. If you want to preserve

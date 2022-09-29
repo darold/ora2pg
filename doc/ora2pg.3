@@ -133,7 +133,7 @@
 .\" ========================================================================
 .\"
 .IX Title "ORA2PG 1"
-.TH ORA2PG 1 "2022-09-22" "perl v5.34.0" "User Contributed Perl Documentation"
+.TH ORA2PG 1 "2022-09-29" "perl v5.34.0" "User Contributed Perl Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -1139,20 +1139,6 @@ Schema where foreign tables for data migration will be created. If you use
 several instances of ora2pg for data migration through the foreign data
 wrapper, you might need to change the name of the schema for each instance.
 Default: ora2pg_fdw_import
-.IP "\s-1ORACLE_FDW_TRANSFORM\s0" 4
-.IX Item "ORACLE_FDW_TRANSFORM"
-Use this directive to precise which transformation should be applied to a
-column when exporting data. Value must be a semicolon separated list of
-.Sp
-.Vb 1
-\&   TABLE[COLUMN_NAME, <replace code in SELECT target list>]
-.Ve
-.Sp
-For example to replace string 'Oracle' by 'PostgreSQL' in a varchar2 column use the following.
-.Sp
-.Vb 1
-\&   ORACLE_FDW_TRANSFORM   ERROR_LOG_SAMPLE[DBMS_TYPE:regexp_replace("DBMS_TYPE",\*(AqOracle\*(Aq,\*(AqPostgreSQL\*(Aq)]
-.Ve
 .IP "\s-1DROP_FOREIGN_SCHEMA\s0" 4
 .IX Item "DROP_FOREIGN_SCHEMA"
 By default Ora2Pg drops the temporary schema ora2pg_fdw_import used to import
@@ -1986,6 +1972,29 @@ ordering.
 .IX Item "DATA_VALIDATION_ERROR"
 Stop validating data from a table after a certain amount of row mistmatch.
 Default is to stop after 10 rows validation errors.
+.IP "\s-1TRANSFORM_VALUE\s0" 4
+.IX Item "TRANSFORM_VALUE"
+Use this directive to precise which transformation should be applied to a
+column when exporting data. Value must be a semicolon separated list of
+.Sp
+.Vb 1
+\&   TABLE[COLUMN_NAME, <replace code in SELECT target list>]
+.Ve
+.Sp
+For example to replace string 'Oracle' by 'PostgreSQL' in a varchar2 column use the following.
+.Sp
+.Vb 1
+\&   TRANSFORM_VALUE   ERROR_LOG_SAMPLE[DBMS_TYPE:regexp_replace("DBMS_TYPE",\*(AqOracle\*(Aq,\*(AqPostgreSQL\*(Aq)]
+.Ve
+.Sp
+or to replace all Oracle \fBchar\fR\|(0) in a string by a space character:
+.Sp
+.Vb 1
+\&    TRANSFORM_VALUE   CLOB_TABLE[CHARDATA:translate("CHARDATA", chr(0), \*(Aq \*(Aq)]
+.Ve
+.Sp
+The expression will be applied in the \s-1SQL\s0 statemeent used to extract data
+from the source database.
 .PP
 When using Ora2Pg export type \s-1INSERT\s0 or \s-1COPY\s0 to dump data to file and that
 \&\s-1FILE_PER_TABLE\s0 is enabled, you will be warned that Ora2Pg will not export
