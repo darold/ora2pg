@@ -405,7 +405,7 @@ ORDER BY ORDINAL_POSITION};
 	while (my $row = $sth->fetch)
 	{
 		if ($row->[1] eq 'enum') {
-			$row->[1] = $row->[-1];
+			$row->[1] = $row->[-2];
 		}
 		if ($row->[13] =~ /unsigned/) {
 			$row->[1] .= ' unsigned';
@@ -1318,11 +1318,13 @@ sub replace_sql_type
 		$mysqltype_regex .= quotemeta($_) . '|';
 	}
 	$mysqltype_regex =~ s/\|$//;
-	while ($str =~ /(.*)\b($mysqltype_regex)\s*\(([^\)]+)\)/i) {
+	while ($str =~ /(.*)\b($mysqltype_regex)\s*\(([^\)]+)\)/i)
+	{
 		my $backstr = $1;
 		my $type = uc($2);
 		my $args = $3;
-		if (uc($type) eq 'ENUM') {
+		if (uc($type) eq 'ENUM')
+		{
 			# Prevent from infinit loop
 			$str =~ s/\(/\%\|/s;
 			$str =~ s/\)/\%\|\%/s;
@@ -1382,10 +1384,12 @@ sub replace_sql_type
 	# Replace datatype even without precision
 	my %recover_type = ();
 	my $i = 0;
-	foreach my $type (sort { length($b) <=> length($a) } keys %data_type) {
+	foreach my $type (sort { length($b) <=> length($a) } keys %data_type)
+	{
 		# Keep enum as declared, we are not in table definition
 		next if (uc($type) eq 'ENUM');
-		while ($str =~ s/\b$type\b/%%RECOVER_TYPE$i%%/is) {
+		while ($str =~ s/\b$type\b/%%RECOVER_TYPE$i%%/is)
+		{
 			$recover_type{$i} = $data_type{$type};
 			$i++;
 		}
