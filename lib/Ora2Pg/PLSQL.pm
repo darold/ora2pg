@@ -779,7 +779,7 @@ sub plsql_to_plpgsql
 	$str =~ s/\bEXEC\s+:([^\s:]+)\s*:=/SELECT INTO $2/igs;
 
 	# Replace simple EXEC function call by SELECT function
-	$str =~ s/\bEXEC(\s+)/SELECT$1/igs;
+	$str =~ s/\bEXEC(\s+)(?:.*?)(?!FROM\b|WHERE\b)/SELECT$1/igs;
 
 	# Remove leading : on Oracle variable taking care of regex character class
 	$str =~ s/([^\w:]+):(\d+)/$1\$$2/igs;
