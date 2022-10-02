@@ -3410,7 +3410,7 @@ sub read_trigger_from_file
 		my $tb_name = '';
 		my $trigger = '';
 		my $t_type = '';
-		if ($content =~ s/^([^\s]+)\s+(BEFORE|AFTER|INSTEAD\s+OF)\s+(.*?)\s+ON\s+([^\s]+)\s+(.*)(\bEND\s*(?!IF|LOOP|CASE|INTO|FROM|,)[a-z0-9_]*(?:;|$))//is)
+		if ($content =~ s/^([^\s]+)\s+(BEFORE|AFTER|INSTEAD\s+OF)\s+(.*?)\s+ON\s+([^\s]+)\s+(.*)(\bEND\s*(?!IF|LOOP|CASE|INTO|FROM|,)[a-z0-9_\$"]*(?:;|$))//is)
 		{
 			$t_name = $1;
 			$t_pos = $2;
@@ -3419,7 +3419,7 @@ sub read_trigger_from_file
 			$trigger = $5 . $6;
 			$t_name =~ s/"//g;
 		}
-		elsif ($content =~ s/^([^\s]+)\s+(BEFORE|AFTER|INSTEAD|\s+|OF)((?:INSERT|UPDATE|DELETE|OR|\s+|OF)+\s+(?:.*?))*\s+ON\s+([^\s]+)\s+(.*)(\bEND\s*(?!IF|LOOP|CASE|INTO|FROM|,)[a-z0-9_]*(?:;|$))//is)
+		elsif ($content =~ s/^([^\s]+)\s+(BEFORE|AFTER|INSTEAD|\s+|OF)((?:INSERT|UPDATE|DELETE|OR|\s+|OF)+\s+(?:.*?))*\s+ON\s+([^\s]+)\s+(.*)(\bEND\s*(?!IF|LOOP|CASE|INTO|FROM|,)[a-z0-9_\$"]*(?:;|$))//is)
 		{
 			$t_name = $1;
 			$t_pos = $2;
@@ -13009,17 +13009,19 @@ sub _extract_functions
 	my $type = '';
 	for (my $i = 0; $i <= $#lines; $i++)
 	{ 
-		if ($lines[$i] =~ /^(?:CREATE|CREATE OR REPLACE)?\s*(?:NONEDITIONABLE|EDITIONABLE)?\s*(FUNCTION|PROCEDURE)\s+([a-z0-9_\-\."]+)(.*)/i) {
+		if ($lines[$i] =~ /^(?:CREATE|CREATE OR REPLACE)?\s*(?:NONEDITIONABLE|EDITIONABLE)?\s*(FUNCTION|PROCEDURE)\s+([a-z0-9_\$\-\."]+)(.*)/i)
+		{
 			$type = uc($1);
 			$fcname = $2;
+			my $after = $3;
 			$fcname =~ s/^.*\.//;
 			$fcname =~ s/"//g;
 			$type = 'FUNCTION' if (!$self->{pg_supports_procedure});
 			if ($before) {
 				push(@functions, "$before\n");
-				$functions[-1] .= "$type $2 $3\n";
+				$functions[-1] .= "$type $fcname $after\n";
 			} else {
-				push(@functions, "$type $fcname $3\n");
+				push(@functions, "$type $fcname $after\n");
 			}
 			$before = '';
 		} elsif ($fcname) {
@@ -13027,10 +13029,10 @@ sub _extract_functions
 		} else {
 			$before .= "$lines[$i]\n";
 		}
-		$fcname = '' if ($lines[$i] =~ /^\s*END\s+$fcname\b/i);
+		$fcname = '' if ($lines[$i] =~ /^\s*END\s+["]*\Q$fcname\E["]*\b/i);
 	}
 
-	map { s/\bEND\s+(?!IF|LOOP|CASE|INTO|FROM|END|,)[a-z0-9_]+\s*;/END;/igs; } @functions;
+	map { s/\bEND\s+(?!IF|LOOP|CASE|INTO|FROM|END|,)[a-z0-9_"\$]+\s*;/END;/igs; } @functions;
 
 	return @functions;
 }
@@ -18225,7 +18227,9 @@ sub limit_to_objects
 					} else {
 						$str .= "REGEXP_LIKE(upper($colname), ?)" ;
 					}
-					push(@{$self->{query_bind_params}}, uc("\^$self->{limited}{$arr_type[$i]}->[$j]\$"));
+					my $objname = $self->{limited}{$arr_type[$i]}->[$j];
+					$objname =~ s/\$/\\\$/g; # support dollar sign
+					push(@{$self->{query_bind_params}}, uc("\^$objname\$"));
 					if ($j < $#{$self->{limited}{$arr_type[$i]}}) {
 						$str .= " OR ";
 					}
@@ -18256,7 +18260,9 @@ sub limit_to_objects
 						} else {
 							$str .= " AND NOT REGEXP_LIKE(upper($colname), ?)" ;
 						}
-						push(@{$self->{query_bind_params}}, uc("\^$1\$"));
+						my $objname = $1;
+						$objname =~ s/\$/\\\$/g; # support dollar sign
+						push(@{$self->{query_bind_params}}, uc("\^$objname\$"));
 					}
 				}
 
@@ -18381,7 +18387,7 @@ sub _lookup_package
 
 	my $content = '';
 	my %infos = ();
-	if ($plsql =~ /(?:CREATE|CREATE OR REPLACE)?\s*(?:EDITIONABLE|NONEDITIONABLE)?\s*PACKAGE\s+BODY\s*([^\s\%]+)((?:\s*\%ORA2PG_COMMENT\d+\%)*\s*(?:AS|IS))\s*(.*)/is)
+	if ($plsql =~ /(?:CREATE|CREATE OR REPLACE)?\s*(?:EDITIONABLE|NONEDITIONABLE)?\s*PACKAGE\s+BODY\s*([^\s\%\(]+)((?:\s*\%ORA2PG_COMMENT\d+\%)*\s*(?:AS|IS))\s*(.*)/is)
 	{
 		my $pname = $1;
 		my $type = $2;

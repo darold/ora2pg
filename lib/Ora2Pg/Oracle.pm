@@ -1566,10 +1566,12 @@ sub _lookup_function
 
 		# When the function comes from a package remove global declaration
 		# outside comments. They have already been extracted before.
-		if ($pname && $fct_detail{before}) {
+		if ($pname && $fct_detail{before})
+		{
 			$self->_remove_comments(\$fct_detail{before});
 			my $cmt = '';
-			while ($fct_detail{before} =~ s/(\s*\%ORA2PG_COMMENT\d+\%\s*)//is) {
+			while ($fct_detail{before} =~ s/(\s*\%ORA2PG_COMMENT\d+\%\s*)//is)
+			{
 				# only keep comment
 				$cmt .= $1;
 			}
@@ -1585,18 +1587,22 @@ sub _lookup_function
 		$fct_detail{immutable} = 1 if ($fct_detail{declare} =~ s/\bDETERMINISTIC\b//is);
 		$fct_detail{setof} = 1 if ($fct_detail{declare} =~ s/\bPIPELINED\b//is);
 		$fct_detail{declare} =~ s/\bDEFAULT\b/:=/igs;
-		if ($fct_detail{declare} =~ s/(.*?)\bRETURN\s+self\s+AS RESULT IS//is) {
+		if ($fct_detail{declare} =~ s/(.*?)\bRETURN\s+self\s+AS RESULT IS//is)
+		{
 			$fct_detail{args} .= $1;
 			$fct_detail{hasreturn} = 1;
 			$fct_detail{func_ret_type} = 'OPAQUE';
-		} elsif ($fct_detail{declare} =~ s/(.*?)\bRETURN\s+([^\s]+)//is) {
+		}
+		elsif ($fct_detail{declare} =~ s/(.*?)\bRETURN\s+([^\s]+)//is)
+		{
 			$fct_detail{args} .= $1;
 			$fct_detail{hasreturn} = 1;
 			my $ret_typ = $2 || '';
 			$ret_typ =~ s/(\%ORA2PG_COMMENT\d+\%)+//i;
 			$fct_detail{func_ret_type} = $self->_sql_type($ret_typ) || 'OPAQUE';
 		}
-		if ($fct_detail{declare} =~ s/(.*?)(USING|AS|IS)(\s+(?!REF\s+))/$3/is) {
+		if ($fct_detail{declare} =~ s/(.*?)(USING|AS|IS)(\s+(?!REF\s+))/$3/is)
+		{
 			$fct_detail{args} .= $1 if (!$fct_detail{hasreturn});
 			$clause = $2;
 		}
