@@ -746,7 +746,7 @@ sub quote_object_name
 		{
 			$obj_name = lc($obj_name);
 			# then if there is non alphanumeric or the object name is a reserved word
-			if ($obj_name =~ /[^a-z0-9\_\.]/ || ($self->{use_reserved_words} && $self->is_reserved_words($obj_name)) || $obj_name =~ /^\d+/)
+			if ($obj_name =~ /[^a-z0-9\_\.\$]/ || ($self->{use_reserved_words} && $self->is_reserved_words($obj_name)) || $obj_name =~ /^\d+/)
 			{
 				# Add double quote to [schema.] object name 
 				if ($obj_name !~ /^[^\.]+\.[^\.]+$/ && $obj_name !~ /^[^\.]+\.[^\.]+\.[^\.]+$/) {
