@@ -295,7 +295,7 @@ sub _table_info
 		$tables_infos{$row->[0]}{tablespace} = 0;
 		$tables_infos{$row->[0]}{auto_increment} = $row->[5] || 0;
 		$tables_infos{$row->[0]}{tablespace} = $tbspname{$row->[0]} || '';
-		$tables_infos{$row->[0]}{partitioned} = ($row->[6] eq 'partitioned') ? 1 : 0;
+		$tables_infos{$row->[0]}{partitioned} = ($row->[6] eq 'partitioned' || exists $self->{partitions}{$row->[0]}) ? 1 : 0;
 
 		# Get creation option unavailable in information_schema
 		if ($row->[6] eq 'FEDERATED')
@@ -1493,6 +1493,9 @@ WHERE PARTITION_NAME IS NOT NULL
 		$parts{$row->[0]}{$row->[1]}{name} = $row->[2];
 		$row->[6] =~ s/\`//g;
 		$row->[3] =~ s/\`//g;
+
+		$row->[5] = 'HASH' if ($row->[5] eq 'KEY');
+
 		if ($row->[5] =~ s/ COLUMNS//)
 		{
 			my $i = 0;
@@ -1549,6 +1552,7 @@ WHERE SUBPARTITION_NAME IS NOT NULL AND SUBPARTITION_EXPRESSION IS NOT NULL
 		$row->[6] =~ s/\`//g;
 		$row->[3] =~ s/\`//g;
 		$row->[5] =~ s/ COLUMNS//;
+		$row->[5] = 'HASH' if ($row->[5] eq 'KEY');
 		foreach my $c (split(',', $row->[6]))
 		{
 			push(@{$subparts{$row->[0]}{$row->[7]}{$row->[1]}{info}}, { 'type' => $row->[5], 'value' => $row->[3], 'column' => $c, 'colpos' => $i, 'tablespace' => $row->[4], 'owner' => ''});
@@ -1560,14 +1564,14 @@ WHERE SUBPARTITION_NAME IS NOT NULL AND SUBPARTITION_EXPRESSION IS NOT NULL
 	return \%subparts, \%default;
 }
 
-=head2 _get_partitions_list
+=head2 _get_partitions_type
 
 This function implements a MySQL-native partitions information.
 Return a hash of the partition table_name => type
 
 =cut
 
-sub _get_partitions_list
+sub _get_partitions_type
 {
 	my($self) = @_;
 
@@ -1608,7 +1612,7 @@ sub _get_partitioned_table
 	my $str = qq{
 SELECT TABLE_NAME, PARTITION_METHOD, PARTITION_ORDINAL_POSITION, PARTITION_NAME, PARTITION_DESCRIPTION, TABLESPACE_NAME, PARTITION_EXPRESSION
 FROM INFORMATION_SCHEMA.PARTITIONS WHERE PARTITION_NAME IS NOT NULL
-     AND (PARTITION_METHOD LIKE 'RANGE%' OR PARTITION_METHOD LIKE 'LIST%' OR PARTITION_METHOD LIKE 'HASH%')
+     AND (PARTITION_METHOD LIKE 'RANGE%' OR PARTITION_METHOD LIKE 'LIST%' OR PARTITION_METHOD LIKE 'HASH%' OR PARTITION_METHOD LIKE 'KEY%')
 };
 	$str .= $self->limit_to_objects('TABLE|PARTITION','TABLE_NAME|PARTITION_NAME');
 	if ($self->{schema}) {
@@ -1636,6 +1640,40 @@ FROM INFORMATION_SCHEMA.PARTITIONS WHERE PARTITION_NAME IS NOT NULL
 		}
 		$parts{"\L$row->[0]\E"}{type} = $row->[1];
 		$row->[6] =~ s/\`//g;
+
+		if ($parts{"\L$row->[0]\E"}{type} =~ /^KEY/)
+		{
+			$parts{"\L$row->[0]\E"}{type} = 'HASH';
+			my $sql = "SHOW INDEX FROM `$row->[0]`";
+			my $sth2 = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+			$sth2->execute() or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+			my @ucol = ();
+			while (my $r = $sth2->fetch)
+			{
+				#Table : The name of the table.
+				#Non_unique : 0 if the index cannot contain duplicates, 1 if it can.
+				#Key_name : The name of the index. If the index is the primary key, the name is always PRIMARY.
+				#Seq_in_index : The column sequence number in the index, starting with 1.
+				#Column_name : The column name.
+				#Collation : How the column is sorted in the index. In MySQL, this can have values “A” (Ascending) or NULL (Not sorted).
+				#Cardinality : An estimate of the number of unique values in the index.
+				#Sub_part : The number of indexed characters if the column is only partly indexed, NULL if the entire column is indexed.
+				#Packed : Indicates how the key is packed. NULL if it is not.
+				#Null : Contains YES if the column may contain NULL values and '' if not.
+				#Index_type : The index method used (BTREE, FULLTEXT, HASH, RTREE).
+				#Comment : Information about the index not described in its own column, such as disabled if the index is disabled. 
+				if ($r->[2] eq 'PRIMARY') {
+					push(@{ $parts{"\L$row->[0]\E"}{columns} }, $r->[4]) if (!grep(/^$r->[4]$/, @{ $parts{"\L$row->[0]\E"}{columns} }));
+				} elsif (!$r->[1]) {
+					push(@ucol, $r->[4]) if (!grep(/^$r->[4]$/, @ucol));
+				}
+			}
+			$sth2->finish;
+			if ($#{ $parts{"\L$row->[0]\E"}{columns} } < 0) {
+				push(@{ $parts{"\L$row->[0]\E"}{columns} }, @ucol);
+			}
+
+		}
 		if ($parts{"\L$row->[0]\E"}{type} =~ s/ COLUMNS//)
 		{
 			$row->[6] =~ s/[\(\)\s]//g;
@@ -1721,7 +1759,7 @@ sub _get_objects
 SELECT TABLE_NAME||'_'||PARTITION_NAME
 FROM INFORMATION_SCHEMA.PARTITIONS
 WHERE SUBPARTITION_NAME IS NULL
-     AND (SUBPARTITION_METHOD LIKE 'RANGE%' OR SUBPARTITION_METHOD LIKE 'LIST%' OR SUBPARTITION_METHOD LIKE 'HASH%')
+     AND (SUBPARTITION_METHOD LIKE 'RANGE%' OR SUBPARTITION_METHOD LIKE 'LIST%' OR SUBPARTITION_METHOD LIKE 'HASH%' OR SUBPARTITION_METHOD LIKE 'KEY%')
 };
 	$sql .= $self->limit_to_objects('TABLE|PARTITION', 'TABLE_NAME|PARTITION_NAME');
 	if ($self->{schema}) {
@@ -2095,7 +2133,7 @@ sub _get_subpartitioned_table
 	my $str = qq{
 SELECT TABLE_NAME, SUBPARTITION_METHOD, SUBPARTITION_ORDINAL_POSITION, PARTITION_NAME, SUBPARTITION_NAME, PARTITION_DESCRIPTION, TABLESPACE_NAME, SUBPARTITION_EXPRESSION
 FROM INFORMATION_SCHEMA.PARTITIONS WHERE SUBPARTITION_NAME IS NOT NULL
-     AND (SUBPARTITION_METHOD LIKE 'RANGE%' OR SUBPARTITION_METHOD LIKE 'LIST%' OR SUBPARTITION_METHOD LIKE 'HASH%')
+     AND (SUBPARTITION_METHOD LIKE 'RANGE%' OR SUBPARTITION_METHOD LIKE 'LIST%' OR SUBPARTITION_METHOD LIKE 'HASH%' OR SUBPARTITION_METHOD LIKE 'KEY%')
 };
 	$str .= $self->limit_to_objects('TABLE|PARTITION','TABLE_NAME|SUBPARTITION_NAME');
 	if ($self->{schema}) {
@@ -2112,6 +2150,40 @@ FROM INFORMATION_SCHEMA.PARTITIONS WHERE SUBPARTITION_NAME IS NOT NULL
 		$parts{"\L$row->[0]\E"}{"\L$row->[3]\E"}{count}++;
 		$parts{"\L$row->[0]\E"}{"\L$row->[3]\E"}{type} = $row->[1];
 		$row->[7] =~ s/\`//g;
+
+		if ($parts{"\L$row->[0]\E"}{type} =~ /^KEY/)
+		{
+			$parts{"\L$row->[0]\E"}{type} = 'HASH';
+			my $sql = "SHOW INDEX FROM `$row->[0]`";
+			my $sth2 = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+			$sth2->execute() or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+			my @ucol = ();
+			while (my $r = $sth2->fetch)
+			{
+				#Table : The name of the table.
+				#Non_unique : 0 if the index cannot contain duplicates, 1 if it can.
+				#Key_name : The name of the index. If the index is the primary key, the name is always PRIMARY.
+				#Seq_in_index : The column sequence number in the index, starting with 1.
+				#Column_name : The column name.
+				#Collation : How the column is sorted in the index. In MySQL, this can have values “A” (Ascending) or NULL (Not sorted).
+				#Cardinality : An estimate of the number of unique values in the index.
+				#Sub_part : The number of indexed characters if the column is only partly indexed, NULL if the entire column is indexed.
+				#Packed : Indicates how the key is packed. NULL if it is not.
+				#Null : Contains YES if the column may contain NULL values and '' if not.
+				#Index_type : The index method used (BTREE, FULLTEXT, HASH, RTREE).
+				#Comment : Information about the index not described in its own column, such as disabled if the index is disabled. 
+				if ($r->[2] eq 'PRIMARY') {
+					push(@{ $parts{"\L$row->[0]\E"}{columns} }, $r->[4]) if (!grep(/^$r->[4]$/, @{ $parts{"\L$row->[0]\E"}{columns} }));
+				} elsif (!$row->[1]) {
+					push(@ucol, $r->[4]) if (!grep(/^$r->[4]$/, @ucol));
+				}
+			}
+			$sth2->finish;
+			if ($#{ $parts{"\L$row->[0]\E"}{columns} } < 0) {
+				push(@{ $parts{"\L$row->[0]\E"}{columns} }, @ucol);
+			}
+		}
+
 		if ($parts{"\L$row->[0]\E"}{"\L$row->[3]\E"}{type} =~ s/ COLUMNS//)
 		{
 			$row->[7] =~ s/[\(\)\s]//g;

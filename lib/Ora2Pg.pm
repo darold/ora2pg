@@ -1781,14 +1781,16 @@ sub _init
 		if (($self->{type} eq 'TABLE') || ($self->{type} eq 'FDW') || ($self->{type} eq 'INSERT') || ($self->{type} eq 'COPY') || ($self->{type} eq 'KETTLE'))
 		{
 			$self->{plsql_pgsql} = 1;
-			$self->_tables();
 			# Partitionned table do not accept NOT VALID constraint
 			if ($self->{pg_supports_partition} && $self->{type} eq 'TABLE')
 			{
 				# Get the list of partition
-				$self->{partitions} = $self->_get_partitions_list();
+				($self->{partitions}, $self->{partitions_default}) = $self->_get_partitions();
 			}
-		} elsif ($self->{type} eq 'VIEW') {
+			# Get table informations
+			$self->_tables();
+		}
+		elsif ($self->{type} eq 'VIEW') {
 			$self->_views();
 		} elsif ($self->{type} eq 'SYNONYM') {
 			$self->_synonyms();
@@ -7760,8 +7762,8 @@ sub export_table
 			{
 				$sql_output .= ' ' . $self->{tables}{$table}{table_info}{on_commit};
 			}
-
-			if ($self->{tables}{$table}{table_info}{partitioned} && $self->{pg_supports_partition} && !$self->{disable_partition}) {
+			if ($self->{tables}{$table}{table_info}{partitioned} && $self->{pg_supports_partition} && !$self->{disable_partition})
+			{
 				if (exists $self->{partitions_list}{"\L$table\E"}{type})
 				{
 					$sql_output .= " PARTITION BY " . $self->{partitions_list}{"\L$table\E"}{type} . " (";
@@ -11962,20 +11964,20 @@ sub _get_synonyms
 	}
 }
 
-=head2 _get_partitions_list
+=head2 _get_partitions_type
 
 This function implements an Oracle-native partitions information.
 Return a hash of the partition table_name => type
 =cut
 
-sub _get_partitions_list
+sub _get_partitions_type
 {
 	my($self) = @_;
 
 	if ($self->{is_mysql}) {
-		return Ora2Pg::MySQL::_get_partitions_list($self);
+		return Ora2Pg::MySQL::_get_partitions_type($self);
 	} else {
-		return Ora2Pg::Oracle::_get_partitions_list($self);
+		return Ora2Pg::Oracle::_get_partitions_type($self);
 	}
 }
 
@@ -15962,7 +15964,7 @@ sub _show_infos
 			}
 			elsif ($typ eq 'TABLE PARTITION')
 			{
-				my %partitions = $self->_get_partitions_list();
+				my %partitions = $self->_get_partitions_type();
 				foreach my $t (sort keys %partitions) {
 					$report_info{'Objects'}{$typ}{'detail'} .= " $partitions{$t} $t partitions.\n";
 				}
