@@ -1494,7 +1494,7 @@ WHERE PARTITION_NAME IS NOT NULL
 		$row->[6] =~ s/\`//g;
 		$row->[3] =~ s/\`//g;
 
-		$row->[5] = 'HASH' if ($row->[5] eq 'KEY');
+		$row->[5] = 'HASH' if ($row->[5] =~ /KEY/);
 
 		if ($row->[5] =~ s/ COLUMNS//)
 		{
@@ -1552,7 +1552,7 @@ WHERE SUBPARTITION_NAME IS NOT NULL AND SUBPARTITION_EXPRESSION IS NOT NULL
 		$row->[6] =~ s/\`//g;
 		$row->[3] =~ s/\`//g;
 		$row->[5] =~ s/ COLUMNS//;
-		$row->[5] = 'HASH' if ($row->[5] eq 'KEY');
+		$row->[5] = 'HASH' if ($row->[5] =~ /KEY/);
 		foreach my $c (split(',', $row->[6]))
 		{
 			push(@{$subparts{$row->[0]}{$row->[7]}{$row->[1]}{info}}, { 'type' => $row->[5], 'value' => $row->[3], 'column' => $c, 'colpos' => $i, 'tablespace' => $row->[4], 'owner' => ''});
@@ -1612,7 +1612,7 @@ sub _get_partitioned_table
 	my $str = qq{
 SELECT TABLE_NAME, PARTITION_METHOD, PARTITION_ORDINAL_POSITION, PARTITION_NAME, PARTITION_DESCRIPTION, TABLESPACE_NAME, PARTITION_EXPRESSION
 FROM INFORMATION_SCHEMA.PARTITIONS WHERE PARTITION_NAME IS NOT NULL
-     AND (PARTITION_METHOD LIKE 'RANGE%' OR PARTITION_METHOD LIKE 'LIST%' OR PARTITION_METHOD LIKE 'HASH%' OR PARTITION_METHOD LIKE 'KEY%')
+     AND (PARTITION_METHOD LIKE 'RANGE%' OR PARTITION_METHOD LIKE 'LIST%' OR PARTITION_METHOD LIKE 'HASH%' OR PARTITION_METHOD LIKE 'KEY%' OR PARTITION_METHOD LIKE 'LINEAR KEY%')
 };
 	$str .= $self->limit_to_objects('TABLE|PARTITION','TABLE_NAME|PARTITION_NAME');
 	if ($self->{schema}) {
@@ -1641,7 +1641,7 @@ FROM INFORMATION_SCHEMA.PARTITIONS WHERE PARTITION_NAME IS NOT NULL
 		$parts{"\L$row->[0]\E"}{type} = $row->[1];
 		$row->[6] =~ s/\`//g;
 
-		if ($parts{"\L$row->[0]\E"}{type} =~ /^KEY/)
+		if ($row->[1] =~ /KEY/)
 		{
 			$parts{"\L$row->[0]\E"}{type} = 'HASH';
 			my $sql = "SHOW INDEX FROM `$row->[0]`";
@@ -1670,7 +1670,12 @@ FROM INFORMATION_SCHEMA.PARTITIONS WHERE PARTITION_NAME IS NOT NULL
 			}
 			$sth2->finish;
 			if ($#{ $parts{"\L$row->[0]\E"}{columns} } < 0) {
-				push(@{ $parts{"\L$row->[0]\E"}{columns} }, @ucol);
+				if ($#ucol >= 0) {
+					push(@{ $parts{"\L$row->[0]\E"}{columns} }, @ucol);
+				} else {
+					$row->[6] =~ s/[\(\)\s]//g;
+					@{ $parts{"\L$row->[0]\E"}{columns} } = split(',', $row->[6]);
+				}
 			}
 
 		}
@@ -1759,7 +1764,7 @@ sub _get_objects
 SELECT TABLE_NAME||'_'||PARTITION_NAME
 FROM INFORMATION_SCHEMA.PARTITIONS
 WHERE SUBPARTITION_NAME IS NULL
-     AND (SUBPARTITION_METHOD LIKE 'RANGE%' OR SUBPARTITION_METHOD LIKE 'LIST%' OR SUBPARTITION_METHOD LIKE 'HASH%' OR SUBPARTITION_METHOD LIKE 'KEY%')
+     AND (SUBPARTITION_METHOD LIKE 'RANGE%' OR SUBPARTITION_METHOD LIKE 'LIST%' OR SUBPARTITION_METHOD LIKE 'HASH%' OR SUBPARTITION_METHOD LIKE 'KEY%' OR SUBPARTITION_METHOD LIKE 'LINEAR KEY%')
 };
 	$sql .= $self->limit_to_objects('TABLE|PARTITION', 'TABLE_NAME|PARTITION_NAME');
 	if ($self->{schema}) {
@@ -2133,7 +2138,7 @@ sub _get_subpartitioned_table
 	my $str = qq{
 SELECT TABLE_NAME, SUBPARTITION_METHOD, SUBPARTITION_ORDINAL_POSITION, PARTITION_NAME, SUBPARTITION_NAME, PARTITION_DESCRIPTION, TABLESPACE_NAME, SUBPARTITION_EXPRESSION
 FROM INFORMATION_SCHEMA.PARTITIONS WHERE SUBPARTITION_NAME IS NOT NULL
-     AND (SUBPARTITION_METHOD LIKE 'RANGE%' OR SUBPARTITION_METHOD LIKE 'LIST%' OR SUBPARTITION_METHOD LIKE 'HASH%' OR SUBPARTITION_METHOD LIKE 'KEY%')
+     AND (SUBPARTITION_METHOD LIKE 'RANGE%' OR SUBPARTITION_METHOD LIKE 'LIST%' OR SUBPARTITION_METHOD LIKE 'HASH%' OR SUBPARTITION_METHOD LIKE 'KEY%' OR SUBPARTITION_METHOD LIKE 'LINEAR KEY%')
 };
 	$str .= $self->limit_to_objects('TABLE|PARTITION','TABLE_NAME|SUBPARTITION_NAME');
 	if ($self->{schema}) {
@@ -2151,7 +2156,7 @@ FROM INFORMATION_SCHEMA.PARTITIONS WHERE SUBPARTITION_NAME IS NOT NULL
 		$parts{"\L$row->[0]\E"}{"\L$row->[3]\E"}{type} = $row->[1];
 		$row->[7] =~ s/\`//g;
 
-		if ($parts{"\L$row->[0]\E"}{type} =~ /^KEY/)
+		if ($parts{"\L$row->[0]\E"}{type} =~ /KEY/)
 		{
 			$parts{"\L$row->[0]\E"}{type} = 'HASH';
 			my $sql = "SHOW INDEX FROM `$row->[0]`";
