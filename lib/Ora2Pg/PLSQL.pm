@@ -868,6 +868,9 @@ sub plsql_to_plpgsql
 	# Simply remove this as not supported
 	$str =~ s/\bDEFAULT\s+NULL\b//igs;
 
+	# Fix some reserved keyword that could be used in a query
+	$str =~ s/(\s+)(month|year)([\s,])/$1"$2"$3/igs;
+
 	# Replace DEFAULT empty_blob() and empty_clob()
 	my $empty = "''";
 	$empty = 'NULL' if ($class->{empty_lob_null});
@@ -966,7 +969,8 @@ sub plsql_to_plpgsql
 	while ($str =~ s/\b(UPDATE\s+((?!WHERE|;).)*)\s+IS NULL/$1 = NULL/is) {};
 
 	# Rewrite all IF ... IS NULL with coalesce because for Oracle empty and NULL is the same
-	if ($class->{null_equal_empty}) {
+	if ($class->{null_equal_empty})
+	{
 		# Form: column IS NULL
 		$str =~ s/([a-z0-9_\."]+)\s*IS\s+NULL/coalesce($1::text, '') = ''/igs;
 		my $i = 0;
@@ -2784,7 +2788,8 @@ sub mysql_to_plpgsql
 	$str =~ s/\bCURRENT_TIMESTAMP\s*\(\)/CURRENT_TIMESTAMP/igs;
 
 	# Replace EXTRACT() with unit not supported by PostgreSQL
-	if ($class->{mysql_internal_extract_format}) {
+	if ($class->{mysql_internal_extract_format})
+	{
 		$str =~ s/\bEXTRACT\(\s*YEAR_MONTH\s+FROM\s+([^\(\)]+)\s*\)/to_char(($1)::timestamp, 'YYYYMM')::integer/igs;
 		$str =~ s/\bEXTRACT\(\s*DAY_HOUR\s+FROM\s+([^\(\)]+)\s*\)/to_char(($1)::timestamp, 'DDHH24')::integer/igs;
 		$str =~ s/\bEXTRACT\(\s*DAY_MINUTE\s+FROM\s+([^\(\)]+)\s*\)/to_char(($1)::timestamp, 'DDHH24MI')::integer/igs;
