@@ -9523,6 +9523,9 @@ sub _dump_fdw_table
 	}
 	else
 	{
+		if ($search_path) {
+			$local_dbh->do($search_path) or $self->logit("FATAL: " . $local_dbh->errstr . "\n", 0, 1);
+		}
 		$self->logit("Exporting foreign table data for $table using query: $s_out\n", 1);
 		$local_dbh->do($s_out) or $self->logit("ERROR: " . $local_dbh->errstr . ", SQL: $s_out\n", 0);
 	}
