@@ -1782,7 +1782,7 @@ sub replace_oracle_function
 			if ($class->{type} ne 'TABLE') {
 				$str =~ s/\bTO_NUMBER\s*\(\s*([^,\)]+)\s*\)\s?/($1)\:\:$cast /is;
 			} else {
-				$str =~ s/\bTO_NUMBER\s*\(\s*([^,\)]+)\s*\)\s?/($1\:\:$cast) /is;
+				$str =~ s/\bTO_NUMBER\s*\(\s*([^,\)]+)\s*\)\s?/(nullif($1, '')\:\:$cast) /is;
 			}
 		}
 		else

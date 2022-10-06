@@ -3129,14 +3129,16 @@ sub read_schema_from_file
 			$idx_def =~ s/STORAGE\s*\([^\)]+\)\s*//is;
 			$idx_def =~ s/COMPRESS(\s+\d+)?\s*//is;
 			# look for storage information
-			if ($idx_def =~ s/TABLESPACE\s*([^\s]+)\s*//is) {
+			if ($idx_def =~ s/TABLESPACE\s*([^\s]+)\s*//is)
+			{
 				$self->{tables}{$tb_name}{idx_tbsp}{$idx_name} = $1;
 				$self->{tables}{$tb_name}{idx_tbsp}{$idx_name} =~ s/"//gs;
 			}
 			if ($idx_def =~ s/ONLINE\s*//is) {
 				$self->{tables}{$tb_name}{concurrently}{$idx_name} = 1;
 			}
-			if ($idx_def =~ s/INDEXTYPE\s+IS\s+.*SPATIAL_INDEX//is) {
+			if ($idx_def =~ s/INDEXTYPE\s+IS\s+.*SPATIAL_INDEX//is)
+			{
 				$self->{tables}{$tb_name}{spatial}{$idx_name} = 1;
 				$self->{tables}{$tb_name}{idx_type}{$idx_name}{type} = 'SPATIAL INDEX';
 				$self->{tables}{$tb_name}{idx_type}{$idx_name}{type_name} = 'SPATIAL_INDEX';
@@ -3147,20 +3149,24 @@ sub read_schema_from_file
 			if ($idx_def =~ s/sdo_indx_dims=(\d)//is) {
 				$self->{tables}{$tb_name}{idx_type}{$idx_name}{type_dims} = $1;
 			}
-			$idx_def =~ s/\)[^\)]*$//s;
-			if ($is_unique eq 'BITMAP') {
+			if ($is_unique eq 'BITMAP')
+			{
 				$is_unique = '';
 				$self->{tables}{$tb_name}{idx_type}{$idx_name}{type_name} = 'BITMAP';
 			}
 			$self->{tables}{$tb_name}{uniqueness}{$idx_name} = $is_unique || '';
 			$idx_def =~ s/SYS_EXTRACT_UTC\s*\(([^\)]+)\)/$1/isg;
+			if ($self->{plsql_pgsql}) {
+				$idx_def = Ora2Pg::PLSQL::convert_plsql_code($self, $idx_def);
+			}
 			push(@{$self->{tables}{$tb_name}{indexes}{$idx_name}}, $idx_def);
 			$self->{tables}{$tb_name}{idx_type}{$idx_name}{type} = 'NORMAL';
 			if ($idx_def =~ /\(/s) {
 				$self->{tables}{$tb_name}{idx_type}{$idx_name}{type} = 'FUNCTION-BASED';
 			}
 
-			if (!exists $self->{tables}{$tb_name}{table_info}{type}) {
+			if (!exists $self->{tables}{$tb_name}{table_info}{type})
+			{
 				$self->{tables}{$tb_name}{table_info}{type} = 'TABLE';
 				$self->{tables}{$tb_name}{table_info}{num_rows} = 0;
 				$tid++;
