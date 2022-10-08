@@ -43,7 +43,7 @@ use Encode;
 #set locale to LC_NUMERIC C
 setlocale(LC_NUMERIC,"C");
 
-$VERSION = '23.1';
+$VERSION = '23.2';
 $PSQL = $ENV{PLSQL} || 'psql';
 
 $| = 1;
