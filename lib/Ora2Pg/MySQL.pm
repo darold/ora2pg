@@ -1239,7 +1239,7 @@ sub _sql_type
 				# This is an integer
 				if (!$scale)
 				{
-					if ($type =~ /UNSIGNED/&& $precision)
+					if ($type =~ /UNSIGNED/ && $precision)
 					{
 						# Replace MySQL type UNSIGNED in cast
 						$type =~ s/TINYINT UNSIGNED/smallint/igs;
@@ -1251,7 +1251,11 @@ sub _sql_type
 					}
 					elsif ($precision)
 					{
-						if ($self->{pg_integer_type})
+						if ($type =~ /(REAL|DOUBLE|FLOAT)/i)
+						{
+							return $self->{data_type}{$type};
+						}
+						elsif ($self->{pg_integer_type})
 						{
 							if ($precision < 5) {
 								return 'smallint';

@@ -7473,7 +7473,7 @@ sub export_table
 				push(@collist, $self->{tables}{$table}{column_info}{$k}[0]);
 			}
 
-			# Extract column information following the Oracle position order
+			# Extract column information following the position order
 			foreach my $k (sort { 
 					if (!$self->{reordering_columns}) {
 						$self->{tables}{$table}{column_info}{$a}[11] <=> $self->{tables}{$table}{column_info}{$b}[11];
