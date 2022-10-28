@@ -1295,7 +1295,12 @@ sub _init
 	if (not defined $self->{default_srid}) {
 		$self->{default_srid} = 4326;
 	}
-	
+	# Default function to use for ST_Geometry
+	$self->{st_srid_function} ||= 'ST_SRID';
+	$self->{st_dimension_function} ||= 'ST_DIMENSION';
+	$self->{st_asbinary_function} ||= 'ST_AsBinary';
+	$self->{st_astext_function} ||= 'ST_AsText';
+
 	# Force Ora2Pg to extract spatial object in binary format
 	$self->{geometry_extract_type} = uc($self->{geometry_extract_type});
 	if (!$self->{geometry_extract_type} || !grep(/^$self->{geometry_extract_type}$/, 'WKT','WKB','INTERNAL')) {
@@ -10643,9 +10648,9 @@ sub _howto_get_data
 			elsif ( !$self->{is_mysql} && $src_type->[$k] =~ /^(ST_|STGEOM_)/i)
 			{
 				if ($self->{geometry_extract_type} eq 'WKB') {
-					$str .= "CASE WHEN $name->[$k] IS NOT NULL THEN SDE.ST_ASBINARY($name->[$k]) ELSE NULL END,";
+					$str .= "CASE WHEN $name->[$k] IS NOT NULL THEN $self->{st_asbinary_function}($name->[$k]) ELSE NULL END,";
 				} else {
-					$str .= "CASE WHEN $name->[$k] IS NOT NULL THEN SDE.ST_ASTEXT($name->[$k]) ELSE NULL END,";
+					$str .= "CASE WHEN $name->[$k] IS NOT NULL THEN $self->{st_astext_function}($name->[$k]) ELSE NULL END,";
 				}
 			}
 			# Oracle geometries
@@ -10694,9 +10699,9 @@ sub _howto_get_data
 				else
 				{
 					if ($self->{geometry_extract_type} eq 'WKB') {
-						$str .= "CASE WHEN $name->[$k] IS NOT NULL THEN CONCAT('SRID=',ST_Srid($name->[$k]),';', ST_AsBinary($name->[$k]->[0])) ELSE NULL END,";
+						$str .= "CASE WHEN $name->[$k] IS NOT NULL THEN CONCAT('SRID=',$self->{st_srid_function}($name->[$k]),';', $self->{st_asbinary_function}($name->[$k]->[0])) ELSE NULL END,";
 					} else {
-						$str .= "CASE WHEN $name->[$k] IS NOT NULL THEN CONCAT('SRID=',ST_Srid($name->[$k]),';', ST_AsText($name->[$k]->[0])) ELSE NULL END,";
+						$str .= "CASE WHEN $name->[$k] IS NOT NULL THEN CONCAT('SRID=',$self->{st_srid_function}($name->[$k]),';', $self->{st_astext_function}($name->[$k]->[0])) ELSE NULL END,";
 					}
 				}
 			}

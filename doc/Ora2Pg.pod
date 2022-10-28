@@ -1641,6 +1641,29 @@ before use. Default spatial object extraction type is INTERNAL.
 Use this directive to add a specific schema to the search path to look
 for PostGis functions.
 
+=item ST_SRID_FUNCTION
+
+Oracle function to use to extract the srid from ST_Geometry meta information.
+Default: ST_SRID, for example it should be set to sde.st_srid for ArcSDE.
+
+=item ST_DIMENSION_FUNCTION
+
+Oracle function to use to extract the dimension from ST_Geometry meta
+information. Default: ST_DIMENSION, for example it should be set to
+sde.st_dimention for ArcSDE.
+
+=item ST_ASBINARY_FUNCTION
+
+Oracle function to used to convert an ST_Geometry value into WKB format.
+Default: ST_ASBINARY, for example it should be set to sde.st_asbinary for
+ArcSDE.
+
+=item ST_ASTEXT_FUNCTION
+
+Oracle function to used to convert an ST_Geometry value into WKT format.
+Default: ST_ASTEXT, for example it should be set to sde.st_astext for
+ArcSDE.
+
 =back
 
 =head2 PostgreSQL Import

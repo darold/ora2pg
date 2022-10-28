@@ -1356,6 +1356,18 @@ DEFAULT_SRID		4326
 # before use.
 GEOMETRY_EXTRACT_TYPE	INTERNAL
 
+# Oracle function to use to extract the srid from ST_Geometry meta information
+ST_SRID_FUNCTION	ST_SRID
+
+# Oracle function to use to extract the dimension from ST_Geometry meta information
+ST_DIMENSION_FUNCTION	ST_DIMENSION
+
+# Oracle function to used to convert an ST_Geometry value into WKB format
+ST_ASBINARY_FUNCTION	ST_ASBINARY
+
+# Oracle function to used to convert an ST_Geometry value into WKT format
+ST_ASTEXT_FUNCTION	ST_ASTEXT
+
 
 #------------------------------------------------------------------------------
 # FDW SECTION (Control Foreign Data Wrapper export)
