@@ -1102,6 +1102,9 @@ sub plsql_to_plpgsql
 	# SQL%ROWCOUNT with concatenated string
 	$str =~ s/(\s+)(GET DIAGNOSTICS )([^\s]+)( = ROW_COUNT)(\s+\|\|[^;]+);/$1$2$3$4;$1$3 := $3 $5;/;
 
+	# Replace call of ROWNUM in the target list with row_number() over ()
+	$str =~ s/(PERFORM|SELECT|,|\()\s*ROWNUM\b((?:.*?)\s+FROM\s+)/$1row_number() over ()$2/igs;
+
 	# Sometime variable used in FOR ... IN SELECT loop is not declared
 	# Append its RECORD declaration in the DECLARE section.
 	my $tmp_code = $str;
