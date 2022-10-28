@@ -13594,7 +13594,7 @@ sub _convert_function
 	my $create_type = '';
 	while ($fct_detail{declare} =~ s/\s+TYPE\s+([^\s]+)\s+IS\s+RECORD\s*\(([^;]+)\)\s*;//is)
 	{
-		$create_type .= "DROP TYPE  $self->{pg_supports_ifexists} $1;\n" if ($self->{drop_if_exists});
+		$create_type .= "DROP TYPE  $self->{pg_supports_ifexists} $1;\n";
 		$create_type .= "CREATE TYPE $1 AS ($2);\n";
 	}
 	while ($fct_detail{declare} =~ s/\s+TYPE\s+([^\s]+)\s+(AS|IS)\s*(VARRAY|VARYING ARRAY)\s*\((\d+)\)\s*OF\s*([^;]+);//is) {
@@ -13611,7 +13611,7 @@ sub _convert_function
 		$internal_name  =~ s/^[^\.]+\.//;
 		my $declar = Ora2Pg::PLSQL::replace_sql_type($tbname, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type}, $self->{varchar_to_text}, %{$self->{data_type}});
 		$declar =~ s/[\n\r]+//s;
-		$create_type .= "DROP TYPE $self->{pg_supports_ifexists} $1;\n" if ($self->{drop_if_exists});
+		$create_type .= "DROP TYPE $self->{pg_supports_ifexists} $1;\n";
 		$create_type .= "CREATE TYPE $type_name AS ($internal_name $declar\[$size\]);\n";
 	}
 	
