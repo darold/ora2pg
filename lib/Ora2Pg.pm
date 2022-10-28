@@ -7750,6 +7750,10 @@ sub export_table
 											$f->[4] = "'$f->[4]'";
 										}
 									}
+									elsif ($type =~ /(char|text)/i && $f->[4] !~ /^'/)
+									{
+										$f->[4] = "'$f->[4]'";
+									}
 								}
 								$f->[4] = 'NULL' if ($f->[4] eq "''" && $type =~ /int|double|numeric/i);
 								$sql_output .= " DEFAULT $f->[4]";
