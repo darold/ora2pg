@@ -10711,7 +10711,7 @@ sub _howto_get_data
 				if ($self->{db_version} < '5.7.6') {
 					$str .= "CASE WHEN $name->[$k] IS NOT NULL THEN AsText($name->[$k]) ELSE NULL END,";
 				} else {
-					$str .= "CASE WHEN $name->[$k] IS NOT NULL THEN ST_AsText($name->[$k]) ELSE NULL END,";
+					$str .= "CASE WHEN $name->[$k] IS NOT NULL THEN $self->{st_astext_function}($name->[$k]) ELSE NULL END,";
 				}
 			}
 			elsif ( !$self->{is_mysql} && (($src_type->[$k] =~ /clob/i) || ($src_type->[$k] =~ /blob/i)) )
