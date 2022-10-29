@@ -1108,7 +1108,8 @@ JOBS		1
 # Multiprocess support. This directive should defined the number of parallel
 # connection to Oracle when extracting data. The limit is the number of cores
 # on your machine. This is useful if Oracle is the bottleneck. Take care that
-# this directive can only be used if there is a column defined in DEFINED_PK.
+# this directive can only be used if there is a primary / unique key defined
+# on a numeric column or that a column is defined in DEFINED_PK.
 ORACLE_COPIES	1
 
 # Multiprocess support. This directive should defined the number of tables

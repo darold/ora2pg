@@ -133,7 +133,7 @@
 .\" ========================================================================
 .\"
 .IX Title "ORA2PG 1"
-.TH ORA2PG 1 "2022-10-28" "perl v5.30.0" "User Contributed Perl Documentation"
+.TH ORA2PG 1 "2022-10-29" "perl v5.30.0" "User Contributed Perl Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -1083,7 +1083,8 @@ of cores given as value to \s-1ORACLE_COPIES\s0 as follow:
 .Ve
 .Sp
 where \s-1COLUMN\s0 is a technical key like a primary or unique key where split
-will be based and the current core used by the query (\s-1CUR_PROC\s0).
+will be based and the current core used by the query (\s-1CUR_PROC\s0). You can
+also force the column name to use using the \s-1DEFINED_PK\s0 configuration directive.
 .Sp
 Doesn't work under Windows Operating System, it is simply disabled.
 .IP "\s-1DEFINED_PK\s0" 4
@@ -2961,8 +2962,9 @@ to extract data from the Oracle with the \-J command line option as follow:
 \&        ora2pg \-c ora2pg.conf \-t KETTLE \-J 4 \-j 12 \-a EMPLOYEES \-o load_mydata.sh
 .Ve
 .PP
-This is only possible if you have defined the technical key to used to split
-the query between cores in the \s-1DEFINED_PKEY\s0 configuration directive. For example:
+This is only possible if there is a unique key defined on a numeric column or
+that you have defined the technical key to used to split the query between cores
+in the \s-1DEFINED_PKEY\s0 configuration directive. For example:
 .PP
 .Vb 1
 \&        DEFINED_PK      EMPLOYEES:employee_id

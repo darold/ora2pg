@@ -920,7 +920,8 @@ CONFIGURATION
 
         where COLUMN is a technical key like a primary or unique key where
         split will be based and the current core used by the query
-        (CUR_PROC).
+        (CUR_PROC). You can also force the column name to use using the
+        DEFINED_PK configuration directive.
 
         Doesn't work under Windows Operating System, it is simply disabled.
 
@@ -2764,9 +2765,10 @@ CONFIGURATION
 
             ora2pg -c ora2pg.conf -t KETTLE -J 4 -j 12 -a EMPLOYEES -o load_mydata.sh
 
-    This is only possible if you have defined the technical key to used to
-    split the query between cores in the DEFINED_PKEY configuration
-    directive. For example:
+    This is only possible if there is a unique key defined on a numeric
+    column or that you have defined the technical key to used to split the
+    query between cores in the DEFINED_PKEY configuration directive. For
+    example:
 
             DEFINED_PK      EMPLOYEES:employee_id
 
