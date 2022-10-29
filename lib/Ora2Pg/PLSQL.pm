@@ -2851,9 +2851,10 @@ sub mysql_to_plpgsql
 	$str =~ s/\bTRUNCATE\(\s*([^,]+)\s*,\s*([^\(\)]+)\s*\)/trunc\($1, $2\)/igs;
 	$str =~ s/\bUSER\(\s*\)/CURRENT_USER/igs;
 
+
 	# Date/time related function
 	$str =~ s/\b(CURDATE|CURRENT_DATE)\(\s*\)/CURRENT_DATE/igs;
-	$str =~ s/\b(CURTIME|CURRENT_TIME)\(\s*\)/LOCALTIME(0)/igs;
+	$str =~ s/\b(CURTIME|CURRENT_TIME)\(\s*\)/CURRENT_TIMESTAMP::timestamp(0) without time zone/igs;
 	$str =~ s/\bCURRENT_TIMESTAMP\(\s*\)/CURRENT_TIMESTAMP::timestamp(0) without time zone/igs;
 	$str =~ s/\b(LOCALTIMESTAMP|LOCALTIME)\(\s*\)/CURRENT_TIMESTAMP::timestamp(0) without time zone/igs;
 	$str =~ s/\b(LOCALTIMESTAMP|LOCALTIME)\b/CURRENT_TIMESTAMP::timestamp(0) without time zone/igs;
@@ -2899,7 +2900,7 @@ sub mysql_to_plpgsql
 	$str =~ s/\bSUBTIME\(\s*([^,]+)\s*,\s*([^\(\)]+)\s*\)/($1)::timestamp - ($2)::interval/igs;
 	$str =~ s/\bTIME(\([^\(\)]+\))/($1)::time/igs;
 	$str =~ s/\bTIMEDIFF\(\s*([^,]+)\s*,\s*([^\(\)]+)\s*\)/($1)::timestamp - ($2)::timestamp/igs;
-	$str =~ s/\bTIMESTAMP\(\s*([^\(\)]+)\s*\)/($1)::timestamp/igs;
+	#$str =~ s/\bTIMESTAMP\(\s*([^\(\)]+)\s*\)/($1)::timestamp/igs;
 	$str =~ s/\bTIMESTAMP\(\s*([^,]+)\s*,\s*([^\(\)]+)\s*\)/($1)::timestamp + ($2)::time/igs;
 	$str =~ s/\bTIMESTAMPADD\(\s*([^,]+)\s*,\s*([^,]+)\s*,\s*([^\(\)]+)\s*\)/($3)::timestamp + ($1 * interval '1 $2')/igs;
 	$str =~ s/\bTIMESTAMPDIFF\(\s*YEAR\s*,\s*([^,]+)\s*,\s*([^\(\),]+)\s*\)/extract(year from ($2)::timestamp) - extract(year from ($1)::timestamp)/igs;
