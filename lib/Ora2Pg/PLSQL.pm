@@ -3571,6 +3571,11 @@ sub replace_connect_by
 
 	return $str if ($str !~ /\bCONNECT\s+BY\b/is);
 
+	my $into_clause = '';
+	if ($str =~ s/\s+INTO\s+(.*?)(\s+FROM\s+)/$2/is) {
+		$into_clause = " INTO $1";
+	}
+
 	my $final_query = "WITH RECURSIVE cte AS (\n";
 
 	# Remove NOCYCLE, not supported at now
@@ -3824,7 +3829,7 @@ sub replace_connect_by
 		$order_by =~ s/^, //s;
 		$order_by = " ORDER BY $order_by";
 	}
-	$final_query .= "\n) SELECT * FROM cte$where_clause$union$group_by$order_by";
+	$final_query .= "\n) SELECT *$into_clause FROM cte$where_clause$union$group_by$order_by";
 
 	return $final_query;
 }
