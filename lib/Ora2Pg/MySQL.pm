@@ -1390,13 +1390,13 @@ sub replace_sql_type
 	# Replace datatype even without precision
 	my %recover_type = ();
 	my $i = 0;
-	foreach my $type (sort { length($b) <=> length($a) } keys %data_type)
+	foreach my $type (sort { length($b) <=> length($a) } keys %{$self->{data_type}})
 	{
 		# Keep enum as declared, we are not in table definition
 		next if (uc($type) eq 'ENUM');
 		while ($str =~ s/\b$type\b/%%RECOVER_TYPE$i%%/is)
 		{
-			$recover_type{$i} = $data_type{$type};
+			$recover_type{$i} = $self->{data_type}{$type};
 			$i++;
 		}
 	}

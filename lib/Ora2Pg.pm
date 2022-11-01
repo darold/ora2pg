@@ -2447,7 +2447,7 @@ sub _tables
 		}
 		$count_table++;
 
-		if (grep(/^$t$/, @done)) {
+		if (grep(/^\Q$t\E$/, @done)) {
 			$self->logit("Duplicate entry found: $t\n", 1);
 		} else {
 			push(@done, $t);
@@ -5158,9 +5158,7 @@ sub export_dblink
 		my $srv_name = $self->quote_object_name($db);
 		$srv_name =~ s/^.*\.//;
 		$sql_output .= "CREATE SERVER $srv_name";
-		if (!$self->{is_mysql}) {
-			$sql_output .= " FOREIGN DATA WRAPPER oracle_fdw OPTIONS (dbserver '$self->{dblink}{$db}{host}');\n";
-		} else {
+		if ($self->{is_mysql}) {
 			$sql_output .= " FOREIGN DATA WRAPPER mysql_fdw OPTIONS (host '$self->{dblink}{$db}{host}'";
 			$sql_output .= ", port '$self->{dblink}{$db}{port}'" if ($self->{dblink}{$db}{port});
 			$sql_output .= ");\n";
@@ -11613,6 +11611,8 @@ sub _get_directory
 
 	if ($self->{is_mysql}) {
 		return Ora2Pg::MySQL::_get_directory($self);
+	} elsif ($self->{is_mssql}) {
+		return Ora2Pg::MSSQL::_get_directory($self);
 	} else {
 		return Ora2Pg::Oracle::_get_directory($self);
 	}
@@ -16461,7 +16461,7 @@ sub _show_infos
 		foreach my $t (@ordered_tables)
 		{
 			# Jump to desired extraction
-			if (grep(/^$t$/, @done))
+			if (grep(/^\Q$t\E$/, @done))
 			{
 				$self->logit("Duplicate entry found: $t\n", 1);
 				next;

@@ -98,7 +98,7 @@ sub _db_connection
 	# Force execution of initial command
 	$self->_ora_initial_command($dbh);
 
-	# Instruct Ora2Pg that the database engine is mysql
+	# Instruct Ora2Pg that the database engine is mssql
 	$self->{is_mssql} = 1;
 
 	return $dbh;
@@ -1052,7 +1052,7 @@ sub replace_mssql_variables
 {
 	my ($self, $code, $declare) = @_;
 
-	# Look for mysql global variables and add them to the custom variable list
+	# Look for mssql global variables and add them to the custom variable list
 	while ($code =~ s/\b(?:SET\s+)?\@\@(?:SESSION\.)?([^\s:=]+)\s*:=\s*([^;]+);/PERFORM set_config('$1', $2, false);/is) {
 		my $n = $1;
 		my $v = $2;
@@ -1263,13 +1263,13 @@ sub replace_sql_type
 	$str =~ s/([A-Z])ORA2PG_COMMENT/$1 ORA2PG_COMMENT/igs;
 
 	# Replace type with precision
-	my $mysqltype_regex = '';
+	my $mssqltype_regex = '';
 	foreach (keys %{$self->{data_type}}) {
-		$mysqltype_regex .= quotemeta($_) . '|';
+		$mssqltype_regex .= quotemeta($_) . '|';
 	}
-	$mysqltype_regex =~ s/\|$//;
+	$mssqltype_regex =~ s/\|$//;
 
-	while ($str =~ /(.*)\b($mysqltype_regex)\s*\(([^\)]+)\)/i)
+	while ($str =~ /(.*)\b($mssqltype_regex)\s*\(([^\)]+)\)/i)
 	{
 		my $backstr = $1;
 		my $type = uc($2);
@@ -1279,7 +1279,7 @@ sub replace_sql_type
 			next;
 		}
 		if ($backstr =~ /_$/) {
-		    $str =~ s/\b($mysqltype_regex)\s*\(([^\)]+)\)/$1\%\|$2\%\|\%/is;
+		    $str =~ s/\b($mssqltype_regex)\s*\(([^\)]+)\)/$1\%\|$2\%\|\%/is;
 		    next;
 		}
 
@@ -1371,22 +1371,38 @@ sub _get_job
 	my($self) = @_;
 
 	# Don't work with Azure
-	return if ($self->{db_version} =~ /Microsoft SQL Azure/);
+	#return if ($self->{db_version} =~ /Microsoft SQL Azure/);
+	return;
 
 	# Retrieve all database job from user_jobs table
-	my $str = "SELECT EVENT_NAME,EVENT_DEFINITION,EXECUTE_AT FROM INFORMATION_SCHEMA.EVENTS WHERE STATUS = 'ENABLED'";
-	if ($self->{schema}) {
-		$str .= " AND EVENT_SCHEMA = '$self->{schema}'";
-	}
-	$str .= $self->limit_to_objects('JOB', 'EVENT_NAME');
-	$str .= " ORDER BY EVENT_NAME";
+	my $str = qq{SELECT
+     job.job_id,
+     notify_level_email,
+     name,
+     enabled,
+     description,
+     step_name,
+     command,
+     server,
+     database_name
+FROM
+    msdb.dbo.sysjobs job
+INNER JOIN 
+    msdb.dbo.sysjobsteps steps        
+ON
+    job.job_id = steps.job_id
+WHERE
+    job.enabled = 1 AND database_name = $self->{database}
+};
+	$str .= $self->limit_to_objects('JOB', 'NAME');
+	$str .= " ORDER BY NAME";
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
 	my %data = ();
 	while (my $row = $sth->fetch) {
-		$data{$row->[0]}{what} = $row->[1];
-		$data{$row->[0]}{interval} = $row->[2];
+		$data{$row->[0]}{what} = $row->[6];
+		$data{$row->[0]}{interval} = $row->[0];
 	}
 
 	return %data;
@@ -2413,7 +2429,7 @@ LEFT OUTER JOIN sys.schemas s ON t.schema_id = s.schema_id
 
 =head2 _get_materialized_views
 
-This function implements a mysql-native materialized views information.
+This function implements a mssql-native materialized views information.
 
 Returns a hash of view names with the SQL queries they are based on.
 
