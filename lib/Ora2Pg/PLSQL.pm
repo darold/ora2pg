@@ -31,7 +31,7 @@ use POSIX qw(locale_h);
 setlocale(LC_NUMERIC,"C");
 
 
-$VERSION = '23.1';
+$VERSION = '23.2';
 
 #----------------------------------------------------
 # Cost scores used when converting PLSQL to PLPGSQL
@@ -394,11 +394,11 @@ sub convert_plsql_code
 		$str = replace_decode($str);
 
 		# Rewrite numeric operation with ADD_MONTHS(date, 1) to use interval
-		$str =~ s/\b(ADD_MONTHS\s*\([^,]+,\s*\d+\s*\))\s*([+\-\*\/])\s*(\d+)(\s*[^+\-\*\/])/$1 $2 '$3 days'::interval$4/sgi;
+		$str =~ s/\b(ADD_MONTHS\s*\([^,]+,\s*\d+\s*\))\s*([+\-\*\/])\s*(\d+)(\s*[^\-\*\/]|$)/$1 $2 '$3 days'::interval$4/sgi;
 		# Rewrite numeric operation with TRUNC() to use interval
-		$str =~ s/\b(TRUNC\s*\(\s*(?:[^\(\)]+)\s*\))\s*([+\-\*\/])\s*(\d+)(\s*[^+\-\*\/])/$1 $2 '$3 days'::interval$4/sgi;
+		$str =~ s/\b(TRUNC\s*\(\s*(?:[^\(\)]+)\s*\))\s*([+\-\*\/])\s*(\d+)(\s*[^+\-\*\/]|$)/$1 $2 '$3 days'::interval$4/sgi;
 		# Rewrite numeric operation with LAST_DAY() to use interval
-		$str =~ s/\b(LAST_DAY\s*\(\s*(?:[^\(\)]+)\s*\))\s*([+\-\*\/])\s*(\d+)(\s*[^+\-\*\/])/$1 $2 '$3 days'::interval$4/sgi;
+		$str =~ s/\b(LAST_DAY\s*\(\s*(?:[^\(\)]+)\s*\))\s*([+\-\*\/])\s*(\d+)(\s*[^+\-\*\/]|$)/$1 $2 '$3 days'::interval$4/sgi;
 	}
 
 	# Replace array syntax arr(i).x into arr[i].x
@@ -779,7 +779,7 @@ sub plsql_to_plpgsql
 	$str =~ s/\bEXEC\s+:([^\s:]+)\s*:=/SELECT INTO $2/igs;
 
 	# Replace simple EXEC function call by SELECT function
-	$str =~ s/\bEXEC(\s+)/SELECT$1/igs;
+	$str =~ s/\bEXEC(\s+)(?:.*?)(?!FROM\b|WHERE\b)/SELECT$1/igs;
 
 	# Remove leading : on Oracle variable taking care of regex character class
 	$str =~ s/([^\w:]+):(\d+)/$1\$$2/igs;
@@ -867,6 +867,9 @@ sub plsql_to_plpgsql
 
 	# Simply remove this as not supported
 	$str =~ s/\bDEFAULT\s+NULL\b//igs;
+
+	# Fix some reserved keyword that could be used in a query
+	$str =~ s/(\s+)(month|year)([\s,])/$1"$2"$3/igs;
 
 	# Replace DEFAULT empty_blob() and empty_clob()
 	my $empty = "''";
@@ -966,7 +969,8 @@ sub plsql_to_plpgsql
 	while ($str =~ s/\b(UPDATE\s+((?!WHERE|;).)*)\s+IS NULL/$1 = NULL/is) {};
 
 	# Rewrite all IF ... IS NULL with coalesce because for Oracle empty and NULL is the same
-	if ($class->{null_equal_empty}) {
+	if ($class->{null_equal_empty})
+	{
 		# Form: column IS NULL
 		$str =~ s/([a-z0-9_\."]+)\s*IS\s+NULL/coalesce($1::text, '') = ''/igs;
 		my $i = 0;
@@ -1097,6 +1101,9 @@ sub plsql_to_plpgsql
 	}
 	# SQL%ROWCOUNT with concatenated string
 	$str =~ s/(\s+)(GET DIAGNOSTICS )([^\s]+)( = ROW_COUNT)(\s+\|\|[^;]+);/$1$2$3$4;$1$3 := $3 $5;/;
+
+	# Replace call of ROWNUM in the target list with row_number() over ()
+	$str =~ s/(PERFORM|SELECT|,|\()\s*ROWNUM\b((?:.*?)\s+FROM\s+)/$1row_number() over ()$2/igs;
 
 	# Sometime variable used in FOR ... IN SELECT loop is not declared
 	# Append its RECORD declaration in the DECLARE section.
@@ -1782,7 +1789,7 @@ sub replace_oracle_function
 			if ($class->{type} ne 'TABLE') {
 				$str =~ s/\bTO_NUMBER\s*\(\s*([^,\)]+)\s*\)\s?/($1)\:\:$cast /is;
 			} else {
-				$str =~ s/\bTO_NUMBER\s*\(\s*([^,\)]+)\s*\)\s?/($1\:\:$cast) /is;
+				$str =~ s/\bTO_NUMBER\s*\(\s*([^,\)]+)\s*\)\s?/(nullif($1, '')\:\:$cast) /is;
 			}
 		}
 		else
@@ -2238,8 +2245,8 @@ sub replace_sql_type
 	# Replace MySQL type UNSIGNED in cast
 	$str =~ s/\bTINYINT\s+UNSIGNED\b/smallint/igs;
 	$str =~ s/\bSMALLINT\s+UNSIGNED\b/integer/igs;
-	$str =~ s/\bMEDIUMINT_s+UNSIGNED\b/integer/igs;
-	$str =~ s/\bBIGINT\s+UNSIGNED\b/bigint/igs;
+	$str =~ s/\bMEDIUMINT\s+UNSIGNED\b/integer/igs;
+	$str =~ s/\bBIGINT\s+UNSIGNED\b/numeric/igs;
 	$str =~ s/\bINT\s+UNSIGNED\b/bigint/igs;
 
 	# Remove precision for RAW|BLOB as type modifier is not allowed for type "bytea"
@@ -2727,8 +2734,8 @@ sub mysql_to_plpgsql
 	# Fix call to unsigned
 	$str =~ s/\bTINYINT\s+UNSIGNED\b/smallint/igs;
 	$str =~ s/\bSMALLINT\s+UNSIGNED\b/integer/igs;
-	$str =~ s/\bMEDIUMINT_s+UNSIGNED\b/integer/igs;
-	$str =~ s/\bBIGINT\s+UNSIGNED\b/bigint/igs;
+	$str =~ s/\bMEDIUMINT\s+UNSIGNED\b/integer/igs;
+	$str =~ s/\bBIGINT\s+UNSIGNED\b/numeric/igs;
 	$str =~ s/\bINT\s+UNSIGNED\b/bigint/igs;
 
 	# Drop temporary doesn't exist in PostgreSQL
@@ -2784,7 +2791,8 @@ sub mysql_to_plpgsql
 	$str =~ s/\bCURRENT_TIMESTAMP\s*\(\)/CURRENT_TIMESTAMP/igs;
 
 	# Replace EXTRACT() with unit not supported by PostgreSQL
-	if ($class->{mysql_internal_extract_format}) {
+	if ($class->{mysql_internal_extract_format})
+	{
 		$str =~ s/\bEXTRACT\(\s*YEAR_MONTH\s+FROM\s+([^\(\)]+)\s*\)/to_char(($1)::timestamp, 'YYYYMM')::integer/igs;
 		$str =~ s/\bEXTRACT\(\s*DAY_HOUR\s+FROM\s+([^\(\)]+)\s*\)/to_char(($1)::timestamp, 'DDHH24')::integer/igs;
 		$str =~ s/\bEXTRACT\(\s*DAY_MINUTE\s+FROM\s+([^\(\)]+)\s*\)/to_char(($1)::timestamp, 'DDHH24MI')::integer/igs;
@@ -2843,9 +2851,10 @@ sub mysql_to_plpgsql
 	$str =~ s/\bTRUNCATE\(\s*([^,]+)\s*,\s*([^\(\)]+)\s*\)/trunc\($1, $2\)/igs;
 	$str =~ s/\bUSER\(\s*\)/CURRENT_USER/igs;
 
+
 	# Date/time related function
 	$str =~ s/\b(CURDATE|CURRENT_DATE)\(\s*\)/CURRENT_DATE/igs;
-	$str =~ s/\b(CURTIME|CURRENT_TIME)\(\s*\)/LOCALTIME(0)/igs;
+	$str =~ s/\b(CURTIME|CURRENT_TIME)\(\s*\)/CURRENT_TIMESTAMP::timestamp(0) without time zone/igs;
 	$str =~ s/\bCURRENT_TIMESTAMP\(\s*\)/CURRENT_TIMESTAMP::timestamp(0) without time zone/igs;
 	$str =~ s/\b(LOCALTIMESTAMP|LOCALTIME)\(\s*\)/CURRENT_TIMESTAMP::timestamp(0) without time zone/igs;
 	$str =~ s/\b(LOCALTIMESTAMP|LOCALTIME)\b/CURRENT_TIMESTAMP::timestamp(0) without time zone/igs;
@@ -2891,7 +2900,7 @@ sub mysql_to_plpgsql
 	$str =~ s/\bSUBTIME\(\s*([^,]+)\s*,\s*([^\(\)]+)\s*\)/($1)::timestamp - ($2)::interval/igs;
 	$str =~ s/\bTIME(\([^\(\)]+\))/($1)::time/igs;
 	$str =~ s/\bTIMEDIFF\(\s*([^,]+)\s*,\s*([^\(\)]+)\s*\)/($1)::timestamp - ($2)::timestamp/igs;
-	$str =~ s/\bTIMESTAMP\(\s*([^\(\)]+)\s*\)/($1)::timestamp/igs;
+	#$str =~ s/\bTIMESTAMP\(\s*([^\(\)]+)\s*\)/($1)::timestamp/igs;
 	$str =~ s/\bTIMESTAMP\(\s*([^,]+)\s*,\s*([^\(\)]+)\s*\)/($1)::timestamp + ($2)::time/igs;
 	$str =~ s/\bTIMESTAMPADD\(\s*([^,]+)\s*,\s*([^,]+)\s*,\s*([^\(\)]+)\s*\)/($3)::timestamp + ($1 * interval '1 $2')/igs;
 	$str =~ s/\bTIMESTAMPDIFF\(\s*YEAR\s*,\s*([^,]+)\s*,\s*([^\(\),]+)\s*\)/extract(year from ($2)::timestamp) - extract(year from ($1)::timestamp)/igs;
@@ -3562,6 +3571,11 @@ sub replace_connect_by
 
 	return $str if ($str !~ /\bCONNECT\s+BY\b/is);
 
+	my $into_clause = '';
+	if ($str =~ s/\s+INTO\s+(.*?)(\s+FROM\s+)/$2/is) {
+		$into_clause = " INTO $1";
+	}
+
 	my $final_query = "WITH RECURSIVE cte AS (\n";
 
 	# Remove NOCYCLE, not supported at now
@@ -3815,7 +3829,7 @@ sub replace_connect_by
 		$order_by =~ s/^, //s;
 		$order_by = " ORDER BY $order_by";
 	}
-	$final_query .= "\n) SELECT * FROM cte$where_clause$union$group_by$order_by";
+	$final_query .= "\n) SELECT *$into_clause FROM cte$where_clause$union$group_by$order_by";
 
 	return $final_query;
 }

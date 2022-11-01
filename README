@@ -371,6 +371,9 @@ CONFIGURATION
                             object. Can be use to import data with COPY and import
                             large object manually in a second pass. It is recquired
                             for BLOB > 1GB. See documentation for more explanation.
+       --mview_as_table str: Comma separated list of materialized views to export
+                            as regular table.
+       --drop_if_exists    : Drop the object before creation if it exists.
 
     See full documentation at https://ora2pg.darold.net/ for more help or
     see manpage with 'man ora2pg'.
@@ -917,7 +920,8 @@ CONFIGURATION
 
         where COLUMN is a technical key like a primary or unique key where
         split will be based and the current core used by the query
-        (CUR_PROC).
+        (CUR_PROC). You can also force the column name to use using the
+        DEFINED_PK configuration directive.
 
         Doesn't work under Windows Operating System, it is simply disabled.
 
@@ -971,18 +975,6 @@ CONFIGURATION
         you use several instances of ora2pg for data migration through the
         foreign data wrapper, you might need to change the name of the
         schema for each instance. Default: ora2pg_fdw_import
-
-    ORACLE_FDW_TRANSFORM
-        Use this directive to precise which transformation should be applied
-        to a column when exporting data. Value must be a semicolon separated
-        list of
-
-           TABLE[COLUMN_NAME, <replace code in SELECT target list>]
-
-        For example to replace string 'Oracle' by 'PostgreSQL' in a varchar2
-        column use the following.
-
-           ORACLE_FDW_TRANSFORM   ERROR_LOG_SAMPLE[DBMS_TYPE:regexp_replace("DBMS_TYPE",'Oracle','PostgreSQL')]
 
     DROP_FOREIGN_SCHEMA
         By default Ora2Pg drops the temporary schema ora2pg_fdw_import used
@@ -1161,6 +1153,14 @@ CONFIGURATION
         INSERT, the corresponding data will be exported.
 
         See chapter "Exporting views as PostgreSQL table" for more details.
+
+    MVIEW_AS_TABLE
+        Set which materialized view to export as table. By default none.
+        Value must be a list of materialized view name or regexp separated
+        by space or comma. If the object name is a materialized view and the
+        export type is TABLE, the view will be exported as a create table
+        statement. If export type is COPY or INSERT, the corresponding data
+        will be exported.
 
     NO_VIEW_ORDERING
         By default Ora2Pg try to order views to avoid error at import time
@@ -1599,6 +1599,26 @@ CONFIGURATION
         Use this directive to add a specific schema to the search path to
         look for PostGis functions.
 
+    ST_SRID_FUNCTION
+        Oracle function to use to extract the srid from ST_Geometry meta
+        information. Default: ST_SRID, for example it should be set to
+        sde.st_srid for ArcSDE.
+
+    ST_DIMENSION_FUNCTION
+        Oracle function to use to extract the dimension from ST_Geometry
+        meta information. Default: ST_DIMENSION, for example it should be
+        set to sde.st_dimention for ArcSDE.
+
+    ST_ASBINARY_FUNCTION
+        Oracle function to used to convert an ST_Geometry value into WKB
+        format. Default: ST_ASBINARY, for example it should be set to
+        sde.st_asbinary for ArcSDE.
+
+    ST_ASTEXT_FUNCTION
+        Oracle function to used to convert an ST_Geometry value into WKT
+        format. Default: ST_ASTEXT, for example it should be set to
+        sde.st_astext for ArcSDE.
+
   PostgreSQL Import
     By default conversion to PostgreSQL format is written to file
     'output.sql'. The command:
@@ -1783,6 +1803,25 @@ CONFIGURATION
     DATA_VALIDATION_ERROR
         Stop validating data from a table after a certain amount of row
         mistmatch. Default is to stop after 10 rows validation errors.
+
+    TRANSFORM_VALUE
+        Use this directive to precise which transformation should be applied
+        to a column when exporting data. Value must be a semicolon separated
+        list of
+
+           TABLE[COLUMN_NAME, <replace code in SELECT target list>]
+
+        For example to replace string 'Oracle' by 'PostgreSQL' in a varchar2
+        column use the following.
+
+           TRANSFORM_VALUE   ERROR_LOG_SAMPLE[DBMS_TYPE:regexp_replace("DBMS_TYPE",'Oracle','PostgreSQL')]
+
+        or to replace all Oracle char(0) in a string by a space character:
+
+            TRANSFORM_VALUE   CLOB_TABLE[CHARDATA:translate("CHARDATA", chr(0), ' ')]
+
+        The expression will be applied in the SQL statemeent used to extract
+        data from the source database.
 
     When using Ora2Pg export type INSERT or COPY to dump data to file and
     that FILE_PER_TABLE is enabled, you will be warned that Ora2Pg will not
@@ -2726,9 +2765,10 @@ CONFIGURATION
 
             ora2pg -c ora2pg.conf -t KETTLE -J 4 -j 12 -a EMPLOYEES -o load_mydata.sh
 
-    This is only possible if you have defined the technical key to used to
-    split the query between cores in the DEFINED_PKEY configuration
-    directive. For example:
+    This is only possible if there is a unique key defined on a numeric
+    column or that you have defined the technical key to used to split the
+    query between cores in the DEFINED_PKEY configuration directive. For
+    example:
 
             DEFINED_PK      EMPLOYEES:employee_id
 

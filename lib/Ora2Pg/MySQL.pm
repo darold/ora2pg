@@ -10,7 +10,7 @@ use POSIX qw(locale_h);
 setlocale(LC_NUMERIC,"C");
 
 
-$VERSION = '23.1';
+$VERSION = '23.2';
 
 # Some function might be excluded from export and assessment.
 our @EXCLUDED_FUNCTION = ('SQUIRREL_GET_ERROR_OFFSET');
@@ -18,6 +18,11 @@ our @EXCLUDED_FUNCTION = ('SQUIRREL_GET_ERROR_OFFSET');
 # These definitions can be overriden from configuration
 # file using the DATA_TYPË configuration directive.
 our %SQL_TYPE = (
+ 	'TINYINT UNSIGNED' => 'smallint',
+ 	'SMALLINT UNSIGNED' => 'integer',
+ 	'MEDIUMINT UNSIGNED' => 'integer',
+ 	'BIGINT UNSIGNED' => 'numeric',
+ 	'INT UNSIGNED' => 'bigint',
 	'TINYINT' => 'smallint', # 1 byte
 	'SMALLINT' => 'smallint', # 2 bytes
 	'MEDIUMINT' => 'integer', # 3 bytes
@@ -273,6 +278,7 @@ sub _table_info
 	my %comments = ();
 	my $sql = "SELECT TABLE_NAME,TABLE_COMMENT,TABLE_TYPE,TABLE_ROWS,ROUND( ( data_length + index_length) / 1024 / 1024, 2 ) AS \"Total Size Mb\", AUTO_INCREMENT, CREATE_OPTIONS FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE='BASE TABLE' AND TABLE_SCHEMA = '$self->{schema}'";
 	$sql .= $self->limit_to_objects('TABLE', 'TABLE_NAME');
+
 	$sth = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	while (my $row = $sth->fetch)
@@ -289,7 +295,7 @@ sub _table_info
 		$tables_infos{$row->[0]}{tablespace} = 0;
 		$tables_infos{$row->[0]}{auto_increment} = $row->[5] || 0;
 		$tables_infos{$row->[0]}{tablespace} = $tbspname{$row->[0]} || '';
-		$tables_infos{$row->[0]}{partitioned} = ($row->[6] eq 'partitioned') ? 1 : 0;
+		$tables_infos{$row->[0]}{partitioned} = ($row->[6] eq 'partitioned' || exists $self->{partitions}{$row->[0]}) ? 1 : 0;
 
 		# Get creation option unavailable in information_schema
 		if ($row->[6] eq 'FEDERATED')
@@ -375,8 +381,9 @@ sub _column_info
 	# EXTRA                    | varchar(27)         | NO   |     |         |       |
 	# PRIVILEGES               | varchar(80)         | NO   |     |         |       |
 	# COLUMN_COMMENT           | varchar(1024)       | NO   |     |         |       |
+	# GENERATION_EXPRESSION    | longtext            | NO   |     | NULL    |       |
 
-	my $str = qq{SELECT COLUMN_NAME, DATA_TYPE, CHARACTER_MAXIMUM_LENGTH, IS_NULLABLE, COLUMN_DEFAULT, NUMERIC_PRECISION, NUMERIC_SCALE, CHARACTER_OCTET_LENGTH, TABLE_NAME, '' AS OWNER, '' AS VIRTUAL_COLUMN, ORDINAL_POSITION, EXTRA, COLUMN_TYPE
+	my $str = qq{SELECT COLUMN_NAME, DATA_TYPE, CHARACTER_MAXIMUM_LENGTH, IS_NULLABLE, COLUMN_DEFAULT, NUMERIC_PRECISION, NUMERIC_SCALE, CHARACTER_OCTET_LENGTH, TABLE_NAME, '' AS OWNER, '' AS VIRTUAL_COLUMN, ORDINAL_POSITION, EXTRA, COLUMN_TYPE, GENERATION_EXPRESSION
 FROM INFORMATION_SCHEMA.COLUMNS
 $condition
 ORDER BY ORDINAL_POSITION};
@@ -391,15 +398,58 @@ ORDER BY ORDINAL_POSITION};
 	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
 	# Expected columns information stored in hash 
+	# COLUMN_NAME,DATA_TYPE,DATA_LENGTH,NULLABLE,DATA_DEFAULT,DATA_PRECISION,DATA_SCALE,CHAR_LENGTH,TABLE_NAME,OWNER,VIRTUAL_COLUMN,POSITION,AUTO_INCREMENT,SRID,SDO_DIM,SDO_GTYPE
 	# COLUMN_NAME,DATA_TYPE,DATA_LENGTH,NULLABLE,DATA_DEFAULT,DATA_PRECISION,DATA_SCALE,CHAR_LENGTH,TABLE_NAME,OWNER,VIRTUAL_COLUMN,POSITION,AUTO_INCREMENT,ENUM_INFO
 	my %data = ();
 	my $pos = 0;
 	while (my $row = $sth->fetch)
 	{
 		if ($row->[1] eq 'enum') {
-			$row->[1] = $row->[-1];
+			$row->[1] = $row->[-2];
 		}
+		if ($row->[13] =~ /unsigned/) {
+			$row->[1] .= ' unsigned';
+		}
+
 		$row->[10] = $pos;
+		$row->[12] =~ s/\s+ENABLE//is;
+		if ($row->[12] =~ s/\bGENERATED\s+(ALWAYS|BY\s+DEFAULT)\s+(ON\s+NULL\s+)?AS\s+IDENTITY\s*(.*)//is)
+		{
+			$self->{identity_info}{$row->[8]}{$row->[0]}{generation} = $1;
+			my $options = $3;
+			$self->{identity_info}{$row->[8]}{$row->[0]}{options} = $3;
+			$self->{identity_info}{$row->[8]}{$row->[0]}{options} =~ s/(SCALE|EXTEND|SESSION)_FLAG: .//isg;
+			$self->{identity_info}{$row->[8]}{$row->[0]}{options} =~ s/KEEP_VALUE: .//is;
+			$self->{identity_info}{$row->[8]}{$row->[0]}{options} =~ s/(START WITH):/$1/is;
+			$self->{identity_info}{$row->[8]}{$row->[0]}{options} =~ s/(INCREMENT BY):/$1/is;
+			$self->{identity_info}{$row->[8]}{$row->[0]}{options} =~ s/MAX_VALUE:/MAXVALUE/is;
+			$self->{identity_info}{$row->[8]}{$row->[0]}{options} =~ s/MIN_VALUE:/MINVALUE/is;
+			$self->{identity_info}{$row->[8]}{$row->[0]}{options} =~ s/CYCLE_FLAG: N/NO CYCLE/is;
+			$self->{identity_info}{$row->[8]}{$row->[0]}{options} =~ s/NOCYCLE/NO CYCLE/is;
+			$self->{identity_info}{$row->[8]}{$row->[0]}{options} =~ s/CYCLE_FLAG: Y/CYCLE/is;
+			$self->{identity_info}{$row->[8]}{$row->[0]}{options} =~ s/CACHE_SIZE:/CACHE/is;
+			$self->{identity_info}{$row->[8]}{$row->[0]}{options} =~ s/CACHE_SIZE:/CACHE/is;
+			$self->{identity_info}{$row->[8]}{$row->[0]}{options} =~ s/ORDER_FLAG: .//is;
+			$self->{identity_info}{$row->[8]}{$row->[0]}{options} =~ s/,//gs;
+			$self->{identity_info}{$row->[8]}{$row->[0]}{options} =~ s/\s$//s;
+			$self->{identity_info}{$row->[8]}{$row->[0]}{options} =~ s/CACHE\s+0/CACHE 1/is;
+			$self->{identity_info}{$row->[8]}{$row->[0]}{options} =~ s/\s*NOORDER//is;
+			$self->{identity_info}{$row->[8]}{$row->[0]}{options} =~ s/\s*NOKEEP//is;
+			$self->{identity_info}{$row->[8]}{$row->[0]}{options} =~ s/\s*NOSCALE//is;
+			$self->{identity_info}{$row->[8]}{$row->[0]}{options} =~ s/\s*NOT\s+NULL//is;
+			# Be sure that we don't exceed the bigint max value,
+			# we assume that the increment is always positive
+			if ($self->{identity_info}{$row->[8]}{$row->[0]}{options} =~ /MAXVALUE\s+(\d+)/is) {
+				$self->{identity_info}{$row->[8]}{$row->[0]}{options} =~ s/(MAXVALUE)\s+\d+/$1 9223372036854775807/is;
+			}
+			$self->{identity_info}{$row->[8]}{$row->[0]}{options} =~ s/\s+/ /igs;
+		}
+		elsif ($row->[12] =~ s/\bGENERATED\b//is)
+		{
+			$row->[10] = 'YES';
+			$row->[14] =~ s/\`//g;
+			$row->[4] = $row->[14];
+		}
 		push(@{$data{"$row->[8]"}{"$row->[0]"}}, @$row);
 		pop(@{$data{"$row->[8]"}{"$row->[0]"}});
 		$pos++;
@@ -468,11 +518,20 @@ sub _get_indexes
 			# Enclose with double quote if required
 			$row->[4] = $self->quote_object_name($row->[4]);
 
-			if ($self->{preserve_case}) {
+			if ($self->{preserve_case})
+			{
 				if (($row->[4] !~ /".*"/) && ($row->[4] !~ /\(.*\)/)) {
 					$row->[4] =~ s/^/"/;
 					$row->[4] =~ s/$/"/;
 				}
+			}
+			# Set the index expression
+			if ($row->[14] ne '') {
+				$row->[4] = $row->[14];
+			}
+			# Append DESC sort order when not default to ASC
+			if ($row->[5] eq 'D') {
+				$row->[4] .= " DESC";
 			}
 			push(@{$data{$row->[0]}{$idxname}}, $row->[4]);
 			$index_tablespace{$row->[0]}{$idxname} = '';
@@ -755,8 +814,43 @@ sub _check_constraint
 {
 	my ($self, $table, $owner) = @_;
 
-	# There is no check constraint in MySQL
-	return;
+	if ($self->{db_version} < '8.0.0') {
+		return;
+	}
+
+	my $condition = '';
+	$condition .= "AND TABLE_NAME='$table' " if ($table);
+	$condition .= $self->limit_to_objects('CKEY|TABLE', 'CONSTRAINT_NAME|TABLE_NAME');
+
+	my $sql = qq{SELECT CONSTRAINT_NAME, TABLE_NAME FROM information_schema.TABLE_CONSTRAINTS WHERE CONSTRAINT_TYPE = 'CHECK' AND TABLE_SCHEMA = '$self->{schema}' $condition};
+	my $sth = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+
+	my %data = ();
+	while (my $row = $sth->fetch)
+	{
+		# Pour chaque retour SHOW CREATE TABLE xxxx;
+		my $sql2 = "SHOW CREATE TABLE $row->[1];";
+		my $sth2 = $self->{dbh}->prepare($sql2) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+		$sth2->execute() or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+		# Parsing de   CONSTRAINT `CHK_CONSTR` CHECK (((`Age` >= 18) and (`City` = _utf8mb4'Bangalore')))
+		while (my $r = $sth2->fetch)
+		{
+			$r->[1] =~ s/`//g;
+			my @def = split(/[\r\n]+/, $r->[1]);
+			foreach my $l (@def)
+			{
+				if ($l =~ s/.*CONSTRAINT $row->[0] CHECK (.*)/$1/)
+				{
+					$l =~ s/(LIKE|=) _[^']+('[^']+')/$1 $2/g;
+					$data{$row->[1]}{constraint}{$row->[0]}{condition} = $l;
+					$data{$row->[1]}{constraint}{$row->[0]}{validate}  = 'Y';
+				}
+			}
+		}
+	}
+
+	return %data;
 }
 
 sub _get_external_tables
@@ -872,6 +966,12 @@ sub _lookup_function
 
         # Split data into declarative and code part
         ($fct_detail{declare}, $fct_detail{code}) = split(/\bBEGIN\b/i, $code, 2);
+	if (!$fct_detail{code})
+	{
+		if ($fct_detail{declare} =~ s/(RETURN .*)$//i) {
+			$fct_detail{code} = "BEGIN\n    $1;\nEND\n";
+		}
+	}
 	return if (!$fct_detail{code});
 
 	# Remove any label that was before the main BEGIN block
@@ -880,7 +980,8 @@ sub _lookup_function
         @{$fct_detail{param_types}} = ();
 
         if ( ($fct_detail{declare} =~ s/(.*?)\b(FUNCTION|PROCEDURE)\s+([^\s\(]+)\s*(\(.*\))\s+RETURNS\s+(.*)//is) ||
-        ($fct_detail{declare} =~ s/(.*?)\b(FUNCTION|PROCEDURE)\s+([^\s\(]+)\s*(\(.*\))//is) ) {
+			($fct_detail{declare} =~ s/(.*?)\b(FUNCTION|PROCEDURE)\s+([^\s\(]+)\s*(\(.*\))//is) )
+	{
                 $fct_detail{before} = $1;
                 $fct_detail{type} = uc($2);
                 $fct_detail{name} = $3;
@@ -1085,8 +1186,6 @@ sub _list_all_funtions
 	return @functions;
 }
 
-
-
 sub _sql_type
 {
         my ($self, $type, $len, $precision, $scale, $default, $no_blob_to_oid) = @_;
@@ -1113,26 +1212,51 @@ sub _sql_type
 	}
 
         # Override the length
-        $len = $precision if ( ((uc($type) eq 'NUMBER') || (uc($type) eq 'BIT')) && $precision );
-        if (exists $self->{data_type}{uc($type)}) {
+	#$len = $precision if ( ((uc($type) eq 'NUMBER') || (uc($type) eq 'BIT')) && $precision );
+        $len = $precision if ($precision);
+        if (exists $self->{data_type}{uc($type)})
+	{
 		$type = uc($type); # Force uppercase
-		if ($len) {
-			if ( ($type eq "CHAR") || ($type =~ /VARCHAR/) ) {
+		if ($len)
+		{
+			if ( ($type eq "CHAR") || ($type =~ /VARCHAR/) )
+			{
 				# Type CHAR have default length set to 1
 				# Type VARCHAR(2) must have a specified length
 				$len = 1 if (!$len && ($type eq "CHAR"));
                 		return "$self->{data_type}{$type}($len)";
-			} elsif ($type eq 'BIT') {
+			}
+			elsif ($type eq 'BIT')
+			{
 				if ($precision) {
 					return "$self->{data_type}{$type}($precision)";
 				} else {
 					return $self->{data_type}{$type};
 				}
-			} elsif ($type =~ /(TINYINT|SMALLINT|MEDIUMINT|INTEGER|BIGINT|INT|REAL|DOUBLE|FLOAT|DECIMAL|NUMERIC)/i) {
+			}
+		       	elsif ($type =~ /(TINYINT|SMALLINT|MEDIUMINT|INTEGER|BIGINT|INT|REAL|DOUBLE|FLOAT|DECIMAL|NUMERIC)/i)
+			{
 				# This is an integer
-				if (!$scale) {
-					if ($precision) {
-						if ($self->{pg_integer_type}) {
+				if (!$scale)
+				{
+					if ($type =~ /UNSIGNED/ && $precision)
+					{
+						# Replace MySQL type UNSIGNED in cast
+						$type =~ s/TINYINT UNSIGNED/smallint/igs;
+						$type =~ s/SMALLINT UNSIGNED/integer/igs;
+						$type =~ s/MEDIUMINT UNSIGNED/integer/igs;
+						$type =~ s/BIGINT UNSIGNED/numeric($precision)/igs;
+						$type =~ s/INT UNSIGNED/bigint/igs;
+						return $type;
+					}
+					elsif ($precision)
+					{
+						if ($type =~ /(REAL|DOUBLE|FLOAT)/i)
+						{
+							return $self->{data_type}{$type};
+						}
+						elsif ($self->{pg_integer_type})
+						{
 							if ($precision < 5) {
 								return 'smallint';
 							} elsif ($precision <= 9) {
@@ -1142,13 +1266,19 @@ sub _sql_type
 							}
 						}
 						return "numeric($precision)";
-					} else {
+					}
+					else
+					{
 						# Most of the time interger should be enought?
 						return $self->{data_type}{$type};
 					}
-				} else {
-					if ($precision) {
-						if ($type !~ /DOUBLE/ && $self->{pg_numeric_type}) {
+				}
+				else
+				{
+					if ($precision)
+					{
+						if ($type !~ /(DOUBLE|DECIMAL)/ && $self->{pg_numeric_type})
+						{
 							if ($precision <= 6) {
 								return 'real';
 							} else {
@@ -1160,7 +1290,9 @@ sub _sql_type
 				}
 			}
 			return $self->{data_type}{$type};
-		} else {
+		}
+		else
+		{
 			return $self->{data_type}{$type};
 		}
         }
@@ -1190,11 +1322,13 @@ sub replace_sql_type
 		$mysqltype_regex .= quotemeta($_) . '|';
 	}
 	$mysqltype_regex =~ s/\|$//;
-	while ($str =~ /(.*)\b($mysqltype_regex)\s*\(([^\)]+)\)/i) {
+	while ($str =~ /(.*)\b($mysqltype_regex)\s*\(([^\)]+)\)/i)
+	{
 		my $backstr = $1;
 		my $type = uc($2);
 		my $args = $3;
-		if (uc($type) eq 'ENUM') {
+		if (uc($type) eq 'ENUM')
+		{
 			# Prevent from infinit loop
 			$str =~ s/\(/\%\|/s;
 			$str =~ s/\)/\%\|\%/s;
@@ -1254,10 +1388,12 @@ sub replace_sql_type
 	# Replace datatype even without precision
 	my %recover_type = ();
 	my $i = 0;
-	foreach my $type (sort { length($b) <=> length($a) } keys %data_type) {
+	foreach my $type (sort { length($b) <=> length($a) } keys %data_type)
+	{
 		# Keep enum as declared, we are not in table definition
 		next if (uc($type) eq 'ENUM');
-		while ($str =~ s/\b$type\b/%%RECOVER_TYPE$i%%/is) {
+		while ($str =~ s/\b$type\b/%%RECOVER_TYPE$i%%/is)
+		{
 			$recover_type{$i} = $data_type{$type};
 			$i++;
 		}
@@ -1361,6 +1497,9 @@ WHERE PARTITION_NAME IS NOT NULL
 		$parts{$row->[0]}{$row->[1]}{name} = $row->[2];
 		$row->[6] =~ s/\`//g;
 		$row->[3] =~ s/\`//g;
+
+		$row->[5] = 'HASH' if ($row->[5] =~ /KEY/);
+
 		if ($row->[5] =~ s/ COLUMNS//)
 		{
 			my $i = 0;
@@ -1417,6 +1556,7 @@ WHERE SUBPARTITION_NAME IS NOT NULL AND SUBPARTITION_EXPRESSION IS NOT NULL
 		$row->[6] =~ s/\`//g;
 		$row->[3] =~ s/\`//g;
 		$row->[5] =~ s/ COLUMNS//;
+		$row->[5] = 'HASH' if ($row->[5] =~ /KEY/);
 		foreach my $c (split(',', $row->[6]))
 		{
 			push(@{$subparts{$row->[0]}{$row->[7]}{$row->[1]}{info}}, { 'type' => $row->[5], 'value' => $row->[3], 'column' => $c, 'colpos' => $i, 'tablespace' => $row->[4], 'owner' => ''});
@@ -1428,14 +1568,14 @@ WHERE SUBPARTITION_NAME IS NOT NULL AND SUBPARTITION_EXPRESSION IS NOT NULL
 	return \%subparts, \%default;
 }
 
-=head2 _get_partitions_list
+=head2 _get_partitions_type
 
 This function implements a MySQL-native partitions information.
 Return a hash of the partition table_name => type
 
 =cut
 
-sub _get_partitions_list
+sub _get_partitions_type
 {
 	my($self) = @_;
 
@@ -1476,7 +1616,7 @@ sub _get_partitioned_table
 	my $str = qq{
 SELECT TABLE_NAME, PARTITION_METHOD, PARTITION_ORDINAL_POSITION, PARTITION_NAME, PARTITION_DESCRIPTION, TABLESPACE_NAME, PARTITION_EXPRESSION
 FROM INFORMATION_SCHEMA.PARTITIONS WHERE PARTITION_NAME IS NOT NULL
-     AND (PARTITION_METHOD LIKE 'RANGE%' OR PARTITION_METHOD LIKE 'LIST%' OR PARTITION_METHOD LIKE 'HASH%')
+     AND (PARTITION_METHOD LIKE 'RANGE%' OR PARTITION_METHOD LIKE 'LIST%' OR PARTITION_METHOD LIKE 'HASH%' OR PARTITION_METHOD LIKE 'KEY%' OR PARTITION_METHOD LIKE 'LINEAR KEY%')
 };
 	$str .= $self->limit_to_objects('TABLE|PARTITION','TABLE_NAME|PARTITION_NAME');
 	if ($self->{schema}) {
@@ -1504,6 +1644,45 @@ FROM INFORMATION_SCHEMA.PARTITIONS WHERE PARTITION_NAME IS NOT NULL
 		}
 		$parts{"\L$row->[0]\E"}{type} = $row->[1];
 		$row->[6] =~ s/\`//g;
+
+		if ($row->[1] =~ /KEY/)
+		{
+			$parts{"\L$row->[0]\E"}{type} = 'HASH';
+			my $sql = "SHOW INDEX FROM `$row->[0]`";
+			my $sth2 = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+			$sth2->execute() or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+			my @ucol = ();
+			while (my $r = $sth2->fetch)
+			{
+				#Table : The name of the table.
+				#Non_unique : 0 if the index cannot contain duplicates, 1 if it can.
+				#Key_name : The name of the index. If the index is the primary key, the name is always PRIMARY.
+				#Seq_in_index : The column sequence number in the index, starting with 1.
+				#Column_name : The column name.
+				#Collation : How the column is sorted in the index. In MySQL, this can have values “A” (Ascending) or NULL (Not sorted).
+				#Cardinality : An estimate of the number of unique values in the index.
+				#Sub_part : The number of indexed characters if the column is only partly indexed, NULL if the entire column is indexed.
+				#Packed : Indicates how the key is packed. NULL if it is not.
+				#Null : Contains YES if the column may contain NULL values and '' if not.
+				#Index_type : The index method used (BTREE, FULLTEXT, HASH, RTREE).
+				#Comment : Information about the index not described in its own column, such as disabled if the index is disabled. 
+				if ($r->[2] eq 'PRIMARY') {
+					push(@{ $parts{"\L$row->[0]\E"}{columns} }, $r->[4]) if (!grep(/^$r->[4]$/, @{ $parts{"\L$row->[0]\E"}{columns} }));
+				} elsif (!$r->[1]) {
+					push(@ucol, $r->[4]) if (!grep(/^$r->[4]$/, @ucol));
+				}
+			}
+			$sth2->finish;
+			if ($#{ $parts{"\L$row->[0]\E"}{columns} } < 0) {
+				if ($#ucol >= 0) {
+					push(@{ $parts{"\L$row->[0]\E"}{columns} }, @ucol);
+				} else {
+					$row->[6] =~ s/[\(\)\s]//g;
+					@{ $parts{"\L$row->[0]\E"}{columns} } = split(',', $row->[6]);
+				}
+			}
+
+		}
 		if ($parts{"\L$row->[0]\E"}{type} =~ s/ COLUMNS//)
 		{
 			$row->[6] =~ s/[\(\)\s]//g;
@@ -1589,7 +1768,7 @@ sub _get_objects
 SELECT TABLE_NAME||'_'||PARTITION_NAME
 FROM INFORMATION_SCHEMA.PARTITIONS
 WHERE SUBPARTITION_NAME IS NULL
-     AND (SUBPARTITION_METHOD LIKE 'RANGE%' OR SUBPARTITION_METHOD LIKE 'LIST%' OR SUBPARTITION_METHOD LIKE 'HASH%')
+     AND (SUBPARTITION_METHOD LIKE 'RANGE%' OR SUBPARTITION_METHOD LIKE 'LIST%' OR SUBPARTITION_METHOD LIKE 'HASH%' OR SUBPARTITION_METHOD LIKE 'KEY%' OR SUBPARTITION_METHOD LIKE 'LINEAR KEY%')
 };
 	$sql .= $self->limit_to_objects('TABLE|PARTITION', 'TABLE_NAME|PARTITION_NAME');
 	if ($self->{schema}) {
@@ -1963,7 +2142,7 @@ sub _get_subpartitioned_table
 	my $str = qq{
 SELECT TABLE_NAME, SUBPARTITION_METHOD, SUBPARTITION_ORDINAL_POSITION, PARTITION_NAME, SUBPARTITION_NAME, PARTITION_DESCRIPTION, TABLESPACE_NAME, SUBPARTITION_EXPRESSION
 FROM INFORMATION_SCHEMA.PARTITIONS WHERE SUBPARTITION_NAME IS NOT NULL
-     AND (SUBPARTITION_METHOD LIKE 'RANGE%' OR SUBPARTITION_METHOD LIKE 'LIST%' OR SUBPARTITION_METHOD LIKE 'HASH%')
+     AND (SUBPARTITION_METHOD LIKE 'RANGE%' OR SUBPARTITION_METHOD LIKE 'LIST%' OR SUBPARTITION_METHOD LIKE 'HASH%' OR SUBPARTITION_METHOD LIKE 'KEY%' OR SUBPARTITION_METHOD LIKE 'LINEAR KEY%')
 };
 	$str .= $self->limit_to_objects('TABLE|PARTITION','TABLE_NAME|SUBPARTITION_NAME');
 	if ($self->{schema}) {
@@ -1980,6 +2159,40 @@ FROM INFORMATION_SCHEMA.PARTITIONS WHERE SUBPARTITION_NAME IS NOT NULL
 		$parts{"\L$row->[0]\E"}{"\L$row->[3]\E"}{count}++;
 		$parts{"\L$row->[0]\E"}{"\L$row->[3]\E"}{type} = $row->[1];
 		$row->[7] =~ s/\`//g;
+
+		if ($parts{"\L$row->[0]\E"}{type} =~ /KEY/)
+		{
+			$parts{"\L$row->[0]\E"}{type} = 'HASH';
+			my $sql = "SHOW INDEX FROM `$row->[0]`";
+			my $sth2 = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+			$sth2->execute() or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+			my @ucol = ();
+			while (my $r = $sth2->fetch)
+			{
+				#Table : The name of the table.
+				#Non_unique : 0 if the index cannot contain duplicates, 1 if it can.
+				#Key_name : The name of the index. If the index is the primary key, the name is always PRIMARY.
+				#Seq_in_index : The column sequence number in the index, starting with 1.
+				#Column_name : The column name.
+				#Collation : How the column is sorted in the index. In MySQL, this can have values “A” (Ascending) or NULL (Not sorted).
+				#Cardinality : An estimate of the number of unique values in the index.
+				#Sub_part : The number of indexed characters if the column is only partly indexed, NULL if the entire column is indexed.
+				#Packed : Indicates how the key is packed. NULL if it is not.
+				#Null : Contains YES if the column may contain NULL values and '' if not.
+				#Index_type : The index method used (BTREE, FULLTEXT, HASH, RTREE).
+				#Comment : Information about the index not described in its own column, such as disabled if the index is disabled. 
+				if ($r->[2] eq 'PRIMARY') {
+					push(@{ $parts{"\L$row->[0]\E"}{columns} }, $r->[4]) if (!grep(/^$r->[4]$/, @{ $parts{"\L$row->[0]\E"}{columns} }));
+				} elsif (!$row->[1]) {
+					push(@ucol, $r->[4]) if (!grep(/^$r->[4]$/, @ucol));
+				}
+			}
+			$sth2->finish;
+			if ($#{ $parts{"\L$row->[0]\E"}{columns} } < 0) {
+				push(@{ $parts{"\L$row->[0]\E"}{columns} }, @ucol);
+			}
+		}
+
 		if ($parts{"\L$row->[0]\E"}{"\L$row->[3]\E"}{type} =~ s/ COLUMNS//)
 		{
 			$row->[7] =~ s/[\(\)\s]//g;

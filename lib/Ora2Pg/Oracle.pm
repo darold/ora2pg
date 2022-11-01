@@ -11,7 +11,7 @@ use Encode;
 #set locale to LC_NUMERIC C
 setlocale(LC_NUMERIC,"C");
 
-$VERSION = '23.1';
+$VERSION = '23.2';
 
 # Some function might be excluded from export and assessment.
 our @EXCLUDED_FUNCTION = ('SQUIRREL_GET_ERROR_OFFSET');
@@ -81,6 +81,7 @@ our %SQL_TYPE = (
 	'TIMESTAMP WITH TIME ZONE' => 'timestamp with time zone',
 	'TIMESTAMP WITH LOCAL TIME ZONE' => 'timestamp with time zone',
 	'SDO_GEOMETRY' => 'geometry',
+	'ST_GEOMETRY' => 'geometry',
 );
 
 our %GTYPE = (
@@ -584,7 +585,7 @@ ORDER BY A.COLUMN_ID
 	my $st_spatial_gtype =  'SELECT DISTINCT ST_GeometryType(c.%s) FROM %s c WHERE ROWNUM < ' . $max_lines;
 	# Set query to retrieve the SRID
 	my $spatial_srid = "SELECT SRID FROM ALL_SDO_GEOM_METADATA WHERE TABLE_NAME=? AND COLUMN_NAME=? AND OWNER=?";
-	my $st_spatial_srid = "SELECT ST_SRID(c.%s) FROM %s c";
+	my $st_spatial_srid = "SELECT $self->{st_srid_function}(c.%s) FROM %s c";
 	if ($self->{convert_srid})
 	{
 		# Translate SRID to standard EPSG SRID, may return 0 because there's lot of Oracle only SRID.
@@ -592,7 +593,7 @@ ORDER BY A.COLUMN_ID
 	}
 	# Get the dimension of the geometry by looking at the number of element in the SDO_DIM_ARRAY
 	my $spatial_dim = "SELECT t.SDO_DIMNAME, t.SDO_LB, t.SDO_UB FROM ALL_SDO_GEOM_METADATA m, TABLE (m.diminfo) t WHERE m.TABLE_NAME=? AND m.COLUMN_NAME=? AND OWNER=?";
-	my $st_spatial_dim = "SELECT ST_DIMENSION(c.%s) FROM %s c";
+	my $st_spatial_dim = "SELECT $self->{st_dimension_function}(c.%s) FROM %s c";
 
 	my $is_virtual_col = "SELECT V.VIRTUAL_COLUMN FROM $self->{prefix}_TAB_COLS V WHERE V.OWNER=? AND V.TABLE_NAME=? AND V.COLUMN_NAME=?";
 	my $sth3 = undef;
@@ -607,10 +608,14 @@ ORDER BY A.COLUMN_ID
 	while (my $row = $sth->fetch)
 	{
 		my $tmptable = "$row->[9].$row->[8]";
+		# Skip object if it is not in the object list and if this is not
+		# a view or materialized view that must be exported as table.
 		next if (!exists $self->{all_objects}{$tmptable}
-				|| ($self->{all_objects}{$tmptable} ne $objtype
-					&& ($#{$self->{view_as_table}} < 0
-						|| $self->{all_objects}{$tmptable} ne 'VIEW')));
+				|| ($self->{all_objects}{$tmptable} eq 'VIEW'
+					&& !grep(/^$row->[8]$/i, @{$self->{view_as_table}}))
+				|| ($self->{all_objects}{$tmptable} eq 'MATERIALIZED VIEW'
+					&& !grep(/^$row->[8]$/i, @{$self->{mview_as_table}}))
+			);
 
 		$row->[2] = $row->[7] if $row->[1] =~ /char/i;
 		# Seems that for a NUMBER with a DATA_SCALE to 0, no DATA_PRECISION and a DATA_LENGTH of 22
@@ -1144,9 +1149,9 @@ sub _get_views
 	}
 
 	####
-	# Get name of all VIEW objects in ALL_OBJECTS looking at OBJECT_TYPE='VIEW'
+	# Get name of all VIEW objects in ALL_OBJECTS looking at OBJECT_TYPE='VIEW' or OBJECT_TYPE='MVIEW'
 	####
-	my $sql = "SELECT A.OWNER,A.OBJECT_NAME,A.OBJECT_TYPE FROM $self->{prefix}_OBJECTS A WHERE A.OBJECT_TYPE IN 'VIEW' $owner";
+	my $sql = "SELECT A.OWNER,A.OBJECT_NAME,A.OBJECT_TYPE FROM $self->{prefix}_OBJECTS A WHERE A.OBJECT_TYPE IN ('VIEW', 'MATERIALIZED VIEW') $owner";
 	if (!$self->{export_invalid}) {
 		$sql .= " AND A.STATUS='VALID'";
 	} elsif ($self->{export_invalid} == 2) {
@@ -1179,12 +1184,11 @@ sub _get_views
 		$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 		while (my $row = $sth->fetch)
 		{
-			next if (!exists $self->{all_objects}{"$row->[3].$row->[0]"});
-
-			if (!$self->{schema} && $self->{export_schema})
-			{
+			next if ($row->[2] ne 'VIEW');
+			next if (scalar keys %{ $self->{all_objects} } > 0 && !exists $self->{all_objects}{"$row->[3].$row->[0]"});
+			if (!$self->{schema} && $self->{export_schema}) {
 				$row->[0] = "$row->[3].$row->[0]";
-			}
+			} 
 			$comments{$row->[0]}{comment} = $row->[1];
 			$comments{$row->[0]}{table_type} = $row->[2];
 		}
@@ -1563,10 +1567,12 @@ sub _lookup_function
 
 		# When the function comes from a package remove global declaration
 		# outside comments. They have already been extracted before.
-		if ($pname && $fct_detail{before}) {
+		if ($pname && $fct_detail{before})
+		{
 			$self->_remove_comments(\$fct_detail{before});
 			my $cmt = '';
-			while ($fct_detail{before} =~ s/(\s*\%ORA2PG_COMMENT\d+\%\s*)//is) {
+			while ($fct_detail{before} =~ s/(\s*\%ORA2PG_COMMENT\d+\%\s*)//is)
+			{
 				# only keep comment
 				$cmt .= $1;
 			}
@@ -1582,18 +1588,22 @@ sub _lookup_function
 		$fct_detail{immutable} = 1 if ($fct_detail{declare} =~ s/\bDETERMINISTIC\b//is);
 		$fct_detail{setof} = 1 if ($fct_detail{declare} =~ s/\bPIPELINED\b//is);
 		$fct_detail{declare} =~ s/\bDEFAULT\b/:=/igs;
-		if ($fct_detail{declare} =~ s/(.*?)\bRETURN\s+self\s+AS RESULT IS//is) {
+		if ($fct_detail{declare} =~ s/(.*?)\bRETURN\s+self\s+AS RESULT IS//is)
+		{
 			$fct_detail{args} .= $1;
 			$fct_detail{hasreturn} = 1;
 			$fct_detail{func_ret_type} = 'OPAQUE';
-		} elsif ($fct_detail{declare} =~ s/(.*?)\bRETURN\s+([^\s]+)//is) {
+		}
+		elsif ($fct_detail{declare} =~ s/(.*?)\bRETURN\s+([^\s]+)//is)
+		{
 			$fct_detail{args} .= $1;
 			$fct_detail{hasreturn} = 1;
 			my $ret_typ = $2 || '';
 			$ret_typ =~ s/(\%ORA2PG_COMMENT\d+\%)+//i;
 			$fct_detail{func_ret_type} = $self->_sql_type($ret_typ) || 'OPAQUE';
 		}
-		if ($fct_detail{declare} =~ s/(.*?)(USING|AS|IS)(\s+(?!REF\s+))/$3/is) {
+		if ($fct_detail{declare} =~ s/(.*?)(USING|AS|IS)(\s+(?!REF\s+))/$3/is)
+		{
 			$fct_detail{args} .= $1 if (!$fct_detail{hasreturn});
 			$clause = $2;
 		}
@@ -1713,9 +1723,9 @@ sub _lookup_function
 		next if (!$n || ($pname && (uc($n) !~ /^\U$pname\E\./)));
 		my $tmpname = $n;
 		$tmpname =~ s/^$pname\.//i;
-		next if ($fct_detail{code} !~ /\b$tmpname\b/is);
+		next if ($fct_detail{code} !~ /\b\Q$tmpname\E\b/is);
 		my $i = 0;
-		while ($fct_detail{code} =~ s/(SELECT\s+(?:.*?)\s+)INTO\s+$tmpname\s+([^;]+);/PERFORM set_config('$n', ($1$2), false);/is) { last if ($i++ > 100); };
+		while ($fct_detail{code} =~ s/(SELECT\s+(?:.*?)\s+)INTO\s+\Q$tmpname\E\s+([^;]+);/PERFORM set_config('$n', ($1$2), false);/is) { last if ($i++ > 100); };
 		$i = 0;
 		while ($fct_detail{code} =~ s/\b$n\s*:=\s*([^;]+)\s*;/PERFORM set_config('$n', $1, false);/is) { last if ($i++ > 100); };
 		$i = 0;
@@ -1933,13 +1943,25 @@ sub _sql_type
 					{
 						if ($precision eq '') {
 							return "decimal(38, $scale)";
-						} elsif ($precision <= 6) {
-							return 'real';
-						} elsif ($precision <= 15) {
-							return 'double precision';
+						}
+						if ($precision >= $scale)
+						{
+							if ($precision <= 6)
+							{
+								if ($self->{pg_supports_negative_scale}) {
+									return "decimal($precision,$scale)";
+								} else {
+									return 'real';
+								}
+							} elsif ($precision <= 15) {
+								return 'double precision';
+							}
 						}
 					}
 					$precision = 38 if ($precision eq '');
+					if ($scale > $precision) {
+						return "numeric";
+					}
 					return "decimal($precision,$scale)";
 				}
 			}
@@ -2202,14 +2224,14 @@ WHERE
 	return \%subparts, \%default;
 }
 
-=head2 _get_partitions_list
+=head2 _get_partitions_type
 
 This function implements a MySQL-native partitions information.
 Return a hash of the partition table_name => type
 
 =cut
 
-sub _get_partitions_list
+sub _get_partitions_type
 {
 	my ($self) = @_;
 

@@ -43,7 +43,7 @@ use Encode;
 #set locale to LC_NUMERIC C
 setlocale(LC_NUMERIC,"C");
 
-$VERSION = '23.1';
+$VERSION = '23.2';
 $PSQL = $ENV{PLSQL} || 'psql';
 
 $| = 1;
@@ -746,7 +746,7 @@ sub quote_object_name
 		{
 			$obj_name = lc($obj_name);
 			# then if there is non alphanumeric or the object name is a reserved word
-			if ($obj_name =~ /[^a-z0-9\_\.]/ || ($self->{use_reserved_words} && $self->is_reserved_words($obj_name)) || $obj_name =~ /^\d+/)
+			if ($obj_name =~ /[^a-z0-9\_\.\$]/ || ($self->{use_reserved_words} && $self->is_reserved_words($obj_name)) || $obj_name =~ /^\d+/)
 			{
 				# Add double quote to [schema.] object name 
 				if ($obj_name !~ /^[^\.]+\.[^\.]+$/ && $obj_name !~ /^[^\.]+\.[^\.]+\.[^\.]+$/) {
@@ -895,6 +895,7 @@ sub _init
 	$self->{limited} = ();
 	$self->{excluded} = ();
 	$self->{view_as_table} = ();
+	$self->{mview_as_table} = ();
 	$self->{modify} = ();
 	$self->{replaced_tables} = ();
 	$self->{replaced_cols} = ();
@@ -910,7 +911,7 @@ sub _init
 	$self->{empty_lob_null} = 0;
 	$self->{look_forward_function} = ();
 	$self->{no_function_metadata} = 0;
-	$self->{oracle_fdw_transform} = ();
+	$self->{transform_value} = ();
 	$self->{all_objects} = ();
 
 	# Initial command to execute at Oracle and PostgreSQL connexion
@@ -1193,7 +1194,13 @@ sub _init
 		{
 			$self->{view_as_table} = ();
 			push(@{$self->{view_as_table}}, split(/[\s;,]+/, $options{view_as_table}) );
-		} elsif (($k eq 'datasource') && $options{datasource}) {
+		}
+		elsif (($k eq 'mview_as_table') && $options{mview_as_table})
+		{
+			$self->{mview_as_table} = ();
+			push(@{$self->{mview_as_table}}, split(/[\s;,]+/, $options{mview_as_table}) );
+		}
+		elsif (($k eq 'datasource') && $options{datasource}) {
 			$self->{oracle_dsn} = $options{datasource};
 		} elsif (($k eq 'user') && $options{user}) {
 			$self->{oracle_user} = $options{user};
@@ -1298,7 +1305,12 @@ sub _init
 	if (not defined $self->{default_srid}) {
 		$self->{default_srid} = 4326;
 	}
-	
+	# Default function to use for ST_Geometry
+	$self->{st_srid_function} ||= 'ST_SRID';
+	$self->{st_dimension_function} ||= 'ST_DIMENSION';
+	$self->{st_asbinary_function} ||= 'ST_AsBinary';
+	$self->{st_astext_function} ||= 'ST_AsText';
+
 	# Force Ora2Pg to extract spatial object in binary format
 	$self->{geometry_extract_type} = uc($self->{geometry_extract_type});
 	if (!$self->{geometry_extract_type} || !grep(/^$self->{geometry_extract_type}$/, 'WKT','WKB','INTERNAL')) {
@@ -1323,6 +1335,8 @@ sub _init
 
 	# Table data export will be sorted by name by default
 	$self->{data_export_order} ||= 'name';
+
+	$self->{export_gtt} = 0 if ($self->{type} ne 'TABLE');
 
 	# Free some memory
 	%options = ();
@@ -1495,6 +1509,9 @@ sub _init
 		$self->{pg_version} = 11;
 	}
 
+	if ($self->{pg_version} >= 15) {
+		$self->{pg_supports_negative_scale} = 1;
+	}
 	# Compatibility with PostgreSQL versions
 	if ($self->{pg_version} >= 9.0)
 	{
@@ -1774,12 +1791,16 @@ sub _init
 		if (grep(/^$self->{type}$/, 'TABLE', 'FDW', 'INSERT', 'COPY', 'KETTLE'))
 		{
 			$self->{plsql_pgsql} = 1;
-			$self->_tables();
-			# Get the list of partition
-			if ($self->{pg_supports_partition} && $self->{type} eq 'TABLE') {
-				$self->{partitions} = $self->_get_partitions_list();
+			# Partitionned table do not accept NOT VALID constraint
+			if ($self->{pg_supports_partition} && $self->{type} eq 'TABLE')
+			{
+				# Get the list of partition
+				($self->{partitions}, $self->{partitions_default}) = $self->_get_partitions();
 			}
-		} elsif ($self->{type} eq 'VIEW') {
+			# Get table informations
+			$self->_tables();
+		}
+		elsif ($self->{type} eq 'VIEW') {
 			$self->_views();
 		} elsif ($self->{type} eq 'SYNONYM') {
 			$self->_synonyms();
@@ -2373,7 +2394,7 @@ sub _tables
 			}
 			%unique_keys = ();
 
-			if (!$self->{skip_checks} && !$self->{is_mysql})
+			if (!$self->{skip_checks})
 			{
 				$self->logit("Retrieving check constraints information...\n", 1);
 				my %check_constraints = $self->_check_constraint('',$self->{schema});
@@ -2494,8 +2515,9 @@ sub _tables
 		print STDERR $self->progress_bar($i - 1, $num_total_table, 25, '=', 'tables', 'end of scanning.'), "\n";
 	}
  
-	# Try to search requested TABLE names in the VIEW names if not found in
-	# real TABLE names
+	####	
+	# Get views definition if it must be exported as table
+	####	
 	if ($#{$self->{view_as_table}} >= 0 and $self->{type} ne 'CDC')
 	{
 		my %view_infos = $self->_get_views();
@@ -2509,13 +2531,13 @@ sub _tables
 				$self->{tables}{$view}{column_comments}{$c} = $columns_comments{$view}{$c};
 			}
 		}
+
 		foreach my $view (sort keys %view_infos)
 		{
 			# Set the table information for each class found
 			# Jump to desired extraction
 			next if (!grep($view =~ /^$_$/i, @{$self->{view_as_table}}));
 			$self->logit("Scanning view $view to export as table...\n", 0);
-
 			$self->{tables}{$view}{type} = 'view';
 			$self->{tables}{$view}{text} = $view_infos{$view}{text};
 			$self->{tables}{$view}{owner} = $view_infos{$view}{owner};
@@ -2549,6 +2571,63 @@ sub _tables
 			$self->{tables}{$view}{field_name} = $sth->{NAME};
 			$self->{tables}{$view}{field_type} = $sth->{TYPE};
 			my %columns_infos = $self->_column_info($view, $self->{schema}, 'VIEW');
+			foreach my $tb (keys %columns_infos)
+			{
+				next if ($tb ne $view);
+				foreach my $c (keys %{$columns_infos{$tb}}) {
+					push(@{$self->{tables}{$view}{column_info}{$c}}, @{$columns_infos{$tb}{$c}});
+				}
+			}
+		}
+	}
+
+	####	
+	# Get materialized views definition if it must be exported as table
+	####	
+	if ($#{$self->{mview_as_table}} >= 0)
+	{
+		my %view_infos = $self->_get_materialized_views();
+		foreach my $view (sort keys %view_infos)
+		{
+			# Set the table information for each class found
+			# Jump to desired extraction
+			next if (!grep($view =~ /^$_$/i, @{$self->{mview_as_table}}));
+			$self->logit("Scanning materialized view $view to export as table...\n", 0);
+			if (exists $self->{tables}{$view})
+			{
+				$self->logit("WARNING: cannot export materialized view $view as table, a table with same name already exists...\n", 0);
+				next;
+			}
+			$self->{tables}{$view}{type} = 'mview';
+			$self->{tables}{$view}{text} = $view_infos{$view}{text};
+			$self->{tables}{$view}{owner} = $view_infos{$view}{owner};
+			my $realview = $view;
+			$realview =~ s/"//g;
+			if (!$self->{is_mysql})
+			{
+				if ($realview !~ /\./) {
+					$realview = "\"$self->{tables}{$view}{owner}\".\"$realview\"";
+				} else {
+					$realview =~ s/\./"."/;
+					$realview = "\"$realview\"";
+				}
+			}
+			# Set the fields information
+			my $sth = $self->{dbh}->prepare("SELECT * FROM $realview WHERE 1=0");
+			if (!defined($sth))
+			{
+				warn "Can't prepare statement: $DBI::errstr";
+				next;
+			}
+			$sth->execute;
+			if ($sth->err)
+			{
+				warn "Can't execute statement: $DBI::errstr";
+				next;
+			}
+			$self->{tables}{$view}{field_name} = $sth->{NAME};
+			$self->{tables}{$view}{field_type} = $sth->{TYPE};
+			my %columns_infos = $self->_column_info($view, $self->{schema}, 'MVIEW');
 			foreach my $tb (keys %columns_infos)
 			{
 				next if ($tb ne $view);
@@ -3085,14 +3164,16 @@ sub read_schema_from_file
 			$idx_def =~ s/STORAGE\s*\([^\)]+\)\s*//is;
 			$idx_def =~ s/COMPRESS(\s+\d+)?\s*//is;
 			# look for storage information
-			if ($idx_def =~ s/TABLESPACE\s*([^\s]+)\s*//is) {
+			if ($idx_def =~ s/TABLESPACE\s*([^\s]+)\s*//is)
+			{
 				$self->{tables}{$tb_name}{idx_tbsp}{$idx_name} = $1;
 				$self->{tables}{$tb_name}{idx_tbsp}{$idx_name} =~ s/"//gs;
 			}
 			if ($idx_def =~ s/ONLINE\s*//is) {
 				$self->{tables}{$tb_name}{concurrently}{$idx_name} = 1;
 			}
-			if ($idx_def =~ s/INDEXTYPE\s+IS\s+.*SPATIAL_INDEX//is) {
+			if ($idx_def =~ s/INDEXTYPE\s+IS\s+.*SPATIAL_INDEX//is)
+			{
 				$self->{tables}{$tb_name}{spatial}{$idx_name} = 1;
 				$self->{tables}{$tb_name}{idx_type}{$idx_name}{type} = 'SPATIAL INDEX';
 				$self->{tables}{$tb_name}{idx_type}{$idx_name}{type_name} = 'SPATIAL_INDEX';
@@ -3103,20 +3184,24 @@ sub read_schema_from_file
 			if ($idx_def =~ s/sdo_indx_dims=(\d)//is) {
 				$self->{tables}{$tb_name}{idx_type}{$idx_name}{type_dims} = $1;
 			}
-			$idx_def =~ s/\)[^\)]*$//s;
-			if ($is_unique eq 'BITMAP') {
+			if ($is_unique eq 'BITMAP')
+			{
 				$is_unique = '';
 				$self->{tables}{$tb_name}{idx_type}{$idx_name}{type_name} = 'BITMAP';
 			}
 			$self->{tables}{$tb_name}{uniqueness}{$idx_name} = $is_unique || '';
 			$idx_def =~ s/SYS_EXTRACT_UTC\s*\(([^\)]+)\)/$1/isg;
+			if ($self->{plsql_pgsql}) {
+				$idx_def = Ora2Pg::PLSQL::convert_plsql_code($self, $idx_def);
+			}
 			push(@{$self->{tables}{$tb_name}{indexes}{$idx_name}}, $idx_def);
 			$self->{tables}{$tb_name}{idx_type}{$idx_name}{type} = 'NORMAL';
 			if ($idx_def =~ /\(/s) {
 				$self->{tables}{$tb_name}{idx_type}{$idx_name}{type} = 'FUNCTION-BASED';
 			}
 
-			if (!exists $self->{tables}{$tb_name}{table_info}{type}) {
+			if (!exists $self->{tables}{$tb_name}{table_info}{type})
+			{
 				$self->{tables}{$tb_name}{table_info}{type} = 'TABLE';
 				$self->{tables}{$tb_name}{table_info}{num_rows} = 0;
 				$tid++;
@@ -3368,7 +3453,7 @@ sub read_trigger_from_file
 		my $tb_name = '';
 		my $trigger = '';
 		my $t_type = '';
-		if ($content =~ s/^([^\s]+)\s+(BEFORE|AFTER|INSTEAD\s+OF)\s+(.*?)\s+ON\s+([^\s]+)\s+(.*)(\bEND\s*(?!IF|LOOP|CASE|INTO|FROM|,)[a-z0-9_]*(?:;|$))//is)
+		if ($content =~ s/^([^\s]+)\s+(BEFORE|AFTER|INSTEAD\s+OF)\s+(.*?)\s+ON\s+([^\s]+)\s+(.*)(\bEND\s*(?!IF|LOOP|CASE|INTO|FROM|,)[a-z0-9_\$"]*(?:;|$))//is)
 		{
 			$t_name = $1;
 			$t_pos = $2;
@@ -3377,7 +3462,7 @@ sub read_trigger_from_file
 			$trigger = $5 . $6;
 			$t_name =~ s/"//g;
 		}
-		elsif ($content =~ s/^([^\s]+)\s+(BEFORE|AFTER|INSTEAD|\s+|OF)((?:INSERT|UPDATE|DELETE|OR|\s+|OF)+\s+(?:.*?))*\s+ON\s+([^\s]+)\s+(.*)(\bEND\s*(?!IF|LOOP|CASE|INTO|FROM|,)[a-z0-9_]*(?:;|$))//is)
+		elsif ($content =~ s/^([^\s]+)\s+(BEFORE|AFTER|INSTEAD|\s+|OF)((?:INSERT|UPDATE|DELETE|OR|\s+|OF)+\s+(?:.*?))*\s+ON\s+([^\s]+)\s+(.*)(\bEND\s*(?!IF|LOOP|CASE|INTO|FROM|,)[a-z0-9_\$"]*(?:;|$))//is)
 		{
 			$t_name = $1;
 			$t_pos = $2;
@@ -7364,15 +7449,12 @@ sub export_table
 		$count_table++;
 
 		# Create FDW server if required
-		if ($self->{external_to_fdw})
+		if ( $self->{external_to_fdw} && grep(/^$table$/i, keys %{$self->{external_table}}) )
 		{
 			my $srv_name = "\L$self->{external_table}{$table}{directory}\E";
 			$srv_name =~ s/^.*\.//;
-			if ( grep(/^$table$/i, keys %{$self->{external_table}}) )
-			{
-				$sql_header .= "CREATE EXTENSION IF NOT EXISTS file_fdw;\n\n" if ($sql_header !~ /CREATE EXTENSION .* file_fdw;/is);
-				$sql_header .= "CREATE SERVER $srv_name FOREIGN DATA WRAPPER file_fdw;\n\n" if ($sql_header !~ /CREATE SERVER $srv_name FOREIGN DATA WRAPPER file_fdw;/is);
-			}
+			$sql_header .= "CREATE EXTENSION IF NOT EXISTS file_fdw;\n\n" if ($sql_header !~ /CREATE EXTENSION .* file_fdw;/is);
+			$sql_header .= "CREATE SERVER $srv_name FOREIGN DATA WRAPPER file_fdw;\n\n" if ($sql_header !~ /CREATE SERVER $srv_name FOREIGN DATA WRAPPER file_fdw;/is);
 		}
 
 		my $tbname = $self->get_replaced_tbname($table);
@@ -7426,7 +7508,7 @@ sub export_table
 				push(@collist, $self->{tables}{$table}{column_info}{$k}[0]);
 			}
 
-			# Extract column information following the Oracle position order
+			# Extract column information following the position order
 			foreach my $k (sort { 
 					if (!$self->{reordering_columns}) {
 						$self->{tables}{$table}{column_info}{$a}[11] <=> $self->{tables}{$table}{column_info}{$b}[11];
@@ -7500,7 +7582,11 @@ sub export_table
 						if ($tobequoted) {
 							$seqname = '"' . $seqname . '"';
 						}
-						$serial_sequence .= "ALTER SEQUENCE $seqname RESTART WITH $self->{tables}{$table}{table_info}{auto_increment};\n" if (exists $self->{tables}{$table}{table_info}{auto_increment});
+						if (exists $self->{tables}{$table}{table_info}{auto_increment})
+						{
+							$self->{tables}{$table}{table_info}{auto_increment} = 1 if ($self->{is_mysql} && !$self->{tables}{$table}{table_info}{auto_increment});
+							$serial_sequence .= "ALTER SEQUENCE $seqname RESTART WITH $self->{tables}{$table}{table_info}{auto_increment};\n";
+						}
 					}
 				}
 
@@ -7699,6 +7785,10 @@ sub export_table
 											$f->[4] = "'$f->[4]'";
 										}
 									}
+									elsif ($type =~ /(char|text)/i && $f->[4] !~ /^'/)
+									{
+										$f->[4] = "'$f->[4]'";
+									}
 								}
 								$f->[4] = 'NULL' if ($f->[4] eq "''" && $type =~ /int|double|numeric/i);
 								$sql_output .= " DEFAULT $f->[4]";
@@ -7717,8 +7807,8 @@ sub export_table
 			{
 				$sql_output .= ' ' . $self->{tables}{$table}{table_info}{on_commit};
 			}
-
-			if ($self->{tables}{$table}{table_info}{partitioned} && $self->{pg_supports_partition} && !$self->{disable_partition}) {
+			if ($self->{tables}{$table}{table_info}{partitioned} && $self->{pg_supports_partition} && !$self->{disable_partition})
+			{
 				if (exists $self->{partitions_list}{"\L$table\E"}{type})
 				{
 					$sql_output .= " PARTITION BY " . $self->{partitions_list}{"\L$table\E"}{type} . " (";
@@ -7767,7 +7857,7 @@ sub export_table
 			elsif ( grep(/^$table$/i, keys %{$self->{external_table}}) )
 			{
 				my $program = '';
-				$program = ", program '$self->{external_table}{$table}{program}'" if ($self->{external_table}{$table}{program});
+				$program = ", program '$self->{external_table}{$table}{program}'";
 				$sql_output .= " SERVER \L$self->{external_table}{$table}{directory}\E OPTIONS(filename '$self->{external_table}{$table}{directory_path}$self->{external_table}{$table}{location}', format 'csv', delimiter '$self->{external_table}{$table}{delimiter}'$program);\n";
 			}
 			elsif ($self->{is_mysql})
@@ -9326,8 +9416,8 @@ sub _dump_fdw_table
 			$colname = $self->{replaced_cols}{lc($table)}{lc($f->[0])};
 		}
 		# If there is any transformation to apply replace the column name with the clause
-		if (exists $self->{oracle_fdw_transform}{lc($table)}{lc($colname)}) {
-			$fdw_col_list .= $self->{oracle_fdw_transform}{lc($table)}{lc($colname)} . ",";
+		if (exists $self->{transform_value}{lc($table)}{lc($colname)}) {
+			$fdw_col_list .= $self->{transform_value}{lc($table)}{lc($colname)} . ",";
 		}
 		else
 		{
@@ -9476,6 +9566,9 @@ sub _dump_fdw_table
 	}
 	else
 	{
+		if ($search_path) {
+			$local_dbh->do($search_path) or $self->logit("FATAL: " . $local_dbh->errstr . "\n", 0, 1);
+		}
 		$self->logit("Exporting foreign table data for $table using query: $s_out\n", 1);
 		$local_dbh->do($s_out) or $self->logit("ERROR: " . $local_dbh->errstr . ", SQL: $s_out\n", 0);
 	}
@@ -10305,6 +10398,7 @@ sub _create_check_constraint
 			if (!$converted_as_boolean)
 			{
 				$chkconstraint = Ora2Pg::PLSQL::convert_plsql_code($self, $chkconstraint);
+				$chkconstraint =~ s/,$//;
 				$out .= "ALTER TABLE $table DROP CONSTRAINT $self->{pg_supports_ifexists} $k;\n" if ($self->{drop_if_exists});
 				$out .= "ALTER TABLE $table ADD CONSTRAINT $k CHECK ($chkconstraint)$validate;\n";
 			}
@@ -10548,7 +10642,13 @@ sub _howto_get_data
 					$name->[$k] = '`' . $name->[$k] . '`';
 				}
 			}
-			if ( ( $src_type->[$k] =~ /^char/i) && ($type->[$k] =~ /(varchar|text)/i)) {
+
+			# If there is any transformation to apply replace the column name with the clause
+			if (exists $self->{transform_value}{lc($table)} && exists $self->{transform_value}{lc($table)}{lc($realcolname)}) {
+				$str .= $self->{transform_value}{lc($table)}{lc($realcolname)} . ",";
+			}
+			# Apply some default transformation following the data type
+			elsif ( ( $src_type->[$k] =~ /^char/i) && ($type->[$k] =~ /(varchar|text)/i)) {
 				$str .= "trim($self->{trim_type} '$self->{trim_char}' FROM $name->[$k]) AS $name->[$k],";
 			} elsif ($self->{is_mysql} && $src_type->[$k] =~ /bit/i) {
 				$str .= "BIN($name->[$k]),";
@@ -10583,9 +10683,9 @@ sub _howto_get_data
 			elsif ( !$self->{is_mysql} && $src_type->[$k] =~ /^(ST_|STGEOM_)/i)
 			{
 				if ($self->{geometry_extract_type} eq 'WKB') {
-					$str .= "CASE WHEN $name->[$k] IS NOT NULL THEN SDE.ST_ASBINARY($name->[$k]) ELSE NULL END,";
+					$str .= "CASE WHEN $name->[$k] IS NOT NULL THEN $self->{st_asbinary_function}($name->[$k]) ELSE NULL END,";
 				} else {
-					$str .= "CASE WHEN $name->[$k] IS NOT NULL THEN SDE.ST_ASTEXT($name->[$k]) ELSE NULL END,";
+					$str .= "CASE WHEN $name->[$k] IS NOT NULL THEN $self->{st_astext_function}($name->[$k]) ELSE NULL END,";
 				}
 			}
 			# Oracle geometries
@@ -10634,9 +10734,9 @@ sub _howto_get_data
 				else
 				{
 					if ($self->{geometry_extract_type} eq 'WKB') {
-						$str .= "CASE WHEN $name->[$k] IS NOT NULL THEN CONCAT('SRID=',ST_Srid($name->[$k]),';', ST_AsBinary($name->[$k]->[0])) ELSE NULL END,";
+						$str .= "CASE WHEN $name->[$k] IS NOT NULL THEN CONCAT('SRID=',$self->{st_srid_function}($name->[$k]),';', $self->{st_asbinary_function}($name->[$k]->[0])) ELSE NULL END,";
 					} else {
-						$str .= "CASE WHEN $name->[$k] IS NOT NULL THEN CONCAT('SRID=',ST_Srid($name->[$k]),';', ST_AsText($name->[$k]->[0])) ELSE NULL END,";
+						$str .= "CASE WHEN $name->[$k] IS NOT NULL THEN CONCAT('SRID=',$self->{st_srid_function}($name->[$k]),';', $self->{st_astext_function}($name->[$k]->[0])) ELSE NULL END,";
 					}
 				}
 			}
@@ -10646,7 +10746,7 @@ sub _howto_get_data
 				if ($self->{db_version} < '5.7.6') {
 					$str .= "CASE WHEN $name->[$k] IS NOT NULL THEN AsText($name->[$k]) ELSE NULL END,";
 				} else {
-					$str .= "CASE WHEN $name->[$k] IS NOT NULL THEN ST_AsText($name->[$k]) ELSE NULL END,";
+					$str .= "CASE WHEN $name->[$k] IS NOT NULL THEN $self->{st_astext_function}($name->[$k]) ELSE NULL END,";
 				}
 			}
 			elsif ( !$self->{is_mysql} && (($src_type->[$k] =~ /clob/i) || ($src_type->[$k] =~ /blob/i)) )
@@ -10957,6 +11057,7 @@ sub _howto_get_fdw_data
 					$name->[$k]->[0] = '`' . $name->[$k]->[0] . '`';
 				}
 			}
+
 			# If dest type is bytea the content of the file is exported as bytea
 			if ( ($src_type->[$k] =~ /bfile/i) && ($type->[$k] =~ /bytea/i) )
 			{
@@ -11611,7 +11712,6 @@ This function retrieves real rows count from a table.
 
 =cut
 
-
 sub _count_source_rows
 {
 	my ($self, $dbh, $t) = @_;
@@ -11921,20 +12021,20 @@ sub _get_synonyms
 	}
 }
 
-=head2 _get_partitions_list
+=head2 _get_partitions_type
 
 This function implements an Oracle-native partitions information.
 Return a hash of the partition table_name => type
 =cut
 
-sub _get_partitions_list
+sub _get_partitions_type
 {
 	my($self) = @_;
 
 	if ($self->{is_mysql}) {
-		return Ora2Pg::MySQL::_get_partitions_list($self);
+		return Ora2Pg::MySQL::_get_partitions_type($self);
 	} else {
-		return Ora2Pg::Oracle::_get_partitions_list($self);
+		return Ora2Pg::Oracle::_get_partitions_type($self);
 	}
 }
 
@@ -12756,11 +12856,11 @@ sub read_config
 		}
 		# Should be a else statement but keep the list up to date to memorize the directives full list
 		elsif (!grep(/^$var$/, 'TABLES','ALLOW','MODIFY_STRUCT','REPLACE_TABLES','REPLACE_COLS',
-				'WHERE','EXCLUDE','VIEW_AS_TABLE','ORA_RESERVED_WORDS','SYSUSERS',
-				'REPLACE_AS_BOOLEAN','BOOLEAN_VALUES','MODIFY_TYPE','DEFINED_PK',
+				'WHERE','EXCLUDE','VIEW_AS_TABLE','MVIEW_AS_TABLE','ORA_RESERVED_WORDS',
+				'SYSUSERS','REPLACE_AS_BOOLEAN','BOOLEAN_VALUES','MODIFY_TYPE','DEFINED_PK',
 				'ALLOW_PARTITION','REPLACE_QUERY','FKEY_ADD_UPDATE','DELETE',
 				'LOOK_FORWARD_FUNCTION','ORA_INITIAL_COMMAND','PG_INITIAL_COMMAND',
-				'ORACLE_FDW_TRANSFORM','EXCLUDE_COLUMNS'
+				'TRANSFORM_VALUE','EXCLUDE_COLUMNS'
 			))
 		{
 			$AConfig{$var} = $val;
@@ -12780,7 +12880,7 @@ sub read_config
 					$AConfig{ENABLE_BLOB_EXPORT} = 1;
 				}
 			}
-		} elsif ($var eq 'VIEW_AS_TABLE') {
+		} elsif ($var =~ /VIEW_AS_TABLE/) {
 			push(@{$AConfig{$var}}, split(/[\s;,]+/, $val) );
 		} elsif ($var eq 'LOOK_FORWARD_FUNCTION') {
 			push(@{$AConfig{$var}}, split(/[\s;,]+/, $val) );
@@ -12913,12 +13013,12 @@ sub read_config
 				$AConfig{"GLOBAL_WHERE"} = $val;
 			}
 		}
-		elsif ($var eq 'ORACLE_FDW_TRANSFORM')
+		elsif ($var eq 'TRANSFORM_VALUE')
 		{
 			my @vals = split(/\s*;\s*/, $val);
 			foreach my $v (@vals)
 			{
-				while ($v =~ s/([^\[\s]+)\s*\[\s*([^,]+)\s*,\s*([^\]]+)\s*\]\s*//)
+				while ($v =~ s/([^\[\s]+)\s*\[\s*([^:,]+)\s*[,:]\s*([^\]]+)\s*\]\s*//)
 				{
 					my $table = $1;
 					my $column = $2;
@@ -12968,17 +13068,19 @@ sub _extract_functions
 	my $type = '';
 	for (my $i = 0; $i <= $#lines; $i++)
 	{ 
-		if ($lines[$i] =~ /^(?:CREATE|CREATE OR REPLACE)?\s*(?:NONEDITIONABLE|EDITIONABLE)?\s*(FUNCTION|PROCEDURE)\s+([a-z0-9_\-\."]+)(.*)/i) {
+		if ($lines[$i] =~ /^(?:CREATE|CREATE OR REPLACE)?\s*(?:NONEDITIONABLE|EDITIONABLE)?\s*(FUNCTION|PROCEDURE)\s+([a-z0-9_\$\-\."]+)(.*)/i)
+		{
 			$type = uc($1);
 			$fcname = $2;
+			my $after = $3;
 			$fcname =~ s/^.*\.//;
 			$fcname =~ s/"//g;
 			$type = 'FUNCTION' if (!$self->{pg_supports_procedure});
 			if ($before) {
 				push(@functions, "$before\n");
-				$functions[-1] .= "$type $2 $3\n";
+				$functions[-1] .= "$type $fcname $after\n";
 			} else {
-				push(@functions, "$type $fcname $3\n");
+				push(@functions, "$type $fcname $after\n");
 			}
 			$before = '';
 		} elsif ($fcname) {
@@ -12986,10 +13088,10 @@ sub _extract_functions
 		} else {
 			$before .= "$lines[$i]\n";
 		}
-		$fcname = '' if ($lines[$i] =~ /^\s*END\s+$fcname\b/i);
+		$fcname = '' if ($lines[$i] =~ /^\s*END\s+["]*\Q$fcname\E["]*\b/i);
 	}
 
-	map { s/\bEND\s+(?!IF|LOOP|CASE|INTO|FROM|END|,)[a-z0-9_]+\s*;/END;/igs; } @functions;
+	map { s/\bEND\s+(?!IF|LOOP|CASE|INTO|FROM|END|,)[a-z0-9_"\$]+\s*;/END;/igs; } @functions;
 
 	return @functions;
 }
@@ -13536,7 +13638,7 @@ sub _convert_function
 	my $create_type = '';
 	while ($fct_detail{declare} =~ s/\s+TYPE\s+([^\s]+)\s+IS\s+RECORD\s*\(([^;]+)\)\s*;//is)
 	{
-		$create_type .= "DROP TYPE  $self->{pg_supports_ifexists} $1;\n" if ($self->{drop_if_exists});
+		$create_type .= "DROP TYPE  $self->{pg_supports_ifexists} $1;\n";
 		$create_type .= "CREATE TYPE $1 AS ($2);\n";
 	}
 	while ($fct_detail{declare} =~ s/\s+TYPE\s+([^\s]+)\s+(AS|IS)\s*(VARRAY|VARYING ARRAY)\s*\((\d+)\)\s*OF\s*([^;]+);//is) {
@@ -13553,7 +13655,7 @@ sub _convert_function
 		$internal_name  =~ s/^[^\.]+\.//;
 		my $declar = Ora2Pg::PLSQL::replace_sql_type($tbname, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type}, $self->{varchar_to_text}, %{$self->{data_type}});
 		$declar =~ s/[\n\r]+//s;
-		$create_type .= "DROP TYPE $self->{pg_supports_ifexists} $1;\n" if ($self->{drop_if_exists});
+		$create_type .= "DROP TYPE $self->{pg_supports_ifexists} $1;\n";
 		$create_type .= "CREATE TYPE $type_name AS ($internal_name $declar\[$size\]);\n";
 	}
 	
@@ -13561,6 +13663,7 @@ sub _convert_function
 	my @at_ret_type = ();
 	my $at_suffix = '';
 	my $at_inout = 0;
+
 	if ($fct_detail{declare} =~ s/\s*(PRAGMA\s+AUTONOMOUS_TRANSACTION[\s;]*)/-- $1/is && $self->{autonomous_transaction})
 	{
 		$at_suffix = '_atx';
@@ -15427,6 +15530,7 @@ sub _show_infos
 		my %all_indexes = ();
 		$self->{skip_fkeys} = $self->{skip_indices} = $self->{skip_indexes} = $self->{skip_checks} = 0;
 		$self->{view_as_table} = ();
+		$self->{mview_as_table} = ();
 		print STDERR "Looking at table definition...\n" if ($self->{debug});
 		$self->_tables(1);
 		my $total_index = 0;
@@ -15805,14 +15909,17 @@ sub _show_infos
 			{
 				my $functions = $self->_get_functions();
 				my $total_size = 0;
-				foreach my $fct (keys %{$functions}) {
+				foreach my $fct (keys %{$functions})
+				{
 					$total_size += length($functions->{$fct}{text});
-					if ($self->{estimate_cost}) {
+					if ($self->{estimate_cost})
+					{
 						my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($self, $functions->{$fct}{text});
 						$report_info{'Objects'}{$typ}{'cost_value'} += $cost;
 						$report_info{'Objects'}{$typ}{'detail'} .= "\L$fct: $cost\E\n";
 						$report_info{full_function_details}{"\L$fct\E"}{count} = $cost;
-						foreach my $d (sort { $cost_detail{$b} <=> $cost_detail{$a} } keys %cost_detail) {
+						foreach my $d (sort { $cost_detail{$b} <=> $cost_detail{$a} } keys %cost_detail)
+						{
 							next if (!$cost_detail{$d});
 							$report_info{full_function_details}{"\L$fct\E"}{info} .= "\t$d => $cost_detail{$d}";
 							$report_info{full_function_details}{"\L$fct\E"}{info} .= " (cost: ${$uncovered_score}{$d})" if (${$uncovered_score}{$d});
@@ -15914,7 +16021,7 @@ sub _show_infos
 			}
 			elsif ($typ eq 'TABLE PARTITION')
 			{
-				my %partitions = $self->_get_partitions_list();
+				my %partitions = $self->_get_partitions_type();
 				foreach my $t (sort keys %partitions) {
 					$report_info{'Objects'}{$typ}{'detail'} .= " $partitions{$t} $t partitions.\n";
 				}
@@ -16822,66 +16929,63 @@ GROUP BY schemaname,tablename
 	# Test check constraints
 	####
 	my %nbnotnull = {}; # will be used in the NOT NULL constraint count as based on a CHECK constraints
-	if (!$self->{is_mysql})
-	{
-		print "\n";
-		print "[TEST CHECK CONSTRAINTS COUNT]\n";
-		my %check_constraints = $self->_check_constraint('',$self->{schema});
-		$schema_cond = $self->get_schema_condition('n.nspname');
-		$sql = qq{
+	print "\n";
+	print "[TEST CHECK CONSTRAINTS COUNT]\n";
+	my %check_constraints = $self->_check_constraint('',$self->{schema});
+	$schema_cond = $self->get_schema_condition('n.nspname');
+	$sql = qq{
 SELECT n.nspname::regnamespace||'.'||r.conrelid::regclass, count(*)
 FROM pg_catalog.pg_constraint r JOIN pg_class c ON (r.conrelid=c.oid) JOIN pg_namespace n ON (c.relnamespace=n.oid)
 WHERE r.contype = 'c' $schema_cond
 GROUP BY n.nspname,r.conrelid
 };
-		%pgret = ();
+	%pgret = ();
+	if ($self->{pg_dsn})
+	{
+		my $s = $self->{dbhdest}->prepare($sql) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
+		if (not $s->execute())
+		{
+			push(@errors, "Can not extract information from catalog about check constraints.");
+			return;
+		}
+		while ( my @row = $s->fetchrow())
+		{
+			$row[0] =~ s/^[^\.]+\.// if (!$self->{export_schema});
+			$pgret{"\U$row[0]\E"} = $row[1];
+		}
+		$s->finish;
+	}
+	# Initialize when there is not unique key in a table
+	foreach my $t (keys %tables_infos) {
+		$check_constraints{$t}{constraint} = {} if (not exists $check_constraints{$t});
+	}
+
+	foreach my $t (sort keys %check_constraints)
+	{
+		next if (!exists $tables_infos{$t});
+		my $nbcheck = 0;
+		foreach my $cn (keys %{$check_constraints{$t}{constraint}}) {
+			$nbcheck++ if ($check_constraints{$t}{constraint}{$cn}{condition} !~ /IS NOT NULL$/);
+			if ($check_constraints{$t}{constraint}{$cn}{condition} =~ /^[^\s]+\s+IS\s+NOT\s+NULL$/i) {
+				$nbnotnull{$t}++;
+			} else {
+				$nbcheck++;
+			}
+		}
+		print "$lbl:$t:$nbcheck\n";
 		if ($self->{pg_dsn})
 		{
-			my $s = $self->{dbhdest}->prepare($sql) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
-			if (not $s->execute())
-			{
-				push(@errors, "Can not extract information from catalog about check constraints.");
-				return;
-			}
-			while ( my @row = $s->fetchrow())
-			{
-				$row[0] =~ s/^[^\.]+\.// if (!$self->{export_schema});
-				$pgret{"\U$row[0]\E"} = $row[1];
-			}
-			$s->finish;
-		}
-		# Initialize when there is not unique key in a table
-		foreach my $t (keys %tables_infos) {
-			$check_constraints{$t}{constraint} = {} if (not exists $check_constraints{$t});
-		}
-
-		foreach my $t (sort keys %check_constraints)
-		{
-			next if (!exists $tables_infos{$t});
-			my $nbcheck = 0;
-			foreach my $cn (keys %{$check_constraints{$t}{constraint}}) {
-				$nbcheck++ if ($check_constraints{$t}{constraint}{$cn}{condition} !~ /IS NOT NULL$/);
-				if ($check_constraints{$t}{constraint}{$cn}{condition} =~ /^[^\s]+\s+IS\s+NOT\s+NULL$/i) {
-					$nbnotnull{$t}++;
-				} else {
-					$nbcheck++;
-				}
-			}
-			print "$lbl:$t:$nbcheck\n";
-			if ($self->{pg_dsn})
-			{
-				my ($tbmod, $orig, $schema, $both) = $self->set_pg_relation_name($t);
-				$pgret{"\U$both$orig\E"} ||= 0;
-				print "POSTGRES:$both$orig:", $pgret{"\U$both$orig\E"}, "\n";
-				if ($pgret{"\U$both$orig\E"} != $nbcheck) {
-					push(@errors, "Table $both$orig doesn't have the same number of check constraints in source database ($nbcheck) and in PostgreSQL (" . $pgret{"\U$both$orig\E"} . ").");
-				}
+			my ($tbmod, $orig, $schema, $both) = $self->set_pg_relation_name($t);
+			$pgret{"\U$both$orig\E"} ||= 0;
+			print "POSTGRES:$both$orig:", $pgret{"\U$both$orig\E"}, "\n";
+			if ($pgret{"\U$both$orig\E"} != $nbcheck) {
+				push(@errors, "Table $both$orig doesn't have the same number of check constraints in source database ($nbcheck) and in PostgreSQL (" . $pgret{"\U$both$orig\E"} . ").");
 			}
 		}
-		%check_constraints = ();
-		$self->show_test_errors('check constraints', @errors);
-		@errors = ();
 	}
+	%check_constraints = ();
+	$self->show_test_errors('check constraints', @errors);
+	@errors = ();
 
 	####
 	# Test NOT NULL constraints
@@ -18182,7 +18286,9 @@ sub limit_to_objects
 					} else {
 						$str .= "REGEXP_LIKE(upper($colname), ?)" ;
 					}
-					push(@{$self->{query_bind_params}}, uc("\^$self->{limited}{$arr_type[$i]}->[$j]\$"));
+					my $objname = $self->{limited}{$arr_type[$i]}->[$j];
+					$objname =~ s/\$/\\\$/g; # support dollar sign
+					push(@{$self->{query_bind_params}}, uc("\^$objname\$"));
 					if ($j < $#{$self->{limited}{$arr_type[$i]}}) {
 						$str .= " OR ";
 					}
@@ -18213,7 +18319,9 @@ sub limit_to_objects
 						} else {
 							$str .= " AND NOT REGEXP_LIKE(upper($colname), ?)" ;
 						}
-						push(@{$self->{query_bind_params}}, uc("\^$1\$"));
+						my $objname = $1;
+						$objname =~ s/\$/\\\$/g; # support dollar sign
+						push(@{$self->{query_bind_params}}, uc("\^$objname\$"));
 					}
 				}
 
@@ -18338,7 +18446,7 @@ sub _lookup_package
 
 	my $content = '';
 	my %infos = ();
-	if ($plsql =~ /(?:CREATE|CREATE OR REPLACE)?\s*(?:EDITIONABLE|NONEDITIONABLE)?\s*PACKAGE\s+BODY\s*([^\s\%]+)((?:\s*\%ORA2PG_COMMENT\d+\%)*\s*(?:AS|IS))\s*(.*)/is)
+	if ($plsql =~ /(?:CREATE|CREATE OR REPLACE)?\s*(?:EDITIONABLE|NONEDITIONABLE)?\s*PACKAGE\s+BODY\s*([^\s\%\(]+)((?:\s*\%ORA2PG_COMMENT\d+\%)*\s*(?:AS|IS))\s*(.*)/is)
 	{
 		my $pname = $1;
 		my $type = $2;

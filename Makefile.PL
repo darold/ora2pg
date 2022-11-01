@@ -265,6 +265,13 @@ NO_EXCLUDED_TABLE	0
 # If export type is COPY or INSERT, the corresponding data will be exported.
 #VIEW_AS_TABLE	VIEW_NAME
 
+# Set which materialized view to export as table. By default none. Value must
+# be a list of materialized view name or regexp separated by space. If the
+# object name is a materialized view and the export type is TABLE, the view
+# will be exported as a create table statement. If export type is COPY or
+# INSERT, the corresponding data will be exported.
+#MVIEW_AS_TABLE	VIEW_NAME
+
 # By default Ora2Pg try to order views to avoid error at import time with
 # nested views. With a huge number of view this can take a very long time,
 # you can bypass this ordering by enabling this directive.
@@ -1072,6 +1079,17 @@ DATA_VALIDATION_ORDERING	1
 # Default is to stop after 10 rows validation errors.
 DATA_VALIDATION_ERROR		10
 
+# Use this directive to precise which transformation should be applied to a
+# column when exporting data. Value must be a semicolon separated list of
+#       TABLE[COLUMN_NAME, <replace code in SELECT target list>]
+# For example to replace string 'Oracle' by 'PostgreSQL' in a varchar2 column
+# use the following.
+#TRANSFORM_VALUE   ERROR_LOG_SAMPLE[DBMS_TYPE,regexp_replace("DBMS_TYPE",'Oracle','PostgreSQL')]
+#or to replace all Oracle char(0) in a string by a space character:
+#TRANSFORM_VALUE   CLOB_TABLE[CHARDATA:translate("CHARDATA", chr(0), ' ')]
+#The expression will be applied in the SQL statemeent used to extract data
+#from the source database.
+
 #------------------------------------------------------------------------------
 # PERFORMANCES SECTION (Control export/import performances)
 #------------------------------------------------------------------------------
@@ -1090,7 +1108,8 @@ JOBS		1
 # Multiprocess support. This directive should defined the number of parallel
 # connection to Oracle when extracting data. The limit is the number of cores
 # on your machine. This is useful if Oracle is the bottleneck. Take care that
-# this directive can only be used if there is a column defined in DEFINED_PK.
+# this directive can only be used if there is a primary / unique key defined
+# on a numeric column or that a column is defined in DEFINED_PK.
 ORACLE_COPIES	1
 
 # Multiprocess support. This directive should defined the number of tables
@@ -1272,7 +1291,7 @@ HUMAN_DAYS_LIMIT	5
 # Set the PostgreSQL major version number of the target database. Ex: 9.6 or 10
 # Default is current major version at time of a new release. This replace the
 # old PG_SUPPORTS_* configuration directives.
-PG_VERSION	12
+PG_VERSION	14
 
 # Use btree_gin extenstion to create bitmap like index with pg >= 9.4
 # You will need to create the extension by yourself:
@@ -1338,6 +1357,18 @@ DEFAULT_SRID		4326
 # before use.
 GEOMETRY_EXTRACT_TYPE	INTERNAL
 
+# Oracle function to use to extract the srid from ST_Geometry meta information
+ST_SRID_FUNCTION	ST_SRID
+
+# Oracle function to use to extract the dimension from ST_Geometry meta information
+ST_DIMENSION_FUNCTION	ST_DIMENSION
+
+# Oracle function to used to convert an ST_Geometry value into WKB format
+ST_ASBINARY_FUNCTION	ST_ASBINARY
+
+# Oracle function to used to convert an ST_Geometry value into WKT format
+ST_ASTEXT_FUNCTION	ST_ASTEXT
+
 
 #------------------------------------------------------------------------------
 # FDW SECTION (Control Foreign Data Wrapper export)
@@ -1354,13 +1385,6 @@ GEOMETRY_EXTRACT_TYPE	INTERNAL
 # several instances of ora2pg for data migration through the foreign data
 # wrapper, you might need to change the name of the schema for each instance.
 FDW_IMPORT_SCHEMA	ora2pg_fdw_import
-
-# Use this directive to precise which transformation should be applied to a
-# column when exporting data. Value must be a semicolon separated list of
-#       TABLE[COLUMN_NAME, <replace code in SELECT target list>]
-# For example to replace string 'Oracle' by 'PostgreSQL' in a varchar2 column
-# use the following.
-#ORACLE_FDW_TRANSFORM   ERROR_LOG_SAMPLE[DBMS_TYPE,regexp_replace("DBMS_TYPE",'Oracle','PostgreSQL')]
 
 # By default Ora2Pg drops the temporary schema ora2pg_fdw_import used to import
 # the Oracle foreign schema before each new import. If you want to preserve
