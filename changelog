@@ -1,3 +1,340 @@
+2022 10 08 - v23.2
+
+This release fix several issues reported since past height months and
+adds some new features and improvements.  
+
+  * Add export of MySQL KEY and LINEAR KEY partitioning, translated as HASH
+    partitioning.
+  * Allow export of object with dollar sign is his name.
+  * Add export of CHECK constraints for MySQL >= 8.0.
+  * Add Functional/Expression indexes export from MYSQL.
+  * Add export of MySQL virtual column. Thanks to Shubham Dabriwala for the
+  * Remove scale and precision of a numeric if the scale is higher than the
+    precision. PostgreSQL does not support decimal/numeric attributes where
+    the scale is explicitly higher than the precision.
+  * Add command line option --drop_if_exists to add statement to drop objects
+    before creation if it exists. It corresponds to the DROP_IF_EXISTS
+  * Add option -C | --cdc_file to be able to change the name of the default file
+    used to store/read SCN per table during export. Default is TABLES_SCN.log in
+    the current directory. This is the file written by the --cdc_ready option.
+  * Add multiprocess to count rows in PostgreSQL tables (TEST_COUNT) using -P
+    command line option.
+  * Add support to PostgreSQL 14 procedure with out parameters.
+  * Set default PostgreSQL database target version to 14.
+
+New configuration directives:
+
+  * Add configuration directive MVIEW_AS_TABLE and command line option
+    --mview_as_table to set which materialized view to export as table.
+    By default none. Value must be a list of materialized view name or
+    regexp separated by space or comma. If the object name is a materialized
+    view and the export type is TABLE, the view will be exported as a create
+    table statement. If export type is COPY or INSERT, the corresponding data
+    will be exported.
+  * Add configuration variable FDW_IMPORT_SCHEMA to rename the schema where
+    foreign tables for data migration will be created. If you use several
+    instances of ora2pg for data migration through the foreign data wrapper,
+    you might need to change the name of the schema for each instance.
+    Default: ora2pg_fdw_import
+  * Add TRANSFORM_VALUE configuration directive to apply an expression when
+    retrieving data from Oracle. For example:
+        TRANSFORM_VALUE   CLOB_TABLE[CHARDATA:translate("CHARDATA", chr(0), ' ')]
+    to replace all Oracle char(0) in a string by a space character.
+  * Add EXCLUDE_COLUMNS configuration directive. Unlike MODIFY_STRUCT
+    that is used to redefine a table structure, this directive allow
+    to specify a list of columns per table that must be excluded from
+    the export. For example:
+        EXCLUDE_COLUMNS        T1(nocol1,nocol2) T2(nocol1,nocol2)
+  * Add new configuration directive EXPORT_GTT to export Oracle Global Temporary
+    Table using syntax recognized by the pgtt extension. For more information see
+    https://github.com/darold/pgtt Default is to not export global temporary
+    table as they are not supported natively by PostgreSQL.
+  * Add new configuration option NO_EXCLUDED_TABLE. By default Ora2Pg exclude
+    from export some Oracle "garbage" tables that should never be part of an
+    export. This behavior generates a lot of REGEXP_LIKE expressions which are
+    slowing down the export when looking at tables. To disable this behavior
+    enable this directive, you will have to exclude or clean up later by
+    yourself the unwanted tables. The regexp used to exclude the table are
+    defined in the array @EXCLUDED_TABLES in lib/Ora2Pg.pm. Note this is behavior
+    is independent to the EXCLUDE configuration directive.
+   
+Backward compatibility:
+
+  * Force rewrite of all invalid date starting with zero year 0000 into 1970-01-01
+    when it is a default value and NULL for data. Old behavior was to only replace
+    0000-00-00 date.
+  * Until now there was a lot of untranslated call to TRUNC(date) because
+    Ora2Pg is unable to detect that the parameter is a date or a number.
+    The problem is that Oracle has TRUNC(number) too and Ora2Pg try to not
+    apply the transformation if there is a doubt. In most of the migration
+     have met very few TRUNC(number) so now all call to TRUNC()
+    will be converted to date_trunc(). There must be false positive rewrite
+    but this should be far less work than the actual situation.
+
+Here is the full list of changes and acknowledgements:
+
+  - Fixed PostgreSQL "relation not found error" in _dump_fdw_table(), PostgreSQL
+    search_path was not being used. Thanks to James Schriever for the patch.
+  - Fix year and month quoting as reserved words when they are used as aliases.
+    Thanks to duursma for the report.
+  - Fix conversion of to_number(substr(...)) when PG substr() return empty
+    string where Oracle return NULL which make the conversion to numeric fail.
+    The fix using (nullif(substr(...), )::numeric) only concern TABLE export.
+    Thanks to Menelaos Perdikeas for the report.
+  - Add export of MySQL KEY and LINEAR KEY partitioning, now exported as HASH
+    partitioning. Thanks to Sanyam Singhal for the report.
+  - Remove $ sign from characters that require object name quoting.
+  - Fix export of objects with the $ sign in the name. Thanks to yano-rxa and
+    duursma for the report.
+  - Prevent translation of EXEC when used as alias. Thanks to Rui Pereira for
+    the report.
+  - Fix MySQL enum data type export with regression introduced by commit 24a476.
+    Thanks to Shivansh Gahlot for the report.
+  - Rename ORACLE_FDW_TRANSFORM to TRANSFORM_VALUE to apply in all case an
+    expression when retrieving data from Oracle. For example:
+      TRANSFORM_VALUE   CLOB_TABLE[CHARDATA:translate("CHARDATA", chr(0), ' ')]
+    to replace all Oracle char(0) in a string by a space character.
+  - Fix add_month() translation failing with some use cases. Thanks to duursma
+    for the report.
+  - Add export of CHECK constraints for MySQL >= 8.0. Thanks to Rahul
+    Barigidad for the report.
+  - Fix MySQL unsigned numeric data type conversion. Thanks to Rahul Barigidad
+    for the report.
+  - Add Functional/Expression indexes fail while exporting from MYSQL. Thanks to
+    Shubham Dabriwala for the report.
+  - Fix export of descending indexes for MySQL. Thanks to Shubham Dabriwala for
+    the report.
+  - Force MySQL auto increment sequence to start at 1 when value is 0.
+    Thanks to Rahul Barigidad for the report.
+  - Fix conversion of MySQL decimal(p,s) to keep the original datatype
+    instead of use of real or double.
+  - Add export of MySQL virtual column. Thanks to Shubham Dabriwala for the
+    report.
+  - Fix export of MySQL function with return clause only. Thanks to Shubham
+    Dabriwala for the report.
+  - Remove scale and precision of a numeric if the scale is higher than the
+    precision. PostgreSQL does not support decimal/numeric attributes where
+    the scale is explicitly higher than the precision. Thanks to Rahul Barigidad
+    for the report.
+  - Fix export of comment for views. Thanks to gh-k-murata for the report.
+  - Add command line option --drop_if_exists to add statement to drop objects
+    before creation if tehy exists. It corresponds to the DROP_IF_EXISTS
+    configuration directive. Thanks to Yoni Sade for the feature request.
+  - Add option --mview_as_table to documentation.
+  - Add configuration directive MVIEW_AS_TABLE and command line option
+    --mview_as_table to set which materialized view to export as table.
+    By default none. Value must be a list of materialized view name or
+    regexp separated by space or comma. If the object name is a materialized
+    view and the export type is TABLE, the view will be exported as a create
+    table statement. If export type is COPY or INSERT, the corresponding data
+    will be exported.
+  - Disable EXPORT_GTT when export type is not TABLE. Thanks to gh-k-murata for
+    the report.
+  - Fix generated external servers wrongly placed in a schema. Thanks to duursma
+    for the report.
+  - Add configuration variable FDW_IMPORT_SCHEMA to rename the schema where
+    foreign tables for data migration will be created. If you use several
+    instances of ora2pg for data migration through the foreign data wrapper,
+    you might need to change the name of the schema for each instance. Default
+    to ora2pg_fdw_import. Thanks to James Schriever for the feature request.
+  - Fix wrong conversion of rownum clause when a subquery is used. Thanks to
+    Rui Pereira for the report.
+  - Escape comma and backslashes in BFILE data export. Thanks to duursma for
+    the patch.
+  - Fix possible infinite loop in Oracle outer join parsing. Thanks a lot to
+    yano-rxa for the report.
+  - Remove privileges default settings on views exported from SYNONYMs
+  - Add support for Rectangle geometry type. Thanks to duursma for the patch.
+  - Fix double replacement of IS NULL/IS NOT NULL when NULL_EQUAL_EMPTY is
+    enabled.
+  - Add CHECK not null only constraints to not null constraint count.
+  - Fix CHECK NOT NULL only constraints that was not exported by generating
+    NOT NULL constraints instead. They are exclude from the count of CHECK
+    constraint as suggested by Florent Jardin but a count difference persist
+    for NOT NULL constraints.
+  - Fix TYPE export when SCHEMA and PRESERVE_CASE have different values. Thanks
+    to Florent Jardin for the report.
+  - Fix custom exception replacement. Thanks to Rui Pereira for the report.
+  - Fix Collection and Polygon geometry INTERNAL export.
+    Thanks to duursma for the patch.
+  - Fix export of efile with parenthesis. Thanks to duursma for the report.
+  - Fix wrong column indices used in spatial index extraction. Thanks to duursma
+    for the report.
+  - Fix call of ST_GeomFromText() with WKT export. Thanks to duursma for the
+    report.
+  - Disable USE_LOB_LOCATOR with WKT geometry export type, ST_GeomFromText and
+    SDO_UTIL.TO_WKTGEOMETRY functions return a CLOB instead of a geometry.
+    Thanks to duursma for the report.
+  - Fix INTERNAL conversion uses the srid from the object instead of the
+    meta-data. Thanks to duursma for the report.
+  - Fix regression in data export when REPLACE_AS_BOOLEAN is set. Thanks to
+    Juri Berlanda for the report.
+  - Fix call to procedure using dblink. Thanks to Rui Pereira for the report.
+  - Keep untouched call to DBMS_OUTPUT functions if USE_ORAFCE is enabled.
+    Thanks to Sanyam Singhal for the report.
+  - Partial fix for MySQL subpartitioning export.
+  - Fix partitions export for MySQL. Thanks to Sanyam Singhal for the report.
+  - Fix generation of export_all.sh following the operating system.
+  - Add information of use of PARALLEL_TABLES with COPY, INSERT and TEST_DATA
+    actions. It is also useful with TEST, TEST_COUNT, and SHOW_TABLE if
+    --count_rows is used for real row count.
+  - Prevent calling real rows count twice with TEST action, and allow it for
+    the SHOW_TABLE action.
+  - Handle count errors when single process.
+  - Move row count wait for all child die to the right place
+  - Fix rewrite of nested replace() functions in CHECK constraint. Thanks to
+    Menelaos Perdikeas for the report.
+  - Fix call of procedures with out parameters when it is not declared in a
+    package. Thanks to taptarap for the report.
+  - Some minor code improvement. Thanks to Markus Elfring for the patch.
+  - Set encoding to read configuration file to utf8.
+  - Remove useless multiple semi-colon after END of a function.
+  - Fix conversion of regexp_replace() by always appending the 'g' modifier.
+    Thanks to Rui Pereira for the report.
+  - Fix synonym detection to avoid listing public synonym when no schema is
+    specified. Thanks to Dilan Salinda for the report.
+  - Fix regexp error with multi-line comment in default value declaration. Thanks
+    to taptarap for the report.
+  - Add missing sub-partition key in partitioned table primary key. Thanks to
+    downvoteit for the report.
+  - Replace all invalid date starting with zero year 0000- to 1970-01-01 when it
+    is a default value and NULL for data. Old behavior was to only replace
+    0000-00-00 date. Thanks to duursma for the report.
+  - Enclose \i path to data file beween quote to fix import of table with space
+    in their name.
+  - Add PARTITION to the list of reserved work and fix custom keywords list from
+    ORA_RESERVED_WORDS that was not applied. Thanks to markhooper99 for the
+    report.
+  - Add LOAD of pgtt extension before creating global temporary table with TABLE
+    :export. Thanks to duursma for the report.
+  - Fix case where package names should be lower cased. Thanks to Sergey Petrov
+    for the patch.
+  - Cover more case where ALTER ... OWNER TO should not be generated.
+  - Fix case where ALTER ... OWNER TO should not be generated when a view as
+    table definition was not exported.
+  - Fix sub-partition unique and primary keys that lacks columns part of the
+    partition key.  Thanks to downvoteit for the report.
+  - Path for function_per_file are mixed case enabled now. Thanks to Sergey
+    Petrov for the patch.
+  - Fix AUTOINCREMENT script to set last value to sequences for serial an
+    identity column for PG version < 12. Thanks to Jaouad Bouras for the report.
+  - Fix detection of ENUM data type for MySQL
+  - Fix issue when exporting table with a geometry column. The search for
+    the SDO_GTYPE need a FROM clause with a FQDN table when the connection
+    user is not the same as the table schema. Thanks to Argo64 for the report.
+  - Rewrite numeric operation with ADD_MONTH(), LAST_DAY() and TRUNC() to use
+    interval. Thanks to duursma for the report.
+  - Fix rewrite of CONNECT BY in cursors and just after a BEGIN. Thanks to
+    taptarap for the report.
+  - Add partition keys to unique index on partitioned table. Thanks to
+    downvoteit for the report.
+  - Fix case where global variable are tested against NULL. Thanks to duursma
+    for the report.
+  - Fix remove of %ROWTYPE in function argument and returned data type. Add
+    regression test.  Thanks to Eric Delanoe for the report.
+  - Fix case clause in autoincrement parameters. Thanks to jbouras for the
+    report.
+  - Fix typo in ORACLE_FDW_TRANSFORM example.
+  - Fix progress bar output in quiet mode. Thanks to Sanyam Singhal for the
+    report.
+  - Fix error Can't locate object method "gzclose" via package "IO::File".
+    Thanks to Sanyam Singhal for the report.
+  - Fix cases where translation of function with out parameter was not done
+    correctly.
+  - Fix translation of function with out parameter that returns a value. For
+    example the following Oracle function:
+    
+      CREATE FUNCTION foo(a int, OUT b int)
+      RETURN boolean IS
+      BEGIN
+        b := a;
+        RETURN true;
+      END;
+    
+    is now translated by adding an extra out parameter for the return value:
+    
+      CREATE OR REPLACE FUNCTION foo (a integer, OUT b integer,
+							OUT extra_param boolean)
+      RETURNS record AS $body$
+      BEGIN
+        b := a;
+        extra_param := true;
+        RETURN;
+      END;
+      $body$ LANGUAGE PLPGSQL STABLE;
+    
+    Thanks to Akhil Reddy for the report.
+  - Fix undefined database connection handle. Thanks to Alexander for the report
+  - Fix case preservation for row count in Oracle side with TEST_COUNT action..
+    Thanks to Veka for the report.
+  - Only generate the Powershell script when we are running on a Windows
+    operating system.
+  - Fix #1400 and generate PowerShell script "export_schema.ps1". Thanks to
+    moh-hassan for the report.
+  - Fix rewriting assignment of a global variable using SELECT INTO. Thanks to
+    duursma for the report.
+  - Fix partition export for MySQL. Thanks to Sanyam Singhal for the report.
+  - Apply WHERE clause to FDW data export.
+  - Fix useless ST geometry parsing. Thanks to jieguolove for the report.
+  - Replace backslash with slash in BFILE filename when destination data type is
+    text or efile.
+  - Fix RAW(16)/RAW(32) data export when MOFDIFY_TYPE is used on the column.
+    Thanks to Sergey Evseev for the report.
+  - Fix ST_SRID() call. Thanks to jieguolove for the report.
+  - Skip table data export when the table has no column defined. This was
+    generating a fatal error.
+  - Fix untranslated function returned data type when there was a comment just
+    after. The comment is removed. Thanks to taptarap for the report.
+  - Fix other fetching all-column-all-table properties for every table.
+    Thanks to Sergey Petrov for the report.
+  - Fix fetching all-column-all-table properties for every table. Thanks to
+    Sergey Petrov for the report.
+  - Remove any comments between RETURN and returned type to not break parsing.
+    Thanks to taptarap for the report.
+  - Fix global variables in the DECLARE section are not replaced if used with
+    a package name. Thanks to taptarap for the report.
+  - Remove renaming of dist configuration file under Windows OS. Thanks to
+    Julien Monticolo and ohamed Hassan for the report.
+  - Fix remaining data export query failure. Thanks to Sung Woo Chang for the
+    report.
+  - Fix data export, query to retrieve data was broken since change for GTT.
+  - Set function as VOLATILE when there is CALL in the body.
+  - Add support to PG14 procedure out parameters. Thanks to Rui Pereira for the
+    feature request.
+  - Fix missing parenthesis in index column expression with input file.
+  - Fix missing END keyword after embedded CASE clause in a package function.
+    Thanks to taptarap for the report.
+  - Fix conversion of dbms_lob.substr() where second and third parameters
+    must be inverted. Thanks to taptarap for the report.
+  - Fix an other case of wronf NOT NULL detection from input file.
+  - Fix detection of NOT NULL constraint in input file.
+  - Do not quit on error "Undefined subroutine &Ora2Pg::ReadLine", just
+    continue to be able to leverage an Oracle Wallet (SEPS) when no Oracle
+    user and password are provided. If you want to use the interactive mode
+    to type the username and password at command line you must install the
+    Perl package Term::ReadKey before. Thanks to Simon Pane for the report.
+  - Fix partitioning by LIST, only the first value of a list was exported.
+    Thanks to Sergey Grinko for the report.
+  - Fix quoting of DEFAULT NULL. Thanks to Veka for the report.
+  - Fix unwanted multiple CALL keywords. Thanks to taptarap for the report.
+  - Add assessment counter for FND_* packages.
+  - Fix LONG RAW export as bytea in COPY mode. Thanks to Helena Adiduyulmus for
+    the report.
+  - Add new configuration option NO_EXCLUDED_TABLE.    
+    By default Ora2Pg exclude from export some Oracle "garbage" tables that
+    should never be part of an export. This behavior generates a lot of
+    REGEXP_LIKE expressions which are slowing down the export when looking at
+    tables. To disable this behavior enable this directive, you will have to
+    exclude or clean up later by yourself the unwanted tables. The regexp used
+    to exclude tables are defined in the array @EXCLUDED_TABLES in lib/Ora2Pg.pm
+    This behavior is independent to the EXCLUDE configuration directive. Thanks
+    to Peter Humaj for the feature request.
+  - Replace all remaining CURSORNAME%NOTFOUND with NOT FOUND
+  - Change translation to SYSDATE from LOCALTIMESTAMP to statement_timestamp()
+    in non PL/SQL code.
+  - Prevent append of SECURITY DEFINER when a procedure execute transaction
+    control statements (ex: COMMIT). When defined with this clause an error
+    is thrown. Thanks to Suman Michael for the report.
 2022 02 10 - v23.1
 
 This release fix several issues reported since past four months and

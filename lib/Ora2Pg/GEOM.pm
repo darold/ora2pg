@@ -40,7 +40,7 @@ use vars qw($VERSION);
 
 use strict;
 
-$VERSION = '23.1';
+$VERSION = '23.2';
 
 # SDO_ETYPE
 # Second element of triplet in SDO_ELEM_INFO
@@ -574,6 +574,8 @@ sub createPolygon
 		$poly = "POLYGON$self->{geometry}{suffix} (" . $self->createLinearRing($elemIndex, $coords).")";
 	} elsif ($interpretation == 2) {
 		$poly = "CURVEPOLYGON$self->{geometry}{suffix} (" . $self->createLinearRing($elemIndex, $coords).")";
+	} elsif ($interpretation == 3) {
+		$poly = "POLYGON$self->{geometry}{suffix} (" . $self->createRectangle($elemIndex, $coords).")";
 	} else {
 		$self->logit("ERROR: Unsupported polygon type with interpretation $interpretation probably mangled");
 		$poly = "POLYGON$self->{geometry}{suffix} (" . $self->createLinearRing($elemIndex, $coords).")";
@@ -622,6 +624,45 @@ sub createCompoundPolygon
 	}
 
 	return "POLYGON$self->{geometry}{suffix} (" . join(', ', @rings) . ')';
+}
+
+sub createRectangle
+{
+	my ($self, $elemIndex, $coords) = @_;
+
+	my $sOffset = $self->get_start_offset($elemIndex);
+	my $etype = $self->eType($elemIndex);
+	my $interpretation = $self->interpretation($elemIndex);
+	my $length = ($#{$coords} + 1) * $self->{geometry}{dim};
+
+
+	if ($sOffset > $length) {
+		$self->logit("ERROR: SDO_ELEM_INFO for Rectangle starting offset $sOffset inconsistent with ordinates length $length");
+	}
+
+	my $ring = '';
+
+	my $start = ($sOffset - 1) / $self->{geometry}{dim};
+
+	my $eOffset = $self->get_start_offset($elemIndex+1); # -1 for end
+	my $end = ($eOffset != -1) ? (($eOffset - 1) / $self->{geometry}{dim}) : ($#{$coords} + 1);
+
+	if ($etype == $SDO_ETYPE{POLYGON_EXTERIOR}) {
+		$ring =
+		  join(' ', @{$coords->[$start]}).
+		  ','.${$coords->[$start+1]}[0].' '.${$coords->[$start]}[1].
+		  ','.join(' ', @{$coords->[$start+1]}).
+		  ','.${$coords->[$start]}[0].' '.${$coords->[$start+1]}[1].
+		  ','.join(' ', @{$coords->[$start]});
+	} else { # INTERIOR
+		$ring =
+		  join(' ', @{$coords->[$start]}).
+		  ','.${$coords->[$start]}[0].' '.${$coords->[$start+1]}[1].
+		  ','.join(' ', @{$coords->[$start+1]}).
+		  ','.${$coords->[$start+1]}[0].' '.${$coords->[$start]}[1].
+		  ','.join(' ', @{$coords->[$start]});
+	}
+	return '('. $ring. ')';
 }
 
 # Create Linear Ring for polygon
