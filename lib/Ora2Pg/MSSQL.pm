@@ -923,8 +923,7 @@ WHERE O.type = 'P'
 		$functions{"$row->[0]"}{strict} = $row->[4];
 		$functions{"$row->[0]"}{security} = ($row->[5] == -2) ? 'DEFINER' : 'EXECUTER';
 		$functions{"$row->[0]"}{text} =~ s///gs;
-		if ($self->{plsql_pgsql})
-		{
+		if ($self->{plsql_pgsql}) {
 			$functions{"$row->[0]"}{text} =~ s/[\[\]]//gs;
 		}
 	}
@@ -959,7 +958,8 @@ sub _lookup_function
 
         @{$fct_detail{param_types}} = ();
 
-        if ( ($fct_detail{declare} =~ s/(.*?)\b(FUNCTION|PROCEDURE)\s+([^\s\(]+)\s*(\(.*\))\s+RETURNS\s+(.*)//is)
+        if ( ($fct_detail{declare} =~ s/(.*?)\b(FUNCTION|PROCEDURE)\s+([^\s]+)\s+(.*?)\s+AS\s*(DECLARE.*|$)//is)
+        	|| ($fct_detail{declare} =~ s/(.*?)\b(FUNCTION|PROCEDURE)\s+([^\s\(]+)\s*(\(.*\))\s+RETURNS\s+(.*)//is)
 		|| ($fct_detail{declare} =~ s/(.*?)\b(FUNCTION|PROCEDURE)\s+([^\s\(]+)\s*(\(.*\))//is) )
 	{
                 $fct_detail{before} = $1;

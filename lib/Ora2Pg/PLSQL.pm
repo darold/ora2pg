@@ -3350,8 +3350,10 @@ sub mssql_estimate_cost
 	foreach my $t (keys %UNCOVERED_MYSQL_SCORE) {
 		$cost += $UNCOVERED_MYSQL_SCORE{$t}*$cost_details{$t};
 	}
-	foreach my $f (@MSSQL_FUNCTIONS) {
-		if ($str =~ /\b$f\b/igs) {
+	foreach my $f (@MSSQL_FUNCTIONS)
+	{
+		if ($str =~ /\b$f\s*\(/igs)
+		{
 			$cost += 2;
 			$cost_details{$f} += 2;
 		}
@@ -3962,15 +3964,15 @@ sub mssql_to_plpgsql
         my ($class, $str) = @_;
 
 	# Replace getdate() with CURRENT_TIMESTAMP
-	$str =~ s/\bgetdate\s*\(\s*\)/CURRENT_TIMESTAMP/igs;
+	$str =~ s/\bgetdate\s*\(\s*\)/CURRENT_TIMESTAMP/ig;
 	# Replace user_name() with CURRENT_USER
 	$str =~ s/\buser_name\s*\(\s*\)/CURRENT_USER/gi;
 
 	# Remove call to with(nolock) from queries
-	$str =~ s/\bwith\s*\(\s*nolock\s*\)//igs;
+	$str =~ s/\bwith\s*\(\s*nolock\s*\)//ig;
 
 	# Replace call to SYS_GUID() function
-	$str =~ s/\bnewid\s*\(\s*\)/$class->{uuid_function}()/igs;
+	$str =~ s/\bnewid\s*\(\s*\)/$class->{uuid_function}()/ig;
 
 	# Rewrite call to sequences
 	while ($str =~ /NEXT VALUE FOR ([^\s]+)/i)
@@ -3990,10 +3992,11 @@ sub mssql_to_plpgsql
 	$str =~ s/CHARINDEX\s*\(\s*(.*?)\s*,\s*(.*?)\s*\)/position('$1' in $2)/gi;
 	$str =~ s/DATEPART\s*\(\s*(.*?)\s*,\s*(.*?)\s*\)/date_part('$1', $2)/gi;
 	$str =~ s/DATEADD\s*\(\s*(.*?)\s*\,\s*(.*?)\s*,\s*(.*?)\s*\)/$3 + INTERVAL '$2 $1'/gi;
-	$str =~ s/CONVERT\s*\(\s*(.*?)\s*,\s*(.*?)\s*,\s*(\d+)\)/TO_CHAR($2, '$MSSQL_STYLE{$3}')/gi;
+	$str =~ s/CONVERT\s*\(\s*(.*?)\s*,\s*(.*?)\s*,\s*(\d+)\)/TO_CHAR($2, '$MSSQL_STYLE{$3}')::$1/gi;
 	$str =~ s/CONVERT\s*\(\s*NVARCHAR\s*(.*?)\s*\(\s*(.*?)\s*\s*\)\,\s*(.*?)\s*\)/CAST($3 AS varchar($2))/gi;
 	$str =~ s/CONVERT\s*\(\s*(.*?)\s*\(\s*(.*?)\s*\s*\),\s*(.*?)\s*\)/CAST($3 AS $1($2))/gi;
 	$str =~ s/CONVERT\s*\(\s*(.*?)\s*\,\s*(.*?)\s*\)/CAST($2 AS $1)/gi;
+	$str =~ s/\bRAND\s*\(/random(/gi;
 
 	return $str;
 }

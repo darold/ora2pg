@@ -4305,7 +4305,8 @@ sub translate_function
 	$dirprefix = "$self->{output_dir}/" if ($self->{output_dir});
 
 	# Clear memory in multiprocess mode
-	if ($self->{jobs} > 1) {
+	if ($self->{jobs} > 1)
+	{
 		$self->{functions} = (); 
 		$self->{procedures} = (); 
 	}
@@ -5876,7 +5877,6 @@ sub export_function
 	my $num_cur_fct = 0;
 	for ($i = 0; $i <= $#fct_group; $i++)
 	{
-
 		if ($self->{jobs} > 1) {
 			$self->logit("Creating a new process to translate functions...\n", 1);
 			spawn sub {
@@ -6080,13 +6080,16 @@ sub export_procedure
 	my $num_chunk = $self->{jobs} || 1;
 	my @fct_group = ();
 	my $i = 0;
-	foreach my $key (sort keys %{$self->{procedures}} ) {
+	foreach my $key (sort keys %{$self->{procedures}} )
+	{
 		$fct_group[$i++]{$key} = $self->{procedures}{$key};
 		$i = 0 if ($i == $num_chunk);
 	}
 	my $num_cur_fct = 0;
-	for ($i = 0; $i <= $#fct_group; $i++) {
-		if ($self->{jobs} > 1) {
+	for ($i = 0; $i <= $#fct_group; $i++)
+	{
+		if ($self->{jobs} > 1)
+		{
 			$self->logit("Creating a new process to translate procedures...\n", 1);
 			spawn sub {
 				$self->translate_function($num_cur_fct, $num_total_function, %{$fct_group[$i]});
@@ -6103,20 +6106,26 @@ sub export_procedure
 	}
 
 	# Wait for all oracle connection terminaison
-	if ($self->{jobs} > 1) {
-		while ($parallel_fct_count) {
+	if ($self->{jobs} > 1)
+	{
+		while ($parallel_fct_count)
+		{
 			my $kid = waitpid(-1, WNOHANG);
-			if ($kid > 0) {
+			if ($kid > 0)
+			{
 				$parallel_fct_count--;
 				delete $RUNNING_PIDS{$kid};
 			}
 			usleep(50000);
 		}
-		if ($self->{estimate_cost}) {
+		if ($self->{estimate_cost})
+		{
 			my $tfh = $self->read_export_file($dirprefix . 'temp_cost_file.dat');
 			flock($tfh, 2) || die "FATAL: can't lock file temp_cost_file.dat\n";
-			if (defined $tfh) {
-				while (my $l = <$tfh>) {
+			if (defined $tfh)
+			{
+				while (my $l = <$tfh>)
+				{
 					chomp($l);
 					my ($fname, $fsize, $fcost) = split(/:/, $l);
 					$total_size += $fsize;
@@ -6131,7 +6140,8 @@ sub export_procedure
 	{
 		print STDERR $self->progress_bar($num_cur_fct, $num_total_function, 25, '=', 'procedures', 'end of procedures export.'), "\n";
 	}
-	if ($self->{estimate_cost}) {
+	if ($self->{estimate_cost})
+	{
 		my @infos = ( "Total number of procedures: ".(scalar keys %{$self->{procedures}}).".",
 			"Total size of procedures code: $total_size bytes.",
 			"Total estimated cost: $cost_value units, ".$self->_get_human_cost($cost_value)."."
@@ -13678,13 +13688,13 @@ sub _convert_function
 	}
 	return if (!exists $fct_detail{name});
 
-	$fct_detail{name} =~ s/^.*\.//;
+	$fct_detail{name} =~ s/^.*\.// if (!$self->{is_mssql} || $self->{schema}) ;
 	$fct_detail{name} =~ s/"//gs;
 
 	my $sep = '.';
 	$sep = '_' if (!$self->{package_as_schema});
 	my $fname =  $self->quote_object_name($fct_detail{name});
-	$fname =  $self->quote_object_name("$pname$sep$fct_detail{name}") if ($pname && !$self->{is_mysql});
+	$fname =  $self->quote_object_name("$pname$sep$fct_detail{name}") if ($pname && !$self->{is_mysql} && !$self->{is_mssql});
 	$fname =~ s/"_"/_/gs;
 
 	# rewrite argument syntax
@@ -13907,9 +13917,15 @@ sub _convert_function
 	{
 		if ($self->{export_schema} && !$self->{schema})
 		{
-			$function = "\n$create_type\n\n${fct_warning}CREATE$self->{create_or_replace} $type " . $self->quote_object_name("$owner.$fname$at_suffix") . " $fct_detail{args}";
-			$name =  $self->quote_object_name("$owner.$fname");
-			$self->logit("Parsing function " . $self->quote_object_name("$owner.$fname") . "...\n", 1);
+			if ($owner) {
+				$function = "\n$create_type\n\n${fct_warning}CREATE$self->{create_or_replace} $type " . $self->quote_object_name("$owner.$fname$at_suffix") . " $fct_detail{args}";
+				$name =  $self->quote_object_name("$owner.$fname");
+				$self->logit("Parsing function " . $self->quote_object_name("$owner.$fname") . "...\n", 1);
+			} else {
+				$function = "\n$create_type\n\n${fct_warning}CREATE$self->{create_or_replace} $type " . $self->quote_object_name("$fname$at_suffix") . " $fct_detail{args}";
+				$name =  $self->quote_object_name("$fname");
+				$self->logit("Parsing function " . $self->quote_object_name("$fname") . "...\n", 1);
+			}
 		}
 		elsif ($self->{export_schema} && $self->{schema})
 		{
