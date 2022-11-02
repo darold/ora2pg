@@ -24,7 +24,7 @@ package Ora2Pg::PLSQL;
 # 
 #------------------------------------------------------------------------------
 
-use vars qw($VERSION %OBJECT_SCORE $SIZE_SCORE $FCT_TEST_SCORE $QUERY_TEST_SCORE %UNCOVERED_SCORE %UNCOVERED_MYSQL_SCORE @ORA_FUNCTIONS @MYSQL_SPATIAL_FCT @MYSQL_FUNCTIONS %EXCEPTION_MAP %MAX_SCORE);
+use vars qw($VERSION %OBJECT_SCORE $SIZE_SCORE $FCT_TEST_SCORE $QUERY_TEST_SCORE %UNCOVERED_SCORE %UNCOVERED_MYSQL_SCORE @ORA_FUNCTIONS @MYSQL_SPATIAL_FCT @MYSQL_FUNCTIONS %EXCEPTION_MAP %MAX_SCORE %MSSQL_STYLE);
 use POSIX qw(locale_h);
 
 #set locale to LC_NUMERIC C
@@ -357,7 +357,7 @@ $QUERY_TEST_SCORE = 0.1;
 
 # Scores associated to each code difficulties after replacement.
 %UNCOVERED_MYSQL_SCORE = (
-	'ARRAY_AGG_DISTINCT' => 1, # array_agg(distinct
+	'ARRAY_AGG_DISTINCT' => 1, # array_agg(distinct)
 	'SOUNDS LIKE' => 1,
 	'CHARACTER SET' => 1,
 	'COUNT(DISTINCT)' => 2,
@@ -382,6 +382,29 @@ $QUERY_TEST_SCORE = 0.1;
 	# 'ROWTYPE_MISMATCH' => 'DATATYPE MISMATCH'
 );
 
+%MSSQL_STYLE = (
+	'100' => 'mon dd yyyy hh:miAM/PM',
+	'101' => 'mm/dd/yyyy',
+	'102' => ' yyyy.mm.dd',
+	'103' => ' dd/mm/yyyy',
+	'104' => 'dd.mm.yyyy',
+	'105' => ' dd-mm-yyyy',
+	'106' => 'dd mon yyyy',
+	'107' => 'Mon dd, yyyy',
+	'108' => 'hh:mm:ss',
+	'109' => 'mon dd yyyy hh:mi:ss:mmmAM (or PM)',
+	'110' => 'mm-dd-yyyy',
+	'111' => ' yyyy/mm/dd',
+	'112' => ' yyyymmdd',
+	'113' => 'dd mon yyyy hh:mi:ss:mmm',
+	'114' => 'hh:mi:ss:mmm',
+	'120' => 'yyyy-mm-dd hh:mi:ss',
+	'121' => 'yyyy-mm-dd hh:mi:ss.mmm',
+	'126' => 'yyyy-mm-ddThh:mi:ss.mmm',
+	'127' => 'yyyy-mm-ddThh:mi:ss.mmmZ',
+	'130' => 'dd mon yyyy hh:mi:ss:mmmAM',
+	'131' => 'dd/mm/yy hh:mi:ss:mmmAM',
+);
 
 =head1 NAME
 
@@ -3943,6 +3966,9 @@ sub mssql_to_plpgsql
 	# Replace user_name() with CURRENT_USER
 	$str =~ s/\buser_name\s*\(\s*\)/CURRENT_USER/gi;
 
+	# Remove call to with(nolock) from queries
+	$str =~ s/\bwith\s*\(\s*nolock\s*\)//igs;
+
 	# Replace call to SYS_GUID() function
 	$str =~ s/\bnewid\s*\(\s*\)/$class->{uuid_function}()/igs;
 
@@ -3961,11 +3987,12 @@ sub mssql_to_plpgsql
 	$str =~ s/\bLEN\s*\(([^\)]+)\)/LENGTH(RTRIM($1))/gi;
 	$str =~ s/ISNULL\s*\(/COALESCE(/gi;
 	$str =~ s/SPACE\s*\(/REPEAT(' ', /gi;
-	$str =~ s/CHARINDEX\s*\(\s*(.*?)\s*\,\s*(.*?)\s*\)/position('$1' in $2)/gi;
-	$str =~ s/DATEPART\s*\(\s*(.*?)\s*\,\s*(.*?)\s*\)/date_part('$1', $2)/gi;
-	$str =~ s/DATEADD\s*\(\s*(.*?)\s*\,\s*(.*?)\s*\,\s*(.*?)\s*\)/$3 + INTERVAL '$2 $1'/gi;
+	$str =~ s/CHARINDEX\s*\(\s*(.*?)\s*,\s*(.*?)\s*\)/position('$1' in $2)/gi;
+	$str =~ s/DATEPART\s*\(\s*(.*?)\s*,\s*(.*?)\s*\)/date_part('$1', $2)/gi;
+	$str =~ s/DATEADD\s*\(\s*(.*?)\s*\,\s*(.*?)\s*,\s*(.*?)\s*\)/$3 + INTERVAL '$2 $1'/gi;
+	$str =~ s/CONVERT\s*\(\s*(.*?)\s*,\s*(.*?)\s*,\s*(\d+)\)/TO_CHAR($2, '$MSSQL_STYLE{$3}')/gi;
 	$str =~ s/CONVERT\s*\(\s*NVARCHAR\s*(.*?)\s*\(\s*(.*?)\s*\s*\)\,\s*(.*?)\s*\)/CAST($3 AS varchar($2))/gi;
-	$str =~ s/CONVERT\s*\(\s*(.*?)\s*\(\s*(.*?)\s*\s*\)\,\s*(.*?)\s*\)/CAST($3 AS $1($2))/gi;
+	$str =~ s/CONVERT\s*\(\s*(.*?)\s*\(\s*(.*?)\s*\s*\),\s*(.*?)\s*\)/CAST($3 AS $1($2))/gi;
 	$str =~ s/CONVERT\s*\(\s*(.*?)\s*\,\s*(.*?)\s*\)/CAST($2 AS $1)/gi;
 
 	return $str;
