@@ -2741,8 +2741,10 @@ sub estimate_cost
 	$n = () = $str =~ m/TRANSFORM\(/igs;
 	$cost_details{'TRANSFORM'} += $n;
 
-	foreach my $f (@ORA_FUNCTIONS) {
-		if ($str =~ /\b$f\b/igs) {
+	foreach my $f (@ORA_FUNCTIONS)
+	{
+		if ($str =~ /\b$f\b/igs)
+		{
 			$cost += 1;
 			$cost_details{$f} += 1;
 		}

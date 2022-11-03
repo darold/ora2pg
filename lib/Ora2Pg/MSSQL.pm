@@ -953,13 +953,30 @@ sub _lookup_function
         ($fct_detail{declare}, $fct_detail{code}) = split(/\bBEGIN\b/i, $code, 2);
 	return if (!$fct_detail{code});
 
+	# Move all DECLARE statement from code into the DECLARE section
+	my @lines = split(/\n/, $fct_detail{code});
+	$fct_detail{code} = '';
+	foreach my $l (@lines)
+	{
+		if ($l =~ /^\s*DECLARE\s+(.*)/i) {
+			$fct_detail{declare} .= "\n$1";
+		} else {
+			$fct_detail{code} .= "$l\n";
+		}
+	}
+	# Fix DECLARE section
+	if ($fct_detail{declare} !~ /\bDECLARE\b/i) {
+
+		$fct_detail{declare} =~ s/(FUNCTION|PROCEDURE)\s+([^\s\(]+)\s+\bAS\s+(.*)/$1 $2( )\nDECLARE\n$3/is;
+		$fct_detail{declare} =~ s/(FUNCTION|PROCEDURE)\s+([^\s\(]+)\s+(.*\@.*?)\s+AS\s+(.*)/$1 $2 ($3)\nDECLARE\n$4/is;
+	}
+
 	# Remove any label that was before the main BEGIN block
 	$fct_detail{declare} =~ s/\s+[^\s\:]+:\s*$//gs;
 
         @{$fct_detail{param_types}} = ();
 
-        if ( ($fct_detail{declare} =~ s/(.*?)\b(FUNCTION|PROCEDURE)\s+([^\s]+)\s+(.*?)\s+AS\s*(DECLARE.*|$)//is)
-        	|| ($fct_detail{declare} =~ s/(.*?)\b(FUNCTION|PROCEDURE)\s+([^\s\(]+)\s*(\(.*\))\s+RETURNS\s+(.*)//is)
+	if ( ($fct_detail{declare} =~ s/(.*?)\b(FUNCTION|PROCEDURE)\s+([^\s\(]+)\s*(\(.*\))\s+RETURNS\s+(.*)//is)
 		|| ($fct_detail{declare} =~ s/(.*?)\b(FUNCTION|PROCEDURE)\s+([^\s\(]+)\s*(\(.*\))//is) )
 	{
                 $fct_detail{before} = $1;
@@ -1040,6 +1057,9 @@ sub _lookup_function
 	my $nbout = $#nout+1 + $#ninout+1;
 	$fct_detail{inout} = 1 if ($nbout > 0);
 
+	# Rename arguments with @ replaced by p_
+	($fct_detail{code}, $fct_detail{args}) = replace_mssql_params($self, $fct_detail{code}, $fct_detail{args});
+
 	($fct_detail{code}, $fct_detail{declare}) = replace_mssql_variables($self, $fct_detail{code}, $fct_detail{declare});
 
 	# Remove %ROWTYPE from return type
@@ -1048,12 +1068,31 @@ sub _lookup_function
 	return %fct_detail;
 }
 
+sub replace_mssql_params
+{
+	my ($self, $code, $args) = @_;
+
+	my $declare = '';
+	if ($args =~ s/\s+(DECLARE\s+.*)//is) {
+		$declare = $1;
+	}
+	while ($args =~ s/\@([^\s]+)\b/p_$1/s)
+	{
+		my $p = $1;
+		$code =~ s/\@$p\b/p_$p/gis;
+	}
+	$code .= "\n$declare" if ($declare);
+
+	return ($code, $args);
+}
+
 sub replace_mssql_variables
 {
 	my ($self, $code, $declare) = @_;
 
 	# Look for mssql global variables and add them to the custom variable list
-	while ($code =~ s/\b(?:SET\s+)?\@\@(?:SESSION\.)?([^\s:=]+)\s*:=\s*([^;]+);/PERFORM set_config('$1', $2, false);/is) {
+	while ($code =~ s/\b(?:SET\s+)?\@\@(?:SESSION\.)?([^\s:=]+)\s*:=\s*([^;]+);/PERFORM set_config('$2', $2, false);/is)
+	{
 		my $n = $1;
 		my $v = $2;
 		$self->{global_variables}{$n}{name} = lc($n);
@@ -1073,7 +1112,8 @@ sub replace_mssql_variables
 
 	my @to_be_replaced = ();
 	# Look for local variable definition and append them to the declare section
-	while ($code =~ s/SET\s+\@([^\s:]+)\s*:=\s*([^;]+);/SET $1 = $2;/is) {
+	while ($code =~ s/SET\s+\@([^\s:]+)\s*:=\s*([^;]+);/SET v_$1 = $2;/is)
+	{
 		my $n = $1;
 		my $v = $2;
 		# Try to set a default type for the variable
@@ -1086,12 +1126,12 @@ sub replace_mssql_variables
 		} elsif ($n =~ /date/i) {
 			$type = 'date';
 		} 
-		$declare .= "$n $type;\n" if ($declare !~ /\b$n $type;/s);
+		$declare .= "v_$n $type;\n" if ($declare !~ /\b$n $type;/s);
 		push(@to_be_replaced, $n);
 	}
 
 	# Look for local variable definition and append them to the declare section
-	while ($code =~ s/(\s+)\@([^\s:=]+)\s*:=\s*([^;]+);/$1$2 := $3;/is) {
+	while ($code =~ s/(\s+)\@([^\s:=]+)\s*:=\s*([^;]+);/v_$1$2 := $3;/is) {
 		my $n = $2;
 		my $v = $3;
 		# Try to set a default type for the variable
@@ -1104,17 +1144,17 @@ sub replace_mssql_variables
 		} elsif ($n =~ /date/i) {
 			$type = 'date';
 		} 
-		$declare .= "$n $type;\n" if ($declare !~ /\b$n $type;/s);
+		$declare .= "v_$n $type;\n" if ($declare !~ /\b$n $type;/s);
 		push(@to_be_replaced, $n);
 	}
 
 	# Fix other call to the same variable in the code
 	foreach my $n (@to_be_replaced) {
-		$code =~ s/\@$n\b(\s*[^:])/$n$1/gs;
+		$code =~ s/\@$n\b(\s*[^:])/v_$n$1/gs;
 	}
 
 	# Look for local variable definition and append them to the declare section
-	while ($code =~ s/\@([a-z0-9_]+)/$1/is) {
+	while ($code =~ s/\@([a-z0-9_]+)/v_$1/is) {
 		my $n = $1;
 		# Try to set a default type for the variable
 		my $type = 'varchar';
@@ -1125,9 +1165,9 @@ sub replace_mssql_variables
 		} elsif ($n =~ /date/i) {
 			$type = 'date';
 		} 
-		$declare .= "$n $type;\n" if ($declare !~ /\b$n $type;/s);
+		$declare .= "v_$n $type;\n" if ($declare !~ /\b$n $type;/s);
 		# Fix other call to the same variable in the code
-		$code =~ s/\@$n\b/$n/gs;
+		$code =~ s/\@$n\b/v_$n/gs;
 	}
 
 	# Look for variable definition with SELECT statement
