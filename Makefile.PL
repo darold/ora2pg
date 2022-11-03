@@ -1363,6 +1363,9 @@ ST_SRID_FUNCTION	ST_SRID
 # Oracle function to use to extract the dimension from ST_Geometry meta information
 ST_DIMENSION_FUNCTION	ST_DIMENSION
 
+# Oracle function to use to extract the type of geometry from a spatial column
+ST_GEOMETRYTYPE_FUNCTION	ST_GEOMETRYTYPE
+
 # Oracle function to used to convert an ST_Geometry value into WKB format
 ST_ASBINARY_FUNCTION	ST_ASBINARY
 

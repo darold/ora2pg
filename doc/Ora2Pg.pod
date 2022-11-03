@@ -1651,7 +1651,13 @@ Default: ST_SRID, for example it should be set to sde.st_srid for ArcSDE.
 
 Oracle function to use to extract the dimension from ST_Geometry meta
 information. Default: ST_DIMENSION, for example it should be set to
-sde.st_dimention for ArcSDE.
+sde.st_dimension for ArcSDE.
+
+=item ST_GEOMETRYTYPE_FUNCTION
+
+Oracle function to use to extract the type of geometry from a spatial column.
+Default: ST_GeometryType, for example it should be set to sde.ST_GeometryType
+for ArcSDE.
 
 =item ST_ASBINARY_FUNCTION
 

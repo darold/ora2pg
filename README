@@ -286,7 +286,7 @@ CONFIGURATION
                             default /etc/ora2pg/ora2pg.conf.
         -C | --cdc_file file: File used to store/read SCN per table during export.
                             default: TABLES_SCN.log in the current directory. This
-                            is the file written by the --cdc_ready option.
+                            is the file written by the --cdc_init option.
         -d | --debug      : Enable verbose output.
         -D | --data_type str : Allow custom type replacement at command line.
         -e | --exclude str: Comma separated list of objects to exclude from export.
@@ -364,7 +364,7 @@ CONFIGURATION
                             transformed data. Nothing will be written.
        --blob_to_lo       : export BLOB as large objects, can only be used with
                             action SHOW_COLUMN, TABLE and INSERT.
-       --cdc_ready        : use current SCN per table to export data and register
+       --cdc_init        : use current SCN per table to export data and register
                             them into a file named TABLES_SCN.log per default. It
                             can be changed using -C | --cdc_file.
        --lo_import        : use psql \lo_import command to import BLOB as large
@@ -1607,7 +1607,12 @@ CONFIGURATION
     ST_DIMENSION_FUNCTION
         Oracle function to use to extract the dimension from ST_Geometry
         meta information. Default: ST_DIMENSION, for example it should be
-        set to sde.st_dimention for ArcSDE.
+        set to sde.st_dimension for ArcSDE.
+
+    ST_GEOMETRYTYPE_FUNCTION
+        Oracle function to use to extract the type of geometry from a
+        spatial column. Default: ST_GeometryType, for example it should be
+        set to sde.ST_GeometryType for ArcSDE.
 
     ST_ASBINARY_FUNCTION
         Oracle function to used to convert an ST_Geometry value into WKB
@@ -3324,14 +3329,13 @@ CONFIGURATION
 
   Change Data Capture (CDC)
     Ora2Pg do not have such feature which allow to import data and to only
-    apply changes after the first import. But you can use the --cdc_ready
-    option to export data with registration of the SCN at the time of the
-    table export. All SCN per tables are written to a file named
-    TABLES_SCN.log by default, it can be changed using -C | --cdc_file
-    option.
+    apply changes after the first import. But you can use the --cdc_init
+    option to export data with registration of the SCN at the time of data
+    export. The SCN is written to a file named LAST_EXPORT_SCN.txt by
+    default, it can be changed using -C | --cdc_file option.
 
-    These SCN registered per table during COPY or INSERT export can be used
-    with a CDC tool. The format of the file is tablename:SCN per line.
+    The SCN registered during COPY or INSERT export can be used with a CDC
+    tool.
 
   Importing BLOB as large objects
     By default Ora2Pg imports Oracle BLOB as bytea, the destination column

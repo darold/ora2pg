@@ -1310,6 +1310,7 @@ sub _init
 	$self->{st_dimension_function} ||= 'ST_DIMENSION';
 	$self->{st_asbinary_function} ||= 'ST_AsBinary';
 	$self->{st_astext_function} ||= 'ST_AsText';
+	$self->{st_geometrytype_function} ||= 'ST_GeometryType';
 
 	# Force Ora2Pg to extract spatial object in binary format
 	$self->{geometry_extract_type} = uc($self->{geometry_extract_type});
