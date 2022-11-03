@@ -16133,10 +16133,20 @@ sub _show_infos
 				my $total_size = 0;
 				foreach my $trig (@{$triggers})
 				{
+                                        # Remove comment and text constant, they are not useful in assessment
+                                        $self->_remove_comments(\$trig->[4]);
+                                        $self->{comment_values} = ();
+                                        $self->{text_values} = ();
+                                        $self->{text_values_pos} = 0;
+                                        if ($self->{is_mysql}) {
+                                                $trig->[4] = $self->_convert_function($trig->[8], $trig->[4], $trig->[0]);
+                                        } else {
+                                                $trig->[4] = $self->_convert_function($trig->[8], $trig->[4]);
+                                        }
 					$total_size += length($trig->[4]);
 					if ($self->{estimate_cost})
 					{
-						my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($self, $trig->[4], 'TRIGGER');
+						my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($self, $trig->[4]);
 						$report_info{'Objects'}{$typ}{'cost_value'} += $cost;
 						$report_info{'Objects'}{$typ}{'detail'} .= "\L$trig->[0]: $cost\E\n";
 						$report_info{full_trigger_details}{"\L$trig->[0]\E"}{count} = $cost;
@@ -16162,6 +16172,16 @@ sub _show_infos
 				my $total_size = 0;
 				foreach my $fct (keys %{$functions})
 				{
+                                        # Remove comment and text constant, they are not useful in assessment
+                                        $self->_remove_comments(\$functions->{$fct}{text});
+                                        $self->{comment_values} = ();
+                                        $self->{text_values} = ();
+                                        $self->{text_values_pos} = 0;
+                                        if ($self->{is_mysql}) {
+                                                $functions->{$fct}{text} = $self->_convert_function($functions->{$fct}{owner}, $functions->{$fct}{text}, $fct);
+                                        } else {
+                                                $functions->{$fct}{text} = $self->_convert_function($functions->{$fct}{owner}, $functions->{$fct}{text});
+                                        }
 					$total_size += length($functions->{$fct}{text});
 					if ($self->{estimate_cost})
 					{
@@ -16187,6 +16207,16 @@ sub _show_infos
 				my $total_size = 0;
 				foreach my $proc (keys %{$procedures})
 				{
+					# Remove comment and text constant, they are not useful in assessment
+					$self->_remove_comments(\$procedures->{$proc}{text});
+					$self->{comment_values} = ();
+					$self->{text_values} = ();
+					$self->{text_values_pos} = 0;
+					if ($self->{is_mysql}) {
+						$procedures->{$proc}{text} = $self->_convert_function($procedures->{$proc}{owner}, $procedures->{$proc}{text}, $proc);
+					} else {
+						$procedures->{$proc}{text} = $self->_convert_function($procedures->{$proc}{owner}, $procedures->{$proc}{text});
+					}
 					$total_size += length($procedures->{$proc}{text});
 					if ($self->{estimate_cost})
 					{
