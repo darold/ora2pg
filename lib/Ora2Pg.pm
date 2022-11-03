@@ -6359,7 +6359,7 @@ sub export_package
 					next if (!$f);
 					my @cnt = $infos{$f}{code} =~ /(\%ORA2PG_COMMENT\d+\%)/i;
 					$total_size_no_comment += (length($infos{$f}{code}) - (17 * length(join('', @cnt))));
-					my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($self, $infos{$f}{code}, 'FUNCTION');
+					my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($self, $infos{$f}{code}, $infos{$f}{type});
 					$self->logit("Function $f estimated cost: $cost\n", 1);
 					$cost_value += $cost;
 					$number_fct++;
@@ -16146,7 +16146,7 @@ sub _show_infos
 					$total_size += length($trig->[4]);
 					if ($self->{estimate_cost})
 					{
-						my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($self, $trig->[4]);
+						my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($self, $trig->[4], 'TRIGGER');
 						$report_info{'Objects'}{$typ}{'cost_value'} += $cost;
 						$report_info{'Objects'}{$typ}{'detail'} .= "\L$trig->[0]: $cost\E\n";
 						$report_info{full_trigger_details}{"\L$trig->[0]\E"}{count} = $cost;
@@ -16220,7 +16220,7 @@ sub _show_infos
 					$total_size += length($procedures->{$proc}{text});
 					if ($self->{estimate_cost})
 					{
-						my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($self, $procedures->{$proc}{text}, 'FUNCTION');
+						my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($self, $procedures->{$proc}{text}, 'PROCEDURE');
 						$report_info{'Objects'}{$typ}{'cost_value'} += $cost;
 						$report_info{'Objects'}{$typ}{'detail'} .= "\L$proc: $cost\E\n";
 						$report_info{full_function_details}{"\L$proc\E"}{count} = $cost;
@@ -16262,7 +16262,7 @@ sub _show_infos
 							next if (!$f);
 							if ($self->{estimate_cost})
 							{
-								my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($self, $infos{$f}{code}, 'FUNCTION');
+								my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($self, $infos{$f}{code}, $infos{$f}{type});
 								$report_info{'Objects'}{$typ}{'cost_value'} += $cost;
 								$report_info{'Objects'}{$typ}{'detail'} .= "\L$f: $cost\E\n";
 								$report_info{full_function_details}{"\L$f\E"}{count} = $cost;
