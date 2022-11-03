@@ -6237,7 +6237,7 @@ sub export_package
 					next if (!$f);
 					my @cnt = $infos{$f}{code} =~ /(\%ORA2PG_COMMENT\d+\%)/i;
 					$total_size_no_comment += (length($infos{$f}{code}) - (17 * length(join('', @cnt))));
-					my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($self, $infos{$f}{code}, 'PACKAGE');
+					my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($self, $infos{$f}{code}, $infos{$f}{type});
 					$self->logit("Function $f estimated cost: $cost\n", 1);
 					$cost_value += $cost;
 					$number_fct++;
@@ -15975,7 +15975,7 @@ sub _show_infos
 							next if (!$f);
 							if ($self->{estimate_cost})
 							{
-								my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($self, $infos{$f}{code}, 'PACKAGE');
+								my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($self, $infos{$f}{code}, $infos{$f}{type});
 								$report_info{'Objects'}{$typ}{'cost_value'} += $cost;
 								$report_info{'Objects'}{$typ}{'detail'} .= "\L$f: $cost\E\n";
 								$report_info{full_function_details}{"\L$f\E"}{count} = $cost;
