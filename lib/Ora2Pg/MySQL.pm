@@ -1193,6 +1193,7 @@ sub _sql_type
         my ($self, $type, $len, $precision, $scale, $default, $no_blob_to_oid) = @_;
 
 	my $data_type = '';
+	chomp($type);
 
 	# Simplify timestamp type
 	$type =~ s/TIMESTAMP\s*\(\s*\d+\s*\)/TIMESTAMP/i;

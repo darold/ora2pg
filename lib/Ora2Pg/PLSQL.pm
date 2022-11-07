@@ -24,7 +24,7 @@ package Ora2Pg::PLSQL;
 # 
 #------------------------------------------------------------------------------
 
-use vars qw($VERSION %OBJECT_SCORE $SIZE_SCORE $FCT_TEST_SCORE $QUERY_TEST_SCORE %UNCOVERED_SCORE %UNCOVERED_MYSQL_SCORE @ORA_FUNCTIONS @MYSQL_SPATIAL_FCT @MYSQL_FUNCTIONS %EXCEPTION_MAP %MAX_SCORE %MSSQL_STYLE);
+use vars qw($VERSION %OBJECT_SCORE $SIZE_SCORE $FCT_TEST_SCORE $QUERY_TEST_SCORE %UNCOVERED_SCORE %UNCOVERED_MYSQL_SCORE @ORA_FUNCTIONS @MYSQL_SPATIAL_FCT @MYSQL_FUNCTIONS %EXCEPTION_MAP %MAX_SCORE %MSSQL_STYLE %UNCOVERED_MSSQL_SCORE);
 use POSIX qw(locale_h);
 
 #set locale to LC_NUMERIC C
@@ -319,6 +319,18 @@ $QUERY_TEST_SCORE = 0.1;
 	'WEIGHT_STRING',
 );
 
+# Scores associated to each code difficulties after replacement.
+%UNCOVERED_MYSQL_SCORE = (
+	'ARRAY_AGG_DISTINCT' => 1, # array_agg(distinct)
+	'SOUNDS LIKE' => 1,
+	'CHARACTER SET' => 1,
+	'COUNT(DISTINCT)' => 2,
+	'MATCH' => 2,
+	'JSON' => 2,
+	'LOCK' => 2,
+	'@VAR' => 0.1,
+);
+
 @MSSQL_FUNCTIONS = (
 	'CHARINDEX',
 	'Concat with +',
@@ -355,16 +367,15 @@ $QUERY_TEST_SCORE = 0.1;
 	'SYSTEM_USER'
 );
 
-# Scores associated to each code difficulties after replacement.
-%UNCOVERED_MYSQL_SCORE = (
+%UNCOVERED_MSSQL_SCORE = (
 	'ARRAY_AGG_DISTINCT' => 1, # array_agg(distinct)
-	'SOUNDS LIKE' => 1,
-	'CHARACTER SET' => 1,
-	'COUNT(DISTINCT)' => 2,
-	'MATCH' => 2,
-	'JSON' => 2,
-	'LOCK' => 2,
-	'@VAR' => 0.1,
+	'FOREIGN_OBJECT' => 6,
+	'SYS_OBJECT' => 6,
+	'INTO_TEMP_TABLE' => 1,
+	'GLOBAL_TEMP_TABLE' => 2,
+	'SELECT_TOP' => 0.2,
+	'COLLATE' => 0.2,
+	'RETURNS_TABLE' => 1,
 );
 
 %EXCEPTION_MAP = (
@@ -2530,8 +2541,8 @@ sub estimate_cost
 {
 	my ($class, $str, $type) = @_;
 
-	return mysql_estimate_cost($str, $type) if ($class->{is_mysql});
-	return mssql_estimate_cost($str, $type) if ($class->{is_mssql});
+	return mysql_estimate_cost($class, $str, $type) if ($class->{is_mysql});
+	return mssql_estimate_cost($class, $str, $type) if ($class->{is_mssql});
 
 	my %cost_details = ();
 
@@ -3257,8 +3268,7 @@ sub _mysql_dateformat_to_pgsql
 
 sub mysql_estimate_cost
 {
-	my $str = shift;
-	my $type = shift;
+	my ($class, $str, $type) = @_;
 
 	my %cost_details = ();
 
@@ -3301,7 +3311,8 @@ sub mysql_estimate_cost
 	foreach my $t (keys %UNCOVERED_MYSQL_SCORE) {
 		$cost += $UNCOVERED_MYSQL_SCORE{$t}*$cost_details{$t};
 	}
-	foreach my $f (@MYSQL_FUNCTIONS) {
+	foreach my $f (@MYSQL_FUNCTIONS)
+	{
 		if ($str =~ /\b$f\b/igs) {
 			$cost += 2;
 			$cost_details{$f} += 2;
@@ -3313,10 +3324,13 @@ sub mysql_estimate_cost
 
 sub mssql_estimate_cost
 {
-	my $str = shift;
-	my $type = shift;
+	my ($class, $str, $type) = @_;
 
 	my %cost_details = ();
+
+	# TSQL do not use ; as statements separator and condition use begin instead of then/loop...
+	# this require manual editing so decrease the number of lines for cost of the code review.
+	$SIZE_SCORE = 400;
 
 	# Default cost is testing that mean it at least must be tested
 	my $cost = $FCT_TEST_SCORE;
@@ -3333,27 +3347,44 @@ sub mssql_estimate_cost
 		$cost_size = 0;
 	}
 
-	# Temporary cost 1 hour per function and 30min per triggers
-	if ($type eq 'FUNCTION' or $type eq 'PROCEDURE') {
-		$cost += 12;
-	}
-	if ($type eq 'TRIGGER') {
-		$cost += 6;
-	}
-
 	$cost += $cost_size;
 	$cost_details{'SIZE'} = $cost_size;
 
 	# Try to figure out the manual work
 	# Not accurate for now
 	my $n = () = $str =~ m/(ARRAY_AGG|GROUP_CONCAT)\(\s*DISTINCT/igs;
-	$cost_details{'ARRAY_AGG_DISTINCT'} += $n;
-
-	foreach my $t (keys %UNCOVERED_MYSQL_SCORE) {
-		$cost += $UNCOVERED_MYSQL_SCORE{$t}*$cost_details{$t};
+	$cost_details{'ARRAY_AGG_DISTINCT'} += $n*$UNCOVERED_MSSQL_SCORE{'ARRAY_AGG_DISTINCT'};
+	# Look for access to objects in other database, require FDW or dblink.
+	$n = () = $str =~ /\b[a-z0-9_\$]+\.[a-z0-9_\$]+\.[a-z0-9_\$]+\b/igs;
+	$cost_details{'FOREIGN_OBJECT'} += $n*$UNCOVERED_MSSQL_SCORE{'FOREIGN_OBJECT'};
+	$n = () = $str =~ /\b(master|model|msdb|tempdb)\.\b/igs;
+	$cost_details{'SYS_OBJECT'} += $n*$UNCOVERED_MSSQL_SCORE{'SYS_OBJECT'};
+	$cost_details{'FOREIGN_OBJECT'} -= $n*$UNCOVERED_MSSQL_SCORE{'FOREIGN_OBJECT'};
+	if ($class->{local_schemas_regex})
+	{
+		$n = () = $str =~ /\b$class->{local_schemas_regex}\.[a-z0-9_\$]+\.[a-z0-9_\$]+\b/igs;
+		$cost_details{'FOREIGN_OBJECT'} -= $n*$UNCOVERED_MSSQL_SCORE{'FOREIGN_OBJECT'};
 	}
+	$n = () = $str =~ /[\s,]\s*sys[a-z]+/igs;
+	$cost_details{'SYS_OBJECT'} += $n*$UNCOVERED_MSSQL_SCORE{'SYS_OBJECT'};
+	$n = () = $str =~ /\b\#\#[a-z0-9_\$]+\b/igs;
+	$cost_details{'GLOBAL_TEMP_TABLE'} += $n*$UNCOVERED_MSSQL_SCORE{'GLOBAL_TEMP_TABLE'};
+	$n = () = $str =~ /(?<!INSERT)\s+INTO\s+[\#]+[a-z0-9_\$]+\b/igs;
+	$cost_details{'INTO_TEMP_TABLE'} += $n*$UNCOVERED_MSSQL_SCORE{'INTO_TEMP_TABLE'};
+	$n = () = $str =~ /\bSELECT\s+TOP\s+\d+\b/igs;
+	$cost_details{'SELECT_TOP'} += $n*$UNCOVERED_MSSQL_SCORE{'SELECT_TOP'};
+	$n = () = $str =~ /\sCOLLATE\s/igs;
+	$cost_details{'COLLATE'} += $n*$UNCOVERED_MSSQL_SCORE{'COLLATE'};
+	$n = () = $str =~ /\bRETURNS\s+TABLE\s/igs;
+	$cost_details{'RETURNS_TABLE'} += $n*$UNCOVERED_MSSQL_SCORE{'RETURNS_TABLE'};
+
+	foreach my $t (keys %UNCOVERED_MSSQL_SCORE) {
+		$cost += $cost_details{$t} if (exists $cost_details{$t});
+	}
+
 	foreach my $f (@MSSQL_FUNCTIONS)
 	{
+		next if ($class->{use_mssqlfce} && $f =~ /^(DATEDIFF|STUFF|PATINDEX|ISNUMERIC|ISDATE|LEN)$/);
 		if ($str =~ /\b$f\s*\(/igs)
 		{
 			$cost += 2;
@@ -3363,7 +3394,6 @@ sub mssql_estimate_cost
 
 	return $cost, %cost_details;
 }
-
 
 sub replace_outer_join
 {
@@ -3966,7 +3996,7 @@ sub mssql_to_plpgsql
         my ($class, $str) = @_;
 
 	# Replace getdate() with CURRENT_TIMESTAMP
-	$str =~ s/\bgetdate\s*\(\s*\)/CURRENT_TIMESTAMP/ig;
+	$str =~ s/\bgetdate\s*\(\s*\)/date_trunc('millisecond', CURRENT_TIMESTAMP::timestamp)/ig;
 	# Replace user_name() with CURRENT_USER
 	$str =~ s/\buser_name\s*\(\s*\)/CURRENT_USER/gi;
 
@@ -3975,6 +4005,9 @@ sub mssql_to_plpgsql
 
 	# Replace call to SYS_GUID() function
 	$str =~ s/\bnewid\s*\(\s*\)/$class->{uuid_function}()/ig;
+
+	# Remove COUNT setting
+	$str =~ s/SET NOCOUNT (ON|OFF)[;\s]*//igs;
 
 	# Rewrite call to sequences
 	while ($str =~ /NEXT VALUE FOR ([^\s]+)/i)
@@ -3999,6 +4032,38 @@ sub mssql_to_plpgsql
 	$str =~ s/CONVERT\s*\(\s*(.*?)\s*\(\s*(.*?)\s*\s*\),\s*(.*?)\s*\)/CAST($3 AS $1($2))/gi;
 	$str =~ s/CONVERT\s*\(\s*(.*?)\s*\,\s*(.*?)\s*\)/CAST($2 AS $1)/gi;
 	$str =~ s/\bRAND\s*\(/random(/gi;
+	$str =~ s/\bYEAR\s*\(/date_part('year', /gi;
+	$str =~ s/\bMONTH\s*\(/date_part('month', /gi;
+	$str =~ s/\bDAY\s*\(/date_part('day', /gi;
+	$str =~ s/\bSYSDATETIMEOFFSET\s*\(/now(/gi;
+	$str =~ s/\bSYSDATETIME\s*\(\s*\)/now()::timestamp/gi;
+	$str =~ s/\bSYSUTCDATETIME\s*\(\s*\)/now() at time zone 'UTC'/gi;
+	$str =~ s/\bDATENAME\s*\(\s*(?:weekday|dw|w)\s*,\s*([^\)]+)\s*\)/to_char($1, 'day')/gi;
+	$str =~ s/\bDATENAME\s*\(\s*(?:dayofyear|dy|y)\s*,\s*([^\)]+)\s*\)/date_part('doy', $1)/gi;
+	$str =~ s/\bDATENAME\s*\(\s*(?:month|mm|m)\s*,\s*([^\)]+)\s*\)/to_char($1, 'month')/gi;
+	$str =~ s/\bDATENAME\s*\(\s*(?:year|yy|y)\s*,/date_part('year',/gi;
+	$str =~ s/\bDATENAME\s*\(\s*(?:quarter|qq|q)\s*,/date_part('quarter',/gi;
+	$str =~ s/\bDATENAME\s*\(\s*(?:day|dd|d)\s*,/date_part('day',/gi;
+	$str =~ s/\bDATENAME\s*\(\s*(?:week|ww|wk)\s*,\s*([^\)]+)\s*\)/date_part('week', $1)+1/gi;
+	$str =~ s/\bDATENAME\s*\(\s*hour\s*,/date_part('hour',/gi;
+	$str =~ s/\bDATENAME\s*\(\s*(?:minute|mi|n)\s*,/date_part('minute',/gi;
+	$str =~ s/\bDATENAME\s*\(\s*(?:second|ss|s)\s*,/date_part('second',/gi;
+	$str =~ s/\bDATENAME\s*\(\s*(?:millisecond|ms)\s*,/date_part('millisecond',/gi;
+	$str =~ s/\bDATENAME\s*\(\s*(?:microsecond|mcs)\s*,/date_part('microsecond',/gi;
+	$str =~ s/\bDATENAME\s*\(\s*(?:nanosecond|ns)\s*,/date_part('nanosecond',/gi; # will fail, should be microsecond
+	$str =~ s/\bDATENAME\s*\(\s*(?:ISO_WEEK|ISOWK|ISOWW)\s*,\s*([^\)]+)\s*\)/date_part('week', $1)/gi;
+	$str =~ s/\bDATENAME\s*\(\s*(?:TZoffset|tz)\s*,\s*([^\)]+)\s*\)/to_char($1, 'TZH:TZM')/gi;
+
+	# Rewrite expression like SET p_MatchExpression =  '%'+p_MatchExpression+'%'
+	$str =~ s/\bSET\s+([^\s=;:]+)\s*=/$1 :=/igs;
+
+	# Fix IF ... BEGIN into IF ... THEN on single line
+	$str =~ s/(\s+IF[\s\(]+(?:.*?))\s+BEGIN\b/$1 THEN/igs;
+	# Fix WHILE ... BEGIN into IF ... THEN
+	$str =~ s/(\s+WHILE[\s\(]+(?:.*?))\s+BEGIN\b/$1 LOOP/igs;
+
+	# Fix temporary table creation. We keep the # so that they can be identified in the code
+	$str =~ s/CREATE\s+TABLE\s+#/CREATE TEMPORARY TABLE #/igs;
 
 	return $str;
 }

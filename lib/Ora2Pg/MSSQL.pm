@@ -38,10 +38,10 @@ our %SQL_TYPE = (
 	'TIME' => 'time without time zone',
 	'CHAR' => 'char',
 	'VARCHAR' => 'varchar',
-	'TEXT' => 'varchar',
+	'TEXT' => 'text',
 	'NCHAR' => 'char',
 	'NVARCHAR' => 'varchar',
-	'NTEXT' => 'varchar',
+	'NTEXT' => 'text',
 	'VARBINARY' => 'bytea',
 	'BINARY' => 'bytea',
 	'IMAGE' => 'bytea',
@@ -625,7 +625,7 @@ WHERE NOT EXISTS (SELECT 1 FROM sys.indexes i WHERE i.object_id = v.object_id an
 		}
 		$row->[2] =~ s///g;
 		$row->[2] =~ s/[\[\]]//g;
-		$row->[2] =~ s/^CREATE VIEW [^\s]+//;
+		$row->[2] =~ s/^.*\bCREATE VIEW\s+[^\s]+\s+AS\s+//is;
 		$data{$row->[0]}{text} = $row->[2];
 		$data{$row->[0]}{owner} = '';
 		$data{$row->[0]}{comment} = '';
@@ -945,50 +945,75 @@ sub _lookup_function
 	# Remove some unused code
 	$code =~ s/\s+READS SQL DATA//igs;
 	$code =~ s/\s+UNSIGNED\b((?:.*?)\bFUNCTION\b)/$1/igs;
+	while ($code =~ s/(\s*DECLARE\s+)([^\r\n]+?),\s*\@/$1 $2\n$1 \@/is) {};
 
         my %fct_detail = ();
         $fct_detail{func_ret_type} = 'OPAQUE';
 
         # Split data into declarative and code part
-        ($fct_detail{declare}, $fct_detail{code}) = split(/\bBEGIN\b/i, $code, 2);
+        ($fct_detail{declare}, $fct_detail{code}) = split(/\b(?:BEGIN|SET|SELECT|INSERT|UPDATE|IF)\b/i, $code, 2);
 	return if (!$fct_detail{code});
 
-	# Move all DECLARE statement from code into the DECLARE section
+	# Move all DECLARE statements found in the code into the DECLARE section
 	my @lines = split(/\n/, $fct_detail{code});
 	$fct_detail{code} = '';
 	foreach my $l (@lines)
 	{
 		if ($l =~ /^\s*DECLARE\s+(.*)/i) {
-			$fct_detail{declare} .= "\n$1";
+			$fct_detail{declare} .= "\n$1;";
 		} else {
 			$fct_detail{code} .= "$l\n";
 		}
 	}
+	$fct_detail{declare} =~ s/\bDECLARE\s+//igs;
 	# Fix DECLARE section
-	if ($fct_detail{declare} !~ /\bDECLARE\b/i) {
-
-		$fct_detail{declare} =~ s/(FUNCTION|PROCEDURE)\s+([^\s\(]+)\s+\bAS\s+(.*)/$1 $2( )\nDECLARE\n$3/is;
-		$fct_detail{declare} =~ s/(FUNCTION|PROCEDURE)\s+([^\s\(]+)\s+(.*\@.*?)\s+AS\s+(.*)/$1 $2 ($3)\nDECLARE\n$4/is;
+	if ($fct_detail{declare} !~ /\bDECLARE\b/i)
+	{
+		if ($fct_detail{declare} !~ s/(FUNCTION|PROCEDURE|PROC)\s+([^\s\(]+)[\)\s]+AS\s+(.*)/$1 $2\nDECLARE\n$3/is) {
+			$fct_detail{declare} =~ s/(FUNCTION|PROCEDURE|PROC)\s+([^\s\(]+)\s+(.*\@.*?[\)\s]+)(RETURNS|AS)\s+(.*)/$1 $2 ($3)\n$4\nDECLARE\n$5/is;
+		}
 	}
-
 	# Remove any label that was before the main BEGIN block
 	$fct_detail{declare} =~ s/\s+[^\s\:]+:\s*$//gs;
+	$fct_detail{declare} =~ s/(RETURNS.*TABLE.*\))\s*\)\s*AS\b/) $1 AS/is;
 
         @{$fct_detail{param_types}} = ();
 
-	if ( ($fct_detail{declare} =~ s/(.*?)\b(FUNCTION|PROCEDURE)\s+([^\s\(]+)\s*(\(.*\))\s+RETURNS\s+(.*)//is)
-		|| ($fct_detail{declare} =~ s/(.*?)\b(FUNCTION|PROCEDURE)\s+([^\s\(]+)\s*(\(.*\))//is) )
+	if ( ($fct_detail{declare} =~ s/(.*?)\b(FUNCTION|PROCEDURE|PROC)\s+([^\s]+)\s+((?:RETURNS|AS|DECLARE)\s+.*)//is)
+		|| ($fct_detail{declare} =~ s/(.*?)\b(FUNCTION|PROCEDURE|PROC)\s+([^\s\(]+)(.*?)\s+((?:RETURNS|AS)\s+.*)//is)
+		|| ($fct_detail{declare} =~ s/(.*?)\b(FUNCTION|PROCEDURE|PROC)\s+(.*?)\s+((?:RETURNS|AS)\s+.*)//is)
+		|| ($fct_detail{declare} =~ s/(.*?)\b(FUNCTION|PROCEDURE|PROC)\s+([^\s\(]+)\s*(\(.*\))//is) )
 	{
                 $fct_detail{before} = $1;
                 $fct_detail{type} = uc($2);
                 $fct_detail{name} = $3;
                 $fct_detail{args} = $4;
 		my $tmp_returned = $5;
-		$type = lc($fct_detail{type} . 's');
-		chomp($tmp_returned);
-		if ($tmp_returned =~ s/\b(DECLARE\b.*)//is) {
-			$fct_detail{code} = $1 . $fct_detail{code};
+		if ($fct_detail{args} !~ /^\(/ && !$tmp_returned)
+		{
+			$tmp_returned = $fct_detail{args};
+			$fct_detail{args} = '';
 		}
+		$fct_detail{type} = 'PROCEDURE' if ($fct_detail{type} eq 'PROC');
+		$type = lc($fct_detail{type} . 's');
+		$tmp_returned =~ s/RETURNS\s+DECLARE/RETURNS /is;
+		if ($tmp_returned =~ s/\s+AS\s+(DECLARE.*)//is) {
+			$fct_detail{declare} .= "$1\n";
+		}
+		$tmp_returned =~ s/RETURNS\s+(.*)\s+AS\s+.*/$1/is;
+		if ($fct_detail{args} =~ s/\b(AS|DECLARE)\s+(.*)//is) {
+			$tmp_returned = "DECLARE\n$1";
+		}
+		chomp($tmp_returned);
+
+		$tmp_returned =~ s/[\)\s]AS\s+.*//is;
+		$fct_detail{code} = "\n" . $fct_detail{code};
+
+		$tmp_returned =~ s/\)\)$/\)/;
+		$tmp_returned =~ s/\(MAX\)$//i;
+		$fct_detail{args} =~ s/^\s*\(\s*\((.*)\)\s*\)$/$1/s;
+		$fct_detail{args} =~ s/^\s*\(\s*(.*)\s*\)$/$1/s;
+		#$fct_detail{code} =~ s/^DECLARE\b//is;
 		if ($fct_detail{declare} =~ s/\s*COMMENT\s+(\?TEXTVALUE\d+\?|'[^\']+')//) {
 			$fct_detail{comment} = $1;
 		}
@@ -1002,33 +1027,50 @@ sub _lookup_function
 		}
 		$fct_detail{immutable} = 1 if ($fct_detail{return} =~ s/\s*\bDETERMINISTIC\b//is);
 		$fct_detail{immutable} = 1 if ($tmp_returned =~ s/\s*\bDETERMINISTIC\b//is);
-
+		$tmp_returned =~ s/[\r\n]+//gs;
+		$tmp_returned =~ s/^\s+//;
+		$tmp_returned =~ s/\s+$//;
 		$fctname = $fct_detail{name} || $fctname;
-		if ($type eq 'functions' && exists $self->{$type}{$fctname}{return} && $self->{$type}{$fctname}{return}) {
+		if ($type eq 'functions' && exists $self->{$type}{$fctname}{return} && $self->{$type}{$fctname}{return})
+		{
 			$fct_detail{hasreturn} = 1;
 			$fct_detail{func_ret_type} = $self->_sql_type($self->{$type}{$fctname}{return});
-		} elsif ($type eq 'functions' && !exists $self->{$type}{$fctname}{return} && $tmp_returned) {
+		}
+		elsif ($type eq 'functions' && !exists $self->{$type}{$fctname}{return} && $tmp_returned)
+		{
 			$tmp_returned =~ s/\s+CHARSET.*//is;
-			$fct_detail{func_ret_type} = $self->_sql_type($tmp_returned);
+			#$fct_detail{func_ret_type} = $self->_sql_type($tmp_returned);
+			$fct_detail{func_ret_type} = replace_sql_type($self, $tmp_returned);
 			$fct_detail{hasreturn} = 1;
 		}
 		$fct_detail{language} = $self->{$type}{$fctname}{language};
 		$fct_detail{immutable} = 1 if ($self->{$type}{$fctname}{immutable} eq 'YES');
 		$fct_detail{security} = $self->{$type}{$fctname}{security};
 
+                if ($fct_detail{func_ret_type} =~ s/RETURNS\s+\@(.*?)\s+TABLE/TABLE/is) {
+			$fct_detail{declare} .= "v_$1 record;\n";
+		}
+                $fct_detail{func_ret_type} =~ s/RETURNS\s*//is;
+
 		# Procedure that have out parameters are functions with PG
 		if ($type eq 'procedures' && $fct_detail{args} =~ /\b(OUT|INOUT)\b/) {
 			# set return type to empty to avoid returning void later
 			$fct_detail{func_ret_type} = ' ';
 		}
+
 		# IN OUT should be INOUT
 		$fct_detail{args} =~ s/\bIN\s+OUT/INOUT/igs;
 
 		# Move the DECLARE statement from code to the declare section.
-		$fct_detail{declare} = '';
-		while ($fct_detail{code} =~ s/DECLARE\s+([^;]+;)//is) {
-				$fct_detail{declare} .= "\n$1";
+		#$fct_detail{declare} = '';
+		while ($fct_detail{code} =~ s/DECLARE\s+([^;\n\r]+)//is)
+		{
+			my $var = $1;
+			$fct_detail{declare} .= "\n$var" if ($fct_detail{declare} !~ /v_$var /is);
 		}
+		# Rename arguments with @ replaced by p_
+		($fct_detail{args}, $fct_detail{declare}, $fct_detail{code}) = replace_mssql_params($self, $fct_detail{args}, $fct_detail{declare}, $fct_detail{code});
+
 		# Now convert types
 		if ($fct_detail{args}) {
 			$fct_detail{args} = replace_sql_type($self, $fct_detail{args});
@@ -1039,13 +1081,15 @@ sub _lookup_function
 
 		$fct_detail{args} =~ s/\s+/ /gs;
 		push(@{$fct_detail{param_types}}, split(/\s*,\s*/, $fct_detail{args}));
+
 		# Store type used in parameter list to lookup later for custom types
 		map { s/^\(//; } @{$fct_detail{param_types}};
 		map { s/\)$//; } @{$fct_detail{param_types}};
 		map { s/\%ORA2PG_COMMENT\d+\%//gs; }  @{$fct_detail{param_types}};
 		map { s/^\s*[^\s]+\s+(IN|OUT|INOUT)/$1/i; s/^((?:IN|OUT|INOUT)\s+[^\s]+)\s+[^\s]*$/$1/i; s/\(.*//; s/\s*\)\s*$//; s/\s+$//; } @{$fct_detail{param_types}};
-
-	} else {
+	}
+	else
+	{
                 delete $fct_detail{func_ret_type};
                 delete $fct_detail{declare};
                 $fct_detail{code} = $code;
@@ -1057,10 +1101,13 @@ sub _lookup_function
 	my $nbout = $#nout+1 + $#ninout+1;
 	$fct_detail{inout} = 1 if ($nbout > 0);
 
-	# Rename arguments with @ replaced by p_
-	($fct_detail{code}, $fct_detail{args}) = replace_mssql_params($self, $fct_detail{code}, $fct_detail{args});
-
+	# Rename variables with @ replaced by v_
 	($fct_detail{code}, $fct_detail{declare}) = replace_mssql_variables($self, $fct_detail{code}, $fct_detail{declare});
+
+	$fct_detail{args} =~ s/\s*$//s;
+	$fct_detail{args} =~ s/^\s*//s;
+	$fct_detail{code} =~ s/^[\r\n]*/\n/s;
+
 
 	# Remove %ROWTYPE from return type
 	$fct_detail{func_ret_type} =~ s/\%ROWTYPE//igs;
@@ -1070,20 +1117,18 @@ sub _lookup_function
 
 sub replace_mssql_params
 {
-	my ($self, $code, $args) = @_;
+	my ($self, $args, $declare, $code) = @_;
 
-	my $declare = '';
-	if ($args =~ s/\s+(DECLARE\s+.*)//is) {
-		$declare = $1;
+	if ($args =~ s/\s+(?:DECLARE|AS)\s+(.*)//is) {
+		$declare .= "\n$1";
 	}
 	while ($args =~ s/\@([^\s]+)\b/p_$1/s)
 	{
 		my $p = $1;
 		$code =~ s/\@$p\b/p_$p/gis;
 	}
-	$code .= "\n$declare" if ($declare);
 
-	return ($code, $args);
+	return ($args, $declare, $code);
 }
 
 sub replace_mssql_variables
@@ -1125,13 +1170,14 @@ sub replace_mssql_variables
 			$type = 'time';
 		} elsif ($n =~ /date/i) {
 			$type = 'date';
-		} 
+		}
 		$declare .= "v_$n $type;\n" if ($declare !~ /\b$n $type;/s);
 		push(@to_be_replaced, $n);
 	}
 
 	# Look for local variable definition and append them to the declare section
-	while ($code =~ s/(\s+)\@([^\s:=]+)\s*:=\s*([^;]+);/v_$1$2 := $3;/is) {
+	while ($code =~ s/(\s+)\@([^\s:=]+)\s*:=\s*([^;]+);/v_$1$2 := $3;/is)
+	{
 		my $n = $2;
 		my $v = $3;
 		# Try to set a default type for the variable
@@ -1153,9 +1199,19 @@ sub replace_mssql_variables
 		$code =~ s/\@$n\b(\s*[^:])/v_$n$1/gs;
 	}
 
-	# Look for local variable definition and append them to the declare section
-	while ($code =~ s/\@([a-z0-9_]+)/v_$1/is) {
+	# Look for variable definition in DECLARE section and rename them in the code too
+	while ($declare =~ s/\@([a-z0-9_]+)/v_$1/is)
+	{
 		my $n = $1;
+		# Fix other call to the same variable in the code
+		$code =~ s/\@$n\b/v_$n/gs;
+	}
+
+	# Look for local variable definition and append them to the declare section
+	while ($code =~ s/\@([a-z0-9_]+)/v_$1/is)
+	{
+		my $n = $1;
+		next if ($n =~ /^v_/);
 		# Try to set a default type for the variable
 		my $type = 'varchar';
 		if ($n =~ /datetime/i) {
@@ -1165,7 +1221,7 @@ sub replace_mssql_variables
 		} elsif ($n =~ /date/i) {
 			$type = 'date';
 		} 
-		$declare .= "v_$n $type;\n" if ($declare !~ /\b$n $type;/s);
+		$declare .= "v_$n $type;\n" if ($declare !~ /v_$n ($type|record);/is);
 		# Fix other call to the same variable in the code
 		$code =~ s/\@$n\b/v_$n/gs;
 	}
@@ -1212,6 +1268,7 @@ sub _sql_type
         my ($self, $type, $len, $precision, $scale, $default, $no_blob_to_oid) = @_;
 
 	my $data_type = '';
+	chomp($type);
 
 	# Some length and scale may have not been extracted before
 	if ($type =~ s/\(\s*(\d+)\s*\)//) {
@@ -1220,6 +1277,7 @@ sub _sql_type
 		$len   = $1;
 		$scale = $2;
 	}
+
 	if ($type !~ /CHAR/i) {
 		$precision = $len if (!$precision);
 	}
@@ -1301,6 +1359,7 @@ sub replace_sql_type
 
 	$str =~ s/with local time zone/with time zone/igs;
 	$str =~ s/([A-Z])ORA2PG_COMMENT/$1 ORA2PG_COMMENT/igs;
+	$str =~ s/\(\s*MAX\s*\)//igs;
 
 	# Replace type with precision
 	my $mssqltype_regex = '';
@@ -2454,7 +2513,7 @@ LEFT OUTER JOIN sys.schemas s ON t.schema_id = s.schema_id
 		# GENERATION_TYPE can be ALWAYS, BY DEFAULT and BY DEFAULT ON NULL
 		$seqs{$row->[1]}{$row->[2]}{generation} = 'BY DEFAULT';
 		# SEQUENCE options
-		$row->[5] = 1 if ($row->[5] eq '');
+		$row->[5] = $row->[3] || 1 if ($row->[5] eq '');
 		$seqs{$row->[1]}{$row->[2]}{options} = "START WITH $row->[5]";
 		$seqs{$row->[1]}{$row->[2]}{options} .= " INCREMENT BY $row->[4]";
 		$seqs{$row->[1]}{$row->[2]}{options} .= " MINVALUE $row->[3]" if ($row->[3] ne '');
