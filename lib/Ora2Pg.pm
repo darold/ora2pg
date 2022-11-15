@@ -7525,6 +7525,7 @@ sub export_table
 					{
 						if ($type !~ s/smallint/smallserial/) {
 							$type =~ s/integer/serial/;
+							$type =~ s/numeric.*/bigserial/;
 						}
 					}
 					if ($type =~ /serial/)
@@ -16314,6 +16315,7 @@ sub _show_infos
 						{
 							if ($type1 !~ s/smallint/smallserial/) {
 								$type1 =~ s/integer/serial/;
+								$type1 =~ s/numeric.*/bigserial/;
 							}
 						}
 						if ($type1 =~ /serial/) {
