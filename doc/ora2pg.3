@@ -133,7 +133,7 @@
 .\" ========================================================================
 .\"
 .IX Title "ORA2PG 1"
-.TH ORA2PG 1 "2022-10-29" "perl v5.30.0" "User Contributed Perl Documentation"
+.TH ORA2PG 1 "2022-11-15" "perl v5.30.0" "User Contributed Perl Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -1810,6 +1810,11 @@ Default: \s-1ST_SRID,\s0 for example it should be set to sde.st_srid for ArcSDE.
 Oracle function to use to extract the dimension from ST_Geometry meta
 information. Default: \s-1ST_DIMENSION,\s0 for example it should be set to
 sde.st_dimention for ArcSDE.
+.IP "\s-1ST_GEOMETRYTYPE_FUNCTION\s0" 4
+.IX Item "ST_GEOMETRYTYPE_FUNCTION"
+Oracle function to use to extract the geometry type from a ST_Geometry column
+Default: \s-1ST_GEOMETRYTYPE,\s0 for example it should be set to sde.st_geometrytype
+for ArcSDE.
 .IP "\s-1ST_ASBINARY_FUNCTION\s0" 4
 .IX Item "ST_ASBINARY_FUNCTION"
 Oracle function to used to convert an ST_Geometry value into \s-1WKB\s0 format.

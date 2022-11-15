@@ -1298,6 +1298,7 @@ sub _init
 	# Default function to use for ST_Geometry
 	$self->{st_srid_function} ||= 'ST_SRID';
 	$self->{st_dimension_function} ||= 'ST_DIMENSION';
+	$self->{st_geometrytype_function} ||=  'ST_GeometryType';
 	$self->{st_asbinary_function} ||= 'ST_AsBinary';
 	$self->{st_astext_function} ||= 'ST_AsText';
 

@@ -582,7 +582,7 @@ ORDER BY A.COLUMN_ID
 	my $max_lines = 50000;
 	$max_lines = $self->{autodetect_spatial_type} if ($self->{autodetect_spatial_type} > 1);
 	my $spatial_gtype =  'SELECT DISTINCT c.%s.SDO_GTYPE FROM %s c WHERE ROWNUM < ' . $max_lines;
-	my $st_spatial_gtype =  'SELECT DISTINCT ST_GeometryType(c.%s) FROM %s c WHERE ROWNUM < ' . $max_lines;
+	my $st_spatial_gtype =  "SELECT DISTINCT $self->{st_geometrytype_function}(c.%s) FROM %s c WHERE ROWNUM < " . $max_lines;
 	# Set query to retrieve the SRID
 	my $spatial_srid = "SELECT SRID FROM ALL_SDO_GEOM_METADATA WHERE TABLE_NAME=? AND COLUMN_NAME=? AND OWNER=?";
 	my $st_spatial_srid = "SELECT $self->{st_srid_function}(c.%s) FROM %s c";

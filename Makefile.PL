@@ -1369,6 +1369,8 @@ ST_ASBINARY_FUNCTION	ST_ASBINARY
 # Oracle function to used to convert an ST_Geometry value into WKT format
 ST_ASTEXT_FUNCTION	ST_ASTEXT
 
+# Oracle function to use to extract the geometry type from a ST_Geometry column
+ST_GEOMETRYTYPE_FUNCTION	ST_GEOMETRYTYPE
 
 #------------------------------------------------------------------------------
 # FDW SECTION (Control Foreign Data Wrapper export)

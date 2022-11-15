@@ -1653,6 +1653,12 @@ Oracle function to use to extract the dimension from ST_Geometry meta
 information. Default: ST_DIMENSION, for example it should be set to
 sde.st_dimention for ArcSDE.
 
+=item ST_GEOMETRYTYPE_FUNCTION
+
+Oracle function to use to extract the geometry type from a ST_Geometry column
+Default: ST_GEOMETRYTYPE, for example it should be set to sde.st_geometrytype
+for ArcSDE.
+
 =item ST_ASBINARY_FUNCTION
 
 Oracle function to used to convert an ST_Geometry value into WKB format.
