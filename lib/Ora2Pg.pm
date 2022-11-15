@@ -6845,12 +6845,13 @@ BEGIN
 				if (exists $self->{subpartitions_list}{"\L$table\E"}{"\L$part\E"}{type})
 				{
 					$create_table_tmp .= "\nPARTITION BY " . $self->{subpartitions_list}{"\L$table\E"}{"\L$part\E"}{type} . " (";
+					my $expr = '';
 					if (exists $self->{subpartitions_list}{"\L$table\E"}{"\L$part\E"}{columns})
 					{
 						for (my $j = 0; $j <= $#{$self->{subpartitions_list}{"\L$table\E"}{"\L$part\E"}{columns}}; $j++)
 						{
-							$create_table_tmp .= ', ' if ($j > 0);
-							$create_table_tmp .= $self->quote_object_name($self->{subpartitions_list}{"\L$table\E"}{"\L$part\E"}{columns}[$j]);
+							$expr .= ', ' if ($j > 0);
+							$expr .= $self->quote_object_name($self->{subpartitions_list}{"\L$table\E"}{"\L$part\E"}{columns}[$j]);
 						}
 					}
 					else
@@ -6858,9 +6859,10 @@ BEGIN
 						if ($self->{plsql_pgsql}) {
 							$self->{subpartitions_list}{"\L$table\E"}{"\L$part\E"}{expression} = Ora2Pg::PLSQL::convert_plsql_code($self, $self->{subpartitions_list}{"\L$table\E"}{"\L$part\E"}{expression});
 						}
-						$create_table_tmp .= $self->{subpartitions_list}{"\L$table\E"}{"\L$part\E"}{expression};
+						$expr .= $self->{subpartitions_list}{"\L$table\E"}{"\L$part\E"}{expression};
 					}
-					$create_table_tmp .= 	")";
+					$expr = '(' . $expr . ')' if ($expr =~ /[\(\+\-\*\%:]/ && $expr !~ /^\(.*\)$/);
+					$create_table_tmp .= 	"$expr)";
 				}
 				$create_table_tmp .= ";\n";
 			}
@@ -7782,12 +7784,13 @@ sub export_table
 				if (exists $self->{partitions_list}{"\L$table\E"}{type})
 				{
 					$sql_output .= " PARTITION BY " . $self->{partitions_list}{"\L$table\E"}{type} . " (";
+					my $expr = '';
 					if (exists $self->{partitions_list}{"\L$table\E"}{columns})
 					{
 						for (my $j = 0; $j <= $#{$self->{partitions_list}{"\L$table\E"}{columns}}; $j++)
 						{
-							$sql_output .= ', ' if ($j > 0);
-							$sql_output .= $self->quote_object_name($self->{partitions_list}{"\L$table\E"}{columns}[$j]);
+							$expr .= ', ' if ($j > 0);
+							$expr .= $self->quote_object_name($self->{partitions_list}{"\L$table\E"}{columns}[$j]);
 						}
 					}
 					else
@@ -7795,9 +7798,10 @@ sub export_table
 						if ($self->{plsql_pgsql}) {
 							$self->{partitions_list}{"\L$table\E"}{expression} = Ora2Pg::PLSQL::convert_plsql_code($self, $self->{partitions_list}{"\L$table\E"}{expression});
 						}
-						$sql_output .= $self->{partitions_list}{"\L$table\E"}{expression};
+						$expr .= $self->{partitions_list}{"\L$table\E"}{expression};
 					}
-					$sql_output .= 	")";
+					$expr = '(' . $expr . ')' if ($expr =~ /[\(\+\-\*\%:]/ && $expr !~ /^\(.*\)$/);
+					$sql_output .= 	"$expr)";
 				}
 				else
 				{
@@ -10849,7 +10853,7 @@ END;
 
 	if ($part_name)
 	{
-		if ($is_subpart) {
+		if ($is_subpart && !$self->{is_mysql}) {
 			$realtable .= " SUBPARTITION(" . $self->quote_object_name($part_name) . ")";
 		} else {
 			$realtable .= " PARTITION(" . $self->quote_object_name($part_name) . ")";
