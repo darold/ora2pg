@@ -954,6 +954,14 @@ sub _lookup_function
         ($fct_detail{declare}, $fct_detail{code}) = split(/\b(?:BEGIN|SET|SELECT|INSERT|UPDATE|IF)\b/i, $code, 2);
 	return if (!$fct_detail{code});
 
+	# Look for table variables in code and rewrite them as temporary tables
+	my $records = '';
+	while ($fct_detail{code} =~ s/DECLARE\s+\@([^\s]+)\s+TABLE\s+(\(.*?[\)\w]\s*\))\s*([^,])/"CREATE TEMPORARY TABLE v_$1 $2" . (($3 eq ")") ? $3 : "") . ";"/eis)
+	{
+		my $varname = $1;
+		$fct_detail{code} =~ s/\@$varname\b/v_$varname/igs;
+	}
+
 	# Move all DECLARE statements found in the code into the DECLARE section
 	my @lines = split(/\n/, $fct_detail{code});
 	$fct_detail{code} = '';
@@ -965,8 +973,9 @@ sub _lookup_function
 			$fct_detail{code} .= "$l\n";
 		}
 	}
-	$fct_detail{declare} =~ s/\bDECLARE\s+//igs;
+
 	# Fix DECLARE section
+	$fct_detail{declare} =~ s/\bDECLARE\s+//igs;
 	if ($fct_detail{declare} !~ /\bDECLARE\b/i)
 	{
 		if ($fct_detail{declare} !~ s/(FUNCTION|PROCEDURE|PROC)\s+([^\s\(]+)[\)\s]+AS\s+(.*)/$1 $2\nDECLARE\n$3/is) {
@@ -979,7 +988,7 @@ sub _lookup_function
 
         @{$fct_detail{param_types}} = ();
 
-	if ( ($fct_detail{declare} =~ s/(.*?)\b(FUNCTION|PROCEDURE|PROC)\s+([^\s]+)\s+((?:RETURNS|AS|DECLARE)\s+.*)//is)
+	if ( ($fct_detail{declare} =~ s/(.*?)\b(FUNCTION|PROCEDURE|PROC)\s+([^\s]+)\s+((?:RETURNS|AS)\s+.*)//is)
 		|| ($fct_detail{declare} =~ s/(.*?)\b(FUNCTION|PROCEDURE|PROC)\s+([^\s\(]+)(.*?)\s+((?:RETURNS|AS)\s+.*)//is)
 		|| ($fct_detail{declare} =~ s/(.*?)\b(FUNCTION|PROCEDURE|PROC)\s+(.*?)\s+((?:RETURNS|AS)\s+.*)//is)
 		|| ($fct_detail{declare} =~ s/(.*?)\b(FUNCTION|PROCEDURE|PROC)\s+([^\s\(]+)\s*(\(.*\))//is) )
@@ -989,6 +998,7 @@ sub _lookup_function
                 $fct_detail{name} = $3;
                 $fct_detail{args} = $4;
 		my $tmp_returned = $5;
+
 		if ($fct_detail{args} !~ /^\(/ && !$tmp_returned)
 		{
 			$tmp_returned = $fct_detail{args};
@@ -1027,9 +1037,9 @@ sub _lookup_function
 		}
 		$fct_detail{immutable} = 1 if ($fct_detail{return} =~ s/\s*\bDETERMINISTIC\b//is);
 		$fct_detail{immutable} = 1 if ($tmp_returned =~ s/\s*\bDETERMINISTIC\b//is);
-		$tmp_returned =~ s/[\r\n]+//gs;
 		$tmp_returned =~ s/^\s+//;
 		$tmp_returned =~ s/\s+$//;
+
 		$fctname = $fct_detail{name} || $fctname;
 		if ($type eq 'functions' && exists $self->{$type}{$fctname}{return} && $self->{$type}{$fctname}{return})
 		{
@@ -1101,6 +1111,8 @@ sub _lookup_function
 	my $nbout = $#nout+1 + $#ninout+1;
 	$fct_detail{inout} = 1 if ($nbout > 0);
 
+	# Append TABLE declaration to the declare section
+	$fct_detail{declare} .= "\n$records" if ($records);
 	# Rename variables with @ replaced by v_
 	($fct_detail{code}, $fct_detail{declare}) = replace_mssql_variables($self, $fct_detail{code}, $fct_detail{declare});
 
@@ -1157,26 +1169,14 @@ sub replace_mssql_variables
 
 	my @to_be_replaced = ();
 	# Look for local variable definition and append them to the declare section
-	while ($code =~ s/SET\s+\@([^\s:]+)\s*:=\s*([^;]+);/SET v_$1 = $2;/is)
+	while ($code =~ s/SET\s+\@([^\s=]+)\s*=\s*/v_$1 := /is)
 	{
 		my $n = $1;
-		my $v = $2;
-		# Try to set a default type for the variable
-		my $type = 'integer';
-		$type = 'varchar' if ($v =~ /'[^']*'/);
-		if ($n =~ /datetime/i) {
-			$type = 'timestamp';
-		} elsif ($n =~ /time/i) {
-			$type = 'time';
-		} elsif ($n =~ /date/i) {
-			$type = 'date';
-		}
-		$declare .= "v_$n $type;\n" if ($declare !~ /\b$n $type;/s);
 		push(@to_be_replaced, $n);
 	}
 
 	# Look for local variable definition and append them to the declare section
-	while ($code =~ s/(^|[^\@])\@([^\s:=]+)\s*:=\s*(.*)/$1v_$2 := $3/is)
+	while ($code =~ s/(^|[^\@])\@([^\s:=,]+)\s*:=\s*(.*)/$1v_$2 := $3/is)
 	{
 		my $n = $2;
 		my $v = $3;
@@ -1196,7 +1196,7 @@ sub replace_mssql_variables
 
 	# Fix other call to the same variable in the code
 	foreach my $n (@to_be_replaced) {
-		$code =~ s/\@$n\b(\s*[^:])/v_$n$1/gs;
+		$code =~ s/\@$n\b/v_$n/gs;
 	}
 
 	# Look for variable definition in DECLARE section and rename them in the code too
@@ -1208,7 +1208,7 @@ sub replace_mssql_variables
 	}
 
 	# Look for some global variable definition and append them to the declare section
-	while ($code =~ /\@\@(ROWCOUNT|VERSION|LANGUAGE)/is)
+	while ($code =~ /\@\@(ROWCOUNT|VERSION|LANGUAGE|SPID|MICROSOFTVERSION)/is)
 	{
 		my $v = uc($1);
 		if ($v eq 'VERSION') {
@@ -1218,10 +1218,15 @@ sub replace_mssql_variables
 		} elsif ($v eq 'ROWCOUNT') {
 			$declare .= "v_v_rowcount bigint;\n" if ($declare !~ /v_v_rowcount/s);
 			$code =~ s/([\r\n])([^\r\n]+?)\@\@$v/\nGET DIAGNOSTICS v_v_rowcount := ROWCOUNT;\n$2 v_v_rowcount/igs;
+		} elsif ($v eq 'SPID') {
+			$code =~ s/\@\@$v/pg_backend_pid()/igs;
+		} elsif ($v eq 'MICROSOFTVERSION') {
+			$code =~ s/\@\@$v/current_setting('server_version')/igs;
 		}
 	}
+
 	# Look for local variable definition and append them to the declare section
-	while ($code =~ s/(^|[^\@])\@([a-z0-9_]+)/$1v_$2/is)
+	while ($code =~ s/(^|[^\@])\@([a-z0-9_\$]+)/$1v_$2/is)
 	{
 		my $n = $2;
 		next if ($n =~ /^v_/);
