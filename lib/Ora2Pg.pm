@@ -6752,9 +6752,12 @@ BEGIN
 					{
 						my ($idx, $fts_idx) = $self->_create_indexes($table, 0, %{$self->{tables}{$table}{indexes}});
 						my $tb_name2 = $self->quote_object_name($tb_name);
-						$create_table_index_tmp .= "CREATE INDEX "
+						if ($cindx)
+						{
+							$create_table_index_tmp .= "CREATE INDEX "
 								. $self->quote_object_name("${tb_name}_$colname$pos")
 								. " ON " . $self->quote_object_name($tb_name) . " ($cindx);\n";
+						}
 						if ($idx || $fts_idx)
 						{
 							$idx =~ s/ $table/ $tb_name2/igs;
@@ -6803,7 +6806,10 @@ BEGIN
 					$cindx = $self->{partitions}{$table}{$pos}{info}[$i]->{column} || '';
 					$cindx = lc($cindx) if (!$self->{preserve_case});
 					$cindx = Ora2Pg::PLSQL::convert_plsql_code($self, $cindx);
-					$create_table_index_tmp .= "CREATE INDEX " . $self->quote_object_name("$deftb$self->{partitions_default}{$table}_$colname") . " ON " . $self->quote_object_name("$deftb$self->{partitions_default}{$table}") . " ($cindx);\n";
+					if ($cindx)
+					{
+						$create_table_index_tmp .= "CREATE INDEX " . $self->quote_object_name("$deftb$self->{partitions_default}{$table}_$colname") . " ON " . $self->quote_object_name("$deftb$self->{partitions_default}{$table}") . " ($cindx);\n";
+					}
 				}
 				push(@ind_col, $self->{partitions}{$table}{$pos}{info}[$i]->{column}) if (!grep(/^$self->{partitions}{$table}{$pos}{info}[$i]->{column}$/, @ind_col));
 				if ($self->{partitions}{$table}{$pos}{info}[$i]->{type} eq 'LIST')
@@ -6999,8 +7005,11 @@ BEGIN
 							$cindx = join(',', @ind_col);
 							$cindx = lc($cindx) if (!$self->{preserve_case});
 							$cindx = Ora2Pg::PLSQL::convert_plsql_code($self, $cindx);
-							$create_table_index_tmp .= "CREATE INDEX " . $self->quote_object_name("${sub_tb_name}_$colname$p")
-												 . " ON " . $self->quote_object_name("$sub_tb_name") . " ($cindx);\n";
+							if ($cindx)
+							{
+								$create_table_index_tmp .= "CREATE INDEX " . $self->quote_object_name("${sub_tb_name}_$colname$p")
+									 . " ON " . $self->quote_object_name("$sub_tb_name") . " ($cindx);\n";
+							}
 							my $tb_name2 = $self->quote_object_name("$sub_tb_name");
 							# Reproduce indexes definition from the main table
 							my ($idx, $fts_idx) = $self->_create_indexes($table, 0, %{$self->{tables}{$table}{indexes}});
@@ -7108,8 +7117,11 @@ BEGIN
 							$create_table_tmp .= "DROP TABLE $self->{pg_supports_ifexists} " . $self->quote_object_name("$deftb$self->{subpartitions_default}{$table}{$part}") . ";\n" if ($self->{drop_if_exists});
 							$create_table_tmp .= "CREATE TABLE " . $self->quote_object_name("$deftb$self->{subpartitions_default}{$table}{$part}")
 										. " () INHERITS ($table);\n";
-							$create_table_index_tmp .= "CREATE INDEX " . $self->quote_object_name("$deftb$self->{subpartitions_default}{$table}{$part}_$pos")
-										. " ON " . $self->quote_object_name("$deftb$self->{subpartitions_default}{$table}{$part}") . " ($cindx);\n";
+							if ($cindx)
+							{
+								$create_table_index_tmp .= "CREATE INDEX " . $self->quote_object_name("$deftb$self->{subpartitions_default}{$table}{$part}_$pos")
+									. " ON " . $self->quote_object_name("$deftb$self->{subpartitions_default}{$table}{$part}") . " ($cindx);\n";
+							}
 						}
 						else
 						{
