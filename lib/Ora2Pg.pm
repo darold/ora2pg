@@ -7685,11 +7685,12 @@ sub export_table
 						$f->[4] = Ora2Pg::PLSQL::convert_plsql_code($self, $f->[4]);
 					}
 					# Check if the column make reference to an other column
-					my $use_other_col = 0;
-					foreach my $c (@collist) {
-						$use_other_col = 1 if ($f->[4] =~ /\b$c\b/i);
-					}
-					if ($use_other_col && $self->{pg_version} >= 12)
+					#my $use_other_col = 0;
+					#foreach my $c (@collist) {
+					#	$use_other_col = 1 if ($f->[4] =~ /\b$c\b/i);
+					#}
+
+					if ($f->[10] eq 'YES' && $self->{pg_version} >= 12)
 					{
 						$sql_output .= " GENERATED ALWAYS AS (" . $f->[4] . ") STORED";
 					}
