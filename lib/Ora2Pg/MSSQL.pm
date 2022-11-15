@@ -959,7 +959,7 @@ sub _lookup_function
 	$fct_detail{code} = '';
 	foreach my $l (@lines)
 	{
-		if ($l =~ /^\s*DECLARE\s+(.*)/i) {
+		if ($l !~ /^\s*DECLARE\s+.*CURSOR/ && $l =~ /^\s*DECLARE\s+(.*)/i) {
 			$fct_detail{declare} .= "\n$1;";
 		} else {
 			$fct_detail{code} .= "$l\n";
@@ -1176,7 +1176,7 @@ sub replace_mssql_variables
 	}
 
 	# Look for local variable definition and append them to the declare section
-	while ($code =~ s/(\s+)\@([^\s:=]+)\s*:=\s*([^;]+);/v_$1$2 := $3;/is)
+	while ($code =~ s/(^|[^\@])\@([^\s:=]+)\s*:=\s*(.*)/$1v_$2 := $3/is)
 	{
 		my $n = $2;
 		my $v = $3;
@@ -1200,17 +1200,30 @@ sub replace_mssql_variables
 	}
 
 	# Look for variable definition in DECLARE section and rename them in the code too
-	while ($declare =~ s/\@([a-z0-9_]+)/v_$1/is)
+	while ($declare =~ s/(^|[^\@])\@([a-z0-9_]+)/$1v_$2/is)
 	{
-		my $n = $1;
+		my $n = $2;
 		# Fix other call to the same variable in the code
 		$code =~ s/\@$n\b/v_$n/gs;
 	}
 
-	# Look for local variable definition and append them to the declare section
-	while ($code =~ s/\@([a-z0-9_]+)/v_$1/is)
+	# Look for some global variable definition and append them to the declare section
+	while ($code =~ /\@\@(ROWCOUNT|VERSION|LANGUAGE)/is)
 	{
-		my $n = $1;
+		my $v = uc($1);
+		if ($v eq 'VERSION') {
+			$code =~ s/\@\@$v/version()/igs;
+		} elsif ($v eq 'LANGUAGE') {
+			$code =~ s/\@\@$v/current_setting('client_encoding')/igs;
+		} elsif ($v eq 'ROWCOUNT') {
+			$declare .= "v_v_rowcount bigint;\n" if ($declare !~ /v_v_rowcount/s);
+			$code =~ s/([\r\n])([^\r\n]+?)\@\@$v/\nGET DIAGNOSTICS v_v_rowcount := ROWCOUNT;\n$2 v_v_rowcount/igs;
+		}
+	}
+	# Look for local variable definition and append them to the declare section
+	while ($code =~ s/(^|[^\@])\@([a-z0-9_]+)/$1v_$2/is)
+	{
+		my $n = $2;
 		next if ($n =~ /^v_/);
 		# Try to set a default type for the variable
 		my $type = 'varchar';

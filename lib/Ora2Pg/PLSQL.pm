@@ -376,6 +376,9 @@ $QUERY_TEST_SCORE = 0.1;
 	'SELECT_TOP' => 0.2,
 	'COLLATE' => 0.2,
 	'RETURNS_TABLE' => 1,
+	'TODATETIMEOFFSET' => 3,
+	'CURSOR' => 0.2,
+	'GLOBAL_VARIABLE' => 1,
 );
 
 %EXCEPTION_MAP = (
@@ -3377,6 +3380,14 @@ sub mssql_estimate_cost
 	$cost_details{'COLLATE'} += $n*$UNCOVERED_MSSQL_SCORE{'COLLATE'};
 	$n = () = $str =~ /\bRETURNS\s+TABLE\s/igs;
 	$cost_details{'RETURNS_TABLE'} += $n*$UNCOVERED_MSSQL_SCORE{'RETURNS_TABLE'};
+	$n = () = $str =~ /\bTODATETIMEOFFSET\s*\(/igs;
+	$cost_details{'TODATETIMEOFFSET'} += $n*$UNCOVERED_MSSQL_SCORE{'TODATETIMEOFFSET'};
+	$n = () = $str =~ /\bCURSOR\s*\(/igs;
+	$cost_details{'CURSOR'} += $n*$UNCOVERED_MSSQL_SCORE{'CURSOR'};
+	$n = () = $str =~ /\b\@\@[a-z0-9_\$]+/igs;
+	$cost_details{'GLOBAL_VARIABLE'} += $n*$UNCOVERED_MSSQL_SCORE{'GLOBAL_VARIABLE'};
+	$n = () = $str =~ /\b\@\@(ROWCOUNT|VERSION|LANGUAGE)/igs;
+	$cost_details{'GLOBAL_VARIABLE'} -= $n*$UNCOVERED_MSSQL_SCORE{'GLOBAL_VARIABLE'};
 
 	foreach my $t (keys %UNCOVERED_MSSQL_SCORE) {
 		$cost += $cost_details{$t} if (exists $cost_details{$t});
@@ -4002,12 +4013,16 @@ sub mssql_to_plpgsql
 
 	# Remove call to with(nolock) from queries
 	$str =~ s/\bwith\s*\(\s*nolock\s*\)//ig;
+	$str =~ s/\bwith\s*schemabinding//ig;
 
 	# Replace call to SYS_GUID() function
 	$str =~ s/\bnewid\s*\(\s*\)/$class->{uuid_function}()/ig;
 
 	# Remove COUNT setting
-	$str =~ s/SET NOCOUNT (ON|OFF)[;\s]*//igs;
+	$str =~ s/SET NOCOUNT (ON|OFF)[;\s]*//ig;
+
+	# Replace BREAK by EXIT
+	$str =~ s/\bBREAK\s*[;]*$/EXIT;/ig;
 
 	# Rewrite call to sequences
 	while ($str =~ /NEXT VALUE FOR ([^\s]+)/i)
@@ -4024,6 +4039,7 @@ sub mssql_to_plpgsql
 	$str =~ s/\bLEN\s*\(([^\)]+)\)/LENGTH(RTRIM($1))/gi;
 	$str =~ s/ISNULL\s*\(/COALESCE(/gi;
 	$str =~ s/SPACE\s*\(/REPEAT(' ', /gi;
+	$str =~ s/CHARINDEX\s*\(\s*(.*?)\s*,\s*(.*?)\s*,\s*(\d+)\)/position('$1' in substring($2 from $3))/gi;
 	$str =~ s/CHARINDEX\s*\(\s*(.*?)\s*,\s*(.*?)\s*\)/position('$1' in $2)/gi;
 	$str =~ s/DATEPART\s*\(\s*(.*?)\s*,\s*(.*?)\s*\)/date_part('$1', $2)/gi;
 	$str =~ s/DATEADD\s*\(\s*(.*?)\s*\,\s*(.*?)\s*,\s*(.*?)\s*\)/$3 + INTERVAL '$2 $1'/gi;
@@ -4061,6 +4077,8 @@ sub mssql_to_plpgsql
 	$str =~ s/(\s+IF[\s\(]+(?:.*?))\s+BEGIN\b/$1 THEN/igs;
 	# Fix WHILE ... BEGIN into IF ... THEN
 	$str =~ s/(\s+WHILE[\s\(]+(?:.*?))\s+BEGIN\b/$1 LOOP/igs;
+	# Fix ELSE IF into ELSIF
+	$str =~ s/\bELSE\s+IF\b/ELSIF/igs;
 
 	# Fix temporary table creation. We keep the # so that they can be identified in the code
 	$str =~ s/CREATE\s+TABLE\s+#/CREATE TEMPORARY TABLE #/igs;
