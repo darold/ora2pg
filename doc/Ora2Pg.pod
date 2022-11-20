@@ -653,7 +653,8 @@ specific schema, set COMPILE_SCHEMA to the schema name you want to recompile.
 
 This will ask to Oracle to validate the PL/SQL that could have been invalidate
 after a export/import for example. The 'VALID' or 'INVALID' status applies to
-functions, procedures, packages and user defined types.
+functions, procedures, packages and user defined types. It also concern disabled
+triggers.
 
 =item EXPORT_INVALID
 

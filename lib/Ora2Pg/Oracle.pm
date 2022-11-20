@@ -1270,7 +1270,12 @@ sub _get_triggers
 	my($self) = @_;
 
 	# Retrieve all indexes 
-	my $str = "SELECT TRIGGER_NAME, TRIGGER_TYPE, TRIGGERING_EVENT, TABLE_NAME, TRIGGER_BODY, WHEN_CLAUSE, DESCRIPTION, ACTION_TYPE, OWNER FROM $self->{prefix}_TRIGGERS WHERE STATUS='ENABLED'";
+	my $str = "SELECT TRIGGER_NAME, TRIGGER_TYPE, TRIGGERING_EVENT, TABLE_NAME, TRIGGER_BODY, WHEN_CLAUSE, DESCRIPTION, ACTION_TYPE, OWNER FROM $self->{prefix}_TRIGGERS WHERE 1=1";
+	if (!$self->{export_invalid}) {
+		$str .= " AND STATUS='ENABLED'";
+	} elsif ($self->{export_invalid} == 2) {
+		$str .= " AND STATUS <> 'ENABLED'";
+	}
 	if (!$self->{schema}) {
 		$str .= " AND OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
 	} else {
