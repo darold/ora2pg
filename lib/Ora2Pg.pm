@@ -7442,6 +7442,9 @@ sub export_table
 			$sql_header .= "CREATE SERVER $srv_name FOREIGN DATA WRAPPER file_fdw;\n\n" if ($sql_header !~ /CREATE SERVER $srv_name FOREIGN DATA WRAPPER file_fdw;/is);
 		}
 
+		# MySQL ON UPDATE clause
+		my %trigger_update = ();
+
 		my $tbname = $self->get_replaced_tbname($table);
 		my $foreign = '';
 		if ( ($self->{type} eq 'FDW') || $self->{oracle_fdw_data_export} || ($self->{external_to_fdw} && (grep(/^$table$/i, keys %{$self->{external_table}}) || $self->{tables}{$table}{table_info}{connection})) ) {
@@ -7784,12 +7787,18 @@ sub export_table
 					}
 				}
 				$sql_output .= ",\n";
+
+				# Replace default generated value on update by a trigger
+				if ($f->[12] =~ /^DEFAULT_GENERATED on update (.*)/i) {
+					$trigger_update{$f->[0]} = $1;
+				}
 			}
 			if ($self->{pkey_in_create}) {
 				$sql_output .= $self->_get_primary_keys($table, $self->{tables}{$table}{unique_key});
 			}
 			$sql_output =~ s/,$//;
 			$sql_output .= ')';
+
 			if (exists $self->{tables}{$table}{table_info}{on_commit})
 			{
 				$sql_output .= ' ' . $self->{tables}{$table}{table_info}{on_commit};
@@ -7962,6 +7971,34 @@ sub export_table
 			}
 		}
 		$ib++;
+
+		# Add the MySQL ON UPDATE trigger
+		if (scalar keys %trigger_update)
+		{
+			my $objname = $table . '_default_';
+			$objname =~ s/[^a-z0-9_]//ig;
+			$sql_output .= qq{
+DROP TRIGGER IF EXISTS ${objname}_trg ON $tbname;
+CREATE OR REPLACE FUNCTION ${objname}_fct() RETURNS trigger AS \$\$
+BEGIN
+};
+			foreach my $c (sort keys %trigger_update)
+			{	
+				my $colname = $self->quote_object_name($c);
+				$sql_output .= qq{
+    NEW.$colname = $trigger_update{$c};};
+			}
+			$sql_output .= qq{
+    RETURN NEW;
+END;
+\$\$ LANGUAGE plpgsql;
+
+CREATE TRIGGER ${objname}_trg
+    BEFORE UPDATE ON $tbname
+    FOR EACH ROW
+    EXECUTE FUNCTION ${objname}_fct();
+};
+		}
 	}
 
 	if (!$self->{quiet} && !$self->{debug})
