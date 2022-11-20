@@ -407,7 +407,9 @@ ORDER BY ORDINAL_POSITION};
 		if ($row->[1] eq 'enum') {
 			$row->[1] = $row->[-2];
 		}
-		if ($row->[13] =~ /unsigned/) {
+		if ($row->[13] =~ s/(decimal.*)\s+unsigned//) {
+			$row->[1] = $1;
+		} elsif ($row->[13] =~ /unsigned/) {
 			$row->[1] .= ' unsigned';
 		}
 
@@ -666,7 +668,8 @@ sub _get_views
 
 	my %ordered_view = ();
 	my %data = ();
-	while (my $row = $sth->fetch) {
+	while (my $row = $sth->fetch)
+	{
 		$row->[1] =~ s/`$self->{schema}`\.//g;
 		$row->[1] =~ s/`([^\s`,]+)`/$1/g;
 		$row->[1] =~ s/"/'/g;
