@@ -3040,7 +3040,8 @@ sub mysql_to_plpgsql
 	# Rewrite REPEAT loop
 	my %repl_repeat = ();
 	$i = 0;
-	while ($str =~ s/\bREPEAT\s+(.*?)\bEND REPEAT\s*;/%REPREPEATLBL$i%/igs) {
+	while ($str =~ s/\bREPEAT\s+(.*?)\bEND REPEAT\s*;/%REPREPEATLBL$i%/igs)
+	{
 		my $code = $1;
 		$code =~ s/\bUNTIL(.*)//;
 		$repl_repeat{$i} = "LOOP ${code}EXIT WHEN $1;\nEND LOOP;";
@@ -3091,6 +3092,21 @@ sub mysql_to_plpgsql
 		$str =~ s/\bCALL\s+//igs;
 	}
 
+	if ($str =~ /\s+FROM\s+(.*?)\s+WHERE/is)
+	{
+		my @joins = split(/\bJOIN\b/i, $1);
+		my $res = '';
+		foreach my $j (@joins) {
+			if ($res eq '') {
+				$res = $j;
+			} elsif ($j !~ /\bON\b/i) {
+				$res .= ',' . $j;
+			} else {
+				$res .= 'JOIN' . $j;
+			}
+		}
+		$str =~ s/(\s+FROM\s+)(.*?)(\s+WHERE)/$1$res$3/is;
+	}
 	return $str;
 }
 

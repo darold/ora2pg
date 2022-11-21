@@ -683,7 +683,8 @@ specific schema, set COMPILE_SCHEMA to the schema name you want to recompile.
 
 This will ask to Oracle to validate the PL/SQL that could have been invalidate
 after a export/import for example. The 'VALID' or 'INVALID' status applies to
-functions, procedures, packages and user defined types.
+functions, procedures, packages and user defined types. It also concern disabled
+triggers.
 
 =item EXPORT_INVALID
 
@@ -1682,6 +1683,12 @@ Default: ST_SRID, for example it should be set to sde.st_srid for ArcSDE.
 Oracle function to use to extract the dimension from ST_Geometry meta
 information. Default: ST_DIMENSION, for example it should be set to
 sde.st_dimention for ArcSDE.
+
+=item ST_GEOMETRYTYPE_FUNCTION
+
+Oracle function to use to extract the geometry type from a ST_Geometry column
+Default: ST_GEOMETRYTYPE, for example it should be set to sde.st_geometrytype
+for ArcSDE.
 
 =item ST_ASBINARY_FUNCTION
 

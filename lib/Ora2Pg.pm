@@ -1326,6 +1326,7 @@ sub _init
 	# Default function to use for ST_Geometry
 	$self->{st_srid_function} ||= 'ST_SRID';
 	$self->{st_dimension_function} ||= 'ST_DIMENSION';
+	$self->{st_geometrytype_function} ||=  'ST_GeometryType';
 	$self->{st_asbinary_function} ||= 'ST_AsBinary';
 	$self->{st_astext_function} ||= 'ST_AsText';
 
@@ -2143,7 +2144,7 @@ sub _send_to_pgdb
 	$ENV{PGAPPNAME} = 'ora2pg ' || $VERSION;
 
 	# Connect the destination database
-	my $dbhdest = DBI->connect($self->{pg_dsn}, $self->{pg_user}, $self->{pg_pwd}, {AutoInactiveDestroy => 1});
+	my $dbhdest = DBI->connect($self->{pg_dsn}, $self->{pg_user}, $self->{pg_pwd}, {AutoInactiveDestroy => 1, PrintError => 0});
 
 	# Check for connection failure
 	if (!$dbhdest) {
@@ -6879,9 +6880,12 @@ BEGIN
 					{
 						my ($idx, $fts_idx) = $self->_create_indexes($table, 0, %{$self->{tables}{$table}{indexes}});
 						my $tb_name2 = $self->quote_object_name($tb_name);
-						$create_table_index_tmp .= "CREATE INDEX "
+						if ($cindx)
+						{
+							$create_table_index_tmp .= "CREATE INDEX "
 								. $self->quote_object_name("${tb_name}_$colname$pos")
 								. " ON " . $self->quote_object_name($tb_name) . " ($cindx);\n";
+						}
 						if ($idx || $fts_idx)
 						{
 							$idx =~ s/ $table/ $tb_name2/igs;
@@ -6925,14 +6929,22 @@ BEGIN
 				}
 				my $deftb = '';
 				$deftb = "${table}_" if ($self->{prefix_partition});
-				if ($self->{partitions_default}{$table} && ($create_table{$table}{index} !~ /ON $deftb$self->{partitions_default}{$table} /))
+				# Reproduce indexes definition from the main table before PG 11
+				# after they are automatically created on partition tables
+				if ($self->{pg_version} < 11)
 				{
-					$cindx = $self->{partitions}{$table}{$pos}{info}[$i]->{column} || '';
-					$cindx = lc($cindx) if (!$self->{preserve_case});
-					$cindx = Ora2Pg::PLSQL::convert_plsql_code($self, $cindx);
-					$create_table_index_tmp .= "CREATE INDEX " . $self->quote_object_name("$deftb$self->{partitions_default}{$table}_$colname") . " ON " . $self->quote_object_name("$deftb$self->{partitions_default}{$table}") . " ($cindx);\n";
+					if ($self->{partitions_default}{$table} && ($create_table{$table}{index} !~ /ON $deftb$self->{partitions_default}{$table} /))
+					{
+						$cindx = $self->{partitions}{$table}{$pos}{info}[$i]->{column} || '';
+						$cindx = lc($cindx) if (!$self->{preserve_case});
+						$cindx = Ora2Pg::PLSQL::convert_plsql_code($self, $cindx);
+						if ($cindx)
+						{
+							$create_table_index_tmp .= "CREATE INDEX " . $self->quote_object_name("$deftb$self->{partitions_default}{$table}_$colname") . " ON " . $self->quote_object_name("$deftb$self->{partitions_default}{$table}") . " ($cindx);\n";
+						}
+					}
+					push(@ind_col, $self->{partitions}{$table}{$pos}{info}[$i]->{column}) if (!grep(/^$self->{partitions}{$table}{$pos}{info}[$i]->{column}$/, @ind_col));
 				}
-				push(@ind_col, $self->{partitions}{$table}{$pos}{info}[$i]->{column}) if (!grep(/^$self->{partitions}{$table}{$pos}{info}[$i]->{column}$/, @ind_col));
 				if ($self->{partitions}{$table}{$pos}{info}[$i]->{type} eq 'LIST')
 				{
 					if (!$fct) {
@@ -6976,10 +6988,21 @@ BEGIN
 					my $expr = '';
 					if (exists $self->{subpartitions_list}{"\L$table\E"}{"\L$part\E"}{columns})
 					{
-						for (my $j = 0; $j <= $#{$self->{subpartitions_list}{"\L$table\E"}{"\L$part\E"}{columns}}; $j++)
+						my $len = $#{$self->{subpartitions_list}{"\L$table\E"}{"\L$part\E"}{columns}};
+						for (my $j = 0; $j <= $len; $j++)
 						{
-							$expr .= ', ' if ($j > 0);
+							if ($self->{subpartitions_list}{"\L$table\E"}{"\L$part\E"}{type} eq 'LIST') {
+								$expr .= ' || ' if ($j > 0);
+							} else {
+								$expr .= ', ' if ($j > 0);
+							}
 							$expr .= $self->quote_object_name($self->{subpartitions_list}{"\L$table\E"}{"\L$part\E"}{columns}[$j]);
+							if ($self->{subpartitions_list}{"\L$table\E"}{"\L$part\E"}{type} eq 'LIST' && $len >= 0) {
+								$expr .= '::text';
+							}
+						}
+						if ($self->{subpartitions_list}{"\L$table\E"}{"\L$part\E"}{type} eq 'LIST' && $len >= 0) {
+							$expr = '(' . $expr . ')';
 						}
 					}
 					else
@@ -7126,8 +7149,11 @@ BEGIN
 							$cindx = join(',', @ind_col);
 							$cindx = lc($cindx) if (!$self->{preserve_case});
 							$cindx = Ora2Pg::PLSQL::convert_plsql_code($self, $cindx);
-							$create_table_index_tmp .= "CREATE INDEX " . $self->quote_object_name("${sub_tb_name}_$colname$p")
-												 . " ON " . $self->quote_object_name("$sub_tb_name") . " ($cindx);\n";
+							if ($cindx)
+							{
+								$create_table_index_tmp .= "CREATE INDEX " . $self->quote_object_name("${sub_tb_name}_$colname$p")
+									 . " ON " . $self->quote_object_name("$sub_tb_name") . " ($cindx);\n";
+							}
 							my $tb_name2 = $self->quote_object_name("$sub_tb_name");
 							# Reproduce indexes definition from the main table
 							my ($idx, $fts_idx) = $self->_create_indexes($table, 0, %{$self->{tables}{$table}{indexes}});
@@ -7235,8 +7261,11 @@ BEGIN
 							$create_table_tmp .= "DROP TABLE $self->{pg_supports_ifexists} " . $self->quote_object_name("$deftb$self->{subpartitions_default}{$table}{$part}") . ";\n" if ($self->{drop_if_exists});
 							$create_table_tmp .= "CREATE TABLE " . $self->quote_object_name("$deftb$self->{subpartitions_default}{$table}{$part}")
 										. " () INHERITS ($table);\n";
-							$create_table_index_tmp .= "CREATE INDEX " . $self->quote_object_name("$deftb$self->{subpartitions_default}{$table}{$part}_$pos")
-										. " ON " . $self->quote_object_name("$deftb$self->{subpartitions_default}{$table}{$part}") . " ($cindx);\n";
+							if ($cindx)
+							{
+								$create_table_index_tmp .= "CREATE INDEX " . $self->quote_object_name("$deftb$self->{subpartitions_default}{$table}{$part}_$pos")
+									. " ON " . $self->quote_object_name("$deftb$self->{subpartitions_default}{$table}{$part}") . " ($cindx);\n";
+							}
 						}
 						else
 						{
@@ -7336,9 +7365,9 @@ LANGUAGE plpgsql;
 		{
 			$partition_indexes .= qq{
 -- Create indexes on each partition of table $table
-$create_table{$table}{'index'}
+$create_table{$table}{index}
 
-} if ($create_table{$table}{'index'});
+} if ($create_table{$table}{index});
 			$sql_output .= qq{
 $create_table{$table}{table}
 };
@@ -7565,6 +7594,9 @@ sub export_table
 			$sql_header .= "CREATE SERVER $srv_name FOREIGN DATA WRAPPER file_fdw;\n\n" if ($sql_header !~ /CREATE SERVER $srv_name FOREIGN DATA WRAPPER file_fdw;/is);
 		}
 
+		# MySQL ON UPDATE clause
+		my %trigger_update = ();
+
 		my $tbname = $self->get_replaced_tbname($table);
 		my $foreign = '';
 		if ( ($self->{type} eq 'FDW') || $self->{oracle_fdw_data_export} || ($self->{external_to_fdw} && (grep(/^$table$/i, keys %{$self->{external_table}}) || $self->{tables}{$table}{table_info}{connection})) ) {
@@ -7660,6 +7692,7 @@ sub export_table
 					{
 						if ($type !~ s/smallint/smallserial/) {
 							$type =~ s/integer/serial/;
+							$type =~ s/numeric.*/bigserial/;
 						}
 					}
 					if ($type =~ /serial/)
@@ -7814,14 +7847,12 @@ sub export_table
 						$f->[4] = Ora2Pg::PLSQL::convert_plsql_code($self, $f->[4]);
 					}
 					# Check if the column make reference to an other column
-					my $use_other_col = 0;
-					foreach my $c (@collist)
-					{
-						if ($f->[4] =~ /\b$c\b/i && $f->[4] !~ /nextval\(/i) {
-							$use_other_col = 1;
-						}
-					}
-					if ($use_other_col && $self->{pg_version} >= 12)
+					#my $use_other_col = 0;
+					#foreach my $c (@collist) {
+					#	$use_other_col = 1 if ($f->[4] =~ /\b$c\b/i);
+					#}
+
+					if ($f->[10] eq 'YES' && $self->{pg_version} >= 12)
 					{
 						$sql_output .= " GENERATED ALWAYS AS (" . $f->[4] . ") STORED";
 					}
@@ -7916,12 +7947,18 @@ sub export_table
 					}
 				}
 				$sql_output .= ",\n";
+
+				# Replace default generated value on update by a trigger
+				if ($f->[12] =~ /^DEFAULT_GENERATED on update (.*)/i) {
+					$trigger_update{$f->[0]} = $1;
+				}
 			}
 			if ($self->{pkey_in_create}) {
 				$sql_output .= $self->_get_primary_keys($table, $self->{tables}{$table}{unique_key});
 			}
 			$sql_output =~ s/,$//;
 			$sql_output .= ')';
+
 			if (exists $self->{tables}{$table}{table_info}{on_commit})
 			{
 				$sql_output .= ' ' . $self->{tables}{$table}{table_info}{on_commit};
@@ -7934,10 +7971,21 @@ sub export_table
 					my $expr = '';
 					if (exists $self->{partitions_list}{"\L$table\E"}{columns})
 					{
-						for (my $j = 0; $j <= $#{$self->{partitions_list}{"\L$table\E"}{columns}}; $j++)
+						my $len = $#{$self->{partitions_list}{"\L$table\E"}{columns}};
+						for (my $j = 0; $j <= $len; $j++)
 						{
-							$expr .= ', ' if ($j > 0);
+							if ($self->{partitions_list}{"\L$table\E"}{type} eq 'LIST') {
+								$expr .= ' || ' if ($j > 0);
+							} else {
+								$expr .= ', ' if ($j > 0);
+							}
 							$expr .= $self->quote_object_name($self->{partitions_list}{"\L$table\E"}{columns}[$j]);
+							if ($self->{partitions_list}{"\L$table\E"}{type} eq 'LIST' && $len >= 0) {
+								$expr .= '::text';
+							}
+						}
+						if ($self->{partitions_list}{"\L$table\E"}{type} eq 'LIST' && $len >= 0) {
+							$expr = '(' . $expr . ')';
 						}
 					}
 					else
@@ -8094,6 +8142,34 @@ sub export_table
 			}
 		}
 		$ib++;
+
+		# Add the MySQL ON UPDATE trigger
+		if (scalar keys %trigger_update)
+		{
+			my $objname = $table . '_default_';
+			$objname =~ s/[^a-z0-9_]//ig;
+			$sql_output .= qq{
+DROP TRIGGER IF EXISTS ${objname}_trg ON $tbname;
+CREATE OR REPLACE FUNCTION ${objname}_fct() RETURNS trigger AS \$\$
+BEGIN
+};
+			foreach my $c (sort keys %trigger_update)
+			{	
+				my $colname = $self->quote_object_name($c);
+				$sql_output .= qq{
+    NEW.$colname = $trigger_update{$c};};
+			}
+			$sql_output .= qq{
+    RETURN NEW;
+END;
+\$\$ LANGUAGE plpgsql;
+
+CREATE TRIGGER ${objname}_trg
+    BEFORE UPDATE ON $tbname
+    FOR EACH ROW
+    EXECUTE FUNCTION ${objname}_fct();
+};
+		}
 	}
 
 	if (!$self->{quiet} && !$self->{debug})
@@ -10878,17 +10954,17 @@ sub _howto_get_data
 				if ($self->{db_version} < '5.7.6')
 				{
 					if ($self->{geometry_extract_type} eq 'WKB') {
-						$str .= "CASE WHEN $name->[$k]->[0] IS NOT NULL THEN CONCAT('SRID=',SRID($name->[$k]),';', AsBinary($name->[$k])) ELSE NULL END,";
+						$str .= "CASE WHEN $name->[$k] IS NOT NULL THEN CONCAT('SRID=',SRID($name->[$k]),';', AsBinary($name->[$k])) ELSE NULL END,";
 					} else {
-						$str .= "CASE WHEN $name->[$k]->[0] IS NOT NULL THEN CONCAT('SRID=',SRID($name->[$k]),';', AsText($name->[$k])) ELSE NULL END,";
+						$str .= "CASE WHEN $name->[$k] IS NOT NULL THEN CONCAT('SRID=',SRID($name->[$k]),';', AsText($name->[$k])) ELSE NULL END,";
 					}
 				}
 				else
 				{
 					if ($self->{geometry_extract_type} eq 'WKB') {
-						$str .= "CASE WHEN $name->[$k] IS NOT NULL THEN CONCAT('SRID=',$self->{st_srid_function}($name->[$k]),';', $self->{st_asbinary_function}($name->[$k]->[0])) ELSE NULL END,";
+						$str .= "CASE WHEN $name->[$k] IS NOT NULL THEN CONCAT('SRID=',$self->{st_srid_function}($name->[$k]),';', $self->{st_asbinary_function}($name->[$k])) ELSE NULL END,";
 					} else {
-						$str .= "CASE WHEN $name->[$k] IS NOT NULL THEN CONCAT('SRID=',$self->{st_srid_function}($name->[$k]),';', $self->{st_astext_function}($name->[$k]->[0])) ELSE NULL END,";
+						$str .= "CASE WHEN $name->[$k] IS NOT NULL THEN CONCAT('SRID=',$self->{st_srid_function}($name->[$k]),';', $self->{st_astext_function}($name->[$k])) ELSE NULL END,";
 					}
 				}
 			}
@@ -11920,12 +11996,12 @@ sub _count_source_rows
 		$tbname = "[$t]";
 		$tbname =~ s/\./\].\[/;
 	} else {
-		$tbname = "\"$t\"";
-		$tbname =~ s/\./"."/;
+		$tbname = $t;
+		$tbname = $self->{schema} . '.' . $t if ($self->{schema} && $t !~ /\./);
 	}
 	my $sql = "SELECT COUNT(*) FROM $tbname";
-	my $sth = $dbhsrc->prepare( $sql ) or $self->logit("FATAL: " . $dbhsrc->errstr . "\n", 0, 1);
-	$sth->execute or $self->logit("FATAL: " . $dbhsrc->errstr . "\n", 0, 1);
+	my $sth = $dbh->prepare( $sql ) or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
+	$sth->execute or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
 	my $size = $sth->fetch();
 	$sth->finish();
 
@@ -11934,7 +12010,7 @@ sub _count_source_rows
 	my $fh = new IO::File;
 	$fh->open(">>${dirprefix}ora2pg_count_rows") or $self->logit("FATAL: can't write to ${dirprefix}ora2pg_count_rows, $!\n", 0, 1);
 	flock($fh, 2) || die "FATAL: can't lock file ${dirprefix}ora2pg_count_rows\n";
-	$fh->print("$t:$size->[0]\n");
+	$fh->print("$tbname:$size->[0]\n");
 	$fh->close;
 }
 
@@ -14960,9 +15036,9 @@ sub _extract_data
 		$self->logit("Parallelizing on core #$proc with query: $query\n", 1);
 	}
 	if ( ($self->{parallel_tables} > 1) || (($self->{oracle_copies} > 1) && $self->{defined_pk}{"\L$table\E"}) ) {
-		$sth->execute(@params) or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
+		$sth->execute(@params) or $self->logit("FATAL: " . $dbh->errstr . ", SQL: $query\n", 0, 1);
 	} else {
-		$sth->execute(@params) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+		$sth->execute(@params) or $self->logit("FATAL: " . $self->{dbh}->errstr . ", SQL: $query\n", 0, 1);
 	}
 
 	my $col_cond = $self->hs_cond($tt,$stt, $table);
@@ -16623,6 +16699,7 @@ sub _show_infos
 						{
 							if ($type1 !~ s/smallint/smallserial/) {
 								$type1 =~ s/integer/serial/;
+								$type1 =~ s/numeric.*/bigserial/;
 							}
 						}
 						if ($type1 =~ /serial/) {
@@ -16826,18 +16903,19 @@ sub set_pg_relation_name
 	$orig = " (origin: $table)" if (lc($cmptb) ne lc($table));
 	my $tbname = $tbmod;
 	$tbname =~ s/[^"\.]+\.//;
-	my $schm = $self->{pg_schema};
+	my $schm = $self->{schema};
+	$schm = $self->{pg_schema} if ($self->{pg_schema});
 	$schm =~ s/"//g;
 	$tbname =~ s/"//g;
 	$schm = $self->quote_object_name($schm);
 	$tbname = $self->quote_object_name($tbname);
-	if ($self->{pg_schema} && $self->{export_schema}) {
+	if ($self->{pg_schema}) {
 		return ($tbmod, $orig, $self->{pg_schema}, "$schm.$tbname");
 	} elsif ($self->{schema} && $self->{export_schema}) {
 		return ($tbmod, $orig, $self->{schema}, "$schm.$tbname");
 	}
 
-	return ($tbmod, $orig, '', $tbmod);
+	return ($tbmod, $orig, '', $tbname);
 }
 
 sub get_schema_condition
@@ -16865,36 +16943,59 @@ sub _count_pg_rows
 {
 	my ($self, $dbhdest, $lbl, $t, $num_rows) = @_;
 
+	chomp($num_rows);
+
+	my ($tbmod, $orig, $schema, $both) = $self->set_pg_relation_name($t);
 	if ($self->{pg_dsn})
 	{
+		my $err = '';
+		my $dirprefix = '';
+		$dirprefix = "$self->{output_dir}/" if ($self->{output_dir});
+
 		$self->logit("DEBUG: pid $$ looking for real row count for destination table $t...\n", 1);
 
-		my ($tbmod, $orig, $schema, $both) = $self->set_pg_relation_name($t);
-		my $s = $dbhdest->prepare("SELECT count(*) FROM $both;") or $self->logit("FATAL: " . $dbhdest->errstr . "\n", 0, 1);
+		my $sql = "SELECT count(*) FROM $both;";
 		if ($self->{preserve_case}) {
-			$s = $dbhdest->prepare("SELECT count(*) FROM \"$schema\".\"$t\";") or $self->logit("FATAL: " . $dbhdest->errstr . "\n", 0, 1);
+			$sql = "SELECT count(*) FROM \"$schema\".\"$t\";";
 		}
-		if (not $s->execute)
+		my $s = $dbhdest->prepare($sql);
+		if (not defined $s)
 		{
-			push(@errors, "Table $both$orig does not exists in PostgreSQL database.") if ($s->state eq '42P01');
-			next;
+			$err = "Table $both$orig does not exists in PostgreSQL database." if ($s->state eq '42P01');
 		}
-                my $dirprefix = '';
-		$dirprefix = "$self->{output_dir}/" if ($self->{output_dir});
-		my $fh = new IO::File;
-		$fh->open(">>${dirprefix}ora2pg_stdout_locker") or $self->logit("FATAL: can't write to ${dirprefix}ora2pg_stdout_locker, $!\n", 0, 1);
-		flock($fh, 2) || die "FATAL: can't lock file ${dirprefix}ora2pg_stdout_locker\n";
-		print "$lbl:$t:$num_rows\n";
-		while ( my @row = $s->fetchrow())
+		else
 		{
-			print "POSTGRES:$both$orig:$row[0]\n";
-			if ($row[0] != $num_rows) {
-				$fh->print("Table $both$orig doesn't have the same number of line in source database ($num_rows) and in PostgreSQL ($row[0]).\n");
+			if (not $s->execute)
+			{
+				$err = "Table $both$orig does not exists in PostgreSQL database." if ($s->state eq '42P01');
 			}
-			last;
+			else
+			{
+				my $fh = new IO::File;
+				$fh->open(">>${dirprefix}ora2pg_stdout_locker") or $self->logit("FATAL: can't write to ${dirprefix}ora2pg_stdout_locker, $!\n", 0, 1);
+				flock($fh, 2) || die "FATAL: can't lock file ${dirprefix}ora2pg_stdout_locker\n";
+				print "$lbl:$t:$num_rows\n";
+				while ( my @row = $s->fetchrow())
+				{
+					print "POSTGRES:$both$orig:$row[0]\n";
+					if ($row[0] != $num_rows) {
+						$fh->print("Table $both$orig doesn't have the same number of line in source database ($num_rows) and in PostgreSQL ($row[0]).\n");
+					}
+					last;
+				}
+				$s->finish();
+				$fh->close;
+			}
 		}
-		$s->finish();
-		$fh->close;
+		if ($err)
+		{
+			my $fh = new IO::File;
+			$fh->open(">>${dirprefix}ora2pg_stdout_locker") or $self->logit("FATAL: can't write to ${dirprefix}ora2pg_stdout_locker, $!\n", 0, 1);
+			flock($fh, 2) || die "FATAL: can't lock file ${dirprefix}ora2pg_stdout_locker\n";
+			print "$lbl:$t:$num_rows\n";
+			$fh->print("$err\n");
+			$fh->close;
+		}
 	}
 }
 
@@ -20562,7 +20663,7 @@ ORDER BY attnum};
 		if ($crow[2] eq 'geometry')
 		{
 			if ($self->{is_mysql}) {
-				push(@tlist, "ST_AsText($crow[0])");
+				push(@tlist, "$self->{st_astext_function}($crow[0])");
 			} else {
 				push(@tlist, $crow[0]);
 			}
