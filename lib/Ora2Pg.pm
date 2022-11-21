@@ -6801,17 +6801,22 @@ BEGIN
 				}
 				my $deftb = '';
 				$deftb = "${table}_" if ($self->{prefix_partition});
-				if ($self->{partitions_default}{$table} && ($create_table{$table}{index} !~ /ON $deftb$self->{partitions_default}{$table} /))
+				# Reproduce indexes definition from the main table before PG 11
+				# after they are automatically created on partition tables
+				if ($self->{pg_version} < 11)
 				{
-					$cindx = $self->{partitions}{$table}{$pos}{info}[$i]->{column} || '';
-					$cindx = lc($cindx) if (!$self->{preserve_case});
-					$cindx = Ora2Pg::PLSQL::convert_plsql_code($self, $cindx);
-					if ($cindx)
+					if ($self->{partitions_default}{$table} && ($create_table{$table}{index} !~ /ON $deftb$self->{partitions_default}{$table} /))
 					{
-						$create_table_index_tmp .= "CREATE INDEX " . $self->quote_object_name("$deftb$self->{partitions_default}{$table}_$colname") . " ON " . $self->quote_object_name("$deftb$self->{partitions_default}{$table}") . " ($cindx);\n";
+						$cindx = $self->{partitions}{$table}{$pos}{info}[$i]->{column} || '';
+						$cindx = lc($cindx) if (!$self->{preserve_case});
+						$cindx = Ora2Pg::PLSQL::convert_plsql_code($self, $cindx);
+						if ($cindx)
+						{
+							$create_table_index_tmp .= "CREATE INDEX " . $self->quote_object_name("$deftb$self->{partitions_default}{$table}_$colname") . " ON " . $self->quote_object_name("$deftb$self->{partitions_default}{$table}") . " ($cindx);\n";
+						}
 					}
+					push(@ind_col, $self->{partitions}{$table}{$pos}{info}[$i]->{column}) if (!grep(/^$self->{partitions}{$table}{$pos}{info}[$i]->{column}$/, @ind_col));
 				}
-				push(@ind_col, $self->{partitions}{$table}{$pos}{info}[$i]->{column}) if (!grep(/^$self->{partitions}{$table}{$pos}{info}[$i]->{column}$/, @ind_col));
 				if ($self->{partitions}{$table}{$pos}{info}[$i]->{type} eq 'LIST')
 				{
 					if (!$fct) {
@@ -7221,9 +7226,9 @@ LANGUAGE plpgsql;
 		{
 			$partition_indexes .= qq{
 -- Create indexes on each partition of table $table
-$create_table{$table}{'index'}
+$create_table{$table}{index}
 
-} if ($create_table{$table}{'index'});
+} if ($create_table{$table}{index});
 			$sql_output .= qq{
 $create_table{$table}{table}
 };
