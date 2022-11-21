@@ -975,7 +975,6 @@ sub _lookup_function
 			$fct_detail{code} = "BEGIN\n    $1;\nEND\n";
 		}
 	}
-	return if (!$fct_detail{code});
 
 	# Remove any label that was before the main BEGIN block
 	$fct_detail{declare} =~ s/\s+[^\s\:]+:\s*$//gs;
@@ -983,7 +982,7 @@ sub _lookup_function
         @{$fct_detail{param_types}} = ();
 
         if ( ($fct_detail{declare} =~ s/(.*?)\b(FUNCTION|PROCEDURE)\s+([^\s\(]+)\s*(\(.*\))\s+RETURNS\s+(.*)//is) ||
-			($fct_detail{declare} =~ s/(.*?)\b(FUNCTION|PROCEDURE)\s+([^\s\(]+)\s*(\(.*\))//is) )
+		($fct_detail{declare} =~ s/(.*?)\b(FUNCTION|PROCEDURE)\s+([^\s\(]+)\s*(\(.*?\))\s*(.*)//is) )
 	{
                 $fct_detail{before} = $1;
                 $fct_detail{type} = uc($2);
@@ -995,6 +994,8 @@ sub _lookup_function
 			$fct_detail{code} = $1 . $fct_detail{code};
 		}
 		if ($fct_detail{declare} =~ s/\s*COMMENT\s+(\?TEXTVALUE\d+\?|'[^\']+')//) {
+			$fct_detail{comment} = $1;
+		} elsif ($tmp_returned =~ s/\s*COMMENT\s+(\?TEXTVALUE\d+\?|'[^\']+')//) {
 			$fct_detail{comment} = $1;
 		}
 		$fct_detail{immutable} = 1 if ($fct_detail{declare} =~ s/\s*\bDETERMINISTIC\b//is);
@@ -1020,6 +1021,11 @@ sub _lookup_function
 		$fct_detail{language} = $self->{$type}{$fctname}{language};
 		$fct_detail{immutable} = 1 if ($self->{$type}{$fctname}{immutable} eq 'YES');
 		$fct_detail{security} = $self->{$type}{$fctname}{security};
+
+		if (!$fct_detail{code} && $tmp_returned) {
+			$tmp_returned .= ';' if ($tmp_returned !~ /;$/s);
+			$fct_detail{code} = "\n$tmp_returned\nEND;"
+		}
 
 		# Procedure that have out parameters are functions with PG
 		if ($type eq 'procedures' && $fct_detail{args} =~ /\b(OUT|INOUT)\b/) {
