@@ -2093,7 +2093,7 @@ sub _send_to_pgdb
 	$ENV{PGAPPNAME} = 'ora2pg ' || $VERSION;
 
 	# Connect the destination database
-	my $dbhdest = DBI->connect($self->{pg_dsn}, $self->{pg_user}, $self->{pg_pwd}, {AutoInactiveDestroy => 1});
+	my $dbhdest = DBI->connect($self->{pg_dsn}, $self->{pg_user}, $self->{pg_pwd}, {AutoInactiveDestroy => 1, PrintError => 0});
 
 	# Check for connection failure
 	if (!$dbhdest) {
@@ -11769,10 +11769,10 @@ sub _count_source_rows
 		$tbname = "[$t]";
 		$tbname =~ s/\./\].\[/;
 	} else {
-		$tbname = "[$t]";
-		$tbname =~ s/\./\].\[/;
+		$tbname = $t;
+		$tbname = $self->{schema} . '.' . $t if ($self->{schema} && $t !~ /\./);
 	}
-	my $sql = "SELECT COUNT(*) FROM $t";
+	my $sql = "SELECT COUNT(*) FROM $tbname";
 	my $sth = $dbh->prepare( $sql ) or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
 	$sth->execute or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
 	my $size = $sth->fetch();
@@ -11783,7 +11783,7 @@ sub _count_source_rows
 	my $fh = new IO::File;
 	$fh->open(">>${dirprefix}ora2pg_count_rows") or $self->logit("FATAL: can't write to ${dirprefix}ora2pg_count_rows, $!\n", 0, 1);
 	flock($fh, 2) || die "FATAL: can't lock file ${dirprefix}ora2pg_count_rows\n";
-	$fh->print("$t:$size->[0]\n");
+	$fh->print("$tbname:$size->[0]\n");
 	$fh->close;
 }
 
@@ -16627,36 +16627,57 @@ sub _count_pg_rows
 
 	chomp($num_rows);
 
+	my ($tbmod, $orig, $schema, $both) = $self->set_pg_relation_name($t);
 	if ($self->{pg_dsn})
 	{
+		my $err = '';
+		my $dirprefix = '';
+		$dirprefix = "$self->{output_dir}/" if ($self->{output_dir});
+
 		$self->logit("DEBUG: pid $$ looking for real row count for destination table $t...\n", 1);
 
-		my ($tbmod, $orig, $schema, $both) = $self->set_pg_relation_name($t);
-		my $s = $dbhdest->prepare("SELECT count(*) FROM $both;") or $self->logit("FATAL: " . $dbhdest->errstr . "\n", 0, 1);
+		my $sql = "SELECT count(*) FROM $both;";
 		if ($self->{preserve_case}) {
-			$s = $dbhdest->prepare("SELECT count(*) FROM \"$schema\".\"$t\";") or $self->logit("FATAL: " . $dbhdest->errstr . "\n", 0, 1);
+			$sql = "SELECT count(*) FROM \"$schema\".\"$t\";";
 		}
-		if (not $s->execute)
+		my $s = $dbhdest->prepare($sql);
+		if (not defined $s)
 		{
-			push(@errors, "Table $both$orig does not exists in PostgreSQL database.") if ($s->state eq '42P01');
-			next;
+			$err = "Table $both$orig does not exists in PostgreSQL database." if ($s->state eq '42P01');
 		}
-                my $dirprefix = '';
-		$dirprefix = "$self->{output_dir}/" if ($self->{output_dir});
-		my $fh = new IO::File;
-		$fh->open(">>${dirprefix}ora2pg_stdout_locker") or $self->logit("FATAL: can't write to ${dirprefix}ora2pg_stdout_locker, $!\n", 0, 1);
-		flock($fh, 2) || die "FATAL: can't lock file ${dirprefix}ora2pg_stdout_locker\n";
-		print "$lbl:$t:$num_rows\n";
-		while ( my @row = $s->fetchrow())
+		else
 		{
-			print "POSTGRES:$both$orig:$row[0]\n";
-			if ($row[0] != $num_rows) {
-				$fh->print("Table $both$orig doesn't have the same number of line in source database ($num_rows) and in PostgreSQL ($row[0]).\n");
+			if (not $s->execute)
+			{
+				$err = "Table $both$orig does not exists in PostgreSQL database." if ($s->state eq '42P01');
 			}
-			last;
+			else
+			{
+				my $fh = new IO::File;
+				$fh->open(">>${dirprefix}ora2pg_stdout_locker") or $self->logit("FATAL: can't write to ${dirprefix}ora2pg_stdout_locker, $!\n", 0, 1);
+				flock($fh, 2) || die "FATAL: can't lock file ${dirprefix}ora2pg_stdout_locker\n";
+				print "$lbl:$t:$num_rows\n";
+				while ( my @row = $s->fetchrow())
+				{
+					print "POSTGRES:$both$orig:$row[0]\n";
+					if ($row[0] != $num_rows) {
+						$fh->print("Table $both$orig doesn't have the same number of line in source database ($num_rows) and in PostgreSQL ($row[0]).\n");
+					}
+					last;
+				}
+				$s->finish();
+				$fh->close;
+			}
 		}
-		$s->finish();
-		$fh->close;
+		if ($err)
+		{
+			my $fh = new IO::File;
+			$fh->open(">>${dirprefix}ora2pg_stdout_locker") or $self->logit("FATAL: can't write to ${dirprefix}ora2pg_stdout_locker, $!\n", 0, 1);
+			flock($fh, 2) || die "FATAL: can't lock file ${dirprefix}ora2pg_stdout_locker\n";
+			print "$lbl:$t:$num_rows\n";
+			$fh->print("$err\n");
+			$fh->close;
+		}
 	}
 }
 
