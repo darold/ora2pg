@@ -10775,17 +10775,17 @@ sub _howto_get_data
 				if ($self->{db_version} < '5.7.6')
 				{
 					if ($self->{geometry_extract_type} eq 'WKB') {
-						$str .= "CASE WHEN $name->[$k]->[0] IS NOT NULL THEN CONCAT('SRID=',SRID($name->[$k]),';', AsBinary($name->[$k])) ELSE NULL END,";
+						$str .= "CASE WHEN $name->[$k] IS NOT NULL THEN CONCAT('SRID=',SRID($name->[$k]),';', AsBinary($name->[$k])) ELSE NULL END,";
 					} else {
-						$str .= "CASE WHEN $name->[$k]->[0] IS NOT NULL THEN CONCAT('SRID=',SRID($name->[$k]),';', AsText($name->[$k])) ELSE NULL END,";
+						$str .= "CASE WHEN $name->[$k] IS NOT NULL THEN CONCAT('SRID=',SRID($name->[$k]),';', AsText($name->[$k])) ELSE NULL END,";
 					}
 				}
 				else
 				{
 					if ($self->{geometry_extract_type} eq 'WKB') {
-						$str .= "CASE WHEN $name->[$k] IS NOT NULL THEN CONCAT('SRID=',$self->{st_srid_function}($name->[$k]),';', $self->{st_asbinary_function}($name->[$k]->[0])) ELSE NULL END,";
+						$str .= "CASE WHEN $name->[$k] IS NOT NULL THEN CONCAT('SRID=',$self->{st_srid_function}($name->[$k]),';', $self->{st_asbinary_function}($name->[$k])) ELSE NULL END,";
 					} else {
-						$str .= "CASE WHEN $name->[$k] IS NOT NULL THEN CONCAT('SRID=',$self->{st_srid_function}($name->[$k]),';', $self->{st_astext_function}($name->[$k]->[0])) ELSE NULL END,";
+						$str .= "CASE WHEN $name->[$k] IS NOT NULL THEN CONCAT('SRID=',$self->{st_srid_function}($name->[$k]),';', $self->{st_astext_function}($name->[$k])) ELSE NULL END,";
 					}
 				}
 			}
@@ -14759,9 +14759,9 @@ sub _extract_data
 		$self->logit("Parallelizing on core #$proc with query: $query\n", 1);
 	}
 	if ( ($self->{parallel_tables} > 1) || (($self->{oracle_copies} > 1) && $self->{defined_pk}{"\L$table\E"}) ) {
-		$sth->execute(@params) or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
+		$sth->execute(@params) or $self->logit("FATAL: " . $dbh->errstr . ", SQL: $query\n", 0, 1);
 	} else {
-		$sth->execute(@params) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+		$sth->execute(@params) or $self->logit("FATAL: " . $self->{dbh}->errstr . ", SQL: $query\n", 0, 1);
 	}
 
 	my $col_cond = $self->hs_cond($tt,$stt, $table);
@@ -16585,18 +16585,19 @@ sub set_pg_relation_name
 	$orig = " (origin: $table)" if (lc($cmptb) ne lc($table));
 	my $tbname = $tbmod;
 	$tbname =~ s/[^"\.]+\.//;
-	my $schm = $self->{pg_schema};
+	my $schm = $self->{schema};
+	$schm = $self->{pg_schema} if ($self->{pg_schema});
 	$schm =~ s/"//g;
 	$tbname =~ s/"//g;
 	$schm = $self->quote_object_name($schm);
 	$tbname = $self->quote_object_name($tbname);
-	if ($self->{pg_schema} && $self->{export_schema}) {
+	if ($self->{pg_schema}) {
 		return ($tbmod, $orig, $self->{pg_schema}, "$schm.$tbname");
 	} elsif ($self->{schema} && $self->{export_schema}) {
 		return ($tbmod, $orig, $self->{schema}, "$schm.$tbname");
 	}
 
-	return ($tbmod, $orig, '', $tbmod);
+	return ($tbmod, $orig, '', $tbname);
 }
 
 sub get_schema_condition
@@ -16623,6 +16624,8 @@ sub get_schema_condition
 sub _count_pg_rows
 {
 	my ($self, $dbhdest, $lbl, $t, $num_rows) = @_;
+
+	chomp($num_rows);
 
 	if ($self->{pg_dsn})
 	{
@@ -20256,7 +20259,7 @@ ORDER BY attnum};
 		if ($crow[2] eq 'geometry')
 		{
 			if ($self->{is_mysql}) {
-				push(@tlist, "ST_AsText($crow[0])");
+				push(@tlist, "$self->{st_astext_function}($crow[0])");
 			} else {
 				push(@tlist, $crow[0]);
 			}
