@@ -6860,10 +6860,21 @@ BEGIN
 					my $expr = '';
 					if (exists $self->{subpartitions_list}{"\L$table\E"}{"\L$part\E"}{columns})
 					{
-						for (my $j = 0; $j <= $#{$self->{subpartitions_list}{"\L$table\E"}{"\L$part\E"}{columns}}; $j++)
+						my $len = $#{$self->{subpartitions_list}{"\L$table\E"}{"\L$part\E"}{columns}};
+						for (my $j = 0; $j <= $len; $j++)
 						{
-							$expr .= ', ' if ($j > 0);
+							if ($self->{subpartitions_list}{"\L$table\E"}{"\L$part\E"}{type} eq 'LIST') {
+								$expr .= ' || ' if ($j > 0);
+							} else {
+								$expr .= ', ' if ($j > 0);
+							}
 							$expr .= $self->quote_object_name($self->{subpartitions_list}{"\L$table\E"}{"\L$part\E"}{columns}[$j]);
+							if ($self->{subpartitions_list}{"\L$table\E"}{"\L$part\E"}{type} eq 'LIST' && $len >= 0) {
+								$expr .= '::text';
+							}
+						}
+						if ($self->{subpartitions_list}{"\L$table\E"}{"\L$part\E"}{type} eq 'LIST' && $len >= 0) {
+							$expr = '(' . $expr . ')';
 						}
 					}
 					else
@@ -7816,10 +7827,21 @@ sub export_table
 					my $expr = '';
 					if (exists $self->{partitions_list}{"\L$table\E"}{columns})
 					{
-						for (my $j = 0; $j <= $#{$self->{partitions_list}{"\L$table\E"}{columns}}; $j++)
+						my $len = $#{$self->{partitions_list}{"\L$table\E"}{columns}};
+						for (my $j = 0; $j <= $len; $j++)
 						{
-							$expr .= ', ' if ($j > 0);
+							if ($self->{partitions_list}{"\L$table\E"}{type} eq 'LIST') {
+								$expr .= ' || ' if ($j > 0);
+							} else {
+								$expr .= ', ' if ($j > 0);
+							}
 							$expr .= $self->quote_object_name($self->{partitions_list}{"\L$table\E"}{columns}[$j]);
+							if ($self->{partitions_list}{"\L$table\E"}{type} eq 'LIST' && $len >= 0) {
+								$expr .= '::text';
+							}
+						}
+						if ($self->{partitions_list}{"\L$table\E"}{type} eq 'LIST' && $len >= 0) {
+							$expr = '(' . $expr . ')';
 						}
 					}
 					else
