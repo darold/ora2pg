@@ -2427,8 +2427,22 @@ sub _col_count
 {
         my ($self, $name) = @_;
 
-	# Not supported
-	return;
+	my $sql = qq{SELECT TABLE_SCHEMA, TABLE_NAME, count(*)
+FROM INFORMATION_SCHEMA.COLUMNS
+GROUP BY TABLE_SCHEMA, TABLE_NAME
+};
+	my $sth = $self->{dbh}->prepare($sql);
+	if (!$sth) {
+		$self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	}
+	$sth->execute() or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+
+	my %data = ();
+	while (my $row = $sth->fetch) {
+		$data{$row->[1]} = $row->[2];
+	}
+
+	return %data;
 }
 
 1;
