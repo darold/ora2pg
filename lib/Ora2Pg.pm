@@ -16591,10 +16591,21 @@ sub set_pg_relation_name
 	$tbname =~ s/"//g;
 	$schm = $self->quote_object_name($schm);
 	$tbname = $self->quote_object_name($tbname);
-	if ($self->{pg_schema}) {
-		return ($tbmod, $orig, $self->{pg_schema}, "$schm.$tbname");
-	} elsif ($self->{schema} && $self->{export_schema}) {
-		return ($tbmod, $orig, $self->{schema}, "$schm.$tbname");
+	if ($self->{pg_schema})
+	{
+		if ($self->{preserve_case}) {
+			return ($tbmod, $orig, $self->{pg_schema}, "\"$schm\".\"$tbname\"");
+		} else {
+			return ($tbmod, $orig, $self->{pg_schema}, "$schm.$tbname");
+		}
+	}
+	elsif ($self->{schema} && $self->{export_schema})
+	{
+		if ($self->{preserve_case}) {
+			return ($tbmod, $orig, $self->{schema}, "\"$schm\".\"$tbname\"");
+		} else {
+			return ($tbmod, $orig, $self->{schema}, "$schm.$tbname");
+		}
 	}
 
 	return ($tbmod, $orig, '', $tbname);
@@ -16637,9 +16648,9 @@ sub _count_pg_rows
 		$self->logit("DEBUG: pid $$ looking for real row count for destination table $t...\n", 1);
 
 		my $sql = "SELECT count(*) FROM $both;";
-		if ($self->{preserve_case}) {
-			$sql = "SELECT count(*) FROM \"$schema\".\"$t\";";
-		}
+#		if ($self->{preserve_case}) {
+#			$sql = "SELECT count(*) FROM \"$schema\".\"$t\";";
+#		}
 		my $s = $dbhdest->prepare($sql);
 		if (not defined $s)
 		{
@@ -16833,9 +16844,10 @@ ORDER BY pg_attribute.attnum
 		$pgcount{$t} = $#{$pgret{$t}} + 1;
 	}
 
+	my @tables_names = keys %tables_infos;
 	foreach my $t (sort keys %col_count)
 	{
-		next if (!exists $tables_infos{$t});
+		next if (!grep(/^\Q$t\E$/i, @tables_names));
 		print "$lbl:$t:$col_count{$t}\n";
 		if ($self->{pg_dsn})
 		{
