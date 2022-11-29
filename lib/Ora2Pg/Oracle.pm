@@ -585,7 +585,7 @@ ORDER BY A.COLUMN_ID
 	my $st_spatial_gtype =  "SELECT DISTINCT $self->{st_geometrytype_function}(c.\%s) FROM \%s c WHERE ROWNUM < " . $max_lines;
 	# Set query to retrieve the SRID
 	my $spatial_srid = "SELECT SRID FROM ALL_SDO_GEOM_METADATA WHERE TABLE_NAME=? AND COLUMN_NAME=? AND OWNER=?";
-	my $st_spatial_srid = "SELECT $self->{st_srid_function}(c.%s) FROM %s c";
+	my $st_spatial_srid = "SELECT $self->{st_srid_function}(c.\%s) FROM \%s c";
 	if ($self->{convert_srid})
 	{
 		# Translate SRID to standard EPSG SRID, may return 0 because there's lot of Oracle only SRID.
@@ -593,7 +593,7 @@ ORDER BY A.COLUMN_ID
 	}
 	# Get the dimension of the geometry by looking at the number of element in the SDO_DIM_ARRAY
 	my $spatial_dim = "SELECT t.SDO_DIMNAME, t.SDO_LB, t.SDO_UB FROM ALL_SDO_GEOM_METADATA m, TABLE (m.diminfo) t WHERE m.TABLE_NAME=? AND m.COLUMN_NAME=? AND OWNER=?";
-	my $st_spatial_dim = "SELECT $self->{st_dimension_function}(c.%s) FROM %s c";
+	my $st_spatial_dim = "SELECT $self->{st_dimension_function}(c.\%s) FROM \%s c";
 
 	my $is_virtual_col = "SELECT V.VIRTUAL_COLUMN FROM $self->{prefix}_TAB_COLS V WHERE V.OWNER=? AND V.TABLE_NAME=? AND V.COLUMN_NAME=?";
 	my $sth3 = undef;
@@ -1270,7 +1270,12 @@ sub _get_triggers
 	my($self) = @_;
 
 	# Retrieve all indexes 
-	my $str = "SELECT TRIGGER_NAME, TRIGGER_TYPE, TRIGGERING_EVENT, TABLE_NAME, TRIGGER_BODY, WHEN_CLAUSE, DESCRIPTION, ACTION_TYPE, OWNER FROM $self->{prefix}_TRIGGERS WHERE STATUS='ENABLED'";
+	my $str = "SELECT TRIGGER_NAME, TRIGGER_TYPE, TRIGGERING_EVENT, TABLE_NAME, TRIGGER_BODY, WHEN_CLAUSE, DESCRIPTION, ACTION_TYPE, OWNER FROM $self->{prefix}_TRIGGERS WHERE 1=1";
+	if (!$self->{export_invalid}) {
+		$str .= " AND STATUS='ENABLED'";
+	} elsif ($self->{export_invalid} == 2) {
+		$str .= " AND STATUS <> 'ENABLED'";
+	}
 	if (!$self->{schema}) {
 		$str .= " AND OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
 	} else {

@@ -133,7 +133,7 @@
 .\" ========================================================================
 .\"
 .IX Title "ORA2PG 1"
-.TH ORA2PG 1 "2022-11-03" "perl v5.30.0" "User Contributed Perl Documentation"
+.TH ORA2PG 1 "2022-11-20" "perl v5.30.0" "User Contributed Perl Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -800,7 +800,8 @@ specific schema, set \s-1COMPILE_SCHEMA\s0 to the schema name you want to recomp
 .Sp
 This will ask to Oracle to validate the \s-1PL/SQL\s0 that could have been invalidate
 after a export/import for example. The '\s-1VALID\s0' or '\s-1INVALID\s0' status applies to
-functions, procedures, packages and user defined types.
+functions, procedures, packages and user defined types. It also concern disabled
+triggers.
 .IP "\s-1EXPORT_INVALID\s0" 4
 .IX Item "EXPORT_INVALID"
 If the above configuration directive is not enough to validate your \s-1PL/SQL\s0 code

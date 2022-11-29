@@ -1163,7 +1163,7 @@ SYNCHRONOUS_COMMIT	0
 # If the above configuration directive is not enough to validate your PL/SQL code
 # enable this configuration directive to allow export of all PL/SQL code even if
 # it is marked as invalid. The 'VALID' or 'INVALID' status applies to functions,
-# procedures, packages and user defined types.
+# procedures, packages and user defined types. It also concern disabled triggers.
 EXPORT_INVALID	0
 
 # Enable PLSQL to PLPSQL conversion. This is a work in progress, feel
@@ -1372,6 +1372,8 @@ ST_ASBINARY_FUNCTION	ST_ASBINARY
 # Oracle function to used to convert an ST_Geometry value into WKT format
 ST_ASTEXT_FUNCTION	ST_ASTEXT
 
+# Oracle function to use to extract the geometry type from a ST_Geometry column
+ST_GEOMETRYTYPE_FUNCTION	ST_GEOMETRYTYPE
 
 #------------------------------------------------------------------------------
 # FDW SECTION (Control Foreign Data Wrapper export)
