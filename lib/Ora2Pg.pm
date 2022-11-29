@@ -956,7 +956,7 @@ sub _init
 	# Initialize some variable related to export of mssql database
 	$self->{is_mssql} = 0;
 	$self->{drop_rowversion} = 0;
-	$self->{case_insensitive_search} = 0;
+	$self->{case_insensitive_search} = 'citext';
 
 	# List of users for audit trail
 	$self->{audit_user} = '';
@@ -7560,9 +7560,15 @@ sub export_table
 	# Stores DDL to restart autoincrement sequences
 	my $sequence_output = '';
 
-	if ($self->{case_insensitive_search}) {
-		$sql_output .= "CREATE EXTENSION citext;\n";
+	if ($self->{is_mssql})
+	{
+		if (lc($self->{case_insensitive_search}) eq 'citext') {
+			$sql_output .= "CREATE EXTENSION citext;\n";
+		}
+	} else {
+		$self->{case_insensitive_search} = 'none';
 	}
+
 	# Dump all table/index/constraints SQL definitions
 	my $ib = 1;
 	my $count_table = 0;
@@ -7781,11 +7787,16 @@ sub export_table
 				$type = $self->{'modify_type'}{"\L$table\E"}{"\L$f->[0]\E"} if (exists $self->{'modify_type'}{"\L$table\E"}{"\L$f->[0]\E"});
 				$fname = $self->quote_object_name($fname);
 				my $citext_constraint = '';
-				if ($self->{case_insensitive_search} && $type =~ /^(?:char|varchar|text)/) {
+				if ($self->{case_insensitive_search} =~ /^citext$/i && $type =~ /^(?:char|varchar|text)/)
+				{
 					if ($type =~ /^(?:char|varchar|text)\s*\((\d+)\)/) {
 						$constraints .= "ALTER TABLE " . $self->quote_object_name($table) . " ADD CHECK (char_length($fname) <= $1);\n";
 					}
 					$type = 'citext';
+				}
+				elsif ($self->{case_insensitive_search} !~ /^none$/i && $type =~ /^(?:char|varchar|text)/)
+				{
+					$type .= ' COLLATE ' . $self->{case_insensitive_search};
 				}
 				$sql_output .= "\t$fname $type";
 				if ($foreign && $self->is_primary_key_column($table, $f->[0])) {
