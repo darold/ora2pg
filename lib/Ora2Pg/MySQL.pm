@@ -1507,7 +1507,32 @@ WHERE PARTITION_NAME IS NOT NULL
 		$row->[6] =~ s/\`//g;
 		$row->[3] =~ s/\`//g;
 
-		$row->[5] = 'HASH' if ($row->[5] =~ /KEY/);
+		# Partition by KEY can be converted to HASH partition
+		# but we need to gather the PK or UK definition
+		my @ucol = ();
+		if ($row->[5] =~ /KEY/)
+		{
+			$row->[5] = 'HASH';
+			if ($row->[6])
+			{
+				$row->[5] = 'HASH COLUMNS';
+			}
+			else
+			{
+				my $sql = "SHOW INDEX FROM `$row->[0]`";
+				my $sth2 = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+				$sth2->execute() or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+				while (my $r = $sth2->fetch)
+				{
+					if ($r->[2] eq 'PRIMARY') {
+						push(@ucol, $r->[4]) if (!grep(/^$r->[4]$/, @ucol));
+					} elsif (!$r->[1]) {
+						push(@ucol, $r->[4]) if (!grep(/^$r->[4]$/, @ucol));
+					}
+				}
+				$sth2->finish;
+			}
+		}
 
 		if ($row->[5] =~ s/ COLUMNS//)
 		{
@@ -1516,6 +1541,12 @@ WHERE PARTITION_NAME IS NOT NULL
 			{
 				push(@{$parts{$row->[0]}{$row->[1]}{info}}, { 'type' => $row->[5], 'value' => $row->[3], 'column' => $c, 'colpos' => $i, 'tablespace' => $row->[4], 'owner' => ''});
 				$i++;
+			}
+		}
+		elsif ($row->[5] eq 'HASH')
+		{
+			for (my $i = 0; $i <= $#ucol;$i++) {
+				push(@{$parts{$row->[0]}{$row->[1]}{info}}, { 'type' => $row->[5], 'value' => $row->[3], 'column' => $ucol[$i], 'colpos' => $i, 'tablespace' => $row->[4], 'owner' => '' });
 			}
 		}
 		else
@@ -1657,50 +1688,60 @@ FROM INFORMATION_SCHEMA.PARTITIONS WHERE PARTITION_NAME IS NOT NULL
 		if ($row->[1] =~ /KEY/)
 		{
 			$parts{"\L$row->[0]\E"}{type} = 'HASH';
-			my $sql = "SHOW INDEX FROM `$row->[0]`";
-			my $sth2 = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-			$sth2->execute() or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-			my @ucol = ();
-			while (my $r = $sth2->fetch)
+
+			if ($row->[6])
 			{
-				#Table : The name of the table.
-				#Non_unique : 0 if the index cannot contain duplicates, 1 if it can.
-				#Key_name : The name of the index. If the index is the primary key, the name is always PRIMARY.
-				#Seq_in_index : The column sequence number in the index, starting with 1.
-				#Column_name : The column name.
-				#Collation : How the column is sorted in the index. In MySQL, this can have values “A” (Ascending) or NULL (Not sorted).
-				#Cardinality : An estimate of the number of unique values in the index.
-				#Sub_part : The number of indexed characters if the column is only partly indexed, NULL if the entire column is indexed.
-				#Packed : Indicates how the key is packed. NULL if it is not.
-				#Null : Contains YES if the column may contain NULL values and '' if not.
-				#Index_type : The index method used (BTREE, FULLTEXT, HASH, RTREE).
-				#Comment : Information about the index not described in its own column, such as disabled if the index is disabled. 
-				if ($r->[2] eq 'PRIMARY') {
-					push(@{ $parts{"\L$row->[0]\E"}{columns} }, $r->[4]) if (!grep(/^$r->[4]$/, @{ $parts{"\L$row->[0]\E"}{columns} }));
-				} elsif (!$r->[1]) {
-					push(@ucol, $r->[4]) if (!grep(/^$r->[4]$/, @ucol));
-				}
+				$parts{"\L$row->[0]\E"}{type} = 'HASH COLUMNS';
 			}
-			$sth2->finish;
-			if ($#{ $parts{"\L$row->[0]\E"}{columns} } < 0) {
-				if ($#ucol >= 0) {
-					push(@{ $parts{"\L$row->[0]\E"}{columns} }, @ucol);
-				} else {
-					$row->[6] =~ s/[\(\)\s]//g;
-					@{ $parts{"\L$row->[0]\E"}{columns} } = split(',', $row->[6]);
+			else
+			{
+				my $sql = "SHOW INDEX FROM `$row->[0]`";
+				my $sth2 = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+				$sth2->execute() or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+				my @ucol = ();
+				while (my $r = $sth2->fetch)
+				{
+					#Table : The name of the table.
+					#Non_unique : 0 if the index cannot contain duplicates, 1 if it can.
+					#Key_name : The name of the index. If the index is the primary key, the name is always PRIMARY.
+					#Seq_in_index : The column sequence number in the index, starting with 1.
+					#Column_name : The column name.
+					#Collation : How the column is sorted in the index. In MySQL, this can have values “A” (Ascending) or NULL (Not sorted).
+					#Cardinality : An estimate of the number of unique values in the index.
+					#Sub_part : The number of indexed characters if the column is only partly indexed, NULL if the entire column is indexed.
+					#Packed : Indicates how the key is packed. NULL if it is not.
+					#Null : Contains YES if the column may contain NULL values and '' if not.
+					#Index_type : The index method used (BTREE, FULLTEXT, HASH, RTREE).
+					#Comment : Information about the index not described in its own column, such as disabled if the index is disabled. 
+					if ($r->[2] eq 'PRIMARY') {
+						push(@{ $parts{"\L$row->[0]\E"}{columns} }, $r->[4]) if (!grep(/^$r->[4]$/, @{ $parts{"\L$row->[0]\E"}{columns} }));
+					} elsif (!$r->[1]) {
+						push(@ucol, $r->[4]) if (!grep(/^$r->[4]$/, @ucol));
+					}
+				}
+				$sth2->finish;
+				if ($#{ $parts{"\L$row->[0]\E"}{columns} } < 0) {
+					if ($#ucol >= 0) {
+						push(@{ $parts{"\L$row->[0]\E"}{columns} }, @ucol);
+					} else {
+						$row->[6] =~ s/[\(\)\s]//g;
+						@{ $parts{"\L$row->[0]\E"}{columns} } = split(',', $row->[6]);
+					}
 				}
 			}
 
 		}
+
 		if ($parts{"\L$row->[0]\E"}{type} =~ s/ COLUMNS//)
 		{
 			$row->[6] =~ s/[\(\)\s]//g;
 			@{ $parts{"\L$row->[0]\E"}{columns} } = split(',', $row->[6]);
 		}
-		else
+		elsif ($row->[6])
 		{
 			$parts{"\L$row->[0]\E"}{expression} = $row->[6];
 		}
+
 	}
 	$sth->finish;
 
@@ -2169,36 +2210,43 @@ FROM INFORMATION_SCHEMA.PARTITIONS WHERE SUBPARTITION_NAME IS NOT NULL
 		$parts{"\L$row->[0]\E"}{"\L$row->[3]\E"}{type} = $row->[1];
 		$row->[7] =~ s/\`//g;
 
-		if ($parts{"\L$row->[0]\E"}{type} =~ /KEY/)
+		if ($parts{"\L$row->[0]\E"}{"\L$row->[3]\E"}{type} =~ /KEY/)
 		{
-			$parts{"\L$row->[0]\E"}{type} = 'HASH';
-			my $sql = "SHOW INDEX FROM `$row->[0]`";
-			my $sth2 = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-			$sth2->execute() or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-			my @ucol = ();
-			while (my $r = $sth2->fetch)
+			$parts{"\L$row->[0]\E"}{"\L$row->[3]\E"}{type} = 'HASH';
+			if ($row->[7])
 			{
-				#Table : The name of the table.
-				#Non_unique : 0 if the index cannot contain duplicates, 1 if it can.
-				#Key_name : The name of the index. If the index is the primary key, the name is always PRIMARY.
-				#Seq_in_index : The column sequence number in the index, starting with 1.
-				#Column_name : The column name.
-				#Collation : How the column is sorted in the index. In MySQL, this can have values “A” (Ascending) or NULL (Not sorted).
-				#Cardinality : An estimate of the number of unique values in the index.
-				#Sub_part : The number of indexed characters if the column is only partly indexed, NULL if the entire column is indexed.
-				#Packed : Indicates how the key is packed. NULL if it is not.
-				#Null : Contains YES if the column may contain NULL values and '' if not.
-				#Index_type : The index method used (BTREE, FULLTEXT, HASH, RTREE).
-				#Comment : Information about the index not described in its own column, such as disabled if the index is disabled. 
-				if ($r->[2] eq 'PRIMARY') {
-					push(@{ $parts{"\L$row->[0]\E"}{columns} }, $r->[4]) if (!grep(/^$r->[4]$/, @{ $parts{"\L$row->[0]\E"}{columns} }));
-				} elsif (!$row->[1]) {
-					push(@ucol, $r->[4]) if (!grep(/^$r->[4]$/, @ucol));
-				}
+				$parts{"\L$row->[0]\E"}{"\L$row->[3]\E"}{type} = 'HASH COLUMNS';
 			}
-			$sth2->finish;
-			if ($#{ $parts{"\L$row->[0]\E"}{columns} } < 0) {
-				push(@{ $parts{"\L$row->[0]\E"}{columns} }, @ucol);
+			else
+			{
+				my $sql = "SHOW INDEX FROM `$row->[0]`";
+				my $sth2 = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+				$sth2->execute() or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+				my @ucol = ();
+				while (my $r = $sth2->fetch)
+				{
+					#Table : The name of the table.
+					#Non_unique : 0 if the index cannot contain duplicates, 1 if it can.
+					#Key_name : The name of the index. If the index is the primary key, the name is always PRIMARY.
+					#Seq_in_index : The column sequence number in the index, starting with 1.
+					#Column_name : The column name.
+					#Collation : How the column is sorted in the index. In MySQL, this can have values “A” (Ascending) or NULL (Not sorted).
+					#Cardinality : An estimate of the number of unique values in the index.
+					#Sub_part : The number of indexed characters if the column is only partly indexed, NULL if the entire column is indexed.
+					#Packed : Indicates how the key is packed. NULL if it is not.
+					#Null : Contains YES if the column may contain NULL values and '' if not.
+					#Index_type : The index method used (BTREE, FULLTEXT, HASH, RTREE).
+					#Comment : Information about the index not described in its own column, such as disabled if the index is disabled. 
+					if ($r->[2] eq 'PRIMARY') {
+						push(@{ $parts{"\L$row->[0]\E"}{"\L$row->[3]\E"}{columns} }, $r->[4]) if (!grep(/^$r->[4]$/, @{ $parts{"\L$row->[0]\E"}{columns} }));
+					} elsif (!$row->[1]) {
+						push(@ucol, $r->[4]) if (!grep(/^$r->[4]$/, @ucol));
+					}
+				}
+				$sth2->finish;
+				if ($#{ $parts{"\L$row->[0]\E"}{columns} } < 0) {
+					push(@{ $parts{"\L$row->[0]\E"}{"\L$row->[3]\E"}{columns} }, @ucol);
+				}
 			}
 		}
 
@@ -2207,7 +2255,7 @@ FROM INFORMATION_SCHEMA.PARTITIONS WHERE SUBPARTITION_NAME IS NOT NULL
 			$row->[7] =~ s/[\(\)\s]//g;
 			@{ $parts{"\L$row->[0]\E"}{"\L$row->[3]\E"}{columns} } = split(',', $row->[7]);
 		}
-		else
+		elsif ($row->[7])
 		{
 			$parts{"\L$row->[0]\E"}{"\L$row->[3]\E"}{expression} = $row->[7];
 		}
