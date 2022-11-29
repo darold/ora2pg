@@ -1409,6 +1409,21 @@ MYSQL_PIPES_AS_CONCAT		0
 # with format; DDHH24MMSS::bigint, this depend of your apps usage.
 MYSQL_INTERNAL_EXTRACT_FORMAT	0
 
+#------------------------------------------------------------------------------
+# SQL Server SECTION (Control MSSQL export behavior)
+#------------------------------------------------------------------------------
+
+# PostgreSQL has no equivalent to rowversion datatype and feature, if you want
+# to remove these useless columns, enable this directive. Columns of datatype
+# 'rowversion' or 'timestamp' will not be exported.
+DROP_ROWVERSION		0
+
+# Emulate the same behavior of MSSQL with case insensitive search. If the value
+# is citext it will use the citext data type instead of char/varchar/text in
+# tables DDL (Ora2Pg will add a CHECK constraint for columns with a precision).
+# Instead of citext you can also set a collation name that will be used in the
+# columns definitions. To disable case insensitive search set it to: none.
+CASE_INSENSITIVE_SEARCH	citext
 };
 close(OUTCFG);
 

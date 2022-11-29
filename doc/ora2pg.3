@@ -133,7 +133,7 @@
 .\" ========================================================================
 .\"
 .IX Title "ORA2PG 1"
-.TH ORA2PG 1 "2022-11-20" "perl v5.30.0" "User Contributed Perl Documentation"
+.TH ORA2PG 1 "2022-11-29" "perl v5.30.0" "User Contributed Perl Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -195,9 +195,9 @@ Features included:
 \&        \- Export DBLINK as Oracle FDW.
 \&        \- Export SYNONYMS as views.
 \&        \- Export DIRECTORY as external table or directory for external_file extension.
-\&        \- Full MySQL export just like Oracle database.
 \&        \- Dispatch a list of SQL orders over multiple PostgreSQL connections
 \&        \- Perform a diff between Oracle and PostgreSQL database for test purpose.
+\&        \- MySQL/MariaDB and Microsoft SQL Server migration.
 .Ve
 .PP
 Ora2Pg does its best to automatically convert your Oracle database to PostgreSQL
@@ -238,24 +238,26 @@ and install them where you want, for example: /opt/oracle/instantclient_12_2/
 You also need a modern Perl distribution (perl 5.10 and more). To connect to a
 database and proceed to his migration you need the \s-1DBI\s0 Perl module > 1.614.
 To migrate an Oracle database you need the DBD::Oracle Perl modules to be
-installed. To migrate a MySQL database you need the DBD::MySQL Perl modules.
-These modules are used to connect to the database but they are not mandatory
-if you want to migrate \s-1DDL\s0 input files.
+installed.
 .PP
 To install DBD::Oracle and have it working you need to have the Oracle client
 libraries installed and the \s-1ORACLE_HOME\s0 environment variable must be defined.
 .PP
 If you plan to export a MySQL database you need to install the Perl module
-DBD::mysql which requires that the mysql client libraries are installed.
+DBD::MySQL which requires that the mysql client libraries are installed.
+.PP
+If you plan to export a \s-1SQL\s0 Server database you need to install the Perl module
+\&\s-1DBD::ODBC\s0 which requires that the unixODBC package is installed.
 .PP
 On some Perl distribution you may need to install the Time::HiRes Perl module.
 .PP
 If your distribution doesn't include these Perl modules you can install them
 using \s-1CPAN:\s0
 .PP
-.Vb 3
+.Vb 4
 \&        perl \-MCPAN \-e \*(Aqinstall DBD::Oracle\*(Aq
 \&        perl \-MCPAN \-e \*(Aqinstall DBD::MySQL\*(Aq
+\&        perl \-MCPAN \-e \*(Aqinstall DBD::ODBC\*(Aq
 \&        perl \-MCPAN \-e \*(Aqinstall Time::HiRes\*(Aq
 .Ve
 .PP
@@ -281,6 +283,34 @@ using \s-1CPAN:\s0
 .Ve
 .PP
 otherwise use the packages provided by your distribution.
+.SS "Instruction for \s-1SQL\s0 Server"
+.IX Subsection "Instruction for SQL Server"
+For \s-1SQL\s0 Server you need to install the unixodbc package and the Perl
+\&\s-1DBD::ODBC\s0 driver:
+.PP
+.Vb 2
+\&        sudo apt install unixodbc
+\&        sudo apt install libdbd\-odbc\-perl
+.Ve
+.PP
+then install the Microsoft \s-1ODBC\s0 Driver for \s-1SQL\s0 Server. Follow the instructions
+relative to your operating system from here:
+.PP
+.Vb 1
+\&        https://docs.microsoft.com/fr\-fr/sql/connect/odbc/linux\-mac/installing\-the\-microsoft\-odbc\-driver\-for\-sql\-server?view=sql\-server\-ver16
+.Ve
+.PP
+Once it is done set the following in the /etc/odbcinst.ini file by adjusting
+the \s-1SQL\s0 Server \s-1ODBC\s0 driver version:
+.PP
+.Vb 4
+\&        [msodbcsql18]
+\&        Description=Microsoft ODBC Driver 18 for SQL Server
+\&        Driver=/opt/microsoft/msodbcsql18/lib64/libmsodbcsql\-18.0.so.1.1
+\&        UsageCount=1
+.Ve
+.PP
+See \s-1ORACLE_DSN\s0 to know how to use the driver to connect to your \s-1MSSQL\s0 database.
 .SS "Installing Ora2Pg"
 .IX Subsection "Installing Ora2Pg"
 Like any other Perl Module Ora2Pg can be installed with the following commands:
@@ -455,6 +485,7 @@ Usage: ora2pg [\-dhpqv \-\-estimate_cost \-\-dump_as_html] [\-\-option value]
 \&    \-L | \-\-limit num  : Number of tuples extracted from Oracle and stored in
 \&                        memory before writing, default: 10000.
 \&    \-m | \-\-mysql      : Export a MySQL database instead of an Oracle schema.
+\&    \-M | \-\-mssql      : Export a Microsoft SQL Server database.
 \&    \-n | \-\-namespace schema : Set the Oracle schema to extract from.
 \&    \-N | \-\-pg_schema schema : Set PostgreSQL\*(Aqs search_path.
 \&    \-o | \-\-out file   : Set the path to the output file where SQL will
@@ -656,6 +687,12 @@ For MySQL the \s-1DSN\s0 will lool like this:
 .Ve
 .Sp
 the 'sid' part is replaced by 'database'.
+.Sp
+For \s-1MS SQL\s0 Server it will look like this:
+.Sp
+.Vb 1
+\&        dbi:ODBC:driver=msodbcsql18;server=mydb.database.windows.net;database=testdb
+.Ve
 .IP "\s-1ORACLE_USER\s0 et \s-1ORACLE_PWD\s0" 4
 .IX Item "ORACLE_USER et ORACLE_PWD"
 These two directives are used to define the user and password for the Oracle
@@ -2655,6 +2692,20 @@ Use it only if Ora2Pg fail on auto detecting this behavior.
 Enable this directive if you want \s-1\fBEXTRACT\s0()\fR replacement to use the internal
 format returned as an integer, for example \s-1DD HH24:MM:SS\s0 will be replaced
 with format; DDHH24MMSS::bigint, this depend of your apps usage.
+.SS "Control \s-1SQL\s0 Server export behavior"
+.IX Subsection "Control SQL Server export behavior"
+.IP "\s-1DROP_ROWVERSION\s0" 4
+.IX Item "DROP_ROWVERSION"
+PostgreSQL has no equivalent to rowversion datatype and feature, if you want
+to remove these useless columns, enable this directive. Columns of datatype
+\&'rowversion' or 'timestamp' will not be exported.
+.IP "\s-1CASE_INSENSITIVE_SEARCH\s0" 4
+.IX Item "CASE_INSENSITIVE_SEARCH"
+Emulate the same behavior of \s-1MSSQL\s0 with case insensitive search. If the value
+is citext it will use the citext data type instead of char/varchar/text in
+tables \s-1DDL\s0 (Ora2Pg will add a \s-1CHECK\s0 constraint for columns with a precision).
+Instead of citext you can also set a collation name that will be used in the
+columns definitions. To disable case insensitive search set it to: none.
 .SS "Special options to handle character encoding"
 .IX Subsection "Special options to handle character encoding"
 .IP "\s-1NLS_LANG\s0 and \s-1NLS_NCHAR\s0" 4
@@ -3195,6 +3246,7 @@ Usage: ora2pg_scanner \-l \s-1CSVFILE\s0 [\-o \s-1OUTDIR\s0]
 \&        "type","schema/database","dsn","user","password"
 \&        "MYSQL","sakila","dbi:mysql:host=192.168.1.10;database=sakila;port=3306","root","secret"
 \&        "ORACLE","HR","dbi:Oracle:host=192.168.1.10;sid=XE;port=1521","system","manager"
+\&        "MSSQL","HR","dbi:ODBC:driver=msodbcsql18;server=srv.database.windows.net;database=testdb","system","manager"
 \&
 \&   The CSV field separator must be a comma.
 \&
@@ -3205,6 +3257,7 @@ Usage: ora2pg_scanner \-l \s-1CSVFILE\s0 [\-o \s-1OUTDIR\s0]
 \&   For example:
 \&
 \&        "ORACLE","","dbi:Oracle:host=192.168.1.10;sid=XE;port=1521","system","manager"
+\&        "MSSQL","","dbi:ODBC:driver=msodbcsql18;server=srv.database.windows.net;database=testdb","usrname","passwd"
 \&
 \&   will generate a report for all schema in the XE instance. Note that in this
 \&   case the SCHEMA directive in ora2pg.conf must not be set.

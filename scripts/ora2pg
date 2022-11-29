@@ -73,6 +73,7 @@ my $PROJECT_BASE = '.';
 my $PRINT_HEADER = '';
 my $HUMAN_DAY_LIMIT;
 my $IS_MYSQL = 0;
+my $IS_MSSQL = 0;
 my $AUDIT_USER = '';
 my $PG_DSN = '';
 my $PG_USER = '';
@@ -104,6 +105,9 @@ my @CAPABILITIES  = qw( QUERY LOAD );
 my @MYSQL_SCHEMA_ARRAY  = qw( TABLE VIEW GRANT TRIGGER FUNCTION PROCEDURE PARTITION DBLINK );
 my @MYSQL_SOURCES_ARRAY = qw( VIEW TRIGGER FUNCTION PROCEDURE PARTITION );
 
+my @MSSQL_SCHEMA_ARRAY  = qw( SEQUENCE TABLE PACKAGE VIEW GRANT TRIGGER FUNCTION PROCEDURE TABLESPACE PARTITION TYPE MVIEW DBLINK SYNONYM DIRECTORY );
+my @MSSQL_SOURCES_ARRAY = qw( PACKAGE VIEW TRIGGER FUNCTION PROCEDURE PARTITION TYPE MVIEW );
+
 my @GRANT_OBJECTS_ARRAY = ('USER','TABLE','VIEW','MATERIALIZED VIEW','SEQUENCE','PROCEDURE','FUNCTION','PACKAGE BODY','TYPE','SYNONYM','DIRECTORY');
 
 my $TMP_DIR      = File::Spec->tmpdir() || '/tmp';
@@ -125,6 +129,7 @@ GetOptions (
         'l|log=s' => \$LOGFILE,
 	'L|limit=i' => \$DATA_LIMIT,
 	'm|mysql!' => \$IS_MYSQL,
+	'M|mssql!' => \$IS_MSSQL,
 	'n|namespace=s' => \$SCHEMA,
 	'N|pg_schema=s' => \$PG_SCHEMA,
         'o|out=s' => \$OUTFILE,
@@ -183,6 +188,11 @@ if ($IS_MYSQL)
 {
 	@SCHEMA_ARRAY = @MYSQL_SCHEMA_ARRAY;
 	@SOURCES_ARRAY = @MYSQL_SOURCES_ARRAY;
+	@EXTERNAL_ARRAY = ();
+} elsif ($IS_MSSQL)
+{
+	@SCHEMA_ARRAY = @MSSQL_SCHEMA_ARRAY;
+	@SOURCES_ARRAY = @MSSQL_SOURCES_ARRAY;
 	@EXTERNAL_ARRAY = ();
 }
 
@@ -359,6 +369,7 @@ my $schema = new Ora2Pg (
 	print_header => $PRINT_HEADER,
 	human_days_limit => $HUMAN_DAY_LIMIT,
 	is_mysql => $IS_MYSQL,
+	is_mssql => $IS_MSSQL,
 	audit_user => $AUDIT_USER,
 	temp_dir => $TMP_DIR,
 	pg_dsn => $PG_DSN,
@@ -456,6 +467,7 @@ Usage: ora2pg [-dhpqv --estimate_cost --dump_as_html] [--option value]
     -L | --limit num  : Number of tuples extracted from Oracle and stored in
                         memory before writing, default: 10000.
     -m | --mysql      : Export a MySQL database instead of an Oracle schema.
+    -M | --mssql      : Export a Microsoft SQL Server database.
     -n | --namespace schema : Set the Oracle schema to extract from.
     -N | --pg_schema schema : Set PostgreSQL's search_path.
     -o | --out file   : Set the path to the output file where SQL will
@@ -760,6 +772,9 @@ sub make_config_generic
 			$conf_arr->[$i] =~ s/^(ORACLE_DSN.*dbi):Oracle:(.*);sid=SIDNAME/$1:mysql:$2;database=dbname/;
 			$conf_arr->[$i] =~ s/CHANGE_THIS_SCHEMA_NAME/CHANGE_THIS_DB_NAME/;
 			$conf_arr->[$i] =~ s/#REPLACE_ZERO_DATE.*/REPLACE_ZERO_DATE\t-INFINITY/;
+		} elsif ($IS_MSSQL) {
+			$conf_arr->[$i] =~ s/^# Set Oracle database/# Set MSSQL database/;
+			$conf_arr->[$i] =~ s/^(ORACLE_DSN.*dbi):Oracle:(.*);sid=SIDNAME/$1:ODBC:driver=msodbcsql18;$2;database=dbname/;
 		} elsif ($ENV{ORACLE_HOME}) {
 			$conf_arr->[$i] =~ s/^ORACLE_HOME.*/ORACLE_HOME\t$ENV{ORACLE_HOME}/;
 		}

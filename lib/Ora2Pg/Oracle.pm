@@ -1639,8 +1639,8 @@ sub _lookup_function
 		$fct_detail{args} =~ s/\s+DEFAULT\s+EMPTY_[CB]LOB\(\)/DEFAULT NULL/igs;
 
 		# Now convert types
-		$fct_detail{args} = Ora2Pg::PLSQL::replace_sql_type($fct_detail{args}, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type}, $self->{varchar_to_text}, %{$self->{data_type}});
-		$fct_detail{declare} = Ora2Pg::PLSQL::replace_sql_type($fct_detail{declare}, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type}, $self->{varchar_to_text}, %{$self->{data_type}});
+		$fct_detail{args} = Ora2Pg::PLSQL::replace_sql_type($self, $fct_detail{args}, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type}, $self->{varchar_to_text}, %{$self->{data_type}});
+		$fct_detail{declare} = Ora2Pg::PLSQL::replace_sql_type($self, $fct_detail{declare}, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type}, $self->{varchar_to_text}, %{$self->{data_type}});
 
 		# Sometime variable used in FOR ... IN SELECT loop is not declared
 		# Append its RECORD declaration in the DECLARE section.
@@ -1768,7 +1768,7 @@ sub _lookup_function
 	return %fct_detail;
 }
 
-sub _list_all_funtions
+sub _list_all_functions
 {
 	my $self = shift;
 
@@ -1833,6 +1833,7 @@ sub _sql_type
         my ($self, $type, $len, $precision, $scale, $default, $no_blob_to_oid) = @_;
 
 	my $data_type = '';
+	chomp($type);
 
 	# Simplify timestamp type
 	$type =~ s/TIMESTAMP\(\d+\)/TIMESTAMP/;
@@ -2698,8 +2699,12 @@ sub _get_synonyms
 	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
 	my %synonyms = ();
-	while (my $row = $sth->fetch) {
+	while (my $row = $sth->fetch)
+	{
 		next if ($row->[1] =~ /^\//); # Some not fully deleted synonym start with a slash
+                if (!$self->{schema} && $self->{export_schema}) {
+                        $row->[1] = $row->[0] . '.' . $row->[1];
+                }
 		$synonyms{$row->[1]}{owner} = $row->[0];
 		$synonyms{$row->[1]}{table_owner} = $row->[2];
 		$synonyms{$row->[1]}{table_name} = $row->[3];

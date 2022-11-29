@@ -82,10 +82,11 @@ while (my $l = <IN>)
 	#"type","schema/database","dsn","user","password","audit users"
 	#"MYSQL","sakila","dbi:mysql:host=192.168.1.10;database=sakila;port=3306","root","mysecret"
 	#"ORACLE","HR","dbi:Oracle:host=192.168.1.10;sid=XE;port=1521","system","manager","hr;system;scott"
+	#"MSSQL","HR","dbi:ODBC:driver=msodbcsql18;server=srv.database.windows.net;database=testdb","usrname","pwd"
 	# skip header line
 	chomp($l);
 	$l =~ s/\r//;
-	next if ($l !~ /^["]*(MYSQL|ORACLE)["]*,/i);
+	next if ($l !~ /^["]*(MYSQL|ORACLE|MSSQL)["]*,/i);
 	$l =~ s/"//gs;
 	my @data = split(/,/, $l);
 	if ($#data < 4)
@@ -137,6 +138,7 @@ for (my $i = 0; $i < @DB_DNS; $i++)
 	my $info = '';
 	# Set RDBMS type
 	$info = ' -m' if ($DB_DNS[$i]->{type} eq 'MYSQL');
+	$info = ' -M' if ($DB_DNS[$i]->{type} eq 'MSSQL');
 	# Add custom configuration file if set
 	$info .= ' -c ' . $CONF_FILE if ($CONF_FILE);
 	my $cmd_ora2pg = $ORA2PG_CMD . $info;
@@ -165,7 +167,7 @@ for (my $i = 0; $i < @DB_DNS; $i++)
 	}
 
 	# Extract host
-	if ($DB_DNS[$i]->{dsn} =~ m/host=([^;]+)/ || $DB_DNS[$i]->{dsn} =~ m/dbi:Oracle:\/\/([^\/]+)/)
+	if ($DB_DNS[$i]->{dsn} =~ m/(?:host|server)=([^;]+)/ || $DB_DNS[$i]->{dsn} =~ m/dbi:Oracle:\/\/([^\/]+)/)
 	{
 		$DB_DNS[$i]->{host} = $1;
 		$DB_DNS[$i]->{host} =~ s/:\d$+//;
@@ -258,6 +260,7 @@ Usage: ora2pg_scanner -l CSVFILE [-o OUTDIR]
 	"type","schema/database","dsn","user","password"
 	"MYSQL","sakila","dbi:mysql:host=192.168.1.10;database=sakila;port=3306","root","secret"
 	"ORACLE","HR","dbi:Oracle:host=192.168.1.10;sid=XE;port=1521","system","manager"
+	"MSSQL","HR","dbi:ODBC:driver=msodbcsql18;server=srv.database.windows.net;database=testdb","system","manager"
 
    The CSV field separator must be a comma.
 
@@ -268,6 +271,7 @@ Usage: ora2pg_scanner -l CSVFILE [-o OUTDIR]
    For example:
 
 	"ORACLE","","dbi:Oracle:host=192.168.1.10;sid=XE;port=1521","system","manager"
+	"MSSQL","","dbi:ODBC:driver=msodbcsql18;server=srv.database.windows.net;database=testdb","system","manager"
 
    will generate a report for all schema in the XE instance. Note that in this
    case the SCHEMA directive in ora2pg.conf must not be set.

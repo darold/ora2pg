@@ -24,7 +24,7 @@ package Ora2Pg::PLSQL;
 # 
 #------------------------------------------------------------------------------
 
-use vars qw($VERSION %OBJECT_SCORE $SIZE_SCORE $FCT_TEST_SCORE $QUERY_TEST_SCORE %UNCOVERED_SCORE %UNCOVERED_MYSQL_SCORE @ORA_FUNCTIONS @MYSQL_SPATIAL_FCT @MYSQL_FUNCTIONS %EXCEPTION_MAP %MAX_SCORE);
+use vars qw($VERSION %OBJECT_SCORE $SIZE_SCORE $FCT_TEST_SCORE $QUERY_TEST_SCORE %UNCOVERED_SCORE %UNCOVERED_MYSQL_SCORE @ORA_FUNCTIONS @MYSQL_SPATIAL_FCT @MYSQL_FUNCTIONS %EXCEPTION_MAP %MAX_SCORE %MSSQL_STYLE %UNCOVERED_MSSQL_SCORE);
 use POSIX qw(locale_h);
 
 #set locale to LC_NUMERIC C
@@ -321,7 +321,7 @@ $QUERY_TEST_SCORE = 0.1;
 
 # Scores associated to each code difficulties after replacement.
 %UNCOVERED_MYSQL_SCORE = (
-	'ARRAY_AGG_DISTINCT' => 1, # array_agg(distinct
+	'ARRAY_AGG_DISTINCT' => 1, # array_agg(distinct)
 	'SOUNDS LIKE' => 1,
 	'CHARACTER SET' => 1,
 	'COUNT(DISTINCT)' => 2,
@@ -329,6 +329,56 @@ $QUERY_TEST_SCORE = 0.1;
 	'JSON' => 2,
 	'LOCK' => 2,
 	'@VAR' => 0.1,
+);
+
+@MSSQL_FUNCTIONS = (
+	'CHARINDEX',
+	'Concat with +',
+	'NCHAR',
+	'PATINDEX',
+	'QUOTENAME',
+	'REPLICATE',
+	'SOUNDEX',
+	'SPACE',
+	'STR',
+	'STUFF',
+	'UNICODE',
+	'ATN2',
+	'RAND',
+	'SQUARE',
+	'DATEADD',
+	'DATEDIFF',
+	'DATEFROMPARTS',
+	'DATENAME',
+	'DATEPART',
+	'DAY',
+	'GETDATE',
+	'GETUTCDATE',
+	'ISDATE',
+	'MONTH',
+	'SYSDATETIME',
+	'YEAR',
+	'CONVERT',
+	'IIF',
+	'ISNULL',
+	'ISNUMERIC',
+	'NULLIF',
+	'SESSIONPROPERTY',
+	'SYSTEM_USER'
+);
+
+%UNCOVERED_MSSQL_SCORE = (
+	'ARRAY_AGG_DISTINCT' => 1, # array_agg(distinct)
+	'FOREIGN_OBJECT' => 6,
+	'SYS_OBJECT' => 6,
+	'INTO_TEMP_TABLE' => 1,
+	'GLOBAL_TEMP_TABLE' => 2,
+	'SELECT_TOP' => 0.2,
+	'COLLATE' => 0.2,
+	'RETURNS_TABLE' => 1,
+	'TODATETIMEOFFSET' => 3,
+	'CURSOR' => 0.2,
+	'GLOBAL_VARIABLE' => 1,
 );
 
 %EXCEPTION_MAP = (
@@ -346,6 +396,29 @@ $QUERY_TEST_SCORE = 0.1;
 	# 'ROWTYPE_MISMATCH' => 'DATATYPE MISMATCH'
 );
 
+%MSSQL_STYLE = (
+	'100' => 'mon dd yyyy hh:miAM/PM',
+	'101' => 'mm/dd/yyyy',
+	'102' => ' yyyy.mm.dd',
+	'103' => ' dd/mm/yyyy',
+	'104' => 'dd.mm.yyyy',
+	'105' => ' dd-mm-yyyy',
+	'106' => 'dd mon yyyy',
+	'107' => 'Mon dd, yyyy',
+	'108' => 'hh:mm:ss',
+	'109' => 'mon dd yyyy hh:mi:ss:mmmAM (or PM)',
+	'110' => 'mm-dd-yyyy',
+	'111' => ' yyyy/mm/dd',
+	'112' => ' yyyymmdd',
+	'113' => 'dd mon yyyy hh:mi:ss:mmm',
+	'114' => 'hh:mi:ss:mmm',
+	'120' => 'yyyy-mm-dd hh:mi:ss',
+	'121' => 'yyyy-mm-dd hh:mi:ss.mmm',
+	'126' => 'yyyy-mm-ddThh:mi:ss.mmm',
+	'127' => 'yyyy-mm-ddThh:mi:ss.mmmZ',
+	'130' => 'dd mon yyyy hh:mi:ss:mmmAM',
+	'131' => 'dd/mm/yy hh:mi:ss:mmmAM',
+);
 
 =head1 NAME
 
@@ -459,22 +532,11 @@ sub convert_plsql_code
 		foreach my $k (keys %{$class->{single_fct_call}})
 		{
 			$class->{single_fct_call}{$k} = replace_oracle_function($class, $class->{single_fct_call}{$k}, @strings);
-			if ($class->{single_fct_call}{$k} =~ /^CAST\s*\(/i)
-			{
-				if (!$class->{is_mysql})
-				{
-					$class->{single_fct_call}{$k} = Ora2Pg::PLSQL::replace_sql_type($class->{single_fct_call}{$k}, $class->{pg_numeric_type}, $class->{default_numeric}, $class->{pg_integer_type}, $class->{varchar_to_text}, %{$class->{data_type}});
-				} else {
-					$class->{single_fct_call}{$k} = Ora2Pg::MySQL::replace_sql_type($class->{single_fct_call}{$k}, $class->{pg_numeric_type}, $class->{default_numeric}, $class->{pg_integer_type}, $class->{varchar_to_text}, %{$class->{data_type}});
-				}
+			if ($class->{single_fct_call}{$k} =~ /^CAST\s*\(/i) {
+				$class->{single_fct_call}{$k} = replace_sql_type($class, $class->{single_fct_call}{$k});
 			}
-			if ($class->{single_fct_call}{$k} =~ /^CAST\s*\(.*\%\%REPLACEFCT(\d+)\%\%/i)
-			{
-				if (!$class->{is_mysql}) {
-					$class->{single_fct_call}{$1} = Ora2Pg::PLSQL::replace_sql_type($class->{single_fct_call}{$1}, $class->{pg_numeric_type}, $class->{default_numeric}, $class->{pg_integer_type}, $class->{varchar_to_text}, %{$class->{data_type}});
-				} else {
-					$class->{single_fct_call}{$1} = Ora2Pg::MySQL::replace_sql_type($class->{single_fct_call}{$1}, $class->{pg_numeric_type}, $class->{default_numeric}, $class->{pg_integer_type}, $class->{varchar_to_text}, %{$class->{data_type}});
-				}
+			if ($class->{single_fct_call}{$k} =~ /^CAST\s*\(.*\%\%REPLACEFCT(\d+)\%\%/i) {
+				$class->{single_fct_call}{$1} = replace_sql_type($class, $class->{single_fct_call}{$1});
 			}
 		}
 		while ($code_parts[$i] =~ s/\%\%REPLACEFCT(\d+)\%\%/$class->{single_fct_call}{$1}/) {};
@@ -663,6 +725,7 @@ sub plsql_to_plpgsql
 	return if ($str eq '');
 
 	return mysql_to_plpgsql($class, $str, @strings) if ($class->{is_mysql});
+	return mssql_to_plpgsql($class, $str, @strings) if ($class->{is_mssql});
 
 	my $field = '\s*([^\(\),]+)\s*';
 	my $num_field = '\s*([\d\.]+)\s*';
@@ -992,11 +1055,7 @@ sub plsql_to_plpgsql
 	}
 
 	# Replace type in sub block
-	if (!$class->{is_mysql}) {
-		$str =~ s/(BEGIN.*?DECLARE\s+)(.*?)(\s+BEGIN)/$1 . Ora2Pg::PLSQL::replace_sql_type($2, $class->{pg_numeric_type}, $class->{default_numeric}, $class->{pg_integer_type}, $class->{varchar_to_text}, %{$class->{data_type}}) . $3/iges;
-	} else {
-		$str =~ s/(BEGIN.*?DECLARE\s+)(.*?)(\s+BEGIN)/$1 . Ora2Pg::MySQL::replace_sql_type($2, $class->{pg_numeric_type}, $class->{default_numeric}, $class->{pg_integer_type}, $class->{varchar_to_text}, %{$class->{data_type}}) . $3/iges;
-	}
+	$str =~ s/(BEGIN.*?DECLARE\s+)(.*?)(\s+BEGIN)/$1 . replace_sql_type($class, $2) . $3/iges;
 
 	# Remove any call to MDSYS schema in the code
 	$str =~ s/\bMDSYS\.//igs;
@@ -1660,6 +1719,8 @@ sub replace_oracle_function
 
 	if ($class->{is_mysql}) {
 		$str = mysql_to_plpgsql($class, $str);
+	} elsif ($class->{is_mssql}) {
+		$str = mssql_to_plpgsql($class, $str);
 	}
 
 	# Change NVL to COALESCE
@@ -2234,7 +2295,7 @@ sub raise_output
 
 sub replace_sql_type
 {
-        my ($str, $pg_numeric_type, $default_numeric, $pg_integer_type, $varchar_to_text, %data_type) = @_;
+        my ($self, $str) = @_;
 
 	# Remove the SYS schema from type name
 	$str =~ s/\bSYS\.//igs;
@@ -2253,7 +2314,7 @@ sub replace_sql_type
 	$str =~ s/\b(RAW|BLOB)\s*\(\s*\d+\s*\)/$1/igs;
 
 	# Replace type with precision
-	my @ora_type = keys %data_type;
+	my @ora_type = keys %{$self->{data_type}};
 	map { s/\(/\\\(/; s/\)/\\\)/; } @ora_type;
 	my $oratype_regex = join('|', @ora_type);
 
@@ -2281,7 +2342,7 @@ sub replace_sql_type
 			# Type CHAR have default length set to 1
 			# Type VARCHAR(2) must have a specified length
 			$len = 1 if (!$len && (($type eq "CHAR") || ($type eq "NCHAR")));
-			$str =~ s/\b$type\b\s*\([^\)]+\)/$data_type{$type}\%\|$len\%\|\%/is;
+			$str =~ s/\b$type\b\s*\([^\)]+\)/$self->{data_type}{$type}\%\|$len\%\|\%/is;
 		}
 		elsif ($type =~ /TIMESTAMP/i)
 		{
@@ -2309,7 +2370,7 @@ sub replace_sql_type
 			{
 				if ($precision)
 				{
-					if ($pg_integer_type)
+					if ($self->{pg_integer_type})
 					{
 						if ($precision < 5) {
 							$str =~ s/\b$type\b\s*\([^\)]+\)/smallint/is;
@@ -2324,15 +2385,15 @@ sub replace_sql_type
 						$str =~ s/\b$type\b\s*\([^\)]+\)/numeric\%\|$precision\%\|\%/i;
 					}
 				}
-				elsif ($pg_integer_type)
+				elsif ($self->{pg_integer_type})
 				{
-					my $tmp = $default_numeric || 'bigint';
+					my $tmp = $self->{default_numeric} || 'bigint';
 					$str =~ s/\b$type\b\s*\([^\)]+\)/$tmp/is;
 				}
 			}
 			else
 			{
-				if ($pg_numeric_type)
+				if ($self->{pg_numeric_type})
 				{
 					if ($precision eq '') {
 						$str =~ s/\b$type\b\s*\([^\)]+\)/decimal(38, $scale)/is;
@@ -2368,14 +2429,14 @@ sub replace_sql_type
 	$str =~ s/\%\|/\(/gs;
 
         # Replace datatype without precision
-	my $number = $data_type{'NUMBER'};
-	$number = $default_numeric if ($pg_integer_type);
+	my $number = $self->{data_type}{'NUMBER'};
+	$number = $self->{default_numeric} if ($self->{pg_integer_type});
 	$str =~ s/\bNUMBER\b/$number/igs;
 
 	# Set varchar without length to text
 	$str =~ s/\bVARCHAR2\b/VARCHAR/igs;
 	$str =~ s/\bSTRING\b/VARCHAR/igs;
-	if ($varchar_to_text) {
+	if ($self->{varchar_to_text}) {
 		$str =~ s/\bVARCHAR\b(\s*(?!\())/text$1/igs;
 	} else {
 		$str =~ s/\bVARCHAR\b(\s*(?!\())/varchar$1/igs;
@@ -2384,25 +2445,22 @@ sub replace_sql_type
 	foreach my $t ('DATE','LONG RAW','LONG','NCLOB','CLOB','BLOB','BFILE','RAW','ROWID','UROWID','FLOAT','DOUBLE PRECISION','INTEGER','INT','REAL','SMALLINT','BINARY_FLOAT','BINARY_DOUBLE','BINARY_INTEGER','BOOLEAN','XMLTYPE','SDO_GEOMETRY','PLS_INTEGER','NUMBER')
 	{
 		if ($t eq 'DATE') {
-			$str =~ s/\b$t\s*\(\d\)/$data_type{$t}/igs;
+			$str =~ s/\b$t\s*\(\d\)/$self->{data_type}{$t}/igs;
 		}
 		elsif ($t eq 'NUMBER')
 		{
-			if ($pg_integer_type)
+			if ($self->{pg_integer_type})
 			{
-				my $tmp = $default_numeric || 'bigint';
+				my $tmp = $self->{default_numeric} || 'bigint';
 				$str =~ s/\b$t\b/$tmp/igs;
 				next;
 			}
 		}
-		$str =~ s/\b$t\b/$data_type{$t}/igs;
+		$str =~ s/\b$t\b/$self->{data_type}{$t}/igs;
 	}
 
 	# Translate cursor declaration
 	$str = replace_cursor_def($str);
-
-	# Remove remaining %ROWTYPE in other prototype declaration
-	#$str =~ s/\%ROWTYPE//isg;
 
 	$str =~ s/;[ ]+/;/gs;
 
@@ -2486,7 +2544,8 @@ sub estimate_cost
 {
 	my ($class, $str, $type) = @_;
 
-	return mysql_estimate_cost($str, $type) if ($class->{is_mysql});
+	return mysql_estimate_cost($class, $str, $type) if ($class->{is_mysql});
+	return mssql_estimate_cost($class, $str, $type) if ($class->{is_mssql});
 
 	my %cost_details = ();
 
@@ -2696,8 +2755,10 @@ sub estimate_cost
 	$n = () = $str =~ m/TRANSFORM\(/igs;
 	$cost_details{'TRANSFORM'} += $n;
 
-	foreach my $f (@ORA_FUNCTIONS) {
-		if ($str =~ /\b$f\b/igs) {
+	foreach my $f (@ORA_FUNCTIONS)
+	{
+		if ($str =~ /\b$f\b/igs)
+		{
 			$cost += 1;
 			$cost_details{$f} += 1;
 		}
@@ -3226,8 +3287,7 @@ sub _mysql_dateformat_to_pgsql
 
 sub mysql_estimate_cost
 {
-	my $str = shift;
-	my $type = shift;
+	my ($class, $str, $type) = @_;
 
 	my %cost_details = ();
 
@@ -3270,8 +3330,90 @@ sub mysql_estimate_cost
 	foreach my $t (keys %UNCOVERED_MYSQL_SCORE) {
 		$cost += $UNCOVERED_MYSQL_SCORE{$t}*$cost_details{$t};
 	}
-	foreach my $f (@MYSQL_FUNCTIONS) {
+	foreach my $f (@MYSQL_FUNCTIONS)
+	{
 		if ($str =~ /\b$f\b/igs) {
+			$cost += 2;
+			$cost_details{$f} += 2;
+		}
+	}
+
+	return $cost, %cost_details;
+}
+
+sub mssql_estimate_cost
+{
+	my ($class, $str, $type) = @_;
+
+	my %cost_details = ();
+
+	# TSQL do not use ; as statements separator and condition use begin instead of then/loop...
+	# this require manual editing so decrease the number of lines for cost of the code review.
+	$SIZE_SCORE = 400;
+
+	# Default cost is testing that mean it at least must be tested
+	my $cost = $FCT_TEST_SCORE;
+	# When evaluating queries tests must not be included here
+	if ($type eq 'QUERY') {
+		$cost = 0;
+	}
+	$cost_details{'TEST'} = $cost;
+
+	# Set cost following code length
+	my $cost_size = int(length($str)/$SIZE_SCORE) || 1;
+	# When evaluating queries size must not be included here
+	if ($type eq 'QUERY') {
+		$cost_size = 0;
+	}
+
+	$cost += $cost_size;
+	$cost_details{'SIZE'} = $cost_size;
+
+	# Try to figure out the manual work
+	# Not accurate for now
+	my $n = () = $str =~ m/(ARRAY_AGG|GROUP_CONCAT)\(\s*DISTINCT/igs;
+	$cost_details{'ARRAY_AGG_DISTINCT'} += $n*$UNCOVERED_MSSQL_SCORE{'ARRAY_AGG_DISTINCT'};
+	# Look for access to objects in other database, require FDW or dblink.
+	$n = () = $str =~ /\b[a-z0-9_\$]+\.[a-z0-9_\$]+\.[a-z0-9_\$]+\b/igs;
+	$cost_details{'FOREIGN_OBJECT'} += $n*$UNCOVERED_MSSQL_SCORE{'FOREIGN_OBJECT'};
+	$n = () = $str =~ /\b(master|model|msdb|tempdb)\.\b/igs;
+	$cost_details{'SYS_OBJECT'} += $n*$UNCOVERED_MSSQL_SCORE{'SYS_OBJECT'};
+	$cost_details{'FOREIGN_OBJECT'} -= $n*$UNCOVERED_MSSQL_SCORE{'FOREIGN_OBJECT'};
+	if ($class->{local_schemas_regex})
+	{
+		$n = () = $str =~ /\b$class->{local_schemas_regex}\.[a-z0-9_\$]+\.[a-z0-9_\$]+\b/igs;
+		$cost_details{'FOREIGN_OBJECT'} -= $n*$UNCOVERED_MSSQL_SCORE{'FOREIGN_OBJECT'};
+	}
+	$n = () = $str =~ /[\s,]\s*sys[a-z]+/igs;
+	$cost_details{'SYS_OBJECT'} += $n*$UNCOVERED_MSSQL_SCORE{'SYS_OBJECT'};
+	$n = () = $str =~ /\b\#\#[a-z0-9_\$]+\b/igs;
+	$cost_details{'GLOBAL_TEMP_TABLE'} += $n*$UNCOVERED_MSSQL_SCORE{'GLOBAL_TEMP_TABLE'};
+	$n = () = $str =~ /(?<!INSERT)\s+INTO\s+[\#]+[a-z0-9_\$]+\b/igs;
+	$cost_details{'INTO_TEMP_TABLE'} += $n*$UNCOVERED_MSSQL_SCORE{'INTO_TEMP_TABLE'};
+	$n = () = $str =~ /\bSELECT\s+TOP\s+\d+\b/igs;
+	$cost_details{'SELECT_TOP'} += $n*$UNCOVERED_MSSQL_SCORE{'SELECT_TOP'};
+	$n = () = $str =~ /\sCOLLATE\s/igs;
+	$cost_details{'COLLATE'} += $n*$UNCOVERED_MSSQL_SCORE{'COLLATE'};
+	$n = () = $str =~ /\bRETURNS\s+TABLE\s/igs;
+	$cost_details{'RETURNS_TABLE'} += $n*$UNCOVERED_MSSQL_SCORE{'RETURNS_TABLE'};
+	$n = () = $str =~ /\bTODATETIMEOFFSET\s*\(/igs;
+	$cost_details{'TODATETIMEOFFSET'} += $n*$UNCOVERED_MSSQL_SCORE{'TODATETIMEOFFSET'};
+	$n = () = $str =~ /\bCURSOR\s*\(/igs;
+	$cost_details{'CURSOR'} += $n*$UNCOVERED_MSSQL_SCORE{'CURSOR'};
+	$n = () = $str =~ /\b\@\@[a-z0-9_\$]+/igs;
+	$cost_details{'GLOBAL_VARIABLE'} += $n*$UNCOVERED_MSSQL_SCORE{'GLOBAL_VARIABLE'};
+	$n = () = $str =~ /\b\@\@(ROWCOUNT|VERSION|LANGUAGE)/igs;
+	$cost_details{'GLOBAL_VARIABLE'} -= $n*$UNCOVERED_MSSQL_SCORE{'GLOBAL_VARIABLE'};
+
+	foreach my $t (keys %UNCOVERED_MSSQL_SCORE) {
+		$cost += $cost_details{$t} if (exists $cost_details{$t});
+	}
+
+	foreach my $f (@MSSQL_FUNCTIONS)
+	{
+		next if ($class->{use_mssqlfce} && $f =~ /^(DATEDIFF|STUFF|PATINDEX|ISNUMERIC|ISDATE|LEN)$/);
+		if ($str =~ /\b$f\s*\(/igs)
+		{
 			$cost += 2;
 			$cost_details{$f} += 2;
 		}
@@ -3869,6 +4011,100 @@ sub replace_without_function
 
 	return $str;
 }
+
+=head2 mssql_to_plpgsql
+
+This function turn a MSSQL function code into a PLPGSQL code
+
+=cut
+
+sub mssql_to_plpgsql
+{
+        my ($class, $str) = @_;
+
+	# Replace getdate() with CURRENT_TIMESTAMP
+	$str =~ s/\bgetdate\s*\(\s*\)/date_trunc('millisecond', CURRENT_TIMESTAMP::timestamp)/ig;
+	# Replace user_name() with CURRENT_USER
+	$str =~ s/\buser_name\s*\(\s*\)/CURRENT_USER/gi;
+
+	# Remove call to with(nolock) from queries
+	$str =~ s/\bwith\s*\(\s*nolock\s*\)//ig;
+	$str =~ s/\bwith\s*schemabinding//ig;
+
+	# Replace call to SYS_GUID() function
+	$str =~ s/\bnewid\s*\(\s*\)/$class->{uuid_function}()/ig;
+
+	# Remove COUNT setting
+	$str =~ s/SET NOCOUNT (ON|OFF)[;\s]*//ig;
+
+	# Replace BREAK by EXIT
+	$str =~ s/\bBREAK\s*[;]*$/EXIT;/ig;
+
+	# Rewrite call to sequences
+	while ($str =~ /NEXT VALUE FOR ([^\s]+)/i)
+	{
+		my $seqname = $1;
+		$seqname =~ s/[\[\]\)]+//g;
+		$str =~ s/[\(]*NEXT VALUE FOR ([^\s]+)/nextval('$seqname')/i;
+	}
+
+	####
+	# Replace some function with their PostgreSQL syntax
+	####
+	$str =~ s/\bDATALENGTH\s*\(/LENGTH(/gi;
+	$str =~ s/\bLEN\s*\(([^\)]+)\)/LENGTH(RTRIM($1))/gi;
+	$str =~ s/ISNULL\s*\(/COALESCE(/gi;
+	$str =~ s/SPACE\s*\(/REPEAT(' ', /gi;
+	$str =~ s/CHARINDEX\s*\(\s*(.*?)\s*,\s*(.*?)\s*,\s*(\d+)\)/position('$1' in substring($2 from $3))/gi;
+	$str =~ s/CHARINDEX\s*\(\s*(.*?)\s*,\s*(.*?)\s*\)/position('$1' in $2)/gi;
+	$str =~ s/DATEPART\s*\(\s*(.*?)\s*,\s*(.*?)\s*\)/date_part('$1', $2)/gi;
+	$str =~ s/DATEADD\s*\(\s*(.*?)\s*\,\s*(.*?)\s*,\s*(.*?)\s*\)/$3 + INTERVAL '$2 $1'/gi;
+	$str =~ s/CONVERT\s*\(\s*(.*?)\s*,\s*(.*?)\s*,\s*(\d+)\)/TO_CHAR($2, '$MSSQL_STYLE{$3}')::$1/gi;
+	$str =~ s/CONVERT\s*\(\s*NVARCHAR\s*(.*?)\s*\(\s*(.*?)\s*\s*\)\,\s*(.*?)\s*\)/CAST($3 AS varchar($2))/gi;
+	$str =~ s/CONVERT\s*\(\s*(.*?)\s*\(\s*(.*?)\s*\s*\),\s*(.*?)\s*\)/CAST($3 AS $1($2))/gi;
+	$str =~ s/CONVERT\s*\(\s*(.*?)\s*\,\s*(.*?)\s*\)/CAST($2 AS $1)/gi;
+	$str =~ s/\bRAND\s*\(/random(/gi;
+	$str =~ s/\bYEAR\s*\(/date_part('year', /gi;
+	$str =~ s/\bMONTH\s*\(/date_part('month', /gi;
+	$str =~ s/\bDAY\s*\(/date_part('day', /gi;
+	$str =~ s/\bSYSDATETIMEOFFSET\s*\(/now(/gi;
+	$str =~ s/\bSYSDATETIME\s*\(\s*\)/now()::timestamp/gi;
+	$str =~ s/\bSYSUTCDATETIME\s*\(\s*\)/now() at time zone 'UTC'/gi;
+	$str =~ s/\bDATENAME\s*\(\s*(?:weekday|dw|w)\s*,\s*([^\)]+)\s*\)/to_char($1, 'day')/gi;
+	$str =~ s/\bDATENAME\s*\(\s*(?:dayofyear|dy|y)\s*,\s*([^\)]+)\s*\)/date_part('doy', $1)/gi;
+	$str =~ s/\bDATENAME\s*\(\s*(?:month|mm|m)\s*,\s*([^\)]+)\s*\)/to_char($1, 'month')/gi;
+	$str =~ s/\bDATENAME\s*\(\s*(?:year|yy|y)\s*,/date_part('year',/gi;
+	$str =~ s/\bDATENAME\s*\(\s*(?:quarter|qq|q)\s*,/date_part('quarter',/gi;
+	$str =~ s/\bDATENAME\s*\(\s*(?:day|dd|d)\s*,/date_part('day',/gi;
+	$str =~ s/\bDATENAME\s*\(\s*(?:week|ww|wk)\s*,\s*([^\)]+)\s*\)/date_part('week', $1)+1/gi;
+	$str =~ s/\bDATENAME\s*\(\s*hour\s*,/date_part('hour',/gi;
+	$str =~ s/\bDATENAME\s*\(\s*(?:minute|mi|n)\s*,/date_part('minute',/gi;
+	$str =~ s/\bDATENAME\s*\(\s*(?:second|ss|s)\s*,/date_part('second',/gi;
+	$str =~ s/\bDATENAME\s*\(\s*(?:millisecond|ms)\s*,/date_part('millisecond',/gi;
+	$str =~ s/\bDATENAME\s*\(\s*(?:microsecond|mcs)\s*,/date_part('microsecond',/gi;
+	$str =~ s/\bDATENAME\s*\(\s*(?:nanosecond|ns)\s*,/date_part('nanosecond',/gi; # will fail, should be microsecond
+	$str =~ s/\bDATENAME\s*\(\s*(?:ISO_WEEK|ISOWK|ISOWW)\s*,\s*([^\)]+)\s*\)/date_part('week', $1)/gi;
+	$str =~ s/\bDATENAME\s*\(\s*(?:TZoffset|tz)\s*,\s*([^\)]+)\s*\)/to_char($1, 'TZH:TZM')/gi;
+
+	# Rewrite expression like SET p_MatchExpression =  '%'+p_MatchExpression+'%'
+	$str =~ s/\bSET\s+([^\s=;:]+)\s*=/$1 :=/igs;
+
+	# Fix IF ... BEGIN into IF ... THEN on single line
+	$str =~ s/(\s+IF[\s\(]+(?:.*?))\s+BEGIN\b/$1 THEN/igs;
+	# Fix WHILE ... BEGIN into IF ... THEN
+	$str =~ s/(\s+WHILE[\s\(]+(?:.*?))\s+BEGIN\b/$1 LOOP/igs;
+	# Fix ELSE IF into ELSIF
+	$str =~ s/\bELSE\s+IF\b/ELSIF/igs;
+
+	# Fix temporary table creation. We keep the # so that they can be identified in the code
+	$str =~ s/CREATE\s+TABLE\s+#/CREATE TEMPORARY TABLE #/igs;
+
+	# Replace identity function
+	$str =~ s/int identity\(\s*([\d+])\s*,\s*([\d+])\s*\)/int GENERATED BY DEFAULT AS IDENTITY (START WITH $1 INCREMENT BY $2)/igs;
+
+	return $str;
+}
+
 
 1;
 
