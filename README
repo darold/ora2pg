@@ -1521,18 +1521,17 @@ CONFIGURATION
         example, set it to 128 to create these kind of indexes on columns of
         type varchar2(N) where N >= 128.
 
-    PREFIX_PARTITION
-        Enable this directive if you want that your partition table name
-        will be exported using the parent table name. Disabled by default.
-        If you have multiple partitioned table, when exported to PostgreSQL
-        some partitions could have the same name but different parent
-        tables. This is not allowed, table name must be unique.
-
-    PREFIX_SUB_PARTITION
-        Enable this directive if you want that your subpartition table name
-        will be exported using the parent partition name. Enabled by
-        default. If the partition names are a part of the subpartition
-        names, you should enable this directive.
+    RENAME_PARTITION
+        Enable this directive if you want that your partition tables will be
+        renamed. Disabled by default. If you have multiple partitioned
+        table, when exported to PostgreSQL some partitions could have the
+        same name but different parent tables. This is not allowed, table
+        name must be unique, in this case enable this directive. A partition
+        will be renamed following the rule: "tablename"_part"pos" where
+        "pos" is the partition number. For subpartition this is:
+        "tablename"_part"pos"_subpart"pos" If this is partition/subpartition
+        default: "tablename"_part_default
+        "tablename"_part"pos"_subpart_default
 
     DISABLE_PARTITION
         If you don't want to reproduce the partitioning like in Oracle and
