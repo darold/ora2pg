@@ -4124,7 +4124,7 @@ sub _export_table_data
 					$self->logit("Dumping sub partition table $table ($subpart)...\n", 1);
 					$total_record = $self->_dump_table($dirprefix, $sql_header, $table, $subpart, 1, $tbpart_name, $sub_tb_name);
 					# Rename temporary filename into final name
-					$self->rename_dump_partfile($dirprefix, $sub_tb_name);
+					$self->rename_dump_partfile($dirprefix, $subpart, $table);
 				}
 				# Now load content of the default subpartition table
 				if ($self->{subpartitions_default}{$table}{$part_name})
@@ -4291,11 +4291,12 @@ sub rename_dump_partfile
 {
 	my ($self, $dirprefix, $partname, $tbl) = @_;
 
-	my $filename = "${dirprefix}tmp_${partname}_$self->{output}";
-	my $filedest = "${dirprefix}${partname}_$self->{output}";
-	if ($tbl && $self->{rename_partition}) {
-		$filename = "${dirprefix}tmp_${tbl}_${partname}_$self->{output}";
-		$filedest = "${dirprefix}${tbl}_${partname}_$self->{output}";
+        my $filename = "${dirprefix}tmp_${tbl}_${partname}_$self->{output}";
+        my $filedest = "${dirprefix}${tbl}_${partname}_$self->{output}";
+        if (!$tbl)
+        {
+                $filename = "${dirprefix}tmp_${partname}_$self->{output}";
+                $filedest = "${dirprefix}${partname}_$self->{output}";
 	}
 	if (-e $filename) {
 		$self->logit("Renaming temporary file $filename into $filedest\n", 1);
@@ -8701,12 +8702,13 @@ sub _get_sql_statements
 							next if ($self->{allow_partition} && !grep($_ =~ /^$subpart$/i, @{$self->{allow_partition}}));
 							my $sub_tb_name = $subpart;
 							$sub_tb_name =~ s/^[^\.]+\.//; # remove schema part if any
-							$sub_tb_name = $tb_name . '_subpart' . $p if ($self->{rename_partition});
-							if ($self->{file_per_table} && !$self->{pg_dsn}) {
-								my $file_name = "$dirprefix${sub_tb_name}_$self->{output}";
+							if ($self->{file_per_table} && !$self->{pg_dsn})
+							{
+								my $file_name = "$dirprefix${table}_${sub_tb_name}_$self->{output}";
 								$file_name =~ s/\.(gz|bz2)$//;
 								$load_file .=  "\\i$self->{psql_relative_path} '$file_name'\n";
 							}
+							$sub_tb_name = $tb_name . '_subpart' . $p if ($self->{rename_partition});
 						}
 						# Now load content of the default partition table
 						if ($self->{subpartitions_default}{$table}{$part_name})
@@ -8716,10 +8718,10 @@ sub _get_sql_statements
 								if ($self->{file_per_table} && !$self->{pg_dsn})
 								{
 									my $part_name = $self->{subpartitions_default}{$table}{$part_name};
-									$part_name = $tb_name . '_default' if ($self->{rename_partition});
-									my $file_name = "$dirprefix${part_name}_$self->{output}";
+									my $file_name = "$dirprefix${table}_${part_name}_$self->{output}";
 									$file_name =~ s/\.(gz|bz2)$//;
 									$load_file .=  "\\i$self->{psql_relative_path} '$file_name'\n";
+									$part_name = $tb_name . '_default' if ($self->{rename_partition});
 								}
 							}
 						}
@@ -8742,10 +8744,10 @@ sub _get_sql_statements
 						if ($self->{file_per_table} && !$self->{pg_dsn})
 						{
 							my $part_name = $self->{partitions_default}{$table};
-							$part_name = $table . '_part_default' if ($self->{rename_partition});
-							my $file_name = "$dirprefix${part_name}_$self->{output}";
+							my $file_name = "$dirprefix${table}_${part_name}_$self->{output}";
 							$file_name =~ s/\.(gz|bz2)$//;
 							$load_file .=  "\\i$self->{psql_relative_path} '$file_name'\n";
+							$part_name = $table . '_part_default' if ($self->{rename_partition});
 						}
 					}
 				}
@@ -13068,8 +13070,11 @@ sub data_dump
 	my $dirprefix = '';
 	$dirprefix = "$self->{output_dir}/" if ($self->{output_dir});
 	my $filename = $self->{output};
-	my $rname = $pname || $tname;
-	if ($self->{file_per_table}) {
+	my $rname = $tname;
+	$rname .= '_' . $pname if (!$self->{rename_partition} && $pname);
+	$rname = $pname if ($self->{rename_partition} && $pname);
+	if ($self->{file_per_table})
+	{
 		$filename = "${rname}_$self->{output}";
 		$filename = "tmp_$filename";
 	}
@@ -15305,7 +15310,7 @@ sub _extract_data
 			}
 		}
 
-		if (@rows && (!$self->{oracle_speed} || $self->{ora2pg_speed}))
+		if (!$self->{oracle_speed} || $self->{ora2pg_speed})
 		{
 			$total_record += @rows;
 			$self->{current_total_row} += @rows;
