@@ -7727,49 +7727,56 @@ sub export_table
 				}
 
 				# Check if we need auto increment
-				if ($f->[12] eq 'auto_increment' || $f->[12] eq '1')
+				if (!$self->{is_informix})
 				{
-					if ($type !~ s/bigint/bigserial/)
+					if ($f->[12] eq 'auto_increment' || $f->[12] eq '1')
 					{
-						if ($type !~ s/smallint/smallserial/) {
-							$type =~ s/integer/serial/;
-							$type =~ s/numeric.*/bigserial/;
+						if ($type !~ s/bigint/bigserial/)
+						{
+							if ($type !~ s/smallint/smallserial/) {
+								$type =~ s/integer/serial/;
+								$type =~ s/numeric.*/bigserial/;
+							}
+						}
+						if ($type =~ /serial/)
+						{
+							my $seqname = lc($tbname) . '_' . lc($fname) . '_seq';
+							if ($self->{preserve_case}) {
+								$seqname = $tbname . '_' . $fname . '_seq';
+							}
+							my $tobequoted = 0;
+							if ($seqname =~ s/"//g) {
+								$tobequoted = 1;
+							}
+							
+							if (length($seqname) > 63)
+							{
+								if (length($tbname) > 29) {
+									$seqname = substr(lc($tbname), 0, 29);
+								} else {
+									$seqname = lc($tbname);
+								}
+								if (length($fname) > 29) {
+									$seqname .= '_' . substr(lc($fname), 0, 29);
+								} else {
+									$seqname .= '_' . lc($fname);
+								}
+								$seqname .= '_seq';
+							}
+							if ($tobequoted) {
+								$seqname = '"' . $seqname . '"';
+							}
+							if (exists $self->{tables}{$table}{table_info}{auto_increment})
+							{
+								$self->{tables}{$table}{table_info}{auto_increment} = 1 if ($self->{is_mysql} && !$self->{tables}{$table}{table_info}{auto_increment});
+								$serial_sequence .= "ALTER SEQUENCE $seqname RESTART WITH $self->{tables}{$table}{table_info}{auto_increment};\n";
+							}
 						}
 					}
-					if ($type =~ /serial/)
-					{
-						my $seqname = lc($tbname) . '_' . lc($fname) . '_seq';
-						if ($self->{preserve_case}) {
-							$seqname = $tbname . '_' . $fname . '_seq';
-						}
-						my $tobequoted = 0;
-						if ($seqname =~ s/"//g) {
-							$tobequoted = 1;
-						}
-						
-						if (length($seqname) > 63)
-						{
-							if (length($tbname) > 29) {
-								$seqname = substr(lc($tbname), 0, 29);
-							} else {
-								$seqname = lc($tbname);
-							}
-							if (length($fname) > 29) {
-								$seqname .= '_' . substr(lc($fname), 0, 29);
-							} else {
-								$seqname .= '_' . lc($fname);
-							}
-							$seqname .= '_seq';
-						}
-						if ($tobequoted) {
-							$seqname = '"' . $seqname . '"';
-						}
-						if (exists $self->{tables}{$table}{table_info}{auto_increment})
-						{
-							$self->{tables}{$table}{table_info}{auto_increment} = 1 if ($self->{is_mysql} && !$self->{tables}{$table}{table_info}{auto_increment});
-							$serial_sequence .= "ALTER SEQUENCE $seqname RESTART WITH $self->{tables}{$table}{table_info}{auto_increment};\n";
-						}
-					}
+				}
+				elsif ($f->[12])
+				{
+					$serial_sequence .= "ALTER SEQUENCE $seqname RESTART WITH $f->[12];\n";
 				}
 
 				# Check if this column should be replaced by a boolean following table/column name
@@ -16863,18 +16870,25 @@ sub _show_infos
 					$warning .= " (numeric?)" if ($type1 =~ s/#$//);
 
 					# Check if we need auto increment
-					if ($d->[12] eq 'auto_increment' || $d->[12] eq '1')
+					if (!$self->{is_informix})
 					{
-						if ($type1 !~ s/bigint/bigserial/)
+						if ($d->[12] eq 'auto_increment' || $d->[12] eq '1')
 						{
-							if ($type1 !~ s/smallint/smallserial/) {
-								$type1 =~ s/integer/serial/;
-								$type1 =~ s/numeric.*/bigserial/;
+							if ($type1 !~ s/bigint/bigserial/)
+							{
+								if ($type1 !~ s/smallint/smallserial/) {
+									$type1 =~ s/integer/serial/;
+									$type1 =~ s/numeric.*/bigserial/;
+								}
+							}
+							if ($type1 =~ /serial/) {
+								$warning = " - Seq last value: $tables_infos{$t}{auto_increment}";
 							}
 						}
-						if ($type1 =~ /serial/) {
-							$warning = " - Seq last value: $tables_infos{$t}{auto_increment}";
-						}
+					}
+					elsif ($d->[12])
+					{
+						$warning = " - Seq last value: $d->[12]";
 					}
 					$type1 = $self->{'modify_type'}{"\L$t\E"}{"\L$k\E"} if (exists $self->{'modify_type'}{"\L$t\E"}{"\L$k\E"});
 					my $align = '';

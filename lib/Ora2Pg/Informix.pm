@@ -19,41 +19,37 @@ our @EXCLUDED_FUNCTION = ('SQUIRREL_GET_ERROR_OFFSET');
 # These definitions can be overriden from configuration
 # file using the DATA_TYPË configuration directive.
 our %SQL_TYPE = (
-	'TINYINT' => 'smallint', # 1 byte
-	'SMALLINT' => 'smallint', # 2 bytes
-	'INT' => 'integer', # 4 bytes
-	'BIGINT' => 'bigint', # 8 bytes
-	'DECIMAL' => 'numeric',
-	'NUMERIC' => 'numeric',
-	'BIT' => 'boolean',
-	'MONEY' => 'numeric(15,4)',
-	'SMALLMONEY' => 'numeric(6,4)',
-	'FLOAT' => 'double precision',
-	'REAL' => 'real',
-	'DATE' => 'date',
-	'SMALLDATETIME' => 'timestamp(0) without time zone',
-	'DATETIME' => 'timestamp(3) without time zone',
-	'DATETIME2' => 'timestamp without time zone',
-	'DATETIMEOFFSET' => 'timestamp with time zone',
-	'TIME' => 'time without time zone',
 	'CHAR' => 'char',
-	'VARCHAR' => 'varchar',
+	'SMALLINT' => 'smallint',
+	'INTEGER' => 'integer',
+	'FLOAT' => 'float',
+	'SMALLFLOAT' => 'float',
+	'DECIMAL' => 'numeric',
+	'SERIAL' => 'serial',
+	'DATE' => 'date',
+	'MONEY' => 'money',
+	'DATETIME' => 'timestamp',
+	'BYTE' => 'bytea',
 	'TEXT' => 'text',
+	'VARCHAR' => 'varchar',
+	'INTERVAL' => 'interval',
 	'NCHAR' => 'char',
 	'NVARCHAR' => 'varchar',
-	'NTEXT' => 'text',
-	'VARBINARY' => 'bytea',
-	'BINARY' => 'bytea',
-	'IMAGE' => 'bytea',
-	'UNIQUEIDENTIFIER' => 'uuid',
-	'ROWVERSION' => 'bytea',
-	'TIMESTAMP' => 'bytea', # synonym of ROWVERSION
-	'XML' => 'xml',
-	'HIERARCHYID' => 'varchar', # The application need to handle the value, no PG equivalent
-	'GEOMETRY' => 'geometry',
-	'GEOGRAPHY' => 'geometry',
-	'SYSNAME' => 'varchar(256)',
-	'SQL_VARIANT' => 'text'
+	'INT8' => 'bigint',
+	'SERIAL8' => 'bigserial',
+	'SET' => 'SET',
+	'MULTISET' => 'MULTISET',
+	'LIST' => 'array',
+	'ROW' => 'ROW',
+	'COLLECTION' => '',
+	'BLOB' => 'bytea',
+	'CLOB' => 'text',
+	'LVARCHAR' => 'text',
+	'BOOLEAN' => 'boolean',
+	'BIGINT' => 'bigint',
+	'BIGSERIAL' => 'bigserial',
+	'IDSSECURITYLABEL' => 'IDSSECURITYLABEL',
+	'TIMESERIES' => 'TimeSeries',
 );
 
 sub _db_connection
@@ -347,7 +343,7 @@ sub _column_info
 		3 => 'FLOAT',
 		4 => 'SMALLFLOAT',
 		5 => 'DECIMAL',
-		6 => 'SERIAL 1',
+		6 => 'SERIAL',
 		7 => 'DATE',
 		8 => 'MONEY',
 		9 => 'NULL',
@@ -359,57 +355,50 @@ sub _column_info
 		15 => 'NCHAR',
 		16 => 'NVARCHAR',
 		17 => 'INT8',
-		18 => 'SERIAL8 1',
+		18 => 'SERIAL8',
 		19 => 'SET',
 		20 => 'MULTISET',
 		21 => 'LIST',
 		22 => 'ROW (unnamed)',
 		23 => 'COLLECTION',
-		40 => 'LVARCHAR fixed-length opaque types 2',
+		40 => 'LVARCHAR',
 		41 => 'BLOB, BOOLEAN, CLOB variable-length opaque types 2',
-		43 => 'LVARCHAR (client-side only)',
+		43 => 'LVARCHAR',
 		45 => 'BOOLEAN',
 		52 => 'BIGINT',
-		53 => 'BIGSERIAL 1',
+		53 => 'BIGSERIAL',
 		2061 => 'IDSSECURITYLABEL 2, 3',
+		3880 => 'TimeSeries',
 		4118 => 'ROW (named)',
 	);
 
 	$objtype ||= 'TABLE';
 
 	my $condition = '';
-	if ($self->{schema}) {
-		$condition .= "AND s.name='$self->{schema}' ";
-	}
-	$condition .= "AND tb.name='$table' " if ($table);
+	$condition = "AND tb.name='$table' " if ($table);
 	if (!$table) {
 		$condition .= $self->limit_to_objects('TABLE', 'tb.name');
 	} else {
 		@{$self->{query_bind_params}} = ();
 	}
-	$condition =~ s/^\s*AND\s/ WHERE /;
+	#$condition =~ s/^\s*AND\s/ WHERE /;
 
 	my $str = qq{SELECT 
-    c.colname 'Column Name',
-    c.coltype 'Data type',
-    c.max_length 'Max Length',
-    c.colattr,
-    object_definition(c.default_object_id),
-    c.collength,
-    c.scale ,
-    '',
-    tb.name,
-    s.name,
-    '',
-    c.colno,
-    NULL as AUTO_INCREMENT,
-    NULL AS ENUM_INFO,
-    object_definition(c.rule_object_id),
-    t.is_user_defined
-FROM informix.syscolumns c
-INNER JOIN informix.systables AS tb ON tb.tabid = c.tabid
-$condition
-ORDER BY c.colno};
+    c.colname, (CASE WHEN c.coltype >= 256 THEN c.coltype - 256 ELSE c.coltype END), c.collength,
+    (CASE WHEN c.coltype - 256 >= 0 THEN 0 ELSE 1 END), sd.default,
+    (CASE WHEN c.coltype IN (5, 8, 261, 264) THEN ifx_bit_rightshift(c.collength, 8) ELSE 0 END),
+    (CASE WHEN c.coltype IN (5, 8, 261, 264) THEN bitand(c.collength, "0xff") ELSE 0 END),
+    '', tb.tabname, tb.owner, '', c.colno,
+    (CASE WHEN c.coltype - 256 = 6 OR c.coltype - 256 = 18 OR c.coltype - 256 = 53 THEN c.colmin - 1 ELSE 0 END),
+    c.extended_id, decode(bitand(c.coltype, "0xff"), 5, "decimal", 8, "money", "<...>") || "(" ||
+        ifx_bit_rightshift(c.collength, 8) || "," || bitand(c.collength, "0xff") || ")"
+    --, st.* FIXME: user defined data type
+FROM syscolumns AS c
+JOIN systables AS tb ON (tb.tabid = c.tabid)
+LEFT JOIN sysdefaults AS sd ON (sd.tabid = c.tabid AND sd.colno = c.colno)
+LEFT JOIN sysxtdtypes AS st ON (st.extended_id = c.extended_id)
+WHERE tb.owner != 'informix' $condition
+ORDER BY c.tabid, c.colno};
 
 	my $sth = $self->{dbh}->prepare($str);
 	if (!$sth) {
@@ -423,24 +412,11 @@ ORDER BY c.colno};
 	my $pos = 0;
 	while (my $row = $sth->fetch)
 	{
-		next if ($self->{drop_rowversion} && ($row->[1] eq 'rowversion' || $row->[1] eq 'timestamp'));
-
-		if (!$self->{schema} && $self->{export_schema}) {
-			$row->[8] = "$row->[9].$row->[8]";
-		}
-		if (!$row->[15])
+		$row->[1] = $informix_coltype{$row->[1]} || $row->[1];
+		if ($row->[1] =~ /serial/i)
 		{
-			if ($row->[4]) {
-				$row->[4] =~ s/\s*CREATE\s+DEFAULT\s+.*\s+AS\s*//is;
-				$row->[4] =~ s/[\[\]]+//g;
-			}
-			if ($row->[14]) {
-				$row->[14] =~ s/[\[\]]+//g;
-				$row->[14] =~ s/\s*CREATE\s+RULE\s+.*\s+AS\s*//is;
-				$row->[14] =~ s/\@[a-z0-1_\$\#]+/VALUE/igs;
-				$row->[14] = " CHECK ($row->[14])";
-				$row->[14] =~ s/[\r\n]+/ /gs;
-			}
+			$row->[12] = $row->[6];
+			$self->{tables}{$row->[8]}{table_info}{auto_increment} = $row->[12];
 		}
 		push(@{$data{"$row->[8]"}{"$row->[0]"}}, @$row);
 		$pos++;
@@ -454,33 +430,21 @@ sub _get_indexes
 	my ($self, $table, $owner, $generated_indexes) = @_;
 
 	my $condition = '';
-	$condition .= "AND OBJECT_NAME(Id.object_id, DB_ID())='$table' " if ($table);
-	if ($owner) {
-		$condition .= "AND s.name='$owner' ";
-	} else {
-		$condition .= " AND s.name NOT IN ('" . join("','", @{$self->{sysusers}}) . "') ";
-	}
+	$condition .= "AND t.tabname='$table' " if ($table);
 	if (!$table) {
-		$condition .= $self->limit_to_objects('TABLE|INDEX', "OBJECT_NAME(Id.object_id, DB_ID())|Id.NAME");
+		$condition .= $self->limit_to_objects('TABLE|INDEX', "t.tabname|Id.idxname");
 	} else {
 		@{$self->{query_bind_params}} = ();
 	}
 
-	# When comparing number of index we need to retrieve generated index (mostly PK)
-	my $generated = '';
-	$generated = " AND Id.auto_created = 0" if (!$generated_indexes);
-
 	my $t0 = Benchmark->new;
 	my $sth = '';
-	my $sql = qq{SELECT Id.name AS index_name, AC.name AS column_name, Id.is_unique AS UNIQUENESS, AC.column_id AS COLUMN_POSITION, Id.type AS INDEX_TYPE, 'U' AS TABLE_TYPE, Id.auto_created AS GENERATED, NULL AS JOIN_INDEX, t.name AS TABLE_NAME, s.name as TABLE_SCHEMA, Id.data_space_id AS TABLESPACE_NAME, Id.type_desc AS ITYP_NAME, Id.filter_definition AS PARAMETERS, IC.is_descending_key AS DESCEND, id.is_primary_key PRIMARY_KEY, typ.name AS COL_TYPE_NAME
-FROM sys.tables AS T
-INNER JOIN sys.indexes Id ON T.object_id = Id.object_id 
-INNER JOIN sys.index_columns IC ON Id.object_id = IC.object_id
-INNER JOIN sys.all_columns AC ON T.object_id = AC.object_id AND IC.column_id = AC.column_id 
-INNER JOIN sys.types typ ON typ.user_type_id = AC.user_type_id
-LEFT OUTER JOIN sys.schemas s ON t.schema_id = s.schema_id
-WHERE T.is_ms_shipped = 0 $generated $condition
-ORDER BY T.name, Id.index_id, IC.key_ordinal
+	my $sql = qq{SELECT Id.idxname, Id.idxtype, Id.clustered,
+	(CASE WHEN Id.idxtype = 'U' THEN 1 ELSE 0 END), Id.indexkeys, t.tabname, Id.owner
+FROM systables AS T
+INNER JOIN sysindices Id ON T.tabid = Id.tabid 
+WHERE Id.owner != 'informix' $condition
+ORDER BY T.tabname, Id.idxname
 };
 
 	$sth = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -493,65 +457,34 @@ ORDER BY T.name, Id.index_id, IC.key_ordinal
 	my $nidx = 0;
 	while (my $row = $sth->fetch)
 	{
-		next if ($self->{drop_rowversion} && ($row->[15] eq 'rowversion' || $row->[15] eq 'timestamp'));
 
-		# Handle case where indexes name include the schema at create time
-		$row->[0] =~ s/^$self->{schema}\.//i if ($self->{schema});
-
-		next if (!$row->[0]);
-
-		my $save_tb = $row->[8];
-		if (!$self->{schema} && $self->{export_schema}) {
-			$row->[8] = "$row->[9].$row->[8]";
-		}
-		next if (!$self->is_in_struct($row->[8], $row->[1]));
+		my $save_tb = $row->[5];
+		next if (!$self->is_in_struct($row->[5], $row->[1]));
 
 		# Show a warning when an index has the same name as the table
 		if ( !$self->{indexes_renaming} && !$self->{indexes_suffix} && (lc($row->[0]) eq lc($table)) ) {
 			 print STDERR "WARNING: index $row->[0] has the same name as the table itself. Please rename it before export or enable INDEXES_RENAMING.\n";
 		}
-		$unique{$row->[8]}{$row->[0]} = $row->[2];
+		$row->[4] =~ s/\s*\[\d+\]//g;
+		$row->[4] =~ s/\-(\d+)/$1 DESC/g;
+
+		$unique{$row->[5]}{$row->[0]} = $row->[4];
 
 		# Save original column name
 		my $colname = $row->[1];
 		# Quote column with unsupported symbols
 		$row->[1] = $self->quote_object_name($row->[1]);
-		# Replace function based index type
-		if ( $row->[13] )
-		{
-			# Append DESC sort order when not default to ASC
-			if ($row->[13] eq 'DESC') {
-				$row->[1] .= " DESC";
-			}
-		}
 
-		$idx_type{$row->[8]}{$row->[0]}{type_name} = $row->[11];
-		$idx_type{$row->[8]}{$row->[0]}{type} = $row->[4];
+		$idx_type{$row->[5]}{$row->[0]}{type_name} = $row->[11];
+		$idx_type{$row->[5]}{$row->[0]}{type} = $row->[1];
 
-#		my $idx_name = $row->[0];
-#		if (!$self->{schema} && $self->{export_schema}) {
-#			$idx_name = "$row->[9].$row->[0]";
-#		}
-#		if ($row->[11] =~ /SPATIAL_INDEX/) {
-#			$idx_type{$row->[8]}{$row->[0]}{type} = 'SPATIAL INDEX';
-#			if ($row->[12] =~ /layer_gtype=([^\s,]+)/i) {
-#				$idx_type{$row->[9]}{$row->[0]}{type_constraint} = uc($1);
-#			}
-#			if ($row->[12] =~ /sdo_indx_dims=(\d+)/i) {
-#				$idx_type{$row->[8]}{$row->[0]}{type_dims} = $1;
-#			}
-#		}
-#		if ($row->[4] eq 'BITMAP') {
-#			$idx_type{$row->[8]}{$row->[0]}{type} = $row->[4];
-#		}
-		push(@{$data{$row->[8]}{$row->[0]}}, $row->[1]);
-		$index_tablespace{$row->[8]}{$row->[0]} = $row->[10];
+		push(@{$data{$row->[5]}{$row->[0]}}, $row->[1]);
 		$nidx++;
 	}
 	$sth->finish();
 	my $t1 = Benchmark->new;
 	my $td = timediff($t1, $t0);
-	$self->logit("Collecting $nidx indexes in sys.indexes took: " . timestr($td) . "\n", 1);
+	$self->logit("Collecting $nidx indexes in sysindices took: " . timestr($td) . "\n", 1);
 
 	return \%unique, \%data, \%idx_type, \%index_tablespace;
 }
@@ -1374,7 +1307,11 @@ sub _sql_type
 				# Type CHAR have default length set to 1
 				# Type VARCHAR(2) must have a specified length
 				$len = 1 if (!$len && ($type eq "CHAR" || $type eq "NCHAR"));
-                		return "$self->{data_type}{$type}($len)";
+				if ($self->{data_type}{$type} eq 'text') {
+					return $self->{data_type}{$type};
+				} else {
+					return "$self->{data_type}{$type}($len)";
+				}
 			}
 			elsif ($type eq 'BIT')
 			{
@@ -1384,14 +1321,21 @@ sub _sql_type
 					return $self->{data_type}{$type};
 				}
 			}
+			elsif ($type eq 'INTERVAL')
+			{
+				return $self->{data_type}{$type};
+			}
 			elsif ($type =~ /(TINYINT|SMALLINT|INTEGER|BIGINT|INT|REAL|FLOAT|DECIMAL|NUMERIC|SMALLMONEY|MONEY)/i)
 			{
-				# This is an integer
 				if (!$scale)
 				{
 					if ($precision)
 					{
-						if ($self->{pg_integer_type})
+						if ($type =~ /(REAL|DOUBLE|FLOAT)/i)
+						{
+							return $self->{data_type}{$type};
+						}
+						elsif ($self->{pg_integer_type})
 						{
 							if ($precision < 5) {
 								return 'smallint';
@@ -1413,7 +1357,7 @@ sub _sql_type
 				{
 					if ($precision)
 					{
-						if ($self->{pg_numeric_type})
+						if ($type !~ /(DOUBLE|DECIMAL)/ && $self->{pg_numeric_type})
 						{
 							if ($precision <= 6) {
 								return 'real';
@@ -1425,9 +1369,10 @@ sub _sql_type
 					}
 				}
 			}
-			$self->{use_uuid} = 1 if ($type =~ /UNIQUEIDENTIFIER/);
 			return $self->{data_type}{$type};
-		} else {
+		}
+		else
+		{
 			return $self->{data_type}{$type};
 		}
         }
