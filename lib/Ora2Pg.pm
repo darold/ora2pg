@@ -866,6 +866,11 @@ sub _db_connection
 		use Ora2Pg::MSSQL;
 		return Ora2Pg::MSSQL::_db_connection($self);
 	}
+	elsif ($self->{is_informix})
+	{
+		use Ora2Pg::Informix;
+		return Ora2Pg::Informix::_db_connection($self);
+	}
 	else
 	{
 		use Ora2Pg::Oracle;
@@ -957,6 +962,9 @@ sub _init
 	$self->{is_mssql} = 0;
 	$self->{drop_rowversion} = 0;
 	$self->{case_insensitive_search} = 'citext';
+
+	# Initialize some variable related to export of Informix database
+	$self->{is_informix} = 0;
 
 	# List of users for audit trail
 	$self->{audit_user} = '';
@@ -1206,6 +1214,8 @@ sub _init
 			$self->{is_mysql} = $options{is_mysql};
 		} elsif (($k eq 'is_mssql') && $options{is_mssql}) {
 			$self->{is_mssql} = $options{is_mssql};
+		} elsif (($k eq 'is_informix') && $options{is_informix}) {
+			$self->{is_informix} = $options{is_informix};
 		}
 		elsif ($k eq 'where')
 		{
@@ -1281,11 +1291,13 @@ sub _init
 	unlink($dirprefix . 'temp_pass2_file.dat');
 	unlink($dirprefix . 'temp_cost_file.dat');
 
-	# Autodetexct if we are exporting a MySQL database
+	# Autodetect the type of database
 	if ($self->{oracle_dsn} =~ /dbi:mysql/i) {
 		$self->{is_mysql} = 1;
 	} elsif ($self->{oracle_dsn} =~ /dbi:ODBC:driver=msodbcsql/i) {
 		$self->{is_mssql} = 1;
+	} elsif ($self->{oracle_dsn} =~ /dbi:informix/i) {
+		$self->{is_informix} = 1;
 	}
 
 	# Preload our dedicated function per DBMS
@@ -1297,6 +1309,10 @@ sub _init
 		push(@{$self->{sysusers}}, 'sys');
 		import Ora2Pg::MSSQL;
 		$self->{sgbd_name} = 'MSSQL';
+	} elsif ($self->{is_informix}) {
+		@{$self->{sysusers}} = ();
+		import Ora2Pg::Informix;
+		$self->{sgbd_name} = 'Informix';
 	} else {
 		import Ora2Pg::Oracle;
 		$self->{sgbd_name} = 'Oracle';
@@ -1304,7 +1320,7 @@ sub _init
 
 	# Set default system user/schema to not export. Most of them are extracted from this doc:
 	# http://docs.oracle.com/cd/E11882_01/server.112/e10575/tdpsg_user_accounts.htm#TDPSG20030
-	if (!$self->{is_mysql} && !$self->{is_mssql}) {
+	if (!$self->{is_mysql} && !$self->{is_mssql} && !$self->{is_informix}) {
 		push(@{$self->{sysusers}},'SYSTEM','CTXSYS','DBSNMP','EXFSYS','LBACSYS','MDSYS','MGMT_VIEW','OLAPSYS','ORDDATA','OWBSYS','ORDPLUGINS','ORDSYS','OUTLN','SI_INFORMTN_SCHEMA','SYS','SYSMAN','WK_TEST','WKSYS','WKPROXY','WMSYS','XDB','APEX_PUBLIC_USER','DIP','FLOWS_020100','FLOWS_030000','FLOWS_040100','FLOWS_010600','FLOWS_FILES','MDDATA','ORACLE_OCM','SPATIAL_CSW_ADMIN_USR','SPATIAL_WFS_ADMIN_USR','XS$NULL','PERFSTAT','SQLTXPLAIN','DMSYS','TSMSYS','WKSYS','APEX_040000','APEX_040200','DVSYS','OJVMSYS','GSMADMIN_INTERNAL','APPQOSSYS','DVSYS','DVF','AUDSYS','APEX_030200','MGMT_VIEW','ODM','ODM_MTR','TRACESRV','MTMSYS','OWBSYS_AUDIT','WEBSYS','WK_PROXY','OSE$HTTP$ADMIN','AURORA$JIS$UTILITY$','AURORA$ORB$UNAUTHENTICATED','DBMS_PRIVILEGE_CAPTURE','CSMIG', 'MGDSYS', 'SDE','DBSFWUSER');
 	}
 
@@ -1460,6 +1476,8 @@ sub _init
 			%{$self->{data_type}} = %Ora2Pg::MySQL::SQL_TYPE;
 		} elsif ($self->{is_mssql}) {
 			%{$self->{data_type}} = %Ora2Pg::MSSQL::SQL_TYPE;
+		} elsif ($self->{is_informix}) {
+			%{$self->{data_type}} = %Ora2Pg::Informix::SQL_TYPE;
 		} else {
 			%{$self->{data_type}} = %Ora2Pg::Oracle::SQL_TYPE;
 		}
@@ -1484,6 +1502,8 @@ sub _init
 			%{$self->{data_type}} = %Ora2Pg::MySQL::SQL_TYPE;
 		} elsif ($self->{is_mssql}) {
 			%{$self->{data_type}} = %Ora2Pg::MSSQL::SQL_TYPE;
+		} elsif ($self->{is_informix}) {
+			%{$self->{data_type}} = %Ora2Pg::Informix::SQL_TYPE;
 		} else {
 			%{$self->{data_type}} = %Ora2Pg::Oracle::SQL_TYPE;
 		}
@@ -1595,17 +1615,15 @@ sub _init
 	$self->{pg_integer_type} = 1 if (not defined $self->{pg_integer_type});
 	# Backward compatibility with CASE_SENSITIVE
 	$self->{preserve_case} = $self->{case_sensitive} if (defined $self->{case_sensitive} && not defined $self->{preserve_case});
-	$self->{schema} = uc($self->{schema}) if (!$self->{preserve_case} && ($self->{oracle_dsn} !~ /:mysql/i));
-	# With MySQL override schema with the database name
-	if ($self->{oracle_dsn} =~ /:mysql:.*database=([^;]+)/i)
+	$self->{schema} = uc($self->{schema}) if (!$self->{preserve_case} && ($self->{oracle_dsn} !~ /:(mysql|Informix)/i));
+	# With MySQL and Informix override schema with the database name
+	if ($self->{oracle_dsn} =~ /:mysql:.*database=([^;]+)/i || $self->{oracle_dsn} =~ /:Informix:(.*)/)
 	{
-		if ($self->{schema} ne $1)
-		{
+		if ($self->{schema} ne $1) {
 			$self->{schema} = $1;
-			#$self->logit("WARNING: setting SCHEMA to MySQL database name $1.\n", 0);
 		}
 		if (!$self->{schema}) {
-			$self->logit("FATAL: cannot find a valid mysql database in DSN, $self->{oracle_dsn}.\n", 0, 1);
+			$self->logit("FATAL: cannot find a valid database name in DSN, $self->{oracle_dsn}.\n", 0, 1);
 		}
 	}
 
@@ -1722,6 +1740,8 @@ sub _init
 			$self->{is_mysql} = 1;
 		} elsif ($self->{oracle_dsn} =~ /dbi:ODBC:driver=msodbcsql/i) {
 			$self->{is_mssql} = 1;
+		} elsif ($self->{oracle_dsn} =~ /dbi:Informix/i) {
+			$self->{is_informix} = 1;
 		}
 		$self->{dbh} = $self->_db_connection();
 
@@ -1729,7 +1749,7 @@ sub _init
 		$self->{db_version} = $self->_get_version();
 
 		# Compile again all objects in the schema
-		if (!$self->{is_mysql} && !$self->{is_mssql} && $self->{compile_schema}) {
+		if (!$self->{is_mysql} && !$self->{is_mssql} && !$self->{is_informix} && $self->{compile_schema}) {
 			$self->_compile_schema(uc($self->{compile_schema}));
 		}
 
@@ -1747,7 +1767,7 @@ sub _init
 						if ($self->{type} eq 'VIEW')
 						{
 							# Limit to package lookup with VIEW export type
-							$self->_get_package_function_list($o) if (!$self->{is_mysql} && !$self->{is_mssql});
+							$self->_get_package_function_list($o) if (!$self->{is_mysql} && !$self->{is_mssql} && !$self->{is_informix});
 						}
 						else
 						{
@@ -1759,7 +1779,7 @@ sub _init
 				if ($self->{type} eq 'VIEW')
 				{
 					# Limit to package lookup with WIEW export type
-					$self->_get_package_function_list() if (!$self->{is_mysql} && !$self->{is_mssql});
+					$self->_get_package_function_list() if (!$self->{is_mysql} && !$self->{is_mssql} && !$self->{is_informix});
 				}
 				else
 				{
@@ -1889,7 +1909,7 @@ sub _init
 			foreach my $o ('VIEW', 'MVIEW', 'SEQUENCE', 'TYPE', 'FDW')
 			{
 				next if ($self->{is_mysql} && grep(/^$o$/, 'MVIEW','TYPE','FDW'));
-				next if ($self->{is_mssql} && grep(/^$o$/, 'FDW'));
+				next if (($self->{is_mssql} || $self->{is_informix}) && grep(/^$o$/, 'FDW'));
 				$self->_count_object($o);
 			}
 			# count function/procedure/package function
@@ -2004,6 +2024,8 @@ sub _init_environment
 		} elsif ($self->{is_mssql}) {
 			$self->{nls_lang} = 'iso_1';
 			$self->{client_encoding} = 'LATIN1' if (!$self->{client_encoding});
+		} elsif ($self->{is_informix}) {
+			$self->{nls_lang} = 'en_us.utf8';
 		} else {
 			$self->{nls_lang} = 'AMERICAN_AMERICA.AL32UTF8';
 		}
@@ -2014,6 +2036,8 @@ sub _init_environment
 			$self->{nls_nchar} = 'utf8_general_ci';
 		} elsif ($self->{is_mssql}) {
 			$self->{nls_nchar} = 'SQL_Latin1_General_CP1_CI_AS';
+		} elsif ($self->{is_informix}) {
+			$self->{nls_nchar} = 'utf8';
 		} else {
 			$self->{nls_nchar} = 'AL32UTF8';
 		}
@@ -2248,7 +2272,7 @@ sub _packages
 {
 	my ($self) = @_;
 
-	if ($self->{is_mysql} or $self->{is_mssql}) {
+	if ($self->{is_mysql} or $self->{is_mssql} or $self->{is_informix}) {
 		$self->logit("Action type PACKAGES is not available for $self->{sgbd_name}.\n", 0, 1);
 	}
 	$self->logit("Retrieving packages information...\n", 1);
@@ -4831,7 +4855,7 @@ LANGUAGE plpgsql ;
 		{
 			$sql_output .= "DROP MATERIALIZED VIEW $self->{pg_supports_ifexists} $view;\n" if ($self->{drop_if_exists});
 			$sql_output .= "CREATE MATERIALIZED VIEW $view\n";
-			if (!$self->{is_mysql} && !$self->{is_mssql})
+			if (!$self->{is_mysql} && !$self->{is_mssql} && !$self->{is_informix})
 			{
 				$sql_output .= "BUILD $self->{materialized_views}{$view}{build_mode}\n";
 				$sql_output .= "REFRESH $self->{materialized_views}{$view}{refresh_method} ON $self->{materialized_views}{$view}{refresh_mode}\n";
@@ -4839,7 +4863,7 @@ LANGUAGE plpgsql ;
 				$sql_output .= "AS ";
 			}
 			$sql_output .= "$self->{materialized_views}{$view}{text}";
-			if (!$self->{is_mysql} && !$self->{is_mssql})
+			if (!$self->{is_mysql} && !$self->{is_mssql} && !$self->{is_informix})
 			{
 				$sql_output .= " USING INDEX" if ($self->{materialized_views}{$view}{no_index});
 				$sql_output .= " USING NO INDEX" if (!$self->{materialized_views}{$view}{no_index});
@@ -5273,6 +5297,8 @@ sub _replace_sql_type
 		$str = Ora2Pg::MySQL::replace_sql_type($self, $str);
 	} elsif ($self->{is_mssql}) {
 		$str = Ora2Pg::MSSQL::replace_sql_type($self, $str);
+	} elsif ($self->{is_informix}) {
+		$str = Ora2Pg::Informix::replace_sql_type($self, $str);
 	} else {
 		$str = Ora2Pg::PLSQL::replace_sql_type($self, $str);
 	}
@@ -8529,6 +8555,8 @@ sub _get_sql_statements
 			$self->{is_mysql} = 1;
 		} elsif ($self->{oracle_dsn} =~ /dbi:ODBC:driver=msodbcsql/i) {
 			$self->{is_mssql} = 1;
+		} elsif ($self->{oracle_dsn} =~ /dbi:Informix/i) {
+			$self->{is_informix} = 1;
 		}
 		$self->{dbh} = $self->_db_connection();
 
@@ -8961,6 +8989,8 @@ sub _get_sql_statements
 				$self->{is_mysql} = 1;
 			} elsif ($self->{oracle_dsn} =~ /dbi:ODBC:driver=msodbcsql/i) {
 				$self->{is_mssql} = 1;
+			} elsif ($self->{oracle_dsn} =~ /dbi:Informix/i) {
+				$self->{is_informix} = 1;
 			}
 			$self->{dbh} = $self->_db_connection();
 		}
@@ -9809,6 +9839,8 @@ sub _column_comments
 		return Ora2Pg::MySQL::_column_comments($self, $table);
 	} elsif ($self->{is_mssql}) {
 		return Ora2Pg::MSSQL::_column_comments($self, $table);
+	} elsif ($self->{is_informix}) {
+		return Ora2Pg::Informix::_column_comments($self, $table);
 	} else {
 		return Ora2Pg::Oracle::_column_comments($self, $table);
 	}
@@ -10776,6 +10808,8 @@ sub _extract_sequence_info
 		return Ora2Pg::MySQL::_extract_sequence_info($self);
 	} elsif ($self->{is_mssql}) {
 		return Ora2Pg::MSSQL::_extract_sequence_info($self);
+	} elsif ($self->{is_informix}) {
+		return Ora2Pg::Informix::_extract_sequence_info($self);
 	} else {
 		return Ora2Pg::Oracle::_extract_sequence_info($self);
 	}
@@ -11418,6 +11452,8 @@ sub _sql_type
 		return Ora2Pg::MySQL::_sql_type($self, $type, $len, $precision, $scale);
 	} elsif ($self->{is_mssql}) {
 		return Ora2Pg::MSSQL::_sql_type($self, $type, $len, $precision, $scale);
+	} elsif ($self->{is_informix}) {
+		return Ora2Pg::Informix::_sql_type($self, $type, $len, $precision, $scale);
 	} else {
 		return Ora2Pg::Oracle::_sql_type($self, $type, $len, $precision, $scale);
 	}
@@ -11451,6 +11487,8 @@ sub _column_info
 		return Ora2Pg::MySQL::_column_info($self,$table,$owner,'TABLE');
 	} elsif ($self->{is_mssql}) {
 		return Ora2Pg::MSSQL::_column_info($self,$table,$owner,'TABLE');
+	} elsif ($self->{is_informix}) {
+		return Ora2Pg::Informix::_column_info($self,$table,$owner,'TABLE');
 	} else {
 		return Ora2Pg::Oracle::_column_info($self,$table,$owner,'TABLE');
 	}
@@ -11464,6 +11502,8 @@ sub _column_attributes
 		return Ora2Pg::MySQL::_column_attributes($self,$table,$owner,'TABLE');
 	} elsif ($self->{is_mssql}) {
 		return Ora2Pg::MSSQL::_column_attributes($self,$table,$owner,'TABLE');
+	} elsif ($self->{is_informix}) {
+		return Ora2Pg::Informix::_column_attributes($self,$table,$owner,'TABLE');
 	} else {
 		return Ora2Pg::Oracle::_column_attributes($self,$table,$owner,'TABLE');
 	}
@@ -11477,6 +11517,8 @@ sub _encrypted_columns
 		return Ora2Pg::MySQL::_encrypted_columns($self,$table,$owner);
 	} elsif ($self->{is_mssql}) {
 		return Ora2Pg::MSSQL::_encrypted_columns($self,$table,$owner);
+	} elsif ($self->{is_informix}) {
+		return Ora2Pg::Informix::_encrypted_columns($self,$table,$owner);
 	} else {
 		return Ora2Pg::Oracle::_encrypted_columns($self,$table,$owner);
 	}
@@ -11507,6 +11549,8 @@ sub _unique_key
 		return Ora2Pg::MySQL::_unique_key($self,$table,$owner, $type);
 	} elsif ($self->{is_mssql}) {
 		return Ora2Pg::MSSQL::_unique_key($self,$table,$owner, $type);
+	} elsif ($self->{is_informix}) {
+		return Ora2Pg::Informix::_unique_key($self,$table,$owner, $type);
 	} else {
 		return Ora2Pg::Oracle::_unique_key($self,$table,$owner, $type);
 	}
@@ -11530,6 +11574,8 @@ sub _check_constraint
 		return Ora2Pg::MySQL::_check_constraint($self, $table, $owner);
 	} elsif ($self->{is_mssql}) {
 		return Ora2Pg::MSSQL::_check_constraint($self, $table, $owner);
+	} elsif ($self->{is_informix}) {
+		return Ora2Pg::Informix::_check_constraint($self, $table, $owner);
 	} else {
 		return Ora2Pg::Oracle::_check_constraint($self, $table, $owner);
 	}
@@ -11566,6 +11612,8 @@ sub _foreign_key
 		return Ora2Pg::MySQL::_foreign_key($self,$table,$owner);
 	} elsif ($self->{is_mssql}) {
 		return Ora2Pg::MSSQL::_foreign_key($self,$table,$owner);
+	} elsif ($self->{is_informix}) {
+		return Ora2Pg::Informix::_foreign_key($self,$table,$owner);
 	} else {
 		return Ora2Pg::Oracle::_foreign_key($self,$table,$owner);
 	}
@@ -11592,6 +11640,10 @@ sub _get_privilege
 
 	if ($self->{is_mysql}) {
 		return Ora2Pg::MySQL::_get_privilege($self);
+	} elsif ($self->{is_mssql}) {
+		return Ora2Pg::MSSQL::_get_privilege($self);
+	} elsif ($self->{is_informix}) {
+		return Ora2Pg::Informix::_get_privilege($self);
 	} else {
 		return Ora2Pg::Oracle::_get_privilege($self);
 	}
@@ -11613,6 +11665,8 @@ sub _get_security_definer
 		return Ora2Pg::MySQL::_get_security_definer($self, $type);
 	} elsif ($self->{is_mssql}) {
 		return Ora2Pg::MSSQL::_get_security_definer($self, $type);
+	} elsif ($self->{is_informix}) {
+		return Ora2Pg::Informix::_get_security_definer($self, $type);
 	} else {
 		return Ora2Pg::Oracle::_get_security_definer($self, $type);
 	}
@@ -11636,6 +11690,8 @@ sub _get_indexes
 		return Ora2Pg::MySQL::_get_indexes($self,$table,$owner, $generated_indexes);
 	} elsif ($self->{is_mssql}) {
 		return Ora2Pg::MSSQL::_get_indexes($self,$table,$owner, $generated_indexes);
+	} elsif ($self->{is_informix}) {
+		return Ora2Pg::Informix::_get_indexes($self,$table,$owner, $generated_indexes);
 	} else {
 		return Ora2Pg::Oracle::_get_indexes($self,$table,$owner, $generated_indexes);
 	}
@@ -11658,6 +11714,8 @@ sub _get_sequences
 		return Ora2Pg::MySQL::_get_sequences($self);
 	} elsif ($self->{is_mssql}) {
 		return Ora2Pg::MSSQL::_get_sequences($self);
+	} elsif ($self->{is_informix}) {
+		return Ora2Pg::Informix::_get_sequences($self);
 	} else {
 		return Ora2Pg::Oracle::_get_sequences($self);
 	}
@@ -11678,6 +11736,8 @@ sub _get_identities
 		return Ora2Pg::MySQL::_get_identities($self);
 	} elsif ($self->{is_mssql}) {
 		return Ora2Pg::MSSQL::_get_identities($self);
+	} elsif ($self->{is_informix}) {
+		return Ora2Pg::Informix::_get_identities($self);
 	} else {
 		return Ora2Pg::Oracle::_get_identities($self);
 	}
@@ -11699,6 +11759,8 @@ sub _get_external_tables
 		return Ora2Pg::MySQL::_get_external_tables($self);
 	} elsif ($self->{is_mssql}) {
 		return Ora2Pg::MSSQL::_get_external_tables($self);
+	} elsif ($self->{is_informix}) {
+		return Ora2Pg::Informix::_get_external_tables($self);
 	} else {
 		return Ora2Pg::Oracle::_get_external_tables($self);
 	}
@@ -11720,6 +11782,8 @@ sub _get_directory
 		return Ora2Pg::MySQL::_get_directory($self);
 	} elsif ($self->{is_mssql}) {
 		return Ora2Pg::MSSQL::_get_directory($self);
+	} elsif ($self->{is_informix}) {
+		return Ora2Pg::Informix::_get_directory($self);
 	} else {
 		return Ora2Pg::Oracle::_get_directory($self);
 	}
@@ -11742,6 +11806,8 @@ sub _get_dblink
 		return Ora2Pg::MySQL::_get_dblink($self);
 	} elsif ($self->{is_mssql}) {
 		return Ora2Pg::MSSQL::_get_dblink($self);
+	} elsif ($self->{is_informix}) {
+		return Ora2Pg::Informix::_get_dblink($self);
 	} else {
 		return Ora2Pg::Oracle::_get_dblink($self);
 	}
@@ -11766,6 +11832,8 @@ sub _get_job
 		return Ora2Pg::MySQL::_get_job($self);
 	} elsif ($self->{is_mssql}) {
 		return Ora2Pg::MSSQL::_get_job($self);
+	} elsif ($self->{is_informix}) {
+		return Ora2Pg::Informix::_get_job($self);
 	} else {
 		return Ora2Pg::Oracle::_get_job($self);
 	}
@@ -11788,6 +11856,8 @@ sub _get_views
 		return Ora2Pg::MySQL::_get_views($self);
 	} elsif ($self->{is_mssql}) {
 		return Ora2Pg::MSSQL::_get_views($self);
+	} elsif ($self->{is_informix}) {
+		return Ora2Pg::Informix::_get_views($self);
 	} else {
 		return Ora2Pg::Oracle::_get_views($self);
 	}
@@ -11810,6 +11880,8 @@ sub _get_materialized_views
 		return Ora2Pg::MySQL::_get_materialized_views($self);
 	} elsif ($self->{is_mssql}) {
 		return Ora2Pg::MSSQL::_get_materialized_views($self);
+	} elsif ($self->{is_informix}) {
+		return Ora2Pg::Informix::_get_materialized_views($self);
 	} else {
 		return Ora2Pg::Oracle::_get_materialized_views($self);
 	}
@@ -11823,6 +11895,8 @@ sub _get_materialized_view_names
 		return Ora2Pg::MySQL::_get_materialized_view_names($self);
 	} elsif ($self->{is_mssql}) {
 		return Ora2Pg::MSSQL::_get_materialized_view_names($self);
+	} elsif ($self->{is_informix}) {
+		return Ora2Pg::Informix::_get_materialized_view_names($self);
 	} else {
 		return Ora2Pg::Oracle::_get_materialized_view_names($self);
 	}
@@ -11844,6 +11918,8 @@ sub _get_triggers
 		return Ora2Pg::MySQL::_get_triggers($self);
 	} elsif ($self->{is_mssql}) {
 		return Ora2Pg::MSSQL::_get_triggers($self);
+	} elsif ($self->{is_informix}) {
+		return Ora2Pg::Informix::_get_triggers($self);
 	} else {
 		return Ora2Pg::Oracle::_get_triggers($self);
 	}
@@ -11857,6 +11933,8 @@ sub _list_triggers
 		return Ora2Pg::MySQL::_list_triggers($self);
 	} elsif ($self->{is_mssql}) {
 		return Ora2Pg::MSSQL::_list_triggers($self);
+	} elsif ($self->{is_informix}) {
+		return Ora2Pg::Informix::_list_triggers($self);
 	} else {
 		return Ora2Pg::Oracle::_list_triggers($self);
 	}
@@ -11880,6 +11958,8 @@ sub _get_plsql_metadata
 		return Ora2Pg::MySQL::_get_plsql_metadata($self, $owner);
 	} elsif ($self->{is_mssql}) {
 		return Ora2Pg::MSSQL::_get_plsql_metadata($self, $owner);
+	} elsif ($self->{is_informix}) {
+		return Ora2Pg::Informix::_get_plsql_metadata($self, $owner);
 	} else {
 		return Ora2Pg::Oracle::_get_plsql_metadata($self, $owner);
 	}
@@ -11902,6 +11982,10 @@ sub _get_package_function_list
 
 	if ($self->{is_mysql}) {
 		return Ora2Pg::MySQL::_get_package_function_list($self, $owner);
+	} elsif ($self->{is_mssql}) {
+		return Ora2Pg::MSSQL::_get_package_function_list($self, $owner);
+	} elsif ($self->{is_informix}) {
+		return Ora2Pg::Informix::_get_package_function_list($self, $owner);
 	} else {
 		return Ora2Pg::Oracle::_get_package_function_list($self, $owner);
 	}
@@ -11923,6 +12007,8 @@ sub _get_functions
 		return Ora2Pg::MySQL::_get_functions($self);
 	} elsif ($self->{is_mssql}) {
 		return Ora2Pg::MSSQL::_get_functions($self);
+	} elsif ($self->{is_informix}) {
+		return Ora2Pg::Informix::_get_functions($self);
 	} else {
 		return Ora2Pg::Oracle::_get_functions($self);
 	}
@@ -11944,6 +12030,8 @@ sub _get_procedures
 		return Ora2Pg::MySQL::_get_procedures($self);
 	} elsif ($self->{is_mssql}) {
 		return Ora2Pg::MSSQL::_get_procedures($self);
+	} elsif ($self->{is_informix}) {
+		return Ora2Pg::Informix::_get_procedures($self);
 	} else {
 		return Ora2Pg::Oracle::_get_procedures($self);
 	}
@@ -11963,6 +12051,10 @@ sub _get_packages
 
 	if ($self->{is_mysql}) {
 		return Ora2Pg::MySQL::_get_packages($self);
+	} elsif ($self->{is_mssql}) {
+		return Ora2Pg::MSSQL::_get_packages($self);
+	} elsif ($self->{is_informix}) {
+		return Ora2Pg::Informix::_get_packages($self);
 	} else {
 		return Ora2Pg::Oracle::_get_packages($self);
 	}
@@ -11984,6 +12076,8 @@ sub _get_types
 		return Ora2Pg::MySQL::_get_types($self, $name);
 	} elsif ($self->{is_mssql}) {
 		return Ora2Pg::MSSQL::_get_types($self, $name);
+	} elsif ($self->{is_informix}) {
+		return Ora2Pg::Informix::_get_types($self, $name);
 	} else {
 		return Ora2Pg::Oracle::_get_types($self, $name);
 	}
@@ -12045,6 +12139,8 @@ sub _table_info
 		%tables_infos = Ora2Pg::MySQL::_table_info($self);
 	} elsif ($self->{is_mssql}) {
 		%tables_infos = Ora2Pg::MSSQL::_table_info($self);
+	} elsif ($self->{is_informix}) {
+		%tables_infos = Ora2Pg::Informix::_table_info($self);
 	} else {
 		%tables_infos = Ora2Pg::Oracle::_table_info($self);
 	}
@@ -12135,6 +12231,8 @@ sub _global_temp_table_info
 		return Ora2Pg::MySQL::_global_temp_table_info($self);
 	} elsif ($self->{is_mssql}) {
 		return Ora2Pg::MSSQL::_global_temp_table_info($self);
+	} elsif ($self->{is_informix}) {
+		return Ora2Pg::Informix::_global_temp_table_info($self);
 	} else {
 		return Ora2Pg::Oracle::_global_temp_table_info($self);
 	}
@@ -12181,6 +12279,10 @@ sub _get_audit_queries
 
 	if ($self->{is_mysql}) {
 		return Ora2Pg::MySQL::_get_audit_queries($self);
+	} elsif ($self->{is_mssql}) {
+		return Ora2Pg::MSSQL::_get_audit_queries($self);
+	} elsif ($self->{is_informix}) {
+		return Ora2Pg::Informix::_get_audit_queries($self);
 	} else {
 		return Ora2Pg::Oracle::_get_audit_queries($self);
 	}
@@ -12207,6 +12309,10 @@ sub _get_tablespaces
 
 	if ($self->{is_mysql}) {
 		return Ora2Pg::MySQL::_get_tablespaces($self);
+	} elsif ($self->{is_mssql}) {
+		return Ora2Pg::MSSQL::_get_tablespaces($self);
+	} elsif ($self->{is_informix}) {
+		return Ora2Pg::Informix::_get_tablespaces($self);
 	} else {
 		return Ora2Pg::Oracle::_get_tablespaces($self);
 	}
@@ -12223,6 +12329,10 @@ sub _list_tablespaces
 
 	if ($self->{is_mysql}) {
 		return Ora2Pg::MySQL::_list_tablespaces($self);
+	} elsif ($self->{is_mssql}) {
+		return Ora2Pg::MSSQL::_list_tablespaces($self);
+	} elsif ($self->{is_informix}) {
+		return Ora2Pg::Informix::_list_tablespaces($self);
 	} else {
 		return Ora2Pg::Oracle::_list_tablespaces($self);
 	}
@@ -12243,6 +12353,8 @@ sub _get_partitions
 		return Ora2Pg::MySQL::_get_partitions($self);
 	} elsif ($self->{is_mssql}) {
 		return Ora2Pg::MSSQL::_get_partitions($self);
+	} elsif ($self->{is_informix}) {
+		return Ora2Pg::Informix::_get_partitions($self);
 	} else {
 		return Ora2Pg::Oracle::_get_partitions($self);
 	}
@@ -12263,6 +12375,8 @@ sub _get_subpartitions
 		return Ora2Pg::MySQL::_get_subpartitions($self);
 	} elsif ($self->{is_mssql}) {
 		return Ora2Pg::MSSQL::_get_subpartitions($self);
+	} elsif ($self->{is_informix}) {
+		return Ora2Pg::Informix::_get_subpartitions($self);
 	} else {
 		return Ora2Pg::Oracle::_get_subpartitions($self);
 	}
@@ -12309,6 +12423,8 @@ sub _get_synonyms
 		return Ora2Pg::MySQL::_get_synonyms($self);
 	} elsif ($self->{is_mssql}) {
 		return Ora2Pg::MSSQL::_get_synonyms($self);
+	} elsif ($self->{is_informix}) {
+		return Ora2Pg::Informix::_get_synonyms($self);
 	} else {
 		return Ora2Pg::Oracle::_get_synonyms($self);
 	}
@@ -12328,6 +12444,8 @@ sub _get_partitions_type
 		return Ora2Pg::MySQL::_get_partitions_type($self);
 	} elsif ($self->{is_mssql}) {
 		return Ora2Pg::MSSQL::_get_partitions_type($self);
+	} elsif ($self->{is_informix}) {
+		return Ora2Pg::Informix::_get_partitions_type($self);
 	} else {
 		return Ora2Pg::Oracle::_get_partitions_type($self);
 	}
@@ -12347,6 +12465,8 @@ sub _get_partitioned_table
 		return Ora2Pg::MySQL::_get_partitioned_table($self);
 	} elsif ($self->{is_mssql}) {
 		return Ora2Pg::MSSQL::_get_partitioned_table($self);
+	} elsif ($self->{is_informix}) {
+		return Ora2Pg::Informix::_get_partitioned_table($self);
 	} else {
 		return Ora2Pg::Oracle::_get_partitioned_table($self);
 	}
@@ -12366,6 +12486,8 @@ sub _get_subpartitioned_table
 		return Ora2Pg::MySQL::_get_subpartitioned_table($self);
 	} elsif ($self->{is_mssql}) {
 		return Ora2Pg::MSSQL::_get_subpartitioned_table($self);
+	} elsif ($self->{is_informix}) {
+		return Ora2Pg::Informix::_get_subpartitioned_table($self);
 	} else {
 		return Ora2Pg::Oracle::_get_subpartitioned_table($self);
 	}
@@ -12381,6 +12503,8 @@ sub _get_custom_types
 		%all_types = %Ora2Pg::MySQL::SQL_TYPE;
 	} elsif ($self->{is_mssql}) {
 		%all_types = %Ora2Pg::MSSQL::SQL_TYPE;
+	} elsif ($self->{is_informix}) {
+		%all_types = %Ora2Pg::Informix::SQL_TYPE;
 	} else {
 		%all_types = %Ora2Pg::Oracle::SQL_TYPE;
 	}
@@ -15818,7 +15942,8 @@ sub _show_infos
 			$self->logit("\tMySQL collation encoding: $collation\n", 0);
 			$self->logit("\tPostgreSQL CLIENT_ENCODING: $client_encoding\n", 0);
 			$self->logit("MySQL SQL mode: $self->{mysql_mode}\n", 0);
-		} elsif ($self->{is_mssql})
+		}
+		elsif ($self->{is_mssql})
 		{
 			$self->logit("Current encoding settings that will be used by Ora2Pg:\n", 0);
 			$self->logit("\tMSSQL database and client encoding: utf8\n", 0);
@@ -15831,7 +15956,23 @@ sub _show_infos
 			$self->logit("\tMSSQL database encoding: $self->{nls_lang}\n", 0);
 			$self->logit("\tMSSQL collation encoding: $self->{nls_nchar}\n", 0);
 			$self->logit("\tPostgreSQL CLIENT_ENCODING: $client_encoding\n", 0);
-		} else {
+		}
+		elsif ($self->{is_informix})
+		{
+			$self->logit("Current encoding settings that will be used by Ora2Pg:\n", 0);
+			$self->logit("\tInformix database and client encoding: utf8\n", 0);
+			$self->logit("\tInformix collation encoding: $self->{nls_nchar}\n", 0);
+			$self->logit("\tPostgreSQL CLIENT_ENCODING: $self->{client_encoding}\n", 0);
+			$self->logit("\tPerl output encoding '$self->{binmode}'\n", 0);
+			$self->logit("\tOra2Pg use UTF8 export to export from Informix, change to NSL_LANG and\n", 0);
+			$self->logit("\tNLS_NCHAR have no effect. CLIENT_ENCODING must be set to UFT8\n", 0);
+			$self->logit("Showing current Informix encoding and possible PostgreSQL client encoding:\n", 0);
+			$self->logit("\tInformix database encoding: $self->{nls_lang}\n", 0);
+			$self->logit("\tInformix collation encoding: $self->{nls_nchar}\n", 0);
+			$self->logit("\tPostgreSQL CLIENT_ENCODING: $client_encoding\n", 0);
+		}
+		else
+		{
 			$self->logit("Current encoding settings that will be used by Ora2Pg:\n", 0);
 			$self->logit("\tOracle NLS_LANG $self->{nls_lang}\n", 0);
 			$self->logit("\tOracle NLS_NCHAR $self->{nls_nchar}\n", 0);
@@ -15876,6 +16017,8 @@ sub _show_infos
 			$uncovered_score = 'Ora2Pg::PLSQL::UNCOVERED_MYSQL_SCORE';
 		} elsif ($self->{is_mssql}) {
 			$uncovered_score = 'Ora2Pg::PLSQL::UNCOVERED_MSSQL_SCORE';
+		} elsif ($self->{is_informix}) {
+			$uncovered_score = 'Ora2Pg::PLSQL::UNCOVERED_INFORMIX_SCORE';
 		}
 		# Get Oracle database version and size
 		print STDERR "Looking at Oracle server version...\n" if ($self->{debug});
@@ -16536,7 +16679,7 @@ sub _show_infos
 			} elsif ($ret == 2) {
 				$warning = " (Warning: '$row[0]' object name with numbers only must be double quoted in PostgreSQL)";
 			}
-			if (!$self->{is_mysql}) {
+			if (!$self->{is_mysql} && !$self->{is_informix}) {
 				$self->logit("SCHEMA $row[0]$warning\n", 0);
 			} else {
 				$self->logit("DATABASE $row[0]$warning\n", 0);
@@ -17028,6 +17171,7 @@ sub _table_row_count
 	my $lbl = 'ORACLEDB';
 	$lbl    = 'MYSQL_DB' if ($self->{is_mysql});
 	$lbl    = 'MSSQL_DB' if ($self->{is_mssql});
+	$lbl    = 'INFORMIX' if ($self->{is_informix});
 
 	# Get all tables information specified by the DBI method table_info
 	$self->logit("Looking for real row count in source database and PostgreSQL tables...\n", 1);
@@ -17128,6 +17272,8 @@ sub _col_count
 		%col_count = Ora2Pg::MySQL::_col_count($self, $table, $schema);
 	} elsif ($self->{is_mssql}) {
 		%col_count = Ora2Pg::MSSQL::_col_count($self, $table, $schema);
+	} elsif ($self->{is_informix}) {
+		%col_count = Ora2Pg::Informix::_col_count($self, $table, $schema);
 	} else {
 		%col_count = Ora2Pg::Oracle::_col_count($self, $table, $schema);
 	}
@@ -17150,6 +17296,7 @@ sub _test_table
 	my $lbl = 'ORACLEDB';
 	$lbl    = 'MYSQL_DB' if ($self->{is_mysql});
 	$lbl    = 'MSSQL_DB' if ($self->{is_mssql});
+	$lbl    = 'INFORMIX' if ($self->{is_informix});
 
 	####
 	# Test number of column in tables
@@ -17277,7 +17424,7 @@ GROUP BY tn.nspname, t.relname
 	print "[TEST UNIQUE CONSTRAINTS COUNT]\n";
 	my %unique_keys = $self->_unique_key('',$self->{schema},'U');
 	$schema_cond = $self->get_schema_condition('tn.nspname');
-	my $exclude_unique = '';
+	$exclude_unique = '';
 	$exclude_unique = 'AND i.indisunique' if ($self->{is_mssql});
 	$sql = qq{SELECT tn.nspname||'.'||t.relname, count(*)
 FROM pg_index i
@@ -17930,6 +18077,7 @@ WHERE c.relkind = 'v' AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_depend WHERE r
 	my $lbl = 'ORACLEDB';
 	$lbl    = 'MYSQL_DB' if ($self->{is_mysql});
 	$lbl    = 'MSSQL_DB' if ($self->{is_mssql});
+	$lbl    = 'INFORMIX' if ($self->{is_informix});
 
 	print "[UNITARY TEST OF VIEWS]\n";
 	foreach my $v (sort keys %list_views)
@@ -17937,7 +18085,7 @@ WHERE c.relkind = 'v' AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_depend WHERE r
 		# Execute init settings if any
 		# Count rows returned by all view on the source database
 		my $vname = $v;
-		my $vname = "$list_views{$v}.$v" if (!$self->{schema});
+		$vname = "$list_views{$v}.$v" if (!$self->{schema});
 	        	
 		$sql = "SELECT count(*) FROM $list_views{$v}.$v";
 		my $sth = $self->{dbh}->prepare($sql)  or $self->logit("ERROR: " . $self->{dbh}->errstr . "\n", 0, 0);
@@ -17976,6 +18124,7 @@ sub _count_object
 	my $lbl = 'ORACLEDB';
 	$lbl    = 'MYSQL_DB' if ($self->{is_mysql});
 	$lbl    = 'MSSQL_DB' if ($self->{is_mssql});
+	$lbl    = 'INFORMIX' if ($self->{is_informix});
 
 	my $schema_clause = $self->get_schema_condition();
 	my $nbobj = 0;
@@ -18096,6 +18245,7 @@ sub _test_function
 	my $lbl = 'ORACLEDB';
 	$lbl    = 'MYSQL_DB' if ($self->{is_mysql});
 	$lbl    = 'MSSQL_DB' if ($self->{is_mssql});
+	$lbl    = 'INFORMIX' if ($self->{is_informix});
 
 	####
 	# Test number of function
@@ -18172,6 +18322,7 @@ sub _test_seq_values
 	my $lbl = 'ORACLEDB';
 	$lbl    = 'MYSQL_DB' if ($self->{is_mysql});
 	$lbl    = 'MSSQL_DB' if ($self->{is_mssql});
+	$lbl    = 'INFORMIX' if ($self->{is_informix});
 
 	####
 	# Test number of function
@@ -18254,6 +18405,8 @@ sub _get_version
 		return Ora2Pg::MySQL::_get_version($self);
 	} elsif ($self->{is_mssql}) {
 		return Ora2Pg::MSSQL::_get_version($self);
+	} elsif ($self->{is_informix}) {
+		return Ora2Pg::Informix::_get_version($self);
 	} else {
 		return Ora2Pg::Oracle::_get_version($self);
 	}
@@ -18273,6 +18426,8 @@ sub _get_database_size
 		return Ora2Pg::MySQL::_get_database_size($self);
 	} elsif ($self->{is_mssql}) {
 		return Ora2Pg::MSSQL::_get_database_size($self);
+	} elsif ($self->{is_informix}) {
+		return Ora2Pg::Informix::_get_database_size($self);
 	} else {
 		return Ora2Pg::Oracle::_get_database_size($self);
 	}
@@ -18293,6 +18448,8 @@ sub _get_objects
 		return Ora2Pg::MySQL::_get_objects($self);
 	} elsif ($self->{is_mssql}) {
 		return Ora2Pg::MSSQL::_get_objects($self);
+	} elsif ($self->{is_informix}) {
+		return Ora2Pg::Informix::_get_objects($self);
 	} else {
 		return Ora2Pg::Oracle::_get_objects($self);
 	}
@@ -18306,6 +18463,8 @@ sub _list_all_functions
 		return Ora2Pg::MySQL::_list_all_functions($self);
 	} elsif ($self->{is_mssql}) {
 		return Ora2Pg::MSSQL::_list_all_functions($self);
+	} elsif ($self->{is_informix}) {
+		return Ora2Pg::Informix::_list_all_functions($self);
 	} else {
 		return Ora2Pg::Oracle::_list_all_functions($self);
 	}
@@ -18327,6 +18486,8 @@ sub _schema_list
 		return Ora2Pg::MySQL::_schema_list($self);
 	} elsif ($self->{is_mssql}) {
 		return Ora2Pg::MSSQL::_schema_list($self);
+	} elsif ($self->{is_informix}) {
+		return Ora2Pg::Informix::_schema_list($self);
 	} else {
 		return Ora2Pg::Oracle::_schema_list($self);
 	}
@@ -18347,6 +18508,8 @@ sub _table_exists
 		return Ora2Pg::MySQL::_table_exists($self, $schema, $table);
 	} elsif ($self->{is_mssql}) {
 		return Ora2Pg::MSSQL::_table_exists($self, $schema, $table);
+	} elsif ($self->{is_informix}) {
+		return Ora2Pg::Informix::_table_exists($self, $schema, $table);
 	} else {
 		return Ora2Pg::Oracle::_table_exists($self, $schema, $table);
 	}
@@ -18366,6 +18529,8 @@ sub _get_largest_tables
 		return Ora2Pg::MySQL::_get_largest_tables($self);
 	} elsif ($self->{is_mssql}) {
 		return Ora2Pg::MSSQL::_get_largest_tables($self);
+	} elsif ($self->{is_informix}) {
+		return Ora2Pg::Informix::_get_largest_tables($self);
 	} else {
 		return Ora2Pg::Oracle::_get_largest_tables($self);
 	}
@@ -18387,6 +18552,8 @@ sub _get_encoding
 		return Ora2Pg::MySQL::_get_encoding($self, $self->{dbh});
 	} elsif ($self->{is_mssql}) {
 		return Ora2Pg::MSSQL::_get_encoding($self, $self->{dbh});
+	} elsif ($self->{is_informix}) {
+		return Ora2Pg::Informix::_get_encoding($self, $self->{dbh});
 	} else {
 		return Ora2Pg::Oracle::_get_encoding($self, $self->{dbh});
 	}
@@ -18863,7 +19030,7 @@ sub limit_to_objects
 		}
 
 		# Always exclude unwanted tables
-		if (!$self->{is_mysql} && !$self->{is_mssql} && !$self->{no_excluded_table} && !$has_limitation
+		if (!$self->{is_mysql} && !$self->{is_mssql} && !$self->{is_informix} && !$self->{no_excluded_table} && !$has_limitation
 			&& ($arr_type[$i] =~ /TABLE|SEQUENCE|VIEW|TRIGGER|TYPE|SYNONYM/))
 		{
 			if ($self->{db_version} =~ /Release [89]/)
@@ -19016,6 +19183,8 @@ sub _lookup_function
 		return Ora2Pg::MySQL::_lookup_function($self, $plsql, $pname);
 	} elsif ($self->{is_mssql}) {
 		return Ora2Pg::MSSQL::_lookup_function($self, $plsql, $pname);
+	} elsif ($self->{is_informix}) {
+		return Ora2Pg::Informix::_lookup_function($self, $plsql, $pname);
 	} else {
 		return Ora2Pg::Oracle::_lookup_function($self, $plsql, $pname);
 	}
@@ -20561,6 +20730,8 @@ sub compare_data
 	my $lbl = 'ORACLEDB';
 	$lbl    = 'MYSQL_DB' if ($self->{is_mysql});
 	$lbl    = 'MSSQL_DB' if ($self->{is_mssql});
+	$lbl    = 'INFORMIX' if ($self->{is_informix});
+
 	my $dbhora = undef;
 	my $dbhpg = undef;
 
