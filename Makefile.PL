@@ -630,16 +630,12 @@ INDEXES_RENAMING	0
 # columns of type varchar2(N) where N >= 128.
 USE_INDEX_OPCLASS	0
 
-# Enable this directive if you want that your partition table name will be
-# exported using the parent table name. Disabled by default. If you have
-# multiple partitioned table, when exported to PostgreSQL some partitions
-# could have the same name but different parent tables. This is not allowed,
-# table name must be unique. 
-PREFIX_PARTITION	0
-
-# Disable this directive if your subpartitions are dedicated to your partition 
-# (in case of your partition_name is a part of your subpartition_name)
-PREFIX_SUB_PARTITION	1
+# Enable this directive if you want that your partition tables will be
+# renamed. Disabled by default. If you have multiple partitioned table,
+# when exported to PostgreSQL some partitions could have the same name
+# but different parent tables. This is not allowed, table name must be
+# unique, in this case enable this directive. 
+RENAME_PARTITION	0
 
 # If you don't want to reproduce the partitioning like in Oracle and want to
 # export all partitionned Oracle data into the main single table in PostgreSQL

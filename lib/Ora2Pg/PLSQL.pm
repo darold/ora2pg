@@ -730,6 +730,9 @@ sub plsql_to_plpgsql
 	my $field = '\s*([^\(\),]+)\s*';
 	my $num_field = '\s*([\d\.]+)\s*';
 
+	# Rewrite variable calls
+	$str =~ s/([a-z=<>\*\+\-\/\( ]): ([a-z0-9_\$]+)/$1 :'$2'/igs if ($class->{type} eq 'QUERY');
+
 	my $conv_current_time = 'clock_timestamp()';
 	if (!grep(/$class->{type}/i, 'FUNCTION', 'PROCEDURE', 'PACKAGE')) {
 		$conv_current_time = 'statement_timestamp()';
@@ -1477,8 +1480,10 @@ sub replace_rownum_with_limit
 		my $clause = $2;
 		if ($clause =~ /\%SUBQUERY\d+\%/) {
 			$tmp_val = $clause;
-		} else {
+		} elsif ($clause !~ /\D/) {
 			$tmp_val = $clause - 1;
+		} else {
+			$tmp_val = "$clause - 1";
 		}
         }
 	if ($str =~ s/\s+AND\s+(?:\(\s*)?ROWNUM\s*<=\s*([^\s\)]+)(\s*\)\s*)?([^;]*)/ $2$3/is) {
@@ -1489,8 +1494,10 @@ sub replace_rownum_with_limit
 		my $clause = $1;
 		if ($clause =~ /\%SUBQUERY\d+\%/) {
 			$tmp_val = $clause;
-		} else {
+		} elsif ($clause !~ /\D/) {
 			$tmp_val = $clause - 1;
+		} else {
+			$tmp_val = "$clause - 1";
 		}
         }
 	$str =~ s/\s+WHERE\s+ORDER\s+/ ORDER /is;

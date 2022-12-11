@@ -942,9 +942,8 @@ sub _init
 	$self->{function_metadata} = ();
 	$self->{grant_object} = '';
 
-	# Used to precise if we need to prefix partition tablename with main tablename
-	$self->{prefix_partition} = 0;
-	$self->{prefix_part_subpartition} = 1;
+	# Used to precise if we need to rename the partitions
+	$self->{rename_partition} = 0;
 
 	# Use to preserve the data export type with geometry objects
 	$self->{local_type} = '';
@@ -1439,6 +1438,9 @@ sub _init
 
 	# Set Oracle, Perl and PostgreSQL encoding that will be used
 	$self->_init_environment();
+
+	# Backward compatibility
+	$self->{prefix_partition} = 1 if (!$self->{rename_partition} && $self->{prefix_partition});
 
 	# Multiple Oracle connection
 	$self->{oracle_copies} ||= 0;
@@ -4121,7 +4123,7 @@ sub _export_table_data
 		{
 			my $part_name = $self->{partitions}{$table}{$pos}{name};
 			my $tbpart_name = $part_name;
-			$tbpart_name = $table . '_' . $part_name if ($self->{prefix_partition});
+			$tbpart_name = $table . '_part' . $pos if ($self->{rename_partition});
 			next if ($self->{allow_partition} && !grep($_ =~ /^$tbpart_name$/i, @{$self->{allow_partition}}));
 
 			if (exists $self->{subpartitions}{$table}{$part_name})
@@ -4132,7 +4134,7 @@ sub _export_table_data
 					next if ($self->{allow_partition} && !grep($_ =~ /^$subpart$/i, @{$self->{allow_partition}}));
 					my $sub_tb_name = $subpart;
 					$sub_tb_name =~ s/^[^\.]+\.//; # remove schema part if any
-					$sub_tb_name = "${table}_$sub_tb_name" if ($self->{prefix_partition});
+					$sub_tb_name = $table . '_part' . $pos . '_subpart' . $p if ($self->{rename_partition});
 					if ($self->{file_per_table} && !$self->{pg_dsn}) {
 						# Do not dump data again if the file already exists
 						next if ($self->file_exists("$dirprefix${sub_tb_name}_$self->{output}"));
@@ -4144,9 +4146,9 @@ sub _export_table_data
 					}
 
 					$self->logit("Dumping sub partition table $table ($subpart)...\n", 1);
-					$total_record = $self->_dump_table($dirprefix, $sql_header, $table, $subpart, 1);
+					$total_record = $self->_dump_table($dirprefix, $sql_header, $table, $subpart, 1, $tbpart_name, $sub_tb_name);
 					# Rename temporary filename into final name
-					$self->rename_dump_partfile($dirprefix, $sub_tb_name);
+					$self->rename_dump_partfile($dirprefix, $subpart, $table);
 				}
 				# Now load content of the default subpartition table
 				if ($self->{subpartitions_default}{$table}{$part_name})
@@ -4158,12 +4160,20 @@ sub _export_table_data
 							# Do not dump data again if the file already exists
 							if (!$self->file_exists("$dirprefix$self->{subpartitions_default}{$table}{$part_name}_$self->{output}"))
 							{
-								$total_record = $self->_dump_table($dirprefix, $sql_header, $table, $self->{subpartitions_default}{$table}{$part_name}, 1);
+								if ($self->{rename_partition}) {
+									$total_record = $self->_dump_table($dirprefix, $sql_header, $table, $self->{subpartitions_default}{$table}{$part_name}, 1, $tbpart_name, $tbpart_name . '_subpart_default');
+								} else {
+									$total_record = $self->_dump_table($dirprefix, $sql_header, $table, $self->{subpartitions_default}{$table}{$part_name}, 1, $part_name, $self->{subpartitions_default}{$table}{$part_name});
+								}
 							}
 						}
 						else
 						{
-							$total_record = $self->_dump_table($dirprefix, $sql_header, $table, $self->{subpartitions_default}{$table}{$part_name}, 1);
+							if ($self->{rename_partition}) {
+								$total_record = $self->_dump_table($dirprefix, $sql_header, $table, $self->{subpartitions_default}{$table}{$part_name}, 1, $tbpart_name, $tbpart_name . '_subpart_default');
+							} else {
+								$total_record = $self->_dump_table($dirprefix, $sql_header, $table, $self->{subpartitions_default}{$table}{$part_name}, 1, $part_name, $self->{subpartitions_default}{$table}{$part_name});
+							}
 						}
 					}
 					# Rename temporary filename into final name
@@ -4179,7 +4189,7 @@ sub _export_table_data
 				}
 
 				$self->logit("Dumping partition table $table ($part_name)...\n", 1);
-				$total_record = $self->_dump_table($dirprefix, $sql_header, $table, $part_name);
+				$total_record = $self->_dump_table($dirprefix, $sql_header, $table, $part_name, 0, $tbpart_name, $sub_tb_name);
 				# Rename temporary filename into final name
 				$self->rename_dump_partfile($dirprefix, $part_name, $table);
 			}
@@ -4195,12 +4205,12 @@ sub _export_table_data
 					# Do not dump data again if the file already exists
 					if (!$self->file_exists("$dirprefix$self->{partitions_default}{$table}_$self->{output}"))
 					{
-						$total_record = $self->_dump_table($dirprefix, $sql_header, $table, $self->{partitions_default}{$table});
+						$total_record = $self->_dump_table($dirprefix, $sql_header, $table, $self->{partitions_default}{$table}, 0, $tbpart_name, $sub_tb_name);
 					}
 				}
 				else
 				{
-					$total_record = $self->_dump_table($dirprefix, $sql_header, $table, $self->{partitions_default}{$table});
+					$total_record = $self->_dump_table($dirprefix, $sql_header, $table, $self->{partitions_default}{$table}, 0, $tbpart_name, $sub_tb_name);
 				}
 				# Rename temporary filename into final name
 				$self->rename_dump_partfile($dirprefix, $self->{partitions_default}{$table}, $table);
@@ -4305,11 +4315,12 @@ sub rename_dump_partfile
 {
 	my ($self, $dirprefix, $partname, $tbl) = @_;
 
-	my $filename = "${dirprefix}tmp_${partname}_$self->{output}";
-	my $filedest = "${dirprefix}${partname}_$self->{output}";
-	if ($tbl && $self->{prefix_partition}) {
-		$filename = "${dirprefix}tmp_${tbl}_${partname}_$self->{output}";
-		$filedest = "${dirprefix}${tbl}_${partname}_$self->{output}";
+        my $filename = "${dirprefix}tmp_${tbl}_${partname}_$self->{output}";
+        my $filedest = "${dirprefix}${tbl}_${partname}_$self->{output}";
+        if (!$tbl)
+        {
+                $filename = "${dirprefix}tmp_${partname}_$self->{output}";
+                $filedest = "${dirprefix}${partname}_$self->{output}";
 	}
 	if (-e $filename) {
 		$self->logit("Renaming temporary file $filename into $filedest\n", 1);
@@ -6765,8 +6776,8 @@ BEGIN
 			my $create_table_tmp = '';
 			my $create_table_index_tmp = '';
 			my $tb_name = '';
-			if ($self->{prefix_partition}) {
-				$tb_name = $table . "_" . $part;
+			if ($self->{rename_partition}) {
+				$tb_name = $table . '_part' . $pos;
 			} else {
 				if ($self->{export_schema} && !$self->{schema} && ($table =~ /^([^\.]+)\./)) {
 					$tb_name =  $1 . '.' . $part;
@@ -6953,20 +6964,20 @@ BEGIN
 						}
 					}
 				}
-				my $deftb = '';
-				$deftb = "${table}_" if ($self->{prefix_partition});
+				my $deftb = $self->{partitions_default}{$table};
+				$deftb = $table . '_part_default' if ($self->{rename_partition});
 				# Reproduce indexes definition from the main table before PG 11
 				# after they are automatically created on partition tables
 				if ($self->{pg_version} < 11)
 				{
-					if ($self->{partitions_default}{$table} && ($create_table{$table}{index} !~ /ON $deftb$self->{partitions_default}{$table} /))
+					if ($self->{partitions_default}{$table} && ($create_table{$table}{index} !~ /ON $deftb /))
 					{
 						$cindx = $self->{partitions}{$table}{$pos}{info}[$i]->{column} || '';
 						$cindx = lc($cindx) if (!$self->{preserve_case});
 						$cindx = Ora2Pg::PLSQL::convert_plsql_code($self, $cindx);
 						if ($cindx)
 						{
-							$create_table_index_tmp .= "CREATE INDEX " . $self->quote_object_name("$deftb$self->{partitions_default}{$table}_$colname") . " ON " . $self->quote_object_name("$deftb$self->{partitions_default}{$table}") . " ($cindx);\n";
+							$create_table_index_tmp .= "CREATE INDEX " . $self->quote_object_name($deftb . '_' . $colname) . " ON " . $self->quote_object_name($deftb) . " ($cindx);\n";
 						}
 					}
 					push(@ind_col, $self->{partitions}{$table}{$pos}{info}[$i]->{column}) if (!grep(/^$self->{partitions}{$table}{$pos}{info}[$i]->{column}$/, @ind_col));
@@ -7058,13 +7069,11 @@ BEGIN
 					my $subpart = $self->{subpartitions}{$table}{$part}{$p}{name};
 					my $sub_tb_name = $subpart;
 					$sub_tb_name =~ s/^[^\.]+\.//; # remove schema part if any
-					if ($self->{prefix_partition})
+					if ($self->{rename_partition})
 					{
-						if ($self->{prefix_sub_partition}) {
-							$sub_tb_name = "${tb_name}_$sub_tb_name";
-						} else {
-							$sub_tb_name = "${table}_$sub_tb_name";
-						}
+						$sub_tb_name = $tb_name . '_subpart' . $p;
+					} else {
+						$sub_tb_name = "${table}_$sub_tb_name";
 					}
 					if (!$self->{quiet} && !$self->{debug} && ($nparts % $PGBAR_REFRESH) == 0)
 					{
@@ -7280,9 +7289,9 @@ BEGIN
 						$funct_cond .= $sub_funct_cond;
 						if (exists $self->{subpartitions_default}{$table}{$part})
 						{
-							my $deftb = '';
-							$deftb = "${table}_" if ($self->{prefix_partition});
-							$funct_cond .= "\t\tELSE INSERT INTO " . $self->quote_object_name("$deftb$self->{subpartitions_default}{$table}{$part}")
+							my $deftb = $self->{subpartitions_default}{$table}{$part};
+							$deftb = $table . '_part'. $pos . '_subpart_default' if ($self->{rename_partition});
+							$funct_cond .= "\t\tELSE INSERT INTO " . $self->quote_object_name($deftb)
 										. " VALUES (NEW.*);\n\t\tEND IF;\n";
 							$create_table_tmp .= "DROP TABLE $self->{pg_supports_ifexists} " . $self->quote_object_name("$deftb$self->{subpartitions_default}{$table}{$part}") . ";\n" if ($self->{drop_if_exists});
 							$create_table_tmp .= "CREATE TABLE " . $self->quote_object_name("$deftb$self->{subpartitions_default}{$table}{$part}")
@@ -7306,8 +7315,8 @@ BEGIN
 					elsif (exists $self->{subpartitions_default}{$table}{$part})
 					{
 						my $tb_name = $self->{subpartitions_default}{$table}{$part};
-						if ($self->{prefix_partition}) {
-							$tb_name = $table . "_" . $self->{subpartitions_default}{$table}{$part};
+						if ($self->{rename_partition}) {
+							$tb_name = $table . '_part' . $pos . '_subpart_default';
 						} elsif ($self->{export_schema} && !$self->{schema} && ($table =~ /^([^\.]+)\./)) {
 							$tb_name =  $1 . '.' . $self->{subpartitions_default}{$table}{$part};
 						}
@@ -7335,9 +7344,9 @@ BEGIN
 			{
 				if ($self->{partitions_default}{$table})
 				{
-					my $deftb = '';
-					$deftb = "${table}_" if ($self->{prefix_partition});
-					my $pname = $self->quote_object_name("$deftb$self->{partitions_default}{$table}");
+					my $deftb = $self->{partitions_default}{$table};
+					$deftb = $table . '_part_default' if ($self->{rename_partition});
+					my $pname = $self->quote_object_name($deftb);
 					$function .= $funct_cond . qq{	ELSE
 	INSERT INTO $pname VALUES (NEW.*);
 };
@@ -7364,8 +7373,8 @@ LANGUAGE plpgsql;
 				if (exists $self->{partitions_default}{$table})
 				{
 					my $tb_name = '';
-					if ($self->{prefix_partition}) {
-						$tb_name = $table . "_" . $self->{partitions_default}{$table};
+					if ($self->{rename_partition}) {
+						$tb_name = $table . '_part_default';
 					}
 					else
 					{
@@ -7400,7 +7409,7 @@ $create_table{$table}{table}
 			my $tb = $self->quote_object_name($table);
 			my $trg = $self->quote_object_name("${table}_insert_trigger");
 			my $defname = $self->{partitions_default}{$table};
-			$defname = $table . '_' .  $defname if ($self->{prefix_partition});
+			$defname = $table . '_part_default' if ($self->{rename_partition});
 			$defname = $self->quote_object_name($defname);
 			if (!$self->{pg_supports_partition} && $function)
 			{
@@ -8710,7 +8719,7 @@ sub _get_sql_statements
 					if (!exists $self->{subpartitions}{$table}{$part_name}) {
 						$tb_name = $part_name;
 					}
-					$tb_name = $table . '_' . $tb_name if ($self->{prefix_partition});
+					$tb_name = $table . '_part' . $pos if ($self->{rename_partition});
 					next if ($self->{allow_partition} && !grep($_ =~ /^$part_name$/i, @{$self->{allow_partition}}));
 
 					if (exists $self->{subpartitions}{$table}{$part_name})
@@ -8721,14 +8730,15 @@ sub _get_sql_statements
 							next if ($self->{allow_partition} && !grep($_ =~ /^$subpart$/i, @{$self->{allow_partition}}));
 							my $sub_tb_name = $subpart;
 							$sub_tb_name =~ s/^[^\.]+\.//; # remove schema part if any
-							$sub_tb_name = "${tb_name}$sub_tb_name" if ($self->{prefix_partition});
-							if ($self->{file_per_table} && !$self->{pg_dsn}) {
-								my $file_name = "$dirprefix${sub_tb_name}_$self->{output}";
+							if ($self->{file_per_table} && !$self->{pg_dsn})
+							{
+								my $file_name = "$dirprefix${table}_${sub_tb_name}_$self->{output}";
 								$file_name =~ s/\.(gz|bz2)$//;
 								$load_file .=  "\\i$self->{psql_relative_path} '$file_name'\n";
 							}
+							$sub_tb_name = $tb_name . '_subpart' . $p if ($self->{rename_partition});
 						}
-						# Now load content of the default partion table
+						# Now load content of the default partition table
 						if ($self->{subpartitions_default}{$table}{$part_name})
 						{
 							if (!$self->{allow_partition} || grep($_ =~ /^$self->{subpartitions_default}{$table}{$part_name}$/i, @{$self->{allow_partition}}))
@@ -8736,10 +8746,10 @@ sub _get_sql_statements
 								if ($self->{file_per_table} && !$self->{pg_dsn})
 								{
 									my $part_name = $self->{subpartitions_default}{$table}{$part_name};
-									$part_name = "${tb_name}$part_name" if ($self->{prefix_partition});
-									my $file_name = "$dirprefix${part_name}_$self->{output}";
+									my $file_name = "$dirprefix${table}_${part_name}_$self->{output}";
 									$file_name =~ s/\.(gz|bz2)$//;
 									$load_file .=  "\\i$self->{psql_relative_path} '$file_name'\n";
+									$part_name = $tb_name . '_default' if ($self->{rename_partition});
 								}
 							}
 						}
@@ -8762,10 +8772,10 @@ sub _get_sql_statements
 						if ($self->{file_per_table} && !$self->{pg_dsn})
 						{
 							my $part_name = $self->{partitions_default}{$table};
-							$part_name = $table . '_' . $part_name if ($self->{prefix_partition});
-							my $file_name = "$dirprefix${part_name}_$self->{output}";
+							my $file_name = "$dirprefix${table}_${part_name}_$self->{output}";
 							$file_name =~ s/\.(gz|bz2)$//;
 							$load_file .=  "\\i$self->{psql_relative_path} '$file_name'\n";
+							$part_name = $table . '_part_default' if ($self->{rename_partition});
 						}
 					}
 				}
@@ -9377,7 +9387,7 @@ sub file_exists
 ####
 sub _dump_table
 {
-	my ($self, $dirprefix, $sql_header, $table, $part_name, $is_subpart) = @_;
+	my ($self, $dirprefix, $sql_header, $table, $part_name, $is_subpart, $tbpart_name, $sub_tb_name) = @_;
 
 	my @cmd_head = ();
 	my @cmd_foot = ();
@@ -9393,10 +9403,13 @@ sub _dump_table
 
 	# Prefix partition name with tablename, if pg_supports_partition is enabled
 	# direct import to partition is not allowed so import to main table.
-	if (!$self->{pg_supports_partition} && $part_name && $self->{prefix_partition}) {
+	if (!$self->{pg_supports_partition} && $part_name && $self->{rename_partition}) {
 		$tmptb = $self->get_replaced_tbname($table . '_' . $part_name);
 	} elsif (!$self->{pg_supports_partition} && $part_name) {
 		$tmptb = $self->get_replaced_tbname($part_name || $table);
+	} elsif ($tbpart_name) {
+		$tmptb = $self->get_replaced_tbname($tbpart_name);
+		$tmptb = $self->get_replaced_tbname($sub_tb_name) if ($sub_tb_name);
 	} else {
 		$tmptb = $self->get_replaced_tbname($table);
 	}
@@ -13181,8 +13194,11 @@ sub data_dump
 	my $dirprefix = '';
 	$dirprefix = "$self->{output_dir}/" if ($self->{output_dir});
 	my $filename = $self->{output};
-	my $rname = $pname || $tname;
-	if ($self->{file_per_table}) {
+	my $rname = $tname;
+	$rname .= '_' . $pname if (!$self->{rename_partition} && $pname);
+	$rname = $pname if ($self->{rename_partition} && $pname);
+	if ($self->{file_per_table})
+	{
 		$filename = "${rname}_$self->{output}";
 		$filename = "tmp_$filename";
 	}
@@ -15418,7 +15434,7 @@ sub _extract_data
 			}
 		}
 
-		if (@rows && (!$self->{oracle_speed} || $self->{ora2pg_speed}))
+		if (!$self->{oracle_speed} || $self->{ora2pg_speed})
 		{
 			$total_record += @rows;
 			$self->{current_total_row} += @rows;
@@ -15767,7 +15783,7 @@ sub _dump_to_pg
 	}
 	else
 	{
-		if ($part_name && $self->{prefix_partition})  {
+		if ($part_name && $self->{rename_partition})  {
 			$part_name = $table . '_' . $part_name;
 		}
 		$sql_out = $h_towrite . $sql_out . $e_towrite;
@@ -20986,7 +21002,7 @@ sub _get_oracle_test_data
 
 	# Prefix partition name with tablename, if pg_supports_partition is enabled
 	# direct import to partition is not allowed so import to main table.
-	if (!$self->{pg_supports_partition} && $part_name && $self->{prefix_partition}) {
+	if (!$self->{pg_supports_partition} && $part_name && $self->{rename_partition}) {
 		$tmptb = $self->get_replaced_tbname($table . '_' . $part_name);
 	} elsif (!$self->{pg_supports_partition} && $part_name) {
 		$tmptb = $self->get_replaced_tbname($part_name || $table);

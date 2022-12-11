@@ -133,7 +133,7 @@
 .\" ========================================================================
 .\"
 .IX Title "ORA2PG 1"
-.TH ORA2PG 1 "2022-11-29" "perl v5.30.0" "User Contributed Perl Documentation"
+.TH ORA2PG 1 "2022-12-07" "perl v5.30.0" "User Contributed Perl Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -1734,18 +1734,19 @@ using those operators. If you set it to a value greater than 1 it will only
 change indexes on columns where the character limit is greater or equal than
 this value. For example, set it to 128 to create these kind of indexes on
 columns of type varchar2(N) where N >= 128.
-.IP "\s-1PREFIX_PARTITION\s0" 4
-.IX Item "PREFIX_PARTITION"
-Enable this directive if you want that your partition table name will be
-exported using the parent table name. Disabled by default. If you have
-multiple partitioned table, when exported to PostgreSQL some partitions
-could have the same name but different parent tables. This is not allowed,
-table name must be unique.
-.IP "\s-1PREFIX_SUB_PARTITION\s0" 4
-.IX Item "PREFIX_SUB_PARTITION"
-Enable this directive if you want that your subpartition table name will be
-exported using the parent partition name. Enabled by default. If the partition 
-names are a part of the subpartition names, you should enable this directive.
+.IP "\s-1RENAME_PARTITION\s0" 4
+.IX Item "RENAME_PARTITION"
+Enable this directive if you want that your partition tables will be renamed.
+Disabled by default. If you have multiple partitioned table, when exported to
+PostgreSQL some partitions could have the same name but different parent tables.
+This is not allowed, table name must be unique, in this case enable this
+directive. A partition will be renamed following the rule:
+    \*(L"tablename\*(R"_part\*(L"pos\*(R"
+where \*(L"pos\*(R" is the partition number. For subpartition this is:
+    \*(L"tablename\*(R"_part\*(L"pos\*(R"_subpart\*(L"pos\*(R"
+If this is partition/subpartition default:
+    \*(L"tablename\*(R"_part_default
+    \*(L"tablename\*(R"_part\*(L"pos\*(R"_subpart_default
 .IP "\s-1DISABLE_PARTITION\s0" 4
 .IX Item "DISABLE_PARTITION"
 If you don't want to reproduce the partitioning like in Oracle and want to
