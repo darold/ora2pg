@@ -2547,7 +2547,7 @@ sub _tables
 					$tmp_tbname = "[$tmp_tbname]";
 				}
 			}
-			else
+			elsif (!$self->{is_informix})
 			{
 				if ( $t !~ /\./ ) {
 					$tmp_tbname = "\"$tables_infos{$t}{owner}\".\"$t\"";

@@ -48,7 +48,7 @@ our %SQL_TYPE = (
 	'BOOLEAN' => 'boolean',
 	'BIGINT' => 'bigint',
 	'BIGSERIAL' => 'bigserial',
-	'IDSSECURITYLABEL' => 'IDSSECURITYLABEL',
+	'IDSSECURITYLABEL' => 'varchar',
 	'TIMESERIES' => 'TimeSeries',
 );
 
@@ -294,7 +294,7 @@ WHERE t.tabtype='T' AND t.owner != 'informix'
 		$tables_infos{$row->[0]}{owner} = $row->[7] || $row->[6];
 		$tables_infos{$row->[0]}{num_rows} = $row->[3] || 0;
 		$tables_infos{$row->[0]}{comment} = ''; # Informix doesn't have COMMENT
-		$tables_infos{$row->[0]}{type} =  $row->[2] || '';
+		$tables_infos{$row->[0]}{type} =  'TABLE';
 		$tables_infos{$row->[0]}{nested} = 'NO';
 		$tables_infos{$row->[0]}{tablespace} = 0;
 		$tables_infos{$row->[0]}{auto_increment} = 0;
@@ -367,7 +367,7 @@ sub _column_info
 		45 => 'BOOLEAN',
 		52 => 'BIGINT',
 		53 => 'BIGSERIAL',
-		2061 => 'IDSSECURITYLABEL 2, 3',
+		2061 => 'IDSSECURITYLABEL',
 		3880 => 'TimeSeries',
 		4118 => 'ROW (named)',
 	);
@@ -391,8 +391,8 @@ sub _column_info
     '', tb.tabname, tb.owner, '', c.colno,
     (CASE WHEN c.coltype - 256 = 6 OR c.coltype - 256 = 18 OR c.coltype - 256 = 53 THEN c.colmin - 1 ELSE 0 END),
     c.extended_id, decode(bitand(c.coltype, "0xff"), 5, "decimal", 8, "money", "<...>") || "(" ||
-        ifx_bit_rightshift(c.collength, 8) || "," || bitand(c.collength, "0xff") || ")"
-    --, st.* FIXME: user defined data type
+        ifx_bit_rightshift(c.collength, 8) || "," || bitand(c.collength, "0xff") || ")",
+    st.name
 FROM syscolumns AS c
 JOIN systables AS tb ON (tb.tabid = c.tabid)
 LEFT JOIN sysdefaults AS sd ON (sd.tabid = c.tabid AND sd.colno = c.colno)
@@ -412,7 +412,14 @@ ORDER BY c.tabid, c.colno};
 	my $pos = 0;
 	while (my $row = $sth->fetch)
 	{
-		$row->[1] = $informix_coltype{$row->[1]} || $row->[1];
+		my $old_type = $row->[1];
+		if ($row->[1] == 41 || $row->[1] == (41+256)) {
+			# Get the real datatype for variable-length opaque types
+			$row->[1] = $row->[15];
+		} else {
+			# get the corresponding builtin datatype or UDT name. Keep the datatype id if not found.
+			$row->[1] = $informix_coltype{$row->[1]} || $row->[15] || $row->[1];
+		}
 		if ($row->[1] =~ /serial/i)
 		{
 			$row->[12] = $row->[6];
@@ -440,9 +447,22 @@ sub _get_indexes
 	my $t0 = Benchmark->new;
 	my $sth = '';
 	my $sql = qq{SELECT Id.idxname, Id.idxtype, Id.clustered,
-	(CASE WHEN Id.idxtype = 'U' THEN 1 ELSE 0 END), Id.indexkeys, t.tabname, Id.owner
+	(CASE WHEN Id.idxtype = 'U' THEN 1 ELSE 0 END), Id.indexkeys, t.tabname, Id.owner,
+	c1.colname col1, c2.colname col2, c3.colname col3, c4.colname col4, c5.colname col5,
+	c6.colname col6, c7.colname col7, c8.colname col8, c9.colname col9, c10.colname col10
 FROM systables AS T
 INNER JOIN sysindices Id ON T.tabid = Id.tabid 
+  left JOIN sysindexes i ON (i.tabid = Id.tabid AND i.idxname = Id.idxname)
+  left outer join syscolumns c1 on c1.tabid = T.tabid and c1.colno = abs(i.part1)
+  left outer join syscolumns c2 on c2.tabid = T.tabid and c2.colno = abs(i.part2)
+  left outer join syscolumns c3 on c3.tabid = T.tabid and c3.colno = abs(i.part3)
+  left outer join syscolumns c4 on c4.tabid = T.tabid and c4.colno = abs(i.part4)
+  left outer join syscolumns c5 on c5.tabid = T.tabid and c5.colno = abs(i.part5)
+  left outer join syscolumns c6 on c6.tabid = T.tabid and c6.colno = abs(i.part6)
+  left outer join syscolumns c7 on c7.tabid = T.tabid and c7.colno = abs(i.part7)
+  left outer join syscolumns c8 on c8.tabid = T.tabid and c8.colno = abs(i.part8)
+  left outer join syscolumns c9 on c9.tabid = T.tabid and c9.colno = abs(i.part9)
+  left outer join syscolumns c10 on c10.tabid = T.tabid and c10.colno = abs(i.part10)
 WHERE Id.owner != 'informix' $condition
 ORDER BY T.tabname, Id.idxname
 };
@@ -457,7 +477,6 @@ ORDER BY T.tabname, Id.idxname
 	my $nidx = 0;
 	while (my $row = $sth->fetch)
 	{
-
 		my $save_tb = $row->[5];
 		next if (!$self->is_in_struct($row->[5], $row->[1]));
 
@@ -468,17 +487,18 @@ ORDER BY T.tabname, Id.idxname
 		$row->[4] =~ s/\s*\[\d+\]//g;
 		$row->[4] =~ s/\-(\d+)/$1 DESC/g;
 
-		$unique{$row->[5]}{$row->[0]} = $row->[4];
-
-		# Save original column name
-		my $colname = $row->[1];
-		# Quote column with unsupported symbols
-		$row->[1] = $self->quote_object_name($row->[1]);
+		if ($row->[1] eq 'U') {
+			$unique{$row->[5]}{$row->[0]} = 'UNIQUE';
+		}
 
 		$idx_type{$row->[5]}{$row->[0]}{type_name} = $row->[11];
 		$idx_type{$row->[5]}{$row->[0]}{type} = $row->[1];
 
-		push(@{$data{$row->[5]}{$row->[0]}}, $row->[1]);
+		my @cols = ();
+		for (my $i = 7; $i <= 16; $i++) {
+			push(@cols, $self->quote_object_name($row->[$i])) if ($row->[$i]);
+		}
+		push(@{$data{$row->[5]}{$row->[0]}}, @cols);
 		$nidx++;
 	}
 	$sth->finish();
@@ -488,7 +508,6 @@ ORDER BY T.tabname, Id.idxname
 
 	return \%unique, \%data, \%idx_type, \%index_tablespace;
 }
-
 
 sub _count_indexes
 {
@@ -534,9 +553,7 @@ sub _foreign_key
         my ($self, $table, $owner) = @_;
 
         my $condition = '';
-        $condition .= " AND OBJECT_NAME (f.referenced_object_id) = '$table' " if ($table);
-        $condition .= " AND SCHEMA_NAME(f.schema_id) = '$self->{schema}' " if ($self->{schema});
-	$condition =~ s/^ AND / WHERE /;
+	$condition .= "AND t.tabname = '$table'" if ($table);
 
         my $deferrable = $self->{fkey_deferrable} ? "'DEFERRABLE' AS DEFERRABLE" : "DEFERRABLE";
 	my $sql = qq{SELECT f.name ConsName, SCHEMA_NAME(f.schema_id) SchemaName, COL_NAME(fc.parent_object_id,fc.parent_column_id) ColName, OBJECT_NAME(f.parent_object_id) TableName, t.name as ReferencedTableName, COL_NAME(f.referenced_object_id, key_index_id) as ReferencedColumnName,update_referential_action_desc UPDATE_RULE, delete_referential_action_desc DELETE_RULE, SCHEMA_NAME(t.schema_id)
@@ -545,6 +562,55 @@ INNER JOIN sys.foreign_key_columns AS fc ON f.OBJECT_ID = fc.constraint_object_i
 INNER JOIN sys.tables t ON t.OBJECT_ID = fc.referenced_object_id
 LEFT OUTER JOIN sys.schemas s ON f.principal_id = s.schema_id
 $condition};
+
+	$sql = qq{SELECT UNIQUE c.constrname, r.primary, c.tabid, r.ptabid,
+       DECODE(r.delrule,'C','y','n') CD,
+       i.part1, i.part2, i.part3, i.part4, i.part5, i.part6, i.part7,
+       i.part8, i.part9, i.part10, i.part11, i.part12, i.part13, i.part14,
+       i.part15, i.part16, i2.part1 rpart1, i2.part2 rpart2,
+       i2.part3 rpart3, i2.part4 rpart4, i2.part5 rpart5, i2.part6 rpart6,
+       i2.part7 rpart7, i2.part8 rpart8, i2.part9 rpart9, i2.part10 rpart10,
+       i2.part11 rpart11,i2.part12 rpart12, i2.part13 rpart13,
+       i2.part14 rpart14, i2.part15 rpart15, i2.part16 rpart16
+FROM sysconstraints c, sysconstraints c2, sysreferences r, systables t,
+       systables t2, sysindexes i, sysindexes i2
+WHERE c.constrtype = 'R'
+   AND c.constrid = r.constrid
+   AND c.tabid=t.tabid
+   AND c.idxname=i.idxname
+   AND r.ptabid=c2.tabid
+   AND c2.constrtype = 'P'
+   AND c2.idxname=i2.idxname
+   AND t.owner != 'informix'
+   $condition
+   INTO TEMP fc
+};
+
+
+	$sql = qq{select
+  tab.tabname,
+  constr.*, 
+  c1.colname col1,
+  c2.colname col2,
+  c3.colname col3,
+  c4.colname col4,
+  c5.colname col5,
+  c6.colname col6,
+  c7.colname col7
+from sysconstraints constr
+  join systables tab on tab.tabid = constr.tabid
+  left outer join sysindexes i on i.idxname = constr.idxname
+  left outer join syscolumns c1 on c1.tabid = tab.tabid and c1.colno = abs(i.part1)
+  left outer join syscolumns c2 on c2.tabid = tab.tabid and c2.colno = abs(i.part2)
+  left outer join syscolumns c3 on c3.tabid = tab.tabid and c3.colno = abs(i.part3)
+  left outer join syscolumns c4 on c4.tabid = tab.tabid and c4.colno = abs(i.part4)
+  left outer join syscolumns c5 on c5.tabid = tab.tabid and c5.colno = abs(i.part5)
+  left outer join syscolumns c6 on c6.tabid = tab.tabid and c6.colno = abs(i.part6)
+  left outer join syscolumns c7 on c7.tabid = tab.tabid and c7.colno = abs(i.part7)
+where constr.constrtype = 'R' AND tab.owner != 'informix';
+  };
+
+        $self->{dbh}->do($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
         my $sth = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
         $sth->execute or $self->logit("FATAL: " . $sth->errstr . "\n", 0, 1);
@@ -557,10 +623,6 @@ $condition};
 		my $key_name = $r->[3] . '_' . $r->[2] . '_fk' . $i;
 		if ($r->[0]) {
 			$key_name = uc($r->[0]);
-		}
-		if (!$self->{schema} && $self->{export_schema}) {
-			$r->[3] = "$r->[1].$r->[3]";
-			$r->[4] = "$r->[8].$r->[4]";
 		}
 		push(@{$link{$r->[3]}{$key_name}{local}}, $r->[2]);
 		push(@{$link{$r->[3]}{$key_name}{remote}{$r->[4]}}, $r->[5]);
@@ -703,70 +765,58 @@ sub _unique_key
         return %result unless(@accepted_constraint_types);
 
         my $condition = '';
-        $condition .= " AND t.name = '$table' " if ($table);
-        $condition .= " AND sh.name = '$self->{schema}' " if ($self->{schema});
+        $condition .= " AND tab.tabname = '$table' " if ($table);
 	if (!$table) {
-		$condition .= $self->limit_to_objects('TABLE|INDEX', "t.name|i.name");
+		$condition .= $self->limit_to_objects('TABLE|INDEX', "tab.tabname|constr.constrname");
 	} else {
 		@{$self->{query_bind_params}} = ();
 	}
 
-
-	my $sql = qq{SELECT sh.name AS schema_name,
-   i.name AS constraint_name,
-   t.name AS table_name,
-   c.name AS column_name,
-   ic.key_ordinal AS column_position,
-   ic.is_descending_key AS is_desc,
-   i.is_unique_constraint AS unique_key,
-   i.is_primary_key AS primary_key,
-   typ.name
-FROM sys.indexes i
-   INNER JOIN sys.index_columns ic ON i.index_id = ic.index_id AND i.object_id = ic.object_id
-   INNER JOIN sys.tables AS t ON t.object_id = i.object_id
-   INNER JOIN sys.columns c ON t.object_id = c.object_id AND ic.column_id = c.column_id
-   INNER JOIN sys.types typ ON typ.user_type_id = c.user_type_id
-   INNER JOIN sys.objects AS syso ON syso.object_id = t.object_id AND syso.is_ms_shipped = 0 
-   INNER JOIN sys.schemas AS sh ON sh.schema_id = t.schema_id 
-WHERE (i.is_unique_constraint = 1 OR i.is_primary_key = 1) $condition
-ORDER BY sh.name, i.name, ic.key_ordinal;
-};
-
-	my %tables_infos = ();
-	if ($table) {
-		$tables_infos{$table} = 1;
-	} else {
-		%tables_infos = Ora2Pg::Informix::_table_info($self);
-	}
+	my $sql = qq{SELECT
+  tab.tabname,
+  constr.constrid,
+  constr.constrname,
+  constr.owner,
+  constr.tabid,
+  constr.constrtype,
+  constr.idxname,
+  constr.collation,
+  c1.colname col1,
+  c2.colname col2,
+  c3.colname col3,
+  c4.colname col4,
+  c5.colname col5,
+  c6.colname col6,
+  c7.colname col7
+FROM sysconstraints constr
+  JOIN systables tab ON tab.tabid = constr.tabid
+  LEFT OUTER JOIN sysindexes i on i.idxname = constr.idxname
+  LEFT OUTER JOIN syscolumns c1 ON c1.tabid = tab.tabid AND c1.colno = abs(i.part1)
+  LEFT OUTER JOIN syscolumns c2 ON c2.tabid = tab.tabid AND c2.colno = abs(i.part2)
+  LEFT OUTER JOIN syscolumns c3 ON c3.tabid = tab.tabid AND c3.colno = abs(i.part3)
+  LEFT OUTER JOIN syscolumns c4 ON c4.tabid = tab.tabid AND c4.colno = abs(i.part4)
+  LEFT OUTER JOIN syscolumns c5 ON c5.tabid = tab.tabid AND c5.colno = abs(i.part5)
+  LEFT OUTER JOIN syscolumns c6 ON c6.tabid = tab.tabid AND c6.colno = abs(i.part6)
+  LEFT OUTER JOIN syscolumns c7 ON c7.tabid = tab.tabid AND c7.colno = abs(i.part7)
+WHERE constr.constrtype IN ('P', 'U') AND tab.owner != 'informix';
+  };
 
 	my $sth = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
-	my $i = 1;
 	while (my $row = $sth->fetch)
 	{
-		next if ($self->{drop_rowversion} && ($row->[9] eq 'rowversion' || $row->[9] eq 'timestamp'));
-
-		my $name = $row->[2];
-		if (!$self->{schema} && $self->{export_schema}) {
-			$name = "$row->[0].$row->[2]";
-		}
-
-		my $idxname = $row->[3] . '_idx' . $i;
-		$idxname = $row->[2] if ($row->[2]);
-		my $key_type = 'U';
-		$key_type = 'P' if ($row->[7]);
-
+		my $name = $row->[0];
+		my $idxname = $row->[2];
+		my $key_type = $row->[5];
 		next if (!grep(/$key_type/, @accepted_constraint_types));
 
-		if (!exists $result{$name}{$idxname})
-		{
-			my %constraint = (type => $key_type, 'generated' => 'N', 'index_name' => $idxname, columns => [ ($row->[3]) ] );
-			$result{$name}{$idxname} = \%constraint if ($row->[3]);
-			$i++;
-		} else {
-			push(@{$result{$name}{$idxname}->{columns}}, $row->[3]);
+		my @cols = ();
+		for (my $i = 8; $i <= 14; $i++) {
+			push(@cols, $row->[$i]) if ($row->[$i]);
 		}
+		my %constraint = (type => $row->[5], 'generated' => 'N', 'index_name' => $idxname, columns => \@cols );
+		$result{$name}{$idxname} = \%constraint;
 	}
 
 	return %result;
@@ -777,28 +827,19 @@ sub _check_constraint
 	my ($self, $table, $owner) = @_;
 
 	my $condition = '';
-	$condition .= " AND t.name = '$table' " if ($table);
-	$condition .= " AND s.name = '$self->{schema}' " if ($self->{schema});
+	$condition .= " AND st.tabname = '$table' " if ($table);
 	if (!$table) {
-		$condition .= $self->limit_to_objects('TABLE|INDEX', "t.name|i.name");
+		$condition .= $self->limit_to_objects('TABLE|INDEX', "st.tabname|co.constrname");
 	} else {
 		@{$self->{query_bind_params}} = ();
 	}
 
-	my $sql = qq{SELECT
-    s.name SchemaName,
-    t.name as TableName,
-    col.name as column_name,
-    con.name as constraint_name,
-    con.definition,
-    con.is_disabled 
-FROM sys.check_constraints con
-LEFT OUTER JOIN sys.objects t ON con.parent_object_id = t.object_id
-JOIN sys.schemas AS s ON t.schema_id = s.schema_id
-LEFT OUTER JOIN sys.all_columns col ON con.parent_column_id = col.column_id AND con.parent_object_id = col.object_id
+	my $sql = qq{SELECT st.tabname, st.owner, co.constrname, ch.*
+FROM systables st, sysconstraints co, syschecks ch
+WHERE co.constrtype = 'C' AND co.tabid = st.tabid AND co.constrid = ch.constrid
+AND ch.type = 'T' AND st.owner != 'informix'
 $condition
-ORDER BY SchemaName, t.Name, col.name
-};
+ORDER BY st.tabname, ch.seqno};
 
         my $sth = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
         $sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -806,18 +847,10 @@ ORDER BY SchemaName, t.Name, col.name
         my %data = ();
         while (my $row = $sth->fetch)
 	{
-                if ($self->{export_schema} && !$self->{schema}) {
-                        $row->[1] = "$row->[0].$row->[1]";
-                }
-		$row->[4] =~ s/[\[\]]//gs;
-		$row->[4] =~ s/^\(//s;
-		$row->[4] =~ s/\)$//s;
-                $data{$row->[1]}{constraint}{$row->[3]}{condition} = $row->[4];
-		if ($row->[5]) {
-			$data{$row->[1]}{constraint}{$row->[3]}{validate}  = 'NOT VALIDATED';
-		} else {
-			$data{$row->[1]}{constraint}{$row->[3]}{validate}  = 'VALIDATED';
-		}
+		$row->[6] =~ s/^\(//s;
+		$row->[6] =~ s/\)$//s;
+                $data{$row->[0]}{constraint}{$row->[2]}{condition} = $row->[6];
+		$data{$row->[0]}{constraint}{$row->[2]}{validate}  = 'VALIDATED';
         }
 
 	return %data;
@@ -1582,30 +1615,21 @@ Return two hash ref with partition details and partition default.
 
 sub _get_partitions
 {
-	my($self) = @_;
+	my ($self) = @_;
 
 	# Retrieve all partitions.
 	my $str = qq{
-SELECT sch.name AS SchemaName, t.name AS TableName, i.name AS IndexName,
-    p.partition_number, p.partition_id, i.data_space_id, f.function_id, f.type_desc,
-    r.boundary_id, r.value AS BoundaryValue, ic.column_id AS PartitioningColumnID,
-    c.name AS PartitioningColumnName
-FROM sys.tables AS t
-JOIN sys.indexes AS i ON t.object_id = i.object_id AND i.[type] <= 1
-JOIN sys.partitions AS p ON i.object_id = p.object_id AND i.index_id = p.index_id
-JOIN sys.partition_schemes AS s ON i.data_space_id = s.data_space_id
-JOIN sys.index_columns AS ic ON ic.[object_id] = i.[object_id] AND ic.index_id = i.index_id AND ic.partition_ordinal >= 1 -- because 0 = non-partitioning column
-JOIN sys.columns AS c ON t.[object_id] = c.[object_id] AND ic.column_id = c.column_id
-JOIN sys.partition_functions AS f ON s.function_id = f.function_id
-LEFT JOIN sys.partition_range_values AS r ON f.function_id = r.function_id and r.boundary_id = p.partition_number
-LEFT OUTER JOIN sys.schemas sch ON t.schema_id = sch.schema_id
+SELECT t.tabid, t.tabname, f.indexname, f.evalpos, f.partition, '', '', f.exprtext, f.strategy
+FROM sysfragments f
+JOIN systables t ON (f.tabid = t.tabid)
+WHERE f.fragtype = 'T'
 };
 
-	$str .= $self->limit_to_objects('TABLE|PARTITION','t.name|t.name');
-	if ($self->{schema}) {
-		$str .= " WHERE sch.name ='$self->{schema}'";
-	}
-	$str .= " ORDER BY sch.name, t.name, i.name, p.partition_number, ic.column_id\n";
+	$str .= $self->limit_to_objects('TABLE|PARTITION','t.tabname|f.partition');
+	$str .= " ORDER BY t.tabname, f.partn\n";
+
+	my $str2 = "SELECT colno FROM syscolumns WHERE colname = ? AND tabid = ?";
+	my $sth2 = $self->{dbh}->prepare($str2) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -1616,16 +1640,15 @@ LEFT OUTER JOIN sys.schemas sch ON t.schema_id = sch.schema_id
 	while (my $row = $sth->fetch)
 	{
 		my $tbname = $row->[1];
-		if ($self->{export_schema} && !$self->{schema}) {
-			$row->[1] = "$row->[0].$row->[1]";
-		}
-		#dbo | PartitionTable | PK__Partitio__357D0D3E1290FD9F | 2 | 72057594048872448 | 65601 | 65536 | RANGE | 2 | 2022-05-01 00:00:00 | 1 | col1
-		$parts{$row->[1]}{$row->[3]}{name} = $tbname . '_part_' . $i++;
-		$row->[9] = "'$row->[9]'" if ($row->[9] && $row->[9] =~ /[^\d\.]/);
-		$row->[9] = 'MAXVALUE' if ($row->[9] eq '');
-		push(@{$parts{$row->[1]}{$row->[3]}{info}}, { 'type' => 'RANGE', 'value' => $row->[9], 'column' => $row->[11], 'colpos' => $row->[10], 'tablespace' => '', 'owner' => ''});
+		$parts{$row->[1]}{$row->[3]}{name} = $row->[1] . '_part' . $i++;
+		my $col = $row->[7];
+		$col =~ s/^[\(]*\s*([^\s>=<\+\-\*\/]+).*/$1/;
+		$sth2->execute($col, $row->[0]) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+		my $r = $sth2->fetch;
+		push(@{$parts{$row->[1]}{$row->[3]}{info}}, { 'type' => 'RANGE', 'value' => $row->[7], 'column' => $col, 'colpos' => $row->[10], 'tablespace' => '', 'owner' => ''});
 	}
 	$sth->finish;
+	$sth2->finish;
 
 	return \%parts, \%default;
 }
@@ -2566,98 +2589,21 @@ sub _get_materialized_views
 {
 	my($self) = @_;
 
-	my $str = qq{select
-       v.name as view_name,
-       schema_name(v.schema_id) as schema_name,
-       i.name as index_name,
-       m.definition
-from sys.views v
-join sys.indexes i on i.object_id = v.object_id and i.index_id = 1 and i.ignore_dup_key = 0
-join sys.sql_modules m on m.object_id = v.object_id
-};
-
-	if (!$self->{schema}) {
-		$str .= " WHERE schema_name(v.schema_id) NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
-	} else {
-		$str .= " WHERE schema_name(v.schema_id) = '$self->{schema}'";
-	}
-	$str .= $self->limit_to_objects('MVIEW', 'v.name');
-	$str .= " ORDER BY schema_name, view_name";
-
-	my $sth = $self->{dbh}->prepare($str);
-	if (not defined $sth) {
-		$self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-	}
-	if (not $sth->execute(@{$self->{query_bind_params}})) {
-		$self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-		return ();
-	}
-
-	my %data = ();
-	while (my $row = $sth->fetch)
-	{
-		if (!$self->{schema} && $self->{export_schema}) {
-			$row->[0] = "$row->[1].$row->[0]";
-		}
-		$row->[3] =~ s///g;
-		$row->[3] =~ s/[\[\]]//g;
-		$row->[3] =~ s/^CREATE VIEW [^\s]+//;
-		$data{$row->[0]}{text} = $row->[3];
-		$data{$row->[0]}{updatable} = 0;
-		$data{$row->[0]}{refresh_mode} = '';
-		$data{$row->[0]}{refresh_method} = '';
-		$data{$row->[0]}{no_index} = 0;
-		$data{$row->[0]}{rewritable} = 0;
-		$data{$row->[0]}{build_mode} = '';
-		$data{$row->[0]}{owner} = $row->[1];
-	}
-
-	return %data;
+	return; # Informix do not have materialized view
 }
 
 sub _get_materialized_view_names
 {
 	my($self) = @_;
 
-	my $str = qq{select
-       v.name as view_name,
-       schema_name(v.schema_id) as schema_name,
-       i.name as index_name,
-from sys.views v
-join sys.indexes i on i.object_id = v.object_id and i.index_id = 1 and i.ignore_dup_key = 0
-};
-	if (!$self->{schema}) {
-		$str .= " WHERE schema_name(v.schema_id) NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
-	} else {
-		$str .= " WHERE schema_name(v.schema_id) = '$self->{schema}'";
-	}
-	$str .= $self->limit_to_objects('MVIEW', 'v.name');
-	$str .= " ORDER BY schema_name, view_name";
-	my $sth = $self->{dbh}->prepare($str);
-	if (not defined $sth) {
-		$self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-	}
-	if (not $sth->execute(@{$self->{query_bind_params}})) {
-		$self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-	}
-
-	my @data = ();
-	while (my $row = $sth->fetch)
-	{
-		if (!$self->{schema} && $self->{export_schema}) {
-			$row->[0] = "$row->[1].$row->[0]";
-		}
-		push(@data, uc($row->[0]));
-	}
-
-	return @data;
+	return; # not supported by Informix
 }
 
 sub _get_package_function_list
 {
 	my ($self, $owner) = @_;
 
-	# not package in Informix
+	# no package in Informix
 	return;
 }
 
