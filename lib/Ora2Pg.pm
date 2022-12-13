@@ -1424,7 +1424,7 @@ sub _init
 	$self->_init_environment();
 
 	# Backward compatibility
-	$self->{prefix_partition} = 1 if (!$self->{rename_partition} && $self->{prefix_partition});
+	$self->{rename_partition} = 1 if (!$self->{rename_partition} && $self->{prefix_partition});
 
 	# Multiple Oracle connection
 	$self->{oracle_copies} ||= 0;
