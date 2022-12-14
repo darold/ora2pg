@@ -2115,28 +2115,21 @@ sub _get_sequences
 {
 	my ($self) = shift;
 
-        my $str = qq{SELECT
-  s.name,
-  s.minimum_value AS minimum_value,
-  s.maximum_value AS maximum_value,
-  s.increment AS increment,
-  s.current_value AS current_value,
-  s.cache_size AS cache_size,
-  s.is_cycling AS cycling,
-  n.name,
-  s.is_cached AS cached
-FROM sys.sequences s
-LEFT OUTER JOIN sys.schemas n ON s.schema_id = n.schema_id
+	my $str = qq{SELECT
+  t.tabname,
+  s.min_val,
+  s.max_val,
+  s.inc_val,
+  s.start_val,
+  s.cache,
+  s.cycle,
+  s.restart_val
+FROM systables t
+JOIN syssequences s ON (s.tabid = t.tabid)
+WHERE t.tabtype = 'Q' AND t.owner != 'informix'
 };
-	
-        if (!$self->{schema}) {
-                $str .= " WHERE n.name NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
-        } else {
-                $str .= " WHERE n.name = '$self->{schema}'";
-        }
-        $str .= $self->limit_to_objects('SEQUENCE', 's.name');
-        #$str .= " ORDER BY SEQUENCE_NAME";
-
+        $str .= $self->limit_to_objects('SEQUENCE', 't.tabname');
+        $str .= " ORDER BY t.tabname, s.seqid";
 
         my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
         $sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -2144,10 +2137,7 @@ LEFT OUTER JOIN sys.schemas n ON s.schema_id = n.schema_id
         my %seqs = ();
         while (my $row = $sth->fetch)
         {
-		$row->[5] = '' if ($row->[8]);
-                if (!$self->{schema} && $self->{export_schema}) {
-                        $row->[0] = $row->[7] . '.' . $row->[0];
-                }
+		$row->[6] = 'Y' if ($row->[6]);
                 push(@{$seqs{$row->[0]}}, @$row);
         }
 
@@ -2159,25 +2149,19 @@ sub _extract_sequence_info
 	my ($self) = shift;
 
         my $str = qq{SELECT
-  s.name,
-  s.minimum_value AS minimum_value,
-  s.maximum_value AS maximum_value,
-  s.increment AS increment,
-  s.current_value AS current_value,
-  s.cache_size AS cache_size,
-  s.is_cycling AS cycling,
-  n.name,
-  s.is_cached AS cached
-FROM sys.sequences s
-LEFT OUTER JOIN sys.schemas n ON s.schema_id = n.schema_id
+  t.tabname,
+  s.min_val,
+  s.max_val,
+  s.inc_val,
+  s.start_val,
+  s.cache,
+  s.cycle,
+  s.restart_val
+FROM systables t
+JOIN syssequences s ON (s.tabid = t.tabid)
+WHERE t.tabtype = 'Q' AND t.owner != 'informix'
 };
-	
-        if (!$self->{schema}) {
-                $str .= " WHERE n.name NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
-        } else {
-                $str .= " WHERE n.name = '$self->{schema}'";
-        }
-        $str .= $self->limit_to_objects('SEQUENCE', 's.name');
+        $str .= $self->limit_to_objects('SEQUENCE', 't.tabname');
 
         my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
         $sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -2185,51 +2169,39 @@ LEFT OUTER JOIN sys.schemas n ON s.schema_id = n.schema_id
 	my @script = ();
         while (my $row = $sth->fetch)
         {
-		$row->[5] = '' if ($row->[8]);
-                if (!$self->{schema} && $self->{export_schema}) {
-                        $row->[0] = $row->[7] . '.' . $row->[0];
-                }
-		my $nextvalue = $row->[4] + $row->[3];
-		my $alter = "ALTER SEQUENCE $self->{pg_supports_ifexists} " .  $self->quote_object_name($row->[0]) . " RESTART WITH $nextvalue;";
+		my $sth2 = $self->{dbh}->prepare("SELECT $row->[0].CURRVAL") or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+		$sth2->execute() or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+		my $r = $sth2->fetch;
+		$sth2->finish;
+		$r->[0] ||= 1;
+		my $alter = "ALTER SEQUENCE $self->{pg_supports_ifexists} " .  $self->quote_object_name($row->[0]) . " RESTART WITH $r->[0];";
 		push(@script, $alter);
-		$self->logit("Extracted sequence information for sequence \"$row->[0]\", nextvalue: $nextvalue\n", 1);
+		$self->logit("Extracted sequence information for sequence \"$row->[0]\", nextvalue: $r->[0]\n", 1);
 	}
 	$sth->finish();
 
 	return @script;
 }
 
-# Informix does not have sequences but we count auto_increment as sequences
 sub _count_sequences
 {
 	my $self = shift;
 
-	# Table: information_schema.tables
-	# TABLE_CATALOG   | varchar(512)        | NO   |     |         |       |
-	# TABLE_SCHEMA    | varchar(64)         | NO   |     |         |       |
-	# TABLE_NAME      | varchar(64)         | NO   |     |         |       |
-	# TABLE_TYPE      | varchar(64)         | NO   |     |         |       |
-	# ENGINE          | varchar(64)         | YES  |     | NULL    |       |
-	# VERSION         | bigint(21) unsigned | YES  |     | NULL    |       |
-	# ROW_FORMAT      | varchar(10)         | YES  |     | NULL    |       |
-	# TABLE_ROWS      | bigint(21) unsigned | YES  |     | NULL    |       |
-	# AVG_ROW_LENGTH  | bigint(21) unsigned | YES  |     | NULL    |       |
-	# DATA_LENGTH     | bigint(21) unsigned | YES  |     | NULL    |       |
-	# MAX_DATA_LENGTH | bigint(21) unsigned | YES  |     | NULL    |       |
-	# INDEX_LENGTH    | bigint(21) unsigned | YES  |     | NULL    |       |
-	# DATA_FREE       | bigint(21) unsigned | YES  |     | NULL    |       |
-	# AUTO_INCREMENT  | bigint(21) unsigned | YES  |     | NULL    |       |
-	# CREATE_TIME     | datetime            | YES  |     | NULL    |       |
-	# UPDATE_TIME     | datetime            | YES  |     | NULL    |       |
-	# CHECK_TIME      | datetime            | YES  |     | NULL    |       |
-	# TABLE_COLLATION | varchar(32)         | YES  |     | NULL    |       |
-	# CHECKSUM        | bigint(21) unsigned | YES  |     | NULL    |       |
-	# CREATE_OPTIONS  | varchar(255)        | YES  |     | NULL    |       |
-	# TABLE_COMMENT   | varchar(2048)       | NO   |     |         |       |
-
 	my %seqs = ();
-	my $sql = "SELECT TABLE_NAME, AUTO_INCREMENT FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE='BASE TABLE' AND TABLE_SCHEMA = '$self->{schema}' AND AUTO_INCREMENT IS NOT NULL";
-	$sql .= $self->limit_to_objects('TABLE', 'TABLE_NAME');
+        my $sql = qq{SELECT
+  t.tabname,
+  s.min_val,
+  s.max_val,
+  s.inc_val,
+  s.start_val,
+  s.cache,
+  s.cycle,
+  s.restart_val
+FROM systables t
+JOIN syssequences s ON (s.tabid = t.tabid)
+WHERE t.tabtype = 'Q' AND t.owner != 'informix'
+};
+	$sql .= $self->limit_to_objects('TABLE', 't.tabname');
 	my $sth = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	while (my $row = $sth->fetch) {
