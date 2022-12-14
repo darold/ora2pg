@@ -556,38 +556,7 @@ sub _foreign_key
 	$condition .= "AND t.tabname = '$table'" if ($table);
 
         my $deferrable = $self->{fkey_deferrable} ? "'DEFERRABLE' AS DEFERRABLE" : "DEFERRABLE";
-	my $sql = qq{SELECT f.name ConsName, SCHEMA_NAME(f.schema_id) SchemaName, COL_NAME(fc.parent_object_id,fc.parent_column_id) ColName, OBJECT_NAME(f.parent_object_id) TableName, t.name as ReferencedTableName, COL_NAME(f.referenced_object_id, key_index_id) as ReferencedColumnName,update_referential_action_desc UPDATE_RULE, delete_referential_action_desc DELETE_RULE, SCHEMA_NAME(t.schema_id)
-FROM sys.foreign_keys AS f
-INNER JOIN sys.foreign_key_columns AS fc ON f.OBJECT_ID = fc.constraint_object_id
-INNER JOIN sys.tables t ON t.OBJECT_ID = fc.referenced_object_id
-LEFT OUTER JOIN sys.schemas s ON f.principal_id = s.schema_id
-$condition};
-
-	$sql = qq{SELECT UNIQUE c.constrname, r.primary, c.tabid, r.ptabid,
-       DECODE(r.delrule,'C','y','n') CD,
-       i.part1, i.part2, i.part3, i.part4, i.part5, i.part6, i.part7,
-       i.part8, i.part9, i.part10, i.part11, i.part12, i.part13, i.part14,
-       i.part15, i.part16, i2.part1 rpart1, i2.part2 rpart2,
-       i2.part3 rpart3, i2.part4 rpart4, i2.part5 rpart5, i2.part6 rpart6,
-       i2.part7 rpart7, i2.part8 rpart8, i2.part9 rpart9, i2.part10 rpart10,
-       i2.part11 rpart11,i2.part12 rpart12, i2.part13 rpart13,
-       i2.part14 rpart14, i2.part15 rpart15, i2.part16 rpart16
-FROM sysconstraints c, sysconstraints c2, sysreferences r, systables t,
-       systables t2, sysindexes i, sysindexes i2
-WHERE c.constrtype = 'R'
-   AND c.constrid = r.constrid
-   AND c.tabid=t.tabid
-   AND c.idxname=i.idxname
-   AND r.ptabid=c2.tabid
-   AND c2.constrtype = 'P'
-   AND c2.idxname=i2.idxname
-   AND t.owner != 'informix'
-   $condition
-   INTO TEMP fc
-};
-
-
-	$sql = qq{select
+	my $sql = qq{select
   tab.tabname,
   constr.*, 
   c1.colname col1,
@@ -610,6 +579,30 @@ from sysconstraints constr
 where constr.constrtype = 'R' AND tab.owner != 'informix';
   };
 
+	$sql = qq{SELECT st.tabname, st.owner, rt.tabname, rt.owner, sr.primary, sr.ptabid,
+      sr.delrule, sc.constrid, sc.constrname, sc.constrtype, sc.owner, 
+      si.idxname, si.tabid, si.part1, si.part2, si.part3,  
+      si.part4, si.part5, si.part6, si.part7, si.part8,  
+      si.part9, si.part10, si.part11, si.part12, si.part13,  
+      si.part14, si.part15, si.part16, rc.tabid, os.state, os2.state 
+FROM informix.systables st, informix.sysconstraints sc, 
+     informix.sysindexes si, informix.sysreferences sr, 
+     informix.systables rt, informix.sysconstraints rc, 
+     informix.sysobjstate os, informix.sysobjstate os2 
+WHERE st.tabid = sc.tabid 
+  AND st.tabtype != 'Q' 
+  AND st.tabname NOT MATCHES 'cdr_deltab_[0-9][0-9][0-9][0-9][0-9][0-9]*' 
+  AND rt.tabid = sr.ptabid 
+  AND sc.constrid = sr.constrid 
+  AND sc.tabid = si.tabid 
+  AND sc.idxname = si.idxname 
+  AND sc.constrtype = 'R' 
+  AND os.tabid = st.tabid AND os.name = sc.constrname AND os.objtype = 'C' 
+  AND os2.tabid = st.tabid AND os2.name = si.idxname AND os2.objtype = 'I' 
+  AND sr.primary = rc.constrid
+  AND st.owner != 'informix'
+};
+
         $self->{dbh}->do($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
         my $sth = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -620,16 +613,10 @@ where constr.constrtype = 'R' AND tab.owner != 'informix';
         my %link = ();
         while (my $r = $sth->fetch)
 	{
-		my $key_name = $r->[3] . '_' . $r->[2] . '_fk' . $i;
-		if ($r->[0]) {
-			$key_name = uc($r->[0]);
-		}
-		push(@{$link{$r->[3]}{$key_name}{local}}, $r->[2]);
-		push(@{$link{$r->[3]}{$key_name}{remote}{$r->[4]}}, $r->[5]);
+		push(@{$link{$r->[0]}{$r->[8]}{local}}, $r->[2]);
+		push(@{$link{$r->[0]}{$r->[8]}{remote}{$r->[4]}}, $r->[5]);
 		# SELECT CONSTRAINT_NAME,R_CONSTRAINT_NAME,SEARCH_CONDITION,DELETE_RULE,$deferrable,DEFERRED,R_OWNER,TABLE_NAME,OWNER,UPDATE_RULE
-		$r->[3] =~ s/_/ /;
-		$r->[7] =~ s/_/ /;
-                push(@{$data{$r->[3]}}, [ ($key_name, $key_name, '', $r->[7], 'DEFERRABLE', 'Y', '', $r->[3], '', $r->[6]) ]);
+                push(@{$data{$r->[0]}}, [ ($r->[8], $r->[8], '', $r->[5], 'DEFERRABLE', 'Y', '', $r->[0], '', '') ]);
 		$i++;
         }
 	$sth->finish();
@@ -649,27 +636,16 @@ sub _get_views
 {
 	my ($self) = @_;
 
-        my $condition = '';
-        $condition .= "AND TABLE_SCHEMA='$self->{schema}' " if ($self->{schema});
-
 	my %comments = ();
 	# Retrieve all views
-	my $str = qq{select
-       v.name as view_name,
-       schema_name(v.schema_id) as schema_name,
-       m.definition,
-       v.with_check_option
-from sys.views v
-join sys.sql_modules m on m.object_id = v.object_id
-WHERE NOT EXISTS (SELECT 1 FROM sys.indexes i WHERE i.object_id = v.object_id and i.index_id = 1 and i.ignore_dup_key = 0) AND is_date_correlation_view=0};
-
-	if (!$self->{schema}) {
-		$str .= " AND schema_name(v.schema_id) NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
-	} else {
-		$str .= " AND schema_name(v.schema_id) = '$self->{schema}'";
-	}
-	$str .= $self->limit_to_objects('VIEW', 'v.name');
-	$str .= " ORDER BY schema_name, view_name";
+	my $str = qq{SELECT
+	t.tabname, v.seqno, v.viewtext
+FROM systables t
+JOIN sysviews v ON (v.tabid = t.tabid)
+WHERE t.tabtype = 'V' AND t.owner != 'informix'
+};
+	$str .= $self->limit_to_objects('VIEW', 't.tabname');
+	$str .= " ORDER BY t.tabname, v.seqno";
 
 
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -679,23 +655,14 @@ WHERE NOT EXISTS (SELECT 1 FROM sys.indexes i WHERE i.object_id = v.object_id an
 	my %data = ();
 	while (my $row = $sth->fetch)
 	{
-		if (!$self->{schema} && $self->{export_schema}) {
-			$row->[0] = "$row->[1].$row->[0]";
-		}
 		$row->[2] =~ s///g;
-		$row->[2] =~ s/[\[\]]//g;
-		$row->[2] =~ s/^.*\bCREATE VIEW\s+[^\s]+\s+AS\s+//is;
-		$data{$row->[0]}{text} = $row->[2];
+		$data{$row->[0]}{text} .= $row->[2];
 		$data{$row->[0]}{owner} = '';
 		$data{$row->[0]}{comment} = '';
-		$data{$row->[0]}{check_option} = $row->[3];
+		$data{$row->[0]}{check_option} = '';
 		$data{$row->[0]}{updatable} = 'Y';
 		$data{$row->[0]}{definer} = '';
 		$data{$row->[0]}{security} = '';
-		if ($self->{plsql_pgsql}) {
-			$data{$row->[0]}{text} =~ s/\s+WITH\s+(ENCRYPTION|SCHEMABINDING|VIEW_METADATA)\s+AS\s+//is;
-			$data{$row->[0]}{text} =~ s/^\s*AS\s+//is;
-		}
 	}
 	return %data;
 }
