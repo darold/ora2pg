@@ -672,25 +672,6 @@ sub _get_triggers
 	my($self) = @_;
 
 	my $str = qq{SELECT 
-     o.name AS trigger_name 
-    ,USER_NAME(o.uid) AS trigger_owner 
-    ,OBJECT_NAME(o.parent_obj) AS table_name 
-    ,s.name AS table_schema 
-    ,OBJECTPROPERTY( o.id, 'ExecIsAfterTrigger') AS isafter 
-    ,OBJECTPROPERTY( o.id, 'ExecIsInsertTrigger') AS isinsert 
-    ,OBJECTPROPERTY( o.id, 'ExecIsUpdateTrigger') AS isupdate 
-    ,OBJECTPROPERTY( o.id, 'ExecIsDeleteTrigger') AS isdelete 
-    ,OBJECTPROPERTY( o.id, 'ExecIsInsteadOfTrigger') AS isinsteadof 
-    ,OBJECTPROPERTY( o.id, 'ExecIsTriggerDisabled') AS [disabled]
-    , c.text
-FROM sys.sysobjects o
-INNER JOIN sys.syscomments AS c ON o.id = c.id
-INNER JOIN sys.tables t ON o.parent_obj = t.object_id 
-INNER JOIN sys.schemas s ON t.schema_id = s.schema_id 
-WHERE o.type = 'TR'
-};
-
-	$str = qq{SELECT 
     t.tabname,
     trg.trigid,
     trg.trigname,
@@ -743,10 +724,10 @@ WHERE t.owner != 'informix' AND trg.owner != 'informix' AND b.datakey IN ('A', '
 			}
 			$triggers[-1]->[6] = '' if ($text =~ /\breferencing /);
 			my $head = 'REFERENCING ';
-			while ($text =~ s/\breferencing ([^\s]+) as ([^\s,]+)//is)
-			{
-				$head = '' if ($triggers[-1]->[6] =~ /REFERENCING/s);
-				$triggers[-1]->[6] .= ' ' . $head . uc($1) . ' TABLE AS ' . $2;
+			if ($text =~ s/\breferencing ([^\s]+) as ([^\s]+) ([^\s]+) as ([^\s]+)//is) {
+				$triggers[-1]->[6] = 'REFERENCING ' . uc($1) . ' TABLE AS ' . $2 . ' ' . uc($3) . ' TABLE AS ' . $4;
+			}  elsif ($text =~ s/\breferencing ([^\s]+) as ([^\s]+)//is) {
+				$triggers[-1]->[6] = 'REFERENCING ' . uc($1) . ' TABLE AS ' . $2;
 			}
 			$triggers[-1]->[4] .= $text if ($row->[10] eq 'A');
 		}
@@ -2101,23 +2082,21 @@ sub _get_synonyms
 
 	# Retrieve all synonym
 	my $str = qq{SELECT
-	n.name AS SchemaName, 
-	sy.name AS synonym_name,
-	sy.base_object_name AS synonym_definition,
-	COALESCE(PARSENAME(sy.base_object_name, 4), \@\@servername) AS server_name,
-	COALESCE(PARSENAME(sy.base_object_name, 3), DB_NAME(DB_ID())) AS DB_name,
-	COALESCE(PARSENAME (sy.base_object_name, 2), SCHEMA_NAME(SCHEMA_ID ())) AS schema_name,
-	PARSENAME(sy.base_object_name, 1) AS table_name,
-	\@\@servername AS local_server
-FROM sys.synonyms sy
-LEFT OUTER JOIN sys.schemas n ON sy.schema_id = n.schema_id
+	t.owner,
+	t.tabname, 
+	s.owner,
+	s.tabname,
+	s.servername,
+	s.dbname,
+	s.btabid,
+	t2.tabname,
+	t2.owner
+FROM systables t
+JOIN syssyntable s ON (s.tabid = t.tabid)
+LEFT JOIN systables t2 ON (t2.tabid = s.btabid)
+WHERE t.tabtype = 'S' AND t.owner != 'informix'
 };
-	if ($self->{schema}) {
-		$str .= " WHERE n.name='$self->{schema}' ";
-	} else {
-		$str .= " WHERE n.name NOT IN ('" . join("','", @{$self->{sysusers}}) . "') ";
-	}
-	$str .= $self->limit_to_objects('SYNONYM','sy.name');
+	$str .= $self->limit_to_objects('SYNONYM','s.synname');
 
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -2125,14 +2104,10 @@ LEFT OUTER JOIN sys.schemas n ON sy.schema_id = n.schema_id
 	my %synonyms = ();
 	while (my $row = $sth->fetch)
 	{
-                if (!$self->{schema} && $self->{export_schema}) {
-                        $row->[1] = $row->[0] . '.' . $row->[1];
-                }
 		$synonyms{$row->[1]}{owner} = $row->[0];
-		$synonyms{$row->[1]}{table_owner} = $row->[5];
-		$synonyms{$row->[1]}{table_name} = $row->[6];
-		if ($row->[3] ne $row->[7]) {
-			$synonyms{$row->[1]}{dblink} = $row->[3];
+		$synonyms{$row->[1]}{table_name} = $row->[7];
+		if ($row->[4] || $row->[5]) {
+			$synonyms{$row->[1]}{dblink} = $row->[4] . '@' . $row->[5];
 		}
 	}
 	$sth->finish;
