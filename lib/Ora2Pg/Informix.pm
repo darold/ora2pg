@@ -690,31 +690,74 @@ INNER JOIN sys.schemas s ON t.schema_id = s.schema_id
 WHERE o.type = 'TR'
 };
 
-	if ($self->{schema}) {
-		$str .= " AND s.name = '$self->{schema}'";
-	}
-	$str .= " " . $self->limit_to_objects('TABLE|VIEW|TRIGGER','t.name|t.name|o.name');
+	$str = qq{SELECT 
+    t.tabname,
+    trg.trigid,
+    trg.trigname,
+    trg.owner,
+    trg.tabid,
+    trg.event,
+    trg.old,
+    trg.new,
+    trg.mode,
+    trg.collation,
+    b.datakey,
+    b.seqno,
+    b.data
+FROM systriggers trg
+INNER JOIN systables t ON t.tabid = trg.tabid
+JOIN systrigbody b ON b.trigid = trg.trigid
+WHERE t.owner != 'informix' AND trg.owner != 'informix' AND b.datakey IN ('A', 'D')
+};
 
-	$str .= " ORDER BY t.name, o.name";
+	$str .= " " . $self->limit_to_objects('TABLE|VIEW|TRIGGER','t.tabname|t.tabname|trg.trigname');
+
+	$str .= " ORDER BY t.tabname, trg.trigname, b.seqno, b.datakey";
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
 	my @triggers = ();
 	while (my $row = $sth->fetch)
 	{
-		$row->[4] = 'AFTER'; # only FOR=AFTER trigger in this field, no BEFORE
-		$row->[4] = 'INSTEAD OF' if ($row->[8]);
-		my @actions = ();
-		push(@actions, 'INSERT') if ($row->[5]);
-		push(@actions, 'UPDATE') if ($row->[6]);
-		push(@actions, 'DELETE') if ($row->[7]);
-		my $act = join(' OR ', @actions);
-		if (!$self->{schema} && $self->{export_schema}) {
-			$row->[2] = "$row->[3].$row->[2]";
+		my $kind = 'AFTER'; # only FOR=AFTER trigger in this field, no BEFORE
+		my $text = $row->[12];
+		if ($row->[5] =~ /^(d|i|u)$/) {
+			$kind = 'INSTEAD OF';
+		} elsif ($text =~ s/^\s*(after|before)\b//i) {
+			$kind = uc($1);
+		} elsif ($text =~ s/for each row//i) {
 		}
-		$row->[10] =~ s///g;
-		$row->[10] =~ s/^(?:.*?)\sAS\s(.*)\s*;\s*$/$1/is;
-		push(@triggers, [ ($row->[0], $row->[4], $act, $row->[2], $row->[10], '', 'ROW', $row->[1]) ]);
+		my @actions = ();
+		push(@actions, 'INSERT') if ($row->[5] =~ /I/i);
+		push(@actions, 'UPDATE') if ($row->[5] =~ /U/i);
+		push(@actions, 'DELETE') if ($row->[5] =~ /D/i);
+		my $act = join(' OR ', @actions);
+		if ($row->[11] == 0 && $row->[10] eq 'A')
+		{
+			push(@triggers, [ ($row->[2], $kind, $act, $row->[0], $text, '', 'ROW', $row->[1]) ]);
+		}
+		else
+		{
+			if ($text =~ /update of (.*?) on /is) {
+				$triggers[-1]->[2] = 'UPDATE OF ' . $1;
+			}
+			$triggers[-1]->[6] = '' if ($text =~ /\breferencing /);
+			my $head = 'REFERENCING ';
+			while ($text =~ s/\breferencing ([^\s]+) as ([^\s,]+)//is)
+			{
+				$head = '' if ($triggers[-1]->[6] =~ /REFERENCING/s);
+				$triggers[-1]->[6] .= ' ' . $head . uc($1) . ' TABLE AS ' . $2;
+			}
+			$triggers[-1]->[4] .= $text if ($row->[10] eq 'A');
+		}
+	}
+
+	# clean triggers code
+	for (my $i = 0; $i <= $#triggers; $i++)
+	{
+		$triggers[$i]->[4] =~ s/^\s*\(\s*(.*)\s*\)\s*;\s*$/$1;/s;
+		$triggers[$i]->[4] =~ s/execute procedure/CALL/igs;
+		$triggers[$i]->[4] =~ s/ with trigger references//is;
 	}
 
 	return \@triggers;
@@ -2275,30 +2318,22 @@ sub _list_triggers
         my ($self) = @_;
 
 	my $str = qq{SELECT 
-     o.name AS trigger_name 
-    ,OBJECT_NAME(o.parent_obj) AS table_name 
-    ,s.name AS table_schema 
-FROM sys.sysobjects o
-INNER JOIN sys.tables t ON o.parent_obj = t.object_id 
-INNER JOIN sys.schemas s ON t.schema_id = s.schema_id 
-WHERE o.type = 'TR'
+     trg.trigname
+    ,t.tabname 
+FROM systriggers trg
+INNER JOIN systables t ON t.tabid = trg.tabid
+WHERE t.owner != 'informix'
 };
 
-	if ($self->{schema}) {
-		$str .= " AND s.name = '$self->{schema}'";
-	}
-	$str .= " " . $self->limit_to_objects('TABLE|VIEW|TRIGGER','t.name|t.name|o.name');
+	$str .= " " . $self->limit_to_objects('TABLE|VIEW|TRIGGER','t.tabname|t.tabname|trg.trigname');
 
-	$str .= " ORDER BY t.name, o.name";
+	$str .= " ORDER BY t.tabname, trg.trigname";
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
 	my %triggers = ();
 	while (my $row = $sth->fetch)
 	{
-		if (!$self->{schema} && $self->{export_schema}) {
-			$row->[1] = "$row->[2].$row->[1]";
-		}
 		push(@{$triggers{$row->[1]}}, $row->[0]);
 	}
 
