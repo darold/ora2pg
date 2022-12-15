@@ -7507,7 +7507,12 @@ sub export_synonym
 			$sql_output .= "-- You need to create foreign table $self->{synonyms}{$syn}{table_owner}.$self->{synonyms}{$syn}{table_name} using foreign server: '$self->{synonyms}{$syn}{dblink}'\n -- see DBLINK export type to export the server definition\n";
 		}
 		$sql_output .= "CREATE$self->{create_or_replace} VIEW " . $self->quote_object_name($syn)
-			. " AS SELECT * FROM " . $self->quote_object_name("$self->{synonyms}{$syn}{table_owner}.$self->{synonyms}{$syn}{table_name}") . ";\n";
+			. " AS SELECT * FROM ";
+		if ($self->{synonyms}{$syn}{table_owner}) {
+			$sql_output .= $self->quote_object_name("$self->{synonyms}{$syn}{table_owner}.$self->{synonyms}{$syn}{table_name}") . ";\n";
+		} else {
+			$sql_output .= $self->quote_object_name($self->{synonyms}{$syn}{table_name}) . ";\n";
+		}
 		if ($self->{force_owner})
 		{
 			my $owner = $self->{synonyms}{$syn}{owner};
