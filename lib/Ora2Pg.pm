@@ -3517,8 +3517,10 @@ sub read_trigger_from_file
 
 		next if (!$t_name || ! $tb_name);
 
-		# Remove referencing clause, not supported by PostgreSQL
-		$trigger =~ s/REFERENCING\s+(.*?)(FOR\s+EACH\s+)/$2/is;
+		# Remove referencing clause, not supported by PostgreSQL < 10
+		if ($self->{pg_version} < 10) {
+			$trigger =~ s/REFERENCING\s+(.*?)(FOR\s+EACH\s+)/$2/is;
+		}
 
 		if ($trigger =~ s/^\s*(FOR\s+EACH\s+)(ROW|STATEMENT)\s*//is) {
 			$t_type = $1 . $2;
@@ -5483,8 +5485,10 @@ sub export_trigger
 					$trig->[6] =~ s/"([^"]+)"/\L$1\E/gs;
 				}
 				chomp($trig->[6]);
-				# Remove referencing clause, not supported by PostgreSQL
-				$trig->[6] =~ s/REFERENCING\s+(.*?)(FOR\s+EACH\s+)/$2/is;
+				# Remove referencing clause, not supported by PostgreSQL < 10
+				if ($self->{pg_version} < 10) {
+					$trig->[6] =~ s/REFERENCING\s+(.*?)(FOR\s+EACH\s+)/$2/is;
+				}
 				$trig->[6] =~ s/^\s*["]*(?:$trig->[0])["]*//is;
 				$trig->[6] =~ s/\s+ON\s+([^"\s]+)\s+/" ON " . $self->quote_object_name($1) . " "/ies;
 				$sql_output .= "DROP TRIGGER $self->{pg_supports_ifexists} " . $self->quote_object_name($trig->[0]) . " ON " . $self->quote_object_name($1) . ";\n" if ($self->{drop_if_exists});
@@ -5499,6 +5503,9 @@ sub export_trigger
 						$self->_replace_declare_var(\$trig->[5]);
 					}
 					$sql_output .= "\tWHEN ($trig->[5])\n";
+				}
+				if ($trig->[6] =~ /REFERENCING/) {
+					$sql_output .= "$trig->[6] ";
 				}
 				$sql_output .= "\tEXECUTE PROCEDURE $trig_fctname();\n\n";
 			}
@@ -5521,6 +5528,9 @@ sub export_trigger
 				my $statement = 0;
 				$statement = 1 if ($trig->[1] =~ s/ STATEMENT//);
 				$sql_output .= "$trig->[1] $trig->[2]$cols ON " . $self->quote_object_name($tbname) . " ";
+				if ($trig->[6] =~ /REFERENCING/) {
+					$sql_output .= "$trig->[6] ";
+				}
 				if ($statement) {
 					$sql_output .= "FOR EACH STATEMENT\n";
 				} else {
