@@ -12342,22 +12342,22 @@ sub _get_synonyms
 	}
 }
 
-=head2 _get_partitions_type
+=head2 _get_partitions_list
 
 This function implements an Oracle-native partitions information.
 Return a hash of the partition table_name => type
 =cut
 
-sub _get_partitions_type
+sub _get_partitions_list
 {
 	my($self) = @_;
 
 	if ($self->{is_mysql}) {
-		return Ora2Pg::MySQL::_get_partitions_type($self);
+		return Ora2Pg::MySQL::_get_partitions_list($self);
 	} elsif ($self->{is_mssql}) {
-		return Ora2Pg::MSSQL::_get_partitions_type($self);
+		return Ora2Pg::MSSQL::_get_partitions_list($self);
 	} else {
-		return Ora2Pg::Oracle::_get_partitions_type($self);
+		return Ora2Pg::Oracle::_get_partitions_list($self);
 	}
 }
 
@@ -16446,7 +16446,7 @@ sub _show_infos
 			}
 			elsif ($typ eq 'TABLE PARTITION')
 			{
-				my %partitions = $self->_get_partitions_type();
+				my %partitions = $self->_get_partitions_list();
 				foreach my $t (sort keys %partitions) {
 					$report_info{'Objects'}{$typ}{'detail'} .= "$t\n";
 				}

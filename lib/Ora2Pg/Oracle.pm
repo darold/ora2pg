@@ -2230,14 +2230,14 @@ WHERE
 	return \%subparts, \%default;
 }
 
-=head2 _get_partitions_type
+=head2 _get_partitions_list
 
 This function implements a MySQL-native partitions information.
 Return a hash of the partition table_name => type
 
 =cut
 
-sub _get_partitions_type
+sub _get_partitions_list
 {
 	my ($self) = @_;
 
