@@ -379,7 +379,7 @@ sub export_schema
 	# First remove it if the output file already exists
 	foreach my $t (@{$self->{export_type}})
 	{
-		next if ($t =~ /^(?:SHOW_|TEST)/i); # SHOW_* commands are not concerned here
+		next if ($t =~ /^TEST/i); # TEST* commands are not concerned here
 
 		# Set current export type
 		$self->{type} = $t;
@@ -1797,7 +1797,7 @@ sub _init
 	{
 		$self->{plsql_pgsql} = 1;
 
-		if (grep(/^$self->{type}$/, 'TABLE', 'SEQUENCE', 'GRANT', 'TABLESPACE', 'VIEW', 'TRIGGER', 'QUERY', 'FUNCTION','PROCEDURE','PACKAGE','TYPE','SYNONYM', 'DIRECTORY', 'DBLINK','LOAD'))
+		if (grep(/^$self->{type}$/, 'TABLE', 'SEQUENCE', 'GRANT', 'TABLESPACE', 'VIEW', 'TRIGGER', 'QUERY', 'FUNCTION','PROCEDURE','PACKAGE','TYPE','SYNONYM', 'DIRECTORY', 'DBLINK','LOAD', 'SHOW_REPORT', 'SHOW_TABLE', 'SHOW_COMMAND'))
 		{
 			if ($self->{type} eq 'LOAD')
 			{
@@ -2343,7 +2343,7 @@ sub _tables
 {
 	my ($self, $nodetail) = @_;
 
-	if ($self->{is_mssql} && $self->{type} eq 'TABLE')
+	if (($self->{is_mssql} || $self->{is_informix}) && $self->{type} eq 'TABLE')
 	{
 		$self->logit("Retrieving table partitioning information...\n", 1);
 		%{ $self->{partitions_list} } = $self->_get_partitioned_table();
@@ -2759,6 +2759,16 @@ sub _parse_constraint
 		) };
 		push(@{$self->{tables}{$tb_name}{unique_key}{$1}{columns}}, split(/\s*,\s*/, $3));
 	}
+	elsif ($c =~ /^(UNIQUE|PRIMARY KEY)\s*\(([^\)]+)\)/is)
+	{
+		my $tp = 'U';
+		$tp = 'P' if ($2 eq 'PRIMARY KEY');
+		$self->{tables}{$tb_name}{unique_key}{$1} = { (
+			type => $tp, 'generated' => 0, 'index_name' => $1,
+			columns => ()
+		) };
+		push(@{$self->{tables}{$tb_name}{unique_key}{$1}{columns}}, split(/\s*,\s*/, $3));
+	}
 	elsif ($c =~ /^([^\s]+)\s+CHECK\s*\((.*)\)/is)
 	{
 		my $name = $1;
@@ -2887,6 +2897,7 @@ sub read_schema_from_file
 		{
 			my $tb_name = $1;
 			$tb_name =~ s/"//gs;
+			$tb_name =~ s/.*\.//gs if ($self->{is_informix});
 			if (!exists $self->{tables}{$tb_name}{table_info}{type})
 			{
 				$self->{tables}{$tb_name}{table_info}{type} = 'TABLE';
@@ -2899,8 +2910,9 @@ sub read_schema_from_file
 		elsif ($content =~ s/CREATE\s+(GLOBAL|PRIVATE)?\s*(TEMPORARY)?\s*TABLE[\s]+([^\s]+)\s+AS\s+([^;]+);//is)
 		{
 			my $tb_name = $3;
-			$tb_name =~ s/"//gs;
 			my $tb_def = $4;
+			$tb_name =~ s/"//gs;
+			$tb_name =~ s/.*\.//gs if ($self->{is_informix});
 			$tb_def =~ s/\s+/ /gs;
 			$self->{tables}{$tb_name}{table_info}{type} = 'TEMPORARY ' if ($2);
 			$self->{tables}{$tb_name}{table_info}{type} .= 'TABLE';
@@ -2915,6 +2927,7 @@ sub read_schema_from_file
 			my $tb_def  = $4;
 			my $tb_param  = '';
 			$tb_name =~ s/"//gs;
+			$tb_name =~ s/.*\.//gs if ($self->{is_informix});
 			$self->{tables}{$tb_name}{table_info}{type} = 'TEMPORARY ' if ($2);
 			$self->{tables}{$tb_name}{table_info}{type} .= 'TABLE';
 			$self->{tables}{$tb_name}{table_info}{num_rows} = 0;
@@ -2956,6 +2969,9 @@ sub read_schema_from_file
 			{
 				next if (!$c);
 
+				# Some Informix datatypes can be prefixed by the informix owner.
+				$c =~ s/"informix"\.//igs;
+
 				# Replace temporary substitution
 				while ($c =~ s/\%\%FCT(\d+)\%\%/$fct_placeholder{$1}/is) {
 					delete $fct_placeholder{$1};
@@ -2967,11 +2983,20 @@ sub read_schema_from_file
 				# Rewrite some parts for easiest/generic parsing
 				my $tbn = $tb_name;
 				$tbn =~ s/\./_/gs;
-				$c =~ s/^(PRIMARY KEY|UNIQUE)/CONSTRAINT o2pu_$tbn $1/is;
+				my $orig_name = '';
+				# Informix has constraint name
+				if ($c =~ /\bconstraint ([^\.\s]+\.[^\s]+)/is) {
+					$orig_name = $1;
+					$orig_name =~ s/.*\.//gs if ($self->{is_informix});
+					$c =~ s/\bconstraint ([^\.\s]+\.[^\s]+)/CONSTRAINT $orig_name/is;
+				}
+				my $constr_name = $orig_name || "o2pu_$tbn";
+				$c =~ s/^(PRIMARY KEY|UNIQUE)/CONSTRAINT $constr_name \U$1\L/is;
 				$c =~ s/^(CHECK[^,;]+)DEFERRABLE\s+INITIALLY\s+DEFERRED/$1/is;
-				$c =~ s/^CHECK\b/CONSTRAINT o2pc_$tbn CHECK/is;
-				$c =~ s/^FOREIGN KEY/CONSTRAINT o2pf_$tbn FOREIGN KEY/is;
-
+				$constr_name = $orig_name || "o2pc_$tbn";
+				$c =~ s/^CHECK\b/CONSTRAINT $constr_name CHECK/is;
+				$constr_name = $orig_name || "o2pf_$tbn";
+				$c =~ s/\bFOREIGN KEY/CONSTRAINT $constr_name FOREIGN KEY/is;
 				$c =~ s/\(\s+/\(/gs;
 
 				# register column name between double quote
@@ -3108,7 +3133,6 @@ sub read_schema_from_file
 						}
 						elsif ($c =~ s/REFERENCES\s+([^\(\s]+)\s*\(([^\)]+)\)//is)
 						{
-
 							$c_name =~ s/\./_/gs;
 							my $pk_name = 'o2pf_' . $c_name; 
 							my $chk_search = $1 . "($2)";
@@ -3134,6 +3158,7 @@ sub read_schema_from_file
 							if ($self->{plsql_pgsql}) {
 								$c_default = Ora2Pg::PLSQL::convert_plsql_code($self, $c_default);
 							}
+							$c_default =~ s/^[']+(.*)[']+$/'$1'/gs;
 						}
 						if ($c_type =~ /date|timestamp/i && $c_default =~ /^'0000-/)
 						{
@@ -3225,7 +3250,9 @@ sub read_schema_from_file
 			my $tb_name = $3;
 			my $idx_def = $4;
 			$idx_name =~ s/"//gs;
+			$tb_name =~ s/"//gs;
 			$tb_name =~ s/\s+/ /gs;
+			$tb_name =~ s/.*\.//gs if ($self->{is_informix});
 			$idx_def =~ s/\s+/ /gs;
 			$idx_def =~ s/\s*nologging//is;
 			$idx_def =~ s/STORAGE\s*\([^\)]+\)\s*//is;
@@ -3278,8 +3305,14 @@ sub read_schema_from_file
 		elsif ($content =~ s/ALTER\s+TABLE\s+([^\s]+)\s+ADD\s*\(*\s*(.*)//is)
 		{
 			my $tb_name = $1;
-			$tb_name =~ s/"//g;
 			my $tb_def = $2;
+			$tb_name =~ s/"//g;
+			# Informix cleanup
+			$tb_name =~ s/.*\.//gs if ($self->{is_informix});
+			$tb_def =~ s/[\r\n]+/ /sg;
+			$tb_def =~ s/\s+/ /sg;
+			$tb_def =~ s/^constraint\s+\((.*?)\s+constraint\s+([^\s]+)\);/constraint $2 $1;/is;
+
 			# Oracle allow multiple constraints declaration inside a single ALTER TABLE
 			while ($tb_def =~ s/CONSTRAINT\s+([^\s]+)\s+CHECK\s*(\(.*?\))\s+(ENABLE|DISABLE|VALIDATE|NOVALIDATE|DEFERRABLE|INITIALLY|DEFERRED|USING\s+INDEX|\s+)+([^,]*)//is)
 			{
@@ -3287,7 +3320,9 @@ sub read_schema_from_file
 				my $code = $2;
 				my $states = $3;
 				my $tbspace_move = $4;
-				if (!exists $self->{tables}{$tb_name}{table_info}{type}) {
+				$constname =~ s/.*\.//gs if ($self->{is_informix});
+				if (!exists $self->{tables}{$tb_name}{table_info}{type})
+				{
 					$self->{tables}{$tb_name}{table_info}{type} = 'TABLE';
 					$self->{tables}{$tb_name}{table_info}{num_rows} = 0;
 					$tid++;
@@ -3296,7 +3331,8 @@ sub read_schema_from_file
 				my $validate = '';
 				$validate = ' NOT VALID' if ( $states =~ /NOVALIDATE/is);
 				push(@{$self->{tables}{$tb_name}{alter_table}}, "ADD CONSTRAINT \L$constname\E CHECK $code$validate");
-				if ( $tbspace_move =~ /USING\s+INDEX\s+TABLESPACE\s+([^\s]+)/is) {
+				if ( $tbspace_move =~ /USING\s+INDEX\s+TABLESPACE\s+([^\s]+)/is)
+				{
 					if ($self->{use_tablespace}) {
 						$tbspace_move = "ALTER INDEX $constname SET TABLESPACE " . lc($1);
 						push(@{$self->{tables}{$tb_name}{alter_index}}, $tbspace_move);
@@ -3308,42 +3344,57 @@ sub read_schema_from_file
 			}
 			while ($tb_def =~ s/CONSTRAINT\s+([^\s]+)\s+FOREIGN\s+KEY\s*(\(.*?\)\s+REFERENCES\s+[^\s]+\s*\(.*?\))\s*([^,\)]+|$)//is) {
 				my $constname = $1;
+				my $clause = $2;
 				my $other_def = $3;
-				if (!exists $self->{tables}{$tb_name}{table_info}{type}) {
+				$constname =~ s/.*\.//gs if ($self->{is_informix});
+				$clause =~ s/[^\s]+\.//gs if ($self->{is_informix});
+				$clause =~ s/FOREIGN KEY\s*//is;
+				if (!exists $self->{tables}{$tb_name}{table_info}{type})
+				{
 					$self->{tables}{$tb_name}{table_info}{type} = 'TABLE';
 					$self->{tables}{$tb_name}{table_info}{num_rows} = 0;
 					$tid++;
 					$self->{tables}{$tb_name}{internal_id} = $tid;
 				}
-				push(@{$self->{tables}{$tb_name}{alter_table}}, "ADD CONSTRAINT \L$constname\E FOREIGN KEY $2");
+				push(@{$self->{tables}{$tb_name}{alter_table_fk}}, "ADD CONSTRAINT \L$constname\E FOREIGN KEY $clause");
 				if ($other_def =~ /(ON\s+DELETE\s+(?:NO ACTION|RESTRICT|CASCADE|SET NULL))/is) {
-					$self->{tables}{$tb_name}{alter_table}[-1] .= " $1";
+					$self->{tables}{$tb_name}{alter_table_fk}[-1] .= " $1";
 				}
 				if ($other_def =~ /(ON\s+UPDATE\s+(?:NO ACTION|RESTRICT|CASCADE|SET NULL))/is) {
-					$self->{tables}{$tb_name}{alter_table}[-1] .= " $1";
+					$self->{tables}{$tb_name}{alter_table_fk}[-1] .= " $1";
 				}
 				my $validate = '';
 				$validate = ' NOT VALID' if ( $other_def =~ /NOVALIDATE/is);
-				$self->{tables}{$tb_name}{alter_table}[-1] .= $validate;
+				$self->{tables}{$tb_name}{alter_table_fk}[-1] .= $validate;
 			}
+
 			# We can just have one primary key constraint
-			if ($tb_def =~ s/CONSTRAINT\s+([^\s]+)\s+PRIMARY KEY//is) {
+			if ($tb_def =~ s/CONSTRAINT\s+([^\s]+)\s+PRIMARY KEY//is)
+			{
 				my $constname = lc($1);
+				$constname =~ s/.*\.//gs if ($self->{is_informix});
 				$tb_def =~ s/^[^\(]+//;
-				if ( $tb_def =~ s/USING\s+INDEX\s+TABLESPACE\s+([^\s]+).*//s) {
+				if ( $tb_def =~ s/USING\s+INDEX\s+TABLESPACE\s+([^\s]+).*//s)
+				{
 					$tb_def =~ s/\s+$//;
-					if ($self->{use_tablespace}) {
+					if ($self->{use_tablespace})
+					{
 						my $tbspace_move = "ALTER INDEX $constname SET TABLESPACE $1";
 						push(@{$self->{tables}{$tb_name}{alter_index}}, $tbspace_move);
 					}
 					push(@{$self->{tables}{$tb_name}{alter_table}}, "ADD PRIMARY KEY $constname " . lc($tb_def));
-				} elsif ($tb_def =~ s/USING\s+INDEX\s+([^\s]+).*//s) {
+				}
+				elsif ($tb_def =~ s/USING\s+INDEX\s+([^\s]+).*//s)
+				{
 					push(@{$self->{tables}{$tb_name}{alter_table}}, "ADD PRIMARY KEY " . lc($tb_def));
 					$self->{tables}{$tb_name}{alter_table}[-1] .= " USING INDEX " . lc($1);
-				} elsif ($tb_def) {
+				}
+				elsif ($tb_def)
+				{
 					push(@{$self->{tables}{$tb_name}{alter_table}}, "ADD PRIMARY KEY $constname " . lc($tb_def));
 				}
-				if (!exists $self->{tables}{$tb_name}{table_info}{type}) {
+				if (!exists $self->{tables}{$tb_name}{table_info}{type})
+				{
 					$self->{tables}{$tb_name}{table_info}{type} = 'TABLE';
 					$self->{tables}{$tb_name}{table_info}{num_rows} = 0;
 					$tid++;
@@ -7600,6 +7651,7 @@ sub export_table
 	}
 	my $indices = '';
 	my $fts_indices = '';
+	my $fkeys = '';
 
 	# Find first the total number of tables
 	my $num_total_table = scalar keys %{$self->{tables}};
@@ -7791,6 +7843,10 @@ sub export_table
 				}
 				elsif ($f->[12])
 				{
+					my $seqname = lc($tbname) . '_' . lc($fname) . '_seq';
+					if ($self->{preserve_case}) {
+						$seqname = $tbname . '_' . $fname . '_seq';
+					}
 					$serial_sequence .= "ALTER SEQUENCE $seqname RESTART WITH $f->[12];\n";
 				}
 
@@ -7956,7 +8012,7 @@ sub export_table
 								if (($f->[4] !~ /^'/) && ($f->[4] =~ /[^\d\.]/))
 								{
 									if ($type =~ /CHAR|TEXT/i || ($was_enum && $f->[1] =~ /'/i)) {
-										$f->[4] = "'$f->[4]'" if ($f->[4] !~ /[']/ && $f->[4] !~ /\(.*\)/ && uc($f->[4]) ne 'NULL');
+										$f->[4] = "'$f->[4]'" if ($f->[4] !~ /[']/ && $f->[4] !~ /\(.*\)/ && uc($f->[4]) ne 'NULL' && $f->[4] !~ /\?TEXTVALUE\d+\?/);
 									}
 									elsif ($type =~ /DATE|TIME/i)
 									{
@@ -7969,7 +8025,7 @@ sub export_table
 											}
 										}
 										if ($f->[4] =~ /^\d+/) {
-											$f->[4] = "'$f->[4]'";
+											$f->[4] = "'$f->[4]'" if ($f->[4] !~ /\?TEXTVALUE\d+\?/);
 										} elsif ($f->[4] =~ /^[\-]*INFINITY$/) {
 											$f->[4] = "'$f->[4]'::$type";
 										} elsif ($f->[4] =~ /AT TIME ZONE/i) {
@@ -7983,7 +8039,7 @@ sub export_table
 									if ($#c >= 1)
 									{
 										if ($type =~ /CHAR|TEXT/i || ($was_enum && $f->[1] =~ /'/i)) {
-											$f->[4] = "'$f->[4]'" if ($f->[4] !~ /[']/ && $f->[4] !~ /\(.*\)/ && uc($f->[4]) ne 'NULL');
+											$f->[4] = "'$f->[4]'" if ($f->[4] !~ /[']/ && $f->[4] !~ /\(.*\)/ && uc($f->[4]) ne 'NULL' && $f->[4] !~ /\?TEXTVALUE\d+\?/);
 										} elsif ($type =~ /DATE|TIME/i) {
 											if ($f->[4] =~ /^0000-/) {
 												if ($self->{replace_zero_date}) {
@@ -7993,19 +8049,19 @@ sub export_table
 												}
 											}
 											if ($f->[4] =~ /^\d+/) {
-												$f->[4] = "'$f->[4]'";
+												$f->[4] = "'$f->[4]'" if ($f->[4] !~ /\?TEXTVALUE\d+\?/);
 											} elsif ($f->[4] =~ /^[\-]*INFINITY$/) {
 												$f->[4] = "'$f->[4]'::$type";
 											} elsif ($f->[4] =~ /AT TIME ZONE/i) {
 												$f->[4] = "($f->[4])";
 											}
 										} elsif (uc($f->[4]) ne 'NULL') {
-											$f->[4] = "'$f->[4]'";
+											$f->[4] = "'$f->[4]'" if ($f->[4] !~ /\?TEXTVALUE\d+\?/);
 										}
 									}
 									elsif ($type =~ /(char|text)/i && $f->[4] !~ /^'/)
 									{
-										$f->[4] = "'$f->[4]'";
+										$f->[4] = "'$f->[4]'" if ($f->[4] !~ /\?TEXTVALUE\d+\?/);
 									}
 								}
 								$f->[4] = 'NULL' if ($f->[4] eq "''" && $type =~ /int|double|numeric/i);
@@ -8202,11 +8258,24 @@ sub export_table
 			}
 		}
 
-		if (exists $self->{tables}{$table}{alter_table} && !$self->{disable_unlogged} )
+		if (exists $self->{tables}{$table}{alter_table})
 		{
 			$obj_type =~ s/UNLOGGED //;
 			foreach (@{$self->{tables}{$table}{alter_table}}) {
 				$sql_output .= "\nALTER $obj_type $tbname $_;\n";
+			}
+		}
+
+		if (exists $self->{tables}{$table}{alter_table_fk})
+		{
+			$obj_type =~ s/UNLOGGED //;
+			foreach (@{$self->{tables}{$table}{alter_table_fk}})
+			{
+				if ($self->{file_per_constraint}) {
+					$fkeys .= "\nALTER $obj_type $tbname $_;\n";
+				} else {
+					$sql_output .= "\nALTER $obj_type $tbname $_;\n";
+				}
 			}
 		}
 		$ib++;
@@ -8337,7 +8406,6 @@ RETURNS text AS
 	}
 
 	# Dumping foreign key constraints
-	my $fkeys = '';
 	foreach my $table (sort keys %{$self->{tables}})
 	{
 		next if ($#{$self->{tables}{$table}{foreign_key}} < 0);
@@ -8455,6 +8523,12 @@ definition.
 sub _get_sql_statements
 {
 	my $self = shift;
+
+	if ($self->{type} =~ /^SHOW_/)
+	{
+		$self->_show_infos($self->{type});
+		exit 0;
+	}
 
 	# Process view
 	if ($self->{type} eq 'VIEW')
@@ -12181,7 +12255,7 @@ sub _table_info
 	}
 
 	# Collect real row count for each table
-	if ($do_real_row_count)
+	if (!$self->{input_file} && $do_real_row_count)
 	{
 		my $t1 = Benchmark->new;
 
@@ -13942,11 +14016,10 @@ sub _convert_function
 	$dirprefix = "$self->{output_dir}/" if ($self->{output_dir});
 
 	my %fct_detail = $self->_lookup_function($plsql, $pname);
-	if ($self->{is_mysql}) {
+	if ($self->{is_mysql} || $self->{is_informix}) {
 		$pname = '';
 	}
 	return if (!exists $fct_detail{name});
-
 	$fct_detail{name} =~ s/^.*\.// if (!$self->{is_mssql} || $self->{schema}) ;
 	$fct_detail{name} =~ s/"//gs;
 
@@ -16060,9 +16133,15 @@ sub _show_infos
 		}
 		# Get Oracle database version and size
 		print STDERR "Looking at Oracle server version...\n" if ($self->{debug});
-		my $ver = $self->_get_version();
+		my $ver = '';
+		if (!$self->{input_file}) {
+			$ver = $self->_get_version();
+		}
 		print STDERR "Looking at Oracle database size...\n" if ($self->{debug});
-		my $size = $self->_get_database_size();
+		my $size = '';
+		if (!$self->{input_file}) {
+			$size = $self->_get_database_size();
+		}
 		# Get the list of all database objects
 		print STDERR "Looking at Oracle defined objects...\n" if ($self->{debug});
 		my %objects = $self->_get_objects();
@@ -16433,6 +16512,9 @@ sub _show_infos
                                         $self->{text_values_pos} = 0;
                                         if ($self->{is_mysql}) {
                                                 $trig->[4] = $self->_convert_function($trig->[8], $trig->[4], $trig->[0]);
+					} elsif ($self->{is_informix}) {
+						# call a procedure like PG, no procedural code
+						$trig->[4] =~ s/=/=>/gs;
                                         } else {
                                                 $trig->[4] = $self->_convert_function($trig->[8], $trig->[4]);
                                         }
@@ -16470,7 +16552,7 @@ sub _show_infos
                                         $self->{comment_values} = ();
                                         $self->{text_values} = ();
                                         $self->{text_values_pos} = 0;
-                                        if ($self->{is_mysql}) {
+                                        if ($self->{is_mysql} || $self->{is_informix}) {
                                                 $functions->{$fct}{text} = $self->_convert_function($functions->{$fct}{owner}, $functions->{$fct}{text}, $fct);
                                         } else {
                                                 $functions->{$fct}{text} = $self->_convert_function($functions->{$fct}{owner}, $functions->{$fct}{text});
@@ -16582,10 +16664,21 @@ sub _show_infos
 			{
 				foreach my $t (sort {$a cmp $b} keys %synonyms)
 				{
-					if ($synonyms{$t}{dblink}) {
-						$report_info{'Objects'}{$typ}{'detail'} .= "\L$t\E is a link to \L$synonyms{$t}{table_owner}.$synonyms{$t}{table_name}\@$synonyms{$t}{dblink}\E\n";
-					} else {
-						$report_info{'Objects'}{$typ}{'detail'} .= "\L$t\E is an alias to $synonyms{$t}{table_owner}.$synonyms{$t}{table_name}\n";
+					if (!$self->{is_informix})
+					{
+						if ($synonyms{$t}{dblink}) {
+							$report_info{'Objects'}{$typ}{'detail'} .= "\L$t\E is a link to \L$synonyms{$t}{table_owner}.$synonyms{$t}{table_name}\@$synonyms{$t}{dblink}\E\n";
+						} else {
+							$report_info{'Objects'}{$typ}{'detail'} .= "\L$t\E is an alias to $synonyms{$t}{table_owner}.$synonyms{$t}{table_name}\n";
+						}
+					}
+					else
+					{
+						if ($synonyms{$t}{dblink}) {
+							$report_info{'Objects'}{$typ}{'detail'} .= "\L$t\E is a link to \L$synonyms{$t}{dblink}\E\n";
+						} else {
+							$report_info{'Objects'}{$typ}{'detail'} .= "\L$t\E is an alias to $synonyms{$t}{table_name}\n";
+						}
 					}
 				}
 				$report_info{'Objects'}{$typ}{'comment'} = "SYNONYMs will be exported as views. SYNONYMs do not exists with PostgreSQL but a common workaround is to use views or set the PostgreSQL search_path in your session to access object outside the current schema.";
@@ -16600,7 +16693,9 @@ sub _show_infos
 				foreach my $t (sort keys %partitions) {
 					$report_info{'Objects'}{$typ}{'detail'} .= "$t\n";
 				}
-				$report_info{'Objects'}{$typ}{'comment'} = "Partitions are well supported by PostgreSQL except key partition which will not be exported.";
+				my $bad_partition_type = 'key';
+				$bad_partition_type = 'round robin' if ($self->{is_informix});
+				$report_info{'Objects'}{$typ}{'comment'} = "Partitions are well supported by PostgreSQL except $bad_partition_type partition which will not be exported.";
 			}
 			elsif ($typ eq 'GLOBAL TEMPORARY TABLE')
 			{

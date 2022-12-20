@@ -1611,14 +1611,14 @@ WHERE SUBPARTITION_NAME IS NOT NULL AND SUBPARTITION_EXPRESSION IS NOT NULL
 	return \%subparts, \%default;
 }
 
-=head2 _get_partitions_list
+=head2 _get_partitions_type
 
 This function implements a MySQL-native partitions information.
 Return a hash of the partition table_name => type
 
 =cut
 
-sub _get_partitions_list
+sub _get_partitions_type
 {
 	my($self) = @_;
 

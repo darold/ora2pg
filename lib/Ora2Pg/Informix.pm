@@ -261,6 +261,9 @@ sub _table_info
 	my $self = shift;
 	my $do_real_row_count = shift;
 
+	# When read from input file use dedicated function
+	return _table_info_from_file($self) if ($self->{input_file});
+
 	# First register all tablespace/table in memory from this database
 	my %tbspname = ();
 
@@ -325,6 +328,43 @@ WHERE t.tabtype='T' AND t.owner != 'informix'
 	return %tables_infos;
 }
 
+sub _table_info_from_file
+{
+	my $self = shift;
+
+	my %tables_infos = ();
+
+	my $fh = new IO::File;
+	$fh->open("<$self->{input_file}") or $self->logit("FATAL: can't read file $self->{input_file}, $!\n", 0, 1);
+	my $table = '';
+	while (my $l = <$fh>)
+	{
+		chomp($l);
+		if ($l =~ /create table ([^\.]+).([^\s]+)/)
+		{
+			next if ($1 eq '"informix"' || $1 eq 'informix');
+			$table = $2;
+			$tables_infos{$table}{owner} = $1;
+			$tables_infos{$table}{num_rows} = 0;
+			$tables_infos{$table}{comment} = ''; # Informix doesn't have COMMENT
+			$tables_infos{$table}{type} =  'TABLE';
+			$tables_infos{$table}{nested} = 'NO';
+			$tables_infos{$table}{auto_increment} = 0;
+			$tables_infos{$table}{tablespace} = '';
+			$tables_infos{$table}{size} = 0;
+			$tables_infos{$table}{owner} =~ s/"//g ;
+		} elsif ($table && $l =~ /;/) {
+			$table = '';
+		} elsif ($table && $l =~ /fragment by/) {
+			$tables_infos{$table}{partitioned} = 1;
+		}
+	}
+	$fh->close();
+
+	return %tables_infos;
+}
+
+
 sub _column_comments
 {
 	my ($self, $table) = @_;
@@ -335,6 +375,8 @@ sub _column_comments
 sub _column_info
 {
 	my ($self, $table, $owner, $objtype, $recurs) = @_;
+
+	return _column_info_from_file($self, $table, $owner, $objtype, $recurs) if ($self->{input_file});
 
 	my %informix_coltype = (
 		0 => 'CHAR',
@@ -432,9 +474,45 @@ ORDER BY c.tabid, c.colno};
 	return %data;
 }
 
+sub _column_info_from_file
+{
+	my ($self, $table, $owner, $objtype, $recurs) = @_;
+
+	my $fh = new IO::File;
+	$fh->open("<$self->{input_file}") or $self->logit("FATAL: can't read file $self->{input_file}, $!\n", 0, 1);
+	my %data = ();
+	my $pos = 0;
+	while (my $l = <$fh>)
+	{
+		chomp($l);
+		if ($l =~ /create table ([^\.]+)\.([^\s\(]+)/)
+		{
+			next if ($1 eq '"informix"' || $1 eq 'informix');
+			my $tbname = $2;
+			next if ($table && lc($table) ne lc($tbname));
+			my $tb_code = '';
+			while ($l = <$fh>)
+			{
+				chomp($l);
+				$tb_code .= "\n" if ($l =~ /^\s*\)/);
+				$tb_code .= $l;
+				$tb_code .= "\n" if ($l =~ /^\s*\(/ || $l =~ /,\s*$/);
+				last if ($l =~ /;$/);
+			}
+			$pos++;
+		}
+	}
+	$fh->close;
+
+	return %data;
+}
+
+
 sub _get_indexes
 {
 	my ($self, $table, $owner, $generated_indexes) = @_;
+
+	return _get_indexes_from_file($self, $table, $owner, $generated_indexes) if ($self->{input_file});
 
 	my $condition = '';
 	$condition .= "AND t.tabname='$table' " if ($table);
@@ -508,6 +586,70 @@ ORDER BY T.tabname, Id.idxname
 
 	return \%unique, \%data, \%idx_type, \%index_tablespace;
 }
+
+sub _get_indexes_from_file
+{
+	my ($self, $table, $owner, $generated_indexes) = @_;
+
+	my %data = ();
+	my %unique = ();
+	my %idx_type = ();
+	my %index_tablespace = ();
+
+
+	my $fh = new IO::File;
+	$fh->open("<$self->{input_file}") or $self->logit("FATAL: can't read file $self->{input_file}, $!\n", 0, 1);
+	while (my $l = <$fh>)
+	{
+		chomp($l);
+		if ($l =~ /create index|create unique index/)
+		{
+			my $idx_code = $l;
+			while ($l = <$fh>)
+			{
+				chomp($l);
+				$l =~ s/^\s+\./\./;
+				$idx_code .= $l;
+				last if ($l =~ /;/);
+			}
+
+			my $tbname = '';
+			my $idxname = '';
+			if ($idx_code =~ /create index ([^\.]+).([^\s]+) on ([^\.]+).([^\s]+)/i)
+			{
+				next if ($1 eq '"informix"' || $1 eq 'informix');
+				$idxname = $2;
+				$tbname = $4;
+				next if ($table && $tbname ne $table);
+			}
+			elsif ($idx_code =~ /create unique index ([^\.]+).([^\s]+) on ([^\.]+).([^\s]+)/i)
+			{
+				next if ($1 eq '"informix"' || $1 eq 'informix');
+				$idxname = $2;
+				$tbname = $4;
+				next if ($table && $tbname ne $table);
+				$unique{$tbname}{$idxname} = 'UNIQUE';
+				$idx_type{$tbname}{$idxname}{type} = 'U';
+			}
+
+			if ( $idxname && !$self->{indexes_renaming} && !$self->{indexes_suffix} && (lc($idxname) eq lc($table)) ) {
+				 print STDERR "WARNING: index $idxname has the same name as the table itself. Please rename it before export or enable INDEXES_RENAMING.\n";
+			}
+
+			if ($idxname && $l =~ /using ([^\s]+)/) {
+				$idx_type{$tbname}{$idxname}{type_name} = $1;
+			}
+
+			$idx_code =~ s/.*\(([^\)]+)\).*/$1/;
+			my @cols = split(/\s*,\s*/, $idx_code);
+			push(@{$data{$tbname}{$idxname}}, @cols);
+		}
+	}
+	$fh->close;
+
+	return \%unique, \%data, \%idx_type, \%index_tablespace;
+}
+
 
 sub _count_indexes
 {
@@ -636,6 +778,8 @@ sub _get_views
 {
 	my ($self) = @_;
 
+	return _get_views_from_file($self) if ($self->{input_file});
+
 	my %comments = ();
 	# Retrieve all views
 	my $str = qq{SELECT
@@ -667,9 +811,49 @@ WHERE t.tabtype = 'V' AND t.owner != 'informix'
 	return %data;
 }
 
+sub _get_views_from_file
+{
+	my ($self) = @_;
+
+	# Retrieve all views
+	my %data = ();
+	my $fh = new IO::File;
+	$fh->open("<$self->{input_file}") or $self->logit("FATAL: can't read file $self->{input_file}, $!\n", 0, 1);
+	my $vname = '';
+	while (my $l = <$fh>)
+	{
+		chomp($l);
+
+		if ($l =~ s/create view ([^\.]+).([^\s]+)//)
+		{
+			next if ($1 eq '"informix"' || $1 eq 'informix');
+			my $vname = $2;
+			$data{$vname}{text} = "$l\n";
+			while ($l = <$fh>)
+			{
+				chomp($l);
+				$data{$vname}{text} .= "$l\n";
+				last if ($l =~ /;\s*$/);
+			}
+			$data{$vname}{owner} = '';
+			$data{$vname}{comment} = '';
+			$data{$vname}{check_option} = '';
+			$data{$vname}{updatable} = 'Y';
+			$data{$vname}{definer} = '';
+			$data{$vname}{security} = '';
+		}
+	}
+	$fh->close;
+
+	return %data;
+}
+
+
 sub _get_triggers
 {
 	my($self) = @_;
+
+	return _get_triggers_from_file($self) if ($self->{input_file});
 
 	my $str = qq{SELECT 
     t.tabname,
@@ -744,9 +928,82 @@ WHERE t.owner != 'informix' AND trg.owner != 'informix' AND b.datakey IN ('A', '
 	return \@triggers;
 }
 
+sub _get_triggers_from_file
+{
+	my($self) = @_;
+
+	my $fh = new IO::File;
+	$fh->open("<$self->{input_file}") or $self->logit("FATAL: can't read file $self->{input_file}, $!\n", 0, 1);
+	my $tbname = '';
+	my @triggers = ();
+	while (my $l = <$fh>)
+	{
+		chomp($l);
+
+		if ($l =~ /create trigger ([^\.]+).([^\s]+)/)
+		{
+			next if ($1 eq '"informix"' || $1 eq 'informix');
+			my $trigname = $2;
+			my $trig_code = $l;
+			my $code_pos = 0;
+			my $nline = 1;
+			while ($l = <$fh>)
+			{
+				chomp($l);
+				$code_pos = length($trig_code), $trig_code .= "\n" if ($l =~ /^\s*\(\s*$/);
+				$trig_code .= $l;
+				$trig_code .= "\n" if ($l =~ /^\s*\(\s*$/);
+				last if ($l =~ /;$/);
+				$nline++;
+			}
+
+			if ($trig_code =~ /create trigger ([^\.]+).([^\s]+) ([^\s]+) on ([^\.]+).([^\s]+)/is)
+			{
+				my @actions = ($3);
+				my $tbname = $5;
+				my $kind = 'AFTER'; # only FOR=AFTER trigger in this field, no BEFORE
+				my $type = 'ROW';
+				my $owner = $1;
+
+				if ($trig_code =~ /instead of/is) {
+					$kind = 'INSTEAD OF';
+				} elsif ($trig_code =~ /^\s*(after|before)\b/i) {
+					$kind = uc($1);
+				}
+				my $act = join(' OR ', @actions);
+				if ($trig_code =~ /update of (.*?) on /is) {
+					$act = 'UPDATE OF ' . $1;
+				}
+				$type = '' if ($trig_code =~ /\breferencing /);
+				my $head = 'REFERENCING ';
+				if ($trig_code =~ /\breferencing ([^\s]+) as ([^\s]+) ([^\s]+) as ([^\s]+)/is) {
+					$type = 'REFERENCING ' . uc($1) . ' TABLE AS ' . $2 . ' ' . uc($3) . ' TABLE AS ' . $4;
+				}  elsif ($trig_code =~ /\breferencing ([^\s]+) as ([^\s]+)/is) {
+					$type = 'REFERENCING ' . uc($1) . ' TABLE AS ' . $2;
+				}
+				$trig_code = substr($trig_code, $code_pos);
+				push(@triggers, [ ($trigname, $kind, $act, $tbname, $trig_code, '', 'ROW', $owner) ]);
+			}
+		}
+	}
+	$fh->close;
+
+	# clean triggers code
+	for (my $i = 0; $i <= $#triggers; $i++)
+	{
+		$triggers[$i]->[4] =~ s/^\s*\(\s*(.*)\s*\)\s*;\s*$/$1;/s;
+		$triggers[$i]->[4] =~ s/ with trigger references//is;
+	}
+
+	return \@triggers;
+}
+
+
 sub _unique_key
 {
-	my($self, $table, $owner) = @_;
+	my ($self, $table, $owner) = @_;
+
+	return _unique_key_from_file($self, $table, $owner) if ($self->{input_file});
 
 	my %result = ();
         my @accepted_constraint_types = ();
@@ -813,9 +1070,69 @@ WHERE constr.constrtype IN ('P', 'U') AND tab.owner != 'informix';
 	return %result;
 }
 
+sub _unique_key_from_file
+{
+	my ($self, $table, $owner) = @_;
+
+
+	my %result = ();
+        my @accepted_constraint_types = ();
+
+        push @accepted_constraint_types, "P" unless($self->{skip_pkeys});
+        push @accepted_constraint_types, "U" unless($self->{skip_ukeys});
+        return %result unless(@accepted_constraint_types);
+
+	my $fh = new IO::File;
+	$fh->open("<$self->{input_file}") or $self->logit("FATAL: can't read file $self->{input_file}, $!\n", 0, 1);
+	my $tbname = '';
+	while (my $l = <$fh>)
+	{
+		chomp($l);
+
+		$tbname = '' if ($l =~ /;$/);
+
+		if ($l =~ /create table ([^\.]+).([^\s]+)/)
+		{
+			next if ($1 eq '"informix"' || $1 eq 'informix');
+			$tbname = $2;
+			next if ($table && lc($tbname) ne lc($table));
+
+			my $tb_code = '';
+			while ($l = <$fh>)
+			{
+				chomp($l);
+				$tb_code .= "\n" if ($l =~ /^\s*\)/);
+				$tb_code .= $l;
+				$tb_code .= "\n" if ($l =~ /^\s*\(/ || $l =~ /,\s*$/);
+				last if ($l =~ /;$/);
+			}
+
+			foreach $l (split(/\n/, $tb_code))
+			{
+				next if ($l !~ /^\s*(unique\s*\(|primary\s+key)/);
+				$l =~ /(?:unique|primary key)\s+\(([^\)]+)\)\s+constraint ([^\.]+)\.([^\s,]+)/;
+				my $idxname = $3;
+				my @cols = split(/\s*,\s*/, $1);
+				my $key_type = "U";
+				$key_type = "P" if ($l =~ /^\s*primary\s+key/);
+
+				next if (!grep(/$key_type/, @accepted_constraint_types));
+
+				my %constraint = (type => $key_type, 'generated' => 'N', 'index_name' => $idxname, columns => \@cols );
+				$result{$tbname}{$idxname} = \%constraint;
+			}
+		}
+	}
+	$fh->close;
+
+	return %result;
+}
+
 sub _check_constraint
 {
 	my ($self, $table, $owner) = @_;
+
+	return _check_constraint_from_file($self, $table, $owner) if ($self->{input_file});
 
 	my $condition = '';
 	$condition .= " AND st.tabname = '$table' " if ($table);
@@ -847,6 +1164,57 @@ ORDER BY st.tabname, ch.seqno};
 	return %data;
 }
 
+sub _check_constraint_from_file
+{
+	my ($self, $table, $owner) = @_;
+
+	my %data = ();
+
+	my $fh = new IO::File;
+	$fh->open("<$self->{input_file}") or $self->logit("FATAL: can't read file $self->{input_file}, $!\n", 0, 1);
+	my $tbname = '';
+	while (my $l = <$fh>)
+	{
+		chomp($l);
+
+		$tbname = '' if ($l =~ /;$/);
+
+		if ($l =~ /create table ([^\.]+).([^\s]+)/)
+		{
+			next if ($1 eq '"informix"' || $1 eq 'informix');
+			$tbname = $2;
+
+			next if ($table && lc($tbname) ne lc($table));
+
+			my $tb_code = '';
+			while ($l = <$fh>)
+			{
+				chomp($l);
+				$tb_code .= "\n" if ($l =~ /^\s*\)/);
+				$tb_code .= $l;
+				$tb_code .= "\n" if ($l =~ /^\s*\(/ || $l =~ /,\s*$/);
+				last if ($l =~ /;$/);
+			}
+
+			foreach $l (split(/\n/, $tb_code))
+			{
+				next if ($l !~ /^\s*check\s*\(/);
+				$l =~ /check\s*\((.*?)\)\s+constraint ([^\.]+)\.([^\s,]+)/;
+				my $idxname = $3;
+				my $expr = $1;
+
+				$data{$tbname}{constraint}{$idxname}{condition} = $expr;
+				$data{$tbname}{constraint}{$idxname}{validate}  = 'VALIDATED';
+			}
+		}
+	}
+	$fh->close;
+
+
+	return %data;
+}
+
+
 sub _get_external_tables
 {
 	my ($self) = @_;
@@ -866,6 +1234,8 @@ sub _get_directory
 sub _get_functions
 {
 	my $self = shift;
+
+	return _get_functions_from_file($self) if ($self->{input_file});
 
 	# Retrieve all functions 
 	my $str = qq{SELECT
@@ -894,13 +1264,13 @@ WHERE
 	my %functions = ();
 	while (my $row = $sth->fetch)
 	{
+		$functions{"$row->[0]"}{kind} = 'FUNCTION';
 		$functions{"$row->[0]"}{name} = $row->[0];
 		if ($row->[6] eq 'T') {
 			$functions{"$row->[0]"}{text} .= $row->[8];
 		} else {
 			$functions{"$row->[0]"}{comment} .= $row->[8];
 		}
-		$functions{"$row->[0]"}{kind} = 'FUNCTION';
 		$functions{"$row->[0]"}{strict} = $row->[3];
 		$functions{"$row->[0]"}{security} = 'EXECUTER';
 	}
@@ -908,9 +1278,55 @@ WHERE
 	return \%functions;
 }
 
+sub _get_functions_from_file
+{
+	my $self = shift;
+
+	# Retrieve all functions 
+	my %functions = ();
+
+	my $fh = new IO::File;
+	$fh->open("<$self->{input_file}") or $self->logit("FATAL: can't read file $self->{input_file}, $!\n", 0, 1);
+	my %data = ();
+	my $pos = 0;
+	while (my $l = <$fh>)
+	{
+		chomp($l);
+		if ($l =~ /create function ([^\.]+)\.([^\s\(]+)/is)
+		{
+			next if ($1 eq '"informix"' || $1 eq 'informix');
+			my $fctname = $2;
+			my $fct_code = $l;
+			my $end_found = 0;
+			while ($l = <$fh>)
+			{
+				chomp($l);
+				$fct_code .= "$l\n";
+				if ($fct_code =~ /end function/i) {
+					$end_found = 1;
+				}
+				last if ($end_found && $l =~ /;$/);
+			}
+			$functions{$fctname}{kind} = 'FUNCTION';
+			$functions{$fctname}{name} = $fctname;
+			$functions{$fctname}{text} = $fct_code;
+			if ($fct_code =~ s/(end function)\s+(.*);/$1;/is) {
+				$functions{$fctname}{comment} = $1;
+			}
+			$functions{$fctname}{strict} = 1;
+			$functions{$fctname}{security} = 'EXECUTER';
+		}
+	}
+	$fh->close;
+
+	return \%functions;
+}
+
 sub _get_procedures
 {
 	my $self = shift;
+
+	return _get_procedures_from_file($self) if ($self->{input_file});
 
 	# Retrieve all functions 
 	my $str = qq{SELECT
@@ -954,6 +1370,50 @@ WHERE
 	return \%functions;
 }
 
+sub _get_procedures_from_file
+{
+	my $self = shift;
+
+	# Retrieve all procedures 
+	my %procedures = ();
+
+	my $fh = new IO::File;
+	$fh->open("<$self->{input_file}") or $self->logit("FATAL: can't read file $self->{input_file}, $!\n", 0, 1);
+	my %data = ();
+	while (my $l = <$fh>)
+	{
+		chomp($l);
+		if ($l =~ /create procedure ([^\.]+)\.([^\s\(]+)/is)
+		{
+			next if ($1 eq '"informix"' || $1 eq 'informix');
+			my $procname = $2;
+			my $proc_code = $l;
+			my $end_found = 0;
+			while ($l = <$fh>)
+			{
+				chomp($l);
+				$proc_code .= "$l\n";
+				if ($proc_code =~ /end procedure/i) {
+					$end_found = 1;
+				}
+				last if ($end_found && $l =~ /;$/);
+			}
+			$procedures{$procname}{kind} = 'PROCEDURE';
+			$procedures{$procname}{name} = $procname;
+			$procedures{$procname}{text} = $proc_code;
+			if ($proc_code =~ s/(end procedure)\s+(.*);/$1;/is) {
+				$procedures{$procname}{comment} = $1;
+			}
+			$procedures{$procname}{strict} = 1;
+			$procedures{$procname}{security} = 'EXECUTER';
+		}
+	}
+	$fh->close;
+
+	return \%procedures;
+}
+
+
 sub _lookup_function
 {
 	my ($self, $code, $fctname) = @_;
@@ -961,36 +1421,28 @@ sub _lookup_function
 	my $type = 'functions';
 	$type = lc($self->{type}) . 's' if ($self->{type} eq 'FUNCTION' or $self->{type} eq 'PROCEDURE');
 
-	# Replace all double quote with single quote
-	$code =~ s/"/'/g;
-	# replace backquote with double quote
-	$code =~ s/`/"/g;
 	# Remove some unused code
-	$code =~ s/\s+READS SQL DATA//igs;
-	$code =~ s/\s+UNSIGNED\b((?:.*?)\bFUNCTION\b)/$1/igs;
-	while ($code =~ s/(\s*DECLARE\s+)([^\r\n]+?),\s*\@/$1 $2\n$1 \@/is) {};
+	$code =~ s/\s+IF NOT EXISTS//is;
 
         my %fct_detail = ();
         $fct_detail{func_ret_type} = 'OPAQUE';
 
         # Split data into declarative and code part
-        ($fct_detail{declare}, $fct_detail{code}) = split(/\b(?:BEGIN|SET|SELECT|INSERT|UPDATE|IF)\b/i, $code, 2);
-	return if (!$fct_detail{code});
-
-	# Look for table variables in code and rewrite them as temporary tables
-	my $records = '';
-	while ($fct_detail{code} =~ s/DECLARE\s+\@([^\s]+)\s+TABLE\s+(\(.*?[\)\w]\s*\))\s*([^,])/"CREATE TEMPORARY TABLE v_$1 $2" . (($3 eq ")") ? $3 : "") . ";"/eis)
-	{
-		my $varname = $1;
-		$fct_detail{code} =~ s/\@$varname\b/v_$varname/igs;
+        ($fct_detail{declare}, $fct_detail{code}) = split(/;/i, $code, 2);
+	#($fct_detail{declare}, $fct_detail{code}) = split(/\b(?:BEGIN|SET|SELECT|INSERT|UPDATE|IF|DROP|RETURN|DEFINE|;)\b/i, $code, 2);
+	# Fix part that should be in code section not in declare section
+	if ($fct_detail{declare} =~ s/\s+((?:DROP|RETURN)\s.*)//) {
+		$fct_detail{code} = $1 . $fct_detail{code};
 	}
+	return if (!$fct_detail{code});
 
 	# Move all DECLARE statements found in the code into the DECLARE section
 	my @lines = split(/\n/, $fct_detail{code});
 	$fct_detail{code} = '';
+	$fct_detail{declare} =~ s/;//s;
 	foreach my $l (@lines)
 	{
-		if ($l !~ /^\s*DECLARE\s+.*CURSOR/ && $l =~ /^\s*DECLARE\s+(.*)/i) {
+		if ($l =~ /^\s*DEFINE\s+(.*)/i) {
 			$fct_detail{declare} .= "\n$1;";
 		} else {
 			$fct_detail{code} .= "$l\n";
@@ -1011,10 +1463,10 @@ sub _lookup_function
 
         @{$fct_detail{param_types}} = ();
 
-	if ( ($fct_detail{declare} =~ s/(.*?)\b(FUNCTION|PROCEDURE|PROC)\s+([^\s]+)\s+((?:RETURNS|AS)\s+.*)//is)
-		|| ($fct_detail{declare} =~ s/(.*?)\b(FUNCTION|PROCEDURE|PROC)\s+([^\s\(]+)(.*?)\s+((?:RETURNS|AS)\s+.*)//is)
-		|| ($fct_detail{declare} =~ s/(.*?)\b(FUNCTION|PROCEDURE|PROC)\s+(.*?)\s+((?:RETURNS|AS)\s+.*)//is)
-		|| ($fct_detail{declare} =~ s/(.*?)\b(FUNCTION|PROCEDURE|PROC)\s+([^\s\(]+)\s*(\(.*\))//is) )
+	if ( ($fct_detail{declare} =~ s/(.*?)\b(FUNCTION|PROCEDURE)\s+([^\s]+)\s+(RETURNING\s+.*)//is)
+		|| ($fct_detail{declare} =~ s/(.*?)\b(FUNCTION|PROCEDURE)\s+([^\s\(]+)(.*?)\s+(RETURNING\s+.*)//is)
+		|| ($fct_detail{declare} =~ s/(.*?)\b(FUNCTION|PROCEDURE)\s+(.*?)\s+(RETURNING\s+.*)//is)
+		|| ($fct_detail{declare} =~ s/(.*?)\b(FUNCTION|PROCEDURE)\s+([^\s\(]+)\s*(\(.*\))//is) )
 	{
                 $fct_detail{before} = $1;
                 $fct_detail{type} = uc($2);
@@ -1027,29 +1479,20 @@ sub _lookup_function
 			$tmp_returned = $fct_detail{args};
 			$fct_detail{args} = '';
 		}
-		$fct_detail{type} = 'PROCEDURE' if ($fct_detail{type} eq 'PROC');
 		$type = lc($fct_detail{type} . 's');
-		$tmp_returned =~ s/RETURNS\s+DECLARE/RETURNS /is;
-		if ($tmp_returned =~ s/\s+AS\s+(DECLARE.*)//is) {
-			$fct_detail{declare} .= "$1\n";
+		$tmp_returned =~ s/RETURNING\s+ROW\s*\(/RETURNS TABLE \(/is;
+
+
+		if ($tmp_returned =~ /RETURNING\s+.* AS .*,.* AS /is) {
+			$tmp_returned =~ s/RETURNING\s+(.*)/RETURNS record/is;
+			$fct_detail{declare} .= "\nret record; -- Original returned clause: $1";
 		}
-		$tmp_returned =~ s/RETURNS\s+(.*)\s+AS\s+.*/$1/is;
-		if ($fct_detail{args} =~ s/\b(AS|DECLARE)\s+(.*)//is) {
-			$tmp_returned = "DECLARE\n$1";
-		}
+		$tmp_returned =~ s/RETURNING\s+(.*)/RETURNS $1/is;
 		chomp($tmp_returned);
 
-		$tmp_returned =~ s/[\)\s]AS\s+.*//is;
-		$fct_detail{code} = "\n" . $fct_detail{code};
-
-		$tmp_returned =~ s/\)\)$/\)/;
-		$tmp_returned =~ s/\(MAX\)$//i;
 		$fct_detail{args} =~ s/^\s*\(\s*\((.*)\)\s*\)$/$1/s;
 		$fct_detail{args} =~ s/^\s*\(\s*(.*)\s*\)$/$1/s;
-		#$fct_detail{code} =~ s/^DECLARE\b//is;
-		if ($fct_detail{declare} =~ s/\s*COMMENT\s+(\?TEXTVALUE\d+\?|'[^\']+')//) {
-			$fct_detail{comment} = $1;
-		}
+		$fct_detail{code} = "\n" . $fct_detail{code};
 		$fct_detail{immutable} = 1 if ($fct_detail{declare} =~ s/\s*\bDETERMINISTIC\b//is);
 		$fct_detail{before} = ''; # There is only garbage for the moment
 
@@ -1071,8 +1514,6 @@ sub _lookup_function
 		}
 		elsif ($type eq 'functions' && !exists $self->{$type}{$fctname}{return} && $tmp_returned)
 		{
-			$tmp_returned =~ s/\s+CHARSET.*//is;
-			#$fct_detail{func_ret_type} = $self->_sql_type($tmp_returned);
 			$fct_detail{func_ret_type} = replace_sql_type($self, $tmp_returned);
 			$fct_detail{hasreturn} = 1;
 		}
@@ -1134,15 +1575,9 @@ sub _lookup_function
 	my $nbout = $#nout+1 + $#ninout+1;
 	$fct_detail{inout} = 1 if ($nbout > 0);
 
-	# Append TABLE declaration to the declare section
-	$fct_detail{declare} .= "\n$records" if ($records);
-	# Rename variables with @ replaced by v_
-	($fct_detail{code}, $fct_detail{declare}) = replace_mssql_variables($self, $fct_detail{code}, $fct_detail{declare});
-
 	$fct_detail{args} =~ s/\s*$//s;
 	$fct_detail{args} =~ s/^\s*//s;
 	$fct_detail{code} =~ s/^[\r\n]*/\n/s;
-
 
 	# Remove %ROWTYPE from return type
 	$fct_detail{func_ret_type} =~ s/\%ROWTYPE//igs;
@@ -1166,132 +1601,15 @@ sub replace_mssql_params
 	return ($args, $declare, $code);
 }
 
-sub replace_mssql_variables
-{
-	my ($self, $code, $declare) = @_;
-
-	# Look for mssql global variables and add them to the custom variable list
-	while ($code =~ s/\b(?:SET\s+)?\@\@(?:SESSION\.)?([^\s:=]+)\s*:=\s*([^;]+);/PERFORM set_config('$2', $2, false);/is)
-	{
-		my $n = $1;
-		my $v = $2;
-		$self->{global_variables}{$n}{name} = lc($n);
-		# Try to set a default type for the variable
-		$self->{global_variables}{$n}{type} = 'bigint';
-		if ($v =~ /'[^\']*'/) {
-			$self->{global_variables}{$n}{type} = 'varchar';
-		}
-		if ($n =~ /datetime/i) {
-			$self->{global_variables}{$n}{type} = 'timestamp';
-		} elsif ($n =~ /time/i) {
-			$self->{global_variables}{$n}{type} = 'time';
-		} elsif ($n =~ /date/i) {
-			$self->{global_variables}{$n}{type} = 'date';
-		} 
-	}
-
-	my @to_be_replaced = ();
-	# Look for local variable definition and append them to the declare section
-	while ($code =~ s/SET\s+\@([^\s=]+)\s*=\s*/v_$1 := /is)
-	{
-		my $n = $1;
-		push(@to_be_replaced, $n);
-	}
-
-	# Look for local variable definition and append them to the declare section
-	while ($code =~ s/(^|[^\@])\@([^\s:=,]+)\s*:=\s*(.*)/$1v_$2 := $3/is)
-	{
-		my $n = $2;
-		my $v = $3;
-		# Try to set a default type for the variable
-		my $type = 'integer';
-		$type = 'varchar' if ($v =~ /'[^']*'/);
-		if ($n =~ /datetime/i) {
-			$type = 'timestamp';
-		} elsif ($n =~ /time/i) {
-			$type = 'time';
-		} elsif ($n =~ /date/i) {
-			$type = 'date';
-		} 
-		$declare .= "v_$n $type;\n" if ($declare !~ /\b$n $type;/s);
-		push(@to_be_replaced, $n);
-	}
-
-	# Fix other call to the same variable in the code
-	foreach my $n (@to_be_replaced) {
-		$code =~ s/\@$n\b/v_$n/gs;
-	}
-
-	# Look for variable definition in DECLARE section and rename them in the code too
-	while ($declare =~ s/(^|[^\@])\@([a-z0-9_]+)/$1v_$2/is)
-	{
-		my $n = $2;
-		# Fix other call to the same variable in the code
-		$code =~ s/\@$n\b/v_$n/gs;
-	}
-
-	# Look for some global variable definition and append them to the declare section
-	while ($code =~ /\@\@(ROWCOUNT|VERSION|LANGUAGE|SPID|MICROSOFTVERSION)/is)
-	{
-		my $v = uc($1);
-		if ($v eq 'VERSION') {
-			$code =~ s/\@\@$v/version()/igs;
-		} elsif ($v eq 'LANGUAGE') {
-			$code =~ s/\@\@$v/current_setting('client_encoding')/igs;
-		} elsif ($v eq 'ROWCOUNT') {
-			$declare .= "v_v_rowcount bigint;\n" if ($declare !~ /v_v_rowcount/s);
-			$code =~ s/([\r\n])([^\r\n]+?)\@\@$v/\nGET DIAGNOSTICS v_v_rowcount := ROWCOUNT;\n$2 v_v_rowcount/igs;
-		} elsif ($v eq 'SPID') {
-			$code =~ s/\@\@$v/pg_backend_pid()/igs;
-		} elsif ($v eq 'MICROSOFTVERSION') {
-			$code =~ s/\@\@$v/current_setting('server_version')/igs;
-		}
-	}
-
-	# Look for local variable definition and append them to the declare section
-	while ($code =~ s/(^|[^\@])\@([a-z0-9_\$]+)/$1v_$2/is)
-	{
-		my $n = $2;
-		next if ($n =~ /^v_/);
-		# Try to set a default type for the variable
-		my $type = 'varchar';
-		if ($n =~ /datetime/i) {
-			$type = 'timestamp';
-		} elsif ($n =~ /time/i) {
-			$type = 'time';
-		} elsif ($n =~ /date/i) {
-			$type = 'date';
-		} 
-		$declare .= "v_$n $type;\n" if ($declare !~ /v_$n ($type|record);/is);
-		# Fix other call to the same variable in the code
-		$code =~ s/\@$n\b/v_$n/gs;
-	}
-
-	# Look for variable definition with SELECT statement
-	$code =~ s/\bSET\s+([^\s=]+)\s*=\s*([^;]+\bSELECT\b[^;]+);/$1 = $2;/igs;
-
-	return ($code, $declare);
-}
-
 sub _list_all_functions
 {
 	my $self = shift;
 
-	# Retrieve all functions 
-	# ROUTINE_SCHEMA           | varchar(64)   | NO   |     |                     |       |
-	# ROUTINE_NAME             | varchar(64)   | NO   |     |                     |       |
-	# ROUTINE_TYPE             | varchar(9)    | NO   |     |                     |       |
+	# Retrieve all functions and procedure
+	my $str = "SELECT p.procname FROM sysprocedures p WHERE p.owner NOT IN ('informix', 'sysibm', 'sysproc', 'sysfun', 'sqlj')";
 
-	my $str = "SELECT ROUTINE_NAME,DATA_TYPE FROM INFORMATION_SCHEMA.ROUTINES";
-	if ($self->{schema}) {
-		$str .= " AND ROUTINE_SCHEMA = '$self->{schema}'";
-	}
-	if ($self->{db_version} < '5.5.0') {
-		$str =~ s/\bDATA_TYPE\b/DTD_IDENTIFIER/;
-	}
-	$str .= " " . $self->limit_to_objects('FUNCTION','ROUTINE_NAME');
-	$str =~ s/ AND / WHERE /;
-	$str .= " ORDER BY ROUTINE_NAME";
+	$str .= " " . $self->limit_to_objects('FUNCTION','p.procname');
+	$str .= " ORDER BY p.procname";
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
@@ -1564,51 +1882,29 @@ sub _get_dblink
 {
 	my($self) = @_;
 
-	# Don't work with Azure
-	return if ($self->{db_version} =~ /Microsoft SQL Azure/);
-
-	# Retrieve all database link from dba_db_links table
-	my $str = qq{SELECT 
-  name,
-  provider,
-  data_source,
-  catalog
-FROM sys.servers
-WHERE is_linked = 1
-};
-	$str .= $self->limit_to_objects('DBLINK', 'name');
-	$str .= " ORDER BY name";
-
-	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-
-	my %data = ();
-	while (my $row = $sth->fetch)
-	{
-		my $port = '1433';
-		if ($row->[2] =~ s/,(\d+)$//) {
-			$port = $1;
-		}
-		$data{$row->[0]}{owner} = 'unknown';
-		$data{$row->[0]}{username} = 'unknown';
-		$data{$row->[0]}{host} = $row->[2];
-		$data{$row->[0]}{db} = $row->[3] || 'unknown';
-		$data{$row->[0]}{port} = $port;
-		$data{$row->[0]}{backend} = $row->[1] || 'SQL Server';
-	}
-
-	return %data;
+	return; # Not supported
 }
 
 =head2 _get_partitions
 
 This function implements an Informix-native partitions information.
 Return two hash ref with partition details and partition default.
+
 =cut
 
 sub _get_partitions
 {
 	my ($self) = @_;
+
+	my %part_types = (
+		'R' => 'ROUND ROBIN',
+		'E' => 'RANGE',
+		'I' => 'IN DBSPACE',
+		'N' => 'RANGE',
+		'L' => 'LIST',
+		'T' => 'TABLE BASED',
+		'H' => 'TABLE HIERARCHY'
+	);
 
 	# Retrieve all partitions.
 	my $str = qq{
@@ -1638,7 +1934,7 @@ WHERE f.fragtype = 'T'
 		$col =~ s/^[\(]*\s*([^\s>=<\+\-\*\/]+).*/$1/;
 		$sth2->execute($col, $row->[0]) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 		my $r = $sth2->fetch;
-		push(@{$parts{$row->[1]}{$row->[3]}{info}}, { 'type' => 'RANGE', 'value' => $row->[7], 'column' => $col, 'colpos' => $row->[10], 'tablespace' => '', 'owner' => ''});
+		push(@{$parts{$row->[1]}{$row->[3]}{info}}, { 'type' => $part_types{$row->[8]}, 'value' => $row->[7], 'column' => $col, 'colpos' => $row->[10], 'tablespace' => '', 'owner' => ''});
 	}
 	$sth->finish;
 	$sth2->finish;
@@ -1659,7 +1955,7 @@ sub _get_subpartitions
 	my %subparts = ();
 	my %default = ();
 
-	# For what I know, subpartition is not supported by Informix
+	# For what I know, subpartition is not supported by Informix, or HYBRID?
 	return \%subparts, \%default;
 }
 
@@ -1674,28 +1970,18 @@ sub _get_partitions_list
 {
 	my($self) = @_;
 
-	# Retrieve all partitions.
+	return _get_partitions_list_from_file($self) if ($self->{input_file});
+
+	# Retrieve all partitions except the ones not supported
 	my $str = qq{
-SELECT sch.name AS SchemaName, t.name AS TableName, i.name AS IndexName,
-    p.partition_number, p.partition_id, i.data_space_id, f.function_id, f.type_desc,
-    r.boundary_id, r.value AS BoundaryValue, ic.column_id AS PartitioningColumnID,
-    c.name AS PartitioningColumnName
-FROM sys.tables AS t
-JOIN sys.indexes AS i ON t.object_id = i.object_id AND i.[type] <= 1
-JOIN sys.partitions AS p ON i.object_id = p.object_id AND i.index_id = p.index_id
-JOIN sys.partition_schemes AS s ON i.data_space_id = s.data_space_id
-JOIN sys.index_columns AS ic ON ic.[object_id] = i.[object_id] AND ic.index_id = i.index_id AND ic.partition_ordinal >= 1 -- because 0 = non-partitioning column
-JOIN sys.columns AS c ON t.[object_id] = c.[object_id] AND ic.column_id = c.column_id
-JOIN sys.partition_functions AS f ON s.function_id = f.function_id
-LEFT JOIN sys.partition_range_values AS r ON f.function_id = r.function_id and r.boundary_id = p.partition_number
-LEFT OUTER JOIN sys.schemas sch ON t.schema_id = sch.schema_id
+SELECT t.tabid, t.tabname, f.indexname, f.evalpos, f.partition, '', '', f.exprtext, f.strategy
+FROM sysfragments f
+JOIN systables t ON (f.tabid = t.tabid)
+WHERE f.fragtype = 'T' AND f.strategy NOT IN ('R', 'I', 'T', 'H');
 };
 
-	$str .= $self->limit_to_objects('TABLE|PARTITION','t.name|t.name');
-	if ($self->{schema}) {
-		$str .= " WHERE sch.name ='$self->{schema}'";
-	}
-	$str .= " ORDER BY sch.name, t.name, i.name, p.partition_number, ic.column_id\n";
+	$str .= $self->limit_to_objects('TABLE|PARTITION','t.tabname|f.partition');
+	$str .= " ORDER BY t.tabname, f.partn\n";
 
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -1704,18 +1990,52 @@ LEFT OUTER JOIN sys.schemas sch ON t.schema_id = sch.schema_id
 	while (my $row = $sth->fetch)
 	{
 		$parts{"\L$row->[1]\E"}++;
-#		if ($self->{export_schema} && !$self->{schema}) {
-#			$row->[1] = "$row->[0].$row->[1]";
-#		}
-#               $parts{"\L$row->[1]\E"}{count}++;
-#               $parts{"\L$row->[1]\E"}{composite} = 0;
-#		$parts{"\L$row->[1]\E"}{type} = 'RANGE';
-#		push(@{ $parts{"\L$row->[1]\E"}{columns} }, $row->[11]) if (!grep(/^$row->[11]$/, @{ $parts{"\L$row->[1]\E"}{columns} }));
 	}
 	$sth->finish;
 
 	return %parts;
 }
+
+sub _get_partitions_list_from_file
+{
+	my($self) = @_;
+
+	# Retrieve all partitions.
+	my %parts = ();
+	my $has_partition = 0;
+	my $tbname = '';
+	my $fh = new IO::File;
+	$fh->open("<$self->{input_file}") or $self->logit("FATAL: can't read file $self->{input_file}, $!\n", 0, 1);
+	while (my $l = <$fh>)
+	{
+		chomp($l);
+		if ($l =~ /create table ([^\.])\.([^\s])/i) {
+			next if ($1 eq '"informix"' || $1 eq 'informix');
+			$tbname = $2;
+		}
+		if ($tbname && $l =~ /fragment by (.*)/i)
+		{
+			my $frag_type = $1;
+			# Do not take care of unsupported partitioning
+			if ($frag_type !~ /round robin/) {
+				$has_partition = 1;
+			}
+		}
+		if ($tbname && $has_partition) {
+			while ($l =~ s/partition ([^\s]+) in//) {
+				$parts{"\L$tbname\E"}++;
+			}
+		}
+		if ($tbname && $l =~ /;$/) {
+			$has_partition = 0;
+			$tbname = '';
+		}
+	}
+	$fh->close;
+
+	return %parts;
+}
+
 
 =head2 _get_partitioned_table
 
@@ -1727,30 +2047,29 @@ sub _get_partitioned_table
 {
 	my ($self, %subpart) = @_;
 
-	return;
+	my %part_types = (
+		'R' => 'ROUND ROBIN',
+		'E' => 'RANGE',
+		'I' => 'IN DBSPACE',
+		'N' => 'RANGE',
+		'L' => 'LIST',
+		'T' => 'TABLE BASED',
+		'H' => 'TABLE HIERARCHY'
+	);
 
 	# Retrieve all partitions.
 	my $str = qq{
-SELECT sch.name AS SchemaName, t.name AS TableName, i.name AS IndexName,
-    p.partition_number, p.partition_id, i.data_space_id, f.function_id, f.type_desc,
-    r.boundary_id, r.value AS BoundaryValue, ic.column_id AS PartitioningColumnID,
-    c.name AS PartitioningColumnName
-FROM sys.tables AS t
-JOIN sys.indexes AS i ON t.object_id = i.object_id AND i.[type] <= 1
-JOIN sys.partitions AS p ON i.object_id = p.object_id AND i.index_id = p.index_id
-JOIN sys.partition_schemes AS s ON i.data_space_id = s.data_space_id
-JOIN sys.index_columns AS ic ON ic.[object_id] = i.[object_id] AND ic.index_id = i.index_id AND ic.partition_ordinal >= 1 -- because 0 = non-partitioning column
-JOIN sys.columns AS c ON t.[object_id] = c.[object_id] AND ic.column_id = c.column_id
-JOIN sys.partition_functions AS f ON s.function_id = f.function_id
-LEFT JOIN sys.partition_range_values AS r ON f.function_id = r.function_id and r.boundary_id = p.partition_number
-LEFT OUTER JOIN sys.schemas sch ON t.schema_id = sch.schema_id
+SELECT t.tabid, t.tabname, f.indexname, f.evalpos, f.partition, '', '', f.exprtext, f.strategy
+FROM sysfragments f
+JOIN systables t ON (f.tabid = t.tabid)
+WHERE f.fragtype = 'T'
 };
 
-	$str .= $self->limit_to_objects('TABLE|PARTITION','t.name|t.name');
-	if ($self->{schema}) {
-		$str .= " WHERE sch.name ='$self->{schema}'";
-	}
-	$str .= " ORDER BY sch.name, t.name, i.name, p.partition_number, ic.column_id\n";
+	$str .= $self->limit_to_objects('TABLE|PARTITION','t.tabname|f.partition');
+	$str .= " ORDER BY t.tabname, f.partn\n";
+
+	my $str2 = "SELECT colno FROM syscolumns WHERE colname = ? AND tabid = ?";
+	my $sth2 = $self->{dbh}->prepare($str2) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -1758,16 +2077,17 @@ LEFT OUTER JOIN sys.schemas sch ON t.schema_id = sch.schema_id
 	my %parts = ();
 	while (my $row = $sth->fetch)
 	{
-		if ($self->{export_schema} && !$self->{schema}) {
-			$row->[1] = "$row->[0].$row->[1]";
-		}
                 $parts{$row->[1]}{count}++;
                 $parts{$row->[1]}{composite} = 0;
-		$parts{$row->[1]}{type} = 'RANGE';
-		push(@{ $parts{$row->[1]}{columns} }, $row->[11]) if (!grep(/^$row->[11]$/, @{ $parts{$row->[1]}{columns} }));
-		#dbo | PartitionTable | PK__Partitio__357D0D3E1290FD9F | 2 | 72057594048872448 | 65601 | 65536 | RANGE | 2 | 2022-05-01 00:00:00 | 1 | col1
+		$parts{$row->[1]}{type} = $part_types{$row->[8]};
+		my $col = $row->[7];
+		$col =~ s/^[\(]*\s*([^\s>=<\+\-\*\/]+).*/$1/;
+		$sth2->execute($col, $row->[0]) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+		my $r = $sth2->fetch;
+		push(@{ $parts{$row->[1]}{columns} }, $col);
 	}
 	$sth->finish;
+	$sth2->finish;
 
 	return %parts;
 }
@@ -1786,137 +2106,168 @@ sub _get_objects
 	my %infos = ();
 
 	# TABLE
-	my $sql = "SELECT t.name FROM sys.tables t INNER JOIN sys.indexes i ON t.OBJECT_ID = i.object_id INNER JOIN sys.partitions p ON i.object_id = p.OBJECT_ID AND i.index_id = p.index_id LEFT OUTER JOIN sys.schemas s ON t.schema_id = s.schema_id WHERE t.is_ms_shipped = 0 AND i.OBJECT_ID > 255 AND t.type='U' AND t.NAME NOT LIKE '#%'";
-	if (!$self->{schema}) {
-		$sql .= " AND s.name NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
-	} else {
-		$sql.= " AND s.name = '$self->{schema}'";
-	}
-	my $sth = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-	while ( my @row = $sth->fetchrow()) {
-		push(@{$infos{TABLE}}, { ( name => $row[0], invalid => 0) });
-	}
-	$sth->finish();
-	# VIEW
-	$sql = "SELECT v.name from sys.views v join sys.sql_modules m on m.object_id = v.object_id WHERE NOT EXISTS (SELECT 1 FROM sys.indexes i WHERE i.object_id = v.object_id and i.index_id = 1 and i.ignore_dup_key = 0) AND is_date_correlation_view=0";
-	if (!$self->{schema}) {
-		$sql .= " AND schema_name(v.schema_id) NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
-	} else {
-		$sql.= " AND schema_name(v.schema_id) = '$self->{schema}'";
-	}
-	$sth = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-	while ( my @row = $sth->fetchrow()) {
-		push(@{$infos{VIEW}}, { ( name => $row[0], invalid => 0) });
-	}
-	$sth->finish();
-	# TRIGGER
-	$sql = "SELECT o.name FROM sys.sysobjects o INNER JOIN sys.tables t ON o.parent_obj = t.object_id INNER JOIN sys.schemas s ON t.schema_id = s.schema_id WHERE o.type = 'TR'";
-	if (!$self->{schema}) {
-		$sql .= " AND s.name NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
-	} else {
-		$sql.= " AND s.name = '$self->{schema}'";
-	}
-	$sth = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-	while ( my @row = $sth->fetchrow()) {
-		push(@{$infos{TRIGGER}}, { ( name => $row[0], invalid => 0) });
-	}
-	$sth->finish();
-	# INDEX
-	foreach my $t (@{$infos{TABLE}})
+	if (!$self->{input_file})
 	{
-		my $sql = "SELECT Id.name AS index_name FROM sys.tables AS T INNER JOIN sys.indexes Id ON T.object_id = Id.object_id LEFT OUTER JOIN sys.schemas s ON t.schema_id = s.schema_id WHERE T.is_ms_shipped = 0 AND Id.auto_created = 0 AND OBJECT_NAME(Id.object_id, DB_ID())='$t' AND Id.is_primary_key = 0";
-		if (!$self->{schema}) {
-			$sql .= " AND s.name NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
-		} else {
-			$sql.= " AND s.name = '$self->{schema}'";
+		my $sql = "SELECT t.tabname FROM informix.systables t WHERE t.tabtype='T' AND t.owner != 'informix'";
+		my $sth = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+		$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+		while ( my @row = $sth->fetchrow()) {
+			push(@{$infos{TABLE}}, { ( name => $row[0], invalid => 0) });
 		}
-		$sth = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+		$sth->finish();
+	}
+	else
+	{
+		my @rows = `grep -i "^CREATE TABLE" $self->{input_file} | sed 's/.*\.//' | sort`;
+		chomp(@rows);
+		foreach my $o (@rows) {
+			push(@{$infos{TABLE}}, { ( name => $o, invalid => 0) });
+		}
+	}
+
+	# VIEW
+	if (!$self->{input_file})
+	{
+		my $sql = "SELECT t.tabname FROM informix.systables t WHERE t.tabtype='V' AND t.owner != 'informix'";
+		my $sth = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+		$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+		while ( my @row = $sth->fetchrow()) {
+			push(@{$infos{VIEW}}, { ( name => $row[0], invalid => 0) });
+		}
+		$sth->finish();
+	}
+	else
+	{
+		my @rows = `grep -i "^CREATE VIEW" $self->{input_file} | sed 's/.*\.//' | sed 's/ .*//' | sort`;
+		chomp(@rows);
+		foreach my $o (@rows) {
+			push(@{$infos{VIEW}}, { ( name => $o, invalid => 0) });
+		}
+	}
+
+	# TRIGGER
+	if (!$self->{input_file})
+	{
+		my $sql = "SELECT trg.trigname FROM systriggers trg INNER JOIN systables t ON t.tabid = trg.tabid WHERE t.owner != 'informix' AND trg.owner != 'informix'";
+		my $sth = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+		$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+		while ( my @row = $sth->fetchrow()) {
+			push(@{$infos{TRIGGER}}, { ( name => $row[0], invalid => 0) });
+		}
+		$sth->finish();
+	}
+	else
+	{
+		my @rows = `grep -i "^CREATE TRIGGER" $self->{input_file} | sed 's/.*\.//' | sed 's/ .*//' | sort`;
+		chomp(@rows);
+		foreach my $o (@rows) {
+			push(@{$infos{TRIGGER}}, { ( name => $o, invalid => 0) });
+		}
+	}
+
+	# INDEX
+	if (!$self->{input_file})
+	{
+		my $sql = "SELECT i.idxname FROM sysindices i JOIN systables t ON (t.tabid = i.tabid) WHERE t.owner != 'informix'";
+		my $sth = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 		$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 		while (my @row = $sth->fetchrow()) {
-			next if ($row[2] eq 'PRIMARY');
 			push(@{$infos{INDEX}}, { ( name => $row[2], invalid => 0) });
 		}
 	}
+	else
+	{
+		my @rows = `grep -iE "^CREATE (INDEX|UNIQUE) " $self->{input_file} | sed 's/.*\.//' | sed 's/ .*//' | sort`;
+		chomp(@rows);
+		foreach my $o (@rows) {
+			push(@{$infos{INDEX}}, { ( name => $o, invalid => 0) });
+		}
+	}
+
 	# FUNCTION
-	$sql = "SELECT O.name FROM sys.sql_modules M JOIN sys.objects O ON M.object_id=O.object_id JOIN sys.schemas AS s ON o.schema_id = s.schema_id WHERE O.type IN ('IF','TF','FN')";
-	if (!$self->{schema}) {
-		 $sql .= " AND s.name NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
-	} else {
-		$sql .= " AND s.name = '$self->{schema}'";
+	if (!$self->{input_file})
+	{
+		my $sql = "SELECT p.procname FROM sysprocedures p WHERE p.isproc = 'f' AND p.owner NOT IN ('informix', 'sysibm', 'sysproc', 'sysfun', 'sqlj')";
+		my $sth = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+		$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+		while ( my @row = $sth->fetchrow()) {
+			push(@{$infos{FUNCTION}}, { ( name => $row[0], invalid => 0) });
+		}
+		$sth->finish();
 	}
-	$sth = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-	while ( my @row = $sth->fetchrow()) {
-		push(@{$infos{FUNCTION}}, { ( name => $row[0], invalid => 0) });
+	else
+	{
+		my @rows = `grep -iE "^CREATE FUNCTION " $self->{input_file} | sed 's/.*\.//' | sed 's/[( ].*//' | sort`;
+		chomp(@rows);
+		foreach my $o (@rows) {
+			push(@{$infos{FUNCTION}}, { ( name => $o, invalid => 0) });
+		}
 	}
-	$sth->finish();
 
 	# PROCEDURE
-	$sql = "SELECT O.name FROM sys.sql_modules M JOIN sys.objects O ON M.object_id=O.object_id JOIN sys.schemas AS s ON o.schema_id = s.schema_id WHERE O.type = 'P'";
-	if (!$self->{schema}) {
-		 $sql .= " AND s.name NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
-	} else {
-		$sql .= " AND s.name = '$self->{schema}'";
+	if (!$self->{input_file})
+	{
+		my $sql = "SELECT p.procname FROM sysprocedures p WHERE p.isproc = 't' AND p.owner NOT IN ('informix', 'sysibm', 'sysproc', 'sysfun', 'sqlj')";
+		my $sth = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+		$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+		while ( my @row = $sth->fetchrow()) {
+			push(@{$infos{PROCEDURE}}, { ( name => $row[0], invalid => 0) });
+		}
+		$sth->finish();
 	}
-	$sth = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-	while ( my @row = $sth->fetchrow()) {
-		push(@{$infos{PROCEDURE}}, { ( name => $row[0], invalid => 0) });
+	else
+	{
+		my @rows = `grep -iE "^CREATE PROCEDURE " $self->{input_file} | sed 's/.*\.//' | sed 's/[( ].*//' | sort`;
+		chomp(@rows);
+		foreach my $o (@rows) {
+			push(@{$infos{PROCEDURE}}, { ( name => $o, invalid => 0) });
+		}
 	}
-	$sth->finish();
 
 	# PARTITION.
-	$sql = qq{
-SELECT sch.name AS SchemaName, t.name AS TableName, i.name AS IndexName,
-    p.partition_number, p.partition_id, i.data_space_id, f.function_id, f.type_desc,
-    r.boundary_id, r.value AS BoundaryValue, ic.column_id AS PartitioningColumnID,
-    c.name AS PartitioningColumnName
-FROM sys.tables AS t
-JOIN sys.indexes AS i ON t.object_id = i.object_id AND i.[type] <= 1
-JOIN sys.partitions AS p ON i.object_id = p.object_id AND i.index_id = p.index_id
-JOIN sys.partition_schemes AS s ON i.data_space_id = s.data_space_id
-JOIN sys.index_columns AS ic ON ic.[object_id] = i.[object_id] AND ic.index_id = i.index_id AND ic.partition_ordinal >= 1 -- because 0 = non-partitioning column
-JOIN sys.columns AS c ON t.[object_id] = c.[object_id] AND ic.column_id = c.column_id
-JOIN sys.partition_functions AS f ON s.function_id = f.function_id
-LEFT JOIN sys.partition_range_values AS r ON f.function_id = r.function_id and r.boundary_id = p.partition_number
-LEFT OUTER JOIN sys.schemas sch ON t.schema_id = sch.schema_id
-};
-	if ($self->{schema}) {
-		$sql .= " WHERE sch.name ='$self->{schema}'";
+	if (!$self->{input_file})
+	{
+		my $sql = "SELECT t.tabid, t.tabname, f.strategy FROM sysfragments f JOIN systables t ON (f.tabid = t.tabid) WHERE f.fragtype = 'T' ORDER BY t.tabname, f.partn";
+		my $sth = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+		$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+		my $i = 1;
+		while ( my @row = $sth->fetchrow()) {
+			push(@{$infos{'TABLE PARTITION'}}, { ( name => $row[1] . '_part' . $i++, invalid => 0) });
+		}
+		$sth->finish;
+	}
+	else
+	{
+		my $fh = new IO::File;
+		$fh->open("<$self->{input_file}") or $self->logit("FATAL: can't read file $self->{input_file}, $!\n", 0, 1);
+		my $table = '';
+		my $invalid = 0;
+		while (my $l = <$fh>)
+		{
+			chomp($l);
+			if ($l =~ /^create table [^\.]+\.([^\s]+) /i) {
+				$table = $1;
+				$invalid = 0;
+			}
+			if ($table)
+			{
+				if ($l =~ /fragment by ([^\s]+) /i) {
+					$invalid = 1 if (lc($1) eq 'round');
+				}
+				if ($l =~ / partition [^\s]+ in /i)
+				{
+					my $i = 1;
+					while ($l =~ s/ partition ([^\s]+) in //i) {
+						push(@{$infos{'TABLE PARTITION'}}, { ( name => $table . '_part' . $i++, invalid => $invalid) });
+					}
+				}
+				$table = '' if ($l =~ /;/);
+			}
+		}
+		$fh->close;
 	}
 
-	$sth = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-	while ( my @row = $sth->fetchrow()) {
-		push(@{$infos{'TABLE PARTITION'}}, { ( name => $row[0], invalid => 0) });
-	}
-	$sth->finish;
-
-	# MATERIALIZED VIEW
-	$sql = qq{select
-       v.name as view_name,
-       schema_name(v.schema_id) as schema_name,
-       i.name as index_name,
-       m.definition
-from sys.views v
-join sys.indexes i on i.object_id = v.object_id and i.index_id = 1 and i.ignore_dup_key = 0
-join sys.sql_modules m on m.object_id = v.object_id
-};
-
-	if (!$self->{schema}) {
-		$sql .= " WHERE schema_name(v.schema_id) NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
-	} else {
-		$sql .= " WHERE schema_name(v.schema_id) = '$self->{schema}'";
-	}
-	$sth = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-	while ( my @row = $sth->fetchrow()) {
-		push(@{$infos{'MATERIALIZED VIEW'}}, { ( name => $row[0], invalid => 0) });
-	}
-	$sth->finish;
+	# MATERIALIZED VIEW => not supported by Informix
 
 	return %infos;
 }
@@ -1989,10 +2340,20 @@ sub _get_database_size
 	my $mb_size = '';
 	my $condition = '';
 
-       my $sql = qq{SELECT
-   d.name,
-   m.size * 8 / 1024
-FROM sys.master_files m JOIN sys.databases d ON d.database_id = m.database_id and m.type = 0
+       my $sql = qq{
+SELECT
+    dbsname,
+    SUM(ti_npused  * ti_pagesize / 1024 / 1024) :: INT AS Mb_used,
+    SUM(ti_nptotal * ti_pagesize / 1024 / 1024) :: INT AS Mb_alloc
+FROM
+    sysmaster:sysdatabases AS d,
+    sysmaster:systabnames AS n,
+    sysmaster:systabinfo AS i
+WHERE n.dbsname = d.name
+AND ti_partnum = n.partnum
+AND d.name = '$self->{schema}'
+GROUP BY 1
+ORDER BY 1
 };
         my $sth = $self->{dbh}->prepare( $sql ) or return undef;
         $sth->execute or return undef;
@@ -2001,7 +2362,6 @@ FROM sys.master_files m JOIN sys.databases d ON d.database_id = m.database_id an
 		last;
 	}
 	$sth->finish();
-
 	return $mb_size;
 }
 
@@ -2082,6 +2442,8 @@ sub _get_synonyms
 {
 	my ($self) = shift;
 
+	return _get_synonyms_from_file($self) if ($self->{input_file});
+
 	# Retrieve all synonym
 	my $str = qq{SELECT
 	t.owner,
@@ -2116,6 +2478,36 @@ WHERE t.tabtype = 'S' AND t.owner != 'informix'
 
 	return %synonyms;
 }
+
+sub _get_synonyms_from_file
+{
+	my ($self) = shift;
+
+
+	# Retrieve all synonym
+	my %synonyms = ();
+	my $fh = new IO::File;
+	$fh->open("<$self->{input_file}") or $self->logit("FATAL: can't read file $self->{input_file}, $!\n", 0, 1);
+	while (my $l = <$fh>)
+	{
+		chomp($l);
+		if ($l =~ /create synonym ([^\.]+).([^\s]+)\s+for\s+(.*);/i)
+		{
+			next if ($1 eq '"informix"' || $1 eq 'informix');
+			my $synname = $2;
+			$synonyms{$synname}{owner} = $1;
+			my $link = $3;
+			my $tbname = $3;
+			$tbname =~ s/.*\.//;
+			$synonyms{$synname}{table_name} = $tbname;
+			$synonyms{$synname}{dblink} = $link;
+		}
+	}
+	$fh->close;
+
+	return %synonyms;
+}
+
 
 sub _get_tablespaces
 {
@@ -2483,49 +2875,7 @@ sub _get_identities
 {
 	my ($self) = @_;
 
-	return; # not supported 
-	# Retrieve all indexes 
-	my $str = qq{SELECT
-	s.name As SchemaName,
-	t.name As TableName,
-	i.name as ColumnName,
-	i.seed_value,
-	i.increment_value,
-	i.last_value
-FROM sys.tables t
-JOIN sys.identity_columns i ON t.object_id=i.object_id
-LEFT OUTER JOIN sys.schemas s ON t.schema_id = s.schema_id
-};
-	if (!$self->{schema}) {
-		$str .= " WHERE s.name NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
-	} else {
-		$str .= " WHERE s.name = '$self->{schema}'";
-	}
-	$str .= $self->limit_to_objects('TABLE', 't.name');
-
-	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-
-	my %seqs = ();
-	while (my $row = $sth->fetch)
-	{
-		if (!$self->{schema} && $self->{export_schema}) {
-			$row->[1] = "$row->[0].$row->[1]";
-		}
-		# GENERATION_TYPE can be ALWAYS, BY DEFAULT and BY DEFAULT ON NULL
-		$seqs{$row->[1]}{$row->[2]}{generation} = 'BY DEFAULT';
-		# SEQUENCE options
-		$row->[5] = $row->[3] || 1 if ($row->[5] eq '');
-		$seqs{$row->[1]}{$row->[2]}{options} = "START WITH $row->[5]";
-		$seqs{$row->[1]}{$row->[2]}{options} .= " INCREMENT BY $row->[4]";
-		$seqs{$row->[1]}{$row->[2]}{options} .= " MINVALUE $row->[3]" if ($row->[3] ne '');
-		# For default values don't use option at all
-		if ( $seqs{$row->[1]}{$row->[2]}{options} eq 'START WITH 1 INCREMENT BY 1 MINVALUE 1') {
-			delete $seqs{$row->[1]}{$row->[2]}{options};
-		}
-	}
-
-	return %seqs;
+	return; # not supported by Informix
 }
 
 =head2 _get_materialized_views
@@ -2564,26 +2914,18 @@ sub _get_types
 
 	# Retrieve all user defined types => PostgreSQL DOMAIN
 	my $idx = 1;
-	my $str = qq{SELECT
-	t1.name, s.name, t2.name, t1.precision, t1.scale, t1.max_length, t1.is_nullable,
-	object_definition(t1.default_object_id), object_definition(t1.rule_object_id), t1.is_table_type
-FROM sys.types t1
-JOIN sys.types t2 ON t2.system_type_id = t1.system_type_id AND t2.is_user_defined = 0
-LEFT OUTER JOIN sys.schemas s ON t1.schema_id = s.schema_id
-WHERE t1.is_user_defined = 1 AND t2.name <> 'sysname'};
+	my $str = qq{SELECT t.name, d.seqno, d.description
+FROM sysxtdtypes t JOIN sysxtddesc d ON (d.extended_id = t.extended_id)
+WHERE t.owner != 'informix'
+};
 
 	if ($name) {
-		$str .= " AND t1.name='$name'";
-	}
-	if ($self->{schema}) {
-		$str .= "AND s.name='$self->{schema}' ";
-	}
-	if (!$name) {
-		$str .= $self->limit_to_objects('TYPE', 't1.name');
-	} else {
+		$str .= " AND t.name='$name'";
 		@{$self->{query_bind_params}} = ();
+	} else {
+		$str .= $self->limit_to_objects('TYPE', 't.name');
 	}
-	$str .= " ORDER BY t1.name";
+	$str .= " ORDER BY t.name, d.seqno";
 	# use a separeate connection
 	my $local_dbh = _db_connection($self);
 
@@ -2591,186 +2933,18 @@ WHERE t1.is_user_defined = 1 AND t2.name <> 'sysname'};
 	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $local_dbh->errstr . "\n", 0, 1);
 
 	my @types = ();
-	my @fct_done = ();
 	while (my $row = $sth->fetch)
 	{
-		my $origname = $row->[0];
-		if (!$self->{schema} && $self->{export_schema}) {
-			$row->[0] = "$row->[1].$row->[0]";
-		}
 		$self->logit("\tFound Type: $row->[0]\n", 1);
-		next if (grep(/^$row->[0]$/, @fct_done));
-		push(@fct_done, $row->[0]);
-		my %tmp = ();
-		if (!$row->[9])
-		{
-			my $precision = '';
-			if ($row->[3]) {
-				$precision .= "($row->[3]";
-				$precision .= ",$row->[4]" if ($row->[4]);
-			} elsif ($row->[5]) {
-				$precision .= "($row->[5]";
-			}
-			$precision .= ")" if ($precision);
-			my $notnull = '';
-			$notnull = ' NOT NULL' if (!$row->[6]);
-			my $default = '';
-			if ($row->[7]) {
-				$row->[7] =~ s/\s*CREATE\s+DEFAULT\s+.*\s+AS\s*//is;
-				$default = " DEFAULT $row->[7]";
-			}
-			my $rule = '';
-			if ($row->[8]) {
-				$row->[8] =~ s/\s*CREATE\s+RULE\s+.*\s+AS\s*//is;
-				$row->[8] =~ s/\@[a-z0-1_\$\#]+/VALUE/igs;
-				$rule = " CHECK ($row->[8])";
-				$rule =~ s/[\r\n]+/ /gs;
-			}
-			$tmp{code} = "CREATE TYPE $row->[0] FROM $row->[2]$precision$notnull$default$rule;";
-			# Add domain type to main type convertion hash
-			if ($self->{is_informix} && !exists $self->{data_type}{uc($origname)}
-					&& ($self->{type} eq 'COPY' || $self->{type} eq 'INSERT')
-			)
-			{
-				$self->{data_type}{uc($origname)} = replace_sql_type($self, $row->[2]);
-			}
+		if ($row->[1] == 0) {
+			push(@types, { ('name' => $row->[0], 'pos' => $idx++, 'code' => $row->[2]) });
+		} else {
+			$types[-1]->{'code'} .= $row->[2];
 		}
-		$tmp{name} = $row->[0];
-		$tmp{owner} = $row->[1];
-		$tmp{pos} = $idx++;
-		if (!$self->{preserve_case})
-		{
-			$tmp{code} =~ s/(TYPE\s+)"[^"]+"\."[^"]+"/$1\L$row->[0]\E/igs;
-			$tmp{code} =~ s/(TYPE\s+)"[^"]+"/$1\L$row->[0]\E/igs;
-		}
-		else
-		{
-			$tmp{code} =~ s/((?:CREATE|REPLACE|ALTER)\s+TYPE\s+)([^"\s]+)\s/$1"$2" /igs;
-		}
-		$tmp{code} =~ s/\s+ALTER/;\nALTER/igs;
-		push(@types, \%tmp);
-	}
-	$sth->finish();
-
-	# Retrieve all user defined table types => PostgreSQL TYPE
-	$str = qq{SELECT
-	t1.name AS table_Type, s.name SchemaName, c.name AS ColName, c.column_id, y.name AS DataType,
-	c.precision, c.scale, c.max_length, c.is_nullable, object_definition(t1.default_object_id),
-	object_definition(t1.rule_object_id)
-FROM sys.table_types t1
-INNER JOIN sys.columns c ON c.object_id = t1.type_table_object_id
-INNER JOIN sys.types y ON y.user_type_id = c.user_type_id
-LEFT OUTER JOIN sys.schemas s ON t1.schema_id = s.schema_id
-};
-	if ($name) {
-		$str .= " AND t1.name='$name'";
-	}
-	if ($self->{schema}) {
-		$str .= "AND s.name='$self->{schema}' ";
-	}
-	if (!$name) {
-		$str .= $self->limit_to_objects('TYPE', 't1.name');
-	} else {
-		@{$self->{query_bind_params}} = ();
-	}
-	$str =~ s/ AND / WHERE /s;
-	$str .= " ORDER BY t1.name, c.column_id";
-
-	$sth = $local_dbh->prepare($str) or $self->logit("FATAL: " . $local_dbh->errstr . "\n", 0, 1);
-	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $local_dbh->errstr . "\n", 0, 1);
-
-	my $current_type = '';
-	my $old_type = '';
-	while (my $row = $sth->fetch)
-	{
-		next if ($self->{drop_rowversion} && ($row->[4] eq 'rowversion' || $row->[4] eq 'timestamp'));
-
-		if (!$self->{schema} && $self->{export_schema}) {
-			$row->[0] = "$row->[1].$row->[0]";
-		}
-		if ($old_type ne $row->[0]) {
-			$self->logit("\tFound Type: $row->[0]\n", 1);
-
-			if ($current_type ne '') {
-				$current_type =~ s/,$//s;
-				$current_type .= ");";
-
-				my %tmp = (
-					code => $current_type,
-					name => $old_type,
-					owner => '',
-					pos => $idx++
-				);
-				if (!$self->{preserve_case})
-				{
-					$tmp{code} =~ s/(TYPE\s+)"[^"]+"\."[^"]+"/$1\L$old_type\E/igs;
-					$tmp{code} =~ s/(TYPE\s+)"[^"]+"/$1\L$old_type\E/igs;
-				}
-				else
-				{
-					$tmp{code} =~ s/((?:CREATE|REPLACE|ALTER)\s+TYPE\s+)([^"\s]+)\s/$1"$2" /igs;
-				}
-				$tmp{code} =~ s/\s+ALTER/;\nALTER/igs;
-				push(@types, \%tmp);
-				$current_type = '';
-			}
-			$old_type = $row->[0];
-		}
-		if ($current_type eq '') {
-			$current_type = "CREATE TYPE $row->[0] AS OBJECT ("
-		}
-		
-		my $precision = '';
-		if ($row->[5]) {
-			$precision .= "($row->[5]";
-			$precision .= ",$row->[6]" if ($row->[6]);
-		} elsif ($row->[7]) {
-			$precision .= "($row->[7]";
-		}
-		$precision .= ")" if ($precision);
-		my $notnull = '';
-		$notnull = 'NOT NULL' if (!$row->[8]);
-		my $default = '';
-		if ($row->[9]) {
-			$row->[9] =~ s/\s*CREATE\s+DEFAULT\s+.*\s+AS\s*//is;
-			$default = " DEFAULT $row->[9]";
-		}
-		my $rule = '';
-		if ($row->[10]) {
-			$row->[10] =~ s/\s*CREATE\s+RULE\s+.*\s+AS\s*//is;
-			$row->[10] =~ s/\@[a-z0-1_\$\#]+/VALUE/igs;
-			$rule = " CHECK ($row->[10])";
-		}
-		$current_type .= "\n\t$row->[2] $row->[4]$precision $notnull$default$rule,"
 	}
 	$sth->finish();
 
 	$local_dbh->disconnect() if ($local_dbh);
-
-	# Process last table type
-	if ($current_type ne '')
-	{
-		$current_type =~ s/,$//s;
-		$current_type .= ");";
-
-		my %tmp = (
-			code => $current_type,
-			name => $old_type,
-			owner => '',
-			pos => $idx++
-		);
-		if (!$self->{preserve_case})
-		{
-			$tmp{code} =~ s/(TYPE\s+)"[^"]+"\."[^"]+"/$1\L$old_type\E/igs;
-			$tmp{code} =~ s/(TYPE\s+)"[^"]+"/$1\L$old_type\E/igs;
-		}
-		else
-		{
-			$tmp{code} =~ s/((?:CREATE|REPLACE|ALTER)\s+TYPE\s+)([^"\s]+)\s/$1"$2" /igs;
-		}
-		$tmp{code} =~ s/\s+ALTER/;\nALTER/igs;
-		push(@types, \%tmp);
-	}
 
 	return \@types;
 }
