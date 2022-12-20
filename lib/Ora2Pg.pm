@@ -2720,7 +2720,12 @@ sub _tables
 
 sub _get_plsql_code
 {
-	my $str = shift();
+	my ($self, $str) = @_;
+
+	# Fix procedure named parameters call for Informix
+	if ($self->{type} eq 'TRIGGER' && $self->{is_informix}) {
+		$str =~ s/\s*=\s*/ => /sg;
+	}
 
 	my $ct = '';
 	my @parts = split(/\b(BEGIN|DECLARE|END\s*(?!IF|LOOP|CASE|INTO|FROM|,|\))[^;\s]*\s*;)/i, $str);
@@ -3560,6 +3565,9 @@ sub read_trigger_from_file
 	# Clear content from comment and text constant for better parsing
 	$self->_remove_comments(\$content);
 
+	# Fix Informix formatting export
+	$content =~ s/"\s+\./"./gs if ($self->{is_informix});
+
 	my $tid = 0; 
 	my $doloop = 1;
 	my @triggers_decl = split(/(?:CREATE)?(?:\s+OR\s+REPLACE)?\s*(?:DEFINER=[^\s]+)?\s*\bTRIGGER(\s+|$)/is, $content);
@@ -3589,24 +3597,49 @@ sub read_trigger_from_file
 			$trigger = $5 . $6;
 			$t_name =~ s/"//g;
 		}
+		elsif ($content =~ s/^([^\s]+)\s+(INSERT|UPDATE|DELETE|SELECT)\s+ON\s+([^\s]+)\s+(.*)\);//is)
+		{
+			$t_name = $1;
+			$t_event = $2;
+			$tb_name = $3;
+			$trigger = $4;
+			$t_pos = 'AFTER';
+			$t_name =~ s/"//g;
+			$t_name =~ s/.*\.// if ($self->{is_informix});
+			$tb_name =~ s/.*\.// if ($self->{is_informix});
+		}
 
 		next if (!$t_name || ! $tb_name);
 
 		# Remove referencing clause, not supported by PostgreSQL < 10
+		my $referencing = '';
 		if ($self->{pg_version} < 10) {
-			$trigger =~ s/REFERENCING\s+(.*?)(FOR\s+EACH\s+)/$2/is;
+			$trigger =~ s/REFERENCING\s+(.*?)(FOR\s+EACH\s+|\(\s+)/$2/is;
+		} else {
+			if ($trigger =~ s/(REFERENCING\s+.*?)(FOR\s+EACH\s+|\(\s+)/$2/is) {
+				$referencing = $1;
+				$referencing =~ s/[\r\n]+/ /gs;
+				$referencing =~ s/\s+/ /g;
+				$referencing =~ s/\s+$//;
+				$referencing =~ s/\b(REFERENCING|OLD|NEW|AS)\b/\U$1\E/ig;
+				$referencing = "\n\t$referencing"
+			}
 		}
 
 		if ($trigger =~ s/^\s*(FOR\s+EACH\s+)(ROW|STATEMENT)\s*//is) {
 			$t_type = $1 . $2;
 		}
+		if ($self->{is_informix}) {
+			$trigger =~ s/^\s*\((.*)/$1/s;
+		}
+
 		my $t_when_cond = '';
 		if ($trigger =~ s/^\s*WHEN\s+(.*?)\s+((?:BEGIN|DECLARE|CALL).*)//is)
 		{
 			$t_when_cond = $1;
 			$trigger = $2;
-			if ($trigger =~ /^(BEGIN|DECLARE)/i) {
-				($trigger, $content) = &_get_plsql_code($trigger);
+			if ($trigger =~ /^\s*(BEGIN|DECLARE|EXECUTE)/is) {
+				($trigger, $content) = $self->_get_plsql_code($trigger);
 			}
 			else
 			{
@@ -3616,8 +3649,8 @@ sub read_trigger_from_file
 		}
 		else
 		{
-			if ($trigger =~ /^(BEGIN|DECLARE)/i) {
-				($trigger, $content) = &_get_plsql_code($trigger);
+			if ($trigger =~ /^\s*(BEGIN|DECLARE|EXECUTE)/is) {
+				($trigger, $content) = $self->_get_plsql_code($trigger);
 			}
 		}
 		$tid++;
@@ -3628,7 +3661,7 @@ sub read_trigger_from_file
 		if ($t_when_cond) {
 			$when_event = "$t_name\n$t_pos $t_event ON $tb_name\n$t_type";
 		}
-		push(@{$self->{triggers}}, [($t_name, $t_pos, $t_event, $tb_name, $trigger, $t_when_cond, $when_event, $t_type)]);
+		push(@{$self->{triggers}}, [($t_name, $t_pos, $t_event, $tb_name, $trigger, $t_when_cond, $referencing . $when_event, $t_type)]);
 	}
 }
 
@@ -5581,7 +5614,7 @@ sub export_trigger
 					}
 					$sql_output .= "\tWHEN ($trig->[5])\n";
 				}
-				if ($trig->[6] =~ /REFERENCING/) {
+				if ($trig->[6] =~ /REFERENCING/i) {
 					$sql_output .= "$trig->[6] ";
 				}
 				$sql_output .= "\tEXECUTE PROCEDURE $trig_fctname();\n\n";
@@ -5605,7 +5638,7 @@ sub export_trigger
 				my $statement = 0;
 				$statement = 1 if ($trig->[1] =~ s/ STATEMENT//);
 				$sql_output .= "$trig->[1] $trig->[2]$cols ON " . $self->quote_object_name($tbname) . " ";
-				if ($trig->[6] =~ /REFERENCING/) {
+				if ($trig->[6] =~ /REFERENCING/i) {
 					$sql_output .= "$trig->[6] ";
 				}
 				if ($statement) {
