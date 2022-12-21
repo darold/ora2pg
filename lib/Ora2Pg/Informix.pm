@@ -355,15 +355,20 @@ sub _table_info_from_file
 			$tables_infos{$table}{owner} =~ s/"//g ;
 		} elsif ($table && $l =~ /;/) {
 			$table = '';
-		} elsif ($table && $l =~ /fragment by/) {
-			$tables_infos{$table}{partitioned} = 1;
+		} elsif ($table && $l =~ /(?:fragment|partition) by (.*)/) {
+			my $frag_type = $1;
+			# Do not take care of unsupported partitioning
+			if ($frag_type !~ /round robin/) {
+				$tables_infos{$table}{partitioned} = 1;
+			} else {
+				$self->logit("WARNING: table $table has unsupported partition type: round robin.\n", 0);
+			}
 		}
 	}
 	$fh->close();
 
 	return %tables_infos;
 }
-
 
 sub _column_comments
 {
@@ -2026,7 +2031,7 @@ sub _get_partitions_list_from_file
 			next if ($1 eq '"informix"' || $1 eq 'informix');
 			$tbname = $2;
 		}
-		if ($tbname && $l =~ /fragment by (.*)/i)
+		if ($tbname && $l =~ /(?:fragment|partition) by (.*)/i)
 		{
 			my $frag_type = $1;
 			# Do not take care of unsupported partitioning
@@ -2059,6 +2064,8 @@ Return a hash of the partitioned table with the number of partition
 sub _get_partitioned_table
 {
 	my ($self, %subpart) = @_;
+
+	return _get_partitioned_table_from_file($self, %subpart) if ($self->{input_file});
 
 	my %part_types = (
 		'R' => 'ROUND ROBIN',
@@ -2104,6 +2111,69 @@ WHERE f.fragtype = 'T'
 
 	return %parts;
 }
+
+sub _get_partitioned_table_from_file
+{
+	my ($self, %subpart) = @_;
+
+	my %part_types = (
+		'R' => 'ROUND ROBIN',
+		'E' => 'RANGE',
+		'I' => 'IN DBSPACE',
+		'N' => 'RANGE',
+		'L' => 'LIST',
+		'T' => 'TABLE BASED',
+		'H' => 'TABLE HIERARCHY'
+	);
+
+	# Retrieve all partitions.
+	my %parts = ();
+	my $has_partition = 0;
+	my $tbname = '';
+	my $fh = new IO::File;
+	$fh->open("<$self->{input_file}") or $self->logit("FATAL: can't read file $self->{input_file}, $!\n", 0, 1);
+	while (my $l = <$fh>)
+	{
+		chomp($l);
+		if ($l =~ /create table ([^\.])\.([^\s])/i) {
+			next if ($1 eq '"informix"' || $1 eq 'informix');
+			$tbname = $2;
+		}
+		if ($tbname && $l =~ /(?:fragment|partition) by (.*)/i)
+		{
+
+			my $frag_type = $1;
+			# Do not take care of unsupported partitioning
+			if ($frag_type !~ /round robin/) {
+				$frag_type =~ s/\s+.*//;
+				$has_partition = 1;
+				$parts{"\L$tbname\E"}{type} = $part_types{$frag_type};
+				$parts{"\L$tbname\E"}{composite} = 0;
+			}
+		}
+		# Extract the key column
+		if ($tbname && $has_partition && $l =~ /(?:fragment|partition) by [^\(]+\(([^\)]+)\)/i)
+		{
+			my @cols = split(/\s*,\s*/, $1);
+			foreach my $col (@cols) {
+				push(@{ $parts{"\L$tbname\E"}{columns} }, $col);
+			}
+		}
+		if ($tbname && $has_partition) {
+			while ($l =~ s/partition ([^\s]+) in//) {
+				$parts{"\L$tbname\E"}{count}++;
+			}
+		}
+		if ($tbname && $l =~ /;$/) {
+			$has_partition = 0;
+			$tbname = '';
+		}
+	}
+	$fh->close;
+
+	return %parts;
+}
+
 
 
 =head2 _get_objects
@@ -2264,7 +2334,7 @@ sub _get_objects
 			}
 			if ($table)
 			{
-				if ($l =~ /fragment by ([^\s]+) /i) {
+				if ($l =~ /(?:fragment|partition) by ([^\s]+) /i) {
 					$invalid = 1 if (lc($1) eq 'round');
 				}
 				if ($l =~ / partition [^\s]+ in /i)
@@ -2387,6 +2457,8 @@ This function retrieves the list of largest table of the Oracle database in MB
 sub _get_largest_tables
 {
 	my $self = shift;
+
+	return if ($self->{input_file});
 
 	my %table_size = ();
 
