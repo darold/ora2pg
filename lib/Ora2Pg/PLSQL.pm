@@ -24,7 +24,7 @@ package Ora2Pg::PLSQL;
 # 
 #------------------------------------------------------------------------------
 
-use vars qw($VERSION %OBJECT_SCORE $SIZE_SCORE $FCT_TEST_SCORE $QUERY_TEST_SCORE %UNCOVERED_SCORE %UNCOVERED_MYSQL_SCORE @ORA_FUNCTIONS @MYSQL_SPATIAL_FCT @MYSQL_FUNCTIONS %EXCEPTION_MAP %MAX_SCORE %MSSQL_STYLE %UNCOVERED_MSSQL_SCORE);
+use vars qw($VERSION %OBJECT_SCORE $SIZE_SCORE $FCT_TEST_SCORE $QUERY_TEST_SCORE %UNCOVERED_SCORE %UNCOVERED_MYSQL_SCORE @ORA_FUNCTIONS @MYSQL_SPATIAL_FCT @MYSQL_FUNCTIONS %EXCEPTION_MAP %MAX_SCORE %MSSQL_STYLE %UNCOVERED_MSSQL_SCORE @MSSQL_FUNCTIONS %UNCOVERED_INFORMIX_SCORE @INFORMIX_FUNCTIONS);
 use POSIX qw(locale_h);
 
 #set locale to LC_NUMERIC C
@@ -420,6 +420,54 @@ $QUERY_TEST_SCORE = 0.1;
 	'131' => 'dd/mm/yy hh:mi:ss:mmmAM',
 );
 
+@INFORMIX_FUNCTIONS = (
+	'RATIOTOREPORT',
+	'ADD_MONTHS',
+	'DECODE',
+	'DECRYPT_CHAR',
+	'DECRYPT_BINARY',
+	'ENCRYPT_AES',
+	'ENCRYPT_TDES',
+	'EXTEND',
+	'IFX_ALLOW_NEWLINE',
+	'FILETOBLOB',
+	'FILETOCLOB',
+	'FORMAT_UNITS',
+	'LOTOFILE',
+	'LOCOPY',
+	'GETHINT',
+	'HEX',
+	'IFX_BIT_LEFTSHIFT',
+	'IFX_BIT_RIGHTSHIFT',
+	'LAST_DAY',
+	'MDY',
+	'MONTHS_BETWEEN',
+	'NEXT_DAY',
+	'SECLABEL_TO_CHAR',
+	'SECLABEL_BY_COMP',
+	'SECLABEL_BY_NAME',
+	'SQLCODE',
+	'TRUNC',
+	'UNITS FRACTION',
+);
+
+%UNCOVERED_INFORMIX_SCORE = (
+	'EXCEPTION' => 3,
+	'FOREACH' => 6,
+	'SQLCODE' => 3,
+	'DBINFO' => 6,
+	'ENCRYPT' => 6,
+	'FILETO' => 6,
+	'SECLABEL' => 6,
+	'RATIO' => 6,
+	'FOREIGN_OBJECT' => 6,
+	'INTO_TEMP_TABLE' => 2,
+	'DIRTY READ' => 12,
+	'LOCK_MODE' => 3,
+	'COMMIT/ROLLBACK' => 2,
+	'SYSMASTER' => 2,
+);
+
 =head1 NAME
 
 PSQL - Oracle to PostgreSQL procedural language converter
@@ -460,6 +508,13 @@ sub convert_plsql_code
 	# Do some initialization of variables
 	%{$class->{single_fct_call}} = ();
 	$class->{replace_out_params} = '';
+
+	# Fix procedure named parameters call for Informix
+	if ($class->{type} eq 'TRIGGER' && $class->{is_informix}) {
+		$str =~ s/\s*=\s*([^>])/ => $1/sg;
+		$str =~ s/,(\s+execute procedure)/;$1/is;
+		$str =~ s/(execute procedure)\s+[^\s\.]+\./CALL /is;
+	}
 
 	if (uc($class->{type}) ne 'SHOW_REPORT')
 	{
@@ -726,6 +781,7 @@ sub plsql_to_plpgsql
 
 	return mysql_to_plpgsql($class, $str, @strings) if ($class->{is_mysql});
 	return mssql_to_plpgsql($class, $str, @strings) if ($class->{is_mssql});
+	return informix_to_plpgsql($class, $str, @strings) if ($class->{is_informix});
 
 	my $field = '\s*([^\(\),]+)\s*';
 	my $num_field = '\s*([\d\.]+)\s*';
@@ -1728,6 +1784,8 @@ sub replace_oracle_function
 		$str = mysql_to_plpgsql($class, $str);
 	} elsif ($class->{is_mssql}) {
 		$str = mssql_to_plpgsql($class, $str);
+	} elsif ($class->{is_informix}) {
+		$str = informix_to_plpgsql($class, $str);
 	}
 
 	# Change NVL to COALESCE
@@ -2553,6 +2611,7 @@ sub estimate_cost
 
 	return mysql_estimate_cost($class, $str, $type) if ($class->{is_mysql});
 	return mssql_estimate_cost($class, $str, $type) if ($class->{is_mssql});
+	return informix_estimate_cost($class, $str, $type) if ($class->{is_informix});
 
 	my %cost_details = ();
 
@@ -3429,6 +3488,89 @@ sub mssql_estimate_cost
 	return $cost, %cost_details;
 }
 
+sub informix_estimate_cost
+{
+	my ($class, $str, $type) = @_;
+
+	my %cost_details = ();
+
+	# SQL do not use ; as statements separator and condition use begin instead of then/loop...
+	# this require manual editing so decrease the number of lines for cost of the code review.
+	$SIZE_SCORE = 600;
+
+	# Default cost is testing that mean it at least must be tested
+	my $cost = $FCT_TEST_SCORE;
+	# When evaluating queries tests must not be included here
+	if ($type eq 'QUERY') {
+		$cost = 0;
+	}
+	$cost_details{'TEST'} = $cost;
+
+	# Set cost following code length
+	my $cost_size = int(length($str)/$SIZE_SCORE) || 1;
+	# When evaluating queries size must not be included here
+	if ($type eq 'QUERY') {
+		$cost_size = 0;
+	}
+
+	$cost += $cost_size;
+	$cost_details{'SIZE'} = $cost_size;
+
+	# Try to figure out the manual work
+	# Not accurate for now
+	my $n = () = $str =~ m/\bEXCEPTION\b/igs;
+	$cost_details{'EXCEPTION'} += $n*$UNCOVERED_INFORMIX_SCORE{'EXCEPTION'};
+	$n = () = $str =~ m/\bFOREACH\b/igs;
+	$cost_details{'FOREACH'} += $n*$UNCOVERED_INFORMIX_SCORE{'FOREACH'};
+	$n = () = $str =~ m/\bSQLCODE\b/igs;
+	$cost_details{'SQLCODE'} += $n*$UNCOVERED_INFORMIX_SCORE{'SQLCODE'};
+	$n = () = $str =~ m/\bDBINFO\b/igs;
+	$cost_details{'DBINFO'} += $n*$UNCOVERED_INFORMIX_SCORE{'DBINFO'};
+	$n = () = $str =~ m/\bSECLABEL_(TO|BY)_(CHAR|COMP|NAME)\s*\(/igs;
+	$cost_details{'SECLABEL'} += $n*$UNCOVERED_INFORMIX_SCORE{'SECLABEL'};
+	$n = () = $str =~ m/\b(DE|EN)CRYPT_(CHAR|AES|TDES|BINARY)\s*\(/igs;
+	$cost_details{'ENCRYPT'} += $n*$UNCOVERED_INFORMIX_SCORE{'ENCRYPT'};
+	$n = () = $str =~ m/\bGETHINT\s*\(/igs;
+	$cost_details{'ENCRYPT'} += $n*$UNCOVERED_INFORMIX_SCORE{'ENCRYPT'};
+	$n = () = $str =~ m/\bFILETO.LOB\s*\(/igs;
+	$cost_details{'FILETO'} += $n*$UNCOVERED_INFORMIX_SCORE{'FILETO'};
+	$n = () = $str =~ m/\bLO(TOFILE|COPY)\s*\(/igs;
+	$cost_details{'FILETO'} += $n*$UNCOVERED_INFORMIX_SCORE{'FILETO'};
+	$n = () = $str =~ m/\b(RATIOTOREPORT|RATIO_TO_REPORT)\s*\(/igs;
+	$cost_details{'RATIO'} += $n*$UNCOVERED_INFORMIX_SCORE{'RATIO'};
+
+	# Look for access to objects in other database, require FDW or dblink.
+	$n = () = $str =~ /\b[a-z0-9_\$]+:[a-z0-9_\$]+\b/igs;
+	$cost_details{'FOREIGN_OBJECT'} += $n*$UNCOVERED_INFORMIX_SCORE{'FOREIGN_OBJECT'};
+	$n = () = $str =~ /INTO\s+TEMP\s+/igs;
+	$cost_details{'INTO_TEMP_TABLE'} += $n*$UNCOVERED_INFORMIX_SCORE{'INTO_TEMP_TABLE'};
+	$n = () = $str =~ /\bDIRTY\s+READ\b/igs;
+	$cost_details{'DIRTY READ'} += $n*$UNCOVERED_INFORMIX_SCORE{'DIRTY READ'};
+	$n = () = $str =~ /\bSET\s+LOCK\s+MODE\b/igs;
+	$cost_details{'LOCK_MODE'} += $n*$UNCOVERED_INFORMIX_SCORE{'LOCK_MODE'};
+	$n = () = $str =~ /\b(COMMIT|ROLLBACK)\b/igs;
+	$cost_details{'COMMIT/ROLLBACK'} += $n*$UNCOVERED_INFORMIX_SCORE{'COMMIT/ROLLBACK'};
+	$n = () = $str =~ /\bsysmaster:\b/igs;
+	$cost_details{'SYSMASTER'} += $n*$UNCOVERED_INFORMIX_SCORE{'SYSMASTER'};
+
+	foreach my $t (keys %UNCOVERED_INFORMIX_SCORE) {
+		$cost += $cost_details{$t} if (exists $cost_details{$t});
+	}
+
+	foreach my $f (@INFORMIX_FUNCTIONS)
+	{
+		#next if ($class->{use_informixfce} && $f =~ /^(DATEDIFF|STUFF|PATINDEX|ISNUMERIC|ISDATE|LEN)$/);
+		if ($str =~ /\b$f\s*\(/igs)
+		{
+			$cost += 2;
+			$cost_details{$f} += 2;
+		}
+	}
+
+	return $cost, %cost_details;
+}
+
+
 sub replace_outer_join
 {
 	my ($class, $str, $type) = @_;
@@ -4112,6 +4254,109 @@ sub mssql_to_plpgsql
 	return $str;
 }
 
+=head2 informix_to_plpgsql
+
+This function turn a Informix function code into a PLPGSQL code
+
+=cut
+
+sub informix_to_plpgsql
+{
+        my ($class, $str) = @_;
+
+	my $field = '\s*([^\(\),]+)\s*';
+	my $num_field = '\s*([\d\.]+)\s*';
+
+	# Fix conditional blocks
+	$str =~ s/END (IF|WHILE|FOREACH)/END $1;/igs;
+	$str =~ s/END (IF|WHILE|FOREACH);\s*;/END $1;/igs;
+	$str =~ s/END (WHILE|FOREACH);/END LOOP;\n/igs;
+	$str =~ s/(CONTINUE|EXIT)\s+(WHILE|FOREACH);/\U$1\L;/igs;
+	$str =~ s/WHILE(\s*\(.*\))$/WHILE $1 LOOP/igs;
+
+	# Fix variable assignement
+	$str =~ s/\bLET\s+([^\s=]+)\s*=/$1 :=/igs;
+
+#FIXME: WHILE need LOOP
+#FIXME: RAISE EXCEPTION and EXCEPTION blocks
+#FIXME: FOREACH LOOP
+#FIXME: FOREACH WITH HOLD LOOP
+#FIXME: SET ISOLATION TO DIRTY READ
+#FIXME: set lock mode to wait;
+#FIXME: BEGIN/COMMIT/ROLLBACK WORK
+#FIXME: FROM    sysmaster:sysshmvals et sysmaster:*
+
+	# Remove  WITH NO LOG usually with temporary tables
+	$str =~ s/(\s+TEMP\s+[^;]+) WITH NO LOG;/$1;/igs;
+
+	# Fix SELECT * INTO TEMP table
+	$str =~ s/\b(SELECT [^;]+)\s+INTO TEMP ([^\s;]+)\s*;/CREATE TEMPORARY TABLE $2 AS $1;/igs;
+
+	# Replace call to DBINFO('sqlca.sqlerrd2') to get the number of row affected
+	if ($str =~ s/;(\s+)([^;]+)DBINFO\('sqlca.sqlerrd2'\)/;$1GET DIAGNOSTICS ora2pg_rowcount = ROW_COUNT;\n$1$2 ora2pg_rowcount/igs) {
+		$class->{get_diagnostics} = 'ora2pg_rowcount int;';
+	}
+	# Replace call to DBINFO('utc_to_datetime', sh_curtime) with clock_timestamp()
+	$str =~ s/\bDBINFO\s*\(\s*'utc_to_datetime'\s*,\s*sh_curtime\s*\)/clock_timestamp()/igs;
+	$str =~ s/(clock_timestamp[^;]+)\s+FROM\s+sysmaster:sysshmvals\s*;/$1;/igs;
+	# Extract epoch
+	$str =~ s/\bDBINFO\s*\(\s*'utc_current'\s*\)/extract(epoch from clock_timestamp())::integer/igs;
+
+	# Fix variable assignment
+	$str =~ s/\bLET\s*([^\s]+)\s*=/$1 :=/igs;
+
+	# Replace RETURN ... WITH RESUME with RETURN NEXT
+	$str =~ s/\bRETURN\s+([^\s]+)\s+WITH RESUME\s*;/RETURN NEXT $1;/igs;
+
+	# Date increment units
+	$str =~ s/(\d+) UNITS\s+([a-z]+)/'$1 $2'::interval/igs;
+	$str =~ s/\b([^\s]+) units\s+([a-z]+)/$1 * '1 $2'::interval/igs;
+
+	# The NOT FOUND equivalent:
+	$str =~ s/\bSQLCODE\s*<>\s*0/NOT FOUND/igs;
+
+	# Fix call to TRACE with RAISE NOTICE
+	$str =~ s/\s*TRACE ON;//igs;
+	$str =~ s/\s*TRACE OFF;//igs;
+	$str =~ s/\bTRACE (.*?);/RAISE NOTICE '%', $1;/igs;
+
+	####
+	# Replace some function with their PostgreSQL syntax
+	####
+	$str =~ s/\bCURRENT\b/current_timestamp(3)/gis;
+	$str =~ s/\bTODAY\s*\(/CURRENT_DATE/gis;
+	$str =~ s/\bSYSDATE\b/current_timestamp(5)/gis;
+	$str =~ s/\bRATIOTOREPORT\b/RATIO_TO_REPORT/gis;
+	$str =~ s/\bROWNUMBER\b/ROW_NUMBER/gis;
+	$str =~ s/\bPOW\b/POWER/gis;
+	$str =~ s/\bLEN\s*\(([^\)]+)\)/LENGTH(RTRIM($1))/gis;
+	$str =~ s/\bRAND\s*\(/random(/gis;
+	$str =~ s/\bSUBSTB\s*\(/substr(/gis;
+	$str =~ s/CHARINDEX\s*\(\s*(.*?)\s*,\s*(.*?)\s*,\s*(\d+)\)/position('$1' in substring($2 from $3))/gi;
+	$str =~ s/CHARINDEX\s*\(\s*(.*?)\s*,\s*(.*?)\s*\)/position('$1' in $2)/gi;
+
+	# Replace INSTR by POSITION
+	$str =~ s/\bINSTR\s*\(\s*([^,]+),\s*([^\),]+)\s*\)/position($2 in $1)/is;
+	$str =~ s/\bINSTR\s*\(\s*([^,]+),\s*([^,]+)\s*,\s*1\s*\)/position($2 in $1)/is;
+
+	# Change NVL to COALESCE
+	$str =~ s/NVL\s*\(/coalesce(/isg;
+	$str =~ s/NVL2\s*\($field,$field,$field\)/(CASE WHEN $1 IS NOT NULL THEN $2 ELSE $3 END)/isg;
+	$str =~ s/\bWEEKDAY\(\s*([^\(\)]+)\s*\)/to_char(($1)::timestamp, 'ID')::integer/igs; # Informix: Sunday = 0, PG => 0
+	$str =~ s/\bYEAR\s*\(/date_part('year', /gis;
+	$str =~ s/\bMONTH\s*\(/date_part('month', /gis;
+	$str =~ s/\bDAY\s*\(/date_part('day', /gis;
+	$str =~ s/\bQUARTER\(\s*([^\(\)]+)\s*\)/extract(quarter from date($1))::integer/igs;
+	$str =~ s/\bHEX\s*\(([^\)]+)\)/encode($1::bytea, 'hex')/gis;
+
+	# Convert the call to the Informix function add_months() into Pg syntax
+	$str =~ s/\bADD_MONTHS\s*\(([^,]+),\s*(\d+)\s*\)/$1 + '$2 month'::interval/si;
+	$str =~ s/\bADD_MONTHS\s*\(([^,]+),\s*([^,\(\)]+)\s*\)/$1 + $2*'1 month'::interval/si;
+
+	$str =~ s/\bEND (FUNCTION|PROCEDURE)[\s;]+/END;/gis;
+
+	return $str;
+}
 
 1;
 

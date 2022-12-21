@@ -2722,11 +2722,6 @@ sub _get_plsql_code
 {
 	my ($self, $str) = @_;
 
-	# Fix procedure named parameters call for Informix
-	if ($self->{type} eq 'TRIGGER' && $self->{is_informix}) {
-		$str =~ s/\s*=\s*/ => /sg;
-	}
-
 	my $ct = '';
 	my @parts = split(/\b(BEGIN|DECLARE|END\s*(?!IF|LOOP|CASE|INTO|FROM|,|\))[^;\s]*\s*;)/i, $str);
 	my $code = '';
@@ -2746,6 +2741,8 @@ sub _get_plsql_code
 	for (; $i <= $#parts; $i++) {
 		$other .= $parts[$i];
 	}
+
+	$code = Ora2Pg::PLSQL::convert_plsql_code($self, $code) if ($self->{plsql_pgsql});
 
 	return ($code, $other);
 }
@@ -2820,8 +2817,10 @@ sub _remove_text_constant_part
 {
 	my ($self, $str) = @_;
 
-	for (my $i = 0; $i <= $#{$self->{alternative_quoting_regexp}}; $i++) {
-		while ($$str =~ s/$self->{alternative_quoting_regexp}[$i]/\?TEXTVALUE$self->{text_values_pos}\?/s) {
+	for (my $i = 0; $i <= $#{$self->{alternative_quoting_regexp}}; $i++)
+	{
+		while ($$str =~ s/$self->{alternative_quoting_regexp}[$i]/\?TEXTVALUE$self->{text_values_pos}\?/s)
+		{
 			$self->{text_values}{$self->{text_values_pos}} = '$$' . $1 . '$$';
 			$self->{text_values_pos}++;
 		}
@@ -2830,16 +2829,24 @@ sub _remove_text_constant_part
 	$$str =~ s/\\'/ORA2PG_ESCAPE1_QUOTE'/gs;
 	while ($$str =~ s/''/ORA2PG_ESCAPE2_QUOTE/gs) {}
 
-	while ($$str =~ s/('[^']+')/\?TEXTVALUE$self->{text_values_pos}\?/s) {
+	while ($$str =~ s/('[^']+')/\?TEXTVALUE$self->{text_values_pos}\?/s)
+	{
 		$self->{text_values}{$self->{text_values_pos}} = $1;
 		$self->{text_values_pos}++;
 	}
 
-	for (my $i = 0; $i <= $#{$self->{string_constant_regexp}}; $i++) {
-		while ($$str =~ s/($self->{string_constant_regexp}[$i])/\?TEXTVALUE$self->{text_values_pos}\?/s) {
+	for (my $i = 0; $i <= $#{$self->{string_constant_regexp}}; $i++)
+	{
+		while ($$str =~ s/($self->{string_constant_regexp}[$i])/\?TEXTVALUE$self->{text_values_pos}\?/s)
+		{
 			$self->{text_values}{$self->{text_values_pos}} = $1;
 			$self->{text_values_pos}++;
 		}
+	}
+
+	# Special values for Informix that we need to parse in informix_plsql_pgsql() 
+	if ($self->{is_informix}) {
+		$$str =~ s/DBINFO\s*\(\?TEXTVALUE(\d+)\?/DBINFO($self->{text_values}{$1}/ig;
 	}
 }
 
@@ -3615,14 +3622,20 @@ sub read_trigger_from_file
 		my $referencing = '';
 		if ($self->{pg_version} < 10) {
 			$trigger =~ s/REFERENCING\s+(.*?)(FOR\s+EACH\s+|\(\s+)/$2/is;
-		} else {
-			if ($trigger =~ s/(REFERENCING\s+.*?)(FOR\s+EACH\s+|\(\s+)/$2/is) {
+		}
+		else
+		{
+			if ($trigger =~ s/(REFERENCING\s+.*?)(FOR\s+EACH\s+|\(\s+)/$2/is)
+			{
 				$referencing = $1;
 				$referencing =~ s/[\r\n]+/ /gs;
 				$referencing =~ s/\s+/ /g;
 				$referencing =~ s/\s+$//;
 				$referencing =~ s/\b(REFERENCING|OLD|NEW|AS)\b/\U$1\E/ig;
-				$referencing = "\n\t$referencing"
+				if ($self->{plsql_pgsql} && $referencing =~ /REFERENCING\s+[^\s]+\s+AS\s+/i) {
+					$referencing =~ s/(\s+[^\s]+\s+)(AS\s+)/$1 TABLE $2/ig;
+				}
+				$referencing = "\n\t$referencing";
 			}
 		}
 
@@ -5915,7 +5928,10 @@ sub export_function
 	# Code to use to find function parser issues, it load a file
 	# containing the untouched PL/SQL code from Oracle Function
 	#---------------------------------------------------------
-	if ($self->{input_file})
+	if ($self->{input_file} && $self->{is_informix}) {
+		$self->{functions} = Ora2Pg::Informix::_get_functions_from_file($self);
+	}
+	elsif ($self->{input_file})
 	{
 		$self->{functions} = ();
 		$self->logit("Reading input code from file $self->{input_file}...\n", 1);
@@ -6105,7 +6121,10 @@ sub export_procedure
 	# Code to use to find procedure parser issues, it load a file
 	# containing the untouched PL/SQL code from Oracle Procedure
 	#---------------------------------------------------------
-	if ($self->{input_file})
+	if ($self->{input_file} && $self->{is_informix}) {
+		$self->{procedures} = Ora2Pg::Informix::_get_procedures_from_file($self);
+	}
+	elsif ($self->{input_file})
 	{
 		$self->{procedures} = ();
 		$self->logit("Reading input code from file $self->{input_file}...\n", 1);
@@ -13900,6 +13919,9 @@ sub _remove_comments
 	{
 		next if ($lines[$i] !~ /\S/);
 
+		# Constant are double quoted with Informix, use single quote
+		$lines[$i] =~ s/"/'/gs if ($self->{is_informix});
+
 		# Single line comment --...-- */ is replaced by  */ only
 		$lines[$i] =~ s/^([\t ]*)\-[\-]+\s*\*\//$1\*\//;
 
@@ -14091,6 +14113,7 @@ sub _convert_function
 		$param_param{$h} = $1;
 		$h++;
 	}
+
 	if ($self->{use_default_null})
 	{
 		my $has_default = 0;

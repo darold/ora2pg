@@ -1271,7 +1271,7 @@ WHERE
 		} else {
 			$functions{"$row->[0]"}{comment} .= $row->[8];
 		}
-		$functions{"$row->[0]"}{strict} = $row->[3];
+		$functions{"$row->[0]"}{strict} = $row->[3] || '';
 		$functions{"$row->[0]"}{security} = 'EXECUTER';
 	}
 
@@ -1298,6 +1298,15 @@ sub _get_functions_from_file
 			my $fctname = $2;
 			my $fct_code = $l;
 			my $end_found = 0;
+			if (exists $self->{limited}{FUNCTION}) {
+				next if (!grep(/^$fctname$/i, @{$self->{limited}{FUNCTION}}));
+			} elsif (exists $self->{limited}{ALL}) {
+				next if (!grep(/^$fctname$/i, @{$self->{limited}{ALL}}));
+			} elsif (exists $self->{excluded}{FUNCTION}) {
+				next if (grep(/^$fctname$/i, @{$self->{excluded}{FUNCTION}}));
+			} elsif (exists $self->{excluded}{ALL}) {
+				next if (grep(/^$fctname$/i, @{$self->{excluded}{ALL}}));
+			}
 			while ($l = <$fh>)
 			{
 				chomp($l);
@@ -1313,7 +1322,7 @@ sub _get_functions_from_file
 			if ($fct_code =~ s/(end function)\s+(.*);/$1;/is) {
 				$functions{$fctname}{comment} = $1;
 			}
-			$functions{$fctname}{strict} = 1;
+			$functions{$fctname}{strict} = '';
 			$functions{$fctname}{security} = 'EXECUTER';
 		}
 	}
@@ -1363,7 +1372,7 @@ WHERE
 			$functions{"$row->[0]"}{comment} .= $row->[8];
 		}
 		$functions{"$row->[0]"}{kind} = 'PROCEDURE';
-		$functions{"$row->[0]"}{strict} = $row->[3];
+		$functions{"$row->[0]"}{strict} = $row->[3] || '';
 		$functions{"$row->[0]"}{security} = 'EXECUTER';
 	}
 
@@ -1386,33 +1395,41 @@ sub _get_procedures_from_file
 		if ($l =~ /create procedure ([^\.]+)\.([^\s\(]+)/is)
 		{
 			next if ($1 eq '"informix"' || $1 eq 'informix');
-			my $procname = $2;
-			my $proc_code = $l;
+			my $fctname = $2;
+			my $fct_code = $l;
 			my $end_found = 0;
+			if (exists $self->{limited}{PROCEDURE}) {
+				next if (!grep(/^$fctname$/i, @{$self->{limited}{PROCEDURE}}));
+			} elsif (exists $self->{limited}{ALL}) {
+				next if (!grep(/^$fctname$/i, @{$self->{limited}{ALL}}));
+			} elsif (exists $self->{excluded}{PROCEDURE}) {
+				next if (grep(/^$fctname$/i, @{$self->{excluded}{PROCEDURE}}));
+			} elsif (exists $self->{excluded}{ALL}) {
+				next if (grep(/^$fctname$/i, @{$self->{excluded}{ALL}}));
+			}
 			while ($l = <$fh>)
 			{
 				chomp($l);
-				$proc_code .= "$l\n";
-				if ($proc_code =~ /end procedure/i) {
+				$fct_code .= "$l\n";
+				if ($fct_code =~ /end procedure/i) {
 					$end_found = 1;
 				}
 				last if ($end_found && $l =~ /;$/);
 			}
-			$procedures{$procname}{kind} = 'PROCEDURE';
-			$procedures{$procname}{name} = $procname;
-			$procedures{$procname}{text} = $proc_code;
-			if ($proc_code =~ s/(end procedure)\s+(.*);/$1;/is) {
-				$procedures{$procname}{comment} = $1;
+			$procedures{$fctname}{kind} = 'PROCEDURE';
+			$procedures{$fctname}{name} = $fctname;
+			$procedures{$fctname}{text} = $fct_code;
+			if ($fct_code =~ s/(end procedure)\s+(.*);/$1;/is) {
+				$procedures{$fctname}{comment} = $1;
 			}
-			$procedures{$procname}{strict} = 1;
-			$procedures{$procname}{security} = 'EXECUTER';
+			$procedures{$fctname}{strict} = '';
+			$procedures{$fctname}{security} = 'EXECUTER';
 		}
 	}
 	$fh->close;
 
 	return \%procedures;
 }
-
 
 sub _lookup_function
 {
@@ -1426,40 +1443,32 @@ sub _lookup_function
 
         my %fct_detail = ();
         $fct_detail{func_ret_type} = 'OPAQUE';
+	my $split_word = '';
 
         # Split data into declarative and code part
-        ($fct_detail{declare}, $fct_detail{code}) = split(/;/i, $code, 2);
-	#($fct_detail{declare}, $fct_detail{code}) = split(/\b(?:BEGIN|SET|SELECT|INSERT|UPDATE|IF|DROP|RETURN|DEFINE|;)\b/i, $code, 2);
-	# Fix part that should be in code section not in declare section
-	if ($fct_detail{declare} =~ s/\s+((?:DROP|RETURN)\s.*)//) {
-		$fct_detail{code} = $1 . $fct_detail{code};
-	}
+        ($fct_detail{declare}, $split_word, $fct_detail{code}) = split(/\b(;|DEFINE|BEGIN|ON EXCEPTION|IF|WHILE|FOREACH|INSERT|DELETE|UPDATE|SELECT|DROP)\b/i, $code, 2);
+	$fct_detail{code} = $split_word . $fct_detail{code} if ($split_word ne ';');
 	return if (!$fct_detail{code});
 
-	# Move all DECLARE statements found in the code into the DECLARE section
+	# Fix DECLARE section
+	$fct_detail{declare} =~ s/;//s;
+	$fct_detail{declare} =~ s/(FUNCTION|PROCEDURE)\s+([^\s\(]+)\s*(.*)/$1 $2 $3\nDECLARE/is;
+
+	# Move all DEFINE statements found in the code into the DECLARE section
 	my @lines = split(/\n/, $fct_detail{code});
 	$fct_detail{code} = '';
-	$fct_detail{declare} =~ s/;//s;
 	foreach my $l (@lines)
 	{
 		if ($l =~ /^\s*DEFINE\s+(.*)/i) {
-			$fct_detail{declare} .= "\n$1;";
+			$fct_detail{declare} .= "\n$1";
+			$fct_detail{declare} .= ';' if ($fct_detail{declare} !~ /;\s*$/s);
 		} else {
 			$fct_detail{code} .= "$l\n";
 		}
 	}
 
-	# Fix DECLARE section
-	$fct_detail{declare} =~ s/\bDECLARE\s+//igs;
-	if ($fct_detail{declare} !~ /\bDECLARE\b/i)
-	{
-		if ($fct_detail{declare} !~ s/(FUNCTION|PROCEDURE|PROC)\s+([^\s\(]+)[\)\s]+AS\s+(.*)/$1 $2\nDECLARE\n$3/is) {
-			$fct_detail{declare} =~ s/(FUNCTION|PROCEDURE|PROC)\s+([^\s\(]+)\s+(.*\@.*?[\)\s]+)(RETURNS|AS)\s+(.*)/$1 $2 ($3)\n$4\nDECLARE\n$5/is;
-		}
-	}
-	# Remove any label that was before the main BEGIN block
-	$fct_detail{declare} =~ s/\s+[^\s\:]+:\s*$//gs;
-	$fct_detail{declare} =~ s/(RETURNS.*TABLE.*\))\s*\)\s*AS\b/) $1 AS/is;
+	# Remove empty DECLARE section
+	$fct_detail{declare} =~ s/\s+DECLARE\s*$//is;
 
         @{$fct_detail{param_types}} = ();
 
@@ -1490,22 +1499,28 @@ sub _lookup_function
 		$tmp_returned =~ s/RETURNING\s+(.*)/RETURNS $1/is;
 		chomp($tmp_returned);
 
+		if ($tmp_returned =~ s/\s(DECLARE\s.*)//is) {
+			$fct_detail{code} = $1 . "\n" . $fct_detail{code};
+		}
 		$fct_detail{args} =~ s/^\s*\(\s*\((.*)\)\s*\)$/$1/s;
 		$fct_detail{args} =~ s/^\s*\(\s*(.*)\s*\)$/$1/s;
 		$fct_detail{code} = "\n" . $fct_detail{code};
-		$fct_detail{immutable} = 1 if ($fct_detail{declare} =~ s/\s*\bDETERMINISTIC\b//is);
+		$fct_detail{immutable} = '';
 		$fct_detail{before} = ''; # There is only garbage for the moment
 
                 $fct_detail{name} =~ s/['"]//g;
+                $fct_detail{name} =~ s/.*\.//;
                 $fct_detail{fct_name} = $fct_detail{name};
 		if (!$fct_detail{args}) {
 			$fct_detail{args} = '()';
 		}
-		$fct_detail{immutable} = 1 if ($fct_detail{return} =~ s/\s*\bDETERMINISTIC\b//is);
-		$fct_detail{immutable} = 1 if ($tmp_returned =~ s/\s*\bDETERMINISTIC\b//is);
 		$tmp_returned =~ s/^\s+//;
 		$tmp_returned =~ s/\s+$//;
 
+		if ($self->{plsql_pgsql}) {
+			$fct_detail{code} =~ s/\s*on exception(.*?\send) exception\s*[;]*begin\s+(.*?)end (?:function|procedure)\s*;/\nBEGIN\n$2\nEXCEPTION$1;/isg;
+			$fct_detail{code} =~ s/\s*on exception(.*?\send) exception\s+(.*?)end (?:function|procedure)\s*;/\nBEGIN\n$2\nEXCEPTION$1;/isg;
+		}
 		$fctname = $fct_detail{name} || $fctname;
 		if ($type eq 'functions' && exists $self->{$type}{$fctname}{return} && $self->{$type}{$fctname}{return})
 		{
@@ -1518,13 +1533,7 @@ sub _lookup_function
 			$fct_detail{hasreturn} = 1;
 		}
 		$fct_detail{language} = $self->{$type}{$fctname}{language};
-		$fct_detail{immutable} = 1 if ($self->{$type}{$fctname}{immutable} eq 'YES');
 		$fct_detail{security} = $self->{$type}{$fctname}{security};
-
-                if ($fct_detail{func_ret_type} =~ s/RETURNS\s+\@(.*?)\s+TABLE/TABLE/is) {
-			$fct_detail{declare} .= "v_$1 record;\n";
-		}
-                $fct_detail{func_ret_type} =~ s/RETURNS\s*//is;
 
 		# Procedure that have out parameters are functions with PG
 		if ($type eq 'procedures' && $fct_detail{args} =~ /\b(OUT|INOUT)\b/) {
@@ -1535,15 +1544,9 @@ sub _lookup_function
 		# IN OUT should be INOUT
 		$fct_detail{args} =~ s/\bIN\s+OUT/INOUT/igs;
 
-		# Move the DECLARE statement from code to the declare section.
-		#$fct_detail{declare} = '';
-		while ($fct_detail{code} =~ s/DECLARE\s+([^;\n\r]+)//is)
-		{
-			my $var = $1;
-			$fct_detail{declare} .= "\n$var" if ($fct_detail{declare} !~ /v_$var /is);
+		if ($fct_detail{code} =~ s/\s*DECLARE\s+(.*?)\s+(BEGIN|ON EXCEPTION|IF|WHILE|FOREACH|INSERT|DELETE|UPDATE|SELECT|DROP|LET|SET)\s/$2 /is) {
+			$fct_detail{declare} = "DECLARE\n$1";
 		}
-		# Rename arguments with @ replaced by p_
-		($fct_detail{args}, $fct_detail{declare}, $fct_detail{code}) = replace_mssql_params($self, $fct_detail{args}, $fct_detail{declare}, $fct_detail{code});
 
 		# Now convert types
 		if ($fct_detail{args}) {
@@ -1577,8 +1580,18 @@ sub _lookup_function
 
 	$fct_detail{args} =~ s/\s*$//s;
 	$fct_detail{args} =~ s/^\s*//s;
+	$fct_detail{args} =~ s/"/'/gs;
 	$fct_detail{code} =~ s/^[\r\n]*/\n/s;
+	$fct_detail{code} =~ s/^\s*BEGIN\b//is;
+	$fct_detail{func_ret_type} =~ s/RETURNS //is;
 
+	# Replace LIKE in parameters
+	$fct_detail{args} =~ s/\s+LIKE\s+([^\s,\)]+)/ $1%TYPE/igs;
+
+	# Fix LIKE in variables declaration
+	$fct_detail{declare} =~ s/\s+LIKE\s+([^\s]+)\s*;/ $1%TYPE;/igs;
+
+	# Fix end of conditional block
 	# Remove %ROWTYPE from return type
 	$fct_detail{func_ret_type} =~ s/\%ROWTYPE//igs;
 
