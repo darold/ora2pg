@@ -1797,7 +1797,7 @@ sub _init
 	{
 		$self->{plsql_pgsql} = 1;
 
-		if (grep(/^$self->{type}$/, 'TABLE', 'SEQUENCE', 'GRANT', 'TABLESPACE', 'VIEW', 'TRIGGER', 'QUERY', 'FUNCTION','PROCEDURE','PACKAGE','TYPE','SYNONYM', 'DIRECTORY', 'DBLINK','LOAD', 'SHOW_REPORT', 'SHOW_TABLE', 'SHOW_COMMAND'))
+		if (grep(/^$self->{type}$/, 'TABLE', 'SEQUENCE', 'GRANT', 'TABLESPACE', 'VIEW', 'TRIGGER', 'QUERY', 'FUNCTION','PROCEDURE','PACKAGE','TYPE','SYNONYM', 'DIRECTORY', 'DBLINK', 'LOAD', 'SHOW_REPORT', 'SHOW_TABLE', 'SHOW_COLUMN'))
 		{
 			if ($self->{type} eq 'LOAD')
 			{
@@ -2965,261 +2965,11 @@ sub read_schema_from_file
 				$self->{tables}{$tb_name}{table_info}{comment} = $1;
 			}
 			$tb_def =~ s/^\(//;
-			my %fct_placeholder = ();
-			my $i = 0;
-			while ($tb_def =~ s/(\([^\(\)]*\))/\%\%FCT$i\%\%/is)
-			{
-				$fct_placeholder{$i} = $1;
-				$i++;
-			};
-			($tb_def, $tb_param) = split(/\s*\)\s*/, $tb_def);
-			my @column_defs = split(/\s*,\s*/, $tb_def);
-			map { s/^\s+//; s/\s+$//; } @column_defs;
-			my $pos = 0;
-			my $cur_c_name = '';
-			foreach my $c (@column_defs)
-			{
-				next if (!$c);
 
-				# Some Informix datatypes can be prefixed by the informix owner.
-				$c =~ s/"informix"\.//igs;
+			# Parse content of the CREATE TABLE content and return
+			# extra information after columns definition
+			$tb_param = $self->parse_columns_from_file($tb_name, $tb_def);
 
-				# Replace temporary substitution
-				while ($c =~ s/\%\%FCT(\d+)\%\%/$fct_placeholder{$1}/is) {
-					delete $fct_placeholder{$1};
-				}
-				# Mysql unique key embedded definition, transform it to special parsing 
-				$c =~ s/^UNIQUE KEY/INDEX UNIQUE/is;
-				# Remove things that are not possible with postgres
-				$c =~ s/(PRIMARY KEY.*)NOT NULL/$1/is;
-				# Rewrite some parts for easiest/generic parsing
-				my $tbn = $tb_name;
-				$tbn =~ s/\./_/gs;
-				my $orig_name = '';
-				# Informix has constraint name
-				if ($c =~ /\bconstraint ([^\.\s]+\.[^\s]+)/is) {
-					$orig_name = $1;
-					$orig_name =~ s/.*\.//gs if ($self->{is_informix});
-					$c =~ s/\bconstraint ([^\.\s]+\.[^\s]+)/CONSTRAINT $orig_name/is;
-				}
-				my $constr_name = $orig_name || "o2pu_$tbn";
-				$c =~ s/^(PRIMARY KEY|UNIQUE)/CONSTRAINT $constr_name \U$1\L/is;
-				$c =~ s/^(CHECK[^,;]+)DEFERRABLE\s+INITIALLY\s+DEFERRED/$1/is;
-				$constr_name = $orig_name || "o2pc_$tbn";
-				$c =~ s/^CHECK\b/CONSTRAINT $constr_name CHECK/is;
-				$constr_name = $orig_name || "o2pf_$tbn";
-				$c =~ s/\bFOREIGN KEY/CONSTRAINT $constr_name FOREIGN KEY/is;
-				$c =~ s/\(\s+/\(/gs;
-
-				# register column name between double quote
-				my $i = 0;
-				my %col_name = ();
-				# Get column name
-				while ($c =~ s/("[^"]+")/\%\%COLNAME$i\%\%/s)
-				{
-					$col_name{$i} = $1;
-					$i++;
-				}
-				if ($c =~ s/^\s*([^\s]+)\s*//s)
-				{
-					my $c_name = $1;
-					$c_name =~ s/\%\%COLNAME(\d+)\%\%/$col_name{$1}/sg;
-					$c =~ s/\%\%COLNAME(\d+)\%\%/$col_name{$1}/sg;
-					if (!$self->{preserve_case}) {
-						$c_name =~ s/"//gs;
-					}
-					# Retrieve all columns information
-					if (!grep(/^\Q$c_name\E$/i, 'CONSTRAINT','INDEX'))
-					{
-						$cur_c_name = $c_name;
-						$c_name =~ s/\./_/gs;
-						my $c_default = '';
-						my $virt_col = 'NO';
-						$c =~ s/\s+ENABLE//is;
-						if ($c =~ s/\bGENERATED\s+(ALWAYS|BY\s+DEFAULT)\s+(ON\s+NULL\s+)?AS\s+IDENTITY\s*(.*)//is)
-						{
-							$self->{identity_info}{$tb_name}{$c_name}{generation} = $1;
-							my $options = $3;
-							$self->{identity_info}{$tb_name}{$c_name}{options} = $3;
-							$self->{identity_info}{$tb_name}{$c_name}{options} =~ s/(SCALE|EXTEND|SESSION)_FLAG: .//isg;
-							$self->{identity_info}{$tb_name}{$c_name}{options} =~ s/KEEP_VALUE: .//is;
-							$self->{identity_info}{$tb_name}{$c_name}{options} =~ s/(START WITH):/$1/is;
-							$self->{identity_info}{$tb_name}{$c_name}{options} =~ s/(INCREMENT BY):/$1/is;
-							$self->{identity_info}{$tb_name}{$c_name}{options} =~ s/MAX_VALUE:/MAXVALUE/is;
-							$self->{identity_info}{$tb_name}{$c_name}{options} =~ s/MIN_VALUE:/MINVALUE/is;
-							$self->{identity_info}{$tb_name}{$c_name}{options} =~ s/CYCLE_FLAG: N/NO CYCLE/is;
-							$self->{identity_info}{$tb_name}{$c_name}{options} =~ s/NOCYCLE/NO CYCLE/is;
-							$self->{identity_info}{$tb_name}{$c_name}{options} =~ s/CYCLE_FLAG: Y/CYCLE/is;
-							$self->{identity_info}{$tb_name}{$c_name}{options} =~ s/CACHE_SIZE:/CACHE/is;
-							$self->{identity_info}{$tb_name}{$c_name}{options} =~ s/CACHE_SIZE:/CACHE/is;
-							$self->{identity_info}{$tb_name}{$c_name}{options} =~ s/ORDER_FLAG: .//is;
-							$self->{identity_info}{$tb_name}{$c_name}{options} =~ s/,//gs;
-							$self->{identity_info}{$tb_name}{$c_name}{options} =~ s/\s$//s;
-							$self->{identity_info}{$tb_name}{$c_name}{options} =~ s/CACHE\s+0/CACHE 1/is;
-							$self->{identity_info}{$tb_name}{$c_name}{options} =~ s/\s*NOORDER//is;
-							$self->{identity_info}{$tb_name}{$c_name}{options} =~ s/\s*NOKEEP//is;
-							$self->{identity_info}{$tb_name}{$c_name}{options} =~ s/\s*NOSCALE//is;
-							$self->{identity_info}{$tb_name}{$c_name}{options} =~ s/\s*NOT\s+NULL//is;
-							# Be sure that we don't exceed the bigint max value,
-							# we assume that the increment is always positive
-							if ($self->{identity_info}{$tb_name}{$c_name}{options} =~ /MAXVALUE\s+(\d+)/is) {
-								$self->{identity_info}{$tb_name}{$c_name}{options} =~ s/(MAXVALUE)\s+\d+/$1 9223372036854775807/is;
-							}
-							$self->{identity_info}{$tb_name}{$c_name}{options} =~ s/\s+/ /igs;
-						}
-						elsif ($c =~ s/\b(GENERATED ALWAYS AS|AS)\s+(.*)//is)
-						{
-							$virt_col = 'YES';
-							$c_default = $2;
-							$c_default =~ s/\s+VIRTUAL//is;
-						}
-						my $c_type = '';
-						if ($c =~ s/^\s*ENUM\s*(\([^\(\)]+\))\s*//is)
-						{
-							my %tmp = ();
-							$tmp{name} = lc($tb_name . '_' . $c_name . '_t');
-							$tmp{pos} = 0;
-							$tmp{code} .= "CREATE TYPE " .
-								$self->quote_object_name($tmp{name}) .
-								" AS ENUM ($1);";
-							push(@{$self->{types}}, \%tmp);
-							$c_type = $tmp{name};
-						} elsif ($c =~ s/^([^\s\(]+)\s*//s) {
-							$c_type = $1;
-						} elsif ($c_default)
-						{
-							# Try to guess a type the virtual column was declared without one,
-							# but always default to text and always display a warning.
-							if ($c_default =~ /ROUND\s*\(/is) {
-								$c_type = 'numeric';
-							} elsif ($c_default =~ /TO_DATE\s\(/is) {
-								$c_type = 'timestamp';
-							} else {
-								$c_type = 'text';
-							}
-							print STDERR "WARNING: Virtual column $tb_name.$cur_c_name has no data type defined, using $c_type but you need to check that this is the right type.\n";
-						}
-						else
-						{
-							next;
-						}
-						my $c_length = '';
-						my $c_scale = '';
-						if ($c =~ s/^\(([^\)]+)\)\s*//s)
-						{
-							$c_length = $1;
-							if ($c_length =~ s/\s*,\s*(\d+)\s*//s) {
-								$c_scale = $1;
-							}
-						}
-						my $c_nullable = 1;
-						if ($c =~ s/CONSTRAINT\s*([^\s]+)?\s*NOT NULL//is) {
-							$c_nullable = 0;
-						} elsif ($c !~ /IS\s+NOT\s+NULL/is && $c =~ s/\bNOT\s+NULL//is) {
-							$c_nullable = 0;
-						}
-
-						if (($c =~ s/(UNIQUE|PRIMARY KEY)\s*\(([^\)]+)\)//is) || ($c =~ s/(UNIQUE|PRIMARY KEY)\s*//is))
-						{
-							$c_name =~ s/\./_/gs;
-							my $pk_name = 'o2pu_' . $c_name; 
-							my $cols = $c_name;
-							if ($2) {
-								$cols = $2;
-							}
-							$self->_parse_constraint($tb_name, $c_name, "$pk_name $1 ($cols)");
-
-						}
-						elsif ( ($c =~ s/CONSTRAINT\s([^\s]+)\sCHECK\s*\(([^\)]+)\)//is) || ($c =~ s/CHECK\s*\(([^\)]+)\)//is) )
-						{
-							$c_name =~ s/\./_/gs;
-							my $pk_name = 'o2pc_' . $c_name; 
-							my $chk_search = $1;
-							if ($2)
-							{
-								$pk_name = $1;
-								$chk_search = $2;
-							}
-							$chk_search .= $c if ($c eq ')');
-							$self->_parse_constraint($tb_name, $c_name, "$pk_name CHECK ($chk_search)");
-						}
-						elsif ($c =~ s/REFERENCES\s+([^\(\s]+)\s*\(([^\)]+)\)//is)
-						{
-							$c_name =~ s/\./_/gs;
-							my $pk_name = 'o2pf_' . $c_name; 
-							my $chk_search = $1 . "($2)";
-							$chk_search =~ s/\s+//gs;
-							$self->_parse_constraint($tb_name, $c_name, "$pk_name FOREIGN KEY ($c_name) REFERENCES $chk_search");
-						}
-
-						my $auto_incr = 0;
-						if ($c =~ s/\s*AUTO_INCREMENT\s*//is) {
-							$auto_incr = 1;
-						}
-						# At this stage only the DEFAULT part might be on the string
-						if ($c =~ /\bDEFAULT\s+/is)
-						{
-							if ($c =~ s/\bDEFAULT\s+('[^']+')\s*//is) {
-								$c_default = $1;
-							} elsif ($c =~ s/\bDEFAULT\s+([^\s]+)\s*$//is) {
-								$c_default = $1;
-							} elsif ($c =~ s/\bDEFAULT\s+(.*)$//is) {
-								$c_default = $1;
-							}
-							$c_default =~ s/"//gs;
-							if ($self->{plsql_pgsql}) {
-								$c_default = Ora2Pg::PLSQL::convert_plsql_code($self, $c_default);
-							}
-							$c_default =~ s/^[']+(.*)[']+$/'$1'/gs;
-						}
-						if ($c_type =~ /date|timestamp/i && $c_default =~ /^'0000-/)
-						{
-							if ($self->{replace_zero_date}) {
-								$c_default = $self->{replace_zero_date};
-							} else {
-								$c_default =~ s/^'0000-\d+-\d+/'1970-01-01/;
-							}
-							if ($c_default =~ /^[\-]*INFINITY$/) {
-								$c_default .= "::$c_type";
-							}
-						}
-						# COLUMN_NAME,DATA_TYPE,DATA_LENGTH,NULLABLE,DATA_DEFAULT,DATA_PRECISION,DATA_SCALE,CHAR_LENGTH,TABLE_NAME,OWNER,VIRTUAL_COLUMN,POSITION,AUTO_INCREMENT,SRID,SDO_DIM,SDO_GTYPE
-						push(@{$self->{tables}{$tb_name}{column_info}{$c_name}}, ($c_name, $c_type, $c_length, $c_nullable, $c_default, $c_length, $c_scale, $c_length, $tb_name, '', $virt_col, $pos, $auto_incr));
-					}
-					elsif (uc($c_name) eq 'CONSTRAINT')
-					{
-						$self->_parse_constraint($tb_name, $cur_c_name, $c);
-					}
-					elsif (uc($c_name) eq 'INDEX')
-					{
-						if ($c =~ /^\s*UNIQUE\s+([^\s]+)\s+\(([^\)]+)\)/)
-						{
-							my $idx_name = $1;
-							my @cols = ();
-							push(@cols, split(/\s*,\s*/, $2));
-							map { s/^"//; s/"$//; } @cols;
-							$self->{tables}{$tb_name}{unique_key}->{$idx_name}{type} = 'U';
-							$self->{tables}{$tb_name}{unique_key}->{$idx_name}{generated} = 0;
-							$self->{tables}{$tb_name}{unique_key}->{$idx_name}{index_name} = $idx_name;
-							push(@{$self->{tables}{$tb_name}{unique_key}->{$idx_name}{columns}}, @cols);
-						}
-						elsif ($c =~ /^\s*([^\s]+)\s+\(([^\)]+)\)/)
-						{
-							my $idx_name = $1;
-							my @cols = ();
-							push(@cols, split(/\s*,\s*/, $2));
-							map { s/^"//; s/"$//; } @cols;
-							push(@{$self->{tables}{$tb_name}{indexes}{$idx_name}}, @cols); 
-						}
-					}
-				}
-				else
-				{
-					$c =~ s/\%\%COLNAME(\d+)\%\%/$col_name{$1}/sg;
-				}
-				$pos++;
-			}
-			map {s/^/\t/; s/$/,\n/; } @column_defs;
 			# look for storage information
 			if ($tb_param =~ /TABLESPACE[\s]+([^\s]+)/is) {
 				$self->{tables}{$tb_name}{table_info}{tablespace} = $1;
@@ -3419,6 +3169,271 @@ sub read_schema_from_file
 	# Extract comments
 	$self->read_comment_from_file();
 }
+
+sub parse_columns_from_file
+{
+	my ($self, $tb_name, $tb_def) = @_;
+
+	my $tb_param = '';
+	my %fct_placeholder = ();
+	my $i = 0;
+	while ($tb_def =~ s/(\([^\(\)]*\))/\%\%FCT$i\%\%/is)
+	{
+		$fct_placeholder{$i} = $1;
+		$i++;
+	};
+	($tb_def, $tb_param) = split(/\s*\)\s*/, $tb_def);
+	my @column_defs = split(/\s*,\s*/, $tb_def);
+	map { s/^\s+//; s/\s+$//; } @column_defs;
+	my $pos = 0;
+	my $cur_c_name = '';
+	foreach my $c (@column_defs)
+	{
+		next if (!$c);
+
+		# Some Informix datatypes can be prefixed by the informix owner.
+		$c =~ s/"informix"\.//igs;
+
+		# Replace temporary substitution
+		while ($c =~ s/\%\%FCT(\d+)\%\%/$fct_placeholder{$1}/is) {
+			delete $fct_placeholder{$1};
+		}
+		# Mysql unique key embedded definition, transform it to special parsing 
+		$c =~ s/^UNIQUE KEY/INDEX UNIQUE/is;
+		# Remove things that are not possible with postgres
+		$c =~ s/(PRIMARY KEY.*)NOT NULL/$1/is;
+		# Rewrite some parts for easiest/generic parsing
+		my $tbn = $tb_name;
+		$tbn =~ s/\./_/gs;
+		my $orig_name = '';
+		# Informix has constraint name
+		if ($c =~ /\bconstraint ([^\.\s]+\.[^\s]+)/is) {
+			$orig_name = $1;
+			$orig_name =~ s/.*\.//gs if ($self->{is_informix});
+			$c =~ s/\bconstraint ([^\.\s]+\.[^\s]+)/CONSTRAINT $orig_name/is;
+		}
+		my $constr_name = $orig_name || "o2pu_$tbn";
+		$c =~ s/^(PRIMARY KEY|UNIQUE)/CONSTRAINT $constr_name \U$1\L/is;
+		$c =~ s/^(CHECK[^,;]+)DEFERRABLE\s+INITIALLY\s+DEFERRED/$1/is;
+		$constr_name = $orig_name || "o2pc_$tbn";
+		$c =~ s/^CHECK\b/CONSTRAINT $constr_name CHECK/is;
+		$constr_name = $orig_name || "o2pf_$tbn";
+		$c =~ s/\bFOREIGN KEY/CONSTRAINT $constr_name FOREIGN KEY/is;
+		$c =~ s/\(\s+/\(/gs;
+
+		# register column name between double quote
+		my $i = 0;
+		my %col_name = ();
+		# Get column name
+		while ($c =~ s/("[^"]+")/\%\%COLNAME$i\%\%/s)
+		{
+			$col_name{$i} = $1;
+			$i++;
+		}
+		if ($c =~ s/^\s*([^\s]+)\s*//s)
+		{
+			my $c_name = $1;
+			$c_name =~ s/\%\%COLNAME(\d+)\%\%/$col_name{$1}/sg;
+			$c =~ s/\%\%COLNAME(\d+)\%\%/$col_name{$1}/sg;
+			if (!$self->{preserve_case}) {
+				$c_name =~ s/"//gs;
+			}
+			# Retrieve all columns information
+			if (!grep(/^\Q$c_name\E$/i, 'CONSTRAINT','INDEX'))
+			{
+				$cur_c_name = $c_name;
+				$c_name =~ s/\./_/gs;
+				my $c_default = '';
+				my $virt_col = 'NO';
+				$c =~ s/\s+ENABLE//is;
+				if ($c =~ s/\bGENERATED\s+(ALWAYS|BY\s+DEFAULT)\s+(ON\s+NULL\s+)?AS\s+IDENTITY\s*(.*)//is)
+				{
+					$self->{identity_info}{$tb_name}{$c_name}{generation} = $1;
+					my $options = $3;
+					$self->{identity_info}{$tb_name}{$c_name}{options} = $3;
+					$self->{identity_info}{$tb_name}{$c_name}{options} =~ s/(SCALE|EXTEND|SESSION)_FLAG: .//isg;
+					$self->{identity_info}{$tb_name}{$c_name}{options} =~ s/KEEP_VALUE: .//is;
+					$self->{identity_info}{$tb_name}{$c_name}{options} =~ s/(START WITH):/$1/is;
+					$self->{identity_info}{$tb_name}{$c_name}{options} =~ s/(INCREMENT BY):/$1/is;
+					$self->{identity_info}{$tb_name}{$c_name}{options} =~ s/MAX_VALUE:/MAXVALUE/is;
+					$self->{identity_info}{$tb_name}{$c_name}{options} =~ s/MIN_VALUE:/MINVALUE/is;
+					$self->{identity_info}{$tb_name}{$c_name}{options} =~ s/CYCLE_FLAG: N/NO CYCLE/is;
+					$self->{identity_info}{$tb_name}{$c_name}{options} =~ s/NOCYCLE/NO CYCLE/is;
+					$self->{identity_info}{$tb_name}{$c_name}{options} =~ s/CYCLE_FLAG: Y/CYCLE/is;
+					$self->{identity_info}{$tb_name}{$c_name}{options} =~ s/CACHE_SIZE:/CACHE/is;
+					$self->{identity_info}{$tb_name}{$c_name}{options} =~ s/CACHE_SIZE:/CACHE/is;
+					$self->{identity_info}{$tb_name}{$c_name}{options} =~ s/ORDER_FLAG: .//is;
+					$self->{identity_info}{$tb_name}{$c_name}{options} =~ s/,//gs;
+					$self->{identity_info}{$tb_name}{$c_name}{options} =~ s/\s$//s;
+					$self->{identity_info}{$tb_name}{$c_name}{options} =~ s/CACHE\s+0/CACHE 1/is;
+					$self->{identity_info}{$tb_name}{$c_name}{options} =~ s/\s*NOORDER//is;
+					$self->{identity_info}{$tb_name}{$c_name}{options} =~ s/\s*NOKEEP//is;
+					$self->{identity_info}{$tb_name}{$c_name}{options} =~ s/\s*NOSCALE//is;
+					$self->{identity_info}{$tb_name}{$c_name}{options} =~ s/\s*NOT\s+NULL//is;
+					# Be sure that we don't exceed the bigint max value,
+					# we assume that the increment is always positive
+					if ($self->{identity_info}{$tb_name}{$c_name}{options} =~ /MAXVALUE\s+(\d+)/is) {
+						$self->{identity_info}{$tb_name}{$c_name}{options} =~ s/(MAXVALUE)\s+\d+/$1 9223372036854775807/is;
+					}
+					$self->{identity_info}{$tb_name}{$c_name}{options} =~ s/\s+/ /igs;
+				}
+				elsif ($c =~ s/\b(GENERATED ALWAYS AS|AS)\s+(.*)//is)
+				{
+					$virt_col = 'YES';
+					$c_default = $2;
+					$c_default =~ s/\s+VIRTUAL//is;
+				}
+				my $c_type = '';
+				if ($c =~ s/^\s*ENUM\s*(\([^\(\)]+\))\s*//is)
+				{
+					my %tmp = ();
+					$tmp{name} = lc($tb_name . '_' . $c_name . '_t');
+					$tmp{pos} = 0;
+					$tmp{code} .= "CREATE TYPE " .
+						$self->quote_object_name($tmp{name}) .
+						" AS ENUM ($1);";
+					push(@{$self->{types}}, \%tmp);
+					$c_type = $tmp{name};
+				} elsif ($c =~ s/^([^\s\(]+)\s*//s) {
+					$c_type = $1;
+				} elsif ($c_default)
+				{
+					# Try to guess a type the virtual column was declared without one,
+					# but always default to text and always display a warning.
+					if ($c_default =~ /ROUND\s*\(/is) {
+						$c_type = 'numeric';
+					} elsif ($c_default =~ /TO_DATE\s\(/is) {
+						$c_type = 'timestamp';
+					} else {
+						$c_type = 'text';
+					}
+					print STDERR "WARNING: Virtual column $tb_name.$cur_c_name has no data type defined, using $c_type but you need to check that this is the right type.\n";
+				}
+				else
+				{
+					next;
+				}
+				my $c_length = '';
+				my $c_scale = '';
+				if ($c =~ s/^\(([^\)]+)\)\s*//s)
+				{
+					$c_length = $1;
+					if ($c_length =~ s/\s*,\s*(\d+)\s*//s) {
+						$c_scale = $1;
+					}
+				}
+				my $c_nullable = 1;
+				if ($c =~ s/CONSTRAINT\s*([^\s]+)?\s*NOT NULL//is) {
+					$c_nullable = 0;
+				} elsif ($c !~ /IS\s+NOT\s+NULL/is && $c =~ s/\bNOT\s+NULL//is) {
+					$c_nullable = 0;
+				}
+
+				if (($c =~ s/(UNIQUE|PRIMARY KEY)\s*\(([^\)]+)\)//is) || ($c =~ s/(UNIQUE|PRIMARY KEY)\s*//is))
+				{
+					$c_name =~ s/\./_/gs;
+					my $pk_name = 'o2pu_' . $c_name; 
+					my $cols = $c_name;
+					if ($2) {
+						$cols = $2;
+					}
+					$self->_parse_constraint($tb_name, $c_name, "$pk_name $1 ($cols)");
+
+				}
+				elsif ( ($c =~ s/CONSTRAINT\s([^\s]+)\sCHECK\s*\(([^\)]+)\)//is) || ($c =~ s/CHECK\s*\(([^\)]+)\)//is) )
+				{
+					$c_name =~ s/\./_/gs;
+					my $pk_name = 'o2pc_' . $c_name; 
+					my $chk_search = $1;
+					if ($2)
+					{
+						$pk_name = $1;
+						$chk_search = $2;
+					}
+					$chk_search .= $c if ($c eq ')');
+					$self->_parse_constraint($tb_name, $c_name, "$pk_name CHECK ($chk_search)");
+				}
+				elsif ($c =~ s/REFERENCES\s+([^\(\s]+)\s*\(([^\)]+)\)//is)
+				{
+					$c_name =~ s/\./_/gs;
+					my $pk_name = 'o2pf_' . $c_name; 
+					my $chk_search = $1 . "($2)";
+					$chk_search =~ s/\s+//gs;
+					$self->_parse_constraint($tb_name, $c_name, "$pk_name FOREIGN KEY ($c_name) REFERENCES $chk_search");
+				}
+
+				my $auto_incr = 0;
+				if ($c =~ s/\s*AUTO_INCREMENT\s*//is) {
+					$auto_incr = 1;
+				}
+				# At this stage only the DEFAULT part might be on the string
+				if ($c =~ /\bDEFAULT\s+/is)
+				{
+					if ($c =~ s/\bDEFAULT\s+('[^']+')\s*//is) {
+						$c_default = $1;
+					} elsif ($c =~ s/\bDEFAULT\s+([^\s]+)\s*$//is) {
+						$c_default = $1;
+					} elsif ($c =~ s/\bDEFAULT\s+(.*)$//is) {
+						$c_default = $1;
+					}
+					$c_default =~ s/"//gs;
+					if ($self->{plsql_pgsql}) {
+						$c_default = Ora2Pg::PLSQL::convert_plsql_code($self, $c_default);
+					}
+					$c_default =~ s/^[']+(.*)[']+$/'$1'/gs;
+				}
+				if ($c_type =~ /date|timestamp/i && $c_default =~ /^'0000-/)
+				{
+					if ($self->{replace_zero_date}) {
+						$c_default = $self->{replace_zero_date};
+					} else {
+						$c_default =~ s/^'0000-\d+-\d+/'1970-01-01/;
+					}
+					if ($c_default =~ /^[\-]*INFINITY$/) {
+						$c_default .= "::$c_type";
+					}
+				}
+				# COLUMN_NAME,DATA_TYPE,DATA_LENGTH,NULLABLE,DATA_DEFAULT,DATA_PRECISION,DATA_SCALE,CHAR_LENGTH,TABLE_NAME,OWNER,VIRTUAL_COLUMN,POSITION,AUTO_INCREMENT,SRID,SDO_DIM,SDO_GTYPE
+				push(@{$self->{tables}{$tb_name}{column_info}{$c_name}}, ($c_name, $c_type, $c_length, $c_nullable, $c_default, $c_length, $c_scale, $c_length, $tb_name, '', $virt_col, $pos, $auto_incr));
+			}
+			elsif (uc($c_name) eq 'CONSTRAINT')
+			{
+				$self->_parse_constraint($tb_name, $cur_c_name, $c);
+			}
+			elsif (uc($c_name) eq 'INDEX')
+			{
+				if ($c =~ /^\s*UNIQUE\s+([^\s]+)\s+\(([^\)]+)\)/)
+				{
+					my $idx_name = $1;
+					my @cols = ();
+					push(@cols, split(/\s*,\s*/, $2));
+					map { s/^"//; s/"$//; } @cols;
+					$self->{tables}{$tb_name}{unique_key}->{$idx_name}{type} = 'U';
+					$self->{tables}{$tb_name}{unique_key}->{$idx_name}{generated} = 0;
+					$self->{tables}{$tb_name}{unique_key}->{$idx_name}{index_name} = $idx_name;
+					push(@{$self->{tables}{$tb_name}{unique_key}->{$idx_name}{columns}}, @cols);
+				}
+				elsif ($c =~ /^\s*([^\s]+)\s+\(([^\)]+)\)/)
+				{
+					my $idx_name = $1;
+					my @cols = ();
+					push(@cols, split(/\s*,\s*/, $2));
+					map { s/^"//; s/"$//; } @cols;
+					push(@{$self->{tables}{$tb_name}{indexes}{$idx_name}}, @cols); 
+				}
+			}
+		}
+		else
+		{
+			$c =~ s/\%\%COLNAME(\d+)\%\%/$col_name{$1}/sg;
+		}
+		$pos++;
+	}
+	map {s/^/\t/; s/$/,\n/; } @column_defs;
+
+	return $tb_param;
+}
+
 
 sub read_comment_from_file
 {

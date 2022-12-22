@@ -486,7 +486,6 @@ sub _column_info_from_file
 	my $fh = new IO::File;
 	$fh->open("<$self->{input_file}") or $self->logit("FATAL: can't read file $self->{input_file}, $!\n", 0, 1);
 	my %data = ();
-	my $pos = 0;
 	while (my $l = <$fh>)
 	{
 		chomp($l);
@@ -504,7 +503,18 @@ sub _column_info_from_file
 				$tb_code .= "\n" if ($l =~ /^\s*\(/ || $l =~ /,\s*$/);
 				last if ($l =~ /;$/);
 			}
-			$pos++;
+			$tb_code =~ s/^\s*\(//s;
+			$tb_code =~ s/\s*\)[^\)]*;$//s;
+
+			# Parse content of the CREATE TABLE content and return
+			# extra information after columns definition
+			my $tb_param = $self->parse_columns_from_file($tbname, $tb_code);
+
+			# look for storage information
+			if ($tb_param =~ /\bIN[\s]+([^\s]+)/is) {
+				$self->{tables}{$tbname}{table_info}{tablespace} = $1;
+				$self->{tables}{$tbname}{table_info}{tablespace} =~ s/"//gs;
+			}
 		}
 	}
 	$fh->close;
