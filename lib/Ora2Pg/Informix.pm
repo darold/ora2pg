@@ -2899,24 +2899,25 @@ sub _get_plsql_metadata
         my $self = shift;
         my $owner = shift;
 
-        my $schema_clause = '';
-        $schema_clause = "WHERE s.name='$self->{schema}'" if ($self->{schema});
-
 	# Retrieve all functions
 	my $str = qq{SELECT
-   OBJECT_NAME(sm.object_id) AS object_name,
-   SCHEMA_NAME(o.schema_id),
-   o.type_desc,   
-   sm.definition,  
-   o.type,   
-   sm.uses_ansi_nulls,  
-   sm.uses_quoted_identifier,  
-   sm.is_schema_bound,  
-   sm.execute_as_principal_id  
-FROM sys.sql_modules AS sm  
-JOIN sys.objects AS o ON sm.object_id = o.object_id
-LEFT OUTER JOIN sys.schemas s ON o.schema_id = s.schema_id $schema_clause
-ORDER BY 1;};
+    p.procname,
+    p.externalname, -- location of externale routine
+    p.paramtypes,
+    p.handlesnulls,
+    p.isproc,
+    l.langname,
+    b.datakey,
+    b.seqno,
+    b.data,
+    p.owner
+FROM sysprocedures p
+    join sysroutinelangs l ON (l.langid = p.langid)
+    join sysprocbody b ON (b.procid = p.procid)
+WHERE 
+    internal='f' AND p.owner NOT IN ('informix', 'sysibm', 'sysproc', 'sysfun', 'sqlj')
+    AND b.datakey IN ('T', 'D')
+};
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
@@ -2927,9 +2928,15 @@ ORDER BY 1;};
 	{
 		next if (grep(/^$row->[0]$/i, @fct_done));
 		push(@fct_done, "$row->[0]");
-		$self->{function_metadata}{'unknown'}{'none'}{$row->[0]}{type} = $row->[2];
-		$self->{function_metadata}{'unknown'}{'none'}{$row->[0]}{text} = $row->[3];
 	}
+	while (my $row = $sth->fetch)
+	{
+		if ($row->[6] eq 'T') {
+			$self->{function_metadata}{'unknown'}{'none'}{$row->[0]}{type} = ($row->[4] eq 'f') ? 'FUNCTION' : 'PROCEDURE';
+			$self->{function_metadata}{'unknown'}{'none'}{$row->[0]}{text} .= $row->[8];
+		}
+	}
+
 	$sth->finish();
 
 	# Look for functions/procedures
