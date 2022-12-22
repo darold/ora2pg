@@ -17086,7 +17086,7 @@ sub _show_infos
 					$self->logit("\t$d->[0] : $d->[1]");
 					if ($d->[1] !~ /SDO_GEOMETRY/)
 					{
-						if ($d->[2] && !$d->[5]) {
+						if ($d->[2] && !$d->[6]) {
 							$self->logit("($d->[2])");
 						}
 						elsif ($d->[5] && ($d->[1] =~ /NUMBER/i) )
