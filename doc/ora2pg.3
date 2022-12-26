@@ -133,7 +133,7 @@
 .\" ========================================================================
 .\"
 .IX Title "ORA2PG 1"
-.TH ORA2PG 1 "2022-12-07" "perl v5.30.0" "User Contributed Perl Documentation"
+.TH ORA2PG 1 "2022-12-26" "perl v5.30.0" "User Contributed Perl Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -901,6 +901,12 @@ exclude. For example:
 .Ve
 .Sp
 will add users \s-1INTERNAL\s0 and \s-1SYSDBA\s0 to the schema exclusion list.
+.Sp
+For \s-1MSSQL\s0 it is limited to the 'sys' user/schema and for Informix:
+.Sp
+.Vb 1
+\&        SYSUSERS        sysibm,sysproc,sysfun,sqlj
+.Ve
 .IP "\s-1FORCE_OWNER\s0" 4
 .IX Item "FORCE_OWNER"
 By default the owner of the database objects is the one you're using to connect

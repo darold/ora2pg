@@ -159,6 +159,8 @@ COMPILE_SCHEMA	1
 # 	'OWBSYS_AUDIT','WEBSYS','WK_PROXY','OSE\$HTTP\$ADMIN',
 # 	'AURORA\$JIS\$UTILITY\$','AURORA\$ORB\$UNAUTHENTICATED',
 # 	'DBMS_PRIVILEGE_CAPTURE','CSMIG','MGDSYS','SDE','DBSFWUSER'
+# For MSSQL it is limited to the 'sys' user/schema.
+# For Informix: 'sysibm', 'sysproc', 'sysfun', 'sqlj'
 # Other list of users set to this directive will be added to this list.
 #SYSUSERS	OE,HR
 

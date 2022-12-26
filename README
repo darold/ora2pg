@@ -725,6 +725,10 @@ CONFIGURATION
 
         will add users INTERNAL and SYSDBA to the schema exclusion list.
 
+        For MSSQL it is limited to the 'sys' user/schema and for Informix:
+
+                SYSUSERS        sysibm,sysproc,sysfun,sqlj
+
     FORCE_OWNER
         By default the owner of the database objects is the one you're using
         to connect to PostgreSQL using the psql command. If you use an other
