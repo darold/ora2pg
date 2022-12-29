@@ -459,7 +459,7 @@ $QUERY_TEST_SCORE = 0.1;
 
 %UNCOVERED_INFORMIX_SCORE = (
 	'EXCEPTION' => 3,
-	'FOREACH' => 6,
+	'FOREACH' => 3,
 	'SQLCODE' => 3,
 	'DBINFO' => 6,
 	'ENCRYPT' => 6,
@@ -469,12 +469,15 @@ $QUERY_TEST_SCORE = 0.1;
 	'FOREIGN_OBJECT' => 6,
 	'INTO_TEMP_TABLE' => 2,
 	'DIRTY READ' => 12,
-	'LOCK_MODE' => 3,
+	'LOCK_MODE' => 2,
 	'COMMIT/ROLLBACK' => 2,
 	'SYSMASTER' => 2,
 	'UPDATE_SET' => 1,
 	'REGEX' => 3,
 	'YEAR TO' => 2,
+	'INTERVAL' => 1,
+	'EXTEND' => 1,
+	'RETURN' => 2,
 );
 
 =head1 NAME
@@ -3547,6 +3550,8 @@ sub informix_estimate_cost
 	$cost_details{'UPDATE_SET'} += $n*$UNCOVERED_INFORMIX_SCORE{'UPDATE_SET'};
 	$n = () = $str =~ m/\bREGEX_/igs;
 	$cost_details{'REGEX'} += $n*$UNCOVERED_INFORMIX_SCORE{'REGEX'};
+	$n = () = $str =~ m/\bINTERVAL\s*\(/igs;
+	$cost_details{'INTERVAL'} += $n*$UNCOVERED_INFORMIX_SCORE{'INTERVAL'};
 
 	# Look for access to objects in other database, require FDW or dblink.
 	$n = () = $str =~ /\b[a-z0-9_\$]+:[a-z0-9_\$]+\b/igs;
@@ -3561,8 +3566,15 @@ sub informix_estimate_cost
 	$cost_details{'COMMIT/ROLLBACK'} += $n*$UNCOVERED_INFORMIX_SCORE{'COMMIT/ROLLBACK'};
 	$n = () = $str =~ /\bsysmaster:\b/igs;
 	$cost_details{'SYSMASTER'} += $n*$UNCOVERED_INFORMIX_SCORE{'SYSMASTER'};
-	$n = () = $str =~ /\sYEAR TO\s/igs;
+	$n = () = $str =~ /\s(YEAR|MONTH|DAY|HOUR|MINUTE|SECOND)\s+TO\s/igs;
 	$cost_details{'YEAR TO'} += $n*$UNCOVERED_INFORMIX_SCORE{'YEAR TO'};
+	$n = () = $str =~ /\sEXTEND\s*\(/igs;
+	$cost_details{'EXTEND'} += $n*$UNCOVERED_INFORMIX_SCORE{'EXTEND'};
+	if ($type eq 'PROCEDURE')
+	{
+		$n = () = $str =~ /\bRETURN\b/igs;
+		$cost_details{'RETURN'} += $n*$UNCOVERED_INFORMIX_SCORE{'RETURN'};
+	}
 
 	foreach my $t (keys %UNCOVERED_INFORMIX_SCORE) {
 		$cost += $cost_details{$t} if (exists $cost_details{$t});
@@ -4367,14 +4379,14 @@ sub informix_to_plpgsql
 	$str =~ s/\bHEX\s*\(([^\)]+)\)/encode($1::bytea, 'hex')/gis;
 
 	# Convert the call to the Informix function add_months() into Pg syntax
-	$str =~ s/\bADD_MONTHS\s*\(([^,]+),\s*(\d+)\s*\)/$1 + '$2 month'::interval/si;
-	$str =~ s/\bADD_MONTHS\s*\(([^,]+),\s*([^,\(\)]+)\s*\)/$1 + $2*'1 month'::interval/si;
+	$str =~ s/\bADD_MONTHS\s*\(([^,]+),\s*(\d+)\s*\)/$1 + '$2 month'::interval/sig;
+	$str =~ s/\bADD_MONTHS\s*\(([^,]+),\s*([^,\(\)]+)\s*\)/$1 + $2*'1 month'::interval/sig;
 
 	# Fix some date formatting, others "year to" need to be fixed manually
-	$str =~ s/timestamp\(\d+\) year to second/timestamp(0)/si;
-	$str =~ s/timestamp year to second/timestamp(0)/si;
-	$str =~ s/timestamp year to fraction/timestamp(3)/si;
-	$str =~ s/\s+year to second/::timestamp(0)/si;
+	$str =~ s/timestamp\(\d+\) year to second/timestamp(0)/sig;
+	$str =~ s/timestamp year to second/timestamp(0)/sig;
+	$str =~ s/timestamp year to fraction/timestamp(3)/sig;
+	$str =~ s/\s+year to second/::timestamp(0)/sig;
 
 	$str =~ s/\bEND (FUNCTION|PROCEDURE)[\s;]+/END;/gis;
 

@@ -1946,6 +1946,12 @@ sub replace_sql_type
 	# Set varchar without length to text
 	$str =~ s/\bVARCHAR(\s*(?!\())/text$1/igs;
 
+	# Fix some date formatting, others "year to" need to be fixed manually
+	$str =~ s/timestamp\(\d+\)\s+year\s+to\s+second/timestamp(0)/sig;
+	$str =~ s/timestamp\s+year\s+to\s+second/timestamp(0)/sig;
+	$str =~ s/timestamp\s+year\s+to\s+fraction/timestamp(3)/sig;
+	$str =~ s/\s+year\s+to\s+second/::timestamp(0)/sig;
+
         return $str;
 }
 

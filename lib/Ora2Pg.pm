@@ -2839,6 +2839,9 @@ sub _remove_text_constant_part
 {
 	my ($self, $str) = @_;
 
+	# Fix fqdn in SPL code for informix
+	$$str =~ s/'([^'\s\.]+)'(\.[a-z_])/$1$2/igs if ($self->{is_informix});
+
 	for (my $i = 0; $i <= $#{$self->{alternative_quoting_regexp}}; $i++)
 	{
 		while ($$str =~ s/$self->{alternative_quoting_regexp}[$i]/\?TEXTVALUE$self->{text_values_pos}\?/s)
