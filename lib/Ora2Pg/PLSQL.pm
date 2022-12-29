@@ -449,6 +449,12 @@ $QUERY_TEST_SCORE = 0.1;
 	'SQLCODE',
 	'TRUNC',
 	'UNITS FRACTION',
+	'REGEX_MATCH',
+	'REGEX_REPLACE',
+	'REGEX_EXTRACT',
+	'REGEX_SPLIT',
+	'REGEX_SET_TRACE',
+	'REGEX_RELEASE',
 );
 
 %UNCOVERED_INFORMIX_SCORE = (
@@ -466,6 +472,9 @@ $QUERY_TEST_SCORE = 0.1;
 	'LOCK_MODE' => 3,
 	'COMMIT/ROLLBACK' => 2,
 	'SYSMASTER' => 2,
+	'UPDATE_SET' => 1,
+	'REGEX' => 3,
+	'YEAR TO' => 2,
 );
 
 =head1 NAME
@@ -3494,10 +3503,6 @@ sub informix_estimate_cost
 
 	my %cost_details = ();
 
-	# SQL do not use ; as statements separator and condition use begin instead of then/loop...
-	# this require manual editing so decrease the number of lines for cost of the code review.
-	$SIZE_SCORE = 600;
-
 	# Default cost is testing that mean it at least must be tested
 	my $cost = $FCT_TEST_SCORE;
 	# When evaluating queries tests must not be included here
@@ -3538,6 +3543,10 @@ sub informix_estimate_cost
 	$cost_details{'FILETO'} += $n*$UNCOVERED_INFORMIX_SCORE{'FILETO'};
 	$n = () = $str =~ m/\b(RATIOTOREPORT|RATIO_TO_REPORT)\s*\(/igs;
 	$cost_details{'RATIO'} += $n*$UNCOVERED_INFORMIX_SCORE{'RATIO'};
+	$n = () = $str =~ m/\bUPDATE\s+[^;]\s+SET\s*\(\s*\(/igs;
+	$cost_details{'UPDATE_SET'} += $n*$UNCOVERED_INFORMIX_SCORE{'UPDATE_SET'};
+	$n = () = $str =~ m/\bREGEX_/igs;
+	$cost_details{'REGEX'} += $n*$UNCOVERED_INFORMIX_SCORE{'REGEX'};
 
 	# Look for access to objects in other database, require FDW or dblink.
 	$n = () = $str =~ /\b[a-z0-9_\$]+:[a-z0-9_\$]+\b/igs;
@@ -3552,6 +3561,8 @@ sub informix_estimate_cost
 	$cost_details{'COMMIT/ROLLBACK'} += $n*$UNCOVERED_INFORMIX_SCORE{'COMMIT/ROLLBACK'};
 	$n = () = $str =~ /\bsysmaster:\b/igs;
 	$cost_details{'SYSMASTER'} += $n*$UNCOVERED_INFORMIX_SCORE{'SYSMASTER'};
+	$n = () = $str =~ /\sYEAR TO\s/igs;
+	$cost_details{'YEAR TO'} += $n*$UNCOVERED_INFORMIX_SCORE{'YEAR TO'};
 
 	foreach my $t (keys %UNCOVERED_INFORMIX_SCORE) {
 		$cost += $cost_details{$t} if (exists $cost_details{$t});
@@ -4289,6 +4300,12 @@ sub informix_to_plpgsql
 	# Remove  WITH NO LOG usually with temporary tables
 	$str =~ s/(\s+TEMP\s+[^;]+) WITH NO LOG;/$1;/igs;
 
+	# Fix SELECT UNIQUE to use DISTINCT intead
+	$str =~ s/\bSELECT\s+UNIQUE\b/SELECT DISTINCT/igs;
+
+	# Fix ELIF -> ELSIF
+	$str =~ s/\bELIF\b/ELSIF/igs;
+
 	# Fix SELECT * INTO TEMP table
 	$str =~ s/\b(SELECT [^;]+)\s+INTO TEMP ([^\s;]+)\s*;/CREATE TEMPORARY TABLE $2 AS $1;/igs;
 
@@ -4352,6 +4369,12 @@ sub informix_to_plpgsql
 	# Convert the call to the Informix function add_months() into Pg syntax
 	$str =~ s/\bADD_MONTHS\s*\(([^,]+),\s*(\d+)\s*\)/$1 + '$2 month'::interval/si;
 	$str =~ s/\bADD_MONTHS\s*\(([^,]+),\s*([^,\(\)]+)\s*\)/$1 + $2*'1 month'::interval/si;
+
+	# Fix some date formatting, others "year to" need to be fixed manually
+	$str =~ s/timestamp\(\d+\) year to second/timestamp(0)/si;
+	$str =~ s/timestamp year to second/timestamp(0)/si;
+	$str =~ s/timestamp year to fraction/timestamp(3)/si;
+	$str =~ s/\s+year to second/::timestamp(0)/si;
 
 	$str =~ s/\bEND (FUNCTION|PROCEDURE)[\s;]+/END;/gis;
 

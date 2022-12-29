@@ -58,15 +58,6 @@ sub _db_connection
 
 	$self->logit("Trying to connect to database: $self->{oracle_dsn}\n", 1) if (!$self->{quiet});
 
-#	if (!defined $self->{oracle_pwd})
-#	{
-#		eval("use Term::ReadKey;");
-#		if (!$@) {
-#			$self->{oracle_user} = $self->_ask_username('Informix') unless (defined $self->{oracle_user});
-#			$self->{oracle_pwd} = $self->_ask_password('Informix');
-#		}
-#	}
-
 	my $trimblank = 0;
 	$trimblank = 1 if ($self->{type} ne 'COPY' and $self->{type} ne 'INSERT');
 	my $dbh = DBI->connect("$self->{oracle_dsn}", $self->{oracle_user}, $self->{oracle_pwd}, {
@@ -126,7 +117,8 @@ sub _schema_list
 {
 	my $self = shift;
 
-	my $sql = "select name, owner, created from sysmaster:sysdatabases WHERE owner != 'informix' ORDER BY name";
+	my $sql = "select name, owner, created from sysmaster:sysdatabases";
+	$sql .= " ORDER BY name";
 	my $sth = $self->{dbh}->prepare( $sql ) or return undef;
 	$sth->execute or return undef;
 	$sth;
@@ -281,8 +273,13 @@ WHERE tn.tabname = ? AND tn.dbsname='$self->{schema}'
   t.nrows AS RowCounts, '' AS UsedSpaceMB,
   '' AS TotalSpaceMB, t.dbname AS TABLE_SCHEMA, t.owner
 FROM informix.systables t
-WHERE t.tabtype='T' AND t.owner != 'informix'
+WHERE t.tabtype='T'
 };
+	if (!$self->{schema}) {
+		$sql .= " AND t.owner NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
+	} else {
+		$sql .= " AND t.owner = '$self->{schema}'";
+	}
 	my %tables_infos = ();
 	$sql .= $self->limit_to_objects('TABLE', 't.tabname');
 	$sql .= " ORDER BY t.tabname";
@@ -342,9 +339,19 @@ sub _table_info_from_file
 		chomp($l);
 		if ($l =~ /create table ([^\.]+).([^\s]+)/)
 		{
-			next if ($1 eq '"informix"' || $1 eq 'informix');
+			my $owner = $1;
 			$table = $2;
-			$tables_infos{$table}{owner} = $1;
+			$owner =~ s/"//g;
+
+			if (!$self->{schema}) {
+				next if (grep(/^$owner$/i,  @{$self->{sysusers}}));
+			} else {
+				next if ($owner ne $self->{schema});
+			}
+			if (!$self->{schema} && $self->{export_schema}) {
+				$table = $owner . '.' . $table;
+			}
+			$tables_infos{$table}{owner} = $owner;
 			$tables_infos{$table}{num_rows} = 0;
 			$tables_infos{$table}{comment} = ''; # Informix doesn't have COMMENT
 			$tables_infos{$table}{type} =  'TABLE';
@@ -352,7 +359,6 @@ sub _table_info_from_file
 			$tables_infos{$table}{auto_increment} = 0;
 			$tables_infos{$table}{tablespace} = '';
 			$tables_infos{$table}{size} = 0;
-			$tables_infos{$table}{owner} =~ s/"//g ;
 		} elsif ($table && $l =~ /;/) {
 			$table = '';
 		} elsif ($table && $l =~ /(?:fragment|partition) by (.*)/) {
@@ -424,7 +430,7 @@ sub _column_info
 	my $condition = '';
 	$condition = "AND tb.name='$table' " if ($table);
 	if (!$table) {
-		$condition .= $self->limit_to_objects('TABLE', 'tb.name');
+		$condition .= $self->limit_to_objects('TABLE', 'tb.tabname');
 	} else {
 		@{$self->{query_bind_params}} = ();
 	}
@@ -444,9 +450,14 @@ FROM syscolumns AS c
 JOIN systables AS tb ON (tb.tabid = c.tabid)
 LEFT JOIN sysdefaults AS sd ON (sd.tabid = c.tabid AND sd.colno = c.colno)
 LEFT JOIN sysxtdtypes AS st ON (st.extended_id = c.extended_id)
-WHERE tb.owner != 'informix' $condition
-ORDER BY c.tabid, c.colno};
-
+};
+	if (!$self->{schema}) {
+		$str .= " WHERE tb.owner NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
+	} else {
+		$str .= " WHERE tb.owner = '$self->{schema}'";
+	}
+	$str .= $condition;
+	$str .= " ORDER BY c.tabid, c.colno";
 	my $sth = $self->{dbh}->prepare($str);
 	if (!$sth) {
 		$self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -491,9 +502,18 @@ sub _column_info_from_file
 		chomp($l);
 		if ($l =~ /create table ([^\.]+)\.([^\s\(]+)/)
 		{
-			next if ($1 eq '"informix"' || $1 eq 'informix');
+			my $owner = $1;
 			my $tbname = $2;
+			$owner =~ s/"//g;
+			if (!$self->{schema}) {
+				next if (grep(/^$owner$/i, @{$self->{sysusers}}));
+			} else {
+				next if ($owner ne $self->{schema});
+			}
 			next if ($table && lc($table) ne lc($tbname));
+			if (!$self->{schema} && $self->{export_schema}) {
+				$table = $owner . '.' . $table;
+			}
 			my $tb_code = '';
 			while ($l = <$fh>)
 			{
@@ -556,10 +576,14 @@ INNER JOIN sysindices Id ON T.tabid = Id.tabid
   left outer join syscolumns c8 on c8.tabid = T.tabid and c8.colno = abs(i.part8)
   left outer join syscolumns c9 on c9.tabid = T.tabid and c9.colno = abs(i.part9)
   left outer join syscolumns c10 on c10.tabid = T.tabid and c10.colno = abs(i.part10)
-WHERE Id.owner != 'informix' $condition
-ORDER BY T.tabname, Id.idxname
 };
-
+	if (!$self->{schema}) {
+		$sql .= " WHERE T.owner NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
+	} else {
+		$sql .= " WHERE T.owner = '$self->{schema}'";
+	}
+	$sql .= " $condition";
+	$sql .= " ORDER BY T.tabname, Id.idxname";
 	$sth = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
@@ -632,16 +656,28 @@ sub _get_indexes_from_file
 			my $idxname = '';
 			if ($idx_code =~ /create index ([^\.]+).([^\s]+) on ([^\.]+).([^\s]+)/i)
 			{
-				next if ($1 eq '"informix"' || $1 eq 'informix');
+				my $owner = $1;
 				$idxname = $2;
 				$tbname = $4;
+				$owner =~ s/"//g;
+				if (!$self->{schema}) {
+					next if (grep(/^$owner$/i, @{$self->{sysusers}}));
+				} else {
+					next if ($owner ne $self->{schema});
+				}
 				next if ($table && $tbname ne $table);
 			}
 			elsif ($idx_code =~ /create unique index ([^\.]+).([^\s]+) on ([^\.]+).([^\s]+)/i)
 			{
-				next if ($1 eq '"informix"' || $1 eq 'informix');
+				my $owner = $1;
 				$idxname = $2;
 				$tbname = $4;
+				$owner =~ s/"//g;
+				if (!$self->{schema}) {
+					next if (grep(/^$owner$/i, @{$self->{sysusers}}));
+				} else {
+					next if ($owner ne $self->{schema});
+				}
 				next if ($table && $tbname ne $table);
 				$unique{$tbname}{$idxname} = 'UNIQUE';
 				$idx_type{$tbname}{$idxname}{type} = 'U';
@@ -713,30 +749,7 @@ sub _foreign_key
 	$condition .= "AND t.tabname = '$table'" if ($table);
 
         my $deferrable = $self->{fkey_deferrable} ? "'DEFERRABLE' AS DEFERRABLE" : "DEFERRABLE";
-	my $sql = qq{select
-  tab.tabname,
-  constr.*, 
-  c1.colname col1,
-  c2.colname col2,
-  c3.colname col3,
-  c4.colname col4,
-  c5.colname col5,
-  c6.colname col6,
-  c7.colname col7
-from sysconstraints constr
-  join systables tab on tab.tabid = constr.tabid
-  left outer join sysindexes i on i.idxname = constr.idxname
-  left outer join syscolumns c1 on c1.tabid = tab.tabid and c1.colno = abs(i.part1)
-  left outer join syscolumns c2 on c2.tabid = tab.tabid and c2.colno = abs(i.part2)
-  left outer join syscolumns c3 on c3.tabid = tab.tabid and c3.colno = abs(i.part3)
-  left outer join syscolumns c4 on c4.tabid = tab.tabid and c4.colno = abs(i.part4)
-  left outer join syscolumns c5 on c5.tabid = tab.tabid and c5.colno = abs(i.part5)
-  left outer join syscolumns c6 on c6.tabid = tab.tabid and c6.colno = abs(i.part6)
-  left outer join syscolumns c7 on c7.tabid = tab.tabid and c7.colno = abs(i.part7)
-where constr.constrtype = 'R' AND tab.owner != 'informix';
-  };
-
-	$sql = qq{SELECT st.tabname, st.owner, rt.tabname, rt.owner, sr.primary, sr.ptabid,
+	my $sql = qq{SELECT st.tabname, st.owner, rt.tabname, rt.owner, sr.primary, sr.ptabid,
       sr.delrule, sc.constrid, sc.constrname, sc.constrtype, sc.owner, 
       si.idxname, si.tabid, si.part1, si.part2, si.part3,  
       si.part4, si.part5, si.part6, si.part7, si.part8,  
@@ -757,9 +770,12 @@ WHERE st.tabid = sc.tabid
   AND os.tabid = st.tabid AND os.name = sc.constrname AND os.objtype = 'C' 
   AND os2.tabid = st.tabid AND os2.name = si.idxname AND os2.objtype = 'I' 
   AND sr.primary = rc.constrid
-  AND st.owner != 'informix'
 };
-
+	if (!$self->{schema}) {
+		$sql .= " AND st.owner NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
+	} else {
+		$sql .= " AND st.owner = '$self->{schema}'";
+	}
         $self->{dbh}->do($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
         my $sth = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -801,11 +817,15 @@ sub _get_views
 	t.tabname, v.seqno, v.viewtext
 FROM systables t
 JOIN sysviews v ON (v.tabid = t.tabid)
-WHERE t.tabtype = 'V' AND t.owner != 'informix'
+WHERE t.tabtype = 'V'
 };
+	if (!$self->{schema}) {
+		$str .= " AND t.owner NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
+	} else {
+		$str .= " AND t.owner = '$self->{schema}'";
+	}
 	$str .= $self->limit_to_objects('VIEW', 't.tabname');
 	$str .= " ORDER BY t.tabname, v.seqno";
-
 
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -841,8 +861,14 @@ sub _get_views_from_file
 
 		if ($l =~ s/create view ([^\.]+).([^\s]+)//)
 		{
-			next if ($1 eq '"informix"' || $1 eq 'informix');
+                        my $owner = $1;
 			my $vname = $2;
+                        $owner =~ s/"//g;
+                        if (!$self->{schema}) {
+                                next if (grep(/^$owner$/i, @{$self->{sysusers}}));
+                        } else {
+                                next if ($owner ne $self->{schema});
+                        }
 			$data{$vname}{text} = "$l\n";
 			while ($l = <$fh>)
 			{
@@ -887,9 +913,14 @@ sub _get_triggers
 FROM systriggers trg
 INNER JOIN systables t ON t.tabid = trg.tabid
 JOIN systrigbody b ON b.trigid = trg.trigid
-WHERE t.owner != 'informix' AND trg.owner != 'informix' AND b.datakey IN ('A', 'D')
+WHERE b.datakey IN ('A', 'D')
 };
 
+	if (!$self->{schema}) {
+		$str .= " AND t.owner NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
+	} else {
+		$str .= " AND t.owner = '$self->{schema}'";
+	}
 	$str .= " " . $self->limit_to_objects('TABLE|VIEW|TRIGGER','t.tabname|t.tabname|trg.trigname');
 
 	$str .= " ORDER BY t.tabname, trg.trigname, b.seqno, b.datakey";
@@ -957,8 +988,14 @@ sub _get_triggers_from_file
 
 		if ($l =~ /create trigger ([^\.]+).([^\s]+)/)
 		{
-			next if ($1 eq '"informix"' || $1 eq 'informix');
+                        my $owner = $1;
 			my $trigname = $2;
+                        $owner =~ s/"//g;
+                        if (!$self->{schema}) {
+                                next if (grep(/^$owner$/i, @{$self->{sysusers}}));
+                        } else {
+                                next if ($owner ne $self->{schema});
+                        }
 			my $trig_code = $l;
 			my $code_pos = 0;
 			my $nline = 1;
@@ -1061,9 +1098,14 @@ FROM sysconstraints constr
   LEFT OUTER JOIN syscolumns c5 ON c5.tabid = tab.tabid AND c5.colno = abs(i.part5)
   LEFT OUTER JOIN syscolumns c6 ON c6.tabid = tab.tabid AND c6.colno = abs(i.part6)
   LEFT OUTER JOIN syscolumns c7 ON c7.tabid = tab.tabid AND c7.colno = abs(i.part7)
-WHERE constr.constrtype IN ('P', 'U') AND tab.owner != 'informix';
+WHERE constr.constrtype IN ('P', 'U') $condition
   };
 
+	if (!$self->{schema}) {
+		$sql .= " AND tab.owner NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
+	} else {
+		$sql .= " AND tab.owner = '$self->{schema}'";
+	}
 	my $sth = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
@@ -1108,8 +1150,14 @@ sub _unique_key_from_file
 
 		if ($l =~ /create table ([^\.]+).([^\s]+)/)
 		{
-			next if ($1 eq '"informix"' || $1 eq 'informix');
+                        my $owner = $1;
 			$tbname = $2;
+                        $owner =~ s/"//g;
+                        if (!$self->{schema}) {
+                                next if (grep(/^$owner$/i, @{$self->{sysusers}}));
+                        } else {
+                                next if ($owner ne $self->{schema});
+                        }
 			next if ($table && lc($tbname) ne lc($table));
 
 			my $tb_code = '';
@@ -1160,10 +1208,15 @@ sub _check_constraint
 	my $sql = qq{SELECT st.tabname, st.owner, co.constrname, ch.*
 FROM systables st, sysconstraints co, syschecks ch
 WHERE co.constrtype = 'C' AND co.tabid = st.tabid AND co.constrid = ch.constrid
-AND ch.type = 'T' AND st.owner != 'informix'
-$condition
-ORDER BY st.tabname, ch.seqno};
+AND ch.type = 'T'};
 
+	if (!$self->{schema}) {
+		$sql .= " AND st.owner NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
+	} else {
+		$sql .= " AND st.owner = '$self->{schema}'";
+	}
+	$sql .= " $condition";
+	$sql .= " ORDER BY st.tabname, ch.seqno";
         my $sth = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
         $sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
@@ -1196,9 +1249,14 @@ sub _check_constraint_from_file
 
 		if ($l =~ /create table ([^\.]+).([^\s]+)/)
 		{
-			next if ($1 eq '"informix"' || $1 eq 'informix');
+                        my $owner = $1;
 			$tbname = $2;
-
+                        $owner =~ s/"//g;
+                        if (!$self->{schema}) {
+                                next if (grep(/^$owner$/i, @{$self->{sysusers}}));
+                        } else {
+                                next if ($owner ne $self->{schema});
+                        }
 			next if ($table && lc($tbname) ne lc($table));
 
 			my $tb_code = '';
@@ -1267,9 +1325,14 @@ FROM sysprocedures p
     join sysroutinelangs l ON (l.langid = p.langid)
     join sysprocbody b ON (b.procid = p.procid)
 WHERE 
-    p.isproc = 'f' AND p.owner NOT IN ('informix', 'sysibm', 'sysproc', 'sysfun', 'sqlj')
-    AND b.datakey IN ('T', 'D')
+    p.isproc = 'f' AND b.datakey IN ('T', 'D') AND p.internal='f'
 };
+
+	if (!$self->{schema}) {
+		$str .= " AND p.owner NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
+	} else {
+		$str .= " AND p.owner = '$self->{schema}'";
+	}
 	$str .= " " . $self->limit_to_objects('FUNCTION','p.procname');
 	$str .= " ORDER BY p.procname, b.seqno";
 
@@ -1309,8 +1372,14 @@ sub _get_functions_from_file
 		chomp($l);
 		if ($l =~ /create function ([^\.]+)\.([^\s\(]+)/is)
 		{
-			next if ($1 eq '"informix"' || $1 eq 'informix');
+                        my $owner = $1;
 			my $fctname = $2;
+                        $owner =~ s/"//g;
+                        if (!$self->{schema}) {
+                                next if (grep(/^$owner$/i, @{$self->{sysusers}}));
+                        } else {
+                                next if ($owner ne $self->{schema});
+                        }
 			my $fct_code = $l;
 			my $end_found = 0;
 			if (exists $self->{limited}{FUNCTION}) {
@@ -1333,6 +1402,7 @@ sub _get_functions_from_file
 			}
 			$functions{$fctname}{kind} = 'FUNCTION';
 			$functions{$fctname}{name} = $fctname;
+			$functions{$fctname}{owner} = $owner;
 			$functions{$fctname}{text} = $fct_code;
 			if ($fct_code =~ s/(end function)\s+(.*);/$1;/is) {
 				$functions{$fctname}{comment} = $1;
@@ -1368,9 +1438,13 @@ FROM sysprocedures p
     join sysroutinelangs l ON (l.langid = p.langid)
     join sysprocbody b ON (b.procid = p.procid)
 WHERE 
-    p.isproc = 't' AND p.owner NOT IN ('informix', 'sysibm', 'sysproc', 'sysfun', 'sqlj')
-    AND b.datakey IN ('T', 'D')
+    p.isproc = 't' AND b.datakey IN ('T', 'D') AND p.internal='f'
 };
+	if (!$self->{schema}) {
+		$str .= " AND p.owner NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
+	} else {
+		$str .= " AND p.owner = '$self->{schema}'";
+	}
 	$str .= " " . $self->limit_to_objects('PROCEDURE','p.procname');
 	$str .= " ORDER BY p.procname, b.seqno";
 
@@ -1409,8 +1483,14 @@ sub _get_procedures_from_file
 		chomp($l);
 		if ($l =~ /create procedure ([^\.]+)\.([^\s\(]+)/is)
 		{
-			next if ($1 eq '"informix"' || $1 eq 'informix');
+                        my $owner = $1;
 			my $fctname = $2;
+                        $owner =~ s/"//g;
+                        if (!$self->{schema}) {
+                                next if (grep(/^$owner$/i, @{$self->{sysusers}}));
+                        } else {
+                                next if ($owner ne $self->{schema});
+                        }
 			my $fct_code = $l;
 			my $end_found = 0;
 			if (exists $self->{limited}{PROCEDURE}) {
@@ -1433,6 +1513,7 @@ sub _get_procedures_from_file
 			}
 			$procedures{$fctname}{kind} = 'PROCEDURE';
 			$procedures{$fctname}{name} = $fctname;
+			$procedures{$fctname}{owner} = $owner;
 			$procedures{$fctname}{text} = $fct_code;
 			if ($fct_code =~ s/(end procedure)\s+(.*);/$1;/is) {
 				$procedures{$fctname}{comment} = $1;
@@ -1634,8 +1715,12 @@ sub _list_all_functions
 	my $self = shift;
 
 	# Retrieve all functions and procedure
-	my $str = "SELECT p.procname FROM sysprocedures p WHERE p.owner NOT IN ('informix', 'sysibm', 'sysproc', 'sysfun', 'sqlj')";
-
+	my $str = "SELECT p.procname FROM sysprocedures p WHERE p.internal='f'";
+	if (!$self->{schema}) {
+		$str .= " AND p.owner NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
+	} else {
+		$str .= " AND p.owner = '$self->{schema}'";
+	}
 	$str .= " " . $self->limit_to_objects('FUNCTION','p.procname');
 	$str .= " ORDER BY p.procname";
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -1941,7 +2026,11 @@ FROM sysfragments f
 JOIN systables t ON (f.tabid = t.tabid)
 WHERE f.fragtype = 'T'
 };
-
+	if (!$self->{schema}) {
+		$str .= " AND t.owner NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
+	} else {
+		$str .= " AND t.owner = '$self->{schema}'";
+	}
 	$str .= $self->limit_to_objects('TABLE|PARTITION','t.tabname|f.partition');
 	$str .= " ORDER BY t.tabname, f.partn\n";
 
@@ -2005,9 +2094,14 @@ sub _get_partitions_list
 SELECT t.tabid, t.tabname, f.indexname, f.evalpos, f.partition, '', '', f.exprtext, f.strategy
 FROM sysfragments f
 JOIN systables t ON (f.tabid = t.tabid)
-WHERE f.fragtype = 'T' AND f.strategy NOT IN ('R', 'I', 'T', 'H');
+WHERE f.fragtype = 'T' AND f.strategy NOT IN ('R', 'I', 'T', 'H')
 };
 
+	if (!$self->{schema}) {
+		$str .= " AND t.owner NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
+	} else {
+		$str .= " AND t.owner = '$self->{schema}'";
+	}
 	$str .= $self->limit_to_objects('TABLE|PARTITION','t.tabname|f.partition');
 	$str .= " ORDER BY t.tabname, f.partn\n";
 
@@ -2038,8 +2132,14 @@ sub _get_partitions_list_from_file
 	{
 		chomp($l);
 		if ($l =~ /create table ([^\.])\.([^\s])/i) {
-			next if ($1 eq '"informix"' || $1 eq 'informix');
+                        my $owner = $1;
 			$tbname = $2;
+                        $owner =~ s/"//g;
+                        if (!$self->{schema}) {
+                                next if (grep(/^$owner$/i, @{$self->{sysusers}}));
+                        } else {
+                                next if ($owner ne $self->{schema});
+                        }
 		}
 		if ($tbname && $l =~ /(?:fragment|partition) by (.*)/i)
 		{
@@ -2095,6 +2195,11 @@ JOIN systables t ON (f.tabid = t.tabid)
 WHERE f.fragtype = 'T'
 };
 
+	if (!$self->{schema}) {
+		$str .= " AND t.owner NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
+	} else {
+		$str .= " AND t.owner = '$self->{schema}'";
+	}
 	$str .= $self->limit_to_objects('TABLE|PARTITION','t.tabname|f.partition');
 	$str .= " ORDER BY t.tabname, f.partn\n";
 
@@ -2146,8 +2251,14 @@ sub _get_partitioned_table_from_file
 	{
 		chomp($l);
 		if ($l =~ /create table ([^\.])\.([^\s])/i) {
-			next if ($1 eq '"informix"' || $1 eq 'informix');
+                        my $owner = $1;
 			$tbname = $2;
+                        $owner =~ s/"//g;
+                        if (!$self->{schema}) {
+                                next if (grep(/^$owner$/i, @{$self->{sysusers}}));
+                        } else {
+                                next if ($owner ne $self->{schema});
+                        }
 		}
 		if ($tbname && $l =~ /(?:fragment|partition) by (.*)/i)
 		{
@@ -2201,7 +2312,12 @@ sub _get_objects
 	# TABLE
 	if (!$self->{input_file})
 	{
-		my $sql = "SELECT t.tabname FROM informix.systables t WHERE t.tabtype='T' AND t.owner != 'informix'";
+		my $sql = "SELECT t.tabname FROM informix.systables t WHERE t.tabtype='T'";
+		if (!$self->{schema}) {
+			$sql .= " AND t.owner NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
+		} else {
+			$sql .= " AND t.owner = '$self->{schema}'";
+		}
 		my $sth = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 		$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 		while ( my @row = $sth->fetchrow()) {
@@ -2221,7 +2337,12 @@ sub _get_objects
 	# VIEW
 	if (!$self->{input_file})
 	{
-		my $sql = "SELECT t.tabname FROM informix.systables t WHERE t.tabtype='V' AND t.owner != 'informix'";
+		my $sql = "SELECT t.tabname FROM informix.systables t WHERE t.tabtype='V'";
+		if (!$self->{schema}) {
+			$sql .= " AND t.owner NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
+		} else {
+			$sql .= " AND t.owner = '$self->{schema}'";
+		}
 		my $sth = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 		$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 		while ( my @row = $sth->fetchrow()) {
@@ -2241,7 +2362,12 @@ sub _get_objects
 	# TRIGGER
 	if (!$self->{input_file})
 	{
-		my $sql = "SELECT trg.trigname FROM systriggers trg INNER JOIN systables t ON t.tabid = trg.tabid WHERE t.owner != 'informix' AND trg.owner != 'informix'";
+		my $sql = "SELECT trg.trigname FROM systriggers trg INNER JOIN systables t ON t.tabid = trg.tabid";
+		if (!$self->{schema}) {
+			$sql .= " WHERE t.owner NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
+		} else {
+			$sql .= " WHERE t.owner = '$self->{schema}'";
+		}
 		my $sth = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 		$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 		while ( my @row = $sth->fetchrow()) {
@@ -2261,7 +2387,12 @@ sub _get_objects
 	# INDEX
 	if (!$self->{input_file})
 	{
-		my $sql = "SELECT i.idxname FROM sysindices i JOIN systables t ON (t.tabid = i.tabid) WHERE t.owner != 'informix'";
+		my $sql = "SELECT i.idxname FROM sysindices i JOIN systables t ON (t.tabid = i.tabid)";
+		if (!$self->{schema}) {
+			$sql .= " WHERE t.owner NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
+		} else {
+			$sql .= " WHERE t.owner = '$self->{schema}'";
+		}
 		my $sth = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 		$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 		while (my @row = $sth->fetchrow()) {
@@ -2280,7 +2411,12 @@ sub _get_objects
 	# FUNCTION
 	if (!$self->{input_file})
 	{
-		my $sql = "SELECT p.procname FROM sysprocedures p WHERE p.isproc = 'f' AND p.owner NOT IN ('informix', 'sysibm', 'sysproc', 'sysfun', 'sqlj')";
+		my $sql = "SELECT p.procname FROM sysprocedures p WHERE p.isproc = 'f' AND p.internal='f'";
+		if (!$self->{schema}) {
+			$sql .= " AND p.owner NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
+		} else {
+			$sql .= " AND p.owner = '$self->{schema}'";
+		}
 		my $sth = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 		$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 		while ( my @row = $sth->fetchrow()) {
@@ -2300,7 +2436,12 @@ sub _get_objects
 	# PROCEDURE
 	if (!$self->{input_file})
 	{
-		my $sql = "SELECT p.procname FROM sysprocedures p WHERE p.isproc = 't' AND p.owner NOT IN ('informix', 'sysibm', 'sysproc', 'sysfun', 'sqlj')";
+		my $sql = "SELECT p.procname FROM sysprocedures p WHERE p.isproc = 't' AND p.internal='f'";
+		if (!$self->{schema}) {
+			$sql .= " AND p.owner NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
+		} else {
+			$sql .= " AND p.owner = '$self->{schema}'";
+		}
 		my $sth = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 		$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 		while ( my @row = $sth->fetchrow()) {
@@ -2320,7 +2461,13 @@ sub _get_objects
 	# PARTITION.
 	if (!$self->{input_file})
 	{
-		my $sql = "SELECT t.tabid, t.tabname, f.strategy FROM sysfragments f JOIN systables t ON (f.tabid = t.tabid) WHERE f.fragtype = 'T' ORDER BY t.tabname, f.partn";
+		my $sql = "SELECT t.tabid, t.tabname, f.strategy FROM sysfragments f JOIN systables t ON (f.tabid = t.tabid) WHERE f.fragtype = 'T'";
+		if (!$self->{schema}) {
+			$sql .= " AND t.owner NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
+		} else {
+			$sql .= " AND t.owner = '$self->{schema}'";
+		}
+		$sql .= " ORDER BY t.tabname, f.partn";
 		my $sth = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 		$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 		my $i = 1;
@@ -2338,8 +2485,15 @@ sub _get_objects
 		while (my $l = <$fh>)
 		{
 			chomp($l);
-			if ($l =~ /^create table [^\.]+\.([^\s]+) /i) {
-				$table = $1;
+			if ($l =~ /^create table ([^\.]+)\.([^\s]+) /i) {
+				my $owner = $1;
+				$owner =~ s/"//g;
+				$table = $2;
+				if (!$self->{schema}) {
+					next if (grep(/^$owner$/i, @{$self->{sysusers}}));
+				} else {
+					next if ($owner ne $self->{schema});
+				}
 				$invalid = 0;
 			}
 			if ($table)
@@ -2478,9 +2632,14 @@ sub _get_largest_tables
 FROM informix.systables t
 LEFT JOIN sysmaster:sysptnhdr pt ON (t.partnum = pt.partnum)
 LEFT JOIN sysmaster:systabnames tn ON tn.partnum = pt.partnum
-WHERE t.tabtype='T' AND tn.dbsname='$self->{schema}' AND tn.owner != 'informix'
+WHERE t.tabtype='T' AND tn.dbsname='$self->{database}'
 };
 
+	if (!$self->{schema}) {
+		$sql .= " AND tn.owner NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
+	} else {
+		$sql .= " AND tn.owner = '$self->{schema}'";
+	}
 	$sql .= $self->limit_to_objects('TABLE', 'tn.tabname');
 	$sql .= " GROUP BY tn.tabname ORDER BY TotalSpaceMB";
 	$sql .= " LIMIT $self->{top_max}" if ($self->{top_max});
@@ -2553,8 +2712,13 @@ sub _get_synonyms
 FROM systables t
 JOIN syssyntable s ON (s.tabid = t.tabid)
 LEFT JOIN systables t2 ON (t2.tabid = s.btabid)
-WHERE t.tabtype = 'S' AND t.owner != 'informix'
+WHERE t.tabtype = 'S'
 };
+	if (!$self->{schema}) {
+		$str .= " AND t.owner NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
+	} else {
+		$str .= " AND t.owner = '$self->{schema}'";
+	}
 	$str .= $self->limit_to_objects('SYNONYM','s.synname');
 
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -2588,11 +2752,17 @@ sub _get_synonyms_from_file
 		chomp($l);
 		if ($l =~ /create synonym ([^\.]+).([^\s]+)\s+for\s+(.*);/i)
 		{
-			next if ($1 eq '"informix"' || $1 eq 'informix');
+                        my $owner = $1;
 			my $synname = $2;
-			$synonyms{$synname}{owner} = $1;
 			my $link = $3;
 			my $tbname = $3;
+                        $owner =~ s/"//g;
+                        if (!$self->{schema}) {
+                                next if (grep(/^$owner$/i, @{$self->{sysusers}}));
+                        } else {
+                                next if ($owner ne $self->{schema});
+                        }
+			$synonyms{$synname}{owner} = $owner;
 			$tbname =~ s/.*\.//;
 			$synonyms{$synname}{table_name} = $tbname;
 			$synonyms{$synname}{dblink} = $link;
@@ -2633,8 +2803,13 @@ sub _get_sequences
   s.restart_val
 FROM systables t
 JOIN syssequences s ON (s.tabid = t.tabid)
-WHERE t.tabtype = 'Q' AND t.owner != 'informix'
+WHERE t.tabtype = 'Q'
 };
+	if (!$self->{schema}) {
+		$str .= " AND t.owner NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
+	} else {
+		$str .= " AND t.owner = '$self->{schema}'";
+	}
         $str .= $self->limit_to_objects('SEQUENCE', 't.tabname');
         $str .= " ORDER BY t.tabname, s.seqid";
 
@@ -2666,8 +2841,13 @@ sub _extract_sequence_info
   s.restart_val
 FROM systables t
 JOIN syssequences s ON (s.tabid = t.tabid)
-WHERE t.tabtype = 'Q' AND t.owner != 'informix'
+WHERE t.tabtype = 'Q'
 };
+	if (!$self->{schema}) {
+		$str .= " AND t.owner NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
+	} else {
+		$str .= " AND t.owner = '$self->{schema}'";
+	}
         $str .= $self->limit_to_objects('SEQUENCE', 't.tabname');
 
         my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -2706,8 +2886,13 @@ sub _count_sequences
   s.restart_val
 FROM systables t
 JOIN syssequences s ON (s.tabid = t.tabid)
-WHERE t.tabtype = 'Q' AND t.owner != 'informix'
+WHERE t.tabtype = 'Q'
 };
+	if (!$self->{schema}) {
+		$sql .= " AND t.owner NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
+	} else {
+		$sql .= " AND t.owner = '$self->{schema}'";
+	}
 	$sql .= $self->limit_to_objects('TABLE', 't.tabname');
 	my $sth = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
@@ -2786,9 +2971,13 @@ sub _list_triggers
     ,t.tabname 
 FROM systriggers trg
 INNER JOIN systables t ON t.tabid = trg.tabid
-WHERE t.owner != 'informix'
 };
 
+	if (!$self->{schema}) {
+		$str .= " WHERE t.owner NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
+	} else {
+		$str .= " WHERE t.owner = '$self->{schema}'";
+	}
 	$str .= " " . $self->limit_to_objects('TABLE|VIEW|TRIGGER','t.tabname|t.tabname|trg.trigname');
 
 	$str .= " ORDER BY t.tabname, trg.trigname";
@@ -2915,9 +3104,13 @@ FROM sysprocedures p
     join sysroutinelangs l ON (l.langid = p.langid)
     join sysprocbody b ON (b.procid = p.procid)
 WHERE 
-    internal='f' AND p.owner NOT IN ('informix', 'sysibm', 'sysproc', 'sysfun', 'sqlj')
-    AND b.datakey IN ('T', 'D')
+    internal='f' AND b.datakey IN ('T', 'D') AND p.internal='f'
 };
+	if (!$self->{schema}) {
+		$str .= " AND p.owner NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
+	} else {
+		$str .= " AND p.owner = '$self->{schema}'";
+	}
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
@@ -3014,13 +3207,19 @@ sub _get_types
 {
 	my ($self, $name) = @_;
 
+	return if ($self->{input_file});
+
 	# Retrieve all user defined types => PostgreSQL DOMAIN
 	my $idx = 1;
 	my $str = qq{SELECT t.name, d.seqno, d.description
 FROM sysxtdtypes t JOIN sysxtddesc d ON (d.extended_id = t.extended_id)
-WHERE t.owner != 'informix'
 };
 
+	if (!$self->{schema}) {
+		$str .= " WHERE t.owner NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
+	} else {
+		$str .= " WHERE t.owner = '$self->{schema}'";
+	}
 	if ($name) {
 		$str .= " AND t.name='$name'";
 		@{$self->{query_bind_params}} = ();
@@ -3028,6 +3227,7 @@ WHERE t.owner != 'informix'
 		$str .= $self->limit_to_objects('TYPE', 't.name');
 	}
 	$str .= " ORDER BY t.name, d.seqno";
+
 	# use a separeate connection
 	my $local_dbh = _db_connection($self);
 
@@ -3038,14 +3238,21 @@ WHERE t.owner != 'informix'
 	while (my $row = $sth->fetch)
 	{
 		$self->logit("\tFound Type: $row->[0]\n", 1);
-		if ($row->[1] == 0) {
-			push(@types, { ('name' => $row->[0], 'pos' => $idx++, 'code' => $row->[2]) });
+		if ($row->[1] == 1) {
+			push(@types, { ('name' => $row->[0], 'pos' => $idx++, 'code' => $row->[2], 'line' => $row->[1]) });
 		} else {
 			$types[-1]->{'code'} .= $row->[2];
 		}
 	}
 	$sth->finish();
 
+	for (my $i = 0; $i <= $#types; $i++)
+	{
+		next if (!$types[$i]->{'name'});
+		if ($types[$i]->{'line'} == 1) {
+			$types[$i]->{'code'} = 'TYPE ' . $types[$i]->{'name'} . ' FROM ' . $types[$i]->{'code'} . ';';
+		}
+	}
 	$local_dbh->disconnect() if ($local_dbh);
 
 	return \@types;

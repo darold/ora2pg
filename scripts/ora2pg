@@ -656,16 +656,27 @@ sub create_project
 	print OUT "namespace=\".\"\n";
 	print OUT "unit_cost=$COST_UNIT_VALUE\n";
 	print OUT qq{
-ora2pg -t SHOW_TABLE -c \$namespace/config/ora2pg.conf > \$namespace/reports/tables.txt
-ora2pg -t SHOW_COLUMN -c \$namespace/config/ora2pg.conf > \$namespace/reports/columns.txt
-ora2pg -t SHOW_REPORT -c \$namespace/config/ora2pg.conf --dump_as_html --cost_unit_value  \$unit_cost --estimate_cost > \$namespace/reports/report.html
+INPUT_FILE=\$1
+
+if [ ! -z "\$INPUT_FILE" ]; then
+        if [ ! -e "\$INPUT_FILE" ]; then
+                echo "ERROR: input file \$INPUT_FILE doesn't exists"
+                exit 1
+        fi
+        echo "Importing schema from file \$INPUT_FILE";
+        INPUT_FILE="-i \${INPUT_FILE}"
+fi
+
+ora2pg -t SHOW_TABLE -c \$namespace/config/ora2pg.conf \$INPUT_FILE > \$namespace/reports/tables.txt
+ora2pg -t SHOW_COLUMN -c \$namespace/config/ora2pg.conf \$INPUT_FILE > \$namespace/reports/columns.txt
+ora2pg -t SHOW_REPORT -c \$namespace/config/ora2pg.conf --dump_as_html --cost_unit_value  \$unit_cost --estimate_cost \$INPUT_FILE > \$namespace/reports/report.html
 
 for etype in \$(echo \$EXPORT_TYPE | tr " " "\\n")
 do
         ltype=`echo \$etype | tr '[:upper:]' '[:lower:]'`
         ltype=`echo \$ltype | sed 's/y\$/ie/'`
-        echo "Running: ora2pg -p -t \$etype -o \$ltype.sql -b \$namespace/schema/\$\{ltype\}s -c \$namespace/config/ora2pg.conf"
-        ora2pg -p -t \$etype -o \$ltype.sql -b \$namespace/schema/\$\{ltype\}s -c \$namespace/config/ora2pg.conf
+        echo "Running: ora2pg -p -t \$etype -o \$ltype.sql -b \$namespace/schema/\$\{ltype\}s -c \$namespace/config/ora2pg.conf \$INPUT_FILE"
+        ora2pg -p -t \$etype -o \$ltype.sql -b \$namespace/schema/\$\{ltype\}s -c \$namespace/config/ora2pg.conf \$INPUT_FILE
 	ret=`grep "Nothing found" \$namespace/schema/\$\{ltype\}s/\$ltype.sql 2> /dev/null`
 	if [ ! -z "\$ret" ]; then
 		rm \$namespace/schema/\$\{ltype\}s/\$ltype.sql
@@ -676,8 +687,8 @@ for etype in \$(echo \$SOURCE_TYPE | tr " " "\\n")
 do
         ltype=`echo \$etype | tr '[:upper:]' '[:lower:]'`
         ltype=`echo \$ltype | sed 's/y\$/ie/'`
-        echo "Running: ora2pg -t \$etype -o \$ltype.sql -b \$namespace/sources/\$\{ltype\}s -c \$namespace/config/ora2pg.conf"
-        ora2pg -t \$etype -o \$ltype.sql -b \$namespace/sources/\$\{ltype\}s -c \$namespace/config/ora2pg.conf
+        echo "Running: ora2pg -t \$etype -o \$ltype.sql -b \$namespace/sources/\$\{ltype\}s -c \$namespace/config/ora2pg.conf \$INPUT_FILE"
+        ora2pg -t \$etype -o \$ltype.sql -b \$namespace/sources/\$\{ltype\}s -c \$namespace/config/ora2pg.conf \$INPUT_FILE
 	ret=`grep "Nothing found" \$namespace/sources/\$\{ltype\}s/\$ltype.sql 2> /dev/null`
 	if [ ! -z "\$ret" ]; then
 		rm \$namespace/sources/\$\{ltype\}s/\$ltype.sql

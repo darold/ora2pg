@@ -868,6 +868,7 @@ sub _db_connection
 	}
 	elsif ($self->{is_informix})
 	{
+		@EXCLUDED_TABLES = ('sys%');
 		use Ora2Pg::Informix;
 		return Ora2Pg::Informix::_db_connection($self);
 	}
@@ -1299,7 +1300,8 @@ sub _init
 		$self->{is_informix} = 1;
 	}
 
-	# Preload our dedicated function per DBMS
+	# Preload our dedicated function per DBMS and set default system
+	# user/schema to not export.
 	if ($self->{is_mysql}) {
 		@{$self->{sysusers}} = ();
 		import Ora2Pg::MySQL;
@@ -1309,18 +1311,13 @@ sub _init
 		import Ora2Pg::MSSQL;
 		$self->{sgbd_name} = 'MSSQL';
 	} elsif ($self->{is_informix}) {
-		@{$self->{sysusers}} = ();
+		push(@{$self->{sysusers}}, 'sysibm', 'sysproc', 'sysfun', 'sqlj');
 		import Ora2Pg::Informix;
 		$self->{sgbd_name} = 'Informix';
 	} else {
+		push(@{$self->{sysusers}},'SYSTEM','CTXSYS','DBSNMP','EXFSYS','LBACSYS','MDSYS','MGMT_VIEW','OLAPSYS','ORDDATA','OWBSYS','ORDPLUGINS','ORDSYS','OUTLN','SI_INFORMTN_SCHEMA','SYS','SYSMAN','WK_TEST','WKSYS','WKPROXY','WMSYS','XDB','APEX_PUBLIC_USER','DIP','FLOWS_020100','FLOWS_030000','FLOWS_040100','FLOWS_010600','FLOWS_FILES','MDDATA','ORACLE_OCM','SPATIAL_CSW_ADMIN_USR','SPATIAL_WFS_ADMIN_USR','XS$NULL','PERFSTAT','SQLTXPLAIN','DMSYS','TSMSYS','WKSYS','APEX_040000','APEX_040200','DVSYS','OJVMSYS','GSMADMIN_INTERNAL','APPQOSSYS','DVSYS','DVF','AUDSYS','APEX_030200','MGMT_VIEW','ODM','ODM_MTR','TRACESRV','MTMSYS','OWBSYS_AUDIT','WEBSYS','WK_PROXY','OSE$HTTP$ADMIN','AURORA$JIS$UTILITY$','AURORA$ORB$UNAUTHENTICATED','DBMS_PRIVILEGE_CAPTURE','CSMIG', 'MGDSYS', 'SDE','DBSFWUSER');
 		import Ora2Pg::Oracle;
 		$self->{sgbd_name} = 'Oracle';
-	}
-
-	# Set default system user/schema to not export. Most of them are extracted from this doc:
-	# http://docs.oracle.com/cd/E11882_01/server.112/e10575/tdpsg_user_accounts.htm#TDPSG20030
-	if (!$self->{is_mysql} && !$self->{is_mssql} && !$self->{is_informix}) {
-		push(@{$self->{sysusers}},'SYSTEM','CTXSYS','DBSNMP','EXFSYS','LBACSYS','MDSYS','MGMT_VIEW','OLAPSYS','ORDDATA','OWBSYS','ORDPLUGINS','ORDSYS','OUTLN','SI_INFORMTN_SCHEMA','SYS','SYSMAN','WK_TEST','WKSYS','WKPROXY','WMSYS','XDB','APEX_PUBLIC_USER','DIP','FLOWS_020100','FLOWS_030000','FLOWS_040100','FLOWS_010600','FLOWS_FILES','MDDATA','ORACLE_OCM','SPATIAL_CSW_ADMIN_USR','SPATIAL_WFS_ADMIN_USR','XS$NULL','PERFSTAT','SQLTXPLAIN','DMSYS','TSMSYS','WKSYS','APEX_040000','APEX_040200','DVSYS','OJVMSYS','GSMADMIN_INTERNAL','APPQOSSYS','DVSYS','DVF','AUDSYS','APEX_030200','MGMT_VIEW','ODM','ODM_MTR','TRACESRV','MTMSYS','OWBSYS_AUDIT','WEBSYS','WK_PROXY','OSE$HTTP$ADMIN','AURORA$JIS$UTILITY$','AURORA$ORB$UNAUTHENTICATED','DBMS_PRIVILEGE_CAPTURE','CSMIG', 'MGDSYS', 'SDE','DBSFWUSER');
 	}
 
 	# Log file handle
@@ -1617,14 +1614,22 @@ sub _init
 	$self->{pg_integer_type} = 1 if (not defined $self->{pg_integer_type});
 	# Backward compatibility with CASE_SENSITIVE
 	$self->{preserve_case} = $self->{case_sensitive} if (defined $self->{case_sensitive} && not defined $self->{preserve_case});
-	$self->{schema} = uc($self->{schema}) if (!$self->{preserve_case} && ($self->{oracle_dsn} !~ /:(mysql|Informix)/i));
+	$self->{schema} = uc($self->{schema}) if (!$self->{preserve_case} && ($self->{oracle_dsn} !~ /:mysql/i));
 	# With MySQL and Informix override schema with the database name
-	if ($self->{oracle_dsn} =~ /:mysql:.*database=([^;]+)/i || $self->{oracle_dsn} =~ /:Informix:(.*)/)
+	if ($self->{oracle_dsn} =~ /:mysql:.*database=([^;]+)/i)
 	{
 		if ($self->{schema} ne $1) {
 			$self->{schema} = $1;
 		}
 		if (!$self->{schema}) {
+			$self->logit("FATAL: cannot find a valid database name in DSN, $self->{oracle_dsn}.\n", 0, 1);
+		}
+	}
+	# With Informix set the database name
+	if ($self->{oracle_dsn} =~ /:Informix:(.*)/)
+	{
+		$self->{database} = $1;
+		if (!$self->{database}) {
 			$self->logit("FATAL: cannot find a valid database name in DSN, $self->{oracle_dsn}.\n", 0, 1);
 		}
 	}
@@ -1703,6 +1708,7 @@ sub _init
 	{
 		$self->logit("Ora2Pg version: $VERSION\n");
 		$self->logit("Export type: $self->{type}\n", 1);
+		$self->logit("Schema: $self->{schema}\n", 1);
 		$self->logit("Geometry export type: $self->{geometry_extract_type}\n", 1);
 	}
 
@@ -2753,32 +2759,45 @@ sub _parse_constraint
 
 	if ($c =~ /^([^\s]+)\s+(UNIQUE|PRIMARY KEY)\s*\(([^\)]+)\)/is)
 	{
+		my $name = $1;
 		my $tp = 'U';
 		$tp = 'P' if ($2 eq 'PRIMARY KEY');
-		$self->{tables}{$tb_name}{unique_key}{$1} = { (
-			type => $tp, 'generated' => 0, 'index_name' => $1,
+		my $cols = $3;
+		# constraint name can not be fqdn
+		$name =~ s/.*\.//;
+		$self->{tables}{$tb_name}{unique_key}{$name} = { (
+			type => $tp, 'generated' => 0, 'index_name' => $name,
 			columns => ()
 		) };
-		push(@{$self->{tables}{$tb_name}{unique_key}{$1}{columns}}, split(/\s*,\s*/, $3));
+		push(@{$self->{tables}{$tb_name}{unique_key}{$name}{columns}}, split(/\s*,\s*/, $cols));
 	}
 	elsif ($c =~ /^(UNIQUE|PRIMARY KEY)\s*\(([^\)]+)\)/is)
 	{
+		my $name = $1;
 		my $tp = 'U';
 		$tp = 'P' if ($2 eq 'PRIMARY KEY');
-		$self->{tables}{$tb_name}{unique_key}{$1} = { (
-			type => $tp, 'generated' => 0, 'index_name' => $1,
+		my $cols = $3;
+		# constraint name can not be fqdn
+		$name =~ s/.*\.//;
+		$self->{tables}{$tb_name}{unique_key}{$name} = { (
+			type => $tp, 'generated' => 0, 'index_name' => $name,
 			columns => ()
 		) };
-		push(@{$self->{tables}{$tb_name}{unique_key}{$1}{columns}}, split(/\s*,\s*/, $3));
+		push(@{$self->{tables}{$tb_name}{unique_key}{$name}{columns}}, split(/\s*,\s*/, $cols));
 	}
 	elsif ($c =~ /^([^\s]+)\s+CHECK\s*\((.*)\)/is)
 	{
 		my $name = $1;
 		my $desc = $2;
-		if ($desc =~ /^([a-z_\$0-9]+)\b/i) {
-			$name .= "_$1";
+		if (!$self->{informix})
+		{
+			if ($desc =~ /^([a-z_\$0-9]+)\b/i) {
+				$name .= "_$1";
+			}
 		}
-		my %tmp = ($name => $desc);
+		# constraint name can not be fqdn
+		$name =~ s/.*\.//;
+		push(@{$self->{tables}{$tb_name}{unique_key}{$name}{columns}}, split(/\s*,\s*/, $cols));
 		$self->{tables}{$tb_name}{check_constraint}{constraint}{$name}{condition} = $desc;
 		if ($c =~ /NOVALIDATE/is) {
 			$self->{tables}{$tb_name}{check_constraint}{constraint}{$name}{validate} = 'NOT VALIDATED';
@@ -2800,6 +2819,9 @@ sub _parse_constraint
 			$f_tb_name =~ s/^[^\.]+\.//;
 			map { s/^[^\.]+\.//; } @col_list;
 		}
+		# constraint name can not be fqdn
+		$c_name =~ s/.*\.//;
+		push(@{$self->{tables}{$tb_name}{unique_key}{$c_name}{columns}}, split(/\s*,\s*/, $cols));
 		push(@{$self->{tables}{$tb_name}{foreign_link}{"\U$c_name\E"}{local}}, $cur_col_name);
 		push(@{$self->{tables}{$tb_name}{foreign_link}{"\U$c_name\E"}{remote}{$f_tb_name}}, @col_list);
 		my $deferrable = '';
@@ -2881,6 +2903,16 @@ sub _get_dml_from_file
 		$content =~ s/SQL SECURITY DEFINER VIEW/VIEW/gs;
 	}
 
+	if ($self->{is_informix})
+	{
+		# Infomix has bad DDL formating with newline between owner.object_name
+		$content =~ s/"\s+\./"./gs;
+		# replace "informix".boolean by boolean
+		$content =~ s/"informix".boolean/boolean/igs;
+		# also remove quote around the owner name
+		$content =~ s/\s"([^\s"]+)"\./ $1./gs;
+	}
+
 	return $content;
 }
 
@@ -2898,9 +2930,21 @@ sub read_schema_from_file
 
 	my @statements = split(/\s*;\s*/, $content);
 
+	my $skip = 0;
 	foreach $content (@statements)
 	{
 		$content .= ';';
+
+		# Avoid parsing DDL from stored prodecure
+		if ($self->{is_informix})
+		{
+			if ($content =~ /CREATE (PROCEDURE|FUNCTION)/is) {
+				$skip = 1;
+			} elsif ($content =~ /END (PROCEDURE|FUNCTION)/is) {
+				$skip = 0;
+			}
+			next if ($skip);
+		}
 
 		# Remove some unwanted and unused keywords from the statements
 		$content =~ s/\s+(PARALLEL|COMPRESS)\b//igs;
@@ -2923,9 +2967,16 @@ sub read_schema_from_file
 		{
 			my $tb_name = $3;
 			my $tb_def = $4;
-			$tb_name =~ s/"//gs;
-			$tb_name =~ s/.*\.//gs if ($self->{is_informix});
+			$tb_name =~ s/["']//gs;
+			my $owner = '';
+			if ($self->{is_informix} && $tb_name =~ s/(.*)\.//) {
+				$owner = $1;
+			}
+			if (!$self->{schema} && $self->{export_schema}) {
+				$tb_name = $owner . '.' . $tb_name;
+			}
 			$tb_def =~ s/\s+/ /gs;
+			$self->{tables}{$tb_name}{owner} = $owner;
 			$self->{tables}{$tb_name}{table_info}{type} = 'TEMPORARY ' if ($2);
 			$self->{tables}{$tb_name}{table_info}{type} .= 'TABLE';
 			$self->{tables}{$tb_name}{table_info}{num_rows} = 0;
@@ -2938,8 +2989,15 @@ sub read_schema_from_file
 			my $tb_name = $3;
 			my $tb_def  = $4;
 			my $tb_param  = '';
-			$tb_name =~ s/"//gs;
-			$tb_name =~ s/.*\.//gs if ($self->{is_informix});
+			$tb_name =~ s/["']//gs;
+			my $owner = '';
+			if ($self->{is_informix} && $tb_name =~ s/(.*)\.//) {
+				$owner = $1;
+			}
+			if (!$self->{schema} && $self->{export_schema}) {
+				$tb_name = $owner . '.' . $tb_name;
+			}
+			$self->{tables}{$tb_name}{owner} = $owner;
 			$self->{tables}{$tb_name}{table_info}{type} = 'TEMPORARY ' if ($2);
 			$self->{tables}{$tb_name}{table_info}{type} .= 'TABLE';
 			$self->{tables}{$tb_name}{table_info}{num_rows} = 0;
@@ -3011,14 +3069,21 @@ sub read_schema_from_file
 			my $idx_name = $2;
 			my $tb_name = $3;
 			my $idx_def = $4;
-			$idx_name =~ s/"//gs;
-			$tb_name =~ s/"//gs;
-			$tb_name =~ s/\s+/ /gs;
-			$tb_name =~ s/.*\.//gs if ($self->{is_informix});
+
+			$tb_name =~ s/["']//gs;
+			$idx_name =~ s/["']//gs;
+			my $owner = '';
+			if ($self->{is_informix} && $tb_name =~ s/(.*)\.//) {
+				$owner = $1;
+			}
+			if (!$self->{schema} && $self->{export_schema}) {
+				$tb_name = $owner . '.' . $tb_name;
+			}
 			$idx_def =~ s/\s+/ /gs;
 			$idx_def =~ s/\s*nologging//is;
 			$idx_def =~ s/STORAGE\s*\([^\)]+\)\s*//is;
 			$idx_def =~ s/COMPRESS(\s+\d+)?\s*//is;
+
 			# look for storage information
 			if ($idx_def =~ s/TABLESPACE\s*([^\s]+)\s*//is)
 			{
@@ -3074,7 +3139,6 @@ sub read_schema_from_file
 			$tb_def =~ s/[\r\n]+/ /sg;
 			$tb_def =~ s/\s+/ /sg;
 			$tb_def =~ s/^constraint\s+\((.*?)\s+constraint\s+([^\s]+)\);/constraint $2 $1;/is;
-
 			# Oracle allow multiple constraints declaration inside a single ALTER TABLE
 			while ($tb_def =~ s/CONSTRAINT\s+([^\s]+)\s+CHECK\s*(\(.*?\))\s+(ENABLE|DISABLE|VALIDATE|NOVALIDATE|DEFERRABLE|INITIALLY|DEFERRED|USING\s+INDEX|\s+)+([^,]*)//is)
 			{
@@ -3192,7 +3256,7 @@ sub parse_columns_from_file
 		next if (!$c);
 
 		# Some Informix datatypes can be prefixed by the informix owner.
-		$c =~ s/"informix"\.//igs;
+		$c =~ s/"informix"\.boolean//igs;
 
 		# Replace temporary substitution
 		while ($c =~ s/\%\%FCT(\d+)\%\%/$fct_placeholder{$1}/is) {
@@ -3212,14 +3276,21 @@ sub parse_columns_from_file
 			$orig_name =~ s/.*\.//gs if ($self->{is_informix});
 			$c =~ s/\bconstraint ([^\.\s]+\.[^\s]+)/CONSTRAINT $orig_name/is;
 		}
-		my $constr_name = $orig_name || "o2pu_$tbn";
-		$c =~ s/^(PRIMARY KEY|UNIQUE)/CONSTRAINT $constr_name \U$1\L/is;
-		$c =~ s/^(CHECK[^,;]+)DEFERRABLE\s+INITIALLY\s+DEFERRED/$1/is;
-		$constr_name = $orig_name || "o2pc_$tbn";
-		$c =~ s/^CHECK\b/CONSTRAINT $constr_name CHECK/is;
-		$constr_name = $orig_name || "o2pf_$tbn";
-		$c =~ s/\bFOREIGN KEY/CONSTRAINT $constr_name FOREIGN KEY/is;
-		$c =~ s/\(\s+/\(/gs;
+		$c =~ s/^(CHECK(?:.*?))DEFERRABLE\s+INITIALLY\s+DEFERRED/$1/is;
+		if (!$self->{is_informix})
+		{
+			my $constr_name = $orig_name || "o2pu_$tbn";
+			$c =~ s/^(PRIMARY KEY|UNIQUE)/CONSTRAINT $constr_name \U$1\L/is;
+			$constr_name = $orig_name || "o2pc_$tbn";
+			$c =~ s/^CHECK\b/CONSTRAINT $constr_name CHECK/is;
+			$constr_name = $orig_name || "o2pf_$tbn";
+			$c =~ s/\bFOREIGN KEY/CONSTRAINT $constr_name FOREIGN KEY/is;
+			$c =~ s/\(\s+/\(/gs;
+		}
+		else
+		{
+			$c =~ s/^(.*)\s+(CONSTRAINT\s+[^\s,]+)/$2 $1/is;
+		}
 
 		# register column name between double quote
 		my $i = 0;
@@ -3340,7 +3411,7 @@ sub parse_columns_from_file
 					$self->_parse_constraint($tb_name, $c_name, "$pk_name $1 ($cols)");
 
 				}
-				elsif ( ($c =~ s/CONSTRAINT\s([^\s]+)\sCHECK\s*\(([^\)]+)\)//is) || ($c =~ s/CHECK\s*\(([^\)]+)\)//is) )
+				elsif ($c =~ s/CONSTRAINT\s([^\s]+)\sCHECK\s*\(([^\)]+)\)//is || $c =~ s/CHECK\s*\(([^\)]+)\)//is )
 				{
 					$c_name =~ s/\./_/gs;
 					my $pk_name = 'o2pc_' . $c_name; 
@@ -3532,7 +3603,7 @@ sub read_view_from_file
 		}
 	}
 	# Standard views
-	while ($content =~ s/CREATE\s+VIEW\s+([^\s]+)\s+AS\s+([^;]+);//i)
+	while ($content =~ s/CREATE\s+VIEW\s+([^\s]+)\s+AS\s+([^;]+);//is)
 	{
 		my $v_name = $1;
 		my $v_def = $2;
@@ -3587,9 +3658,6 @@ sub read_trigger_from_file
 	# Clear content from comment and text constant for better parsing
 	$self->_remove_comments(\$content);
 
-	# Fix Informix formatting export
-	$content =~ s/"\s+\./"./gs if ($self->{is_informix});
-
 	my $tid = 0; 
 	my $doloop = 1;
 	my @triggers_decl = split(/(?:CREATE)?(?:\s+OR\s+REPLACE)?\s*(?:DEFINER=[^\s]+)?\s*\bTRIGGER(\s+|$)/is, $content);
@@ -3601,6 +3669,7 @@ sub read_trigger_from_file
 		my $tb_name = '';
 		my $trigger = '';
 		my $t_type = '';
+		my $owner = '';
 		if ($content =~ s/^([^\s]+)\s+(BEFORE|AFTER|INSTEAD\s+OF)\s+(.*?)\s+ON\s+([^\s]+)\s+(.*)(\bEND\s*(?!IF|LOOP|CASE|INTO|FROM|,)[a-z0-9_\$"]*(?:;|$))//is)
 		{
 			$t_name = $1;
@@ -3609,6 +3678,13 @@ sub read_trigger_from_file
 			$tb_name = $4;
 			$trigger = $5 . $6;
 			$t_name =~ s/"//g;
+			$tb_name =~ s/"//g;
+			if ($t_name =~ s/([^\.]+)\.//) {
+				$owner = $1;
+			}
+			if ($tb_name =~ s/([^\.]+)\.//) {
+				$owner = $1;
+			}
 		}
 		elsif ($content =~ s/^([^\s]+)\s+(BEFORE|AFTER|INSTEAD|\s+|OF)((?:INSERT|UPDATE|DELETE|OR|\s+|OF)+\s+(?:.*?))*\s+ON\s+([^\s]+)\s+(.*)(\bEND\s*(?!IF|LOOP|CASE|INTO|FROM|,)[a-z0-9_\$"]*(?:;|$))//is)
 		{
@@ -3618,6 +3694,13 @@ sub read_trigger_from_file
 			$tb_name = $4;
 			$trigger = $5 . $6;
 			$t_name =~ s/"//g;
+			$tb_name =~ s/"//g;
+			if ($t_name =~ s/([^\.]+)\.//) {
+				$owner = $1;
+			}
+			if ($tb_name =~ s/([^\.]+)\.//) {
+				$owner = $1;
+			}
 		}
 		elsif ($content =~ s/^([^\s]+)\s+(INSERT|UPDATE|DELETE|SELECT)\s+ON\s+([^\s]+)\s+(.*)\);//is)
 		{
@@ -3627,8 +3710,13 @@ sub read_trigger_from_file
 			$trigger = $4;
 			$t_pos = 'AFTER';
 			$t_name =~ s/"//g;
-			$t_name =~ s/.*\.// if ($self->{is_informix});
-			$tb_name =~ s/.*\.// if ($self->{is_informix});
+			$tb_name =~ s/"//g;
+			if ($t_name =~ s/([^\.]+)\.//) {
+				$owner = $1;
+			}
+			if ($tb_name =~ s/([^\.]+)\.//) {
+				$owner = $1;
+			}
 		}
 
 		next if (!$t_name || ! $tb_name);
@@ -3683,13 +3771,13 @@ sub read_trigger_from_file
 		}
 		$tid++;
 
-		# TRIGGER_NAME, TRIGGER_TYPE, TRIGGERING_EVENT, TABLE_NAME, TRIGGER_BODY, WHEN_CLAUSE, DESCRIPTION,ACTION_TYPE
+		# TRIGGER_NAME, TRIGGER_TYPE, TRIGGERING_EVENT, TABLE_NAME, TRIGGER_BODY, WHEN_CLAUSE, DESCRIPTION, ACTION_TYPE, OWNER
 		$trigger =~ s/\bEND\s+[^\s]+\s+$/END/is;
 		my $when_event = '';
 		if ($t_when_cond) {
 			$when_event = "$t_name\n$t_pos $t_event ON $tb_name\n$t_type";
 		}
-		push(@{$self->{triggers}}, [($t_name, $t_pos, $t_event, $tb_name, $trigger, $t_when_cond, $referencing . $when_event, $t_type)]);
+		push(@{$self->{triggers}}, [($t_name, $t_pos, $t_event, $tb_name, $trigger, $t_when_cond, $referencing . $when_event, $t_type, $owner)]);
 	}
 }
 
@@ -3710,8 +3798,15 @@ sub read_sequence_from_file
 	{
 		my $s_name = $1;
 		my $s_def = $2;
-		$s_name =~ s/"//g;
+		$s_name =~ s/["']//g;
 		$s_def =~ s/\s+/ /g;
+		my $owner = '';
+		if ($s_name =~ s/([^\.]+)\.//) {
+			$owner = $1;
+		}
+		if (!$self->{schema} && $self->{export_schema}) {
+			$s_name = $owner . '.' . $s_name;
+		}
 		$tid++;
 		my @seq_info = ();
 
@@ -3759,6 +3854,8 @@ sub read_sequence_from_file
 		} else {
 			push(@seq_info, '');
 		}
+		push(@seq_info, $owner);
+
 		push(@{$self->{sequences}{$s_name}}, @seq_info);
 	}
 }
@@ -3835,22 +3932,39 @@ sub read_synonym_from_file
 	my $content = $self->_get_dml_from_file();
 
 	# Directory
-	while ($content =~ s/CREATE(?: OR REPLACE)?(?: PUBLIC)?\s+SYNONYM\s+([^\s]+)\s+FOR\s+([^;\s]+)\s*;//is) {
+	while ($content =~ s/CREATE(?: OR REPLACE)?(?: PUBLIC)?\s+SYNONYM\s+([^\s]+)\s+FOR\s+([^;\s]+)\s*;//is)
+	{
 		my $s_name = uc($1);
 		my $s_def = $2;
 		$s_name =~ s/"//g;
 		$s_def =~ s/"//g;
-		if ($s_name =~ s/^([^\.]+)\.//) {
-			$self->{synonyms}{$s_name}{owner} = $1;
-		} else {
-			$self->{synonyms}{$s_name}{owner} = $self->{schema};
+		my $owner = '';
+		if ($s_name =~ s/([^\.]+)\.//) {
+			$owner = $1;
 		}
-		if ($s_def =~ s/@(.*)//) {
-			$self->{synonyms}{$s_name}{dblink} = $1;
+		if (!$self->{schema} && $self->{export_schema}) {
+			$s_name = $owner . '.' . $s_name;
 		}
+		$self->{synonyms}{$s_name}{owner} = $owner || $self->{schema};
+
+		if (!$self->{is_informix})
+		{
+			if ($s_def =~ s/\@(.*)//) {
+				$self->{synonyms}{$s_name}{dblink} = $1;
+			}
+		}
+		else
+		{
+			if ($s_def =~ s/\@(.*):(.*)//) {
+				$self->{synonyms}{$s_name}{dblink} = $1;
+				$s_def = $2;
+			}
+		}
+
 		if ($s_def =~ s/^([^\.]+)\.//) {
 			$self->{synonyms}{$s_name}{table_owner} = $1;
 		}
+
 		$self->{synonyms}{$s_name}{table_name} = $s_def;
 	}
 
@@ -5259,7 +5373,7 @@ sub export_sequence
 			$self->{sequences}{$seq}->[2] = 9223372036854775807 if ($self->{sequences}{$seq}->[2] > 9223372036854775807);
 			$sql_output .= " MAXVALUE $self->{sequences}{$seq}->[2]";
 		}
-		$sql_output .= " START $self->{sequences}{$seq}->[4]";
+		$sql_output .= " START $self->{sequences}{$seq}->[4]" if ($self->{sequences}{$seq}->[4] ne '');
 		$sql_output .= " CACHE $cache" if ($cache ne '');
 		$sql_output .= "$cycle;\n";
 
@@ -6363,6 +6477,8 @@ sub export_package
 	#---------------------------------------------------------
 	if ($self->{input_file})
 	{
+		return if ($self->{is_mysql} || $self->{is_mssql} || $self->{is_informix});
+
 		$self->{plsql_pgsql} = 1;
 		$self->{packages} = ();
 		$self->logit("Reading input code from file $self->{input_file}...\n", 1);
@@ -10241,7 +10357,7 @@ sub _create_indexes
 		if (!$skip_index_creation)
 		{
 			my $unique = '';
-			$unique = ' UNIQUE' if ($self->{$objtyp}{$tbsaved}{uniqueness}{$idx} eq 'UNIQUE');
+			$unique = ' UNIQUE' if (uc($self->{$objtyp}{$tbsaved}{uniqueness}{$idx}) eq 'UNIQUE');
 			my $str = '';
 			my $fts_str = '';
 			my $concurrently = '';
@@ -10780,7 +10896,7 @@ sub _create_check_constraint
 		my $validate = '';
 		$validate = ' NOT VALID' if ($check_constraint->{constraint}->{$k}{validate} eq 'NOT VALIDATED');
 		next if (!$chkconstraint);
-		if ($chkconstraint =~ /^([^\s]+)\s+IS\s+NOT\s+NULL$/i)
+		if ($chkconstraint =~ /^([^\s]+)\s+IS\s+NOT\s+NULL$/is)
 		{
 			my $col = $1;
 			$col =~ s/"//g;
@@ -13996,6 +14112,7 @@ sub _remove_comments
 		$self->{comment_values}{"\%ORA2PG_COMMENT$self->{idxcomment}\%"} = $1;
 		$self->{idxcomment}++;
 	}
+
 	@lines = split(/\n/, $$content);
 	for (my $j = 0; $j <= $#lines; $j++)
 	{
@@ -17126,6 +17243,9 @@ sub _show_infos
 						$type1 .= " - $d->[14]" if ($d->[14] =~  /,/);
 						
 					}
+					if ($d->[1] =~ /TimeSeries/i) {
+						$warning .= " (Warning: '$d->[1]' is not a data type supported by PostgreSQL)";
+					}
 					my $ret = $self->is_reserved_words($d->[0]);
 					if ($ret == 1) {
 						$warning .= " (Warning: '$d->[0]' is a reserved word in PostgreSQL)";
@@ -19144,16 +19264,18 @@ sub limit_to_objects
 						$str .= "upper($colname) RLIKE ?" ;
 					} elsif ($self->{is_mssql}) {
 						$str .= "PATINDEX(?, upper($colname)) != 0" ;
+					} elsif ($self->{is_informix}) {
+						$str .= "upper($colname) LIKE ?" ;
 					} else {
 						$str .= "REGEXP_LIKE(upper($colname), ?)" ;
 					}
 
 					my $objname = $self->{limited}{$arr_type[$i]}->[$j];
 					$objname =~ s/\$/\\\$/g; # support dollar sign
-					if (!$self->{is_mssql}) {
-						push(@{$self->{query_bind_params}}, uc("\^$objname\$"));
-					} else {
+					if ($self->{is_mssql} || $self->{is_informix}) {
 						push(@{$self->{query_bind_params}}, uc("$objname"));
+					} else {
+						push(@{$self->{query_bind_params}}, uc("\^$objname\$"));
 					}
 					if ($j < $#{$self->{limited}{$arr_type[$i]}}) {
 						$str .= " OR ";
@@ -19184,15 +19306,17 @@ sub limit_to_objects
 							$str .= " AND upper($colname) NOT RLIKE ?" ;
 						} elsif ($self->{is_mssql}) {
 							$str .= "PATINDEX(?, upper($colname)) != 0" ;
+						} elsif ($self->{is_informix}) {
+							$str .= "upper($colname) NOT LIKE ?" ;
 						} else {
 							$str .= " AND NOT REGEXP_LIKE(upper($colname), ?)" ;
 						}
 						my $objname = $1;
 						$objname =~ s/\$/\\\$/g; # support dollar sign
-						if (!$self->{is_mssql}) {
-							push(@{$self->{query_bind_params}}, uc("\^$objname\$"));
-						} else {
+						if ($self->{is_mssql} || $self->{is_informix}) {
 							push(@{$self->{query_bind_params}}, uc("$objname"));
+						} else {
+							push(@{$self->{query_bind_params}}, uc("\^$objname\$"));
 						}
 					}
 				}
@@ -19224,13 +19348,15 @@ sub limit_to_objects
 						$str .= "upper($colname) NOT RLIKE ?" ;
 					} elsif ($self->{is_mssql}) {
 						$str .= "PATINDEX(?, upper($colname)) = 0" ;
+					} elsif ($self->{is_informix}) {
+						$str .= "upper($colname) NOT LIKE ?" ;
 					} else {
 						$str .= "NOT REGEXP_LIKE(upper($colname), ?)" ;
 					}
-					if (!$self->{is_mssql}) {
-						push(@{$self->{query_bind_params}}, uc("\^$self->{excluded}{$arr_type[$i]}->[$j]\$"));
-					} else {
+					if ($self->{is_mssql} || $self->{is_informix}) {
 						push(@{$self->{query_bind_params}}, uc("$self->{excluded}{$arr_type[$i]}->[$j]"));
+					} else {
+						push(@{$self->{query_bind_params}}, uc("\^$self->{excluded}{$arr_type[$i]}->[$j]\$"));
 					}
 					if ($j < $#{$self->{excluded}{$arr_type[$i]}}) {
 						$str .= " AND ";
@@ -19241,7 +19367,7 @@ sub limit_to_objects
 		}
 
 		# Always exclude unwanted tables
-		if (!$self->{is_mysql} && !$self->{is_mssql} && !$self->{is_informix} && !$self->{no_excluded_table} && !$has_limitation
+		if (!$self->{is_mysql} && !$self->{is_mssql} && !$self->{no_excluded_table} && !$has_limitation
 			&& ($arr_type[$i] =~ /TABLE|SEQUENCE|VIEW|TRIGGER|TYPE|SYNONYM/))
 		{
 			if ($self->{db_version} =~ /Release [89]/)
@@ -19261,9 +19387,12 @@ sub limit_to_objects
 				{
 					if ($self->{is_mssql}) {
 						$str .= "PATINDEX(?, upper($colname)) = 0" ;
-						push(@{$self->{query_bind_params}}, uc("$EXCLUDED_TABLES[$j]"));
+						push(@{$self->{query_bind_params}}, uc($EXCLUDED_TABLES[$j]));
+					} elsif ($self->{is_informix}) {
+						$str .= "upper($colname) NOT LIKE ?" ;
+						push(@{$self->{query_bind_params}}, uc($EXCLUDED_TABLES[$j]));
 					} else {
-						$str .= " NOT REGEXP_LIKE(upper($colname), ?)" ;
+						$str .= "NOT REGEXP_LIKE(upper($colname), ?)" ;
 						push(@{$self->{query_bind_params}}, uc("\^$EXCLUDED_TABLES[$j]\$"));
 					}
 					if ($j < $#EXCLUDED_TABLES){
