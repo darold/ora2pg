@@ -379,6 +379,7 @@ $QUERY_TEST_SCORE = 0.1;
 	'TODATETIMEOFFSET' => 3,
 	'CURSOR' => 0.2,
 	'GLOBAL_VARIABLE' => 1,
+	'PIVOT' => 12,
 );
 
 %EXCEPTION_MAP = (
@@ -3411,6 +3412,8 @@ sub mssql_estimate_cost
 	$cost_details{'GLOBAL_VARIABLE'} += $n*$UNCOVERED_MSSQL_SCORE{'GLOBAL_VARIABLE'};
 	$n = () = $str =~ /\b\@\@(ROWCOUNT|VERSION|LANGUAGE)/igs;
 	$cost_details{'GLOBAL_VARIABLE'} -= $n*$UNCOVERED_MSSQL_SCORE{'GLOBAL_VARIABLE'};
+	$n = () = $str =~ /\s+(UNPIVOT|PIVOT)\s*/igs;
+	$cost_details{'PIVOT'} += $n*$UNCOVERED_MSSQL_SCORE{'PIVOT'};
 
 	foreach my $t (keys %UNCOVERED_MSSQL_SCORE) {
 		$cost += $cost_details{$t} if (exists $cost_details{$t});
@@ -4062,6 +4065,7 @@ sub mssql_to_plpgsql
 	$str =~ s/\bLEN\s*\(([^\)]+)\)/LENGTH(RTRIM($1))/gi;
 	$str =~ s/ISNULL\s*\(/COALESCE(/gi;
 	$str =~ s/SPACE\s*\(/REPEAT(' ', /gi;
+	$str =~ s/REPLICATE\s*\(/REPEAT(/gi;
 	$str =~ s/CHARINDEX\s*\(\s*(.*?)\s*,\s*(.*?)\s*,\s*(\d+)\)/position('$1' in substring($2 from $3))/gi;
 	$str =~ s/CHARINDEX\s*\(\s*(.*?)\s*,\s*(.*?)\s*\)/position('$1' in $2)/gi;
 	$str =~ s/DATEPART\s*\(\s*(.*?)\s*,\s*(.*?)\s*\)/date_part('$1', $2)/gi;

@@ -24,6 +24,7 @@ our %SQL_TYPE = (
 	'INT' => 'integer', # 4 bytes
 	'BIGINT' => 'bigint', # 8 bytes
 	'DECIMAL' => 'numeric',
+	'DEC' => 'numeric',
 	'NUMERIC' => 'numeric',
 	'BIT' => 'boolean',
 	'MONEY' => 'numeric(15,4)',
