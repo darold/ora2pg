@@ -3632,15 +3632,19 @@ sub read_grant_from_file
 	my $tid = 0; 
 
 	# Extract grant information
-	while ($content =~ s/GRANT\s+(.*?)\s+ON\s+([^\s]+)\s+TO\s+([^;]+)(\s+WITH GRANT OPTION)?;//i) {
+	while ($content =~ s/GRANT\s+(.*?)\s+ON\s+([^\s]+)\s+TO\s+([^;]+)(\s+WITH GRANT OPTION)?;//is)
+	{
 		my $g_priv = $1;
 		my $g_name = $2;
-		$g_name =~ s/"//g;
 		my $g_user = $3;
 		my $g_option = $4;
+		$g_name =~ s/["']//gis;
 		$g_priv =~ s/\s+//g;
 		$tid++;
 		$self->{grants}{$g_name}{type} = '';
+		$g_user =~ s/\?TEXTVALUE(\d+)\?/$self->{text_values}{$1}/gis;
+		$g_user =~ s/["']//gis;
+		$g_user =~ s/\s+AS\s+.*//is;
 		push(@{$self->{grants}{$g_name}{privilege}{$g_user}}, split(/,/, $g_priv));
 		if ($g_priv =~ /EXECUTE/) {
 			$self->{grants}{$table}{type} = 'PACKAGE BODY';

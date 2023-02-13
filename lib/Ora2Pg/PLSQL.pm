@@ -3506,6 +3506,9 @@ sub informix_estimate_cost
 
 	my %cost_details = ();
 
+	# SPL need more review then PLSQL
+	$SIZE_SCORE = 600;
+
 	# Default cost is testing that mean it at least must be tested
 	my $cost = $FCT_TEST_SCORE;
 	# When evaluating queries tests must not be included here
