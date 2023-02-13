@@ -38,7 +38,7 @@ our %SQL_TYPE = (
 	'STRING' => 'varchar',
 	# The DATE data type is used to store the date and time
 	# information. PG type timestamp should match all needs.
-	'DATE' => 'timestamp',
+	'DATE' => 'timestamp(0)',
 	# Type LONG is like VARCHAR2 but with up to 2Gb. PG type text
 	# should match all needs or if you want you could use blob
 	'LONG' => 'text', # Character data of variable length
