@@ -391,6 +391,9 @@ ORDER BY ORDINAL_POSITION};
 	if ($self->{db_version} < '5.5.0') {
 		$str =~ s/\bDATA_TYPE\b/DTD_IDENTIFIER/;
 	}
+	if ($self->{db_version} < '5.7.0') {
+		$str =~ s/, GENERATION_EXPRESSION//;
+	}
 	my $sth = $self->{dbh}->prepare($str);
 	if (!$sth) {
 		$self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
