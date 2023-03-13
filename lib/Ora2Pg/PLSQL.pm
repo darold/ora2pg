@@ -1909,7 +1909,7 @@ sub replace_oracle_function
 
 	# Replace some sys_context call to the postgresql equivalent
 	if ($str =~ /SYS_CONTEXT/is) {
-		replace_sys_context($str);
+		$str = replace_sys_context($str);
 	}
 
 	return $str;

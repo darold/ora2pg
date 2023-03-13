@@ -7976,6 +7976,7 @@ sub export_table
 									}
 								}
 								$f->[4] = 'NULL' if ($f->[4] eq "''" && $type =~ /int|double|numeric/i);
+								$f->[4] =~ s/'((?:session|current)_[^']+)'/$1/;
 								$sql_output .= " DEFAULT $f->[4]";
 							}
 						}
