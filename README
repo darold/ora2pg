@@ -802,6 +802,7 @@ CONFIGURATION
                 - TEST_COUNT: perform a row count diff between Oracle and PostgreSQL table.
                 - TEST_VIEW: perform a count on both side of number of rows returned by views.
                 - TEST_DATA: perform data validation check on rows at both sides.
+                - SEQUENCE_VALUES: export DDL to set the last values of sequences
 
         Only one type of export can be perform at the same time so the TYPE
         directive must be unique. If you have more than one only the last

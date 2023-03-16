@@ -1735,7 +1735,7 @@ sub _init
 			$self->_compile_schema(uc($self->{compile_schema}));
 		}
 
-		if (!grep(/^$self->{type}$/, 'COPY', 'INSERT', 'SEQUENCE', 'GRANT', 'TABLESPACE', 'QUERY', 'SYNONYM', 'FDW', 'KETTLE', 'DBLINK', 'DIRECTORY') && $self->{type} !~ /SHOW_/)
+		if (!grep(/^$self->{type}$/, 'COPY', 'INSERT', 'SEQUENCE', 'SEQUENCE_VALUES', 'GRANT', 'TABLESPACE', 'QUERY', 'SYNONYM', 'FDW', 'KETTLE', 'DBLINK', 'DIRECTORY') && $self->{type} !~ /SHOW_/)
 		{
 			if ($self->{plsql_pgsql} && !$self->{no_function_metadata})
 			{
@@ -1777,7 +1777,7 @@ sub _init
 	{
 		$self->{plsql_pgsql} = 1;
 
-		if (grep(/^$self->{type}$/, 'TABLE', 'SEQUENCE', 'GRANT', 'TABLESPACE', 'VIEW', 'TRIGGER', 'QUERY', 'FUNCTION','PROCEDURE','PACKAGE','TYPE','SYNONYM', 'DIRECTORY', 'DBLINK','LOAD'))
+		if (grep(/^$self->{type}$/, 'TABLE', 'SEQUENCE', 'SEQUENCE_VALUES', 'GRANT', 'TABLESPACE', 'VIEW', 'TRIGGER', 'QUERY', 'FUNCTION','PROCEDURE','PACKAGE','TYPE','SYNONYM', 'DIRECTORY', 'DBLINK','LOAD'))
 		{
 			if ($self->{type} eq 'LOAD')
 			{
@@ -1848,7 +1848,7 @@ sub _init
 			$self->_synonyms();
 		} elsif ($self->{type} eq 'GRANT') {
 			$self->_grants();
-		} elsif ($self->{type} eq 'SEQUENCE') {
+		} elsif ($self->{type} eq 'SEQUENCE' || $self->{type} eq 'SEQUENCE_VALUES') {
 			$self->_sequences();
 		} elsif ($self->{type} eq 'TRIGGER') {
 			$self->_triggers();
@@ -1954,7 +1954,7 @@ sub _init
 		}
 		else
 		{
-			warn "type option must be (TABLE, VIEW, GRANT, SEQUENCE, TRIGGER, PACKAGE, FUNCTION, PROCEDURE, PARTITION, TYPE, INSERT, COPY, TABLESPACE, SHOW_REPORT, SHOW_VERSION, SHOW_SCHEMA, SHOW_TABLE, SHOW_COLUMN, SHOW_ENCODING, FDW, MVIEW, QUERY, KETTLE, DBLINK, SYNONYM, DIRECTORY, LOAD, TEST, TEST_COUNT, TEST_VIEW, TEST_DATA), unknown $self->{type}\n";
+			warn "type option must be (TABLE, VIEW, GRANT, SEQUENCE, SEQUENCE_VALUES, TRIGGER, PACKAGE, FUNCTION, PROCEDURE, PARTITION, TYPE, INSERT, COPY, TABLESPACE, SHOW_REPORT, SHOW_VERSION, SHOW_SCHEMA, SHOW_TABLE, SHOW_COLUMN, SHOW_ENCODING, FDW, MVIEW, QUERY, KETTLE, DBLINK, SYNONYM, DIRECTORY, LOAD, TEST, TEST_COUNT, TEST_VIEW, TEST_DATA), unknown $self->{type}\n";
 		}
 		$self->replace_tables(%{$self->{'replace_tables'}});
 		$self->replace_cols(%{$self->{'replace_cols'}});
@@ -5147,6 +5147,51 @@ sub export_sequence
 
 	return;
 }
+
+=head2 export_sequence_values
+
+Export Oracle sequence last values into PostgreSQL compatible SQL statements.
+
+=cut
+
+sub export_sequence_values
+{
+	my $self = shift;
+
+	my $sql_header = $self->_set_file_header();
+	my $sql_output = $self->set_search_path() . "\n";
+
+	$self->logit("Add sequences last values...\n", 1);
+
+	# Read DML from file if any
+	if ($self->{input_file}) {
+		$self->read_sequence_from_file();
+	}
+	my $i = 1;
+	my $num_total_sequence = scalar keys %{$self->{sequences}};
+	my $count_seq = 0;
+	my $PGBAR_REFRESH = set_refresh_count($num_total_sequence);
+	foreach my $seq (sort keys %{$self->{sequences}})
+	{
+		if (!$self->{quiet} && !$self->{debug} && ($count_seq % $PGBAR_REFRESH) == 0) {
+			print STDERR $self->progress_bar($i, $num_total_sequence, 25, '=', 'sequences', "generating $seq" ), "\r";
+		}
+		$count_seq++;
+		$sql_output .= "ALTER SEQUENCE " . $self->quote_object_name($seq) . " START WITH $self->{sequences}{$seq}->[4];\n";
+		$i++;
+	}
+	if (!$self->{quiet} && !$self->{debug}) {
+		print STDERR $self->progress_bar($i - 1, $num_total_sequence, 25, '=', 'sequences', 'end of output.'), "\n";
+	}
+	if (!$sql_output) {
+		$sql_output = "-- Nothing found of type $self->{type}\n" if (!$self->{no_header});
+	}
+
+	$self->dump($sql_header . $sql_output);
+
+	return;
+}
+
 
 =head2 export_dblink
 
@@ -8446,6 +8491,12 @@ sub _get_sql_statements
 	elsif ($self->{type} eq 'SEQUENCE')
 	{
 		$self->export_sequence();
+	}
+
+	# Process sequences values
+	elsif ($self->{type} eq 'SEQUENCE_VALUES')
+	{
+		$self->export_sequence_values();
 	}
 
 	# Process dblink

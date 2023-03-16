@@ -229,6 +229,7 @@ FORCE_PLSQL_ENCODING	0
 #       TEST_COUNT	perform only a row count between Oracle and PostgreSQL tables.
 #       TEST_VIEW	perform a count on both side of number of rows returned by views
 #       TEST_DATA	perform data validation check on rows at both sides.
+#	SEQUENCE_VALUES export DDL to set the last values of sequences
 
 TYPE		TABLE
 

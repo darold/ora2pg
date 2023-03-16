@@ -2795,7 +2795,7 @@ sub _get_sequences
 	}
 	# Exclude sequence used for IDENTITY columns
 	$str .= " AND SEQUENCE_NAME NOT LIKE 'ISEQ\$\$_%'";
-	$str .= $self->limit_to_objects('SEQUENCE', 'SEQUENCE_NAME');
+	$str .= $self->limit_to_objects($self->{type}, 'SEQUENCE_NAME');
 	#$str .= " ORDER BY SEQUENCE_NAME";
 
 

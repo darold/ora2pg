@@ -133,7 +133,7 @@
 .\" ========================================================================
 .\"
 .IX Title "ORA2PG 1"
-.TH ORA2PG 1 "2023-02-13" "perl v5.34.0" "User Contributed Perl Documentation"
+.TH ORA2PG 1 "2023-03-16" "perl v5.34.0" "User Contributed Perl Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -973,6 +973,7 @@ Here are the different values of the \s-1TYPE\s0 directive, default is \s-1TABLE
 \&        \- TEST_COUNT: perform a row count diff between Oracle and PostgreSQL table.
 \&        \- TEST_VIEW: perform a count on both side of number of rows returned by views.
 \&        \- TEST_DATA: perform data validation check on rows at both sides.
+\&        \- SEQUENCE_VALUES: export DDL to set the last values of sequences
 .Ve
 .Sp
 Only one type of export can be perform at the same time so the \s-1TYPE\s0 directive
