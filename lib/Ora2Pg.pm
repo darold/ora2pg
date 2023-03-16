@@ -9719,7 +9719,9 @@ sub _dump_fdw_table
 
 	$0 = "ora2pg - exporting table $self->{fdw_import_schema}.$fdwtb";
 
+	####
 	# Overwrite the query if REPLACE_QUERY is defined for this table
+	####
 	if ($self->{replace_query}{"\L$table\E"})
 	{
 		$s_out = $self->{replace_query}{"\L$table\E"};
@@ -10823,6 +10825,16 @@ sub _howto_get_data
 {
 	my ($self, $table, $name, $type, $src_type, $part_name, $is_subpart) = @_;
 
+	####
+	# Overwrite the query if REPLACE_QUERY is defined for this table
+	####
+	if ($self->{replace_query}{"\L$table\E"})
+	{
+		$str = $self->{replace_query}{"\L$table\E"};
+		$self->logit("DEGUG: Query sent to $self->{sgbd_name}: $str\n", 1);
+		return $str;
+	}
+
 	# Fix a problem when the table need to be prefixed by the schema
 	my $realtable = $table;
 	$realtable =~ s/\"//g;
@@ -11264,6 +11276,16 @@ Returns the SQL query to use to retrieve data
 sub _howto_get_fdw_data
 {
 	my ($self, $table, $name, $type, $src_type, $part_name, $is_subpart) = @_;
+
+	####
+	# Overwrite the query if REPLACE_QUERY is defined for this table
+	####
+	if ($self->{replace_query}{"\L$table\E"})
+	{
+		$str = $self->{replace_query}{"\L$table\E"};
+		$self->logit("DEGUG: Query sent to $self->{sgbd_name}: $str\n", 1);
+		return $str;
+	}
 
 	# Fix a problem when the table need to be prefixed by the schema
 	my $realtable = $table;
@@ -14601,6 +14623,8 @@ sub _convert_type
 	my $content = '';
 	my $type_name = '';
 
+	$plsql =~ s/AUTHID DEFINER//is;
+
 	# Replace SUBTYPE declaration into DOMAIN declaration
         if ($plsql =~ s/SUBTYPE\s+/CREATE DOMAIN /i)
 	{
@@ -14674,7 +14698,7 @@ sub _convert_type
 		if ($notfinal =~ /FINAL/is)
 		{
 			$content = "-- Inherited types are not supported in PostgreSQL, replacing with inherited table\n";
-			$content .= qq{CREATE TABLE " . $self->quote_object_name($type_name) . " (
+			$content .= "CREATE TABLE " . $self->quote_object_name($type_name) . qq{ (
 $declar
 );
 };
