@@ -11099,7 +11099,7 @@ sub _howto_get_data
 			}
 			push(@{$self->{spatial_srid}{$table}}, $spatial_srid);
 			
-			if ($type->[$k] =~ /bytea/i && $self->{enable_blob_export})
+			if ($type->[$k] =~ /bytea|text/i && $self->{enable_blob_export})
 			{
 				if ($self->{data_limit} >= 1000)
 				{
