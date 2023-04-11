@@ -567,8 +567,7 @@ $condition};
 		}
 		push(@{$link{$r->[3]}{$key_name}{local}}, $r->[2]);
 		push(@{$link{$r->[3]}{$key_name}{remote}{$r->[4]}}, $r->[5]);
-		# SELECT CONSTRAINT_NAME,R_CONSTRAINT_NAME,SEARCH_CONDITION,DELETE_RULE,$deferrable,DEFERRED,R_OWNER,TABLE_NAME,OWNER,UPDATE_RULE
-		$r->[3] =~ s/_/ /;
+		#SELECT ConsName, SchemaName, ColName, TableName, ReferencedTableName, ReferencedColumnName, UPDATE_RULE, DELETE_RULE, SCHEMA_NAME
 		$r->[7] =~ s/_/ /;
                 push(@{$data{$r->[3]}}, [ ($key_name, $key_name, '', $r->[7], 'DEFERRABLE', 'Y', '', $r->[3], '', $r->[6]) ]);
 		$i++;
@@ -1310,7 +1309,11 @@ sub _sql_type
 				# Type CHAR have default length set to 1
 				# Type VARCHAR(2) must have a specified length
 				$len = 1 if (!$len && ($type eq "CHAR" || $type eq "NCHAR"));
-                		return "$self->{data_type}{$type}($len)";
+				if ($self->{data_type}{$type} =~ /text/i) {
+					return "$self->{data_type}{$type}";
+				} else {
+					return "$self->{data_type}{$type}($len)";
+				}
 			}
 			elsif ($type eq 'BIT')
 			{
