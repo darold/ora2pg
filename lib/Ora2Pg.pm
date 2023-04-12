@@ -12113,8 +12113,8 @@ sub _count_source_rows
 		$tbname = $self->{schema} . '.' . $t if ($self->{schema} && $t !~ /\./);
 	}
 	my $sql = "SELECT COUNT(*) FROM $tbname";
-	my $sth = $dbh->prepare( $sql ) or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
-	$sth->execute or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
+	my $sth = $dbhsrc->prepare( $sql ) or $self->logit("FATAL: " . $dbhsrc->errstr . "\n", 0, 1);
+	$sth->execute or $self->logit("FATAL: " . $dbhsrc->errstr . "\n", 0, 1);
 	my $size = $sth->fetch();
 	$sth->finish();
 
