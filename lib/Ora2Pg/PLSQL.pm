@@ -332,20 +332,10 @@ $QUERY_TEST_SCORE = 0.1;
 );
 
 @MSSQL_FUNCTIONS = (
+	'ATN2',
 	'CHARINDEX',
 	'Concat with +',
-	'NCHAR',
-	'PATINDEX',
-	'QUOTENAME',
-	'REPLICATE',
-	'SOUNDEX',
-	'SPACE',
-	'STR',
-	'STUFF',
-	'UNICODE',
-	'ATN2',
-	'RAND',
-	'SQUARE',
+	'CONVERT',
 	'DATEADD',
 	'DATEDIFF',
 	'DATEFROMPARTS',
@@ -354,17 +344,29 @@ $QUERY_TEST_SCORE = 0.1;
 	'DAY',
 	'GETDATE',
 	'GETUTCDATE',
-	'ISDATE',
-	'MONTH',
-	'SYSDATETIME',
-	'YEAR',
-	'CONVERT',
 	'IIF',
+	'ISDATE',
 	'ISNULL',
 	'ISNUMERIC',
+	'MONTH',
+	'NCHAR',
 	'NULLIF',
+	'PATINDEX',
+	'PRINT',
+	'RAISERROR',
+	'QUOTENAME',
+	'RAND',
+	'REPLICATE',
 	'SESSIONPROPERTY',
-	'SYSTEM_USER'
+	'SOUNDEX',
+	'SPACE',
+	'SQUARE',
+	'STR',
+	'STUFF',
+	'SYSDATETIME',
+	'SYSTEM_USER',
+	'UNICODE',
+	'YEAR',
 );
 
 %UNCOVERED_MSSQL_SCORE = (
@@ -379,6 +381,7 @@ $QUERY_TEST_SCORE = 0.1;
 	'TODATETIMEOFFSET' => 3,
 	'CURSOR' => 0.2,
 	'GLOBAL_VARIABLE' => 1,
+	'TRY_CATCH' => 3,
 );
 
 %EXCEPTION_MAP = (
@@ -3482,6 +3485,8 @@ sub mssql_estimate_cost
 	$cost_details{'GLOBAL_VARIABLE'} += $n*$UNCOVERED_MSSQL_SCORE{'GLOBAL_VARIABLE'};
 	$n = () = $str =~ /\b\@\@(ROWCOUNT|VERSION|LANGUAGE)/igs;
 	$cost_details{'GLOBAL_VARIABLE'} -= $n*$UNCOVERED_MSSQL_SCORE{'GLOBAL_VARIABLE'};
+	$n = () = $str =~ /\bBEGIN\s+TRY\s/igs;
+	$cost_details{'TRY_CATCH'} += $n*$UNCOVERED_MSSQL_SCORE{'TRY_CATCH'};
 
 	foreach my $t (keys %UNCOVERED_MSSQL_SCORE) {
 		$cost += $cost_details{$t} if (exists $cost_details{$t});
@@ -3489,7 +3494,7 @@ sub mssql_estimate_cost
 
 	foreach my $f (@MSSQL_FUNCTIONS)
 	{
-		next if ($class->{use_mssqlfce} && $f =~ /^(DATEDIFF|STUFF|PATINDEX|ISNUMERIC|ISDATE|LEN)$/);
+		next if ($class->{use_mssqlfce} && $f =~ /^(DATEDIFF|STUFF|PATINDEX|ISNUMERIC|ISDATE|LEN|PRINT)$/);
 		if ($str =~ /\b$f\s*\(/igs)
 		{
 			$cost += 2;
