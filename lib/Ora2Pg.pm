@@ -5375,7 +5375,7 @@ sub export_trigger
 		if ($self->{file_per_function})
 		{
 			my $schm = '';
-			$schm = $trig->[8] . '-' if ($self->{export_schema} && !$self->{schema});
+			$schm = $trig->[8] . '-' if ($trig->[8] && $self->{export_schema} && !$self->{schema});
 			my $f = "$dirprefix$schm$trig->[0]_$self->{output}";
 			$f =~ s/\.(?:gz|bz2)$//i;
 			$self->dump("\\i$self->{psql_relative_path} $f\n");
@@ -5576,7 +5576,12 @@ sub export_trigger
 				if ($trig->[6] =~ /REFERENCING/) {
 					$sql_output .= "$trig->[6] ";
 				}
-				if ($statement) {
+				if ($self->{is_mssql}) {
+					my $reftb= "REFERENCING OLD TABLE AS Deleted NEW TABLE AS Inserted";
+					$reftb =~ s/OLD TABLE AS Deleted // if ($trig->[2] eq 'INSERT');
+					$reftb =~ s/NEW TABLE AS Inserted // if ($trig->[2] eq 'DELETE');
+					$sql_output .= "$reftb FOR EACH STATEMENT\n";
+				} elsif ($statement) {
 					$sql_output .= "FOR EACH STATEMENT\n";
 				} else {
 					$sql_output .= "FOR EACH ROW\n";
