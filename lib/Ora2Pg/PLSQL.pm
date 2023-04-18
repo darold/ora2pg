@@ -342,6 +342,12 @@ $QUERY_TEST_SCORE = 0.1;
 	'DATENAME',
 	'DATEPART',
 	'DAY',
+	'ERROR_LINE',
+	'ERROR_MESSAGE',
+	'ERROR_NUMBER',
+	'ERROR_PROCEDURE',
+	'ERROR_SEVERITY',
+	'ERROR_STATE',
 	'GETDATE',
 	'GETUTCDATE',
 	'IIF',
@@ -382,6 +388,8 @@ $QUERY_TEST_SCORE = 0.1;
 	'CURSOR' => 0.2,
 	'GLOBAL_VARIABLE' => 1,
 	'TRY_CATCH' => 3,
+	'SP_FCT' => 3,
+	'XML_FCT' => 3,
 );
 
 %EXCEPTION_MAP = (
@@ -3487,6 +3495,10 @@ sub mssql_estimate_cost
 	$cost_details{'GLOBAL_VARIABLE'} -= $n*$UNCOVERED_MSSQL_SCORE{'GLOBAL_VARIABLE'};
 	$n = () = $str =~ /\bBEGIN\s+TRY\s/igs;
 	$cost_details{'TRY_CATCH'} += $n*$UNCOVERED_MSSQL_SCORE{'TRY_CATCH'};
+	$n = () = $str =~ /EXEC.*(\.|\s)SP_[A-Z_]+\b/igs;
+	$cost_details{'SP_FCT'} += $n*$UNCOVERED_MSSQL_SCORE{'SP_FCT'};
+	$n = () = $str =~ /\.(value|nodes|query|exists|modify)\s*\(/igs;
+	$cost_details{'XML_FCT'} += $n*$UNCOVERED_MSSQL_SCORE{'XML_FCT'};
 
 	foreach my $t (keys %UNCOVERED_MSSQL_SCORE) {
 		$cost += $cost_details{$t} if (exists $cost_details{$t});
@@ -4216,6 +4228,9 @@ sub mssql_to_plpgsql
 
 	# Remove COUNT setting
 	$str =~ s/SET NOCOUNT (ON|OFF)[;\s]*//ig;
+
+	# Remove quoted definer order
+	$str =~ s/SET QUOTED_IDENTIFIER (ON|OFF)//igs;
 
 	# Replace BREAK by EXIT
 	$str =~ s/\bBREAK\s*[;]*$/EXIT;/ig;
