@@ -568,8 +568,7 @@ $condition};
 		}
 		push(@{$link{$r->[3]}{$key_name}{local}}, $r->[2]);
 		push(@{$link{$r->[3]}{$key_name}{remote}{$r->[4]}}, $r->[5]);
-		# SELECT CONSTRAINT_NAME,R_CONSTRAINT_NAME,SEARCH_CONDITION,DELETE_RULE,$deferrable,DEFERRED,R_OWNER,TABLE_NAME,OWNER,UPDATE_RULE
-		$r->[3] =~ s/_/ /;
+		#SELECT ConsName, SchemaName, ColName, TableName, ReferencedTableName, ReferencedColumnName, UPDATE_RULE, DELETE_RULE, SCHEMA_NAME
 		$r->[7] =~ s/_/ /;
                 push(@{$data{$r->[3]}}, [ ($key_name, $key_name, '', $r->[7], 'DEFERRABLE', 'Y', '', $r->[3], '', $r->[6]) ]);
 		$i++;
@@ -969,7 +968,8 @@ sub _lookup_function
 	foreach my $l (@lines)
 	{
 		if ($l !~ /^\s*DECLARE\s+.*CURSOR/ && $l =~ /^\s*DECLARE\s+(.*)/i) {
-			$fct_detail{declare} .= "\n$1;";
+			$fct_detail{declare} .= "\n$1";
+			$fct_detail{declare} .= ";" if ($1 !~ /;$/);
 		} else {
 			$fct_detail{code} .= "$l\n";
 		}
@@ -988,11 +988,12 @@ sub _lookup_function
 	$fct_detail{declare} =~ s/(RETURNS.*TABLE.*\))\s*\)\s*AS\b/) $1 AS/is;
 
         @{$fct_detail{param_types}} = ();
-
 	if ( ($fct_detail{declare} =~ s/(.*?)\b(FUNCTION|PROCEDURE|PROC)\s+([^\s]+)\s+((?:RETURNS|AS)\s+.*)//is)
 		|| ($fct_detail{declare} =~ s/(.*?)\b(FUNCTION|PROCEDURE|PROC)\s+([^\s\(]+)(.*?)\s+((?:RETURNS|AS)\s+.*)//is)
 		|| ($fct_detail{declare} =~ s/(.*?)\b(FUNCTION|PROCEDURE|PROC)\s+(.*?)\s+((?:RETURNS|AS)\s+.*)//is)
-		|| ($fct_detail{declare} =~ s/(.*?)\b(FUNCTION|PROCEDURE|PROC)\s+([^\s\(]+)\s*(\(.*\))//is) )
+		|| ($fct_detail{declare} =~ s/(.*?)\b(FUNCTION|PROCEDURE|PROC)\s+([^\s\(]+)\s*(\(.*\))//is)
+		|| ($fct_detail{declare} =~ s/(.*?)\b(FUNCTION|PROCEDURE|PROC)\s+([^\s\(]+)\s*DECLARE/DECLARE/is)
+	)
 	{
                 $fct_detail{before} = $1;
                 $fct_detail{type} = uc($2);
@@ -1124,7 +1125,6 @@ sub _lookup_function
 
 	# Remove %ROWTYPE from return type
 	$fct_detail{func_ret_type} =~ s/\%ROWTYPE//igs;
-
 	return %fct_detail;
 }
 
@@ -1311,7 +1311,11 @@ sub _sql_type
 				# Type CHAR have default length set to 1
 				# Type VARCHAR(2) must have a specified length
 				$len = 1 if (!$len && ($type eq "CHAR" || $type eq "NCHAR"));
-                		return "$self->{data_type}{$type}($len)";
+				if ($self->{data_type}{$type} =~ /text/i) {
+					return "$self->{data_type}{$type}";
+				} else {
+					return "$self->{data_type}{$type}($len)";
+				}
 			}
 			elsif ($type eq 'BIT')
 			{
