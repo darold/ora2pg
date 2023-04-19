@@ -539,6 +539,12 @@ ORACLE_USER is not set it will be asked interactively too.
 To connect to a local ORACLE instance with connections "as sysdba" you have to
 set ORACLE_USER to "/" and an empty password.
 
+To make a connection using an Oracle Secure External Password Store (SEPS), 
+first configure the Oracle Wallet and then set both the ORACLE_USER and 
+ORACLE_PWD directives to the special value of "__SEPS__" (without the quotes 
+but with the double underscore).
+
+
 =item USER_GRANTS
 
 Set this directive to 1 if you connect the Oracle database as simple user and
