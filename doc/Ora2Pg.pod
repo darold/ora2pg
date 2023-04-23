@@ -1737,6 +1737,11 @@ value of this directive by dividing it by 10 until his value is below 1000.
 You can control this value by setting BLOB_LIMIT. Exporting BLOB use lot of
 resources, setting it to a too high value can produce OOM.
 
+=item CLOB_AS_BLOB
+
+Apply same behavior on CLOB than BLOB with BLOB_LIMIT setting. This could
+be useful if you have large CLOB data.
+
 =item OUTPUT
 
 The Ora2Pg output filename can be changed with this directive. Default value is

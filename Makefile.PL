@@ -927,6 +927,10 @@ DATA_LIMIT	$DATA_LIMIT_DEFAULT
 # ressources, setting it to a too high value can produce OOM.
 #BLOB_LIMIT	500
 
+# Apply same behavior on CLOB than BLOB with BLOB_LIMIT settings. This could
+# be useful if you have large CLOB data.
+CLOB_AS_BLOB	0
+
 # By default all data that are not of type date or time are escaped. If you
 # experience any problem with that you can set it to 1 to disable it. This
 # directive is only used during a COPY export type.

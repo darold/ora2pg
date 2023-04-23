@@ -1431,6 +1431,7 @@ sub _init
 	$self->{ora_conn_count} = 0;
 	$self->{data_limit} ||= 10000;
 	$self->{blob_limit} ||= 0;
+	$self->{clob_as_blob} ||= 0;
 	$self->{disable_partition} ||= 0;
 	$self->{parallel_tables} ||= 0;
 	$self->{use_lob_locator} ||= 0;
@@ -11108,7 +11109,8 @@ sub _howto_get_data
 			}
 			push(@{$self->{spatial_srid}{$table}}, $spatial_srid);
 			
-			if ($type->[$k] =~ /bytea/i && $self->{enable_blob_export})
+			if ( ($type->[$k] =~ /bytea/i && $self->{enable_blob_export}) ||
+				($self->{clob_as_blob} && $src_type->[$k] =~ /CLOB/i) )
 			{
 				if ($self->{data_limit} >= 1000)
 				{

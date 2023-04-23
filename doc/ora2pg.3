@@ -133,7 +133,7 @@
 .\" ========================================================================
 .\"
 .IX Title "ORA2PG 1"
-.TH ORA2PG 1 "2023-03-16" "perl v5.34.0" "User Contributed Perl Documentation"
+.TH ORA2PG 1 "2023-04-23" "perl v5.34.0" "User Contributed Perl Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -706,6 +706,11 @@ Term::ReadKey Perl module, Ora2Pg will ask for the password interactively. If
 .Sp
 To connect to a local \s-1ORACLE\s0 instance with connections \*(L"as sysdba\*(R" you have to
 set \s-1ORACLE_USER\s0 to \*(L"/\*(R" and an empty password.
+.Sp
+To make a connection using an Oracle Secure External Password Store (\s-1SEPS\s0), 
+first configure the Oracle Wallet and then set both the \s-1ORACLE_USER\s0 and 
+\&\s-1ORACLE_PWD\s0 directives to the special value of \*(L"_\|_SEPS_\|_\*(R" (without the quotes 
+but with the double underscore).
 .IP "\s-1USER_GRANTS\s0" 4
 .IX Item "USER_GRANTS"
 Set this directive to 1 if you connect the Oracle database as simple user and
@@ -1890,6 +1895,10 @@ When Ora2Pg detect a table with some \s-1BLOB\s0 it will automatically reduce th
 value of this directive by dividing it by 10 until his value is below 1000.
 You can control this value by setting \s-1BLOB_LIMIT.\s0 Exporting \s-1BLOB\s0 use lot of
 resources, setting it to a too high value can produce \s-1OOM.\s0
+.IP "\s-1CLOB_AS_BLOB\s0" 4
+.IX Item "CLOB_AS_BLOB"
+Apply same behavior on \s-1CLOB\s0 than \s-1BLOB\s0 with \s-1BLOB_LIMIT\s0 setting. This could
+be useful if you have large \s-1CLOB\s0 data.
 .IP "\s-1OUTPUT\s0" 4
 .IX Item "OUTPUT"
 The Ora2Pg output filename can be changed with this directive. Default value is
