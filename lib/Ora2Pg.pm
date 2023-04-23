@@ -12219,7 +12219,12 @@ sub _table_info
 		foreach my $s (@ret)
 		{
 			my ($tb, $cnt) = split(':', $s);
-			$tables_infos{$tb}{num_rows} = $cnt || 0;
+			chomp $cnt;
+			$tb =~ s/"//g;
+			my ($ora_owner, $ora_table) = split('\.', $tb);
+			if ($tables_infos{$ora_table}{owner} eq $ora_owner) {
+				$tables_infos{$ora_table}{num_rows} = $cnt || 0;
+			}
 		}
 
 		my $t2 = Benchmark->new;
