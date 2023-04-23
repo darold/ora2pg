@@ -1866,7 +1866,7 @@ sub replace_oracle_function
 		if ($class->{to_number_conversion} =~ /(numeric|bigint|integer|int)/i)
 		{
 			my $cast = lc($1);
-			if ($class->{type} ne 'TABLE') {
+			if ($class->{type} ne 'TABLE' && $class->{type} ne 'COPY') {
 				$str =~ s/\bTO_NUMBER\s*\(\s*([^,\)]+)\s*\)\s?/($1)\:\:$cast /is;
 			} else {
 				$str =~ s/\bTO_NUMBER\s*\(\s*([^,\)]+)\s*\)\s?/(nullif($1, '')\:\:$cast) /is;
