@@ -12118,8 +12118,8 @@ sub _count_source_rows
 		$tbname = "[$t]";
 		$tbname =~ s/\./\].\[/;
 	} else {
-		$tbname = $t;
-		$tbname = $self->{schema} . '.' . $t if ($self->{schema} && $t !~ /\./);
+		$tbname = qq{"$t"};
+		$tbname = qq{"$self->{schema}"} . '.' . qq{"$t"} if ($self->{schema} && $t !~ /\./);
 	}
 	my $sql = "SELECT COUNT(*) FROM $tbname";
 	my $sth = $dbhsrc->prepare( $sql ) or $self->logit("FATAL: " . $dbhsrc->errstr . "\n", 0, 1);
