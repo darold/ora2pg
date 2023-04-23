@@ -134,7 +134,9 @@ sub _db_connection
 	$self->logit("NLS_NCHAR = $ENV{NLS_NCHAR}\n", 1);
 	$self->logit("Trying to connect to database: $self->{oracle_dsn}\n", 1) if (!$self->{quiet});
 
-	my $dbh = DBI->connect($self->{oracle_dsn}, $self->{oracle_user}, $self->{oracle_pwd},
+	my $dbh = DBI->connect($self->{oracle_dsn}, 
+		( $self->{oracle_user} eq "__SEPS__" ? "" : $self->{oracle_user} ),
+		( $self->{oracle_pwd}  eq "__SEPS__" ? "" : $self->{oracle_pwd}  ),
 		{
 			ora_envhp => 0,
 			LongReadLen=>$self->{longreadlen},
