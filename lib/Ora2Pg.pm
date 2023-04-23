@@ -10326,7 +10326,11 @@ sub _drop_indexes
 				map { s/\b$c\b/$self->{replaced_cols}{"\L$tbsaved\E"}{"\L$c\E"}/i } @{$indexes{$idx}};
 			}
 		}
-		map { if ($_ !~ /\(.*\)/) { $_ = $self->quote_object_name($_) } } @{$indexes{$idx}};
+		map { if ($_ !~ /\(.*\)/) {
+				$_ =~ s/(\s+.*)//; # DESC or ASC
+				$_ = $self->quote_object_name($_);
+				$_ .= $1;
+			} } @{$indexes{$idx}};
 
                 my $columns = '';
                 foreach my $s (@{$indexes{$idx}})
