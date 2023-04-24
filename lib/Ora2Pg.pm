@@ -17013,7 +17013,7 @@ sub show_test_errors
 	if ($#errors >= 0)
 	{
 		foreach my $msg (@errors) {
-			print "$msg\n";
+			print "FINDING: $msg\n";
 		}
 	}
 	else
