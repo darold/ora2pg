@@ -20468,7 +20468,9 @@ sub _create_foreign_server
 		if (!$self->{fdw_server}) {
 			$self->logit("FATAL: a foreign server name must be set using FDW_SERVER\n", 0, 1);
 		}
-		if (!$self->{is_mysql} && $self->{oracle_dsn} =~ /(\/\/.*\/.*)/)
+		if (!$self->{is_mysql} && !$self->{is_mssql} &&
+			($self->{oracle_dsn} =~ /(\/\/.*\/.*)/ || $self->{oracle_dsn} =~ /dbi:Oracle:([^=:;]+)$/i)
+		)
 		{
 			$self->{oracle_fwd_dsn} = "dbserver '$1'";
 		}
