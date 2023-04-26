@@ -17403,12 +17403,12 @@ GROUP BY tn.nspname, t.relname
 	$exclude_unique = '';
 	$exclude_unique = 'AND i.indisunique' if ($self->{is_mssql});
 	$sql = qq{SELECT tn.nspname||'.'||t.relname, count(*)
-FROM pg_index i
-JOIN pg_class c on c.oid = i.indexrelid
-JOIN pg_namespace n on n.oid = c.relnamespace
-JOIN pg_class t on t.oid = i.indrelid
-JOIN pg_namespace tn on tn.oid = t.relnamespace
+FROM pg_constraint c
+JOIN pg_class t on t.oid = c.conrelid
+JOIN pg_namespace tn on tn.oid = c.connamespace
 WHERE 1=1 $exclude_unique $schema_cond
+AND c.contype = 'u'
+AND c.conindid > 1
 GROUP BY tn.nspname, t.relname
 };
 	%pgret = ();
