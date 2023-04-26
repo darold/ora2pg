@@ -17013,7 +17013,7 @@ sub show_test_errors
 	if ($#errors >= 0)
 	{
 		foreach my $msg (@errors) {
-			print "FINDING: $msg\n";
+			print "DIFF: $msg\n";
 		}
 	}
 	else
