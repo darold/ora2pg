@@ -1167,8 +1167,8 @@ sub plsql_to_plpgsql
 	$str =~ s/TIMESTAMP\s*('[^']+')/$1/igs;
 	
 	# Replace call to SQL%ROWCOUNT
-	$str =~ s/([^\s]+)\s*:=\s*SQL\%ROWCOUNT/GET DIAGNOSTICS $1 = ROW_COUNT/igs;
-	if ($str =~ s/(IF\s+)SQL\%ROWCOUNT/GET DIAGNOSTICS ora2pg_rowcount = ROW_COUNT;\n$1ora2pg_rowcount/igs) {
+	$str =~ s/([^\s:]+)\s*:=\s*SQL\%ROWCOUNT/GET DIAGNOSTICS $1 = ROW_COUNT/igs;
+	if ($str =~ s/(IF\s+)[^\%\s;]+\%ROWCOUNT/GET DIAGNOSTICS ora2pg_rowcount = ROW_COUNT;\n$1ora2pg_rowcount/igs) {
 		$class->{get_diagnostics} = 'ora2pg_rowcount int;';
 	} elsif ($str =~ s/;(\s+)([^;]+)SQL\%ROWCOUNT/;$1GET DIAGNOSTICS ora2pg_rowcount = ROW_COUNT;\n$1$2 ora2pg_rowcount/igs) {
 		$class->{get_diagnostics} = 'ora2pg_rowcount int;';
