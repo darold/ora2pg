@@ -176,6 +176,7 @@ $QUERY_TEST_SCORE = 0.1;
 	'FND_ORG' => 3,
 	'FND_STANDARD' => 3,
 	'FND_UTILITIES' => 3,
+	'ADD CONSTRAINT' => 3, ## need stability in constraint name
 );
 
 @ORA_FUNCTIONS = qw(
@@ -2773,6 +2774,8 @@ sub estimate_cost
 	$cost_details{'TOOBJECT'} += $n;
 	$n = () = $str =~ m/TRANSFORM\(/igs;
 	$cost_details{'TRANSFORM'} += $n;
+	$n = () = $str =~ m/ADD CONSTRAINT/igs;
+	$cost_details{'ADD CONSTRAINT'} += $n;
 
 	foreach my $f (@ORA_FUNCTIONS)
 	{
