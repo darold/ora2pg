@@ -942,7 +942,12 @@ sub plsql_to_plpgsql
 	# Raise information to the client
 	if (!$class->{use_orafce}) {
 		$str =~ s/DBMS_OUTPUT\.(put_line|put|new_line)\s*\((.*?)\)\s*;/&raise_output($class, $2) . ';'/isge;
+	} else {
+		$str =~ s/(DBMS_OUTPUT\.)/PERFORM $1/igs;
 	}
+
+	# DBMS_LOCK.SLEEP can be replaced by pg_sleep
+	$str =~ s/DBMS_LOCK\.SLEEP/pg_sleep/igs;
 
 	# Simply remove this as not supported
 	$str =~ s/\bDEFAULT\s+NULL\b//igs;
@@ -1759,6 +1764,9 @@ sub replace_oracle_function
 	$str =~ s/DBMS_LOB.SUBSTR\s*\($field,$field,$field\)/substr($1, $3, $2)/igs;
 	# TO_CLOB(), we just remove it
 	$str =~ s/TO_CLOB\s*\(/\(/igs;
+
+	# DBMS_LOCK.SLEEP can be replaced by pg_sleep
+	$str =~ s/DBMS_LOCK\.SLEEP/pg_sleep/igs;
 
 	# Replace call to SYS_GUID() function
 	$str =~ s/\bSYS_GUID\s*\(\s*\)/$class->{uuid_function}()/igs;
