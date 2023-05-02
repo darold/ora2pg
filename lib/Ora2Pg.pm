@@ -20500,6 +20500,10 @@ sub _create_foreign_server
 	my $usrlbl = 'user';
 	$usrlbl = 'username' if ($self->{is_mysql});
 	my $sql = "CREATE USER MAPPING IF NOT EXISTS FOR $self->{pg_user} SERVER $self->{fdw_server} OPTIONS ($usrlbl '$self->{oracle_user}', password '$self->{oracle_pwd}');";
+	if ($self->{oracle_user} eq "__SEPS__" && $self->{oracle_pwd} eq "__SEPS__")  # Replace with empty credentials for an Oracle Wallet connection
+	{
+		$sql =~ s/__SEPS__//g;
+	}
 	$self->{dbhdest}->do($sql) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
 }
 
