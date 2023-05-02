@@ -16461,14 +16461,14 @@ sub _show_infos
 						my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($self, $procedures->{$proc}{text}, 'PROCEDURE');
 						$report_info{'Objects'}{$typ}{'cost_value'} += $cost;
 						$report_info{'Objects'}{$typ}{'detail'} .= "\L$proc: $cost\E\n";
-						$report_info{full_function_details}{"\L$proc\E"}{count} = $cost;
+						$report_info{full_procedure_details}{"\L$proc\E"}{count} = $cost;
 						foreach my $d (sort { $cost_detail{$b} <=> $cost_detail{$a} } keys %cost_detail)
 						{
 							next if (!$cost_detail{$d});
-							$report_info{full_function_details}{"\L$proc\E"}{info} .= "\t$d => $cost_detail{$d}";
-							$report_info{full_function_details}{"\L$proc\E"}{info} .= " (cost: ${$uncovered_score}{$d})" if (${$uncovered_score}{$d});
-							$report_info{full_function_details}{"\L$proc\E"}{info} .= "\n";
-							push(@{$report_info{full_function_details}{"\L$proc\E"}{keywords}}, $d) if (($d ne 'SIZE') && ($d ne 'TEST')); 
+							$report_info{full_procedure_details}{"\L$proc\E"}{info} .= "\t$d => $cost_detail{$d}";
+							$report_info{full_procedure_details}{"\L$proc\E"}{info} .= " (cost: ${$uncovered_score}{$d})" if (${$uncovered_score}{$d});
+							$report_info{full_procedure_details}{"\L$proc\E"}{info} .= "\n";
+							push(@{$report_info{full_procedure_details}{"\L$proc\E"}{keywords}}, $d) if (($d ne 'SIZE') && ($d ne 'TEST')); 
 						}
 					}
 				}
@@ -16503,14 +16503,14 @@ sub _show_infos
 								my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($self, $infos{$f}{code}, $infos{$f}{type});
 								$report_info{'Objects'}{$typ}{'cost_value'} += $cost;
 								$report_info{'Objects'}{$typ}{'detail'} .= "\L$f: $cost\E\n";
-								$report_info{full_function_details}{"\L$f\E"}{count} = $cost;
+								$report_info{full_package_details}{"\L$f\E"}{count} = $cost;
 								foreach my $d (sort { $cost_detail{$b} <=> $cost_detail{$a} } keys %cost_detail)
 								{
 									next if (!$cost_detail{$d});
-									$report_info{full_function_details}{"\L$f\E"}{info} .= "\t$d => $cost_detail{$d}";
-									$report_info{full_function_details}{"\L$f\E"}{info} .= " (cost: ${$uncovered_score}{$d})" if (${$uncovered_score}{$d});
-									$report_info{full_function_details}{"\L$f\E"}{info} .= "\n";
-									push(@{$report_info{full_function_details}{"\L$f\E"}{keywords}}, $d) if (($d ne 'SIZE') && ($d ne 'TEST')); 
+									$report_info{full_package_details}{"\L$f\E"}{info} .= "\t$d => $cost_detail{$d}";
+									$report_info{full_package_details}{"\L$f\E"}{info} .= " (cost: ${$uncovered_score}{$d})" if (${$uncovered_score}{$d});
+									$report_info{full_package_details}{"\L$f\E"}{info} .= "\n";
+									push(@{$report_info{full_package_details}{"\L$f\E"}{keywords}}, $d) if (($d ne 'SIZE') && ($d ne 'TEST')); 
 								}
 							}
 							$number_fct++;
@@ -19261,6 +19261,16 @@ sub difficulty_assessment
 			$difficulty = 5;
 			last;
 		}
+		foreach my $fct (keys %{ $report_info{'full_procedure_details'} } ) {
+			next if (!exists $report_info{'full_procedure_details'}{$fct}{keywords});
+			$difficulty = 5;
+			last;
+		}
+		foreach my $fct (keys %{ $report_info{'full_package_details'} } ) {
+			next if (!exists $report_info{'full_package_details'}{$fct}{keywords});
+			$difficulty = 5;
+			last;
+		}
 	}
 
 	my $tmp = $report_info{'total_cost_value'}/84;
@@ -19373,12 +19383,14 @@ Technical levels:
 			$self->logrep("Total\t$report_info{'total_object_number'}\t$report_info{'total_object_invalid'}\n");
 		}
 		$self->logrep("-------------------------------------------------------------------------------\n");
-		if ($self->{estimate_cost}) {
+		if ($self->{estimate_cost})
+		{
 			$self->logrep("Migration level : $difficulty\n");
 			$self->logrep("-------------------------------------------------------------------------------\n");
 			$self->logrep($lbl_mig_type);
 			$self->logrep("-------------------------------------------------------------------------------\n");
-			if (scalar keys %{ $report_info{'full_function_details'} }) {
+			if (scalar keys %{ $report_info{'full_function_details'} })
+			{
 				$self->logrep("\nDetails of cost assessment per function\n");
 				foreach my $fct (sort { $report_info{'full_function_details'}{$b}{count} <=> $report_info{'full_function_details'}{$a}{count} } keys %{ $report_info{'full_function_details'} } ) {
 					$self->logrep("Function $fct total estimated cost: $report_info{'full_function_details'}{$fct}{count}\n");
@@ -19386,7 +19398,26 @@ Technical levels:
 				}
 				$self->logrep("-------------------------------------------------------------------------------\n");
 			}
-			if (scalar keys %{ $report_info{'full_trigger_details'} }) {
+			if (scalar keys %{ $report_info{'full_procedure_details'} })
+			{
+				$self->logrep("\nDetails of cost assessment per procedure\n");
+				foreach my $fct (sort { $report_info{'full_procedure_details'}{$b}{count} <=> $report_info{'full_procedure_details'}{$a}{count} } keys %{ $report_info{'full_procedure_details'} } ) {
+					$self->logrep("Function $fct total estimated cost: $report_info{'full_procedure_details'}{$fct}{count}\n");
+					$self->logrep($report_info{'full_procedure_details'}{$fct}{info});
+				}
+				$self->logrep("-------------------------------------------------------------------------------\n");
+			}
+			if (scalar keys %{ $report_info{'full_package_details'} })
+			{
+				$self->logrep("\nDetails of cost assessment per package function\n");
+				foreach my $fct (sort { $report_info{'full_package_details'}{$b}{count} <=> $report_info{'full_package_details'}{$a}{count} } keys %{ $report_info{'full_package_details'} } ) {
+					$self->logrep("Function $fct total estimated cost: $report_info{'full_package_details'}{$fct}{count}\n");
+					$self->logrep($report_info{'full_package_details'}{$fct}{info});
+				}
+				$self->logrep("-------------------------------------------------------------------------------\n");
+			}
+			if (scalar keys %{ $report_info{'full_trigger_details'} })
+			{
 				$self->logrep("\nDetails of cost assessment per trigger\n");
 				foreach my $fct (sort { $report_info{'full_trigger_details'}{$b}{count} <=> $report_info{'full_trigger_details'}{$a}{count} } keys %{ $report_info{'full_trigger_details'} } ) {
 					$self->logrep("Trigger $fct total estimated cost: $report_info{'full_trigger_details'}{$fct}{count}\n");
@@ -19394,7 +19425,8 @@ Technical levels:
 				}
 				$self->logrep("-------------------------------------------------------------------------------\n");
 			}
-			if (scalar keys %{ $report_info{'full_view_details'} }) {
+			if (scalar keys %{ $report_info{'full_view_details'} })
+			{
 				$self->logrep("\nDetails of cost assessment per view\n");
 				foreach my $fct (sort { $report_info{'full_view_details'}{$b}{count} <=> $report_info{'full_view_details'}{$a}{count} } keys %{ $report_info{'full_view_details'} } ) {
 					$self->logrep("View $fct total estimated cost: $report_info{'full_view_details'}{$fct}{count}\n");
@@ -19629,7 +19661,8 @@ h2 {
 </ul>
 };
 			$self->logrep($lbl_mig_type);
-			if (scalar keys %{ $report_info{'full_function_details'} }) {
+			if (scalar keys %{ $report_info{'full_function_details'} })
+			{
 				$self->logrep("<h2>Details of cost assessment per function</h2>\n");
 				$self->logrep("<details><summary>Show</summary><ul>\n");
 				foreach my $fct (sort { $report_info{'full_function_details'}{$b}{count} <=> $report_info{'full_function_details'}{$a}{count} } keys %{ $report_info{'full_function_details'} } ) {
@@ -19643,7 +19676,38 @@ h2 {
 				}
 				$self->logrep("</ul></details>\n");
 			}
-			if (scalar keys %{ $report_info{'full_trigger_details'} }) {
+			if (scalar keys %{ $report_info{'full_procedure_details'} })
+			{
+				$self->logrep("<h2>Details of cost assessment per procedure</h2>\n");
+				$self->logrep("<details><summary>Show</summary><ul>\n");
+				foreach my $fct (sort { $report_info{'full_procedure_details'}{$b}{count} <=> $report_info{'full_procedure_details'}{$a}{count} } keys %{ $report_info{'full_procedure_details'} } ) {
+					
+					$self->logrep("<li>Procedure $fct total estimated cost: $report_info{'full_procedure_details'}{$fct}{count}</li>\n");
+					$self->logrep("<ul>\n");
+					$report_info{'full_procedure_details'}{$fct}{info} =~ s/\t/<li>/gs;
+					$report_info{'full_procedure_details'}{$fct}{info} =~ s/\n/<\/li>\n/gs;
+					$self->logrep($report_info{'full_procedure_details'}{$fct}{info});
+					$self->logrep("</ul>\n");
+				}
+				$self->logrep("</ul></details>\n");
+			}
+			if (scalar keys %{ $report_info{'full_package_details'} })
+			{
+				$self->logrep("<h2>Details of cost assessment per package function</h2>\n");
+				$self->logrep("<details><summary>Show</summary><ul>\n");
+				foreach my $fct (sort { $report_info{'full_package_details'}{$b}{count} <=> $report_info{'full_package_details'}{$a}{count} } keys %{ $report_info{'full_package_details'} } ) {
+					
+					$self->logrep("<li>Function $fct total estimated cost: $report_info{'full_package_details'}{$fct}{count}</li>\n");
+					$self->logrep("<ul>\n");
+					$report_info{'full_package_details'}{$fct}{info} =~ s/\t/<li>/gs;
+					$report_info{'full_package_details'}{$fct}{info} =~ s/\n/<\/li>\n/gs;
+					$self->logrep($report_info{'full_package_details'}{$fct}{info});
+					$self->logrep("</ul>\n");
+				}
+				$self->logrep("</ul></details>\n");
+			}
+			if (scalar keys %{ $report_info{'full_trigger_details'} })
+			{
 				$self->logrep("<h2>Details of cost assessment per trigger</h2>\n");
 				$self->logrep("<details><summary>Show</summary><ul>\n");
 				foreach my $fct (sort { $report_info{'full_trigger_details'}{$b}{count} <=> $report_info{'full_trigger_details'}{$a}{count} } keys %{ $report_info{'full_trigger_details'} } ) {
