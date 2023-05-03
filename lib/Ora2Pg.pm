@@ -18322,7 +18322,7 @@ CREATE OR REPLACE FUNCTION get_sequence_last_values() RETURNS TABLE(seqname text
 DECLARE
     seq_name varchar(128);
 BEGIN
-    FOR seq_name in SELECT quote_ident(relnamespace::regnamespace::text)||'.'||quote_ident(relname::text) FROM pg_class c WHERE (relkind = 'S') AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_depend d WHERE d.refclassid = 'pg_catalog.pg_extension'::pg_catalog.regclass AND d.objid = c.oid AND d.deptype = 'e')
+    FOR seq_name in SELECT relnamespace::regnamespace::text || '.' || quote_ident(relname::text) FROM pg_class c WHERE (relkind = 'S') AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_depend d WHERE d.refclassid = 'pg_catalog.pg_extension'::pg_catalog.regclass AND d.objid = c.oid AND d.deptype = 'e')
     LOOP
         RETURN QUERY EXECUTE  'SELECT ' || quote_literal(seq_name) || ',last_value FROM ' || seq_name;
     END LOOP;
