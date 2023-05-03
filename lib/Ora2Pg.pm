@@ -20765,12 +20765,18 @@ sub compare_data
 		$self->logit("DEBUG: cloning connection to PostgreSQL.\n", 1);
 		$dbhora = $self->{dbhdest}->clone();
 		$dbhpg = $self->{dbhdest}->clone();
+		# Force execution of initial command on both side
+		$self->_ora_initial_command($dbhora);
+		$self->_pg_initial_command($dbhpg);
 	}
 	else
 	{
 		$self->logit("DEBUG: cloning connection to Oracle.\n", 1);
 		$dbhora = $self->{dbh}->clone();
 		$dbhpg = $self->{dbhdest}->clone();
+		# Force execution of initial command on both side
+		$self->_ora_initial_command($dbhora);
+		$self->_pg_initial_command($dbhpg);
 		if (!$self->{is_mysql})
 		{
 			$dbhora->{'LongReadLen'} = $self->{longreadlen};
