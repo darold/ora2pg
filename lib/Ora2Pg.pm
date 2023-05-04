@@ -1226,6 +1226,11 @@ sub _init
 		}
 	}
 
+	# Do not allow global allow/exclude with SHOW_* reports
+	if ($#{$self->{limited}{ALL}} >= 0 || $#{$self->{excluded}{ALL}} >= 0) {
+		$self->logit("FATAL: you can not use global filters in ALLOW/EXCLUDE directive with SHOW_* reports\n", 0, 1);
+	}
+
 	# Global regex will be applied to the export type only
 	foreach my $i (@{$self->{limited}{ALL}})
 	{
@@ -4452,7 +4457,7 @@ sub _replace_declare_var
 
 	if ($$code =~ s/\b(DECLARE\s+(?:.*?)\s+BEGIN)/\%DECLARE\%/is) {
 		my $declare = $1;
-		# Collect user defined function
+		# Collect user defined exception
 		while ($declare =~ s/\b([^\s]+)\s+EXCEPTION\s*;//i) {
 			my $e = lc($1);
 			if (!exists $Ora2Pg::PLSQL::EXCEPTION_MAP{"\U$e\L"} && !grep(/^$e$/, values %Ora2Pg::PLSQL::EXCEPTION_MAP) && !exists $self->{custom_exception}{$e}) {
@@ -18835,9 +18840,6 @@ sub progress_bar
 sub limit_to_objects
 {
 	my ($self, $obj_type, $column) = @_;
-
-	# With reports we don't have object name limitation
-	return if ($self->{type} eq 'SHOW_REPORT');
 
 	my $str = '';
 	$obj_type ||= $self->{type};
