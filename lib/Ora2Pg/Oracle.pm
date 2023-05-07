@@ -511,7 +511,7 @@ sub _column_comments
 
 sub _column_info
 {
-	my ($self, $table, $owner, $objtype, $recurs) = @_;
+	my ($self, $table, $owner, $objtype, $recurs, @expanded_views) = @_;
 
 	$objtype ||= 'TABLE';
 
@@ -548,7 +548,7 @@ ORDER BY A.COLUMN_ID
 			{
 				$self->logit("HINT: Please activate USER_GRANTS or connect using a user with DBA privilege.\n");
 				$self->{prefix} = 'ALL';
-				return $self->_column_info($table, $owner, $objtype, 1);
+				return $self->_column_info($table, $owner, $objtype, 1, @expanded_views);
 			}
 			$self->logit("FATAL: _column_info() " . $self->{dbh}->errstr . "\n", 0, 1);
 		}
@@ -571,7 +571,7 @@ ORDER BY A.COLUMN_ID
 			{
 				$self->logit("HINT: Please activate USER_GRANTS or connect using a user with DBA privilege.\n");
 				$self->{prefix} = 'ALL';
-				return $self->_column_info($table, $owner, $objtype, 1);
+				return $self->_column_info($table, $owner, $objtype, 1, @expanded_views);
 			}
 			$self->logit("FATAL: _column_info() " . $self->{dbh}->errstr . "\n", 0, 1);
 		}
@@ -613,10 +613,8 @@ ORDER BY A.COLUMN_ID
 		# Skip object if it is not in the object list and if this is not
 		# a view or materialized view that must be exported as table.
 		next if (!exists $self->{all_objects}{$tmptable}
-				|| ($self->{all_objects}{$tmptable} eq 'VIEW'
-					&& !grep(/^$row->[8]$/i, @{$self->{view_as_table}}))
-				|| ($self->{all_objects}{$tmptable} eq 'MATERIALIZED VIEW'
-					&& !grep(/^$row->[8]$/i, @{$self->{mview_as_table}}))
+				|| ($self->{all_objects}{$tmptable} =~ /^(VIEW|MATERIALIZED VIEW)$/)
+					&& !grep(/^$row->[8]$/i, @expanded_views)
 			);
 
 		$row->[2] = $row->[7] if $row->[1] =~ /char/i;

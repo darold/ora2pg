@@ -2573,12 +2573,20 @@ sub _tables
 	if ($#{$self->{view_as_table}} >= 0)
 	{
 		my %view_infos = $self->_get_views();
+		my @exanped_views = ();
+		foreach my $view (sort keys %view_infos)
+		{
+			foreach my $pattern (@{$self->{view_as_table}}) {
+				push(@exanped_views, $view) if ($view =~ /^$pattern$/i);
+			}
+		}
+
 		# Retrieve comment of each columns
 		my %columns_comments = $self->_column_comments();
 		foreach my $view (keys %columns_comments)
 		{
 			next if (!exists $view_infos{$view});
-			next if (!grep($view =~ /^$_$/i, @{$self->{view_as_table}}));
+			next if (!grep(/^$view$/i, @exanped_views));
 			foreach my $c (keys %{$columns_comments{$view}}) {
 				$self->{tables}{$view}{column_comments}{$c} = $columns_comments{$view}{$c};
 			}
@@ -2588,7 +2596,7 @@ sub _tables
 		{
 			# Set the table information for each class found
 			# Jump to desired extraction
-			next if (!grep($view =~ /^$_$/i, @{$self->{view_as_table}}));
+			next if (!grep(/^$view$/i, @exanped_views));
 			$self->logit("Scanning view $view to export as table...\n", 0);
 			$self->{tables}{$view}{type} = 'view';
 			$self->{tables}{$view}{text} = $view_infos{$view}{text};
@@ -2622,7 +2630,7 @@ sub _tables
 			}
 			$self->{tables}{$view}{field_name} = $sth->{NAME};
 			$self->{tables}{$view}{field_type} = $sth->{TYPE};
-			my %columns_infos = $self->_column_info($view, $self->{schema}, 'VIEW');
+			my %columns_infos = $self->_column_info($view, $self->{schema}, 'VIEW', @exanped_views);
 			foreach my $tb (keys %columns_infos)
 			{
 				next if ($tb ne $view);
@@ -2639,11 +2647,19 @@ sub _tables
 	if ($#{$self->{mview_as_table}} >= 0)
 	{
 		my %view_infos = $self->_get_materialized_views();
+		my @exanped_views = ();
+		foreach my $view (sort keys %view_infos)
+		{
+			foreach my $pattern (@{$self->{mview_as_table}}) {
+				push(@exanped_views, $view) if ($view =~ /^$pattern$/i);
+			}
+		}
+
 		foreach my $view (sort keys %view_infos)
 		{
 			# Set the table information for each class found
 			# Jump to desired extraction
-			next if (!grep($view =~ /^$_$/i, @{$self->{mview_as_table}}));
+			next if (!grep(/^$view$/i, @exanped_views));
 			$self->logit("Scanning materialized view $view to export as table...\n", 0);
 			if (exists $self->{tables}{$view})
 			{
@@ -2679,7 +2695,7 @@ sub _tables
 			}
 			$self->{tables}{$view}{field_name} = $sth->{NAME};
 			$self->{tables}{$view}{field_type} = $sth->{TYPE};
-			my %columns_infos = $self->_column_info($view, $self->{schema}, 'MVIEW');
+			my %columns_infos = $self->_column_info($view, $self->{schema}, 'MVIEW', @exanped_views);
 			foreach my $tb (keys %columns_infos)
 			{
 				next if ($tb ne $view);
@@ -11564,16 +11580,18 @@ elements for each column the specified table
 
 sub _column_info
 {
-	my ($self, $table, $owner, $objtype, $recurs) = @_;
+	my ($self, $table, $owner, $objtype, @expanded_views) = @_;
 
-	$self->logit("Collecting column information for table $table...\n", 1);
+	$objtype ||= 'TABLE';
+
+	$self->logit("Collecting column information for \L$objtype\E $table...\n", 1);
 
 	if ($self->{is_mysql}) {
-		return Ora2Pg::MySQL::_column_info($self,$table,$owner,'TABLE');
+		return Ora2Pg::MySQL::_column_info($self,$table,$owner,$objtype,0,@expanded_views);
 	} elsif ($self->{is_mssql}) {
-		return Ora2Pg::MSSQL::_column_info($self,$table,$owner,'TABLE');
+		return Ora2Pg::MSSQL::_column_info($self,$table,$owner,$objtype,0,@expanded_views);
 	} else {
-		return Ora2Pg::Oracle::_column_info($self,$table,$owner,'TABLE');
+		return Ora2Pg::Oracle::_column_info($self,$table,$owner,$objtype,0,@expanded_views);
 	}
 }
 

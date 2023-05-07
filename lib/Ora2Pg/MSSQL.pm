@@ -308,7 +308,7 @@ sub _column_comments
 
 sub _column_info
 {
-	my ($self, $table, $owner, $objtype, $recurs) = @_;
+	my ($self, $table, $owner, $objtype, $recurs, @expanded_views) = @_;
 
 	$objtype ||= 'TABLE';
 
