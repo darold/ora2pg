@@ -385,9 +385,9 @@ sub _column_comments
 
 sub _column_info
 {
-	my ($self, $table, $owner, $objtype, $recurs) = @_;
+	my ($self, $table, $owner, $objtype, $recurs, @expanded_views) = @_;
 
-	return _column_info_from_file($self, $table, $owner, $objtype, $recurs) if ($self->{input_file});
+	return _column_info_from_file($self, $table, $owner, $objtype, $recurs, @expanded_views) if ($self->{input_file});
 
 	my %informix_coltype = (
 		0 => 'CHAR',
@@ -492,7 +492,7 @@ LEFT JOIN sysxtdtypes AS st ON (st.extended_id = c.extended_id)
 
 sub _column_info_from_file
 {
-	my ($self, $table, $owner, $objtype, $recurs) = @_;
+	my ($self, $table, $owner, $objtype, $recurs, @expanded_views) = @_;
 
 	my $fh = new IO::File;
 	$fh->open("<$self->{input_file}") or $self->logit("FATAL: can't read file $self->{input_file}, $!\n", 0, 1);
