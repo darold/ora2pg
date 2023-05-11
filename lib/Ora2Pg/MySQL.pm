@@ -1251,6 +1251,10 @@ sub _sql_type
 			}
 		       	elsif ($type =~ /(TINYINT|SMALLINT|MEDIUMINT|INTEGER|BIGINT|INT|REAL|DOUBLE|FLOAT|DECIMAL|NUMERIC)/i)
 			{
+				if ($type =~ /(TINYINT|SMALLINT|MEDIUMINT|INTEGER|BIGINT|INT)/i) {
+					$scale = 0;
+					$precision = 0;
+				}
 				# This is an integer
 				if (!$scale)
 				{
