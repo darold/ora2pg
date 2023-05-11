@@ -7557,7 +7557,7 @@ sub export_synonym
 		}
 		$sql_output .= "CREATE$self->{create_or_replace} VIEW " . $self->quote_object_name($syn)
 			. " AS SELECT * FROM ";
-		if ($self->{synonyms}{$syn}{table_owner}) {
+		if ($self->{synonyms}{$syn}{table_owner} && !$self->{schema} && $self->{export_schema}) {
 			$sql_output .= $self->quote_object_name("$self->{synonyms}{$syn}{table_owner}.$self->{synonyms}{$syn}{table_name}") . ";\n";
 		} else {
 			$sql_output .= $self->quote_object_name($self->{synonyms}{$syn}{table_name}) . ";\n";
