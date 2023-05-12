@@ -537,7 +537,7 @@ sub _column_info
 SELECT A.COLUMN_NAME, A.DATA_TYPE, A.DATA_LENGTH, A.NULLABLE, A.DATA_DEFAULT,
     A.DATA_PRECISION, A.DATA_SCALE, A.CHAR_LENGTH, A.TABLE_NAME, A.OWNER
 FROM $self->{prefix}_TAB_COLUMNS A
-WHERE 1=1 $condition
+WHERE A.TABLE_NAME NOT LIKE 'BIN\$%' $condition
 ORDER BY A.COLUMN_ID
 };
 		$sth = $self->{dbh}->prepare($sql);
@@ -560,7 +560,7 @@ ORDER BY A.COLUMN_ID
 SELECT A.COLUMN_NAME, A.DATA_TYPE, A.DATA_LENGTH, A.NULLABLE, A.DATA_DEFAULT,
     A.DATA_PRECISION, A.DATA_SCALE, A.DATA_LENGTH, A.TABLE_NAME, A.OWNER
 FROM $self->{prefix}_TAB_COLUMNS A
-    $condition
+WHERE A.TABLE_NAME NOT LIKE 'BIN\$%' $condition
 ORDER BY A.COLUMN_ID
 };
 		$sth = $self->{dbh}->prepare($sql);
@@ -2872,7 +2872,7 @@ sub _column_attributes
 		$sth = $self->{dbh}->prepare(<<END);
 SELECT A.COLUMN_NAME, A.NULLABLE, A.DATA_DEFAULT, A.TABLE_NAME, A.OWNER, A.COLUMN_ID, A.DATA_TYPE
 FROM $self->{prefix}_TAB_COLUMNS A, $self->{prefix}_OBJECTS O
-WHERE A.OWNER=O.OWNER and A.TABLE_NAME=O.OBJECT_NAME and O.OBJECT_TYPE='$objtype'
+WHERE A.OWNER=O.OWNER and A.TABLE_NAME=O.OBJECT_NAME and O.OBJECT_TYPE='$objtype' and A.TABLE_NAME NOT LIKE 'BIN\$%'
     $condition
 ORDER BY A.COLUMN_ID
 END
@@ -2886,7 +2886,7 @@ END
 		$sth = $self->{dbh}->prepare(<<END);
 SELECT A.COLUMN_NAME, A.NULLABLE, A.DATA_DEFAULT, A.TABLE_NAME, A.OWNER, A.COLUMN_ID, A.DATA_TYPE
 FROM $self->{prefix}_TAB_COLUMNS A, $self->{prefix}_OBJECTS O
-WHERE A.OWNER=O.OWNER and A.TABLE_NAME=O.OBJECT_NAME and O.OBJECT_TYPE='$objtype'
+WHERE A.OWNER=O.OWNER and A.TABLE_NAME=O.OBJECT_NAME and O.OBJECT_TYPE='$objtype' and A.TABLE_NAME NOT LIKE 'BIN\$%'
     $condition
 ORDER BY A.COLUMN_ID
 END
@@ -3773,7 +3773,7 @@ sub _col_count
 	if ($self->{db_version} !~ /Release 8/) {
 		$sth = $self->{dbh}->prepare(<<END);
 SELECT A.OWNER, A.TABLE_NAME, COUNT(*)
-FROM $self->{prefix}_TAB_COLUMNS A, $self->{prefix}_OBJECTS O WHERE A.OWNER=O.OWNER and A.TABLE_NAME=O.OBJECT_NAME and O.OBJECT_TYPE='TABLE' $condition
+FROM $self->{prefix}_TAB_COLUMNS A, $self->{prefix}_OBJECTS O WHERE A.OWNER=O.OWNER and A.TABLE_NAME=O.OBJECT_NAME and O.OBJECT_TYPE='TABLE' and A.TABLE_NAME NOT LIKE 'BIN\$%' $condition
 GROUP BY A.OWNER, A.TABLE_NAME
 END
 		if (!$sth) {
@@ -3783,7 +3783,7 @@ END
 		# an 8i database.
 		$sth = $self->{dbh}->prepare(<<END);
 SELECT A.OWNER, A.TABLE_NAME, COUNT(*)
-FROM $self->{prefix}_TAB_COLUMNS A, $self->{prefix}_OBJECTS O WHERE A.OWNER=O.OWNER and A.TABLE_NAME=O.OBJECT_NAME and O.OBJECT_TYPE='TABLE' $condition
+FROM $self->{prefix}_TAB_COLUMNS A, $self->{prefix}_OBJECTS O WHERE A.OWNER=O.OWNER and A.TABLE_NAME=O.OBJECT_NAME and O.OBJECT_TYPE='TABLE' and A.TABLE_NAME NOT LIKE 'BIN\$%' $condition
 GROUP BY A.OWNER, A.TABLE_NAME
 END
 		if (!$sth) {
