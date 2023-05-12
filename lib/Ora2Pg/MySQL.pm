@@ -987,7 +987,7 @@ sub _lookup_function
         @{$fct_detail{param_types}} = ();
 
         if ( ($fct_detail{declare} =~ s/(.*?)\b(FUNCTION|PROCEDURE)\s+([^\s\(]+)\s*(\(.*\))\s+RETURNS\s+(.*)//is) ||
-		($fct_detail{declare} =~ s/(.*?)\b(FUNCTION|PROCEDURE)\s+([^\s\(]+)\s*(\(.*?\))\s*(.*)//is) )
+		($fct_detail{declare} =~ s/(.*?)\b(FUNCTION|PROCEDURE)\s+([^\s\(]+)\s*(\(.*\))\s*(.*)//is) )
 	{
                 $fct_detail{before} = $1;
                 $fct_detail{type} = uc($2);
