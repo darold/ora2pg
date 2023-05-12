@@ -675,6 +675,7 @@ sub _get_views
 	while (my $row = $sth->fetch)
 	{
 		$row->[1] =~ s/`$self->{schema}`\.//g;
+		$row->[1] =~ s/ AS `([^`]+\([^`]+)`//ig;
 		$row->[1] =~ s/`([^\s`,]+)`/$1/g;
 		$row->[1] =~ s/"/'/g;
 		$row->[1] =~ s/`/"/g;
