@@ -407,6 +407,7 @@ ORDER BY ORDINAL_POSITION};
 	my $pos = 0;
 	while (my $row = $sth->fetch)
 	{
+		$row->[4] =~ s/^_[^']+\\'(.*)\\'/'$1'/; # fix collation on string
 		if ($row->[1] eq 'enum') {
 			$row->[1] = $row->[-2];
 		}
@@ -2148,6 +2149,7 @@ ORDER BY ORDINAL_POSITION
 	my %data = ();
 	while (my $row = $sth->fetch)
 	{
+		$row->[2] =~ s/^_[^']+\\'(.*)\\'/'$1'/; # fix collation on string
 		$data{$row->[3]}{"$row->[0]"}{nullable} = $row->[1];
 		$data{$row->[3]}{"$row->[0]"}{default} = $row->[2];
 		# Store the data type of the column following its position
