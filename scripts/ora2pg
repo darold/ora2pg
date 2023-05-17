@@ -585,8 +585,13 @@ sub create_project
 	foreach my $exp (sort @SCHEMA_ARRAY ) {
 		my $tpath = lc($exp);
 		$tpath =~ s/y$/ie/;
-		mkdir("$base_path/schema/" . $tpath . 's');
-		print "\t\t" . $tpath . "s/\n";
+		if ($exp ne 'SEQUENCE_VALUES') {
+			mkdir("$base_path/schema/" . $tpath . 's');
+			print "\t\t" . $tpath . "s/\n";
+		} else {
+			mkdir("$base_path/schema/" . $tpath);
+			print "\t\t" . $tpath . "/\n";
+		}
 	}
 	mkdir("$base_path/sources");
 	print "\tsources/\n";
