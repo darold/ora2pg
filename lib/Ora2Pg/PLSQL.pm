@@ -947,7 +947,7 @@ sub plsql_to_plpgsql
 	}
 
 	# DBMS_LOCK.SLEEP can be replaced by pg_sleep
-	$str =~ s/DBMS_LOCK\.SLEEP/pg_sleep/igs;
+	$str =~ s/DBMS_LOCK\.SLEEP/PERFORM pg_sleep/igs;
 
 	# Simply remove this as not supported
 	$str =~ s/\bDEFAULT\s+NULL\b//igs;
