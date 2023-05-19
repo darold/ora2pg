@@ -656,6 +656,7 @@ for etype in \$(echo \$EXPORT_TYPE | tr " " "\\n")
 do
         ltype=`echo \$etype | tr '[:upper:]' '[:lower:]'`
         ltype=`echo \$ltype | sed 's/y\$/ie/'`
+        ltype=`echo \$ltype | sed 's/s\$//'`
         echo "Running: ora2pg -p -t \$etype -o \$ltype.sql -b \$namespace/schema/\$\{ltype\}s -c \$namespace/config/ora2pg.conf"
         ora2pg -p -t \$etype -o \$ltype.sql -b \$namespace/schema/\$\{ltype\}s -c \$namespace/config/ora2pg.conf
 	ret=`grep "Nothing found" \$namespace/schema/\$\{ltype\}s/\$ltype.sql 2> /dev/null`
@@ -717,6 +718,7 @@ ora2pg -t SHOW_REPORT -c \$namespace/config/ora2pg.conf --dump_as_html --cost_un
 foreach (\$etype in \$EXPORT_TYPE)
 {
 	\$ltype =  \$etype.ToLower() -replace 'y\$', 'ie'  
+	\$ltype =  \$etype.ToLower() -replace 's\$', ''
 	\$cmd="ora2pg -p -t \$etype -o \$ltype.sql -b \$namespace/schema/\${ltype}s -c \$namespace/config/ora2pg.conf"  
 	Write-Host  "Running: \$cmd"
 	Invoke-Expression \$cmd
@@ -1165,6 +1167,7 @@ if [ $IMPORT_DATA -eq 0 ]; then
 
 		ltype=`echo $etype | tr '[:upper:]' '[:lower:]'`
 		ltype=`echo $ltype | sed 's/y$/ie/'`
+		ltype=`echo $ltype | sed 's/s$//'`
 		if [ -r "$NAMESPACE/schema/${ltype}s/$ltype.sql" ]; then
 			if confirm "Would you like to import $etype from $NAMESPACE/schema/${ltype}s/$ltype.sql?" ; then
 				echo "Running: psql --single-transaction $DB_HOST$DB_PORT -U $DB_OWNER -d $DB_NAME -f $NAMESPACE/schema/${ltype}s/$ltype.sql"
