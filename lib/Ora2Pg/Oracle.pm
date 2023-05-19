@@ -2142,7 +2142,8 @@ WHERE
 		}
 		if ( ($row->[3] eq 'DEFAULT'))
 		{
-			$default{$row->[0]} = $row->[2];
+			$default{$row->[0]}{name} = $row->[2];
+			$default{$row->[0]}{tablespace} = $row->[4];
 			next;
 		}
 		$parts{$row->[0]}{$row->[1]}{name} = $row->[2];
@@ -2218,7 +2219,8 @@ WHERE
 			$row->[0] = "$row->[9].$row->[0]";
 		}
 		if ( ($row->[3] eq 'MAXVALUE') || ($row->[3] eq 'DEFAULT')) {
-			$default{$row->[0]}{$row->[10]} = $row->[2];
+			$default{$row->[0]}{$row->[10]}{name} = $row->[2];
+			$default{$row->[0]}{$row->[10]}{tablespace} = $row->[4];
 			next;
 		}
 
@@ -2721,9 +2723,9 @@ sub _get_tablespaces
 
 	# Retrieve all object with tablespaces.
 my $str = qq{
-SELECT a.SEGMENT_NAME,a.TABLESPACE_NAME,a.SEGMENT_TYPE,c.FILE_NAME, a.OWNER
+SELECT a.SEGMENT_NAME,a.TABLESPACE_NAME,a.SEGMENT_TYPE,c.FILE_NAME, a.OWNER, a.PARTITION_NAME, b.SUBOBJECT_NAME
 FROM DBA_SEGMENTS a, $self->{prefix}_OBJECTS b, DBA_DATA_FILES c
-WHERE a.SEGMENT_TYPE IN ('INDEX', 'TABLE', 'INDEX PARTITION', 'TABLE PARTITION')
+WHERE a.SEGMENT_TYPE IN ('INDEX', 'TABLE', 'TABLE PARTITION')
 AND a.SEGMENT_NAME = b.OBJECT_NAME
 AND a.SEGMENT_TYPE = b.OBJECT_TYPE
 AND a.OWNER = b.OWNER
@@ -2735,17 +2737,81 @@ AND a.TABLESPACE_NAME = c.TABLESPACE_NAME
 		$str .= " AND a.OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
 	}
 	$str .= $self->limit_to_objects('TABLESPACE|TABLE', 'a.TABLESPACE_NAME|a.SEGMENT_NAME');
-	#$str .= " ORDER BY TABLESPACE_NAME";
+	$str .= " ORDER BY a.SEGMENT_NAME";
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
 	my %tbs = ();
-	while (my $row = $sth->fetch) {
-		# TYPE - TABLESPACE_NAME - FILEPATH - OBJECT_NAME
+	my @done = ();
+	while (my $row = $sth->fetch)
+	{
+		my $table = $row->[0];
 		if ($self->{export_schema} && !$self->{schema}) {
 			$row->[0] = "$row->[4].$row->[0]";
 		}
+		next if (grep(/^$row->[0]$/, @done));
+		push(@done, $row->[0]);
+
 		push(@{$tbs{$row->[2]}{$row->[1]}{$row->[3]}}, $row->[0]);
+
+		# With partitioned table, add tablespace info for table partition
+		if (exists $self->{partitions}{$table})
+		{
+			foreach my $pos (sort {$self->{partitions}{$table}{$a} <=> $self->{partitions}{$table}{$b}} keys %{$self->{partitions}{$table}})
+			{
+				my $part_name = $self->{partitions}{$table}{$pos}{name};
+				my $tbpart_name = $part_name;
+				$tbpart_name = $table . '_part' . $pos if ($self->{rename_partition});
+				next if ($self->{allow_partition} && !grep($_ =~ /^$tbpart_name$/i, @{$self->{allow_partition}}));
+				my $tbspace = $self->{partitions}{$table}{$pos}{info}[0]->{tablespace};
+				push(@{$tbs{$row->[2]}{$tbspace}{$row->[3]}}, $tbpart_name);
+
+				if (exists $self->{subpartitions}{$table}{$part_name})
+				{
+					foreach my $p (sort {$a <=> $b} keys %{$self->{subpartitions}{$table}{$part_name}})
+					{
+						my $subpart = $self->{subpartitions}{$table}{$part_name}{$p}{name};
+						next if ($self->{allow_partition} && !grep($_ =~ /^$subpart$/i, @{$self->{allow_partition}}));
+						my $sub_tb_name = $subpart;
+						$sub_tb_name =~ s/^[^\.]+\.//; # remove schema part if any
+						$sub_tb_name = $table . '_part' . $pos . '_subpart' . $p if ($self->{rename_partition});
+						if ($#{$self->{tables}{$table}{field_name}} < 0) {
+							$self->logit("Table $table has no column defined, skipping...\n", 1);
+							next;
+						}
+						my $tbspace = $self->{subpartitions}{$table}{$part_name}{$p}{info}[0]->{tablespace};
+						push(@{$tbs{$row->[2]}{$tbspace}{$row->[3]}}, $sub_tb_name);
+
+					}
+
+					# process default subpartition table
+					if (exists $self->{subpartitions_default}{$table}{$part_name})
+					{
+						if (!$self->{allow_partition} || grep($_ =~ /^$self->{subpartitions_default}{$table}{$part_name}{name}$/i, @{$self->{allow_partition}}))
+						{
+							my $sub_tb_name = $self->{subpartitions_default}{$table}{$part_name}{name};
+							$sub_tb_name =~ s/^[^\.]+\.//; # remove schema part if any
+							next if ($self->{allow_partition} && !grep($_ =~ /^$sub_tb_name$/i, @{$self->{allow_partition}}));
+							$sub_tb_name = $table . '_part' . $pos . '_subpart_default' if ($self->{rename_partition});
+							my $tbspace = $self->{subpartitions_default}{$table}{$part_name}{tablespace};
+							push(@{$tbs{$row->[2]}{$tbspace}{$row->[3]}}, $sub_tb_name);
+						}
+					}
+				}
+			}
+
+			# Add the default partition table
+			if (exists $self->{partitions_default}{$table})
+			{
+				if (!$self->{allow_partition} || grep($_ =~ /^$self->{partitions_default}{$table}{name}$/i, @{$self->{allow_partition}}))
+				{
+					my $tbpart_name = $table . '_' . $self->{partitions_default}{$table}{name};
+					$tbpart_name = $table . '_part_default' if ($self->{rename_partition});
+					my $tbspace = $self->{partitions_default}{$table}{tablespace};
+					push(@{$tbs{$row->[2]}{$tbspace}{$row->[3]}}, $tbpart_name);
+				}
+			}
+		}
 	}
 	$sth->finish;
 
