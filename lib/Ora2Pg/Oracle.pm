@@ -367,7 +367,7 @@ sub _table_info
 	my %tbtype = ();
 	while (my $row = $sth->fetch)
 	{
-		$self->{all_objects}{"$row->[0].$row->[1]"} =  $row->[2];
+		$self->{all_objects}{"$row->[0].$row->[1]"} =  $row->[2] if (not exists $self->{all_objects}{"$row->[0].$row->[1]"} || $row->[2] eq 'TABLE');
 		$nrows++;
 	}
 	$sth->finish();
