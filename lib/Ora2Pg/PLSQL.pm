@@ -474,7 +474,7 @@ sub convert_plsql_code
 	%{$class->{single_fct_call}} = ();
 	$class->{replace_out_params} = '';
 
-	if (uc($class->{type}) ne 'SHOW_REPORT')
+	if (!$self->{use_orafce} && uc($class->{type}) ne 'SHOW_REPORT')
 	{
 		# Rewrite all decode() call before
 		$str = replace_decode($str);
@@ -1214,6 +1214,20 @@ sub plsql_to_plpgsql
 
 	# Restore non converted outer join
 	$str =~ s/\%OUTERJOIN\d+\%/\(\+\)/igs;
+
+	# Rewrite some SQL script setting from Oracle
+	$str =~ s/\bset\s+timing\s+(on|off)/\\timing $1/igs;
+	$str =~ s/\b(set\s+(?:array|arraysize)\s+\d+)/-- $1/igs;
+	$str =~ s/\bset\s+(?:auto|autocommit)\s+(on|off)/\\set AUTOCOMMIT $1/igs;
+	$str =~ s/\bset\s+echo\s+on/\\set ECHO queries/igs;
+	$str =~ s/\bset\s+echo\s+off/\\set ECHO none/igs;
+	$str =~ s/\bset\s+(?:heading|head)\s+(on|off)/\\pset tuples_only $1/igs;
+	$str =~ s/\bset\s+(?:trim|trimout)\s+on/\\pset format unaligned/igs;
+	$str =~ s/\bset\s+(?:trim|trimout)\s+off/\\pset format aligned/igs;
+	$str =~ s/\bset\s+colsep\s+([^\s]+)/\\pset fieldsep $1/igs;
+	$str =~ s/\bspool\s+off/\\o/igs;
+	$str =~ s/\bspool\s+([^\&']+[^\s]+)/\\o $1/igs;
+	$str =~ s/\bttitle\s+/\\pset title /igs;
 
 	return $str;
 }
