@@ -609,11 +609,13 @@ ORDER BY A.COLUMN_ID
 	my $ncols = 0;
 	while (my $row = $sth->fetch)
 	{
-		my $tmptable = "$row->[9].$row->[8]";
+		my $tmptable = $row->[8];
+		$tmptable = "$row->[9].$row->[8]" if (!$self->{schema} && $self->{export_schema});
+
 		# Skip object if it is not in the object list and if this is not
 		# a view or materialized view that must be exported as table.
-		next if (!exists $self->{all_objects}{$tmptable}
-				|| ($self->{all_objects}{$tmptable} =~ /^(VIEW|MATERIALIZED VIEW)$/)
+		next if (!exists $self->{all_objects}{"$row->[9].$row->[8]"}
+				|| ($self->{all_objects}{"$row->[9].$row->[8]"} =~ /^(VIEW|MATERIALIZED VIEW)$/)
 					&& !grep(/^$row->[8]$/i, @expanded_views)
 			);
 
@@ -623,9 +625,6 @@ ORDER BY A.COLUMN_ID
 		if ( ($row->[1] eq 'NUMBER') && ($row->[6] eq '0') && ($row->[5] eq '') && ($row->[2] == 22) ) {
 			$row->[2] = 38;
 		}
-
-		# Use FQDN table name otherwise a table not exist error can occurs.
-		$tmptable = "$row->[9].$row->[8]";
 
 		# In case we have a default value, check if this is a virtual column
 		my $virtual = 'NO';
@@ -648,7 +647,7 @@ ORDER BY A.COLUMN_ID
 			{
 				my @result = ();
 				if ($row->[1] =~ /^ST_|STGEOM_/) {
-					$spatial_srid = sprintf($st_spatial_srid, $row->[0], $tmptable);
+					$spatial_srid = sprintf($st_spatial_srid, $row->[0], "$row->[9].$row->[8]");
 				}
 				my $sth2 = $self->{dbh}->prepare($spatial_srid);
 				if (!$sth2)
@@ -707,7 +706,7 @@ ORDER BY A.COLUMN_ID
 			if (!$found_dims)
 			{
 				if ($row->[1] =~ /^ST_|STGEOM_/) {
-					$spatial_dim = sprintf($st_spatial_dim, $row->[0], $tmptable);
+					$spatial_dim = sprintf($st_spatial_dim, $row->[0], "$row->[9].$row->[8]");
 				}
 				my $sth2 = $self->{dbh}->prepare($spatial_dim);
 				if (!$sth2) {
@@ -734,9 +733,9 @@ ORDER BY A.COLUMN_ID
 			if (!$found_contraint && $self->{autodetect_spatial_type})
 			{
 				# Get spatial information
-				my $squery = sprintf($spatial_gtype, $row->[0], $tmptable);
+				my $squery = sprintf($spatial_gtype, $row->[0], "$row->[9].$row->[8]");
 				if ($row->[1] =~ /^ST_|STGEOM_/) {
-					$squery = sprintf($st_spatial_gtype, $row->[0], $tmptable);
+					$squery = sprintf($st_spatial_gtype, $row->[0], "$row->[9].$row->[8]");
 				}
 				my $sth2 = $self->{dbh}->prepare($squery);
 				if (!$sth2) {
