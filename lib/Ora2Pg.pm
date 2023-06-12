@@ -13454,7 +13454,7 @@ sub read_config
 		}
 		elsif ($var eq 'DEFINED_PK')
 		{
-			my @defined_pk = split(/[\s,;]+/, $val);
+			my @defined_pk = split(/[\s;]+/, $val);
 			foreach my $r (@defined_pk)
 			{ 
 				my ($table, $col) = split(/:/, $r);
