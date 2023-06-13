@@ -1228,6 +1228,11 @@ sub plsql_to_plpgsql
 	$str =~ s/\bspool\s+off/\\o/igs;
 	$str =~ s/\bspool\s+([^\&']+[^\s]+)/\\o $1/igs;
 	$str =~ s/\bttitle\s+/\\pset title /igs;
+	$str =~ s/\bprompt\s+/\\qecho /igs;
+	$str =~ s/\b(set\s+(?:linesize|pagesize|feedback|verify)\s+)/--$1/igs;
+	$str =~ s/\b(disconnect)\b/--$1/igs;
+	$str =~ s/\b(connect\s+)/--$1/igs;
+	$str =~ s/\b(quit)\b/\\$1/igs;
 
 	return $str;
 }
