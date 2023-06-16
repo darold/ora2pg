@@ -5980,6 +5980,32 @@ sub export_function
 	my $i = 0;
 	foreach my $key ( sort keys %{$self->{functions}} )
 	{
+		if ($self->{print_dependencies} && $self->{plsql_pgsql} && !$self->{no_function_metadata})
+		{
+			my $plsql_code = $self->{functions}{$key}{text};
+			$plsql_code =~ s/FUNCTION $key//i;
+			$self->_remove_comments(\$plsql_code);
+			# look for other routines call in the stored function
+			foreach my $sch (sort keys %{ $self->{function_metadata} })
+			{
+				foreach my $pkg_name (sort keys %{ $self->{function_metadata}{$sch} })
+				{
+					foreach my $fname (sort keys %{ $self->{function_metadata}{$sch}{$pkg_name} })
+					{
+						next if ($key =~ /^$fname$/i || $key =~ /^.*\.$fname$/i);
+						if ($plsql_code =~ /\b$fname\b/is)
+						{
+							push(@{ $self->{object_dependencies}{uc("$self->{functions}{$key}{owner}.$key")}{routines} }, uc("$sch.$fname"));
+						}
+					}
+				}
+			}
+			# Look for merge/insert/update/delete
+			@{ $self->{object_dependencies}{uc("$self->{functions}{$key}{owner}.$key")}{merge} } = $plsql_code =~ /\bMERGE\s+INTO\s+([^\(\s]+)/igs;
+			@{ $self->{object_dependencies}{uc("$self->{functions}{$key}{owner}.$key")}{insert} } = $plsql_code =~ /\bINSERT\s+INTO\s+([^\(\s]+)/igs;
+			@{ $self->{object_dependencies}{uc("$self->{functions}{$key}{owner}.$key")}{update} } = $plsql_code =~ /(?:(?!FOR).)*?\s*\bUPDATE\s+([^\s]+)\s+/igs;
+			@{ $self->{object_dependencies}{uc("$self->{functions}{$key}{owner}.$key")}{delete} } = $plsql_code =~ /\b(?:DELETE\s+FROM|TRUNCATE\s+TABLE)\s+([^\s]+)\s+/igs;
+		}
 		$fct_group[$i++]{$key} = $self->{functions}{$key};
 		$i = 0 if ($i == $num_chunk);
 	}
@@ -6044,6 +6070,29 @@ sub export_function
 	}
 
 	$self->dump($sql_output);
+
+	if (scalar keys %{ $self->{object_dependencies} } > 0)
+	{
+		my $sp_tree = "object_type;object_name;routines_called;insert;update;delete;merge\n";
+		foreach my $caller ( sort keys %{ $self->{object_dependencies} } )
+		{
+			$sp_tree .= "FUNCTION;$caller";
+			$sp_tree .= ";";
+			foreach my $sp (@{ $self->{object_dependencies}{$caller}{routines} }) {
+				my $star = ($#{ $self->{object_dependencies}{$sp}{routines} } >= 0) ? '*' : '';
+				$sp_tree .= "$sp$star,";
+			}
+			$sp_tree =~ s/,$//;
+			$sp_tree .= ";" . join(',', @{ $self->{object_dependencies}{$caller}{insert} });
+			$sp_tree .= ";" . join(',', @{ $self->{object_dependencies}{$caller}{update} });
+			$sp_tree .= ";" . join(',', @{ $self->{object_dependencies}{$caller}{delete} });
+			$sp_tree .= ";" . join(',', @{ $self->{object_dependencies}{$caller}{merge} });
+			$sp_tree .= "\n";
+		}
+		my $fhdl = $self->open_export_file("functions_dependencies.csv");
+		$self->dump($sp_tree, $fhdl);
+		$self->close_export_file($fhdl);
+	}
 
 	$self->{functions} = ();
 
@@ -6191,6 +6240,31 @@ sub export_procedure
 	my $i = 0;
 	foreach my $key (sort keys %{$self->{procedures}} )
 	{
+		if ($self->{print_dependencies} && $self->{plsql_pgsql} && !$self->{no_function_metadata})
+		{
+			my $plsql_code = $self->{procedures}{$key}{text};
+			$plsql_code =~ s/FUNCTION $key//i;
+			$self->_remove_comments(\$plsql_code);
+			# look for other routines call in the stored procedure
+			foreach my $sch (sort keys %{ $self->{function_metadata} })
+			{
+				foreach my $pkg_name (sort keys %{ $self->{function_metadata}{$sch} })
+				{
+					foreach my $fname (sort keys %{ $self->{function_metadata}{$sch}{$pkg_name} })
+					{
+						next if ($key =~ /^$fname$/i || $key =~ /^.*\.$fname$/i);
+						if ($plsql_code =~ /\b$fname\b/is) {
+							push(@{ $self->{object_dependencies}{uc("$self->{procedures}{$key}{owner}.$key")}{routines} }, uc("$sch.$fname"));
+						}
+					}
+				}
+			}
+			# Look for merge/insert/update/delete
+			@{ $self->{object_dependencies}{uc("$self->{procedures}{$key}{owner}.$key")}{merge} } = $plsql_code =~ /\bMERGE\s+INTO\s+([^\(\s]+)/igs;
+			@{ $self->{object_dependencies}{uc("$self->{procedures}{$key}{owner}.$key")}{insert} } = $plsql_code =~ /\bINSERT\s+INTO\s+([^\(\s]+)/igs;
+			@{ $self->{object_dependencies}{uc("$self->{procedures}{$key}{owner}.$key")}{update} } = $plsql_code =~ /(?:(?!FOR).)*?\s*\bUPDATE\s+([^\s]+)\s+/igs;
+			@{ $self->{object_dependencies}{uc("$self->{procedures}{$key}{owner}.$key")}{delete} } = $plsql_code =~ /\b(?:DELETE\s+FROM|TRUNCATE\s+TABLE)\s+([^\s]+)\s+/igs;
+		}
 		$fct_group[$i++]{$key} = $self->{procedures}{$key};
 		$i = 0 if ($i == $num_chunk);
 	}
@@ -6265,6 +6339,29 @@ sub export_procedure
 	}
 
 	$self->dump($sql_output);
+
+	if (scalar keys %{ $self->{object_dependencies} } > 0)
+	{
+		my $sp_tree = "object_type;object_name;routines_called;insert;update;delete;merge\n";
+		foreach my $caller ( sort keys %{ $self->{object_dependencies} } )
+		{
+			$sp_tree .= "PROCEDURE;$caller";
+			$sp_tree .= ";";
+			foreach my $sp (@{ $self->{object_dependencies}{$caller}{routines} }) {
+				my $star = ($#{ $self->{object_dependencies}{$sp}{routines} } >= 0) ? '*' : '';
+				$sp_tree .= "$sp$star,";
+			}
+			$sp_tree =~ s/,$//;
+			$sp_tree .= ";" . join(',', @{ $self->{object_dependencies}{$caller}{insert} });
+			$sp_tree .= ";" . join(',', @{ $self->{object_dependencies}{$caller}{update} });
+			$sp_tree .= ";" . join(',', @{ $self->{object_dependencies}{$caller}{delete} });
+			$sp_tree .= ";" . join(',', @{ $self->{object_dependencies}{$caller}{merge} });
+			$sp_tree .= "\n";
+		}
+		my $fhdl = $self->open_export_file("procedures_dependencies.csv");
+		$self->dump($sp_tree, $fhdl);
+		$self->close_export_file($fhdl);
+	}
 
 	$self->{procedures} = ();
 
@@ -6531,8 +6628,32 @@ sub export_package
 
 	$self->dump($sql_output);
 
+	if (scalar keys %{ $self->{object_dependencies} } > 0)
+	{
+		my $sp_tree = "object_type;object_name;routines_called;insert;update;delete;merge\n";
+		foreach my $caller ( sort keys %{ $self->{object_dependencies} } )
+		{
+			$sp_tree .= "PACKAGE;$caller";
+			$sp_tree .= ";";
+			foreach my $sp (@{ $self->{object_dependencies}{$caller}{routines} }) {
+				my $star = ($#{ $self->{object_dependencies}{$sp}{routines} } >= 0) ? '*' : '';
+				$sp_tree .= "$sp$star,";
+			}
+			$sp_tree =~ s/,$//;
+			$sp_tree .= ";" . join(',', @{ $self->{object_dependencies}{$caller}{insert} });
+			$sp_tree .= ";" . join(',', @{ $self->{object_dependencies}{$caller}{update} });
+			$sp_tree .= ";" . join(',', @{ $self->{object_dependencies}{$caller}{delete} });
+			$sp_tree .= ";" . join(',', @{ $self->{object_dependencies}{$caller}{merge} });
+			$sp_tree .= "\n";
+		}
+		my $fhdl = $self->open_export_file("packages_dependencies.csv");
+		$self->dump($sp_tree, $fhdl);
+		$self->close_export_file($fhdl);
+	}
+
 	$self->{packages} = ();
 	$sql_output = '';
+
 	# Create file to load custom variable initialization into postgresql.conf
 	if (scalar keys %{$self->{global_variables}})
 	{
@@ -14458,6 +14579,29 @@ END;
 		$sql_header .= $self->set_search_path();
 		$sql_header .= "SET check_function_bodies = false;\n\n" if (!$self->{function_check});
 		$sql_header = '' if ($self->{no_header});
+
+		if ($self->{print_dependencies} && $self->{plsql_pgsql} && !$self->{no_function_metadata})
+		{
+			# look for other routines call in the stored procedure
+			foreach my $sch (sort keys %{ $self->{function_metadata} })
+			{
+				foreach my $pkg_name (sort keys %{ $self->{function_metadata}{$sch} })
+				{
+					foreach my $fct_name (sort keys %{ $self->{function_metadata}{$sch}{$pkg_name} })
+					{
+						next if ($fct_name =~ /^$fname$/i || $fct_name =~ /^.*\.$fname$/i);
+						if ($fct_detail{code} =~ /\b$fct_name\b/is) {
+							push(@{ $self->{object_dependencies}{uc("$pname.$fname")}{routines} }, uc("$sch.$fct_name"));
+						}
+					}
+				}
+			}
+			# Look for merge/insert/update/delete
+			@{ $self->{object_dependencies}{uc("$pname.$fname")}{merge} } = $function =~ /\bMERGE\s+INTO\s+([^\(\s]+)/igs;
+			@{ $self->{object_dependencies}{uc("$pname.$fname")}{insert} } = $function =~ /\bINSERT\s+INTO\s+([^\(\s]+)/igs;
+			@{ $self->{object_dependencies}{uc("$pname.$fname")}{update} } = $function =~ /(?:(?!FOR).)*?\s*\bUPDATE\s+([^\s]+)\s+/igs;
+			@{ $self->{object_dependencies}{uc("$pname.$fname")}{delete} } = $function =~ /\b(?:DELETE\s+FROM|TRUNCATE\s+TABLE)\s+([^\s]+)\s+/igs;
+		}
 
 		my $fhdl = $self->open_export_file("$dirprefix\L$pname/$fname\E_$self->{output}", 1);
 		$self->set_binmode($fhdl) if (!$self->{compress});
