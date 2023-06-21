@@ -6001,10 +6001,10 @@ sub export_function
 				}
 			}
 			# Look for merge/insert/update/delete
-			@{ $self->{object_dependencies}{uc("$self->{functions}{$key}{owner}.$key")}{merge} } = $plsql_code =~ /\bMERGE\s+INTO\s+([^\(\s]+)/igs;
-			@{ $self->{object_dependencies}{uc("$self->{functions}{$key}{owner}.$key")}{insert} } = $plsql_code =~ /\bINSERT\s+INTO\s+([^\(\s]+)/igs;
-			@{ $self->{object_dependencies}{uc("$self->{functions}{$key}{owner}.$key")}{update} } = $plsql_code =~ /(?:(?!FOR).)*?\s*\bUPDATE\s+([^\s]+)\s+/igs;
-			@{ $self->{object_dependencies}{uc("$self->{functions}{$key}{owner}.$key")}{delete} } = $plsql_code =~ /\b(?:DELETE\s+FROM|TRUNCATE\s+TABLE)\s+([^\s]+)\s+/igs;
+			@{ $self->{object_dependencies}{uc("$self->{functions}{$key}{owner}.$key")}{merge} } = $plsql_code =~ /\bMERGE\s+INTO\s+([^\(\s;,]+)/igs;
+			@{ $self->{object_dependencies}{uc("$self->{functions}{$key}{owner}.$key")}{insert} } = $plsql_code =~ /\bINSERT\s+INTO\s+([^\(\s;,]+)/igs;
+			@{ $self->{object_dependencies}{uc("$self->{functions}{$key}{owner}.$key")}{update} } = $plsql_code =~ /(?:(?!FOR).)*?\s*\bUPDATE\s+([^\s;,]+)\s+/igs;
+			@{ $self->{object_dependencies}{uc("$self->{functions}{$key}{owner}.$key")}{delete} } = $plsql_code =~ /\b(?:DELETE\s+FROM|TRUNCATE\s+TABLE)\s+([^\s;,]+)\s+/igs;
 		}
 		$fct_group[$i++]{$key} = $self->{functions}{$key};
 		$i = 0 if ($i == $num_chunk);
@@ -6260,10 +6260,10 @@ sub export_procedure
 				}
 			}
 			# Look for merge/insert/update/delete
-			@{ $self->{object_dependencies}{uc("$self->{procedures}{$key}{owner}.$key")}{merge} } = $plsql_code =~ /\bMERGE\s+INTO\s+([^\(\s]+)/igs;
-			@{ $self->{object_dependencies}{uc("$self->{procedures}{$key}{owner}.$key")}{insert} } = $plsql_code =~ /\bINSERT\s+INTO\s+([^\(\s]+)/igs;
-			@{ $self->{object_dependencies}{uc("$self->{procedures}{$key}{owner}.$key")}{update} } = $plsql_code =~ /(?:(?!FOR).)*?\s*\bUPDATE\s+([^\s]+)\s+/igs;
-			@{ $self->{object_dependencies}{uc("$self->{procedures}{$key}{owner}.$key")}{delete} } = $plsql_code =~ /\b(?:DELETE\s+FROM|TRUNCATE\s+TABLE)\s+([^\s]+)\s+/igs;
+			@{ $self->{object_dependencies}{uc("$self->{procedures}{$key}{owner}.$key")}{merge} } = $plsql_code =~ /\bMERGE\s+INTO\s+([^\(\s;,]+)/igs;
+			@{ $self->{object_dependencies}{uc("$self->{procedures}{$key}{owner}.$key")}{insert} } = $plsql_code =~ /\bINSERT\s+INTO\s+([^\(\s;,]+)/igs;
+			@{ $self->{object_dependencies}{uc("$self->{procedures}{$key}{owner}.$key")}{update} } = $plsql_code =~ /(?:(?!FOR).)*?\s*\bUPDATE\s+([^\s;,]+)\s+/igs;
+			@{ $self->{object_dependencies}{uc("$self->{procedures}{$key}{owner}.$key")}{delete} } = $plsql_code =~ /\b(?:DELETE\s+FROM|TRUNCATE\s+TABLE)\s+([^\s;,]+)\s+/igs;
 		}
 		$fct_group[$i++]{$key} = $self->{procedures}{$key};
 		$i = 0 if ($i == $num_chunk);
@@ -14597,10 +14597,10 @@ END;
 				}
 			}
 			# Look for merge/insert/update/delete
-			@{ $self->{object_dependencies}{uc("$pname.$fname")}{merge} } = $function =~ /\bMERGE\s+INTO\s+([^\(\s]+)/igs;
-			@{ $self->{object_dependencies}{uc("$pname.$fname")}{insert} } = $function =~ /\bINSERT\s+INTO\s+([^\(\s]+)/igs;
-			@{ $self->{object_dependencies}{uc("$pname.$fname")}{update} } = $function =~ /(?:(?!FOR).)*?\s*\bUPDATE\s+([^\s]+)\s+/igs;
-			@{ $self->{object_dependencies}{uc("$pname.$fname")}{delete} } = $function =~ /\b(?:DELETE\s+FROM|TRUNCATE\s+TABLE)\s+([^\s]+)\s+/igs;
+			@{ $self->{object_dependencies}{uc("$pname.$fname")}{merge} } = $function =~ /\bMERGE\s+INTO\s+([^\(\s;,]+)/igs;
+			@{ $self->{object_dependencies}{uc("$pname.$fname")}{insert} } = $function =~ /\bINSERT\s+INTO\s+([^\(\s;,]+)/igs;
+			@{ $self->{object_dependencies}{uc("$pname.$fname")}{update} } = $function =~ /(?:(?!FOR).)*?\s*\bUPDATE\s+([^\s;,]+)\s+/igs;
+			@{ $self->{object_dependencies}{uc("$pname.$fname")}{delete} } = $function =~ /\b(?:DELETE\s+FROM|TRUNCATE\s+TABLE)\s+([^\s;,]+)\s+/igs;
 		}
 
 		my $fhdl = $self->open_export_file("$dirprefix\L$pname/$fname\E_$self->{output}", 1);
