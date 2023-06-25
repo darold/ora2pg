@@ -1739,8 +1739,8 @@ resources, setting it to a too high value can produce OOM.
 
 =item CLOB_AS_BLOB
 
-Apply same behavior on CLOB than BLOB with BLOB_LIMIT setting. This could
-be useful if you have large CLOB data.
+Apply same behavior on CLOB than BLOB with BLOB_LIMIT settings. This is
+especially useful if you have large CLOB data. Default: enabled
 
 =item OUTPUT
 
