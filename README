@@ -1684,8 +1684,8 @@ CONFIGURATION
         high value can produce OOM.
 
     CLOB_AS_BLOB
-        Apply same behavior on CLOB than BLOB with BLOB_LIMIT setting. This
-        could be useful if you have large CLOB data.
+        Apply same behavior on CLOB than BLOB with BLOB_LIMIT settings. This
+        is especially useful if you have large CLOB data. Default: enabled
 
     OUTPUT
         The Ora2Pg output filename can be changed with this directive.
@@ -1918,6 +1918,11 @@ CONFIGURATION
         This directive can be used to send an initial command to PostgreSQL,
         just after the connection. For example to set some session
         parameters. This directive can be used multiple times.
+
+    INSERT_ON_CONFLICT
+        When enabled this instruct Ora2Pg to add an ON CONFLICT DO NOTHING
+        clause to all INSERT statements generated for this type of data
+        export.
 
   Column type control
     PG_NUMERIC_TYPE
