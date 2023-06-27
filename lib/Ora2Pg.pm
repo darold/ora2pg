@@ -1153,6 +1153,9 @@ sub _init
 	# Defined if we must add a drop if exists statement before creating an object
 	$self->{drop_if_exists} ||= 0;
 
+	# Disable ON CONFLICT clause by default
+	$self->{insert_on_conflict} ||= 0;
+
 	# Overwrite configuration with all given parameters
 	# and try to preserve backward compatibility
 	foreach my $k (keys %options)
@@ -9768,6 +9771,9 @@ sub _dump_table
 			}
 			$s_out =~ s/,$//;
 			$s_out .= ")";
+			if ($self->{insert_on_conflict}) {
+				$s_out .= " ON CONFLICT DO NOTHING";
+			}
 			$sprep = $s_out;
 		}
 	}
@@ -15854,9 +15860,14 @@ sub _dump_to_pg
 	elsif (!$sprep)
 	{
 		$sql_out = '';
-		foreach my $row (@$rows) {
+		foreach my $row (@$rows)
+		{
 			$sql_out .= $s_out;
-			$sql_out .= join(',', @$row) . ");\n";
+			$sql_out .= join(',', @$row) . ")";
+			if ($self->{insert_on_conflict}) {
+				$sql_out .= " ON CONFLICT DO NOTHING";
+			}
+			$sql_out .= ";\n";
 		}
 	}
 

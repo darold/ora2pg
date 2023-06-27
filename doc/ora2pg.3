@@ -133,7 +133,7 @@
 .\" ========================================================================
 .\"
 .IX Title "ORA2PG 1"
-.TH ORA2PG 1 "2023-06-25" "perl v5.34.0" "User Contributed Perl Documentation"
+.TH ORA2PG 1 "2023-06-27" "perl v5.34.0" "User Contributed Perl Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -2121,6 +2121,10 @@ set this directive to 1, ora2pg will not try to change the setting.
 This directive can be used to send an initial command to PostgreSQL, just after
 the connection. For example to set some session parameters. This directive can
 be used multiple times.
+.IP "\s-1INSERT_ON_CONFLICT\s0" 4
+.IX Item "INSERT_ON_CONFLICT"
+When enabled this instruct Ora2Pg to add an \s-1ON CONFLICT DO NOTHING\s0 clause to all
+\&\s-1INSERT\s0 statements generated for this type of data export.
 .SS "Column type control"
 .IX Subsection "Column type control"
 .IP "\s-1PG_NUMERIC_TYPE\s0" 4

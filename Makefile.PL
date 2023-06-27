@@ -764,6 +764,9 @@ CREATE_OR_REPLACE	1
 # directive can be used multiple time.
 #PG_INITIAL_COMMAND
 
+# Add an ON CONFLICT DO NOTHING to all INSERT statements generated for this
+# type of data export.
+INSERT_ON_CONFLICT	0
 
 
 #------------------------------------------------------------------------------

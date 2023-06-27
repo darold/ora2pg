@@ -1982,6 +1982,11 @@ This directive can be used to send an initial command to PostgreSQL, just after
 the connection. For example to set some session parameters. This directive can
 be used multiple times.
 
+=item INSERT_ON_CONFLICT
+
+When enabled this instruct Ora2Pg to add an ON CONFLICT DO NOTHING clause to all
+INSERT statements generated for this type of data export.
+
 =back
 
 =head2 Column type control
