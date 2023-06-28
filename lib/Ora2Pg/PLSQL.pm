@@ -4,7 +4,7 @@ package Ora2Pg::PLSQL;
 # Name     : Ora2Pg/PLSQL.pm
 # Language : Perl
 # Authors  : Gilles Darold, gilles _AT_ darold _DOT_ net
-# Copyright: Copyright (c) 2000-2022 : Gilles Darold - All rights reserved -
+# Copyright: Copyright (c) 2000-2023 : Gilles Darold - All rights reserved -
 # Function : Perl module used to convert Oracle PLSQL code into PL/PGSQL
 # Usage    : See documentation
 #------------------------------------------------------------------------------
@@ -4179,7 +4179,7 @@ Gilles Darold <gilles@darold.net>
 
 =head1 COPYRIGHT
 
-Copyright (c) 2000-2022 Gilles Darold - All rights reserved.
+Copyright (c) 2000-2023 Gilles Darold - All rights reserved.
 
 This program is free software; you can redistribute it and/or modify it under
 the same terms as Perl itself.
