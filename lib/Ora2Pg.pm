@@ -5001,6 +5001,7 @@ sub export_grant
 	foreach my $table (sort {"$self->{grants}{$a}{type}.$a" cmp "$self->{grants}{$b}{type}.$b" } keys %{$self->{grants}}) {
 		my $realtable = lc($table);
 		my $obj = $self->{grants}{$table}{type} || 'TABLE';
+		$obj =~ s/ (PARTITION|SUBPARTITION)//i;
 		if ($self->{export_schema} && $self->{schema}) {
 			$realtable = $self->quote_object_name("$self->{schema}.$table");
 		} elsif ($self->{preserve_case}) {
