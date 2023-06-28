@@ -838,7 +838,7 @@ sub _check_constraint
 	while (my $row = $sth->fetch)
 	{
 		# Pour chaque retour SHOW CREATE TABLE xxxx;
-		my $sql2 = "SHOW CREATE TABLE $row->[1];";
+		my $sql2 = "SHOW CREATE TABLE `$row->[1]`;";
 		my $sth2 = $self->{dbh}->prepare($sql2) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 		$sth2->execute() or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 		# Parsing de   CONSTRAINT `CHK_CONSTR` CHECK (((`Age` >= 18) and (`City` = _utf8mb4'Bangalore')))
@@ -933,7 +933,7 @@ sub _get_functions
 	{
 		my $kind = $row->[7]; # FUNCTION or PROCEDURE
 		next if ( ($kind ne $self->{type}) && ($self->{type} ne 'SHOW_REPORT') );
-		my $sth2 = $self->{dbh}->prepare("SHOW CREATE $kind $row->[0]") or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+		my $sth2 = $self->{dbh}->prepare("SHOW CREATE $kind `$row->[0]`") or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 		$sth2->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 		while (my $r = $sth2->fetch)
 		{
@@ -987,8 +987,8 @@ sub _lookup_function
 
         @{$fct_detail{param_types}} = ();
 
-        if ( ($fct_detail{declare} =~ s/(.*?)\b(FUNCTION|PROCEDURE)\s+([^\s\(]+)\s*(\(.*\))\s+RETURNS\s+(.*)//is) ||
-		($fct_detail{declare} =~ s/(.*?)\b(FUNCTION|PROCEDURE)\s+([^\s\(]+)\s*(\(.*\))\s*(.*)//is) )
+        if ( ($fct_detail{declare} =~ s/(.*?)\b(FUNCTION|PROCEDURE)\s+([^\(]+)\s*(\(.*\))\s+RETURNS\s+(.*)//is) ||
+		($fct_detail{declare} =~ s/(.*?)\b(FUNCTION|PROCEDURE)\s+([^\(]+)\s*(\(.*\))\s*(.*)//is) )
 	{
                 $fct_detail{before} = $1;
                 $fct_detail{type} = uc($2);
@@ -2365,7 +2365,7 @@ sub _get_plsql_metadata
 		push(@fct_done, "$row->[0]");
 		$self->{function_metadata}{'unknown'}{'none'}{$row->[0]}{type} = $row->[2];
 		$self->{function_metadata}{'unknown'}{'none'}{$row->[0]}{text} = $row->[3];
-		my $sth2 = $self->{dbh}->prepare("SHOW CREATE $row->[2] $row->[0]") or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+		my $sth2 = $self->{dbh}->prepare("SHOW CREATE $row->[2] `$row->[0]`") or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 		$sth2->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 		while (my $r = $sth2->fetch) {
 			$self->{function_metadata}{'unknown'}{'none'}{$row->[0]}{text} = $r->[2];
