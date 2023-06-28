@@ -5429,6 +5429,8 @@ sub export_trigger
 
 		$trig->[4] =~ s/([^\*])[;\/]$/$1/;
 
+		# reordering of event when there is a OF keyword to specify columns
+		$trig->[2] =~ s/(\s+OR\s+UPDATE)(\s+.*)(\s+OF\s+)/$2$1$3/i;
 		$self->logit("\tDumping trigger $trig->[0] defined on table $trig->[3]...\n", 1);
 		my $tbname = $self->get_replaced_tbname($trig->[3]);
 
@@ -5574,6 +5576,7 @@ sub export_trigger
 				$trig->[6] =~ s/\s+ON\s+([^"\s]+)\s+/" ON " . $self->quote_object_name($1) . " "/ies;
 				$sql_output .= "DROP TRIGGER $self->{pg_supports_ifexists} " . $self->quote_object_name($trig->[0]) . " ON " . $self->quote_object_name($1) . ";\n" if ($self->{drop_if_exists});
 				$sql_output .= "CREATE TRIGGER " . $self->quote_object_name($trig->[0]) . "$trig->[6]\n";
+
 				if ($trig->[5])
 				{
 					$self->_remove_comments(\$trig->[5]);
