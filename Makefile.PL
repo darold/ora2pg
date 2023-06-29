@@ -1448,7 +1448,7 @@ if ($^O !~ /MSWin32|dos/i) {
 WriteMakefile(
     'NAME'         => 'Ora2Pg',
     'VERSION_FROM' => 'lib/Ora2Pg.pm',
-    'LICENSE'      => 'GPLv3',
+    'LICENSE'      => 'gpl_3',
     'dist'         => {
 			'COMPRESS'=>'gzip -9f', 'SUFFIX' => 'gz',
 			'ZIP'=>'/usr/bin/zip','ZIPFLAGS'=>'-rl'
