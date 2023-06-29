@@ -2208,7 +2208,6 @@ sub _sequences
 
 	$self->logit("Retrieving sequences information...\n", 1);
 	$self->{sequences} = $self->_get_sequences();
-
 }
 
 
@@ -5148,7 +5147,11 @@ sub export_sequence
 		}
 		# Max value lower than start value are not allowed
 		if (($self->{sequences}{$seq}->[2] > 0) && ($self->{sequences}{$seq}->[2] < $self->{sequences}{$seq}->[4])) {
-			$self->{sequences}{$seq}->[2] = $self->{sequences}{$seq}->[4];
+			if (!$cycle) {
+				$self->{sequences}{$seq}->[2] = $self->{sequences}{$seq}->[4];
+			} else {
+				$self->{sequences}{$seq}->[4] = $self->{sequences}{$seq}->[1];
+			}
 		}
 		if ($self->{sequences}{$seq}->[2] eq '' || $self->{sequences}{$seq}->[2] >= (2**63/2)-1) {
 			$sql_output .= " NO MAXVALUE";
