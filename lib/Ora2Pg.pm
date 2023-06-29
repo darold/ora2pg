@@ -10102,7 +10102,9 @@ sub get_indexname
 			$idxname = substr($idxname,0,63);
 		}
 	}
-	$idxname =~ s/[^a-z0-9_]+//ig; # Remove non alphanumeric character
+	# Remove non alphanumeric character
+	#$idxname =~ s/[^a-z0-9_]+//ig;
+
 	$idxname = $self->quote_object_name("$idxname$self->{indexes_suffix}");
 
 	return $idxname;
