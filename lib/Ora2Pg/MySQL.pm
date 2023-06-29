@@ -338,7 +338,9 @@ sub _column_comments
 
 	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	my %data = ();
-	while (my $row = $sth->fetch) {
+	while (my $row = $sth->fetch)
+	{
+		next if (!$self->is_in_struct($row->[2], $row->[0]));
 		$data{$row->[2]}{$row->[0]} = $row->[1];
 	}
 	return %data;
@@ -407,6 +409,7 @@ ORDER BY ORDINAL_POSITION};
 	my $pos = 0;
 	while (my $row = $sth->fetch)
 	{
+		next if (!$self->is_in_struct($row->[8], $row->[0]));
 		$row->[4] =~ s/^_[^']+\\'(.*)\\'/'$1'/; # fix collation on string
 		if ($row->[1] eq 'enum') {
 			$row->[1] = $row->[-2];
@@ -511,6 +514,8 @@ sub _get_indexes
 		#Null : Contains YES if the column may contain NULL values and '' if not.
 		#Index_type : The index method used (BTREE, FULLTEXT, HASH, RTREE).
 		#Comment : Information about the index not described in its own column, such as disabled if the index is disabled. 
+			next if (!$self->is_in_struct($row->[0], $row->[4]));
+
 			my $idxname = $row->[2];
 			$row->[1] = 'UNIQUE' if (!$row->[1]);
 			$unique{$row->[0]}{$idxname} = $row->[1];
@@ -622,6 +627,8 @@ sub _foreign_key
 		if ($self->{schema} && (lc($r->[7]) ne lc($self->{schema}))) {
 			print STDERR "WARNING: Foreign key $r->[2].$r->[0] point to an other database: $r->[7].$r->[3].$r->[4], please fix it.\n";
 		}
+		next if (!$self->is_in_struct($r->[2], $r->[0]));
+		next if (!$self->is_in_struct($r->[3], $r->[4]));
 		push(@{$link{$r->[2]}{$key_name}{local}}, $r->[0]);
 		push(@{$link{$r->[2]}{$key_name}{remote}{$r->[3]}}, $r->[4]);
 		$r->[8] = 'SIMPLE'; # See pathetical documentation of mysql
