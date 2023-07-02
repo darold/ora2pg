@@ -1309,6 +1309,9 @@ sub _init
 		$self->{sgbd_name} = 'Oracle';
 	}
 
+	# Export json configuration test
+	$self->{json_test} ||= 0;
+
 	# Set default system user/schema to not export. Most of them are extracted from this doc:
 	# http://docs.oracle.com/cd/E11882_01/server.112/e10575/tdpsg_user_accounts.htm#TDPSG20030
 	if (!$self->{is_mysql} && !$self->{is_mssql}) {
@@ -2237,8 +2240,128 @@ sub _functions
 	my $self = shift;
 
 	$self->logit("Retrieving functions information...\n", 1);
+
 	$self->{functions} = $self->_get_functions();
 
+}
+
+sub start_function_json_config
+{
+	my ($self, $type) = @_;
+
+	return if (!$self->{json_test});
+
+	my $dirprefix = '';
+	$dirprefix = "$self->{output_dir}/" if ($self->{output_dir});
+
+	unlink("${dirprefix}$type.json");
+
+	$self->{oracle_dsn} =~ /host=([^;]+)/;
+	my $ora_host = $1 || 'localhost';
+	$self->{oracle_dsn} =~ /port=(\d+)/;
+	my $ora_port = $1 || ((!$self->{is_mysql}) ? 1521 : 3306);
+	my $sid = '';
+	if (!$self->{is_mysql}) {
+		$self->{oracle_dsn} =~ /(service_name|sid)=([^;]+)/;
+		$sid = $2 || '';
+	} else {
+		$self->{oracle_dsn} =~ /(database)=([^;]+)/;
+		$sid = $2 || '';
+	}
+
+	my $pg_host = 'localhost';
+	if ($self->{pg_dsn} =~ /host=([^;]+)/) {
+		$pg_host = $1;
+	}
+	my $pg_port = 5432;
+	if ($self->{pg_dsn} =~ /port=(\d+)/) {
+		$pg_port = $1;
+	}
+	my $pg_db = '';
+	if ($self->{pg_dsn} =~ /dbname=([^;]+)/) {
+		$pg_db = $1;
+	}
+
+	my $tfh = $self->append_export_file($dirprefix . "$type.json", 1);
+	flock($tfh, 2) || die "FATAL: can't lock file ${dirprefix}$type.json\n";
+	$tfh->print(qq/{
+  "oraConfig": {
+    "dsn": "$self->{oracle_dsn}",
+    "host": "$ora_host",
+    "port": $ora_port,
+    "user": "$self->{oracle_user}",
+    "password": "$self->{oracle_pwd}",
+    "service_name": "$sid",
+    "schema": "$self->{schema}"
+  },
+  "pgConfig": {
+    "dsn": "$self->{pg_dsn}",
+    "host": "$pg_host",
+    "port": $pg_port,
+    "user": "$self->{pg_user}",
+    "password": "$self->{pg_pwd}",
+    "dbname": "$pg_db",
+    "schema": "$self->{pg_schema}"
+  },
+  "procfuncConfig": [
+/);
+	$self->close_export_file($tfh, 1);
+}
+
+sub end_function_json_config
+{
+	my ($self, $type) = @_;
+
+	return if (!$self->{json_test});
+
+	my $dirprefix = '';
+	$dirprefix = "$self->{output_dir}/" if ($self->{output_dir});
+
+	my $tfh = $self->append_export_file($dirprefix . "$type.json", 1);
+	flock($tfh, 2) || die "FATAL: can't lock file ${dirprefix}$type.json\n";
+	# Add an empty json entry at end
+	$tfh->print(qq/    {
+      "routine_type": "",
+      "ora": {
+        "routine_name": "",
+        "return_type": "",
+        "args_list": [
+          {
+            "0": [
+              {
+                "name": "",
+                "mode": "",
+                "type": "",
+                "default": "",
+                "value": ""
+              }
+              ]
+          } ]
+      },
+      "pg": {
+        "routine_name": "",
+        "return_type": "",
+        "args_list": [
+          {
+            "0": [
+              {
+                "name": "",
+                "mode": "",
+                "type": "",
+                "default": "",
+                "value": ""
+              }
+              ]
+          } ]
+      }
+    }
+/);
+
+	# terminate the json document
+	$tfh->print(qq/  ]
+}
+/);
+	$self->close_export_file($tfh, 1);
 }
 
 =head2 _procedures
@@ -8705,19 +8828,31 @@ sub _get_sql_statements
 	# Process functions only
 	elsif ($self->{type} eq 'FUNCTION')
 	{
+		$self->start_function_json_config($self->{type});
+
 		$self->export_function();
+
+		$self->end_function_json_config($self->{type});
 	}
 
 	# Process procedures only
 	elsif ($self->{type} eq 'PROCEDURE')
 	{
+		$self->start_function_json_config($self->{type});
+
 		$self->export_procedure();
+
+		$self->end_function_json_config($self->{type});
 	}
 
 	# Process packages only
 	elsif ($self->{type} eq 'PACKAGE')
 	{
+		$self->start_function_json_config($self->{type});
+
 		$self->export_package();
+
+		$self->end_function_json_config($self->{type});
 	}
 
 	# Process types only
@@ -19334,14 +19469,14 @@ Return a hast with the details of the function
 
 sub _lookup_function
 {
-	my ($self, $plsql, $pname) = @_;
+	my ($self, $plsql, $pname, $meta) = @_;
 
 	if ($self->{is_mysql}) {
-		return Ora2Pg::MySQL::_lookup_function($self, $plsql, $pname);
+		return Ora2Pg::MySQL::_lookup_function($self, $plsql, $pname, $meta);
 	} elsif ($self->{is_mssql}) {
-		return Ora2Pg::MSSQL::_lookup_function($self, $plsql, $pname);
+		return Ora2Pg::MSSQL::_lookup_function($self, $plsql, $pname, $meta);
 	} else {
-		return Ora2Pg::Oracle::_lookup_function($self, $plsql, $pname);
+		return Ora2Pg::Oracle::_lookup_function($self, $plsql, $pname, $meta);
 	}
 }
 

@@ -1543,7 +1543,7 @@ sub _get_functions
 
 sub _lookup_function
 {
-	my ($self, $plsql, $pname) = @_;
+	my ($self, $plsql, $pname, $meta) = @_;
 
 	my %fct_detail = ();
 
@@ -1604,6 +1604,7 @@ sub _lookup_function
 			$fct_detail{hasreturn} = 1;
 			my $ret_typ = $2 || '';
 			$ret_typ =~ s/(\%ORA2PG_COMMENT\d+\%)+//i;
+			$fct_detail{orig_func_ret_type} = $ret_typ;
 			$fct_detail{func_ret_type} = $self->_sql_type($ret_typ) || 'OPAQUE';
 		}
 		if ($fct_detail{declare} =~ s/(.*?)(USING|AS|IS)(\s+(?!REF\s+))/$3/is)
@@ -1624,9 +1625,61 @@ sub _lookup_function
 				$fct_detail{library_fct} = $1;
 			}
 		}
+		####
 		# rewrite argument syntax
+		####
 		# Replace alternate syntax for default value
 		$fct_detail{args} =~ s/:=/DEFAULT/igs;
+		my $json_arg = $fct_detail{args};
+		$json_arg =~ s/^\s*\(\s*//s;
+		$json_arg =~ s/\s*\)\s*$//s;
+		my %params_rewrite = ();
+		my $y = 0;
+		while ($json_arg =~ s/\(([^\(\)]+)\)/\(%ARGPARAM$y%\)/s) {
+			$params_rewrite{$y} = $1;
+			$y++;
+		}
+
+		$self->{json_config} = qq/    {
+      "routine_type": "\U$fct_detail{type}\E",
+      "ora": {
+        "routine_name": "\U$fct_detail{name}\E",
+        "return_type": "$fct_detail{orig_func_ret_type}",
+        "args_list": [
+          {
+            "0": [
+/;
+		my @json_args = split(/\s*,\s*/, $json_arg);
+		foreach my $a (@json_args)
+		{
+			my $arg_name = '';
+			my $arg_kind = 'IN';
+			my $arg_default = '';
+			if ($a =~ s/^([^\s]+)\s+//s) {
+				$arg_name = $1;
+			}
+			if ($a =~ s/^(IN\s+OUT|OUT|IN)\s+//s) {
+				$arg_kind = $1;
+			}
+			if ($a =~ s/\s*DEFAULT\s+(.*)//s) {
+				$arg_default = $1;
+			}
+			my $arg_type = $a;
+
+			$self->{json_config} .= qq/              {
+                "name": "$arg_name",
+                "mode": "$arg_kind",
+                "type": "$arg_type",
+                "default": "$arg_default",
+                "value": ""
+              },
+/;
+		}
+		$self->{json_config} =~ s/,$//s;
+		$self->{json_config} .= qq/	      ]
+	  } ]
+      },
+/;
 		# NOCOPY not supported
 		$fct_detail{args} =~ s/\s*NOCOPY//igs;
 		# IN OUT should be INOUT
@@ -1640,6 +1693,46 @@ sub _lookup_function
 		# Now convert types
 		$fct_detail{args} = Ora2Pg::PLSQL::replace_sql_type($self, $fct_detail{args}, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type}, $self->{varchar_to_text}, %{$self->{data_type}});
 		$fct_detail{declare} = Ora2Pg::PLSQL::replace_sql_type($self, $fct_detail{declare}, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type}, $self->{varchar_to_text}, %{$self->{data_type}});
+
+		$self->{json_config} .= qq/      "pg": {
+        "routine_name": "\L$fct_detail{name}\E",
+        "return_type": "$fct_detail{func_ret_type}",
+        "args_list": [
+          {
+            "0": [
+/;
+		@json_args = split(/\s*,\s*/, $json_arg);
+		foreach my $a (@json_args)
+		{
+			my $arg_name = '';
+			my $arg_kind = 'IN';
+			my $arg_default = '';
+			if ($a =~ s/^([^\s]+)\s+//s) {
+				$arg_name = $1;
+			}
+			if ($a =~ s/^(IN\s+OUT|OUT|IN)\s+//s) {
+				$arg_kind = $1;
+			}
+			if ($a =~ s/\s*DEFAULT\s+(.*)//s) {
+				$arg_default = $1;
+			}
+			my $arg_type = $a;
+
+			$self->{json_config} .= qq/              {
+                "name": "$arg_name",
+                "mode": "$arg_kind",
+                "type": "$arg_type",
+                "default": "$arg_default",
+                "value": ""
+              },
+/;
+		}
+		$self->{json_config} =~ s/,$//s;
+		$self->{json_config} .= qq/	      ]
+	  } ]
+      }
+    },
+/;
 
 		# Sometime variable used in FOR ... IN SELECT loop is not declared
 		# Append its RECORD declaration in the DECLARE section.
@@ -1763,6 +1856,16 @@ sub _lookup_function
 
 	# Remove %ROWTYPE from return type
 	$fct_detail{func_ret_type} =~ s/\%ROWTYPE//igs;
+
+	if ($self->{json_test} && !$meta && ($self->{type} eq uc($fct_detail{type}) || $self->{type} eq 'PACKAGE'))
+	{
+		my $dirprefix = '';
+		$dirprefix = "$self->{output_dir}/" if ($self->{output_dir});
+		my $tfh = $self->append_export_file($dirprefix . "$self->{type}.json", 1);
+		flock($tfh, 2) || die "FATAL: can't lock file ${dirprefix}$self->{type}.json\n";
+		$tfh->print($self->{json_config});
+		$self->close_export_file($tfh, 1);
+	}
 
 	return %fct_detail;
 }
@@ -3301,7 +3404,7 @@ sub _get_plsql_metadata
 				$self->_remove_comments(\$self->{function_metadata}{$sch}{'none'}{$name}{text}, 1);
 				$self->{comment_values} = ();
 				$self->{function_metadata}{$sch}{'none'}{$name}{text} =~  s/\%ORA2PG_COMMENT\d+\%//gs;
-				my %fct_detail = $self->_lookup_function($self->{function_metadata}{$sch}{'none'}{$name}{text});
+				my %fct_detail = $self->_lookup_function($self->{function_metadata}{$sch}{'none'}{$name}{text}, undef, 1);
 				if (!exists $fct_detail{name})
 				{
 					delete $self->{function_metadata}{$sch}{'none'}{$name};
