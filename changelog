@@ -1,3 +1,222 @@
+2023 07 05 - v24.0
+
+This major release adds support to migration of SQL Server database to
+PostgreSQL. It also fixes several issues reported since past height months
+and adds some new features and improvements.
+
+  * Enable the use of ALLOW/EXCLUDE directive with SHOW_* reports and throw
+    a fatal error if global filters in ALLOW/EXCLUDE are set.
+  * Add replacement of DBMS_LOCK.SLEEP with pg_sleep
+  * Split estimate cost details per function/procedure/and package function.
+  * Add cmin, cmax, ctid to reserved keywords list.
+  * Add cost for presence of ADD CONSTRAINT in PLSQL code. It needs constraint
+    name stability.
+  * Add CLOB_AS_BLOB configuration directive to treat CLOB as BLOB when
+    exporting data. When enabled Ora2Pg will apply same behavior on CLOB
+    than BLOB with BLOB_LIMIT setting. This could be useful if you have
+    large CLOB data. Enabled by default. Thanks to Omar Mebarki for the patch.
+  * Allow COPY and TABLE type to use the NULLIF construct. Thanks to Luke Davies
+    for the patch.
+  * Add new SEQUENCE_VALUES export type to export DDL to set the last values
+    of sequences from current Oracle database last values like the following
+    statements: ALTER SEQUENCE departments_seq START WITH 290;
+    Thanks to sergey grinko for the feature request.
+  * Add replacement of Oracle variable : varname into PG :'varname'.
+  * Add SQL Server migration to Ora2Pg. Most of the SQL Server objects are
+    supported as well as data export. Translation of the TSQL stored
+    procedures to plpgsql is complicated because of the lack of statement
+    separator in TSQL but as usual Ora2Pg is doing is best to do as much
+    work as possible. Migration assessment is also possible with SQL Server
+    database. There is some dedicated configuration directives added to
+    ora2Pg.conf.
+  * Add support to MySQL PARTITION BY KEY() with a translation to HASH
+    partitioned table using the PK/UK definition of the table or the
+    columns specified in the KEY() clause. Thanks to Shubham Dabriwala
+    for the report.
+  * Make EXPORT_INVALID configuration directive works with TRIGGER export.
+    Until now disabled triggers were not exported, setting EXPORT_INVALID
+    to 1 will force the export of disabled triggers. Thanks to chetank-yb
+    for the report.
+  * Add support of MySQL generated default value on update. For example:
+      CREATE TABLE t1 (
+        dt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+      );
+    Ora2Pg will translate this syntax into a trigger on the table to force
+    the value of the column on an update event.
+    Thanks to heysky for the report.
+  * Add translation of ST_GEOMETRY data type to PostGis geometry datatype.
+  * Replace ROWNUM in target list with a "row_number() over ()" clause. Thanks
+    to Rui Pereira for the report.
+
+New configuration directives:
+
+  * Add configuration directive ST_GEOMETRYTYPE_FUNCTION to be able to set the
+    function to use to extract the geometry type from a ST_Geometry column.
+    Default: ST_GeometryType, example it should be set to sde.ST_GeometryType
+    for ArcSDE. Thanks to Albert88373 for the report.
+  * Add four new configuration directive to be able to change or prefix the
+    functions used to extract information from ST_Geometry object and values.
+    - ST_SRID_FUNCTION: Oracle function to use to extract the srid from
+      ST_Geometry meta information. Default: ST_SRID, for example it should be
+      set to sde.st_srid for ArcSDE.
+    - ST_DIMENSION_FUNCTION: Oracle function to use to extract the dimension
+      from ST_Geometry meta information. Default: ST_DIMENSION, for example it
+      should be set to sde.st_dimention for ArcSDE.
+    - ST_ASBINARY_FUNCTION: Oracle function to used to convert an ST_Geometry
+      value into WKB format. Default: ST_ASBINARY, for example it should be set
+      to sde.st_asbinary for ArcSDE.
+    - ST_ASTEXT_FUNCTION: Oracle function to used to convert an ST_Geometry
+      value into WKT format. Default: ST_ASTEXT, for example it should be set
+      to sde.st_astext for ArcSDE.
+    Thanks to Albert88373 for the report.
+  * Add INSERT_ON_CONFLICT configuration directive. When enabled this instruct
+    Ora2Pg to add an ON CONFLICT DO NOTHING clause to all INSERT statements
+    generated for this type of data export. Thanks to Clemens Rieder for the
+    feature request.
+
+Backward compatibility:
+
+  * Change the behavior of CASE_INSENSITIVE_SEARCH to allow the use of a
+    collation instead of the citext extension. To disable the feature the
+    value none can be used. If the migration is not MSSQL this feature is
+    disabled.
+  * Remove PREFIX_PARTITION configuration directive, it is now replaced by
+    the RENAME_PARTITION directive. Previous behavior was to construct the
+    partition name from the table name, the partition name and the sub
+    partition name if any. The problem is that we often reach the max length
+    for an object name and this leads to duplicate partition name. Now, when
+    RENAME_PARTITION is enabled the partition tables will be renamed
+    following rules:
+        <tablename>_part<pos>
+    where "pos" is the partition number. For subpartition this is:
+       <tablename>_part<pos>_subpart<pos>
+    If this is partition/subpartition default:
+        <tablename>_part_default
+        <tablename>_part<pos>_subpart_default
+    This change will break backward comaptibilty, if PREFIX_PARTITION is
+    still set, it will simply enable RENAME_PARTITION.
+  * Set START value to MINVALUE when a sequence is cycled and that the START
+    value is upper that MAXVALUE. Thanks to Shane Borden for the report.
+
+Here is the full list of changes and acknowledgements:
+
+  - Fix MODIFY_STRUCT that was not working with MySQL. Thanks to Code-UV for
+    the report.
+  - Fix license string in Makefile.PL. Thanks to RodRaen for the report.
+  - Do not remove non alphanumeric character in index name. Thanks to gwidt
+    for the report.
+  - Reorder trigger event when the update of column is not the last one. Thanks
+    to tayalarun1 for the report.
+  - Fix export of MySQL function containing special characters and white spaces
+    in names. Thanks to Shubham Dabriwala for the report.
+  - Fix grant export for partitions. Thanks to elexus for the report.
+  - Add some other transformation for sqlplus/psql scripts.
+  - Remove comma as possible separator for values in DEFINED_PK, it was
+    preventing the use of a function with multiple parameters.
+  - Fix export of geometry tables when PG_SCHEMA is set.
+  - Add rewriting of some sqlplus settings to psql settings.
+  - Fix TABLESPACE export for partitioned tables. Thanks to elexus for the
+    report.
+  - Fix for Issue #1637. Thanks to Simon Pane for the patch.
+  - Fix typo in --init_project directories tree generation for sequences
+    values.
+  - Fix alias in view target list for function call without alias defined in
+    MySQL export. Thanks to Shubham Dabriwala for the report.
+  - Fix Mysql procedure export when a datatype with precision is used in
+    parameter list. Thanks to Shubham Dabriwala for the report.
+  - Fix collation on string default values. Thanks to Shubham Dabriwalafor
+    the report.
+  - Exclude recycle bin object from ALL_TAB_COLUMNS lookup. Thanks to Dave
+    Betterton for the report.
+  - Fix data types translation (TINYINT|SMALLINT|MEDIUMINT|INTEGER|BIGINT|INT)
+    for MySQL table export. Thanks to Shubham Dabriwala for the report.
+  - Do not export synonym destination table with table_owner when EXPORT_SCHEMA
+    is disabled. Thanks to Priyanshi Gupta for the report.
+  - Fully qualify calls to get_sequence_last_values() when PG_SCHEMA is set.
+    Thanks to Marius Hope for the report.
+  - Fix regression on exporting view as table when VIEW_AS_TABLE contains
+    regexp. Thanks to Neil Bower for the report.
+  - Fix missing execution of initial command statements at start of TEST_DATA
+    action and on both side, those applying to source and destination. Thanks
+    to Petter Jacobsen for the report.
+  - Fix script to get sequence last value with TEST action. Thanks to franxav06
+    for the patch.
+  - Prepend PERFORM before call to DBMS_OUTPUT.* when USE_ORAFCE is enabled.
+  - Disable USE_ORAFCE when export type is SHOW_REPORT.
+  - Extending the enhancement in Pull Request #1621 to the Oracle_FDW user
+    mapping. Thanks to Simon Pane for the patch.
+  - Changed prefix string to "DIFF:" in test report. Thanks to Simon Pane for
+    the patch.
+  - Fix cases where %ROWCOUNT was not correctly replaced. Thanks to Rui Pereira
+    for the report.
+  - Fix parsing of ORACLE_DSN when creating foreign server in COPY mode. Thanks
+    to Luke Davies for the report.
+  - Fix for Issue #1622, #1627. Thanks to Simon Pane for the patch.
+  - Fix index creation with DESC order in COPY action when DROP_INDEXES is
+    enabled. Thanks to Luke Davies for the report.
+  - Fix for Issue #1610, #1612, #1617 and #1381. Thanks to Simon Pane for the
+    patch.
+  - Fix typo in sqlnet.ora name (was sqlnet.or). Thanks to Martin Nash for the
+    patch.
+  - Fix data export, REPLACE_QUERY was not applied. Thanks to Bachev Constantin
+    for the report.
+  - Fix call to replace_sys_context().
+  - Fix timestamp(n) data type translation.
+  - Remove use of column GENERATION_EXPRESSION for MySQL version < 5.7.0. Thanks
+    to Hans Choi for the report.
+  - Fix conversion of DATE datatype to timestamp(0) instead of timestamp. Thanks
+    to Akhil Reddy for the report.
+  - Add NVARCHAR/NCHAR defaut convertion data types to DATA_TYPE configuration
+    directive in ora2pg.conf comments. Thanks to Akhil Reddy for the report.
+  - Rename method _get_partitions_type function into _get_partitions_list.
+  - Fix synonym export when no schema information is available.
+  - Fix support of REFERENCING clause in triggers.
+  - Fix partition output file renaming with new RENAME_PARTITION directive.
+    Thanks to Rahul Barigidad for the report.
+  - Fix export of the ROWNUM clause when there is a variable.
+  - Fix sprintf placeholders in geometry queries.
+  - Fix some others issues with row count report.
+  - Fix row count with destination schema and when the PostgreSQL table
+    doesn't exist.
+    Thanks to bizen-ya for the report.
+  - Fix tests comparison with the different settings of EXPORT_SCHEMA,
+    SCHEMA and PG_SCHEMA. Thanks to Marius Hope and bizen-ya for the
+    report.
+  - Fix St_AsText() call for MySQL data extraction.
+  - Add column count comparison for MySQL
+  - Export multi column partition by list as an expression with concat
+    operator. Multi column partition by list is not supported by PostgreSQL.
+  - Fix creation of non existant indexes on partition. Thanks to Shubham
+    Dabriwala for the report.
+  - Fix MySQL function export when there is no BEGIN clause. Thanks to
+    Shubham Dabriwala for the report.
+  - Fix MySQL export of unsigned numeric. Thanks to Shubham Dabriwala for
+    the report.
+  - Fix MySQL output with wrong synthax for JOIN without ON clause. Thanks
+    to Shubham Dabriwala for the report.
+  - Fix virtual column export. Thanks to Rafal Hollins for the report.
+  - Fix index creation on partition with no columns for MySQL export.
+    Thanks to Shubham Dabriwala for the report.
+  - Fix export of MySQL auto_increment when PG_INTEGER_TYPE is disabled.
+    Thanks to Shubham Dabriwala for the report.
+  - Fix MySQL subpartition export. Thanks to Sanyam Singhal for the report.
+  - Move any INTO clause in CONNECT BY query to the final SELECT on the
+    resulting CTE. Thanks to taptarap for the report.
+  - Fix translation of MySQL curtime() function in default values. Thanks
+    to Shubham Dabriwala for the report.
+  - Fix possible "Nested quantifiers in regex" error when exporting package
+    with package name containing regex special characters. Thanks to durandm70
+    for the report.
+  - Fix documentation about use of unique key for ORACLE_COPY.
+  - Fix extra comma at end of a CHECK contraint. Thanks to Shubham Dabriwala
+    for the report.
+  - Always add DROP TYPE statements with package export even if DROP_IF_EXISTS
+    is not enabled. Thanks to Rui Pereira for the report.
+  - Fix default value of simple dot in MySQL export. Thanks to Shubham
+    Dabriwala for the report.
+  - Fix regression in data type translation after fix on unsigned numeric type.
+    Thanks to Shubham Dabriwala for the report.
+
 2022 10 08 - v23.2
 
 This release fix several issues reported since past height months and
