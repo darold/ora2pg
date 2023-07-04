@@ -1311,6 +1311,8 @@ sub _init
 
 	# Export json configuration test
 	$self->{json_test} ||= 0;
+	# Show dependencies between stored procedures
+	$self->{print_dependencies} ||= 0;
 
 	# Set default system user/schema to not export. Most of them are extracted from this doc:
 	# http://docs.oracle.com/cd/E11882_01/server.112/e10575/tdpsg_user_accounts.htm#TDPSG20030
