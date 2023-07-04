@@ -1635,21 +1635,25 @@ sub _lookup_function
 		$json_arg =~ s/\s*\)\s*$//s;
 		my %params_rewrite = ();
 		my $y = 0;
-		while ($json_arg =~ s/\(([^\(\)]+)\)/\(%ARGPARAM$y%\)/s) {
+		while ($json_arg =~ s/(\([^\(\)]+\))/%ARGPARAM$y%/s) {
 			$params_rewrite{$y} = $1;
 			$y++;
 		}
-
+		my $routine_name = $fct_detail{name};
+		if ($self->{type} eq 'PACKAGE' && $pname) {
+			$routine_name = $pname . '.' . $fct_detail{name};
+		}
 		$self->{json_config} = qq/    {
       "routine_type": "\U$fct_detail{type}\E",
       "ora": {
-        "routine_name": "\U$fct_detail{name}\E",
+        "routine_name": "\U$routine_name\E",
         "return_type": "$fct_detail{orig_func_ret_type}",
         "args_list": [
           {
             "0": [
 /;
 		my @json_args = split(/\s*,\s*/, $json_arg);
+		map { s/\%ARGPARAM(\d+)\%/$params_rewrite{$1}/sg; } @json_args;
 		foreach my $a (@json_args)
 		{
 			my $arg_name = '';
@@ -1694,14 +1698,24 @@ sub _lookup_function
 		$fct_detail{args} = Ora2Pg::PLSQL::replace_sql_type($self, $fct_detail{args}, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type}, $self->{varchar_to_text}, %{$self->{data_type}});
 		$fct_detail{declare} = Ora2Pg::PLSQL::replace_sql_type($self, $fct_detail{declare}, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type}, $self->{varchar_to_text}, %{$self->{data_type}});
 
+		$json_arg = $fct_detail{args};
+		$json_arg =~ s/^\s*\(\s*//s;
+		$json_arg =~ s/\s*\)\s*$//s;
+		my %params_rewrite = ();
+		my $y = 0;
+		while ($json_arg =~ s/(\([^\(\)]+\))/%ARGPARAM$y%/s) {
+			$params_rewrite{$y} = $1;
+			$y++;
+		}
 		$self->{json_config} .= qq/      "pg": {
-        "routine_name": "\L$fct_detail{name}\E",
+        "routine_name": "\L$routine_name\E",
         "return_type": "$fct_detail{func_ret_type}",
         "args_list": [
           {
             "0": [
 /;
 		@json_args = split(/\s*,\s*/, $json_arg);
+		map { s/\%ARGPARAM(\d+)\%/$params_rewrite{$1}/sg; } @json_args;
 		foreach my $a (@json_args)
 		{
 			my $arg_name = '';
