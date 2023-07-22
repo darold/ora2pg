@@ -947,7 +947,7 @@ sub plsql_to_plpgsql
 	}
 
 	# DBMS_LOCK.SLEEP can be replaced by pg_sleep
-	$str =~ s/DBMS_LOCK\.SLEEP/PERFORM pg_sleep/igs;
+	$str =~ s/DBMS_(LOCK|SESSION)\.SLEEP/PERFORM pg_sleep/igs;
 
 	# Simply remove this as not supported
 	$str =~ s/\bDEFAULT\s+NULL\b//igs;
@@ -1785,7 +1785,7 @@ sub replace_oracle_function
 	$str =~ s/TO_CLOB\s*\(/\(/igs;
 
 	# DBMS_LOCK.SLEEP can be replaced by pg_sleep
-	$str =~ s/DBMS_LOCK\.SLEEP/pg_sleep/igs;
+	$str =~ s/DBMS_(LOCK|SESSION)\.SLEEP/pg_sleep/igs;
 
 	# Replace call to SYS_GUID() function
 	$str =~ s/\bSYS_GUID\s*\(\s*\)/$class->{uuid_function}()/igs;
