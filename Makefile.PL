@@ -1054,6 +1054,9 @@ FUNCTION_CHECK		1
 # target bytea column do not have a NOT NULL constraint.
 ENABLE_BLOB_EXPORT		1
 
+# Same but for CLOB data export
+ENABLE_CLOB_EXPORT		1
+
 # By default data export order will be done by sorting on table name. If you
 # have huge tables at end of alphabetic order and you are using multiprocess
 # it can be better to set the sort order on size so that multiple small tables

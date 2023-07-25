@@ -1371,6 +1371,10 @@ sub _init
 	if (not defined $self->{enable_blob_export}) {
 		$self->{enable_blob_export} = 1;
 	}
+	# Enable CLOB data export by default
+	if (not defined $self->{enable_clob_export}) {
+		$self->{enable_clob_export} = 1;
+	}
 
 	# Table data export will be sorted by name by default
 	$self->{data_export_order} ||= 'name';
@@ -9795,6 +9799,11 @@ sub _dump_table
 			# user don't want to export blob
 			next;
 		}
+		if (!$self->{enable_clob_export} && $f->[1] =~ /clob/i)
+		{
+			# user don't want to export clob
+			next;
+		}
 
 		my $is_pk = $self->is_primary_key_column($table, $fieldname);
 
@@ -9974,6 +9983,11 @@ sub _dump_fdw_table
 		if (!$self->{enable_blob_export} && $f->[1] =~ /blob/i)
 		{
 			# user don't want to export blob
+			next;
+		}
+		if (!$self->{enable_clob_export} && $f->[1] =~ /clob/i)
+		{
+			# user don't want to export clob
 			next;
 		}
 
@@ -11403,6 +11417,10 @@ sub _howto_get_data
 			{
 				if (!$self->{enable_blob_export} && $src_type->[$k] =~ /blob/i) {
 					# user don't want to export blob
+					next;
+				}
+				if (!$self->{enable_clob_export} && $src_type->[$k] =~ /clob/i) {
+					# user don't want to export clob
 					next;
 				}
 				if ($self->{empty_lob_null}) {
@@ -21379,6 +21397,11 @@ sub _get_oracle_test_data
 		if (!$self->{enable_blob_export} && $f->[1] =~ /blob/i)
 		{
 			# user don't want to export blob
+			next;
+		}
+		if (!$self->{enable_clob_export} && $f->[1] =~ /clob/i)
+		{
+			# user don't want to export clob
 			next;
 		}
 

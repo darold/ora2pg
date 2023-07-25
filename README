@@ -1055,6 +1055,9 @@ CONFIGURATION
         export. Take care that the target bytea column do not have a NOT
         NULL constraint.
 
+    ENABLE_CLOB_EXPORT
+        Same behavior as ENABLE_BLOB_EXPORT but for CLOB.
+
     DATA_EXPORT_ORDER
         By default data export order will be done by sorting on table name.
         If you have huge tables at end of alphabetic order and you are using
