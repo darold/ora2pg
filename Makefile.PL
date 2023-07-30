@@ -1298,7 +1298,7 @@ HUMAN_DAYS_LIMIT	5
 # Set the PostgreSQL major version number of the target database. Ex: 9.6 or 10
 # Default is current major version at time of a new release. This replace the
 # old PG_SUPPORTS_* configuration directives.
-PG_VERSION	14
+PG_VERSION	15
 
 # Use btree_gin extenstion to create bitmap like index with pg >= 9.4
 # You will need to create the extension by yourself:
