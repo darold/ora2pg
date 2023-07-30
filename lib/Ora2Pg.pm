@@ -5143,13 +5143,18 @@ sub export_grant
 		if ($self->{grants}{$table}{grantable}) {
 			$wgrantoption = ' WITH GRANT OPTION';
 		}
-		if ($self->{grants}{$table}{type} ne 'PACKAGE BODY') {
-			if ($self->{grants}{$table}{owner}) {
-				if (grep(/^$self->{grants}{$table}{owner}$/, @{$self->{roles}{roles}})) {
+		if ($self->{grants}{$table}{type} ne 'PACKAGE BODY')
+		{
+			if ($self->{grants}{$table}{owner})
+			{
+				if (grep(/^$self->{grants}{$table}{owner}$/, @{$self->{roles}{roles}}))
+				{
 					$grants .= "ALTER $obj $realtable OWNER TO ROLE $ownee;\n";
 					$obj = '' if (!grep(/^$obj$/, 'FUNCTION', 'PROCEDURE', 'SEQUENCE','SCHEMA','TABLESPACE'));
 					$grants .= "GRANT ALL ON $obj $realtable TO ROLE $ownee$wgrantoption;\n";
-				} else {
+				}
+				else
+				{
 					$grants .= "ALTER $obj $realtable OWNER TO $ownee;\n";
 					$obj = '' if (!grep(/^$obj$/, 'FUNCTION', 'PROCEDURE', 'SEQUENCE','SCHEMA','TABLESPACE'));
 					$grants .= "GRANT ALL ON $obj $realtable TO $ownee$wgrantoption;\n";
@@ -5160,34 +5165,47 @@ sub export_grant
 			} else {
 				$grants .= "REVOKE ALL ON $realtable FROM PUBLIC;\n";
 			}
-		} else {
-			if ($self->{grants}{$table}{owner}) {
-				if (grep(/^$self->{grants}{$table}{owner}$/, @{$self->{roles}{roles}})) {
+		}
+		else
+		{
+			$realtable =~ s/^[^\.]+\.//;
+			if ($self->{grants}{$table}{owner})
+			{
+				if (grep(/^$self->{grants}{$table}{owner}$/, @{$self->{roles}{roles}}))
+				{
 					$grants .= "ALTER SCHEMA $realtable OWNER TO ROLE $ownee;\n";
-					$grants .= "GRANT ALL ON SCHEMA $realtable TO ROLE $ownee$wgrantoption;\n";
-				} else {
+					$grants .= "GRANT EXECUTE ON ALL ROUTINES IN SCHEMA $realtable TO ROLE $ownee$wgrantoption;\n";
+				}
+				else
+				{
 					$grants .= "ALTER SCHEMA $realtable OWNER TO $ownee;\n";
-					$grants .= "GRANT ALL ON SCHEMA $realtable TO $ownee$wgrantoption;\n";
+					$grants .= "GRANT EXECUTE ON ALL ROUTINES IN SCHEMA $realtable TO $ownee$wgrantoption;\n";
 				}
 			}
 			$grants .= "REVOKE ALL ON SCHEMA $realtable FROM PUBLIC;\n";
 		}
-		foreach my $usr (sort keys %{$self->{grants}{$table}{privilege}}) {
+
+		foreach my $usr (sort keys %{$self->{grants}{$table}{privilege}})
+		{
 			my $agrants = '';
 			foreach my $g (@GRANTS) {
 				$agrants .= "$g," if (grep(/^$g$/i, @{$self->{grants}{$table}{privilege}{$usr}}));
 			}
 			$agrants =~ s/,$//;
 			$usr = $self->quote_object_name($usr);
-			if ($self->{grants}{$table}{type} ne 'PACKAGE BODY') {
+			if ($self->{grants}{$table}{type} ne 'PACKAGE BODY')
+			{
 				if (grep(/^$self->{grants}{$table}{type}$/, 'FUNCTION', 'PROCEDURE', 'SEQUENCE','SCHEMA','TABLESPACE', 'TYPE')) {
 					$grants .= "GRANT $agrants ON $obj $realtable TO $usr$wgrantoption;\n";
 				} else {
 					$grants .= "GRANT $agrants ON $realtable TO $usr$wgrantoption;\n";
 				}
-			} else {
+			}
+			else
+			{
+				$realtable =~ s/^[^\.]+\.//;
 				$grants .= "GRANT USAGE ON SCHEMA $realtable TO $usr$wgrantoption;\n";
-				$grants .= "GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA $realtable TO $usr$wgrantoption;\n";
+				$grants .= "GRANT EXECUTE ON ALL ROUTINES IN SCHEMA $realtable TO $usr$wgrantoption;\n";
 			}
 		}
 		$grants .= "\n";
