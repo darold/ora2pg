@@ -5147,15 +5147,15 @@ sub export_grant
 			if ($self->{grants}{$table}{owner}) {
 				if (grep(/^$self->{grants}{$table}{owner}$/, @{$self->{roles}{roles}})) {
 					$grants .= "ALTER $obj $realtable OWNER TO ROLE $ownee;\n";
-					$obj = '' if (!grep(/^$obj$/, 'FUNCTION', 'SEQUENCE','SCHEMA','TABLESPACE'));
+					$obj = '' if (!grep(/^$obj$/, 'FUNCTION', 'PROCEDURE', 'SEQUENCE','SCHEMA','TABLESPACE'));
 					$grants .= "GRANT ALL ON $obj $realtable TO ROLE $ownee$wgrantoption;\n";
 				} else {
 					$grants .= "ALTER $obj $realtable OWNER TO $ownee;\n";
-					$obj = '' if (!grep(/^$obj$/, 'FUNCTION', 'SEQUENCE','SCHEMA','TABLESPACE'));
+					$obj = '' if (!grep(/^$obj$/, 'FUNCTION', 'PROCEDURE', 'SEQUENCE','SCHEMA','TABLESPACE'));
 					$grants .= "GRANT ALL ON $obj $realtable TO $ownee$wgrantoption;\n";
 				}
 			}
-			if (grep(/^$self->{grants}{$table}{type}$/, 'FUNCTION', 'SEQUENCE','SCHEMA','TABLESPACE')) {
+			if (grep(/^$self->{grants}{$table}{type}$/, 'FUNCTION', 'PROCEDURE', 'SEQUENCE','SCHEMA','TABLESPACE')) {
 				$grants .= "REVOKE ALL ON $self->{grants}{$table}{type} $realtable FROM PUBLIC;\n";
 			} else {
 				$grants .= "REVOKE ALL ON $realtable FROM PUBLIC;\n";
@@ -5180,7 +5180,7 @@ sub export_grant
 			$agrants =~ s/,$//;
 			$usr = $self->quote_object_name($usr);
 			if ($self->{grants}{$table}{type} ne 'PACKAGE BODY') {
-				if (grep(/^$self->{grants}{$table}{type}$/, 'FUNCTION', 'SEQUENCE','SCHEMA','TABLESPACE', 'TYPE')) {
+				if (grep(/^$self->{grants}{$table}{type}$/, 'FUNCTION', 'PROCEDURE', 'SEQUENCE','SCHEMA','TABLESPACE', 'TYPE')) {
 					$grants .= "GRANT $agrants ON $obj $realtable TO $usr$wgrantoption;\n";
 				} else {
 					$grants .= "GRANT $agrants ON $realtable TO $usr$wgrantoption;\n";
