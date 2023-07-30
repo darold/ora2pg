@@ -1701,8 +1701,8 @@ sub _lookup_function
 		$json_arg = $fct_detail{args};
 		$json_arg =~ s/^\s*\(\s*//s;
 		$json_arg =~ s/\s*\)\s*$//s;
-		my %params_rewrite = ();
-		my $y = 0;
+		%params_rewrite = ();
+		$y = 0;
 		while ($json_arg =~ s/(\([^\(\)]+\))/%ARGPARAM$y%/s) {
 			$params_rewrite{$y} = $1;
 			$y++;

@@ -313,6 +313,7 @@ if (-e $ALLOW)
 {
 	my $fh = new IO::File;
 	$fh->open($ALLOW) or die "FATAL: can't read file $ALLOW, $!\n";
+	$ALLOW = '';
 	while (my $l = <$fh>)
 	{
 		chomp($l);
@@ -321,10 +322,12 @@ if (-e $ALLOW)
 	$fh->close;
 	$ALLOW =~ s/ $//;
 }
+
 if (-e $EXCLUDE)
 {
 	my $fh = new IO::File;
 	$fh->open($EXCLUDE) or die "FATAL: can't read file $EXCLUDE, $!\n";
+	$EXCLUDE = '';
 	while (my $l = <$fh>)
 	{
 		chomp($l);
