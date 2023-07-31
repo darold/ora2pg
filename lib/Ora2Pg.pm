@@ -2684,7 +2684,7 @@ sub _tables
 			if ($tables_infos{$t}{nested} eq 'YES') {
 				$query = "SELECT /*+ nested_table_get_refs */ * FROM $tmp_tbname WHERE 1=0";
 			}
-			my $sth = $self->{dbh}->prepare($query);
+			my $sth = $self->{dbh}->prepare($query, { odbc_exec_direct => 1});
 			if (!defined($sth)) {
 				warn "Can't prepare statement: $DBI::errstr";
 				next;
