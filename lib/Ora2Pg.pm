@@ -2680,23 +2680,35 @@ sub _tables
 					$tmp_tbname = "\"$tmp_tbname\"";
 				}
 			}
-			my $query = "SELECT * FROM $tmp_tbname WHERE 1=0";
-			if ($tables_infos{$t}{nested} eq 'YES') {
-				$query = "SELECT /*+ nested_table_get_refs */ * FROM $tmp_tbname WHERE 1=0";
+			if (!$self->{is_mssql})
+			{
+				my $query = "SELECT * FROM $tmp_tbname WHERE 1=0";
+				if ($tables_infos{$t}{nested} eq 'YES') {
+					$query = "SELECT /*+ nested_table_get_refs */ * FROM $tmp_tbname WHERE 1=0";
+				}
+				my $sth = $self->{dbh}->prepare($query, { odbc_exec_direct => 1});
+				if (!defined($sth)) {
+					warn "Can't prepare statement: $DBI::errstr";
+					next;
+				}
+				$sth->execute;
+				if ($sth->err) {
+					warn "Can't execute statement: $DBI::errstr";
+					next;
+				}
+				$self->{tables}{$t}{type} = 'table';
+				$self->{tables}{$t}{field_name} = $sth->{NAME};
+				$self->{tables}{$t}{field_type} = $sth->{TYPE};
 			}
-			my $sth = $self->{dbh}->prepare($query, { odbc_exec_direct => 1});
-			if (!defined($sth)) {
-				warn "Can't prepare statement: $DBI::errstr";
-				next;
+			else
+			{
+				foreach my $k (keys %{$self->{tables}{$t}{column_info}})
+				{
+					$self->{tables}{$t}{type} = 'table';
+					$self->{tables}{$t}{field_name} = $self->{tables}{$t}{column_info}{$k}[0];
+					$self->{tables}{$t}{field_type} = $self->{tables}{$t}{column_info}{$k}[1];
+				}
 			}
-			$sth->execute;
-			if ($sth->err) {
-				warn "Can't execute statement: $DBI::errstr";
-				next;
-			}
-			$self->{tables}{$t}{type} = 'table';
-			$self->{tables}{$t}{field_name} = $sth->{NAME};
-			$self->{tables}{$t}{field_type} = $sth->{TYPE};
 		}
 		$i++;
 	}
@@ -7669,6 +7681,7 @@ BEGIN
 						} elsif ($self->{export_schema} && !$self->{schema} && ($table =~ /^([^\.]+)\./)) {
 							$tb_name =  $1 . '.' . $self->{subpartitions_default}{$table}{$part}{name};
 						}
+						$tb_name = $table . '_part' . $pos . '_subpart_default' if (!$tb_name);
 						$create_table_tmp .= "DROP TABLE $self->{pg_supports_ifexists} " . $self->quote_object_name($tb_name) . ";\n" if ($self->{drop_if_exists});
 						if ($self->{pg_version} >= 11) {
 							$create_table_tmp .= "CREATE TABLE " . $self->quote_object_name($tb_name)
@@ -7733,6 +7746,7 @@ LANGUAGE plpgsql;
 							$tb_name =  $self->{partitions_default}{$table}{name};
 						}
 					}
+					$tb_name = $table . '_part_default' if (!$tb_name);
 					$create_table{$table}{table} .= "DROP TABLE $self->{pg_supports_ifexists} " . $self->quote_object_name($tb_name) . ";\n" if ($self->{drop_if_exists});
 					if ($self->{pg_version} >= 11) {
 						$create_table{$table}{table} .= "CREATE TABLE " . $self->quote_object_name($tb_name)

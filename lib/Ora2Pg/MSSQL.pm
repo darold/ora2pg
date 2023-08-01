@@ -1739,10 +1739,10 @@ LEFT OUTER JOIN sys.schemas sch ON t.schema_id = sch.schema_id
 		if ($self->{export_schema} && !$self->{schema}) {
 			$row->[1] = "$row->[0].$row->[1]";
 		}
-                $parts{$row->[1]}{count}++;
-                $parts{$row->[1]}{composite} = 0;
-		$parts{$row->[1]}{type} = 'RANGE';
-		push(@{ $parts{$row->[1]}{columns} }, $row->[11]) if (!grep(/^$row->[11]$/, @{ $parts{$row->[1]}{columns} }));
+                $parts{"\L$row->[1]\E"}{count}++;
+                $parts{"\L$row->[1]\E"}{composite} = 0;
+		$parts{"\L$row->[1]\E"}{type} = 'RANGE';
+		push(@{ $parts{"\L$row->[1]\E"}{columns} }, $row->[11]) if (!grep(/^$row->[11]$/, @{ $parts{"\L$row->[1]\E"}{columns} }));
 		#dbo | PartitionTable | PK__Partitio__357D0D3E1290FD9F | 2 | 72057594048872448 | 65601 | 65536 | RANGE | 2 | 2022-05-01 00:00:00 | 1 | col1
 	}
 	$sth->finish;
