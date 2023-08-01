@@ -2440,12 +2440,6 @@ DBI TYPE can be TABLE, VIEW, SYSTEM TABLE, GLOBAL TEMPORARY, LOCAL TEMPORARY,
 ALIAS, SYNONYM or a data source specific type identifier. This only extracts
 the TABLE type.
 
-It also gets the following information in the DBI object to affect the
-main hash of the database structure :
-
-    $self->{tables}{$class_name}{field_name} = $sth->{NAME};
-    $self->{tables}{$class_name}{field_type} = $sth->{TYPE};
-
 It also calls these other private subroutines to affect the main hash
 of the database structure :
 
@@ -2684,34 +2678,12 @@ sub _tables
 					$tmp_tbname = "\"$tmp_tbname\"";
 				}
 			}
-			if (!$self->{is_mssql})
+
+			foreach my $k (sort {$self->{tables}{$t}{column_info}{$a}[11] <=> $self->{tables}{$t}{column_info}{$b}[11]} keys %{$self->{tables}{$t}{column_info}})
 			{
-				my $query = "SELECT * FROM $tmp_tbname WHERE 1=0";
-				if ($tables_infos{$t}{nested} eq 'YES') {
-					$query = "SELECT /*+ nested_table_get_refs */ * FROM $tmp_tbname WHERE 1=0";
-				}
-				my $sth = $self->{dbh}->prepare($query, { odbc_exec_direct => 1});
-				if (!defined($sth)) {
-					warn "Can't prepare statement: $DBI::errstr";
-					next;
-				}
-				$sth->execute;
-				if ($sth->err) {
-					warn "Can't execute statement: $DBI::errstr";
-					next;
-				}
 				$self->{tables}{$t}{type} = 'table';
-				$self->{tables}{$t}{field_name} = $sth->{NAME};
-				$self->{tables}{$t}{field_type} = $sth->{TYPE};
-			}
-			else
-			{
-				foreach my $k (keys %{$self->{tables}{$t}{column_info}})
-				{
-					$self->{tables}{$t}{type} = 'table';
-					$self->{tables}{$t}{field_name} = $self->{tables}{$t}{column_info}{$k}[0];
-					$self->{tables}{$t}{field_type} = $self->{tables}{$t}{column_info}{$k}[1];
-				}
+				push(@{$self->{tables}{$t}{field_name}}, $self->{tables}{$t}{column_info}{$k}[0]);
+				push(@{$self->{tables}{$t}{field_type}}, $self->{tables}{$t}{column_info}{$k}[1]);
 			}
 		}
 		$i++;
@@ -4174,6 +4146,14 @@ sub _export_table_data
 
 	# Rename table and double-quote it if required
 	my $tmptb = $self->get_replaced_tbname($table);
+
+	# register the column list and data type in dedicated structs
+	foreach my $k (sort {$self->{tables}{$t}{column_info}{$a}[11] <=> $self->{tables}{$t}{column_info}{$b}[11]} keys %{$self->{tables}{$t}{column_info}})
+	{
+		push(@{$self->{data_cols}{$t}}, $k);
+		push(@{$self->{tables}{$t}{field_name}}, $self->{tables}{$t}{column_info}{$k}[0]);
+		push(@{$self->{tables}{$t}{field_type}}, $self->{tables}{$t}{column_info}{$k}[1]);
+	}
 
 	# Open output file
 	$self->data_dump($sql_header, $table) if (!$self->{pg_dsn} && $self->{file_per_table});
@@ -8058,7 +8038,7 @@ sub export_table
 
 			# get column name list.
 			my @collist = ();
-			foreach my $k (keys %{$self->{tables}{$table}{column_info}}) {
+			foreach my $k (sort {$self->{tables}{$table}{column_info}{$a}[11] <=> $self->{tables}{$table}{column_info}{$b}[11]} keys %{$self->{tables}{$table}{column_info}}) {
 				push(@collist, $self->{tables}{$table}{column_info}{$k}[0]);
 			}
 
@@ -8078,7 +8058,7 @@ sub export_table
 						if($TYPALIGN{$typa} != $TYPALIGN{$typb}){
 							# sort by field size asc
 							$TYPALIGN{$typa} <=> $TYPALIGN{$typb};
-						}else{
+						} else {
 							# if same size sort by original position
 							$self->{tables}{$table}{column_info}{$a}[11] <=> $self->{tables}{$table}{column_info}{$b}[11];
 						}
@@ -15490,9 +15470,6 @@ sub _extract_data
 			} else {
 				$sth = $dbh->prepare($query,{'ora_auto_lob' => 0, ora_exe_mode=>OCI_STMT_SCROLLABLE_READONLY, ora_check_sql => 1}) or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
 			}
-			foreach (@{$sth->{NAME}}) {
-				push(@{$self->{data_cols}{$table}}, $_);
-			}
 		}
 	}
 	else
@@ -15533,9 +15510,6 @@ sub _extract_data
 				return 0;
 			} elsif ($self->{dbh}->errstr) {
 				 $self->logit("FATAL: _extract_data() " . $self->{dbh}->errstr . "\n", 1, 1);
-			}
-			foreach (@{$sth->{NAME}}) {
-				push(@{$self->{data_cols}{$table}}, $_);
 			}
 		}
 	}
