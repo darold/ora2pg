@@ -1431,6 +1431,10 @@ DROP_ROWVERSION		0
 # Instead of citext you can also set a collation name that will be used in the
 # columns definitions. To disable case insensitive search set it to: none.
 CASE_INSENSITIVE_SEARCH	citext
+
+# Append a TOP N clause to the SELECT command used to extract the data from
+# SQL Server. This is the equivalent to a WHERE ROWNUM < 1000 clause for Oracle.
+SELECT_TOP	1000
 };
 close(OUTCFG);
 

@@ -1614,6 +1614,10 @@ sub _init
 		$self->{longtruncok} = 1;
 	}
 
+	# Limit he number of row extracted from MSSQL
+	$self->{select_top} ||= 0;
+	$self->{select_top} = 0 if (!$self->{is_mssql});
+
 	# Backward compatibility with PG_NUMERIC_TYPE alone
 	$self->{pg_integer_type} = 1 if (not defined $self->{pg_integer_type});
 	# Backward compatibility with CASE_SENSITIVE
@@ -7146,6 +7150,7 @@ BEGIN
 					$tb_name =  $part;
 				}
 			}
+			$tb_name = $table . '_default' if (!$tb_name);
 			$create_table_tmp .= "DROP TABLE $self->{pg_supports_ifexists} " . $self->quote_object_name($tb_name) . ";\n" if ($self->{drop_if_exists});
 			if (!$self->{pg_supports_partition})
 			{
@@ -11294,6 +11299,10 @@ sub _howto_get_data
 	my $str = "SELECT ";
 	if ($self->{tables}{$table}{table_info}{nested} eq 'YES') {
 		$str = "SELECT /*+ nested_table_get_refs */ ";
+	}
+
+	if ($self->{is_mssql} && $self->{select_top}) {
+		$str .= "TOP $self->{select_top} ";
 	}
 
 	my $extraStr = "";

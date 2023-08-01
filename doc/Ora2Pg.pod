@@ -2628,6 +2628,11 @@ tables DDL (Ora2Pg will add a CHECK constraint for columns with a precision).
 Instead of citext you can also set a collation name that will be used in the
 columns definitions. To disable case insensitive search set it to: none.
 
+=item SELECT_TOP
+
+Append a TOP N clause to the SELECT command used to extract the data from
+SQL Server. This is the equivalent to a WHERE ROWNUM < 1000 clause for Oracle.
+
 =back
 
 =head2 Special options to handle character encoding
