@@ -245,7 +245,7 @@ sub _table_info
 
         my $schema_clause = '';
         $schema_clause = " AND s.name='$self->{schema}'" if ($self->{schema});
-	my $sql = qq{SELECT t.NAME AS TABLE_NAME, NULL AS comment, t.type_desc as TABLE_TYPE, p.rows AS RowCounts, SUM(a.used_pages)  * 8 / 1024 AS UsedSpaceMB, CONVERT(DECIMAL,SUM(a.total_pages)) * 8 / 1024 AS TotalSpaceMB, s.Name AS TABLE_SCHEMA, SCHEMA_NAME(t.principal_id)
+	my $sql = qq{SELECT t.NAME AS TABLE_NAME, NULL AS comment, t.type_desc as TABLE_TYPE, p.rows AS RowCounts, SUM(a.used_pages)  * 8 / 1024 AS UsedSpaceMB, CONVERT(DECIMAL,SUM(a.total_pages)) * 8 / 1024 AS TotalSpaceMB, s.Name AS TABLE_SCHEMA, SCHEMA_NAME(t.principal_id), i.type_desc
 FROM sys.tables t
 INNER JOIN sys.indexes i ON t.OBJECT_ID = i.object_id
 INNER JOIN sys.partitions p ON i.object_id = p.OBJECT_ID AND i.index_id = p.index_id
@@ -256,7 +256,7 @@ WHERE t.is_ms_shipped = 0 AND i.OBJECT_ID > 255 AND t.type='U' AND t.NAME NOT LI
 	my %tables_infos = ();
 	my %comments = ();
 	$sql .= $self->limit_to_objects('TABLE', 't.Name');
-	$sql .= " GROUP BY t.type_desc, s.Name, t.Name, SCHEMA_NAME(t.principal_id), p.Rows ORDER BY s.Name, t.Name";
+	$sql .= " GROUP BY t.type_desc, i.type_desc, s.Name, t.Name, SCHEMA_NAME(t.principal_id), p.Rows ORDER BY s.Name, t.Name";
 	my $sth = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	while (my $row = $sth->fetch)
@@ -265,18 +265,19 @@ WHERE t.is_ms_shipped = 0 AND i.OBJECT_ID > 255 AND t.type='U' AND t.NAME NOT LI
 			$row->[0] = "$row->[6].$row->[0]";
 		}
 		$row->[2] =~ s/^USER_//;
-		$comments{$row->[0]}{comment} = $row->[1];
-		$comments{$row->[0]}{table_type} = $row->[2];
+		$comments{$row->[0]}{comment} = $row->[1] || '';
+		$comments{$row->[0]}{table_type} = $row->[2] || '';
 		$tables_infos{$row->[0]}{owner} = $row->[7] || $row->[6];
 		$tables_infos{$row->[0]}{num_rows} = $row->[3] || 0;
 		$tables_infos{$row->[0]}{comment} = ''; # SQL Server doesn't have COMMENT and we don't play with "Extended Properties"
-		$tables_infos{$row->[0]}{type} =  $comments{$row->[0]}{table_type} || '';
+		$tables_infos{$row->[0]}{type} =  $row->[2] || '';
 		$tables_infos{$row->[0]}{nested} = 'NO';
 		$tables_infos{$row->[0]}{size} = sprintf("%.3f", $row->[5]) || 0;
 		$tables_infos{$row->[0]}{tablespace} = 0;
 		$tables_infos{$row->[0]}{auto_increment} = 0;
 		$tables_infos{$row->[0]}{tablespace} = $tbspname{$row->[0]} || '';
 		$tables_infos{$row->[0]}{partitioned} = 1 if (exists $self->{partitions_list}{"\L$row->[0]\E"});
+		$tables_infos{$row->[0]}{index_type} = $row->[8];
 	}
 	$sth->finish();
 

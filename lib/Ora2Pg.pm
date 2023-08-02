@@ -2640,6 +2640,7 @@ sub _tables
 		$self->{tables}{$t}{table_info}{partitioned} = $tables_infos{$t}{partitioned};
 		$self->{tables}{$t}{table_info}{temporary} = $tables_infos{$t}{temporary};
 		$self->{tables}{$t}{table_info}{duration} = $tables_infos{$t}{duration};
+		$self->{tables}{$t}{table_info}{index_type} = $tables_infos{$t}{index_type};
 		if (exists $tables_infos{$t}{fillfactor}) {
 		    $self->{tables}{$t}{table_info}{fillfactor} = $tables_infos{$t}{fillfactor};
 		}
@@ -17159,6 +17160,9 @@ sub _show_infos
 			}
 			if ($tables_infos{$t}{nologging}) {
 				$kind .= ' UNLOGGED';
+			}
+			if ($tables_infos{$t}{index_type}) {
+				$warning .= " - Indexed type: tables_infos{$t}{index_type}";
 			}
 			my $tname = $t;
 			if (!$self->{is_mysql}) {
