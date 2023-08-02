@@ -1333,7 +1333,7 @@ sub _sql_type
 				{
 					if ($precision)
 					{
-						if ($self->{pg_integer_type})
+						if ($type =~ /(TINYINT|SMALLINT|INTEGER|BIGINT|INT)/ && $precision)
 						{
 							if ($precision < 5) {
 								return 'smallint';
