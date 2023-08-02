@@ -1290,6 +1290,10 @@ sub _sql_type
 	my $data_type = '';
 	chomp($type);
 
+	if ($len == -1) {
+		return "$self->{data_type}{$type}()";
+	}
+
 	# Some length and scale may have not been extracted before
 	if ($type =~ s/\(\s*(\d+)\s*\)//) {
 		$len   = $1;
@@ -1301,6 +1305,7 @@ sub _sql_type
 	if ($type !~ /CHAR/i) {
 		$precision = $len if (!$precision);
 	}
+
         # Override the length
         if (exists $self->{data_type}{uc($type)})
 	{

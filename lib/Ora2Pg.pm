@@ -8069,7 +8069,7 @@ sub export_table
 
 				# COLUMN_NAME,DATA_TYPE,DATA_LENGTH,NULLABLE,DATA_DEFAULT,DATA_PRECISION,DATA_SCALE,CHAR_LENGTH,TABLE_NAME,OWNER,VIRTUAL_COLUMN,POSITION,AUTO_INCREMENT,SRID,SDO_DIM,SDO_GTYPE
 				my $f = $self->{tables}{$table}{column_info}{$k};
-				$f->[2] =~ s/\D//g;
+				$f->[2] =~ s/[^0-9\-\.]//g;
 				my $type = $self->_sql_type($f->[1], $f->[2], $f->[5], $f->[6], $f->[4], 1);
 				$type = "$f->[1], $f->[2]" if (!$type);
 				# Change column names
@@ -17197,7 +17197,7 @@ sub _show_infos
 					$warning = '';
 					# COLUMN_NAME,DATA_TYPE,DATA_LENGTH,NULLABLE,DATA_DEFAULT,DATA_PRECISION,DATA_SCALE,CHAR_LENGTH,TABLE_NAME,OWNER,VIRTUAL_COLUMN,POSITION,AUTO_INCREMENT,SRID,SDO_DIM,SDO_GTYPE
 					my $d = $self->{tables}{$t}{column_info}{$k};
-					$d->[2] =~ s/\D//g;
+					$d->[2] =~ s/[^0-9\-\.]//g;
 					my $type1 = $self->_sql_type($d->[1], $d->[2], $d->[5], $d->[6], $d->[4]);
 					$type1 = "$d->[1], $d->[2]" if (!$type1);
 					$warning .= " (numeric?)" if ($type1 =~ s/#$//);
