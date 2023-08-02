@@ -1230,8 +1230,8 @@ sub _init
 	}
 
 	# Do not allow global allow/exclude with SHOW_* reports
-	if ($self->{type} =~ /SHOW_/ && ($#{$self->{limited}{ALL}} >= 0 || $#{$self->{excluded}{ALL}} >= 0)) {
-		$self->logit("FATAL: you can not use global filters in ALLOW/EXCLUDE directive with SHOW_* reports\n", 0, 1);
+	if ($self->{type} eq 'SHOW_REPORT' && ($#{$self->{limited}{ALL}} >= 0 || $#{$self->{excluded}{ALL}} >= 0)) {
+		$self->logit("FATAL: you can not use global filters in ALLOW/EXCLUDE directive with SHOW_REPORT\n", 0, 1);
 	}
 
 	# Global regex will be applied to the export type only
