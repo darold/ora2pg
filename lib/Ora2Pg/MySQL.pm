@@ -1241,6 +1241,9 @@ sub _sql_type
         if (exists $self->{data_type}{uc($type)})
 	{
 		$type = uc($type); # Force uppercase
+
+		$len *= 2 if ($len > 0 && $self->{double_max_varchar} && $type =~ /VARCHAR/);
+
 		if ($len)
 		{
 			if ( ($type eq "CHAR") || ($type =~ /VARCHAR/) )

@@ -662,6 +662,11 @@ USE_RESERVED_WORDS	0
 # Set it to 1 to export all tables as normal table.
 DISABLE_UNLOGGED	0
 
+# Increase varchar max character constraints to support PostgreSQL two bytes
+# character encoding when the source database applies the length constraint
+# characters not bytes. Default disabled.
+DOUBLE_MAX_VARCHAR	0
+
 #------------------------------------------------------------------------------
 # OUTPUT SECTION (Control output to file or PostgreSQL database)
 #------------------------------------------------------------------------------

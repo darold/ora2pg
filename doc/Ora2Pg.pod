@@ -1600,6 +1600,12 @@ UNLOGGED tables. You may want to fully disable this feature because
 you will lose all data from unlogged tables in case of a PostgreSQL crash.
 Set it to 1 to export all tables as normal tables.
 
+=item DOUBLE_MAX_VARCHAR
+
+Increase varchar max character constraints to support PostgreSQL two bytes
+character encoding when the source database applies the length constraint
+characters not bytes. Default disabled.
+
 =back
 
 =head2 Oracle Spatial to PostGis

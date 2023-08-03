@@ -2013,6 +2013,9 @@ sub _sql_type
 
 	if (exists $self->{data_type}{$type})
 	{
+
+		$len *= 2 if ($len > 0 && $self->{double_max_varchar} && $type =~ /VARCHAR/);
+
 		if ($len)
 		{
 			if ( ($type eq "CHAR") || ($type eq "NCHAR") || ($type =~ /VARCHAR/) )

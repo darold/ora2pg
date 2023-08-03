@@ -1079,6 +1079,9 @@ sub _init
 	# Disallow NOLOGGING / UNLOGGED table creation
         $self->{disable_unlogged} ||= 0;
 
+	# Change the varchar max length value
+	$self->{double_max_varchar} ||= 0;
+
 	# Default degree for Oracle parallelism
 	if ($self->{default_parallelism_degree} eq '') {
 		$self->{default_parallelism_degree} = 0;
@@ -15437,7 +15440,7 @@ sub _extract_data
 
 		# Force execution of initial command
 		$self->_ora_initial_command($dbh);
-		if (!$self->{is_mysql})
+		if (!$self->{is_mysql} && !$self->{is_mssql})
 		{
 			# Force numeric format into the cloned session
 			$self->_numeric_format($dbh);
@@ -21149,7 +21152,7 @@ sub compare_data
 		# Force execution of initial command on both side
 		$self->_ora_initial_command($dbhora);
 		$self->_pg_initial_command($dbhpg);
-		if (!$self->{is_mysql})
+		if (!$self->{is_mysql} && !$self->{is_mssql})
 		{
 			$dbhora->{'LongReadLen'} = $self->{longreadlen};
 			$dbhora->{'LongTruncOk'} = $self->{longtruncok};
