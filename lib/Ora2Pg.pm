@@ -11311,9 +11311,9 @@ sub _howto_get_data
 			}
 			elsif ($self->{is_mssql})
 			{
-				if ($name->[$k] !~ /\[/) {
+				#if ($name->[$k] !~ /\[/) {
 					$name->[$k] = '[' . $name->[$k] . ']';
-				}
+				#}
 			}
 			else
 			{
