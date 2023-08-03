@@ -1604,7 +1604,7 @@ Set it to 1 to export all tables as normal tables.
 
 Increase varchar max character constraints to support PostgreSQL two bytes
 character encoding when the source database applies the length constraint
-characters not bytes. Default disabled.
+on characters not bytes. Default disabled.
 
 =back
 

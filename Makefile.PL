@@ -664,7 +664,7 @@ DISABLE_UNLOGGED	0
 
 # Increase varchar max character constraints to support PostgreSQL two bytes
 # character encoding when the source database applies the length constraint
-# characters not bytes. Default disabled.
+# on characters not bytes. Default disabled.
 DOUBLE_MAX_VARCHAR	0
 
 #------------------------------------------------------------------------------
