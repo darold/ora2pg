@@ -21259,6 +21259,7 @@ ORDER BY attnum};
 	my @dest_types = ();
 	while ( my @crow = $tmpsth->fetchrow())
 	{
+		next if (!$self->is_in_struct($tb, $crow[0]));
 		if ($crow[2] eq 'geometry')
 		{
 			if ($self->{is_mysql}) {
