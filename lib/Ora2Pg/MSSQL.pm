@@ -75,7 +75,7 @@ sub _db_connection
 	my $dbh = DBI->connect("$self->{oracle_dsn}", $self->{oracle_user}, $self->{oracle_pwd}, {
 			'RaiseError' => 1,
 			AutoInactiveDestroy => 1,
-			odbc_cursortype => 2,
+			#odbc_cursortype => 2,
 			PrintError => 0,
 			odbc_utf8_on => 1
 		}
