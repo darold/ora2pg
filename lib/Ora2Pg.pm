@@ -12911,10 +12911,12 @@ sub format_data_row
 	@{ $self->{tables}{$table}{pk_where_clause} } = ();
 	@{ $self->{tables}{$table}{lo_import_id} } = ();
 
+	my $has_geom = 0;
+	$has_geom = 1 if (grep(/^(SDO_GEOMETRY|ST_|STGEOM_)/, @$src_data_types));
 	for (my $idx = 0; $idx <= $#{$data_types}; $idx++)
 	{
 		my $data_type = $data_types->[$idx] || '';
-		if ($row->[$idx] && $src_data_types->[$idx] =~ /^(SDO_GEOMETRY|ST_|STGEOM_)/)
+		if ($has_geom && $row->[$idx])
 		{
 			if ($self->{type} ne 'INSERT')
 			{
