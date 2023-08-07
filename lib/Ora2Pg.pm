@@ -10174,6 +10174,7 @@ sub _dump_fdw_table
 			$colpk = '"' . $colpk . '"';
 		}
 		my $cond = " ABS(MOD($colpk, $self->{oracle_copies})) = ?";
+		$cond = " ABS($colpk % $self->{oracle_copies}) = ?" if ($self->{is_mssql});
 		if ($s_out !~ s/\bWHERE\s+/WHERE $cond AND /)
 		{
 			if ($s_out !~ s/\b(ORDER\s+BY\s+.*)/WHERE $cond $1/) {
@@ -11683,7 +11684,11 @@ END;
 			} else {
 				$str .= " WHERE";
 			}
-			$str .= " ABS(MOD($colpk, $self->{oracle_copies})) = ?";
+			if ($self->{is_mssql}) {
+				$str .= " ABS($colpk % $self->{oracle_copies}) = ?";
+			} else {
+				$str .= " ABS(MOD($colpk, $self->{oracle_copies})) = ?";
+			}
 		}
 	}
 
@@ -11869,7 +11874,11 @@ sub _howto_get_fdw_data
 			} else {
 				$str .= " WHERE";
 			}
-			$str .= " ABS(MOD($colpk, $self->{oracle_copies})) = ?";
+			if ($self->{is_mssql}) {
+				$str .= " ABS($colpk % $self->{oracle_copies}) = ?";
+			} else {
+				$str .= " ABS(MOD($colpk, $self->{oracle_copies})) = ?";
+			}
 		}
 	}
 
@@ -15415,6 +15424,7 @@ sub _extract_data
 				$colpk = '"' . $colpk . '"';
 			}
 			my $cond = " ABS(MOD($colpk, $self->{oracle_copies})) = ?";
+			$cond = " ABS($colpk % $self->{oracle_copies}) = ?" if ($self->{is_mssql});
 			if ($query !~ s/\bWHERE\s+/WHERE $cond AND /)
 			{
 				if ($query !~ s/\b(ORDER\s+BY\s+.*)/WHERE $cond $1/) {
@@ -20412,9 +20422,14 @@ sub create_kettle_output
 			$colpk = '"' . $colpk . '"';
 		}
 		if ($self->{schema}) {
-			$select_query = "SELECT * FROM $self->{schema}.$table WHERE ABS(MOD($colpk,\${Internal.Step.Unique.Count}))=\${Internal.Step.Unique.Number}";
+			$select_query = "SELECT * FROM $self->{schema}.$table WHERE ";
 		} else {
-			$select_query = "SELECT * FROM $table WHERE ABS(MOD($colpk,\${Internal.Step.Unique.Count}))=\${Internal.Step.Unique.Number}";
+			$select_query = "SELECT * FROM $table WHERE ";
+		}
+		if ($self->{is_mssql}) {
+			$select_query = "ABS($colpk % \${Internal.Step.Unique.Count})=\${Internal.Step.Unique.Number}";
+		} else {
+			$select_query = "ABS(MOD($colpk,\${Internal.Step.Unique.Count}))=\${Internal.Step.Unique.Number}";
 		}
 	} else {
 		$select_copies = 1;
