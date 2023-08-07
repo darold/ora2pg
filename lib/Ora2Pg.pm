@@ -8445,6 +8445,18 @@ sub export_table
 				}
 				$sql_output .= " SERVER $r_server OPTIONS($schem table_name '$r_table');\n";
 			}
+			elsif ($self->{is_mssql})
+			{
+				$schem = "$self->{schema}." if ($self->{schema});
+				my $r_server = $self->{fdw_server};
+				my $r_table = $table;
+				if ($self->{tables}{$table}{table_info}{connection} =~ /([^'\/]+)\/([^']+)/)
+				{
+					$r_server = $1;
+					$r_table = $2;
+				}
+				$sql_output .= " SERVER $r_server OPTIONS(table_name '$schem$r_table');\n";
+			}
 			else
 			{
 				my $tmptb = $table;
@@ -20875,6 +20887,7 @@ sub _create_foreign_server
 	my $sth = $self->{dbhdest}->prepare("SELECT * FROM pg_extension WHERE extname=?") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
 	my $extension = 'oracle_fdw';
 	$extension = 'mysql_fdw' if ($self->{is_mysql});
+	$extension = 'tds_fdw' if ($self->{is_mssql});
 	$sth->execute($extension) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . ", SQL: SELECT * FROM pg_extension WHERE extname='$extension'\n", 0, 1);
 	my $row = $sth->fetch;
 	$sth->finish;
@@ -20920,20 +20933,32 @@ sub _create_foreign_server
 		}
 		else
 		{
-			$self->{oracle_dsn} =~ /host=([^;]+)/;
+			$self->{oracle_dsn} =~ /(?:host|server)=([^;]+)/;
 			my $host = $1 || 'localhost';
 			$self->{oracle_dsn} =~ /port=(\d+)/;
-			my $port = $1 || ((!$self->{is_mysql}) ? 1521 : 3306);
-			my $sid = '';
-			if (!$self->{is_mysql}) {
-				$self->{oracle_dsn} =~ /(service_name|sid)=([^;]+)/;
-				$sid = $2 || '';
-				$self->{oracle_fwd_dsn} = "dbserver '//$host:$port/$sid'";
+			my $port = $1;
+			if ($self->{is_mysql}) {
+				$port = 3306;
+			} elsif ($self->{is_mssql}) {
+				$port = 1433;
 			} else {
+				$port = 1521;
+			}
+			my $sid = '';
+			if ($self->{is_mysql}) {
 				$extension = 'mysql_fdw';
 				$self->{oracle_dsn} =~ /(database)=([^;]+)/;
 				$self->{mysql_fwd_db} = $2 || '';
 				$self->{oracle_fwd_dsn} = "host '$host', port '$port'";
+			} elsif ($self->{is_mssql}) {
+				$extension = 'tds_fdw';
+				$self->{oracle_dsn} =~ /(database)=([^;]+)/;
+				$self->{mssql_fwd_db} = $2 || '';
+				$self->{oracle_fwd_dsn} = "servername '$host', port '$port', database '$self->{mssql_fwd_db}'";
+			} else {
+				$self->{oracle_dsn} =~ /(service_name|sid)=([^;]+)/;
+				$sid = $2 || '';
+				$self->{oracle_fwd_dsn} = "dbserver '//$host:$port/$sid'";
 			}
 		}
 		$sql = "CREATE SERVER $self->{fdw_server} FOREIGN DATA WRAPPER $extension OPTIONS ($self->{oracle_fwd_dsn});";
@@ -20942,7 +20967,7 @@ sub _create_foreign_server
 
 	# Create the user mapping if it not exists
 	my $usrlbl = 'user';
-	$usrlbl = 'username' if ($self->{is_mysql});
+	$usrlbl = 'username' if ($self->{is_mysql} || $self->{is_mssql});
 	my $sql = "CREATE USER MAPPING IF NOT EXISTS FOR $self->{pg_user} SERVER $self->{fdw_server} OPTIONS ($usrlbl '$self->{oracle_user}', password '$self->{oracle_pwd}');";
 	if ($self->{oracle_user} eq "__SEPS__" && $self->{oracle_pwd} eq "__SEPS__")  # Replace with empty credentials for an Oracle Wallet connection
 	{
@@ -20995,10 +21020,12 @@ sub _import_foreign_schema
 	}
 	# ALLOW/EXCLUDE must be applied for data validation
 	$sql .= $self->_select_foreign_objects();
-	if (!$self->{is_mysql}) {
-		$sql .= " FROM SERVER $self->{fdw_server} INTO $self->{fdw_import_schema} OPTIONS (case 'keep', readonly 'true')";
-	} else {
+	$sql .= " FROM SERVER $self->{fdw_server} INTO $self->{fdw_import_schema}";
 		$sql .= " FROM SERVER $self->{fdw_server} INTO $self->{fdw_import_schema}";
+	if ($self->{is_mssql}) {
+		$sql .= " OPTIONS (import_default 'true')";
+	} elsif (!$self->{is_mysql}) {
+		$sql .= " OPTIONS (case 'keep', readonly 'true')";
 	}
 	$self->{dbhdest}->do($sql) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . ", SQL: $sql\n", 0, 1);
 }
