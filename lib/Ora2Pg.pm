@@ -19290,7 +19290,8 @@ sub limit_to_objects
 					if ($self->{is_mysql}) {
 						$str .= "upper($colname) RLIKE ?" ;
 					} elsif ($self->{is_mssql}) {
-						$str .= "PATINDEX(?, upper($colname)) != 0" ;
+						#$str .= "PATINDEX(?, upper($colname)) != 0" ;
+						$str .= "upper($colname) LIKE ?" ;
 					} else {
 						$str .= "REGEXP_LIKE(upper($colname), ?)" ;
 					}
@@ -19330,7 +19331,8 @@ sub limit_to_objects
 						if ($self->{is_mysql}) {
 							$str .= " AND upper($colname) NOT RLIKE ?" ;
 						} elsif ($self->{is_mssql}) {
-							$str .= "PATINDEX(?, upper($colname)) != 0" ;
+							#$str .= "PATINDEX(?, upper($colname)) != 0" ;
+							$str .= "upper($colname) LIKE ?" ;
 						} else {
 							$str .= " AND NOT REGEXP_LIKE(upper($colname), ?)" ;
 						}
@@ -19345,7 +19347,6 @@ sub limit_to_objects
 				}
 			}
 			$has_limitation = 1;
-
 		}
 		elsif ($#{$self->{excluded}{$arr_type[$i]}} >= 0)
 		{
@@ -19370,7 +19371,8 @@ sub limit_to_objects
 					if ($self->{is_mysql}) {
 						$str .= "upper($colname) NOT RLIKE ?" ;
 					} elsif ($self->{is_mssql}) {
-						$str .= "PATINDEX(?, upper($colname)) = 0" ;
+						#$str .= "PATINDEX(?, upper($colname)) = 0" ;
+						$str .= "upper($colname) NOT LIKE ?" ;
 					} else {
 						$str .= "NOT REGEXP_LIKE(upper($colname), ?)" ;
 					}
@@ -19407,13 +19409,14 @@ sub limit_to_objects
 				for (my $j = 0; $j <= $#EXCLUDED_TABLES; $j++)
 				{
 					if ($self->{is_mssql}) {
-						$str .= "PATINDEX(?, upper($colname)) = 0" ;
+						#$str .= "PATINDEX(?, upper($colname)) = 0" ;
+						$str .= "upper($colname) NOT LIKE ?" ;
 						push(@{$self->{query_bind_params}}, uc("$EXCLUDED_TABLES[$j]"));
 					} else {
 						$str .= " NOT REGEXP_LIKE(upper($colname), ?)" ;
 						push(@{$self->{query_bind_params}}, uc("\^$EXCLUDED_TABLES[$j]\$"));
 					}
-					if ($j < $#EXCLUDED_TABLES){
+					if ($j < $#EXCLUDED_TABLES) {
 						$str .= " AND ";
 					}
 				}
@@ -20562,6 +20565,7 @@ sub _escape_lob
 	}
 	else
 	{
+		print STDERR "IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII $generic_type :: $self->{blob_to_lo}\n";
 		if ($generic_type eq 'BLOB')
 		{
 			# Get an hexa representation of the blob data
@@ -20583,7 +20587,7 @@ sub _escape_lob
 					$col =~ s/'$//;
 				}
 			}
-			else
+			elsif (!$self->{pg_dsn})
 			{
 				$col = "lo_from_bytea(0, decode($col, 'hex'))";
 			}
