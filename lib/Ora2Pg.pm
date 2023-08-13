@@ -909,6 +909,7 @@ sub _init
 	$self->{null_equal_empty} = 1;
 	$self->{estimate_cost} = 0;
 	$self->{where} = ();
+	$self->{delete} = ();
 	$self->{replace_query} = ();
 	$self->{ora_reserved_words} = (); 
 	$self->{defined_pk} = ();

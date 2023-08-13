@@ -404,7 +404,10 @@ CONFIGURATION
                             for BLOB > 1GB. See documentation for more explanation.
        --mview_as_table str: Comma separated list of materialized views to export
                             as regular table.
-       --drop_if_exists    : Drop the object before creation if it exists.
+       --drop_if_exists   : Drop the object before creation if it exists.
+       --delete clause    : Set the DELETE clause to apply to the Oracle query to
+                            be applied before importing data. Can be used multiple
+                            time.
 
     See full documentation at https://ora2pg.darold.net/ for more help or
     see manpage with 'man ora2pg'.
