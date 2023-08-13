@@ -274,7 +274,7 @@ if ($TABLEONLY)
 	}
 }
 
-if ($BLOB_TO_LO && !grep(/^$EXPORT_TYPE$/, 'TABLE', 'INSERT', 'SHOW_COLUMN'))
+if ($BLOB_TO_LO && !$CREATE_PROJECT && !grep(/^$EXPORT_TYPE$/, 'TABLE', 'INSERT', 'SHOW_COLUMN'))
 {
 	print "FATAL: option --blob_to_lo can only be used with the INSERT action.\n";
 	&usage();
@@ -639,6 +639,8 @@ sub create_project
 		print "FATAL: Can't write to file $base_path/export_schema.sh\n";
 		exit 1;
 	}
+	my $ablob_to_lo = '';
+	$ablob_to_lo = '--blob_to_lo' if ($BLOB_TO_LO);
 	print OUT qq{#!/bin/sh
 #-------------------------------------------------------------------------------
 #
@@ -652,7 +654,7 @@ sub create_project
 	print OUT "unit_cost=$COST_UNIT_VALUE\n";
 	print OUT qq{
 ora2pg -t SHOW_TABLE -c \$namespace/config/ora2pg.conf > \$namespace/reports/tables.txt
-ora2pg -t SHOW_COLUMN -c \$namespace/config/ora2pg.conf > \$namespace/reports/columns.txt
+ora2pg -t SHOW_COLUMN -c \$namespace/config/ora2pg.conf $ablob_to_lo > \$namespace/reports/columns.txt
 ora2pg -t SHOW_REPORT -c \$namespace/config/ora2pg.conf --dump_as_html --cost_unit_value  \$unit_cost --estimate_cost > \$namespace/reports/report.html
 
 for etype in \$(echo \$EXPORT_TYPE | tr " " "\\n")
@@ -660,8 +662,13 @@ do
         ltype=`echo \$etype | tr '[:upper:]' '[:lower:]'`
         ltype=`echo \$ltype | sed 's/y\$/ie/'`
         ltype=`echo \$ltype | sed 's/s\$//'`
-        echo "Running: ora2pg -p -t \$etype -o \$ltype.sql -b \$namespace/schema/\$\{ltype\}s -c \$namespace/config/ora2pg.conf"
-        ora2pg -p -t \$etype -o \$ltype.sql -b \$namespace/schema/\$\{ltype\}s -c \$namespace/config/ora2pg.conf
+	if [ "\$etype" = "TABLE" ]; then
+		blob_to_lo="$ablob_to_lo"
+	else
+		blob_to_lo=""
+	fi
+        echo "Running: ora2pg -p -t \$etype -o \$ltype.sql -b \$namespace/schema/\$\{ltype\}s -c \$namespace/config/ora2pg.conf \$\{blob_to_lo\}"
+        ora2pg -p -t \$etype -o \$ltype.sql -b \$namespace/schema/\$\{ltype\}s -c \$namespace/config/ora2pg.conf \$\{blob_to_lo\}
 	ret=`grep "Nothing found" \$namespace/schema/\$\{ltype\}s/\$ltype.sql 2> /dev/null`
 	if [ ! -z "\$ret" ]; then
 		rm \$namespace/schema/\$\{ltype\}s/\$ltype.sql
@@ -684,7 +691,7 @@ echo
 echo
 echo "To extract data use the following command:"
 echo
-echo "ora2pg -t COPY -o data.sql -b \$namespace/data -c \$namespace/config/ora2pg.conf"
+echo "ora2pg -t COPY -o data.sql -b \$namespace/data -c \$namespace/config/ora2pg.conf $ablob_to_lo"
 echo
 
 exit 0
@@ -715,14 +722,19 @@ exit 0
 
 		print OUT  qq{ 
 ora2pg -t SHOW_TABLE -c \$namespace/config/ora2pg.conf > \$namespace/reports/tables.txt
-ora2pg -t SHOW_COLUMN -c \$namespace/config/ora2pg.conf > \$namespace/reports/columns.txt
+ora2pg -t SHOW_COLUMN -c \$namespace/config/ora2pg.conf $ablob_to_lo > \$namespace/reports/columns.txt
 ora2pg -t SHOW_REPORT -c \$namespace/config/ora2pg.conf --dump_as_html --cost_unit_value  \$unit_cost --estimate_cost \> \$namespace/reports/report.html
 
 foreach (\$etype in \$EXPORT_TYPE)
 {
 	\$ltype =  \$etype.ToLower() -replace 'y\$', 'ie'  
 	\$ltype =  \$etype.ToLower() -replace 's\$', ''
-	\$cmd="ora2pg -p -t \$etype -o \$ltype.sql -b \$namespace/schema/\${ltype}s -c \$namespace/config/ora2pg.conf"  
+	if [ "\$etype" = "TABLE" ]; then
+		blob_to_lo="$ablob_to_lo"
+	else
+		blob_to_lo=""
+	fi
+	\$cmd="ora2pg -p -t \$etype -o \$ltype.sql -b \$namespace/schema/\${ltype}s -c \$namespace/config/ora2pg.conf \$\{blob_to_lo\}"  
 	Write-Host  "Running: \$cmd"
 	Invoke-Expression \$cmd
 	Select-String -Pattern 'Nothing found' -Path \$namespace/schema/\${ltype}s/\$ltype.sql -List |Remove-Item   
@@ -742,7 +754,7 @@ Write-Host
 Write-Host
 Write-Host "To extract data use the following command:"
 Write-Host
-Write-Host "ora2pg -t COPY -o data.sql -b \$namespace/data -c \$namespace/config/ora2pg.conf"
+Write-Host "ora2pg -t COPY -o data.sql -b \$namespace/data -c \$namespace/config/ora2pg.conf $ablob_to_lo"
 Write-Host
 exit 0;
 };
