@@ -389,10 +389,6 @@ sub _column_info
 FROM INFORMATION_SCHEMA.COLUMNS
 $condition
 ORDER BY ORDINAL_POSITION};
-	# Version below 5.5 do not have DATA_TYPE column it is named DTD_IDENTIFIER
-	if ($self->{db_version} < '5.5.0') {
-		$str =~ s/\bDATA_TYPE\b/DTD_IDENTIFIER/;
-	}
 	if ($self->{db_version} < '5.7.0') {
 		$str =~ s/, GENERATION_EXPRESSION//;
 	}
@@ -2148,9 +2144,6 @@ $condition
 ORDER BY ORDINAL_POSITION
 };
 
-	if ($self->{db_version} < '5.5.0') {
-		$sql =~ s/\bDATA_TYPE\b/DTD_IDENTIFIER/;
-	}
 	my $sth = $self->{dbh}->prepare($sql);
 	if (!$sth) {
 		$self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
