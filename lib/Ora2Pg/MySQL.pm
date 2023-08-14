@@ -407,8 +407,13 @@ ORDER BY ORDINAL_POSITION};
 	{
 		next if (!$self->is_in_struct($row->[8], $row->[0]));
 		$row->[4] =~ s/^_[^']+\\'(.*)\\'/'$1'/; # fix collation on string
-		if ($row->[1] eq 'enum') {
-			$row->[1] = $row->[-2];
+		if ($row->[1] eq 'enum')
+		{
+			if ($self->{db_version} < '5.7.0') {
+				$row->[1] = $row->[-1];
+			} else {
+				$row->[1] = $row->[-2];
+			}
 		}
 		if ($row->[13] =~ s/(decimal.*)\s+unsigned//) {
 			$row->[1] = $1;
