@@ -13656,6 +13656,15 @@ sub read_config
 				}
 			}
 		}
+		elsif ($var eq 'DEFINED_PK_' . $AConfig{SCHEMA}) # add schema specific definition of partitioning columns
+		{
+			my @defined_pk = split(/[\s;]+/, $val);
+			foreach my $r (@defined_pk)
+			{
+				my ($table, $col) = split(/:/, $r);
+				$AConfig{DEFINED_PK}{lc($table)} = $col;
+			}
+		}
 		# Should be a else statement but keep the list up to date to memorize the directives full list
 		elsif (!grep(/^$var$/, 'TABLES','ALLOW','MODIFY_STRUCT','REPLACE_TABLES','REPLACE_COLS',
 				'WHERE','EXCLUDE','VIEW_AS_TABLE','MVIEW_AS_TABLE','ORA_RESERVED_WORDS',
