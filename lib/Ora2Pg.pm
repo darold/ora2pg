@@ -1227,6 +1227,10 @@ sub _init
 				$self->{global_where} = $options{where};
 			}
 		}
+		elsif ($k eq 'drop_if_exists') # do not override config parameter, when option is not set
+		{
+			$self->{$k} ||= $options{$k};
+		}
 		elsif ($options{$k} ne '')
 		{
 			$self->{"\L$k\E"} = $options{$k};
@@ -15103,6 +15107,9 @@ sub _convert_type
 	}
 
 	$plsql =~ s/\s*INDEX\s+BY\s+([^\s;]+)//is;
+	$plsql =~ s/TYPE BODY \w+ AS.+?\nEND;//is; # Remove BODY
+	$plsql =~ s/ +, CONSTRUCTOR FUNCTION [^\n]+ RETURN self AS RESULT\n//i; # Remove Constructor
+
 	if ($plsql =~ /TYPE\s+([^\s]+)\s+(IS|AS)\s+TABLE\s+OF\s+(.*)/is)
 	{
 		$type_name = $1;
@@ -15118,12 +15125,14 @@ sub _convert_type
 		$type_of =~ s/\s*NOT[\t\s]+NULL//is;
 		$type_of =~ s/\s*;\s*$//s;
 		$type_of =~ s/^\s+//s;
-		if ($type_of !~ /\s/s)
+		if ($type_of !~ /\s/s
+				|| $type_of =~ /VARCHAR2\(\d+ (CHAR|BYTE)\)/ # workaround for VARCHAR2 with type
+		)
 		{ 
 			$type_of = $self->_replace_sql_type($type_of);
 			$self->{type_of_type}{'Nested Tables'}++;
 			$content .= "DROP TYPE $self->{pg_supports_ifexists} " . $self->quote_object_name($type_name) . ";\n" if ($self->{drop_if_exists});
-			$content = "CREATE TYPE " . $self->quote_object_name($type_name) . " AS (" . $self->quote_object_name($internal_name) . " $type_of\[\]);\n";
+			$content .= "CREATE TYPE " . $self->quote_object_name($type_name) . " AS (" . $self->quote_object_name($internal_name) . " $type_of\[\]);\n";
 		}
 		else
 		{
@@ -15174,7 +15183,8 @@ $declar
 		}
 		else
 		{
-			$content = "CREATE TYPE " . $self->quote_object_name($type_name) . " AS (";
+			$content = "DROP TYPE $self->{pg_supports_ifexists} " . $self->quote_object_name($type_name) . ";\n" if ($self->{drop_if_exists}); # add optional DROP
+			$content .= "CREATE TYPE " . $self->quote_object_name($type_name) . " AS (";
 			$content .= qq{
 $declar
 );
