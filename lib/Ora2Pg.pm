@@ -13,15 +13,15 @@ package Ora2Pg;
 #        it under the terms of the GNU General Public License as published by
 #        the Free Software Foundation, either version 3 of the License, or
 #        any later version.
-# 
+#
 #        This program is distributed in the hope that it will be useful,
 #        but WITHOUT ANY WARRANTY; without even the implied warranty of
 #        MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 #        GNU General Public License for more details.
-# 
+#
 #        You should have received a copy of the GNU General Public License
 #        along with this program. If not, see < http://www.gnu.org/licenses/ >.
-# 
+#
 #------------------------------------------------------------------------------
 
 use vars qw($VERSION $PSQL %AConfig);
@@ -167,7 +167,7 @@ our @EXCLUDED_FUNCTION = ('SQUIRREL_GET_ERROR_OFFSET');
 our @FKEY_OPTIONS = ('NEVER', 'DELETE', 'ALWAYS');
 
 # Minimized the footprint on disc, so that more rows fit on a data page,
-# which is the most important factor for speed. 
+# which is the most important factor for speed.
 our %TYPALIGN = (
 	# Types and size, 1000 = variable
 	'boolean' => 1,
@@ -19863,9 +19863,9 @@ Technical levels:
 	{
 		$self->logrep("{\n");
 		$self->logrep("\"ora2pg version\": $VERSION,\n");
-		$self->logrep("\"Version\": $report_info{'Version'},\n");
-		$self->logrep("\"Schema\": $report_info{'Schema'},\n");
-		$self->logrep("\"Size\": $report_info{'Size'},\n");
+		$self->logrep("\"Version\": \"$report_info{'Version'}\",\n");
+		$self->logrep("\"Schema\": \"$report_info{'Schema'}\",\n");
+		$self->logrep("\"Size\": \"$report_info{'Size'}\",\n");
 		my $cnt=0;
 		foreach my $typ (sort keys %{ $report_info{'Objects'} } )
 		{
@@ -19875,11 +19875,11 @@ Technical levels:
 			    $self->logrep(",");
 			}
 			$self->logrep("\"case $cnt\":{");
-			$self->logrep("\"object\":$typ,\"number\":$report_info{'Objects'}{$typ}{'number'},");
+			$self->logrep("\"object\":\"$typ\",\"number\":$report_info{'Objects'}{$typ}{'number'},");
 			$self->logrep("\"invalid\":$report_info{'Objects'}{$typ}{'invalid'},");
 			$self->logrep("\"cost value\":$report_info{'Objects'}{$typ}{'cost_value'},");
-			$self->logrep("\"comment\":$report_info{'Objects'}{$typ}{'comment'}}\n");
-			$self->logrep("\"details\":$report_info{'Objects'}{$typ}{'detail'}}\n");
+			$self->logrep("\"comment\":\"$report_info{'Objects'}{$typ}{'comment'}\"\n");
+			$self->logrep("\"details\":\"$report_info{'Objects'}{$typ}{'detail'}\"\n");
 		}
 		my $human_cost = $self->_get_human_cost($report_info{'total_cost_value'});
 		$difficulty = '' if (!$self->{estimate_cost});
