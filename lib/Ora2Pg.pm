@@ -19228,6 +19228,9 @@ sub progress_bar
 	}
 	$self->{prgb_len} = $len;
 
+	# prepend time
+	$str = '[' . strftime("%Y-%m-%d %H:%M:%S", localtime(time)) . '] ' . $str;
+
 	return $str;
 }
 
