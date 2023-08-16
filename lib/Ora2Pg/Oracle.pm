@@ -2376,7 +2376,7 @@ sub _get_partitions_list
 	}
 	# Retrieve all partitions.
 	my $str = qq{
-SELECT DISTINCT
+SELECT
 	A.TABLE_NAME,
 	A.PARTITION_POSITION,
 	A.PARTITION_NAME,
@@ -2435,7 +2435,7 @@ sub _get_partitioned_table
 		$condition .= " AND B.OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "') ";
 	}
 	# Retrieve all partitions.
-	my $str = "SELECT DISTINCT B.TABLE_NAME, B.PARTITIONING_TYPE, B.OWNER, B.PARTITION_COUNT, B.SUBPARTITIONING_TYPE";
+	my $str = "SELECT B.TABLE_NAME, B.PARTITIONING_TYPE, B.OWNER, B.PARTITION_COUNT, B.SUBPARTITIONING_TYPE";
 	if ($self->{type} !~ /SHOW|TEST/)
 	{
 		$str .= ", C.COLUMN_NAME, C.COLUMN_POSITION";
