@@ -13540,7 +13540,7 @@ sub dump
 =head2 data_dump
 
 This function dump data to the right output (gzip file, file or stdout) in multiprocess safety.
-File is open and locked before writind data, it is closed at end.
+File is open and locked before writing data, it is closed at end.
 
 =cut
 
