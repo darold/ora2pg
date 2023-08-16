@@ -2215,7 +2215,7 @@ sub _get_partitions
 	}
 	# Retrieve all partitions.
 	my $str = qq{
-SELECT DISTINCT
+SELECT
 	A.TABLE_NAME,
 	A.PARTITION_POSITION,
 	A.PARTITION_NAME,
@@ -2231,6 +2231,7 @@ WHERE
 	a.table_name = b.table_name AND
 	(b.partitioning_type = 'RANGE' OR b.partitioning_type = 'LIST' OR b.partitioning_type = 'HASH')
 	AND a.table_name = c.name
+        AND C.OBJECT_TYPE = 'TABLE'
 	$condition
 };
 
@@ -2295,7 +2296,7 @@ sub _get_subpartitions
 	}
 	# Retrieve all partitions.
 	my $str = qq{
-SELECT DISTINCT
+SELECT
 	A.TABLE_NAME,
 	A.SUBPARTITION_POSITION,
 	A.SUBPARTITION_NAME,
@@ -2312,6 +2313,7 @@ WHERE
 	a.table_name = b.table_name AND
 	(b.subpartitioning_type = 'RANGE' OR b.subpartitioning_type = 'LIST' OR b.subpartitioning_type = 'HASH')
 	AND a.table_name = c.name
+        AND C.OBJECT_TYPE = 'TABLE'
 	$condition
 };
 	$str .= $self->limit_to_objects('TABLE|PARTITION', 'A.TABLE_NAME|A.SUBPARTITION_NAME');
@@ -2438,7 +2440,7 @@ sub _get_partitioned_table
 	{
 		$str .= ", C.COLUMN_NAME, C.COLUMN_POSITION";
 		$str .= " FROM $self->{prefix}_PART_TABLES B, $self->{prefix}_PART_KEY_COLUMNS C";
-		$str .= " WHERE B.TABLE_NAME = C.NAME AND (B.PARTITIONING_TYPE = 'RANGE' OR B.PARTITIONING_TYPE = 'LIST' OR B.PARTITIONING_TYPE = 'HASH')";
+		$str .= " WHERE B.TABLE_NAME = C.NAME AND (B.PARTITIONING_TYPE = 'RANGE' OR B.PARTITIONING_TYPE = 'LIST' OR B.PARTITIONING_TYPE = 'HASH') AND C.OBJECT_TYPE = 'TABLE'";
 	}
 	else
 	{
