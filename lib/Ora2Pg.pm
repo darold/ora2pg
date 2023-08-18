@@ -11030,7 +11030,7 @@ sub _create_check_constraint
 		{
 			my $col = $1;
 			$col =~ s/"//g;
-			$col = '"' . $col . '"' if ($self->{preserve_case} || ($self->{use_reserved_words} && $self->is_reserved_words($col));
+			$col = '"' . $col . '"' if ($self->{preserve_case} || $self->{use_reserved_words} && $self->is_reserved_words($col));
 			$out .= "ALTER TABLE $table ALTER COLUMN $col SET NOT NULL;\n";
 		}
 		else
