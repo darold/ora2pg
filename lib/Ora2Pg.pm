@@ -11030,8 +11030,7 @@ sub _create_check_constraint
 		{
 			my $col = $1;
 			$col =~ s/"//g;
-			$col = '"' . $col . '"' if ($self->{preserve_case});
-			$out .= "ALTER TABLE $table ALTER COLUMN $col SET NOT NULL;\n";
+			$out .= "ALTER TABLE $table ALTER COLUMN " . $self->quote_object_name($col) . " SET NOT NULL;\n";
 		}
 		else
 		{
