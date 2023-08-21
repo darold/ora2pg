@@ -3627,9 +3627,9 @@ sub read_grant_from_file
 		$self->{grants}{$g_name}{type} = '';
 		push(@{$self->{grants}{$g_name}{privilege}{$g_user}}, split(/,/, $g_priv));
 		if ($g_priv =~ /EXECUTE/) {
-			$self->{grants}{$table}{type} = 'PACKAGE BODY';
+			$self->{grants}{$g_name}{type} = 'PACKAGE BODY';
 		} else {
-			$self->{grants}{$table}{type} = 'TABLE';
+			$self->{grants}{$g_name}{type} = 'TABLE';
 		}
 	}
 
