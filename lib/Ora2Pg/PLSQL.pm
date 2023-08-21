@@ -823,7 +823,8 @@ sub plsql_to_plpgsql
 	$str =~ s/PRAGMA INLINE[^;]+;//igs;
 	
 	# There are no autonomous transactions in standard postgres (as of version 15)
-	my $unsupported = "-- Unsupported, consider using dblink to emulate oracle behavior";
+	my $unsupported = '';
+	$unsupported = "-- Unsupported, consider using dblink to emulate oracle behavior or see AUTONOMOUS_TRANSACTION in ora2pg.conf" if (!$self->{autonomous_transaction});
 	$str =~ s/[ ]+PRAGMA\s+AUTONOMOUS_TRANSACTION;/$unsupported\n-- $&/igs;
 
 	# Remove the extra TRUNCATE clauses not available in PostgreSQL
