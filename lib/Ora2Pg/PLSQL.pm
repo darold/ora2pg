@@ -1221,23 +1221,23 @@ sub plsql_to_plpgsql
 	$str =~ s/\%OUTERJOIN\d+\%/\(\+\)/igs;
 
 	# Rewrite some SQL script setting from Oracle
-	$str =~ s/\bset\s+timing\s+(on|off)/\\timing $1/igs;
-	$str =~ s/\b(set\s+(?:array|arraysize)\s+\d+)/-- $1/igs;
-	$str =~ s/\bset\s+(?:auto|autocommit)\s+(on|off)/\\set AUTOCOMMIT $1/igs;
-	$str =~ s/\bset\s+echo\s+on/\\set ECHO queries/igs;
-	$str =~ s/\bset\s+echo\s+off/\\set ECHO none/igs;
-	$str =~ s/\bset\s+(?:heading|head)\s+(on|off)/\\pset tuples_only $1/igs;
-	$str =~ s/\bset\s+(?:trim|trimout)\s+on/\\pset format unaligned/igs;
-	$str =~ s/\bset\s+(?:trim|trimout)\s+off/\\pset format aligned/igs;
-	$str =~ s/\bset\s+colsep\s+([^\s]+)/\\pset fieldsep $1/igs;
-	$str =~ s/\bspool\s+off/\\o/igs;
-	$str =~ s/\bspool\s+([^\&']+[^\s]+)/\\o $1/igs;
-	$str =~ s/\bttitle\s+/\\pset title /igs;
-	$str =~ s/\bprompt\s+/\\qecho /igs;
-	$str =~ s/\b(set\s+(?:linesize|pagesize|feedback|verify)\s+)/--$1/igs;
-	$str =~ s/\b(disconnect)\b/--$1/igs;
-	$str =~ s/\b(connect\s+)/--$1/igs;
-	$str =~ s/\b(quit)\b/\\$1/igs;
+	$str =~ s/^\s*set\s+timing\s+(on|off)/\\timing $1/igs;
+	$str =~ s/^\s*(set\s+(?:array|arraysize)\s+\d+)/-- $1/igs;
+	$str =~ s/^\s*set\s+(?:auto|autocommit)\s+(on|off)/\\set AUTOCOMMIT $1/igs;
+	$str =~ s/^\s*set\s+echo\s+on/\\set ECHO queries/igs;
+	$str =~ s/^\s*set\s+echo\s+off/\\set ECHO none/igs;
+	$str =~ s/^\s*set\s+(?:heading|head)\s+(on|off)/\\pset tuples_only $1/igs;
+	$str =~ s/^\s*set\s+(?:trim|trimout)\s+on/\\pset format unaligned/igs;
+	$str =~ s/^\s*set\s+(?:trim|trimout)\s+off/\\pset format aligned/igs;
+	$str =~ s/^\s*set\s+colsep\s+([^\s]+)/\\pset fieldsep $1/igs;
+	$str =~ s/^\s*spool\s+off/\\o/igs;
+	$str =~ s/^\s*spool\s+([^\&']+[^\s]+)/\\o $1/igs;
+	$str =~ s/^\s*ttitle\s+/\\pset title /igs;
+	$str =~ s/^\s*prompt\s+/\\qecho /igs;
+	$str =~ s/^\s*(set\s+(?:linesize|pagesize|feedback|verify)\s+)/--$1/igs;
+	$str =~ s/^\s*(disconnect)\b/--$1/igs;
+	$str =~ s/^\s*(connect\s+)/--$1/igs;
+	$str =~ s/^\s*(quit)\b/\\$1/igs;
 
 	return $str;
 }
