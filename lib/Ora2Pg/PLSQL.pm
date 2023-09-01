@@ -2362,6 +2362,9 @@ sub replace_sql_type
 	$str =~ s/\bBIGINT\s+UNSIGNED\b/numeric/igs;
 	$str =~ s/\bINT\s+UNSIGNED\b/bigint/igs;
 
+	# Replace SYS_REFCURSOR as Pg REFCURSOR
+	$str =~ s/\bSYS_REFCURSOR\b/REFCURSOR/isg;
+
 	# Remove precision for RAW|BLOB as type modifier is not allowed for type "bytea"
 	$str =~ s/\b(RAW|BLOB)\s*\(\s*\d+\s*\)/$1/igs;
 
