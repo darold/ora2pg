@@ -1954,6 +1954,9 @@ sub _sql_type
 	# Simplify timestamp type
 	$type =~ s/TIMESTAMP\(\d+\)/TIMESTAMP/;
 
+	# Replace SYS_REFCURSOR as Pg REFCURSOR
+	$type =~ s/SYS_REFCURSOR/refcursor/i;
+
 	# Interval precision for year/month/day is not supported by PostgreSQL
 	if ($type =~ /INTERVAL/)
 	{
