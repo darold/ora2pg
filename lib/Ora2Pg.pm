@@ -14815,7 +14815,7 @@ END;
 		if ($self->{client_encoding}) {
 			$sql_header .= "SET client_encoding TO '\U$self->{client_encoding}\E';\n";
 		}
-		$sql_header .= $self->set_search_path();
+		$sql_header .= $self->set_search_path(undef, $pname);
 		$sql_header .= "SET check_function_bodies = false;\n\n" if (!$self->{function_check});
 		$sql_header = '' if ($self->{no_header});
 
@@ -19581,8 +19581,7 @@ sub _lookup_function
 ####
 sub set_search_path
 {
-	my $self = shift;
-	my $owner = shift;
+	my ($self, $owner, $pkg_path) = @_;
 
 	my $local_path = '';
 	if ($self->{postgis_schema}) {
@@ -19597,7 +19596,8 @@ sub set_search_path
 	
 	my $search_path = '';
 	if (!$self->{schema} && $self->{export_schema} && $owner) {
-		$search_path = "SET search_path = " . $self->quote_object_name($owner) . "$local_path;";
+		$pkg_path = ',' . $pkg_path if ($pkg_path);
+		$search_path = "SET search_path = " . $self->quote_object_name($owner) . "$pkg_path$local_path;";
 	} elsif (!$owner) {
 		my @pathes = ();
 		# When PG_SCHEMA is set, always take the value as search path
@@ -19609,6 +19609,7 @@ sub set_search_path
 			# with their destination schema.
 			push(@pathes, $self->{schema});
 		}
+		push(@pathes, $pkg_path) if ($pkg_path);
 		if ($#pathes >= 0) {
 			map { $_ =  $self->quote_object_name($_); } @pathes;
 			$search_path = "SET search_path = " . join(',', @pathes) . "$local_path;";
