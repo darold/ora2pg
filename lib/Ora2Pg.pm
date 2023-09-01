@@ -2182,7 +2182,8 @@ sub _send_to_pgdb
 			$self->{pg_pwd} = $self->_ask_password('PostgreSQL');
 		}
 	}
-	elsif (-e $self->{pg_pwd})
+	# Read the password from file each time if the file exists.
+	if (-e $self->{pg_pwd})
 	{
 		open(FH, '<', $self->{pg_pwd}) or $self->logit("FATAL: can't read PG password file: $self->{pg_pwd, $!}\n", 0, 1);
 		$self->{pg_pwd} = <FH>;
