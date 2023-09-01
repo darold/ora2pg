@@ -18052,7 +18052,7 @@ GROUP BY n.nspname,e.oid
 				$nbnull++;
 			}
 		}
-		$nbnull += $nbnotnull{$t} if (exists $nbnotnull{$t}); # Append the CHECK not null constraints
+		#$nbnull += $nbnotnull{$t} if (exists $nbnotnull{$t}); # Append the CHECK not null constraints
 		print "$lbl:$t:$nbnull\n";
 		if ($self->{pg_dsn})
 		{
