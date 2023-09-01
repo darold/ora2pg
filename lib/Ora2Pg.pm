@@ -13357,6 +13357,13 @@ sub format_data_type
 			$col =~ s/,/\,/g;
 			$col =~ s/\,/,/;
 		}
+		elsif ($cond->{isinterval})
+		{
+			if ($col =~ /^-/) {
+				$col =~ s/ (\d+)/ -$1/;
+				$col = "'$col'";
+			}
+		}
 		else
 		{
 			if (!$self->{pg_dsn}) {
@@ -13403,6 +13410,12 @@ sub format_data_type
 		elsif ($cond->{isbytea})
 		{
 			$col = $self->_escape_lob($col, $cond->{raw} ? 'RAW' : 'BLOB', $cond, $isnested, $data_type);
+		}
+		elsif ($cond->{isinterval})
+		{
+			if ($col =~ /^-/) {
+				$col =~ s/ (\d+)/ -$1/;
+			}
 		}
 		elsif ($cond->{isnum})
 		{
@@ -13490,6 +13503,7 @@ sub hs_cond
 		$hs->{isbit} = $data_types->[$idx] =~ /bit/i ? 1 : 0;
 		$hs->{isboolean} = $data_types->[$idx] =~ /boolean/i ? 1 : 0;
 		$hs->{isefile} = $data_types->[$idx] =~ /efile/i ? 1 : 0;
+		$hs->{isinterval} = $data_types->[$idx] =~ /interval/i ? 1 : 0;
 		$hs->{isnotnull} = 0;
 		if ($self->{nullable}{$table}{$idx} =~ /^N/) {
 			$hs->{isnotnull} = 1;
