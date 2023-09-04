@@ -7706,7 +7706,7 @@ BEGIN
 		{
 			if (!$self->{pg_supports_partition})
 			{
-				if (exists $self->{partitions_default}{$table})
+				if (exists $self->{partitions_default}{$table} && scalar keys %{$self->{partitions_default}{$table}} > 0)
 				{
 					my $deftb = $self->{partitions_default}{$table}{name};
 					$deftb = $table . '_part_default' if ($self->{rename_partition});
@@ -7734,7 +7734,7 @@ LANGUAGE plpgsql;
 			else
 			{
 				# With default partition just add default and continue
-				if (exists $self->{partitions_default}{$table})
+				if (exists $self->{partitions_default}{$table} && scalar keys %{$self->{partitions_default}{$table}} > 0)
 				{
 					my $tb_name = '';
 					if ($self->{rename_partition}) {

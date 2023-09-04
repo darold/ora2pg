@@ -1556,6 +1556,10 @@ WHERE PARTITION_NAME IS NOT NULL
 				$sth2->finish;
 			}
 		}
+		else
+		{
+			push(@ucol, $row->[6]);
+		}
 
 		if ($row->[5] =~ s/ COLUMNS//)
 		{
