@@ -10972,7 +10972,7 @@ sub _create_unique_keys
 			}
 		}
 		# Add the partition column if it is not is the PK
-		if (($constype eq 'P' || $constype eq 'U') && exists $self->{partitions_list}{"\L$tbsaved\E"})
+		if (!$self->{disable_partition} && ($constype eq 'P' || $constype eq 'U') && exists $self->{partitions_list}{"\L$tbsaved\E"})
 		{
 			for (my $j = 0; $j <= $#{$self->{partitions_list}{"\L$tbsaved\E"}{columns}}; $j++)
 			{
