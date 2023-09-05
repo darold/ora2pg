@@ -20607,7 +20607,6 @@ sub _escape_lob
 	}
 	else
 	{
-		print STDERR "IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII $generic_type :: $self->{blob_to_lo}\n";
 		if ($generic_type eq 'BLOB')
 		{
 			# Get an hexa representation of the blob data

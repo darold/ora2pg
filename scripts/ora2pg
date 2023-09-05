@@ -650,7 +650,12 @@ sub create_project
 		exit 1;
 	}
 	my $ablob_to_lo = '';
-	$ablob_to_lo = '--blob_to_lo' if ($BLOB_TO_LO);
+	my $data_action = 'COPY';
+	if ($BLOB_TO_LO)
+	{
+		$ablob_to_lo = '--blob_to_lo';
+		$data_action = 'INSERT';
+	}
 	print OUT qq{#!/bin/sh
 #-------------------------------------------------------------------------------
 #
@@ -701,7 +706,7 @@ echo
 echo
 echo "To extract data use the following command:"
 echo
-echo "ora2pg -t COPY -o data.sql -b \$namespace/data -c \$namespace/config/ora2pg.conf $ablob_to_lo"
+echo "ora2pg -t $data_action -o data.sql -b \$namespace/data -c \$namespace/config/ora2pg.conf $ablob_to_lo"
 echo
 
 exit 0
@@ -764,7 +769,7 @@ Write-Host
 Write-Host
 Write-Host "To extract data use the following command:"
 Write-Host
-Write-Host "ora2pg -t COPY -o data.sql -b \$namespace/data -c \$namespace/config/ora2pg.conf $ablob_to_lo"
+Write-Host "ora2pg -t $data_action -o data.sql -b \$namespace/data -c \$namespace/config/ora2pg.conf $ablob_to_lo"
 Write-Host
 exit 0;
 };
@@ -778,9 +783,19 @@ exit 0;
 		print "FATAL: Can't write to file $base_path/import_all.sh\n";
 		exit 1;
 	}
+
+	my $ablob_to_lo = '';
+	my $data_action = 'COPY';
+	if ($BLOB_TO_LO)
+	{
+		$ablob_to_lo = '--blob_to_lo';
+		$data_action = 'INSERT';
+	}
 	while (my $l = <DATA>) {
 		$l =~ s/^EXPORT_TYPE=.*/$exportype/s;
 		$l =~ s/ORA2PG_VERSION/$VERSION/s;
+		$l =~ s/DATA_ACTION/$data_action/s;
+		$l =~ s/BLOB2LO/$ablob_to_lo/s;
 		print OUT $l;
 	}
 	close(OUT);
@@ -1294,9 +1309,9 @@ if [ $IMPORT_SCHEMA -eq 0 ]; then
 	else
 		# Import data directly from PostgreSQL
 		if confirm "Would you like to import data from Oracle database directly into PostgreSQL?" ; then
-			echo "Running: ora2pg$IMPORT_JOBS$PARALLEL_TABLES -c config/ora2pg.conf -t COPY --pg_dsn \"$pgdsn_defined\" --pg_user $DB_OWNER"
+			echo "Running: ora2pg$IMPORT_JOBS$PARALLEL_TABLES -c config/ora2pg.conf -t DATA_ACTION --pg_dsn \"$pgdsn_defined\" --pg_user $DB_OWNER BLOB2LO"
 			if [ $DEBUG -eq 0 ]; then
-				ora2pg$IMPORT_JOBS$PARALLEL_TABLES -c config/ora2pg.conf -t COPY --pg_dsn "$pgdsn_defined" --pg_user $DB_OWNER
+				ora2pg$IMPORT_JOBS$PARALLEL_TABLES -c config/ora2pg.conf -t DATA_ACTION --pg_dsn "$pgdsn_defined" --pg_user $DB_OWNER BLOB2LO
 				if [ $? -ne 0 ]; then
 					die "an error occurs when importing data."
 				fi
