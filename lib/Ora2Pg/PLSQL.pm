@@ -1234,7 +1234,7 @@ sub plsql_to_plpgsql
 	$str =~ s/^\s*spool\s+([^\&']+[^\s]+)/\\o $1/igs;
 	$str =~ s/^\s*ttitle\s+/\\pset title /igs;
 	$str =~ s/^\s*prompt\s+/\\qecho /igs;
-	$str =~ s/^\s*set\s+feedback\s+off/\\set QUIET on;/igs;
+	$str =~ s/^\s*set\s+feedback\s+off/\\set QUIET on;/igs;
 	$str =~ s/^\s*set\s+pagesize\s+0/\\pset pager off/igs;
 	$str =~ s/^\s*(set\s+(?:linesize|pagesize|feedback|verify)\s+)/--$1/igs;
 	$str =~ s/^\s*(disconnect)\b/--$1/igs;
