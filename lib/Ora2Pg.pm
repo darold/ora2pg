@@ -4525,6 +4525,7 @@ sub translate_function
 		if ($self->{file_per_function})
 		{
 			my $f = "$dirprefix${fct}_$self->{output}";
+			$f = "${fct}_$self->{output}" if ($self->{psql_relative_path});
 			$f =~ s/\.(?:gz|bz2)$//i;
 			$self->dump("\\i$self->{psql_relative_path} $f\n");
 			$self->save_filetoupdate_list("ORA2PG_$self->{type}", lc($fct), "$dirprefix${fct}_$self->{output}");
@@ -4734,6 +4735,7 @@ sub export_view
 		if ($self->{file_per_table})
 		{
 			my $file_name = "$dirprefix${view}_$self->{output}";
+			$file_name = "${view}_$self->{output}" if ($self->{psql_relative_path});
 			$file_name =~ s/\.(gz|bz2)$//;
 			$self->dump("\\i$self->{psql_relative_path} '$file_name'\n");
 			$self->logit("Dumping to one file per view : ${view}_$self->{output}\n", 1);
@@ -5008,6 +5010,7 @@ LANGUAGE plpgsql ;
 		my $fhdl = undef;
 		if ($self->{file_per_table} && !$self->{pg_dsn}) {
 			my $file_name = "$dirprefix${view}_$self->{output}";
+			$file_name = "${view}_$self->{output}" if ($self->{psql_relative_path});
 			$file_name =~ s/\.(gz|bz2)$//;
 			$self->dump("\\i$self->{psql_relative_path} '$file_name'\n");
 			$self->logit("Dumping to one file per materialized view : ${view}_$self->{output}\n", 1);
@@ -5587,6 +5590,7 @@ sub export_trigger
 			my $schm = '';
 			$schm = $trig->[8] . '-' if ($trig->[8] && $self->{export_schema} && !$self->{schema});
 			my $f = "$dirprefix$schm$trig->[0]_$self->{output}";
+			$f = "$schm$trig->[0]_$self->{output}" if ($self->{psql_relative_path});
 			$f =~ s/\.(?:gz|bz2)$//i;
 			$self->dump("\\i$self->{psql_relative_path} $f\n");
 			$self->logit("Dumping to one file per trigger : $schm$trig->[0]_$self->{output}\n", 1);
@@ -6693,6 +6697,7 @@ sub export_package
 			if ($self->{file_per_function})
 			{
 				my $f = "$dirprefix\L${pkg}\E_$self->{output}";
+				$f = "\L${pkg}\E_$self->{output}" if ($self->{psql_relative_path});
 				$f =~ s/\.(?:gz|bz2)$//i;
 				$pkgbody = "\\i$self->{psql_relative_path} $f\n";
 				my $fhdl = $self->open_export_file("$dirprefix\L${pkg}\E_$self->{output}", 1);
@@ -9115,6 +9120,7 @@ sub _get_sql_statements
 			if ($self->{file_per_table} && !$self->{pg_dsn})
 			{
 				my $file_name = "$dirprefix${table}_$self->{output}";
+				$file_name = "${table}_$self->{output}" if ($self->{psql_relative_path});
 				$file_name =~ s/\.(gz|bz2)$//;
 				$load_file .=  "\\i$self->{psql_relative_path} '$file_name'\n";
 			}
@@ -9143,6 +9149,7 @@ sub _get_sql_statements
 							if ($self->{file_per_table} && !$self->{pg_dsn})
 							{
 								my $file_name = "$dirprefix${table}_${sub_tb_name}_$self->{output}";
+								$file_name = "${table}_${sub_tb_name}_$self->{output}" if ($self->{psql_relative_path});
 								$file_name =~ s/\.(gz|bz2)$//;
 								$load_file .=  "\\i$self->{psql_relative_path} '$file_name'\n";
 							}
@@ -9157,6 +9164,7 @@ sub _get_sql_statements
 								{
 									my $part_name = $self->{subpartitions_default}{$table}{$part_name}{name};
 									my $file_name = "$dirprefix${table}_${part_name}_$self->{output}";
+									$file_name = "${table}_${part_name}_$self->{output}" if ($self->{psql_relative_path});
 									$file_name =~ s/\.(gz|bz2)$//;
 									$load_file .=  "\\i$self->{psql_relative_path} '$file_name'\n";
 									$part_name = $tb_name . '_default' if ($self->{rename_partition});
@@ -9169,6 +9177,7 @@ sub _get_sql_statements
 						if ($self->{file_per_table} && !$self->{pg_dsn})
 						{
 							my $file_name = "$dirprefix${tb_name}_$self->{output}";
+							$file_name = "${tb_name}_$self->{output}" if ($self->{psql_relative_path});
 							$file_name =~ s/\.(gz|bz2)$//;
 							$load_file .=  "\\i$self->{psql_relative_path} '$file_name'\n";
 						}
@@ -9183,6 +9192,7 @@ sub _get_sql_statements
 						{
 							my $part_name = $self->{partitions_default}{$table}{name};
 							my $file_name = "$dirprefix${table}_${part_name}_$self->{output}";
+							$file_name = "${table}_${part_name}_$self->{output}" if ($self->{psql_relative_path});
 							$file_name =~ s/\.(gz|bz2)$//;
 							$load_file .=  "\\i$self->{psql_relative_path} '$file_name'\n";
 							$part_name = $table . '_part_default' if ($self->{rename_partition});
@@ -14875,6 +14885,7 @@ END;
 		$self->dump($sql_header . $function, $fhdl);
 		$self->close_export_file($fhdl);
 		my $f = "$dirprefix\L$pname/$fname\E_$self->{output}";
+		$f = "\L$pname/$fname\E_$self->{output}" if ($self->{psql_relative_path});
 		$f =~ s/\.(?:gz|bz2)$//i;
 		$function = "\\i$self->{psql_relative_path} $f\n";
 		$self->save_filetoupdate_list(lc($pname), lc($fname), "$dirprefix\L$pname/$fname\E_$self->{output}");
