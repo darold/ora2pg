@@ -5173,6 +5173,11 @@ sub export_grant
 					$obj = '' if (!grep(/^$obj$/, 'FUNCTION', 'PROCEDURE', 'SEQUENCE','SCHEMA','TABLESPACE'));
 					$grants .= "GRANT ALL ON $obj $realtable TO $ownee$wgrantoption;\n";
 				}
+
+				if ($realtable =~ /^([^\.]+)\./)
+				{
+					$grants .= "GRANT USAGE ON SCHEMA $1 TO $ownee;\n";
+				}
 			}
 			if (grep(/^$self->{grants}{$table}{type}$/, 'FUNCTION', 'PROCEDURE', 'SEQUENCE','SCHEMA','TABLESPACE')) {
 				$grants .= "REVOKE ALL ON $self->{grants}{$table}{type} $realtable FROM PUBLIC;\n";
@@ -5213,6 +5218,11 @@ sub export_grant
 					$grants .= "GRANT $agrants ON $obj $realtable TO $usr$wgrantoption;\n";
 				} else {
 					$grants .= "GRANT $agrants ON $realtable TO $usr$wgrantoption;\n";
+				}
+
+				if ($realtable =~ /^([^\.]+)\./)
+				{
+					$grants .= "GRANT USAGE ON SCHEMA $1 TO $usr;\n";
 				}
 			}
 			else
