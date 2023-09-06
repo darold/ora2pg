@@ -18019,10 +18019,10 @@ GROUP BY n.nspname,r.conrelid
 	{
 		next if (!exists $tables_infos{$t});
 		my $nbcheck = 0;
-		foreach my $cn (keys %{$check_constraints{$t}{constraint}}) {
-			$nbcheck++ if ($check_constraints{$t}{constraint}{$cn}{condition} !~ /IS NOT NULL$/);
+		foreach my $cn (keys %{$check_constraints{$t}{constraint}})
+		{
 			if ($check_constraints{$t}{constraint}{$cn}{condition} =~ /^[^\s]+\s+IS\s+NOT\s+NULL$/i) {
-				$nbnotnull{$t}++;
+				$nbnotnull{$t}{$check_constraints{$t}{constraint}{$cn}{condition}} = 1;
 			} else {
 				$nbcheck++;
 			}
@@ -18066,7 +18066,8 @@ GROUP BY n.nspname,e.oid
 		my $s = $self->{dbhdest}->prepare($sql) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
 		if (not $s->execute())
 		{
-			push(@errors, "Can not extract information from catalog about not null constraints.");
+			push(@errors, "Can not extract information from catalog about not null constraints using query: $sql");
+			$self->show_test_errors('not null constraints', @errors);
 			return;
 		}
 		while ( my @row = $s->fetchrow())
@@ -18088,7 +18089,12 @@ GROUP BY n.nspname,e.oid
 				$nbnull++;
 			}
 		}
-		#$nbnull += $nbnotnull{$t} if (exists $nbnotnull{$t}); # Append the CHECK not null constraints
+		# Append the CHECK not null constraints if any
+		if (exists $nbnotnull{$t})
+		{
+			$nbnull = scalar keys %{ $nbnotnull{$t} } if (scalar keys %{ $nbnotnull{$t} } > $nbnull);
+		}
+
 		print "$lbl:$t:$nbnull\n";
 		if ($self->{pg_dsn})
 		{

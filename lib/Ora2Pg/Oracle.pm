@@ -868,7 +868,7 @@ sub _get_indexes
 	# Filter on name instead of the GENERATED column because we are
 	# missing the ones that have been created automatically by the
 	# Automatic Indexing feature of Oracle 19c. See issue: #1589
-	$generated = " (B.INDEX_NAME NOT LIKE 'SYS\$_C\$_%' escape '\$')" if (!$generated_indexes);
+	#$generated = " (B.INDEX_NAME NOT LIKE 'SYS\$_C\$_%' escape '\$')" if (!$generated_indexes);
 
 	my $t0 = Benchmark->new;
 	my $sth = '';
@@ -3065,32 +3065,22 @@ sub _column_attributes
 		@{$self->{query_bind_params}} = ();
 	}
 
-	my $sth = '';
-	if ($self->{db_version} !~ /Release 8/) {
-		$sth = $self->{dbh}->prepare(<<END);
-SELECT A.COLUMN_NAME, A.NULLABLE, A.DATA_DEFAULT, A.TABLE_NAME, A.OWNER, A.COLUMN_ID, A.DATA_TYPE
+	my $sql = qq{SELECT A.COLUMN_NAME, A.NULLABLE, A.DATA_DEFAULT, A.TABLE_NAME, A.OWNER, A.COLUMN_ID, A.DATA_TYPE
 FROM $self->{prefix}_TAB_COLUMNS A, $self->{prefix}_OBJECTS O
 WHERE A.OWNER=O.OWNER and A.TABLE_NAME=O.OBJECT_NAME and O.OBJECT_TYPE='$objtype' and A.TABLE_NAME NOT LIKE 'BIN\$%'
     $condition
-ORDER BY A.COLUMN_ID
-END
-		if (!$sth) {
-			$self->logit("FATAL: _column_attributes() " . $self->{dbh}->errstr . "\n", 0, 1);
-		}
-	}
-	else
-	{
+ORDER BY A.COLUMN_ID};
+	if ($self->{db_version} =~ /Release 8/) {
 		# an 8i database.
-		$sth = $self->{dbh}->prepare(<<END);
-SELECT A.COLUMN_NAME, A.NULLABLE, A.DATA_DEFAULT, A.TABLE_NAME, A.OWNER, A.COLUMN_ID, A.DATA_TYPE
+		$sql = qq{SELECT A.COLUMN_NAME, A.NULLABLE, A.DATA_DEFAULT, A.TABLE_NAME, A.OWNER, A.COLUMN_ID, A.DATA_TYPE
 FROM $self->{prefix}_TAB_COLUMNS A, $self->{prefix}_OBJECTS O
 WHERE A.OWNER=O.OWNER and A.TABLE_NAME=O.OBJECT_NAME and O.OBJECT_TYPE='$objtype' and A.TABLE_NAME NOT LIKE 'BIN\$%'
     $condition
-ORDER BY A.COLUMN_ID
-END
-		if (!$sth) {
-			$self->logit("FATAL: _column_attributes() " . $self->{dbh}->errstr . "\n", 0, 1);
-		}
+ORDER BY A.COLUMN_ID};
+	}
+	my $sth = $self->{dbh}->prepare($sql);
+	if (!$sth) {
+		$self->logit("FATAL: _column_attributes() " . $self->{dbh}->errstr . "\n", 0, 1);
 	}
 	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: _column_attributes() " . $self->{dbh}->errstr . "\n", 0, 1);
 
