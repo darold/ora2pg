@@ -17536,13 +17536,18 @@ sub get_schema_condition
 	$attrname ||= 'n.nspname';
 
 	if ($local_schema && $self->{export_schema}) {
-		return " AND lower($attrname) = '\L$local_schema\E'";
+		return " AND lower($attrname) = quote_ident('\L$local_schema\E')";
 	} elsif ($self->{pg_schema} && $self->{export_schema}) {
-		return " AND lower($attrname) IN ('" . join("','", split(/\s*,\s*/, lc($self->{pg_schema}))) . "')";
+		my $sql = " AND lower($attrname) IN (";
+		foreach my $s (split(/\s*,\s*/, $self->{pg_schema})) {
+			$sql .= "quote_ident('\L$s\E'),";
+		}
+		$sql =~ s/,$//;
+		return $sql . ")";
 	} elsif ($self->{schema} && $self->{export_schema}) {
-		return "AND lower($attrname) = '\L$self->{schema}\E'";
+		return "AND lower($attrname) = quote_ident('\L$self->{schema}\E')";
 	} elsif ($self->{pg_schema}) {
-		return "AND lower($attrname) = '\L$self->{pg_schema}\E'";
+		return "AND lower($attrname) = quote_ident('\L$self->{pg_schema}\E')";
 	}
 
 	my $cond = " AND $attrname <> 'pg_catalog' AND $attrname <> 'information_schema' AND $attrname !~ '^pg_toast'";
