@@ -14496,8 +14496,15 @@ sub _convert_function
 	my $create_type = '';
 	while ($fct_detail{declare} =~ s/\s+TYPE\s+([^\s]+)\s+IS\s+RECORD\s*\(([^;]+)\)\s*;//is)
 	{
-		$create_type .= "DROP TYPE  $self->{pg_supports_ifexists} $1;\n";
-		$create_type .= "CREATE TYPE $1 AS ($2);\n";
+		my $tname = $1;
+		my $tcode = $2;
+		if ($pname && $self->{package_as_schema} && !$self->{is_mysql} && !$self->{is_mssql}) {
+			$tname = $self->quote_object_name("$pname$sep$tname");
+		} else {
+			$tname = $self->quote_object_name($tname);
+		}
+		$create_type .= "DROP TYPE $self->{pg_supports_ifexists} $tname;\n";
+		$create_type .= "CREATE TYPE $tname AS ($tcode);\n";
 	}
 	while ($fct_detail{declare} =~ s/\s+TYPE\s+([^\s]+)\s+(AS|IS)\s*(VARRAY|VARYING ARRAY)\s*\((\d+)\)\s*OF\s*([^;]+);//is) {
 		my $type_name = $1;
@@ -14507,13 +14514,15 @@ sub _convert_function
 		chomp($tbname);
 		$type_name =~ s/"//g;
 		my $internal_name = $type_name;
-		if ($self->{export_schema} && !$self->{schema} && $owner) {
-			$type_name = "$owner.$type_name";
+		if ($pname && $self->{package_as_schema} && !$self->{is_mysql} && !$self->{is_mssql}) {
+			$type_name = $self->quote_object_name("$pname$sep$type_name");
+		} elsif ($self->{export_schema} && !$self->{schema} && $owner) {
+			$type_name = $self->quote_object_name("$owner.$type_name");
 		}
 		$internal_name  =~ s/^[^\.]+\.//;
 		my $declar = $self->_replace_sql_type($tbname);
 		$declar =~ s/[\n\r]+//s;
-		$create_type .= "DROP TYPE $self->{pg_supports_ifexists} $1;\n";
+		$create_type .= "DROP TYPE $self->{pg_supports_ifexists} $type_name;\n";
 		$create_type .= "CREATE TYPE $type_name AS ($internal_name $declar\[$size\]);\n";
 	}
 	
