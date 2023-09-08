@@ -1,3 +1,65 @@
+2023 09 08 - v24.1
+
+This release fix several issues reported since last release and adds some
+new features and improvements.  
+
+  - Replace "set feedback off" by "\set QUIET on;" and "set pagesize 0" with
+    "\pset pager off". Thanks to Martin Gerhardy for the suggestion.
+  - Always add package name into search_path of packages functions. Thanks to
+    janopha for the report.
+  - Allow to specify a password file to set PG_PWD at PostgreSQL database
+    connection.  If the specified file exists on the system, Ora2Pg will read
+    the first line to get the password at each call of send_to_pgdb(). It can
+    be useful in some situation where the password change during data migration.
+    Thanks to Marius Hope for the feature request.
+  - Added option --dump_as_json and fixed some json output errors. Thanks to
+    Martin Gerhardy for the patch.
+
+Here is the full list of changes and acknowledgements:
+
+  - Fix schema prefixing of type created in packages stored procedures.
+    Thanks to janopha for the report.
+  - Fix perl function get_schema_condition() to use quote_ident() in generated
+    SQL filters. Thanks to franxav06 for the report.
+  - Attempt to better test the not null constraint count in Oracle.
+  - Fix regression with PSQL_RELATIVE_PATH. Thanks to Ryan Taylor for the
+    report.
+  - Do not add the partition key to PK if DISABLE_PARTITION is enabled. Thanks
+    to pavel-moskotin-db for the report.
+  - Filter list of indexes on name instead of the GENERATED column because
+    we are missing the ones that have been created automatically by the
+    Automatic Indexing feature of Oracle 19c. Thanks to Franck Pachot for
+    the report.
+  - Fix incompleteness in GRANT action, add grant usage on schema to owner and
+    users. Thanks to elexus for the report.
+  - Apply missing --blob_to_lo to import_all.sh script.
+  - Fix regression in MySQL hash partitions export. Thanks to Shubham Dabriwala
+    for the report.
+  - Fix Oracle INTERVAL data export with negative value. Thanks to shubham-yb
+    for the report.
+  - Fix double count of not null constraints for TEST action. Thanks to Simon
+    Pane for the patch.
+  - Fix replacement of Oracle sys_refcursor in function return type.
+  - Fix replacement of SQL script setting from Oracle.
+  - Make scripts executable. Thanks to Martin Gerhardy for the patch.
+  - Exclude data pump SYS_EXPORT_SCHEMA_.* tables from Oracle export.
+  - ora2pg: use env based shebang for perl. Thanks to Martin Gerhardy for
+    the patch.
+  - Add unsupported clause message for PRAGMA AUTONOMOUS_TRANSACTION when it is
+    not rewritten by Ora2Pg. Thanks to Martin Gerhardy for the patch.
+  - Allow schema specific definitions of partitioning columns. Thanks to Martin
+    Gerhardy for the patch.
+  - Fixed invalid variable name in read_grant_from_file. Thanks to Martin
+    Gerhardy for the patch.
+  - Fix not double quoted column in alter set not null column statement.
+    Thanks to leonteq-reisg for the patch.
+  - Bug fixes and special treatment for Types with body. Thanks to Martin
+    Gerhardy for the patch.
+  - Avoid redundant definition of the version. Thanks to Martin Gerhardy for
+    the patch.
+  - Fix a MySQL exception when the column type is ENUM for version < 5.7.
+    Thanks to Code-UV for the report.
+
 2023 07 05 - v24.0
 
 This major release adds support to migration of SQL Server database to

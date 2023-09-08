@@ -12,7 +12,7 @@
 
 ## Fill these variables to your needs ##
 NAMESRC=${NAMESRC:-ora2pg}
-VERSION=${VERSION:-24.0}
+VERSION=${VERSION:-24.1}
 EXT=${EXT:-tar.bz2}
 NAMEPKG=${NAMEPKG:-ora2pg}
 PKGEXT=${PKGEXT:-tgz/txz}
