@@ -17184,6 +17184,12 @@ sub _show_infos
 				next if (!exists $tables_infos{$tb});
 				%{$self->{tables}{$tb}{idx_type}} = %{$idx_type->{$tb}};
 			}
+			foreach my $idx (keys %{ $self->{tables}{$tb}{idx_type} })
+			{
+				if ($self->{tables}{$tb}{idx_type}{$idx}{type} =~ /COLUMNSTORE/) {
+					$self->{tables}{$tb}{columnstore} = 1;
+				}
+			}
 		}
 
 		# Get partition list to mark tables with partition.
@@ -17233,6 +17239,15 @@ sub _show_infos
 				$warning .= " (>63)";
 			}
 
+			# Signal that the table use columnstore
+			if ($self->{is_mssql} && $self->{tables}{$tb}{columnstore} == 1) {
+				$warning .= " - storage: columnar";
+			}
+			# Show compression type
+			if ($self->{is_mssql} && exists $tables_infos{$t}{compressed} && $tables_infos{$t}{compressed} ne 'NONE') {
+				$warning .= " - compression: $tables_infos{$t}{compressed}";
+			}
+
 			# Set the number of partition if any
 			if (exists $partitions{"\L$t\E"})
 			{
@@ -17265,7 +17280,7 @@ sub _show_infos
 				$kind .= ' UNLOGGED';
 			}
 			if ($tables_infos{$t}{index_type}) {
-				$warning .= " - Indexed type: tables_infos{$t}{index_type}";
+				$warning .= " - Indexed type: $tables_infos{$t}{index_type}";
 			}
 			my $tname = $t;
 			if (!$self->{is_mysql}) {
