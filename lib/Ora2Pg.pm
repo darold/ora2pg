@@ -10666,6 +10666,10 @@ CREATE TRIGGER $trig_name BEFORE INSERT OR UPDATE
 				$str .= "CREATE$unique INDEX$concurrently " . $idxname
 						. " ON $table ($columns)";
 			}
+			if ($#{$self->{$objtyp}{$tbsaved}{idx_type}{$idx}{type_include}} >= 0) {
+				$str .= " INCLUDE (" . join(', ', @{$self->{$objtyp}{$tbsaved}{idx_type}{$idx}{type_include}}) . ')';
+			}
+
 			if ($self->{use_tablespace} && $self->{$objtyp}{$tbsaved}{idx_tbsp}{$idx} && !grep(/^$self->{$objtyp}{$tbsaved}{idx_tbsp}{$idx}$/i, @{$self->{default_tablespaces}}))
 			{
 				$str .= " TABLESPACE $self->{$objtyp}{$tbsaved}{idx_tbsp}{$idx}";

@@ -410,11 +410,11 @@ sub _get_indexes
 
 	my $t0 = Benchmark->new;
 	my $sth = '';
-	my $sql = qq{SELECT Id.name AS index_name, AC.name AS column_name, Id.is_unique AS UNIQUENESS, AC.column_id AS COLUMN_POSITION, Id.type AS INDEX_TYPE, 'U' AS TABLE_TYPE, Id.auto_created AS GENERATED, NULL AS JOIN_INDEX, t.name AS TABLE_NAME, s.name as TABLE_SCHEMA, Id.data_space_id AS TABLESPACE_NAME, Id.type_desc AS ITYP_NAME, Id.filter_definition AS PARAMETERS, IC.is_descending_key AS DESCEND, id.is_primary_key PRIMARY_KEY, typ.name AS COL_TYPE_NAME
+	my $sql = qq{SELECT Id.name AS index_name, AC.name AS column_name, Id.is_unique AS UNIQUENESS, AC.column_id AS COLUMN_POSITION, Id.type AS INDEX_TYPE, 'U' AS TABLE_TYPE, Id.auto_created AS GENERATED, NULL AS JOIN_INDEX, t.name AS TABLE_NAME, s.name as TABLE_SCHEMA, Id.data_space_id AS TABLESPACE_NAME, Id.type_desc AS ITYP_NAME, Id.filter_definition AS PARAMETERS, IC.is_descending_key AS DESCEND, id.is_primary_key PRIMARY_KEY, typ.name AS COL_TYPE_NAME, IC.is_included_column
 FROM sys.tables AS T
-INNER JOIN sys.indexes Id ON T.object_id = Id.object_id 
-INNER JOIN sys.index_columns IC ON Id.object_id = IC.object_id
-INNER JOIN sys.all_columns AC ON T.object_id = AC.object_id AND IC.column_id = AC.column_id 
+INNER JOIN sys.indexes Id ON T.object_id = Id.object_id
+INNER JOIN sys.index_columns IC ON Id.object_id = IC.object_id AND Id.index_id = IC.index_id
+INNER JOIN sys.all_columns AC ON IC.object_id =  AC.object_id AND IC.column_id = AC.column_id
 INNER JOIN sys.types typ ON typ.user_type_id = AC.user_type_id
 LEFT OUTER JOIN sys.schemas s ON t.schema_id = s.schema_id
 WHERE T.is_ms_shipped = 0 $generated $condition
@@ -448,12 +448,20 @@ ORDER BY T.name, Id.index_id, IC.key_ordinal
 		if ( !$self->{indexes_renaming} && !$self->{indexes_suffix} && (lc($row->[0]) eq lc($table)) ) {
 			 print STDERR "WARNING: index $row->[0] has the same name as the table itself. Please rename it before export or enable INDEXES_RENAMING.\n";
 		}
-		$unique{$row->[8]}{$row->[0]} = $row->[2];
 
 		# Save original column name
 		my $colname = $row->[1];
 		# Quote column with unsupported symbols
 		$row->[1] = $self->quote_object_name($row->[1]);
+		# Covered columns (include)
+		if ($row->[16] == 1)
+		{
+			push(@{$idx_type{$row->[8]}{$row->[0]}{type_include}}, $row->[1]);
+			next;
+		}
+
+		$unique{$row->[8]}{$row->[0]} = $row->[2];
+
 		# Replace function based index type
 		if ( $row->[13] )
 		{
@@ -466,22 +474,6 @@ ORDER BY T.name, Id.index_id, IC.key_ordinal
 		$idx_type{$row->[8]}{$row->[0]}{type_name} = $row->[11];
 		$idx_type{$row->[8]}{$row->[0]}{type} = $row->[4];
 
-#		my $idx_name = $row->[0];
-#		if (!$self->{schema} && $self->{export_schema}) {
-#			$idx_name = "$row->[9].$row->[0]";
-#		}
-#		if ($row->[11] =~ /SPATIAL_INDEX/) {
-#			$idx_type{$row->[8]}{$row->[0]}{type} = 'SPATIAL INDEX';
-#			if ($row->[12] =~ /layer_gtype=([^\s,]+)/i) {
-#				$idx_type{$row->[9]}{$row->[0]}{type_constraint} = uc($1);
-#			}
-#			if ($row->[12] =~ /sdo_indx_dims=(\d+)/i) {
-#				$idx_type{$row->[8]}{$row->[0]}{type_dims} = $1;
-#			}
-#		}
-#		if ($row->[4] eq 'BITMAP') {
-#			$idx_type{$row->[8]}{$row->[0]}{type} = $row->[4];
-#		}
 		push(@{$data{$row->[8]}{$row->[0]}}, $row->[1]);
 		$index_tablespace{$row->[8]}{$row->[0]} = $row->[10];
 		$nidx++;
