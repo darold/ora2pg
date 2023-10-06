@@ -96,6 +96,10 @@ sub _db_connection
 	$sth->execute or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
 	$sth->finish;
 
+	# Set the date format
+	#$dbh->do("SET LANGUAGE us_english") or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
+	$dbh->do("SET DATEFORMAT dmy") or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
+
 	# Force execution of initial command
 	$self->_ora_initial_command($dbh);
 
@@ -168,7 +172,7 @@ sub _table_exists
 
 =head2 _get_encoding
 
-This function retrieves the Oracle database encoding
+This function retrieves the MSSQL database encoding
 
 Returns a handle to a DB query statement.
 
@@ -245,7 +249,7 @@ sub _table_info
 
         my $schema_clause = '';
         $schema_clause = " AND s.name='$self->{schema}'" if ($self->{schema});
-	my $sql = qq{SELECT t.NAME AS TABLE_NAME, NULL AS comment, t.type_desc as TABLE_TYPE, p.rows AS RowCounts, SUM(a.used_pages)  * 8 / 1024 AS UsedSpaceMB, CONVERT(DECIMAL,SUM(a.total_pages)) * 8 / 1024 AS TotalSpaceMB, s.Name AS TABLE_SCHEMA, SCHEMA_NAME(t.principal_id), i.type_desc
+	my $sql = qq{SELECT t.NAME AS TABLE_NAME, NULL AS comment, t.type_desc as TABLE_TYPE, p.rows AS RowCounts, SUM(a.used_pages)  * 8 / 1024 AS UsedSpaceMB, CONVERT(DECIMAL,SUM(a.total_pages)) * 8 / 1024 AS TotalSpaceMB, s.Name AS TABLE_SCHEMA, SCHEMA_NAME(t.principal_id), i.type_desc, p.data_compression_desc
 FROM sys.tables t
 INNER JOIN sys.indexes i ON t.OBJECT_ID = i.object_id
 INNER JOIN sys.partitions p ON i.object_id = p.OBJECT_ID AND i.index_id = p.index_id
@@ -256,7 +260,7 @@ WHERE t.is_ms_shipped = 0 AND i.OBJECT_ID > 255 AND t.type='U' AND t.NAME NOT LI
 	my %tables_infos = ();
 	my %comments = ();
 	$sql .= $self->limit_to_objects('TABLE', 't.Name');
-	$sql .= " GROUP BY t.type_desc, i.type_desc, s.Name, t.Name, SCHEMA_NAME(t.principal_id), p.Rows ORDER BY s.Name, t.Name";
+	$sql .= " GROUP BY t.type_desc, i.type_desc, s.Name, t.Name, SCHEMA_NAME(t.principal_id), p.Rows, p.data_compression_desc ORDER BY s.Name, t.Name";
 	my $sth = $self->{dbh}->prepare( $sql ) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	while (my $row = $sth->fetch)
@@ -277,7 +281,8 @@ WHERE t.is_ms_shipped = 0 AND i.OBJECT_ID > 255 AND t.type='U' AND t.NAME NOT LI
 		$tables_infos{$row->[0]}{auto_increment} = 0;
 		$tables_infos{$row->[0]}{tablespace} = $tbspname{$row->[0]} || '';
 		$tables_infos{$row->[0]}{partitioned} = 1 if (exists $self->{partitions_list}{"\L$row->[0]\E"});
-		$tables_infos{$row->[0]}{index_type} = $row->[8];
+		$tables_infos{$row->[0]}{index_type} = $row->[8] if ($row->[8] =~ /^(XML|SPATIAL|.*COLUMNSTORE)$/i);
+		$tables_infos{$row->[0]}{compressed} = $row->[9];
 	}
 	$sth->finish();
 
@@ -573,7 +578,7 @@ $condition};
 
 =head2 _get_views
 
-This function implements an Oracle-native views information.
+This function implements an MSSQL-native views information.
 
 Returns a hash of view names with the SQL queries they are based on.
 
@@ -1754,7 +1759,7 @@ LEFT OUTER JOIN sys.schemas sch ON t.schema_id = sch.schema_id
 
 =head2 _get_objects
 
-This function retrieves all object the Oracle information
+This function retrieves all object the MSSQL information
 
 =cut
 
@@ -1986,7 +1991,7 @@ FROM sys.master_files m JOIN sys.databases d ON d.database_id = m.database_id an
 
 =head2 _get_largest_tables
 
-This function retrieves the list of largest table of the Oracle database in MB
+This function retrieves the list of largest table of the MSSQL database in MB
 
 =cut
 
