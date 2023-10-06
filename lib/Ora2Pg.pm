@@ -7984,7 +7984,7 @@ sub export_table
 	if ($self->{is_mssql})
 	{
 		if (lc($self->{case_insensitive_search}) eq 'citext') {
-			$sql_output .= "CREATE EXTENSION citext;\n";
+			$sql_output .= "CREATE EXTENSION IF NOT EXISTS citext;\n";
 		}
 	} else {
 		$self->{case_insensitive_search} = 'none';
@@ -10106,7 +10106,9 @@ sub _dump_fdw_table
 		else
 		{
 			# If this column is translated into boolean apply the CASE clause
-			if ($type eq 'boolean')
+			# except for MSSQL export through TDS_FDW because the foreign table
+			# has already converted BIT to boolean
+			if ($type eq 'boolean' && (uc($f->[1]) ne 'BIT' || !$self->{is_mssql} || !$self->{fdw_server}))
 			{
 				$fdw_col_list .= "(CASE WHEN " . $self->quote_object_name($colname) . " IS NULL THEN NULL";
 				my $true_list = '';
@@ -21018,7 +21020,7 @@ sub _create_foreign_server
 	if (not defined $row)
 	{
 		# try to create the extension
-		$self->{dbhdest}->do("CREATE EXTENSION $extension") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
+		$self->{dbhdest}->do("CREATE EXTENSION IF NOT EXISTS $extension") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
 	}
 
 	# Check if the server already exists or need to be created
