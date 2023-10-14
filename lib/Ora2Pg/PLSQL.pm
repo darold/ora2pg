@@ -4091,6 +4091,7 @@ sub mssql_to_plpgsql
 
 	# Replace getdate() with CURRENT_TIMESTAMP
 	$str =~ s/\bgetdate\s*\(\s*\)/date_trunc('millisecond', CURRENT_TIMESTAMP::timestamp)/ig;
+	$str =~ s/\bgetutcdate\s*\(\s*\)/date_trunc('millisecond', now() AT TIME ZONE 'UTC')/ig;
 	# Replace user_name() with CURRENT_USER
 	$str =~ s/\buser_name\s*\(\s*\)/CURRENT_USER/gi;
 
