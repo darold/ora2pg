@@ -8324,6 +8324,16 @@ sub export_table
 									}
 									elsif ($type =~ /DATE|TIME/i)
 									{
+										# Case of MSSQL datetime default value to 0, must be converted to '1900-01-01 00:00:00'
+										if ($self->{is_mssql} && $f->[4] eq "(0)")
+										{
+											if ($type =~ /TIME/i) {
+												$f->[4] = '1900-01-01 00:00:00';
+											} else {
+												$f->[4] = '1900-01-01';
+											}
+										}
+										# All other cases
 										if ($f->[4] =~ /^0000-/)
 										{
 											if ($self->{replace_zero_date}) {
@@ -8348,8 +8358,21 @@ sub export_table
 									{
 										if ($type =~ /CHAR|TEXT/i || ($was_enum && $f->[1] =~ /'/i)) {
 											$f->[4] = "'$f->[4]'" if ($f->[4] !~ /[']/ && $f->[4] !~ /\(.*\)/ && uc($f->[4]) ne 'NULL');
-										} elsif ($type =~ /DATE|TIME/i) {
-											if ($f->[4] =~ /^0000-/) {
+										}
+										elsif ($type =~ /DATE|TIME/i)
+										{
+											# Case of MSSQL datetime default value to 0, must be converted to '1900-01-01 00:00:00'
+											if ($self->{is_mssql} && $f->[4] eq "(0)")
+											{
+												if ($type =~ /TIME/i) {
+													$f->[4] = '1900-01-01 00:00:00';
+												} else {
+													$f->[4] = '1900-01-01';
+												}
+											}
+											# All other cases
+											if ($f->[4] =~ /^0000-/)
+											{
 												if ($self->{replace_zero_date}) {
 													$f->[4] = $self->{replace_zero_date};
 												} else {
