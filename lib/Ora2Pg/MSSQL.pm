@@ -346,11 +346,14 @@ sub _column_info
     NULL as AUTO_INCREMENT,
     NULL AS ENUM_INFO,
     object_definition(c.rule_object_id),
-    t.is_user_defined
+    t.is_user_defined,
+    m.is_masked,
+    m.masking_function
 FROM sys.columns c
 INNER JOIN sys.types t ON t.user_type_id = c.user_type_id
 INNER JOIN sys.tables AS tb ON tb.object_id = c.object_id
 INNER JOIN sys.schemas AS s ON s.schema_id = tb.schema_id
+LEFT JOIN sys.masked_columns AS m ON m.object_id = tb.object_id AND m.column_id = c.column_id
 $condition
 ORDER BY c.column_id};
 

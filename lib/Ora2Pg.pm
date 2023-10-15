@@ -17371,6 +17371,9 @@ sub _show_infos
 					if ($d->[1] eq 'DATE') {
 						$warning .= " (date?)";
 					}
+					if ($self->{is_mssql} && $d->[16]) {
+						$warning .= " [Masked with: $d->[17]]";
+					}
 					$self->logit("\t$d->[0] : $d->[1]");
 					if ($d->[1] !~ /SDO_GEOMETRY/)
 					{
