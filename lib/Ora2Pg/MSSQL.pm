@@ -757,7 +757,7 @@ ORDER BY sh.name, i.name, ic.key_ordinal;
 		}
 
 		my $idxname = $row->[3] . '_idx' . $i;
-		$idxname = $row->[2] if ($row->[2]);
+		$idxname = $row->[1] if ($row->[1]);
 		my $key_type = 'U';
 		$key_type = 'P' if ($row->[7]);
 
