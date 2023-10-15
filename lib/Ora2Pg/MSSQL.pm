@@ -544,12 +544,24 @@ sub _foreign_key
 	$condition =~ s/^ AND / WHERE /;
 
         my $deferrable = $self->{fkey_deferrable} ? "'DEFERRABLE' AS DEFERRABLE" : "DEFERRABLE";
-	my $sql = qq{SELECT f.name ConsName, SCHEMA_NAME(f.schema_id) SchemaName, COL_NAME(fc.parent_object_id,fc.parent_column_id) ColName, OBJECT_NAME(f.parent_object_id) TableName, t.name as ReferencedTableName, COL_NAME(f.referenced_object_id, key_index_id) as ReferencedColumnName,update_referential_action_desc UPDATE_RULE, delete_referential_action_desc DELETE_RULE, SCHEMA_NAME(t.schema_id)
-FROM sys.foreign_keys AS f
-INNER JOIN sys.foreign_key_columns AS fc ON f.OBJECT_ID = fc.constraint_object_id
-INNER JOIN sys.tables t ON t.OBJECT_ID = fc.referenced_object_id
-LEFT OUTER JOIN sys.schemas s ON f.principal_id = s.schema_id
-$condition};
+	my $sql = qq{SELECT
+    fk.name AS ConsName,
+    SCHEMA_NAME(fk.schema_id) SchemaName,
+    c_parent.name AS ParentColumnName,
+    t_parent.name AS ParentTableName,
+    t_child.name AS ReferencedTableName,
+    c_child.name AS ReferencedColumnName,
+    update_referential_action_desc UPDATE_RULE,
+    delete_referential_action_desc DELETE_RULE,
+    SCHEMA_NAME(t_parent.schema_id)
+FROM sys.foreign_keys fk
+INNER JOIN sys.foreign_key_columns fkc ON fkc.constraint_object_id = fk.object_id
+INNER JOIN sys.tables t_parent ON t_parent.object_id = fk.parent_object_id
+INNER JOIN sys.columns c_parent ON fkc.parent_column_id = c_parent.column_id AND c_parent.object_id = t_parent.object_id
+INNER JOIN sys.tables t_child ON t_child.object_id = fk.referenced_object_id
+INNER JOIN sys.columns c_child ON c_child.object_id = t_child.object_id AND fkc.referenced_column_id = c_child.column_id
+$condition
+ORDER BY t_parent.name, c_parent.name};
 
         my $sth = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
         $sth->execute or $self->logit("FATAL: " . $sth->errstr . "\n", 0, 1);
