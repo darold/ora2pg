@@ -540,7 +540,7 @@ sub _foreign_key
 
         my $condition = '';
         $condition .= " AND OBJECT_NAME (f.referenced_object_id) = '$table' " if ($table);
-        $condition .= " AND SCHEMA_NAME(f.schema_id) = '$self->{schema}' " if ($self->{schema});
+        $condition .= " AND SCHEMA_NAME(t_parent.schema_id) = '$self->{schema}' " if ($self->{schema});
 	$condition =~ s/^ AND / WHERE /;
 
         my $deferrable = $self->{fkey_deferrable} ? "'DEFERRABLE' AS DEFERRABLE" : "DEFERRABLE";
