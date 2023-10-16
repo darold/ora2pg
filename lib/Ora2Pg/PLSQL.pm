@@ -177,6 +177,7 @@ $QUERY_TEST_SCORE = 0.1;
 	'FND_STANDARD' => 3,
 	'FND_UTILITIES' => 3,
 	'ADD CONSTRAINT' => 3, ## need stability in constraint name
+	'HTP' => 0.2,
 );
 
 @ORA_FUNCTIONS = qw(
@@ -2674,6 +2675,8 @@ sub estimate_cost
 	$cost_details{'EXCEPTION'} += $n;
 	$n = () = $str =~ m/PLUNIT/igs;
 	$cost_details{'PLUNIT'} += $n;
+	$n = () = $str =~ m/\bHT[PF]\./igs;
+	$cost_details{'HTP'} += $n;
 	if (!$class->{use_orafce})
 	{
 		$n = () = $str =~ m/ADD_MONTHS/igs;
@@ -2813,6 +2816,8 @@ sub estimate_cost
 	$cost_details{'TRANSFORM'} += $n;
 	$n = () = $str =~ m/ADD CONSTRAINT/igs;
 	$cost_details{'ADD CONSTRAINT'} += $n;
+	$n = () = $str =~ m/\bHT[PF]\./igs;
+	$cost_details{'HTP'} += $n;
 
 	foreach my $f (@ORA_FUNCTIONS)
 	{
