@@ -1353,7 +1353,7 @@ sub _sql_type
 				{
 					if ($precision)
 					{
-						if ($type =~ /(TINYINT|SMALLINT|INTEGER|BIGINT|INT)/ && $precision)
+						if ($type =~ /(TINYINT|SMALLINT|INTEGER|BIGINT|INT)/)
 						{
 							if ($precision < 5) {
 								return 'smallint';
@@ -1363,28 +1363,21 @@ sub _sql_type
 								return 'bigint';
 							}
 						}
+						elsif ($type =~ /(FLOAT|REAL)/)
+						{
+							return "float($precision)";
+						}
 						return "numeric($precision)";
 					}
 					else
 					{
-						# Most of the time interger should be enought?
+						# Most of the time integer should be enought?
 						return $self->{data_type}{$type};
 					}
 				}
 				else
 				{
-					if ($precision)
-					{
-						if ($self->{pg_numeric_type})
-						{
-							if ($precision <= 6) {
-								return 'real';
-							} else {
-								return 'double precision';
-							}
-						}
-						return "decimal($precision,$scale)";
-					}
+					return "numeric($precision,$scale)";
 				}
 			}
 			$self->{use_uuid} = 1 if ($type =~ /UNIQUEIDENTIFIER/);
@@ -1465,7 +1458,12 @@ sub replace_sql_type
 						$str =~ s/\b$type\b\s*\([^\)]+\)/numeric\%\|$precision\%\|\%/i;
 					}
 				}
-				else {
+				elsif ($type =~ /(FLOAT|REAL)/)
+				{
+					return "float($precision)";
+				}
+				else
+				{
 					$str =~ s/\b$type\b\s*\([^\)]+\)/$self->{data_type}{$type}\%\|$precision\%\|\%/is;
 				}
 			}
