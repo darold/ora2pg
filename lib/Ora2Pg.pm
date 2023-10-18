@@ -5465,7 +5465,7 @@ sub export_dblink
 			$sql_output .= "CREATE USER MAPPING FOR $usr_name SERVER $srv_name";
 			$usr_name = $self->quote_object_name($self->{dblink}{$db}{user});
 			$usr_name =~ s/^.*\.//;
-			$sql_output .= " OPTIONS (user '$usr_name', password '$self->{dblink}{$db}{password}');\n";
+			$sql_output .= " OPTIONS (user '$usr_name' $self->{dblink}{$db}{password});\n";
 		}
 		
 		if ($self->{force_owner})
