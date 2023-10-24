@@ -3474,6 +3474,7 @@ sub read_schema_from_file
 			if ($tb_def =~ s/CONSTRAINT\s+([^\s]+)\s+PRIMARY KEY//is) {
 				my $constname = lc($1);
 				$tb_def =~ s/^[^\(]+//;
+				$tb_def =~ s/\);$//s;
 				if ( $tb_def =~ s/USING\s+INDEX\s+TABLESPACE\s+([^\s]+).*//s) {
 					$tb_def =~ s/\s+$//;
 					if ($self->{use_tablespace}) {
