@@ -3481,12 +3481,12 @@ sub read_schema_from_file
 						my $tbspace_move = "ALTER INDEX $constname SET TABLESPACE $1";
 						push(@{$self->{tables}{$tb_name}{alter_index}}, $tbspace_move);
 					}
-					push(@{$self->{tables}{$tb_name}{alter_table}}, "ADD PRIMARY KEY $constname " . lc($tb_def));
+					push(@{$self->{tables}{$tb_name}{alter_table}}, "ADD CONSTRAINT $constname PRIMARY KEY " . lc($tb_def));
 				} elsif ($tb_def =~ s/USING\s+INDEX\s+([^\s]+).*//s) {
 					push(@{$self->{tables}{$tb_name}{alter_table}}, "ADD PRIMARY KEY " . lc($tb_def));
 					$self->{tables}{$tb_name}{alter_table}[-1] .= " USING INDEX " . lc($1);
 				} elsif ($tb_def) {
-					push(@{$self->{tables}{$tb_name}{alter_table}}, "ADD PRIMARY KEY $constname " . lc($tb_def));
+					push(@{$self->{tables}{$tb_name}{alter_table}}, "ADD CONSTRAINT $constname PRIMARY KEY " . lc($tb_def));
 				}
 				if (!exists $self->{tables}{$tb_name}{table_info}{type}) {
 					$self->{tables}{$tb_name}{table_info}{type} = 'TABLE';
