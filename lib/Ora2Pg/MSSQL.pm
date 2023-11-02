@@ -414,11 +414,15 @@ sub _get_indexes
 
 	# When comparing number of index we need to retrieve generated index (mostly PK)
 	my $generated = '';
-	$generated = " AND Id.auto_created = 0" if (!$generated_indexes);
+	my $col_generated = "''";
+	if ($self->{db_version} !~ /SQL Server 201[0-6]/) {
+		$generated = " AND Id.auto_created = 0" if (!$generated_indexes);
+		$col_generated = 'Id.auto_created';
+	}
 
 	my $t0 = Benchmark->new;
 	my $sth = '';
-	my $sql = qq{SELECT Id.name AS index_name, AC.name AS column_name, Id.is_unique AS UNIQUENESS, AC.column_id AS COLUMN_POSITION, Id.type AS INDEX_TYPE, 'U' AS TABLE_TYPE, Id.auto_created AS GENERATED, NULL AS JOIN_INDEX, t.name AS TABLE_NAME, s.name as TABLE_SCHEMA, Id.data_space_id AS TABLESPACE_NAME, Id.type_desc AS ITYP_NAME, Id.filter_definition AS PARAMETERS, IC.is_descending_key AS DESCEND, id.is_primary_key PRIMARY_KEY, typ.name AS COL_TYPE_NAME, IC.is_included_column
+	my $sql = qq{SELECT Id.name AS index_name, AC.name AS column_name, Id.is_unique AS UNIQUENESS, AC.column_id AS COLUMN_POSITION, Id.type AS INDEX_TYPE, 'U' AS TABLE_TYPE, $col_generated AS GENERATED, NULL AS JOIN_INDEX, t.name AS TABLE_NAME, s.name as TABLE_SCHEMA, Id.data_space_id AS TABLESPACE_NAME, Id.type_desc AS ITYP_NAME, Id.filter_definition AS PARAMETERS, IC.is_descending_key AS DESCEND, id.is_primary_key PRIMARY_KEY, typ.name AS COL_TYPE_NAME, IC.is_included_column
 FROM sys.tables AS T
 INNER JOIN sys.indexes Id ON T.object_id = Id.object_id
 INNER JOIN sys.index_columns IC ON Id.object_id = IC.object_id AND Id.index_id = IC.index_id
@@ -1824,7 +1828,11 @@ sub _get_objects
 	# INDEX
 	foreach my $t (@{$infos{TABLE}})
 	{
-		my $sql = "SELECT Id.name AS index_name FROM sys.tables AS T INNER JOIN sys.indexes Id ON T.object_id = Id.object_id LEFT OUTER JOIN sys.schemas s ON t.schema_id = s.schema_id WHERE T.is_ms_shipped = 0 AND Id.auto_created = 0 AND OBJECT_NAME(Id.object_id, DB_ID())='$t' AND Id.is_primary_key = 0";
+		$auto_generated = '';
+		if ($self->{db_version} !~ /SQL Server 201[0-6]/) {
+			$auto_generated = ' AND Id.auto_created = 0';
+		}
+		my $sql = "SELECT Id.name AS index_name FROM sys.tables AS T INNER JOIN sys.indexes Id ON T.object_id = Id.object_id LEFT OUTER JOIN sys.schemas s ON t.schema_id = s.schema_id WHERE T.is_ms_shipped = 0 AND OBJECT_NAME(Id.object_id, DB_ID())='$t' AND Id.is_primary_key = 0$auto_generated";
 		if (!$self->{schema}) {
 			$sql .= " AND s.name NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
 		} else {
