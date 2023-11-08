@@ -1828,7 +1828,7 @@ sub _get_objects
 	# INDEX
 	foreach my $t (@{$infos{TABLE}})
 	{
-		$auto_generated = '';
+		my $auto_generated = '';
 		if ($self->{db_version} !~ /SQL Server 201[0-6]/) {
 			$auto_generated = ' AND Id.auto_created = 0';
 		}
