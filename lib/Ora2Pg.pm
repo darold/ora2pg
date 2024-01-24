@@ -20007,27 +20007,29 @@ Technical levels:
 		$self->logrep("\"Schema\": \"$report_info{'Schema'}\",\n");
 		$self->logrep("\"Size\": \"$report_info{'Size'}\",\n");
 		my $cnt=0;
-		foreach my $typ (sort keys %{ $report_info{'Objects'} } )
-		{
-			$report_info{'Objects'}{$typ}{'detail'} =~ s/\n/\. /gs;
-			$cnt++;
-			if ($cnt ne 1) {
-			    $self->logrep(",");
-			}
-			$self->logrep("\"case $cnt\":{");
-			$self->logrep("\"object\":\"$typ\",\"number\":$report_info{'Objects'}{$typ}{'number'},");
-			$self->logrep("\"invalid\":$report_info{'Objects'}{$typ}{'invalid'},");
-			$self->logrep("\"cost value\":$report_info{'Objects'}{$typ}{'cost_value'},");
-			$self->logrep("\"comment\":\"$report_info{'Objects'}{$typ}{'comment'}\"\n");
-			$self->logrep("\"details\":\"$report_info{'Objects'}{$typ}{'detail'}\"\n");
-		}
+                $self->logrep("\"objects\": [");
+                foreach my $typ (sort keys %{ $report_info{'Objects'} } )
+                {
+                        $report_info{'Objects'}{$typ}{'detail'} =~ s/\n/\. /gs;
+                        $cnt++;
+                        if ($cnt ne 1) {
+                            $self->logrep(",");
+                        }
+                        $self->logrep("{");
+                        $self->logrep("\"object\":\"$typ\",\"number\":$report_info{'Objects'}{$typ}{'number'},");
+                        $self->logrep("\"invalid\":$report_info{'Objects'}{$typ}{'invalid'},");
+                        $self->logrep("\"cost value\":$report_info{'Objects'}{$typ}{'cost_value'},");
+                        $self->logrep("\"comment\":\"$report_info{'Objects'}{$typ}{'comment'}\",\n");
+                        $self->logrep("\"details\":\"$report_info{'Objects'}{$typ}{'detail'}\"}\n");
+                }
+                $self->logrep("]\n");
 		my $human_cost = $self->_get_human_cost($report_info{'total_cost_value'});
 		$difficulty = '' if (!$self->{estimate_cost});
 		$self->logrep(",\"total number\":$report_info{'total_object_number'}");
 		$self->logrep(",\"total invalid\":$report_info{'total_object_invalid'}");
 		$self->logrep(",\"total cost\":$report_info{'total_cost_value'}");
-		$self->logrep(",\"human days cost\":$human_cost");
-		$self->logrep(",\"migration level\":$difficulty");
+		$self->logrep(",\"human days cost\":\"$human_cost\"");
+		$self->logrep(",\"migration level\":\"$difficulty\"");
 		$self->logrep("}\n");
 	}
 	elsif ($self->{dump_as_sheet})
