@@ -1078,7 +1078,8 @@ END
 	my %data = ();
 	my %link = ();
 	#my @tab_done = ();
-	while (my $row = $sth->fetch) {
+	while (my $row = $sth->fetch)
+	{
 		my $local_table = $row->[0];
 		my $remote_table = $row->[3];
 		if (!$self->{schema} && $self->{export_schema}) {
@@ -1096,6 +1097,55 @@ END
 
 	return \%link, \%data;
 }
+
+sub _get_ref_key_info
+{
+	my ($self, $constname, $owner) = @_;
+
+	my $sql = <<END;
+SELECT a.table_name AS fk_table_name,
+        a.column_name      AS fk_column_name,
+        b.data_type        AS fk_data_type,
+        b.data_length      AS fk_data_length,
+        a.constraint_name  AS fk_constraint_name,
+	b.data_precision,
+        b.data_scale,
+        b.char_length,
+	cons_r.table_name,
+	p.partitioning_type
+      FROM $self->{prefix}_CONS_COLUMNS A
+      JOIN $self->{prefix}_CONSTRAINTS C
+      ON A.CONSTRAINT_NAME = C.CONSTRAINT_NAME
+      JOIN all_tab_columns b
+      ON a.owner                = b.owner
+      AND a.table_name          = b.table_name
+      AND a.column_name         = b.column_name
+      LEFT JOIN $self->{prefix}_constraints cons_r on (cons_r.constraint_name = c.r_constraint_name and cons_r.owner = c.r_owner)
+      LEFT JOIN $self->{prefix}_part_tables p on (cons_r.table_name = p.table_name and cons_r.owner = p.owner)
+      WHERE A.CONSTRAINT_NAME='$constname' AND A.OWNER = '$owner'
+END
+
+	my $sth = $self->{dbh}->prepare($sql) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+	$sth->execute() or $self->logit("FATAL: " . $sth->errstr . "\n", 0, 1);
+
+	my %data = ();
+	while (my $row = $sth->fetch)
+	{
+		$data{refconstraint} = $row->[4];
+		$data{reftable} = $row->[0];
+		$data{refcolumn} = $row->[1];
+		$data{reftype} = $row->[2];
+		$data{reflengh} = $row->[3];
+		$data{refprecision} = $row->[5];
+		$data{refscale} = $row->[6];
+		$data{refcharlengh} = $row->[7];
+		$data{refrtable} = $row->[8];
+		$data{refparttype} = $row->[9];
+	}
+
+	return %data;
+}
+
 
 =head2 _alias_info
 
@@ -2220,6 +2270,10 @@ sub _get_partitions
 	if ($self->{db_version} =~ /Release 8/) {
 		$highvalue = "'' AS HIGH_VALUE";
 	}
+	my $ref_constraint = "'' AS REF_PTN_CONSTRAINT_NAME";
+	if ($self->{db_version} =~ /Release (2|3|19)/) {
+		$ref_constraint = 'B.REF_PTN_CONSTRAINT_NAME';
+	}
 	my $condition = '';
 	if ($self->{schema}) {
 		$condition .= "AND A.TABLE_OWNER='$self->{schema}' ";
@@ -2238,11 +2292,12 @@ SELECT
 	C.NAME,
 	C.COLUMN_NAME,
 	C.COLUMN_POSITION,
-	A.TABLE_OWNER
+	A.TABLE_OWNER,
+	$ref_constraint
 FROM $self->{prefix}_TAB_PARTITIONS A, $self->{prefix}_PART_TABLES B, $self->{prefix}_PART_KEY_COLUMNS C
 WHERE
 	a.table_name = b.table_name AND
-	(b.partitioning_type = 'RANGE' OR b.partitioning_type = 'LIST' OR b.partitioning_type = 'HASH')
+	(b.partitioning_type = 'RANGE' OR b.partitioning_type = 'LIST' OR b.partitioning_type = 'HASH' OR b.partitioning_type = 'REFERENCE')
 	AND a.table_name = c.name
 	$condition
 };
@@ -2279,7 +2334,18 @@ WHERE
 			next;
 		}
 		$parts{$row->[0]}{$row->[1]}{name} = $row->[2];
-		push(@{$parts{$row->[0]}{$row->[1]}{info}}, { 'type' => $row->[5], 'value' => $row->[3], 'column' => $row->[7], 'colpos' => $row->[8], 'tablespace' => $row->[4], 'owner' => $row->[9]});
+		my %refinfo = ();
+		if ($row->[10])
+		{
+			%refinfo = _get_ref_key_info($self, $row->[10], $row->[9]);
+			$refinfo{refconstraint} = $row->[10];
+			if ($self->{partition_by_reference} eq 'duplicate') {
+				$row->[5] = $refinfo{refparttype};
+			} elsif ($self->{partition_by_reference} =~ /^\d+$/) {
+				$row->[5] = 'HASH';
+			}
+		}
+		push(@{$parts{$row->[0]}{$row->[1]}{info}}, { 'type' => $row->[5], 'value' => $row->[3], 'column' => $row->[7], 'colpos' => $row->[8], 'tablespace' => $row->[4], 'owner' => $row->[9], %refinfo });
 	}
 	$sth->finish;
 
@@ -2323,7 +2389,7 @@ SELECT
 FROM $self->{prefix}_tab_subpartitions A, $self->{prefix}_part_tables B, $self->{prefix}_subpart_key_columns C
 WHERE
 	a.table_name = b.table_name AND
-	(b.subpartitioning_type = 'RANGE' OR b.subpartitioning_type = 'LIST' OR b.subpartitioning_type = 'HASH')
+	(b.subpartitioning_type = 'RANGE' OR b.subpartitioning_type = 'LIST' OR b.subpartitioning_type = 'HASH' OR b.subpartitioning_type = 'REFERENCE')
 	AND a.table_name = c.name
 	$condition
 };
@@ -2439,6 +2505,10 @@ sub _get_partitioned_table
 	if ($self->{db_version} =~ /Release [89]/) {
 		$highvalue = "'' AS HIGH_VALUE";
 	}
+	my $ref_constraint = "'' AS REF_PTN_CONSTRAINT_NAME";
+	if ($self->{db_version} =~ /Release (2|3|19)/) {
+		$ref_constraint = 'B.REF_PTN_CONSTRAINT_NAME';
+	}
 	my $condition = '';
 	if ($self->{schema}) {
 		$condition .= "AND B.OWNER='$self->{schema}' ";
@@ -2449,13 +2519,13 @@ sub _get_partitioned_table
 	my $str = "SELECT B.TABLE_NAME, B.PARTITIONING_TYPE, B.OWNER, B.PARTITION_COUNT, B.SUBPARTITIONING_TYPE";
 	if ($self->{type} !~ /SHOW|TEST/)
 	{
-		$str .= ", C.COLUMN_NAME, C.COLUMN_POSITION";
+		$str .= ", C.COLUMN_NAME, C.COLUMN_POSITION, $ref_constraint";
 		$str .= " FROM $self->{prefix}_PART_TABLES B, $self->{prefix}_PART_KEY_COLUMNS C";
-		$str .= " WHERE B.TABLE_NAME = C.NAME AND (B.PARTITIONING_TYPE = 'RANGE' OR B.PARTITIONING_TYPE = 'LIST' OR B.PARTITIONING_TYPE = 'HASH')";
+		$str .= " WHERE B.TABLE_NAME = C.NAME AND (B.PARTITIONING_TYPE = 'RANGE' OR B.PARTITIONING_TYPE = 'LIST' OR B.PARTITIONING_TYPE = 'HASH' OR B.PARTITIONING_TYPE = 'REFERENCE')";
 	}
 	else
 	{
-		$str .= " FROM $self->{prefix}_PART_TABLES B WHERE (B.PARTITIONING_TYPE = 'RANGE' OR B.PARTITIONING_TYPE = 'LIST' OR B.PARTITIONING_TYPE = 'HASH') AND B.SUBPARTITIONING_TYPE <> 'SYSTEM' ";
+		$str .= " FROM $self->{prefix}_PART_TABLES B WHERE (B.PARTITIONING_TYPE = 'RANGE' OR B.PARTITIONING_TYPE = 'LIST' OR B.PARTITIONING_TYPE = 'HASH' OR B.PARTITIONING_TYPE = 'REFERENCE') AND B.SUBPARTITIONING_TYPE <> 'SYSTEM' ";
 	}
 	$str .= $self->limit_to_objects('TABLE','B.TABLE_NAME');
 
@@ -2484,7 +2554,6 @@ sub _get_partitioned_table
 	} else {
 		$str .= "ORDER BY B.OWNER,B.TABLE_NAME\n";
 	}
-
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
@@ -2509,6 +2578,25 @@ sub _get_partitioned_table
 			$parts{"\L$row->[0]\E"}{count} = $row->[3];
 		}
 		$parts{"\L$row->[0]\E"}{type} = $row->[1];
+		if ($row->[7])
+		{
+			$parts{"\L$row->[0]\E"}{refconstraint} = $row->[7];
+			my %refinfo = _get_ref_key_info($self, $row->[7], $row->[2]);
+			$parts{"\L$row->[0]\E"}{reftable} = $refinfo{reftable};
+			$parts{"\L$row->[0]\E"}{refrtable} = $refinfo{refrtable};
+			$parts{"\L$row->[0]\E"}{refcolumn} = $refinfo{refcolumn};
+			$parts{"\L$row->[0]\E"}{reftype} = $refinfo{reftype};
+			$parts{"\L$row->[0]\E"}{reflength} = $refinfo{reflength};
+			$parts{"\L$row->[0]\E"}{refprecision} = $refinfo{refprecision};
+			$parts{"\L$row->[0]\E"}{refscale} = $refinfo{refscale};
+			$parts{"\L$row->[0]\E"}{refcharlengh} = $refinfo{refcharlengh};
+			$parts{"\L$row->[0]\E"}{refparttype} = $refinfo{refparttype};
+			if ($self->{partition_by_reference} eq 'duplicate') {
+				$parts{"\L$row->[0]\E"}{type} = $refinfo{refparttype};
+			} elsif ($self->{partition_by_reference} =~ /^\d+$/) {
+				$parts{"\L$row->[0]\E"}{type} = 'HASH';
+			}
+		}
 		if ($self->{type} !~ /SHOW|TEST/) {
 			push(@{ $parts{"\L$row->[0]\E"}{columns} }, $row->[5]);
 		}
@@ -3307,7 +3395,7 @@ sub _get_subpartitioned_table
 	} else {
 		$str .= " FROM $self->{prefix}_TAB_SUBPARTITIONS A, $self->{prefix}_PART_TABLES B";
 	}
-	$str .= " WHERE A.TABLE_NAME = B.TABLE_NAME AND (B.SUBPARTITIONING_TYPE = 'RANGE' OR B.SUBPARTITIONING_TYPE = 'LIST' OR B.SUBPARTITIONING_TYPE = 'HASH')";
+	$str .= " WHERE A.TABLE_NAME = B.TABLE_NAME AND (B.SUBPARTITIONING_TYPE = 'RANGE' OR B.SUBPARTITIONING_TYPE = 'LIST' OR B.SUBPARTITIONING_TYPE = 'HASH' OR B.SUBPARTITIONING_TYPE = 'REFERENCE')";
 
 	$str .= " AND A.TABLE_NAME = C.NAME" if ($self->{type} !~ /SHOW|TEST/);
 

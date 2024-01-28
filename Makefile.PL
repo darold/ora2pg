@@ -645,6 +645,11 @@ RENAME_PARTITION	0
 # and import them into the PostgreSQL dedicated partition table.
 DISABLE_PARTITION	0
 
+# How to export partition by reference. Possible values are none, duplicate or
+# the number of hash partition to create. Default is 'none' to not export the
+# partitions by reference.
+PARTITION_BY_REFERENCE	none
+
 # Activating this directive will force Ora2Pg to add WITH (OIDS) when creating
 # tables or views as tables. Default is same as PostgreSQL, disabled.
 WITH_OID		0

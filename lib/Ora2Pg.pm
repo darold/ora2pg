@@ -1672,6 +1672,9 @@ sub _init
 	# is TABLE or to set constraint deferred with data export types/
 	$self->{defer_fkey} ||= 0;
 
+	# How to export partition by reference (none, duplicate or number of hash)
+	$self->{partition_by_reference} ||= 'none';
+
 	# Allow multiple or chained extraction export type
 	$self->{export_type} = ();
 	if ($self->{type})
@@ -7109,7 +7112,8 @@ sub export_partition
 	$self->logit("Add partitions definition...\n", 1);
 
 	my $total_partition = 0;
-	foreach my $t (sort keys %{ $self->{partitions} }) {
+	foreach my $t (sort keys %{ $self->{partitions} })
+	{
 		$total_partition += scalar keys %{$self->{partitions}{$t}};
 	}
 	foreach my $t (sort keys %{ $self->{subpartitions_list} })
@@ -7181,66 +7185,72 @@ BEGIN
 			my @condition = ();
 			my @ind_col = ();
 			my $check_cond = '';
+			my $reftable = '';
 			for (my $i = 0; $i <= $#{$self->{partitions}{$table}{$pos}{info}}; $i++)
 			{
-				# We received all values for partitonning on multiple column, so get the one at the right indice
-				my $value = Ora2Pg::PLSQL::convert_plsql_code($self, $self->{partitions}{$table}{$pos}{info}[$i]->{value});
-				if ($#{$self->{partitions}{$table}{$pos}{info}} == 0)
+				$reftable = $table;
+				if ($self->{partition_by_reference} eq 'duplicate' && $self->{partitions}{$table}{$pos}{info}[$i]->{refrtable})
 				{
-					my @values = split(/,\s/, Ora2Pg::PLSQL::convert_plsql_code($self, $self->{partitions}{$table}{$pos}{info}[$i]->{value}));
+					$reftable = $self->{partitions}{$table}{$pos}{info}[$i]->{refrtable};
+				}
+
+				# We received all values for partitonning on multiple column, so get the one at the right indice
+				my $value = Ora2Pg::PLSQL::convert_plsql_code($self, $self->{partitions}{$reftable}{$pos}{info}[$i]->{value});
+				if ($#{$self->{partitions}{$reftable}{$pos}{info}} >= 0)
+				{
+					my @values = split(/,\s/, Ora2Pg::PLSQL::convert_plsql_code($self, $self->{partitions}{$reftable}{$pos}{info}[$i]->{value}));
 					$value = $values[$i];
 				}
 				my $old_value = '';
 				if ($old_part)
 				{
-					$old_value = Ora2Pg::PLSQL::convert_plsql_code($self, $self->{partitions}{$table}{$old_pos}{info}[$i]->{value});
-					if ($#{$self->{partitions}{$table}{$pos}{info}} == 0)
+					$old_value = Ora2Pg::PLSQL::convert_plsql_code($self, $self->{partitions}{$reftable}{$old_pos}{info}[$i]->{value});
+					if ($#{$self->{partitions}{$reftable}{$pos}{info}} == 0)
 					{
-						my @values = split(/,\s/, Ora2Pg::PLSQL::convert_plsql_code($self, $self->{partitions}{$table}{$old_pos}{info}[$i]->{value}));
+						my @values = split(/,\s/, Ora2Pg::PLSQL::convert_plsql_code($self, $self->{partitions}{$reftable}{$old_pos}{info}[$i]->{value}));
 						$old_value = $values[$i];
 					}
 				}
-
-				if ($self->{partitions}{$table}{$pos}{info}[$i]->{type} eq 'LIST')
+				if ($self->{partitions}{$reftable}{$pos}{info}[$i]->{type} eq 'LIST')
 				{
-					$value = $self->{partitions}{$table}{$pos}{info}[$i]->{value};
+					$value = $self->{partitions}{$reftable}{$pos}{info}[$i]->{value};
 					if (!$self->{pg_supports_partition}) {
-						$check_cond .= "\t$self->{partitions}{$table}{$pos}{info}[$i]->{column} IN ($value)";
+						$check_cond .= "\t$self->{partitions}{$reftable}{$pos}{info}[$i]->{column} IN ($value)";
 					} else {
 						$check_cond .= " IN ($value)";
 					}
 				}
-				elsif ($self->{partitions}{$table}{$pos}{info}[$i]->{type} eq 'RANGE')
+				elsif ($self->{partitions}{$reftable}{$pos}{info}[$i]->{type} eq 'RANGE')
 				{
 					if (!$self->{pg_supports_partition})
 					{
 						if ($old_part eq '') {
-							$check_cond .= "\t$self->{partitions}{$table}{$pos}{info}[$i]->{column} < $value";
+							$check_cond .= "\t$self->{partitions}{$reftable}{$pos}{info}[$i]->{column} < $value";
 						}
 						else
 						{
-							$check_cond .= "\t$self->{partitions}{$table}{$pos}{info}[$i]->{column} >= $old_value"
-								. " AND $self->{partitions}{$table}{$pos}{info}[$i]->{column} < $value";
+							$check_cond .= "\t$self->{partitions}{$reftable}{$pos}{info}[$i]->{column} >= $old_value"
+								. " AND $self->{partitions}{$reftable}{$pos}{info}[$i]->{column} < $value";
 						}
 					}
 					else
 					{
 						if ($old_part eq '')
 						{
-							my $val = 'MINVALUE,' x ($#{$self->{partitions}{$table}{$pos}{info}}+1);
+							my $val = 'MINVALUE,' x ($#{$self->{partitions}{$reftable}{$pos}{info}}+1);
 							$val =~ s/,$//;
 							$check_cond .= " FROM ($val) TO ($value)";
 						} else {
 							$check_cond .= " FROM ($old_value) TO ($value)";
 						}
-						$i += $#{$self->{partitions}{$table}{$pos}{info}};
+						$i += $#{$self->{partitions}{$reftable}{$pos}{info}};
 					}
 				}
-				elsif ($self->{partitions}{$table}{$pos}{info}[$i]->{type} eq 'HASH')
+				elsif ($self->{partitions}{$reftable}{$pos}{info}[$i]->{type} eq 'HASH')
 				{
 					if ($self->{pg_version} < 11)
 					{
-						print STDERR "WARNING: Hash partitioning not supported, skipping partitioning of table $table\n";
+						print STDERR "WARNING: Hash partitioning not supported, skipping partitioning of table $reftable\n";
 						$function = '';
 						$create_table_tmp = '';
 						$create_table_index_tmp = '';
@@ -7248,38 +7258,39 @@ BEGIN
 					}
 					else
 					{
-						my $part_clause = " WITH (MODULUS " . (scalar keys %{$self->{partitions}{$table}}) . ", REMAINDER " . ($pos-1) . ")";
+						my $part_clause = " WITH (MODULUS " . (scalar keys %{$self->{partitions}{$reftable}}) . ", REMAINDER " . ($pos-1) . ")";
 						$check_cond .= $part_clause if ($check_cond !~ /\Q$part_clause\E$/);
 					}
 				}
-				else
+				elsif ($reftable eq $table)
 				{
-					print STDERR "WARNING: Unknown partitioning type $self->{partitions}{$table}{$pos}{info}[$i]->{type}, skipping partitioning of table $table\n";
+					print STDERR "WARNING: Unknown partitioning type $self->{partitions}{$reftable}{$pos}{info}[$i]->{type}, skipping partitioning of table $reftable\n";
 					$create_table_tmp = '';
 					$create_table_index_tmp = '';
 					next;
-				}
+				} 
+
 				if (!$self->{pg_supports_partition})
 				{
-					$check_cond .= " AND" if ($i < $#{$self->{partitions}{$table}{$pos}{info}});
+					$check_cond .= " AND" if ($i < $#{$self->{partitions}{$reftable}{$pos}{info}});
 				}
 				my $fct = '';
-				my $colname = $self->{partitions}{$table}{$pos}{info}[$i]->{column};
+				my $colname = $self->{partitions}{$reftable}{$pos}{info}[$i]->{column};
 				if ($colname =~ s/([^\(]+)\(([^\)]+)\)/$2/)
 				{
 					$fct = $1;
 				}
-				my $cindx = $self->{partitions}{$table}{$pos}{info}[$i]->{column} || '';
+				my $cindx = $self->{partitions}{$reftable}{$pos}{info}[$i]->{column} || '';
 				$cindx = lc($cindx) if (!$self->{preserve_case});
 				$cindx = Ora2Pg::PLSQL::convert_plsql_code($self, $cindx);
 				my $has_hash_subpartition = 0;
-				if (exists $self->{subpartitions}{$table}{$part})
+				if (exists $self->{subpartitions}{$reftable}{$part})
 				{
-					foreach my $p (sort {$a <=> $b} keys %{$self->{subpartitions}{$table}{$part}})
+					foreach my $p (sort {$a <=> $b} keys %{$self->{subpartitions}{$reftable}{$part}})
 					{
-						for (my $j = 0; $j <= $#{$self->{subpartitions}{$table}{$part}{$p}{info}}; $j++)
+						for (my $j = 0; $j <= $#{$self->{subpartitions}{$reftable}{$part}{$p}{info}}; $j++)
 						{
-							if ($self->{subpartitions}{$table}{$part}{$p}{info}[$j]->{type} eq 'HASH')
+							if ($self->{subpartitions}{$reftable}{$part}{$p}{info}[$j]->{type} eq 'HASH')
 							{
 								$has_hash_subpartition = 1;
 								last;
@@ -7289,13 +7300,13 @@ BEGIN
 					}
 				}
 
-				if (!exists $self->{subpartitions}{$table}{$part} || (!$self->{pg_supports_partition} && $has_hash_subpartition))
+				if (!exists $self->{subpartitions}{$reftable}{$part} || (!$self->{pg_supports_partition} && $has_hash_subpartition))
 				{
 					# Reproduce indexes definition from the main table before PG 11
 					# after they are automatically created on partition tables
 					if ($self->{pg_version} < 11)
 					{
-						my ($idx, $fts_idx) = $self->_create_indexes($table, 0, %{$self->{tables}{$table}{indexes}});
+						my ($idx, $fts_idx) = $self->_create_indexes($reftable, 0, %{$self->{tables}{$reftable}{indexes}});
 						my $tb_name2 = $self->quote_object_name($tb_name);
 						if ($cindx)
 						{
@@ -7305,8 +7316,8 @@ BEGIN
 						}
 						if ($idx || $fts_idx)
 						{
-							$idx =~ s/ $table/ $tb_name2/igs;
-							$fts_idx =~ s/ $table/ $tb_name2/igs;
+							$idx =~ s/ $reftable/ $tb_name2/igs;
+							$fts_idx =~ s/ $reftable/ $tb_name2/igs;
 							# remove indexes already created
 							$idx =~ s/CREATE [^;]+ \($cindx\);//;
 							$fts_idx =~ s/CREATE [^;]+ \($cindx\);//;
@@ -7322,10 +7333,10 @@ BEGIN
 						}
 
 						# Set the unique (and primary) key definition 
-						$idx = $self->_create_unique_keys($table, $self->{tables}{$table}{unique_key});
+						$idx = $self->_create_unique_keys($reftable, $self->{tables}{$reftable}{unique_key});
 						if ($idx)
 						{
-							$idx =~ s/ $table/ $tb_name2/igs;
+							$idx =~ s/ $reftable/ $tb_name2/igs;
 							# remove indexes already created
 							$idx =~ s/CREATE [^;]+ \($cindx\);//;
 							if ($idx)
@@ -7344,15 +7355,15 @@ BEGIN
 						}
 					}
 				}
-				my $deftb = $self->{partitions_default}{$table}{name};
-				$deftb = $table . '_part_default' if ($self->{rename_partition});
+				my $deftb = $self->{partitions_default}{$reftable}{name};
+				$deftb = $reftable . '_part_default' if ($self->{rename_partition});
 				# Reproduce indexes definition from the main table before PG 11
 				# after they are automatically created on partition tables
 				if ($self->{pg_version} < 11)
 				{
-					if (exists $self->{partitions_default}{$table} && ($create_table{$table}{index} !~ /ON $deftb /))
+					if (exists $self->{partitions_default}{$reftable} && ($create_table{$reftable}{index} !~ /ON $deftb /))
 					{
-						$cindx = $self->{partitions}{$table}{$pos}{info}[$i]->{column} || '';
+						$cindx = $self->{partitions}{$reftable}{$pos}{info}[$i]->{column} || '';
 						$cindx = lc($cindx) if (!$self->{preserve_case});
 						$cindx = Ora2Pg::PLSQL::convert_plsql_code($self, $cindx);
 						if ($cindx)
@@ -7360,25 +7371,25 @@ BEGIN
 							$create_table_index_tmp .= "CREATE INDEX " . $self->quote_object_name($deftb . '_' . $colname) . " ON " . $self->quote_object_name($deftb) . " ($cindx);\n";
 						}
 					}
-					push(@ind_col, $self->{partitions}{$table}{$pos}{info}[$i]->{column}) if (!grep(/^$self->{partitions}{$table}{$pos}{info}[$i]->{column}$/, @ind_col));
+					push(@ind_col, $self->{partitions}{$reftable}{$pos}{info}[$i]->{column}) if (!grep(/^$self->{partitions}{$reftable}{$pos}{info}[$i]->{column}$/, @ind_col));
 				}
-				if ($self->{partitions}{$table}{$pos}{info}[$i]->{type} eq 'LIST')
+				if ($self->{partitions}{$reftable}{$pos}{info}[$i]->{type} eq 'LIST')
 				{
 					if (!$fct) {
-						push(@condition, "NEW.$self->{partitions}{$table}{$pos}{info}[$i]->{column} IN (" . Ora2Pg::PLSQL::convert_plsql_code($self, $self->{partitions}{$table}{$pos}{info}[$i]->{value}) . ")");
+						push(@condition, "NEW.$self->{partitions}{$reftable}{$pos}{info}[$i]->{column} IN (" . Ora2Pg::PLSQL::convert_plsql_code($self, $self->{partitions}{$reftable}{$pos}{info}[$i]->{value}) . ")");
 					} else {
-						push(@condition, "$fct(NEW.$colname) IN (" . Ora2Pg::PLSQL::convert_plsql_code($self, $self->{partitions}{$table}{$pos}{info}[$i]->{value}) . ")");
+						push(@condition, "$fct(NEW.$colname) IN (" . Ora2Pg::PLSQL::convert_plsql_code($self, $self->{partitions}{$reftable}{$pos}{info}[$i]->{value}) . ")");
 					}
 				}
-				elsif ($self->{partitions}{$table}{$pos}{info}[$i]->{type} eq 'RANGE')
+				elsif ($self->{partitions}{$reftable}{$pos}{info}[$i]->{type} eq 'RANGE')
 				{
 					if (!$fct) {
-						push(@condition, "NEW.$self->{partitions}{$table}{$pos}{info}[$i]->{column} < " . Ora2Pg::PLSQL::convert_plsql_code($self, $self->{partitions}{$table}{$pos}{info}[$i]->{value}));
+						push(@condition, "NEW.$self->{partitions}{$reftable}{$pos}{info}[$i]->{column} < " . Ora2Pg::PLSQL::convert_plsql_code($self, $self->{partitions}{$reftable}{$pos}{info}[$i]->{value}));
 					} else {
-						push(@condition, "$fct(NEW.$colname) < " . Ora2Pg::PLSQL::convert_plsql_code($self, $self->{partitions}{$table}{$pos}{info}[$i]->{value}));
+						push(@condition, "$fct(NEW.$colname) < " . Ora2Pg::PLSQL::convert_plsql_code($self, $self->{partitions}{$reftable}{$pos}{info}[$i]->{value}));
 					}
 				}
-				$owner = $self->{partitions}{$table}{$pos}{info}[$i]->{owner} || '';
+				$owner = $self->{partitions}{$reftable}{$pos}{info}[$i]->{owner} || '';
 			}
 			if (!$self->{pg_supports_partition})
 			{
@@ -7432,7 +7443,7 @@ BEGIN
 					$expr = '(' . $expr . ')' if ($expr =~ /[\(\+\-\*\%:]/ && $expr !~ /^\(.*\)$/);
 					$create_table_tmp .= 	"$expr)";
 				}
-				$create_table_tmp .= ";\n";
+				$create_table_tmp .= ";\n" if ($create_table_tmp);
 			}
 
 			# Add subpartition if any defined on Oracle
@@ -7467,7 +7478,7 @@ BEGIN
 					}
 					else
 					{
-						$create_subtable_tmp .= " PARTITION OF " . $self->quote_object_name($tb_name) . "\n";
+						$create_subtable_tmp .= " PARTITION OF " . $self->quote_object_name($tb_name) . " -- $reftable -> $table\n";
 						$create_subtable_tmp .= "FOR VALUES";
 					}
 					my $sub_check_cond_tmp = '';
@@ -7828,6 +7839,7 @@ FOR EACH ROW EXECUTE PROCEDURE $trg();
 	if (!$sql_output) {
 		$sql_output = "-- Nothing found of type $self->{type}\n" if (!$self->{no_header});
 	}
+	$sql_output =~ s/\n{3,}/\n\n/g;
 	$self->dump($sql_header . $sql_output);
 
 	if ($partition_indexes)
@@ -8422,7 +8434,7 @@ sub export_table
 			}
 			if ($self->{tables}{$table}{table_info}{partitioned} && $self->{pg_supports_partition} && !$self->{disable_partition})
 			{
-				if (exists $self->{partitions_list}{"\L$table\E"}{type})
+				if (grep(/^$self->{partitions_list}{"\L$table\E"}{type}$/, 'HASH', 'RANGE', 'LIST') && !exists $self->{partitions_list}{"\L$table\E"}{refrtable})
 				{
 					$sql_output .= " PARTITION BY " . $self->{partitions_list}{"\L$table\E"}{type} . " (";
 					my $expr = '';
@@ -8455,11 +8467,99 @@ sub export_table
 					$expr = '(' . $expr . ')' if ($expr =~ /[\(\+\-\*\%:]/ && $expr !~ /^\(.*\)$/);
 					$sql_output .= 	"$expr)";
 				}
-				else
+				elsif ($self->{partition_by_reference} eq 'none')
 				{
 					print STDERR "WARNING: unsupported partition type on table '$table'\n";
-					$sql_output .=  " -- Unsupported partition type, please check\n";
+					$sql_output .=  " -- Unsupported partition type '" . $self->{partitions_list}{"\L$table\E"}{type} . "', please check constraint: " . $self->{partitions_list}{"\L$table\E"}{refconstraint} . "\n";
+				} 
+				elsif ($self->{partition_by_reference} eq 'duplicate')
+				{
+					$sql_output .= "DUPLICATE_EMPLACEMENT";
+					my $reftable = $self->{partitions_list}{"\L$table\E"}{refrtable};
+					$sql_output .= " PARTITION BY " . $self->{partitions_list}{"\L$reftable\E"}{type} . " (";
+					my $expr = '';
+					if (exists $self->{partitions_list}{"\L$reftable\E"}{columns})
+					{
+						my $len = $#{$self->{partitions_list}{"\L$reftable\E"}{columns}};
+						for (my $j = 0; $j <= $len; $j++)
+						{
+							if ($self->{partitions_list}{"\L$reftable\E"}{type} eq 'LIST') {
+								$expr .= ' || ' if ($j > 0);
+							} else {
+								$expr .= ', ' if ($j > 0);
+							}
+							$expr .= $self->quote_object_name($self->{partitions_list}{"\L$reftable\E"}{columns}[$j]);
+							if ($self->{partitions_list}{"\L$reftable\E"}{type} eq 'LIST' && $len >= 0) {
+								$expr .= '::text';
+							}
+						}
+						if ($self->{partitions_list}{"\L$reftable\E"}{type} eq 'LIST' && $len >= 0) {
+							$expr = '(' . $expr . ')';
+						}
+					}
+					else
+					{
+						if ($self->{plsql_pgsql}) {
+							$self->{partitions_list}{"\L$reftable\E"}{expression} = Ora2Pg::PLSQL::convert_plsql_code($self, $self->{partitions_list}{"\L$reftable\E"}{expression});
+						}
+						$expr .= $self->{partitions_list}{"\L$reftable\E"}{expression};
+					}
+					$expr = '(' . $expr . ')' if ($expr =~ /[\(\+\-\*\%:]/ && $expr !~ /^\(.*\)$/);
+					$sql_output .= 	"$expr)";
+
+					foreach my $k (keys %{ $self->{tables}{"$reftable"}{column_info} })
+					{
+						next if (!grep(/^$k$/i, @{$self->{partitions_list}{"\L$reftable\E"}{columns}}));
+						my $f = $self->{tables}{"$reftable"}{column_info}{$k};
+						$f->[2] =~ s/[^0-9\-\.]//g;
+						# COLUMN_NAME,DATA_TYPE,DATA_LENGTH,NULLABLE,DATA_DEFAULT,DATA_PRECISION,DATA_SCALE,CHAR_LENGTH,TABLE_NAME,OWNER,VIRTUAL_COLUMN,POSITION,AUTO_INCREMENT,SRID,SDO_DIM,SDO_GTYPE
+						my $type = $self->_sql_type($f->[1], $f->[2], $f->[5], $f->[6], $f->[4], 1);
+						$type = "$f->[1], $f->[2]" if (!$type);
+						# Change column names
+						my $fname = $f->[0];
+						if (exists $self->{replaced_cols}{"\L$reftable\E"}{"\L$fname\E"} && $self->{replaced_cols}{"\L$reftable\E"}{"\L$fname\E"})
+						{
+							$self->logit("\tReplacing column \L$f->[0]\E as " . $self->{replaced_cols}{"\L$reftable\E"}{"\L$fname\E"} . "...\n", 1);
+							$fname = $self->{replaced_cols}{"\L$reftable\E"}{"\L$fname\E"};
+						}
+						$sql_output =~ s/\s\)DUPLICATE_EMPLACEMENT/,\n\t\L$fname\E $type NOT NULL -- partition by reference from $table to $reftable\n)/s;
+					}
 				}
+				elsif ($self->{partition_by_reference} =~ /^\d+$/)
+				{
+					my $reftable = $table;
+					$sql_output .= " PARTITION BY HASH (";
+					my $expr = '';
+					if (exists $self->{partitions_list}{"\L$reftable\E"}{columns})
+					{
+						my $len = $#{$self->{partitions_list}{"\L$reftable\E"}{columns}};
+						for (my $j = 0; $j <= $len; $j++)
+						{
+							if ($self->{partitions_list}{"\L$reftable\E"}{type} eq 'LIST') {
+								$expr .= ' || ' if ($j > 0);
+							} else {
+								$expr .= ', ' if ($j > 0);
+							}
+							$expr .= $self->quote_object_name($self->{partitions_list}{"\L$reftable\E"}{columns}[$j]);
+							if ($self->{partitions_list}{"\L$reftable\E"}{type} eq 'LIST' && $len >= 0) {
+								$expr .= '::text';
+							}
+						}
+						if ($self->{partitions_list}{"\L$reftable\E"}{type} eq 'LIST' && $len >= 0) {
+							$expr = '(' . $expr . ')';
+						}
+					}
+					else
+					{
+						if ($self->{plsql_pgsql}) {
+							$self->{partitions_list}{"\L$reftable\E"}{expression} = Ora2Pg::PLSQL::convert_plsql_code($self, $self->{partitions_list}{"\L$reftable\E"}{expression});
+						}
+						$expr .= $self->{partitions_list}{"\L$reftable\E"}{expression};
+					}
+					$expr = '(' . $expr . ')' if ($expr =~ /[\(\+\-\*\%:]/ && $expr !~ /^\(.*\)$/);
+					$sql_output .= 	"$expr)";
+				}
+
 			}
 			if ($obj_type =~ /\bTEMPORARY TABLE\b/)
 			{
@@ -9977,6 +10077,44 @@ sub _dump_table
 		}
 	}
 
+	if ($self->{partition_by_reference} eq 'duplicate' && exists $self->{partitions_list}{"\L$table\E"}{refrtable})
+	{
+		my $reftable = $self->{partitions_list}{"\L$table\E"}{refrtable};
+		foreach my $k (keys %{ $self->{tables}{"$reftable"}{column_info} })
+		{
+			next if (!grep(/^$k$/i, @{$self->{partitions_list}{"\L$reftable\E"}{columns}}));
+			my $f = $self->{tables}{"$reftable"}{column_info}{$k};
+			$f->[2] =~ s/[^0-9\-\.]//g;
+			# COLUMN_NAME,DATA_TYPE,DATA_LENGTH,NULLABLE,DATA_DEFAULT,DATA_PRECISION,DATA_SCALE,CHAR_LENGTH,TABLE_NAME,OWNER,VIRTUAL_COLUMN,POSITION,AUTO_INCREMENT,SRID,SDO_DIM,SDO_GTYPE
+			my $type = $self->_sql_type($f->[1], $f->[2], $f->[5], $f->[6], $f->[4], 1);
+			$type = "$f->[1], $f->[2]" if (!$type);
+			# Change column names
+			my $fname = $f->[0];
+			if (exists $self->{replaced_cols}{"\L$reftable\E"}{"\L$fname\E"} && $self->{replaced_cols}{"\L$reftable\E"}{"\L$fname\E"})
+			{
+				$self->logit("\tReplacing column \L$f->[0]\E as " . $self->{replaced_cols}{"\L$reftable\E"}{"\L$fname\E"} . "...\n", 1);
+				$fname = $self->{replaced_cols}{"\L$reftable\E"}{"\L$fname\E"};
+			}
+
+			push(@stt, uc($f->[1]));
+			push(@tt, $type);
+			push(@nn,  $fname);
+			# Change column names
+			my $colname = $fname;
+			if ($self->{replaced_cols}{lc($table)}{lc($f->[0])})
+			{
+				$self->logit("\tReplacing column $f->[0] as " . $self->{replaced_cols}{lc($table)}{lc($f->[0])} . "...\n", 1);
+				$colname = $self->{replaced_cols}{lc($table)}{lc($f->[0])};
+			}
+			$colname = $self->quote_object_name($colname);
+			if ($colname !~ /"/ && $self->is_reserved_words($colname)) {
+				$colname = '"' . $colname . '"';
+			}
+			push(@{ $self->{tables}{$table}{dest_column_name} }, $colname);
+		}
+	}
+
+
 	# No column => ERROR
 	$self->logit("FATAL: no column to export for table $table, aborting\n", 0, 1) if ($#fname < 0);
 
@@ -11175,7 +11313,7 @@ sub _create_foreign_keys
 			push(@done, $fkname);
 
 			# This is not possible to reference a partitionned table 
-			next if ($self->{pg_supports_partition} && exists $self->{partitions_list}{lc($desttable)});
+			next if ($self->{pg_supports_partition} && exists $self->{partitions_list}{lc($desttable)} && $self->{pg_version} <= 12);
 
 			# Foreign key constraint on partitionned table do not support
 			# NO VALID when the remote table is not partitionned
@@ -11345,16 +11483,19 @@ sub _howto_get_data
 		{
 			$realtable =~ s/\./"."/;
 			$realtable = "\"$realtable\"";
+			$reftable = "\"$reftable\"";
 		}
 		else
 		{
 			$realtable = "\"$realtable\"";
+			$reftable = "\"$reftable\"";
 			my $owner  = $self->{tables}{$table}{table_info}{owner} || $self->{tables}{$table}{owner} || '';
 			if ($owner)
 			{
 				$owner =~ s/\"//g;
 				$owner = "\"$owner\"";
 				$realtable = "$owner.$realtable";
+				$reftable = "$owner.$reftable";
 			}
 		}
 	}
@@ -11369,6 +11510,32 @@ sub _howto_get_data
 
 	if ($self->{is_mssql} && $self->{select_top}) {
 		$str .= "TOP $self->{select_top} ";
+	}
+
+	my $reftable = $table;
+	my $refcolumn_dst = '';
+	my $refcolumn_src = '';
+	if ($self->{partition_by_reference} eq 'duplicate' && exists $self->{partitions_list}{"\L$table\E"}{refrtable})
+	{
+		$reftable = $self->{partitions_list}{"\L$table\E"}{refrtable};
+		$refcolumn_src = $self->{partitions_list}{"\L$table\E"}{refcolumn};
+		foreach my $k (keys %{ $self->{tables}{"$reftable"}{column_info} })
+		{
+			next if (!grep(/^$k$/i, @{$self->{partitions_list}{"\L$reftable\E"}{columns}}));
+			my $f = $self->{tables}{"$reftable"}{column_info}{$k};
+			$f->[2] =~ s/[^0-9\-\.]//g;
+			# COLUMN_NAME,DATA_TYPE,DATA_LENGTH,NULLABLE,DATA_DEFAULT,DATA_PRECISION,DATA_SCALE,CHAR_LENGTH,TABLE_NAME,OWNER,VIRTUAL_COLUMN,POSITION,AUTO_INCREMENT,SRID,SDO_DIM,SDO_GTYPE
+			my $type = $self->_sql_type($f->[1], $f->[2], $f->[5], $f->[6], $f->[4], 1);
+			$type = "$f->[1], $f->[2]" if (!$type);
+			# Change column names
+			my $fname = $f->[0];
+			if (exists $self->{replaced_cols}{"\L$reftable\E"}{"\L$fname\E"} && $self->{replaced_cols}{"\L$reftable\E"}{"\L$fname\E"})
+			{
+				$self->logit("\tReplacing column \L$f->[0]\E as " . $self->{replaced_cols}{"\L$reftable\E"}{"\L$fname\E"} . "...\n", 1);
+				$fname = $self->{replaced_cols}{"\L$reftable\E"}{"\L$fname\E"};
+			}
+			$refcolumn_dst = $fname;
+		}
 	}
 
 	my $extraStr = "";
@@ -11674,6 +11841,7 @@ END;
 			$str =~ s#^SELECT #SELECT /*+ FULL(a) PARALLEL(a, $self->{default_parallelism_degree}) */ #;
 		}
 	}
+
 	$str .= " FROM $realtable";
 	if ($self->{start_scn} =~ /^\d+$/) {
 		$str .= " AS OF SCN $self->{start_scn}";
@@ -11683,6 +11851,17 @@ END;
 		$str .= " AS OF SCN $self->{current_oracle_scn}{$table}";
 	}
 	$str .= " $alias";
+	if ($refcolumn_dst) {
+		$str .= " JOIN $reftable";
+		if ($self->{start_scn} =~ /^\d+$/) {
+			$str .= " AS OF SCN $self->{start_scn}";
+		} elsif ($self->{start_scn}) {
+			$str .= " AS OF TIMESTAMP $self->{start_scn}";
+		} elsif (exists $self->{current_oracle_scn}{$table}) {
+			$str .= " AS OF SCN $self->{current_oracle_scn}{$table}";
+		}
+		$str .= " reftb ON ($alias.$refcolumn_src = reftb.$refcolumn_dst)";
+	}
 
 	if (exists $self->{where}{"\L$table\E"} && $self->{where}{"\L$table\E"})
 	{
@@ -20007,22 +20186,22 @@ Technical levels:
 		$self->logrep("\"Schema\": \"$report_info{'Schema'}\",\n");
 		$self->logrep("\"Size\": \"$report_info{'Size'}\",\n");
 		my $cnt=0;
-                $self->logrep("\"objects\": [");
-                foreach my $typ (sort keys %{ $report_info{'Objects'} } )
-                {
-                        $report_info{'Objects'}{$typ}{'detail'} =~ s/\n/\. /gs;
-                        $cnt++;
-                        if ($cnt ne 1) {
-                            $self->logrep(",");
-                        }
-                        $self->logrep("{");
-                        $self->logrep("\"object\":\"$typ\",\"number\":$report_info{'Objects'}{$typ}{'number'},");
-                        $self->logrep("\"invalid\":$report_info{'Objects'}{$typ}{'invalid'},");
-                        $self->logrep("\"cost value\":$report_info{'Objects'}{$typ}{'cost_value'},");
-                        $self->logrep("\"comment\":\"$report_info{'Objects'}{$typ}{'comment'}\",\n");
-                        $self->logrep("\"details\":\"$report_info{'Objects'}{$typ}{'detail'}\"}\n");
-                }
-                $self->logrep("]\n");
+		$self->logrep("\"objects\": [");
+		foreach my $typ (sort keys %{ $report_info{'Objects'} } )
+		{
+			$report_info{'Objects'}{$typ}{'detail'} =~ s/\n/\. /gs;
+			$cnt++;
+			if ($cnt ne 1) {
+			    $self->logrep(",");
+			}
+			$self->logrep("{");
+			$self->logrep("\"object\":\"$typ\",\"number\":$report_info{'Objects'}{$typ}{'number'},");
+			$self->logrep("\"invalid\":$report_info{'Objects'}{$typ}{'invalid'},");
+			$self->logrep("\"cost value\":$report_info{'Objects'}{$typ}{'cost_value'},");
+			$self->logrep("\"comment\":\"$report_info{'Objects'}{$typ}{'comment'}\",\n");
+			$self->logrep("\"details\":\"$report_info{'Objects'}{$typ}{'detail'}\"}\n");
+		}
+		$self->logrep("]\n");
 		my $human_cost = $self->_get_human_cost($report_info{'total_cost_value'});
 		$difficulty = '' if (!$self->{estimate_cost});
 		$self->logrep(",\"total number\":$report_info{'total_object_number'}");

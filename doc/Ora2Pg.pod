@@ -1600,6 +1600,19 @@ enable this directive. Ora2Pg will export all data into the main table name.
 Default is to use partitioning, Ora2Pg will export data from each partition
 and import them into the PostgreSQL dedicated partition table.
 
+=item PARTITION_BY_REFERENCE
+
+How to export partition by reference. Possible values are none, duplicate or
+the number of hash partition to create. Default is none to not export the
+partitions by reference.
+
+Value none mean no translation and export of partition by reference like
+before. Value 'duplicate' will duplicate the referenced column in the
+partitioned table and apply the same partitioning from the referenced table
+to the partitioned table. If the value is a number, the table will be
+partitioned with the HASH method using the value as the modulo. For example
+if you set it to 4 it will create 4 HASH partitions.
+
 =item DISABLE_UNLOGGED
 
 By default Ora2Pg export Oracle tables with the NOLOGGING attribute as
