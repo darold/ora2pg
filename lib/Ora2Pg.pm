@@ -5798,7 +5798,7 @@ sub export_trigger
 					$sql_output .= "$trig->[6] ";
 				}
 				if ($self->{is_mssql}) {
-					my $reftb= "REFERENCING OLD TABLE AS Deleted NEW TABLE AS Inserted";
+					my $reftb = "REFERENCING OLD TABLE AS Deleted NEW TABLE AS Inserted";
 					$reftb =~ s/OLD TABLE AS Deleted // if ($trig->[2] eq 'INSERT');
 					$reftb =~ s/NEW TABLE AS Inserted // if ($trig->[2] eq 'DELETE');
 					$sql_output .= "$reftb FOR EACH STATEMENT\n";
@@ -8559,7 +8559,6 @@ sub export_table
 					$expr = '(' . $expr . ')' if ($expr =~ /[\(\+\-\*\%:]/ && $expr !~ /^\(.*\)$/);
 					$sql_output .= 	"$expr)";
 				}
-
 			}
 			if ($obj_type =~ /\bTEMPORARY TABLE\b/)
 			{
@@ -8844,9 +8843,11 @@ RETURNS text AS
 		next if ($#{$self->{tables}{$table}{foreign_key}} < 0);
 		$self->logit("Dumping RI $table...\n", 1);
 		# Add constraint definition
-		if ($self->{type} ne 'FDW') {
+		if ($self->{type} ne 'FDW')
+		{
 			my $create_all = $self->_create_foreign_keys($table);
-			if ($create_all) {
+			if ($create_all)
+			{
 				if ($self->{file_per_fkeys}) {
 					$fkeys .= $create_all;
 				} else {
@@ -11183,6 +11184,23 @@ sub _create_unique_keys
 		}
 		map { $_ = $self->quote_object_name($_) } @conscols;
 
+		my $reftable = $table;
+		$reftable = $self->{partitions_list}{"\L$table\E"}{refrtable} if (exists $self->{partitions_list}{"\L$table\E"}{refrtable});
+		foreach my $k (keys %{ $self->{tables}{"$reftable"}{column_info} })
+		{
+			next if (!grep(/^$k$/i, @{$self->{partitions_list}{"\L$reftable\E"}{columns}}));
+			my $f = $self->{tables}{"$reftable"}{column_info}{$k};
+			$f->[2] =~ s/[^0-9\-\.]//g;
+			# Change column names
+			my $fname = $f->[0];
+			if (exists $self->{replaced_cols}{"\L$reftable\E"}{"\L$fname\E"} && $self->{replaced_cols}{"\L$reftable\E"}{"\L$fname\E"})
+			{
+				$self->logit("\tReplacing column \L$f->[0]\E as " . $self->{replaced_cols}{"\L$reftable\E"}{"\L$fname\E"} . "...\n", 1);
+				$fname = $self->{replaced_cols}{"\L$reftable\E"}{"\L$fname\E"};
+			}
+			push(@conscols, $self->quote_object_name($fname));
+		}
+
 		my $columnlist = join(',', @conscols);
 		if ($columnlist)
 		{
@@ -11355,6 +11373,23 @@ sub _create_foreign_keys
 			}
 			$fkname = $self->quote_object_name($fkname);
 			$str .= "ALTER TABLE $table DROP CONSTRAINT $self->{pg_supports_ifexists} $fkname;\n" if ($self->{drop_if_exists});
+			my $reftable = $table;
+			$reftable = $self->{partitions_list}{"\L$table\E"}{refrtable} if (exists $self->{partitions_list}{"\L$table\E"}{refrtable});
+			foreach my $k (keys %{ $self->{tables}{"$reftable"}{column_info} })
+			{
+				next if (!grep(/^$k$/i, @{$self->{partitions_list}{"\L$reftable\E"}{columns}}));
+				my $f = $self->{tables}{"$reftable"}{column_info}{$k};
+				# Change column names
+				my $fname = $f->[0];
+				if (exists $self->{replaced_cols}{"\L$reftable\E"}{"\L$fname\E"} && $self->{replaced_cols}{"\L$reftable\E"}{"\L$fname\E"})
+				{
+					$self->logit("\tReplacing column \L$f->[0]\E as " . $self->{replaced_cols}{"\L$reftable\E"}{"\L$fname\E"} . "...\n", 1);
+					$fname = $self->{replaced_cols}{"\L$reftable\E"}{"\L$fname\E"};
+				}
+				push(@lfkeys, $self->quote_object_name($fname));
+				push(@rfkeys, $self->quote_object_name($fname));
+			}
+
 			$str .= "ALTER TABLE $table ADD CONSTRAINT $fkname FOREIGN KEY (" . join(',', @lfkeys) . ") REFERENCES $subsdesttable(" . join(',', @rfkeys) . ")";
 			$str .= " MATCH $state->[2]" if ($state->[2]);
 			if ($state->[3]) {
@@ -11523,10 +11558,6 @@ sub _howto_get_data
 		{
 			next if (!grep(/^$k$/i, @{$self->{partitions_list}{"\L$reftable\E"}{columns}}));
 			my $f = $self->{tables}{"$reftable"}{column_info}{$k};
-			$f->[2] =~ s/[^0-9\-\.]//g;
-			# COLUMN_NAME,DATA_TYPE,DATA_LENGTH,NULLABLE,DATA_DEFAULT,DATA_PRECISION,DATA_SCALE,CHAR_LENGTH,TABLE_NAME,OWNER,VIRTUAL_COLUMN,POSITION,AUTO_INCREMENT,SRID,SDO_DIM,SDO_GTYPE
-			my $type = $self->_sql_type($f->[1], $f->[2], $f->[5], $f->[6], $f->[4], 1);
-			$type = "$f->[1], $f->[2]" if (!$type);
 			# Change column names
 			my $fname = $f->[0];
 			if (exists $self->{replaced_cols}{"\L$reftable\E"}{"\L$fname\E"} && $self->{replaced_cols}{"\L$reftable\E"}{"\L$fname\E"})
@@ -11535,6 +11566,7 @@ sub _howto_get_data
 				$fname = $self->{replaced_cols}{"\L$reftable\E"}{"\L$fname\E"};
 			}
 			$refcolumn_dst = $fname;
+			$refcolumn_src = $fname;
 		}
 	}
 
@@ -11573,31 +11605,31 @@ sub _howto_get_data
 
 			# If there is any transformation to apply replace the column name with the clause
 			if (exists $self->{transform_value}{lc($table)} && exists $self->{transform_value}{lc($table)}{lc($realcolname)}) {
-				$str .= $self->{transform_value}{lc($table)}{lc($realcolname)} . ",";
+				$str .= "$alias." . $self->{transform_value}{lc($table)}{lc($realcolname)} . ",";
 			}
 			# Apply some default transformation following the data type
 			elsif ( ( $src_type->[$k] =~ /^char/i) && ($type->[$k] =~ /(varchar|text)/i)) {
-				$str .= "trim($self->{trim_type} '$self->{trim_char}' FROM $name->[$k]) AS $name->[$k],";
+				$str .= "trim($self->{trim_type} '$self->{trim_char}' FROM $alias.$name->[$k]) AS $alias.$name->[$k],";
 			} elsif ($self->{is_mysql} && $src_type->[$k] =~ /bit/i) {
-				$str .= "BIN($name->[$k]),";
+				$str .= "BIN($alias.$name->[$k]),";
 			}
 			# If dest type is bytea the content of the file is exported as bytea
 			elsif ( ($src_type->[$k] =~ /bfile/i) && ($type->[$k] =~ /bytea/i) )
 			{
 				$self->{bfile_found} = 'bytea';
-				$str .= "ora2pg_get_bfile($name->[$k]),";
+				$str .= "ora2pg_get_bfile($alias.$name->[$k]),";
 			}
 			# If dest type is efile the content of the file is exported to use the efile extension
 			elsif ( ($src_type->[$k] =~ /bfile/i) && ($type->[$k] =~ /efile/i) )
 			{
 				$self->{bfile_found} = 'efile';
-				$str .= "ora2pg_get_efile($name->[$k]),";
+				$str .= "ora2pg_get_efile($alias.$name->[$k]),";
 			}
 			# Only extract path to the bfile if dest type is text.
 			elsif ( ($src_type->[$k] =~ /bfile/i) && ($type->[$k] =~ /text/i) )
 			{
 				$self->{bfile_found} = 'text';
-				$str .= "ora2pg_get_bfilename($name->[$k]),";
+				$str .= "ora2pg_get_bfilename($alias.$name->[$k]),";
 			}
 			elsif ( $src_type->[$k] =~ /xmltype/i)
 			{
@@ -11611,9 +11643,9 @@ sub _howto_get_data
 			elsif ( !$self->{is_mysql} && $src_type->[$k] =~ /^(ST_|STGEOM_)/i)
 			{
 				if ($self->{geometry_extract_type} eq 'WKB') {
-					$str .= "CASE WHEN $name->[$k] IS NOT NULL THEN $self->{st_asbinary_function}($name->[$k]) ELSE NULL END,";
+					$str .= "CASE WHEN $alias.$name->[$k] IS NOT NULL THEN $self->{st_asbinary_function}($alias.$name->[$k]) ELSE NULL END,";
 				} else {
-					$str .= "CASE WHEN $name->[$k] IS NOT NULL THEN $self->{st_astext_function}($name->[$k]) ELSE NULL END,";
+					$str .= "CASE WHEN $alias.$name->[$k] IS NOT NULL THEN $self->{st_astext_function}($alias.$name->[$k]) ELSE NULL END,";
 				}
 			}
 			# Oracle geometries
@@ -11631,21 +11663,21 @@ sub _howto_get_data
 				if ($self->{type} eq 'INSERT')
 				{
 					if ($self->{geometry_extract_type} eq 'WKB') {
-						$str .= "CASE WHEN $name->[$k] IS NOT NULL THEN SDO_UTIL.TO_WKBGEOMETRY($name->[$k]) ELSE NULL END,";
+						$str .= "CASE WHEN $alias.$name->[$k] IS NOT NULL THEN SDO_UTIL.TO_WKBGEOMETRY($alias.$name->[$k]) ELSE NULL END,";
 					} elsif ($self->{geometry_extract_type} eq 'INTERNAL') {
-						$str .= "CASE WHEN $name->[$k] IS NOT NULL THEN $name->[$k] ELSE NULL END,";
+						$str .= "CASE WHEN $alias.$name->[$k] IS NOT NULL THEN $alias.$name->[$k] ELSE NULL END,";
 					} else {
-						$str .= "CASE WHEN $name->[$k] IS NOT NULL THEN ST_GeomFromText(SDO_UTIL.TO_WKTGEOMETRY($name->[$k]), '$spatial_srid') ELSE NULL END,";
+						$str .= "CASE WHEN $alias.$name->[$k] IS NOT NULL THEN ST_GeomFromText(SDO_UTIL.TO_WKTGEOMETRY($alias.$name->[$k]), '$spatial_srid') ELSE NULL END,";
 					}
 				}
 				else
 				{
 					if ($self->{geometry_extract_type} eq 'WKB') {
-						$str .= "CASE WHEN $name->[$k] IS NOT NULL THEN SDO_UTIL.TO_WKBGEOMETRY($name->[$k]) ELSE NULL END,";
+						$str .= "CASE WHEN $alias.$name->[$k] IS NOT NULL THEN SDO_UTIL.TO_WKBGEOMETRY($alias.$name->[$k]) ELSE NULL END,";
 					} elsif ($self->{geometry_extract_type} eq 'INTERNAL') {
-						$str .= "CASE WHEN $name->[$k] IS NOT NULL THEN $name->[$k] ELSE NULL END,";
+						$str .= "CASE WHEN $alias.$name->[$k] IS NOT NULL THEN $alias.$name->[$k] ELSE NULL END,";
 					} else {
-						$str .= "CASE WHEN $name->[$k] IS NOT NULL THEN SDO_UTIL.TO_WKTGEOMETRY($name->[$k]) ELSE NULL END,";
+						$str .= "CASE WHEN $alias.$name->[$k] IS NOT NULL THEN SDO_UTIL.TO_WKTGEOMETRY($alias.$name->[$k]) ELSE NULL END,";
 					}
 				}
 			}
@@ -11653,9 +11685,9 @@ sub _howto_get_data
  			elsif ( $self->{is_mssql} && $src_type->[$k] =~ /^GEOM(ETRY|GRAPHY)/i)
  			{
 				if ($self->{geometry_extract_type} eq 'WKB') {
-					$str .= "CASE WHEN $name->[$k] IS NOT NULL THEN CONCAT('SRID=', $name->[$k].STSrid,';', $name->[$k].STAsText()) ELSE NULL END,";
+					$str .= "CASE WHEN $alias.$name->[$k] IS NOT NULL THEN CONCAT('SRID=', $alias.$name->[$k].STSrid,';', $alias.$name->[$k].STAsText()) ELSE NULL END,";
 				} else {
-					$str .= "CASE WHEN $name->[$k] IS NOT NULL THEN CONCAT('SRID=',$name->[$k].STSrid,';', $name->[$k].STAsText()) ELSE NULL END,";
+					$str .= "CASE WHEN $alias.$name->[$k] IS NOT NULL THEN CONCAT('SRID=', $alias.$name->[$k].STSrid,';', $alias.$name->[$k].STAsText()) ELSE NULL END,";
 				}
  			}
 			# MySQL geometry
@@ -11664,17 +11696,17 @@ sub _howto_get_data
 				if ($self->{db_version} < '5.7.6')
 				{
 					if ($self->{geometry_extract_type} eq 'WKB') {
-						$str .= "CASE WHEN $name->[$k] IS NOT NULL THEN CONCAT('SRID=',SRID($name->[$k]),';', AsBinary($name->[$k])) ELSE NULL END,";
+						$str .= "CASE WHEN $alias.$name->[$k] IS NOT NULL THEN CONCAT('SRID=',SRID($alias.$name->[$k]),';', AsBinary($alias.$name->[$k])) ELSE NULL END,";
 					} else {
-						$str .= "CASE WHEN $name->[$k] IS NOT NULL THEN CONCAT('SRID=',SRID($name->[$k]),';', AsText($name->[$k])) ELSE NULL END,";
+						$str .= "CASE WHEN $alias.$name->[$k] IS NOT NULL THEN CONCAT('SRID=',SRID($alias.$name->[$k]),';', AsText($alias.$name->[$k])) ELSE NULL END,";
 					}
 				}
 				else
 				{
 					if ($self->{geometry_extract_type} eq 'WKB') {
-						$str .= "CASE WHEN $name->[$k] IS NOT NULL THEN CONCAT('SRID=',$self->{st_srid_function}($name->[$k]),';', $self->{st_asbinary_function}($name->[$k])) ELSE NULL END,";
+						$str .= "CASE WHEN $alias.$name->[$k] IS NOT NULL THEN CONCAT('SRID=',$self->{st_srid_function}($alias.$name->[$k]),';', $self->{st_asbinary_function}($alias.$name->[$k])) ELSE NULL END,";
 					} else {
-						$str .= "CASE WHEN $name->[$k] IS NOT NULL THEN CONCAT('SRID=',$self->{st_srid_function}($name->[$k]),';', $self->{st_astext_function}($name->[$k])) ELSE NULL END,";
+						$str .= "CASE WHEN $alias.$name->[$k] IS NOT NULL THEN CONCAT('SRID=',$self->{st_srid_function}($alias.$name->[$k]),';', $self->{st_astext_function}($alias.$name->[$k])) ELSE NULL END,";
 					}
 				}
 			}
@@ -11682,9 +11714,9 @@ sub _howto_get_data
 			elsif ( $self->{is_mysql} && $src_type->[$k] =~ /geometry/i && $self->{type} eq 'TEST_DATA')
 			{
 				if ($self->{db_version} < '5.7.6') {
-					$str .= "CASE WHEN $name->[$k] IS NOT NULL THEN AsText($name->[$k]) ELSE NULL END,";
+					$str .= "CASE WHEN $alias.$name->[$k] IS NOT NULL THEN AsText($alias.$name->[$k]) ELSE NULL END,";
 				} else {
-					$str .= "CASE WHEN $name->[$k] IS NOT NULL THEN $self->{st_astext_function}($name->[$k]) ELSE NULL END,";
+					$str .= "CASE WHEN $alias.$name->[$k] IS NOT NULL THEN $self->{st_astext_function}($alias.$name->[$k]) ELSE NULL END,";
 				}
 			}
 			elsif ( !$self->{is_mysql} && (($src_type->[$k] =~ /clob/i) || ($src_type->[$k] =~ /blob/i)) )
@@ -11698,15 +11730,14 @@ sub _howto_get_data
 					next;
 				}
 				if ($self->{empty_lob_null}) {
-					$str .= "CASE WHEN dbms_lob.getlength($name->[$k]) = 0 THEN NULL ELSE $name->[$k] END,";
+					$str .= "CASE WHEN dbms_lob.getlength($alias.$name->[$k]) = 0 THEN NULL ELSE $alias.$name->[$k] END,";
 				} else {
-					$str .= "$name->[$k],";
+					$str .= "$alias.$name->[$k],";
 				}
 			}
 			else
 			{
-				$str .= "$name->[$k],";
-
+				$str .= "$alias.$name->[$k],";
 			}
 			push(@{$self->{spatial_srid}{$table}}, $spatial_srid);
 			
@@ -11860,7 +11891,9 @@ END;
 		} elsif (exists $self->{current_oracle_scn}{$table}) {
 			$str .= " AS OF SCN $self->{current_oracle_scn}{$table}";
 		}
-		$str .= " reftb ON ($alias.$refcolumn_src = reftb.$refcolumn_dst)";
+		# The partition by reference column, doesn't exist in the Oracle child table. Use the origin.
+		$str =~ s/,$alias\."$refcolumn_src"/,reftb."$refcolumn_dst"/i;
+		$str .= " reftb ON ($alias.\"$refcolumn_src\" = reftb.\"$refcolumn_dst\")";
 	}
 
 	if (exists $self->{where}{"\L$table\E"} && $self->{where}{"\L$table\E"})
