@@ -7425,7 +7425,7 @@ BEGIN
 								$expr .= ', ' if ($j > 0);
 							}
 							$expr .= $self->quote_object_name($self->{subpartitions_list}{"\L$table\E"}{"\L$part\E"}{columns}[$j]);
-							if ($self->{subpartitions_list}{"\L$table\E"}{"\L$part\E"}{type} eq 'LIST' && $len >= 0) {
+							if ($self->{subpartitions_list}{"\L$table\E"}{"\L$part\E"}{type} eq 'LIST' && $len > 0) {
 								$expr .= '::text';
 							}
 						}
@@ -8449,7 +8449,7 @@ sub export_table
 								$expr .= ', ' if ($j > 0);
 							}
 							$expr .= $self->quote_object_name($self->{partitions_list}{"\L$table\E"}{columns}[$j]);
-							if ($self->{partitions_list}{"\L$table\E"}{type} eq 'LIST' && $len >= 0) {
+							if ($self->{partitions_list}{"\L$table\E"}{type} eq 'LIST' && $len > 0) {
 								$expr .= '::text';
 							}
 						}
@@ -8489,7 +8489,7 @@ sub export_table
 								$expr .= ', ' if ($j > 0);
 							}
 							$expr .= $self->quote_object_name($self->{partitions_list}{"\L$reftable\E"}{columns}[$j]);
-							if ($self->{partitions_list}{"\L$reftable\E"}{type} eq 'LIST' && $len >= 0) {
+							if ($self->{partitions_list}{"\L$reftable\E"}{type} eq 'LIST' && $len > 0) {
 								$expr .= '::text';
 							}
 						}
@@ -8541,7 +8541,7 @@ sub export_table
 								$expr .= ', ' if ($j > 0);
 							}
 							$expr .= $self->quote_object_name($self->{partitions_list}{"\L$reftable\E"}{columns}[$j]);
-							if ($self->{partitions_list}{"\L$reftable\E"}{type} eq 'LIST' && $len >= 0) {
+							if ($self->{partitions_list}{"\L$reftable\E"}{type} eq 'LIST' && $len > 0) {
 								$expr .= '::text';
 							}
 						}
