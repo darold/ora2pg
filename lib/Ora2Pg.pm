@@ -11349,7 +11349,7 @@ sub _create_foreign_keys
 			if ($self->{schema} && (lc($state->[6]) ne lc($state->[8]))) {
 				$subsdesttable =  $self->quote_object_name($state->[6]) . '.' . $subsdesttable;
 			}
-			
+
 			my @lfkeys = ();
 			push(@lfkeys, @{$self->{tables}{$tbsaved}{foreign_link}{$fkname}{local}});
 			if (exists $self->{replaced_cols}{"\L$tbsaved\E"} && $self->{replaced_cols}{"\L$tbsaved\E"}) {
@@ -11550,9 +11550,51 @@ sub _howto_get_data
 	my $reftable = $table;
 	my $refcolumn_dst = '';
 	my $refcolumn_src = '';
+	my @lfkeys = ();
+	my @rfkeys = ();
 	if ($self->{partition_by_reference} eq 'duplicate' && exists $self->{partitions_list}{"\L$table\E"}{refrtable})
 	{
 		$reftable = $self->{partitions_list}{"\L$table\E"}{refrtable};
+		my $fkname = $self->{partitions_list}{"\L$table\E"}{refconstraint};
+		foreach my $desttable (sort keys %{$self->{tables}{$table}{foreign_link}{$fkname}{remote}})
+		{
+			next if ($desttable ne $reftable);
+
+			push(@done, $fkname);
+
+			# Foreign key constraint on partitionned table do not support
+			# NO VALID when the remote table is not partitionned
+			my $allow_fk_notvalid = 1;
+			$allow_fk_notvalid = 0 if ($self->{pg_supports_partition} && exists $self->{partitions_list}{lc($table)});
+			my $str = '';
+			# Add double quote to column name
+			map { $_ = '"' . $_ . '"' } @{$self->{tables}{$table}{foreign_link}{$fkname}{local}};
+			map { $_ = '"' . $_ . '"' } @{$self->{tables}{$table}{foreign_link}{$fkname}{remote}{$desttable}};
+
+			# Get the name of the foreign table after replacement if any
+			my $subsdesttable = $self->get_replaced_tbname($desttable);
+			# Prefix the table name with the schema name if owner of
+			# remote table is not the same as local one
+			if ($self->{schema} && (lc($state->[6]) ne lc($state->[8]))) {
+				$subsdesttable =  $self->quote_object_name($state->[6]) . '.' . $subsdesttable;
+			}
+
+			push(@lfkeys, @{$self->{tables}{$table}{foreign_link}{$fkname}{local}});
+			if (exists $self->{replaced_cols}{"\L$table\E"} && $self->{replaced_cols}{"\L$table\E"})
+			{
+				foreach my $c (keys %{$self->{replaced_cols}{"\L$table\E"}}) {
+					map { s/"$c"/"$self->{replaced_cols}{"\L$table\E"}{"\L$c\E"}"/i } @lfkeys;
+				}
+			}
+			push(@rfkeys, @{$self->{tables}{$table}{foreign_link}{$fkname}{remote}{$desttable}});
+			if (exists $self->{replaced_cols}{"\L$desttable\E"} && $self->{replaced_cols}{"\L$desttable\E"})
+			{
+				foreach my $c (keys %{$self->{replaced_cols}{"\L$desttable\E"}}) {
+					map { s/"$c"/"$self->{replaced_cols}{"\L$desttable\E"}{"\L$c\E"}"/i } @rfkeys;
+				}
+			}
+		}
+
 		$refcolumn_src = $self->{partitions_list}{"\L$table\E"}{refcolumn};
 		foreach my $k (keys %{ $self->{tables}{"$reftable"}{column_info} })
 		{
@@ -11566,7 +11608,6 @@ sub _howto_get_data
 				$fname = $self->{replaced_cols}{"\L$reftable\E"}{"\L$fname\E"};
 			}
 			$refcolumn_dst = $fname;
-			$refcolumn_src = $fname;
 		}
 	}
 
@@ -11882,7 +11923,8 @@ END;
 		$str .= " AS OF SCN $self->{current_oracle_scn}{$table}";
 	}
 	$str .= " $alias";
-	if ($refcolumn_dst) {
+	if ($refcolumn_dst)
+	{
 		$str .= " JOIN $reftable";
 		if ($self->{start_scn} =~ /^\d+$/) {
 			$str .= " AS OF SCN $self->{start_scn}";
@@ -11892,8 +11934,14 @@ END;
 			$str .= " AS OF SCN $self->{current_oracle_scn}{$table}";
 		}
 		# The partition by reference column, doesn't exist in the Oracle child table. Use the origin.
-		$str =~ s/,$alias\."$refcolumn_src"/,reftb."$refcolumn_dst"/i;
-		$str .= " reftb ON ($alias.\"$refcolumn_src\" = reftb.\"$refcolumn_dst\")";
+		$str =~ s/,$alias\."$refcolumn_dst"/,reftb."$refcolumn_dst"/i;
+		$str .= " reftb ON (";
+		map { s/^(.*)$/$alias\.$1/; } @lfkeys;
+		map { s/^(.*)$/reftb\.$1/; } @rfkeys;
+		for (my $k = 0; $k <= $#lfkeys; $k++) {
+			$str .= "$lfkeys[$k] = $rfkeys[$k] AND";
+		}
+		$str =~ s/ AND$/)/;
 	}
 
 	if (exists $self->{where}{"\L$table\E"} && $self->{where}{"\L$table\E"})
