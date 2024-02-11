@@ -1084,6 +1084,9 @@ sub plsql_to_plpgsql
 	# Replace type in sub block
 	$str =~ s/(BEGIN.*?DECLARE\s+)(.*?)(\s+BEGIN)/$1 . replace_sql_type($class, $2) . $3/iges;
 
+	# Replace type in RETURNING clauses
+	$str =~ s/(RETURNING\s+)([^\(\)]+(?:\(\d+\))?)/$1 . replace_sql_type($class, $2)/iges;
+
 	# Remove any call to MDSYS schema in the code
 	$str =~ s/\bMDSYS\.//igs;
 
