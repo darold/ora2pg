@@ -2012,7 +2012,11 @@ sub _sql_type
 	chomp($type);
 
 	# Simplify timestamp type
-	$type =~ s/TIMESTAMP\(\d+\)/TIMESTAMP/;
+	if (uc($type) eq 'TIMESTAMP')
+	{
+		$len = '' if ($len >= 6);
+		$type = "timestamp($len)" if ($len);
+	}
 
 	# Replace SYS_REFCURSOR as Pg REFCURSOR
 	$type =~ s/SYS_REFCURSOR/refcursor/i;
