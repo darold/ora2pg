@@ -11251,6 +11251,14 @@ sub _create_check_constraint
 		{
 			my $col = $1;
 			$col =~ s/"//g;
+			if (exists $self->{replaced_cols}{"\L$tbsaved\E"} && $self->{replaced_cols}{"\L$tbsaved\E"})
+			{
+				foreach my $c (keys %{$self->{replaced_cols}{"\L$tbsaved\E"}})
+				{
+					next if (uc($col) ne uc($c));
+					$col = $self->{replaced_cols}{"\L$tbsaved\E"}{$c};
+				}
+			}
 			$out .= "ALTER TABLE $table ALTER COLUMN " . $self->quote_object_name($col) . " SET NOT NULL;\n";
 		}
 		else
