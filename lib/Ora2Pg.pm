@@ -11560,8 +11560,6 @@ sub _howto_get_data
 		{
 			next if ($desttable ne $reftable);
 
-			push(@done, $fkname);
-
 			# Foreign key constraint on partitionned table do not support
 			# NO VALID when the remote table is not partitionned
 			my $allow_fk_notvalid = 1;
@@ -18002,12 +18000,15 @@ sub _table_row_count
 	
 	my $dirprefix = '';
 	$dirprefix = "$self->{output_dir}/" if ($self->{output_dir});
-	my $fh = new IO::File;
-	$fh->open("${dirprefix}ora2pg_stdout_locker") or $self->logit("FATAL: can't read file ${dirprefix}ora2pg_stdout_locker, $!\n", 0, 1);
-	@errors = <$fh>;
-	$fh->close;
-	unlink("${dirprefix}ora2pg_stdout_locker");
-	chomp @errors;
+	if (-e "${dirprefix}ora2pg_stdout_locker")
+	{
+		my $fh = new IO::File;
+		$fh->open("${dirprefix}ora2pg_stdout_locker") or $self->logit("FATAL: can't read file ${dirprefix}ora2pg_stdout_locker, $!\n", 0, 1);
+		@errors = <$fh>;
+		$fh->close;
+		unlink("${dirprefix}ora2pg_stdout_locker");
+		chomp @errors;
+	}
 
 	$self->show_test_errors('rows', @errors);
 }
