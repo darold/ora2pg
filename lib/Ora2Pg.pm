@@ -1846,6 +1846,9 @@ sub _init
 			$self->logit("Looking for user defined data type of type FROM => DOMAIN...\n", 1);
 			$self->_get_types();
 		}
+		if ($self->{type} eq 'TEST_DATA' && !$self->{schema}) {
+			$self->logit("FATAL: the TEST_DATA action requires the SCHEMA directive to be set.\n", 0, 1);
+		}
 	}
 
 	if ($self->{oracle_fdw_data_export} && scalar keys %{$self->{'modify_struct'}} > 0) {
@@ -21451,7 +21454,6 @@ sub _import_foreign_schema
 	# ALLOW/EXCLUDE must be applied for data validation
 	$sql .= $self->_select_foreign_objects();
 	$sql .= " FROM SERVER $self->{fdw_server} INTO $self->{fdw_import_schema}";
-		$sql .= " FROM SERVER $self->{fdw_server} INTO $self->{fdw_import_schema}";
 	if ($self->{is_mssql}) {
 		$sql .= " OPTIONS (import_default 'true')";
 	} elsif (!$self->{is_mysql}) {
