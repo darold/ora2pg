@@ -1523,7 +1523,7 @@ WHERE PARTITION_NAME IS NOT NULL
 	{
 		if ($row->[3] =~ /^MAXVALUE(?:,MAXVALUE)*$/ || $row->[3] eq 'DEFAULT')
 		{
-			$default{$row->[0]} = $row->[2];
+			$default{$row->[0]}{name} = $row->[2];
 			next;
 		}
 		$parts{$row->[0]}{$row->[1]}{name} = $row->[2];
