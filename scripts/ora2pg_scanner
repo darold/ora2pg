@@ -28,7 +28,7 @@ use Getopt::Long qw(:config no_ignore_case bundling);
 
 my $VERSION = '24.1';
 
-my @DB_DNS = ();
+my @DB_DSN = ();
 my $OUTDIR = '';
 my $DRYRUN = 0;
 my $INPUT_FILE = '';
@@ -94,7 +94,7 @@ while (my $l = <IN>)
 		 die "FATAL: wrong number of field at line: $l\n";
 	}
 	my ($type, $schema, $dsn, $user, $passwd, $audit_user) = split(/,/, $l);
-	push(@DB_DNS, { (
+	push(@DB_DSN, { (
 				'type' => uc($type),
 				'schema' => $schema,
 				'dsn' => $dsn,
@@ -129,96 +129,96 @@ else
 
 # Start to generate call to ora2pg
 my $header = ' --print_header';
-for (my $i = 0; $i < @DB_DNS; $i++)
+for (my $i = 0; $i < @DB_DSN; $i++)
 {
 	$header = '' if ($i > 0);
-	$ENV{ORA2PG_USER}     = $DB_DNS[$i]->{user};
-	$ENV{ORA2PG_PASSWD} = $DB_DNS[$i]->{pwd};
+	$ENV{ORA2PG_USER}     = $DB_DSN[$i]->{user};
+	$ENV{ORA2PG_PASSWD} = $DB_DSN[$i]->{pwd};
 	# Used to pass additional information to ora2pg command
 	my $info = '';
 	# Set RDBMS type
-	$info = ' -m' if ($DB_DNS[$i]->{type} eq 'MYSQL');
-	$info = ' -M' if ($DB_DNS[$i]->{type} eq 'MSSQL');
+	$info = ' -m' if ($DB_DSN[$i]->{type} eq 'MYSQL');
+	$info = ' -M' if ($DB_DSN[$i]->{type} eq 'MSSQL');
 	# Add custom configuration file if set
 	$info .= ' -c ' . $CONF_FILE if ($CONF_FILE);
 	my $cmd_ora2pg = $ORA2PG_CMD . $info;
 
 	my $audit = '';
-	$audit = " --audit_user \"$DB_DNS[$i]->{audit_user}\"" if ($DB_DNS[$i]->{audit_user});
+	$audit = " --audit_user \"$DB_DSN[$i]->{audit_user}\"" if ($DB_DSN[$i]->{audit_user});
 	# Extract SID or db name from the DSN
 	# dbi:Oracle:host=foobar;sid=ORCL;port=1521
 	# dbi:Oracle:DB
 	# dbi:Oracle://192.168.1.10:1521/XE
 	# DBI:mysql:database=$db;host=$host
-	if ($DB_DNS[$i]->{dsn} =~ m/(?:sid|database|service_name)=([^;]+)/ ||
-		$DB_DNS[$i]->{dsn} =~ m/dbi:Oracle:([\w]+)$/  ||
-		$DB_DNS[$i]->{dsn} =~ m/dbi:Oracle:\/\/[^\/]+\/([\w]+)/ )
+	if ($DB_DSN[$i]->{dsn} =~ m/(?:sid|database|service_name)=([^;]+)/ ||
+		$DB_DSN[$i]->{dsn} =~ m/dbi:Oracle:([\w]+)$/  ||
+		$DB_DSN[$i]->{dsn} =~ m/dbi:Oracle:\/\/[^\/]+\/([\w]+)/ )
 	{
-		$DB_DNS[$i]->{sid} = $1;
+		$DB_DSN[$i]->{sid} = $1;
 	}
-	elsif (!$DB_DNS[$i]->{schema})
+	elsif (!$DB_DSN[$i]->{schema})
 	{
-		print "WARNING: couldn't determine sid/database name for DSN ". $DB_DNS[$i]->{dsn} .", without explicit schema can not processed this entry. Skiping.\n";
+		print "WARNING: couldn't determine sid/database name for DSN ". $DB_DSN[$i]->{dsn} .", without explicit schema can not processed this entry. Skiping.\n";
 		next;
 	}
 	else
 	{
-		$DB_DNS[$i]->{sid} = 'schema';
+		$DB_DSN[$i]->{sid} = 'schema';
 	}
 
 	# Extract host
-	if ($DB_DNS[$i]->{dsn} =~ m/(?:host|server)=([^;]+)/ || $DB_DNS[$i]->{dsn} =~ m/dbi:Oracle:\/\/([^\/]+)/)
+	if ($DB_DSN[$i]->{dsn} =~ m/(?:host|server)=([^;]+)/ || $DB_DSN[$i]->{dsn} =~ m/dbi:Oracle:\/\/([^\/]+)/)
 	{
-		$DB_DNS[$i]->{host} = $1;
-		$DB_DNS[$i]->{host} =~ s/:\d$+//;
-		$DB_DNS[$i]->{host} .= '_';
+		$DB_DSN[$i]->{host} = $1;
+		$DB_DSN[$i]->{host} =~ s/:\d$+//;
+		$DB_DSN[$i]->{host} .= '_';
 	}
 
 	# When no schema or database is set, let Ora2Pg autodetect the list of available schema
-	if ($DB_DNS[$i]->{schema} eq '')
+	if ($DB_DSN[$i]->{schema} eq '')
 	{
 		if ($DRYRUN)
 		{
-			print "Running: $cmd_ora2pg -t SHOW_SCHEMA -s '$DB_DNS[$i]->{dsn}'\n";
-			print `$cmd_ora2pg -t SHOW_SCHEMA -s '$DB_DNS[$i]->{dsn}'`;
+			print "Running: $cmd_ora2pg -t SHOW_SCHEMA -s '$DB_DSN[$i]->{dsn}'\n";
+			print `$cmd_ora2pg -t SHOW_SCHEMA -s '$DB_DSN[$i]->{dsn}'`;
 			print "For each schema returned the following commands will be executed:\n";
-			print "    $cmd_ora2pg -t SHOW_REPORT --dump_as_sheet --cost_unit_value $COST_UNIT --estimate_cost$header$audit -s '$DB_DNS[$i]->{dsn}' -n '<schema_returned>' >> $OUTDIR${SEP}dbs_scan.csv\n";
-			print "    $cmd_ora2pg -t SHOW_REPORT --dump_as_html --cost_unit_value $COST_UNIT --estimate_cost$audit -s '$DB_DNS[$i]->{dsn}' -n '<schema_returned>' >> \"$OUTDIR${SEP}$DB_DNS[$i]->{host}$DB_DNS[$i]->{sid}_<schema_returned>-report.html\"\n";
+			print "    $cmd_ora2pg -t SHOW_REPORT --dump_as_sheet --cost_unit_value $COST_UNIT --estimate_cost$header$audit -s '$DB_DSN[$i]->{dsn}' -n '<schema_returned>' >> $OUTDIR${SEP}dbs_scan.csv\n";
+			print "    $cmd_ora2pg -t SHOW_REPORT --dump_as_html --cost_unit_value $COST_UNIT --estimate_cost$audit -s '$DB_DSN[$i]->{dsn}' -n '<schema_returned>' >> \"$OUTDIR${SEP}$DB_DSN[$i]->{host}$DB_DSN[$i]->{sid}_<schema_returned>-report.html\"\n";
 		}
 		else
 		{
-			my @schema_list = `$cmd_ora2pg -t SHOW_SCHEMA -s '$DB_DNS[$i]->{dsn}'`;
+			my @schema_list = `$cmd_ora2pg -t SHOW_SCHEMA -s '$DB_DSN[$i]->{dsn}'`;
 			foreach my $line (@schema_list)
 			{
 				my ($type, $schemaname) = split(/\s+/, $line);
-				$DB_DNS[$i]->{schema} = $schemaname;
+				$DB_DSN[$i]->{schema} = $schemaname;
 				# Escape some chars for file path use
 				$schemaname = quotemeta($schemaname);
-				print "Running: $cmd_ora2pg -t SHOW_REPORT --dump_as_sheet --cost_unit_value $COST_UNIT --estimate_cost$header$audit -s '$DB_DNS[$i]->{dsn}' -n '$DB_DNS[$i]->{schema}' >> $OUTDIR${SEP}dbs_scan.csv\n";
-				`$cmd_ora2pg -t SHOW_REPORT --dump_as_sheet --cost_unit_value $COST_UNIT --estimate_cost$header$audit -s '$DB_DNS[$i]->{dsn}' -n '$DB_DNS[$i]->{schema}' >> $OUTDIR${SEP}dbs_scan.csv`;
+				print "Running: $cmd_ora2pg -t SHOW_REPORT --dump_as_sheet --cost_unit_value $COST_UNIT --estimate_cost$header$audit -s '$DB_DSN[$i]->{dsn}' -n '$DB_DSN[$i]->{schema}' >> $OUTDIR${SEP}dbs_scan.csv\n";
+				`$cmd_ora2pg -t SHOW_REPORT --dump_as_sheet --cost_unit_value $COST_UNIT --estimate_cost$header$audit -s '$DB_DSN[$i]->{dsn}' -n '$DB_DSN[$i]->{schema}' >> $OUTDIR${SEP}dbs_scan.csv`;
 				$header = '';
 
-				print "Running: $cmd_ora2pg -t SHOW_REPORT --dump_as_html --cost_unit_value $COST_UNIT --estimate_cost$audit -s '$DB_DNS[$i]->{dsn}' -n '$DB_DNS[$i]->{schema}' >> \"$OUTDIR${SEP}$DB_DNS[$i]->{host}$DB_DNS[$i]->{sid}_$schemaname-report.html\"\n";
-				`$cmd_ora2pg -t SHOW_REPORT --dump_as_html --cost_unit_value $COST_UNIT --estimate_cost$audit -s '$DB_DNS[$i]->{dsn}' -n '$DB_DNS[$i]->{schema}' >> "$OUTDIR${SEP}$DB_DNS[$i]->{host}$DB_DNS[$i]->{sid}_$schemaname-report.html"`;
+				print "Running: $cmd_ora2pg -t SHOW_REPORT --dump_as_html --cost_unit_value $COST_UNIT --estimate_cost$audit -s '$DB_DSN[$i]->{dsn}' -n '$DB_DSN[$i]->{schema}' >> \"$OUTDIR${SEP}$DB_DSN[$i]->{host}$DB_DSN[$i]->{sid}_$schemaname-report.html\"\n";
+				`$cmd_ora2pg -t SHOW_REPORT --dump_as_html --cost_unit_value $COST_UNIT --estimate_cost$audit -s '$DB_DSN[$i]->{dsn}' -n '$DB_DSN[$i]->{schema}' >> "$OUTDIR${SEP}$DB_DSN[$i]->{host}$DB_DSN[$i]->{sid}_$schemaname-report.html"`;
 			}
 		}
 	}
 	else
 	{
 		# Escape some chars for file path use
-		my $schemaname = quotemeta($DB_DNS[$i]->{schema});
+		my $schemaname = quotemeta($DB_DSN[$i]->{schema});
 
 		if ($DRYRUN)
 		{
-			print "Running: $cmd_ora2pg -t SHOW_SCHEMA -s '$DB_DNS[$i]->{dsn}' -n '$DB_DNS[$i]->{schema}'\n";
-			print `$cmd_ora2pg -t SHOW_SCHEMA -s '$DB_DNS[$i]->{dsn}' -n '$DB_DNS[$i]->{schema}'`
+			print "Running: $cmd_ora2pg -t SHOW_SCHEMA -s '$DB_DSN[$i]->{dsn}' -n '$DB_DSN[$i]->{schema}'\n";
+			print `$cmd_ora2pg -t SHOW_SCHEMA -s '$DB_DSN[$i]->{dsn}' -n '$DB_DSN[$i]->{schema}'`
 		}
 		else
 		{
-			print "Running: $cmd_ora2pg -t SHOW_REPORT --dump_as_sheet --cost_unit_value $COST_UNIT --estimate_cost$header$audit -s '$DB_DNS[$i]->{dsn}' -n '$DB_DNS[$i]->{schema}' >> $OUTDIR${SEP}dbs_scan.csv\n";
-			`$cmd_ora2pg -t SHOW_REPORT --dump_as_sheet --cost_unit_value $COST_UNIT --estimate_cost$header$audit -s '$DB_DNS[$i]->{dsn}' -n '$DB_DNS[$i]->{schema}' >> $OUTDIR${SEP}dbs_scan.csv`;
-			print "Running: $cmd_ora2pg -t SHOW_REPORT --dump_as_html --cost_unit_value $COST_UNIT --estimate_cost$audit -s '$DB_DNS[$i]->{dsn}' -n '$DB_DNS[$i]->{schema}' >> \"$OUTDIR${SEP}$DB_DNS[$i]->{sid}_$schemaname-report.html\"\n";
-			`$cmd_ora2pg -t SHOW_REPORT --dump_as_html --cost_unit_value $COST_UNIT --estimate_cost$audit -s '$DB_DNS[$i]->{dsn}' -n '$DB_DNS[$i]->{schema}' >> "$OUTDIR${SEP}$DB_DNS[$i]->{sid}_$schemaname-report.html"`;
+			print "Running: $cmd_ora2pg -t SHOW_REPORT --dump_as_sheet --cost_unit_value $COST_UNIT --estimate_cost$header$audit -s '$DB_DSN[$i]->{dsn}' -n '$DB_DSN[$i]->{schema}' >> $OUTDIR${SEP}dbs_scan.csv\n";
+			`$cmd_ora2pg -t SHOW_REPORT --dump_as_sheet --cost_unit_value $COST_UNIT --estimate_cost$header$audit -s '$DB_DSN[$i]->{dsn}' -n '$DB_DSN[$i]->{schema}' >> $OUTDIR${SEP}dbs_scan.csv`;
+			print "Running: $cmd_ora2pg -t SHOW_REPORT --dump_as_html --cost_unit_value $COST_UNIT --estimate_cost$audit -s '$DB_DSN[$i]->{dsn}' -n '$DB_DSN[$i]->{schema}' >> \"$OUTDIR${SEP}$DB_DSN[$i]->{sid}_$schemaname-report.html\"\n";
+			`$cmd_ora2pg -t SHOW_REPORT --dump_as_html --cost_unit_value $COST_UNIT --estimate_cost$audit -s '$DB_DSN[$i]->{dsn}' -n '$DB_DSN[$i]->{schema}' >> "$OUTDIR${SEP}$DB_DSN[$i]->{sid}_$schemaname-report.html"`;
 		}
 	}
 }
