@@ -5806,9 +5806,9 @@ sub export_trigger
 					$reftb =~ s/NEW TABLE AS Inserted // if ($trig->[2] eq 'DELETE');
 					$sql_output .= "$reftb FOR EACH STATEMENT\n";
 				} elsif ($statement) {
-					$sql_output .= "FOR EACH STATEMENT\n";
+					$sql_output .= "FOR EACH STATEMENT\n" if ($sql_output !~ /FOR EACH STATEMENT/);
 				} else {
-					$sql_output .= "FOR EACH ROW\n";
+					$sql_output .= "FOR EACH ROW\n" if ($sql_output !~ /FOR EACH ROW/);
 				}
 				$sql_output .= "\tEXECUTE PROCEDURE $trig_fctname();\n\n";
 			}
