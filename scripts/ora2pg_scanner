@@ -38,12 +38,14 @@ my $ORA2PG_CMD = 'ora2pg';
 my $BINPATH = '';
 my $SEP = ($^O =~ /MSWin32|dos/i) ? "\\" : "/";
 my $COST_UNIT = 5;
+my $FORMAT = 'html';
 
 # Collect command line arguments
 GetOptions
 (
 	'c|config=s'  => \$CONF_FILE,
 	'b|binpath=s' => \$BINPATH,
+	'f|format=s'  => \$FORMAT,
 	'l|list=s'    => \$INPUT_FILE,
 	't|test!'     => \$DRYRUN,
         'o|outdir=s'  => \$OUTDIR,
@@ -56,6 +58,12 @@ $OUTDIR = 'output' if (!$OUTDIR);
 if (!$INPUT_FILE || !-e $INPUT_FILE || $HELP)
 {
 	usage();
+}
+
+$FORMAT = lc($FORMAT);
+if ($FORMAT ne 'html' || $FORMAT ne 'json')
+{
+	die "FATAL: output format for reports must be html or json\n"; 
 }
 
 if ($BINPATH)
@@ -183,7 +191,7 @@ for (my $i = 0; $i < @DB_DSN; $i++)
 			print `$cmd_ora2pg -t SHOW_SCHEMA -s '$DB_DSN[$i]->{dsn}'`;
 			print "For each schema returned the following commands will be executed:\n";
 			print "    $cmd_ora2pg -t SHOW_REPORT --dump_as_sheet --cost_unit_value $COST_UNIT --estimate_cost$header$audit -s '$DB_DSN[$i]->{dsn}' -n '<schema_returned>' >> $OUTDIR${SEP}dbs_scan.csv\n";
-			print "    $cmd_ora2pg -t SHOW_REPORT --dump_as_html --cost_unit_value $COST_UNIT --estimate_cost$audit -s '$DB_DSN[$i]->{dsn}' -n '<schema_returned>' >> \"$OUTDIR${SEP}$DB_DSN[$i]->{host}$DB_DSN[$i]->{sid}_<schema_returned>-report.html\"\n";
+			print "    $cmd_ora2pg -t SHOW_REPORT --dump_as_$FORMAT --cost_unit_value $COST_UNIT --estimate_cost$audit -s '$DB_DSN[$i]->{dsn}' -n '<schema_returned>' >> \"$OUTDIR${SEP}$DB_DSN[$i]->{host}$DB_DSN[$i]->{sid}_<schema_returned>-report.$FORMAT\"\n";
 		}
 		else
 		{
@@ -198,8 +206,8 @@ for (my $i = 0; $i < @DB_DSN; $i++)
 				`$cmd_ora2pg -t SHOW_REPORT --dump_as_sheet --cost_unit_value $COST_UNIT --estimate_cost$header$audit -s '$DB_DSN[$i]->{dsn}' -n '$DB_DSN[$i]->{schema}' >> $OUTDIR${SEP}dbs_scan.csv`;
 				$header = '';
 
-				print "Running: $cmd_ora2pg -t SHOW_REPORT --dump_as_html --cost_unit_value $COST_UNIT --estimate_cost$audit -s '$DB_DSN[$i]->{dsn}' -n '$DB_DSN[$i]->{schema}' >> \"$OUTDIR${SEP}$DB_DSN[$i]->{host}$DB_DSN[$i]->{sid}_$schemaname-report.html\"\n";
-				`$cmd_ora2pg -t SHOW_REPORT --dump_as_html --cost_unit_value $COST_UNIT --estimate_cost$audit -s '$DB_DSN[$i]->{dsn}' -n '$DB_DSN[$i]->{schema}' >> "$OUTDIR${SEP}$DB_DSN[$i]->{host}$DB_DSN[$i]->{sid}_$schemaname-report.html"`;
+				print "Running: $cmd_ora2pg -t SHOW_REPORT --dump_as_$FORMAT --cost_unit_value $COST_UNIT --estimate_cost$audit -s '$DB_DSN[$i]->{dsn}' -n '$DB_DSN[$i]->{schema}' >> \"$OUTDIR${SEP}$DB_DSN[$i]->{host}$DB_DSN[$i]->{sid}_$schemaname-report.$FORMAT\"\n";
+				`$cmd_ora2pg -t SHOW_REPORT --dump_as_$FORMAT --cost_unit_value $COST_UNIT --estimate_cost$audit -s '$DB_DSN[$i]->{dsn}' -n '$DB_DSN[$i]->{schema}' >> "$OUTDIR${SEP}$DB_DSN[$i]->{host}$DB_DSN[$i]->{sid}_$schemaname-report.$FORMAT"`;
 			}
 		}
 	}
@@ -217,8 +225,8 @@ for (my $i = 0; $i < @DB_DSN; $i++)
 		{
 			print "Running: $cmd_ora2pg -t SHOW_REPORT --dump_as_sheet --cost_unit_value $COST_UNIT --estimate_cost$header$audit -s '$DB_DSN[$i]->{dsn}' -n '$DB_DSN[$i]->{schema}' >> $OUTDIR${SEP}dbs_scan.csv\n";
 			`$cmd_ora2pg -t SHOW_REPORT --dump_as_sheet --cost_unit_value $COST_UNIT --estimate_cost$header$audit -s '$DB_DSN[$i]->{dsn}' -n '$DB_DSN[$i]->{schema}' >> $OUTDIR${SEP}dbs_scan.csv`;
-			print "Running: $cmd_ora2pg -t SHOW_REPORT --dump_as_html --cost_unit_value $COST_UNIT --estimate_cost$audit -s '$DB_DSN[$i]->{dsn}' -n '$DB_DSN[$i]->{schema}' >> \"$OUTDIR${SEP}$DB_DSN[$i]->{sid}_$schemaname-report.html\"\n";
-			`$cmd_ora2pg -t SHOW_REPORT --dump_as_html --cost_unit_value $COST_UNIT --estimate_cost$audit -s '$DB_DSN[$i]->{dsn}' -n '$DB_DSN[$i]->{schema}' >> "$OUTDIR${SEP}$DB_DSN[$i]->{sid}_$schemaname-report.html"`;
+			print "Running: $cmd_ora2pg -t SHOW_REPORT --dump_as_$FORMAT --cost_unit_value $COST_UNIT --estimate_cost$audit -s '$DB_DSN[$i]->{dsn}' -n '$DB_DSN[$i]->{schema}' >> \"$OUTDIR${SEP}$DB_DSN[$i]->{sid}_$schemaname-report.$FORMAT\"\n";
+			`$cmd_ora2pg -t SHOW_REPORT --dump_as_$FORMAT --cost_unit_value $COST_UNIT --estimate_cost$audit -s '$DB_DSN[$i]->{dsn}' -n '$DB_DSN[$i]->{schema}' >> "$OUTDIR${SEP}$DB_DSN[$i]->{sid}_$schemaname-report.$FORMAT"`;
 		}
 	}
 }
@@ -238,6 +246,8 @@ Usage: ora2pg_scanner -l CSVFILE [-o OUTDIR]
    		Might be useful only on Windows OS.
    -c | --config FILE: set custom configuration file to use otherwise ora2pg
 		will use the default: /etc/ora2pg/ora2pg.conf.
+   -f | --format FMT: set the output format for the reports. Can be html or
+                      json. Default to html.
    -l | --list FILE : CSV file containing a list of databases to scan with
 		all required information. The first line of the file
 		can contain the following header that describes the
