@@ -355,7 +355,7 @@ sub _table_info
 	}
 
 	####
-	# Get name of all TABLE objects in ALL_OBJECTS loking at OBJECT_TYPE='TABLE'
+	# Get name of all TABLE objects in ALL_OBJECTS looking at OBJECT_TYPE='TABLE'
 	####
 	my $sql = "SELECT A.OWNER,A.OBJECT_NAME,A.OBJECT_TYPE FROM $self->{prefix}_OBJECTS A WHERE A.OBJECT_TYPE IN ('TABLE','VIEW') AND $owner";
 	$sql .= $self->limit_to_objects('TABLE', 'A.OBJECT_NAME');
@@ -586,15 +586,15 @@ ORDER BY A.COLUMN_ID
 	my $spatial_gtype =  'SELECT DISTINCT c.%s.SDO_GTYPE FROM %s c WHERE ROWNUM < ' . $max_lines;
 	my $st_spatial_gtype =  "SELECT DISTINCT $self->{st_geometrytype_function}(c.\%s) FROM \%s c WHERE ROWNUM < " . $max_lines;
 	# Set query to retrieve the SRID
-	my $spatial_srid = "SELECT SRID FROM ALL_SDO_GEOM_METADATA WHERE TABLE_NAME=? AND COLUMN_NAME=? AND OWNER=?";
+	my $spatial_srid = "SELECT SRID FROM $self->{prefix}_SDO_GEOM_METADATA WHERE TABLE_NAME=? AND COLUMN_NAME=? AND OWNER=?";
 	my $st_spatial_srid = "SELECT $self->{st_srid_function}(c.\%s) FROM \%s c";
 	if ($self->{convert_srid})
 	{
 		# Translate SRID to standard EPSG SRID, may return 0 because there's lot of Oracle only SRID.
-		$spatial_srid = 'SELECT sdo_cs.map_oracle_srid_to_epsg(SRID) FROM ALL_SDO_GEOM_METADATA WHERE TABLE_NAME=? AND COLUMN_NAME=? AND OWNER=?';
+		$spatial_srid = "SELECT sdo_cs.map_oracle_srid_to_epsg(SRID) FROM $self->{prefix}_SDO_GEOM_METADATA WHERE TABLE_NAME=? AND COLUMN_NAME=? AND OWNER=?";
 	}
 	# Get the dimension of the geometry by looking at the number of element in the SDO_DIM_ARRAY
-	my $spatial_dim = "SELECT t.SDO_DIMNAME, t.SDO_LB, t.SDO_UB FROM ALL_SDO_GEOM_METADATA m, TABLE (m.diminfo) t WHERE m.TABLE_NAME=? AND m.COLUMN_NAME=? AND OWNER=?";
+	my $spatial_dim = "SELECT t.SDO_DIMNAME, t.SDO_LB, t.SDO_UB FROM $self->{prefix}_SDO_GEOM_METADATA m, TABLE (m.diminfo) t WHERE m.TABLE_NAME=? AND m.COLUMN_NAME=? AND OWNER=?";
 	my $st_spatial_dim = "SELECT $self->{st_dimension_function}(c.\%s) FROM \%s c";
 
 	my $is_virtual_col = "SELECT V.VIRTUAL_COLUMN FROM $self->{prefix}_TAB_COLS V WHERE V.OWNER=? AND V.TABLE_NAME=? AND V.COLUMN_NAME=?";
@@ -3197,9 +3197,9 @@ ORDER BY A.COLUMN_ID};
 		my $f = $self->{tables}{"$table"}{column_info}{"$row->[0]"};
 		if ( ($f->[1] =~ /SDO_GEOMETRY/i) && ($self->{convert_srid} <= 1) )
 		{
-			$spatial_srid = "SELECT COALESCE(SRID, $self->{default_srid}) FROM ALL_SDO_GEOM_METADATA WHERE TABLE_NAME='\U$table\E' AND COLUMN_NAME='$row->[0]' AND OWNER='\U$self->{tables}{$table}{table_info}{owner}\E'";
+			$spatial_srid = "SELECT COALESCE(SRID, $self->{default_srid}) FROM $self->{prefix}_SDO_GEOM_METADATA WHERE TABLE_NAME='\U$table\E' AND COLUMN_NAME='$row->[0]' AND OWNER='\U$self->{tables}{$table}{table_info}{owner}\E'";
 			if ($self->{convert_srid} == 1) {
-				$spatial_srid = "SELECT COALESCE(sdo_cs.map_oracle_srid_to_epsg(SRID), $self->{default_srid}) FROM ALL_SDO_GEOM_METADATA WHERE TABLE_NAME='\U$table\E' AND COLUMN_NAME='$row->[0]' AND OWNER='\U$self->{tables}{$table}{table_info}{owner}\E'";
+				$spatial_srid = "SELECT COALESCE(sdo_cs.map_oracle_srid_to_epsg(SRID), $self->{default_srid}) FROM $self->{prefix}_SDO_GEOM_METADATA WHERE TABLE_NAME='\U$table\E' AND COLUMN_NAME='$row->[0]' AND OWNER='\U$self->{tables}{$table}{table_info}{owner}\E'";
 			}
 			my $sth2 = $self->{dbh}->prepare($spatial_srid);
 			if (!$sth2)
