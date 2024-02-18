@@ -11953,6 +11953,8 @@ END;
 		map { s/^(.*)$/$alias\.$1/; } @lfkeys;
 		map { s/^(.*)$/reftb\.$1/; } @rfkeys;
 		for (my $k = 0; $k <= $#lfkeys; $k++) {
+			$lfkeys[$k] =~ s/["]+/"/g;
+			$rfkeys[$k] =~ s/["]+/"/g;
 			$str .= "$lfkeys[$k] = $rfkeys[$k] AND";
 		}
 		$str =~ s/ AND$/)/;
