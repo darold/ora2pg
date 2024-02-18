@@ -1732,6 +1732,11 @@ sub _init
 		$self->logit("FATAL: export type $self->{type} required PG_DSN to be set.\n", 0, 1);
 	}
 
+	# FOREIGN_SERVER and PARTITION_BY_REFERENCE set to duplicate is not possible
+	if ($self->{partition_by_reference} eq 'duplicate' && $self->{fdw_server}) {
+		$self->logit("FATAL: PARTITION_BY_REFERENCE set to duplicate with FDW_SERVER set is not supported.\n", 0, 1);
+	}
+
 	# Set the PostgreSQL connection information for data import or to
 	# defined the dblink connection to use in autonomous transaction
 	$self->set_pg_conn_details();
