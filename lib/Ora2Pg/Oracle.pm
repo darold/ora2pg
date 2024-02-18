@@ -1116,7 +1116,7 @@ SELECT a.table_name AS fk_table_name,
       FROM $self->{prefix}_CONS_COLUMNS A
       JOIN $self->{prefix}_CONSTRAINTS C
       ON A.CONSTRAINT_NAME = C.CONSTRAINT_NAME
-      JOIN all_tab_columns b
+      JOIN $self->{prefix}_tab_columns b
       ON a.owner                = b.owner
       AND a.table_name          = b.table_name
       AND a.column_name         = b.column_name
