@@ -3676,6 +3676,7 @@ sub read_trigger_from_file
 		my $tb_name = '';
 		my $trigger = '';
 		my $t_type = '';
+		my $t_referencing = '';
 		if ($content =~ s/^([^\s]+)\s+(BEFORE|AFTER|INSTEAD\s+OF)\s+(.*?)\s+ON\s+([^\s]+)\s+(.*)(\bEND\s*(?!IF|LOOP|CASE|INTO|FROM|,)[a-z0-9_\$"]*(?:;|$))//is)
 		{
 			$t_name = $1;
@@ -3700,6 +3701,8 @@ sub read_trigger_from_file
 		# Remove referencing clause, not supported by PostgreSQL < 10
 		if ($self->{pg_version} < 10) {
 			$trigger =~ s/REFERENCING\s+(.*?)(FOR\s+EACH\s+)/$2/is;
+		} elsif ($trigger =~ s/REFERENCING\s+(.*?)(FOR\s+EACH\s+)/$2/is) {
+			$t_referencing = " REFERENCING $1";
 		}
 
 		if ($trigger =~ s/^\s*(FOR\s+EACH\s+)(ROW|STATEMENT)\s*//is) {
@@ -3727,13 +3730,20 @@ sub read_trigger_from_file
 		}
 		$tid++;
 
-		# TRIGGER_NAME, TRIGGER_TYPE, TRIGGERING_EVENT, TABLE_NAME, TRIGGER_BODY, WHEN_CLAUSE, DESCRIPTION,ACTION_TYPE
+		# TRIGGER_NAME, TRIGGER_TYPE, TRIGGERING_EVENT, TABLE_NAME, TRIGGER_BODY, WHEN_CLAUSE, DESCRIPTION, ACTION_TYPE, OWNER
 		$trigger =~ s/\bEND\s+[^\s]+\s+$/END/is;
+		my $t_schema = '';
+		if ($t_name =~ /^([^\.]+)\.(.*)/i) {
+			$t_name = $2;
+			$t_schema = $1;
+		}
 		my $when_event = '';
 		if ($t_when_cond) {
-			$when_event = "$t_name\n$t_pos $t_event ON $tb_name\n$t_type";
+			$when_event = "$t_name\n$t_pos$t_referencing $t_event ON $tb_name\n$t_type";
+		} elsif ($t_referencing) {
+			$when_event = $t_referencing;
 		}
-		push(@{$self->{triggers}}, [($t_name, $t_pos, $t_event, $tb_name, $trigger, $t_when_cond, $when_event, $t_type)]);
+		push(@{$self->{triggers}}, [($t_name, $t_pos, $t_event, $tb_name, $trigger, $t_when_cond, $when_event, $t_type, $t_schema)]);
 	}
 }
 
