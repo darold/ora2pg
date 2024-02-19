@@ -5812,7 +5812,7 @@ sub export_trigger
 				my $statement = 0;
 				$statement = 1 if ($trig->[1] =~ s/ STATEMENT//);
 				$sql_output .= "$trig->[1] $trig->[2]$cols ON " . $self->quote_object_name($tbname) . " ";
-				if ($trig->[6] =~ /REFERENCING/) {
+				if ($trig->[6] =~ s/.*(REFERENCING\s+.*)/$1/is) {
 					$sql_output .= "$trig->[6] ";
 				}
 				if ($self->{is_mssql}) {
