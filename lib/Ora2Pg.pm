@@ -3703,6 +3703,7 @@ sub read_trigger_from_file
 			$trigger =~ s/REFERENCING\s+(.*?)(FOR\s+EACH\s+)/$2/is;
 		} elsif ($trigger =~ s/REFERENCING\s+(.*?)(FOR\s+EACH\s+)/$2/is) {
 			$t_referencing = " REFERENCING $1";
+			$t_referencing =~ s/REFERENCING OLD AS OLD NEW AS NEW//gi;
 		}
 
 		if ($trigger =~ s/^\s*(FOR\s+EACH\s+)(ROW|STATEMENT)\s*//is) {
@@ -3743,6 +3744,7 @@ sub read_trigger_from_file
 		} elsif ($t_referencing) {
 			$when_event = $t_referencing;
 		}
+		$when_event =~ s/REFERENCING OLD AS OLD NEW AS NEW//igs;
 		push(@{$self->{triggers}}, [($t_name, $t_pos, $t_event, $tb_name, $trigger, $t_when_cond, $when_event, $t_type, $t_schema)]);
 	}
 }
@@ -5772,6 +5774,8 @@ sub export_trigger
 				if ($self->{pg_version} < 10) {
 					$trig->[6] =~ s/REFERENCING\s+(.*?)(FOR\s+EACH\s+)/$2/is;
 				}
+				$trig->[6] =~ s/REFERENCING OLD AS OLD NEW AS NEW//gi;
+
 				$trig->[6] =~ s/^\s*["]*(?:$trig->[0])["]*//is;
 				$trig->[6] =~ s/\s+ON\s+([^"\s]+)\s+/" ON " . $self->quote_object_name($1) . " "/ies;
 				$sql_output .= "DROP TRIGGER $self->{pg_supports_ifexists} " . $self->quote_object_name($trig->[0]) . " ON " . $self->quote_object_name($1) . ";\n" if ($self->{drop_if_exists});
@@ -5789,6 +5793,7 @@ sub export_trigger
 					$sql_output .= "\tWHEN ($trig->[5])\n";
 				}
 				if ($trig->[6] =~ /REFERENCING/) {
+					$trig->[6] =~ s/REFERENCING OLD AS OLD NEW AS NEW//ig;
 					$sql_output .= "$trig->[6] ";
 				}
 				$sql_output .= "\tEXECUTE PROCEDURE $trig_fctname();\n\n";
@@ -5813,6 +5818,7 @@ sub export_trigger
 				$statement = 1 if ($trig->[1] =~ s/ STATEMENT//);
 				$sql_output .= "$trig->[1] $trig->[2]$cols ON " . $self->quote_object_name($tbname) . " ";
 				if ($trig->[6] =~ s/.*(REFERENCING\s+.*)/$1/is) {
+					$trig->[6] =~ s/REFERENCING OLD AS OLD NEW AS NEW//gi;
 					$sql_output .= "$trig->[6] ";
 				}
 				if ($self->{is_mssql}) {
