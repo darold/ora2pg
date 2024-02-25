@@ -813,6 +813,9 @@ sub plsql_to_plpgsql
 		$str =~ s/([^<])=>/$1:=/gs;
 	}
 
+	# replace the BITAND function by the & operator
+	$str =~ s/BITAND\(\s*([^,]+)\s*,\s*([^\)]+)\s*\)/($1 & $2)/igs;
+
 	# Replace listagg() call
 	$str =~ s/\bLISTAGG\s*\((.*?)(?:\s*ON OVERFLOW [^\)]+)?\)\s+WITHIN\s+GROUP\s*\((.*?)\)/string_agg($1 $2)/igs;
 	# Try to fix call to string_agg with a single argument (allowed in oracle)
@@ -1887,6 +1890,10 @@ sub replace_oracle_function
 
 		# LAST_DAY( date ) translation
 		$str =~ s/\bLAST_DAY\s*\(\s*([^\(\)]+)\s*\)/((date_trunc('month',($1)::timestamp + interval '1 month'))::date - 1)/igs;
+
+		# replace the BITAND function by the & operator
+		$str =~ s/BITAND\(\s*([^,]+)\s*,\s*([^\)]+)\s*\)/($1 & $2)/igs;
+
 	}
 	else
 	{
@@ -2714,6 +2721,10 @@ sub estimate_cost
 		$cost_details{'PLVSUBST'} += $n;
 		$n = () = $str =~ m/PLVLEX/igs;
 		$cost_details{'PLVLEX'} += $n;
+		$n = () = $str =~ m/NVL2/igs;
+		$cost_details{'NVL2'} += $n;
+		$n = () = $str =~ m/BITAND/igs;
+		$cost_details{'BITAND'} += $n;
 	}
 	else
 	{
@@ -2735,6 +2746,10 @@ sub estimate_cost
 		$cost_details{'DBMS_'} -= $n;
 		$n = () = $str =~ m/DBMS_RANDOM/igs;
 		$cost_details{'DBMS_'} -= $n;
+		$n = () = $str =~ m/NVL2/igs;
+		$cost_details{'NVL2'} -= $n;
+		$n = () = $str =~ m/BITAND/igs;
+		$cost_details{'BITAND'} -= $n;
 	}
 	$n = () = $str =~ m/\b(INSERTING|DELETING|UPDATING)\b/igs;
 	$cost_details{'TG_OP'} += $n;
@@ -2750,8 +2765,6 @@ sub estimate_cost
 	$cost_details{'ISOPEN'} += $n;
 	$n = () = $str =~ m/\%ROWCOUNT\b/igs;
 	$cost_details{'ROWCOUNT'} += $n;
-	$n = () = $str =~ m/NVL2/igs;
-	$cost_details{'NVL2'} += $n;
 	$str =~ s/MDSYS\.(["]*SDO_)/$1/igs;
 	$n = () = $str =~ m/SDO_\w/igs;
 	$cost_details{'SDO_'} += $n;
