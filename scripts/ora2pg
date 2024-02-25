@@ -822,6 +822,8 @@ sub make_config_generic
 		} elsif ($IS_MSSQL) {
 			$conf_arr->[$i] =~ s/^# Set Oracle database/# Set MSSQL database/;
 			$conf_arr->[$i] =~ s/^(ORACLE_DSN.*dbi):Oracle:(.*);sid=SIDNAME/$1:ODBC:driver=msodbcsql18;$2;database=dbname/;
+			$conf_arr->[$i] =~ s/;host=/;server=/;
+			$conf_arr->[$i] =~ s/;port=1521/;port=1433;TrustCertificate=yes;TrustServerCertificate=Yes/;
 		} elsif ($ENV{ORACLE_HOME}) {
 			$conf_arr->[$i] =~ s/^ORACLE_HOME.*/ORACLE_HOME\t$ENV{ORACLE_HOME}/;
 		}
