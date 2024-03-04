@@ -16006,7 +16006,12 @@ sub _extract_data
 				$self->logit("DEBUG: number of rows $total_record extracted from table $table\n", 1);
 
 				# Do we just want to test Oracle output speed
-				next if ($self->{oracle_speed} && !$self->{ora2pg_speed});
+				if ($self->{oracle_speed} && !$self->{ora2pg_speed})
+				{
+					my $tt_record = @$rows;
+					$self->print_to_progressbar($table, $part_name, $procnum, $start_time, $total_record, $tt_record, $self->{tables}{$table}{table_info}{num_rows});
+					next;
+				}
 
 				if ( ($self->{jobs} > 1) || ($self->{oracle_copies} > 1) )
 				{
@@ -16116,13 +16121,18 @@ sub _extract_data
 				$total_record++;
 				$self->{current_total_row}++;
 
-				# Do we just want to test Oracle output speed
-				next if ($self->{oracle_speed} && !$self->{ora2pg_speed});
-
 				push(@rows, [ @row ] );
 
 				if ($#rows == $data_limit)
 				{
+					# Do we just want to test Oracle output speed
+					if ($self->{oracle_speed} && !$self->{ora2pg_speed})
+					{
+						my $tt_record = @$rows;
+						$self->print_to_progressbar($table, $part_name, $procnum, $start_time, $total_record, $tt_record, $self->{tables}{$table}{table_info}{num_rows});
+						next;
+					}
+
 					if ( ($self->{jobs} > 1) || ($self->{oracle_copies} > 1) )
 					{
 						while ($self->{child_count} >= $self->{jobs})
@@ -16149,7 +16159,13 @@ sub _extract_data
 			}
 
 			# Do we just want to test Oracle output speed
-			next if ($self->{oracle_speed} && !$self->{ora2pg_speed});
+			# Do we just want to test Oracle output speed
+			if ($self->{oracle_speed} && !$self->{ora2pg_speed})
+			{
+				my $tt_record = @$rows;
+				$self->print_to_progressbar($table, $part_name, $procnum, $start_time, $total_record, $tt_record, $self->{tables}{$table}{table_info}{num_rows});
+				next;
+			}
 
 			# Flush last extracted data
 			if ( ($self->{jobs} > 1) || ($self->{oracle_copies} > 1) )
@@ -16191,23 +16207,7 @@ sub _extract_data
 				$self->{current_total_row} += @rows;
 				# Do we just want to test Oracle output speed
 				next if ($self->{oracle_speed} && !$self->{ora2pg_speed});
-#				if ( ($self->{parallel_tables} > 1) || (($self->{oracle_copies} > 1) && $self->{defined_pk}{"\L$table\E"}) ) {
-#					my $max_jobs = $self->{jobs};
-#					while ($self->{child_count} >= $max_jobs) {
-#						my $kid = waitpid(-1, WNOHANG);
-#						if ($kid > 0) {
-#							$self->{child_count}--;
-#							delete $RUNNING_PIDS{$kid};
-#						}
-#						usleep(50000);
-#					}
-#					spawn sub {
-#						$self->_dump_to_pg($proc, \@rows, $table, $cmd_head, $cmd_foot, $s_out, $tt, $sprep, $stt, $start_time, $part_name, $total_record, %user_type);
-#					};
-#					$self->{child_count}++;
-#				} else {
-					$self->_dump_to_pg($proc, \@rows, $table, $cmd_head, $cmd_foot, $s_out, $tt, $sprep, $stt, $start_time, $part_name, $total_record, %user_type);
-#				}
+				$self->_dump_to_pg($proc, \@rows, $table, $cmd_head, $cmd_foot, $s_out, $tt, $sprep, $stt, $start_time, $part_name, $total_record, %user_type);
 				@rows = ();
 			}
 		}
@@ -16216,23 +16216,7 @@ sub _extract_data
 		{
 			$total_record += @rows;
 			$self->{current_total_row} += @rows;
-#			if ( ($self->{parallel_tables} > 1) || (($self->{oracle_copies} > 1) && $self->{defined_pk}{"\L$table\E"}) ) {
-#				my $max_jobs = $self->{jobs};
-#				while ($self->{child_count} >= $max_jobs) {
-#					my $kid = waitpid(-1, WNOHANG);
-#					if ($kid > 0) {
-#						$self->{child_count}--;
-#						delete $RUNNING_PIDS{$kid};
-#					}
-#					usleep(50000);
-#				}
-#				spawn sub {
-#					$self->_dump_to_pg($proc, \@rows, $table, $cmd_head, $cmd_foot, $s_out, $tt, $sprep, $stt, $start_time, $part_name, $total_record, %user_type);
-#				};
-#				$self->{child_count}++;
-#			} else {
-				$self->_dump_to_pg($proc, \@rows, $table, $cmd_head, $cmd_foot, $s_out, $tt, $sprep, $stt, $start_time, $part_name, $total_record, %user_type);
-#			}
+			$self->_dump_to_pg($proc, \@rows, $table, $cmd_head, $cmd_foot, $s_out, $tt, $sprep, $stt, $start_time, $part_name, $total_record, %user_type);
 		}
 	}
 
@@ -16328,6 +16312,39 @@ sub log_error_insert
 	$self->close_export_file($filehdl);
 }
 
+sub print_to_progressbar
+{
+        my ($self, $table, $part_name, $procnum, $ora_start_time, $total_row, $tt_record, $glob_total_record) = @_;
+
+	my $end_time = time();
+	$ora_start_time = $end_time if (!$ora_start_time);
+	my $dt = $end_time - $ora_start_time;
+	my $rps = int($glob_total_record / ($dt||1));
+	my $t_name = $part_name || $table;
+	if (!$self->{quiet} && !$self->{debug})
+	{
+		# Send current table in progress
+		if (defined $pipe)
+		{
+			if ($procnum ne '')
+			{
+				$pipe->print("CHUNK $$ DUMPED: $t_name-part-$procnum, time: $end_time, rows $tt_record\n");
+			}
+			else
+			{
+				$pipe->print("CHUNK $$ DUMPED: $t_name, time: $end_time, rows $tt_record\n");
+			}
+		}
+		else
+		{
+			print STDERR $self->progress_bar($glob_total_record, $total_row, 25, '=', 'rows', "Table $t_name ($rps recs/sec)"), "\r";
+		}
+	}
+	elsif ($self->{debug})
+	{
+		$self->logit("Extracted records from table $t_name: total_records = $glob_total_record (avg: $rps recs/sec)\n", 1);
+	}
+}
 
 sub _dump_to_pg
 {
@@ -16579,34 +16596,7 @@ sub _dump_to_pg
 	my $tt_record = @$rows;
 	$dbhdest->disconnect() if ($dbhdest);
 
-	my $end_time = time();
-	$ora_start_time = $end_time if (!$ora_start_time);
-	my $dt = $end_time - $ora_start_time;
-	my $rps = int($glob_total_record / ($dt||1));
-	my $t_name = $part_name || $table;
-	if (!$self->{quiet} && !$self->{debug})
-	{
-		# Send current table in progress
-		if (defined $pipe)
-		{
-			if ($procnum ne '')
-			{
-				$pipe->print("CHUNK $$ DUMPED: $t_name-part-$procnum, time: $end_time, rows $tt_record\n");
-			}
-			else
-			{
-				$pipe->print("CHUNK $$ DUMPED: $t_name, time: $end_time, rows $tt_record\n");
-			}
-		}
-		else
-		{
-			print STDERR $self->progress_bar($glob_total_record, $total_row, 25, '=', 'rows', "Table $t_name ($rps recs/sec)"), "\r";
-		}
-	}
-	elsif ($self->{debug})
-	{
-		$self->logit("Extracted records from table $t_name: total_records = $glob_total_record (avg: $rps recs/sec)\n", 1);
-	}
+	$self->print_to_progressbar($table, $part_name, $procnum, $ora_start_time, $total_row, $tt_record, $glob_total_record);
 
 	if ($^O !~ /MSWin32|dos/i)
 	{
