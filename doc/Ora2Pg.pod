@@ -376,9 +376,9 @@ Usage: ora2pg [-dhpqv --estimate_cost --dump_as_html] [--option value]
                         is current directory.
    --print_header     : Used with --dump_as_sheet to print the CSV header
                         especially for the first run of ora2pg.
-   --human_days_limit num : Set the number of human-days limit where the migration
+   --human_days_limit num : Set the number of person-days limit where the migration
                         assessment level switch from B to C. Default is set to
-                        5 human-days.
+                        5 person-days.
    --audit_user list  : Comma separated list of usernames to filter queries in
                         the DBA_AUDIT_TRAIL table. Used only with SHOW_REPORT
                         and QUERY export type.
@@ -951,9 +951,9 @@ See http://ora2pg.darold.net/report.html for a sample report.
 
 =item HUMAN_DAYS_LIMIT
 
-Use this directive to redefined the number of human-days limit where the
+Use this directive to redefined the number of person-days limit where the
 migration assessment level must switch from B to C. Default is set to 10
-human-days.
+person-days.
 
 =item JOBS
 
@@ -3054,7 +3054,7 @@ Once the database can be analysed, Ora2Pg, by his ability to convert SQL and PL/
 code from Oracle syntax to PostgreSQL, can go further by estimating the code difficulties
 and estimate the time necessary to operate a full database migration.
 
-To estimate the migration cost in man-days, Ora2Pg allow you to use a configuration
+To estimate the migration cost in person-days, Ora2Pg allow you to use a configuration
 directive called ESTIMATE_COST that you can also enabled at command line:
 
 	--estimate_cost
@@ -3115,7 +3115,7 @@ The generated report is same as above but with a new 'Estimated cost' column as 
 	--------------------------------------
 	Total 65  8 162.5 162.5 cost migration units means approximatively 2 man day(s).
 
-The last line shows the total estimated migration code in man-days following the
+The last line shows the total estimated migration cost in person-days following the
 number of migration units estimated for each object. This migration unit represent
 around five minutes for a PostgreSQL expert. If this is your first migration you can
 get it higher with the configuration directive COST_UNIT_VALUE or the --cost_unit_value
@@ -3129,8 +3129,8 @@ Migration level: B-5
 
     Migration levels:
         A - Migration that might be run automatically
-        B - Migration with code rewrite and a human-days cost up to 5 days
-        C - Migration with code rewrite and a human-days cost above 5 days
+        B - Migration with code rewrite and a person-days cost up to 5 days
+        C - Migration with code rewrite and a person-days cost above 5 days
     Technical levels:
         1 = trivial: no stored functions and no triggers
         2 = easy: no stored functions but with triggers, no manual rewriting
@@ -3141,9 +3141,9 @@ Migration level: B-5
 This assessment consist in a letter A or B to specify if the migration needs
 manual rewriting or not. And a number from 1 up to 5 to give you a technical
 difficulty level. You have an additional option --human_days_limit to specify
-the number of human-days limit where the migration level should be set to C
+the number of person-days limit where the migration level should be set to C
 to indicate that it need a huge amount of work and a full project management
-with migration support. Default is 10 human-days. You can use the configuration
+with migration support. Default is 10 person-days. You can use the configuration
 directive HUMAN_DAYS_LIMIT to change this default value permanently.
 
 This feature has been developed to help you or your boss to decide which

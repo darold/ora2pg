@@ -133,7 +133,7 @@
 .\" ========================================================================
 .\"
 .IX Title "ORA2PG 1"
-.TH ORA2PG 1 "2024-01-28" "perl v5.34.0" "User Contributed Perl Documentation"
+.TH ORA2PG 1 "2024-03-06" "perl v5.34.0" "User Contributed Perl Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -539,9 +539,9 @@ Usage: ora2pg [\-dhpqv \-\-estimate_cost \-\-dump_as_html] [\-\-option value]
 \&                        is current directory.
 \&   \-\-print_header     : Used with \-\-dump_as_sheet to print the CSV header
 \&                        especially for the first run of ora2pg.
-\&   \-\-human_days_limit num : Set the number of human\-days limit where the migration
+\&   \-\-human_days_limit num : Set the number of person\-days limit where the migration
 \&                        assessment level switch from B to C. Default is set to
-\&                        5 human\-days.
+\&                        5 person\-days.
 \&   \-\-audit_user list  : Comma separated list of usernames to filter queries in
 \&                        the DBA_AUDIT_TRAIL table. Used only with SHOW_REPORT
 \&                        and QUERY export type.
@@ -1104,9 +1104,9 @@ format.
 See http://ora2pg.darold.net/report.html for a sample report.
 .IP "\s-1HUMAN_DAYS_LIMIT\s0" 4
 .IX Item "HUMAN_DAYS_LIMIT"
-Use this directive to redefined the number of human-days limit where the
+Use this directive to redefined the number of person-days limit where the
 migration assessment level must switch from B to C. Default is set to 10
-human-days.
+person-days.
 .IP "\s-1JOBS\s0" 4
 .IX Item "JOBS"
 This configuration directive adds multiprocess support to \s-1COPY, FUNCTION\s0
@@ -3155,7 +3155,7 @@ Once the database can be analysed, Ora2Pg, by his ability to convert \s-1SQL\s0 
 code from Oracle syntax to PostgreSQL, can go further by estimating the code difficulties
 and estimate the time necessary to operate a full database migration.
 .PP
-To estimate the migration cost in man-days, Ora2Pg allow you to use a configuration
+To estimate the migration cost in person-days, Ora2Pg allow you to use a configuration
 directive called \s-1ESTIMATE_COST\s0 that you can also enabled at command line:
 .PP
 .Vb 1
@@ -3222,7 +3222,7 @@ The generated report is same as above but with a new 'Estimated cost' column as 
 \&        Total 65  8 162.5 162.5 cost migration units means approximatively 2 man day(s).
 .Ve
 .PP
-The last line shows the total estimated migration code in man-days following the
+The last line shows the total estimated migration cost in person-days following the
 number of migration units estimated for each object. This migration unit represent
 around five minutes for a PostgreSQL expert. If this is your first migration you can
 get it higher with the configuration directive \s-1COST_UNIT_VALUE\s0 or the \-\-cost_unit_value
@@ -3239,8 +3239,8 @@ Migration level: B\-5
 .Vb 10
 \&    Migration levels:
 \&        A \- Migration that might be run automatically
-\&        B \- Migration with code rewrite and a human\-days cost up to 5 days
-\&        C \- Migration with code rewrite and a human\-days cost above 5 days
+\&        B \- Migration with code rewrite and a person\-days cost up to 5 days
+\&        C \- Migration with code rewrite and a person\-days cost above 5 days
 \&    Technical levels:
 \&        1 = trivial: no stored functions and no triggers
 \&        2 = easy: no stored functions but with triggers, no manual rewriting
@@ -3252,9 +3252,9 @@ Migration level: B\-5
 This assessment consist in a letter A or B to specify if the migration needs
 manual rewriting or not. And a number from 1 up to 5 to give you a technical
 difficulty level. You have an additional option \-\-human_days_limit to specify
-the number of human-days limit where the migration level should be set to C
+the number of person-days limit where the migration level should be set to C
 to indicate that it need a huge amount of work and a full project management
-with migration support. Default is 10 human-days. You can use the configuration
+with migration support. Default is 10 person-days. You can use the configuration
 directive \s-1HUMAN_DAYS_LIMIT\s0 to change this default value permanently.
 .PP
 This feature has been developed to help you or your boss to decide which
@@ -3708,7 +3708,7 @@ Any contribution to build a better tool is welcome, you just have to send me
 your ideas, features request or patches and there will be applied.
 .SH "LICENSE"
 .IX Header "LICENSE"
-Copyright (c) 2000\-2023 Gilles Darold \- All rights reserved.
+Copyright (c) 2000\-2024 Gilles Darold \- All rights reserved.
 .PP
 .Vb 4
 \&        This program is free software: you can redistribute it and/or modify
