@@ -11,7 +11,7 @@ use Encode;
 #set locale to LC_NUMERIC C
 setlocale(LC_NUMERIC,"C");
 
-$VERSION = '24.1';
+$VERSION = '24.2';
 
 # Some function might be excluded from export and assessment.
 our @EXCLUDED_FUNCTION = ('SQUIRREL_GET_ERROR_OFFSET');
