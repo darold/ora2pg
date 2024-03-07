@@ -1139,8 +1139,12 @@ sub _lookup_function
 
 	$fct_detail{args} =~ s/\s*$//s;
 	$fct_detail{args} =~ s/^\s*//s;
-	$fct_detail{code} =~ s/^[\r\n]*/\n/s;
+	$fct_detail{args} =~ s/[\s]+=[\s]+/ DEFAULT /gs;
 
+	$fct_detail{code} =~ s/^[\r\n]*/\n/s;
+	if ($fct_detail{code} !~ /\sEND$/s) {
+		$fct_detail{code} =~ s/$/\nEND/;
+	}
 
 	# Remove %ROWTYPE from return type
 	$fct_detail{func_ret_type} =~ s/\%ROWTYPE//igs;
