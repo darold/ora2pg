@@ -7107,6 +7107,25 @@ sub export_kettle
 					$a cmp $b 
 		} keys %{$self->{tables}};
 	}
+	# User provide the ordered list of table from a file
+	elsif (-e $self->{data_export_order})
+	{
+		if (open(my $tfh, '<', $self->{data_export_order}))
+		{
+			@ordered_tables = ();
+			while (my $l = <$tfh>)
+			{
+				chomp($l);
+				next if (!exists $self->{tables}{$!});
+				push(@ordered_tables, $l);
+			}
+			close($tfh);
+		}
+		else
+		{
+			$self->logit("FATAL: can't read file $self->{data_export_order} for ordering table export. $!\n", 0, 1);
+		}
+	}
 
 	my $dirprefix = '';
 	$dirprefix = "$self->{output_dir}/" if ($self->{output_dir});
@@ -9163,6 +9182,25 @@ sub _get_sql_statements
 					$self->{tables}{$b}{table_info}{num_rows} <=> $self->{tables}{$a}{table_info}{num_rows} :
 						$a cmp $b 
 		       	} keys %{$self->{tables}};
+		}
+		# User provide the ordered list of table from a file
+		elsif (-e $self->{data_export_order})
+		{
+			if (open(my $tfh, '<', $self->{data_export_order}))
+			{
+				@ordered_tables = ();
+				while (my $l = <$tfh>)
+				{
+					chomp($l);
+					next if (!exists $self->{tables}{$l});
+					push(@ordered_tables, $l);
+				}
+				close($tfh);
+			}
+			else
+			{
+				$self->logit("FATAL: can't read file $self->{data_export_order} for ordering table export. $!\n", 0, 1);
+			}
 		}
 
 		# Set SQL orders that should be in the file header
@@ -17529,6 +17567,25 @@ sub _show_infos
 					$tables_infos{$b}{num_rows} <=> $tables_infos{$a}{num_rows} :
 						$a cmp $b
 		       	} keys %tables_infos;
+		}
+		# User provide the ordered list of table from a file
+		elsif (-e $self->{data_export_order})
+		{
+			if (open(my $tfh, '<', $self->{data_export_order}))
+			{
+				@ordered_tables = ();
+				while (my $l = <$tfh>)
+				{
+					chomp($l);
+					next if (!exists $self->{tables}{$!});
+					push(@ordered_tables, $l);
+				}
+				close($tfh);
+			}
+			else
+			{
+				$self->logit("FATAL: can't read file $self->{data_export_order} for ordering table export. $!\n", 0, 1);
+			}
 		}
 
 		my @done = ();

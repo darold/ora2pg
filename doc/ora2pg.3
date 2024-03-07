@@ -133,7 +133,7 @@
 .\" ========================================================================
 .\"
 .IX Title "ORA2PG 1"
-.TH ORA2PG 1 "2024-03-06" "perl v5.34.0" "User Contributed Perl Documentation"
+.TH ORA2PG 1 "2024-03-07" "perl v5.34.0" "User Contributed Perl Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -1246,7 +1246,9 @@ it can be better to set the sort order on size so that multiple small tables
 can be processed before the largest tables finish. In this case set this
 directive to size. Possible values are name and size. Note that export type
 \&\s-1SHOW_TABLE\s0 and \s-1SHOW_COLUMN\s0 will use this sort order too, not only \s-1COPY\s0 or
-\&\s-1INSERT\s0 export type.
+\&\s-1INSERT\s0 export type. If you want to give you custom export order, just give
+a filename as value that contains the ordered list of table to export. Must
+be a list of one table per line, in uppercase for Oracle.
 .SS "Limiting objects to export"
 .IX Subsection "Limiting objects to export"
 You may want to export only a part of an Oracle database, here are a set of

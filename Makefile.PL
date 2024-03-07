@@ -1073,7 +1073,9 @@ ENABLE_CLOB_EXPORT		1
 # can be processed before the largest tables finish. In this case set this
 # directive to size. Possible values are name and size. Note that export type
 # SHOW_TABLE and SHOW_COLUMN will use this sort order too, not only COPY or
-# INSERT export type.
+# INSERT export type. If you want to give you custom export order, just give
+# a filename as value that contains the ordered list of table to export. Must
+# be a list of one table per line, in uppercase for Oracle.
 DATA_EXPORT_ORDER	name
 
 # By default Ora2Pg use \\i psql command to execute generated SQL files
