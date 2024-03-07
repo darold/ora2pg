@@ -21821,9 +21821,8 @@ ORDER BY attnum};
 			}
 			# Oracle can report decimal as .nn, PG always have a 0 at startup
 			if ($self->{colinfo}{$tb}{data_type}{$i+1} eq 'NUMBER') {
-				$orow[$i] =~ s/^(\.\d+)/0$1/;
+				$orow[$i] =~ s/^([\-]?)(\.\d+)/${1}0$2/;
 			}
-
 		}
 		my $ora_data = join('|', @orow);
 		my $pg_data = join('|', @prow);
