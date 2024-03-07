@@ -967,8 +967,10 @@ sub _lookup_function
         my %fct_detail = ();
         $fct_detail{func_ret_type} = 'OPAQUE';
 
+	my @code = ();
         # Split data into declarative and code part
-        ($fct_detail{declare}, $fct_detail{code}) = split(/\b(?:BEGIN|SET|SELECT|INSERT|UPDATE|IF)\b/i, $code, 2);
+        ($fct_detail{declare}, @code) = split(/\b(BEGIN|SET|SELECT|INSERT|UPDATE|IF)\b/i, $code, 3);
+	$fct_detail{code} = join(' ', @code);
 	return if (!$fct_detail{code});
 
 	# Look for table variables in code and rewrite them as temporary tables
