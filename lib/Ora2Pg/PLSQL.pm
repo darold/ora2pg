@@ -814,7 +814,7 @@ sub plsql_to_plpgsql
 	}
 
 	# replace the BITAND function by the & operator
-	$str =~ s/BITAND\(\s*([^,]+)\s*,\s*([^\)]+)\s*\)/($1 & $2)/igs;
+	$str =~ s/BITAND\(\s*([^\(,]+)\s*,\s*([^\)]+)\s*\)/($1 & $2)/igs;
 
 	# Replace listagg() call
 	$str =~ s/\bLISTAGG\s*\((.*?)(?:\s*ON OVERFLOW [^\)]+)?\)\s+WITHIN\s+GROUP\s*\((.*?)\)/string_agg($1 $2)/igs;
@@ -1892,7 +1892,7 @@ sub replace_oracle_function
 		$str =~ s/\bLAST_DAY\s*\(\s*([^\(\)]+)\s*\)/((date_trunc('month',($1)::timestamp + interval '1 month'))::date - 1)/igs;
 
 		# replace the BITAND function by the & operator
-		$str =~ s/BITAND\(\s*([^,]+)\s*,\s*([^\)]+)\s*\)/($1 & $2)/igs;
+		$str =~ s/BITAND\(\s*([^,\(]+)\s*,\s*([^\)]+)\s*\)/($1 & $2)/igs;
 
 	}
 	else
@@ -2723,8 +2723,6 @@ sub estimate_cost
 		$cost_details{'PLVLEX'} += $n;
 		$n = () = $str =~ m/NVL2/igs;
 		$cost_details{'NVL2'} += $n;
-		$n = () = $str =~ m/BITAND/igs;
-		$cost_details{'BITAND'} += $n;
 	}
 	else
 	{
@@ -2748,8 +2746,6 @@ sub estimate_cost
 		$cost_details{'DBMS_'} -= $n;
 		$n = () = $str =~ m/NVL2/igs;
 		$cost_details{'NVL2'} -= $n;
-		$n = () = $str =~ m/BITAND/igs;
-		$cost_details{'BITAND'} -= $n;
 	}
 	$n = () = $str =~ m/\b(INSERTING|DELETING|UPDATING)\b/igs;
 	$cost_details{'TG_OP'} += $n;
