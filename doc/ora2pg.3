@@ -133,7 +133,7 @@
 .\" ========================================================================
 .\"
 .IX Title "ORA2PG 1"
-.TH ORA2PG 1 "2024-03-07" "perl v5.34.0" "User Contributed Perl Documentation"
+.TH ORA2PG 1 "2024-03-08" "perl v5.34.0" "User Contributed Perl Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -2051,6 +2051,20 @@ this directive. Can be useful in an iterative work. Default is disabled.
 PostgreSQL do not supports Global Temporary Table natively but you can use
 the pgtt extension to emulate this behavior. Enable this directive to export
 global temporary table.
+.IP "\s-1PGTT_NOSUPERUSER\s0" 4
+.IX Item "PGTT_NOSUPERUSER"
+By default the pgtt extension is loaded using the superuser privilege. Enabled it
+if you run the \s-1SQL\s0 scripts generated using a non superuser user. It will use:
+.Sp
+.Vb 1
+\&    LOAD \*(Aq$libdir/plugins/pgtt\*(Aq;
+.Ve
+.Sp
+instead of default:
+.Sp
+.Vb 1
+\&    LOAD \*(Aqpgtt\*(Aq;
+.Ve
 .IP "\s-1NO_HEADER\s0" 4
 .IX Item "NO_HEADER"
 Enabling this directive will prevent Ora2Pg to print his header into

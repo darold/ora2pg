@@ -348,6 +348,11 @@ DROP_IF_EXISTS		0
 # global temporary table.
 EXPORT_GTT		0
 
+# By default the pgtt extension is load using the superuser privilege, set it
+# to 1 if you run the SQL scripts generated using a non superuser user. It will
+# use LOAD '\$libdir/plugins/pgtt' instead of LOAD 'pgtt'.
+PGTT_NOSUPERUSER	0
+
 #------------------------------------------------------------------------------
 # FULL TEXT SEARCH SECTION (Control full text search export behaviors)
 #------------------------------------------------------------------------------

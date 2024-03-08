@@ -1006,6 +1006,9 @@ sub _init
 	$self->{current_oracle_scn} = ();
 	$self->{cdc_ready} = $options{cdc_ready} || '';
 
+	# Wether we load the pgtt extension as superuser or not
+	$self->{pgtt_nosuperuser} ||= 0;
+
 	# Initialyze following configuration file
 	foreach my $k (sort keys %AConfig)
 	{
@@ -8090,8 +8093,12 @@ sub export_table
 			$obj_type = 'UNLOGGED ' . $obj_type;
 		}
 		if ($self->{export_gtt} && !$foreign && $self->{tables}{$table}{table_info}{temporary} eq 'Y') {
-			if ($sql_output !~ /LOAD 'pgtt';/s) {
-				$sql_output .= "\nLOAD 'pgtt';\n";
+			if ($sql_output !~ /LOAD '.*pgtt';/s) {
+				if (!$self->{pgtt_nosuperuser}) {
+					$sql_output .= "\nLOAD 'pgtt';\n";
+				} else {
+					$sql_output .= "\nLOAD '\$libdir/plugins/pgtt';\n";
+				}
 			}
 			$obj_type = ' /*GLOBAL*/ TEMPORARY TABLE' if ($obj_type =~ /TABLE/);
 		}

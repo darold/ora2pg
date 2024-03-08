@@ -1853,6 +1853,17 @@ CONFIGURATION
         can use the pgtt extension to emulate this behavior. Enable this
         directive to export global temporary table.
 
+    PGTT_NOSUPERUSER
+        By default the pgtt extension is loaded using the superuser
+        privilege. Enabled it if you run the SQL scripts generated using a
+        non superuser user. It will use:
+
+            LOAD '$libdir/plugins/pgtt';
+
+        instead of default:
+
+            LOAD 'pgtt';
+
     NO_HEADER
         Enabling this directive will prevent Ora2Pg to print his header into
         output files. Only the translated code will be written.
