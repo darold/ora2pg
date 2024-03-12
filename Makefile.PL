@@ -1412,6 +1412,11 @@ ST_GEOMETRYTYPE_FUNCTION	ST_GEOMETRYTYPE
 # wrapper, you might need to change the name of the schema for each instance.
 FDW_IMPORT_SCHEMA	ora2pg_fdw_import
 
+# The default behaviour of Ora2Pg is to NOT set the "prefetch" option for
+# oracle_fdw when used for COPY and INSERT. This directive allows the prefetch
+# to be set. See oracle_fdw documentation for the current default.
+#ORACLE_FDW_PREFETCH	1000
+
 # By default Ora2Pg drops the temporary schema ora2pg_fdw_import used to import
 # the Oracle foreign schema before each new import. If you want to preserve
 # the existing schema because of modifications or the use of a third party

@@ -8667,7 +8667,11 @@ sub export_table
 				} elsif ($tmptb =~ s/^([^\.]+)\.//) {
 					$schem = "schema '$1',";
 				}
-				$sql_output .= " SERVER $self->{fdw_server} OPTIONS($schem table '$tmptb', readonly 'true');\n";
+				$sql_output .= " SERVER $self->{fdw_server} OPTIONS($schem table '$tmptb', ";
+				if ($self->{oracle_fdw_prefetch}) {
+					$sql_output .= "prefetch '$self->{oracle_fdw_prefetch}', ";
+			        }
+				$sql_output .= "readonly 'true');\n";
 			}
 		}
 		$sql_output =~ s/#ORA2PGENUM#/$enum_str/s;
