@@ -570,6 +570,9 @@ Usage: ora2pg [\-dhpqv \-\-estimate_cost \-\-dump_as_html] [\-\-option value]
 \&   \-\-delete clause    : Set the DELETE clause to apply to the Oracle query to
 \&                        be applied before importing data. Can be used multiple
 \&                        time.
+\&   \-\-oracle_fdw_prefetch: Set the oracle_fdw prefetch value. Larger values
+\&                        generally result in faster data transfer at the cost
+\&                        of greater memory utilisation at the destination.
 .Ve
 .PP
 See full documentation at https://ora2pg.darold.net/ for more help or see

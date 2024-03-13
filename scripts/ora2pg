@@ -95,6 +95,7 @@ my $START_SCN = '';
 my $CDC_READY = '';
 my $CDC_FILE = 'TABLES_SCN.log';
 my $DROP_IF_EXISTS = 0;
+my $ORACLE_FDW_PREFETCH;
 
 my @SCHEMA_ARRAY  = qw( SEQUENCE SEQUENCE_VALUES TABLE PACKAGE VIEW GRANT TRIGGER FUNCTION PROCEDURE TABLESPACE PARTITION TYPE MVIEW DBLINK SYNONYM DIRECTORY );
 my @EXTERNAL_ARRAY  = qw( KETTLE FDW );
@@ -176,6 +177,7 @@ GetOptions (
 	'lo_import!' => \$IMPORT_LO,
 	'drop_if_exists!' => \$DROP_IF_EXISTS,
 	'delete=s' => \@DELETE_CLAUSE,
+	'oracle_fdw_prefetch=i' => \$ORACLE_FDW_PREFETCH,
 );
 
 # Check command line parameters
@@ -398,6 +400,7 @@ my $schema = new Ora2Pg (
 	cdc_file => $CDC_FILE,
 	drop_if_exists => $DROP_IF_EXISTS,
 	delete => join(' ', @DELETE_CLAUSE),
+        oracle_fdw_prefetch => $ORACLE_FDW_PREFETCH,
 );
 
 # Look at configuration file if an input file is defined
@@ -553,6 +556,9 @@ Usage: ora2pg [-dhpqv --estimate_cost --dump_as_html] [--option value]
    --delete clause    : Set the DELETE clause to apply to the Oracle query to
                         be applied before importing data. Can be used multiple
 			time.
+   --oracle_fdw_prefetch: Set the oracle_fdw prefetch value. Larger values
+                        generally result in faster data transfer at the cost
+                        of greater memory utilisation at the destination.
 
 See full documentation at https://ora2pg.darold.net/ for more help or see
 manpage with 'man ora2pg'.
