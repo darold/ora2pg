@@ -133,7 +133,7 @@
 .\" ========================================================================
 .\"
 .IX Title "ORA2PG 1"
-.TH ORA2PG 1 "2024-03-08" "perl v5.34.0" "User Contributed Perl Documentation"
+.TH ORA2PG 1 "2024-03-13" "perl v5.34.0" "User Contributed Perl Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -1196,6 +1196,12 @@ Schema where foreign tables for data migration will be created. If you use
 several instances of ora2pg for data migration through the foreign data
 wrapper, you might need to change the name of the schema for each instance.
 Default: ora2pg_fdw_import
+.IP "\s-1ORACLE_FDW_PREFETCH\s0" 4
+.IX Item "ORACLE_FDW_PREFETCH"
+By default Ora2Pg drops the temporary schema ora2pg_fdw_import used to import
+the Oracle foreign schema before each new import. If you want to preserve
+the existing schema because of modifications or the use of a third party
+server, disable this directive.
 .IP "\s-1DROP_FOREIGN_SCHEMA\s0" 4
 .IX Item "DROP_FOREIGN_SCHEMA"
 By default Ora2Pg drops the temporary schema ora2pg_fdw_import used to import
