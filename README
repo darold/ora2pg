@@ -1024,10 +1024,10 @@ CONFIGURATION
         schema for each instance. Default: ora2pg_fdw_import
 
     ORACLE_FDW_PREFETCH
-        By default Ora2Pg drops the temporary schema ora2pg_fdw_import used
-        to import the Oracle foreign schema before each new import. If you
-        want to preserve the existing schema because of modifications or the
-        use of a third party server, disable this directive.
+        The default behaviour of Ora2Pg is to NOT set the "prefetch" option
+        for oracle_fdw when used for COPY and INSERT. This directive allows
+        the prefetch to be set. See oracle_fdw documentation for the current
+        default.
 
     DROP_FOREIGN_SCHEMA
         By default Ora2Pg drops the temporary schema ora2pg_fdw_import used
