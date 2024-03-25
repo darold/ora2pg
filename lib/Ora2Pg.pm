@@ -5821,18 +5821,19 @@ sub export_trigger
 				$statement = 1 if ($trig->[1] =~ s/ STATEMENT//);
 				$sql_output .= "$trig->[1] $trig->[2]$cols ON " . $self->quote_object_name($tbname) . " ";
 				if ($trig->[6] =~ s/.*(REFERENCING\s+.*)/$1/is) {
-					$trig->[6] =~ s/REFERENCING OLD AS OLD NEW AS NEW//gi;
+					$trig->[6] =~ s/REFERENCING OLD AS OLD NEW AS NEW//gsi;
+					$trig->[6] =~ s/\s+FOR EACH ROW//gsi;
 					$sql_output .= "$trig->[6] ";
 				}
 				if ($self->{is_mssql}) {
 					my $reftb = "REFERENCING OLD TABLE AS Deleted NEW TABLE AS Inserted";
 					$reftb =~ s/OLD TABLE AS Deleted // if ($trig->[2] eq 'INSERT');
 					$reftb =~ s/NEW TABLE AS Inserted // if ($trig->[2] eq 'DELETE');
-					$sql_output .= "$reftb FOR EACH STATEMENT\n";
+					$sql_output .= "$reftb FOR EACH STATEMENT\n" if ($trig->[1] !~ /INSTEAD OF/is);
 				} elsif ($statement) {
-					$sql_output .= "FOR EACH STATEMENT\n" if ($sql_output !~ /FOR EACH STATEMENT/);
+					$sql_output .= "FOR EACH STATEMENT\n" if ($trig->[1] !~ /INSTEAD OF/is);
 				} else {
-					$sql_output .= "FOR EACH ROW\n" if ($sql_output !~ /FOR EACH ROW/);
+					$sql_output .= "FOR EACH ROW\n" if ($trig->[1] !~ /INSTEAD OF/is);
 				}
 				$sql_output .= "\tEXECUTE PROCEDURE $trig_fctname();\n\n";
 			}
