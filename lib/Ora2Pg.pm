@@ -13347,7 +13347,7 @@ sub format_data_row
 	for (my $idx = 0; $idx <= $#{$data_types}; $idx++)
 	{
 		my $data_type = $data_types->[$idx] || '';
-		if ($has_geom && $row->[$idx])
+		if ($has_geom && $row->[$idx] && $src_data_types->[$idx] =~ /(SDO_GEOMETRY|ST_|STGEOM_)/i)
 		{
 			if ($self->{type} ne 'INSERT')
 			{
