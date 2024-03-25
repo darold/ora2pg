@@ -692,7 +692,7 @@ CONFIGURATION
         PL/SQL code enable this configuration directive to allow export of
         all PL/SQL code even if it is marked as invalid. The 'VALID' or
         'INVALID' status applies to functions, procedures, packages and user
-        defined types.
+        defined types. It also concern disabled triggers.
 
     PG_SCHEMA
         Allow you to defined/force the PostgreSQL schema to use. By default
