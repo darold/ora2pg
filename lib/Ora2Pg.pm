@@ -14566,6 +14566,15 @@ sub _remove_comments
 		# Single line comment --...-- */ is replaced by  */ only
 		$lines[$i] =~ s/^([\t ]*)\-[\-]+\s*\*\//$1\*\//;
 
+      # Check for -- and */ in the same line
+        if ($lines[$i] =~ /(--.*)(\*\/.*)$/)
+        {
+            my $first_part = $1;
+            my $second_part = $2;
+            $lines[$i] = $first_part;
+            splice(@lines, $i + 1, 0, $second_part);
+        }
+		
 		# Single line comment --
 		if ($lines[$i] =~ s/^([\t ]*\-\-.*)$/$1\%ORA2PG_COMMENT$self->{idxcomment}\%/)
 		{
