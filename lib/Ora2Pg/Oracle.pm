@@ -1329,18 +1329,18 @@ sub _get_triggers
 	my($self) = @_;
 
 	# Retrieve all indexes 
-	my $str = "SELECT TRIGGER_NAME, TRIGGER_TYPE, TRIGGERING_EVENT, TABLE_NAME, TRIGGER_BODY, WHEN_CLAUSE, DESCRIPTION, ACTION_TYPE, OWNER FROM $self->{prefix}_TRIGGERS WHERE 1=1";
+	my $str = "SELECT T.TRIGGER_NAME, T.TRIGGER_TYPE, T.TRIGGERING_EVENT, T.TABLE_NAME, T.TRIGGER_BODY, T.WHEN_CLAUSE, T.DESCRIPTION, T.ACTION_TYPE, T.OWNER, T.STATUS FROM $self->{prefix}_TRIGGERS T JOIN $self->{prefix}_OBJECTS O ON (T.TRIGGER_NAME = O.OBJECT_NAME AND T.OWNER = O.OWNER) WHERE O.OBJECT_TYPE = 'TRIGGER'";
 	if (!$self->{export_invalid}) {
-		$str .= " AND STATUS='ENABLED'";
+		$str .= " AND O.STATUS='VALID'";
 	} elsif ($self->{export_invalid} == 2) {
-		$str .= " AND STATUS <> 'ENABLED'";
+		$str .= " AND O.STATUS <> 'VALID'";
 	}
 	if (!$self->{schema}) {
-		$str .= " AND OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
+		$str .= " AND T.OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
 	} else {
-		$str .= " AND OWNER = '$self->{schema}'";
+		$str .= " AND T.OWNER = '$self->{schema}'";
 	}
-	$str .= " " . $self->limit_to_objects('TABLE|VIEW|TRIGGER','TABLE_NAME|TABLE_NAME|TRIGGER_NAME');
+	$str .= " " . $self->limit_to_objects('TABLE|VIEW|TRIGGER','T.TABLE_NAME|T.TABLE_NAME|T.TRIGGER_NAME');
 
 	#$str .= " ORDER BY TABLE_NAME, TRIGGER_NAME";
 	my $sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);

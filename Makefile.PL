@@ -1187,7 +1187,7 @@ SYNCHRONOUS_COMMIT	0
 # If the above configuration directive is not enough to validate your PL/SQL code
 # enable this configuration directive to allow export of all PL/SQL code even if
 # it is marked as invalid. The 'VALID' or 'INVALID' status applies to functions,
-# procedures, packages and user defined types. It also concern disabled triggers.
+# procedures, packages, triggers and user defined types.
 EXPORT_INVALID	0
 
 # Enable PLSQL to PLPSQL conversion. This is a work in progress, feel
