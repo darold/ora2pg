@@ -3706,8 +3706,8 @@ sub read_trigger_from_file
 			$trigger =~ s/REFERENCING\s+(.*?)(FOR\s+EACH\s+)/$2/is;
 		} elsif ($trigger =~ s/REFERENCING\s+(.*?)(FOR\s+EACH\s+)/$2/is) {
 			$t_referencing = " REFERENCING $1";
-			$t_referencing =~ s/REFERENCING OLD AS OLD NEW AS NEW//gi;
 		}
+		$t_referencing =~ s/REFERENCING\s+(NEW|OLD)\s+AS\s+(NEW|OLD)\s+(NEW|OLD)\s+AS\s+(NEW|OLD)//gsi;
 
 		if ($trigger =~ s/^\s*(FOR\s+EACH\s+)(ROW|STATEMENT)\s*//is) {
 			$t_type = $1 . $2;
@@ -3747,7 +3747,7 @@ sub read_trigger_from_file
 		} elsif ($t_referencing) {
 			$when_event = $t_referencing;
 		}
-		$when_event =~ s/REFERENCING OLD AS OLD NEW AS NEW//igs;
+		$when_event =~ s/REFERENCING\s+(NEW|OLD)\s+AS\s+(NEW|OLD)\s+(NEW|OLD)\s+AS\s+(NEW|OLD)//gsi;
 		push(@{$self->{triggers}}, [($t_name, $t_pos, $t_event, $tb_name, $trigger, $t_when_cond, $when_event, $t_type, $t_schema)]);
 	}
 }
@@ -5777,8 +5777,7 @@ sub export_trigger
 				if ($self->{pg_version} < 10) {
 					$trig->[6] =~ s/REFERENCING\s+(.*?)(FOR\s+EACH\s+)/$2/is;
 				}
-				$trig->[6] =~ s/REFERENCING OLD AS OLD NEW AS NEW//gi;
-
+				$trig->[6] =~ s/REFERENCING\s+(NEW|OLD)\s+AS\s+(NEW|OLD)\s+(NEW|OLD)\s+AS\s+(NEW|OLD)//gsi;
 				$trig->[6] =~ s/^\s*["]*(?:$trig->[0])["]*//is;
 				$trig->[6] =~ s/\s+ON\s+([^"\s]+)\s+/" ON " . $self->quote_object_name($1) . " "/ies;
 				$sql_output .= "DROP TRIGGER $self->{pg_supports_ifexists} " . $self->quote_object_name($trig->[0]) . " ON " . $self->quote_object_name($1) . ";\n" if ($self->{drop_if_exists});
@@ -5795,8 +5794,9 @@ sub export_trigger
 					}
 					$sql_output .= "\tWHEN ($trig->[5])\n";
 				}
-				if ($trig->[6] =~ /REFERENCING/) {
-					$trig->[6] =~ s/REFERENCING OLD AS OLD NEW AS NEW//ig;
+				if ($trig->[6] =~ /REFERENCING/)
+				{
+					$trig->[6] =~ s/REFERENCING\s+(NEW|OLD)\s+AS\s+(NEW|OLD)\s+(NEW|OLD)\s+AS\s+(NEW|OLD)//gsi;
 					$sql_output .= "$trig->[6] ";
 				}
 				$sql_output .= "\tEXECUTE PROCEDURE $trig_fctname();\n\n";
@@ -5821,7 +5821,7 @@ sub export_trigger
 				$statement = 1 if ($trig->[1] =~ s/ STATEMENT//);
 				$sql_output .= "$trig->[1] $trig->[2]$cols ON " . $self->quote_object_name($tbname) . " ";
 				if ($trig->[6] =~ s/.*(REFERENCING\s+.*)/$1/is) {
-					$trig->[6] =~ s/REFERENCING OLD AS OLD NEW AS NEW//gsi;
+					$trig->[6] =~ s/REFERENCING\s+(NEW|OLD)\s+AS\s+(NEW|OLD)\s+(NEW|OLD)\s+AS\s+(NEW|OLD)//gsi;
 					$trig->[6] =~ s/\s+FOR EACH ROW//gsi;
 					$sql_output .= "$trig->[6] ";
 				}
@@ -18212,7 +18212,7 @@ ORDER BY pg_attribute.attnum
 		if ($self->{pg_dsn})
 		{
 			my ($tbmod, $orig, $schema, $both) = $self->set_pg_relation_name($t);
-			my $tbname = "\U$both$orig\E";
+			my $tbname = uc($both);
 			$tbname =~ s/"//g;
 			$pgcount{$tbname} ||= 0;
 			print "POSTGRES:$both$orig:", $pgcount{$tbname}, "\n";
@@ -18278,10 +18278,10 @@ GROUP BY tn.nspname, t.relname
 		if ($self->{pg_dsn})
 		{
 			my ($tbmod, $orig, $schema, $both) = $self->set_pg_relation_name($t);
-			$pgret{"\U$both$orig\E"} ||= 0;
-			print "POSTGRES:$both$orig:", $pgret{"\U$both$orig\E"}, "\n";
-			if ($pgret{"\U$both$orig\E"} != $numixd) {
-				push(@errors, "Table $both$orig doesn't have the same number of indexes in source database ($numixd) and in PostgreSQL (" . $pgret{"\U$both$orig\E"} . ").");
+			$pgret{"\U$both\E"} ||= 0;
+			print "POSTGRES:$both$orig:", $pgret{"\U$both\E"}, "\n";
+			if ($pgret{"\U$both\E"} != $numixd) {
+				push(@errors, "Table $both$orig doesn't have the same number of indexes in source database ($numixd) and in PostgreSQL (" . $pgret{"\U$both\E"} . ").");
 			}
 		}
 	}
@@ -18341,10 +18341,10 @@ GROUP BY tn.nspname, t.relname
 		if ($self->{pg_dsn})
 		{
 			my ($tbmod, $orig, $schema, $both) = $self->set_pg_relation_name($t);
-			$pgret{"\U$both$orig\E"} ||= 0;
-			print "POSTGRES:$both$orig:", $pgret{"\U$both$orig\E"}, "\n";
-			if ($pgret{"\U$both$orig\E"} != $numixd) {
-				push(@errors, "Table $both$orig doesn't have the same number of unique constraints in source database ($numixd) and in PostgreSQL (" . $pgret{"\U$both$orig\E"} . ").");
+			$pgret{"\U$both\E"} ||= 0;
+			print "POSTGRES:$both$orig:", $pgret{"\U$both\E"}, "\n";
+			if ($pgret{"\U$both\E"} != $numixd) {
+				push(@errors, "Table $both$orig doesn't have the same number of unique constraints in source database ($numixd) and in PostgreSQL (" . $pgret{"\U$both\E"} . ").");
 			}
 		}
 	}
@@ -18398,10 +18398,10 @@ GROUP BY schemaname,tablename
 		if ($self->{pg_dsn})
 		{
 			my ($tbmod, $orig, $schema, $both) = $self->set_pg_relation_name($t);
-			$pgret{"\U$both$orig\E"} ||= 0;
-			print "POSTGRES:$both$orig:", $pgret{"\U$both$orig\E"}, "\n";
-			if ($pgret{"\U$both$orig\E"} != $nbpk) {
-				push(@errors, "Table $both$orig doesn't have the same number of primary keys in source database ($nbpk) and in PostgreSQL (" . $pgret{"\U$both$orig\E"} . ").");
+			$pgret{"\U$both\E"} ||= 0;
+			print "POSTGRES:$both$orig:", $pgret{"\U$both\E"}, "\n";
+			if ($pgret{"\U$both\E"} != $nbpk) {
+				push(@errors, "Table $both$orig doesn't have the same number of primary keys in source database ($nbpk) and in PostgreSQL (" . $pgret{"\U$both\E"} . ").");
 			}
 		}
 	}
@@ -18418,7 +18418,7 @@ GROUP BY schemaname,tablename
 	my %check_constraints = $self->_check_constraint('',$self->{schema});
 	$schema_cond = $self->get_schema_condition('n.nspname');
 	$sql = qq{
-SELECT n.nspname::regnamespace||'.'||r.conrelid::regclass, count(*)
+SELECT CASE WHEN regexp_count(r.conrelid::regclass::text, n.nspname||'.') > 0 THEN r.conrelid::regclass::text ELSE n.nspname::regnamespace||'.'||r.conrelid::regclass END, count(*)
 FROM pg_catalog.pg_constraint r JOIN pg_class c ON (r.conrelid=c.oid) JOIN pg_namespace n ON (c.relnamespace=n.oid)
 WHERE r.contype = 'c' $schema_cond
 GROUP BY n.nspname,r.conrelid
@@ -18460,10 +18460,10 @@ GROUP BY n.nspname,r.conrelid
 		if ($self->{pg_dsn})
 		{
 			my ($tbmod, $orig, $schema, $both) = $self->set_pg_relation_name($t);
-			$pgret{"\U$both$orig\E"} ||= 0;
-			print "POSTGRES:$both$orig:", $pgret{"\U$both$orig\E"}, "\n";
-			if ($pgret{"\U$both$orig\E"} != $nbcheck) {
-				push(@errors, "Table $both$orig doesn't have the same number of check constraints in source database ($nbcheck) and in PostgreSQL (" . $pgret{"\U$both$orig\E"} . ").");
+			$pgret{"\U$both\E"} ||= 0;
+			print "POSTGRES:$both$orig:", $pgret{"\U$both\E"}, "\n";
+			if ($pgret{"\U$both\E"} != $nbcheck) {
+				push(@errors, "Table $both$orig doesn't have the same number of check constraints in source database ($nbcheck) and in PostgreSQL (" . $pgret{"\U$both\E"} . ").");
 			}
 		}
 	}
@@ -18528,10 +18528,10 @@ GROUP BY n.nspname,e.oid
 		if ($self->{pg_dsn})
 		{
 			my ($tbmod, $orig, $schema, $both) = $self->set_pg_relation_name($t);
-			$pgret{"\U$both$orig\E"} ||= 0;
-			print "POSTGRES:$both$orig:", $pgret{"\U$both$orig\E"}, "\n";
-			if ($pgret{"\U$both$orig\E"} != $nbnull) {
-				push(@errors, "Table $both$orig doesn't have the same number of not null constraints in source database ($nbnull) and in PostgreSQL (" . $pgret{"\U$both$orig\E"} . ").");
+			$pgret{"\U$both\E"} ||= 0;
+			print "POSTGRES:$both$orig:", $pgret{"\U$both\E"}, "\n";
+			if ($pgret{"\U$both\E"} != $nbnull) {
+				push(@errors, "Table $both$orig doesn't have the same number of not null constraints in source database ($nbnull) and in PostgreSQL (" . $pgret{"\U$both\E"} . ").");
 			}
 		}
 	}
@@ -18602,10 +18602,10 @@ GROUP BY n.nspname,e.oid
 		if ($self->{pg_dsn})
 		{
 			my ($tbmod, $orig, $schema, $both) = $self->set_pg_relation_name($t);
-			$pgret{"\U$both$orig\E"} ||= 0;
-			print "POSTGRES:$both$orig:", $pgret{"\U$both$orig\E"}, "\n";
-			if ($pgret{"\U$both$orig\E"} != $nbdefault) {
-				push(@errors, "Table $both$orig doesn't have the same number of column default value in source database ($nbdefault) and in PostgreSQL (" . $pgret{"\U$both$orig\E"} . ").");
+			$pgret{"\U$both\E"} ||= 0;
+			print "POSTGRES:$both$orig:", $pgret{"\U$both\E"}, "\n";
+			if ($pgret{"\U$both\E"} != $nbdefault) {
+				push(@errors, "Table $both$orig doesn't have the same number of column default value in source database ($nbdefault) and in PostgreSQL (" . $pgret{"\U$both\E"} . ").");
 			}
 		}
 	}
@@ -18670,10 +18670,10 @@ GROUP BY e.oid
 			if ($self->{pg_dsn})
 			{
 				my ($tbmod, $orig, $schema, $both) = $self->set_pg_relation_name($t);
-				$pgret{"\U$both$orig\E"} ||= 0;
-				print "POSTGRES:$both$orig:", $pgret{"\U$both$orig\E"}, "\n";
-				if ($pgret{"\U$both$orig\E"} != $nbidty) {
-					push(@errors, "Table $both$orig doesn't have the same number of identity column in source database ($nbidty) and in PostgreSQL (" . $pgret{"\U$both$orig\E"} . ").");
+				$pgret{"\U$both\E"} ||= 0;
+				print "POSTGRES:$both$orig:", $pgret{"\U$both\E"}, "\n";
+				if ($pgret{"\U$both\E"} != $nbidty) {
+					push(@errors, "Table $both$orig doesn't have the same number of identity column in source database ($nbidty) and in PostgreSQL (" . $pgret{"\U$both\E"} . ").");
 				}
 			}
 		}
@@ -18692,7 +18692,7 @@ GROUP BY e.oid
 	my ($foreign_link, $foreign_key) = $self->_foreign_key('',$self->{schema});
 	$schema_cond = $self->get_schema_condition('n.nspname');
 	$sql = qq{
-SELECT n.nspname||'.'||r.conrelid::regclass, count(*)
+SELECT CASE WHEN regexp_count(r.conrelid::regclass::text, n.nspname||'.') > 0 THEN r.conrelid::regclass::text ELSE n.nspname::regnamespace||'.'||r.conrelid::regclass END, count(*)
 FROM pg_catalog.pg_constraint r JOIN pg_class c ON (r.conrelid=c.oid) JOIN pg_namespace n ON (c.relnamespace=n.oid)
 WHERE r.contype = 'f' $schema_cond
 GROUP BY n.nspname,r.conrelid
@@ -18727,10 +18727,10 @@ GROUP BY n.nspname,r.conrelid
 		if ($self->{pg_dsn})
 		{
 			my ($tbmod, $orig, $schema, $both) = $self->set_pg_relation_name($t);
-			$pgret{"\U$both$orig\E"} ||= 0;
-			print "POSTGRES:$both$orig:", $pgret{"\U$both$orig\E"}, "\n";
-			if ($pgret{"\U$both$orig\E"} != $nbfk) {
-				push(@errors, "Table $both$orig doesn't have the same number of foreign key constraints in source database ($nbfk) and in PostgreSQL (" . $pgret{"\U$both$orig\E"} . ").");
+			$pgret{"\U$both\E"} ||= 0;
+			print "POSTGRES:$both$orig:", $pgret{"\U$both\E"}, "\n";
+			if ($pgret{"\U$both\E"} != $nbfk) {
+				push(@errors, "Table $both$orig doesn't have the same number of foreign key constraints in source database ($nbfk) and in PostgreSQL (" . $pgret{"\U$both\E"} . ").");
 			}
 		}
 	}
@@ -18864,15 +18864,15 @@ GROUP BY n.nspname,c.relname
 	foreach my $t (sort keys %triggers)
 	{
 		next if (!exists $tables_infos{$t});
-		my $nbtrg = $#{$triggers{$t}}+1;
+		my $nbtrg = @{$triggers{$t}};
 		print "$lbl:$t:$nbtrg\n";
 		if ($self->{pg_dsn})
 		{
 			my ($tbmod, $orig, $schema, $both) = $self->set_pg_relation_name($t);
-			$pgret{"\U$both$orig\E"} ||= 0;
-			print "POSTGRES:$both$orig:", $pgret{"\U$both$orig\E"}, "\n";
-			if ($pgret{"\U$both$orig\E"} != $nbtrg) {
-				push(@errors, "Table $both$orig doesn't have the same number of triggers in source database ($nbtrg) and in PostgreSQL (" . $pgret{"\U$both$orig\E"} . ").");
+			$pgret{"\U$both\E"} ||= 0;
+			print "POSTGRES:$both$orig:", $pgret{"\U$both\E"}, "\n";
+			if ($pgret{"\U$both\E"} != $nbtrg) {
+				push(@errors, "Table $both$orig doesn't have the same number of triggers in source database ($nbtrg) and in PostgreSQL (" . $pgret{"\U$both\E"} . ").");
 			}
 		}
 	}
