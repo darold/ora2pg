@@ -19127,7 +19127,7 @@ sub _test_function
 	print "\n";
 	print "[TEST FUNCTION COUNT]\n";
 	my @fct_infos = $self->_list_all_functions();
-	my $schema_clause = "    AND n.nspname NOT IN ('pg_catalog','information_schema')";
+	my $schema_clause = $self->get_schema_condition();
 	$sql = qq{
 SELECT n.nspname,proname,prorettype
 FROM pg_catalog.pg_proc p
