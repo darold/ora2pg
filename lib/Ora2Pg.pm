@@ -13763,12 +13763,12 @@ sub format_data_type
 				$col = "'$col'";
 			}
 		}
-		else
+		elsif ($cond->{isnum})
 		{
 			if (!$self->{pg_dsn}) {
-				$col =~ s/([\-]*)(\~|Inf)/'$1Infinity'/i;
+				$col =~ s/^([\-]*)(\~|Inf)$/'$1Infinity'/i;
 			} else {
-				$col =~ s/([\-]*)(\~|Inf)/$1Infinity/i;
+				$col =~ s/^([\-]*)(\~|Inf)$/$1Infinity/i;
 			}
 			if (!$sprep) {
 				$col = 'NULL' if ($col eq '');
