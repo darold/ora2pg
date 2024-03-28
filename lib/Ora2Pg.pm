@@ -13770,6 +13770,9 @@ sub format_data_type
 			} else {
 				$col =~ s/^([\-]*)(\~|Inf)$/$1Infinity/i;
 			}
+		}
+		else
+		{
 			if (!$sprep) {
 				$col = 'NULL' if ($col eq '');
 			} else {
@@ -14563,16 +14566,19 @@ sub _remove_comments
 	{
 		next if ($lines[$i] !~ /\S/);
 
-		# Single line comment --...-- */ is replaced by  */ only
-		$lines[$i] =~ s/^([\t ]*)\-[\-]+\s*\*\//$1\*\//;
-
-		# Check for -- and */ in the same line
-		if ($lines[$i] =~ /(--.*)(\*\/.*)$/)
+		if ($lines[$i] !~ /^[\t ]*\--.*\/\*.*\*\/.*$/ and $lines[$i] !~ /\/\*.*\*\/$/)
 		{
-			$lines[$i] = $1;
-			splice(@lines, $i + 1, 0, $2);
+			# Single line comment --...-- */ is replaced by  */ only
+			$lines[$i] =~ s/^([\t ]*)\-[\-]+\s*\*\//$1\*\//;
+
+			# Check for -- and */ in the same line
+			if ($lines[$i] =~ /(--.*)(\*\/.*)$/)
+			{
+				$lines[$i] = $1;
+				splice(@lines, $i + 1, 0, $2);
+			}
 		}
-		
+
 		# Single line comment --
 		if ($lines[$i] =~ s/^([\t ]*\-\-.*)$/$1\%ORA2PG_COMMENT$self->{idxcomment}\%/)
 		{
