@@ -3580,6 +3580,8 @@ sub replace_outer_join
 		for (my $i = 0; $i <= $#predicat; $i++)
 		{
 			next if ($predicat[$i] !~ /\%OUTERJOIN\d+\%/i);
+			# remove extrat parenthesis from the predicat for better parsing
+			$predicat[$i] =~ s/^\s*[\(]*\s*([^\(\)]+)\s*[\)]*\s*/$1/gs;
 			my $where_clause = $predicat[$i];
 			$where_clause =~ s/"//gs;
 			$where_clause =~ s/^\s+//s;
@@ -3606,6 +3608,7 @@ sub replace_outer_join
 			if ($l =~ /^([^\.\s]+\.[^\.\s]+)\..*/ || $l =~ /^([^\.\s]+)\..*/)
 			{
 				$lbl1 = lc($1);
+				$lbl1 =~ s/\(\s*//;
 				# If the table/alias is not part of the from clause
 				if (!exists $from_clause_list{$lbl1}) {
 					$from_clause_list{$lbl1} = $lbl1;
@@ -3624,6 +3627,7 @@ sub replace_outer_join
 						|| $tmp_str =~ /\b([^\.\s]+)\.[^\.\s]+/)
 					{
 						$lbl1 = lc($1);
+						$lbl1 =~ s/\(\s*//;
 						# If the table/alias is not part of the from clause
 						if (!exists $from_clause_list{$lbl1})
 						{
