@@ -665,7 +665,7 @@ sub append_alias_clause
 				$parts[0] =~ s/\b([^\s,]+\%SUBQUERY\d+\%) alias\d+/$1/ig;
 				$from_clause = join('', @parts);
 			}
-			$q[$j] =~ s/\%FROM_CLAUSE\%/$from_clause/s;
+			$q[$j] =~ s/\%FROM_CLAUSE\%/$from_clause /s;
 		}
 	}
 	$str = join('', @q);
