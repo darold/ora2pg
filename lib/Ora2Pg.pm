@@ -11726,7 +11726,7 @@ sub _howto_get_data
 
 			# If there is any transformation to apply replace the column name with the clause
 			if (exists $self->{transform_value}{lc($table)} && exists $self->{transform_value}{lc($table)}{lc($realcolname)}) {
-				$str .= "$alias." . $self->{transform_value}{lc($table)}{lc($realcolname)} . ",";
+				$str .= $self->{transform_value}{lc($table)}{lc($realcolname)} . ",";
 			}
 			# Apply some default transformation following the data type
 			elsif ( ( $src_type->[$k] =~ /^char/i) && ($type->[$k] =~ /(varchar|text)/i)) {
