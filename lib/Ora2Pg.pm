@@ -9144,7 +9144,11 @@ sub _get_sql_statements
 	{
 		if ($self->{oracle_fdw_data_export} && $self->{pg_dsn} && $self->{drop_foreign_schema})
 		{
+			# Temporarily disable partitioning (if set) to obtain appropriate DDL for the oracle_fdw foreign table
+			my $original_disable_partition = $self->{disable_partition};
+			$self->{disable_partition} = 1;
 			my $fdw_definition = $self->export_table();
+			$self->{disable_partition} = $original_disable_partition;
 			$self->{dbhdest}->do("DROP SCHEMA $self->{pg_supports_ifexists} $self->{fdw_import_schema} CASCADE") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
 			$self->{dbhdest}->do("CREATE SCHEMA $self->{fdw_import_schema}") or $self->logit("FATAL: " . $self->{dbhdest}->errstr . "\n", 0, 1);
 			$self->{dbhdest}->do($fdw_definition) or $self->logit("FATAL: " . $self->{dbhdest}->errstr . ", SQL: $fdw_definition\n", 0, 1);
