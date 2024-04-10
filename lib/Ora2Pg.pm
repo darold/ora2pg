@@ -10679,7 +10679,8 @@ sub _create_indexes
 				}
 			}
 		}
-		# Add parentheses to index column definition when a space is found
+
+		# Add parentheses to index column definition when a space or arithmetic operators are found
 		if (!$self->{input_file})
 		{
 			for ($i = 0; $i <= $#{$indexes{$idx}}; $i++)
@@ -10688,6 +10689,7 @@ sub _create_indexes
 				       			&& $indexes{$idx}->[$i] !~ /\s+collate\s+/i ) {
 					$indexes{$idx}->[$i] = '(' . $indexes{$idx}->[$i] . ')';
 				}
+				$indexes{$idx}->[$i] =~ s/"//g;
 			}
 		}
 		else
@@ -10695,7 +10697,8 @@ sub _create_indexes
 			for ($i = 0; $i <= $#{$indexes{$idx}}; $i++)
 			{
 				my @tmp_col = split(/\s*,\s*/, $indexes{$idx}->[$i]);
-				for (my $j = 0; $j <= $#tmp_col; $j++) {
+				for (my $j = 0; $j <= $#tmp_col; $j++)
+				{
 					if ( $tmp_col[$j] =~ /[\s\-\+\/\*]/ && $tmp_col[$j] !~ /^[^\.\s]+\s+(ASC|DESC)$/i
 				       			&& $tmp_col[$j] !~ /\s+collate\s+/i ) {
 						$tmp_col[$j] = '(' . $tmp_col[$j] . ')';
@@ -10917,6 +10920,7 @@ CREATE TRIGGER $trig_name BEFORE INSERT OR UPDATE
 				$str .= "CREATE$unique INDEX$concurrently " . $idxname
 						. " ON $table ($columns)";
 			}
+
 			if ($#{$self->{$objtyp}{$tbsaved}{idx_type}{$idx}{type_include}} >= 0) {
 				$str .= " INCLUDE (" . join(', ', @{$self->{$objtyp}{$tbsaved}{idx_type}{$idx}{type_include}}) . ')';
 			}
