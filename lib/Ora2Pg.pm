@@ -13823,6 +13823,11 @@ sub format_data_type
 		{
 			$col = $self->_escape_lob($col, $cond->{raw} ? 'RAW' : 'BLOB', $cond, $isnested, $data_type);
 		}
+		elsif ($cond->{isjson})
+		{
+			# preserve json escaping
+			$col =~ s/\\/\\\\/g;
+		}
 		elsif ($cond->{isinterval})
 		{
 			if ($col =~ /^-/) {
@@ -13917,6 +13922,7 @@ sub hs_cond
 		$hs->{isefile} = $data_types->[$idx] =~ /efile/i ? 1 : 0;
 		$hs->{isinterval} = $data_types->[$idx] =~ /interval/i ? 1 : 0;
 		$hs->{isnotnull} = 0;
+		$hs->{isjson} = $data_types->[$idx] =~ /json/i ? 1 : 0;
 		if ($self->{nullable}{$table}{$idx} =~ /^N/) {
 			$hs->{isnotnull} = 1;
 		}
