@@ -8241,8 +8241,9 @@ sub export_table
 					if (grep(/^$f->[0]$/i, @{$self->{'replace_as_boolean'}{uc($table)}})) {
 						$type = 'boolean';
 						push(@skip_column_check, $fname);
+					}
 					# Check if this column should be replaced by a boolean following type/precision
-					} elsif (exists $self->{'replace_as_boolean'}{uc($f->[1])} && ($self->{'replace_as_boolean'}{uc($f->[1])}[0] == $typlen)) {
+					elsif (exists $self->{'replace_as_boolean'}{uc($f->[1])} && ($self->{'replace_as_boolean'}{uc($f->[1])}[0] == $typlen)) {
 						$type = 'boolean';
 						push(@skip_column_check, $fname);
 					}
@@ -10121,9 +10122,9 @@ sub _dump_table
 		# Check if this column should be replaced by a boolean following table/column name
 		if (grep(/^\L$fieldname\E$/i, @{$self->{'replace_as_boolean'}{uc($table)}})) {
 			$type = 'boolean';
-		# Check if this column should be replaced by a boolean following type/precision
 		}
-		elsif (exists $self->{'replace_as_boolean'}{uc($f->[1])})
+		# Check if this column should be replaced by a boolean following type/precision
+		elsif (exists $self->{'replace_as_boolean'}{uc($f->[1])} && $#{ $self->{'replace_as_boolean'}{uc($f->[1])} } >= 0)
 		{
 			if ($self->{'replace_as_boolean'}{uc($f->[1])}[0] == $f->[5] ||
 				(!$f->[5] && $self->{'replace_as_boolean'}{uc($f->[1])}[0] == $f->[2]))
@@ -10326,8 +10327,9 @@ sub _dump_fdw_table
 		# Check if this column should be replaced by a boolean following table/column name
 		if (grep(/^\L$fieldname\E$/i, @{$self->{'replace_as_boolean'}{uc($table)}})) {
 			$type = 'boolean';
+		}
 		# Check if this column should be replaced by a boolean following type/precision
-		} elsif (exists $self->{'replace_as_boolean'}{uc($f->[1])} && ($self->{'replace_as_boolean'}{uc($f->[1])}[0] == $typlen)) {
+		elsif (exists $self->{'replace_as_boolean'}{uc($f->[1])} && ($self->{'replace_as_boolean'}{uc($f->[1])}[0] == $typlen)) {
 			$type = 'boolean';
 		}
 		# check if destination column type must be changed
@@ -15752,8 +15754,9 @@ sub ask_for_data
 		# Check if this column should be replaced by a boolean following table/column name
 		if (grep(/^$colname$/i, @{$self->{'replace_as_boolean'}{uc($table)}})) {
 			$tt->[$i] = 'boolean';
+		}
 		# Check if this column should be replaced by a boolean following type/precision
-		} elsif (exists $self->{'replace_as_boolean'}{uc($nn->[$i]->[1])} && ($self->{'replace_as_boolean'}{uc($nn->[$i]->[1])}[0] == $typlen)) {
+		elsif (exists $self->{'replace_as_boolean'}{uc($nn->[$i]->[1])} && ($self->{'replace_as_boolean'}{uc($nn->[$i]->[1])}[0] == $typlen)) {
 			$tt->[$i] = 'boolean';
 		}
 	}
@@ -17805,8 +17808,9 @@ sub _show_infos
 					$typlen ||= $d->[2];
 					if (grep(/^$d->[0]$/i, @{$self->{'replace_as_boolean'}{uc($t)}})) {
 						$type1 = 'boolean';
+					}
 					# Check if this column should be replaced by a boolean following type/precision
-					} elsif (exists $self->{'replace_as_boolean'}{uc($d->[1])} && ($self->{'replace_as_boolean'}{uc($d->[1])}[0] == $typlen)) {
+					elsif (exists $self->{'replace_as_boolean'}{uc($d->[1])} && ($self->{'replace_as_boolean'}{uc($d->[1])}[0] == $typlen)) {
 						$type1 = 'boolean';
 					}
 
