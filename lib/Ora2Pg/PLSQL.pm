@@ -1814,7 +1814,7 @@ sub replace_oracle_function
 	}
 
 	# Translate to_timestamp_tz Oracle function
-	$str =~ s/TO_TIMESTAMP_TZ\s*\((.*)\)/'to_timestamp(' . convert_date_format($class, $1, @strings) . ')'/iegs;
+	$str =~ s/TO_TIMESTAMP(?:_TZ)?\s*\((.*)\)/'to_timestamp(' . convert_date_format($class, $1, @strings) . ')'/iegs;
 
 	# Translate from_tz Oracle function
 	$str =~ s/FROM_TZ\s*\(\s*([^\)]+)\s*\)/'(' . convert_from_tz($class,$1) . ')::timestamp with time zone'/iegs;
