@@ -8241,8 +8241,9 @@ sub export_table
 					if (grep(/^$f->[0]$/i, @{$self->{'replace_as_boolean'}{uc($table)}})) {
 						$type = 'boolean';
 						push(@skip_column_check, $fname);
+					}
 					# Check if this column should be replaced by a boolean following type/precision
-					} elsif (exists $self->{'replace_as_boolean'}{uc($f->[1])} && ($self->{'replace_as_boolean'}{uc($f->[1])}[0] == $typlen)) {
+					elsif (exists $self->{'replace_as_boolean'}{uc($f->[1])} && ($self->{'replace_as_boolean'}{uc($f->[1])}[0] == $typlen)) {
 						$type = 'boolean';
 						push(@skip_column_check, $fname);
 					}
@@ -10121,9 +10122,9 @@ sub _dump_table
 		# Check if this column should be replaced by a boolean following table/column name
 		if (grep(/^\L$fieldname\E$/i, @{$self->{'replace_as_boolean'}{uc($table)}})) {
 			$type = 'boolean';
-		# Check if this column should be replaced by a boolean following type/precision
 		}
-		elsif (exists $self->{'replace_as_boolean'}{uc($f->[1])})
+		# Check if this column should be replaced by a boolean following type/precision
+		elsif (exists $self->{'replace_as_boolean'}{uc($f->[1])} && $#{ $self->{'replace_as_boolean'}{uc($f->[1])} } >= 0)
 		{
 			if ($self->{'replace_as_boolean'}{uc($f->[1])}[0] == $f->[5] ||
 				(!$f->[5] && $self->{'replace_as_boolean'}{uc($f->[1])}[0] == $f->[2]))
@@ -10326,8 +10327,9 @@ sub _dump_fdw_table
 		# Check if this column should be replaced by a boolean following table/column name
 		if (grep(/^\L$fieldname\E$/i, @{$self->{'replace_as_boolean'}{uc($table)}})) {
 			$type = 'boolean';
+		}
 		# Check if this column should be replaced by a boolean following type/precision
-		} elsif (exists $self->{'replace_as_boolean'}{uc($f->[1])} && ($self->{'replace_as_boolean'}{uc($f->[1])}[0] == $typlen)) {
+		elsif (exists $self->{'replace_as_boolean'}{uc($f->[1])} && ($self->{'replace_as_boolean'}{uc($f->[1])}[0] == $typlen)) {
 			$type = 'boolean';
 		}
 		# check if destination column type must be changed
@@ -10767,7 +10769,8 @@ sub _create_indexes
 				}
 			}
 		}
-		# Add parentheses to index column definition when a space is found
+
+		# Add parentheses to index column definition when a space or arithmetic operators are found
 		if (!$self->{input_file})
 		{
 			for ($i = 0; $i <= $#{$indexes{$idx}}; $i++)
@@ -10776,6 +10779,7 @@ sub _create_indexes
 				       			&& $indexes{$idx}->[$i] !~ /\s+collate\s+/i ) {
 					$indexes{$idx}->[$i] = '(' . $indexes{$idx}->[$i] . ')';
 				}
+				$indexes{$idx}->[$i] =~ s/"//g;
 			}
 		}
 		else
@@ -10783,7 +10787,8 @@ sub _create_indexes
 			for ($i = 0; $i <= $#{$indexes{$idx}}; $i++)
 			{
 				my @tmp_col = split(/\s*,\s*/, $indexes{$idx}->[$i]);
-				for (my $j = 0; $j <= $#tmp_col; $j++) {
+				for (my $j = 0; $j <= $#tmp_col; $j++)
+				{
 					if ( $tmp_col[$j] =~ /[\s\-\+\/\*]/ && $tmp_col[$j] !~ /^[^\.\s]+\s+(ASC|DESC)$/i
 				       			&& $tmp_col[$j] !~ /\s+collate\s+/i ) {
 						$tmp_col[$j] = '(' . $tmp_col[$j] . ')';
@@ -11005,6 +11010,7 @@ CREATE TRIGGER $trig_name BEFORE INSERT OR UPDATE
 				$str .= "CREATE$unique INDEX$concurrently " . $idxname
 						. " ON $table ($columns)";
 			}
+
 			if ($#{$self->{$objtyp}{$tbsaved}{idx_type}{$idx}{type_include}} >= 0) {
 				$str .= " INCLUDE (" . join(', ', @{$self->{$objtyp}{$tbsaved}{idx_type}{$idx}{type_include}}) . ')';
 			}
@@ -11820,7 +11826,7 @@ sub _howto_get_data
 
 			# If there is any transformation to apply replace the column name with the clause
 			if (exists $self->{transform_value}{lc($table)} && exists $self->{transform_value}{lc($table)}{lc($realcolname)}) {
-				$str .= "$alias." . $self->{transform_value}{lc($table)}{lc($realcolname)} . ",";
+				$str .= $self->{transform_value}{lc($table)}{lc($realcolname)} . ",";
 			}
 			# Apply some default transformation following the data type
 			elsif ( ( $src_type->[$k] =~ /^char/i) && ($type->[$k] =~ /(varchar|text)/i)) {
@@ -13907,6 +13913,11 @@ sub format_data_type
 		{
 			$col = $self->_escape_lob($col, $cond->{raw} ? 'RAW' : 'BLOB', $cond, $isnested, $data_type);
 		}
+		elsif ($cond->{isjson})
+		{
+			# preserve json escaping
+			$col =~ s/\\/\\\\/g;
+		}
 		elsif ($cond->{isinterval})
 		{
 			if ($col =~ /^-/) {
@@ -13987,7 +13998,7 @@ sub hs_cond
 	{
 		my $hs={};
 		$hs->{geometry} = $src_data_types->[$idx] =~ /SDO_GEOMETRY/i ? 1 : 0;
-		$hs->{isnum} =    $data_types->[$idx] !~ /^(char|varchar|date|time|text|bytea|xml|uuid|citext)/i ? 1 :0;
+		$hs->{isnum} = $data_types->[$idx] !~ /^(json|char|varchar|date|time|text|bytea|xml|uuid|citext)/i ? 1 :0;
 		$hs->{isdate} =  $data_types->[$idx] =~ /^(date|time)/i ? 1 : 0;
 		$hs->{raw} = $src_data_types->[$idx] =~ /RAW/i ? 1 : 0;
 		$hs->{clob} = $src_data_types->[$idx] =~ /CLOB/i ? 1 : 0;
@@ -14001,6 +14012,7 @@ sub hs_cond
 		$hs->{isefile} = $data_types->[$idx] =~ /efile/i ? 1 : 0;
 		$hs->{isinterval} = $data_types->[$idx] =~ /interval/i ? 1 : 0;
 		$hs->{isnotnull} = 0;
+		$hs->{isjson} = $data_types->[$idx] =~ /json/i ? 1 : 0;
 		if ($self->{nullable}{$table}{$idx} =~ /^N/) {
 			$hs->{isnotnull} = 1;
 		}
@@ -15842,8 +15854,9 @@ sub ask_for_data
 		# Check if this column should be replaced by a boolean following table/column name
 		if (grep(/^$colname$/i, @{$self->{'replace_as_boolean'}{uc($table)}})) {
 			$tt->[$i] = 'boolean';
+		}
 		# Check if this column should be replaced by a boolean following type/precision
-		} elsif (exists $self->{'replace_as_boolean'}{uc($nn->[$i]->[1])} && ($self->{'replace_as_boolean'}{uc($nn->[$i]->[1])}[0] == $typlen)) {
+		elsif (exists $self->{'replace_as_boolean'}{uc($nn->[$i]->[1])} && ($self->{'replace_as_boolean'}{uc($nn->[$i]->[1])}[0] == $typlen)) {
 			$tt->[$i] = 'boolean';
 		}
 	}
@@ -17895,8 +17908,9 @@ sub _show_infos
 					$typlen ||= $d->[2];
 					if (grep(/^$d->[0]$/i, @{$self->{'replace_as_boolean'}{uc($t)}})) {
 						$type1 = 'boolean';
+					}
 					# Check if this column should be replaced by a boolean following type/precision
-					} elsif (exists $self->{'replace_as_boolean'}{uc($d->[1])} && ($self->{'replace_as_boolean'}{uc($d->[1])}[0] == $typlen)) {
+					elsif (exists $self->{'replace_as_boolean'}{uc($d->[1])} && ($self->{'replace_as_boolean'}{uc($d->[1])}[0] == $typlen)) {
 						$type1 = 'boolean';
 					}
 
