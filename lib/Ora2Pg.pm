@@ -10408,10 +10408,20 @@ sub _dump_fdw_table
 		$overriding_system = ' OVERRIDING SYSTEM VALUE';
 	}
 
-	my $s_out = "INSERT INTO $tmptb ($col_list";
-	my $fdwtb = $tmptb;
+	my $s_out = '';
+	$fdwtb = $tmptb;
 	$fdwtb = '"' . $tmptb . '"' if ($tmptb !~ /"/);
-	$s_out .= ")$overriding_system SELECT $fdw_col_list FROM $self->{fdw_import_schema}.$fdwtb";
+	if ($self->{type} eq 'INSERT')
+	# Build INSERT statement
+	{
+		$s_out = "INSERT INTO $tmptb ($col_list";
+		$s_out .= ")$overriding_system SELECT $fdw_col_list FROM $self->{fdw_import_schema}.$fdwtb";
+	}
+	if ($self->{type} eq 'COPY')
+	# Build COPY statement
+	{
+		$s_out = "COPY (select $fdw_col_list from $self->{fdw_import_schema}.$fdwtb) TO PROGRAM 'PGPASSWORD=$self->{dbpwd} psql -h $self->{dbhost} -p $self->{dbport} -d $self->{dbname} -U $self->{dbuser} -c \"\\copy $self->{schema}.$tmptb FROM STDIN BINARY\"' BINARY";
+	}
 
 	$0 = "ora2pg - exporting table $self->{fdw_import_schema}.$fdwtb";
 
@@ -10432,21 +10442,63 @@ sub _dump_fdw_table
 	{
 		if (exists $self->{where}{"\L$table\E"} && $self->{where}{"\L$table\E"})
 		{
-			($s_out =~ / WHERE /) ? $s_out .= ' AND ' : $s_out .= ' WHERE ';
 			if (!$self->{is_mysql} || ($self->{where}{"\L$table\E"} !~ /\s+LIMIT\s+\d/)) {
-				$s_out .= '(' . $self->{where}{"\L$table\E"} . ')';
+				if ($self->{type} eq 'INSERT')
+				# When using INSERT the WHERE clause needs to be added to the end
+				{
+					($s_out =~ / WHERE /) ? $s_out .= ' AND ' : $s_out .= ' WHERE ';
+				        $s_out .= '(' . $self->{where}{"\L$table\E"} . ')';
+				}
+				if ($self->{type} eq 'COPY')
+				# When using COPY the WHERE clause needs to be inserted into the SELECT from FDW
+				{
+					# ") TO PROGRAM" needs to become "$self->{where}) TO PROGRAM"
+                                        $s_out =~ s/\) TO PROGRAM/$self->{where}) TO PROGRAM/;
+				}
 			} else {
-				$s_out .= $self->{where}{"\L$table\E"};
+				if ($self->{type} eq 'INSERT')
+				# When using INSERT the WHERE clause needs to be added to the end
+				{
+					($s_out =~ / WHERE /) ? $s_out .= ' AND ' : $s_out .= ' WHERE ';
+					$s_out .= $self->{where}{"\L$table\E"};
+				}
+				if ($self->{type} eq 'COPY')
+				# When using COPY the WHERE clause needs to be inserted into the SELECT from FDW
+				{
+					# ") TO PROGRAM" needs to become "$self->{where}) TO PROGRAM"
+                                        $s_out =~ s/\) TO PROGRAM/$self->{where}) TO PROGRAM/;
+				}
 			}
 			$self->logit("\tApplying WHERE clause on foreign table: " . $self->{where}{"\L$table\E"} . "\n", 1);
 		}
 		elsif ($self->{global_where})
 		{
-			($s_out =~ / WHERE /) ? $s_out .= ' AND ' : $s_out .= ' WHERE ';
 			if (!$self->{is_mysql} || ($self->{global_where} !~ /\s+LIMIT\s+\d/)) {
-				$s_out .= '(' . $self->{global_where} . ')';
+				if ($self->{type} eq 'INSERT')
+				# When using INSERT the WHERE clause needs to be added to the end
+                                {
+			                ($s_out =~ / WHERE /) ? $s_out .= ' AND ' : $s_out .= ' WHERE ';
+				        $s_out .= '(' . $self->{global_where} . ')';
+                                }
+                                if ($self->{type} eq 'COPY')
+                                # When using COPY the WHERE clause needs to be inserted into the SELECT from FDW
+                                {
+                                        # ") TO PROGRAM" needs to become "$self->{where}) TO PROGRAM"
+                                        $s_out =~ s/\) TO PROGRAM/ WHERE ($self->{global_where})) TO PROGRAM/;
+				}
 			} else {
-				$s_out .= $self->{global_where};
+				if ($self->{type} eq 'INSERT')
+				# When using INSERT the WHERE clause needs to be added to the end
+                                {
+			                ($s_out =~ / WHERE /) ? $s_out .= ' AND ' : $s_out .= ' WHERE ';
+					$s_out .= $self->{global_where};
+                                }
+                                if ($self->{type} eq 'COPY')
+                                # When using COPY the WHERE clause needs to be inserted into the SELECT from FDW
+                                {
+                                        # ") TO PROGRAM" needs to become "WHERE $self->{where}) TO PROGRAM"
+                                        $s_out =~ s/\) TO PROGRAM/WHERE $self->{global_where}) TO PROGRAM/;
+                                }
 			}
 			$self->logit("\tApplying WHERE global clause: " . $self->{global_where} . "\n", 1);
 		}
@@ -10463,7 +10515,17 @@ sub _dump_fdw_table
 		if ($s_out !~ s/\bWHERE\s+/WHERE $cond AND /)
 		{
 			if ($s_out !~ s/\b(ORDER\s+BY\s+.*)/WHERE $cond $1/) {
-				$s_out .= " WHERE $cond";
+				if ($self->{type} eq 'INSERT')
+                                # When using INSERT the WHERE clause needs to be added to the end
+                                {
+				        $s_out .= " WHERE $cond";
+                                }
+                                if ($self->{type} eq 'COPY')
+                                # When using COPY the WHERE clause needs to be inserted into the SELECT from FDW
+                                {
+                                        # ") TO PROGRAM" needs to become "WHERE $cond) TO PROGRAM"
+                                        $s_out =~ s/\) TO PROGRAM/WHERE $cond) TO PROGRAM/;
+                                }
 			}
 		}
 		$self->{ora_conn_count} = 0;
@@ -10477,7 +10539,8 @@ sub _dump_fdw_table
 					$dbh->do($search_path) or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
 				}
 				my $sth = $dbh->prepare($s_out) or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
-				$self->logit("Parallelizing on core #$self->{ora_conn_count} with query: $s_out\n", 1);
+				my $s_out_no_password = $s_out =~ s/PGPASSWORD=[^\s]+\s/PGPASSWORD=********** /r;
+				$self->logit("Parallelizing on core #$self->{ora_conn_count} with query: $s_out_no_password\n", 1);
 				$self->logit("Exporting foreign table data for $table, #$self->{ora_conn_count}\n", 1);
 				$sth->execute($self->{ora_conn_count}) or $self->logit("FATAL: " . $dbh->errstr . ", SQL: $s_out\n", 0, 1);
 				$sth->finish();
@@ -10507,7 +10570,8 @@ sub _dump_fdw_table
 		if ($search_path) {
 			$local_dbh->do($search_path) or $self->logit("FATAL: " . $local_dbh->errstr . "\n", 0, 1);
 		}
-		$self->logit("Exporting foreign table data for $table using query: $s_out\n", 1);
+		my $s_out_no_password = $s_out =~ s/PGPASSWORD=[^\s]+\s/PGPASSWORD=********* /r;
+		$self->logit("Exporting foreign table data for $table using query: $s_out_no_password\n", 1);
 		$local_dbh->do($s_out) or $self->logit("ERROR: " . $local_dbh->errstr . ", SQL: $s_out\n", 0);
 	}
 
