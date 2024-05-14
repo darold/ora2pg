@@ -10422,7 +10422,7 @@ sub _dump_fdw_table
 	{
 		# Need to escape the quotation marks in $fdwtb
 		my $fdwtb_escaped = $fdwtb =~ s/"/\"/gr;
-		$s_out = "\\copy (select $fdw_col_list from $self->{fdw_import_schema}.$fdwtb_escaped) TO PROGRAM 'PGPASSWORD=$self->{dbpwd} psql -X -h $self->{dbhost} -p $self->{dbport} -d $self->{dbname} -U $self->{dbuser} -c \\\"\\copy $self->{schema}.$tmptb FROM STDIN BINARY\\\"' BINARY";
+		$s_out = "\\copy (select $fdw_col_list from $self->{fdw_import_schema}.$fdwtb_escaped) TO PROGRAM 'psql -X -h $self->{dbhost} -p $self->{dbport} -d $self->{dbname} -U $self->{dbuser} -c \\\"\\copy $self->{schema}.$tmptb FROM STDIN BINARY\\\"' BINARY";
 	}
 
 	$0 = "ora2pg - exporting table $self->{fdw_import_schema}.$fdwtb";
@@ -10559,7 +10559,7 @@ sub _dump_fdw_table
 					# Need to replace the "?" in $s_out with the relevant integer ("$self->{ora_conn_count}")
 					$s_out =~ s/\?/$self->{ora_conn_count}/;
 					$self->logit("Parallelizing on core #$self->{ora_conn_count} using psql command: $s_out\n", 1);
-			                my $psql_cmd = "PGPASSWORD=$self->{dbpwd} psql -X -h $self->{dbhost} -p $self->{dbport} -d $self->{dbname} -U $self->{dbuser} -c \"$s_out\"";
+			                my $psql_cmd = "psql -X -h $self->{dbhost} -p $self->{dbport} -d $self->{dbname} -U $self->{dbuser} -c \"$s_out\"";
 					$self->logit("Exporting foreign table data for $table, #$self->{ora_conn_count}\n", 1);
 					my $cmd_output = `$psql_cmd` or $self->logit("FATAL: " . $cmd_output . "\n", 0, 1);
 					if (defined $pipe)
@@ -10595,7 +10595,7 @@ sub _dump_fdw_table
 		}
 		if ($self->{type} eq 'COPY')
 		{
-			my $psql_cmd = "PGPASSWORD=$self->{dbpwd} psql -X -h $self->{dbhost} -p $self->{dbport} -d $self->{dbname} -U $self->{dbuser} -c \"$s_out\"";
+			my $psql_cmd = "psql -X -h $self->{dbhost} -p $self->{dbport} -d $self->{dbname} -U $self->{dbuser} -c \"$s_out\"";
 			$self->logit("Exporting foreign table data for $table using psql command: $s_out\n", 1);
 			my $cmd_output = `$psql_cmd` or $self->logit("FATAL: " . $cmd_output . "\n", 0, 1);
 		}
