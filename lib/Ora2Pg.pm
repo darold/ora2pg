@@ -10422,7 +10422,7 @@ sub _dump_fdw_table
 	{
 		# Need to escape the quotation marks in $fdwtb
 		my $fdwtb_escaped = $fdwtb =~ s/"/\"/gr;
-		$s_out = "\\copy (select * from $self->{fdw_import_schema}.$fdwtb_escaped) TO PROGRAM 'PGPASSWORD=$self->{dbpwd} psql -X -h $self->{dbhost} -p $self->{dbport} -d $self->{dbname} -U $self->{dbuser} -c \\\"\\copy $self->{schema}.$tmptb FROM STDIN BINARY\\\"' BINARY";
+		$s_out = "\\copy (select $fdw_col_list from $self->{fdw_import_schema}.$fdwtb_escaped) TO PROGRAM 'PGPASSWORD=$self->{dbpwd} psql -X -h $self->{dbhost} -p $self->{dbport} -d $self->{dbname} -U $self->{dbuser} -c \\\"\\copy $self->{schema}.$tmptb FROM STDIN BINARY\\\"' BINARY";
 	}
 
 	$0 = "ora2pg - exporting table $self->{fdw_import_schema}.$fdwtb";
