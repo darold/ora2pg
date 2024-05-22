@@ -288,6 +288,8 @@ our @GRANTS = (
 	'EXECUTE'
 );
 
+our @ORACLE_FDW_BINARY_COPY_MODES = qw( local server );
+
 $SIG{'CHLD'} = 'DEFAULT';
 
 ####
@@ -1001,6 +1003,9 @@ sub _init
 	# oracle_fdw foreign server
 	$self->{fdw_server} = '';
 
+	# oracle_fdw binary copy mode
+	$self->{oracle_fdw_binary_copy_mode} = '';
+
 	# AS OF SCN related variables
 	$self->{start_scn} = $options{start_scn} || '';
 	$self->{current_oracle_scn} = ();
@@ -1271,6 +1276,16 @@ sub _init
 	# Set a default name for the foreign server
 	if (!$self->{fdw_server} && $self->{type} eq 'FDW') {
 		$self->{fdw_server} = 'orcl';
+	}
+
+	# Validate the oracle_fdw binary copy mode and set a default mode if undefined
+        if ($self->{fdw_server} && $self->{type} eq 'COPY') {
+                $self->{oracle_fdw_binary_copy_mode} ||= 'local';
+                $self->{oracle_fdw_binary_copy_mode} = lc($self->{oracle_fdw_binary_copy_mode});
+		if (!grep(/^$self->{oracle_fdw_binary_copy_mode}$/, @ORACLE_FDW_BINARY_COPY_MODES))
+		{
+			$self->logit("FATAL: Unknown oracle_fdw binary copy mode: $self->{oracle_fdw_binary_copy_mode}. Valid modes: " . join(', ', @ORACLE_FDW_BINARY_COPY_MODES) . "\n",0,1);
+        	}
 	}
 
 	# Set the schema where the foreign tables will be created
@@ -10420,9 +10435,14 @@ sub _dump_fdw_table
 	if ($self->{type} eq 'COPY')
 	# Build COPY statement
 	{
-		# Need to escape the quotation marks in $fdwtb
-		my $fdwtb_escaped = $fdwtb =~ s/"/\"/gr;
-		$s_out = "\\copy (select $fdw_col_list from $self->{fdw_import_schema}.$fdwtb_escaped) TO PROGRAM 'psql -X -h $self->{dbhost} -p $self->{dbport} -d $self->{dbname} -U $self->{dbuser} -c \\\"\\copy $self->{schema}.$tmptb FROM STDIN BINARY\\\"' BINARY";
+		if ($self->{oracle_fdw_binary_copy_mode} eq 'local') {
+			# Need to escape the quotation marks in $fdwtb
+			my $fdwtb_escaped = $fdwtb =~ s/"/\"/gr;
+			$s_out = "\\copy (select $fdw_col_list from $self->{fdw_import_schema}.$fdwtb_escaped) TO PROGRAM 'psql -X -h $self->{dbhost} -p $self->{dbport} -d $self->{dbname} -U $self->{dbuser} -c \\\"\\copy $self->{schema}.$tmptb FROM STDIN BINARY\\\"' BINARY";
+		}
+		if ($self->{oracle_fdw_binary_copy_mode} eq 'server') {
+			$s_out = "COPY (select $fdw_col_list from $self->{fdw_import_schema}.$fdwtb) TO PROGRAM 'PGPASSWORD=$self->{dbpwd} psql -h $self->{dbhost} -p $self->{dbport} -d $self->{dbname} -U $self->{dbuser} -c \"\\copy $self->{schema}.$tmptb FROM STDIN BINARY\"' BINARY";
+		}
 	}
 
 	$0 = "ora2pg - exporting table $self->{fdw_import_schema}.$fdwtb";
@@ -10554,7 +10574,7 @@ sub _dump_fdw_table
 					}
 					$dbh->disconnect() if ($dbh);
 				}
-				if ($self->{type} eq 'COPY')
+				if ($self->{type} eq 'COPY' and $self->{oracle_fdw_binary_copy_mode} eq 'local')
 				{
 					# Need to replace the "?" in $s_out with the relevant integer ("$self->{ora_conn_count}")
 					$s_out =~ s/\?/$self->{ora_conn_count}/;
@@ -10567,6 +10587,27 @@ sub _dump_fdw_table
 						my $t_time = time();
 						$pipe->print("TABLE EXPORT ENDED: $table, end: $t_time, rows $self->{tables}{$table}{table_info}{num_rows}\n");
 					}
+				}
+				if ($self->{type} eq 'COPY' and $self->{oracle_fdw_binary_copy_mode} eq 'server')
+				{
+                                	$self->logit("Creating new connection to extract data in parallel...\n", 1);
+                                	my $dbh = $local_dbh->clone();
+                                	my $search_path = $self->set_search_path();
+                                	if ($search_path) {
+                                        	$dbh->do($search_path) or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
+                                	}
+                                	my $sth = $dbh->prepare($s_out) or $self->logit("FATAL: " . $dbh->errstr . "\n", 0, 1);
+                                	my $s_out_no_password = $s_out =~ s/PGPASSWORD=[^\s]+\s/PGPASSWORD=********** /r;
+                                	$self->logit("Parallelizing on core #$self->{ora_conn_count} with query: $s_out_no_password\n", 1);
+                                	$self->logit("Exporting foreign table data for $table, #$self->{ora_conn_count}\n", 1);
+                                	$sth->execute($self->{ora_conn_count}) or $self->logit("FATAL: " . $dbh->errstr . ", SQL: $s_out\n", 0, 1);
+                                	$sth->finish();
+					if (defined $pipe)
+					{
+						my $t_time = time();
+						$pipe->print("TABLE EXPORT ENDED: $table, end: $t_time, rows $self->{tables}{$table}{table_info}{num_rows}\n");
+					}
+					$dbh->disconnect() if ($dbh);
 				}
 			};
 			$self->{ora_conn_count}++;
@@ -10593,11 +10634,17 @@ sub _dump_fdw_table
 			$self->logit("Exporting foreign table data for $table using query: $s_out\n", 1);
 			$local_dbh->do($s_out) or $self->logit("ERROR: " . $local_dbh->errstr . ", SQL: $s_out\n", 0);
 		}
-		if ($self->{type} eq 'COPY')
+		if ($self->{type} eq 'COPY' and $self->{oracle_fdw_binary_copy_mode} eq 'local')
 		{
 			my $psql_cmd = "psql -X -h $self->{dbhost} -p $self->{dbport} -d $self->{dbname} -U $self->{dbuser} -c \"$s_out\"";
 			$self->logit("Exporting foreign table data for $table using psql command: $s_out\n", 1);
 			my $cmd_output = `$psql_cmd` or $self->logit("FATAL: " . $cmd_output . "\n", 0, 1);
+		}
+		if ($self->{type} eq 'COPY' and $self->{oracle_fdw_binary_copy_mode} eq 'server')
+		{
+			my $s_out_no_password = $s_out =~ s/PGPASSWORD=[^\s]+\s/PGPASSWORD=********* /r;
+			$self->logit("Exporting foreign table data for $table using query: $s_out_no_password\n", 1);
+			$local_dbh->do($s_out) or $self->logit("ERROR: " . $local_dbh->errstr . ", SQL: $s_out\n", 0);
 		}
 	}
 

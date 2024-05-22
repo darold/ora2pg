@@ -1029,6 +1029,19 @@ CONFIGURATION
         the prefetch to be set. See oracle_fdw documentation for the current
         default.
 
+    ORACLE_FDW_BINARY_COPY_MODE
+        When using Ora2Pg COPY with oracle_fdw it is possible to use two
+        different modes: 1) "local", which uses psql on the host running
+        Ora2Pg for the "TO" binary stream; 2) "server", which uses
+        PostgreSQL server-side COPY for the "TO" binary stream. Both modes
+        use psql for the "FROM STDIN BINARY". However, "local" runs the psql
+        "FROM STDIN BINARY" on host Ora2Pg is run from, whereas "server"
+        runs the psql "FROM STDIN BINARY" on the PostgreSQL server. "local"
+        mode should work on any PostgreSQL-based system, including managed
+        offerings, which are not expected to support use of "server" mode
+        due to permissions. The default is "local" as this is compatible
+        with more configurations.
+
     DROP_FOREIGN_SCHEMA
         By default Ora2Pg drops the temporary schema ora2pg_fdw_import used
         to import the Oracle foreign schema before each new import. If you
