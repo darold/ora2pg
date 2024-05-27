@@ -10435,13 +10435,14 @@ sub _dump_fdw_table
 	if ($self->{type} eq 'COPY')
 	# Build COPY statement
 	{
+		$ENV{PGPASSWORD} = $self->{dbpwd};
 		if ($self->{oracle_fdw_binary_copy_mode} eq 'local') {
 			# Need to escape the quotation marks in $fdwtb
 			my $fdwtb_escaped = $fdwtb =~ s/"/\"/gr;
 			$s_out = "\\copy (select $fdw_col_list from $self->{fdw_import_schema}.$fdwtb_escaped) TO PROGRAM 'psql -X -h $self->{dbhost} -p $self->{dbport} -d $self->{dbname} -U $self->{dbuser} -c \\\"\\copy $self->{schema}.$tmptb FROM STDIN BINARY\\\"' BINARY";
 		}
 		if ($self->{oracle_fdw_binary_copy_mode} eq 'server') {
-			$s_out = "COPY (select $fdw_col_list from $self->{fdw_import_schema}.$fdwtb) TO PROGRAM 'PGPASSWORD=$self->{dbpwd} psql -h $self->{dbhost} -p $self->{dbport} -d $self->{dbname} -U $self->{dbuser} -c \"\\copy $self->{schema}.$tmptb FROM STDIN BINARY\"' BINARY";
+			$s_out = "COPY (select $fdw_col_list from $self->{fdw_import_schema}.$fdwtb) TO PROGRAM 'psql -h $self->{dbhost} -p $self->{dbport} -d $self->{dbname} -U $self->{dbuser} -c \"\\copy $self->{schema}.$tmptb FROM STDIN BINARY\"' BINARY";
 		}
 	}
 
@@ -10579,6 +10580,7 @@ sub _dump_fdw_table
 					# Need to replace the "?" in $s_out with the relevant integer ("$self->{ora_conn_count}")
 					$s_out =~ s/\?/$self->{ora_conn_count}/;
 					$self->logit("Parallelizing on core #$self->{ora_conn_count} using psql command: $s_out\n", 1);
+					$ENV{PGPASSWORD} = $self->{dbpwd};
 			                my $psql_cmd = "psql -X -h $self->{dbhost} -p $self->{dbport} -d $self->{dbname} -U $self->{dbuser} -c \"$s_out\"";
 					$self->logit("Exporting foreign table data for $table, #$self->{ora_conn_count}\n", 1);
 					my $cmd_output = `$psql_cmd` or $self->logit("FATAL: " . $cmd_output . "\n", 0, 1);
@@ -10636,14 +10638,14 @@ sub _dump_fdw_table
 		}
 		if ($self->{type} eq 'COPY' and $self->{oracle_fdw_binary_copy_mode} eq 'local')
 		{
+			$ENV{PGPASSWORD} = $self->{dbpwd};
 			my $psql_cmd = "psql -X -h $self->{dbhost} -p $self->{dbport} -d $self->{dbname} -U $self->{dbuser} -c \"$s_out\"";
 			$self->logit("Exporting foreign table data for $table using psql command: $s_out\n", 1);
 			my $cmd_output = `$psql_cmd` or $self->logit("FATAL: " . $cmd_output . "\n", 0, 1);
 		}
 		if ($self->{type} eq 'COPY' and $self->{oracle_fdw_binary_copy_mode} eq 'server')
 		{
-			my $s_out_no_password = $s_out =~ s/PGPASSWORD=[^\s]+\s/PGPASSWORD=********* /r;
-			$self->logit("Exporting foreign table data for $table using query: $s_out_no_password\n", 1);
+			$self->logit("Exporting foreign table data for $table using query: $s_out\n", 1);
 			$local_dbh->do($s_out) or $self->logit("ERROR: " . $local_dbh->errstr . ", SQL: $s_out\n", 0);
 		}
 	}
