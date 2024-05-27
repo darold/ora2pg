@@ -413,7 +413,7 @@ sub _table_info
 	# Get information about all tables
 	####
 	$sql = "SELECT A.OWNER,A.TABLE_NAME,NVL(num_rows,1) NUMBER_ROWS,A.TABLESPACE_NAME,A.NESTED,A.LOGGING,A.PARTITIONED,A.PCT_FREE,A.TEMPORARY,A.DURATION FROM $self->{prefix}_TABLES A WHERE $owner";
-	$sql .= " AND A.TEMPORARY='N'" if (!$self->{export_gtt});
+	$sql .= " AND A.TEMPORARY='N'" if (!$self->{export_gtt} or $self->{type} =~ /^(COPY|INSERT)$/);
 	$sql .= " AND (A.NESTED != 'YES' OR A.LOGGING != 'YES') AND A.SECONDARY = 'N'";
 	if ($self->{db_version} !~ /Release [89]/) {
 		$sql .= " AND (A.DROPPED IS NULL OR A.DROPPED = 'NO')";
@@ -434,6 +434,7 @@ sub _table_info
 	while (my $row = $sth->fetch)
 	{
 		next if (!exists $self->{all_objects}{"$row->[0].$row->[1]"} || $self->{all_objects}{"$row->[0].$row->[1]"} ne 'TABLE');
+
 		if (!$self->{schema} && $self->{export_schema}) {
 			$row->[1] = "$row->[0].$row->[1]";
 		}
@@ -853,7 +854,7 @@ sub _get_indexes
 	} else {
 		$condition .= " AND A.INDEX_OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "') ";
 	}
-	if (!$self->{export_gtt}) {
+	if (!$self->{export_gtt} or $self->{type} =~ /^(COPY|INSERT)$/) {
 		$condition .= " AND B.TEMPORARY = 'N' ";
 	}
 	if (!$table) {
@@ -2622,7 +2623,7 @@ sub _get_objects
 	my $self = shift;
 
 	my $temporary = "TEMPORARY='N'";
-	if ($self->{export_gtt}) {
+	if ($self->{export_gtt} or $self->{type} =~ /^(COPY|INSERT)$/) {
 		$temporary = "(TEMPORARY='N' OR OBJECT_TYPE='TABLE')";
 	}
 	my $oraver = '';

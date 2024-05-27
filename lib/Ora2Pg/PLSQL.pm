@@ -2190,6 +2190,7 @@ sub replace_sys_context
 	$str =~ s/SYS_CONTEXT\s*\(\s*'USERENV'\s*,\s*'(DB_NAME|DB_UNIQUE_NAME)'\s*\)/current_database/is;
 	$str =~ s/SYS_CONTEXT\s*\(\s*'USERENV'\s*,\s*'(HOST|IP_ADDRESS)'\s*\)/inet_client_addr()/is;
 	$str =~ s/SYS_CONTEXT\s*\(\s*'USERENV'\s*,\s*'SERVER_HOST'\s*\)/inet_server_addr()/is;
+	$str =~ s/SYS_CONTEXT\s*\(\s*'USERENV'\s*,\s*'MODULE'\s*\)/current_setting('application_name')/is;
 
 	return $str;
 }
