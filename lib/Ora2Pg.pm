@@ -4320,7 +4320,13 @@ sub _export_table_data
 		{
 			my $part_name = $self->{partitions}{$table}{$pos}{name};
 			my $tbpart_name = $part_name;
-			$tbpart_name = $table . '_part' . $pos if ($self->{rename_partition});
+			my $tmptb = $table;
+			if (exists $self->{replaced_tables}{"\L$table\E"} && $self->{replaced_tables}{"\L$table\E"})
+			{
+				$self->logit("\tReplacing table $table as " . $self->{replaced_tables}{lc($table)} . "...\n", 1);
+				$tmptb = $self->{replaced_tables}{lc($table)};
+			}
+			$tbpart_name = $tmptb . '_part' . $pos if ($self->{rename_partition});
 			next if ($self->{allow_partition} && !grep($_ =~ /^$tbpart_name$/i, @{$self->{allow_partition}}));
 
 			if (exists $self->{subpartitions}{$table}{$part_name})
@@ -4331,7 +4337,7 @@ sub _export_table_data
 					next if ($self->{allow_partition} && !grep($_ =~ /^$subpart$/i, @{$self->{allow_partition}}));
 					my $sub_tb_name = $subpart;
 					$sub_tb_name =~ s/^[^\.]+\.//; # remove schema part if any
-					$sub_tb_name = $table . '_part' . $pos . '_subpart' . $p if ($self->{rename_partition});
+					$sub_tb_name = $tmptb . '_part' . $pos . '_subpart' . $p if ($self->{rename_partition});
 					if ($self->{file_per_table} && !$self->{pg_dsn}) {
 						# Do not dump data again if the file already exists
 						next if ($self->file_exists("$dirprefix${sub_tb_name}_$self->{output}"));
@@ -4397,17 +4403,25 @@ sub _export_table_data
 		{
 			if (!$self->{allow_partition} || grep($_ =~ /^$self->{partitions_default}{$table}{name}$/i, @{$self->{allow_partition}}))
 			{
+				my $tbpart_name = $self->{partitions_default}{$table}{name};
+				my $tmptb = $table;
+				if (exists $self->{replaced_tables}{"\L$table\E"} && $self->{replaced_tables}{"\L$table\E"})
+				{
+					$self->logit("\tReplacing table $table as " . $self->{replaced_tables}{lc($table)} . "...\n", 1);
+					$tmptb = $self->{replaced_tables}{lc($table)};
+				}
+				$tbpart_name = $tmptb . '_part_default' if ($self->{rename_partition});
 				if ($self->{file_per_table} && !$self->{pg_dsn})
 				{
 					# Do not dump data again if the file already exists
 					if (!$self->file_exists("$dirprefix$self->{partitions_default}{$table}{name}_$self->{output}"))
 					{
-						$total_record = $self->_dump_table($dirprefix, $sql_header, $table, $self->{partitions_default}{$table}{name}, 0, $tbpart_name, $sub_tb_name);
+						$total_record = $self->_dump_table($dirprefix, $sql_header, $table, $self->{partitions_default}{$table}{name}, 0, $tbpart_name);
 					}
 				}
 				else
 				{
-					$total_record = $self->_dump_table($dirprefix, $sql_header, $table, $self->{partitions_default}{$table}{name}, 0, $tbpart_name, $sub_tb_name);
+					$total_record = $self->_dump_table($dirprefix, $sql_header, $table, $self->{partitions_default}{$table}{name}, 0, $tbpart_name);
 				}
 				# Rename temporary filename into final name
 				$self->rename_dump_partfile($dirprefix, $self->{partitions_default}{$table}{name}, $table);
@@ -7218,12 +7232,14 @@ BEGIN
 			my $create_table_tmp = '';
 			my $create_table_index_tmp = '';
 			my $tb_name = '';
+			if (exists $self->{replaced_tables}{"\L$table\E"} && $self->{replaced_tables}{"\L$table\E"})
+			{
+				$self->logit("\tReplacing table $table as " . $self->{replaced_tables}{lc($table)} . "...\n", 1);
+				$tb_name = $self->{replaced_tables}{lc($table)};
+			}
 			if ($self->{rename_partition}) {
-				$tb_name = $table . '_part' . $pos;
+				$tb_name = ($tb_name||$table) . '_part' . $pos;
 			} else {
-				if ($tb_name eq 'default') {
-					$tb_name = $table . '_default';
-				}
 				if ($self->{export_schema} && !$self->{schema} && ($table =~ /^([^\.]+)\./)) {
 					$tb_name =  $1 . '.' . $part;
 				} else {
@@ -7827,8 +7843,14 @@ LANGUAGE plpgsql;
 				if (exists $self->{partitions_default}{$table} && scalar keys %{$self->{partitions_default}{$table}} > 0)
 				{
 					my $tb_name = '';
+
+					if (exists $self->{replaced_tables}{"\L$table\E"} && $self->{replaced_tables}{"\L$table\E"})
+					{
+						$self->logit("\tReplacing table $table as " . $self->{replaced_tables}{lc($table)} . "...\n", 1);
+						$tb_name = $self->{replaced_tables}{lc($table)};
+					}
 					if ($self->{rename_partition}) {
-						$tb_name = $table . '_part_default';
+						$tb_name = ($tb_name||$table) . '_part_default';
 					}
 					else
 					{
@@ -10043,6 +10065,13 @@ sub _dump_table
 
 	# Rename table and double-quote it if required
 	my $tmptb = '';
+
+	if (exists $self->{replaced_tables}{"\L$table\E"} && $self->{replaced_tables}{"\L$table\E"})
+	{
+		$self->logit("\tReplacing table $table as " . $self->{replaced_tables}{lc($table)} . "...\n", 1);
+		$tmptb = $self->{replaced_tables}{lc($table)};
+	}
+
 
 	# Prefix partition name with tablename, if pg_supports_partition is enabled
 	# direct import to partition is not allowed so import to main table.

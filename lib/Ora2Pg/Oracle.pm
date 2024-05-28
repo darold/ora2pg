@@ -1329,7 +1329,7 @@ sub _get_triggers
 {
 	my($self) = @_;
 
-	# Retrieve all indexes 
+	# Retrieve all triggers
 	my $str = "SELECT T.TRIGGER_NAME, T.TRIGGER_TYPE, T.TRIGGERING_EVENT, T.TABLE_NAME, T.TRIGGER_BODY, T.WHEN_CLAUSE, T.DESCRIPTION, T.ACTION_TYPE, T.OWNER, T.STATUS FROM $self->{prefix}_TRIGGERS T JOIN $self->{prefix}_OBJECTS O ON (T.TRIGGER_NAME = O.OBJECT_NAME AND T.OWNER = O.OWNER) WHERE O.OBJECT_TYPE = 'TRIGGER'";
 	if (!$self->{export_invalid}) {
 		$str .= " AND O.STATUS='VALID'";
