@@ -1008,6 +1008,7 @@ sub _init
 
 	# AS OF SCN related variables
 	$self->{start_scn} = $options{start_scn} || '';
+	$self->{no_start_scn} = $options{no_start_scn} || '';
 	$self->{current_oracle_scn} = ();
 	$self->{cdc_ready} = $options{cdc_ready} || '';
 
@@ -4392,7 +4393,7 @@ sub _export_table_data
 				}
 
 				$self->logit("Dumping partition table $table ($part_name)...\n", 1);
-				$total_record = $self->_dump_table($dirprefix, $sql_header, $table, $part_name, 0, $tbpart_name, $sub_tb_name);
+				$total_record = $self->_dump_table($dirprefix, $sql_header, $table, $part_name, 0, $tbpart_name);
 				# Rename temporary filename into final name
 				$self->rename_dump_partfile($dirprefix, $part_name, $table);
 			}
@@ -9216,6 +9217,18 @@ sub _get_sql_statements
 				}
 			}
 		}
+
+		# Get current SCN to get data at a fix point in time
+		if (!$self->{no_start_scn} && !$self->{start_scn} && !$self->{is_mysql} && !$self->{is_mssql})
+		{
+			my $sth = $self->{dbh}->prepare("SELECT CURRENT_SCN FROM v\$database") or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+			$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
+			my @row = $sth->fetchrow();
+			$self->{start_scn} = $row[0];
+			$sth->finish;
+			$self->logit("Automatic storing of current SCN for table export: $self->{start_scn}\n", 1);
+		}
+
 		# Remove remote table from export, they must be exported using FDW export type
 		foreach my $table (sort keys %{$self->{tables}})
 		{

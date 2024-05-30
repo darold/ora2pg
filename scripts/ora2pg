@@ -96,6 +96,7 @@ my $CDC_READY = '';
 my $CDC_FILE = 'TABLES_SCN.log';
 my $DROP_IF_EXISTS = 0;
 my $ORACLE_FDW_PREFETCH;
+my $NO_START_SCN = 0;
 
 my @SCHEMA_ARRAY  = qw( SEQUENCE SEQUENCE_VALUES TABLE PACKAGE VIEW GRANT TRIGGER FUNCTION PROCEDURE TABLESPACE PARTITION TYPE MVIEW DBLINK SYNONYM DIRECTORY );
 my @EXTERNAL_ARRAY  = qw( KETTLE FDW );
@@ -178,6 +179,7 @@ GetOptions (
 	'drop_if_exists!' => \$DROP_IF_EXISTS,
 	'delete=s' => \@DELETE_CLAUSE,
 	'oracle_fdw_prefetch=i' => \$ORACLE_FDW_PREFETCH,
+	'no_start_scn!' => \$NO_START_SCN,
 );
 
 # Check command line parameters
@@ -401,6 +403,7 @@ my $schema = new Ora2Pg (
 	drop_if_exists => $DROP_IF_EXISTS,
 	delete => join(' ', @DELETE_CLAUSE),
         oracle_fdw_prefetch => $ORACLE_FDW_PREFETCH,
+	no_start_scn => $NO_START_SCN,
 );
 
 # Look at configuration file if an input file is defined
@@ -559,6 +562,8 @@ Usage: ora2pg [-dhpqv --estimate_cost --dump_as_html] [--option value]
    --oracle_fdw_prefetch: Set the oracle_fdw prefetch value. Larger values
                         generally result in faster data transfer at the cost
                         of greater memory utilisation at the destination.
+    --no_start_scn    : Force Ora2Pg to not use a SCN to export data. By default
+    			the current SCN is used to export data from all tables.
 
 See full documentation at https://ora2pg.darold.net/ for more help or see
 manpage with 'man ora2pg'.
