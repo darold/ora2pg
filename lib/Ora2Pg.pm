@@ -8727,6 +8727,13 @@ sub export_table
 
 		$sql_output .= $serial_sequence;
 
+		# clean up partition list
+		foreach my $t (keys %{$self->{partitions_list}})
+		{
+			my $nb = keys %{$self->{partitions_list}{$t}};
+			delete $self->{partitions_list}{$t} if ($nb == 0);
+		}
+
 		# Add comments on table
 		if (!$self->{disable_comment} && $self->{tables}{$table}{table_info}{comment})
 		{

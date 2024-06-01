@@ -2263,7 +2263,7 @@ sub _get_dblink
 
 =head2 _get_partitions
 
-This function implements an MySQL-native partitions information.
+This function implements an Oracle-native partitions information.
 Return two hash ref with partition details and partition default.
 =cut
 
@@ -2475,7 +2475,8 @@ $condition
 	}
 	$str .= $self->limit_to_objects('TABLE|PARTITION','A.TABLE_NAME|A.PARTITION_NAME');
 
-	if ($self->{prefix} ne 'USER') {
+	if ($self->{prefix} ne 'USER')
+	{
 		if ($self->{schema}) {
 			$str .= "\tAND A.TABLE_OWNER ='$self->{schema}'\n";
 		} else {
