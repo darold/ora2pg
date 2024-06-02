@@ -1074,7 +1074,7 @@ sub plsql_to_plpgsql
 		}
 		my %notnull = ();
 		while ($str =~ s/([a-z0-9_\."]+)\s*IS NOT NULL/%ORA2PGNOTNULL$i%/is) {
-			$notnull{$i} = "($1 AND $1::text <> '')";
+			$notnull{$i} = "($1 IS NOT NULL AND $1::text <> '')";
 			$i++;
 		}
 		# Form: fct(expression) IS NULL
