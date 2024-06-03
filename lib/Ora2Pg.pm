@@ -9310,6 +9310,19 @@ sub _get_sql_statements
 			my $load_file = "\n";
 			foreach my $table (@ordered_tables)
 			{
+				# Rename table and double-quote it if required
+				my $tmptb = $self->get_replaced_tbname($table);
+
+				# Check that the destination table exists
+				if ($self->{pg_dsn} && !$self->{on_error_stop})
+				{
+					my $rv = $self->{dbhdest}->do("SELECT relname FROM pg_class WHERE relname = '$tmptb'");
+					if ($rv eq '0E0')
+					{
+						$self->logit("WARNING: destination table $table doesn't exists, aborting data export for this table.\n", 0);
+						next;
+					}
+				}
 				# Do not process nested table
 				if (!$self->{is_mysql} && exists $self->{tables}{$table}{table_info}{nested} && $self->{tables}{$table}{table_info}{nested} ne 'NO')
 				{
@@ -9327,8 +9340,6 @@ sub _get_sql_statements
 					$self->logit("Removing incomplete export file ${dirprefix}tmp_${table}_$self->{output}\n", 1);
 					unlink("${dirprefix}tmp_${table}_$self->{output}");
 				}
-				# Rename table and double-quote it if required
-				my $tmptb = $self->get_replaced_tbname($table);
 
 				#### Set SQL commands that must be executed before data loading
 
@@ -9573,6 +9584,20 @@ sub _get_sql_statements
 		$self->{global_start_time} = time();
 		foreach my $table (@ordered_tables)
 		{
+			# Rename table and double-quote it if required
+			my $tmptb = $self->get_replaced_tbname($table);
+
+			# Check that the destination table exists
+			if ($self->{pg_dsn} && !$self->{on_error_stop})
+			{
+				my $rv = $self->{dbhdest}->do("SELECT relname FROM pg_class WHERE relname = '$tmptb'");
+				if ($rv eq '0E0')
+				{
+					$self->logit("WARNING: destination table $table doesn't exists, aborting data export for this table.\n", 0);
+					next;
+				}
+			}
+
 			# Do not process nested table
 			if (!$self->{is_mysql} && exists $self->{tables}{$table}{table_info}{nested} && $self->{tables}{$table}{table_info}{nested} ne 'NO')
 			{
@@ -9650,6 +9675,7 @@ sub _get_sql_statements
 				}
 			}
 		}
+
 		if (!$self->{quiet} && !$self->{debug})
 		{
 			if ( ($self->{jobs} <= 1) && ($self->{oracle_copies} <= 1) && ($self->{parallel_tables} <= 1) ) {
@@ -9726,6 +9752,20 @@ sub _get_sql_statements
 			my (@datadiff_tbl, @datadiff_del, @datadiff_upd, @datadiff_ins);
 			foreach my $table (@ordered_tables)
 			{
+				# Rename table and double-quote it if required
+				my $tmptb = $self->get_replaced_tbname($table);
+
+				# Check that the destination table exists
+				if ($self->{pg_dsn} && !$self->{on_error_stop})
+				{
+					my $rv = $self->{dbhdest}->do("SELECT relname FROM pg_class WHERE relname = '$tmptb'");
+					if ($rv eq '0E0')
+					{
+						$self->logit("WARNING: destination table $table doesn't exists, aborting data export for this table.\n", 0);
+						next;
+					}
+				}
+
 				# Do not process nested table
 				if (!$self->{is_mysql} && exists $self->{tables}{$table}{table_info}{nested} && $self->{tables}{$table}{table_info}{nested} ne 'NO')
 				{
@@ -9733,9 +9773,6 @@ sub _get_sql_statements
 					next;
 				}
 
-				# Rename table and double-quote it if required
-				my $tmptb = $self->get_replaced_tbname($table);
-				
 				# DATADIFF reduction (annihilate identical deletions and insertions) and execution
 				if ($self->{datadiff})
 				{
@@ -9938,8 +9975,6 @@ sub _get_sql_statements
 			}
 			close(OUT);
 		}
-
-		return;
 	}
 }
 
