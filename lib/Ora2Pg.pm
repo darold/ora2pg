@@ -11963,7 +11963,7 @@ sub _howto_get_data
 			}
 			# Apply some default transformation following the data type
 			elsif ( ( $src_type->[$k] =~ /^char/i) && ($type->[$k] =~ /(varchar|text)/i)) {
-				$str .= "trim($self->{trim_type} '$self->{trim_char}' FROM $alias.$name->[$k]) AS $alias.$name->[$k],";
+				$str .= "trim($self->{trim_type} '$self->{trim_char}' FROM $alias.$name->[$k]) AS $name->[$k],";
 			} elsif ($self->{is_mysql} && $src_type->[$k] =~ /bit/i) {
 				$str .= "BIN($alias.$name->[$k]),";
 			}
