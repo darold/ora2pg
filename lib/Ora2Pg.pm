@@ -21816,7 +21816,7 @@ SELECT c.relname,n.nspname,i.indkey
 FROM pg_catalog.pg_class c
      LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
      LEFT JOIN pg_catalog.pg_index i ON i.indrelid = c.oid
-WHERE c.relkind IN ('r','p') AND regexp_match(i.indkey::text, '(^0 | 0 | 0\$)') IS NULL
+WHERE c.relkind IN ('r','p') AND regexp_match(i.indkey::text, '(^0 | 0 | 0\$|^0\$)') IS NULL
     $schema_clause
     $unique_clause
 };
