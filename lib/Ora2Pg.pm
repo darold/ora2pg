@@ -22120,7 +22120,7 @@ ORDER BY attnum};
 				}
 				if ($prow[$i] == 1) {
 					$prow[$i] = 't';
-				} else {
+				} elsif (defined $prow[$i]) {
 					$prow[$i] = 'f';
 				}
 			}
