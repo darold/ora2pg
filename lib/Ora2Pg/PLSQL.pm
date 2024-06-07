@@ -2866,6 +2866,10 @@ sub mysql_to_plpgsql
 	# Change mysql variable affectation 
 	$str =~ s/\bSET\s+([^\s:=]+\s*)=([^;\n]+;)/$1:=$2/igs;
 
+	# replace simple form of json_extract
+	$str =~ s/json_extract\(([^,]+),(?:.*)?('[^\\]+)\\/json_extract_path($1, $2/igs;
+	$str =~ s/json_extract\(/json_extract_path(/igs;
+
 	# remove declared handler
 	$str =~ s/[^\s]+\s+HANDLER\s+FOR\s+[^;]+;//igs;
 
