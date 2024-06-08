@@ -943,6 +943,9 @@ sub _init
 	# Used to precise if we need to rename the partitions
 	$self->{rename_partition} = 0;
 
+	# Do not use parellel export for partition, backward compatibility with <= 24.3
+	$self->{disable_parallel_partition} = 0;
+
 	# Use to preserve the data export type with geometry objects
 	$self->{local_type} = '';
 
@@ -4200,19 +4203,25 @@ sub get_tbname_with_suffix
 
 sub _export_table_data
 {
-	my ($self, $table, $dirprefix, $sql_header) = @_;
+	my ($self, $table, $part_name, $subpart, $pos, $p, $dirprefix, $sql_header) = @_;
 
-	$self->logit("Exporting data of table $table...\n", 1);
+	if ($subpart) {
+		$self->logit("(pid: $$) Exporting data of subpartition $subpart of partition $part_name from table $table...\n", 1);
+	} elsif ($part_name) {
+		$self->logit("(pid: $$) Exporting data of partition $part_name from table $table...\n", 1);
+	} else {
+		$self->logit("(pid: $$) Exporting data from table $table...\n", 1);
+	}
 
 	# Rename table and double-quote it if required
 	my $tmptb = $self->get_replaced_tbname($table);
 
 	# register the column list and data type in dedicated structs
-	foreach my $k (sort {$self->{tables}{$t}{column_info}{$a}[11] <=> $self->{tables}{$t}{column_info}{$b}[11]} keys %{$self->{tables}{$t}{column_info}})
+	foreach my $k (sort {$self->{tables}{$table}{column_info}{$a}[11] <=> $self->{tables}{$table}{column_info}{$b}[11]} keys %{$self->{tables}{$table}{column_info}})
 	{
-		push(@{$self->{data_cols}{$t}}, $k);
-		push(@{$self->{tables}{$t}{field_name}}, $self->{tables}{$t}{column_info}{$k}[0]);
-		push(@{$self->{tables}{$t}{field_type}}, $self->{tables}{$t}{column_info}{$k}[1]);
+		push(@{$self->{data_cols}{$table}}, $k);
+		push(@{$self->{tables}{$table}{field_name}}, $self->{tables}{$table}{column_info}{$k}[0]);
+		push(@{$self->{tables}{$table}{field_type}}, $self->{tables}{$table}{column_info}{$k}[1]);
 	}
 
 	# Open output file
@@ -4221,7 +4230,8 @@ sub _export_table_data
 	my $total_record = 0;
 
 	# When copy freeze is required, force a transaction with a truncate
-	if ($self->{copy_freeze} && !$self->{pg_dsn}) {
+	if ($self->{copy_freeze} && !$self->{pg_dsn})
+	{
 		$self->{truncate_table} = 1;
 		if ($self->{file_per_table}) {
 			$self->data_dump("BEGIN;\n",  $table);
@@ -4276,12 +4286,49 @@ sub _export_table_data
 		}
 	}
 
+	# Set parent table name to compose partition name
+	my $ptmptb = $table;
+	if (exists $self->{replaced_tables}{"\L$table\E"} && $self->{replaced_tables}{"\L$table\E"})
+	{
+		$self->logit("\tReplacing table $table as " . $self->{replaced_tables}{lc($table)} . "...\n", 1);
+		$ptmptb = $self->{replaced_tables}{lc($table)};
+	}
+
+	my $tbpart_name = '';
+	if ($part_name)
+	{
+		$tbpart_name = $part_name;
+		$tbpart_name = $ptmptb . '_part' . $pos if ($self->{rename_partition});
+		if ($self->{rename_partition} && $part_name eq 'default') {
+			$tbpart_name = $table . '_part_default';
+		}
+	}
+
+	my $sub_tb_name = '';
+	if ($subpart)
+	{
+		$sub_tb_name = $subpart;
+		$sub_tb_name =~ s/^[^\.]+\.//; # remove schema part if any
+		$sub_tb_name = $ptmptb . '_part' . $pos . '_subpart' . $p if ($self->{rename_partition});
+		if ($self->{rename_partition} && $subpart eq 'default') {
+			$sub_tb_name = $tbpart_name . '_subpart_default';
+		}
+	}
+
 	# Set search path
 	my $search_path = $self->set_search_path();
 
 	# Add table truncate order if there's no global DELETE clause or one specific to the current table
 	if ($self->{truncate_table} && !$self->{global_delete} && !exists $self->{delete}{"\L$table\E"})
 	{
+		my $truncate_order = "TRUNCATE TABLE ";
+		if ($subpart) {
+			$truncate_order .= $sub_tb_name;
+		} elsif ($part_name) {
+			$truncate_order .= $tbpart_name;
+		} else {
+			$truncate_order .= $table;
+		}
 		if ($self->{pg_dsn} && !$self->{oracle_speed})
 		{
 			if ($search_path)
@@ -4289,17 +4336,17 @@ sub _export_table_data
 				$self->logit("Setting search_path using: $search_path...\n", 1);
 				$local_dbh->do($search_path) or $self->logit("FATAL: " . $local_dbh->errstr . "\n", 0, 1);
 			}
-			$self->logit("Truncating table $table...\n", 1);
-			my $s = $local_dbh->do("TRUNCATE TABLE $tmptb;") or $self->logit("FATAL: " . $local_dbh->errstr . "\n", 0, 1);
+			$self->logit("$truncate_order...\n", 1);
+			my $s = $local_dbh->do($truncate_order) or $self->logit("FATAL: " . $local_dbh->errstr . "\n", 0, 1);
 		}
 		else
 		{
 			my $head = "SET client_encoding TO '\U$self->{client_encoding}\E';\n";
 			$head .= "SET synchronous_commit TO off;\n" if (!$self->{synchronous_commit});
 			if ($self->{file_per_table}) {
-				$self->data_dump("$head$search_path\nTRUNCATE TABLE $tmptb;\n",  $table);
+				$self->data_dump("$head$search_path\n$truncate_order;\n",  $table);
 			} else {
-				$self->dump("\n$head$search_path\nTRUNCATE TABLE $tmptb;\n");
+				$self->dump("\n$head$search_path\n$truncate_order;\n");
 			}
 		}
 	}
@@ -4314,8 +4361,49 @@ sub _export_table_data
 		}
 	}
 
-	# With partitioned table, load data direct from table partition
-	if (exists $self->{partitions}{$table})
+	# With partitioned table, load data direct from table partition or subpartition
+	if ($subpart)
+	{
+		if ($self->{file_per_table} && !$self->{pg_dsn})
+		{
+			# Do not dump data again if the file already exists
+			if ($self->file_exists("$dirprefix${sub_tb_name}_$self->{output}"))
+			{
+				# close the connection with parallel table export
+				if (($self->{parallel_tables} > 1) && $self->{pg_dsn}) {
+					$local_dbh->disconnect() if (defined $local_dbh);
+				}
+				return $total_record;
+			}
+		}
+
+		$self->logit("Dumping sub partition table $table -> $part_name -> $subpart...\n", 1);
+		$total_record = $self->_dump_table($dirprefix, $sql_header, $table, $subpart, 1, $tbpart_name, $sub_tb_name);
+		# Rename temporary filename into final name
+		$self->rename_dump_partfile($dirprefix, $subpart, $table);
+
+	}
+	elsif ($part_name)
+	{
+		if ($self->{file_per_table} && !$self->{pg_dsn})
+		{
+			# Do not dump data again if the file already exists
+			if ($self->file_exists("$dirprefix${tbpart_name}_$self->{output}"))
+			{
+				# close the connection with parallel table export
+				if (($self->{parallel_tables} > 1) && $self->{pg_dsn}) {
+					$local_dbh->disconnect() if (defined $local_dbh);
+				}
+				return $total_record;
+			}
+		}
+
+		$self->logit("Dumping partition table $table -> $part_name...\n", 1);
+		$total_record = $self->_dump_table($dirprefix, $sql_header, $table, $part_name, 0, $tbpart_name);
+		# Rename temporary filename into final name
+		$self->rename_dump_partfile($dirprefix, $part_name, $table);
+	}
+	elsif (exists $self->{partitions}{$table})
 	{
 		foreach my $pos (sort {$self->{partitions}{$table}{$a} <=> $self->{partitions}{$table}{$b}} keys %{$self->{partitions}{$table}})
 		{
@@ -9632,31 +9720,154 @@ sub _get_sql_statements
 			my $total_record = 0;
 			if ($self->{parallel_tables} > 1)
 			{
-				spawn sub {
-					if (!$self->{fdw_server} || !$self->{pg_dsn}) {
-						$self->_export_table_data($table, $dirprefix, $sql_header);
-					} else {
-						$self->_export_fdw_table_data($table, $dirprefix, $sql_header);
-					}
-				};
-				$parallel_tables_count++;
 
-				# Wait for oracle connection terminaison
-				while ($parallel_tables_count > $self->{parallel_tables})
+				# With partitioned table, load data direct from table partition
+				if (!$self->{disable_parallel_partition} && !$self->{fdw_server} && exists $self->{partitions}{$table})
 				{
-					my $kid = waitpid(-1, WNOHANG);
-					if ($kid > 0)
+					foreach my $pos (sort {$self->{partitions}{$table}{$a} <=> $self->{partitions}{$table}{$b}} keys %{$self->{partitions}{$table}})
 					{
-						$parallel_tables_count--;
-						delete $RUNNING_PIDS{$kid};
+						my $part_name = $self->{partitions}{$table}{$pos}{name};
+						next if ($self->{allow_partition} && !grep($_ =~ /^$part_name$/i, @{$self->{allow_partition}}));
+
+						if (exists $self->{subpartitions}{$table}{$part_name})
+						{
+							foreach my $p (sort {$a <=> $b} keys %{$self->{subpartitions}{$table}{$part_name}})
+							{
+								my $subpart = $self->{subpartitions}{$table}{$part_name}{$p}{name};
+								next if ($self->{allow_partition} && !grep($_ =~ /^$subpart$/i, @{$self->{allow_partition}}));
+								spawn sub {
+									if (!$self->{fdw_server} || !$self->{pg_dsn}) {
+										$self->_export_table_data($table, $part_name, $subpart, $pos, $p, $dirprefix, $sql_header);
+									} else {
+										$self->_export_fdw_table_data($table, $dirprefix, $sql_header);
+									}
+								};
+
+								$parallel_tables_count++;
+
+								# Wait for oracle connection terminaison
+								while ($parallel_tables_count > $self->{parallel_tables})
+								{
+									my $kid = waitpid(-1, WNOHANG);
+									if ($kid > 0)
+									{
+										$parallel_tables_count--;
+										delete $RUNNING_PIDS{$kid};
+									}
+									usleep(50000);
+								}
+							}
+							# Now load content of the default subpartition table
+							if ($self->{subpartitions_default}{$table}{$part_name})
+							{
+								if (!$self->{allow_partition} || grep($_ =~ /^$self->{subpartitions_default}{$table}{$part_name}{name}$/i, @{$self->{allow_partition}}))
+								{
+									spawn sub {
+										if (!$self->{fdw_server} || !$self->{pg_dsn}) {
+											$self->_export_table_data($table, $part_name, $subpart, $pos, 'default', $dirprefix, $sql_header);
+										} else {
+											$self->_export_fdw_table_data($table, $dirprefix, $sql_header);
+										}
+									};
+
+									$parallel_tables_count++;
+
+									# Wait for oracle connection terminaison
+									while ($parallel_tables_count > $self->{parallel_tables})
+									{
+										my $kid = waitpid(-1, WNOHANG);
+										if ($kid > 0)
+										{
+											$parallel_tables_count--;
+											delete $RUNNING_PIDS{$kid};
+										}
+										usleep(50000);
+									}
+								}
+							}
+						}
+						spawn sub {
+							if (!$self->{fdw_server} || !$self->{pg_dsn}) {
+								$self->_export_table_data($table, $part_name, $subpart, $pos, undef, $dirprefix, $sql_header);
+							} else {
+								$self->_export_fdw_table_data($table, $dirprefix, $sql_header);
+							}
+						};
+
+						$parallel_tables_count++;
+
+						# Wait for oracle connection terminaison
+						while ($parallel_tables_count > $self->{parallel_tables})
+						{
+							my $kid = waitpid(-1, WNOHANG);
+							if ($kid > 0)
+							{
+								$parallel_tables_count--;
+								delete $RUNNING_PIDS{$kid};
+							}
+							usleep(50000);
+						}
 					}
-					usleep(50000);
+
+					# Now load content of the default partition table
+					if (exists $self->{partitions_default}{$table})
+					{
+						if (!$self->{allow_partition} || grep($_ =~ /^$self->{partitions_default}{$table}{name}$/i, @{$self->{allow_partition}}))
+						{
+							my $tbpart_name = $self->{partitions_default}{$table}{name};
+							spawn sub {
+								if (!$self->{fdw_server} || !$self->{pg_dsn}) {
+									$self->_export_table_data($table, $tbpart_name, $subpart, 'default', undef, $dirprefix, $sql_header);
+								} else {
+									$self->_export_fdw_table_data($table, $dirprefix, $sql_header);
+								}
+							};
+
+							$parallel_tables_count++;
+
+							# Wait for oracle connection terminaison
+							while ($parallel_tables_count > $self->{parallel_tables})
+							{
+								my $kid = waitpid(-1, WNOHANG);
+								if ($kid > 0)
+								{
+									$parallel_tables_count--;
+									delete $RUNNING_PIDS{$kid};
+								}
+								usleep(50000);
+							}
+						}
+					}
+				}
+				else
+				{
+					spawn sub {
+						if (!$self->{fdw_server} || !$self->{pg_dsn}) {
+							$self->_export_table_data($table, undef, undef, undef, undef, $dirprefix, $sql_header);
+						} else {
+							$self->_export_fdw_table_data($table, $dirprefix, $sql_header);
+						}
+					};
+
+					$parallel_tables_count++;
+
+					# Wait for oracle connection terminaison
+					while ($parallel_tables_count > $self->{parallel_tables})
+					{
+						my $kid = waitpid(-1, WNOHANG);
+						if ($kid > 0)
+						{
+							$parallel_tables_count--;
+							delete $RUNNING_PIDS{$kid};
+						}
+						usleep(50000);
+					}
 				}
 			}
 			else
 			{
 				if (!$self->{fdw_server} || !$self->{pg_dsn}) {
-					$total_record = $self->_export_table_data($table, $dirprefix, $sql_header);
+					$total_record = $self->_export_table_data($table, undef, undef, undef, undef, $dirprefix, $sql_header);
 				} else {
 					$total_record = $self->_export_fdw_table_data($table, $dirprefix, $sql_header);
 				}
