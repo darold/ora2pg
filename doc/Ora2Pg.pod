@@ -1052,7 +1052,7 @@ The default behaviour of Ora2Pg is to NOT set the "prefetch" option for
 oracle_fdw when used for COPY and INSERT. This directive allows the prefetch to
 be set. See oracle_fdw documentation for the current default.
 
-=item ORACLE_FDW_BINARY_COPY_MODE
+=item ORACLE_FDW_COPY_MODE
 
 When using Ora2Pg COPY with oracle_fdw it is possible to use two different
 modes: 1) "local", which uses psql on the host running Ora2Pg for the "TO"
@@ -1063,6 +1063,15 @@ binary stream. Both modes use psql for the "FROM STDIN BINARY". However,
 mode should work on any PostgreSQL-based system, including managed offerings,
 which are not expected to support use of "server" mode due to permissions. The
 default is "local" as this is compatible with more configurations.
+
+=item ORACLE_FDW_COPY_FORMAT
+
+When using Ora2Pg COPY with oracle_fdw it is possible to use either BINARY or
+CSV data format. BINARY provides better performance, however, requires exact
+data type matching between the FDW and destination table. CSV provides greater
+flexibiliity with respect to data type matching: if the FDW and destination
+data types are functionally-compatible the columns can be copied. The default
+is "binary".
 
 =item DROP_FOREIGN_SCHEMA
 
