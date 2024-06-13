@@ -1426,7 +1426,15 @@ FDW_IMPORT_SCHEMA	ora2pg_fdw_import
 # mode should work on any PostgreSQL-based system, including managed offerings,
 # which are not expected to support use of "server" mode due to permissions.
 # The default is "local" as this is compatible with more configurations.
-ORACLE_FDW_BINARY_COPY_MODE	local
+ORACLE_FDW_COPY_MODE	local
+
+# When using Ora2Pg COPY with oracle_fdw it is possible to use either BINARY or
+# CSV data format. BINARY provides better performance, however, requires exact
+# data type matching between the FDW and destination table. CSV provides
+# greater flexibiliity with respect to data type matching: if the FDW and
+# destination data types are functionally-compatible the columns can be copied.
+# The default is "binary".
+ORACLE_FDW_COPY_FORMAT	binary
 
 # By default Ora2Pg drops the temporary schema ora2pg_fdw_import used to import
 # the Oracle foreign schema before each new import. If you want to preserve

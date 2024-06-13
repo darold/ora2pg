@@ -288,7 +288,9 @@ our @GRANTS = (
 	'EXECUTE'
 );
 
-our @ORACLE_FDW_BINARY_COPY_MODES = qw( local server );
+our @ORACLE_FDW_COPY_MODES = qw( local server );
+
+our @ORACLE_FDW_COPY_FORMATS = qw( binary csv );
 
 $SIG{'CHLD'} = 'DEFAULT';
 
@@ -1006,8 +1008,11 @@ sub _init
 	# oracle_fdw foreign server
 	$self->{fdw_server} = '';
 
-	# oracle_fdw binary copy mode
-	$self->{oracle_fdw_binary_copy_mode} = '';
+	# oracle_fdw copy mode
+	$self->{oracle_fdw_copy_mode} = '';
+
+	# oracle_fdw copy format
+	$self->{oracle_fdw_copy_format} = '';
 
 	# AS OF SCN related variables
 	$self->{start_scn} = $options{start_scn} || '';
@@ -1282,14 +1287,20 @@ sub _init
 		$self->{fdw_server} = 'orcl';
 	}
 
-	# Validate the oracle_fdw binary copy mode and set a default mode if undefined
+	# Validate the oracle_fdw copy mode and format, and set a default mode and format if undefined
         if ($self->{fdw_server} && $self->{type} eq 'COPY') {
-                $self->{oracle_fdw_binary_copy_mode} ||= 'local';
-                $self->{oracle_fdw_binary_copy_mode} = lc($self->{oracle_fdw_binary_copy_mode});
-		if (!grep(/^$self->{oracle_fdw_binary_copy_mode}$/, @ORACLE_FDW_BINARY_COPY_MODES))
+                $self->{oracle_fdw_copy_mode} ||= 'local';
+                $self->{oracle_fdw_copy_mode} = lc($self->{oracle_fdw_copy_mode});
+		if (!grep(/^$self->{oracle_fdw_copy_mode}$/, @ORACLE_FDW_COPY_MODES))
 		{
-			$self->logit("FATAL: Unknown oracle_fdw binary copy mode: $self->{oracle_fdw_binary_copy_mode}. Valid modes: " . join(', ', @ORACLE_FDW_BINARY_COPY_MODES) . "\n",0,1);
-        	}
+			$self->logit("FATAL: Unknown oracle_fdw copy mode: $self->{oracle_fdw_copy_mode}. Valid modes: " . join(', ', @ORACLE_FDW_COPY_MODES) . "\n",0,1);
+		}
+                $self->{oracle_fdw_copy_format} ||= 'binary';
+                $self->{oracle_fdw_copy_format} = lc($self->{oracle_fdw_copy_format});
+		if (!grep(/^$self->{oracle_fdw_copy_format}$/, @ORACLE_FDW_COPY_FORMATS))
+		{
+			$self->logit("FATAL: Unknown oracle_fdw copy format: $self->{oracle_fdw_copy_format}. Valid formats: " . join(', ', @ORACLE_FDW_COPY_FORMATS) . "\n",0,1);
+		}
 	}
 
 	# Set the schema where the foreign tables will be created
@@ -10730,14 +10741,15 @@ sub _dump_fdw_table
 	if ($self->{type} eq 'COPY')
 	# Build COPY statement
 	{
-		$ENV{PGPASSWORD} = $self->{dbpwd};
-		if ($self->{oracle_fdw_binary_copy_mode} eq 'local') {
+		if ($self->{oracle_fdw_copy_mode} eq 'local') {
+			$ENV{PGPASSWORD} = $self->{dbpwd};
 			# Need to escape the quotation marks in $fdwtb
 			my $fdwtb_escaped = $fdwtb =~ s/"/\"/gr;
-			$s_out = "\\copy (select $fdw_col_list from $self->{fdw_import_schema}.$fdwtb_escaped) TO PROGRAM 'psql -X -h $self->{dbhost} -p $self->{dbport} -d $self->{dbname} -U $self->{dbuser} -c \\\"\\copy $self->{schema}.$tmptb FROM STDIN BINARY\\\"' BINARY";
+			$s_out = "\\copy (select $fdw_col_list from $self->{fdw_import_schema}.$fdwtb_escaped) TO PROGRAM 'psql -X -h $self->{dbhost} -p $self->{dbport} -d $self->{dbname} -U $self->{dbuser} -c \\\"\\copy $self->{schema}.$tmptb FROM STDIN " . uc($self->{oracle_fdw_copy_format}) . "\\\"' " . uc($self->{oracle_fdw_copy_format});
 		}
-		if ($self->{oracle_fdw_binary_copy_mode} eq 'server') {
-			$s_out = "COPY (select $fdw_col_list from $self->{fdw_import_schema}.$fdwtb) TO PROGRAM 'psql -h $self->{dbhost} -p $self->{dbport} -d $self->{dbname} -U $self->{dbuser} -c \"\\copy $self->{schema}.$tmptb FROM STDIN BINARY\"' BINARY";
+		if ($self->{oracle_fdw_copy_mode} eq 'server') {
+			#$s_out = "COPY (select $fdw_col_list from $self->{fdw_import_schema}.$fdwtb) TO PROGRAM 'PGPASSWORD=$self->{dbpwd} psql -h $self->{dbhost} -p $self->{dbport} -d $self->{dbname} -U $self->{dbuser} -c \"\\copy $self->{schema}.$tmptb FROM STDIN BINARY\"' BINARY";
+			$s_out = "COPY (select $fdw_col_list from $self->{fdw_import_schema}.$fdwtb) TO PROGRAM 'PGPASSWORD=$self->{dbpwd} psql -h $self->{dbhost} -p $self->{dbport} -d $self->{dbname} -U $self->{dbuser} -c \"\\copy $self->{schema}.$tmptb FROM STDIN " . uc($self->{oracle_fdw_copy_format}) . "\"' " . uc($self->{oracle_fdw_copy_format});
 		}
 	}
 
@@ -10870,7 +10882,7 @@ sub _dump_fdw_table
 					}
 					$dbh->disconnect() if ($dbh);
 				}
-				if ($self->{type} eq 'COPY' and $self->{oracle_fdw_binary_copy_mode} eq 'local')
+				if ($self->{type} eq 'COPY' and $self->{oracle_fdw_copy_mode} eq 'local')
 				{
 					# Need to replace the "?" in $s_out with the relevant integer ("$self->{ora_conn_count}")
 					$s_out =~ s/\?/$self->{ora_conn_count}/;
@@ -10885,7 +10897,7 @@ sub _dump_fdw_table
 						$pipe->print("TABLE EXPORT ENDED: $table, end: $t_time, rows $self->{tables}{$table}{table_info}{num_rows}\n");
 					}
 				}
-				if ($self->{type} eq 'COPY' and $self->{oracle_fdw_binary_copy_mode} eq 'server')
+				if ($self->{type} eq 'COPY' and $self->{oracle_fdw_copy_mode} eq 'server')
 				{
                                 	$self->logit("Creating new connection to extract data in parallel...\n", 1);
                                 	my $dbh = $local_dbh->clone();
@@ -10931,14 +10943,14 @@ sub _dump_fdw_table
 			$self->logit("Exporting foreign table data for $table using query: $s_out\n", 1);
 			$local_dbh->do($s_out) or $self->logit("ERROR: " . $local_dbh->errstr . ", SQL: $s_out\n", 0);
 		}
-		if ($self->{type} eq 'COPY' and $self->{oracle_fdw_binary_copy_mode} eq 'local')
+		if ($self->{type} eq 'COPY' and $self->{oracle_fdw_copy_mode} eq 'local')
 		{
 			$ENV{PGPASSWORD} = $self->{dbpwd};
 			my $psql_cmd = "psql -X -h $self->{dbhost} -p $self->{dbport} -d $self->{dbname} -U $self->{dbuser} -c \"$s_out\"";
 			$self->logit("Exporting foreign table data for $table using psql command: $s_out\n", 1);
 			my $cmd_output = `$psql_cmd` or $self->logit("FATAL: " . $cmd_output . "\n", 0, 1);
 		}
-		if ($self->{type} eq 'COPY' and $self->{oracle_fdw_binary_copy_mode} eq 'server')
+		if ($self->{type} eq 'COPY' and $self->{oracle_fdw_copy_mode} eq 'server')
 		{
 			$self->logit("Exporting foreign table data for $table using query: $s_out\n", 1);
 			$local_dbh->do($s_out) or $self->logit("ERROR: " . $local_dbh->errstr . ", SQL: $s_out\n", 0);
