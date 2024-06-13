@@ -21917,11 +21917,11 @@ sub _create_foreign_server
 			my $host = $1 || 'localhost';
 			$self->{oracle_dsn} =~ /port=(\d+)/;
 			my $port = $1;
-			if ($self->{is_mysql}) {
+			if (!$port && $self->{is_mysql}) {
 				$port = 3306;
-			} elsif ($self->{is_mssql}) {
+			} elsif (!$port && $self->{is_mssql}) {
 				$port = 1433;
-			} else {
+			} elsif (!$port)  {
 				$port = 1521;
 			}
 			my $sid = '';
