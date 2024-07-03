@@ -434,7 +434,6 @@ sub _table_info
 	while (my $row = $sth->fetch)
 	{
 		next if (!exists $self->{all_objects}{"$row->[0].$row->[1]"} || $self->{all_objects}{"$row->[0].$row->[1]"} ne 'TABLE');
-
 		if (!$self->{schema} && $self->{export_schema}) {
 			$row->[1] = "$row->[0].$row->[1]";
 		}
@@ -3001,7 +3000,7 @@ AND a.TABLESPACE_NAME = c.TABLESPACE_NAME
 						my $sub_tb_name = $subpart;
 						$sub_tb_name =~ s/^[^\.]+\.//; # remove schema part if any
 						$sub_tb_name = $table . '_part' . $pos . '_subpart' . $p if ($self->{rename_partition});
-						if ($#{$self->{tables}{$table}{field_name}} < 0) {
+						if (exists $self->{tables}{$table}{field_name} && $#{$self->{tables}{$table}{field_name}} < 0) {
 							$self->logit("Table $table has no column defined, skipping...\n", 1);
 							next;
 						}

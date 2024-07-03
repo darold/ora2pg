@@ -10392,6 +10392,7 @@ sub _dump_table
 
 		my $f = $self->{tables}{"$table"}{column_info}{"$fieldname"};
 		$f->[2] =~ s/\D//g;
+
 		if (!$self->{enable_blob_export} && $f->[1] =~ /blob/i)
 		{
 			# user don't want to export blob
@@ -10419,6 +10420,8 @@ sub _dump_table
 		# A virtual column must not be part of the target list
 		next if ($f->[10] eq 'YES' and $self->{pg_supports_virtualcol});
 
+		next if (grep(/^\Q$fieldname\E$/i, @nn));
+
 		if (!$self->{preserve_case}) {
 			push(@fname, lc($fieldname));
 		} else {
@@ -10441,7 +10444,7 @@ sub _dump_table
 		}
 		$type = $self->{'modify_type'}{lc($table)}{lc($f->[0])} if (exists $self->{'modify_type'}{lc($table)}{lc($f->[0])});
 		# Check if this column should be replaced by a boolean following table/column name
-		if (grep(/^\L$fieldname\E$/i, @{$self->{'replace_as_boolean'}{uc($table)}})) {
+		if (grep(/^\Q$fieldname\E$/i, @{$self->{'replace_as_boolean'}{uc($table)}})) {
 			$type = 'boolean';
 		}
 		# Check if this column should be replaced by a boolean following type/precision
@@ -10468,7 +10471,7 @@ sub _dump_table
 		if ($colname !~ /"/ && $self->is_reserved_words($colname)) {
 			$colname = '"' . $colname . '"';
 		}
-		push(@{ $self->{tables}{$table}{dest_column_name} }, $colname);
+		push(@{ $self->{tables}{$table}{dest_column_name} }, $colname) if (!grep(/^\Q$colname\E$/i, @{ $self->{tables}{$table}{dest_column_name} }));;
 		if ($self->is_primary_key_column($table, $fieldname)) {
 			push @pg_colnames_pkey, "$colname";
 		} elsif ($f->[3] =~ m/^Y/) {
@@ -10483,7 +10486,7 @@ sub _dump_table
 		my $reftable = $self->{partitions_list}{"\L$table\E"}{refrtable};
 		foreach my $k (keys %{ $self->{tables}{"$reftable"}{column_info} })
 		{
-			next if (!grep(/^$k$/i, @{$self->{partitions_list}{"\L$reftable\E"}{columns}}));
+			next if (!grep(/^\Q$k\E$/i, @{$self->{partitions_list}{"\L$reftable\E"}{columns}}));
 			my $f = $self->{tables}{"$reftable"}{column_info}{$k};
 			$f->[2] =~ s/[^0-9\-\.]//g;
 			# COLUMN_NAME,DATA_TYPE,DATA_LENGTH,NULLABLE,DATA_DEFAULT,DATA_PRECISION,DATA_SCALE,CHAR_LENGTH,TABLE_NAME,OWNER,VIRTUAL_COLUMN,POSITION,AUTO_INCREMENT,SRID,SDO_DIM,SDO_GTYPE
@@ -10496,6 +10499,8 @@ sub _dump_table
 				$self->logit("\tReplacing column \L$f->[0]\E as " . $self->{replaced_cols}{"\L$reftable\E"}{"\L$fname\E"} . "...\n", 1);
 				$fname = $self->{replaced_cols}{"\L$reftable\E"}{"\L$fname\E"};
 			}
+
+			next if (grep(/^\Q$fname\E$/i, @nn));
 
 			push(@stt, uc($f->[1]));
 			push(@tt, $type);
@@ -10511,7 +10516,7 @@ sub _dump_table
 			if ($colname !~ /"/ && $self->is_reserved_words($colname)) {
 				$colname = '"' . $colname . '"';
 			}
-			push(@{ $self->{tables}{$table}{dest_column_name} }, $colname);
+			push(@{ $self->{tables}{$table}{dest_column_name} }, $colname) if (!grep(/^\Q$colname\E$/i, @{ $self->{tables}{$table}{dest_column_name} }));
 		}
 	}
 
