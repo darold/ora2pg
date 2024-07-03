@@ -4338,7 +4338,7 @@ sub _export_table_data
 		} elsif ($part_name) {
 			$truncate_order .= $tbpart_name;
 		} else {
-			$truncate_order .= $table;
+			$truncate_order .= $tmptb;
 		}
 		if ($self->{pg_dsn} && !$self->{oracle_speed})
 		{
@@ -4420,7 +4420,7 @@ sub _export_table_data
 		{
 			my $part_name = $self->{partitions}{$table}{$pos}{name};
 			my $tbpart_name = $part_name;
-			my $tmptb = $table;
+			$tmptb = $table;
 			if (exists $self->{replaced_tables}{"\L$table\E"} && $self->{replaced_tables}{"\L$table\E"})
 			{
 				$self->logit("\tReplacing table $table as " . $self->{replaced_tables}{lc($table)} . "...\n", 1);
