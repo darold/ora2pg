@@ -422,6 +422,9 @@ sub export_schema
 	my $dirprefix = '';
 	$dirprefix = "$self->{output_dir}/" if ($self->{output_dir});
 	unlink($dirprefix . 'temp_pass2_file.dat');
+	if ($self->{type} eq 'COPY') {
+		print "\nSchema Export Complete\n\n";
+	}
 }
 
 
