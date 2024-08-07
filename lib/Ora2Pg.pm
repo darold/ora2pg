@@ -1177,6 +1177,20 @@ sub _init
 	# Disable ON CONFLICT clause by default
 	$self->{insert_on_conflict} ||= 0;
 
+	# Override any Ora2Pg configuration directive
+	if (exists $options{options})
+	{
+		my @opt = split(/\s*\|\s*/, $options{options});
+		foreach my $o (@opt)
+		{
+			my ($name, $value) = split(/\s*=\s*/, $o);
+			$name = lc($name);
+			next if ($name eq 'options');
+			$options{$name} = $value;
+		}
+		delete $options{options};
+	}
+
 	# Overwrite configuration with all given parameters
 	# and try to preserve backward compatibility
 	foreach my $k (keys %options)

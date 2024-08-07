@@ -335,6 +335,8 @@ Usage: ora2pg [-dhpqv --estimate_cost --dump_as_html] [--option value]
     -N | --pg_schema schema : Set PostgreSQL's search_path.
     -o | --out file   : Set the path to the output file where SQL will
                         be written. Default: output.sql in running directory.
+    -O | --options    : Used to override any configuration parameter, it can
+                        be used multiple time. Syntax: -O "PARAM_NAME=value"
     -p | --plsql      : Enable PLSQL to PLPGSQL code conversion.
     -P | --parallel num: Number of parallel tables to extract at the same time.
     -q | --quiet      : Disable progress bar.

@@ -116,6 +116,8 @@ my @GRANT_OBJECTS_ARRAY = ('USER','TABLE','VIEW','MATERIALIZED VIEW','SEQUENCE',
 
 my $TMP_DIR      = File::Spec->tmpdir() || '/tmp';
 
+my @OPTIONS = ();
+
 # Collect command line arguments
 GetOptions (
 	'a|allow=s' => \$ALLOW,
@@ -137,6 +139,7 @@ GetOptions (
 	'n|namespace=s' => \$SCHEMA,
 	'N|pg_schema=s' => \$PG_SCHEMA,
         'o|out=s' => \$OUTFILE,
+        'O|option=s' => \@OPTIONS,
 	'p|plsql!' => \$PLSQL,
 	'P|parallel=i' =>\$PARALLEL_TABLES,
 	'q|quiet!' => \$QUIET,
@@ -404,6 +407,7 @@ my $schema = new Ora2Pg (
 	delete => join(' ', @DELETE_CLAUSE),
         oracle_fdw_prefetch => $ORACLE_FDW_PREFETCH,
 	no_start_scn => $NO_START_SCN,
+	options => join('|', @OPTIONS),
 );
 
 # Look at configuration file if an input file is defined
@@ -487,6 +491,8 @@ Usage: ora2pg [-dhpqv --estimate_cost --dump_as_html] [--option value]
     -N | --pg_schema schema : Set PostgreSQL's search_path.
     -o | --out file   : Set the path to the output file where SQL will
                         be written. Default: output.sql in running directory.
+    -O | --options    : Used to override any configuration parameter, it can
+                        be used multiple time. Syntax: -O "PARAM_NAME=value"
     -p | --plsql      : Enable PLSQL to PLPGSQL code conversion.
     -P | --parallel num: Number of parallel tables to extract at the same time.
     -q | --quiet      : Disable progress bar.
