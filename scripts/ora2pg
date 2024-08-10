@@ -1346,5 +1346,6 @@ if [ $IMPORT_SCHEMA -eq 0 ]; then
 	fi
 fi
 
+echo -e "\nOra2Pg ending"
 exit 0
 

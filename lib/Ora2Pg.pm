@@ -422,6 +422,9 @@ sub export_schema
 	my $dirprefix = '';
 	$dirprefix = "$self->{output_dir}/" if ($self->{output_dir});
 	unlink($dirprefix . 'temp_pass2_file.dat');
+	if ($self->{type} eq 'COPY') {
+		print "\nSchema Export Complete\n\n";
+	}
 }
 
 
@@ -5632,7 +5635,7 @@ sub export_dblink
 		{
 			my $usr_name = $self->quote_object_name($self->{dblink}{$db}{username});
 			$usr_name =~ s/^.*\.//;
-			$sql_output .= "CREATE USER MAPPING FOR $usr_name SERVER $srv_name";
+			$sql_output .= "CREATE USER MAPPING FOR \"$usr_name\" SERVER $srv_name";
 			$usr_name = $self->quote_object_name($self->{dblink}{$db}{user});
 			$usr_name =~ s/^.*\.//;
 			$sql_output .= " OPTIONS (user '$usr_name' $self->{dblink}{$db}{password});\n";
@@ -21981,7 +21984,7 @@ sub _create_foreign_server
 	# Create the user mapping if it not exists
 	my $usrlbl = 'user';
 	$usrlbl = 'username' if ($self->{is_mysql} || $self->{is_mssql});
-	my $sql = "CREATE USER MAPPING IF NOT EXISTS FOR $self->{pg_user} SERVER $self->{fdw_server} OPTIONS ($usrlbl '$self->{oracle_user}', password '$self->{oracle_pwd}');";
+	my $sql = "CREATE USER MAPPING IF NOT EXISTS FOR \"$self->{pg_user}\" SERVER $self->{fdw_server} OPTIONS ($usrlbl '$self->{oracle_user}', password '$self->{oracle_pwd}');";
 	if ($self->{oracle_user} eq "__SEPS__" && $self->{oracle_pwd} eq "__SEPS__")  # Replace with empty credentials for an Oracle Wallet connection
 	{
 		$sql =~ s/__SEPS__//g;
