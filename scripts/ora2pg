@@ -761,7 +761,7 @@ foreach (\$etype in \$EXPORT_TYPE)
 {
 	\$ltype =  \$etype.ToLower() -replace 'y\$', 'ie'  
 	\$ltype =  \$etype.ToLower() -replace 's\$', ''
-	if [ "\$etype" = "TABLE" ]; then
+	if ( "\$etype" -eq "TABLE" ) then
 		blob_to_lo="$ablob_to_lo"
 	else
 		blob_to_lo=""
