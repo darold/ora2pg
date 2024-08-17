@@ -15043,6 +15043,13 @@ sub _remove_comments
 	$$content = encode('UTF-8', $$content) if (!$self->{input_file} && $self->{force_plsql_encoding});
 	while ($$content =~ s/('[^';\n]*)\/\*([^';\n]*')/$1\%OPEN_COMMENT\%$2/s) {};
 
+	my %default_values = ();
+	my $j = 0;
+	while ($$content =~ s/(DEFAULT|:=)\s+('[^']*')/$1\%DEFAULT$j\%/s) {
+		$default_values{$j} = $2;
+		$i++;
+	};
+
 	# Fix unterminated comment at end of the code
 	$$content =~ s/(\/\*(?:(?!\*\/).)*)$/$1 \*\//s;
 
@@ -15101,6 +15108,9 @@ sub _remove_comments
 		}
 	}
 	$$content =join('', @lines);
+
+	while ($$content =~ s/\%DEFAULT(\d+)\%/$default_values{$1}/s) {};
+	%default_valuesdefault_values = ();
 
 	# First remove hints they are not supported in PostgreSQL and it break the parser
 	while ($$content =~ s/(\/\*\+(?:.*?)\*\/)/\%ORA2PG_COMMENT$self->{idxcomment}\%/s)
