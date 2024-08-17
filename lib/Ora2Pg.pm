@@ -15045,9 +15045,9 @@ sub _remove_comments
 
 	my %default_values = ();
 	my $j = 0;
-	while ($$content =~ s/(DEFAULT|:=)\s+('[^']*')/$1\%DEFAULT$j\%/s) {
+	while ($$content =~ s/(DEFAULT\s+)('[^']*')/$1\%DEFAULT$j\%/s) {
 		$default_values{$j} = $2;
-		$i++;
+		$j++;
 	};
 
 	# Fix unterminated comment at end of the code
@@ -15110,7 +15110,7 @@ sub _remove_comments
 	$$content =join('', @lines);
 
 	while ($$content =~ s/\%DEFAULT(\d+)\%/$default_values{$1}/s) {};
-	%default_valuesdefault_values = ();
+	%default_values = ();
 
 	# First remove hints they are not supported in PostgreSQL and it break the parser
 	while ($$content =~ s/(\/\*\+(?:.*?)\*\/)/\%ORA2PG_COMMENT$self->{idxcomment}\%/s)
