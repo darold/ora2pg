@@ -209,11 +209,8 @@ $QUERY_TEST_SCORE = 0.1;
 	UserEnv
 	Bin_To_Num
 	BitAnd
-	Cosh
 	Median
 	Remainder
-	Sinh
-	Tanh
 	DbTimeZone
 	New_Time
 	SessionTimeZone
