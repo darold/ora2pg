@@ -898,6 +898,19 @@ sub _init
 	# Read configuration file
 	$self->read_config($options{config}) if ($options{config});
 
+	# Override any Ora2Pg configuration directive from command line options
+	if (exists $options{options})
+	{
+		my @opt = split(/\s*\|\s*/, $options{options});
+		foreach my $o (@opt)
+		{
+			next if ($o =~ /^options\s*=/i);
+			$o =~ s/\s*=\s*/\t/;
+			&parse_config($o);
+		}
+		delete $options{options};
+	}
+
 	# Those are needed by DBI
 	$ENV{ORACLE_HOME} = $AConfig{'ORACLE_HOME'} if ($AConfig{'ORACLE_HOME'});
 	$ENV{NLS_LANG} = $AConfig{'NLS_LANG'} if ($AConfig{'NLS_LANG'});
@@ -1180,24 +1193,11 @@ sub _init
 	# Disable ON CONFLICT clause by default
 	$self->{insert_on_conflict} ||= 0;
 
-	# Override any Ora2Pg configuration directive
-	if (exists $options{options})
-	{
-		my @opt = split(/\s*\|\s*/, $options{options});
-		foreach my $o (@opt)
-		{
-			my ($name, $value) = split(/\s*=\s*/, $o);
-			$name = lc($name);
-			next if ($name eq 'options');
-			$options{$name} = $value;
-		}
-		delete $options{options};
-	}
-
 	# Overwrite configuration with all given parameters
 	# and try to preserve backward compatibility
 	foreach my $k (keys %options)
 	{
+		next if ($options{options});
 		if (($k eq 'allow') && $options{allow})
 		{
 			$self->{limited} = ();
@@ -14545,240 +14545,247 @@ sub read_config
 		$l =~ s/^\s*\#.*$//g;
 		next if (!$l || ($l =~ /^\s+$/));
 		$l =~ s/^\s*//; $l =~ s/\s*$//;
-		my ($var, $val) = split(/\s+/, $l, 2);
-		$var = uc($var);
-                if ($var eq 'IMPORT')
+		&parse_config($l);
+	}
+	$self->close_export_file($fh);
+}
+
+sub  parse_config
+{
+	my $l = shift;
+
+	my ($var, $val) = split(/\s+/, $l, 2);
+	$var = uc($var);
+	if ($var eq 'IMPORT')
+	{
+		if ($val)
 		{
-			if ($val)
+			$self->logit("Importing $val...\n", 1);
+			$self->read_config($val);
+			$self->logit("Done importing $val.\n",1);
+		}
+	}
+	elsif ($var =~ /^SKIP/)
+	{
+		if ($val)
+		{
+			$self->logit("No extraction of \L$val\E\n",1);
+			my @skip = split(/[\s;,]+/, $val);
+			foreach my $s (@skip)
 			{
-				$self->logit("Importing $val...\n", 1);
-				$self->read_config($val);
-				$self->logit("Done importing $val.\n",1);
-			}
-		}
-		elsif ($var =~ /^SKIP/)
-		{
-			if ($val)
-			{
-				$self->logit("No extraction of \L$val\E\n",1);
-				my @skip = split(/[\s;,]+/, $val);
-				foreach my $s (@skip)
-				{
-					$s = 'indexes' if ($s =~ /^indices$/i);
-					$AConfig{"skip_\L$s\E"} = 1;
-				}
-			}
-		}
-		elsif ($var eq 'DEFINED_PK_' . $AConfig{SCHEMA}) # add schema specific definition of partitioning columns
-		{
-			my @defined_pk = split(/[\s;]+/, $val);
-			foreach my $r (@defined_pk)
-			{
-				my ($table, $col) = split(/:/, $r);
-				$AConfig{DEFINED_PK}{lc($table)} = $col;
-			}
-		}
-		# Should be a else statement but keep the list up to date to memorize the directives full list
-		elsif (!grep(/^$var$/, 'TABLES','ALLOW','MODIFY_STRUCT','REPLACE_TABLES','REPLACE_COLS',
-				'WHERE','EXCLUDE','VIEW_AS_TABLE','MVIEW_AS_TABLE','ORA_RESERVED_WORDS',
-				'SYSUSERS','REPLACE_AS_BOOLEAN','BOOLEAN_VALUES','MODIFY_TYPE','DEFINED_PK',
-				'ALLOW_PARTITION','REPLACE_QUERY','FKEY_ADD_UPDATE','DELETE',
-				'LOOK_FORWARD_FUNCTION','ORA_INITIAL_COMMAND','PG_INITIAL_COMMAND',
-				'TRANSFORM_VALUE','EXCLUDE_COLUMNS'
-			))
-		{
-			$AConfig{$var} = $val;
-			if ($var eq 'NO_LOB_LOCATOR') {
-				print STDERR "WARNING: NO_LOB_LOCATOR is deprecated, use USE_LOB_LOCATOR instead see documentation about the logic change.\n";
-				if ($val == 1) {
-					$AConfig{USE_LOB_LOCATOR} = 0;
-				} else {
-					$AConfig{USE_LOB_LOCATOR} = 1;
-				}
-			}
-			if ($var eq 'NO_BLOB_EXPORT') {
-				print STDERR "WARNING: NO_BLOB_EXPORT is deprecated, use ENABLE_BLOB_EXPORT instead see documentation about the logic change.\n";
-				if ($val == 1) {
-					$AConfig{ENABLE_BLOB_EXPORT} = 0;
-				} else {
-					$AConfig{ENABLE_BLOB_EXPORT} = 1;
-				}
-			}
-		} elsif ($var =~ /VIEW_AS_TABLE/) {
-			push(@{$AConfig{$var}}, split(/[\s;,]+/, $val) );
-		} elsif ($var eq 'LOOK_FORWARD_FUNCTION') {
-			push(@{$AConfig{$var}}, split(/[\s;,]+/, $val) );
-		}
-		elsif ( ($var eq 'TABLES') || ($var eq 'ALLOW') || ($var eq 'EXCLUDE')
-			|| ($var eq 'ALLOW_PARTITION') )
-		{
-			$var = 'ALLOW' if ($var eq 'TABLES');
-			if ($var eq 'ALLOW_PARTITION')
-			{
-				$var = 'ALLOW';
-				push(@{$AConfig{$var}{PARTITION}}, split(/[,\s]+/, $val) );
-			}
-			else
-			{
-				# Syntax: TABLE[regex1 regex2 ...];VIEW[regex1 regex2 ...];glob_regex1 glob_regex2 ...
-				# Global regex will be applied to the export type only
-				my @vlist = split(/\s*;\s*/, $val);
-				foreach my $a (@vlist)
-				{
-					if ($a =~ /^([^\[]+)\[(.*)\]$/) {
-						push(@{$AConfig{$var}{"\U$1\E"}}, split(/[,\s]+/, $2) );
-					} else {
-						push(@{$AConfig{$var}{ALL}}, split(/[,\s]+/, $a) );
-					}
-				}
-			}
-		}
-		elsif ( $var =~ /_INITIAL_COMMAND/ ) {
-			push(@{$AConfig{$var}}, $val);
-		} elsif ( $var eq 'SYSUSERS' ) {
-			push(@{$AConfig{$var}}, split(/[\s;,]+/, $val) );
-		} elsif ( $var eq 'ORA_RESERVED_WORDS' ) {
-			push(@{$AConfig{$var}}, split(/[\s;,]+/, $val) );
-		}
-		elsif ( $var eq 'FKEY_ADD_UPDATE' )
-		{
-			if (grep(/^$val$/i, @FKEY_OPTIONS)) {
-				$AConfig{$var} = uc($val);
-			} else {
-				$self->logit("FATAL: invalid option, see FKEY_ADD_UPDATE in configuration file\n", 0, 1);
-			}
-		}
-		elsif ($var eq 'MODIFY_STRUCT' or $var eq 'EXCLUDE_COLUMNS')
-		{
-			while ($val =~ s/([^\(\s]+)\s*\(([^\)]+)\)\s*//)
-			{
-				my $table = $1;
-				my $fields = $2;
-				$fields =~ s/^\s+//;
-				$fields =~ s/\s+$//;
-				push(@{$AConfig{$var}{$table}}, split(/[\s,]+/, $fields) );
-			}
-		}
-		elsif ($var eq 'MODIFY_TYPE')
-		{
-			$val =~ s/\\,/#NOSEP#/gs;
-			my @modif_type = split(/[,;]+/, $val);
-			foreach my $r (@modif_type)
-			{ 
-				$r =~ s/#NOSEP#/,/gs;
-				my ($table, $col, $type) = split(/:/, lc($r));
-				$AConfig{$var}{$table}{$col} = $type;
-			}
-		}
-		elsif ($var eq 'REPLACE_COLS')
-		{
-			while ($val =~ s/([^\(\s]+)\s*\(([^\)]+)\)[,;\s]*//)
-			{
-				my $table = $1;
-				my $fields = $2;
-				$fields =~ s/^\s+//;
-				$fields =~ s/\s+$//;
-				my @rel = split(/[,]+/, $fields);
-				foreach my $r (@rel)
-				{
-					my ($old, $new) = split(/:/, $r);
-					$AConfig{$var}{$table}{$old} = $new;
-				}
-			}
-		}
-		elsif ($var eq 'REPLACE_TABLES')
-		{
-			my @replace_tables = split(/[\s,;]+/, $val);
-			foreach my $r (@replace_tables)
-			{ 
-				my ($old, $new) = split(/:/, $r);
-				$AConfig{$var}{$old} = $new;
-			}
-		}
-		elsif ($var eq 'REPLACE_AS_BOOLEAN')
-		{
-			my @replace_boolean = split(/[\s;]+/, $val);
-			foreach my $r (@replace_boolean)
-			{ 
-				my ($table, $col) = split(/:/, $r);
-				push(@{$AConfig{$var}{uc($table)}}, uc($col));
-			}
-		}
-		elsif ($var eq 'BOOLEAN_VALUES')
-		{
-			my @replace_boolean = split(/[\s,;]+/, $val);
-			foreach my $r (@replace_boolean)
-			{ 
-				my ($yes, $no) = split(/:/, $r);
-				$AConfig{$var}{lc($yes)} = 't';
-				$AConfig{$var}{lc($no)} = 'f';
-			}
-		}
-		elsif ($var eq 'DEFINED_PK')
-		{
-			my @defined_pk = split(/[\s;]+/, $val);
-			foreach my $r (@defined_pk)
-			{ 
-				my ($table, $col) = split(/:/, $r);
-				$AConfig{$var}{lc($table)} = $col;
-			}
-		}
-		elsif ($var eq 'WHERE')
-		{
-			while ($val =~ s/([^\[\s]+)\s*\[([^\]]+)\]\s*//)
-			{
-				my $table = $1;
-				my $where = $2;
-				$where =~ s/^\s+//;
-				$where =~ s/\s+$//;
-				$AConfig{$var}{$table} = $where;
-			}
-			if ($val) {
-				$AConfig{"GLOBAL_WHERE"} = $val;
-			}
-		}
-		elsif ($var eq 'TRANSFORM_VALUE')
-		{
-			my @vals = split(/\s*;\s*/, $val);
-			foreach my $v (@vals)
-			{
-				while ($v =~ s/([^\[\s]+)\s*\[\s*([^:,]+)\s*[,:]\s*([^\]]+)\s*\]\s*//)
-				{
-					my $table = $1;
-					my $column = $2;
-					my $clause = $3;
-					$column =~ s/"//g;
-					$AConfig{$var}{lc($table)}{lc($column)} = $clause;
-				}
-			}
-		}
-		elsif ($var eq 'DELETE')
-		{
-			while ($val =~ s/([^\[\s]+)\s*\[([^\]]+)\]\s*//)
-			{
-				my $table = $1;
-				my $delete = $2;
-				$delete =~ s/^\s+//;
-				$delete =~ s/\s+$//;
-				$AConfig{$var}{$table} = $delete;
-			}
-			if ($val) {
-				$AConfig{"GLOBAL_DELETE"} = $val;
-			}
-		}
-		elsif ($var eq 'REPLACE_QUERY')
-		{
-			while ($val =~ s/([^\[\s]+)\s*\[([^\]]+)\]\s*//)
-			{
-				my $table = lc($1);
-				my $query = $2;
-				$query =~ s/^\s+//;
-				$query =~ s/\s+$//;
-				$AConfig{$var}{$table} = $query;
+				$s = 'indexes' if ($s =~ /^indices$/i);
+				$AConfig{"skip_\L$s\E"} = 1;
 			}
 		}
 	}
-	$self->close_export_file($fh);
+	elsif ($var eq 'DEFINED_PK_' . $AConfig{SCHEMA}) # add schema specific definition of partitioning columns
+	{
+		my @defined_pk = split(/[\s;]+/, $val);
+		foreach my $r (@defined_pk)
+		{
+			my ($table, $col) = split(/:/, $r);
+			$AConfig{DEFINED_PK}{lc($table)} = $col;
+		}
+	}
+	# Should be a else statement but keep the list up to date to memorize the directives full list
+	elsif (!grep(/^$var$/, 'TABLES','ALLOW','MODIFY_STRUCT','REPLACE_TABLES','REPLACE_COLS',
+			'WHERE','EXCLUDE','VIEW_AS_TABLE','MVIEW_AS_TABLE','ORA_RESERVED_WORDS',
+			'SYSUSERS','REPLACE_AS_BOOLEAN','BOOLEAN_VALUES','MODIFY_TYPE','DEFINED_PK',
+			'ALLOW_PARTITION','REPLACE_QUERY','FKEY_ADD_UPDATE','DELETE',
+			'LOOK_FORWARD_FUNCTION','ORA_INITIAL_COMMAND','PG_INITIAL_COMMAND',
+			'TRANSFORM_VALUE','EXCLUDE_COLUMNS'
+		))
+	{
+		$AConfig{$var} = $val;
+		if ($var eq 'NO_LOB_LOCATOR') {
+			print STDERR "WARNING: NO_LOB_LOCATOR is deprecated, use USE_LOB_LOCATOR instead see documentation about the logic change.\n";
+			if ($val == 1) {
+				$AConfig{USE_LOB_LOCATOR} = 0;
+			} else {
+				$AConfig{USE_LOB_LOCATOR} = 1;
+			}
+		}
+		if ($var eq 'NO_BLOB_EXPORT') {
+			print STDERR "WARNING: NO_BLOB_EXPORT is deprecated, use ENABLE_BLOB_EXPORT instead see documentation about the logic change.\n";
+			if ($val == 1) {
+				$AConfig{ENABLE_BLOB_EXPORT} = 0;
+			} else {
+				$AConfig{ENABLE_BLOB_EXPORT} = 1;
+			}
+		}
+	} elsif ($var =~ /VIEW_AS_TABLE/) {
+		push(@{$AConfig{$var}}, split(/[\s;,]+/, $val) );
+	} elsif ($var eq 'LOOK_FORWARD_FUNCTION') {
+		push(@{$AConfig{$var}}, split(/[\s;,]+/, $val) );
+	}
+	elsif ( ($var eq 'TABLES') || ($var eq 'ALLOW') || ($var eq 'EXCLUDE')
+		|| ($var eq 'ALLOW_PARTITION') )
+	{
+		$var = 'ALLOW' if ($var eq 'TABLES');
+		if ($var eq 'ALLOW_PARTITION')
+		{
+			$var = 'ALLOW';
+			push(@{$AConfig{$var}{PARTITION}}, split(/[,\s]+/, $val) );
+		}
+		else
+		{
+			# Syntax: TABLE[regex1 regex2 ...];VIEW[regex1 regex2 ...];glob_regex1 glob_regex2 ...
+			# Global regex will be applied to the export type only
+			my @vlist = split(/\s*;\s*/, $val);
+			foreach my $a (@vlist)
+			{
+				if ($a =~ /^([^\[]+)\[(.*)\]$/) {
+					push(@{$AConfig{$var}{"\U$1\E"}}, split(/[,\s]+/, $2) );
+				} else {
+					push(@{$AConfig{$var}{ALL}}, split(/[,\s]+/, $a) );
+				}
+			}
+		}
+	}
+	elsif ( $var =~ /_INITIAL_COMMAND/ ) {
+		push(@{$AConfig{$var}}, $val);
+	} elsif ( $var eq 'SYSUSERS' ) {
+		push(@{$AConfig{$var}}, split(/[\s;,]+/, $val) );
+	} elsif ( $var eq 'ORA_RESERVED_WORDS' ) {
+		push(@{$AConfig{$var}}, split(/[\s;,]+/, $val) );
+	}
+	elsif ( $var eq 'FKEY_ADD_UPDATE' )
+	{
+		if (grep(/^$val$/i, @FKEY_OPTIONS)) {
+			$AConfig{$var} = uc($val);
+		} else {
+			$self->logit("FATAL: invalid option, see FKEY_ADD_UPDATE in configuration file\n", 0, 1);
+		}
+	}
+	elsif ($var eq 'MODIFY_STRUCT' or $var eq 'EXCLUDE_COLUMNS')
+	{
+		while ($val =~ s/([^\(\s]+)\s*\(([^\)]+)\)\s*//)
+		{
+			my $table = $1;
+			my $fields = $2;
+			$fields =~ s/^\s+//;
+			$fields =~ s/\s+$//;
+			push(@{$AConfig{$var}{$table}}, split(/[\s,]+/, $fields) );
+		}
+	}
+	elsif ($var eq 'MODIFY_TYPE')
+	{
+		$val =~ s/\\,/#NOSEP#/gs;
+		my @modif_type = split(/[,;]+/, $val);
+		foreach my $r (@modif_type)
+		{ 
+			$r =~ s/#NOSEP#/,/gs;
+			my ($table, $col, $type) = split(/:/, lc($r));
+			$AConfig{$var}{$table}{$col} = $type;
+		}
+	}
+	elsif ($var eq 'REPLACE_COLS')
+	{
+		while ($val =~ s/([^\(\s]+)\s*\(([^\)]+)\)[,;\s]*//)
+		{
+			my $table = $1;
+			my $fields = $2;
+			$fields =~ s/^\s+//;
+			$fields =~ s/\s+$//;
+			my @rel = split(/[,]+/, $fields);
+			foreach my $r (@rel)
+			{
+				my ($old, $new) = split(/:/, $r);
+				$AConfig{$var}{$table}{$old} = $new;
+			}
+		}
+	}
+	elsif ($var eq 'REPLACE_TABLES')
+	{
+		my @replace_tables = split(/[\s,;]+/, $val);
+		foreach my $r (@replace_tables)
+		{ 
+			my ($old, $new) = split(/:/, $r);
+			$AConfig{$var}{$old} = $new;
+		}
+	}
+	elsif ($var eq 'REPLACE_AS_BOOLEAN')
+	{
+		my @replace_boolean = split(/[\s;]+/, $val);
+		foreach my $r (@replace_boolean)
+		{ 
+			my ($table, $col) = split(/:/, $r);
+			push(@{$AConfig{$var}{uc($table)}}, uc($col));
+		}
+	}
+	elsif ($var eq 'BOOLEAN_VALUES')
+	{
+		my @replace_boolean = split(/[\s,;]+/, $val);
+		foreach my $r (@replace_boolean)
+		{ 
+			my ($yes, $no) = split(/:/, $r);
+			$AConfig{$var}{lc($yes)} = 't';
+			$AConfig{$var}{lc($no)} = 'f';
+		}
+	}
+	elsif ($var eq 'DEFINED_PK')
+	{
+		my @defined_pk = split(/[\s;]+/, $val);
+		foreach my $r (@defined_pk)
+		{ 
+			my ($table, $col) = split(/:/, $r);
+			$AConfig{$var}{lc($table)} = $col;
+		}
+	}
+	elsif ($var eq 'WHERE')
+	{
+		while ($val =~ s/([^\[\s]+)\s*\[([^\]]+)\]\s*//)
+		{
+			my $table = $1;
+			my $where = $2;
+			$where =~ s/^\s+//;
+			$where =~ s/\s+$//;
+			$AConfig{$var}{$table} = $where;
+		}
+		if ($val) {
+			$AConfig{"GLOBAL_WHERE"} = $val;
+		}
+	}
+	elsif ($var eq 'TRANSFORM_VALUE')
+	{
+		my @vals = split(/\s*;\s*/, $val);
+		foreach my $v (@vals)
+		{
+			while ($v =~ s/([^\[\s]+)\s*\[\s*([^:,]+)\s*[,:]\s*([^\]]+)\s*\]\s*//)
+			{
+				my $table = $1;
+				my $column = $2;
+				my $clause = $3;
+				$column =~ s/"//g;
+				$AConfig{$var}{lc($table)}{lc($column)} = $clause;
+			}
+		}
+	}
+	elsif ($var eq 'DELETE')
+	{
+		while ($val =~ s/([^\[\s]+)\s*\[([^\]]+)\]\s*//)
+		{
+			my $table = $1;
+			my $delete = $2;
+			$delete =~ s/^\s+//;
+			$delete =~ s/\s+$//;
+			$AConfig{$var}{$table} = $delete;
+		}
+		if ($val) {
+			$AConfig{"GLOBAL_DELETE"} = $val;
+		}
+	}
+	elsif ($var eq 'REPLACE_QUERY')
+	{
+		while ($val =~ s/([^\[\s]+)\s*\[([^\]]+)\]\s*//)
+		{
+			my $table = lc($1);
+			my $query = $2;
+			$query =~ s/^\s+//;
+			$query =~ s/\s+$//;
+			$AConfig{$var}{$table} = $query;
+		}
+	}
 }
 
 sub _extract_functions
