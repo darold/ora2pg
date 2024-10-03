@@ -857,6 +857,7 @@ sub plsql_to_plpgsql
 			$str =~ s/NLSSORT\($field,$field[\)]?/$1 $nls_sort/is;
 		} else {
 			$str =~ s/NLSSORT\($field,\s*'NLS_SORT=([^']+)'\s*[\)]?/$1 COLLATE "$2"/is;
+			$str =~ s/NLSSORT\($field,$field[\)]?/$1 COLLATE $2/is;
 		}
 	}
 
