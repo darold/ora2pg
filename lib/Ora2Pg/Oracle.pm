@@ -1078,6 +1078,7 @@ END
 	my %data = ();
 	my %link = ();
 	#my @tab_done = ();
+	my $i = 0;
 	while (my $row = $sth->fetch)
 	{
 		my $local_table = $row->[0];
@@ -1088,6 +1089,7 @@ END
 		}
 		next if (!$self->is_in_struct($local_table, $row->[2]));
 		next if (!$self->is_in_struct($remote_table, $row->[2]));
+		#$row->[1] = $row->[1] . $i++ if (exists $link{$local_table}{$row->[1]);
 		push(@{$data{$local_table}}, [ ($row->[1],$row->[4],$row->[6],$row->[7],$row->[8],$row->[9],$row->[11],$row->[0],$row->[10],$row->[14]) ]);
 		#            TABLENAME     CONSTNAME           COLNAME
 		push(@{$link{$local_table}{$row->[1]}{local}}, $row->[2]);
