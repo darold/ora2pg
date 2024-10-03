@@ -3046,7 +3046,7 @@ sub _restore_text_constant_part
        }
 }
 
-sub _get_dml_from_file
+sub _get_ddl_from_file
 {
 	my $self = shift;
 
@@ -3072,7 +3072,7 @@ sub read_schema_from_file
 	my $self = shift;
 
 	# Load file in a single string
-	my $content = $self->_get_dml_from_file();
+	my $content = $self->_get_ddl_from_file();
 
 	# Clear content from comment and text constant for better parsing
 	$self->_remove_comments(\$content, 1);
@@ -3483,8 +3483,8 @@ sub read_schema_from_file
 		elsif ($content =~ s/ALTER\s+TABLE\s+([^\s]+)\s+ADD\s*\(*\s*(.*)//is)
 		{
 			my $tb_name = $1;
-			$tb_name =~ s/"//g;
 			my $tb_def = $2;
+			$tb_name =~ s/"//g;
 			# Oracle allow multiple constraints declaration inside a single ALTER TABLE
 			while ($tb_def =~ s/CONSTRAINT\s+([^\s]+)\s+CHECK\s*(\(.*?\))\s+(ENABLE|DISABLE|VALIDATE|NOVALIDATE|DEFERRABLE|INITIALLY|DEFERRED|USING\s+INDEX|\s+)+([^,]*)//is)
 			{
@@ -3492,7 +3492,8 @@ sub read_schema_from_file
 				my $code = $2;
 				my $states = $3;
 				my $tbspace_move = $4;
-				if (!exists $self->{tables}{$tb_name}{table_info}{type}) {
+				if (!exists $self->{tables}{$tb_name}{table_info}{type})
+				{
 					$self->{tables}{$tb_name}{table_info}{type} = 'TABLE';
 					$self->{tables}{$tb_name}{table_info}{num_rows} = 0;
 					$tid++;
@@ -3514,7 +3515,8 @@ sub read_schema_from_file
 			while ($tb_def =~ s/CONSTRAINT\s+([^\s]+)\s+FOREIGN\s+KEY\s*(\(.*?\)\s+REFERENCES\s+[^\s]+\s*\(.*?\))\s*([^,\)]+|$)//is) {
 				my $constname = $1;
 				my $other_def = $3;
-				if (!exists $self->{tables}{$tb_name}{table_info}{type}) {
+				if (!exists $self->{tables}{$tb_name}{table_info}{type})
+				{
 					$self->{tables}{$tb_name}{table_info}{type} = 'TABLE';
 					$self->{tables}{$tb_name}{table_info}{num_rows} = 0;
 					$tid++;
@@ -3568,7 +3570,7 @@ sub read_comment_from_file
 	my $self = shift;
 
 	# Load file in a single string
-	my $content = $self->_get_dml_from_file();
+	my $content = $self->_get_ddl_from_file();
 
 	my $tid = 0; 
 
@@ -3624,7 +3626,7 @@ sub read_view_from_file
 	my $self = shift;
 
 	# Load file in a single string
-	my $content = $self->_get_dml_from_file();
+	my $content = $self->_get_ddl_from_file();
 
 	# Clear content from comment and text constant for better parsing
 	$self->_remove_comments(\$content);
@@ -3678,7 +3680,7 @@ sub read_grant_from_file
 	my $self = shift;
 
 	# Load file in a single string
-	my $content = $self->_get_dml_from_file();
+	my $content = $self->_get_ddl_from_file();
 
 	# Clear content from comment and text constant for better parsing
 	$self->_remove_comments(\$content);
@@ -3710,7 +3712,7 @@ sub read_trigger_from_file
 	my $self = shift;
 
 	# Load file in a single string
-	my $content = $self->_get_dml_from_file();
+	my $content = $self->_get_ddl_from_file();
 
 	# Clear content from comment and text constant for better parsing
 	$self->_remove_comments(\$content);
@@ -3804,7 +3806,7 @@ sub read_sequence_from_file
 	my $self = shift;
 
 	# Load file in a single string
-	my $content = $self->_get_dml_from_file();
+	my $content = $self->_get_ddl_from_file();
 
 	# Clear content from comment and text constant for better parsing
 	$self->_remove_comments(\$content, 1);
@@ -3874,7 +3876,7 @@ sub read_tablespace_from_file
 	my $self = shift;
 
 	# Load file in a single string
-	my $content = $self->_get_dml_from_file();
+	my $content = $self->_get_ddl_from_file();
 
 	my @tbsps = split(/\s*;\s*/, $content);
 	# tablespace without undo ones
@@ -3909,7 +3911,7 @@ sub read_directory_from_file
 	my $self = shift;
 
 	# Load file in a single string
-	my $content = $self->_get_dml_from_file();
+	my $content = $self->_get_ddl_from_file();
 
 	# Directory
 	while ($content =~ s/CREATE(?: OR REPLACE)?\s+DIRECTORY\s+([^\s]+)\s+AS\s+'([^']+)'\s*;//is) {
@@ -3938,7 +3940,7 @@ sub read_synonym_from_file
 	my $self = shift;
 
 	# Load file in a single string
-	my $content = $self->_get_dml_from_file();
+	my $content = $self->_get_ddl_from_file();
 
 	# Directory
 	while ($content =~ s/CREATE(?: OR REPLACE)?(?: PUBLIC)?\s+SYNONYM\s+([^\s]+)\s+FOR\s+([^;\s]+)\s*;//is) {
@@ -3967,7 +3969,7 @@ sub read_dblink_from_file
 	my $self = shift;
 
 	# Load file in a single string
-	my $content = $self->_get_dml_from_file();
+	my $content = $self->_get_ddl_from_file();
 
 	# Directory
 	while ($content =~ s/CREATE(?: SHARED)?(?: PUBLIC)?\s+DATABASE\s+LINK\s+([^\s]+)\s+CONNECT TO\s+([^\s]+)\s*([^;]+);//is) {
@@ -6167,7 +6169,7 @@ sub translate_query
 	
 	foreach my $q (sort { $a <=> $b } keys %{$self->{queries}})
 	{
-		if ($self->{queries}{$q}{code} !~ /(SELECT|UPDATE|DELETE|INSERT|DROP|TRUNCATE|CREATE(?:UNIQUE)? INDEX)/is) {
+		if ($self->{queries}{$q}{code} !~ /(SELECT|UPDATE|DELETE|INSERT|DROP|TRUNCATE|CREATE(?:UNIQUE)? INDEX|ALTER)/is) {
 			$self->{queries}{$q}{to_be_parsed} = 0;
 		} else {
 			$self->{queries}{$q}{to_be_parsed} = 1;
@@ -6182,12 +6184,17 @@ sub translate_query
 	{
 		$total_size += length($self->{queries}{$q}{code});
 		$self->logit("Dumping query $q...\n", 1);
-		if ($self->{queries}{$q}{to_be_parsed}) {
+		if ($self->{queries}{$q}{to_be_parsed})
+		{
 			if ($self->{plsql_pgsql}) {
 				$self->_remove_comments(\$self->{queries}{$q}{code});
+				if (!$self->{preserve_case}) {
+					$self->{queries}{$q}{code} =~ s/"//gs;
+				}
 				my $sql_q = Ora2Pg::PLSQL::convert_plsql_code($self, $self->{queries}{$q}{code});
 				my $estimate = '';
-				if ($self->{estimate_cost}) {
+				if ($self->{estimate_cost})
+				{
 					my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($self, $sql_q, 'QUERY');
 					$cost += $Ora2Pg::PLSQL::OBJECT_SCORE{'QUERY'};
 					$cost_value += $cost;
@@ -6197,10 +6204,14 @@ sub translate_query
 				$sql_output .= $sql_q;
 				$sql_output .= ';' if ($sql_q !~ /;\s*$/);
 				$sql_output .= $estimate;
-			} else {
+			}
+			else
+			{
 				$sql_output .= $self->{queries}{$q}{code};
 			}
-		} else {
+		}
+		else
+		{
 			$sql_output .= $self->{queries}{$q}{code};
 			$sql_output .= ';' if ($self->{queries}{$q}{code} !~ /;\s*$/);
 		}
