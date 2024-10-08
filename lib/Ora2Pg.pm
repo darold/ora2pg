@@ -1584,6 +1584,7 @@ sub _init
 	$self->{dump_as_csv} ||= 0;
 	$self->{dump_as_json} ||= 0;
 	$self->{dump_as_sheet} ||= 0;
+	$self->{dump_as_file_prefix} ||= '';
 	$self->{top_max} ||= 10;
 	$self->{print_header} ||= 0;
 	$self->{use_default_null} = 1 if (!defined $self->{use_default_null});
@@ -2092,6 +2093,21 @@ sub _init
 
 	# Disconnect from the database
 	$self->{dbh}->disconnect() if ($self->{dbh});
+}
+
+sub _select_output_file_suffix
+{
+  my ($self, $extension) = @_;
+  # If an output file template is defined
+  if ($self->{dump_as_file_prefix})
+  {
+    $self->{fhlog} = undef;
+    $self->{fhlog} = new IO::File;
+    $self->{fhlog}->open(">>$self->{dump_as_file_prefix}.$extension") or $self->logit("FATAL: can't log to $self->{dump_as_file_prefix}.$extension, $!\n", 0, 1);
+    if ($self->{debug}){
+        print STDERR  "Saving report to $self->{dump_as_file_prefix}.$extension\n";
+    }
+  }
 }
 
 # use to set encoding
@@ -20764,7 +20780,7 @@ sub _show_report
 #WINDOW
 #XML SCHEMA
 	);
-
+        my $report_exported = 0;
 	my $difficulty = $self->difficulty_assessment(%report_info);
 	my $lbl_mig_type = qq{
 Migration levels:
@@ -20782,6 +20798,8 @@ Technical levels:
 	if (!$self->{dump_as_html} && !$self->{dump_as_csv} && !$self->{dump_as_sheet} && !$self->{dump_as_json})
 	{
 		my $cost_header = '';
+		$report_exported = 1;
+		$self->_select_output_file_suffix("txt");
 		$cost_header = "\tEstimated cost" if ($self->{estimate_cost});
 		$self->logrep("-------------------------------------------------------------------------------\n");
 		$self->logrep("Ora2Pg v$VERSION - Database Migration Report\n");
@@ -20862,8 +20880,10 @@ Technical levels:
 			}
 		}
 	}
-	elsif ($self->{dump_as_csv})
+	if ($self->{dump_as_csv} && ($self->{dump_as_file_prefix} || !$report_exported))
 	{
+		$report_exported = 1;
+		$self->_select_output_file_suffix("csv");
 		$self->logrep("-------------------------------------------------------------------------------\n");
 		$self->logrep("Ora2Pg v$VERSION - Database Migration Report\n");
 		$self->logrep("-------------------------------------------------------------------------------\n");
@@ -20882,8 +20902,10 @@ Technical levels:
 		$self->logrep("Total Number;Total Invalid;Total Estimated cost;Human days cost;Migration level\n");
 		$self->logrep("$report_info{'total_object_number'};$report_info{'total_object_invalid'};$report_info{'total_cost_value'};$human_cost;$difficulty\n");
 	}
-	elsif ($self->{dump_as_json})
+	if ($self->{dump_as_json} && ($self->{dump_as_file_prefix} || !$report_exported))
 	{
+		$report_exported = 1;
+		$self->_select_output_file_suffix("json");
 		$self->logrep("{\n");
 		$self->logrep("\"ora2pg version\": $VERSION,\n");
 		$self->logrep("\"Version\": \"$report_info{'Version'}\",\n");
@@ -20902,7 +20924,8 @@ Technical levels:
 			$self->logrep("\"object\":\"$typ\",\"number\":$report_info{'Objects'}{$typ}{'number'},");
 			$self->logrep("\"invalid\":$report_info{'Objects'}{$typ}{'invalid'},");
 			$self->logrep("\"cost value\":$report_info{'Objects'}{$typ}{'cost_value'},");
-			$self->logrep("\"comment\":\"$report_info{'Objects'}{$typ}{'comment'}\",\n");
+			my $json_comment = ($report_info{'Objects'}{$typ}{'comment'} =~ s/\n/\\n/gr);
+                        $self->logrep("\"comment\":\"$json_comment\",\n");
 			$self->logrep("\"details\":\"$report_info{'Objects'}{$typ}{'detail'}\"}\n");
 		}
 		$self->logrep("]\n");
@@ -20915,8 +20938,10 @@ Technical levels:
 		$self->logrep(",\"migration level\":\"$difficulty\"");
 		$self->logrep("}\n");
 	}
-	elsif ($self->{dump_as_sheet})
+	if ($self->{dump_as_sheet} && ($self->{dump_as_file_prefix} || !$report_exported))
 	{
+		$report_exported = 1;
+		$self->_select_output_file_suffix("sheet.csv");
 		$difficulty = '' if (!$self->{estimate_cost});
 		my @header = ('Instance', 'Version', 'Schema', 'Size', 'Cost assessment', 'Migration type');
 		my $human_cost = $self->_get_human_cost($report_info{'total_cost_value'});
@@ -20935,8 +20960,10 @@ Technical levels:
 		}
 		$self->logrep('"' . join('";"', @infos) . '"' . "\n");
 	}
-	else
+	if ($self->{dump_as_html} && ($self->{dump_as_file_prefix} || !$report_exported))
 	{
+		$report_exported = 1;
+		$self->_select_output_file_suffix("html");
 		my $cost_header = '';
 		$cost_header = "<th>Estimated cost</th>" if ($self->{estimate_cost});
 		my $date = localtime(time);
