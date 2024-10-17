@@ -15244,7 +15244,7 @@ sub _convert_function
 	}
 	return if (!exists $fct_detail{name});
 
-	$fct_detail{name} =~ s/^.*\.// if (!$self->{is_mssql} || $self->{schema}) ;
+	$fct_detail{name} =~ s/^.*\.// if ( (!$self->{is_mssql} || $self->{schema}) && (!$self->{input_file} && $self->{type} ne 'PACKAGE') );
 	$fct_detail{name} =~ s/"//gs;
 
 	my $sep = '.';
@@ -21876,7 +21876,8 @@ sub normalize_function_call
 	my $p = lc($self->{current_package});
 
 	# foreach function declared in a package qualify its callis with the package name
-	foreach my $f (keys %{$self->{package_functions}{$p}}) {
+	foreach my $f (keys %{$self->{package_functions}{$p}})
+	{
 		# If the package is already prefixed to the function name in the hash take it from here
 		if (lc($self->{package_functions}{$p}{$f}{name}) ne lc($f)) {
 			$$str =~ s/([^\.])\b$f\s*([\(;])/$1$self->{package_functions}{$p}{$f}{name}$2/igs;
