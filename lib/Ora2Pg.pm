@@ -1617,45 +1617,45 @@ sub _init
 	}
 
 	if ($self->{pg_version} >= 15) {
-		$self->{pg_supports_negative_scale} = 1;
+		$self->{pg_supports_negative_scale} //= 1;
 	}
 	# Compatibility with PostgreSQL versions
 	if ($self->{pg_version} >= 9.0)
 	{
-		$self->{pg_supports_when} = 1;
-		$self->{pg_supports_ifexists} = 'IF EXISTS';
+		$self->{pg_supports_when} //= 1;
+		$self->{pg_supports_ifexists} //= 'IF EXISTS';
 	}
 	if ($self->{pg_version} >= 9.1) {
-		$self->{pg_supports_insteadof} = 1;
+		$self->{pg_supports_insteadof} //= 1;
 	}
 	if ($self->{pg_version} >= 9.3) {
-		$self->{pg_supports_mview} = 1;
-		$self->{pg_supports_lateral} = 1;
+		$self->{pg_supports_mview} //= 1;
+		$self->{pg_supports_lateral} //= 1;
 	}
 	if ($self->{pg_version} >= 9.4) {
-		$self->{pg_supports_checkoption} = 1;
+		$self->{pg_supports_checkoption} //= 1;
 	}
 	if ($self->{pg_version} >= 9.5) {
-		$self->{pg_supports_named_operator} = 1;
+		$self->{pg_supports_named_operator} //= 1;
 	}
 	if ($self->{pg_version} >= 10) {
-		$self->{pg_supports_partition} = 1;
-		$self->{pg_supports_identity} = 1;
+		$self->{pg_supports_partition} //= 1;
+		$self->{pg_supports_identity} //= 1;
 	}
 	if ($self->{pg_version} >= 11) {
-		$self->{pg_supports_procedure} = 1;
+		$self->{pg_supports_procedure} //= 1;
 	}
 	if ($self->{pg_version} >= 12) {
-		$self->{pg_supports_virtualcol} = 1;
+		$self->{pg_supports_virtualcol} //= 1;
 	}
 	if ($self->{pg_version} >= 14) {
-		$self->{pg_supports_outparam} = 1;
+		$self->{pg_supports_outparam} //= 1;
 	}
 
 	# Other PostgreSQL fork compatibility
 	# Redshift
 	if ($self->{pg_supports_substr} eq '') {
-		$self->{pg_supports_substr} = 1;
+		$self->{pg_supports_substr} //= 1;
 	}
 
 	$self->{pg_background} ||= 0;
