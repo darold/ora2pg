@@ -1623,7 +1623,10 @@ sub _init
 	if ($self->{pg_version} >= 9.0)
 	{
 		$self->{pg_supports_when} //= 1;
-		$self->{pg_supports_ifexists} //= 'IF EXISTS';
+		$self->{pg_supports_ifexists} //= 1;
+	}
+	if ($self->{pg_supports_ifexists} == 1) {
+		$self->{pg_supports_ifexists} = 'IF EXISTS';
 	}
 	if ($self->{pg_version} >= 9.1) {
 		$self->{pg_supports_insteadof} //= 1;
