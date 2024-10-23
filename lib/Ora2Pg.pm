@@ -3128,6 +3128,8 @@ sub read_schema_from_file
 			$self->{tables}{$tb_name}{table_info}{num_rows} = 0;
 			$tid++;
 			$self->{tables}{$tb_name}{internal_id} = $tid;
+ 			# Remove goldengate suplemental table logging
+ 			$tb_def =~ s/SUPPLEMENTAL LOG DATA \(.*?\) COLUMNS//is;
 			# For private temporary table extract the ON COMMIT information (18c)
 			if ($tb_def =~ s/ON\s+COMMIT\s+PRESERVE\s+DEFINITION//is)
 			{
