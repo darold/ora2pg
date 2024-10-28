@@ -1654,6 +1654,9 @@ sub _init
 	if ($self->{pg_version} >= 14) {
 		$self->{pg_supports_outparam} //= 1;
 	}
+	if (!$self->{pg_supports_procedure}) {
+		$self->{pg_supports_outparam} = 0;
+	}
 
 	# Other PostgreSQL fork compatibility
 	# Redshift
@@ -15389,9 +15392,9 @@ sub _convert_function
 			# When there is one or more out parameter, let PostgreSQL
 			# choose the right type with not using a RETURNS clause.
 			$func_return = " AS \$body\$\n";
-			push(@nout, "extra_param $fct_detail{func_ret_type}") if ($fct_detail{type} ne 'PROCEDURE');
 			$func_return = " RETURNS record AS \$body\$\n";
-			$fct_detail{args} =~ s/\)$/, OUT extra_param $fct_detail{func_ret_type}\)/;
+			#push(@nout, "extra_param $fct_detail{func_ret_type}") if ($fct_detail{type} ne 'PROCEDURE');
+			#$fct_detail{args} =~ s/\)$/, OUT extra_param $fct_detail{func_ret_type}\)/;
 			$out_return = 1;
 		}
 	}
