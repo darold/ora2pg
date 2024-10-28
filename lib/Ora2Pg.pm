@@ -1874,6 +1874,9 @@ sub _init
 	{
 		$self->{plsql_pgsql} = 1;
 
+		$self->replace_tables(%{$self->{'replace_tables'}});
+		$self->replace_cols(%{$self->{'replace_cols'}});
+
 		if (grep(/^$self->{type}$/, 'TABLE', 'SEQUENCE', 'SEQUENCE_VALUES', 'GRANT', 'TABLESPACE', 'VIEW', 'TRIGGER', 'QUERY', 'FUNCTION','PROCEDURE','PACKAGE','TYPE','SYNONYM', 'DIRECTORY', 'DBLINK','LOAD'))
 		{
 			if ($self->{type} eq 'LOAD')
