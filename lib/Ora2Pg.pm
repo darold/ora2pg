@@ -3707,7 +3707,7 @@ sub read_trigger_from_file
 		} elsif ($trigger =~ s/REFERENCING\s+(.*?)(FOR\s+EACH\s+)/$2/is) {
 			$t_referencing = " REFERENCING $1";
 		}
-		$t_referencing =~ s/REFERENCING\s+(NEW|OLD)\s+AS\s+(NEW|OLD)\s+(NEW|OLD)\s+AS\s+(NEW|OLD)//gsi;
+		$t_referencing =~ s/REFERENCING\s+(NEW|OLD)\s+AS\s+(NEW|OLD)(\s+(NEW|OLD)\s+AS\s+(NEW|OLD))?//gsi;
 
 		if ($trigger =~ s/^\s*(FOR\s+EACH\s+)(ROW|STATEMENT)\s*//is) {
 			$t_type = $1 . $2;
@@ -5821,7 +5821,7 @@ sub export_trigger
 				$statement = 1 if ($trig->[1] =~ s/ STATEMENT//);
 				$sql_output .= "$trig->[1] $trig->[2]$cols ON " . $self->quote_object_name($tbname) . " ";
 				if ($trig->[6] =~ s/.*(REFERENCING\s+.*)/$1/is) {
-					$trig->[6] =~ s/REFERENCING\s+(NEW|OLD)\s+AS\s+(NEW|OLD)\s+(NEW|OLD)\s+AS\s+(NEW|OLD)//gsi;
+					$trig->[6] =~ s/REFERENCING\s+(NEW|OLD)\s+AS\s+(NEW|OLD)(\s+(NEW|OLD)\s+AS\s+(NEW|OLD))?//gsi;
 					$trig->[6] =~ s/\s+FOR EACH ROW//gsi;
 					$sql_output .= "$trig->[6] ";
 				}
