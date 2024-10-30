@@ -14564,6 +14564,9 @@ sub _remove_comments
 	# Fix unterminated comment at end of the code
 	$$content =~ s/(\/\*(?:(?!\*\/).)*)$/$1 \*\//s;
 
+	# multiline comment flags
+	my $m_comment_flag = 'False';
+
 	# Replace some other cases that are breaking the parser (presence of -- in constant string, etc.)
 	my @lines = split(/([\n\r]+)/, $$content);
 	for (my $i = 0; $i <= $#lines; $i++)
@@ -14575,12 +14578,28 @@ sub _remove_comments
 			# Single line comment --...-- */ is replaced by  */ only
 			$lines[$i] =~ s/^([\t ]*)\-[\-]+\s*\*\//$1\*\//;
 
+			# to check if we have starting multiline comment /*
+			if (!($lines[$i] =~ /.*--.*\/\*/ and $lines[$i] !~ /.*\/\*.*--/))
+			{
+				if ($lines[$i] =~ /\/\*.*$/ and $m_comment_flag eq 'False')
+				{
+					$m_comment_flag = 'True'; # setting flag to true
+				}
+			}
+
 			# Check for -- and */ in the same line
-			if ($lines[$i] =~ /(--.*)(\*\/.*)$/)
+			if ($lines[$i] =~ /(.*?--.*?)(\*\/.*)$/ and $m_comment_flag eq 'True')
 			{
 				$lines[$i] = $1;
 				splice(@lines, $i + 1, 0, $2);
+				$m_comment_flag = 'False';
+
 			}
+			elsif ($lines[$i] =~ /(.*\*\/)/ and $m_comment_flag eq 'True')
+			{
+				$m_comment_flag = 'False';
+			}
+
 		}
 
 		# Single line comment --
