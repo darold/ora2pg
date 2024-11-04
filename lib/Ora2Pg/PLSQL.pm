@@ -393,7 +393,10 @@ $QUERY_TEST_SCORE = 0.1;
 );
 
 %EXCEPTION_MAP = (
+	'CURSOR_ALREADY_OPEN' => 'duplicate_cursor',
 	'INVALID_CURSOR' => 'invalid_cursor_state',
+	'DUP_VAL_ON_INDEX' => 'unique_violation',
+	'TIMEOUT_ON_RESOURCE' => 'lock_not_available',
 	'ZERO_DIVIDE' => 'division_by_zero',
 	'STORAGE_ERROR' => 'out_of_memory',
 	'INTEGRITY_ERROR' => 'integrity_constraint_violation',
@@ -403,7 +406,12 @@ $QUERY_TEST_SCORE = 0.1;
 	'NO_DATA_FOUND' => 'no_data_found',
 	'LOGIN_DENIED' => 'connection_exception',
 	'TOO_MANY_ROWS'=> 'too_many_rows',
-	# 'PROGRAM_ERROR' => 'INTERNAL ERROR',
+	'DUP_VAL_ON_INDEX' => 'unique_violation',
+	'NOT_LOGGED_ON' => 'insufficient_privilege',
+	'PROGRAM_ERROR' => 'internal_error',
+	'ACCESS_INTO_NULL' => 'object_not_in_prerequisite_state',
+	'COLLECTION_IS_NULL' => 'object_not_in_prerequisite_state',
+	'INVALID_USERENV_PARAMETER' => 'invalid_parameter_value',
 	# 'ROWTYPE_MISMATCH' => 'DATATYPE MISMATCH'
 );
 
