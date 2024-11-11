@@ -3751,6 +3751,7 @@ sub read_trigger_from_file
 			$tb_name = $4;
 			$trigger = $5 . $6;
 			$t_name =~ s/"//g;
+			$tb_name =~ s/"//g;
 		}
 		elsif ($content =~ s/^([^\s]+)\s+(BEFORE|AFTER|INSTEAD|\s+|OF)((?:INSERT|UPDATE|DELETE|OR|\s+|OF)+\s+(?:.*?))*\s+ON\s+([^\s]+)\s+(.*)(\bEND\s*(?!IF|LOOP|CASE|INTO|FROM|,)[a-z0-9_\$"]*(?:;|$))//is)
 		{
@@ -3760,6 +3761,7 @@ sub read_trigger_from_file
 			$tb_name = $4;
 			$trigger = $5 . $6;
 			$t_name =~ s/"//g;
+			$tb_name =~ s/"//g;
 		}
 
 		next if (!$t_name || ! $tb_name);
@@ -3800,9 +3802,15 @@ sub read_trigger_from_file
 		# TRIGGER_NAME, TRIGGER_TYPE, TRIGGERING_EVENT, TABLE_NAME, TRIGGER_BODY, WHEN_CLAUSE, DESCRIPTION, ACTION_TYPE, OWNER
 		$trigger =~ s/\bEND\s+[^\s]+\s+$/END/is;
 		my $t_schema = '';
-		if ($t_name =~ /^([^\.]+)\.(.*)/i) {
-			$t_name = $2;
-			$t_schema = $1;
+		if ($t_name =~ s/^([^\.]+)\.//i) {
+			if ($self->{export_schema} && ($self->{pg_schema} || $self->{schema} || $1)) {
+				$t_schema = $self->{pg_schema} || $self->{schema} || $1;
+			}
+		}
+		if ($tb_name =~ s/^([^\.]+)\.//i) {
+			if ($self->{export_schema} && ($self->{pg_schema} || $self->{schema} || $1)) {
+				$tb_name = ($self->{pg_schema} || $self->{schema} || $1) . '.' . $tb_name;
+			}
 		}
 		my $when_event = '';
 		if ($t_when_cond) {
@@ -5907,6 +5915,10 @@ sub export_trigger
 			my $security = '';
 			my $revoke = '';
 			my $trig_fctname = $self->quote_object_name("trigger_fct_\L$trig->[0]\E");
+			if ($self->{export_schema} && ($self->{pg_schema} || $self->{schema} || $trig->[8])) {
+				$trig_fctname = $self->quote_object_name($self->{pg_schema} || $self->{schema} || $trig->[8]) . ".$trig_fctname";
+			}
+
 			if ($self->{security}{"\U$trig->[0]\E"}{security} eq 'DEFINER')
 			{
 				$security = " SECURITY DEFINER";
