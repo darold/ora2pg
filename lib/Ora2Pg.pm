@@ -3282,6 +3282,9 @@ sub read_schema_from_file
 						{
 							next;
 						}
+						if (!$self->{preserve_case}) {
+							$c_type =~ s/"//gs;
+						}
 						my $c_length = '';
 						my $c_scale = '';
 						if ($c =~ s/^\(([^\)]+)\)\s*//s)
