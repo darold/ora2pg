@@ -2986,7 +2986,7 @@ sub _parse_constraint
 			$self->{tables}{$tb_name}{check_constraint}{constraint}{$name}{validate} = 'NOT VALIDATED';
 		}
 	}
-	elsif ($c =~ /^([^\s]+)\s+FOREIGN KEY (\([^\)]+\))?\s*REFERENCES ([^\(\s]+)\s*\(([^\)]+)\)/is)
+	elsif ($c =~ /^([^\s]+)\s+FOREIGN KEY\s*(\([^\)]+\))?\s*REFERENCES\s*([^\(\s]+)\s*\(([^\)]+)\)/is)
 	{
 		my $c_name = $1;
 		if ($2) {
@@ -3187,7 +3187,6 @@ sub read_schema_from_file
 				$c =~ s/^(CHECK[^,;]+)DEFERRABLE\s+INITIALLY\s+DEFERRED/$1/is;
 				$c =~ s/^CHECK\b/CONSTRAINT o2pc_$tbn CHECK/is;
 				$c =~ s/^FOREIGN KEY/CONSTRAINT o2pf_$tbn FOREIGN KEY/is;
-
 				$c =~ s/\(\s+/\(/gs;
 
 				# register column name between double quote
