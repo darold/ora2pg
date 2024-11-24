@@ -774,6 +774,10 @@ sub quote_object_name
 		} else {
 			$obj_name =~ s/^([^\.]+)\.([^\.]+)\.([^\.]+)$/"$1"\."$2"\."$3"/;
 		}
+		if ($obj_name =~ /^"[^\s]+\s+(ASC|DESC)"$/i) {
+			$obj_name =~ s/"//g;
+			$obj_name =~ s/\s+ASC$//ig;
+		}
 		push(@ret, $obj_name);
 	}
 
@@ -1002,6 +1006,9 @@ sub _init
 	$self->{comment_values} = ();
 	$self->{text_values} = ();
 	$self->{text_values_pos} = 0;
+
+	# Remove comments when reading an input file before parsing
+	$self->{no_clean_comment} = 0;
 
 	# Keep commit/rollback in converted pl/sql code by default
 	$self->{comment_commit_rollback} = 0;
@@ -2962,7 +2969,6 @@ sub _get_plsql_code
 sub _parse_constraint
 {
 	my ($self, $tb_name, $cur_col_name, $c) = @_;
-
 	if ($c =~ /^([^\s]+)\s+(UNIQUE|PRIMARY KEY)\s*\(([^\)]+)\)/is)
 	{
 		my $tp = 'U';
@@ -3082,10 +3088,12 @@ sub read_schema_from_file
 
 	# Load file in a single string
 	my $content = $self->_get_ddl_from_file();
-
 	# Clear content from comment and text constant for better parsing
-	$self->_remove_comments(\$content, 1);
-	$content =~  s/\%ORA2PG_COMMENT\d+\%//gs;
+	if (!$self->{no_clean_comment})
+	{
+		$self->_remove_comments(\$content, 1);
+		$content =~  s/\%ORA2PG_COMMENT\d+\%//gs;
+	}
 	my $tid = 0; 
 
 	my @statements = split(/\s*;\s*/, $content);
@@ -3095,7 +3103,8 @@ sub read_schema_from_file
 		$content .= ';';
 
 		# Remove some unwanted and unused keywords from the statements
-		$content =~ s/\s+(PARALLEL|COMPRESS)\b//igs;
+		$content =~ s/\s+(PARALLEL|COMPRESS|CLUSTERED|NONCLUSTERED)\b//igs;
+		$content =~ s/\s+WITH\s+CHECK\s+ADD\s+CONSTRAINT\s+/ ADD CONSTRAINT /igs;
 
 		if ($content =~ s/TRUNCATE TABLE\s+([^\s;]+)([^;]*);//is)
 		{
@@ -3448,6 +3457,17 @@ sub read_schema_from_file
 			$idx_def =~ s/\s*nologging//is;
 			$idx_def =~ s/STORAGE\s*\([^\)]+\)\s*//is;
 			$idx_def =~ s/COMPRESS(\s+\d+)?\s*//is;
+			$idx_def =~ s/\)\s*WITH\s*\(.*//is;
+			$idx_def =~ s/\s+ASC\b//is;
+			$idx_def =~ s/^\s+//s;
+			$idx_def =~ s/\s+$//is;
+			# look include information
+			if ($idx_def =~ s/\s*\)\s*(INCLUDE|INCLUDING)\s*\(([^\)]+)//is)
+			{
+				my $include = $2;
+				$include =~ s/\s+//g;
+				push(@{$self->{tables}{$tb_name}{idx_type}{$idx_name}{type_include}}, split(/\s*,\s*/, $include));
+			}
 			# look for storage information
 			if ($idx_def =~ s/TABLESPACE\s*([^\s]+)\s*//is)
 			{
@@ -3499,7 +3519,8 @@ sub read_schema_from_file
 			my $tb_def = $2;
 			$tb_name =~ s/"//g;
 			# Oracle allow multiple constraints declaration inside a single ALTER TABLE
-			while ($tb_def =~ s/CONSTRAINT\s+([^\s]+)\s+CHECK\s*(\(.*?\))\s+(ENABLE|DISABLE|VALIDATE|NOVALIDATE|DEFERRABLE|INITIALLY|DEFERRED|USING\s+INDEX|\s+)+([^,]*)//is)
+			# CONSTRAINT CK_TblMstCustomerDriver_RentalDepositAmount CHECK  ((RentalDepositAmount>=(0)));
+			while ($tb_def =~ s/CONSTRAINT\s+([^\s]+)\s+CHECK\s*([\(]+.*?[\)]+)\s*(ENABLE|DISABLE|VALIDATE|NOVALIDATE|DEFERRABLE|INITIALLY|DEFERRED|USING\s+INDEX|\s+)?([^,]*)//is)
 			{
 				my $constname = $1;
 				my $code = $2;
@@ -3571,6 +3592,90 @@ sub read_schema_from_file
 					$self->{tables}{$tb_name}{internal_id} = $tid;
 				}
 			}
+		}
+		elsif ($content =~ s/ALTER\s+TABLE\s+([^\s]+)\s+ADD\s+(CONSTRAINT\s+[^\s]+\s+.*)//is)
+		{
+			my $tb_name = $1;
+			my $tb_def = $2;
+			$tb_name =~ s/"//g;
+			# Oracle allow multiple constraints declaration inside a single ALTER TABLE
+			while ($tb_def =~ s/CONSTRAINT\s+([^\s]+)\s+CHECK\s*(\(.*?\))\s+(ENABLE|DISABLE|VALIDATE|NOVALIDATE|DEFERRABLE|INITIALLY|DEFERRED|USING\s+INDEX|\s+)+([^,]*)//is)
+			{
+				my $constname = $1;
+				my $code = $2;
+				my $states = $3;
+				my $tbspace_move = $4;
+				if (!exists $self->{tables}{$tb_name}{table_info}{type})
+				{
+					$self->{tables}{$tb_name}{table_info}{type} = 'TABLE';
+					$self->{tables}{$tb_name}{table_info}{num_rows} = 0;
+					$tid++;
+					$self->{tables}{$tb_name}{internal_id} = $tid;
+				}
+				my $validate = '';
+				$validate = ' NOT VALID' if ( $states =~ /NOVALIDATE/is);
+				push(@{$self->{tables}{$tb_name}{alter_table}}, "ADD CONSTRAINT \L$constname\E CHECK $code$validate");
+				if ( $tbspace_move =~ /USING\s+INDEX\s+TABLESPACE\s+([^\s]+)/is) {
+					if ($self->{use_tablespace}) {
+						$tbspace_move = "ALTER INDEX $constname SET TABLESPACE " . lc($1);
+						push(@{$self->{tables}{$tb_name}{alter_index}}, $tbspace_move);
+					}
+				} elsif ($tbspace_move =~ /USING\s+INDEX\s+([^\s]+)/is) {
+					$self->{tables}{$tb_name}{alter_table}[-1] .= " USING INDEX " . lc($1);
+				}
+				
+			}
+
+			while ($tb_def =~ s/CONSTRAINT\s+([^\s]+)\s+FOREIGN\s+KEY\s*(\(.*?\)\s+REFERENCES\s+[^\s]+\s*\(.*?\))\s*([^,\)]+|$)//is) {
+				my $constname = $1;
+				my $other_def = $3;
+				if (!exists $self->{tables}{$tb_name}{table_info}{type})
+				{
+					$self->{tables}{$tb_name}{table_info}{type} = 'TABLE';
+					$self->{tables}{$tb_name}{table_info}{num_rows} = 0;
+					$tid++;
+					$self->{tables}{$tb_name}{internal_id} = $tid;
+				}
+				push(@{$self->{tables}{$tb_name}{alter_table}}, "ADD CONSTRAINT \L$constname\E FOREIGN KEY $2");
+				if ($other_def =~ /(ON\s+DELETE\s+(?:NO ACTION|RESTRICT|CASCADE|SET NULL))/is) {
+					$self->{tables}{$tb_name}{alter_table}[-1] .= " $1";
+				}
+				if ($other_def =~ /(ON\s+UPDATE\s+(?:NO ACTION|RESTRICT|CASCADE|SET NULL))/is) {
+					$self->{tables}{$tb_name}{alter_table}[-1] .= " $1";
+				}
+				my $validate = '';
+				$validate = ' NOT VALID' if ( $other_def =~ /NOVALIDATE/is);
+				$self->{tables}{$tb_name}{alter_table}[-1] .= $validate;
+			}
+			# We can just have one primary key constraint
+			if ($tb_def =~ s/CONSTRAINT\s+([^\s]+)\s+PRIMARY KEY//is) {
+				my $constname = lc($1);
+				$tb_def =~ s/^[^\(]+//;
+				$tb_def =~ s/\);$//s;
+				if ( $tb_def =~ s/USING\s+INDEX\s+TABLESPACE\s+([^\s]+).*//s) {
+					$tb_def =~ s/\s+$//;
+					if ($self->{use_tablespace}) {
+						my $tbspace_move = "ALTER INDEX $constname SET TABLESPACE $1";
+						push(@{$self->{tables}{$tb_name}{alter_index}}, $tbspace_move);
+					}
+					push(@{$self->{tables}{$tb_name}{alter_table}}, "ADD CONSTRAINT $constname PRIMARY KEY " . lc($tb_def));
+				} elsif ($tb_def =~ s/USING\s+INDEX\s+([^\s]+).*//s) {
+					push(@{$self->{tables}{$tb_name}{alter_table}}, "ADD PRIMARY KEY " . lc($tb_def));
+					$self->{tables}{$tb_name}{alter_table}[-1] .= " USING INDEX " . lc($1);
+				} elsif ($tb_def) {
+					push(@{$self->{tables}{$tb_name}{alter_table}}, "ADD CONSTRAINT $constname PRIMARY KEY " . lc($tb_def));
+				}
+				if (!exists $self->{tables}{$tb_name}{table_info}{type}) {
+					$self->{tables}{$tb_name}{table_info}{type} = 'TABLE';
+					$self->{tables}{$tb_name}{table_info}{num_rows} = 0;
+					$tid++;
+					$self->{tables}{$tb_name}{internal_id} = $tid;
+				}
+			}
+		}
+		else
+		{
+			print STDERR "[DEBUG] unhandled line: $content\n";
 		}
 	}
 
