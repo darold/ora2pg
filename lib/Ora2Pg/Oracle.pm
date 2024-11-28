@@ -2080,6 +2080,18 @@ sub _sql_type
 		}
 	}
 
+	# handing timestamp with local timezone
+	my $captured_type = '';
+	if($type =~ /TIMESTAMP\s*\((\d+)\) WITH LOCAL TIME ZONE/i){
+		$type =~ s/TIMESTAMP\s*\((\d+)\) WITH LOCAL TIME ZONE/TIMESTAMP WITH LOCAL TIME ZONE/ig;
+		$captured_type = $1;
+		my $res_type = $self->{data_type}{$type};
+		my @res_ = split(/\s+/,$res_type);
+		$res_[0] .= "($captured_type)";
+		my $r_type = join(' ',@res_);
+		$type = uc($r_type);
+	}
+
 	if (exists $self->{data_type}{$type})
 	{
 
