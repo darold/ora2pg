@@ -3876,7 +3876,7 @@ sub read_trigger_from_file
 		} elsif ($trigger =~ s/REFERENCING\s+(.*?)(FOR\s+EACH\s+)/$2/is) {
 			$t_referencing = " REFERENCING $1";
 		}
-		$t_referencing =~ s/REFERENCING\s+(NEW|OLD)\s+AS\s+(NEW|OLD)\s+(NEW|OLD)\s+AS\s+(NEW|OLD)//gsi;
+		$t_referencing =~ s/REFERENCING\s+(NEW|OLD)\s+AS\s+(NEW|OLD)(\s+(NEW|OLD)\s+AS\s+(NEW|OLD))?//gsi;
 
 		if ($trigger =~ s/^\s*(FOR\s+EACH\s+)(ROW|STATEMENT)\s*//is) {
 			$t_type = $1 . $2;
@@ -6099,7 +6099,7 @@ sub export_trigger
 				$statement = 1 if ($trig->[1] =~ s/ STATEMENT//);
 				$sql_output .= "$trig->[1] $trig->[2]$cols ON " . $self->quote_object_name($tbname) . " ";
 				if ($trig->[6] =~ s/.*(REFERENCING\s+.*)/$1/is) {
-					$trig->[6] =~ s/REFERENCING\s+(NEW|OLD)\s+AS\s+(NEW|OLD)\s+(NEW|OLD)\s+AS\s+(NEW|OLD)//gsi;
+					$trig->[6] =~ s/REFERENCING\s+(NEW|OLD)\s+AS\s+(NEW|OLD)(\s+(NEW|OLD)\s+AS\s+(NEW|OLD))?//gsi;
 					$trig->[6] =~ s/\s+FOR EACH ROW//gsi;
 					$sql_output .= "$trig->[6] ";
 				}
@@ -15201,6 +15201,9 @@ sub _remove_comments
 	# Fix unterminated comment at end of the code
 	$$content =~ s/(\/\*(?:(?!\*\/).)*)$/$1 \*\//s;
 
+	# multiline comment flags
+	my $m_comment_flag = 'False';
+
 	# Replace some other cases that are breaking the parser (presence of -- in constant string, etc.)
 	my @lines = split(/([\n\r]+)/, $$content);
 	for (my $i = 0; $i <= $#lines; $i++)
@@ -15212,12 +15215,28 @@ sub _remove_comments
 			# Single line comment --...-- */ is replaced by  */ only
 			$lines[$i] =~ s/^([\t ]*)\-[\-]+\s*\*\//$1\*\//;
 
+			# to check if we have starting multiline comment /*
+			if (!($lines[$i] =~ /.*--.*\/\*/ and $lines[$i] !~ /.*\/\*.*--/))
+			{
+				if ($lines[$i] =~ /\/\*.*$/ and $m_comment_flag eq 'False')
+				{
+					$m_comment_flag = 'True'; # setting flag to true
+				}
+			}
+
 			# Check for -- and */ in the same line
-			if ($lines[$i] =~ /(--.*)(\*\/.*)$/)
+			if ($lines[$i] =~ /(.*?--.*?)(\*\/.*)$/ and $m_comment_flag eq 'True')
 			{
 				$lines[$i] = $1;
 				splice(@lines, $i + 1, 0, $2);
+				$m_comment_flag = 'False';
+
 			}
+			elsif ($lines[$i] =~ /(.*\*\/)/ and $m_comment_flag eq 'True')
+			{
+				$m_comment_flag = 'False';
+			}
+
 		}
 
 		# Single line comment --

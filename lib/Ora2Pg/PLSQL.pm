@@ -1938,7 +1938,7 @@ sub replace_oracle_function
 	# Remove call to getClobVal() or getStringVal, no need of that
 	$str =~ s/\.(GETCLOBVAL|GETSTRINGVAL|GETNUMBERVAL|GETBLOBVAL)\s*\(\s*\)//is;
 	# Add the name keyword to XMLELEMENT
-	$str =~ s/XMLELEMENT\s*\(\s*(!NAME)/XMLELEMENT(name $1/is;
+	$str =~ s/XMLELEMENT\s*\(\s*(?:NAME\s+)?([^\)]+)/XMLELEMENT(name $1/is;
 	# Replace XMLTYPE function
 	$str =~ s/XMLTYPE\s*\(\s*([^,]+)\s*,[^\)]+\s*\)/xmlparse(DOCUMENT, convert_from($1, 'utf-8'))/igs;
 	$str =~ s/XMLTYPE\.CREATEXML\s*\(\s*[^\)]+\s*\)/xmlparse(DOCUMENT, convert_from($1, 'utf-8'))/igs;
