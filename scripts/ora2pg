@@ -64,6 +64,7 @@ my $COST_UNIT_VALUE = 5;
 my $DUMP_AS_HTML;
 my $DUMP_AS_CSV;
 my $DUMP_AS_JSON;
+my $DUMP_AS_FILE_PREFIX;
 my $DUMP_AS_SHEET;
 my $THREAD_COUNT;
 my $ORACLE_COPIES;
@@ -165,6 +166,7 @@ GetOptions (
 	'dump_as_csv!' =>\$DUMP_AS_CSV,
 	'dump_as_json!' =>\$DUMP_AS_JSON,
 	'dump_as_sheet!' =>\$DUMP_AS_SHEET,
+	'dump_as_file_prefix=s' =>\$DUMP_AS_FILE_PREFIX,
 	'init_project=s' => \$CREATE_PROJECT,
 	'project_base=s' => \$PROJECT_BASE,
 	'print_header!' => \$PRINT_HEADER,
@@ -379,6 +381,7 @@ my $schema = new Ora2Pg (
 	dump_as_csv => $DUMP_AS_CSV,
 	dump_as_json => $DUMP_AS_JSON,
 	dump_as_sheet => $DUMP_AS_SHEET,
+	dump_as_file_prefix => $DUMP_AS_FILE_PREFIX,
 	thread_count => $THREAD_COUNT,
 	oracle_copies => $ORACLE_COPIES,
 	data_limit => $DATA_LIMIT,
@@ -531,6 +534,9 @@ Usage: ora2pg [-dhpqv --estimate_cost --dump_as_html] [--option value]
    --dump_as_csv      : As above but force ora2pg to dump report in CSV.
    --dump_as_json     : As above but force ora2pg to dump report in JSON.
    --dump_as_sheet    : Report migration assessment with one CSV line per database.
+   --dump_as_file_prefix : Filename prefix, suffix will be added depending on
+                           dump_as_* selected switches, suffixes
+                           will be .html, .csv, .json.
    --init_project name: Initialise a typical ora2pg project tree. Top directory
                         will be created under project base dir.
    --project_base dir : Define the base dir for ora2pg project trees. Default
