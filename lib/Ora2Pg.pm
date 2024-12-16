@@ -450,16 +450,31 @@ sub open_export_file
 			}
 		}
 		# If user request data compression
-		if ($outfile =~ /\.gz$/i) {
+		if ($outfile =~ /\.gz$/i)
+		{
 			eval("use Compress::Zlib;");
 			$self->{compress} = 'Zlib';
 			$filehdl = gzopen("$outfile", "wb") or $self->logit("FATAL: Can't create deflation file $outfile\n",0,1);
-		} elsif ($outfile =~ /\.bz2$/i) {
+			if ($self->{'binmode'} =~ /^:/) {
+				binmode($filehdl, $self->{'binmode'});
+			} else {
+				binmode($filehdl, ":utf8");
+			}
+		}
+		elsif ($outfile =~ /\.bz2$/i)
+		{
 			$self->logit("Error: can't run bzip2\n",0,1) if (!-x $self->{bzip2});
 			$self->{compress} = 'Bzip2';
 			$filehdl = new IO::File;
 			$filehdl->open("|$self->{bzip2} --stdout >$outfile") or $self->logit("FATAL: Can't open pipe to $self->{bzip2} --stdout >$outfile: $!\n", 0,1);
-		} else {
+			if ($self->{'binmode'} =~ /^:/) {
+				binmode($filehdl, $self->{'binmode'});
+			} else {
+				binmode($filehdl, ":utf8");
+			}
+		}
+		else
+		{
 			$filehdl = new IO::File;
 			$filehdl->open(">$outfile") or $self->logit("FATAL: Can't open $outfile: $!\n", 0, 1);
 		}
