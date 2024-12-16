@@ -373,6 +373,9 @@ Usage: ora2pg [-dhpqv --estimate_cost --dump_as_html] [--option value]
    --dump_as_json     : As above but force ora2pg to dump report in JSON.
    --dump_as_sheet    : Report migration assessment with one CSV line per database.
    --init_project name: Initialise a typical ora2pg project tree. Top directory
+                           dump_as_* selected switches, suffixes
+                           will be .html, .csv, .json.
+   --init_project name: Initialise a typical ora2pg project tree. Top directory
                         will be created under project base dir.
    --project_base dir : Define the base dir for ora2pg project trees. Default
                         is current directory.
@@ -481,8 +484,8 @@ of the command usage:
 It create a generic config file where you just have to define the Oracle
 database connection and a shell script called export_schema.sh. The sources/
 directory will contains the Oracle code, the schema/ will contains the code
-ported to PostgreSQL. The reports/ directory will contains the html reports
-with the migration cost assessment.
+ported to PostgreSQL. The reports/ directory will contains the html and json
+reports with the migration cost assessment.
 
 If you want to use your own default config file, use the -c option to give
 the path to that file. Rename it with .dist suffix if you want ora2pg to
@@ -952,6 +955,30 @@ at command line.
 By default when using SHOW_REPORT the migration report is generated as simple
 text, enabling this directive will force ora2pg to create a report in HTML
 format.
+
+See http://ora2pg.darold.net/report.html for a sample report.
+
+=item DUMP_AS_JSON
+
+By default when using SHOW_REPORT the migration report is generated as simple
+text, enabling this directive will force ora2pg to create a report in JSON
+format.
+See http://ora2pg.darold.net/report.html for a sample report.
+
+=item DUMP_AS_CSV
+
+By default when using SHOW_REPORT the migration report is generated as simple
+text, enabling this directive will force ora2pg to create a report in CSV
+format.
+
+See http://ora2pg.darold.net/report.html for a sample report.
+
+=item DUMP_AS_FILE_PREFIX
+
+By default when using SHOW_REPORT the migration report is generated to stout.
+Enabling this directive in conjunction with DUMP_AS_* directives will force
+ora2pg to create a report files with the given extensions and formats. This
+option allows you to combine multiple DUMP_AS_* formats.
 
 See http://ora2pg.darold.net/report.html for a sample report.
 
