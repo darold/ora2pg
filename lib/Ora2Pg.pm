@@ -10495,6 +10495,7 @@ sub read_input_file
 	{
                 $content =~ s/"/'/gs;
                 $content =~ s/`/"/gs;
+                $content =~ s/;\s*\/\//;/gs;
         }
 
 	return $content;
@@ -15545,7 +15546,7 @@ sub _convert_function
 		# choose the right type with not using a RETURNS clause.
 		if ($nbout > 0) {
 			$func_return = " AS \$body\$\n";
-			if ($fct_detail{type} ne 'PROCEDURE' || !$self->{pg_supports_procedure})
+			if ($fct_detail{type} ne 'PROCEDURE' || !$self->{PG_SUPPORTS_PROCEDURE})
 			{
 				push(@nout, "extra_param $fct_detail{func_ret_type}");
 				$func_return = " RETURNS record AS \$body\$\n";
@@ -15566,10 +15567,6 @@ sub _convert_function
 			# When there is one or more out parameter, let PostgreSQL
 			# choose the right type with not using a RETURNS clause.
 			$func_return = " AS \$body\$\n";
-			$func_return = " RETURNS record AS \$body\$\n";
-			#push(@nout, "extra_param $fct_detail{func_ret_type}") if ($fct_detail{type} ne 'PROCEDURE');
-			#$fct_detail{args} =~ s/\)$/, OUT extra_param $fct_detail{func_ret_type}\)/;
-			$out_return = 1;
 		}
 	}
 	else
