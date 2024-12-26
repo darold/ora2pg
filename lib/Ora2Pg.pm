@@ -4406,6 +4406,9 @@ sub _export_table_data
 	my $tmptb = $self->get_replaced_tbname($table);
 
 	# register the column list and data type in dedicated structs
+	@{$self->{data_cols}{$table}} = ();
+	@{$self->{tables}{$table}{field_name}} = ();
+	@{$self->{tables}{$table}{field_type}} = ();
 	foreach my $k (sort {$self->{tables}{$table}{column_info}{$a}[11] <=> $self->{tables}{$table}{column_info}{$b}[11]} keys %{$self->{tables}{$table}{column_info}})
 	{
 		push(@{$self->{data_cols}{$table}}, $k);
@@ -10634,7 +10637,6 @@ sub _dump_table
 			my $keyname = lc($table . '_' . $fieldname . '_t');
 			$f->[1] = $keyname;
 		}
-		$type = $self->{'modify_type'}{lc($table)}{lc($f->[0])} if (exists $self->{'modify_type'}{lc($table)}{lc($f->[0])});
 		# Check if this column should be replaced by a boolean following table/column name
 		if (grep(/^\Q$fieldname\E$/i, @{$self->{'replace_as_boolean'}{uc($table)}})) {
 			$type = 'boolean';
@@ -10648,6 +10650,7 @@ sub _dump_table
 				$type = 'boolean';
 			}
 		}
+		$type = $self->{'modify_type'}{lc($table)}{lc($f->[0])} if (exists $self->{'modify_type'}{lc($table)}{lc($f->[0])});
 
 		push(@stt, uc($f->[1]));
 		push(@tt, $type);
@@ -13993,7 +13996,7 @@ sub _get_custom_types
 
 sub format_data_row
 {
-	my ($self, $row, $data_types, $action, $src_data_types, $custom_types, $table, $colcond, $sprep, $colname) = @_;
+	my ($self, $row, $data_types, $action, $src_data_types, $custom_types, $table, $colcond, $sprep) = @_;
 
 	@{ $self->{tables}{$table}{pk_where_clause} } = ();
 	@{ $self->{tables}{$table}{lo_import_id} } = ();
