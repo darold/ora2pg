@@ -1301,7 +1301,6 @@ sub _sql_type
 					}
 					else
 					{
-						# Most of the time interger should be enought?
 						return $self->{data_type}{$type};
 					}
 				}

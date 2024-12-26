@@ -2547,7 +2547,7 @@ sub replace_cursor_def
 	my $str = shift;
 
 	# Remove IN information from cursor declaration
-	while ($str =~ s/(\bCURSOR\b[^\(]+)\(([^\)]+\bIN\b[^\)]+)\)/$1\(\%\%CURSORREPLACE\%\%\)/is) {
+	while ($str =~ s/(\bCURSOR\b[^\(]+)\(([^\)]+\bIN\b[^\)]+)\)\s*(IS|AS)/$1\(\%\%CURSORREPLACE\%\%\) IS/is) {
 		my $args = $2;
 		$args =~ s/\bIN\b//igs;
 		$str =~ s/\%\%CURSORREPLACE\%\%/$args/is;
