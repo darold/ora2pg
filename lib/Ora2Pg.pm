@@ -35,7 +35,7 @@ use Fcntl qw/ :flock /;
 use IO::Handle;
 use IO::Pipe;
 use File::Basename;
-use File::Spec qw/ tmpdir /;
+use File::Spec;
 use File::Temp qw/ tempfile /;
 use Benchmark;
 use Encode;
