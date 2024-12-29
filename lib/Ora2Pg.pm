@@ -422,7 +422,7 @@ sub export_schema
 	my $dirprefix = '';
 	$dirprefix = "$self->{output_dir}/" if ($self->{output_dir});
 	unlink($dirprefix . 'temp_pass2_file.dat');
-	if ($self->{type} eq 'COPY') {
+	if ($self->{type} eq 'COPY' && !$self->{quiet}) {
 		print "\nSchema Export Complete\n\n";
 	}
 }
@@ -9743,8 +9743,9 @@ sub _get_sql_statements
 						{
 							if ($self->{file_per_table} && !$self->{pg_dsn})
 							{
-								my $file_name = "$dirprefix${tb_name}_$self->{output}";
-								$file_name = "${tb_name}_$self->{output}" if ($self->{psql_relative_path});
+								my $part_name = $self->{partitions}{$table}{$pos}{name};
+								my $file_name = "$dirprefix${table}_${part_name}_$self->{output}";
+								$file_name = "${table}_${part_name}_$self->{output}" if ($self->{psql_relative_path});
 								$file_name =~ s/\.(gz|bz2)$//;
 								$load_file .=  "\\i$self->{psql_relative_path} '$file_name'\n";
 							}
