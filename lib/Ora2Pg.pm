@@ -15665,7 +15665,7 @@ sub _convert_function
 	{
 		if ($self->{export_schema} && !$self->{schema})
 		{
-			if ($owner) {
+			if ($owner && !$self->{pg_schema}) {
 				$function = "\n$create_type\n\n${fct_warning}CREATE$self->{create_or_replace} $type " . $self->quote_object_name("$owner.$fname$at_suffix") . " $fct_detail{args}";
 				$name =  $self->quote_object_name("$owner.$fname");
 				$self->logit("Parsing function " . $self->quote_object_name("$owner.$fname") . "...\n", 1);
@@ -15677,9 +15677,18 @@ sub _convert_function
 		}
 		elsif ($self->{export_schema} && $self->{schema})
 		{
-			$function = "\n$create_type\n\n${fct_warning}CREATE$self->{create_or_replace} $type " . $self->quote_object_name("$self->{schema}.$fname$at_suffix") . " $fct_detail{args}";
-			$name =  $self->quote_object_name("$self->{schema}.$fname");
-			$self->logit("Parsing function " . $self->quote_object_name("$self->{schema}.$fname") . "...\n", 1);
+			if (!$self->{pg_schema})
+			{
+				$function = "\n$create_type\n\n${fct_warning}CREATE$self->{create_or_replace} $type " . $self->quote_object_name("$self->{schema}.$fname$at_suffix") . " $fct_detail{args}";
+				$name =  $self->quote_object_name("$self->{schema}.$fname");
+				$self->logit("Parsing function " . $self->quote_object_name("$self->{schema}.$fname") . "...\n", 1);
+			}
+			else
+			{
+				$function = "\n$create_type\n\n${fct_warning}CREATE$self->{create_or_replace} $type " . $self->quote_object_name("$fname$at_suffix") . " $fct_detail{args}";
+				$name =  $self->quote_object_name("$fname");
+				$self->logit("Parsing function " . $self->quote_object_name("$fname") . "...\n", 1);
+			}
 		}
 	}
 	else
