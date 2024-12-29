@@ -795,7 +795,7 @@ sub plsql_to_plpgsql
 	$str =~ s/ON\s+COMMIT\s+DROP\s+DEFINITION/ON COMMIT DROP/igs;
 
 	# Replace SYSTIMESTAMP 
-	$str =~ s/\bSYSTIMESTAMP\b/CURRENT_TIMESTAMP/igs;
+	$str =~ s/\bSYSTIMESTAMP\b/statement_timestamp()/igs;
 	# remove FROM DUAL
 	$str =~ s/FROM\s+DUAL//igs;
 	$str =~ s/FROM\s+SYS\.DUAL//igs;
