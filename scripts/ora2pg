@@ -876,6 +876,8 @@ sub make_config_generic
 		$conf_arr->[$i] =~ s/^FTS_INDEX_ONLY.*0/FTS_INDEX_ONLY\t1/;
 		$conf_arr->[$i] =~ s/^DISABLE_UNLOGGED.*0/DISABLE_UNLOGGED\t1/;
 		$conf_arr->[$i] =~ s/^EMPTY_LOB_NULL.*0/EMPTY_LOB_NULL\t1/;
+		$conf_arr->[$i] =~ s/^PG_NUMERIC_TYPE.*1/PG_NUMERIC_TYPE\t0/;
+		$conf_arr->[$i] =~ s/^NULL_EQUAL_EMPTY.*0/NULL_EQUAL_EMPTY\t1/;
 		if ($DSN) {
 			$conf_arr->[$i] =~ s/^ORACLE_DSN.*/ORACLE_DSN\t$DSN/;
 		}
