@@ -5633,8 +5633,11 @@ sub export_sequence
 	my $num_total_sequence = scalar keys %{$self->{sequences}};
 	my $count_seq = 0;
 	my $PGBAR_REFRESH = set_refresh_count($num_total_sequence);
-	if ($self->{export_schema} && ($self->{pg_schema} || $self->{schema})) {
-		$sql_output .= "CREATE SCHEMA IF NOT EXISTS " . $self->quote_object_name($self->{pg_schema} || $self->{schema}) . ";\n";
+	if ($self->{export_schema} && ($self->{schema} || $self->{pg_schema}))
+	{
+		if ($self->{create_schema}) {
+			$sql_output .= "CREATE SCHEMA IF NOT EXISTS " . $self->quote_object_name($self->{pg_schema} || $self->{schema}) . ";\n";
+		}
 	}
 	foreach my $seq (sort keys %{$self->{sequences}})
 	{
