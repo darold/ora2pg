@@ -812,8 +812,8 @@ exit 0;
 		exit 1;
 	}
 
-	my $ablob_to_lo = '';
-	my $data_action = 'COPY';
+	$ablob_to_lo = '';
+	$data_action = 'COPY';
 	if ($BLOB_TO_LO)
 	{
 		$ablob_to_lo = '--blob_to_lo';
