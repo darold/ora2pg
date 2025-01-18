@@ -61,7 +61,7 @@ if (!$INPUT_FILE || !-e $INPUT_FILE || $HELP)
 }
 
 $FORMAT = lc($FORMAT);
-if ($FORMAT ne 'html' || $FORMAT ne 'json')
+if ($FORMAT ne 'html' && $FORMAT ne 'json')
 {
 	die "FATAL: output format for reports must be html or json\n"; 
 }
