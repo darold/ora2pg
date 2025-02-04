@@ -180,6 +180,7 @@ $QUERY_TEST_SCORE = 0.1;
 	'HTP' => 0.2,
 	"'SSSSS'" => 2, # adapt with extract(epoch from $1::time) if not a timestamp
 	"'J'" => 2, # adapt with orafce to_date
+	'WHEN OTHER' => 10, # This make lot of bug undetectable
 );
 
 @ORA_FUNCTIONS = qw(
@@ -2843,6 +2844,8 @@ sub estimate_cost
 	$cost_details{"'SSSSS'"} += $n;
 	$n = () = $str =~ m/,\s*'J'\s*\)/igs;
 	$cost_details{"'J'"} += $n;
+	$n = () = $str =~ m/WHEN\s+OTHER\s+THEN/igs;
+	$cost_details{'WHEN OTHER'} += $n;
 
 	foreach my $f (@ORA_FUNCTIONS)
 	{
