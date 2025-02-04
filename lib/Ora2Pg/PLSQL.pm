@@ -178,6 +178,8 @@ $QUERY_TEST_SCORE = 0.1;
 	'FND_UTILITIES' => 3,
 	'ADD CONSTRAINT' => 3, ## need stability in constraint name
 	'HTP' => 0.2,
+	"'SSSSS'" => 2, # adapt with extract(epoch from $1::time) if not a timestamp
+	"'J'" => 2, # adapt with orafce to_date
 );
 
 @ORA_FUNCTIONS = qw(
@@ -2837,6 +2839,10 @@ sub estimate_cost
 	$cost_details{'ADD CONSTRAINT'} += $n;
 	$n = () = $str =~ m/\bHT[PF]\./igs;
 	$cost_details{'HTP'} += $n;
+	$n = () = $str =~ m/,\s*'SSSSS'\s*\)/igs;
+	$cost_details{"'SSSSS'"} += $n;
+	$n = () = $str =~ m/,\s*'J'\s*\)/igs;
+	$cost_details{"'J'"} += $n;
 
 	foreach my $f (@ORA_FUNCTIONS)
 	{
