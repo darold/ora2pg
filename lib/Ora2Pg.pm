@@ -22555,8 +22555,19 @@ ORDER BY attnum};
 	}
 	$tmpsth->finish();
 
+ 	# Quote column name when required
+ 	for (my $i = 0; $i <= $#tlist; $i++)
+ 	{
+ 		if ($tlist[$i] !~ /"/ && $self->is_reserved_words($tlist[$i])) {
+ 		       $tlist[$i] = '"' . $tlist[$i] . '"';
+ 		}
+ 		if ($self->{preserve_case}) {
+ 			$tlist[$i] =~ s/^(["]*)/"/;
+ 			$tlist[$i] =~ s/(["]*)$/"/;
+ 		}
+ 	}
+
 	# Now get the data
-	map { s/^([^"])/"$1/; s/([^"])$/$1"/; } @tlist if ($self->{preserve_case});
 	my $sql2 = "SELECT " . join(',', @tlist) . " FROM " . $self->quote_object_name($schema) . '.'. $self->quote_object_name($tb);
 	$sql2 .= " ORDER BY " . $ucols if ($self->{data_validation_ordering});
 	$sql2 .= " LIMIT $self->{data_validation_rows}" if ($self->{data_validation_rows});
