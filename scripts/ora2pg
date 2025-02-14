@@ -26,7 +26,7 @@ use strict qw/vars/;
 
 use Ora2Pg;
 use Getopt::Long qw(:config no_ignore_case bundling);
-use File::Spec qw/ tmpdir /;
+use File::Spec;
 use POSIX qw(locale_h sys_wait_h _exit);
 setlocale(LC_NUMERIC, '');
 setlocale(LC_ALL,     'C');
