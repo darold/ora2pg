@@ -581,7 +581,7 @@ ORDER BY A.COLUMN_ID
 
 	# Default number of line to scan to grab the geometry type of the column.
 	# If it not limited, the query will scan the entire table which may take a very long time.
-	my $max_lines = 50000;
+	my $max_lines = 2;
 	$max_lines = $self->{autodetect_spatial_type} if ($self->{autodetect_spatial_type} > 1);
 	my $spatial_gtype =  'SELECT DISTINCT c.%s.SDO_GTYPE FROM %s c WHERE ROWNUM < ' . $max_lines;
 	my $st_spatial_gtype =  "SELECT DISTINCT $self->{st_geometrytype_function}(c.\%s) FROM \%s c WHERE ROWNUM < " . $max_lines;
