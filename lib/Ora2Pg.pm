@@ -1900,7 +1900,7 @@ sub _init
 		$self->replace_tables(%{$self->{'replace_tables'}});
 		$self->replace_cols(%{$self->{'replace_cols'}});
 
-		if (grep(/^$self->{type}$/, 'TABLE', 'SEQUENCE', 'SEQUENCE_VALUES', 'GRANT', 'TABLESPACE', 'VIEW', 'TRIGGER', 'QUERY', 'FUNCTION','PROCEDURE','PACKAGE','TYPE','SYNONYM', 'DIRECTORY', 'DBLINK','LOAD'))
+		if (grep(/^$self->{type}$/, 'TABLE', 'SEQUENCE', 'SEQUENCE_VALUES', 'GRANT', 'TABLESPACE', 'VIEW', 'TRIGGER', 'QUERY', 'FUNCTION','PROCEDURE','PACKAGE','TYPE','SYNONYM', 'DIRECTORY', 'DBLINK', 'LOAD', 'SCRIPT'))
 		{
 			if ($self->{type} eq 'LOAD')
 			{
@@ -6407,6 +6407,96 @@ sub translate_query
 	return;
 }
 
+=head2 translate_script
+
+Translate Oracle's SQL script into PostgreSQL compatible scripts.
+
+=cut
+
+sub translate_script
+{
+	my $self = shift;
+
+	my $sql_header = $self->_set_file_header();
+	my $sql_output = "";
+
+	$self->logit("Parse whole script...\n", 1);
+	$self->dump($sql_header);
+
+	my $nothing = 0;
+	my $dirprefix = '';
+	$dirprefix = "$self->{output_dir}/" if ($self->{output_dir});
+	#---------------------------------------------------------
+	# Code to use to find queries parser issues, it load a file
+	# containing the untouched SQL code from Oracle queries
+	#---------------------------------------------------------
+	if ($self->{input_file})
+	{
+		$self->{functions} = ();
+		$self->logit("Reading input code from file $self->{input_file}...\n", 1);
+		$self->{script}{code} = $self->read_input_file($self->{input_file});
+		#$self->_remove_comments(\$self->{script}{code});
+		#$self->_restore_comments(\$self->{script}{code});
+		chomp($self->{script}{code});
+		if (length($self->{script}{code}) > 0) {
+			$nothing = 1;
+		}
+	}
+	else
+	{
+		$self->logit("FATAL: the SCRIPT action need an input file, see -i option\n", 0, 1);
+	}
+	
+	#--------------------------------------------------------
+
+	my $cost_value = 0;
+	my $total_size = length($self->{script}{code}) || 0;
+	$self->logit("Dumping script...\n", 1);
+	
+	$self->_remove_comments(\$self->{script}{code});
+	if (!$self->{preserve_case}) {
+		$self->{script}{code} =~ s/"//gs;
+	}
+	my $sql_q = Ora2Pg::PLSQL::convert_plsql_code($self, $self->{script}{code});
+	my $estimate = '';
+	if ($self->{estimate_cost})
+	{
+		my ($cost, %cost_detail) = Ora2Pg::PLSQL::estimate_cost($self, $sql_q, 'SCRIPT');
+		$cost += $Ora2Pg::PLSQL::OBJECT_SCORE{'QUERY'};
+		$cost_value += $cost;
+		$estimate = "\n-- Estimed cost of script [ $self->{input_file} ]: " . sprintf("%2.2f", $cost);
+	}
+	$self->_restore_comments(\$sql_q);
+
+	# replace script parameters
+	$sql_q =~ s/'\&(\d+)'/:'param$1'/gs;
+	$sql_q =~ s/\&(\d+)/:param$1/gs;
+
+	$sql_output .= $sql_q;
+	$sql_output .= ';' if ($sql_q !~ /;\s*$/);
+	$sql_output .= $estimate;
+
+	if ($self->{estimate_cost})
+	{
+		$cost_value = sprintf("%2.2f", $cost_value);
+		my @infos = ("Total size of queries code: $total_size bytes.",
+			"Total estimated cost: $cost_value units, ".$self->_get_human_cost($cost_value)."."
+		);
+		$self->logit(join("\n", @infos) . "\n", 1);
+		map { s/^/-- /; } @infos;
+		$sql_output .= join("\n", @infos);
+	}
+	if (!$nothing) {
+		$sql_output = "-- Nothing found of type $self->{type}\n" if (!$self->{no_header});
+	}
+	$self->dump($sql_output);
+
+	$self->{script} = ();
+
+	return;
+}
+
+
 =head2 export_function
 
 Export Oracle functions into PostgreSQL compatible statement.
@@ -9413,6 +9503,12 @@ sub _get_sql_statements
 	elsif ($self->{type} eq 'QUERY')
 	{
 		$self->translate_query();
+	}
+
+	# Process SQL script
+	elsif ($self->{type} eq 'SCRIPT')
+	{
+		$self->translate_script();
 	}
 
 	# Process functions only
@@ -22555,17 +22651,17 @@ ORDER BY attnum};
 	}
 	$tmpsth->finish();
 
- 	# Quote column name when required
- 	for (my $i = 0; $i <= $#tlist; $i++)
- 	{
- 		if ($tlist[$i] !~ /"/ && $self->is_reserved_words($tlist[$i])) {
- 		       $tlist[$i] = '"' . $tlist[$i] . '"';
- 		}
- 		if ($self->{preserve_case}) {
- 			$tlist[$i] =~ s/^(["]*)/"/;
- 			$tlist[$i] =~ s/(["]*)$/"/;
- 		}
- 	}
+	# Quote column name when required
+	for (my $i = 0; $i <= $#tlist; $i++)
+	{
+		if ($tlist[$i] !~ /"/ && $self->is_reserved_words($tlist[$i])) {
+		       $tlist[$i] = '"' . $tlist[$i] . '"';
+		}
+		if ($self->{preserve_case}) {
+			$tlist[$i] =~ s/^(["]*)/"/;
+			$tlist[$i] =~ s/(["]*)$/"/;
+		}
+	}
 
 	# Now get the data
 	my $sql2 = "SELECT " . join(',', @tlist) . " FROM " . $self->quote_object_name($schema) . '.'. $self->quote_object_name($tb);

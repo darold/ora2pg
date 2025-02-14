@@ -893,7 +893,7 @@ sub plsql_to_plpgsql
 	$str =~ s/EXECUTE IMMEDIATE/EXECUTE/igs;
 
 	# SELECT without INTO should be PERFORM. Exclude select of view when prefixed with AS ot IS
-	if ( ($class->{type} ne 'QUERY') && ($class->{type} ne 'VIEW') )
+	if ( !grep(/^$class->{type}$/, 'QUERY', 'VIEW', 'SCRIPT') )
 	{
 		$str =~ s/(\s+)(?<!AS|IS)(\s+)SELECT\b((?![^;]+\bINTO\b)[^;]+;)/$1$2PERFORM$3/isg;
 		$str =~ s/\bSELECT\b((?![^;]+\bINTO\b)[^;]+;)/PERFORM$1/isg;
@@ -1237,25 +1237,57 @@ sub plsql_to_plpgsql
 	$str =~ s/\%OUTERJOIN\d+\%/\(\+\)/igs;
 
 	# Rewrite some SQL script setting from Oracle
-	$str =~ s/^\s*set\s+timing\s+(on|off)/\\timing $1/igs;
-	$str =~ s/^\s*(set\s+(?:array|arraysize)\s+\d+)/-- $1/igs;
-	$str =~ s/^\s*set\s+(?:auto|autocommit)\s+(on|off)/\\set AUTOCOMMIT $1/igs;
-	$str =~ s/^\s*set\s+echo\s+on/\\set ECHO queries/igs;
-	$str =~ s/^\s*set\s+echo\s+off/\\set ECHO none/igs;
-	$str =~ s/^\s*set\s+(?:heading|head)\s+(on|off)/\\pset tuples_only $1/igs;
-	$str =~ s/^\s*set\s+(?:trim|trimout)\s+on/\\pset format unaligned/igs;
-	$str =~ s/^\s*set\s+(?:trim|trimout)\s+off/\\pset format aligned/igs;
-	$str =~ s/^\s*set\s+colsep\s+([^\s]+)/\\pset fieldsep $1/igs;
-	$str =~ s/^\s*spool\s+off/\\o/igs;
-	$str =~ s/^\s*spool\s+([^\&']+[^\s]+)/\\o $1/igs;
-	$str =~ s/^\s*ttitle\s+/\\pset title /igs;
-	$str =~ s/^\s*prompt\s+/\\qecho /igs;
-	$str =~ s/^\s*set\s+feedback\s+off/\\set QUIET on;/igs;
-	$str =~ s/^\s*set\s+pagesize\s+0/\\pset pager off/igs;
-	$str =~ s/^\s*(set\s+(?:linesize|pagesize|feedback|verify)\s+)/--$1/igs;
-	$str =~ s/^\s*(disconnect)\b/--$1/igs;
-	$str =~ s/^\s*(connect\s+)/--$1/igs;
-	$str =~ s/^\s*(quit)\b/\\$1/igs;
+	$str =~ s/[\r\n]set\s+timing\s+(on|off)/\n\\timing $1/igs;
+	$str =~ s/[\r\n]set\s+heading\s+on/\n\\pset tuples_only off/igs;
+	$str =~ s/[\r\n]set\s+heading\s+off/\n\\pset tuples_only on/igs;
+	$str =~ s/[\r\n]set\s+heading\s+(on|off)/\n\\pset tuple_only $1/igs;
+	$str =~ s/[\r\n](set\s+serveroutput\s+.*)/\n--$1/igs;
+	$str =~ s/[\r\n](rem\s+.*)/\n--$1/igs;
+	$str =~ s/[\r\n](set\s+(?:array|arraysize)\s+\d+)/\n-- $1/igs;
+	$str =~ s/[\r\n]set\s+(?:auto|autocommit)\s+(on|off)/\n\\set AUTOCOMMIT $1/igs;
+	$str =~ s/[\r\n]set\s+echo\s+on/\n\\set ECHO queries/igs;
+	$str =~ s/[\r\n]set\s+echo\s+off/\n\\set ECHO none/igs;
+	$str =~ s/[\r\n]set\s+(?:heading|head)\s+(on|off)/\n\\pset tuples_only $1/igs;
+	$str =~ s/[\r\n]set\s+(?:trim|trimout)\s+on/\n\\pset format unaligned/igs;
+	$str =~ s/[\r\n]set\s+(?:trim|trimout)\s+off/\n\\pset format aligned/igs;
+	$str =~ s/[\r\n]set\s+colsep\s+([^\s]+)/\n\\pset fieldsep $1/igs;
+	$str =~ s/[\r\n]spool\s+off/\n\\o/igs;
+	$str =~ s/[\r\n]spool\s+([^\&']+[^\s]*)/\n\\o $1/igs;
+	$str =~ s/[\r\n]ttitle\s+/\n\\pset title /igs;
+	$str =~ s/[\r\n]prompt\s+/\n\\qecho /igs;
+	$str =~ s/[\r\n]set\s+feedback\s+off/\n\\set QUIET on;/igs;
+	$str =~ s/[\r\n]set\s+pagesize\s+0/\n\\pset pager off/igs;
+	$str =~ s/[\r\n](set\s+pagesize\s+\d+)/\n--$1/igs;
+	$str =~ s/[\r\n](set\s+(?:linesize|pagesize|feedback|verify)\s+)/\n--$1/igs;
+	$str =~ s/[\r\n](disconnect)\b/\n--$1/igs;
+	$str =~ s/[\r\n](connect\s+)/\n--$1/igs;
+	$str =~ s/[\r\n](quit)\b/\n\\$1/igs;
+	$str =~ s/[\r\n]!/\n\\! /gs;
+	$str = replace_sql_type($class, $str);
+
+	#column c1 format a8 head 'date
+	my @content = split(/[\n]/, $str);
+	my %format_col_title = ();
+	for (my $i = 0; $i <= $#content; $i++)
+	{
+		if ($content[$i] =~ s/^(column\s+([^\s]+)\s+.*head (\?TEXTVALUE\d+\?))/--$1/is) {
+			$format_col_title{$2} = $3;
+		}
+		else
+		{
+			foreach my $k (keys %format_col_title)
+			{
+				if ($format_col_title{$k} =~ /\?TEXTVALUE(\d+)\?/) {
+					$class->{text_values}{$1} =~ s/["']//g;
+				}
+				if ($content[$i] !~ /\bo[nf]\s+$k\b/) {
+					$content[$i] =~ s/\b$k\b/$k as "$format_col_title{$k}"/i;
+				}
+			}
+		}
+
+	}
+	$str = join("\n", @content);
 
 	return $str;
 }
