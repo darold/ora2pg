@@ -985,7 +985,9 @@ sub plsql_to_plpgsql
 	#$str =~ s/\%ROWTYPE//isg;
 
 	# Normalize HAVING ... GROUP BY into GROUP BY ... HAVING clause	
-	$str =~ s/\bHAVING\b((?:(?!SELECT|INSERT|UPDATE|DELETE|WHERE|FROM).)*?)\bGROUP BY\b((?:(?!SELECT|INSERT|UPDATE|DELETE|WHERE|FROM).)*?)((?=UNION|ORDER BY|LIMIT|INTO |FOR UPDATE|PROCEDURE|\)\s+(?:AS)*[a-z0-9_]+\s+)|$)/GROUP BY$2 HAVING$1/gis;
+	# $str =~ s/\bHAVING\b((?:(?!SELECT|INSERT|UPDATE|DELETE|WHERE|FROM).)*?)\bGROUP BY\b((?:(?!SELECT|INSERT|UPDATE|DELETE|WHERE|FROM).)*?)((?=UNION|ORDER BY|LIMIT|INTO |FOR UPDATE|PROCEDURE|\)\s+(?:AS)*[a-z0-9_]+\s+)|$)/GROUP BY$2 HAVING$1/gis;
+	# Modified Regex that can hanlle group by and having when having clause inside subquery
+	$str =~ s/\bHAVING\b((?:(?!SELECT|INSERT|UPDATE|DELETE|WHERE|FROM|\().)*?)\bGROUP BY\b((?:(?!SELECT|INSERT|UPDATE|DELETE|WHERE|FROM|\().)*?)((?=UNION|ORDER BY|LIMIT|INTO |FOR UPDATE|PROCEDURE|\)\s+(?:AS)*[a-z0-9_]+\s+)|$)/GROUP BY$2 HAVING$1/gis;
 
 	# Add STRICT keyword when select...into and an exception with NO_DATA_FOUND/TOO_MANY_ROW is present
 	#$str =~ s/\b(SELECT\b[^;]*?INTO)(.*?)(EXCEPTION.*?(?:NO_DATA_FOUND|TOO_MANY_ROW))/$1 STRICT $2 $3/igs;
