@@ -1242,6 +1242,7 @@ sub plsql_to_plpgsql
 	$str =~ s/[\r\n]set\s+heading\s+off/\n\\pset tuples_only on/igs;
 	$str =~ s/[\r\n]set\s+heading\s+(on|off)/\n\\pset tuple_only $1/igs;
 	$str =~ s/[\r\n](set\s+serveroutput\s+.*)/\n--$1/igs;
+	$str =~ s/[\r\n](set\s+showmod\s+.*)/\n--$1/igs;
 	$str =~ s/[\r\n](rem\s+.*)/\n--$1/igs;
 	$str =~ s/[\r\n](set\s+(?:array|arraysize)\s+\d+)/\n-- $1/igs;
 	$str =~ s/[\r\n]set\s+(?:auto|autocommit)\s+(on|off)/\n\\set AUTOCOMMIT $1/igs;
