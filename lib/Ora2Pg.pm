@@ -22448,6 +22448,10 @@ WHERE c.relkind = 'f' and n.nspname = '$self->{fdw_import_schema}'
 		}
 	}
 
+	
+	# Sort foreign_tables to always have the same ordered iteration
+	@foreign_tables = sort @foreign_tables;
+
 	my $total_tables = 0;
 	foreach my $f (@foreign_tables)
 	{
