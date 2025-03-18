@@ -22596,9 +22596,8 @@ sub compare_data
 		{
 			if ($self->{db_version} =~ /Release (8|9|10|11)/)
 			{
-				$sql .= " WHERE" if ($sql !~ /\sWHERE\s/);
-				$sql .= " ROWNUM <= $self->{data_validation_rows}";
 				$sql .= " ORDER BY " . $ucols if ($self->{data_validation_ordering});
+				$sql = "SELECT * FROM ( $sql ) WHERE ROWNUM <= $self->{data_validation_rows}";
 			}
 			else
 			{
