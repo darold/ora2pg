@@ -792,6 +792,9 @@ sub plsql_to_plpgsql
 	# JSON validation mostly in CHECK contraints
 	$str =~ s/((?:\w+\.)?\w+)\s+IS\s+JSON\b/\(CASE WHEN $1::json IS NULL THEN true ELSE true END\)/igs;
 
+	# replace the modulo operator
+	$str =~ s/([^\(\s]+)\s+MOD\s+([^\s\)]+)/mod\($1, $2\)/igs;
+
 	# Drop temporary doesn't exist in PostgreSQL
 	$str =~ s/DROP\s+TEMPORARY/DROP/igs;
 
@@ -3040,7 +3043,7 @@ sub mysql_to_plpgsql
 	$str =~ s/\bLOG\(/ln\(/igs;
 	$str =~ s/\bLOG10\(\s*([^\(\)]+)\s*\)/log\(10, $1\)/igs;
 	$str =~ s/\bLOG2\(\s*([^\(\)]+)\s*\)/log\(2, $1\)/igs;
-	$str =~ s/([^\s]+)\s+MOD\s+([^\s]+)/mod\($1, $2\)/igs;
+	$str =~ s/([^\(\s]+)\s+MOD\s+([^\s\)]+)/mod\($1, $2\)/igs;
 	$str =~ s/\bPOW\(/power\(/igs;
 	$str =~ s/\bRAND\(\s*\)/random\(\)/igs;
 
