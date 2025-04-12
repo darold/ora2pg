@@ -19941,6 +19941,21 @@ sub _test_function
 	print "[TEST FUNCTION COUNT]\n";
 	my @fct_infos = $self->_list_all_functions();
 	my $schema_clause = $self->get_schema_condition();
+	if ($self->{package_as_schema})
+	{
+		my %processed_pkgs;
+		foreach my $f (@fct_infos)
+		{
+			my ($pkg, $fct) = split(/\./, $f);
+			next if $processed_pkgs{$pkg}++; # Skip if package already processed
+			$schema_clause .= ") OR (lower(n.nspname) = quote_ident('\L$pkg\E')";
+		}
+		if (scalar keys %processed_pkgs > 0)
+		{
+			$schema_clause =~ s/^(\s*AND\s+)/$1\(/;
+			$schema_clause =~ s/$/\)/;
+		}
+	}
 	$sql = qq{
 SELECT n.nspname,proname,prorettype
 FROM pg_catalog.pg_proc p
@@ -19977,7 +19992,7 @@ $schema_clause
 			push(@errors, "FUNCTION does not have the same count in source database ($nbobj) and in PostgreSQL ($pgfct).");
 		}
 		$s->finish();
-		# search for missing funtion
+		# search for missing funtions
 		foreach my $f (@fct_infos)
 		{
 			my $found = 0;
@@ -19985,12 +20000,27 @@ $schema_clause
 			{
 				$found = 1, last if (lc($f) eq lc($pgf));
 				if ($f !~ /\./) {
-					$found = 1, last if ($pgf =~ /^[^\.]+\.$f$/i);
+					$found = 1, last if ($pgf =~ /^[^\.]+\.\Q$f\E$/i);
 				} else {
-					$found = 1, last if ($pgf =~ /^$f$/i);
+					$found = 1, last if ($pgf =~ /^\Q$f\E$/i);
 				}
 			}
 			push(@errors, "Function $f is missing in PostgreSQL database.") if (!$found);
+		}
+		# search for additional functions
+		foreach my $pgf (keys %pg_function)
+		{
+			my $found = 0;
+			foreach my $f (@fct_infos)
+			{
+				$found = 1, last if (lc($f) eq lc($pgf));
+				if ($f !~ /\./) {
+					$found = 1, last if ($pgf =~ /^[^\.]+\.\Q$f\E$/i);
+				} else {
+					$found = 1, last if ($pgf =~ /^\Q$f\E$/i);
+				}
+			}
+			push(@errors, "Function $pgf is in addition in PostgreSQL database.") if (!$found);
 		}
 	}
 	$self->show_test_errors('FUNCTION', @errors);
