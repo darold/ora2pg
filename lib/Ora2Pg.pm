@@ -2079,6 +2079,11 @@ sub _init
 			{
 				$self->_tables();
 			}
+			if (!$self->{is_mysql} && !$self->{is_mssql})
+			{
+				# Check for DBMS EXECUTE privilege
+				$self->{has_dbms_log_execute_privilege} = Ora2Pg::Oracle::_has_dbms_log_execute_privilege($self);
+			}
 			# Check that data are the same.
 			$self->_data_validation();
 			$self->{dbhdest}->disconnect() if ($self->{dbhdest});
@@ -12608,8 +12613,20 @@ sub _howto_get_data
 					# user don't want to export clob
 					next;
 				}
-				if ($self->{empty_lob_null}) {
-					$str .= "CASE WHEN dbms_lob.getlength($alias.$name->[$k]) = 0 THEN NULL ELSE $alias.$name->[$k] END,";
+				if ($self->{empty_lob_null})
+				{
+					$str .= "CASE WHEN ";
+					if (!$self->{has_dbms_log_execute_privilege})
+					{
+						if ($src_type->[$k] =~ /blob/i) {
+							$str .= "LENGTHB";
+						} else {
+							$str .= "LENGTH";
+						}
+					} else {
+						$str .= "dbms_lob.getlength";
+					}
+					$str .= "($alias.$name->[$k]) = 0 THEN NULL ELSE $alias.$name->[$k] END,";
 				} else {
 					$str .= "$alias.$name->[$k],";
 				}

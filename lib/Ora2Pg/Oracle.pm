@@ -4155,5 +4155,24 @@ sub auto_set_encoding
 	return '';
 }
 
+sub _has_dbms_log_execute_privilege
+{
+	my $self = shift;
+
+	my $has_dbms_log_execute_privilege = 0;
+	my $sql = "SELECT CASE WHEN COUNT(*) > 0 THEN 1 ELSE 0 END AS has_execute_privilege FROM USER_TAB_PRIVS WHERE TABLE_NAME = 'DBMS_LOB' AND PRIVILEGE = 'EXECUTE'";
+
+	my $sth = $self->{dbh}->prepare( $sql ) or return 0;
+	$sth->execute or return 0;
+	while ( my @row = $sth->fetchrow())
+	{
+		$has_dbms_log_execute_privilege = $row[0];
+	}
+	$sth->finish();
+	$self->logit("DEBUG: Source database user " . (!$has_dbms_log_execute_privilege ? "doesn't ": "") . "have 'EXECUTE' privilege on 'DBMS_LOG'\n", 1);
+
+	return $has_dbms_log_execute_privilege;
+}
+
 1;
 
