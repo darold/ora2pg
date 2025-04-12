@@ -381,6 +381,7 @@ $QUERY_TEST_SCORE = 0.1;
 	'ARRAY_AGG_DISTINCT' => 1, # array_agg(distinct)
 	'FOREIGN_OBJECT' => 6,
 	'SYS_OBJECT' => 6,
+	'OBJECT_ID' => 2,
 	'INTO_TEMP_TABLE' => 1,
 	'GLOBAL_TEMP_TABLE' => 2,
 	'SELECT_TOP' => 0.2,
@@ -393,6 +394,8 @@ $QUERY_TEST_SCORE = 0.1;
 	'TRY_CATCH' => 3,
 	'SP_FCT' => 3,
 	'XML_FCT' => 3,
+	'FOR_XML' => 6,
+	'INTERNAL' => 100,
 );
 
 %EXCEPTION_MAP = (
@@ -1245,6 +1248,8 @@ sub plsql_to_plpgsql
 	$str =~ s/[\r\n]set\s+heading\s+(on|off)/\n\\pset tuple_only $1/igs;
 	$str =~ s/[\r\n](set\s+serveroutput\s+.*)/\n--$1/igs;
 	$str =~ s/[\r\n](set\s+showmod\s+.*)/\n--$1/igs;
+	$str =~ s/[\r\n](set\s+verify\s+.*)/\n--$1/igs;
+	$str =~ s/[\r\n](set\s+trimspool\s+.*)/\n--$1/igs;
 	$str =~ s/[\r\n](rem\s+.*)/\n--$1/igs;
 	$str =~ s/[\r\n](set\s+(?:array|arraysize)\s+\d+)/\n-- $1/igs;
 	$str =~ s/[\r\n]set\s+(?:auto|autocommit)\s+(on|off)/\n\\set AUTOCOMMIT $1/igs;
@@ -1255,16 +1260,20 @@ sub plsql_to_plpgsql
 	$str =~ s/[\r\n]set\s+(?:trim|trimout)\s+off/\n\\pset format aligned/igs;
 	$str =~ s/[\r\n]set\s+colsep\s+([^\s]+)/\n\\pset fieldsep $1/igs;
 	$str =~ s/[\r\n]spool\s+off/\n\\o/igs;
-	$str =~ s/[\r\n]spool\s+([^\&']+[^\s]*)/\n\\o $1/igs;
+	$str =~ s/[\r\n]spool\s+([^\s]*)/\n\\o $1/igs;
 	$str =~ s/[\r\n]ttitle\s+/\n\\pset title /igs;
 	$str =~ s/[\r\n]prompt\s+/\n\\qecho /igs;
-	$str =~ s/[\r\n]set\s+feedback\s+off/\n\\set QUIET on;/igs;
+	$str =~ s/[\r\n]set\s+feedback\s+off/\n\\set QUIET on/igs;
 	$str =~ s/[\r\n]set\s+pagesize\s+0/\n\\pset pager off/igs;
 	$str =~ s/[\r\n](set\s+pagesize\s+\d+)/\n--$1/igs;
+	$str =~ s/[\r\n]set\s+linesize\s+0/\n\\pset pager off/igs;
+	$str =~ s/[\r\n](set\s+linesize\s+\d+)/\n--$1/igs;
+	$str =~ s/[\r\n](set\s+termout.*)/\n--$1/igs;
+	$str =~ s/[\r\n](set\s+newpage.*)/\n--$1/igs;
 	$str =~ s/[\r\n](set\s+(?:linesize|pagesize|feedback|verify)\s+)/\n--$1/igs;
 	$str =~ s/[\r\n](disconnect)\b/\n--$1/igs;
 	$str =~ s/[\r\n](connect\s+)/\n--$1/igs;
-	$str =~ s/[\r\n](quit)\b/\n\\$1/igs;
+	$str =~ s/[\r\n](quit)(\s*;)?\b/\n\\$1/igs;
 	$str =~ s/[\r\n]!/\n\\! /gs;
 	$str = replace_sql_type($class, $str);
 
@@ -3509,7 +3518,9 @@ sub mssql_estimate_cost
 	$cost_details{'FOREIGN_OBJECT'} += $n*$UNCOVERED_MSSQL_SCORE{'FOREIGN_OBJECT'};
 	$n = () = $str =~ /\b(master|model|msdb|tempdb)\.\b/igs;
 	$cost_details{'SYS_OBJECT'} += $n*$UNCOVERED_MSSQL_SCORE{'SYS_OBJECT'};
-	$cost_details{'FOREIGN_OBJECT'} -= $n*$UNCOVERED_MSSQL_SCORE{'FOREIGN_OBJECT'};
+	$n = () = $str =~ /\bOBJECT_ID\s*\(/igs;
+	$cost_details{'OBJECT_ID'} += $n*$UNCOVERED_MSSQL_SCORE{'OBJECT_ID'};
+	#$cost_details{'FOREIGN_OBJECT'} -= $n*$UNCOVERED_MSSQL_SCORE{'FOREIGN_OBJECT'};
 	if ($class->{local_schemas_regex})
 	{
 		$n = () = $str =~ /\b$class->{local_schemas_regex}\.[a-z0-9_\$]+\.[a-z0-9_\$]+\b/igs;
@@ -3543,6 +3554,10 @@ sub mssql_estimate_cost
 	$cost_details{'SP_FCT'} += $n*$UNCOVERED_MSSQL_SCORE{'SP_FCT'};
 	$n = () = $str =~ /\.(value|nodes|query|exists|modify)\s*\(/igs;
 	$cost_details{'XML_FCT'} += $n*$UNCOVERED_MSSQL_SCORE{'XML_FCT'};
+	$n = () = $str =~ /\bFOR\s+XML\b/igs;
+	$cost_details{'FOR_XML'} += $n*$UNCOVERED_MSSQL_SCORE{'FOR_XML'};
+	$n = () = $str =~ /\s+internal\./igs;
+	$cost_details{'INTERNAL'} += $n*$UNCOVERED_MSSQL_SCORE{'INTERNAL'};
 
 	foreach my $t (keys %UNCOVERED_MSSQL_SCORE) {
 		$cost += $cost_details{$t} if (exists $cost_details{$t});
