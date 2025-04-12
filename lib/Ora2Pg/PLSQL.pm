@@ -894,6 +894,9 @@ sub plsql_to_plpgsql
 
 	# EXECUTE IMMEDIATE => EXECUTE
 	$str =~ s/EXECUTE IMMEDIATE/EXECUTE/igs;
+	# DBMS_SQL.open_cursor, DBMS_SQL.parse, DBMS_SQL.execute, DBMS_SQL.close_cursor => EXECUTE / GET DIAGNOSTICS = ROW COUNT
+	$str =~ s/([ \t]*)([^\:\s]+)\s*:=\s*DBMS_SQL\.open_cursor\s*;(.*?)DBMS_SQL\.parse\s*\([^\),]+,\s*([^\),]+)(?:\s*,[^\)]+)?\)\s*;(?:\%ORA2PG_COMMENT\d+\%|\s)*([^\:\s]+)\s*:=\s*DBMS_SQL\.execute\([^\)]+\);(.*?)DBMS_SQL\.close_cursor\s*\([^\),]+\);/$3EXECUTE $4;\n$1GET DIAGNOSTICS $5 = ROW_COUNT;/igs;
+	$str =~ s/([\t ]*)([^\:\s]+)\s*:=\s*DBMS_SQL\.open_cursor\s*;(.*?)DBMS_SQL\.parse\s*\([^\),]+,\s*([^\),]+)(?:\s*,[^\)]+)?\)\s*;(?:\%ORA2PG_COMMENT\d+\%|\s)*DBMS_SQL\.execute\([^\)]+\);(.*?)DBMS_SQL\.close_cursor\s*\([^\),]+\);/$3EXECUTE $4;/igs;
 
 	# SELECT without INTO should be PERFORM. Exclude select of view when prefixed with AS ot IS
 	if ( !grep(/^$class->{type}$/, 'QUERY', 'VIEW', 'SCRIPT') )
