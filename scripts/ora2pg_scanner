@@ -188,26 +188,26 @@ for (my $i = 0; $i < @DB_DSN; $i++)
 		if ($DRYRUN)
 		{
 			print "Running: $cmd_ora2pg -t SHOW_SCHEMA -s '$DB_DSN[$i]->{dsn}'\n";
-			print `$cmd_ora2pg -t SHOW_SCHEMA -s '$DB_DSN[$i]->{dsn}'`;
+			print `$cmd_ora2pg -t SHOW_SCHEMA -s "$DB_DSN[$i]->{dsn}"`;
 			print "For each schema returned the following commands will be executed:\n";
-			print "    $cmd_ora2pg -t SHOW_REPORT --dump_as_sheet --cost_unit_value $COST_UNIT --estimate_cost$header$audit -s '$DB_DSN[$i]->{dsn}' -n '<schema_returned>' >> $OUTDIR${SEP}dbs_scan.csv\n";
-			print "    $cmd_ora2pg -t SHOW_REPORT --dump_as_$FORMAT --cost_unit_value $COST_UNIT --estimate_cost$audit -s '$DB_DSN[$i]->{dsn}' -n '<schema_returned>' >> \"$OUTDIR${SEP}$DB_DSN[$i]->{host}$DB_DSN[$i]->{sid}_<schema_returned>-report.$FORMAT\"\n";
+			print "    $cmd_ora2pg -t SHOW_REPORT --dump_as_sheet --cost_unit_value $COST_UNIT --estimate_cost$header$audit -s \"$DB_DSN[$i]->{dsn}\" -n \"<schema_returned>\" >> $OUTDIR${SEP}dbs_scan.csv\n";
+			print "    $cmd_ora2pg -t SHOW_REPORT --dump_as_$FORMAT --cost_unit_value $COST_UNIT --estimate_cost$audit -s \"$DB_DSN[$i]->{dsn}\" -n \"<schema_returned>\" >> \"$OUTDIR${SEP}$DB_DSN[$i]->{host}$DB_DSN[$i]->{sid}_<schema_returned>-report.$FORMAT\"\n";
 		}
 		else
 		{
-			my @schema_list = `$cmd_ora2pg -t SHOW_SCHEMA -s '$DB_DSN[$i]->{dsn}'`;
+			my @schema_list = `$cmd_ora2pg -t SHOW_SCHEMA -s "$DB_DSN[$i]->{dsn}"`;
 			foreach my $line (@schema_list)
 			{
 				my ($type, $schemaname) = split(/\s+/, $line);
 				$DB_DSN[$i]->{schema} = $schemaname;
 				# Escape some chars for file path use
 				$schemaname = quotemeta($schemaname);
-				print "Running: $cmd_ora2pg -t SHOW_REPORT --dump_as_sheet --cost_unit_value $COST_UNIT --estimate_cost$header$audit -s '$DB_DSN[$i]->{dsn}' -n '$DB_DSN[$i]->{schema}' >> $OUTDIR${SEP}dbs_scan.csv\n";
-				`$cmd_ora2pg -t SHOW_REPORT --dump_as_sheet --cost_unit_value $COST_UNIT --estimate_cost$header$audit -s '$DB_DSN[$i]->{dsn}' -n '$DB_DSN[$i]->{schema}' >> $OUTDIR${SEP}dbs_scan.csv`;
+				print "Running: $cmd_ora2pg -t SHOW_REPORT --dump_as_sheet --cost_unit_value $COST_UNIT --estimate_cost$header$audit -s \"$DB_DSN[$i]->{dsn}\" -n \"$DB_DSN[$i]->{schema}\" >> $OUTDIR${SEP}dbs_scan.csv\n";
+				`$cmd_ora2pg -t SHOW_REPORT --dump_as_sheet --cost_unit_value $COST_UNIT --estimate_cost$header$audit -s "$DB_DSN[$i]->{dsn}" -n "$DB_DSN[$i]->{schema}" >> $OUTDIR${SEP}dbs_scan.csv`;
 				$header = '';
 
-				print "Running: $cmd_ora2pg -t SHOW_REPORT --dump_as_$FORMAT --cost_unit_value $COST_UNIT --estimate_cost$audit -s '$DB_DSN[$i]->{dsn}' -n '$DB_DSN[$i]->{schema}' >> \"$OUTDIR${SEP}$DB_DSN[$i]->{host}$DB_DSN[$i]->{sid}_$schemaname-report.$FORMAT\"\n";
-				`$cmd_ora2pg -t SHOW_REPORT --dump_as_$FORMAT --cost_unit_value $COST_UNIT --estimate_cost$audit -s '$DB_DSN[$i]->{dsn}' -n '$DB_DSN[$i]->{schema}' >> "$OUTDIR${SEP}$DB_DSN[$i]->{host}$DB_DSN[$i]->{sid}_$schemaname-report.$FORMAT"`;
+				print "Running: $cmd_ora2pg -t SHOW_REPORT --dump_as_$FORMAT --cost_unit_value $COST_UNIT --estimate_cost$audit -s \"$DB_DSN[$i]->{dsn}\" -n \"$DB_DSN[$i]->{schema}\" >> \"$OUTDIR${SEP}$DB_DSN[$i]->{host}$DB_DSN[$i]->{sid}_$schemaname-report.$FORMAT\"\n";
+				`$cmd_ora2pg -t SHOW_REPORT --dump_as_$FORMAT --cost_unit_value $COST_UNIT --estimate_cost$audit -s "$DB_DSN[$i]->{dsn}" -n "$DB_DSN[$i]->{schema}" >> "$OUTDIR${SEP}$DB_DSN[$i]->{host}$DB_DSN[$i]->{sid}_$schemaname-report.$FORMAT"`;
 			}
 		}
 	}
@@ -218,15 +218,15 @@ for (my $i = 0; $i < @DB_DSN; $i++)
 
 		if ($DRYRUN)
 		{
-			print "Running: $cmd_ora2pg -t SHOW_SCHEMA -s '$DB_DSN[$i]->{dsn}' -n '$DB_DSN[$i]->{schema}'\n";
-			print `$cmd_ora2pg -t SHOW_SCHEMA -s '$DB_DSN[$i]->{dsn}' -n '$DB_DSN[$i]->{schema}'`
+			print "Running: $cmd_ora2pg -t SHOW_SCHEMA -s \"$DB_DSN[$i]->{dsn}\" -n \"$DB_DSN[$i]->{schema}\"\n";
+			print `$cmd_ora2pg -t SHOW_SCHEMA -s "$DB_DSN[$i]->{dsn}" -n "$DB_DSN[$i]->{schema}"`
 		}
 		else
 		{
-			print "Running: $cmd_ora2pg -t SHOW_REPORT --dump_as_sheet --cost_unit_value $COST_UNIT --estimate_cost$header$audit -s '$DB_DSN[$i]->{dsn}' -n '$DB_DSN[$i]->{schema}' >> $OUTDIR${SEP}dbs_scan.csv\n";
-			`$cmd_ora2pg -t SHOW_REPORT --dump_as_sheet --cost_unit_value $COST_UNIT --estimate_cost$header$audit -s '$DB_DSN[$i]->{dsn}' -n '$DB_DSN[$i]->{schema}' >> $OUTDIR${SEP}dbs_scan.csv`;
-			print "Running: $cmd_ora2pg -t SHOW_REPORT --dump_as_$FORMAT --cost_unit_value $COST_UNIT --estimate_cost$audit -s '$DB_DSN[$i]->{dsn}' -n '$DB_DSN[$i]->{schema}' >> \"$OUTDIR${SEP}$DB_DSN[$i]->{sid}_$schemaname-report.$FORMAT\"\n";
-			`$cmd_ora2pg -t SHOW_REPORT --dump_as_$FORMAT --cost_unit_value $COST_UNIT --estimate_cost$audit -s '$DB_DSN[$i]->{dsn}' -n '$DB_DSN[$i]->{schema}' >> "$OUTDIR${SEP}$DB_DSN[$i]->{sid}_$schemaname-report.$FORMAT"`;
+			print "Running: $cmd_ora2pg -t SHOW_REPORT --dump_as_sheet --cost_unit_value $COST_UNIT --estimate_cost$header$audit -s \"$DB_DSN[$i]->{dsn}\" -n \"$DB_DSN[$i]->{schema}\" >> $OUTDIR${SEP}dbs_scan.csv\n";
+			`$cmd_ora2pg -t SHOW_REPORT --dump_as_sheet --cost_unit_value $COST_UNIT --estimate_cost$header$audit -s "$DB_DSN[$i]->{dsn}" -n "$DB_DSN[$i]->{schema}" >> $OUTDIR${SEP}dbs_scan.csv`;
+			print "Running: $cmd_ora2pg -t SHOW_REPORT --dump_as_$FORMAT --cost_unit_value $COST_UNIT --estimate_cost$audit -s \"$DB_DSN[$i]->{dsn}\" -n \"$DB_DSN[$i]->{schema}\" >> \"$OUTDIR${SEP}$DB_DSN[$i]->{sid}_$schemaname-report.$FORMAT\"\n";
+			`$cmd_ora2pg -t SHOW_REPORT --dump_as_$FORMAT --cost_unit_value $COST_UNIT --estimate_cost$audit -s "$DB_DSN[$i]->{dsn}" -n "$DB_DSN[$i]->{schema}" >> "$OUTDIR${SEP}$DB_DSN[$i]->{sid}_$schemaname-report.$FORMAT"`;
 		}
 	}
 }
