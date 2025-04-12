@@ -1864,8 +1864,13 @@ sub replace_oracle_function
 	$str =~ s/\bSYS_GUID\s*\(\s*\)/$class->{uuid_function}()/igs;
 	$str =~ s/\bSYS_GUID\b/$class->{uuid_function}()/igs;
 
-	# Rewrite TO_DATE formating call
-	$str =~ s/TO_DATE\s*\(\s*('[^\']+')\s*,\s*('[^\']+')[^\)]*\)/to_date($1,$2)/igs;
+ 	# Rewrite TO_DATE formating call
+	# Optional nls_param parameter, if present, is removed implicitly, as it is not manageable on PostgreSQL.
+ 	$str =~ s/TO_DATE\s*\(\s*('[^\']+')\s*,\s*('[^\']+')[^\)]*\)/to_date($1,$2)/igs;
+	$str =~ s/TO_DATE\s*\(\s*('[^\']+')\s*,\s*('[^\']+')\s*,\s*('[^\']+')[^\)]*\)/to_date($1,$2)/igs;
+	# Case where the parameters are obfuscated by function and string placeholders
+	$str =~ s/TO_DATE\s*\(\s*(.*)\s*,\s*(\?TEXTVALUE\d+\?)[^\)]*\)/to_date($1,$2)/igs;
+	$str =~ s/TO_DATE\s*\(\s*(.*)\s*,\s*(\?TEXTVALUE\d+\?)\s*,\s*(\?TEXTVALUE\d+\?)[^\)]*\)/to_date($1,$2)/igs;
 
 	# When the date format is ISO and we have a constant we can remove the call to to_date()
 	if ($class->{type} eq 'PARTITION' && $class->{pg_supports_partition}) {
