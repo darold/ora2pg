@@ -2934,7 +2934,9 @@ sub mysql_to_plpgsql
 	$str =~ s/\bDEFAULT\s+NULL\b//igs;
 
 	# Change mysql variable affectation 
+	$str =~ s/(UPDATE\s+[^\s]+\s+SET\s+[^\s]+\s*)=/$1%EQUALSIGN%/igs;
 	$str =~ s/\bSET\s+([^\s:=]+\s*)=([^;\n]+;)/$1:=$2/igs;
+	$str =~ s/%EQUALSIGN%/=/igs;
 
 	# replace simple form of json_extract
 	$str =~ s/json_extract\(([^,]+),(?:.*)?('[^\\]+)\\/json_extract_path($1, $2/igs;
