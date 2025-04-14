@@ -1096,7 +1096,8 @@ sub replace_mysql_variables
 	my ($self, $code, $declare) = @_;
 
 	# Look for mysql global variables and add them to the custom variable list
-	while ($code =~ s/\b(?:SET\s+)?\@\@(?:SESSION\.)?([^\s:=]+)\s*:=\s*([^;]+);/PERFORM set_config('$1', $2, false);/is) {
+	while ($code =~ s/\b(?:SET\s+)?\@\@(?:SESSION\.)?([^\s:=]+)\s*:=\s*([^;]+);/PERFORM set_config('$1', $2, false);/is)
+	{
 		my $n = $1;
 		my $v = $2;
 		$self->{global_variables}{$n}{name} = lc($n);
@@ -1116,7 +1117,8 @@ sub replace_mysql_variables
 
 	my @to_be_replaced = ();
 	# Look for local variable definition and append them to the declare section
-	while ($code =~ s/SET\s+\@([^\s:]+)\s*:=\s*([^;]+);/SET $1 = $2;/is) {
+	while ($code =~ s/SET\s+\@([^\s:]+)\s*:=\s*([^;]+);/SET $1 = $2;/is)
+	{
 		my $n = $1;
 		my $v = $2;
 		# Try to set a default type for the variable
@@ -1134,7 +1136,8 @@ sub replace_mysql_variables
 	}
 
 	# Look for local variable definition and append them to the declare section
-	while ($code =~ s/(\s+)\@([^\s:=]+)\s*:=\s*([^;]+);/$1$2 := $3;/is) {
+	while ($code =~ s/(\s+)\@([^\s:=]+)\s*:=\s*([^;]+);/$1$2 := $3;/is)
+	{
 		my $n = $2;
 		my $v = $3;
 		# Try to set a default type for the variable
@@ -1157,7 +1160,8 @@ sub replace_mysql_variables
 	}
 
 	# Look for local variable definition and append them to the declare section
-	while ($code =~ s/\@([a-z0-9_]+)/$1/is) {
+	while ($code =~ s/\@([a-z0-9_]+)/$1/is)
+	{
 		my $n = $1;
 		# Try to set a default type for the variable
 		my $type = 'varchar';
@@ -1175,6 +1179,11 @@ sub replace_mysql_variables
 
 	# Look for variable definition with SELECT statement
 	$code =~ s/\bSET\s+([^\s=]+)\s*=\s*([^;]+\bSELECT\b[^;]+);/$1 = $2;/igs;
+
+	# Fix mysql DECLARE clause after BEGIN clause
+	while ($code =~ s/(BEGIN\s+)DECLARE(\s+[^\;]+;)/$1/) {
+		$declare .= "$2\n";
+	}
 
 	return ($code, $declare);
 }
