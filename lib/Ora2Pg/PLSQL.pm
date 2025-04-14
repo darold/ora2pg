@@ -2965,35 +2965,10 @@ sub mysql_to_plpgsql
 	# Rewrite MySQL JOIN with WHERE clause instead of ON
 	$str =~ s/\((\s*[^\s]+(?:\s+[^\s]+)?\s+JOIN\s+[^\s]+(?:\s+[^\s]+)?\s*)\)\s+WHERE\s+/$1 ON /igs;
 
-	# Try to replace LEAVE label by EXIT label
-	my %repl_leave = ();
-	my $i = 0;
-	while ($str =~ s/\bLEAVE\s+([^\s;]+)\s*;/%REPEXITLBL$i%/igs) {
-		my $label = $1;
-		if ( $str =~ /\b$label:/is) {
-			$repl_leave{$i} = "EXIT $label;";
-		} else {
-			# This is a main block label
-			$repl_leave{$i} = "RETURN;";
-		}
-	}
-	foreach $i (keys %repl_leave) {
-		$str =~ s/\%REPEXITLBL$i\%/$repl_leave{$i}/gs;
-	}
-	%repl_leave = ();
+	# Replace LEAVE by EXIT
 	$str =~ s/\bLEAVE\s*;/EXIT;/igs;
 
-	# Try to replace ITERATE label by CONTINUE label
-	my %repl_iterate = ();
-	$i = 0;
-	while ($str =~ s/\bITERATE\s+([^\s;]+)\s*;/%REPITERLBL$i%/igs) {
-		my $label = $1;
-		$repl_iterate{$i} = "CONTINUE $label;";
-	}
-	foreach $i (keys %repl_iterate) {
-		$str =~ s/\%REPITERLBL$i\%/$repl_iterate{$i}/gs;
-	}
-	%repl_iterate = ();
+	# Replace ITERATE by CONTINUE
 	$str =~ s/\bITERATE\s*;/CONTINUE;/igs;
 
 	# Replace now() with CURRENT_TIMESTAMP even if this is the same

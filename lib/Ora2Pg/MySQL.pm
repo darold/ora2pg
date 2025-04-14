@@ -1085,6 +1085,41 @@ sub _lookup_function
 
 	($fct_detail{code}, $fct_detail{declare}) = replace_mysql_variables($self, $fct_detail{code}, $fct_detail{declare});
 
+	# Try to replace LEAVE label by EXIT label
+	my %repl_leave = ();
+	my $i = 0;
+	while ($fct_detail{code} =~ s/LEAVE\s+([^\s;]+)\s*;/%REPEXITLBL$i%/igs)
+	{
+		my $label = $1;
+		if ( $fct_detail{code} =~ /$label:/is) {
+			$repl_leave{$i} = "EXIT $label;";
+		} else {
+			# This is a main block label
+			$repl_leave{$i} = "RETURN;";
+		}
+		$fct_detail{code} =~ s/$label:/<<$label>>/igs;
+		$i++;
+	}
+	foreach $i (keys %repl_leave) {
+		$fct_detail{code} =~ s/\%REPEXITLBL$i\%/$repl_leave{$i}/gs;
+	}
+	%repl_leave = ();
+
+	# Try to replace ITERATE label by CONTINUE label
+	my %repl_iterate = ();
+	$i = 0;
+	while ($fct_detail{code} =~ s/\bITERATE\s+([^\s;]+)\s*;/%REPITERLBL$i%/igs)
+	{
+		my $label = $1;
+		$repl_iterate{$i} = "CONTINUE $label;";
+		$fct_detail{code} =~ s/$label:/<<$label>>/igs;
+		$i++;
+	}
+	foreach $i (keys %repl_iterate) {
+		$fct_detail{code} =~ s/\%REPITERLBL$i\%/$repl_iterate{$i}/gs;
+	}
+	%repl_iterate = ();
+
 	# Remove %ROWTYPE from return type
 	$fct_detail{func_ret_type} =~ s/\%ROWTYPE//igs;
 
