@@ -15364,6 +15364,11 @@ sub _remove_comments
 	{
 		next if ($lines[$i] !~ /\S/);
 
+		# Fix mysql # comments
+		if ($self->{is_mysql}) {
+			$lines[$i] =~ s/^([\t ]*)#/$1--/;
+		}
+
 		if ($lines[$i] !~ /^[\t ]*\--.*\/\*.*\*\/.*$/ and $lines[$i] !~ /\/\*.*\*\/$/)
 		{
 			# Single line comment --...-- */ is replaced by  */ only
