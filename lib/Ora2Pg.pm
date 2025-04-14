@@ -14673,7 +14673,7 @@ sub hs_cond
 	{
 		my $hs={};
 		$hs->{geometry} = $src_data_types->[$idx] =~ /SDO_GEOMETRY/i ? 1 : 0;
-		$hs->{isnum} = $data_types->[$idx] !~ /^(json|char|varchar|date|time|text|bytea|xml|uuid|citext)/i ? 1 :0;
+		$hs->{isnum} = $data_types->[$idx] !~ /^(json|char|varchar|date|time|text|bytea|xml|uuid|citext|enum)/i ? 1 :0;
 		$hs->{isdate} =  $data_types->[$idx] =~ /^(date|time)/i ? 1 : 0;
 		$hs->{raw} = $src_data_types->[$idx] =~ /RAW/i ? 1 : 0;
 		$hs->{clob} = $src_data_types->[$idx] =~ /CLOB/i ? 1 : 0;
