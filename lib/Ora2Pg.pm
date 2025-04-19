@@ -2605,7 +2605,7 @@ sub _tables
 	$self->logit("Retrieving table information...\n", 1);
 
 	# Retrieve tables informations
-	my %tables_infos = $self->_table_info();
+	my %tables_infos = $self->_table_info($self->{count_rows});
 
 	# Retrieve column identity information
 	if ($self->{type} ne 'FDW')
@@ -18902,7 +18902,7 @@ sub _table_row_count
 			};
 			$parallel_tables_count++;
 
-			# Wait for oracle connection terminaison
+			# Wait for connection terminaison
 			while ($parallel_tables_count > $self->{parallel_tables})
 			{
 				my $kid = waitpid(-1, WNOHANG);
