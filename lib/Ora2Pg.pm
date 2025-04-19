@@ -22551,6 +22551,22 @@ WHERE c.relkind = 'f' and n.nspname = '$self->{fdw_import_schema}'
 		}
 		$q++;
 	}
+
+	if ($self->{parallel_tables} > 1)
+	{
+		# Wait for all child end
+		while ($self->{child_count} > 0)
+		{
+			my $kid = waitpid(-1, WNOHANG);
+			if ($kid > 0)
+			{
+				$self->{child_count}--;
+				delete $RUNNING_PIDS{$kid};
+			}
+			usleep(50000);
+		}
+	}
+
 	if (!$self->{quiet} && !$self->{debug}) {
 		print STDERR $self->progress_bar($q-1, $total_tables, 25, '=', 'tables', "checked" ), "\n\n";
 	}
