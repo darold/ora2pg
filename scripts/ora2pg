@@ -772,11 +772,14 @@ foreach (\$etype in \$EXPORT_TYPE)
 {
 	\$ltype =  \$etype.ToLower() -replace 'y\$', 'ie'  
 	\$ltype =  \$etype.ToLower() -replace 's\$', ''
-	if ( "\$etype" -eq "TABLE" ) then
+	if ( "\$etype" -eq "TABLE" )
+	{
 		blob_to_lo="$ablob_to_lo"
+	}
 	else
+	{
 		blob_to_lo=""
-	fi
+	}
 	\$cmd="ora2pg -p -t \$etype -o \$ltype.sql -b \$namespace/schema/\${ltype}s -c \$namespace/config/ora2pg.conf \$\{blob_to_lo\}"  
 	Write-Host  "Running: \$cmd"
 	Invoke-Expression \$cmd
