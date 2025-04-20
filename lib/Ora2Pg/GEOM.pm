@@ -4,7 +4,7 @@ package Ora2Pg::GEOM;
 # Name     : Ora2Pg/GEOM.pm
 # Language : Perl
 # Authors  : Gilles Darold, gilles _AT_ darold _DOT_ net
-# Copyright: Copyright (c) 2000-2024 : Gilles Darold - All rights reserved -
+# Copyright: Copyright (c) 2000-2025 : Gilles Darold - All rights reserved -
 # Function : Perl module used to convert Oracle SDO_GEOMETRY into PostGis
 # Usage    : See documentation
 #------------------------------------------------------------------------------
@@ -40,7 +40,7 @@ use vars qw($VERSION);
 
 use strict;
 
-$VERSION = '24.3';
+$VERSION = '25.0';
 
 # SDO_ETYPE
 # Second element of triplet in SDO_ELEM_INFO

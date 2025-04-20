@@ -3657,7 +3657,7 @@ your ideas, features request or patches and there will be applied.
 
 =head1 LICENSE
 
-Copyright (c) 2000-2024 Gilles Darold - All rights reserved.
+Copyright (c) 2000-2025 Gilles Darold - All rights reserved.
 
 	This program is free software: you can redistribute it and/or modify
 	it under the terms of the GNU General Public License as published by

@@ -3,7 +3,7 @@
 # Project  : Oracle to Postgresql converter
 # Name     : ora2pg_scanner
 # Author   : Gilles Darold, gilles _AT_ darold _DOT_ net
-# Copyright: Copyright (c) 2000-2024 : Gilles Darold - All rights reserved -
+# Copyright: Copyright (c) 2000-2025 : Gilles Darold - All rights reserved -
 # Function : Script used to scan a list of DSN and generate reports
 # Usage    : ora2pg_scanner -l dsn_csv_file -o outdir
 #------------------------------------------------------------------------------
@@ -26,7 +26,7 @@ use strict;
 
 use Getopt::Long qw(:config no_ignore_case bundling);
 
-my $VERSION = '24.3';
+my $VERSION = '25.0';
 
 my @DB_DSN = ();
 my $OUTDIR = '';
