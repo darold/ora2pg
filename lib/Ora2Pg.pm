@@ -925,7 +925,7 @@ sub _init
 		{
 			next if ($o =~ /^options\s*=/i);
 			$o =~ s/\s*=\s*/\t/;
-			&parse_config($o);
+			$self->parse_config($o);
 		}
 		delete $options{options};
 	}
@@ -14846,14 +14846,14 @@ sub read_config
 		$l =~ s/^\s*\#.*$//g;
 		next if (!$l || ($l =~ /^\s+$/));
 		$l =~ s/^\s*//; $l =~ s/\s*$//;
-		&parse_config($l);
+		$self->parse_config($l);
 	}
 	$self->close_export_file($fh);
 }
 
-sub  parse_config
+sub parse_config
 {
-	my $l = shift;
+	my ($self, $l) = @_;
 
 	my ($var, $val) = split(/\s+/, $l, 2);
 	$var = uc($var);
