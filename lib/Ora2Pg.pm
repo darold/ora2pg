@@ -9713,7 +9713,9 @@ sub _get_sql_statements
 				# Check that the destination table exists
 				if ($self->{pg_dsn} && !$self->{on_error_stop})
 				{
-					my $rv = $self->{dbhdest}->do("SELECT relname FROM pg_class WHERE relname = '$tmptb'");
+					my $r = "SELECT relname FROM pg_class WHERE relname = '$tmptb'";
+					$r =~ s/"//g;
+					my $rv = $self->{dbhdest}->do($r);
 					if ($rv eq '0E0')
 					{
 						$self->logit("WARNING: destination table $table doesn't exists, aborting data export for this table.\n", 0);
@@ -9988,7 +9990,9 @@ sub _get_sql_statements
 			# Check that the destination table exists
 			if ($self->{pg_dsn} && !$self->{on_error_stop})
 			{
-				my $rv = $self->{dbhdest}->do("SELECT relname FROM pg_class WHERE relname = '$tmptb'");
+				my $r = "SELECT relname FROM pg_class WHERE relname = '$tmptb'";
+				$r =~ s/"//g;
+				my $rv = $self->{dbhdest}->do($r);
 				if ($rv eq '0E0')
 				{
 					$self->logit("WARNING: destination table $table doesn't exists, aborting data export for this table.\n", 0);
@@ -10279,7 +10283,9 @@ sub _get_sql_statements
 				# Check that the destination table exists
 				if ($self->{pg_dsn} && !$self->{on_error_stop})
 				{
-					my $rv = $self->{dbhdest}->do("SELECT relname FROM pg_class WHERE relname = '$tmptb'");
+					my $r = "SELECT relname FROM pg_class WHERE relname = '$tmptb'";
+					$r =~ s/"//g;
+					my $rv = $self->{dbhdest}->do($r);
 					if ($rv eq '0E0')
 					{
 						$self->logit("WARNING: destination table $table doesn't exists, aborting data export for this table.\n", 0);
