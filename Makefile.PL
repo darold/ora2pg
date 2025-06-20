@@ -1114,6 +1114,11 @@ DATA_VALIDATION_ERROR		10
 #The expression will be applied in the SQL statemeent used to extract data
 #from the source database.
 
+# Enable this directive if you don't want to export all data based on current
+# SCN. By default Ora2Pg first get the current SCN and retrieve all table data
+# using this SCN to be consistant in case there's modification on the data.
+NO_START_SCN	0
+
 #------------------------------------------------------------------------------
 # PERFORMANCES SECTION (Control export/import performances)
 #------------------------------------------------------------------------------

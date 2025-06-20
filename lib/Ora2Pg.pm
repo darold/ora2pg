@@ -1054,7 +1054,7 @@ sub _init
 
 	# AS OF SCN related variables
 	$self->{start_scn} = $options{start_scn} || '';
-	$self->{no_start_scn} = $options{no_start_scn} || '';
+	$self->{no_start_scn} = $options{no_start_scn} || 0;
 	$self->{current_oracle_scn} = ();
 	$self->{cdc_ready} = $options{cdc_ready} || '';
 
