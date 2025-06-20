@@ -2029,6 +2029,12 @@ or to replace all Oracle char(0) in a string with a space character:
 The expression will be applied in the SQL statement used to extract data
 from the source database.
 
+=item NO_START_SCN
+
+Enable this directive if you don't want to export all data based on current
+SCN. By default Ora2Pg get first the current SCN and then retrieve all table
+data using this SCN to be consistant in case of data modification.
+
 =back
 
 When using Ora2Pg export type INSERT or COPY to dump data to a file and

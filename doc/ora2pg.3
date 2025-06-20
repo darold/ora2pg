@@ -2090,6 +2090,11 @@ or to replace all Oracle \fBchar\fR\|(0) in a string with a space character:
 .Sp
 The expression will be applied in the SQL statement used to extract data
 from the source database.
+.IP NO_START_SCN 4
+.IX Item "NO_START_SCN"
+Enable this directive if you don't want to export all data based on current
+SCN. By default Ora2Pg get first the current SCN and then retrieve all table
+data using this SCN to be consistant in case of data modification.
 .PP
 When using Ora2Pg export type INSERT or COPY to dump data to a file and
 FILE_PER_TABLE is enabled, you will be warned that Ora2Pg will not export
