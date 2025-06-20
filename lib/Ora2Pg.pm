@@ -17335,33 +17335,50 @@ sub _dump_to_pg
 			if (!$self->{oracle_speed})
 			{
 				$self->logit("DEBUG: Sending COPY bulk output directly to PostgreSQL backend\n", 1);
-				$dbhdest->do($sql_out) or $self->logit("FATAL: " . $dbhdest->errstr . "\n", 0, 1);
-				$sql_out = '';
 				my $skip_end = 0;
-				foreach my $row (@$rows)
+				unless($dbhdest->do($sql_out))
 				{
-					unless($dbhdest->pg_putcopydata(join("\t", @$row) . "\n"))
+					if ($self->{log_on_error})
+					{
+						$self->logit("ERROR (log error enabled): " . $dbhdest->errstr . "\n", 0, 0);
+						$self->log_error_copy($table, $s_out, $rows);
+						$skip_end = 2;
+					} else {
+						$self->logit("FATAL: " . $dbhdest->errstr . "\n", 0, 1);
+					}
+				}
+				$sql_out = '';
+				if ($skip_end != 2)
+				{
+					foreach my $row (@$rows)
+					{
+						unless($dbhdest->pg_putcopydata(join("\t", @$row) . "\n"))
+						{
+							if ($self->{log_on_error})
+							{
+								$self->logit("ERROR (log error enabled): " . $dbhdest->errstr . "\n", 0, 0);
+								$self->log_error_copy($table, $s_out, $rows);
+								$skip_end = 1;
+								last;
+							} else {
+								$self->logit("FATAL: " . $dbhdest->errstr . "\n", 0, 1);
+							}
+						}
+					}
+					unless ($dbhdest->pg_putcopyend())
 					{
 						if ($self->{log_on_error})
 						{
 							$self->logit("ERROR (log error enabled): " . $dbhdest->errstr . "\n", 0, 0);
-							$self->log_error_copy($table, $s_out, $rows);
-							$skip_end = 1;
-							last;
+							$self->log_error_copy($table, $s_out, $rows) if (!$skip_end);
 						} else {
 							$self->logit("FATAL: " . $dbhdest->errstr . "\n", 0, 1);
 						}
 					}
 				}
-				unless ($dbhdest->pg_putcopyend())
+				else
 				{
-					if ($self->{log_on_error})
-					{
-						$self->logit("ERROR (log error enabled): " . $dbhdest->errstr . "\n", 0, 0);
-						$self->log_error_copy($table, $s_out, $rows) if (!$skip_end);
-					} else {
-						$self->logit("FATAL: " . $dbhdest->errstr . "\n", 0, 1);
-					}
+					$self->log_error_copy($table, $s_out, $rows);
 				}
 			}
 			else
