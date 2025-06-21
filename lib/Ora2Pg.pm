@@ -8896,7 +8896,15 @@ sub export_table
 						}
 					}
 				}
-				$sql_output .= ",\n";
+				# $sql_output .= ",\n";
+				if ($f->[4] =~ /--\s*\S+/)
+				{
+					$sql_output .= "\n,";
+				}
+				else
+				{
+					$sql_output .= ",\n";
+				}
 
 				# Replace default generated value on update by a trigger
 				if ($f->[12] =~ /^DEFAULT_GENERATED on update (.*)/i) {
