@@ -500,7 +500,12 @@ sub convert_plsql_code
 	}
 
 	# Replace array syntax arr(i).x into arr[i].x
-	$str =~ s/\b([a-z0-9_]+)\(([^\(\)]+)\)(\.[a-z0-9_]+)/$1\[$2\]$3/igs;
+	# $str =~ s/\b([a-z0-9_]+)\(([^\(\)]+)\)(\.[a-z0-9_]+)/$1\[$2\]$3/igs;
+	# writing if condition that xml related synatx with for [ex: xmlsequence().getclobval()] --> for handling this scenario
+	if ($str !~ /\b(?:XMLTYPE|XMLELEMENT|XMLATTRIBUTES|XMLFOREST|XMLAGG|XMLCONCAT|XMLCOMMENT|XMLCDATA|XMLPI|XMLROOT|EXTRACTVALUE?|XMLQUERY|XMLTABLE|XMLTRANSFORM|UPDATEXML|DBMS_XMLSCHEMA|DBMS_XMLGEN|DBMS_XMLSTORE|DBMS_XSLPROCESSOR|DBMS_XMLDOM|DBMS_XMLPARSER|DBMS_XMLQUERY|XMLNAMESPACES|PASSING)\b/i) {
+		# Replace array syntax arr(i).x into arr[i].x
+		$str =~ s/\b([a-z0-9_]+)\(([^\(\)]+)\)(\.[a-z0-9_]+)/$1\[$2\]$3/igs;
+	}
 
 	# Extract all block from the code by splitting it on the semi-comma
 	# character and replace all necessary function call
