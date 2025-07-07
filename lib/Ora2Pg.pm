@@ -6363,7 +6363,7 @@ sub translate_query
 			if ($self->{plsql_pgsql}) {
 				$self->_remove_comments(\$self->{queries}{$q}{code});
 				if (!$self->{preserve_case}) {
-					$self->{queries}{$q}{code} =~ s/"//gs;
+					$self->{queries}{$q}{code} =~ s/"([^\s]+)"/$1/gs;
 				}
 				my $sql_q = Ora2Pg::PLSQL::convert_plsql_code($self, $self->{queries}{$q}{code});
 				my $estimate = '';
@@ -6459,9 +6459,7 @@ sub translate_script
 	$self->logit("Dumping script...\n", 1);
 	
 	$self->_remove_comments(\$self->{script}{code});
-	if (!$self->{preserve_case}) {
-		$self->{script}{code} =~ s/"//gs;
-	}
+
 	my $sql_q = Ora2Pg::PLSQL::convert_plsql_code($self, $self->{script}{code});
 	my $estimate = '';
 	if ($self->{estimate_cost})
@@ -8483,6 +8481,7 @@ sub export_table
 	my $ib = 1;
 	my $count_table = 0;
 	my $PGBAR_REFRESH = set_refresh_count($num_total_table);
+	my $replicat_identity = '';
 	foreach my $table (sort {
 			if (exists $self->{tables}{$a}{internal_id}) {
 				$self->{tables}{$a}{internal_id} <=> $self->{tables}{$b}{internal_id};
@@ -9192,6 +9191,7 @@ sub export_table
 				$sql_output .= $constraints;
 				$constraints = '';
 			}
+			$replicat_identity .= $self->_create_replica_identity($table, $self->{tables}{$table}{unique_key});
 		}
 
 		if (exists $self->{tables}{$table}{alter_table} && !$self->{disable_unlogged} )
@@ -9279,6 +9279,17 @@ LANGUAGE PLPGSQL;
 		$self->close_export_file($fhdl);
 	}
 
+	if ($self->{type} ne 'FDW')
+	{
+		my $fhdl = undef;
+		$self->logit("Dumping replicat identity information to one separate file : LOGICAL_$self->{output}\n", 1);
+		$fhdl = $self->open_export_file("LOGICAL_$self->{output}");
+		$self->set_binmode($fhdl) if (!$self->{compress});
+		$replicat_identity = "-- Nothing found of type indexes\n" if (!$replicat_identity && !$self->{no_header});
+		$replicat_identity = $self->set_search_path() . $replicat_identity;
+		$self->dump($sql_header . $replicat_identity, $fhdl);
+		$self->close_export_file($fhdl);
+	}
 	if ($self->{file_per_index} && ($self->{type} ne 'FDW'))
 	{
 		my $fhdl = undef;
@@ -12067,6 +12078,28 @@ sub _create_unique_keys
 	}
 	return $out;
 }
+
+=head2 _create_replica_identity
+
+This function return SQL code for REPLICA IDENTITY
+
+=cut
+sub _create_replica_identity
+{
+	my ($self, $table, $unique_key) = @_;
+
+	my $out = '';
+
+	if (scalar keys %$unique_key == 0)
+	{
+		my $tbsaved = $table;
+		$table = $self->get_replaced_tbname($table);
+		$out = "ALTER TABLE $table REPLICA IDENTITY FULL;\n";
+	}
+
+	return $out;
+}
+
 
 =head2 _create_check_constraint
 
