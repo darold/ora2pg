@@ -1448,6 +1448,16 @@ sub translate_statement
 	# Replacement of connect by with CTE
 	$stmt = replace_connect_by($class, $stmt);
 
+	# Fix missing recursive keyword in CTE
+	# WITH t1%SUBQUERY0% AS %SUBQUERY1% ...
+	if ($stmt =~ /^WITH\s+([^\s\%]+)\s*\%SUBQUERY(\d+)\%\s+AS\s+\%SUBQUERY(\d+)\%/i)
+	{
+		my $ctename = $1;
+		if ($class->{sub_parts}{$3} =~ /\b$ctename\./) {
+			$stmt =~ s/^WITH\s+([^\s\%]+)/WITH RECURSIVE $ctename/i;
+		}
+	}
+
 	return $stmt;
 }
 
