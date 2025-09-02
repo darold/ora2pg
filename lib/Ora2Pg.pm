@@ -5881,15 +5881,15 @@ sub export_job
 		if (!$self->{quiet} && !$self->{debug}) {
 			print STDERR $self->progress_bar($i, $num_total_job, 25, '=', 'job', "generating $job" ), "\r";
 		}
-		$sql_output .= "JOB NUMBER: $i";
-		$sql_output .= "JOB NAME: $job";
-		$sql_output .= "WHAT: $self->{job}{$job}{what}";
-		$sql_output .= "INTERVAL: $self->{job}{$job}{interval}";
-		$sql_output .= "CODE:\n$self->{job}{$job}{code}";
+		$sql_output .= "JOB NUMBER: $i\n";
+		$sql_output .= "JOB NAME: $job\n";
+		$sql_output .= "WHAT: $self->{job}{$job}{what}\n";
+		$sql_output .= "INTERVAL: $self->{job}{$job}{interval}\n";
+		$sql_output .= "CODE:\n$self->{job}{$job}{code}\n\n";
 		$i++;
 	}
 	if (!$self->{quiet} && !$self->{debug}) {
-		print STDERR $self->progress_bar($i - 1, $num_total_job, 25, '=', 'dblink', 'end of output.'), "\n";
+		print STDERR $self->progress_bar($i - 1, $num_total_job, 25, '=', 'job', 'end of output.'), "\n";
 	}
 	if (!$sql_output) {
 		$sql_output = "-- Nothing found of type $self->{type}\n" if (!$self->{no_header});
