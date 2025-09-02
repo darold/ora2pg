@@ -1855,7 +1855,7 @@ sub _init
 			$self->_compile_schema(uc($self->{compile_schema}));
 		}
 
-		if (!grep(/^$self->{type}$/, 'COPY', 'INSERT', 'SEQUENCE', 'SEQUENCE_VALUES', 'GRANT', 'TABLESPACE', 'QUERY', 'SYNONYM', 'FDW', 'KETTLE', 'DBLINK', 'DIRECTORY') && $self->{type} !~ /SHOW_/)
+		if (!grep(/^$self->{type}$/, 'COPY', 'INSERT', 'SEQUENCE', 'SEQUENCE_VALUES', 'GRANT', 'TABLESPACE', 'QUERY', 'SYNONYM', 'FDW', 'KETTLE', 'DBLINK', 'DIRECTORY', 'JOB') && $self->{type} !~ /SHOW_/)
 		{
 			if ($self->{plsql_pgsql} && !$self->{no_function_metadata})
 			{
@@ -1900,7 +1900,7 @@ sub _init
 		$self->replace_tables(%{$self->{'replace_tables'}});
 		$self->replace_cols(%{$self->{'replace_cols'}});
 
-		if (grep(/^$self->{type}$/, 'TABLE', 'SEQUENCE', 'SEQUENCE_VALUES', 'GRANT', 'TABLESPACE', 'VIEW', 'TRIGGER', 'QUERY', 'FUNCTION','PROCEDURE','PACKAGE','TYPE','SYNONYM', 'DIRECTORY', 'DBLINK', 'LOAD', 'SCRIPT'))
+		if (grep(/^$self->{type}$/, 'TABLE', 'SEQUENCE', 'SEQUENCE_VALUES', 'GRANT', 'TABLESPACE', 'VIEW', 'TRIGGER', 'QUERY', 'FUNCTION','PROCEDURE','PACKAGE','TYPE','SYNONYM', 'DIRECTORY', 'DBLINK', 'LOAD', 'SCRIPT', 'JOB'))
 		{
 			if ($self->{type} eq 'LOAD')
 			{
@@ -1999,6 +1999,8 @@ sub _init
 			$self->_partitions();
 		} elsif ($self->{type} eq 'DBLINK') {
 			$self->_dblinks();
+		} elsif ($self->{type} eq 'JOB') {
+			$self->_jobs();
 		} elsif ($self->{type} eq 'DIRECTORY') {
 			$self->_directories();
 		} elsif ($self->{type} eq 'MVIEW') {
@@ -2092,7 +2094,7 @@ sub _init
 		}
 		else
 		{
-			warn "type option must be (TABLE, VIEW, GRANT, SEQUENCE, SEQUENCE_VALUES, TRIGGER, PACKAGE, FUNCTION, PROCEDURE, PARTITION, TYPE, INSERT, COPY, TABLESPACE, SHOW_REPORT, SHOW_VERSION, SHOW_SCHEMA, SHOW_TABLE, SHOW_COLUMN, SHOW_ENCODING, FDW, MVIEW, QUERY, KETTLE, DBLINK, SYNONYM, DIRECTORY, LOAD, TEST, TEST_COUNT, TEST_VIEW, TEST_DATA), unknown $self->{type}\n";
+			warn "type option must be (TABLE, VIEW, GRANT, SEQUENCE, SEQUENCE_VALUES, TRIGGER, PACKAGE, FUNCTION, PROCEDURE, PARTITION, TYPE, INSERT, COPY, TABLESPACE, SHOW_REPORT, SHOW_VERSION, SHOW_SCHEMA, SHOW_TABLE, SHOW_COLUMN, SHOW_ENCODING, FDW, MVIEW, QUERY, KETTLE, DBLINK, JOB, SYNONYM, DIRECTORY, LOAD, TEST, TEST_COUNT, TEST_VIEW, TEST_DATA), unknown $self->{type}\n";
 		}
 		$self->replace_tables(%{$self->{'replace_tables'}});
 		$self->replace_cols(%{$self->{'replace_cols'}});
@@ -4355,6 +4357,24 @@ sub _dblinks
 
 }
 
+=head2 _jobs
+
+This function is used to retrieve all Oracle jobs information.
+
+Sets the main hash $self->{jobs}.
+
+=cut
+
+sub _jobs
+{
+	my ($self) = @_;
+
+	$self->logit("Retrieving jobs information...\n", 1);
+	%{$self->{job}} = $self->_get_job();
+
+}
+
+
 =head2 _directories
 
 This function is used to retrieve all Oracle directories information.
@@ -5753,7 +5773,7 @@ sub export_sequence_values
 
 =head2 export_dblink
 
-Export Oracle sequence into PostgreSQL compatible SQL statements.
+Export Oracle dblink into PostgreSQL compatible SQL statements.
 
 =cut
 
@@ -5833,6 +5853,53 @@ sub export_dblink
 
 	return;
 }
+
+=head2 export_job
+
+Export Oracle job
+
+=cut
+
+sub export_job
+{
+	my $self = shift;
+
+	my $sql_header = $self->_set_file_header();
+	my $sql_output = "";
+
+	$self->logit("Add job definition...\n", 1);
+
+	# Read DML from file if any
+	if ($self->{input_file}) {
+		$self->read_job_from_file();
+	}
+	my $i = 1;
+	my $num_total_job = scalar keys %{$self->{job}};
+
+	foreach my $job (sort { $a cmp $b } keys %{$self->{job}})
+	{
+		if (!$self->{quiet} && !$self->{debug}) {
+			print STDERR $self->progress_bar($i, $num_total_job, 25, '=', 'job', "generating $job" ), "\r";
+		}
+		$sql_output .= "JOB NUMBER: $i";
+		$sql_output .= "JOB NAME: $job";
+		$sql_output .= "WHAT: $self->{job}{$job}{what}";
+		$sql_output .= "INTERVAL: $self->{job}{$job}{interval}";
+		$sql_output .= "CODE:\n$self->{job}{$job}{code}";
+		$i++;
+	}
+	if (!$self->{quiet} && !$self->{debug}) {
+		print STDERR $self->progress_bar($i - 1, $num_total_job, 25, '=', 'dblink', 'end of output.'), "\n";
+	}
+	if (!$sql_output) {
+		$sql_output = "-- Nothing found of type $self->{type}\n" if (!$self->{no_header});
+	}
+
+	$self->dump($sql_header . $sql_output);
+
+	return;
+}
+
 
 =head2 export_directory
 
@@ -9495,6 +9562,12 @@ sub _get_sql_statements
 	elsif ($self->{type} eq 'DBLINK')
 	{
 		$self->export_dblink();
+	}
+
+	# Process job
+	elsif ($self->{type} eq 'JOB')
+	{
+		$self->export_job();
 	}
 
 	# Process dblink

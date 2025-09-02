@@ -2200,7 +2200,7 @@ sub _get_job
 	return if ($self->{db_version} =~ /Release [8|9]/);
 
 	# Retrieve all database job from user_jobs table
-	my $str = "SELECT JOB,WHAT,INTERVAL,SCHEMA_USER FROM $self->{prefix}_JOBS";
+	my $str = "SELECT JOB,WHAT,INTERVAL,SCHEMA_USER, dbms_metadata.get_ddl('PROCOBJ', JOB, SCHEMA_USER) FROM $self->{prefix}_JOBS";
 	if (!$self->{schema}) {
 		$str .= " WHERE SCHEMA_USER NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
 	} else {
@@ -2212,17 +2212,19 @@ sub _get_job
 	$sth->execute(@{$self->{query_bind_params}}) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 
 	my %data = ();
-	while (my $row = $sth->fetch) {
+	while (my $row = $sth->fetch)
+	{
 		if (!$self->{schema} && $self->{export_schema}) {
 			$row->[0] = "$row->[3].$row->[0]";
 		}
 		$data{$row->[0]}{what} = $row->[1];
 		$data{$row->[0]}{interval} = $row->[2];
+		$data{$row->[0]}{code} = $row->[4];
 	}
 
 	# Retrieve all database jobs from view [ALL|DBA]_SCHEDULER_JOBS
 	$str = "SELECT job_name AS JOB, job_action AS WHAT, repeat_interval AS INTERVAL, owner AS SCHEMA_USER";
-	$str .= " FROM $self->{prefix}_SCHEDULER_JOBS";
+	$str .= ", dbms_metadata.get_ddl('PROCOBJ',job_name,owner) FROM $self->{prefix}_SCHEDULER_JOBS";
 	$str .= " WHERE repeat_interval IS NOT NULL";
 	$str .= " AND client_id IS NULL";
 	if (!$self->{schema}) {
@@ -2232,12 +2234,14 @@ sub _get_job
 	}
 	$sth = $self->{dbh}->prepare($str) or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
 	$sth->execute or $self->logit("FATAL: " . $self->{dbh}->errstr . "\n", 0, 1);
-	while (my $row = $sth->fetch) {
+	while (my $row = $sth->fetch)
+	{
 		if (!$self->{schema} && $self->{export_schema}) {
 			$row->[0] = "$row->[3].$row->[0]";
 		}
 		$data{$row->[0]}{what} = $row->[1];
 		$data{$row->[0]}{interval} = $row->[2];
+		$data{$row->[0]}{code} = $row->[4];
 	}
 
 	return %data;
