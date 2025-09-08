@@ -1489,7 +1489,7 @@ sub _get_job
 	my($self) = @_;
 
 	# Retrieve all database job from user_jobs table
-	my $str = "SELECT EVENT_NAME,EVENT_DEFINITION,EXECUTE_AT FROM INFORMATION_SCHEMA.EVENTS WHERE STATUS = 'ENABLED'";
+	my $str = "SELECT EVENT_NAME,EVENT_DEFINITION,concat(interval_value, ' ', interval_field) as 'interval', case when event_type = 'RECURRING' THEN STARTS ELSE EXECUTE_AT END as EXECUTE_TIME, ends FROM INFORMATION_SCHEMA.EVENTS WHERE UPPER(STATUS) = 'ENABLED'";
 	if ($self->{schema}) {
 		$str .= " AND EVENT_SCHEMA = '$self->{schema}'";
 	}
@@ -1502,6 +1502,8 @@ sub _get_job
 	while (my $row = $sth->fetch) {
 		$data{$row->[0]}{what} = $row->[1];
 		$data{$row->[0]}{interval} = $row->[2];
+		$data{$row->[0]}{exectime} = $row->[3];
+		$data{$row->[0]}{ends} = $row->[4];
 	}
 
 	return %data;

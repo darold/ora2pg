@@ -5885,7 +5885,9 @@ sub export_job
 		$sql_output .= "JOB NAME: $job\n";
 		$sql_output .= "WHAT: $self->{job}{$job}{what}\n";
 		$sql_output .= "INTERVAL: $self->{job}{$job}{interval}\n";
-		$sql_output .= "CODE:\n$self->{job}{$job}{code}\n\n";
+		$sql_output .= "CODE:\n$self->{job}{$job}{code}\n\n" if (exists $self->{job}{$job}{code});
+		$sql_output .= "EXECTIME:\n$self->{job}{$job}{exectime}\n\n" if (exists $self->{job}{$job}{exectime});
+		$sql_output .= "ENDS:\n$self->{job}{$job}{ends}\n\n" if (exists $self->{job}{$job}{ends});
 		$i++;
 	}
 	if (!$self->{quiet} && !$self->{debug}) {
