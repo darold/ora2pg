@@ -22935,7 +22935,7 @@ ORDER BY attnum};
 				$prow[$i] =~ s/[ ]+$//;
 			}
 			# Oracle can report decimal as .nn, PG always have a 0 at startup
-			if ($self->{colinfo}{$tb}{data_type}{$i+1} eq 'NUMBER') {
+			if ($self->{colinfo}{$tb}{data_type}{$i+1} =~ /^(NUMBER|FLOAT)$/i) {
 				$orow[$i] =~ s/^([\-]?)(\.\d+)/${1}0$2/;
 			}
 		}
