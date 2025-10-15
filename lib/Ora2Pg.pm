@@ -12449,7 +12449,7 @@ sub _howto_get_data
 	if ($self->{replace_query}{"\L$table\E"})
 	{
 		$str = $self->{replace_query}{"\L$table\E"};
-		$self->logit("DEGUG: Query sent to $self->{sgbd_name}: $str\n", 1);
+		$self->logit("DEBUG: Query sent to $self->{sgbd_name}: $str\n", 1);
 		return $str;
 	}
 
@@ -12993,7 +12993,7 @@ END;
 		}
 	}
 
-	$self->logit("DEGUG: Query sent to $self->{sgbd_name}: $str\n", 1);
+	$self->logit("DEBUG: Query sent to $self->{sgbd_name}: $str\n", 1);
 
 	return $str;
 }
@@ -13015,7 +13015,7 @@ sub _howto_get_fdw_data
 	if ($self->{replace_query}{"\L$table\E"})
 	{
 		$str = $self->{replace_query}{"\L$table\E"};
-		$self->logit("DEGUG: Query sent to $self->{sgbd_name}: $str\n", 1);
+		$self->logit("DEBUG: Query sent to $self->{sgbd_name}: $str\n", 1);
 		return $str;
 	}
 
@@ -13183,7 +13183,7 @@ sub _howto_get_fdw_data
 		}
 	}
 
-	$self->logit("DEGUG: Query sent to $self->{sgbd_name}: $str\n", 1);
+	$self->logit("DEBUG: Query sent to $self->{sgbd_name}: $str\n", 1);
 
 	return $str;
 }
@@ -14306,7 +14306,7 @@ sub format_data_row
 		{
 			$row->[$idx] = $self->format_data_type($row->[$idx], $data_type, $action, $table, $src_data_types->[$idx], $idx, $colcond->[$idx], $sprep);
 
-			# Construct a WHERE clause based onb PK columns values
+			# Construct a WHERE clause based on PK columns values
 			if ($self->{lo_import} && $colcond->[$idx]->{isoid} && $colcond->[$idx]->{blob})
 			{
 				# Store the uuid of the file containing the BLOB and set the oid to 0
