@@ -5755,7 +5755,7 @@ sub export_sequence_values
 			print STDERR $self->progress_bar($i, $num_total_sequence, 25, '=', 'sequences', "generating $seq" ), "\r";
 		}
 		$count_seq++;
-		$sql_output .= "ALTER SEQUENCE " . $self->quote_object_name($seq) . " START WITH $self->{sequences}{$seq}->[4];\n";
+		$sql_output .= "ALTER SEQUENCE " . $self->quote_object_name($seq) . " RESTART WITH $self->{sequences}{$seq}->[4];\n";
 		$i++;
 	}
 	if (!$self->{quiet} && !$self->{debug}) {
