@@ -10959,7 +10959,10 @@ sub _dump_table
 			$s_out =~ s/,$//;
 			$s_out .= ")";
 			if ($self->{insert_on_conflict}) {
-				$s_out .= " ON CONFLICT DO NOTHING";
+				# Use the primary key columns dynamically instead of hardcoding 'ida2a2'
+				my @pk_cols = @{ $self->{tables}{$table}{pg_colnames_pkey} };
+				my @update_cols = grep { my $col = $_; !grep { $_ eq $col } @pk_cols } @{ $self->{tables}{$table}{dest_column_name} };
+				$s_out .= " ON CONFLICT (" . join(',', @pk_cols) . ") DO UPDATE SET " . join(',', map { "$_ = EXCLUDED.$_" } @update_cols);
 			}
 			$sprep = $s_out;
 		}
