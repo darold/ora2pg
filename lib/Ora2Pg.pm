@@ -10958,11 +10958,19 @@ sub _dump_table
 			}
 			$s_out =~ s/,$//;
 			$s_out .= ")";
-			if ($self->{insert_on_conflict}) {
+			if ($self->{insert_on_conflict})
+			{
 				# Use the primary key columns dynamically instead of hardcoding 'ida2a2'
 				my @pk_cols = @{ $self->{tables}{$table}{pg_colnames_pkey} };
-				my @update_cols = grep { my $col = $_; !grep { $_ eq $col } @pk_cols } @{ $self->{tables}{$table}{dest_column_name} };
-				$s_out .= " ON CONFLICT (" . join(',', @pk_cols) . ") DO UPDATE SET " . join(',', map { "$_ = EXCLUDED.$_" } @update_cols);
+				if ($#pk_cols >= 0)
+				{
+					my @update_cols = grep { my $col = $_; !grep { $_ eq $col } @pk_cols } @{ $self->{tables}{$table}{dest_column_name} };
+					$s_out .= " ON CONFLICT (" . join(',', @pk_cols) . ") DO UPDATE SET " . join(',', map { "$_ = EXCLUDED.$_" } @update_cols);
+				}
+				else
+				{
+					$s_out .= " ON CONFLICT DO NOTHING";
+				}
 			}
 			$sprep = $s_out;
 		}
@@ -17514,8 +17522,19 @@ sub _dump_to_pg
 		{
 			$sql_out .= $s_out;
 			$sql_out .= join(',', @$row) . ")";
-			if ($self->{insert_on_conflict}) {
-				$sql_out .= " ON CONFLICT DO NOTHING";
+			if ($self->{insert_on_conflict})
+			{
+				# Use the primary key columns dynamically instead of hardcoding 'ida2a2'
+				my @pk_cols = @{ $self->{tables}{$table}{pg_colnames_pkey} };
+				if ($#pk_cols >= 0)
+				{
+					my @update_cols = grep { my $col = $_; !grep { $_ eq $col } @pk_cols } @{ $self->{tables}{$table}{dest_column_name} };
+					$sql_out .= " ON CONFLICT (" . join(',', @pk_cols) . ") DO UPDATE SET " . join(',', map { "$_ = EXCLUDED.$_" } @update_cols);
+				}
+				else
+				{
+					$sql_out .= " ON CONFLICT DO NOTHING";
+				}
 			}
 			$sql_out .= ";\n";
 		}
