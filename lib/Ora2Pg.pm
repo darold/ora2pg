@@ -22586,7 +22586,9 @@ sub _data_validation
 	# Get all tables information specified by the DBI method table_info
 	$self->logit("Data validation between source database and PostgreSQL...\n", 1);
 
-	my $unique_clause = ' AND i.indkey IS NOT NULL AND i.indisunique ORDER BY i.indisprimary DESC';
+
+	# Ordered by unique keys first, primary keys if defined will override the assignement in the loop
+	my $unique_clause = ' AND i.indkey IS NOT NULL AND i.indisunique ORDER BY i.indisprimary ASC';
 	$unique_clause = '' if (!$self->{data_validation_ordering});
 
 	# First of all extract all tables from PostgreSQL database with the
