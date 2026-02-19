@@ -11150,15 +11150,19 @@ sub _dump_fdw_table
 	if ($self->{type} eq 'COPY')
 	# Build COPY statement
 	{
+		my $nmsp = '';
+		if ($self->{pg_schema}) {
+			$nmsp = $self->quote_object_name($self->{pg_schema}) . '.';
+		}
 		if ($self->{oracle_fdw_copy_mode} eq 'local') {
 			$ENV{PGPASSWORD} = $self->{dbpwd};
 			# Need to escape the quotation marks in $fdwtb
 			my $fdwtb_escaped = $fdwtb =~ s/"/\"/gr;
-			$s_out = "\\copy (select $fdw_col_list from $self->{fdw_import_schema}.$fdwtb_escaped) TO PROGRAM 'psql -X -h $self->{dbhost} -p $self->{dbport} -d $self->{dbname} -U $self->{dbuser} -c \\\"\\copy $self->{schema}.$tmptb FROM STDIN " . uc($self->{oracle_fdw_copy_format}) . "\\\"' " . uc($self->{oracle_fdw_copy_format});
+			$s_out = "\\copy (select $fdw_col_list from $self->{fdw_import_schema}.$fdwtb_escaped) TO PROGRAM 'psql -X -h $self->{dbhost} -p $self->{dbport} -d $self->{dbname} -U $self->{dbuser} -c \\\"\\copy $nmsp$tmptb FROM STDIN " . uc($self->{oracle_fdw_copy_format}) . "\\\"' " . uc($self->{oracle_fdw_copy_format});
 		}
 		if ($self->{oracle_fdw_copy_mode} eq 'server') {
-			#$s_out = "COPY (select $fdw_col_list from $self->{fdw_import_schema}.$fdwtb) TO PROGRAM 'PGPASSWORD=$self->{dbpwd} psql -h $self->{dbhost} -p $self->{dbport} -d $self->{dbname} -U $self->{dbuser} -c \"\\copy $self->{schema}.$tmptb FROM STDIN BINARY\"' BINARY";
-			$s_out = "COPY (select $fdw_col_list from $self->{fdw_import_schema}.$fdwtb) TO PROGRAM 'PGPASSWORD=$self->{dbpwd} psql -h $self->{dbhost} -p $self->{dbport} -d $self->{dbname} -U $self->{dbuser} -c \"\\copy $self->{schema}.$tmptb FROM STDIN " . uc($self->{oracle_fdw_copy_format}) . "\"' " . uc($self->{oracle_fdw_copy_format});
+			#$s_out = "COPY (select $fdw_col_list from $self->{fdw_import_schema}.$fdwtb) TO PROGRAM 'PGPASSWORD=$self->{dbpwd} psql -h $self->{dbhost} -p $self->{dbport} -d $self->{dbname} -U $self->{dbuser} -c \"\\copy $nmsp$tmptb FROM STDIN BINARY\"' BINARY";
+			$s_out = "COPY (select $fdw_col_list from $self->{fdw_import_schema}.$fdwtb) TO PROGRAM 'PGPASSWORD=$self->{dbpwd} psql -h $self->{dbhost} -p $self->{dbport} -d $self->{dbname} -U $self->{dbuser} -c \"\\copy $nmsp$tmptb FROM STDIN " . uc($self->{oracle_fdw_copy_format}) . "\"' " . uc($self->{oracle_fdw_copy_format});
 		}
 	}
 
