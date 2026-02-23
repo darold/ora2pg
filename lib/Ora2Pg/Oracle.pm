@@ -597,7 +597,7 @@ ORDER BY A.COLUMN_ID
 	# Get the dimension of the geometry by looking at the number of element in the SDO_DIM_ARRAY
 	my $spatial_dim_asgm = "SELECT t.SDO_DIMNAME, t.SDO_LB, t.SDO_UB FROM ALL_SDO_GEOM_METADATA m, TABLE (m.diminfo) t WHERE m.TABLE_NAME=? AND m.COLUMN_NAME=? AND OWNER=?";
 	my $st_spatial_dim = "SELECT $self->{st_dimension_function}(c.\%s) FROM \%s c WHERE ROWNUM < 2";
-  my $spatial_dim;
+	my $spatial_dim;
 
 	my $is_virtual_col = "SELECT V.VIRTUAL_COLUMN FROM $self->{prefix}_TAB_COLS V WHERE V.OWNER=? AND V.TABLE_NAME=? AND V.COLUMN_NAME=?";
 	my $sth3 = undef;
