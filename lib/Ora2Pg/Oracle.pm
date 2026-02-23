@@ -712,7 +712,7 @@ ORDER BY A.COLUMN_ID
 				if ($row->[1] =~ /^ST_|STGEOM_/) {
 					$spatial_dim = sprintf($st_spatial_dim, $row->[0], "$row->[9].$row->[8]");
 				} else {
-					 $spatial_dim = $spatial_dim_asgm;
+					$spatial_dim = $spatial_dim_asgm;
 				}
 				my $sth2 = $self->{dbh}->prepare($spatial_dim);
 				if (!$sth2) {
