@@ -586,16 +586,18 @@ ORDER BY A.COLUMN_ID
 	my $spatial_gtype =  'SELECT DISTINCT c.%s.SDO_GTYPE FROM %s c WHERE ROWNUM < ' . $max_lines;
 	my $st_spatial_gtype =  "SELECT DISTINCT $self->{st_geometrytype_function}(c.\%s) FROM \%s c WHERE ROWNUM < " . $max_lines;
 	# Set query to retrieve the SRID
-	my $spatial_srid = "SELECT SRID FROM ALL_SDO_GEOM_METADATA WHERE TABLE_NAME=? AND COLUMN_NAME=? AND OWNER=?";
+	my $spatial_srid_asgm = "SELECT SRID FROM ALL_SDO_GEOM_METADATA WHERE TABLE_NAME=? AND COLUMN_NAME=? AND OWNER=?";
+	my $spatial_srid;
 	my $st_spatial_srid = "SELECT $self->{st_srid_function}(c.\%s) FROM \%s c WHERE ROWNUM < 2";
 	if ($self->{convert_srid})
 	{
 		# Translate SRID to standard EPSG SRID, may return 0 because there's lot of Oracle only SRID.
-		$spatial_srid = "SELECT sdo_cs.map_oracle_srid_to_epsg(SRID) FROM ALL_SDO_GEOM_METADATA WHERE TABLE_NAME=? AND COLUMN_NAME=? AND OWNER=?";
+		$spatial_srid_asgm = "SELECT sdo_cs.map_oracle_srid_to_epsg(SRID) FROM ALL_SDO_GEOM_METADATA WHERE TABLE_NAME=? AND COLUMN_NAME=? AND OWNER=?";
 	}
 	# Get the dimension of the geometry by looking at the number of element in the SDO_DIM_ARRAY
-	my $spatial_dim = "SELECT t.SDO_DIMNAME, t.SDO_LB, t.SDO_UB FROM ALL_SDO_GEOM_METADATA m, TABLE (m.diminfo) t WHERE m.TABLE_NAME=? AND m.COLUMN_NAME=? AND OWNER=?";
+	my $spatial_dim_asgm = "SELECT t.SDO_DIMNAME, t.SDO_LB, t.SDO_UB FROM ALL_SDO_GEOM_METADATA m, TABLE (m.diminfo) t WHERE m.TABLE_NAME=? AND m.COLUMN_NAME=? AND OWNER=?";
 	my $st_spatial_dim = "SELECT $self->{st_dimension_function}(c.\%s) FROM \%s c WHERE ROWNUM < 2";
+	my $spatial_dim;
 
 	my $is_virtual_col = "SELECT V.VIRTUAL_COLUMN FROM $self->{prefix}_TAB_COLS V WHERE V.OWNER=? AND V.TABLE_NAME=? AND V.COLUMN_NAME=?";
 	my $sth3 = undef;
@@ -648,6 +650,8 @@ ORDER BY A.COLUMN_ID
 				my @result = ();
 				if ($row->[1] =~ /^ST_|STGEOM_/) {
 					$spatial_srid = sprintf($st_spatial_srid, $row->[0], "$row->[9].$row->[8]");
+				} else {
+					$spatial_srid = $spatial_srid_asgm;
 				}
 				my $sth2 = $self->{dbh}->prepare($spatial_srid);
 				if (!$sth2)
@@ -707,6 +711,8 @@ ORDER BY A.COLUMN_ID
 			{
 				if ($row->[1] =~ /^ST_|STGEOM_/) {
 					$spatial_dim = sprintf($st_spatial_dim, $row->[0], "$row->[9].$row->[8]");
+				} else {
+					$spatial_dim = $spatial_dim_asgm;
 				}
 				my $sth2 = $self->{dbh}->prepare($spatial_dim);
 				if (!$sth2) {
