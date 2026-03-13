@@ -22766,7 +22766,7 @@ sub compare_data
 		}
 		else
 		{
-			if ($self->{nls_lang})
+			if ($self->{nls_lang} && !$self->{is_mssql})
 			{
 				if ($self->{debug} && !$quiet) {
 					$self->logit("Set default encoding to '$self->{nls_lang}' and collate to '$self->{nls_nchar}'\n", 1);
