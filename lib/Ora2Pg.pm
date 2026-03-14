@@ -22831,8 +22831,10 @@ sub compare_data
 			else
 			{
 				$sql .= " ORDER BY " . $ucols if ($self->{data_validation_ordering});
-				if (!$self->{is_mysql}) {
+				if (!$self->{is_mysql} && !$self->{is_mssql}) {
 					$sql .= " FETCH FIRST $self->{data_validation_rows} ROWS ONLY";
+				} elsif ($self->{is_mssql}) {
+					$sql =~ s/^SELECT /SELECT TOP $self->{data_validation_rows} /;
 				} else {
 					$sql .= " LIMIT $self->{data_validation_rows}";
 				}
