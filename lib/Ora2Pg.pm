@@ -22834,7 +22834,8 @@ sub compare_data
 				if (!$self->{is_mysql} && !$self->{is_mssql}) {
 					$sql .= " FETCH FIRST $self->{data_validation_rows} ROWS ONLY";
 				} elsif ($self->{is_mssql}) {
-					$sql =~ s/^SELECT /SELECT TOP $self->{data_validation_rows} /;
+					$sql =~ s/ TOP $self->{select_top} / /s if ($self->{select_top});
+					$sql =~ s/^SELECT /SELECT TOP $self->{data_validation_rows} /s;
 				} else {
 					$sql .= " LIMIT $self->{data_validation_rows}";
 				}
