@@ -8838,6 +8838,7 @@ sub export_table
 					$f->[4] =~ s/^\s+//;
 					$f->[4] =~ s/\s+$//;
 					$f->[4] =~ s/"//gs;
+					$f->[4] =~ s/\-\-\s*\S+.*//; # remove comment
 					if ($self->{plsql_pgsql}) {
 						$f->[4] = Ora2Pg::PLSQL::convert_plsql_code($self, $f->[4]);
 					}
