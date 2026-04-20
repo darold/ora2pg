@@ -3809,7 +3809,8 @@ sub read_view_from_file
 	        $self->{views}{$v_name}{text} = $v_def;
 	        $self->{views}{$v_name}{iter} = $tid;
 		# Remove constraint
-		while ($v_alias =~ s/(,[^,\(]+\(.*)$//) {};
+		# while ($v_alias =~ s/(,[^,\(]+\(.*)$//) {};
+		while ($v_alias =~ s/(,[^,"\(]+\(.*\))$//) {};
 		my @aliases = split(/\s*,\s*/, $v_alias);
 		foreach (@aliases)
 		{
@@ -5146,6 +5147,22 @@ sub export_view
 			$sql_output .= "CREATE$self->{create_or_replace} VIEW $tmpv (";
 			my $count = 0;
 			my %col_to_replace = ();
+			# need to write the condition if views alias as mentioned within ""
+			if (exists $self->{views}{$view}{alias}) {
+				my $alias_ref = $self->{views}{$view}{alias};
+
+				if (ref($alias_ref) eq 'ARRAY') {
+					my @flattened_alias;
+
+					foreach my $sub_array (@$alias_ref) {
+						if (ref($sub_array) eq 'ARRAY') {
+							push @flattened_alias, join(" ", @$sub_array);
+						}
+					}
+					$self->{views}{$view}{alias} = [ map { [$_] } @flattened_alias ];
+
+				}
+			}
 			foreach my $d (@{$self->{views}{$view}{alias}})
 			{
 				if ($count == 0) {
@@ -5172,7 +5189,16 @@ sub export_view
 				$cost_value += $cost;
 				$sql_output .= "\n-- Estimed cost of view [ $view ]: " . sprintf("%2.2f", $cost);
 			}
-			$sql_output .= "\n";
+			# $sql_output .= "\n";
+			# writing if condition that the fname is like "abc.def" --> handling these kind of strings	
+			if ($fname =~ /"[^"]*?(?:\.\s|\.|)[^"]*?"/)
+			{
+				$sql_output .= $fname;
+			}
+			else
+			{
+				$sql_output .= $self->quote_object_name($fname);
+			}
 		}
 
 		if ($self->{force_owner})
