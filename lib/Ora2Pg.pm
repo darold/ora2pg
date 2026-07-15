@@ -15014,7 +15014,7 @@ sub parse_config
 		}
 	}
 	# Should be a else statement but keep the list up to date to memorize the directives full list
-	elsif (!grep(/^$var$/, 'TABLES','ALLOW','MODIFY_STRUCT','REPLACE_TABLES','REPLACE_COLS',
+	elsif (!grep(/^\Q$var\E$/, 'TABLES','ALLOW','MODIFY_STRUCT','REPLACE_TABLES','REPLACE_COLS',
 			'WHERE','EXCLUDE','VIEW_AS_TABLE','MVIEW_AS_TABLE','ORA_RESERVED_WORDS',
 			'SYSUSERS','REPLACE_AS_BOOLEAN','BOOLEAN_VALUES','MODIFY_TYPE','DEFINED_PK',
 			'ALLOW_PARTITION','REPLACE_QUERY','FKEY_ADD_UPDATE','DELETE',
