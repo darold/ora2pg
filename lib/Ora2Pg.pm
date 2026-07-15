@@ -4516,7 +4516,7 @@ sub _export_table_data
 	{
 		$tbpart_name = $part_name;
 		$tbpart_name = $ptmptb . '_part' . $pos if ($self->{rename_partition});
-		if ($self->{rename_partition} && $part_name eq 'default') {
+		if ($self->{rename_partition} && $p eq 'default') {
 			$tbpart_name = $table . '_part_default';
 		}
 	}
@@ -4527,7 +4527,7 @@ sub _export_table_data
 		$sub_tb_name = $subpart;
 		$sub_tb_name =~ s/^[^\.]+\.//; # remove schema part if any
 		$sub_tb_name = $ptmptb . '_part' . $pos . '_subpart' . $p if ($self->{rename_partition});
-		if ($self->{rename_partition} && $subpart eq 'default') {
+		if ($self->{rename_partition} && $p eq 'default') {
 			$sub_tb_name = $tbpart_name . '_subpart_default';
 		}
 	}
