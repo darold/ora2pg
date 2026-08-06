@@ -3232,7 +3232,7 @@ sub read_schema_from_file
 				# Rewrite some parts for easiest/generic parsing
 				my $tbn = $tb_name;
 				$tbn =~ s/\./_/gs;
-				$c =~ s/^(PRIMARY KEY|UNIQUE)/CONSTRAINT o2pu_$tbn $1/is;
+				$c =~ s/^(PRIMARY KEY|UNIQUE)(?=\s|\()/CONSTRAINT o2pu_$tbn $1/is;
 				$c =~ s/^(CHECK[^,;]+)DEFERRABLE\s+INITIALLY\s+DEFERRED/$1/is;
 				$c =~ s/^CHECK\b/CONSTRAINT o2pc_$tbn CHECK/is;
 				$c =~ s/^FOREIGN KEY/CONSTRAINT o2pf_$tbn FOREIGN KEY/is;
