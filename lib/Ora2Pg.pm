@@ -18215,7 +18215,7 @@ sub _show_infos
                                         $self->{text_values_pos} = 0;
                                         if ($self->{is_mysql}) {
                                                 $trig->[4] = $self->_convert_function($trig->[8], $trig->[4], $trig->[0]);
-                                        } else {
+                                        } elsif ($self->{is_mssql}) {
                                                 $trig->[4] = $self->_convert_function($trig->[8], $trig->[4]);
                                         }
 					$total_size += length($trig->[4]);
