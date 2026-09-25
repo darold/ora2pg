@@ -15203,12 +15203,14 @@ sub parse_config
 	}
 	elsif ($var eq 'REPLACE_QUERY')
 	{
-		while ($val =~ s/([^\[\s]+)\s*\[([^\]]+)\]\s*//)
+		my @queries = split(/([a-z0-9\$]+)\s*\[/i, $val);
+		for (my $i = 0; $i <= $#queries; $i++)
 		{
-			my $table = lc($1);
-			my $query = $2;
+			my $table = lc($queries[$i]);
+			my $query = $queries[$i+1];
 			$query =~ s/^\s+//;
 			$query =~ s/\s+$//;
+			$query =~ s/\]$//;
 			$AConfig{$var}{$table} = $query;
 		}
 	}
