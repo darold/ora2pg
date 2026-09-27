@@ -12351,7 +12351,7 @@ sub _create_foreign_keys
 			$fkname = $self->quote_object_name($fkname);
 			$str .= "ALTER TABLE $table DROP CONSTRAINT $self->{pg_supports_ifexists} $fkname;\n" if ($self->{drop_if_exists});
 			my $reftable = $table;
-			$reftable = $self->{partitions_list}{"\L$table\E"}{refrtable} if (exists $self->{partitions_list}{"\L$table\E"}{refrtable});
+			$reftable = $self->{partitions_list}{"\L$table\E"}{refrtable} if (!$self->{disable_partition} && exists $self->{partitions_list}{"\L$table\E"}{refrtable});
 			foreach my $k (keys %{ $self->{tables}{"$reftable"}{column_info} })
 			{
 				next if (!grep(/^$k$/i, @{$self->{partitions_list}{"\L$reftable\E"}{columns}}));
@@ -12366,7 +12366,6 @@ sub _create_foreign_keys
 				push(@lfkeys, $self->quote_object_name($fname));
 				push(@rfkeys, $self->quote_object_name($fname));
 			}
-
 			$str .= "ALTER TABLE $table ADD CONSTRAINT $fkname FOREIGN KEY (" . join(',', @lfkeys) . ") REFERENCES $subsdesttable(" . join(',', @rfkeys) . ")";
 			$str .= " MATCH $state->[2]" if ($state->[2]);
 			if ($state->[3]) {
@@ -12529,7 +12528,7 @@ sub _howto_get_data
 	my $refcolumn_src = '';
 	my @lfkeys = ();
 	my @rfkeys = ();
-	if ($self->{partition_by_reference} eq 'duplicate' && exists $self->{partitions_list}{"\L$table\E"}{refrtable})
+	if (!$self->{disable_partition} && $self->{partition_by_reference} eq 'duplicate' && exists $self->{partitions_list}{"\L$table\E"}{refrtable})
 	{
 		$reftable = $self->{partitions_list}{"\L$table\E"}{refrtable};
 		my $fkname = $self->{partitions_list}{"\L$table\E"}{refconstraint};
