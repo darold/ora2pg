@@ -3267,7 +3267,10 @@ sub read_schema_from_file
 						{
 							$self->{identity_info}{$tb_name}{$c_name}{generation} = $1;
 							my $options = $3;
-							$self->{identity_info}{$tb_name}{$c_name}{options} = $3;
+							$options =~ s/^\(//;
+							$options =~ s/\)$//;
+
+							$self->{identity_info}{$tb_name}{$c_name}{options} = $options;
 							$self->{identity_info}{$tb_name}{$c_name}{options} =~ s/(SCALE|EXTEND|SESSION)_FLAG: .//isg;
 							$self->{identity_info}{$tb_name}{$c_name}{options} =~ s/KEEP_VALUE: .//is;
 							$self->{identity_info}{$tb_name}{$c_name}{options} =~ s/(START WITH):/$1/is;
