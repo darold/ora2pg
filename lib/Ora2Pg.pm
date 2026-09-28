@@ -12080,6 +12080,8 @@ sub _create_unique_keys
 	my $tbsaved = $table;
 	$table = $self->get_replaced_tbname($table);
 
+	my $partitions_list = $self->{partitions_list};
+
 	# Set the unique (and primary) key definition 
 	foreach my $consname (keys %$unique_key)
 	{
@@ -12104,11 +12106,11 @@ sub _create_unique_keys
 			}
 		}
 		# Add the partition column if it is not is the PK
-		if (!$self->{disable_partition} && ($constype eq 'P' || $constype eq 'U') && exists $self->{partitions_list}{"\L$tbsaved\E"})
+		if (!$self->{disable_partition} && ($constype eq 'P' || $constype eq 'U') && exists $partitions_list->{"\L$tbsaved\E"})
 		{
-			for (my $j = 0; $j <= $#{$self->{partitions_list}{"\L$tbsaved\E"}{columns}}; $j++)
+			for (my $j = 0; $j <= $#{$partitions_list->{"\L$tbsaved\E"}{columns}}; $j++)
 			{
-				push(@conscols, $self->{partitions_list}{"\L$tbsaved\E"}{columns}[$j]) if (!grep(/^$self->{partitions_list}{"\L$tbsaved\E"}{columns}[$j]$/i, @conscols));
+				push(@conscols, $partitions_list->{"\L$tbsaved\E"}{columns}[$j]) if (!grep(/^$partitions_list->{"\L$tbsaved\E"}{columns}[$j]$/i, @conscols));
 			}
 
 			if ($partition)
@@ -12132,10 +12134,10 @@ sub _create_unique_keys
 		map { $_ = $self->quote_object_name($_) } @conscols;
 
 		my $reftable = $table;
-		$reftable = $self->{partitions_list}{"\L$table\E"}{refrtable} if (exists $self->{partitions_list}{"\L$table\E"}{refrtable});
+		$reftable = $partitions_list->{"\L$table\E"}{refrtable} if (exists $partitions_list->{"\L$table\E"} && exists $partitions_list->{"\L$table\E"}{refrtable});
 		foreach my $k (keys %{ $self->{tables}{"$reftable"}{column_info} })
 		{
-			next if (!grep(/^$k$/i, @{$self->{partitions_list}{"\L$reftable\E"}{columns}}));
+			next unless (exists $partitions_list->{"\L$reftable\E"} && grep(/^$k$/i, @{$partitions_list->{"\L$reftable\E"}{columns}}));
 			my $f = $self->{tables}{"$reftable"}{column_info}{$k};
 			$f->[2] =~ s/[^0-9\-\.]//g;
 			# Change column names
