@@ -3263,7 +3263,7 @@ sub read_schema_from_file
 						my $c_default = '';
 						my $virt_col = 'NO';
 						$c =~ s/\s+ENABLE//is;
-						if ($c =~ s/\bGENERATED\s+(ALWAYS|BY\s+DEFAULT)\s+(ON\s+NULL\s+)?AS\s+IDENTITY\s*(.*)//is)
+						if ($c =~ s/\bGENERATED\s+(ALWAYS|BY\s+DEFAULT)\s+(ON\s+NULL\s+)?AS\s+IDENTITY\s*(\([^\(\)]+\)|.*)//is)
 						{
 							$self->{identity_info}{$tb_name}{$c_name}{generation} = $1;
 							my $options = $3;
