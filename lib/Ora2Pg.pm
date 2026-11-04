@@ -7719,7 +7719,7 @@ BEGIN
 				}
 			} else {
 				$create_table_tmp .= "CREATE TABLE " . $self->quote_object_name($tb_name)
-								. " PARTITION OF " . $self->quote_object_name($table) . "\n";
+								. " PARTITION OF " . $self->get_replaced_tbname($table) . "\n";
 				$create_table_tmp .= "FOR VALUES";
 			}
 
@@ -8327,10 +8327,10 @@ LANGUAGE plpgsql;
 					$create_table{$table}{table} .= "DROP TABLE $self->{pg_supports_ifexists} " . $self->quote_object_name($tb_name) . ";\n" if ($self->{drop_if_exists});
 					if ($self->{pg_version} >= 11) {
 						$create_table{$table}{table} .= "CREATE TABLE " . $self->quote_object_name($tb_name)
-								. " PARTITION OF " . $self->quote_object_name($table) . " DEFAULT;\n";
+								. " PARTITION OF " . $self->get_replaced_tbname($table) . " DEFAULT;\n";
 					} else {
 						$create_table{$table}{table} .= "CREATE TABLE " . $self->quote_object_name($tb_name)
-								. " PARTITION OF " . $self->quote_object_name($table) . " FOR VALUES FROM ($self->{partitions}{$table}{$old_pos}{info}[-1]->{value}) TO (MAX_VALUE);\n";
+								. " PARTITION OF " . $self->get_replaced_tbname($table) . " FOR VALUES FROM ($self->{partitions}{$table}{$old_pos}{info}[-1]->{value}) TO (MAX_VALUE);\n";
 					}
 				}
 			}
