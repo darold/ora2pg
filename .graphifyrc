@@ -1,0 +1,11 @@
+# Шаблон .graphifyrc для проектов с PL/SQL (Oracle).
+# Скопируйте его в корень проекта:
+#   cp /etc/graphify/graphifyrc /path/to/project/.graphifyrc
+# graphify читает только <корень проекта>/.graphifyrc; локальный файл перекрывает всё.
+language.fnc=sql
+language.pkb=sql
+language.pks=sql
+language.prc=sql
+language.sql=sql
+language.trg=sql
+language.vw=sql

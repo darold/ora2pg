@@ -907,6 +907,22 @@ Oracle database.
 
 =cut
 
+# Default values and checks of the DBLINK_* directives, copied from %AConfig by _init
+sub _dblink_settings
+{
+	my $self = shift;
+
+	# DBLINK_MODE: off (default) or fdw, the value is case insensitive
+	$self->{dblink_mode} = lc($self->{dblink_mode} || 'off');
+	$self->logit("FATAL: DBLINK_MODE must be off or fdw, not '$self->{dblink_mode}'\n", 0, 1)
+		if ($self->{dblink_mode} ne 'off' && $self->{dblink_mode} ne 'fdw');
+	# Hash directives are set by parse_config, default is empty
+	$self->{dblink_server} ||= {};
+	$self->{dblink_exclude} ||= {};
+	$self->{dblink_schema_prefix} = 'fdw_' if (!defined $self->{dblink_schema_prefix});
+	$self->{dblink_signatures} ||= '';
+}
+
 sub _init
 {
 	my ($self, %options) = @_;
@@ -1438,6 +1454,8 @@ sub _init
 	if ($self->{type} eq 'SHOW_REPORT') {
 		$self->{use_orafce} = 0;
 	}
+
+	$self->_dblink_settings();
 
 	# Disable the use of mssqlfce library by default
 	$self->{use_mssqlfce} ||= 0;
@@ -4147,7 +4165,7 @@ sub read_dblink_from_file
 		my $d_auth = $3;
 		$d_name =~ s/"//g;
 		$d_user =~ s/"//g;
-		$self->{dblink}{$d_name}{owner} = $self->{shema};
+		$self->{dblink}{$d_name}{owner} = $self->{schema};
 		$self->{dblink}{$d_name}{user} = $d_user;
 		$self->{dblink}{$d_name}{username} = $self->{pg_user} || $d_user;
 		if ($d_auth =~ s/USING\s+([^\s]+)//) {
@@ -4170,7 +4188,7 @@ sub read_dblink_from_file
 		my $d_conn = $2;
 		$d_name =~ s/"//g;
 		$d_conn =~ s/'//g;
-		$self->{dblink}{$d_name}{owner} = $self->{shema};
+		$self->{dblink}{$d_name}{owner} = $self->{schema};
 		$self->{dblink}{$d_name}{host} = $d_conn;
 	}
 
@@ -5118,7 +5136,9 @@ sub export_view
 		$self->{views}{$view}{text} =~ s/\s*WITH\s+READ\s+ONLY//is;
 		$self->{views}{$view}{text} =~ s/\s*OF\s+([^\s]+)\s+(WITH|UNDER)\s+[^\)]+\)//is;
 		$self->{views}{$view}{text} =~ s/\s*OF\s+XMLTYPE\s+[^\)]+\)//is;
-		$self->{views}{$view}{text} = $self->_format_view($view, $self->{views}{$view}{text});
+		# view with all sources on one database link: foreign table on the query (name filled in below)
+		my ($fdw_ddl, $fdw_todo) = Ora2Pg::DbLink::view_ddl($self, $view, '%FDW_NAME%', $self->{views}{$view}{text});
+		$self->{views}{$view}{text} = $self->_format_view($view, $self->{views}{$view}{text}) if (!defined $fdw_ddl);
 		my $tmpv = $view;
 		if (exists $self->{replaced_tables}{"\L$tmpv\E"} && $self->{replaced_tables}{"\L$tmpv\E"})
 		{
@@ -5130,7 +5150,15 @@ sub export_view
 		}
 		$tmpv = $self->quote_object_name($tmpv);
 
-		if (!@{$self->{views}{$view}{alias}})
+		$fdw_ddl =~ s/%FDW_NAME%/$tmpv/ if defined $fdw_ddl;
+		my $vkind = defined $fdw_ddl ? 'FOREIGN TABLE' : 'VIEW';
+		$sql_output .= $fdw_todo if defined $fdw_todo;
+
+		if (defined $fdw_ddl)
+		{
+			$sql_output .= $fdw_ddl . "\n";
+		}
+		elsif (!@{$self->{views}{$view}{alias}})
 		{
 			$sql_output .= "CREATE$self->{create_or_replace} VIEW $tmpv AS ";
 			$sql_output .= $self->{views}{$view}{text};
@@ -5182,7 +5210,7 @@ sub export_view
 		{
 			my $owner = $self->{views}{$view}{owner};
 			$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
-			$sql_output .= "ALTER VIEW $tmpv OWNER TO " . $self->quote_object_name($owner) . ";\n";
+			$sql_output .= "ALTER $vkind $tmpv OWNER TO " . $self->quote_object_name($owner) . ";\n";
 		}
 
 		# Add comments on view and columns
@@ -5190,7 +5218,7 @@ sub export_view
 		{
 			if ($self->{views}{$view}{comment})
 			{
-				$sql_output .= "COMMENT ON VIEW $tmpv ";
+				$sql_output .= "COMMENT ON $vkind $tmpv ";
 				$self->{views}{$view}{comment} =~ s/'/''/gs;
 				$sql_output .= " IS E'" . $self->{views}{$view}{comment} . "';\n\n";
 			}
@@ -5234,6 +5262,8 @@ sub export_view
 	}
 
 	$self->dump($sql_output);
+
+	Ora2Pg::DbLink::write_tables_file($self);
 
 	return;
 }
@@ -5795,14 +5825,19 @@ sub export_dblink
 	}
 	my $i = 1;
 	my $num_total_dblink = scalar keys %{$self->{dblink}};
+	my %seen_srv;
 
 	foreach my $db (sort { $a cmp $b } keys %{$self->{dblink}})
 	{
 		if (!$self->{quiet} && !$self->{debug}) {
 			print STDERR $self->progress_bar($i, $num_total_dblink, 25, '=', 'dblink', "generating $db" ), "\r";
 		}
-		my $srv_name = $self->quote_object_name($db);
-		$srv_name =~ s/^.*\.//;
+		my $srv_name = Ora2Pg::PLSQL::dblink_server_name($db, $self->{dblink}{$db}{owner});
+		if (($self->{dblink_mode} // 'off') eq 'fdw') {
+			# one server per <database>_<login>: links with the same pair share it
+			$srv_name = Ora2Pg::DbLink::server_for($self, $db);
+			next if $seen_srv{$srv_name}++;
+		}
 		$sql_output .= "CREATE SERVER $srv_name";
 		if ($self->{is_mysql}) {
 			$sql_output .= " FOREIGN DATA WRAPPER mysql_fdw OPTIONS (host '$self->{dblink}{$db}{host}'";
@@ -5883,6 +5918,12 @@ sub export_job
 	{
 		if (!$self->{quiet} && !$self->{debug}) {
 			print STDERR $self->progress_bar($i, $num_total_job, 25, '=', 'job', "generating $job" ), "\r";
+		}
+		if (($self->{dblink_mode} // '') eq 'fdw')
+		{
+			$sql_output .= Ora2Pg::DbLink::job_sql($self, $job, $self->{job}{$job}{interval}, $self->{job}{$job}{what}) . "\n";
+			$i++;
+			next;
 		}
 		$sql_output .= "JOB NUMBER: $i\n";
 		$sql_output .= "JOB NAME: $job\n";
@@ -6253,6 +6294,8 @@ sub export_trigger
 	}
 
 	$self->dump($sql_output);
+
+	Ora2Pg::DbLink::write_tables_file($self);
 
 	return;
 }
@@ -6809,6 +6852,8 @@ sub export_function
 	my $td = timediff($t1, $t0);
 	$self->logit("Total time to translate all functions with $num_chunk process: " . timestr($td) . "\n", 1);
 
+	Ora2Pg::DbLink::write_tables_file($self);
+
 	return;
 }
 
@@ -7077,6 +7122,8 @@ sub export_procedure
 	my $t1 = Benchmark->new;
 	my $td = timediff($t1, $t0);
 	$self->logit("Total time to translate all functions with $num_chunk process: " . timestr($td) . "\n", 1);
+
+	Ora2Pg::DbLink::write_tables_file($self);
 
 	return;
 }
@@ -7388,6 +7435,8 @@ sub export_package
 		print OUT $default_global_vars;
 		close(OUT);
 	}
+
+	Ora2Pg::DbLink::write_tables_file($self);
 
 	return;
 }
@@ -15023,7 +15072,7 @@ sub parse_config
 			'SYSUSERS','REPLACE_AS_BOOLEAN','BOOLEAN_VALUES','MODIFY_TYPE','DEFINED_PK',
 			'ALLOW_PARTITION','REPLACE_QUERY','FKEY_ADD_UPDATE','DELETE',
 			'LOOK_FORWARD_FUNCTION','ORA_INITIAL_COMMAND','PG_INITIAL_COMMAND',
-			'TRANSFORM_VALUE','EXCLUDE_COLUMNS'
+			'TRANSFORM_VALUE','EXCLUDE_COLUMNS','DBLINK_SERVER','DBLINK_EXCLUDE'
 		))
 	{
 		$AConfig{$var} = $val;
@@ -15160,6 +15209,25 @@ sub parse_config
 		{ 
 			my ($table, $col) = split(/:/, $r);
 			$AConfig{$var}{lc($table)} = $col;
+		}
+	}
+	elsif ($var eq 'DBLINK_SERVER')
+	{
+		# Syntax: LINK:server pairs, the link name is stored in upper case
+		foreach my $r (split(/[\s,;]+/, $val || ''))
+		{
+			my ($link, $srv) = split(/:/, $r, 2);
+			if (!defined $srv || $srv eq '') {
+				print STDERR "WARNING: DBLINK_SERVER entry '$r' must be LINK:server, ignored.\n";
+				next;
+			}
+			$AConfig{$var}{uc($link)} = $srv;
+		}
+	}
+	elsif ($var eq 'DBLINK_EXCLUDE')
+	{
+		foreach my $t (split(/[\s,;]+/, $val || '')) {
+			$AConfig{$var}{uc($t)} = 1;
 		}
 	}
 	elsif ($var eq 'WHERE')
@@ -15385,7 +15453,8 @@ sub _convert_package
 				}
 			}
 		}
-		$ctt =~ s/\bEND[^;]*;$//is;
+		# strip the package closing END; script input may trail it with a SQL*Plus "/" (read as an extra ";")
+		$ctt =~ s/\bEND[^;]*;[\s;\/]*$//is;
 
 		my @functions = $self->_extract_functions($ctt);
 
@@ -18234,7 +18303,7 @@ sub _show_infos
 						foreach my $d (sort { $cost_detail{$b} <=> $cost_detail{$a} } keys %cost_detail)
 						{
 							next if (!$cost_detail{$d});
-							$report_info{full_trigger_details}{"\L$trig->[0]\E"}{info} .= "\t$d => $cost_detail{$d}";
+							$report_info{full_trigger_details}{"\L$trig->[0]\E"}{info} .= Ora2Pg::DbLink::report_item($d, \%cost_detail);
 							$report_info{full_trigger_details}{"\L$trig->[0]\E"}{info} .= " (cost: ${$uncovered_score}{$d})" if (${$uncovered_score}{$d});
 							$report_info{full_trigger_details}{"\L$trig->[0]\E"}{info} .= "\n";
 							push(@{$report_info{full_trigger_details}{"\L$trig->[0]\E"}{keywords}}, $d) if (($d ne 'SIZE') && ($d ne 'TEST')); 
@@ -18273,7 +18342,7 @@ sub _show_infos
 						foreach my $d (sort { $cost_detail{$b} <=> $cost_detail{$a} } keys %cost_detail)
 						{
 							next if (!$cost_detail{$d});
-							$report_info{full_function_details}{"\L$fct\E"}{info} .= "\t$d => $cost_detail{$d}";
+							$report_info{full_function_details}{"\L$fct\E"}{info} .= Ora2Pg::DbLink::report_item($d, \%cost_detail);
 							$report_info{full_function_details}{"\L$fct\E"}{info} .= " (cost: ${$uncovered_score}{$d})" if (${$uncovered_score}{$d});
 							$report_info{full_function_details}{"\L$fct\E"}{info} .= "\n";
 							push(@{$report_info{full_function_details}{"\L$fct\E"}{keywords}}, $d) if (($d ne 'SIZE') && ($d ne 'TEST')); 
@@ -18308,7 +18377,7 @@ sub _show_infos
 						foreach my $d (sort { $cost_detail{$b} <=> $cost_detail{$a} } keys %cost_detail)
 						{
 							next if (!$cost_detail{$d});
-							$report_info{full_procedure_details}{"\L$proc\E"}{info} .= "\t$d => $cost_detail{$d}";
+							$report_info{full_procedure_details}{"\L$proc\E"}{info} .= Ora2Pg::DbLink::report_item($d, \%cost_detail);
 							$report_info{full_procedure_details}{"\L$proc\E"}{info} .= " (cost: ${$uncovered_score}{$d})" if (${$uncovered_score}{$d});
 							$report_info{full_procedure_details}{"\L$proc\E"}{info} .= "\n";
 							push(@{$report_info{full_procedure_details}{"\L$proc\E"}{keywords}}, $d) if (($d ne 'SIZE') && ($d ne 'TEST')); 
@@ -18350,7 +18419,7 @@ sub _show_infos
 								foreach my $d (sort { $cost_detail{$b} <=> $cost_detail{$a} } keys %cost_detail)
 								{
 									next if (!$cost_detail{$d});
-									$report_info{full_package_details}{"\L$f\E"}{info} .= "\t$d => $cost_detail{$d}";
+									$report_info{full_package_details}{"\L$f\E"}{info} .= Ora2Pg::DbLink::report_item($d, \%cost_detail);
 									$report_info{full_package_details}{"\L$f\E"}{info} .= " (cost: ${$uncovered_score}{$d})" if (${$uncovered_score}{$d});
 									$report_info{full_package_details}{"\L$f\E"}{info} .= "\n";
 									push(@{$report_info{full_package_details}{"\L$f\E"}{keywords}}, $d) if (($d ne 'SIZE') && ($d ne 'TEST')); 
@@ -18424,7 +18493,7 @@ sub _show_infos
 						foreach my $d (sort { $cost_detail{$b} <=> $cost_detail{$a} } keys %cost_detail)
 						{
 							next if (!$cost_detail{$d});
-							$report_info{full_view_details}{"\L$view\E"}{info} .= "\t$d => $cost_detail{$d}";
+							$report_info{full_view_details}{"\L$view\E"}{info} .= Ora2Pg::DbLink::report_item($d, \%cost_detail);
 							$report_info{full_view_details}{"\L$view\E"}{info} .= " (cost: ${$uncovered_score}{$d})" if (${$uncovered_score}{$d});
 							$report_info{full_view_details}{"\L$view\E"}{info} .= "\n";
 							push(@{$report_info{full_view_details}{"\L$view\E"}{keywords}}, $d); 

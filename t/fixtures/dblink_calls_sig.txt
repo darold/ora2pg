@@ -1,0 +1,3 @@
+# TEST signatures for t/05_dblink_calls.t
+RDB1|FUNCTION|rsch.rem_reserve_pkg.verify_item_exist|RETURN NUMBER; p_x IN VARCHAR2
+DBB_BAK|FUNCTION|sw.rate|RETURN NUMBER; p_cd IN VARCHAR2, p_d IN DATE, p_n IN NUMBER

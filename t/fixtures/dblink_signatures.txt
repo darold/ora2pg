@@ -1,0 +1,13 @@
+# TEST signatures only: parameter names are invented for the tests.
+# Real ones must be taken from ALL_ARGUMENTS on the real database.
+# LINK|KIND|PATH|SPEC
+RDB1|COLUMN|rsch.ext_checks.verify_id|NUMBER(15)
+RDB1|TABLE|rsch.rem_accounts|key_code VARCHAR2(30), key_name VARCHAR2(240), active NUMBER, amt NUMBER(12,2) NOT NULL; PK key_code
+RDB1|FUNCTION|rsch.rem_iface_pkg.verify_state|RETURN VARCHAR2; p_ref IN VARCHAR2
+RDB1|PROCEDURE|rsch.rem_calc_pkg.get_calc_data|p_term IN VARCHAR2, p_dept IN VARCHAR2, p_key IN NUMBER, p_out1 OUT NUMBER, p_out1_corr OUT NUMBER, p_out2 OUT NUMBER, p_out3 OUT NUMBER
+RDB1|PROCEDURE|rsch.pkg.upd|p_x IN OUT NUMBER
+
+this line is broken
+RDB1|FUNCTION|rsch.pkg.bad|no return here
+RDB1|PROCEDURE|rsch.rem_iface_pkg.get_item_info|p_dept IN VARCHAR2, p_kind IN VARCHAR2, x_combo_id OUT NUMBER, x_cat_id OUT NUMBER, x_err_text OUT VARCHAR2, p_doc_type IN VARCHAR2
+RDB1|PROCEDURE|rsch.rem_iface_pkg.add_grp_code|p_cd IN VARCHAR2

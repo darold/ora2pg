@@ -1266,6 +1266,28 @@ COMMENT_SAVEPOINT	0
 # these functions that do not need any code transformation.
 USE_ORAFCE	0
 
+# Handling of Oracle database links (dblink). off disables it, fdw enables the
+# translation through oracle_fdw foreign servers. Default is off.
+DBLINK_MODE	off
+
+# Map of database link name to the foreign server name, LINK:server pairs
+# separated by spaces, e.g. PROD:prod_remuser. The link name is case insensitive.
+#DBLINK_SERVER
+
+# Object names (space separated, case insensitive) excluded from database link
+# handling.
+#DBLINK_EXCLUDE
+
+# Prefix of the schema names created for foreign tables of database links.
+DBLINK_SCHEMA_PREFIX	fdw_
+
+# File with the Oracle object signatures used to resolve remote objects
+# when DBLINK_MODE is fdw. No file by default. One object per line, fields
+# separated by a pipe: LINK|KIND|PATH|SPEC, lines starting with # are ignored.
+# KIND is COLUMN (SPEC: NUMBER(15)), TABLE (SPEC: col TYPE, ...; PK col, ...),
+# FUNCTION (SPEC: RETURN TYPE; arg IN|OUT|IN OUT TYPE, ...) or PROCEDURE (args only).
+#DBLINK_SIGNATURES
+
 # Enable translation of autonomous transactions into a wrapper function
 # using dblink or pg_background extension. If you don't want to use this
 # translation and just want the function to be exported as a normal one

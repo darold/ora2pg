@@ -26,6 +26,7 @@ package Ora2Pg::PLSQL;
 
 use vars qw($VERSION %OBJECT_SCORE $SIZE_SCORE $FCT_TEST_SCORE $QUERY_TEST_SCORE %UNCOVERED_SCORE %UNCOVERED_MYSQL_SCORE @ORA_FUNCTIONS @MYSQL_SPATIAL_FCT @MYSQL_FUNCTIONS %EXCEPTION_MAP %MAX_SCORE %MSSQL_STYLE %UNCOVERED_MSSQL_SCORE);
 use POSIX qw(locale_h);
+use Ora2Pg::DbLink ();
 
 #set locale to LC_NUMERIC C
 setlocale(LC_NUMERIC,"C");
@@ -119,6 +120,7 @@ $QUERY_TEST_SCORE = 0.1;
 	'ORA_ROWSCN' => 3,
 	'SAVEPOINT' => 1,
 	'DBLINK' => 1,
+	'DBLINK_TODO' => 3,
 	'PLVDATE' => 2,
 	'PLVSTR' => 2,
 	'PLVCHR' => 2,
@@ -460,6 +462,30 @@ PSQL - Oracle to PostgreSQL procedural language converter
 	configuration option to 1.
 =cut
 
+=head2 dblink_server_name
+
+Return the PostgreSQL foreign server name to use for an Oracle database
+link. The owner prefix that _get_dblink() adds to the key is removed, the
+global name domain is dropped (APPQ.WORD -> appq) and a connection
+qualifier is kept as a suffix (LINKB@EXTUSER -> linkb_extuser), so links that
+differ only by qualifier get distinct servers.
+
+=cut
+
+sub dblink_server_name
+{
+	my ($link, $owner) = @_;
+
+	my $name = uc($link // '');
+	$name =~ s/"//g;
+	$name =~ s/^\Q$owner\E\.//i if ($owner);
+	my ($base, $qualifier) = split(/\@/, $name, 2);
+	$base =~ s/\..*$//;
+	$name = lc($qualifier ? "${base}_$qualifier" : $base);
+
+	return ($name =~ /^[a-z_][a-z0-9_\$]*$/) ? $name : '"' . $name . '"';
+}
+
 =head2 convert_plsql_code
 
 Main function used to convert Oracle SQL and PL/SQL code into PostgreSQL
@@ -485,8 +511,13 @@ sub convert_plsql_code
 	# Do some initialization of variables
 	%{$class->{single_fct_call}} = ();
 	$class->{replace_out_params} = '';
+	$class->{dblink_declare} = '';
+	$class->{dblink_rn} = 0;
 
-	if (!$self->{use_orafce} && uc($class->{type}) ne 'SHOW_REPORT')
+	$str = Ora2Pg::DbLink::rewrite($class, $str)
+		if (($class->{dblink_mode} // 'off') eq 'fdw' && uc($class->{type} // '') ne 'SHOW_REPORT');
+
+	if (!$class->{use_orafce} && uc($class->{type}) ne 'SHOW_REPORT')
 	{
 		# Rewrite all decode() call before
 		$str = replace_decode($str);
@@ -584,6 +615,13 @@ sub convert_plsql_code
 			$str =~ s/\b(BEGIN(?:\s+|\%ORA2PG_COMMENT\d+\%))/DECLARE\n$class->{replace_out_params}\n$1/is;
 		}
 		$class->{replace_out_params} = '';
+	}
+	if ($class->{dblink_declare})
+	{
+		if ($str !~ s/\b(DECLARE(?:\s+|\%ORA2PG_COMMENT\d+\%))/$1$class->{dblink_declare}/is) {
+			$str =~ s/\b(BEGIN(?:\s+|\%ORA2PG_COMMENT\d+\%))/DECLARE\n$class->{dblink_declare}$1/is;
+		}
+		$class->{dblink_declare} = '';
 	}
 
 	# Apply code rewrite on other part of the code
@@ -2861,8 +2899,9 @@ sub estimate_cost
 	$cost_details{'ORA_ROWSCN'} += $n;
 	$n = () = $str =~ m/SAVEPOINT/igs;
 	$cost_details{'SAVEPOINT'} += $n;
-	$n = () = $str =~ m/(FROM|EXEC)((?!WHERE).)*\b[\w\_]+\@[\w\_]+\b/igs;
-	$cost_details{'DBLINK'} += $n;
+	$cost_details{'DBLINK'} += scalar(Ora2Pg::DbLink::scan_refs($str));
+	$n = () = $str =~ m{/\* TODO dblink}g;
+	$cost_details{'DBLINK_TODO'} += $n;
 	$n = () = $str =~ m/\%ISOPEN\b/igs;
 	$cost_details{'ISOPEN'} += $n;
 	$n = () = $str =~ m/\%ROWCOUNT\b/igs;
