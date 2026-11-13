@@ -3056,8 +3056,14 @@ sub _parse_constraint
 		$deferred = 'DEFERRED' if ($c =~ /INITIALLY DEFERRED/);
 		my $novalidate = '';
 		$novalidate = 'NOT VALIDATED' if ($c =~ /NOVALIDATE/);
+		my $delete_rule = '';
+		$delete_rule = uc($1) if ($c =~ /\bON\s+DELETE\s+(CASCADE|SET\s+NULL|SET\s+DEFAULT|RESTRICT|NO\s+ACTION)\b/is);
+		$delete_rule =~ s/\s+/ /g;
+		my $update_rule = '';
+		$update_rule = uc($1) if ($c =~ /\bON\s+UPDATE\s+(CASCADE|SET\s+NULL|SET\s+DEFAULT|RESTRICT|NO\s+ACTION)\b/is);
+		$update_rule =~ s/\s+/ /g;
 		# CONSTRAINT_NAME,R_CONSTRAINT_NAME,SEARCH_CONDITION,DELETE_RULE,$deferrable,DEFERRED,R_OWNER,TABLE_NAME,OWNER,UPDATE_RULE,VALIDATED
-		push(@{$self->{tables}{$tb_name}{foreign_key}}, [ ($c_name,'','','',$deferrable,$deferred,'',$tb_name,'','',$novalidate) ]);
+		push(@{$self->{tables}{$tb_name}{foreign_key}}, [ ($c_name,'','',$delete_rule,$deferrable,$deferred,'',$tb_name,'',$update_rule,$novalidate) ]);
 	}
 }
 
