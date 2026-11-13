@@ -1406,6 +1406,7 @@ sub _init
 	{
 		$self->{fhlog} = new IO::File;
 		$self->{fhlog}->open(">>$self->{logfile}") or $self->logit("FATAL: can't log to $self->{logfile}, $!\n", 0, 1);
+		$self->set_binmode($self->{fhlog});
 	}
 
 	# Autoconvert SRID
@@ -2142,6 +2143,7 @@ sub _select_output_file_suffix
     $self->{fhlog} = undef;
     $self->{fhlog} = new IO::File;
     $self->{fhlog}->open(">>$self->{dump_as_file_prefix}.$extension") or $self->logit("FATAL: can't log to $self->{dump_as_file_prefix}.$extension, $!\n", 0, 1);
+    $self->set_binmode($self->{fhlog});
     if ($self->{debug}){
         print STDERR  "Saving report to $self->{dump_as_file_prefix}.$extension\n";
     }
