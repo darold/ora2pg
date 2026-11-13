@@ -597,7 +597,33 @@ sub convert_plsql_code
 		$class->{get_diagnostics} = '';
 	}
 
+	$str = lc_non_ascii_identifiers($class, $str);
+
 	return $str;
+}
+
+=head2 lc_non_ascii_identifiers
+
+PostgreSQL folds only ASCII letters of unquoted identifiers (in a UTF8 database),
+Oracle folds all of them. Object names are exported lower case and quoted
+(quote_object_name), so an unquoted Cyrillic name in a body, written in any case
+in the source, would not find them. Lower-case, with the same lc() as
+quote_object_name, every unquoted word that has a non-ASCII character. String
+literals and comments are already masked here; "quoted" names are kept as is.
+Not done with PRESERVE_CASE.
+
+=cut
+
+sub lc_non_ascii_identifiers
+{
+	my ($class, $str) = @_;
+
+	return $str if ($class->{preserve_case} || uc($class->{type} // '') eq 'SHOW_REPORT');
+
+	my $word = qr/[\p{L}\p{N}_\$#]*(?![\x00-\x7F])\p{L}[\p{L}\p{N}_\$#]*/;
+	# odd parts of the split are the "quoted" identifiers
+	my $i = 0;
+	return join('', map { $i++ % 2 ? $_ : s/(?<![\p{L}\p{N}_\$#])($word)/lc($1)/ger } split(/("[^"\n]*")/, $str, -1));
 }
 
 sub clear_parenthesis

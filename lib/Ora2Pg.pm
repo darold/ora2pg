@@ -15231,7 +15231,7 @@ sub _extract_functions
 	my $type = '';
 	for (my $i = 0; $i <= $#lines; $i++)
 	{ 
-		if ($lines[$i] =~ /^(?:CREATE|CREATE OR REPLACE)?\s*(?:NONEDITIONABLE|EDITIONABLE)?\s*(FUNCTION|PROCEDURE)\s+([a-z0-9_\$\-\."]+)(.*)/i)
+		if ($lines[$i] =~ /^(?:CREATE|CREATE OR REPLACE)?\s*(?:NONEDITIONABLE|EDITIONABLE)?\s*(FUNCTION|PROCEDURE)\s+([\w\$\-\."\x80-\xff]+)(.*)/i)
 		{
 			$type = uc($1);
 			$fcname = $2;
@@ -15254,7 +15254,7 @@ sub _extract_functions
 		$fcname = '' if ($lines[$i] =~ /^\s*END\s+["]*\Q$fcname\E["]*\b/i);
 	}
 
-	map { s/\bEND\s+(?!IF|LOOP|CASE|INTO|FROM|END|,)[a-z0-9_"\$]+\s*;/END;/igs; } @functions;
+	map { s/\bEND\s+(?!IF|LOOP|CASE|INTO|FROM|END|,)[\w"\$\x80-\xff]+\s*;/END;/igs; } @functions;
 
 	return @functions;
 }
