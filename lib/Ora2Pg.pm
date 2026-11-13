@@ -11447,6 +11447,12 @@ sub get_indexname
 	# Remove non alphanumeric character
 	#$idxname =~ s/[^a-z0-9_]+//ig;
 
+	# PostgreSQL keeps tables and indexes in the same namespace: an index named like a
+	# table of the schema cannot be created
+	$self->{_table_names} ||= { map { (my $n = lc $_) =~ s/^.*\.//; $n =~ s/"//g; ($n => 1) } keys %{ $self->{tables} || {} } };
+	(my $plain_idx = lc "$idxname$self->{indexes_suffix}") =~ s/"//g;
+	$idxname .= '_idx' if $self->{_table_names}{$plain_idx};
+
 	$idxname = $self->quote_object_name("$idxname$self->{indexes_suffix}");
 
 	return $idxname;
