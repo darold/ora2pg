@@ -4153,7 +4153,7 @@ sub read_dblink_from_file
 		my $d_auth = $3;
 		$d_name =~ s/"//g;
 		$d_user =~ s/"//g;
-		$self->{dblink}{$d_name}{owner} = $self->{shema};
+		$self->{dblink}{$d_name}{owner} = $self->{schema};
 		$self->{dblink}{$d_name}{user} = $d_user;
 		$self->{dblink}{$d_name}{username} = $self->{pg_user} || $d_user;
 		if ($d_auth =~ s/USING\s+([^\s]+)//) {
@@ -4176,7 +4176,7 @@ sub read_dblink_from_file
 		my $d_conn = $2;
 		$d_name =~ s/"//g;
 		$d_conn =~ s/'//g;
-		$self->{dblink}{$d_name}{owner} = $self->{shema};
+		$self->{dblink}{$d_name}{owner} = $self->{schema};
 		$self->{dblink}{$d_name}{host} = $d_conn;
 	}
 
