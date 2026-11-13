@@ -486,7 +486,7 @@ sub convert_plsql_code
 	%{$class->{single_fct_call}} = ();
 	$class->{replace_out_params} = '';
 
-	if (!$self->{use_orafce} && uc($class->{type}) ne 'SHOW_REPORT')
+	if (!$calss->{use_orafce} && uc($class->{type}) ne 'SHOW_REPORT')
 	{
 		# Rewrite all decode() call before
 		$str = replace_decode($str);
@@ -873,7 +873,7 @@ sub plsql_to_plpgsql
 	
 	# There are no autonomous transactions in standard postgres (as of version 15)
 	my $unsupported = '';
-	$unsupported = "-- Unsupported, consider using dblink to emulate oracle behavior or see AUTONOMOUS_TRANSACTION in ora2pg.conf" if (!$self->{autonomous_transaction});
+	$unsupported = "-- Unsupported, consider using dblink to emulate oracle behavior or see AUTONOMOUS_TRANSACTION in ora2pg.conf" if (!$class->{autonomous_transaction});
 	$str =~ s/[ ]+PRAGMA\s+AUTONOMOUS_TRANSACTION;/$unsupported\n-- $&/igs;
 
 	# Remove the extra TRUNCATE clauses not available in PostgreSQL
@@ -2466,7 +2466,7 @@ sub raise_output
 
 sub replace_sql_type
 {
-        my ($self, $str) = @_;
+        my ($class, $str) = @_;
 
 	# Remove the SYS schema from type name
 	$str =~ s/\bSYS\.//igs;
@@ -2488,7 +2488,7 @@ sub replace_sql_type
 	$str =~ s/\b(RAW|BLOB)\s*\(\s*\d+\s*\)/$1/igs;
 
 	# Replace type with precision
-	my @ora_type = keys %{$self->{data_type}};
+	my @ora_type = keys %{$class->{data_type}};
 	map { s/\(/\\\(/; s/\)/\\\)/; } @ora_type;
 	my $oratype_regex = join('|', @ora_type);
 
@@ -2516,7 +2516,7 @@ sub replace_sql_type
 			# Type CHAR have default length set to 1
 			# Type VARCHAR(2) must have a specified length
 			$len = 1 if (!$len && (($type eq "CHAR") || ($type eq "NCHAR")));
-			$str =~ s/\b$type\b\s*\([^\)]+\)/$self->{data_type}{$type}\%\|$len\%\|\%/is;
+			$str =~ s/\b$type\b\s*\([^\)]+\)/$class->{data_type}{$type}\%\|$len\%\|\%/is;
 		}
 		elsif ($type =~ /TIMESTAMP/i)
 		{
@@ -2544,7 +2544,7 @@ sub replace_sql_type
 			{
 				if ($precision)
 				{
-					if ($self->{pg_integer_type})
+					if ($class->{pg_integer_type})
 					{
 						if ($precision < 5) {
 							$str =~ s/\b$type\b\s*\([^\)]+\)/smallint/is;
@@ -2559,15 +2559,15 @@ sub replace_sql_type
 						$str =~ s/\b$type\b\s*\([^\)]+\)/numeric\%\|$precision\%\|\%/i;
 					}
 				}
-				elsif ($self->{pg_integer_type})
+				elsif ($class->{pg_integer_type})
 				{
-					my $tmp = $self->{default_numeric} || 'bigint';
+					my $tmp = $class->{default_numeric} || 'bigint';
 					$str =~ s/\b$type\b\s*\([^\)]+\)/$tmp/is;
 				}
 			}
 			else
 			{
-				if ($self->{pg_numeric_type})
+				if ($class->{pg_numeric_type})
 				{
 					if ($precision eq '') {
 						$str =~ s/\b$type\b\s*\([^\)]+\)/decimal(38, $scale)/is;
@@ -2603,14 +2603,14 @@ sub replace_sql_type
 	$str =~ s/\%\|/\(/gs;
 
         # Replace datatype without precision
-	my $number = $self->{data_type}{'NUMBER'};
-	$number = $self->{default_numeric} if ($self->{pg_integer_type});
+	my $number = $class->{data_type}{'NUMBER'};
+	$number = $class->{default_numeric} if ($class->{pg_integer_type});
 	$str =~ s/\bNUMBER\b/$number/igs;
 
 	# Set varchar without length to text
 	$str =~ s/\bVARCHAR2\b/VARCHAR/igs;
 	$str =~ s/\bSTRING\b/VARCHAR/igs;
-	if ($self->{varchar_to_text}) {
+	if ($class->{varchar_to_text}) {
 		$str =~ s/\bVARCHAR\b(\s*(?!\())/text$1/igs;
 	} else {
 		$str =~ s/\bVARCHAR\b(\s*(?!\())/varchar$1/igs;
@@ -2619,18 +2619,18 @@ sub replace_sql_type
 	foreach my $t ('DATE','LONG RAW','LONG','NCLOB','CLOB','BLOB','BFILE','RAW','ROWID','UROWID','FLOAT','DOUBLE PRECISION','INTEGER','INT','REAL','SMALLINT','BINARY_FLOAT','BINARY_DOUBLE','BINARY_INTEGER','BOOLEAN','XMLTYPE','SDO_GEOMETRY','PLS_INTEGER','NUMBER')
 	{
 		if ($t eq 'DATE') {
-			$str =~ s/\b$t\s*\(\d\)/$self->{data_type}{$t}/igs;
+			$str =~ s/\b$t\s*\(\d\)/$class->{data_type}{$t}/igs;
 		}
 		elsif ($t eq 'NUMBER')
 		{
-			if ($self->{pg_integer_type})
+			if ($class->{pg_integer_type})
 			{
-				my $tmp = $self->{default_numeric} || 'bigint';
+				my $tmp = $class->{default_numeric} || 'bigint';
 				$str =~ s/\b$t\b/$tmp/igs;
 				next;
 			}
 		}
-		$str =~ s/\b$t\b/$self->{data_type}{$t}/igs;
+		$str =~ s/\b$t\b/$class->{data_type}{$t}/igs;
 	}
 
 	# Translate cursor declaration
