@@ -22318,6 +22318,8 @@ sub register_global_variable
 			{
 				# Append the rest of the definition to the default value
 				for (my $l = $j+1; $l <= $#others; $l++) {
+					# a variable declared in both the package spec and body is registered twice
+					$self->{global_variables}{$v}{default} = '' if ($l == $j+1);
 					$self->{global_variables}{$v}{default} .= " " if ($l > $j+1);
 					$self->{global_variables}{$v}{default} .= $others[$l];
 				}
