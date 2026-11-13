@@ -15781,7 +15781,11 @@ sub _convert_function
 	{
 		if ($args_sorted[$i] =~ / DEFAULT ([^'].*)/i)
 		{
-			my $cod = Ora2Pg::PLSQL::convert_plsql_code($self, $1);
+			# the default is still masked as %%tmpN%% (content of parenthesis): unmask it
+			# first, or TRUNC(SYSDATE) is never converted
+			my $dflt = $1;
+			$dflt =~ s/\%\%tmp(\d+)\%\%/($param_param{$1})/gs;
+			my $cod = Ora2Pg::PLSQL::convert_plsql_code($self, $dflt);
 			$args_sorted[$i] =~ s/( DEFAULT )([^'].*)/$1$cod/i;
 		}
 	}
