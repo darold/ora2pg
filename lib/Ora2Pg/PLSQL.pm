@@ -486,7 +486,7 @@ sub convert_plsql_code
 	%{$class->{single_fct_call}} = ();
 	$class->{replace_out_params} = '';
 
-	if (!$self->{use_orafce} && uc($class->{type}) ne 'SHOW_REPORT')
+	if (!$class->{use_orafce} && uc($class->{type}) ne 'SHOW_REPORT')
 	{
 		# Rewrite all decode() call before
 		$str = replace_decode($str);
