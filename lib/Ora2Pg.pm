@@ -2141,7 +2141,7 @@ sub _select_output_file_suffix
   {
     $self->{fhlog} = undef;
     $self->{fhlog} = new IO::File;
-    $self->{fhlog}->open(">>$self->{dump_as_file_prefix}.$extension") or $self->logit("FATAL: can't log to $self->{dump_as_file_prefix}.$extension, $!\n", 0, 1);
+    $self->{fhlog}->open(">$self->{dump_as_file_prefix}.$extension") or $self->logit("FATAL: can't log to $self->{dump_as_file_prefix}.$extension, $!\n", 0, 1);
     if ($self->{debug}){
         print STDERR  "Saving report to $self->{dump_as_file_prefix}.$extension\n";
     }
