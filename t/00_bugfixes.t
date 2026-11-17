@@ -196,6 +196,27 @@ is($o->{dblink}{OTHERDB}{owner}, 'APP', 'USING-only link: owner is the schema');
 	unlike($out, qr/c\.prior\s/i, 'no c.prior keyword left in join');
 }
 
+# (+) -> LEFT JOIN without alias: JOIN keyword ON must not become table alias (емельянов_бр class)
+{
+	my ($out) = DblinkTest::convert(
+		"SELECT app.reg.pay, app.supp.name AS sn, app.item.name AS iname, s1.name AS s1n, app.acc.bank\n".
+		"FROM app.acc s1, app.acc, app.supp, app.reg, app.item\n".
+		"WHERE app.reg.typ <> 'X'\n".
+		"AND app.reg.acc = app.acc.acc (+)\n".
+		"AND app.reg.supp = app.supp.supp (+)\n".
+		"AND app.reg.item = app.item.item (+)\n".
+		"AND app.acc.acc (+) = app.reg.acc_in",
+		type => 'VIEW', use_orafce => 1, idxcomment => 0, dblink_mode => 'off');
+	unlike($out, qr/(?<![\w"])\bon\./i, 'JOIN ON not mistaken for alias on.');
+	unlike($out, qr/"on"\./i, 'no quoted on. alias either');
+	like($out, qr/\bsupp\.name\b/, 'unaliased joined table kept as table.col');
+	like($out, qr/\bitem\.name\b/, 'second unaliased join kept as table.col');
+	like($out, qr/\bs1\.name\b/, 'explicit alias s1 preserved');
+	# same table twice: identity occurrence must keep acc.col, not become s1.col in ON
+	unlike($out, qr/JOIN\s+app\.acc\s+ON\s*\([^)]*\bs1\./i, 'unaliased acc ON does not use s1');
+	like($out, qr/\bacc\.bank\b/, 'unaliased acc.bank kept');
+}
+
 # CONNECT BY LEVEL <= N from DUAL -> generate_series
 {
 	my ($out) = DblinkTest::convert(

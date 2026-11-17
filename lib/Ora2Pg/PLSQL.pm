@@ -4305,11 +4305,23 @@ sub _from_alias_map_add
 	my ($map, $tbl, $alias) = @_;
 	$tbl = lc($tbl);
 	$alias = lc($alias // '');
-	($alias = $tbl) =~ s/^.*\.// if (!$alias);
+	my $base = $tbl;
+	$base =~ s/^.*\.//;
+	$alias = $base if (!$alias);
+	# Same table twice (t, t a2): keep identity mapping so t.col is not
+	# rewritten to a2.col (which also breaks earlier JOIN ON clauses).
+	if (exists $map->{$tbl}) {
+		if ($map->{$tbl} eq $base || $alias eq $base) {
+			$map->{$tbl} = $base;
+			return;
+		}
+	}
 	$map->{$tbl} = $alias;
 }
 
 # Rewrite schema.table.column to alias.column when FROM defines schema.table AS alias.
+# JOIN clause keywords (ON, USING, ...) must not be mistaken for table aliases —
+# otherwise "LEFT JOIN t ON (...)" rewrites t.col -> on.col (PG reserved word).
 sub rewrite_from_table_aliases
 {
 	my ($stmt) = @_;
@@ -4318,6 +4330,8 @@ sub rewrite_from_table_aliases
 	my $id   = qr/[\p{L}\p{N}_\$#]+/u;
 	my $tbl  = qr/$id(?:\.$id)*/u;
 	my $join = qr/(?:(?:LEFT|RIGHT|FULL|INNER|CROSS|NATURAL)\s+)*(?:OUTER\s+)?JOIN\b/is;
+	# Tokens that follow a joined table when there is no alias
+	my $join_tail = qr/(?:ON|USING|WHERE|GROUP|HAVING|ORDER|LIMIT|OFFSET|UNION|INTERSECT|EXCEPT|INNER|LEFT|RIGHT|FULL|CROSS|NATURAL|JOIN|AND|OR)\b/i;
 
 	if ($stmt !~ /\bFROM\b(.*)/is) {
 		return $stmt;
@@ -4335,8 +4349,10 @@ sub rewrite_from_table_aliases
 	my $suffix = substr($rest, $from_end);
 
 	my %alias_of_full = ();
-	while ($from_clause =~ /(?:^|[\s,])$join\s+($tbl)(?:\s+(?:AS\s+)?($id))?/ig) {
-		_from_alias_map_add(\%alias_of_full, $1, $2);
+	while ($from_clause =~ /(?:^|[\s,])$join\s+($tbl)(?:\s+AS\s+($id)|\s+(?!$join_tail)($id))?/ig) {
+		my $tname = $1;
+		my $alias = defined($2) ? $2 : $3;
+		_from_alias_map_add(\%alias_of_full, $tname, $alias);
 	}
 	foreach my $chunk (split(/\s*,\s*/, $from_clause)) {
 		$chunk =~ s/^\s+|\s+$//s;
@@ -4348,6 +4364,9 @@ sub rewrite_from_table_aliases
 		next if (!@parts);
 		my ($t, $alias) = @parts;
 		$alias = $parts[2] if (@parts > 2 && uc($parts[1]) eq 'AS');
+		# bare "table ON" cannot appear in comma-FROM head after JOIN strip; still
+		# reject join-tail words so a stray token is not treated as alias
+		undef $alias if (defined($alias) && $alias =~ /^$join_tail/i);
 		_from_alias_map_add(\%alias_of_full, $t, $alias);
 	}
 	return $stmt unless (%alias_of_full);
