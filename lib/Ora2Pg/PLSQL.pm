@@ -4114,8 +4114,8 @@ sub replace_connect_by
 			push(@rebuild_prior, "$prior_clause[$i] = $prior_clause[$i+1]");
 		}
 		@prior_clause = @rebuild_prior;
-		# Remove table aliases from prior clause
-		map { s/\s*PRIOR\s*//s; s/[^\s\.=<>!]+\.//s; } @prior_clause;
+		# Remove table aliases from prior clause (PRIOR may already be lowercased)
+		map { s/\s*PRIOR\s*//is; s/[^\s\.=<>!]+\.//s; } @prior_clause;
 	}
 
 	my $bkup_query = $str;

@@ -165,6 +165,15 @@ is($o->{dblink}{OTHERDB}{owner}, 'APP', 'USING-only link: owner is the schema');
 	unlike($out, qr/app\.таб_а\.к0/, 'no schema.table left in ON');
 }
 
+# CONNECT BY PRIOR: lowercase prior must not leak into JOIN cte c ON (c.prior col ...)
+{
+	my ($out) = DblinkTest::convert(
+		"SELECT n.id, n.name FROM app.dim_tree n START WITH n.root_id = 0 CONNECT BY prior n.id = n.parent_id",
+		type => 'VIEW', use_orafce => 1, idxcomment => 0, dblink_mode => 'off');
+	like($out, qr/JOIN cte c ON \(c\.id = n\.parent_id\)/, 'CONNECT BY prior: cte join uses c.column');
+	unlike($out, qr/c\.prior\s/i, 'no c.prior keyword left in join');
+}
+
 # CONNECT BY LEVEL <= N from DUAL -> generate_series
 {
 	my ($out) = DblinkTest::convert(
