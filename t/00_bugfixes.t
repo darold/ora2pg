@@ -151,6 +151,20 @@ is($o->{dblink}{OTHERDB}{owner}, 'APP', 'USING-only link: owner is the schema');
 	like($out, qr/tab1\.col_y/, 'alias used in SELECT');
 }
 
+# Cyrillic schema.table + comma-FROM + LEFT JOIN (inet_detail / inet_payment class)
+{
+	my ($out) = DblinkTest::convert(
+		"SELECT app.таб_а.к1 AS c1, app.таб_б.к2, таб_в.к3\n".
+		"FROM app.таб_а таб_а, app.таб_б таб_б\n".
+		"LEFT OUTER JOIN app.таб_в таб_в ON (app.таб_а.к0 = таб_в.к0)\n".
+		"WHERE app.таб_б.к2 = таб_а.к1",
+		type => 'VIEW', use_orafce => 1, idxcomment => 0, dblink_mode => 'off');
+	unlike($out, qr/app\.таб_[аб]\./, 'Cyrillic schema.table dropped in SELECT/WHERE');
+	like($out, qr/таб_а\.к1/, 'Cyrillic alias in SELECT');
+	like($out, qr/ON \(таб_а\.к0 = таб_в\.к0\)/, 'Cyrillic schema.table rewritten in JOIN ON');
+	unlike($out, qr/app\.таб_а\.к0/, 'no schema.table left in ON');
+}
+
 # CONNECT BY LEVEL <= N from DUAL -> generate_series
 {
 	my ($out) = DblinkTest::convert(

@@ -4290,13 +4290,24 @@ sub strip_to_char_nls_param_one
 	return "TO_CHAR($expr, $fmt)";
 }
 
+sub _from_alias_map_add
+{
+	my ($map, $tbl, $alias) = @_;
+	$tbl = lc($tbl);
+	$alias = lc($alias // '');
+	($alias = $tbl) =~ s/^.*\.// if (!$alias);
+	$map->{$tbl} = $alias;
+}
+
 # Rewrite schema.table.column to alias.column when FROM defines schema.table AS alias.
 sub rewrite_from_table_aliases
 {
 	my ($stmt) = @_;
 	return $stmt if ($stmt !~ /\bFROM\b/is);
 
-	my $id = qr/[\w\$#]+/;
+	my $id   = qr/[\p{L}\p{N}_\$#]+/u;
+	my $tbl  = qr/$id(?:\.$id)*/u;
+	my $join = qr/(?:(?:LEFT|RIGHT|FULL|INNER|CROSS|NATURAL)\s+)*(?:OUTER\s+)?JOIN\b/is;
 
 	if ($stmt !~ /\bFROM\b(.*)/is) {
 		return $stmt;
@@ -4314,22 +4325,20 @@ sub rewrite_from_table_aliases
 	my $suffix = substr($rest, $from_end);
 
 	my %alias_of_full = ();
-	while ($from_clause =~ /(?:^|[\s,])(?:(?:LEFT|RIGHT|FULL|INNER|CROSS|NATURAL)\s+)*(?:OUTER\s+)?JOIN\s+($id)(?:\s+(?:AS\s+)?($id))?/ig) {
-		my ($tbl, $alias) = (lc($1), $2);
-		$alias = lc($alias // '');
-		($alias = $tbl) =~ s/^.*\.// if (!$alias);
-		$alias_of_full{$tbl} = $alias;
+	while ($from_clause =~ /(?:^|[\s,])$join\s+($tbl)(?:\s+(?:AS\s+)?($id))?/ig) {
+		_from_alias_map_add(\%alias_of_full, $1, $2);
 	}
 	foreach my $chunk (split(/\s*,\s*/, $from_clause)) {
 		$chunk =~ s/^\s+|\s+$//s;
 		next if ($chunk !~ /\S/);
-		next if ($chunk =~ /^(?:(?:LEFT|RIGHT|FULL|INNER|CROSS|NATURAL)\s+)*(?:OUTER\s+)?JOIN\b/i);
-		if ($chunk =~ /^($id)(?:\s+(?:AS\s+)?($id))?/i) {
-			my ($tbl, $alias) = (lc($1), $2);
-			$alias = lc($alias // '');
-			($alias = $tbl) =~ s/^.*\.// if (!$alias);
-			$alias_of_full{$tbl} = $alias;
-		}
+		next if ($chunk =~ /^$join/i);
+		my $head = $chunk;
+		$head =~ s/\s+$join.*$//is;
+		my @parts = split(/\s+/, lc($head));
+		next if (!@parts);
+		my ($t, $alias) = @parts;
+		$alias = $parts[2] if (@parts > 2 && uc($parts[1]) eq 'AS');
+		_from_alias_map_add(\%alias_of_full, $t, $alias);
 	}
 	return $stmt unless (%alias_of_full);
 
@@ -4339,13 +4348,14 @@ sub rewrite_from_table_aliases
 			my $alias = $alias_of_full{$full};
 			next if (lc($full) eq lc($alias) && $full !~ /\./);
 			my $esc = quotemeta($full);
-			$text =~ s/\b$esc\.($id)/$alias.$1/ig;
+			$text =~ s/(?<![\p{L}\p{N}_\$#\.])$esc\.($id)/$alias.$1/igu;
 		}
 		return $text;
 	};
 
 	$pre = $rewrite->($pre);
 	$suffix = $rewrite->($suffix);
+	$from_clause =~ s/\bON\s*\(([^()]*)\)/'ON (' . $rewrite->($1) . ')'/ige;
 
 	return $pre . 'FROM' . $from_clause . $suffix;
 }
