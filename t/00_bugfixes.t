@@ -112,6 +112,21 @@ is($o->{dblink}{OTHERDB}{owner}, 'APP', 'USING-only link: owner is the schema');
 	is($v, 'SELECT Rate2(d, c, pack_бюджет_val()) x FROM t', 'package call in view');
 }
 
+# PG: OUT after DEFAULT — strip DEFAULT so CREATE PROCEDURE succeeds
+{
+	my $in = "(opl_num bigint, p_rz_type text default 'C', p_summ numeric DEFAULT NULL, p_res_ OUT numeric)";
+	my $out = Ora2Pg::Oracle::_pg_strip_default_before_out($in);
+	unlike($out, qr/DEFAULT/i, 'DEFAULT stripped when OUT follows');
+	like($out, qr/p_res_\s+OUT\s+numeric/, 'OUT parameter kept');
+	like($out, qr/p_rz_type text,\s*p_summ numeric,\s*p_res_/, 'parameter order preserved');
+
+	my $ok = '(a int DEFAULT 1, b int DEFAULT 2)';
+	is(Ora2Pg::Oracle::_pg_strip_default_before_out($ok), $ok, 'no OUT: unchanged');
+
+	my $out_first = '(r OUT numeric, n int DEFAULT 1)';
+	is(Ora2Pg::Oracle::_pg_strip_default_before_out($out_first), $out_first, 'OUT before DEFAULT: unchanged');
+}
+
 # schema-qualified FROM table referenced without schema in (+) conditions is not duplicated
 {
 	my ($out) = DblinkTest::convert("select s.a from app.zz, app.op, app.st\n where zz.z = op.z and op.s(+) = st.a", type => 'VIEW', use_orafce => 1, idxcomment => 0, dblink_mode => 'off');
