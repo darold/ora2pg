@@ -1530,7 +1530,7 @@ sub translate_statement
 	$stmt = replace_connect_by($class, $stmt);
 
 	# schema.table.col in SELECT/WHERE while FROM lists schema.table alias (PG invalid ref)
-	$stmt = rewrite_from_table_aliases($stmt);
+	$stmt = rewrite_from_table_aliases($class, $stmt);
 
 	# Fix missing recursive keyword in CTE
 	# WITH t1%SUBQUERY0% AS %SUBQUERY1% ...
@@ -4294,8 +4294,13 @@ sub strip_to_char_nls_param_one
 		$nls_txt = $class->{text_values}{$1} // '';
 	}
 	return "TO_CHAR($expr, $fmt, $nls)" if ($nls_txt !~ /nls_date_language/is);
-	if ($nls_txt =~ /russian/is && $fmt =~ /'Month'/i) {
-		$fmt =~ s/'Month'/'TMMonth'/i;
+	if ($nls_txt =~ /russian/is) {
+		# the format literal is masked as ?TEXTVALUEn? at this stage
+		if ($fmt =~ /\?TEXTVALUE(\d+)\?/) {
+			$class->{text_values}{$1} =~ s/^'Month'$/'TMMonth'/i if (defined $class->{text_values}{$1});
+		} else {
+			$fmt =~ s/'Month'/'TMMonth'/i;
+		}
 	}
 	return "TO_CHAR($expr, $fmt)";
 }
@@ -4324,7 +4329,7 @@ sub _from_alias_map_add
 # otherwise "LEFT JOIN t ON (...)" rewrites t.col -> on.col (PG reserved word).
 sub rewrite_from_table_aliases
 {
-	my ($stmt) = @_;
+	my ($class, $stmt) = @_;
 	return $stmt if ($stmt !~ /\bFROM\b/is);
 
 	my $id   = qr/[\p{L}\p{N}_\$#]+/u;
@@ -4385,6 +4390,9 @@ sub rewrite_from_table_aliases
 	$pre = $rewrite->($pre);
 	$suffix = $rewrite->($suffix);
 	$from_clause =~ s/\bON\s*\(([^()]*)\)/'ON (' . $rewrite->($1) . ')'/ige;
+	# At this point the parenthesised ON condition is masked as %SUBQUERYn%
+	$from_clause =~ s/\bON\s*%SUBQUERY(\d+)%/
+		$class->{sub_parts}{$1} = $rewrite->($class->{sub_parts}{$1}) if (defined $class->{sub_parts}{$1}); "ON %SUBQUERY$1%"/ige;
 
 	return $pre . 'FROM' . $from_clause . $suffix;
 }
