@@ -2141,12 +2141,11 @@ sub _sql_type
 					}
 					elsif ($self->{pg_integer_type})
 					{
-						# For number without precision default is to use bigint
-						# but mark the column for review (#) if it needs to be
-						# translated into numeric instead
+						# DEFAULT_NUMERIC applies to PL/SQL (replace_sql_type), not table DDL.
+						# Unconstrained NUMBER columns stay bigint so FKs match NUMBER(p) -> bigint.
 						my $need_review = '';
 						$need_review = '#' if ($self->{type} eq 'SHOW_COLUMN');
-						return $self->{default_numeric} || 'bigint' . $need_review;
+						return 'bigint' . $need_review;
 					}
 				}
 				else
@@ -2185,12 +2184,9 @@ sub _sql_type
 		else
 		{
 			if (($type eq 'NUMBER') && $self->{pg_integer_type}) {
-				# For number without precision default is to use bigint
-				# but mark the column for review (#) if it needs to be
-				# translated into numeric instead
 				my $need_review = '';
 				$need_review = '#' if ($self->{type} eq 'SHOW_COLUMN');
-				return $self->{default_numeric} . $need_review;
+				return 'bigint' . $need_review;
 			} else {
 				return $self->{data_type}{$type};
 			}
@@ -2264,7 +2260,8 @@ sub _get_dblink
 	if (!$self->{schema}) {
 		$str .= " WHERE OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
 	} else {
-		$str .= " WHERE OWNER = '$self->{schema}'";
+		# PUBLIC links (e.g. MARX) are visible to all schemas but owned by PUBLIC
+		$str .= " WHERE OWNER IN ('$self->{schema}', 'PUBLIC')";
 	}
 	$str .= $self->limit_to_objects('DBLINK', 'DB_LINK');
 	#$str .= " ORDER BY DB_LINK";
