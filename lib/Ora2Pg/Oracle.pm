@@ -2260,8 +2260,7 @@ sub _get_dblink
 	if (!$self->{schema}) {
 		$str .= " WHERE OWNER NOT IN ('" . join("','", @{$self->{sysusers}}) . "')";
 	} else {
-		# PUBLIC links (e.g. MARX) are visible to all schemas but owned by PUBLIC
-		$str .= " WHERE OWNER IN ('$self->{schema}', 'PUBLIC')";
+		$str .= " WHERE OWNER = '$self->{schema}'";
 	}
 	$str .= $self->limit_to_objects('DBLINK', 'DB_LINK');
 	#$str .= " ORDER BY DB_LINK";
