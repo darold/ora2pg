@@ -15715,6 +15715,10 @@ sub _convert_function
 	$fct_detail{args} =~ s/\s+IN\s+/ /igs;
 	# Remove %ROWTYPE from arguments, we can use the table name as type
 	$fct_detail{args} =~ s/\%ROWTYPE//igs;
+	unless ($self->{preserve_case}) {
+		$fct_detail{args} = Ora2Pg::PLSQL::lc_type_refs($fct_detail{args});
+		$fct_detail{func_ret_type} = Ora2Pg::PLSQL::lc_type_refs($fct_detail{func_ret_type}) if defined $fct_detail{func_ret_type};
+	}
 
 	# Replace DEFAULT EMPTY_BLOB() from function/procedure arguments by DEFAULT NULL
 	$fct_detail{args} =~ s/\s+DEFAULT\s+EMPTY_[CB]LOB\(\)/DEFAULT NULL/igs;
