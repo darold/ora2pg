@@ -217,6 +217,15 @@ is($o->{dblink}{OTHERDB}{owner}, 'APP', 'USING-only link: owner is the schema');
 	like($out, qr/\bacc\.bank\b/, 'unaliased acc.bank kept');
 }
 
+# CONNECT BY LEVEL as alias: recursive part must use cte column (c.уровень+1), not c.level
+{
+	my ($out) = DblinkTest::convert(
+		"SELECT level as уровень, s.id FROM app.node s START WITH s.parent IS NULL CONNECT BY PRIOR s.id = s.parent",
+		type => 'VIEW', use_orafce => 1, idxcomment => 0, dblink_mode => 'off');
+	like($out, qr/\(c\.уровень\+1\)/, 'CONNECT BY LEVEL alias uses cte column in recursive arm');
+	unlike($out, qr/\(c\.level\+1\)\s+As\s+уровень/i, 'no hardcoded c.level for LEVEL as уровень');
+}
+
 # CONNECT BY LEVEL <= N from DUAL -> generate_series
 {
 	my ($out) = DblinkTest::convert(

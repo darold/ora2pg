@@ -4139,6 +4139,7 @@ sub replace_connect_by
 	}
 	my @tabalias = ();
 	my %connect_by_path = ();
+	my $level_cte_col = 'level';
 	for (my $i = 0; $i <= $#columns; $i++) {
 		my $found = 0;
 		while ($columns[$i] =~ s/\%SUBQUERY(\d+)\%/$class->{sub_parts}{$1}/is) {
@@ -4150,8 +4151,15 @@ sub replace_connect_by
 		# Replace LEVEL call by a counter, there is no direct equivalent in PostgreSQL
 		if (lc($columns[$i]) eq 'level') {
 			$columns[$i] = "1 as level";
+			$level_cte_col = 'level';
 		} elsif ($columns[$i] =~ /\bLEVEL\b/is) {
+			if ($columns[$i] =~ /\bLEVEL\s+as\s+(\S+)/i) {
+				$level_cte_col = $1;
+			}
 			$columns[$i] =~ s/\bLEVEL\b/1/is;
+			if ($columns[$i] =~ /\b1\s+as\s+(\S+)/i) {
+				$level_cte_col = $1;
+			}
 		}
 		# Replace call to SYS_CONNECT_BY_PATH by the right concatenation string
 		if ($columns[$i] =~ s/SYS_CONNECT_BY_PATH\s*[\(]*\s*([^,]+),\s*([^\)]+)\s*\)/$1/is) {
@@ -4225,8 +4233,9 @@ sub replace_connect_by
 		if ($columns[$i] =~ s/SYS_CONNECT_BY_PATH\s*[\(]*\s*([^,]+),\s*([^\)]+)\s*\)/$1/is) {
 			$columns[$i] = "c.$connect_by_path{$1}{alias} || $connect_by_path{$1}{sep} || " . $columns[$i];
 		}
-		if ($columns[$i] !~ s/\b[^\.]+\.LEVEL\b/(c.level+1)/igs) {
-			$columns[$i] =~ s/\bLEVEL\b/(c.level+1)/igs;
+		my $level_incr = "(c.$level_cte_col+1)";
+		if ($columns[$i] !~ s/\b[^\.]+\.LEVEL\b/$level_incr/igs) {
+			$columns[$i] =~ s/\bLEVEL\b/$level_incr/igs;
 		}
 		extract_subpart($class, \$columns[$i]);
 
