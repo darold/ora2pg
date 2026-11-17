@@ -526,17 +526,25 @@ sub convert_plsql_code
 	$str = Ora2Pg::DbLink::rewrite($class, $str)
 		if (($class->{dblink_mode} // 'off') eq 'fdw' && uc($class->{type} // '') ne 'SHOW_REPORT');
 
-	if (!$class->{use_orafce} && uc($class->{type}) ne 'SHOW_REPORT')
+	if (uc($class->{type}) ne 'SHOW_REPORT')
 	{
-		# Rewrite all decode() call before
+		# Always rewrite decode() to CASE. orafce decode is polymorphic
+		# (anyelement) and rejects common Oracle patterns such as
+		# decode(smallint_col, 1, 'x', 2, 'y') — integer literals vs smallint/
+		# numeric columns (see orafce#17/#67). CASE uses ordinary PG "=" /
+		# IS NOT DISTINCT FROM with implicit casts. Remote $ora$ SQL is not
+		# passed through convert_plsql_code, so Oracle DECODE there is kept.
 		$str = replace_decode($str);
 
-		# Rewrite numeric operation with ADD_MONTHS(date, 1) to use interval
-		$str =~ s/\b(ADD_MONTHS\s*\([^,]+,\s*\d+\s*\))\s*([+\-\*\/])\s*(\d+)(\s*[^\-\*\/]|$)/$1 $2 '$3 days'::interval$4/sgi;
-		# Rewrite numeric operation with TRUNC() to use interval
-		#$str =~ s/\b(TRUNC\s*\(\s*(?:[^\(\)]+)\s*\))\s*([+\-\*\/])\s*(\d+)(\s*[^+\-\*\/]|$)/$1 $2 '$3 days'::interval$4/sgi;
-		# Rewrite numeric operation with LAST_DAY() to use interval
-		$str =~ s/\b(LAST_DAY\s*\(\s*(?:[^\(\)]+)\s*\))\s*([+\-\*\/])\s*(\d+)(\s*[^+\-\*\/]|$)/$1 $2 '$3 days'::interval$4/sgi;
+		if (!$class->{use_orafce})
+		{
+			# Rewrite numeric operation with ADD_MONTHS(date, 1) to use interval
+			$str =~ s/\b(ADD_MONTHS\s*\([^,]+,\s*\d+\s*\))\s*([+\-\*\/])\s*(\d+)(\s*[^\-\*\/]|$)/$1 $2 '$3 days'::interval$4/sgi;
+			# Rewrite numeric operation with TRUNC() to use interval
+			#$str =~ s/\b(TRUNC\s*\(\s*(?:[^\(\)]+)\s*\))\s*([+\-\*\/])\s*(\d+)(\s*[^+\-\*\/]|$)/$1 $2 '$3 days'::interval$4/sgi;
+			# Rewrite numeric operation with LAST_DAY() to use interval
+			$str =~ s/\b(LAST_DAY\s*\(\s*(?:[^\(\)]+)\s*\))\s*([+\-\*\/])\s*(\d+)(\s*[^+\-\*\/]|$)/$1 $2 '$3 days'::interval$4/sgi;
+		}
 	}
 
 	# Replace array syntax arr(i).x into arr[i].x
@@ -2284,7 +2292,7 @@ sub replace_out_param_call
 }
 
 # Replace decode("user_status",'active',"username",null)
-# PostgreSQL (CASE WHEN "user_status"='ACTIVE' THEN "username" ELSE NULL END)
+# PostgreSQL CASE with NULL-safe compare (Oracle DECODE: NULL matches NULL).
 sub replace_decode
 {
 	my $str = shift;
@@ -2321,7 +2329,9 @@ sub replace_decode
 			$decode_params[$i] =~ s/^\s+//gs;
 			$decode_params[$i] =~ s/\s+$//gs;
 			if ($i < $#decode_params) {
-				$case_str .= "WHEN $decode_params[0]=$decode_params[$i] THEN $decode_params[$i+1] ";
+				# IS NOT DISTINCT FROM keeps Oracle NULL=NULL match; plain "="
+				# would never match NULL and also avoids orafce type traps.
+				$case_str .= "WHEN $decode_params[0] IS NOT DISTINCT FROM $decode_params[$i] THEN $decode_params[$i+1] ";
 			} else {
 				$case_str .= " ELSE $decode_params[$i] ";
 			}

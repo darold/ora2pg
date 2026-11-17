@@ -6,17 +6,39 @@ use File::Temp qw(tempfile);
 
 use Ora2Pg;
 
-# USE_ORAFCE 1 must leave decode() to orafce instead of rewriting it as CASE
+# DECODE always -> CASE (even with USE_ORAFCE): orafce decode(anyelement,...)
+# rejects decode(smallint, integer, text, ...) which is common after NUMBER(p)->smallint.
 for my $orafce (0, 1)
 {
 	my $o = bless { type => 'FUNCTION', use_orafce => $orafce, plsql_pgsql => 1,
 			text_values => {}, function_metadata => {} }, 'Ora2Pg';
 	my $out = Ora2Pg::PLSQL::convert_plsql_code($o, 'x := decode(a, 1, 2, 3);');
-	if ($orafce) {
-		like($out, qr/decode\(a, 1, 2, 3\)/, 'USE_ORAFCE 1 keeps decode()');
-	} else {
-		like($out, qr/CASE WHEN a=1 THEN\s+2\s+ELSE 3 END/, 'USE_ORAFCE 0 rewrites decode() to CASE');
-	}
+	like($out, qr/CASE WHEN a IS NOT DISTINCT FROM 1 THEN\s+2\s+ELSE 3 END/,
+		"USE_ORAFCE $orafce rewrites decode() to CASE");
+	unlike($out, qr/\bdecode\s*\(/i, "USE_ORAFCE $orafce: no leftover decode()");
+}
+
+# Mixed numeric search + text results (orafce would fail: smallint vs integer literals)
+{
+	my $o = bless { type => 'VIEW', use_orafce => 1, plsql_pgsql => 1,
+			text_values => {}, function_metadata => {} }, 'Ora2Pg';
+	my $out = Ora2Pg::PLSQL::convert_plsql_code($o,
+		q{select decode(d.k_vf,1,'RUR',2,'US$',10,'EUR') as cd_vf from sw.doc d});
+	like($out, qr/CASE WHEN d\.k_vf IS NOT DISTINCT FROM 1 THEN\s+'RUR'/i,
+		'decode(col,1,text,...) -> CASE with first WHEN');
+	like($out, qr/WHEN d\.k_vf IS NOT DISTINCT FROM 10 THEN\s+'EUR'/i,
+		'decode multi-branch keeps last WHEN');
+	unlike($out, qr/\bdecode\s*\(/i, 'no orafce decode left for typed mismatch pattern');
+}
+
+# NULL search branch must stay NULL-safe (Oracle DECODE matches NULL to NULL)
+{
+	my $o = bless { type => 'VIEW', use_orafce => 1, plsql_pgsql => 1,
+			text_values => {}, function_metadata => {} }, 'Ora2Pg';
+	my $out = Ora2Pg::PLSQL::convert_plsql_code($o,
+		q{select decode(p.status, null, 'open', 'done') s from app.p});
+	like($out, qr/CASE WHEN p\.status IS NOT DISTINCT FROM null THEN\s+'open'\s+ELSE 'done' END/i,
+		'decode(..., null, ...) uses IS NOT DISTINCT FROM');
 }
 
 # Foreign server names for database links
