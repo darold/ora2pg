@@ -1549,7 +1549,7 @@ sub _init
 	$self->{oracle_speed} = 1 if ($self->{ora2pg_speed});
 
 	# Shall we prefix function with a schema name to emulate a package?
-	$self->{package_as_schema} = 1 if (not exists $self->{package_as_schema} || ($self->{package_as_schema} eq ''));
+	$self->{package_as_schema} = 1 if (!exists $self->{package_as_schema} || $self->{package_as_schema} eq '');
 	$self->{package_functions} = ();
 
 	# Set user defined data type translation
