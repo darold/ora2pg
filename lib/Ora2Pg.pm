@@ -22524,7 +22524,10 @@ sub requalify_function_call
 	foreach my $p (keys %{$self->{package_functions}}) {
 		# foreach function declared in a package qualify its callis with the package name
 		foreach my $f (keys %{$self->{package_functions}{$p}}) {
-			$$str =~ s/\b$p\.$f\s*([\(;])/$self->{package_functions}{$p}{$f}{name}$1/igs;
+			my $flat = $self->{package_functions}{$p}{$f}{name};
+			$$str =~ s/\b$p\.$f\s*([\(;])/$flat$1/igs;
+			# schema.pack.func in views (export_schema): payment.Pay_Pack.get_foo -> payment.pay_pack_get_foo
+			$$str =~ s/\b([\w\$#]+)\.$p\.$f\s*\(/$1.$flat(/igs;
 		}
 	}
 }

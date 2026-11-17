@@ -1521,6 +1521,9 @@ sub translate_statement
 	# Replacement of connect by with CTE
 	$stmt = replace_connect_by($class, $stmt);
 
+	# schema.table.col in SELECT/WHERE while FROM lists schema.table alias (PG invalid ref)
+	$stmt = rewrite_from_table_aliases($stmt);
+
 	# Fix missing recursive keyword in CTE
 	# WITH t1%SUBQUERY0% AS %SUBQUERY1% ...
 	if ($stmt =~ /^WITH\s+([^\s\%]+)\s*\%SUBQUERY(\d+)\%\s+AS\s+\%SUBQUERY(\d+)\%/i)
@@ -1974,6 +1977,9 @@ sub replace_oracle_function
 	# Replace call to trim into btrim
 	$str =~ s/\b(TRIM\s*\()\s+/$1/igs;
 	$str =~ s/\bTRIM\s*\(((?!BOTH)[^\(\)]*)\)/trim(both $1)/igs;
+
+	# Oracle TO_CHAR(..., fmt, 'nls_date_language=...') — PG/orafce have no 3-arg form
+	$str = strip_to_char_nls_param($class, $str);
 
 	# Do some transformation when Orafce is not used
 	if (!$class->{use_orafce})
@@ -3986,6 +3992,18 @@ sub replace_connect_by
 
 	return $str if ($str !~ /\bCONNECT\s+BY\b/is);
 
+	# SELECT ... FROM DUAL CONNECT BY LEVEL <= N (no PRIOR): row generator, not a hierarchy
+	if ($str !~ /\bPRIOR\b/is && $str =~ /\bCONNECT\s+BY\s+LEVEL\s*<=\s*(\d+)/is) {
+		my $limit = $1;
+		if ($str =~ /^\s*SELECT\s+(.+?)\s+FROM\s+(?:[\w\$#.]+\s+)?DUAL\s+CONNECT\s+BY\s+LEVEL\s*<=\s*$limit\b/is
+		    || $str =~ /^\s*SELECT\s+(.+?)\s+CONNECT\s+BY\s+LEVEL\s*<=\s*$limit\b/is)
+		{
+			my $sel = $1;
+			$sel =~ s/\bLEVEL\b/gs/igs;
+			return "SELECT $sel FROM generate_series(1, $limit) AS gs";
+		}
+	}
+
 	my $into_clause = '';
 	if ($str =~ s/\s+INTO\s+(.*?)(\s+FROM\s+)/$2/is) {
 		$into_clause = " INTO $1";
@@ -4247,6 +4265,89 @@ sub replace_connect_by
 	$final_query .= "\n) SELECT *$into_clause FROM cte$where_clause$union$group_by$order_by";
 
 	return $final_query;
+}
+
+# Drop NLS third argument from TO_CHAR; optional Month -> TMMonth when Russian NLS was requested.
+sub strip_to_char_nls_param
+{
+	my ($class, $str) = @_;
+	while ($str =~ s/\bTO_CHAR\s*\(\s*([^,]+?)\s*,\s*([^,]+?)\s*,\s*((?:'[^']*'|\?TEXTVALUE\d+\?))\s*\)/
+		strip_to_char_nls_param_one($class, $1, $2, $3)/ie) {}
+	return $str;
+}
+
+sub strip_to_char_nls_param_one
+{
+	my ($class, $expr, $fmt, $nls) = @_;
+	my $nls_txt = $nls;
+	if ($nls =~ /\?TEXTVALUE(\d+)\?/) {
+		$nls_txt = $class->{text_values}{$1} // '';
+	}
+	return "TO_CHAR($expr, $fmt, $nls)" if ($nls_txt !~ /nls_date_language/is);
+	if ($nls_txt =~ /russian/is && $fmt =~ /'Month'/i) {
+		$fmt =~ s/'Month'/'TMMonth'/i;
+	}
+	return "TO_CHAR($expr, $fmt)";
+}
+
+# Rewrite schema.table.column to alias.column when FROM defines schema.table AS alias.
+sub rewrite_from_table_aliases
+{
+	my ($stmt) = @_;
+	return $stmt if ($stmt !~ /\bFROM\b/is);
+
+	my $id = qr/[\w\$#]+/;
+
+	if ($stmt !~ /\bFROM\b(.*)/is) {
+		return $stmt;
+	}
+	my $pre = $`;
+	my $rest = $1;
+
+	my $from_end = length($rest);
+	foreach my $kw (qw(WHERE GROUP ORDER UNION HAVING LIMIT OFFSET)) {
+		if ($rest =~ /\b$kw\b/is) {
+			$from_end = $-[0] if ($-[0] < $from_end);
+		}
+	}
+	my $from_clause = substr($rest, 0, $from_end);
+	my $suffix = substr($rest, $from_end);
+
+	my %alias_of_full = ();
+	while ($from_clause =~ /(?:^|[\s,])(?:(?:LEFT|RIGHT|FULL|INNER|CROSS|NATURAL)\s+)*(?:OUTER\s+)?JOIN\s+($id)(?:\s+(?:AS\s+)?($id))?/ig) {
+		my ($tbl, $alias) = (lc($1), $2);
+		$alias = lc($alias // '');
+		($alias = $tbl) =~ s/^.*\.// if (!$alias);
+		$alias_of_full{$tbl} = $alias;
+	}
+	foreach my $chunk (split(/\s*,\s*/, $from_clause)) {
+		$chunk =~ s/^\s+|\s+$//s;
+		next if ($chunk !~ /\S/);
+		next if ($chunk =~ /^(?:(?:LEFT|RIGHT|FULL|INNER|CROSS|NATURAL)\s+)*(?:OUTER\s+)?JOIN\b/i);
+		if ($chunk =~ /^($id)(?:\s+(?:AS\s+)?($id))?/i) {
+			my ($tbl, $alias) = (lc($1), $2);
+			$alias = lc($alias // '');
+			($alias = $tbl) =~ s/^.*\.// if (!$alias);
+			$alias_of_full{$tbl} = $alias;
+		}
+	}
+	return $stmt unless (%alias_of_full);
+
+	my $rewrite = sub {
+		my ($text) = @_;
+		foreach my $full (sort { length($b) <=> length($a) } keys %alias_of_full) {
+			my $alias = $alias_of_full{$full};
+			next if (lc($full) eq lc($alias) && $full !~ /\./);
+			my $esc = quotemeta($full);
+			$text =~ s/\b$esc\.($id)/$alias.$1/ig;
+		}
+		return $text;
+	};
+
+	$pre = $rewrite->($pre);
+	$suffix = $rewrite->($suffix);
+
+	return $pre . 'FROM' . $from_clause . $suffix;
 }
 
 sub replace_without_function

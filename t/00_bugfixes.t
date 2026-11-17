@@ -142,4 +142,40 @@ is($o->{dblink}{OTHERDB}{owner}, 'APP', 'USING-only link: owner is the schema');
 	}
 }
 
+# mixed comma-FROM + JOIN: schema.table.col -> alias.col (inet_detail class)
+{
+	my ($out) = DblinkTest::convert(
+		"SELECT a.x, app.tab1.col_y AS y FROM app.tab1 tab1, app.tab2 tab2\nLEFT OUTER JOIN app.tab3 tab3 ON (a.k = tab3.k)\nWHERE tab2.k = tab1.k",
+		type => 'VIEW', use_orafce => 1, idxcomment => 0, dblink_mode => 'off');
+	unlike($out, qr/app\.tab1\.col_y/, 'qualified table ref rewritten to alias in SELECT');
+	like($out, qr/tab1\.col_y/, 'alias used in SELECT');
+}
+
+# CONNECT BY LEVEL <= N from DUAL -> generate_series
+{
+	my ($out) = DblinkTest::convert(
+		"SELECT to_char(EXTRACT(YEAR FROM statement_timestamp()) - LEVEL + 1) yr FROM DUAL CONNECT BY LEVEL <= 3",
+		type => 'VIEW', use_orafce => 1, idxcomment => 0, dblink_mode => 'off');
+	like($out, qr/generate_series\(1,\s*3\)/, 'CONNECT BY LEVEL counter -> generate_series');
+	unlike($out, qr/\bCONNECT\s+BY\b/i, 'no leftover CONNECT BY');
+	unlike($out, qr/JOIN cte c ON \(\)/, 'no broken recursive stub');
+}
+
+# TO_CHAR with nls_date_language third arg (xcal class)
+{
+	my ($out) = DblinkTest::convert(
+		"SELECT TO_CHAR(dt, 'Month', 'nls_date_language=RUSSIAN') AS m FROM app.cal",
+		type => 'VIEW', use_orafce => 1, idxcomment => 0, dblink_mode => 'off');
+	unlike($out, qr/nls_date_language/i, 'NLS third arg stripped');
+	like($out, qr/TO_CHAR\s*\(\s*dt\s*,\s*'TMMonth'/i, 'Month -> TMMonth with Russian NLS');
+}
+
+# schema.package.function in view -> flat name
+{
+	my $o = bless { package_functions => { 'pay_pack' => { 'get_val' => { name => 'pay_pack_get_val', package => 'pay_pack' } } } }, 'Ora2Pg';
+	my $v = 'SELECT app.pay_pack.get_val() FROM app.tbl';
+	$o->requalify_function_call(\$v);
+	is($v, 'SELECT app.pay_pack_get_val() FROM app.tbl', 'schema-qualified package call flattened');
+}
+
 done_testing();
