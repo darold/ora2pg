@@ -891,6 +891,8 @@ sub plsql_to_plpgsql
 
 	# Replace SYSTIMESTAMP 
 	$str =~ s/\bSYSTIMESTAMP\b/statement_timestamp()/igs;
+	# Row generators must become generate_series before FROM DUAL is stripped
+	$str = rewrite_connect_by_level_counters($str);
 	# remove FROM DUAL
 	$str =~ s/FROM\s+DUAL//igs;
 	$str =~ s/FROM\s+SYS\.DUAL//igs;
@@ -4007,6 +4009,21 @@ sub _connect_by_level_counter_rewrite
 	return "$sel FROM generate_series(1, $lim) AS gs";
 }
 
+sub rewrite_connect_by_level_counters
+{
+	my ($str) = @_;
+	return $str if ($str !~ /\bCONNECT\s+BY\b/is || $str =~ /\bPRIOR\b/is);
+	while ($str =~ s/
+		\bSELECT\b[\s\S]*?
+		\s+FROM\s+(?:[\w\$#.]+\s+)?DUAL\s+CONNECT\s+BY\s+LEVEL\s*<=\s*(\d+)\b
+		/_connect_by_level_counter_rewrite($&, $1)/sigie) {}
+	while ($str =~ s/
+		\bSELECT\b[\s\S]*?
+		\s+CONNECT\s+BY\s+LEVEL\s*<=\s*(\d+)\b
+		/_connect_by_level_counter_rewrite($&, $1)/sigie) {}
+	return $str;
+}
+
 sub replace_connect_by
 {
 	my ($class, $str) = @_;
@@ -4016,11 +4033,7 @@ sub replace_connect_by
 	# SELECT ... FROM DUAL CONNECT BY LEVEL <= N (no PRIOR): row generator, not a hierarchy
 	# Match tail FROM DUAL CONNECT BY (not the first FROM inside EXTRACT(...) etc.)
 	if ($str !~ /\bPRIOR\b/is) {
-		# Shortest SELECT … CONNECT BY LEVEL<=N (FROM dual often already removed)
-		while ($str =~ s/
-			\bSELECT\b[\s\S]*?
-			\s+CONNECT\s+BY\s+LEVEL\s*<=\s*(\d+)\b
-			/_connect_by_level_counter_rewrite($&, $1)/sigie) {}
+		$str = rewrite_connect_by_level_counters($str);
 		return $str if ($str !~ /\bCONNECT\s+BY\b/is);
 	}
 
