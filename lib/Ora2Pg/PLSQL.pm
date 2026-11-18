@@ -1262,6 +1262,7 @@ sub plsql_to_plpgsql
 
 		# then restore subqueries code into the main query
 		while ($statements[$i] =~ s/\%SUBQUERY(\d+)\%/$class->{sub_parts}{$1}/is) {};
+		$statements[$i] = rewrite_generate_series_orphan_level($statements[$i]);
 
 		# Remove unnecessary offset to position 0 which is the default
 		$statements[$i] =~ s/\s+OFFSET 0//igs;
@@ -4013,7 +4014,8 @@ sub rewrite_generate_series_orphan_level
 {
 	my ($str) = @_;
 	return $str if ($str !~ /\bgenerate_series\s*\(\s*1\s*,/i);
-	return $str if ($str =~ /\bCONNECT\s+BY\b/is);
+	# generate_series(1,N) only comes from CONNECT BY LEVEL counter rewrite; any
+	# remaining LEVEL in the same fragment is the row counter (not hierarchy).
 	$str =~ s/\bLEVEL\b/gs/ig;
 	return $str;
 }
@@ -4466,9 +4468,10 @@ sub rewrite_from_table_aliases_single
 			my $alias = $alias_of_full{$full};
 			my $base = $full;
 			$base =~ s/^.*\.//;
-			next if (lc($full) eq lc($alias) && $full !~ /\./);
-			my $esc = quotemeta($full);
-			$text =~ s/(?<![\p{L}\p{N}_\$#\.])$esc\.($id)/$alias.$1/igu;
+			unless (lc($full) eq lc($alias) && $full !~ /\./) {
+				my $esc = quotemeta($full);
+				$text =~ s/(?<![\p{L}\p{N}_\$#\.])$esc\.($id)/$alias.$1/igu;
+			}
 			# Oracle quoted table in WHERE/SELECT vs unquoted Cyrillic name in FROM
 			$text =~ s/(?<![\p{L}\p{N}_\$#\.])"([^"]+)"\s*\./
 				(lc($1) eq lc($base) || lc($1) eq lc($full)) ? "$alias." : qq{"$1".}/ige;

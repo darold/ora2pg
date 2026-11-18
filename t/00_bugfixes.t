@@ -296,6 +296,24 @@ is($o->{dblink}{OTHERDB}{owner}, 'APP', 'USING-only link: owner is the schema');
 	unlike($out, qr/"СЧЕТ"\s*\.\s*"/, 'no quoted uppercase table ref in WHERE');
 }
 
+# Bare Cyrillic table (no alias) in comma-FROM + quoted name in WHERE
+{
+	my ($out) = DblinkTest::convert(
+		q{SELECT t1.type, счет.валюта FROM счет, (SELECT 'x' type FROM DUAL) t1 WHERE "СЧЕТ"."В_РАБОТЕ" = -1},
+		type => 'VIEW', use_orafce => 1, idxcomment => 0, dblink_mode => 'off');
+	like($out, qr/WHERE\s+счет\."В_РАБОТЕ"\s*=/i, 'bare FROM table: quoted WHERE -> счет.');
+}
+
+# v_subrep_year YEAR alias + nested WITH fragment
+{
+	my ($out) = DblinkTest::convert(
+		q{WITH v AS (SELECT to_char(EXTRACT(YEAR FROM statement_timestamp()) - LEVEL + 1) "YEAR" }.
+		q{FROM DUAL CONNECT BY LEVEL <= 5) SELECT v."YEAR" FROM v},
+		type => 'VIEW', use_orafce => 1, idxcomment => 0, dblink_mode => 'off');
+	like($out, qr/-\s*gs\s*\+\s*1/, 'WITH YEAR alias: LEVEL -> gs');
+	unlike($out, qr/\bLEVEL\b/i, 'WITH YEAR alias: no orphan LEVEL');
+}
+
 # TO_CHAR with nls_date_language third arg (xcal class)
 {
 	my ($out) = DblinkTest::convert(
