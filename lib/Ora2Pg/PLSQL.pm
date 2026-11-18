@@ -2002,8 +2002,8 @@ sub replace_oracle_function
 	}
 	else
 	{
-		s/([^\.])\b(GREATEST\()/$1oracle.$2/igs;
-		s/([^\.])\b(LEAST\()/$1oracle.$2/igs;
+		# GREATEST/LEAST are SQL keywords in PG and skip NULLs; oracle.greatest/least return NULL like Oracle
+		$str =~ s/(?<![\.\w\$#])(GREATEST|LEAST)\s*\(/oracle.$1(/igs;
 	}
 
 	# Replace INSTR by POSITION
