@@ -4029,6 +4029,12 @@ sub replace_connect_by
 
 	return $str if ($str !~ /\bCONNECT\s+BY\b/is);
 
+	# Whole-statement row generator (typical extracted subquery)
+	if ($str !~ /\bPRIOR\b/is && $str =~ /^\s*SELECT\b/is
+	    && $str =~ /\bCONNECT\s+BY\s+LEVEL\s*<=\s*(\d+)\s*$/is) {
+		return _connect_by_level_counter_rewrite($str, $1);
+	}
+
 	# SELECT ... FROM DUAL CONNECT BY LEVEL <= N (no PRIOR): row generator, not a hierarchy
 	# Match tail FROM DUAL CONNECT BY (not the first FROM inside EXTRACT(...) etc.)
 	if ($str !~ /\bPRIOR\b/is) {
