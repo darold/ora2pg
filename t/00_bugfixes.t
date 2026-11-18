@@ -260,8 +260,20 @@ is($o->{dblink}{OTHERDB}{owner}, 'APP', 'USING-only link: owner is the schema');
 		"SELECT to_char(EXTRACT(YEAR FROM statement_timestamp()) - LEVEL + 1) yr FROM DUAL CONNECT BY LEVEL <= 3",
 		type => 'VIEW', use_orafce => 1, idxcomment => 0, dblink_mode => 'off');
 	like($out, qr/generate_series\(1,\s*3\)/, 'CONNECT BY LEVEL counter -> generate_series');
+	like($out, qr/-\s*gs\s*\+\s*1/, 'CONNECT BY LEVEL counter -> gs in SELECT list');
+	unlike($out, qr/\bLEVEL\b/i, 'no orphan LEVEL after generate_series');
 	unlike($out, qr/\bCONNECT\s+BY\b/i, 'no leftover CONNECT BY');
 	unlike($out, qr/JOIN cte c ON \(\)/, 'no broken recursive stub');
+}
+
+# CONNECT BY LEVEL counter inside WITH (v_subrep_year pattern)
+{
+	my ($out) = DblinkTest::convert(
+		"WITH v AS (SELECT to_char(EXTRACT(YEAR FROM statement_timestamp()) - LEVEL + 1) yr ".
+		"FROM DUAL CONNECT BY LEVEL <= 5) SELECT v.yr FROM v",
+		type => 'VIEW', use_orafce => 1, idxcomment => 0, dblink_mode => 'off');
+	like($out, qr/generate_series\(1,\s*5\)/, 'WITH: LEVEL counter -> generate_series');
+	unlike($out, qr/\bLEVEL\b/i, 'WITH: no orphan LEVEL');
 }
 
 # TO_CHAR with nls_date_language third arg (xcal class)

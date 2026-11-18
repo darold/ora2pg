@@ -4003,15 +4003,17 @@ sub replace_connect_by
 	return $str if ($str !~ /\bCONNECT\s+BY\b/is);
 
 	# SELECT ... FROM DUAL CONNECT BY LEVEL <= N (no PRIOR): row generator, not a hierarchy
-	if ($str !~ /\bPRIOR\b/is && $str =~ /\bCONNECT\s+BY\s+LEVEL\s*<=\s*(\d+)/is) {
-		my $limit = $1;
-		if ($str =~ /^\s*SELECT\s+(.+?)\s+FROM\s+(?:[\w\$#.]+\s+)?DUAL\s+CONNECT\s+BY\s+LEVEL\s*<=\s*$limit\b/is
-		    || $str =~ /^\s*SELECT\s+(.+?)\s+CONNECT\s+BY\s+LEVEL\s*<=\s*$limit\b/is)
-		{
-			my $sel = $1;
+	# Match tail FROM DUAL CONNECT BY (not the first FROM inside EXTRACT(...) etc.)
+	if ($str !~ /\bPRIOR\b/is) {
+		while ($str =~ s/
+			(\bSELECT\b(?:(?!\bSELECT\b).)*)
+			\s+FROM\s+(?:[\w\$#.]+\s+)?DUAL\s+CONNECT\s+BY\s+LEVEL\s*<=\s*(\d+)\b
+		/
+			my ($sel, $lim) = ($1, $2);
 			$sel =~ s/\bLEVEL\b/gs/igs;
-			return "SELECT $sel FROM generate_series(1, $limit) AS gs";
-		}
+			"$sel FROM generate_series(1, $lim) AS gs"
+		/sige) {}
+		return $str if ($str !~ /\bCONNECT\s+BY\b/is);
 	}
 
 	my $into_clause = '';
