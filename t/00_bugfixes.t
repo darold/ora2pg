@@ -339,6 +339,18 @@ is($o->{dblink}{OTHERDB}{owner}, 'APP', 'USING-only link: owner is the schema');
 	unlike($out, qr/\bLEVEL\b/i, 'WITH YEAR alias: no orphan LEVEL');
 }
 
+# v_subrep: glued subquery alias ")v" and (+) on second table — no ")v, v" duplicate
+{
+	require DblinkTest;
+	my ($out) = DblinkTest::convert(
+		q{SELECT v.x, c.y FROM (SELECT 1 x FROM dual) v, app.subrep_data c }.
+		q{WHERE c.vendor_site_id(+) = v.x AND c.oper_id(+) = v.x},
+		type => 'VIEW', use_orafce => 1, idxcomment => 0, dblink_mode => 'off');
+	unlike($out, qr/\)\s*v\s*,\s*v\b/i, 'outer join: no duplicate v after glued )v alias');
+	like($out, qr/LEFT OUTER JOIN\s+app\.subrep_data\s+c\b/i,
+		'outer join: subrep_data moved to LEFT OUTER JOIN');
+}
+
 # TO_CHAR with nls_date_language third arg (xcal class)
 {
 	my ($out) = DblinkTest::convert(

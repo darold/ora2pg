@@ -3802,6 +3802,18 @@ sub outer_join_table_column_ref
 	return ($operand =~ /^([^\.\s]+\.[^\.\s]+)\..*/ || $operand =~ /^([^\.\s]+)\..*/);
 }
 
+# extract_subpart() can leave a table alias glued to %SUBQUERYn% (Oracle ")v,").
+sub outer_join_normalize_from_table_token
+{
+	my ($table) = @_;
+	$table =~ s/^\s+//s;
+	$table =~ s/\s+$//s;
+	if ($table =~ /^(\%SUBQUERY\d+\%)([\w\$#]+)$/i) {
+		$table = "$1 $2";
+	}
+	return $table;
+}
+
 sub outer_join_table_alias_from_operand
 {
 	my ($operand) = @_;
@@ -3862,8 +3874,7 @@ sub replace_outer_join
 		my $fidx = 0;
 		foreach my $table (@tables)
 		{
-			$table =~ s/^\s+//s;
-			$table =~ s/\s+$//s;
+			$table = outer_join_normalize_from_table_token($table);
 			my $cmt = '';
 			while ($table =~ s/(\s*\%ORA2PG_COMMENT\d+\%\s*)//is) {
 				$cmt .= $1;
