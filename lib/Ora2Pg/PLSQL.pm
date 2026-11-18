@@ -1128,6 +1128,8 @@ sub plsql_to_plpgsql
 	# PG reserved column aliases (Oracle allows unquoted ORDER / DAY / quoted "FROM" in views)
 	$str =~ s/(\|\||\)|'(?:''|[^'])*'|[\p{L}\p{N}_\$#])\s+ORDER\s*,/$1 AS "order",/igs;
 	$str =~ s/(-?\d+)\s+DAY(\s+FROM\b)/$1 AS day$2/igs;
+	$str =~ s/(\))\s+YEAR(\s+FROM\b)/$1 AS year$2/igs;
+	$str =~ s/(\))\s+MONTH(\s+FROM\b)/$1 AS month$2/igs;
 	$str =~ s/\bAS\s+FROM"\s*,/AS "from",/igs;
 	$str =~ s/([\p{L}\p{N}_\$#.])\s+AS\s+FROM\s*,/$1 AS "from",/igs;
 

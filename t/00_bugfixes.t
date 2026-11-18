@@ -418,6 +418,16 @@ is($o->{dblink}{OTHERDB}{owner}, 'APP', 'USING-only link: owner is the schema');
 	unlike($out, qr/SELECT -1 DAY\s+FROM/i, 'no bare DAY before FROM');
 }
 
+# Unquoted YEAR as subquery column alias -> AS year (v_subrep_year / generate_series)
+{
+	my ($out) = DblinkTest::convert(
+		q{(SELECT to_char(EXTRACT(YEAR FROM statement_timestamp()) - LEVEL + 1) YEAR }.
+		q{FROM DUAL CONNECT BY LEVEL <= 5)},
+		type => 'VIEW', use_orafce => 1, idxcomment => 0, dblink_mode => 'off');
+	like($out, qr/\)\s+AS year\s+FROM generate_series/i, 'expression YEAR alias -> AS year before FROM');
+	unlike($out, qr/\)\s+year\s+FROM generate_series/i, 'no bare year alias before generate_series FROM');
+}
+
 # hp200_abc server: fdw schema must not double remote owner (abc.usr@hp200)
 {
 	my ($out) = DblinkTest::convert(
