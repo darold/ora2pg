@@ -60,6 +60,6 @@ BEGIN
   SELECT x + rsch.pkg.get_summ\@rdb1(z) INTO x FROM dual;
 END;
 PL
-like(norm($out), qr/SELECT x \+ fdw_rdb1_rsch_pkg\.get_summ\(z\) INTO STRICT x;/, 'SELECT INTO + call -> function wrapper');
+like(norm($out), qr/SELECT x \+ fdw_rdb1_rsch_pkg\.get_summ\(z\) INTO STRICT x ?;/, 'SELECT INTO + call -> function wrapper');
 
 done_testing;

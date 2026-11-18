@@ -939,7 +939,7 @@ sub plsql_to_plpgsql
 	$str =~ s/:old\./OLD\./igs;
 
 	# Change NVL to COALESCE
-	$str =~ s/NVL\s*\(/coalesce(/isg;
+	$str =~ s/\bNVL\s*\(/coalesce(/isg;
 	$str =~ s/NVL2\s*\($field,$field,$field\)/(CASE WHEN $1 IS NOT NULL THEN $2 ELSE $3 END)/isg;
 
 	# NLSSORT to COLLATE
@@ -1036,6 +1036,10 @@ sub plsql_to_plpgsql
 		$str =~ s/\b(\w+)\.currval/currval('"$1"')/isg;
 	}
 
+	# Oracle NUMBER division is never integer division: 14/24 = 0.58.. but 0 in PG. Only literal/literal
+	# is safe to fix here (types of columns and variables are not known); string literals are masked.
+	$str =~ s{(?<![\w\.\$#])(\d+)\s*/\s*(\d+)(?![\w\.\$#])}{ ($2 && $1 % $2 == 0) ? "$1/$2" : "$1/$2.0" }ge;
+
 	# Oracle MINUS can be replaced by EXCEPT as is
 	$str =~ s/\bMINUS\b/EXCEPT/igs;
 	# Comment DBMS_OUTPUT.ENABLE calls
@@ -1054,6 +1058,7 @@ sub plsql_to_plpgsql
 		$str =~ s/DBMS_OUTPUT\.(put_line|put|new_line)\s*\((.*?)\)\s*;/&raise_output($class, $2) . ';'/isge;
 	} else {
 		$str =~ s/(DBMS_OUTPUT\.)/PERFORM $1/igs;
+		$str = orafce_calls($class, $str);
 	}
 
 	# DBMS_LOCK.SLEEP can be replaced by pg_sleep
@@ -1943,7 +1948,7 @@ sub replace_oracle_function
 	}
 
 	# Change NVL to COALESCE
-	$str =~ s/NVL\s*\(/coalesce(/is;
+	$str =~ s/\bNVL\s*\(/coalesce(/is;
 	$str =~ s/NVL2\s*\($field,$field,$field\)/(CASE WHEN $1 IS NOT NULL THEN $2 ELSE $3 END)/is;
 
 	# Replace DEFAULT empty_blob() and empty_clob()
@@ -1991,6 +1996,10 @@ sub replace_oracle_function
 
 	# Oracle TO_CHAR(..., fmt, 'nls_date_language=...') — PG/orafce have no 3-arg form
 	$str = strip_to_char_nls_param($class, $str);
+	if ($class->{use_orafce}) {
+		$str = fix_rr_date_format($class, $str);
+		$str = fix_to_date_time($class, $str);
+	}
 
 	# Do some transformation when Orafce is not used
 	if (!$class->{use_orafce})
@@ -2066,8 +2075,8 @@ sub replace_oracle_function
 	}
 	else
 	{
-		s/([^\.])\b(GREATEST\()/$1oracle.$2/igs;
-		s/([^\.])\b(LEAST\()/$1oracle.$2/igs;
+		# GREATEST/LEAST are SQL keywords in PG and skip NULLs; oracle.greatest/least return NULL like Oracle
+		$str =~ s/(?<![\.\w\$#])(GREATEST|LEAST)\s*\(/oracle.$1(/igs;
 	}
 
 	# Replace INSTR by POSITION
@@ -2135,7 +2144,7 @@ sub replace_oracle_function
 
 	# Replace some sys_context call to the postgresql equivalent
 	if ($str =~ /SYS_CONTEXT/is) {
-		$str = replace_sys_context($str);
+		$str = replace_sys_context($class, $str);
 	}
 
 	return $str;
@@ -2346,22 +2355,63 @@ sub replace_decode
 	return $str;
 }
 
+# Calls into the orafce packages that need a rewrite to work in PL/pgSQL (USE_ORAFCE 1).
+sub orafce_calls
+{
+	my ($class, $str) = @_;
+
+	# Parameterless functions: PL/pgSQL does not accept dbms_utility.format_call_stack without ()
+	$str =~ s/\b(DBMS_UTILITY\.(?:FORMAT_CALL_STACK|GET_TIME)|DBMS_RANDOM\.(?:RANDOM|NORMAL|VALUE))\b(?!\s*[\(\.\w\$#])/$1()/igs;
+
+	# Statement-level calls of orafce procedures need PERFORM. Functions (send_message, receive_message,
+	# create_pipe, remove_pipe, fopen, ...) are used inside expressions and keep their form.
+	my $stmt = qr{(?:^|[;]|\*/|\bTHEN\b|\bELSE\b|\bBEGIN\b|\bLOOP\b)\s*}i;
+	my $proc = qr/(?:DBMS_PIPE\.(?:PACK_MESSAGE(?:_RAW|_ROWID)?|RESET_BUFFER|PURGE)|DBMS_ALERT\.(?:REGISTER|REMOVE|REMOVEALL|SET_DEFAULTS|SIGNAL)|UTL_FILE\.(?:FCLOSE|FCLOSE_ALL|FFLUSH|PUT|PUT_LINE|PUTF|NEW_LINE|FREMOVE|FRENAME|FCOPY)|DBMS_RANDOM\.(?:INITIALIZE|SEED|TERMINATE))/i;
+	# Oracle's unpack_message(OUT var) is overloaded on the type of var; orafce has one function per type
+	$str =~ s/($stmt)DBMS_PIPE\.UNPACK_MESSAGE\s*\(\s*([^,\(\)]+?)\s*\)\s*;/$1$2 := dbms_pipe.unpack_message_text(); \/* TODO orafce: pick unpack_message_text\/_date\/_timestamp\/_number\/_bytea by the type of $2 *\//igms;
+	$str =~ s/($stmt)($proc\s*\()/$1PERFORM $2/igms;
+
+	# orafce dbms_output.put_line(text) only: cast anything that is not obviously text
+	$str =~ s{(PERFORM\s+DBMS_OUTPUT\.PUT(?:_LINE)?\s*)(\((?:[^()]++|(?2))*\))}{
+		my ($pre, $args) = ($1, $2);
+		my $inner = substr($args, 1, -1);
+		my $top = $inner;
+		1 while ($top =~ s/\([^()]*\)//g);   # keep only the top level
+		($inner =~ /^\s*\?TEXTVALUE\d+\?\s*$/ || $inner =~ /^\s*$/ || $top =~ m{\|\|} || $inner =~ /::text\s*$/i)
+			? "$pre$args" : "$pre(($inner)::text)";
+	}iegs;
+
+	return $str;
+}
+
 # Function to replace call to SYS_CONTECT('USERENV', ...)
 # List of Oracle environment variables: http://docs.oracle.com/cd/B28359_01/server.111/b28286/functions172.htm
 # Possibly corresponding PostgreSQL variables: http://www.postgresql.org/docs/current/static/functions-info.html
 sub replace_sys_context
 {
-	my $str = shift;
+	my ($class, $str) = @_;
 
-	$str =~ s/SYS_CONTEXT\s*\(\s*'USERENV'\s*,\s*'(OS_USER|SESSION_USER|AUTHENTICATED_IDENTITY)'\s*\)/session_user/is;
-	$str =~ s/SYS_CONTEXT\s*\(\s*'USERENV'\s*,\s*'BG_JOB_ID'\s*\)/pg_backend_pid()/is;
-	$str =~ s/SYS_CONTEXT\s*\(\s*'USERENV'\s*,\s*'(CLIENT_IDENTIFIER|PROXY_USER)'\s*\)/session_user/is;
-	$str =~ s/SYS_CONTEXT\s*\(\s*'USERENV'\s*,\s*'CURRENT_SCHEMA'\s*\)/current_schema/is;
-	$str =~ s/SYS_CONTEXT\s*\(\s*'USERENV'\s*,\s*'CURRENT_USER'\s*\)/current_user/is;
-	$str =~ s/SYS_CONTEXT\s*\(\s*'USERENV'\s*,\s*'(DB_NAME|DB_UNIQUE_NAME)'\s*\)/current_database/is;
-	$str =~ s/SYS_CONTEXT\s*\(\s*'USERENV'\s*,\s*'(HOST|IP_ADDRESS)'\s*\)/inet_client_addr()/is;
-	$str =~ s/SYS_CONTEXT\s*\(\s*'USERENV'\s*,\s*'SERVER_HOST'\s*\)/inet_server_addr()/is;
-	$str =~ s/SYS_CONTEXT\s*\(\s*'USERENV'\s*,\s*'MODULE'\s*\)/current_setting('application_name')/is;
+	# USERENV parameter => PG expression
+	my %map = (
+		OS_USER => 'session_user', SESSION_USER => 'session_user', AUTHENTICATED_IDENTITY => 'session_user',
+		BG_JOB_ID => 'pg_backend_pid()',
+		CLIENT_IDENTIFIER => 'session_user', PROXY_USER => 'session_user',
+		CURRENT_SCHEMA => 'current_schema', CURRENT_USER => 'current_user',
+		DB_NAME => 'current_database()', DB_UNIQUE_NAME => 'current_database()',
+		HOST => 'inet_client_addr()', IP_ADDRESS => 'inet_client_addr()',
+		SERVER_HOST => 'inet_server_addr()',
+		MODULE => "current_setting('application_name')",
+	);
+	# The string literals are masked as ?TEXTVALUEn? when this runs, so resolve them.
+	my $lit = sub {
+		my $t = shift;
+		$t = $class->{text_values}{$1} // '' if ($t =~ /^\?TEXTVALUE(\d+)\?$/);
+		return ($t =~ /^'([^']*)'$/) ? $1 : undef;
+	};
+	$str =~ s{\bSYS_CONTEXT\s*\(\s*('[^']*'|\?TEXTVALUE\d+\?)\s*,\s*('[^']*'|\?TEXTVALUE\d+\?)\s*\)}{
+		my ($all, $ns, $par) = ($&, $lit->($1), $lit->($2));
+		(defined $ns && defined $par && uc($ns) eq 'USERENV' && exists $map{uc($par)}) ? $map{uc($par)} : $all;
+	}iegs;
 
 	return $str;
 }
@@ -4343,6 +4393,38 @@ sub replace_connect_by
 	return $final_query;
 }
 
+# PG and orafce have no RR/RRRR format fields (to_char prints them literally, to_date misparses).
+# RRRR -> YYYY and RR -> YY; for TO_DATE the century window differs (PG YY: 70-99 => 19xx, 00-69 => 20xx).
+sub fix_rr_date_format
+{
+	my ($class, $str) = @_;
+	my $rr = sub { my $f = shift; $f =~ s/(?<![A-Za-z])RRRR(?![A-Za-z])/YYYY/ig; $f =~ s/(?<![A-Za-z])RR(?![A-Za-z])/YY/ig; return $f; };
+	$str =~ s{\bTO_(?:CHAR|DATE|TIMESTAMP(?:_TZ)?)\s*\((?:[^(),]|\((?:[^()]|\([^()]*\))*\))*,\s*(?:\?TEXTVALUE(\d+)\?|('[^']*'))}{
+		my ($all, $n) = ($&, $1);
+		if (defined $n) {
+			$class->{text_values}{$n} = $rr->($class->{text_values}{$n}) if (defined $class->{text_values}{$n});
+			$all;
+		} else {
+			$all =~ s/('[^']*')$/$rr->($1)/e;
+			$all;
+		}
+	}iegs;
+	return $str;
+}
+
+# Unqualified to_date(text,text) resolves to pg_catalog (searched before oracle) and returns date,
+# silently dropping HH24:MI:SS. Oracle's DATE keeps the time: use orafce's oracle.to_date for such masks.
+sub fix_to_date_time
+{
+	my ($class, $str) = @_;
+	$str =~ s{(?<![\w\.\$#])to_date\s*\(((?:[^(),]|\((?:[^()]|\([^()]*\))*\))*),\s*(\?TEXTVALUE(\d+)\?|'[^']*')\s*\)}{
+		my ($all, $arg, $fmt, $n) = ($&, $1, $2, $3);
+		my $f = defined $n ? ($class->{text_values}{$n} // '') : $fmt;
+		($f =~ /(?<![A-Za-z])(?:HH12|HH24|HH|MI|SSSSS|SS|FF\d?)(?![A-Za-z])/i) ? "oracle.to_date($arg, $fmt)" : $all;
+	}iegs;
+	return $str;
+}
+
 # Drop NLS third argument from TO_CHAR; optional Month -> TMMonth when Russian NLS was requested.
 sub strip_to_char_nls_param
 {
@@ -4362,10 +4444,12 @@ sub strip_to_char_nls_param_one
 	return "TO_CHAR($expr, $fmt, $nls)" if ($nls_txt !~ /nls_date_language/is);
 	if ($nls_txt =~ /russian/is) {
 		# the format literal is masked as ?TEXTVALUEn? at this stage
+		# TM prefix: month/day names come from lc_time (ru_RU.UTF-8 must exist in the DB image)
+		my $tm = sub { my $f = shift; $f =~ s/(?<![A-Za-z])(MONTH|Month|month|MON|Mon|mon|DAY|Day|day|DY|Dy|dy)(?![A-Za-z])/TM$1/g; return $f; };
 		if ($fmt =~ /\?TEXTVALUE(\d+)\?/) {
-			$class->{text_values}{$1} =~ s/^'Month'$/'TMMonth'/i if (defined $class->{text_values}{$1});
+			$class->{text_values}{$1} = $tm->($class->{text_values}{$1}) if (defined $class->{text_values}{$1});
 		} else {
-			$fmt =~ s/'Month'/'TMMonth'/i;
+			$fmt = $tm->($fmt);
 		}
 	}
 	return "TO_CHAR($expr, $fmt)";
