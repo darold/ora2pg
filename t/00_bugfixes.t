@@ -387,6 +387,25 @@ is($o->{dblink}{OTHERDB}{owner}, 'APP', 'USING-only link: owner is the schema');
 	unlike($out, qr/AS\s+FROM"\s*,/, 'no torn AS FROM" alias');
 }
 
+# Cyrillic table.col IS NOT NULL (null_equal_empty): must not leave table(.col
+{
+	my ($out) = DblinkTest::convert(
+		q{SELECT x FROM dual WHERE оплата.SUN_BU_BR IS NOT NULL},
+		type => 'VIEW', use_orafce => 1, idxcomment => 0, dblink_mode => 'off', null_equal_empty => 1);
+	like($out, qr/оплата\.SUN_BU_BR IS NOT NULL AND оплата\.SUN_BU_BR::text/,
+		'Unicode qualified column kept for IS NOT NULL rewrite');
+	unlike($out, qr/оплата\(\.SUN_BU_BR/, 'no torn table(.col from ASCII-only ident regex');
+}
+
+# Unquoted DAY as subquery column alias -> AS day (v_week_rep_padding)
+{
+	my ($out) = DblinkTest::convert(
+		q{(SELECT -1 DAY FROM dual)},
+		type => 'VIEW', use_orafce => 1, idxcomment => 0, dblink_mode => 'off');
+	like($out, qr/SELECT -1 AS day FROM/i, 'numeric DAY alias quoted for PG');
+	unlike($out, qr/SELECT -1 DAY\s+FROM/i, 'no bare DAY before FROM');
+}
+
 # hp200_abc server: fdw schema must not double remote owner (abc.usr@hp200)
 {
 	my ($out) = DblinkTest::convert(
