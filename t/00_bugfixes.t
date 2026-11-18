@@ -422,6 +422,24 @@ is($o->{dblink}{OTHERDB}{owner}, 'APP', 'USING-only link: owner is the schema');
 	is($o->quote_object_name('Доп.Кол-во_Б/Д'), '"доп.кол-во_б/д"', 'dotted slash column quoted as one id');
 }
 
+# PACKAGE_AS_SCHEMA: Cyrillic package schema + function, not one quoted id
+{
+	my $o = bless({ preserve_case => 0, use_reserved_words => 0 }, 'Ora2Pg');
+	is($o->quote_object_name('pack_бюджет.val'), '"pack_бюджет".val', 'pack_бюджет.val -> schema.func');
+	is($o->quote_object_name('payment.pack_бюджет'), 'payment."pack_бюджет"', 'payment.pack_бюджет grant schema');
+}
+
+# PACKAGE_AS_SCHEMA: PACK_БЮДЖЕТ.VAL() requalify (v_plan class)
+{
+	my $o = bless({
+		package_as_schema => 1, schema => 'payment',
+		package_functions => { pack_бюджет => { val => { name => '"pack_бюджет".val' } } },
+	}, 'Ora2Pg');
+	my $v = 'Rate2(sysdate,П.БЮДЖЕТ_ВАЛЮТА,PACK_БЮДЖЕТ.VAL())';
+	$o->requalify_function_call(\$v);
+	like($v, qr/pack_бюджет\.val\(\)/, 'PACK_БЮДЖЕТ.VAL() -> pack_бюджет.val()');
+}
+
 # FDW pass-through view: Oracle quoted uppercase columns -> lowercase (wabc_agent)
 {
 	my ($out) = DblinkTest::convert(

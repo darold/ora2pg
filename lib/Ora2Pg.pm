@@ -753,6 +753,37 @@ Return a quoted object named when needed:
 =cut
 
 
+sub _quote_object_name_part
+{
+	my ($self, $part) = @_;
+	return $part if ($part =~ /^[a-z0-9_\$]+$/);
+	return '"' . $part . '"' if ($part =~ /[^a-z0-9_\$]/ || $part =~ /^\d+/);
+	return $part;
+}
+
+sub _quote_dotted_package_name
+{
+	my ($self, $obj_name) = @_;
+	return 0 if ($obj_name =~ /\//);
+	my ($p1, $p2, $p3);
+	if ($obj_name =~ /^([^\.]+)\.([^\.]+)\.([^\.]+)$/) {
+		($p1, $p2, $p3) = ($1, $2, $3);
+	} elsif ($obj_name =~ /^([^\.]+)\.([^\.]+)$/) {
+		($p1, $p2) = ($1, $2);
+	} else {
+		return 0;
+	}
+	my $is_qualified = ($p1 =~ /^pack_/i || $p2 =~ /^pack_/i
+		|| ($p1 =~ /^[a-z][a-z0-9_]*$/ && $p2 =~ /[^\x00-\x7F]/));
+	return 0 if (!$is_qualified);
+	if (defined $p3) {
+		$obj_name = join('.', map { $self->_quote_object_name_part($_) } ($p1, $p2, $p3));
+	} else {
+		$obj_name = $self->_quote_object_name_part($p1) . '.' . $self->_quote_object_name_part($p2);
+	}
+	return $obj_name;
+}
+
 sub quote_object_name
 {
 	my ($self, @obj_list) = @_;
@@ -776,7 +807,11 @@ sub quote_object_name
 			if ($obj_name =~ /[^a-z0-9\_\.\$]/ || ($self->{use_reserved_words} && $self->is_reserved_words($obj_name)) || $obj_name =~ /^\d+/)
 			{
 				# Dotted display names like "Доп.Кол-во_Б/Д" are one identifier, not schema.column
-				if ($obj_name =~ /\// || $obj_name =~ /[^\x00-\x7F]/) {
+				if ($obj_name =~ /\//) {
+					$obj_name = '"' . $obj_name . '"';
+				} elsif (my $quoted = $self->_quote_dotted_package_name($obj_name)) {
+					$obj_name = $quoted;
+				} elsif ($obj_name =~ /[^\x00-\x7F]/) {
 					$obj_name = '"' . $obj_name . '"';
 				} elsif ($obj_name =~ /^[a-z0-9_\$]+\.[a-z0-9_\$]+$/) {
 					$obj_name =~ s/^([^\.]+)\.([^\.]+)$/"$1"\."$2"/;
@@ -789,7 +824,11 @@ sub quote_object_name
 			}
 		}
 		# Add double quote to [schema.] object name 
-		elsif ($obj_name =~ /\// || $obj_name =~ /[^\x00-\x7F]/) {
+		elsif ($obj_name =~ /\//) {
+			$obj_name = "\"$obj_name\"";
+		} elsif (my $quoted = $self->_quote_dotted_package_name($obj_name)) {
+			$obj_name = $quoted;
+		} elsif ($obj_name =~ /[^\x00-\x7F]/) {
 			$obj_name = "\"$obj_name\"";
 		} elsif ($obj_name !~ /^[^\.]+\.[^\.]+$/ && $obj_name !~ /^[^\.]+\.[^\.]+\.[^\.]+$/) {
 			$obj_name = "\"$obj_name\"";
@@ -5607,7 +5646,9 @@ sub export_grant
 		}
 		else
 		{
-			$realtable =~ s/^[^\.]+\.//;
+			my $pkg = lc($table);
+			$pkg =~ s/^[^\.]+\.//;
+			$realtable = $self->quote_object_name($pkg);
 			if ($self->{grants}{$table}{owner})
 			{
 				if (grep(/^$self->{grants}{$table}{owner}$/, @{$self->{roles}{roles}}))
@@ -5647,7 +5688,9 @@ sub export_grant
 			}
 			else
 			{
-				$realtable =~ s/^[^\.]+\.//;
+				my $pkg = lc($table);
+				$pkg =~ s/^[^\.]+\.//;
+				$realtable = $self->quote_object_name($pkg);
 				$grants .= "GRANT USAGE ON SCHEMA $realtable TO $usr$wgrantoption;\n";
 				$grants .= "GRANT EXECUTE ON ALL ROUTINES IN SCHEMA $realtable TO $usr$wgrantoption;\n";
 			}
