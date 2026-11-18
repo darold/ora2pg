@@ -2071,7 +2071,7 @@ sub replace_oracle_function
 
 	# Replace some sys_context call to the postgresql equivalent
 	if ($str =~ /SYS_CONTEXT/is) {
-		$str = replace_sys_context($str);
+		$str = replace_sys_context($class, $str);
 	}
 
 	return $str;
@@ -2285,17 +2285,29 @@ sub replace_decode
 # Possibly corresponding PostgreSQL variables: http://www.postgresql.org/docs/current/static/functions-info.html
 sub replace_sys_context
 {
-	my $str = shift;
+	my ($class, $str) = @_;
 
-	$str =~ s/SYS_CONTEXT\s*\(\s*'USERENV'\s*,\s*'(OS_USER|SESSION_USER|AUTHENTICATED_IDENTITY)'\s*\)/session_user/is;
-	$str =~ s/SYS_CONTEXT\s*\(\s*'USERENV'\s*,\s*'BG_JOB_ID'\s*\)/pg_backend_pid()/is;
-	$str =~ s/SYS_CONTEXT\s*\(\s*'USERENV'\s*,\s*'(CLIENT_IDENTIFIER|PROXY_USER)'\s*\)/session_user/is;
-	$str =~ s/SYS_CONTEXT\s*\(\s*'USERENV'\s*,\s*'CURRENT_SCHEMA'\s*\)/current_schema/is;
-	$str =~ s/SYS_CONTEXT\s*\(\s*'USERENV'\s*,\s*'CURRENT_USER'\s*\)/current_user/is;
-	$str =~ s/SYS_CONTEXT\s*\(\s*'USERENV'\s*,\s*'(DB_NAME|DB_UNIQUE_NAME)'\s*\)/current_database/is;
-	$str =~ s/SYS_CONTEXT\s*\(\s*'USERENV'\s*,\s*'(HOST|IP_ADDRESS)'\s*\)/inet_client_addr()/is;
-	$str =~ s/SYS_CONTEXT\s*\(\s*'USERENV'\s*,\s*'SERVER_HOST'\s*\)/inet_server_addr()/is;
-	$str =~ s/SYS_CONTEXT\s*\(\s*'USERENV'\s*,\s*'MODULE'\s*\)/current_setting('application_name')/is;
+	# USERENV parameter => PostgreSQL expression
+	my %map = (
+		OS_USER => 'session_user', SESSION_USER => 'session_user', AUTHENTICATED_IDENTITY => 'session_user',
+		BG_JOB_ID => 'pg_backend_pid()',
+		CLIENT_IDENTIFIER => 'session_user', PROXY_USER => 'session_user',
+		CURRENT_SCHEMA => 'current_schema', CURRENT_USER => 'current_user',
+		DB_NAME => 'current_database()', DB_UNIQUE_NAME => 'current_database()',
+		HOST => 'inet_client_addr()', IP_ADDRESS => 'inet_client_addr()',
+		SERVER_HOST => 'inet_server_addr()',
+		MODULE => "current_setting('application_name')",
+	);
+	# String literals are already masked as ?TEXTVALUEn? when this runs: resolve them.
+	my $lit = sub {
+		my $t = shift;
+		$t = $class->{text_values}{$1} // '' if ($t =~ /^\?TEXTVALUE(\d+)\?$/);
+		return ($t =~ /^'([^']*)'$/) ? $1 : undef;
+	};
+	$str =~ s{\bSYS_CONTEXT\s*\(\s*('[^']*'|\?TEXTVALUE\d+\?)\s*,\s*('[^']*'|\?TEXTVALUE\d+\?)\s*\)}{
+		my ($all, $ns, $par) = ($&, $lit->($1), $lit->($2));
+		(defined $ns && defined $par && uc($ns) eq 'USERENV' && exists $map{uc($par)}) ? $map{uc($par)} : $all;
+	}iegs;
 
 	return $str;
 }
