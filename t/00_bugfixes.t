@@ -483,4 +483,13 @@ is($o->{dblink}{OTHERDB}{owner}, 'APP', 'USING-only link: owner is the schema');
 	like($v, qr/=pay_pack\.get_ведомость\(\)/, 'Pay_Pack.get_ведомость -> pay_pack.get_ведомость()');
 }
 
+# Bare DLook in view text -> payment.dlook (pass2 view.sql)
+{
+	my $o = bless({ package_as_schema => 1, schema => 'payment' }, 'Ora2Pg');
+	my $v = 'DLook(валюта_фикс, statement_timestamp())';
+	$o->requalify_function_call(\$v);
+	like($v, qr/payment\.dlook\(валюта_фикс, statement_timestamp\(\)::timestamp\(0\)\)/,
+		'bare DLook qualified and timestamp cast');
+}
+
 done_testing();

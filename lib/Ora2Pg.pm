@@ -418,10 +418,9 @@ sub export_schema
 	$self->{dbh}->disconnect() if ($self->{dbh});
 	$self->{dbhdest}->disconnect() if ($self->{dbhdest});
 
-	# Try to requalify package function call
-	if (!$self->{package_as_schema}) {
-		$self->fix_function_call();
-	}
+	# Requalify package function calls in bulk export files (view.sql, package.sql, …).
+	# PACKAGE_AS_SCHEMA still needs pass2: per-view requalify runs before package_functions exist.
+	$self->fix_function_call();
 
 	my $dirprefix = '';
 	$dirprefix = "$self->{output_dir}/" if ($self->{output_dir});
@@ -10679,18 +10678,18 @@ sub fix_function_call
 	$dirprefix = "$self->{output_dir}/" if ($self->{output_dir});
 
 	return unless(open(my $tfh, '<', $dirprefix . 'temp_pass2_file.dat'));
+	my %fix_files = ();
 	while (my $l = <$tfh>) {
 		chomp($l);
-		my ($pname, $fname, $file_name) = split(/:/, $l);
-		$file_to_update{$pname}{$fname} = $file_name;
+		my ($pname, $fname, $file_name) = split(/:/, $l, 3);
+		next if ($pname =~ /^ORA2PG_/ && $pname !~ /^ORA2PG_(?:VIEW|MVIEW)$/);
+		$fix_files{$file_name} = 1;
 	}
 	close($tfh);
 
 	my $child_count = 0;
-	# Fix call to package function in files
-	foreach my $pname (sort keys %file_to_update ) {
-		next if ($pname =~ /^ORA2PG_/);
-		foreach my $fname (sort keys %{ $file_to_update{$pname} } ) {
+	# Fix call to package function in files (each bulk file once)
+	foreach my $file_name (sort keys %fix_files) {
 			if ($self->{jobs} > 1) {
 				while ($child_count >= $self->{jobs}) {
 					my $kid = waitpid(-1, WNOHANG);
@@ -10701,13 +10700,12 @@ sub fix_function_call
 					usleep(50000);
 				}
 				spawn sub {
-					$self->requalify_package_functions($file_to_update{$pname}{$fname});
+					$self->requalify_package_functions($file_name);
 				};
 				$child_count++;
 			} else {
-				$self->requalify_package_functions($file_to_update{$pname}{$fname});
+				$self->requalify_package_functions($file_name);
 			}
-		}
 	}
 
 	# Wait for all child end
