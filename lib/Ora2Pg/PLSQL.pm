@@ -997,6 +997,22 @@ sub plsql_to_plpgsql
 	# TO_CLOB(), we just remove it
 	$str =~ s/TO_CLOB\s*\(/\(/igs;
 
+	if ($class->{use_orafce}) {
+		# Parameterless orafce functions need the parentheses in PL/pgSQL (dbms_utility.format_call_stack
+		# is parsed as a column reference otherwise)
+		$str =~ s/\b(DBMS_UTILITY\.(?:FORMAT_CALL_STACK|GET_TIME)|DBMS_RANDOM\.(?:RANDOM|NORMAL|VALUE))\b(?!\s*[\(\.\w\$#])/$1()/igs;
+		# orafce has dbms_output.put_line(text) only, while Oracle accepts a number or a date: cast the
+		# argument unless it is a literal or a concatenation, which are already text
+		$str =~ s{(DBMS_OUTPUT\.PUT(?:_LINE)?\s*)(\((?:[^()]++|(?2))*\))}{
+			my ($pre, $args) = ($1, $2);
+			my $inner = substr($args, 1, -1);
+			my $top = $inner;
+			1 while ($top =~ s/\([^()]*\)//g);    # keep the top level only
+			($inner =~ /^\s*\?TEXTVALUE\d+\?\s*$/ || $inner =~ /^\s*$/ || $top =~ m{\|\|} || $inner =~ /::text\s*$/i)
+				? "$pre$args" : "$pre(($inner)::text)";
+		}iegs;
+	}
+
 	# Raise information to the client
 	if (!$class->{use_orafce}) {
 		$str =~ s/DBMS_OUTPUT\.(put_line|put|new_line)\s*\((.*?)\)\s*;/&raise_output($class, $2) . ';'/isge;
