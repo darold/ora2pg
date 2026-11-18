@@ -390,6 +390,15 @@ is($o->{dblink}{OTHERDB}{owner}, 'APP', 'USING-only link: owner is the schema');
 	unlike($out, qr/\|\|\s*o\.p\s+ORDER\s*,/, 'no bare ORDER as alias');
 }
 
+# Quoted "ORDER" after concat (v_tmc_zvk_log) -> AS "order" after VIEW lowercase pass
+{
+	my ($out) = DblinkTest::convert(
+		q{SELECT DISTINCT z.заявка||'/'||o.оплата "ORDER", LOGS.OPER_DT FROM заявка z, оплата o, t LOGS},
+		type => 'VIEW', use_orafce => 1, idxcomment => 0, dblink_mode => 'off');
+	like($out, qr/оплата\s+AS\s+"order"\s*,/i, 'quoted ORDER alias -> AS "order"');
+	unlike($out, qr/оплата\s+order\s*,/i, 'no bare order after Cyrillic concat');
+}
+
 # Quoted alias "FROM" must not break rewrite_from_table_aliases (v_cash_c_depo_list)
 {
 	my ($out) = DblinkTest::convert(

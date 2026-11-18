@@ -663,6 +663,8 @@ sub convert_plsql_code
 		if (uc($class->{type} // '') eq 'VIEW');
 	$str = rewrite_generate_series_orphan_level($str)
 		if ($str =~ /\bgenerate_series\s*\(\s*1\s*,/i);
+	$str = rewrite_reserved_order_select_alias($str)
+		if (grep { uc($class->{type} // '') eq $_ } qw(VIEW FUNCTION PROCEDURE PACKAGE QUERY));
 
 	return $str;
 }
@@ -1128,7 +1130,7 @@ sub plsql_to_plpgsql
 	# Fix some reserved keyword that could be used in a query
 	$str =~ s/(\s+)(month|year)([\s,])/$1"$2"$3/igs;
 	# PG reserved column aliases (Oracle allows unquoted ORDER / DAY / quoted "FROM" in views)
-	$str =~ s/(\|\||\)|'(?:''|[^'])*'|[\p{L}\p{N}_\$#])\s+ORDER\s*,/$1 AS "order",/igs;
+	$str = rewrite_reserved_order_select_alias($str);
 	$str =~ s/(-?\d+)\s+DAY(\s+FROM\b)/$1 AS day$2/igs;
 	$str =~ s/\bAS\s+FROM"\s*,/AS "from",/igs;
 	$str =~ s/([\p{L}\p{N}_\$#.])\s+AS\s+FROM\s*,/$1 AS "from",/igs;
@@ -4189,6 +4191,15 @@ sub _connect_by_level_counter_rewrite
 	$sel =~ s/(\))\s+YEAR(\s+FROM\b)/$1 AS year$2/igs;
 	$sel =~ s/(\))\s+MONTH(\s+FROM\b)/$1 AS month$2/igs;
 	return "$sel FROM generate_series(1, $lim) AS gs";
+}
+
+# Oracle unquoted/quoted ORDER column alias -> AS "order" (PG reserved word)
+sub rewrite_reserved_order_select_alias
+{
+	my ($str) = @_;
+	$str =~ s/(\|\||\)|'(?:''|[^'])*'|[\p{L}\p{N}_\$#])\s+"ORDER"\s*,/$1 AS "order",/ig;
+	$str =~ s/(\|\||\)|'(?:''|[^'])*'|[\p{L}\p{N}_\$#])\s+order\s*,/$1 AS "order",/igs;
+	return $str;
 }
 
 sub rewrite_generate_series_orphan_level
