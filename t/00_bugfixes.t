@@ -433,6 +433,22 @@ is($o->{dblink}{OTHERDB}{owner}, 'APP', 'USING-only link: owner is the schema');
 	unlike($out, qr/"CD_A"/, 'no quoted uppercase on fdw pass-through');
 }
 
+# Same via export_view path (_format_view), not only convert_plsql_code
+{
+	my $o = bless {
+		type => 'VIEW', plsql_pgsql => 1, use_orafce => 1, preserve_case => 0,
+		schema => 'payment', dblink_mode => 'fdw', dblink_server => { HP200 => 'hp200_abc' },
+		dblink_exclude => {}, text_values => {}, comment_values => {}, text_values_pos => 0,
+		function_metadata => {}, idxcomment => 0, replaced_cols => {},
+	}, 'Ora2Pg';
+	my $text = q{select "CD_A","FULL_NAME" from abc.agent@hp200};
+	$o->_remove_comments(\$text);
+	my $out = $o->_format_view('wabc_agent', $text);
+	like($out, qr/select\s+cd_a\s*,\s*full_name\s+from\s+fdw_hp200_abc\.agent/i,
+		'_format_view: fdw pass-through cols lowered');
+	unlike($out, qr/"CD_A"/, '_format_view: no quoted uppercase on fdw');
+}
+
 # Dotted SELECT alias with slash: AS доп.кол-во_б/д (v_bo_doc_post_b4)
 {
 	my ($out) = DblinkTest::convert(

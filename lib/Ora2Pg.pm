@@ -16506,6 +16506,7 @@ sub _format_view
 
 	if ($self->{plsql_pgsql}) {
 		$sqlstr = Ora2Pg::PLSQL::convert_plsql_code($self, $sqlstr);
+		$sqlstr = Ora2Pg::PLSQL::lowercase_fdw_pass_through_columns($sqlstr);
 	}
 
 	$self->_restore_comments(\$sqlstr);
