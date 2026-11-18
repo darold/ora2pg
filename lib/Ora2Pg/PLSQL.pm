@@ -657,7 +657,18 @@ sub convert_plsql_code
 	$str = repair_torn_alias_quotes($str);
 	$str = strip_export_schema_table_prefix($class, $str)
 		if (grep { uc($class->{type} // '') eq $_ } qw(VIEW FUNCTION PROCEDURE PACKAGE));
+	$str = lowercase_fdw_pass_through_columns($str)
+		if (uc($class->{type} // '') eq 'VIEW');
 
+	return $str;
+}
+
+# SELECT "CD_A",... FROM fdw_* — PG foreign tables expose unquoted lowercase cols
+sub lowercase_fdw_pass_through_columns
+{
+	my ($str) = @_;
+	return $str unless $str =~ /\bFROM\s+fdw_/i;
+	$str =~ s/"([A-Z][A-Z0-9_]*)"/lc($1)/g;
 	return $str;
 }
 

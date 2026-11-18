@@ -422,6 +422,17 @@ is($o->{dblink}{OTHERDB}{owner}, 'APP', 'USING-only link: owner is the schema');
 	is($o->quote_object_name('Доп.Кол-во_Б/Д'), '"доп.кол-во_б/д"', 'dotted slash column quoted as one id');
 }
 
+# FDW pass-through view: Oracle quoted uppercase columns -> lowercase (wabc_agent)
+{
+	my ($out) = DblinkTest::convert(
+		q{SELECT "CD_A","FULL_NAME" FROM abc.agent@HP200},
+		type => 'VIEW', use_orafce => 1, idxcomment => 0, dblink_mode => 'fdw',
+		dblink_server => { HP200 => 'hp200_abc' });
+	like($out, qr/select\s+cd_a\s*,\s*full_name\s+from\s+fdw_hp200_abc\.agent/i,
+		'quoted Oracle cols lowered for fdw table');
+	unlike($out, qr/"CD_A"/, 'no quoted uppercase on fdw pass-through');
+}
+
 # Dotted SELECT alias with slash: AS доп.кол-во_б/д (v_bo_doc_post_b4)
 {
 	my ($out) = DblinkTest::convert(
