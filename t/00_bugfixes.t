@@ -525,6 +525,30 @@ is($o->{dblink}{OTHERDB}{owner}, 'APP', 'USING-only link: owner is the schema');
 	my $out = $o->_format_view('v_cash_c_depo_scheme', $text);
 	unlike($out, qr/обеспечение\."ВЕДОМОСТЬ"/, 'no quoted ALL_CAPS col on Cyrillic alias');
 	like($out, qr/обеспечение\.ведомость/i, 'unwrap quoted column on Cyrillic table alias');
+	unlike($out, qr/'\.'\.lc\(/, 'no Perl lc() template in view SQL');
+}
+
+# v_acc_tree_bo: Latin alias + quoted Cyrillic columns (0.1.31 lc($1) regression)
+{
+	my $o = bless {
+		type => 'VIEW', plsql_pgsql => 1, use_orafce => 1, preserve_case => 0,
+		schema => 'payment', dblink_mode => 'off', replaced_cols => {},
+		text_values => {}, comment_values => {}, text_values_pos => 0,
+		function_metadata => {}, idxcomment => 0,
+	}, 'Ora2Pg';
+	my $text = q{Select distinct SS."УРОВЕНЬ",SS."СТАТЬЯ" From (select 1 from dual) SS};
+	$o->_remove_comments(\$text);
+	my $out = $o->_format_view('v_acc_tree_bo', $text);
+	like($out, qr/Ss\.уровень,\s*Ss\.статья/i, 'SS."COL" -> Ss.col in SELECT');
+	unlike($out, qr/'\.'\.lc\(/, 'quoted-column rewrite does not leak lc()');
+}
+
+# lowercase_quoted_oracle_uppercase_columns must mutate (no /r on s///)
+{
+	my $s = q{SS."УРОВЕНЬ", "CD_A"};
+	is(Ora2Pg::PLSQL::lowercase_quoted_oracle_uppercase_columns($s),
+		q{SS.уровень, cd_a},
+		'quoted ALL_CAPS stripped in place');
 }
 
 # CONNECT BY recursive arm: LEVEL -> (c.level+1) as level
