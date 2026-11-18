@@ -316,7 +316,7 @@ is($o->{dblink}{OTHERDB}{owner}, 'APP', 'USING-only link: owner is the schema');
 	my ($out) = DblinkTest::convert(
 		q{SELECT t.type, счет.валюта FROM счет, (SELECT '1' type FROM DUAL) t WHERE "СЧЕТ"."В_РАБОТЕ" = -1},
 		type => 'VIEW', use_orafce => 1, idxcomment => 0, dblink_mode => 'off');
-	like($out, qr/WHERE\s+счет\."В_РАБОТЕ"\s*=/i,
+	like($out, qr/WHERE\s+счет\.в_работе\s*=/i,
 		'quoted FROM table in WHERE mapped to unquoted FROM name');
 	unlike($out, qr/"СЧЕТ"\s*\.\s*"/, 'no quoted uppercase table ref in WHERE');
 }
@@ -326,7 +326,7 @@ is($o->{dblink}{OTHERDB}{owner}, 'APP', 'USING-only link: owner is the schema');
 	my ($out) = DblinkTest::convert(
 		q{SELECT t1.type, счет.валюта FROM счет, (SELECT 'x' type FROM DUAL) t1 WHERE "СЧЕТ"."В_РАБОТЕ" = -1},
 		type => 'VIEW', use_orafce => 1, idxcomment => 0, dblink_mode => 'off');
-	like($out, qr/WHERE\s+счет\."В_РАБОТЕ"\s*=/i, 'bare FROM table: quoted WHERE -> счет.');
+	like($out, qr/WHERE\s+счет\.в_работе\s*=/i, 'bare FROM table: quoted WHERE -> счет.');
 }
 
 # v_subrep_year YEAR alias + nested WITH fragment
@@ -433,6 +433,16 @@ is($o->{dblink}{OTHERDB}{owner}, 'APP', 'USING-only link: owner is the schema');
 	unlike($out, qr/"CD_A"/, 'no quoted uppercase on fdw pass-through');
 }
 
+# Quoted Oracle ALL_CAPS Cyrillic columns on local tables (v_cash_c_depo_scheme)
+{
+	my ($out) = DblinkTest::convert(
+		q{SELECT о."ВЕДОМОСТЬ", о."СЧЕТ", счет.наименование FROM обеспечение о, счет},
+		type => 'VIEW', use_orafce => 1, idxcomment => 0, dblink_mode => 'off');
+	like($out, qr/SELECT\s+о\.ведомость,\s*о\.счет,\s*счет\.наименование/i,
+		'quoted uppercase Cyrillic cols -> lowercase');
+	unlike($out, qr/"ВЕДОМОСТЬ"/, 'no quoted uppercase column refs');
+}
+
 # Same via export_view path (_format_view), not only convert_plsql_code
 {
 	my $o = bless {
@@ -490,6 +500,39 @@ is($o->{dblink}{OTHERDB}{owner}, 'APP', 'USING-only link: owner is the schema');
 	$o->requalify_function_call(\$v);
 	like($v, qr/payment\.dlook\(валюта_фикс, statement_timestamp\(\)::timestamp\(0\)\)/,
 		'bare DLook qualified and timestamp cast');
+}
+
+# Mixed-case DLook + non-SYSDATE args (inet_rate_budget class)
+{
+	my $o = bless({ schema => 'payment', functions => { DLOOK => { owner => 'payment' } } }, 'Ora2Pg');
+	my $v = '* DLook(валюта_фикс, ведомость) / DLook(валюта, ведомость)';
+	$o->requalify_function_call(\$v);
+	like($v, qr/payment\.dlook\(валюта_фикс, ведомость\)/, 'DLook -> payment.dlook case-insensitive');
+}
+
+# _format_view: Cyrillic FROM alias + quoted Oracle columns (v_cash_c_depo_scheme)
+{
+	my $o = bless {
+		type => 'VIEW', plsql_pgsql => 1, use_orafce => 1, preserve_case => 0,
+		schema => 'payment', dblink_mode => 'off', replaced_cols => {},
+		text_values => {}, comment_values => {}, text_values_pos => 0,
+		function_metadata => {}, idxcomment => 0,
+	}, 'Ora2Pg';
+	my $text = join(' ',
+		'SELECT обеспечение."ВЕДОМОСТЬ",обеспечение."СЧЕТ",счет.наименование',
+		'FROM обеспечение, счет WHERE обеспечение.счет = счет.счет');
+	$o->_remove_comments(\$text);
+	my $out = $o->_format_view('v_cash_c_depo_scheme', $text);
+	unlike($out, qr/обеспечение\."ВЕДОМОСТЬ"/, 'no quoted ALL_CAPS col on Cyrillic alias');
+	like($out, qr/обеспечение\.ведомость/i, 'unwrap quoted column on Cyrillic table alias');
+}
+
+# CONNECT BY recursive arm: LEVEL -> (c.level+1) as level
+{
+	my ($out) = DblinkTest::convert(
+		q{SELECT 0 as уровень, id, LEVEL FROM t WHERE id = 1 START WITH parent IS NULL CONNECT BY PRIOR id = parent},
+		type => 'FUNCTION', use_orafce => 1, idxcomment => 0, dblink_mode => 'off');
+	like($out, qr/\(c\.level\+1\)\s+as\s+level/i, 'recursive LEVEL gets CTE column alias');
 }
 
 done_testing();

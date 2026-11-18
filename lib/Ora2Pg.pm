@@ -16479,7 +16479,7 @@ sub _format_view
 		$tmp =~ s/,/ /g;
 		my @tmp_tbs = split(/\s+/, $tmp);
 		foreach my $p (@tmp_tbs) {
-			push(@tbs, $p) if ($p =~ /^[A-Z_0-9\$]+$/i);
+			push(@tbs, $p) if ($p =~ /^[\w\$#]+$/u);
 		}
 	}
 	foreach my $tb (@tbs) {
@@ -16487,8 +16487,8 @@ sub _format_view
 		my $regextb = $tb;
 		$regextb =~ s/\$/\\\$/g;
 		if (!$self->{preserve_case}) {
-			# Escape column name
-			$sqlstr =~ s/["']*\b$regextb\b["']*\.["']*([A-Z_0-9\$]+)["']*(,?)/$tb.$1$2/igs;
+			# Escape column name (quoted Oracle ALL_CAPS / Cyrillic -> unquoted PG fold)
+			$sqlstr =~ s/["']*\Q$regextb\E["']*\.["']([^"']+)["'](,?)/$tb.'.'.lc($1).$2/igsu;
 			# Escape table name
 			$sqlstr =~ s/(^=\s?)["']*\b$regextb\b["']*/$tb/igs;
 		} else {
@@ -16513,6 +16513,8 @@ sub _format_view
 
 	if ($self->{plsql_pgsql}) {
 		$sqlstr = Ora2Pg::PLSQL::convert_plsql_code($self, $sqlstr);
+		$sqlstr = Ora2Pg::PLSQL::lowercase_quoted_oracle_uppercase_columns($sqlstr)
+			if (!$self->{preserve_case});
 		$sqlstr = Ora2Pg::PLSQL::lowercase_fdw_pass_through_columns($sqlstr);
 	}
 
@@ -22568,7 +22570,7 @@ sub requalify_function_call
 			next if ($pkg_fn{lc($f)});
 			my $flc = lc($f);
 			# After convert_plsql_code identifiers are lowercase; qualify bare calls for VIEW export
-			$$str =~ s/(?<![\.\w\$#])\Q$flc\E\s*\(/$schema.$flc(/igs;
+			$$str =~ s/(?<![\.\w\$#])\b$flc\s*\(/$schema.$flc(/igs;
 		}
 	}
 

@@ -657,9 +657,24 @@ sub convert_plsql_code
 	$str = repair_torn_alias_quotes($str);
 	$str = strip_export_schema_table_prefix($class, $str)
 		if (grep { uc($class->{type} // '') eq $_ } qw(VIEW FUNCTION PROCEDURE PACKAGE));
+	$str = lowercase_quoted_oracle_uppercase_columns($str)
+		if (uc($class->{type} // '') eq 'VIEW' && !$class->{preserve_case});
 	$str = lowercase_fdw_pass_through_columns($str)
 		if (uc($class->{type} // '') eq 'VIEW');
 
+	return $str;
+}
+
+# Oracle quoted ALL_CAPS column id -> unquoted lowercase (PG table.sql uses lowercase)
+sub lowercase_quoted_oracle_uppercase_columns
+{
+	my ($str) = @_;
+	$str =~ s/"([^"]+)"/
+		my $id = $1;
+		($id =~ /\p{Ll}/) ? qq{"$id"}
+			: ($id =~ /^[\p{Lu}\p{N}_\$#]+$/) ? lc($id)
+			: qq{"$id"}
+	/ger;
 	return $str;
 }
 
@@ -4434,7 +4449,9 @@ sub replace_connect_by
 		}
 		my $level_incr = "(c.$level_cte_col+1)";
 		if ($columns[$i] !~ s/\b[^\.]+\.LEVEL\b/$level_incr/igs) {
-			$columns[$i] =~ s/\bLEVEL\b/$level_incr/igs;
+			if ($columns[$i] =~ s/\bLEVEL\b/$level_incr/igs) {
+				$columns[$i] .= " as $level_cte_col" if ($columns[$i] !~ /\sas\s/i);
+			}
 		}
 		extract_subpart($class, \$columns[$i]);
 
