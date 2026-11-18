@@ -173,6 +173,20 @@ is($o->{dblink}{OTHERDB}{owner}, 'APP', 'USING-only link: owner is the schema');
 	like($out, qr/tab1\.col_y/, 'alias used in SELECT');
 }
 
+# UNION ALL: alias rewrite must run per SELECT (v_budget_bdr class)
+{
+	my ($out) = DblinkTest::convert(
+		"CREATE OR REPLACE VIEW v_x AS\n".
+		"SELECT a.k FROM app.t1 a, app.t2 b WHERE b.k = a.k\n".
+		"UNION ALL\n".
+		"SELECT a.k FROM app.t1 a, app.t2 b\n".
+		"LEFT OUTER JOIN app.t3 c ON (a.k = c.k)\n".
+		"WHERE app.t2.k = app.t3.k",
+		type => 'VIEW', use_orafce => 1, idxcomment => 0, dblink_mode => 'off');
+	unlike($out, qr/app\.t2\.k/, 'UNION branch: schema.table dropped in WHERE');
+	like($out, qr/WHERE\s+b\.k\s*=\s*c\.k/is, 'UNION branch: aliases in second WHERE');
+}
+
 # Cyrillic schema.table + comma-FROM + LEFT JOIN (inet_detail / inet_payment class)
 {
 	my ($out) = DblinkTest::convert(
@@ -224,6 +238,20 @@ is($o->{dblink}{OTHERDB}{owner}, 'APP', 'USING-only link: owner is the schema');
 		type => 'VIEW', use_orafce => 1, idxcomment => 0, dblink_mode => 'off');
 	like($out, qr/\(c\.уровень\+1\)/, 'CONNECT BY LEVEL alias uses cte column in recursive arm');
 	unlike($out, qr/\(c\.level\+1\)\s+As\s+уровень/i, 'no hardcoded c.level for LEVEL as уровень');
+}
+
+# ORDER SIBLINGS BY: outer SELECT ORDER BY hierarchy, no empty WHERE (v_cfo_tree class)
+{
+	my ($out) = DblinkTest::convert(
+		"SELECT level as lvl, d.id, d.name FROM app.dept d, app.item i\n".
+		"WHERE d.id = i.dept_id(+)\n".
+		"START WITH d.parent_id IS NULL CONNECT BY PRIOR d.id = d.parent_id\n".
+		"ORDER SIBLINGS BY d.sort_k, i.name",
+		type => 'VIEW', use_orafce => 1, idxcomment => 0, dblink_mode => 'off');
+	like($out, qr/SELECT \* FROM cte ORDER BY hierarchy/is, 'ORDER SIBLINGS: final ORDER BY hierarchy');
+	unlike($out, qr/FROM cte WHERE\s+ORDER BY/i, 'ORDER SIBLINGS: no empty WHERE before ORDER BY');
+	like($out, qr/JOIN cte c ON \(c\.id = d\.parent_id\)/, 'ORDER SIBLINGS: prior join keeps child alias');
+	unlike($out, qr/JOIN cte c ON \([^)]*f\.d\./, 'prior join: no bogus first-FROM alias on rhs');
 }
 
 # CONNECT BY LEVEL <= N from DUAL -> generate_series

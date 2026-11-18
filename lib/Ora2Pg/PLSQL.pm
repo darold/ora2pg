@@ -4125,7 +4125,14 @@ sub replace_connect_by
 		}
 		@prior_clause = @rebuild_prior;
 		# Remove table aliases from prior clause (PRIOR may already be lowercased)
-		map { s/\s*PRIOR\s*//is; s/[^\s\.=<>!]+\.//s; } @prior_clause;
+		map {
+			s/\s*PRIOR\s*//is;
+			if (/^\s*(.*?)\s*=\s*(.*?)\s*$/s) {
+				my ($l, $r) = ($1, $2);
+				$l =~ s/^[^\s\.]+\.//s;
+				$_ = "$l = $r";
+			}
+		} @prior_clause;
 	}
 
 	my $bkup_query = $str;
@@ -4272,7 +4279,13 @@ sub replace_connect_by
 		$bkup_query =~ s/(\s+FROM\s+)/, array_append(c.hierarchy, row_number() OVER (ORDER BY $siblings))  as hierarchy$1/is;
 	}
 	$final_query .= $bkup_query;
-	map { s/^\s*(.*?)(=\s*)(.*)/c\.$1$2$prior_alias$3/s; } @prior_clause;
+	map {
+		s/^\s*(.*?)(\s*=\s*)(.*?)\s*$/;
+		my ($lhs, $eq, $rhs) = ($1, $2, $3);
+		$lhs =~ s/^[^\s\.]+\.//s;
+		$rhs = "$prior_alias$rhs" if ($prior_alias && $rhs !~ /\./);
+		$_ = "c.$lhs$eq$rhs";
+	} @prior_clause;
 	map { s/\s+$//s; s/^\s+//s; } @prior_clause;
 	$final_query .= " JOIN cte c ON (" . join(' AND ', @prior_clause) . ")\n";
 	if ($siblings) {
@@ -4281,6 +4294,8 @@ sub replace_connect_by
 		$order_by =~ s/^, //s;
 		$order_by = " ORDER BY $order_by";
 	}
+	# Outer SELECT must not get an empty WHERE (common after (+) moved joins off WHERE)
+	$where_clause = '' if ($where_clause !~ /WHERE\s+\S/is);
 	$final_query .= "\n) SELECT *$into_clause FROM cte$where_clause$union$group_by$order_by";
 
 	return $final_query;
@@ -4337,6 +4352,26 @@ sub _from_alias_map_add
 # JOIN clause keywords (ON, USING, ...) must not be mistaken for table aliases —
 # otherwise "LEFT JOIN t ON (...)" rewrites t.col -> on.col (PG reserved word).
 sub rewrite_from_table_aliases
+{
+	my ($class, $stmt) = @_;
+	return $stmt if ($stmt !~ /\bFROM\b/is);
+
+	if ($stmt =~ /\bUNION(?:\s+ALL)?\b/is) {
+		my @parts = split(/(\bUNION(?:\s+ALL)?\b)/i, $stmt);
+		my $out = '';
+		for my $p (@parts) {
+			if ($p =~ /^\s*UNION(?:\s+ALL)?\s*$/is) {
+				$out .= $p;
+			} else {
+				$out .= rewrite_from_table_aliases_single($class, $p);
+			}
+		}
+		return $out;
+	}
+	return rewrite_from_table_aliases_single($class, $stmt);
+}
+
+sub rewrite_from_table_aliases_single
 {
 	my ($class, $stmt) = @_;
 	return $stmt if ($stmt !~ /\bFROM\b/is);
