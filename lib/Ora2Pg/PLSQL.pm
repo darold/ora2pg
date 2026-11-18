@@ -4279,13 +4279,14 @@ sub replace_connect_by
 		$bkup_query =~ s/(\s+FROM\s+)/, array_append(c.hierarchy, row_number() OVER (ORDER BY $siblings))  as hierarchy$1/is;
 	}
 	$final_query .= $bkup_query;
-	map {
-		s/^\s*(.*?)(\s*=\s*)(.*?)\s*$/;
-		my ($lhs, $eq, $rhs) = ($1, $2, $3);
-		$lhs =~ s/^[^\s\.]+\.//s;
-		$rhs = "$prior_alias$rhs" if ($prior_alias && $rhs !~ /\./);
-		$_ = "c.$lhs$eq$rhs";
-	} @prior_clause;
+	for my $i (0 .. $#prior_clause) {
+		if ($prior_clause[$i] =~ /^\s*(.*?)(\s*=\s*)(.*?)\s*$/s) {
+			my ($lhs, $eq, $rhs) = ($1, $2, $3);
+			$lhs =~ s/^[^\s\.]+\.//s;
+			$rhs = "$prior_alias$rhs" if ($prior_alias && $rhs !~ /\./);
+			$prior_clause[$i] = "c.$lhs$eq$rhs";
+		}
+	}
 	map { s/\s+$//s; s/^\s+//s; } @prior_clause;
 	$final_query .= " JOIN cte c ON (" . join(' AND ', @prior_clause) . ")\n";
 	if ($siblings) {
