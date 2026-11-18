@@ -1529,6 +1529,7 @@ sub translate_statement
 
 	# Replacement of connect by with CTE
 	$stmt = replace_connect_by($class, $stmt);
+	$stmt = rewrite_generate_series_orphan_level($stmt);
 
 	# schema.table.col in SELECT/WHERE while FROM lists schema.table alias (PG invalid ref)
 	$stmt = rewrite_from_table_aliases($class, $stmt);
@@ -4003,9 +4004,18 @@ sub _connect_by_level_counter_rewrite
 	my $sel = $qry;
 	$sel =~ s/\s+FROM\s+(?:[\w\$#.]+\s+)?DUAL\s+CONNECT\s+BY\s+LEVEL\s*<=\s*\Q$lim\E\b\s*$//is;
 	$sel =~ s/\s+CONNECT\s+BY\s+LEVEL\s*<=\s*\Q$lim\E\b\s*$//is;
-	# LEVEL in CONNECT BY tail is gone; remaining LEVEL is the row counter in SELECT
-	$sel =~ s/(?<![.\w])level(?![.\w])/gs/igs;
+	# CONNECT BY tail is removed; any remaining LEVEL is the row counter in SELECT
+	$sel =~ s/\bLEVEL\b/gs/igs;
 	return "$sel FROM generate_series(1, $lim) AS gs";
+}
+
+sub rewrite_generate_series_orphan_level
+{
+	my ($str) = @_;
+	return $str if ($str !~ /\bgenerate_series\s*\(\s*1\s*,/i);
+	return $str if ($str =~ /\bCONNECT\s+BY\b/is);
+	$str =~ s/\bLEVEL\b/gs/ig;
+	return $str;
 }
 
 sub rewrite_connect_by_level_counters
@@ -4039,6 +4049,7 @@ sub replace_connect_by
 	# Match tail FROM DUAL CONNECT BY (not the first FROM inside EXTRACT(...) etc.)
 	if ($str !~ /\bPRIOR\b/is) {
 		$str = rewrite_connect_by_level_counters($str);
+		$str = rewrite_generate_series_orphan_level($str);
 		return $str if ($str !~ /\bCONNECT\s+BY\b/is);
 	}
 
@@ -4453,9 +4464,14 @@ sub rewrite_from_table_aliases_single
 		my ($text) = @_;
 		foreach my $full (sort { length($b) <=> length($a) } keys %alias_of_full) {
 			my $alias = $alias_of_full{$full};
+			my $base = $full;
+			$base =~ s/^.*\.//;
 			next if (lc($full) eq lc($alias) && $full !~ /\./);
 			my $esc = quotemeta($full);
 			$text =~ s/(?<![\p{L}\p{N}_\$#\.])$esc\.($id)/$alias.$1/igu;
+			# Oracle quoted table in WHERE/SELECT vs unquoted Cyrillic name in FROM
+			$text =~ s/(?<![\p{L}\p{N}_\$#\.])"([^"]+)"\s*\./
+				(lc($1) eq lc($base) || lc($1) eq lc($full)) ? "$alias." : qq{"$1".}/ige;
 		}
 		return $text;
 	};

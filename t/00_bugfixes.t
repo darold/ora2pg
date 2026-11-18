@@ -276,6 +276,26 @@ is($o->{dblink}{OTHERDB}{owner}, 'APP', 'USING-only link: owner is the schema');
 	unlike($out, qr/\bLEVEL\b/i, 'WITH: no orphan LEVEL');
 }
 
+# CONNECT BY LEVEL in nested FROM subquery (v_subrep_year inner arm)
+{
+	my ($out) = DblinkTest::convert(
+		"SELECT v.yr FROM (SELECT to_char(EXTRACT(YEAR FROM statement_timestamp()) - LEVEL + 1) yr ".
+		"FROM DUAL CONNECT BY LEVEL <= 5) v",
+		type => 'VIEW', use_orafce => 1, idxcomment => 0, dblink_mode => 'off');
+	like($out, qr/-\s*gs\s*\+\s*1/, 'nested FROM: LEVEL -> gs in SELECT');
+	unlike($out, qr/\bLEVEL\b/i, 'nested FROM: no orphan LEVEL');
+}
+
+# Quoted Oracle table in WHERE vs unquoted Cyrillic FROM (v_week_rep_padding)
+{
+	my ($out) = DblinkTest::convert(
+		q{SELECT t.type, счет.валюта FROM счет, (SELECT '1' type FROM DUAL) t WHERE "СЧЕТ"."В_РАБОТЕ" = -1},
+		type => 'VIEW', use_orafce => 1, idxcomment => 0, dblink_mode => 'off');
+	like($out, qr/WHERE\s+счет\."В_РАБОТЕ"\s*=/i,
+		'quoted FROM table in WHERE mapped to unquoted FROM name');
+	unlike($out, qr/"СЧЕТ"\s*\.\s*"/, 'no quoted uppercase table ref in WHERE');
+}
+
 # TO_CHAR with nls_date_language third arg (xcal class)
 {
 	my ($out) = DblinkTest::convert(
