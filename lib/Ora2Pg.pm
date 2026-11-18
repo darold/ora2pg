@@ -10717,6 +10717,15 @@ sub fix_function_call
 		}
 		usleep(50000);
 	}
+
+	# CI exports each TYPE in a separate ora2pg run (VIEW before PACKAGE). pass2 on VIEW
+	# cannot see package_functions yet; re-run requalify on bulk SQL after PACKAGE.
+	if ($self->{type} eq 'PACKAGE' && $self->{package_as_schema}) {
+		foreach my $bulk (qw(view.sql function.sql procedure.sql mview.sql)) {
+			my $path = $dirprefix . $bulk;
+			$self->requalify_package_functions($path) if (-f $path);
+		}
+	}
 }
 
 # Requalify function call by using double quoted if necessary and by replacing
