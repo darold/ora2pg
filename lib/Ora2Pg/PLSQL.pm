@@ -1128,8 +1128,6 @@ sub plsql_to_plpgsql
 	# PG reserved column aliases (Oracle allows unquoted ORDER / DAY / quoted "FROM" in views)
 	$str =~ s/(\|\||\)|'(?:''|[^'])*'|[\p{L}\p{N}_\$#])\s+ORDER\s*,/$1 AS "order",/igs;
 	$str =~ s/(-?\d+)\s+DAY(\s+FROM\b)/$1 AS day$2/igs;
-	$str =~ s/(\))\s+YEAR(\s+FROM\b)/$1 AS year$2/igs;
-	$str =~ s/(\))\s+MONTH(\s+FROM\b)/$1 AS month$2/igs;
 	$str =~ s/\bAS\s+FROM"\s*,/AS "from",/igs;
 	$str =~ s/([\p{L}\p{N}_\$#.])\s+AS\s+FROM\s*,/$1 AS "from",/igs;
 
@@ -4196,6 +4194,9 @@ sub rewrite_generate_series_orphan_level
 	# generate_series(1,N) only comes from CONNECT BY LEVEL counter rewrite; any
 	# remaining LEVEL in the same fragment is the row counter (not hierarchy).
 	$str =~ s/\bLEVEL\b/gs/ig;
+	# CONNECT BY rewrite runs after early reserved-alias pass; PG rejects bare year/month before FROM
+	$str =~ s/(\))\s+YEAR(\s+FROM\b)/$1 AS year$2/igs;
+	$str =~ s/(\))\s+MONTH(\s+FROM\b)/$1 AS month$2/igs;
 	return $str;
 }
 
