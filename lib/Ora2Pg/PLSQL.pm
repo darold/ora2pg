@@ -3996,6 +3996,13 @@ sub find_associated_clauses
 }
 
 
+sub _connect_by_level_counter_rewrite
+{
+	my ($sel, $lim) = @_;
+	$sel =~ s{\bLEVEL\b}{gs}igs;
+	return "$sel FROM generate_series(1, $lim) AS gs";
+}
+
 sub replace_connect_by
 {
 	my ($class, $str) = @_;
@@ -4008,11 +4015,7 @@ sub replace_connect_by
 		while ($str =~ s/
 			(\bSELECT\b(?:(?!\bSELECT\b).)*)
 			\s+FROM\s+(?:[\w\$#.]+\s+)?DUAL\s+CONNECT\s+BY\s+LEVEL\s*<=\s*(\d+)\b
-		/
-			my ($sel, $lim) = ($1, $2);
-			$sel =~ s/\bLEVEL\b/gs/igs;
-			"$sel FROM generate_series(1, $lim) AS gs"
-		/sige) {}
+			/_connect_by_level_counter_rewrite($1, $2)/sige) {}
 		return $str if ($str !~ /\bCONNECT\s+BY\b/is);
 	}
 
