@@ -98,6 +98,31 @@ is($o->{dblink}{OTHERDB}{owner}, 'APP', 'USING-only link: owner is the schema');
 	is($o->get_indexname('APP.ORDERS', 'APP.CURRENCY_FACT', 'X'), 'currency_fact', 'other index names untouched');
 }
 
+# (+) with a function on the side without (+): ec.col(+) = TO_CHAR(x.other_col)
+{
+	use FindBin qw($Bin);
+	use lib "$Bin/lib";
+	require DblinkTest;
+	my ($out) = DblinkTest::convert(
+		"SELECT x.v_name FROM apps.xx x, ESS.COUNTRIES ec, ESS.TERRITORIES et\n WHERE ec.alfa2(+) = TO_CHAR (x.oebs_country)\n   AND et.code_terr(+) = x.oebs_code_terr",
+		type => 'VIEW', use_orafce => 1, idxcomment => 0, dblink_mode => 'off');
+	unlike($out, qr/,\s*to_char\w*\s*\n/i, 'no phantom FROM table from to_char()');
+	like($out, qr/LEFT OUTER JOIN ess\.countries ec ON \(TO_CHAR\(x\.oebs_country\) = ec\.alfa2\)/i,
+		'function stays in ON predicate');
+	like($out, qr/LEFT OUTER JOIN ess\.territories et ON \(x\.oebs_code_terr = et\.code_terr\)/i, 'second (+) join ok');
+}
+
+# coalesce(...) on the non-(+) side of (+)
+{
+	use FindBin qw($Bin);
+	use lib "$Bin/lib";
+	require DblinkTest;
+	my ($out) = DblinkTest::convert(
+		"SELECT 1 FROM a.b ab, ec.t ec, et.t et WHERE ec.c(+) = to_char(ab.c)\n   AND et.c(+) = coalesce(ab.a, ab.b)",
+		type => 'VIEW', use_orafce => 1, idxcomment => 0, dblink_mode => 'off');
+	unlike($out, qr/,\s*to_char\w*|,\s*coalesce\w*/i, 'no phantom FROM from coalesce/to_char');
+}
+
 # outer join with a constant and a trailing comment: "col(+) = 1 -- text"
 {
 	use FindBin qw($Bin);

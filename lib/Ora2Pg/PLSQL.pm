@@ -3722,6 +3722,40 @@ sub mssql_estimate_cost
 	return $cost, %cost_details;
 }
 
+# Outer-join (+) rewrite: distinguish alias.column from calls like to_char(x.col).
+sub outer_join_function_operand
+{
+	my ($operand) = @_;
+	return 1 if ($operand =~ /^\s*[\w\$#"]+\s*\(/s);
+	# extract_subpart() masks the argument list before replace_outer_join runs
+	return 1 if ($operand =~ /^\s*[\w\$#"]+\s*\%SUBQUERY\d+\%/s);
+	return 1 if ($operand =~ /\%REPLACEFCT\d+\%/);
+	return 0;
+}
+
+sub outer_join_table_column_ref
+{
+	my ($operand) = @_;
+	return 0 if (outer_join_function_operand($operand));
+	return ($operand =~ /^([^\.\s]+\.[^\.\s]+)\..*/ || $operand =~ /^([^\.\s]+)\..*/);
+}
+
+sub outer_join_table_alias_from_operand
+{
+	my ($operand) = @_;
+	return unless outer_join_table_column_ref($operand);
+	my $lbl;
+	if ($operand =~ /^([^\.\s]+\.[^\.\s]+)\..*/) {
+		($lbl) = ($1);
+	} elsif ($operand =~ /^([^\.\s]+)\..*/) {
+		($lbl) = ($1);
+	}
+	return unless defined $lbl;
+	$lbl = lc($lbl);
+	$lbl =~ s/\(\s*//;
+	return $lbl;
+}
+
 sub replace_outer_join
 {
 	my ($class, $str, $type) = @_;
@@ -3832,10 +3866,9 @@ sub replace_outer_join
 			# Extract the tablename part of the left clause
 			my $lbl1 = '';
 			my $table_decl1 = $l;
-			if ($l =~ /^([^\.\s]+\.[^\.\s]+)\..*/ || $l =~ /^([^\.\s]+)\..*/)
+			if (outer_join_table_column_ref($l))
 			{
-				$lbl1 = lc($1);
-				$lbl1 =~ s/\(\s*//;
+				$lbl1 = outer_join_table_alias_from_operand($l);
 				# schema.table.col written with the schema: use the alias of that FROM entry
 				if (!exists $from_clause_list{$lbl1} && exists $alias_of_table{$lbl1}) {
 					$l =~ s/^\(?\s*\Q$lbl1\E\./$alias_of_table{$lbl1}./i;
@@ -3849,7 +3882,7 @@ sub replace_outer_join
 				$table_decl1 = $from_clause_list{$lbl1};
 				$table_decl1 .= " $lbl1" if ($lbl1 ne $from_clause_list{$lbl1});
 			}
-			elsif ($l =~ /\%SUBQUERY(\d+)\%/)
+			elsif ($l =~ /\%SUBQUERY(\d+)\%/ && !outer_join_function_operand($l))
 			{
 				# Search for table.column in the subquery or function code
 				my $tmp_str = $l;
@@ -3876,16 +3909,33 @@ sub replace_outer_join
 			# Extract the tablename part of the right clause
 			my $lbl2 = '';
 			my $table_decl2 = $r;
-			if ($r =~ /^([^\.\s]+\.[^\.\s]+)\..*/ || $r =~ /^([^\.\s]+)\..*/)
+			if (outer_join_table_column_ref($r))
 			{
-				$lbl2 = lc($1);
+				$lbl2 = outer_join_table_alias_from_operand($r);
 				if (!exists $from_clause_list{$lbl2} && exists $alias_of_table{$lbl2}) {
 					$r =~ s/^\(?\s*\Q$lbl2\E\./$alias_of_table{$lbl2}./i;
 					$lbl2 = $alias_of_table{$lbl2};
 				}
 				if (!$lbl1) {
-					push(@{$other_join_clause{$lbl2}}, "$l $o $r");
-					next;
+					if (outer_join_function_operand($l)) {
+						my $arg = $l;
+						while ($arg =~ s/\%SUBQUERY(\d+)\%/$class->{sub_parts}{$1}/is) {}
+						my $inner = $arg;
+						$inner = $1 if ($arg =~ /[\w\$#"]+\s*\((.*)\)\s*\z/s);
+						if ($inner =~ /\b([^\.\s]+)\.[^\.\s]+/) {
+							my $cand = lc($1);
+							$cand = $alias_of_table{$cand} if (exists $alias_of_table{$cand});
+							if (exists $from_clause_list{$cand}) {
+								$lbl1 = $cand;
+								$table_decl1 = $from_clause_list{$lbl1};
+								$table_decl1 .= " $lbl1" if ($lbl1 ne $from_clause_list{$lbl1});
+							}
+						}
+					}
+					if (!$lbl1) {
+						push(@{$other_join_clause{$lbl2}}, "$l $o $r");
+						next;
+					}
 				}
 				# If the table/alias is not part of the from clause
 				if (!exists $from_clause_list{$lbl2}) {
@@ -3897,6 +3947,10 @@ sub replace_outer_join
 			}
 			elsif ($lbl1)
 			{
+				if (outer_join_function_operand($r)) {
+					push(@{$other_join_clause{$lbl1}}, "$l $o $r");
+					next;
+				}
 				# Search for table.column in the subquery or function code
 				my $tmp_str = $r;
 				while ($tmp_str =~ s/\%SUBQUERY(\d+)\%/$class->{sub_parts}{$1}/is)
