@@ -672,7 +672,7 @@ sub lowercase_quoted_oracle_uppercase_columns
 	$str =~ s/"([^"]+)"/
 		my $id = $1;
 		($id =~ /\p{Ll}/) ? qq{"$id"}
-			: ($id =~ /^[\p{Lu}\p{N}_\$#]+$/) ? lc($id)
+			: ($id =~ /^[\p{Lu}\p{N}_]+$/u) ? lc($id)
 			: qq{"$id"}
 	/ger;
 	return $str;
