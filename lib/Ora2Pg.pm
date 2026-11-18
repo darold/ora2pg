@@ -22530,6 +22530,26 @@ sub requalify_function_call
 			$$str =~ s/\b([\w\$#]+)\.$p\.$f\s*\(/$1.$flat(/igs;
 		}
 	}
+
+	my $schema = defined $self->{schema} ? lc($self->{schema}) : '';
+	if ($schema ne '' && ref($self->{functions}) eq 'HASH' && %{$self->{functions}}) {
+		my %pkg_fn = ();
+		foreach my $p (keys %{$self->{package_functions}}) {
+			foreach my $f (keys %{$self->{package_functions}{$p}}) {
+				$pkg_fn{lc($f)} = 1;
+			}
+		}
+		foreach my $f (keys %{$self->{functions}}) {
+			next if ($pkg_fn{lc($f)});
+			# Unqualified standalone function (DLook -> payment.dlook in views)
+			$$str =~ s/(?<![\.\w\$#])\Q$f\E\s*\(/$schema.$f(/igs;
+			$$str =~ s/\bPAYMENT\.\Q$f\E\s*\(/$schema.$f(/igs;
+		}
+	}
+
+	# dlook(text, SYSDATE) -> statement_timestamp() is timestamptz; PG fn uses timestamp(0)
+	$$str =~ s/\b([\w\$#]+)\.dlook\s*\(\s*([^,)]+),\s*statement_timestamp\s*\(\s*\)\s*\)/$1.dlook($2, statement_timestamp()::timestamp(0))/igs;
+	$$str =~ s/(?<![\.\w\$#])\bdlook\s*\(\s*([^,)]+),\s*statement_timestamp\s*\(\s*\)\s*\)/$schema.dlook($1, statement_timestamp()::timestamp(0))/igs if ($schema ne '');
 }
 
 

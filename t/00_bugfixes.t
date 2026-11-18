@@ -281,4 +281,17 @@ is($o->{dblink}{OTHERDB}{owner}, 'APP', 'USING-only link: owner is the schema');
 	is($v, 'SELECT app.pay_pack_get_val() FROM app.tbl', 'schema-qualified package call flattened');
 }
 
+# standalone schema function in view -> schema.func; SYSDATE cast for dlook
+{
+	my $o = bless {
+		schema => 'payment',
+		functions => { dlook => { text => 'x' } },
+		package_functions => {},
+	}, 'Ora2Pg';
+	my $v = 'SELECT DLook(a, statement_timestamp()) / payment.DLook(b, statement_timestamp()) FROM t';
+	$o->requalify_function_call(\$v);
+	like($v, qr/payment\.dlook\(a, statement_timestamp\(\)::timestamp\(0\)\)/, 'unqualified DLook qualified + cast');
+	like($v, qr/payment\.dlook\(b, statement_timestamp\(\)::timestamp\(0\)\)/, 'qualified DLook cast');
+}
+
 done_testing();
