@@ -891,11 +891,6 @@ sub plsql_to_plpgsql
 
 	# Replace SYSTIMESTAMP 
 	$str =~ s/\bSYSTIMESTAMP\b/statement_timestamp()/igs;
-	# Row generators must become generate_series before FROM DUAL is stripped
-	$str = rewrite_connect_by_level_counters($str);
-	# remove FROM DUAL
-	$str =~ s/FROM\s+DUAL//igs;
-	$str =~ s/FROM\s+SYS\.DUAL//igs;
 
 	# DISTINCT and UNIQUE are synonym on Oracle
 	$str =~ s/SELECT\s+UNIQUE\s+([^,])/SELECT DISTINCT $1/igs;
@@ -1276,6 +1271,10 @@ sub plsql_to_plpgsql
 	map { s/[ ]+([\r\n]+)/$1/s; } @statements;
 	map { s/[ ]+$//; } @statements;
 	$str = join(';', @statements);
+
+	# remove FROM DUAL (after CONNECT BY translation in translate_statement)
+	$str =~ s/FROM\s+DUAL//igs;
+	$str =~ s/FROM\s+SYS\.DUAL//igs;
 
 	# Rewrite some garbadged resulting from the transformation
 	while ($str =~ s/(\s+AND)\s+AND\b/$1/is) {};
