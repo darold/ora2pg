@@ -1913,10 +1913,16 @@ sub replace_oracle_function
 	$str =~ s/TO_DATE\s*\(\s*(.*)\s*,\s*(\?TEXTVALUE\d+\?)[^\)]*\)/to_date($1,$2)/igs;
 	$str =~ s/TO_DATE\s*\(\s*(.*)\s*,\s*(\?TEXTVALUE\d+\?)\s*,\s*(\?TEXTVALUE\d+\?)[^\)]*\)/to_date($1,$2)/igs;
 
+	# PostgreSQL and orafce have no RR/RRRR format fields (convert_date_format is not used with orafce)
+	$str = fix_rr_date_format($class, $str) if ($class->{use_orafce});
+
 	# When the date format is ISO and we have a constant we can remove the call to to_date()
 	if ($class->{type} eq 'PARTITION' && $class->{pg_supports_partition}) {
 		$str =~ s/to_date\(\s*('\s*\d+-\d+-\d+ \d+:\d+:\d+')\s*,\s*'[S]*YYYY-MM-DD HH24:MI:SS'[^\)]*\)/$1/igs;
 	}
+
+	# With orafce, to_date() with a time part must be oracle.to_date() (see fix_to_date_time)
+	$str = fix_to_date_time($class, $str) if ($class->{use_orafce});
 
 	# Translate to_timestamp_tz Oracle function
 	$str =~ s/TO_TIMESTAMP(?:_TZ)?\s*\((.*)\)/'to_timestamp(' . convert_date_format($class, $1, @strings) . ')'/iegs;
@@ -2276,6 +2282,44 @@ sub replace_decode
 		$case_str .= 'END ';
 		$str =~ s/\%DECODE\%/$case_str/s;
 	}
+
+	return $str;
+}
+
+# PostgreSQL and orafce do not know the RR/RRRR format fields: to_char() prints them literally and to_date()
+# misparses the year. Replace RRRR by YYYY and RR by YY in the format of TO_CHAR/TO_DATE/TO_TIMESTAMP(_TZ).
+# With TO_DATE the century window differs: PostgreSQL YY maps 70-99 to 19xx and 00-69 to 20xx.
+sub fix_rr_date_format
+{
+	my ($class, $str) = @_;
+
+	my $rr = sub { my $f = shift; $f =~ s/(?<![A-Za-z])RRRR(?![A-Za-z])/YYYY/ig; $f =~ s/(?<![A-Za-z])RR(?![A-Za-z])/YY/ig; return $f; };
+	$str =~ s{\bTO_(?:CHAR|DATE|TIMESTAMP(?:_TZ)?)\s*\((?:[^(),]|\((?:[^()]|\([^()]*\))*\))*,\s*(?:\?TEXTVALUE(\d+)\?|('[^']*'))}{
+		my ($all, $n) = ($&, $1);
+		if (defined $n) {
+			$class->{text_values}{$n} = $rr->($class->{text_values}{$n}) if (defined $class->{text_values}{$n});
+		} else {
+			$all =~ s/('[^']*')$/$rr->($1)/e;
+		}
+		$all;
+	}iegs;
+
+	return $str;
+}
+
+# The unqualified to_date(text, text) resolves to pg_catalog.to_date, which is searched before the oracle schema
+# even when the oracle schema is first in search_path. It returns a date and silently drops HH24:MI:SS, while an
+# Oracle DATE keeps the time. orafce's oracle.to_date() returns the Oracle-like date with its time part, so use
+# it for the formats that have a time field. A format without a time part keeps to_date(): the result is the same.
+sub fix_to_date_time
+{
+	my ($class, $str) = @_;
+
+	$str =~ s{(?<![\w\.\$#])to_date\s*\(((?:[^(),]|\((?:[^()]|\([^()]*\))*\))*),\s*(\?TEXTVALUE(\d+)\?|'[^']*')\s*\)}{
+		my ($all, $arg, $fmt, $n) = ($&, $1, $2, $3);
+		my $f = defined $n ? ($class->{text_values}{$n} // '') : $fmt;
+		($f =~ /(?<![A-Za-z])(?:HH12|HH24|HH|MI|SSSSS|SS|FF\d?)(?![A-Za-z])/i) ? "oracle.to_date($arg, $fmt)" : $all;
+	}iegs;
 
 	return $str;
 }
