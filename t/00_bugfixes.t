@@ -369,4 +369,32 @@ is($o->{dblink}{OTHERDB}{owner}, 'APP', 'USING-only link: owner is the schema');
 	like($v, qr/payment\.dlook\(b, statement_timestamp\(\)::timestamp\(0\)\)/, 'qualified DLook cast');
 }
 
+# Reserved column alias ORDER (unquoted in Oracle) -> AS "order"
+{
+	my ($out) = DblinkTest::convert(
+		q{SELECT z.a||'/'||o.p ORDER, o.dt FROM app.z z, app.o o},
+		type => 'VIEW', use_orafce => 1, idxcomment => 0, dblink_mode => 'off');
+	like($out, qr/\s+AS\s+"order"\s*,/i, 'unquoted ORDER alias quoted for PG');
+	unlike($out, qr/\|\|\s*o\.p\s+ORDER\s*,/, 'no bare ORDER as alias');
+}
+
+# Quoted alias "FROM" must not break rewrite_from_table_aliases (v_cash_c_depo_list)
+{
+	my ($out) = DblinkTest::convert(
+		q{SELECT a.x AS "FROM", b.y AS "TO" FROM app.a a, app.b b WHERE a.id = b.id},
+		type => 'VIEW', use_orafce => 1, idxcomment => 0, dblink_mode => 'off');
+	like($out, qr/AS\s+"from"\s*,.*AS\s+"to"\s*,/is, 'quoted FROM/TO aliases preserved');
+	unlike($out, qr/AS\s+FROM"\s*,/, 'no torn AS FROM" alias');
+}
+
+# hp200_abc server: fdw schema must not double remote owner (abc.usr@hp200)
+{
+	my ($out) = DblinkTest::convert(
+		'SELECT cd_u FROM abc.usr@hp200',
+		type => 'VIEW', use_orafce => 1, idxcomment => 0, dblink_mode => 'fdw',
+		dblink_server => { HP200 => 'hp200_abc' });
+	like($out, qr/\bfrom\s+fdw_hp200_abc\.usr\b/i, 'dblink table -> fdw_hp200_abc owner');
+	unlike($out, qr/fdw_hp200_abc_abc/, 'no duplicate _abc in fdw schema');
+}
+
 done_testing();

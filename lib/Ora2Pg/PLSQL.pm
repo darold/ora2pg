@@ -1069,6 +1069,10 @@ sub plsql_to_plpgsql
 
 	# Fix some reserved keyword that could be used in a query
 	$str =~ s/(\s+)(month|year)([\s,])/$1"$2"$3/igs;
+	# PG reserved column aliases (Oracle allows unquoted ORDER / quoted "FROM" in views)
+	$str =~ s/(\|\||\)|'(?:''|[^'])*'|[\p{L}\p{N}_\$#])\s+ORDER\s*,/$1 AS "order",/igs;
+	$str =~ s/\bAS\s+FROM"\s*,/AS "from",/igs;
+	$str =~ s/([\p{L}\p{N}_\$#.])\s+AS\s+FROM\s*,/$1 AS "from",/igs;
 
 	# Replace DEFAULT empty_blob() and empty_clob()
 	my $empty = "''";
@@ -4528,15 +4532,33 @@ sub _from_alias_map_add
 	$map->{$tbl} = $alias;
 }
 
+# Mask double-quoted identifiers so \bFROM\b etc. do not match reserved aliases (AS "FROM").
+sub _mask_double_quoted_ids
+{
+	my ($str) = @_;
+	my @q;
+	$str =~ s/"(?:[^"\n]*)"/push(@q, $&); "\x{FFFE}" . $#q . "\x{FFFF}"/ge;
+	return ($str, \@q);
+}
+
+sub _unmask_double_quoted_ids
+{
+	my ($str, $qref) = @_;
+	return $str unless $qref && @$qref;
+	$str =~ s/\x{FFFE}(\d+)\x{FFFF}/$qref->[$1]/ge;
+	return $str;
+}
+
 # Rewrite schema.table.column to alias.column when FROM defines schema.table AS alias.
 # JOIN clause keywords (ON, USING, ...) must not be mistaken for table aliases —
 # otherwise "LEFT JOIN t ON (...)" rewrites t.col -> on.col (PG reserved word).
 sub rewrite_from_table_aliases
 {
 	my ($class, $stmt) = @_;
-	return $stmt if ($stmt !~ /\bFROM\b/is);
+	my ($masked, undef) = _mask_double_quoted_ids($stmt);
+	return $stmt if ($masked !~ /\bFROM\b/is);
 
-	if ($stmt =~ /\bUNION(?:\s+ALL)?\b/is) {
+	if ($masked =~ /\bUNION(?:\s+ALL)?\b/is) {
 		my @parts = split(/(\bUNION(?:\s+ALL)?\b)/i, $stmt);
 		my $out = '';
 		for my $p (@parts) {
@@ -4554,7 +4576,8 @@ sub rewrite_from_table_aliases
 sub rewrite_from_table_aliases_single
 {
 	my ($class, $stmt) = @_;
-	return $stmt if ($stmt !~ /\bFROM\b/is);
+	my ($masked, $qstore) = _mask_double_quoted_ids($stmt);
+	return $stmt if ($masked !~ /\bFROM\b/is);
 
 	my $id   = qr/[\p{L}\p{N}_\$#]+/u;
 	my $tbl  = qr/$id(?:\.$id)*/u;
@@ -4562,7 +4585,7 @@ sub rewrite_from_table_aliases_single
 	# Tokens that follow a joined table when there is no alias
 	my $join_tail = qr/(?:ON|USING|WHERE|GROUP|HAVING|ORDER|LIMIT|OFFSET|UNION|INTERSECT|EXCEPT|INNER|LEFT|RIGHT|FULL|CROSS|NATURAL|JOIN|AND|OR)\b/i;
 
-	if ($stmt !~ /\bFROM\b(.*)/is) {
+	if ($masked !~ /\bFROM\b(.*)/is) {
 		return $stmt;
 	}
 	my $pre = $`;
@@ -4571,6 +4594,7 @@ sub rewrite_from_table_aliases_single
 	my $from_end = length($rest);
 	foreach my $kw (qw(WHERE GROUP ORDER UNION HAVING LIMIT OFFSET)) {
 		if ($rest =~ /\b$kw\b/is) {
+			next if ($kw eq 'ORDER' && substr($rest, $+[0]) =~ /^\s+BY\b/is);
 			$from_end = $-[0] if ($-[0] < $from_end);
 		}
 	}
@@ -4624,7 +4648,7 @@ sub rewrite_from_table_aliases_single
 	$from_clause =~ s/\bON\s*%SUBQUERY(\d+)%/
 		$class->{sub_parts}{$1} = $rewrite->($class->{sub_parts}{$1}) if (defined $class->{sub_parts}{$1}); "ON %SUBQUERY$1%"/ige;
 
-	return $pre . 'FROM' . $from_clause . $suffix;
+	return _unmask_double_quoted_ids($pre . 'FROM' . $from_clause . $suffix, $qstore);
 }
 
 sub replace_without_function

@@ -625,7 +625,13 @@ sub oracle_text
 sub _fdw_schema
 {
 	my ($class, $server, $owner) = @_;
-	my $s = lc(($class->{dblink_schema_prefix} // 'fdw_') . $server . (defined $owner ? "_$owner" : ''));
+	# Server name is <database>_<login> (e.g. hp200_abc); remote Oracle owner abc is
+	# already implied — do not build fdw_hp200_abc_abc (foreign tables use fdw_hp200_abc).
+	my $own = defined($owner) ? lc($owner) : undef;
+	if (defined $own && $server =~ /_\Q$own\E\z/) {
+		$own = undef;
+	}
+	my $s = lc(($class->{dblink_schema_prefix} // 'fdw_') . $server . (defined $own ? "_$own" : ''));
 	$s =~ s/[^a-z0-9_]/_/g;
 	return $s;
 }
