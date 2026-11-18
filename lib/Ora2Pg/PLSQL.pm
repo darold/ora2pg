@@ -669,12 +669,12 @@ sub convert_plsql_code
 sub lowercase_quoted_oracle_uppercase_columns
 {
 	my ($str) = @_;
-	$str =~ s/"([^"]+)"/
+	$str =~ s{"([^"]+)"}{
 		my $id = $1;
 		($id =~ /\p{Ll}/) ? qq{"$id"}
 			: ($id =~ /^[\p{Lu}\p{N}_]+$/u) ? lc($id)
 			: qq{"$id"}
-	/ger;
+	}ger;
 	return $str;
 }
 
