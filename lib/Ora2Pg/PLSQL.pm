@@ -4001,10 +4001,10 @@ sub _connect_by_level_counter_rewrite
 {
 	my ($qry, $lim) = @_;
 	my $sel = $qry;
-	# convert_plsql_code strips FROM dual before replace_connect_by runs
 	$sel =~ s/\s+FROM\s+(?:[\w\$#.]+\s+)?DUAL\s+CONNECT\s+BY\s+LEVEL\s*<=\s*\Q$lim\E\b\s*$//is;
 	$sel =~ s/\s+CONNECT\s+BY\s+LEVEL\s*<=\s*\Q$lim\E\b\s*$//is;
-	$sel =~ s{\bLEVEL\b}{gs}igs;
+	# LEVEL in CONNECT BY tail is gone; remaining LEVEL is the row counter in SELECT
+	$sel =~ s/(?<![.\w])level(?![.\w])/gs/igs;
 	return "$sel FROM generate_series(1, $lim) AS gs";
 }
 
