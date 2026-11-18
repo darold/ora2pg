@@ -22574,6 +22574,9 @@ sub requalify_function_call
 		}
 	}
 
+	# Qualify bare dlook( (mixed case in Oracle views; pass2 runs with functions hash too)
+	$$str =~ s/(?<![\.\w\$#])\bdlook\s*\(/$schema.dlook(/igs if ($schema ne '');
+
 	# dlook(text, SYSDATE) -> statement_timestamp() is timestamptz; PG fn uses timestamp(0)
 	$$str =~ s/\b([\w\$#]+)\.dlook\s*\(\s*([^,)]+),\s*statement_timestamp\s*\(\s*\)\s*\)/$1.dlook($2, statement_timestamp()::timestamp(0))/igs;
 	$$str =~ s/(?<![\.\w\$#])\bdlook\s*\(\s*([^,)]+),\s*statement_timestamp\s*\(\s*\)\s*\)/$schema.dlook($1, statement_timestamp()::timestamp(0))/igs if ($schema ne '');
