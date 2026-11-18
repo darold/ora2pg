@@ -3998,7 +3998,9 @@ sub find_associated_clauses
 
 sub _connect_by_level_counter_rewrite
 {
-	my ($sel, $lim) = @_;
+	my ($qry, $lim) = @_;
+	my $sel = $qry;
+	$sel =~ s/\s+FROM\s+(?:[\w\$#.]+\s+)?DUAL\s+CONNECT\s+BY\s+LEVEL\s*<=\s*\Q$lim\E\b\s*$//is;
 	$sel =~ s{\bLEVEL\b}{gs}igs;
 	return "$sel FROM generate_series(1, $lim) AS gs";
 }
@@ -4012,10 +4014,11 @@ sub replace_connect_by
 	# SELECT ... FROM DUAL CONNECT BY LEVEL <= N (no PRIOR): row generator, not a hierarchy
 	# Match tail FROM DUAL CONNECT BY (not the first FROM inside EXTRACT(...) etc.)
 	if ($str !~ /\bPRIOR\b/is) {
+		# Shortest SELECT … FROM dual CONNECT BY (innermost counter first)
 		while ($str =~ s/
-			(\bSELECT\b(?:(?!\bSELECT\b).)*)
+			\bSELECT\b[\s\S]*?
 			\s+FROM\s+(?:[\w\$#.]+\s+)?DUAL\s+CONNECT\s+BY\s+LEVEL\s*<=\s*(\d+)\b
-			/_connect_by_level_counter_rewrite($1, $2)/sigie) {}
+			/_connect_by_level_counter_rewrite($&, $1)/sigie) {}
 		return $str if ($str !~ /\bCONNECT\s+BY\b/is);
 	}
 
