@@ -469,4 +469,18 @@ is($o->{dblink}{OTHERDB}{owner}, 'APP', 'USING-only link: owner is the schema');
 	is($v, 'SELECT pay_pack.get_foo() FROM t', 'Pay_Pack call -> schema function with ()');
 }
 
+# Pay_Pack mixed case + Cyrillic zero-arg getter (v_cash_c_card_pay class)
+{
+	my $o = bless({
+		package_as_schema => 1, schema => 'payment',
+		package_functions => { pay_pack => {
+			get_ведомость => { name => 'x', package => 'pay_pack' },
+			get_счет => { name => 'x', package => 'pay_pack' },
+		} },
+	}, 'Ora2Pg');
+	my $v = 'And оплата.ведомость=Pay_Pack.get_ведомость';
+	$o->requalify_function_call(\$v);
+	like($v, qr/=pay_pack\.get_ведомость\(\)/, 'Pay_Pack.get_ведомость -> pay_pack.get_ведомость()');
+}
+
 done_testing();

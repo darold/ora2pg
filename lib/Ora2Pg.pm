@@ -22538,9 +22538,11 @@ sub requalify_function_call
 		foreach my $f (keys %{$self->{package_functions}{$p}}) {
 			my $flat = $self->{package_functions}{$p}{$f}{name};
 			if ($self->{package_as_schema}) {
-				# PAYMENT.Pay_Pack.get_foo -> pay_pack.get_foo(); package is a PG schema
-				$$str =~ s/\b(?:PAYMENT\.)?(?:$p|$psch)\.$f\b(?!\s*\()/$psch.$f()/igs;
-				$$str =~ s/\b(?:PAYMENT\.)?(?:$p|$psch)\.$f\s*\(/$psch.$f(/igs;
+				my $flc = lc($f);
+				# PAYMENT.Pay_Pack.get_foo -> pay_pack.get_foo(); zero-arg pack functions need ()
+				# /i: export still has Pay_Pack before lc_non_ascii in some VIEW paths
+				$$str =~ s/(?<![\.\w\$#])(?:payment\.)?\Q$p\E\.\Q$f\E\b(?!\s*\()/$psch.$flc()/ig;
+				$$str =~ s/(?<![\.\w\$#])(?:payment\.)?\Q$p\E\.\Q$f\E\s*\(/$psch.$flc(/ig;
 			} else {
 				$$str =~ s/\b$p\.$f\s*([\(;])/$flat$1/igs;
 				$$str =~ s/\b([\w\$#]+)\.$p\.$f\s*\(/$1.$flat(/igs;
