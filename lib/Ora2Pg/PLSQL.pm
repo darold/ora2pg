@@ -653,7 +653,37 @@ sub convert_plsql_code
 	}
 
 	$str = lc_non_ascii_identifiers($class, $str);
+	$str = pg_quote_dotted_select_aliases($str);
+	$str = repair_torn_alias_quotes($str);
+	$str = strip_export_schema_table_prefix($class, $str)
+		if (grep { uc($class->{type} // '') eq $_ } qw(VIEW FUNCTION PROCEDURE PACKAGE));
 
+	return $str;
+}
+
+# AS доп.кол-во_б/д -> AS "доп.кол-во_б/д" (PostgreSQL needs quotes)
+sub pg_quote_dotted_select_aliases
+{
+	my ($str) = @_;
+	$str =~ s/\bAS\s+([\p{L}\p{N}_\$#]+(?:\.[\p{L}\p{N}_\$#/\-]+)+)(?=\s*,|\s+FROM\b)/AS "$1"/ig;
+	return $str;
+}
+
+# z.c_регистрация",z. after aggressive quote strip in view export
+sub repair_torn_alias_quotes
+{
+	my ($str) = @_;
+	$str =~ s/\.([\p{L}\p{N}_\$#]+)",\s*([\p{L}\p{N}_\$#]+)\./."$1", $2./g;
+	return $str;
+}
+
+# payment.форма.кол -> форма.кол (FROM payment.форма форма)
+sub strip_export_schema_table_prefix
+{
+	my ($class, $str) = @_;
+	my $sch = lc($class->{schema} // '');
+	return $str if ($sch eq '');
+	$str =~ s/(?<![\.\w\$#])\Q$sch\E\.([\p{L}\p{N}_\$#]+)\.(?![\p{L}\p{N}_\$#]*\s*\()/$1./igu;
 	return $str;
 }
 

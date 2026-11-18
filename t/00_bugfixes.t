@@ -416,4 +416,21 @@ is($o->{dblink}{OTHERDB}{owner}, 'APP', 'USING-only link: owner is the schema');
 	unlike($out, qr/fdw_hp200_abc_abc/, 'no duplicate _abc in fdw schema');
 }
 
+# quote_object_name: dotted display name is one quoted id, not schema.column
+{
+	my $o = bless({ preserve_case => 0, use_reserved_words => 0 }, 'Ora2Pg');
+	is($o->quote_object_name('Доп.Кол-во_Б/Д'), '"доп.кол-во_б/д"', 'dotted slash column quoted as one id');
+}
+
+# PACKAGE_AS_SCHEMA: payment.Pay_Pack.get_x -> pay_pack.get_x()
+{
+	my $o = bless({
+		package_as_schema => 1, schema => 'payment',
+		package_functions => { pay_pack => { get_foo => { name => 'pay_pack_get_foo' } } },
+	}, 'Ora2Pg');
+	my $v = 'SELECT payment.Pay_Pack.get_foo FROM t';
+	$o->requalify_function_call(\$v);
+	is($v, 'SELECT pay_pack.get_foo() FROM t', 'Pay_Pack call -> schema function with ()');
+}
+
 done_testing();

@@ -776,13 +776,13 @@ sub quote_object_name
 			# then if there is non alphanumeric or the object name is a reserved word
 			if ($obj_name =~ /[^a-z0-9\_\.\$]/ || ($self->{use_reserved_words} && $self->is_reserved_words($obj_name)) || $obj_name =~ /^\d+/)
 			{
-				# Add double quote to [schema.] object name 
-				if ($obj_name !~ /^[^\.]+\.[^\.]+$/ && $obj_name !~ /^[^\.]+\.[^\.]+\.[^\.]+$/) {
-					$obj_name = '"' . $obj_name . '"';
-				} elsif ($obj_name =~ /^[^\.]+\.[^\.]+$/) {
+				# Dotted display names like "Доп.Кол-во_Б/Д" are one identifier, not schema.column
+				if ($obj_name =~ /^[a-z0-9_\$]+\.[a-z0-9_\$]+$/) {
 					$obj_name =~ s/^([^\.]+)\.([^\.]+)$/"$1"\."$2"/;
-				} else {
+				} elsif ($obj_name =~ /^[a-z0-9_\$]+\.[a-z0-9_\$]+\.[a-z0-9_\$]+$/) {
 					$obj_name =~ s/^([^\.]+)\.([^\.]+)\.([^\.]+)$/"$1"\."$2"\."$3"/;
+				} else {
+					$obj_name = '"' . $obj_name . '"';
 				}
 				$obj_name = '"' . $obj_name . '"' if ($obj_name =~ /^\d+/);
 			}
@@ -16441,11 +16441,16 @@ sub _format_view
 
 	$self->_remove_comments(\$sqlstr);
 
-	# Retrieve the column part of the view to remove double quotes
-	if (!$self->{preserve_case} && $sqlstr =~ s/^(.*?)\bFROM\b/FROM/is) {
-		my $tmp = $1;
-		$tmp =~ s/"//gs;
-		$sqlstr = $tmp . $sqlstr;
+	# Unwrap "TABLE".col only in the SELECT list; keep AS "alias" (reserved/dotted names).
+	if (!$self->{preserve_case}) {
+		my ($masked, $qstore) = Ora2Pg::PLSQL::_mask_double_quoted_ids($sqlstr);
+		if ($masked =~ /^(.*?)\bFROM\b(.*)$/is) {
+			my ($sel, $from) = ($1, $2);
+			$sel =~ s/"([^"]+)"\s*\./$1./gs;
+			$sqlstr = Ora2Pg::PLSQL::_unmask_double_quoted_ids($sel, $qstore)
+				. 'FROM'
+				. Ora2Pg::PLSQL::_unmask_double_quoted_ids($from, $qstore);
+		}
 	}
 	
 	my @tbs = ();
@@ -22520,18 +22525,24 @@ sub requalify_function_call
 {
 	my ($self, $str) = @_;
 
-	# Loop through package 
+	my $schema = defined $self->{schema} ? lc($self->{schema}) : '';
+
+	# Loop through package
 	foreach my $p (keys %{$self->{package_functions}}) {
-		# foreach function declared in a package qualify its callis with the package name
+		my $psch = lc($p);
 		foreach my $f (keys %{$self->{package_functions}{$p}}) {
 			my $flat = $self->{package_functions}{$p}{$f}{name};
-			$$str =~ s/\b$p\.$f\s*([\(;])/$flat$1/igs;
-			# schema.pack.func in views (export_schema): payment.Pay_Pack.get_foo -> payment.pay_pack_get_foo
-			$$str =~ s/\b([\w\$#]+)\.$p\.$f\s*\(/$1.$flat(/igs;
+			if ($self->{package_as_schema}) {
+				# PAYMENT.Pay_Pack.get_foo -> pay_pack.get_foo(); package is a PG schema
+				$$str =~ s/\b(?:PAYMENT\.)?(?:$p|$psch)\.$f\b(?!\s*\()/$psch.$f()/igs;
+				$$str =~ s/\b(?:PAYMENT\.)?(?:$p|$psch)\.$f\s*\(/$psch.$f(/igs;
+			} else {
+				$$str =~ s/\b$p\.$f\s*([\(;])/$flat$1/igs;
+				$$str =~ s/\b([\w\$#]+)\.$p\.$f\s*\(/$1.$flat(/igs;
+			}
 		}
 	}
 
-	my $schema = defined $self->{schema} ? lc($self->{schema}) : '';
 	if ($schema ne '' && ref($self->{functions}) eq 'HASH' && %{$self->{functions}}) {
 		my %pkg_fn = ();
 		foreach my $p (keys %{$self->{package_functions}}) {
@@ -22541,9 +22552,9 @@ sub requalify_function_call
 		}
 		foreach my $f (keys %{$self->{functions}}) {
 			next if ($pkg_fn{lc($f)});
-			# Unqualified standalone function (DLook -> payment.dlook in views)
-			$$str =~ s/(?<![\.\w\$#])\Q$f\E\s*\(/$schema.$f(/igs;
-			$$str =~ s/\bPAYMENT\.\Q$f\E\s*\(/$schema.$f(/igs;
+			my $flc = lc($f);
+			# After convert_plsql_code identifiers are lowercase; qualify bare calls for VIEW export
+			$$str =~ s/(?<![\.\w\$#])\Q$flc\E\s*\(/$schema.$flc(/igs;
 		}
 	}
 
