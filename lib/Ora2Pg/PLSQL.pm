@@ -4015,7 +4015,7 @@ sub replace_connect_by
 		while ($str =~ s/
 			(\bSELECT\b(?:(?!\bSELECT\b).)*)
 			\s+FROM\s+(?:[\w\$#.]+\s+)?DUAL\s+CONNECT\s+BY\s+LEVEL\s*<=\s*(\d+)\b
-			/_connect_by_level_counter_rewrite($1, $2)/sige) {}
+			/_connect_by_level_counter_rewrite($1, $2)/sigie) {}
 		return $str if ($str !~ /\bCONNECT\s+BY\b/is);
 	}
 
