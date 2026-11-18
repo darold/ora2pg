@@ -16488,7 +16488,8 @@ sub _format_view
 		$regextb =~ s/\$/\\\$/g;
 		if (!$self->{preserve_case}) {
 			# Escape column name (quoted Oracle ALL_CAPS / Cyrillic -> unquoted PG fold)
-			$sqlstr =~ s/["']*\Q$regextb\E["']*\.["']([^"']+)["'](,?)/$tb\.$1$2/igsu;
+			# s/// replacement is not Perl code: use \L\E + /u, not lc() or /e.
+			$sqlstr =~ s{["']*\Q$regextb\E["']*\.["']([^"']+)["'](,?)}{$tb.'.\L$1\E$2}igsu;
 			# Escape table name
 			$sqlstr =~ s/(^=\s?)["']*\b$regextb\b["']*/$tb/igs;
 		} else {

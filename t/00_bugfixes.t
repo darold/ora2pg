@@ -539,7 +539,7 @@ is($o->{dblink}{OTHERDB}{owner}, 'APP', 'USING-only link: owner is the schema');
 	my $text = q{Select distinct SS."УРОВЕНЬ",SS."СТАТЬЯ" From (select 1 from dual) SS};
 	$o->_remove_comments(\$text);
 	my $out = $o->_format_view('v_acc_tree_bo', $text);
-	like($out, qr/Ss\.уровень,\s*Ss\.статья/i, 'SS."COL" -> Ss.col in SELECT');
+	like($out, qr/Ss\.уровень,\s*Ss\.статья/iu, 'SS."COL" -> Ss.col in SELECT');
 	unlike($out, qr/'\.'\.lc\(/, 'quoted-column rewrite does not leak lc()');
 }
 
