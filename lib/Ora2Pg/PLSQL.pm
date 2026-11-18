@@ -661,6 +661,8 @@ sub convert_plsql_code
 		if (uc($class->{type} // '') eq 'VIEW' && !$class->{preserve_case});
 	$str = lowercase_fdw_pass_through_columns($str)
 		if (uc($class->{type} // '') eq 'VIEW');
+	$str = rewrite_generate_series_orphan_level($str)
+		if ($str =~ /\bgenerate_series\s*\(\s*1\s*,/i);
 
 	return $str;
 }
@@ -4184,6 +4186,8 @@ sub _connect_by_level_counter_rewrite
 	$sel =~ s/\s+CONNECT\s+BY\s+LEVEL\s*<=\s*\Q$lim\E\b\s*$//is;
 	# CONNECT BY tail is removed; any remaining LEVEL is the row counter in SELECT
 	$sel =~ s/\bLEVEL\b/gs/igs;
+	$sel =~ s/(\))\s+YEAR(\s+FROM\b)/$1 AS year$2/igs;
+	$sel =~ s/(\))\s+MONTH(\s+FROM\b)/$1 AS month$2/igs;
 	return "$sel FROM generate_series(1, $lim) AS gs";
 }
 
