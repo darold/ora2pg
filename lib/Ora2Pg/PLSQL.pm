@@ -665,7 +665,7 @@ sub convert_plsql_code
 sub pg_quote_dotted_select_aliases
 {
 	my ($str) = @_;
-	$str =~ s/\bAS\s+([\p{L}\p{N}_\$#]+(?:\.[\p{L}\p{N}_\$#/\-]+)+)(?=\s*,|\s+FROM\b)/AS "$1"/ig;
+	$str =~ s{\bAS\s+([\p{L}\p{N}_\$#]+(?:\.[\p{L}\p{N}_\$#/-]+)+)(?=\s*,|\s+FROM\b)}{AS "$1"}ig;
 	return $str;
 }
 

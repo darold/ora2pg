@@ -422,6 +422,15 @@ is($o->{dblink}{OTHERDB}{owner}, 'APP', 'USING-only link: owner is the schema');
 	is($o->quote_object_name('Доп.Кол-во_Б/Д'), '"доп.кол-во_б/д"', 'dotted slash column quoted as one id');
 }
 
+# Dotted SELECT alias with slash: AS доп.кол-во_б/д (v_bo_doc_post_b4)
+{
+	my ($out) = DblinkTest::convert(
+		q{SELECT 1 AS доп.кол-во_б/д, 2 AS x FROM dual},
+		type => 'VIEW', use_orafce => 1, idxcomment => 0, dblink_mode => 'off');
+	like($out, qr/AS\s+"доп\.кол-во_б\/д"\s*,/i, 'dotted slash alias quoted after AS');
+	unlike($out, qr/AS\s+доп\.кол-во_б\/д\s*,/, 'no unquoted dotted slash alias');
+}
+
 # PACKAGE_AS_SCHEMA: payment.Pay_Pack.get_x -> pay_pack.get_x()
 {
 	my $o = bless({

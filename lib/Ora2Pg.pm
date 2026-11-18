@@ -777,7 +777,9 @@ sub quote_object_name
 			if ($obj_name =~ /[^a-z0-9\_\.\$]/ || ($self->{use_reserved_words} && $self->is_reserved_words($obj_name)) || $obj_name =~ /^\d+/)
 			{
 				# Dotted display names like "Доп.Кол-во_Б/Д" are one identifier, not schema.column
-				if ($obj_name =~ /^[a-z0-9_\$]+\.[a-z0-9_\$]+$/) {
+				if ($obj_name =~ /\// || $obj_name =~ /[^\x00-\x7F]/) {
+					$obj_name = '"' . $obj_name . '"';
+				} elsif ($obj_name =~ /^[a-z0-9_\$]+\.[a-z0-9_\$]+$/) {
 					$obj_name =~ s/^([^\.]+)\.([^\.]+)$/"$1"\."$2"/;
 				} elsif ($obj_name =~ /^[a-z0-9_\$]+\.[a-z0-9_\$]+\.[a-z0-9_\$]+$/) {
 					$obj_name =~ s/^([^\.]+)\.([^\.]+)\.([^\.]+)$/"$1"\."$2"\."$3"/;
@@ -788,7 +790,9 @@ sub quote_object_name
 			}
 		}
 		# Add double quote to [schema.] object name 
-		elsif ($obj_name !~ /^[^\.]+\.[^\.]+$/ && $obj_name !~ /^[^\.]+\.[^\.]+\.[^\.]+$/) {
+		elsif ($obj_name =~ /\// || $obj_name =~ /[^\x00-\x7F]/) {
+			$obj_name = "\"$obj_name\"";
+		} elsif ($obj_name !~ /^[^\.]+\.[^\.]+$/ && $obj_name !~ /^[^\.]+\.[^\.]+\.[^\.]+$/) {
 			$obj_name = "\"$obj_name\"";
 		} elsif ($obj_name =~ /^[^\.]+\.[^\.]+$/) {
 			$obj_name =~ s/^([^\.]+)\.([^\.]+)$/"$1"\."$2"/;
