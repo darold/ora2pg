@@ -383,6 +383,17 @@ is($o->{dblink}{OTHERDB}{owner}, 'APP', 'USING-only link: owner is the schema');
 	like($out, qr/coalesce\(n\.no_summa/i, 'inet_list_1: NO_SUMMA qualified');
 }
 
+# inet_list_1 view body has no «inet_list_1» token (only prepare_yes/no)
+{
+	my ($out) = DblinkTest::convert(
+		q{SELECT CASE WHEN YES IS NOT DISTINCT FROM Null THEN 0 ELSE 4 END AS bit }.
+		q{FROM payment.заявка заявка, payment.inet_list_1_prepare_no n }.
+		q{LEFT OUTER JOIN payment.inet_list_1_prepare_yes y ON (заявка.заявка = y.yes)},
+		type => 'VIEW', use_orafce => 1, idxcomment => 0, dblink_mode => 'off');
+	like($out, qr/CASE\s+WHEN\s+y\.yes\s+IS\s+NOT\s+DISTINCT/i,
+		'inet_list_1 body: YES qualified without inet_list_1 name in SQL');
+}
+
 # v_subrep: glued subquery alias ")v" and (+) on second table — no ")v, v" duplicate
 {
 	require DblinkTest;

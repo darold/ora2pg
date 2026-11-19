@@ -3848,9 +3848,10 @@ sub outer_join_align_on_predicats
 	return @parts if (!@parts);
 	return map {
 		if (/^\s*(\S+)\s+(!=|>=|<=|=|<>|<|>|NOT\s+LIKE|LIKE)\s+(\S+)\s*$/i) {
-			my $lhs = outer_join_align_operand_to_table_alias($1, $table_decl);
+			# Only normalize the outer-joined (RHS) operand; rewriting the LHS
+			# breaks predicates such as O.период = период.период.
 			my $rhs = outer_join_align_operand_to_table_alias($3, $table_decl);
-			"$lhs $2 $rhs";
+			"$1 $2 $rhs";
 		} else {
 			$_;
 		}
@@ -4259,7 +4260,7 @@ sub _connect_by_level_counter_rewrite
 sub rewrite_inet_list_ambiguous_yes_no
 {
 	my ($str) = @_;
-	return $str unless ($str =~ /\binet_list_1\b/i && $str =~ /inet_list_1_prepare_(?:yes|no)/i);
+	return $str unless ($str =~ /inet_list_1_prepare_(?:yes|no)/i);
 	return $str unless ($str =~ /inet_list_1_prepare_yes\s+y\s+ON\b/i);
 	$str =~ s/(?<![.\w\$#])yes(?=\s+IS\s+NOT\s+DISTINCT\s+FROM)/y.yes/gi;
 	$str =~ s/(?<![.\w\$#])no(?=\s+IS\s+NOT\s+DISTINCT\s+FROM)/n.no/gi;
