@@ -411,6 +411,13 @@ is($o->{dblink}{OTHERDB}{owner}, 'APP', 'USING-only link: owner is the schema');
 	my $fixed = Ora2Pg::PLSQL::rewrite_payment_period_per_bdr_on_join($bad);
 	like($fixed, qr/=\s*период\.период\)/, 'rewrite pass: per_bdr.период -> период.период (alias capture)');
 	unlike($fixed, qr/per_bdr\.период/, 'rewrite pass: no per_bdr on payment.период JOIN');
+	like(
+		Ora2Pg::PLSQL::rewrite_payment_period_per_bdr_on_join(
+			'LEFT OUTER JOIN payment.период период ON (O.период = per_bdr.период)'
+		),
+		qr/=\s*период\.период\)/,
+		'rewrite idempotent on export-shaped JOIN'
+	);
 }
 
 # inet_list_1: qualify bare YES/NO for PG (join aliases y/n)

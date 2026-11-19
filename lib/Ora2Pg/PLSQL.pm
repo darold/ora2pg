@@ -669,6 +669,9 @@ sub convert_plsql_code
 		if (uc($class->{type} // '') eq 'VIEW');
 	$str = rewrite_payment_period_per_bdr_on_join($str)
 		if (uc($class->{type} // '') eq 'VIEW');
+	# v_payment_p_list* after _format_view: ANSI JOIN ON must use период.период not per_bdr.период
+	$str =~ s/\b(O\.период\s*=\s*)per_bdr\.(период\b)/${1}период.$2/giu
+		if (uc($class->{type} // '') eq 'VIEW' && $str =~ /per_bdr/i);
 
 	return $str;
 }
