@@ -365,8 +365,27 @@ is($o->{dblink}{OTHERDB}{owner}, 'APP', 'USING-only link: owner is the schema');
 		q{WHERE z.заявка = o.заявка AND O.период = период.период(+) }.
 		q{AND o.счет = счет.счет(+) AND o.период_бдр = per_bdr.период(+)},
 		type => 'VIEW', use_orafce => 1, idxcomment => 0, dblink_mode => 'off');
+	like($out, qr/payment\.период\s+период\s+ON\s*\([^)]*период\.период/is,
+		'v_payment_p_list: period JOIN ON uses период.период');
 	unlike($out, qr/payment\.период\s+период\s+ON\s*\([^)]*per_bdr\.период/is,
 		'v_payment_p_list: period JOIN ON must not use per_bdr');
+}
+
+# v_payment_p_list_test: supplier (+) on LHS + SUMM subquery (production shape)
+{
+	use utf8;
+	my ($out) = DblinkTest::convert(
+		q{SELECT o.период, o.период_бдр FROM payment.v_staff s, payment.заявка Z, payment.поставщик, }.
+		q{payment.оплата O, payment.статья, payment.статья_бдр, payment.счет, payment.период, payment.сотрудник R, }.
+		q{(Select SZ.заявка, SUM(SO.сумма_фикс) AS SUMM FROM payment.заявка SZ, payment.оплата SO }.
+		q{Where SZ.заявка = SO.заявка Group By SZ.заявка) SUMM, payment.отдел otd_bdr, период per_bdr, валюта val, валюта val_2 }.
+		q{WHERE SUMM.заявка = Z.заявка AND O.период = период.период(+) AND Z.заявка = O.заявка }.
+		q{AND поставщик.поставщик(+) = Z.поставщик AND o.период_бдр = per_bdr.период(+)},
+		type => 'VIEW', use_orafce => 1, idxcomment => 0, dblink_mode => 'off');
+	like($out, qr/payment\.период\s+период\s+ON\s*\([^)]*период\.период/is,
+		'v_payment_p_list_test: payment.период ON keeps период alias');
+	unlike($out, qr/payment\.период\s+период\s+ON\s*\([^)]*per_bdr\.период/is,
+		'v_payment_p_list_test: payment.период ON must not use per_bdr');
 }
 
 # inet_list_1: qualify bare YES/NO for PG (join aliases y/n)

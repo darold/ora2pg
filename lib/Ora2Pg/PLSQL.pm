@@ -3839,6 +3839,8 @@ sub outer_join_align_operand_to_table_alias
 	}
 	my $op_alias = outer_join_table_alias_from_operand($operand);
 	if (defined $op_alias && $join_alias ne '' && $op_alias ne $join_alias) {
+		# v_payment_p_list*: «период per_bdr» must not absorb refs meant for payment.период
+		return $operand if ($join_alias eq 'per_bdr' && $op_alias eq 'период');
 		$operand =~ s/^\(?\s*\Q$op_alias\E\./$join_alias./i;
 	}
 	return $operand;
@@ -4217,19 +4219,11 @@ sub replace_outer_join
 		}
 		$from_clause =~ s/\b(new|old)\b/\U$1\E/gs;
 		$from_clause =~ s/,\s*$/ /s;
-		# Duplicate «период» in FROM: JOIN payment.период период must not use per_bdr in ON
-		$from_clause =~ s{
-			(LEFT\s+OUTER\s+JOIN\s+(?:payment\.)?период\s+период\s+ON\s*\([^)]*)
-			\bper_bdr\.(период\b)
-		}{$1период.$2}gixu;
+		$from_clause = rewrite_payment_period_per_bdr_on_join($from_clause);
 		$str =~ s/FROM FROM_CLAUSE/FROM $from_clause/s;
-		# Same-table alias «период» vs «per_bdr»: RHS may still be per_bdr after (+) rewrite
-		$str =~ s{
-			(LEFT\s+OUTER\s+JOIN\s+(?:payment\.)?период\s+период\s+ON\s*\(\s*\S+\s*=\s*)
-			per_bdr\.(период\b)
-		}{$1период.$2}gixu;
 	}
 
+	$str = rewrite_payment_period_per_bdr_on_join($str) if ($str =~ /per_bdr/i);
 	return $str;
 }
 
@@ -4267,9 +4261,14 @@ sub _connect_by_level_counter_rewrite
 sub rewrite_payment_period_per_bdr_on_join
 {
 	my ($str) = @_;
-	return $str unless ($str =~ /(?:payment\.)?период\s+период/i && $str =~ /per_bdr/i);
+	return $str unless ($str =~ /per_bdr/i);
+	return $str unless ($str =~ /LEFT\s+OUTER\s+JOIN\s+(?:payment\.)?период\b/i);
 	$str =~ s{
-		(LEFT\s+OUTER\s+JOIN\s+(?:payment\.)?период\s+период\s+ON\s*\(\s*\S+\s*=\s*)
+		(LEFT\s+OUTER\s+JOIN\s+payment\.период(?:\s+период)?\s+ON\s*\(\s*[^=]+=\s*)
+		per_bdr\.(период\b)
+	}{$1период.$2}gixu;
+	$str =~ s{
+		(LEFT\s+OUTER\s+JOIN\s+(?:payment\.)?период\s+период\s+ON\s*\(\s*[^=]+=\s*)
 		per_bdr\.(период\b)
 	}{$1период.$2}gixu;
 	return $str;
