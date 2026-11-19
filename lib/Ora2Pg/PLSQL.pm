@@ -671,7 +671,7 @@ sub convert_plsql_code
 		if (uc($class->{type} // '') eq 'VIEW');
 	# v_payment_p_list* after _format_view: ANSI JOIN ON must use период.период not per_bdr.период
 	if (uc($class->{type} // '') eq 'VIEW' && $str =~ /per_bdr/i) {
-		while ($str =~ s/\b([Oo])\.период\s*=\s*per_bdr\.период\b/$1.период = период.период/giu) {}
+		while ($str =~ s/\b([Oo])\.период\s*=\s*per_bdr\.период\b/${1}.период = период.период/giu) {}
 	}
 
 	return $str;
@@ -4294,7 +4294,7 @@ sub rewrite_payment_period_per_bdr_on_join
 	while ($str =~ s/(LEFT\s+OUTER\s+JOIN\s+payment\.период\s+ON\s*\([^)]*?=\s*)per_bdr\.период\b/${1}период.период/giu) {}
 	while ($str =~ s/(LEFT\s+OUTER\s+JOIN\s+период\s+(\p{L}+)\s+ON\s*\([^)]*?=\s*)per_bdr\.период\b/${1}${2}.период/giu) {}
 	# v_payment_p_list*: leftover ON after comma-FROM / associated-clause assembly (UNION: need /g)
-	while ($str =~ s/\b([Oo])\.период\s*=\s*per_bdr\.период\b/$1.период = период.период/giu) {}
+	while ($str =~ s/\b([Oo])\.период\s*=\s*per_bdr\.период\b/${1}.период = период.период/giu) {}
 	return $str;
 }
 

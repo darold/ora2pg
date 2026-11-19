@@ -5326,6 +5326,14 @@ sub export_view
 		$sql_output .= "\n";
 	}
 
+	# Bulk view.sql: UNION branches can miss per-view postpass; rewrite whole buffer before dump.
+	if ($sql_output =~ /per_bdr/i) {
+		$sql_output = Ora2Pg::PLSQL::rewrite_payment_period_per_bdr_on_join($sql_output);
+	}
+	if ($sql_output =~ /inet_list_1_prepare_(?:yes|no)/i) {
+		$sql_output = Ora2Pg::PLSQL::rewrite_inet_list_ambiguous_yes_no($sql_output);
+	}
+
 	$self->dump($sql_output);
 
 	Ora2Pg::DbLink::write_tables_file($self);
