@@ -671,7 +671,7 @@ sub convert_plsql_code
 		if (uc($class->{type} // '') eq 'VIEW');
 	# v_payment_p_list* after _format_view: ANSI JOIN ON must use период.период not per_bdr.период
 	if (uc($class->{type} // '') eq 'VIEW' && $str =~ /per_bdr/i) {
-		while ($str =~ s/\b(O\.период\s*=\s*)per_bdr\.(период\b)/${1}период.$2/giu) {}
+		while ($str =~ s/\b([Oo])\.период\s*=\s*per_bdr\.период\b/$1.период = период.период/giu) {}
 	}
 
 	return $str;
@@ -3842,6 +3842,11 @@ sub outer_join_align_operand_to_table_alias
 		$join_alias = lc($join_alias);
 	}
 	my $op_alias = outer_join_table_alias_from_operand($operand);
+	if (defined $op_alias && $join_alias ne '') {
+		# payment.период (alias период): ON must not use «период per_bdr» alias before it appears in FROM
+		return "$join_alias.период"
+			if ($join_alias eq 'период' && $op_alias eq 'per_bdr');
+	}
 	if (defined $op_alias && $join_alias ne '' && $op_alias ne $join_alias) {
 		# v_payment_p_list*: «период per_bdr» must not absorb refs meant for payment.период
 		return $operand if ($join_alias eq 'per_bdr' && $op_alias eq 'период');
@@ -4179,7 +4184,11 @@ sub replace_outer_join
 				@on = outer_join_align_on_predicats($tbl, @on);
 				if ($tbl =~ /(?:payment\.)?период(?:\s+(\p{L}+))?\s*$/i && $tbl !~ /\bper_bdr\b/i) {
 					my $period_join_alias = $1 // 'период';
-					@on = map { s/(=)\s*per_bdr\.период\b/$1 $period_join_alias.период/ig; $_ } @on;
+					@on = map {
+						s/(=)\s*per_bdr\.период\b/$1 $period_join_alias.период/ig;
+						s/\b([Oo])\.период\s*=\s*per_bdr\.период\b/$1.период = $period_join_alias.период/iu;
+						$_;
+					} @on;
 				}
 				my $join_line = "\U$type\E OUTER JOIN $tbl ON (" . join(' AND ', @on) . ")";
 				$join_line = rewrite_payment_period_per_bdr_on_join($join_line);
@@ -4286,7 +4295,7 @@ sub rewrite_payment_period_per_bdr_on_join
 	while ($str =~ s/(LEFT\s+OUTER\s+JOIN\s+payment\.период\s+ON\s*\([^)]*?=\s*)per_bdr\.период\b/${1}период.период/giu) {}
 	while ($str =~ s/(LEFT\s+OUTER\s+JOIN\s+период\s+(\p{L}+)\s+ON\s*\([^)]*?=\s*)per_bdr\.период\b/${1}${2}.период/giu) {}
 	# v_payment_p_list*: leftover ON after comma-FROM / associated-clause assembly (UNION: need /g)
-	while ($str =~ s/\b(O\.период\s*=\s*)per_bdr\.период\b/${1}период.период/giu) {}
+	while ($str =~ s/\b([Oo])\.период\s*=\s*per_bdr\.период\b/$1.период = период.период/giu) {}
 	return $str;
 }
 
