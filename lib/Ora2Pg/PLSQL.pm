@@ -3823,7 +3823,8 @@ sub outer_join_align_operand_to_table_alias
 	my ($operand, $table_decl) = @_;
 	return $operand unless outer_join_table_column_ref($operand);
 	my $join_alias = '';
-	if ($table_decl =~ /\s+([\w\$#]+)\s*$/) {
+	$table_decl =~ s/\s*\%ORA2PG_COMMENT\d+\%\s*//g;
+	if ($table_decl =~ /\s+([\p{L}\p{N}_\$#]+)\s*$/u) {
 		$join_alias = lc($1);
 	} elsif ($table_decl !~ /\./) {
 		$join_alias = lc($table_decl);
@@ -3836,6 +3837,20 @@ sub outer_join_align_operand_to_table_alias
 		$operand =~ s/^\(?\s*\Q$op_alias\E\./$join_alias./i;
 	}
 	return $operand;
+}
+
+sub outer_join_align_on_predicats
+{
+	my ($table_decl, @parts) = @_;
+	return @parts if (!@parts);
+	return map {
+		if (/^\s*(\S+)\s+(!=|>=|<=|=|<>|<|>|NOT\s+LIKE|LIKE)\s+(\S+)\s*$/i) {
+			my $rhs = outer_join_align_operand_to_table_alias($3, $table_decl);
+			"$1 $2 $rhs";
+		} else {
+			$_;
+		}
+	} @parts;
 }
 
 sub outer_join_table_alias_from_operand
@@ -4138,8 +4153,11 @@ sub replace_outer_join
 				my ($l,$r) = split(/;/, $t);
 				my $tbl = $j;
 				$tbl =~ s/\s*\%ORA2PG_COMMENT\d+\%\s*//isg;
-				$from_clause .= "\n\U$type\E OUTER JOIN $tbl ON (" .  join(' AND ', @{$final_from_clause{$t}{clause}{$j}{predicat}}) . ")";
-				push(@{$final_outer_clauses{$l}{join}},  "\U$type\E OUTER JOIN $tbl ON (" .  join(' AND ', @{$final_from_clause{$t}{clause}{$j}{predicat}}, @{$other_join_clause{$r}}) . ")");
+				my @on = outer_join_align_on_predicats($tbl, @{$final_from_clause{$t}{clause}{$j}{predicat}});
+				push(@on, @{ $other_join_clause{$r} // [] });
+				@on = outer_join_align_on_predicats($tbl, @on);
+				$from_clause .= "\n\U$type\E OUTER JOIN $tbl ON (" .  join(' AND ', @on) . ")";
+				push(@{$final_outer_clauses{$l}{join}},  "\U$type\E OUTER JOIN $tbl ON (" .  join(' AND ', @on) . ")");
 				push(@{$final_outer_clauses{$l}{position}},  $final_from_clause{$t}{clause}{$j}{position});
 				push(@{$associated_clause{$l}}, $r);
 			}
