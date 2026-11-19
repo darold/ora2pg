@@ -4165,6 +4165,9 @@ sub replace_outer_join
 				my @on = outer_join_align_on_predicats($tbl, @{$final_from_clause{$t}{clause}{$j}{predicat}});
 				push(@on, @{ $other_join_clause{$r} // [] });
 				@on = outer_join_align_on_predicats($tbl, @on);
+				if ($tbl =~ /(?:payment\.)?период(?:\s+период)?\s*$/i && $tbl !~ /\bper_bdr\b/i) {
+					@on = map { s/(=)\s*per_bdr\.(период\b)/$1 период.$2/ig; $_ } @on;
+				}
 				$from_clause .= "\n\U$type\E OUTER JOIN $tbl ON (" .  join(' AND ', @on) . ")";
 				push(@{$final_outer_clauses{$l}{join}},  "\U$type\E OUTER JOIN $tbl ON (" .  join(' AND ', @on) . ")");
 				push(@{$final_outer_clauses{$l}{position}},  $final_from_clause{$t}{clause}{$j}{position});
@@ -4269,6 +4272,10 @@ sub rewrite_payment_period_per_bdr_on_join
 	}{$1период.$2}gixu;
 	$str =~ s{
 		(LEFT\s+OUTER\s+JOIN\s+(?:payment\.)?период\s+период\s+ON\s*\(\s*[^=]+=\s*)
+		per_bdr\.(период\b)
+	}{$1период.$2}gixu;
+	$str =~ s{
+		(LEFT\s+OUTER\s+JOIN\s+payment\.период\s+период\s+ON\s*\(\s*[Oo]\.период\s*=\s*)
 		per_bdr\.(период\b)
 	}{$1период.$2}gixu;
 	return $str;

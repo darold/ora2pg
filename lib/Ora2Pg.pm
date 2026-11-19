@@ -16559,6 +16559,7 @@ sub _format_view
 		$sqlstr = Ora2Pg::PLSQL::lowercase_quoted_oracle_uppercase_columns($sqlstr)
 			if (!$self->{preserve_case});
 		$sqlstr = Ora2Pg::PLSQL::lowercase_fdw_pass_through_columns($sqlstr);
+		$sqlstr = Ora2Pg::PLSQL::rewrite_payment_period_per_bdr_on_join($sqlstr);
 	}
 
 	$self->_restore_comments(\$sqlstr);
