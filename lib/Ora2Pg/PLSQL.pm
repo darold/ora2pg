@@ -3893,10 +3893,18 @@ sub replace_outer_join
 			($alias = $t) =~ s/^.*\.// if (!$alias);
 			$from_clause_list{$alias} = "$cmt$t";
 			$from_order{$alias} = $fidx++;
-			$alias_of_table{$t} = $alias;
-			# Bare table name already used as a FROM alias for another entry must not
-			# remap column qualifiers (payment.период alias период + период per_bdr).
-			if ($t !~ /\./ && exists $from_clause_list{$t} && lc($from_clause_list{$t}) ne lc($t)) {
+			# schema.table is also referenced as bare «table» in (+) predicates
+			if ($t =~ /\./) {
+				my $short = $t;
+				$short =~ s/^.*\.//;
+				$from_clause_list{$short} = $from_clause_list{$alias}
+					if (!exists $from_clause_list{$short});
+			}
+			unless ($t !~ /\./ && exists $from_clause_list{$t}) {
+				$alias_of_table{$t} = $alias;
+			}
+			# payment.период (alias период) + период per_bdr: do not map bare «период» → per_bdr
+			if ($t !~ /\./ && exists $from_clause_list{$t}) {
 				delete $alias_of_table{$t};
 			}
 		}
@@ -3995,8 +4003,9 @@ sub replace_outer_join
 			{
 				$lbl2 = outer_join_table_alias_from_operand($r);
 				if (!exists $from_clause_list{$lbl2} && exists $alias_of_table{$lbl2}) {
-					$r =~ s/^\(?\s*\Q$lbl2\E\./$alias_of_table{$lbl2}./i;
-					$lbl2 = $alias_of_table{$lbl2};
+					my $dest = $alias_of_table{$lbl2};
+					$r =~ s/^\(?\s*\Q$lbl2\E\./$dest./i;
+					$lbl2 = $dest;
 				}
 				if (!$lbl1) {
 					if (outer_join_function_operand($l)) {
