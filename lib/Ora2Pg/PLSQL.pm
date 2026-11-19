@@ -3894,6 +3894,11 @@ sub replace_outer_join
 			$from_clause_list{$alias} = "$cmt$t";
 			$from_order{$alias} = $fidx++;
 			$alias_of_table{$t} = $alias;
+			# Bare table name already used as a FROM alias for another entry must not
+			# remap column qualifiers (payment.период alias период + период per_bdr).
+			if ($t !~ /\./ && exists $from_clause_list{$t} && lc($from_clause_list{$t}) ne lc($t)) {
+				delete $alias_of_table{$t};
+			}
 		}
 
 		# Extract all Oracle's outer join syntax from the where clause

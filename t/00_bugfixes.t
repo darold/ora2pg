@@ -339,6 +339,23 @@ is($o->{dblink}{OTHERDB}{owner}, 'APP', 'USING-only link: owner is the schema');
 	unlike($out, qr/\bLEVEL\b/i, 'WITH YEAR alias: no orphan LEVEL');
 }
 
+# v_payment_p_list_test: same base table twice — alias "период" vs "период per_bdr"
+{
+	use utf8;
+	my ($out) = DblinkTest::convert(
+		q{SELECT o.период, o.период_бдр, per_bdr.наименование }.
+		q{FROM payment.заявка z, payment.оплата o, payment.период, период per_bdr }.
+		q{WHERE z.заявка = o.заявка AND o.период = период.период(+) }.
+		q{AND o.период_бдр = per_bdr.период(+)},
+		type => 'VIEW', use_orafce => 1, idxcomment => 0, dblink_mode => 'off');
+	like($out, qr/LEFT OUTER JOIN payment\.период период ON \(o\.период = период\.период\)/i,
+		'duplicate base table: (+) ON keeps период alias, not per_bdr');
+	like($out, qr/LEFT OUTER JOIN период per_bdr ON \(o\.период_бдр = per_bdr\.период\)/i,
+		'per_bdr (+) join unchanged');
+	unlike($out, qr/период = per_bdr\.период/i,
+		'период join must not reference per_bdr before its JOIN');
+}
+
 # v_subrep: glued subquery alias ")v" and (+) on second table — no ")v, v" duplicate
 {
 	require DblinkTest;
