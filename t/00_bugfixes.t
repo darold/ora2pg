@@ -356,6 +356,21 @@ is($o->{dblink}{OTHERDB}{owner}, 'APP', 'USING-only link: owner is the schema');
 		'период join must not reference per_bdr before its JOIN');
 }
 
+# v_payment_p_list: период per_bdr before payment.период in FROM (export JOIN order)
+{
+	use utf8;
+	my ($out) = DblinkTest::convert(
+		q{SELECT o.период, o.период_бдр FROM payment.заявка z, payment.оплата o, период per_bdr, }.
+		q{payment.статья, payment.период, payment.счет }.
+		q{WHERE z.заявка = o.заявка AND O.период = период.период(+) }.
+		q{AND o.счет = счет.счет(+) AND o.период_бдр = per_bdr.период(+)},
+		type => 'VIEW', use_orafce => 1, idxcomment => 0, dblink_mode => 'off');
+	like($out, qr/payment\.период\s+период\s+ON\s*\([^)]*период\.период/is,
+		'FROM order per_bdr first: period JOIN ON uses период.период');
+	unlike($out, qr/payment\.период\s+период\s+ON\s*\([^)]*per_bdr\.период/is,
+		'FROM order per_bdr first: period JOIN ON must not use per_bdr');
+}
+
 # v_payment_p_list: implicit alias payment.период + период per_bdr (production FROM order)
 {
 	use utf8;
@@ -394,7 +409,7 @@ is($o->{dblink}{OTHERDB}{owner}, 'APP', 'USING-only link: owner is the schema');
 	require Ora2Pg::PLSQL;
 	my $bad = 'LEFT OUTER JOIN payment.период период ON (O.период = per_bdr.период)';
 	my $fixed = Ora2Pg::PLSQL::rewrite_payment_period_per_bdr_on_join($bad);
-	like($fixed, qr/=\s*период\.период\)/, 'rewrite pass: per_bdr.период -> период.период');
+	like($fixed, qr/=\s*период\.период\)/, 'rewrite pass: per_bdr.период -> период.период (alias capture)');
 	unlike($fixed, qr/per_bdr\.период/, 'rewrite pass: no per_bdr on payment.период JOIN');
 }
 

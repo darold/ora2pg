@@ -3937,6 +3937,8 @@ sub replace_outer_join
 			($alias = $t) =~ s/^.*\.// if (!$alias);
 			$from_clause_list{$alias} = "$cmt$t";
 			$from_order{$alias} = $fidx++;
+			# payment.период (alias период) wins over earlier «период per_bdr» alias_of_table
+			delete $alias_of_table{'период'} if ($alias eq 'период' && $t =~ /\./);
 			# schema.table is also referenced as bare «table» in (+) predicates
 			if ($t =~ /\./) {
 				my $short = $t;
@@ -4274,9 +4276,8 @@ sub rewrite_payment_period_per_bdr_on_join
 	my ($str) = @_;
 	return $str unless ($str =~ /per_bdr/i);
 	return $str unless ($str =~ /LEFT\s+OUTER\s+JOIN\s+(?:payment\.)?период\b/i);
-	my $period_alias = 'период';
-	# /e + concatenation: avoid $1период / ${1}период parsing next to Cyrillic identifiers
-	$str =~ s/(LEFT\s+OUTER\s+JOIN\s+payment\.период(?:\s+период)?\s+ON\s*\(\s*[^)]*?=\s*)per_bdr\.(период)/$1 . $period_alias . '.' . $2/geiu;
+	# Use ${2} before Cyrillic column name — $2.период would parse as one identifier (see 0.1.46).
+	$str =~ s/(LEFT\s+OUTER\s+JOIN\s+payment\.период\s+(\p{L}+)\s+ON\s*\(\s*[^)]*?=\s*)per_bdr\.период/${1}${2}.период/giu;
 	return $str;
 }
 
