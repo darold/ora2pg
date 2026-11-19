@@ -10773,6 +10773,31 @@ sub fix_function_call
 			$self->requalify_package_functions($path) if (-f $path);
 		}
 	}
+	$self->_finalize_bulk_sql_postpasses();
+}
+
+# Serial post-passes on bulk view.sql after parallel pass2 (CI: VIEW before PACKAGE).
+sub _finalize_bulk_sql_postpasses
+{
+	my ($self) = @_;
+	my $dirprefix = '';
+	$dirprefix = "$self->{output_dir}/" if ($self->{output_dir});
+	my $view_sql = $dirprefix . 'view.sql';
+	return unless (-f $view_sql);
+	open(my $rfh, '<', $view_sql) or return;
+	$self->set_binmode($rfh);
+	local $/;
+	my $content = <$rfh>;
+	close($rfh);
+	$content = Ora2Pg::PLSQL::rewrite_payment_period_per_bdr_on_join($content);
+	$content = Ora2Pg::PLSQL::rewrite_inet_list_ambiguous_yes_no($content);
+	open(my $wfh, '>', $view_sql) or do {
+		print STDERR "ERROR: finalize bulk postpass can't write $view_sql, $!\n";
+		return;
+	};
+	$self->set_binmode($wfh);
+	print $wfh $content;
+	close($wfh);
 }
 
 # Requalify function call by using double quoted if necessary and by replacing
@@ -10785,7 +10810,7 @@ sub requalify_package_functions
 		$self->set_binmode($fh);
 		my $content = '';
 		while (<$fh>) { $content .= $_; };
-		close($f);
+		close($fh);
 		$self->requalify_function_call(\$content);
 		# VIEW is exported before PACKAGE (pass2 had no package_functions). Final bulk
 		# view.sql must get the same post-passes as per-view export.
