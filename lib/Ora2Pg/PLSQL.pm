@@ -4050,8 +4050,8 @@ sub replace_outer_join
 					my $dest = $alias_of_table{$lbl2};
 					# v_payment_p_list*: bare «период» is payment.период, not «период per_bdr»
 					unless ($lbl2 eq 'период' && lc($dest) eq 'per_bdr'
-						&& exists $from_clause_list{период}
-						&& $from_clause_list{период} !~ /\bper_bdr\b/i)
+						&& exists $from_clause_list{'период'}
+						&& $from_clause_list{'период'} !~ /\bper_bdr\b/i)
 					{
 						$r =~ s/^\(?\s*\Q$lbl2\E\./$dest./i;
 						$lbl2 = $dest;
