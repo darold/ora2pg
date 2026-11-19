@@ -397,6 +397,16 @@ is($o->{dblink}{OTHERDB}{owner}, 'APP', 'USING-only link: owner is the schema');
 		type => 'VIEW', use_orafce => 1, idxcomment => 0, dblink_mode => 'off');
 	like($out, qr/оплата\s+AS\s+"order"\s*,/i, 'quoted ORDER alias -> AS "order"');
 	unlike($out, qr/оплата\s+order\s*,/i, 'no bare order after Cyrillic concat');
+	unlike($out, qr/\bAS\s+AS\s+"order"/i, 'no duplicate AS before "order" alias');
+}
+
+# Second convert pass must not double AS on reserved ORDER alias
+{
+	my ($in) = q{z.заявка||'/'||o.оплата AS "order", LOGS.OPER_DT};
+	my $twice = Ora2Pg::PLSQL::rewrite_reserved_order_select_alias(
+		Ora2Pg::PLSQL::rewrite_reserved_order_select_alias($in));
+	like($twice, qr/AS\s+"order"/i, 'still AS "order" after double rewrite');
+	unlike($twice, qr/\bAS\s+AS\s+"order"/i, 'double rewrite does not AS AS "order"');
 }
 
 # Quoted alias "FROM" must not break rewrite_from_table_aliases (v_cash_c_depo_list)

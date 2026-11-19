@@ -4197,8 +4197,12 @@ sub _connect_by_level_counter_rewrite
 sub rewrite_reserved_order_select_alias
 {
 	my ($str) = @_;
-	$str =~ s/(\|\||\)|'(?:''|[^'])*'|[\p{L}\p{N}_\$#])\s+"ORDER"\s*,/$1 AS "order",/ig;
-	$str =~ s/(\|\||\)|'(?:''|[^'])*'|[\p{L}\p{N}_\$#])\s+order\s*,/$1 AS "order",/igs;
+	my $expr_end = qr/(?:\|\||\)|'(?:''|[^'])*'|[\p{L}\p{N}_\$#])/;
+	# Do not match the S in AS "order" (second pass after plsql_to_plpgsql) — would yield AS AS "order"
+	my $not_after_as = qr/(?<![\p{L}\p{N}_\$#]AS)/;
+	$str =~ s/$not_after_as($expr_end)\s+"ORDER"\s*,/$1 AS "order",/ig;
+	$str =~ s/$not_after_as($expr_end)\s+order\s*,/$1 AS "order",/igs;
+	$str =~ s/\bAS\s+AS\s+"order"/ AS "order"/ig;
 	return $str;
 }
 
