@@ -665,15 +665,6 @@ sub convert_plsql_code
 		if ($str =~ /\bgenerate_series\s*\(\s*1\s*,/i);
 	$str = rewrite_reserved_order_select_alias($str)
 		if (grep { uc($class->{type} // '') eq $_ } qw(VIEW FUNCTION PROCEDURE PACKAGE QUERY));
-	$str = rewrite_inet_list_ambiguous_yes_no($str)
-		if (uc($class->{type} // '') eq 'VIEW');
-	$str = rewrite_payment_period_per_bdr_on_join($str)
-		if (uc($class->{type} // '') eq 'VIEW');
-	# v_payment_p_list* after _format_view: ANSI JOIN ON must use период.период not per_bdr.период
-	if (uc($class->{type} // '') eq 'VIEW' && $str =~ /per_bdr/i) {
-		while ($str =~ s/\b([Oo])\.период\s*=\s*per_bdr\.период\b/${1}.период = период.период/giu) {}
-	}
-
 	return $str;
 }
 
@@ -715,7 +706,7 @@ sub repair_torn_alias_quotes
 	return $str;
 }
 
-# payment.форма.кол -> форма.кол (FROM payment.форма форма)
+# schema.table.col -> table.col when export schema matches (FROM schema.table table)
 sub strip_export_schema_table_prefix
 {
 	my ($class, $str) = @_;
@@ -3842,14 +3833,7 @@ sub outer_join_align_operand_to_table_alias
 		$join_alias = lc($join_alias);
 	}
 	my $op_alias = outer_join_table_alias_from_operand($operand);
-	if (defined $op_alias && $join_alias ne '') {
-		# payment.период (alias период): ON must not use «период per_bdr» alias before it appears in FROM
-		return "$join_alias.период"
-			if ($join_alias eq 'период' && $op_alias eq 'per_bdr');
-	}
 	if (defined $op_alias && $join_alias ne '' && $op_alias ne $join_alias) {
-		# v_payment_p_list*: «период per_bdr» must not absorb refs meant for payment.период
-		return $operand if ($join_alias eq 'per_bdr' && $op_alias eq 'период');
 		$operand =~ s/^\(?\s*\Q$op_alias\E\./$join_alias./i;
 	}
 	return $operand;
@@ -3862,7 +3846,7 @@ sub outer_join_align_on_predicats
 	return map {
 		if (/^\s*(\S+)\s+(!=|>=|<=|=|<>|<|>|NOT\s+LIKE|LIKE)\s+(\S+)\s*$/i) {
 			# Only normalize the outer-joined (RHS) operand; rewriting the LHS
-			# breaks predicates such as O.период = период.период.
+			# breaks predicates when LHS and RHS use different table aliases.
 			my $rhs = outer_join_align_operand_to_table_alias($3, $table_decl);
 			"$1 $2 $rhs";
 		} else {
@@ -3946,19 +3930,18 @@ sub replace_outer_join
 			($alias = $t) =~ s/^.*\.// if (!$alias);
 			$from_clause_list{$alias} = "$cmt$t";
 			$from_order{$alias} = $fidx++;
-			# payment.период (alias период) wins over earlier «период per_bdr» alias_of_table
-			delete $alias_of_table{'период'} if ($alias eq 'период' && $t =~ /\./);
-			# schema.table is also referenced as bare «table» in (+) predicates
+			# schema.table with implicit alias = bare table name wins over same bare name later
 			if ($t =~ /\./) {
 				my $short = $t;
 				$short =~ s/^.*\.//;
+				delete $alias_of_table{$short} if (defined $alias && $alias eq $short);
 				$from_clause_list{$short} = $from_clause_list{$alias}
 					if (!exists $from_clause_list{$short});
 			}
 			unless ($t !~ /\./ && exists $from_clause_list{$t}) {
 				$alias_of_table{$t} = $alias;
 			}
-			# payment.период (alias период) + период per_bdr: do not map bare «период» → per_bdr
+			# bare table token: do not alias-map if schema-qualified entry already exists
 			if ($t !~ /\./ && exists $from_clause_list{$t}) {
 				delete $alias_of_table{$t};
 			}
@@ -4059,14 +4042,8 @@ sub replace_outer_join
 				$lbl2 = outer_join_table_alias_from_operand($r);
 				if (!exists $from_clause_list{$lbl2} && exists $alias_of_table{$lbl2}) {
 					my $dest = $alias_of_table{$lbl2};
-					# v_payment_p_list*: bare «период» is payment.период, not «период per_bdr»
-					unless ($lbl2 eq 'период' && lc($dest) eq 'per_bdr'
-						&& exists $from_clause_list{'период'}
-						&& $from_clause_list{'период'} !~ /\bper_bdr\b/i)
-					{
-						$r =~ s/^\(?\s*\Q$lbl2\E\./$dest./i;
-						$lbl2 = $dest;
-					}
+					$r =~ s/^\(?\s*\Q$lbl2\E\./$dest./i;
+					$lbl2 = $dest;
 				}
 				if (!$lbl1) {
 					if (outer_join_function_operand($l)) {
@@ -4182,16 +4159,7 @@ sub replace_outer_join
 				my @on = outer_join_align_on_predicats($tbl, @{$final_from_clause{$t}{clause}{$j}{predicat}});
 				push(@on, @{ $other_join_clause{$r} // [] });
 				@on = outer_join_align_on_predicats($tbl, @on);
-				if ($tbl =~ /(?:payment\.)?период(?:\s+(\p{L}+))?\s*$/i && $tbl !~ /\bper_bdr\b/i) {
-					my $period_join_alias = $1 // 'период';
-					@on = map {
-						s/(=)\s*per_bdr\.период\b/$1 $period_join_alias.период/ig;
-						s/\b([Oo])\.период\s*=\s*per_bdr\.период\b/$1.период = $period_join_alias.период/iu;
-						$_;
-					} @on;
-				}
 				my $join_line = "\U$type\E OUTER JOIN $tbl ON (" . join(' AND ', @on) . ")";
-				$join_line = rewrite_payment_period_per_bdr_on_join($join_line);
 				$from_clause .= "\n$join_line";
 				push(@{$final_outer_clauses{$l}{join}}, $join_line);
 				push(@{$final_outer_clauses{$l}{position}},  $final_from_clause{$t}{clause}{$j}{position});
@@ -4246,11 +4214,9 @@ sub replace_outer_join
 		}
 		$from_clause =~ s/\b(new|old)\b/\U$1\E/gs;
 		$from_clause =~ s/,\s*$/ /s;
-		$from_clause = rewrite_payment_period_per_bdr_on_join($from_clause);
 		$str =~ s/FROM FROM_CLAUSE/FROM $from_clause/s;
 	}
 
-	$str = rewrite_payment_period_per_bdr_on_join($str) if ($str =~ /per_bdr/i);
 	return $str;
 }
 
@@ -4282,42 +4248,6 @@ sub _connect_by_level_counter_rewrite
 	$sel =~ s/(\))\s+YEAR(\s+FROM\b)/$1 AS year$2/igs;
 	$sel =~ s/(\))\s+MONTH(\s+FROM\b)/$1 AS month$2/igs;
 	return "$sel FROM generate_series(1, $lim) AS gs";
-}
-
-# v_payment_p_list*: (+) ON for payment.период must not reference per_bdr.период
-sub rewrite_payment_period_per_bdr_on_join
-{
-	my ($str) = @_;
-	return $str unless ($str =~ /per_bdr/i);
-	# v_payment_p_list*: ON (O.период = per_bdr.период) before per_bdr JOIN (export 1603864).
-	while ($str =~ s/\(([Oo])\.период\s*=\s*per_bdr\.период\)/($1.период = период.период)/giu) {}
-	# Comma-FROM v_payment_p_list*: explicit LHS capture (export 1603843: [^)]*? JOIN rewrite missed)
-	while ($str =~ s/
-		(LEFT\s+OUTER\s+JOIN\s+payment\.период\s+\p{L}+\s+ON\s*\(\s*)
-		([Oo])(\.период\s*=\s*)per_bdr\.период\b
-		/${1}${2}${3}период.период/giux) {}
-	# Use ${2} before Cyrillic column name — $2.период would parse as one identifier (see 0.1.46).
-	while ($str =~ s/(LEFT\s+OUTER\s+JOIN\s+payment\.период\s+(\p{L}+)\s+ON\s*\([^)]*?=\s*)per_bdr\.период\b/${1}${2}.период/giu) {}
-	while ($str =~ s/(LEFT\s+OUTER\s+JOIN\s+payment\.период\s+ON\s*\([^)]*?=\s*)per_bdr\.период\b/${1}период.период/giu) {}
-	while ($str =~ s/(LEFT\s+OUTER\s+JOIN\s+период\s+(\p{L}+)\s+ON\s*\([^)]*?=\s*)per_bdr\.период\b/${1}${2}.период/giu) {}
-	# v_payment_p_list*: leftover ON after comma-FROM / associated-clause assembly (UNION: need /g)
-	while ($str =~ s/\b([Oo])\.период\s*=\s*per_bdr\.период\b/${1}.период = период.период/giu) {}
-	return $str;
-}
-
-# inet_list_1: bare YES/NO column refs ambiguous with prepare_yes/prepare_no and aliases y/n
-sub rewrite_inet_list_ambiguous_yes_no
-{
-	my ($str) = @_;
-	return $str unless ($str =~ /inet_list_1_prepare_(?:yes|no)/i);
-	return $str unless ($str =~ /inet_list_1_prepare_yes\s+y\s+ON\b/i);
-	$str =~ s/(?<![.\w\$#])yes(?=\s+IS\s+NOT\s+DISTINCT\s+FROM)/y.yes/gi;
-	$str =~ s/(?<![.\w\$#])no(?=\s+IS\s+NOT\s+DISTINCT\s+FROM)/n.no/gi;
-	$str =~ s/\byes_summa\b/y.yes_summa/gi;
-	$str =~ s/\bno_summa\b/n.no_summa/gi;
-	$str =~ s/\bn\.NO\b/n.no/g;
-	$str =~ s/\by\.YES\b/y.yes/g;
-	return $str;
 }
 
 # Oracle unquoted/quoted ORDER column alias -> AS "order" (PG reserved word)

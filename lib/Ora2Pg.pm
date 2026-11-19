@@ -411,7 +411,6 @@ sub export_schema
 		{
 			# Close output export file create above
 			$self->close_export_file($self->{fhout}) if (defined $self->{fhout});
-			$self->_finalize_bulk_sql_postpasses() if ($self->{type} eq 'VIEW');
 		}
 	}
 
@@ -5204,8 +5203,6 @@ sub export_view
 		# pack.func() -> pack_func(): the package function list is read from the dictionary for VIEW export
 		if (!defined $fdw_ddl) {
 			$self->requalify_function_call(\$self->{views}{$view}{text});
-			$self->{views}{$view}{text} =
-				Ora2Pg::PLSQL::rewrite_payment_period_per_bdr_on_join($self->{views}{$view}{text});
 		}
 		my $tmpv = $view;
 		if (exists $self->{replaced_tables}{"\L$tmpv\E"} && $self->{replaced_tables}{"\L$tmpv\E"})
@@ -5327,14 +5324,6 @@ sub export_view
 		$sql_output = "-- Nothing found of type $self->{type}\n" if (!$self->{no_header});
 	} else {
 		$sql_output .= "\n";
-	}
-
-	# Bulk view.sql: UNION branches can miss per-view postpass; rewrite whole buffer before dump.
-	if ($sql_output =~ /per_bdr/i) {
-		$sql_output = Ora2Pg::PLSQL::rewrite_payment_period_per_bdr_on_join($sql_output);
-	}
-	if ($sql_output =~ /inet_list_1_prepare_(?:yes|no)/i) {
-		$sql_output = Ora2Pg::PLSQL::rewrite_inet_list_ambiguous_yes_no($sql_output);
 	}
 
 	# Rewrite in memory before dump; bulk file postpass runs in fix_function_call
@@ -10787,7 +10776,6 @@ sub fix_function_call
 			$self->requalify_package_functions($path) if (-f $path);
 		}
 	}
-	$self->_finalize_bulk_sql_postpasses();
 }
 
 # Same path as create_export_file for the current TYPE/output (view.sql or VIEW_view.sql).
@@ -10803,38 +10791,6 @@ sub _bulk_output_sql_path
 	return $outfile;
 }
 
-# Serial post-passes on bulk view.sql after parallel pass2 (CI: VIEW before PACKAGE).
-sub _finalize_bulk_sql_postpasses
-{
-	my ($self) = @_;
-	my $dirprefix = '';
-	$dirprefix = "$self->{output_dir}/" if ($self->{output_dir});
-	my $view_sql = undef;
-	if (defined $self->{bulk_view_sql_path} && -f $self->{bulk_view_sql_path}) {
-		$view_sql = $self->{bulk_view_sql_path};
-	} elsif (-f $dirprefix . 'view.sql') {
-		# CI: each TYPE is a separate ora2pg run (-o view.sql … synonym.sql).
-		$view_sql = $dirprefix . 'view.sql';
-	} else {
-		$view_sql = $self->_bulk_output_sql_path('view.sql');
-	}
-	return unless (defined $view_sql && -f $view_sql);
-	open(my $rfh, '<', $view_sql) or return;
-	$self->set_binmode($rfh);
-	local $/;
-	my $content = <$rfh>;
-	close($rfh);
-	$content = Ora2Pg::PLSQL::rewrite_payment_period_per_bdr_on_join($content);
-	$content = Ora2Pg::PLSQL::rewrite_inet_list_ambiguous_yes_no($content);
-	open(my $wfh, '>', $view_sql) or do {
-		print STDERR "ERROR: finalize bulk postpass can't write $view_sql, $!\n";
-		return;
-	};
-	$self->set_binmode($wfh);
-	print $wfh $content;
-	close($wfh);
-}
-
 # Requalify function call by using double quoted if necessary and by replacing
 # dot with an undescore when PACKAGE_AS_SCHEMA is disabled.
 sub requalify_package_functions
@@ -10847,12 +10803,6 @@ sub requalify_package_functions
 		while (<$fh>) { $content .= $_; };
 		close($fh);
 		$self->requalify_function_call(\$content);
-		# VIEW is exported before PACKAGE (pass2 had no package_functions). Final bulk
-		# view.sql must get the same post-passes as per-view export.
-		if ($filename =~ /view\.sql$/i) {
-			$content = Ora2Pg::PLSQL::rewrite_payment_period_per_bdr_on_join($content);
-			$content = Ora2Pg::PLSQL::rewrite_inet_list_ambiguous_yes_no($content);
-		}
 		if (open(my $fh, '>', $filename)) {
 			$self->set_binmode($fh);
 			print $fh $content;
@@ -16635,7 +16585,6 @@ sub _format_view
 	}
 
 	$self->_restore_comments(\$sqlstr);
-	$sqlstr = Ora2Pg::PLSQL::rewrite_payment_period_per_bdr_on_join($sqlstr);
 
 	return $sqlstr;
 }

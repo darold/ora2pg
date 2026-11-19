@@ -339,125 +339,17 @@ is($o->{dblink}{OTHERDB}{owner}, 'APP', 'USING-only link: owner is the schema');
 	unlike($out, qr/\bLEVEL\b/i, 'WITH YEAR alias: no orphan LEVEL');
 }
 
-# v_payment_p_list_test: same base table twice — alias "период" vs "период per_bdr"
+# (+) comma-FROM: schema.table and homonymous bare table+alias are separate joins
 {
 	use utf8;
 	my ($out) = DblinkTest::convert(
-		q{SELECT o.период, o.период_бдр, per_bdr.наименование }.
-		q{FROM payment.заявка z, payment.оплата o, payment.период, период per_bdr }.
-		q{WHERE z.заявка = o.заявка AND o.период = период.период(+) }.
-		q{AND o.период_бдр = per_bdr.период(+)},
+		q{SELECT f.к1, f.к2 FROM app.факт f, app.спр ключ, ключ второй }.
+		q{WHERE f.к1 = ключ.pk(+) AND f.к2 = второй.pk(+)},
 		type => 'VIEW', use_orafce => 1, idxcomment => 0, dblink_mode => 'off');
-	like($out, qr/LEFT OUTER JOIN payment\.период период ON \(o\.период = период\.период\)/i,
-		'duplicate base table: (+) ON keeps период alias, not per_bdr');
-	like($out, qr/LEFT OUTER JOIN период per_bdr ON \(o\.период_бдр = per_bdr\.период\)/i,
-		'per_bdr (+) join unchanged');
-	unlike($out, qr/период = per_bdr\.период/i,
-		'период join must not reference per_bdr before its JOIN');
-}
-
-# v_payment_p_list: период per_bdr before payment.период in FROM (export JOIN order)
-{
-	use utf8;
-	my ($out) = DblinkTest::convert(
-		q{SELECT o.период, o.период_бдр FROM payment.заявка z, payment.оплата o, период per_bdr, }.
-		q{payment.статья, payment.период, payment.счет }.
-		q{WHERE z.заявка = o.заявка AND O.период = период.период(+) }.
-		q{AND o.счет = счет.счет(+) AND o.период_бдр = per_bdr.период(+)},
-		type => 'VIEW', use_orafce => 1, idxcomment => 0, dblink_mode => 'off');
-	like($out, qr/payment\.период\s+период\s+ON\s*\([^)]*период\.период/is,
-		'FROM order per_bdr first: period JOIN ON uses период.период');
-	unlike($out, qr/payment\.период\s+период\s+ON\s*\([^)]*per_bdr\.период/is,
-		'FROM order per_bdr first: period JOIN ON must not use per_bdr');
-}
-
-# v_payment_p_list: implicit alias payment.период + период per_bdr (production FROM order)
-{
-	use utf8;
-	my ($out) = DblinkTest::convert(
-		q{SELECT o.период, o.период_бдр FROM payment.v_staff s, payment.заявка z, }.
-		q{payment.оплата o, payment.статья, payment.период, период per_bdr, payment.счет }.
-		q{WHERE z.заявка = o.заявка AND O.период = период.период(+) }.
-		q{AND o.счет = счет.счет(+) AND o.период_бдр = per_bdr.период(+)},
-		type => 'VIEW', use_orafce => 1, idxcomment => 0, dblink_mode => 'off');
-	like($out, qr/payment\.период\s+период\s+ON\s*\([^)]*период\.период/is,
-		'v_payment_p_list: period JOIN ON uses период.период');
-	unlike($out, qr/payment\.период\s+период\s+ON\s*\([^)]*per_bdr\.период/is,
-		'v_payment_p_list: period JOIN ON must not use per_bdr');
-}
-
-# v_payment_p_list_test: supplier (+) on LHS + SUMM subquery (production shape)
-{
-	use utf8;
-	my ($out) = DblinkTest::convert(
-		q{SELECT o.период, o.период_бдр FROM payment.v_staff s, payment.заявка Z, payment.поставщик, }.
-		q{payment.оплата O, payment.статья, payment.статья_бдр, payment.счет, payment.период, payment.сотрудник R, }.
-		q{(Select SZ.заявка, SUM(SO.сумма_фикс) AS SUMM FROM payment.заявка SZ, payment.оплата SO }.
-		q{Where SZ.заявка = SO.заявка Group By SZ.заявка) SUMM, payment.отдел otd_bdr, период per_bdr, валюта val, валюта val_2 }.
-		q{WHERE SUMM.заявка = Z.заявка AND O.период = период.период(+) AND Z.заявка = O.заявка }.
-		q{AND поставщик.поставщик(+) = Z.поставщик AND o.период_бдр = per_bdr.период(+)},
-		type => 'VIEW', use_orafce => 1, idxcomment => 0, dblink_mode => 'off');
-	like($out, qr/payment\.период\s+период\s+ON\s*\([^)]*период\.период/is,
-		'v_payment_p_list_test: payment.период ON keeps период alias');
-	unlike($out, qr/payment\.период\s+период\s+ON\s*\([^)]*per_bdr\.период/is,
-		'v_payment_p_list_test: payment.период ON must not use per_bdr');
-}
-
-# rewrite_payment_period_per_bdr_on_join: post-pass on already-built JOIN (export shape)
-{
-	use utf8;
-	require Ora2Pg::PLSQL;
-	my $bad = 'LEFT OUTER JOIN payment.период период ON (O.период = per_bdr.период)';
-	my $fixed = Ora2Pg::PLSQL::rewrite_payment_period_per_bdr_on_join($bad);
-	like($fixed, qr/=\s*период\.период\)/, 'rewrite pass: per_bdr.период -> период.период (alias capture)');
-	unlike($fixed, qr/per_bdr\.период/, 'rewrite pass: no per_bdr on payment.период JOIN');
-	like(
-		Ora2Pg::PLSQL::rewrite_payment_period_per_bdr_on_join(
-			'LEFT OUTER JOIN payment.период период ON (O.период = per_bdr.период)'
-		),
-		qr/=\s*период\.период\)/,
-		'rewrite idempotent on export-shaped JOIN'
-	);
-	like(
-		Ora2Pg::PLSQL::rewrite_payment_period_per_bdr_on_join(
-			", payment.оплата o\nLEFT OUTER JOIN payment.период период ON (O.период = per_bdr.период)\n"
-		),
-		qr/=\s*период\.период\)/,
-		'rewrite: O.период bare predicate after comma-FROM (export 1603712)'
-	);
-	my $union = join "\n",
-		'LEFT OUTER JOIN payment.период период ON (O.период = per_bdr.период)',
-		'UNION ALL',
-		'LEFT OUTER JOIN payment.период период ON (O.период = per_bdr.период)';
-	$fixed = Ora2Pg::PLSQL::rewrite_payment_period_per_bdr_on_join($union);
-	is(() = $fixed =~ /per_bdr\.период/g, 0, 'rewrite pass: all UNION branches (global /g)');
-}
-
-# inet_list_1: qualify bare YES/NO for PG (join aliases y/n)
-{
-	my ($out) = DblinkTest::convert(
-		q{SELECT CASE WHEN YES IS NOT DISTINCT FROM Null THEN 0 ELSE 4 END AS bit, }.
-		q{coalesce(NO_SUMMA,0)+coalesce(YES_SUMMA,0) AS summ }.
-		q{FROM payment.заявка заявка, payment.inet_list_1_prepare_yes inet_list_1_prepare_yes, }.
-		q{payment.inet_list_1_prepare_no inet_list_1_prepare_no }.
-		q{LEFT OUTER JOIN payment.inet_list_1_prepare_no n ON (заявка.заявка = n.no) }.
-		q{LEFT OUTER JOIN payment.inet_list_1_prepare_yes y ON (заявка.заявка = y.yes)},
-		type => 'VIEW', use_orafce => 1, idxcomment => 0, dblink_mode => 'off');
-	like($out, qr/CASE\s+WHEN\s+y\.yes\s+IS\s+NOT\s+DISTINCT/i, 'inet_list_1: YES -> y.yes');
-	like($out, qr/coalesce\(n\.no_summa/i, 'inet_list_1: NO_SUMMA qualified');
-	like($out, qr/=\s*n\.no\)/i, 'inet_list_1: ON uses n.no not n.NO');
-	like($out, qr/=\s*y\.yes\)/i, 'inet_list_1: ON uses y.yes not y.YES');
-}
-
-# inet_list_1 view body has no «inet_list_1» token (only prepare_yes/no)
-{
-	my ($out) = DblinkTest::convert(
-		q{SELECT CASE WHEN YES IS NOT DISTINCT FROM Null THEN 0 ELSE 4 END AS bit }.
-		q{FROM payment.заявка заявка, payment.inet_list_1_prepare_no n }.
-		q{LEFT OUTER JOIN payment.inet_list_1_prepare_yes y ON (заявка.заявка = y.yes)},
-		type => 'VIEW', use_orafce => 1, idxcomment => 0, dblink_mode => 'off');
-	like($out, qr/CASE\s+WHEN\s+y\.yes\s+IS\s+NOT\s+DISTINCT/i,
-		'inet_list_1 body: YES qualified without inet_list_1 name in SQL');
+	like($out, qr/LEFT OUTER JOIN app\.спр ключ ON \(f\.к1 = ключ\.pk\)/i,
+		'schema.table (+): ON targets qualified lookup alias');
+	like($out, qr/LEFT OUTER JOIN ключ второй ON \(f\.к2 = второй\.pk\)/i,
+		'homonym table+alias (+): second join unchanged');
 }
 
 # v_subrep: glued subquery alias ")v" and (+) on second table — no ")v, v" duplicate
