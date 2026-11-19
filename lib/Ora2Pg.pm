@@ -10724,15 +10724,16 @@ sub fix_function_call
 	my $dirprefix = '';
 	$dirprefix = "$self->{output_dir}/" if ($self->{output_dir});
 
-	return unless(open(my $tfh, '<', $dirprefix . 'temp_pass2_file.dat'));
 	my %fix_files = ();
-	while (my $l = <$tfh>) {
-		chomp($l);
-		my ($pname, $fname, $file_name) = split(/:/, $l, 3);
-		next if ($pname =~ /^ORA2PG_/ && $pname !~ /^ORA2PG_(?:VIEW|MVIEW)$/);
-		$fix_files{$file_name} = 1;
+	if (open(my $tfh, '<', $dirprefix . 'temp_pass2_file.dat')) {
+		while (my $l = <$tfh>) {
+			chomp($l);
+			my ($pname, $fname, $file_name) = split(/:/, $l, 3);
+			next if ($pname =~ /^ORA2PG_/ && $pname !~ /^ORA2PG_(?:VIEW|MVIEW)$/);
+			$fix_files{$file_name} = 1;
+		}
+		close($tfh);
 	}
-	close($tfh);
 
 	my $child_count = 0;
 	# Fix call to package function in files (each bulk file once)
