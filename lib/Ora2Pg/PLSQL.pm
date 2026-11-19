@@ -4260,6 +4260,8 @@ sub rewrite_reserved_order_select_alias
 	$str =~ s/$not_after_as($expr_end)\s+"ORDER"\s*,/$1 AS "order",/ig;
 	$str =~ s/$not_after_as($expr_end)\s+order\s*,/$1 AS "order",/igs;
 	$str =~ s/\bAS\s+AS\s+"order"/ AS "order"/ig;
+	# Outer SELECT/GROUP BY references to ORDER column alias (leading comma only — not ORDER BY clause)
+	$str =~ s/,(\s*)order(\s*,)/,${1}"order"${2}/igs;
 	return $str;
 }
 

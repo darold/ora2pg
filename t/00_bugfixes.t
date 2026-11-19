@@ -422,6 +422,15 @@ is($o->{dblink}{OTHERDB}{owner}, 'APP', 'USING-only link: owner is the schema');
 	unlike($twice, qr/\bAS\s+AS\s+"order"/i, 'double rewrite does not AS AS "order"');
 }
 
+# Bare ORDER alias in outer SELECT/GROUP BY comma lists (aggregating wrapper over AS "order")
+{
+	my ($out) = DblinkTest::convert(
+		q{SELECT g, order, p FROM (SELECT 1 AS g, NULL AS "order", 2 AS p FROM app.t) s GROUP BY g, order, p},
+		type => 'VIEW', use_orafce => 1, idxcomment => 0, dblink_mode => 'off');
+	like($out, qr/,\s*"order"\s*,/i, 'bare order in projection/GROUP BY lists quoted');
+	unlike($out, qr/,\s*order\s*,/i, 'no bare order between commas');
+}
+
 # Quoted alias "FROM" must not break rewrite_from_table_aliases (v_cash_c_depo_list)
 {
 	my ($out) = DblinkTest::convert(
