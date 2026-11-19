@@ -4176,8 +4176,9 @@ sub replace_outer_join
 				my @on = outer_join_align_on_predicats($tbl, @{$final_from_clause{$t}{clause}{$j}{predicat}});
 				push(@on, @{ $other_join_clause{$r} // [] });
 				@on = outer_join_align_on_predicats($tbl, @on);
-				if ($tbl =~ /(?:payment\.)?период(?:\s+период)?\s*$/i && $tbl !~ /\bper_bdr\b/i) {
-					@on = map { s/(=)\s*per_bdr\.(период\b)/$1 период.$2/ig; $_ } @on;
+				if ($tbl =~ /(?:payment\.)?период(?:\s+(\p{L}+))?\s*$/i && $tbl !~ /\bper_bdr\b/i) {
+					my $period_join_alias = $1 // 'период';
+					@on = map { s/(=)\s*per_bdr\.период\b/$1 $period_join_alias.период/ig; $_ } @on;
 				}
 				my $join_line = "\U$type\E OUTER JOIN $tbl ON (" . join(' AND ', @on) . ")";
 				$join_line = rewrite_payment_period_per_bdr_on_join($join_line);
@@ -4278,9 +4279,11 @@ sub rewrite_payment_period_per_bdr_on_join
 {
 	my ($str) = @_;
 	return $str unless ($str =~ /per_bdr/i);
-	return $str unless ($str =~ /LEFT\s+OUTER\s+JOIN\s+(?:payment\.)?период\b/i);
+	return $str unless ($str =~ /JOIN\s+(?:payment\.)?период\b/i);
 	# Use ${2} before Cyrillic column name — $2.период would parse as one identifier (see 0.1.46).
-	$str =~ s/(LEFT\s+OUTER\s+JOIN\s+payment\.период\s+(\p{L}+)\s+ON\s*\(\s*[^)]*?=\s*)per_bdr\.период/${1}${2}.период/giu;
+	while ($str =~ s/(LEFT\s+OUTER\s+JOIN\s+payment\.период\s+(\p{L}+)\s+ON\s*\([^)]*?=\s*)per_bdr\.период\b/${1}${2}.период/giu) {}
+	while ($str =~ s/(LEFT\s+OUTER\s+JOIN\s+payment\.период\s+ON\s*\([^)]*?=\s*)per_bdr\.период\b/${1}период.период/giu) {}
+	while ($str =~ s/(LEFT\s+OUTER\s+JOIN\s+период\s+(\p{L}+)\s+ON\s*\([^)]*?=\s*)per_bdr\.период\b/${1}${2}.период/giu) {}
 	return $str;
 }
 
