@@ -4289,6 +4289,8 @@ sub rewrite_payment_period_per_bdr_on_join
 {
 	my ($str) = @_;
 	return $str unless ($str =~ /per_bdr/i);
+	# v_payment_p_list*: ON (O.период = per_bdr.период) before per_bdr JOIN (export 1603864).
+	while ($str =~ s/\(([Oo])\.период\s*=\s*per_bdr\.период\)/($1.период = период.период)/giu) {}
 	# Comma-FROM v_payment_p_list*: explicit LHS capture (export 1603843: [^)]*? JOIN rewrite missed)
 	while ($str =~ s/
 		(LEFT\s+OUTER\s+JOIN\s+payment\.период\s+\p{L}+\s+ON\s*\(\s*)

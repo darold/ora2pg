@@ -5334,8 +5334,9 @@ sub export_view
 		$sql_output = Ora2Pg::PLSQL::rewrite_inet_list_ambiguous_yes_no($sql_output);
 	}
 
+	# Rewrite in memory before dump; bulk file postpass runs in fix_function_call
+	# after export file is closed (export_view must not read view.sql while fhout is open).
 	$self->dump($sql_output);
-	$self->_finalize_bulk_sql_postpasses();
 
 	Ora2Pg::DbLink::write_tables_file($self);
 
@@ -10786,14 +10787,25 @@ sub fix_function_call
 	$self->_finalize_bulk_sql_postpasses();
 }
 
+# Same path as create_export_file for the current TYPE/output (view.sql or VIEW_view.sql).
+sub _bulk_output_sql_path
+{
+	my ($self, $outfile) = @_;
+	$outfile ||= $self->{output} || return;
+	return $outfile if ($outfile eq '-');
+	$outfile = $self->{type} . "_$outfile" if ($#{$self->{export_type}} > 0);
+	if ($self->{output_dir}) {
+		return $self->{output_dir} . '/' . $outfile;
+	}
+	return $outfile;
+}
+
 # Serial post-passes on bulk view.sql after parallel pass2 (CI: VIEW before PACKAGE).
 sub _finalize_bulk_sql_postpasses
 {
 	my ($self) = @_;
-	my $dirprefix = '';
-	$dirprefix = "$self->{output_dir}/" if ($self->{output_dir});
-	my $view_sql = $dirprefix . 'view.sql';
-	return unless (-f $view_sql);
+	my $view_sql = $self->_bulk_output_sql_path('view.sql');
+	return unless (defined $view_sql && -f $view_sql);
 	open(my $rfh, '<', $view_sql) or return;
 	$self->set_binmode($rfh);
 	local $/;
