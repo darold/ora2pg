@@ -10787,6 +10787,12 @@ sub requalify_package_functions
 		while (<$fh>) { $content .= $_; };
 		close($f);
 		$self->requalify_function_call(\$content);
+		# VIEW is exported before PACKAGE (pass2 had no package_functions). Final bulk
+		# view.sql must get the same post-passes as per-view export.
+		if ($filename =~ /view\.sql$/i) {
+			$content = Ora2Pg::PLSQL::rewrite_payment_period_per_bdr_on_join($content);
+			$content = Ora2Pg::PLSQL::rewrite_inet_list_ambiguous_yes_no($content);
+		}
 		if (open(my $fh, '>', $filename)) {
 			$self->set_binmode($fh);
 			print $fh $content;
@@ -16569,8 +16575,7 @@ sub _format_view
 	}
 
 	$self->_restore_comments(\$sqlstr);
-	$sqlstr = Ora2Pg::PLSQL::rewrite_payment_period_per_bdr_on_join($sqlstr)
-		if ($self->{plsql_pgsql});
+	$sqlstr = Ora2Pg::PLSQL::rewrite_payment_period_per_bdr_on_join($sqlstr);
 
 	return $sqlstr;
 }
