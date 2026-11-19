@@ -3818,6 +3818,26 @@ sub outer_join_normalize_from_table_token
 	return $table;
 }
 
+sub outer_join_align_operand_to_table_alias
+{
+	my ($operand, $table_decl) = @_;
+	return $operand unless outer_join_table_column_ref($operand);
+	my $join_alias = '';
+	if ($table_decl =~ /\s+([\w\$#]+)\s*$/) {
+		$join_alias = lc($1);
+	} elsif ($table_decl !~ /\./) {
+		$join_alias = lc($table_decl);
+	} else {
+		($join_alias = $table_decl) =~ s/^.*\.//;
+		$join_alias = lc($join_alias);
+	}
+	my $op_alias = outer_join_table_alias_from_operand($operand);
+	if (defined $op_alias && $join_alias ne '' && $op_alias ne $join_alias) {
+		$operand =~ s/^\(?\s*\Q$op_alias\E\./$join_alias./i;
+	}
+	return $operand;
+}
+
 sub outer_join_table_alias_from_operand
 {
 	my ($operand) = @_;
@@ -4067,6 +4087,7 @@ sub replace_outer_join
 				}
 			}
 
+			$r = outer_join_align_operand_to_table_alias($r, $table_decl2);
 			# When this is the first join parse add the left tablename
 			# first then the outer join with the right table
 			if (scalar keys %final_from_clause == 0)
