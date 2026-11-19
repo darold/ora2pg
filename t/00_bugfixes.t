@@ -425,6 +425,12 @@ is($o->{dblink}{OTHERDB}{owner}, 'APP', 'USING-only link: owner is the schema');
 		qr/=\s*период\.период\)/,
 		'rewrite: O.период bare predicate after comma-FROM (export 1603712)'
 	);
+	my $union = join "\n",
+		'LEFT OUTER JOIN payment.период период ON (O.период = per_bdr.период)',
+		'UNION ALL',
+		'LEFT OUTER JOIN payment.период период ON (O.период = per_bdr.период)';
+	$fixed = Ora2Pg::PLSQL::rewrite_payment_period_per_bdr_on_join($union);
+	is(() = $fixed =~ /per_bdr\.период/g, 0, 'rewrite pass: all UNION branches (global /g)');
 }
 
 # inet_list_1: qualify bare YES/NO for PG (join aliases y/n)
