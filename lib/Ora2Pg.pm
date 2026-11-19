@@ -3947,6 +3947,23 @@ sub read_grant_from_file
 
 }
 
+# PostgreSQL row triggers on INSERT cannot reference OLD in the CREATE TRIGGER
+# WHEN clause (unlike Oracle INSERT OR UPDATE). When the body already guards on
+# NEW vs OLD, omitting the WHEN clause preserves behaviour on both events.
+sub _pg_trigger_event_includes_insert
+{
+	my ($event) = @_;
+	return 0 if (!defined $event || $event eq '');
+	return ($event =~ /\bINSERT\b/i) ? 1 : 0;
+}
+
+sub _pg_trigger_when_references_old
+{
+	my ($when) = @_;
+	return 0 if (!defined $when || $when eq '');
+	return ($when =~ /\bOLD\b/i) ? 1 : 0;
+}
+
 sub read_trigger_from_file
 {
 	my $self = shift;
@@ -6299,7 +6316,19 @@ sub export_trigger
 						$trig->[5] = Ora2Pg::PLSQL::convert_plsql_code($self, $trig->[5]);
 						$self->_replace_declare_var(\$trig->[5]);
 					}
-					$sql_output .= "\tWHEN ($trig->[5])\n";
+					if (_pg_trigger_event_includes_insert($trig->[2])
+						&& _pg_trigger_when_references_old($trig->[5]))
+					{
+						$self->logit(
+							"WARNING: PostgreSQL rejects WHEN (... OLD ...) on INSERT OR UPDATE trigger "
+								. "$trig->[0]; omitting WHEN clause (check remains in trigger body).\n",
+							1
+						);
+					}
+					else
+					{
+						$sql_output .= "\tWHEN ($trig->[5])\n";
+					}
 				}
 				if ($trig->[6] =~ /REFERENCING/)
 				{
