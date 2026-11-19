@@ -388,6 +388,16 @@ is($o->{dblink}{OTHERDB}{owner}, 'APP', 'USING-only link: owner is the schema');
 		'v_payment_p_list_test: payment.период ON must not use per_bdr');
 }
 
+# rewrite_payment_period_per_bdr_on_join: post-pass on already-built JOIN (export shape)
+{
+	use utf8;
+	require Ora2Pg::PLSQL;
+	my $bad = 'LEFT OUTER JOIN payment.период период ON (O.период = per_bdr.период)';
+	my $fixed = Ora2Pg::PLSQL::rewrite_payment_period_per_bdr_on_join($bad);
+	like($fixed, qr/=\s*период\.период\)/, 'rewrite pass: per_bdr.период -> период.период');
+	unlike($fixed, qr/per_bdr\.период/, 'rewrite pass: no per_bdr on payment.период JOIN');
+}
+
 # inet_list_1: qualify bare YES/NO for PG (join aliases y/n)
 {
 	my ($out) = DblinkTest::convert(

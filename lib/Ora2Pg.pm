@@ -5199,7 +5199,11 @@ sub export_view
 		my ($fdw_ddl, $fdw_todo) = Ora2Pg::DbLink::view_ddl($self, $view, '%FDW_NAME%', $self->{views}{$view}{text});
 		$self->{views}{$view}{text} = $self->_format_view($view, $self->{views}{$view}{text}) if (!defined $fdw_ddl);
 		# pack.func() -> pack_func(): the package function list is read from the dictionary for VIEW export
-		$self->requalify_function_call(\$self->{views}{$view}{text}) if (!defined $fdw_ddl);
+		if (!defined $fdw_ddl) {
+			$self->requalify_function_call(\$self->{views}{$view}{text});
+			$self->{views}{$view}{text} =
+				Ora2Pg::PLSQL::rewrite_payment_period_per_bdr_on_join($self->{views}{$view}{text});
+		}
 		my $tmpv = $view;
 		if (exists $self->{replaced_tables}{"\L$tmpv\E"} && $self->{replaced_tables}{"\L$tmpv\E"})
 		{

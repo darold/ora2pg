@@ -4266,18 +4266,11 @@ sub rewrite_payment_period_per_bdr_on_join
 	my ($str) = @_;
 	return $str unless ($str =~ /per_bdr/i);
 	return $str unless ($str =~ /LEFT\s+OUTER\s+JOIN\s+(?:payment\.)?период\b/i);
+	# ${1} required: Perl parses $1период as one identifier (Cyrillic suffix).
 	$str =~ s{
-		(LEFT\s+OUTER\s+JOIN\s+payment\.период(?:\s+период)?\s+ON\s*\(\s*[^=]+=\s*)
+		(LEFT\s+OUTER\s+JOIN\s+payment\.период(?:\s+период)?\s+ON\s*\(\s*[^)]*?=\s*)
 		per_bdr\.(период\b)
-	}{$1период.$2}gixu;
-	$str =~ s{
-		(LEFT\s+OUTER\s+JOIN\s+(?:payment\.)?период\s+период\s+ON\s*\(\s*[^=]+=\s*)
-		per_bdr\.(период\b)
-	}{$1период.$2}gixu;
-	$str =~ s{
-		(LEFT\s+OUTER\s+JOIN\s+payment\.период\s+период\s+ON\s*\(\s*[Oo]\.период\s*=\s*)
-		per_bdr\.(период\b)
-	}{$1период.$2}gixu;
+	}{${1}период.${2}}gixu;
 	return $str;
 }
 
