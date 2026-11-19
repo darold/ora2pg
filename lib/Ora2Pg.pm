@@ -10807,8 +10807,17 @@ sub _bulk_output_sql_path
 sub _finalize_bulk_sql_postpasses
 {
 	my ($self) = @_;
-	my $view_sql = $self->{bulk_view_sql_path}
-		|| $self->_bulk_output_sql_path($self->{output} || 'view.sql');
+	my $dirprefix = '';
+	$dirprefix = "$self->{output_dir}/" if ($self->{output_dir});
+	my $view_sql = undef;
+	if (defined $self->{bulk_view_sql_path} && -f $self->{bulk_view_sql_path}) {
+		$view_sql = $self->{bulk_view_sql_path};
+	} elsif (-f $dirprefix . 'view.sql') {
+		# CI: each TYPE is a separate ora2pg run (-o view.sql … synonym.sql).
+		$view_sql = $dirprefix . 'view.sql';
+	} else {
+		$view_sql = $self->_bulk_output_sql_path('view.sql');
+	}
 	return unless (defined $view_sql && -f $view_sql);
 	open(my $rfh, '<', $view_sql) or return;
 	$self->set_binmode($rfh);
