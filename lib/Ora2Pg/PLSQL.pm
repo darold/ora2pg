@@ -4048,8 +4048,14 @@ sub replace_outer_join
 				$lbl2 = outer_join_table_alias_from_operand($r);
 				if (!exists $from_clause_list{$lbl2} && exists $alias_of_table{$lbl2}) {
 					my $dest = $alias_of_table{$lbl2};
-					$r =~ s/^\(?\s*\Q$lbl2\E\./$dest./i;
-					$lbl2 = $dest;
+					# v_payment_p_list*: bare «период» is payment.период, not «период per_bdr»
+					unless ($lbl2 eq 'период' && lc($dest) eq 'per_bdr'
+						&& exists $from_clause_list{период}
+						&& $from_clause_list{период} !~ /\bper_bdr\b/i)
+					{
+						$r =~ s/^\(?\s*\Q$lbl2\E\./$dest./i;
+						$lbl2 = $dest;
+					}
 				}
 				if (!$lbl1) {
 					if (outer_join_function_operand($l)) {
@@ -4168,8 +4174,10 @@ sub replace_outer_join
 				if ($tbl =~ /(?:payment\.)?период(?:\s+период)?\s*$/i && $tbl !~ /\bper_bdr\b/i) {
 					@on = map { s/(=)\s*per_bdr\.(период\b)/$1 период.$2/ig; $_ } @on;
 				}
-				$from_clause .= "\n\U$type\E OUTER JOIN $tbl ON (" .  join(' AND ', @on) . ")";
-				push(@{$final_outer_clauses{$l}{join}},  "\U$type\E OUTER JOIN $tbl ON (" .  join(' AND ', @on) . ")");
+				my $join_line = "\U$type\E OUTER JOIN $tbl ON (" . join(' AND ', @on) . ")";
+				$join_line = rewrite_payment_period_per_bdr_on_join($join_line);
+				$from_clause .= "\n$join_line";
+				push(@{$final_outer_clauses{$l}{join}}, $join_line);
 				push(@{$final_outer_clauses{$l}{position}},  $final_from_clause{$t}{clause}{$j}{position});
 				push(@{$associated_clause{$l}}, $r);
 			}
@@ -4266,11 +4274,9 @@ sub rewrite_payment_period_per_bdr_on_join
 	my ($str) = @_;
 	return $str unless ($str =~ /per_bdr/i);
 	return $str unless ($str =~ /LEFT\s+OUTER\s+JOIN\s+(?:payment\.)?период\b/i);
-	# ${1} required: Perl parses $1период as one identifier (Cyrillic suffix).
-	$str =~ s{
-		(LEFT\s+OUTER\s+JOIN\s+payment\.период(?:\s+период)?\s+ON\s*\(\s*[^)]*?=\s*)
-		per_bdr\.(период\b)
-	}{${1}период.${2}}gixu;
+	my $period_alias = 'период';
+	# /e + concatenation: avoid $1период / ${1}период parsing next to Cyrillic identifiers
+	$str =~ s/(LEFT\s+OUTER\s+JOIN\s+payment\.период(?:\s+период)?\s+ON\s*\(\s*[^)]*?=\s*)per_bdr\.(период)/$1 . $period_alias . '.' . $2/geiu;
 	return $str;
 }
 
