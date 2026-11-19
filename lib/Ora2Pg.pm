@@ -5335,6 +5335,7 @@ sub export_view
 	}
 
 	$self->dump($sql_output);
+	$self->_finalize_bulk_sql_postpasses();
 
 	Ora2Pg::DbLink::write_tables_file($self);
 

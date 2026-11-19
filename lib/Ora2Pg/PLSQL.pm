@@ -4289,6 +4289,11 @@ sub rewrite_payment_period_per_bdr_on_join
 {
 	my ($str) = @_;
 	return $str unless ($str =~ /per_bdr/i);
+	# Comma-FROM v_payment_p_list*: explicit LHS capture (export 1603843: [^)]*? JOIN rewrite missed)
+	while ($str =~ s/
+		(LEFT\s+OUTER\s+JOIN\s+payment\.период\s+\p{L}+\s+ON\s*\(\s*)
+		([Oo])(\.период\s*=\s*)per_bdr\.период\b
+		/${1}${2}${3}период.период/giux) {}
 	# Use ${2} before Cyrillic column name — $2.период would parse as one identifier (see 0.1.46).
 	while ($str =~ s/(LEFT\s+OUTER\s+JOIN\s+payment\.период\s+(\p{L}+)\s+ON\s*\([^)]*?=\s*)per_bdr\.период\b/${1}${2}.период/giu) {}
 	while ($str =~ s/(LEFT\s+OUTER\s+JOIN\s+payment\.период\s+ON\s*\([^)]*?=\s*)per_bdr\.период\b/${1}период.период/giu) {}
