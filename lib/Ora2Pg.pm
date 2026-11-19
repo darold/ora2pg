@@ -16559,7 +16559,10 @@ sub _format_view
 	}
 
 	if ($self->{plsql_pgsql}) {
+		my $saved_type = $self->{type};
+		$self->{type} = 'VIEW';
 		$sqlstr = Ora2Pg::PLSQL::convert_plsql_code($self, $sqlstr);
+		$self->{type} = $saved_type;
 		$sqlstr = Ora2Pg::PLSQL::lowercase_quoted_oracle_uppercase_columns($sqlstr)
 			if (!$self->{preserve_case});
 		$sqlstr = Ora2Pg::PLSQL::lowercase_fdw_pass_through_columns($sqlstr);
