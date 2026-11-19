@@ -3803,7 +3803,8 @@ sub outer_join_table_column_ref
 {
 	my ($operand) = @_;
 	return 0 if (outer_join_function_operand($operand));
-	return ($operand =~ /^([^\.\s]+\.[^\.\s]+)\..*/ || $operand =~ /^([^\.\s]+)\..*/);
+	return ($operand =~ /^([\p{L}\p{N}_\$#"]+\.[\p{L}\p{N}_\$#"]+)\.[\p{L}\p{N}_\$#"]+/u
+		|| $operand =~ /^([\p{L}\p{N}_\$#"]+)\.[\p{L}\p{N}_\$#"]+/u);
 }
 
 # extract_subpart() can leave a table alias glued to %SUBQUERYn% (Oracle ")v,").
@@ -3858,9 +3859,9 @@ sub outer_join_table_alias_from_operand
 	my ($operand) = @_;
 	return unless outer_join_table_column_ref($operand);
 	my $lbl;
-	if ($operand =~ /^([^\.\s]+\.[^\.\s]+)\..*/) {
+	if ($operand =~ /^([\p{L}\p{N}_\$#"]+\.[\p{L}\p{N}_\$#"]+)\.[\p{L}\p{N}_\$#"]+/u) {
 		($lbl) = ($1);
-	} elsif ($operand =~ /^([^\.\s]+)\..*/) {
+	} elsif ($operand =~ /^([\p{L}\p{N}_\$#"]+)\.[\p{L}\p{N}_\$#"]+/u) {
 		($lbl) = ($1);
 	}
 	return unless defined $lbl;
