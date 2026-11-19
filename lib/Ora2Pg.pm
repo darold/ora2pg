@@ -411,6 +411,7 @@ sub export_schema
 		{
 			# Close output export file create above
 			$self->close_export_file($self->{fhout}) if (defined $self->{fhout});
+			$self->_finalize_bulk_sql_postpasses() if ($self->{type} eq 'VIEW');
 		}
 	}
 
@@ -540,6 +541,8 @@ sub create_export_file
 			$self->{fhout}->open(">>$outfile") or $self->logit("FATAL: Can't open $outfile: $!\n", 0, 1);
 			$self->set_binmode($self->{fhout});
 		}
+		$self->{bulk_view_sql_path} = $outfile
+			if ($self->{type} eq 'VIEW' && defined $outfile && $outfile =~ /view\.sql$/i);
 		if ( $self->{compress} && (($self->{jobs} > 1) || ($self->{oracle_copies} > 1)) )
 		{
 			die "FATAL: you can't use compressed output with parallel dump\n";
@@ -10804,7 +10807,8 @@ sub _bulk_output_sql_path
 sub _finalize_bulk_sql_postpasses
 {
 	my ($self) = @_;
-	my $view_sql = $self->_bulk_output_sql_path('view.sql');
+	my $view_sql = $self->{bulk_view_sql_path}
+		|| $self->_bulk_output_sql_path($self->{output} || 'view.sql');
 	return unless (defined $view_sql && -f $view_sql);
 	open(my $rfh, '<', $view_sql) or return;
 	$self->set_binmode($rfh);
