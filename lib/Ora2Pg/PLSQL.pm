@@ -667,6 +667,8 @@ sub convert_plsql_code
 		if (grep { uc($class->{type} // '') eq $_ } qw(VIEW FUNCTION PROCEDURE PACKAGE QUERY));
 	$str = rewrite_inet_list_ambiguous_yes_no($str)
 		if (uc($class->{type} // '') eq 'VIEW');
+	$str = rewrite_payment_period_per_bdr_on_join($str)
+		if (uc($class->{type} // '') eq 'VIEW');
 
 	return $str;
 }
@@ -4221,6 +4223,11 @@ sub replace_outer_join
 			\bper_bdr\.(период\b)
 		}{$1период.$2}gixu;
 		$str =~ s/FROM FROM_CLAUSE/FROM $from_clause/s;
+		# Same-table alias «период» vs «per_bdr»: RHS may still be per_bdr after (+) rewrite
+		$str =~ s{
+			(LEFT\s+OUTER\s+JOIN\s+(?:payment\.)?период\s+период\s+ON\s*\(\s*\S+\s*=\s*)
+			per_bdr\.(период\b)
+		}{$1период.$2}gixu;
 	}
 
 	return $str;
@@ -4256,6 +4263,18 @@ sub _connect_by_level_counter_rewrite
 	return "$sel FROM generate_series(1, $lim) AS gs";
 }
 
+# v_payment_p_list*: (+) ON for payment.период must not reference per_bdr.период
+sub rewrite_payment_period_per_bdr_on_join
+{
+	my ($str) = @_;
+	return $str unless ($str =~ /(?:payment\.)?период\s+период/i && $str =~ /per_bdr/i);
+	$str =~ s{
+		(LEFT\s+OUTER\s+JOIN\s+(?:payment\.)?период\s+период\s+ON\s*\(\s*\S+\s*=\s*)
+		per_bdr\.(период\b)
+	}{$1период.$2}gixu;
+	return $str;
+}
+
 # inet_list_1: bare YES/NO column refs ambiguous with prepare_yes/prepare_no and aliases y/n
 sub rewrite_inet_list_ambiguous_yes_no
 {
@@ -4266,6 +4285,8 @@ sub rewrite_inet_list_ambiguous_yes_no
 	$str =~ s/(?<![.\w\$#])no(?=\s+IS\s+NOT\s+DISTINCT\s+FROM)/n.no/gi;
 	$str =~ s/\byes_summa\b/y.yes_summa/gi;
 	$str =~ s/\bno_summa\b/n.no_summa/gi;
+	$str =~ s/\bn\.NO\b/n.no/g;
+	$str =~ s/\by\.YES\b/y.yes/g;
 	return $str;
 }
 

@@ -381,6 +381,8 @@ is($o->{dblink}{OTHERDB}{owner}, 'APP', 'USING-only link: owner is the schema');
 		type => 'VIEW', use_orafce => 1, idxcomment => 0, dblink_mode => 'off');
 	like($out, qr/CASE\s+WHEN\s+y\.yes\s+IS\s+NOT\s+DISTINCT/i, 'inet_list_1: YES -> y.yes');
 	like($out, qr/coalesce\(n\.no_summa/i, 'inet_list_1: NO_SUMMA qualified');
+	like($out, qr/=\s*n\.no\)/i, 'inet_list_1: ON uses n.no not n.NO');
+	like($out, qr/=\s*y\.yes\)/i, 'inet_list_1: ON uses y.yes not y.YES');
 }
 
 # inet_list_1 view body has no «inet_list_1» token (only prepare_yes/no)
