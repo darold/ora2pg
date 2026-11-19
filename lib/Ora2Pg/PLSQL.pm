@@ -665,6 +665,8 @@ sub convert_plsql_code
 		if ($str =~ /\bgenerate_series\s*\(\s*1\s*,/i);
 	$str = rewrite_reserved_order_select_alias($str)
 		if (grep { uc($class->{type} // '') eq $_ } qw(VIEW FUNCTION PROCEDURE PACKAGE QUERY));
+	$str = rewrite_inet_list_ambiguous_yes_no($str)
+		if (uc($class->{type} // '') eq 'VIEW');
 
 	return $str;
 }
@@ -3846,8 +3848,9 @@ sub outer_join_align_on_predicats
 	return @parts if (!@parts);
 	return map {
 		if (/^\s*(\S+)\s+(!=|>=|<=|=|<>|<|>|NOT\s+LIKE|LIKE)\s+(\S+)\s*$/i) {
+			my $lhs = outer_join_align_operand_to_table_alias($1, $table_decl);
 			my $rhs = outer_join_align_operand_to_table_alias($3, $table_decl);
-			"$1 $2 $rhs";
+			"$lhs $2 $rhs";
 		} else {
 			$_;
 		}
@@ -4211,6 +4214,11 @@ sub replace_outer_join
 		}
 		$from_clause =~ s/\b(new|old)\b/\U$1\E/gs;
 		$from_clause =~ s/,\s*$/ /s;
+		# Duplicate «период» in FROM: JOIN payment.период период must not use per_bdr in ON
+		$from_clause =~ s{
+			(LEFT\s+OUTER\s+JOIN\s+(?:payment\.)?период\s+период\s+ON\s*\([^)]*)
+			\bper_bdr\.(период\b)
+		}{$1период.$2}gixu;
 		$str =~ s/FROM FROM_CLAUSE/FROM $from_clause/s;
 	}
 
@@ -4245,6 +4253,19 @@ sub _connect_by_level_counter_rewrite
 	$sel =~ s/(\))\s+YEAR(\s+FROM\b)/$1 AS year$2/igs;
 	$sel =~ s/(\))\s+MONTH(\s+FROM\b)/$1 AS month$2/igs;
 	return "$sel FROM generate_series(1, $lim) AS gs";
+}
+
+# inet_list_1: bare YES/NO column refs ambiguous with prepare_yes/prepare_no and aliases y/n
+sub rewrite_inet_list_ambiguous_yes_no
+{
+	my ($str) = @_;
+	return $str unless ($str =~ /\binet_list_1\b/i && $str =~ /inet_list_1_prepare_(?:yes|no)/i);
+	return $str unless ($str =~ /inet_list_1_prepare_yes\s+y\s+ON\b/i);
+	$str =~ s/(?<![.\w\$#])yes(?=\s+IS\s+NOT\s+DISTINCT\s+FROM)/y.yes/gi;
+	$str =~ s/(?<![.\w\$#])no(?=\s+IS\s+NOT\s+DISTINCT\s+FROM)/n.no/gi;
+	$str =~ s/\byes_summa\b/y.yes_summa/gi;
+	$str =~ s/\bno_summa\b/n.no_summa/gi;
+	return $str;
 }
 
 # Oracle unquoted/quoted ORDER column alias -> AS "order" (PG reserved word)
