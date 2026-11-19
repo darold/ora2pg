@@ -4284,6 +4284,8 @@ sub rewrite_payment_period_per_bdr_on_join
 	while ($str =~ s/(LEFT\s+OUTER\s+JOIN\s+payment\.период\s+(\p{L}+)\s+ON\s*\([^)]*?=\s*)per_bdr\.период\b/${1}${2}.период/giu) {}
 	while ($str =~ s/(LEFT\s+OUTER\s+JOIN\s+payment\.период\s+ON\s*\([^)]*?=\s*)per_bdr\.период\b/${1}период.период/giu) {}
 	while ($str =~ s/(LEFT\s+OUTER\s+JOIN\s+период\s+(\p{L}+)\s+ON\s*\([^)]*?=\s*)per_bdr\.период\b/${1}${2}.период/giu) {}
+	# v_payment_p_list*: leftover ON after comma-FROM / associated-clause assembly
+	$str =~ s/\b(O\.период\s*=\s*)per_bdr\.период\b/${1}период.период/giu;
 	return $str;
 }
 

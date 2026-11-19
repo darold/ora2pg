@@ -418,6 +418,13 @@ is($o->{dblink}{OTHERDB}{owner}, 'APP', 'USING-only link: owner is the schema');
 		qr/=\s*период\.период\)/,
 		'rewrite idempotent on export-shaped JOIN'
 	);
+	like(
+		Ora2Pg::PLSQL::rewrite_payment_period_per_bdr_on_join(
+			", payment.оплата o\nLEFT OUTER JOIN payment.период период ON (O.период = per_bdr.период)\n"
+		),
+		qr/=\s*период\.период\)/,
+		'rewrite: O.период bare predicate after comma-FROM (export 1603712)'
+	);
 }
 
 # inet_list_1: qualify bare YES/NO for PG (join aliases y/n)
