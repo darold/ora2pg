@@ -919,7 +919,7 @@ sub rewrite
 
 # Oracle converts the later NVL/COALESCE arguments to the type of the first one;
 # PG refuses to mix types. Remote columns have known types: cast to the first one's class.
-# shortcut: only qualified remote columns alias.col are aligned (NVL/COALESCE lists, two-sided comparisons), anything else is left alone
+# shortcut: only qualified remote columns alias.col (and nested COALESCE/NVL of them in comparisons) are aligned, anything else is left alone
 sub _type_class
 {
 	my $t = uc($_[0] // '');
@@ -941,13 +941,27 @@ sub _align_coalesce
 		for my $i (1 .. $#a) { $a[$i] = "$a[$i]::$first" if $first && $cl[$i] && $cl[$i] ne $first; }
 		$f . $o . join(', ', @a) . $c;
 	}gie;
-	# Oracle compares VARCHAR2 with NUMBER/DATE by converting the character side
-	$str =~ s{($Q)(\s*(?:=|<>|!=|<=|>=|<|>|IS\s+(?:NOT\s+)?DISTINCT\s+FROM)\s*)($Q)(?![\w\$#.(])}{
-		my ($l, $op, $r) = ($1, $2, $3);
-		my @cl = map { my ($t, $col) = split /\./; $al->{uc $t} ? $al->{uc $t}{uc $col} : undef } ($l, $r);
+	# Oracle compares VARCHAR2 with NUMBER/DATE by converting the character side.
+	# An operand is a remote column or a (nested) COALESCE/NVL, whose class is that of its first argument.
+	my $F = qr/\b(?:coalesce|nvl)\s*(?<p>\((?:[^()]++|(?&p))*\))/i;
+	my $E = qr/(?:$F|$Q)/;
+	my $cls; $cls = sub {
+		my $e = shift;
+		if ($e =~ /^(?:coalesce|nvl)\s*\(\s*(.*)\)$/is) {
+			my $in = $1; my ($d, $i) = (0, 0);
+			for (; $i < length $in; $i++) { my $c = substr($in, $i, 1); $d++ if $c eq '('; $d-- if $c eq ')'; last if !$d && $c eq ','; }
+			return $cls->(substr($in, 0, $i) =~ s/^\s+|\s+$//gr);
+		}
+		my ($t, $col) = split /\./, $e;
+		return $al->{uc $t} ? $al->{uc $t}{uc $col} : undef;
+	};
+	$str =~ s{(?<l>$E)(?<op>\s*(?:=|<>|!=|<=|>=|<|>|IS\s+(?:NOT\s+)?DISTINCT\s+FROM)\s*)(?<r>$E)(?![\w\$#.(])}{
+		my ($l, $op, $r) = @+{qw(l op r)};
+		my @cl = map { $cls->($_) } ($l, $r);
 		if ($cl[0] && $cl[1] && $cl[0] ne $cl[1]) {
-			if ($cl[0] eq 'text')    { $l .= "::$cl[1]" }
-			elsif ($cl[1] eq 'text') { $r .= "::$cl[0]" }
+			my $cast = sub { my ($e, $c) = @_; ($e =~ /^[\w\$#]+\.[\w\$#]+$/ ? $e : "($e)") . "::$c" };
+			if ($cl[0] eq 'text')    { $l = $cast->($l, $cl[1]) }
+			elsif ($cl[1] eq 'text') { $r = $cast->($r, $cl[0]) }
 		}
 		$l . $op . $r;
 	}gie;

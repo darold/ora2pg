@@ -119,6 +119,10 @@ diag('TODO jobs: ' . (join(', ', @todo) || 'none'));
 	$o = norm($o);
 	like($o, qr/v\.key_code::numeric = v\.amt/, 'varchar = number -> varchar side cast to numeric');
 	like($o, qr/v\.amt <> v\.amt\b(?!::)/, 'same type comparison untouched');
+
+	($o) = DblinkTest::convert('SELECT 1 FROM rsch.rem_accounts@rdb1 v WHERE coalesce(v.key_code, coalesce(v.key_code, v.key_code)) = v.amt', dblink_signatures => $sg);
+	$o = norm($o);
+	like($o, qr/\(coalesce\(v\.key_code, coalesce\(v\.key_code, v\.key_code\)\)\)::numeric = v\.amt/, 'nested COALESCE of varchar = number -> whole expression cast to numeric');
 }
 
 done_testing;
