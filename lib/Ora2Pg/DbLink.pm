@@ -909,6 +909,7 @@ sub rewrite
 		}
 		substr($str, $r->{start}, $len) = $new;
 	}
+	_local_aliases($class, $str, \%alias) if $str =~ /\b(?:coalesce|nvl)\b|[=<>]/i;
 	$str = _align_coalesce($str, \%alias) if grep { defined } values %alias;
 	# refs were handled right to left: number _dbl_rN left to right
 	my (%m, $n);
@@ -929,37 +930,98 @@ sub _type_class
 	return undef;
 }
 
+# alias -> { COLUMN => type class } for local tables/views in FROM/JOIN lists (dictionary of the export connection)
+my $KWS = 'WHERE|ON|USING|LEFT|RIGHT|FULL|INNER|CROSS|NATURAL|JOIN|GROUP|ORDER|HAVING|UNION|MINUS|INTERSECT|CONNECT|START|FOR|SET|VALUES|MODEL|PIVOT|UNPIVOT|OUTER|SELECT';
+
+sub _local_cols
+{
+	my ($class, $owner, $name) = @_;
+	return undef unless $class->{dbh} && !$class->{input_file} && defined $owner;
+	my $c = $class->{dblink_localcols} ||= {};
+	my $k = uc("$owner.$name");
+	return $c->{$k} if exists $c->{$k};
+	my $rows = eval { _q($class, "SELECT column_name, data_type FROM all_tab_columns WHERE owner = ? AND table_name = ?", uc $owner, uc $name) };
+	_warn($class, "local $owner.$name: dictionary query failed: " . ($@ =~ s/\s+$//r)) if $@;
+	my %m = map { uc($_->[0]) => _type_class($_->[1]) } @{$rows || []};
+	return $c->{$k} = (%m ? \%m : undef);
+}
+
+sub _local_aliases
+{
+	my ($class, $str, $al) = @_;
+	return unless $class->{dbh} && !$class->{input_file};
+	my $ID = qr/"[^"]+"|[\w\$#]+/;
+	my $pfx = lc($class->{dblink_schema_prefix} // 'fdw_');
+	my $s = $str;
+	while ($s =~ /\b(?:FROM|JOIN)\s+/gi) {
+		while ($s =~ /\G($ID(?:\.$ID)?)(?:\s+(?:AS\s+)?(?!(?:$KWS)\b)([\w\$#]+))?/gci) {
+			my ($t, $a) = ($1, $2);
+			my @p = map { s/"//gr } $t =~ /($ID)/g;
+			my ($owner, $name) = @p > 1 ? @p : ($class->{schema}, $p[0]);
+			unless (!defined $owner || lc($owner) =~ /^\Q$pfx\E/ || $name =~ /^(?:DUAL|TABLE)$/i) {
+				$a = uc($a // $name);
+				my $m = _local_cols($class, $owner, $name);
+				$al->{$a} = exists $al->{$a} ? undef : $m;
+			}
+			last unless $s =~ /\G\s*,\s*/gc;
+		}
+	}
+}
+
+# top-level comma split of a call body
+sub _split_args
+{
+	my ($in) = @_;
+	my @a;
+	my ($d, $cur) = (0, '');
+	for my $c (split //, $in) {
+		$d++ if $c eq '(';
+		$d-- if $c eq ')';
+		if (!$d && $c eq ',') { push @a, $cur; $cur = ''; next }
+		$cur .= $c;
+	}
+	return (@a, $cur);
+}
+
 sub _align_coalesce
 {
 	my ($str, $al) = @_;
 	my $Q = qr/[\w\$#]+\.[\w\$#]+/;
-	$str =~ s{\b(coalesce|nvl)(\s*\(\s*)($Q(?:\s*,\s*$Q)+)(\s*\))}{
-		my ($f, $o, $args, $c) = ($1, $2, $3, $4);
-		my @a = split /\s*,\s*/, $args;
-		my @cl = map { my ($t, $col) = split /\./; $al->{uc $t} ? $al->{uc $t}{uc $col} : undef } @a;
-		my $first = $cl[0];
-		for my $i (1 .. $#a) { $a[$i] = "$a[$i]::$first" if $first && $cl[$i] && $cl[$i] ne $first; }
-		$f . $o . join(', ', @a) . $c;
-	}gie;
-	# Oracle compares VARCHAR2 with NUMBER/DATE by converting the character side.
-	# An operand is a remote column or a (nested) COALESCE/NVL, whose class is that of its first argument.
 	my $F = qr/\b(?:coalesce|nvl)\s*(?<p>\((?:[^()]++|(?&p))*\))/i;
 	my $E = qr/(?:$F|$Q)/;
+	# class of an expression: a column alias.col, or a (nested) COALESCE/NVL = class of its first argument
 	my $cls; $cls = sub {
-		my $e = shift;
-		if ($e =~ /^(?:coalesce|nvl)\s*\(\s*(.*)\)$/is) {
-			my $in = $1; my ($d, $i) = (0, 0);
-			for (; $i < length $in; $i++) { my $c = substr($in, $i, 1); $d++ if $c eq '('; $d-- if $c eq ')'; last if !$d && $c eq ','; }
-			return $cls->(substr($in, 0, $i) =~ s/^\s+|\s+$//gr);
-		}
+		my $e = shift =~ s/^\s+|\s+$//gr;
+		if ($e =~ /^(?:coalesce|nvl)\s*\((.*)\)$/is) { return $cls->((_split_args($1))[0]) }
+		return undef unless $e =~ /^$Q$/;
 		my ($t, $col) = split /\./, $e;
 		return $al->{uc $t} ? $al->{uc $t}{uc $col} : undef;
 	};
+	my $cast = sub { my ($e, $c) = @_; ($e =~ /^$Q$/ ? $e : "($e)") . "::$c" };
+	# Oracle converts the later NVL/COALESCE arguments to the type of the first one; PG refuses to mix types
+	my $fix; $fix = sub {
+		my $s = shift;
+		$s =~ s{\b(coalesce|nvl)(\s*)\(((?:[^()]++|(?<p>\((?:[^()]++|(?&p))*\)))*)\)}{
+			my ($f, $o, $in) = ($1, $2, $3);
+			my $body = $fix->($in);
+			my @a = _split_args($body);
+			my $first = $cls->($a[0]);
+			for my $i (1 .. $#a) {
+				my $c = $cls->($a[$i]);
+				next unless $first && $c && $c ne $first;
+				my ($lead, $e, $trail) = $a[$i] =~ /^(\s*)(.*?)(\s*)$/s;
+				$a[$i] = $lead . $cast->($e, $first) . $trail;
+			}
+			"$f$o(" . join(',', @a) . ')';
+		}gie;
+		return $s;
+	};
+	$str = $fix->($str);
+	# Oracle compares VARCHAR2 with NUMBER/DATE by converting the character side.
 	$str =~ s{(?<l>$E)(?<op>\s*(?:=|<>|!=|<=|>=|<|>|IS\s+(?:NOT\s+)?DISTINCT\s+FROM)\s*)(?<r>$E)(?![\w\$#.(])}{
 		my ($l, $op, $r) = @+{qw(l op r)};
 		my @cl = map { $cls->($_) } ($l, $r);
 		if ($cl[0] && $cl[1] && $cl[0] ne $cl[1]) {
-			my $cast = sub { my ($e, $c) = @_; ($e =~ /^[\w\$#]+\.[\w\$#]+$/ ? $e : "($e)") . "::$c" };
 			# shortcut: text vs number is compared as text (never fails on non-numeric data; Oracle converts to number), text vs date is converted to the date
 			if    ($cl[0] eq 'text' && $cl[1] eq 'numeric') { $r = $cast->($r, 'text') }
 			elsif ($cl[1] eq 'text' && $cl[0] eq 'numeric') { $l = $cast->($l, 'text') }

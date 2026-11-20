@@ -125,4 +125,23 @@ diag('TODO jobs: ' . (join(', ', @todo) || 'none'));
 	like($o, qr/coalesce\(v\.key_code, coalesce\(v\.key_code, v\.key_code\)\) = v\.amt::text/, 'nested COALESCE of varchar = number -> number side cast to text');
 }
 
+# local tables: types come from the dictionary of the export connection
+{
+	package LocS; sub execute { my ($s, @b) = @_; $s->{rows} = $s->{dbh}{cols}{$b[1]} || []; 1 }
+	sub fetchall_arrayref { $_[0]{rows} } sub err { 0 } sub errstr { '' }
+	package LocDbh; sub prepare { bless { dbh => $_[0] }, 'LocS' }
+	package main;
+	my $dbh = bless { cols => {
+		PAY    => [ ['ID', 'NUMBER'], ['KPP', 'VARCHAR2'] ],
+		BRANCH => [ ['ID', 'NUMBER'], ['KPP', 'NUMBER'] ],
+		STAFF  => [ ['ID', 'NUMBER'], ['CODE', 'VARCHAR2'] ] } }, 'LocDbh';
+	my ($o) = DblinkTest::convert('SELECT coalesce(coalesce(o.kpp, pp.kpp), v.code) k FROM app.pay o LEFT JOIN app.branch pp ON (o.id = pp.id) JOIN app.staff v ON (v.id = o.id AND v.code = pp.kpp)', dbh => $dbh, schema => 'APP');
+	$o = norm($o);
+	like($o, qr/coalesce\(coalesce\(o\.kpp, pp\.kpp::text\), v\.code\) k/i, 'local tables: nested COALESCE, later argument cast to the first one\'s class');
+	like($o, qr/v\.code = pp\.kpp::text/i, 'local tables: varchar = number compared as text');
+	like($o, qr/o\.id = pp\.id(?!::)/i, 'local tables: same type untouched');
+	($o) = DblinkTest::convert('SELECT coalesce(o.kpp, pp.kpp) FROM app.pay o, app.branch pp', dbh => $dbh, schema => 'APP', input_file => 'x.sql');
+	unlike(norm($o), qr/::/, 'no dictionary (offline): left alone');
+}
+
 done_testing;
