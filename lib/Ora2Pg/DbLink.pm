@@ -892,7 +892,7 @@ sub rewrite
 				if (substr($str, $r->{end}) =~ /^\s+(?:AS\s+)?([\w\$#]+)/i && uc($1) !~ /^(?:WHERE|ON|USING|LEFT|RIGHT|FULL|INNER|CROSS|NATURAL|JOIN|GROUP|ORDER|HAVING|UNION|MINUS|INTERSECT|CONNECT|START|FOR|SET|VALUES)$/) {
 					my ($a, $m) = (uc $1, meta($class, $link, 'TABLE', uc(defined $owner ? "$owner.$tab" : $tab)));
 					my %c = map { uc($_->{name}) => _type_class($_->{type}) } @{$m->{columns} || []} if $m;
-					$alias{$a} = exists $alias{$a} ? undef : (%c ? \%c : undef);
+					_merge_alias(\%alias, $a, %c ? \%c : undef);
 				}
 			}
 		} elsif ($kind eq 'type') {
@@ -930,6 +930,17 @@ sub _type_class
 	return undef;
 }
 
+# one alias may name different tables in the branches of a UNION or in subqueries: a column keeps its class only if every table agrees
+# shortcut: no per-subquery scopes; a column present in two tables with different classes is left alone
+sub _merge_alias
+{
+	my ($al, $a, $m) = @_;
+	if (!exists $al->{$a}) { $al->{$a} = $m ? { %$m } : undef; return }
+	my $o = $al->{$a} or return;
+	$m or do { $al->{$a} = undef; return };
+	for my $c (keys %$m) { $o->{$c} = exists $o->{$c} && ($o->{$c} // '') ne ($m->{$c} // '') ? undef : $m->{$c} }
+}
+
 # alias -> { COLUMN => type class } for local tables/views in FROM/JOIN lists (dictionary of the export connection)
 my $KWS = 'WHERE|ON|USING|LEFT|RIGHT|FULL|INNER|CROSS|NATURAL|JOIN|GROUP|ORDER|HAVING|UNION|MINUS|INTERSECT|CONNECT|START|FOR|SET|VALUES|MODEL|PIVOT|UNPIVOT|OUTER|SELECT';
 
@@ -961,7 +972,7 @@ sub _local_aliases
 			unless (!defined $owner || lc($owner) =~ /^\Q$pfx\E/ || $name =~ /^(?:DUAL|TABLE)$/i) {
 				$a = uc($a // $name);
 				my $m = _local_cols($class, $owner, $name);
-				$al->{$a} = exists $al->{$a} ? undef : $m;
+				_merge_alias($al, $a, $m);
 			}
 			last unless $s =~ /\G\s*,\s*/gc;
 		}
@@ -995,11 +1006,12 @@ sub _align_coalesce
 		my $e = shift =~ s/^\s+|\s+$//gr;
 		$e =~ s/%OUTERJOIN\d+%$//;
 		if ($e =~ /^(?:coalesce|nvl)\s*\((.*)\)$/is) { return $cls->((_split_args($1))[0]) }
+		return 'numeric' if $e =~ /^-?\d+(?:\.\d+)?$/;
 		return undef unless $e =~ /^$Q$/;
 		my ($t, $col) = split /\./, $e;
 		return $al->{uc $t} ? $al->{uc $t}{uc $col} : undef;
 	};
-	my $cast = sub { my ($e, $c) = @_; my $oj = $e =~ s/(%OUTERJOIN\d+%)$// ? $1 : ''; ($e =~ /^$Q$/ ? $e : "($e)") . "::$c$oj" };
+	my $cast = sub { my ($e, $c) = @_; my $oj = $e =~ s/(%OUTERJOIN\d+%)$// ? $1 : ''; ($e =~ /^(?:$Q|-?\d+(?:\.\d+)?)$/ ? $e : "($e)") . "::$c$oj" };
 	# Oracle converts the later NVL/COALESCE arguments to the type of the first one; PG refuses to mix types
 	my $fix; $fix = sub {
 		my $s = shift;
@@ -1019,6 +1031,16 @@ sub _align_coalesce
 		return $s;
 	};
 	$str = $fix->($str);
+	# numeric functions get a character argument (e.g. the result of NVL(varchar, 0)): Oracle converts it to a number
+	$str =~ s{\b(sign|abs|ceil|floor|round|trunc)(\s*)\(((?:[^()]++|(?<p>\((?:[^()]++|(?&p))*\)))*)\)}{
+		my ($f, $o, $in) = ($1, $2, $3);
+		my @a = _split_args($in);
+		if (@a && ($cls->($a[0]) // '') eq 'text') {
+			my ($lead, $e, $trail) = $a[0] =~ /^(\s*)(.*?)(\s*)$/s;
+			$a[0] = $lead . $cast->($e, 'numeric') . $trail;
+		}
+		"$f$o(" . join(',', @a) . ')';
+	}gie;
 	# Oracle compares VARCHAR2 with NUMBER/DATE by converting the character side.
 	$str =~ s{(?<l>$E)(?<op>\s*(?:=|<>|!=|<=|>=|<|>|IS\s+(?:NOT\s+)?DISTINCT\s+FROM)\s*)(?<r>$E)(?![\w\$#.(])}{
 		my ($l, $op, $r) = @+{qw(l op r)};

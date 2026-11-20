@@ -127,6 +127,12 @@ diag('TODO jobs: ' . (join(', ', @todo) || 'none'));
 	# (+) stays masked (%OUTERJOINn%) while the types are aligned
 	($o) = DblinkTest::convert('SELECT 1 FROM rsch.rem_accounts@rdb1 v, rsch.rem_accounts@rdb1 w WHERE v.amt(+) = nvl(w.key_code, nvl(w.key_code, w.key_code))', dblink_signatures => $sg);
 	like(norm($o), qr/= v\.amt::text\)/, 'comparison with (+) on the column is aligned too');
+
+	# NVL(varchar, 0): the literal takes the type of the first argument; SIGN of the character result gets a number
+	($o) = DblinkTest::convert('SELECT sign(nvl(v.key_code, 0)) s, nvl(v.amt, 0) n FROM rsch.rem_accounts@rdb1 v', dblink_signatures => $sg);
+	$o = norm($o);
+	like($o, qr/sign\(\(coalesce\(v\.key_code, 0::text\)\)::numeric\) s/, 'numeric function over character COALESCE');
+	like($o, qr/coalesce\(v\.amt, 0\) n/, 'number with number literal untouched');
 }
 
 # local tables: types come from the dictionary of the export connection
@@ -146,6 +152,14 @@ diag('TODO jobs: ' . (join(', ', @todo) || 'none'));
 	like($o, qr/o\.id = pp\.id(?!::)/i, 'local tables: same type untouched');
 	($o) = DblinkTest::convert('SELECT coalesce(o.kpp, pp.kpp) FROM app.pay o, app.branch pp', dbh => $dbh, schema => 'APP', input_file => 'x.sql');
 	unlike(norm($o), qr/::/, 'no dictionary (offline): left alone');
+	# the same alias in two UNION branches over different tables: only columns on which the tables agree keep their class
+	($o) = DblinkTest::convert('SELECT 1 FROM app.pay o JOIN app.staff v ON (o.id = v.id AND v.code = o.kpp) UNION ALL SELECT 2 FROM app.branch o JOIN app.staff v ON (o.id = v.id AND v.code = o.kpp)', dbh => $dbh, schema => 'APP');
+	$o = norm($o);
+	like($o, qr/o\.id = v\.id(?!::)/i, 'same alias, two tables: agreeing column untouched');
+	unlike($o, qr/::text/i, 'same alias, two tables: conflicting column left alone');
+	# the same alias over the same table twice: still known
+	($o) = DblinkTest::convert('SELECT 1 FROM app.pay o JOIN app.branch v ON (v.kpp = o.kpp) UNION ALL SELECT 2 FROM app.pay o JOIN app.branch v ON (v.kpp = o.kpp)', dbh => $dbh, schema => 'APP');
+	like(norm($o), qr/v\.kpp::text = o\.kpp/i, 'same alias, same table twice: aligned');
 }
 
 done_testing;
