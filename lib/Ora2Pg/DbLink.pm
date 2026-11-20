@@ -960,7 +960,10 @@ sub _align_coalesce
 		my @cl = map { $cls->($_) } ($l, $r);
 		if ($cl[0] && $cl[1] && $cl[0] ne $cl[1]) {
 			my $cast = sub { my ($e, $c) = @_; ($e =~ /^[\w\$#]+\.[\w\$#]+$/ ? $e : "($e)") . "::$c" };
-			if ($cl[0] eq 'text')    { $l = $cast->($l, $cl[1]) }
+			# shortcut: text vs number is compared as text (never fails on non-numeric data; Oracle converts to number), text vs date is converted to the date
+			if    ($cl[0] eq 'text' && $cl[1] eq 'numeric') { $r = $cast->($r, 'text') }
+			elsif ($cl[1] eq 'text' && $cl[0] eq 'numeric') { $l = $cast->($l, 'text') }
+			elsif ($cl[0] eq 'text') { $l = $cast->($l, $cl[1]) }
 			elsif ($cl[1] eq 'text') { $r = $cast->($r, $cl[0]) }
 		}
 		$l . $op . $r;
