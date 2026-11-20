@@ -4722,11 +4722,18 @@ sub rewrite_from_table_aliases_single
 	# Tokens that follow a joined table when there is no alias
 	my $join_tail = qr/(?:ON|USING|WHERE|GROUP|HAVING|ORDER|LIMIT|OFFSET|UNION|INTERSECT|EXCEPT|INNER|LEFT|RIGHT|FULL|CROSS|NATURAL|JOIN|AND|OR)\b/i;
 
-	if ($masked !~ /\bFROM\b(.*)/is) {
-		return $stmt;
+	# The FROM of the query is the first one outside parentheses that is not
+	# the "FROM" of IS [NOT] DISTINCT FROM (ora2pg itself emits it for decode()).
+	my ($pre, $rest);
+	while ($masked =~ /\bFROM\b/ig) {
+		my $before = substr($masked, 0, $-[0]);
+		next if ($before =~ /\bDISTINCT\s*$/i);
+		my $depth = ($before =~ tr/(//) - ($before =~ tr/)//);
+		next if ($depth > 0);
+		($pre, $rest) = ($before, substr($masked, $+[0]));
+		last;
 	}
-	my $pre = $`;
-	my $rest = $1;
+	return $stmt if (!defined $pre);
 
 	my $from_end = length($rest);
 	foreach my $kw (qw(WHERE GROUP ORDER UNION HAVING LIMIT OFFSET)) {
@@ -4761,16 +4768,28 @@ sub rewrite_from_table_aliases_single
 	}
 	return $stmt unless (%alias_of_full);
 
+	# Oracle scoping: an entry without alias stays visible under its bare table
+	# name, so that name must not be rewritten to the alias of a different
+	# entry (FROM s.t, t a2: t.col is s.t.col, not a2.col).
+	my %visible_owner = ();
+	foreach my $full (keys %alias_of_full) {
+		(my $b = $full) =~ s/^.*\.//;
+		$visible_owner{$b} = $full if (lc($alias_of_full{$full}) eq lc($b));
+	}
+
 	my $rewrite = sub {
 		my ($text) = @_;
 		foreach my $full (sort { length($b) <=> length($a) } keys %alias_of_full) {
 			my $alias = $alias_of_full{$full};
 			my $base = $full;
 			$base =~ s/^.*\.//;
+			my $shadowed = (exists $visible_owner{$base} && $visible_owner{$base} ne $full);
+			next if ($shadowed && $full !~ /\./);
 			unless (lc($full) eq lc($alias) && $full !~ /\./) {
 				my $esc = quotemeta($full);
 				$text =~ s/(?<![\p{L}\p{N}_\$#\.])$esc\.($id)/$alias.$1/igu;
 			}
+			next if ($shadowed);
 			# Oracle quoted table in WHERE/SELECT vs unquoted Cyrillic name in FROM
 			$text =~ s/(?<![\p{L}\p{N}_\$#\.])"([^"]+)"\s*\./
 				(lc($1) eq lc($base) || lc($1) eq lc($full)) ? "$alias." : qq{"$1".}/ige;

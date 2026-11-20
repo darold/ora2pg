@@ -609,4 +609,28 @@ is($o->{dblink}{OTHERDB}{owner}, 'APP', 'USING-only link: owner is the schema');
 	like($out, qr/\(c\.level\+1\)\s+as\s+level/i, 'recursive LEVEL gets CTE column alias');
 }
 
+# Oracle scoping: "FROM s.dept, dept d2" - bare "dept" is the unaliased s.dept,
+# it must not be rewritten to d2 (in ON, SELECT or WHERE), also per UNION branch.
+{
+	require DblinkTest;
+	my $sql = "SELECT dept.nm, d2.nm FROM e, s.dept, dept d2 WHERE e.d = dept.id(+) AND e.d2 = d2.id(+) AND dept.nm <> 'x'";
+	for my $q ($sql, "$sql UNION ALL $sql") {
+		my ($out) = DblinkTest::convert($q, type => 'VIEW', use_orafce => 1, idxcomment => 0, dblink_mode => 'off');
+		like($out, qr/OUTER JOIN s\.dept dept ON \(e\.d = dept\.id\)/, 'homonym: ON of unaliased s.dept keeps dept');
+		like($out, qr/OUTER JOIN dept d2 ON \(e\.d2 = d2\.id\)/, 'homonym: ON of aliased dept uses d2');
+		like($out, qr/SELECT dept\.nm, d2\.nm/, 'homonym: SELECT list not rewritten');
+		unlike($out, qr/dept dept ON \(e\.d = d2\.id\)|SELECT d2\.nm, d2\.nm|d2\.nm\s*<>/, 'homonym: no dept->d2 rewrite in any branch');
+	}
+}
+
+# decode() becomes "IS NOT DISTINCT FROM": that FROM must not be taken for the
+# FROM of the query, otherwise s.frm.col is not rewritten to the alias.
+{
+	require DblinkTest;
+	my ($out) = DblinkTest::convert("SELECT s.frm.nm AS a, decode(y.v, NULL, 0, 1) AS b FROM s.frm, e, y WHERE s.frm.id = e.f AND e.k = y.k(+)",
+		type => 'VIEW', use_orafce => 1, idxcomment => 0, dblink_mode => 'off');
+	like($out, qr/SELECT frm\.nm AS a/, 'DISTINCT FROM is not the query FROM: schema.table.col -> alias.col');
+	unlike($out, qr/\bs\.frm\.nm\b/, 'no schema.table.col left');
+}
+
 done_testing();
