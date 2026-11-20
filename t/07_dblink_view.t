@@ -159,6 +159,15 @@ diag('TODO jobs: ' . (join(', ', @todo) || 'none'));
 	like($o, qr/o\.id = pp\.id(?!::)/i, 'local tables: same type untouched');
 	($o) = DblinkTest::convert('SELECT coalesce(o.kpp, pp.kpp) FROM app.pay o, app.branch pp', dbh => $dbh, schema => 'APP', input_file => 'x.sql');
 	unlike(norm($o), qr/::/, 'no dictionary (offline): left alone');
+	# the connection ora2pg had open is gone: the dictionary query reconnects once and goes on
+	{
+		package LocBad; sub prepare { undef } sub err { -1 } sub errstr { 'Database disconnected' } sub disconnect { 1 }
+		package main;
+		no warnings 'redefine';
+		local *Ora2Pg::_db_connection = sub { $dbh };
+		($o) = DblinkTest::convert('SELECT coalesce(o.kpp, pp.kpp) FROM app.pay o, app.branch pp', dbh => bless({}, 'LocBad'), schema => 'APP');
+		like(norm($o), qr/coalesce\(o\.kpp, pp\.kpp::text\)/i, 'local dictionary: reconnect after a lost connection');
+	}
 	# the same alias in two UNION branches over different tables: only columns on which the tables agree keep their class
 	($o) = DblinkTest::convert('SELECT 1 FROM app.pay o JOIN app.staff v ON (o.id = v.id AND v.code = o.kpp) UNION ALL SELECT 2 FROM app.branch o JOIN app.staff v ON (o.id = v.id AND v.code = o.kpp)', dbh => $dbh, schema => 'APP');
 	$o = norm($o);

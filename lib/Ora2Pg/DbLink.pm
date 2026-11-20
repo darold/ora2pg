@@ -350,7 +350,8 @@ sub _q
 		my $err = $@;
 		$err =~ s/\s+$//;
 		push @attempt_err, "try $try: $err";
-		if ($try == 1 && $remote && $class->can('_db_connection')) {
+		# ora2pg may have closed its connection before the conversion phase: local dictionary queries need the reconnect too
+		if ($try == 1 && $class->can('_db_connection')) {
 			_reconnect_oracle($class);
 			next;
 		}
