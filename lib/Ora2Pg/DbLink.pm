@@ -872,6 +872,7 @@ sub rewrite
 {
 	my ($class, $str) = @_;
 	$str = comment_writes($class, $str);
+	my %alias;	# alias -> { COLUMN => type class } of the remote table (undef: ambiguous)
 	for my $r (reverse scan_refs($str)) {
 		my $len  = $r->{end} - $r->{start};
 		my $orig = substr($str, $r->{start}, $len);
@@ -888,6 +889,11 @@ sub rewrite
 				$class->{dblink_used}{$server}{uc(defined $owner ? "$owner.$tab" : $tab)} = 1;
 				$class->{dblink_link}{$server} = $link;
 				$new = _fdw_schema($class, $server, $owner) . '.' . lc($tab);
+				if (substr($str, $r->{end}) =~ /^\s+(?:AS\s+)?([\w\$#]+)/i && uc($1) !~ /^(?:WHERE|ON|USING|LEFT|RIGHT|FULL|INNER|CROSS|NATURAL|JOIN|GROUP|ORDER|HAVING|UNION|MINUS|INTERSECT|CONNECT|START|FOR|SET|VALUES)$/) {
+					my ($a, $m) = (uc $1, meta($class, $link, 'TABLE', uc(defined $owner ? "$owner.$tab" : $tab)));
+					my %c = map { uc($_->{name}) => _type_class($_->{type}) } @{$m->{columns} || []} if $m;
+					$alias{$a} = exists $alias{$a} ? undef : (%c ? \%c : undef);
+				}
 			}
 		} elsif ($kind eq 'type') {
 			my $m = meta($class, $link, 'COLUMN', $r->{path});
@@ -903,10 +909,38 @@ sub rewrite
 		}
 		substr($str, $r->{start}, $len) = $new;
 	}
+	$str = _align_coalesce($str, \%alias) if grep { defined } values %alias;
 	# refs were handled right to left: number _dbl_rN left to right
 	my (%m, $n);
 	$str =~ s/\b_dbl_r(\d+)\b/'_dbl_r' . ($m{$1} \/\/= ++$n)/ge;
 	$class->{dblink_declare} .= "_dbl_r$_ text;\n" for 1 .. ($n // 0);
+	return $str;
+}
+
+# Oracle converts the later NVL/COALESCE arguments to the type of the first one;
+# PG refuses to mix types. Remote columns have known types: cast to the first one's class.
+# shortcut: only lists of qualified remote columns alias.col are aligned, anything else is left alone
+sub _type_class
+{
+	my $t = uc($_[0] // '');
+	return 'numeric'   if $t =~ /^(?:NUMBER|INTEGER|INT|SMALLINT|FLOAT|DECIMAL|NUMERIC|REAL|BINARY_(?:FLOAT|DOUBLE)|DOUBLE PRECISION)$/;
+	return 'text'      if $t =~ /^(?:VARCHAR2?|CHAR|NCHAR|NVARCHAR2|CLOB|NCLOB|LONG)$/;
+	return 'timestamp' if $t =~ /^(?:DATE|TIMESTAMP.*)$/;
+	return undef;
+}
+
+sub _align_coalesce
+{
+	my ($str, $al) = @_;
+	my $Q = qr/[\w\$#]+\.[\w\$#]+/;
+	$str =~ s{\b(coalesce|nvl)(\s*\(\s*)($Q(?:\s*,\s*$Q)+)(\s*\))}{
+		my ($f, $o, $args, $c) = ($1, $2, $3, $4);
+		my @a = split /\s*,\s*/, $args;
+		my @cl = map { my ($t, $col) = split /\./; $al->{uc $t} ? $al->{uc $t}{uc $col} : undef } @a;
+		my $first = $cl[0];
+		for my $i (1 .. $#a) { $a[$i] = "$a[$i]::$first" if $first && $cl[$i] && $cl[$i] ne $first; }
+		$f . $o . join(', ', @a) . $c;
+	}gie;
 	return $str;
 }
 

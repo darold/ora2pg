@@ -106,4 +106,14 @@ is(scalar(@done) + scalar(@todo), 3, 'every job is converted or TODO');
 is_deeply(\@todo, ['app.demo_weekly_job.sql'], 'weekly -> TODO');
 diag('TODO jobs: ' . (join(', ', @todo) || 'none'));
 
+# NVL/COALESCE over remote columns of different types: later arguments get the type of the first
+{
+	my $sg = "$Bin/fixtures/dblink_signatures.txt";
+	my ($o) = DblinkTest::convert('SELECT nvl(v.amt, v.key_code) a, coalesce(v.key_code, v.amt) b, coalesce(v.amt, v.amt) c FROM rsch.rem_accounts@rdb1 v', dblink_signatures => $sg);
+	$o = norm($o);
+	like($o, qr/coalesce\(v\.amt, v\.key_code::numeric\) a/, 'NVL(number, varchar) -> varchar cast to numeric');
+	like($o, qr/coalesce\(v\.key_code, v\.amt::text\) b/, 'COALESCE(varchar, number) -> number cast to text');
+	like($o, qr/coalesce\(v\.amt, v\.amt\) c/, 'same type untouched');
+}
+
 done_testing;
