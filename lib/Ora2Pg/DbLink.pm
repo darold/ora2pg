@@ -24,8 +24,8 @@ sub scan_refs
 	$stack[0] = '';
 	pos($str) = 0;
 	while (pos($str) < length($str)) {
-		if ($str =~ /\G$MASK/gc) {
-			$prev = 'TEXT';
+		if ($str =~ /\G($MASK)/gc) {
+			$prev = 'TEXT' unless $1 =~ /^%/;  # a masked comment is transparent
 		} elsif ($str =~ /\G($PATH)\@($LINK)/gc) {
 			my ($path, $link) = ($1, $2);
 			my $end = pos($str);
@@ -67,8 +67,8 @@ sub scan_refs
 		} elsif ($str =~ /\G;/gc) {
 			$stack[-1] = '';
 			$prev = ';';
-		} elsif ($str =~ /\G\s+/gc) {
-			# whitespace does not change $prev
+		} elsif ($str =~ /\G(?:\s+|%ORA2PG_COMMENT\d+%)/gc) {
+			# whitespace and masked comments do not change $prev
 		} else {
 			$str =~ /\G(.)/gcs;
 			$prev = $1;

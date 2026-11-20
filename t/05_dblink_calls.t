@@ -34,6 +34,10 @@ like(norm($out), qr/\Qoracle_call('dbb_bak', 'sw.rate', (d.k_vf)::text, to_char(
 ($out) = convert($src, dblink_signatures => $sig);
 like(norm($out), qr/\Qfdw_dbb_bak_sw.rate(d.k_vf, d.dfrom, 1)\E/, 'complete call -> wrapper');
 
+# 3a. comment between the comma and the next remote table in FROM
+($out) = convert("select 1 from rsch.rem_accounts\@rdb1 a,\n -- note\n rsch.rem_orders\@rdb1 b where a.id = b.id");
+unlike(norm($out), qr/\@rdb1/, 'comment after comma in FROM: both tables rewritten');
+
 # 4. nested
 ($out) = convert("BEGIN x := a.f\@rdb1(a.g\@rdb1(1)); END;");
 $out = norm($out);
