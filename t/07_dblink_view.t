@@ -114,6 +114,11 @@ diag('TODO jobs: ' . (join(', ', @todo) || 'none'));
 	like($o, qr/coalesce\(v\.amt, v\.key_code::numeric\) a/, 'NVL(number, varchar) -> varchar cast to numeric');
 	like($o, qr/coalesce\(v\.key_code, v\.amt::text\) b/, 'COALESCE(varchar, number) -> number cast to text');
 	like($o, qr/coalesce\(v\.amt, v\.amt\) c/, 'same type untouched');
+
+	($o) = DblinkTest::convert('SELECT 1 FROM rsch.rem_accounts@rdb1 v WHERE v.key_code = v.amt AND v.amt <> v.amt', dblink_signatures => $sg);
+	$o = norm($o);
+	like($o, qr/v\.key_code::numeric = v\.amt/, 'varchar = number -> varchar side cast to numeric');
+	like($o, qr/v\.amt <> v\.amt\b(?!::)/, 'same type comparison untouched');
 }
 
 done_testing;

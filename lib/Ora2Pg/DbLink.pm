@@ -919,7 +919,7 @@ sub rewrite
 
 # Oracle converts the later NVL/COALESCE arguments to the type of the first one;
 # PG refuses to mix types. Remote columns have known types: cast to the first one's class.
-# shortcut: only lists of qualified remote columns alias.col are aligned, anything else is left alone
+# shortcut: only qualified remote columns alias.col are aligned (NVL/COALESCE lists, two-sided comparisons), anything else is left alone
 sub _type_class
 {
 	my $t = uc($_[0] // '');
@@ -940,6 +940,16 @@ sub _align_coalesce
 		my $first = $cl[0];
 		for my $i (1 .. $#a) { $a[$i] = "$a[$i]::$first" if $first && $cl[$i] && $cl[$i] ne $first; }
 		$f . $o . join(', ', @a) . $c;
+	}gie;
+	# Oracle compares VARCHAR2 with NUMBER/DATE by converting the character side
+	$str =~ s{($Q)(\s*(?:=|<>|!=|<=|>=|<|>|IS\s+(?:NOT\s+)?DISTINCT\s+FROM)\s*)($Q)(?![\w\$#.(])}{
+		my ($l, $op, $r) = ($1, $2, $3);
+		my @cl = map { my ($t, $col) = split /\./; $al->{uc $t} ? $al->{uc $t}{uc $col} : undef } ($l, $r);
+		if ($cl[0] && $cl[1] && $cl[0] ne $cl[1]) {
+			if ($cl[0] eq 'text')    { $l .= "::$cl[1]" }
+			elsif ($cl[1] eq 'text') { $r .= "::$cl[0]" }
+		}
+		$l . $op . $r;
 	}gie;
 	return $str;
 }
