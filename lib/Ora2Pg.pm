@@ -22643,10 +22643,11 @@ sub requalify_function_call
 			my $flat = $self->{package_functions}{$p}{$f}{name};
 			if ($self->{package_as_schema}) {
 				my $flc = lc($f);
-				# PAYMENT.Pay_Pack.get_foo -> pay_pack.get_foo(); zero-arg pack functions need ()
-				# /i: export still has Pay_Pack before lc_non_ascii in some VIEW paths
-				$$str =~ s/(?<![\.\w\$#])(?:payment\.)?\Q$p\E\.\Q$f\E\b(?!\s*\()/$psch.$flc()/ig;
-				$$str =~ s/(?<![\.\w\$#])(?:payment\.)?\Q$p\E\.\Q$f\E\s*\(/$psch.$flc(/ig;
+				# SCHEMA.Pkg.get_foo -> pkg.get_foo(); zero-arg package functions need ()
+				# /i: export may still have mixed case before lc_non_ascii in some VIEW paths
+				my $sq = $schema ne "" ? qr{(?:\Q$schema\E\.)?} : qr{};
+				$$str =~ s/(?<![\.\w\$#])$sq\Q$p\E\.\Q$f\E\b(?!\s*\()/$psch.$flc()/ig;
+				$$str =~ s/(?<![\.\w\$#])$sq\Q$p\E\.\Q$f\E\s*\(/$psch.$flc(/ig;
 			} else {
 				$$str =~ s/\b$p\.$f\s*([\(;])/$flat$1/igs;
 				$$str =~ s/\b([\w\$#]+)\.$p\.$f\s*\(/$1.$flat(/igs;
@@ -22668,13 +22669,6 @@ sub requalify_function_call
 			$$str =~ s/(?<![\.\w\$#])\b$flc\s*\(/$schema.$flc(/igs;
 		}
 	}
-
-	# Qualify bare dlook( (mixed case in Oracle views; pass2 runs with functions hash too)
-	$$str =~ s/(?<![\.\w\$#])\bdlook\s*\(/$schema.dlook(/igs if ($schema ne '');
-
-	# dlook(text, SYSDATE) -> statement_timestamp() is timestamptz; PG fn uses timestamp(0)
-	$$str =~ s/\b([\w\$#]+)\.dlook\s*\(\s*([^,)]+),\s*statement_timestamp\s*\(\s*\)\s*\)/$1.dlook($2, statement_timestamp()::timestamp(0))/igs;
-	$$str =~ s/(?<![\.\w\$#])\bdlook\s*\(\s*([^,)]+),\s*statement_timestamp\s*\(\s*\)\s*\)/$schema.dlook($1, statement_timestamp()::timestamp(0))/igs if ($schema ne '');
 }
 
 

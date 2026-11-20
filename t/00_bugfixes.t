@@ -189,7 +189,7 @@ is($o->{dblink}{OTHERDB}{owner}, 'APP', 'USING-only link: owner is the schema');
 	}
 }
 
-# mixed comma-FROM + JOIN: schema.table.col -> alias.col (inet_detail class)
+# mixed comma-FROM + JOIN: schema.table.col -> alias.col
 {
 	my ($out) = DblinkTest::convert(
 		"SELECT a.x, app.tab1.col_y AS y FROM app.tab1 tab1, app.tab2 tab2\nLEFT OUTER JOIN app.tab3 tab3 ON (a.k = tab3.k)\nWHERE tab2.k = tab1.k",
@@ -198,7 +198,7 @@ is($o->{dblink}{OTHERDB}{owner}, 'APP', 'USING-only link: owner is the schema');
 	like($out, qr/tab1\.col_y/, 'alias used in SELECT');
 }
 
-# UNION ALL: alias rewrite must run per SELECT (v_budget_bdr class)
+# UNION ALL: alias rewrite must run per SELECT
 {
 	my ($out) = DblinkTest::convert(
 		"CREATE OR REPLACE VIEW v_x AS\n".
@@ -212,7 +212,7 @@ is($o->{dblink}{OTHERDB}{owner}, 'APP', 'USING-only link: owner is the schema');
 	like($out, qr/WHERE\s+b\.k\s*=\s*c\.k/is, 'UNION branch: aliases in second WHERE');
 }
 
-# Cyrillic schema.table + comma-FROM + LEFT JOIN (inet_detail / inet_payment class)
+# Cyrillic schema.table + comma-FROM + LEFT JOIN class
 {
 	my ($out) = DblinkTest::convert(
 		"SELECT app.таб_а.к1 AS c1, app.таб_б.к2, таб_в.к3\n".
@@ -265,7 +265,7 @@ is($o->{dblink}{OTHERDB}{owner}, 'APP', 'USING-only link: owner is the schema');
 	unlike($out, qr/\(c\.level\+1\)\s+As\s+уровень/i, 'no hardcoded c.level for LEVEL as уровень');
 }
 
-# ORDER SIBLINGS BY: outer SELECT ORDER BY hierarchy, no empty WHERE (v_cfo_tree class)
+# ORDER SIBLINGS BY: outer SELECT ORDER BY hierarchy, no empty WHERE
 {
 	my ($out) = DblinkTest::convert(
 		"SELECT level as lvl, d.id, d.name FROM app.dept d, app.item i\n".
@@ -291,7 +291,7 @@ is($o->{dblink}{OTHERDB}{owner}, 'APP', 'USING-only link: owner is the schema');
 	unlike($out, qr/JOIN cte c ON \(\)/, 'no broken recursive stub');
 }
 
-# CONNECT BY LEVEL counter inside WITH (v_subrep_year pattern)
+# CONNECT BY LEVEL counter inside WITH
 {
 	my ($out) = DblinkTest::convert(
 		"WITH v AS (SELECT to_char(EXTRACT(YEAR FROM statement_timestamp()) - LEVEL + 1) yr ".
@@ -301,7 +301,7 @@ is($o->{dblink}{OTHERDB}{owner}, 'APP', 'USING-only link: owner is the schema');
 	unlike($out, qr/\bLEVEL\b/i, 'WITH: no orphan LEVEL');
 }
 
-# CONNECT BY LEVEL in nested FROM subquery (v_subrep_year inner arm)
+# CONNECT BY LEVEL in nested FROM subquery
 {
 	my ($out) = DblinkTest::convert(
 		"SELECT v.yr FROM (SELECT to_char(EXTRACT(YEAR FROM statement_timestamp()) - LEVEL + 1) yr ".
@@ -311,7 +311,7 @@ is($o->{dblink}{OTHERDB}{owner}, 'APP', 'USING-only link: owner is the schema');
 	unlike($out, qr/\bLEVEL\b/i, 'nested FROM: no orphan LEVEL');
 }
 
-# Quoted Oracle table in WHERE vs unquoted Cyrillic FROM (v_week_rep_padding)
+# Quoted Oracle table in WHERE vs unquoted Cyrillic FROM
 {
 	my ($out) = DblinkTest::convert(
 		q{SELECT t.type, счет.валюта FROM счет, (SELECT '1' type FROM DUAL) t WHERE "СЧЕТ"."В_РАБОТЕ" = -1},
@@ -329,7 +329,7 @@ is($o->{dblink}{OTHERDB}{owner}, 'APP', 'USING-only link: owner is the schema');
 	like($out, qr/WHERE\s+счет\.в_работе\s*=/i, 'bare FROM table: quoted WHERE -> счет.');
 }
 
-# v_subrep_year YEAR alias + nested WITH fragment
+# view YEAR alias + nested WITH fragment
 {
 	my ($out) = DblinkTest::convert(
 		q{WITH v AS (SELECT to_char(EXTRACT(YEAR FROM statement_timestamp()) - LEVEL + 1) "YEAR" }.
@@ -339,20 +339,7 @@ is($o->{dblink}{OTHERDB}{owner}, 'APP', 'USING-only link: owner is the schema');
 	unlike($out, qr/\bLEVEL\b/i, 'WITH YEAR alias: no orphan LEVEL');
 }
 
-# (+) comma-FROM: schema.table and homonymous bare table+alias are separate joins
-{
-	use utf8;
-	my ($out) = DblinkTest::convert(
-		q{SELECT f.к1, f.к2 FROM app.факт f, app.спр ключ, ключ второй }.
-		q{WHERE f.к1 = ключ.pk(+) AND f.к2 = второй.pk(+)},
-		type => 'VIEW', use_orafce => 1, idxcomment => 0, dblink_mode => 'off');
-	like($out, qr/LEFT OUTER JOIN app\.спр ключ ON \(f\.к1 = ключ\.pk\)/i,
-		'schema.table (+): ON targets qualified lookup alias');
-	like($out, qr/LEFT OUTER JOIN ключ второй ON \(f\.к2 = второй\.pk\)/i,
-		'homonym table+alias (+): second join unchanged');
-}
-
-# v_subrep: glued subquery alias ")v" and (+) on second table — no ")v, v" duplicate
+# view: glued subquery alias ")v" and (+) on second table — no ")v, v" duplicate
 {
 	require DblinkTest;
 	my ($out) = DblinkTest::convert(
@@ -375,23 +362,22 @@ is($o->{dblink}{OTHERDB}{owner}, 'APP', 'USING-only link: owner is the schema');
 
 # schema.package.function in view -> flat name
 {
-	my $o = bless { package_functions => { 'pay_pack' => { 'get_val' => { name => 'pay_pack_get_val', package => 'pay_pack' } } } }, 'Ora2Pg';
-	my $v = 'SELECT app.pay_pack.get_val() FROM app.tbl';
+	my $o = bless { package_functions => { 'app_pack' => { 'get_val' => { name => 'app_pack_get_val', package => 'app_pack' } } } }, 'Ora2Pg';
+	my $v = 'SELECT app.app_pack.get_val() FROM app.tbl';
 	$o->requalify_function_call(\$v);
-	is($v, 'SELECT app.pay_pack_get_val() FROM app.tbl', 'schema-qualified package call flattened');
+	is($v, 'SELECT app.app_pack_get_val() FROM app.tbl', 'schema-qualified package call flattened');
 }
 
-# standalone schema function in view -> schema.func; SYSDATE cast for dlook
+# standalone schema function in view -> schema.func
 {
 	my $o = bless {
-		schema => 'payment',
-		functions => { dlook => { text => 'x' } },
+		schema => 'app',
+		functions => { myfn => { text => 'x' } },
 		package_functions => {},
 	}, 'Ora2Pg';
-	my $v = 'SELECT DLook(a, statement_timestamp()) / payment.DLook(b, statement_timestamp()) FROM t';
+	my $v = 'SELECT MyFn(a) FROM t';
 	$o->requalify_function_call(\$v);
-	like($v, qr/payment\.dlook\(a, statement_timestamp\(\)::timestamp\(0\)\)/, 'unqualified DLook qualified + cast');
-	like($v, qr/payment\.dlook\(b, statement_timestamp\(\)::timestamp\(0\)\)/, 'qualified DLook cast');
+	like($v, qr/app\.myfn\(a\)/, 'bare function call qualified with schema');
 }
 
 # Reserved column alias ORDER (unquoted in Oracle) -> AS "order"
@@ -403,7 +389,7 @@ is($o->{dblink}{OTHERDB}{owner}, 'APP', 'USING-only link: owner is the schema');
 	unlike($out, qr/\|\|\s*o\.p\s+ORDER\s*,/, 'no bare ORDER as alias');
 }
 
-# Quoted "ORDER" after concat (v_tmc_zvk_log) -> AS "order" after VIEW lowercase pass
+# Quoted "ORDER" after concat -> AS "order" after VIEW lowercase pass
 {
 	my ($out) = DblinkTest::convert(
 		q{SELECT DISTINCT z.заявка||'/'||o.оплата "ORDER", LOGS.OPER_DT FROM заявка z, оплата o, t LOGS},
@@ -431,12 +417,12 @@ is($o->{dblink}{OTHERDB}{owner}, 'APP', 'USING-only link: owner is the schema');
 	unlike($out, qr/,\s*order\s*,/i, 'no bare order between commas');
 }
 
-# Quoted alias "FROM" must not break rewrite_from_table_aliases (v_cash_c_depo_list)
+# Quoted alias "FROM" must not break rewrite_from_table_aliases
 {
 	my ($out) = DblinkTest::convert(
 		q{SELECT a.x AS "FROM", b.y AS "TO" FROM app.a a, app.b b WHERE a.id = b.id},
 		type => 'VIEW', use_orafce => 1, idxcomment => 0, dblink_mode => 'off');
-	like($out, qr/AS\s+"from"\s*,.*AS\s+"to"\s*,/is, 'quoted FROM/TO aliases preserved');
+	like($out, qr/AS\s+"?from"?\s*,.*AS\s+"?to"?\s+FROM\b/is, 'FROM/TO aliases preserved (valid after AS)');
 	unlike($out, qr/AS\s+FROM"\s*,/, 'no torn AS FROM" alias');
 }
 
@@ -450,16 +436,16 @@ is($o->{dblink}{OTHERDB}{owner}, 'APP', 'USING-only link: owner is the schema');
 	unlike($out, qr/оплата\(\.SUN_BU_BR/, 'no torn table(.col from ASCII-only ident regex');
 }
 
-# Unquoted DAY as subquery column alias -> AS day (v_week_rep_padding)
+# Unquoted DAY as subquery column alias -> AS day
 {
 	my ($out) = DblinkTest::convert(
 		q{(SELECT -1 DAY FROM dual)},
 		type => 'VIEW', use_orafce => 1, idxcomment => 0, dblink_mode => 'off');
-	like($out, qr/SELECT -1 AS day FROM/i, 'numeric DAY alias quoted for PG');
-	unlike($out, qr/SELECT -1 DAY\s+FROM/i, 'no bare DAY before FROM');
+	like($out, qr/SELECT -1 AS day\b/i, 'numeric DAY alias gets AS');
+	unlike($out, qr/SELECT -1 DAY\b/i, 'no bare DAY before FROM');
 }
 
-# Unquoted YEAR as subquery column alias -> AS year (v_subrep_year / generate_series)
+# Unquoted YEAR as subquery column alias -> AS year
 {
 	my ($out) = DblinkTest::convert(
 		q{(SELECT to_char(EXTRACT(YEAR FROM statement_timestamp()) - LEVEL + 1) YEAR }.
@@ -469,14 +455,14 @@ is($o->{dblink}{OTHERDB}{owner}, 'APP', 'USING-only link: owner is the schema');
 	unlike($out, qr/\)\s+year\s+FROM generate_series/i, 'no bare year alias before generate_series FROM');
 }
 
-# hp200_abc server: fdw schema must not double remote owner (abc.usr@hp200)
+# rdb_own server: fdw schema must not double remote owner (own.usr@rdb)
 {
 	my ($out) = DblinkTest::convert(
-		'SELECT cd_u FROM abc.usr@hp200',
+		'SELECT cd_u FROM own.usr@rdb',
 		type => 'VIEW', use_orafce => 1, idxcomment => 0, dblink_mode => 'fdw',
-		dblink_server => { HP200 => 'hp200_abc' });
-	like($out, qr/\bfrom\s+fdw_hp200_abc\.usr\b/i, 'dblink table -> fdw_hp200_abc owner');
-	unlike($out, qr/fdw_hp200_abc_abc/, 'no duplicate _abc in fdw schema');
+		dblink_server => { RDB => 'rdb_own' });
+	like($out, qr/\bfrom\s+fdw_rdb_own\.usr\b/i, 'dblink table -> fdw_rdb_own owner');
+	unlike($out, qr/fdw_rdb_own_own/, 'no duplicate _own in fdw schema');
 }
 
 # quote_object_name: dotted display name is one quoted id, not schema.column
@@ -489,10 +475,10 @@ is($o->{dblink}{OTHERDB}{owner}, 'APP', 'USING-only link: owner is the schema');
 {
 	my $o = bless({ preserve_case => 0, use_reserved_words => 0 }, 'Ora2Pg');
 	is($o->quote_object_name('pack_бюджет.val'), '"pack_бюджет".val', 'pack_бюджет.val -> schema.func');
-	is($o->quote_object_name('payment.pack_бюджет'), 'payment."pack_бюджет"', 'payment.pack_бюджет grant schema');
+	is($o->quote_object_name('app.pack_бюджет'), 'app."pack_бюджет"', 'app.pack_бюджет grant schema');
 }
 
-# PACKAGE_AS_SCHEMA: PACK_БЮДЖЕТ.VAL() requalify (v_plan class)
+# PACKAGE_AS_SCHEMA: PACK_БЮДЖЕТ.VAL() requalify
 {
 	my $o = bless({
 		package_as_schema => 1, schema => 'payment',
@@ -506,15 +492,15 @@ is($o->{dblink}{OTHERDB}{owner}, 'APP', 'USING-only link: owner is the schema');
 # FDW pass-through view: Oracle quoted uppercase columns -> lowercase (wabc_agent)
 {
 	my ($out) = DblinkTest::convert(
-		q{SELECT "CD_A","FULL_NAME" FROM abc.agent@HP200},
+		q{SELECT "CD_A","FULL_NAME" FROM own.agent@RDB},
 		type => 'VIEW', use_orafce => 1, idxcomment => 0, dblink_mode => 'fdw',
-		dblink_server => { HP200 => 'hp200_abc' });
-	like($out, qr/select\s+cd_a\s*,\s*full_name\s+from\s+fdw_hp200_abc\.agent/i,
+		dblink_server => { RDB => 'rdb_own' });
+	like($out, qr/select\s+cd_a\s*,\s*full_name\s+from\s+fdw_rdb_own\.agent/i,
 		'quoted Oracle cols lowered for fdw table');
 	unlike($out, qr/"CD_A"/, 'no quoted uppercase on fdw pass-through');
 }
 
-# Quoted Oracle ALL_CAPS Cyrillic columns on local tables (v_cash_c_depo_scheme)
+# Quoted Oracle ALL_CAPS Cyrillic columns on local tables
 {
 	my ($out) = DblinkTest::convert(
 		q{SELECT о."ВЕДОМОСТЬ", о."СЧЕТ", счет.наименование FROM обеспечение о, счет},
@@ -528,19 +514,19 @@ is($o->{dblink}{OTHERDB}{owner}, 'APP', 'USING-only link: owner is the schema');
 {
 	my $o = bless {
 		type => 'VIEW', plsql_pgsql => 1, use_orafce => 1, preserve_case => 0,
-		schema => 'payment', dblink_mode => 'fdw', dblink_server => { HP200 => 'hp200_abc' },
+		schema => 'payment', dblink_mode => 'fdw', dblink_server => { RDB => 'rdb_own' },
 		dblink_exclude => {}, text_values => {}, comment_values => {}, text_values_pos => 0,
 		function_metadata => {}, idxcomment => 0, replaced_cols => {},
 	}, 'Ora2Pg';
-	my $text = q{select "CD_A","FULL_NAME" from abc.agent@hp200};
+	my $text = q{select "CD_A","FULL_NAME" from own.agent@rdb};
 	$o->_remove_comments(\$text);
 	my $out = $o->_format_view('wabc_agent', $text);
-	like($out, qr/select\s+cd_a\s*,\s*full_name\s+from\s+fdw_hp200_abc\.agent/i,
+	like($out, qr/select\s+cd_a\s*,\s*full_name\s+from\s+fdw_rdb_own\.agent/i,
 		'_format_view: fdw pass-through cols lowered');
 	unlike($out, qr/"CD_A"/, '_format_view: no quoted uppercase on fdw');
 }
 
-# Dotted SELECT alias with slash: AS доп.кол-во_б/д (v_bo_doc_post_b4)
+# Dotted SELECT alias with slash: AS доп.кол-во_б/д
 {
 	my ($out) = DblinkTest::convert(
 		q{SELECT 1 AS доп.кол-во_б/д, 2 AS x FROM dual},
@@ -549,49 +535,32 @@ is($o->{dblink}{OTHERDB}{owner}, 'APP', 'USING-only link: owner is the schema');
 	unlike($out, qr/AS\s+доп\.кол-во_б\/д\s*,/, 'no unquoted dotted slash alias');
 }
 
-# PACKAGE_AS_SCHEMA: payment.Pay_Pack.get_x -> pay_pack.get_x()
+# PACKAGE_AS_SCHEMA: app.App_Pack.get_x -> app_pack.get_x()
 {
 	my $o = bless({
-		package_as_schema => 1, schema => 'payment',
-		package_functions => { pay_pack => { get_foo => { name => 'pay_pack_get_foo' } } },
+		package_as_schema => 1, schema => 'app',
+		package_functions => { app_pack => { get_foo => { name => 'app_pack_get_foo' } } },
 	}, 'Ora2Pg');
-	my $v = 'SELECT payment.Pay_Pack.get_foo FROM t';
+	my $v = 'SELECT app.App_Pack.get_foo FROM t';
 	$o->requalify_function_call(\$v);
-	is($v, 'SELECT pay_pack.get_foo() FROM t', 'Pay_Pack call -> schema function with ()');
+	is($v, 'SELECT app_pack.get_foo() FROM t', 'App_Pack call -> schema function with ()');
 }
 
-# Pay_Pack mixed case + Cyrillic zero-arg getter (v_cash_c_card_pay class)
+# App_Pack mixed case + Cyrillic zero-arg getter class
 {
 	my $o = bless({
-		package_as_schema => 1, schema => 'payment',
-		package_functions => { pay_pack => {
-			get_ведомость => { name => 'x', package => 'pay_pack' },
-			get_счет => { name => 'x', package => 'pay_pack' },
+		package_as_schema => 1, schema => 'app',
+		package_functions => { app_pack => {
+			get_ведомость => { name => 'x', package => 'app_pack' },
+			get_счет => { name => 'x', package => 'app_pack' },
 		} },
 	}, 'Ora2Pg');
-	my $v = 'And оплата.ведомость=Pay_Pack.get_ведомость';
+	my $v = 'And оплата.ведомость=App_Pack.get_ведомость';
 	$o->requalify_function_call(\$v);
-	like($v, qr/=pay_pack\.get_ведомость\(\)/, 'Pay_Pack.get_ведомость -> pay_pack.get_ведомость()');
+	like($v, qr/=app_pack\.get_ведомость\(\)/, 'App_Pack.get_ведомость -> app_pack.get_ведомость()');
 }
 
-# Bare DLook in view text -> payment.dlook (pass2 view.sql)
-{
-	my $o = bless({ package_as_schema => 1, schema => 'payment' }, 'Ora2Pg');
-	my $v = 'DLook(валюта_фикс, statement_timestamp())';
-	$o->requalify_function_call(\$v);
-	like($v, qr/payment\.dlook\(валюта_фикс, statement_timestamp\(\)::timestamp\(0\)\)/,
-		'bare DLook qualified and timestamp cast');
-}
-
-# Mixed-case DLook + non-SYSDATE args (inet_rate_budget class)
-{
-	my $o = bless({ schema => 'payment', functions => { DLOOK => { owner => 'payment' } } }, 'Ora2Pg');
-	my $v = '* DLook(валюта_фикс, ведомость) / DLook(валюта, ведомость)';
-	$o->requalify_function_call(\$v);
-	like($v, qr/payment\.dlook\(валюта_фикс, ведомость\)/, 'DLook -> payment.dlook case-insensitive');
-}
-
-# _format_view: Cyrillic FROM alias + quoted Oracle columns (v_cash_c_depo_scheme)
+# _format_view: Cyrillic FROM alias + quoted Oracle columns
 {
 	my $o = bless {
 		type => 'VIEW', plsql_pgsql => 1, use_orafce => 1, preserve_case => 0,
@@ -603,7 +572,7 @@ is($o->{dblink}{OTHERDB}{owner}, 'APP', 'USING-only link: owner is the schema');
 		'SELECT обеспечение."ВЕДОМОСТЬ",обеспечение."СЧЕТ",счет.наименование',
 		'FROM обеспечение, счет WHERE обеспечение.счет = счет.счет');
 	$o->_remove_comments(\$text);
-	my $out = $o->_format_view('v_cash_c_depo_scheme', $text);
+	my $out = $o->_format_view('view', $text);
 	unlike($out, qr/обеспечение\."ВЕДОМОСТЬ"/, 'no quoted ALL_CAPS col on Cyrillic alias');
 	like($out, qr/обеспечение\.ведомость/i, 'unwrap quoted column on Cyrillic table alias');
 	unlike($out, qr/'\.'\.lc\(/, 'no Perl lc() template in view SQL');

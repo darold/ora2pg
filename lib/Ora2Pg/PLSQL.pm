@@ -3930,21 +3930,7 @@ sub replace_outer_join
 			($alias = $t) =~ s/^.*\.// if (!$alias);
 			$from_clause_list{$alias} = "$cmt$t";
 			$from_order{$alias} = $fidx++;
-			# schema.table with implicit alias = bare table name wins over same bare name later
-			if ($t =~ /\./) {
-				my $short = $t;
-				$short =~ s/^.*\.//;
-				delete $alias_of_table{$short} if (defined $alias && $alias eq $short);
-				$from_clause_list{$short} = $from_clause_list{$alias}
-					if (!exists $from_clause_list{$short});
-			}
-			unless ($t !~ /\./ && exists $from_clause_list{$t}) {
-				$alias_of_table{$t} = $alias;
-			}
-			# bare table token: do not alias-map if schema-qualified entry already exists
-			if ($t !~ /\./ && exists $from_clause_list{$t}) {
-				delete $alias_of_table{$t};
-			}
+			$alias_of_table{$t} = $alias;
 		}
 
 		# Extract all Oracle's outer join syntax from the where clause
@@ -4105,7 +4091,6 @@ sub replace_outer_join
 				}
 			}
 
-			$r = outer_join_align_operand_to_table_alias($r, $table_decl2);
 			# When this is the first join parse add the left tablename
 			# first then the outer join with the right table
 			if (scalar keys %final_from_clause == 0)

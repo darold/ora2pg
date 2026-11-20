@@ -625,8 +625,8 @@ sub oracle_text
 sub _fdw_schema
 {
 	my ($class, $server, $owner) = @_;
-	# Server name is <database>_<login> (e.g. hp200_abc); remote Oracle owner abc is
-	# already implied — do not build fdw_hp200_abc_abc (foreign tables use fdw_hp200_abc).
+	# Server name is <database>_<login> (e.g. rdb_own); remote Oracle owner own is
+	# already implied — do not build fdw_rdb_own_own (foreign tables use fdw_rdb_own).
 	my $own = defined($owner) ? lc($owner) : undef;
 	if (defined $own && $server =~ /_\Q$own\E\z/) {
 		$own = undef;
