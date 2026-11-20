@@ -1014,7 +1014,7 @@ sub _align_unions
 	my $ecls; $ecls = sub {
 		my ($e, $al) = @_;
 		$e = $strip->($e);
-		$e =~ s/^(.*[\w\$#)"?])\s+(?:AS\s+)?(?:"[^"]+"|[\w\$#]+)$/$1/is unless $e =~ /^[\w\$#]+\.[\w\$#]+$/ || $e =~ /^[\w\$#]+$/;
+		$e =~ s/^(.*?[\w\$#)"?])\s+(?:AS\s+)?(?:"[^"]+"|[\w\$#]+)$/$1/is unless $e =~ /^[\w\$#]+\.[\w\$#]+$/ || $e =~ /^[\w\$#]+$/;
 		return 'numeric'   if $e =~ /^-?\d+(?:\.\d+)?$/;
 		return 'text'      if $e =~ /^\?TEXTVALUE\d+\?$/ || $e =~ /\|\|/ || $e =~ /^to_char\s*\(/i;
 		return 'numeric'   if $e =~ /^to_number\s*\(/i;

@@ -167,6 +167,9 @@ diag('TODO jobs: ' . (join(', ', @todo) || 'none'));
 	# UNION: a bare NULL takes the type of the same column in another branch
 	($o) = DblinkTest::convert('SELECT o.id, NULL FROM app.pay o UNION ALL SELECT NULL, NULL AS k FROM app.pay o UNION ALL SELECT o.id, o.kpp FROM app.pay o UNION ALL SELECT 1, to_char(o.id) || \'x\' FROM app.pay o', dbh => $dbh, schema => 'APP');
 	$o = norm($o);
+	# column with an AS alias in the typed branch
+	my ($o2) = DblinkTest::convert('SELECT o.id AS a1, o.kpp AS b1 FROM app.pay o UNION ALL SELECT NULL AS a1, NULL b1 FROM app.pay o', dbh => $dbh, schema => 'APP');
+	like(norm($o2), qr/SELECT NULL::numeric AS a1, NULL::text b1 FROM/i, 'UNION: typed column with AS alias');
 	like($o, qr/SELECT o\.id, NULL::text FROM app\.pay o UNION ALL SELECT NULL::numeric, NULL::text AS k FROM/i, 'UNION: NULL typed from the other branches');
 	unlike($o, qr/NULL::numeric.*NULL::numeric.*NULL::numeric/i, 'UNION: only bare NULLs');
 	# the connection ora2pg had open is gone: the dictionary query reconnects once and goes on
