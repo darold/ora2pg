@@ -123,6 +123,10 @@ diag('TODO jobs: ' . (join(', ', @todo) || 'none'));
 	($o) = DblinkTest::convert('SELECT 1 FROM rsch.rem_accounts@rdb1 v WHERE coalesce(v.key_code, coalesce(v.key_code, v.key_code)) = v.amt', dblink_signatures => $sg);
 	$o = norm($o);
 	like($o, qr/coalesce\(v\.key_code, coalesce\(v\.key_code, v\.key_code\)\) = v\.amt::text/, 'nested COALESCE of varchar = number -> number side cast to text');
+
+	# (+) stays masked (%OUTERJOINn%) while the types are aligned
+	($o) = DblinkTest::convert('SELECT 1 FROM rsch.rem_accounts@rdb1 v, rsch.rem_accounts@rdb1 w WHERE v.amt(+) = nvl(w.key_code, nvl(w.key_code, w.key_code))', dblink_signatures => $sg);
+	like(norm($o), qr/= v\.amt::text\)/, 'comparison with (+) on the column is aligned too');
 }
 
 # local tables: types come from the dictionary of the export connection

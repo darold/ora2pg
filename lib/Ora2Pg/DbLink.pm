@@ -988,16 +988,18 @@ sub _align_coalesce
 	my ($str, $al) = @_;
 	my $Q = qr/[\w\$#]+\.[\w\$#]+/;
 	my $F = qr/\b(?:coalesce|nvl)\s*(?<p>\((?:[^()]++|(?&p))*\))/i;
-	my $E = qr/(?:$F|$Q)/;
+	my $OJ = qr/(?:%OUTERJOIN\d+%)?/;	# (+) is still masked here; it must not hide the operand
+	my $E = qr/(?:$F|$Q$OJ)/;
 	# class of an expression: a column alias.col, or a (nested) COALESCE/NVL = class of its first argument
 	my $cls; $cls = sub {
 		my $e = shift =~ s/^\s+|\s+$//gr;
+		$e =~ s/%OUTERJOIN\d+%$//;
 		if ($e =~ /^(?:coalesce|nvl)\s*\((.*)\)$/is) { return $cls->((_split_args($1))[0]) }
 		return undef unless $e =~ /^$Q$/;
 		my ($t, $col) = split /\./, $e;
 		return $al->{uc $t} ? $al->{uc $t}{uc $col} : undef;
 	};
-	my $cast = sub { my ($e, $c) = @_; ($e =~ /^$Q$/ ? $e : "($e)") . "::$c" };
+	my $cast = sub { my ($e, $c) = @_; my $oj = $e =~ s/(%OUTERJOIN\d+%)$// ? $1 : ''; ($e =~ /^$Q$/ ? $e : "($e)") . "::$c$oj" };
 	# Oracle converts the later NVL/COALESCE arguments to the type of the first one; PG refuses to mix types
 	my $fix; $fix = sub {
 		my $s = shift;
