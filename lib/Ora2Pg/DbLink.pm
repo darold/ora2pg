@@ -1106,7 +1106,17 @@ sub _align_coalesce
 		my ($o, $in) = ($1, $2);
 		my @a = _split_args($in);
 		my $c0 = $cls->($a[0]);
-		if ($c0) {
+		# Oracle converts expr and every search value to the type of the FIRST search value; an untyped NULL there means VARCHAR2
+		my $textual = $c0 && $c0 ne 'text' && @a > 3 && $a[1] =~ /^\s*null\s*$/i
+			&& grep { ($cls->($a[$_]) // '') ne $c0 && $a[$_] !~ /^\s*null\s*$/i } grep { $_ % 2 } 3 .. $#a - 1;
+		if ($textual) {
+			# shortcut: compared as text on both sides (PG text of a date differs from NLS text, but a date never equals a number either way)
+			for my $i (0, grep { $_ % 2 && $_ < $#a && $a[$_] !~ /^\s*null\s*$/i } 1 .. $#a) {
+				my ($ld, $e, $tr) = $a[$i] =~ /^(\s*)(.*?)(\s*)$/s;
+				$a[$i] = $ld . $cast->($e, 'text') . $tr;
+			}
+		}
+		elsif ($c0) {
 			for (my $i = 1; $i < $#a; $i += 2) {
 				my $c = $cls->($a[$i]);
 				next unless $c && $c ne $c0;

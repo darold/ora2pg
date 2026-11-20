@@ -135,6 +135,13 @@ diag('TODO jobs: ' . (join(', ', @todo) || 'none'));
 	like($o, qr/v\.amt IS NOT DISTINCT FROM v\.amt THEN/i, 'DECODE same types untouched');
 	like($o, qr/v\.key_code IS NOT DISTINCT FROM 1::text THEN/i, 'DECODE(varchar, 1): literal cast to text');
 
+	# DECODE(date, NULL, NULL, <expr>, 2): the first search is an untyped NULL -> everything is compared as text (Oracle), PG would fail on date = number
+	my $sgd = File::Temp->new(SUFFIX => '.txt'); print $sgd "RDB1|TABLE|rsch.rem_accounts|amt NUMBER(12,2), dt DATE\n"; close $sgd;
+	($o) = DblinkTest::convert("SELECT decode(v.dt, NULL, NULL, decode(v.amt, 0, 0, v.amt), 2) p, decode(v.dt, NULL, NULL, v.dt, 2) q FROM rsch.rem_accounts\@rdb1 v", dblink_signatures => $sgd->filename);
+	$o = norm($o);
+	like($o, qr/v\.dt::text IS NOT DISTINCT FROM NULL THEN NULL WHEN v\.dt::text IS NOT DISTINCT FROM \(CASE WHEN v\.amt .*? END \)::text THEN 2/i, 'DECODE(date, NULL, NULL, other type): compared as text');
+	like($o, qr/WHEN v\.dt IS NOT DISTINCT FROM v\.dt THEN 2/i, 'DECODE(date, NULL, NULL, date): untouched');
+
 	# NVL(varchar, 0): the literal takes the type of the first argument; SIGN of the character result gets a number
 	($o) = DblinkTest::convert('SELECT sign(nvl(v.key_code, 0)) s, nvl(v.amt, 0) n FROM rsch.rem_accounts@rdb1 v', dblink_signatures => $sg);
 	$o = norm($o);
