@@ -911,6 +911,7 @@ sub rewrite
 		substr($str, $r->{start}, $len) = $new;
 	}
 	_local_aliases($class, $str, \%alias) if $str =~ /\b(?:coalesce|nvl)\b|[=<>]/i;
+	$str = _align_unions($class, $str, \%alias) if $str =~ /\b(?:UNION|MINUS|INTERSECT)\b/i && $str =~ /\bNULL\b/i;
 	$str = _align_coalesce($str, \%alias) if grep { defined } values %alias;
 	# refs were handled right to left: number _dbl_rN left to right
 	my (%m, $n);
@@ -978,6 +979,64 @@ sub _local_aliases
 			last unless $s =~ /\G\s*,\s*/gc;
 		}
 	}
+}
+
+# UNION branches: a bare NULL gets the type of the same column in another branch (PG resolves NULL, NULL to text before it sees the typed branch)
+# shortcut: only top-level branches that start with SELECT; types come from alias.col, literals, to_date/to_char/||; anything else is left alone
+sub _align_unions
+{
+	my ($class, $str, $remote) = @_;
+	my (@cut, $d);
+	while ($str =~ /([()])|\b(UNION(?:\s+ALL)?|MINUS|INTERSECT)\b/gi) {
+		if (defined $1) { $d += $1 eq '(' ? 1 : -1 } elsif (!$d) { push @cut, [$-[0], $+[0]] }
+	}
+	return $str unless @cut;
+	my @seg;	# [start, end] of every branch
+	my $p = 0;
+	for my $c (@cut, [length $str, length $str]) { push @seg, [$p, $c->[0]]; $p = $c->[1] }
+	my $strip = sub { my $e = shift; $e =~ s/%ORA2PG_COMMENT\d+%//g; $e =~ s/^\s+|\s+$//g; $e };
+	my @br;
+	for my $sg (@seg) {
+		my $t = substr($str, $sg->[0], $sg->[1] - $sg->[0]);
+		$t =~ /^\s*(?:%ORA2PG_COMMENT\d+%\s*)*SELECT\b\s*(?:(?:DISTINCT|ALL|UNIQUE)\b\s*)?/i or return $str;
+		my ($ls, $le, $dd) = ($+[0], length $t, 0);
+		while ($t =~ /([()])|\bFROM\b/gi) {
+			next if $-[0] < $ls;
+			if (defined $1) { $dd += $1 eq '(' ? 1 : -1 } elsif (!$dd) { $le = $-[0]; last }
+		}
+		my %al;
+		_merge_alias(\%al, $_, $remote->{$_}) for keys %$remote;
+		_local_aliases($class, $t, \%al);
+		push @br, { off => $sg->[0] + $ls, len => $le - $ls, items => [ _split_args(substr($t, $ls, $le - $ls)) ], al => \%al };
+	}
+	my $n = @{$br[0]{items}};
+	return $str if grep { @{$_->{items}} != $n } @br;
+	my $ecls; $ecls = sub {
+		my ($e, $al) = @_;
+		$e = $strip->($e);
+		$e =~ s/^(.*[\w\$#)"?])\s+(?:AS\s+)?(?:"[^"]+"|[\w\$#]+)$/$1/is unless $e =~ /^[\w\$#]+\.[\w\$#]+$/ || $e =~ /^[\w\$#]+$/;
+		return 'numeric'   if $e =~ /^-?\d+(?:\.\d+)?$/;
+		return 'text'      if $e =~ /^\?TEXTVALUE\d+\?$/ || $e =~ /\|\|/ || $e =~ /^to_char\s*\(/i;
+		return 'numeric'   if $e =~ /^to_number\s*\(/i;
+		return 'timestamp' if $e =~ /^(?:to_date|to_timestamp)\s*\(/i || $e =~ /^(?:sysdate|current_date|statement_timestamp\(\))$/i;
+		return $ecls->((_split_args($1))[0], $al) if $e =~ /^(?:coalesce|nvl)\s*\((.*)\)$/is;
+		if ($e =~ /^([\w\$#]+)\.([\w\$#]+)$/) { return $al->{uc $1} ? $al->{uc $1}{uc $2} : undef }
+		return undef;
+	};
+	my %fix;	# branch index -> list of rewritten items
+	for my $i (0 .. $n - 1) {
+		my ($class_i) = grep { defined } map { $ecls->($_->{items}[$i], $_->{al}) } @br;
+		next unless $class_i;
+		for my $b (@br) {
+			my $it = $b->{items}[$i];
+			next unless $strip->($it) =~ /^NULL(?:\s+(?:AS\s+)?(?:"[^"]+"|[\w\$#]+))?$/i;
+			$it =~ s/\bNULL\b/NULL::$class_i/i;
+			$b->{items}[$i] = $it;
+			$b->{changed} = 1;
+		}
+	}
+	for my $b (reverse grep { $_->{changed} } @br) { substr($str, $b->{off}, $b->{len}) = join(',', @{$b->{items}}) }
+	return $str;
 }
 
 # top-level comma split of a call body
