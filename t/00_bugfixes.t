@@ -593,6 +593,26 @@ is($o->{dblink}{OTHERDB}{owner}, 'APP', 'USING-only link: owner is the schema');
 	unlike($out, qr/'\.'\.lc\(/, 'quoted-column rewrite does not leak lc()');
 }
 
+# quoted column with space/hyphen keeps its quotes (PG needs them)
+{
+	my $o = bless {
+		type => 'VIEW', plsql_pgsql => 1, use_orafce => 1, preserve_case => 0,
+		schema => 'payment', dblink_mode => 'off', replaced_cols => {},
+		text_values => {}, comment_values => {}, text_values_pos => 0,
+		function_metadata => {}, idxcomment => 0,
+	}, 'Ora2Pg';
+	my $text = q{select v1."ДАТА ЗАЯВКИ", v1."ДАТА ПРЕД-Я", v1."СТАТЬЯ" from vv v1};
+	$o->_remove_comments(\$text);
+	my $out = $o->_format_view('view', $text);
+	like($out, qr/v1\."дата заявки"/u, 'column with space stays quoted');
+	like($out, qr/v1\."дата пред-я"/u, 'column with hyphen stays quoted');
+	like($out, qr/v1\.статья/u, 'plain quoted column is unwrapped');
+}
+
+# quoted ALL_CAPS identifier that is a PG reserved word stays quoted
+is(Ora2Pg::PLSQL::lowercase_quoted_oracle_uppercase_columns(q{a AS "FROM", b AS "TO", "CD_A"}),
+	q{a AS "from", b AS "to", cd_a}, 'reserved quoted aliases stay quoted');
+
 # lowercase_quoted_oracle_uppercase_columns must mutate (no /r on s///)
 {
 	my $s = q{SS."УРОВЕНЬ", "CD_A"};

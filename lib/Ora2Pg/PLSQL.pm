@@ -669,12 +669,22 @@ sub convert_plsql_code
 }
 
 # Oracle quoted ALL_CAPS column id -> unquoted lowercase (PG table.sql uses lowercase)
+# PG reserved words: a quoted Oracle ALL_CAPS identifier equal to one of them stays quoted
+my %PG_RESERVED = map { $_ => 1 } qw(all analyse analyze and any array as asc asymmetric both
+	case cast check collate column constraint create current_catalog current_date current_role
+	current_time current_timestamp current_user default deferrable desc distinct do else end
+	except false fetch for foreign from grant group having in initially intersect into lateral
+	leading limit localtime localtimestamp not null offset on only or order placing primary
+	references returning select session_user some symmetric system_user table then to trailing
+	true union unique user using variadic when where window with);
+
 sub lowercase_quoted_oracle_uppercase_columns
 {
 	my ($str) = @_;
 	$str =~ s{"([^"]+)"}{
 		my $id = $1;
 		($id =~ /\p{Ll}/) ? qq{"$id"}
+			: $PG_RESERVED{lc($id)} ? qq{"} . lc($id) . qq{"}
 			: ($id =~ /^[\p{Lu}\p{N}_]+$/u) ? lc($id)
 			: qq{"$id"}
 	}ge;

@@ -16580,7 +16580,7 @@ sub _format_view
 		$regextb =~ s/\$/\\\$/g;
 		if (!$self->{preserve_case}) {
 			# Escape column name (quoted Oracle ALL_CAPS / Cyrillic -> unquoted PG fold)
-			$sqlstr =~ s{["']*\Q$regextb\E["']*\.["']([^"']+)["'](,?)}{ $tb . '.' . lc($1) . $2 }igeu;
+			$sqlstr =~ s{["']*\Q$regextb\E["']*\.["']([^"']+)["'](,?)}{ my ($c, $t) = (lc($1), $2); $tb . '.' . ($c =~ /^[\p{L}\p{N}_\$#]+$/u ? $c : qq{"$c"}) . $t }igeu;
 			# Escape table name
 			$sqlstr =~ s/(^=\s?)["']*\b$regextb\b["']*/$tb/igs;
 		} else {
