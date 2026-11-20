@@ -3822,6 +3822,8 @@ sub outer_join_normalize_from_table_token
 	my ($table) = @_;
 	$table =~ s/^\s+//s;
 	$table =~ s/\s+$//s;
+	# "schema.\n   table alias": a line break after the dot is legal in Oracle
+	$table =~ s/\.\s+(?=[\p{L}\p{N}_\$#"])/./g;
 	if ($table =~ /^(\%SUBQUERY\d+\%)([\w\$#]+)$/i) {
 		$table = "$1 $2";
 	}

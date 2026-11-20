@@ -159,6 +159,11 @@ diag('TODO jobs: ' . (join(', ', @todo) || 'none'));
 	like($o, qr/o\.id = pp\.id(?!::)/i, 'local tables: same type untouched');
 	($o) = DblinkTest::convert('SELECT coalesce(o.kpp, pp.kpp) FROM app.pay o, app.branch pp', dbh => $dbh, schema => 'APP', input_file => 'x.sql');
 	unlike(norm($o), qr/::/, 'no dictionary (offline): left alone');
+	# a line break after the dot of schema.table does not split the table from its alias
+	($o) = DblinkTest::convert("SELECT 1 FROM app.pay p, app.branch, app.\n  staff va, app.pay q WHERE p.id = va.id AND q.id(+) = va.id AND p.id = branch.id(+)", dbh => $dbh, schema => 'APP');
+	$o = norm($o);
+	like($o, qr/app\.staff va/i, 'schema.<newline>table alias kept together');
+	unlike($o, qr/app\.\s+staff|,\s*va\b/i, 'no stray alias');
 	# UNION: a bare NULL takes the type of the same column in another branch
 	($o) = DblinkTest::convert('SELECT o.id, NULL FROM app.pay o UNION ALL SELECT NULL, NULL AS k FROM app.pay o UNION ALL SELECT o.id, o.kpp FROM app.pay o UNION ALL SELECT 1, to_char(o.id) || \'x\' FROM app.pay o', dbh => $dbh, schema => 'APP');
 	$o = norm($o);
