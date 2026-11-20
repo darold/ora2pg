@@ -8583,6 +8583,19 @@ sub export_synonym
 			print STDERR $self->progress_bar($i, $num_total_synonym, 25, '=', 'synonyms', "generating $syn" ), "\r";
 		}
 		$count_syn++;
+		my $sy = $self->{synonyms}{$syn};
+		if ($sy->{dblink} && ($self->{dblink_mode} // 'off') eq 'fdw' && !$self->{dblink_exclude}{uc $sy->{dblink}}) {
+			# synonym over a db link: view on the foreign table the dblink patch generates
+			my $link = uc $sy->{dblink};
+			my $srv = Ora2Pg::DbLink::server_for($self, $link);
+			my $path = uc(($sy->{table_owner} ? "$sy->{table_owner}." : '') . $sy->{table_name});
+			$self->{dblink_used}{$srv}{$path} = 1;
+			$self->{dblink_link}{$srv} = $link;
+			my $ft = Ora2Pg::DbLink::_fdw_schema($self, $srv, $sy->{table_owner} || undef) . '.' . lc($sy->{table_name});
+			$sql_output .= "CREATE$self->{create_or_replace} VIEW " . $self->quote_object_name($syn) . " AS SELECT * FROM $ft;\n";
+			$i++;
+			next;
+		}
 		if ($self->{synonyms}{$syn}{dblink}) {
 			$sql_output .= "-- You need to create foreign table $self->{synonyms}{$syn}{table_owner}.$self->{synonyms}{$syn}{table_name} using foreign server: '$self->{synonyms}{$syn}{dblink}'\n -- see DBLINK export type to export the server definition\n";
 		}
@@ -8610,6 +8623,7 @@ sub export_synonym
 	}
 
 	$self->dump($sql_header . $sql_output);
+	Ora2Pg::DbLink::write_tables_file($self);
 
 	return;
 }

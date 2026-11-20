@@ -191,4 +191,19 @@ diag('TODO jobs: ' . (join(', ', @todo) || 'none'));
 	like(norm($o), qr/v\.kpp::text = o\.kpp/i, 'same alias, same table twice: aligned');
 }
 
+# synonym over a db link: view on the foreign table (not a self-reference), table file written
+{
+	my %f;
+	my $o = bless { type => 'SYNONYM', dblink_mode => 'fdw', dblink_server => {}, dblink_exclude => {}, dblink_schema_prefix => 'fdw_',
+		quiet => 1, no_header => 1, create_or_replace => ' OR REPLACE', compress => 0, output_dir => File::Temp::tempdir(CLEANUP => 1),
+		synonyms => { inv => { owner => 'APP', table_owner => 'XX', table_name => 'INV', dblink => 'REM1' } } }, 'Ora2Pg';
+	my $cur = '';
+	no warnings 'redefine';
+	local (*Ora2Pg::dump, *Ora2Pg::_set_file_header, *Ora2Pg::open_export_file, *Ora2Pg::set_binmode, *Ora2Pg::close_export_file) =
+		(sub { $f{$cur // 'main'} .= $_[1] }, sub { '' }, sub { $cur = $_[1]; 1 }, sub { }, sub { $cur = '' });
+	$o->export_synonym();
+	like(norm($f{''} // $f{main} // ''), qr/^CREATE OR REPLACE VIEW inv AS SELECT \* FROM fdw_\w+_xx\.inv;$/, 'synonym over link: view on foreign table');
+	ok(scalar(grep { /^dblink_tables_synonym/ } keys %f), 'dblink_tables_synonym.sql written');
+}
+
 done_testing;
