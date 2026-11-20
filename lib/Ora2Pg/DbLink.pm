@@ -1041,6 +1041,24 @@ sub _align_coalesce
 		}
 		"$f$o(" . join(',', @a) . ')';
 	}gie;
+	# DECODE(expr, search, result, ...) compares expr with every search value like a comparison does (it is turned into CASE later)
+	$str =~ s{\bdecode(\s*)\(((?:[^()]++|(?<p>\((?:[^()]++|(?&p))*\)))*)\)}{
+		my ($o, $in) = ($1, $2);
+		my @a = _split_args($in);
+		my $c0 = $cls->($a[0]);
+		if ($c0) {
+			for (my $i = 1; $i < $#a; $i += 2) {
+				my $c = $cls->($a[$i]);
+				next unless $c && $c ne $c0;
+				my ($ld, $e, $tr) = $a[$i] =~ /^(\s*)(.*?)(\s*)$/s;
+				if    ($c0 eq 'text' && $c eq 'numeric') { $a[$i] = $ld . $cast->($e, 'text') . $tr }
+				elsif ($c0 eq 'numeric' && $c eq 'text') { $a[0] = $cast->($a[0] =~ s/^\s+|\s+$//gr, 'text'); $c0 = 'text'; $a[$i] =~ s/^\s*/ /; }
+				elsif ($c0 eq 'text') { $a[0] = $cast->($a[0] =~ s/^\s+|\s+$//gr, $c); $c0 = $c }
+				elsif ($c eq 'text')  { $a[$i] = $ld . $cast->($e, $c0) . $tr }
+			}
+		}
+		"decode$o(" . join(',', @a) . ')';
+	}gie;
 	# Oracle compares VARCHAR2 with NUMBER/DATE by converting the character side.
 	$str =~ s{(?<l>$E)(?<op>\s*(?:=|<>|!=|<=|>=|<|>|IS\s+(?:NOT\s+)?DISTINCT\s+FROM)\s*)(?<r>$E)(?![\w\$#.(])}{
 		my ($l, $op, $r) = @+{qw(l op r)};

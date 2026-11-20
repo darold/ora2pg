@@ -128,6 +128,13 @@ diag('TODO jobs: ' . (join(', ', @todo) || 'none'));
 	($o) = DblinkTest::convert('SELECT 1 FROM rsch.rem_accounts@rdb1 v, rsch.rem_accounts@rdb1 w WHERE v.amt(+) = nvl(w.key_code, nvl(w.key_code, w.key_code))', dblink_signatures => $sg);
 	like(norm($o), qr/= v\.amt::text\)/, 'comparison with (+) on the column is aligned too');
 
+	# DECODE compares like =
+	($o) = DblinkTest::convert("SELECT decode(v.key_code, v.amt, 'a', 'b') d1, decode(v.amt, v.amt, 'a', 'b') d2, decode(v.key_code, 1, 'a', 2, 'b') d3 FROM rsch.rem_accounts\@rdb1 v", dblink_signatures => $sg);
+	$o = norm($o);
+	like($o, qr/IS NOT DISTINCT FROM v\.amt::text THEN/i, 'DECODE(varchar, number): number side cast to text');
+	like($o, qr/v\.amt IS NOT DISTINCT FROM v\.amt THEN/i, 'DECODE same types untouched');
+	like($o, qr/v\.key_code IS NOT DISTINCT FROM 1::text THEN/i, 'DECODE(varchar, 1): literal cast to text');
+
 	# NVL(varchar, 0): the literal takes the type of the first argument; SIGN of the character result gets a number
 	($o) = DblinkTest::convert('SELECT sign(nvl(v.key_code, 0)) s, nvl(v.amt, 0) n FROM rsch.rem_accounts@rdb1 v', dblink_signatures => $sg);
 	$o = norm($o);
