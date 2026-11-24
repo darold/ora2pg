@@ -1,0 +1,7 @@
+# TEST signatures for t/06_dblink_procs.t (all names are invented)
+RDB1|PROCEDURE|rsch.rem_calc_pkg.get_calc_data|p_term IN VARCHAR2, p_dept IN VARCHAR2, p_key IN VARCHAR2, p_out1 OUT NUMBER, p_out1_corr OUT NUMBER, p_out2 OUT NUMBER, p_out3 OUT NUMBER
+RDB1|PROCEDURE|rsch.rem_iface_pkg.get_item_info|p_dept IN VARCHAR2, p_kind IN VARCHAR2, x_combo_id OUT NUMBER, x_cat_id OUT NUMBER, x_err_text OUT VARCHAR2, p_doc_type IN VARCHAR2
+RDB1|PROCEDURE|rsch.rem_iface_pkg.add_grp_code|p_cd IN VARCHAR2
+RDB1|PROCEDURE|rsch.pkg.io|a IN OUT VARCHAR2, d IN OUT DATE
+RDB1|PROCEDURE|rsch.pkg.getclob|c OUT CLOB
+RDB1|PROCEDURE|rsch.pkg.two|x OUT NUMBER

@@ -26,6 +26,7 @@ package Ora2Pg::PLSQL;
 
 use vars qw($VERSION %OBJECT_SCORE $SIZE_SCORE $FCT_TEST_SCORE $QUERY_TEST_SCORE %UNCOVERED_SCORE %UNCOVERED_MYSQL_SCORE @ORA_FUNCTIONS @MYSQL_SPATIAL_FCT @MYSQL_FUNCTIONS %EXCEPTION_MAP %MAX_SCORE %MSSQL_STYLE %UNCOVERED_MSSQL_SCORE);
 use POSIX qw(locale_h);
+use Ora2Pg::DbLink ();
 
 #set locale to LC_NUMERIC C
 setlocale(LC_NUMERIC,"C");
@@ -119,6 +120,7 @@ $QUERY_TEST_SCORE = 0.1;
 	'ORA_ROWSCN' => 3,
 	'SAVEPOINT' => 1,
 	'DBLINK' => 1,
+	'DBLINK_TODO' => 3,
 	'PLVDATE' => 2,
 	'PLVSTR' => 2,
 	'PLVCHR' => 2,
@@ -460,6 +462,30 @@ PSQL - Oracle to PostgreSQL procedural language converter
 	configuration option to 1.
 =cut
 
+=head2 dblink_server_name
+
+Return the PostgreSQL foreign server name to use for an Oracle database
+link. The owner prefix that _get_dblink() adds to the key is removed, the
+global name domain is dropped (APPQ.WORD -> appq) and a connection
+qualifier is kept as a suffix (LINKB@EXTUSER -> linkb_extuser), so links that
+differ only by qualifier get distinct servers.
+
+=cut
+
+sub dblink_server_name
+{
+	my ($link, $owner) = @_;
+
+	my $name = uc($link // '');
+	$name =~ s/"//g;
+	$name =~ s/^\Q$owner\E\.//i if ($owner);
+	my ($base, $qualifier) = split(/\@/, $name, 2);
+	$base =~ s/\..*$//;
+	$name = lc($qualifier ? "${base}_$qualifier" : $base);
+
+	return ($name =~ /^[a-z_][a-z0-9_\$]*$/) ? $name : '"' . $name . '"';
+}
+
 =head2 convert_plsql_code
 
 Main function used to convert Oracle SQL and PL/SQL code into PostgreSQL
@@ -467,11 +493,20 @@ compatible code
 
 =cut
 
+sub lc_type_refs
+{
+	my $str = shift;
+	$str =~ s/([\w\$#"]+(?:\.[\w\$#"]+)*)(\s*\%TYPE\b)/lc($1) . $2/gie;
+	return $str;
+}
+
 sub convert_plsql_code
 {
         my ($class, $str, @strings) = @_;
 
 	return if ($str eq '');
+
+	$str = lc_type_refs($str) unless $class->{preserve_case};
 
 	# Remove the SYS schema from calls
 	$str =~ s/\bSYS\.//igs;
@@ -485,18 +520,31 @@ sub convert_plsql_code
 	# Do some initialization of variables
 	%{$class->{single_fct_call}} = ();
 	$class->{replace_out_params} = '';
+	$class->{dblink_declare} = '';
+	$class->{dblink_rn} = 0;
 
-	if (!$calss->{use_orafce} && uc($class->{type}) ne 'SHOW_REPORT')
+	$str = Ora2Pg::DbLink::rewrite($class, $str)
+		if (($class->{dblink_mode} // 'off') eq 'fdw' && uc($class->{type} // '') ne 'SHOW_REPORT');
+
+	if (uc($class->{type}) ne 'SHOW_REPORT')
 	{
-		# Rewrite all decode() call before
+		# Always rewrite decode() to CASE. orafce decode is polymorphic
+		# (anyelement) and rejects common Oracle patterns such as
+		# decode(smallint_col, 1, 'x', 2, 'y') — integer literals vs smallint/
+		# numeric columns (see orafce#17/#67). CASE uses ordinary PG "=" /
+		# IS NOT DISTINCT FROM with implicit casts. Remote $ora$ SQL is not
+		# passed through convert_plsql_code, so Oracle DECODE there is kept.
 		$str = replace_decode($str);
 
-		# Rewrite numeric operation with ADD_MONTHS(date, 1) to use interval
-		$str =~ s/\b(ADD_MONTHS\s*\([^,]+,\s*\d+\s*\))\s*([+\-\*\/])\s*(\d+)(\s*[^\-\*\/]|$)/$1 $2 '$3 days'::interval$4/sgi;
-		# Rewrite numeric operation with TRUNC() to use interval
-		#$str =~ s/\b(TRUNC\s*\(\s*(?:[^\(\)]+)\s*\))\s*([+\-\*\/])\s*(\d+)(\s*[^+\-\*\/]|$)/$1 $2 '$3 days'::interval$4/sgi;
-		# Rewrite numeric operation with LAST_DAY() to use interval
-		$str =~ s/\b(LAST_DAY\s*\(\s*(?:[^\(\)]+)\s*\))\s*([+\-\*\/])\s*(\d+)(\s*[^+\-\*\/]|$)/$1 $2 '$3 days'::interval$4/sgi;
+		if (!$class->{use_orafce})
+		{
+			# Rewrite numeric operation with ADD_MONTHS(date, 1) to use interval
+			$str =~ s/\b(ADD_MONTHS\s*\([^,]+,\s*\d+\s*\))\s*([+\-\*\/])\s*(\d+)(\s*[^\-\*\/]|$)/$1 $2 '$3 days'::interval$4/sgi;
+			# Rewrite numeric operation with TRUNC() to use interval
+			#$str =~ s/\b(TRUNC\s*\(\s*(?:[^\(\)]+)\s*\))\s*([+\-\*\/])\s*(\d+)(\s*[^+\-\*\/]|$)/$1 $2 '$3 days'::interval$4/sgi;
+			# Rewrite numeric operation with LAST_DAY() to use interval
+			$str =~ s/\b(LAST_DAY\s*\(\s*(?:[^\(\)]+)\s*\))\s*([+\-\*\/])\s*(\d+)(\s*[^+\-\*\/]|$)/$1 $2 '$3 days'::interval$4/sgi;
+		}
 	}
 
 	# Replace array syntax arr(i).x into arr[i].x
@@ -585,6 +633,13 @@ sub convert_plsql_code
 		}
 		$class->{replace_out_params} = '';
 	}
+	if ($class->{dblink_declare})
+	{
+		if ($str !~ s/\b(DECLARE(?:\s+|\%ORA2PG_COMMENT\d+\%))/$1$class->{dblink_declare}/is) {
+			$str =~ s/\b(BEGIN(?:\s+|\%ORA2PG_COMMENT\d+\%))/DECLARE\n$class->{dblink_declare}$1/is;
+		}
+		$class->{dblink_declare} = '';
+	}
 
 	# Apply code rewrite on other part of the code
 	$str = plsql_to_plpgsql($class, $str, @strings);
@@ -598,7 +653,76 @@ sub convert_plsql_code
 	}
 
 	$str = lc_non_ascii_identifiers($class, $str);
+	$str = pg_quote_dotted_select_aliases($str);
+	$str = repair_torn_alias_quotes($str);
+	$str = strip_export_schema_table_prefix($class, $str)
+		if (grep { uc($class->{type} // '') eq $_ } qw(VIEW FUNCTION PROCEDURE PACKAGE));
+	$str = lowercase_quoted_oracle_uppercase_columns($str)
+		if (uc($class->{type} // '') eq 'VIEW' && !$class->{preserve_case});
+	$str = lowercase_fdw_pass_through_columns($str)
+		if (uc($class->{type} // '') eq 'VIEW');
+	$str = rewrite_generate_series_orphan_level($str)
+		if ($str =~ /\bgenerate_series\s*\(\s*1\s*,/i);
+	$str = rewrite_reserved_order_select_alias($str)
+		if (grep { uc($class->{type} // '') eq $_ } qw(VIEW FUNCTION PROCEDURE PACKAGE QUERY));
+	return $str;
+}
 
+# Oracle quoted ALL_CAPS column id -> unquoted lowercase (PG table.sql uses lowercase)
+# PG reserved words: a quoted Oracle ALL_CAPS identifier equal to one of them stays quoted
+my %PG_RESERVED = map { $_ => 1 } qw(all analyse analyze and any array as asc asymmetric both
+	case cast check collate column constraint create current_catalog current_date current_role
+	current_time current_timestamp current_user default deferrable desc distinct do else end
+	except false fetch for foreign from grant group having in initially intersect into lateral
+	leading limit localtime localtimestamp not null offset on only or order placing primary
+	references returning select session_user some symmetric system_user table then to trailing
+	true union unique user using variadic when where window with);
+
+sub lowercase_quoted_oracle_uppercase_columns
+{
+	my ($str) = @_;
+	$str =~ s{"([^"]+)"}{
+		my $id = $1;
+		($id =~ /\p{Ll}/) ? qq{"$id"}
+			: $PG_RESERVED{lc($id)} ? qq{"} . lc($id) . qq{"}
+			: ($id =~ /^[\p{Lu}\p{N}_]+$/u) ? lc($id)
+			: qq{"$id"}
+	}ge;
+	return $str;
+}
+
+# SELECT "CD_A",... FROM fdw_* — PG foreign tables expose unquoted lowercase cols
+sub lowercase_fdw_pass_through_columns
+{
+	my ($str) = @_;
+	return $str unless $str =~ /\bFROM\s+fdw_/i;
+	$str =~ s/"([A-Z][A-Z0-9_]*)"/lc($1)/g;
+	return $str;
+}
+
+# AS доп.кол-во_б/д -> AS "доп.кол-во_б/д" (PostgreSQL needs quotes)
+sub pg_quote_dotted_select_aliases
+{
+	my ($str) = @_;
+	$str =~ s{\bAS\s+([\p{L}\p{N}_\$#]+(?:\.[\p{L}\p{N}_\$#/-]+)+)(?=\s*,|\s+FROM\b)}{AS "$1"}ig;
+	return $str;
+}
+
+# z.c_регистрация",z. after aggressive quote strip in view export
+sub repair_torn_alias_quotes
+{
+	my ($str) = @_;
+	$str =~ s/\.([\p{L}\p{N}_\$#]+)",\s*([\p{L}\p{N}_\$#]+)\./."$1", $2./g;
+	return $str;
+}
+
+# schema.table.col -> table.col when export schema matches (FROM schema.table table)
+sub strip_export_schema_table_prefix
+{
+	my ($class, $str) = @_;
+	my $sch = lc($class->{schema} // '');
+	return $str if ($sch eq '');
+	$str =~ s/(?<![\.\w\$#])\Q$sch\E\.([\p{L}\p{N}_\$#]+)\.(?![\p{L}\p{N}_\$#]*\s*\()/$1./igu;
 	return $str;
 }
 
@@ -836,9 +960,6 @@ sub plsql_to_plpgsql
 
 	# Replace SYSTIMESTAMP 
 	$str =~ s/\bSYSTIMESTAMP\b/statement_timestamp()/igs;
-	# remove FROM DUAL
-	$str =~ s/FROM\s+DUAL//igs;
-	$str =~ s/FROM\s+SYS\.DUAL//igs;
 
 	# DISTINCT and UNIQUE are synonym on Oracle
 	$str =~ s/SELECT\s+UNIQUE\s+([^,])/SELECT DISTINCT $1/igs;
@@ -887,7 +1008,7 @@ sub plsql_to_plpgsql
 	$str =~ s/:old\./OLD\./igs;
 
 	# Change NVL to COALESCE
-	$str =~ s/NVL\s*\(/coalesce(/isg;
+	$str =~ s/\bNVL\s*\(/coalesce(/isg;
 	$str =~ s/NVL2\s*\($field,$field,$field\)/(CASE WHEN $1 IS NOT NULL THEN $2 ELSE $3 END)/isg;
 
 	# NLSSORT to COLLATE
@@ -984,6 +1105,10 @@ sub plsql_to_plpgsql
 		$str =~ s/\b(\w+)\.currval/currval('"$1"')/isg;
 	}
 
+	# Oracle NUMBER division is never integer division: 14/24 = 0.58.. but 0 in PG. Only literal/literal
+	# is safe to fix here (types of columns and variables are not known); string literals are masked.
+	$str =~ s{(?<![\w\.\$#])(\d+)\s*/\s*(\d+)(?![\w\.\$#])}{ ($2 && $1 % $2 == 0) ? "$1/$2" : "$1/$2.0" }ge;
+
 	# Oracle MINUS can be replaced by EXCEPT as is
 	$str =~ s/\bMINUS\b/EXCEPT/igs;
 	# Comment DBMS_OUTPUT.ENABLE calls
@@ -1002,6 +1127,7 @@ sub plsql_to_plpgsql
 		$str =~ s/DBMS_OUTPUT\.(put_line|put|new_line)\s*\((.*?)\)\s*;/&raise_output($class, $2) . ';'/isge;
 	} else {
 		$str =~ s/(DBMS_OUTPUT\.)/PERFORM $1/igs;
+		$str = orafce_calls($class, $str);
 	}
 
 	# DBMS_LOCK.SLEEP can be replaced by pg_sleep
@@ -1012,6 +1138,11 @@ sub plsql_to_plpgsql
 
 	# Fix some reserved keyword that could be used in a query
 	$str =~ s/(\s+)(month|year)([\s,])/$1"$2"$3/igs;
+	# PG reserved column aliases (Oracle allows unquoted ORDER / DAY / quoted "FROM" in views)
+	$str = rewrite_reserved_order_select_alias($str);
+	$str =~ s/(-?\d+)\s+DAY(\s+FROM\b)/$1 AS day$2/igs;
+	$str =~ s/\bAS\s+FROM"\s*,/AS "from",/igs;
+	$str =~ s/([\p{L}\p{N}_\$#.])\s+AS\s+FROM\s*,/$1 AS "from",/igs;
 
 	# Replace DEFAULT empty_blob() and empty_clob()
 	my $empty = "''";
@@ -1115,22 +1246,23 @@ sub plsql_to_plpgsql
 	# Rewrite all IF ... IS NULL with coalesce because for Oracle empty and NULL is the same
 	if ($class->{null_equal_empty})
 	{
+		my $null_ident = qr/[\p{L}\p{N}_\$#\."]+/u;
 		# Form: column IS NULL
-		$str =~ s/([a-z0-9_\."]+)\s*IS\s+NULL/coalesce($1::text, '') = ''/igs;
+		$str =~ s/($null_ident)\s*IS\s+NULL/coalesce($1::text, '') = ''/igs;
 		my $i = 0;
 		my %isnull = ();
-		while ($str =~ s/([a-z0-9_\."]+)\s*IS\s+NULL/%ORA2PGISNULL$i%/is) {
+		while ($str =~ s/($null_ident)\s*IS\s+NULL/%ORA2PGISNULL$i%/is) {
 			$isnull{$i} = "coalesce($1::text, '') = ''";
 			$i++;
 		}
 		my %notnull = ();
-		while ($str =~ s/([a-z0-9_\."]+)\s*IS NOT NULL/%ORA2PGNOTNULL$i%/is) {
+		while ($str =~ s/($null_ident)\s*IS NOT NULL/%ORA2PGNOTNULL$i%/is) {
 			$notnull{$i} = "($1 IS NOT NULL AND $1::text <> '')";
 			$i++;
 		}
 		# Form: fct(expression) IS NULL
-		$str =~ s/([a-z0-9_\."]+\s*\([^\)\(]*\))\s*IS\s+NULL/coalesce($1::text, '') = ''/igs;
-		$str =~ s/([a-z0-9_\."]+\s*\([^\)\(]*\))\s*IS\s+NOT\s+NULL/($1 IS NOT NULL AND ($1)::text <> '')/igs;
+		$str =~ s/($null_ident\s*\([^\)\(]*\))\s*IS\s+NULL/coalesce($1::text, '') = ''/igs;
+		$str =~ s/($null_ident\s*\([^\)\(]*\))\s*IS\s+NOT\s+NULL/($1 IS NOT NULL AND ($1)::text <> '')/igs;
 		$str =~ s/%ORA2PGISNULL(\d+)%/$isnull{$1}/gs;
 		$str =~ s/%ORA2PGNOTNULL(\d+)%/$notnull{$1}/gs;
 	}
@@ -1210,6 +1342,7 @@ sub plsql_to_plpgsql
 
 		# then restore subqueries code into the main query
 		while ($statements[$i] =~ s/\%SUBQUERY(\d+)\%/$class->{sub_parts}{$1}/is) {};
+		$statements[$i] = rewrite_generate_series_orphan_level($statements[$i]);
 
 		# Remove unnecessary offset to position 0 which is the default
 		$statements[$i] =~ s/\s+OFFSET 0//igs;
@@ -1219,6 +1352,10 @@ sub plsql_to_plpgsql
 	map { s/[ ]+([\r\n]+)/$1/s; } @statements;
 	map { s/[ ]+$//; } @statements;
 	$str = join(';', @statements);
+
+	# remove FROM DUAL (after CONNECT BY translation in translate_statement)
+	$str =~ s/FROM\s+DUAL//igs;
+	$str =~ s/FROM\s+SYS\.DUAL//igs;
 
 	# Rewrite some garbadged resulting from the transformation
 	while ($str =~ s/(\s+AND)\s+AND\b/$1/is) {};
@@ -1473,6 +1610,10 @@ sub translate_statement
 
 	# Replacement of connect by with CTE
 	$stmt = replace_connect_by($class, $stmt);
+	$stmt = rewrite_generate_series_orphan_level($stmt);
+
+	# schema.table.col in SELECT/WHERE while FROM lists schema.table alias (PG invalid ref)
+	$stmt = rewrite_from_table_aliases($class, $stmt);
 
 	# Fix missing recursive keyword in CTE
 	# WITH t1%SUBQUERY0% AS %SUBQUERY1% ...
@@ -1882,7 +2023,7 @@ sub replace_oracle_function
 	}
 
 	# Change NVL to COALESCE
-	$str =~ s/NVL\s*\(/coalesce(/is;
+	$str =~ s/\bNVL\s*\(/coalesce(/is;
 	$str =~ s/NVL2\s*\($field,$field,$field\)/(CASE WHEN $1 IS NOT NULL THEN $2 ELSE $3 END)/is;
 
 	# Replace DEFAULT empty_blob() and empty_clob()
@@ -1927,6 +2068,13 @@ sub replace_oracle_function
 	# Replace call to trim into btrim
 	$str =~ s/\b(TRIM\s*\()\s+/$1/igs;
 	$str =~ s/\bTRIM\s*\(((?!BOTH)[^\(\)]*)\)/trim(both $1)/igs;
+
+	# Oracle TO_CHAR(..., fmt, 'nls_date_language=...') — PG/orafce have no 3-arg form
+	$str = strip_to_char_nls_param($class, $str);
+	if ($class->{use_orafce}) {
+		$str = fix_rr_date_format($class, $str);
+		$str = fix_to_date_time($class, $str);
+	}
 
 	# Do some transformation when Orafce is not used
 	if (!$class->{use_orafce})
@@ -2002,8 +2150,8 @@ sub replace_oracle_function
 	}
 	else
 	{
-		s/([^\.])\b(GREATEST\()/$1oracle.$2/igs;
-		s/([^\.])\b(LEAST\()/$1oracle.$2/igs;
+		# GREATEST/LEAST are SQL keywords in PG and skip NULLs; oracle.greatest/least return NULL like Oracle
+		$str =~ s/(?<![\.\w\$#])(GREATEST|LEAST)\s*\(/oracle.$1(/igs;
 	}
 
 	# Replace INSTR by POSITION
@@ -2071,7 +2219,7 @@ sub replace_oracle_function
 
 	# Replace some sys_context call to the postgresql equivalent
 	if ($str =~ /SYS_CONTEXT/is) {
-		$str = replace_sys_context($str);
+		$str = replace_sys_context($class, $str);
 	}
 
 	return $str;
@@ -2231,7 +2379,7 @@ sub replace_out_param_call
 }
 
 # Replace decode("user_status",'active',"username",null)
-# PostgreSQL (CASE WHEN "user_status"='ACTIVE' THEN "username" ELSE NULL END)
+# PostgreSQL CASE with NULL-safe compare (Oracle DECODE: NULL matches NULL).
 sub replace_decode
 {
 	my $str = shift;
@@ -2268,7 +2416,9 @@ sub replace_decode
 			$decode_params[$i] =~ s/^\s+//gs;
 			$decode_params[$i] =~ s/\s+$//gs;
 			if ($i < $#decode_params) {
-				$case_str .= "WHEN $decode_params[0]=$decode_params[$i] THEN $decode_params[$i+1] ";
+				# IS NOT DISTINCT FROM keeps Oracle NULL=NULL match; plain "="
+				# would never match NULL and also avoids orafce type traps.
+				$case_str .= "WHEN $decode_params[0] IS NOT DISTINCT FROM $decode_params[$i] THEN $decode_params[$i+1] ";
 			} else {
 				$case_str .= " ELSE $decode_params[$i] ";
 			}
@@ -2280,22 +2430,63 @@ sub replace_decode
 	return $str;
 }
 
+# Calls into the orafce packages that need a rewrite to work in PL/pgSQL (USE_ORAFCE 1).
+sub orafce_calls
+{
+	my ($class, $str) = @_;
+
+	# Parameterless functions: PL/pgSQL does not accept dbms_utility.format_call_stack without ()
+	$str =~ s/\b(DBMS_UTILITY\.(?:FORMAT_CALL_STACK|GET_TIME)|DBMS_RANDOM\.(?:RANDOM|NORMAL|VALUE))\b(?!\s*[\(\.\w\$#])/$1()/igs;
+
+	# Statement-level calls of orafce procedures need PERFORM. Functions (send_message, receive_message,
+	# create_pipe, remove_pipe, fopen, ...) are used inside expressions and keep their form.
+	my $stmt = qr{(?:^|[;]|\*/|\bTHEN\b|\bELSE\b|\bBEGIN\b|\bLOOP\b)\s*}i;
+	my $proc = qr/(?:DBMS_PIPE\.(?:PACK_MESSAGE(?:_RAW|_ROWID)?|RESET_BUFFER|PURGE)|DBMS_ALERT\.(?:REGISTER|REMOVE|REMOVEALL|SET_DEFAULTS|SIGNAL)|UTL_FILE\.(?:FCLOSE|FCLOSE_ALL|FFLUSH|PUT|PUT_LINE|PUTF|NEW_LINE|FREMOVE|FRENAME|FCOPY)|DBMS_RANDOM\.(?:INITIALIZE|SEED|TERMINATE))/i;
+	# Oracle's unpack_message(OUT var) is overloaded on the type of var; orafce has one function per type
+	$str =~ s/($stmt)DBMS_PIPE\.UNPACK_MESSAGE\s*\(\s*([^,\(\)]+?)\s*\)\s*;/$1$2 := dbms_pipe.unpack_message_text(); \/* TODO orafce: pick unpack_message_text\/_date\/_timestamp\/_number\/_bytea by the type of $2 *\//igms;
+	$str =~ s/($stmt)($proc\s*\()/$1PERFORM $2/igms;
+
+	# orafce dbms_output.put_line(text) only: cast anything that is not obviously text
+	$str =~ s{(PERFORM\s+DBMS_OUTPUT\.PUT(?:_LINE)?\s*)(\((?:[^()]++|(?2))*\))}{
+		my ($pre, $args) = ($1, $2);
+		my $inner = substr($args, 1, -1);
+		my $top = $inner;
+		1 while ($top =~ s/\([^()]*\)//g);   # keep only the top level
+		($inner =~ /^\s*\?TEXTVALUE\d+\?\s*$/ || $inner =~ /^\s*$/ || $top =~ m{\|\|} || $inner =~ /::text\s*$/i)
+			? "$pre$args" : "$pre(($inner)::text)";
+	}iegs;
+
+	return $str;
+}
+
 # Function to replace call to SYS_CONTECT('USERENV', ...)
 # List of Oracle environment variables: http://docs.oracle.com/cd/B28359_01/server.111/b28286/functions172.htm
 # Possibly corresponding PostgreSQL variables: http://www.postgresql.org/docs/current/static/functions-info.html
 sub replace_sys_context
 {
-	my $str = shift;
+	my ($class, $str) = @_;
 
-	$str =~ s/SYS_CONTEXT\s*\(\s*'USERENV'\s*,\s*'(OS_USER|SESSION_USER|AUTHENTICATED_IDENTITY)'\s*\)/session_user/is;
-	$str =~ s/SYS_CONTEXT\s*\(\s*'USERENV'\s*,\s*'BG_JOB_ID'\s*\)/pg_backend_pid()/is;
-	$str =~ s/SYS_CONTEXT\s*\(\s*'USERENV'\s*,\s*'(CLIENT_IDENTIFIER|PROXY_USER)'\s*\)/session_user/is;
-	$str =~ s/SYS_CONTEXT\s*\(\s*'USERENV'\s*,\s*'CURRENT_SCHEMA'\s*\)/current_schema/is;
-	$str =~ s/SYS_CONTEXT\s*\(\s*'USERENV'\s*,\s*'CURRENT_USER'\s*\)/current_user/is;
-	$str =~ s/SYS_CONTEXT\s*\(\s*'USERENV'\s*,\s*'(DB_NAME|DB_UNIQUE_NAME)'\s*\)/current_database/is;
-	$str =~ s/SYS_CONTEXT\s*\(\s*'USERENV'\s*,\s*'(HOST|IP_ADDRESS)'\s*\)/inet_client_addr()/is;
-	$str =~ s/SYS_CONTEXT\s*\(\s*'USERENV'\s*,\s*'SERVER_HOST'\s*\)/inet_server_addr()/is;
-	$str =~ s/SYS_CONTEXT\s*\(\s*'USERENV'\s*,\s*'MODULE'\s*\)/current_setting('application_name')/is;
+	# USERENV parameter => PG expression
+	my %map = (
+		OS_USER => 'session_user', SESSION_USER => 'session_user', AUTHENTICATED_IDENTITY => 'session_user',
+		BG_JOB_ID => 'pg_backend_pid()',
+		CLIENT_IDENTIFIER => 'session_user', PROXY_USER => 'session_user',
+		CURRENT_SCHEMA => 'current_schema', CURRENT_USER => 'current_user',
+		DB_NAME => 'current_database()', DB_UNIQUE_NAME => 'current_database()',
+		HOST => 'inet_client_addr()', IP_ADDRESS => 'inet_client_addr()',
+		SERVER_HOST => 'inet_server_addr()',
+		MODULE => "current_setting('application_name')",
+	);
+	# The string literals are masked as ?TEXTVALUEn? when this runs, so resolve them.
+	my $lit = sub {
+		my $t = shift;
+		$t = $class->{text_values}{$1} // '' if ($t =~ /^\?TEXTVALUE(\d+)\?$/);
+		return ($t =~ /^'([^']*)'$/) ? $1 : undef;
+	};
+	$str =~ s{\bSYS_CONTEXT\s*\(\s*('[^']*'|\?TEXTVALUE\d+\?)\s*,\s*('[^']*'|\?TEXTVALUE\d+\?)\s*\)}{
+		my ($all, $ns, $par) = ($&, $lit->($1), $lit->($2));
+		(defined $ns && defined $par && uc($ns) eq 'USERENV' && exists $map{uc($par)}) ? $map{uc($par)} : $all;
+	}iegs;
 
 	return $str;
 }
@@ -2861,8 +3052,9 @@ sub estimate_cost
 	$cost_details{'ORA_ROWSCN'} += $n;
 	$n = () = $str =~ m/SAVEPOINT/igs;
 	$cost_details{'SAVEPOINT'} += $n;
-	$n = () = $str =~ m/(FROM|EXEC)((?!WHERE).)*\b[\w\_]+\@[\w\_]+\b/igs;
-	$cost_details{'DBLINK'} += $n;
+	$cost_details{'DBLINK'} += scalar(Ora2Pg::DbLink::scan_refs($str));
+	$n = () = $str =~ m{/\* TODO dblink}g;
+	$cost_details{'DBLINK_TODO'} += $n;
 	$n = () = $str =~ m/\%ISOPEN\b/igs;
 	$cost_details{'ISOPEN'} += $n;
 	$n = () = $str =~ m/\%ROWCOUNT\b/igs;
@@ -3605,6 +3797,92 @@ sub mssql_estimate_cost
 	return $cost, %cost_details;
 }
 
+# Outer-join (+) rewrite: distinguish alias.column from calls like to_char(x.col).
+sub outer_join_function_operand
+{
+	my ($operand) = @_;
+	return 1 if ($operand =~ /^\s*[\w\$#"]+\s*\(/s);
+	# extract_subpart() masks the argument list before replace_outer_join runs
+	return 1 if ($operand =~ /^\s*[\w\$#"]+\s*\%SUBQUERY\d+\%/s);
+	return 1 if ($operand =~ /\%REPLACEFCT\d+\%/);
+	return 0;
+}
+
+sub outer_join_table_column_ref
+{
+	my ($operand) = @_;
+	return 0 if (outer_join_function_operand($operand));
+	return ($operand =~ /^([\p{L}\p{N}_\$#"]+\.[\p{L}\p{N}_\$#"]+)\.[\p{L}\p{N}_\$#"]+/u
+		|| $operand =~ /^([\p{L}\p{N}_\$#"]+)\.[\p{L}\p{N}_\$#"]+/u);
+}
+
+# extract_subpart() can leave a table alias glued to %SUBQUERYn% (Oracle ")v,").
+sub outer_join_normalize_from_table_token
+{
+	my ($table) = @_;
+	$table =~ s/^\s+//s;
+	$table =~ s/\s+$//s;
+	# "schema.\n   table alias": a line break after the dot is legal in Oracle
+	$table =~ s/\.\s+(?=[\p{L}\p{N}_\$#"])/./g;
+	if ($table =~ /^(\%SUBQUERY\d+\%)([\w\$#]+)$/i) {
+		$table = "$1 $2";
+	}
+	return $table;
+}
+
+sub outer_join_align_operand_to_table_alias
+{
+	my ($operand, $table_decl) = @_;
+	return $operand unless outer_join_table_column_ref($operand);
+	my $join_alias = '';
+	$table_decl =~ s/\s*\%ORA2PG_COMMENT\d+\%\s*//g;
+	if ($table_decl =~ /\s+([\p{L}\p{N}_\$#]+)\s*$/u) {
+		$join_alias = lc($1);
+	} elsif ($table_decl !~ /\./) {
+		$join_alias = lc($table_decl);
+	} else {
+		($join_alias = $table_decl) =~ s/^.*\.//;
+		$join_alias = lc($join_alias);
+	}
+	my $op_alias = outer_join_table_alias_from_operand($operand);
+	if (defined $op_alias && $join_alias ne '' && $op_alias ne $join_alias) {
+		$operand =~ s/^\(?\s*\Q$op_alias\E\./$join_alias./i;
+	}
+	return $operand;
+}
+
+sub outer_join_align_on_predicats
+{
+	my ($table_decl, @parts) = @_;
+	return @parts if (!@parts);
+	return map {
+		if (/^\s*(\S+)\s+(!=|>=|<=|=|<>|<|>|NOT\s+LIKE|LIKE)\s+(\S+)\s*$/i) {
+			# Only normalize the outer-joined (RHS) operand; rewriting the LHS
+			# breaks predicates when LHS and RHS use different table aliases.
+			my $rhs = outer_join_align_operand_to_table_alias($3, $table_decl);
+			"$1 $2 $rhs";
+		} else {
+			$_;
+		}
+	} @parts;
+}
+
+sub outer_join_table_alias_from_operand
+{
+	my ($operand) = @_;
+	return unless outer_join_table_column_ref($operand);
+	my $lbl;
+	if ($operand =~ /^([\p{L}\p{N}_\$#"]+\.[\p{L}\p{N}_\$#"]+)\.[\p{L}\p{N}_\$#"]+/u) {
+		($lbl) = ($1);
+	} elsif ($operand =~ /^([\p{L}\p{N}_\$#"]+)\.[\p{L}\p{N}_\$#"]+/u) {
+		($lbl) = ($1);
+	}
+	return unless defined $lbl;
+	$lbl = lc($lbl);
+	$lbl =~ s/\(\s*//;
+	return $lbl;
+}
+
 sub replace_outer_join
 {
 	my ($class, $str, $type) = @_;
@@ -3616,6 +3894,10 @@ sub replace_outer_join
 	if (!grep(/^$type$/, 'left', 'right')) {
 		die "FATAL: outer join type must be 'left' or 'right' in call to replace_outer_join().\n";
 	}
+
+	# A comment glued to the end of a condition ("col(+) = 1 -- text") would be taken for a part of the
+	# constant below and moved with it: keep the comment placeholder a separate token.
+	$str =~ s/(\S)(\%ORA2PG_COMMENT\d+\%)/$1 $2/g;
 
 	# When we have a right outer join, just rewrite it as a left join to simplify the translation work
 	if ($type eq 'right') {
@@ -3641,20 +3923,26 @@ sub replace_outer_join
 		# Set a hash for alias to table mapping
 		my %from_clause_list = ();
 		my %from_order = ();
+		my %alias_of_table = ();
 		my $fidx = 0;
 		foreach my $table (@tables)
 		{
-			$table =~ s/^\s+//s;
-			$table =~ s/\s+$//s;
+			$table = outer_join_normalize_from_table_token($table);
 			my $cmt = '';
 			while ($table =~ s/(\s*\%ORA2PG_COMMENT\d+\%\s*)//is) {
 				$cmt .= $1;
 			}
+			# inline marker such as /* TODO dblink LINK */ before a table: keep it, do not take it for the table name
+			while ($table =~ s/(\s*\/\*.*?\*\/\s*)//s) {
+				$cmt .= $1;
+			}
 			my ($t, $alias, @others) = split(/\s+/, lc($table));
 			$alias = $others[0] if (uc($alias) eq 'AS');
-			$alias = "$t" if (!$alias);
+			# schema.table without alias is referenced as plain "table" in the conditions: key it by that name
+			($alias = $t) =~ s/^.*\.// if (!$alias);
 			$from_clause_list{$alias} = "$cmt$t";
 			$from_order{$alias} = $fidx++;
+			$alias_of_table{$t} = $alias;
 		}
 
 		# Extract all Oracle's outer join syntax from the where clause
@@ -3704,10 +3992,14 @@ sub replace_outer_join
 			# Extract the tablename part of the left clause
 			my $lbl1 = '';
 			my $table_decl1 = $l;
-			if ($l =~ /^([^\.\s]+\.[^\.\s]+)\..*/ || $l =~ /^([^\.\s]+)\..*/)
+			if (outer_join_table_column_ref($l))
 			{
-				$lbl1 = lc($1);
-				$lbl1 =~ s/\(\s*//;
+				$lbl1 = outer_join_table_alias_from_operand($l);
+				# schema.table.col written with the schema: use the alias of that FROM entry
+				if (!exists $from_clause_list{$lbl1} && exists $alias_of_table{$lbl1}) {
+					$l =~ s/^\(?\s*\Q$lbl1\E\./$alias_of_table{$lbl1}./i;
+					$lbl1 = $alias_of_table{$lbl1};
+				}
 				# If the table/alias is not part of the from clause
 				if (!exists $from_clause_list{$lbl1}) {
 					$from_clause_list{$lbl1} = $lbl1;
@@ -3716,7 +4008,7 @@ sub replace_outer_join
 				$table_decl1 = $from_clause_list{$lbl1};
 				$table_decl1 .= " $lbl1" if ($lbl1 ne $from_clause_list{$lbl1});
 			}
-			elsif ($l =~ /\%SUBQUERY(\d+)\%/)
+			elsif ($l =~ /\%SUBQUERY(\d+)\%/ && !outer_join_function_operand($l))
 			{
 				# Search for table.column in the subquery or function code
 				my $tmp_str = $l;
@@ -3743,12 +4035,34 @@ sub replace_outer_join
 			# Extract the tablename part of the right clause
 			my $lbl2 = '';
 			my $table_decl2 = $r;
-			if ($r =~ /^([^\.\s]+\.[^\.\s]+)\..*/ || $r =~ /^([^\.\s]+)\..*/)
+			if (outer_join_table_column_ref($r))
 			{
-				$lbl2 = lc($1);
+				$lbl2 = outer_join_table_alias_from_operand($r);
+				if (!exists $from_clause_list{$lbl2} && exists $alias_of_table{$lbl2}) {
+					my $dest = $alias_of_table{$lbl2};
+					$r =~ s/^\(?\s*\Q$lbl2\E\./$dest./i;
+					$lbl2 = $dest;
+				}
 				if (!$lbl1) {
-					push(@{$other_join_clause{$lbl2}}, "$l $o $r");
-					next;
+					if (outer_join_function_operand($l)) {
+						my $arg = $l;
+						while ($arg =~ s/\%SUBQUERY(\d+)\%/$class->{sub_parts}{$1}/is) {}
+						my $inner = $arg;
+						$inner = $1 if ($arg =~ /[\w\$#"]+\s*\((.*)\)\s*\z/s);
+						if ($inner =~ /\b([^\.\s]+)\.[^\.\s]+/) {
+							my $cand = lc($1);
+							$cand = $alias_of_table{$cand} if (exists $alias_of_table{$cand});
+							if (exists $from_clause_list{$cand}) {
+								$lbl1 = $cand;
+								$table_decl1 = $from_clause_list{$lbl1};
+								$table_decl1 .= " $lbl1" if ($lbl1 ne $from_clause_list{$lbl1});
+							}
+						}
+					}
+					if (!$lbl1) {
+						push(@{$other_join_clause{$lbl2}}, "$l $o $r");
+						next;
+					}
 				}
 				# If the table/alias is not part of the from clause
 				if (!exists $from_clause_list{$lbl2}) {
@@ -3760,6 +4074,10 @@ sub replace_outer_join
 			}
 			elsif ($lbl1)
 			{
+				if (outer_join_function_operand($r)) {
+					push(@{$other_join_clause{$lbl1}}, "$l $o $r");
+					next;
+				}
 				# Search for table.column in the subquery or function code
 				my $tmp_str = $r;
 				while ($tmp_str =~ s/\%SUBQUERY(\d+)\%/$class->{sub_parts}{$1}/is)
@@ -3815,6 +4133,8 @@ sub replace_outer_join
 		$str =~ s/\s*(AND\s+)?WHERE_CLAUSE\d+ / /igs;
 		$str =~ s/WHERE\s+(AND|OR)\s+/WHERE /is;
 		$str =~ s/WHERE[\s;]+$//i;
+		# nothing left but comments after WHERE
+		$str =~ s/\bWHERE((?:\s*\%ORA2PG_COMMENT\d+\%)+)[\s;]*$/$1/is;
 		$str =~ s/(\s+)WHERE\s+(ORDER|GROUP)\s+BY/$1$2 BY/is;
 		$str =~ s/\s+WHERE(\s+)/\nWHERE$1/igs;
 
@@ -3833,8 +4153,12 @@ sub replace_outer_join
 				my ($l,$r) = split(/;/, $t);
 				my $tbl = $j;
 				$tbl =~ s/\s*\%ORA2PG_COMMENT\d+\%\s*//isg;
-				$from_clause .= "\n\U$type\E OUTER JOIN $tbl ON (" .  join(' AND ', @{$final_from_clause{$t}{clause}{$j}{predicat}}) . ")";
-				push(@{$final_outer_clauses{$l}{join}},  "\U$type\E OUTER JOIN $tbl ON (" .  join(' AND ', @{$final_from_clause{$t}{clause}{$j}{predicat}}, @{$other_join_clause{$r}}) . ")");
+				my @on = outer_join_align_on_predicats($tbl, @{$final_from_clause{$t}{clause}{$j}{predicat}});
+				push(@on, @{ $other_join_clause{$r} // [] });
+				@on = outer_join_align_on_predicats($tbl, @on);
+				my $join_line = "\U$type\E OUTER JOIN $tbl ON (" . join(' AND ', @on) . ")";
+				$from_clause .= "\n$join_line";
+				push(@{$final_outer_clauses{$l}{join}}, $join_line);
 				push(@{$final_outer_clauses{$l}{position}},  $final_from_clause{$t}{clause}{$j}{position});
 				push(@{$associated_clause{$l}}, $r);
 			}
@@ -3910,11 +4234,81 @@ sub find_associated_clauses
 }
 
 
+sub _connect_by_level_counter_rewrite
+{
+	my ($qry, $lim) = @_;
+	my $sel = $qry;
+	$sel =~ s/\s+FROM\s+(?:[\w\$#.]+\s+)?DUAL\s+CONNECT\s+BY\s+LEVEL\s*<=\s*\Q$lim\E\b\s*$//is;
+	$sel =~ s/\s+CONNECT\s+BY\s+LEVEL\s*<=\s*\Q$lim\E\b\s*$//is;
+	# CONNECT BY tail is removed; any remaining LEVEL is the row counter in SELECT
+	$sel =~ s/\bLEVEL\b/gs/igs;
+	$sel =~ s/(\))\s+YEAR(\s+FROM\b)/$1 AS year$2/igs;
+	$sel =~ s/(\))\s+MONTH(\s+FROM\b)/$1 AS month$2/igs;
+	return "$sel FROM generate_series(1, $lim) AS gs";
+}
+
+# Oracle unquoted/quoted ORDER column alias -> AS "order" (PG reserved word)
+sub rewrite_reserved_order_select_alias
+{
+	my ($str) = @_;
+	my $expr_end = qr/(?:\|\||\)|'(?:''|[^'])*'|[\p{L}\p{N}_\$#])/;
+	# Do not match the S in AS "order" (second pass after plsql_to_plpgsql) — would yield AS AS "order"
+	my $not_after_as = qr/(?<![\p{L}\p{N}_\$#]AS)/;
+	$str =~ s/$not_after_as($expr_end)\s+"ORDER"\s*,/$1 AS "order",/ig;
+	$str =~ s/$not_after_as($expr_end)\s+order\s*,/$1 AS "order",/igs;
+	$str =~ s/\bAS\s+AS\s+"order"/ AS "order"/ig;
+	# Outer SELECT/GROUP BY references to ORDER column alias (leading comma only — not ORDER BY clause)
+	$str =~ s/,(\s*)order(\s*,)/,${1}"order"${2}/igs;
+	return $str;
+}
+
+sub rewrite_generate_series_orphan_level
+{
+	my ($str) = @_;
+	return $str if ($str !~ /\bgenerate_series\s*\(\s*1\s*,/i);
+	# generate_series(1,N) only comes from CONNECT BY LEVEL counter rewrite; any
+	# remaining LEVEL in the same fragment is the row counter (not hierarchy).
+	$str =~ s/\bLEVEL\b/gs/ig;
+	# CONNECT BY rewrite runs after early reserved-alias pass; PG rejects bare year/month before FROM
+	$str =~ s/(\))\s+YEAR(\s+FROM\b)/$1 AS year$2/igs;
+	$str =~ s/(\))\s+MONTH(\s+FROM\b)/$1 AS month$2/igs;
+	return $str;
+}
+
+sub rewrite_connect_by_level_counters
+{
+	my ($str) = @_;
+	return $str if ($str !~ /\bCONNECT\s+BY\b/is || $str =~ /\bPRIOR\b/is);
+	while ($str =~ s/
+		\bSELECT\b[\s\S]*?
+		\s+FROM\s+(?:[\w\$#.]+\s+)?DUAL\s+CONNECT\s+BY\s+LEVEL\s*<=\s*(\d+)\b
+		/_connect_by_level_counter_rewrite($&, $1)/sigie) {}
+	while ($str =~ s/
+		\bSELECT\b[\s\S]*?
+		\s+CONNECT\s+BY\s+LEVEL\s*<=\s*(\d+)\b
+		/_connect_by_level_counter_rewrite($&, $1)/sigie) {}
+	return $str;
+}
+
 sub replace_connect_by
 {
 	my ($class, $str) = @_;
 
 	return $str if ($str !~ /\bCONNECT\s+BY\b/is);
+
+	# Whole-statement row generator (typical extracted subquery)
+	if ($str !~ /\bPRIOR\b/is && $str =~ /^\s*SELECT\b/is
+	    && $str =~ /\bCONNECT\s+BY\s+LEVEL\s*<=\s*(\d+)\s*$/is) {
+		return _connect_by_level_counter_rewrite($str, $1);
+	}
+
+	# SELECT ... FROM DUAL CONNECT BY LEVEL <= N (no PRIOR): row generator, not a hierarchy
+	# Match tail FROM DUAL CONNECT BY (not the first FROM inside EXTRACT(...) etc.)
+	if ($str !~ /\bPRIOR\b/is) {
+		$str = rewrite_connect_by_level_counters($str);
+		$str = rewrite_generate_series_orphan_level($str);
+		return $str if ($str !~ /\bCONNECT\s+BY\b/is);
+	}
 
 	my $into_clause = '';
 	if ($str =~ s/\s+INTO\s+(.*?)(\s+FROM\s+)/$2/is) {
@@ -4026,8 +4420,15 @@ sub replace_connect_by
 			push(@rebuild_prior, "$prior_clause[$i] = $prior_clause[$i+1]");
 		}
 		@prior_clause = @rebuild_prior;
-		# Remove table aliases from prior clause
-		map { s/\s*PRIOR\s*//s; s/[^\s\.=<>!]+\.//s; } @prior_clause;
+		# Remove table aliases from prior clause (PRIOR may already be lowercased)
+		map {
+			s/\s*PRIOR\s*//is;
+			if (/^\s*(.*?)\s*=\s*(.*?)\s*$/s) {
+				my ($l, $r) = ($1, $2);
+				$l =~ s/^[^\s\.]+\.//s;
+				$_ = "$l = $r";
+			}
+		} @prior_clause;
 	}
 
 	my $bkup_query = $str;
@@ -4041,6 +4442,7 @@ sub replace_connect_by
 	}
 	my @tabalias = ();
 	my %connect_by_path = ();
+	my $level_cte_col = 'level';
 	for (my $i = 0; $i <= $#columns; $i++) {
 		my $found = 0;
 		while ($columns[$i] =~ s/\%SUBQUERY(\d+)\%/$class->{sub_parts}{$1}/is) {
@@ -4052,8 +4454,15 @@ sub replace_connect_by
 		# Replace LEVEL call by a counter, there is no direct equivalent in PostgreSQL
 		if (lc($columns[$i]) eq 'level') {
 			$columns[$i] = "1 as level";
+			$level_cte_col = 'level';
 		} elsif ($columns[$i] =~ /\bLEVEL\b/is) {
+			if ($columns[$i] =~ /\bLEVEL\s+as\s+(\S+)/i) {
+				$level_cte_col = $1;
+			}
 			$columns[$i] =~ s/\bLEVEL\b/1/is;
+			if ($columns[$i] =~ /\b1\s+as\s+(\S+)/i) {
+				$level_cte_col = $1;
+			}
 		}
 		# Replace call to SYS_CONNECT_BY_PATH by the right concatenation string
 		if ($columns[$i] =~ s/SYS_CONNECT_BY_PATH\s*[\(]*\s*([^,]+),\s*([^\)]+)\s*\)/$1/is) {
@@ -4127,8 +4536,11 @@ sub replace_connect_by
 		if ($columns[$i] =~ s/SYS_CONNECT_BY_PATH\s*[\(]*\s*([^,]+),\s*([^\)]+)\s*\)/$1/is) {
 			$columns[$i] = "c.$connect_by_path{$1}{alias} || $connect_by_path{$1}{sep} || " . $columns[$i];
 		}
-		if ($columns[$i] !~ s/\b[^\.]+\.LEVEL\b/(c.level+1)/igs) {
-			$columns[$i] =~ s/\bLEVEL\b/(c.level+1)/igs;
+		my $level_incr = "(c.$level_cte_col+1)";
+		if ($columns[$i] !~ s/\b[^\.]+\.LEVEL\b/$level_incr/igs) {
+			if ($columns[$i] =~ s/\bLEVEL\b/$level_incr/igs) {
+				$columns[$i] .= " as $level_cte_col" if ($columns[$i] !~ /\sas\s/i);
+			}
 		}
 		extract_subpart($class, \$columns[$i]);
 
@@ -4165,7 +4577,14 @@ sub replace_connect_by
 		$bkup_query =~ s/(\s+FROM\s+)/, array_append(c.hierarchy, row_number() OVER (ORDER BY $siblings))  as hierarchy$1/is;
 	}
 	$final_query .= $bkup_query;
-	map { s/^\s*(.*?)(=\s*)(.*)/c\.$1$2$prior_alias$3/s; } @prior_clause;
+	for my $i (0 .. $#prior_clause) {
+		if ($prior_clause[$i] =~ /^\s*(.*?)(\s*=\s*)(.*?)\s*$/s) {
+			my ($lhs, $eq, $rhs) = ($1, $2, $3);
+			$lhs =~ s/^[^\s\.]+\.//s;
+			$rhs = "$prior_alias$rhs" if ($prior_alias && $rhs !~ /\./);
+			$prior_clause[$i] = "c.$lhs$eq$rhs";
+		}
+	}
 	map { s/\s+$//s; s/^\s+//s; } @prior_clause;
 	$final_query .= " JOIN cte c ON (" . join(' AND ', @prior_clause) . ")\n";
 	if ($siblings) {
@@ -4174,9 +4593,230 @@ sub replace_connect_by
 		$order_by =~ s/^, //s;
 		$order_by = " ORDER BY $order_by";
 	}
+	# Outer SELECT must not get an empty WHERE (common after (+) moved joins off WHERE)
+	$where_clause = '' if ($where_clause !~ /WHERE\s+\S/is);
 	$final_query .= "\n) SELECT *$into_clause FROM cte$where_clause$union$group_by$order_by";
 
 	return $final_query;
+}
+
+# PG and orafce have no RR/RRRR format fields (to_char prints them literally, to_date misparses).
+# RRRR -> YYYY and RR -> YY; for TO_DATE the century window differs (PG YY: 70-99 => 19xx, 00-69 => 20xx).
+sub fix_rr_date_format
+{
+	my ($class, $str) = @_;
+	my $rr = sub { my $f = shift; $f =~ s/(?<![A-Za-z])RRRR(?![A-Za-z])/YYYY/ig; $f =~ s/(?<![A-Za-z])RR(?![A-Za-z])/YY/ig; return $f; };
+	$str =~ s{\bTO_(?:CHAR|DATE|TIMESTAMP(?:_TZ)?)\s*\((?:[^(),]|\((?:[^()]|\([^()]*\))*\))*,\s*(?:\?TEXTVALUE(\d+)\?|('[^']*'))}{
+		my ($all, $n) = ($&, $1);
+		if (defined $n) {
+			$class->{text_values}{$n} = $rr->($class->{text_values}{$n}) if (defined $class->{text_values}{$n});
+			$all;
+		} else {
+			$all =~ s/('[^']*')$/$rr->($1)/e;
+			$all;
+		}
+	}iegs;
+	return $str;
+}
+
+# Unqualified to_date(text,text) resolves to pg_catalog (searched before oracle) and returns date,
+# silently dropping HH24:MI:SS. Oracle's DATE keeps the time: use orafce's oracle.to_date for such masks.
+sub fix_to_date_time
+{
+	my ($class, $str) = @_;
+	$str =~ s{(?<![\w\.\$#])to_date\s*\(((?:[^(),]|\((?:[^()]|\([^()]*\))*\))*),\s*(\?TEXTVALUE(\d+)\?|'[^']*')\s*\)}{
+		my ($all, $arg, $fmt, $n) = ($&, $1, $2, $3);
+		my $f = defined $n ? ($class->{text_values}{$n} // '') : $fmt;
+		($f =~ /(?<![A-Za-z])(?:HH12|HH24|HH|MI|SSSSS|SS|FF\d?)(?![A-Za-z])/i) ? "oracle.to_date($arg, $fmt)" : $all;
+	}iegs;
+	return $str;
+}
+
+# Drop NLS third argument from TO_CHAR; optional Month -> TMMonth when Russian NLS was requested.
+sub strip_to_char_nls_param
+{
+	my ($class, $str) = @_;
+	while ($str =~ s/\bTO_CHAR\s*\(\s*([^,]+?)\s*,\s*([^,]+?)\s*,\s*((?:'[^']*'|\?TEXTVALUE\d+\?))\s*\)/
+		strip_to_char_nls_param_one($class, $1, $2, $3)/ie) {}
+	return $str;
+}
+
+sub strip_to_char_nls_param_one
+{
+	my ($class, $expr, $fmt, $nls) = @_;
+	my $nls_txt = $nls;
+	if ($nls =~ /\?TEXTVALUE(\d+)\?/) {
+		$nls_txt = $class->{text_values}{$1} // '';
+	}
+	return "TO_CHAR($expr, $fmt, $nls)" if ($nls_txt !~ /nls_date_language/is);
+	if ($nls_txt =~ /russian/is) {
+		# the format literal is masked as ?TEXTVALUEn? at this stage
+		# TM prefix: month/day names come from lc_time (ru_RU.UTF-8 must exist in the DB image)
+		my $tm = sub { my $f = shift; $f =~ s/(?<![A-Za-z])(MONTH|Month|month|MON|Mon|mon|DAY|Day|day|DY|Dy|dy)(?![A-Za-z])/TM$1/g; return $f; };
+		if ($fmt =~ /\?TEXTVALUE(\d+)\?/) {
+			$class->{text_values}{$1} = $tm->($class->{text_values}{$1}) if (defined $class->{text_values}{$1});
+		} else {
+			$fmt = $tm->($fmt);
+		}
+	}
+	return "TO_CHAR($expr, $fmt)";
+}
+
+sub _from_alias_map_add
+{
+	my ($map, $tbl, $alias) = @_;
+	$tbl = lc($tbl);
+	$alias = lc($alias // '');
+	my $base = $tbl;
+	$base =~ s/^.*\.//;
+	$alias = $base if (!$alias);
+	# Same table twice (t, t a2): keep identity mapping so t.col is not
+	# rewritten to a2.col (which also breaks earlier JOIN ON clauses).
+	if (exists $map->{$tbl}) {
+		if ($map->{$tbl} eq $base || $alias eq $base) {
+			$map->{$tbl} = $base;
+			return;
+		}
+	}
+	$map->{$tbl} = $alias;
+}
+
+# Mask double-quoted identifiers so \bFROM\b etc. do not match reserved aliases (AS "FROM").
+sub _mask_double_quoted_ids
+{
+	my ($str) = @_;
+	my @q;
+	$str =~ s/"(?:[^"\n]*)"/push(@q, $&); "\x{FFFE}" . $#q . "\x{FFFF}"/ge;
+	return ($str, \@q);
+}
+
+sub _unmask_double_quoted_ids
+{
+	my ($str, $qref) = @_;
+	return $str unless $qref && @$qref;
+	$str =~ s/\x{FFFE}(\d+)\x{FFFF}/$qref->[$1]/ge;
+	return $str;
+}
+
+# Rewrite schema.table.column to alias.column when FROM defines schema.table AS alias.
+# JOIN clause keywords (ON, USING, ...) must not be mistaken for table aliases —
+# otherwise "LEFT JOIN t ON (...)" rewrites t.col -> on.col (PG reserved word).
+sub rewrite_from_table_aliases
+{
+	my ($class, $stmt) = @_;
+	my ($masked, undef) = _mask_double_quoted_ids($stmt);
+	return $stmt if ($masked !~ /\bFROM\b/is);
+
+	if ($masked =~ /\bUNION(?:\s+ALL)?\b/is) {
+		my @parts = split(/(\bUNION(?:\s+ALL)?\b)/i, $stmt);
+		my $out = '';
+		for my $p (@parts) {
+			if ($p =~ /^\s*UNION(?:\s+ALL)?\s*$/is) {
+				$out .= $p;
+			} else {
+				$out .= rewrite_from_table_aliases_single($class, $p);
+			}
+		}
+		return $out;
+	}
+	return rewrite_from_table_aliases_single($class, $stmt);
+}
+
+sub rewrite_from_table_aliases_single
+{
+	my ($class, $stmt) = @_;
+	my ($masked, $qstore) = _mask_double_quoted_ids($stmt);
+	return $stmt if ($masked !~ /\bFROM\b/is);
+
+	my $id   = qr/[\p{L}\p{N}_\$#]+/u;
+	my $tbl  = qr/$id(?:\.$id)*/u;
+	my $join = qr/(?:(?:LEFT|RIGHT|FULL|INNER|CROSS|NATURAL)\s+)*(?:OUTER\s+)?JOIN\b/is;
+	# Tokens that follow a joined table when there is no alias
+	my $join_tail = qr/(?:ON|USING|WHERE|GROUP|HAVING|ORDER|LIMIT|OFFSET|UNION|INTERSECT|EXCEPT|INNER|LEFT|RIGHT|FULL|CROSS|NATURAL|JOIN|AND|OR)\b/i;
+
+	# The FROM of the query is the first one outside parentheses that is not
+	# the "FROM" of IS [NOT] DISTINCT FROM (ora2pg itself emits it for decode()).
+	my ($pre, $rest);
+	while ($masked =~ /\bFROM\b/ig) {
+		my $before = substr($masked, 0, $-[0]);
+		next if ($before =~ /\bDISTINCT\s*$/i);
+		my $depth = ($before =~ tr/(//) - ($before =~ tr/)//);
+		next if ($depth > 0);
+		($pre, $rest) = ($before, substr($masked, $+[0]));
+		last;
+	}
+	return $stmt if (!defined $pre);
+
+	my $from_end = length($rest);
+	foreach my $kw (qw(WHERE GROUP ORDER UNION HAVING LIMIT OFFSET)) {
+		if ($rest =~ /\b$kw\b/is) {
+			next if ($kw eq 'ORDER' && substr($rest, $+[0]) =~ /^\s+BY\b/is);
+			$from_end = $-[0] if ($-[0] < $from_end);
+		}
+	}
+	my $from_clause = substr($rest, 0, $from_end);
+	my $suffix = substr($rest, $from_end);
+
+	my %alias_of_full = ();
+	while ($from_clause =~ /(?:^|[\s,])$join\s+($tbl)(?:\s+AS\s+($id)|\s+(?!$join_tail)($id))?/ig) {
+		my $tname = $1;
+		my $alias = defined($2) ? $2 : $3;
+		_from_alias_map_add(\%alias_of_full, $tname, $alias);
+	}
+	foreach my $chunk (split(/\s*,\s*/, $from_clause)) {
+		$chunk =~ s/^\s+|\s+$//s;
+		next if ($chunk !~ /\S/);
+		next if ($chunk =~ /^$join/i);
+		my $head = $chunk;
+		$head =~ s/\s+$join.*$//is;
+		my @parts = split(/\s+/, lc($head));
+		next if (!@parts);
+		my ($t, $alias) = @parts;
+		$alias = $parts[2] if (@parts > 2 && uc($parts[1]) eq 'AS');
+		# bare "table ON" cannot appear in comma-FROM head after JOIN strip; still
+		# reject join-tail words so a stray token is not treated as alias
+		undef $alias if (defined($alias) && $alias =~ /^$join_tail/i);
+		_from_alias_map_add(\%alias_of_full, $t, $alias);
+	}
+	return $stmt unless (%alias_of_full);
+
+	# Oracle scoping: an entry without alias stays visible under its bare table
+	# name, so that name must not be rewritten to the alias of a different
+	# entry (FROM s.t, t a2: t.col is s.t.col, not a2.col).
+	my %visible_owner = ();
+	foreach my $full (keys %alias_of_full) {
+		(my $b = $full) =~ s/^.*\.//;
+		$visible_owner{$b} = $full if (lc($alias_of_full{$full}) eq lc($b));
+	}
+
+	my $rewrite = sub {
+		my ($text) = @_;
+		foreach my $full (sort { length($b) <=> length($a) } keys %alias_of_full) {
+			my $alias = $alias_of_full{$full};
+			my $base = $full;
+			$base =~ s/^.*\.//;
+			my $shadowed = (exists $visible_owner{$base} && $visible_owner{$base} ne $full);
+			next if ($shadowed && $full !~ /\./);
+			unless (lc($full) eq lc($alias) && $full !~ /\./) {
+				my $esc = quotemeta($full);
+				$text =~ s/(?<![\p{L}\p{N}_\$#\.])$esc\.($id)/$alias.$1/igu;
+			}
+			next if ($shadowed);
+			# Oracle quoted table in WHERE/SELECT vs unquoted Cyrillic name in FROM
+			$text =~ s/(?<![\p{L}\p{N}_\$#\.])"([^"]+)"\s*\./
+				(lc($1) eq lc($base) || lc($1) eq lc($full)) ? "$alias." : qq{"$1".}/ige;
+		}
+		return $text;
+	};
+
+	$pre = $rewrite->($pre);
+	$suffix = $rewrite->($suffix);
+	$from_clause =~ s/\bON\s*\(([^()]*)\)/'ON (' . $rewrite->($1) . ')'/ige;
+	# At this point the parenthesised ON condition is masked as %SUBQUERYn%
+	$from_clause =~ s/\bON\s*%SUBQUERY(\d+)%/
+		$class->{sub_parts}{$1} = $rewrite->($class->{sub_parts}{$1}) if (defined $class->{sub_parts}{$1}); "ON %SUBQUERY$1%"/ige;
+
+	return _unmask_double_quoted_ids($pre . 'FROM' . $from_clause . $suffix, $qstore);
 }
 
 sub replace_without_function

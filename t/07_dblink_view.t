@@ -1,0 +1,216 @@
+use utf8;
+use strict;
+use warnings;
+use Test::More;
+use FindBin qw($Bin);
+use File::Temp ();
+use lib "$Bin/lib";
+use DblinkTest qw(slurp norm);
+
+binmode(Test::More->builder->$_, ':utf8') for qw(output failure_output todo_output);
+
+
+# export_view on an object built by hand (as ora2pg would fill it from Oracle)
+sub export
+{
+	my ($name, $body, %v) = @_;
+	my $o = bless { type => 'VIEW', use_orafce => 0, plsql_pgsql => 1, text_values => {}, comment_values => {},
+		text_values_pos => 0, function_metadata => {}, dblink_mode => 'fdw', dblink_server => {}, dblink_exclude => {},
+		data_type => { %Ora2Pg::Oracle::SQL_TYPE }, pg_integer_type => 1, pg_numeric_type => 1, default_numeric => 'bigint',
+		dblink_schema_prefix => 'fdw_', output_dir => File::Temp::tempdir(CLEANUP => 1), quiet => 1, no_header => 1, idxcomment => 0, create_or_replace => ' OR REPLACE',
+		views => { $name => { text => $body, alias => [], owner => 'APP', %v } } }, 'Ora2Pg';
+	my $out = '';
+	no warnings 'redefine';
+	local *Ora2Pg::dump = sub { $out .= $_[1] };
+	local *Ora2Pg::_set_file_header = sub { '' };
+	local *Ora2Pg::save_filetoupdate_list = sub { };
+	$o->export_view();
+	return (norm($out), $o);
+}
+
+my $vw = slurp("$Bin/fixtures/ddl/v_sales_total.vw");
+my ($body) = $vw =~ /\bAS\s+(select.*?);\s*$/is or die 'fixture';
+my @cols = ({ name => 'SM', type => 'NUMBER' }, { name => 'DFROM', type => 'DATE' });
+
+my ($out) = export('APP.V_SALES_TOTAL', $body, columns => \@cols);
+like($out, qr/^CREATE FOREIGN TABLE app\.v_sales_total \( sm numeric, dfrom timestamp\(0\) \) SERVER dbb_bak OPTIONS \(table \$ora\$\(select /, 'foreign table header');
+unlike($out, qr/CREATE (?:OR REPLACE )?VIEW|TODO/, 'no CREATE VIEW, no leftover foreign tables of the discarded text');
+my ($q) = $out =~ /\$ora\$(.*)\$ora\$/;
+ok(defined $q && $q !~ /\@/, 'no @ in query');
+like($q, qr/\Q'%ПРОДАЖ%ИТОГ%'\E/, 'literal kept');
+like($q, qr/decode\(d\.k_vf, 1, d\.unit_price, d\.unit_price\/\(sw\.rate\(d\.k_vf, d\.dfrom,1\)\) \)\)/, 'decode untouched');
+like($q, qr{/\*\+ ordered use_nl\(tp\)\*/}, 'hint kept');
+like($q, qr/sw\.doctype tp,sw\.doc d where/, 'tables without link');
+
+# one local table and one remote: normal path
+($out) = export('APP.V_MIX', 'select a.x from app.loc a, sw.doc@dbb_bak d where a.id = d.id', columns => [{ name => 'X', type => 'NUMBER' }]);
+like($out, qr/^CREATE OR REPLACE VIEW app\.v_mix AS /, 'mixed: normal view');
+unlike($out, qr/FOREIGN TABLE/, 'mixed: no foreign table');
+
+# empty string literal '' in the remote query must not leak the ORA2PG_ESCAPE2_QUOTE placeholder
+($out) = export('APP.V_EMPTY', q{select decode(d.k, 1, '', d.nm || '; ') nm from sw.doc@dbb_bak d}, columns => [{ name => 'NM', type => 'VARCHAR2', length => 20 }]);
+unlike($out, qr/ORA2PG_ESCAPE/, 'no escape placeholder in foreign table query');
+like($out, qr/decode\(d\.k, 1, '', d\.nm/, "empty literal restored");
+
+# JOIN with local table, subquery with local table
+($out) = export('APP.V_J', 'select 1 x from sw.doc@dbb_bak d join app.loc l on l.id = d.id', columns => [{ name => 'X', type => 'NUMBER' }]);
+unlike($out, qr/FOREIGN TABLE/, 'join with local: normal');
+($out) = export('APP.V_S', 'select x from sw.doc@dbb_bak d where d.id in (select id from app.loc)', columns => [{ name => 'X', type => 'NUMBER' }]);
+unlike($out, qr/FOREIGN TABLE/, 'subquery with local: normal');
+
+# JOIN of two remote tables on one link: foreign table
+($out) = export('APP.V_J2', 'select d.x from sw.doc@dbb_bak d left join sw.doctype@dbb_bak t on t.k_c = d.tp', columns => [{ name => 'X', type => 'NUMBER' }]);
+like($out, qr/FOREIGN TABLE app\.v_j2/, 'two remote tables with join');
+
+# two links, excluded link: normal
+($out) = export('APP.V_2L', 'select 1 x from sw.doc@dbb_bak d, sw.t@rdb1 o', columns => [{ name => 'X', type => 'NUMBER' }]);
+unlike($out, qr/FOREIGN TABLE/, 'two links: normal');
+($out) = export('APP.V_EX', 'select 1 x from sw.doc@dbb_bak d', columns => [{ name => 'X', type => 'NUMBER' }], );
+like($out, qr/FOREIGN TABLE/, 'control');
+
+# no column types (-i mode): normal path + TODO
+($out) = export('APP.V_NC', 'select 1 x from sw.doc@dbb_bak d');
+like($out, qr/^-- TODO dblink: view on one link, no column types CREATE OR REPLACE VIEW/, 'no types: TODO + normal');
+
+# ---- jobs -> pg_cron: all 17 scheduler jobs ----
+use Ora2Pg::DbLink qw(cron_expr job_sql);
+is(cron_expr('FREQ=MINUTELY;INTERVAL=30'), '*/30 * * * *', 'minutely');
+is(cron_expr('freq=hourly;'), '0 */1 * * *', 'hourly');
+is(cron_expr('FREQ=HOURLY;INTERVAL=2;BYMINUTE=15'), '15 */2 * * *', 'hourly byminute');
+is(cron_expr('Freq=daily;ByHour=0,14,15;ByMinute=0;BySecond=0'), '0 0,14,15 * * *', 'daily list');
+is(cron_expr('FREQ=MONTHLY; BYMONTHDAY=1;BYHOUR=1;BYMINUTE=00'), '0 1 1 * *', 'monthly');
+is(cron_expr('FREQ=WEEKLY;BYDAY=MON'), undef, 'weekly unsupported');
+is(cron_expr('sysdate+1/24'), undef, 'old DBA_JOBS interval unsupported');
+
+my $jobs = 0;
+my (@todo, @done);
+for my $f (sort glob("$Bin/fixtures/jobs/*.sql")) {
+	my $t = slurp($f);
+	my ($iv) = $t =~ /repeat_interval\s*=>\s*'([^']*)'/i or next;
+	my ($act) = $t =~ /job_action\s*=>\s*'((?:[^']|'')*)'/is;
+	$act =~ s/''/'/g;
+	(my $n = $f) =~ s{.*/}{};
+	my ($jn) = $t =~ /job_name\s*=>\s*'([^']*)'/i;
+	$jobs++;
+	my $o = bless { type => 'JOB', use_orafce => 0, plsql_pgsql => 1, text_values => {}, comment_values => {}, idxcomment => 0,
+		function_metadata => {}, dblink_mode => 'fdw', dblink_server => {}, dblink_exclude => {},
+		data_type => { %Ora2Pg::Oracle::SQL_TYPE }, dblink_schema_prefix => 'fdw_' }, 'Ora2Pg';
+	my $sql = job_sql($o, $jn, $iv, $act);
+	if ($sql =~ /^-- TODO cron/) { push @todo, $n } else {
+		push @done, $n;
+		like($sql, qr/^SELECT cron\.schedule\('\Q@{[ lc($jn) =~ s{"}{}gr ]}\E', '[\d,*\/ ]+', \$cron\$DO \$do\$.*\$do\$;\$cron\$\);\n\z/s, "job $n");
+	}
+}
+is($jobs, 3, '3 jobs');
+is(scalar(@done) + scalar(@todo), 3, 'every job is converted or TODO');
+is_deeply(\@todo, ['app.demo_weekly_job.sql'], 'weekly -> TODO');
+diag('TODO jobs: ' . (join(', ', @todo) || 'none'));
+
+# NVL/COALESCE over remote columns of different types: later arguments get the type of the first
+{
+	my $sg = "$Bin/fixtures/dblink_signatures.txt";
+	my ($o) = DblinkTest::convert('SELECT nvl(v.amt, v.key_code) a, coalesce(v.key_code, v.amt) b, coalesce(v.amt, v.amt) c FROM rsch.rem_accounts@rdb1 v', dblink_signatures => $sg);
+	$o = norm($o);
+	like($o, qr/coalesce\(v\.amt, v\.key_code::numeric\) a/, 'NVL(number, varchar) -> varchar cast to numeric');
+	like($o, qr/coalesce\(v\.key_code, v\.amt::text\) b/, 'COALESCE(varchar, number) -> number cast to text');
+	like($o, qr/coalesce\(v\.amt, v\.amt\) c/, 'same type untouched');
+
+	($o) = DblinkTest::convert('SELECT 1 FROM rsch.rem_accounts@rdb1 v WHERE v.key_code = v.amt AND v.amt <> v.amt', dblink_signatures => $sg);
+	$o = norm($o);
+	like($o, qr/v\.key_code = v\.amt::text/, 'varchar = number -> number side cast to text');
+	like($o, qr/v\.amt <> v\.amt\b(?!::)/, 'same type comparison untouched');
+
+	($o) = DblinkTest::convert('SELECT 1 FROM rsch.rem_accounts@rdb1 v WHERE coalesce(v.key_code, coalesce(v.key_code, v.key_code)) = v.amt', dblink_signatures => $sg);
+	$o = norm($o);
+	like($o, qr/coalesce\(v\.key_code, coalesce\(v\.key_code, v\.key_code\)\) = v\.amt::text/, 'nested COALESCE of varchar = number -> number side cast to text');
+
+	# (+) stays masked (%OUTERJOINn%) while the types are aligned
+	($o) = DblinkTest::convert('SELECT 1 FROM rsch.rem_accounts@rdb1 v, rsch.rem_accounts@rdb1 w WHERE v.amt(+) = nvl(w.key_code, nvl(w.key_code, w.key_code))', dblink_signatures => $sg);
+	like(norm($o), qr/= v\.amt::text\)/, 'comparison with (+) on the column is aligned too');
+
+	# DECODE compares like =
+	($o) = DblinkTest::convert("SELECT decode(v.key_code, v.amt, 'a', 'b') d1, decode(v.amt, v.amt, 'a', 'b') d2, decode(v.key_code, 1, 'a', 2, 'b') d3 FROM rsch.rem_accounts\@rdb1 v", dblink_signatures => $sg);
+	$o = norm($o);
+	like($o, qr/IS NOT DISTINCT FROM v\.amt::text THEN/i, 'DECODE(varchar, number): number side cast to text');
+	like($o, qr/v\.amt IS NOT DISTINCT FROM v\.amt THEN/i, 'DECODE same types untouched');
+	like($o, qr/v\.key_code IS NOT DISTINCT FROM 1::text THEN/i, 'DECODE(varchar, 1): literal cast to text');
+
+	# DECODE(date, NULL, NULL, <expr>, 2): the first search is an untyped NULL -> everything is compared as text (Oracle), PG would fail on date = number
+	my $sgd = File::Temp->new(SUFFIX => '.txt'); print $sgd "RDB1|TABLE|rsch.rem_accounts|amt NUMBER(12,2), dt DATE\n"; close $sgd;
+	($o) = DblinkTest::convert("SELECT decode(v.dt, NULL, NULL, decode(v.amt, 0, 0, v.amt), 2) p, decode(v.dt, NULL, NULL, v.dt, 2) q FROM rsch.rem_accounts\@rdb1 v", dblink_signatures => $sgd->filename);
+	$o = norm($o);
+	like($o, qr/v\.dt::text IS NOT DISTINCT FROM NULL THEN NULL WHEN v\.dt::text IS NOT DISTINCT FROM \(CASE WHEN v\.amt .*? END \)::text THEN 2/i, 'DECODE(date, NULL, NULL, other type): compared as text');
+	like($o, qr/WHEN v\.dt IS NOT DISTINCT FROM v\.dt THEN 2/i, 'DECODE(date, NULL, NULL, date): untouched');
+
+	# NVL(varchar, 0): the literal takes the type of the first argument; SIGN of the character result gets a number
+	($o) = DblinkTest::convert('SELECT sign(nvl(v.key_code, 0)) s, nvl(v.amt, 0) n FROM rsch.rem_accounts@rdb1 v', dblink_signatures => $sg);
+	$o = norm($o);
+	like($o, qr/sign\(\(coalesce\(v\.key_code, 0::text\)\)::numeric\) s/, 'numeric function over character COALESCE');
+	like($o, qr/coalesce\(v\.amt, 0\) n/, 'number with number literal untouched');
+}
+
+# local tables: types come from the dictionary of the export connection
+{
+	package LocS; sub execute { my ($s, @b) = @_; $s->{rows} = $s->{dbh}{cols}{$b[1]} || []; 1 }
+	sub fetchall_arrayref { $_[0]{rows} } sub err { 0 } sub errstr { '' }
+	package LocDbh; sub prepare { bless { dbh => $_[0] }, 'LocS' }
+	package main;
+	my $dbh = bless { cols => {
+		PAY    => [ ['ID', 'NUMBER'], ['KPP', 'VARCHAR2'] ],
+		BRANCH => [ ['ID', 'NUMBER'], ['KPP', 'NUMBER'] ],
+		STAFF  => [ ['ID', 'NUMBER'], ['CODE', 'VARCHAR2'] ] } }, 'LocDbh';
+	my ($o) = DblinkTest::convert('SELECT coalesce(coalesce(o.kpp, pp.kpp), v.code) k FROM app.pay o LEFT JOIN app.branch pp ON (o.id = pp.id) JOIN app.staff v ON (v.id = o.id AND v.code = pp.kpp)', dbh => $dbh, schema => 'APP');
+	$o = norm($o);
+	like($o, qr/coalesce\(coalesce\(o\.kpp, pp\.kpp::text\), v\.code\) k/i, 'local tables: nested COALESCE, later argument cast to the first one\'s class');
+	like($o, qr/v\.code = pp\.kpp::text/i, 'local tables: varchar = number compared as text');
+	like($o, qr/o\.id = pp\.id(?!::)/i, 'local tables: same type untouched');
+	($o) = DblinkTest::convert('SELECT coalesce(o.kpp, pp.kpp) FROM app.pay o, app.branch pp', dbh => $dbh, schema => 'APP', input_file => 'x.sql');
+	unlike(norm($o), qr/::/, 'no dictionary (offline): left alone');
+	# a line break after the dot of schema.table does not split the table from its alias
+	($o) = DblinkTest::convert("SELECT 1 FROM app.pay p, app.branch, app.\n  staff va, app.pay q WHERE p.id = va.id AND q.id(+) = va.id AND p.id = branch.id(+)", dbh => $dbh, schema => 'APP');
+	$o = norm($o);
+	like($o, qr/app\.staff va/i, 'schema.<newline>table alias kept together');
+	unlike($o, qr/app\.\s+staff|,\s*va\b/i, 'no stray alias');
+	# UNION: a bare NULL takes the type of the same column in another branch
+	($o) = DblinkTest::convert('SELECT o.id, NULL FROM app.pay o UNION ALL SELECT NULL, NULL AS k FROM app.pay o UNION ALL SELECT o.id, o.kpp FROM app.pay o UNION ALL SELECT 1, to_char(o.id) || \'x\' FROM app.pay o', dbh => $dbh, schema => 'APP');
+	$o = norm($o);
+	# column with an AS alias in the typed branch
+	my ($o2) = DblinkTest::convert('SELECT o.id AS a1, o.kpp AS b1 FROM app.pay o UNION ALL SELECT NULL AS a1, NULL b1 FROM app.pay o', dbh => $dbh, schema => 'APP');
+	like(norm($o2), qr/SELECT NULL::numeric AS a1, NULL::text b1 FROM/i, 'UNION: typed column with AS alias');
+	like($o, qr/SELECT o\.id, NULL::text FROM app\.pay o UNION ALL SELECT NULL::numeric, NULL::text AS k FROM/i, 'UNION: NULL typed from the other branches');
+	unlike($o, qr/NULL::numeric.*NULL::numeric.*NULL::numeric/i, 'UNION: only bare NULLs');
+	# the connection ora2pg had open is gone: the dictionary query reconnects once and goes on
+	{
+		package LocBad; sub prepare { undef } sub err { -1 } sub errstr { 'Database disconnected' } sub disconnect { 1 }
+		package main;
+		no warnings 'redefine';
+		local *Ora2Pg::_db_connection = sub { $dbh };
+		($o) = DblinkTest::convert('SELECT coalesce(o.kpp, pp.kpp) FROM app.pay o, app.branch pp', dbh => bless({}, 'LocBad'), schema => 'APP');
+		like(norm($o), qr/coalesce\(o\.kpp, pp\.kpp::text\)/i, 'local dictionary: reconnect after a lost connection');
+	}
+	# the same alias in two UNION branches over different tables: only columns on which the tables agree keep their class
+	($o) = DblinkTest::convert('SELECT 1 FROM app.pay o JOIN app.staff v ON (o.id = v.id AND v.code = o.kpp) UNION ALL SELECT 2 FROM app.branch o JOIN app.staff v ON (o.id = v.id AND v.code = o.kpp)', dbh => $dbh, schema => 'APP');
+	$o = norm($o);
+	like($o, qr/o\.id = v\.id(?!::)/i, 'same alias, two tables: agreeing column untouched');
+	unlike($o, qr/::text/i, 'same alias, two tables: conflicting column left alone');
+	# the same alias over the same table twice: still known
+	($o) = DblinkTest::convert('SELECT 1 FROM app.pay o JOIN app.branch v ON (v.kpp = o.kpp) UNION ALL SELECT 2 FROM app.pay o JOIN app.branch v ON (v.kpp = o.kpp)', dbh => $dbh, schema => 'APP');
+	like(norm($o), qr/v\.kpp::text = o\.kpp/i, 'same alias, same table twice: aligned');
+}
+
+# synonym over a db link: view on the foreign table (not a self-reference), table file written
+{
+	my %f;
+	my $o = bless { type => 'SYNONYM', dblink_mode => 'fdw', dblink_server => {}, dblink_exclude => {}, dblink_schema_prefix => 'fdw_',
+		quiet => 1, no_header => 1, create_or_replace => ' OR REPLACE', compress => 0, output_dir => File::Temp::tempdir(CLEANUP => 1),
+		synonyms => { inv => { owner => 'APP', table_owner => 'XX', table_name => 'INV', dblink => 'REM1' } } }, 'Ora2Pg';
+	my $cur = '';
+	no warnings 'redefine';
+	local (*Ora2Pg::dump, *Ora2Pg::_set_file_header, *Ora2Pg::open_export_file, *Ora2Pg::set_binmode, *Ora2Pg::close_export_file) =
+		(sub { $f{$cur // 'main'} .= $_[1] }, sub { '' }, sub { $cur = $_[1]; 1 }, sub { }, sub { $cur = '' });
+	$o->export_synonym();
+	like(norm($f{''} // $f{main} // ''), qr/^CREATE OR REPLACE VIEW inv AS SELECT \* FROM fdw_\w+_xx\.inv;$/, 'synonym over link: view on foreign table');
+	ok(scalar(grep { /^dblink_tables_synonym/ } keys %f), 'dblink_tables_synonym.sql written');
+}
+
+done_testing;

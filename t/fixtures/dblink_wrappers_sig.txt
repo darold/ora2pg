@@ -1,0 +1,12 @@
+# TEST signatures for t/09_dblink_wrappers.t (invented names)
+# LINK|KIND|PATH|SPEC[|FLAGS]
+RDB1|FUNCTION|rsch.rem_reserve_pkg.verify_item_exist|RETURN NUMBER; p_x IN VARCHAR2
+RDB1|FUNCTION|rsch.rem_iface_pkg.verify_state|RETURN VARCHAR2; p_ref IN VARCHAR2
+RDB1|FUNCTION|rsch.rem_iface_pkg.ref_id|RETURN NUMBER
+DBB|FUNCTION|sw.rate|RETURN NUMBER; cd_1 IN NUMBER, fdate IN DATE, cd_2 IN NUMBER DEFAULT, rclc IN NUMBER DEFAULT
+RDB1|FUNCTION|rsch.rem_pkg.post_item|RETURN NUMBER; p_id IN NUMBER, p_when IN DATE|MODIFIES
+RDB1|FUNCTION|rsch.rem_pkg.next_day|RETURN DATE; p_n IN NUMBER|MODIFIES
+RDB1|FUNCTION|rsch.rem_pkg.today|RETURN DATE; p_n IN NUMBER
+RDB1|FUNCTION|rsch.rem_pkg.by_col|RETURN NUMBER; p_c IN rem_tbl.col_a%TYPE
+RDB1|FUNCTION|rsch.rem_pkg.is_ok|RETURN NUMBER; p_b IN BOOLEAN
+RDB1|FUNCTION|rsch.rem_pkg.bad_flag|RETURN NUMBER; p_b IN NUMBER|NOSUCH

@@ -35,6 +35,12 @@ my $VERSION = $Ora2Pg::VERSION;
 
 $| = 1;
 
+# UTF-8 on stdio before any Cyrillic identifiers (packages, views, procedures)
+if ($^O !~ /MSWin32|dos/i) {
+	binmode(STDOUT, ":encoding(UTF-8)");
+	binmode(STDERR, ":encoding(UTF-8)");
+}
+
 my $CONFIG_FILE = "/etc/ora2pg/ora2pg.conf";
 my $FILE_CONF = '';
 my $DEBUG = 0;

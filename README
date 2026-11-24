@@ -13,6 +13,20 @@ DESCRIPTION
     and doesn't require any Oracle database knowledge other than providing
     the parameters needed to connect to the Oracle database.
 
+FORK NOTES
+    This is a fork of https://github.com/darold/ora2pg that adds the
+    DBLINK_MODE fdw directive (Oracle database links translated to oracle_fdw
+    foreign servers). See DBLINK_MODE, DBLINK_SERVER, DBLINK_EXCLUDE,
+    DBLINK_SCHEMA_PREFIX and DBLINK_SIGNATURES in doc/Ora2Pg.pod.
+
+    It is designed for the matching oracle_fdw fork
+    https://github.com/grbr2010/oracle_fdw (extension version 1.3). Remote
+    tables become ordinary foreign tables, but sequences, function calls and
+    procedure calls are generated as calls to oracle_query(), oracle_scalar(),
+    oracle_call() and oracle_exec(), which only that fork provides. Stock
+    oracle_fdw does not have them. With DBLINK_MODE off (the default) the
+    fork behaves like upstream Ora2Pg and needs nothing extra.
+
 FEATURES
     Ora2Pg consists of a Perl script (ora2pg) and a Perl module (Ora2Pg.pm).
     The only thing you have to modify is the configuration file ora2pg.conf

@@ -621,6 +621,7 @@ ORDER BY A.COLUMN_ID
 					&& !grep(/^$row->[8]$/i, @expanded_views)
 			);
 
+		$row->[4] =~ s/\0//g if defined $row->[4];	# DATA_DEFAULT is a LONG: strip the NUL terminator
 		$row->[2] = $row->[7] if $row->[1] =~ /char/i;
 		# Seems that for a NUMBER with a DATA_SCALE to 0, no DATA_PRECISION and a DATA_LENGTH of 22
 		# Oracle use a NUMBER(38) instead
@@ -1316,6 +1317,7 @@ ORDER BY ITER ASC, 2, 3
 		if (!$self->{schema} && $self->{export_schema}) {
 			$row->[0] = "$row->[2].$row->[0]";
 		}
+		$row->[1] =~ s/\0//g if defined $row->[1];	# LONG columns come back NUL-terminated; PostgreSQL rejects NUL
 		$data{$row->[0]}{text} = $row->[1];
 		$data{$row->[0]}{owner} = $row->[2];
 		$data{$row->[0]}{comment} = $comments{$row->[0]}{comment} || '';
@@ -1765,6 +1767,10 @@ sub _lookup_function
 		# Now convert types
 		$fct_detail{args} = Ora2Pg::PLSQL::replace_sql_type($self, $fct_detail{args}, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type}, $self->{varchar_to_text}, %{$self->{data_type}});
 		$fct_detail{declare} = Ora2Pg::PLSQL::replace_sql_type($self, $fct_detail{declare}, $self->{pg_numeric_type}, $self->{default_numeric}, $self->{pg_integer_type}, $self->{varchar_to_text}, %{$self->{data_type}});
+
+		# PG rejects OUT/INOUT after a parameter with DEFAULT; drop DEFAULT clauses
+		# so the CREATE succeeds (call sites may need to pass all args — 03a).
+		$fct_detail{args} = _pg_strip_default_before_out($fct_detail{args});
 
 		$json_arg = $fct_detail{args};
 		$json_arg =~ s/^\s*\(\s*//s;
@@ -4182,6 +4188,68 @@ sub _has_dbms_log_execute_privilege
 	$self->logit("DEBUG: Source database user " . (!$has_dbms_log_execute_privilege ? "doesn't ": "") . "have 'EXECUTE' privilege on 'DBMS_LOG'\n", 1);
 
 	return $has_dbms_log_execute_privilege;
+}
+
+# PostgreSQL: "OUT parameters cannot appear after one with a default value".
+# If that pattern appears, strip every DEFAULT clause (keep parameter order).
+sub _pg_strip_default_before_out
+{
+	my ($args) = @_;
+	return $args if (!defined $args || $args !~ /\bDEFAULT\b/i || $args !~ /\b(?:OUT|INOUT)\b/i);
+
+	my ($prefix, $inner, $suffix) = ('', $args, '');
+	if ($args =~ /^(\s*\(\s*)(.*)(\s*\)\s*)$/s) {
+		($prefix, $inner, $suffix) = ($1, $2, $3);
+	}
+
+	my @parts;
+	my ($buf, $depth, $in_sq, $in_dq) = ('', 0, 0, 0);
+	for my $i (0 .. length($inner) - 1) {
+		my $c = substr($inner, $i, 1);
+		if (!$in_dq && $c eq "'" && !($in_sq && substr($inner, $i, 2) eq "''")) {
+			# toggle single-quote unless escaped ''
+			if ($in_sq && substr($inner, $i, 2) eq "''") {
+				$buf .= "''";
+				$i++;
+				next;
+			}
+			$in_sq = !$in_sq;
+			$buf .= $c;
+			next;
+		}
+		if (!$in_sq && $c eq '"') {
+			$in_dq = !$in_dq;
+			$buf .= $c;
+			next;
+		}
+		if (!$in_sq && !$in_dq) {
+			if ($c eq '(') { $depth++; $buf .= $c; next; }
+			if ($c eq ')') { $depth--; $buf .= $c; next; }
+			if ($c eq ',' && $depth == 0) {
+				push @parts, $buf;
+				$buf = '';
+				next;
+			}
+		}
+		$buf .= $c;
+	}
+	push @parts, $buf if (length $buf || @parts);
+
+	my $seen_default = 0;
+	my $need = 0;
+	foreach my $p (@parts) {
+		$seen_default = 1 if ($p =~ /\bDEFAULT\b/i);
+		if ($seen_default && $p =~ /\b(?:OUT|INOUT)\b/i) {
+			$need = 1;
+			last;
+		}
+	}
+	return $args if (!$need);
+
+	foreach my $p (@parts) {
+		$p =~ s/\s+DEFAULT\b.*//is;
+	}
+	return $prefix . join(', ', @parts) . $suffix;
 }
 
 1;

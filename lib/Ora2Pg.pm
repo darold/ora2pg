@@ -317,6 +317,10 @@ sub spawn
 	# the child -- go spawn
 	$< = $>;
 	$( = $); # suid progs only
+	if ($^O !~ /MSWin32|dos/i) {
+		binmode(STDOUT, ":encoding(UTF-8)");
+		binmode(STDERR, ":encoding(UTF-8)");
+	}
 	exit &$coderef();
 }
 
@@ -414,10 +418,9 @@ sub export_schema
 	$self->{dbh}->disconnect() if ($self->{dbh});
 	$self->{dbhdest}->disconnect() if ($self->{dbhdest});
 
-	# Try to requalify package function call
-	if (!$self->{package_as_schema}) {
-		$self->fix_function_call();
-	}
+	# Requalify package function calls in bulk export files (view.sql, package.sql, …).
+	# PACKAGE_AS_SCHEMA still needs pass2: per-view requalify runs before package_functions exist.
+	$self->fix_function_call();
 
 	my $dirprefix = '';
 	$dirprefix = "$self->{output_dir}/" if ($self->{output_dir});
@@ -477,6 +480,7 @@ sub open_export_file
 		{
 			$filehdl = new IO::File;
 			$filehdl->open(">$outfile") or $self->logit("FATAL: Can't open $outfile: $!\n", 0, 1);
+			$self->set_binmode($filehdl);
 		}
 		$filehdl->autoflush(1) if (defined $filehdl && !$self->{compress});
 	}
@@ -536,6 +540,8 @@ sub create_export_file
 			$self->{fhout}->open(">>$outfile") or $self->logit("FATAL: Can't open $outfile: $!\n", 0, 1);
 			$self->set_binmode($self->{fhout});
 		}
+		$self->{bulk_view_sql_path} = $outfile
+			if ($self->{type} eq 'VIEW' && defined $outfile && $outfile =~ /view\.sql$/i);
 		if ( $self->{compress} && (($self->{jobs} > 1) || ($self->{oracle_copies} > 1)) )
 		{
 			die "FATAL: you can't use compressed output with parallel dump\n";
@@ -588,6 +594,7 @@ sub append_export_file
 		} else {
 			$filehdl = new IO::File;
 			$filehdl->open(">>$outfile") or $self->logit("FATAL: Can't open $outfile: $!\n", 0, 1);
+			$self->set_binmode($filehdl);
 			$filehdl->autoflush(1);
 		}
 	}
@@ -748,6 +755,37 @@ Return a quoted object named when needed:
 =cut
 
 
+sub _quote_object_name_part
+{
+	my ($self, $part) = @_;
+	return $part if ($part =~ /^[a-z0-9_\$]+$/);
+	return '"' . $part . '"' if ($part =~ /[^a-z0-9_\$]/ || $part =~ /^\d+/);
+	return $part;
+}
+
+sub _quote_dotted_package_name
+{
+	my ($self, $obj_name) = @_;
+	return 0 if ($obj_name =~ /\//);
+	my ($p1, $p2, $p3);
+	if ($obj_name =~ /^([^\.]+)\.([^\.]+)\.([^\.]+)$/) {
+		($p1, $p2, $p3) = ($1, $2, $3);
+	} elsif ($obj_name =~ /^([^\.]+)\.([^\.]+)$/) {
+		($p1, $p2) = ($1, $2);
+	} else {
+		return 0;
+	}
+	my $is_qualified = ($p1 =~ /^pack_/i || $p2 =~ /^pack_/i
+		|| ($p1 =~ /^[a-z][a-z0-9_]*$/ && $p2 =~ /[^\x00-\x7F]/));
+	return 0 if (!$is_qualified);
+	if (defined $p3) {
+		$obj_name = join('.', map { $self->_quote_object_name_part($_) } ($p1, $p2, $p3));
+	} else {
+		$obj_name = $self->_quote_object_name_part($p1) . '.' . $self->_quote_object_name_part($p2);
+	}
+	return $obj_name;
+}
+
 sub quote_object_name
 {
 	my ($self, @obj_list) = @_;
@@ -770,19 +808,31 @@ sub quote_object_name
 			# then if there is non alphanumeric or the object name is a reserved word
 			if ($obj_name =~ /[^a-z0-9\_\.\$]/ || ($self->{use_reserved_words} && $self->is_reserved_words($obj_name)) || $obj_name =~ /^\d+/)
 			{
-				# Add double quote to [schema.] object name 
-				if ($obj_name !~ /^[^\.]+\.[^\.]+$/ && $obj_name !~ /^[^\.]+\.[^\.]+\.[^\.]+$/) {
+				# Dotted display names like "Доп.Кол-во_Б/Д" are one identifier, not schema.column
+				if ($obj_name =~ /\//) {
 					$obj_name = '"' . $obj_name . '"';
-				} elsif ($obj_name =~ /^[^\.]+\.[^\.]+$/) {
+				} elsif (my $quoted = $self->_quote_dotted_package_name($obj_name)) {
+					$obj_name = $quoted;
+				} elsif ($obj_name =~ /[^\x00-\x7F]/) {
+					$obj_name = '"' . $obj_name . '"';
+				} elsif ($obj_name =~ /^[a-z0-9_\$]+\.[a-z0-9_\$]+$/) {
 					$obj_name =~ s/^([^\.]+)\.([^\.]+)$/"$1"\."$2"/;
-				} else {
+				} elsif ($obj_name =~ /^[a-z0-9_\$]+\.[a-z0-9_\$]+\.[a-z0-9_\$]+$/) {
 					$obj_name =~ s/^([^\.]+)\.([^\.]+)\.([^\.]+)$/"$1"\."$2"\."$3"/;
+				} else {
+					$obj_name = '"' . $obj_name . '"';
 				}
 				$obj_name = '"' . $obj_name . '"' if ($obj_name =~ /^\d+/);
 			}
 		}
 		# Add double quote to [schema.] object name 
-		elsif ($obj_name !~ /^[^\.]+\.[^\.]+$/ && $obj_name !~ /^[^\.]+\.[^\.]+\.[^\.]+$/) {
+		elsif ($obj_name =~ /\//) {
+			$obj_name = "\"$obj_name\"";
+		} elsif (my $quoted = $self->_quote_dotted_package_name($obj_name)) {
+			$obj_name = $quoted;
+		} elsif ($obj_name =~ /[^\x00-\x7F]/) {
+			$obj_name = "\"$obj_name\"";
+		} elsif ($obj_name !~ /^[^\.]+\.[^\.]+$/ && $obj_name !~ /^[^\.]+\.[^\.]+\.[^\.]+$/) {
 			$obj_name = "\"$obj_name\"";
 		} elsif ($obj_name =~ /^[^\.]+\.[^\.]+$/) {
 			$obj_name =~ s/^([^\.]+)\.([^\.]+)$/"$1"\."$2"/;
@@ -906,6 +956,24 @@ Initialize an Ora2Pg object instance with a connexion to the
 Oracle database.
 
 =cut
+
+# Default values and checks of the DBLINK_* directives, copied from %AConfig by _init
+sub _dblink_settings
+{
+	my $self = shift;
+
+	# DBLINK_MODE: off (default) or fdw, the value is case insensitive
+	$self->{dblink_mode} = lc($self->{dblink_mode} || 'off');
+	$self->logit("FATAL: DBLINK_MODE must be off or fdw, not '$self->{dblink_mode}'\n", 0, 1)
+		if ($self->{dblink_mode} ne 'off' && $self->{dblink_mode} ne 'fdw');
+	# Hash directives are set by parse_config, default is empty
+	$self->{dblink_server} ||= {};
+	$self->{dblink_exclude} ||= {};
+	$self->{dblink_schema_prefix} = 'fdw_' if (!defined $self->{dblink_schema_prefix});
+	$self->{dblink_signatures} ||= '';
+	$self->{dblink_wrapper_definer} = $self->{dblink_wrapper_definer} ? 1 : 0;
+	$self->{dblink_ext_schema} ||= 'public';
+}
 
 sub _init
 {
@@ -1406,6 +1474,7 @@ sub _init
 	{
 		$self->{fhlog} = new IO::File;
 		$self->{fhlog}->open(">>$self->{logfile}") or $self->logit("FATAL: can't log to $self->{logfile}, $!\n", 0, 1);
+		$self->set_binmode($self->{fhlog});
 	}
 
 	# Autoconvert SRID
@@ -1438,6 +1507,8 @@ sub _init
 	if ($self->{type} eq 'SHOW_REPORT') {
 		$self->{use_orafce} = 0;
 	}
+
+	$self->_dblink_settings();
 
 	# Disable the use of mssqlfce library by default
 	$self->{use_mssqlfce} ||= 0;
@@ -1820,9 +1891,10 @@ sub _init
 	# defined the dblink connection to use in autonomous transaction
 	$self->set_pg_conn_details();
 
-	# Set stdout encoding to UTF8 to avoid "Wide character in print" warning
+	# Set stdio encoding to UTF8 to avoid "Wide character in print" warning
 	if ($^O !~ /MSWin32|dos/i) {
 		binmode(STDOUT, "encoding(UTF-8)");
+		binmode(STDERR, "encoding(UTF-8)");
 	}
 
 	# Mark that we are exporting data using oracle_fdw
@@ -2141,7 +2213,8 @@ sub _select_output_file_suffix
   {
     $self->{fhlog} = undef;
     $self->{fhlog} = new IO::File;
-    $self->{fhlog}->open(">>$self->{dump_as_file_prefix}.$extension") or $self->logit("FATAL: can't log to $self->{dump_as_file_prefix}.$extension, $!\n", 0, 1);
+    $self->{fhlog}->open(">$self->{dump_as_file_prefix}.$extension") or $self->logit("FATAL: can't log to $self->{dump_as_file_prefix}.$extension, $!\n", 0, 1);
+    $self->set_binmode($self->{fhlog});
     if ($self->{debug}){
         print STDERR  "Saving report to $self->{dump_as_file_prefix}.$extension\n";
     }
@@ -3874,6 +3947,23 @@ sub read_grant_from_file
 
 }
 
+# PostgreSQL row triggers on INSERT cannot reference OLD in the CREATE TRIGGER
+# WHEN clause (unlike Oracle INSERT OR UPDATE). When the body already guards on
+# NEW vs OLD, omitting the WHEN clause preserves behaviour on both events.
+sub _pg_trigger_event_includes_insert
+{
+	my ($event) = @_;
+	return 0 if (!defined $event || $event eq '');
+	return ($event =~ /\bINSERT\b/i) ? 1 : 0;
+}
+
+sub _pg_trigger_when_references_old
+{
+	my ($when) = @_;
+	return 0 if (!defined $when || $when eq '');
+	return ($when =~ /\bOLD\b/i) ? 1 : 0;
+}
+
 sub read_trigger_from_file
 {
 	my $self = shift;
@@ -4153,7 +4243,7 @@ sub read_dblink_from_file
 		my $d_auth = $3;
 		$d_name =~ s/"//g;
 		$d_user =~ s/"//g;
-		$self->{dblink}{$d_name}{owner} = $self->{shema};
+		$self->{dblink}{$d_name}{owner} = $self->{schema};
 		$self->{dblink}{$d_name}{user} = $d_user;
 		$self->{dblink}{$d_name}{username} = $self->{pg_user} || $d_user;
 		if ($d_auth =~ s/USING\s+([^\s]+)//) {
@@ -4176,7 +4266,7 @@ sub read_dblink_from_file
 		my $d_conn = $2;
 		$d_name =~ s/"//g;
 		$d_conn =~ s/'//g;
-		$self->{dblink}{$d_name}{owner} = $self->{shema};
+		$self->{dblink}{$d_name}{owner} = $self->{schema};
 		$self->{dblink}{$d_name}{host} = $d_conn;
 	}
 
@@ -5124,7 +5214,13 @@ sub export_view
 		$self->{views}{$view}{text} =~ s/\s*WITH\s+READ\s+ONLY//is;
 		$self->{views}{$view}{text} =~ s/\s*OF\s+([^\s]+)\s+(WITH|UNDER)\s+[^\)]+\)//is;
 		$self->{views}{$view}{text} =~ s/\s*OF\s+XMLTYPE\s+[^\)]+\)//is;
-		$self->{views}{$view}{text} = $self->_format_view($view, $self->{views}{$view}{text});
+		# view with all sources on one database link: foreign table on the query (name filled in below)
+		my ($fdw_ddl, $fdw_todo) = Ora2Pg::DbLink::view_ddl($self, $view, '%FDW_NAME%', $self->{views}{$view}{text});
+		$self->{views}{$view}{text} = $self->_format_view($view, $self->{views}{$view}{text}) if (!defined $fdw_ddl);
+		# pack.func() -> pack_func(): the package function list is read from the dictionary for VIEW export
+		if (!defined $fdw_ddl) {
+			$self->requalify_function_call(\$self->{views}{$view}{text});
+		}
 		my $tmpv = $view;
 		if (exists $self->{replaced_tables}{"\L$tmpv\E"} && $self->{replaced_tables}{"\L$tmpv\E"})
 		{
@@ -5136,7 +5232,15 @@ sub export_view
 		}
 		$tmpv = $self->quote_object_name($tmpv);
 
-		if (!@{$self->{views}{$view}{alias}})
+		$fdw_ddl =~ s/%FDW_NAME%/$tmpv/ if defined $fdw_ddl;
+		my $vkind = defined $fdw_ddl ? 'FOREIGN TABLE' : 'VIEW';
+		$sql_output .= $fdw_todo if defined $fdw_todo;
+
+		if (defined $fdw_ddl)
+		{
+			$sql_output .= $fdw_ddl . "\n";
+		}
+		elsif (!@{$self->{views}{$view}{alias}})
 		{
 			$sql_output .= "CREATE$self->{create_or_replace} VIEW $tmpv AS ";
 			$sql_output .= $self->{views}{$view}{text};
@@ -5188,7 +5292,7 @@ sub export_view
 		{
 			my $owner = $self->{views}{$view}{owner};
 			$owner = $self->{force_owner} if ($self->{force_owner} ne "1");
-			$sql_output .= "ALTER VIEW $tmpv OWNER TO " . $self->quote_object_name($owner) . ";\n";
+			$sql_output .= "ALTER $vkind $tmpv OWNER TO " . $self->quote_object_name($owner) . ";\n";
 		}
 
 		# Add comments on view and columns
@@ -5196,7 +5300,7 @@ sub export_view
 		{
 			if ($self->{views}{$view}{comment})
 			{
-				$sql_output .= "COMMENT ON VIEW $tmpv ";
+				$sql_output .= "COMMENT ON $vkind $tmpv ";
 				$self->{views}{$view}{comment} =~ s/'/''/gs;
 				$sql_output .= " IS E'" . $self->{views}{$view}{comment} . "';\n\n";
 			}
@@ -5239,7 +5343,11 @@ sub export_view
 		$sql_output .= "\n";
 	}
 
+	# Rewrite in memory before dump; bulk file postpass runs in fix_function_call
+	# after export file is closed (export_view must not read view.sql while fhout is open).
 	$self->dump($sql_output);
+
+	Ora2Pg::DbLink::write_tables_file($self);
 
 	return;
 }
@@ -5561,7 +5669,9 @@ sub export_grant
 		}
 		else
 		{
-			$realtable =~ s/^[^\.]+\.//;
+			my $pkg = lc($table);
+			$pkg =~ s/^[^\.]+\.//;
+			$realtable = $self->quote_object_name($pkg);
 			if ($self->{grants}{$table}{owner})
 			{
 				if (grep(/^$self->{grants}{$table}{owner}$/, @{$self->{roles}{roles}}))
@@ -5601,7 +5711,9 @@ sub export_grant
 			}
 			else
 			{
-				$realtable =~ s/^[^\.]+\.//;
+				my $pkg = lc($table);
+				$pkg =~ s/^[^\.]+\.//;
+				$realtable = $self->quote_object_name($pkg);
 				$grants .= "GRANT USAGE ON SCHEMA $realtable TO $usr$wgrantoption;\n";
 				$grants .= "GRANT EXECUTE ON ALL ROUTINES IN SCHEMA $realtable TO $usr$wgrantoption;\n";
 			}
@@ -5801,14 +5913,19 @@ sub export_dblink
 	}
 	my $i = 1;
 	my $num_total_dblink = scalar keys %{$self->{dblink}};
+	my %seen_srv;
 
 	foreach my $db (sort { $a cmp $b } keys %{$self->{dblink}})
 	{
 		if (!$self->{quiet} && !$self->{debug}) {
 			print STDERR $self->progress_bar($i, $num_total_dblink, 25, '=', 'dblink', "generating $db" ), "\r";
 		}
-		my $srv_name = $self->quote_object_name($db);
-		$srv_name =~ s/^.*\.//;
+		my $srv_name = Ora2Pg::PLSQL::dblink_server_name($db, $self->{dblink}{$db}{owner});
+		if (($self->{dblink_mode} // 'off') eq 'fdw') {
+			# one server per <database>_<login>: links with the same pair share it
+			$srv_name = Ora2Pg::DbLink::server_for($self, $db);
+			next if $seen_srv{$srv_name}++;
+		}
 		$sql_output .= "CREATE SERVER $srv_name";
 		if ($self->{is_mysql}) {
 			$sql_output .= " FOREIGN DATA WRAPPER mysql_fdw OPTIONS (host '$self->{dblink}{$db}{host}'";
@@ -5889,6 +6006,12 @@ sub export_job
 	{
 		if (!$self->{quiet} && !$self->{debug}) {
 			print STDERR $self->progress_bar($i, $num_total_job, 25, '=', 'job', "generating $job" ), "\r";
+		}
+		if (($self->{dblink_mode} // '') eq 'fdw')
+		{
+			$sql_output .= Ora2Pg::DbLink::job_sql($self, $job, $self->{job}{$job}{interval}, $self->{job}{$job}{what}) . "\n";
+			$i++;
+			next;
 		}
 		$sql_output .= "JOB NUMBER: $i\n";
 		$sql_output .= "JOB NAME: $job\n";
@@ -6193,7 +6316,19 @@ sub export_trigger
 						$trig->[5] = Ora2Pg::PLSQL::convert_plsql_code($self, $trig->[5]);
 						$self->_replace_declare_var(\$trig->[5]);
 					}
-					$sql_output .= "\tWHEN ($trig->[5])\n";
+					if (_pg_trigger_event_includes_insert($trig->[2])
+						&& _pg_trigger_when_references_old($trig->[5]))
+					{
+						$self->logit(
+							"WARNING: PostgreSQL rejects WHEN (... OLD ...) on INSERT OR UPDATE trigger "
+								. "$trig->[0]; omitting WHEN clause (check remains in trigger body).\n",
+							1
+						);
+					}
+					else
+					{
+						$sql_output .= "\tWHEN ($trig->[5])\n";
+					}
 				}
 				if ($trig->[6] =~ /REFERENCING/)
 				{
@@ -6259,6 +6394,8 @@ sub export_trigger
 	}
 
 	$self->dump($sql_output);
+
+	Ora2Pg::DbLink::write_tables_file($self);
 
 	return;
 }
@@ -6815,6 +6952,8 @@ sub export_function
 	my $td = timediff($t1, $t0);
 	$self->logit("Total time to translate all functions with $num_chunk process: " . timestr($td) . "\n", 1);
 
+	Ora2Pg::DbLink::write_tables_file($self);
+
 	return;
 }
 
@@ -7083,6 +7222,8 @@ sub export_procedure
 	my $t1 = Benchmark->new;
 	my $td = timediff($t1, $t0);
 	$self->logit("Total time to translate all functions with $num_chunk process: " . timestr($td) . "\n", 1);
+
+	Ora2Pg::DbLink::write_tables_file($self);
 
 	return;
 }
@@ -7394,6 +7535,8 @@ sub export_package
 		print OUT $default_global_vars;
 		close(OUT);
 	}
+
+	Ora2Pg::DbLink::write_tables_file($self);
 
 	return;
 }
@@ -8440,6 +8583,19 @@ sub export_synonym
 			print STDERR $self->progress_bar($i, $num_total_synonym, 25, '=', 'synonyms', "generating $syn" ), "\r";
 		}
 		$count_syn++;
+		my $sy = $self->{synonyms}{$syn};
+		if ($sy->{dblink} && ($self->{dblink_mode} // 'off') eq 'fdw' && !$self->{dblink_exclude}{uc $sy->{dblink}}) {
+			# synonym over a db link: view on the foreign table the dblink patch generates
+			my $link = uc $sy->{dblink};
+			my $srv = Ora2Pg::DbLink::server_for($self, $link);
+			my $path = uc(($sy->{table_owner} ? "$sy->{table_owner}." : '') . $sy->{table_name});
+			$self->{dblink_used}{$srv}{$path} = 1;
+			$self->{dblink_link}{$srv} = $link;
+			my $ft = Ora2Pg::DbLink::_fdw_schema($self, $srv, $sy->{table_owner} || undef) . '.' . lc($sy->{table_name});
+			$sql_output .= "CREATE$self->{create_or_replace} VIEW " . $self->quote_object_name($syn) . " AS SELECT * FROM $ft;\n";
+			$i++;
+			next;
+		}
 		if ($self->{synonyms}{$syn}{dblink}) {
 			$sql_output .= "-- You need to create foreign table $self->{synonyms}{$syn}{table_owner}.$self->{synonyms}{$syn}{table_name} using foreign server: '$self->{synonyms}{$syn}{dblink}'\n -- see DBLINK export type to export the server definition\n";
 		}
@@ -8467,6 +8623,7 @@ sub export_synonym
 	}
 
 	$self->dump($sql_header . $sql_output);
+	Ora2Pg::DbLink::write_tables_file($self);
 
 	return;
 }
@@ -10612,19 +10769,20 @@ sub fix_function_call
 	my $dirprefix = '';
 	$dirprefix = "$self->{output_dir}/" if ($self->{output_dir});
 
-	return unless(open(my $tfh, '<', $dirprefix . 'temp_pass2_file.dat'));
-	while (my $l = <$tfh>) {
-		chomp($l);
-		my ($pname, $fname, $file_name) = split(/:/, $l);
-		$file_to_update{$pname}{$fname} = $file_name;
+	my %fix_files = ();
+	if (open(my $tfh, '<', $dirprefix . 'temp_pass2_file.dat')) {
+		while (my $l = <$tfh>) {
+			chomp($l);
+			my ($pname, $fname, $file_name) = split(/:/, $l, 3);
+			next if ($pname =~ /^ORA2PG_/ && $pname !~ /^ORA2PG_(?:VIEW|MVIEW)$/);
+			$fix_files{$file_name} = 1;
+		}
+		close($tfh);
 	}
-	close($tfh);
 
 	my $child_count = 0;
-	# Fix call to package function in files
-	foreach my $pname (sort keys %file_to_update ) {
-		next if ($pname =~ /^ORA2PG_/);
-		foreach my $fname (sort keys %{ $file_to_update{$pname} } ) {
+	# Fix call to package function in files (each bulk file once)
+	foreach my $file_name (sort keys %fix_files) {
 			if ($self->{jobs} > 1) {
 				while ($child_count >= $self->{jobs}) {
 					my $kid = waitpid(-1, WNOHANG);
@@ -10635,13 +10793,12 @@ sub fix_function_call
 					usleep(50000);
 				}
 				spawn sub {
-					$self->requalify_package_functions($file_to_update{$pname}{$fname});
+					$self->requalify_package_functions($file_name);
 				};
 				$child_count++;
 			} else {
-				$self->requalify_package_functions($file_to_update{$pname}{$fname});
+				$self->requalify_package_functions($file_name);
 			}
-		}
 	}
 
 	# Wait for all child end
@@ -10653,6 +10810,28 @@ sub fix_function_call
 		}
 		usleep(50000);
 	}
+
+	# CI exports each TYPE in a separate ora2pg run (VIEW before PACKAGE). pass2 on VIEW
+	# cannot see package_functions yet; re-run requalify on bulk SQL after PACKAGE.
+	if ($self->{type} eq 'PACKAGE' && $self->{package_as_schema}) {
+		foreach my $bulk (qw(view.sql function.sql procedure.sql mview.sql)) {
+			my $path = $dirprefix . $bulk;
+			$self->requalify_package_functions($path) if (-f $path);
+		}
+	}
+}
+
+# Same path as create_export_file for the current TYPE/output (view.sql or VIEW_view.sql).
+sub _bulk_output_sql_path
+{
+	my ($self, $outfile) = @_;
+	$outfile ||= $self->{output} || return;
+	return $outfile if ($outfile eq '-');
+	$outfile = $self->{type} . "_$outfile" if ($#{$self->{export_type}} > 0);
+	if ($self->{output_dir}) {
+		return $self->{output_dir} . '/' . $outfile;
+	}
+	return $outfile;
 }
 
 # Requalify function call by using double quoted if necessary and by replacing
@@ -10665,7 +10844,7 @@ sub requalify_package_functions
 		$self->set_binmode($fh);
 		my $content = '';
 		while (<$fh>) { $content .= $_; };
-		close($f);
+		close($fh);
 		$self->requalify_function_call(\$content);
 		if (open(my $fh, '>', $filename)) {
 			$self->set_binmode($fh);
@@ -11446,6 +11625,11 @@ sub get_indexname
 	}
 	# Remove non alphanumeric character
 	#$idxname =~ s/[^a-z0-9_]+//ig;
+
+	# PostgreSQL keeps tables and indexes in one namespace: an index named like a table of the schema cannot be created
+	$self->{_table_names} ||= { map { (my $n = lc $_) =~ s/^.*\.//; $n =~ s/"//g; ($n => 1) } keys %{ $self->{tables} || {} } };
+	(my $plain_idx = lc "$idxname$self->{indexes_suffix}") =~ s/"//g;
+	$idxname .= '_idx' if $self->{_table_names}{$plain_idx};
 
 	$idxname = $self->quote_object_name("$idxname$self->{indexes_suffix}");
 
@@ -14971,9 +15155,9 @@ sub read_config
 {
 	my ($self, $file) = @_;
 
+	# the layer must be set at open time: binmode() on a not yet opened handle does nothing
 	my $fh = new IO::File;
-	binmode($fh, ":utf8");
-	$fh->open($file) or $self->logit("FATAL: can't read configuration file $file, $!\n", 0, 1);
+	$fh->open($file, '<:encoding(UTF-8)') or $self->logit("FATAL: can't read configuration file $file, $!\n", 0, 1);
 	while (my $l = <$fh>)
 	{
 		chomp($l);
@@ -15029,7 +15213,7 @@ sub parse_config
 			'SYSUSERS','REPLACE_AS_BOOLEAN','BOOLEAN_VALUES','MODIFY_TYPE','DEFINED_PK',
 			'ALLOW_PARTITION','REPLACE_QUERY','FKEY_ADD_UPDATE','DELETE',
 			'LOOK_FORWARD_FUNCTION','ORA_INITIAL_COMMAND','PG_INITIAL_COMMAND',
-			'TRANSFORM_VALUE','EXCLUDE_COLUMNS'
+			'TRANSFORM_VALUE','EXCLUDE_COLUMNS','DBLINK_SERVER','DBLINK_EXCLUDE'
 		))
 	{
 		$AConfig{$var} = $val;
@@ -15166,6 +15350,25 @@ sub parse_config
 		{ 
 			my ($table, $col) = split(/:/, $r);
 			$AConfig{$var}{lc($table)} = $col;
+		}
+	}
+	elsif ($var eq 'DBLINK_SERVER')
+	{
+		# Syntax: LINK:server pairs, the link name is stored in upper case
+		foreach my $r (split(/[\s,;]+/, $val || ''))
+		{
+			my ($link, $srv) = split(/:/, $r, 2);
+			if (!defined $srv || $srv eq '') {
+				print STDERR "WARNING: DBLINK_SERVER entry '$r' must be LINK:server, ignored.\n";
+				next;
+			}
+			$AConfig{$var}{uc($link)} = $srv;
+		}
+	}
+	elsif ($var eq 'DBLINK_EXCLUDE')
+	{
+		foreach my $t (split(/[\s,;]+/, $val || '')) {
+			$AConfig{$var}{uc($t)} = 1;
 		}
 	}
 	elsif ($var eq 'WHERE')
@@ -15391,7 +15594,8 @@ sub _convert_package
 				}
 			}
 		}
-		$ctt =~ s/\bEND[^;]*;$//is;
+		# strip the package closing END; script input may trail it with a SQL*Plus "/" (read as an extra ";")
+		$ctt =~ s/\bEND[^;]*;[\s;\/]*$//is;
 
 		my @functions = $self->_extract_functions($ctt);
 
@@ -15715,6 +15919,11 @@ sub _convert_function
 	$fct_detail{args} =~ s/\s+IN\s+/ /igs;
 	# Remove %ROWTYPE from arguments, we can use the table name as type
 	$fct_detail{args} =~ s/\%ROWTYPE//igs;
+	# PG folds only ASCII in unquoted names: lowercase Cyrillic in tbl.col%TYPE like the created objects
+	unless ($self->{preserve_case}) {
+		$fct_detail{args} = Ora2Pg::PLSQL::lc_type_refs($fct_detail{args});
+		$fct_detail{func_ret_type} = Ora2Pg::PLSQL::lc_type_refs($fct_detail{func_ret_type}) if defined $fct_detail{func_ret_type};
+	}
 
 	# Replace DEFAULT EMPTY_BLOB() from function/procedure arguments by DEFAULT NULL
 	$fct_detail{args} =~ s/\s+DEFAULT\s+EMPTY_[CB]LOB\(\)/DEFAULT NULL/igs;
@@ -15781,7 +15990,10 @@ sub _convert_function
 	{
 		if ($args_sorted[$i] =~ / DEFAULT ([^'].*)/i)
 		{
-			my $cod = Ora2Pg::PLSQL::convert_plsql_code($self, $1);
+			# the default is still masked as %%tmpN%% (parenthesis content): unmask it, or TRUNC(SYSDATE) is never converted
+			my $dflt = $1;
+			$dflt =~ s/\%\%tmp(\d+)\%\%/($param_param{$1})/gs;
+			my $cod = Ora2Pg::PLSQL::convert_plsql_code($self, $dflt);
 			$args_sorted[$i] =~ s/( DEFAULT )([^'].*)/$1$cod/i;
 		}
 	}
@@ -16346,11 +16558,16 @@ sub _format_view
 
 	$self->_remove_comments(\$sqlstr);
 
-	# Retrieve the column part of the view to remove double quotes
-	if (!$self->{preserve_case} && $sqlstr =~ s/^(.*?)\bFROM\b/FROM/is) {
-		my $tmp = $1;
-		$tmp =~ s/"//gs;
-		$sqlstr = $tmp . $sqlstr;
+	# Unwrap "TABLE".col only in the SELECT list; keep AS "alias" (reserved/dotted names).
+	if (!$self->{preserve_case}) {
+		my ($masked, $qstore) = Ora2Pg::PLSQL::_mask_double_quoted_ids($sqlstr);
+		if ($masked =~ /^(.*?)\bFROM\b(.*)$/is) {
+			my ($sel, $from) = ($1, $2);
+			$sel =~ s/"([^"]+)"\s*\./$1./gs;
+			$sqlstr = Ora2Pg::PLSQL::_unmask_double_quoted_ids($sel, $qstore)
+				. 'FROM'
+				. Ora2Pg::PLSQL::_unmask_double_quoted_ids($from, $qstore);
+		}
 	}
 	
 	my @tbs = ();
@@ -16368,7 +16585,7 @@ sub _format_view
 		$tmp =~ s/,/ /g;
 		my @tmp_tbs = split(/\s+/, $tmp);
 		foreach my $p (@tmp_tbs) {
-			push(@tbs, $p) if ($p =~ /^[A-Z_0-9\$]+$/i);
+			push(@tbs, $p) if ($p =~ /^[\w\$#]+$/u);
 		}
 	}
 	foreach my $tb (@tbs) {
@@ -16376,8 +16593,8 @@ sub _format_view
 		my $regextb = $tb;
 		$regextb =~ s/\$/\\\$/g;
 		if (!$self->{preserve_case}) {
-			# Escape column name
-			$sqlstr =~ s/["']*\b$regextb\b["']*\.["']*([A-Z_0-9\$]+)["']*(,?)/$tb.$1$2/igs;
+			# Escape column name (quoted Oracle ALL_CAPS / Cyrillic -> unquoted PG fold)
+			$sqlstr =~ s{["']*\Q$regextb\E["']*\.["']([^"']+)["'](,?)}{ my ($c, $t) = (lc($1), $2); $tb . '.' . ($c =~ /^[\p{L}\p{N}_\$#]+$/u ? $c : qq{"$c"}) . $t }igeu;
 			# Escape table name
 			$sqlstr =~ s/(^=\s?)["']*\b$regextb\b["']*/$tb/igs;
 		} else {
@@ -16401,7 +16618,13 @@ sub _format_view
 	}
 
 	if ($self->{plsql_pgsql}) {
+		my $saved_type = $self->{type};
+		$self->{type} = 'VIEW';
 		$sqlstr = Ora2Pg::PLSQL::convert_plsql_code($self, $sqlstr);
+		$self->{type} = $saved_type;
+		$sqlstr = Ora2Pg::PLSQL::lowercase_quoted_oracle_uppercase_columns($sqlstr)
+			if (!$self->{preserve_case});
+		$sqlstr = Ora2Pg::PLSQL::lowercase_fdw_pass_through_columns($sqlstr);
 	}
 
 	$self->_restore_comments(\$sqlstr);
@@ -18240,7 +18463,7 @@ sub _show_infos
 						foreach my $d (sort { $cost_detail{$b} <=> $cost_detail{$a} } keys %cost_detail)
 						{
 							next if (!$cost_detail{$d});
-							$report_info{full_trigger_details}{"\L$trig->[0]\E"}{info} .= "\t$d => $cost_detail{$d}";
+							$report_info{full_trigger_details}{"\L$trig->[0]\E"}{info} .= Ora2Pg::DbLink::report_item($d, \%cost_detail);
 							$report_info{full_trigger_details}{"\L$trig->[0]\E"}{info} .= " (cost: ${$uncovered_score}{$d})" if (${$uncovered_score}{$d});
 							$report_info{full_trigger_details}{"\L$trig->[0]\E"}{info} .= "\n";
 							push(@{$report_info{full_trigger_details}{"\L$trig->[0]\E"}{keywords}}, $d) if (($d ne 'SIZE') && ($d ne 'TEST')); 
@@ -18279,7 +18502,7 @@ sub _show_infos
 						foreach my $d (sort { $cost_detail{$b} <=> $cost_detail{$a} } keys %cost_detail)
 						{
 							next if (!$cost_detail{$d});
-							$report_info{full_function_details}{"\L$fct\E"}{info} .= "\t$d => $cost_detail{$d}";
+							$report_info{full_function_details}{"\L$fct\E"}{info} .= Ora2Pg::DbLink::report_item($d, \%cost_detail);
 							$report_info{full_function_details}{"\L$fct\E"}{info} .= " (cost: ${$uncovered_score}{$d})" if (${$uncovered_score}{$d});
 							$report_info{full_function_details}{"\L$fct\E"}{info} .= "\n";
 							push(@{$report_info{full_function_details}{"\L$fct\E"}{keywords}}, $d) if (($d ne 'SIZE') && ($d ne 'TEST')); 
@@ -18314,7 +18537,7 @@ sub _show_infos
 						foreach my $d (sort { $cost_detail{$b} <=> $cost_detail{$a} } keys %cost_detail)
 						{
 							next if (!$cost_detail{$d});
-							$report_info{full_procedure_details}{"\L$proc\E"}{info} .= "\t$d => $cost_detail{$d}";
+							$report_info{full_procedure_details}{"\L$proc\E"}{info} .= Ora2Pg::DbLink::report_item($d, \%cost_detail);
 							$report_info{full_procedure_details}{"\L$proc\E"}{info} .= " (cost: ${$uncovered_score}{$d})" if (${$uncovered_score}{$d});
 							$report_info{full_procedure_details}{"\L$proc\E"}{info} .= "\n";
 							push(@{$report_info{full_procedure_details}{"\L$proc\E"}{keywords}}, $d) if (($d ne 'SIZE') && ($d ne 'TEST')); 
@@ -18356,7 +18579,7 @@ sub _show_infos
 								foreach my $d (sort { $cost_detail{$b} <=> $cost_detail{$a} } keys %cost_detail)
 								{
 									next if (!$cost_detail{$d});
-									$report_info{full_package_details}{"\L$f\E"}{info} .= "\t$d => $cost_detail{$d}";
+									$report_info{full_package_details}{"\L$f\E"}{info} .= Ora2Pg::DbLink::report_item($d, \%cost_detail);
 									$report_info{full_package_details}{"\L$f\E"}{info} .= " (cost: ${$uncovered_score}{$d})" if (${$uncovered_score}{$d});
 									$report_info{full_package_details}{"\L$f\E"}{info} .= "\n";
 									push(@{$report_info{full_package_details}{"\L$f\E"}{keywords}}, $d) if (($d ne 'SIZE') && ($d ne 'TEST')); 
@@ -18430,7 +18653,7 @@ sub _show_infos
 						foreach my $d (sort { $cost_detail{$b} <=> $cost_detail{$a} } keys %cost_detail)
 						{
 							next if (!$cost_detail{$d});
-							$report_info{full_view_details}{"\L$view\E"}{info} .= "\t$d => $cost_detail{$d}";
+							$report_info{full_view_details}{"\L$view\E"}{info} .= Ora2Pg::DbLink::report_item($d, \%cost_detail);
 							$report_info{full_view_details}{"\L$view\E"}{info} .= " (cost: ${$uncovered_score}{$d})" if (${$uncovered_score}{$d});
 							$report_info{full_view_details}{"\L$view\E"}{info} .= "\n";
 							push(@{$report_info{full_view_details}{"\L$view\E"}{keywords}}, $d); 
@@ -22318,6 +22541,8 @@ sub register_global_variable
 			{
 				# Append the rest of the definition to the default value
 				for (my $l = $j+1; $l <= $#others; $l++) {
+					# a variable declared in both package spec and body is registered twice: do not append to the first default
+					$self->{global_variables}{$v}{default} = '' if ($l == $j+1);
 					$self->{global_variables}{$v}{default} .= " " if ($l > $j+1);
 					$self->{global_variables}{$v}{default} .= $others[$l];
 				}
@@ -22423,11 +22648,39 @@ sub requalify_function_call
 {
 	my ($self, $str) = @_;
 
-	# Loop through package 
+	my $schema = defined $self->{schema} ? lc($self->{schema}) : '';
+
+	# Loop through package
 	foreach my $p (keys %{$self->{package_functions}}) {
-		# foreach function declared in a package qualify its callis with the package name
+		my $psch = lc($p);
 		foreach my $f (keys %{$self->{package_functions}{$p}}) {
-			$$str =~ s/\b$p\.$f\s*([\(;])/$self->{package_functions}{$p}{$f}{name}$1/igs;
+			my $flat = $self->{package_functions}{$p}{$f}{name};
+			if ($self->{package_as_schema}) {
+				my $flc = lc($f);
+				# SCHEMA.Pkg.get_foo -> pkg.get_foo(); zero-arg package functions need ()
+				# /i: export may still have mixed case before lc_non_ascii in some VIEW paths
+				my $sq = $schema ne "" ? qr{(?:\Q$schema\E\.)?} : qr{};
+				$$str =~ s/(?<![\.\w\$#])$sq\Q$p\E\.\Q$f\E\b(?!\s*\()/$psch.$flc()/ig;
+				$$str =~ s/(?<![\.\w\$#])$sq\Q$p\E\.\Q$f\E\s*\(/$psch.$flc(/ig;
+			} else {
+				$$str =~ s/\b$p\.$f\s*([\(;])/$flat$1/igs;
+				$$str =~ s/\b([\w\$#]+)\.$p\.$f\s*\(/$1.$flat(/igs;
+			}
+		}
+	}
+
+	if ($schema ne '' && ref($self->{functions}) eq 'HASH' && %{$self->{functions}}) {
+		my %pkg_fn = ();
+		foreach my $p (keys %{$self->{package_functions}}) {
+			foreach my $f (keys %{$self->{package_functions}{$p}}) {
+				$pkg_fn{lc($f)} = 1;
+			}
+		}
+		foreach my $f (keys %{$self->{functions}}) {
+			next if ($pkg_fn{lc($f)});
+			my $flc = lc($f);
+			# After convert_plsql_code identifiers are lowercase; qualify bare calls for VIEW export
+			$$str =~ s/(?<![\.\w\$#])\b$flc\s*\(/$schema.$flc(/igs;
 		}
 	}
 }

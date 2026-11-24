@@ -2912,6 +2912,78 @@ By default, Ora2pg rewrites add_month(), add_year(), date_trunc() and
 to_char() functions, but you may prefer to use the orafce version of
 these functions that do not need any code transformation.
 
+=item DBLINK_MODE
+
+Handling of Oracle database links (@link). Value is C<off> (default) or
+C<fdw>, enabling the translation through oracle_fdw foreign servers.
+
+This mode is written for the oracle_fdw fork https://github.com/grbr2010/oracle_fdw
+(extension version 1.3). Remote tables become ordinary foreign tables, but
+sequences, function calls and procedure calls use the functions oracle_query(),
+oracle_scalar(), oracle_call() and oracle_exec() that only that fork provides.
+Stock oracle_fdw does not have them.
+
+=item DBLINK_SERVER
+
+Map of database link name to foreign server name, as C<LINK:server> pairs
+separated by spaces, e.g. C<PROD:prod_remuser>. The link name is case insensitive.
+Without an entry the server is named C<E<lt>databaseE<gt>_E<lt>loginE<gt>>: the
+database alias of the link and the remote user, lower case, so links that
+connect to the same database as the same user share one server. The
+definitions come from the exported DATABASE LINK DDL or, on a live run, from
+ALL_DB_LINKS. With neither, the name is derived from the link name. Set the
+map explicitly when ora2pg runs from an input file without the DATABASE LINK
+DDL, so that offline and live runs give the same names.
+
+=item DBLINK_EXCLUDE
+
+Space separated list of object names (case insensitive) excluded from
+database link handling.
+
+=item DBLINK_SCHEMA_PREFIX
+
+Prefix of the schema names created for foreign tables of database links.
+Default is C<fdw_>.
+
+=item DBLINK_SIGNATURES
+
+File with the Oracle object signatures used when C<DBLINK_MODE> is C<fdw>.
+No file by default. One object per line, fields separated by a pipe:
+C<LINK|KIND|PATH|SPEC>. Lines starting with # are ignored. KIND is COLUMN
+(SPEC: C<NUMBER(15)>), TABLE (SPEC: C<col TYPE, ...; PK col, ...>), FUNCTION
+(SPEC: C<RETURN TYPE; arg IN|OUT|IN OUT TYPE, ...>) or PROCEDURE (arguments only).
+Entries in the file take precedence over the Oracle dictionary.
+
+An optional fifth field holds flags separated by commas. The only flag is
+C<MODIFIES>: the function writes data, so its wrapper calls it through
+oracle_exec() instead of oracle_scalar() (oracle_scalar() runs a query, and
+Oracle rejects a function with DML in a query with ORA-14551). An unknown flag
+gives a warning and the line is skipped. An argument may end with C<DEFAULT>
+(C<cd_2 IN NUMBER DEFAULT>): it may be omitted in the call.
+
+A call of a remote function with a known signature (a FUNCTION line or the
+dictionary) becomes a call of a typed PostgreSQL wrapper
+C<fdw_E<lt>serverE<gt>_E<lt>owner[_package]E<gt>.function(...)>; the wrappers are
+written to the file C<dblink_functions_E<lt>typeE<gt>.sql> and must be loaded
+after C<dblink_tables_E<lt>typeE<gt>.sql> and before the code. Only NUMBER, FLOAT,
+INTEGER, BINARY_INTEGER, PLS_INTEGER, VARCHAR2, CHAR, NVARCHAR2, NCHAR and DATE
+parameters and results are supported, and only IN parameters. Other calls
+(no signature, %TYPE or BOOLEAN parameter, missing required argument, mixed
+positional and named arguments) are translated to oracle_call() or oracle_exec()
+in the code, with a TODO marker.
+
+=item DBLINK_WRAPPER_DEFINER
+
+C<0> (default) or C<1>. With C<1> the wrappers of remote functions are created
+C<SECURITY DEFINER SET search_path = pg_catalog, DBLINK_EXT_SCHEMA>. Every
+wrapper is followed by C<REVOKE ALL ... FROM PUBLIC>; grant EXECUTE to the
+application roles yourself.
+
+=item DBLINK_EXT_SCHEMA
+
+Schema of the oracle_fdw extension, used in the C<search_path> of
+C<SECURITY DEFINER> wrappers. Default is C<public>.
+
 =item AUTONOMOUS_TRANSACTION
 
 Enable translation of autonomous transactions into wrapper functions
