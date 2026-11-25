@@ -898,7 +898,7 @@ sub plsql_to_plpgsql
 	$str =~ s/:old\./OLD\./igs;
 
 	# Change NVL to COALESCE
-	$str =~ s/NVL\s*\(/coalesce(/isg;
+	$str =~ s/\bNVL\s*\(/coalesce(/isg;
 	$str =~ s/NVL2\s*\($field,$field,$field\)/(CASE WHEN $1 IS NOT NULL THEN $2 ELSE $3 END)/isg;
 
 	# NLSSORT to COLLATE
@@ -1893,7 +1893,7 @@ sub replace_oracle_function
 	}
 
 	# Change NVL to COALESCE
-	$str =~ s/NVL\s*\(/coalesce(/is;
+	$str =~ s/\bNVL\s*\(/coalesce(/is;
 	$str =~ s/NVL2\s*\($field,$field,$field\)/(CASE WHEN $1 IS NOT NULL THEN $2 ELSE $3 END)/is;
 
 	# Replace DEFAULT empty_blob() and empty_clob()
