@@ -1013,6 +1013,16 @@ sub plsql_to_plpgsql
 		$str =~ s/DBMS_OUTPUT\.(put_line|put|new_line)\s*\((.*?)\)\s*;/&raise_output($class, $2) . ';'/isge;
 	} else {
 		$str =~ s/(DBMS_OUTPUT\.)/PERFORM $1/igs;
+
+		# The procedures of the other orafce packages need PERFORM when they are a statement, as a
+		# function call cannot be one in PL/pgSQL. Functions (send_message, receive_message, fopen, ...)
+		# are used inside expressions and are left as they are.
+		my $stmt = qr{(?:^|;|\*/|\bTHEN\b|\bELSE\b|\bBEGIN\b|\bLOOP\b)\s*}i;
+		my $proc = qr{(?:DBMS_PIPE\.(?:PACK_MESSAGE(?:_RAW|_ROWID)?|RESET_BUFFER|PURGE)
+			|DBMS_ALERT\.(?:REGISTER|REMOVE|REMOVEALL|SET_DEFAULTS|SIGNAL)
+			|UTL_FILE\.(?:FCLOSE|FCLOSE_ALL|FFLUSH|PUT|PUT_LINE|PUTF|NEW_LINE|FREMOVE|FRENAME|FCOPY)
+			|DBMS_RANDOM\.(?:INITIALIZE|SEED|TERMINATE))}xi;
+		$str =~ s/($stmt)($proc\s*\()/$1PERFORM $2/igm;
 	}
 
 	# DBMS_LOCK.SLEEP can be replaced by pg_sleep
