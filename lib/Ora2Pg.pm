@@ -317,6 +317,10 @@ sub spawn
 	# the child -- go spawn
 	$< = $>;
 	$( = $); # suid progs only
+	if ($^O !~ /MSWin32|dos/i) {
+		binmode(STDOUT, ":encoding(UTF-8)");
+		binmode(STDERR, ":encoding(UTF-8)");
+	}
 	exit &$coderef();
 }
 
@@ -1826,6 +1830,7 @@ sub _init
 	# Set stdout encoding to UTF8 to avoid "Wide character in print" warning
 	if ($^O !~ /MSWin32|dos/i) {
 		binmode(STDOUT, "encoding(UTF-8)");
+		binmode(STDERR, "encoding(UTF-8)");
 	}
 
 	# Mark that we are exporting data using oracle_fdw
