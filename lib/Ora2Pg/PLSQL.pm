@@ -3656,6 +3656,7 @@ sub replace_outer_join
 		# Set a hash for alias to table mapping
 		my %from_clause_list = ();
 		my %from_order = ();
+		my %alias_of_table = ();
 		my $fidx = 0;
 		foreach my $table (@tables)
 		{
@@ -3667,9 +3668,11 @@ sub replace_outer_join
 			}
 			my ($t, $alias, @others) = split(/\s+/, lc($table));
 			$alias = $others[0] if (uc($alias) eq 'AS');
-			$alias = "$t" if (!$alias);
+			# schema.table without alias is referenced as plain "table" in the conditions: key it by that name
+			($alias = $t) =~ s/^.*\.// if (!$alias);
 			$from_clause_list{$alias} = "$cmt$t";
 			$from_order{$alias} = $fidx++;
+			$alias_of_table{$t} = $alias;
 		}
 
 		# Extract all Oracle's outer join syntax from the where clause
@@ -3723,6 +3726,11 @@ sub replace_outer_join
 			{
 				$lbl1 = lc($1);
 				$lbl1 =~ s/\(\s*//;
+				# schema.table.col written with the schema: use the alias of that FROM entry
+				if (!exists $from_clause_list{$lbl1} && exists $alias_of_table{$lbl1}) {
+					$l =~ s/^\(?\s*\Q$lbl1\E\./$alias_of_table{$lbl1}./i;
+					$lbl1 = $alias_of_table{$lbl1};
+				}
 				# If the table/alias is not part of the from clause
 				if (!exists $from_clause_list{$lbl1}) {
 					$from_clause_list{$lbl1} = $lbl1;
@@ -3761,6 +3769,10 @@ sub replace_outer_join
 			if ($r =~ /^([^\.\s]+\.[^\.\s]+)\..*/ || $r =~ /^([^\.\s]+)\..*/)
 			{
 				$lbl2 = lc($1);
+				if (!exists $from_clause_list{$lbl2} && exists $alias_of_table{$lbl2}) {
+					$r =~ s/^\(?\s*\Q$lbl2\E\./$alias_of_table{$lbl2}./i;
+					$lbl2 = $alias_of_table{$lbl2};
+				}
 				if (!$lbl1) {
 					push(@{$other_join_clause{$lbl2}}, "$l $o $r");
 					next;
