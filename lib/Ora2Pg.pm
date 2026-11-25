@@ -477,6 +477,7 @@ sub open_export_file
 		{
 			$filehdl = new IO::File;
 			$filehdl->open(">$outfile") or $self->logit("FATAL: Can't open $outfile: $!\n", 0, 1);
+			$self->set_binmode($filehdl);
 		}
 		$filehdl->autoflush(1) if (defined $filehdl && !$self->{compress});
 	}
@@ -588,6 +589,7 @@ sub append_export_file
 		} else {
 			$filehdl = new IO::File;
 			$filehdl->open(">>$outfile") or $self->logit("FATAL: Can't open $outfile: $!\n", 0, 1);
+			$self->set_binmode($filehdl);
 			$filehdl->autoflush(1);
 		}
 	}
@@ -1406,6 +1408,7 @@ sub _init
 	{
 		$self->{fhlog} = new IO::File;
 		$self->{fhlog}->open(">>$self->{logfile}") or $self->logit("FATAL: can't log to $self->{logfile}, $!\n", 0, 1);
+		$self->set_binmode($self->{fhlog});
 	}
 
 	# Autoconvert SRID
@@ -2142,6 +2145,7 @@ sub _select_output_file_suffix
     $self->{fhlog} = undef;
     $self->{fhlog} = new IO::File;
     $self->{fhlog}->open(">$self->{dump_as_file_prefix}.$extension") or $self->logit("FATAL: can't log to $self->{dump_as_file_prefix}.$extension, $!\n", 0, 1);
+    $self->set_binmode($self->{fhlog});
     if ($self->{debug}){
         print STDERR  "Saving report to $self->{dump_as_file_prefix}.$extension\n";
     }
@@ -3056,8 +3060,14 @@ sub _parse_constraint
 		$deferred = 'DEFERRED' if ($c =~ /INITIALLY DEFERRED/);
 		my $novalidate = '';
 		$novalidate = 'NOT VALIDATED' if ($c =~ /NOVALIDATE/);
+		my $delete_rule = '';
+		$delete_rule = uc($1) if ($c =~ /\bON\s+DELETE\s+(CASCADE|SET\s+NULL|SET\s+DEFAULT|RESTRICT|NO\s+ACTION)\b/is);
+		$delete_rule =~ s/\s+/ /g;
+		my $update_rule = '';
+		$update_rule = uc($1) if ($c =~ /\bON\s+UPDATE\s+(CASCADE|SET\s+NULL|SET\s+DEFAULT|RESTRICT|NO\s+ACTION)\b/is);
+		$update_rule =~ s/\s+/ /g;
 		# CONSTRAINT_NAME,R_CONSTRAINT_NAME,SEARCH_CONDITION,DELETE_RULE,$deferrable,DEFERRED,R_OWNER,TABLE_NAME,OWNER,UPDATE_RULE,VALIDATED
-		push(@{$self->{tables}{$tb_name}{foreign_key}}, [ ($c_name,'','','',$deferrable,$deferred,'',$tb_name,'','',$novalidate) ]);
+		push(@{$self->{tables}{$tb_name}{foreign_key}}, [ ($c_name,'','',$delete_rule,$deferrable,$deferred,'',$tb_name,'',$update_rule,$novalidate) ]);
 	}
 }
 
@@ -11441,6 +11451,12 @@ sub get_indexname
 	# Remove non alphanumeric character
 	#$idxname =~ s/[^a-z0-9_]+//ig;
 
+	# PostgreSQL keeps tables and indexes in the same namespace: an index named like a
+	# table of the schema cannot be created
+	$self->{_table_names} ||= { map { (my $n = lc $_) =~ s/^.*\.//; $n =~ s/"//g; ($n => 1) } keys %{ $self->{tables} || {} } };
+	(my $plain_idx = lc "$idxname$self->{indexes_suffix}") =~ s/"//g;
+	$idxname .= '_idx' if $self->{_table_names}{$plain_idx};
+
 	$idxname = $self->quote_object_name("$idxname$self->{indexes_suffix}");
 
 	return $idxname;
@@ -15775,7 +15791,11 @@ sub _convert_function
 	{
 		if ($args_sorted[$i] =~ / DEFAULT ([^'].*)/i)
 		{
-			my $cod = Ora2Pg::PLSQL::convert_plsql_code($self, $1);
+			# the default is still masked as %%tmpN%% (content of parenthesis): unmask it
+			# first, or TRUNC(SYSDATE) is never converted
+			my $dflt = $1;
+			$dflt =~ s/\%\%tmp(\d+)\%\%/($param_param{$1})/gs;
+			my $cod = Ora2Pg::PLSQL::convert_plsql_code($self, $dflt);
 			$args_sorted[$i] =~ s/( DEFAULT )([^'].*)/$1$cod/i;
 		}
 	}
@@ -22312,6 +22332,8 @@ sub register_global_variable
 			{
 				# Append the rest of the definition to the default value
 				for (my $l = $j+1; $l <= $#others; $l++) {
+					# a variable declared in both the package spec and body is registered twice
+					$self->{global_variables}{$v}{default} = '' if ($l == $j+1);
 					$self->{global_variables}{$v}{default} .= " " if ($l > $j+1);
 					$self->{global_variables}{$v}{default} .= $others[$l];
 				}
