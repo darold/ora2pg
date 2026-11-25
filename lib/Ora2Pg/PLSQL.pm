@@ -460,6 +460,15 @@ PSQL - Oracle to PostgreSQL procedural language converter
 	configuration option to 1.
 =cut
 
+# PostgreSQL folds only ASCII letters of unquoted identifiers: lower case
+# the table/column part of tbl.col%TYPE like the created objects.
+sub lc_type_refs
+{
+	my $str = shift;
+	$str =~ s/([\w\$#"]+(?:\.[\w\$#"]+)*)(\s*\%TYPE\b)/lc($1) . $2/gie;
+	return $str;
+}
+
 =head2 convert_plsql_code
 
 Main function used to convert Oracle SQL and PL/SQL code into PostgreSQL
@@ -472,6 +481,8 @@ sub convert_plsql_code
         my ($class, $str, @strings) = @_;
 
 	return if ($str eq '');
+
+	$str = lc_type_refs($str) unless $class->{preserve_case};
 
 	# Remove the SYS schema from calls
 	$str =~ s/\bSYS\.//igs;
