@@ -477,6 +477,7 @@ sub open_export_file
 		{
 			$filehdl = new IO::File;
 			$filehdl->open(">$outfile") or $self->logit("FATAL: Can't open $outfile: $!\n", 0, 1);
+			$self->set_binmode($filehdl);
 		}
 		$filehdl->autoflush(1) if (defined $filehdl && !$self->{compress});
 	}
@@ -588,6 +589,7 @@ sub append_export_file
 		} else {
 			$filehdl = new IO::File;
 			$filehdl->open(">>$outfile") or $self->logit("FATAL: Can't open $outfile: $!\n", 0, 1);
+			$self->set_binmode($filehdl);
 			$filehdl->autoflush(1);
 		}
 	}
